@@ -19,8 +19,8 @@ Options:
                          and the `feature.v` file.
 
   -i, --ignore <string>  Ignore files having these extensions (separated by ,)
-                         Useful with `v watch -ignore=.db run vwebserver.v`,
-                         if your `vwebserver` writes to an sqlite.db file in
+                         Useful with `v watch -ignore=.db run vebserver.v`,
+                         if your `vebserver` writes to an sqlite.db file in
                          the same folder.
 
   -o, --only-watch <string>

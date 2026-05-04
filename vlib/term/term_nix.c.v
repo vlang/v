@@ -14,7 +14,7 @@ pub:
 	ws_ypixel u16
 }
 
-fn C.ioctl(fd int, request u64, args ...voidptr) int
+fn C.ioctl(fd i32, request u64, args ...voidptr) i32
 
 // get_terminal_size returns a number of columns and rows of terminal window.
 pub fn get_terminal_size() (int, int) {
@@ -46,7 +46,7 @@ pub fn get_cursor_position() !Coord {
 		return os.last_error()
 	}
 
-	state.c_lflag &= termios.invert(u32(C.ICANON) | u32(C.ECHO))
+	state.c_lflag &= termios.invert(termios.flag(int(C.ICANON) | int(C.ECHO)))
 	termios.tcsetattr(0, C.TCSANOW, mut state)
 
 	print('\e[6n')
@@ -142,7 +142,7 @@ pub fn supports_sixel() bool {
 		return false
 	}
 
-	state.c_lflag &= termios.invert(u32(C.ICANON) | u32(C.ECHO))
+	state.c_lflag &= termios.invert(termios.flag(int(C.ICANON) | int(C.ECHO)))
 	termios.tcsetattr(0, C.TCSANOW, mut state)
 
 	// Send a "Query Device Code"
@@ -194,7 +194,7 @@ pub fn graphics_num_colors() u16 {
 		return 0
 	}
 
-	state.c_lflag &= termios.invert(u32(C.ICANON) | u32(C.ECHO))
+	state.c_lflag &= termios.invert(termios.flag(int(C.ICANON) | int(C.ECHO)))
 	termios.tcsetattr(0, C.TCSANOW, mut state)
 
 	// Send "CSI ? Pi ; Pa ; Pv S"

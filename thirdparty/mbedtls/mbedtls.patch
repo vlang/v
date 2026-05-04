@@ -1,6 +1,6 @@
 diff -ur mbedtls.orig/include/mbedtls/check_config.h mbedtls/include/mbedtls/check_config.h
---- mbedtls.orig/include/mbedtls/check_config.h	2026-01-15 22:33:48.318284760 +0300
-+++ mbedtls/include/mbedtls/check_config.h	2026-01-15 22:34:04.062379589 +0300
+--- mbedtls.orig/include/mbedtls/check_config.h	2026-04-02 17:26:31.906276356 +0200
++++ mbedtls/include/mbedtls/check_config.h	2026-04-02 17:27:29.374384448 +0200
 @@ -247,9 +247,10 @@
  #if defined(MBEDTLS_TEST_CONSTANT_FLOW_MEMSAN) &&  !defined(MBEDTLS_HAS_MEMSAN)
  #error "MBEDTLS_TEST_CONSTANT_FLOW_MEMSAN requires building with MemorySanitizer"
@@ -16,9 +16,9 @@ diff -ur mbedtls.orig/include/mbedtls/check_config.h mbedtls/include/mbedtls/che
  
  #if defined(MBEDTLS_CCM_C) && \
 diff -ur mbedtls.orig/include/mbedtls/mbedtls_config.h mbedtls/include/mbedtls/mbedtls_config.h
---- mbedtls.orig/include/mbedtls/mbedtls_config.h	2026-01-15 22:33:48.318683074 +0300
-+++ mbedtls/include/mbedtls/mbedtls_config.h	2026-01-15 22:34:04.062667214 +0300
-@@ -4390,3 +4390,22 @@
+--- mbedtls.orig/include/mbedtls/mbedtls_config.h	2026-04-02 17:26:31.910276365 +0200
++++ mbedtls/include/mbedtls/mbedtls_config.h	2026-04-02 17:27:29.374384448 +0200
+@@ -4435,3 +4435,22 @@
  //#define MBEDTLS_X509_MAX_FILE_PATH_LEN     512 /**< Maximum length of a path/filename string in bytes including the null terminator character ('\0'). */
  
  /** \} name SECTION: Module configuration options */
@@ -41,9 +41,30 @@ diff -ur mbedtls.orig/include/mbedtls/mbedtls_config.h mbedtls/include/mbedtls/m
 +#undef MBEDTLS_THREADING_PTHREAD
 +#undef MBEDTLS_THREADING_C
 +#endif
+diff -ur mbedtls.orig/library/alignment.h mbedtls/library/alignment.h
+--- mbedtls.orig/library/alignment.h	2026-04-02 17:26:31.918276380 +0200
++++ mbedtls/library/alignment.h	2026-04-02 17:30:51.350689732 +0200
+@@ -280,7 +280,7 @@
+ /*
+  * Detect GCC built-in byteswap routines
+  */
+-#if defined(__GNUC__)
++#if defined(__GNUC__) && !(defined(__TINYC__) && defined(__FreeBSD__))
+ #if MBEDTLS_GCC_VERSION >= 40800
+ #define MBEDTLS_BSWAP16 __builtin_bswap16
+ #endif
+@@ -293,7 +293,7 @@
+ /*
+  * Detect Clang built-in byteswap routines
+  */
+-#if defined(__clang__) && defined(__has_builtin)
++#if defined(__clang__) && defined(__has_builtin) && !(defined(__TINYC__) && defined(__FreeBSD__))
+ #if __has_builtin(__builtin_bswap16) && !defined(MBEDTLS_BSWAP16)
+ #define MBEDTLS_BSWAP16 __builtin_bswap16
+ #endif /* __has_builtin(__builtin_bswap16) */
 diff -ur mbedtls.orig/library/entropy_poll.c mbedtls/library/entropy_poll.c
---- mbedtls.orig/library/entropy_poll.c	2026-01-15 22:33:48.325682810 +0300
-+++ mbedtls/library/entropy_poll.c	2026-01-15 22:34:04.062930810 +0300
+--- mbedtls.orig/library/entropy_poll.c	2026-04-02 17:26:31.922276388 +0200
++++ mbedtls/library/entropy_poll.c	2026-04-02 17:27:29.374384448 +0200
 @@ -38,35 +38,36 @@
  
  #if defined(_WIN32) && !defined(EFIX64) && !defined(EFI32)
@@ -102,9 +123,9 @@ diff -ur mbedtls.orig/library/entropy_poll.c mbedtls/library/entropy_poll.c
  #else /* _WIN32 && !EFIX64 && !EFI32 */
  
 diff -ur mbedtls.orig/library/pk.c mbedtls/library/pk.c
---- mbedtls.orig/library/pk.c	2026-01-15 22:33:48.326682772 +0300
-+++ mbedtls/library/pk.c	2026-01-15 22:34:04.063036079 +0300
-@@ -1237,6 +1237,7 @@
+--- mbedtls.orig/library/pk.c	2026-04-02 17:26:31.926276396 +0200
++++ mbedtls/library/pk.c	2026-04-02 17:27:29.374384448 +0200
+@@ -1336,6 +1336,7 @@
          return MBEDTLS_ERR_PK_BAD_INPUT_DATA;
      }
  
@@ -113,8 +134,8 @@ diff -ur mbedtls.orig/library/pk.c mbedtls/library/pk.c
          return MBEDTLS_ERR_PK_BAD_INPUT_DATA;
      }
 diff -ur mbedtls.orig/library/platform_util.c mbedtls/library/platform_util.c
---- mbedtls.orig/library/platform_util.c	2026-01-15 22:33:48.326682772 +0300
-+++ mbedtls/library/platform_util.c	2026-01-15 22:34:04.063089145 +0300
+--- mbedtls.orig/library/platform_util.c	2026-04-02 17:26:31.926276396 +0200
++++ mbedtls/library/platform_util.c	2026-04-02 17:27:29.374384448 +0200
 @@ -87,7 +87,7 @@
   */
  #if !defined(MBEDTLS_PLATFORM_HAS_EXPLICIT_BZERO) && !(defined(__STDC_LIB_EXT1__) && \
@@ -135,8 +156,8 @@ diff -ur mbedtls.orig/library/platform_util.c mbedtls/library/platform_util.c
  #else
          memset_func(buf, 0, len);
 diff -ur mbedtls.orig/library/ssl_misc.h mbedtls/library/ssl_misc.h
---- mbedtls.orig/library/ssl_misc.h	2026-01-15 22:33:48.329682659 +0300
-+++ mbedtls/library/ssl_misc.h	2026-01-15 22:34:04.063263675 +0300
+--- mbedtls.orig/library/ssl_misc.h	2026-04-02 17:26:31.934276411 +0200
++++ mbedtls/library/ssl_misc.h	2026-04-02 17:27:29.374384448 +0200
 @@ -1674,26 +1674,30 @@
  {
      mbedtls_ssl_key_cert *key_cert;
@@ -173,9 +194,9 @@ diff -ur mbedtls.orig/library/ssl_misc.h mbedtls/library/ssl_misc.h
  
  /*
 diff -ur mbedtls.orig/library/ssl_tls.c mbedtls/library/ssl_tls.c
---- mbedtls.orig/library/ssl_tls.c	2026-01-15 22:33:48.329682659 +0300
-+++ mbedtls/library/ssl_tls.c	2026-01-15 22:34:04.063744568 +0300
-@@ -4560,8 +4560,8 @@
+--- mbedtls.orig/library/ssl_tls.c	2026-04-02 17:26:31.938276419 +0200
++++ mbedtls/library/ssl_tls.c	2026-04-02 17:27:29.374384448 +0200
+@@ -4563,8 +4563,8 @@
  {
      int ret = MBEDTLS_ERR_ERROR_CORRUPTION_DETECTED;
  
@@ -186,7 +207,7 @@ diff -ur mbedtls.orig/library/ssl_tls.c mbedtls/library/ssl_tls.c
          ssl->handshake == NULL                       ||
          ssl->state == MBEDTLS_SSL_HANDSHAKE_OVER) {
          return MBEDTLS_ERR_SSL_BAD_INPUT_DATA;
-@@ -4650,10 +4650,8 @@
+@@ -4653,10 +4653,8 @@
      int ret = 0;
  
      /* Sanity checks */
@@ -199,3 +220,118 @@ diff -ur mbedtls.orig/library/ssl_tls.c mbedtls/library/ssl_tls.c
  
  #if defined(MBEDTLS_SSL_PROTO_DTLS)
      if (ssl->conf->transport == MBEDTLS_SSL_TRANSPORT_DATAGRAM &&
+diff -ur mbedtls.orig/mbedtls.patch mbedtls/mbedtls.patch
+--- mbedtls.orig/mbedtls.patch	2026-04-02 17:24:45.794045518 +0200
++++ mbedtls/mbedtls.patch	2026-04-02 17:32:06.554329802 +0200
+@@ -1,6 +1,6 @@
+ diff -ur mbedtls.orig/include/mbedtls/check_config.h mbedtls/include/mbedtls/check_config.h
+---- mbedtls.orig/include/mbedtls/check_config.h	2026-01-15 22:33:48.318284760 +0300
+-+++ mbedtls/include/mbedtls/check_config.h	2026-01-15 22:34:04.062379589 +0300
++--- mbedtls.orig/include/mbedtls/check_config.h	2026-04-02 17:26:31.906276356 +0200
+++++ mbedtls/include/mbedtls/check_config.h	2026-04-02 17:27:29.374384448 +0200
+ @@ -247,9 +247,10 @@
+  #if defined(MBEDTLS_TEST_CONSTANT_FLOW_MEMSAN) &&  !defined(MBEDTLS_HAS_MEMSAN)
+  #error "MBEDTLS_TEST_CONSTANT_FLOW_MEMSAN requires building with MemorySanitizer"
+@@ -16,9 +16,9 @@
+  
+  #if defined(MBEDTLS_CCM_C) && \
+ diff -ur mbedtls.orig/include/mbedtls/mbedtls_config.h mbedtls/include/mbedtls/mbedtls_config.h
+---- mbedtls.orig/include/mbedtls/mbedtls_config.h	2026-01-15 22:33:48.318683074 +0300
+-+++ mbedtls/include/mbedtls/mbedtls_config.h	2026-01-15 22:34:04.062667214 +0300
+-@@ -4390,3 +4390,22 @@
++--- mbedtls.orig/include/mbedtls/mbedtls_config.h	2026-04-02 17:26:31.910276365 +0200
+++++ mbedtls/include/mbedtls/mbedtls_config.h	2026-04-02 17:27:29.374384448 +0200
++@@ -4435,3 +4435,22 @@
+  //#define MBEDTLS_X509_MAX_FILE_PATH_LEN     512 /**< Maximum length of a path/filename string in bytes including the null terminator character ('\0'). */
+  
+  /** \} name SECTION: Module configuration options */
+@@ -41,9 +41,30 @@
+ +#undef MBEDTLS_THREADING_PTHREAD
+ +#undef MBEDTLS_THREADING_C
+ +#endif
++diff -ur mbedtls.orig/library/alignment.h mbedtls/library/alignment.h
++--- mbedtls.orig/library/alignment.h	2026-04-02 17:26:31.918276380 +0200
+++++ mbedtls/library/alignment.h	2026-04-02 17:30:51.350689732 +0200
++@@ -280,7 +280,7 @@
++ /*
++  * Detect GCC built-in byteswap routines
++  */
++-#if defined(__GNUC__)
+++#if defined(__GNUC__) && !(defined(__TINYC__) && defined(__FreeBSD__))
++ #if MBEDTLS_GCC_VERSION >= 40800
++ #define MBEDTLS_BSWAP16 __builtin_bswap16
++ #endif
++@@ -293,7 +293,7 @@
++ /*
++  * Detect Clang built-in byteswap routines
++  */
++-#if defined(__clang__) && defined(__has_builtin)
+++#if defined(__clang__) && defined(__has_builtin) && !(defined(__TINYC__) && defined(__FreeBSD__))
++ #if __has_builtin(__builtin_bswap16) && !defined(MBEDTLS_BSWAP16)
++ #define MBEDTLS_BSWAP16 __builtin_bswap16
++ #endif /* __has_builtin(__builtin_bswap16) */
+ diff -ur mbedtls.orig/library/entropy_poll.c mbedtls/library/entropy_poll.c
+---- mbedtls.orig/library/entropy_poll.c	2026-01-15 22:33:48.325682810 +0300
+-+++ mbedtls/library/entropy_poll.c	2026-01-15 22:34:04.062930810 +0300
++--- mbedtls.orig/library/entropy_poll.c	2026-04-02 17:26:31.922276388 +0200
+++++ mbedtls/library/entropy_poll.c	2026-04-02 17:27:29.374384448 +0200
+ @@ -38,35 +38,36 @@
+  
+  #if defined(_WIN32) && !defined(EFIX64) && !defined(EFI32)
+@@ -102,9 +123,9 @@
+  #else /* _WIN32 && !EFIX64 && !EFI32 */
+  
+ diff -ur mbedtls.orig/library/pk.c mbedtls/library/pk.c
+---- mbedtls.orig/library/pk.c	2026-01-15 22:33:48.326682772 +0300
+-+++ mbedtls/library/pk.c	2026-01-15 22:34:04.063036079 +0300
+-@@ -1237,6 +1237,7 @@
++--- mbedtls.orig/library/pk.c	2026-04-02 17:26:31.926276396 +0200
+++++ mbedtls/library/pk.c	2026-04-02 17:27:29.374384448 +0200
++@@ -1336,6 +1336,7 @@
+          return MBEDTLS_ERR_PK_BAD_INPUT_DATA;
+      }
+  
+@@ -113,8 +134,8 @@
+          return MBEDTLS_ERR_PK_BAD_INPUT_DATA;
+      }
+ diff -ur mbedtls.orig/library/platform_util.c mbedtls/library/platform_util.c
+---- mbedtls.orig/library/platform_util.c	2026-01-15 22:33:48.326682772 +0300
+-+++ mbedtls/library/platform_util.c	2026-01-15 22:34:04.063089145 +0300
++--- mbedtls.orig/library/platform_util.c	2026-04-02 17:26:31.926276396 +0200
+++++ mbedtls/library/platform_util.c	2026-04-02 17:27:29.374384448 +0200
+ @@ -87,7 +87,7 @@
+   */
+  #if !defined(MBEDTLS_PLATFORM_HAS_EXPLICIT_BZERO) && !(defined(__STDC_LIB_EXT1__) && \
+@@ -135,8 +156,8 @@
+  #else
+          memset_func(buf, 0, len);
+ diff -ur mbedtls.orig/library/ssl_misc.h mbedtls/library/ssl_misc.h
+---- mbedtls.orig/library/ssl_misc.h	2026-01-15 22:33:48.329682659 +0300
+-+++ mbedtls/library/ssl_misc.h	2026-01-15 22:34:04.063263675 +0300
++--- mbedtls.orig/library/ssl_misc.h	2026-04-02 17:26:31.934276411 +0200
+++++ mbedtls/library/ssl_misc.h	2026-04-02 17:27:29.374384448 +0200
+ @@ -1674,26 +1674,30 @@
+  {
+      mbedtls_ssl_key_cert *key_cert;
+@@ -173,9 +194,9 @@
+  
+  /*
+ diff -ur mbedtls.orig/library/ssl_tls.c mbedtls/library/ssl_tls.c
+---- mbedtls.orig/library/ssl_tls.c	2026-01-15 22:33:48.329682659 +0300
+-+++ mbedtls/library/ssl_tls.c	2026-01-15 22:34:04.063744568 +0300
+-@@ -4560,8 +4560,8 @@
++--- mbedtls.orig/library/ssl_tls.c	2026-04-02 17:26:31.938276419 +0200
+++++ mbedtls/library/ssl_tls.c	2026-04-02 17:27:29.374384448 +0200
++@@ -4563,8 +4563,8 @@
+  {
+      int ret = MBEDTLS_ERR_ERROR_CORRUPTION_DETECTED;
+  
+@@ -186,7 +207,7 @@
+          ssl->handshake == NULL                       ||
+          ssl->state == MBEDTLS_SSL_HANDSHAKE_OVER) {
+          return MBEDTLS_ERR_SSL_BAD_INPUT_DATA;
+-@@ -4650,10 +4650,8 @@
++@@ -4653,10 +4653,8 @@
+      int ret = 0;
+  
+      /* Sanity checks */

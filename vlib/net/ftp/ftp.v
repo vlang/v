@@ -54,7 +54,9 @@ fn (mut dtp DTP) read() ![]u8 {
 }
 
 fn (mut dtp DTP) close() {
-	dtp.conn.close() or { panic(err) }
+	if dtp.conn != unsafe { nil } {
+		dtp.conn.close() or { panic(err) }
+	}
 }
 
 struct FTP {
@@ -142,8 +144,10 @@ pub fn (mut zftp FTP) login(user string, passwd string) !bool {
 
 // close closes the FTP connection.
 pub fn (mut zftp FTP) close() ! {
-	zftp.write('QUIT')!
-	zftp.conn.close()!
+	if zftp.conn != unsafe { nil } {
+		zftp.write('QUIT')!
+		zftp.conn.close()!
+	}
 }
 
 // pwd returns the current working directory on the remote host for the logged in user.
@@ -172,6 +176,7 @@ pub fn (mut zftp FTP) cd(dir string) ! {
 		}
 		else {}
 	}
+
 	$if debug {
 		println('CD ${data}')
 	}

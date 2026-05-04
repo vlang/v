@@ -1,0 +1,15 @@
+// Test that wrong argument count with or block containing if-else
+// does not cause compiler panic (issue #26647)
+fn foo() ! {
+}
+
+fn main() {
+	// Test case: function with no params, called with extra args and or block with if-else
+	foo(1, 2, 3) or {
+		if true {
+			println('error')
+		} else {
+			println('other')
+		}
+	}
+}

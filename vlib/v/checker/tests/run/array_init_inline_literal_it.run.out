@@ -1,0 +1,7 @@
+vlib/v/checker/tests/run/array_init_inline_literal_it.vv:2:45: warning: variable `it` in array initialization will soon be replaced with `index`
+    1 | fn main() {
+    2 |     arr := []int{len: 2, init: [4][it] or { 0 }}
+      |                                                ^
+    3 |     println(arr)
+    4 | }
+[4, 0]

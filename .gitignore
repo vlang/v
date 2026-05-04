@@ -1,13 +1,9 @@
-# ignore sub-level build binaries and v binary
+# ignore sub-level extensionless build outputs
 */**/*
-v
-v.exe
-v2
-v2.exe
-vdbg
-vdbg.exe
 !*/
 !*.*
+
+# ignore generated binaries and object files
 *.exe
 *.o
 *.so
@@ -25,31 +21,32 @@ a.out
 .noprefix.vrepl_temp
 
 # ignore v build files
+# *.exe is already ignored above
+/v
+/v2
 /vc
 /v.c
 /v.*.c
 /v.c.out
 /v_old
-/v_old.exe
+/vdbg
 /vold
-/vold.exe
 /vnew
-/vnew.exe
 /vprod
 /vprod_gcc
 /vprod_clang
-/vprod.exe
-/vprod_gcc.exe
-/vprod_clang.exe
-/vprod_msvc.exe
 .vrepl_temp.v
 fns.txt
 .noprefix.vrepl_temp.v
+
+# Prefix local scratch/repro files with tmp. when they should stay untracked.
+tmp.*
 
 # ignore temp and cache directories
 temp/
 tmp/
 cache/
+.cache/
 
 # unignore special files without extension
 !.github/PULL_REQUEST_TEMPLATE
@@ -65,11 +62,10 @@ cache/
 !GNUmakefile
 
 # ignore editor files
-.idea
-.project
-.classpath
-.c9
-.vs
+.project/
+.classpath/
+.c9/
+.vs/
 *.launch
 .settings/
 *.sublime-workspace
@@ -78,7 +74,6 @@ cache/
 *~
 ~*
 .sesskey
-tmp*
 *.db
 *.swp
 *.swo
@@ -134,14 +129,14 @@ vls.log
 # ignore v2go tmperror files
 *.tmperr
 
-*/**/tmp.*
+.vtmp_cov_*/
 
 # ignore Intellij files
 .idea/
 /*.iml
+
+# ignore generated files:
 wasm.v
-TAGS
-tags
 
 # ignore large GTK *.gir files
 Gtk-4.0.gir
@@ -149,6 +144,11 @@ Gtk-4.0.gir
 
 vlib/builtin/js/*.js
 vlib/v/tests/*.js
+
+# ignore tags indexes, used by emacs/vim:
+ETAGS
+TAGS
+tags
 
 # ignore the old regexp based v.ctags file (people using universal ctags < 6.1.0, can still benefit from them)
 .ctags.d/v.ctags

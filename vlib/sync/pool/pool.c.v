@@ -87,6 +87,7 @@ pub fn (mut pool PoolProcessor) work_on_pointers(items []voidptr) {
 		njobs = pool.njobs
 	}
 	unsafe {
+		pool.ntask = 0
 		pool.thread_contexts = []voidptr{len: items.len}
 		lock pool.results {
 			pool.results = []voidptr{len: items.len}

@@ -1,0 +1,8 @@
+fn hello(i int, f f64, ...) {
+	_ = i
+	_ = f
+}
+
+fn main() {
+	hello(1)
+}

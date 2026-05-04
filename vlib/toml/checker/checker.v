@@ -17,6 +17,10 @@ pub const allowed_basic_escape_chars = [`u`, `U`, `b`, `t`, `n`, `f`, `r`, `"`, 
 // utf8_max is the largest inclusive value of the Unicodes scalar value ranges.
 const utf8_max = 0x10FFFF
 
+fn allowed_basic_escape_char_list() []u8 {
+	return [u8(`u`), `U`, `b`, `t`, `n`, `f`, `r`, `"`, `\\`]
+}
+
 fn toml_parse_time(s string) !time.Time {
 	if s.len > 3 && s[2] == `:` {
 		// complete the partial time, with an arbitrary date:
@@ -541,7 +545,7 @@ fn (c &Checker) check_quoted_escapes(q ast.Quoted) ! {
 						continue
 					}
 				}
-				if next_ch !in allowed_basic_escape_chars {
+				if next_ch !in allowed_basic_escape_char_list() {
 					st := s.state()
 					return error(@MOD + '.' + @STRUCT + '.' + @FN +
 						' unknown basic string escape character `${next_ch.ascii_str()}` in `${escape}` (${st.line_nr},${st.col}) in ...${c.excerpt(q.pos)}...')
@@ -617,7 +621,7 @@ fn (c &Checker) check_unicode_escape(esc_unicode string) ! {
 	sequence = sequence[..hex_digits_len]
 	// TODO: not enforced in BurnSushi testsuite??
 	// if !sequence.is_upper() {
-	//	return error('Unicode escape sequence `$esc_unicode` is not in all uppercase.')
+	//	return error('Unicode escape sequence `${esc_unicode}` is not in all uppercase.')
 	//}
 	validate_utf8_codepoint_string(sequence.to_upper())!
 	if is_long_esc_type {

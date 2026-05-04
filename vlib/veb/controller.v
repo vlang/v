@@ -29,7 +29,9 @@ pub fn (mut c Controller) register_controller[A, X](path string, mut global_app 
 // controller generates a new Controller for the main app
 pub fn controller[A, X](path string, mut global_app A) !&ControllerPath {
 	routes := generate_routes[A, X](global_app) or { panic(err.msg()) }
-	controllers_sorted := check_duplicate_routes_in_controllers[A](global_app, routes)!
+	controllers_sorted := check_duplicate_routes_in_controllers[A](global_app, routes) or {
+		panic(err.msg())
+	}
 
 	// generate struct with closure so the generic type is encapsulated in the closure
 	// no need to type `ControllerHandler` as generic since it's not needed for closures
@@ -38,11 +40,14 @@ pub fn controller[A, X](path string, mut global_app A) !&ControllerPath {
 		handler: fn [mut global_app, path, routes, controllers_sorted] [A, X](ctx &Context, mut url urllib.URL, host string) &Context {
 			// transform the url
 			url.path = url.path.all_after_first(path)
+			if url.path != '' && !url.path.starts_with('/') {
+				url.path = '/' + url.path
+			}
 
 			// match controller paths
 			$if A is ControllerInterface {
-				if completed_context := handle_controllers[X](controllers_sorted, ctx, mut
-					url, host)
+				if completed_context := handle_controllers[X](controllers_sorted, ctx, mut url,
+					host)
 				{
 					return completed_context
 				}
@@ -53,8 +58,11 @@ pub fn controller[A, X](path string, mut global_app A) !&ControllerPath {
 			user_context.Context = ctx
 
 			handle_route[A, X](mut global_app, mut user_context, url, host, &routes)
-			// we need to explicitly tell the V compiler to return a reference
-			return &user_context.Context
+			// Preserve the handled context on the heap before the stack-local user context goes away.
+			unsafe {
+				*ctx = user_context.Context
+			}
+			return ctx
 		}
 	}
 }

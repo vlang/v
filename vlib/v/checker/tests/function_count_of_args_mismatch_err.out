@@ -1,3 +1,22 @@
+vlib/v/checker/tests/function_count_of_args_mismatch_err.vv:1:9: notice: unused parameter: `b`
+    1 | fn test(b bool) {
+      |         ^
+    2 | }
+    3 |
+vlib/v/checker/tests/function_count_of_args_mismatch_err.vv:4:13: notice: unused parameter: `b`
+    2 | }
+    3 | 
+    4 | fn test2[T](b bool, v T) {
+      |             ^
+    5 | }
+    6 |
+vlib/v/checker/tests/function_count_of_args_mismatch_err.vv:4:21: notice: unused parameter: `v`
+    2 | }
+    3 | 
+    4 | fn test2[T](b bool, v T) {
+      |                     ^
+    5 | }
+    6 |
 vlib/v/checker/tests/function_count_of_args_mismatch_err.vv:8:13: error: expected 1 argument, but got 3
     6 | 
     7 | fn main() {

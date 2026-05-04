@@ -22,6 +22,7 @@ enum TokenKind {
 pub struct Manifest {
 pub mut:
 	name         string
+	base_url     string
 	description  string
 	version      string
 	license      string
@@ -154,6 +155,7 @@ fn (mut s Scanner) scan_all() {
 			`,` { s.tokenize(.comma, c.ascii_str()) }
 			else { s.tokenize(.unknown, c.ascii_str()) }
 		}
+
 		s.pos++
 	}
 	s.tokenize(.eof, 'eof')
@@ -222,6 +224,9 @@ fn (mut p Parser) parse() !Manifest {
 					'name' {
 						mn.name = field_value
 					}
+					'base_url' {
+						mn.base_url = field_value
+					}
 					'version' {
 						mn.version = field_value
 					}
@@ -256,6 +261,7 @@ fn (mut p Parser) parse() !Manifest {
 						mn.unknown[field_name] = [field_value]
 					}
 				}
+
 				i += 2
 				continue
 			}

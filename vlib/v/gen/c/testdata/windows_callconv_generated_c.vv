@@ -1,0 +1,7 @@
+// vtest vflags: -os windows -shared -gc none
+module test_print
+
+@[export: 'get_name']
+fn get_name() &char {
+	return c'Test'
+}

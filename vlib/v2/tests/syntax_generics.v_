@@ -12,12 +12,12 @@ struct GenericStructB[T,U] {
 }
 
 fn fn_generic_a[T](param_a T, param_b string, param_c int) int {
-	println('fn_generic_a: $param_a.type, $param_b.type, $param_c.type')
+	println('fn_generic_a: ${param_a.type}, ${param_b.type}, ${param_c.type}')
 	return 1
 }
 
 fn fn_generic_b[T,Y](param_a T, param_b Y) int {
-	println('fn_generic_a: $param_a.type, $param_b.type')
+	println('fn_generic_a: ${param_a.type}, ${param_b.type}')
 }
 
 fn fn_generic_c[fn[U,I](U, I) U, Y](param_a T, param_b Y) int {

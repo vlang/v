@@ -26,6 +26,7 @@ fn test_match_integers() {
 			println('???')
 		}
 	}
+
 	assert b == 3
 	assert match 2 {
 		1 { 2 }
@@ -54,6 +55,7 @@ fn test_match_integers() {
 			println('a is ${a}')
 		}
 	}
+
 	assert a == 3
 	a = 0
 	match 1 {
@@ -67,12 +69,14 @@ fn test_match_integers() {
 		}
 		else {}
 	}
+
 	assert a == 6
 	a = 0
 	match 1 {
 		0 {}
 		else { a = -2 }
 	}
+
 	assert a == -2
 }
 
@@ -108,6 +112,7 @@ fn test_match_enums() {
 			b = .red
 		}
 	}
+
 	assert b == .green
 	match b {
 		.red {
@@ -118,6 +123,7 @@ fn test_match_enums() {
 			b = .blue
 		}
 	}
+
 	assert b == .blue
 }
 
@@ -158,6 +164,7 @@ fn f(s Sum) string {
 		A1 { return typeof(s).name }
 		B1 { return '' }
 	}
+
 	return ''
 }
 
@@ -221,6 +228,7 @@ fn test_match_sumtype_multiple_types() {
 			assert false
 		}
 	}
+
 	// test one branch
 	match l {
 		Alfa, Bravo, Charlie {
@@ -234,18 +242,21 @@ fn test_sub_expression() {
 		0 { true }
 		else { true }
 	}
+
 	assert !b
 	c := true || match 1 {
 		0 { false }
 		else { false }
 	}
+
 	assert c
 }
 
 const one = 'one'
 
 fn test_match_constant_string() {
-	match one {
+	s := one
+	match s {
 		one {
 			assert true
 		}
@@ -268,6 +279,7 @@ fn test_sumtype_with_array() {
 			assert false
 		}
 	}
+
 	match f {
 		int {
 			assert false
@@ -310,6 +322,7 @@ fn test_returns_both_interface_and_non_interface() {
 		string { any }
 		else { 'literal' }
 	}
+
 	assert res == 'abc'
 
 	variable := ''
@@ -317,5 +330,6 @@ fn test_returns_both_interface_and_non_interface() {
 		string { any }
 		else { variable }
 	}
+
 	assert res == 'abc'
 }

@@ -1,0 +1,5 @@
+vlib/v/checker/tests/c_binding_confusable_c_err.vv:1:4: error: invalid character `С`
+    1 | fn С.destroy_context(context u32)
+      |    ^
+    2 | 
+    3 | pub fn destroy_context(context u32) {

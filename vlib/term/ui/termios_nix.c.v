@@ -4,6 +4,7 @@
 module ui
 
 import os
+import strings
 import time
 import term.termios
 
@@ -15,6 +16,8 @@ pub struct C.winsize {
 }
 
 const termios_at_startup = get_termios()
+
+const kitty_keyboard_flags = 0b10 | 0b1000 | 0b10000
 
 @[inline]
 fn get_termios() termios.Termios {
@@ -58,11 +61,13 @@ fn (mut ctx Context) termios_setup() ! {
 	if ctx.cfg.capture_events {
 		// Set raw input mode by unsetting ICANON and ECHO,
 		// as well as disable e.g. ctrl+c and ctrl.z
-		tios.c_iflag &= termios.invert(C.IGNBRK | C.BRKINT | C.PARMRK | C.IXON)
-		tios.c_lflag &= termios.invert(C.ICANON | C.ISIG | C.ECHO | C.IEXTEN | C.TOSTOP)
+		tios.c_iflag &=
+			termios.invert(termios.flag(int(C.IGNBRK) | int(C.BRKINT) | int(C.PARMRK) | int(C.IXON)))
+		tios.c_lflag &=
+			termios.invert(termios.flag(int(C.ICANON) | int(C.ISIG) | int(C.ECHO) | int(C.IEXTEN) | int(C.TOSTOP)))
 	} else {
 		// Set raw input mode by unsetting ICANON and ECHO
-		tios.c_lflag &= termios.invert(C.ICANON | C.ECHO)
+		tios.c_lflag &= termios.invert(termios.flag(int(C.ICANON) | int(C.ECHO)))
 	}
 
 	if ctx.cfg.hide_cursor {
@@ -101,15 +106,22 @@ fn (mut ctx Context) termios_setup() ! {
 	tios.c_cc[C.VTIME] = 0
 	tios.c_cc[C.VMIN] = 0
 	termios.tcsetattr(C.STDIN_FILENO, C.TCSAFLUSH, mut tios)
-	// enable mouse input
-	print('\x1b[?1003h\x1b[?1006h')
-	flush_stdout()
+	if ctx.cfg.mouse_enabled {
+		// enable mouse input
+		print('\x1b[?1003h\x1b[?1006h')
+		flush_stdout()
+	}
 	if ctx.cfg.use_alternate_buffer {
 		// switch to the alternate buffer
 		print('\x1b[?1049h')
 		flush_stdout()
 		// clear the terminal and set the cursor to the origin
 		print('\x1b[2J\x1b[3J\x1b[1;1H')
+		flush_stdout()
+	}
+	if ctx.cfg.capture_events {
+		// Ask supporting terminals to report press/repeat/release in CSI-u form.
+		print('\x1b[>${kitty_keyboard_flags}u')
 		flush_stdout()
 	}
 	ctx.window_height, ctx.window_width = get_terminal_size()
@@ -203,9 +215,13 @@ fn termios_reset() {
 	// C.TCSANOW ??
 	mut startup := termios_at_startup
 	termios.tcsetattr(C.STDIN_FILENO, C.TCSAFLUSH, mut startup)
+	c := ctx_ptr
+	if unsafe { c != 0 } && c.cfg.capture_events {
+		// Pop the keyboard mode stack before leaving the current screen.
+		print('\x1b[<u')
+	}
 	print('\x1b[?1003l\x1b[?1006l\x1b[?25h')
 	flush_stdout()
-	c := ctx_ptr
 	if unsafe { c != 0 } && c.cfg.use_alternate_buffer {
 		print('\x1b[?1049l')
 	}
@@ -224,7 +240,7 @@ fn (mut ctx Context) termios_loop() {
 			ctx.init()
 			init_called = true
 		}
-		// println('SLEEPING: $sleep_len')
+		// println('SLEEPING: ${sleep_len}')
 		if sleep_len > 0 {
 			time.sleep(sleep_len * time.microsecond)
 		}
@@ -390,6 +406,195 @@ fn escape_end(buf string) int {
 	return 0
 }
 
+@[inline]
+fn modifiers_from_report_param(param int) Modifiers {
+	flags := if param > 0 { param - 1 } else { 0 }
+	mut modifiers := unsafe { Modifiers(0) }
+	if flags & 0b001 != 0 {
+		modifiers.set(.shift)
+	}
+	if flags & 0b010 != 0 {
+		modifiers.set(.alt)
+	}
+	if flags & 0b100 != 0 {
+		modifiers.set(.ctrl)
+	}
+	return modifiers
+}
+
+@[inline]
+fn key_event_type_from_report_param(param int) EventType {
+	return match param {
+		3 { .key_up }
+		else { .key_down }
+	}
+}
+
+@[inline]
+fn parse_key_report_param(param string) (Modifiers, EventType) {
+	if param.len == 0 {
+		return unsafe { Modifiers(0) }, EventType.key_down
+	}
+	parts := param.split(':')
+	modifiers := modifiers_from_report_param(parts[0].int())
+	event_type := if parts.len > 1 {
+		key_event_type_from_report_param(parts[1].int())
+	} else {
+		EventType.key_down
+	}
+	return modifiers, event_type
+}
+
+fn utf8_from_reported_text(param string) string {
+	if param.len == 0 {
+		return ''
+	}
+	mut builder := strings.new_builder(param.len)
+	for part in param.split(':') {
+		codepoint := part.int()
+		if codepoint <= 0 || codepoint > 0x10ffff {
+			continue
+		}
+		builder.write_string(utf32_to_str(u32(codepoint)))
+	}
+	return builder.str()
+}
+
+@[inline]
+fn event_from_reported_key(codepoint int, raw string, modifiers Modifiers, event_type EventType, text string) &Event {
+	mut utf8 := raw
+	if text.len > 0 {
+		utf8 = text
+	}
+	mut ascii := u8(0)
+	if text.len == 1 {
+		ascii = text[0]
+	}
+	if codepoint <= 0 || codepoint > 0x10ffff {
+		return &Event{
+			typ:       event_type
+			ascii:     ascii
+			utf8:      utf8
+			modifiers: modifiers
+		}
+	}
+	if codepoint <= 255 {
+		ch := u8(codepoint)
+		if ch == `\r` {
+			return &Event{
+				typ:       event_type
+				ascii:     ch
+				code:      .enter
+				utf8:      utf8
+				modifiers: modifiers
+			}
+		}
+		base := single_char(ch.ascii_str())
+		event_ascii := if ascii != 0 { ascii } else { base.ascii }
+		return &Event{
+			typ:       event_type
+			ascii:     event_ascii
+			code:      base.code
+			utf8:      utf8
+			modifiers: base.modifiers | modifiers
+		}
+	}
+	return &Event{
+		typ:       event_type
+		ascii:     ascii
+		utf8:      utf8
+		modifiers: modifiers
+	}
+}
+
+fn parse_csi_u_key_sequence(single string, buf string) &Event {
+	if buf.len < 4 || buf[0] != `[` || buf[buf.len - 1] != `u` {
+		return unsafe { nil }
+	}
+	parts := buf[1..buf.len - 1].split(';')
+	if parts.len < 1 || parts.len > 3 {
+		return unsafe { nil }
+	}
+	codepoint := parts[0].split(':')[0].int()
+	mut modifiers := unsafe { Modifiers(0) }
+	mut event_type := EventType.key_down
+	if parts.len > 1 {
+		modifiers, event_type = parse_key_report_param(parts[1])
+	}
+	text := if parts.len > 2 { utf8_from_reported_text(parts[2]) } else { '' }
+	return event_from_reported_key(codepoint, single, modifiers, event_type, text)
+}
+
+fn parse_modify_other_keys_sequence(single string, buf string) &Event {
+	if buf.len < 7 || buf[0] != `[` || buf[buf.len - 1] != `~` {
+		return unsafe { nil }
+	}
+	parts := buf[1..buf.len - 1].split(';')
+	if parts.len != 3 || parts[0] != '27' {
+		return unsafe { nil }
+	}
+	return event_from_reported_key(parts[2].int(), single,
+		modifiers_from_report_param(parts[1].int()), .key_down, '')
+}
+
+@[inline]
+fn key_code_from_csi_final(final u8) KeyCode {
+	return match final {
+		`A` { .up }
+		`B` { .down }
+		`C` { .right }
+		`D` { .left }
+		`F` { .end }
+		`H` { .home }
+		`P` { .f1 }
+		`Q` { .f2 }
+		`R` { .f3 }
+		`S` { .f4 }
+		else { .null }
+	}
+}
+
+@[inline]
+fn key_code_from_tilde_param(param string) KeyCode {
+	return match param {
+		'2' { .insert }
+		'3' { .delete }
+		'5' { .page_up }
+		'6' { .page_down }
+		'11' { .f1 }
+		'12' { .f2 }
+		'13' { .f3 }
+		'14' { .f4 }
+		'15' { .f5 }
+		'17' { .f6 }
+		'18' { .f7 }
+		'19' { .f8 }
+		'20' { .f9 }
+		'21' { .f10 }
+		'23' { .f11 }
+		'24' { .f12 }
+		else { .null }
+	}
+}
+
+fn parse_csi_modified_key_sequence(buf string) (KeyCode, Modifiers, EventType, bool) {
+	if buf.len < 5 || buf[0] != `[` {
+		return KeyCode.null, unsafe { Modifiers(0) }, EventType.key_down, false
+	}
+	final := buf[buf.len - 1]
+	params := buf[1..buf.len - 1].split(';')
+	if params.len != 2 {
+		return KeyCode.null, unsafe { Modifiers(0) }, EventType.key_down, false
+	}
+	modifiers, event_type := parse_key_report_param(params[1])
+	if final == `~` {
+		code := key_code_from_tilde_param(params[0])
+		return code, modifiers, event_type, code != .null
+	}
+	code := key_code_from_csi_final(final)
+	return code, modifiers, event_type, code != .null
+}
+
 fn escape_sequence(buf_ string) (&Event, int) {
 	end := escape_end(buf_)
 	single := buf_[..end] // read until the end of the sequence
@@ -499,8 +704,18 @@ fn escape_sequence(buf_ string) (&Event, int) {
 	//   Special key combinations
 	// ----------------------------
 
+	e := parse_csi_u_key_sequence(single, buf)
+	if unsafe { e != nil } {
+		return e, end
+	}
+	e2 := parse_modify_other_keys_sequence(single, buf)
+	if unsafe { e2 != nil } {
+		return e2, end
+	}
+
 	mut code := KeyCode.null
 	mut modifiers := unsafe { Modifiers(0) }
+	mut event_type := EventType.key_down
 	match buf {
 		'[A', 'OA' { code = .up }
 		'[B', 'OB' { code = .down }
@@ -532,41 +747,17 @@ fn escape_sequence(buf_ string) (&Event, int) {
 		modifiers.set(.shift)
 	}
 
-	if buf.len == 5 && buf[0] == `[` && buf[1].is_digit() && buf[2] == `;` {
-		match buf[3] {
-			`2` { modifiers = .shift }
-			`3` { modifiers = .alt }
-			`4` { modifiers = .shift | .alt }
-			`5` { modifiers = .ctrl }
-			`6` { modifiers = .ctrl | .shift }
-			`7` { modifiers = .ctrl | .alt }
-			`8` { modifiers = .ctrl | .alt | .shift }
-			else {}
-		}
-
-		if buf[1] == `1` {
-			match buf[4] {
-				`A` { code = KeyCode.up }
-				`B` { code = KeyCode.down }
-				`C` { code = KeyCode.right }
-				`D` { code = KeyCode.left }
-				`F` { code = KeyCode.end }
-				`H` { code = KeyCode.home }
-				`P` { code = KeyCode.f1 }
-				`Q` { code = KeyCode.f2 }
-				`R` { code = KeyCode.f3 }
-				`S` { code = KeyCode.f4 }
-				else {}
-			}
-		} else if buf[1] == `5` {
-			code = KeyCode.page_up
-		} else if buf[1] == `6` {
-			code = KeyCode.page_down
+	if code == .null {
+		parsed_code, parsed_modifiers, parsed_event_type, ok := parse_csi_modified_key_sequence(buf)
+		if ok {
+			code = parsed_code
+			modifiers = parsed_modifiers
+			event_type = parsed_event_type
 		}
 	}
 
 	return &Event{
-		typ:       .key_down
+		typ:       event_type
 		code:      code
 		utf8:      single
 		modifiers: modifiers

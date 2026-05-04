@@ -233,7 +233,8 @@ fn generate_token(expire_time i64, session_id string, nonce_length int) string {
 // generate_cookie converts secret key based on the request context and a random
 // token into an hmac key
 fn generate_cookie(expire_time i64, token string, secret string) string {
-	hash := base64.url_encode(hmac.new(secret.bytes(), token.bytes(), sha256.sum, sha256.block_size))
+	hash :=
+		base64.url_encode(hmac.new(secret.bytes(), token.bytes(), sha256.sum, sha256.block_size))
 	cookie := '${expire_time}.${hash}'
 
 	return cookie

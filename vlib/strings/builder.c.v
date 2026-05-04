@@ -107,7 +107,7 @@ pub fn (mut b Builder) write(data []u8) !int {
 	if data.len == 0 {
 		return 0
 	}
-	b << data
+	unsafe { b.push_many(data.data, data.len) }
 	return data.len
 }
 
@@ -251,24 +251,11 @@ pub fn (mut b Builder) str() string {
 
 // ensure_cap ensures that the buffer has enough space for at least `n` bytes by growing the buffer if necessary.
 pub fn (mut b Builder) ensure_cap(n int) {
-	// code adapted from vlib/builtin/array.v
-	if n <= b.cap {
-		return
-	}
-
-	new_data := vcalloc(n * b.element_size)
-	if b.data != unsafe { nil } {
-		unsafe { vmemcpy(new_data, b.data, b.len * b.element_size) }
-		// TODO: the old data may be leaked when no GC is used (ref-counting?)
-		if b.flags.has(.noslices) {
-			unsafe { free(b.data) }
-		}
-	}
-	unsafe {
-		b.data = new_data
-		b.offset = 0
-		b.cap = n
-	}
+	// Work through the underlying array pointer, instead of taking a pointer
+	// cast to the alias receiver. This keeps self-hosted builds from generating
+	// an invalid `&b` cast in C.
+	mut arr := unsafe { &[]u8(b) }
+	arr.ensure_cap(n)
 }
 
 // grow_len grows the length of the buffer by `n` bytes if necessary
@@ -290,10 +277,8 @@ pub fn (mut b Builder) grow_len(n int) {
 @[unsafe]
 pub fn (mut b Builder) free() {
 	if b.data != 0 {
-		unsafe { free(b.data) }
-		unsafe {
-			b.data = nil
-		}
+		mut arr := unsafe { &[]u8(b) }
+		unsafe { arr.free() }
 	}
 }
 
@@ -384,7 +369,7 @@ pub fn (mut b Builder) indent(s string, param IndentParam) {
 	mut string_char := `\0`
 	mut at_line_start := true
 	for i := 0; i < s.len; i++ {
-		c := s[i]
+		c := rune(s[i])
 		match state {
 			// Normal state: process characters outside of string literals
 			.normal {
@@ -394,7 +379,8 @@ pub fn (mut b Builder) indent(s string, param IndentParam) {
 						string_char = c
 						// Add indentation if at the start of a line
 						if at_line_start {
-							b.write_repeated_rune(param.indent_char, indent_level * param.indent_count)
+							b.write_repeated_rune(param.indent_char,
+								indent_level * param.indent_count)
 							at_line_start = false
 						}
 						// Write the opening quote
@@ -404,7 +390,8 @@ pub fn (mut b Builder) indent(s string, param IndentParam) {
 						// Start of a new block
 						// Add indentation if at the start of a line
 						if at_line_start {
-							b.write_repeated_rune(param.indent_char, indent_level * param.indent_count)
+							b.write_repeated_rune(param.indent_char,
+								indent_level * param.indent_count)
 							at_line_start = false
 						}
 
@@ -457,7 +444,8 @@ pub fn (mut b Builder) indent(s string, param IndentParam) {
 						// Any other character
 						// Add indentation if at the start of a line
 						if at_line_start {
-							b.write_repeated_rune(param.indent_char, indent_level * param.indent_count)
+							b.write_repeated_rune(param.indent_char,
+								indent_level * param.indent_count)
 							at_line_start = false
 						}
 						b.write_rune(c)

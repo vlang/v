@@ -4,14 +4,23 @@ $if freebsd || openbsd {
 	#flag -I/usr/local/include
 	#flag -L/usr/local/lib
 }
-$if windows {
-	#flag windows -I@VEXEROOT/thirdparty/sqlite
-	#flag windows -L@VEXEROOT/thirdparty/sqlite
-	#flag windows @VEXEROOT/thirdparty/sqlite/sqlite3.o
+$if tinyc {
+	#flag -DSQLITE_DISABLE_INTRINSIC
+}
+$if $pkgconfig('sqlite3') {
+	#pkgconfig sqlite3
+	#include "sqlite3.h" # The SQLite header file is missing. Please install the corresponding development package.
+} $else $if windows {
+	#flag -I@VEXEROOT/thirdparty/sqlite
+	#flag @VEXEROOT/thirdparty/sqlite/sqlite3.c
 	#include "sqlite3.h" # The SQLite header file is missing. Please run vlib/db/sqlite/install_thirdparty_sqlite.vsh to download an SQLite amalgamation.
+} $else $if darwin {
+	// macOS ships libsqlite3, so do not require a separately downloaded amalgamation.
+	#flag darwin -lsqlite3
 } $else {
-	#flag -lsqlite3
-	#include "sqlite3.h" # The SQLite header file is missing. Please install its development package first.
+	#flag -I@VEXEROOT/thirdparty/sqlite
+	#include "sqlite3.h" # The SQLite header file is missing. Please run vlib/db/sqlite/install_thirdparty_sqlite.vsh to download an SQLite amalgamation.
+	#flag @VEXEROOT/thirdparty/sqlite/sqlite3.c
 }
 
 // https://www.sqlite.org/rescode.html
@@ -88,54 +97,84 @@ pub fn (db &DB) str() string {
 
 pub struct Row {
 pub mut:
-	vals []string
+	vals  []string
+	names []string
+}
+
+// val returns the value at `index`.
+pub fn (row Row) val(index int) string {
+	return row.vals[index]
+}
+
+// values returns all row values.
+pub fn (row Row) values() []string {
+	return row.vals.clone()
+}
+
+// get_string returns the value for the given column name, or '' if the column is not found
+// or if the corresponding value index is out of range.
+pub fn (r &Row) get_string(col_name string) string {
+	for i, name in r.names {
+		if name == col_name {
+			if i < r.vals.len {
+				return r.vals[i]
+			}
+			return ''
+		}
+	}
+	return ''
+}
+
+// get_int returns the integer value for the given column name, or 0 if the column is not found.
+pub fn (r &Row) get_int(col_name string) int {
+	return r.get_string(col_name).int()
 }
 
 pub type Params = []string | [][]string
 
 //
-fn C.sqlite3_open(&char, &&C.sqlite3) int
+fn C.sqlite3_open(&char, &&C.sqlite3) i32
 
-fn C.sqlite3_close(&C.sqlite3) int
+fn C.sqlite3_close(&C.sqlite3) i32
 
-fn C.sqlite3_busy_timeout(db &C.sqlite3, ms int) int
+fn C.sqlite3_busy_timeout(db &C.sqlite3, ms i32) i32
 
 fn C.sqlite3_last_insert_rowid(&C.sqlite3) i64
 
 //
-fn C.sqlite3_prepare_v2(&C.sqlite3, &char, int, &&C.sqlite3_stmt, &&char) int
+fn C.sqlite3_prepare_v2(&C.sqlite3, &char, i32, &&C.sqlite3_stmt, &&char) i32
 
-fn C.sqlite3_step(&C.sqlite3_stmt) int
+fn C.sqlite3_step(&C.sqlite3_stmt) i32
 
-fn C.sqlite3_reset(&C.sqlite3_stmt) int
+fn C.sqlite3_reset(&C.sqlite3_stmt) i32
 
-fn C.sqlite3_finalize(&C.sqlite3_stmt) int
-
-//
-fn C.sqlite3_column_name(&C.sqlite3_stmt, int) &char
-
-fn C.sqlite3_column_text(&C.sqlite3_stmt, int) &u8
-
-fn C.sqlite3_column_int(&C.sqlite3_stmt, int) int
-
-fn C.sqlite3_column_int64(&C.sqlite3_stmt, int) i64
-
-fn C.sqlite3_column_double(&C.sqlite3_stmt, int) f64
-
-fn C.sqlite3_column_count(&C.sqlite3_stmt) int
-
-fn C.sqlite3_column_type(&C.sqlite3_stmt, int) int
-
-fn C.sqlite3_column_bytes(&C.sqlite3_stmt, int) int
+fn C.sqlite3_finalize(&C.sqlite3_stmt) i32
 
 //
-fn C.sqlite3_errstr(int) &char
+fn C.sqlite3_column_name(&C.sqlite3_stmt, i32) &char
+
+fn C.sqlite3_column_text(&C.sqlite3_stmt, i32) &u8
+
+fn C.sqlite3_column_int(&C.sqlite3_stmt, i32) i32
+
+fn C.sqlite3_column_int64(&C.sqlite3_stmt, i32) i64
+
+fn C.sqlite3_column_double(&C.sqlite3_stmt, i32) f64
+
+fn C.sqlite3_column_count(&C.sqlite3_stmt) i32
+
+fn C.sqlite3_column_type(&C.sqlite3_stmt, i32) i32
+
+fn C.sqlite3_column_bytes(&C.sqlite3_stmt, i32) i32
+
+//
+fn C.sqlite3_errstr(i32) &char
 
 fn C.sqlite3_errmsg(&C.sqlite3) &char
 
 fn C.sqlite3_free(voidptr)
 
-fn C.sqlite3_changes(&C.sqlite3) int
+fn C.sqlite3_changes(&C.sqlite3) i32
 
 // connect Opens the connection with a database.
 pub fn connect(path string) !DB {
@@ -233,7 +272,6 @@ pub fn (db &DB) q_string(query string) !string {
 }
 
 // exec_map executes the query on the given `db`, and returns an array of maps of strings, or an error on failure
-@[manualfree]
 pub fn (db &DB) exec_map(query string) ![]map[string]string {
 	$if trace_sqlite ? {
 		eprintln('> exec_map query: "${query}"')
@@ -247,23 +285,22 @@ pub fn (db &DB) exec_map(query string) ![]map[string]string {
 		C.sqlite3_finalize(stmt)
 	}
 	nr_cols := C.sqlite3_column_count(stmt)
+	mut col_names := []string{cap: nr_cols}
+	for i in 0 .. nr_cols {
+		col_char := unsafe { &u8(C.sqlite3_column_name(stmt, i)) }
+		col_names << if col_char != unsafe { nil } { unsafe { tos_clone(col_char) } } else { '' }
+	}
 	mut res := 0
 	mut rows := []map[string]string{}
 	for {
 		res = C.sqlite3_step(stmt)
-		if res != 100 {
+		if res != sqlite_row {
 			break
 		}
 		mut row := map[string]string{}
 		for i in 0 .. nr_cols {
 			val := unsafe { &u8(C.sqlite3_column_text(stmt, i)) }
-			col_char := unsafe { &u8(C.sqlite3_column_name(stmt, i)) }
-			col := unsafe { col_char.vstring() }
-			if val == &u8(unsafe { nil }) {
-				row[col] = ''
-			} else {
-				row[col] = unsafe { tos_clone(val) }
-			}
+			row[col_names[i]] = if val != unsafe { nil } { unsafe { tos_clone(val) } } else { '' }
 		}
 		rows << row
 	}
@@ -273,7 +310,6 @@ pub fn (db &DB) exec_map(query string) ![]map[string]string {
 fn C.sqlite3_memory_used() i64
 
 // exec executes the query on the given `db`, and returns an array of all the results, or an error on failure
-@[manualfree]
 pub fn (db &DB) exec(query string) ![]Row {
 	$if trace_sqlite ? {
 		eprintln('> exec query: "${query}"')
@@ -287,22 +323,27 @@ pub fn (db &DB) exec(query string) ![]Row {
 		C.sqlite3_finalize(stmt)
 	}
 	nr_cols := C.sqlite3_column_count(stmt)
+	mut col_names := []string{cap: nr_cols}
+	for i in 0 .. nr_cols {
+		col_char := unsafe { &u8(C.sqlite3_column_name(stmt, i)) }
+		col_names << if col_char != unsafe { nil } { unsafe { tos_clone(col_char) } } else { '' }
+	}
 	mut res := 0
 	mut rows := []Row{}
 	for {
 		res = C.sqlite3_step(stmt)
-		// Result Code SQLITE_ROW; Another row is available
-		if res != 100 {
-			// C.puts(C.sqlite3_errstr(res))
+		if res != sqlite_row {
 			break
 		}
-		mut row := Row{}
+		mut row := Row{
+			names: col_names
+		}
 		for i in 0 .. nr_cols {
 			val := unsafe { &u8(C.sqlite3_column_text(stmt, i)) }
 			if val == &u8(unsafe { nil }) {
 				row.vals << ''
 			} else {
-				row.vals << unsafe { val.vstring() }
+				row.vals << unsafe { tos_clone(val) }
 			}
 		}
 		rows << row
@@ -376,6 +417,11 @@ pub fn (db &DB) exec_param_many(query string, params Params) ![]Row {
 
 	mut rows := []Row{}
 	nr_cols := C.sqlite3_column_count(stmt)
+	mut col_names := []string{cap: nr_cols}
+	for i in 0 .. nr_cols {
+		col_char := unsafe { &u8(C.sqlite3_column_name(stmt, i)) }
+		col_names << if col_char != unsafe { nil } { unsafe { tos_clone(col_char) } } else { '' }
+	}
 
 	if params is []string {
 		for i, param in params {
@@ -385,7 +431,9 @@ pub fn (db &DB) exec_param_many(query string, params Params) ![]Row {
 			}
 		}
 		for {
-			mut row := Row{}
+			mut row := Row{
+				names: col_names
+			}
 			code = C.sqlite3_step(stmt)
 			if is_error(code) {
 				return db.error_message(code, query)
@@ -398,7 +446,7 @@ pub fn (db &DB) exec_param_many(query string, params Params) ![]Row {
 				if val == &u8(unsafe { nil }) {
 					row.vals << ''
 				} else {
-					row.vals << unsafe { val.vstring() }
+					row.vals << unsafe { tos_clone(val) }
 				}
 			}
 			rows << row
@@ -406,11 +454,12 @@ pub fn (db &DB) exec_param_many(query string, params Params) ![]Row {
 	} else if params is [][]string {
 		// Rows to process
 		for params_row in params {
-			mut row := Row{}
+			mut row := Row{
+				names: col_names
+			}
 			// Param values to bind
 			for i, param in params_row {
-				code = C.sqlite3_bind_text(stmt, i + 1, voidptr(param.str), param.len,
-					0)
+				code = C.sqlite3_bind_text(stmt, i + 1, voidptr(param.str), param.len, 0)
 				if code != sqlite_ok {
 					return db.error_message(code, query)
 				}
@@ -428,7 +477,7 @@ pub fn (db &DB) exec_param_many(query string, params Params) ![]Row {
 					if val == &u8(unsafe { nil }) {
 						row.vals << ''
 					} else {
-						row.vals << unsafe { val.vstring() }
+						row.vals << unsafe { tos_clone(val) }
 					}
 				}
 				rows << row
@@ -444,6 +493,11 @@ pub fn (db &DB) exec_param_many(query string, params Params) ![]Row {
 // and returns either an error on failure, or the full result set on success
 pub fn (db &DB) exec_param(query string, param string) ![]Row {
 	return db.exec_param_many(query, [param])
+}
+
+// exec_param2 executes a query with two parameters provided as ? placeholders.
+pub fn (db &DB) exec_param2(query string, param string, param2 string) ![]Row {
+	return db.exec_param_many(query, [param, param2])
 }
 
 // create_table issues a "create table if not exists" command to the db.
@@ -513,6 +567,7 @@ pub fn (mut db DB) begin(param Sqlite3TransactionParam) ! {
 		.immediate { sql_stmt += 'IMMEDIATE;' }
 		.exclusive { sql_stmt += 'EXCLUSIVE;' }
 	}
+
 	db.exec(sql_stmt)!
 }
 
@@ -540,6 +595,53 @@ pub fn (mut db DB) rollback_to(savepoint string) ! {
 		return error('savepoint should be a identifier string')
 	}
 	db.exec('ROLLBACK TO ${savepoint};')!
+}
+
+// release_savepoint releases a specified savepoint.
+pub fn (mut db DB) release_savepoint(savepoint string) ! {
+	if !savepoint.is_identifier() {
+		return error('savepoint should be a identifier string')
+	}
+	db.exec('RELEASE SAVEPOINT ${savepoint};')!
+}
+
+// tables returns the names of all user tables in the database.
+pub fn (db &DB) tables() ![]string {
+	rows :=
+		db.exec("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name")!
+	return rows.map(it.vals[0])
+}
+
+// columns returns the column names for the given table.
+pub fn (db &DB) columns(table string) ![]string {
+	escaped := table.replace('"', '""')
+	rows := db.exec('PRAGMA table_info("${escaped}")')!
+	return rows.map(it.vals[1])
+}
+
+// schema returns the CREATE statement(s) for the given table, or for all
+// objects if table is empty.
+pub fn (db &DB) schema(table string) !string {
+	filter := if table != '' {
+		escaped := table.replace("'", "''")
+		"AND name='${escaped}'"
+	} else {
+		''
+	}
+	rows :=
+		db.exec("SELECT sql FROM sqlite_master WHERE type IN ('table','index','view','trigger') ${filter} AND sql IS NOT NULL ORDER BY type, name")!
+	return rows.map(it.vals[0]).join('\n\n')
+}
+
+// db_size returns the database file size in bytes, computed from page_count
+// and page_size.
+pub fn (db &DB) db_size() !i64 {
+	pc := db.exec('PRAGMA page_count')!
+	ps := db.exec('PRAGMA page_size')!
+	if pc.len == 0 || ps.len == 0 {
+		return 0
+	}
+	return pc[0].vals[0].i64() * ps[0].vals[0].i64()
 }
 
 // reset returns the connection to initial state for reuse

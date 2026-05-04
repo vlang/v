@@ -13,13 +13,14 @@ The real implementation is in `vlib/sync/channels.v`
 */
 
 // close closes the channel for further push transactions.
-// closed channels cannot be pushed to, however they can be popped
-// from as long as there is still objects available in the channel buffer.
-pub fn (ch chan) close() {}
+// closed channels cannot be pushed to, and after the buffer is drained
+// `<-ch or {}` and `<-ch?` use `err` or default to `channel closed`.
+pub fn (ch chan) close(err ...IError) {}
 
 // try_pop returns `ChanState.success` if an object is popped from the channel.
 // try_pop effectively pops from the channel without waiting for objects to become available.
 // Both the test and pop transaction is done atomically.
+// Pass the destination as `mut`: `ch.try_pop(mut value)`, not `ch.try_pop(&value)`.
 pub fn (ch chan) try_pop(obj voidptr) ChanState {
 	return .success
 }
@@ -55,20 +56,14 @@ fn _result_ok(data voidptr, mut res _result, size int) {
 
 // str returns the message of IError.
 pub fn (err IError) str() string {
-	return match err {
-		None__ {
-			'none'
-		}
-		Error {
-			err.msg()
-		}
-		MessageError {
-			(*err).str()
-		}
-		else {
-			'${err.type_name()}: ${err.msg()}'
-		}
+	if err is None__ {
+		return 'none'
 	}
+	c := err.code()
+	if c > 0 {
+		return err.msg() + '; code: ' + c.str()
+	}
+	return err.msg()
 }
 
 // Error is the empty default implementation of `IError`.
@@ -181,8 +176,7 @@ fn _option_clone(current &_option, mut option _option, size int) {
 			err:   current.err
 		}
 		// use err to get the end of OptionBase and then memcpy into it
-		vmemcpy(&u8(&option.err) + sizeof(IError), &u8(&current.err) + sizeof(IError),
-			size)
+		vmemcpy(&u8(&option.err) + sizeof(IError), &u8(&current.err) + sizeof(IError), size)
 	}
 }
 

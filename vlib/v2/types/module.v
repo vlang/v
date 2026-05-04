@@ -4,6 +4,7 @@
 module types
 
 pub struct Module {
+pub:
 	name    string
 	path    string
 	imports []Module
@@ -16,4 +17,10 @@ pub fn new_module(name string, path string) &Module {
 		path:  path
 		scope: new_scope(universe)
 	}
+}
+
+// lookup resolves a symbol from this module scope.
+pub fn (m &Module) lookup(name string) ?Object {
+	mut scope := unsafe { m.scope }
+	return scope.lookup_parent(name, 0)
 }

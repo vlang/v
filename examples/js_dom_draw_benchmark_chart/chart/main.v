@@ -1,6 +1,6 @@
 module main
 
-import vweb
+import veb
 import os
 import json
 import arrays
@@ -41,8 +41,12 @@ fn (framework_platform FrameworkPlatform) to_map() map[string][]int {
 const http_port = 3001
 const benchmark_loop_length = 20
 
+pub struct Context {
+	veb.Context
+}
+
 struct App {
-	vweb.Context
+	veb.StaticHandler
 }
 
 enum SqliteDbConnection {
@@ -51,23 +55,20 @@ enum SqliteDbConnection {
 }
 
 fn main() {
-	vweb.run(new_app(), http_port)
+	mut app := &App{}
+	app.serve_static('/favicon.ico', 'favicon.ico') or { panic(err) }
+	app.serve_static('/draw.js', 'draw.js') or { panic(err) }
+	app.mount_static_folder_at(os.resource_abs_path('.'), '/') or { panic(err) }
+
+	veb.run[App, Context](mut app, http_port)
 }
 
-pub fn (mut app App) before_request() {
+pub fn (app &App) before_request(mut ctx Context) {
 	os.execute_or_panic('v -b js_browser draw.js.v ')
 }
 
-fn new_app() &App {
-	mut app := &App{}
-	app.serve_static('/favicon.ico', 'favicon.ico')
-	app.serve_static('/draw.js', 'draw.js')
-	app.mount_static_folder_at(os.resource_abs_path('.'), '/')
-	return app
-}
-
 @['/'; get]
-pub fn (mut app App) controller_get_all_task() !vweb.Result {
+pub fn (mut app App) controller_get_all_task(mut ctx Context) !veb.Result {
 	v_version := version.full_v_version(true)
 	orm_stmt_kinds := ['insert', 'select', 'update']
 
@@ -106,11 +107,12 @@ pub fn (mut app App) controller_get_all_task() !vweb.Result {
 		}
 
 		from_framework[orm_stmt_kind] = json.encode(framework_platform[orm_stmt_kind])
-		table[orm_stmt_kind] = gen_table_info(attribute_names[orm_stmt_kind], framework_platform[orm_stmt_kind])
+		table[orm_stmt_kind] = gen_table_info(attribute_names[orm_stmt_kind],
+			framework_platform[orm_stmt_kind])
 		max_benchmark[orm_stmt_kind] = arrays.max(maxs[orm_stmt_kind]) or { continue }
 	}
 
-	return $vweb.html()
+	return $veb.html()
 }
 
 fn insert_framework_benchmark_times() !FrameworkPlatform {
@@ -154,18 +156,6 @@ fn v_sqlite_memory() !FrameworkBenchmarkResponse {
 	url := 'http://localhost:4000/sqlite-memory/${benchmark_loop_length}'
 	res := http.get(url) or { panic(err) }
 	framework_benchmark_response := json.decode(FrameworkBenchmarkResponse, res.body)!
-	return framework_benchmark_response
-}
-
-fn v_sqlite_file() !FrameworkBenchmarkResponse {
-	// url := 'http://localhost:3000/sqlite-memory/$benchmark_loop_length'
-	// res := http.get(url) or { panic(err) }
-	// framework_benchmark_response := json.decode(FrameworkBenchmarkResponse, res.body)!
-	framework_benchmark_response := FrameworkBenchmarkResponse{
-		insert: []
-		select: []
-		update: []
-	}
 	return framework_benchmark_response
 }
 
@@ -243,11 +233,9 @@ fn gen_table_info(attribute_names []string, framework_platform map[string][]int)
 
 	for name in attribute_names {
 		table[name]['max.'] = '${math.round_sig(f64(max_times[name]) / 1000000, 2)} ms (${max_fast[name]}x faster)'
-		table[name]['10% max.'] = '${math.round_sig(f64(ten_perc_max_times[name]) / 1000000,
-			2)} ms (${ten_perc_max_fast[name]}x faster)'
+		table[name]['10% max.'] = '${math.round_sig(f64(ten_perc_max_times[name]) / 1000000, 2)} ms (${ten_perc_max_fast[name]}x faster)'
 		table[name]['min.'] = '${math.round_sig(f64(min_times[name]) / 1000000, 2)} ms (${min_fast[name]}x faster)'
-		table[name]['10% min.'] = '${math.round_sig(f64(ten_perc_min_times[name]) / 1000000,
-			2)} ms (${ten_perc_min_fast[name]}x faster)'
+		table[name]['10% min.'] = '${math.round_sig(f64(ten_perc_min_times[name]) / 1000000, 2)} ms (${ten_perc_min_fast[name]}x faster)'
 	}
 	return table
 }

@@ -8,6 +8,42 @@ fn test_if_flag_not_given_return_default_values() {
 	assert 'stuff' == fp.string('a_string', 0, 'stuff', '')
 }
 
+fn test_if_flag_not_given_can_return_option_defaults() {
+	mut fp := flag.new_flag_parser([])
+	assert fp.bool_val('a_bool', 0, ?bool(none), '') == none
+	assert fp.int_val('an_int', 0, ?int(none), '') == none
+	assert fp.float_val('a_float', 0, ?f64(none), '') == none
+	assert fp.string_val('a_string', 0, ?string(none), '') == none
+}
+
+fn test_if_flag_not_given_preserves_typed_option_defaults() {
+	mut fp := flag.new_flag_parser([])
+	a_bool := fp.bool_val('a_bool', 0, ?bool(true), '')
+	an_int := fp.int_val('an_int', 0, ?int(42), '')
+	a_float := fp.float_val('a_float', 0, ?f64(1.5), '')
+	a_string := fp.string_val('a_string', 0, ?string('stuff'), '')
+	if value := a_bool {
+		assert value
+	} else {
+		assert false
+	}
+	if value := an_int {
+		assert value == 42
+	} else {
+		assert false
+	}
+	if value := a_float {
+		assert value == 1.5
+	} else {
+		assert false
+	}
+	if value := a_string {
+		assert value == 'stuff'
+	} else {
+		assert false
+	}
+}
+
 fn test_could_define_application_name_and_version() {
 	mut fp := flag.new_flag_parser([])
 	fp.application('test app')
@@ -21,6 +57,41 @@ fn test_could_define_application_name_and_version() {
 fn test_bool_flags_do_not_need_an_value() {
 	mut fp := flag.new_flag_parser(['--a_bool'])
 	assert true == fp.bool('a_bool', 0, false, '')
+}
+
+fn test_flag_values_can_be_returned_as_options() {
+	mut fp := flag.new_flag_parser([
+		'--an_int',
+		'42',
+		'--a_float=2.0',
+		'--a_string',
+		'stuff',
+		'--a_bool=false',
+	])
+	a_bool := fp.bool_val('a_bool', 0, ?bool(none), '')
+	an_int := fp.int_val('an_int', 0, ?int(none), '')
+	a_float := fp.float_val('a_float', 0, ?f64(none), '')
+	a_string := fp.string_val('a_string', 0, ?string(none), '')
+	if value := a_bool {
+		assert !value
+	} else {
+		assert false
+	}
+	if value := an_int {
+		assert value == 42
+	} else {
+		assert false
+	}
+	if value := a_float {
+		assert value == 2.0
+	} else {
+		assert false
+	}
+	if value := a_string {
+		assert value == 'stuff'
+	} else {
+		assert false
+	}
 }
 
 fn test_flags_could_be_defined_with_eq() {
@@ -179,11 +250,64 @@ fn test_allow_to_build_usage_message() {
 	assert all_strings_found
 }
 
-fn test_if_no_description_given_usage_message_does_not_contain_descpription() {
+fn test_usage_shows_default_values_for_defaulted_options() {
+	mut fp := flag.new_flag_parser([])
+	fp.int('count', `c`, 34, 'My parameter')
+	fp.float('ratio', `r`, 1.25, 'My ratio')
+	fp.string('name', `n`, 'guest', 'My name')
+	fp.string('empty', 0, '', 'Empty string')
+	fp.bool('verbose', `v`, false, 'Be chatty')
+	usage := fp.usage()
+	assert usage.contains('My parameter (default 34)')
+	assert usage.contains('My ratio (default 1.25)')
+	assert usage.contains('My name (default "guest")')
+	assert usage.contains('Empty string (default "")')
+	assert usage.contains('Be chatty (default false)')
+}
+
+fn test_builtin_flags_do_not_show_default_values_in_usage() {
+	mut fp := flag.new_flag_parser([])
+	fp.finalize() or { panic(err) }
+	usage := fp.usage()
+	assert !usage.contains('display this help and exit (default false)')
+	assert !usage.contains('output version information and exit (default false)')
+}
+
+fn test_if_app_name_given_but_no_show_usage_message_still_contain_version() {
+	mut fp := flag.new_flag_parser([])
+	fp.application('flag_tool')
+	fp.version('v0.0.0')
+	fp.description('a description')
+	fp.bool('a_bool', 0, false, '')
+	fp.options.show.clear(.name)
+	assert fp.usage().contains('v0.0.0\n---')
+}
+
+fn test_if_version_given_but_no_show_usage_message_does_not_contain_banner() {
+	mut fp := flag.new_flag_parser([])
+	fp.application('flag_tool')
+	fp.version('v0.0.0')
+	fp.description('a description')
+	fp.bool('a_bool', 0, false, '')
+	fp.options.show.clear(.version)
+	assert !fp.usage().contains('v0.0.0\n---')
+}
+
+fn test_if_no_description_given_usage_message_does_not_contain_description() {
 	mut fp := flag.new_flag_parser([])
 	fp.application('flag_tool')
 	fp.version('v0.0.0')
 	fp.bool('a_bool', 0, false, '')
+	assert !fp.usage().contains('Description:')
+}
+
+fn test_if_description_given_but_no_show_usage_message_does_not_contain_description() {
+	mut fp := flag.new_flag_parser([])
+	fp.application('flag_tool')
+	fp.version('v0.0.0')
+	fp.description('a description')
+	fp.bool('a_bool', 0, false, '')
+	fp.options.show.clear(.description)
 	assert !fp.usage().contains('Description:')
 }
 
@@ -192,6 +316,34 @@ fn test_if_no_options_given_usage_message_does_not_contain_options() {
 	fp.application('flag_tool')
 	fp.version('v0.0.0')
 	assert !fp.usage().contains('Options:')
+}
+
+fn test_if_options_given_but_no_show_flag_header_usage_message_does_not_contain_flag_header() {
+	mut fp := flag.new_flag_parser([])
+	fp.application('flag_tool')
+	fp.version('v0.0.0')
+	fp.int('abc', `a`, 1, '')
+	fp.options.show.clear(.flags_header)
+	assert !fp.usage().contains('Options:')
+}
+
+fn test_if_options_given_but_no_show_usage_message_does_not_contain_options() {
+	mut fp := flag.new_flag_parser([])
+	fp.application('flag_tool')
+	fp.version('v0.0.0')
+	fp.int('abc', `a`, 1, '')
+	fp.options.show.clear(.flags)
+	assert !fp.usage().contains('Options:')
+}
+
+fn test_if_footer_given_but_no_show_usage_message_does_not_contain_footer() {
+	mut fp := flag.new_flag_parser([])
+	fp.application('flag_tool')
+	fp.version('v0.0.0')
+	fp.int('abc', `a`, 1, '')
+	fp.footers << 'footer1'
+	fp.options.show.clear(.footer)
+	assert !fp.usage().contains('footer1')
 }
 
 fn test_default_val_descriptions_for_bools() {
@@ -337,7 +489,8 @@ fn test_allow_abbreviations() {
 fn test_allow_kebab_options() {
 	default_value := 'this_is_the_default_value_of_long_option'
 	long_option_value := 'this_is_a_long_option_value_as_argument'
-	mut fp := flag.new_flag_parser(['--my-long-flag', 'true', '--my-long-option', long_option_value])
+	mut fp :=
+		flag.new_flag_parser(['--my-long-flag', 'true', '--my-long-option', long_option_value])
 	my_flag := fp.bool('my-long-flag', 0, false, 'flag with long-kebab-name')
 	my_option := fp.string('my-long-option', 0, default_value, 'string with long-kebab-name')
 	assert my_flag == true
@@ -426,7 +579,8 @@ fn test_long_options_that_start_with_the_same_letter_as_another_short_option() {
 		'/abc',
 	])
 	verbose := fp.bool('verbose', `v`, false, 'Be more verbose.')
-	vabc := fp.string('vabc', `x`, 'default', 'Another option that *may* conflict with v, but *should not*')
+	vabc := fp.string('vabc', `x`, 'default',
+		'Another option that *may* conflict with v, but *should not*')
 	assert verbose == false
 	assert vabc == '/abc'
 }
@@ -438,7 +592,8 @@ fn test_long_options_that_start_with_the_same_letter_as_another_short_option_bot
 		'/abc',
 	])
 	verbose := fp.bool('verbose', `v`, false, 'Be more verbose.')
-	vabc := fp.string('vabc', `x`, 'default', 'Another option that *may* conflict with v, but *should not*')
+	vabc := fp.string('vabc', `x`, 'default',
+		'Another option that *may* conflict with v, but *should not*')
 	assert verbose == true
 	assert vabc == '/abc'
 }

@@ -1,0 +1,2 @@
+main__HeapImage* img = (main__HeapImage*)_t
+main__HeapImage *indexed = ((main__HeapImage*)builtin__array_get(images, 0));

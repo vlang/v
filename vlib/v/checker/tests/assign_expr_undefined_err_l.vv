@@ -28,5 +28,5 @@ fn main() {
 		a: 123
 		i: poo.result()
 	}
- 	println('$poo')
+ 	println('${poo}')
 }

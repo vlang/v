@@ -1,3 +1,10 @@
+vlib/v/checker/tests/mut_arg_different_muls_err.vv:29:14: notice: unused parameter: `window`
+   27 | }
+   28 | 
+   29 | fn on_resize(window &Window, w int, h int) {
+      |              ~~~~~~
+   30 |     println(' ${w} ${h}')
+   31 | }
 vlib/v/checker/tests/mut_arg_different_muls_err.vv:26:21: error: cannot use `&Window` as `&&Window` in argument 1 to `window_resized`
    24 | 
    25 | fn on_event(mut w Window) {

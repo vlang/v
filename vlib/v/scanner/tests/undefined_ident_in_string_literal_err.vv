@@ -1,5 +1,5 @@
 fn abc() string {
-	return 'abc $type'
+	return 'abc ${type}'
 }
 
 fn xyz() string {

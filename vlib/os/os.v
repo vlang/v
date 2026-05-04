@@ -5,6 +5,11 @@ module os
 
 import strings
 
+// Eof error means that we reach the end of the file.
+pub struct Eof {
+	Error
+}
+
 pub const max_path_len = 4096
 
 pub const wd_at_startup = getwd()
@@ -16,6 +21,8 @@ const x_ok = 1
 const w_ok = 2
 
 const r_ok = 4
+
+const read_lines_chunk_size = 128 * 1024
 
 pub struct Result {
 pub:
@@ -136,10 +143,61 @@ pub fn mv(source string, target string, opts MvParams) ! {
 // read_lines reads the file in `path` into an array of lines.
 @[manualfree]
 pub fn read_lines(path string) ![]string {
-	buf := read_file(path)!
-	res := buf.split_into_lines()
-	unsafe { buf.free() }
-	return res
+	mut file := open(path)!
+	defer {
+		file.close()
+	}
+	return read_lines_from_open_file(mut file)
+}
+
+@[manualfree]
+fn read_lines_from_open_file(mut file File) ![]string {
+	mut buf := []u8{len: read_lines_chunk_size}
+	mut lines := []string{}
+	mut line := strings.new_builder(read_lines_chunk_size)
+	mut pending_cr := false
+	for {
+		nread := file.read(mut buf) or {
+			if err is Eof {
+				break
+			}
+			unsafe {
+				line.free()
+				lines.free()
+			}
+			return err
+		}
+		if nread <= 0 {
+			break
+		}
+		mut segment_start := 0
+		for i := 0; i < nread; i++ {
+			c := buf[i]
+			if pending_cr {
+				pending_cr = false
+				if c == `\n` {
+					segment_start = i + 1
+					continue
+				}
+			}
+			if c == `\n` || c == `\r` {
+				if i > segment_start {
+					line << buf[segment_start..i]
+				}
+				lines << line.str()
+				segment_start = i + 1
+				pending_cr = c == `\r`
+			}
+		}
+		if segment_start < nread {
+			line << buf[segment_start..nread]
+		}
+	}
+	if line.len > 0 {
+		lines << line.str()
+	}
+	unsafe { line.free() }
+	return lines
 }
 
 // write_lines writes the given array of `lines` to `path`.
@@ -171,6 +229,7 @@ pub fn sigint_to_signal_name(si int) string {
 		15 { return 'SIGTERM' }
 		else {}
 	}
+
 	$if linux {
 		// From `man 7 signal` on linux:
 		match si {
@@ -567,8 +626,10 @@ pub fn expand_tilde_to_home(path string) string {
 // If `path` already exists, it will be overwritten.
 pub fn write_file(path string, text string) ! {
 	mut f := create(path)!
+	defer {
+		f.close()
+	}
 	unsafe { f.write_full_buffer(text.str, usize(text.len))! }
-	f.close()
 }
 
 pub struct ExecutableNotFoundError {
@@ -583,20 +644,20 @@ fn error_failed_to_find_executable() IError {
 	return &ExecutableNotFoundError{}
 }
 
-// find_abs_path_of_executable searches the environment PATH for the absolute path of the given executable name.
-pub fn find_abs_path_of_executable(exe_name string) !string {
-	if exe_name == '' {
-		return error('expected non empty `exe_name`')
-	}
-
+fn find_abs_path_of_executable_in_path_env(exe_name string, env_path string) !string {
 	for suffix in executable_suffixes {
 		fexepath := exe_name + suffix
 		if is_abs_path(fexepath) {
 			return fexepath
 		}
+		if fexepath.contains(path_separator) {
+			if is_file(fexepath) && is_executable(fexepath) {
+				return abs_path(fexepath)
+			}
+			continue
+		}
 		mut res := ''
-		path := getenv('PATH')
-		paths := path.split(path_delimiter)
+		paths := env_path.split(path_delimiter)
 		for p in paths {
 			found_abs_path := join_path_single(p, fexepath)
 			$if trace_find_abs_path_of_executable ? {
@@ -612,6 +673,14 @@ pub fn find_abs_path_of_executable(exe_name string) !string {
 		}
 	}
 	return error_failed_to_find_executable()
+}
+
+// find_abs_path_of_executable searches the environment PATH for the absolute path of the given executable name.
+pub fn find_abs_path_of_executable(exe_name string) !string {
+	if exe_name == '' {
+		return error('expected non empty `exe_name`')
+	}
+	return find_abs_path_of_executable_in_path_env(exe_name, getenv('PATH'))
 }
 
 // exists_in_system_path returns `true` if `prog` exists in the system's PATH.
@@ -913,13 +982,25 @@ pub fn cache_dir() string {
 }
 
 // data_dir returns the path to a *writable* user-specific folder, suitable for writing application data.
-// See: https://specifications.freedesktop.org/basedir-spec/latest/ .
-// There is a single base directory relative to which user-specific data files should be written.
-// This directory is defined by the environment variable `$XDG_DATA_HOME`.
-// If `$XDG_DATA_HOME` is either not set or empty, a default equal to
-// `$HOME/.local/share` should be used.
+// On Windows, that is `%LocalAppData%`, or if that is not available,
+// `%USERPROFILE%/AppData/Local`.
+// On the rest, that is `$XDG_DATA_HOME`, or if that is not available,
+// `$HOME/.local/share`.
 // Note: This function ensures that the returned directory exists and panics if directory creation fails.
 pub fn data_dir() string {
+	$if windows {
+		local_app_data := getenv('LocalAppData')
+		if local_app_data != '' {
+			create_folder_when_it_does_not_exist(local_app_data)
+			return local_app_data
+		}
+		home := home_dir()
+		if home != '' {
+			dir := join_path(home, 'AppData', 'Local')
+			create_folder_when_it_does_not_exist(dir)
+			return dir
+		}
+	}
 	return xdg_home_folder('XDG_DATA_HOME', '.local/share')
 }
 
@@ -1002,8 +1083,12 @@ pub fn vtmp_dir() string {
 
 fn default_vmodules_path() string {
 	hdir := home_dir()
-	res := join_path_single(hdir, '.vmodules')
-	return res
+	if hdir != '' {
+		return join_path_single(hdir, '.vmodules')
+	}
+	// In some hermetic CI/sandbox environments HOME/USERPROFILE is intentionally
+	// missing. Fall back to a writable user-specific temp path.
+	return join_path_single(vtmp_dir(), '.vmodules')
 }
 
 // vmodules_dir returns the path to a folder, where v stores its global modules.
@@ -1118,7 +1203,7 @@ pub fn quoted_path(path string) string {
 			'"${path}"'
 		}
 	} $else {
-		return "'${path}'"
+		return "'" + path.replace("'", "'\\''") + "'"
 	}
 }
 

@@ -136,10 +136,10 @@ pub fn (nn u32) str() string {
 			n1 := n / u32(100)
 			d = ((n - (n1 * u32(100))) << u32(1))
 			n = n1
-			buf[index] = digit_pairs[d]
+			buf[index] = digit_pairs[int(d)]
 			index--
 			d++
-			buf[index] = digit_pairs[d]
+			buf[index] = digit_pairs[int(d)]
 			index--
 		}
 		index++
@@ -188,10 +188,10 @@ pub fn (nn i64) str() string {
 			n1 := n / i64(100)
 			d = (u32(n - (n1 * i64(100))) << i64(1))
 			n = n1
-			buf[index] = digit_pairs[d]
+			buf[index] = digit_pairs[int(d)]
 			index--
 			d++
-			buf[index] = digit_pairs[d]
+			buf[index] = digit_pairs[int(d)]
 			index--
 		}
 		index++
@@ -230,10 +230,10 @@ pub fn (nn u64) str() string {
 			n1 := n / 100
 			d = ((n - (n1 * 100)) << 1)
 			n = n1
-			buf[index] = digit_pairs[d]
+			buf[index] = digit_pairs[int(d)]
 			index--
 			d++
-			buf[index] = digit_pairs[d]
+			buf[index] = digit_pairs[int(d)]
 			index--
 		}
 		index++

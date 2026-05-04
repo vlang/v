@@ -12673,9 +12673,10 @@ XXH_mult64to128(xxh_u64 lhs, xxh_u64 rhs)
      * In that case it is best to use the portable one.
      * https://github.com/Cyan4973/xxHash/issues/211#issuecomment-515575677
      */
-#if (defined(__GNUC__) || defined(__clang__)) && !defined(__wasm__) \
+#if !defined(__TINYC__) && \
+    ((defined(__GNUC__) || defined(__clang__)) && !defined(__wasm__) \
     && defined(__SIZEOF_INT128__) \
-    || (defined(_INTEGRAL_MAX_BITS) && _INTEGRAL_MAX_BITS >= 128)
+    || (defined(_INTEGRAL_MAX_BITS) && _INTEGRAL_MAX_BITS >= 128))
 
     __uint128_t const product = (__uint128_t)lhs * (__uint128_t)rhs;
     XXH128_hash_t r128;
@@ -47389,7 +47390,7 @@ static int COVER_cmp8(COVER_ctx_t *ctx, const void *lp, const void *rp) {
  */
 #if (defined(_WIN32) && defined(_MSC_VER)) || defined(__APPLE__)
 static int WIN_CDECL COVER_strict_cmp(void* g_coverCtx, const void* lp, const void* rp) {
-#elif defined(_GNU_SOURCE)
+#elif defined(_GNU_SOURCE) && !defined(ZSTD_USE_C90_QSORT)
 static int COVER_strict_cmp(const void *lp, const void *rp, void *g_coverCtx) {
 #else /* C90 fallback.*/
 static int COVER_strict_cmp(const void *lp, const void *rp) {
@@ -47405,7 +47406,7 @@ static int COVER_strict_cmp(const void *lp, const void *rp) {
  */
 #if (defined(_WIN32) && defined(_MSC_VER)) || defined(__APPLE__)
 static int WIN_CDECL COVER_strict_cmp8(void* g_coverCtx, const void* lp, const void* rp) {
-#elif defined(_GNU_SOURCE)
+#elif defined(_GNU_SOURCE) && !defined(ZSTD_USE_C90_QSORT)
 static int COVER_strict_cmp8(const void *lp, const void *rp, void *g_coverCtx) {
 #else /* C90 fallback.*/
 static int COVER_strict_cmp8(const void *lp, const void *rp) {

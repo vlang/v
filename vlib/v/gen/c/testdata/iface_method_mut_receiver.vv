@@ -1,0 +1,21 @@
+interface Foo {
+mut:
+	free()
+	next() u32
+}
+
+struct Bar implements Foo {
+}
+
+fn (mut b Bar) free() {}
+
+fn (mut b Bar) next() u32 {
+	return 1
+}
+
+fn main() {
+	mut bar := Bar{}
+	mut foo := Foo(&bar)
+	foo.free()
+	_ = foo.next()
+}

@@ -14,7 +14,6 @@ const player_one = 1 // Human control this racket
 const player_two = 0 // Take over this AI controller
 
 const white = ui.Color{255, 255, 255}
-const orange = ui.Color{255, 140, 0}
 
 @[heap]
 struct App {
@@ -213,7 +212,7 @@ fn (mut p Player) update() {
 	// dt := p.game.app.dt
 	ball := unsafe { &p.game.ball }
 	// Evil AI that eventually will take over the world
-	p.pos.y = ball.pos.y - int(f32(p.racket_size) * 0.5)
+	p.pos.y = ball.pos.y - f32(p.racket_size) * 0.5
 }
 
 struct Vec {
@@ -279,7 +278,7 @@ fn (mut g Game) reset() {
 fn (mut g Game) new_round() {
 	mut i := 0
 	for mut p in g.players {
-		p.pos.x = if i == 0 { 3 } else { g.app.width - 2 }
+		p.pos.x = if i == 0 { f32(3) } else { f32(g.app.width - 2) }
 		p.pos.y = f32(g.app.height) * 0.5 - f32(p.racket_size) * 0.5
 		i++
 	}
@@ -295,10 +294,10 @@ fn (mut g Game) update() {
 		p.update()
 		// Keep rackets within the game area
 		if p.pos.y <= 0 {
-			p.pos.y = 1
+			p.pos.y = 1.0
 		}
 		if p.pos.y + p.racket_size >= g.app.height {
-			p.pos.y = g.app.height - p.racket_size - 1
+			p.pos.y = f32(g.app.height - p.racket_size - 1)
 		}
 		// Check ball collision
 		// Player left side
@@ -449,7 +448,7 @@ fn (mut g Game) draw() {
 	}
 	// Ball
 	gfx.draw_point(int(g.ball.pos.x), int(g.ball.pos.y))
-	// gfx.draw_text(22,2,'$g.ball.pos')
+	// gfx.draw_text(22,2,'${g.ball.pos}')
 	gfx.reset_bg_color()
 }
 

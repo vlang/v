@@ -1,0 +1,6 @@
+vlib/v/checker/tests/modules/imported_struct_field_with_any_type_err/include/lexer/tokens.v:4:8: error: cannot use type `any` here
+    2 | 
+    3 | struct Tok {
+    4 |     value any
+      |           ~~~
+    5 | }

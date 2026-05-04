@@ -17,11 +17,7 @@ fn vpm_update(query []string) {
 	if settings.is_help {
 		help.print_and_exit('update')
 	}
-	idents := if query.len == 0 {
-		get_installed_modules()
-	} else {
-		query.clone()
-	}
+	idents := if query.len == 0 { get_installed_modules() } else { query.clone() }
 	mut pp := pool.new_pool_processor(callback: update_module)
 	ctx := UpdateSession{idents}
 	pp.set_shared_context(ctx)
@@ -38,7 +34,7 @@ fn vpm_update(query []string) {
 	}
 }
 
-fn update_module(mut pp pool.PoolProcessor, idx int, wid int) &UpdateResult {
+fn update_module(mut pp pool.PoolProcessor, idx int, _wid int) &UpdateResult {
 	ident := pp.get_item[string](idx)
 	// Usually, the module `ident`ifier. `get_name_from_url` is only relevant for `v update <module_url>`.
 	name := get_name_from_url(ident) or { ident }
@@ -69,7 +65,7 @@ fn update_module(mut pp pool.PoolProcessor, idx int, wid int) &UpdateResult {
 		println('Updated module `${ident}`.')
 	}
 	// Don't bail if the download count increment has failed.
-	increment_module_download_count(name) or { vpm_error(err.msg(), verbose: true) }
+	increment_module_download_count(name, '') or { vpm_error(err.msg(), verbose: true) }
 	ctx := unsafe { &UpdateSession(pp.get_shared_context()) }
 	vpm_log(@FILE_LINE, @FN, 'ident: ${ident}; ctx: ${ctx}')
 	resolve_dependencies(get_manifest(install_path), ctx.idents)

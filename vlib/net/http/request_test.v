@@ -1,6 +1,9 @@
 // vtest build: !windows
 import net.http
+import net.urllib
+import net
 import io
+import time
 
 struct StringReader {
 	text string
@@ -56,7 +59,8 @@ fn test_parse_request_two_header_values() {
 }
 
 fn test_parse_request_body() {
-	mut reader_ := reader('GET / HTTP/1.1\r\nTest1: a\r\nTest2: b\r\nContent-Length: 4\r\n\r\nbodyabc')
+	mut reader_ :=
+		reader('GET / HTTP/1.1\r\nTest1: a\r\nTest2: b\r\nContent-Length: 4\r\n\r\nbodyabc')
 	req := http.parse_request(mut reader_) or { panic('did not parse: ${err}') }
 	assert req.data == 'body'
 }

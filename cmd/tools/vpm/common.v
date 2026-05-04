@@ -15,6 +15,12 @@ struct ModuleVpmInfo {
 	nr_downloads int
 }
 
+struct VpmInstallServerSelector {
+mut:
+	selected_url   string
+	candidate_urls []string
+}
+
 @[params]
 struct ErrorOptions {
 	details string
@@ -23,15 +29,62 @@ struct ErrorOptions {
 
 const vexe = os.quoted_path(os.getenv('VEXE'))
 const home_dir = os.home_dir()
+const selected_server_url_env = 'VPM_SELECTED_SERVER_URL'
+
+fn merge_server_urls(default_urls []string, custom_urls []string) []string {
+	mut server_urls := default_urls.clone()
+	for url in custom_urls {
+		if url in server_urls {
+			continue
+		}
+		server_urls << url
+	}
+	return server_urls
+}
+
+fn get_server_urls() []string {
+	return merge_server_urls(vpm_server_urls, settings.server_urls)
+}
+
+fn selected_server_url(set bool, url string) string {
+	if set {
+		os.setenv(selected_server_url_env, url, true)
+	}
+	return os.getenv(selected_server_url_env)
+}
+
+fn active_server_urls() []string {
+	selected_url := selected_server_url(false, '')
+	if selected_url != '' {
+		return [selected_url]
+	}
+	return get_server_urls()
+}
 
 fn get_mod_vpm_info(name string) !ModuleVpmInfo {
+	mut selector := VpmInstallServerSelector{
+		candidate_urls: if settings.server_urls.len > 0 {
+			settings.server_urls
+		} else {
+			vpm_server_urls
+		}
+	}
+	return get_mod_vpm_info_with_selector(name, mut selector)
+}
+
+fn get_mod_vpm_info_with_selector(name string, mut selector VpmInstallServerSelector) !ModuleVpmInfo {
 	if name.len < 2 || (!name[0].is_digit() && !name[0].is_letter()) {
 		return error('invalid module name `${name}`.')
 	}
+	if selector.candidate_urls.len == 0 {
+		return error('no vpm server urls configured.')
+	}
 	mut errors := []string{}
-	for url in vpm_server_urls {
+	is_initial_selection := selected_server_url(false, '') == ''
+	for url in selector.metadata_server_urls() {
 		modurl := url + '/api/packages/${name}'
-		verbose_println('Retrieving metadata for `${name}` from `${modurl}`...')
+		verbose_println_more(@FILE_LINE, @FN,
+			'Retrieving metadata for `${name}` from `${modurl}` by making a GET request ...')
 		r := http.get(modurl) or {
 			errors << 'Http server did not respond to our request for `${modurl}`.'
 			errors << 'Error details: ${err}'
@@ -59,22 +112,76 @@ fn get_mod_vpm_info(name string) !ModuleVpmInfo {
 			errors << 'Skipping module `${name}`, since it is missing name or url information.'
 			continue
 		}
-		vpm_log(@FILE_LINE, @FN, 'name: ${name}; mod: ${mod}')
+		if selector.selected_url == '' {
+			selector.selected_url = url
+			verbose_println_more(@FILE_LINE, @FN, 'Using `${url}` for this installation.')
+		}
+		if is_initial_selection {
+			selected_server_url(true, url)
+		}
+		verbose_println_more(@FILE_LINE, @FN, 'name: ${name}; mod: ${mod}')
 		return mod
 	}
-	return error(errors.join_lines())
+	final_error := errors.join_lines()
+	verbose_println_more(@FILE_LINE, @FN, 'failed due to these errors: ${final_error}')
+	return error(final_error)
+}
+
+fn new_install_server_selector() VpmInstallServerSelector {
+	return VpmInstallServerSelector{
+		candidate_urls: if settings.server_urls.len > 0 {
+			settings.server_urls
+		} else {
+			build_install_server_urls(vpm_server_urls, settings.mirror_urls)
+		}
+	}
+}
+
+fn build_install_server_urls(default_urls []string, mirror_urls []string) []string {
+	mut urls := []string{}
+	urls << default_urls
+	urls << mirror_urls
+	return unique_server_urls(urls)
+}
+
+fn (selector VpmInstallServerSelector) metadata_server_urls() []string {
+	return if selector.selected_url != '' {
+		[selector.selected_url]
+	} else {
+		selector.candidate_urls
+	}
 }
 
 fn get_ident_from_url(raw_url string) !(string, string) {
+	verbose_println_more(@FILE_LINE, @FN, 'raw_url: ${raw_url}')
+	// On Windows, absolute paths like `C:\...` are misinterpreted by urllib.parse
+	// (the drive letter `C:` is treated as a URL scheme). Handle local paths first.
+	if os.is_abs_path(raw_url) || raw_url.starts_with('./') || raw_url.starts_with('../')
+		|| raw_url.starts_with('~/') || raw_url.starts_with('.\\') || raw_url.starts_with('..\\')
+		|| raw_url.starts_with('file://') {
+		normalized := raw_url.trim_string_left('file://').replace('\\', '/').trim_left('/')
+		_, name := normalized.rsplit_once('/') or {
+			return '', normalized.trim_string_right('.git')
+		}
+		return '', name.trim_string_right('.git')
+	}
 	url := urllib.parse(raw_url) or { return error('failed to parse module URL `${raw_url}`.') }
-	publisher, mut name := url.path.trim_left('/').rsplit_once('/') or {
+	normalized_path := url.path.trim_left('/').trim_space()
+	publisher, mut name := normalized_path.rsplit_once('/') or {
 		if settings.vcs == .hg && raw_url.count(':') > 1 {
+			verbose_println_more(@FILE_LINE, @FN, 'ok, publisher: "", name: "test_module"')
 			return '', 'test_module'
 		}
-		return error('failed to retrieve module name for `${url}`.')
+		if url.scheme in ['file', ''] && normalized_path.len > 0 {
+			return '', normalized_path
+		}
+		final_error := 'failed to retrieve module name for `${url}`.'
+		verbose_println_more(@FILE_LINE, @FN, 'failed error: `${final_error}`')
+		return error(final_error)
 	}
 	name = name.trim_string_right('.git')
-	vpm_log(@FILE_LINE, @FN, 'raw_url: ${raw_url}; publisher: ${publisher}; name: ${name}')
+	verbose_println_more(@FILE_LINE, @FN,
+		'raw_url: ${raw_url}; publisher: ${publisher}; name: ${name}')
 	return publisher, name
 }
 
@@ -89,17 +196,51 @@ fn normalize_mod_path(path string) string {
 
 fn get_all_modules_for_search() []string {
 	working_server_url := get_working_server_url()
+	verbose_println_more(@FILE_LINE, @FN, 'working_server_url: ${working_server_url}')
 	println('Search server: ${working_server_url} .')
-	url := '${working_server_url}/search'
-	r := http.get(url) or {
-		vpm_error(err.msg(), verbose: true)
+	return get_all_modules_for_search_from_server(working_server_url) or {
+		vpm_error(err.msg())
 		exit(1)
+	}
+}
+
+fn get_all_modules_for_search_with_selector(mut selector VpmInstallServerSelector) ![]string {
+	if selector.candidate_urls.len == 0 {
+		return error('no vpm server urls configured.')
+	}
+	mut errors := []string{}
+	is_initial_selection := selected_server_url(false, '') == ''
+	for url in selector.metadata_server_urls() {
+		modules := get_all_modules_for_search_from_server(url) or {
+			errors << err.msg()
+			continue
+		}
+		if selector.selected_url == '' {
+			selector.selected_url = url
+		}
+		if is_initial_selection {
+			selected_server_url(true, url)
+		}
+		return modules
+	}
+	return error(errors.join_lines())
+}
+
+fn get_all_modules_for_search_from_server(server_url string) ![]string {
+	search_url := '${server_url}/search'
+	verbose_println_more(@FILE_LINE, @FN, 'making a GET request to search_url: ${search_url} ...')
+	r := http.get(search_url) or {
+		return error('Http server did not respond to our request for `${search_url}`.\nError details: ${err}')
 	}
 	if r.status_code != 200 {
-		vpm_error('failed to search through ${url}', details: 'Status code: ${r.status_code}')
-		exit(1)
+		return error('failed to search through ${search_url}\nStatus code: ${r.status_code}')
 	}
-	s := r.body
+	modules := extract_modules_from_search_response(r.body)
+	verbose_println_more(@FILE_LINE, @FN, 'found modules: ${modules}')
+	return modules
+}
+
+fn extract_modules_from_search_response(s string) []string {
 	mut read_len := 0
 	mut modules := []string{}
 	for read_len < s.len {
@@ -124,6 +265,24 @@ fn get_all_modules_for_search() []string {
 	return modules
 }
 
+fn normalize_repo_lookup_url(raw_url string) !string {
+	normalized_url := if raw_url.starts_with('git@') {
+		'https://' + raw_url['git@'.len..].replace(':', '/')
+	} else {
+		raw_url
+	}
+	url := urllib.parse(normalized_url) or {
+		return error('failed to parse module URL `${raw_url}`.')
+	}
+	host := url.hostname().trim_space().to_lower()
+	path :=
+		url.path.trim_space().trim_right('/').trim_left('/').trim_string_right('.git').to_lower()
+	if host == '' || path == '' {
+		return error('failed to normalize module URL `${raw_url}`.')
+	}
+	return '${host}/${path}'
+}
+
 fn get_installed_modules() []string {
 	dirs := os.ls(settings.vmodules_path) or { return [] }
 	mut modules := []string{}
@@ -144,6 +303,7 @@ fn get_installed_modules() []string {
 			modules << '${author}.${m}'
 		}
 	}
+	verbose_println_more(@FILE_LINE, @FN, 'found modules: ${modules}')
 	return modules
 }
 
@@ -158,21 +318,22 @@ fn get_path_of_existing_module(mod_name string) ?string {
 		vpm_error('skipping `${path}`, since it is not a directory.')
 		return none
 	}
+	verbose_println_more(@FILE_LINE, @FN, 'mod_name: ${mod_name}, found path: ${path}')
 	return path
 }
 
 fn get_working_server_url() string {
-	server_urls := if settings.server_urls.len > 0 {
-		settings.server_urls
-	} else {
-		vpm_server_urls
-	}
-	for url in server_urls {
+	is_initial_selection := selected_server_url(false, '') == ''
+	for url in active_server_urls() {
 		verbose_println('Trying server url: ${url}')
 		http.head(url) or {
 			vpm_error('failed to connect to server url `${url}`.', details: err.msg())
 			continue
 		}
+		if is_initial_selection {
+			selected_server_url(true, url)
+		}
+		verbose_println_more(@FILE_LINE, @FN, 'found url: ${url}')
 		return url
 	}
 	vpm_error('No responding vpm server found. Please check your network connectivity and try again later.')
@@ -187,16 +348,29 @@ fn ensure_vmodules_dir_exist() {
 			exit(1)
 		}
 	}
+	verbose_println_more(@FILE_LINE, @FN, 'settings.vmodules_path: ${settings.vmodules_path}')
 }
 
-fn increment_module_download_count(name string) ! {
+fn increment_module_download_count(name string, preferred_server_url string) ! {
 	if settings.no_dl_count_increment {
 		println('Skipping download count increment for `${name}`.')
 		return
 	}
+	server_urls := if preferred_server_url != '' {
+		unique_server_urls([preferred_server_url])
+	} else if settings.server_urls.len > 0 {
+		settings.server_urls
+	} else {
+		vpm_server_urls
+	}
+	if server_urls.len == 0 {
+		return error('no vpm server urls configured.')
+	}
 	mut errors := []string{}
-	for url in vpm_server_urls {
+	is_initial_selection := selected_server_url(false, '') == ''
+	for url in server_urls {
 		modurl := url + '/api/packages/${name}/incr_downloads'
+		verbose_println_more(@FILE_LINE, @FN, 'making a POST request to modurl: ${modurl} ...')
 		r := http.post(modurl, '') or {
 			errors << 'Http server did not respond to our request for `${modurl}`.'
 			errors << 'Error details: ${err}'
@@ -206,9 +380,14 @@ fn increment_module_download_count(name string) ! {
 			errors << 'Failed to increment the download count for module `${name}`, since `${url}` responded with ${r.status_code} http status code. Please try again later.'
 			continue
 		}
+		if is_initial_selection {
+			selected_server_url(true, url)
+		}
 		return
 	}
-	return error(errors.join_lines())
+	final_error := errors.join_lines()
+	verbose_println_more(@FILE_LINE, @FN, 'final_error: ${final_error}')
+	return error(final_error)
 }
 
 fn get_manifest(path string) ?vmod.Manifest {
@@ -220,6 +399,7 @@ fn resolve_dependencies(manifest ?vmod.Manifest, modules []string) {
 	// Filter out modules that are both contained in the input query and listed as
 	// dependencies in the mod file of the module that is supposed to be installed.
 	deps := mod.dependencies.filter(it !in modules)
+	verbose_println_more(@FILE_LINE, @FN, 'deps: ${deps}')
 	if deps.len > 0 {
 		println('Resolving ${deps.len} dependencies for module `${mod.name}`...')
 		verbose_println('Found dependencies: ${deps}')
@@ -233,13 +413,18 @@ fn verbose_println(msg string) {
 	}
 }
 
+fn verbose_println_more(fline string, fname string, msg string) {
+	vpm_log(fline, fname, msg)
+	verbose_println(msg)
+}
+
 fn vpm_log_header(txt string) {
 	divider := '='.repeat(40 - txt.len / 2)
 	settings.logger.debug('\n${divider} ${txt} ${divider}\n')
 }
 
 fn vpm_log(line string, func string, msg string) {
-	settings.logger.debug('${line} | (${func}) ${msg}')
+	settings.logger.debug('${line:-15s} fn: ${func:-30s} msg: ${msg}')
 }
 
 fn vpm_error(msg string, opts ErrorOptions) {

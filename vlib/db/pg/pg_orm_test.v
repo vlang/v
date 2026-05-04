@@ -36,6 +36,11 @@ struct TestDefaultAttribute {
 	created_at string @[default: 'CURRENT_TIMESTAMP'; sql_type: 'TIMESTAMP']
 }
 
+struct TestInsertDefaultValues {
+	id      int    @[primary; sql: serial]
+	example string @[default: '']
+}
+
 @[comment: 'This is a table comment']
 struct TestCommentAttribute {
 	id         string @[primary; sql: serial]
@@ -59,6 +64,7 @@ fn test_pg_orm() {
 	defer {
 		db.close() or {}
 	}
+	db.exec('create extension if not exists pgcrypto') or { panic(err) }
 	table := orm.Table{
 		name: 'Test'
 	}
@@ -110,17 +116,17 @@ fn test_pg_orm() {
 	}) or { panic(err) }
 
 	res := db.select(orm.SelectConfig{
-		table:      table
-		is_count:   false
-		has_where:  true
-		has_order:  false
-		order:      ''
-		order_type: .asc
-		has_limit:  false
-		primary:    'id'
-		has_offset: false
-		fields:     ['id', 'name', 'age']
-		types:      [typeof[int]().idx, typeof[string]().idx, typeof[i64]().idx]
+		table:          table
+		aggregate_kind: .none
+		has_where:      true
+		has_order:      false
+		order:          ''
+		order_type:     .asc
+		has_limit:      false
+		primary:        'id'
+		has_offset:     false
+		fields:         ['id', 'name', 'age']
+		types:          [typeof[int]().idx, typeof[string]().idx, typeof[i64]().idx]
 	}, orm.QueryData{}, orm.QueryData{
 		fields: ['name', 'age']
 		data:   [orm.Primitive('Louis'), orm.Primitive(101)]
@@ -162,7 +168,7 @@ fn test_pg_orm() {
 	mut result_custom_sql := db.exec("
 		SELECT DATA_TYPE
 		FROM INFORMATION_SCHEMA.COLUMNS
-		WHERE TABLE_NAME = 'TestCustomSqlType'
+		WHERE TABLE_NAME = 'testcustomsqltype'
 		ORDER BY ORDINAL_POSITION
 	") or {
 		println(err)
@@ -226,7 +232,7 @@ fn test_pg_orm() {
 	mut result_defaults := db.exec("
 		SELECT column_default
 		FROM INFORMATION_SCHEMA.COLUMNS
-		WHERE TABLE_NAME = 'TestDefaultAttribute'
+		WHERE TABLE_NAME = 'testdefaultattribute'
 		ORDER BY ORDINAL_POSITION
 	") or {
 		println(err)
@@ -243,6 +249,31 @@ fn test_pg_orm() {
 	}!
 	assert ['gen_random_uuid()', '', 'CURRENT_TIMESTAMP'] == information_schema_defaults_results
 
+	/** test inserting only default values
+	*/
+	sql db {
+		create table TestInsertDefaultValues
+	}!
+
+	model_default_values := TestInsertDefaultValues{
+		example: ''
+	}
+
+	sql db {
+		insert model_default_values into TestInsertDefaultValues
+	}!
+
+	inserted_default_values := sql db {
+		select from TestInsertDefaultValues
+	}!
+
+	sql db {
+		drop table TestInsertDefaultValues
+	}!
+
+	assert inserted_default_values.len == 1
+	assert inserted_default_values[0].example == ''
+
 	/** test comment attribute
 	*/
 	sql db {
@@ -256,7 +287,7 @@ fn test_pg_orm() {
 		FROM pg_attribute a
 		JOIN pg_class c ON c.oid = a.attrelid
 		JOIN pg_namespace n ON n.oid = c.relnamespace
-		WHERE c.relname = 'TestCommentAttribute' 
+		WHERE c.relname = 'testcommentattribute' 
 		AND n.nspname = 'public'
 		AND a.attnum > 0
 		AND NOT a.attisdropped
@@ -273,7 +304,7 @@ fn test_pg_orm() {
 		obj_description(pc.oid) AS table_comment
 		FROM pg_class pc
 		JOIN pg_namespace pn ON pn.oid = pc.relnamespace
-		WHERE pc.relkind = 'r' AND pc.relname = 'TestCommentAttribute'
+		WHERE pc.relkind = 'r' AND pc.relname = 'testcommentattribute'
 		ORDER BY schema_name, table_name
 	") or {
 		println(err)

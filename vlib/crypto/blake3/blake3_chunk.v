@@ -50,6 +50,7 @@ fn (c Chunk) str() string {
 //
 // As a potential speed up, we could try spawning this function
 // in a concurrent task and see if it is worth the overhead.
+@[direct_array_access]
 fn (mut c Chunk) process_input(input []u8, key_words []u32, counter u64, flags u32, root bool) []u32 {
 	mut remaining_input := unsafe { input[..] }
 
@@ -63,7 +64,7 @@ fn (mut c Chunk) process_input(input []u8, key_words []u32, counter u64, flags u
 
 	c.chunk_number = counter
 	c.chaining_value = key_words.clone()
-	c.block_words = []u32{len: 16, cap: 16, init: 0}
+	c.block_words = []u32{len: 16}
 
 	for i in 0 .. 16 {
 		c.block_len = u32(block_size)

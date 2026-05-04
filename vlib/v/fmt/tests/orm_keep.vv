@@ -20,7 +20,23 @@ fn main() {
 	nr_customers := sql db {
 		select count from Customer
 	}
+	total_orders := sql db {
+		select sum(nr_orders) from Customer
+	}
+	avg_orders := sql db {
+		select avg(nr_orders) from Customer
+	}
+	first_country := sql db {
+		select min(country) from Customer
+	}
+	last_country := sql db {
+		select max(country) from Customer
+	}
 	println('number of all customers: ${nr_customers}')
+	println(total_orders)
+	println(avg_orders)
+	println(first_country)
+	println(last_country)
 	// V syntax can be used to build queries
 	// db.select returns an array
 	uk_customers := sql db {

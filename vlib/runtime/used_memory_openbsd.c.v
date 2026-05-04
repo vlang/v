@@ -6,7 +6,7 @@ struct C.rusage {
 	ru_maxrss int
 }
 
-fn C.getrusage(who int, usage &C.rusage) int
+fn C.getrusage(who i32, usage &C.rusage) i32
 
 // used_memory retrieves the current physical memory usage of the process.
 pub fn used_memory() !u64 {

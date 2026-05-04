@@ -1,4 +1,4 @@
-import vweb
+import veb
 
 const embedded_file = $embed_file(r'C:\Users\user\path\to\file')
 
@@ -81,8 +81,8 @@ fn comptime_call_dollar_method() {
 	handle_conn[App](mut app)
 }
 
-fn (mut app App) create() vweb.Result {
-	return $vweb.html()
+fn (mut app App) create() veb.Result {
+	return $veb.html()
 }
 
 fn main() {

@@ -10,7 +10,7 @@ struct C.rusage {
 	ru_idrss  int
 }
 
-fn C.getrusage(who int, usage &C.rusage) int
+fn C.getrusage(who i32, usage &C.rusage) i32
 
 $if !tinyc {
 	#flag -lprocstat
@@ -26,7 +26,7 @@ struct C.kinfo_proc {
 
 fn C.procstat_open_sysctl() &C.procstat
 fn C.procstat_close(&C.procstat)
-fn C.procstat_getprocs(&C.procstat, int, int, &u32) &C.kinfo_proc
+fn C.procstat_getprocs(&C.procstat, i32, i32, &u32) &C.kinfo_proc
 
 // used_memory retrieves the current physical memory usage of the process.
 pub fn used_memory() !u64 {

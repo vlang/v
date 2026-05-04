@@ -23,6 +23,42 @@ mut:
 	free()
 }
 
+// default_rng is used by the module level public APIs like rand.u8() etc.
+__global default_rng &PRNG
+
+// new_default returns a new instance of the default RNG. If the seed is not provided, the current time will be used to seed the instance.
+@[manualfree]
+pub fn new_default(config_ config.PRNGConfigStruct) &PRNG {
+	mut rng := &wyrand.WyRandRNG{}
+	rng.seed(config_.seed_)
+	unsafe { config_.seed_.free() }
+	return &PRNG(rng)
+}
+
+// get_current_rng returns the PRNG instance currently in use. If it is not changed, it will be an instance of wyrand.WyRandRNG.
+pub fn get_current_rng() &PRNG {
+	return default_rng
+}
+
+// set_rng changes the default RNG from wyrand.WyRandRNG (or whatever the last RNG was).
+// Note that this new RNG must be seeded manually with a constant seed or the
+// `seed.time_seed_array()` method. Also, it is recommended to store the old RNG in a variable and
+// should be restored if work with the custom RNG is complete. It is not necessary to restore if the
+// program terminates soon afterwards.
+pub fn set_rng(rng &PRNG) {
+	default_rng = unsafe { rng }
+}
+
+// seed sets the given array of `u32` values as the seed for the `default_rng`.
+// Note: the default_rng is already seeded with a *time dependent value*,
+// so if you just need some randomness, for a game/simulation, and you do not need
+// reproducibility, just use it, without calling rand.seed() to do explicit seeding.
+// The default_rng is an instance of WyRandRNG which takes 2 u32 values.
+// When using a custom RNG, make sure to use the correct number of u32s.
+pub fn seed(seed []u32) {
+	default_rng.seed(seed)
+}
+
 // bytes returns a buffer of `bytes_needed` random bytes
 @[inline]
 pub fn (mut rng PRNG) bytes(bytes_needed int) ![]u8 {
@@ -511,38 +547,6 @@ pub fn (mut rng PRNG) sample[T](array []T, k int) []T {
 		results[i] = array[rng.intn(array.len) or { 0 }]
 	}
 	return results
-}
-
-__global default_rng &PRNG
-
-// new_default returns a new instance of the default RNG. If the seed is not provided, the current time will be used to seed the instance.
-@[manualfree]
-pub fn new_default(config_ config.PRNGConfigStruct) &PRNG {
-	mut rng := &wyrand.WyRandRNG{}
-	rng.seed(config_.seed_)
-	unsafe { config_.seed_.free() }
-	return &PRNG(rng)
-}
-
-// get_current_rng returns the PRNG instance currently in use. If it is not changed, it will be an instance of wyrand.WyRandRNG.
-pub fn get_current_rng() &PRNG {
-	return default_rng
-}
-
-// set_rng changes the default RNG from wyrand.WyRandRNG (or whatever the last RNG was).
-// Note that this new RNG must be seeded manually with a constant seed or the
-// `seed.time_seed_array()` method. Also, it is recommended to store the old RNG in a variable and
-// should be restored if work with the custom RNG is complete. It is not necessary to restore if the
-// program terminates soon afterwards.
-pub fn set_rng(rng &PRNG) {
-	default_rng = unsafe { rng }
-}
-
-// seed sets the given array of `u32` values as the seed for the `default_rng`.
-// The default_rng is an instance of WyRandRNG which takes 2 u32 values. When using a custom RNG, make sure to use
-// the correct number of u32s.
-pub fn seed(seed []u32) {
-	default_rng.seed(seed)
 }
 
 // u8 returns a uniformly distributed pseudorandom 8-bit unsigned positive `u8`.

@@ -47,6 +47,16 @@ const toml_text_2 = "
     'TEST_PATH' = '/tmp/test'
 "
 
+const toml_text_3 = '
+[[foo.bar]]
+baz = 1
+bzz = 1
+
+[[foo.bar]]
+baz = 2
+bzz = 2
+'
+
 fn test_value_query_in_array() {
 	toml_doc := toml.parse_text(toml_text) or { panic(err) }
 	mut value := toml_doc.value('themes[0].colors[1]').string()
@@ -108,4 +118,14 @@ fn test_any_value_query_2() {
 	defaults := toml_doc.value('defaults')
 	assert defaults.value('run.flags[0]').string() == '-f 1'
 	assert defaults.value('env[0].RUN_TIME').int() == 5
+}
+
+fn test_any_value_query_for_nested_tables_array() {
+	toml_doc := toml.parse_text(toml_text_3) or { panic(err) }
+	items := toml_doc.value('foo.bar').array()
+	assert items.len == 2
+	assert items[0].value('baz').int() == 1
+	assert items[0].value('bzz').int() == 1
+	assert items[1].value('baz').int() == 2
+	assert items[1].value('bzz').int() == 2
 }

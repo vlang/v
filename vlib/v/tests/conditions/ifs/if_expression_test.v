@@ -170,6 +170,16 @@ fn test_multi_if_expr_with_infix() {
 	assert a == 7
 }
 
+fn test_nested_if_expr_with_infix_in_branch() {
+	a := if false { 0 } else { if false { 2 } else { 3 } + 4
+	 } + 5
+	assert a == 12
+
+	b := if false { 'a' } else { if false { 'c' } else { 'd' } + 'e'
+	 } + 'f'
+	assert b == 'def'
+}
+
 fn test_if_expr_with_array_map() {
 	num_string := '2 3'
 

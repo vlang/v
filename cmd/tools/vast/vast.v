@@ -22,14 +22,14 @@ mut:
 	hide_names       map[string]bool
 }
 
-const context = &Context{}
+const vast_context = &Context{}
 
 fn main() {
 	if os.args.len < 2 {
 		eprintln('not enough parameters')
 		exit(1)
 	}
-	mut ctx := unsafe { context }
+	mut ctx := unsafe { vast_context }
 	mut fp := flag.new_flag_parser(os.args[2..])
 	fp.application('v ast')
 	fp.usage_example('demo.v       generate demo.json file.')
@@ -40,13 +40,18 @@ fn main() {
 	fp.description('Dump a JSON representation of the V AST for a given .v or .vsh file.')
 	fp.description('By default, `v ast` will save the JSON to a .json file, named after the .v file.')
 	fp.description('Pass -p to see it instead.')
-	ctx.is_watch = fp.bool('watch', `w`, false, 'watch a .v file for changes, rewrite the .json file, when a change is detected')
+	ctx.is_watch = fp.bool('watch', `w`, false,
+		'watch a .v file for changes, rewrite the .json file, when a change is detected')
 	ctx.is_print = fp.bool('print', `p`, false, 'print the AST to stdout')
-	ctx.is_compile = fp.bool('compile', `c`, false, 'watch the .v file for changes, rewrite the .json file, *AND* generate a .c file too on any change')
-	ctx.is_terse = fp.bool('terse', `t`, false, 'terse output, only with tree node names (AST structure), no details')
-	ctx.is_skip_defaults = fp.bool('skip-defaults', `s`, false, 'skip properties that have default values like false, 0, "", etc')
+	ctx.is_compile = fp.bool('compile', `c`, false,
+		'watch the .v file for changes, rewrite the .json file, *AND* generate a .c file too on any change')
+	ctx.is_terse = fp.bool('terse', `t`, false,
+		'terse output, only with tree node names (AST structure), no details')
+	ctx.is_skip_defaults = fp.bool('skip-defaults', `s`, false,
+		'skip properties that have default values like false, 0, "", etc')
 	ctx.check = fp.bool('check', `k`, false, 'run v.checker as well (it may modify the AST)')
-	hfields := fp.string_multi('hide', 0, 'hide the specified fields. You can give several, by separating them with `,`').join(',')
+	hfields := fp.string_multi('hide', 0,
+		'hide the specified fields. You can give several, by separating them with `,`').join(',')
 	for hf in hfields.split(',') {
 		ctx.hide_names[hf] = true
 	}
@@ -175,7 +180,7 @@ fn json(file string) string {
 	// parse file with comment
 	mut ast_file := parser.parse_file(file, mut t.table, .parse_comments, t.pref)
 
-	if context.check {
+	if vast_context.check {
 		mut the_checker := checker.new_checker(t.table, pref_)
 		the_checker.check(mut ast_file)
 	}
@@ -196,13 +201,13 @@ mut:
 // add item to object node
 @[inline]
 fn (mut node Node) add(key string, child &Node) {
-	if context.hide_names.len > 0 && key in context.hide_names {
+	if vast_context.hide_names.len > 0 && key in vast_context.hide_names {
 		return
 	}
-	if context.is_terse {
+	if vast_context.is_terse {
 		return
 	}
-	if context.skip_empty(child) {
+	if vast_context.skip_empty(child) {
 		return
 	}
 	add_item_to_object(mut node, key, child)
@@ -211,10 +216,10 @@ fn (mut node Node) add(key string, child &Node) {
 // add item to object node
 @[inline]
 fn (mut node Node) add_terse(key string, child &Node) {
-	if context.hide_names.len > 0 && key in context.hide_names {
+	if vast_context.hide_names.len > 0 && key in vast_context.hide_names {
 		return
 	}
-	if context.skip_empty(child) {
+	if vast_context.skip_empty(child) {
 		return
 	}
 	add_item_to_object(mut node, key, child)
@@ -223,7 +228,7 @@ fn (mut node Node) add_terse(key string, child &Node) {
 // add item to array node
 @[inline]
 fn (mut node Node) add_item(child &Node) {
-	if context.skip_empty(child) {
+	if vast_context.skip_empty(child) {
 		return
 	}
 	add_item_to_array(mut node, child)
@@ -392,6 +397,7 @@ fn (t Tree) scope_object(node ast.ScopeObject) &Node {
 		ast.Var { t.var(node) }
 		ast.AsmRegister { t.asm_register(node) }
 	}
+
 	return obj
 }
 
@@ -483,6 +489,7 @@ fn (t Tree) stmt(node ast.Stmt) &Node {
 		ast.EmptyStmt { return t.empty_stmt(node) }
 		ast.DebuggerStmt { return t.debugger_stmt(node) }
 	}
+
 	return t.null_node()
 }
 
@@ -1084,7 +1091,7 @@ fn (t Tree) comptime_call(node ast.ComptimeCall) &Node {
 	obj.add_terse('method_name', t.string_node(node.method_name))
 	obj.add_terse('kind', t.enum_node(node.kind))
 	obj.add_terse('left', t.expr(node.left))
-	obj.add_terse('is_vweb', t.bool_node(node.is_vweb))
+	obj.add_terse('is_template', t.bool_node(node.is_template))
 	obj.add_terse('is_veb', t.bool_node(node.is_veb))
 	obj.add_terse('veb_tmpl', t.string_node(node.veb_tmpl.path))
 	obj.add_terse('args_var', t.string_node(node.args_var))
@@ -1834,7 +1841,8 @@ fn (t Tree) sql_expr(node ast.SqlExpr) &Node {
 	mut obj := create_object()
 	obj.add_terse('ast_type', t.string_node('SqlExpr'))
 	obj.add_terse('type', t.type_node(node.typ))
-	obj.add_terse('is_count', t.bool_node(node.is_count))
+	obj.add_terse('aggregate_kind', t.string_node('${node.aggregate_kind}'))
+	obj.add_terse('aggregate_field', t.string_node(node.aggregate_field))
 	obj.add_terse('db_expr', t.expr(node.db_expr))
 	obj.add_terse('table_expr', t.type_expr(node.table_expr))
 	obj.add_terse('has_where', t.bool_node(node.has_where))
@@ -2008,7 +2016,7 @@ fn (t Tree) node_error(expr ast.NodeError) &Node {
 	return obj
 }
 
-fn (t Tree) empty_expr(expr ast.EmptyExpr) &Node {
+fn (t Tree) empty_expr(_expr ast.EmptyExpr) &Node {
 	mut obj := create_object()
 	obj.add_terse('ast_type', t.string_node('EmptyExpr'))
 	// obj.add('x', t.number_node(expr.x))

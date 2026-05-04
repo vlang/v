@@ -1,0 +1,5 @@
+int c = VSAFE_DIV_int(a , z);
+c = VSAFE_DIV_int(c,z);
+int d = VSAFE_MOD_int(a , z);
+d = VSAFE_MOD_int(d,z);
+f32 fc = fa / fz;

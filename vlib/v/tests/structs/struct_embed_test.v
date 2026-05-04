@@ -192,6 +192,7 @@ fn (piece Piece) pos() Pos {
 	match piece {
 		King, Queen { pos = piece.pos }
 	}
+
 	return pos
 }
 
@@ -200,6 +201,7 @@ fn (piece Piece) get_pos() Pos {
 	match piece {
 		King, Queen { pos = piece.get_pos() }
 	}
+
 	return pos
 }
 

@@ -322,18 +322,19 @@ pub fn filter_indexed[T](array []T, predicate fn (idx int, elem T) bool) []T {
 // assert r == 5
 // ```
 pub fn fold[T, R](array []T, init R, fold_op fn (acc R, elem T) R) R {
-	mut value := R{}
 	$if R is $array {
-		value = init.clone()
+		mut value := init.clone()
+		for e in array {
+			value = fold_op(value, e)
+		}
+		return value
 	} $else {
-		value = init
+		mut value := init
+		for e in array {
+			value = fold_op(value, e)
+		}
+		return value
 	}
-
-	for e in array {
-		value = fold_op(value, e)
-	}
-
-	return value
 }
 
 // fold_indexed sets `acc = init`, then successively calls `acc = fold_op(idx, acc, elem)` for each element in `array`.
@@ -519,7 +520,7 @@ pub fn binary_search[T](array []T, target T) !int {
 pub fn rotate_left[T](mut array []T, mid int) {
 	assert mid <= array.len && mid >= 0
 	k := array.len - mid
-	p := &T(array.data)
+	p := unsafe { &T(array.data) }
 	unsafe {
 		ptr_rotate[T](mid, &T(usize(voidptr(p)) + usize(sizeof(T)) * usize(mid)), k)
 	}
@@ -538,7 +539,7 @@ pub fn rotate_left[T](mut array []T, mid int) {
 pub fn rotate_right[T](mut array []T, k int) {
 	assert k <= array.len && k >= 0
 	mid := array.len - k
-	p := &T(array.data)
+	p := unsafe { &T(array.data) }
 	unsafe {
 		ptr_rotate[T](mid, &T(usize(voidptr(p)) + usize(sizeof(T)) * usize(mid)), k)
 	}

@@ -78,9 +78,12 @@ fn init_and_check() ! {
 		'# ENV',
 		'.env',
 		'',
-		'# vweb and database',
+		'# Web assets and local databases',
 		'*.db',
 		'*.js',
+		'',
+		'# Ignore installed modules through `v install --local`:',
+		'modules/',
 		'',
 	].join_lines()
 
@@ -147,7 +150,8 @@ indent_style = tab
 	prepare_test_path()!
 	os.write_file('.gitattributes', git_attributes_content)!
 	os.write_file('.editorconfig', editor_config_content)!
-	res := os.execute_or_exit('${expect_exe} ${os.join_path(expect_tests_path, 'init.expect')} ${vroot}')
+	res :=
+		os.execute_or_exit('${expect_exe} ${os.join_path(expect_tests_path, 'init.expect')} ${vroot}')
 	assert res.output.contains('Created binary (application) project `${test_project_dir_name}`')
 	assert os.read_file('.gitattributes')! == git_attributes_content
 	assert os.read_file('.editorconfig')! == editor_config_content
@@ -160,7 +164,8 @@ fn test_v_init_in_dir_with_invalid_mod_name_input() {
 	proj_path := os.join_path(os.vtmp_dir(), dir_name_with_invalid_mod_name)
 	os.mkdir_all(proj_path) or {}
 	os.chdir(proj_path)!
-	os.execute_or_exit('${expect_exe} ${os.join_path(expect_tests_path, 'init_in_dir_with_invalid_mod_name.expect')} ${vroot} ${dir_name_with_invalid_mod_name} ${corrected_mod_name}')
+	os.execute_or_exit('${expect_exe} ${os.join_path(expect_tests_path,
+		'init_in_dir_with_invalid_mod_name.expect')} ${vroot} ${dir_name_with_invalid_mod_name} ${corrected_mod_name}')
 	// Assert mod data set in `new_with_model_arg.expect`.
 	mod := vmod.from_file(os.join_path(proj_path, 'v.mod')) or {
 		assert false, err.str()
@@ -172,7 +177,8 @@ fn test_v_init_in_dir_with_invalid_mod_name_input() {
 fn test_v_init_with_model_arg_input() {
 	prepare_test_path()!
 	model := '--lib'
-	res := os.execute_or_exit('${expect_exe} ${os.join_path(expect_tests_path, 'init_with_model_arg.expect')} ${vroot} ${model}')
+	res := os.execute_or_exit('${expect_exe} ${os.join_path(expect_tests_path,
+		'init_with_model_arg.expect')} ${vroot} ${model}')
 	assert res.output.contains('Created library project `${test_project_dir_name}`'), res.output
 	project_path := os.join_path(test_path)
 	mod := vmod.from_file(os.join_path(project_path, 'v.mod')) or {

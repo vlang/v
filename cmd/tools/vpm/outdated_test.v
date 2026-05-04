@@ -1,4 +1,5 @@
 // vtest retry: 3
+// vtest build: !windows
 module main
 
 import os

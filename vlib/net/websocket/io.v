@@ -1,6 +1,7 @@
 module websocket
 
 import net
+import net.http
 
 // socket_read reads from socket into the provided buffer
 fn (mut ws Client) socket_read(mut buffer []u8) !int {
@@ -73,7 +74,11 @@ fn (mut ws Client) shutdown_socket() ! {
 // dial_socket connects tcp socket and initializes default configurations
 fn (mut ws Client) dial_socket() !&net.TcpConn {
 	tcp_address := '${ws.uri.hostname}:${ws.uri.port}'
-	mut t := net.dial_tcp(tcp_address)!
+	mut t := if ws.proxy_url == '' {
+		net.dial_tcp(tcp_address)!
+	} else {
+		http.dial_tcp_via_proxy(ws.proxy_url, tcp_address)!
+	}
 	optval := int(1)
 	t.sock.set_option_int(.keep_alive, optval)!
 	t.set_read_timeout(ws.read_timeout)

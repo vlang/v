@@ -56,8 +56,12 @@ pub fn init(cfg Config) &Context {
 	if !C.SetConsoleMode(stdin_handle, 0x80) {
 		panic('could not set raw input mode')
 	}
-	// enable window and mouse input events.
-	if !C.SetConsoleMode(stdin_handle, C.ENABLE_WINDOW_INPUT | C.ENABLE_MOUSE_INPUT) {
+	mut input_mode := u32(C.ENABLE_WINDOW_INPUT)
+	if ctx.cfg.mouse_enabled {
+		input_mode |= u32(C.ENABLE_MOUSE_INPUT)
+	}
+	// enable window input and optionally mouse input events.
+	if !C.SetConsoleMode(stdin_handle, input_mode) {
 		panic('could not set raw input mode')
 	}
 	// store the current title, so restore_terminal_state can get it back
@@ -135,7 +139,7 @@ fn (mut ctx Context) parse_events() {
 		return
 	}
 
-	// print('$nr_events | ')
+	// print('${nr_events} | ')
 	if !C.ReadConsoleInput(ctx.stdin_handle, &ctx.read_buf[0], buf_size, &nr_events) {
 		panic('could not read from stdin')
 	}
@@ -146,11 +150,6 @@ fn (mut ctx Context) parse_events() {
 				e := unsafe { ctx.read_buf[i].Event.KeyEvent }
 				ch := e.wVirtualKeyCode
 				ascii := unsafe { e.uChar.AsciiChar }
-				if e.bKeyDown == 0 {
-					continue
-				}
-				// we don't handle key_up events because they don't exist on linux...
-				// see: https://docs.microsoft.com/en-us/windows/win32/inputdev/virtual-key-codes
 				code := match int(ch) {
 					C.VK_BACK { KeyCode.backspace }
 					C.VK_RETURN { KeyCode.enter }
@@ -183,16 +182,28 @@ fn (mut ctx Context) parse_events() {
 					modifiers.set(.shift)
 				}
 
-				mut event := &Event{
-					typ:       .key_down
-					modifiers: modifiers
-					code:      code
-					ascii:     ascii
-					width:     int(e.dwControlKeyState)
-					height:    int(e.wVirtualKeyCode)
-					utf8:      unsafe { e.uChar.UnicodeChar.str() }
+				event_type := if e.bKeyDown == 0 {
+					EventType.key_up
+				} else {
+					EventType.key_down
 				}
-				ctx.event(event)
+				repeat_count := if event_type == .key_down && e.wRepeatCount > 0 {
+					int(e.wRepeatCount)
+				} else {
+					1
+				}
+				for _ in 0 .. repeat_count {
+					mut event := &Event{
+						typ:       event_type
+						modifiers: modifiers
+						code:      code
+						ascii:     ascii
+						width:     int(e.dwControlKeyState)
+						height:    int(e.wVirtualKeyCode)
+						utf8:      unsafe { e.uChar.UnicodeChar.str() }
+					}
+					ctx.event(event)
+				}
 			}
 			C.MOUSE_EVENT {
 				e := unsafe { ctx.read_buf[i].Event.MouseEvent }
@@ -221,6 +232,7 @@ fn (mut ctx Context) parse_events() {
 							2 { MouseButton.right }
 							else { MouseButton.middle }
 						}
+
 						typ := if e.dwButtonState == 0 {
 							if ctx.mouse_down != .unknown {
 								button = ctx.mouse_down
@@ -273,6 +285,7 @@ fn (mut ctx Context) parse_events() {
 							2 { MouseButton.right }
 							else { MouseButton.middle }
 						}
+
 						ctx.mouse_down = button
 						ctx.event(&Event{
 							typ:       .mouse_down

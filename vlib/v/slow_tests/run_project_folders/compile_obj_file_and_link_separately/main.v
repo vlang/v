@@ -2,7 +2,7 @@ module main
 
 import os
 
-const tfolder = os.join_path(os.vtmp_dir(), 'vobjfile_${os.getuid()}')
+const tfolder = os.join_path(os.vtmp_dir(), 'vobjfile_${os.getpid()}')
 const vexe = os.quoted_path(@VEXE)
 const gcc = os.quoted_path(os.find_abs_path_of_executable('gcc') or {
 	println('This program needs `gcc` to be present.')
@@ -20,7 +20,8 @@ fn main() {
 	os.chdir(@DIR)!
 	os.rmdir_all(tfolder) or {}
 	os.mkdir_all(tfolder)!
-	lexec('${vexe} -is_o -o "${tfolder}/abc.o"        -gc none -cc ${gcc} abc/')
+	os.cp_all('abc', os.join_path(tfolder, 'abc'), true)!
+	lexec('${vexe} -is_o -o "${tfolder}/abc.o"        -gc none -cc ${gcc} "${tfolder}/abc/"')
 	lexec('${gcc}        -o "${tfolder}/main_in_c.o"  -c main_in_c.c')
 	lexec('${gcc}        -o "${tfolder}/program.exe"  "${tfolder}/abc.o"   "${tfolder}/main_in_c.o"')
 	res := lexec('${tfolder}/program.exe')

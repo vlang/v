@@ -1,0 +1,5 @@
+fn main() {
+	some_ptr := voidptr(1234)
+	_ = &u32(some_ptr)
+	_ = &u32(voidptr(5678))
+}

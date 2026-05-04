@@ -1,0 +1,22 @@
+struct AnotherStruct {
+mut:
+	str string
+}
+
+@[params]
+struct MyOptions {
+	data &AnotherStruct
+}
+
+fn fn_test(args MyOptions) {
+	mut x := args.data
+	x.str = 'why is this possible?'
+}
+
+fn main() {
+	fn_test(
+		data: &AnotherStruct{
+			str: 'test'
+		}
+	)
+}

@@ -8,7 +8,7 @@ import sokol.sgl
 import os
 import os.font
 
-struct FT {
+pub struct FT {
 pub:
 	fons        &fontstash.Context = unsafe { nil }
 	font_normal int
@@ -33,19 +33,41 @@ pub enum VerticalAlign {
 	baseline = C.FONS_ALIGN_BASELINE
 }
 
-const buff_size = int($d('gg_text_buff_size', 2048))
+const initial_text_atlas_size = int($d('gg_text_buff_size', 2048))
+const max_text_atlas_size = 8192
 
-fn clear_atlas_callback(uptr voidptr, error int, _val int) {
-	if error == 1 { // atlas overflow error code
-		fons := unsafe { &fontstash.Context(uptr) }
-		fons.reset_atlas(buff_size, buff_size)
+fn expand_atlas_callback(uptr voidptr, error int, _val int) {
+	if error != C.FONS_ATLAS_FULL {
+		return
 	}
+	fons := unsafe { &fontstash.Context(uptr) }
+	width, height := fons.get_atlas_size()
+	mut next_width := if width > 0 { width } else { initial_text_atlas_size }
+	mut next_height := if height > 0 { height } else { initial_text_atlas_size }
+	if next_width < max_text_atlas_size {
+		next_width = if next_width * 2 > max_text_atlas_size {
+			max_text_atlas_size
+		} else {
+			next_width * 2
+		}
+	}
+	if next_height < max_text_atlas_size {
+		next_height = if next_height * 2 > max_text_atlas_size {
+			max_text_atlas_size
+		} else {
+			next_height * 2
+		}
+	}
+	if next_width == width && next_height == height {
+		return
+	}
+	fons.expand_atlas(next_width, next_height)
 }
 
 fn new_ft(c FTConfig) ?&FT {
 	if c.font_path == '' {
 		if c.bytes_normal.len > 0 {
-			fons := sfons.create(buff_size, buff_size, 1)
+			fons := sfons.create(initial_text_atlas_size, initial_text_atlas_size, 1)
 			bytes_normal := c.bytes_normal
 			bytes_bold := if c.bytes_bold.len > 0 {
 				c.bytes_bold
@@ -65,7 +87,7 @@ fn new_ft(c FTConfig) ?&FT {
 				debug_font_println('setting italic variant to normal')
 				bytes_normal
 			}
-			fons.set_error_callback(clear_atlas_callback, fons)
+			fons.set_error_callback(expand_atlas_callback, fons)
 			return &FT{
 				fons:        fons
 				font_normal: fons.add_font_mem('sans', bytes_normal.clone(), true)
@@ -126,12 +148,12 @@ fn new_ft(c FTConfig) ?&FT {
 		italic_path = c.font_path
 		bytes
 	}
-	fons := sfons.create(buff_size, buff_size, 1)
+	fons := sfons.create(initial_text_atlas_size, initial_text_atlas_size, 1)
 	debug_font_println('Font used for font_normal : ${normal_path}')
 	debug_font_println('Font used for font_bold   : ${bold_path}')
 	debug_font_println('Font used for font_mono   : ${mono_path}')
 	debug_font_println('Font used for font_italic : ${italic_path}')
-	fons.set_error_callback(clear_atlas_callback, fons)
+	fons.set_error_callback(expand_atlas_callback, fons)
 	return &FT{
 		fons:        fons
 		font_normal: fons.add_font_mem('sans', bytes.clone(), true)
@@ -258,6 +280,13 @@ pub fn (ft &FT) flush() {
 	sfons.flush(ft.fons)
 }
 
+@[inline]
+fn (ctx &Context) text_metrics(s string) (f32, [4]f32) {
+	mut bounds := [4]f32{}
+	advance := ctx.ft.fons.text_bounds(0, 0, s, &bounds[0])
+	return advance, bounds
+}
+
 // text_width returns the width of the `string` `s` in pixels.
 pub fn (ctx &Context) text_width(s string) int {
 	$if macos {
@@ -269,20 +298,8 @@ pub fn (ctx &Context) text_width(s string) int {
 	if !ctx.font_inited {
 		return 0
 	}
-	mut buf := [4]f32{}
-	ctx.ft.fons.text_bounds(0, 0, s, &buf[0])
-	if s.ends_with(' ') {
-		return int((buf[2] - buf[0]) / ctx.scale) +
-			ctx.text_width('i') // TODO: fix this in fontstash?
-	}
-	res := int((buf[2] - buf[0]) / ctx.scale)
-	// println('TW "$s" = $res')
-	$if macos {
-		if ctx.native_rendering {
-			return res * 2
-		}
-	}
-	return int((buf[2] - buf[0]) / ctx.scale)
+	advance, _ := ctx.text_metrics(s)
+	return int(advance / ctx.scale)
 }
 
 // text_height returns the height of the `string` `s` in pixels.
@@ -291,9 +308,8 @@ pub fn (ctx &Context) text_height(s string) int {
 	if !ctx.font_inited {
 		return 0
 	}
-	mut buf := [4]f32{}
-	ctx.ft.fons.text_bounds(0, 0, s, &buf[0])
-	return int((buf[3] - buf[1]) / ctx.scale)
+	_, bounds := ctx.text_metrics(s)
+	return int((bounds[3] - bounds[1]) / ctx.scale)
 }
 
 // text_size returns the width and height of the `string` `s` in pixels.
@@ -302,9 +318,8 @@ pub fn (ctx &Context) text_size(s string) (int, int) {
 	if !ctx.font_inited {
 		return 0, 0
 	}
-	mut buf := [4]f32{}
-	ctx.ft.fons.text_bounds(0, 0, s, &buf[0])
-	return int((buf[2] - buf[0]) / ctx.scale), int((buf[3] - buf[1]) / ctx.scale)
+	advance, bounds := ctx.text_metrics(s)
+	return int(advance / ctx.scale), int((bounds[3] - bounds[1]) / ctx.scale)
 }
 
 // text_width returns the width of the `string` `s` in pixels.
@@ -318,18 +333,6 @@ pub fn (ctx &Context) text_width_f(s string) f32 {
 	if !ctx.font_inited {
 		return 0
 	}
-	mut buf := [4]f32{}
-	ctx.ft.fons.text_bounds(0, 0, s, &buf[0])
-	if s.ends_with(' ') {
-		return int((buf[2] - buf[0]) / ctx.scale) +
-			ctx.text_width('i') // TODO: fix this in fontstash?
-	}
-	res := int((buf[2] - buf[0]) / ctx.scale)
-	// println('TW "$s" = $res')
-	$if macos {
-		if ctx.native_rendering {
-			return res * 2
-		}
-	}
-	return (buf[2] - buf[0]) / ctx.scale
+	advance, _ := ctx.text_metrics(s)
+	return advance / ctx.scale
 }

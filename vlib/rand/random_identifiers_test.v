@@ -124,9 +124,9 @@ fn test_ulids_should_be_lexicographically_ordered_when_not_in_same_millisecond()
 	time.sleep(1 * time.millisecond)
 	ulid3 := rand.ulid()
 	mut all := [ulid3, ulid2, ulid1]
-	// eprintln('all before: $all')
+	// eprintln('all before: ${all}')
 	all.sort()
-	// eprintln('all  after: $all')
+	// eprintln('all  after: ${all}')
 	s1 := all[0]
 	s2 := all[1]
 	s3 := all[2]

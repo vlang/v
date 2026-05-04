@@ -58,8 +58,21 @@ see also `v help build`.
       When set to `windows` V will generate a `wWinMain` main function,
       even when you are not compiling `gg` apps.
 
+   -icon <path>
+   --icon=<path>
+   -seticon <path>
+      Embed the provided `.ico` or `.png` file as the icon of the generated
+      Windows executable. Use it only when V is producing a Windows `.exe`.
+
    -showcc
       Prints the C command that is used to build the program.
+
+   -generate-c-project <directory>
+      Generate a C project folder with:
+      * the generated `<target>.c` source file;
+      * `build.sh`, `build.bat`, `Makefile` and `build_command.txt`.
+      The generated build command prefers source files (`.c`, `.cpp`, `.S`) over
+      cached `.o` files when V can find the corresponding source on disk.
 
    -freestanding
       Build the executable without dependency on libc.
@@ -88,14 +101,14 @@ see also `v help build`.
          @[export: 'calloc']
          __calloc(nmemb usize, size usize) &C.void
             Like malloc, but sets all the bytes to `0` first.
-         memcpy(dest &C.void, src &C.void, n usize) &C.void
+         memcpy(dest &C.void, const_src &C.void, n usize) &C.void
             Moves n bytes from dest to src, and returns dest
-         memmove(dest &C.void, src &C.void, n usize) &C.void
+         memmove(dest &C.void, const_src &C.void, n usize) &C.void
             Like memcpy, but guaranteed to work if dest and src overlap.
-         memcmp(a &C.void, b &C.void, n usize) int
+         memcmp(const_a &C.void, const_b &C.void, n usize) int
             Compare two buffers of length n. If a and b are equal, return 0.
             Otherwise, return the difference between the first different letter.
-         strlen(s &C.void) usize
+         strlen(const_s &char) usize
             Returns the amount of bytes until the first `0`, starting at s
          memset(s &C.void, c int, n usize) &C.void
             Sets n bytes starting at s to c (c is casted to a char)
@@ -158,16 +171,23 @@ see also `v help build`.
 
    -m32, -m64
       Whether 32-bit or 64-bit machine code will be generated.
+      On x86 C backend builds, `-m32` also selects the i386 target unless you
+      already passed an explicit `-arch`, so `$if i386 {}` and `*.i386.v`
+      files follow the same target width.
       NB: if you need to produce 32-bit code, *and* you are cross compiling
       to another OS, you may need to also set the environment variable
-      VCROSS_COMPILER_NAME, in order to override the default cross compiler,
+      VCROSS_COMPILER_NAME or pass `-cc your-compiler` for a one-off override,
+      in order to override the default cross compiler,
       that V will use (`x86_64-w64-mingw32-gcc` for targeting Windows, and
       `clang` for targeting Linux from other operating systems).
+      Note: the bundled Linux cross-compilation sysroot currently contains
+      x86_64 runtime files only, so `-os linux -arch arm64` is not supported yet.
 
-   -macosx-version-min 10.7
-      Only relevant on macos. It will be passed as -mmacosx-version-min=10.7 to
-      the C backend compiler clang . It is 10.7 on macos by default. If you
-      pass `-macosx-version-min 0`, then that flag will not be passed at all.
+   -macosx-version-min 11.0
+      Only relevant on macos. It will be passed as -mmacosx-version-min=11.0 to
+      the C backend compiler clang . By default V does not pass any
+      -mmacosx-version-min flag, so you can also control it directly with
+      -cflags. Pass `-macosx-version-min 0` to keep that default.
 
    -sanitize
       Pass flags related to sanitization to the C compiler.
@@ -180,6 +200,8 @@ see also `v help build`.
       Tell V to compile an .o object file instead of an executable.
       This is useful if you plan to create a module, that will be later linked to a
       larger program, potentially written in another language.
+      The flag can also be combined with `-o file.c`, to generate C source that can be
+      compiled and linked together with other `-is_o` generated V units.
       Note: this option currently works with gcc/clang/tcc, but not msvc.
       Note: use either -no-skip-unused or tag the functions you expect to be publicly
       usable in the .o file with `@[markused]` . Adding `-gc none` may be also needed,
@@ -196,10 +218,11 @@ see also `v help build`.
       more performant without autofree.
 
    -gc <mode>
-      V uses a garbage collector by default. Only the Boehm–Demers–Weiser garbage collector
-      is supported currently with the following sub-options:
+      On most supported C targets, V uses a garbage collector by default. Musl keeps the
+      historical default of `-gc none`. Only the Boehm–Demers–Weiser garbage collector is
+      supported currently with the following sub-options:
 
-      `-gc boehm` ........... use default garbage collector (same as not specifying option)
+      `-gc boehm` ........... use the default Boehm garbage collector mode
       `-gc boehm_full` ...... full garbage collection mode
       `-gc boehm_incr` ...... incremental/generational garbage collection mode
       `-gc boehm_full_opt` .. optimized full garbage collection mode
@@ -364,8 +387,10 @@ see also `v help build`.
 
    -thread-stack-size 4194304
       Set the thread stack size to 4MB. Use multiples of 4096.
-      The default is 8MB, which is enough for compiling V programs, with deeply
-      nested expressions (~40 levels).
+      The default is 8MB on 64-bit targets and 2MB on 32-bit targets.
+      8MB is enough for compiling V programs, with deeply nested
+      expressions (~40 levels), while 32-bit targets use a smaller default
+      to reduce per-thread memory usage.
       It may need to be increased, if you are getting stack overflow errors for
       deeply recursive programs like some of the stages of the V compiler itself,
       that use relatively few threads.

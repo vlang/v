@@ -42,15 +42,24 @@ pub fn get_timers() &Timers {
 }
 
 pub fn timing_start(label string) {
+	if !g_timers.should_print {
+		return
+	}
 	mut t := get_timers()
 	t.start(label)
 }
 
 pub fn timing_measure(label string) {
+	if !g_timers.should_print {
+		return
+	}
 	g_timers.show(label)
 }
 
 pub fn timing_measure_cumulative(label string) {
+	if !g_timers.should_print {
+		return
+	}
 	g_timers.measure_cumulative(label)
 }
 
@@ -59,12 +68,18 @@ pub fn timing_set_should_print(should_print bool) {
 }
 
 pub fn (mut t Timers) start(name string) {
+	if !t.should_print {
+		return
+	}
 	mut sw := t.tsafe_get_sw(name) or { time.new_stopwatch() }
 	sw.start()
 	t.tsafe_set_sw(name, sw)
 }
 
 pub fn (mut t Timers) measure(name string) i64 {
+	if !t.should_print {
+		return 0
+	}
 	mut sw := t.tsafe_get_sw(name) or {
 		timer_keys := t.tsafe_get_keys()
 		eprintln('> Timer `${name}` was NOT started.')
@@ -79,6 +94,9 @@ pub fn (mut t Timers) measure(name string) i64 {
 }
 
 pub fn (mut t Timers) measure_cumulative(name string) i64 {
+	if !t.should_print {
+		return 0
+	}
 	ms := t.measure(name)
 	mut sw := t.tsafe_get_sw(name) or { return ms }
 	sw.pause()
@@ -87,12 +105,18 @@ pub fn (mut t Timers) measure_cumulative(name string) i64 {
 }
 
 pub fn (mut t Timers) measure_pause(name string) {
+	if !t.should_print {
+		return
+	}
 	mut sw := t.tsafe_get_sw(name) or { return }
 	sw.pause()
 	t.tsafe_set_sw(name, sw)
 }
 
 pub fn (mut t Timers) measure_resume(name string) {
+	if !t.should_print {
+		return
+	}
 	mut sw := t.tsafe_get_sw(name) or { return }
 	sw.start()
 	t.tsafe_set_sw(name, sw)
@@ -119,12 +143,18 @@ pub fn (mut t Timers) show(label string) {
 }
 
 pub fn (mut t Timers) show_if_exists(label string) {
+	if !t.should_print {
+		return
+	}
 	t.tsafe_get_sw(label) or { return }
 	t.show(label)
 	t.already_shown << label
 }
 
 pub fn (mut t Timers) show_remaining() {
+	if !t.should_print {
+		return
+	}
 	keys := t.tsafe_get_keys()
 	for k in keys {
 		if k in t.already_shown {
@@ -135,6 +165,9 @@ pub fn (mut t Timers) show_remaining() {
 }
 
 pub fn (mut t Timers) dump_all() {
+	if !t.should_print {
+		return
+	}
 	keys := t.tsafe_get_keys()
 	for k in keys {
 		elapsed := t.message(k)

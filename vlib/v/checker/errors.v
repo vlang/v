@@ -55,7 +55,7 @@ fn (mut c Checker) error(message string, pos token.Pos, options MessageOptions) 
 		return
 	}
 	mut msg := message.replace('`Array_', '`[]')
-	if c.pref.is_vweb {
+	if c.pref.is_template { // set during veb template checking
 		// Show in which veb action the error occurred (for easier debugging)
 		veb_action := c.table.cur_fn.name.replace('veb_tmpl_', '')
 		mut j := 0
@@ -81,10 +81,6 @@ fn (mut c Checker) fatal(message string, pos token.Pos, options MessageOptions) 
 }
 
 fn (mut c Checker) note(message string, pos token.Pos) {
-	if c.pref.message_limit >= 0 && c.nr_notices >= c.pref.message_limit {
-		c.should_abort = true
-		return
-	}
 	if c.is_generated {
 		return
 	}
@@ -101,6 +97,10 @@ fn (mut c Checker) note(message string, pos token.Pos) {
 	kpos := '${file_path}:${pos.line_nr}:${message}'
 	if kpos !in c.notice_lines {
 		c.notice_lines[kpos] = true
+		c.nr_notices++
+		if c.pref.message_limit >= 0 && c.notices.len >= c.pref.message_limit {
+			return
+		}
 		note := errors.Notice{
 			reporter:  errors.Reporter.checker
 			pos:       pos
@@ -110,7 +110,6 @@ fn (mut c Checker) note(message string, pos token.Pos) {
 		}
 		c.file.notices << note
 		c.notices << note
-		c.nr_notices++
 	}
 }
 
@@ -133,8 +132,7 @@ fn (mut c Checker) warn_or_error(message string, pos token.Pos, warn bool, optio
 	file_path := if pos.file_idx < 0 { c.file.path } else { c.table.filelist[pos.file_idx] }
 	if warn && !c.pref.skip_warnings {
 		c.nr_warnings++
-		if c.pref.message_limit >= 0 && c.nr_warnings >= c.pref.message_limit {
-			c.should_abort = true
+		if c.pref.message_limit >= 0 && c.warnings.len >= c.pref.message_limit {
 			return
 		}
 		// deduplicate warnings for the same line
@@ -205,7 +203,7 @@ fn (mut c Checker) trace[T](fbase string, x &T) {
 }
 
 fn (mut c Checker) deprecate(kind string, name string, attrs []ast.Attr, pos token.Pos) {
-	// println('deprecate kind=${kind} name=${name} attrs=$attrs')
+	// println('deprecate kind=${kind} name=${name} attrs=${attrs}')
 	// print_backtrace()
 	mut deprecation_message := ''
 	now := time.now()
@@ -233,8 +231,7 @@ fn (mut c Checker) deprecate(kind string, name string, attrs []ast.Attr, pos tok
 			deprecation_message), pos)
 	} else if after_time == now {
 		// print_backtrace()
-		c.warn(semicolonize('${start_message} has been deprecated', deprecation_message),
-			pos)
+		c.warn(semicolonize('${start_message} has been deprecated', deprecation_message), pos)
 		// c.warn(semicolonize('${start_message} has been deprecated!11 m=${deprecation_message}',
 		// deprecation_message), pos)
 	} else {

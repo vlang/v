@@ -75,6 +75,34 @@ fn test_array_get_empty() {
 	}
 }
 
+fn maybe_text(ok bool) ?string {
+	if ok {
+		return 'hello'
+	}
+	return none
+}
+
+fn test_array_get_method() {
+	mut a := [12.5, 6.5, -17.25]
+	mut res := []f64{cap: 2}
+	for i in [1, 4] {
+		if x := a.get(i) {
+			res << x
+		} else {
+			res << -23.0
+		}
+	}
+	assert res == [6.5, -23.0]
+}
+
+fn test_array_get_method_with_option_elements() {
+	arr := [maybe_text(true)]
+	x := arr.get(0) or { 'fallback' }
+	y := arr.get(99) or { 'fallback' }
+	assert x == 'hello'
+	assert y == 'fallback'
+}
+
 fn test_chan_pop() {
 	mut res := []f64{cap: 3}
 	ch := chan f64{cap: 10}

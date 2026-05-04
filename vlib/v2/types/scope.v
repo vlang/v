@@ -3,8 +3,6 @@
 // that can be found in the LICENSE file.
 module types
 
-import v2.token
-
 pub type Object = Const | Fn | Global | Module | SmartCastSelector | Type
 
 // pub type Object = Const | Fn | Global | Module |
@@ -16,9 +14,11 @@ struct SmartCastSelector {
 	cast_type Type
 }
 
+@[heap]
 pub struct Scope {
+pub:
 	parent &Scope = unsafe { nil }
-mut:
+pub mut:
 	objects map[string]Object
 	// TODO: try implement using original concept
 	field_smartcasts map[string]Type
@@ -38,80 +38,89 @@ pub fn new_scope(parent &Scope) &Scope {
 	}
 }
 
+// same_scope_ptr compares scope identity by address instead of structural equality.
+pub fn same_scope_ptr(a &Scope, b &Scope) bool {
+	return voidptr(a) == voidptr(b)
+}
+
 // TODO: try implement the alternate method I was experimenting with (SmartCastSelector)
 // i'm not sure if it is actually possible though. need to explore it.
-pub fn (mut s Scope) lookup_field_smartcast(name string) ?Type {
-	mut scope := unsafe { s }
-	for ; scope != unsafe { nil }; scope = scope.parent {
-		if field_smartcast := scope.field_smartcasts[name] {
-			return field_smartcast
-		}
+pub fn (s &Scope) lookup_field_smartcast(name string) ?Type {
+	if name in s.field_smartcasts {
+		return s.field_smartcasts[name] or { return none }
+	}
+	if s.parent != unsafe { nil } {
+		return s.parent.lookup_field_smartcast(name)
 	}
 	return none
 }
 
-pub fn (mut s Scope) lookup(name string) ?Object {
-	if obj := s.objects[name] {
+pub fn (s &Scope) lookup(name string) ?Object {
+	if name in s.objects {
+		return s.objects[name] or { return none }
+	}
+	return none
+}
+
+pub fn (s &Scope) lookup_parent(name string, pos int) ?Object {
+	if obj := s.lookup(name) {
 		return obj
+		// if !pos.is_valid() || cmpPos(obj.scopePos(), pos) <= 0 {
+		// 	return s, obj
+		// }
+	}
+	if s.parent != unsafe { nil } {
+		if parent_obj := s.parent.lookup_parent(name, pos) {
+			return parent_obj
+		}
+	}
+	// println('lookup_parent: NOT FOUND: ${name}')
+	return none
+}
+
+// lookup_var_type looks up a variable by name and returns its type.
+// Walks up the scope chain to find the variable.
+pub fn (s &Scope) lookup_var_type(name string) ?Type {
+	if obj := s.lookup_parent(name, 0) {
+		return obj.typ()
 	}
 	return none
 }
 
-pub fn (mut s Scope) lookup_parent(name string, pos token.Pos) ?Object {
-	mut scope := unsafe { s }
-	for ; scope != unsafe { nil }; scope = scope.parent {
-		if obj := scope.lookup(name) {
-			return obj
-			// if !pos.is_valid() || cmpPos(obj.scopePos(), pos) <= 0 {
-			// 	return s, obj
-			// }
+pub fn (s &Scope) lookup_parent_with_scope(name string, pos int) ?(&Scope, Object) {
+	if obj := s.lookup(name) {
+		return s, obj
+		// if !pos.is_valid() || cmpPos(obj.scopePos(), pos) <= 0 {
+		// 	return s, obj
+		// }
+	}
+	if s.parent != unsafe { nil } {
+		if parent_scope, parent_obj := s.parent.lookup_parent_with_scope(name, pos) {
+			return parent_scope, parent_obj
 		}
 	}
-	// println('lookup_parent: NOT FOUND: $name')
-	return none
-}
-
-pub fn (mut s Scope) lookup_parent_with_scope(name string, pos token.Pos) ?(&Scope, Object) {
-	mut scope := unsafe { s }
-	for ; scope != unsafe { nil }; scope = scope.parent {
-		if obj := scope.lookup(name) {
-			return scope, obj
-			// if !pos.is_valid() || cmpPos(obj.scopePos(), pos) <= 0 {
-			// 	return s, obj
-			// }
-		}
-	}
-	// println('lookup_parent: NOT FOUND: $name')
+	// println('lookup_parent: NOT FOUND: ${name}')
 	return none
 }
 
 pub fn (mut s Scope) insert(name string, obj Object) {
-	// println(' - register: $name: ${obj.type_name()}')
-	// TODO/FIXME:
-	// if name in s.objects {
-	// 	println(' #### EXISTS: $name')
-	// 	mut existing := s.objects[name] or { panic('should exist') }
-	// 	if mut existing is Type {
-	// 		if mut existing is Struct {
-	// 			// if existing.name == 'mapnode' {
-	// 				if obj is Type {
-	// 					if obj is Struct {
-	// 						existing.fields = obj.fields
-	// 						// existing.fields << obj.fields
-	// 					}
-	// 				}
-	// 			// }
-	// 		}
-	// 	}
-	// 	// if name == 'mapnode' {
-	// 	// 	println(obj)
-	// 	// 	println(s.objects[name])
-	// 	// 	panic('...')
-	// 	// }
-	// }
-	if name !in s.objects {
-		s.objects[name] = obj
+	if name in s.objects {
+		existing := s.objects[name] or { return }
+		// Module scopes pre-register a self-module placeholder so code can
+		// reference `mod_name.CONST` from inside the same module. A real symbol
+		// with the same name should override that placeholder.
+		if existing is Module && obj !is Module {
+			s.objects[name] = obj
+		}
+		return
 	}
+	s.objects[name] = obj
+}
+
+// insert_or_update always overwrites an existing entry. Used for fn_root_scope
+// where variables from nested scopes must be updated when re-declared.
+pub fn (mut s Scope) insert_or_update(name string, obj Object) {
+	s.objects[name] = obj
 }
 
 pub fn (s &Scope) print(recurse_parents bool) {
@@ -139,8 +148,7 @@ pub fn (obj &Object) typ() Type {
 			return obj.typ
 		}
 		Module {
-			// TODO:
-			println('#### got Module')
+			// TODO: modules don't have a type, return a placeholder
 			return Type(u16_)
 		}
 		SmartCastSelector {
@@ -149,8 +157,5 @@ pub fn (obj &Object) typ() Type {
 		Type {
 			return obj
 		}
-		// else {
-		// 	panic('missing obj.typ() for ${obj.type_name()}')
-		// }
 	}
 }

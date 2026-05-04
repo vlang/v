@@ -20,12 +20,12 @@ struct WndClassEx {
 	h_icon_sm       &u16 = unsafe { nil }
 }
 
-fn C.RegisterClassEx(class &WndClassEx) int
+fn C.RegisterClassEx(class &WndClassEx) i32
 
 fn C.GetClipboardOwner() C.HWND
 
-fn C.CreateWindowEx(dwExStyle i64, lpClassName &u16, lpWindowName &u16, dwStyle i64, x int, y int, nWidth int,
-	nHeight int, hWndParent i64, hMenu voidptr, h_instance voidptr, lpParam voidptr) C.HWND
+fn C.CreateWindowEx(dwExStyle i64, lpClassName &u16, lpWindowName &u16, dwStyle i64, x i32, y i32, nWidth i32,
+	nHeight i32, hWndParent i64, hMenu voidptr, h_instance voidptr, lpParam voidptr) C.HWND
 
 // fn C.MultiByteToWideChar(CodePage u32, dw_flags u16, lpMultiByteStr byteptr, cbMultiByte int, lpWideCharStr u16, cchWideChar int) int
 fn C.EmptyClipboard()
@@ -48,7 +48,7 @@ fn C.DefWindowProc(hwnd C.HWND, msg u32, wParam C.WPARAM, lParam C.LPARAM) C.LRE
 
 fn C.SetLastError(error i64)
 
-fn C.OpenClipboard(hwnd C.HWND) int
+fn C.OpenClipboard(hwnd C.HWND) i32
 
 fn C.DestroyWindow(hwnd C.HWND)
 
@@ -72,10 +72,11 @@ fn (cb &Clipboard) get_clipboard_lock() bool {
 		if retries < 0 {
 			break
 		}
-		last_error = C.GetLastError()
 		if C.OpenClipboard(cb.hwnd) > 0 {
 			return true
-		} else if last_error != u32(C.ERROR_ACCESS_DENIED) {
+		}
+		last_error = C.GetLastError()
+		if last_error != u32(C.ERROR_ACCESS_DENIED) {
 			return false
 		}
 		time.sleep(cb.retry_delay * time.second)
@@ -101,8 +102,8 @@ fn new_clipboard() &Clipboard {
 		&& C.GetLastError() != u32(C.ERROR_CLASS_ALREADY_EXISTS) {
 		println('Failed registering class.')
 	}
-	hwnd := C.CreateWindowEx(0, wndclass.lpsz_class_name, wndclass.lpsz_class_name, 0,
-		0, 0, 0, 0, C.HWND_MESSAGE, C.NULL, C.NULL, C.NULL)
+	hwnd := C.CreateWindowEx(0, wndclass.lpsz_class_name, wndclass.lpsz_class_name, 0, 0, 0, 0, 0,
+		C.HWND_MESSAGE, C.NULL, C.NULL, C.NULL)
 	if hwnd == unsafe { nil } {
 		println('Error creating window!')
 	}
@@ -141,6 +142,7 @@ const cp_utf8 = 65001
 // the string.to_wide doesn't work with SetClipboardData, don't know why
 fn to_wide(text string) C.HGLOBAL {
 	len_required := C.MultiByteToWideChar(cp_utf8, C.MB_ERR_INVALID_CHARS, voidptr(text.str),
+
 		text.len + 1, C.NULL, 0)
 	buf := C.GlobalAlloc(C.GMEM_MOVEABLE, i64(sizeof(u16)) * len_required)
 	if buf != unsafe { nil } {
@@ -185,9 +187,11 @@ pub fn (mut cb Clipboard) get_text() string {
 	if !cb.get_clipboard_lock() {
 		return ''
 	}
+	defer {
+		C.CloseClipboard()
+	}
 	h_data := C.GetClipboardData(C.CF_UNICODETEXT)
 	if h_data == unsafe { nil } {
-		C.CloseClipboard()
 		return ''
 	}
 	str := unsafe { string_from_wide(&u16(C.GlobalLock(C.HGLOBAL(h_data)))) }

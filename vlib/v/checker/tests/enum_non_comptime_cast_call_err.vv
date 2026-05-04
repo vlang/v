@@ -1,0 +1,9 @@
+fn get_value(a u8, b u8, c u8, d u8) u32 {
+	return (u32(a) << 24) | (u32(b) << 16) | (u32(c) << 8) | u32(d)
+}
+
+enum Color {
+	red = int(get_value(1, 2, 3, 4))
+}
+
+fn main() {}

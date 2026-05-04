@@ -128,6 +128,7 @@ pub fn (mut d Digest) reset() {
 			d.h[7] = init7
 		}
 	}
+
 	d.nx = 0
 	d.len = 0
 }
@@ -232,6 +233,7 @@ pub fn (d &Digest) sum(b_in []u8) []u8 {
 			}
 		}
 	}
+
 	return b_out
 }
 

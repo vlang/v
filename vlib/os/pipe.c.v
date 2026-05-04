@@ -1,9 +1,9 @@
 module os
 
-fn C._dup(fd int) int
-fn C._dup2(fd1 int, fd2 int) int
-fn C._pipe(fds &int, size u32, mode int) int
-fn C.dup(fd int) int
+fn C._dup(fd i32) i32
+fn C._dup2(fd1 i32, fd2 i32) i32
+fn C._pipe(fds &int, size u32, mode i32) i32
+fn C.dup(fd i32) i32
 
 const fd_stdout = $if windows { 1 } $else { C.STDOUT_FILENO }
 const fd_stderr = $if windows { 2 } $else { C.STDERR_FILENO }
@@ -65,7 +65,7 @@ pub fn (p &Pipe) read(mut buffer []u8) !int {
 	if result == -1 {
 		return error('Read failed')
 	}
-	return result
+	return int(result)
 }
 
 // write writes data from the buffer to the pipe
@@ -74,7 +74,7 @@ pub fn (p &Pipe) write(buffer []u8) !int {
 	if result == -1 {
 		return error('Write failed')
 	}
-	return result
+	return int(result)
 }
 
 // write_string writes data from the string to the pipe
@@ -83,7 +83,7 @@ pub fn (p &Pipe) write_string(s string) !int {
 	if result == -1 {
 		return error('Write failed')
 	}
-	return result
+	return int(result)
 }
 
 // slurp reads all data from the pipe until EOF
@@ -141,6 +141,9 @@ pub fn stdio_capture() !IOCapture {
 	mut pipe_stdout := pipe()!
 	mut pipe_stderr := pipe()!
 
+	flush_stdout()
+	flush_stderr()
+
 	// Save original file descriptors
 	c.original_stdout_fd = fd_dup(fd_stdout)
 	c.original_stderr_fd = fd_dup(fd_stderr)
@@ -176,6 +179,9 @@ pub fn stdio_capture() !IOCapture {
 // stop restores the original stdout and stderr streams
 // This should be called to resume normal console output
 pub fn (mut c IOCapture) stop() {
+	flush_stdout()
+	flush_stderr()
+
 	// Restore original stdout
 	if c.original_stdout_fd != -1 {
 		fd_dup2(c.original_stdout_fd, fd_stdout)

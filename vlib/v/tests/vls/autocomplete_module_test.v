@@ -8,33 +8,36 @@ const tmp_dir = os.real_path(os.temp_dir())
 const text_file = os.join_path(vroot, 'vlib', 'v', 'tests', 'vls', 'sample_text.vv')
 // note: windows path separator will cause json decode fail
 const json_errors_text_file = os.to_slash(text_file)
-const mod1_text_file = os.join_path(vroot, 'vlib', 'v', 'tests', 'vls', 'sample_mod1',
-	'sample.v')
+const mod1_text_file = os.join_path(vroot, 'vlib', 'v', 'tests', 'vls', 'sample_mod1', 'sample.v')
 
 const autocomplete_info_for_mod_sample_mod1 = '{"details": [
-{"kind":3,"label":"public_fn1","detail":"string","documentation":""},
-{"kind":22,"label":"PublicStruct1","detail":"","documentation":""},
-{"kind":7,"label":"PublicAlias1_1","detail":"","documentation":""},
-{"kind":7,"label":"PublicAlias1_2","detail":"","documentation":""},
-{"kind":13,"label":"PublicEnum1","detail":"","documentation":""},
-{"kind":8,"label":"PublicInterface1","detail":"","documentation":""},
-{"kind":21,"label":"public_const1","detail":"","documentation":""}
+{"kind":3,"label":"public_fn1","detail":"string","declaration":"fn public_fn1(val int) string","documentation":""},
+{"kind":22,"label":"PublicStruct1","detail":"","declaration":"","documentation":""},
+{"kind":7,"label":"PublicAlias1_1","detail":"","declaration":"","documentation":""},
+{"kind":7,"label":"PublicAlias1_2","detail":"","declaration":"","documentation":""},
+{"kind":13,"label":"PublicEnum1","detail":"","declaration":"","documentation":""},
+{"kind":8,"label":"PublicInterface1","detail":"","declaration":"","documentation":""},
+{"kind":21,"label":"public_const1","detail":"","declaration":"","documentation":""}
 ]}'
 
 const autocomplete_info_for_mod_sample_mod2 = '{"details": [
-{"kind":3,"label":"public_fn2","detail":"string","documentation":""},
-{"kind":22,"label":"PublicStruct2","detail":"","documentation":""},
-{"kind":13,"label":"PublicEnum2","detail":"","documentation":""},
-{"kind":8,"label":"PublicInterface2","detail":"","documentation":""},
-{"kind":7,"label":"PublicAlias2","detail":"","documentation":""},
-{"kind":21,"label":"public_const2","detail":"","documentation":""}
+{"kind":3,"label":"public_fn2","detail":"string","declaration":"fn public_fn2(val int) string","documentation":""},
+{"kind":22,"label":"PublicStruct2","detail":"","declaration":"","documentation":""},
+{"kind":13,"label":"PublicEnum2","detail":"","declaration":"","documentation":""},
+{"kind":8,"label":"PublicInterface2","detail":"","declaration":"","documentation":""},
+{"kind":7,"label":"PublicAlias2","detail":"","declaration":"","documentation":""},
+{"kind":21,"label":"public_const2","detail":"","declaration":"","documentation":""}
 ]}'
 
 const autocomplete_info_for_mod_struct = '{"details": [
-{"kind":5,"label":"a","detail":"int","documentation":""},
-{"kind":5,"label":"b","detail":"string","documentation":""},
-{"kind":2,"label":"add","detail":"void","documentation":""}
+{"kind":5,"label":"a","detail":"int","declaration":"","documentation":""},
+{"kind":5,"label":"b","detail":"string","declaration":"","documentation":""},
+{"kind":2,"label":"add","detail":"void","declaration":"","documentation":""}
 ]}'
+
+const hover_info_for_public_fn1 = '{"contents":{"kind":"markdown","value":"```v\\nfn public_fn1(val int) string\\n```"}}'
+
+const hover_info_for_public_struct1 = '{"contents":{"kind":"markdown","value":"```v\\nstruct PublicStruct1\\n```"}}'
 
 const fn_signature_info_for_all_before_last = '{
 "signatures":[{
@@ -57,6 +60,7 @@ enum Method {
 	definition      @['textDocument/definition']
 	completion      @['textDocument/completion']
 	signature_help  @['textDocument/signatureHelp']
+	hover           @['textDocument/hover']
 	set_trace       @['$/setTrace']
 	cancel_request  @['$/cancelRequest']
 	shutdown        @['shutdown']
@@ -88,7 +92,7 @@ const test_data = [
 	TestData{
 		method: .completion
 		cmd:    'v -w -check -json-errors -nocolor -vls-mode -line-info "${text_file}:23:3" ${os.quoted_path(text_file)}'
-		output: autocomplete_info_for_mod_sample_mod1
+		output: ''
 	},
 	TestData{
 		method: .completion
@@ -108,7 +112,17 @@ const test_data = [
 	TestData{
 		method: .completion
 		cmd:    'v -w -check -json-errors -nocolor -vls-mode -line-info "${text_file}:28:9" ${os.quoted_path(text_file)}'
-		output: 'unresolved type, maybe "builtin" was not defined. otherwise this is a bug, should never happen; please report'
+		output: ''
+	},
+	TestData{
+		method: .hover
+		cmd:    'v -w -check -json-errors -nocolor -vls-mode -line-info "${text_file}:30:hv^10" ${os.quoted_path(text_file)}'
+		output: hover_info_for_public_fn1
+	},
+	TestData{
+		method: .hover
+		cmd:    'v -w -check -json-errors -nocolor -vls-mode -line-info "${text_file}:31:hv^12" ${os.quoted_path(text_file)}'
+		output: hover_info_for_public_struct1
 	},
 	TestData{
 		method: .definition
@@ -154,9 +168,9 @@ const test_data = [
 ,
 {
 "path":"${json_errors_text_file}",
-"message":"unexpected name `strings`, expecting `)`",
-"line_nr":27,
-"col":2,
+"message":"unexpected token `:=`, expecting `)`",
+"line_nr":29,
+"col":4,
 "len":0
 }
 ,
@@ -178,9 +192,9 @@ const test_data = [
 ,
 {
 "path":"${json_errors_text_file}",
-"message":"undefined ident: ``",
+"message":"type `main.MyS` has no field named `s`.\\n2 possibilities: `a`, `b`.",
 "line_nr":23,
-"col":3,
+"col":2,
 "len":0
 }
 ,
@@ -210,23 +224,15 @@ const test_data = [
 ,
 {
 "path":"${json_errors_text_file}",
-"message":"`` (no value) used as value in argument 1 to `string.all_before_last`",
-"line_nr":26,
-"col":27,
+"message":"undefined ident: `strings`",
+"line_nr":27,
+"col":2,
 "len":0
 }
 ,
 {
 "path":"${json_errors_text_file}",
-"message":"`string` has no property ``",
-"line_nr":26,
-"col":11,
-"len":0
-}
-,
-{
-"path":"${json_errors_text_file}",
-"message":"undefined ident: `builtin`",
+"message":"`strings` does not return a value",
 "line_nr":28,
 "col":2,
 "len":0
@@ -234,8 +240,16 @@ const test_data = [
 ,
 {
 "path":"${json_errors_text_file}",
-"message":"`builtin` does not return a value",
-"line_nr":28,
+"message":"`strings.builtin` does not return a value",
+"line_nr":29,
+"col":2,
+"len":0
+}
+,
+{
+"path":"${json_errors_text_file}",
+"message":"expected 1 argument, but got 2",
+"line_nr":27,
 "col":2,
 "len":0
 }
@@ -321,8 +335,7 @@ fn test_main() {
 		}
 
 		// Try to decode the response message and verify
-		// TODO: remove `unresolved type, maybe`
-		if t.output.trim_space().len > 0 && !t.output.starts_with('unresolved type, maybe') {
+		if t.output.trim_space().len > 0 {
 			dump(t.output)
 			match t.method {
 				.definition {
@@ -336,6 +349,9 @@ fn test_main() {
 				}
 				.signature_help {
 					check_valid_fn_signature(t.output)!
+				}
+				.hover {
+					check_valid_hover(t.output)!
 				}
 				else {}
 			}
@@ -392,6 +408,27 @@ fn check_valid_json_errors(message string) ! {
 		if result.col <= 0 {
 			return error('json_errors: col should > 0')
 		}
+	}
+}
+
+struct HoverContents {
+	kind  string
+	value string
+}
+
+struct HoverResult {
+	contents HoverContents
+}
+
+fn check_valid_hover(message string) ! {
+	result := json.decode(HoverResult, message) or {
+		return error('hover: fail to json decode: ${err}')
+	}
+	if result.contents.kind != 'markdown' {
+		return error('hover: contents.kind should be "markdown": ${result.contents.kind}')
+	}
+	if result.contents.value.len == 0 {
+		return error('hover: contents.value should not be empty')
 	}
 }
 

@@ -9,6 +9,11 @@ mut:
 	mymap map[string]MyObject
 }
 
+struct ArrayDefaultObject {
+mut:
+	xs []u8 = []u8{len: 12, init: 0}
+}
+
 fn test_codegen_for_unsafe_pointers_to_map_values() {
 	mut inst := Abc{}
 	inst.mymap['abc'] = MyObject{123, 'abc'}
@@ -38,4 +43,16 @@ fn test_codegen_for_unsafe_pointers_to_map_values() {
 	p1.s = 'xyz'
 	assert inst.mymap['abc'].x == 999
 	assert inst.mymap['abc'].s == 'xyz'
+}
+
+fn test_codegen_for_unsafe_pointers_to_map_values_with_array_defaults() {
+	mut values := map[string]ArrayDefaultObject{}
+	mut missing := unsafe { &values['missing'] or { nil } }
+	assert missing == unsafe { nil }
+	values['abc'] = ArrayDefaultObject{}
+	mut value := unsafe { &values['abc'] or { nil } }
+	assert value != unsafe { nil }
+	assert value.xs.len == 12
+	value.xs[0] = 7
+	assert values['abc'].xs[0] == 7
 }

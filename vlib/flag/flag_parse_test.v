@@ -25,7 +25,8 @@ fn test_flag_parse() {
 
 	mut opt := Options{
 		v_flags:    fp.string_multi('flag', `f`, 'Additional flags for the V compiler')
-		archs:      fp.string('archs', 0, 'arm64-v8a,armeabi-v7a,x86,x86_64', 'Comma separated string with any of archs').split(',')
+		archs:      fp.string('archs', 0, 'arm64-v8a,armeabi-v7a,x86,x86_64',
+			'Comma separated string with any of archs').split(',')
 		dump_usage: fp.bool('help', `h`, false, 'Show this help message and exit')
 		verbosity:  fp.int_opt('verbosity', `v`, 'Verbosity level 1-3') or { 0 }
 		api_level:  fp.string('api', 0, '21', 'Android API level to use (--list-apis)')

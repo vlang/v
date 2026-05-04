@@ -602,8 +602,8 @@ pub fn (mut dl Dlmalloc) free_(mem voidptr) {
 
 			if p.mmapped() {
 				psize += prevsize + mmap_foot_pad()
-				if dl.system_allocator.free_(dl.system_allocator.data, voidptr(usize(p) - prevsize),
-					psize)
+				if dl.system_allocator.free_(dl.system_allocator.data,
+					voidptr(usize(p) - prevsize), psize)
 				{
 					dl.footprint -= psize
 				}
@@ -696,8 +696,8 @@ fn (mut dl Dlmalloc) sys_trim(pad_ usize) bool {
 					if sp.can_release_part(&dl.system_allocator) {
 						if sp.size >= extra && !dl.has_segment_link(sp) {
 							newsize := sp.size - extra
-							if dl.system_allocator.free_part(dl.system_allocator.data,
-								sp.base, sp.size, newsize)
+							if dl.system_allocator.free_part(dl.system_allocator.data, sp.base,
+								sp.size, newsize)
 							{
 								released = extra
 							}
@@ -857,7 +857,7 @@ fn (mut dl Dlmalloc) insert_large_chunk(chunk_ &TreeChunk, size usize) {
 			mut k := size << leftshift_for_tree_index(idx)
 			for {
 				if t.chunk().size() != size {
-					c_ := &t.child[(k >> sizeof(usize) * 8 - 1) & 1]
+					c_ := &t.child[int((k >> sizeof(usize) * 8 - 1) & 1)]
 					mut c := &&TreeChunk(c_)
 					k <<= 1
 					if !isnil(c) {
@@ -1201,7 +1201,7 @@ fn (mut dl Dlmalloc) tmalloc_large(size usize) voidptr {
 				}
 
 				rt := t.child[1]
-				t = t.child[(sizebits >> (sizeof(usize) * 8 - 1)) & 1]
+				t = t.child[int((sizebits >> (sizeof(usize) * 8 - 1)) & 1)]
 				if !isnil(rt) && voidptr(rt) != voidptr(t) {
 					rst = rt
 				}
@@ -1578,8 +1578,8 @@ fn (mut dl Dlmalloc) dispose_chunk(p_ &Chunk, psize_ usize) {
 			if p.mmapped() {
 				psize += prevsize + mmap_foot_pad()
 
-				if dl.system_allocator.free_(dl.system_allocator.data, voidptr(usize(p) - prevsize),
-					psize)
+				if dl.system_allocator.free_(dl.system_allocator.data,
+					voidptr(usize(p) - prevsize), psize)
 				{
 					dl.footprint -= psize
 				}

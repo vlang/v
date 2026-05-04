@@ -1,0 +1,7 @@
+vlib/v/checker/tests/comptime_call_method_implicit_string_expand_err.vv:10:19: error: to auto-expand `[]string` arguments in comptime method calls, use `...args`
+    8 |     args := ['5']
+    9 |     $for method in Dummy.methods {
+   10 |         Dummy{}.$method(args)
+      |                         ~~~~
+   11 |     }
+   12 | }

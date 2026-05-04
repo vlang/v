@@ -52,17 +52,19 @@ fn (mut c Checker) return_stmt(mut node ast.Return) {
 	}
 	expected_type_sym := c.table.sym(expected_type)
 	if expected_type_sym.info is ast.ArrayFixed {
-		c.table.find_or_register_array_fixed(expected_type_sym.info.elem_type, expected_type_sym.info.size,
-			expected_type_sym.info.size_expr, true)
+		c.table.find_or_register_array_fixed(expected_type_sym.info.elem_type,
+			expected_type_sym.info.size, expected_type_sym.info.size_expr, true)
 	}
 	if node.exprs.len > 0 && c.table.cur_fn.return_type == ast.void_type {
-		c.error('unexpected argument, current function does not return anything', node.exprs[0].pos())
+		c.error('unexpected argument, current function does not return anything',
+			node.exprs[0].pos())
 		return
 	} else if node.exprs.len > 1 && c.table.cur_fn.return_type == ast.void_type.set_flag(.option) {
 		c.error('can only return `none` from an Option-only return function', node.exprs[0].pos())
 		return
 	} else if node.exprs.len > 1 && c.table.cur_fn.return_type == ast.void_type.set_flag(.result) {
-		c.error('functions with Result-only return types can only return an error', node.exprs[0].pos())
+		c.error('functions with Result-only return types can only return an error',
+			node.exprs[0].pos())
 		return
 	} else if node.exprs.len == 0 && !(c.expected_type == ast.void_type
 		|| expected_type_sym.kind == .void) {
@@ -112,14 +114,23 @@ fn (mut c Checker) return_stmt(mut node ast.Return) {
 		} else {
 			if mut expr is ast.Ident && expr.obj is ast.Var {
 				if expr.obj.smartcasts.len > 0 {
-					typ = c.unwrap_generic(expr.obj.smartcasts.last())
+					typ = c.unwrap_generic(c.visible_var_type_for_read(expr.obj))
 				}
 				if expr.obj.ct_type_var != .no_comptime {
 					typ = c.type_resolver.get_type_or_default(expr, typ)
 				}
-				if mut expr.obj.expr is ast.IfGuardExpr {
+				if expr.obj.expr is ast.IfGuardExpr {
 					if var := expr.scope.find_var(expr.name) {
 						typ = var.typ
+					}
+				}
+			} else if mut expr is ast.SelectorExpr {
+				if expr.expr_type != 0 {
+					scope_field := expr.scope.find_struct_field(smartcast_selector_expr_str(expr),
+						expr.expr_type, expr.field_name)
+					if scope_field != unsafe { nil } && scope_field.smartcasts.len > 0 {
+						typ = c.unwrap_generic(c.exposed_smartcast_type(scope_field.orig_type,
+							scope_field.smartcasts.last(), scope_field.is_mut))
 					}
 				}
 			}
@@ -147,8 +158,7 @@ fn (mut c Checker) return_stmt(mut node ast.Return) {
 	result_type_idx := c.table.type_idxs['_result']
 	got_types_0_idx := got_types[0].idx()
 	if exp_is_option && got_types_0_idx == ast.error_type_idx {
-		c.error('Option and Result types have been split, use `!Foo` to return errors',
-			node.pos)
+		c.error('Option and Result types have been split, use `!Foo` to return errors', node.pos)
 	} else if exp_is_result && got_types_0_idx == ast.none_type_idx {
 		c.error('Option and Result types have been split, use `?` to return none', node.pos)
 	}
@@ -200,8 +210,7 @@ fn (mut c Checker) return_stmt(mut node ast.Return) {
 		exprv := node.exprs[expr_idxs[i]]
 		if exprv is ast.Ident && exprv.or_expr.kind == .propagate_option {
 			if exp_type.has_flag(.option) {
-				c.warn('unwrapping option is redundant as the function returns option',
-					node.pos)
+				c.warn('unwrapping option is redundant as the function returns option', node.pos)
 			} else {
 				c.error('should not unwrap option var on return, it could be none', node.pos)
 			}
@@ -239,7 +248,9 @@ fn (mut c Checker) return_stmt(mut node ast.Return) {
 				if c.pref.skip_unused && got_types[i].has_flag(.generic) {
 					c.table.used_features.comptime_syms[got_type] = true
 				}
-				if exp_type_sym.kind == .interface {
+				if exp_type_sym.kind == .interface
+					|| (exp_type_sym.kind == .generic_inst && exp_type_sym.info is ast.GenericInst
+					&& c.table.type_symbols[exp_type_sym.info.parent_idx].kind == .interface) {
 					if c.type_implements(got_type, exp_type, node.pos) {
 						if !got_type.is_any_kind_of_pointer() && got_type_sym.kind != .interface
 							&& !c.inside_unsafe {
@@ -282,9 +293,24 @@ fn (mut c Checker) return_stmt(mut node ast.Return) {
 					&& c.array_fixed_has_unresolved_size(exp_final_sym.info) {
 					continue
 				}
+				// In generic functions, scope variable types can be stale from a
+				// different instantiation pass. Skip the error if the original
+				// return type is generic — the cgen resolves types per-instantiation.
+				if c.table.cur_fn != unsafe { nil } && c.table.cur_fn.return_type.has_flag(.generic)
+					&& c.table.cur_concrete_types.len > 0 {
+					continue
+				}
 
 				c.error('cannot use `${got_type_name}` as ${c.error_type_name(exp_type)} in return argument',
 					exprv.pos())
+			}
+		}
+		if exprv is ast.Ident {
+			if exprv.obj is ast.Var && exprv.obj.smartcasts.len > 0 {
+				orig_sym := c.table.final_sym(exprv.obj.orig_type)
+				if orig_sym.kind == .interface {
+					continue
+				}
 			}
 		}
 		if got_type.is_any_kind_of_pointer() && !exp_type.is_any_kind_of_pointer()
@@ -302,17 +328,24 @@ fn (mut c Checker) return_stmt(mut node ast.Return) {
 			if exprv.is_auto_deref_var() {
 				continue
 			}
+			if c.table.final_sym(exp_type).kind == .interface
+				&& c.table.final_sym(got_type).kind == .interface
+				&& exp_type.deref().idx() == got_type.idx() {
+				continue
+			}
 			c.error('fn `${c.table.cur_fn.name}` expects you to return a reference type `${c.table.type_to_str(exp_type)}`, but you are returning `${c.table.type_to_str(got_type)}` instead',
 				exprv.pos())
 		}
 		if exp_type.is_ptr() && got_type.is_ptr() {
-			mut r_expr := &node.exprs[expr_idxs[i]]
-			if mut r_expr is ast.Ident {
-				c.fail_if_stack_struct_action_outside_unsafe(mut r_expr, 'returned')
-			} else if mut r_expr is ast.PrefixExpr && r_expr.op == .amp {
+			r_expr := node.exprs[expr_idxs[i]]
+			if r_expr is ast.Ident {
+				mut ident_expr := r_expr
+				c.fail_if_stack_struct_action_outside_unsafe(mut ident_expr, 'returned')
+			} else if r_expr is ast.PrefixExpr && r_expr.op == .amp {
 				// &var
-				if mut r_expr.right is ast.Ident {
-					c.fail_if_stack_struct_action_outside_unsafe(mut r_expr.right, 'returned')
+				if r_expr.right is ast.Ident {
+					mut ident_expr := r_expr.right
+					c.fail_if_stack_struct_action_outside_unsafe(mut ident_expr, 'returned')
 				}
 			}
 		}
@@ -351,40 +384,20 @@ fn (mut c Checker) find_unreachable_statements_after_noreturn_calls(stmts []ast.
 
 // Note: has_top_return/1 should be called on *already checked* stmts,
 // which do have their stmt.expr.is_noreturn set properly:
-fn has_top_return(stmts []ast.Stmt) bool {
+fn (mut c Checker) has_top_return(stmts []ast.Stmt) bool {
 	for stmt in stmts {
 		match stmt {
 			ast.Return {
 				return true
 			}
 			ast.Block {
-				if has_top_return(stmt.stmts) {
+				if c.has_top_return(stmt.stmts) {
 					return true
 				}
 			}
 			ast.ExprStmt {
-				if stmt.expr is ast.CallExpr {
-					// do not ignore panic() calls on non checked stmts
-					if stmt.expr.is_noreturn
-						|| (stmt.expr.is_method == false && stmt.expr.name == 'panic') {
-						return true
-					}
-				} else if stmt.expr is ast.ComptimeCall {
-					if stmt.expr.kind == .compile_error {
-						return true
-					}
-				} else if stmt.expr is ast.LockExpr {
-					if has_top_return(stmt.expr.stmts) {
-						return true
-					}
-				} else if stmt.expr is ast.IfExpr {
-					if has_top_return_in_if_expr(stmt.expr) {
-						return true
-					}
-				} else if stmt.expr is ast.MatchExpr {
-					if has_top_return_in_match_expr(stmt.expr) {
-						return true
-					}
+				if c.expr_never_falls_through(stmt.expr) {
+					return true
 				}
 			}
 			else {}
@@ -393,19 +406,161 @@ fn has_top_return(stmts []ast.Stmt) bool {
 	return false
 }
 
-fn has_top_return_in_if_expr(if_expr ast.IfExpr) bool {
+fn (mut c Checker) expr_never_falls_through(expr ast.Expr) bool {
+	match expr {
+		ast.CallExpr {
+			// do not ignore panic() calls on non checked stmts
+			return expr.is_noreturn
+				|| (expr.is_method == false && expr.name == 'panic')
+				|| c.call_expr_propagates_always_error(expr)
+		}
+		ast.ComptimeCall {
+			return expr.kind == .compile_error
+		}
+		ast.LockExpr {
+			return c.has_top_return(expr.stmts)
+		}
+		ast.IfExpr {
+			return c.has_top_return_in_if_expr(expr)
+		}
+		ast.MatchExpr {
+			return c.has_top_return_in_match_expr(expr)
+		}
+		else {}
+	}
+
+	return false
+}
+
+fn (mut c Checker) call_expr_propagates_always_error(node ast.CallExpr) bool {
+	if node.should_be_skipped || node.or_block.kind != .propagate_result {
+		return false
+	}
+	mut func := ast.Fn{}
+	if node.is_method {
+		if node.left_type == 0 {
+			return false
+		}
+		left_sym := c.table.sym(c.unwrap_generic(node.left_type))
+		if left_sym.kind == .placeholder {
+			return false
+		}
+		func = c.table.find_method(left_sym, node.name) or { return false }
+	} else {
+		if node.name == '' {
+			return false
+		}
+		func = c.table.find_fn(node.name) or { return false }
+	}
+	return c.fn_always_errors(func)
+}
+
+fn (mut c Checker) fn_always_errors(func ast.Fn) bool {
+	if func.name == '' || func.source_fn == unsafe { nil } || func.no_body || func.language != .v
+		|| !func.return_type.has_flag(.result) {
+		return false
+	}
+	fkey := func.fkey()
+	if fkey in c.always_error_fn_cache {
+		return c.always_error_fn_cache[fkey]
+	}
+	if fkey in c.always_error_fn_in_progress {
+		return false
+	}
+	c.always_error_fn_in_progress[fkey] = true
+	defer {
+		c.always_error_fn_in_progress.delete(fkey)
+	}
+	fn_decl := unsafe { &ast.FnDecl(func.source_fn) }
+	result := c.stmts_always_error(fn_decl.stmts)
+	c.always_error_fn_cache[fkey] = result
+	return result
+}
+
+fn (mut c Checker) stmts_always_error(stmts []ast.Stmt) bool {
+	for stmt in stmts {
+		if c.stmt_always_errors(stmt) {
+			return true
+		}
+	}
+	return false
+}
+
+fn (mut c Checker) stmt_always_errors(stmt ast.Stmt) bool {
+	match stmt {
+		ast.Return {
+			return c.return_stmt_always_errors(stmt)
+		}
+		ast.Block {
+			return c.stmts_always_error(stmt.stmts)
+		}
+		ast.ExprStmt {
+			return c.expr_always_errors(stmt.expr)
+		}
+		ast.ForStmt {
+			return stmt.is_inf && stmt.stmts.len == 0
+		}
+		else {}
+	}
+
+	return false
+}
+
+fn (mut c Checker) expr_always_errors(expr ast.Expr) bool {
+	match expr {
+		ast.CallExpr {
+			return expr.is_noreturn || c.call_expr_propagates_always_error(expr)
+		}
+		ast.ComptimeCall {
+			return expr.kind == .compile_error
+		}
+		ast.IfExpr {
+			return c.if_expr_always_errors(expr)
+		}
+		ast.MatchExpr {
+			return c.match_expr_always_errors(expr)
+		}
+		ast.LockExpr {
+			return c.stmts_always_error(expr.stmts)
+		}
+		else {}
+	}
+
+	return false
+}
+
+fn (mut c Checker) return_stmt_always_errors(node ast.Return) bool {
+	if node.types.len == 1 && c.table.unaliased_type(node.types[0]).idx() == ast.error_type_idx {
+		return true
+	}
+	return false
+}
+
+fn (mut c Checker) has_top_return_in_if_expr(if_expr ast.IfExpr) bool {
 	if if_expr.branches.len < 2 || !if_expr.has_else {
 		return false
 	}
 	for branch in if_expr.branches {
-		if !has_top_return(branch.stmts) {
+		if !c.has_top_return(branch.stmts) {
 			return false
 		}
 	}
 	return true
 }
 
-fn has_top_return_in_match_expr(match_expr ast.MatchExpr) bool {
+fn (mut c Checker) if_expr_always_errors(if_expr ast.IfExpr) bool {
+	if if_expr.branches.len < 2 || !if_expr.has_else {
+		return false
+	}
+	for branch in if_expr.branches {
+		if !c.stmts_always_error(branch.stmts) {
+			return false
+		}
+	}
+	return true
+}
+
+fn (mut c Checker) has_top_return_in_match_expr(match_expr ast.MatchExpr) bool {
 	if match_expr.branches.len == 0 {
 		return false
 	}
@@ -428,7 +583,7 @@ fn has_top_return_in_match_expr(match_expr ast.MatchExpr) bool {
 		}
 		if has_else {
 			for branch in match_expr.branches {
-				if !has_top_return(branch.stmts) {
+				if !c.has_top_return(branch.stmts) {
 					return false
 				}
 			}
@@ -437,7 +592,40 @@ fn has_top_return_in_match_expr(match_expr ast.MatchExpr) bool {
 		return false
 	}
 	for branch in match_expr.branches {
-		if !has_top_return(branch.stmts) {
+		if !c.has_top_return(branch.stmts) {
+			return false
+		}
+	}
+	return true
+}
+
+fn (mut c Checker) match_expr_always_errors(match_expr ast.MatchExpr) bool {
+	if match_expr.branches.len == 0 {
+		return false
+	}
+	if match_expr.is_comptime {
+		mut has_else := false
+		for branch in match_expr.branches {
+			if branch.is_else {
+				has_else = true
+				break
+			}
+			for expr in branch.exprs {
+				if expr is ast.Ident && expr.name == '\$else' {
+					has_else = true
+					break
+				}
+			}
+			if has_else {
+				break
+			}
+		}
+		if !has_else {
+			return false
+		}
+	}
+	for branch in match_expr.branches {
+		if !c.stmts_always_error(branch.stmts) {
 			return false
 		}
 	}
@@ -481,6 +669,7 @@ fn (mut c Checker) check_noreturn_fn_decl(mut node ast.FnDecl) {
 			}
 			else {}
 		}
+
 		if !is_valid_end_of_noreturn_fn {
 			pos = last_stmt.pos
 		}

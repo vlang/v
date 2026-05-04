@@ -66,20 +66,24 @@ pub fn (mut p Process) wait() {
 	p._wait()
 }
 
-// free the OS resources associated with the process.
-// Can be called multiple times, but will free the resources just once.
-// This sets the process state to .closed, which is final.
+// close frees the OS resources associated with the process.
+// It can be called multiple times, but will free the resources just once.
+// If the process has already finished, this sets the process state to
+// .closed, which is final.
 pub fn (mut p Process) close() {
 	if p.status in [.not_started, .closed] {
 		return
 	}
-	p.status = .closed
 	$if !windows {
 		for i in 0 .. 3 {
-			if p.stdio_fd[i] != 0 {
+			if p.stdio_fd[i] != -1 {
 				fd_close(p.stdio_fd[i])
+				p.stdio_fd[i] = -1
 			}
 		}
+	}
+	if p.status !in [.running, .stopped] {
+		p.status = .closed
 	}
 }
 
@@ -167,11 +171,13 @@ pub fn (mut p Process) stderr_slurp() string {
 	return res
 }
 
-// stdout_read reads a block of data, from the stdout pipe of the child process.
-// It will block, if there is no data to be read. Call .is_pending() to check if
-// there is data to be read, if you do not want to block.
+// stdout_read reads a block of data from the child process stdout pipe.
+// It returns `''` immediately when there is currently no data to be read.
 pub fn (mut p Process) stdout_read() string {
 	p._check_redirection_call(@METHOD)
+	if !p._is_pending(.stdout) {
+		return ''
+	}
 	res := p._read_from(.stdout)
 	$if trace_process_pipes ? {
 		eprintln('${@LOCATION}, pid: ${p.pid}, status: ${p.status}, res.len: ${res.len}, res: `${res}`')
@@ -179,11 +185,13 @@ pub fn (mut p Process) stdout_read() string {
 	return res
 }
 
-// stderr_read reads a block of data, from the stderr pipe of the child process.
-// It will block, if there is no data to be read. Call .is_pending() to check if
-// there is data to be read, if you do not want to block.
+// stderr_read reads a block of data from the child process stderr pipe.
+// It returns `''` immediately when there is currently no data to be read.
 pub fn (mut p Process) stderr_read() string {
 	p._check_redirection_call(@METHOD)
+	if !p._is_pending(.stderr) {
+		return ''
+	}
 	res := p._read_from(.stderr)
 	$if trace_process_pipes ? {
 		eprintln('${@LOCATION}, pid: ${p.pid}, status: ${p.status}, res.len: ${res.len}, res: `${res}`')
@@ -202,6 +210,9 @@ pub fn (mut p Process) pipe_read(pkind ChildProcessPipeKind) ?string {
 		return none
 	}
 	res := p._read_from(pkind)
+	if res.len == 0 {
+		return none
+	}
 	$if trace_process_pipes ? {
 		eprintln('${@LOCATION}, pid: ${p.pid}, status: ${p.status}, res.len: ${res.len}, res: `${res}`')
 	}

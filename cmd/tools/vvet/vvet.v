@@ -19,8 +19,10 @@ mut:
 	warns          shared []VetError
 	notices        shared []VetError
 	file           string
+	mod            string
 	filtered_lines FilteredLines
 	analyze        VetAnalyze
+	regex_vars     map[string]bool
 }
 
 struct Options {
@@ -123,6 +125,8 @@ fn (mut vt Vet) vet_file(path string) {
 	mut table := ast.new_table()
 	vt.vprintln("vetting file '${path}'...")
 	file := parser.parse_file(path, mut table, .parse_comments, prefs)
+	vt.mod = file.mod.name
+	vt.regex_vars = map[string]bool{}
 	vt.stmts(file.stmts)
 	source_lines := os.read_lines(vt.file) or { []string{} }
 	for ln, line in source_lines {
@@ -222,8 +226,8 @@ fn (mut vt Vet) vet_fn_documentation(lines []string, line string, lnumber int) {
 		}
 		if grab {
 			clean_line := line.all_before_last('{').trim(' ')
-			vt.warn('Function documentation seems to be missing for "${clean_line}".',
-				lnumber, .doc)
+			vt.warn('Function documentation seems to be missing for "${clean_line}".', lnumber,
+				.doc)
 		}
 	} else {
 		fn_name := ident_fn_name(line)
@@ -243,8 +247,8 @@ fn (mut vt Vet) vet_fn_documentation(lines []string, line string, lnumber int) {
 					&& !prev_prev_line.starts_with('//') {
 					grab = false
 					clean_line := line.all_before_last('{').trim(' ')
-					vt.warn('The documentation for "${clean_line}" seems incomplete.',
-						lnumber, .doc)
+					vt.warn('The documentation for "${clean_line}" seems incomplete.', lnumber,
+						.doc)
 					break
 				}
 
@@ -285,14 +289,18 @@ fn (mut vt Vet) stmt(stmt ast.Stmt) {
 		}
 		ast.AssertStmt {
 			vt.expr(stmt.expr)
+			vt.expr(stmt.extra)
 		}
 		ast.AssignStmt {
 			vt.exprs(stmt.left)
 			vt.exprs(stmt.right)
+			vt.track_regex_assign(stmt)
 			vt.analyze.stmt(&vt, stmt)
 		}
 		ast.FnDecl {
 			old_fn_decl := vt.analyze.cur_fn
+			old_regex_vars := vt.regex_vars.clone()
+			vt.regex_vars = map[string]bool{}
 			vt.analyze.cur_fn = stmt
 			vt.stmts(stmt.stmts)
 			if vt.opt.fn_sizing {
@@ -302,6 +310,7 @@ fn (mut vt Vet) stmt(stmt ast.Stmt) {
 				vt.analyze.potential_non_inlined(mut vt, stmt)
 			}
 			vt.analyze.cur_fn = old_fn_decl
+			vt.regex_vars = old_regex_vars.clone()
 		}
 		ast.StructDecl {
 			vt.exprs(stmt.fields.map(it.default_expr))
@@ -349,6 +358,7 @@ fn (mut vt Vet) expr(expr ast.Expr) {
 		ast.CallExpr {
 			vt.expr(expr.left)
 			vt.exprs(expr.args.map(it.expr))
+			vt.vet_confusing_regex(expr)
 			vt.analyze.expr(&vt, expr)
 		}
 		ast.MatchExpr {
@@ -399,6 +409,134 @@ fn (mut vt Vet) const_decl(stmt ast.ConstDecl) {
 		}
 		vt.expr(field.expr)
 	}
+}
+
+fn (mut vt Vet) track_regex_assign(stmt ast.AssignStmt) {
+	for i, left in stmt.left {
+		if i >= stmt.right.len {
+			break
+		}
+		mut ident_name := ''
+		match left {
+			ast.Ident {
+				ident_name = left.name
+			}
+			else {
+				continue
+			}
+		}
+
+		if vt.is_regex_value_expr(stmt.right[i]) {
+			vt.regex_vars[ident_name] = true
+		} else {
+			vt.regex_vars.delete(ident_name)
+		}
+	}
+}
+
+fn (mut vt Vet) vet_confusing_regex(expr ast.CallExpr) {
+	if expr.args.len == 0 || !vt.is_regex_pattern_call(expr) {
+		return
+	}
+	pattern_expr := expr.args[0].expr
+	pattern := if pattern_expr is ast.StringLiteral { pattern_expr } else { return }
+	snippet, suggestion := confusing_regex_branch(pattern.val) or { return }
+	vt.warn('Confusing regex `|` in `${snippet}`: V regex applies `|` to adjacent tokens, not whole branches. Use `${suggestion}` if you intended alternation.',
+		pattern.pos.line_nr, .unknown)
+}
+
+fn (vt &Vet) is_regex_pattern_call(expr ast.CallExpr) bool {
+	short_name := expr.name.all_after_last('.')
+	if short_name in ['regex_opt', 'regex_base'] {
+		return vt.is_regex_fn_call(expr)
+	}
+	if expr.name == 'compile_opt' && expr.is_method {
+		return vt.is_regex_value_expr(expr.left)
+	}
+	return false
+}
+
+fn (vt &Vet) is_regex_value_expr(expr ast.Expr) bool {
+	match expr {
+		ast.CallExpr {
+			short_name := expr.name.all_after_last('.')
+			if short_name == 'new' {
+				return vt.is_regex_fn_call(expr)
+			}
+			if short_name == 'regex_opt' {
+				return vt.is_regex_fn_call(expr)
+			}
+			return false
+		}
+		ast.Ident {
+			return expr.name in vt.regex_vars
+		}
+		else {
+			return false
+		}
+	}
+}
+
+fn (vt &Vet) is_regex_fn_call(expr ast.CallExpr) bool {
+	if expr.name in ['regex.regex_opt', 'regex.regex_base', 'regex.new'] {
+		return true
+	}
+	if vt.mod == 'regex' && expr.name in ['regex_opt', 'regex_base', 'new'] {
+		return true
+	}
+	return false
+}
+
+fn confusing_regex_branch(pattern string) ?(string, string) {
+	mut escaped := false
+	mut in_char_class := false
+	for i := 0; i < pattern.len; i++ {
+		ch := pattern[i]
+		if escaped {
+			escaped = false
+			continue
+		}
+		if ch == `\\` {
+			escaped = true
+			continue
+		}
+		if in_char_class {
+			if ch == `]` {
+				in_char_class = false
+			}
+			continue
+		}
+		if ch == `[` {
+			in_char_class = true
+			continue
+		}
+		if ch != `|` || i == 0 || i + 1 >= pattern.len {
+			continue
+		}
+		if !is_regex_plain_letter(pattern[i - 1]) || !is_regex_plain_letter(pattern[i + 1]) {
+			continue
+		}
+		if !((i >= 2 && is_regex_plain_letter(pattern[i - 2]))
+			|| (i + 2 < pattern.len && is_regex_plain_letter(pattern[i + 2]))) {
+			continue
+		}
+		mut left_start := i - 1
+		for left_start > 0 && is_regex_plain_letter(pattern[left_start - 1]) {
+			left_start--
+		}
+		mut right_end := i + 1
+		for right_end + 1 < pattern.len && is_regex_plain_letter(pattern[right_end + 1]) {
+			right_end++
+		}
+		left := pattern[left_start..i]
+		right := pattern[i + 1..right_end + 1]
+		return pattern[left_start..right_end + 1], '(${left})|(${right})'
+	}
+	return none
+}
+
+fn is_regex_plain_letter(ch u8) bool {
+	return ch.is_letter()
 }
 
 fn (mut vt Vet) vet_empty_str(expr ast.InfixExpr) {

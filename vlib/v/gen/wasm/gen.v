@@ -8,7 +8,6 @@ import v.pref
 import v.util
 import v.token
 import v.errors
-import v.eval
 import v.gen.wasm.serialise
 import wasm
 import os
@@ -23,7 +22,6 @@ mut:
 	warnings  []errors.Warning
 	errors    []errors.Error
 	table     &ast.Table = unsafe { nil }
-	eval      eval.Eval
 	enum_vals map[string]Enum
 
 	mod                    wasm.Module
@@ -262,6 +260,7 @@ pub fn (mut g Gen) fn_decl(node ast.FnDecl) {
 			}
 		}
 	}
+
 	if rt.has_flag(.result) {
 		g.v_error('result types are not implemented', node.return_type_pos)
 		retl << .i32_t // &IError
@@ -551,12 +550,9 @@ pub fn (mut g Gen) infix_expr(node ast.InfixExpr, expected ast.Type) {
 	}
 	g.infix_from_typ(node.left_type, node.op)
 
-	res_typ := if node.op in [.eq, .ne, .gt, .lt, .ge, .le] {
-		ast.bool_type
-	} else {
-		node.left_type
-	}
-	g.func.cast(g.as_numtype(g.get_wasm_type(res_typ)), res_typ.is_signed(), g.as_numtype(g.get_wasm_type(expected)))
+	res_typ := if node.op in [.eq, .ne, .gt, .lt, .ge, .le] { ast.bool_type } else { node.left_type }
+	g.func.cast(g.as_numtype(g.get_wasm_type(res_typ)), res_typ.is_signed(),
+		g.as_numtype(g.get_wasm_type(expected)))
 }
 
 pub fn (mut g Gen) prefix_expr(node ast.PrefixExpr, expected ast.Type) {
@@ -686,8 +682,7 @@ fn (mut g Gen) match_branch(node ast.MatchExpr, expected ast.Type, unpacked_para
 	}
 
 	if branch.exprs.len > 0 {
-		g.match_branch_exprs(node, expected, unpacked_params, branch_idx, 0, existing_rvars,
-			branch)
+		g.match_branch_exprs(node, expected, unpacked_params, branch_idx, 0, existing_rvars, branch)
 	} else {
 		if branch.stmts.len > 0 {
 			g.rvar_expr_stmts(branch.stmts, expected, existing_rvars)
@@ -798,14 +793,10 @@ pub fn (mut g Gen) call_expr(node ast.CallExpr, expected ast.Type, existing_rvar
 	// {method self}
 	//
 	if node.is_method {
-		expr := if !node.left_type.is_ptr() && node.receiver_type.is_ptr() {
-			ast.Expr(ast.PrefixExpr{
+		expr := if !node.left_type.is_ptr() && node.receiver_type.is_ptr() { ast.Expr(ast.PrefixExpr{
 				op:    .amp
 				right: node.left
-			})
-		} else {
-			node.left
-		}
+			}) } else { node.left }
 		// hack alert!
 		if node.receiver_type == ast.int_literal_type && expr is ast.IntegerLiteral {
 			g.literal(expr.val, ast.i64_type)
@@ -966,7 +957,10 @@ pub fn (mut g Gen) expr(node ast.Expr, expected ast.Type) {
 
 			size, _ := g.pool.type_size(typ)
 
+			old_needs_address := g.needs_address
+			g.needs_address = false
 			g.expr(node.index, ast.int_type)
+			g.needs_address = old_needs_address
 
 			if !direct_array_access {
 				g.is_leaf_function = false // calls panic()
@@ -1145,7 +1139,8 @@ pub fn (mut g Gen) expr(node ast.Expr, expected ast.Type) {
 				}
 			}
 
-			g.func.cast(g.as_numtype(g.get_wasm_type(typ)), typ.is_signed(), g.as_numtype(g.get_wasm_type(node.typ)))
+			g.func.cast(g.as_numtype(g.get_wasm_type(typ)), typ.is_signed(),
+				g.as_numtype(g.get_wasm_type(node.typ)))
 		}
 		ast.CallExpr {
 			g.call_expr(node, expected, [])
@@ -1540,7 +1535,8 @@ pub fn (mut g Gen) expr_stmt(node ast.Stmt, expected ast.Type) {
 					right := node.right[0]
 					match right {
 						ast.IfExpr {
-							params := node.left_types.filter(!g.is_param_type(it)).map(g.get_wasm_type(it))
+							params :=
+								node.left_types.filter(!g.is_param_type(it)).map(g.get_wasm_type(it))
 							g.if_branch(right, right.typ, params, 0, rvars)
 							set = true
 						}
@@ -1627,6 +1623,9 @@ pub fn (mut g Gen) expr_stmt(node ast.Stmt, expected ast.Type) {
 			// assumed expected == void
 			g.asm_stmt(node)
 		}
+		ast.EmptyStmt {
+			// EmptyStmt nodes are emitted by earlier compiler passes for eliminated statements.
+		}
 		else {
 			g.w_error('wasm.expr_stmt(): unhandled node: ' + node.type_name())
 		}
@@ -1680,6 +1679,115 @@ mut:
 	fields map[string]i64
 }
 
+fn (mut g Gen) eval_enum_field_expr(expr ast.Expr) ?i64 {
+	match expr {
+		ast.IntegerLiteral {
+			return expr.val.i64()
+		}
+		ast.CharLiteral {
+			runes := expr.val.runes()
+			if runes.len == 0 {
+				return none
+			}
+			return i64(runes[0])
+		}
+		ast.BoolLiteral {
+			return if expr.val { i64(1) } else { i64(0) }
+		}
+		ast.ParExpr {
+			return g.eval_enum_field_expr(expr.expr)
+		}
+		ast.CastExpr {
+			return g.eval_enum_field_expr(expr.expr)
+		}
+		ast.PrefixExpr {
+			right := g.eval_enum_field_expr(expr.right)?
+			match expr.op {
+				.plus {
+					return right
+				}
+				.minus {
+					return -right
+				}
+				.bit_not {
+					return ~right
+				}
+				else {
+					return none
+				}
+			}
+		}
+		ast.InfixExpr {
+			left := g.eval_enum_field_expr(expr.left)?
+			right := g.eval_enum_field_expr(expr.right)?
+			match expr.op {
+				.plus {
+					return left + right
+				}
+				.minus {
+					return left - right
+				}
+				.mul {
+					return left * right
+				}
+				.div {
+					if right == 0 {
+						return none
+					}
+					return left / right
+				}
+				.mod {
+					if right == 0 {
+						return none
+					}
+					return left % right
+				}
+				.left_shift {
+					return i64(u64(left) << int(right))
+				}
+				.right_shift {
+					return left >> int(right)
+				}
+				.unsigned_right_shift {
+					return i64(u64(left) >> int(right))
+				}
+				.amp {
+					return left & right
+				}
+				.pipe {
+					return left | right
+				}
+				.xor {
+					return left ^ right
+				}
+				else {
+					return none
+				}
+			}
+		}
+		ast.Ident {
+			mut obj := expr.obj
+			if obj !in [ast.ConstField, ast.GlobalField] {
+				obj = expr.scope.find(expr.name) or { return none }
+			}
+			match mut obj {
+				ast.ConstField {
+					return g.eval_enum_field_expr(obj.expr)
+				}
+				ast.GlobalField {
+					return g.eval_enum_field_expr(obj.expr)
+				}
+				else {
+					return none
+				}
+			}
+		}
+		else {
+			return none
+		}
+	}
+}
+
 pub fn (mut g Gen) calculate_enum_fields() {
 	// `enum Enum as u64` is supported
 	for name, decl in g.table.enum_decls {
@@ -1687,7 +1795,9 @@ pub fn (mut g Gen) calculate_enum_fields() {
 		mut value := if decl.is_flag { i64(1) } else { 0 }
 		for field in decl.fields {
 			if field.has_expr {
-				value = g.eval.expr(field.expr, decl.typ).int_val()
+				value = g.eval_enum_field_expr(field.expr) or {
+					g.w_error('wasm: unsupported enum expression for `${name}.${field.name}`')
+				}
 			}
 			enum_vals.fields[field.name] = value
 			if decl.is_flag {
@@ -1706,7 +1816,6 @@ pub fn gen(files []&ast.File, mut table ast.Table, out_name string, w_pref &pref
 		table:     table
 		pref:      w_pref
 		files:     files
-		eval:      eval.new_eval(table, w_pref)
 		pool:      serialise.new_pool(table, store_relocs: true, null_terminated: false)
 		stack_top: stack_top
 		data_base: calc_align(stack_top + 1, 16)
@@ -1762,7 +1871,8 @@ pub fn gen(files []&ast.File, mut table ast.Table, out_name string, w_pref &pref
 			exe := $if windows { 'wasm-opt.exe' } $else { 'wasm-opt' }
 			if rt := os.find_abs_path_of_executable(exe) {
 				// -lmu: low memory unused, very important optimisation
-				res := os.execute('${os.quoted_path(rt)} -all -lmu -c -O4 ${os.quoted_path(out_name)} -o ${os.quoted_path(out_name)}')
+				res :=
+					os.execute('${os.quoted_path(rt)} -all -lmu -c -O4 ${os.quoted_path(out_name)} -o ${os.quoted_path(out_name)}')
 				if res.exit_code != 0 {
 					eprintln(res.output)
 					g.w_error('${rt} failed, this should not happen. Report an issue with the above messages, the webassembly generated, and appropriate code.')

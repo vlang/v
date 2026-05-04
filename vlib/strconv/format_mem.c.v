@@ -139,7 +139,8 @@ pub fn format_dec_sb(d u64, p BF_param, mut res strings.Builder) {
 pub fn f64_to_str_lnd1(f f64, dec_digit int) string {
 	unsafe {
 		// we add the rounding value
-		s := f64_to_str(f + dec_round[dec_digit], 18)
+		clamped_dec := if dec_digit >= dec_round.len { dec_round.len - 1 } else { dec_digit }
+		s := f64_to_str(f + dec_round[clamped_dec], 18)
 		// check for +inf -inf Nan
 		if s.len > 2 && (s[0] == `n` || s[1] == `i`) {
 			return s
@@ -207,9 +208,11 @@ pub fn f64_to_str_lnd1(f f64, dec_digit int) string {
 			c++
 		}
 
-		// allocate exp+32 chars for the return string
-		// mut res := []u8{len:exp+32,init:`0`}
-		mut res := []u8{len: exp + 40, init: 0}
+		// Reserve enough space for the current digits, exponent-driven zeros,
+		// requested fractional padding, and the trailing NUL.
+		extra_frac_digits := if dec_digit > 0 { dec_digit } else { 0 }
+		sign_len := if sgn < 0 { 1 } else { 0 }
+		mut res := []u8{len: sign_len + i1 + exp + extra_frac_digits + 4, init: 0}
 		mut r_i := 0 // result string buffer index
 
 		// println("s:${sgn} b:${b[0]} es:${exp_sgn} exp:${exp}")
@@ -247,7 +250,7 @@ pub fn f64_to_str_lnd1(f f64, dec_digit int) string {
 				r_i++
 				exp--
 			}
-			// println("exp: $exp $r_i $dot_res_sp")
+			// println("exp: ${exp} ${r_i} ${dot_res_sp}")
 		} else {
 			mut dot_p := true
 			for exp > 0 {

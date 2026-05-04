@@ -77,7 +77,7 @@ pub fn raw_index(s string, index int) string {
 		}
 
 		b := s[i]
-		ch_len := ((0xe5000000 >> ((b >> 3) & 0x1e)) & 3)
+		ch_len := int((u32(0xe5000000) >> ((b >> 3) & 0x1e)) & 3)
 
 		r << if ch_len > 0 {
 			i += ch_len
@@ -431,7 +431,7 @@ fn convert_case(s string, upper_flag bool) string {
 				lword = int(u32(lword) << 8 | u32(s[index + i]))
 			}
 
-			// println("#${index} ($lword)")
+			// println("#${index} (${lword})")
 
 			mut res := 0
 

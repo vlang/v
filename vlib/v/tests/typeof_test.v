@@ -120,6 +120,23 @@ fn test_typeof_on_sumtypes_of_structs() {
 	assert d.type_name() == 'UnaryExpr'
 }
 
+fn test_raw_typeof_on_sumtypes_is_printable() {
+	a := fexpr(1)
+	b := fexpr(2)
+	c := fexpr(3)
+	raw_a_type := typeof(a)
+	raw_b_type := typeof(b)
+	raw_c_type := typeof(c)
+	// Regresses issue #26704: raw typeof(sumtype) should be usable
+	// when returned from a helper and printable via the stored result.
+	println(raw_a_type)
+	println(raw_b_type)
+	println(raw_c_type)
+	assert raw_a_type == 'UnaryExpr'
+	assert raw_b_type == 'BinExpr'
+	assert raw_c_type == 'BoolExpr'
+}
+
 fn myfn(i int) int {
 	return i
 }
@@ -184,4 +201,13 @@ fn test_variadic_type() {
 	assert variadic_int(1, 2, 3) == '...int'
 	assert variadic_bool(true, false) == '...bool'
 	assert variadic_f64(3.1, 3.2) == '...f64'
+}
+
+fn test_typeof_typ_field() {
+	a := 123
+	b := &a
+	assert typeof(a).typ == typeof(a).idx
+	assert typeof(a).typ == typeof[int]().idx
+	assert typeof(b).typ == typeof(b).idx
+	assert typeof[FooBar]().typ == typeof[FooBar]().idx
 }

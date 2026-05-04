@@ -54,11 +54,11 @@ fn translate(q string, sl string, tl string) !string {
 
 	json_resp := json.decode[json.Any](resp.body)!
 
-	a := json_resp.arr()
+	a := json_resp.as_array()
 	if a.len > 0 {
-		a0 := a[0].arr()
+		a0 := a[0].as_array()
 		if a0.len > 0 {
-			a00 := a0[0].arr()
+			a00 := a0[0].as_array()
 			if a00.len > 0 {
 				return a00[0].str()
 			}

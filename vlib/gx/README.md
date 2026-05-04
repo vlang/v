@@ -1,7 +1,7 @@
 ## Description
 
-`gx` is a complementary module to `gg`, that just provides
-some predefined graphical color names/operations.
+`gx` was a complementary module to `gg`, that provided some predefined
+graphical color names/operations.
 
 > **Note**
-> `gx` is going to be merged with `gg` soon.
+> `gx` is now deprecated, and all functionality was merged with `gg`.

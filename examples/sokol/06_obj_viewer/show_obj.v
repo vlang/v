@@ -73,8 +73,7 @@ fn vec4(x f32, y f32, z f32, w f32) m4.Vec4 {
 
 fn calc_matrices(w f32, h f32, rx f32, ry f32, in_scale f32, pos m4.Vec4) obj.Mats {
 	proj := m4.perspective(60, w / h, 0.01, 100.0) // set far plane to 100 fro the zoom function
-	view := m4.look_at(vec4(f32(0.0), 0, 6, 0), vec4(f32(0), 0, 0, 0), vec4(f32(0), 1,
-		0, 0))
+	view := m4.look_at(vec4(f32(0.0), 0, 6, 0), vec4(f32(0), 0, 0, 0), vec4(f32(0), 1, 0, 0))
 	view_proj := view * proj
 
 	rxm := m4.rotate(m4.rad(rx), vec4(f32(1), 0, 0, 0))
@@ -178,7 +177,7 @@ fn frame(mut app App) {
 	*/
 	draw_end_glsl(app)
 
-	// println("v:$n_vertex_drawn")
+	// println("v:${n_vertex_drawn}")
 	app.frame_count++
 }
 

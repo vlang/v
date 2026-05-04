@@ -1,0 +1,14 @@
+import db.sqlite
+import time
+
+struct Event {
+	id      int @[primary]
+	created time.Time
+}
+
+fn main() {
+	db := sqlite.connect(':memory:')!
+	_ := sql db {
+		select avg(created) from Event
+	}!
+}

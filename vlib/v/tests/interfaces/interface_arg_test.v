@@ -6,7 +6,7 @@ struct Test {
 
 struct Cmdable {
 mut:
-	call fn (cmd ITest)
+	call fn (cmd main.ITest)
 }
 
 fn (t Test) test(a ITest) {}

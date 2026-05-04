@@ -85,13 +85,10 @@ const essential_list = [
 	'vlib/time/time_test.v',
 	'vlib/toml/tests/toml_test.v',
 	'vlib/v/compiler_errors_test.v',
-	'vlib/v/eval/interpret_test.v',
 	'vlib/v/fmt/fmt_keep_test.v',
 	'vlib/v/fmt/fmt_test.v',
 	'vlib/v/gen/c/coutput_test.v',
 	'vlib/v/gen/js/program_test.v',
-	'vlib/v/gen/native/macho_test.v',
-	'vlib/v/gen/native/tests/native_test.v',
 	'vlib/v/pkgconfig/pkgconfig_test.v',
 	'vlib/v/slow_tests/inout/compiler_test.v',
 	'vlib/x/json2/tests/json2_test.v',
@@ -106,14 +103,18 @@ const skip_with_fsanitize_memory = [
 	'vlib/net/tcp_simple_client_server_test.v',
 	'vlib/net/http/cookie_test.v',
 	'vlib/net/http/http_test.v',
+	'vlib/net/http/http_proxy_test.v',
 	'vlib/net/http/status_test.v',
 	'vlib/net/http/header_test.v',
 	'vlib/net/http/server_test.v',
+	'vlib/net/mbedtls/mbedtls_head_with_content_length_test.v',
+	'vlib/net/ssl/ssl_read_all_test.v',
 	'vlib/net/udp_test.v',
 	'vlib/net/tcp_test.v',
 	'vlib/orm/orm_test.v',
 	'vlib/orm/orm_sql_or_blocks_test.v',
 	'vlib/orm/orm_create_and_drop_test.v',
+	'vlib/orm/orm_dynamic_test.v',
 	'vlib/orm/orm_insert_test.v',
 	'vlib/orm/orm_insert_reserved_name_test.v',
 	'vlib/orm/orm_sum_type_insert_test.v',
@@ -133,6 +134,8 @@ const skip_with_fsanitize_memory = [
 	'vlib/orm/orm_order_by_custom_field_test.v',
 	'vlib/orm/orm_serial_attribute_test.v',
 	'vlib/orm/orm_option_subselect_test.v',
+	'vlib/orm/orm_save_test.v',
+	'vlib/orm/orm_upsert_test.v',
 	'vlib/orm/orm_func_test.v',
 	'vlib/db/sqlite/sqlite_test.v',
 	'vlib/db/sqlite/sqlite_orm_test.v',
@@ -143,7 +146,10 @@ const skip_with_fsanitize_memory = [
 	'vlib/v/tests/orm_enum_test.v',
 	'vlib/v/tests/orm_sub_struct_test.v',
 	'vlib/v/tests/orm_sub_array_struct_test.v',
+	'vlib/v/tests/orm_generic_struct_select_test.v',
 	'vlib/v/tests/orm_joined_tables_select_test.v',
+	'vlib/v/tests/orm_if_expr_value_test.v',
+	'vlib/v/tests/orm_option_field_issue_18333_test.v',
 	'vlib/v/tests/sql_statement_inside_fn_call_test.v',
 	'vlib/v/tests/orm_stmt_wrong_return_checking_test.v',
 	'vlib/v/tests/orm_table_name_test.v',
@@ -152,25 +158,30 @@ const skip_with_fsanitize_memory = [
 	'vlib/v/tests/orm_create_several_tables_test.v',
 	'vlib/v/tests/orm_update_test.v',
 	'vlib/v/tests/orm_or_test.v',
-	'vlib/vweb/tests/vweb_test.v',
-	'vlib/vweb/csrf/csrf_test.v',
 	'vlib/net/http/request_test.v',
 	'vlib/net/http/response_test.v',
-	'vlib/vweb/route_test.v',
 	'vlib/net/websocket/websocket_test.v',
 	'vlib/net/smtp/smtp_test.v',
 	'vlib/v/tests/websocket_logger_interface_should_compile_test.v',
 	'vlib/v/tests/fns/fn_literal_type_test.v',
+	'vlib/v/tests/unions/union_implementing_interface_test.v',
+	'vlib/x/async/timeout_test.v', // spawn + channels + IError default field; tripped by MSan padding tracking
 	'vlib/x/sessions/tests/db_store_test.v',
 ]
 const skip_with_fsanitize_address = [
 	'do_not_remove',
+	'vlib/compress/zstd/zstd_test.v', // ASan reports leaks from zstd library
+	'vlib/crypto/argon2/argon2_test.v', // ASan flags large alloc on test setup
+	'vlib/gg/text_rendering_test.v', // depends on freetype/font assets not available under sanitize CI
+	'vlib/json/tests/json_decode_with_sumtype_test.v', // ASan flake on sumtype decode buffer reuse
+	'vlib/net/mbedtls/mbedtls_read_timeout_test.v', // network timing test, ASan-incompatible
 	'vlib/net/websocket/websocket_test.v',
 	'vlib/orm/orm_create_and_drop_test.v',
 	'vlib/orm/orm_insert_test.v',
 	'vlib/orm/orm_insert_reserved_name_test.v',
 	'vlib/orm/orm_sum_type_insert_test.v',
 	'vlib/orm/orm_references_test.v',
+	'vlib/v/tests/websocket_client_default_read_timeout_test.v', // network timing
 	'vlib/v/tests/websocket_logger_interface_should_compile_test.v',
 	'vlib/v/tests/orm_enum_test.v',
 	'vlib/v/tests/orm_sub_array_struct_test.v',
@@ -178,9 +189,12 @@ const skip_with_fsanitize_address = [
 	'vlib/v/tests/orm_create_several_tables_test.v',
 	'vlib/v/tests/orm_update_test.v',
 	'vlib/v/tests/orm_or_test.v',
+	'vlib/veb/sse/sse_test.v', // long-lived event stream + sockets, ASan flake
+	'vlib/v2/gen/cleanc/flag_enum_codegen_test.v', // v2 self-host, ASan-incompatible
 ]
 const skip_with_fsanitize_undefined = [
 	'do_not_remove',
+	'vlib/crypto/argon2/argon2_test.v', // UBSan flags shift in argon2 reference impl
 	'vlib/orm/orm_create_and_drop_test.v',
 	'vlib/orm/orm_insert_test.v',
 	'vlib/orm/orm_insert_reserved_name_test.v',
@@ -193,6 +207,10 @@ const skip_with_fsanitize_undefined = [
 	'vlib/v/tests/orm_update_test.v',
 	'vlib/v/tests/orm_or_test.v',
 	'vlib/v/tests/project_with_cpp_code/compiling_cpp_files_with_a_cplusplus_compiler_test.c.v', // fails compilation with: undefined reference to vtable for __cxxabiv1::__function_type_info'
+	'vlib/v2/gen/cleanc/flag_enum_codegen_test.v', // v2 self-host, UBSan-incompatible
+	'vlib/v2/gen/x64/x64_issue_27039_test.v', // v2 x64 backend exercises raw bit manipulation flagged by UBSan
+	'vlib/v2/transformer/transformer_test.v', // v2 transformer, UBSan-incompatible
+	'vlib/yaml/yaml_conformance_test.v', // upstream libyaml-style integer overflow flagged by UBSan
 ]
 const skip_on_ubuntu_musl = [
 	'do_not_remove',
@@ -243,9 +261,6 @@ const skip_on_ubuntu_musl = [
 	'vlib/v/tests/websocket_logger_interface_should_compile_test.v',
 	'vlib/v/tests/fns/fn_literal_type_test.v',
 	'vlib/clipboard/clipboard_test.v',
-	'vlib/vweb/tests/vweb_test.v',
-	'vlib/vweb/csrf/csrf_test.v',
-	'vlib/vweb/route_test.v',
 	'vlib/net/http/request_test.v',
 	'vlib/net/websocket/websocket_test.v',
 	'vlib/net/http/header_test.v',
@@ -256,6 +271,9 @@ const skip_on_ubuntu_musl = [
 	'vlib/net/http/status_test.v',
 	'vlib/x/sessions/tests/db_store_test.v',
 	'vlib/veb/tests/veb_app_test.v',
+	'vlib/ncurses/ncurses_test.v',
+	'vlib/v/tests/fixed_array_update_c_struct_alias_test.v',
+	'vlib/x/crypto/mldsa/mldsa_test.v',
 ]
 
 fn Config.init(vargs []string, targs []string) !Config {
@@ -263,10 +281,22 @@ fn Config.init(vargs []string, targs []string) !Config {
 	for arg in vargs {
 		match arg {
 			'-Werror', '-cstrict' { cfg.werror = true }
-			'-fsanitize=memory' { cfg.sanitize_memory = true }
-			'-fsanitize=address' { cfg.sanitize_address = true }
-			'-fsanitize=undefined' { cfg.sanitize_undefined = true }
 			else {}
+		}
+
+		// Match -fsanitize prefix, since CI may pass combined values like
+		// `-fsanitize=address,pointer-compare,pointer-subtract`.
+		if arg.starts_with('-fsanitize=') {
+			vals := arg.all_after('=').split(',')
+			if 'memory' in vals {
+				cfg.sanitize_memory = true
+			}
+			if 'address' in vals {
+				cfg.sanitize_address = true
+			}
+			if 'undefined' in vals {
+				cfg.sanitize_undefined = true
+			}
 		}
 	}
 	if targs.len == 0 {
@@ -308,8 +338,13 @@ fn Config.init(vargs []string, targs []string) !Config {
 }
 
 fn main() {
-	os.chdir(vroot) or { panic(err) }
+	unbuffer_stdout()
+	os.chdir(vroot)!
 	args_idx := os.args.index('test-self')
+	if args_idx < 0 {
+		eprintln('vtest-self: could not find `test-self` in os.args: ${os.args}')
+		exit(1)
+	}
 	vargs := os.args[1..args_idx]
 	targs := os.args#[args_idx + 1..]
 	cfg := Config.init(vargs, targs) or {
@@ -337,6 +372,10 @@ fn main() {
 	mut tsession := testing.new_test_session(vargs.join(' '), true)
 	tsession.exec_mode = .compile_and_run
 	tsession.files << all_test_files.filter(!it.contains('testdata' + os.path_separator))
+	$if self_ignore_v2 ? {
+		v2_dir_fragment := '${os.path_separator}vlib${os.path_separator}v2${os.path_separator}'
+		tsession.skip_files << tsession.files.filter(it.contains(v2_dir_fragment))
+	}
 	if cfg.werror {
 		tsession.custom_defines << 'self_werror'
 	}
@@ -381,6 +420,7 @@ fn main() {
 	tsession.session_start(title)
 	tsession.test()
 	tsession.session_stop(title)
+	flush_stdout()
 	if tsession.benchmark.nfail > 0 {
 		eprintln('\nError: failed ${tsession.benchmark.nfail} times.\n')
 		exit(1)

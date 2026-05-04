@@ -62,12 +62,10 @@ fn test_get_cache() {
 	defer {
 		dtmi.stop_cache_handler()
 	}
-	if !dtmi.abort_test {
-		dtm_placeholders := map[string]DtmMultiTypeMap{}
-		temp_html_file := os.join_path(dtmi.template_folder, temp_html_fp)
-		html_mem := dtmi.get_cache(temp_html_n, temp_html_file, &dtm_placeholders)
-		assert html_mem.len > 10
-	}
+	dtm_placeholders := map[string]DtmMultiTypeMap{}
+	temp_html_file := os.join_path(dtmi.template_folder, temp_html_fp)
+	html_mem := dtmi.get_cache(temp_html_n, temp_html_file, &dtm_placeholders)
+	assert html_mem.len > 10
 }
 
 fn test_chandler_clear_specific_cache() {
@@ -76,19 +74,18 @@ fn test_chandler_clear_specific_cache() {
 		dtmi.stop_cache_handler()
 	}
 	dtmi.create_cache()
-	if !dtmi.abort_test {
-		lock dtmi.template_caches {
-			cache_file := os.join_path(dtmi.template_cache_folder, '${dtmi.template_caches[0].name}_${dtmi.template_caches[0].checksum}.cache')
-			index, is_success := dtmi.chandler_clear_specific_cache(dtmi.template_caches[0].id)
-			assert is_success == true
-			assert index == 0
-			cache_exist := os.exists(cache_file)
-			assert cache_exist == false
-		}
+	lock dtmi.template_caches {
+		cache_file := os.join_path(dtmi.template_cache_folder,
+			'${dtmi.template_caches[0].name}_${dtmi.template_caches[0].checksum}.cache')
+		index, is_success := dtmi.chandler_clear_specific_cache(dtmi.template_caches[0].id)
+		assert is_success == true
+		assert index == 0
+		cache_exist := os.exists(cache_file)
+		assert cache_exist == false
 	}
 }
 
-fn test_handle_dtm_clock() {
+fn test_cache_timestamp_is_initialized() {
 	mut dtmi := init_dtm(true, max_size_data_in_memory)
 	defer {
 		dtmi.stop_cache_handler()
@@ -97,30 +94,26 @@ fn test_handle_dtm_clock() {
 	assert date_to_str.len > 10
 }
 
-fn test_cache_handler() {
+fn test_process_rendered_cache_delete_request() {
 	mut dtmi := init_dtm(true, max_size_data_in_memory)
 	defer {
 		dtmi.stop_cache_handler()
 	}
 	dtmi.create_cache()
-	if !dtmi.abort_test {
-		path_f := os.join_path(dtmi.template_folder, temp_html_fp)
-		lock dtmi.template_caches {
-			assert dtmi.template_caches[0].id == 1
-			assert dtmi.template_caches[0].name == temp_html_n
-			assert dtmi.template_caches[0].path == path_f
-		}
-		dtmi.id_to_handlered = 1
-		dtmi.ch_cache_handler <- TemplateCache{
-			id:            1
-			cache_request: .delete
-		}
-		dtmi.sync_cache()
-		if !dtmi.abort_test {
-			lock dtmi.template_caches {
-				assert dtmi.template_caches.len == 0
-			}
-		}
+	path_f := os.join_path(dtmi.template_folder, temp_html_fp)
+	lock dtmi.template_caches {
+		assert dtmi.template_caches[0].id == 1
+		assert dtmi.template_caches[0].name == temp_html_n
+		assert dtmi.template_caches[0].path == path_f
+	}
+	dtmi.id_to_handlered = 1
+	dtmi.ch_cache_handler <- TemplateCache{
+		id:            1
+		cache_request: .delete
+	}
+	dtmi.sync_cache()
+	rlock dtmi.template_caches {
+		assert dtmi.template_caches.len == 0
 	}
 }
 

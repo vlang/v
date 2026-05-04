@@ -2,6 +2,7 @@
 module main
 
 import db.pg
+import orm
 
 fn test_large_exec() {
 	$if !network ? {
@@ -57,7 +58,7 @@ fn test_transaction() {
 		return
 	}
 
-	db := pg.connect(pg.Config{ user: 'postgres', password: '12345678', dbname: 'postgres' })!
+	mut db := pg.connect(pg.Config{ user: 'postgres', password: '12345678', dbname: 'postgres' })!
 	defer {
 		db.close() or {}
 	}
@@ -67,6 +68,12 @@ fn test_transaction() {
                         username TEXT,
 						last_name TEXT NULL DEFAULT NULL
                       )')!
+	mut conn := orm.TransactionalConnection(db)
+	mut tx := orm.begin(mut conn)!
+	tx.transaction[int](fn (mut tx orm.Tx) !int {
+		return 1
+	})!
+	tx.commit()!
 	db.begin()!
 	db.exec("insert into users (username) values ('jackson')")!
 	db.savepoint('savepoint1')!

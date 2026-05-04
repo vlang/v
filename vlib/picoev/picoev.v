@@ -1,7 +1,7 @@
 module picoev
 
 import net
-import picohttpparser
+import pico_http_parser
 import time
 
 // maximum size of the event queue.
@@ -40,8 +40,8 @@ pub mut:
 pub struct Config {
 pub:
 	port         int = 8080
-	cb           fn (voidptr, picohttpparser.Request, mut picohttpparser.Response)         = unsafe { nil }
-	err_cb       fn (voidptr, picohttpparser.Request, mut picohttpparser.Response, IError) = default_error_callback
+	cb           fn (voidptr, pico_http_parser.Request, mut pico_http_parser.Response)         = unsafe { nil }
+	err_cb       fn (voidptr, pico_http_parser.Request, mut pico_http_parser.Response, IError) = default_error_callback
 	raw_cb       fn (mut Picoev, int, int) = unsafe { nil }
 	user_data    voidptr                   = unsafe { nil }
 	timeout_secs int                       = 8
@@ -56,8 +56,8 @@ pub:
 // Contains event loop, file descriptor table, timeouts, buffers, and configuration.
 @[heap]
 pub struct Picoev {
-	cb             fn (voidptr, picohttpparser.Request, mut picohttpparser.Response)         = unsafe { nil }
-	error_callback fn (voidptr, picohttpparser.Request, mut picohttpparser.Response, IError) = default_error_callback
+	cb             fn (voidptr, pico_http_parser.Request, mut pico_http_parser.Response)         = unsafe { nil }
+	error_callback fn (voidptr, pico_http_parser.Request, mut pico_http_parser.Response, IError) = default_error_callback
 	raw_callback   fn (mut Picoev, int, int) = unsafe { nil }
 
 	timeout_secs int
@@ -131,6 +131,13 @@ pub fn (mut pv Picoev) delete(fd int) int {
 fn (mut pv Picoev) loop_once(max_wait_in_sec int) int {
 	pv.loop.now = get_time()
 	if pv.poll_once(max_wait_in_sec) != 0 {
+		$if !windows {
+			if C.errno == net.error_eintr {
+				// Signal-driven wakeups are transient. The caller should keep serving,
+				// instead of spinning on a logged "error" until the signal source stops.
+				return 0
+			}
+		}
 		elog('Error during poll_once')
 		return -1
 	}
@@ -176,7 +183,7 @@ fn (mut pv Picoev) handle_timeout() {
 }
 
 // accept_callback accepts a new connection from `listen_fd` and adds it to the event loop.
-fn accept_callback(listen_fd int, events int, cb_arg voidptr) {
+fn accept_callback(listen_fd int, _events int, cb_arg voidptr) {
 	mut pv := unsafe { &Picoev(cb_arg) }
 	accepted_fd := accept(listen_fd)
 	if accepted_fd == -1 {
@@ -195,8 +202,8 @@ fn accept_callback(listen_fd int, events int, cb_arg voidptr) {
 	trace_fd('accept ${accepted_fd}')
 	setup_sock(accepted_fd) or {
 		elog('setup_sock failed, fd: ${accepted_fd}, listen_fd: ${listen_fd}, err: ${err.code()}')
-		pv.error_callback(pv.user_data, picohttpparser.Request{}, mut &picohttpparser.Response{},
-			err)
+		pv.error_callback(pv.user_data, pico_http_parser.Request{}, mut
+			&pico_http_parser.Response{}, err)
 		close_socket(accepted_fd) // Close fd on failure
 		return
 	}
@@ -237,13 +244,13 @@ fn raw_callback(fd int, events int, context voidptr) {
 		unsafe {
 			request_buffer += fd * pv.max_read // pointer magic
 		}
-		mut req := picohttpparser.Request{}
+		mut req := pico_http_parser.Request{}
 		// Response init
 		mut response_buffer := pv.out
 		unsafe {
 			response_buffer += fd * pv.max_write // pointer magic
 		}
-		mut res := picohttpparser.Response{
+		mut res := pico_http_parser.Response{
 			fd:        fd
 			buf_start: response_buffer
 			buf:       response_buffer
@@ -293,7 +300,7 @@ fn raw_callback(fd int, events int, context voidptr) {
 	}
 }
 
-fn default_error_callback(data voidptr, req picohttpparser.Request, mut res picohttpparser.Response, error IError) {
+fn default_error_callback(_data voidptr, _req pico_http_parser.Request, mut res pico_http_parser.Response, error IError) {
 	elog('picoev: ${error}')
 	res.end()
 }

@@ -65,7 +65,7 @@ fn run(args []string) !string {
 // test_toml_rs_toml_rs run though 'testdata/toml_rs/crates/test-suite/tests/*' if found.
 fn test_toml_rs_toml_rs() {
 	eprintln('> running ${@LOCATION}')
-	test_root := '${@VROOT}/vlib/toml/tests/testdata/toml_rs/crates/test-suite/tests'
+	test_root := '${@VEXEROOT}/vlib/toml/tests/testdata/toml_rs/crates/test-suite/tests'
 	if os.is_dir(test_root) {
 		valid_test_files := os.walk_ext(os.join_path(test_root, 'valid'), '.toml')
 		invalid_test_files := os.walk_ext(os.join_path(test_root, 'invalid'), '.toml')
@@ -138,8 +138,10 @@ fn test_toml_rs_toml_rs() {
 				toml_doc := toml.parse_file(valid_test_file)!
 
 				v_toml_json_path := os.join_path(compare_work_dir_root,
+
 					os.file_name(valid_test_file).all_before_last('.') + '.v.json')
 				toml_rs_toml_json_path := os.join_path(compare_work_dir_root,
+
 					os.file_name(valid_test_file).all_before_last('.') + '.json')
 
 				mut array_type := 1
@@ -238,8 +240,7 @@ fn to_toml_rs(value ast.Value, array_type int) string {
 		}
 		ast.DateTime {
 			// Normalization for json
-			mut json_text := json2.Any(value.text).json_str().to_upper().replace(' ',
-				'T')
+			mut json_text := json2.Any(value.text).json_str().to_upper().replace(' ', 'T')
 			typ := if json_text.ends_with('Z"') || json_text.all_after('T').contains('-')
 				|| json_text.all_after('T').contains('+') {
 				'datetime'
@@ -315,5 +316,6 @@ fn to_toml_rs(value ast.Value, array_type int) string {
 			return str
 		}
 	}
+
 	return '<error>'
 }

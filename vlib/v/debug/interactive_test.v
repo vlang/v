@@ -34,10 +34,10 @@ fn test_debugger() {
 	assert all_expect_files.len > 0, 'no .expect files found in ${expect_tests_path}'
 	mut oks := 0
 	for eidx, efile in all_expect_files.sorted() {
-		// if !efile.contains('sumtype') { gprintln('skipping $efile') continue }
+		// if !efile.contains('sumtype') { gprintln('skipping ${efile}') continue }
 		vfile := efile.replace('.expect', '.vv')
-		output_file := os.join_path(test_module_path, os.file_name(efile).replace('.expect',
-			'.exe'))
+		output_file := os.join_path(test_module_path,
+			os.file_name(efile).replace('.expect', '.exe'))
 
 		if be_verbose {
 			println(bar)
@@ -48,7 +48,8 @@ fn test_debugger() {
 		}
 
 		compile_sw := time.new_stopwatch()
-		comp_res := os.system('${os.quoted_path(vexe)} -o ${os.quoted_path(output_file)} ${os.quoted_path(vfile)}')
+		comp_res :=
+			os.system('${os.quoted_path(vexe)} -o ${os.quoted_path(output_file)} ${os.quoted_path(vfile)}')
 		cdur_ms := compile_sw.elapsed().milliseconds()
 		if be_verbose {
 			gprintln('>>>>>>>>>>> compilation took ${cdur_ms} ms, comp_res: ${comp_res}')

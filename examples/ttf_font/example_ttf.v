@@ -3,6 +3,7 @@ import sokol.sapp
 import sokol.sgl
 import sokol.gfx
 import x.ttf
+import x.ttf.render_sokol
 import os
 
 // import math
@@ -22,7 +23,7 @@ pub mut:
 	init_flag       bool
 	frame_c         int
 	tf              []ttf.TTF_File
-	ttf_render      []ttf.TTF_render_Sokol
+	ttf_render      []render_sokol.TTF_render_Sokol
 	text_ready_flag bool
 	mouse_x         int = -1
 	mouse_y         int = -1
@@ -136,7 +137,7 @@ fn main() {
 		app.tf << tf
 	}
 	// TTF render 0 Frame counter
-	app.ttf_render << &ttf.TTF_render_Sokol{
+	app.ttf_render << &render_sokol.TTF_render_Sokol{
 		bmp: &ttf.BitMap{
 			tf:       &app.tf[0]
 			buf:      unsafe { malloc_noscan(32000000) }
@@ -147,7 +148,7 @@ fn main() {
 		}
 	}
 	// TTF render 1 Text Block
-	app.ttf_render << &ttf.TTF_render_Sokol{
+	app.ttf_render << &render_sokol.TTF_render_Sokol{
 		bmp: &ttf.BitMap{
 			tf: &app.tf[1]
 			// color : 0xFF0000_10
@@ -156,7 +157,7 @@ fn main() {
 		}
 	}
 	// TTF mouse position render
-	app.ttf_render << &ttf.TTF_render_Sokol{
+	app.ttf_render << &render_sokol.TTF_render_Sokol{
 		bmp: &ttf.BitMap{
 			tf: &app.tf[0]
 		}

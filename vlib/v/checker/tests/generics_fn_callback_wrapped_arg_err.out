@@ -1,0 +1,7 @@
+vlib/v/checker/tests/generics_fn_callback_wrapped_arg_err.vv:6:11: error: cannot use `Default[Foo]` as `Foo` in argument 1 to `g`
+    4 | 
+    5 | fn f[T](g fn (x T) int) {
+    6 |     assert g(Default[T]{}) == 42
+      |              ~~~~~~~~~~~~
+    7 | }
+    8 |

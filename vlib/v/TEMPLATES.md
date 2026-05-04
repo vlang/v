@@ -6,18 +6,22 @@ to be used for other kinds of text output also.
 # Template directives
 
 Each template directive begins with an `@` sign.
-Some directives contain a `{}` block, others only have `''` (string) parameters.
+Block directives are line-based: start with `@if`, `@for`, or `@else` on their own line,
+then close the block with `@end`, `@endif`, or `@endfor`.
+HTML templates also support brace-delimited control blocks, so `@if cond { ... }`,
+`@else { ... }`, and `@for item in items { ... }` can be closed with `}` instead.
+Inline one-line bodies like `@if cond { <span>shown</span> }` are supported too.
+Other directives only have `''` (string) parameters.
 
-Newlines on the beginning and end are ignored in `{}` blocks,
-otherwise this (see [if](#if) for this syntax):
+For example:
 
 ```html
-@if bool_val {
+@if bool_val
     <span>This is shown if bool_val is true</span>
-}
+@end
 ```
 
-... would output:
+... renders as:
 
 ```html
 
@@ -29,14 +33,24 @@ otherwise this (see [if](#if) for this syntax):
 
 ## if
 
-The if directive, consists of three parts, the `@if` tag, the condition (same syntax like in V)
-and the `{}` block, where you can write html, which will be rendered if the condition is true:
+The if directive consists of the `@if` tag, the condition
+(using the same syntax as in V), and a block of template content.
+Close the block with `@end` or `@endif`.
+In HTML templates, you can also use a brace-delimited block and close it with `}`.
 
 ```
-@if <condition> {}
+@if <condition>
+    ...
+@end
 ```
 
 ### Example
+
+```html
+@if bool_val
+    <span>This is shown if bool_val is true</span>
+@end
+```
 
 ```html
 @if bool_val {
@@ -44,10 +58,14 @@ and the `{}` block, where you can write html, which will be rendered if the cond
 }
 ```
 
-One-liner:
+You can also use `@else`:
 
 ```html
-@if bool_val { <span>This is shown if bool_val is true</span> }
+@if bool_val
+    <span>This is shown if bool_val is true</span>
+@else
+    <span>This is shown if bool_val is false</span>
+@endif
 ```
 
 The first example would result in:
@@ -56,34 +74,26 @@ The first example would result in:
     <span>This is shown if bool_val is true</span>
 ```
 
-... while the one-liner results in:
-
-```html
-<span>This is shown if bool_val is true</span>
-```
-
 ## for
 
 The for directive consists of three parts, the `@for` tag,
-the condition (same syntax like in V) and the `{}` block,
+the condition (same syntax like in V) and the template block,
 where you can write text, rendered for each iteration of the loop:
 
 ```
-@for <condition> {}
+@for <condition>
+    ...
+@end
 ```
+
+In HTML templates, you can also use `@for <condition> { ... }` and close it with `}`.
 
 ### Example for @for
 
 ```html
-@for i, val in my_vals {
-    <span>$i - $val</span>
-}
-```
-
-One-liner:
-
-```html
-@for i, val in my_vals { <span>$i - $val</span> }
+@for i, val in my_vals
+    <span>${i} - ${val}</span>
+@end
 ```
 
 The first example would result in:
@@ -95,21 +105,12 @@ The first example would result in:
     ...
 ```
 
-... while the one-liner results in:
-
-```html
-<span>0 - "First"</span>
-<span>1 - "Second"</span>
-<span>2 - "Third"</span>
-...
-```
-
 You can also write (and all other for condition syntaxes that are allowed in V):
 
 ```html
-@for i = 0; i < 5; i++ {
-    <span>$i</span>
-}
+@for i = 0; i < 5; i++
+    <span>${i}</span>
+@end
 ```
 
 ## include

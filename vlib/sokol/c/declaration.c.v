@@ -1,17 +1,42 @@
 module c
 
+import sokol.memory as _
+
 #flag -I @VEXEROOT/thirdparty/sokol
 #flag -I @VEXEROOT/thirdparty/sokol/util
 #flag freebsd -I /usr/local/include
 #flag darwin -fobjc-arc
 
-#flag linux -lX11 -lGL -lXcursor -lXi -lpthread
+// Platform-specific library linking
+// X11 is the default on Linux
+// Use `-d sokol_wayland` to enable Wayland support
+#flag linux -DSOKOL_GLCORE
+$if sokol_wayland ? {
+	#flag linux -lwayland-client -lwayland-egl -lxkbcommon -lxkbcommon-x11 -lEGL -lGL -lpthread -lm -ldl -lX11 -lXi -lXcursor
+} $else {
+	// EGL is used instead of GLX on X11 to get consistent vsync under XWayland.
+	// GLX vsync is often ignored by XWayland compositors, causing frame pacing
+	// jitter. EGL honours the swap interval reliably on both native X11 and
+	// XWayland sessions.
+	#flag linux -lX11 -lXi -lXcursor -lEGL -lGL -lpthread -lm -ldl
+}
+#flag freebsd -DSOKOL_GLCORE
 #flag freebsd -L/usr/local/lib -lX11 -lGL -lXcursor -lXi
+#flag openbsd -DSOKOL_GLCORE
 #flag openbsd -I/usr/X11R6/include -L/usr/X11R6/lib -lX11 -lGL -lXcursor -lXi
+#flag windows -DSOKOL_GLCORE
 #flag windows -lgdi32
 
 $if windows {
 	#flag windows -lopengl32
+	$if msvc {
+		$if livemain ? {
+			#define SOKOL_DLL
+		}
+		$if sharedlive ? {
+			#define SOKOL_DLL
+		}
+	}
 }
 
 // Note that -lm is needed *only* for sokol_gl.h's usage of sqrtf(),
@@ -54,19 +79,13 @@ $if emscripten ? {
 	//	#flag -s MODULARIZE
 }
 
-// OPENGL
-#flag linux -DSOKOL_GLCORE
-#flag freebsd -DSOKOL_GLCORE
-#flag openbsd -DSOKOL_GLCORE
-//#flag darwin -framework OpenGL -framework Cocoa -framework QuartzCore
 // D3D
-#flag windows -DSOKOL_GLCORE
 //#flag windows -DSOKOL_D3D11
+#flag windows -DSOKOL_GLCORE
+
 // for simplicity, all header includes are here because import order matters and we dont have any way
 // to ensure import order with V yet
 
-@[use_once]
-#define SOKOL_IMPL
 // TODO: should not be defined for android graphic (apk/aab using sokol) builds, but we have no ways to undefine
 //#define SOKOL_NO_ENTRY
 #flag linux   -DSOKOL_NO_ENTRY
@@ -83,15 +102,52 @@ $if emscripten ? {
 // To allow for thirdparty initializing window / acceleration contexts
 // but still be able to use sokol.gfx e.g. SDL+sokol_gfx
 $if !no_sokol_app ? {
+	$if linux && sokol_wayland ? {
+		// Enable Wayland on Linux (when explicitly enabled with -d sokol_wayland)
+		#define SOKOL_WAYLAND
+		#flag -I@VEXEROOT/thirdparty/sokol
+	} $else $if linux {
+		// Explicitly disable Wayland on Linux when not using sokol_wayland
+		#define SOKOL_DISABLE_WAYLAND
+		// Force EGL instead of GLX so that eglSwapBuffers provides consistent
+		// vsync pacing on both native X11 and XWayland sessions.
+		#define SOKOL_FORCE_EGL
+	}
+
+	$if macos {
+		$if sharedlive ? {
+		} $else {
+			// The live-reload dylib should reuse the host app's sokol_app symbols on macOS.
+			#define SOKOL_APP_IMPL
+		}
+	} $else $if windows {
+		$if sharedlive ? {
+		} $else {
+			// On Windows, the live-reload DLL links back to the host executable's
+			// import library, so it should not embed its own sokol_app backend.
+			#define SOKOL_APP_IMPL
+		}
+	} $else {
+		#define SOKOL_APP_IMPL
+	}
+
+	@[use_once]
 	#include "sokol_app.h"
 }
 
-@[use_once]
-#define SOKOL_IMPL
+$if windows && sharedlive ? {
+} $else {
+	@[use_once]
+	#define SOKOL_GFX_IMPL
+}
 #define SOKOL_NO_DEPRECATED
 #include "sokol_gfx.h"
 
-@[use_once]
-#define SOKOL_GL_IMPL
+$if windows && sharedlive ? {
+} $else {
+	@[use_once]
+	#define SOKOL_IMPL
+}
 #include "util/sokol_gl.h"
+
 #include "sokol_v.post.h"

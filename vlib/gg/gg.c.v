@@ -27,9 +27,9 @@ struct C.XRRCrtcInfo {
 	height u32
 }
 
-fn C.XOpenDisplay(int) voidptr
-fn C.XCloseDisplay(voidptr) int
-fn C.DefaultScreen(voidptr) int
+fn C.XOpenDisplay(i32) voidptr
+fn C.XCloseDisplay(voidptr) i32
+fn C.DefaultScreen(voidptr) i32
 fn C.DefaultRootWindow(voidptr) u64
 fn C.XRRGetScreenResources(voidptr, u64) &C.XRRScreenResources
 fn C.XRRGetOutputPrimary(voidptr, u64) u64
@@ -51,8 +51,30 @@ $if windows {
 
 #flag wasm32_emscripten --embed-file @VEXEROOT/examples/assets/fonts/RobotoMono-Regular.ttf@/assets/fonts/RobotoMono-Regular.ttf
 
+$if macos {
+	fn C.gg_macos_resize_window(window voidptr, width int, height int)
+	fn C.gg_macos_set_window_resizable(window voidptr, resizable bool)
+}
+
+$if windows {
+	struct C.RECT {
+		left   i32
+		top    i32
+		right  i32
+		bottom i32
+	}
+
+	fn C.GetWindowRect(hwnd voidptr, rect &C.RECT) int
+	fn C.GetWindowLongW(hwnd voidptr, index int) i32
+	fn C.SetWindowLongW(hwnd voidptr, index int, new_long i32) i32
+	fn C.AdjustWindowRectEx(rect &C.RECT, style u32, menu int, ex_style u32) int
+	fn C.SetWindowPos(hwnd voidptr, hwnd_insert_after voidptr, x int, y int, cx int, cy int, flags u32) int
+}
+
 // call Windows API to get screen size
-fn C.GetSystemMetrics(int) int
+fn C.GetSystemMetrics(i32) i32
+fn C.XResizeWindow(display voidptr, window u64, width u32, height u32) int
+fn C.XFlush(display voidptr) int
 
 pub type TouchPoint = C.sapp_touchpoint
 
@@ -83,8 +105,8 @@ pub struct Config {
 pub:
 	width         int = 800 // desired start width of the window
 	height        int = 600 // desired start height of the window
-	retina        bool    // TODO: implement or deprecate
-	resizable     bool    // TODO: implement or deprecate
+	retina        bool // TODO: implement or deprecate
+	resizable     bool = true // prevent user-initiated resizing when supported by the platform backend
 	user_data     voidptr // a custom pointer to the application data/instance. When it is not set explicitly, it will default to a pointer to the current gg.Context instance.
 	font_size     int     // TODO: implement or deprecate
 	create_window bool    // TODO: implement or deprecate
@@ -92,7 +114,7 @@ pub:
 	window_title      string = 'A GG Window. Set window_title: to change it.' // the desired title of the window
 	icon              sapp.IconDesc
 	html5_canvas_name string = 'canvas'
-	borderless_window bool  // TODO: implement or deprecate
+	borderless_window bool  // create the window without native decorations when supported by the platform backend
 	always_on_top     bool  // TODO: implement or deprecate
 	bg_color          Color // The background color of the window. By default, the first thing gg does in ctx.begin(), is clear the whole buffer with that color.
 	init_fn           FNCb   = unsafe { nil } // Called once, after Sokol has finished its setup. Some gg and Sokol functions have to be called *in this* callback, or after this callback, but not before
@@ -119,10 +141,11 @@ pub:
 	resized_fn FNEvent   = unsafe { nil } // Called once when the window has changed its size.
 	scroll_fn  FNEvent   = unsafe { nil } // Called while the user is scrolling. The direction of scrolling is indicated by either 1 or -1.
 	// wait_events       bool // set this to true for UIs, to save power
-	fullscreen    bool // set this to true, if you want your window to start in fullscreen mode (suitable for games/demos/screensavers)
-	scale         f32 = 1.0
-	sample_count  int // bigger values usually have performance impact, but can produce smoother/antialiased lines, if you draw lines or polygons (2 is usually good enough)
-	swap_interval int = 1 // 1 = 60fps, 2 = 30fps etc. The preferred swap interval (ignored on some platforms)
+	fullscreen     bool // set this to true, if you want your window to start in fullscreen mode (suitable for games/demos/screensavers)
+	scale          f32 = 1.0
+	sample_count   int // bigger values usually have performance impact, but can produce smoother/antialiased lines, if you draw lines or polygons (2 is usually good enough)
+	texture_filter TextureFilter = .linear // default texture filter for newly created images; use `.nearest` for pixel art scaling
+	swap_interval  int           = 1       // 1 = 60fps, 2 = 30fps etc. Honored on Windows, macOS, Linux, iOS, and HTML5; Android support is not implemented yet.
 	// ved needs this
 	// init_text bool
 	font_path             string
@@ -186,9 +209,11 @@ mut:
 	render_text bool = true
 	// a cache with all images created by the user. used for sokol image init and to save space
 	// (so that the user can store image ids, not entire Image objects)
-	image_cache   []Image
-	needs_refresh bool = true
-	ticks         int // for ui mode only
+	image_cache                 []Image
+	needs_refresh               bool = true
+	ticks                       int // for ui mode only
+	last_bg_overlay_frame       u64
+	translucent_bg_seed_pending bool
 pub:
 	native_rendering bool
 pub mut:
@@ -196,6 +221,7 @@ pub mut:
 	width       int
 	height      int
 	clear_pass  gfx.PassAction
+	bg_color    Color
 	window      sapp.Desc
 	pipeline    &PipelineContainer = unsafe { nil }
 	config      Config
@@ -207,6 +233,7 @@ pub mut:
 	//
 	timer        time.StopWatch // starts right after new_context, and can be controlled/stopped/restarted in whatever way the user wants.
 	update_timer time.StopWatch // measures how much time has passed since the start of the frame.
+	frame_timer  time.StopWatch // enforces swap_interval as a fallback when the platform ignores vsync.
 	// Note: when there is an update_fn, this timer is reset by GG itself, at the start of each frame.
 
 	mbtn_mask     u8
@@ -245,16 +272,17 @@ fn gg_init_sokol_window(user_data voidptr) {
 	sgl_desc := sgl.Desc{}
 	sgl.setup(&sgl_desc)
 	ctx.set_scale()
+	if !ctx.config.resizable {
+		gg_apply_window_resizable()
+	}
 	// is_high_dpi := sapp.high_dpi()
 	// fb_w := sapp.width()
 	// fb_h := sapp.height()
-	// println('ctx.scale=$ctx.scale is_high_dpi=$is_high_dpi fb_w=$fb_w fb_h=$fb_h')
+	// println('ctx.scale=${ctx.scale} is_high_dpi=${is_high_dpi} fb_w=${fb_w} fb_h=${fb_h}')
 	// if ctx.config.init_text {
 	// `os.is_file()` won't work on Android if the font file is embedded into the APK
 	exists := $if !android { os.is_file(ctx.config.font_path) } $else { true }
-	if ctx.config.font_path != '' && !exists {
-		ctx.render_text = false
-	} else if ctx.config.font_path != '' && exists {
+	if ctx.config.font_path != '' && exists {
 		// t := time.ticks()
 		ctx.ft = new_ft(
 			font_path:             ctx.config.font_path
@@ -303,8 +331,7 @@ fn gg_init_sokol_window(user_data voidptr) {
 			// changed meanwhile.
 			win_size := ctx.window_size()
 			if ctx.width != win_size.width || ctx.height != win_size.height {
-				ctx.width = win_size.width
-				ctx.height = win_size.height
+				ctx.set_cached_window_size(win_size.width, win_size.height)
 				if ctx.config.resized_fn != unsafe { nil } {
 					e := Event{
 						typ:           .resized
@@ -335,6 +362,7 @@ fn gg_frame_fn(mut ctx Context) {
 	if ctx.config.frame_fn == unsafe { nil } {
 		return
 	}
+	ctx.pace_frame()
 	if ctx.native_rendering {
 		// return
 	}
@@ -363,6 +391,28 @@ fn gg_frame_fn(mut ctx Context) {
 	}
 	ctx.config.frame_fn(ctx.user_data)
 	ctx.needs_refresh = false
+}
+
+fn swap_interval_frame_budget(swap_interval int) time.Duration {
+	if swap_interval <= 0 {
+		return time.Duration(0)
+	}
+	return time.Duration(swap_interval) * time.second / 60
+}
+
+fn (mut ctx Context) pace_frame() {
+	frame_budget := swap_interval_frame_budget(ctx.config.swap_interval)
+	if frame_budget <= 0 || ctx.frame <= 1 {
+		ctx.frame_timer.restart()
+		return
+	}
+	elapsed := ctx.frame_timer.elapsed()
+	$if !emscripten ? {
+		if elapsed < frame_budget {
+			time.sleep(frame_budget - elapsed)
+		}
+	}
+	ctx.frame_timer.restart()
 }
 
 fn gg_event_fn(ce voidptr, user_data voidptr) {
@@ -468,6 +518,7 @@ fn gg_event_fn(ce voidptr, user_data voidptr) {
 		.resized {
 			ctx.scale = dpi_scale()
 			ctx.ft.scale = ctx.scale
+			ctx.set_cached_window_size(e.window_width, e.window_height)
 			if ctx.config.resized_fn != unsafe { nil } {
 				ctx.config.resized_fn(e, ctx.user_data)
 			}
@@ -481,9 +532,13 @@ fn gg_event_fn(ce voidptr, user_data voidptr) {
 			// dump(e)
 		}
 	}
-	$if linux {
+
+	$if windows || (linux && !sokol_wayland ?) {
 		if e.typ == .key_down && e.key_code in [.backspace, .delete, .enter, .tab] {
-			// with X11, sokol does not send .char events for some keys; we will emulate them for consistency here:
+			// with Win32 and X11, sokol does not send .char events for some keys;
+			// we will emulate them for consistency here:
+			// NOTE: on Wayland (sokol_wayland), the backend already sends real CHAR events for these
+			// keys via xkb_state_key_get_utf8, so this block must not run there or events double-fire.
 			e.char_code = match e.key_code {
 				.backspace { u32(8) }
 				.tab { 9 }
@@ -491,6 +546,7 @@ fn gg_event_fn(ce voidptr, user_data voidptr) {
 				.delete { 127 }
 				else { u32(e.key_code) }
 			}
+
 			e.key_code = .invalid
 			e.typ = .char
 			if ctx.config.event_fn != unsafe { nil } {
@@ -553,7 +609,9 @@ pub fn new_context(cfg Config) &Context {
 			cleanup_userdata_cb: gg_cleanup_fn
 			window_title:        &char(cfg.window_title.str)
 			icon:                cfg.icon
-			html5_canvas_name:   &char(cfg.html5_canvas_name.str)
+			html5:               sapp.Html5Desc{
+				canvas_selector: &char(cfg.html5_canvas_name.str)
+			}
 			width:               cfg.width
 			height:              cfg.height
 			sample_count:        cfg.sample_count
@@ -562,6 +620,7 @@ pub fn new_context(cfg Config) &Context {
 			__v_native_render:   cfg.native_rendering
 			min_width:           cfg.min_width
 			min_height:          cfg.min_height
+			borderless_window:   cfg.borderless_window
 			// drag&drop
 			enable_dragndrop:             cfg.enable_dragndrop
 			max_dropped_files:            cfg.max_dropped_files
@@ -572,6 +631,81 @@ pub fn new_context(cfg Config) &Context {
 	ctx.set_bg_color(cfg.bg_color)
 	// C.printf('new_context() %p\n', cfg.user_data)
 	return ctx
+}
+
+fn (mut ctx Context) set_cached_window_size(width int, height int) {
+	ctx.width = width
+	ctx.height = height
+	ctx.window.width = width
+	ctx.window.height = height
+}
+
+fn gg_apply_window_resizable() {
+	$if macos {
+		window := sapp.macos_get_window()
+		if window != unsafe { nil } {
+			C.gg_macos_set_window_resizable(window, false)
+		}
+	} $else $if windows {
+		hwnd := sapp.win32_get_hwnd()
+		if hwnd == unsafe { nil } {
+			return
+		}
+		mut style := u32(C.GetWindowLongW(hwnd, C.GWL_STYLE))
+		style &= ~u32(C.WS_SIZEBOX | C.WS_MAXIMIZEBOX)
+		C.SetWindowLongW(hwnd, C.GWL_STYLE, i32(style))
+		C.SetWindowPos(hwnd, unsafe { nil }, 0, 0, 0, 0,
+			u32(C.SWP_NOMOVE | C.SWP_NOSIZE | C.SWP_NOZORDER | C.SWP_NOACTIVATE | C.SWP_FRAMECHANGED))
+	} $else $if linux {
+		sapp.set_resizable(false)
+	}
+}
+
+fn gg_resize_window(width int, height int) {
+	if width <= 0 || height <= 0 {
+		return
+	}
+	$if macos {
+		window := sapp.macos_get_window()
+		if window != unsafe { nil } {
+			C.gg_macos_resize_window(window, width, height)
+		}
+	} $else $if windows {
+		hwnd := sapp.win32_get_hwnd()
+		if hwnd == unsafe { nil } {
+			return
+		}
+		scale := dpi_scale()
+		client_width := int(f32(width) * scale + 0.5)
+		client_height := int(f32(height) * scale + 0.5)
+		mut rect := C.RECT{
+			right:  i32(client_width)
+			bottom: i32(client_height)
+		}
+		style := u32(C.GetWindowLongW(hwnd, C.GWL_STYLE))
+		ex_style := u32(C.GetWindowLongW(hwnd, C.GWL_EXSTYLE))
+		if C.AdjustWindowRectEx(&rect, style, 0, ex_style) == 0 {
+			return
+		}
+		mut current_rect := C.RECT{}
+		if C.GetWindowRect(hwnd, &current_rect) == 0 {
+			return
+		}
+		C.SetWindowPos(hwnd, unsafe { nil }, int(current_rect.left), int(current_rect.top),
+			int(rect.right - rect.left), int(rect.bottom - rect.top),
+			u32(C.SWP_NOZORDER | C.SWP_NOACTIVATE))
+	} $else $if linux && !sokol_wayland ? {
+		display := sapp.x11_get_display()
+		window := u64(usize(sapp.x11_get_window()))
+		if display == unsafe { nil } || window == 0 {
+			return
+		}
+		scale := dpi_scale()
+		x11_width := int(f32(width) * scale + 0.5)
+		x11_height := int(f32(height) * scale + 0.5)
+		C.XResizeWindow(display, window, u32(x11_width), u32(x11_height))
+		C.XFlush(display)
+	}
 }
 
 // run starts the main loop of the context.
@@ -594,14 +728,16 @@ pub fn (ctx &Context) quit() {
 
 // set_bg_color sets the color of the window background to `c`.
 pub fn (mut ctx Context) set_bg_color(c Color) {
+	ctx.bg_color = c
 	ctx.clear_pass = gfx.create_clear_pass_action(f32(c.r) / 255.0, f32(c.g) / 255.0,
 		f32(c.b) / 255.0, f32(c.a) / 255.0)
+	ctx.translucent_bg_seed_pending = c.a < 255
 }
 
 // Resize the context's Window
 pub fn (mut ctx Context) resize(width int, height int) {
-	ctx.width = width
-	ctx.height = height
+	ctx.set_cached_window_size(width, height)
+	gg_resize_window(width, height)
 }
 
 // refresh_ui requests a complete re-draw of the window contents.
@@ -618,6 +754,13 @@ pub fn (ctx &Context) begin() {
 	sgl.defaults()
 	sgl.matrix_mode_projection()
 	sgl.ortho(0.0, f32(sapp.width()), f32(sapp.height()), 0.0, -1.0, 1.0)
+	if ctx.bg_color.a < 255 && ctx.last_bg_overlay_frame != ctx.frame {
+		mut ctx_mut := unsafe { &Context(ctx) }
+		ctx_mut.last_bg_overlay_frame = ctx.frame
+		// Sokol clear actions replace pixels and do not blend.
+		// Draw a translucent fullscreen quad once per frame to get trail/fade behavior.
+		ctx.draw_rect_filled(0, 0, f32(ctx.width), f32(ctx.height), ctx.bg_color)
+	}
 }
 
 pub enum EndEnum {
@@ -647,6 +790,27 @@ const dontcare_pass = gfx.PassAction{
 		},
 		gfx.ColorAttachmentAction{
 			load_action: .dontcare
+			clear_value: gfx.Color{1.0, 1.0, 1.0, 1.0}
+		},
+	]!
+}
+
+const load_pass = gfx.PassAction{
+	colors: [
+		gfx.ColorAttachmentAction{
+			load_action: .load
+			clear_value: gfx.Color{1.0, 1.0, 1.0, 1.0}
+		},
+		gfx.ColorAttachmentAction{
+			load_action: .load
+			clear_value: gfx.Color{1.0, 1.0, 1.0, 1.0}
+		},
+		gfx.ColorAttachmentAction{
+			load_action: .load
+			clear_value: gfx.Color{1.0, 1.0, 1.0, 1.0}
+		},
+		gfx.ColorAttachmentAction{
+			load_action: .load
 			clear_value: gfx.Color{1.0, 1.0, 1.0, 1.0}
 		},
 	]!
@@ -684,12 +848,23 @@ pub fn (ctx &Context) end(options EndOptions) {
 	}
 	pass := match options.how {
 		.clear {
-			create_default_pass(ctx.clear_pass)
+			if ctx.bg_color.a < 255 {
+				if ctx.translucent_bg_seed_pending {
+					mut ctx_mut := unsafe { &Context(ctx) }
+					ctx_mut.translucent_bg_seed_pending = false
+					create_default_pass(ctx.clear_pass)
+				} else {
+					create_default_pass(load_pass)
+				}
+			} else {
+				create_default_pass(ctx.clear_pass)
+			}
 		}
 		.passthru {
 			create_default_pass(dontcare_pass)
 		}
 	}
+
 	gfx.begin_pass(pass)
 	sgl.draw()
 	gfx.end_pass()
@@ -735,16 +910,18 @@ pub fn (ctx &Context) show_fps() {
 	fps_text := int(0.5 + 1.0 / frame_duration).str()
 	if ctx.fps.width == 0 {
 		mut fps := unsafe { &ctx.fps }
-		fps.width, fps.height = ctx.text_size('00') // usual size; prevents blinking on variable width fonts
+		fps.width, fps.height =
+			ctx.text_size('00') // usual size; prevents blinking on variable width fonts
 	}
 	char_width := ctx.fps.text_config.size / 2
 	mut full_width := ctx.fps.width
 	if char_width * fps_text.len > ctx.fps.width {
 		full_width += (fps_text.len - 2) * char_width
 	}
-	ctx.draw_rect_filled(ctx.fps.x, ctx.fps.y, full_width + 2, ctx.fps.height + 4, ctx.fps.background_color)
-	ctx.draw_text(ctx.fps.x + full_width / 2 + 1, ctx.fps.y + ctx.fps.height / 2 + 2,
-		fps_text, ctx.fps.text_config)
+	ctx.draw_rect_filled(ctx.fps.x, ctx.fps.y, full_width + 2, ctx.fps.height + 4,
+		ctx.fps.background_color)
+	ctx.draw_text(ctx.fps.x + full_width / 2 + 1, ctx.fps.y + ctx.fps.height / 2 + 2, fps_text,
+		ctx.fps.text_config)
 }
 
 fn (mut ctx Context) set_scale() {
@@ -833,7 +1010,8 @@ pub fn screen_size() Size {
 		}
 		for i := 0; i < resources.noutput; i++ {
 			if unsafe { u64(resources.outputs[i]) } == primary_output {
-				output_info := C.XRRGetOutputInfo(display, resources, unsafe { resources.outputs[i] })
+				output_info := C.XRRGetOutputInfo(display, resources,
+					unsafe { resources.outputs[i] })
 				if output_info == unsafe { nil } {
 					return Size{}
 				}

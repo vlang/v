@@ -1,5 +1,7 @@
 module flag
 
+import v.ast
+
 struct FlagData {
 	raw        string @[required]
 	field_name string @[required]
@@ -62,6 +64,115 @@ struct StructField {
 	attrs      map[string]string // collection of `@[x: y]` sat on the field, read via reflection
 	type_name  string
 	doc        string // documentation string sat via `@[xdoc: x y z]`
+}
+
+fn assign_single_flag_value[T](mut target T, default_value T, f FlagData, struct_name string, field_name string) ! {
+	_ = target
+	a_or_r := f.arg or { '${f.repeats}' }
+	$if T is int {
+		if !a_or_r.is_int() {
+			return error('can not assign non-integer value `${a_or_r}` from flag `${f.raw}` to `${struct_name}.${field_name}`')
+		}
+		target = a_or_r.int()
+	} $else $if T is i64 {
+		if !a_or_r.is_int() {
+			return error('can not assign non-integer value `${a_or_r}` from flag `${f.raw}` to `${struct_name}.${field_name}`')
+		}
+		target = a_or_r.i64()
+	} $else $if T is u64 {
+		if !a_or_r.is_int() {
+			return error('can not assign non-integer value `${a_or_r}` from flag `${f.raw}` to `${struct_name}.${field_name}`')
+		}
+		target = a_or_r.u64()
+	} $else $if T is i32 {
+		if !a_or_r.is_int() {
+			return error('can not assign non-integer value `${a_or_r}` from flag `${f.raw}` to `${struct_name}.${field_name}`')
+		}
+		target = a_or_r.i32()
+	} $else $if T is u32 {
+		if !a_or_r.is_int() {
+			return error('can not assign non-integer value `${a_or_r}` from flag `${f.raw}` to `${struct_name}.${field_name}`')
+		}
+		target = a_or_r.u32()
+	} $else $if T is i16 {
+		if !a_or_r.is_int() {
+			return error('can not assign non-integer value `${a_or_r}` from flag `${f.raw}` to `${struct_name}.${field_name}`')
+		}
+		target = a_or_r.i16()
+	} $else $if T is u16 {
+		if !a_or_r.is_int() {
+			return error('can not assign non-integer value `${a_or_r}` from flag `${f.raw}` to `${struct_name}.${field_name}`')
+		}
+		target = a_or_r.u16()
+	} $else $if T is i8 {
+		if !a_or_r.is_int() {
+			return error('can not assign non-integer value `${a_or_r}` from flag `${f.raw}` to `${struct_name}.${field_name}`')
+		}
+		target = a_or_r.i8()
+	} $else $if T is u8 {
+		if !a_or_r.is_int() {
+			return error('can not assign non-integer value `${a_or_r}` from flag `${f.raw}` to `${struct_name}.${field_name}`')
+		}
+		target = a_or_r.u8()
+	} $else $if T is f32 {
+		target = f.arg or { return error('failed appending ${f.raw} to ${field_name}') }
+			.f32()
+	} $else $if T is f64 {
+		target = f.arg or { return error('failed appending ${f.raw} to ${field_name}') }
+			.f64()
+	} $else $if T is bool {
+		if arg := f.arg {
+			return error('can not assign `${arg}` to bool field `${field_name}`')
+		}
+		target = !default_value
+	} $else $if T is string {
+		target = f.arg or { return error('failed appending ${f.raw} to ${field_name}') }
+			.str()
+	} $else {
+		return error('field type: ${T.name} for ${field_name} is not supported')
+	}
+}
+
+fn append_multi_flag_value[T](mut target T, f FlagData, field_name string) ! {
+	$if T is []string {
+		target << f.arg or { return error('failed appending ${f.raw} to ${field_name}') }
+			.str()
+	} $else $if T is []int {
+		target << f.arg or { return error('failed appending ${f.raw} to ${field_name}') }
+			.int()
+	} $else $if T is []i64 {
+		target << f.arg or { return error('failed appending ${f.raw} to ${field_name}') }
+			.i64()
+	} $else $if T is []u64 {
+		target << f.arg or { return error('failed appending ${f.raw} to ${field_name}') }
+			.u64()
+	} $else $if T is []i32 {
+		target << f.arg or { return error('failed appending ${f.raw} to ${field_name}') }
+			.i32()
+	} $else $if T is []u32 {
+		target << f.arg or { return error('failed appending ${f.raw} to ${field_name}') }
+			.u32()
+	} $else $if T is []i16 {
+		target << f.arg or { return error('failed appending ${f.raw} to ${field_name}') }
+			.i16()
+	} $else $if T is []u16 {
+		target << f.arg or { return error('failed appending ${f.raw} to ${field_name}') }
+			.u16()
+	} $else $if T is []i8 {
+		target << f.arg or { return error('failed appending ${f.raw} to ${field_name}') }
+			.i8()
+	} $else $if T is []u8 {
+		target << f.arg or { return error('failed appending ${f.raw} to ${field_name}') }
+			.u8()
+	} $else $if T is []f32 {
+		target << f.arg or { return error('failed appending ${f.raw} to ${field_name}') }
+			.f32()
+	} $else $if T is []f64 {
+		target << f.arg or { return error('failed appending ${f.raw} to ${field_name}') }
+			.f64()
+	} $else {
+		return error('field type: ${T.name} for multi value ${field_name} is not supported')
+	}
 }
 
 fn (sf StructField) shortest_match_name() ?string {
@@ -160,6 +271,24 @@ fn (fm FlagMapper) dbg_match(flag_ctx FlagContext, field StructField, arg string
 	return '${struct_name}.${field.name}/${field.short}${extra} in ${flag_ctx.raw}/${flag_ctx.name} = `${arg}`'
 }
 
+fn normalize_attr_value(value string) string {
+	trimmed := value.trim_space()
+	if trimmed.len > 1 {
+		if (trimmed[0] == `'` && trimmed[trimmed.len - 1] == `'`)
+			|| (trimmed[0] == `"` && trimmed[trimmed.len - 1] == `"`) {
+			return trimmed[1..trimmed.len - 1]
+		}
+	}
+	return trimmed
+}
+
+fn (mut fm FlagMapper) add_array_flag(field_name string, flag_data FlagData) {
+	if field_name !in fm.array_field_map_flag {
+		fm.array_field_map_flag[field_name] = []FlagData{}
+	}
+	fm.array_field_map_flag[field_name] << flag_data
+}
+
 fn (fm FlagMapper) get_struct_info[T]() !StructInfo {
 	mut struct_fields := map[string]StructField{}
 	mut struct_attrs := map[string]string{}
@@ -184,7 +313,7 @@ fn (fm FlagMapper) get_struct_info[T]() !StructInfo {
 				trace_println('\tattribute: "${attr}"')
 				if attr.contains(':') {
 					split := attr.split(':')
-					attrs[split[0].trim_space()] = split[1].trim(' ')
+					attrs[split[0].trim_space()] = normalize_attr_value(split[1])
 				} else {
 					attrs[attr.trim(' ')] = 'true'
 				}
@@ -222,23 +351,17 @@ fn (fm FlagMapper) get_struct_info[T]() !StructInfo {
 			trace_println('\tmatch name: "${match_name}"')
 			used_names << match_name
 
-			$if field.typ is int {
-				hints.set(.is_int_type)
-			} $else $if field.typ is i64 {
-				hints.set(.is_int_type)
-			} $else $if field.typ is u64 {
-				hints.set(.is_int_type)
-			} $else $if field.typ is i32 {
-				hints.set(.is_int_type)
-			} $else $if field.typ is u32 {
-				hints.set(.is_int_type)
-			} $else $if field.typ is i16 {
-				hints.set(.is_int_type)
-			} $else $if field.typ is u16 {
-				hints.set(.is_int_type)
-			} $else $if field.typ is i8 {
-				hints.set(.is_int_type)
-			} $else $if field.typ is u8 {
+			if field.typ in [
+				int(ast.int_type),
+				int(ast.i64_type),
+				int(ast.u64_type),
+				int(ast.i32_type),
+				int(ast.u32_type),
+				int(ast.i16_type),
+				int(ast.u16_type),
+				int(ast.i8_type),
+				int(ast.u8_type),
+			] {
 				hints.set(.is_int_type)
 			}
 
@@ -252,11 +375,11 @@ fn (fm FlagMapper) get_struct_info[T]() !StructInfo {
 				hints.set(.is_ignore)
 			}
 
-			$if field.typ is bool {
+			if field.typ == int(ast.bool_type) {
 				trace_println('\tfield "${field.name}" is a bool')
 				hints.set(.is_bool)
 			}
-			$if field.is_array {
+			if field.is_array {
 				trace_println('\tfield "${field.name}" is array')
 				hints.set(.is_array)
 			}
@@ -585,12 +708,12 @@ pub fn (mut fm FlagMapper) parse[T]() ! {
 					trace_println('${@FN}: (tail) flag `${arg}` last_handled_pos: ${last_handled_pos} pos: ${pos}')
 					if pos == last_handled_pos + 1 || pos == pos_last_flag + 1 {
 						if field.hints.has(.is_array) {
-							fm.array_field_map_flag[field.name] << FlagData{
+							fm.add_array_flag(field.name, FlagData{
 								raw:        arg
 								field_name: field.name
 								arg:        ?string(arg) // .arg is used when assigning at comptime to []XYZ
 								pos:        pos
-							}
+							})
 						} else {
 							fm.field_map_flag[field.name] = FlagData{
 								raw:        arg
@@ -617,14 +740,38 @@ pub fn (mut fm FlagMapper) parse[T]() ! {
 	}
 }
 
+// add name and/or version to doc. Returns true if name or version has been added.
+fn doc_add_name_and_version(app_name string, app_version string, options DocOptions, mut docs []string) bool {
+	mut name_and_version := ''
+
+	if options.show.has(.name) && app_name != '' {
+		name_and_version = app_name
+	}
+
+	if options.show.has(.version) && app_version != '' {
+		if app_name != '' {
+			name_and_version = '${app_name} ${app_version}' // Version string is always name + version
+		} else {
+			name_and_version = app_version
+		}
+	}
+
+	if name_and_version != '' {
+		docs << '${name_and_version}'
+
+		return true
+	}
+
+	return false
+}
+
 // to_doc returns a "usage" style documentation `string` generated from the internal data structures generated via the `parse()` function.
 pub fn (fm FlagMapper) to_doc(dc DocConfig) !string {
 	mut docs := []string{}
 
-	mut name_and_version := ''
+	mut app_name := ''
 	// resolve name
 	if dc.options.show.has(.name) {
-		mut app_name := ''
 		// struct `name: x` attribute, if defined
 		if attr_name := fm.si.attrs['name'] {
 			app_name = attr_name
@@ -633,13 +780,11 @@ pub fn (fm FlagMapper) to_doc(dc DocConfig) !string {
 		if dc.name != '' {
 			app_name = dc.name
 		}
-		if app_name != '' {
-			name_and_version = '${app_name}'
-		}
 	}
+
+	mut app_version := ''
 	// resolve version
 	if dc.options.show.has(.version) {
-		mut app_version := ''
 		// struct `version` attribute, if defined
 		if attr_version := fm.si.attrs['version'] {
 			app_version = attr_version
@@ -648,19 +793,9 @@ pub fn (fm FlagMapper) to_doc(dc DocConfig) !string {
 		if dc.version != '' {
 			app_version = dc.version
 		}
-
-		if app_version != '' {
-			if name_and_version != '' {
-				name_and_version = '${name_and_version} ${app_version}'
-			} else {
-				name_and_version = '${app_version}'
-			}
-		}
 	}
 
-	if name_and_version != '' {
-		docs << '${name_and_version}'
-	}
+	name_and_version := doc_add_name_and_version(app_name, app_version, dc.options, mut docs)
 
 	// Resolve the description if visible
 	if dc.options.show.has(.description) {
@@ -703,7 +838,7 @@ pub fn (fm FlagMapper) to_doc(dc DocConfig) !string {
 		}
 	}
 
-	if name_and_version != '' {
+	if name_and_version {
 		mut longest_line := 0
 		for doc_line in docs {
 			lines := doc_line.split('\n')
@@ -724,6 +859,7 @@ pub fn (fm FlagMapper) fields_docs(dc DocConfig) ![]string {
 		.short, .short_long, .v, .v_flag_parser, .go_flag, .cmd_exe { dc.delimiter }
 		.long { dc.delimiter.repeat(2) }
 	}
+
 	long_delimiter := match dc.style {
 		.short, .v, .go_flag, .cmd_exe { dc.delimiter }
 		.long, .v_flag_parser, .short_long { dc.delimiter.repeat(2) }
@@ -844,8 +980,8 @@ fn keep_at_max(str string, max int) string {
 			// At this point we are refitting the doc string so user provided newlines can not be kept
 			// ... at least not without a tremendous increase in code complexity, that highly likely
 			// will not suit all use-cases anyway.
-			fitted += keep_at_max(s[last_possible_break..].replace('\n', ' ').trim(' '),
-				safe_max).trim(' ')
+			fitted +=
+				keep_at_max(s[last_possible_break..].replace('\n', ' ').trim(' '), safe_max).trim(' ')
 		} else if width > safe_max {
 			break
 		}
@@ -863,159 +999,14 @@ pub fn (fm FlagMapper) to_struct[T](defaults ?T) !T {
 	the_default := defaults or { T{} }
 
 	$if T is $struct {
-		struct_name := T.name
+		struct_name := T.name.all_after_last('.')
 		$for field in T.fields {
 			if f := fm.field_map_flag[field.name] {
-				a_or_r := f.arg or { '${f.repeats}' }
-				$if field.typ is int {
-					// TODO: find a way to move this kind of duplicate code out
-					if !a_or_r.is_int() {
-						return error('can not assign non-integer value `${a_or_r}` from flag `${f.raw}` to `${struct_name}.${field.name}`')
-					}
-					trace_dbg_println('${@FN}: assigning (int) ${struct_name}.${field.name} = ${a_or_r}')
-					result.$(field.name) = a_or_r.int()
-				} $else $if field.typ is i64 {
-					trace_dbg_println('${@FN}: assigning (i64) ${struct_name}.${field.name} = ${a_or_r}')
-					if !a_or_r.is_int() {
-						return error('can not assign non-integer value `${a_or_r}` from flag `${f.raw}` to `${struct_name}.${field.name}`')
-					}
-					result.$(field.name) = a_or_r.i64()
-				} $else $if field.typ is u64 {
-					trace_dbg_println('${@FN}: assigning (u64) ${struct_name}.${field.name} = ${a_or_r}')
-					if !a_or_r.is_int() {
-						return error('can not assign non-integer value `${a_or_r}` from flag `${f.raw}` to `${struct_name}.${field.name}`')
-					}
-					result.$(field.name) = a_or_r.u64()
-				} $else $if field.typ is i32 {
-					trace_dbg_println('${@FN}: assigning (i32) ${struct_name}.${field.name} = ${a_or_r}')
-					if !a_or_r.is_int() {
-						return error('can not assign non-integer value `${a_or_r}` from flag `${f.raw}` to `${struct_name}.${field.name}`')
-					}
-					result.$(field.name) = a_or_r.i32()
-				} $else $if field.typ is u32 {
-					trace_dbg_println('${@FN}: assigning (u32) ${struct_name}.${field.name} = ${a_or_r}')
-					if !a_or_r.is_int() {
-						return error('can not assign non-integer value `${a_or_r}` from flag `${f.raw}` to `${struct_name}.${field.name}`')
-					}
-					result.$(field.name) = a_or_r.u32()
-				} $else $if field.typ is i16 {
-					trace_dbg_println('${@FN}: assigning (i16) ${struct_name}.${field.name} = ${a_or_r}')
-					if !a_or_r.is_int() {
-						return error('can not assign non-integer value `${a_or_r}` from flag `${f.raw}` to `${struct_name}.${field.name}`')
-					}
-					result.$(field.name) = a_or_r.i16()
-				} $else $if field.typ is u16 {
-					trace_dbg_println('${@FN}: assigning (u16) ${struct_name}.${field.name} = ${a_or_r}')
-					if !a_or_r.is_int() {
-						return error('can not assign non-integer value `${a_or_r}` from flag `${f.raw}` to `${struct_name}.${field.name}`')
-					}
-					result.$(field.name) = a_or_r.u16()
-				} $else $if field.typ is i8 {
-					trace_dbg_println('${@FN}: assigning (i8) ${struct_name}.${field.name} = ${a_or_r}')
-					if !a_or_r.is_int() {
-						return error('can not assign non-integer value `${a_or_r}` from flag `${f.raw}` to `${struct_name}.${field.name}`')
-					}
-					result.$(field.name) = a_or_r.i8()
-				} $else $if field.typ is u8 {
-					trace_dbg_println('${@FN}: assigning (u8) ${struct_name}.${field.name} = ${a_or_r}')
-					if !a_or_r.is_int() {
-						return error('can not assign non-integer value `${a_or_r}` from flag `${f.raw}` to `${struct_name}.${field.name}`')
-					}
-					result.$(field.name) = a_or_r.u8()
-				} $else $if field.typ is f32 {
-					result.$(field.name) = f.arg or {
-						return error('failed appending ${f.raw} to ${field.name}')
-					}
-						.f32()
-				} $else $if field.typ is f64 {
-					result.$(field.name) = f.arg or {
-						return error('failed appending ${f.raw} to ${field.name}')
-					}
-						.f64()
-				} $else $if field.typ is bool {
-					if arg := f.arg {
-						return error('can not assign `${arg}` to bool field `${field.name}`')
-					}
-					result.$(field.name) = !the_default.$(field.name)
-				} $else $if field.typ is string {
-					trace_dbg_println('${@FN}: assigning (string) ${struct_name}.${field.name} = ${f.arg or {
-						'ERROR'
-					}
-						.str()}')
-					result.$(field.name) = f.arg or {
-						return error('failed appending ${f.raw} to ${field.name}')
-					}
-						.str()
-				} $else {
-					return error('field type: ${field.typ} for ${field.name} is not supported')
-				}
+				assign_single_flag_value(mut result.$(field.name), the_default.$(field.name), f,
+					struct_name, field.name)!
 			}
 			for f in fm.array_field_map_flag[field.name] {
-				// trace_println('${@FN}: appending ${field.name} << ${f.arg}')
-				$if field.typ is []string {
-					// TODO: find a way to move this kind of duplicate code out
-					result.$(field.name) << f.arg or {
-						return error('failed appending ${f.raw} to ${field.name}')
-					}
-						.str()
-				} $else $if field.typ is []int {
-					result.$(field.name) << f.arg or {
-						return error('failed appending ${f.raw} to ${field.name}')
-					}
-						.int()
-				} $else $if field.typ is []i64 {
-					result.$(field.name) << f.arg or {
-						return error('failed appending ${f.raw} to ${field.name}')
-					}
-						.i64()
-				} $else $if field.typ is []u64 {
-					result.$(field.name) << f.arg or {
-						return error('failed appending ${f.raw} to ${field.name}')
-					}
-						.u64()
-				} $else $if field.typ is []i32 {
-					result.$(field.name) << f.arg or {
-						return error('failed appending ${f.raw} to ${field.name}')
-					}
-						.i32()
-				} $else $if field.typ is []u32 {
-					result.$(field.name) << f.arg or {
-						return error('failed appending ${f.raw} to ${field.name}')
-					}
-						.u32()
-				} $else $if field.typ is []i16 {
-					result.$(field.name) << f.arg or {
-						return error('failed appending ${f.raw} to ${field.name}')
-					}
-						.i16()
-				} $else $if field.typ is []u16 {
-					result.$(field.name) << f.arg or {
-						return error('failed appending ${f.raw} to ${field.name}')
-					}
-						.u16()
-				} $else $if field.typ is []i8 {
-					result.$(field.name) << f.arg or {
-						return error('failed appending ${f.raw} to ${field.name}')
-					}
-						.i8()
-				} $else $if field.typ is []u8 {
-					result.$(field.name) << f.arg or {
-						return error('failed appending ${f.raw} to ${field.name}')
-					}
-						.u8()
-				} $else $if field.typ is []f32 {
-					result.$(field.name) << f.arg or {
-						return error('failed appending ${f.raw} to ${field.name}')
-					}
-						.f32()
-				} $else $if field.typ is []f64 {
-					result.$(field.name) << f.arg or {
-						return error('failed appending ${f.raw} to ${field.name}')
-					}
-						.f64()
-				} $else {
-					return error('field type: ${field.typ} for multi value ${field.name} is not supported')
-				}
+				append_multi_flag_value(mut result.$(field.name), f, field.name)!
 			}
 		}
 	} $else {
@@ -1040,8 +1031,8 @@ fn (mut fm FlagMapper) map_v(flag_ctx FlagContext, field StructField) !bool {
 			if arg != '' {
 				return error('flag `${flag_raw}` can not be assigned to bool field "${field.name}"')
 			}
-			trace_println('${@FN}: found match for (bool) ${fm.dbg_match(flag_ctx, field,
-				'true', '')}')
+			trace_println('${@FN}: found match for (bool) ${fm.dbg_match(flag_ctx, field, 'true',
+				'')}')
 			fm.field_map_flag[field.name] = FlagData{
 				raw:        flag_raw
 				field_name: field.name
@@ -1058,17 +1049,17 @@ fn (mut fm FlagMapper) map_v(flag_ctx FlagContext, field StructField) !bool {
 		if field.hints.has(.is_array) {
 			trace_println('${@FN}: found match for (V style multiple occurrences) ${fm.dbg_match(flag_ctx,
 				field, next, '')}')
-			fm.array_field_map_flag[field.name] << FlagData{
+			fm.add_array_flag(field.name, FlagData{
 				raw:        flag_raw
 				field_name: field.name
 				delimiter:  used_delimiter
 				name:       flag_name
 				arg:        ?string(next)
 				pos:        pos
-			}
+			})
 		} else {
-			trace_println('${@FN}: found match for (V style) ${fm.dbg_match(flag_ctx,
-				field, next, '')}')
+			trace_println('${@FN}: found match for (V style) ${fm.dbg_match(flag_ctx, field, next,
+				'')}')
 			fm.field_map_flag[field.name] = FlagData{
 				raw:        flag_raw
 				field_name: field.name
@@ -1104,8 +1095,8 @@ fn (mut fm FlagMapper) map_v_flag_parser_short(flag_ctx FlagContext, field Struc
 
 	if field.hints.has(.is_bool) {
 		if flag_name == field.match_name || flag_name == field.short {
-			trace_println('${@FN}: found match for (bool) ${fm.dbg_match(flag_ctx, field,
-				'true', '')}')
+			trace_println('${@FN}: found match for (bool) ${fm.dbg_match(flag_ctx, field, 'true',
+				'')}')
 			fm.field_map_flag[field.name] = FlagData{
 				raw:        flag_raw
 				field_name: field.name
@@ -1122,14 +1113,14 @@ fn (mut fm FlagMapper) map_v_flag_parser_short(flag_ctx FlagContext, field Struc
 		if field.hints.has(.is_array) {
 			trace_println('${@FN}: found match for V (`flag.FlagParser` (short) style multiple occurrences) ${fm.dbg_match(flag_ctx,
 				field, next, '')}')
-			fm.array_field_map_flag[field.name] << FlagData{
+			fm.add_array_flag(field.name, FlagData{
 				raw:        flag_raw
 				field_name: field.name
 				delimiter:  used_delimiter
 				name:       flag_name
 				arg:        ?string(next)
 				pos:        pos
-			}
+			})
 		} else {
 			trace_println('${@FN}: found match for V (`flag.FlagParser` (short) style) ${fm.dbg_match(flag_ctx,
 				field, next, '')}')
@@ -1164,8 +1155,8 @@ fn (mut fm FlagMapper) map_v_flag_parser_long(flag_ctx FlagContext, field Struct
 
 	if field.hints.has(.is_bool) {
 		if flag_name == field.match_name {
-			trace_println('${@FN}: found match for (bool) ${fm.dbg_match(flag_ctx, field,
-				'true', '')}')
+			trace_println('${@FN}: found match for (bool) ${fm.dbg_match(flag_ctx, field, 'true',
+				'')}')
 			fm.field_map_flag[field.name] = FlagData{
 				raw:        flag_raw
 				field_name: field.name
@@ -1182,14 +1173,14 @@ fn (mut fm FlagMapper) map_v_flag_parser_long(flag_ctx FlagContext, field Struct
 		if field.hints.has(.is_array) {
 			trace_println('${@FN}: found match for (V `flag.FlagParser` (long) style multiple occurrences) ${fm.dbg_match(flag_ctx,
 				field, next, '')}')
-			fm.array_field_map_flag[field.name] << FlagData{
+			fm.add_array_flag(field.name, FlagData{
 				raw:        flag_raw
 				field_name: field.name
 				delimiter:  used_delimiter
 				name:       flag_name
 				arg:        ?string(next)
 				pos:        pos
-			}
+			})
 		} else {
 			trace_println('${@FN}: found match for V (`flag.FlagParser` (long) style) ${fm.dbg_match(flag_ctx,
 				field, next, '')}')
@@ -1224,8 +1215,8 @@ fn (mut fm FlagMapper) map_go_flag_short(flag_ctx FlagContext, field StructField
 			if arg != '' {
 				return error('flag `${flag_raw}` can not be assigned to bool field "${field.name}"')
 			}
-			trace_println('${@FN}: found match for (bool) ${fm.dbg_match(flag_ctx, field,
-				'true', '')}')
+			trace_println('${@FN}: found match for (bool) ${fm.dbg_match(flag_ctx, field, 'true',
+				'')}')
 			fm.field_map_flag[field.name] = FlagData{
 				raw:        flag_raw
 				field_name: field.name
@@ -1242,17 +1233,17 @@ fn (mut fm FlagMapper) map_go_flag_short(flag_ctx FlagContext, field StructField
 		if field.hints.has(.is_array) {
 			trace_println('${@FN}: found match for (GO short style multiple occurrences) ${fm.dbg_match(flag_ctx,
 				field, next, '')}')
-			fm.array_field_map_flag[field.name] << FlagData{
+			fm.add_array_flag(field.name, FlagData{
 				raw:        flag_raw
 				field_name: field.name
 				delimiter:  used_delimiter
 				name:       flag_name
 				arg:        ?string(next)
 				pos:        pos
-			}
+			})
 		} else {
-			trace_println('${@FN}: found match for (GO short style) ${fm.dbg_match(flag_ctx,
-				field, next, '')}')
+			trace_println('${@FN}: found match for (GO short style) ${fm.dbg_match(flag_ctx, field,
+				next, '')}')
 			fm.field_map_flag[field.name] = FlagData{
 				raw:        flag_raw
 				field_name: field.name
@@ -1307,14 +1298,14 @@ fn (mut fm FlagMapper) map_go_flag_long(flag_ctx FlagContext, field StructField)
 		if field.hints.has(.is_array) {
 			trace_println('${@FN}: found match for (GO `flag` style multiple occurrences) ${fm.dbg_match(flag_ctx,
 				field, arg, '')}')
-			fm.array_field_map_flag[field.name] << FlagData{
+			fm.add_array_flag(field.name, FlagData{
 				raw:        flag_raw
 				field_name: field.name
 				delimiter:  used_delimiter
 				name:       flag_name
 				arg:        ?string(arg)
 				pos:        pos
-			}
+			})
 		} else {
 			trace_println('${@FN}: found match for (GO `flag` style) ${fm.dbg_match(flag_ctx,
 				field, arg, '')}')
@@ -1347,8 +1338,8 @@ fn (mut fm FlagMapper) map_gnu_long(flag_ctx FlagContext, field StructField) !bo
 			if arg != '' {
 				return error('flag `${flag_raw}` can not be assigned to bool field "${field.name}"')
 			}
-			trace_println('${@FN}: found match for (bool) ${fm.dbg_match(flag_ctx, field,
-				'true', '')}')
+			trace_println('${@FN}: found match for (bool) ${fm.dbg_match(flag_ctx, field, 'true',
+				'')}')
 			fm.field_map_flag[field.name] = FlagData{
 				raw:        flag_raw
 				field_name: field.name
@@ -1369,17 +1360,17 @@ fn (mut fm FlagMapper) map_gnu_long(flag_ctx FlagContext, field StructField) !bo
 		if field.hints.has(.is_array) {
 			trace_println('${@FN}: found match for (GNU style multiple occurrences) ${fm.dbg_match(flag_ctx,
 				field, arg, '')}')
-			fm.array_field_map_flag[field.name] << FlagData{
+			fm.add_array_flag(field.name, FlagData{
 				raw:        flag_raw
 				field_name: field.name
 				delimiter:  used_delimiter
 				name:       flag_name
 				arg:        ?string(arg)
 				pos:        pos
-			}
+			})
 		} else {
-			trace_println('${@FN}: found match for (GNU style) ${fm.dbg_match(flag_ctx,
-				field, arg, '')}')
+			trace_println('${@FN}: found match for (GNU style) ${fm.dbg_match(flag_ctx, field, arg,
+				'')}')
 			fm.field_map_flag[field.name] = FlagData{
 				raw:        flag_raw
 				field_name: field.name
@@ -1403,8 +1394,9 @@ fn (mut fm FlagMapper) map_posix_short_cluster(flag_ctx FlagContext) ! {
 	if flag_name.len <= 1 {
 		return
 	}
-	// Do not handle multiple `-vv`, `map_posix_short` does that
-	if flag_name[0] == flag_name[1] {
+	first_letter := flag_name[0].ascii_str()
+	// Do not handle repeated-only bundles like `-vv`; `map_posix_short` does that.
+	if flag_name.count(first_letter) == flag_name.len {
 		return
 	}
 
@@ -1444,9 +1436,22 @@ fn (mut fm FlagMapper) map_posix_short_cluster(flag_ctx FlagContext) ! {
 					pos:        flag_ctx.pos
 				}
 				if field.hints.has(.is_bool) {
-					trace_println('${@FN}: found match for (bool) ${fm.dbg_match(flag_ctx,
-						field, 'true', '')}')
+					trace_println('${@FN}: found match for (bool) ${fm.dbg_match(flag_ctx, field,
+						'true', '')}')
 					fm.field_map_flag[mf.field_name] = mf
+					fm.handled_pos << flag_ctx.pos
+				} else if field.hints.has(.can_repeat) {
+					repeats := if existing := fm.field_map_flag[mf.field_name] {
+						existing.repeats + 1
+					} else {
+						1
+					}
+					trace_println('${@FN}: found match for (repeatable cluster) ${fm.dbg_match(flag_ctx,
+						field, '${repeats}', '')}')
+					fm.field_map_flag[mf.field_name] = FlagData{
+						...mf
+						repeats: repeats
+					}
 					fm.handled_pos << flag_ctx.pos
 				} else {
 					mut arg := split[i + 1..].clone().join('')
@@ -1458,10 +1463,10 @@ fn (mut fm FlagMapper) map_posix_short_cluster(flag_ctx FlagContext) ! {
 						}
 					}
 					if field.hints.has(.is_array) {
-						fm.array_field_map_flag[mf.field_name] << FlagData{
+						fm.add_array_flag(mf.field_name, FlagData{
 							...mf
 							arg: ?string(arg)
-						}
+						})
 						trace_println('${@FN}: found match for (array) ${fm.dbg_match(flag_ctx,
 							field, arg, '')}')
 					} else {
@@ -1495,11 +1500,7 @@ fn (mut fm FlagMapper) map_posix_short(flag_ctx FlagContext, field StructField) 
 	struct_name := fm.si.name
 
 	first_letter := flag_name.split('')[0]
-	next_first_letter := if next != '' {
-		next.split('')[0]
-	} else {
-		''
-	}
+	next_first_letter := if next != '' { next.split('')[0] } else { '' }
 	count_of_first_letter_repeats := flag_name.count(first_letter)
 	count_of_next_first_letter_repeats := next.count(next_first_letter)
 
@@ -1509,8 +1510,8 @@ fn (mut fm FlagMapper) map_posix_short(flag_ctx FlagContext, field StructField) 
 			if arg != '' {
 				return error('flag `${flag_raw}` can not be assigned to bool field "${field.name}"')
 			}
-			trace_println('${@FN}: found match for (bool) ${fm.dbg_match(flag_ctx, field,
-				'true', '')}')
+			trace_println('${@FN}: found match for (bool) ${fm.dbg_match(flag_ctx, field, 'true',
+				'')}')
 			fm.field_map_flag[field.name] = FlagData{
 				raw:        flag_raw
 				field_name: field.name
@@ -1523,8 +1524,8 @@ fn (mut fm FlagMapper) map_posix_short(flag_ctx FlagContext, field StructField) 
 		}
 
 		if field.short == flag_name {
-			trace_println('${@FN}: found match for (bool) ${fm.dbg_match(flag_ctx, field,
-				'true', '')}')
+			trace_println('${@FN}: found match for (bool) ${fm.dbg_match(flag_ctx, field, 'true',
+				'')}')
 			fm.field_map_flag[field.name] = FlagData{
 				raw:        flag_raw
 				field_name: field.name
@@ -1542,8 +1543,8 @@ fn (mut fm FlagMapper) map_posix_short(flag_ctx FlagContext, field StructField) 
 		if field.hints.has(.can_repeat) {
 			mut do_continue := false
 			if count_of_first_letter_repeats == flag_name.len {
-				trace_println('${@FN}: found match for (repeatable) ${fm.dbg_match(flag_ctx,
-					field, 'true', '')}')
+				trace_println('${@FN}: found match for (repeatable) ${fm.dbg_match(flag_ctx, field,
+					'true', '')}')
 				fm.field_map_flag[field.name] = FlagData{
 					raw:        flag_raw
 					field_name: field.name
@@ -1593,14 +1594,14 @@ fn (mut fm FlagMapper) map_posix_short(flag_ctx FlagContext, field StructField) 
 			trace_println('${@FN}: found match for (multiple occurrences) ${fm.dbg_match(flag_ctx,
 				field, next, '')}')
 
-			fm.array_field_map_flag[field.name] << FlagData{
+			fm.add_array_flag(field.name, FlagData{
 				raw:        flag_raw
 				field_name: field.name
 				delimiter:  used_delimiter
 				name:       flag_name
 				arg:        ?string(next)
 				pos:        pos
-			}
+			})
 			fm.handled_pos << pos
 			if next_is_handled {
 				fm.handled_pos << pos + 1 // next
@@ -1654,8 +1655,7 @@ fn (mut fm FlagMapper) map_posix_short(flag_ctx FlagContext, field StructField) 
 		return true
 	} else if flag_name == field.match_name && !(field.hints.has(.short_only)
 		&& flag_name == field.short) {
-		trace_println('${@FN}: found match for (repeats) ${fm.dbg_match(flag_ctx, field,
-			next, '')}')
+		trace_println('${@FN}: found match for (repeats) ${fm.dbg_match(flag_ctx, field, next, '')}')
 		if next == '' {
 			return error('flag "${flag_raw}" expects an argument')
 		}
@@ -1702,17 +1702,17 @@ fn (mut fm FlagMapper) map_cmd_exe(flag_ctx FlagContext, field StructField) !boo
 		if field.hints.has(.is_array) {
 			trace_println('${@FN}: found match for (CMD.EXE style multiple occurrences) ${fm.dbg_match(flag_ctx,
 				field, next, '')}')
-			fm.array_field_map_flag[field.name] << FlagData{
+			fm.add_array_flag(field.name, FlagData{
 				raw:        flag_raw
 				field_name: field.name
 				delimiter:  used_delimiter
 				name:       flag_name
 				arg:        ?string(next)
 				pos:        pos
-			}
+			})
 		} else {
-			trace_println('${@FN}: found match for (CMD.EXE style) ${fm.dbg_match(flag_ctx,
-				field, next, '')}')
+			trace_println('${@FN}: found match for (CMD.EXE style) ${fm.dbg_match(flag_ctx, field,
+				next, '')}')
 			fm.field_map_flag[field.name] = FlagData{
 				raw:        flag_raw
 				field_name: field.name
@@ -1747,14 +1747,14 @@ fn (mut fm FlagMapper) map_cmd_exe(flag_ctx FlagContext, field StructField) !boo
 			if field.hints.has(.is_array) {
 				trace_println('${@FN}: found match for (CMD.EXE style multiple occurrences) ${fm.dbg_match(flag_ctx,
 					field, next, '')}')
-				fm.array_field_map_flag[field.name] << FlagData{
+				fm.add_array_flag(field.name, FlagData{
 					raw:        flag_raw
 					field_name: field.name
 					delimiter:  used_delimiter
 					name:       flag_name
 					arg:        ?string(next)
 					pos:        pos
-				}
+				})
 			} else {
 				trace_println('${@FN}: found match for (CMD.EXE style) ${fm.dbg_match(flag_ctx,
 					field, next, '')}')
@@ -1773,4 +1773,44 @@ fn (mut fm FlagMapper) map_cmd_exe(flag_ctx FlagContext, field StructField) !boo
 		}
 	}
 	return false
+}
+
+// parsed_flags returns all parsed flags in order of position.
+pub fn (fm FlagMapper) parsed_flags() []FlagData {
+	mut flags := []FlagData{}
+	for _, f in fm.field_map_flag {
+		flags << f
+	}
+	for _, arr in fm.array_field_map_flag {
+		for f in arr {
+			flags << f
+		}
+	}
+	flags.sort_with_compare(fn (a &FlagData, b &FlagData) int {
+		if a.pos != b.pos {
+			return if a.pos < b.pos { -1 } else { 1 }
+		}
+		return if a.name < b.name {
+			-1
+		} else if a.name > b.name {
+			1
+		} else {
+			0
+		}
+	})
+	return flags
+}
+
+// `handled_positions` returns unique, sorted position indices from the input args that were consumed during parsing.
+pub fn (fm FlagMapper) handled_positions() []int {
+	mut seen := map[int]bool{}
+	mut result := []int{}
+	for p in fm.handled_pos {
+		if p !in seen {
+			seen[p] = true
+			result << p
+		}
+	}
+	result.sort(a < b)
+	return result
 }

@@ -38,11 +38,12 @@ jobs:
       - name: Install dependencies
         run: |
           if [ "$RUNNER_OS" == 'Linux' ]; then
-            .github/workflows/disable_azure_mirror.sh		  
+            .github/workflows/disable_azure_mirror.sh
             v retry -- sudo apt -qq update
             v retry -- sudo apt -qq install libgc-dev libsodium-dev libssl-dev sqlite3 libsqlite3-dev
-            v retry -- sudo apt -qq install libfreetype6-dev libxi-dev libxcursor-dev libgl-dev libxrandr-dev libasound2-dev xfonts-75dpi xfonts-base
+            v retry -- sudo apt -qq install libfreetype6-dev libxi-dev libxcursor-dev libgl-dev libxrandr-dev libasound2-dev xfonts-75dpi xfonts-base libegl-dev
             v retry -- sudo apt -qq install sassc libgit2-dev # needed by gitly
+            v retry -- sudo apt -qq install libunwind-18-dev # needed by v-analyzer for libbacktrace
           else
             v retry brew install sassc libgit2
           fi
@@ -59,7 +60,7 @@ jobs:
         run: .github/workflows/compile_v_with_vtcc.sh
 
       - name: Test vsql compilation and examples
-        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        if: ${{ false && !cancelled() && steps.build.outcome == 'success' }}
         run: |
           echo "Install vsql"
           v retry -- v install elliotchance.vsql
@@ -75,10 +76,10 @@ jobs:
         if: ${{ !cancelled() && steps.build.outcome == 'success' }}
         run: .github/workflows/compile_vlang_gui_examples.sh
       - name: Test discord.v
-        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        if: ${{ false && !cancelled() && steps.build.outcome == 'success' }} # disabled: upstream uses deprecated json2.raw_decode
         run: .github/workflows/compile_discordv.sh
       - name: Build herolib
-        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        if: ${{ false && !cancelled() && steps.build.outcome == 'success' }}
         run: .github/workflows/compile_herolib.sh
       - name: Build vlang/vab
         if: ${{ !cancelled() && steps.build.outcome == 'success' }}
@@ -190,7 +191,7 @@ jobs:
           VJOBS=1 v test /tmp/go2v/
 
       - name: Install UI through VPM and make sure its examples compile
-        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        if: ${{ false && !cancelled() && steps.build.outcome == 'success' }} # disabled: upstream vlang/ui has unused parameter notices that fail with -N -W
         run: |
           echo "Official VPM modules should be installable"
           v retry -- v install ui

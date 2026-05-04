@@ -228,7 +228,7 @@ pub fn (pv PrivateKey) sign_with_options(message []u8, opt SignerOpts) ![]u8 {
 
 // bytes represent private key as bytes.
 pub fn (pv PrivateKey) bytes() ![]u8 {
-	bn := C.BN_new()
+	mut bn := &C.BIGNUM(unsafe { nil })
 	// retrieves a BIGNUM value associated with a 'priv' key name
 	n := C.EVP_PKEY_get_bn_param(pv.evpkey, c'priv', &bn)
 	if n <= 0 {
@@ -244,8 +244,8 @@ pub fn (pv PrivateKey) bytes() ![]u8 {
 		num_bytes
 	}
 	mut buf := []u8{len: int(size)}
-	res := C.BN_bn2binpad(bn, buf.data, size)
-	if res == 0 {
+	res := C.BN_bn2binpad(bn, buf.data, i32(size))
+	if res <= 0 {
 		C.BN_free(bn)
 		return error('Failed to convert BIGNUM to bytes')
 	}
@@ -344,6 +344,7 @@ fn calc_digest_with_evpkey(key &C.EVP_PKEY, message []u8, opt SignerOpts) ![]u8 
 			return digest
 		}
 	}
+
 	return error('Not should be here')
 }
 
@@ -373,7 +374,7 @@ fn sign_digest(key &C.EVP_PKEY, digest []u8) ![]u8 {
 		return error('EVP_PKEY_sign fails to sign message')
 	}
 	// siglen now contains actual length of the signature buffer.
-	signed := sig[..siglen].clone()
+	signed := sig[..int(siglen)].clone()
 
 	// Cleans up
 	unsafe { sig.free() }
@@ -451,6 +452,7 @@ fn default_digest(key &C.EVP_PKEY) !&C.EVP_MD {
 			return error('Unsupported bits size')
 		}
 	}
+
 	return error('should not here')
 }
 
@@ -482,10 +484,9 @@ fn evpkey_from_seed(seed []u8, opt CurveOptions) !&C.EVP_PKEY {
 	assert param_bld != 0
 
 	// push the group, private and public key bytes infos into the builder
-	n := C.OSSL_PARAM_BLD_push_utf8_string(param_bld, c'group', voidptr(opt.nid.str().str),
-		0)
+	n := C.OSSL_PARAM_BLD_push_utf8_string(param_bld, c'group', voidptr(opt.nid.str().str), 0)
 	m := C.OSSL_PARAM_BLD_push_BN(param_bld, c'priv', bn)
-	o := C.OSSL_PARAM_BLD_push_octet_string(param_bld, c'pub', pub_bytes.data, pub_bytes.len)
+	o := C.OSSL_PARAM_BLD_push_octet_string(param_bld, c'pub', pub_bytes.data, usize(pub_bytes.len))
 	if n <= 0 || m <= 0 || o <= 0 {
 		C.EC_POINT_free(point)
 		C.BN_free(bn)
@@ -568,23 +569,23 @@ const default_point_bufsize = 160 // 2 * 64 + 1 + extra
 // point_2_buf gets bytes representation of the EC_POINT
 fn point_2_buf(group &C.EC_GROUP, point &C.EC_POINT, fmt int) ![]u8 {
 	ctx := C.BN_CTX_new()
-	pbuf := []u8{len: default_point_bufsize}
+	mut pbuf := &u8(unsafe { nil })
 	// Notes from the docs:
 	// EC_POINT_point2buf() allocates a buffer of suitable length and writes an EC_POINT to it in octet format.
 	// The allocated buffer is written to *pbuf and its length is returned.
 	// The caller must free up the allocated buffer with a call to OPENSSL_free().
 	// Since the allocated buffer value is written to *pbuf the pbuf parameter MUST NOT be NULL.
 	// So, we explicitly call `.OPENSSL_free` on the allocated buffer.
-	n := C.EC_POINT_point2buf(group, point, fmt, voidptr(&pbuf.data), ctx)
+	n := C.EC_POINT_point2buf(group, point, fmt, &pbuf, ctx)
 	if n <= 0 {
 		C.BN_CTX_free(ctx)
-		C.OPENSSL_free(voidptr(&pbuf.data))
+		C.OPENSSL_free(voidptr(pbuf))
 		return error('Get null length of buf')
 	}
 	// Gets the copy of the result with the correct length
-	result := pbuf[..n].clone()
+	result := unsafe { pbuf.vbytes(int(n)).clone() }
 
-	C.OPENSSL_free(voidptr(pbuf.data))
+	C.OPENSSL_free(voidptr(pbuf))
 	C.BN_CTX_free(ctx)
 
 	return result

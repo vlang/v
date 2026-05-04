@@ -10,6 +10,6 @@ mut:
 }
 
 pub struct C.utimbuf {
-	actime  int
-	modtime int
+	actime  i64
+	modtime i64
 }

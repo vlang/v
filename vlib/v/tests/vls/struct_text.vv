@@ -5,3 +5,25 @@ mut:
 	a int
 	b string
 }
+
+struct MyPubS {
+pub:
+	a int
+	b string
+}
+
+struct MyPubMutS {
+pub mut:
+	a int
+	b string
+}
+
+struct Complex {
+mut:
+	mm int
+pub:
+	pp string
+pub mut:
+	pma int
+	pmb string
+}

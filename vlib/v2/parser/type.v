@@ -32,20 +32,18 @@ fn (mut p Parser) try_type() ast.Expr {
 		// comptime type: `$enum` | `$struct` |  etc
 		.dollar {
 			p.next()
+			mut comptime_inner := ast.Expr(ast.empty_expr)
+			if p.tok == .name {
+				comptime_inner = ast.Expr(p.ident())
+			} else {
+				// TODO: match only allowed tokens otherwise error
+				comptime_inner = ast.Expr(ast.Ident{
+					pos:  p.pos
+					name: p.tok().str()
+				})
+			}
 			return ast.ComptimeExpr{
-				// TODO: best way to handle this?
-				expr: match p.tok {
-					.name {
-						p.ident()
-					}
-					else {
-						// TODO: match only allowed tokens otherwise error
-						ast.Ident{
-							pos:  p.pos
-							name: p.tok().str()
-						}
-					}
-				}
+				expr: comptime_inner
 			}
 		}
 		// variadic: `...type`
@@ -86,7 +84,7 @@ fn (mut p Parser) try_type() ast.Expr {
 		.key_struct {
 			p.next()
 			generic_params := if p.tok == .lsbr { p.generic_list() } else { []ast.Expr{} }
-			embedded, fields := p.struct_decl_fields(.v)
+			embedded, fields := p.struct_decl_fields(.v, false)
 			// TODO: should we use this or just StructDecl
 			// even though it technically is not one? hrmm
 			return ast.Type(ast.AnonStructType{
@@ -139,7 +137,7 @@ fn (mut p Parser) try_type() ast.Expr {
 				// TODO: is there a better solution than this. maybe it should be the
 				// concern of p.fn_parameters() & p.struct_decl() rather than this?
 				// `fn(param_a []type)` | `struct { field_a []type }`
-				if name is ast.Ident && name.name.len + pos < p.pos {
+				if name is ast.Ident && name.name.len + pos.offset < p.pos.offset {
 					return name
 				}
 				// TODO: using ast.GenericArgs here may not be correct,
@@ -169,7 +167,7 @@ fn (mut p Parser) try_type() ast.Expr {
 			})
 		}
 		else {
-			// return error('expecting type, got `$p.tok`')
+			// return error('expecting type, got `${p.tok}`')
 			return ast.empty_expr
 		}
 	}
@@ -187,11 +185,11 @@ fn (mut p Parser) fn_type() ast.FnType {
 }
 
 // `ident` | `map[type]type | `(`chan`|`chan type`) | (`thread`|`thread type`)
-@[direct_array_access]
 fn (mut p Parser) ident_or_named_type() ast.Expr {
 	pos := p.pos
+	lit := p.lit
 	// `map[type]type`
-	if p.lit.len == 3 && p.lit[0] == `m` && p.lit[1] == `a` && p.lit[2] == `p` {
+	if lit == 'map' {
 		p.next()
 		if p.tok == .lsbr {
 			p.next()
@@ -209,7 +207,7 @@ fn (mut p Parser) ident_or_named_type() ast.Expr {
 		}
 	}
 	// `chan` | `chan type`
-	if p.lit.len == 4 && p.lit[0] == `c` && p.lit[1] == `h` && p.lit[2] == `a` && p.lit[3] == `n` {
+	if lit == 'chan' {
 		p.next()
 		elem_type := if p.tok != .semicolon { p.try_type() } else { ast.empty_expr }
 		if elem_type !is ast.EmptyExpr {
@@ -224,8 +222,7 @@ fn (mut p Parser) ident_or_named_type() ast.Expr {
 		}
 	}
 	// `thread` | `thread type`
-	else if p.lit.len == 6 && p.lit[0] == `t` && p.lit[1] == `h` && p.lit[2] == `r`
-		&& p.lit[3] == `e` && p.lit[4] == `a` && p.lit[5] == `d` {
+	else if lit == 'thread' {
 		p.next()
 		return ast.Type(ast.ThreadType{
 			elem_type: if p.tok != .semicolon { p.try_type() } else { ast.empty_expr }

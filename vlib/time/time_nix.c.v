@@ -31,6 +31,22 @@ fn make_unix_time(t C.tm) i64 {
 	return unsafe { i64(C.timegm(&t)) }
 }
 
+// localtime_r already resolves the local UTC offset, so callers can reuse it.
+@[inline]
+fn convert_ctime_with_unix(t C.tm, nanosecond int, unix i64) Time {
+	return Time{
+		year:       t.tm_year + 1900
+		month:      t.tm_mon + 1
+		day:        t.tm_mday
+		hour:       t.tm_hour
+		minute:     t.tm_min
+		second:     t.tm_sec
+		nanosecond: nanosecond
+		unix:       unix
+		is_local:   true
+	}
+}
+
 // local returns t with the location set to local time.
 pub fn (t Time) local() Time {
 	if t.is_local {
@@ -39,7 +55,7 @@ pub fn (t Time) local() Time {
 	loc_tm := C.tm{}
 	t_ := t.unix()
 	C.localtime_r(voidptr(&t_), &loc_tm)
-	return convert_ctime(loc_tm, t.nanosecond)
+	return convert_ctime_with_unix(loc_tm, t.nanosecond, t_ + i64(loc_tm.tm_gmtoff))
 }
 
 // in most systems, these are __quad_t, which is an i64
@@ -50,9 +66,9 @@ pub mut:
 }
 
 // the first arg is defined in include/bits/types.h as `__S32_TYPE`, which is `int`
-fn C.clock_gettime(int, &C.timespec) int
+fn C.clock_gettime(i32, &C.timespec) i32
 
-fn C.nanosleep(req &C.timespec, rem &C.timespec) int
+fn C.nanosleep(req &C.timespec, rem &C.timespec) i32
 
 // sys_mono_now returns a *monotonically increasing time*, NOT a time adjusted for daylight savings, location etc.
 pub fn sys_mono_now() u64 {
@@ -86,7 +102,7 @@ fn linux_now() Time {
 	C.clock_gettime(C.CLOCK_REALTIME, &ts)
 	loc_tm := C.tm{}
 	C.localtime_r(voidptr(&ts.tv_sec), &loc_tm)
-	return convert_ctime(loc_tm, int(ts.tv_nsec))
+	return convert_ctime_with_unix(loc_tm, int(ts.tv_nsec), i64(ts.tv_sec) + i64(loc_tm.tm_gmtoff))
 }
 
 fn linux_utc() Time {

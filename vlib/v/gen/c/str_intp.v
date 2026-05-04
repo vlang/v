@@ -12,6 +12,188 @@ module c
 import v.ast
 import v.util
 
+fn (mut g Gen) is_type_name_string_expr(expr ast.Expr) bool {
+	return match expr {
+		ast.SelectorExpr {
+			expr.field_name == 'name' && (expr.expr is ast.TypeOf || expr.name_type != 0)
+		}
+		ast.CallExpr {
+			if expr.is_method && expr.name == 'type_name' && expr.args.len == 0 {
+				if func := g.table.find_method(g.table.sym(g.unwrap_generic(expr.left_type)),
+					expr.name)
+				{
+					func.return_type == ast.string_type
+				} else {
+					g.table.final_sym(g.unwrap_generic(expr.left_type)).kind == .sum_type
+				}
+			} else {
+				false
+			}
+		}
+		ast.ParExpr {
+			g.is_type_name_string_expr(expr.expr)
+		}
+		else {
+			false
+		}
+	}
+}
+
+fn (g Gen) is_or_block_var_unwrapped(obj ast.Var) bool {
+	init_expr := obj.expr
+	return match init_expr {
+		ast.CallExpr { init_expr.or_block.kind != .absent }
+		ast.Ident { init_expr.or_expr.kind != .absent }
+		ast.IndexExpr { init_expr.or_expr.kind != .absent }
+		ast.SelectorExpr { init_expr.or_block.kind != .absent }
+		ast.PrefixExpr { init_expr.or_block.kind != .absent }
+		else { false }
+	}
+}
+
+fn (g Gen) should_clear_option_flag(expr ast.Expr) bool {
+	ident := match expr {
+		ast.Ident { expr }
+		else { return false }
+	}
+
+	match ident.obj {
+		ast.Var {
+			if ident.obj.is_unwrapped {
+				return true
+			}
+			if g.is_or_block_var_unwrapped(ident.obj) {
+				return true
+			}
+			if !ident.obj.typ.has_flag(.option) && ident.obj.ct_type_var == .no_comptime {
+				return true
+			}
+		}
+		else {}
+	}
+
+	return false
+}
+
+fn (g &Gen) int_ref_interpolates_as_value(expr ast.Expr, typ ast.Type, fmt u8) bool {
+	if fmt == `p` || !(typ.is_int_valptr() || typ.is_float_valptr()) {
+		return false
+	}
+	if g.expr_is_auto_deref_var(expr) {
+		return true
+	}
+	return match expr {
+		ast.Ident {
+			obj := expr.obj
+			match obj {
+				ast.Var {
+					obj.is_arg || obj.expr is ast.AsCast
+						|| (obj.expr is ast.PrefixExpr && obj.expr.op == .amp)
+				}
+				else {
+					false
+				}
+			}
+		}
+		ast.PrefixExpr {
+			expr.op == .amp
+		}
+		else {
+			false
+		}
+	}
+}
+
+fn (mut g Gen) should_resolve_str_intp_expr_type(expr ast.Expr, typ ast.Type) bool {
+	if typ == 0 || typ.has_flag(.generic) || g.type_has_unresolved_generic_parts(typ) {
+		return true
+	}
+	// In generic contexts, always resolve expression types since AST types
+	// may be stale from a previous checker instantiation
+	if g.cur_fn != unsafe { nil } && g.cur_concrete_types.len > 0 {
+		return true
+	}
+	return match expr {
+		ast.CallExpr, ast.ComptimeSelector, ast.Ident, ast.IndexExpr, ast.InfixExpr {
+			true
+		}
+		ast.SelectorExpr {
+			expr.expr is ast.TypeOf
+		}
+		else {
+			false
+		}
+	}
+}
+
+fn (mut g Gen) resolved_if_guard_ident_str_intp_type(expr ast.Ident) ast.Type {
+	if g.cur_fn == unsafe { nil } || g.cur_concrete_types.len == 0 {
+		return 0
+	}
+	mut if_guard := ast.IfGuardExpr{}
+	mut found_guard := false
+	if expr.obj is ast.Var {
+		if expr.obj.smartcasts.len > 0 || expr.obj.ct_type_var == .smartcast {
+			return 0
+		}
+		if expr.obj.expr is ast.IfGuardExpr {
+			if_guard = expr.obj.expr as ast.IfGuardExpr
+			found_guard = true
+		}
+	}
+	if !found_guard {
+		mut scope := if expr.scope != unsafe { nil } {
+			expr.scope.innermost(expr.pos.pos)
+		} else {
+			expr.scope
+		}
+		if scope == unsafe { nil } || scope.find_var(expr.name) == none {
+			scope = if g.file.scope != unsafe { nil } {
+				g.file.scope.innermost(expr.pos.pos)
+			} else {
+				expr.scope
+			}
+		}
+		if scope != unsafe { nil } {
+			if v := scope.find_var(expr.name) {
+				if v.smartcasts.len > 0 || v.ct_type_var == .smartcast {
+					return 0
+				}
+				if v.expr is ast.IfGuardExpr {
+					if_guard = v.expr as ast.IfGuardExpr
+					found_guard = true
+				}
+			}
+		}
+	}
+	if !found_guard {
+		return 0
+	}
+	if if_guard.vars.len > 1 {
+		return 0
+	}
+	mut guard_var_idx := -1
+	for i, guard_var in if_guard.vars {
+		if guard_var.name == expr.name {
+			guard_var_idx = i
+			break
+		}
+	}
+	if guard_var_idx < 0 {
+		return 0
+	}
+	mut guard_expr_type := g.resolved_expr_type(if_guard.expr, if_guard.expr_type)
+	if guard_expr_type == 0 || guard_expr_type == ast.void_type {
+		guard_expr_type = if_guard.expr_type
+	}
+	if guard_expr_type == 0 || guard_expr_type == ast.void_type {
+		return 0
+	}
+	guard_value_type :=
+		g.unwrap_generic(g.recheck_concrete_type(guard_expr_type)).clear_option_and_result()
+	return guard_value_type
+}
+
 fn (mut g Gen) get_default_fmt(ftyp ast.Type, typ ast.Type) u8 {
 	if ftyp.has_option_or_result() {
 		return `s`
@@ -37,7 +219,7 @@ fn (mut g Gen) get_default_fmt(ftyp ast.Type, typ ast.Type) u8 {
 			return `s`
 		}
 		if ftyp in [ast.string_type, ast.bool_type]
-			|| sym.kind in [.enum, .array, .array_fixed, .struct, .map, .multi_return, .sum_type, .interface, .none]
+			|| sym.kind in [.enum, .array, .array_fixed, .struct, .generic_inst, .map, .multi_return, .sum_type, .interface, .none]
 			|| ftyp.has_option_or_result() || sym.has_method('str') {
 			return `s`
 		} else {
@@ -49,12 +231,52 @@ fn (mut g Gen) get_default_fmt(ftyp ast.Type, typ ast.Type) u8 {
 fn (mut g Gen) str_format(node ast.StringInterLiteral, i int, fmts []u8) (u64, string) {
 	mut base := 0 // numeric base
 	mut upper_case := false // set uppercase for the result string
-	mut typ := g.unwrap_generic(node.expr_types[i])
-	if node.exprs[i].is_auto_deref_var() {
+	expr := node.exprs[i]
+	mut typ := if i < node.expr_types.len {
+		g.unwrap_generic(node.expr_types[i])
+	} else {
+		ast.string_type
+	}
+	if g.is_type_name_string_expr(expr) {
+		typ = ast.string_type
+	} else if expr is ast.Ident {
+		if g.resolved_ident_is_by_value_auto_deref_capture(expr) {
+			resolved_scope_type := g.resolved_scope_var_type(expr)
+			if resolved_scope_type != 0 {
+				typ = g.unwrap_generic(resolved_scope_type)
+			}
+		}
+		if expr.obj is ast.Var {
+			if expr.obj.smartcasts.len > 0 {
+				if expr.obj.orig_type != 0 && g.table.sym(expr.obj.orig_type).kind == .interface
+					&& i < node.expr_types.len && node.expr_types[i] != ast.void_type {
+					typ = g.unwrap_generic(node.expr_types[i])
+				} else {
+					typ = g.unwrap_generic(expr.obj.smartcasts.last())
+					cast_sym := *g.table.sym(typ)
+					smartcast_variant_typ := cast_sym.aggregate_variant_type(g.aggregate_type_idx)
+					if smartcast_variant_typ != 0 {
+						typ = smartcast_variant_typ
+					} else if expr.obj.ct_type_var == .smartcast {
+						typ = g.unwrap_generic(g.type_resolver.get_type(expr))
+					}
+				}
+			} else if expr.obj.ct_type_var == .smartcast {
+				resolved_typ := g.unwrap_generic(g.type_resolver.get_type(expr))
+				if resolved_typ != ast.void_type {
+					typ = resolved_typ
+				}
+			}
+		}
+	}
+	if g.expr_is_auto_deref_var(node.exprs[i]) && typ.nr_muls() > 0 {
+		typ = typ.deref()
+	}
+	if g.int_ref_interpolates_as_value(expr, typ, fmts[i]) && typ.is_ptr() {
 		typ = typ.deref()
 	}
 	typ = g.table.final_type(typ)
-	if typ.has_flag(.shared_f) {
+	if typ.has_flag(.shared_f) && typ.is_ptr() {
 		typ = typ.clear_flag(.shared_f).deref()
 	}
 	mut remove_tail_zeros := false
@@ -83,6 +305,7 @@ fn (mut g Gen) str_format(node ast.StringInterLiteral, i int, fmts []u8) (u64, s
 				// ast.f64_type { fmt_type = .si_g64 }
 				else { fmt_type = .si_g64 }
 			}
+
 			remove_tail_zeros = true
 		} else if fspec in [`e`, `E`] {
 			match typ {
@@ -183,7 +406,17 @@ fn (mut g Gen) str_format(node ast.StringInterLiteral, i int, fmts []u8) (u64, s
 	if node.fills[i] {
 		pad_ch = 1
 	}
-	res := get_str_intp_u32_format(fmt_type, node.fwidths[i], node.precisions[i], remove_tail_zeros,
+	static_width := if i < node.fwidth_exprs.len && node.fwidth_exprs[i] !is ast.EmptyExpr {
+		0
+	} else {
+		node.fwidths[i]
+	}
+	static_precision := if i < node.precision_exprs.len && node.precision_exprs[i] !is ast.EmptyExpr {
+		987698
+	} else {
+		node.precisions[i]
+	}
+	res := get_str_intp_u32_format(fmt_type, static_width, static_precision, remove_tail_zeros,
 		node.pluss[i], u8(pad_ch), base, upper_case)
 
 	return res, fmt_type.str()
@@ -192,28 +425,80 @@ fn (mut g Gen) str_format(node ast.StringInterLiteral, i int, fmts []u8) (u64, s
 fn (mut g Gen) str_val(node ast.StringInterLiteral, i int, fmts []u8) {
 	expr := node.exprs[i]
 	fmt := fmts[i]
-	typ := g.unwrap_generic(node.expr_types[i])
+	mut orig_typ := if i < node.expr_types.len {
+		g.unwrap_generic(node.expr_types[i])
+	} else {
+		ast.string_type
+	}
+	resolved_if_guard_typ := if expr is ast.Ident {
+		g.resolved_if_guard_ident_str_intp_type(expr)
+	} else {
+		ast.Type(0)
+	}
+	if resolved_if_guard_typ != 0 {
+		orig_typ = resolved_if_guard_typ
+	} else if g.should_resolve_str_intp_expr_type(expr, orig_typ) {
+		resolved_expr_typ := g.resolved_expr_type(expr, orig_typ)
+		if resolved_expr_typ != 0 {
+			orig_typ = g.unwrap_generic(g.recheck_concrete_type(resolved_expr_typ))
+		}
+	}
+	// Resolve aggregate types (from multi-branch match arms) to the
+	// concrete variant type for the current iteration.
+	orig_typ_sym := *g.table.sym(orig_typ)
+	orig_variant_typ := orig_typ_sym.aggregate_variant_type(g.aggregate_type_idx)
+	if orig_variant_typ != 0 {
+		orig_typ = orig_variant_typ
+	}
+	is_int_valptr := g.int_ref_interpolates_as_value(expr, orig_typ, fmt)
+	typ := if is_int_valptr { orig_typ.deref() } else { orig_typ }
 	typ_sym := g.table.sym(typ)
-	if g.comptime.inside_comptime_for && expr is ast.SelectorExpr && expr.field_name == 'name'
-		&& expr.expr is ast.TypeOf {
+	if g.is_type_name_string_expr(expr) {
 		g.expr(expr)
 		return
 	}
 	if typ == ast.string_type && g.comptime.comptime_for_method == unsafe { nil } {
-		if g.inside_vweb_tmpl {
-			g.write('${g.vweb_filter_fn_name}(')
-			if expr.is_auto_deref_var() && fmt != `p` {
+		if g.inside_veb_tmpl {
+			g.write('${g.veb_filter_fn_name}(')
+			if g.expr_is_auto_deref_var(expr) && fmt != `p` {
 				g.write('*')
 			}
 			g.expr(expr)
 			g.write(')')
 		} else {
-			if expr.is_auto_deref_var() && fmt != `p` {
+			if g.is_autofree_tmp && g.is_autofree
+				&& expr !in [ast.Ident, ast.StringLiteral, ast.SelectorExpr, ast.ComptimeSelector] {
+				if expr is ast.CallExpr {
+					old_is_autofree_tmp := g.is_autofree_tmp
+					g.autofree_call_pregen(expr)
+					g.is_autofree_tmp = old_is_autofree_tmp
+				}
+				tmp := g.new_tmp_var()
+				tmp_pos := expr.pos()
+				mut scope := g.file.scope.innermost(tmp_pos.pos)
+				scope.register(ast.Var{
+					name:            tmp
+					typ:             ast.string_type
+					is_autofree_tmp: true
+					pos:             tmp_pos
+				})
+				pos_before := g.out.len
+				if g.expr_is_auto_deref_var(expr) && fmt != `p` {
+					g.write('*')
+				}
+				g.expr(expr)
+				expr_code := g.out.cut_to(pos_before).trim_space()
+				g.strs_to_free0 << 'string ${tmp} = ${expr_code};'
+				g.write(tmp)
+				return
+			}
+			if g.expr_is_auto_deref_var(expr) && fmt != `p` {
 				g.write('*')
 			}
 			g.expr(expr)
 		}
-	} else if typ_sym.kind == .interface && (typ_sym.info as ast.Interface).defines_method('str') {
+	} else if !typ.has_option_or_result() && typ_sym.kind == .interface
+		&& (typ_sym.info as ast.Interface).defines_method('str') {
 		rec_type_name := util.no_dots(g.cc_type(typ, false))
 		g.write('${c_name(rec_type_name)}_name_table[')
 		g.expr(expr)
@@ -222,7 +507,7 @@ fn (mut g Gen) str_val(node ast.StringInterLiteral, i int, fmts []u8) {
 		g.expr(expr)
 		g.write2('${dot}_object', ')')
 	} else if fmt == `s` || typ.has_flag(.variadic) {
-		mut exp_typ := typ
+		mut exp_typ := orig_typ
 		is_comptime_for_var := expr is ast.Ident && g.is_comptime_for_var(expr)
 		if !is_comptime_for_var && expr is ast.Ident {
 			if g.comptime.get_ct_type_var(expr) == .smartcast {
@@ -230,13 +515,16 @@ fn (mut g Gen) str_val(node ast.StringInterLiteral, i int, fmts []u8) {
 			} else if expr.obj is ast.Var {
 				if expr.obj.smartcasts.len > 0 {
 					exp_typ = g.unwrap_generic(expr.obj.smartcasts.last())
-					cast_sym := g.table.sym(exp_typ)
-					if cast_sym.info is ast.Aggregate {
-						exp_typ = cast_sym.info.types[g.aggregate_type_idx]
+					cast_sym := *g.table.sym(exp_typ)
+					exp_variant_typ := cast_sym.aggregate_variant_type(g.aggregate_type_idx)
+					if exp_variant_typ != 0 {
+						exp_typ = exp_variant_typ
 					}
 					if exp_typ.has_flag(.option) && expr.obj.is_unwrapped {
 						exp_typ = exp_typ.clear_flag(.option)
 					}
+				} else if expr.obj.is_unwrapped && exp_typ.has_flag(.option) {
+					exp_typ = exp_typ.clear_flag(.option)
 				}
 			}
 		}
@@ -249,6 +537,9 @@ fn (mut g Gen) str_val(node ast.StringInterLiteral, i int, fmts []u8) {
 			g.inside_opt_or_res = old_inside_opt_or_res
 			g.write('.data))')
 		} else {
+			if g.gen_windows_liveshared_string_tmp(expr, exp_typ) {
+				return
+			}
 			g.gen_expr_to_string(expr, exp_typ)
 		}
 	} else if typ.is_number() || typ.is_pointer() || fmt == `d` {
@@ -269,7 +560,7 @@ fn (mut g Gen) str_val(node ast.StringInterLiteral, i int, fmts []u8) {
 			} else {
 				g.write('(u64)(')
 			}
-			if expr.is_auto_deref_var() {
+			if g.expr_is_auto_deref_var(expr) || is_int_valptr {
 				g.write('*')
 			}
 			g.expr(expr)
@@ -278,7 +569,7 @@ fn (mut g Gen) str_val(node ast.StringInterLiteral, i int, fmts []u8) {
 			}
 			g.write(')')
 		} else {
-			if expr.is_auto_deref_var() && fmt != `p` {
+			if (g.expr_is_auto_deref_var(expr) || is_int_valptr) && fmt != `p` {
 				g.write('*')
 			}
 			g.expr(expr)
@@ -287,7 +578,7 @@ fn (mut g Gen) str_val(node ast.StringInterLiteral, i int, fmts []u8) {
 			}
 		}
 	} else {
-		if expr.is_auto_deref_var() && fmt != `p` {
+		if g.expr_is_auto_deref_var(expr) && fmt != `p` {
 			g.write('*')
 		}
 		g.expr(expr)
@@ -306,29 +597,78 @@ fn (mut g Gen) string_inter_literal(node ast.StringInterLiteral) {
 	mut node_ := unsafe { node }
 	mut fmts := node_.fmts.clone()
 	for i, mut expr in node_.exprs {
-		mut field_typ := if mut expr is ast.Ident && g.is_comptime_for_var(expr) {
+		if g.cur_fn != unsafe { nil } && g.cur_concrete_types.len > 0 && !node_.need_fmts[i]
+			&& fmts[i] != `_` {
+			fmts[i] = `_`
+		}
+		mut resolved_if_guard_typ := ast.Type(0)
+		mut field_typ := if g.is_type_name_string_expr(expr) {
+			ast.string_type
+		} else if mut expr is ast.AsCast {
+			expr.typ
+		} else if mut expr is ast.CastExpr {
+			expr.typ
+		} else if mut expr is ast.PrefixExpr && expr.op == .mul && expr.right_type != 0 {
+			expr.right_type.deref()
+		} else if mut expr is ast.Ident && g.is_comptime_for_var(expr) {
 			g.comptime.comptime_for_field_type
-		} else {
+		} else if mut expr is ast.Ident && expr.obj is ast.Var {
+			resolved_if_guard_typ = g.resolved_if_guard_ident_str_intp_type(expr)
+			if resolved_if_guard_typ != 0 {
+				resolved_if_guard_typ
+			} else if expr.obj.smartcasts.len > 0 {
+				if expr.obj.orig_type != 0 && g.table.sym(expr.obj.orig_type).kind == .interface
+					&& i < node_.expr_types.len && node_.expr_types[i] != ast.void_type {
+					node_.expr_types[i]
+				} else {
+					mut typ := g.unwrap_generic(expr.obj.smartcasts.last())
+					cast_sym := *g.table.sym(typ)
+					field_variant_typ := cast_sym.aggregate_variant_type(g.aggregate_type_idx)
+					if field_variant_typ != 0 {
+						typ = field_variant_typ
+					} else if expr.obj.ct_type_var == .smartcast {
+						typ = g.unwrap_generic(g.type_resolver.get_type(expr))
+					}
+					typ
+				}
+			} else if expr.obj.ct_type_var == .smartcast {
+				g.unwrap_generic(g.type_resolver.get_type(expr))
+			} else if i < node_.expr_types.len
+				&& g.table.final_sym(g.unwrap_generic(expr.obj.typ)).kind in [.interface, .sum_type] {
+				node_.expr_types[i]
+			} else if i < node_.expr_types.len {
+				node_.expr_types[i]
+			} else {
+				g.type_resolver.get_type_or_default(expr, expr.obj.typ)
+			}
+		} else if i < node_.expr_types.len {
 			node_.expr_types[i]
+		} else {
+			ast.void_type
 		}
 		if g.comptime.inside_comptime_for && mut expr is ast.SelectorExpr {
 			if expr.expr is ast.TypeOf && expr.field_name == 'name' {
-				typeof_expr := expr.expr as ast.TypeOf
-				if typeof_expr.expr is ast.Ident {
-					ident_name := (typeof_expr.expr as ast.Ident).name
-					if obj := typeof_expr.expr.scope.find(ident_name) {
-						if obj is ast.Var {
-							field_typ = obj.typ
-						}
-					}
-				}
+				field_typ = ast.string_type
 			}
 		}
 		if g.comptime.is_comptime(expr) || (g.comptime.inside_comptime_for && expr is ast.Ident) {
-			ctyp := g.type_resolver.get_type_or_default(expr, field_typ)
+			mut ctyp := g.type_resolver.get_type_or_default(expr, field_typ)
+			// In generic contexts, comptime type may be stale from a previous
+			// checker instantiation. Prefer resolved_expr_type when available.
+			if g.cur_fn != unsafe { nil } && g.cur_concrete_types.len > 0 {
+				resolved_ct := g.resolved_expr_type(expr, ctyp)
+				if resolved_ct != ast.void_type && resolved_ct != 0 {
+					ctyp = g.unwrap_generic(g.recheck_concrete_type(resolved_ct))
+				}
+			}
 			if ctyp != ast.void_type {
+				// Clear option flag for variables unwrapped via `or {}` blocks
+				if ctyp.has_flag(.option) && g.should_clear_option_flag(expr) {
+					ctyp = ctyp.clear_flag(.option)
+				}
 				node_.expr_types[i] = ctyp
-				if node_.fmts[i] == `_` {
+				if node_.fmts[i] == `_`
+					|| (g.cur_fn != unsafe { nil } && g.cur_concrete_types.len > 0) {
 					ftyp_sym := g.table.sym(ctyp)
 					typ := if ftyp_sym.kind == .alias && !ftyp_sym.has_method('str') {
 						g.table.unalias_num_type(ctyp)
@@ -339,12 +679,64 @@ fn (mut g Gen) string_inter_literal(node ast.StringInterLiteral) {
 				}
 			}
 		} else {
-			node_.expr_types[i] = field_typ
+			if resolved_if_guard_typ == 0 && g.should_resolve_str_intp_expr_type(expr, field_typ) {
+				resolved_field_typ := g.resolved_expr_type(expr, field_typ)
+				if resolved_field_typ != ast.void_type {
+					field_typ = g.unwrap_generic(g.recheck_concrete_type(resolved_field_typ))
+				}
+			}
+			// Resolve aggregate types (from multi-branch match arms) to the
+			// concrete variant type for the current iteration.
+			field_sym := *g.table.sym(field_typ)
+			interp_variant_typ := field_sym.aggregate_variant_type(g.aggregate_type_idx)
+			if interp_variant_typ != 0 {
+				field_typ = interp_variant_typ
+			}
+			// Clear option flag for variables unwrapped via `or {}` blocks
+			if field_typ.has_flag(.option) && g.should_clear_option_flag(expr) {
+				field_typ = field_typ.clear_flag(.option)
+			}
+			if i >= node_.expr_types.len {
+				node_.expr_types << field_typ
+			} else {
+				node_.expr_types[i] = field_typ
+			}
+			// Update format specifier if it was auto-determined and the type changed
+			if !node_.need_fmts[i] && fmts[i] == `_` {
+				ftyp_sym := g.table.sym(field_typ)
+				new_typ := if ftyp_sym.kind == .alias && !ftyp_sym.has_method('str') {
+					g.table.unalias_num_type(field_typ)
+				} else {
+					field_typ
+				}
+				fmts[i] = g.get_default_fmt(field_typ, new_typ)
+			}
+		}
+		expr_ := expr
+		match expr_ {
+			ast.Ident {
+				if expr_.obj is ast.Var && g.table.is_interface_smartcast(expr_.obj) {
+					expr_var := expr_.obj
+					if field_typ.is_ptr() && !expr_var.orig_type.is_ptr()
+						&& g.table.final_sym(expr_var.orig_type).kind == .interface
+						&& g.table.final_sym(field_typ).kind != .interface {
+						field_typ = field_typ.deref()
+						node_.expr_types[i] = field_typ
+						if !node_.need_fmts[i] {
+							fmts[i] = g.get_default_fmt(field_typ, field_typ)
+						}
+					}
+				}
+			}
+			else {}
 		}
 	}
-	g.write2('builtin__str_intp(', node.vals.len.str())
+	if g.gen_simple_string_inter_literal(node_, fmts) {
+		return
+	}
+	g.write2('builtin__str_intp(', node_.vals.len.str())
 	g.write(', _MOV((StrIntpData[]){')
-	for i, val in node.vals {
+	for i, val in node_.vals {
 		mut escaped_val := cescape_nonascii(util.smart_quote(val, false))
 		escaped_val = escaped_val.replace('\0', '\\0')
 
@@ -355,13 +747,25 @@ fn (mut g Gen) string_inter_literal(node ast.StringInterLiteral) {
 			g.write('{_SLIT0, ')
 		}
 
-		if i >= node.exprs.len {
+		if i >= node_.exprs.len {
 			// last part of the string
-			g.write('0, { .d_c = 0 }}')
+			g.write('0, { .d_c = 0 }, 0, 0, 0}')
 			break
 		}
 
-		ft_u64, ft_str := g.str_format(node, i, fmts)
+		ft_u64, ft_str := g.str_format(node_, i, fmts)
+		$if trace_ci_fixes ? {
+			if g.file.path.contains('comptime_for_in_options_struct_test.v')
+				|| g.file.path.contains('comptime_map_fields_decode_test.v') {
+				g.write('/*trace_str_intp expr=')
+				g.write(node_.exprs[i].str().replace('*/', '* /'))
+				g.write(' typ=')
+				g.write(g.table.type_to_str(node_.expr_types[i]).replace('*/', '* /'))
+				g.write(' fmt=')
+				g.write(ft_str)
+				g.write('*/')
+			}
+		}
 		g.write2('0x', ft_u64.hex())
 		g.write2(', {.d_', ft_str)
 		g.write(' = ')
@@ -369,16 +773,184 @@ fn (mut g Gen) string_inter_literal(node ast.StringInterLiteral) {
 		// for pointers we need a void* cast
 		if unsafe { ft_str.str[0] } == `p` {
 			g.write('(void*)(')
-			g.str_val(node, i, fmts)
+			g.str_val(node_, i, fmts)
 			g.write(')')
 		} else {
-			g.str_val(node, i, fmts)
+			g.str_val(node_, i, fmts)
 		}
 
-		g.write('}}')
-		if i < (node.vals.len - 1) {
+		g.write('}')
+		has_dynamic_width := i < node_.fwidth_exprs.len && node_.fwidth_exprs[i] !is ast.EmptyExpr
+		has_dynamic_precision := i < node_.precision_exprs.len
+			&& node_.precision_exprs[i] !is ast.EmptyExpr
+		if has_dynamic_width || has_dynamic_precision {
+			g.write(', ')
+			if has_dynamic_width {
+				g.expr(node_.fwidth_exprs[i])
+			} else {
+				g.write('0')
+			}
+			g.write(', ')
+			if has_dynamic_precision {
+				g.expr(node_.precision_exprs[i])
+			} else {
+				g.write('0')
+			}
+			g.write(', ')
+			g.write(if has_dynamic_width && has_dynamic_precision {
+				'3'
+			} else if has_dynamic_width {
+				'1'
+			} else {
+				'2'
+			})
+		} else {
+			g.write(', 0, 0, 0')
+		}
+		g.write('}')
+		if i < (node_.vals.len - 1) {
 			g.write(', ')
 		}
 	}
 	g.write('}))')
+}
+
+const simple_string_interpolation_default_precision = 987698
+
+fn (mut g Gen) gen_simple_string_inter_literal(node ast.StringInterLiteral, fmts []u8) bool {
+	if g.is_autofree || g.pref.gc_mode == .boehm_leak {
+		// The fast `string_plus_many` lowering can leave nested temporary
+		// strings without scope cleanup in autofree/leak-detection modes.
+		// Use the regular `str_intp` path there so temporaries remain explicit.
+		return false
+	}
+	if node.exprs.len == 0 || node.expr_types.len < node.exprs.len {
+		return false
+	}
+	for i in 0 .. node.exprs.len {
+		if i >= node.need_fmts.len || node.need_fmts[i] || i >= fmts.len || fmts[i] == `_` {
+			return false
+		}
+		normalized_expr_type := g.table.fully_unaliased_type(g.unwrap_generic(node.expr_types[i]))
+		// Pointer aliases need the full `str_intp` path so nil formatting stays
+		// consistent with plain pointer interpolation.
+		if normalized_expr_type.is_any_kind_of_pointer() || normalized_expr_type.is_int_valptr()
+			|| normalized_expr_type.is_float_valptr() {
+			return false
+		}
+		// Interface types need the full str_intp path for vtable dispatch and
+		// interface smartcasts need it for correct pointer prefix handling.
+		expr_i := node.exprs[i]
+		if expr_i is ast.Ident && expr_i.obj is ast.Var {
+			expr_var := expr_i.obj as ast.Var
+			if expr_var.orig_type != 0
+				&& g.table.final_sym(g.unwrap_generic(expr_var.orig_type)).kind == .interface {
+				return false
+			}
+		}
+		etyp_sym := g.table.final_sym(node.expr_types[i])
+		if etyp_sym.kind == .interface {
+			return false
+		}
+		if i < node.fwidths.len && node.fwidths[i] != 0 {
+			return false
+		}
+		if i < node.fwidth_exprs.len && node.fwidth_exprs[i] !is ast.EmptyExpr {
+			return false
+		}
+		if i < node.precisions.len
+			&& node.precisions[i] != simple_string_interpolation_default_precision {
+			return false
+		}
+		if i < node.precision_exprs.len && node.precision_exprs[i] !is ast.EmptyExpr {
+			return false
+		}
+		if i < node.pluss.len && node.pluss[i] {
+			return false
+		}
+		if i < node.fills.len && node.fills[i] {
+			return false
+		}
+	}
+	if g.inside_ternary > 0 {
+		for i, expr in node.exprs {
+			if i >= node.expr_types.len {
+				break
+			}
+			if g.should_materialize_windows_liveshared_string(expr, node.expr_types[i]) {
+				// The Windows live-shared temp lowering inserts standalone C statements.
+				// That is valid for normal statement contexts, but not inside ternary branches.
+				// Fall back to the regular `builtin__str_intp` path there instead.
+				return false
+			}
+		}
+	}
+	if node.exprs.len == 1 && node.vals.len == 2 && node.vals[0].len == 0 && node.vals[1].len == 0 {
+		if !g.gen_windows_liveshared_string_tmp(node.exprs[0], node.expr_types[0]) {
+			g.gen_expr_to_string(node.exprs[0], node.expr_types[0])
+		}
+		return true
+	}
+	mut part_count := 0
+	for i, val in node.vals {
+		if val.len > 0 {
+			part_count++
+		}
+		if i < node.exprs.len {
+			part_count++
+		}
+	}
+	if part_count <= 0 {
+		return false
+	}
+	g.write('builtin__string_plus_many(${part_count}, _MOV((string[${part_count}]){')
+	mut written_parts := 0
+	for i, val in node.vals {
+		if val.len > 0 {
+			if written_parts > 0 {
+				g.write(', ')
+			}
+			mut escaped_val := cescape_nonascii(util.smart_quote(val, false))
+			escaped_val = escaped_val.replace('\0', '\\0')
+			g.write2('_S("', escaped_val)
+			g.write('")')
+			written_parts++
+		}
+		if i < node.exprs.len {
+			if written_parts > 0 {
+				g.write(', ')
+			}
+			if !g.gen_windows_liveshared_string_tmp(node.exprs[i], node.expr_types[i]) {
+				g.gen_expr_to_string(node.exprs[i], node.expr_types[i])
+			}
+			written_parts++
+		}
+	}
+	g.write('}))')
+	return true
+}
+
+fn (g &Gen) should_materialize_windows_liveshared_string(expr ast.Expr, typ ast.Type) bool {
+	if g.pref.os != .windows || !g.pref.is_liveshared || g.inside_const {
+		return false
+	}
+	// The live shared DLL path on Windows is sensitive to nested string-returning
+	// expressions inside interpolation compound literals, so lower them via temps.
+	if typ == ast.string_type {
+		return expr !is ast.Ident && expr !is ast.StringLiteral && expr !is ast.SelectorExpr
+			&& expr !is ast.ComptimeSelector
+	}
+	return true
+}
+
+fn (mut g Gen) gen_windows_liveshared_string_tmp(expr ast.Expr, typ ast.Type) bool {
+	if !g.should_materialize_windows_liveshared_string(expr, typ) {
+		return false
+	}
+	past := g.past_tmp_var_new()
+	g.write('string ${past.tmp_var} = ')
+	g.gen_expr_to_string(expr, typ)
+	g.writeln(';')
+	g.past_tmp_var_done(past)
+	return true
 }

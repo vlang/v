@@ -8,7 +8,7 @@ fn C.getenv(&char) &char
 // C.GetEnvironmentStringsW & C.FreeEnvironmentStringsW are defined only on windows
 fn C.GetEnvironmentStringsW() &u16
 
-fn C.FreeEnvironmentStringsW(&u16) int
+fn C.FreeEnvironmentStringsW(&u16) i32
 
 // getenv returns the value of the environment variable named by the key.
 // If there is not one found, it returns an empty string ''.

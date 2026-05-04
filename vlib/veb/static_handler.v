@@ -4,14 +4,15 @@ import os
 
 pub interface StaticApp {
 mut:
-	static_files                map[string]string
-	static_mime_types           map[string]string
-	static_hosts                map[string]string
-	enable_static_gzip          bool
-	enable_static_zstd          bool
-	enable_static_compression   bool
-	static_compression_max_size int
-	enable_markdown_negotiation bool
+	static_files                  map[string]string
+	static_mime_types             map[string]string
+	static_hosts                  map[string]string
+	enable_static_gzip            bool
+	enable_static_zstd            bool
+	enable_static_compression     bool
+	static_compression_max_size   int
+	static_compression_mime_types []string
+	enable_markdown_negotiation   bool
 }
 
 // StaticHandler provides methods to handle static files in your veb App
@@ -34,10 +35,16 @@ pub mut:
 	// Default: false
 	enable_static_compression bool
 	// static_compression_max_size sets the maximum file size in bytes for auto-compression.
-	// Files larger than this threshold will not be auto-compressed (but manual .zst/.gz files are still served).
+	// Files larger than this threshold will not be auto-compressed.
+	// Manual `.zst`/`.gz` files are still served for allowed MIME types.
 	// Default: 1MB (1024*1024 bytes). Set to 0 to disable auto-compression completely.
-	// Note: On readonly filesystems, if caching fails, compressed content is served from memory as fallback.
+	// Auto-generated cache files are stored in os.cache_dir()/veb/static_compression/.
+	// If that cache directory is not writable, compressed content is served from memory as fallback.
 	static_compression_max_size int = 1048576
+	// static_compression_mime_types limits static compression to the listed MIME types.
+	// Manual `.zst`/`.gz` files and auto-generated compressed cache files are only used for matching types.
+	// Leave empty to preserve the default behavior and allow compression for all static MIME types.
+	static_compression_mime_types []string
 	// enable_markdown_negotiation allows the client sends Accept: text/markdown, then the server will serve .md files, if any.
 	// Default: false (for backward compatibility)
 	enable_markdown_negotiation bool
@@ -51,8 +58,7 @@ fn (mut sh StaticHandler) scan_static_directory(directory_path string, mount_pat
 		for file in files {
 			full_path := os.join_path(directory_path, file)
 			if os.is_dir(full_path) {
-				sh.scan_static_directory(full_path, mount_path.trim_right('/') + '/' + file,
-					host)!
+				sh.scan_static_directory(full_path, mount_path.trim_right('/') + '/' + file, host)!
 			} else if file.contains('.') && !file.starts_with('.') && !file.ends_with('.') {
 				sh.host_serve_static(host, mount_path.trim_right('/') + '/' + file, full_path)!
 			}
@@ -138,4 +144,23 @@ pub fn (mut sh StaticHandler) host_serve_static(host string, url string, file_pa
 	}
 	sh.static_files[url] = file_path
 	sh.static_hosts[url] = host
+}
+
+fn app_static_handler[A](app &A) StaticHandler {
+	$if A is $struct {
+		$for field in A.fields {
+			$if field.is_embed {
+				$if field.name == 'StaticHandler' {
+					return app.$(field.name)
+				} $else $if field.typ is $struct {
+					return app_static_handler(app.$(field.name))
+				}
+			}
+		}
+	}
+	return StaticHandler{
+		static_files:      map[string]string{}
+		static_mime_types: map[string]string{}
+		static_hosts:      map[string]string{}
+	}
 }

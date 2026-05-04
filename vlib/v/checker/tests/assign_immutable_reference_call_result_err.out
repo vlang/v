@@ -1,0 +1,13 @@
+vlib/v/checker/tests/assign_immutable_reference_call_result_err.vv:15:16: notice: `ja` is immutable, cannot have a mutable reference to an immutable object
+   13 | fn main() {
+   14 |     ja := User{name: 'foo'}
+   15 |     mut x := rere(ja)
+      |                   ~~
+   16 |     x.name = 'bar'
+   17 | }
+vlib/v/checker/tests/assign_immutable_reference_call_result_err.vv:16:4: error: `x.name` aliases mutable data from an immutable value
+   14 |     ja := User{name: 'foo'}
+   15 |     mut x := rere(ja)
+   16 |     x.name = 'bar'
+      |       ~~~~
+   17 | }

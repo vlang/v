@@ -11,7 +11,8 @@ import v.util
 // should be compiled (v folder).
 // To implement that, these folders are initially skipped, then added
 // as a whole *after the testing.prepare_test_session call*.
-const tools_in_subfolders = ['vast', 'vcreate', 'vdoc', 'vpm', 'vsymlink', 'vvet', 'vwhere', 'vcover']
+const tools_in_subfolders = ['vast', 'vcreate', 'vdoc', 'vpm', 'vsqlite', 'vsymlink', 'vvet',
+	'vwhere', 'vcover']
 
 // non_packaged_tools are tools that should not be packaged with
 // prebuild versions of V, to keep the size smaller.
@@ -42,8 +43,8 @@ fn main() {
 	for stool in tools_in_subfolders {
 		session.add(os.join_path(tfolder, stool))
 	}
-	// eprintln('> session.files: $session.files')
-	// eprintln('> session.skip_files: $session.skip_files')
+	// eprintln('> session.files: ${session.files}')
+	// eprintln('> session.skip_files: ${session.skip_files}')
 	session.test()
 	eprintln(session.benchmark.total_message(finish_label))
 	if session.failed_cmds.len > 0 {

@@ -31,26 +31,20 @@ $if $pkgconfig('openssl') {
 		#flag -lssl -lcrypto
 	}
 	#flag linux -ldl -lpthread
-	// MacPorts
-	#flag darwin -I/opt/local/include
-	#flag darwin -L/opt/local/lib
-	// Brew
-	#flag darwin -I/usr/local/opt/openssl/include
-	#flag darwin -L/usr/local/opt/openssl/lib
-	// brew on macos-12 (ci runner)
-	#flag darwin -I/usr/local/opt/openssl@3/include
-	#flag darwin -L/usr/local/opt/openssl@3/lib
-	// Brew arm64
-	#flag darwin -I /opt/homebrew/opt/openssl/include
-	#flag darwin -L /opt/homebrew/opt/openssl/lib
-	// Procursus
-	#flag darwin -I/opt/procursus/include
-	#flag darwin -L/opt/procursus/lib
+	// Prefer a single matching macOS OpenSSL prefix to avoid mixing Intel and arm64 installs.
+	$if arm64 {
+		#flag darwin -I$when_first_existing('/opt/local/include','/opt/homebrew/opt/openssl/include','/opt/homebrew/opt/openssl@3/include','/opt/procursus/include','/usr/local/opt/openssl/include','/usr/local/opt/openssl@3/include')
+		#flag darwin -L$when_first_existing('/opt/local/lib','/opt/homebrew/opt/openssl/lib','/opt/homebrew/opt/openssl@3/lib','/opt/procursus/lib','/usr/local/opt/openssl/lib','/usr/local/opt/openssl@3/lib')
+	} $else {
+		#flag darwin -I$when_first_existing('/opt/local/include','/usr/local/opt/openssl/include','/usr/local/opt/openssl@3/include','/opt/procursus/include','/opt/homebrew/opt/openssl/include','/opt/homebrew/opt/openssl@3/include')
+		#flag darwin -L$when_first_existing('/opt/local/lib','/usr/local/opt/openssl/lib','/usr/local/opt/openssl@3/lib','/opt/procursus/lib','/opt/homebrew/opt/openssl/lib','/opt/homebrew/opt/openssl@3/lib')
+	}
 }
 
 #include <openssl/rand.h> # Please install OpenSSL development headers
 #include <openssl/ssl.h>
 #include <openssl/err.h>
+#insert "@VEXEROOT/vlib/net/openssl/openssl_compat.h"
 
 @[typedef]
 pub struct C.SSL {
@@ -86,70 +80,66 @@ fn (c &C.SSL_CTX) str() string {
 
 fn C.BIO_new_ssl_connect(ctx &C.SSL_CTX) &C.BIO
 
-fn C.BIO_set_conn_hostname(b &C.BIO, name &char) int
+fn C.BIO_set_conn_hostname(b &C.BIO, name &char) i32
 
 // there are actually 2 macros for BIO_get_ssl
 // fn C.BIO_get_ssl(bp &C.BIO, ssl charptr, c int)
 // fn C.BIO_get_ssl(bp &C.BIO, sslp charptr)
 fn C.BIO_get_ssl(bp &C.BIO, vargs ...voidptr)
 
-fn C.BIO_do_connect(b &C.BIO) int
+fn C.BIO_do_connect(b &C.BIO) i32
 
-fn C.BIO_do_handshake(b &C.BIO) int
+fn C.BIO_do_handshake(b &C.BIO) i32
 
 fn C.BIO_puts(b &C.BIO, buf &char)
 
-fn C.BIO_read(b &C.BIO, buf voidptr, len int) int
+fn C.BIO_read(b &C.BIO, buf voidptr, len i32) i32
 
 fn C.BIO_free_all(a &C.BIO)
 
 fn C.SSL_CTX_new(method &C.SSL_METHOD) &C.SSL_CTX
 
-fn C.SSL_CTX_set_options(ctx &C.SSL_CTX, options int)
+fn C.SSL_CTX_set_options(ctx &C.SSL_CTX, options i32)
 
-fn C.SSL_CTX_set_verify_depth(s &C.SSL_CTX, depth int)
+fn C.SSL_CTX_set_verify_depth(s &C.SSL_CTX, depth i32)
 
-fn C.SSL_CTX_load_verify_locations(ctx &C.SSL_CTX, const_file &char, ca_path &char) int
+fn C.SSL_CTX_load_verify_locations(ctx &C.SSL_CTX, const_file &char, ca_path &char) i32
 
 fn C.SSL_CTX_free(ctx &C.SSL_CTX)
 
-fn C.SSL_CTX_use_certificate_file(ctx &C.SSL_CTX, const_file &char, file_type int) int
+fn C.SSL_CTX_use_certificate_file(ctx &C.SSL_CTX, const_file &char, file_type i32) i32
 
-fn C.SSL_CTX_use_PrivateKey_file(ctx &C.SSL_CTX, const_file &char, file_type int) int
+fn C.SSL_CTX_use_PrivateKey_file(ctx &C.SSL_CTX, const_file &char, file_type i32) i32
 
 fn C.SSL_new(&C.SSL_CTX) &C.SSL
 
-fn C.SSL_set_fd(ssl &C.SSL, fd int) int
+fn C.SSL_set_fd(ssl &C.SSL, fd i32) i32
 
-fn C.SSL_connect(&C.SSL) int
+fn C.SSL_connect(&C.SSL) i32
 
-fn C.SSL_do_handshake(&C.SSL) int
+fn C.SSL_do_handshake(&C.SSL) i32
 
-fn C.SSL_set_cipher_list(ctx &SSL, str &char) int
+fn C.SSL_set_cipher_list(ctx &C.SSL, str &char) i32
 
-fn C.SSL_get1_peer_certificate(ssl &SSL) &C.X509
+fn C.v_net_openssl_get1_peer_certificate(ssl &C.SSL) &C.X509
 
 fn C.X509_free(const_cert &C.X509)
 
 fn C.ERR_clear_error()
 
-fn C.SSL_get_error(ssl &C.SSL, ret int) int
+fn C.SSL_get_error(ssl &C.SSL, ret i32) i32
 
-fn C.SSL_get_verify_result(ssl &SSL) int
+fn C.SSL_get_verify_result(ssl &C.SSL) i32
 
-fn C.SSL_set_tlsext_host_name(s &SSL, name &char) int
+fn C.SSL_set_tlsext_host_name(s &C.SSL, name &char) i32
 
-fn C.SSL_shutdown(&C.SSL) int
+fn C.SSL_shutdown(&C.SSL) i32
 
 fn C.SSL_free(&C.SSL)
 
-fn C.SSL_write(ssl &C.SSL, buf voidptr, buflen int) int
+fn C.SSL_write(ssl &C.SSL, buf voidptr, buflen i32) i32
 
-fn C.SSL_read(ssl &C.SSL, buf voidptr, buflen int) int
-
-fn C.SSL_load_error_strings()
-
-fn C.SSL_library_init() int
+fn C.SSL_read(ssl &C.SSL, buf voidptr, buflen i32) i32
 
 fn C.SSLv23_client_method() &C.SSL_METHOD
 
@@ -157,20 +147,14 @@ fn C.TLS_method() voidptr
 
 fn C.TLSv1_2_method() voidptr
 
-fn C.OPENSSL_init_ssl(opts u64, settings &OPENSSL_INIT_SETTINGS) int
+fn C.v_net_openssl_init_ssl() i32
 
 fn C.SSL_CTX_set_alpn_protos(ctx &C.SSL_CTX, protos &u8, protos_len u32) int
 
 fn C.SSL_get0_alpn_selected(ssl &C.SSL, data &&u8, len &u32)
 
 fn init() {
-	$if ssl_pre_1_1_version ? {
-		// OPENSSL_VERSION_NUMBER < 0x10100000L
-		C.SSL_load_error_strings()
-		C.SSL_library_init()
-	} $else {
-		C.OPENSSL_init_ssl(C.OPENSSL_INIT_LOAD_SSL_STRINGS, 0)
-	}
+	C.v_net_openssl_init_ssl()
 }
 
 // ssl_error returns non error ssl code or error if unrecoverable and we should panic
@@ -184,8 +168,7 @@ fn ssl_error(ret int, ssl voidptr) !SSLError {
 			return error_with_code('net.openssl unrecoverable syscall (${res})', res)
 		}
 		.ssl_error_ssl {
-			return error_with_code('net.openssl unrecoverable ssl protocol error (${res})',
-				res)
+			return error_with_code('net.openssl unrecoverable ssl protocol error (${res})', res)
 		}
 		else {
 			return unsafe { SSLError(res) }

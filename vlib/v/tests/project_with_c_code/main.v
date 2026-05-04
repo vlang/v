@@ -4,7 +4,7 @@ import v.tests.project_with_c_code.mod1
 
 #include "@DIR/relative.h"
 
-fn C.abc() int
+fn C.abc() i32
 
 fn main() {
 	res := mod1.vadd(1, 2)

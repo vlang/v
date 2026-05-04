@@ -38,9 +38,11 @@ fn test_sha2_128_signature_generation() ! {
 
 		// signing (verifying) options
 		s_opt := SignerOpts{
-			encoding: 0
-			entropy:  entropy
+			encoding:      0
+			entropy:       entropy
+			deterministic: 0
 		}
+
 		out_sig := pv.sign(msg, s_opt)!
 		assert out_sig == sig
 

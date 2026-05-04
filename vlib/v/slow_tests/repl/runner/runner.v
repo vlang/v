@@ -28,10 +28,10 @@ pub fn full_path_to_v(dirs_in int) string {
 	vreal  := os.real_path('v')
 	myself := os.real_path( os.executable() )
 	wd := os.getwd()
-	println('args are: $args')
-	println('vreal   : $vreal')
-	println('myself  : $myself')
-	println('wd      : $wd')
+	println('args are: ${args}')
+	println('vreal   : ${vreal}')
+	println('myself  : ${myself}')
+	println('wd      : ${wd}')
 	*/
 	return vexec
 }

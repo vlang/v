@@ -5,13 +5,22 @@ import hash
 import time
 import rand
 import strings
+import v.ast
 import v.util
 import v.pref
 import v.vcache
 import runtime
 
+const crun_cache_format_version = 'crun_cache_v2'
+
 pub fn (mut b Builder) rebuild_modules() {
 	if !b.pref.use_cache || b.pref.build_mode == .build_module {
+		return
+	}
+	if b.pref.check_only || b.pref.only_check_syntax {
+		// Check-only flows should not trigger side-effecting cache rebuilds.
+		// In the REPL import path that can compile imported `.c.v` modules
+		// and surface irrelevant missing-header errors for declaration-only checks.
 		return
 	}
 	all_files := b.parsed_files.map(it.path)
@@ -49,7 +58,7 @@ pub fn (mut b Builder) find_invalidated_modules_by_files(all_files []string) []s
 		cpath := x[1]
 		old_hashes[cpath] = chash
 	}
-	// eprintln('old_hashes: $old_hashes')
+	// eprintln('old_hashes: ${old_hashes}')
 	for cpath in all_files {
 		ccontent := util.read_file(cpath) or { '' }
 		chash := hash.sum64_string(ccontent, 7).hex_full()
@@ -60,7 +69,7 @@ pub fn (mut b Builder) find_invalidated_modules_by_files(all_files []string) []s
 		sb_new_hashes.write_u8(`\n`)
 	}
 	snew_hashes := sb_new_hashes.str()
-	// eprintln('new_hashes: $new_hashes')
+	// eprintln('new_hashes: ${new_hashes}')
 	// eprintln('> new_hashes != old_hashes: ' + ( old_hashes != new_hashes ).str())
 	// eprintln(snew_hashes)
 	cm.save('.hashes', 'all_files', snew_hashes) or {}
@@ -69,9 +78,9 @@ pub fn (mut b Builder) find_invalidated_modules_by_files(all_files []string) []s
 	mut invalidations := []string{}
 	if new_hashes != old_hashes {
 		util.timing_start('${@METHOD} rebuilding')
-		// eprintln('> b.mod_invalidates_paths: $b.mod_invalidates_paths')
-		// eprintln('> b.mod_invalidates_mods: $b.mod_invalidates_mods')
-		// eprintln('> b.path_invalidates_mods: $b.path_invalidates_mods')
+		// eprintln('> b.mod_invalidates_paths: ${b.mod_invalidates_paths}')
+		// eprintln('> b.mod_invalidates_mods: ${b.mod_invalidates_mods}')
+		// eprintln('> b.path_invalidates_mods: ${b.path_invalidates_mods}')
 		$if trace_invalidations ? {
 			for k, v in b.mod_invalidates_paths {
 				mut m := map[string]bool{}
@@ -186,7 +195,8 @@ fn (mut b Builder) v_build_module(vexe string, imp_path string) {
 	os.chdir(vroot) or {}
 	boptions := b.pref.build_options.join(' ')
 	rebuild_cmd := '${os.quoted_path(vexe)} ${boptions} build-module ${os.quoted_path(imp_path)}'
-	vcache.dlog('| Builder.' + @FN, 'vexe: ${vexe} | imp_path: ${imp_path} | rebuild_cmd: ${rebuild_cmd}')
+	vcache.dlog('| Builder.' + @FN,
+		'vexe: ${vexe} | imp_path: ${imp_path} | rebuild_cmd: ${rebuild_cmd}')
 	$if trace_v_build_module ? {
 		eprintln('> Builder.v_build_module: ${rebuild_cmd}')
 	}
@@ -293,7 +303,7 @@ pub fn (mut b Builder) should_rebuild() bool {
 	mut cm := vcache.new_cache_manager(b.crun_cache_keys)
 	// always rebuild, when the compilation options changed between 2 sequential cruns:
 	sbuild_options := cm.load('.build_options', '.crun') or { return true }
-	if sbuild_options != b.pref.build_options.join('\n') {
+	if sbuild_options != b.crun_build_options_signature() {
 		return true
 	}
 	sdependencies := cm.load('.dependencies', '.crun') or {
@@ -301,13 +311,16 @@ pub fn (mut b Builder) should_rebuild() bool {
 		// rebuild, which will fill in the dependencies cache for the next crun
 		return true
 	}
-	dependencies := sdependencies.split('\n')
-	// we have already compiled these source files, and have their dependencies
-	dependencies_stamp := most_recent_timestamp(dependencies)
-	if dependencies_stamp < exe_stamp {
-		return false
+	dependencies := sdependencies.split('\n').filter(it != '')
+	for dependency in dependencies {
+		if !os.is_file(dependency) {
+			return true
+		}
+		if os.file_last_mod_unix(dependency) >= exe_stamp {
+			return true
+		}
 	}
-	return true
+	return false
 }
 
 fn most_recent_timestamp(files []string) i64 {
@@ -327,9 +340,9 @@ pub fn (mut b Builder) rebuild(backend_cb FnBackend) {
 	if b.pref.is_crun {
 		// save the dependencies after the first compilation, they will be used for subsequent ones:
 		mut cm := vcache.new_cache_manager(b.crun_cache_keys)
-		dependency_files := b.parsed_files.map(it.path)
+		dependency_files := b.crun_dependency_files()
 		cm.save('.dependencies', '.crun', dependency_files.join('\n')) or {}
-		cm.save('.build_options', '.crun', b.pref.build_options.join('\n')) or {}
+		cm.save('.build_options', '.crun', b.crun_build_options_signature()) or {}
 	}
 	mut timers := util.get_timers()
 	timers.show_remaining()
@@ -337,11 +350,22 @@ pub fn (mut b Builder) rebuild(backend_cb FnBackend) {
 		compilation_time_micros := 1 + sw.elapsed().microseconds()
 		scompilation_time_ms := util.bold('${f64(compilation_time_micros) / 1000.0:6.3f}')
 		mut all_v_source_lines, mut all_v_source_bytes, mut all_v_source_tokens := 0, 0, 0
+		mut all_v_top_stmts, mut all_non_vlib_top_stmts, mut all_main_top_stmts := 0, 0, 0
 		for pf in b.parsed_files {
 			all_v_source_lines += pf.nr_lines
 			all_v_source_bytes += pf.nr_bytes
 			all_v_source_tokens += pf.nr_tokens
+			all_v_top_stmts += pf.stmts.len
+			if !pf.path.contains('vlib/') {
+				all_non_vlib_top_stmts += pf.stmts.len
+			}
+			if pf.mod.name == 'main' {
+				all_main_top_stmts += pf.stmts.len
+			}
 		}
+		mut sall_top_stmts := all_v_top_stmts.str()
+		mut sall_non_vlib_top_stmts := all_non_vlib_top_stmts.str()
+		mut sall_main_top_stmts := all_main_top_stmts.str()
 		mut sall_v_source_lines := all_v_source_lines.str()
 		mut sall_v_source_bytes := all_v_source_bytes.str()
 		mut sall_v_source_tokens := all_v_source_tokens.str()
@@ -354,7 +378,10 @@ pub fn (mut b Builder) rebuild(backend_cb FnBackend) {
 		sall_v_types = util.bold('${sall_v_types:5s}')
 		sall_v_modules = util.bold('${sall_v_modules:5s}')
 		sall_v_files = util.bold('${sall_v_files:5s}')
-		println('        V  source  code size: ${sall_v_source_lines} lines, ${sall_v_source_tokens} tokens, ${sall_v_source_bytes} bytes, ${sall_v_types} types, ${sall_v_modules} modules, ${sall_v_files} files')
+		sall_top_stmts = util.bold('${sall_top_stmts:5s}')
+		sall_non_vlib_top_stmts = util.bold('${sall_non_vlib_top_stmts:5s}')
+		sall_main_top_stmts = util.bold('${sall_main_top_stmts:5s}')
+		println('        V  source  code size: ${sall_v_source_lines} lines, ${sall_v_source_tokens} tokens, ${sall_v_source_bytes} bytes, ${sall_v_types} types, ${sall_v_modules} modules, ${sall_v_files} files, ${sall_top_stmts} tl_stmts, ${sall_non_vlib_top_stmts} non_vlib_tl_stmts, ${sall_main_top_stmts} main_tl_stmts')
 		//
 		mut slines := b.stats_lines.str()
 		mut sbytes := b.stats_bytes.str()
@@ -369,12 +396,117 @@ pub fn (mut b Builder) rebuild(backend_cb FnBackend) {
 	}
 }
 
+fn (b &Builder) crun_build_options_signature() string {
+	mut parts := []string{cap: b.pref.build_options.len + 1}
+	parts << crun_cache_format_version
+	parts << b.pref.build_options
+	return parts.join('\n')
+}
+
+fn add_existing_crun_dependency(mut dependencies map[string]bool, path string) {
+	if path == '' {
+		return
+	}
+	real_path := os.real_path(path)
+	if os.is_file(real_path) {
+		dependencies[real_path] = true
+	}
+}
+
+fn (b &Builder) crun_hash_stmt_dependency_path(node ast.HashStmt) string {
+	match node.kind {
+		'include', 'preinclude', 'postinclude' {
+			if node.main.starts_with('<') && node.main.ends_with('>') {
+				return ''
+			}
+			mut path := node.main.trim('"')
+			if !os.is_abs_path(path) {
+				path = os.join_path(os.dir(node.source_file), path)
+			}
+			return path
+		}
+		'insert' {
+			mut path := node.main.trim('"')
+			if !os.is_abs_path(path) {
+				path = os.join_path(os.dir(node.source_file), path)
+			}
+			return path
+		}
+		else {
+			return ''
+		}
+	}
+}
+
+fn (b &Builder) collect_crun_stmt_dependencies(mut dependencies map[string]bool, stmt ast.Stmt) {
+	match stmt {
+		ast.HashStmt {
+			add_existing_crun_dependency(mut dependencies, b.crun_hash_stmt_dependency_path(stmt))
+		}
+		ast.ExprStmt {
+			if stmt.expr is ast.IfExpr && stmt.expr.is_comptime {
+				b.collect_crun_if_expr_dependencies(mut dependencies, stmt.expr)
+			}
+		}
+		else {}
+	}
+}
+
+fn (b &Builder) collect_crun_if_expr_dependencies(mut dependencies map[string]bool, expr ast.IfExpr) {
+	for branch in expr.branches {
+		for stmt in branch.stmts {
+			b.collect_crun_stmt_dependencies(mut dependencies, stmt)
+		}
+	}
+}
+
+fn (mut b Builder) crun_dependency_files() []string {
+	mut dependencies := map[string]bool{}
+	for file in b.parsed_files {
+		add_existing_crun_dependency(mut dependencies, file.path)
+		for template_path in file.template_paths {
+			add_existing_crun_dependency(mut dependencies, template_path)
+		}
+		for embedded_file in file.embedded_files {
+			add_existing_crun_dependency(mut dependencies, embedded_file.apath)
+		}
+		for stmt in file.stmts {
+			b.collect_crun_stmt_dependencies(mut dependencies, stmt)
+		}
+	}
+	for cflag in b.get_os_cflags() {
+		value := cflag.eval() or { continue }
+		add_existing_crun_dependency(mut dependencies, value)
+	}
+	mut files := dependencies.keys()
+	files.sort()
+	return files
+}
+
 pub fn (mut b Builder) get_vtmp_filename(base_file_name string, postfix string) string {
 	vtmp := os.vtmp_dir()
 	mut uniq := ''
 	if !b.pref.reuse_tmpc {
 		uniq = '.${rand.ulid()}'
 	}
-	fname := os.file_name(os.real_path(base_file_name)) + '${uniq}${postfix}'
+	fname := sanitized_vtmp_basename(base_file_name) + '${uniq}${postfix}'
 	return os.real_path(os.join_path(vtmp, fname))
+}
+
+fn sanitized_vtmp_basename(base_file_name string) string {
+	name := os.file_name(os.real_path(base_file_name))
+	mut sanitized := strings.new_builder(name.len)
+	for ch in name {
+		if ch >= 128 || (ch >= `0` && ch <= `9`) || (ch >= `A` && ch <= `Z`)
+			|| (ch >= `a` && ch <= `z`) || ch in [`-`, `.`, `_`] {
+			sanitized.write_u8(ch)
+		} else {
+			sanitized.write_u8(`_`)
+		}
+	}
+	result := sanitized.str()
+	if result in ['', '.', '..'] {
+		return 'vtmp'
+	}
+	return result
 }

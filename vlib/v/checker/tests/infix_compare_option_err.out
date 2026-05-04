@@ -1,5 +1,5 @@
 vlib/v/checker/tests/infix_compare_option_err.vv:6:5: error: `?int` cannot be used as `int`, unwrap the option first
-    4 |
+    4 | 
     5 | fn main() {
     6 |     if foo() > foo() {
       |        ~~~~~

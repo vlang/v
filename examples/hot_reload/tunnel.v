@@ -67,7 +67,7 @@ fn init_state() State {
 	return state
 }
 
-fn (mut state State) on_event(e &gg.Event, ctx voidptr) {
+fn (mut state State) on_event(e &gg.Event, _ctx voidptr) {
 	if e.typ == .char {
 		if e.char_code == `f` {
 			gg.toggle_fullscreen()

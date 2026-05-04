@@ -1,4 +1,5 @@
 import time
+import sync
 import sync.pool
 
 pub struct SResult {
@@ -7,6 +8,12 @@ pub struct SResult {
 
 pub struct IResult {
 	i int
+}
+
+struct SeenContext {
+mut:
+	mutex &sync.Mutex = sync.new_mutex()
+	seen  []int
 }
 
 fn worker_s(mut p pool.PoolProcessor, idx int, worker_id int) &SResult {
@@ -21,6 +28,15 @@ fn worker_i(mut p pool.PoolProcessor, idx int, worker_id int) &IResult {
 	println('worker_i worker_id: ${worker_id} | idx: ${idx} | item: ${item}')
 	time.sleep(5 * time.millisecond)
 	return &IResult{item * 1000}
+}
+
+fn worker_reuse(mut p pool.PoolProcessor, idx int, _ int) voidptr {
+	item := p.get_item[int](idx)
+	mut ctx := unsafe { &SeenContext(p.get_shared_context()) }
+	ctx.mutex.lock()
+	ctx.seen << item
+	ctx.mutex.unlock()
+	return pool.no_result
 }
 
 fn test_work_on_strings() {
@@ -59,4 +75,26 @@ fn test_work_on_ints() {
 		println(x.i)
 		assert x.i > 100
 	}
+}
+
+fn test_pool_can_be_reused() {
+	mut ctx := &SeenContext{}
+	mut pool_i := pool.new_pool_processor(
+		callback: worker_reuse
+		maxjobs:  2
+	)
+	pool_i.set_shared_context(ctx)
+	pool_i.work_on_items([1, 2, 3])
+	ctx.mutex.lock()
+	mut first_seen := ctx.seen.clone()
+	ctx.seen = []int{}
+	ctx.mutex.unlock()
+	first_seen.sort()
+	assert first_seen == [1, 2, 3]
+	pool_i.work_on_items([4, 5])
+	ctx.mutex.lock()
+	mut second_seen := ctx.seen.clone()
+	ctx.mutex.unlock()
+	second_seen.sort()
+	assert second_seen == [4, 5]
 }

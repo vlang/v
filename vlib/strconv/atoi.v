@@ -131,14 +131,14 @@ pub fn common_parse_uint2(s string, _base int, _bit_size int) (u64, int) {
 		// check if we are in the cutoff zone
 		if n >= cutoff {
 			// n*base overflows
-			// return error('parse_uint: range error $s')
+			// return error('parse_uint: range error ${s}')
 			return max_val, -3
 		}
 		n *= u64(base)
 		n1 := n + u64(c)
 		if n1 < n || n1 > max_val {
 			// n+v overflows
-			// return error('parse_uint: range error $s')
+			// return error('parse_uint: range error ${s}')
 			return max_val, -3
 		}
 		n = n1
@@ -147,6 +147,7 @@ pub fn common_parse_uint2(s string, _base int, _bit_size int) (u64, int) {
 }
 
 // parse_uint is like parse_int but for unsigned numbers.
+@[markused]
 pub fn parse_uint(s string, _base int, _bit_size int) !u64 {
 	return common_parse_uint(s, _base, _bit_size, true, true)
 }
@@ -156,7 +157,7 @@ pub fn parse_uint(s string, _base int, _bit_size int) !u64 {
 @[direct_array_access]
 pub fn common_parse_int(_s string, base int, _bit_size int, error_on_non_digit bool, error_on_high_digit bool) !i64 {
 	if _s == '' {
-		// return error('parse_int: syntax error $s')
+		// return error('parse_int: syntax error ${s}')
 		return i64(0)
 	}
 	mut bit_size := _bit_size
@@ -190,11 +191,15 @@ pub fn common_parse_int(_s string, base int, _bit_size int, error_on_non_digit b
 	// TODO: check should u64(bit_size-1) be size of int (32)?
 	cutoff := u64(1) << u64(bit_size - 1)
 	if !neg && un >= cutoff {
-		// return error('parse_int: range error $s0')
+		if error_on_high_digit {
+			return error('common_parse_int: integer overflow ${_s}')
+		}
 		return i64(cutoff - u64(1))
 	}
 	if neg && un > cutoff {
-		// return error('parse_int: range error $s0')
+		if error_on_high_digit {
+			return error('common_parse_int: integer overflow ${_s}')
+		}
 		return -i64(cutoff)
 	}
 	return if neg { -i64(un) } else { i64(un) }
@@ -213,7 +218,7 @@ pub fn common_parse_int(_s string, base int, _bit_size int, error_on_non_digit b
 // correspond to int, int8, int16, int32, and int64.
 // If bitSize is below 0 or above 64, an error is returned.
 pub fn parse_int(_s string, base int, _bit_size int) !i64 {
-	return common_parse_int(_s, base, _bit_size, true, true)
+	return common_parse_int(_s, base, _bit_size, true, false)
 }
 
 // atoi_common_check perform basics check on string to parse:
@@ -282,31 +287,35 @@ fn atoi_common(s string, type_min i64, type_max i64) !i64 {
 
 // atoi is equivalent to parse_int(s, 10, 0), converted to type int.
 // It follows V scanner as much as observed.
+@[markused]
 pub fn atoi(s string) !int {
 	return int(atoi_common(s, i64_min_int32, i64_max_int32)!)
 }
 
 // atoi8 is equivalent to atoi(s), converted to type i8.
 // returns an i8 [-128 .. 127] or an error.
+@[markused]
 pub fn atoi8(s string) !i8 {
 	return i8(atoi_common(s, min_i8, max_i8)!)
 }
 
 // atoi16 is equivalent to atoi(s), converted to type i16.
 // returns an i16 [-32678 .. 32767] or an error.
+@[markused]
 pub fn atoi16(s string) !i16 {
 	return i16(atoi_common(s, min_i16, max_i16)!)
 }
 
 // atoi32 is equivalent to atoi(s), converted to type i32.
 // returns an i32 [-2147483648 .. 2147483647] or an error.
+@[markused]
 pub fn atoi32(s string) !i32 {
 	return i32(atoi_common(s, min_i32, max_i32)!)
 }
 
 // atoi64 converts radix 10 string to i64 type.
 // returns an i64 [-9223372036854775808 .. 9223372036854775807] or an error.
-@[direct_array_access]
+@[direct_array_access; markused]
 pub fn atoi64(s string) !i64 {
 	mut sign, mut start_idx := atoi_common_check(s)!
 	mut x := i64(0)

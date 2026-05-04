@@ -121,10 +121,12 @@ fn main() {
 
 	mut m := wasm.Module{}
 	m.enable_debug('wasm bf')
-	m.new_function_import('wasi_unstable', 'fd_write', [.i32_t, .i32_t, .i32_t, .i32_t],
-		[.i32_t])
-	m.new_function_import('wasi_unstable', 'fd_read', [.i32_t, .i32_t, .i32_t, .i32_t],
-		[.i32_t])
+	m.new_function_import('wasi_unstable', 'fd_write', [.i32_t, .i32_t, .i32_t, .i32_t], [
+		.i32_t,
+	])
+	m.new_function_import('wasi_unstable', 'fd_read', [.i32_t, .i32_t, .i32_t, .i32_t], [
+		.i32_t,
+	])
 	m.assign_memory('memory', true, 2, none)
 
 	mut start := m.new_function('_start', [], [])

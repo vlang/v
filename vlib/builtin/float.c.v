@@ -6,9 +6,7 @@ $if !nofloat ? {
 	import strconv
 }
 
-$if !native {
-	#include <float.h>
-}
+#include <float.h>
 
 // str returns a string representation of the given `f64` in a suitable notation.
 @[inline]
@@ -35,8 +33,13 @@ pub fn (x f64) str() string {
 // strg return a `f64` as `string` in "g" printf format.
 @[inline]
 pub fn (x f64) strg() string {
-	if x == 0 {
-		return '0.0'
+	unsafe {
+		f := strconv.Float64u{
+			f: x
+		}
+		if f.u == strconv.double_minus_zero || f.u == strconv.double_plus_zero {
+			return '0.0'
+		}
 	}
 	abs_x := f64_abs(x)
 	if abs_x >= 0.0001 && abs_x < 1.0e6 {
@@ -101,8 +104,13 @@ pub fn (x f32) str() string {
 // strg return a `f32` as `string` in "g" printf format
 @[inline]
 pub fn (x f32) strg() string {
-	if x == 0 {
-		return '0.0'
+	unsafe {
+		f := strconv.Float32u{
+			f: x
+		}
+		if f.u == strconv.single_minus_zero || f.u == strconv.single_plus_zero {
+			return '0.0'
+		}
 	}
 	abs_x := f32_abs(x)
 	if abs_x >= 0.0001 && abs_x < 1.0e6 {
@@ -135,42 +143,60 @@ pub fn (x f32) strlong() string {
 // Example: assert f32_abs(-2.0) == 2.0
 @[inline]
 pub fn f32_abs(a f32) f32 {
-	return if a < 0 { -a } else { a }
+	if a < 0 {
+		return -a
+	}
+	return a
 }
 
 // f64_abs returns the absolute value of `a` as a `f64` value.
 // Example: assert f64_abs(-2.0) == f64(2.0)
 @[inline]
 pub fn f64_abs(a f64) f64 {
-	return if a < 0 { -a } else { a }
+	if a < 0 {
+		return -a
+	}
+	return a
 }
 
 // f32_min returns the smaller `f32` of input `a` and `b`.
 // Example: assert f32_min(2.0,3.0) == 2.0
 @[inline]
 pub fn f32_min(a f32, b f32) f32 {
-	return if a < b { a } else { b }
+	if a < b {
+		return a
+	}
+	return b
 }
 
 // f32_max returns the larger `f32` of input `a` and `b`.
 // Example: assert f32_max(2.0,3.0) == 3.0
 @[inline]
 pub fn f32_max(a f32, b f32) f32 {
-	return if a > b { a } else { b }
+	if a > b {
+		return a
+	}
+	return b
 }
 
 // f64_min returns the smaller `f64` of input `a` and `b`.
 // Example: assert f64_min(2.0,3.0) == 2.0
 @[inline]
 pub fn f64_min(a f64, b f64) f64 {
-	return if a < b { a } else { b }
+	if a < b {
+		return a
+	}
+	return b
 }
 
 // f64_max returns the larger `f64` of input `a` and `b`.
 // Example: assert f64_max(2.0,3.0) == 3.0
 @[inline]
 pub fn f64_max(a f64, b f64) f64 {
-	return if a > b { a } else { b }
+	if a > b {
+		return a
+	}
+	return b
 }
 
 // eq_epsilon returns true if the `f32` is equal to input `b`.
@@ -180,18 +206,10 @@ pub fn f64_max(a f64, b f64) f64 {
 pub fn (a f32) eq_epsilon(b f32) bool {
 	hi := f32_max(f32_abs(a), f32_abs(b))
 	delta := f32_abs(a - b)
-	$if native {
-		if hi > f32(1.0) {
-			return delta <= hi * (4 * 1.19209290e-7)
-		} else {
-			return (1 / (4 * 1.19209290e-7)) * delta <= hi
-		}
-	} $else {
-		if hi > f32(1.0) {
-			return delta <= hi * (4 * f32(C.FLT_EPSILON))
-		} else {
-			return (1 / (4 * f32(C.FLT_EPSILON))) * delta <= hi
-		}
+	if hi > f32(1.0) {
+		return delta <= hi * (4 * f32(C.FLT_EPSILON))
+	} else {
+		return (1 / (4 * f32(C.FLT_EPSILON))) * delta <= hi
 	}
 }
 
@@ -202,17 +220,9 @@ pub fn (a f32) eq_epsilon(b f32) bool {
 pub fn (a f64) eq_epsilon(b f64) bool {
 	hi := f64_max(f64_abs(a), f64_abs(b))
 	delta := f64_abs(a - b)
-	$if native {
-		if hi > 1.0 {
-			return delta <= hi * (4 * 2.2204460492503131e-16)
-		} else {
-			return (1 / (4 * 2.2204460492503131e-16)) * delta <= hi
-		}
-	} $else {
-		if hi > 1.0 {
-			return delta <= hi * (4 * f64(C.DBL_EPSILON))
-		} else {
-			return (1 / (4 * f64(C.DBL_EPSILON))) * delta <= hi
-		}
+	if hi > 1.0 {
+		return delta <= hi * (4 * f64(C.DBL_EPSILON))
+	} else {
+		return (1 / (4 * f64(C.DBL_EPSILON))) * delta <= hi
 	}
 }

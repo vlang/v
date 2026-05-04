@@ -33,7 +33,10 @@ pub fn (mut d Digest) free() {
 	$if prealloc {
 		return
 	}
-	unsafe { d.x.free() }
+	unsafe {
+		d.s.free()
+		d.x.free()
+	}
 }
 
 fn (mut d Digest) init() {
@@ -61,7 +64,7 @@ fn (d &Digest) clone() &Digest {
 	}
 }
 
-// new returns a new Digest (implementing hash.Hash) computing the MD5 checksum.
+// new returns a new Digest (implementing hash.Hash) computing the RIPEMD-160 checksum.
 pub fn new() &Digest {
 	mut d := &Digest{}
 	d.init()
@@ -81,7 +84,6 @@ pub fn (d &Digest) block_size() int {
 // hexhash returns a hexadecimal RIPEMD-160 hash sum `string` of `s`.
 pub fn hexhash(s string) string {
 	mut d := new()
-	d.init()
 	d.write(s.bytes()) or { panic(err) }
 	return d.sum([]).hex()
 }
@@ -123,9 +125,9 @@ pub fn (d0 &Digest) sum(inp []u8) []u8 {
 	mut tmp := []u8{len: 64}
 	tmp[0] = 0x80
 	if tc % 64 < 56 {
-		d.write(tmp[0..56 - tc % 64]) or { panic(err) }
+		d.write(tmp[0..int(56 - tc % 64)]) or { panic(err) }
 	} else {
-		d.write(tmp[0..64 + 56 - tc % 64]) or { panic(err) }
+		d.write(tmp[0..int(64 + 56 - tc % 64)]) or { panic(err) }
 	}
 
 	// Length in bits.

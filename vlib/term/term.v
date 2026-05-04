@@ -25,6 +25,7 @@ pub fn can_show_color_on_stdout() bool {
 		-1 { return false }
 		else {}
 	}
+
 	status := supports_escape_sequences(1)
 	can_show_color_on_stdout_cache = if status { 1 } else { -1 }
 	return status
@@ -38,6 +39,7 @@ pub fn can_show_color_on_stderr() bool {
 		-1 { return false }
 		else {}
 	}
+
 	status := supports_escape_sequences(2)
 	can_show_color_on_stderr_cache = if status { 1 } else { -1 }
 	return status

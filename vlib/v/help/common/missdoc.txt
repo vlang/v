@@ -34,3 +34,5 @@ between commits or branches:
 ```
 v missdoc --diff current/code new/code
 ```
+
+Note: use `v missdoc @vlib`, to find public fns that still lack documentation.

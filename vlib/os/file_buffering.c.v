@@ -1,6 +1,6 @@
 module os
 
-fn C.setvbuf(stream &C.FILE, buffer &char, mode int, size usize) int
+fn C.setvbuf(stream &C.FILE, buffer &char, mode i32, size usize) i32
 
 // FileBufferMode describes the available buffering modes for an os.File: unbuffered, line buffered and block/fully buffered.
 // Normally all files are block buffered. If a stream refers to a terminal (as stdout normally does), it is line buffered.
@@ -26,7 +26,7 @@ pub fn (mut f File) setvbuf(buffer &char, mode FileBufferMode, size usize) int {
 // Unlike File.setvbuf, it allows you to pass an existing V []u8 array directly.
 // Note: f.set_buffer() may be used only after opening a file stream, and before any other operations have been performed on it.
 pub fn (mut f File) set_buffer(mut buffer []u8, mode FileBufferMode) int {
-	return unsafe { f.setvbuf(&char(buffer.data), mode, usize(buffer.len)) }
+	return unsafe { f.setvbuf(buffer.data, mode, usize(buffer.len)) }
 }
 
 // set_line_buffered sets the file buffering mode to FileBufferMode.line_buffered.

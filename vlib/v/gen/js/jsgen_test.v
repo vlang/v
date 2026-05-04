@@ -33,7 +33,8 @@ fn test_example_compilation() {
 			node_options_file += ' --enable-source-maps' // activate souremap generation
 		}
 		jsfile := os.join_path_single(output_dir, '${file}.js')
-		v_code := os.system('${os.quoted_path(vexe)} ${v_options_file} -o ${os.quoted_path(jsfile)} ${os.quoted_path(path)}')
+		v_code :=
+			os.system('${os.quoted_path(vexe)} ${v_options_file} -o ${os.quoted_path(jsfile)} ${os.quoted_path(path)}')
 		if v_code != 0 {
 			assert false
 		}
@@ -51,7 +52,8 @@ fn test_example_compilation() {
 		assert js_code == 0
 		if should_create_source_map {
 			if there_is_grep_available {
-				grep_code_sourcemap_found := os.system('grep -q -E "//#\\ssourceMappingURL=data:application/json;base64,[-A-Za-z0-9+/=]+$" ${os.quoted_path(jsfile)}')
+				grep_code_sourcemap_found :=
+					os.system('grep -q -E "//#\\ssourceMappingURL=data:application/json;base64,[-A-Za-z0-9+/=]+$" ${os.quoted_path(jsfile)}')
 				assert grep_code_sourcemap_found == 0
 				println('file has a source map embedded')
 			} else {
@@ -59,6 +61,54 @@ fn test_example_compilation() {
 			}
 		}
 	}
+}
+
+fn test_issue_11379_js_browser_builtin_print_call_does_not_panic() {
+	vexe := os.getenv('VEXE')
+	os.chdir(os.dir(vexe)) or {}
+	os.mkdir_all(output_dir) or { panic(err) }
+	program := os.join_path(test_dir, 'testdata', 'js_browser_builtin_print_regression.v')
+	output := os.join_path(output_dir, 'js_browser_builtin_print_regression.js')
+	res :=
+		os.execute('${os.quoted_path(vexe)} -enable-globals -b js_browser -o ${os.quoted_path(output)} ${os.quoted_path(program)}')
+	assert res.exit_code == 0, res.output
+	assert !res.output.contains('V panic:'), res.output
+	assert os.exists(output)
+}
+
+fn test_issue_20667_js_can_compile_game_of_life_example() {
+	vexe := os.getenv('VEXE')
+	os.chdir(os.dir(vexe)) or {}
+	os.mkdir_all(output_dir) or { panic(err) }
+	program := os.join_path('examples', 'game_of_life', 'life.v')
+	output := os.join_path(output_dir, 'game_of_life.js')
+	res :=
+		os.execute('${os.quoted_path(vexe)} -prod -b js -w -o ${os.quoted_path(output)} ${os.quoted_path(program)}')
+	assert res.exit_code == 0, res.output
+	assert os.exists(output)
+}
+
+fn test_issue_23554_js_browser_interpolated_at_exprs_do_not_emit_nested_templates() {
+	vexe := os.getenv('VEXE')
+	os.chdir(os.dir(vexe)) or {}
+	os.mkdir_all(output_dir) or { panic(err) }
+	program := os.join_path(output_dir, 'issue_23554.v')
+	output := os.join_path(output_dir, 'issue_23554.js')
+	source := [
+		'fn main() {',
+		"\tprintln('\${@LOCATION}')",
+		"\tprintln('\${@FILE_LINE}')",
+		"\tprintln('X \${@LOCATION}')",
+		"\tprintln('X \${@FILE_LINE}')",
+		'}',
+	].join_lines()
+	os.write_file(program, source) or { panic(err) }
+	res :=
+		os.execute('${os.quoted_path(vexe)} -b js_browser -o ${os.quoted_path(output)} ${os.quoted_path(program)}')
+	assert res.exit_code == 0, res.output
+	js := os.read_file(output) or { panic(err) }
+	assert !js.contains('new string(`' + '$' + '{"')
+	assert os.exists(output)
 }
 
 fn find_test_files() []string {

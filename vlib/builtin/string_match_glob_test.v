@@ -68,6 +68,9 @@ fn test_match_glob_with_none_of_charset_patterns() {
 }
 
 fn test_match_glob_with_escaped_metachars() {
+	assert '10?x'.match_glob('*[?]x')
+	assert '10*x'.match_glob('*[*]x')
+	assert !'10+x'.match_glob('*[*]x')
 	assert 'axbx?cxdxe'.match_glob('*x[?]c*')
 	assert !'axbxXcxdxe'.match_glob('*x[?]c*')
 	assert 'zaxbx*cxdxez'.match_glob('*x[Q*W]c*')

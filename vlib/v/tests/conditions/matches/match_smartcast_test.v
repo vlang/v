@@ -117,3 +117,47 @@ fn test_branches_return_struct_field() {
 	}
 	assert m['item2']! == Any_1(42)
 }
+
+struct NestedMatchA {
+	a int
+}
+
+struct NestedMatchB {
+	b int
+}
+
+struct NestedMatchC {
+	c int
+}
+
+type NestedMatchD = NestedMatchA | NestedMatchB
+type NestedMatchE = NestedMatchC | NestedMatchD
+
+fn describe_nested_match(e NestedMatchE) string {
+	return match e {
+		NestedMatchA { 'A:${e.a}' }
+		NestedMatchB { 'B:${e.b}' }
+		NestedMatchC { 'C:${e.c}' }
+	}
+}
+
+fn pass_nested_match(e NestedMatchE) NestedMatchE {
+	return e
+}
+
+fn test_nested_sumtype_leaf_match_and_argument() {
+	a := NestedMatchA{
+		a: 1
+	}
+	b := NestedMatchB{
+		b: 2
+	}
+	c := NestedMatchC{
+		c: 3
+	}
+
+	assert describe_nested_match(a) == 'A:1'
+	assert describe_nested_match(b) == 'B:2'
+	assert describe_nested_match(c) == 'C:3'
+	assert describe_nested_match(pass_nested_match(a)) == 'A:1'
+}

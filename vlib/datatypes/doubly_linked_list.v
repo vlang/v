@@ -21,7 +21,8 @@ mut:
 	// of the list while iterating. TODO: use an option
 	// instead of a pointer to determine it is initialized.
 	iter &DoublyListIter[T] = unsafe { 0 }
-	len  int
+pub mut:
+	len int
 }
 
 // is_empty checks if the linked list is empty

@@ -5,16 +5,15 @@ $if tinyc {
 	#flag -luser32
 }
 
-fn setup_symlink() {
-	// Create a symlink in a new local folder (.\.bin\.v.exe)
-	// Puts `v` in %PATH% without polluting it with anything else (like make.bat).
+fn setup_symlink(custom_link_dir string) {
+	// Create a symlink in a local folder (by default .\.bin\v.exe).
+	// Puts `v` in %PATH% without polluting it with anything else (like makev.bat).
 	// This will make `v` available on cmd.exe, PowerShell, and MinGW(MSYS)/WSL/Cygwin
-	vdir := os.real_path(os.dir(vexe))
-	vsymlinkdir := os.join_path(vdir, '.bin')
-	mut vsymlink := os.join_path(vsymlinkdir, 'v.exe')
+	vsymlinkdir := normalized_link_dir(custom_link_dir)
+	mut vsymlink := symlink_path(vsymlinkdir)
 	// Remove old symlink first (v could have been moved, symlink rerun)
 	if !os.exists(vsymlinkdir) {
-		os.mkdir(vsymlinkdir) or { panic(err) }
+		os.mkdir_all(vsymlinkdir) or { panic(err) }
 	} else {
 		if os.exists(vsymlink) {
 			os.rm(vsymlink) or { panic(err) }
@@ -26,7 +25,7 @@ fn setup_symlink() {
 			vsymlink = os.join_path(vsymlinkdir, 'v.exe')
 		}
 	}
-	// First, try to create a native symlink at .\.bin\v.exe
+	// First, try to create a native symlink in the configured directory.
 	os.symlink(vexe, vsymlink) or {
 		// typically only fails if you're on a network drive (VirtualBox)
 		// do batch file creation instead
@@ -102,6 +101,15 @@ fn setup_symlink() {
 	println('After restarting your shell/IDE, give `v version` a try in another directory!')
 }
 
+fn default_link_dir() string {
+	vdir := os.real_path(os.dir(vexe))
+	return os.join_path(vdir, '.bin')
+}
+
+fn symlink_path(link_dir string) string {
+	return os.join_path(link_dir, 'v.exe')
+}
+
 fn warn_and_exit(err string) {
 	eprintln(err)
 	exit(1)
@@ -111,8 +119,8 @@ fn warn_and_exit(err string) {
 fn get_reg_sys_env_handle() !voidptr {
 	// open the registry key
 	reg_key_path := 'Environment'
-	reg_env_key := unsafe { nil } // or HKEY (HANDLE)
-	if C.RegOpenKeyEx(os.hkey_current_user, reg_key_path.to_wide(), 0, 1 | 2, &reg_env_key) != 0 {
+	mut reg_env_key := os.hkey_current_user // placeholder, overwritten by RegOpenKeyEx
+	if C.RegOpenKeyEx(os.hkey_current_user, reg_key_path.to_wide(), 0, 1 | 2, voidptr(&reg_env_key)) != 0 {
 		return error('Could not open "${reg_key_path}" in the registry')
 	}
 	return reg_env_key
@@ -122,11 +130,12 @@ fn get_reg_sys_env_handle() !voidptr {
 fn get_reg_value(reg_env_key voidptr, key string) !string {
 	// query the value (shortcut the sizing step)
 	reg_value_size := u32(4095) // this is the max length (not for the registry, but for the system %PATH%)
-	mut reg_value := unsafe { &u16(malloc(int(reg_value_size))) }
-	if C.RegQueryValueExW(reg_env_key, key.to_wide(), 0, 0, reg_value, &reg_value_size) != 0 {
+	reg_value_cap := int(reg_value_size / u32(sizeof(u16))) + 1
+	mut reg_value := []u16{len: reg_value_cap}
+	if C.RegQueryValueExW(reg_env_key, key.to_wide(), 0, 0, &u8(reg_value.data), &reg_value_size) != 0 {
 		return error('Unable to get registry value for "${key}".')
 	}
-	return unsafe { string_from_wide(reg_value) }
+	return unsafe { string_from_wide(reg_value.data) }
 }
 
 // sets the value for the given $key to the given  $value
@@ -140,8 +149,9 @@ fn set_reg_value(reg_key voidptr, key string, value string) !bool {
 // Broadcasts a message to all listening windows (explorer.exe in particular)
 // letting them know that the system environment has changed and should be reloaded
 fn send_setting_change_msg(message_data string) !bool {
-	if C.SendMessageTimeoutW(os.hwnd_broadcast, os.wm_settingchange, 0, unsafe { &u32(message_data.to_wide()) },
-		os.smto_abortifhung, 5000, 0) == 0 {
+	message_data_wide := message_data.to_wide()
+	if C.SendMessageTimeoutW(os.hwnd_broadcast, os.wm_settingchange, 0,
+		unsafe { &u32(message_data_wide) }, os.smto_abortifhung, 5000, 0) == 0 {
 		return error('Could not broadcast WM_SETTINGCHANGE')
 	}
 	return true

@@ -126,6 +126,67 @@ fn check_and_extract_date(s string) !(int, int, int) {
 	return year, month, day
 }
 
+// Convert header string formatted as RFC 2616 to Time.
+pub fn parse_http_header_string(s string) !Time {
+	return parse_rfc2616(s)
+}
+
+// parse_rfc2616 returns the time from a date string in RFC 3339 datetime format.
+// Wed, 06 Nov 2024 08:49:37 GMT  ; RFC 822, updated by RFC 1123
+// Wednesday, 06-Nov-24 08:49:37 GMT ; RFC 850, obsoleted by RFC 1036
+// Wed Nov 6 08:49:37 2024       ; ANSI C's asctime() format
+pub fn parse_rfc2616(s string) !Time {
+	if s == '' {
+		return error_invalid_time(0, 'datetime string is empty')
+	}
+
+	// Remove or Replace unwanted tokens.
+	rmv := ['GMT', '', 'Monday', '', 'Tuesday', '', 'Wednesday', '', 'Thursday', '', 'Friday',
+		'', 'Saturday', '', 'Sunday', '', 'Mon', '', 'Tue', '', 'Wed', '', 'Thu', '', 'Fri', '',
+		'Sat', '', 'Sun', '', '-', ' ', ',', '']
+
+	mut f := s.replace_each(rmv)
+	f = remove_consecutive_spaces(f)
+
+	if r := parse_format(f, 'DD MMM YYYY HH:mm:ss') {
+		return r
+	}
+
+	// parse_format maps YY to this century (94 maps to 2094, 20 to 2020).
+	// if parsed year > current year, the date belongs to previous century.
+	if r := parse_format(f, 'DD MMM YY HH:mm:ss') {
+		return if r.year > now().year {
+			r.add_days(-(days_per_100_years + 1))
+		} else {
+			r
+		}
+	}
+	if r := parse_format(f, 'MMM D HH:mm:ss YYYY') {
+		return r
+	}
+	return error('unable to parse date: "${f}"')
+}
+
+// Remove consecutive spaces, only keep one.
+fn remove_consecutive_spaces(s string) string {
+	mut t := s.trim_space()
+	mut r := ''
+	mut sp := false
+
+	for c in t {
+		if c == u8(` `) {
+			if !sp {
+				r += ' '
+				sp = true
+			}
+		} else {
+			r += c.ascii_str()
+			sp = false
+		}
+	}
+	return r
+}
+
 // parse_rfc3339 returns the time from a date string in RFC 3339 datetime format.
 // See also https://ijmacd.github.io/rfc3339-iso8601/ for a visual reference of
 // the differences between ISO-8601 and RFC 3339.
@@ -173,7 +234,8 @@ pub fn parse_rfc3339(s string) !Time {
 	}
 	if is_datetime {
 		// year, month, day := check_and_extract_date(s)!
-		hour_, minute_, second_, nanosecond_ = check_and_extract_time(s[date_format_buffer.len + 1..])!
+		hour_, minute_, second_, nanosecond_ =
+			check_and_extract_time(s[date_format_buffer.len + 1..])!
 	}
 
 	mut timezone_start_position := 0
@@ -323,7 +385,7 @@ pub fn parse(s string) !Time {
 		return error_invalid_time(0, 'invalid second format: ${second_}')
 	}
 
-	// eprintln('>> iyear: $iyear | imonth: $imonth | iday: $iday | ihour: $ihour | iminute: $iminute | isecond: $isecond')
+	// eprintln('>> iyear: ${iyear} | imonth: ${imonth} | iday: ${iday} | ihour: ${ihour} | iminute: ${iminute} | isecond: ${isecond}')
 	if iyear > 9999 || iyear < -9999 {
 		return error_invalid_time(3, 'year must be between -10000 and 10000')
 	}
@@ -384,7 +446,10 @@ pub fn parse_format(s string, format string) !Time {
 	if s == '' {
 		return error_invalid_time(0, 'datetime string is empty')
 	}
-	mut p := new_date_time_parser(s, format)
+	mut p := DateTimeParser{
+		datetime: s
+		format:   format
+	}
 	return p.parse()
 }
 
@@ -405,7 +470,8 @@ pub fn parse_iso8601(s string) !Time {
 	year, month, day := parse_iso8601_date(parts[0])!
 	mut hour_, mut minute_, mut second_, mut microsecond_, mut nanosecond_, mut unix_offset, mut is_local_time := 0, 0, 0, 0, 0, i64(0), true
 	if parts.len == 2 {
-		hour_, minute_, second_, microsecond_, nanosecond_, unix_offset, is_local_time = parse_iso8601_time(parts[1])!
+		hour_, minute_, second_, microsecond_, nanosecond_, unix_offset, is_local_time =
+			parse_iso8601_time(parts[1])!
 	}
 	mut t := new(
 		year:       year
@@ -444,8 +510,8 @@ pub fn parse_rfc2822(s string) !Time {
 	mm := pos / 3 + 1
 	unsafe {
 		tmstr := malloc_noscan(s.len * 2)
-		count := C.snprintf(&char(tmstr), (s.len * 2), c'%s-%02d-%s %s', fields[3].str,
-			mm, fields[1].str, fields[4].str)
+		count := C.snprintf(&char(tmstr), (s.len * 2), c'%s-%02d-%s %s', fields[3].str, mm,
+			fields[1].str, fields[4].str)
 		return parse(tos(tmstr, count))
 	}
 }
@@ -533,6 +599,6 @@ fn parse_iso8601_time(s string) !(int, int, int, int, int, i64, bool) {
 	if plus_min_z == `+` {
 		unix_offset *= -1
 	}
-	// eprintln('parse_iso8601_time s: $s | hour_: $hour_ | minute_: $minute_ | second_: $second_ | microsecond_: $microsecond_ | nanosecond_: $nanosecond_ | unix_offset: $unix_offset | is_local: $is_local_time')
+	// eprintln('parse_iso8601_time s: ${s} | hour_: ${hour_} | minute_: ${minute_} | second_: ${second_} | microsecond_: ${microsecond_} | nanosecond_: ${nanosecond_} | unix_offset: ${unix_offset} | is_local: ${is_local_time}')
 	return hour_, minute_, second_, microsecond_, nanosecond_, unix_offset, is_local_time
 }

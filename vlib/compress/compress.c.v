@@ -1,12 +1,13 @@
 module compress
 
 #flag -I @VEXEROOT/thirdparty/zip
+#define MINIZ_NO_ZLIB_COMPATIBLE_NAMES
 #include "miniz.h"
 
 pub const max_size = u64(1 << 31)
 
-fn C.tdefl_compress_mem_to_heap(source_buf voidptr, source_buf_len usize, out_len &usize, flags int) voidptr
-fn C.tinfl_decompress_mem_to_heap(source_buf voidptr, source_buf_len usize, out_len &usize, flags int) voidptr
+fn C.tdefl_compress_mem_to_heap(source_buf voidptr, source_buf_len usize, out_len &usize, flags i32) voidptr
+fn C.tinfl_decompress_mem_to_heap(source_buf voidptr, source_buf_len usize, out_len &usize, flags i32) voidptr
 
 // compresses an array of bytes based on providing flags and returns the compressed bytes in a new array
 // NB: this is a low level api, a high level implementation like zlib/gzip should be preferred
@@ -69,8 +70,8 @@ pub fn decompress_with_callback(data []u8, cb ChunkCallback, userdata voidptr, f
 		cb:       cb
 		userdata: userdata
 	}
-	status := C.tinfl_decompress_mem_to_callback(cbdata.data, &cbdata.size, c_cb_for_decompress_mem,
-		&cbdata, flags)
+	status := C.tinfl_decompress_mem_to_callback(cbdata.data, &cbdata.size,
+		c_cb_for_decompress_mem, &cbdata, flags)
 	if status == 0 {
 		return error('decompression error')
 	}
@@ -97,4 +98,4 @@ fn c_cb_for_decompress_mem(buf &char, len int, pdcbd voidptr) int {
 
 type DecompressCallback = fn (const_buffer voidptr, len int, userdata voidptr) int
 
-fn C.tinfl_decompress_mem_to_callback(const_input_buffer voidptr, psize &usize, put_buf_cb DecompressCallback, userdata voidptr, flags int) int
+fn C.tinfl_decompress_mem_to_callback(const_input_buffer voidptr, psize &usize, put_buf_cb DecompressCallback, userdata voidptr, flags i32) i32

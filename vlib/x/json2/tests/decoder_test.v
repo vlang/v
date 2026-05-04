@@ -19,7 +19,7 @@ fn test_raw_decode_number() {
 
 fn test_raw_decode_array() {
 	raw_arr := json.decode[json.Any]('["Foo", 1]')!
-	arr := raw_arr.arr()
+	arr := raw_arr.as_array()
 	assert arr[0] or { 0 }.str() == 'Foo'
 	assert arr[1] or { 0 }.int() == 1
 }
@@ -47,6 +47,13 @@ fn test_raw_decode_invalid() {
 fn test_raw_decode_string_with_dollarsign() {
 	str := json.decode[json.Any](r'"Hello $world"')!
 	assert str.str() == r'Hello $world'
+}
+
+fn test_raw_decode_map_with_escaped_backslashes_before_string_end() {
+	content := r'{"some_name": "some_value \n [ ] { } ( ) , ; ? * = ! \\@ \\"}'
+	raw_mp := json.decode[json.Any](content)!
+	mp := raw_mp.as_map()
+	assert mp['some_name'] or { 0 }.str() == 'some_value \n [ ] { } ( ) , ; ? * = ! \\@ \\'
 }
 
 fn test_raw_decode_map_with_whitespaces() {

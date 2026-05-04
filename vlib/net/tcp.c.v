@@ -1,5 +1,6 @@
 module net
 
+import io
 import time
 import strings
 
@@ -138,27 +139,25 @@ pub fn (mut c TcpConn) close() ! {
 // read_ptr reads data from the tcp connection to the given buffer. It reads at most `len` bytes.
 // It returns the number of actually read bytes, which can vary between 0 to `len`.
 pub fn (c TcpConn) read_ptr(buf_ptr &u8, len int) !int {
-	mut should_ewouldblock := false
-	mut res := $if is_coroutine ? {
-		C.photon_recv(c.sock.handle, voidptr(buf_ptr), len, 0, c.read_timeout)
+	mut res := 0
+	mut ecode := 0
+	$if is_coroutine ? {
+		res = C.photon_recv(c.sock.handle, voidptr(buf_ptr), len, 0, c.read_timeout)
+		ecode = error_code()
 	} $else {
-		// The new socket returned by accept() behaves differently in blocking mode and needs special treatment.
-		mut has_data := true
 		if c.is_blocking {
-			if ok := select(c.sock.handle, .read, 1) {
-				has_data = ok
-			} else {
-				false
-			}
-		}
-		if has_data {
-			C.recv(c.sock.handle, voidptr(buf_ptr), len, msg_dontwait)
+			// Honor read deadlines/timeouts first, then use a normal blocking recv.
+			// This avoids transient EAGAIN-style reads on newly accepted sockets.
+			c.wait_for_read()!
+			res = C.recv(c.sock.handle, voidptr(buf_ptr), len, 0)
 		} else {
-			should_ewouldblock = true
-			-1
+			res = C.recv(c.sock.handle, voidptr(buf_ptr), len, msg_dontwait)
 		}
+		ecode = error_code()
 	}
-	ecode := error_code()
+	if res == 0 {
+		return io.Eof{}
+	}
 	if res > 0 {
 		$if trace_tcp ? {
 			eprintln(
@@ -172,17 +171,23 @@ pub fn (c TcpConn) read_ptr(buf_ptr &u8, len int) !int {
 		}
 		return res
 	}
-	code := if should_ewouldblock { int(error_ewouldblock) } else { ecode }
-	if code in [int(error_ewouldblock), int(error_eagain), C.EINTR] {
+	if ecode in [int(error_ewouldblock), int(error_eagain), C.EINTR] {
 		c.wait_for_read()!
 		res = $if is_coroutine ? {
 			C.photon_recv(c.sock.handle, voidptr(buf_ptr), len, 0, c.read_timeout)
 		} $else {
-			C.recv(c.sock.handle, voidptr(buf_ptr), len, msg_dontwait)
+			if c.is_blocking {
+				C.recv(c.sock.handle, voidptr(buf_ptr), len, 0)
+			} else {
+				C.recv(c.sock.handle, voidptr(buf_ptr), len, msg_dontwait)
+			}
+		}
+		if res == 0 {
+			return io.Eof{}
 		}
 		$if trace_tcp ? {
 			eprintln(
-				'<<< TcpConn.read_ptr  | c.sock.handle: ${c.sock.handle} | buf_ptr: ${ptr_str(buf_ptr)} | len: ${len} | res: ${res} | code: ${code} |\n' +
+				'<<< TcpConn.read_ptr  | c.sock.handle: ${c.sock.handle} | buf_ptr: ${ptr_str(buf_ptr)} | len: ${len} | res: ${res} | code: ${ecode} |\n' +
 				unsafe { buf_ptr.vstring_with_len(len) })
 		}
 		$if trace_tcp_data_read ? {
@@ -194,7 +199,7 @@ pub fn (c TcpConn) read_ptr(buf_ptr &u8, len int) !int {
 		}
 		return socket_error(res)
 	} else {
-		wrap_error(code)!
+		wrap_error(ecode)!
 	}
 	return error('none')
 }
@@ -366,6 +371,46 @@ pub fn listen_tcp(family AddrFamily, saddr string, options ListenOptions) !&TcpL
 	if family !in [.ip, .ip6] {
 		return error('listen_tcp only supports ip and ip6')
 	}
+	return listen_tcp_with_family(family, saddr, options) or {
+		if should_fallback_to_ipv4_listener(family, saddr, options, err.code()) {
+			fallback_saddr := ipv4_fallback_listen_addr(saddr) or { return err }
+			return listen_tcp_with_family(.ip, fallback_saddr, options)
+		}
+		return err
+	}
+}
+
+fn should_fallback_to_ipv4_listener(family AddrFamily, saddr string, options ListenOptions, err_code int) bool {
+	// Treat an unspecified IPv6 listener as "dual stack if available, otherwise IPv4 only".
+	if family != .ip6 || !options.dualstack {
+		return false
+	}
+	if !is_unspecified_ip6_listen_addr(saddr) {
+		return false
+	}
+	return is_ipv6_unavailable_error(err_code)
+}
+
+fn is_unspecified_ip6_listen_addr(saddr string) bool {
+	address, _ := split_address(saddr) or { return false }
+	return address in ['', '::']
+}
+
+fn is_ipv6_unavailable_error(err_code int) bool {
+	$if windows {
+		return err_code in [int(WsaError.wsaeafnosupport), int(WsaError.wsaeprotonosupport),
+			int(WsaError.wsaeaddrnotavail)]
+	} $else {
+		return err_code in [C.EAFNOSUPPORT, C.EPROTONOSUPPORT, C.EADDRNOTAVAIL]
+	}
+}
+
+fn ipv4_fallback_listen_addr(saddr string) !string {
+	_, port := split_address(saddr)!
+	return ':${port}'
+}
+
+fn listen_tcp_with_family(family AddrFamily, saddr string, options ListenOptions) !&TcpListener {
 	mut s := new_tcp_socket(family) or { return error('${err.msg()}; could not create new socket') }
 	s.set_dualstack(options.dualstack) or {}
 
@@ -393,7 +438,8 @@ pub fn listen_tcp(family AddrFamily, saddr string, options ListenOptions) !&TcpL
 	}
 
 	$if !net_nonblocking_sockets ? {
-		socket_error_message(res, 'listening on ${saddr} with maximum backlog pending queue of ${options.backlog}, failed')!
+		socket_error_message(res,
+			'listening on ${saddr} with maximum backlog pending queue of ${options.backlog}, failed')!
 		return &TcpListener(unsafe { nil }) // for compiler passed
 	} $else {
 		// non-blocking sockets may also not succeed immediately when they listen() and need to check the status and take action accordingly.
@@ -406,7 +452,8 @@ pub fn listen_tcp(family AddrFamily, saddr string, options ListenOptions) !&TcpL
 					break
 				}
 			} else {
-				socket_error_message(res, 'listening on ${saddr} with maximum backlog pending queue of ${options.backlog}, failed')!
+				socket_error_message(res,
+					'listening on ${saddr} with maximum backlog pending queue of ${options.backlog}, failed')!
 				break // for compiler passed
 			}
 		}
@@ -440,7 +487,7 @@ pub fn (mut l TcpListener) accept() !&TcpConn {
 // The intention of this API, is to have a more efficient way to accept
 // connections, that are later processed by a thread pool, while the main
 // thread remains active, so that it can accept other connections.
-// See also vlib/vweb/vweb.v .
+// See also vlib/veb/veb.v .
 //
 // If you do not need that, just call `.accept()!` instead, which will call
 // `.set_sock()!` for you.
@@ -515,7 +562,7 @@ pub fn (c &TcpListener) addr() !Addr {
 	return c.sock.address()
 }
 
-struct TcpSocket {
+pub struct TcpSocket {
 	Socket
 }
 
@@ -524,9 +571,9 @@ struct TcpSocket {
 @[noinline]
 pub fn new_tcp_socket(family AddrFamily) !TcpSocket {
 	handle := $if is_coroutine ? {
-		socket_error(C.photon_socket(family, SocketType.tcp, 0))!
+		socket_error(C.photon_socket(i32(family), i32(SocketType.tcp), 0))!
 	} $else {
-		socket_error(C.socket(family, SocketType.tcp, 0))!
+		socket_error(C.socket(i32(family), i32(SocketType.tcp), 0))!
 	}
 	mut s := TcpSocket{
 		handle: handle

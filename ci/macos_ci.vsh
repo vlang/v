@@ -1,4 +1,5 @@
 import common { Task, exec }
+import os
 
 fn test_symlink() {
 	exec('v symlink')
@@ -17,7 +18,8 @@ fn all_code_is_formatted() {
 	if common.is_github_job {
 		exec('VJOBS=1 v -silent test-cleancode')
 	} else {
-		exec('v -progress test-cleancode')
+		vjobs := os.getenv_opt('VJOBS') or { '1' }
+		exec('VJOBS=${vjobs} v -progress test-cleancode')
 	}
 }
 
@@ -38,7 +40,11 @@ fn verify_v_test_works() {
 }
 
 fn install_iconv() {
-	exec('brew install libiconv')
+	// Skip Homebrew when iconv is already linkable for V on this machine.
+	if os.system('v -silent test vlib/encoding/iconv/') == 0 {
+		return
+	}
+	exec('brew list --versions libiconv >/dev/null 2>&1 || brew install libiconv')
 }
 
 fn test_pure_v_math_module() {
@@ -47,9 +53,10 @@ fn test_pure_v_math_module() {
 
 fn self_tests() {
 	if common.is_github_job {
-		exec('VJOBS=1 v -silent test-self vlib')
+		exec('VJOBS=1 v -d self_ignore_v2 -silent test-self vlib')
 	} else {
-		exec('v -progress test-self vlib')
+		vjobs := os.getenv_opt('VJOBS') or { '1' }
+		exec('VJOBS=${vjobs} v -d self_ignore_v2 -progress test-self vlib')
 	}
 }
 
@@ -124,6 +131,10 @@ fn test_readline() {
 	exec('v -silent test examples/readline/')
 }
 
+fn test_inline_assembly() {
+	exec('v test vlib/v/slow_tests/assembly')
+}
+
 const all_tasks = {
 	'test_symlink':                       Task{test_symlink, 'Test symlink'}
 	'test_cross_compilation':             Task{test_cross_compilation, 'Test cross compilation to Linux'}
@@ -146,6 +157,7 @@ const all_tasks = {
 	'v_self_compilation_parallel_cc':     Task{v_self_compilation_parallel_cc, 'V self compilation with -parallel-cc'}
 	'test_password_input':                Task{test_password_input, 'Test password input'}
 	'test_readline':                      Task{test_readline, 'Test readline'}
+	'test_inline_assembly':               Task{test_inline_assembly, 'Test inline assembly'}
 }
 
 common.run(all_tasks)

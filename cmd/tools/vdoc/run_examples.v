@@ -41,6 +41,7 @@ fn (mut vd VDoc) run_examples(dn doc.DocNode) {
 		.check { '-N -W -check' }
 		.skip { '' }
 	}
+
 	examples := dn.examples()
 	if examples.len == 0 {
 		return
@@ -75,7 +76,8 @@ fn (mut vd VDoc) run_examples(dn doc.DocNode) {
 		cmd := '${os.quoted_path(vexe)} ${voptions} ${os.quoted_path(vsource_path)}'
 		res := os.execute(cmd)
 		if res.exit_code != 0 {
-			eprintln('${dn_to_location(dn)}:${term.ecolorize(term.red, 'error in documentation example')}')
+			eprintln('${dn_to_location(dn)}:${term.ecolorize(term.red,
+				'error in documentation example')}')
 			eprintln('          cmd: ${cmd}')
 			eprintln(' example line: ${term.colorize(term.bright_yellow, example)}')
 			eprintln('       result:')

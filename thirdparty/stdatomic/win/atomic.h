@@ -165,7 +165,9 @@ __CRT_INLINE LONG _InterlockedExchangeAdd(LONG volatile *Addend, LONG Value)
     return Old;
 }
 
+#ifndef InterlockedIncrement64
 #define InterlockedIncrement64 _InterlockedExchangeAdd64
+#endif
 
 #endif
 

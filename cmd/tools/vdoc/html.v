@@ -64,7 +64,8 @@ fn (vd &VDoc) render_search_index(out Output) {
 	for i, title in vd.search_module_index {
 		data := vd.search_module_data[i]
 		js_search_index.write_string('"${title}",\n')
-		description := data.description.replace('\n', '').replace('\r', '') // fix multiline js string bug
+		description :=
+			data.description.replace('\n', '').replace('\r', '') // fix multiline js string bug
 		js_search_data.write_string('["${description}","${data.link}"],\n')
 	}
 	js_search_index.writeln('];\n')
@@ -171,26 +172,42 @@ fn (mut vd VDoc) create_search_results(mod string, dn doc.DocNode, out Output) {
 	}
 }
 
+fn (vd &VDoc) get_repo_file_path_for_links(file_path string) string {
+	if file_path == '' {
+		return ''
+	}
+	cfg := vd.cfg
+	if !cfg.is_multi {
+		return os.file_name(file_path).replace('\\', '/')
+	}
+	base_dir := os.dir(os.real_path(cfg.input_path))
+	prefix := base_dir + os.path_separator
+	if file_path.starts_with(prefix) {
+		return file_path[prefix.len..].replace('\\', '/')
+	}
+	return file_path.replace('\\', '/')
+}
+
 fn (vd &VDoc) write_content(cn &doc.DocNode, d &doc.Doc, mut hw strings.Builder) {
 	cfg := vd.cfg
-	base_dir := os.dir(os.real_path(cfg.input_path))
-	file_path_name := if cfg.is_multi {
-		cn.file_path.replace('${base_dir}/', '')
-	} else {
-		os.file_name(cn.file_path)
-	}
+	file_path_name := vd.get_repo_file_path_for_links(cn.file_path)
 	src_link := get_src_link(vd.manifest.repo_url, vd.manifest.repo_branch, file_path_name,
+
 		cn.pos.line_nr + 1)
+	md_link_base := get_src_dir_link(vd.manifest.repo_url, vd.manifest.repo_branch, file_path_name)
 	if cn.content.len != 0 || cn.name == 'Constants' {
-		hw.write_string(vd.doc_node_html(cn, src_link, false, cfg.include_examples, d.table))
+		hw.write_string(vd.doc_node_html(cn, src_link, md_link_base, false, cfg.include_examples,
+			d.table))
 		hw.write_string('\n')
 	}
 	for child in cn.children {
-		child_file_path_name := child.file_path.replace('${base_dir}/', '')
+		child_file_path_name := vd.get_repo_file_path_for_links(child.file_path)
 		child_src_link := get_src_link(vd.manifest.repo_url, vd.manifest.repo_branch,
 			child_file_path_name, child.pos.line_nr + 1)
-		hw.write_string(vd.doc_node_html(child, child_src_link, false, cfg.include_examples,
-			d.table))
+		child_md_link_base := get_src_dir_link(vd.manifest.repo_url, vd.manifest.repo_branch,
+			child_file_path_name)
+		hw.write_string(vd.doc_node_html(child, child_src_link, child_md_link_base, false,
+			cfg.include_examples, d.table))
 		hw.write_string('\n')
 	}
 }
@@ -198,11 +215,17 @@ fn (vd &VDoc) write_content(cn &doc.DocNode, d &doc.Doc, mut hw strings.Builder)
 fn (vd &VDoc) gen_html(d doc.Doc) string {
 	cfg := vd.cfg
 	mut symbols_toc := strings.new_builder(200)
-	mut modules_toc := strings.new_builder(200)
 	mut contents := strings.new_builder(200)
 	dcs_contents := d.contents.arr()
 	// generate toc first
-	contents.writeln(vd.doc_node_html(d.head, '', true, cfg.include_examples, d.table))
+	head_md_link_base := if is_module_readme(d.head) {
+		readme_file_path := vd.get_repo_file_path_for_links(d.head.file_path)
+		get_src_dir_link(vd.manifest.repo_url, vd.manifest.repo_branch, readme_file_path)
+	} else {
+		''
+	}
+	contents.writeln(vd.doc_node_html(d.head, '', head_md_link_base, true, cfg.include_examples,
+		d.table))
 	if is_module_readme(d.head) {
 		write_toc(d.head, mut symbols_toc)
 	}
@@ -221,49 +244,11 @@ fn (vd &VDoc) gen_html(d doc.Doc) string {
 	} else {
 		d.head.name
 	}
-	// write nav1
-	if cfg.is_multi || vd.docs.len > 1 {
-		mut used_submod_prefixes := map[string]bool{}
-		for dc in vd.docs {
-			mut submod_prefix := dc.head.name.all_before('.')
-			if index := dc.head.frontmatter['index'] {
-				if dc.head.name == 'index' {
-					submod_prefix = index
-				}
-			}
-			if used_submod_prefixes[submod_prefix] {
-				continue
-			}
-			used_submod_prefixes[submod_prefix] = true
-			mut href_name := './${dc.head.name}.html'
-			if dc.head.name in ['README', 'index'] {
-				href_name = './index.html'
-			} else if submod_prefix !in vd.docs.map(it.head.name) {
-				href_name = '#'
-			}
-			submodules := vd.docs.filter(it.head.name.starts_with(submod_prefix + '.'))
-			dropdown := if submodules.len > 0 { vd.assets['arrow_icon'] } else { '' }
-			active_class := if dc.head.name == d.head.name { ' active' } else { '' }
-			modules_toc.write_string('<li class="open${active_class}">\n<div class="menu-row">${dropdown}<a href="${href_name}">${submod_prefix}</a></div>\n')
-			for j, cdoc in submodules {
-				if j == 0 {
-					modules_toc.write_string('<ul>\n')
-				}
-				submod_name := cdoc.head.name.all_after(submod_prefix + '.')
-				sub_selected_classes := if cdoc.head.name == d.head.name {
-					' class="active"'
-				} else {
-					''
-				}
-				modules_toc.write_string('<li${sub_selected_classes}><a href="./${cdoc.head.name}.html">${submod_name}</a></li>\n')
-				if j == submodules.len - 1 {
-					modules_toc.write_string('</ul>\n')
-				}
-			}
-			modules_toc.write_string('</li>\n')
-		}
+	modules_toc_str := if cfg.is_multi || vd.docs.len > 1 {
+		vd.gen_modules_toc(d.head.name)
+	} else {
+		''
 	}
-	modules_toc_str := modules_toc.str()
 	symbols_toc_str := symbols_toc.str()
 	mut result := os.read_file(os.join_path(cfg.theme_dir, 'index.html')) or { panic(err) }
 	if cfg.html_no_vhash {
@@ -327,7 +312,57 @@ ${tabs(2)}<script src="${vd.assets['dark_mode_js']}"></script>'
 	return result
 }
 
-fn get_src_link(repo_url string, repo_branch string, file_name string, line_nr int) string {
+fn (vd &VDoc) gen_modules_toc(active_doc string) string {
+	mut modules_toc := strings.new_builder(200)
+	mut used_submod_prefixes := map[string]bool{}
+	doc_names := vd.docs.map(it.head.name)
+	for dc in vd.docs {
+		mut submod_prefix := dc.head.name.all_before('.')
+		if index := dc.head.frontmatter['index'] {
+			if dc.head.name == 'index' {
+				submod_prefix = index
+			}
+		}
+		if used_submod_prefixes[submod_prefix] {
+			continue
+		}
+		used_submod_prefixes[submod_prefix] = true
+		mut href_name := ''
+		if dc.head.name in ['README', 'index'] {
+			href_name = './index.html'
+		} else if submod_prefix in doc_names {
+			href_name = './${submod_prefix}.html'
+		}
+		submodules := vd.docs.filter(it.head.name.starts_with(submod_prefix + '.'))
+		dropdown := if submodules.len > 0 { vd.assets['arrow_icon'] } else { '' }
+		active_class := if dc.head.name == active_doc { ' active' } else { '' }
+		menu_item := if href_name != '' {
+			'<a href="${href_name}">${submod_prefix}</a>'
+		} else {
+			'<a>${submod_prefix}</a>'
+		}
+		modules_toc.write_string('<li class="open${active_class}">\n<div class="menu-row">${dropdown}${menu_item}</div>\n')
+		for j, cdoc in submodules {
+			if j == 0 {
+				modules_toc.write_string('<ul>\n')
+			}
+			submod_name := cdoc.head.name.all_after(submod_prefix + '.')
+			sub_selected_classes := if cdoc.head.name == active_doc {
+				' class="active"'
+			} else {
+				''
+			}
+			modules_toc.write_string('<li${sub_selected_classes}><a href="./${cdoc.head.name}.html">${submod_name}</a></li>\n')
+			if j == submodules.len - 1 {
+				modules_toc.write_string('</ul>\n')
+			}
+		}
+		modules_toc.write_string('</li>\n')
+	}
+	return modules_toc.str()
+}
+
+fn get_repo_file_link(repo_url string, repo_branch string, file_name string) string {
 	mut url := urllib.parse(repo_url) or { return '' }
 	if url.path.len <= 1 || file_name == '' {
 		return ''
@@ -338,53 +373,150 @@ fn get_src_link(repo_url string, repo_branch string, file_name string, line_nr i
 		'git.sir.ht' { '/tree/${repo_branch}/${file_name}' }
 		else { '' }
 	}
+
 	if url.path == '/' {
 		return ''
 	}
-	url.fragment = 'L${line_nr}'
 	return url.str()
 }
 
+fn get_src_dir_link(repo_url string, repo_branch string, file_name string) string {
+	file_url := get_repo_file_link(repo_url, repo_branch, file_name)
+	if file_url == '' {
+		return ''
+	}
+	mut parsed_file_url := urllib.parse(file_url) or { return '' }
+	mut dir_path := parsed_file_url.path.all_before_last('/')
+	if dir_path == '' {
+		dir_path = '/'
+	}
+	parsed_file_url.path = if dir_path == '/' { '/' } else { dir_path + '/' }
+	parsed_file_url.raw_query = ''
+	parsed_file_url.fragment = ''
+	return parsed_file_url.str()
+}
+
+fn get_src_link(repo_url string, repo_branch string, file_name string, line_nr int) string {
+	file_url := get_repo_file_link(repo_url, repo_branch, file_name)
+	if file_url == '' {
+		return ''
+	}
+	mut parsed_file_url := urllib.parse(file_url) or { return '' }
+	parsed_file_url.fragment = 'L${line_nr}'
+	return parsed_file_url.str()
+}
+
+fn normalize_url_path(path string) string {
+	if path == '' {
+		return ''
+	}
+	is_absolute := path.starts_with('/')
+	mut parts := []string{}
+	for part in path.split('/') {
+		match part {
+			'', '.' {}
+			'..' {
+				if parts.len > 0 {
+					parts.delete_last()
+				}
+			}
+			else {
+				parts << part
+			}
+		}
+	}
+	mut normalized := parts.join('/')
+	if is_absolute {
+		normalized = '/' + normalized
+	}
+	return if normalized == '' && is_absolute { '/' } else { normalized }
+}
+
+fn is_relative_markdown_link(link string) bool {
+	value := link.trim_space()
+	if value == '' || value.starts_with('#') || value.starts_with('//') {
+		return false
+	}
+	if value.starts_with('/') {
+		return false
+	}
+	if url := urllib.parse(value) {
+		return url.scheme == '' && url.host == ''
+	}
+	return true
+}
+
+fn resolve_relative_markdown_link(base_url string, link string) string {
+	if base_url == '' || !is_relative_markdown_link(link) {
+		return link
+	}
+	mut parsed_base := urllib.parse(base_url) or { return link }
+	mut relative_path := link
+	mut fragment := ''
+	if hash_idx := relative_path.index('#') {
+		fragment = relative_path[hash_idx + 1..]
+		relative_path = relative_path[..hash_idx]
+	}
+	mut query := ''
+	if query_idx := relative_path.index('?') {
+		query = relative_path[query_idx + 1..]
+		relative_path = relative_path[..query_idx]
+	}
+	base_path := if parsed_base.path.ends_with('/') {
+		parsed_base.path
+	} else {
+		parsed_base.path.all_before_last('/') + '/'
+	}
+	parsed_base.path = normalize_url_path(base_path + relative_path)
+	parsed_base.raw_query = query
+	parsed_base.fragment = fragment
+	return parsed_base.str()
+}
+
 fn write_token(tok token.Token, typ HighlightTokenTyp, mut buf strings.Builder) {
+	mut token_content := ''
 	match typ {
 		.unone, .operator, .punctuation {
-			buf.write_string(tok.kind.str())
+			token_content = tok.kind.str()
 		}
 		.string_interp {
 			// tok.kind.str() for this returns $2 instead of $
-			buf.write_byte(`$`)
+			token_content = '$'
 		}
 		.opening_string {
-			buf.write_string("'${tok.lit}")
+			token_content = "'${tok.lit}"
 		}
 		.closing_string {
 			// A string as the next token of the expression
 			// inside the string interpolation indicates that
 			// this is the closing of string interpolation
-			buf.write_string("${tok.lit}'")
+			token_content = "${tok.lit}'"
 		}
 		.string {
-			buf.write_string("'${tok.lit}'")
+			token_content = "'${tok.lit}'"
 		}
 		.char {
-			buf.write_string('`${tok.lit}`')
+			token_content = '`${tok.lit}`'
 		}
 		.comment {
-			buf.write_string('//')
 			if tok.lit != '' && tok.lit[0] == 1 {
-				buf.write_string(tok.lit[1..])
+				token_content = '//${tok.lit[1..]}'
 			} else {
-				buf.write_string(tok.lit)
+				token_content = '//${tok.lit}'
 			}
 		}
 		else {
-			buf.write_string(tok.lit)
+			token_content = tok.lit
 		}
 	}
+
+	buf.write_string(html.escape(token_content))
 }
 
 fn html_highlight(code string, tb &ast.Table) string {
-	mut s := scanner.new_scanner(code, .parse_comments, &pref.Preferences{ output_mode: .silent })
+	mut s := scanner.new_scanner(code, .parse_comments, &pref.Preferences{
+		output_mode: .silent
+	})
 	mut tok := s.scan()
 	mut prev_tok := tok
 	mut next_tok := s.scan()
@@ -395,7 +527,16 @@ fn html_highlight(code string, tb &ast.Table) string {
 		if i != tok.pos {
 			// All characters not detected by the scanner
 			// (mostly whitespaces) go here.
-			buf.write_u8(code[i])
+			ch := code[i]
+			if ch == `<` {
+				buf.write_string('&lt;')
+			} else if ch == `>` {
+				buf.write_string('&gt;')
+			} else if ch == `&` {
+				buf.write_string('&amp;')
+			} else {
+				buf.write_u8(ch)
+			}
 			i++
 			continue
 		}
@@ -519,16 +660,19 @@ fn html_highlight(code string, tb &ast.Table) string {
 	return buf.str()
 }
 
-fn (vd &VDoc) doc_node_html(dn doc.DocNode, link string, head bool, include_examples bool, tb &ast.Table) string {
+fn (vd &VDoc) doc_node_html(dn doc.DocNode, link string, md_link_base string, head bool, include_examples bool, tb &ast.Table) string {
 	mut dnw := strings.new_builder(200)
 	head_tag := if head { 'h1' } else { 'h2' }
 	mut renderer := markdown.HtmlRenderer{
 		transformer: &MdHtmlCodeHighlighter{
-			table: tb
+			table:              tb
+			relative_link_base: md_link_base
 		}
 	}
 	only_comments_text := dn.merge_comments_without_examples()
-	md_content := markdown.render(only_comments_text, mut renderer) or { '' }
+	md_content := markdown.render(prepare_markdown_for_html(only_comments_text), mut renderer) or {
+		''
+	}
 	highlighted_code := html_highlight(dn.content, tb)
 	node_class := if dn.kind == .const_group { ' const' } else { '' }
 	sym_name := get_sym_name(dn)
@@ -559,7 +703,8 @@ fn (vd &VDoc) doc_node_html(dn doc.DocNode, link string, head bool, include_exam
 		dnw.write_string('</div>\n')
 	}
 	if deprecated_tags.len > 0 {
-		attributes := deprecated_tags.map('<div class="attribute attribute-deprecated">${it.replace_each(quote_escape_seq)}</div>\n').join('')
+		attributes :=
+			deprecated_tags.map('<div class="attribute attribute-deprecated">${it.replace_each(quote_escape_seq)}</div>\n').join('')
 		dnw.writeln('<div class="attributes">${attributes}</div>\n')
 	}
 	if tags.len > 0 {
@@ -585,6 +730,158 @@ fn (vd &VDoc) doc_node_html(dn doc.DocNode, link string, head bool, include_exam
 	dnw.writeln('</section>')
 	dnw_str := dnw.str()
 	return dnw_str
+}
+
+fn prepare_markdown_for_html(text string) string {
+	if !text.contains('\n') {
+		return text
+	}
+	lines := text.split_into_lines()
+	mut prepared := []string{cap: lines.len}
+	mut is_codeblock := false
+	mut prev_line := ''
+	for i, line in lines {
+		trimmed := line.trim_space()
+		if trimmed.starts_with('```') {
+			prepared << line
+			is_codeblock = !is_codeblock
+			prev_line = line
+			continue
+		}
+		if is_codeblock {
+			prepared << line
+			prev_line = line
+			continue
+		}
+		if line_continues_previous_block(prev_line, line) && prepared.len > 0 {
+			prepared[prepared.len - 1] += ' ' + trimmed
+			prev_line = line
+			continue
+		}
+		next_line := if i + 1 < lines.len { lines[i + 1] } else { '' }
+		if blockquote_line_needs_hard_break(line, next_line) {
+			prepared << line + '  '
+		} else {
+			prepared << line
+		}
+		prev_line = line
+	}
+	return prepared.join('\n')
+}
+
+fn line_continues_previous_block(prev_line string, line string) bool {
+	prev_trimmed := prev_line.trim_space()
+	trimmed := line.trim_space()
+	if prev_trimmed == '' || trimmed == '' {
+		return false
+	}
+	if prev_trimmed.starts_with('>') || trimmed.starts_with('>') {
+		return false
+	}
+	if prev_trimmed.starts_with('```') || trimmed.starts_with('```') {
+		return false
+	}
+	if markdown_line_starts_new_block(line) {
+		return false
+	}
+	if prev_trimmed.starts_with('#') || prev_trimmed.starts_with('|')
+		|| markdown_line_is_horizontal_rule(prev_trimmed) {
+		return false
+	}
+	return true
+}
+
+fn markdown_line_starts_new_block(line string) bool {
+	trimmed := line.trim_space()
+	if trimmed == '' {
+		return false
+	}
+	if trimmed.starts_with('#') || trimmed.starts_with('>') || trimmed.starts_with('|')
+		|| trimmed.starts_with('```') || markdown_line_is_horizontal_rule(trimmed) {
+		return true
+	}
+	if markdown_indent_width(line) >= 4 {
+		return true
+	}
+	return markdown_line_is_list_item(trimmed)
+}
+
+fn markdown_line_is_list_item(line string) bool {
+	if line.len > 1 && line[1] == ` ` && line[0] in [`-`, `*`, `+`] {
+		return true
+	}
+	return line.len > 2 && line[2] == ` ` && line[1] == `.` && line[0].is_digit()
+}
+
+fn markdown_line_is_horizontal_rule(line string) bool {
+	line_no_spaces := line.replace(' ', '')
+	if line_no_spaces.len < 3 {
+		return false
+	}
+	for ch in ['-', '=', '*', '_', '~'] {
+		if line_no_spaces.starts_with(ch.repeat(3))
+			&& line_no_spaces.count(ch) == line_no_spaces.len {
+			return true
+		}
+	}
+	return false
+}
+
+fn markdown_indent_width(line string) int {
+	mut width := 0
+	for ch in line {
+		if ch == ` ` {
+			width++
+			continue
+		}
+		if ch == `\t` {
+			width += 4
+			continue
+		}
+		break
+	}
+	return width
+}
+
+fn blockquote_line_needs_hard_break(line string, next_line string) bool {
+	if line.ends_with('  ') {
+		return false
+	}
+	payload := blockquote_payload(line) or { return false }
+	if payload == '' {
+		return false
+	}
+	next_payload := blockquote_payload(next_line) or { return false }
+	if next_payload == '' {
+		return false
+	}
+	return !blockquote_payload_starts_new_block(next_payload)
+}
+
+fn blockquote_payload(line string) ?string {
+	trimmed := line.trim_space()
+	if !trimmed.starts_with('>') {
+		return none
+	}
+	return trimmed[1..].trim_space()
+}
+
+fn blockquote_payload_starts_new_block(payload string) bool {
+	if payload == '' || payload.starts_with('```') || payload.starts_with('>')
+		|| payload.starts_with('|') {
+		return true
+	}
+	if payload.len > 1 && payload[1] == ` ` && payload[0] in [`-`, `*`, `+`] {
+		return true
+	}
+	if payload.len > 2 && payload[2] == ` ` && payload[1] == `.` && payload[0].is_digit() {
+		return true
+	}
+	if !payload.starts_with('#') {
+		return false
+	}
+	line_before_spaces := payload.before(' ')
+	return line_before_spaces.count('#') == line_before_spaces.len
 }
 
 fn write_toc(dn doc.DocNode, mut toc strings.Builder) {
@@ -617,12 +914,17 @@ fn write_toc(dn doc.DocNode, mut toc strings.Builder) {
 
 struct MdHtmlCodeHighlighter {
 mut:
-	language string
-	table    &ast.Table
+	language           string
+	table              &ast.Table
+	relative_link_base string
 }
 
 fn (f &MdHtmlCodeHighlighter) transform_attribute(p markdown.ParentType, name string, value string) string {
-	return markdown.default_html_transformer.transform_attribute(p, name, value)
+	mut transformed := value
+	if p is markdown.MD_SPANTYPE && p in [.md_span_a, .md_span_img] && name in ['href', 'src'] {
+		transformed = resolve_relative_markdown_link(f.relative_link_base, value)
+	}
+	return markdown.default_html_transformer.transform_attribute(p, name, transformed)
 }
 
 fn (f &MdHtmlCodeHighlighter) transform_content(parent markdown.ParentType, text string) string {

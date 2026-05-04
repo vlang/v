@@ -49,13 +49,13 @@ fn test_atof() {
 		mut s1 := (strconv.atof_quick(src_num_str[c]).str())
 		mut s2 := (x.str())
 		delta := s1.f64() - s2.f64()
-		// println("$s1 $s2 $delta")
+		// println("${s1} ${s2} ${delta}")
 		assert delta < f64(1e-16)
 
 		// test C.atof
 		n1 := x.strsci(18)
 		n2 := f64(C.atof(&char(src_num_str[c].str))).strsci(18)
-		// println("$n1 $n2")
+		// println("${n1} ${n2}")
 		assert n1 == n2
 	}
 
@@ -103,6 +103,15 @@ fn test_atof_subnormal() {
 
 	// Negative subnormal
 	assert strconv.atof64('-1.0e-320') or { panic('parse error') } == -1.0e-320
+}
+
+fn test_atof_small_decimal_with_many_leading_zeroes() {
+	assert strconv.atof64('0.0000000000000000005') or { panic('parse error') } == strconv.atof64('5e-19') or {
+		panic('parse error')
+	}
+	assert strconv.atof64('-0.0000000000000000005') or { panic('parse error') } == strconv.atof64('-5e-19') or {
+		panic('parse error')
+	}
 }
 
 fn test_atof_errors() {

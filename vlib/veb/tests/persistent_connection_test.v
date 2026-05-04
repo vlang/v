@@ -43,6 +43,13 @@ pub fn (mut app App) reset(mut ctx Context) veb.Result {
 	return ctx.ok('')
 }
 
+pub fn (mut app App) reusable(mut ctx Context) veb.Result {
+	ctx.takeover_conn_reusable()
+	body := 'manual:${app.counter}'
+	ctx.conn.write_string('HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n${body.len:x}\r\n${body}\r\n0\r\n\r\n') or {}
+	return veb.no_result()
+}
+
 fn testsuite_begin() {
 	os.chdir(os.dir(@FILE))!
 	mut app := &App{}
@@ -75,6 +82,45 @@ fn test_conn_remains_intact() {
 	response = read.bytestr()
 	assert response.contains('Connection: close') == false, '`Connection` header should NOT be present!'
 	assert response.ends_with('${response_body}:2') == true, 'read response: ${response}'
+
+	conn.close() or {}
+}
+
+fn test_conn_remains_intact_after_reusable_takeover() {
+	http.get('http://${localserver}/reset')!
+
+	mut conn := simple_tcp_client()!
+	conn.write_string('GET /reusable HTTP/1.1\r\nUser-Agent: VTESTS\r\nAccept: */*\r\n\r\n')!
+
+	mut response := read_until_contains(mut conn, '\r\n0\r\n\r\n')!
+	assert response.contains('Connection: close') == false, '`Connection` header should NOT be present!'
+	assert response.contains('manual:0') == true, 'read response: ${response}'
+	assert response.contains('\r\n0\r\n\r\n') == true, 'read response: ${response}'
+
+	// send request again over the same connection
+	conn.write_string(default_request)!
+
+	read := io.read_all(reader: conn)!
+	response = read.bytestr()
+	assert response.contains('Connection: close') == false, '`Connection` header should NOT be present!'
+	assert response.ends_with('${response_body}:1') == true, 'read response: ${response}'
+
+	conn.close() or {}
+}
+
+fn test_reusable_takeover_honors_connection_close() {
+	http.get('http://${localserver}/reset')!
+
+	mut conn := simple_tcp_client()!
+	conn.write_string('GET /reusable HTTP/1.1\r\nUser-Agent: VTESTS\r\nAccept: */*\r\nConnection: close\r\n\r\n')!
+
+	response := read_until_contains(mut conn, '\r\n0\r\n\r\n')!
+	assert response.contains('manual:0') == true, 'read response: ${response}'
+	assert response.contains('\r\n0\r\n\r\n') == true, 'read response: ${response}'
+
+	conn.write_string(default_request) or {}
+	next := io.read_all(reader: conn) or { []u8{} }
+	assert next.len == 0
 
 	conn.close() or {}
 }
@@ -123,4 +169,20 @@ fn simple_tcp_client() !&net.TcpConn {
 	client.set_read_timeout(tcp_r_timeout)
 	client.set_write_timeout(tcp_w_timeout)
 	return client
+}
+
+fn read_until_contains(mut conn net.TcpConn, marker string) !string {
+	mut raw := ''
+	mut buf := []u8{len: 1024}
+	for _ in 0 .. 16 {
+		n := conn.read(mut buf)!
+		if n <= 0 {
+			break
+		}
+		raw += buf[..n].bytestr()
+		if raw.contains(marker) {
+			break
+		}
+	}
+	return raw
 }

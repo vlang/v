@@ -3,11 +3,22 @@ module tar
 import compress.gzip
 import os
 
+// read_tar_file reads a given local .tar file and parses all blocks with a
+// given reader.
+pub fn read_tar_file(path string, reader Reader) ! {
+	all_blocks := os.read_bytes(path)!
+	read_tar_blocks(all_blocks, reader)!
+}
+
 // read_tar_gz_file decompresses a given local file and reads all the blocks
 // with a given reader.
 pub fn read_tar_gz_file(path string, reader Reader) ! {
 	tar_gz := os.read_bytes(path)!
 	all_blocks := gzip.decompress(tar_gz)!
+	read_tar_blocks(all_blocks, reader)!
+}
+
+fn read_tar_blocks(all_blocks []u8, reader Reader) ! {
 	mut untar := Untar{
 		reader: reader
 	}
@@ -75,15 +86,19 @@ pub fn (b Read) get_path() string {
 		return b.long_path.get_path()
 	}
 
-	mut str := []u8{}
+	mut str := []u8{cap: b.prefix_len + b.path_len + 1}
 	if b.prefix_len > 0 {
-		str << b.prefix_buf[0..b.prefix_len]
+		for i in 0 .. b.prefix_len {
+			str << b.prefix_buf[i]
+		}
 	}
 	if b.prefix_len > 0 && b.separator {
 		str << `/`
 	}
 	if b.path_len > 0 {
-		str << b.path_buf[0..b.path_len]
+		for i in 0 .. b.path_len {
+			str << b.path_buf[i]
+		}
 	}
 	return str.bytestr()
 }
@@ -142,7 +157,7 @@ pub fn new_debug_reader() &DebugReader {
 	return &DebugReader{}
 }
 
-fn (mut t DebugReader) dir_block(mut read Read, size u64) {
+fn (mut t DebugReader) dir_block(mut read Read, _size u64) {
 	println('DIR   #${read.get_block_number()} ${read.get_path()}')
 }
 
@@ -251,7 +266,7 @@ fn (mut d ChunksReader) read_blocks(chunk []u8) ReadResult {
 			// after sending all complete blocks move the remaining not sent bytes
 			// to the start of the reused buffer to be prepended before next chunk
 			for i := cut; i < d.pending; i++ {
-				d.buffer[cut - 512] = d.buffer[i]
+				d.buffer[i - cut] = d.buffer[i]
 			}
 			d.pending -= cut
 			return .continue

@@ -23,16 +23,14 @@ fn panic_debug(line_no int, file string, mod string, fn_name string, s string) {
 		eprint('     file: '); eprint(file); eprint(':');
 	    C.fprintf(C.stderr, c'%d\n', line_no)
 		eprint('   v hash: '); eprintln(vcurrent_hash())
-		$if !vinix && !native {
+		$if !vinix {
 			eprint('      pid: '); C.fprintf(C.stderr, c'%p\n', voidptr(v_getpid()))
 			eprint('      tid: '); C.fprintf(C.stderr, c'%p\n', voidptr(v_gettid()))
 		}
 		eprintln('=========================================')
 		flush_stdout()
 		// vfmt on
-		$if native {
-			C.exit(1) // TODO: native backtraces
-		} $else $if exit_after_panic_message ? {
+		$if exit_after_panic_message ? {
 			C.exit(1)
 		} $else $if no_backtrace ? {
 			C.exit(1)
@@ -46,7 +44,11 @@ fn panic_debug(line_no int, file string, mod string, fn_name string, s string) {
 				C.exit(1)
 			}
 			$if use_libbacktrace ? {
-				eprint_libbacktrace(1)
+				$if openbsd {
+					print_backtrace_skipping_top_frames(1)
+				} $else {
+					eprint_libbacktrace(1)
+				}
 			} $else {
 				print_backtrace_skipping_top_frames(1)
 			}
@@ -57,6 +59,7 @@ fn panic_debug(line_no int, file string, mod string, fn_name string, s string) {
 		}
 	}
 	C.exit(1)
+	for {}
 }
 
 // panic_option_not_set is called by V, when you use option error propagation in your main function.
@@ -87,15 +90,13 @@ pub fn panic(s string) {
 		eprintln(s)
 		eprint(' v hash: ')
 		eprintln(vcurrent_hash())
-		$if !vinix && !native {
+		$if !vinix {
 			eprint('    pid: '); C.fprintf(C.stderr, c'%p\n', voidptr(v_getpid()))
 			eprint('    tid: '); C.fprintf(C.stderr, c'%p\n', voidptr(v_gettid()))
 		}
 		flush_stdout()
 		// vfmt on
-		$if native {
-			C.exit(1) // TODO: native backtraces
-		} $else $if exit_after_panic_message ? {
+		$if exit_after_panic_message ? {
 			C.exit(1)
 		} $else $if no_backtrace ? {
 			C.exit(1)
@@ -109,7 +110,11 @@ pub fn panic(s string) {
 				C.exit(1)
 			}
 			$if use_libbacktrace ? {
-				eprint_libbacktrace(1)
+				$if openbsd {
+					print_backtrace_skipping_top_frames(1)
+				} $else {
+					eprint_libbacktrace(1)
+				}
 			} $else {
 				print_backtrace_skipping_top_frames(1)
 			}
@@ -120,6 +125,7 @@ pub fn panic(s string) {
 		}
 	}
 	C.exit(1)
+	for {}
 }
 
 // return a C-API error message matching to `errnum`
@@ -132,7 +138,7 @@ pub fn c_error_number_str(errnum int) string {
 			c_msg := C.strerror(errnum)
 			err_msg = string{
 				str:    &u8(c_msg)
-				len:    unsafe { C.strlen(c_msg) }
+				len:    int(unsafe { C.strlen(c_msg) })
 				is_lit: 1
 			}
 		}

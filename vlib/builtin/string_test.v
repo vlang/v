@@ -104,6 +104,24 @@ fn test_compare_strings() {
 	assert compare_strings(e, a) == 1
 }
 
+fn test_eq_with_freed_string() {
+	mut s := 'abc'.clone()
+	unsafe {
+		s.free()
+	}
+	assert (s == 'abc') == false
+	assert ('abc' == s) == false
+}
+
+fn test_eq_empty_with_freed_string() {
+	mut s := 'abc'.clone()
+	unsafe {
+		s.free()
+	}
+	assert (s == '') == true
+	assert ('' == s) == true
+}
+
 fn test_sort() {
 	mut vals := [
 		'arr',
@@ -734,6 +752,16 @@ fn test_replace_each() {
 	assert s2.replace_each(['hello_world', 'aaa', 'hello', 'bbb']) == 'aaa bbb'
 }
 
+fn test_format() {
+	template := 'First: {0}, First again: {0}, Second: {1}, Third: {2}'
+	assert template.format('A', 'B', 'C') == 'First: A, First again: A, Second: B, Third: C'
+	assert template.format('R', 'G', 'B') == 'First: R, First again: R, Second: G, Third: B'
+	assert 'Escaped {{0}} and {{braces}}'.format('unused') == 'Escaped {0} and {braces}'
+	assert '{0} {3} {1}'.format('A', 'B') == 'A {3} B'
+	assert '{10}-{2}'.format('0', '1', '2', '3', '4', '5', '6', '7', '8', '9', '10') == '10-2'
+	assert 'keep {name} and {1'.format('A', 'B') == 'keep {name} and {1'
+}
+
 fn test_replace_char() {
 	assert 'azert'.replace_char(`z`, `s`, 2) == 'assert'
 	assert '\rHello!\r'.replace_char(`\r`, `\n`, 1) == '\nHello!\n'
@@ -1116,6 +1144,9 @@ fn test_upper() {
 	s = 'HI'
 	assert s.is_upper()
 	assert s.to_upper() == 'HI'
+	s = '1, 2, 3, 4 GO!'
+	assert s.is_upper()
+	assert s.to_upper() == '1, 2, 3, 4 GO!'
 	s = '123'
 	assert !s.is_upper()
 	assert s.to_upper() == '123'
@@ -1543,6 +1574,16 @@ fn test_emoji_to_runes() {
 	assert x.runes()[0] == `👋`
 }
 
+fn test_graphemes() {
+	assert '\u006E\u0303'.graphemes() == ['ñ']
+	assert '\U0001F3F3\uFE0F\u200D\U0001F308'.graphemes() == ['🏳️‍🌈']
+	assert 'ห์'.graphemes() == ['ห์']
+	assert 'ปีเตอร์'.graphemes() == ['ปี', 'เ', 'ต', 'อ', 'ร์']
+	assert '🇺🇳'.graphemes() == ['🇺🇳']
+	assert '👩🏽‍💻'.graphemes() == ['👩🏽‍💻']
+	assert 'a\r\nb'.graphemes() == ['a', '\r\n', 'b']
+}
+
 fn test_string_to_rune() {
 	x := 'Hello World 👋'
 	assert x.runes().len == 13
@@ -1667,6 +1708,7 @@ fn test_camel_to_snake() {
 	assert 'aBcd'.camel_to_snake() == 'a_bcd'
 	assert 'AAbb'.camel_to_snake() == 'aa_bb'
 	assert 'aaBB'.camel_to_snake() == 'aa_bb'
+	assert 'BBaa'.camel_to_snake() == 'bb_aa'
 	assert 'aaBbCcDD'.camel_to_snake() == 'aa_bb_cc_dd'
 	assert 'AAbbCC'.camel_to_snake() == 'aa_bb_cc'
 	assert 'aaBBcc'.camel_to_snake() == 'aa_bb_cc'
@@ -1677,6 +1719,9 @@ fn test_camel_to_snake() {
 	assert '_aBcd'.camel_to_snake() == '_a_bcd'
 	assert '_a_Bcd'.camel_to_snake() == '_a_bcd'
 	assert '_AbCDe_'.camel_to_snake() == '_ab_cd_e_'
+	assert 'HTTPServer'.camel_to_snake() == 'http_server'
+	assert 'HTTP2Server'.camel_to_snake() == 'http2_server'
+	assert 'XML2JSON'.camel_to_snake() == 'xml_2_json'
 }
 
 fn test_snake_to_camel() {

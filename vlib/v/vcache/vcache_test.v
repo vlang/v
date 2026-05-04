@@ -14,7 +14,7 @@ fn check_cache_entry_fpath_invariants(x string, extension string) {
 
 fn testsuite_begin() {
 	os.setenv('VCACHE', vcache_folder, true)
-	// eprintln('testsuite_begin, vcache_folder = $vcache_folder')
+	// eprintln('testsuite_begin, vcache_folder = ${vcache_folder}')
 	os.rmdir_all(vcache_folder) or {}
 	vcache.new_cache_manager([])
 	assert os.is_dir(vcache_folder)
@@ -78,6 +78,14 @@ fn test_exists() {
 	assert x != y
 	assert x != z
 	assert y != z
+}
+
+fn test_temporary_options_reset_cached_key_paths() {
+	mut cm := vcache.new_cache_manager(['-os freebsd'])
+	path_before := cm.mod_postfix_with_key2cpath('builtin', '.o', '/tmp/gc.o')
+	cm.set_temporary_options(['-target x86_64-unknown-freebsd14.0'])
+	path_after := cm.mod_postfix_with_key2cpath('builtin', '.o', '/tmp/gc.o')
+	assert path_before != path_after
 }
 
 fn test_readme_exists_and_is_readable() {

@@ -1,0 +1,22 @@
+struct Options {
+	a int
+}
+
+struct Obj {
+	a int
+}
+
+fn make_obj(options Options) Obj {
+	return Obj{
+		a: options.a
+	}
+}
+
+fn main() {
+	shared obj := make_obj(Options{
+		a: 1
+	})
+	rlock obj {
+		assert obj.a == 1
+	}
+}

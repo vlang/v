@@ -87,7 +87,8 @@ fn main() {
 		show_help:    fp.bool('help', `h`, false, 'Show this help text.')
 		force_update: fp.bool('force-update', `u`, false, 'Force update of the sokol-shdc tool.')
 		verbose:      fp.bool('verbose', `v`, false, 'Be verbose about the tools progress.')
-		slangs:       fp.string_multi('slang', `l`, 'Shader dialects to generate code for. Default is all.\n                            Available dialects: ${supported_slangs}')
+		slangs:       fp.string_multi('slang', `l`,
+			'Shader dialects to generate code for. Default is all.\n                            Available dialects: ${supported_slangs}')
 	}
 	if opt.show_help {
 		println(fp.usage())
@@ -247,8 +248,7 @@ fn ensure_external_tools(opt Options) ! {
 		if is_shdc_available {
 			eprintln(' file path: ${shdc_exe}')
 			eprintln(' file size: ${os.file_size(shdc_exe)}')
-			eprintln(' file time: ${time.unix_microsecond(os.file_last_mod_unix(shdc_exe),
-				0)}')
+			eprintln(' file time: ${time.unix_microsecond(os.file_last_mod_unix(shdc_exe), 0)}')
 		}
 	}
 	if is_shdc_available && is_shdc_executable {

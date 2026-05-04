@@ -1,0 +1,3 @@
+__asm__ volatile (
+""
+: : : "memory"

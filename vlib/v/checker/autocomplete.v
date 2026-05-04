@@ -39,6 +39,7 @@ struct Detail {
 	kind               DetailKind // The type of item (e.g., Method, Function, Field)
 	label              string     // The name of the completion item
 	detail             string     // Additional info like the function signature or return type
+	declaration        string     // Full fn declaration, e.g. "fn greet(name string) string"
 	documentation      string     // The documentation for the item
 	insert_text        ?string
 	insert_text_format ?int // 1 for PlainText, 2 for Snippet
@@ -58,6 +59,43 @@ fn (mut c Checker) get_fn_from_call_expr(node ast.CallExpr) !ast.Fn {
 
 // Autocomplete for function parameters `os.write_bytes(**path string, bytes []u8***)` etc
 pub fn (mut c Checker) autocomplete_for_fn_call_expr(node ast.CallExpr) {
+	// Hover over a function call: cursor is on the function name, method is .completion.
+	// Output the full fn declaration as a single Detail so VLS can display it.
+	if c.pref.linfo.method == .completion && c.vls_is_the_node(node.name_pos) {
+		f := c.get_fn_from_call_expr(node) or { return }
+		fn_name := f.name.all_after_last('.')
+		mut params := []string{cap: f.params.len}
+		for i, param in f.params {
+			if f.is_method && i == 0 {
+				continue // skip receiver
+			}
+			params << '${param.name} ${c.table.type_to_str(param.typ)}'
+		}
+		ret_str := if f.return_type != ast.no_type && f.return_type != ast.void_type {
+			' ' + c.table.type_to_str(f.return_type)
+		} else {
+			''
+		}
+		declaration := 'fn ${fn_name}(${params.join(', ')})${ret_str}'
+		mut doc := ''
+		receiver := if f.is_method {
+			c.table.sym(f.receiver_type).name.all_after_last('.')
+		} else {
+			''
+		}
+		if info := c.table.vls_info['fn_${f.mod}[${receiver}]${fn_name}'] {
+			doc = info.doc
+		}
+		c.vls_write_details([
+			Detail{
+				kind:          .function
+				label:         fn_name
+				declaration:   declaration
+				documentation: doc
+			},
+		])
+		exit(0)
+	}
 	if c.pref.linfo.method != .signature_help {
 		return
 	}
@@ -71,6 +109,221 @@ pub fn (mut c Checker) autocomplete_for_fn_call_expr(node ast.CallExpr) {
 	res := c.build_fn_summary(f)
 	println(res)
 	exit(0)
+}
+
+fn (mut c Checker) ident_hover(node_ ast.Expr) {
+	if c.pref.linfo.method != .hover {
+		return
+	}
+	if !c.vls_is_the_node(node_.pos()) {
+		return
+	}
+	mut node := unsafe { node_ }
+	mut declaration := ''
+	mut doc := ''
+	match mut node {
+		ast.CallExpr {
+			if !c.vls_is_the_node(node.name_pos) {
+				return
+			}
+			f := c.get_fn_from_call_expr(node) or { return }
+			fn_name := f.name.all_after_last('.')
+			mut params := []string{cap: f.params.len}
+			for i, param in f.params {
+				if f.is_method && i == 0 {
+					continue
+				}
+				params << '${param.name} ${c.table.type_to_str(param.typ)}'
+			}
+			ret_str := if f.return_type != ast.no_type && f.return_type != ast.void_type {
+				' ' + c.table.type_to_str(f.return_type)
+			} else {
+				''
+			}
+			declaration = 'fn ${fn_name}(${params.join(', ')})${ret_str}'
+			receiver := if f.is_method {
+				c.table.sym(f.receiver_type).name.all_after_last('.')
+			} else {
+				''
+			}
+			if info := c.table.vls_info['fn_${f.mod}[${receiver}]${fn_name}'] {
+				doc = info.doc
+			}
+		}
+		ast.Ident {
+			for _, obj in c.table.global_scope.objects {
+				if obj is ast.ConstField && obj.name == node.name {
+					type_str := c.table.type_to_str(obj.typ)
+					declaration = 'const ${node.name.all_after_last('.')} ${type_str}'
+					if info := c.table.vls_info['const_${obj.name}'] {
+						doc = info.doc
+					}
+					break
+				} else if obj is ast.GlobalField && obj.name == node.name {
+					type_str := c.table.type_to_str(obj.typ)
+					declaration = '__global ${node.name.all_after_last('.')} ${type_str}'
+					break
+				}
+			}
+			if declaration == '' && !isnil(c.fn_scope) {
+				if obj := c.fn_scope.find_var(node.name) {
+					type_str := c.table.type_to_str(obj.typ)
+					declaration = '${node.name} ${type_str}'
+				}
+			}
+			if declaration == '' {
+				full_name := if node.mod != '' { '${node.mod}.${node.name}' } else { node.name }
+				idx := c.table.find_type_idx(full_name)
+				if idx > 0 {
+					sym := c.table.type_symbols[idx]
+					declaration = c.vls_hover_type_declaration(sym)
+					key := c.vls_hover_type_info_key(sym)
+					if info := c.table.vls_info['${key}_${sym.name}'] {
+						doc = info.doc
+					}
+				}
+			}
+		}
+		ast.SelectorExpr {
+			sym := c.table.sym(node.expr_type)
+			if field := c.table.find_field_with_embeds(sym, node.field_name) {
+				type_str := c.table.type_to_str(field.typ)
+				declaration = '${node.field_name} ${type_str}'
+			} else if method := c.table.find_method(sym, node.field_name) {
+				fn_name := method.name.all_after_last('.')
+				mut params := []string{cap: method.params.len}
+				for i, param in method.params {
+					if method.is_method && i == 0 {
+						continue
+					}
+					params << '${param.name} ${c.table.type_to_str(param.typ)}'
+				}
+				ret_str := if method.return_type != ast.no_type
+					&& method.return_type != ast.void_type {
+					' ' + c.table.type_to_str(method.return_type)
+				} else {
+					''
+				}
+				declaration = 'fn ${fn_name}(${params.join(', ')})${ret_str}'
+				receiver_name := sym.name.all_after_last('.')
+				if info := c.table.vls_info['fn_${method.mod}[${receiver_name}]${fn_name}'] {
+					doc = info.doc
+				}
+			} else {
+				return
+			}
+		}
+		ast.StructInit {
+			if c.vls_is_the_node(node.name_pos) {
+				sym := c.table.sym(node.typ)
+				declaration = c.vls_hover_type_declaration(sym)
+				key := c.vls_hover_type_info_key(sym)
+				if info := c.table.vls_info['${key}_${sym.name}'] {
+					doc = info.doc
+				}
+			} else {
+				for field in node.init_fields {
+					if c.vls_is_the_node(field.name_pos) {
+						sym := c.table.sym(node.typ)
+						if struct_field := c.table.find_field_with_embeds(sym, field.name) {
+							type_str := c.table.type_to_str(struct_field.typ)
+							declaration = '${field.name} ${type_str}'
+						}
+						break
+					}
+				}
+			}
+		}
+		ast.EnumVal {
+			enum_name := if node.enum_name == '' && node.typ != ast.void_type && node.typ != 0 {
+				c.table.sym(node.typ).name
+			} else {
+				node.enum_name
+			}
+			declaration = '${enum_name.all_after_last('.')}.${node.val}'
+		}
+		ast.TypeNode {
+			typ_str := c.table.type_to_str(node.typ)
+			idx := c.table.find_type_idx(typ_str)
+			if idx > 0 {
+				sym := c.table.type_symbols[idx]
+				declaration = c.vls_hover_type_declaration(sym)
+				key := c.vls_hover_type_info_key(sym)
+				if info := c.table.vls_info['${key}_${sym.name}'] {
+					doc = info.doc
+				}
+			}
+		}
+		ast.CastExpr {
+			typ_str := if node.typname != '' {
+				node.typname
+			} else {
+				c.table.type_to_str(node.typ)
+			}
+			idx := c.table.find_type_idx(typ_str)
+			if idx > 0 {
+				sym := c.table.type_symbols[idx]
+				declaration = c.vls_hover_type_declaration(sym)
+				key := c.vls_hover_type_info_key(sym)
+				if info := c.table.vls_info['${key}_${sym.name}'] {
+					doc = info.doc
+				}
+			}
+		}
+		else {}
+	}
+
+	if declaration == '' {
+		exit(0)
+	}
+	c.vls_write_hover(declaration, doc)
+	exit(0)
+}
+
+fn (c &Checker) vls_hover_type_declaration(sym ast.TypeSymbol) string {
+	name := sym.name.all_after_last('.')
+	match sym.kind {
+		.struct {
+			return 'struct ${name}'
+		}
+		.enum {
+			return 'enum ${name}'
+		}
+		.interface {
+			return 'interface ${name}'
+		}
+		.alias {
+			alias_info := sym.info as ast.Alias
+			parent_str := c.table.type_to_str(alias_info.parent_type)
+			return 'type ${name} = ${parent_str}'
+		}
+		.sum_type {
+			sum_info := sym.info as ast.SumType
+			variants := sum_info.variants.map(c.table.type_to_str(it)).join(' | ')
+			return 'type ${name} = ${variants}'
+		}
+		else {
+			return name
+		}
+	}
+}
+
+fn (c &Checker) vls_hover_type_info_key(sym ast.TypeSymbol) string {
+	return match sym.kind {
+		.alias { 'aliastype' }
+		.sum_type { 'sumtype' }
+		else { '${sym.kind}' }
+	}
+}
+
+fn (c &Checker) vls_write_hover(declaration string, doc string) {
+	mut lines := ['```v', declaration, '```']
+	if doc.len > 0 {
+		lines << ''
+		lines << doc
+	}
+	value := lines.join('\n').replace('\\', '\\\\').replace('"', '\\"').replace('\n', '\\n')
+	println('{"contents":{"kind":"markdown","value":"${value}"}}')
 }
 
 fn (mut c Checker) name_pos_gotodef(name string) ?token.Pos {
@@ -204,6 +457,7 @@ fn (mut c Checker) ident_gotodef(node_ ast.Expr) {
 		}
 		else {}
 	}
+
 	if pos.file_idx != -1 {
 		println('${c.table.filelist[pos.file_idx]}:${pos.line_nr + 1}:${pos.col}')
 	}
@@ -255,11 +509,7 @@ fn (mut c Checker) ident_autocomplete(node ast.Ident) {
 		c.module_autocomplete(mod_name)
 		exit(0)
 	}
-	if node.kind == .unresolved {
-		eprintln('unresolved type, maybe "${node.name}" was not defined. otherwise this is a bug, should never happen; please report')
-		exit(1)
-	}
-	if node.obj.typ == ast.no_type {
+	if node.kind == .unresolved || node.obj.typ == ast.no_type {
 		exit(0)
 	}
 	sym := c.table.sym(c.unwrap_generic(node.obj.typ))
@@ -272,8 +522,7 @@ fn (mut c Checker) ident_autocomplete(node ast.Ident) {
 fn (mut c Checker) module_autocomplete(mod string) {
 	mut details := []Detail{cap: 128}
 	c.vls_gen_mod_funcs_details(mut details, mod)
-	c.vls_gen_mod_type_details(mut details, mod, .alias, .interface, .enum, .sum_type,
-		.struct)
+	c.vls_gen_mod_type_details(mut details, mod, .alias, .interface, .enum, .sum_type, .struct)
 	c.vls_gen_mod_consts_details(mut details, mod)
 	c.vls_write_details(details)
 }
@@ -326,7 +575,8 @@ fn (c &Checker) vls_gen_mod_funcs_details(mut details []Detail, mod string) {
 	for _, f in c.table.fns {
 		mut name := f.name
 		if f.is_pub && !f.is_method && !f.is_static_type_method && name.all_before_last('.') == mod {
-			name = name.all_after_last('.') // The user already typed `mod.`, so suggest the name without module
+			name =
+				name.all_after_last('.') // The user already typed `mod.`, so suggest the name without module
 			type_string := if f.return_type != ast.no_type {
 				c.table.type_to_str(f.return_type)
 			} else {
@@ -336,10 +586,22 @@ fn (c &Checker) vls_gen_mod_funcs_details(mut details []Detail, mod string) {
 			if info := c.table.vls_info['fn_${mod}[]${name}'] {
 				doc = info.doc
 			}
+			// Build full fn declaration for hover display, e.g. "fn add(a int, b int) int"
+			mut params := []string{cap: f.params.len}
+			for param in f.params {
+				params << '${param.name} ${c.table.type_to_str(param.typ)}'
+			}
+			ret_str := if f.return_type != ast.no_type && f.return_type != ast.void_type {
+				' ' + c.table.type_to_str(f.return_type)
+			} else {
+				''
+			}
+			declaration := 'fn ${name}(${params.join(', ')})${ret_str}'
 			details << Detail{
 				kind:          .function
 				label:         name
 				detail:        type_string
+				declaration:   declaration
 				documentation: doc
 			}
 		}
@@ -371,6 +633,7 @@ fn (c &Checker) vls_gen_mod_type_details(mut details []Detail, mod string, kinds
 						'${sym.kind}'
 					}
 				}
+
 				if info := c.table.vls_info['${key}_${sym.name}'] {
 					doc = info.doc
 				}
@@ -439,6 +702,7 @@ fn (c &Checker) vls_gen_type_details(mut details []Detail, sym ast.TypeSymbol) {
 		}
 		else {}
 	}
+
 	// Aliases and other types can have methods, add them
 	for method in sym.methods {
 		method_ret_type := c.table.sym(method.return_type)
@@ -457,6 +721,7 @@ fn (c &Checker) vls_write_details(details []Detail) {
 		sb.write_string('{"kind":${int(detail.kind)},')
 		sb.write_string('"label":"${detail.label}",')
 		sb.write_string('"detail":"${detail.detail}",')
+		sb.write_string('"declaration":"${detail.declaration}",')
 		sb.write_string('"documentation":"${detail.documentation}",')
 		if insert_text := detail.insert_text {
 			sb.write_string('"insert_text":"${insert_text}",')
@@ -495,6 +760,7 @@ fn (c &Checker) vls_map_v_kind_to_lsp_kind(kind ast.Kind) DetailKind {
 			return .text
 		}
 	}
+
 	return .text
 }
 

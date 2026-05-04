@@ -1,0 +1,14 @@
+vlib/v/checker/tests/infix_value_ref_comparison_err.vv:6:6: error: infix expr: cannot use `&int` (right expression) as `int` (you can use it inside an `unsafe` block)
+    4 |     value := 1
+    5 |     reference := &value
+    6 |     _ = value == reference
+      |         ~~~~~~~~~~~~~~~~~~
+    7 | }
+    8 |
+vlib/v/checker/tests/infix_value_ref_comparison_err.vv:14:8: error: infix expr: cannot use `&int` (right expression) as `int` (you can use it inside an `unsafe` block)
+   12 |     match a {
+   13 |         int {
+   14 |             _ = a == &b
+      |                 ~~~~~~
+   15 |         }
+   16 |         else {}

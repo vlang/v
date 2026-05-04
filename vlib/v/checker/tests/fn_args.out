@@ -1,27 +1,53 @@
+vlib/v/checker/tests/fn_args.vv:1:8: notice: unused parameter: `a`
+    1 | fn uu8(a u8) {}
+      |        ^
+    2 | 
+    3 | fn arr(a []int) {}
+vlib/v/checker/tests/fn_args.vv:3:8: notice: unused parameter: `a`
+    1 | fn uu8(a u8) {}
+    2 | 
+    3 | fn arr(a []int) {}
+      |        ^
+    4 | 
+    5 | fn fun(a fn (int)) {}
+vlib/v/checker/tests/fn_args.vv:5:8: notice: unused parameter: `a`
+    3 | fn arr(a []int) {}
+    4 | 
+    5 | fn fun(a fn (int)) {}
+      |        ^
+    6 | 
+    7 | fn basic() {
+vlib/v/checker/tests/fn_args.vv:18:6: notice: unused parameter: `p`
+   16 | }
+   17 | 
+   18 | fn f(p &S1) {}
+      |      ^
+   19 | 
+   20 | fn ptr() {
 vlib/v/checker/tests/fn_args.vv:9:6: error: cannot use `&int` as `u8` in argument 1 to `uu8`
     7 | fn basic() {
     8 |     v := 4
     9 |     uu8(&v)
       |         ~~
-   10 |     arr([5]!)
+   10 |     arr([5.0]!)
    11 |     fun(fn (i &int) {})
-vlib/v/checker/tests/fn_args.vv:10:6: error: cannot use `[1]int` as `[]int` in argument 1 to `arr`
+vlib/v/checker/tests/fn_args.vv:10:6: error: cannot use `[1]f64` as `[]int` in argument 1 to `arr`
     8 |     v := 4
     9 |     uu8(&v)
-   10 |     arr([5]!)
-      |         ~~~~
+   10 |     arr([5.0]!)
+      |         ~~~~~~
    11 |     fun(fn (i &int) {})
    12 |     fun(fn (ii ...int) {})
 vlib/v/checker/tests/fn_args.vv:11:6: error: cannot use `fn (&int)` as `fn (int)` in argument 1 to `fun`
     9 |     uu8(&v)
-   10 |     arr([5]!)
+   10 |     arr([5.0]!)
    11 |     fun(fn (i &int) {})
       |         ~~~~~~~~~~~~~~
    12 |     fun(fn (ii ...int) {})
    13 | }
 Details: expected argument 1 to be NOT a pointer, but the passed argument 1 is a pointer
 vlib/v/checker/tests/fn_args.vv:12:6: error: cannot use `fn (...int)` as `fn (int)` in argument 1 to `fun`
-   10 |     arr([5]!)
+   10 |     arr([5.0]!)
    11 |     fun(fn (i &int) {})
    12 |     fun(fn (ii ...int) {})
       |         ~~~~~~~~~~~~~~~~~

@@ -16,10 +16,7 @@ const field_width = 10
 const tetro_size = 4
 const win_width = block_size * field_width
 const win_height = block_size * field_height
-const timer_period = 250 // ms
-
 const text_size = 24
-const limit_thickness = 3
 
 const text_cfg = gg.TextCfg{
 	align: .left
@@ -59,7 +56,6 @@ const colors = [
 	gg.rgb(74, 198, 255), // lightblue longest
 	gg.rgb(0, 170, 170),
 ]
-const background_color = gg.white
 const ui_color = gg.rgba(255, 0, 0, 210)
 
 // TODO: type Tetro [tetro_size]struct{ x, y int }
@@ -216,8 +212,7 @@ fn (mut g Game) draw_ghost() {
 		pos_y := g.move_ghost()
 		for i in 0 .. tetro_size {
 			tetro := g.tetro[i]
-			g.draw_block_color(pos_y + tetro.y, g.pos_x + tetro.x, gg.rgba(125, 125, 225,
-				40))
+			g.draw_block_color(pos_y + tetro.y, g.pos_x + tetro.x, gg.rgba(125, 125, 225, 40))
 		}
 	}
 }
@@ -423,7 +418,7 @@ fn parse_binary_tetro(t_ int) []Block {
 }
 
 fn on_event(e &gg.Event, mut game Game) {
-	// println('code=$e.char_code')
+	// println('code=${e.char_code}')
 	if e.typ == .key_down {
 		game.key_down(e.key_code)
 	}
@@ -463,6 +458,7 @@ fn (mut game Game) key_down(key gg.KeyCode) {
 		}
 		else {}
 	}
+
 	if game.state != .running {
 		return
 	}

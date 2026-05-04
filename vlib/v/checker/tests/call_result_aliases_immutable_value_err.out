@@ -1,0 +1,20 @@
+vlib/v/checker/tests/call_result_aliases_immutable_value_err.vv:18:2: error: `s` aliases mutable data from an immutable value, clone it first (or use `unsafe`)
+   16 |     arr := [1, 2, 3, 4, 5]
+   17 |     mut s := id(arr)
+   18 |     s[0] = 0
+      |     ^
+   19 |     id(arr)[0] = 0
+   20 |
+vlib/v/checker/tests/call_result_aliases_immutable_value_err.vv:19:2: error: `id(arr)` aliases mutable data from an immutable value, clone it first (or use `unsafe`)
+   17 |     mut s := id(arr)
+   18 |     s[0] = 0
+   19 |     id(arr)[0] = 0
+      |     ~~~~~~~
+   20 |
+   21 |     ja := User{
+vlib/v/checker/tests/call_result_aliases_immutable_value_err.vv:24:11: error: `rere(ja).name` aliases mutable data from an immutable value
+   22 |         name: 'foo'
+   23 |     }
+   24 |     rere(ja).name = 'bar'
+      |              ~~~~
+   25 | }

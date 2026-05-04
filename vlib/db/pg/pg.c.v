@@ -69,6 +69,33 @@ pub mut:
 	vals []?string
 }
 
+// val returns the value at `index`, flattening SQL NULL to an empty string.
+pub fn (row Row) val(index int) string {
+	if val := row.vals[index] {
+		return val
+	}
+	return ''
+}
+
+// values returns all row values, flattening SQL NULL to empty strings.
+pub fn (row Row) values() []string {
+	mut values := []string{cap: row.vals.len}
+	for val in row.vals {
+		values << if value := val { value } else { '' }
+	}
+	return values
+}
+
+// val_opt returns the raw optional value at `index`.
+pub fn (row Row) val_opt(index int) ?string {
+	return row.vals[index]
+}
+
+pub struct RowNoNull {
+pub mut:
+	vals []string
+}
+
 pub struct Result {
 pub:
 	cols map[string]int
@@ -88,6 +115,7 @@ pub:
 	host     string = 'localhost'
 	port     int    = 5432
 	user     string
+	username string
 	password string
 	dbname   string
 }
@@ -147,9 +175,9 @@ pub enum ExecStatusType {
 
 fn C.PQconnectdb(const_conninfo &char) &C.PGconn
 
-fn C.PQstatus(const_conn &C.PGconn) int
+fn C.PQstatus(const_conn &C.PGconn) i32
 
-fn C.PQtransactionStatus(const_conn &C.PGconn) int
+fn C.PQtransactionStatus(const_conn &C.PGconn) i32
 
 fn C.PQerrorMessage(const_conn &C.PGconn) &char
 
@@ -157,36 +185,36 @@ fn C.PQexec(res &C.PGconn, const_query &char) &C.PGresult
 
 //
 
-fn C.PQgetisnull(const_res &C.PGresult, int, int) int
+fn C.PQgetisnull(const_res &C.PGresult, i32, i32) i32
 
-fn C.PQgetvalue(const_res &C.PGresult, int, int) &char
+fn C.PQgetvalue(const_res &C.PGresult, i32, i32) &char
 
-fn C.PQresultStatus(const_res &C.PGresult) int
+fn C.PQresultStatus(const_res &C.PGresult) i32
 
-fn C.PQntuples(const_res &C.PGresult) int
+fn C.PQntuples(const_res &C.PGresult) i32
 
-fn C.PQnfields(const_res &C.PGresult) int
+fn C.PQnfields(const_res &C.PGresult) i32
 
-fn C.PQfname(const_res &C.PGresult, int) &char
+fn C.PQfname(const_res &C.PGresult, i32) &char
 
 // Params:
 // const Oid *paramTypes
 // const char *const *paramValues
 // const int *paramLengths
 // const int *paramFormats
-fn C.PQexecParams(conn &C.PGconn, const_command &char, nParams int, const_paramTypes &int, const_paramValues &char,
-	const_paramLengths &int, const_paramFormats &int, resultFormat int) &C.PGresult
+fn C.PQexecParams(conn &C.PGconn, const_command &char, nParams i32, const_paramTypes &int, const_paramValues &char,
+	const_paramLengths &int, const_paramFormats &int, resultFormat i32) &C.PGresult
 
-fn C.PQputCopyData(conn &C.PGconn, const_buffer &char, nbytes int) int
+fn C.PQputCopyData(conn &C.PGconn, const_buffer &char, nbytes i32) i32
 
-fn C.PQputCopyEnd(conn &C.PGconn, const_errmsg &char) int
+fn C.PQputCopyEnd(conn &C.PGconn, const_errmsg &char) i32
 
-fn C.PQgetCopyData(conn &C.PGconn, buffer &&char, async int) int
+fn C.PQgetCopyData(conn &C.PGconn, buffer &&char, async i32) i32
 
-fn C.PQprepare(conn &C.PGconn, const_stmtName &char, const_query &char, nParams int, const_param_types &&char) &C.PGresult
+fn C.PQprepare(conn &C.PGconn, const_stmtName &char, const_query &char, nParams i32, const_param_types &&char) &C.PGresult
 
-fn C.PQexecPrepared(conn &C.PGconn, const_stmtName &char, nParams int, const_paramValues &char,
-	const_paramLengths &int, const_paramFormats &int, resultFormat int) &C.PGresult
+fn C.PQexecPrepared(conn &C.PGconn, const_stmtName &char, nParams i32, const_paramValues &char,
+	const_paramLengths &int, const_paramFormats &int, resultFormat i32) &C.PGresult
 
 // cleanup
 
@@ -199,19 +227,75 @@ fn C.PQfinish(conn &C.PGconn)
 // LISTEN/NOTIFY support
 fn C.PQnotifies(conn &C.PGconn) &C.PGnotify
 
-fn C.PQconsumeInput(conn &C.PGconn) int
+fn C.PQconsumeInput(conn &C.PGconn) i32
 
-fn C.PQsocket(conn &C.PGconn) int
+fn C.PQsocket(conn &C.PGconn) i32
 
 fn C.PQescapeLiteral(conn &C.PGconn, str &char, length usize) &char
 
+fn conninfo_needs_quotes(value string) bool {
+	for ch in value {
+		if ch.is_space() || ch == `'` || ch == `\\` {
+			return true
+		}
+	}
+	return false
+}
+
+fn escape_conninfo_value(value string) string {
+	if !conninfo_needs_quotes(value) {
+		return value
+	}
+	mut escaped := []u8{cap: value.len + 2}
+	escaped << `'`
+	for ch in value {
+		if ch == `\\` || ch == `'` {
+			escaped << `\\`
+		}
+		escaped << ch
+	}
+	escaped << `'`
+	return escaped.bytestr()
+}
+
+// connection_user returns the configured username, accepting both `user` and `username`.
+pub fn (config Config) connection_user() !string {
+	if config.user != '' && config.username != '' && config.user != config.username {
+		return error('db.pg: Config.user and Config.username must match when both are set')
+	}
+	if config.user != '' {
+		return config.user
+	}
+	return config.username
+}
+
+fn (config Config) conninfo() !string {
+	mut parts := []string{cap: 5}
+	if config.host != '' {
+		parts << 'host=${escape_conninfo_value(config.host)}'
+	}
+	if config.port > 0 {
+		parts << 'port=${config.port}'
+	}
+	user := config.connection_user()!
+	if user != '' {
+		parts << 'user=${escape_conninfo_value(user)}'
+	}
+	if config.dbname != '' {
+		parts << 'dbname=${escape_conninfo_value(config.dbname)}'
+	}
+	if config.password != '' {
+		parts << 'password=${escape_conninfo_value(config.password)}'
+	}
+	return parts.join(' ')
+}
+
 // connect makes a new connection to the database server using
 // the parameters from the `Config` structure, returning
-// a connection error when something goes wrong
+// a connection error when something goes wrong.
+// Empty fields are omitted so libpq defaults can still apply.
 pub fn connect(config Config) !DB {
-	conninfo := 'host=${config.host} port=${config.port} user=${config.user} dbname=${config.dbname} password=${config.password}'
-
-	return connect_with_conninfo(conninfo)!
+	return connect_with_conninfo(config.conninfo()!)!
 }
 
 // connect_with_conninfo makes a new connection to the database server using
@@ -237,7 +321,7 @@ pub fn connect_with_conninfo(conninfo string) !DB {
 	}
 }
 
-fn res_to_rows(res voidptr) []Row {
+fn res_to_rows(res voidptr) []db.pg.Row {
 	nr_rows := C.PQntuples(res)
 	nr_cols := C.PQnfields(res)
 
@@ -255,6 +339,22 @@ fn res_to_rows(res voidptr) []Row {
 		rows << row
 	}
 
+	C.PQclear(res)
+	return rows
+}
+
+fn res_to_rows_no_null(res voidptr) []RowNoNull {
+	nr_rows := C.PQntuples(res)
+	nr_cols := C.PQnfields(res)
+	mut rows := []RowNoNull{}
+	for i in 0 .. nr_rows {
+		mut row := RowNoNull{}
+		for j in 0 .. nr_cols {
+			val := C.PQgetvalue(res, i, j)
+			row.vals << unsafe { cstring_to_vstring(val) }
+		}
+		rows << row
+	}
 	C.PQclear(res)
 	return rows
 }
@@ -328,14 +428,20 @@ pub fn (db &DB) q_string(query string) !string {
 
 // q_strings submit a command to the database server and
 // returns the resulting row set. Alias of `exec`
-pub fn (db &DB) q_strings(query string) ![]Row {
+pub fn (db &DB) q_strings(query string) ![]db.pg.Row {
 	return db.exec(query)
 }
 
 // exec submits a command to the database server and wait for the result, returning an error on failure and a row set on success
-pub fn (db &DB) exec(query string) ![]Row {
+pub fn (db &DB) exec(query string) ![]db.pg.Row {
 	res := C.PQexec(db.conn, &char(query.str))
 	return db.handle_error_or_rows(res, 'exec')
+}
+
+// exec_no_null works like exec, but the fields can't be NULL, no optionals
+pub fn (db &DB) exec_no_null(query string) ![]RowNoNull {
+	res := C.PQexec(db.conn, &char(query.str))
+	return db.handle_error_or_rows_no_null(res, 'exec')
 }
 
 // exec_result submits a command to the database server and wait for the result, returning an error on failure and a `Result` set on success
@@ -344,7 +450,7 @@ pub fn (db &DB) exec_result(query string) !Result {
 	return db.handle_error_or_result(res, 'exec_result')
 }
 
-fn rows_first_or_empty(rows []Row) !Row {
+fn rows_first_or_empty(rows []db.pg.Row) !Row {
 	if rows.len == 0 {
 		return error('no row')
 	}
@@ -363,15 +469,14 @@ pub fn (db &DB) exec_one(query string) !Row {
 }
 
 // exec_param_many executes a query with the parameters provided as ($1), ($2), ($n)
-pub fn (db &DB) exec_param_many(query string, params []string) ![]Row {
+pub fn (db &DB) exec_param_many(query string, params []string) ![]db.pg.Row {
 	unsafe {
 		mut param_vals := []&char{len: params.len}
 		for i in 0 .. params.len {
 			param_vals[i] = &char(params[i].str)
 		}
 
-		res := C.PQexecParams(db.conn, &char(query.str), params.len, 0, param_vals.data,
-			0, 0, 0)
+		res := C.PQexecParams(db.conn, &char(query.str), params.len, 0, param_vals.data, 0, 0, 0)
 		return db.handle_error_or_rows(res, 'exec_param_many')
 	}
 }
@@ -384,39 +489,38 @@ pub fn (db &DB) exec_param_many_result(query string, params []string) !Result {
 			param_vals[i] = &char(params[i].str)
 		}
 
-		res := C.PQexecParams(db.conn, &char(query.str), params.len, 0, param_vals.data,
-			0, 0, 0)
+		res := C.PQexecParams(db.conn, &char(query.str), params.len, 0, param_vals.data, 0, 0, 0)
 		return db.handle_error_or_result(res, 'exec_param_many_result')
 	}
 }
 
 // exec_param executes a query with 1 parameter ($1), and returns either an error on failure, or the full result set on success
-pub fn (db &DB) exec_param(query string, param string) ![]Row {
+pub fn (db &DB) exec_param(query string, param string) ![]db.pg.Row {
 	return db.exec_param_many(query, [param])
 }
 
 // exec_param2 executes a query with 2 parameters ($1) and ($2), and returns either an error on failure, or the full result set on success
-pub fn (db &DB) exec_param2(query string, param string, param2 string) ![]Row {
+pub fn (db &DB) exec_param2(query string, param string, param2 string) ![]db.pg.Row {
 	return db.exec_param_many(query, [param, param2])
 }
 
 // prepare submits a request to create a prepared statement with the given parameters, and waits for completion. You must provide the number of parameters (`$1, $2, $3 ...`) used in the statement
 pub fn (db &DB) prepare(name string, query string, num_params int) ! {
-	res := C.PQprepare(db.conn, &char(name.str), &char(query.str), num_params, 0) // defining param types is optional
+	res :=
+		C.PQprepare(db.conn, &char(name.str), &char(query.str), num_params, 0) // defining param types is optional
 
 	return db.handle_error(res, 'prepare')
 }
 
 // exec_prepared sends a request to execute a prepared statement with given parameters, and waits for the result. The number of parameters must match with the parameters declared in the prepared statement.
-pub fn (db &DB) exec_prepared(name string, params []string) ![]Row {
+pub fn (db &DB) exec_prepared(name string, params []string) ![]db.pg.Row {
 	unsafe {
 		mut param_vals := []&char{len: params.len}
 		for i in 0 .. params.len {
 			param_vals[i] = &char(params[i].str)
 		}
 
-		res := C.PQexecPrepared(db.conn, &char(name.str), params.len, param_vals.data,
-			0, 0, 0)
+		res := C.PQexecPrepared(db.conn, &char(name.str), params.len, param_vals.data, 0, 0, 0)
 		return db.handle_error_or_rows(res, 'exec_prepared')
 	}
 }
@@ -430,13 +534,26 @@ pub fn (db &DB) exec_prepared_result(name string, params []string) !Result {
 			param_vals[i] = &char(params[i].str)
 		}
 
-		res := C.PQexecPrepared(db.conn, &char(name.str), params.len, param_vals.data,
-			0, 0, 0)
+		res := C.PQexecPrepared(db.conn, &char(name.str), params.len, param_vals.data, 0, 0, 0)
 		return db.handle_error_or_result(res, 'exec_prepared_result')
 	}
 }
 
-fn (db &DB) handle_error_or_rows(res voidptr, elabel string) ![]Row {
+fn (db &DB) handle_error_or_rows(res voidptr, elabel string) ![]db.pg.Row {
+	e := unsafe { C.PQerrorMessage(db.conn).vstring() }
+	if e != '' {
+		C.PQclear(res)
+		// TODO make it default
+		$if trace_pg_error ? {
+			eprintln('pg error: ${e}')
+		}
+		return error('pg ${elabel} error:\n${e}')
+	}
+	return res_to_rows(res)
+}
+
+fn (db &DB) handle_error_or_rows_no_null(res voidptr, elabel string) ![]RowNoNull {
+	// TODO copypasta
 	e := unsafe { C.PQerrorMessage(db.conn).vstring() }
 	if e != '' {
 		C.PQclear(res)
@@ -445,7 +562,7 @@ fn (db &DB) handle_error_or_rows(res voidptr, elabel string) ![]Row {
 		}
 		return error('pg ${elabel} error:\n${e}')
 	}
-	return res_to_rows(res)
+	return res_to_rows_no_null(res)
 }
 
 // hande_error_or_result is an internal function similar to handle_error_or_rows that returns `Result` instead of `[]Row`
@@ -535,16 +652,14 @@ pub fn (db &DB) copy_expert(query string, mut file io.ReaderWriter) !int {
 	return 0
 }
 
-fn pg_stmt_worker(db &DB, query string, data orm.QueryData, where orm.QueryData) ![]Row {
+fn pg_stmt_worker(db &DB, query string, data orm.QueryData, where orm.QueryData) ![]db.pg.Row {
 	mut param_types := []u32{}
 	mut param_vals := []&char{}
 	mut param_lens := []int{}
 	mut param_formats := []int{}
 
-	pg_stmt_binder(mut param_types, mut param_vals, mut param_lens, mut param_formats,
-		data)
-	pg_stmt_binder(mut param_types, mut param_vals, mut param_lens, mut param_formats,
-		where)
+	pg_stmt_binder(mut param_types, mut param_vals, mut param_lens, mut param_formats, data)
+	pg_stmt_binder(mut param_types, mut param_vals, mut param_lens, mut param_formats, where)
 
 	res := C.PQexecParams(db.conn, &char(query.str), param_vals.len, param_types.data,
 		param_vals.data, param_lens.data, param_formats.data, 0) // here, the last 0 means require text results, 1 - binary results
@@ -572,6 +687,7 @@ pub fn (db &DB) begin(param PQTransactionParam) ! {
 		.repeatable_read { sql_stmt += 'REPEATABLE READ' }
 		.serializable { sql_stmt += 'SERIALIZABLE' }
 	}
+
 	_ := C.PQexec(db.conn, &char(sql_stmt.str))
 	e := unsafe { C.PQerrorMessage(db.conn).vstring() }
 	if e != '' {
@@ -616,6 +732,19 @@ pub fn (db &DB) savepoint(savepoint string) ! {
 		return error('savepoint should be a identifier string')
 	}
 	sql_stmt := 'SAVEPOINT ${savepoint};'
+	_ := C.PQexec(db.conn, &char(sql_stmt.str))
+	e := unsafe { C.PQerrorMessage(db.conn).vstring() }
+	if e != '' {
+		return error('pg exec error: "${e}"')
+	}
+}
+
+// release_savepoint releases a specified savepoint.
+pub fn (db &DB) release_savepoint(savepoint string) ! {
+	if !savepoint.is_identifier() {
+		return error('savepoint should be a identifier string')
+	}
+	sql_stmt := 'RELEASE SAVEPOINT ${savepoint};'
 	_ := C.PQexec(db.conn, &char(sql_stmt.str))
 	e := unsafe { C.PQerrorMessage(db.conn).vstring() }
 	if e != '' {

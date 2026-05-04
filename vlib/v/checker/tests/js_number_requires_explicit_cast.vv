@@ -1,0 +1,8 @@
+fn x(a JS.Number) {
+	println(a)
+}
+
+fn main() {
+	d := 1
+	x(d)
+}

@@ -1,0 +1,9 @@
+module main
+
+fn foo[T](v T) [T] {
+	return v
+}
+
+fn main() {
+	println(foo[string]('Hello World'))
+}

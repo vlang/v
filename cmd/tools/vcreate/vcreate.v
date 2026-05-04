@@ -46,7 +46,7 @@ fn main() {
 		Flag{
 			flag:        .bool
 			name:        'web'
-			description: 'Use the template for a vweb project.'
+			description: 'Use the template for a veb project.'
 		},
 	]
 	mut cmd := Command{
@@ -303,9 +303,12 @@ bin/
 # ENV
 .env
 
-# vweb and database
+# Web assets and local databases
 *.db
 *.js
+
+# Ignore installed modules through `v install --local`:
+modules/
 '
 	os.write_file(ignore_path, ignore_content) or {}
 }
@@ -328,5 +331,6 @@ fn (mut c Create) create_files_and_directories() {
 		.lib { 'library' }
 		.web { 'web' }
 	}
+
 	println('Created ${kind} project `${c.name}`')
 }

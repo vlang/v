@@ -49,14 +49,14 @@ const iv = [
 
 // message word schedule permutations
 const sigma = [
-	[u8(0), 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15],
-	[u8(2), 6, 3, 10, 7, 0, 4, 13, 1, 11, 12, 5, 9, 14, 15, 8],
-	[u8(3), 4, 10, 12, 13, 2, 7, 14, 6, 5, 9, 0, 11, 15, 8, 1],
-	[u8(10), 7, 12, 9, 14, 3, 13, 15, 4, 0, 11, 2, 5, 8, 1, 6],
-	[u8(12), 13, 9, 11, 15, 10, 14, 8, 7, 2, 5, 3, 0, 1, 6, 4],
-	[u8(9), 14, 11, 5, 8, 12, 15, 1, 13, 3, 0, 10, 2, 6, 4, 7],
-	[u8(11), 15, 5, 0, 1, 9, 8, 6, 14, 10, 2, 12, 3, 4, 7, 13],
-]
+	[u8(0), 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]!,
+	[u8(2), 6, 3, 10, 7, 0, 4, 13, 1, 11, 12, 5, 9, 14, 15, 8]!,
+	[u8(3), 4, 10, 12, 13, 2, 7, 14, 6, 5, 9, 0, 11, 15, 8, 1]!,
+	[u8(10), 7, 12, 9, 14, 3, 13, 15, 4, 0, 11, 2, 5, 8, 1, 6]!,
+	[u8(12), 13, 9, 11, 15, 10, 14, 8, 7, 2, 5, 3, 0, 1, 6, 4]!,
+	[u8(9), 14, 11, 5, 8, 12, 15, 1, 13, 3, 0, 10, 2, 6, 4, 7]!,
+	[u8(11), 15, 5, 0, 1, 9, 8, 6, 14, 10, 2, 12, 3, 4, 7, 13]!,
+]!
 
 // internal flags
 enum Flags as u32 {
@@ -137,7 +137,7 @@ pub fn Digest.new_hash() !Digest {
 // Digest.new_keyed_hash initializes a Digest structure for a Blake3 keyed hash
 pub fn Digest.new_keyed_hash(key []u8) !Digest {
 	// treat the key bytes as little endian u32 values
-	mut key_words := []u32{len: 8, cap: 8}
+	mut key_words := []u32{len: 8}
 	for i in 0 .. 8 {
 		key_words[i] = binary.little_endian_u32_at(key, i * 4)
 	}
@@ -153,7 +153,7 @@ pub fn Digest.new_derive_key_hash(context []u8) !Digest {
 	context_key := context_digest.checksum_internal(key_length)
 
 	// treat the context key bytes as little endian u32 values
-	mut key_words := []u32{len: 8, cap: 8}
+	mut key_words := []u32{len: 8}
 	for i in 0 .. 8 {
 		key_words[i] = binary.little_endian_u32_at(context_key, i * 4)
 	}
@@ -208,8 +208,8 @@ pub fn (mut d Digest) write(data []u8) ! {
 
 	for d.input.len > chunk_size {
 		mut chunk := Chunk{}
-		words := chunk.process_input(d.input[..chunk_size], d.key_words, d.chunk_counter,
-			d.flags, false)
+		words := chunk.process_input(d.input[..chunk_size], d.key_words, d.chunk_counter, d.flags,
+			false)
 
 		d.add_node(Node{ chaining_value: words[..8] }, 0)
 
@@ -309,6 +309,7 @@ fn root_output_bytes(state HashState, size u64) []u8 {
 	return output
 }
 
+@[direct_array_access]
 fn (mut d Digest) add_node(node Node, level u8) {
 	// if we are above the highst level,
 	// just add the node at the top

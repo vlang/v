@@ -203,6 +203,11 @@ const match_test_suite = [
     TestItem{"abcALxyz", r"^abc\X414cxyz$", 0,8},
     TestItem{"abcALxyz", r"^abc\X414Cxyz$", 0,8},
     TestItem{"abcBxyz", r"^abc\x41+xyz$", -1,3},
+
+    // test anchor
+    TestItem{"abc", r"^abc$",0,3},
+    TestItem{"abc", r"^abc+$",0,3},
+    TestItem{"abcd", r"^abc+$",-1,0},
 ]
 
 struct TestItemRe {
@@ -394,8 +399,8 @@ const find_all_test_suite = [
 	Test_find_all{
 		"ab",
 		r"[^\n]*",
-		[0, 2],
-		['ab']
+		[0, 2, 2, 2],
+		['ab', '']
 	},
 	Test_find_all{
 		"ab",
@@ -406,8 +411,20 @@ const find_all_test_suite = [
 	Test_find_all{
 		"ab",
 		r"([^\n]|a)*",
-		[0, 2],
-		['ab']
+		[0, 2, 2, 2],
+		['ab', '']
+	},
+	Test_find_all{
+		"",
+		r"a*",
+		[0, 0],
+		['']
+	},
+	Test_find_all{
+		"b",
+		r"a*",
+		[0, 0, 1, 1],
+		['', '']
 	}
 ]
 
@@ -645,7 +662,7 @@ fn test_regex() {
 				continue
 			}
 			// q_str := re.get_query()
-			// eprintln("Query: $q_str")
+			// eprintln("Query: ${q_str}")
 			start, end := re.find(to.src)
 
 			if start != to.s || end != to.e {
@@ -654,7 +671,7 @@ fn test_regex() {
 				assert false
 			} else {
 				// tmp_str := text[start..end]
-				// println("found in [$start, $end] => [$tmp_str]")
+				// println("found in [${start}, ${end}] => [${tmp_str}]")
 				assert true
 			}
 			continue
@@ -669,7 +686,7 @@ fn test_regex() {
 			assert false
 			continue
 		}
-		// println("#$c [$to.src] q[$to.q]")
+		// println("#${c} [${to.src}] q[${to.q}]")
 		start, end := re.match_string(to.src)
 
 		mut tmp_str := ''
@@ -704,6 +721,54 @@ fn test_regex() {
 	if debug {
 		println('DONE!')
 	}
+}
+
+fn test_zero_length_find_matches() {
+	mut re := regex.regex_opt(r'a*') or { panic(err) }
+	start_1, end_1 := re.match_string('')
+	assert start_1 == 0
+	assert end_1 == 0
+	start_2, end_2 := re.match_string('b')
+	assert start_2 == 0
+	assert end_2 == 0
+	start_3, end_3 := re.find('')
+	assert start_3 == 0
+	assert end_3 == 0
+	start_4, end_4 := re.find('b')
+	assert start_4 == 0
+	assert end_4 == 0
+	start_5, end_5 := re.find_from('b', 1)
+	assert start_5 == 1
+	assert end_5 == 1
+	assert re.find_all('') == [0, 0]
+	assert re.find_all('b') == [0, 0, 1, 1]
+	assert re.find_all_str('') == ['']
+	assert re.find_all_str('b') == ['', '']
+}
+
+fn test_case_insensitive_flag() {
+	mut re := regex.regex_opt(r'hello') or { panic(err) }
+	re.flag |= regex.f_ci
+	start1, end1 := re.match_string('HeLLo')
+	assert start1 == 0
+	assert end1 == 5
+
+	mut class_re := regex.regex_opt(r'^[A-Z]+$') or { panic(err) }
+	class_re.flag |= regex.f_ci
+	start2, end2 := class_re.match_string('abcXYZ')
+	assert start2 == 0
+	assert end2 == 6
+
+	mut neg_class_re := regex.regex_opt(r'^[^a]+$') or { panic(err) }
+	neg_class_re.flag |= regex.f_ci
+	start3, _ := neg_class_re.match_string('A')
+	assert start3 == -1
+
+	mut validator_re := regex.regex_opt(r'^\a+$') or { panic(err) }
+	validator_re.flag |= regex.f_ci
+	start4, end4 := validator_re.match_string('AbC')
+	assert start4 == 0
+	assert end4 == 3
 }
 
 // test regex_base function
@@ -904,7 +969,7 @@ fn test_long_query() {
 	// test 1
 	mut re := regex.regex_opt(query) or { panic(err) }
 	mut start, mut end := re.match_string(base_string)
-	// println("$start, $end")
+	// println("${start}, ${end}")
 	assert start >= 0 && end == base_string.len
 
 	// test 2
@@ -919,7 +984,7 @@ fn test_long_query() {
 	query = buf.str()
 	re = regex.regex_opt(query) or { panic(err) }
 	start, end = re.match_string(base_string)
-	// println("$start, $end")
+	// println("${start}, ${end}")
 	assert start >= 0 && end == base_string.len
 }
 

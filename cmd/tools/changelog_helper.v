@@ -15,7 +15,6 @@ enum Category {
 	web
 	orm
 	db
-	native
 	cgen
 	js_backend
 	comptime
@@ -47,8 +46,6 @@ const category_titles = '#### Improvements in the language
 
 #### Database drivers
 
-#### Native backend
-
 #### C backend
 
 #### JavaScript backend
@@ -79,17 +76,11 @@ mut:
 
 const is_interactive = false
 
-// Instantly updates CHANGELOG.md without confirming each line
-fn no_interactive(version string) {
-}
-
 fn main() {
 	mut version := ''
 
 	if os.args.len == 2 && os.args[1].starts_with('0.') {
 		version = os.args[1]
-		// no_interactive(version)
-		// return
 	} else {
 		println('Usage: v run tools/changelog_helper.v 0.4.5')
 		return
@@ -162,7 +153,7 @@ fn (mut app App) process_line(text string) ! {
 		category = .interpreter
 	} else if is_examples(text) {
 		category = .examples
-		// println("Skipping line (example) $text")
+		// println("Skipping line (example) ${text}")
 		// return
 	} else if is_skip(text) {
 		// Always skip cleanups, typos etc
@@ -195,8 +186,6 @@ fn (mut app App) process_line(text string) ! {
 		category = .compiler_internals
 	} else if is_improvements(text) {
 		category = .improvements
-	} else if is_native(text) {
-		category = .native
 	} else if is_vfmt(text) {
 		category = .vfmt
 	} else if text.contains('docs:') || text.contains('doc:') {
@@ -265,6 +254,7 @@ fn (mut app App) process_line(text string) ! {
 			}
 			else {}
 		}
+
 		app.counter++
 	} else {
 		line := Line{category, s}
@@ -296,7 +286,6 @@ const category_map = {
 	.web:                '#### Web'
 	.orm:                '#### ORM'
 	.db:                 '#### Database drivers'
-	.native:             '#### Native backend'
 	.cgen:               '#### C backend'
 	.js_backend:         '#### JavaScript backend'
 	.comptime:           '#### Comptime'
@@ -325,7 +314,7 @@ fn (l Line) write_at_category(txt string) ?string {
 	// Trim "prefix:" for some categories
 	// mut capitalized := false
 	mut has_prefix := true
-	if l.category in [.cgen, .checker, .improvements, .native, .orm, .interpreter] {
+	if l.category in [.cgen, .checker, .improvements, .orm, .interpreter] {
 		has_prefix = false
 		if semicolon_pos := line_text.index(': ') {
 			prefix := line_text[..semicolon_pos]
@@ -356,7 +345,9 @@ const db_strings = [
 	'db.sqlite',
 	'db.mysql',
 	'db.pg',
+	'db.redis',
 	'pg:',
+	'mysql:',
 ]
 
 const parser_strings = [
@@ -378,6 +369,7 @@ const stdlib_strings = [
 	'sokol',
 	'os:',
 	'rand:',
+	'rand.',
 	'math:',
 	'toml:',
 	'vlib:',
@@ -387,6 +379,7 @@ const stdlib_strings = [
 	'sync.',
 	'builtin:',
 	'builtin,',
+	'builtin.',
 	'strconv',
 	'readline',
 	'cli:',
@@ -398,9 +391,13 @@ const stdlib_strings = [
 	'log:',
 	'flag:',
 	'regex:',
+	'regex.',
 	'tmpl:',
 	'hash:',
 	'stbi:',
+	'atomic:',
+	'context:',
+	'thirdparty',
 ]
 
 fn is_stdlib(text string) bool {
@@ -446,6 +443,9 @@ const internal_strings = [
 	'builder:',
 	'pref:',
 	'v.util',
+	'v.generic',
+	'v.comptime',
+	'table:',
 ]
 
 fn is_internal(text string) bool {
@@ -474,6 +474,8 @@ const skip_strings = [
 	' typo',
 	'cleanup',
 	'clean up',
+	'build(deps)',
+	'FUNDING',
 ]
 
 fn is_examples(text string) bool {
@@ -497,6 +499,11 @@ const tools_strings = [
 	'REPL',
 	'vet',
 	'tools.',
+	'GNUmakefile',
+	'Dockerfile',
+	'vcomplete',
+	'vwatch',
+	'changelog',
 ]
 
 fn is_tools(text string) bool {
@@ -508,9 +515,7 @@ fn is_parser(text string) bool {
 }
 
 const web_strings = [
-	'vweb',
 	'veb',
-	'x.vweb',
 	'websocket:',
 	'pico',
 	'x.sessions',
@@ -524,14 +529,6 @@ const web_strings = [
 
 fn is_web(text string) bool {
 	return is_xxx(text, web_strings)
-}
-
-const native_strings = [
-	'native:',
-]
-
-fn is_native(text string) bool {
-	return is_xxx(text, native_strings)
 }
 
 const vfmt_strings = [
@@ -554,6 +551,7 @@ const os_support_strings = [
 	'windows',
 	'Linux',
 	'linux',
+	'msvc:',
 ]
 
 fn is_os_support(text string) bool {

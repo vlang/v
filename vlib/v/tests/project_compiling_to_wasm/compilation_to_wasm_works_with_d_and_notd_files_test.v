@@ -22,7 +22,7 @@ fn test_normal() {
 	}
 	defer { println('done ${@FN}') }
 	dump(vexe)
-	res := os.system('${os.quoted_path(vexe)} -o normal.exe ${os.quoted_path(project_folder)}')
+	res := os.system('${vexe} -o normal.exe ${os.quoted_path(project_folder)}')
 	assert res == 0
 	dump(res)
 	assert os.exists('normal.exe')
@@ -40,7 +40,8 @@ fn test_emcc() {
 		return
 	}
 	dump(emcc)
-	res := os.system('${os.quoted_path(vexe)} -os wasm32_emscripten -o wasm_check.html ${os.quoted_path(project_folder)}')
+	res :=
+		os.system('${vexe} -os wasm32_emscripten -o wasm_check.html ${os.quoted_path(project_folder)}')
 	assert res == 0
 	dump(res)
 	assert os.exists('wasm_check.html')

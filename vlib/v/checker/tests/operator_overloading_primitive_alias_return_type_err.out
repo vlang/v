@@ -1,0 +1,28 @@
+vlib/v/checker/tests/operator_overloading_primitive_alias_return_type_err.vv:4:16: notice: unused parameter: `b`
+    2 | type ByteString = string
+    3 | 
+    4 | fn (a Byte) + (b Byte) ByteString {
+      |                ^
+    5 |     return ByteString('x')
+    6 | }
+vlib/v/checker/tests/operator_overloading_primitive_alias_return_type_err.vv:8:16: notice: unused parameter: `b`
+    6 | }
+    7 | 
+    8 | fn (a Byte) - (b Byte) string {
+      |                ^
+    9 |     return 'y'
+   10 | }
+vlib/v/checker/tests/operator_overloading_primitive_alias_return_type_err.vv:4:24: error: operator `+` methods on primitive aliases should return `Byte`
+    2 | type ByteString = string
+    3 | 
+    4 | fn (a Byte) + (b Byte) ByteString {
+      |                        ~~~~~~~~~~
+    5 |     return ByteString('x')
+    6 | }
+vlib/v/checker/tests/operator_overloading_primitive_alias_return_type_err.vv:8:24: error: operator `-` methods on primitive aliases should return `Byte`
+    6 | }
+    7 | 
+    8 | fn (a Byte) - (b Byte) string {
+      |                        ~~~~~~
+    9 |     return 'y'
+   10 | }

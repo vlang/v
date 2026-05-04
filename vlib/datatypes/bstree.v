@@ -46,12 +46,12 @@ fn new_none_node[T](init bool) &BSTreeNode[T] {
 }
 
 // bind to an actual instance of a node.
-fn (mut node BSTreeNode[T]) bind(mut to_bind BSTreeNode[T], left bool) {
+fn (mut node BSTreeNode[T]) bind(mut to_bind BSTreeNode[T], _left bool) {
 	node.left = to_bind.left
 	node.right = to_bind.right
 	node.value = to_bind.value
 	node.is_init = to_bind.is_init
-	to_bind = new_none_node[T](false)
+	to_bind = *new_none_node[T](false)
 }
 
 // Pure Binary Seach Tree implementation
@@ -140,7 +140,7 @@ fn (mut bst BSTree[T]) remove_helper(mut node BSTreeNode[T], value T, left bool)
 			} else {
 				parent.right = new_none_node[T](false)
 			}
-			node = new_none_node[T](false)
+			node = *new_none_node[T](false)
 		}
 		return true
 	}

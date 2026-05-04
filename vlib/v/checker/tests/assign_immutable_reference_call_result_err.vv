@@ -1,0 +1,17 @@
+module main
+
+@[heap]
+struct User {
+mut:
+	name string
+}
+
+fn rere(a &User) &User {
+	return a
+}
+
+fn main() {
+	ja := User{name: 'foo'}
+	mut x := rere(ja)
+	x.name = 'bar'
+}

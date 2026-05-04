@@ -33,7 +33,11 @@ pub fn socks5_ssl_dial(proxy_url string, host string, username string, password 
 		in_memory_verification: false
 	)!
 	mut con := socks5_dial(proxy_url, host, username, password)!
-	ssl_conn.connect(mut con, host.all_before_last(':')) or { panic(err) }
+	ssl_conn.connect(mut con, host.all_before_last(':')) or {
+		con.close() or {}
+		return err
+	}
+	ssl_conn.owns_socket = true
 	return ssl_conn
 }
 

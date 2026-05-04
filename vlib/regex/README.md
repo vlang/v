@@ -206,6 +206,8 @@ that is an `[]int` inside the `RE` struct.
 **example:**
 
 ```v oksyntax
+import regex
+
 text := 'cpaz cpapaz cpapapaz'
 query := r'(c(pa)+z ?)+'
 mut re := regex.regex_opt(query) or { panic(err) }
@@ -246,6 +248,8 @@ pub:
 Here is an example of use:
 
 ```v oksyntax
+import regex
+
 /*
 This simple function converts an HTML RGB value with 3 or 6 hex digits to
 an u32 value, this function is not optimized and it is only for didatical
@@ -419,6 +423,8 @@ use a name map in the `re` struct, using the function `re.get_group_by_name`.
 Here is a more complex example of using them:
 
 ```v oksyntax
+import regex
+
 // This function demonstrate the use of the named groups
 fn convert_html_rgb_n(in_col string) u32 {
 	mut n_digit := if in_col.len == 4 { 1 } else { 2 }
@@ -493,6 +499,8 @@ re.flag = regex.f_bin
 ```
 
 - `f_bin`: parse a string as bytes, utf-8 management disabled.
+
+- `f_ci`: match ASCII letters without case sensitivity.
 
 - `f_efm`: exit on the first char matches in the query, used by the
   find function.

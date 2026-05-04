@@ -71,10 +71,10 @@ fn greet_func(cmd Command) ! {
 	}
 }
 
-fn greet_pre_func(cmd Command) ! {
+fn greet_pre_func(_cmd Command) ! {
 	println('This is a function running before the main function.\n')
 }
 
-fn greet_post_func(cmd Command) ! {
+fn greet_post_func(_cmd Command) ! {
 	println('\nThis is a function running after the main function.')
 }

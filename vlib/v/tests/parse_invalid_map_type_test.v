@@ -8,8 +8,7 @@ fn test_parser_map_type() {
 		output_mode: .silent
 		is_fmt:      true
 	}
-	result := parser.parse_text('a := map[*Node]bool', '', mut table, .parse_comments,
-		pref_)
+	result := parser.parse_text('a := map[*Node]bool', '', mut table, .parse_comments, pref_)
 	println(result)
 	assert true
 }

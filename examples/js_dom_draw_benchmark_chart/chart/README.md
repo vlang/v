@@ -9,18 +9,18 @@ Dockerfile
 
 `v run .`
 
-A message like `[Vweb] Running app on http://localhost:3001/` should appear
+A message like `[veb] Running app on http://localhost:3001/` should appear
 
 `exit`
 
 # To implement new benchmarks in v
 
-In `examples/js_dom_draw_benchmark_chart/v_vweb_orm/src/main.v` path
+In `examples/js_dom_draw_benchmark_chart/v_veb_orm/src/main.v` path
 Create a route returning a `Response` struct like:
 
 ```v ignore
 @['/sqlite-memory/:count']
-pub fn (mut app App) sqlite_memory(count int) vweb.Result {
+pub fn (mut app App) sqlite_memory(mut ctx Context, count int) veb.Result {
 	mut insert_stopwatchs := []int{}
 	mut select_stopwatchs := []int{}
 	mut update_stopwatchs := []int{}
@@ -56,7 +56,7 @@ pub fn (mut app App) sqlite_memory(count int) vweb.Result {
 		@select:select_stopwatchs
 		update:	update_stopwatchs
 	}
-	return app.json(response)
+	return ctx.json(response)
 }
 
 ```
@@ -66,7 +66,7 @@ Create a service to request the benchmarks data by http
 Decode the info to `FrameworkBenchmarkResponse`
 ```v ignore
 fn typescript_sqlite_memory() ?FrameworkBenchmarkResponse {
-	url := 'http://localhost:3000/sqlite-memory/$benchmark_loop_length'
+	url := 'http://localhost:3000/sqlite-memory/${benchmark_loop_length}'
 	res := http.get(url) or { panic(err) }
 	framework_benchmark_response := json.decode(FrameworkBenchmarkResponse, res.body)!
 	return framework_benchmark_response
@@ -78,7 +78,7 @@ Create a service to request the benchmarks data by http
 Decode the info to `FrameworkBenchmarkResponse`
 ```v ignore
 fn typescript_sqlite_memory() ?FrameworkBenchmarkResponse {
-	url := 'http://localhost:3000/sqlite-memory/$benchmark_loop_length'
+	url := 'http://localhost:3000/sqlite-memory/${benchmark_loop_length}'
 	res := http.get(url) or { panic(err) }
 	framework_benchmark_response := json.decode(FrameworkBenchmarkResponse, res.body)!
 	return framework_benchmark_response

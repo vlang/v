@@ -39,7 +39,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     env:
-      MOPTIONS: --diff --deprecated --relative-paths --exclude /vlib/v/ --exclude /builtin/linux_bare/ --exclude /testdata/ --exclude /tests/
+      MOPTIONS: --diff --deprecated --relative-paths --exclude /vlib/v/ --exclude /vlib/v2/ --exclude /builtin/linux_bare/ --exclude /testdata/ --exclude /tests/ --exclude /vlib/sokol/ --exclude /vlib/x/
     steps:
       - uses: actions/checkout@v6
       - name: Build V

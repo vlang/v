@@ -46,6 +46,9 @@ pub fn merge_doc_comments(comments []DocComment) string {
 	if comments.len == 0 {
 		return ''
 	}
+	if raw_markdown := merge_raw_markdown_comments(comments) {
+		return raw_markdown
+	}
 	mut doc_comments := []string{}
 	for i := comments.len - 1; i >= 0; i-- {
 		if comments[i].is_multi {
@@ -92,6 +95,14 @@ pub fn merge_doc_comments(comments []DocComment) string {
 				next_on_newline = true
 				continue
 			}
+			if l.starts_with('>') {
+				if !last_ends_with_lb {
+					comment += '\n'
+				}
+				comment += l + '\n'
+				next_on_newline = true
+				continue
+			}
 			is_list := l.len > 1 && ((l[1] == ` ` && l[0] in [`-`, `*`, `+`])
 				|| (l.len > 2 && l[2] == ` ` && l[1] == `.` && l[0].is_digit()))
 			line_before_spaces := l.before(' ')
@@ -133,6 +144,20 @@ pub fn merge_doc_comments(comments []DocComment) string {
 		}
 	}
 	return comment
+}
+
+fn merge_raw_markdown_comments(comments []DocComment) ?string {
+	if !comments.all(it.is_readme) {
+		return none
+	}
+	mut raw_markdown := []string{}
+	for i := comments.len - 1; i >= 0; i-- {
+		if comments[i].is_multi {
+			continue
+		}
+		raw_markdown << comments[i].text.trim_left('\x01')
+	}
+	return raw_markdown.reverse().join('\n')
 }
 
 // stmt_signature returns the signature of a given `ast.Stmt` node.

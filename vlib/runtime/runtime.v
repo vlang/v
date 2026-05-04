@@ -17,7 +17,7 @@ pub fn nr_jobs() int {
 		// in its cgen stage. Returning 1 here, increases the chances of it working on non linux systems.
 		return 1
 	}
-	mut cpus := nr_cpus() - 1
+	mut cpus := nr_cpus()
 	// allow for overrides, for example using `VJOBS=32 ./v test .`
 	vjobs := os.getenv('VJOBS').int()
 	if vjobs > 0 {

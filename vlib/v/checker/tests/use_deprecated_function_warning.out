@@ -1,5 +1,12 @@
+vlib/v/checker/tests/use_deprecated_function_warning.vv:21:4: notice: unused function: `method`
+   19 | fn (s S1) m() {}
+   20 |
+   21 | fn method() {
+      |    ~~~~~~
+   22 |     s := S1{}
+   23 |     s.m()
 vlib/v/checker/tests/use_deprecated_function_warning.vv:12:2: warning: function `xyz` has been deprecated
-   10 | 
+   10 |
    11 | fn main() {
    12 |     xyz()
       |     ~~~~~

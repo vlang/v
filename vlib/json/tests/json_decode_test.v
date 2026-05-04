@@ -45,6 +45,44 @@ fn test_decode_u64() {
 	// println(m)
 }
 
+fn test_decode_large_u64_from_decimal_json() {
+	cases := [
+		u64(9007199254740991),
+		u64(9007199254740992),
+		u64(9007199254740993),
+		u64(9223372036854775807),
+		u64(9223372036854775808),
+		u64(9223372036854775809),
+		u64(18446744073709551614),
+		u64(18446744073709551615),
+	]
+	for want in cases {
+		got := json.decode([]u64, '[${want}]')!
+		assert got.len == 1
+		assert got[0] == want
+	}
+}
+
+fn test_encode_decode_large_u64_roundtrip() {
+	cases := [
+		u64(9007199254740991),
+		u64(9007199254740992),
+		u64(9007199254740993),
+		u64(9223372036854775807),
+		u64(9223372036854775808),
+		u64(9223372036854775809),
+		u64(18446744073709551614),
+		u64(18446744073709551615),
+	]
+	for want in cases {
+		encoded := json.encode([want])
+		assert encoded == '[${want}]'
+		got := json.decode([]u64, encoded)!
+		assert got.len == 1
+		assert got[0] == want
+	}
+}
+
 //
 
 pub struct Comment {

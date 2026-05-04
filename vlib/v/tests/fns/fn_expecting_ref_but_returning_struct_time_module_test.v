@@ -13,7 +13,7 @@ fn test_call_fn_that_requires_reference_with_function_that_returns_a_struct_manu
 // v should produce temporary intermediate variables in chained calls:
 fn test_call_fn_that_requires_reference_with_function_that_returns_a_struct_chained() {
 	res := (tmisc.random().unix())
-	println('res: $res')
+	println('res: ${res}')
 	assert true
 }
 */

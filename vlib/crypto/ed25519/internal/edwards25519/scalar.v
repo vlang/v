@@ -1068,7 +1068,8 @@ fn (mut s Scalar) signed_radix16() []i8 {
 // utility function
 // generate returns a valid (reduced modulo l) Scalar with a distribution
 // weighted towards high, low, and edge values.
-fn generate_scalar(size int) !Scalar {
+// fn generate_scalar(size int) !Scalar {
+fn generate_scalar(_ int) !Scalar {
 	/*
 	s := scZero
 	diceRoll := rand.Intn(100)
@@ -1157,6 +1158,7 @@ fn generate_scalar(size int) !Scalar {
 			s.s[31] &= (1 * 16) - 1
 		}
 	}
+
 	return s
 }
 

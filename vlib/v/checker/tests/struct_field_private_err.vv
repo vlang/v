@@ -8,4 +8,8 @@ _ := amod.Bcg{
 	x: 0
 }
 
+_ := amod.Bcg2[int]{
+	x: 0
+}
+
 amod.foo(bar: 'bar')

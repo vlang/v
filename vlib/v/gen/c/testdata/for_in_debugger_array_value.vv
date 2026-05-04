@@ -1,0 +1,7 @@
+// vtest vflags: -g
+fn main() {
+	areas := ['game', 'web', 'tools']
+	for area in areas {
+		println('Hello, ${area} developers!')
+	}
+}

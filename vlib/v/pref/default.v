@@ -4,6 +4,7 @@
 module pref
 
 import os
+import strings
 import v.vcache
 
 pub const default_module_path = os.vmodules_dir()
@@ -12,6 +13,27 @@ pub fn new_preferences() &Preferences {
 	mut p := &Preferences{}
 	p.fill_with_defaults()
 	return p
+}
+
+const windows_default_gc_defines = ['gcboehm', 'gcboehm_full', 'gcboehm_incr', 'gcboehm_opt',
+	'gcboehm_leak', 'vgc']
+
+fn (p &Preferences) default_thread_stack_size() int {
+	return match p.arch {
+		.arm32, .rv32, .i386, .ppc, .wasm32 { 2 * 1024 * 1024 }
+		else { 8 * 1024 * 1024 }
+	}
+}
+
+fn (p &Preferences) is_linux_wayland_only_session() bool {
+	if p.os != .linux {
+		return false
+	}
+	if os.getenv('DISPLAY') != '' {
+		return false
+	}
+	return os.getenv('WAYLAND_DISPLAY') != ''
+		|| os.getenv('XDG_SESSION_TYPE').to_lower() == 'wayland'
 }
 
 fn (mut p Preferences) expand_lookup_paths() {
@@ -64,23 +86,74 @@ fn (mut p Preferences) setup_os_and_arch_when_not_explicitly_set() {
 		p.build_options << '-os ${host_os.lower()}'
 	}
 
-	if !p.output_cross_c {
-		if p.os != host_os {
-			// TODO: generalise this not only for macos->linux, after considering the consequences for vab/Android:
-			if host_os == .macos && p.os == .linux {
-				// Cross compilation from macos -> linux; assume AMD64 as the target architecture for now
-				if p.arch == ._auto {
-					p.arch = .amd64
-					p.build_options << '-arch amd64'
-				}
-				p.parse_define('use_bundled_libgc')
-			}
+	if !p.output_cross_c && p.os != host_os {
+		if p.os == .linux && p.arch == ._auto {
+			// The bundled linuxroot sysroot currently only contains x86_64 runtime files.
+			p.set_default_arch(.amd64)
+		}
+		// TODO: generalise this not only for macos->linux, after considering the consequences for vab/Android:
+		if host_os == .macos && p.os == .linux {
+			p.parse_define('use_bundled_libgc')
 		}
 	}
-	if p.arch == ._auto {
-		p.arch = get_host_arch()
-		p.build_options << '-arch ${p.arch}'
+}
+
+fn (mut p Preferences) set_default_arch(arch Arch) {
+	if p.arch != ._auto || arch == ._auto {
+		return
 	}
+	p.arch = arch
+	p.build_options << '-arch ${arch}'
+}
+
+fn arch_from_ccompiler_name(ccompiler string) Arch {
+	name := os.file_name(ccompiler).to_lower_ascii()
+	if name.contains('x86_64') || name.contains('amd64') {
+		return .amd64
+	}
+	if name.contains('aarch64') || name.contains('arm64-v8a') || name.contains('arm64') {
+		return .arm64
+	}
+	if name.contains('armeabi-v7a') || name.contains('armv7')
+		|| name.contains('arm-linux-androideabi') || name.contains('arm32') {
+		return .arm32
+	}
+	if name.contains('riscv64') {
+		return .rv64
+	}
+	if name.contains('riscv32') {
+		return .rv32
+	}
+	if name.contains('i686') || name.contains('i386') || name.contains('x86') {
+		return .i386
+	}
+	if name.contains('s390x') {
+		return .s390x
+	}
+	if name.contains('ppc64le') {
+		return .ppc64le
+	}
+	if name.contains('loongarch64') {
+		return .loongarch64
+	}
+	if name.contains('sparc64') {
+		return .sparc64
+	}
+	if name.contains('ppc64') {
+		return .ppc64
+	}
+	return ._auto
+}
+
+fn (mut p Preferences) resolve_default_arch() {
+	if p.arch != ._auto {
+		return
+	}
+	host_os := if p.backend == .wasm { OS.wasi } else { get_host_os() }
+	if p.os != host_os {
+		p.set_default_arch(arch_from_ccompiler_name(p.ccompiler))
+	}
+	p.set_default_arch(get_host_arch())
 }
 
 pub fn (mut p Preferences) defines_map_unique_keys() string {
@@ -96,27 +169,22 @@ pub fn (mut p Preferences) defines_map_unique_keys() string {
 	return skeys.join(',')
 }
 
+fn (mut p Preferences) disable_tcc_shared_backtraces() {
+	if p.is_shared && p.ccompiler_type == .tinyc && 'no_backtrace' !in p.compile_defines_all {
+		// TCC shared libraries should not depend on TCC's backtrace runtime symbols.
+		p.parse_define('no_backtrace')
+	}
+}
+
+// fill_with_defaults initializes unset preferences and derives build options from them.
 pub fn (mut p Preferences) fill_with_defaults() {
 	p.setup_os_and_arch_when_not_explicitly_set()
 	p.expand_lookup_paths()
 	p.expand_exclude_paths()
 	rpath := os.real_path(p.path)
 	if p.out_name == '' {
-		filename := os.file_name(rpath).trim_space()
-		mut base := filename.all_before_last('.')
-		if os.file_ext(base) in ['.c', '.js', '.wasm'] {
-			base = base.all_before_last('.')
-		}
-		if base == '' {
-			// The file name is just `.v` or `.vsh` or `.*`
-			base = filename
-		}
 		target_dir := if os.is_dir(rpath) { rpath } else { os.dir(rpath) }
-		if p.raw_vsh_tmp_prefix != '' {
-			p.out_name = os.join_path(target_dir, p.raw_vsh_tmp_prefix + '.' + base)
-		} else {
-			p.out_name = os.join_path(target_dir, base)
-		}
+		p.out_name = os.join_path(target_dir, p.default_output_name(rpath))
 		// Do *NOT* be tempted to generate binaries in the current work folder,
 		// when -o is not given by default, like Go, Clang, GCC etc do.
 		//
@@ -140,6 +208,8 @@ pub fn (mut p Preferences) fill_with_defaults() {
 		// If you do decide to break it, please *at the very least*, test it
 		// extensively, and make a PR about it, instead of committing directly
 		// and breaking the CI, VC, and users doing `v up`.
+	} else if p.out_name_is_dir {
+		p.out_name = os.join_path(p.out_name, p.default_output_name(rpath))
 	}
 	npath := rpath.replace('\\', '/')
 	p.building_v = !p.is_repl && (npath.ends_with('cmd/v') || npath.ends_with('cmd/tools/vfmt.v'))
@@ -157,7 +227,7 @@ pub fn (mut p Preferences) fill_with_defaults() {
 		p.parse_define('cross') // TODO: remove when `$if cross {` works
 	}
 	if p.gc_mode == .unknown {
-		if p.backend != .c || p.building_v || p.is_bare {
+		if p.backend != .c || p.building_v || p.is_bare || p.os == .windows || p.is_musl {
 			p.gc_mode = .no_gc
 			p.build_options << ['-gc', 'none']
 		} else {
@@ -181,7 +251,12 @@ pub fn (mut p Preferences) fill_with_defaults() {
 		p.default_cpp_compiler()
 	}
 	p.find_cc_if_cross_compiling()
+	p.resolve_default_arch()
+	if !p.thread_stack_size_set_by_flag {
+		p.thread_stack_size = p.default_thread_stack_size()
+	}
 	p.ccompiler_type = cc_from_string(p.ccompiler)
+	p.normalize_gc_defaults_for_resolved_ccompiler()
 	p.is_test = p.path.ends_with('_test.v') || p.path.ends_with('_test.vv')
 		|| p.path.all_before_last('.v').all_before_last('.').ends_with('_test')
 	p.is_vsh = p.path.ends_with('.vsh') || p.raw_vsh_tmp_prefix != ''
@@ -197,6 +272,9 @@ pub fn (mut p Preferences) fill_with_defaults() {
 
 	final_os := p.os.lower()
 	p.parse_define(final_os)
+	if p.is_linux_wayland_only_session() && 'linux_wayland_session' !in p.compile_defines_all {
+		p.parse_define('linux_wayland_session')
+	}
 
 	// Prepare the cache manager. All options that can affect the generated cached .c files
 	// should go into res.cache_manager.vopts, which is used as a salt for the cache hash.
@@ -210,7 +288,7 @@ pub fn (mut p Preferences) fill_with_defaults() {
 		p.third_party_option.trim_space(),
 		p.lookup_path.str(),
 	])
-	// eprintln('prefs.cache_manager: $p')
+	// eprintln('prefs.cache_manager: ${p}')
 	// disable use_cache for specific cases:
 	if os.user_os() == 'windows' {
 		p.use_cache = false
@@ -237,8 +315,103 @@ pub fn (mut p Preferences) fill_with_defaults() {
 	}
 }
 
+// normalize_gc_defaults_for_resolved_ccompiler clears stale compiler-dependent
+// defaults after the effective C compiler has been resolved.
+pub fn (mut p Preferences) normalize_gc_defaults_for_resolved_ccompiler() {
+	p.disable_tcc_shared_backtraces()
+	if p.os != .windows || p.ccompiler_type != .msvc || p.gc_set_by_flag {
+		return
+	}
+	p.gc_mode = .no_gc
+	p.compile_defines = p.compile_defines.filter(it !in windows_default_gc_defines)
+	p.compile_defines_all = p.compile_defines_all.filter(it !in windows_default_gc_defines)
+	for define in windows_default_gc_defines {
+		p.compile_values.delete(define)
+	}
+	mut build_options := []string{cap: p.build_options.len + 2}
+	mut i := 0
+	for i < p.build_options.len {
+		option := p.build_options[i]
+		if option == '-gc' {
+			i += 2
+			continue
+		}
+		if option.starts_with('-d ') {
+			define := option[3..].all_before('=')
+			if define in windows_default_gc_defines {
+				i++
+				continue
+			}
+		}
+		build_options << option
+		i++
+	}
+	build_options << ['-gc', 'none']
+	p.build_options = build_options
+}
+
+fn (p &Preferences) default_output_name(rpath string) string {
+	filename := os.file_name(rpath).trim_space()
+	mut base := filename.all_before_last('.')
+	if os.file_ext(base) in ['.c', '.js', '.wasm'] {
+		base = base.all_before_last('.')
+	}
+	if base == '' {
+		// The file name is just `.v` or `.vsh` or `.*`
+		base = filename
+	}
+	if needs_safe_default_output_name(base, filename, rpath) {
+		base = safe_default_output_name(filename)
+	}
+	if p.raw_vsh_tmp_prefix != '' {
+		return p.raw_vsh_tmp_prefix + '.' + base
+	}
+	return base
+}
+
+fn needs_safe_default_output_name(base string, filename string, rpath string) bool {
+	if base == '' || base in ['.', '..', '-'] {
+		return true
+	}
+	if base == filename && filename.starts_with('.') && !os.is_dir(rpath) {
+		return true
+	}
+	if base.ends_with('.c') || base.ends_with('.js') || base.ends_with('.wasm') {
+		return true
+	}
+	for ch in base {
+		if ch < ` ` || ch == 127 {
+			return true
+		}
+	}
+	return false
+}
+
+fn safe_default_output_name(filename string) string {
+	mut sanitized := strings.new_builder(filename.len + 4)
+	for ch in filename {
+		if ch < ` ` || ch == 127 {
+			sanitized.write_u8(`_`)
+		} else {
+			sanitized.write_u8(ch)
+		}
+	}
+	sanitized.write_string('.out')
+	return sanitized.str()
+}
+
 fn (mut p Preferences) find_cc_if_cross_compiling() {
 	if p.os == get_host_os() {
+		return
+	}
+	if p.ccompiler_set_by_flag {
+		// Only mingw compilers can cross-compile for Windows (others lack Windows headers),
+		// so override any non-mingw compiler with the proper cross-compiler.
+		if p.os == .windows && !p.ccompiler.contains('mingw') {
+			p.ccompiler = p.vcross_compiler_name()
+			return
+		}
+		// Respect explicit `-cc` selection even in cross-compilation mode.
 		return
 	}
 	if p.os == .windows && p.ccompiler == 'msvc' {
@@ -252,8 +425,9 @@ fn (mut p Preferences) find_cc_if_cross_compiling() {
 }
 
 fn (mut p Preferences) try_to_use_tcc_by_default() {
+	preferred_tcc := default_tcc_compiler()
 	if p.ccompiler == 'tcc' {
-		p.ccompiler = default_tcc_compiler()
+		p.ccompiler = if preferred_tcc != '' { preferred_tcc } else { 'tcc' }
 		return
 	}
 	if p.ccompiler == '' {
@@ -266,19 +440,45 @@ fn (mut p Preferences) try_to_use_tcc_by_default() {
 		if p.is_prod {
 			return
 		}
-		p.ccompiler = default_tcc_compiler()
+		p.ccompiler = preferred_tcc
 		return
 	}
 }
 
+fn usable_system_tcc_compiler() string {
+	if get_host_os() != .termux {
+		return ''
+	}
+	system_tcc := os.find_abs_path_of_executable('tcc') or { return '' }
+	tcc_probe := os.execute('${os.quoted_path(system_tcc)} -v')
+	if tcc_probe.exit_code != 0 {
+		return ''
+	}
+	return system_tcc
+}
+
+fn usable_bundled_tcc_compiler(vroot string) string {
+	vtccexe := os.join_path(vroot, 'thirdparty', 'tcc', 'tcc.exe')
+	if !os.is_file(vtccexe) || !os.is_executable(vtccexe) {
+		return ''
+	}
+	// Unsupported hosts can still have a placeholder `thirdparty/tcc/` checkout.
+	tcc_probe := os.execute('${os.quoted_path(vtccexe)} -v')
+	if tcc_probe.exit_code != 0 {
+		return ''
+	}
+	return vtccexe
+}
+
+// default_tcc_compiler returns the preferred TinyCC path when it exists and works on the host.
 pub fn default_tcc_compiler() string {
 	vexe := vexe_path()
 	vroot := os.dir(vexe)
-	vtccexe := os.join_path(vroot, 'thirdparty', 'tcc', 'tcc.exe')
-	if os.exists(vtccexe) {
-		return vtccexe
+	bundled_tcc := usable_bundled_tcc_compiler(vroot)
+	if bundled_tcc != '' {
+		return bundled_tcc
 	}
-	return ''
+	return usable_system_tcc_compiler()
 }
 
 pub fn (mut p Preferences) default_c_compiler() {
@@ -386,10 +586,10 @@ pub fn (p &Preferences) vcross_compiler_name() string {
 	return 'cc'
 }
 
-// vroot_file reads the given file, given a path relative to @VROOT .
+// vroot_file reads the given file, given a path relative to @VEXEROOT .
 // Its goal is to give all backends a shared infrastructure to read their own static preludes (like C headers etc),
 // without each having to implement their own way of lookup/embedding/caching them.
 pub fn (mut p Preferences) vroot_file(path string) string {
 	full_path := os.join_path(p.vroot, path)
-	return os.read_file(full_path) or { '/* missing vroot content of path: ${full_path} */' }
+	return os.read_file(full_path) or { '/* missing @VEXEROOT content of path: ${full_path} */' }
 }

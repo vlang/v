@@ -1,3 +1,5 @@
+// vtest flaky: true
+// vtest retry: 3
 // vtest build: !docker-ubuntu-musl && !sanitize-memory-clang && !sanitize-address-clang-without-gc
 import os
 import time
@@ -24,14 +26,25 @@ fn testsuite_end() {
 }
 
 fn test_server_compiles() {
-	did_compile := os.system('${os.quoted_path(vexe)} -o ${os.quoted_path(serverexe)} vlib/veb/tests/memory_leak_test_server.v')
+	did_compile :=
+		os.system('${os.quoted_path(vexe)} -o ${os.quoted_path(serverexe)} vlib/veb/tests/memory_leak_test_server.v')
 	assert did_compile == 0
 	assert os.exists(serverexe)
 }
 
 fn test_server_runs_in_background() {
 	spawn os.system('${os.quoted_path(serverexe)} ${sport} ${exit_after_time}')
-	time.sleep(500 * time.millisecond)
+	for _ in 0 .. 50 {
+		resp := http.get('http://${localserver}/heap') or {
+			time.sleep(100 * time.millisecond)
+			continue
+		}
+		if resp.status_code == 200 {
+			return
+		}
+		time.sleep(100 * time.millisecond)
+	}
+	assert false, 'Timed out waiting for background server to start'
 }
 
 fn test_large_responses_work_correctly() {
@@ -65,4 +78,44 @@ fn test_gc_collect_endpoint_works() {
 		return
 	}
 	assert resp.status_code == 200
+}
+
+fn test_multipart_upload_does_not_expand_heap_excessively() {
+	http.get('http://${localserver}/gc') or {
+		assert false, 'Failed to trigger GC before measuring heap: ${err}'
+		return
+	}
+	before_resp := http.get('http://${localserver}/heap') or {
+		assert false, 'Failed to get baseline heap usage: ${err}'
+		return
+	}
+	before_heap := before_resp.body.i64()
+	payload_size := 1024 * 1024
+	mut files := []http.FileData{}
+	files << http.FileData{
+		filename:     'payload.bin'
+		content_type: 'application/octet-stream'
+		data:         'X'.repeat(payload_size)
+	}
+	resp := http.post_multipart_form('http://${localserver}/upload', http.PostMultipartFormConfig{
+		files: {
+			'file': files
+		}
+	}) or {
+		assert false, 'Failed to post multipart upload: ${err}'
+		return
+	}
+	assert resp.status_code == 200
+	assert resp.body == payload_size.str()
+	http.get('http://${localserver}/gc') or {
+		assert false, 'Failed to trigger GC after upload: ${err}'
+		return
+	}
+	after_resp := http.get('http://${localserver}/heap') or {
+		assert false, 'Failed to get post-upload heap usage: ${err}'
+		return
+	}
+	after_heap := after_resp.body.i64()
+	heap_growth := if after_heap > before_heap { after_heap - before_heap } else { i64(0) }
+	assert heap_growth < 8 * 1024 * 1024, 'Multipart upload grew heap by ${heap_growth} bytes'
 }

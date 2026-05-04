@@ -3,6 +3,7 @@ fn test_main() {
 		0 { none }
 		else { 1 }
 	}
+
 	assert '${a}' == 'Option(1)'
 
 	b := match 2 {
@@ -10,6 +11,7 @@ fn test_main() {
 		2 { none }
 		else { 1 }
 	}
+
 	assert '${b}' == 'Option(none)'
 
 	c := match 2 {
@@ -17,5 +19,6 @@ fn test_main() {
 		2 { 2 }
 		else { none }
 	}
+
 	assert '${c}' == 'Option(2)'
 }

@@ -15,6 +15,7 @@ struct Foo {
 fn test_main() {
 	mut out := map[string][]string{}
 	$for field in Foo.fields {
+		out[field.name] = []string{}
 		print('${field.name} is ')
 		$if field.unaliased_typ is $int {
 			println('numeric')

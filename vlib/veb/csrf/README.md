@@ -76,6 +76,8 @@ _main.v_
 
 ```v ignore
 fn (app &App) index(mut ctx) veb.Result {
+	// assign the config before generating the token on non-middleware routes
+	ctx.config = csrf_config
 	// this function will set a cookie header and generate a CSRF token
 	ctx.set_csrf_token(mut ctx)
 	return $veb.html()
@@ -140,11 +142,14 @@ fn (app &App) login(mut ctx, password string) veb.Result {
 
 When `set_csrf_token` is called the token is stored in the `csrf_token` field. You access
 this field directly to use it in an input field, or call `csrf_token_input`.
+If the handler is not covered by `csrf.middleware`, assign `ctx.config = csrf_config`
+first so the generated cookie and token use the same configuration.
 
 **Example:**
 
 ```v ignore
 fn (app &App) index(mut ctx) veb.Result {
+	ctx.config = csrf_config
 	token := ctx.set_csrf_token(mut ctx)
 }
 ```

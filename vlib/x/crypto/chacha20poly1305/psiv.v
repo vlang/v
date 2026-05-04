@@ -9,6 +9,7 @@
 // See the detail on the [A Robust Variant of ChaCha20-Poly1305](https://eprint.iacr.org/2025/222).
 module chacha20poly1305
 
+import crypto.cipher
 import encoding.binary
 import crypto.internal.subtle
 import x.crypto.chacha20
@@ -70,7 +71,7 @@ pub fn psiv_decrypt(ciphertext []u8, key []u8, nonce []u8, ad []u8) ![]u8 {
 // Chacha20Poly1305RE is a Chacha20Poly1305 opaque with nonce-misuse resistent
 // and key-commiting AEAD scheme with PSIV construct.
 @[noinit]
-pub struct Chacha20Poly1305RE implements AEAD {
+pub struct Chacha20Poly1305RE implements cipher.AEAD {
 mut:
 	// flag that marked this instance should not be used again, set on .free call
 	done bool
@@ -130,8 +131,7 @@ pub fn (c Chacha20Poly1305RE) encrypt(plaintext []u8, nonce []u8, ad []u8) ![]u8
 	// setup output buffer
 	mut out := []u8{len: plaintext.len + tag_size}
 	// write out an authentication tag into the last tag_size bytes of output
-	psiv_gen_tag(mut out[plaintext.len..], mut po_ad_clone, plaintext, ad.len, c.mac_key,
-		nonce)
+	psiv_gen_tag(mut out[plaintext.len..], mut po_ad_clone, plaintext, ad.len, c.mac_key, nonce)
 	// write out authenticated encrypted plaintext into the first plaintext.len bytes of output
 	psiv_encrypt_internal(mut out[0..plaintext.len], plaintext, c.enc_key, out[plaintext.len..],
 		nonce)!

@@ -6,15 +6,15 @@ fn no_lines(s string) string {
 
 fn test_struct_readline() {
 	// mut rl := readline.Readline{}
-	// eprintln('rl: $rl')
+	// eprintln('rl: ${rl}')
 	// line := rl.read_line('Please, enter your name: ') or { panic(err) }
-	// eprintln('line: $line')
+	// eprintln('line: ${line}')
 	mut methods := []string{}
 	$for method in Readline.methods {
-		// eprintln('  method: $method.name | ' + no_lines('$method'))
+		// eprintln('  method: ${method.name} | ' + no_lines('${method}'))
 		methods << method.name
 	}
-	// eprintln('methods: $methods')
+	// eprintln('methods: ${methods}')
 	assert 'read_line_utf8' in methods
 	assert 'read_line' in methods
 }

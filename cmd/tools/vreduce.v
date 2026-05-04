@@ -19,9 +19,12 @@ fn main() {
 	fp.description('This tool will reduce the code file and try to make the smallest one it can that reproduces the error when the command is executed')
 	fp.version(version)
 
-	error_msg := fp.string('error_msg', `m`, default_error_msg, 'the error message you want to reproduce, default: \'${default_error_msg}\'')
-	mut command := fp.string('command', `c`, default_command, 'the command used to try to reproduce the error, default: \'${default_command}\', will replace PATH with the path of the folder where it is run')
-	copy_project := fp.bool('cp', `p`, false, 'if used v reduce will copy the whole folder of the project')
+	error_msg := fp.string('error_msg', `m`, default_error_msg,
+		'the error message you want to reproduce, default: \'${default_error_msg}\'')
+	mut command := fp.string('command', `c`, default_command,
+		'the command used to try to reproduce the error, default: \'${default_command}\', will replace PATH with the path of the folder where it is run')
+	copy_project := fp.bool('cp', `p`, false,
+		'if used v reduce will copy the whole folder of the project')
 	timeout := fp.int('to', `t`, 0, 'sets a timeout for the command, default=0 : no timeout')
 	do_fmt := fp.bool('fmt', `w`, false, 'enable v fmt for the output (rpdc_file_name.v)')
 	file_paths := fp.finalize() or {
@@ -80,8 +83,8 @@ fn main() {
 
 	// start tests
 	tmp_code := create_code(parse(content))
-	warn_on_false(string_reproduces(tmp_code, error_msg, command, full_file_path, true,
-		timeout), 'string_reproduces', @LOCATION)
+	warn_on_false(string_reproduces(tmp_code, error_msg, command, full_file_path, true, timeout),
+		'string_reproduces', @LOCATION)
 	show_code_stats(tmp_code, label: 'Code size without comments')
 
 	// reduce the code
@@ -334,9 +337,7 @@ fn reduce_scope(content string, error_msg string, command string, do_fmt bool, f
 						item.tmp_ignored = true // try to ignore it
 						code := create_code(sc)
 						item.tmp_ignored = false // dont need it anymore
-						if string_reproduces(code, error_msg, command, file_path, false,
-							timeout)
-						{
+						if string_reproduces(code, error_msg, command, file_path, false, timeout) {
 							item.ignored = true
 							modified_smth = true
 							outer_modified_smth = true
@@ -355,9 +356,7 @@ fn reduce_scope(content string, error_msg string, command string, do_fmt bool, f
 			text_code = create_code(sc)
 			os.write_file(rpdc_file_path, text_code) or { panic(err) }
 			if do_fmt {
-				os.execute('v fmt -w ${rpdc_file_path}')
-				final_content := os.read_file(rpdc_file_path) or { panic(err) }
-				show_code_stats(final_content, label: 'Code size after formatting')
+				vfmt_file(rpdc_file_path)
 			}
 			println('The WIP reduced code is now in ${rpdc_file_path}')
 		}
@@ -413,9 +412,7 @@ fn reduce_scope(content string, error_msg string, command string, do_fmt bool, f
 						item.tmp_ignored = true
 						code := create_code(line_tree)
 						item.tmp_ignored = false // dont need it anymore
-						if string_reproduces(code, error_msg, command, file_path, false,
-							timeout)
-						{
+						if string_reproduces(code, error_msg, command, file_path, false, timeout) {
 							item.ignored = true
 							modified_smth = true
 							outer_modified_smth = true
@@ -433,9 +430,7 @@ fn reduce_scope(content string, error_msg string, command string, do_fmt bool, f
 			text_code = create_code(line_tree)
 			os.write_file(rpdc_file_path, text_code) or { panic(err) }
 			if do_fmt {
-				os.execute('v fmt -w ${rpdc_file_path}')
-				final_content := os.read_file(rpdc_file_path) or { panic(err) }
-				show_code_stats(final_content, label: 'Code size after formatting')
+				vfmt_file(rpdc_file_path)
 			}
 			println('The WIP reduced code is now in ${rpdc_file_path}')
 		}
@@ -445,11 +440,15 @@ fn reduce_scope(content string, error_msg string, command string, do_fmt bool, f
 		'string_reproduces', @LOCATION)
 	os.write_file(rpdc_file_path, text_code) or { panic(err) }
 	if do_fmt {
-		os.execute('v fmt -w ${rpdc_file_path}')
-		final_content := os.read_file(rpdc_file_path) or { panic(err) }
-		show_code_stats(final_content, label: 'Code size after formatting')
+		vfmt_file(rpdc_file_path)
 	}
 	println('The reduced code is now in ${rpdc_file_path}')
+}
+
+fn vfmt_file(rpdc_file_path string) {
+	os.execute('${os.quoted_path(@VEXE)} fmt -w ${rpdc_file_path}')
+	final_content := os.read_file(rpdc_file_path) or { panic(err) }
+	show_code_stats(final_content, label: 'Code size after formatting')
 }
 
 @[params]

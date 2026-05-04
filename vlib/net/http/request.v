@@ -58,8 +58,75 @@ pub mut:
 	alt_svc_cache &AltSvcCache = unsafe { nil } // optional Alt-Svc cache for automatic HTTP/3 upgrade; create with new_alt_svc_cache()
 }
 
+@[manualfree]
 fn (mut req Request) free() {
-	unsafe { req.header.free() }
+	mut freed_ptrs := map[u64]bool{}
+	unsafe {
+		req.cookies.free()
+		for i := 0; i < req.header.cur_pos; i++ {
+			mut key := req.header.data[i].key
+			mut value := req.header.data[i].value
+			key_ptr := u64(usize(key.str))
+			if key_ptr !in freed_ptrs {
+				key.free()
+				freed_ptrs[key_ptr] = true
+			}
+			value_ptr := u64(usize(value.str))
+			if value_ptr !in freed_ptrs {
+				value.free()
+				freed_ptrs[value_ptr] = true
+			}
+		}
+		mut host := req.host
+		host_ptr := u64(usize(host.str))
+		if host_ptr !in freed_ptrs {
+			host.free()
+			freed_ptrs[host_ptr] = true
+		}
+		mut data := req.data
+		data_ptr := u64(usize(data.str))
+		if data_ptr !in freed_ptrs {
+			data.free()
+			freed_ptrs[data_ptr] = true
+		}
+		mut url := req.url
+		url_ptr := u64(usize(url.str))
+		if url_ptr !in freed_ptrs {
+			url.free()
+			freed_ptrs[url_ptr] = true
+		}
+		mut user_agent := req.user_agent
+		user_agent_ptr := u64(usize(user_agent.str))
+		if user_agent_ptr !in freed_ptrs {
+			user_agent.free()
+			freed_ptrs[user_agent_ptr] = true
+		}
+		mut verify := req.verify
+		verify_ptr := u64(usize(verify.str))
+		if verify_ptr !in freed_ptrs {
+			verify.free()
+			freed_ptrs[verify_ptr] = true
+		}
+		mut cert := req.cert
+		cert_ptr := u64(usize(cert.str))
+		if cert_ptr !in freed_ptrs {
+			cert.free()
+			freed_ptrs[cert_ptr] = true
+		}
+		mut cert_key := req.cert_key
+		cert_key_ptr := u64(usize(cert_key.str))
+		if cert_key_ptr !in freed_ptrs {
+			cert_key.free()
+			freed_ptrs[cert_key_ptr] = true
+		}
+	}
+}
+
+// reset frees request-owned data and resets the request to default values.
+@[manualfree]
+pub fn (mut req Request) reset() {
+	req.free()
+	req = Request{}
 }
 
 // add_header adds the key and value of an HTTP request header
@@ -99,6 +166,9 @@ pub fn (req &Request) do() !Response {
 	mut url := urllib.parse(req.url) or { return error('http.Request.do: invalid url ${req.url}') }
 	mut rurl := url
 	mut resp := Response{}
+	mut method := req.method
+	mut data := req.data
+	mut header := req.header
 	mut nredirects := 0
 	mut method := req.method
 	mut effective_data := req.data
@@ -111,7 +181,8 @@ pub fn (req &Request) do() !Response {
 		if !req.allow_redirect {
 			break
 		}
-		if resp.status() !in [.moved_permanently, .found, .see_other, .temporary_redirect,
+		status := resp.status()
+		if status !in [.moved_permanently, .found, .see_other, .temporary_redirect,
 			.permanent_redirect] {
 			break
 		}
@@ -136,6 +207,7 @@ pub fn (req &Request) do() !Response {
 		qrurl := urllib.parse(redirect_url) or {
 			return error('http.request.do: invalid URL in redirect "${redirect_url}"')
 		}
+		method, data, header = redirected_request_parts(method, status, data, header)
 		rurl = qrurl
 		nredirects++
 	}
@@ -202,7 +274,7 @@ fn (req &Request) method_and_url_to_response(method Method, url urllib.URL, effe
 		return error('http request: max retries (${req.max_retries}) exceeded for ${scheme}://${host_name}')
 	} else if req.proxy != unsafe { nil } {
 		for i in 0 .. req.max_retries {
-			res := req.proxy.http_do(url, method, path, req) or {
+			res := req.proxy.http_do(url, method, path, req, data, header) or {
 				if i == req.max_retries - 1 || is_no_need_retry_error(err.code()) {
 					return err
 				}
@@ -261,17 +333,17 @@ fn (req &Request) build_request_headers(method Method, host_name string, port in
 		sb.write_string('\r\n')
 	}
 	chkey := CommonHeader.cookie.str()
-	for key in req.header.keys() {
+	for key in header.keys() {
 		if key == chkey {
 			continue
 		}
-		val := req.header.custom_values(key).join('; ')
+		val := header.custom_values(key).join('; ')
 		sb.write_string(key)
 		sb.write_string(': ')
 		sb.write_string(val)
 		sb.write_string('\r\n')
 	}
-	sb.write_string(req.build_request_cookies_header())
+	sb.write_string(req.build_request_cookies_header_with_header(header))
 	sb.write_string('Connection: close\r\n')
 	sb.write_string('\r\n')
 	sb.write_string(effective_data)
@@ -279,11 +351,15 @@ fn (req &Request) build_request_headers(method Method, host_name string, port in
 }
 
 fn (req &Request) build_request_cookies_header() string {
+	return req.build_request_cookies_header_with_header(req.header)
+}
+
+fn (req &Request) build_request_cookies_header_with_header(header Header) string {
 	if req.cookies.len < 1 {
 		return ''
 	}
 	mut sb_cookie := strings.new_builder(1024)
-	hvcookies := req.header.values(.cookie)
+	hvcookies := header.values(.cookie)
 	total_cookies := req.cookies.len + hvcookies.len
 	sb_cookie.write_string('Cookie: ')
 	mut idx := 0
@@ -320,9 +396,9 @@ fn (req &Request) http_do(host string, method Method, path string, effective_dat
 		eprint(s)
 		eprintln('')
 	}
-	mut bytes := req.read_all_from_client_connection(client)!
+	response_data := req.read_all_from_client_connection(client)!
 	client.close()!
-	response_text := bytes.bytestr()
+	response_text := response_data.data.bytestr()
 	$if trace_http_response ? {
 		eprint('< ')
 		eprint(response_text)
@@ -331,24 +407,212 @@ fn (req &Request) http_do(host string, method Method, path string, effective_dat
 	if req.on_finish != unsafe { nil } {
 		req.on_finish(req, u64(response_text.len))!
 	}
-	return parse_response(response_text)
+	return parse_received_response(response_text, response_data.info)
 }
 
 // abstract over reading the whole content from TCP or SSL connections:
 type FnReceiveChunk = fn (con voidptr, buf &u8, bufsize int) !int
 
-fn (req &Request) receive_all_data_from_cb_in_builder(mut content strings.Builder, con voidptr, receive_chunk_cb FnReceiveChunk) ! {
+enum ChunkedBodyTrackerState {
+	chunk_size
+	chunk_data
+	chunk_data_crlf_start
+	chunk_data_crlf_end
+	trailer_line
+}
+
+struct ChunkedBodyTracker {
+mut:
+	state       ChunkedBodyTrackerState = .chunk_size
+	line_buf    []u8
+	chunk_left  u64
+	decoded_len u64
+	complete    bool
+	invalid     bool
+}
+
+fn (mut tracker ChunkedBodyTracker) advance(data []u8, mut decoded []u8) bool {
+	if tracker.complete || tracker.invalid || data.len == 0 {
+		return tracker.complete
+	}
+	mut i := 0
+	for i < data.len {
+		match tracker.state {
+			.chunk_size {
+				ch := data[i]
+				i++
+				if ch == `\r` {
+					continue
+				}
+				if ch != `\n` {
+					tracker.line_buf << ch
+					continue
+				}
+				chunk_size := parse_chunked_size_line(tracker.line_buf) or {
+					tracker.invalid = true
+					return false
+				}
+				tracker.line_buf.clear()
+				if chunk_size == 0 {
+					tracker.state = .trailer_line
+					continue
+				}
+				tracker.chunk_left = chunk_size
+				tracker.state = .chunk_data
+			}
+			.chunk_data {
+				available := data.len - i
+				if tracker.chunk_left < u64(available) {
+					decoded << data[i..i + int(tracker.chunk_left)]
+					tracker.decoded_len += tracker.chunk_left
+					i += int(tracker.chunk_left)
+					tracker.chunk_left = 0
+				} else {
+					decoded << data[i..]
+					tracker.decoded_len += u64(available)
+					tracker.chunk_left -= u64(available)
+					i = data.len
+				}
+				if tracker.chunk_left == 0 {
+					tracker.state = .chunk_data_crlf_start
+				}
+			}
+			.chunk_data_crlf_start {
+				if data[i] != `\r` {
+					tracker.invalid = true
+					return false
+				}
+				i++
+				tracker.state = .chunk_data_crlf_end
+			}
+			.chunk_data_crlf_end {
+				if data[i] != `\n` {
+					tracker.invalid = true
+					return false
+				}
+				i++
+				tracker.state = .chunk_size
+			}
+			.trailer_line {
+				ch := data[i]
+				i++
+				if ch == `\r` {
+					continue
+				}
+				if ch != `\n` {
+					tracker.line_buf << ch
+					continue
+				}
+				if tracker.line_buf.len == 0 {
+					tracker.complete = true
+					return true
+				}
+				tracker.line_buf.clear()
+			}
+		}
+	}
+	return tracker.complete
+}
+
+fn parse_chunked_size_line(line []u8) !u64 {
+	mut size := u64(0)
+	mut has_digit := false
+	for ch in line {
+		if ch == `;` {
+			break
+		}
+		if !ch.is_hex_digit() {
+			return error('invalid chunk size')
+		}
+		has_digit = true
+		size = (size << 4) | u64(chunked_hex_value(ch))
+	}
+	if !has_digit {
+		return error('invalid chunk size')
+	}
+	return size
+}
+
+fn chunked_hex_value(ch u8) u8 {
+	if `0` <= ch && ch <= `9` {
+		return ch - `0`
+	}
+	if `a` <= ch && ch <= `f` {
+		return ch - `a` + 10
+	}
+	if `A` <= ch && ch <= `F` {
+		return ch - `A` + 10
+	}
+	return 0
+}
+
+struct ReceivedResponseInfo {
+	headers_end         int = -1
+	is_chunked_transfer bool
+	has_truncated_body  bool
+}
+
+fn parse_received_response(response_text string, info ReceivedResponseInfo) !Response {
+	if info.is_chunked_transfer && info.has_truncated_body && info.headers_end > 0
+		&& info.headers_end <= response_text.len {
+		return parse_response(response_text[..info.headers_end])
+	}
+	return parse_response(response_text)
+}
+
+// response_has_no_body returns true when the HTTP method or status code
+// guarantees that no response body is sent (HEAD requests, 1xx informational,
+// 204 No Content, 304 Not Modified). For these, a `Content-Length` header
+// describes the body that *would* have been sent for a GET, so it must not
+// drive read termination or completion validation. (RFC 7230 §3.3.3)
+fn response_has_no_body(method Method, status_code int) bool {
+	if method == .head {
+		return true
+	}
+	return status_code in [101, 102, 103, 204, 304]
+}
+
+fn validate_received_response_completion(has_content_length bool, expected_size u64, body_so_far u64, is_chunked_transfer bool, chunked_complete bool) ! {
+	if has_content_length && body_so_far < expected_size {
+		return error('http.request: response body ended early: received ${body_so_far} of ${expected_size} bytes')
+	}
+	if is_chunked_transfer && !chunked_complete {
+		return error('http.request: incomplete chunked response')
+	}
+}
+
+fn (req &Request) receive_all_data_from_cb_in_builder(mut content strings.Builder, con voidptr, receive_chunk_cb FnReceiveChunk) !ReceivedResponseInfo {
 	mut buff := [bufsize]u8{}
 	bp := unsafe { &buff[0] }
 	mut readcounter := 0
 	mut body_pos := u64(0)
+	mut headers_end := -1
+	mut expected_size := u64(0)
+	mut has_content_length := false
+	mut is_chunked_transfer := false
+	mut chunked_body_tracker := ChunkedBodyTracker{}
+	mut header_buf := strings.new_builder(1024)
 	mut old_len := u64(0)
 	mut new_len := u64(0)
-	mut expected_size := u64(0)
 	mut status_code := -1
+	mut has_truncated_body := false
 	for {
 		readcounter++
-		len := receive_chunk_cb(con, bp, bufsize) or { break }
+		len := receive_chunk_cb(con, bp, bufsize) or {
+			if err is io.Eof {
+				body_so_far := if headers_end >= 0 && old_len > body_pos {
+					old_len - body_pos
+				} else {
+					u64(0)
+				}
+				if !response_has_no_body(req.method, status_code) {
+					validate_received_response_completion(has_content_length, expected_size,
+						body_so_far, is_chunked_transfer, chunked_body_tracker.complete)!
+				}
+				break
+			}
+			return err
+		}
 		$if debug_http ? {
 			eprintln('ssl_do, read ${readcounter:4d} | len: ${len}')
 			eprintln('-'.repeat(20))
@@ -356,6 +620,15 @@ fn (req &Request) receive_all_data_from_cb_in_builder(mut content strings.Builde
 			eprintln('-'.repeat(20))
 		}
 		if len <= 0 {
+			body_so_far := if headers_end >= 0 && old_len > body_pos {
+				old_len - body_pos
+			} else {
+				u64(0)
+			}
+			if !response_has_no_body(req.method, status_code) {
+				validate_received_response_completion(has_content_length, expected_size,
+					body_so_far, is_chunked_transfer, chunked_body_tracker.complete)!
+			}
 			break
 		}
 		new_len = old_len + u64(len)
@@ -388,15 +661,60 @@ fn (req &Request) receive_all_data_from_cb_in_builder(mut content strings.Builde
 					}
 				}
 			}
-			req.on_progress_body(req, bchunk, body_so_far, expected_size, status_code)!
+		}
+		if headers_end >= 0 && old_len < u64(headers_end) {
+			header_bytes_in_chunk := int(u64(headers_end) - old_len)
+			if header_bytes_in_chunk >= len {
+				bchunk = []u8{}
+			} else {
+				bchunk = unsafe { (&u8(bchunk.data) + header_bytes_in_chunk).vbytes(len - header_bytes_in_chunk) }
+			}
+		}
+		mut body_so_far := u64(0)
+		if headers_end >= 0 && new_len > body_pos {
+			body_so_far = u64(new_len) - body_pos
+		}
+		mut progress_body_so_far := body_so_far
+		mut chunked_complete := false
+		if is_chunked_transfer {
+			mut dechunked := []u8{}
+			chunked_complete = chunked_body_tracker.advance(bchunk, mut dechunked)
+			progress_body_so_far = chunked_body_tracker.decoded_len
+			if req.on_progress_body != unsafe { nil } && dechunked.len > 0 {
+				req.on_progress_body(req, dechunked, progress_body_so_far, expected_size,
+					status_code)!
+			}
+		} else if req.on_progress_body != unsafe { nil } {
+			req.on_progress_body(req, bchunk, progress_body_so_far, expected_size, status_code)!
 		}
 		if !(req.stop_copying_limit > 0 && new_len > req.stop_copying_limit) {
 			unsafe { content.write_ptr(bp, len) }
+		} else if headers_end >= 0 && new_len > body_pos {
+			has_truncated_body = true
+		}
+		if is_chunked_transfer && chunked_complete {
+			break
+		}
+		if headers_end >= 0 && response_has_no_body(req.method, status_code) {
+			// HEAD / 1xx / 204 / 304: response body is forbidden by the spec, so
+			// stop as soon as the headers terminator is in. Any `Content-Length`
+			// describes a body that will never be sent.
+			break
+		}
+		if has_content_length {
+			if expected_size > 0 && body_so_far >= expected_size {
+				break
+			}
 		}
 		if req.stop_receiving_limit > 0 && new_len > req.stop_receiving_limit {
 			break
 		}
 		old_len = new_len
+	}
+	return ReceivedResponseInfo{
+		headers_end:         headers_end
+		is_chunked_transfer: is_chunked_transfer
+		has_truncated_body:  has_truncated_body
 	}
 }
 
@@ -405,10 +723,19 @@ fn read_from_tcp_connection_cb(con voidptr, buf &u8, bufsize int) !int {
 	return r.read_ptr(buf, bufsize)
 }
 
-fn (req &Request) read_all_from_client_connection(r &net.TcpConn) ![]u8 {
+struct ReceivedResponseBuffer {
+	data []u8
+	info ReceivedResponseInfo
+}
+
+fn (req &Request) read_all_from_client_connection(r &net.TcpConn) !ReceivedResponseBuffer {
 	mut content := strings.new_builder(4096)
-	req.receive_all_data_from_cb_in_builder(mut content, voidptr(r), read_from_tcp_connection_cb)!
-	return content
+	info := req.receive_all_data_from_cb_in_builder(mut content, voidptr(r),
+		read_from_tcp_connection_cb)!
+	return ReceivedResponseBuffer{
+		data: content
+		info: info
+	}
 }
 
 // referer returns 'Referer' header value of the given request
@@ -500,13 +827,13 @@ pub fn parse_request_head(mut reader io.BufferedReader) !Request {
 	for line != '' {
 		// key, value := parse_header(line)!
 		mut pos := parse_header_fast(line)!
-		key := line.substr_unsafe(0, pos)
+		key := line[..pos]
 		for pos < line.len - 1 && line[pos + 1].is_space() {
 			// Skip space or tab in value name
 			pos++
 		}
 		if pos + 1 < line.len {
-			value := line.substr_unsafe(pos + 1, line.len)
+			value := line[pos + 1..]
 			_, _ = key, value
 			// println('key,value=${key},${value}')
 			header.add_custom(key, value)!
@@ -524,7 +851,7 @@ pub fn parse_request_head(mut reader io.BufferedReader) !Request {
 		method:  method
 		url:     target.str()
 		header:  header
-		host:    header.get(.host) or { '' }
+		host:    (header.get(.host) or { '' }).clone()
 		version: version
 		cookies: request_cookies
 	}
@@ -558,7 +885,7 @@ pub fn parse_request_head_str(s string) !Request {
 		}
 
 		mut pos := parse_header_fast(line)!
-		key := line.substr_unsafe(0, pos)
+		key := line[..pos]
 
 		// Skip space or tab after the colon
 		mut val_start := pos + 1
@@ -567,7 +894,7 @@ pub fn parse_request_head_str(s string) !Request {
 		}
 
 		if val_start < line.len {
-			value := line.substr_unsafe(val_start, line.len)
+			value := line[val_start..]
 			header.add_custom(key, value)!
 		}
 	}
@@ -581,7 +908,7 @@ pub fn parse_request_head_str(s string) !Request {
 		method:  method
 		url:     target.str()
 		header:  header
-		host:    header.get(.host) or { '' }
+		host:    (header.get(.host) or { '' }).clone()
 		version: version
 		cookies: request_cookies
 	}
@@ -742,33 +1069,46 @@ pub fn parse_multipart_form(body string, boundary string) (map[string]string, ma
 	// dump(boundary)
 	mut form := map[string]string{}
 	mut files := map[string][]FileData{}
-	// TODO: do not use split, but only indexes, to reduce copying of potentially large data
-	sections := body.split(boundary)
-	fields := sections#[1..sections.len - 1]
+	if body.len == 0 || boundary.len == 0 || boundary.len > body.len {
+		return form, files
+	}
+	mut field_start := body.index_after_(boundary, 0)
+	if field_start == -1 {
+		return form, files
+	}
+	field_start += boundary.len
 	mut line_segments := []LineSegmentIndexes{cap: 100}
-	for field in fields {
+	for {
+		if field_start > body.len - boundary.len {
+			break
+		}
+		field_end := body.index_after_(boundary, field_start)
+		if field_end == -1 {
+			break
+		}
 		line_segments.clear()
-		mut line_idx, mut line_start := 0, 0
-		for cidx, c in field {
+		mut line_idx, mut line_start := 0, field_start
+		for cidx := field_start; cidx < field_end; cidx++ {
 			if line_idx >= 6 {
 				// no need to scan further
 				break
 			}
-			if c == `\n` {
+			if body[cidx] == `\n` {
 				line_segments << LineSegmentIndexes{line_start, cidx}
 				line_start = cidx + 1
 				line_idx++
 			}
 		}
-		line_segments << LineSegmentIndexes{line_start, field.len}
+		line_segments << LineSegmentIndexes{line_start, field_end}
+		field_start = field_end + boundary.len
 		if line_segments.len < 2 {
 			continue
 		}
-		line1 := field#[line_segments[1].start..line_segments[1].end]
+		line1 := body#[line_segments[1].start..line_segments[1].end]
 		line2 := if line_segments.len == 2 {
 			''
 		} else {
-			field#[line_segments[2].start..line_segments[2].end]
+			body#[line_segments[2].start..line_segments[2].end]
 		}
 		disposition := parse_disposition(line1.trim_space())
 		// Grab everything between the double quotes
@@ -791,9 +1131,16 @@ pub fn parse_multipart_form(body string, boundary string) (map[string]string, ma
 			// line4: DATA
 			// ...
 			// lineX: --
-			data := field[line_segments[4].start..field.len - 4] // each multipart field ends with \r\n--
+			data_end := field_end - 4 // each multipart field ends with \r\n--
+			if data_end < line_segments[4].start {
+				continue
+			}
+			data := body[line_segments[4].start..data_end]
 			// dump(data.limit(20).bytes())
 			// dump(data.len)
+			if name !in files {
+				files[name] = []FileData{}
+			}
 			files[name] << FileData{
 				filename:     filename
 				content_type: content_type
@@ -804,7 +1151,11 @@ pub fn parse_multipart_form(body string, boundary string) (map[string]string, ma
 		if line_segments.len < 4 {
 			continue
 		}
-		form[name] = field[line_segments[3].start..field.len - 4]
+		data_end := field_end - 4
+		if data_end < line_segments[3].start {
+			continue
+		}
+		form[name] = body[line_segments[3].start..data_end]
 	}
 	// dump(form)
 	return form, files

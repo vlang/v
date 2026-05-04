@@ -27,3 +27,8 @@ fn test_f64_widths_and_precision() {
 	y := f64(200.90)
 	assert '|${y:.0f}|' == '|201|'
 }
+
+fn test_f64_widths_and_large_precision_for_small_negative_value() {
+	x := -0.68849533748148505907238359213806688785552978515625
+	assert '|${x:54.40f}|' == '|           -0.6884953374814851000000000000000000000000|'
+}

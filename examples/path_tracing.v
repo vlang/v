@@ -33,7 +33,6 @@ import math.vec
 
 const inf = 1e+10
 const eps = 1e-4
-const f_0 = 0.0
 
 type Vec = vec.Vec3[f64]
 
@@ -424,8 +423,8 @@ fn radiance(r Ray, depthi int, scene_id int) Vec {
 		return obj.e + f * radiance(Ray{x, d}, depth, scene_id)
 	} else {
 		if obj.refl == .spec { // Ideal SPECULAR reflection
-			return obj.e +
-				f * radiance(Ray{x, r.d - n.mul_scalar(2.0 * n.dot(r.d))}, depth, scene_id)
+			return obj.e + f * radiance(Ray{x, r.d -
+				n.mul_scalar(2.0 * n.dot(r.d))}, depth, scene_id)
 		}
 	}
 
@@ -473,7 +472,7 @@ fn radiance(r Ray, depthi int, scene_id int) Vec {
 }
 
 //*********************** beam scan routine *********************************
-fn ray_trace(w int, h int, samps int, file_name string, scene_id int) Image {
+fn ray_trace(w int, h int, samps int, scene_id int) Image {
 	image := new_image(w, h)
 
 	// inverse costants
@@ -555,17 +554,15 @@ fn main() {
 	// change the seed for a different result
 	rand.seed([u32(2020), 0])
 
-	t1 := time.ticks()
-
 	eprintln('Path tracing samples: ${samples}, file_name: ${file_name}, scene_id: ${scene_id}, width: ${width}, height: ${height}')
 	eprintln('')
-	image := ray_trace(width, height, samples, file_name, scene_id)
-	t2 := time.ticks()
 
+	t1 := time.ticks()
+	image := ray_trace(width, height, samples, scene_id)
+	t2 := time.ticks()
 	eprintln('Rendering finished. Took: ${(t2 - t1):5}ms')
 
 	image.save_as_ppm(file_name)
 	t3 := time.ticks()
-
 	eprintln('Image saved as [${file_name}]. Took: ${(t3 - t2):5}ms')
 }

@@ -75,7 +75,7 @@ fn main() {
 }
 
 // the event handler
-fn on_error(receiver voidptr, e &Error, work &Work) {
+fn on_error(receiver voidptr, e &AnError, work &Work) {
 	println('error occurred on ${work.hours}. Error: ${e.message}')
 }
 ```
@@ -86,8 +86,6 @@ fn on_error(receiver voidptr, e &Error, work &Work) {
 module main
 
 import eventbus
-
-const eb = eventbus.new[string]()
 
 struct Work {
 	hours int

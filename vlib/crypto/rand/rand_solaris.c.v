@@ -6,7 +6,7 @@ module rand
 
 #include <sys/random.h>
 
-fn C.getrandom(p &u8, n usize, flags u32) int
+fn C.getrandom(p &u8, n usize, flags u32) i32
 
 const read_batch_size = 256
 
@@ -28,6 +28,7 @@ pub fn read(bytes_needed int) ![]u8 {
 			return &ReadError{}
 		}
 		bytes_read += rbytes
+		remaining_bytes -= rbytes
 	}
 	return unsafe { buffer.vbytes(bytes_needed) }
 }

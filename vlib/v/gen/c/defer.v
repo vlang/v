@@ -10,6 +10,22 @@ fn (g &Gen) defer_flag_var(stmt &ast.DeferStmt) string {
 	return '${g.last_fn_c_name}_defer_${stmt.idx_in_fn}'
 }
 
+fn (g &Gen) innermost_active_defer_scope(pos token.Pos) &ast.Scope {
+	pos_i := pos.pos
+	mut scope := g.cur_fn.scope
+	for defer_stmt in g.defer_stmts {
+		if defer_stmt.scope == unsafe { nil } {
+			continue
+		}
+		if defer_stmt.scope.start_pos <= pos_i && pos_i <= defer_stmt.scope.end_pos
+			&& defer_stmt.scope.start_pos >= scope.start_pos
+			&& defer_stmt.scope.end_pos <= scope.end_pos {
+			scope = defer_stmt.scope
+		}
+	}
+	return scope
+}
+
 // this function is called at the end of each block (`for`, `if` branches,
 // `match` branches, etc.)
 fn (mut g Gen) write_defer_stmts(scope &ast.Scope, lookup bool, pos token.Pos) {
@@ -18,6 +34,11 @@ fn (mut g Gen) write_defer_stmts(scope &ast.Scope, lookup bool, pos token.Pos) {
 		g.error('Gen.write_defer_stmts() has received a scope that is nil', pos)
 	}
 
+	prev_inside_defer_generation := g.inside_defer_generation
+	g.inside_defer_generation = true
+	defer {
+		g.inside_defer_generation = prev_inside_defer_generation
+	}
 	g.indent++
 	for i := g.defer_stmts.len - 1; i >= 0; i-- {
 		defer_stmt := g.defer_stmts[i]

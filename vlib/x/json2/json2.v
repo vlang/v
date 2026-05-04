@@ -238,7 +238,14 @@ pub fn (f Any) bool() bool {
 }
 
 // arr uses `Any` as an array.
+@[deprecated: 'use as_array() instead']
+@[deprecated_after: '2026-03-27']
 pub fn (f Any) arr() []Any {
+	return f.as_array()
+}
+
+// as_array uses `Any` as an array.
+pub fn (f Any) as_array() []Any {
 	if f is []Any {
 		return f
 	} else if f is map[string]Any {

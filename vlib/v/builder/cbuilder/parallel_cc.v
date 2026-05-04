@@ -12,6 +12,13 @@ const cc_ldflags = os.getenv_opt('LDFLAGS') or { '' }
 const cc_cflags = os.getenv_opt('CFLAGS') or { '' }
 const cc_cflags_opt = os.getenv_opt('CFLAGS_OPT') or { '' } // '-O3' }
 
+fn parallel_cc_compiler_path(b &builder.Builder) string {
+	if b.pref.ccompiler != '' {
+		return b.pref.ccompiler
+	}
+	return cc_compiler
+}
+
 fn parallel_cc(mut b builder.Builder, result c.GenOutput) ! {
 	tmp_dir := os.vtmp_dir()
 	sw_total := time.new_stopwatch()
@@ -69,18 +76,23 @@ fn parallel_cc(mut b builder.Builder, result c.GenOutput) ! {
 		out_files[i].close()
 	}
 
-	mut cc_path := cc_compiler
-	explicit_cc_flag_passed := b.pref.build_options.any(it.starts_with('-cc '))
-	if explicit_cc_flag_passed {
-		// do not guess, just use the user's preference
-		cc_path = b.pref.ccompiler
-	}
-	cc := os.quoted_path(cc_path)
+	cc := b.quote_compiler_name(parallel_cc_compiler_path(b))
 	mut compile_args := b.get_compile_args()
 	mut linker_args := b.get_linker_args()
-	if !explicit_cc_flag_passed {
-		compile_args = compile_args.filter(it != '-bt25')
-		linker_args = linker_args.filter(it != '-bt25')
+	if b.ccoptions.cc == .tcc {
+		// vlang/tcc has its system headers under `${vroot}/thirdparty/tcc/lib/tcc/include/`
+		// and its runtime objects (libtcc1.a, bt-*.o) under `${vroot}/thirdparty/tcc/lib/tcc/`.
+		// `-B` controls tcc's include search (`${B}/include`) and `-L` adds a library search path,
+		// so pass absolute paths for both. This lets tcc find them regardless of the cwd from
+		// which v was invoked, without affecting how user-supplied relative flags are resolved.
+		tcc_install_dir := os.join_path(@VEXEROOT, 'thirdparty', 'tcc', 'lib', 'tcc')
+		if os.is_dir(tcc_install_dir) {
+			tcc_b_arg := '-B${b.tcc_quoted_path(tcc_install_dir)}'
+			tcc_l_arg := '-L${b.tcc_quoted_path(tcc_install_dir)}'
+			compile_args << tcc_b_arg
+			linker_args << tcc_b_arg
+			linker_args << tcc_l_arg
+		}
 	}
 	scompile_args := compile_args.join(' ')
 	slinker_args := linker_args.join(' ')
@@ -92,7 +104,9 @@ fn parallel_cc(mut b builder.Builder, result c.GenOutput) ! {
 		o_postfixes << (i + 1).str()
 	}
 	for postfix in o_postfixes {
-		cmds << '${cc} ${cc_cflags} ${cc_cflags_opt} ${scompile_args} -w -o ${tmp_dir}/out_${postfix}.o -c ${tmp_dir}/out_${postfix}.c'
+		out_o := os.quoted_path('${tmp_dir}/out_${postfix}.o')
+		out_c := os.quoted_path('${tmp_dir}/out_${postfix}.c')
+		cmds << '${cc} ${cc_cflags} ${cc_cflags_opt} ${scompile_args} -w -o ${out_o} -c ${out_c}'
 	}
 	mut failed := 0
 	sw := time.new_stopwatch()
@@ -102,7 +116,8 @@ fn parallel_cc(mut b builder.Builder, result c.GenOutput) ! {
 	for x in pp.get_results[os.Result]() {
 		failed += if x.exit_code == 0 { 0 } else { 1 }
 	}
-	eprint_time(sw, 'C compilation on ${util.nr_jobs} thread(s), processing ${cmds.len} commands, failed: ${failed}')
+	eprint_time(sw,
+		'C compilation on ${util.nr_jobs} thread(s), processing ${cmds.len} commands, failed: ${failed}')
 	if failed > 0 {
 		return error_with_code('failed parallel C compilation', failed)
 	}
@@ -130,19 +145,22 @@ fn parallel_cc(mut b builder.Builder, result c.GenOutput) ! {
 	sw_link := time.new_stopwatch()
 	link_res := os.execute(link_cmd)
 	eprint_result_time(sw_link, 'link_cmd', link_cmd, link_res)
-	if link_res.exit_code != 0 {
+	// tcc reports duplicate symbol errors via stderr and an executable still gets emitted with exit code 0,
+	// so detect that pattern and treat it as a link failure too.
+	link_failed_with_tcc_dup := b.ccoptions.cc == .tcc && link_res.output.contains('defined twice')
+	if link_res.exit_code != 0 || link_failed_with_tcc_dup {
 		return error_with_code('failed to link after parallel C compilation', 1)
 	}
 }
 
-fn build_parallel_o_cb(mut p pool.PoolProcessor, idx int, _wid int) &os.Result {
+fn build_parallel_o_cb(mut p pool.PoolProcessor, idx int, _wid int) voidptr {
 	cmd := p.get_item[string](idx)
 	sw := time.new_stopwatch()
 	res := os.execute(cmd)
 	eprint_result_time(sw, 'cc_cmd', cmd, res)
-	return &os.Result{
+	return voidptr(&os.Result{
 		...res
-	}
+	})
 }
 
 fn eprint_result_time(sw time.StopWatch, label string, cmd string, res os.Result) {

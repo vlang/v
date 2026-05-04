@@ -6,32 +6,30 @@ module sync
 import time
 
 #flag -lpthread
-#include <semaphore.h>
-#include <sys/errno.h>
 
 @[trusted]
-fn C.pthread_mutex_init(voidptr, voidptr) int
-fn C.pthread_mutex_lock(voidptr) int
-fn C.pthread_mutex_trylock(voidptr) int
-fn C.pthread_mutex_unlock(voidptr) int
-fn C.pthread_mutex_destroy(voidptr) int
-fn C.pthread_rwlockattr_init(voidptr) int
-fn C.pthread_rwlockattr_setkind_np(voidptr, int) int
-fn C.pthread_rwlock_init(voidptr, voidptr) int
-fn C.pthread_rwlock_rdlock(voidptr) int
-fn C.pthread_rwlock_wrlock(voidptr) int
-fn C.pthread_rwlock_tryrdlock(voidptr) int
-fn C.pthread_rwlock_trywrlock(voidptr) int
-fn C.pthread_rwlock_unlock(voidptr) int
-fn C.pthread_rwlock_destroy(voidptr) int
-fn C.pthread_condattr_init(voidptr) int
-fn C.pthread_condattr_setpshared(voidptr, int) int
-fn C.pthread_condattr_destroy(voidptr) int
-fn C.pthread_cond_init(voidptr, voidptr) int
-fn C.pthread_cond_signal(voidptr) int
-fn C.pthread_cond_wait(voidptr, voidptr) int
-fn C.pthread_cond_timedwait(voidptr, voidptr, voidptr) int
-fn C.pthread_cond_destroy(voidptr) int
+fn C.pthread_mutex_init(voidptr, voidptr) i32
+fn C.pthread_mutex_lock(voidptr) i32
+fn C.pthread_mutex_trylock(voidptr) i32
+fn C.pthread_mutex_unlock(voidptr) i32
+fn C.pthread_mutex_destroy(voidptr) i32
+fn C.pthread_rwlockattr_init(voidptr) i32
+fn C.pthread_rwlockattr_setkind_np(voidptr, i32) i32
+fn C.pthread_rwlock_init(voidptr, voidptr) i32
+fn C.pthread_rwlock_rdlock(voidptr) i32
+fn C.pthread_rwlock_wrlock(voidptr) i32
+fn C.pthread_rwlock_tryrdlock(voidptr) i32
+fn C.pthread_rwlock_trywrlock(voidptr) i32
+fn C.pthread_rwlock_unlock(voidptr) i32
+fn C.pthread_rwlock_destroy(voidptr) i32
+fn C.pthread_condattr_init(voidptr) i32
+fn C.pthread_condattr_setpshared(voidptr, i32) i32
+fn C.pthread_condattr_destroy(voidptr) i32
+fn C.pthread_cond_init(voidptr, voidptr) i32
+fn C.pthread_cond_signal(voidptr) i32
+fn C.pthread_cond_wait(voidptr, voidptr) i32
+fn C.pthread_cond_timedwait(voidptr, voidptr, voidptr) i32
+fn C.pthread_cond_destroy(voidptr) i32
 
 @[typedef]
 pub struct C.pthread_mutex_t {}
@@ -56,7 +54,8 @@ pub struct Mutex {
 
 @[heap]
 pub struct RwMutex {
-	mutex C.pthread_rwlock_t
+	mutex  C.pthread_rwlock_t
+	inited u32
 }
 
 struct RwMutexAttr {
@@ -110,6 +109,19 @@ pub fn (mut m RwMutex) init() {
 	// Give writer priority over readers
 	C.pthread_rwlockattr_setkind_np(&a.attr, C.PTHREAD_RWLOCK_PREFER_WRITER_NONRECURSIVE_NP)
 	should_be_zero(C.pthread_rwlock_init(&m.mutex, &a.attr))
+	C.atomic_store_u32(&m.inited, 1)
+}
+
+fn (mut m RwMutex) lazy_init() {
+	if C.atomic_load_u32(&m.inited) == 0 {
+		mut expected := u32(0)
+		if C.atomic_compare_exchange_strong_u32(&m.inited, &expected, 1) {
+			a := RwMutexAttr{}
+			C.pthread_rwlockattr_init(&a.attr)
+			C.pthread_rwlockattr_setkind_np(&a.attr, C.PTHREAD_RWLOCK_PREFER_WRITER_NONRECURSIVE_NP)
+			C.pthread_rwlock_init(&m.mutex, &a.attr)
+		}
+	}
 }
 
 // lock locks the mutex instance (`lock` is a keyword).
@@ -147,7 +159,8 @@ pub fn (mut m Mutex) destroy() {
 // Note: RwMutex has separate read and write locks.
 @[inline]
 pub fn (mut m RwMutex) rlock() {
-	C.pthread_rwlock_rdlock(&m.mutex)
+	m.lazy_init()
+	should_be_zero(C.pthread_rwlock_rdlock(&m.mutex))
 }
 
 // lock locks the given RwMutex instance for writing.
@@ -158,7 +171,8 @@ pub fn (mut m RwMutex) rlock() {
 // Note: RwMutex has separate read and write locks.
 @[inline]
 pub fn (mut m RwMutex) lock() {
-	C.pthread_rwlock_wrlock(&m.mutex)
+	m.lazy_init()
+	should_be_zero(C.pthread_rwlock_wrlock(&m.mutex))
 }
 
 // try_rlock try to lock the given RwMutex instance for reading and return immediately.

@@ -1,0 +1,7 @@
+vlib/v/checker/tests/orm_right_side_field_ref_in_where_error.vv:16:32: error: ORM: right side of the `==` expression cannot reference another `User` field; field-to-field comparisons are not supported
+   14 | 
+   15 |     users := sql db {
+   16 |         select from User where id == age
+      |                                      ~~~
+   17 |     }!
+   18 |

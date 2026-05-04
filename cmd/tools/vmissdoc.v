@@ -6,7 +6,7 @@ import flag
 
 const tool_name = 'v missdoc'
 const tool_version = '0.1.0'
-const tool_description = 'Prints all V functions in .v files under PATH/, that do not yet have documentation comments.'
+const tool_description = 'Prints all V functions in .v files under PATH/, that do not yet have documentation comments.\nNote: use `v missdoc @vlib`, to find public fns that still lack documentation.'
 const work_dir_prefix = normalise_path(os.real_path(os.wd_at_startup) + os.path_separator)
 
 struct UndocumentedFN {
@@ -155,10 +155,12 @@ fn (opt &Options) diff_undocumented_functions_in_paths(path_old string, path_new
 	mut differs := []UndocumentedFN{}
 	if new_undocumented_functions.len > old_undocumented_functions.len {
 		for new_undoc_fn in new_undocumented_functions {
-			new_relative_file := new_undoc_fn.file.replace(new, '').trim_string_left(os.path_separator)
+			new_relative_file :=
+				new_undoc_fn.file.replace(new, '').trim_string_left(os.path_separator)
 			mut found := false
 			for old_undoc_fn in old_undocumented_functions {
-				old_relative_file := old_undoc_fn.file.replace(old, '').trim_string_left(os.path_separator)
+				old_relative_file :=
+					old_undoc_fn.file.replace(old, '').trim_string_left(os.path_separator)
 				if new_relative_file == old_relative_file
 					&& new_undoc_fn.signature == old_undoc_fn.signature {
 					found = true
@@ -226,23 +228,23 @@ fn main() {
 	fp.description(tool_description)
 	fp.arguments_description('PATH [PATH]...')
 	fp.skip_executable() // skip the "missdoc" command.
-
 	// Collect tool options
 	mut opt := Options{
 		show_help:       fp.bool('help', `h`, false, 'Show this help text.')
-		deprecated:      fp.bool('deprecated', `d`, false, 'Include deprecated functions in output.')
+		deprecated:      fp.bool('deprecated', `d`, false,
+			'Include deprecated functions in output.')
 		private:         fp.bool('private', `p`, false, 'Include private functions in output.')
 		js:              fp.bool('js', 0, false, 'Include JavaScript functions in output.')
 		no_line_numbers: fp.bool('no-line-numbers', `n`, false, 'Exclude line numbers in output.')
 		collect_tags:    fp.bool('tags', `t`, false, 'Also print function tags if any is found.')
 		exclude:         fp.string_multi('exclude', `e`, '')
 		relative_paths:  fp.bool('relative-paths', `r`, false, 'Use relative paths in output.')
-		diff:            fp.bool('diff', 0, false, 'exit(1) and show difference between two PATH inputs, return 0 otherwise.')
-		verify:          fp.bool('verify', 0, false, 'exit(1) if documentation is missing, 0 otherwise.')
+		diff:            fp.bool('diff', 0, false,
+			'exit(1) and show difference between two PATH inputs, return 0 otherwise.')
+		verify:          fp.bool('verify', 0, false,
+			'exit(1) if documentation is missing, 0 otherwise.')
 	}
-
 	opt.additional_args = fp.finalize() or { panic(err) }
-
 	if opt.show_help {
 		println(fp.usage())
 		exit(0)
@@ -284,6 +286,11 @@ fn main() {
 	}
 	mut total := 0
 	for path in opt.additional_args {
+		if path in ['@vlib', '@cmd', '@examples'] {
+			rpath := path[1..]
+			total += opt.report_undocumented_functions_in_path(os.join_path(@VEXEROOT, rpath))
+			continue
+		}
 		if os.is_file(path) || os.is_dir(path) {
 			total += opt.report_undocumented_functions_in_path(path)
 		}

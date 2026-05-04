@@ -122,7 +122,7 @@ pub mut:
 }
 
 // hex takes in a 32 bit integer and splits it into 4 byte values
-pub fn hex(color i32) Color {
+pub fn hex(color u32) Color {
 	return Color{
 		r: u8((color >> 16) & 0xFF)
 		g: u8((color >> 8) & 0xFF)
@@ -318,7 +318,7 @@ const string_colors = {
 pub fn color_from_string(s string) Color {
 	if s.starts_with('#') {
 		mut hex_str := '0x' + s[1..]
-		return hex(hex_str.i32())
+		return hex(hex_str.u32())
 	} else {
 		return string_colors[s]
 	}

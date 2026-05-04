@@ -172,6 +172,7 @@ pub fn (mut g Gen) asm_literal_arg(node ast.AsmTemplate) {
 				panic('unreachable')
 			}
 		}
+
 		return
 	}
 

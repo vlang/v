@@ -2,7 +2,7 @@ module sessions
 
 import time
 
-struct MemoryStoreSessions[T] {
+pub struct MemoryStoreSessions[T] {
 pub mut:
 	created_at time.Time
 	data       T
@@ -10,7 +10,7 @@ pub mut:
 
 // MemoryStore stores sessions in a `map` in memory only.
 pub struct MemoryStore[T] {
-mut:
+pub mut:
 	data map[string]MemoryStoreSessions[T]
 }
 

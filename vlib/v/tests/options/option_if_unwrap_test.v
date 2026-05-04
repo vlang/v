@@ -20,6 +20,11 @@ pub mut:
 	f ?[3]u8
 }
 
+struct Issue23611Foo {
+mut:
+	test bool
+}
+
 fn unwrap_field(opt Opt) {
 	if opt.f == none {
 		println('${@FN}:${@LINE}: ${typeof(opt.f).name}')
@@ -51,4 +56,14 @@ fn test_main() {
 	unwrap_field(f)
 	f.f = [3]u8{init: 2}
 	unwrap_field(f)
+}
+
+fn test_option_smartcast_after_non_option_assignment() {
+	mut foo := ?Issue23611Foo(none)
+	if foo == none {
+		foo = Issue23611Foo{}
+		foo.test = true
+	}
+	assert foo != none
+	assert foo?.test
 }

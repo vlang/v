@@ -3,12 +3,25 @@
 // that can be found in the LICENSE file.
 module token
 
-import sync
-
 // TODO: finish fileset / file / base pos etc
 
-// compact encoding of a source position within a file set
-pub type Pos = int
+// Pos encodes a source position with a unique ID for use as a map key.
+// offset: file-set global byte offset (for error messages, file lookup)
+// id: unique sequential ID (for expr_types map key — avoids collisions)
+pub struct Pos {
+pub:
+	offset int
+	id     int
+}
+
+// str returns a readable summary of the position key fields.
+pub fn (p Pos) str() string {
+	return '{ offset: ${p.offset}, id: ${p.id} }'
+}
+
+pub fn (p Pos) is_valid() bool {
+	return p.id > 0
+}
 
 pub struct Position {
 pub:
@@ -28,15 +41,16 @@ pub:
 	base int
 	size int
 mut:
-	line_offsets []int = [0] // start of each line
+	line_offsets []int = [0]            // start of each line
+	id_counter   &int  = unsafe { nil } // shared global counter for unique expression IDs
 }
 
 pub struct FileSet {
 mut:
-	base int = 1 // reserve 0 for no position
+	base       int = 1 // reserve 0 for no position
+	id_counter int // global counter for unique expression IDs across all files
 	// files shared []&File
 	files []&File
-	mu    &sync.Mutex = sync.new_mutex()
 }
 
 pub fn FileSet.new() &FileSet {
@@ -45,22 +59,19 @@ pub fn FileSet.new() &FileSet {
 
 // TODO:
 pub fn (mut fs FileSet) add_file(filename string, base_ int, size int) &File {
-	//	eprintln('>>> add_file fs: ${voidptr(fs)} | filename: $filename | base_: $base_ | size: $size')
-	fs.mu.lock()
-	defer {
-		fs.mu.unlock()
-	}
+	//	eprintln('>>> add_file fs: ${voidptr(fs)} | filename: ${filename} | base_: ${base_} | size: ${size}')
 	mut base := if base_ < 0 { fs.base } else { base_ }
 
-	// eprintln('>>> add_file fs: ${voidptr(fs)} | base: ${base:10} | fs.base: $fs.base | base_: ${base_:10} | size: ${size:10} | filename: $filename')
+	// eprintln('>>> add_file fs: ${voidptr(fs)} | base: ${base:10} | fs.base: ${fs.base} | base_: ${base_:10} | size: ${size:10} | filename: ${filename}')
 
 	if base < fs.base {
 		panic('invalid base ${base} (should be >= ${fs.base}')
 	}
 	file := &File{
-		name: filename
-		base: base
-		size: size
+		name:       filename
+		base:       base
+		size:       size
+		id_counter: &fs.id_counter
 	}
 	if size < 0 {
 		panic('invalid size ${size} (should be >= 0)')
@@ -86,7 +97,7 @@ fn search_files(files []&File, x int) int {
 	mut min, mut max := 0, files.len
 	for min < max {
 		mid := (min + max) / 2
-		// println('# min: $min, mid: $mid, max: $max')
+		// println('# min: ${min}, mid: ${mid}, max: ${max}')
 		if files[mid].base <= x {
 			min = mid + 1
 		} else {
@@ -99,7 +110,7 @@ fn search_files(files []&File, x int) int {
 	// for i := files.len-1; i>=0; i-- {
 	// 	file := files[i]
 	// 	if file.base < x && x <= file.base + file.size {
-	// 		// println('found file for pos `$x` i = $i:')
+	// 		// println('found file for pos `${x}` i = ${i}:')
 	// 		// dump(file)
 	// 		return i
 	// 	}
@@ -108,11 +119,7 @@ fn search_files(files []&File, x int) int {
 }
 
 pub fn (mut fs FileSet) file(pos Pos) &File {
-	//	eprintln('>>>>>>>>> file fs: ${voidptr(fs)} | pos: $pos')
-	fs.mu.lock()
-	defer {
-		fs.mu.unlock()
-	}
+	//	eprintln('>>>>>>>>> file fs: ${voidptr(fs)} | pos: ${pos}')
 
 	// lock fs.files
 	// last file
@@ -123,10 +130,10 @@ pub fn (mut fs FileSet) file(pos Pos) &File {
 	// 	}
 	// }
 	// i := search_files(lock fs.files { fs.files }, pos)
-	i := search_files(fs.files, pos)
+	i := search_files(fs.files, pos.offset)
 	if i >= 0 {
 		file := fs.files[i]
-		if int(pos) <= file.base + file.size {
+		if pos.offset <= file.base + file.size {
 			// we could store last and retrieve and try above
 			return file
 		}
@@ -153,24 +160,38 @@ pub fn (f &File) line_count() int {
 }
 
 pub fn (f &File) line_start(line int) int {
-	return f.line_offsets[line - 1] or {
+	idx := line - 1
+	if idx < 0 || idx >= f.line_offsets.len {
 		panic('invalid line `${line}` (must be > 0 & < ${f.line_count()})')
 	}
+	return f.line_offsets[idx]
 }
 
 pub fn (f &File) line(pos Pos) int {
-	return f.find_line(pos)
+	return f.find_line(pos.offset - f.base)
 }
 
-pub fn (f &File) pos(offset int) Pos {
+pub fn (mut f File) pos(offset int) Pos {
 	if offset > f.size {
 		panic('invalid offset')
 	}
-	return Pos(f.base + offset)
+	mut current_id := 0
+	mut next_id := 0
+	unsafe {
+		current_id = *f.id_counter
+	}
+	next_id = current_id + 1
+	unsafe {
+		*f.id_counter = next_id
+	}
+	return Pos{
+		offset: f.base + offset
+		id:     next_id
+	}
 }
 
 pub fn (f &File) position(pos Pos) Position {
-	offset := int(pos) - f.base
+	offset := pos.offset - f.base
 	line, column := f.find_line_and_column(offset)
 	return Position{
 		filename: f.name
@@ -193,7 +214,7 @@ pub fn (f &File) find_line(pos int) int {
 	mut min, mut max := 0, f.line_offsets.len
 	for min < max {
 		mid := (min + max) / 2
-		// println('# min: $min, mid: $mid, max: $max')
+		// println('# min: ${min}, mid: ${mid}, max: ${max}')
 		if f.line_offsets[mid] <= pos {
 			min = mid + 1
 		} else {

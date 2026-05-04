@@ -60,19 +60,30 @@ fn time_with_unix(t Time) Time {
 	if t.unix != 0 {
 		return t
 	}
-	tt := C.tm{
-		tm_sec:  t.second
-		tm_min:  t.minute
-		tm_hour: t.hour
-		tm_mday: t.day
-		tm_mon:  t.month - 1
-		tm_year: t.year - 1900
+	normalized := normalize_zero_date_parts(t)
+	return Time{
+		...normalized
+		unix: time_fields_to_unix(normalized)
 	}
-	utime := make_unix_time(tt)
+}
+
+@[inline]
+fn normalize_zero_date_parts(t Time) Time {
+	if t.month != 0 && t.day != 0 {
+		return t
+	}
 	return Time{
 		...t
-		unix: utime
+		month: if t.month == 0 { 1 } else { t.month }
+		day:   if t.day == 0 { 1 } else { t.day }
 	}
+}
+
+@[inline]
+fn time_fields_to_unix(t Time) i64 {
+	return i64(t.days_from_unix_epoch()) * i64(seconds_per_day) +
+		i64(t.hour) * i64(seconds_per_hour) + i64(t.minute) * i64(seconds_per_minute) +
+		i64(t.second)
 }
 
 // ticks returns the number of milliseconds since the UNIX epoch.
@@ -126,7 +137,7 @@ pub fn (t Time) strftime(fmt string) string {
 	mut buf := [1024]char{}
 	fmt_c := unsafe { &char(fmt.str) }
 	C.strftime(&buf[0], usize(sizeof(buf)), fmt_c, tm)
-	return unsafe { cstring_to_vstring(&char(&buf[0])) }
+	return unsafe { cstring_to_vstring(&buf[0]) }
 }
 
 // some *nix system functions (e.g. `C.poll()`, C.epoll_wait()) accept an `int`

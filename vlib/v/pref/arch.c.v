@@ -1,5 +1,7 @@
 module pref
 
+pub const C.__V_architecture int
+
 pub enum Arch {
 	_auto
 	amd64 // aka x86_64
@@ -11,6 +13,9 @@ pub enum Arch {
 	s390x
 	ppc64le
 	loongarch64
+	sparc64
+	ppc64
+	ppc
 	js_node
 	js_browser
 	js_freestanding
@@ -23,8 +28,7 @@ pub fn get_host_arch() Arch {
 	// current comptime branches by default, so there is a bootstrapping
 	// problem => the __V_architecture macro is used to resolve it.
 	// TODO: think about how to solve it for non C backends, perhaps we
-	// need a comptime `$if native {` too, and/or a mechanism to always
-	// generate all branches for specific functions?
+	// need a mechanism to always generate all branches for specific functions?
 	if C.__V_architecture <= int(Arch._auto) || C.__V_architecture >= int(Arch._max) {
 		return Arch.amd64
 	}
@@ -59,6 +63,15 @@ pub fn arch_from_string(arch_str string) !Arch {
 		}
 		'ppc64le' {
 			return .ppc64le
+		}
+		'sparc64' {
+			return .sparc64
+		}
+		'ppc64' {
+			return .ppc64
+		}
+		'ppc', 'ppc32', 'powerpc' {
+			return .ppc
 		}
 		'js', 'js_node' {
 			return .js_node

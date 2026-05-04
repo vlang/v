@@ -22,7 +22,7 @@ fn new_array_from_c_array(len int, cap int, elm_size int, c_array voidptr) array
 // Private function. Used to implement array[] operator
 fn (a array) get(i int) voidptr {
 	if i < 0 || i >= a.len {
-		panic('array.get: index out of range') // FIXME: (i == $i, a.len == $a.len)')
+		panic('array.get: index out of range') // FIXME: (i == ${i}, a.len == ${a.len})')
 	}
 	return a.data + i * a.element_size
 }
@@ -30,7 +30,7 @@ fn (a array) get(i int) voidptr {
 // Private function. Used to implement assignment to the array element.
 fn (mut a array) set(i int, val voidptr) {
 	if i < 0 || i >= a.len {
-		panic('array.set: index out of range') // FIXME: (i == $i, a.len == $a.len)')
+		panic('array.set: index out of range') // FIXME: (i == ${i}, a.len == ${a.len})')
 	}
 	mem_copy(a.data + a.element_size * i, val, a.element_size)
 }

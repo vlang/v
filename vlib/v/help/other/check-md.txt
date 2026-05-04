@@ -5,6 +5,11 @@ Usage:
 	v check-md [flags] <...files> - Check the given .md files.
 	v check-md [flags] <...dirs>  - Check *all* files in the given directories.
 	Note: You can also combine files and directories.
+	When scanning directories, patterns from `.vcheckignore` files (one glob per line) are
+	used to skip `.md` files. For each `.md` file, `.vcheckignore` files in that file's
+	directory and parent directories are applied up to the repo root. Each skipped file is
+	reported (when `VERBOSE=1`) as
+	`SKIP: <path-relative-to-repo-root> (from <ignore-file-relative-to-repo-root>: <pattern>)`.
 
 Options:
   -silent               Do not show a progress bar.

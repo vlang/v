@@ -68,14 +68,15 @@ language, very similar to the way it is right now.
 
 ## Installing V from source
 
---> **_(this is the preferred method)_**
+**This is the preferred method.**
 
 ### Linux, macOS, Windows, \*BSD, Solaris, WSL, etc.
 
 Usually, installing V is quite simple if you have an environment that already has a
 functional `git` installation.
 
-Note: On Windows, run `make.bat` instead of `make` in CMD, or `./make.bat` in PowerShell.
+Note: On Windows, run `makev.bat` instead of `make` in CMD, or `./makev.bat` in
+PowerShell.
 Note: On Ubuntu/Debian, you may need to run `sudo apt install git build-essential make` first.
 
 To get started, execute the following in your terminal/shell:
@@ -88,7 +89,7 @@ make
 That should be it, and you should find your V executable at `[path to V repo]/v`.
 `[path to V repo]` can be anywhere.
 
-(Like the note above says, on Windows, use `make.bat`, instead of `make`.)
+(Like the note above says, on Windows, use `makev.bat`, instead of `make`.)
 
 Now try running `./v run examples/hello_world.v` (or `v run examples/hello_world.v` in cmd shell).
 
@@ -187,7 +188,7 @@ On Termux, V needs some packages preinstalled - a working C compiler, also `libe
 Linux/macos:
 
 ```bash
-pkg install clang libexecinfo libgc libgc-static make git
+pkg install clang libexecinfo libgc libgc-static tcc make git
 pkg update
 git clone --depth=1 https://github.com/vlang/v
 cd v
@@ -195,6 +196,8 @@ make
 ./v symlink
 ```
 Note: there is *no* need for `sudo ./v symlink` on Termux (and sudo is not installed by default).
+For faster development builds, keep the Termux `tcc` package installed; V will use it by default
+when no compatible bundled `thirdparty/tcc` binary is available on the host.
 
 ### C compiler
 
@@ -220,11 +223,17 @@ Otherwise, follow these instructions:
 > you the effort to type in the full path to your v executable every time.
 > V provides a convenience `v symlink` command to do that more easily.
 
-On Unix systems, it creates a `/usr/local/bin/v` symlink to your
-executable. To do that, run:
+On Unix systems, it creates a `v` symlink in `/usr/local/bin` by
+default. To do that, run:
 
 ```bash
 sudo ./v symlink
+```
+
+You can also pass a different directory, for example:
+
+```bash
+./v symlink ~/.local/bin
 ```
 
 On Windows, start a new shell with administrative privileges, for example by pressing the
@@ -238,6 +247,9 @@ v symlink
 
 (or `.\v symlink` in PowerShell)
 
+You can pass a different directory there too, for example
+`v symlink C:\Users\you\bin`.
+
 That will make V available everywhere, by adding it to your PATH. Please restart your
 shell/editor after that, so that it can pick up the new PATH variable.
 
@@ -249,10 +261,12 @@ shell/editor after that, so that it can pick up the new PATH variable.
 ## Editor/IDE Plugins
 
 - [Atom](https://github.com/vlang/awesome-v#atom)
+- [CodeLite](doc/codelite.md)
 - [Emacs](https://github.com/vlang/awesome-v#emacs)
 - [JetBrains](https://plugins.jetbrains.com/plugin/20287-vlang/docs/syntax-highlighting.html)
 - [Sublime Text 3](https://github.com/vlang/awesome-v#sublime-text-3)
 - [Vim](https://github.com/vlang/awesome-v#vim)
+- [Vim/Neovim Runtime Files](editors/vim)
 - [VS Code](https://marketplace.visualstudio.com/items?itemName=VOSCA.vscode-v-analyzer)
 - [zed](https://github.com/lv37/zed-v)
 
@@ -275,6 +289,8 @@ hello world
 >>>
 ```
 
+`v self` defaults to `-gc none`. Pass `-gc <mode>` if you need a different GC mode.
+
 ```bash
 cd examples
 v hello_world.v && ./hello_world    # or simply
@@ -284,6 +300,10 @@ v run word_counter/word_counter.v word_counter/cinderella.txt
 v run news_fetcher.v
 v run tetris/tetris.v
 ```
+
+When a project has a `.vvmrc` file, `v <project>` and `v run <project>` try
+to use the requested V binary (for example `v0.4.6`) before falling back to
+the current compiler.
 
 
 <img src='https://raw.githubusercontent.com/vlang/v/master/examples/tetris/screenshot.png' width=300 alt='tetris screenshot'>
@@ -409,6 +429,11 @@ Note the TCC website is old; the current TCC repository can be found
 [here](https://repo.or.cz/w/tinycc.git).
 V utilizes pre-built TCC binaries located at
 [https://github.com/vlang/tccbin/](https://github.com/vlang/tccbin/).
+On Linux, `make` retries the portable `thirdparty-linuxmusl-*` TCC bundle when
+the host-specific bundle does not run on the current system.
+To rebuild the bundled `thirdparty/tcc` in place from upstream TinyCC on the
+platforms that have an in-tree build script, run `make latest_tcc_source`.
+Pass `TCC_COMMIT=<hash-or-branch>` to pin a specific upstream revision.
 
 ### PVS-Studio
 

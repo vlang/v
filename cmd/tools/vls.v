@@ -61,8 +61,7 @@ const vls_manifest_path = os.join_path(vls_folder, 'vls.config.json')
 
 const vls_src_folder = os.join_path(vls_folder, 'src')
 
-const server_not_found_err = error_with_code('Language server is not installed nor found.',
-	101)
+const server_not_found_err = error_with_code('Language server is not installed nor found.', 101)
 
 fn (upd VlsUpdater) check_or_create_vls_folder() ! {
 	if !os.exists(vls_folder) {
@@ -151,13 +150,13 @@ fn (upd VlsUpdater) download_prebuilt() ! {
 
 	upd.log('Finding prebuilt executables from GitHub release..')
 	resp := http.get('https://api.github.com/repos/vlang/vls/releases')!
-	releases_json := json2.decode[json2.Any](resp.body)!.arr()
+	releases_json := json2.decode[json2.Any](resp.body)!.as_array()
 	if releases_json.len == 0 {
 		return error('Unable to fetch latest VLS release data: No releases found.')
 	}
 
 	latest_release := releases_json[0].as_map()
-	assets := latest_release['assets']!.arr()
+	assets := latest_release['assets']!.as_array()
 
 	mut checksum_asset_idx := -1
 	mut exec_asset_idx := -1
@@ -240,13 +239,15 @@ fn (upd VlsUpdater) compile_from_source() ! {
 
 	if !os.exists(vls_src_folder) {
 		upd.log('Cloning VLS repo...')
-		clone_result := os.execute('${os.quoted_path(vexe)} retry -- ${git} clone --filter=blob:none https://github.com/vlang/vls ${vls_src_folder}')
+		clone_result :=
+			os.execute('${os.quoted_path(vexe)} retry -- ${git} clone --filter=blob:none https://github.com/vlang/vls ${vls_src_folder}')
 		if clone_result.exit_code != 0 {
 			return error('Failed to build VLS from source. Reason: ${clone_result.output}')
 		}
 	} else {
 		upd.log('Updating VLS repo...')
-		pull_result := os.execute('${os.quoted_path(vexe)} retry -- ${git} -C ${vls_src_folder} pull')
+		pull_result :=
+			os.execute('${os.quoted_path(vexe)} retry -- ${git} -C ${vls_src_folder} pull')
 		if !upd.is_force && pull_result.output.trim_space() == 'Already up to date.' {
 			upd.log('VLS was already updated to its latest version.')
 			return
@@ -308,7 +309,8 @@ fn (mut upd VlsUpdater) parse(mut fp flag.FlagParser) ! {
 		upd.output = .silent
 	}
 
-	is_install := fp.bool('install', ` `, false, 'Installs the language server. You may also use this flag to re-download or force update your existing installation.')
+	is_install := fp.bool('install', ` `, false,
+		'Installs the language server. You may also use this flag to re-download or force update your existing installation.')
 	is_update := fp.bool('update', ` `, false, 'Updates the installed language server.')
 	upd.is_check = fp.bool('check', ` `, false, 'Checks if the language server is installed.')
 	upd.is_force = fp.bool('force', ` `, false, 'Force install or update the language server.')
@@ -339,7 +341,8 @@ fn (mut upd VlsUpdater) parse(mut fp flag.FlagParser) ! {
 		}
 	}
 
-	upd.is_help = fp.bool('help', `h`, false, "Show this updater's help text. To show the help text for the language server, pass the `--ls` flag before it.")
+	upd.is_help = fp.bool('help', `h`, false,
+		"Show this updater's help text. To show the help text for the language server, pass the `--ls` flag before it.")
 
 	if !upd.is_help && !upd.pass_to_ls {
 		// automatically set the cli launcher to language server mode
@@ -427,6 +430,7 @@ fn (upd VlsUpdater) cli_error(err IError) {
 		}
 		.silent {}
 	}
+
 	exit(1)
 }
 

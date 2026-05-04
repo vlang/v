@@ -1,9 +1,9 @@
 module sync
 
 // Pthread TLS API functions (via C interface)
-fn C.pthread_key_create(key voidptr, voidptr) int
-fn C.pthread_key_delete(key u64) int
-fn C.pthread_setspecific(key u64, const_ptr voidptr) int
+fn C.pthread_key_create(key voidptr, voidptr) i32
+fn C.pthread_key_delete(key u64) i32
+fn C.pthread_setspecific(key u64, const_ptr voidptr) i32
 fn C.pthread_getspecific(key u64) voidptr
 
 // new_tls creates new TLS storage initialized with the given `value`

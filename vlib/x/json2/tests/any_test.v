@@ -287,23 +287,23 @@ fn test_as_map_of_strings() {
 	}
 }
 
-fn test_arr() {
-	assert sample_data['u8'] or { 0 }.arr()[0].u8() == 1
-	assert sample_data['u16'] or { 0 }.arr()[0].u16() == 2
-	assert sample_data['u32'] or { 0 }.arr()[0].u32() == 3
-	assert sample_data['u64'] or { 0 }.arr()[0].u64() == 4
-	assert sample_data['i8'] or { 0 }.arr()[0].i8() == 5
-	assert sample_data['i16'] or { 0 }.arr()[0].i16() == 6
-	assert sample_data['i32'] or { 0 }.arr()[0].i32() == 7
-	assert sample_data['int'] or { 0 }.arr()[0].int() == 8
-	assert sample_data['i64'] or { 0 }.arr()[0].i64() == 9
-	assert sample_data['f32'] or { 0 }.arr()[0].f32() == 2.3
-	assert sample_data['f64'] or { 0 }.arr()[0].f64() == 1.283
-	assert sample_data['bool'] or { 0 }.arr()[0].bool() == false
-	assert sample_data['str'] or { 0 }.arr()[0].str() == 'test'
-	assert is_null(sample_data['null'] or { 0 }.arr()[0]) == true
-	assert sample_data['arr'] or { 0 }.arr()[0].str() == 'lol'
-	assert sample_data['obj'] or { 0 }.arr()[0].int() == 10
+fn test_as_array() {
+	assert sample_data['u8'] or { 0 }.as_array()[0].u8() == 1
+	assert sample_data['u16'] or { 0 }.as_array()[0].u16() == 2
+	assert sample_data['u32'] or { 0 }.as_array()[0].u32() == 3
+	assert sample_data['u64'] or { 0 }.as_array()[0].u64() == 4
+	assert sample_data['i8'] or { 0 }.as_array()[0].i8() == 5
+	assert sample_data['i16'] or { 0 }.as_array()[0].i16() == 6
+	assert sample_data['i32'] or { 0 }.as_array()[0].i32() == 7
+	assert sample_data['int'] or { 0 }.as_array()[0].int() == 8
+	assert sample_data['i64'] or { 0 }.as_array()[0].i64() == 9
+	assert sample_data['f32'] or { 0 }.as_array()[0].f32() == 2.3
+	assert sample_data['f64'] or { 0 }.as_array()[0].f64() == 1.283
+	assert sample_data['bool'] or { 0 }.as_array()[0].bool() == false
+	assert sample_data['str'] or { 0 }.as_array()[0].str() == 'test'
+	assert is_null(sample_data['null'] or { 0 }.as_array()[0]) == true
+	assert sample_data['arr'] or { 0 }.as_array()[0].str() == 'lol'
+	assert sample_data['obj'] or { 0 }.as_array()[0].int() == 10
 }
 
 fn test_bool() {

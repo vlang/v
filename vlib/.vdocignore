@@ -3,6 +3,8 @@ builtin/wasm
 builtin/linux_bare
 builtin/wasm_bare
 os/bare
+# Experimental and not part of the 0.5.1 release.
+goroutines
 v/slow_tests/
 v/preludes_js/
 v/preludes

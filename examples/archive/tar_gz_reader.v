@@ -30,11 +30,16 @@ fn new_context() !&Context {
 	fp.description('Reads into memory selected sections of *.tar.gz. archives from https or home_dir.')
 	fp.skip_executable()
 	ctx := &Context{
-		url:        fp.string('url', `u`, default_url, 'archive *.tar.gz URL, default(${default_url}). Start name with file:/// for local')
-		chunks:     fp.bool('chunks', `c`, false, 'decompress with chunks to reduce RAM usage, default(false)')
-		debug:      fp.int('debug', `d`, 0, 'prints blocks: 1=other, 2:+dirs, 3=+files, 4=+data, default(0=silent)')
-		max_blocks: fp.int('max_blocks', `m`, 0, 'maximum blocks to read, stop early. Default(0=read all)')
-		filename:   fp.string('filename', `f`, '', 'filename content complete print, stop early. Default(empty means none)')
+		url:        fp.string('url', `u`, default_url,
+			'archive *.tar.gz URL, default(${default_url}). Start name with file:/// for local')
+		chunks:     fp.bool('chunks', `c`, false,
+			'decompress with chunks to reduce RAM usage, default(false)')
+		debug:      fp.int('debug', `d`, 0,
+			'prints blocks: 1=other, 2:+dirs, 3=+files, 4=+data, default(0=silent)')
+		max_blocks: fp.int('max_blocks', `m`, 0,
+			'maximum blocks to read, stop early. Default(0=read all)')
+		filename:   fp.string('filename', `f`, '',
+			'filename content complete print, stop early. Default(empty means none)')
 	}
 	additional := fp.finalize()!
 	if additional.len > 0 {
@@ -65,9 +70,9 @@ fn new_downloader(url string) !&Downloader {
 	return downloader
 }
 
-fn (mut d Downloader) on_start(mut request http.Request, path string) ! {}
+fn (mut d Downloader) on_start(mut _request http.Request, _path string) ! {}
 
-fn (mut d Downloader) on_chunk(request &http.Request, chunk []u8, already_received u64, expected u64) ! {
+fn (mut d Downloader) on_chunk(_request &http.Request, chunk []u8, _already_received u64, expected u64) ! {
 	if expected == 0 {
 		return
 	}
@@ -75,19 +80,13 @@ fn (mut d Downloader) on_chunk(request &http.Request, chunk []u8, already_receiv
 	d.data << chunk
 }
 
-fn (mut d Downloader) on_finish(request &http.Request, response &http.Response) ! {}
+fn (mut d Downloader) on_finish(_request &http.Request, _response &http.Response) ! {}
 
 struct FileReader implements tar.Reader {
 	ctx &Context
 mut:
 	filepath string
 	content  []u8
-}
-
-fn new_file_reader(ctx &Context) FileReader {
-	return FileReader{
-		ctx: ctx
-	}
 }
 
 fn (mut f FileReader) other_block(mut read tar.Read, details string) {

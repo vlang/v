@@ -1,0 +1,15 @@
+// vtest vflags: -live
+import time
+
+@[live]
+fn main() {
+	for {
+		f()
+		time.sleep(20 * time.millisecond)
+	}
+}
+
+@[live]
+fn f() {
+	println('f()')
+}

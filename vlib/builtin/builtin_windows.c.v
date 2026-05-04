@@ -4,12 +4,17 @@
 @[has_globals]
 module builtin
 
-// g_original_codepage - used to restore the original windows console code page when exiting
-__global g_original_codepage = u32(0)
+#include <io.h>
+#include <fcntl.h>
+
+// Cast the V callback to the Windows SDK callback type. Clang 20 treats the
+// otherwise-compatible struct pointer mismatch as a hard error for v_win.c.
+#define v_set_unhandled_exception_filter(handler) SetUnhandledExceptionFilter((LPTOP_LEVEL_EXCEPTION_FILTER)(handler))
 
 // See https://learn.microsoft.com/en-us/windows/win32/winprog/windows-data-types
 // See https://www.codeproject.com/KB/string/cppstringguide1.aspx
 pub type C.BOOL = int
+pub type C.LONG = int
 
 pub type C.HINSTANCE = voidptr
 
@@ -41,13 +46,16 @@ pub type C.LPTSTR = &C.TCHAR
 
 pub type C.LPCTSTR = &C.TCHAR
 
-// utf8 to stdout needs C.SetConsoleOutputCP(cp_utf8)
-fn C.GetConsoleOutputCP() u32
+fn C.WriteConsoleW(voidptr, &u16, u32, &u32, voidptr) bool
 
-fn C.SetConsoleOutputCP(wCodePageID u32) bool
+fn C._setmode(int, int) int
 
-fn restore_codepage() {
-	C.SetConsoleOutputCP(g_original_codepage)
+// set_stream_binary_mode disables CRT newline translation for redirected stdio streams.
+fn set_stream_binary_mode(stream &C.FILE) {
+	fd := C._fileno(stream)
+	if fd >= 0 {
+		C._setmode(fd, C._O_BINARY)
+	}
 }
 
 fn is_terminal(fd int) int {
@@ -63,6 +71,51 @@ const enable_processed_output = 1
 const enable_wrap_at_eol_output = 2
 const evable_virtual_terminal_processing = 4
 
+// Write UTF-8 directly as UTF-16 for console hosts instead of changing the console code page.
+@[manualfree]
+fn write_buf_to_console(fd int, buf &u8, buf_len int) bool {
+	if buf_len <= 0 || is_terminal(fd) <= 0 {
+		return false
+	}
+	mut console_handle := C.GetStdHandle(std_output_handle)
+	if fd == 2 {
+		console_handle = C.GetStdHandle(std_error_handle)
+	}
+	if isnil(console_handle) {
+		return false
+	}
+	unsafe {
+		wide_len := C.MultiByteToWideChar(cp_utf8, 0, &char(buf), buf_len, 0, 0)
+		if wide_len <= 0 {
+			return false
+		}
+		mut wide_buf := &u16(malloc_noscan((wide_len + 1) * int(sizeof(u16))))
+		if isnil(wide_buf) {
+			return false
+		}
+		defer {
+			free(wide_buf)
+		}
+		converted := C.MultiByteToWideChar(cp_utf8, 0, &char(buf), buf_len, wide_buf, wide_len)
+		if converted <= 0 {
+			return false
+		}
+		wide_buf[converted] = 0
+		mut remaining_chars := converted
+		mut wide_ptr := wide_buf
+		for remaining_chars > 0 {
+			mut chars_written := u32(0)
+			if !C.WriteConsoleW(console_handle, wide_ptr, u32(remaining_chars), &chars_written, nil)
+				|| chars_written == 0 {
+				return false
+			}
+			wide_ptr += int(chars_written)
+			remaining_chars -= int(chars_written)
+		}
+		return true
+	}
+}
+
 @[markused]
 fn builtin_init() {
 	$if gcboehm ? {
@@ -70,15 +123,16 @@ fn builtin_init() {
 			gc_set_warn_proc(internal_gc_warn_proc_none)
 		}
 	}
-	g_original_codepage = C.GetConsoleOutputCP()
-	C.SetConsoleOutputCP(cp_utf8)
-	at_exit(restore_codepage) or {}
+	set_stream_binary_mode(C.stdout)
+	set_stream_binary_mode(C.stderr)
 	if is_terminal(1) > 0 {
-		C.SetConsoleMode(C.GetStdHandle(std_output_handle), enable_processed_output | enable_wrap_at_eol_output | evable_virtual_terminal_processing)
-		C.SetConsoleMode(C.GetStdHandle(std_error_handle), enable_processed_output | enable_wrap_at_eol_output | evable_virtual_terminal_processing)
+		C.SetConsoleMode(C.GetStdHandle(std_output_handle),
+			enable_processed_output | enable_wrap_at_eol_output | evable_virtual_terminal_processing)
+		C.SetConsoleMode(C.GetStdHandle(std_error_handle),
+			enable_processed_output | enable_wrap_at_eol_output | evable_virtual_terminal_processing)
 		unsafe {
-			C.setbuf(C.stdout, 0)
-			C.setbuf(C.stderr, 0)
+			set_stream_unbuffered(C.stdout)
+			set_stream_unbuffered(C.stderr)
 		}
 	}
 	$if !no_backtrace ? {
@@ -112,16 +166,14 @@ pub:
 	context_record   &ContextRecord   = unsafe { nil }
 }
 
-type VectoredExceptionHandler = fn (&ExceptionPointers) int
+@[callconv: stdcall]
+type TopLevelExceptionFilter = fn (&ExceptionPointers) C.LONG
 
-fn C.AddVectoredExceptionHandler(int, voidptr)
-
-fn add_vectored_exception_handler(handler VectoredExceptionHandler) {
-	C.AddVectoredExceptionHandler(1, voidptr(handler))
-}
+fn C.SetUnhandledExceptionFilter(TopLevelExceptionFilter) voidptr
+fn C.v_set_unhandled_exception_filter(TopLevelExceptionFilter) voidptr
 
 @[callconv: stdcall]
-fn unhandled_exception_handler(e &ExceptionPointers) int {
+fn unhandled_exception_handler(e &ExceptionPointers) C.LONG {
 	match e.exception_record.code {
 		// These are 'used' by the backtrace printer
 		// so we dont want to catch them...
@@ -129,8 +181,13 @@ fn unhandled_exception_handler(e &ExceptionPointers) int {
 			return 0
 		}
 		else {
-			println('Unhandled Exception 0x' + ptr_str(e.exception_record.code))
+			eprintln('Unhandled Exception 0x' + ptr_str(e.exception_record.code) + ' at ' +
+				ptr_str(e.exception_record.address))
+			flush_stdout()
+			flush_stderr()
 			print_backtrace_skipping_top_frames(5)
+			flush_stdout()
+			flush_stderr()
 		}
 	}
 
@@ -138,7 +195,10 @@ fn unhandled_exception_handler(e &ExceptionPointers) int {
 }
 
 fn add_unhandled_exception_handler() {
-	add_vectored_exception_handler(VectoredExceptionHandler(voidptr(unhandled_exception_handler)))
+	// A vectored handler also sees first-chance exceptions that Windows APIs may
+	// handle internally, which can lead to false-positive "Unhandled Exception"
+	// reports. Register a top-level filter instead.
+	C.v_set_unhandled_exception_filter(unhandled_exception_handler)
 }
 
 fn C.IsDebuggerPresent() bool

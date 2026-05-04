@@ -2,6 +2,7 @@ import gg
 import sokol.sapp
 import sokol.sgl
 import x.ttf
+import x.ttf.render_sokol
 import os
 
 const custom_font_path = os.args[1] or {
@@ -27,7 +28,7 @@ pub mut:
 	gg              &gg.Context = unsafe { nil }
 	init_flag       bool
 	tf              []ttf.TTF_File
-	ttf_render      []ttf.TTF_render_Sokol
+	ttf_render      []render_sokol.TTF_render_Sokol
 	text_ready_flag bool
 }
 
@@ -89,7 +90,7 @@ fn main() {
 	}
 
 	// TTF hello render
-	app.ttf_render << &ttf.TTF_render_Sokol{
+	app.ttf_render << &render_sokol.TTF_render_Sokol{
 		bmp: &ttf.BitMap{
 			tf:       &app.tf[0]
 			buf:      unsafe { malloc_noscan(32000000) }
@@ -99,7 +100,7 @@ fn main() {
 	}
 
 	// TTF custom text render
-	app.ttf_render << &ttf.TTF_render_Sokol{
+	app.ttf_render << &render_sokol.TTF_render_Sokol{
 		bmp: &ttf.BitMap{
 			tf:       &app.tf[1]
 			buf:      unsafe { malloc_noscan(32000000) }

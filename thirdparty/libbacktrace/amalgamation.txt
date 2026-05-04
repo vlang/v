@@ -1,4 +1,9 @@
-The libbacktrace source is distributed here as an amalgamation (https://sqlite.org/amalgamation.html).
-This means that, rather than mirroring the entire libbacktrace repo here, most of the source code is
-packaged into one C file while other platform-specific code are into their respective C files which
-is much easier to handle.
+The libbacktrace sources here are synced from:
+https://github.com/ianlancetaylor/libbacktrace/
+
+This directory keeps a V-specific amalgamation of upstream commit
+`b9e40069c0b47a722286b94eb5231f7f05c08713`.
+
+`backtrace.c` is the local wrapper that defines the static config and
+includes `base.c` plus the platform-specific `linux.c`, `darwin.c`, or
+`windows.c` amalgamation.

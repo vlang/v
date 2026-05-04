@@ -384,6 +384,16 @@ fn test_replace_each() {
 	assert s2.replace_each(['hello_world', 'aaa', 'hello', 'bbb']) == 'aaa bbb'
 }
 
+fn test_format() {
+	template := 'First: {0}, First again: {0}, Second: {1}, Third: {2}'
+	assert template.format('A', 'B', 'C') == 'First: A, First again: A, Second: B, Third: C'
+	assert template.format('R', 'G', 'B') == 'First: R, First again: R, Second: G, Third: B'
+	assert 'Escaped {{0}} and {{braces}}'.format('unused') == 'Escaped {0} and {braces}'
+	assert '{0} {3} {1}'.format('A', 'B') == 'A {3} B'
+	assert '{10}-{2}'.format('0', '1', '2', '3', '4', '5', '6', '7', '8', '9', '10') == '10-2'
+	assert 'keep {name} and {1'.format('A', 'B') == 'keep {name} and {1'
+}
+
 fn test_itoa() {
 	num := 777
 	assert num.str() == '777'
@@ -792,7 +802,7 @@ fn test_raw_with_quotes() {
 fn test_escape() {
 	a := 10
 	println("\"${a}")
-	// assert "\"$a" == '"10'
+	// assert "\"${a}" == '"10'
 }
 
 fn test_atoi() {
@@ -955,24 +965,24 @@ fn test_interpolation_after_quoted_variable_still_works() {
 	tt := 'xyz'
 
 	// Basic interpolation, no internal quotes
-	yy := 'Replacing $rr with $tt'
+	yy := 'Replacing ${rr} with ${tt}'
 	assert yy == 'Replacing abc with xyz'
 
 	// Interpolation after quoted variable ending with 'r'quote
 	// that may be mistaken with the start of a raw string,
 	// ensure that it is not.
-	ss := 'Replacing "$rr" with "$tt"'
+	ss := 'Replacing "${rr}" with "${tt}"'
 	assert ss == 'Replacing "abc" with "xyz"'
-	zz := "Replacing '$rr' with '$tt'"
+	zz := "Replacing '${rr}' with '${tt}'"
 	assert zz == "Replacing 'abc' with 'xyz'"
 
 	// Interpolation after quoted variable ending with 'c'quote
 	// may be mistaken with the start of a c string, so
 	// check it is not.
 	cc := 'abc'
-	ccc := "Replacing '$cc' with '$tt'"
+	ccc := "Replacing '${cc}' with '${tt}'"
 	assert ccc == "Replacing 'abc' with 'xyz'"
-	cccq := 'Replacing "$cc" with "$tt"'
+	cccq := 'Replacing "${cc}" with "${tt}"'
 	assert cccq == 'Replacing "abc" with "xyz"'
 }
 */
@@ -993,4 +1003,12 @@ fn test_js_string() {
 	assert s.includes(js' ') == JS.Boolean(true)
 	assert s.startsWith(js'hello') == JS.Boolean(true)
 	assert s.endsWith(js'V') == JS.Boolean(true)
+}
+
+fn test_tos_from_u8_ptr() {
+	mut buf := [u8(`0`), `0`, `0`, `0`, `-`, `0`, `0`, `-`, `0`, `0`, `T`, `0`, `0`, `:`, `0`,
+		`0`, `:`, `0`, `0`, `.`, `0`, `0`, `0`, `0`, `0`, `0`, `0`, `0`, `0`, `Z`]!
+	s := unsafe { tos(&buf[0], buf.len) }
+
+	assert s == '0000-00-00T00:00:00.000000000Z'
 }

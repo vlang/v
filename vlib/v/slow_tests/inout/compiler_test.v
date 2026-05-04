@@ -19,6 +19,9 @@ const skip_files = [
 ]
 
 fn test_all() {
+	mut total_oks := 0
+	mut total_oks_panic := 0
+	mut total_skips := 0
 	mut total_errors := 0
 	vexe := os.getenv('VEXE')
 	vroot := os.dir(vexe)
@@ -32,42 +35,47 @@ fn test_all() {
 		assert false
 	}
 	paths := vtest.filter_vtest_only(tests, basepath: dir)
-	for path in paths {
-		print(path + ' ')
+	println('Found ${paths.len} .vv/.vsh files in ${dir} ...')
+	for idx, path in paths {
+		vprint('${idx + 1:3}/${paths.len:-3} ${path} ')
 		fname := os.file_name(path)
 		if fname in skip_files {
-			println(term.bright_yellow('SKIP'))
+			vprintln(term.bright_yellow('SKIP'))
+			total_skips++
 			continue
 		}
 		if v_ci_ubuntu_musl {
 			if fname.contains('orm_') {
 				// the ORM programs use db.sqlite, which is not easy to install in a way usable by ubuntu-musl, so just skip them:
-				println(term.bright_yellow('SKIP on ubuntu musl'))
+				vprintln(term.bright_yellow('SKIP on ubuntu musl'))
 				continue
 			}
 		}
 		program := path
 		tname := rand.ulid()
-		compilation := os.execute('${os.quoted_path(vexe)} -o ${tname} -cflags "-w" -cg ${os.quoted_path(program)}')
+		tbase := os.join_path(os.vtmp_dir(), tname)
+		texe := if os.user_os() == 'windows' { '${tbase}.exe' } else { tbase }
+		compilation :=
+			os.execute('${os.quoted_path(vexe)} -o ${os.quoted_path(tbase)} -cflags "-w" -cg ${os.quoted_path(program)}')
 		if compilation.exit_code < 0 {
 			panic(compilation.output)
 		}
 		if compilation.exit_code != 0 {
 			panic('compilation failed: ${compilation.output}')
 		}
-		res := os.execute('./${tname}')
+		res := os.execute(os.quoted_path(texe))
 		if res.exit_code < 0 {
-			println('nope')
+			vprintln('nope')
 			panic(res.output)
 		}
 		$if windows {
-			os.rm('./${tname}.exe') or {}
+			os.rm(texe) or {}
 			$if msvc {
-				os.rm('./${tname}.ilk') or {}
-				os.rm('./${tname}.pdb') or {}
+				os.rm('${tbase}.ilk') or {}
+				os.rm('${tbase}.pdb') or {}
 			}
 		} $else {
-			os.rm('./${tname}') or {}
+			os.rm(texe) or {}
 		}
 		// println('============')
 		// println(res.output)
@@ -83,7 +91,8 @@ fn test_all() {
 			n_expected := normalize_panic_message(expected, vroot)
 			if found.contains('================ V panic ================') {
 				if n_found.starts_with(n_expected) {
-					println(term.green('OK (panic)'))
+					vprintln(term.green('OK (panic)'))
+					total_oks_panic++
 					continue
 				} else {
 					// Both have panics, but there was a difference...
@@ -109,9 +118,11 @@ fn test_all() {
 			println(term.h_divider('-'))
 			total_errors++
 		} else {
-			println(term.green('OK'))
+			vprintln(term.green('OK'))
+			total_oks++
 		}
 	}
+	println('>>> Summary: files: ${paths.len}, ok: ${total_oks}, ok panics: ${total_oks_panic}, skipped: ${total_skips}, errors: ${total_errors} .')
 	assert total_errors == 0
 }
 
@@ -123,4 +134,14 @@ fn normalize_panic_message(message string, vroot string) string {
 	msg = msg.replace(s + '/', '')
 	msg = msg.trim_space()
 	return msg
+}
+
+@[if !silent ?]
+fn vprint(msg string) {
+	print(msg)
+}
+
+@[if !silent ?]
+fn vprintln(msg string) {
+	println(msg)
 }

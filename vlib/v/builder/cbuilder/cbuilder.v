@@ -18,8 +18,12 @@ pub fn compile_c(mut b builder.Builder) {
 		println('all .v files before:')
 	}
 	$if windows {
-		b.find_win_cc() or {
-			builder.verror('
+		if builder.should_find_windows_host_c_compiler(b.pref) {
+			b.find_win_cc() or {
+				if b.pref.ccompiler_set_by_flag && b.pref.ccompiler != 'msvc' {
+					builder.verror(err.msg())
+				}
+				builder.verror('
 ==================
 Error: no C compiler detected.
 
@@ -34,6 +38,7 @@ You can also use `v doctor`, to see what V knows about your current environment.
 
 You can also seek #help on Discord: https://discord.gg/vlang
 ')
+			}
 		}
 	}
 	mut files := b.get_builtin_files()

@@ -66,7 +66,8 @@ fn str_tmp_expr_advanced() {
 }
 
 fn str_tmp_expr_advanced_var_decl() {
-	a := handle_strings('c' + 'd', add_strings('e' + 'f', 'g')) // both lvl 1 and lvl2 exprs must be freed
+	a :=
+		handle_strings('c' + 'd', add_strings('e' + 'f', 'g')) // both lvl 1 and lvl2 exprs must be freed
 	println(a)
 }
 
@@ -79,12 +80,13 @@ fn str_inter() {
 	a := 10
 	println('a = ${a}')
 	// foo := Foo{10, 'x' + 'x'}
-	// println('foo = $foo') // TODO
+	// println('foo = ${foo}') // TODO
 }
 
 fn str_replace() {
 	mut s := 'hello world'
-	s = s.replace('hello', 'hi') // s can't be freed as usual before the assignment, since it's used in the right expr
+	s =
+		s.replace('hello', 'hi') // s can't be freed as usual before the assignment, since it's used in the right expr
 	println(s)
 
 	mut s2 := 'aa' + 'bb'
@@ -151,6 +153,7 @@ fn match_expr() string {
 		2 { 'two' }
 		else { 'unknown' }
 	}
+
 	return res
 }
 
@@ -163,7 +166,7 @@ fn option_str() {
 	s := 'query: select'
 	// option fn args must be freed
 	pos2 := opt('query:${q}') or {
-		// pos := s.index('query: $q') or {
+		// pos := s.index('query: ${q}') or {
 		println('exiting')
 		return
 	}

@@ -4,9 +4,9 @@ module picoev
 #include <sys/types.h>
 #include <sys/event.h>
 
-fn C.kevent(int, changelist voidptr, nchanges int, eventlist voidptr, nevents int, timeout &C.timespec) int
-fn C.kqueue() int
-fn C.EV_SET(kev voidptr, ident int, filter i16, flags u16, fflags u32, data voidptr, udata voidptr)
+fn C.kevent(i32, changelist voidptr, nchanges i32, eventlist voidptr, nevents i32, timeout &C.timespec) i32
+fn C.kqueue() i32
+fn C.EV_SET(kev voidptr, ident i32, filter i16, flags u16, fflags u32, data voidptr, udata voidptr)
 
 pub struct C.kevent {
 pub mut:
@@ -60,8 +60,7 @@ pub fn (mut pv Picoev) ev_set(index int, operation int, events int) {
 	}
 	filter = i16(filter)
 
-	C.EV_SET(&pv.loop.changelist[index], pv.loop.changed_fds, filter, operation, 0, 0,
-		0)
+	C.EV_SET(&pv.loop.changelist[index], pv.loop.changed_fds, filter, operation, 0, 0, 0)
 }
 
 // backend_build uses the lower 8 bits to store the old events and the higher 8
@@ -103,8 +102,7 @@ fn (mut pv Picoev) apply_pending_changes(apply_all bool) int {
 			}
 			// Apply the changes if the total changes exceed the changelist size
 			if total + 1 >= pv.loop.changelist.len {
-				nevents = C.kevent(pv.loop.kq_id, &pv.loop.changelist, total, C.NULL,
-					0, C.NULL)
+				nevents = C.kevent(pv.loop.kq_id, &pv.loop.changelist, total, C.NULL, 0, C.NULL)
 				assert nevents == 0
 				total = 0
 			}
@@ -168,8 +166,8 @@ fn (mut pv Picoev) poll_once(max_wait_in_sec int) int {
 	// apply changes later when the callback is called.
 	total = pv.apply_pending_changes(false)
 
-	nevents = C.kevent(pv.loop.kq_id, &pv.loop.changelist, total, &pv.loop.events, pv.loop.events.len,
-		&ts)
+	nevents = C.kevent(pv.loop.kq_id, &pv.loop.changelist, total, &pv.loop.events,
+		pv.loop.events.len, &ts)
 	if nevents == -1 {
 		// the errors we can only rescue
 		assert C.errno == C.EACCES || C.errno == C.EFAULT || C.errno == C.EINTR

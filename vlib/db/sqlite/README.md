@@ -6,23 +6,68 @@ high-reliability, full-featured, SQL database engine."
 
 # Install SQLite Dependency
 
-Before you can use this module, you must first have the SQLite development
-library installed on your system.
+On **any platform** (Windows, Linux, macOS), you can run:
 
-**Fedora 31**:
+`v vlib/db/sqlite/install_thirdparty_sqlite.vsh`
 
-`sudo dnf -y install sqlite-devel`
+This downloads the SQLite amalgamation source and places it in
+`v/thirdparty/sqlite`. V will then compile it automatically
+during your build.
 
+If you need to install SQLite manually, use the SQLite
+**amalgamation** package. `v/thirdparty/sqlite` must contain
+`sqlite3.c` and `sqlite3.h` directly.
 
-**Ubuntu 20.04**:
+Do not use the autoconf/source package here, and do not rename
+`sqlite3.c` to `sqlite3.cpp`.
 
-`sudo apt install -y libsqlite3-dev`
+On **macOS**, V can also fall back to the system `libsqlite3`
+when `pkg-config` is not available, so an extra install is often
+not needed.
 
+On **Linux**, you can also install the system development package
+instead:
 
-**Windows**:
-- Download the source zip from [SQLite Downloads](https://sqlite.org/download.html)
-- Create a new `sqlite` subfolder inside `v/thirdparty`
-- Extract the zip into that folder
+- Debian/Ubuntu: `sudo apt install -y libsqlite3-dev`
+- Fedora/RHEL: `sudo dnf -y install sqlite-devel`
+- Arch: `sudo pacman -S sqlite`
+
+# Convenience Methods
+
+The `DB` struct provides several helper methods for common
+introspection queries:
+
+```v
+import db.sqlite
+
+db := sqlite.connect('mydb.db') or { panic(err) }
+
+// List all user tables
+tables := db.tables()!
+
+// Get column names for a table
+cols := db.columns('users')!
+
+// Get CREATE statements (single table or all objects)
+s := db.schema('users')!
+
+// Database file size in bytes
+size := db.db_size()!
+```
+
+# Interactive CLI
+
+V includes a built-in SQLite CLI as a replacement for `sqlite3`:
+
+```sh
+v sqlite mydb.db
+```
+
+Features include a full readline REPL with history and tab
+completion, 9 output modes (`table`, `box`, `markdown`, `csv`,
+`json`, `line`, `html`, `insert`, `quote`), `.dump`,
+`.import`/`.export`, `.backup`, session control, and schema tools.
+Run `.help` inside the REPL for the full command list.
 
 # Performance Tips
 

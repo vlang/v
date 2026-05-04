@@ -7,6 +7,8 @@ import v.util.recompilation
 const vexe = os.real_path(os.getenv_opt('VEXE') or { @VEXE })
 
 const vroot = os.dir(vexe)
+const v_upstream_url = 'https://github.com/vlang/v'
+const v_upstream_branch = 'master'
 
 struct App {
 	is_verbose bool
@@ -14,7 +16,7 @@ struct App {
 	vexe       string
 	vroot      string
 
-	skip_v_self  bool // do not run `v self`, effectively enforcing the running of `make` or `make.bat`
+	skip_v_self  bool // do not run `v self`, effectively enforcing the running of `make` or `makev.bat`
 	skip_current bool // skip the current hash check, enabling easier testing on the same commit, without using docker etc
 }
 
@@ -41,6 +43,15 @@ fn main() {
 	current_hash_from_filesystem := version.githash(vroot) or { hash_when_vup_was_compiled }
 	if !app.skip_current && hash_when_vup_was_compiled == current_hash_from_filesystem {
 		println('V is already updated.')
+		if !os.exists(app.current_vexe_path()) {
+			eprintln('`${app.vexe}` is missing, trying `${get_make_cmd_name()}` to restore it...')
+			if !app.make('') {
+				app.show_current_v_version()
+				eprintln('Recompiling V *failed*.')
+				eprintln('Try running `${get_make_cmd_name()}` .')
+				exit(1)
+			}
+		}
 		app.show_current_v_version()
 		return
 	}
@@ -68,24 +79,33 @@ fn (app App) update_from_master() {
 	if !os.exists('.git') {
 		// initialize the folder, as if it had been cloned:
 		app.git_command('git init')
-		app.git_command('git remote add origin https://github.com/vlang/v')
+		app.git_command('git remote add origin ${v_upstream_url}')
 		app.git_command('git fetch')
-		app.git_command('git remote set-head origin master')
-		app.git_command('git reset --hard origin/master')
+		app.git_command('git remote set-head origin ${v_upstream_branch}')
+		app.git_command('git reset --hard origin/${v_upstream_branch}')
 		// Note 1: patterns starting with /, will match only against the root;
 		//         `--exclude v` will match also vlib/v/ in addition to ./v; `--exclude /v` will only match ./v
 		// Note 2: patterns ending with / are treated as folders.
-		app.git_command('git clean -xfd --exclude /thirdparty/tcc/ --exclude /v --exclude /v.exe --exclude /cmd/tools/vup --exclude /cmd/tools/vup.exe')
+		app.git_command('git clean -xfd --exclude /thirdparty/tcc/ --exclude /v --exclude /v.exe --exclude /v_old --exclude /v_old.exe --exclude /${app.current_vexe_name()} --exclude /${app.current_vbackup_name()} --exclude /.bin/ --exclude /cmd/tools/vup --exclude /cmd/tools/vup.exe')
 	} else {
-		// pull latest
-		app.git_command('git pull https://github.com/vlang/v master')
+		// Rebase avoids merge failures when the local checkout has unrelated history.
+		app.git_command(v_upstream_pull_command())
 	}
+}
+
+fn v_upstream_pull_command() string {
+	return 'git pull --rebase ${v_upstream_url} ${v_upstream_branch}'
 }
 
 fn (app App) recompile_v() bool {
 	// Note: app.vexe is more reliable than just v (which may be a symlink)
+	vexe_path := app.current_vexe_path()
+	if !os.exists(vexe_path) {
+		println('> `${app.vexe}` is missing, running `make`...')
+		return app.make('')
+	}
 	opts := if app.is_prod { '-prod' } else { '' }
-	vself := '${os.quoted_path(app.vexe)} ${opts} self'
+	vself := '${os.quoted_path(vexe_path)} ${opts} self'
 	if app.skip_v_self {
 		return app.make(vself)
 	}
@@ -104,7 +124,12 @@ fn (app App) recompile_v() bool {
 
 fn (app App) recompile_vup() bool {
 	eprintln('> Recompiling vup.v ...')
-	vup_result := os.execute('${os.quoted_path(app.vexe)} -g cmd/tools/vup.v')
+	vexe_path := app.current_vexe_path()
+	if !os.exists(vexe_path) {
+		eprintln('> Skipping recompiling vup.v, `${vexe_path}` is missing.')
+		return false
+	}
+	vup_result := os.execute('${os.quoted_path(vexe_path)} -g cmd/tools/vup.v')
 	if vup_result.exit_code != 0 {
 		eprintln('> Failed recompiling vup.v .')
 		eprintln(vup_result.output)
@@ -113,7 +138,7 @@ fn (app App) recompile_vup() bool {
 	return true
 }
 
-fn (app App) make(vself string) bool {
+fn (app App) make(_vself string) bool {
 	println('> running make ...')
 	make := get_make_cmd_name()
 	make_result := os.execute(make)
@@ -129,7 +154,12 @@ fn (app App) make(vself string) bool {
 }
 
 fn (app App) show_current_v_version() {
-	vout := os.execute('${os.quoted_path(app.vexe)} version')
+	vexe_path := app.current_vexe_path()
+	if !os.exists(vexe_path) {
+		println('Current V version: unavailable (`${app.vexe}` is missing).')
+		return
+	}
+	vout := os.execute('${os.quoted_path(vexe_path)} version')
 	if vout.exit_code >= 0 {
 		mut vversion := vout.output.trim_space()
 		if vout.exit_code == 0 {
@@ -141,6 +171,39 @@ fn (app App) show_current_v_version() {
 		}
 		println('Current V version: ${vversion}')
 	}
+}
+
+fn (app App) current_vexe_name() string {
+	vexe_name := os.file_name(app.vexe)
+	if vexe_name == '' {
+		return if os.user_os() == 'windows' { 'v.exe' } else { 'v' }
+	}
+	return vexe_name
+}
+
+fn (app App) current_vbackup_name() string {
+	vexe_name := app.current_vexe_name()
+	short_v_name := vexe_name.all_before('.')
+	return if os.user_os() == 'windows' { '${short_v_name}_old.exe' } else { '${short_v_name}_old' }
+}
+
+fn (app App) current_vexe_path() string {
+	if os.exists(app.vexe) {
+		return app.vexe
+	}
+	default_vexe := os.join_path_single(app.vroot, if os.user_os() == 'windows' {
+		'v.exe'
+	} else {
+		'v'
+	})
+	if os.exists(default_vexe) {
+		return default_vexe
+	}
+	configured_vexe := os.join_path_single(app.vroot, app.current_vexe_name())
+	if os.exists(configured_vexe) {
+		return configured_vexe
+	}
+	return app.vexe
 }
 
 fn (app App) backup(file string) {
@@ -175,7 +238,8 @@ fn (app App) install_git() {
 	}
 	println('Downloading git 32 bit for Windows, please wait.')
 	// We'll use 32 bit because maybe someone out there is using 32-bit windows
-	res_download := os.execute('bitsadmin.exe /transfer "vgit" https://github.com/git-for-windows/git/releases/download/v2.30.0.windows.2/Git-2.30.0.2-32-bit.exe "${os.getwd()}/git32.exe"')
+	res_download :=
+		os.execute('bitsadmin.exe /transfer "vgit" https://github.com/git-for-windows/git/releases/download/v2.30.0.windows.2/Git-2.30.0.2-32-bit.exe "${os.getwd()}/git32.exe"')
 	if res_download.exit_code != 0 {
 		eprintln('Unable to install git automatically: please install git manually')
 		panic(res_download.output)
@@ -189,7 +253,7 @@ fn (app App) install_git() {
 
 fn get_make_cmd_name() string {
 	if os.user_os() == 'windows' {
-		return 'make.bat'
+		return 'makev.bat'
 	}
 	cmd := 'make'
 	make_sure_cmd_is_available(cmd)

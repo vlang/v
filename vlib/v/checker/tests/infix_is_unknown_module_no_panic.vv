@@ -1,0 +1,12 @@
+fn sample() !int {
+	return error('x')
+}
+
+fn main() {
+	_ := sample() or {
+		if err is io.Eof {
+			return
+		}
+		return
+	}
+}

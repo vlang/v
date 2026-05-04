@@ -1,11 +1,17 @@
 module builtin
 
+fn C.setvbuf(fstream &C.FILE, buffer &char, mode i32, size usize) i32
+
+// set_stream_unbuffered switches a stdio stream to unbuffered mode without using the
+// deprecated `setbuf` API on Windows toolchains.
+@[unsafe]
+fn set_stream_unbuffered(stream &C.FILE) {
+	C.setvbuf(stream, &char(nil), C._IONBF, usize(0))
+}
+
 // eprintln prints a message with a line end, to stderr. Both stderr and stdout are flushed.
+@[if !noeprintln ?]
 pub fn eprintln(s string) {
-	if s.str == 0 {
-		eprintln('eprintln(NIL)')
-		return
-	}
 	$if builtin_print_use_fprintf ? {
 		C.fprintf(C.stderr, c'%.*s\n', s.len, s.str)
 		return
@@ -29,11 +35,8 @@ pub fn eprintln(s string) {
 }
 
 // eprint prints a message to stderr. Both stderr and stdout are flushed.
+@[if !noeprintln ?]
 pub fn eprint(s string) {
-	if s.str == 0 {
-		eprint('eprint(NIL)')
-		return
-	}
 	$if builtin_print_use_fprintf ? {
 		C.fprintf(C.stderr, c'%.*s', s.len, s.str)
 		return
@@ -55,19 +58,30 @@ pub fn eprint(s string) {
 	}
 }
 
+// flush_stdout flushes the stdout buffer, ensuring all remaining data is written.
+// See also unbuffer_stdout() .
 pub fn flush_stdout() {
 	$if freestanding {
 		not_implemented := 'flush_stdout is not implemented\n'
 		bare_eprint(not_implemented.str, u64(not_implemented.len))
+	} $else $if builtin_write_buf_to_fd_should_use_c_write ? {
+		// Native backends do not reliably resolve C.stdout/C.stderr data symbols.
+		// Flush all libc output streams without referencing those globals directly.
+		C.fflush(unsafe { nil })
 	} $else {
 		C.fflush(C.stdout)
 	}
 }
 
+// flush_stderr flushes the stderr buffer, ensuring all remaining data is written.
 pub fn flush_stderr() {
 	$if freestanding {
 		not_implemented := 'flush_stderr is not implemented\n'
 		bare_eprint(not_implemented.str, u64(not_implemented.len))
+	} $else $if builtin_write_buf_to_fd_should_use_c_write ? {
+		// Native backends do not reliably resolve C.stdout/C.stderr data symbols.
+		// Flush all libc output streams without referencing those globals directly.
+		C.fflush(unsafe { nil })
 	} $else {
 		C.fflush(C.stderr)
 	}
@@ -84,20 +98,25 @@ pub fn flush_stderr() {
 // Note 2: most libc implementations, have logic that use line buffering for stdout, when the output
 // stream is connected to an interactive device, like a terminal, and otherwise fully buffer it,
 // which is good for the output performance for programs that can produce a lot of output (like
-// filters, or cat etc), but bad for latency. Normally, it is usually what you want, so it is the
-// default for V programs too.
+// filters, or cat etc), but bad for latency. V uses unbuffered stdout by default on the common C
+// backends, to make print and println visible immediately even when stdout is redirected.
 // See https://www.gnu.org/software/libc/manual/html_node/Buffering-Concepts.html .
 // See https://pubs.opengroup.org/onlinepubs/9699919799/functions/V2_chap02.html#tag_15_05 .
 pub fn unbuffer_stdout() {
-	$if freestanding {
+	$if vinix {
+		return
+	} $else $if freestanding {
 		not_implemented := 'unbuffer_stdout is not implemented\n'
 		bare_eprint(not_implemented.str, u64(not_implemented.len))
+	} $else $if builtin_write_buf_to_fd_should_use_c_write ? {
+		// Native backends already print via write(), so there is no stdio buffer to adjust here.
+		return
 	} $else {
-		unsafe { C.setbuf(C.stdout, 0) }
+		unsafe { set_stream_unbuffered(C.stdout) }
 	}
 }
 
-// print prints a message to stdout. Note that unlike `eprint`, stdout is not automatically flushed.
+// print prints a message to stdout.
 @[manualfree]
 pub fn print(s string) {
 	$if builtin_print_use_fprintf ? {
@@ -116,16 +135,9 @@ pub fn print(s string) {
 	}
 }
 
-// println prints a message with a line end, to stdout. Note that unlike `eprintln`, stdout is not automatically flushed.
-@[manualfree]
+// println prints a message with a line end, to stdout.
+@[if !noprintln ?; manualfree]
 pub fn println(s string) {
-	if s.str == 0 {
-		println('println(NIL)')
-		return
-	}
-	$if noprintln ? {
-		return
-	}
 	$if builtin_print_use_fprintf ? {
 		C.fprintf(C.stdout, c'%.*s\n', s.len, s.str)
 		return
@@ -171,10 +183,22 @@ fn _write_buf_to_fd(fd int, buf &u8, buf_len int) {
 	mut ptr := unsafe { buf }
 	mut remaining_bytes := isize(buf_len)
 	mut x := isize(0)
+	$if windows {
+		if write_buf_to_console(fd, ptr, int(remaining_bytes)) {
+			return
+		}
+	}
 	$if freestanding || vinix || builtin_write_buf_to_fd_should_use_c_write ? {
+		// Flush any pending libc stdio output (from C.puts, C.putchar, etc.)
+		// before writing directly via write() syscall to prevent output reordering.
+		C.fflush(unsafe { nil })
 		unsafe {
 			for remaining_bytes > 0 {
 				x = C.write(fd, ptr, remaining_bytes)
+				if x <= 0 {
+					// Detached/invalid stdio must not trap the process in an infinite loop.
+					break
+				}
 				ptr += x
 				remaining_bytes -= x
 			}
@@ -187,6 +211,10 @@ fn _write_buf_to_fd(fd int, buf &u8, buf_len int) {
 		unsafe {
 			for remaining_bytes > 0 {
 				x = isize(C.fwrite(ptr, 1, remaining_bytes, stream))
+				if x <= 0 {
+					// GUI programs on Windows may not have a writable stdout/stderr stream.
+					break
+				}
 				ptr += x
 				remaining_bytes -= x
 			}

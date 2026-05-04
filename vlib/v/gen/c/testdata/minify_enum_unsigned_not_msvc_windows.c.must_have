@@ -1,0 +1,1 @@
+unsigned int kind : 7;

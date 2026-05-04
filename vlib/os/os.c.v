@@ -6,7 +6,9 @@ import strings
 #include <errno.h>
 
 $if macos {
-	#include <libproc.h>
+	#include <mach-o/dyld.h>
+	// needed for os.executable():
+	fn C._dyld_get_image_name(image u32) &char
 }
 
 $if freebsd || openbsd {
@@ -18,33 +20,58 @@ pub const args = arguments()
 
 fn C.readdir(voidptr) &C.dirent
 
-fn C.readlink(pathname &char, buf &char, bufsiz usize) int
+fn C.readlink(pathname &char, buf &char, bufsiz usize) i32
 
-fn C.getline(voidptr, voidptr, voidptr) int
+fn C.getline(voidptr, voidptr, voidptr) i32
 
-fn C.sigaction(int, voidptr, int) int
+fn C.sigaction(i32, voidptr, i32) i32
 
-fn C.open(&char, int, ...int) int
+fn C.open(&char, i32, ...int) i32
 
-fn C._wopen(&u16, int, ...int) int
+fn C._wopen(&u16, i32, ...int) i32
 
-fn C.fdopen(fd int, mode &char) &C.FILE
+fn C.fdopen(fd i32, mode &char) &C.FILE
 
-fn C.ferror(stream &C.FILE) int
+fn C.ferror(stream &C.FILE) i32
 
-fn C.feof(stream &C.FILE) int
+fn C.feof(stream &C.FILE) i32
 
-fn C.CopyFile(&u16, &u16, bool) int
+fn C.CopyFile(&u16, &u16, bool) i32
+
+fn write_file_direct(path string, text string) ! {
+	mut f := create(path)!
+	defer {
+		f.close()
+	}
+	mut sp := text.str
+	mut remaining := text.len
+	for remaining > 0 {
+		C.errno = 0
+		written := int(C.write(f.fd, sp, remaining))
+		if written < 0 {
+			cerror := int(C.errno)
+			if cerror == C.EINTR {
+				continue
+			}
+			return error(posix_get_error_msg(cerror))
+		}
+		if written == 0 {
+			return error('0 bytes written')
+		}
+		remaining -= written
+		sp = unsafe { &u8(voidptr(usize(sp) + usize(written))) }
+	}
+}
 
 // fn C.lstat(charptr, voidptr) u64
 
 fn C._wstat64(&u16, voidptr) u64
 
-fn C.chown(&char, int, int) int
+fn C.chown(&char, i32, i32) i32
 
-fn C.ftruncate(voidptr, u64) int
+fn C.ftruncate(voidptr, u64) i32
 
-fn C._chsize_s(voidptr, u64) int
+fn C._chsize_s(voidptr, u64) i32
 
 // read_bytes returns all bytes read from file in `path`.
 @[manualfree]
@@ -214,7 +241,8 @@ pub fn rename_dir(src string, dst string) ! {
 pub fn rename(src string, dst string) ! {
 	mut rdst := dst
 	if is_dir(rdst) {
-		rdst = join_path_single(rdst.trim_right(path_separator), file_name(src.trim_right(path_separator)))
+		rdst = join_path_single(rdst.trim_right(path_separator),
+			file_name(src.trim_right(path_separator)))
 	}
 	$if windows {
 		w_src := src.replace('/', '\\')
@@ -277,9 +305,9 @@ pub fn cp(src string, dst string, config CopyParams) ! {
 		// TODO: use defer{} to close files in case of error or return.
 		// Currently there is a C-Error when building.
 		mut buf := [1024]u8{}
-		mut count := 0
+		mut count := int(0)
 		for {
-			count = C.read(fp_from, &buf[0], sizeof(buf))
+			count = int(C.read(fp_from, &buf[0], sizeof(buf)))
 			if count == 0 {
 				break
 			}
@@ -307,7 +335,7 @@ pub fn vfopen(path string, mode string) !&C.FILE {
 	if path == '' {
 		return error('vfopen called with ""')
 	}
-	mut fp := unsafe { nil }
+	mut fp := &C.FILE(unsafe { nil })
 	$if windows {
 		fp = C._wfopen(path.to_wide(), mode.to_wide())
 	} $else {
@@ -315,9 +343,8 @@ pub fn vfopen(path string, mode string) !&C.FILE {
 	}
 	if isnil(voidptr(fp)) {
 		return error_posix(msg: 'failed to open file "${path}"')
-	} else {
-		return fp
 	}
+	return fp
 }
 
 // fileno returns the file descriptor of an opened C file.
@@ -325,11 +352,9 @@ pub fn fileno(cfile voidptr) int {
 	$if windows {
 		return C._fileno(cfile)
 	} $else {
-		mut cfile_casted := &C.FILE(unsafe { nil }) // FILE* cfile_casted = 0;
-		cfile_casted = cfile
 		// Required on FreeBSD/OpenBSD/NetBSD as stdio.h defines fileno(..) with a macro
 		// that performs a field access on its argument without casting from void*.
-		return C.fileno(cfile_casted)
+		return C.fileno(unsafe { &C.FILE(cfile) })
 	}
 }
 
@@ -346,18 +371,34 @@ fn vpopen(path string) voidptr {
 	}
 }
 
+fn posix_wait_status_exited(status int) bool {
+	return (status & 0x7f) == 0
+}
+
+fn posix_wait_status_exit_code(status int) int {
+	return (status >> 8) & 0xff
+}
+
+fn posix_wait_status_signaled(status int) bool {
+	signal := status & 0x7f
+	return signal != 0 && signal != 0x7f
+}
+
+fn posix_wait_status_signal(status int) int {
+	return status & 0x7f
+}
+
 fn posix_wait4_to_exit_status(waitret int) (int, bool) {
 	$if windows {
 		return waitret, false
 	} $else {
 		mut ret := 0
 		mut is_signaled := true
-		// (see man system, man 2 waitpid: C macro WEXITSTATUS section)
-		if C.WIFEXITED(waitret) {
-			ret = C.WEXITSTATUS(waitret)
+		if posix_wait_status_exited(waitret) {
+			ret = posix_wait_status_exit_code(waitret)
 			is_signaled = false
-		} else if C.WIFSIGNALED(waitret) {
-			ret = C.WTERMSIG(waitret)
+		} else if posix_wait_status_signaled(waitret) {
+			ret = posix_wait_status_signal(waitret)
 			is_signaled = true
 		}
 		return ret, is_signaled
@@ -406,8 +447,8 @@ pub fn system(cmd string) int {
 				ret = C.posix_spawn(&pid, c'/bin/sh', 0, 0, arg.data, 0)
 				status := 0
 				ret = C.waitpid(pid, &status, 0)
-				if C.WIFEXITED(status) {
-					ret = C.WEXITSTATUS(status)
+				if posix_wait_status_exited(status) {
+					ret = posix_wait_status_exit_code(status)
 				}
 			}
 		} $else {
@@ -431,6 +472,16 @@ pub fn system(cmd string) int {
 }
 
 // exists returns true if `path` (file or directory) exists.
+//
+// Note that when used on symlinks, if the target of the symlink does not exist, the behavior of this function is complex.
+// On linux, mac, and similar systems, on such a symlink, this function returns false.
+// (This may make sense, in the sense that such a path does not contain anything readable.
+// It is also the same as the libc 'access' function, and may be familiar from that regard.
+// On the other hand, this case may be surprising, since it means this function can return "false" for a path that exists enough
+// that trying to create a new file or dir there subsequently (even aside from TOCTOU issues) will fail with EEXIST.)
+// On windows systems, a symlink with a target that does not exist, this function returns true.
+// Consider using lstat() for a less ambiguous result about whether a path is occupied or not;
+// whether lstat returns any result or a "not exists" error gives a clear indication of whether the path is occupied.
 pub fn exists(path string) bool {
 	$if windows {
 		p := path.replace('/', '\\')
@@ -538,7 +589,7 @@ pub fn rmdir(path string) ! {
 // print_c_errno will print the current value of `C.errno`.
 fn print_c_errno() {
 	e := C.errno
-	se := unsafe { tos_clone(&u8(C.strerror(e))) }
+	se := unsafe { cstring_to_vstring(C.strerror(e)) }
 	eprintln('errno=${e} err=${se}')
 }
 
@@ -618,22 +669,15 @@ pub fn get_raw_line() string {
 
 		mut str := ''
 		nr_chars := unsafe { C.getline(voidptr(&buf), &max, C.stdin) }
-		// On OpenBSD, buf=0 for EOF =>  panic when calling tos function
-		$if openbsd {
-			if nr_chars != -1 {
-				str = unsafe { tos(buf, nr_chars) }
-			} else {
-				if int(C.feof(C.stdin)) == 0 && int(C.ferror(C.stdin)) != 0 {
-					panic('get_raw_line(): error to read string')
-				}
-			}
-		} $else {
-			str = unsafe { tos(buf, if nr_chars < 0 { 0 } else { nr_chars }) }
+		if nr_chars >= 0 && buf != 0 {
+			str = unsafe { tos(buf, nr_chars) }
+		} else if int(C.feof(C.stdin)) == 0 && int(C.ferror(C.stdin)) != 0 {
+			panic('get_raw_line(): error reading from stdin')
 		}
 		ret := str.clone()
 		$if !autofree {
 			unsafe {
-				if nr_chars > 0 && buf != 0 {
+				if buf != 0 {
 					C.free(buf)
 				}
 			}
@@ -742,10 +786,7 @@ pub fn executable() string {
 					defer {
 						unsafe { sret.free() }
 					}
-					// remove '\\?\' from beginning (see link above)
-					sret_slice := sret[4..]
-					res := sret_slice.clone()
-					return res
+					return normalize_windows_extended_path_prefix(sret)
 				} else if final_len != 0 {
 					eprintln('os.executable() saw that the executable file path was too long')
 				}
@@ -755,14 +796,11 @@ pub fn executable() string {
 		return res
 	}
 	$if macos {
-		pid := C.getpid()
-		ret := C.proc_pidpath(pid, &result[0], max_path_len)
-		if ret <= 0 {
-			eprintln('os.executable() failed at calling proc_pidpath with pid: ${pid} . proc_pidpath returned ${ret} ')
+		self_path := &char(C._dyld_get_image_name(u32(0)))
+		if self_path == C.NULL {
 			return executable_fallback()
 		}
-		res := unsafe { tos_clone(&result[0]) }
-		return res
+		return unsafe { cstring_to_vstring(self_path) }
 	}
 	$if freebsd {
 		bufsize := usize(max_path_buffer_size)
@@ -851,27 +889,47 @@ pub fn chdir(path string) ! {
 @[manualfree]
 pub fn getwd() string {
 	unsafe {
-		buf := [max_path_buffer_size]u8{}
 		$if windows {
+			buf := [max_path_buffer_size]u8{}
 			if C._wgetcwd(&u16(&buf[0]), max_path_len) == 0 {
 				return ''
 			}
 			res := string_from_wide(&u16(&buf[0]))
 			return res
 		} $else {
-			if C.getcwd(&char(&buf[0]), max_path_len) == 0 {
+			// Use libc-managed buffer to avoid fixed-array address lowering pitfalls in v2.
+			cwd_ptr := C.getcwd(0, 4096)
+			if cwd_ptr == 0 {
 				return ''
 			}
-			res := tos_clone(&buf[0])
+			res := tos_clone(byteptr(cwd_ptr))
+			C.free(cwd_ptr)
 			return res
 		}
 	}
+}
+
+// normalize_windows_extended_path_prefix converts Win32 extended-length paths from
+// `GetFinalPathNameByHandleW` back to standard DOS and UNC paths.
+@[manualfree]
+fn normalize_windows_extended_path_prefix(path string) string {
+	$if windows {
+		if path.starts_with('\\\\?\\UNC\\') || path.starts_with('\\\\.\\UNC\\') {
+			return ('\\\\' + path[8..]).clone()
+		}
+		if path.starts_with('\\\\?\\') || path.starts_with('\\\\.\\') {
+			return path[4..].clone()
+		}
+	}
+	return path.clone()
 }
 
 // real_path returns the full absolute path for fpath, with all relative ../../, symlinks and so on resolved.
 // See http://pubs.opengroup.org/onlinepubs/9699919799/functions/realpath.html
 // Also https://insanecoding.blogspot.com/2007/11/pathmax-simply-isnt.html
 // and https://insanecoding.blogspot.com/2007/11/implementing-realpath-in-c.html
+// On Windows, extended-length path prefixes like `\\?\` and `\\?\UNC\` are normalized back
+// to standard DOS and UNC paths.
 // Note: this particular rabbit hole is *deep* ...
 @[manualfree]
 pub fn real_path(fpath string) string {
@@ -879,24 +937,27 @@ pub fn real_path(fpath string) string {
 	mut res := ''
 	$if windows {
 		pu16_fullpath := unsafe { &u16(&fullpath[0]) }
-		// gets handle with GENERIC_READ, FILE_SHARE_READ, 0, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, 0
-		// use C.CreateFile(fpath.to_wide(), 0x80000000, 1, 0, 3, 0x80, 0) instead of  get_file_handle
+		// gets handle with GENERIC_READ, FILE_SHARE_READ, 0, OPEN_EXISTING,
+		// FILE_FLAG_BACKUP_SEMANTICS, 0
+		// FILE_FLAG_BACKUP_SEMANTICS (0x02000000) is needed to open directories
+		// and resolve directory symlinks properly.
 		// try to open the file to get symbolic link path
 		fpath_wide := fpath.to_wide()
 		defer {
 			unsafe { free(voidptr(fpath_wide)) }
 		}
-		file := C.CreateFile(fpath_wide, 0x80000000, 1, 0, 3, 0x80, 0)
+		file := C.CreateFile(fpath_wide, 0x80000000, 1, 0, 3, 0x02000000, 0)
 		if file != voidptr(-1) {
 			defer { C.CloseHandle(file) }
 			// https://docs.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-getfinalpathnamebyhandlew
-			final_len := C.GetFinalPathNameByHandleW(file, pu16_fullpath, max_path_buffer_size,
-				0)
+			final_len := C.GetFinalPathNameByHandleW(file, pu16_fullpath, max_path_buffer_size, 0)
 			if final_len < u32(max_path_buffer_size) && final_len != 0 {
 				rt := unsafe { string_from_wide2(pu16_fullpath, int(final_len)) }
-				srt := rt[4..]
+				defer {
+					unsafe { rt.free() }
+				}
 				unsafe { res.free() }
-				res = srt.clone()
+				res = normalize_windows_extended_path_prefix(rt)
 			} else {
 				if final_len != 0 {
 					eprintln('os.real_path() saw that the file path was too long')
@@ -913,7 +974,7 @@ pub fn real_path(fpath string) string {
 				return fpath.clone()
 			}
 			unsafe { res.free() }
-			res = unsafe { string_from_wide(pu16_fullpath) }
+			res = normalize_windows_extended_path_prefix(unsafe { string_from_wide(pu16_fullpath) })
 		}
 	} $else {
 		ret := &char(C.realpath(&char(fpath.str), &char(&fullpath[0])))
@@ -941,13 +1002,14 @@ fn normalize_drive_letter(path string) {
 	// a path like c:\nv\.bin (note the small `c`) in %PATH,
 	// is NOT recognized by cmd.exe (and probably other programs too)...
 	// Capital drive letters do work fine.
-	if path.len > 2 && path[0] >= `a` && path[0] <= `z` && path[1] == `:`
-		&& path[2] == path_separator[0] {
+	// vfmt off
+	if path.len > 2 && path[0] >= `a` && path[0] <= `z` && path[1] == `:` && path[2] == path_separator[0] {
 		unsafe {
-			x := &path.str[0]
-			(*x) = *x - 32
+			mut x := &u8(path.str)
+			x[0] = x[0] - 32
 		}
 	}
+	// vfmt on
 }
 
 // fork will fork the current system process and return the pid of the fork.

@@ -7,6 +7,7 @@ pub:
 fn encode_struct[T](val T) {
 	mut result := map[string][]string{}
 	$for field in T.fields {
+		result[field.name] = []string{}
 		$if field.is_array == false {
 			result[field.name] << '> is not array'
 		} $else {
@@ -30,6 +31,7 @@ fn encode_struct[T](val T) {
 			result[field.name] << '>>>> is pub'
 		}
 	}
+	result['bool'] = []string{}
 	$if !false {
 		result['bool'] << '1'
 	}

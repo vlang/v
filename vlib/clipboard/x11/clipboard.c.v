@@ -14,83 +14,29 @@ $if freebsd {
 }
 #flag -lX11
 
-#include <X11/Xlib.h> # Please install a package with the X11 development headers, for example: `apt install libx11-dev`
-// X11
+// Include X11 headers BEFORE any type definitions to avoid incomplete type errors
+#preinclude <X11/Xlib.h>
+#preinclude <X11/Xatom.h>
+#preinclude <X11/Xutil.h>
 
+// X11 types are defined by X11 headers
+// For V check mode, we need to define C.Display
 @[typedef]
-pub struct C.Display {}
-
-fn (d &C.Display) str() string {
-	return 'C.Display{}'
+pub struct C.Display {
+pub mut:
+	_ int // opaque - actual definition from X11 headers
 }
 
+// Local type aliases for convenience
 type Window = u64
 type Atom = u64
 
-fn C.XInitThreads() int
-
-fn C.XCloseDisplay(d &C.Display)
-
-fn C.XFlush(d &C.Display)
-
-fn C.XDestroyWindow(d &C.Display, w Window)
-
-fn C.XNextEvent(d &C.Display, e &C.XEvent)
-
-fn C.XSetSelectionOwner(d &C.Display, a Atom, w Window, time int)
-
-fn C.XGetSelectionOwner(d &C.Display, a Atom) Window
-
-fn C.XChangeProperty(d &C.Display, requestor Window, property Atom, typ Atom, format int, mode int, data voidptr,
-	nelements int) int
-
-fn C.XSendEvent(d &C.Display, requestor Window, propagate int, mask i64, event &C.XEvent)
-
-fn C.XInternAtom(d &C.Display, typ &u8, only_if_exists int) Atom
-
-fn C.XCreateSimpleWindow(d &C.Display, root Window, x int, y int, width u32, height u32, border_width u32,
-	border u64, background u64) Window
-
-fn C.XOpenDisplay(name &u8) &C.Display
-
-fn C.XConvertSelection(d &C.Display, selection Atom, target Atom, property Atom, requestor Window, time int) int
-
-fn C.XSync(d &C.Display, discard int) int
-
-fn C.XGetWindowProperty(d &C.Display, w Window, property Atom, offset i64, length i64, delete int, req_type Atom,
-	actual_type_return &Atom, actual_format_return &int, nitems &u64, bytes_after_return &u64, prop_return &&u8) int
-
-fn C.XDeleteProperty(d &C.Display, w Window, property Atom) int
-
-fn C.DefaultScreen(display &C.Display) int
-
-fn C.RootWindow(display &C.Display, screen_number int) Window
-
-fn C.BlackPixel(display &C.Display, screen_number int) u32
-
-fn C.WhitePixel(display &C.Display, screen_number int) u32
-
-fn C.XFree(data voidptr)
-
-fn todo_del() {}
-
-@[typedef]
-pub struct C.XSelectionRequestEvent {
-mut:
-	display   &C.Display = unsafe { nil } // Display the event was read from
-	owner     Window
-	requestor Window
-	selection Atom
-	target    Atom
-	property  Atom
-	time      int
-}
-
+// Forward declarations for V type checking (actual types from X11 headers)
 @[typedef]
 pub struct C.XSelectionEvent {
-mut:
+pub mut:
 	type      int
-	display   &C.Display = unsafe { nil } // Display the event was read from
+	display   voidptr
 	requestor Window
 	selection Atom
 	target    Atom
@@ -100,20 +46,93 @@ mut:
 
 @[typedef]
 pub struct C.XSelectionClearEvent {
-mut:
+pub mut:
 	window    Window
 	selection Atom
 }
 
 @[typedef]
-pub struct C.XDestroyWindowEvent {
-mut:
-	window Window
+pub struct C.XSelectionRequestEvent {
+pub mut:
+	display   voidptr
+	owner     Window
+	requestor Window
+	selection Atom
+	target    Atom
+	property  Atom
+	time      int
 }
 
 @[typedef]
+pub struct C.XDestroyWindowEvent {
+pub mut:
+	window Window
+}
+
+fn C.XInitThreads() i32
+
+fn C.XCloseDisplay(d &C.Display)
+
+fn C.XFlush(d &C.Display)
+
+fn C.XDestroyWindow(d &C.Display, w Window)
+
+fn C.XNextEvent(d &C.Display, e &C.XEvent)
+
+fn C.XSetSelectionOwner(d &C.Display, a Atom, w Window, time i32)
+
+fn C.XGetSelectionOwner(d &C.Display, a Atom) Window
+
+fn C.XChangeProperty(d &C.Display, requestor Window, property Atom, typ Atom, format i32, mode i32, data voidptr,
+	nelements i32) i32
+
+fn C.XSendEvent(d &C.Display, requestor Window, propagate i32, mask i64, event &C.XEvent)
+
+fn C.XInternAtom(d &C.Display, typ &u8, only_if_exists i32) Atom
+
+fn C.XCreateSimpleWindow(d &C.Display, root Window, x i32, y i32, width u32, height u32, border_width u32,
+	border u64, background u64) Window
+
+fn C.XOpenDisplay(name &u8) &C.Display
+
+fn C.XConvertSelection(d &C.Display, selection Atom, target Atom, property Atom, requestor Window, time i32) i32
+
+fn C.XSync(d &C.Display, discard i32) i32
+
+fn C.XGetWindowProperty(d &C.Display, w Window, property Atom, offset i64, length i64, delete i32, req_type Atom,
+	actual_type_return &Atom, actual_format_return &int, nitems &u64, bytes_after_return &u64, prop_return &&u8) i32
+
+fn C.XDeleteProperty(d &C.Display, w Window, property Atom) i32
+
+fn C.DefaultScreen(display &C.Display) i32
+
+fn C.RootWindow(display &C.Display, screen_number i32) Window
+
+fn C.BlackPixel(display &C.Display, screen_number i32) u32
+
+fn C.WhitePixel(display &C.Display, screen_number i32) u32
+
+fn C.XFree(data voidptr)
+
+// X11 event type constants
+pub const C.DestroyNotify int
+pub const C.SelectionClear int
+pub const C.SelectionRequest int
+pub const C.SelectionNotify int
+pub const C.PropertyNotify int // X11 property/selection constants
+
+pub const C.CurrentTime int
+pub const C.PropModeReplace int
+pub const C.PropertyChangeMask i64
+
+fn todo_del() {}
+
+// X11 event types are defined in vlib/x/x11/x11.v
+// XEvent union is defined here since it's used by clipboard
+
+@[typedef]
 union C.XEvent {
-mut:
+pub mut:
 	type              int
 	xdestroywindow    C.XDestroyWindowEvent
 	xselectionclear   C.XSelectionClearEvent
@@ -123,6 +142,8 @@ mut:
 
 const atom_names = ['TARGETS', 'CLIPBOARD', 'PRIMARY', 'SECONDARY', 'TEXT', 'UTF8_STRING',
 	'text/plain', 'text/html']
+const atom_types = [AtomType.targets, .clipboard, .primary, .secondary, .text, .utf8_string,
+	.text_plain, .text_html]
 
 // UNSUPPORTED TYPES: MULTIPLE, INCR, TIMESTAMP, image/bmp, image/jpeg, image/tiff, image/png
 // all the atom types we need
@@ -263,8 +284,8 @@ pub fn (mut cb Clipboard) get_text() string {
 	cb.got_text = false
 
 	// Request a list of possible conversions, if we're pasting.
-	C.XConvertSelection(cb.display, cb.selection, cb.get_atom(.targets), cb.selection,
-		cb.window, C.CurrentTime)
+	C.XConvertSelection(cb.display, cb.selection, cb.get_atom(.targets), cb.selection, cb.window,
+		C.CurrentTime)
 
 	// wait for the text to arrive
 	mut retries := 5
@@ -281,17 +302,19 @@ pub fn (mut cb Clipboard) get_text() string {
 // transmit_selection is crucial to handling all the different data types.
 // If we ever support other mimetypes they should be handled here.
 fn (mut cb Clipboard) transmit_selection(xse &C.XSelectionEvent) bool {
-	if xse.target == cb.get_atom(.targets) {
-		targets := cb.get_supported_targets()
-		C.XChangeProperty(xse.display, xse.requestor, xse.property, cb.get_atom(.xa_atom),
-			32, C.PropModeReplace, targets.data, targets.len)
-	} else if cb.is_supported_target(xse.target) && cb.is_owner && cb.text != '' {
-		cb.mutex.lock()
-		C.XChangeProperty(xse.display, xse.requestor, xse.property, xse.target, 8, C.PropModeReplace,
-			cb.text.str, cb.text.len)
-		cb.mutex.unlock()
-	} else {
-		return false
+	unsafe {
+		if xse.target == cb.get_atom(.targets) {
+			targets := cb.get_supported_targets()
+			C.XChangeProperty(xse.display, xse.requestor, xse.property, cb.get_atom(.xa_atom), 32,
+				C.PropModeReplace, targets.data, targets.len)
+		} else if cb.is_supported_target(xse.target) && cb.is_owner && cb.text != '' {
+			cb.mutex.lock()
+			C.XChangeProperty(xse.display, xse.requestor, xse.property, xse.target, 8,
+				C.PropModeReplace, cb.text.str, cb.text.len)
+			cb.mutex.unlock()
+		} else {
+			return false
+		}
 	}
 	return true
 }
@@ -315,70 +338,66 @@ fn (mut cb Clipboard) start_listener() {
 				}
 			}
 			C.SelectionClear {
-				if unsafe { event.xselectionclear.window == cb.window } && unsafe {
-					event.xselectionclear.selection == cb.selection
-				} {
-					cb.mutex.lock()
-					cb.is_owner = false
-					cb.text = ''
-					cb.mutex.unlock()
+				unsafe {
+					if event.xselectionclear.window == cb.window
+						&& event.xselectionclear.selection == cb.selection {
+						cb.mutex.lock()
+						cb.is_owner = false
+						cb.text = ''
+						cb.mutex.unlock()
+					}
 				}
 			}
 			C.SelectionRequest {
-				if unsafe { event.xselectionrequest.selection == cb.selection } {
-					mut xsre := &C.XSelectionRequestEvent{
-						display: 0
-					}
-					xsre = unsafe { &event.xselectionrequest }
+				unsafe {
+					if event.xselectionrequest.selection == cb.selection {
+						xsre := &event.xselectionrequest
 
-					mut xse := C.XSelectionEvent{
-						type:      C.SelectionNotify // 31
-						display:   xsre.display
-						requestor: xsre.requestor
-						selection: xsre.selection
-						time:      xsre.time
-						target:    xsre.target
-						property:  xsre.property
+						xse := C.XSelectionEvent{
+							type:      C.SelectionNotify // 31
+							display:   xsre.display
+							requestor: xsre.requestor
+							selection: xsre.selection
+							time:      xsre.time
+							target:    xsre.target
+							property:  xsre.property
+						}
+						if !cb.transmit_selection(&xse) {
+							xse.property = Atom(0)
+						}
+						C.XSendEvent(cb.display, xse.requestor, 0, C.PropertyChangeMask,
+							voidptr(&xse))
+						C.XFlush(cb.display)
 					}
-					if !cb.transmit_selection(&xse) {
-						xse.property = Atom(0)
-					}
-					C.XSendEvent(cb.display, xse.requestor, 0, C.PropertyChangeMask, voidptr(&xse))
-					C.XFlush(cb.display)
 				}
 			}
 			C.SelectionNotify {
-				if unsafe {
-					event.xselection.selection == cb.selection
-						&& event.xselection.property != Atom(0)
-				} {
-					if unsafe { event.xselection.target == cb.get_atom(.targets) && !sent_request } {
-						sent_request = true
-						prop := read_property(cb.display, cb.window, cb.selection)
-						to_be_requested = cb.pick_target(prop)
-						if to_be_requested != Atom(0) {
-							C.XConvertSelection(cb.display, cb.selection, to_be_requested,
-								cb.selection, cb.window, C.CurrentTime)
-						}
-					} else if unsafe { event.xselection.target == to_be_requested } {
-						sent_request = false
-						to_be_requested = Atom(0)
-						cb.mutex.lock()
-						prop := unsafe {
-							read_property(event.xselection.display, event.xselection.requestor,
-								event.xselection.property)
-						}
-						unsafe {
+				unsafe {
+					if event.xselection.selection == cb.selection
+						&& event.xselection.property != Atom(0) {
+						if event.xselection.target == cb.get_atom(.targets) && !sent_request {
+							sent_request = true
+							prop := read_property(cb.display, cb.window, cb.selection)
+							to_be_requested = cb.pick_target(prop)
+							if to_be_requested != Atom(0) {
+								C.XConvertSelection(cb.display, cb.selection, to_be_requested,
+									cb.selection, cb.window, C.CurrentTime)
+							}
+						} else if event.xselection.target == to_be_requested {
+							sent_request = false
+							to_be_requested = Atom(0)
+							cb.mutex.lock()
+							prop := read_property(event.xselection.display,
+								event.xselection.requestor, event.xselection.property)
 							C.XDeleteProperty(event.xselection.display, event.xselection.requestor,
 								event.xselection.property)
-						}
-						if cb.is_supported_target(prop.actual_type) {
-							cb.got_text = true
-							unsafe {
-								cb.text = prop.data.vstring() // TODO: return byteptr to support other mimetypes
+							if cb.is_supported_target(prop.actual_type) {
+								cb.got_text = true
+								cb.text =
+									prop.data.vstring() // TODO: return byteptr to support other mimetypes
 							}
+							cb.mutex.unlock()
 						}
-						cb.mutex.unlock()
 					}
 				}
 			}
@@ -396,11 +415,13 @@ fn (mut cb Clipboard) intern_atoms() {
 	cb.atoms << Atom(4) // XA_ATOM
 	cb.atoms << Atom(31) // XA_STRING
 	for i, name in atom_names {
-		only_if_exists := if i == int(AtomType.utf8_string) { 1 } else { 0 }
-		cb.atoms << C.XInternAtom(cb.display, &char(name.str), only_if_exists)
-		if i == int(AtomType.utf8_string) && cb.atoms[i] == Atom(0) {
-			cb.atoms[i] = cb.get_atom(.xa_string)
+		atom_type := atom_types[i]
+		only_if_exists := if atom_type == .utf8_string { 1 } else { 0 }
+		mut atom := C.XInternAtom(cb.display, &char(name.str), only_if_exists)
+		if atom_type == .utf8_string && atom == Atom(0) {
+			atom = cb.get_atom(.xa_string)
 		}
+		cb.atoms << atom
 	}
 }
 
@@ -415,8 +436,8 @@ fn read_property(d &C.Display, w Window, p Atom) Property {
 		if ret != 0 {
 			C.XFree(ret)
 		}
-		C.XGetWindowProperty(d, w, p, 0, read_bytes, 0, 0, &actual_type, &actual_format,
-			&nitems, &bytes_after, &ret)
+		C.XGetWindowProperty(d, w, p, 0, read_bytes, 0, 0, &actual_type, &actual_format, &nitems,
+			&bytes_after, &ret)
 		read_bytes *= 2
 		if bytes_after == 0 {
 			break

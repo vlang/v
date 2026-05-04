@@ -40,6 +40,10 @@ pub fn StringReader.new(params StringReaderParams) StringReader {
 	if source := params.source {
 		r.builder = strings.new_builder(source.len)
 		r.builder.write_string(source)
+		if params.reader == none {
+			// There is no upstream reader; only the preloaded buffer can be consumed.
+			r.end_of_stream = true
+		}
 	} else {
 		r.builder = strings.new_builder(params.initial_size)
 	}
@@ -190,9 +194,32 @@ pub fn (mut r StringReader) read_string(n int) !string {
 
 // read implements the Reader interface
 pub fn (mut r StringReader) read(mut buf []u8) !int {
-	start := r.offset
+	if buf.len == 0 {
+		return 0
+	}
 
-	read := r.fill_buffer_until(buf.len)!
+	available := r.builder.len - r.offset
+	if available < buf.len && !r.end_of_stream {
+		if r.reader != none {
+			missing := buf.len - available
+			r.fill_buffer_until(missing) or {
+				if err !is io.Eof {
+					return err
+				}
+			}
+		}
+	}
+
+	available_after_fill := r.builder.len - r.offset
+	if available_after_fill == 0 {
+		if r.reader == none && !r.end_of_stream {
+			return error('reader is not set')
+		}
+		return io.Eof{}
+	}
+
+	read := if available_after_fill < buf.len { available_after_fill } else { buf.len }
+	start := r.offset
 	r.offset += read
 
 	copy(mut buf, r.builder[start..start + read])
@@ -200,8 +227,10 @@ pub fn (mut r StringReader) read(mut buf []u8) !int {
 }
 
 // read_line attempts to read a line from the reader.
-// It will read until it finds the specified line delimiter
-// such as (\n, the default or \0) or the end of stream.
+// It reads until it finds the specified delimiter or the end of stream.
+// The returned string does not include the delimiter.
+// When the delimiter is `\n`, a preceding `\r` is treated as part of CRLF
+// and is also omitted from the returned string.
 @[direct_array_access]
 pub fn (mut r StringReader) read_line(config io.BufferedReadLineConfig) !string {
 	if r.end_of_stream && r.needs_fill() {

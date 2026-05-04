@@ -10,34 +10,11 @@
 //   Arbitrary length additional authenticated data (AAD)
 module chacha20poly1305
 
+import crypto.cipher
 import encoding.binary
 import crypto.internal.subtle
 import x.crypto.chacha20
 import x.crypto.poly1305
-
-// This interface was a proposed draft for Authenticated Encryption with Additional Data (AEAD)
-// interface `AEAD` likes discussion at discord channel.
-// see https://discord.com/channels/592103645835821068/592320321995014154/1206029352412778577
-// But its little modified to be more v-idiomatic.
-// Note: This interface should be more appropriately located in `crypto.cipher`, we can move
-// it into `crypto.cipher` later.
-// Authenticated Encryption with Additional Data (AEAD) interface
-pub interface AEAD {
-	// nonce_size return the nonce size (in bytes) used by this AEAD algorithm that should be
-	// passed to `.encrypt` or `.decrypt`.
-	nonce_size() int
-	// overhead returns the maximum difference between the lengths of a plaintext and its ciphertext.
-	overhead() int
-	// encrypt encrypts and authenticates the provided plaintext along with a nonce, and
-	// to be authenticated additional data in `ad`.
-	// It returns ciphertext bytes where its encoded form is up to implementation and
-	// not dictated by the interfaces.
-	// Usually its contains encrypted text plus some authentication tag, and maybe some other bytes.
-	encrypt(plaintext []u8, nonce []u8, ad []u8) ![]u8
-	// decrypt decrypts and authenticates (verifies) the provided ciphertext along with a nonce, and
-	// additional data. If verified successfully, it returns the plaintext and error otherwise.
-	decrypt(ciphertext []u8, nonce []u8, ad []u8) ![]u8
-}
 
 // key_size is the size of key (in bytes) which the Chacha20Poly1305 AEAD accepts.
 pub const key_size = 32
@@ -79,7 +56,7 @@ mut:
 
 // new creates a new Chacha20Poly1305 AEAD instance with given 32 bytes of key
 // and the nonce size in nsize. The nsize should be 8, 12 or 24 length, otherwise it would return error.
-pub fn new(key []u8, nsize int, opt chacha20.Options) !&AEAD {
+pub fn new(key []u8, nsize int, opt chacha20.Options) !&cipher.AEAD {
 	if key.len != key_size {
 		return error('chacha20poly1305: bad key size')
 	}

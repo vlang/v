@@ -10,7 +10,7 @@ fn test_multiple_iterations_of_calling_clear_should_be_always_equivalent_to_assi
 		for e in t {
 			new[e] = e
 			clr[e] = e
-			assert new.len == clr.len // , 'mismatch found after setting element: $e, on iteration ${i}'
+			assert new.len == clr.len // , 'mismatch found after setting element: ${e}, on iteration ${i}'
 		}
 		if i & 0x3FFF == 0 {
 			println('index ${i}')

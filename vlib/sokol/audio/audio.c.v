@@ -113,17 +113,17 @@ fn C.saudio_userdata() voidptr
 
 fn C.saudio_query_desc() C.saudio_desc
 
-fn C.saudio_sample_rate() int
+fn C.saudio_sample_rate() i32
 
-fn C.saudio_buffer_frames() int
+fn C.saudio_buffer_frames() i32
 
-fn C.saudio_channels() int
+fn C.saudio_channels() i32
 
 fn C.saudio_suspended() bool
 
-fn C.saudio_expect() int
+fn C.saudio_expect() i32
 
-fn C.saudio_push(frames &f32, num_frames int) int
+fn C.saudio_push(frames &f32, num_frames i32) i32
 
 // setup - setup sokol-audio
 pub fn setup(desc &C.saudio_desc) {

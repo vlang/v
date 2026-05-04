@@ -78,12 +78,12 @@ fn test_deleting() {
 
 fn test_slice_delete() {
 	mut a := [1.5, 2.5, 3.25, 4.5, 5.75]
-	b := a[2..4]
+	b := a[2..4].clone()
 	a.delete(0)
 	assert a == [2.5, 3.25, 4.5, 5.75]
 	assert b == [3.25, 4.5]
 	a = [3.75, 4.25, -1.5, 2.25, 6.0]
-	c := a[..3]
+	c := a[..3].clone()
 	a.delete(2)
 	assert a == [3.75, 4.25, 2.25, 6.0]
 	assert c == [3.75, 4.25, -1.5]
@@ -91,11 +91,11 @@ fn test_slice_delete() {
 
 fn test_delete_many() {
 	mut a := [1, 2, 3, 4, 5, 6, 7, 8, 9]
-	b := a[2..6]
+	b := a[2..6].clone()
 	a.delete_many(4, 3)
 	assert a == [1, 2, 3, 4, 8, 9]
 	assert b == [3, 4, 5, 6]
-	c := a[..a.len]
+	c := a[..a.len].clone()
 	a.delete_many(2, 0) // this should just clone
 	a[1] = 17
 	assert a == [1, 17, 3, 4, 8, 9]
@@ -972,7 +972,7 @@ fn test_for_last() {
 	numbers := [1, 2, 3, 4]
 	mut s := '['
 	for num in numbers {
-		s += '$num'
+		s += '${num}'
 		if !last {
 			s += ', '
 
@@ -1103,7 +1103,7 @@ fn test_multi_array_index() {
 	assert '${a}' == '[[1, 0, 0], [0, 0, 0]]'
 	// mut b := [[0].repeat(3)].repeat(2)
 	// b[0][0] = 1
-	// assert '$b' == '[[1, 0, 0], [0, 0, 0]]'
+	// assert '${b}' == '[[1, 0, 0], [0, 0, 0]]'
 }
 
 fn test_plus_assign_string() {
@@ -1447,7 +1447,7 @@ fn test_array_of_map_insert() {
 	x[2]['123'] = 123 // RTE
 	println(x)
 	println('TODO: Map eq')
-	// assert '$x' == "[{}, {}, {'123': 123}, {}]"
+	// assert '${x}' == "[{}, {}, {'123': 123}, {}]"
 }
 
 fn test_multi_fixed_array_init() {

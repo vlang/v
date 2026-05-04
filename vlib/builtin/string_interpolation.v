@@ -130,6 +130,9 @@ pub fn get_str_intp_u64_format(fmt_type StrIntpType, in_width int, in_precision 
 	return res
 }
 
+const str_intp_has_dynamic_width = u8(1)
+const str_intp_has_dynamic_precision = u8(1 << 1)
+
 // convert from data format to compact u32
 pub fn get_str_intp_u32_format(fmt_type StrIntpType, in_width int, in_precision int, in_tail_zeros bool,
 	in_sign bool, in_pad_ch u8, in_base int, in_upper_case bool) u32 {
@@ -153,14 +156,16 @@ pub fn get_str_intp_u32_format(fmt_type StrIntpType, in_width int, in_precision 
 fn (data &StrIntpData) process_str_intp_data(mut sb strings.Builder) {
 	x := data.fmt
 	typ := unsafe { StrIntpType(x & 0x1F) }
-	align := int((x >> 5) & 0x01)
+	mut align := int((x >> 5) & 0x01)
 	upper_case := ((x >> 7) & 0x01) > 0
 	sign := int((x >> 8) & 0x01)
-	precision := int((x >> 9) & 0x7F)
+	mut precision := int((x >> 9) & 0x7F)
 	tail_zeros := ((x >> 16) & 0x01) > 0
-	width := int(i16((x >> 17) & 0x3FF))
+	mut width := int(i16((x >> 17) & 0x3FF))
 	mut base := int(x >> 27) & 0xF
 	fmt_pad_ch := u8((x >> 31) & 0xFF)
+	has_dynamic_width := (data.dyn_flags & str_intp_has_dynamic_width) != 0
+	has_dynamic_precision := (data.dyn_flags & str_intp_has_dynamic_precision) != 0
 
 	// no string interpolation is needed, return empty string
 	if typ == .si_no_str {
@@ -173,6 +178,18 @@ fn (data &StrIntpData) process_str_intp_data(mut sb strings.Builder) {
 	if base > 0 {
 		base += 2 // we start from 2, 0 == base 10
 	}
+	if has_dynamic_width {
+		width = data.dyn_width
+		if width < 0 {
+			width = -width
+			align = 0
+		} else if width > 0 {
+			align = 1
+		}
+	}
+	if has_dynamic_precision {
+		precision = data.dyn_precision
+	}
 
 	// mange pad char, for now only 0 allowed
 	mut pad_ch := u8(` `)
@@ -182,7 +199,13 @@ fn (data &StrIntpData) process_str_intp_data(mut sb strings.Builder) {
 	}
 
 	len0_set := if width > 0 { width } else { -1 }
-	len1_set := if precision == 0x7F { -1 } else { precision }
+	len1_set := if has_dynamic_precision {
+		if precision >= 0 { precision } else { -1 }
+	} else if precision == 0x7F {
+		-1
+	} else {
+		precision
+	}
 	sign_set := sign == 1
 
 	mut bf := strconv.BF_param{
@@ -265,15 +288,11 @@ fn (data &StrIntpData) process_str_intp_data(mut sb strings.Builder) {
 			}
 
 			if base == 0 {
-				if width == 0 {
-					d_str := d.str()
-					sb.write_string(d_str)
-					d_str.free()
-					return
-				}
 				if d < 0 {
 					bf.positive = false
 				}
+				// Format straight into the builder to avoid temporary `d.str()` allocations
+				// for plain `${int}` interpolations.
 				strconv.format_dec_sb(abs64(d), bf, mut sb)
 			} else {
 				// binary, we use 3 for binary
@@ -316,12 +335,6 @@ fn (data &StrIntpData) process_str_intp_data(mut sb strings.Builder) {
 				d = u64(data.d.d_u32)
 			}
 			if base == 0 {
-				if width == 0 {
-					d_str := d.str()
-					sb.write_string(d_str)
-					d_str.free()
-					return
-				}
 				strconv.format_dec_sb(d, bf, mut sb)
 			} else {
 				// binary, we use 3 for binary
@@ -346,7 +359,10 @@ fn (data &StrIntpData) process_str_intp_data(mut sb strings.Builder) {
 
 		// pointers
 		if typ == .si_p {
-			mut d := data.d.d_u64
+			// Read the pointer through its pointer union member first.
+			// On 32-bit C compilers, initializing `.d_p` does not guarantee that
+			// the upper half of `.d_u64` is zeroed.
+			mut d := u64(data.d.d_p)
 			base = 16 // TODO: **** decide the behaviour of this flag! ****
 			if base == 0 {
 				if width == 0 {
@@ -672,8 +688,11 @@ pub struct StrIntpData {
 pub:
 	str string
 	// fmt     u64  // expanded version for future use, 64 bit
-	fmt u32
-	d   StrIntpMem
+	fmt           u32
+	d             StrIntpMem
+	dyn_width     int
+	dyn_precision int
+	dyn_flags     u8
 }
 
 // str_intp is the main entry point for string interpolation
@@ -706,22 +725,22 @@ pub const si_g64_code = '0xfe0f'
 
 @[inline]
 pub fn str_intp_sq(in_str string) string {
-	return 'builtin__str_intp(2, _MOV((StrIntpData[]){{_S("\'"), ${si_s_code}, {.d_s = ${in_str}}},{_S("\'"), 0, {.d_c = 0 }}}))'
+	return 'builtin__str_intp(2, _MOV((StrIntpData[]){{_S("\'"), ${si_s_code}, {.d_s = ${in_str}}, 0, 0, 0},{_S("\'"), 0, {0}, 0, 0, 0}}))'
 }
 
 @[inline]
 pub fn str_intp_rune(in_str string) string {
-	return 'builtin__str_intp(2, _MOV((StrIntpData[]){{_S("\`"), ${si_s_code}, {.d_s = ${in_str}}},{_S("\`"), 0, {.d_c = 0 }}}))'
+	return 'builtin__str_intp(2, _MOV((StrIntpData[]){{_S("\`"), ${si_s_code}, {.d_s = ${in_str}}, 0, 0, 0},{_S("\`"), 0, {0}, 0, 0, 0}}))'
 }
 
 @[inline]
 pub fn str_intp_g32(in_str string) string {
-	return 'builtin__str_intp(1, _MOV((StrIntpData[]){{_SLIT0, ${si_g32_code}, {.d_f32 = ${in_str} }}}))'
+	return 'builtin__str_intp(1, _MOV((StrIntpData[]){{_SLIT0, ${si_g32_code}, {.d_f32 = ${in_str} }, 0, 0, 0}}))'
 }
 
 @[inline]
 pub fn str_intp_g64(in_str string) string {
-	return 'builtin__str_intp(1, _MOV((StrIntpData[]){{_SLIT0, ${si_g64_code}, {.d_f64 = ${in_str} }}}))'
+	return 'builtin__str_intp(1, _MOV((StrIntpData[]){{_SLIT0, ${si_g64_code}, {.d_f64 = ${in_str} }, 0, 0, 0}}))'
 }
 
 // str_intp_sub replace %% with the in_str
@@ -736,12 +755,12 @@ pub fn str_intp_sub(base_str string, in_str string) string {
 		st_str := base_str[..index]
 		if index + 2 < base_str.len {
 			en_str := base_str[index + 2..]
-			res_str := 'builtin__str_intp(2, _MOV((StrIntpData[]){{_S("${st_str}"), ${si_s_code}, {.d_s = ${in_str} }},{_S("${en_str}"), 0, {.d_c = 0}}}))'
+			res_str := 'builtin__str_intp(2, _MOV((StrIntpData[]){{_S("${st_str}"), ${si_s_code}, {.d_s = ${in_str} }, 0, 0, 0},{_S("${en_str}"), 0, {0}, 0, 0, 0}}))'
 			st_str.free()
 			en_str.free()
 			return res_str
 		}
-		res2_str := 'builtin__str_intp(1, _MOV((StrIntpData[]){{_S("${st_str}"), ${si_s_code}, {.d_s = ${in_str} }}}))'
+		res2_str := 'builtin__str_intp(1, _MOV((StrIntpData[]){{_S("${st_str}"), ${si_s_code}, {.d_s = ${in_str} }, 0, 0, 0}}))'
 		st_str.free()
 		return res2_str
 	}

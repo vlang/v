@@ -1,0 +1,1 @@
+builder error: Header file "missing_shader_header_1.h", needed for module `main` was not found. This header can be generated from `missing_shader_header_1.glsl`. Run `v shader .` in that directory to create it.

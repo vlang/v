@@ -20,10 +20,6 @@ const vargs = args_string.all_before('test-all')
 
 const vtest_nocleanup = os.getenv('VTEST_NOCLEANUP').bool()
 
-const hw_native_no_builtin_size_limit = 300
-
-const l2w_crosscc = os.find_abs_path_of_executable('x86_64-w64-mingw32-gcc-win32') or { '' }
-
 const clang_path = os.find_abs_path_of_executable('clang') or { '' }
 
 fn main() {
@@ -89,6 +85,7 @@ fn get_all_commands() []Command {
 		rmfile: 'examples/hello_world'
 	}
 	$if linux {
+		l2w_crosscc := os.find_abs_path_of_executable('x86_64-w64-mingw32-gcc-win32') or { '' }
 		if l2w_crosscc != '' {
 			res << Command{
 				line:   '${vexe} -os windows examples/hello_world.v'
@@ -105,7 +102,7 @@ fn get_all_commands() []Command {
 		rmfile: 'hhww.c'
 	}
 	res << Command{
-		line:  '${vexe} test vlib/builtin'
+		line:  '${vexe} -silent test vlib/builtin'
 		okmsg: 'V can test vlib/builtin'
 	}
 	res << Command{
@@ -168,20 +165,6 @@ fn get_all_commands() []Command {
 			}
 		}
 		res << Command{
-			line:   '${vexe} interpret examples/hello_world.v'
-			okmsg:  'V can interpret hello world.'
-			runcmd: .execute
-			expect: 'Hello, World!\n'
-		}
-		res << Command{
-			line:        '${vexe} interpret examples/hanoi.v'
-			okmsg:       'V can interpret hanoi.v'
-			runcmd:      .execute
-			starts_with: 'Disc 1 from A to C...\n'
-			ends_with:   'Disc 1 from A to C...\n'
-			contains:    'Disc 7 from A to C...\n'
-		}
-		res << Command{
 			line:  '${vexe} -o - examples/hello_world.v | grep "#define V_COMMIT_HASH" > /dev/null'
 			okmsg: 'V prints the generated source code to stdout with `-o -` .'
 		}
@@ -189,48 +172,6 @@ fn get_all_commands() []Command {
 			line:  '${vexe} run examples/v_script.vsh > /dev/null'
 			okmsg: 'V can run the .VSH script file examples/v_script.vsh'
 		}
-		// Note: -experimental is used here, just to suppress the warnings,
-		// that are otherwise printed by the native backend,
-		// until globals and hash statements *are implemented*:
-		$if linux {
-			res << Command{
-				line:  '${vexe} -experimental -b native run examples/native/hello_world.v > /dev/null'
-				okmsg: 'V compiles and runs examples/native/hello_world.v on the native backend for linux'
-			}
-			res << Command{
-				line:     '${vexe} -no-builtin -experimental -b native examples/hello_world.v > /dev/null'
-				okmsg:    'V compiles examples/hello_world.v on the native backend for linux with `-no-builtin` & the executable is <= ${hw_native_no_builtin_size_limit} bytes'
-				rmfile:   'examples/hello_world'
-				after_cb: fn () ! {
-					file := 'examples/hello_world'
-					if !os.exists(file) {
-						return error('>> file ${file} does not exist')
-					}
-					if os.file_size(file) > hw_native_no_builtin_size_limit {
-						return error('>> file ${file} bigger than ${hw_native_no_builtin_size_limit} bytes')
-					}
-				}
-			}
-		}
-		// only compilation:
-		res << Command{
-			line:   '${vexe} -os linux -experimental -b native -o hw.linux examples/hello_world.v'
-			okmsg:  'V compiles hello_world.v on the native backend for linux'
-			rmfile: ['hw.linux', 'hw.linux.o']
-		}
-		res << Command{
-			line:   '${vexe} -os macos -experimental -b native -o hw.macos examples/hello_world.v'
-			okmsg:  'V compiles hello_world.v on the native backend for macos'
-			rmfile: ['hw.macos', 'hw.macos.o']
-		}
-		$if windows {
-			res << Command{
-				line:   '${vexe} -os windows -experimental -b native -o hw.exe examples/hello_world.v'
-				okmsg:  'V compiles hello_world.v on the native backend for windows'
-				rmfile: ['hw.exe', 'hw.o']
-			}
-		}
-		//
 		res << Command{
 			line:   '${vexe} -b js -o hw.js examples/hello_world.v'
 			okmsg:  'V compiles hello_world.v on the JS backend'
@@ -298,6 +239,11 @@ fn get_all_commands() []Command {
 			okmsg:  'V can compile & allocate memory with -freestanding on Linux with GCC.'
 			rmfile: 'str_array'
 		}
+		res << Command{
+			line:   '${vexe} -cc gcc -keepc -freestanding -o time_now vlib/time/bare/time_now_example.v'
+			okmsg:  'V can compile time.now() with -freestanding on Linux with GCC.'
+			rmfile: 'time_now'
+		}
 	}
 	////////////////////////////////////////////////////////////////////////
 	// Test compilation of a shared library (.so, .dll. .dylib) with -shared:
@@ -318,6 +264,7 @@ fn get_all_commands() []Command {
 	}
 	// Test cross compilation to windows with -shared:
 	$if linux {
+		l2w_crosscc := os.find_abs_path_of_executable('x86_64-w64-mingw32-gcc-win32') or { '' }
 		if l2w_crosscc != '' {
 			res << Command{
 				line:   '${vexe} -os windows ${common_shared_flags}'
@@ -389,7 +336,7 @@ fn get_all_commands() []Command {
 	}
 	$if macos || linux {
 		res << Command{
-			line:   '${vexe} -o v.c cmd/v && cc -Werror v.c -lpthread -lm && rm -rf a.out'
+			line:   '${vexe} -o v.c cmd/v && cc -Werror -std=c99 v.c -lpthread -lm && rm -rf a.out'
 			label:  'v.c should be buildable with no warnings...'
 			okmsg:  'v.c can be compiled without warnings. This is good :)'
 			rmfile: 'v.c'
@@ -547,6 +494,7 @@ fn rm_existing(paths OneOrManyStrings) bool {
 			return existing
 		}
 	}
+
 	return false
 }
 

@@ -8,9 +8,6 @@ import v2.pref
 import strings
 import time
 
-// tabs = build_tabs(16)
-const tabs = build_tabs(24)
-
 struct Gen {
 	pref &pref.Preferences
 mut:
@@ -19,16 +16,6 @@ mut:
 	indent     int
 	on_newline bool
 	in_init    bool
-}
-
-fn build_tabs(tabs_len int) []string {
-	mut tabs_arr := []string{len: tabs_len, cap: tabs_len}
-	mut indent := ''
-	for i in 1 .. tabs_len {
-		indent += '\t'
-		tabs_arr[i] = indent
-	}
-	return tabs_arr
 }
 
 pub fn new_gen(prefs &pref.Preferences) &Gen {
@@ -107,12 +94,19 @@ fn (mut g Gen) stmt(stmt ast.Stmt) {
 			g.writeln('}')
 		}
 		ast.ConstDecl {
+			is_v_header := g.file.name.ends_with('.vh')
 			for field in stmt.fields {
 				if stmt.is_public {
 					g.write('pub ')
 				}
-				g.writeln('const ')
+				g.write('const ')
 				g.write(field.name)
+				if is_v_header && is_header_const_type_expr(field.value) {
+					g.write(' ')
+					g.expr(field.value)
+					g.writeln('')
+					continue
+				}
 				g.write(' = ')
 				g.expr(field.value)
 				g.writeln('')
@@ -131,6 +125,10 @@ fn (mut g Gen) stmt(stmt ast.Stmt) {
 			g.write('#')
 			g.write(stmt.name)
 			g.write(' ')
+			if stmt.ct_cond.len > 0 {
+				g.write(stmt.ct_cond)
+				g.write(' ')
+			}
 			g.writeln(stmt.value)
 		}
 		ast.EmptyStmt {}
@@ -193,6 +191,9 @@ fn (mut g Gen) stmt(stmt ast.Stmt) {
 			if stmt.is_method {
 				if !stmt.is_static {
 					g.write('(')
+					if stmt.receiver.is_mut {
+						g.write('mut ')
+					}
 					g.write(stmt.receiver.name)
 					g.write(' ')
 					g.expr(stmt.receiver.typ)
@@ -242,7 +243,7 @@ fn (mut g Gen) stmt(stmt ast.Stmt) {
 				}
 				if stmt.cond !is ast.EmptyExpr {
 					is_plain = false
-					g.write('/* cond: ${stmt.cond.type_name()} */')
+					g.write('/* cond: ${stmt.cond.name()} */')
 					g.expr(stmt.cond)
 				}
 				if has_init || has_post {
@@ -348,7 +349,7 @@ fn (mut g Gen) stmt(stmt ast.Stmt) {
 		ast.LabelStmt {
 			g.write(stmt.name)
 			g.writeln(':')
-			if stmt.stmt != ast.empty_stmt {
+			if stmt.stmt !is ast.EmptyStmt {
 				g.stmt(stmt.stmt)
 			}
 		}
@@ -365,6 +366,9 @@ fn (mut g Gen) stmt(stmt ast.Stmt) {
 			g.struct_decl(stmt)
 		}
 		ast.TypeDecl {
+			if stmt.is_public {
+				g.write('pub ')
+			}
 			g.write('type ')
 			if stmt.language != .v {
 				g.write(stmt.language.str())
@@ -377,13 +381,14 @@ fn (mut g Gen) stmt(stmt ast.Stmt) {
 			if stmt.variants.len > 0 {
 				g.write(' = ')
 				g.expr_list(stmt.variants, ' | ')
-			} else {
-				g.write(' ')
+			} else if stmt.base_type !is ast.EmptyExpr {
+				g.write(' = ')
 				g.expr(stmt.base_type)
 			}
 			g.writeln('')
 		}
 	}
+
 	// g.writeln('')
 }
 
@@ -507,7 +512,9 @@ fn (mut g Gen) expr(expr ast.Expr) {
 		ast.GenericArgOrIndexExpr {
 			// g.write('/* ast.GenericArgOrIndexExpr */')
 			g.expr(expr.lhs)
-			g.generic_list([expr.expr])
+			mut generic_args := []ast.Expr{cap: 1}
+			generic_args << expr.expr
+			g.generic_list(generic_args)
 		}
 		ast.Ident {
 			g.write(expr.name)
@@ -711,7 +718,8 @@ fn (mut g Gen) expr(expr ast.Expr) {
 			// g.write(quote_str)
 			for i, value in expr.values {
 				g.write(value)
-				if inter := expr.inters[i] {
+				if i < expr.inters.len {
+					inter := expr.inters[i]
 					g.write('\${')
 					g.expr(inter.expr)
 					if inter.format != .unformatted {
@@ -902,6 +910,9 @@ fn (mut g Gen) fn_type(typ ast.FnType) {
 	}
 	g.write('(')
 	for i, param in typ.params {
+		if param.is_mut {
+			g.write('mut ')
+		}
 		if param.name != '' {
 			g.write(param.name)
 			g.write(' ')
@@ -934,6 +945,15 @@ fn (mut g Gen) struct_decl(stmt ast.StructDecl) {
 	g.write(stmt.name)
 	if stmt.generic_params.len > 0 {
 		g.generic_list(stmt.generic_params)
+	}
+	if stmt.implements.len > 0 {
+		g.write(' implements ')
+		for i, expr in stmt.implements {
+			if i > 0 {
+				g.write(', ')
+			}
+			g.expr(expr)
+		}
 	}
 	g.struct_decl_fields(stmt.embedded, stmt.fields)
 }
@@ -988,7 +1008,11 @@ fn (mut g Gen) generic_list(exprs []ast.Expr) {
 @[inline]
 fn (mut g Gen) write(str string) {
 	if g.on_newline {
-		g.out.write_string(tabs[g.indent])
+		if g.indent > 0 {
+			for _ in 0 .. g.indent {
+				g.out.write_u8(`\t`)
+			}
+		}
 	}
 	g.out.write_string(str)
 	g.on_newline = false
@@ -997,12 +1021,38 @@ fn (mut g Gen) write(str string) {
 @[inline]
 fn (mut g Gen) writeln(str string) {
 	if g.on_newline {
-		g.out.write_string(tabs[g.indent])
+		if g.indent > 0 {
+			for _ in 0 .. g.indent {
+				g.out.write_u8(`\t`)
+			}
+		}
 	}
 	g.out.writeln(str)
 	g.on_newline = true
 }
 
-pub fn (g &Gen) print_output() {
-	println(g.out)
+fn is_header_const_type_expr(expr ast.Expr) bool {
+	return match expr {
+		ast.Type, ast.SelectorExpr {
+			true
+		}
+		ast.Ident {
+			name := expr.name
+				name in ['bool', 'byte', 'char', 'f32', 'f64', 'i8', 'i16', 'i32', 'int', 'i64', 'isize', 'rune', 'string', 'u8', 'u16', 'u32', 'u64', 'usize', 'void', 'voidptr', 'byteptr', 'charptr']
+				|| name.starts_with('&') || name.starts_with('[]') || name.starts_with('?')
+				|| name.starts_with('!') || name.contains('[') || name.contains('__')
+		}
+		else {
+			false
+		}
+	}
+}
+
+pub fn (mut g Gen) print_output() {
+	println(g.out.str())
+}
+
+// output_string returns the generated V source code.
+pub fn (mut g Gen) output_string() string {
+	return g.out.str()
 }

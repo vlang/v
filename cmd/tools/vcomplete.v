@@ -97,6 +97,7 @@ const auto_complete_commands = [
 	'gret',
 	'git-fmt-hook',
 	'ls',
+	'quest',
 	'retry',
 	'reduce',
 	'repl',
@@ -125,11 +126,13 @@ const auto_complete_commands = [
 	'self',
 	'search',
 	'install',
+	'link',
 	'update',
 	'upgrade',
 	'outdated',
 	'list',
 	'remove',
+	'unlink',
 	'vlib-docs',
 	'get',
 	'version',
@@ -241,7 +244,6 @@ const auto_complete_flags = [
 	'-no-parallel',
 	'-parallel-cc',
 	'-native',
-	'-interpret',
 	'-W',
 	'-w',
 	'-N',
@@ -290,6 +292,7 @@ const auto_complete_flags_cover = [
 	'-H',
 	'--percentages',
 	'-P',
+	'--lcov',
 	'--show_test_files',
 	'-S',
 	'--absolute',
@@ -529,6 +532,7 @@ fn auto_complete(args []string) {
 		}
 		else {}
 	}
+
 	exit(0)
 }
 
@@ -649,6 +653,7 @@ fn auto_complete_request(args []string) []string {
 					}
 				}
 			}
+
 			// Clear the list if the result is identical to the part examined
 			// (the flag must have already been completed)
 			if list.len == 1 && part == list[0] {
@@ -681,7 +686,8 @@ fn auto_complete_request(args []string) []string {
 				add_sep := if part == '~' { os.path_separator } else { '' }
 				part = part.replace_once('~', os.home_dir().trim_right(os.path_separator)) + add_sep
 			}
-			is_abs_path := part.starts_with(os.path_separator) // TODO: Windows support for drive prefixes
+			is_abs_path :=
+				part.starts_with(os.path_separator) // TODO: Windows support for drive prefixes
 			if part.ends_with(os.path_separator) || part == '.' || part == '..' {
 				// 'v <command>(.*/$|.|..)<tab>' -> output full directory list
 				ls_path = '.' + os.path_separator + part
@@ -793,11 +799,12 @@ Register-ArgumentCompleter -Native -CommandName v -ScriptBlock {
 		}
 		else {}
 	}
+
 	return setup
 }
 
 fn main() {
 	args := os.args[1..]
-	// println('"$args"')
+	// println('"${args}"')
 	auto_complete(args)
 }

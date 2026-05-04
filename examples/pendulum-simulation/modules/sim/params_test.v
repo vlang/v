@@ -68,7 +68,8 @@ pub fn test_get_magnet_position() {
 }
 
 pub fn test_get_magnet_force() {
-	result := params_test_mock_params.get_magnet_force(params_test_mock_tetha, params_test_mock_state)
+	result := params_test_mock_params.get_magnet_force(params_test_mock_tetha,
+		params_test_mock_state)
 	expected := vector(
 		x: -157.4572297692556
 		y: 1422.736432604726
@@ -78,7 +79,8 @@ pub fn test_get_magnet_force() {
 }
 
 pub fn test_get_magnet_dist() {
-	result := params_test_mock_params.get_magnet_dist(params_test_mock_tetha, params_test_mock_state)
+	result := params_test_mock_params.get_magnet_dist(params_test_mock_tetha,
+		params_test_mock_state)
 	expected := 0.07993696666249227
 	assert result == expected
 }

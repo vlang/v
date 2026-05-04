@@ -1,0 +1,7 @@
+vlib/v/parser/tests/generic_return_invalid_err.vv:3:16: error: invalid generic return, use `T` instead
+    1 | module main
+    2 | 
+    3 | fn foo[T](v T) [T] {
+      |                ~~~
+    4 |     return v
+    5 | }

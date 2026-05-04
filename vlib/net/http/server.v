@@ -84,7 +84,7 @@ pub fn (mut s Server) listen_and_serve() {
 		s.on_running(mut s)
 	}
 	for s.state == .running {
-		mut conn := s.listener.accept() or {
+		mut conn := s.listener.accept_only() or {
 			if err.code() == net.err_timed_out_code {
 				continue
 			}
@@ -171,6 +171,11 @@ fn (mut w HandlerWorker) process_requests() {
 }
 
 fn (mut w HandlerWorker) handle_conn(mut conn net.TcpConn) {
+	conn.set_sock() or {
+		net.close(conn.handle) or {}
+		eprintln('set_sock() failed: ${err}')
+		return
+	}
 	defer {
 		conn.close() or { eprintln('close() failed: ${err}') }
 	}

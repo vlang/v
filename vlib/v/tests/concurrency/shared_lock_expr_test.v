@@ -98,6 +98,66 @@ fn test_shared_lock_array_index_expr() {
 	}
 }
 
+fn test_shared_lock_array_slice_expr() {
+	// Test slicing shared arrays in rlock expressions (fixes issue #26663)
+	// Note: slicing a shared array automatically clones for safety,
+	// since a slice is a view over the same memory buffer.
+	shared a := ['a', 'b', 'c', 'd']
+
+	// Basic slice - implicit clone happens (safe independent copy)
+	slice1 := lock {
+		a[1..3]
+	}
+	assert slice1.len == 2
+	assert slice1[0] == 'b'
+	assert slice1[1] == 'c'
+
+	// Full slice
+	slice2 := lock {
+		a[..]
+	}
+	assert slice2.len == 4
+	assert slice2 == ['a', 'b', 'c', 'd']
+
+	// Slice from start
+	slice3 := lock {
+		a[..2]
+	}
+	assert slice3.len == 2
+	assert slice3[0] == 'a'
+	assert slice3[1] == 'b'
+
+	// Slice to end
+	slice4 := lock {
+		a[2..]
+	}
+	assert slice4.len == 2
+	assert slice4[0] == 'c'
+	assert slice4[1] == 'd'
+
+	// Test with int array
+	shared arr := [1, 2, 3, 4, 5]
+	slice5 := lock {
+		arr[1..4]
+	}
+	assert slice5.len == 3
+	assert slice5[0] == 2
+	assert slice5[1] == 3
+	assert slice5[2] == 4
+
+	// Explicit clone - same behavior, no warning
+	slice6 := lock {
+		a[1..3].clone()
+	}
+	assert slice6 == ['b', 'c']
+
+	// Unsafe block - get a view (user takes responsibility)
+	slice7 := lock {
+		unsafe { a[1..3] }
+	}
+	assert slice7 == ['b', 'c']
+}
+
 struct DummySt {
 	a int
 }

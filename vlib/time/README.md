@@ -64,6 +64,11 @@ fn parse_rfc2822(s string) !Time
 fn parse_rfc3339(s string) !Time
 ```
 
+`time.new(...)` validates the provided fields before calculating the Unix timestamp.
+Omitted `month` and `day` values default to `1`, and out-of-range values panic.
+Use `t.is_zero()` to check whether a `time.Time` is still its zero value before formatting or
+serializing it.
+
 Another very useful feature of the `time` module is the stop watch,
 for when you want to measure short time periods, elapsed while you
 executed other tasks. [See](https://play.vlang.io/?query=f6c008bc34):

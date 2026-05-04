@@ -1,10 +1,15 @@
 // Copyright (c) 2019-2024 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
+import math.big
 import math.fractions
 
 // (Old) results are verified using https://www.calculatorsoup.com/calculators/math/fractions.php
 // Newer ones are contrived for corner cases or prepared by hand.
+fn bi(s string) big.Integer {
+	return big.integer_from_string(s) or { panic(err) }
+}
+
 fn test_4_by_8_f64_and_str() {
 	f := fractions.fraction(4, 8)
 	assert f.f64() == 0.5
@@ -266,4 +271,35 @@ fn test_49_by_75_not_greater_than_2_by_3() {
 	f2 := fractions.fraction(2, 3)
 	assert !(f1 > f2)
 	assert !(f1 >= f2)
+}
+
+fn test_i32_rational_addition() {
+	f1 := fractions.rational(i32(4), i32(8))
+	f2 := fractions.rational(i32(5), i32(10))
+	sum := f1 + f2
+	assert sum.str() == '1/1'
+	assert sum == fractions.rational(i32(1), i32(1))
+}
+
+fn test_big_fraction_normalizes_and_reduces() {
+	f := fractions.big_fraction(bi('-14'), bi('-21'))
+	assert f.str() == '14/21'
+	assert f.reciprocal().str() == '21/14'
+	assert f.reduce().str() == '2/3'
+}
+
+fn test_big_fraction_addition() {
+	f1 := fractions.big_fraction(bi('100000000000000000000000000000000000000'), bi('3'))
+	f2 := fractions.big_fraction(bi('5'), bi('6'))
+	sum := f1 + f2
+	assert sum.str() == '200000000000000000000000000000000000005/6'
+	assert sum > f1
+}
+
+fn test_big_fraction_exact_comparison_beyond_i64() {
+	huge := bi('9223372036854775808123456789')
+	f1 := fractions.big_fraction(huge + big.one_int, huge)
+	f2 := fractions.big_fraction(huge, huge + big.one_int)
+	assert f1 > f2
+	assert f1 != f2
 }

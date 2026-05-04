@@ -41,11 +41,11 @@ fn formatted_string_interpolation() {
 escape_dollar_in_string()
 fn escape_dollar_in_string() {
 	i := 42
-	test_fn('($i)', '(42)')
-	println('(\$i)'.contains('i') && !'(\$i)'.contains('42'))
-	println(!'(\\$i)'.contains('i') && '(\\$i)'.contains('42') && '(\\$i)'.contains('\\'))
-	println('(\\\$i)'.contains('i') && !'(\\\$i)'.contains('42') && '(\\$i)'.contains('\\'))
-	println(!'(\\\\$i)'.contains('i') && '(\\\\$i)'.contains('42') && '(\\\\$i)'.contains('\\\\'))
+	test_fn('(${i})', '(42)')
+	println('(\${i})'.contains('i') && !'(\${i})'.contains('42'))
+	println(!'(\\${i})'.contains('i') && '(\\${i})'.contains('42') && '(\\${i})'.contains('\\'))
+	println('(\\\${i})'.contains('i') && !'(\\\${i})'.contains('42') && '(\\${i})'.contains('\\'))
+	println(!'(\\\\${i})'.contains('i') && '(\\\\${i})'.contains('42') && '(\\\\${i})'.contains('\\\\'))
 	test_fn('(${i})', '(42)')
 	println('(\${i})'.contains('i') && !'(\${i})'.contains('42'))
 	println(!'(\\${i})'.contains('i') && '(\\${i})'.contains('42') && '(\\${i})'.contains('\\'))
@@ -108,9 +108,9 @@ fn inttypes_string_interpolation() {
 	bp := byteptr(15541149836)
 	l := i64(-7694555558525237396)
 	ul := u64(17234006112912956370)
-	test_fn('$s $us', '-23456 54321')
-	test_fn('$ui $i', '3421958087 -1622999040')
-	test_fn('$l $ul', '-7694555558525237396 17234006112912956370')
+	test_fn('${s} ${us}', '-23456 54321')
+	test_fn('${ui} ${i}', '3421958087 -1622999040')
+	test_fn('${l} ${ul}', '-7694555558525237396 17234006112912956370')
 	test_fn('>${s:11}:${us:-13}<', '>     -23456:54321        <')
 	test_fn('0x${ul:-19x}:${l:22d}', '0xef2b7d4001165bd2   :  -7694555558525237396')
 	test_fn('${c:5}${uc:-7}x', ' -103217    x')
@@ -119,11 +119,11 @@ fn inttypes_string_interpolation() {
 	test_fn('${i:x}:${ui:X}:${int(s):x}', '9f430000:CBF6EFC7:ffffa460')
 	test_fn('${l:x}:${ul:X}', '9537727cad98876c:EF2B7D4001165BD2')
 	// default pointer format is platform dependent, so try a few
-	println("platform pointer format: '${vp:p}:$bp'")
-	test_fn('${vp:p}:$bp', '0xcbf6efc7:0x39e53208c' ||
-		'${vp:p}:$bp' == 'CBF6EFC7:39E53208C' ||
-		'${vp:p}:$bp' == 'cbf6efc7:39e53208c' ||
-		'${vp:p}:$bp' == '00000000CBF6EFC7:000000039E53208C')
+	println("platform pointer format: '${vp:p}:${bp}'")
+	test_fn('${vp:p}:${bp}', '0xcbf6efc7:0x39e53208c' ||
+		'${vp:p}:${bp}' == 'CBF6EFC7:39E53208C' ||
+		'${vp:p}:${bp}' == 'cbf6efc7:39e53208c' ||
+		'${vp:p}:${bp}' == '00000000CBF6EFC7:000000039E53208C')
 }
 */
 
@@ -134,8 +134,8 @@ fn utf8_string_interpolation() {
 	test_fn('${a} ${st} ${m}', 'à-côté Sträßle 10€')
 	zz := '>${a:10}< >${st:-8}< >${m:5}<-'
 	zz_expected := '>    à-côté< >Sträßle < >  10€<-'
-	// println('         zz: $zz')
-	// println('zz_expected: $zz_expected')
+	// println('         zz: ${zz}')
+	// println('zz_expected: ${zz_expected}')
 	test_fn(zz, zz_expected)
 	// e := '\u20AC' // Eurosign doesn' work with MSVC and tcc
 	e := '€'
@@ -168,8 +168,8 @@ fn string_interpolation_with_negative_format_width_should_compile_and_run_withou
 	i := 3
 	input := '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}'
 	println('---------------------------------------------------------------------------------------------')
-	println('+60 ${i:10} | input.len: ${input.len:10} | ${input.hex():60} | $input')
-	println('-60 ${i:10} | input.len: ${input.len:10} | ${input.hex():-60} | $input')
+	println('+60 ${i:10} | input.len: ${input.len:10} | ${input.hex():60} | ${input}')
+	println('-60 ${i:10} | input.len: ${input.len:10} | ${input.hex():-60} | ${input}')
 	println('---------------------------------------------------------------------------------------------')
 	println(true)
 }

@@ -1,0 +1,1286 @@
+// Copyright (c) 2020-2024 Joe Conigliaro. All rights reserved.
+// Use of this source code is governed by an MIT license
+// that can be found in the LICENSE file.
+module ast
+
+pub type FlatNodeId = int
+
+pub const invalid_flat_node_id = FlatNodeId(-1)
+
+// FlatNodeKind is a dense tag for every stored AST node variant.
+pub enum FlatNodeKind {
+	file
+	stmt_asm
+	stmt_assert
+	stmt_assign
+	stmt_block
+	stmt_comptime
+	stmt_const_decl
+	stmt_defer
+	stmt_directive
+	stmt_empty
+	stmt_enum_decl
+	stmt_expr
+	stmt_flow_control
+	stmt_fn_decl
+	stmt_for_in
+	stmt_for
+	stmt_global_decl
+	stmt_import
+	stmt_interface_decl
+	stmt_label
+	stmt_module
+	stmt_return
+	stmt_struct_decl
+	stmt_type_decl
+	stmt_attributes
+	expr_array_init
+	expr_as_cast
+	expr_assoc
+	expr_basic_literal
+	expr_call
+	expr_call_or_cast
+	expr_cast
+	expr_comptime
+	expr_empty
+	expr_fn_literal
+	expr_generic_arg_or_index
+	expr_generic_args
+	expr_ident
+	expr_if
+	expr_if_guard
+	expr_index
+	expr_infix
+	expr_init
+	expr_keyword
+	expr_keyword_operator
+	expr_lambda
+	expr_lock
+	expr_map_init
+	expr_match
+	expr_modifier
+	expr_or
+	expr_paren
+	expr_postfix
+	expr_prefix
+	expr_range
+	expr_select
+	expr_selector
+	expr_sql
+	expr_string_inter
+	expr_string
+	expr_tuple
+	expr_unsafe
+	typ_anon_struct
+	typ_array_fixed
+	typ_array
+	typ_channel
+	typ_fn
+	typ_generic
+	typ_map
+	typ_nil
+	typ_none
+	typ_option
+	typ_result
+	typ_thread
+	typ_tuple
+	aux_attribute
+	aux_field_init
+	aux_field_decl
+	aux_parameter
+	aux_match_branch
+	aux_string_inter
+}
+
+// FlatEdge represents a parent->child relationship.
+pub struct FlatEdge {
+pub:
+	child_id FlatNodeId
+}
+
+// FlatNode stores a compact, index-based AST node.
+pub struct FlatNode {
+pub:
+	kind       FlatNodeKind
+	data_idx   int = -1
+	first_edge int
+	edge_count int
+}
+
+// FlatFile maps a source file to its flat root node.
+pub struct FlatFile {
+pub:
+	file_id  FlatNodeId
+	name_idx int
+	mod_idx  int
+}
+
+// FlatAst is a contiguous AST graph representation.
+pub struct FlatAst {
+pub mut:
+	files   []FlatFile
+	nodes   []FlatNode
+	edges   []FlatEdge
+	strings []string
+}
+
+// FlatAstStats captures high-level memory and shape metrics.
+pub struct FlatAstStats {
+pub:
+	file_roots     int
+	nodes          int
+	edges          int
+	strings        int
+	string_bytes   u64
+	bytes_estimate u64
+}
+
+// LegacyAstStats captures estimated dynamic memory and node shape for the existing AST.
+pub struct LegacyAstStats {
+pub mut:
+	files          int
+	expr_nodes     int
+	stmt_nodes     int
+	type_nodes     int
+	aux_nodes      int
+	node_bytes     u64
+	array_bytes    u64
+	string_entries int
+	string_bytes   u64
+	bytes_estimate u64
+}
+
+// flatten_files converts recursive v2 AST files into a flat, index-based graph.
+pub fn flatten_files(files []File) FlatAst {
+	mut b := new_flat_builder()
+	for file in files {
+		file_id := b.add_file(file)
+		b.flat.files << FlatFile{
+			file_id:  file_id
+			name_idx: b.intern(file.name)
+			mod_idx:  b.intern(file.mod)
+		}
+	}
+	return b.flat
+}
+
+// legacy_ast_stats estimates dynamic memory and node counts for the recursive AST.
+pub fn legacy_ast_stats(files []File) LegacyAstStats {
+	mut w := LegacyAstWalker{}
+	w.walk_files(files)
+	return w.stats
+}
+
+// count_legacy_nodes returns the total legacy node count used by the walker.
+pub fn count_legacy_nodes(files []File) int {
+	stats := legacy_ast_stats(files)
+	return stats.files + stats.expr_nodes + stats.stmt_nodes + stats.type_nodes + stats.aux_nodes
+}
+
+// stats returns aggregate shape and estimated memory usage for FlatAst.
+pub fn (flat &FlatAst) stats() FlatAstStats {
+	mut string_bytes := u64(0)
+	for s in flat.strings {
+		string_bytes += u64(s.len)
+	}
+	mut bytes := u64(flat.files.len) * u64(sizeof(FlatFile))
+	bytes += u64(flat.nodes.len) * u64(sizeof(FlatNode))
+	bytes += u64(flat.edges.len) * u64(sizeof(FlatEdge))
+	bytes += u64(flat.strings.len) * u64(sizeof(string))
+	bytes += string_bytes
+	return FlatAstStats{
+		file_roots:     flat.files.len
+		nodes:          flat.nodes.len
+		edges:          flat.edges.len
+		strings:        flat.strings.len
+		string_bytes:   string_bytes
+		bytes_estimate: bytes
+	}
+}
+
+// count_reachable_nodes traverses from file roots and counts unique reachable nodes.
+pub fn (flat &FlatAst) count_reachable_nodes() int {
+	if flat.nodes.len == 0 || flat.files.len == 0 {
+		return 0
+	}
+	mut seen := []bool{len: flat.nodes.len}
+	mut stack := []int{cap: flat.files.len}
+	for file in flat.files {
+		stack << file.file_id
+	}
+	mut count := 0
+	for stack.len > 0 {
+		node_id := stack.pop()
+		if node_id < 0 || node_id >= flat.nodes.len {
+			continue
+		}
+		if seen[node_id] {
+			continue
+		}
+		seen[node_id] = true
+		count++
+		node := flat.nodes[node_id]
+		for i in 0 .. node.edge_count {
+			edge := flat.edges[node.first_edge + i]
+			stack << edge.child_id
+		}
+	}
+	return count
+}
+
+// node_type_name returns the short type-name tag associated with a flat node.
+pub fn (flat &FlatAst) node_type_name(node_id FlatNodeId) string {
+	if node_id < 0 || node_id >= flat.nodes.len {
+		return ''
+	}
+	return flat.nodes[node_id].kind.str()
+}
+
+struct FlatBuilder {
+mut:
+	flat       FlatAst
+	string_ids map[string]int
+}
+
+fn new_flat_builder() FlatBuilder {
+	return FlatBuilder{
+		flat:       FlatAst{
+			files:   []FlatFile{}
+			nodes:   []FlatNode{cap: 1024}
+			edges:   []FlatEdge{cap: 2048}
+			strings: []string{cap: 512}
+		}
+		string_ids: map[string]int{}
+	}
+}
+
+fn (mut b FlatBuilder) intern(s string) int {
+	if idx := b.string_ids[s] {
+		return idx
+	}
+	idx := b.flat.strings.len
+	b.flat.strings << s
+	b.string_ids[s] = idx
+	return idx
+}
+
+fn (mut b FlatBuilder) add_node(kind FlatNodeKind, data string, edges []FlatEdge) FlatNodeId {
+	first_edge := b.flat.edges.len
+	if edges.len > 0 {
+		b.flat.edges << edges
+	}
+	node_id := FlatNodeId(b.flat.nodes.len)
+	b.flat.nodes << FlatNode{
+		kind:       kind
+		data_idx:   if data.len > 0 { b.intern(data) } else { -1 }
+		first_edge: first_edge
+		edge_count: edges.len
+	}
+	return node_id
+}
+
+fn (mut b FlatBuilder) push_edge(mut edges []FlatEdge, child FlatNodeId) {
+	if child == invalid_flat_node_id {
+		return
+	}
+	edges << FlatEdge{
+		child_id: child
+	}
+}
+
+fn (mut b FlatBuilder) push_expr(mut edges []FlatEdge, expr Expr) {
+	b.push_edge(mut edges, b.add_expr(expr))
+}
+
+fn (mut b FlatBuilder) push_stmt(mut edges []FlatEdge, stmt Stmt) {
+	b.push_edge(mut edges, b.add_stmt(stmt))
+}
+
+fn (mut b FlatBuilder) push_type(mut edges []FlatEdge, typ Type) {
+	b.push_edge(mut edges, b.add_type(typ))
+}
+
+fn (mut b FlatBuilder) push_attribute(mut edges []FlatEdge, attr Attribute) {
+	b.push_edge(mut edges, b.add_attribute(attr))
+}
+
+fn (mut b FlatBuilder) push_field_init(mut edges []FlatEdge, field FieldInit) {
+	b.push_edge(mut edges, b.add_field_init(field))
+}
+
+fn (mut b FlatBuilder) push_field_decl(mut edges []FlatEdge, field FieldDecl) {
+	b.push_edge(mut edges, b.add_field_decl(field))
+}
+
+fn (mut b FlatBuilder) push_parameter(mut edges []FlatEdge, param Parameter) {
+	b.push_edge(mut edges, b.add_parameter(param))
+}
+
+fn (mut b FlatBuilder) push_match_branch(mut edges []FlatEdge, branch MatchBranch) {
+	b.push_edge(mut edges, b.add_match_branch(branch))
+}
+
+fn (mut b FlatBuilder) push_string_inter(mut edges []FlatEdge, inter StringInter) {
+	b.push_edge(mut edges, b.add_string_inter(inter))
+}
+
+fn (mut b FlatBuilder) collect_children[T](node T, mut edges []FlatEdge) {
+	$for field in T.fields {
+		$if field.typ is Expr {
+			b.push_expr(mut edges, node.$(field.name))
+		} $else $if field.typ is []Expr {
+			for child in node.$(field.name) {
+				b.push_expr(mut edges, child)
+			}
+		} $else $if field.typ is Stmt {
+			b.push_stmt(mut edges, node.$(field.name))
+		} $else $if field.typ is []Stmt {
+			for child in node.$(field.name) {
+				b.push_stmt(mut edges, child)
+			}
+		} $else $if field.typ is Type {
+			b.push_type(mut edges, node.$(field.name))
+		} $else $if field.typ is []Type {
+			for child in node.$(field.name) {
+				b.push_type(mut edges, child)
+			}
+		} $else $if field.typ is Attribute {
+			b.push_attribute(mut edges, node.$(field.name))
+		} $else $if field.typ is []Attribute {
+			for child in node.$(field.name) {
+				b.push_attribute(mut edges, child)
+			}
+		} $else $if field.typ is FieldInit {
+			b.push_field_init(mut edges, node.$(field.name))
+		} $else $if field.typ is []FieldInit {
+			for child in node.$(field.name) {
+				b.push_field_init(mut edges, child)
+			}
+		} $else $if field.typ is FieldDecl {
+			b.push_field_decl(mut edges, node.$(field.name))
+		} $else $if field.typ is []FieldDecl {
+			for child in node.$(field.name) {
+				b.push_field_decl(mut edges, child)
+			}
+		} $else $if field.typ is Parameter {
+			b.push_parameter(mut edges, node.$(field.name))
+		} $else $if field.typ is []Parameter {
+			for child in node.$(field.name) {
+				b.push_parameter(mut edges, child)
+			}
+		} $else $if field.typ is MatchBranch {
+			b.push_match_branch(mut edges, node.$(field.name))
+		} $else $if field.typ is []MatchBranch {
+			for child in node.$(field.name) {
+				b.push_match_branch(mut edges, child)
+			}
+		} $else $if field.typ is StringInter {
+			b.push_string_inter(mut edges, node.$(field.name))
+		} $else $if field.typ is []StringInter {
+			for child in node.$(field.name) {
+				b.push_string_inter(mut edges, child)
+			}
+		} $else $if field.typ is Ident {
+			b.push_expr(mut edges, Expr(node.$(field.name)))
+		} $else $if field.typ is []Ident {
+			for child in node.$(field.name) {
+				b.push_expr(mut edges, Expr(child))
+			}
+		} $else $if field.typ is ImportStmt {
+			b.push_stmt(mut edges, Stmt(node.$(field.name)))
+		} $else $if field.typ is []ImportStmt {
+			for child in node.$(field.name) {
+				b.push_stmt(mut edges, Stmt(child))
+			}
+		} $else $if field.typ is AnonStructType {
+			b.push_type(mut edges, Type(node.$(field.name)))
+		} $else $if field.typ is ArrayFixedType {
+			b.push_type(mut edges, Type(node.$(field.name)))
+		} $else $if field.typ is ArrayType {
+			b.push_type(mut edges, Type(node.$(field.name)))
+		} $else $if field.typ is ChannelType {
+			b.push_type(mut edges, Type(node.$(field.name)))
+		} $else $if field.typ is FnType {
+			b.push_type(mut edges, Type(node.$(field.name)))
+		} $else $if field.typ is GenericType {
+			b.push_type(mut edges, Type(node.$(field.name)))
+		} $else $if field.typ is MapType {
+			b.push_type(mut edges, Type(node.$(field.name)))
+		} $else $if field.typ is NilType {
+			b.push_type(mut edges, Type(node.$(field.name)))
+		} $else $if field.typ is NoneType {
+			b.push_type(mut edges, Type(node.$(field.name)))
+		} $else $if field.typ is OptionType {
+			b.push_type(mut edges, Type(node.$(field.name)))
+		} $else $if field.typ is ResultType {
+			b.push_type(mut edges, Type(node.$(field.name)))
+		} $else $if field.typ is ThreadType {
+			b.push_type(mut edges, Type(node.$(field.name)))
+		} $else $if field.typ is TupleType {
+			b.push_type(mut edges, Type(node.$(field.name)))
+		}
+	}
+}
+
+fn (mut b FlatBuilder) add_file(file File) FlatNodeId {
+	mut edges := []FlatEdge{}
+	for attr in file.attributes {
+		b.push_attribute(mut edges, attr)
+	}
+	for imp in file.imports {
+		b.push_stmt(mut edges, Stmt(imp))
+	}
+	for stmt in file.stmts {
+		b.push_stmt(mut edges, stmt)
+	}
+	return b.add_node(.file, file.name, edges)
+}
+
+fn (mut b FlatBuilder) add_stmt(stmt Stmt) FlatNodeId {
+	if stmt is []Attribute {
+		mut edges := []FlatEdge{}
+		for attr in stmt {
+			b.push_attribute(mut edges, attr)
+		}
+		return b.add_node(.stmt_attributes, '', edges)
+	}
+
+	mut edges := []FlatEdge{}
+	mut data := ''
+	mut kind := FlatNodeKind.stmt_empty
+
+	match stmt {
+		AsmStmt {
+			kind = .stmt_asm
+			data = stmt.arch
+		}
+		AssertStmt {
+			kind = .stmt_assert
+			b.collect_children(stmt, mut edges)
+		}
+		AssignStmt {
+			kind = .stmt_assign
+			data = stmt.op.str()
+			b.collect_children(stmt, mut edges)
+		}
+		BlockStmt {
+			kind = .stmt_block
+			b.collect_children(stmt, mut edges)
+		}
+		ComptimeStmt {
+			kind = .stmt_comptime
+			b.collect_children(stmt, mut edges)
+		}
+		ConstDecl {
+			kind = .stmt_const_decl
+			if stmt.is_public {
+				data = 'pub'
+			}
+			b.collect_children(stmt, mut edges)
+		}
+		DeferStmt {
+			kind = .stmt_defer
+			data = stmt.mode.str()
+			b.collect_children(stmt, mut edges)
+		}
+		Directive {
+			kind = .stmt_directive
+			data = '${stmt.name}:${stmt.value}'
+		}
+		EmptyStmt {
+			kind = .stmt_empty
+		}
+		EnumDecl {
+			kind = .stmt_enum_decl
+			data = stmt.name
+			if stmt.is_public {
+				data = 'pub ${stmt.name}'
+			}
+			b.collect_children(stmt, mut edges)
+		}
+		ExprStmt {
+			kind = .stmt_expr
+			b.collect_children(stmt, mut edges)
+		}
+		FlowControlStmt {
+			kind = .stmt_flow_control
+			data = '${stmt.op.str()}:${stmt.label}'
+		}
+		FnDecl {
+			kind = .stmt_fn_decl
+			data = stmt.name
+			if stmt.is_public {
+				data = 'pub ${data}'
+			}
+			if stmt.is_method {
+				data = 'method ${data}'
+			}
+			if stmt.is_static {
+				data = 'static ${data}'
+			}
+			b.collect_children(stmt, mut edges)
+		}
+		ForInStmt {
+			kind = .stmt_for_in
+			b.collect_children(stmt, mut edges)
+		}
+		ForStmt {
+			kind = .stmt_for
+			b.collect_children(stmt, mut edges)
+		}
+		GlobalDecl {
+			kind = .stmt_global_decl
+			b.collect_children(stmt, mut edges)
+		}
+		ImportStmt {
+			kind = .stmt_import
+			data = if stmt.alias.len > 0 { '${stmt.name}:${stmt.alias}' } else { stmt.name }
+			b.collect_children(stmt, mut edges)
+		}
+		InterfaceDecl {
+			kind = .stmt_interface_decl
+			data = stmt.name
+			if stmt.is_public {
+				data = 'pub ${stmt.name}'
+			}
+			b.collect_children(stmt, mut edges)
+		}
+		LabelStmt {
+			kind = .stmt_label
+			data = stmt.name
+			b.collect_children(stmt, mut edges)
+		}
+		ModuleStmt {
+			kind = .stmt_module
+			data = stmt.name
+		}
+		ReturnStmt {
+			kind = .stmt_return
+			b.collect_children(stmt, mut edges)
+		}
+		StructDecl {
+			kind = .stmt_struct_decl
+			data = stmt.name
+			if stmt.is_public {
+				data = 'pub ${data}'
+			}
+			if stmt.is_union {
+				data = 'union ${data}'
+			}
+			b.collect_children(stmt, mut edges)
+		}
+		TypeDecl {
+			kind = .stmt_type_decl
+			data = stmt.name
+			if stmt.is_public {
+				data = 'pub ${data}'
+			}
+			b.collect_children(stmt, mut edges)
+		}
+		[]Attribute {}
+	}
+
+	return b.add_node(kind, data, edges)
+}
+
+fn (mut b FlatBuilder) add_expr(expr Expr) FlatNodeId {
+	match expr {
+		Type {
+			return b.add_type(expr)
+		}
+		FieldInit {
+			return b.add_field_init(expr)
+		}
+		else {}
+	}
+
+	mut edges := []FlatEdge{}
+	mut data := ''
+	mut kind := FlatNodeKind.expr_empty
+
+	match expr {
+		ArrayInitExpr {
+			kind = .expr_array_init
+			b.collect_children(expr, mut edges)
+		}
+		AsCastExpr {
+			kind = .expr_as_cast
+			b.collect_children(expr, mut edges)
+		}
+		AssocExpr {
+			kind = .expr_assoc
+			b.collect_children(expr, mut edges)
+		}
+		BasicLiteral {
+			kind = .expr_basic_literal
+			data = '${expr.kind.str()}:${expr.value}'
+		}
+		CallExpr {
+			kind = .expr_call
+			b.collect_children(expr, mut edges)
+		}
+		CallOrCastExpr {
+			kind = .expr_call_or_cast
+			b.collect_children(expr, mut edges)
+		}
+		CastExpr {
+			kind = .expr_cast
+			b.collect_children(expr, mut edges)
+		}
+		ComptimeExpr {
+			kind = .expr_comptime
+			b.collect_children(expr, mut edges)
+		}
+		EmptyExpr {
+			kind = .expr_empty
+		}
+		FnLiteral {
+			kind = .expr_fn_literal
+			b.collect_children(expr, mut edges)
+		}
+		GenericArgOrIndexExpr {
+			kind = .expr_generic_arg_or_index
+			b.collect_children(expr, mut edges)
+		}
+		GenericArgs {
+			kind = .expr_generic_args
+			b.collect_children(expr, mut edges)
+		}
+		Ident {
+			kind = .expr_ident
+			data = expr.name
+		}
+		IfExpr {
+			kind = .expr_if
+			b.collect_children(expr, mut edges)
+		}
+		IfGuardExpr {
+			kind = .expr_if_guard
+			b.collect_children(expr, mut edges)
+		}
+		IndexExpr {
+			kind = .expr_index
+			if expr.is_gated {
+				data = 'gated'
+			}
+			b.collect_children(expr, mut edges)
+		}
+		InfixExpr {
+			kind = .expr_infix
+			data = expr.op.str()
+			b.collect_children(expr, mut edges)
+		}
+		InitExpr {
+			kind = .expr_init
+			b.collect_children(expr, mut edges)
+		}
+		Keyword {
+			kind = .expr_keyword
+			data = expr.tok.str()
+		}
+		KeywordOperator {
+			kind = .expr_keyword_operator
+			data = expr.op.str()
+			b.collect_children(expr, mut edges)
+		}
+		LambdaExpr {
+			kind = .expr_lambda
+			b.collect_children(expr, mut edges)
+		}
+		LockExpr {
+			kind = .expr_lock
+			b.collect_children(expr, mut edges)
+		}
+		MapInitExpr {
+			kind = .expr_map_init
+			b.collect_children(expr, mut edges)
+		}
+		MatchExpr {
+			kind = .expr_match
+			b.collect_children(expr, mut edges)
+		}
+		ModifierExpr {
+			kind = .expr_modifier
+			data = expr.kind.str()
+			b.collect_children(expr, mut edges)
+		}
+		OrExpr {
+			kind = .expr_or
+			b.collect_children(expr, mut edges)
+		}
+		ParenExpr {
+			kind = .expr_paren
+			b.collect_children(expr, mut edges)
+		}
+		PostfixExpr {
+			kind = .expr_postfix
+			data = expr.op.str()
+			b.collect_children(expr, mut edges)
+		}
+		PrefixExpr {
+			kind = .expr_prefix
+			data = expr.op.str()
+			b.collect_children(expr, mut edges)
+		}
+		RangeExpr {
+			kind = .expr_range
+			data = expr.op.str()
+			b.collect_children(expr, mut edges)
+		}
+		SelectExpr {
+			kind = .expr_select
+			b.collect_children(expr, mut edges)
+		}
+		SelectorExpr {
+			kind = .expr_selector
+			b.collect_children(expr, mut edges)
+		}
+		SqlExpr {
+			kind = .expr_sql
+			b.collect_children(expr, mut edges)
+		}
+		StringInterLiteral {
+			kind = .expr_string_inter
+			if expr.values.len > 0 {
+				data = '${expr.values[0]}:${expr.values.len}'
+			}
+			b.collect_children(expr, mut edges)
+		}
+		StringLiteral {
+			kind = .expr_string
+			data = '${expr.kind.str()}:${expr.value}'
+		}
+		Tuple {
+			kind = .expr_tuple
+			b.collect_children(expr, mut edges)
+		}
+		Type {}
+		UnsafeExpr {
+			kind = .expr_unsafe
+			b.collect_children(expr, mut edges)
+		}
+		FieldInit {}
+	}
+
+	return b.add_node(kind, data, edges)
+}
+
+fn (mut b FlatBuilder) add_type(typ Type) FlatNodeId {
+	mut edges := []FlatEdge{}
+	mut data := ''
+	mut kind := FlatNodeKind.typ_nil
+
+	match typ {
+		AnonStructType {
+			kind = .typ_anon_struct
+			b.collect_children(typ, mut edges)
+		}
+		ArrayFixedType {
+			kind = .typ_array_fixed
+			b.collect_children(typ, mut edges)
+		}
+		ArrayType {
+			kind = .typ_array
+			b.collect_children(typ, mut edges)
+		}
+		ChannelType {
+			kind = .typ_channel
+			b.collect_children(typ, mut edges)
+		}
+		FnType {
+			kind = .typ_fn
+			b.collect_children(typ, mut edges)
+		}
+		GenericType {
+			kind = .typ_generic
+			data = typ.name.name()
+			b.collect_children(typ, mut edges)
+		}
+		MapType {
+			kind = .typ_map
+			b.collect_children(typ, mut edges)
+		}
+		NilType {
+			kind = .typ_nil
+		}
+		NoneType {
+			kind = .typ_none
+		}
+		OptionType {
+			kind = .typ_option
+			b.collect_children(typ, mut edges)
+		}
+		ResultType {
+			kind = .typ_result
+			b.collect_children(typ, mut edges)
+		}
+		ThreadType {
+			kind = .typ_thread
+			b.collect_children(typ, mut edges)
+		}
+		TupleType {
+			kind = .typ_tuple
+			b.collect_children(typ, mut edges)
+		}
+	}
+
+	return b.add_node(kind, data, edges)
+}
+
+fn (mut b FlatBuilder) add_attribute(attr Attribute) FlatNodeId {
+	mut edges := []FlatEdge{}
+	b.collect_children(attr, mut edges)
+	return b.add_node(.aux_attribute, attr.name, edges)
+}
+
+fn (mut b FlatBuilder) add_field_init(field FieldInit) FlatNodeId {
+	mut edges := []FlatEdge{}
+	b.collect_children(field, mut edges)
+	return b.add_node(.aux_field_init, field.name, edges)
+}
+
+fn (mut b FlatBuilder) add_field_decl(field FieldDecl) FlatNodeId {
+	mut edges := []FlatEdge{}
+	b.collect_children(field, mut edges)
+	return b.add_node(.aux_field_decl, field.name, edges)
+}
+
+fn (mut b FlatBuilder) add_parameter(param Parameter) FlatNodeId {
+	mut edges := []FlatEdge{}
+	b.collect_children(param, mut edges)
+	name := if param.is_mut { 'mut ${param.name}' } else { param.name }
+	return b.add_node(.aux_parameter, name, edges)
+}
+
+fn (mut b FlatBuilder) add_match_branch(branch MatchBranch) FlatNodeId {
+	mut edges := []FlatEdge{}
+	b.collect_children(branch, mut edges)
+	return b.add_node(.aux_match_branch, '', edges)
+}
+
+fn (mut b FlatBuilder) add_string_inter(inter StringInter) FlatNodeId {
+	mut edges := []FlatEdge{}
+	b.collect_children(inter, mut edges)
+	data := '${inter.format.str()}:${inter.width}:${inter.precision}'
+	return b.add_node(.aux_string_inter, data, edges)
+}
+
+struct LegacyAstWalker {
+mut:
+	stats LegacyAstStats
+}
+
+fn (mut w LegacyAstWalker) walk_files(files []File) {
+	w.stats.files = files.len
+	w.stats.node_bytes += u64(files.len) * u64(sizeof(File))
+	w.add_array_storage(sizeof(File), files.len)
+	for file in files {
+		w.walk_file(file)
+	}
+	w.stats.bytes_estimate = w.stats.node_bytes + w.stats.array_bytes + w.stats.string_bytes
+}
+
+fn (mut w LegacyAstWalker) add_array_storage(elem_size u32, len int) {
+	if len <= 0 || elem_size == 0 {
+		return
+	}
+	w.stats.array_bytes += u64(elem_size) * u64(len)
+}
+
+fn (mut w LegacyAstWalker) add_string(s string) {
+	w.stats.string_entries++
+	w.stats.string_bytes += u64(s.len)
+}
+
+fn (mut w LegacyAstWalker) walk_file(file File) {
+	w.scan_dynamic(file)
+}
+
+fn (mut w LegacyAstWalker) walk_stmt(stmt Stmt) {
+	if stmt is []Attribute {
+		w.add_array_storage(sizeof(Attribute), stmt.len)
+		for attr in stmt {
+			w.walk_attribute(attr)
+		}
+		return
+	}
+	w.stats.stmt_nodes++
+	w.stats.node_bytes += u64(sizeof(Stmt))
+	match stmt {
+		AssignStmt {
+			w.scan_dynamic(stmt)
+		}
+		AssertStmt {
+			w.scan_dynamic(stmt)
+		}
+		AsmStmt {
+			w.scan_dynamic(stmt)
+		}
+		BlockStmt {
+			w.scan_dynamic(stmt)
+		}
+		ComptimeStmt {
+			w.scan_dynamic(stmt)
+		}
+		ConstDecl {
+			w.scan_dynamic(stmt)
+		}
+		DeferStmt {
+			w.scan_dynamic(stmt)
+		}
+		Directive {
+			w.scan_dynamic(stmt)
+		}
+		EmptyStmt {}
+		EnumDecl {
+			w.scan_dynamic(stmt)
+		}
+		ExprStmt {
+			w.scan_dynamic(stmt)
+		}
+		FlowControlStmt {
+			w.scan_dynamic(stmt)
+		}
+		FnDecl {
+			w.scan_dynamic(stmt)
+		}
+		ForInStmt {
+			w.scan_dynamic(stmt)
+		}
+		ForStmt {
+			w.scan_dynamic(stmt)
+		}
+		GlobalDecl {
+			w.scan_dynamic(stmt)
+		}
+		ImportStmt {
+			w.scan_dynamic(stmt)
+		}
+		InterfaceDecl {
+			w.scan_dynamic(stmt)
+		}
+		LabelStmt {
+			w.scan_dynamic(stmt)
+		}
+		ModuleStmt {
+			w.scan_dynamic(stmt)
+		}
+		ReturnStmt {
+			w.scan_dynamic(stmt)
+		}
+		StructDecl {
+			w.scan_dynamic(stmt)
+		}
+		TypeDecl {
+			w.scan_dynamic(stmt)
+		}
+		[]Attribute {}
+	}
+}
+
+fn (mut w LegacyAstWalker) walk_expr(expr Expr) {
+	match expr {
+		Type {
+			w.walk_type(expr)
+			return
+		}
+		FieldInit {
+			w.walk_field_init(expr)
+			return
+		}
+		else {}
+	}
+	w.stats.expr_nodes++
+	w.stats.node_bytes += u64(sizeof(Expr))
+	match expr {
+		ArrayInitExpr {
+			w.scan_dynamic(expr)
+		}
+		AsCastExpr {
+			w.scan_dynamic(expr)
+		}
+		AssocExpr {
+			w.scan_dynamic(expr)
+		}
+		BasicLiteral {
+			w.scan_dynamic(expr)
+		}
+		CallExpr {
+			w.scan_dynamic(expr)
+		}
+		CallOrCastExpr {
+			w.scan_dynamic(expr)
+		}
+		CastExpr {
+			w.scan_dynamic(expr)
+		}
+		ComptimeExpr {
+			w.scan_dynamic(expr)
+		}
+		EmptyExpr {}
+		FnLiteral {
+			w.scan_dynamic(expr)
+		}
+		GenericArgOrIndexExpr {
+			w.scan_dynamic(expr)
+		}
+		GenericArgs {
+			w.scan_dynamic(expr)
+		}
+		Ident {
+			w.scan_dynamic(expr)
+		}
+		IfExpr {
+			w.scan_dynamic(expr)
+		}
+		IfGuardExpr {
+			w.scan_dynamic(expr)
+		}
+		IndexExpr {
+			w.scan_dynamic(expr)
+		}
+		InfixExpr {
+			w.scan_dynamic(expr)
+		}
+		InitExpr {
+			w.scan_dynamic(expr)
+		}
+		Keyword {}
+		KeywordOperator {
+			w.scan_dynamic(expr)
+		}
+		LambdaExpr {
+			w.scan_dynamic(expr)
+		}
+		LockExpr {
+			w.scan_dynamic(expr)
+		}
+		MapInitExpr {
+			w.scan_dynamic(expr)
+		}
+		MatchExpr {
+			w.scan_dynamic(expr)
+		}
+		ModifierExpr {
+			w.scan_dynamic(expr)
+		}
+		OrExpr {
+			w.scan_dynamic(expr)
+		}
+		ParenExpr {
+			w.scan_dynamic(expr)
+		}
+		PostfixExpr {
+			w.scan_dynamic(expr)
+		}
+		PrefixExpr {
+			w.scan_dynamic(expr)
+		}
+		RangeExpr {
+			w.scan_dynamic(expr)
+		}
+		SelectExpr {
+			w.scan_dynamic(expr)
+		}
+		SelectorExpr {
+			w.scan_dynamic(expr)
+		}
+		SqlExpr {
+			w.scan_dynamic(expr)
+		}
+		StringInterLiteral {
+			w.scan_dynamic(expr)
+		}
+		StringLiteral {
+			w.scan_dynamic(expr)
+		}
+		Tuple {
+			w.scan_dynamic(expr)
+		}
+		Type {}
+		UnsafeExpr {
+			w.scan_dynamic(expr)
+		}
+		FieldInit {}
+	}
+}
+
+fn (mut w LegacyAstWalker) walk_type(typ Type) {
+	w.stats.type_nodes++
+	w.stats.node_bytes += u64(sizeof(Type))
+	match typ {
+		AnonStructType {
+			w.scan_dynamic(typ)
+		}
+		ArrayFixedType {
+			w.scan_dynamic(typ)
+		}
+		ArrayType {
+			w.scan_dynamic(typ)
+		}
+		ChannelType {
+			w.scan_dynamic(typ)
+		}
+		FnType {
+			w.scan_dynamic(typ)
+		}
+		GenericType {
+			w.scan_dynamic(typ)
+		}
+		MapType {
+			w.scan_dynamic(typ)
+		}
+		NilType {}
+		NoneType {}
+		OptionType {
+			w.scan_dynamic(typ)
+		}
+		ResultType {
+			w.scan_dynamic(typ)
+		}
+		ThreadType {
+			w.scan_dynamic(typ)
+		}
+		TupleType {
+			w.scan_dynamic(typ)
+		}
+	}
+}
+
+fn (mut w LegacyAstWalker) walk_attribute(attr Attribute) {
+	w.stats.aux_nodes++
+	w.stats.node_bytes += u64(sizeof(Attribute))
+	w.scan_dynamic(attr)
+}
+
+fn (mut w LegacyAstWalker) walk_field_init(field FieldInit) {
+	w.stats.aux_nodes++
+	w.stats.node_bytes += u64(sizeof(FieldInit))
+	w.scan_dynamic(field)
+}
+
+fn (mut w LegacyAstWalker) walk_field_decl(field FieldDecl) {
+	w.stats.aux_nodes++
+	w.stats.node_bytes += u64(sizeof(FieldDecl))
+	w.scan_dynamic(field)
+}
+
+fn (mut w LegacyAstWalker) walk_parameter(param Parameter) {
+	w.stats.aux_nodes++
+	w.stats.node_bytes += u64(sizeof(Parameter))
+	w.scan_dynamic(param)
+}
+
+fn (mut w LegacyAstWalker) walk_match_branch(branch MatchBranch) {
+	w.stats.aux_nodes++
+	w.stats.node_bytes += u64(sizeof(MatchBranch))
+	w.scan_dynamic(branch)
+}
+
+fn (mut w LegacyAstWalker) walk_string_inter(inter StringInter) {
+	w.stats.aux_nodes++
+	w.stats.node_bytes += u64(sizeof(StringInter))
+	w.scan_dynamic(inter)
+}
+
+fn (mut w LegacyAstWalker) scan_dynamic[T](node T) {
+	$for field in T.fields {
+		$if field.typ is string {
+			w.add_string(node.$(field.name))
+		} $else $if field.typ is []string {
+			arr := node.$(field.name)
+			w.add_array_storage(sizeof(string), arr.len)
+			for v in arr {
+				w.add_string(v)
+			}
+		} $else $if field.typ is Expr {
+			w.walk_expr(node.$(field.name))
+		} $else $if field.typ is []Expr {
+			arr := node.$(field.name)
+			w.add_array_storage(sizeof(Expr), arr.len)
+			for v in arr {
+				w.walk_expr(v)
+			}
+		} $else $if field.typ is Stmt {
+			w.walk_stmt(node.$(field.name))
+		} $else $if field.typ is []Stmt {
+			arr := node.$(field.name)
+			w.add_array_storage(sizeof(Stmt), arr.len)
+			for v in arr {
+				w.walk_stmt(v)
+			}
+		} $else $if field.typ is Type {
+			w.walk_type(node.$(field.name))
+		} $else $if field.typ is []Type {
+			arr := node.$(field.name)
+			w.add_array_storage(sizeof(Type), arr.len)
+			for v in arr {
+				w.walk_type(v)
+			}
+		} $else $if field.typ is Attribute {
+			w.walk_attribute(node.$(field.name))
+		} $else $if field.typ is []Attribute {
+			arr := node.$(field.name)
+			w.add_array_storage(sizeof(Attribute), arr.len)
+			for v in arr {
+				w.walk_attribute(v)
+			}
+		} $else $if field.typ is FieldInit {
+			w.walk_field_init(node.$(field.name))
+		} $else $if field.typ is []FieldInit {
+			arr := node.$(field.name)
+			w.add_array_storage(sizeof(FieldInit), arr.len)
+			for v in arr {
+				w.walk_field_init(v)
+			}
+		} $else $if field.typ is FieldDecl {
+			w.walk_field_decl(node.$(field.name))
+		} $else $if field.typ is []FieldDecl {
+			arr := node.$(field.name)
+			w.add_array_storage(sizeof(FieldDecl), arr.len)
+			for v in arr {
+				w.walk_field_decl(v)
+			}
+		} $else $if field.typ is Parameter {
+			w.walk_parameter(node.$(field.name))
+		} $else $if field.typ is []Parameter {
+			arr := node.$(field.name)
+			w.add_array_storage(sizeof(Parameter), arr.len)
+			for v in arr {
+				w.walk_parameter(v)
+			}
+		} $else $if field.typ is MatchBranch {
+			w.walk_match_branch(node.$(field.name))
+		} $else $if field.typ is []MatchBranch {
+			arr := node.$(field.name)
+			w.add_array_storage(sizeof(MatchBranch), arr.len)
+			for v in arr {
+				w.walk_match_branch(v)
+			}
+		} $else $if field.typ is StringInter {
+			w.walk_string_inter(node.$(field.name))
+		} $else $if field.typ is []StringInter {
+			arr := node.$(field.name)
+			w.add_array_storage(sizeof(StringInter), arr.len)
+			for v in arr {
+				w.walk_string_inter(v)
+			}
+		} $else $if field.typ is Ident {
+			w.walk_expr(Expr(node.$(field.name)))
+		} $else $if field.typ is []Ident {
+			arr := node.$(field.name)
+			w.add_array_storage(sizeof(Ident), arr.len)
+			for v in arr {
+				w.walk_expr(Expr(v))
+			}
+		} $else $if field.typ is ImportStmt {
+			w.walk_stmt(Stmt(node.$(field.name)))
+		} $else $if field.typ is []ImportStmt {
+			arr := node.$(field.name)
+			w.add_array_storage(sizeof(ImportStmt), arr.len)
+			for v in arr {
+				w.walk_stmt(Stmt(v))
+			}
+		}
+	}
+}

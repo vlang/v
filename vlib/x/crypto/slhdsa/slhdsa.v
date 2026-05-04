@@ -225,51 +225,47 @@ fn slhdsa_do_sign(key &C.EVP_PKEY, msg []u8, opt SignerOpts) ![]u8 {
 		C.EVP_PKEY_CTX_free(sctx)
 		return error('OSSL_PARAM_BLD_new failed')
 	}
-	// if context string was set into non-null string, then we set
-	// `context-string` params into context key generator.
-	if opt.context.len > 0 {
-		// OSSL_PARAM_octet_string("context-string", (unsigned char *)"A context string", 33),
-		o := C.OSSL_PARAM_BLD_push_octet_string(param_bld, c'context-string', opt.context.str,
-			opt.context.len)
-		if o <= 0 {
-			C.OSSL_PARAM_BLD_free(param_bld)
-			C.EVP_SIGNATURE_free(sig_alg)
-			C.EVP_PKEY_CTX_free(sctx)
-			return error('OSSL_PARAM_BLD_push_octet_string FAILED')
-		}
+
+	// writes `context-string` params into context key generator.
+	// OSSL_PARAM_octet_string("context-string", (unsigned char *)"A context string", 33),
+	cs := C.OSSL_PARAM_BLD_push_octet_string(param_bld, c'context-string', opt.context.str,
+		opt.context.len)
+	if cs <= 0 {
+		C.OSSL_PARAM_BLD_free(param_bld)
+		C.EVP_SIGNATURE_free(sig_alg)
+		C.EVP_PKEY_CTX_free(sctx)
+		return error('OSSL_PARAM_BLD_push_octet_string context-string flag FAILED')
 	}
+
+	// write `message-encoding` flag
+	me := C.OSSL_PARAM_BLD_push_int(param_bld, c'message-encoding', opt.encoding)
+	if me <= 0 {
+		C.OSSL_PARAM_BLD_free(param_bld)
+		C.EVP_SIGNATURE_free(sig_alg)
+		C.EVP_PKEY_CTX_free(sctx)
+		return error('OSSL_PARAM_BLD_push_int message-encoding flag FAILED')
+	}
+
 	// handle entropy testing
-	if opt.entropy.len > 0 {
-		if opt.encoding != 0 {
-			C.OSSL_PARAM_BLD_free(param_bld)
-			C.EVP_SIGNATURE_free(sig_alg)
-			C.EVP_PKEY_CTX_free(sctx)
-			return error('encoding need 0 for testing')
-		}
-		o := C.OSSL_PARAM_BLD_push_octet_string(param_bld, c'test-entropy', opt.entropy.data,
+	// `test-entropy flag only handled when `encoding` flag was set into 0 value
+	if opt.encoding == 0 {
+		te := C.OSSL_PARAM_BLD_push_octet_string(param_bld, c'test-entropy', opt.entropy.data,
 			opt.entropy.len)
-		if o <= 0 {
+		if te <= 0 {
 			C.OSSL_PARAM_BLD_free(param_bld)
 			C.EVP_SIGNATURE_free(sig_alg)
 			C.EVP_PKEY_CTX_free(sctx)
-			return error('OSSL_PARAM_BLD_push_octet_string failed')
-		}
-		oo := C.OSSL_PARAM_BLD_push_int(param_bld, c'message-encoding', opt.encoding)
-		if oo <= 0 {
-			C.OSSL_PARAM_BLD_free(param_bld)
-			C.EVP_SIGNATURE_free(sig_alg)
-			C.EVP_PKEY_CTX_free(sctx)
-			return error('OSSL_PARAM_BLD_push_int FAILED')
+			return error('OSSL_PARAM_BLD_push_octet_string test-entropy flag failed')
 		}
 	}
-	if opt.encoding == 0 {
-		oo := C.OSSL_PARAM_BLD_push_int(param_bld, c'message-encoding', opt.encoding)
-		if oo <= 0 {
-			C.OSSL_PARAM_BLD_free(param_bld)
-			C.EVP_SIGNATURE_free(sig_alg)
-			C.EVP_PKEY_CTX_free(sctx)
-			return error('OSSL_PARAM_BLD_push_int FAILED')
-		}
+
+	// write `deterministic` flag, its getting ignored if "test-entropy" is set.
+	dt := C.OSSL_PARAM_BLD_push_int(param_bld, c'deterministic', opt.deterministic)
+	if dt <= 0 {
+		C.OSSL_PARAM_BLD_free(param_bld)
+		C.EVP_SIGNATURE_free(sig_alg)
+		C.EVP_PKEY_CTX_free(sctx)
+		return error('OSSL_PARAM_BLD_push_int deterministic flag FAILED')
 	}
 	// build params
 	params := C.OSSL_PARAM_BLD_to_param(param_bld)
@@ -293,7 +289,7 @@ fn slhdsa_do_sign(key &C.EVP_PKEY, msg []u8, opt SignerOpts) ![]u8 {
 		C.OSSL_PARAM_free(params)
 		C.EVP_SIGNATURE_free(sig_alg)
 		C.EVP_PKEY_CTX_free(sctx)
-		return error('EVP_PKEY_sign_message_init failed')
+		return error('EVP_PKEY_sign failed')
 	}
 
 	// return the copy of the sig

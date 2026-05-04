@@ -56,6 +56,7 @@ fn event(e &tui.Event, mut app App) {
 		}
 		else {}
 	}
+
 	app.redraw = true
 }
 

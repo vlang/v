@@ -13,6 +13,10 @@ pub fn (mut ct TypeResolver) unwrap_generic_expr(expr ast.Expr, default_typ ast.
 		ast.ParExpr {
 			return ct.unwrap_generic_expr(expr.expr, default_typ)
 		}
+		ast.SelectorExpr {
+			typ := ct.get_type(expr)
+			return if typ != ast.void_type { ct.resolver.unwrap_generic(typ) } else { default_typ }
+		}
 		ast.CastExpr {
 			return expr.typ
 		}
@@ -143,7 +147,7 @@ pub fn (mut t TypeResolver) resolve_args(cur_fn &ast.FnDecl, func &ast.Fn, mut n
 			if mut call_arg.expr.obj is ast.Var {
 				node_.args[i].typ = call_arg.expr.obj.typ
 				if call_arg.expr.obj.ct_type_var !in [.generic_var, .generic_param, .no_comptime] {
-					mut ctyp := t.get_type(call_arg.expr)
+					mut ctyp := t.get_type(ast.Expr(call_arg.expr))
 					if ctyp != ast.void_type {
 						arg_sym := t.table.sym(ctyp)
 						param_sym := t.table.final_sym(param_typ)
@@ -190,7 +194,7 @@ pub fn (mut t TypeResolver) resolve_args(cur_fn &ast.FnDecl, func &ast.Fn, mut n
 						comptime_args[k] = ctyp
 					}
 				} else if call_arg.expr.obj.ct_type_var == .generic_param {
-					mut ctyp := t.get_type(call_arg.expr)
+					mut ctyp := t.get_type(ast.Expr(call_arg.expr))
 					if ctyp != ast.void_type {
 						arg_sym := t.table.final_sym(call_arg.typ)
 						param_typ_sym := t.table.sym(param_typ)
@@ -212,6 +216,7 @@ pub fn (mut t TypeResolver) resolve_args(cur_fn &ast.FnDecl, func &ast.Fn, mut n
 								}
 								else {}
 							}
+
 							generic_names := generic_types.map(t.table.sym(it).name)
 							for _, gt_name in cur_fn.generic_names {
 								if gt_name in generic_names
@@ -237,10 +242,11 @@ pub fn (mut t TypeResolver) resolve_args(cur_fn &ast.FnDecl, func &ast.Fn, mut n
 									comptime_args[k] = cparam_type_sym.info.value_type
 								}
 							} else {
-								if node_.args[i].expr.is_auto_deref_var() {
+								if node_.args[i].expr.is_auto_deref_var() && !node_.args[i].is_mut {
 									ctyp = ctyp.deref()
 								}
-								if ctyp.nr_muls() > 0 && param_typ.nr_muls() > 0 {
+								if ctyp.nr_muls() > 0 && param_typ.nr_muls() > 0
+									&& !node_.args[i].is_mut {
 									ctyp = ctyp.set_nr_muls(0)
 								}
 								comptime_args[k] = ctyp
@@ -250,16 +256,16 @@ pub fn (mut t TypeResolver) resolve_args(cur_fn &ast.FnDecl, func &ast.Fn, mut n
 						}
 					}
 				} else if call_arg.expr.obj.ct_type_var == .generic_var {
-					mut ctyp := t.resolver.unwrap_generic(t.get_type(call_arg.expr))
+					mut ctyp := t.resolver.unwrap_generic(t.get_type(ast.Expr(call_arg.expr)))
 					cparam_type_sym := t.table.sym(t.resolver.unwrap_generic(ctyp))
 					param_typ_sym := t.table.sym(param_typ)
 					if param_typ_sym.kind == .array && cparam_type_sym.info is ast.Array {
 						ctyp = cparam_type_sym.info.elem_type
 					}
-					if node_.args[i].expr.is_auto_deref_var() {
+					if node_.args[i].expr.is_auto_deref_var() && !node_.args[i].is_mut {
 						ctyp = ctyp.deref()
 					}
-					if ctyp.nr_muls() > 0 && param_typ.nr_muls() > 0 {
+					if ctyp.nr_muls() > 0 && param_typ.nr_muls() > 0 && !node_.args[i].is_mut {
 						ctyp = ctyp.set_nr_muls(0)
 					}
 					comptime_args[k] = ctyp
@@ -347,7 +353,7 @@ pub fn (mut t TypeResolver) resolve_args(cur_fn &ast.FnDecl, func &ast.Fn, mut n
 			}
 		} else if mut call_arg.expr is ast.SelectorExpr
 			&& call_arg.expr.expr_type.has_flag(.generic) && call_arg.expr.expr is ast.Ident {
-			mut ctyp := t.typeof_type(call_arg.expr, call_arg.expr.typ)
+			mut ctyp := t.typeof_type(ast.Expr(call_arg.expr), call_arg.expr.typ)
 			param_typ_sym := t.table.sym(param_typ)
 			cparam_type_sym := t.table.sym(ctyp)
 			if param_typ_sym.kind == .array && cparam_type_sym.info is ast.Array {
@@ -384,7 +390,10 @@ pub fn (mut t TypeResolver) resolve_fn_generic_args(cur_fn &ast.FnDecl, func &as
 		if comptime_args.len > 0 {
 			for k, v in comptime_args {
 				if (rec_len + k) < concrete_types.len {
-					concrete_types[rec_len + k] = t.resolver.unwrap_generic(v)
+					current_type := concrete_types[rec_len + k]
+					if current_type == ast.void_type || current_type.has_flag(.generic) {
+						concrete_types[rec_len + k] = t.resolver.unwrap_generic(v)
+					}
 				}
 			}
 			if t.table.register_fn_concrete_types(func.fkey(), concrete_types) {

@@ -43,6 +43,16 @@ type StructLists = Cat | []Cat | map[string]Dog
 
 type SumAlias = Sum
 
+struct AliasWrap {
+	val SumAlias
+}
+
+struct Empty1 {
+	a ?string @[omitempty]
+}
+
+type Elem1 = int | Empty1
+
 pub struct Stru {
 	val  int
 	val2 string
@@ -125,6 +135,17 @@ fn test_sum_type_struct() {
 	assert json.decode[StructSumTypes]('{"_type": "Stru", "val": 1, "val2": "lala", "val3": {"a": 2, "steak": "leleu"}, "val4": 2147483000, "val5": 2147483000}')! == StructSumTypes(Stru{1, 'lala', Stru2{2, 'leleu'}, 2147483000, 2147483000})
 }
 
+fn test_sum_type_array_with_single_struct_variant() {
+	assert json.decode[Elem1]('{"a":"b"}')! == Elem1(Empty1{
+		a: 'b'
+	})
+
+	assert json.decode[[]Elem1]('[0, {"a":"b"}, 2]')! == [Elem1(0), Elem1(Empty1{
+		a: 'b'
+	}),
+		Elem1(2)]
+}
+
 fn test_sum_type_mixed() {
 	assert json.decode[Mixed]('{"key":0}')! == Mixed({
 		'key': 0
@@ -146,18 +167,15 @@ fn test_sum_type_options_fail() {
 	}
 }
 
-// to be implemented
-fn test_sum_type_alias_fail() {
-	if x := json.decode[SumAlias]('99') {
-		assert false
+fn test_sum_type_alias() {
+	assert json.decode[SumAlias]('99')! == SumAlias(99)
+	assert json.decode[SumAlias]('"hi"')! == SumAlias('hi')
+	assert json.decode[SumAlias]('true')! == SumAlias(true)
+	assert json.decode[SumAlias]('["hi", "bye"]')! == SumAlias(['hi', 'bye'])
+
+	assert json.decode[AliasWrap]('{"val": 99}')! == AliasWrap{
+		val: SumAlias(99)
 	}
-	if x := json.decode[SumAlias]('true') {
-		assert false
-	}
-	if x := json.decode[SumAlias]('["hi", "bye"]') {
-		assert false
-	}
-	if x := json.decode[SumAlias]('[0, 1]') {
-		assert false
-	}
+	assert json.decode[[]SumAlias]('[99, "hi", true, ["bye"]]')! == [SumAlias(99), SumAlias('hi'),
+		SumAlias(true), SumAlias(['bye'])]
 }

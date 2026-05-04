@@ -1,3 +1,15 @@
+vlib/v/checker/tests/mut_arg.vv:1:10: notice: unused parameter: `par`
+    1 | fn f(mut par []int) {
+      |          ~~~
+    2 | }
+    3 |
+vlib/v/checker/tests/mut_arg.vv:4:6: notice: unused parameter: `par`
+    2 | }
+    3 | 
+    4 | fn g(par []int) {
+      |      ~~~
+    5 | }
+    6 |
 vlib/v/checker/tests/mut_arg.vv:7:3: warning: automatic referencing/dereferencing is deprecated and will be removed soon (got: 0 references, expected: 1 references)
     5 | }
     6 | 

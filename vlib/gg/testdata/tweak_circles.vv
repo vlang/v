@@ -43,6 +43,6 @@ fn frame(mut app App) {
 	app.gg.begin()
 	app.gg.draw_circle_empty(150, 150, f32(app.radius), gg.blue)
 	app.gg.draw_text(20, 20, 'radius: ${app.radius}')
-	//	app.gg.draw_text(20, 50, 'circle_segment_size: $circle_segment_size')
+	//	app.gg.draw_text(20, 50, 'circle_segment_size: ${circle_segment_size}')
 	app.gg.end()
 }

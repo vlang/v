@@ -1,0 +1,7 @@
+type SmartcastValue = int | string
+fn main() {
+	a := SmartcastValue(1)
+	if a is int {
+		a = 3
+	}
+}

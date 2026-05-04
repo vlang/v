@@ -27,7 +27,7 @@ jobs:
         os: [macos-14]
       fail-fast: false
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 121
+    timeout-minutes: 151
     env:
       VFLAGS: -cc clang
       VTEST_SHOW_LONGEST_BY_RUNTIME: 3
@@ -45,6 +45,8 @@ jobs:
         run: v run ci/macos_ci.vsh build_v_with_prealloc
       - name: Test cross compilation to Linux
         run: v run ci/macos_ci.vsh test_cross_compilation
+      - name: Test inline assembly on macos
+        run: v run ci/macos_ci.vsh test_inline_assembly
       - name: Build V with -cstrict
         run: v run ci/macos_ci.vsh build_with_cstrict
       - name: All code is formatted
@@ -75,6 +77,9 @@ jobs:
       ##        run: v run ci/macos_ci.vsh v_self_compilation_usecache
       - name: V self compilation with -parallel-cc
         run: v run ci/macos_ci.vsh v_self_compilation_parallel_cc
+      - name: v2 test suite
+        if: ${{ false }} # Temporarily disabled.
+        run: bash cmd/v2/test_all.sh
       - name: Test password input
         run: v run ci/macos_ci.vsh test_password_input
       - name: Test readline

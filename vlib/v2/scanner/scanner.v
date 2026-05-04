@@ -19,9 +19,9 @@ pub struct Scanner {
 	skip_interpolation bool
 mut:
 	file        &token.File = &token.File{}
-	src         string
 	insert_semi bool
 pub mut:
+	src    string
 	offset int // current char offset
 	pos    int // token offset (start of current token)
 	lit    string
@@ -47,16 +47,47 @@ pub fn (mut s Scanner) init(file &token.File, src string) {
 	s.offset = 0
 	s.pos = 0
 	s.lit = ''
-	// s.in_str_incomplete = false
-	// s.in_str_inter = false
-	// s.str_inter_cbr_depth = 0
+	s.insert_semi = false
+	s.in_str_incomplete = false
+	s.in_str_inter = false
+	s.str_inter_cbr_depth = 0
+	s.str_quote = 0
 	// init
 	s.file = unsafe { file }
 	s.src = src
 }
 
+fn (mut s Scanner) scan_char_literal(quote u8) token.Token {
+	s.offset++
+	for s.offset < s.src.len {
+		c2 := s.src[s.offset]
+		if c2 == quote {
+			break
+		}
+		if c2 == `\\` && s.offset + 1 < s.src.len {
+			s.offset += 2
+			continue
+		}
+		s.offset++
+	}
+	mut end := s.offset
+	if s.offset < s.src.len && s.src[s.offset] == quote {
+		end = s.offset
+		s.offset++
+	}
+	s.lit = s.src[s.pos + 1..end]
+	s.insert_semi = true
+	return .char
+}
+
+// current_file returns the scanner's current source file handle.
+pub fn (s &Scanner) current_file() &token.File {
+	return unsafe { s.file }
+}
+
 @[direct_array_access]
 pub fn (mut s Scanner) scan() token.Token {
+	// integrity check: detect source buffer corruption
 	// before whitespace call to keep whitespaces in string
 	// NOTE: before start: simply for a little more efficiency
 	// if !s.skip_interpolation && s.in_str_incomplete {
@@ -158,23 +189,7 @@ pub fn (mut s Scanner) scan() token.Token {
 	}
 	// byte (char) `a`
 	else if c == `\`` {
-		s.offset++
-		// NOTE: if there is more than one char still scan it
-		// we can error at a later stage. should we error now?
-		for {
-			c2 := s.src[s.offset]
-			if c2 == c {
-				break
-			} else if c2 == `\\` {
-				s.offset += 2
-				continue
-			}
-			s.offset++
-		}
-		s.offset++
-		s.lit = s.src[s.pos + 1..s.offset - 1]
-		s.insert_semi = true
-		return .char
+		return s.scan_char_literal(c)
 	}
 	// s.lit not set, as tokens below get converted directly to string
 	// s.lit = c
@@ -278,6 +293,12 @@ pub fn (mut s Scanner) scan() token.Token {
 		`&` {
 			c2 := s.src[s.offset]
 			if c2 == `&` {
+				// Parse logical and assignment as bitwise-and assignment token for now.
+				// It is later lowered by transformer/type-aware stages as needed.
+				if s.offset + 1 < s.src.len && s.src[s.offset + 1] == `=` {
+					s.offset += 2
+					return .and_assign
+				}
 				// so that we parse &&Type as two .amp instead of .and
 				// but this requires there is a space. we could check
 				// for capital or some other way, this is simplest for now.
@@ -294,6 +315,11 @@ pub fn (mut s Scanner) scan() token.Token {
 		`|` {
 			c2 := s.src[s.offset]
 			if c2 == `|` {
+				// Parse logical or assignment as bitwise-or assignment token for now.
+				if s.offset + 1 < s.src.len && s.src[s.offset + 1] == `=` {
+					s.offset += 2
+					return .or_assign
+				}
 				s.offset++
 				return .logical_or
 			} else if c2 == `=` {
@@ -386,7 +412,6 @@ pub fn (mut s Scanner) scan() token.Token {
 			return .rpar
 		}
 		`[` {
-			s.insert_semi = true
 			return .lsbr
 		}
 		`]` {
@@ -477,10 +502,21 @@ fn (mut s Scanner) comment() {
 fn (mut s Scanner) string_literal(scan_as_raw bool, c_quote u8) {
 	// shortcut, scan whole string
 	if scan_as_raw {
-		for s.offset < s.src.len && s.src[s.offset] != c_quote {
+		for s.offset < s.src.len {
+			c := s.src[s.offset]
+			if c == c_quote {
+				break
+			}
+			if c == `\n` {
+				s.offset++
+				s.file.add_line(s.offset)
+				continue
+			}
 			s.offset++
 		}
-		s.offset++
+		if s.offset < s.src.len {
+			s.offset++
+		}
 		return
 	}
 	// normal strings
@@ -556,7 +592,7 @@ fn (mut s Scanner) number() {
 			s.offset++
 			for {
 				c2 := s.src[s.offset]
-				if c2 >= `0` && c2 <= `7` {
+				if (c2 >= `0` && c2 <= `7`) || c2 == `_` {
 					s.offset++
 					continue
 				}
@@ -574,8 +610,9 @@ fn (mut s Scanner) number() {
 			s.offset++
 			continue
 		}
-		// fraction
-		else if !has_decimal && c == `.` && s.src[s.offset + 1] != `.` {
+		// fraction (only if next char after '.' is a digit, not a letter like '.hex()')
+		else if !has_decimal && c == `.` && s.src[s.offset + 1] != `.` && s.src[s.offset + 1] >= `0`
+			&& s.src[s.offset + 1] <= `9` {
 			has_decimal = true
 			s.offset++
 			continue
@@ -584,6 +621,10 @@ fn (mut s Scanner) number() {
 		else if !has_exponent && c in [`e`, `E`] {
 			has_exponent = true
 			s.offset++
+			// consume optional sign after exponent
+			if s.offset < s.src.len && s.src[s.offset] in [`+`, `-`] {
+				s.offset++
+			}
 			continue
 		}
 		break

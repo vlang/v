@@ -8,12 +8,12 @@ MySQL or MariaDB database servers.
 To run the mysql module tests, or if you want to just experiment, you can use the following
 command to start a development version of MySQL using docker:
 ```sh
-docker run -p 3306:3306 --name some-mysql -e MYSQL_ALLOW_EMPTY_PASSWORD=1 -e MYSQL_ROOT_PASSWORD= -d mysql:latest
+docker run -p 3306:3306 --name some-mysql -e MYSQL_ROOT_PASSWORD=12345678 -d mysql:latest
 ```
-The above command will start a server instance without any password for its root account,
+The above command will start a server instance with the root password `12345678`,
 available to mysql client connections, on tcp port 3306.
 
-You can test that it works by doing: `mysql -uroot -h127.0.0.1` .
+You can test that it works by doing: `mysql -uroot -p12345678 -h127.0.0.1` .
 You should see a mysql shell (use `exit` to end the mysql client session).
 
 Use `docker container stop some-mysql` to stop the server.
@@ -28,19 +28,19 @@ For FreeBSD, you need to install the `mariadb118-client` package.
 
 For OpenBSD, you need to install the `mariadb-client` package.
 
-For Windows, install [the installer](https://dev.mysql.com/downloads/installer/) ,
-then copy the `include` and `lib` folders to `<V install directory>\thirdparty\mysql`.
+For Windows, install [the installer](https://dev.mysql.com/downloads/installer/) or extract the
+ZIP package, then copy the `include`, `lib`, and `bin` folders to
+`<V install directory>\thirdparty\mysql`.
 
 ### Troubleshooting
 
-If you encounter weird errors (your program just exits right away, without
-printing any messages, even though you have `println('hi')` statements in your
-`fn main()`), when trying to run a program that does `import db.mysql` on windows, you
-may need to copy the .dll file: `thirdparty/mysql/lib/libmysql.dll`, into the folder
-of the executable too (it should be right next to the .exe file).
+If a program that imports `db.mysql` exits right away on Windows before
+`fn main()` prints anything, Windows usually could not load `libmysql.dll`.
+Make sure that `thirdparty/mysql/bin` and `thirdparty/mysql/lib` are on `PATH`.
+If you still need a workaround, copy `libmysql.dll` next to the produced `.exe`.
 
-This is a temporary workaround, until we have a more permanent solution, or at least
-more user friendly errors for that situation.
+One common sign of this problem is the process exit code `-1073741515`
+(`0xC0000135`).
 
 ## Basic Usage
 
@@ -67,6 +67,13 @@ for row in rows {
 // Close the connection if needed
 db.close()
 ```
+
+## Concurrent Usage
+
+Sharing one `mysql.DB` across threads now serializes connection-level queries safely.
+
+For concurrent servers, prefer `mysql.new_connection_pool(...)` so requests do not share the same
+session and transaction state on one connection.
 
 ## Transaction
 

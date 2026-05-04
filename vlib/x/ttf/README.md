@@ -65,7 +65,7 @@ At the present time all the rendering are made on the CPU, sokol is used only to
 rendered text to the screen.
 Let's start with a simple snippet of code:
 
-```v oksyntax
+```v
 import os
 import x.ttf
 
@@ -85,7 +85,7 @@ This simple code load a TTF font and display its basic information.
 The draw text function draw simple strings without indentation or other imagination tasks.
 At this point we can render a simple text:
 
-```v oksyntax
+```v
 import os
 import x.ttf
 
@@ -113,7 +113,7 @@ fn main() {
 	// declare the bitmap struct
 	mut bmp := ttf.BitMap{
 		tf:       &ttf_font
-		buf:      malloc(bmp_size)
+		buf:      unsafe { malloc(bmp_size) }
 		buf_size: bmp_size
 		width:    bmp_width
 		height:   bmp_height
@@ -155,7 +155,7 @@ Use this level only if you want achieve particular result on text rendering.
 
 Draw text block draw a justified and indented block of multiline text in the bitmap.
 
-```v oksyntax
+```v
 import os
 import x.ttf
 

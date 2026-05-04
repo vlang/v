@@ -80,6 +80,40 @@ fn test_array_val_iter() {
 	assert res[2] == 1.5
 }
 
+fn wait_array_option_values() ?[]f64 {
+	mut threads := []thread ?f64{}
+	for i in 0 .. 3 {
+		threads << spawn f(i)
+	}
+	values := threads.wait()?
+	return values
+}
+
+fn wait_array_result_void() ! {
+	mut threads := []thread !{}
+	threads << spawn ok_result_void(true)
+	threads << spawn ok_result_void(false)
+	threads.wait()!
+}
+
+fn ok_result_void(ok bool) ! {
+	if !ok {
+		return error('boom')
+	}
+}
+
+fn test_array_wait_option_propagates() {
+	assert wait_array_option_values() or { []f64{} } == [0.0, 1.5, 3.0]
+}
+
+fn test_array_wait_result_void_propagates() {
+	wait_array_result_void() or {
+		assert err.msg() == 'boom'
+		return
+	}
+	assert false
+}
+
 // For issue 16065
 fn get_only_a_option_return(return_none bool) ? {
 	if return_none {

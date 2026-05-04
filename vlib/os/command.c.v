@@ -51,7 +51,7 @@ pub fn (mut c Command) read_line() string {
 	mut res := strings.new_builder(1024)
 	defer { unsafe { res.free() } }
 	unsafe {
-		bufbp := &buf[0]
+		bufbp := &u8(&buf[0])
 		for C.fgets(&char(bufbp), 4096, c.f) != 0 {
 			len := vstrlen(bufbp)
 			for i in 0 .. len {

@@ -6,8 +6,12 @@ module c
 import strings
 import v.ast
 
+fn (g &Gen) needs_scope_cleanup() bool {
+	return g.is_autofree || g.pref.gc_mode == .boehm_leak
+}
+
 fn (mut g Gen) autofree_scope_vars(pos int, line_nr int, free_parent_scopes bool) {
-	if !g.is_autofree {
+	if !g.needs_scope_cleanup() {
 		return
 	}
 	// g.writeln('// afsv pos=${pos} line_nr=${line_nr} freeparent_scopes=${free_parent_scopes}')
@@ -15,7 +19,7 @@ fn (mut g Gen) autofree_scope_vars(pos int, line_nr int, free_parent_scopes bool
 }
 
 fn (mut g Gen) autofree_scope_vars_stop(pos int, line_nr int, free_parent_scopes bool, stop_pos int) {
-	if !g.is_autofree {
+	if !g.needs_scope_cleanup() {
 		return
 	}
 	if g.is_builtin_mod {
@@ -26,7 +30,7 @@ fn (mut g Gen) autofree_scope_vars_stop(pos int, line_nr int, free_parent_scopes
 		// TODO: why can pos be -1?
 		return
 	}
-	// eprintln('> free_scope_vars($pos)')
+	// eprintln('> free_scope_vars(${pos})')
 	scope := g.file.scope.innermost(pos)
 	// g.writeln('// scope start pos=${scope.start_pos} ')
 	if scope.start_pos == 0 {
@@ -148,13 +152,20 @@ fn (mut g Gen) autofree_variable(v ast.Var) {
 		// eprintln('   > var name: ${v.name:-20s} | is_arg: ${v.is_arg.str():6} | var type: ${int(v.typ):8} | type_name: ${sym.name:-33s}')
 	}
 	// }
-	mut free_fn := g.styp(v.typ.set_nr_muls(0).clear_option_and_result()) + '_free'
+	base_typ := v.typ.set_nr_muls(0).clear_option_and_result()
+	if g.type_has_unresolved_generic_parts(base_typ) {
+		g.print_autofree_var(v, 'unresolved generic type')
+		return
+	}
+	mut free_fn := g.styp(base_typ) + '_free'
 	if sym.kind == .array {
-		if sym.has_method('free') {
-			g.autofree_var_call(free_fn, v)
-			return
-		}
-		g.autofree_var_call('builtin__array_free', v)
+		free_fn = g.get_free_method(base_typ)
+		g.autofree_var_call(free_fn, v)
+		return
+	}
+	if sym.kind == .map {
+		free_fn = g.get_free_method(base_typ)
+		g.autofree_var_call(free_fn, v)
 		return
 	}
 	if sym.kind == .string {
@@ -179,6 +190,7 @@ fn (mut g Gen) autofree_variable(v ast.Var) {
 				*/
 			}
 		}
+
 		g.autofree_var_call('builtin__string_free', v)
 		return
 	}
@@ -212,7 +224,7 @@ fn (mut g Gen) autofree_var_call(free_fn_name string, v ast.Var) {
 	if g.is_builtin_mod {
 		return
 	}
-	if !g.is_autofree {
+	if !g.needs_scope_cleanup() {
 		return
 	}
 	// if v.is_autofree_tmp && !g.doing_autofree_tmp {
@@ -224,6 +236,9 @@ fn (mut g Gen) autofree_var_call(free_fn_name string, v ast.Var) {
 	}
 	mut af := strings.new_builder(128)
 	if v.typ.is_ptr() && v.typ.idx() != ast.u8_type_idx {
+		if !v.is_auto_heap && !g.table.sym(v.typ).has_method('free') {
+			return
+		}
 		af.write_string('\t')
 		if v.typ.share() == .shared_t {
 			af.write_string(free_fn_name.replace_each(['__shared__', '']))

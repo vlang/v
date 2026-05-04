@@ -17,7 +17,7 @@ fn C.mach_absolute_time() u64
 
 fn C.mach_timebase_info(&C.mach_timebase_info_data_t)
 
-fn C.clock_gettime_nsec_np(int) u64
+fn C.clock_gettime_nsec_np(i32) u64
 
 struct InternalTimeBase {
 	numer u32 = 1
@@ -58,20 +58,21 @@ fn vpc_now_darwin() u64 {
 
 // darwin_now returns a better precision current time for macos
 fn darwin_now() Time {
-	// get the high precision time as UTC realtime clock, and use the nanoseconds part
-	mut ts := C.timespec{}
-	C.clock_gettime(C.CLOCK_REALTIME, &ts)
+	// Use clock_gettime_nsec_np to avoid field-address lowering on C.timespec.
+	epoch_ns := i64(C.clock_gettime_nsec_np(C.CLOCK_REALTIME))
+	sec := epoch_ns / i64(second)
+	nsec := int(epoch_ns % i64(second))
 	loc_tm := C.tm{}
-	C.localtime_r(voidptr(&ts.tv_sec), &loc_tm)
-	return convert_ctime(loc_tm, int(ts.tv_nsec))
+	C.localtime_r(voidptr(&sec), &loc_tm)
+	return convert_ctime_with_unix(loc_tm, nsec, sec + i64(loc_tm.tm_gmtoff))
 }
 
 // darwin_utc returns a better precision current time for macos
 fn darwin_utc() Time {
-	// get the high precision time as UTC clock
-	mut ts := C.timespec{}
-	C.clock_gettime(C.CLOCK_REALTIME, &ts)
-	return unix_nanosecond(i64(ts.tv_sec), int(ts.tv_nsec))
+	epoch_ns := i64(C.clock_gettime_nsec_np(C.CLOCK_REALTIME))
+	sec := epoch_ns / i64(second)
+	nsec := int(epoch_ns % i64(second))
+	return unix_nanosecond(sec, nsec)
 }
 
 // dummy to compile with all compilers

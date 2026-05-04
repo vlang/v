@@ -1,0 +1,5 @@
+vlib/v/checker/tests/fixed_array_new_syntax_size_mismatch_err.vv:2:13: error: fixed array expects 2 value(s), but got 3
+    1 | fn main() {
+    2 |     _ := [2]int[1 2 3]
+      |                ~~~~~~~
+    3 | }

@@ -17,7 +17,8 @@ pub const max_blocksize_parallal_product = u64(1 << 30)
 // salsa20_8 applies the salsa20/8 core transformation to a block
 // of 64 u8 bytes.  The block is modified in place.
 fn salsa20_8(mut block []u8) {
-	mut block_words := []u32{len: 16}
+	// Keep the temporary state on the stack.
+	mut block_words := [16]u32{}
 	mut scratch := [16]u32{}
 
 	for i in 0 .. 16 {
@@ -95,18 +96,20 @@ fn blkxor(mut dest []u8, src []u8, len u32) {
 // has to be the same size, 128 * r.  r is a positive integer
 // value > 0.  The block is modified in place.
 fn block_mix(mut block []u8, mut temp []u8, r u32) {
-	mut scratch := []u8{len: 64, cap: 64}
+	mut scratch := [64]u8{}
+	// Reuse the fixed buffer directly instead of cloning it into a heap-backed slice.
+	mut scratch_buf := unsafe { scratch[..] }
 
-	blkcpy(mut scratch, block[(((2 * r) - 1) * 64)..], 64)
+	blkcpy(mut scratch_buf, block[(((2 * r) - 1) * 64)..], 64)
 
 	for i in 0 .. 2 * r {
 		start := i * 64
 		stop := start + 64
 
-		blkxor(mut scratch, block[start..stop], 64)
-		salsa20_8(mut scratch)
+		blkxor(mut scratch_buf, block[start..stop], 64)
+		salsa20_8(mut scratch_buf)
 
-		blkcpy(mut temp[start..stop], scratch, 64)
+		blkcpy(mut temp[start..stop], scratch_buf, 64)
 	}
 
 	for i in 0 .. r {
@@ -139,7 +142,7 @@ fn smix(mut block []u8, r u32, n u64, mut v_block []u8, mut temp_block []u8) {
 		v_start := i * (128 * r)
 		v_stop := v_start + (128 * r)
 
-		blkcpy(mut v_block[v_start..v_stop], temp_block, 128 * r)
+		blkcpy(mut v_block[int(v_start)..int(v_stop)], temp_block, 128 * r)
 		block_mix(mut temp_block, mut temp_block[y_start..], r)
 	}
 
@@ -149,7 +152,7 @@ fn smix(mut block []u8, r u32, n u64, mut v_block []u8, mut temp_block []u8) {
 		v_start := j * (128 * r)
 		v_stop := v_start + (128 * r)
 
-		blkxor(mut temp_block, v_block[v_start..v_stop], 128 * r)
+		blkxor(mut temp_block, v_block[int(v_start)..int(v_stop)], 128 * r)
 		block_mix(mut temp_block, mut temp_block[y_start..], r)
 	}
 
@@ -237,5 +240,5 @@ pub fn scrypt(password []u8, salt []u8, n u64, r u32, p u32, dk_len u64) ![]u8 {
 
 	result := pbkdf2.key(password, b, 1, int(128 * r * p), sha256.new())!
 
-	return result[..dk_len]
+	return result[..int(dk_len)]
 }

@@ -22,6 +22,9 @@ pub mut:
 	position_in_parent int
 	closed             bool
 	close_type         CloseTagType = .in_name
+mut:
+	text_content          string
+	content_is_inner_html bool
 }
 
 fn (mut tag Tag) add_parent(t &Tag, position int) {
@@ -36,18 +39,34 @@ fn (mut tag Tag) add_child(t &Tag) int {
 
 // text returns the text contents of the tag.
 pub fn (tag &Tag) text() string {
+	if tag.name == 'text' {
+		return tag.leading_text()
+	}
 	if tag.name.len >= 2 && tag.name[..2] == 'br' {
 		return '\n'
 	}
 	mut text_str := strings.new_builder(200)
-	text_str.write_string(tag.content)
+	text_str.write_string(tag.leading_text())
 	for child in tag.children {
 		text_str.write_string(child.text())
 	}
 	return text_str.str()
 }
 
+fn (tag &Tag) leading_text() string {
+	if tag.text_content.len > 0 {
+		return tag.text_content
+	}
+	if !tag.content_is_inner_html || tag.children.len == 0 || tag.name == 'text' {
+		return tag.content
+	}
+	return ''
+}
+
 pub fn (tag &Tag) str() string {
+	if tag.name == 'text' {
+		return tag.leading_text()
+	}
 	mut html_str := strings.new_builder(200)
 	html_str.write_string('<${tag.name}')
 	for key, value in tag.attributes {
@@ -58,7 +77,7 @@ pub fn (tag &Tag) str() string {
 	}
 	html_str.write_string(if tag.closed && tag.close_type == .in_name { '/>' } else { '>' })
 	html_str.write_string(tag.content)
-	if tag.children.len > 0 {
+	if !tag.content_is_inner_html && tag.children.len > 0 {
 		for child in tag.children {
 			html_str.write_string(child.str())
 		}

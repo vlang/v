@@ -7,6 +7,7 @@ $if !no_gc_threads ? {
 $if use_bundled_libgc ? {
 	#flag -DGC_BUILTIN_ATOMIC=1
 	#flag -I @VEXEROOT/thirdparty/libgc/include
+	#flag -DALL_INTERIOR_POINTERS=1
 	#flag @VEXEROOT/thirdparty/libgc/gc.o
 }
 
@@ -23,6 +24,7 @@ $if dynamic_boehm ? {
 			#flag -DGC_WIN32_THREADS=1
 			#flag -DGC_BUILTIN_ATOMIC=1
 			#flag -I @VEXEROOT/thirdparty/libgc/include
+			#flag -DALL_INTERIOR_POINTERS=1
 			#flag @VEXEROOT/thirdparty/libgc/gc.o
 		}
 	} $else {
@@ -48,10 +50,23 @@ $if dynamic_boehm ? {
 		#flag -I @VEXEROOT/thirdparty/libgc/include
 		$if (prod && !tinyc && !debug) || !(amd64 || arm64 || i386 || arm32 || rv64) {
 			// TODO: replace the architecture check with a `!$exists("@VEXEROOT/thirdparty/tcc/lib/libgc.a")` comptime call
+			#flag -DALL_INTERIOR_POINTERS=1
 			#flag @VEXEROOT/thirdparty/libgc/gc.o
 		} $else {
 			$if !use_bundled_libgc ? {
-				#flag @VEXEROOT/thirdparty/tcc/lib/libgc.a
+				$if macos {
+					$if tinyc {
+						// tcc on macOS can leave the bundled GC archive symbols unresolved.
+						#flag @VEXEROOT/thirdparty/tcc/lib/libgc.dylib
+						#flag -Wl,-rpath,"@VEXEROOT/thirdparty/tcc/lib"
+					} $else {
+						#flag -L@VEXEROOT/thirdparty/tcc/lib
+						#flag -lgc
+						#flag -Xlinker -rpath -Xlinker "@VEXEROOT/thirdparty/tcc/lib"
+					}
+				} $else {
+					#flag @VEXEROOT/thirdparty/tcc/lib/libgc.a
+				}
 			}
 		}
 		$if macos {
@@ -63,12 +78,16 @@ $if dynamic_boehm ? {
 		// Tested on FreeBSD 13.0-RELEASE-p3, with clang, gcc and tcc
 		#flag -DGC_BUILTIN_ATOMIC=1
 		#flag -DBUS_PAGE_FAULT=T_PAGEFLT
+		#flag -DALL_INTERIOR_POINTERS=1
 		$if !tinyc {
 			#flag -DUSE_MMAP
 			#flag -I @VEXEROOT/thirdparty/libgc/include
 			#flag @VEXEROOT/thirdparty/libgc/gc.o
 		}
 		$if tinyc {
+			// Prefer the bundled header: older FreeBSD libgc headers still use the
+			// unsupported `"X"` asm constraint in `GC_reachable_here` under tcc.
+			#flag -I @VEXEROOT/thirdparty/libgc/include
 			#flag -I/usr/local/include
 			#flag $first_existing("@VEXEROOT/thirdparty/tcc/lib/libgc.a", "/usr/local/lib/libgc-threaded.a", "/usr/lib/libgc-threaded.a")
 			#flag -lgc-threaded
@@ -79,9 +98,14 @@ $if dynamic_boehm ? {
 		#flag -DGC_BUILTIN_ATOMIC=1
 		$if !tinyc {
 			#flag -I @VEXEROOT/thirdparty/libgc/include
+			#flag -DALL_INTERIOR_POINTERS=1
 			#flag @VEXEROOT/thirdparty/libgc/gc.o
 		}
 		$if tinyc {
+			// Prefer the bundled header: older OpenBSD libgc headers still use the
+			// unsupported `"X"` asm constraint in `GC_reachable_here` under tcc.
+			#flag -I @VEXEROOT/thirdparty/libgc/include
+			#flag -L/usr/local/lib
 			#flag -I/usr/local/include
 			#flag $first_existing("/usr/local/lib/libgc.a", "/usr/lib/libgc.a")
 			#flag -lgc
@@ -103,10 +127,12 @@ $if dynamic_boehm ? {
 			#flag -I  @VEXEROOT/thirdparty/libatomic_ops
 
 			#flag -I @VEXEROOT/thirdparty/libgc/include
+			#flag -DALL_INTERIOR_POINTERS=1
 			#flag @VEXEROOT/thirdparty/libgc/gc.o
 		} $else {
 			#flag -DGC_BUILTIN_ATOMIC=1
 			#flag -I @VEXEROOT/thirdparty/libgc/include
+			#flag -DALL_INTERIOR_POINTERS=1
 			#flag @VEXEROOT/thirdparty/libgc/gc.o
 		}
 	} $else $if $pkgconfig('bdw-gc') {
@@ -123,6 +149,7 @@ $if gcboehm_leak ? {
 }
 
 #include <gc.h>
+#include "@VEXEROOT/vlib/builtin/gc_debugger_linux.h"
 
 // #include <gc/gc_mark.h>
 
@@ -152,12 +179,14 @@ fn C.GC_disable()
 fn C.GC_enable()
 
 // returns non-zero if GC is disabled
-fn C.GC_is_disabled() int
+fn C.GC_is_disabled() i32
+
+fn C.GC_set_no_dls(i32)
 
 // protect memory block from being freed before this call
 fn C.GC_reachable_here(voidptr)
 
-// gc_is_enabled() returns true, if the GC is enabled at runtime.
+// gc_is_enabled returns true, if the GC is enabled at runtime.
 // See also gc_disable() and gc_enable().
 pub fn gc_is_enabled() bool {
 	return 0 == C.GC_is_disabled()
@@ -203,9 +232,9 @@ pub struct C.GC_stack_base {
 	// reg_base voidptr
 }
 
-fn C.GC_get_stack_base(voidptr) int
-fn C.GC_register_my_thread(voidptr) int
-fn C.GC_unregister_my_thread() int
+fn C.GC_get_stack_base(voidptr) i32
+fn C.GC_register_my_thread(voidptr) i32
+fn C.GC_unregister_my_thread() i32
 
 // fn C.GC_get_my_stackbottom(voidptr) voidptr
 fn C.GC_set_stackbottom(voidptr, voidptr)
@@ -215,6 +244,10 @@ fn C.GC_set_stackbottom(voidptr, voidptr)
 fn C.GC_add_roots(voidptr, voidptr)
 fn C.GC_remove_roots(voidptr, voidptr)
 
+fn C.v__gc_can_register_main_data_roots_linux() i32
+fn C.v__gc_debugger_present_linux() i32
+fn C.v__gc_register_main_data_roots_linux()
+
 // fn C.GC_get_push_other_roots() fn()
 // fn C.GC_set_push_other_roots(fn())
 
@@ -223,10 +256,12 @@ fn C.GC_set_sp_corrector(fn (voidptr, voidptr))
 
 // FnGC_WarnCB is the type of the callback, that you have to define, if you want to redirect GC warnings and handle them.
 // Note: GC warnings are silenced by default. Use gc_set_warn_proc/1 to set your own handler for them.
-pub type FnGC_WarnCB = fn (msg &char, arg usize)
+pub type FnGC_WarnCB = fn (const_msg &char, arg usize)
 
 fn C.GC_get_warn_proc() FnGC_WarnCB
 fn C.GC_set_warn_proc(cb FnGC_WarnCB)
+
+fn C.GC_register_displacement(offset usize)
 
 // gc_get_warn_proc returns the current callback fn, that will be used for printing GC warnings.
 pub fn gc_get_warn_proc() FnGC_WarnCB {
@@ -239,4 +274,27 @@ pub fn gc_set_warn_proc(cb FnGC_WarnCB) {
 }
 
 // used by builtin_init:
-fn internal_gc_warn_proc_none(msg &char, arg usize) {}
+fn internal_gc_warn_proc_none(const_msg &char, arg usize) {}
+
+@[markused]
+fn gc_prepare_for_debugger_init() bool {
+	$if linux {
+		if C.v__gc_debugger_present_linux() != 0
+			&& C.v__gc_can_register_main_data_roots_linux() != 0 {
+			C.GC_set_no_dls(1)
+			return true
+		}
+	}
+	return false
+}
+
+@[markused]
+fn gc_restore_roots_after_debugger_init(use_manual_roots bool) {
+	if !use_manual_roots {
+		return
+	}
+	$if linux {
+		C.v__gc_register_main_data_roots_linux()
+		C.GC_set_no_dls(0)
+	}
+}

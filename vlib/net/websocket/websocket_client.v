@@ -24,6 +24,7 @@ pub struct Client {
 	is_server bool
 mut:
 	ssl_conn          &ssl.SSLConn = unsafe { nil } // secure connection used when wss is used
+	proxy_url         string
 	flags             []Flag                // flags used in handshake
 	fragments         []Fragment            // current fragments
 	message_callbacks []MessageEventHandler // all callbacks on_message
@@ -83,9 +84,10 @@ pub enum OPCode {
 @[params]
 pub struct ClientOpt {
 pub:
-	read_timeout  i64         = 30 * time.second
+	read_timeout  i64         = net.infinite_timeout
 	write_timeout i64         = 30 * time.second
 	logger        &log.Logger = default_logger
+	proxy_url     string // optional proxy URL used to open the websocket TCP tunnel
 }
 
 // new_client instance a new websocket client
@@ -98,6 +100,7 @@ pub fn new_client(address string, opt ClientOpt) !&Client {
 		is_ssl:        address.starts_with('wss')
 		logger:        opt.logger
 		uri:           uri
+		proxy_url:     opt.proxy_url
 		client_state:  ClientState{
 			state: .closed
 		}
@@ -243,7 +246,7 @@ pub fn (mut ws Client) pong() ! {
 
 // write_ptr writes len bytes provided a byteptr with a websocket messagetype
 pub fn (mut ws Client) write_ptr(bytes &u8, payload_len int, code OPCode) !int {
-	// ws.debug_log('write_ptr code: $code')
+	// ws.debug_log('write_ptr code: ${code}')
 	if ws.get_state() != .open || ws.conn.sock.handle < 1 {
 		// todo: send error here later
 		return error('trying to write on a closed socket!')

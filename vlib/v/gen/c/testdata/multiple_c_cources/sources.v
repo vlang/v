@@ -5,8 +5,8 @@ module multiple_c_cources
 
 #include "@VMODROOT/common.h"
 
-fn C.f1() int
-fn C.f2() int
+fn C.f1() i32
+fn C.f2() i32
 
 pub fn call_c_functions() {
 	println('start')

@@ -4,6 +4,7 @@
 @[has_globals]
 module ast
 
+import v.token
 import v.util
 import strings
 import sync.stdatomic
@@ -18,8 +19,8 @@ pub fn (f &FnDecl) get_name() string {
 }
 
 // get_anon_fn_name returns the unique anonymous function name, based on the prefix, the func signature and its position in the source code
-pub fn (table &Table) get_anon_fn_name(prefix string, func &Fn, pos int) string {
-	return 'anon_fn_${prefix}_${table.fn_type_signature(func)}_${pos}'
+pub fn (table &Table) get_anon_fn_name(prefix string, func &Fn, pos token.Pos) string {
+	return 'anon_fn_${prefix}_${pos.file_idx}_${table.fn_type_signature(func)}_${pos.pos}'
 }
 
 // get_name returns the real name for the function calling
@@ -46,7 +47,7 @@ pub fn (node &FnDecl) modname() string {
 // it is used in table.used_fns and v.markused.
 pub fn (node &FnDecl) fkey() string {
 	if node.is_method {
-		return '${int(node.receiver.typ)}.${node.name}'
+		return fkey_from_receiver_type(node.receiver.typ, node.name)
 	}
 	return node.name
 }
@@ -59,16 +60,24 @@ pub fn (node &StructField) sfkey() string {
 
 pub fn (node &Fn) fkey() string {
 	if node.is_method {
-		return '${int(node.receiver_type)}.${node.name}'
+		return fkey_from_receiver_type(node.receiver_type, node.name)
 	}
 	return node.name
 }
 
 pub fn (node &CallExpr) fkey() string {
 	if node.is_method {
-		return '${int(node.receiver_type)}.${node.name}'
+		return fkey_from_receiver_type(node.receiver_type, node.name)
 	}
 	return node.name
+}
+
+fn fkey_from_receiver_type(receiver_type Type, name string) string {
+	mut builder := strings.new_builder(name.len + 24)
+	builder.write_string(int(receiver_type).str())
+	builder.write_u8(`.`)
+	builder.write_string(name)
+	return builder.str()
 }
 
 // These methods are used only by vfmt, vdoc, and for debugging.
@@ -137,7 +146,7 @@ pub fn (t &Table) stringify_fn_decl(node &FnDecl, cur_mod string, m2a map[string
 		name = name.after('__static__')
 	}
 	f.write_string(name)
-	if name in ['+', '-', '*', '/', '%', '<', '>', '==', '!=', '>=', '<='] {
+	if name in ['+', '-', '*', '/', '%', '<', '>', '==', '!=', '>=', '<=', '[]', '[]='] {
 		f.write_string(' ')
 	}
 	t.stringify_fn_after_name(node, mut f, cur_mod, m2a)
@@ -228,7 +237,7 @@ fn (t &Table) stringify_fn_after_name(node &FnDecl, mut f strings.Builder, cur_m
 					s = t.type_to_str(param_typ.clear_flag(.shared_f).deref())
 				}
 			}
-			s = util.no_cur_mod(s, cur_mod)
+			s = shorten_full_name_based_on_cur_mod(s, cur_mod)
 			s = shorten_full_name_based_on_aliases(s, m2a)
 			if !is_type_only {
 				f.write_string(' ')
@@ -253,7 +262,7 @@ fn (t &Table) stringify_fn_after_name(node &FnDecl, mut f strings.Builder, cur_m
 		} else {
 			node.return_type
 		}
-		sreturn_type := util.no_cur_mod(t.type_to_str(return_type), cur_mod)
+		sreturn_type := shorten_full_name_based_on_cur_mod(t.type_to_str(return_type), cur_mod)
 		short_sreturn_type := shorten_full_name_based_on_aliases(sreturn_type, m2a)
 		f.write_string(' ${short_sreturn_type}')
 	}
@@ -291,6 +300,39 @@ struct StringifyModReplacement {
 	mod    string
 	alias  string
 	weight int
+}
+
+fn is_qualified_name_boundary(c u8) bool {
+	return !(c.is_letter() || c.is_digit() || c == `_` || c == `.`)
+}
+
+fn replace_qualified_name_based_on_alias(input string, mod string, alias string) string {
+	if mod.len == 0 || !input.contains(mod) {
+		return input
+	}
+	mut start := 0
+	mut changed := false
+	mut sb := strings.new_builder(input.len)
+	for {
+		idx := input.index_after(mod, start) or { break }
+		end := idx + mod.len
+		before_ok := idx == 0 || is_qualified_name_boundary(input[idx - 1])
+		after_ok := end == input.len || input[end] == `.` || is_qualified_name_boundary(input[end])
+		if before_ok && after_ok {
+			sb.write_string(input[start..idx])
+			sb.write_string(alias)
+			start = end
+			changed = true
+			continue
+		}
+		sb.write_string(input[start..end])
+		start = end
+	}
+	if !changed {
+		return input
+	}
+	sb.write_string(input[start..])
+	return sb.str()
 }
 
 fn shorten_full_name_based_on_aliases(input string, m2a map[string]string) string {
@@ -340,73 +382,61 @@ fn shorten_full_name_based_on_aliases(input string, m2a map[string]string) strin
 		// r.mod: `v.token` | r.alias: `xyz` | res: `v.token.Abc`                -> `xyz.Abc`
 		// r.mod: `v.ast`   | r.alias: `ast` | res: `v.ast.AliasTypeDecl`        -> `ast.AliasTypeDecl`
 		// r.mod: `v.ast`   | r.alias: `ast` | res: `[]v.ast.InterfaceEmbedding` -> `[]ast.InterfaceEmbedding`
-		res = res.replace(r.mod, r.alias)
+		res = replace_qualified_name_based_on_alias(res, r.mod, r.alias)
 	}
 	return res
 }
 
-// Expressions in string interpolations may have to be put in braces if they
-// are non-trivial, if they would interfere with the next character or if a
-// format specification is given. In the latter case
-// the format specifier must be appended, separated by a colon:
-// '$z $z.b $z.c.x ${x[4]} ${z:8.3f} ${a:-20} ${a>b+2}'
+fn shorten_full_name_based_on_cur_mod(input string, cur_mod string) string {
+	if cur_mod == '' || !input.contains('${cur_mod}.') {
+		return input
+	}
+	pattern := '${cur_mod}.'
+	mut out := strings.new_builder(input.len)
+	for i := 0; i < input.len; i++ {
+		if input[i..].starts_with(pattern)
+			&& (i == 0 || input[i - 1] in [` `, `(`, `[`, `,`, `|`, `&`, `?`, `!`, `:`]) {
+			i += pattern.len - 1
+			continue
+		}
+		out.write_u8(input[i])
+	}
+	return out.str()
+}
+
 // This method creates the format specifier (including the colon) or an empty
-// string if none is needed and also returns (as bool) if the expression
-// must be enclosed in braces.
-pub fn (lit &StringInterLiteral) get_fspec_braces(i int) (string, bool) {
+// string if none is needed. For example, '${z:8.3f} ${a:-20} ${a>b+2}'
+pub fn (lit &StringInterLiteral) get_fspec(i int) string {
 	mut res := []string{}
+	has_dynamic_width := i < lit.fwidth_exprs.len && lit.fwidth_exprs[i] !is EmptyExpr
+	has_dynamic_precision := i < lit.precision_exprs.len && lit.precision_exprs[i] !is EmptyExpr
 	needs_fspec := lit.need_fmts[i] || lit.pluss[i]
-		|| (lit.fills[i] && lit.fwidths[i] >= 0) || lit.fwidths[i] != 0
-		|| lit.precisions[i] != 987698
-	mut needs_braces := needs_fspec
-	sx := lit.exprs[i].str()
-	if sx.contains(r'"') || sx.contains(r"'") {
-		needs_braces = true
-	}
-	if !needs_braces {
-		if i + 1 < lit.vals.len && lit.vals[i + 1].len > 0 {
-			next_char := lit.vals[i + 1][0]
-			if util.is_func_char(next_char) || next_char == `.` || next_char == `(` {
-				needs_braces = true
-			}
-		}
-	}
-	if !needs_braces {
-		mut sub_expr := lit.exprs[i]
-		for {
-			match mut sub_expr {
-				Ident {
-					if sub_expr.name[0] == `@` {
-						needs_braces = true
-					}
-					break
-				}
-				else {
-					needs_braces = true
-					break
-				}
-			}
-		}
-	}
+		|| (lit.fills[i] && (lit.fwidths[i] >= 0 || has_dynamic_width))
+		|| lit.fwidths[i] != 0 || lit.precisions[i] != 987698 || has_dynamic_width
+		|| has_dynamic_precision
 	if needs_fspec {
 		res << ':'
 		if lit.pluss[i] {
 			res << '+'
 		}
-		if lit.fills[i] && lit.fwidths[i] >= 0 {
+		if lit.fills[i] && (lit.fwidths[i] >= 0 || has_dynamic_width) {
 			res << '0'
 		}
-		if lit.fwidths[i] != 0 {
+		if has_dynamic_width {
+			res << '(${lit.fwidth_exprs[i].str()})'
+		} else if lit.fwidths[i] != 0 {
 			res << '${lit.fwidths[i]}'
 		}
-		if lit.precisions[i] != 987698 {
+		if has_dynamic_precision {
+			res << '.(${lit.precision_exprs[i].str()})'
+		} else if lit.precisions[i] != 987698 {
 			res << '.${lit.precisions[i]}'
 		}
 		if lit.need_fmts[i] {
 			res << '${lit.fmts[i]:c}'
 		}
 	}
-	return res.join(''), needs_braces
+	return res.join('')
 }
 
 __global nested_expr_str_calls = i64(0)
@@ -447,7 +477,11 @@ pub fn (x Expr) str() string {
 			if x.has_init {
 				fields << 'init: ${x.init_expr.str()}'
 			}
-			typ_str := global_table.type_to_str(x.elem_type)
+			typ_str := if x.elem_type_expr !is EmptyExpr {
+				x.elem_type_expr.str()
+			} else {
+				global_table.type_to_str(x.elem_type)
+			}
 			if fields.len > 0 {
 				if x.is_fixed {
 					return '${x.exprs.str()}${typ_str}{${fields.join(', ')}}'
@@ -457,6 +491,8 @@ pub fn (x Expr) str() string {
 			} else {
 				if x.is_fixed {
 					return '${x.exprs.str()}${typ_str}{}'
+				} else if x.exprs.len == 0 && typ_str != '' {
+					return '[]${typ_str}{}'
 				} else {
 					return x.exprs.str()
 				}
@@ -567,7 +603,8 @@ pub fn (x Expr) str() string {
 			return parts.join('')
 		}
 		IndexExpr {
-			return '${x.left.str()}[${x.index.str()}]'
+			parts := if x.indices.len > 0 { x.indices } else { [x.index] }
+			return '${x.left.str()}[${parts.map(it.str()).join(', ')}]'
 		}
 		InfixExpr {
 			return '${x.left.str()} ${x.op.str()} ${x.right.str()}'
@@ -639,15 +676,12 @@ pub fn (x Expr) str() string {
 					break
 				}
 				res.write_string('$')
-				fspec_str, needs_braces := x.get_fspec_braces(i)
-				if needs_braces {
-					res.write_string('{')
-					res.write_string(x.exprs[i].str())
-					res.write_string(fspec_str)
-					res.write_string('}')
-				} else {
-					res.write_string(x.exprs[i].str())
-				}
+				fspec_str := x.get_fspec(i)
+
+				res.write_string('{')
+				res.write_string(x.exprs[i].str())
+				res.write_string(fspec_str)
+				res.write_string('}')
 			}
 			res.write_string("'")
 			return res.str()
@@ -695,7 +729,16 @@ pub fn (x Expr) str() string {
 			return s + ' := ' + x.expr.str()
 		}
 		StructInit {
-			sname := global_table.sym(x.typ).name
+			sname := if x.typ_expr !is EmptyExpr && x.typ == 0 {
+				x.typ_expr.str()
+			} else {
+				idx := x.typ.idx()
+				if idx > 0 && idx < global_table.type_symbols.len {
+					global_table.type_symbols[idx].name
+				} else {
+					'unknown'
+				}
+			}
 			return '${sname}{....}'
 		}
 		ArrayDecompose {
@@ -728,7 +771,11 @@ pub fn (x Expr) str() string {
 		SqlExpr {
 			return 'ast.SqlExpr'
 		}
+		SqlQueryDataExpr {
+			return 'ast.SqlQueryDataExpr'
+		}
 	}
+
 	return '[unhandled expr type ${x.type_name()}]'
 }
 

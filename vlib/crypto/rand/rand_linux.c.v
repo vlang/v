@@ -5,6 +5,8 @@ module rand
 
 #include <sys/syscall.h>
 
+pub const C.SYS_getrandom int
+
 const read_batch_size = 256
 
 // read returns an array of `bytes_needed` random bytes read from the OS.
@@ -25,6 +27,7 @@ pub fn read(bytes_needed int) ![]u8 {
 			return &ReadError{}
 		}
 		bytes_read += rbytes
+		remaining_bytes -= rbytes
 	}
 	return unsafe { buffer.vbytes(bytes_needed) }
 }

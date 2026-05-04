@@ -1,7 +1,7 @@
 module json2
 
 // increment checks eof and increments checker by one
-@[inline]
+@[inline; markused]
 fn (mut checker Decoder) increment(message string) ! {
 	if checker.checker_idx + 1 == checker.json.len {
 		if message == '' {
@@ -13,7 +13,7 @@ fn (mut checker Decoder) increment(message string) ! {
 }
 
 // skip_whitespace checks eof and increments checker until next non whitespace character
-@[inline]
+@[inline; markused]
 fn (mut checker Decoder) skip_whitespace(message string) ! {
 	for checker.json[checker.checker_idx] in whitespace_chars {
 		checker.increment(message)!
@@ -21,6 +21,7 @@ fn (mut checker Decoder) skip_whitespace(message string) ! {
 }
 
 // check_json_format checks if the JSON string is valid and updates the decoder state.
+@[markused]
 fn (mut checker Decoder) check_json_format() ! {
 	checker.skip_whitespace('empty json')!
 
@@ -104,6 +105,7 @@ fn (mut checker Decoder) check_json_format() ! {
 	}
 }
 
+@[markused]
 fn (mut checker Decoder) check_string() ! {
 	checker.increment('string not closed')!
 
@@ -146,6 +148,7 @@ fn (mut checker Decoder) check_string() ! {
 	}
 }
 
+@[markused]
 fn (mut checker Decoder) check_number() ! {
 	// check if the JSON string is a valid float or integer
 	if checker.json[checker.checker_idx] == `-` {
@@ -198,6 +201,7 @@ fn (mut checker Decoder) check_number() ! {
 	checker.checker_idx--
 }
 
+@[markused]
 fn (mut checker Decoder) check_boolean() ! {
 	// check if the JSON string is a valid boolean
 	match checker.json[checker.checker_idx] {
@@ -207,7 +211,7 @@ fn (mut checker Decoder) check_boolean() ! {
 			}
 
 			is_not_ok := unsafe {
-				vmemcmp(checker.json.str + checker.checker_idx, true_in_string.str, true_in_string.len)
+				vmemcmp(checker.json.str + checker.checker_idx, c'true', 'true'.len)
 			}
 
 			if is_not_ok != 0 {
@@ -222,7 +226,7 @@ fn (mut checker Decoder) check_boolean() ! {
 			}
 
 			is_not_ok := unsafe {
-				vmemcmp(checker.json.str + checker.checker_idx, false_in_string.str, false_in_string.len)
+				vmemcmp(checker.json.str + checker.checker_idx, c'false', 'false'.len)
 			}
 
 			if is_not_ok != 0 {
@@ -238,6 +242,7 @@ fn (mut checker Decoder) check_boolean() ! {
 	}
 }
 
+@[markused]
 fn (mut checker Decoder) check_null() ! {
 	// check if the JSON string is a null value
 	if checker.json.len - checker.checker_idx <= 3 {
@@ -245,7 +250,7 @@ fn (mut checker Decoder) check_null() ! {
 	}
 
 	is_not_ok := unsafe {
-		vmemcmp(checker.json.str + checker.checker_idx, null_in_string.str, null_in_string.len)
+		vmemcmp(checker.json.str + checker.checker_idx, c'null', 'null'.len)
 	}
 
 	if is_not_ok != 0 {
@@ -255,6 +260,7 @@ fn (mut checker Decoder) check_null() ! {
 	checker.checker_idx += 3
 }
 
+@[markused]
 fn (mut checker Decoder) check_array() ! {
 	checker.increment('expected array end')!
 
@@ -276,6 +282,7 @@ fn (mut checker Decoder) check_array() ! {
 	}
 }
 
+@[markused]
 fn (mut checker Decoder) check_object() ! {
 	checker.increment('expected object end')!
 

@@ -23,7 +23,7 @@ const empty_set = GCDSet{'1', '1', '1'}
 const with_dots = false
 
 fn main() {
-	fp := os.join_path(@VROOT, prime.toml_path)
+	fp := os.join_path(@VEXEROOT, prime.toml_path)
 	if !prime_file_exists(fp) {
 		panic('expected file |${fp}| - not found.')
 	}

@@ -163,6 +163,10 @@ pub mut:
 	a []int
 }
 
+struct IndexedDefaultArrayField {
+	field []int = []int{len: 1, init: index}
+}
+
 fn test_array_init_cast_type_in_struct_field() {
 	size := u32(5)
 	st := &Aaa{
@@ -170,6 +174,12 @@ fn test_array_init_cast_type_in_struct_field() {
 	}
 	println(st)
 	assert st.a.str() == '[0, 0, 0, 0, 0]'
+}
+
+fn test_array_of_struct_with_indexed_array_field_default() {
+	st := []IndexedDefaultArrayField{len: 1}
+	assert st.len == 1
+	assert st[0].field == [0]
 }
 
 fn test_multi_dimensional_array_init() {
@@ -220,6 +230,7 @@ fn test_array_init_with_sumtype() {
 			assert false
 		}
 	}
+
 	match a1 {
 		Xyz {
 			assert a1.val == 2
@@ -271,4 +282,39 @@ fn test_array_of_map_with_len_no_default() {
 	}, {
 		2: 2
 	}]
+}
+
+fn empty_array_from_generic_typ[T]() []T {
+	return []T.typ{}
+}
+
+fn test_array_init_from_typeof() {
+	fixed := [1, 2, 3]!
+	dyn := []typeof(fixed[0]){}
+	assert typeof(dyn).name == '[]int'
+	assert dyn.len == 0
+}
+
+fn test_array_init_from_generic_typ() {
+	ints := empty_array_from_generic_typ[int]()
+	assert typeof(ints).name == '[]int'
+	assert ints.len == 0
+}
+
+fn test_nested_array_init_in_if_expr_with_index() {
+	map_test := [][][]int{len: 10, init: if index == 0 || index == 9 {
+		[][]int{len: 10, init: [1]}
+	} else {
+		[][]int{len: 10, init: if index == 0 || index == 9 { [1] } else { [] }}
+	}}
+
+	assert map_test.len == 10
+	assert map_test[0].len == 10
+	assert map_test[0][0] == [1]
+	assert map_test[0][9] == [1]
+	assert map_test[1].len == 10
+	assert map_test[1][0] == [1]
+	assert map_test[1][1] == []int{}
+	assert map_test[1][9] == [1]
+	assert map_test[9][5] == [1]
 }

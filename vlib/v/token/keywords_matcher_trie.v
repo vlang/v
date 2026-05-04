@@ -56,7 +56,7 @@ pub fn (km &KeywordsMatcherTrie) matches(word string) bool {
 
 // add_word adds the given word to the KeywordsMatcherTrie instance. It associates a non
 // negative integer value to it, so later `find` could return the value, when it succeeds.
-@[direct_array_access]
+@[direct_array_access; markused]
 pub fn (mut km KeywordsMatcherTrie) add_word(word string, value int) {
 	wlen := word.len
 	if km.max_len < wlen {
@@ -67,7 +67,7 @@ pub fn (mut km KeywordsMatcherTrie) add_word(word string, value int) {
 	}
 	// add more top level slots, if needed:
 	for km.nodes.len < wlen + 1 {
-		// eprintln('>>>>>>>>>>>>>> appending more nodes for word: $word | value: $value | km.nodes.len: $km.nodes.len | wlen: $wlen')
+		// eprintln('>>>>>>>>>>>>>> appending more nodes for word: ${word} | value: ${value} | km.nodes.len: ${km.nodes.len} | wlen: ${wlen}')
 		km.nodes << unsafe { &TrieNode(nil) }
 	}
 	if km.nodes[wlen] == unsafe { nil } {
@@ -95,7 +95,7 @@ pub fn new_keywords_matcher_trie[T](kw_map map[string]T) KeywordsMatcherTrie {
 	}
 	// dump(km.min_len)
 	// dump(km.max_len)
-	// for idx,x in km.nodes { if x != unsafe { nil } { eprintln('>> idx: $idx | ${ptr_str(x)}') } }
+	// for idx,x in km.nodes { if x != unsafe { nil } { eprintln('>> idx: ${idx} | ${ptr_str(x)}') } }
 	return km
 }
 
@@ -135,14 +135,14 @@ pub fn (node &TrieNode) show(level int) {
 
 // add_word adds another `word` and `value` pair into the trie, starting from `node` (recursively).
 // `word_idx` is just used as an accumulator, and starts from 0 at the root of the tree.
-@[direct_array_access]
+@[direct_array_access; markused]
 pub fn (mut node TrieNode) add_word(word string, value int, word_idx int) {
 	if word_idx < 0 || word_idx >= word.len {
 		node.value = value
 		return
 	}
 	first := u8(word[word_idx])
-	// eprintln('>> node: ${ptr_str(node)} | first: $first | word_idx: $word_idx')
+	// eprintln('>> node: ${ptr_str(node)} | first: ${first} | word_idx: ${word_idx}')
 	mut child_node := node.children[first]
 	if child_node == unsafe { nil } {
 		child_node = new_trie_node()

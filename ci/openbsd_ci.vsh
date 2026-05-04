@@ -54,6 +54,11 @@ fn check_compress() {
 	exec('v -silent test vlib/compress')
 }
 
+fn test_inline_assembly() {
+	println('### Test inline Assembly')
+	exec('v test vlib/v/slow_tests/assembly')
+}
+
 fn run_essential_tests() {
 	if common.is_github_job {
 		println('### Run essential tests')
@@ -79,6 +84,7 @@ const all_tasks = {
 	'build_fast_script':     Task{build_fast_script, 'Check that building fast.v works'}
 	'check_math':            Task{check_math, 'Check the `math` module works'}
 	'check_compress':        Task{check_compress, 'Check the `compress` module works'}
+	'test_inline_assembly':  Task{test_inline_assembly, 'Test inline Assembly'}
 	'run_essential_tests':   Task{run_essential_tests, 'Run only the essential tests'}
 	'build_examples':        Task{build_examples, 'Build examples'}
 }

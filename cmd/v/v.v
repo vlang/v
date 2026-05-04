@@ -3,6 +3,7 @@
 // that can be found in the LICENSE file.
 module main
 
+import hash
 import os
 import term
 import v.help
@@ -34,6 +35,7 @@ const external_tools = [
 	'gret',
 	'ls',
 	'missdoc',
+	'quest',
 	'reduce',
 	'repl',
 	'repeat',
@@ -43,6 +45,7 @@ const external_tools = [
 	'shader',
 	'share',
 	'should-compile-all',
+	'sqlite',
 	'symlink',
 	'scan',
 	'test',
@@ -60,7 +63,7 @@ const external_tools = [
 	'watch',
 	'where',
 ]
-const list_of_flags_that_allow_duplicates = ['cc', 'd', 'define', 'cf', 'cflags']
+const delegated_v2_exe_env = 'V_V2_EXE'
 
 @[unsafe]
 fn timers_pointer(p &util.Timers) &util.Timers {
@@ -111,8 +114,9 @@ fn main() {
 		return
 	}
 	mut args_and_flags := util.join_env_vflags_and_os_args()[1..]
-	prefs, command := pref.parse_args_and_show_errors(external_tools, args_and_flags,
-		true)
+	prefs, command := pref.parse_args_and_show_errors(external_tools, args_and_flags, true)
+	maybe_delegate_to_vvmrc(command, prefs)
+	maybe_delegate_to_v2(command, prefs)
 	if prefs.use_cache && os.user_os() == 'windows' {
 		eprintln('-usecache is currently disabled on windows')
 		exit(1)
@@ -144,7 +148,8 @@ fn main() {
 			util.launch_tool(prefs.is_verbose, 'vcreate', os.args[1..])
 			return
 		}
-		'install', 'list', 'outdated', 'remove', 'search', 'show', 'update', 'upgrade' {
+		'install', 'link', 'list', 'outdated', 'remove', 'search', 'show', 'unlink', 'update',
+		'upgrade' {
 			util.launch_tool(prefs.is_verbose, 'vpm', os.args[1..])
 			return
 		}
@@ -152,7 +157,8 @@ fn main() {
 			util.launch_tool(prefs.is_verbose, 'vdoc', ['doc', 'vlib'])
 		}
 		'interpret' {
-			util.launch_tool(prefs.is_verbose, 'builders/interpret_builder', os.args[1..])
+			eprintln('use v -v2 -eval file.v')
+			exit(1)
 		}
 		'get' {
 			eprintln('V Error: Use `v install` to install modules from vpm.vlang.io')
@@ -172,13 +178,14 @@ fn main() {
 			}
 		}
 	}
+
 	if prefs.is_help {
 		invoke_help_and_exit(args)
 	}
 
 	other_commands := ['run', 'crun', 'build', 'build-module', 'help', 'version', 'new', 'init',
-		'install', 'list', 'outdated', 'remove', 'search', 'show', 'update', 'upgrade', 'vlib-docs',
-		'interpret', 'translate']
+		'install', 'link', 'list', 'outdated', 'remove', 'search', 'show', 'unlink', 'update',
+		'upgrade', 'vlib-docs', 'translate']
 	mut all_commands := []string{}
 	all_commands << external_tools
 	all_commands << other_commands
@@ -190,13 +197,83 @@ fn main() {
 
 fn invoke_help_and_exit(remaining []string) {
 	match remaining.len {
-		0, 1 { help.print_and_exit('default') }
-		2 { help.print_and_exit(remaining[1]) }
+		0, 1 { help.print_and_exit('default', exit_code: 0) }
+		2 { help.print_and_exit(remaining[1], exit_code: 0) }
 		else {}
 	}
+
 	eprintln('${term.highlight_command('v help')}: provide only one help topic.')
 	eprintln('For usage information, use ${term.highlight_command('v help')}.')
 	exit(1)
+}
+
+fn maybe_delegate_to_v2(command string, prefs &pref.Preferences) {
+	is_ownership := '-ownership' in os.args
+	if !prefs.use_v2 && !is_ownership {
+		return
+	}
+	if !is_v2_relevant_command(command, prefs) {
+		eprintln('v: `-v2`/`-ownership` currently support direct compilation only. Use `v -v2 hello.v` or `v -ownership module_dir`.')
+		exit(1)
+	}
+	launch_v2_compiler(prefs.is_verbose, os.args[1..].filter(it != '-v2'), is_ownership)
+}
+
+fn is_v2_relevant_command(command string, prefs &pref.Preferences) bool {
+	if prefs.path == '' || prefs.is_run || prefs.is_crun {
+		return false
+	}
+	return prefs.path == command && (command.ends_with('.v') || os.exists(command))
+}
+
+@[noreturn]
+fn launch_v2_compiler(is_verbose bool, args []string, is_ownership bool) {
+	vexe := pref.vexe_path()
+	vroot := os.dir(vexe)
+	util.set_vroot_folder(vroot)
+	tool_name := if is_ownership { 'v2_ownership' } else { 'v2' }
+	mut v2_exe := os.getenv(delegated_v2_exe_env)
+	if v2_exe == '' {
+		v2_source := os.join_path(vroot, 'cmd', 'v2', 'v2.v')
+		v2_exe = cached_v2_executable_path(vroot, is_ownership)
+		v2_exe_dir := os.dir(v2_exe)
+		os.mkdir_all(v2_exe_dir) or {
+			eprintln('cannot create `${v2_exe_dir}`: ${err}')
+			exit(1)
+		}
+		if util.should_recompile_tool(vexe, v2_source, tool_name, v2_exe) {
+			d_flag := if is_ownership { '-d ownership ' } else { '' }
+			compilation_command := '${os.quoted_path(vexe)} ${d_flag}-o ${os.quoted_path(v2_exe)} ${os.quoted_path(v2_source)}'
+			if is_verbose {
+				println('Compiling ${tool_name} with: "${compilation_command}"')
+			}
+			current_work_dir := os.getwd()
+			os.chdir(vroot) or {}
+			tool_compilation := os.execute(compilation_command)
+			os.chdir(current_work_dir) or {}
+			if tool_compilation.exit_code != 0 {
+				eprintln('cannot compile `${v2_source}`: ${tool_compilation.exit_code}\n${tool_compilation.output}')
+				exit(1)
+			}
+		}
+	} else if !os.is_file(v2_exe) {
+		eprintln('v: `${delegated_v2_exe_env}` points to a missing executable: `${v2_exe}`')
+		exit(1)
+	}
+	os.setenv('VCHILD', 'true', true)
+	os.setenv('VEXE', os.real_path(v2_exe), true)
+	os.execvp(v2_exe, args) or {
+		eprintln('> error while executing: ${v2_exe} ${args}')
+		panic(err)
+	}
+	exit(2)
+}
+
+fn cached_v2_executable_path(vroot string, is_ownership bool) string {
+	vroot_hash := hash.sum64_string(os.real_path(vroot), 0).hex_full()
+	exe_name := if is_ownership { 'v2_ownership' } else { 'v2' }
+	return util.path_of_executable(os.join_path(os.vtmp_dir(), 'v', 'delegated_v2', vroot_hash,
+		exe_name))
 }
 
 fn rebuild(prefs &pref.Preferences) {
@@ -214,15 +291,9 @@ fn rebuild(prefs &pref.Preferences) {
 		.js_node, .js_freestanding, .js_browser {
 			util.launch_tool(prefs.is_verbose, 'builders/js_builder', os.args[1..])
 		}
-		.native {
-			util.launch_tool(prefs.is_verbose, 'builders/native_builder', os.args[1..])
-		}
 		.interpret {
-			util.launch_tool(prefs.is_verbose, 'builders/interpret_builder', os.args[1..])
-		}
-		.golang {
-			println('using Go WIP backend...')
-			util.launch_tool(prefs.is_verbose, 'builders/golang_builder', os.args[1..])
+			eprintln('use v -v2 -eval file.v')
+			exit(1)
 		}
 		.wasm {
 			util.launch_tool(prefs.is_verbose, 'builders/wasm_builder', os.args[1..])

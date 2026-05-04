@@ -1,7 +1,7 @@
 ## Usage:
 ##   1) docker build -t vlang_alpine - < Dockerfile.alpine
 ##   2) alias with_alpine='docker run -u 1000:1000 --rm -it -v .:/src -w /src vlang_alpine:latest'
-FROM alpine:3.20
+FROM alpine:3.23.3
 LABEL maintainer="spytheman <spytheman@bulsynt.org>"
 WORKDIR /opt/vlang
 ENV PATH=/opt/vlang:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
@@ -15,7 +15,7 @@ RUN apk --no-cache add \
   libunwind-dev libunwind-static gc gc-dev \
   make bash file git upx tmux micro nano nano-syntax \
   gcc gdb wasi-sdk \
-  mesa-dev mesa-gl mesa-gles mesa-glapi \
+  mesa-dev mesa-gl mesa-gles \
   glfw-dev \
   glu-dev \
   glew-dev \

@@ -19,9 +19,9 @@ pub fn is_main_thread() bool {
 @[typedef]
 struct C.sigset_t {}
 
-fn C.sigaddset(set &C.sigset_t, signum int) int
+fn C.sigaddset(set &C.sigset_t, signum i32) i32
 fn C.sigemptyset(set &C.sigset_t)
-fn C.sigprocmask(how int, set &C.sigset_t, oldset &C.sigset_t) int
+fn C.sigprocmask(how i32, set &C.sigset_t, oldset &C.sigset_t) i32
 
 fn signal_ignore_internal(args ...Signal) {
 	$if !android && !macos && !openbsd {

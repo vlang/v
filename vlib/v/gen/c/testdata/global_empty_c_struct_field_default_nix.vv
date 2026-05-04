@@ -1,0 +1,15 @@
+// vtest vflags: -enable-globals -no-skip-unused
+
+#flag -lpthread
+#include <pthread.h>
+
+@[typedef]
+struct C.pthread_mutex_t {}
+
+struct Wrapper {
+	mutex C.pthread_mutex_t
+}
+
+__global (
+	wrapper Wrapper
+)

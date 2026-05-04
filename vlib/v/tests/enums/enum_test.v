@@ -32,6 +32,14 @@ fn test_enum() {
 	assert color == .green
 }
 
+fn test_short_enum_literal_equality_is_commutative() {
+	color := Color.red
+	assert color == .red
+	assert .red == color
+	assert color != .blue
+	assert .blue != color
+}
+
 enum PowerDuration {
 	invulntics = 30 * 35
 	invistics  = 60 * 35
@@ -69,6 +77,7 @@ fn test_match() {
 			assert false
 		}
 	}
+
 	println(color)
 	assert num == 3
 }
@@ -125,8 +134,8 @@ fn test_typed_enum() {
 	// expr = i
 	/*
 	match expr {
-		IntExpr(n)  { println('INT $n')  }
-		BoolExpr(b) { println('BOOL $b') }
+		IntExpr(n)  { println('INT ${n}')  }
+		BoolExpr(b) { println('BOOL ${b}') }
 	}
 	*/
 }
@@ -138,11 +147,11 @@ fn test_typed_enum() {
 	//    val = expr;
 	if (expr.typ == IntExpr_type) {
 		int n = (int)expr.obj;
-		println('INT $n');
+		println('INT ${n}');
 	}
 	else if (expr.typ == BoolExpr_type) {
 		int b = (bool)expr.obj;
-		println('BOOL $b');
+		println('BOOL ${b}');
 	}
 }
 */

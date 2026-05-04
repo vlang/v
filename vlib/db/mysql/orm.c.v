@@ -1,19 +1,21 @@
 module mysql
 
 import orm
+import strconv
 import time
 
 // select is used internally by V's ORM for processing `SELECT ` queries.
 pub fn (db DB) select(config orm.SelectConfig, data orm.QueryData, where orm.QueryData) ![][]orm.Primitive {
-	query := orm.orm_select_gen(config, '`', false, '?', 0, where)
+	where_with_tenant := orm.apply_tenant_filter(config.table, where)
+	query := orm.orm_select_gen(config, '`', false, '?', 0, where_with_tenant)
 	mut result := [][]orm.Primitive{}
 	mut stmt := db.init_stmt(query)
 	stmt.prepare()!
 
-	mysql_stmt_bind_query_data(mut stmt, where)!
+	mysql_stmt_bind_query_data(mut stmt, where_with_tenant)!
 	mysql_stmt_bind_query_data(mut stmt, data)!
 
-	if data.data.len > 0 || where.data.len > 0 {
+	if data.data.len > 0 || where_with_tenant.data.len > 0 {
 		stmt.bind_params()!
 	}
 
@@ -42,8 +44,8 @@ pub fn (db DB) select(config orm.SelectConfig, data orm.QueryData, where orm.Que
 			.type_time, .type_date, .type_datetime, .type_time2, .type_datetime2, .type_timestamp {
 				data_pointers << unsafe { malloc(sizeof(C.MYSQL_TIME)) }
 			}
-			.type_string, .type_var_string, .type_blob, .type_tiny_blob, .type_medium_blob,
-			.type_long_blob {
+			.type_decimal, .type_newdecimal, .type_string, .type_var_string, .type_blob,
+			.type_tiny_blob, .type_medium_blob, .type_long_blob {
 				// Memory will be allocated later dynamically depending on the length of the value.
 				data_pointers << &u8(unsafe { nil })
 			}
@@ -59,7 +61,7 @@ pub fn (db DB) select(config orm.SelectConfig, data orm.QueryData, where orm.Que
 
 	mut types := config.types.clone()
 	mut field_types := []FieldType{}
-	if config.is_count {
+	if config.aggregate_kind == .count {
 		types = [orm.type_idx['u64']]
 	}
 
@@ -73,8 +75,11 @@ pub fn (db DB) select(config orm.SelectConfig, data orm.QueryData, where orm.Que
 		field_types << field_type
 
 		match field_type {
-			.type_string, .type_var_string, .type_blob, .type_tiny_blob, .type_medium_blob,
-			.type_long_blob {
+			.type_decimal, .type_newdecimal, .type_string, .type_var_string, .type_blob,
+			.type_tiny_blob, .type_medium_blob, .type_long_blob {
+				if field_type in [.type_decimal, .type_newdecimal] {
+					mysql_bind.buffer_type = C.MYSQL_TYPE_STRING
+				}
 				string_binds_map[i] = mysql_bind
 			}
 			.type_long {
@@ -113,7 +118,17 @@ pub fn (db DB) select(config orm.SelectConfig, data orm.QueryData, where orm.Que
 			stmt.fetch_column(bind, index)!
 		}
 
-		result << data_pointers_to_primitives(is_null, data_pointers, types, field_types)!
+		mut row := data_pointers_to_primitives(is_null, data_pointers, types, field_types)!
+		if config.aggregate_kind == .count && row.len > 0 {
+			count_value := row[0]
+			row[0] = match count_value {
+				u64 { orm.Primitive(int(count_value)) }
+				i64 { orm.Primitive(int(count_value)) }
+				int { count_value }
+				else { count_value }
+			}
+		}
+		result << row
 	}
 
 	stmt.close()!
@@ -133,22 +148,25 @@ pub fn (db DB) insert(table orm.Table, data orm.QueryData) ! {
 		is_and: []
 	}
 
-	query, converted_data := orm.orm_stmt_gen(.default, table, '`', .insert, false, '?',
-		1, converted_primitive_data, orm.QueryData{})
+	query, converted_data := orm.orm_stmt_gen(.default, table, '`', .insert, false, '?', 1,
+		converted_primitive_data, orm.QueryData{})
 	mysql_stmt_worker(db, query, converted_data, orm.QueryData{})!
 }
 
 // update is used internally by V's ORM for processing `UPDATE ` queries
 pub fn (db DB) update(table orm.Table, data orm.QueryData, where orm.QueryData) ! {
-	query, _ := orm.orm_stmt_gen(.default, table, '`', .update, false, '?', 1, data, where)
-	mysql_stmt_worker(db, query, data, where)!
+	where_with_tenant := orm.apply_tenant_filter(table, where)
+	query, _ := orm.orm_stmt_gen(.default, table, '`', .update, false, '?', 1, data,
+		where_with_tenant)
+	mysql_stmt_worker(db, query, data, where_with_tenant)!
 }
 
 // delete is used internally by V's ORM for processing `DELETE ` queries
 pub fn (db DB) delete(table orm.Table, where orm.QueryData) ! {
+	where_with_tenant := orm.apply_tenant_filter(table, where)
 	query, _ := orm.orm_stmt_gen(.default, table, '`', .delete, false, '?', 1, orm.QueryData{},
-		where)
-	mysql_stmt_worker(db, query, orm.QueryData{}, where)!
+		where_with_tenant)
+	mysql_stmt_worker(db, query, orm.QueryData{}, where_with_tenant)!
 }
 
 // last_id is used internally by V's ORM for post-processing `INSERT ` queries
@@ -161,8 +179,9 @@ pub fn (db DB) last_id() int {
 
 // create is used internally by V's ORM for processing table creation queries (DDL)
 pub fn (db DB) create(table orm.Table, fields []orm.TableField) ! {
-	query := orm.orm_table_gen(.mysql, table, '`', true, 0, fields, mysql_type_from_v,
-		false) or { return err }
+	query := orm.orm_table_gen(.mysql, table, '`', true, 0, fields, mysql_type_from_v, false) or {
+		return err
+	}
 	mysql_stmt_worker(db, query, orm.QueryData{}, orm.QueryData{})!
 }
 
@@ -170,6 +189,36 @@ pub fn (db DB) create(table orm.Table, fields []orm.TableField) ! {
 pub fn (db DB) drop(table orm.Table) ! {
 	query := 'DROP TABLE `${table.name}`;'
 	mysql_stmt_worker(db, query, orm.QueryData{}, orm.QueryData{})!
+}
+
+// orm_begin starts a transaction for ORM helpers.
+pub fn (mut db DB) orm_begin() ! {
+	db.begin()!
+}
+
+// orm_commit commits a transaction for ORM helpers.
+pub fn (mut db DB) orm_commit() ! {
+	db.commit()!
+}
+
+// orm_rollback rolls back a transaction for ORM helpers.
+pub fn (mut db DB) orm_rollback() ! {
+	db.rollback()!
+}
+
+// orm_savepoint creates a savepoint for ORM helpers.
+pub fn (mut db DB) orm_savepoint(name string) ! {
+	db.savepoint(name)!
+}
+
+// orm_rollback_to rolls back to a savepoint for ORM helpers.
+pub fn (mut db DB) orm_rollback_to(name string) ! {
+	db.rollback_to(name)!
+}
+
+// orm_release_savepoint releases a savepoint for ORM helpers.
+pub fn (mut db DB) orm_release_savepoint(name string) ! {
+	db.release_savepoint(name)!
 }
 
 // mysql_stmt_worker executes the `query` with the provided `data` and `where` parameters
@@ -194,6 +243,12 @@ fn mysql_stmt_worker(db DB, query string, data orm.QueryData, where orm.QueryDat
 fn mysql_stmt_bind_query_data(mut stmt Stmt, d orm.QueryData) ! {
 	for data in d.data {
 		stmt_bind_primitive(mut stmt, data)
+	}
+}
+
+fn stmt_bind_array[T](mut stmt Stmt, data []T) {
+	for element in data {
+		stmt_bind_primitive(mut stmt, orm.Primitive(element))
 	}
 }
 
@@ -247,9 +302,49 @@ fn stmt_bind_primitive(mut stmt Stmt, data orm.Primitive) {
 			stmt.bind_null()
 		}
 		[]orm.Primitive {
-			for element in data {
-				stmt_bind_primitive(mut stmt, element)
-			}
+			stmt_bind_array(mut stmt, data)
+		}
+		[]bool {
+			stmt_bind_array(mut stmt, data)
+		}
+		[]f32 {
+			stmt_bind_array(mut stmt, data)
+		}
+		[]f64 {
+			stmt_bind_array(mut stmt, data)
+		}
+		[]i16 {
+			stmt_bind_array(mut stmt, data)
+		}
+		[]i64 {
+			stmt_bind_array(mut stmt, data)
+		}
+		[]i8 {
+			stmt_bind_array(mut stmt, data)
+		}
+		[]int {
+			stmt_bind_array(mut stmt, data)
+		}
+		[]string {
+			stmt_bind_array(mut stmt, data)
+		}
+		[]time.Time {
+			stmt_bind_array(mut stmt, data)
+		}
+		[]u16 {
+			stmt_bind_array(mut stmt, data)
+		}
+		[]u32 {
+			stmt_bind_array(mut stmt, data)
+		}
+		[]u64 {
+			stmt_bind_array(mut stmt, data)
+		}
+		[]u8 {
+			stmt_bind_array(mut stmt, data)
+		}
+		[]orm.InfixType {
+			stmt_bind_array(mut stmt, data)
 		}
 	}
 }
@@ -262,6 +357,12 @@ fn data_pointers_to_primitives(is_null []bool, data_pointers []&u8, types []int,
 	for i, data in data_pointers {
 		mut primitive := orm.Primitive(0)
 		if !is_null[i] {
+			if field_types[i] in [.type_decimal, .type_newdecimal] {
+				decimal_value := unsafe { cstring_to_vstring(&char(data)) }
+				primitive = decimal_string_to_primitive(decimal_value, types[i])!
+				result << primitive
+				continue
+			}
 			match types[i] {
 				orm.type_idx['i8'] {
 					primitive = *(unsafe { &i8(data) })
@@ -325,6 +426,44 @@ fn data_pointers_to_primitives(is_null []bool, data_pointers []&u8, types []int,
 	}
 
 	return result
+}
+
+fn decimal_string_to_primitive(value string, typ int) !orm.Primitive {
+	return match typ {
+		orm.type_idx['i8'] {
+			orm.Primitive(strconv.atoi8(value)!)
+		}
+		orm.type_idx['i16'] {
+			orm.Primitive(strconv.atoi16(value)!)
+		}
+		orm.type_idx['int'], orm.serial {
+			orm.Primitive(strconv.atoi(value)!)
+		}
+		orm.type_idx['i64'], orm.enum_ {
+			orm.Primitive(strconv.atoi64(value)!)
+		}
+		orm.type_idx['u8'] {
+			orm.Primitive(strconv.atou8(value)!)
+		}
+		orm.type_idx['u16'] {
+			orm.Primitive(strconv.atou16(value)!)
+		}
+		orm.type_idx['u32'] {
+			orm.Primitive(strconv.atou32(value)!)
+		}
+		orm.type_idx['u64'] {
+			orm.Primitive(strconv.atou64(value)!)
+		}
+		orm.type_idx['f32'] {
+			orm.Primitive(f32(strconv.atof64(value)!))
+		}
+		orm.type_idx['f64'] {
+			orm.Primitive(strconv.atof64(value)!)
+		}
+		else {
+			return error('Unknown decimal target type ${typ}')
+		}
+	}
 }
 
 // mysql_type_from_v converts the V type to the corresponding MySQL type.
@@ -392,8 +531,6 @@ fn (db DB) get_table_column_type_map(table string) !map[string]string {
 	data_type_query := "SELECT COLUMN_NAME, DATA_TYPE FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = '${table}'"
 	mut column_type_map := map[string]string{}
 	results := db.query(data_type_query)!
-
-	db.use_result()
 
 	for row in results.rows() {
 		column_type_map[row.vals[0]] = row.vals[1]

@@ -95,6 +95,69 @@ fn test_tmpl_interpolation() {
 	assert s == 'result: foo\n'
 }
 
+fn html_comment_tmpl() string {
+	return $tmpl('html_comment_template.html')
+}
+
+fn test_tmpl_html_comments_do_not_interpolate() {
+	result := html_comment_tmpl()
+	assert result.contains('<!-- @numbers -->')
+	assert result.contains('<!--\n@numbers\n-->')
+	assert result.contains('<p>hello</p>')
+}
+
+fn html_conditional_single_line_tmpl(optional bool) string {
+	content := 'hello!'
+	return $tmpl('tmpl/conditional_single_line.html')
+}
+
+fn html_conditional_multi_line_tmpl(optional bool) string {
+	content := 'hello!'
+	return $tmpl('tmpl/conditional_multi_line.html')
+}
+
+fn test_tmpl_html_conditional_single_line() {
+	result := html_conditional_single_line_tmpl(true)
+	assert result.trim_space() == '<html>
+
+<body>
+  <main>
+    <p>hello!</p>
+    <p>optional</p>
+  </main>
+</body>
+
+</html>'
+	assert !html_conditional_single_line_tmpl(false).contains('<p>optional</p>')
+}
+
+fn test_tmpl_html_conditional_multi_line() {
+	result := html_conditional_multi_line_tmpl(true)
+	assert result.trim_space() == '<html>
+
+<body>
+  <main>
+    <p>hello!</p>
+    <p>optional</p>
+  </main>
+</body>
+
+</html>'
+	assert !html_conditional_multi_line_tmpl(false).contains('<p>optional</p>')
+}
+
+fn map_index_tmpl() string {
+	lang := {
+		'test_entry': 'Test Text'
+	}
+	return $tmpl('tmpl/map_index.txt')
+}
+
+fn test_tmpl_map_index() {
+	assert map_index_tmpl().trim_space() == 'direct: Test Text
+paren: Test Text'
+}
+
 fn my_fn(s string) string {
 	return s
 }
@@ -104,7 +167,7 @@ fn test_tmpl_comptime() {
 	index := $tmpl('tmpl/index.html').trim_space()
 	// dump(index)
 	assert index.contains('<br>Line ending with percent %\n')
-	assert index.contains('<br>Line ending with at $\n')
+	assert index.contains('<br>Line ending with at @\n')
 	assert index.contains('<br>Line ending with ampersand &\n')
 	assert index.contains('<br>Line ending with hash #\n')
 	assert index.contains('<br>Line ending with slash /\n')

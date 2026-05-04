@@ -58,7 +58,7 @@ jobs:
     steps:
       - uses: actions/checkout@v6
       - name: Build V
-        run: .\make.bat
+        run: .\makev.bat
       - name: Test time functions in a timezone UTC-12
         run: tzutil /s "Dateline Standard Time" && ./v test vlib/time/
       - name: Test time functions in a timezone UTC-3

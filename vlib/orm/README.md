@@ -3,10 +3,14 @@
 V has a powerful, concise ORM baked in! Create tables, insert records, manage relationships, all
 regardless of the DB driver you decide to use.
 
+Driver authors using the shared SQL generators can target SQLite, PostgreSQL, MySQL, and
+H2-backed connections with the built-in ORM dialect helpers.
+
 ## Nullable
 
 For a nullable column, use an option field. If the field is non-option, the column will be defined
-with `NOT NULL` at table creation.
+with `NOT NULL` at table creation, except scalar foreign keys declared with `@[references]`, which
+default to nullable so omitted relations can be stored as `NULL`.
 
 ```v ignore
 struct Foo {
@@ -22,6 +26,7 @@ struct Foo {
 - `[table: 'name']` explicitly sets the name of the table for the struct
 - `[comment: 'table_comment']` explicitly sets the comment of the table for the struct
 - `[index: 'f1, f2, f3']` explicitly sets fields of the table (`f1`, `f2`, `f3`) as indexed
+- `[unique_key: 'f1, f2, f3']` adds a composite `UNIQUE` constraint for the listed fields
 
 ### Fields
 
@@ -33,6 +38,7 @@ struct Foo {
 - `[serial]` or `[sql: serial]` lets the DB backend choose a column type for an auto-increment field
 - `[sql: 'name']` sets a custom column name for the field
 - `[sql_type: 'SQL TYPE']` explicitly sets the type in SQL
+- `[sql_select: 'SQL expression']` uses a custom expression in `SELECT` for the field
 - `[default: 'raw_sql']` inserts `raw_sql` verbatim in a "DEFAULT" clause when
   creating a new table, allowing for SQL functions like `CURRENT_TIME`. For raw strings,
   surround `raw_sql` with backticks (\`).
@@ -68,6 +74,12 @@ struct Child {
 }
 ```
 
+`sql_select` is useful for backend-specific read transformations such as:
+
+```v ignore
+geom string @[sql_type: 'geometry'; sql_select: 'ST_AsEWKT(geom)']
+```
+
 To use the ORM, there is a special interface that lets you use the structs and V itself in queries.
 This interface takes the database instance as an argument.
 
@@ -80,6 +92,14 @@ sql db {
     // query; see below
 }!
 ```
+
+> [!TIP]
+> This guide uses the built-in `db.sqlite` module. If you want SQLite without first installing
+> system-level SQLite development files, the V team also maintains the
+> [`sqlite`](https://vpm.vlang.io/packages/sqlite) VPM package.
+>
+> Install it with `v install sqlite` and change `import db.sqlite` to `import sqlite`.
+> The package keeps the same API while bundling SQLite for you.
 
 When you need to reference the table, simply pass the struct itself.
 
@@ -149,6 +169,24 @@ for the V struct field (e.g., 0 int, or an empty string).  This allows the
 database to insert default values for auto-increment fields and where you have
 specified a default.
 
+### Upsert
+
+`upsert` inserts a row or updates the matching row when one of the table's
+primary or unique keys already exists.
+
+```v ignore
+foo := Foo{
+    name: 'abc'
+}
+
+sql db {
+    upsert foo into Foo
+}!
+```
+
+`upsert` currently supports flat ORM rows with primitive, enum, and `time.Time`
+fields.
+
 ### Select
 
 You can select rows from the database by passing the struct as the table, and
@@ -163,6 +201,17 @@ result := sql db {
 foo := result.first()
 ```
 
+You can also select a subset of struct fields. The result type stays `[]Foo`;
+the selected fields are populated and the rest keep their zero values. Use the
+V struct field names here; `@[sql: 'column_name']` and `@[sql_select: 'expr']`
+are still applied automatically.
+
+```v ignore
+partial := sql db {
+    select id, name from Foo where id > 1
+}!
+```
+
 ```v ignore
 result := sql db {
     select from Foo where id > 1 && name != 'lasanha' limit 5
@@ -175,6 +224,78 @@ result := sql db {
 }!
 ```
 
+ORM select expressions also support built-in aggregate functions. `count` keeps
+its legacy syntax, while the other aggregates use SQL-like function calls.
+
+```v ignore
+total_age := sql db {
+    select sum(age) from Foo
+}!
+
+average_age := sql db {
+    select avg(age) from Foo where id > 1
+}!
+
+lowest_name := sql db {
+    select min(name) from Foo
+}!
+
+highest_created_at := sql db {
+    select max(created_at) from Foo
+}!
+```
+
+`sum`, `avg`, `min`, and `max` return options so empty result sets can surface
+SQL `NULL` as `none`. `count` continues to return `int`.
+
+### Transactions
+
+ORM transactions work with both `sql tx {}` and the function-call API.
+
+```v ignore
+import orm
+
+orm.transaction[int](mut db, fn (mut tx orm.Tx) !int {
+    user := User{
+        name: 'Alice'
+    }
+    sql tx {
+        insert user into User
+    }!
+    return tx.last_id()
+})!
+```
+
+For manual control, start a transaction explicitly and commit or roll it back yourself.
+
+```v ignore
+import orm
+
+mut tx := orm.begin(mut db)!
+sql tx {
+    update User set name = 'Bob' where id == 1
+}!
+tx.commit()!
+```
+
+Nested transactions use savepoints instead of a second `BEGIN`.
+
+```v ignore
+import orm
+
+orm.transaction[int](mut db, fn (mut tx orm.Tx) !int {
+    tx.transaction[int](fn (mut nested orm.Tx) !int {
+        sql nested {
+            delete from User where id == 2
+        }!
+        return 0
+    })!
+    return 0
+})!
+```
+
+Transaction helpers use each driver's default transaction mode. v1 does not expose isolation
+levels or SQLite begin-mode configuration yet.
 
 ### Update
 
@@ -185,6 +306,22 @@ as the table.
 sql db {
     update Foo set updated_at = time.now() where name == 'abc' && updated_at is none
 }!
+```
+
+For a Rails-style full-record save, load a struct, mutate it, then call `orm.save`.
+The helper uses the struct primary key, or an `id` field when present, for the
+`WHERE` clause and updates the remaining mapped fields automatically.
+
+```v ignore
+import orm
+
+mut foo := (sql db {
+    select from Foo where id == 1
+}!).first()
+foo.name = 'updated'
+foo.updated_at = time.now()
+
+orm.save(db, foo)!
 ```
 
 Note that `is none` and `!is none` can be used to select for NULL fields.
@@ -326,6 +463,41 @@ struct User {
 	qb.set('age = ?, title = ?', 71, 'boss')!.where('name = ?','John')!.update()!
 ```
 
+For a full-record update without spelling out each `set(...)` clause, use `orm.save`:
+
+```v ignore
+	selected := qb.where('name = ?', 'John')!.query()!
+	mut john := selected.first()
+	john.age = 72
+	john.title = 'lead'
+	orm.save(db, john)!
+```
+
+9. Query aggregate values​​:
+
+```v ignore
+	total_age := qb.sum('age')!
+	average_score := qb.avg('score')!
+	first_name := qb.min('name')!
+	latest_created_at := qb.max('created_at')!
+	count := qb.count()!
+
+	assert total_age.as_int()? == 42
+	assert average_score.as_f64()? == 9.5
+	assert first_name.as_string()? == 'Alice'
+	assert latest_created_at.as_time()? == created_at
+```
+
+`sum`, `avg`, `min`, and `max` return an `AggregateValue`. Use
+`as_int()`, `as_f64()`, `as_string()`, or `as_time()` to unwrap the typed
+value, or check `has_value` for empty result sets. `count` returns `int`.
+
+To remove duplicate rows from a query, mark it as `DISTINCT` before `query()`:
+
+```v ignore
+	distinct_roles := qb.select('role')!.distinct()!.query()!
+```
+
 9. Drop the table​​:
 
 ```v ignore
@@ -355,4 +527,9 @@ The API includes a built-in parser to handle intricate `WHERE` clause conditions
 
 Note the use of placeholders `?`.
 The conditional expressions support logical operators including `AND`, `OR`, `||`, and `&&`.
+Named arrays can also be passed directly for `IN` clauses:
 
+```v ignore
+	user_ids := ['1', '2']
+	users := qb.where('id IN ?', user_ids)!.query()!
+```

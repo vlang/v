@@ -24,7 +24,6 @@ fn main() {
 		init_userdata_cb:  init
 		frame_userdata_cb: frame
 		window_title:      &char(title.str)
-		html5_canvas_name: &char(title.str)
 	}
 	sapp.run(&desc)
 }
@@ -95,7 +94,8 @@ fn (state &AppState) render_font() {
 	font_context.set_size(20.0)
 	font_context.set_font(state.font_normal)
 	font_context.set_color(blue)
-	font_context.draw_text(dx, dy, 'Now is the time for all good men to come to the aid of the party.')
+	font_context.draw_text(dx, dy,
+		'Now is the time for all good men to come to the aid of the party.')
 	dx = 300
 	dy = 350
 	font_context.set_alignment(.left | .baseline)

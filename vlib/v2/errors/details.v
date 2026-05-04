@@ -8,10 +8,10 @@ import v2.token
 // since this is used on errors, loading the source file isnt an issue.
 // TODO: probably needs a better name
 pub fn details(file &token.File, pos token.Position, row_padding int) string {
-	src := os.read_file(file.name) or {
-		// TODO: error util
-		panic('error reading ${file.name}')
+	if file.name == '' {
+		return 'at ${pos.line}:${pos.column}'
 	}
+	src := os.read_file(file.name) or { return 'at ${pos.line}:${pos.column} in `${file.name}`' }
 	line_start := if pos.line - row_padding - 1 > 0 {
 		file.line_start(pos.line - row_padding)
 	} else {

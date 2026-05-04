@@ -12,7 +12,7 @@ module iconv
 #flag termux -L/data/data/com.termux/files/usr/lib -liconv
 
 fn C.iconv_open(tocode charptr, fromcode charptr) voidptr
-fn C.iconv_close(cd voidptr) int
+fn C.iconv_close(cd voidptr) i32
 fn C.iconv(cd voidptr, inbuf &charptr, inbytesleft &usize, outbuf &charptr, outbytesleft &usize) usize
 
 // conv convert `fromcode` encoding string to `tocode` encoding string
@@ -33,6 +33,7 @@ fn conv(tocode string, fromcode string, src &u8, src_len int) ![]u8 {
 		'UTF32BE' { src_encoding = 'UTF-32BE' }
 		else {}
 	}
+
 	match dst_encoding {
 		'UTF16LE' { dst_encoding = 'UTF-16LE' }
 		'UTF16BE' { dst_encoding = 'UTF-16BE' }

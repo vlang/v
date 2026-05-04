@@ -58,8 +58,30 @@ gg__Size gg_get_screen_size() {
 	return res;
 }
 
+void gg_macos_resize_window(void *window_ptr, int width, int height) {
+	if (window_ptr == nil || width <= 0 || height <= 0) {
+		return;
+	}
+	NSWindow *window = (__bridge NSWindow *)window_ptr;
+	[window setContentSize:NSMakeSize((CGFloat)width, (CGFloat)height)];
+}
+
+void gg_macos_set_window_resizable(void *window_ptr, bool resizable) {
+	if (window_ptr == nil) {
+		return;
+	}
+	NSWindow *window = (__bridge NSWindow *)window_ptr;
+	NSWindowStyleMask style = [window styleMask];
+	if (resizable) {
+		style |= NSWindowStyleMaskResizable;
+	} else {
+		style &= ~NSWindowStyleMaskResizable;
+	}
+	[window setStyleMask:style];
+}
+
 void darwin_draw_string(int x, int y, string s, gg__TextCfg cfg) {
-	NSFont* font = [NSFont userFontOfSize:0]; // cfg.size];
+	NSFont* font = [NSFont userFontOfSize:cfg.size];
 	// # NSFont*    font = [NSFont fontWithName:@"Roboto Mono" size:cfg.size];
 	if (cfg.mono) {
 		// # font = [NSFont fontWithName:@"Roboto Mono" size:cfg.size];
@@ -78,7 +100,7 @@ void darwin_draw_string(int x, int y, string s, gg__TextCfg cfg) {
 }
 
 int darwin_text_width(string s) {
-	// println('text_width "$s" len=$s.len')
+	// println('text_width "${s}" len=${s.len}')
 	NSString* n = @"";
 	if (s.len == 1) {
 		// println('len=1')
@@ -106,16 +128,35 @@ void darwin_draw_rect(float x, float y, float width, float height, gg__Color c) 
 	NSRectFill(rect);
 }
 
-void darwin_window_refresh() {
-	//[g_view setNeedsDisplay:YES];
-	// update UI on the main thread TODO separate fn
+static void mark_view_tree_needs_display(NSView *view) {
+	if (view == nil) {
+		return;
+	}
+	[view setNeedsDisplay:YES];
+	for (NSView *subview in [view subviews]) {
+		mark_view_tree_needs_display(subview);
+	}
+}
 
+void darwin_window_refresh() {
 	dispatch_async(dispatch_get_main_queue(), ^{
-	  [g_view setNeedsDisplay:YES];
+		NSWindow *window = [NSApp mainWindow];
+		if (window == nil) {
+			window = [NSApp keyWindow];
+		}
+		if (window == nil) {
+			return;
+		}
+		NSView *contentView = [window contentView];
+		if (contentView == nil) {
+			return;
+		}
+		mark_view_tree_needs_display(contentView);
+		[window displayIfNeeded];
 	});
 
 	// puts("refresh");
-	//[g_view drawRect:NSMakeRect(0,0,2000,2000)];
+	//[[NSApp mainWindow].contentView drawRect:NSMakeRect(0,0,2000,2000)];
 	//[[NSGraphicsContext currentContext] flushGraphics];
 }
 

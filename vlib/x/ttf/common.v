@@ -36,12 +36,11 @@ pub enum Style {
 * DEBUG Utility
 *
 ******************************************************************************/
-const debug_flag = false
 
-fn dprintln(txt string) {
-	if debug_flag {
-		println(txt)
-	}
+// dprintln prints the `txt` message, *only* when `-d debug_flag` is passed while compiling a program
+@[if debug_flag ?]
+pub fn dprintln(txt string) {
+	println(txt)
 }
 
 /******************************************************************************
@@ -50,7 +49,7 @@ fn dprintln(txt string) {
 *
 ******************************************************************************/
 // format_texture transforms the bitmap from one layer to color layers
-fn (mut bmp BitMap) format_texture() {
+pub fn (mut bmp BitMap) format_texture() {
 	r := u8(bmp.color >> 24)
 	g := u8((bmp.color >> 16) & 0xFF)
 	b := u8((bmp.color >> 8) & 0xFF)

@@ -112,31 +112,36 @@ fn select(handle int, test Select, timeout time.Duration) !bool {
 	C.FD_ZERO(&set)
 	C.FD_SET(handle, &set)
 
-	seconds := timeout / time.second
-	microseconds := time.Duration(timeout - (seconds * time.second)).microseconds()
-
-	mut tt := C.timeval{
-		tv_sec:  u64(seconds)
-		tv_usec: u64(microseconds)
-	}
-
-	mut timeval_timeout := &tt
-
-	// infinite timeout is signaled by passing null as the timeout to
-	// select
+	// infinite timeout is signaled by passing null as the timeout to select.
 	if timeout == infinite_timeout {
-		timeval_timeout = &C.timeval(unsafe { nil })
-	}
-
-	match test {
-		.read {
-			socket_error(C.select(handle + 1, &set, C.NULL, C.NULL, timeval_timeout))!
+		match test {
+			.read {
+				socket_error(C.select(handle + 1, &set, C.NULL, C.NULL, &C.timeval(unsafe { nil })))!
+			}
+			.write {
+				socket_error(C.select(handle + 1, C.NULL, &set, C.NULL, &C.timeval(unsafe { nil })))!
+			}
+			.except {
+				socket_error(C.select(handle + 1, C.NULL, C.NULL, &set, &C.timeval(unsafe { nil })))!
+			}
 		}
-		.write {
-			socket_error(C.select(handle + 1, C.NULL, &set, C.NULL, timeval_timeout))!
+	} else {
+		seconds := timeout / time.second
+		microseconds := time.Duration(timeout - (seconds * time.second)).microseconds()
+		tt := C.timeval{
+			tv_sec:  u64(seconds)
+			tv_usec: u64(microseconds)
 		}
-		.except {
-			socket_error(C.select(handle + 1, C.NULL, C.NULL, &set, timeval_timeout))!
+		match test {
+			.read {
+				socket_error(C.select(handle + 1, &set, C.NULL, C.NULL, &tt))!
+			}
+			.write {
+				socket_error(C.select(handle + 1, C.NULL, &set, C.NULL, &tt))!
+			}
+			.except {
+				socket_error(C.select(handle + 1, C.NULL, C.NULL, &set, &tt))!
+			}
 		}
 	}
 

@@ -15,16 +15,6 @@ fn get_canvas(elem JS.HTMLElement) JS.HTMLCanvasElement {
 	}
 }
 
-fn draw_line(mut context JS.CanvasRenderingContext2D, x1 int, y1 int, x2 int, y2 int) {
-	context.beginPath()
-	context.strokeStyle = 'black'.str
-	context.lineWidth = JS.Number(1)
-	context.moveTo(0, 0)
-	context.lineTo(100, 100)
-	context.stroke()
-	context.closePath()
-}
-
 struct DrawState {
 mut:
 	context JS.CanvasRenderingContext2D
@@ -52,10 +42,10 @@ fn (mut state DrawState) draw_bench_chart(color string, time_array []int, max_ti
 
 	for i := 0; i <= time_array.len; i++ {
 		state.context.beginPath()
-		state.context.moveTo(state.x, state.y)
+		state.context.moveTo(JS.Number(state.x), JS.Number(state.y))
 		state.x = max_width / f64(time_array.len) * i + 1.0
 		state.y = max_height - (max_height / f64(max_time) * f64(time_array[i]))
-		state.context.lineTo(state.x, state.y)
+		state.context.lineTo(JS.Number(state.x), JS.Number(state.y))
 		state.context.stroke()
 		state.context.closePath()
 	}
@@ -86,9 +76,10 @@ fn main() {
 
 		ctx := canvas[orm_stmt_kind].getContext('2d'.str, js_undefined())?
 
-		context := match ctx {
+		mut context := JS.CanvasRenderingContext2D{}
+		match ctx {
 			JS.CanvasRenderingContext2D {
-				ctx
+				context = ctx
 			}
 			else {
 				panic('can not get 2d context')
@@ -97,7 +88,8 @@ fn main() {
 
 		mut state := DrawState{context, false, 0, 0}
 
-		mut inserts_from_framework := canvas_elem[orm_stmt_kind].getAttribute('inserts_from_framework'.str)?
+		mut inserts_from_framework :=
+			canvas_elem[orm_stmt_kind].getAttribute('inserts_from_framework'.str)?
 
 		mut max_benchmark := canvas_elem[orm_stmt_kind].getAttribute('max_benchmark'.str)?
 

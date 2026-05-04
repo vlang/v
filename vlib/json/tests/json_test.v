@@ -17,10 +17,10 @@ struct Employee {
 fn test_simple() {
 	x := Employee{'Peter', 28, 95000.5, .worker}
 	s := json.encode(x)
-	// eprintln('Employee x: $s')
+	// eprintln('Employee x: ${s}')
 	assert s == '{"name":"Peter","age":28,"salary":95000.5,"title":"worker"}'
 	y := json.decode(Employee, s)!
-	// eprintln('Employee y: $y')
+	// eprintln('Employee y: ${y}')
 	assert y.name == 'Peter'
 	assert y.age == 28
 	assert y.salary == 95000.5
@@ -90,15 +90,15 @@ fn test_encode_decode_sumtype() {
 			t,
 		]
 	}
-	// eprintln('Game: $game')
+	// eprintln('Game: ${game}')
 
 	enc := json.encode(game)
-	// eprintln('Encoded Game: $enc')
+	// eprintln('Encoded Game: ${enc}')
 
 	assert enc == '{"title":"Super Mega Game","player":{"name":"Monke","_type":"Human"},"other":[{"tag":"Pen","_type":"Item"},{"tag":"Cookie","_type":"Item"},"cat","Stool",{"_type":"Time","value":${t.unix()}}]}'
 
 	dec := json.decode(SomeGame, enc)!
-	// eprintln('Decoded Game: $dec')
+	// eprintln('Decoded Game: ${dec}')
 
 	assert game.title == dec.title
 	assert game.player == dec.player
@@ -167,6 +167,11 @@ fn test_encode_decode_time() {
 	// println(user2.reg_date)
 }
 
+fn test_decode_time_string_into_struct_field() {
+	user := json.decode(User2, '{"age": 25, "reg_date": "2001-01-01"}')!
+	assert user.reg_date.str() == '2001-01-01 00:00:00'
+}
+
 fn (mut u User) foo() string {
 	return json.encode(u)
 }
@@ -221,7 +226,8 @@ struct Country {
 }
 
 fn test_struct_in_struct() {
-	country := json.decode(Country, '{ "name": "UK", "cities": [{"name":"London"}, {"name":"Manchester"}]}')!
+	country := json.decode(Country,
+		'{ "name": "UK", "cities": [{"name":"London"}, {"name":"Manchester"}]}')!
 	assert country.name == 'UK'
 	assert country.cities.len == 2
 	assert country.cities[0].name == 'London'
@@ -240,6 +246,12 @@ fn test_encode_map() {
 	out := json.encode(numbers)
 	// println(out)
 	assert out == expected
+	assert json.encode_pretty(numbers) == '{
+	"one":	1,
+	"two":	2,
+	"three":	3,
+	"four":	4
+}'
 }
 
 fn test_parse_map() {
@@ -554,21 +566,24 @@ struct RequiredStruct {
 }
 
 fn test_required() {
-	nullish_one := json.decode(NullishStruct, '{"name":"Peter", "lastname":null, "age":28,"salary":95000.5,"title":"worker"}')!
+	nullish_one := json.decode(NullishStruct,
+		'{"name":"Peter", "lastname":null, "age":28,"salary":95000.5,"title":"worker"}')!
 	assert nullish_one.name == 'Peter'
 	assert nullish_one.lastname == ''
 	assert nullish_one.age == 28
 	assert nullish_one.salary == 95000.5
 	assert nullish_one.child.name == ''
 
-	nullish_two := json.decode(NullishStruct, '{"name":"Peter", "lastname": "Parker", "age":28,"salary":95000.5,"title":"worker"}')!
+	nullish_two := json.decode(NullishStruct,
+		'{"name":"Peter", "lastname": "Parker", "age":28,"salary":95000.5,"title":"worker"}')!
 	assert nullish_two.name == 'Peter'
 	assert nullish_two.lastname == 'Parker'
 	assert nullish_two.age == 28
 	assert nullish_two.salary == 95000.5
 	assert nullish_two.child.name == ''
 
-	nullish_third := json.decode(NullishStruct, '{"name":"Peter", "age":28,"salary":95000.5,"title":"worker", "child": {"name":"Nullish"}}')!
+	nullish_third := json.decode(NullishStruct,
+		'{"name":"Peter", "age":28,"salary":95000.5,"title":"worker", "child": {"name":"Nullish"}}')!
 	assert nullish_third.name == 'Peter'
 	assert nullish_third.lastname == ''
 	assert nullish_third.age == 28

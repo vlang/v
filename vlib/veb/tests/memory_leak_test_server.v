@@ -27,7 +27,7 @@ fn main() {
 
 	mut app := &App{}
 	veb.run_at[App, Context](mut app,
-		host:               'localhost'
+		host:               '127.0.0.1'
 		port:               http_port
 		family:             .ip
 		timeout_in_seconds: 10
@@ -54,4 +54,13 @@ pub fn (mut app App) gc_collect(mut ctx Context) veb.Result {
 pub fn (mut app App) large(mut ctx Context) veb.Result {
 	data := 'X'.repeat(100 * 1024)
 	return ctx.text(data)
+}
+
+@['/upload'; post]
+pub fn (mut app App) upload(mut ctx Context) veb.Result {
+	if 'file' !in ctx.files || ctx.files['file'].len == 0 {
+		ctx.res.set_status(.bad_request)
+		return ctx.text('no file')
+	}
+	return ctx.text(ctx.files['file'][0].data.len.str())
 }

@@ -9,11 +9,18 @@ type FloatAlias = f64
 
 enum TestEnum {
 	a
-	b
+	b  @[json: 'BBB']
 	c = 10
+	d  @[badattr: 'bad'; foobar]
 }
 
 type EnumAlias = TestEnum
+
+@[json_as_number]
+enum NumberedTestEnum {
+	a
+	b = 5
+}
 
 type Sum = int | string
 type SumAlias = Sum
@@ -22,6 +29,10 @@ struct Basic {
 	a int
 	b string
 	c bool
+}
+
+struct NumberedEnumWrap {
+	a NumberedTestEnum
 }
 
 type BasicAlias = Basic
@@ -83,6 +94,10 @@ struct PointerFields {
 
 type PointerFieldsAlias = PointerFields
 
+struct F64ArrayRoundtripPayload {
+	arr []f64
+}
+
 struct OmitFields {
 	a ?bool   @[omitempty]
 	b string  @[omitempty]
@@ -95,6 +110,18 @@ struct OmitFields {
 
 type OmitFieldsAlias = OmitFields
 
+struct OmitemptyRegressionNumber {
+	min int
+	max int
+}
+
+struct OmitemptyRegressionResp {
+	options  []string                   @[omitempty]
+	metadata map[string]string          @[omitempty]
+	number   &OmitemptyRegressionNumber = unsafe { nil } @[omitempty]
+	config   ?OmitemptyRegressionNumber @[omitempty]
+}
+
 fn test_primitives() {
 	assert json.encode('hello') == '"hello"'
 	assert json.encode(StrAlias('hello')) == '"hello"'
@@ -104,6 +131,15 @@ fn test_primitives() {
 	assert json.encode(IntAlias(-12345)) == '-12345'
 	assert json.encode(123.323) == '123.323'
 	assert json.encode(FloatAlias(123.323)) == '123.323'
+}
+
+fn test_encode_decode_struct_with_f64_array_roundtrips() ! {
+	original := F64ArrayRoundtripPayload{
+		arr: [0.9716157205240175, 0.9336099585062241]
+	}
+	encoded := json.encode(original)
+	assert encoded == '{"arr":[0.9716157205240175,0.9336099585062241]}'
+	assert json.decode[F64ArrayRoundtripPayload](encoded)! == original
 }
 
 fn test_arrays() {
@@ -122,6 +158,19 @@ fn test_enums() {
 	assert json.encode(EnumAlias(TestEnum.c)) == '"c"'
 	assert json.encode(TestEnum.c, enum_as_int: true) == '10'
 	assert json.encode(EnumAlias(TestEnum.c), enum_as_int: true) == '10'
+	assert json.encode(TestEnum.b) == '"BBB"'
+	assert json.encode(EnumAlias(TestEnum.b)) == '"BBB"'
+	// Ensure that only `json: ` attrs is applied
+	assert json.encode(TestEnum.d) == '"d"'
+	assert json.encode(EnumAlias(TestEnum.d)) == '"d"'
+}
+
+fn test_enum_json_as_number_attribute() {
+	assert json.encode(NumberedTestEnum.a) == '0'
+	assert json.encode(NumberedTestEnum.b) == '5'
+	assert json.encode(NumberedEnumWrap{
+		a: .a
+	}) == '{"a":0}'
 }
 
 fn test_sumtypes() {
@@ -244,8 +293,8 @@ fn test_custom_encoders() {
 	assert json.encode(json.Null{}) == 'null'
 	assert json.encode(NullAlias{}) == 'null'
 
-	assert json.encode(time.Time{}) == '"0000-00-00T00:00:00.000Z"'
-	assert json.encode(TimeAlias{}) == '"0000-00-00T00:00:00.000Z"'
+	assert json.encode(time.Time{}) == '"0000-01-01T00:00:00.000Z"'
+	assert json.encode(TimeAlias{}) == '"0000-01-01T00:00:00.000Z"'
 
 	assert json.encode(big.integer_from_i64(1234567890)) == '1234567890'
 	assert json.encode(BigAlias(big.integer_from_i64(1234567890))) == '1234567890'
@@ -275,6 +324,28 @@ fn test_skip_fields() {
 fn test_omit_fields() {
 	assert json.encode(OmitFields{}) == '{}'
 	assert json.encode(OmitFieldsAlias{}) == '{}'
+
+	r1 := OmitemptyRegressionResp{
+		options: ['first', 'second']
+	}
+	r2 := OmitemptyRegressionResp{
+		number: &OmitemptyRegressionNumber{0, 0}
+	}
+	r3 := OmitemptyRegressionResp{
+		metadata: {
+			'kind': 'test'
+		}
+	}
+	assert json.encode(r1) == '{"options":["first","second"]}'
+	assert json.encode(r2) == '{"number":{"min":0,"max":0}}'
+	assert json.encode(r3) == '{"metadata":{"kind":"test"}}'
+	assert json.encode(OmitemptyRegressionResp{}) == '{}'
+	assert json.encode(OmitemptyRegressionResp{
+		config: OmitemptyRegressionNumber{
+			min: 1
+			max: 2
+		}
+	}) == '{"config":{"min":1,"max":2}}'
 }
 
 fn test_pointer_fields() {

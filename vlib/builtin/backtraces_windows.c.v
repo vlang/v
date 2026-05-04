@@ -44,13 +44,13 @@ fn C.SymSetOptions(symoptions u32) u32
 // returns handle
 fn C.GetCurrentProcess() voidptr
 
-fn C.SymInitialize(h_process voidptr, p_user_search_path &u8, b_invade_process int) int
+fn C.SymInitialize(h_process voidptr, p_user_search_path &u8, b_invade_process i32) i32
 
 fn C.CaptureStackBackTrace(frames_to_skip u32, frames_to_capture u32, p_backtrace voidptr, p_backtrace_hash voidptr) u16
 
-fn C.SymFromAddr(h_process voidptr, address u64, p_displacement voidptr, p_symbol voidptr) int
+fn C.SymFromAddr(h_process voidptr, address u64, p_displacement voidptr, p_symbol voidptr) i32
 
-fn C.SymGetLineFromAddr64(h_process voidptr, address u64, p_displacement voidptr, p_line &Line64) int
+fn C.SymGetLineFromAddr64(h_process voidptr, address u64, p_displacement voidptr, p_line &Line64) i32
 
 // Ref - https://docs.microsoft.com/en-us/windows/win32/api/dbghelp/nf-dbghelp-symsetoptions
 const symopt_undname = 0x00000002
@@ -122,7 +122,7 @@ fn print_backtrace_skipping_top_frames_msvc(skipframes int) bool {
 					// addr:
 					lineinfo = '?? : address = 0x' + ptr_str(frame_addr)
 				}
-				sfunc := unsafe { tos3(fname) }
+				sfunc := demangle_v_symbol(unsafe { tos3(fname) })
 				snframe := i64(nframe).str()
 				eprint_space_padding(snframe, 2)
 				eprint(': ')
@@ -157,10 +157,10 @@ fn print_backtrace_skipping_top_frames_mingw(skipframes int) bool {
 	return false
 }
 
-fn C.tcc_backtrace(fmt &char) int
+fn C.tcc_backtrace(fmt &char) i32
 
 fn print_backtrace_skipping_top_frames_tcc(skipframes int) bool {
-	$if tinyc && !native {
+	$if tinyc {
 		$if no_backtrace ? {
 			eprintln('backtraces are disabled')
 			return false

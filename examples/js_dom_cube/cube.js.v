@@ -326,9 +326,9 @@ fn animate(mut state State, time f64) {
 	rotate_y(mut state.mo_matrix, state.theta)
 	state.time_old = time
 	state.gl.enable(dom.gl_depth_test())
-	state.gl.clearColor(0.5, 0.5, 0.5, 0.9)
-	state.gl.clearDepth(1.0)
-	state.gl.viewport(0.0, 0.0, state.canvas.width, state.canvas.height)
+	state.gl.clearColor(JS.Number(0.5), JS.Number(0.5), JS.Number(0.5), JS.Number(0.9))
+	state.gl.clearDepth(JS.Number(1.0))
+	state.gl.viewport(JS.Number(0.0), JS.Number(0.0), state.canvas.width, state.canvas.height)
 	state.gl.clear(JS.Number(int(dom.gl_color_buffer_bit()) | int(dom.gl_depth_buffer_bit())))
 
 	state.gl.uniformMatrix4fv(state.pmatrix, JS.Boolean(false), state.proj_matrix.to_number_array())
@@ -336,7 +336,8 @@ fn animate(mut state State, time f64) {
 	state.gl.uniformMatrix4fv(state.mmatrix, JS.Boolean(false), state.mo_matrix.to_number_array())
 
 	state.gl.bindBuffer(dom.gl_element_array_buffer(), state.index_buffer)
-	state.gl.drawElements(dom.gl_triangles(), indices.len, dom.gl_unsigned_short(), 0)
+	state.gl.drawElements(dom.gl_triangles(), JS.Number(indices.len), dom.gl_unsigned_short(),
+		JS.Number(0))
 
 	dom.window().requestAnimationFrame(fn [mut state] (time JS.Number) {
 		animate(mut state, f64(time))
@@ -388,8 +389,8 @@ fn main() {
 
 	gl.bindBuffer(dom.gl_array_buffer(), vertex_buffer)
 	position := gl.getAttribLocation(shader_program, 'position'.str)
-	gl.vertexAttribPointer(position, JS.Number(3), dom.gl_float(), JS.Boolean(false),
-		JS.Number(0), JS.Number(0))
+	gl.vertexAttribPointer(position, JS.Number(3), dom.gl_float(), JS.Boolean(false), JS.Number(0),
+		JS.Number(0))
 	gl.enableVertexAttribArray(position)
 
 	gl.bindBuffer(dom.gl_array_buffer(), color_buffer)
@@ -399,14 +400,14 @@ fn main() {
 	gl.enableVertexAttribArray(color)
 	gl.useProgram(shader_program)
 
-	mut proj_matrix := get_projection(40.0, f64(canvas.width) / f64(canvas.height), 1.0,
-		100.0)
+	mut proj_matrix := get_projection(40.0, f64(canvas.width) / f64(canvas.height), 1.0, 100.0)
 	mut mo_matrix := [f64(1), 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]
 	mut view_matrix := [f64(1), 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]
 
 	view_matrix[14] = view_matrix[14] - 6
 
-	mut state := State{false, gl, canvas, 0, 0, 0, 0, 0, 0, 0, mo_matrix, view_matrix, proj_matrix, pmatrix, vmatrix, mmatrix, index_buffer}
+	mut state :=
+		State{false, gl, canvas, 0, 0, 0, 0, 0, 0, 0, mo_matrix, view_matrix, proj_matrix, pmatrix, vmatrix, mmatrix, index_buffer}
 
 	canvas.addEventListener('mousedown'.str, fn [mut state] (e JS.Event) {
 		state.drag = true

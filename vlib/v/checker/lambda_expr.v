@@ -4,6 +4,22 @@ import v.ast
 
 pub fn (mut c Checker) lambda_expr(mut node ast.LambdaExpr, exp_typ ast.Type) ast.Type {
 	if node.is_checked {
+		if c.table.cur_concrete_types.len == 0 || node.typ == exp_typ {
+			return node.typ
+		}
+		// Re-checking with different concrete types: don't recreate the AnonFn
+		// (which would mutate the shared AST and corrupt params for other
+		// instantiations). Just update the scope variable types and return.
+		// The cgen handles per-instantiation code generation via g.cur_concrete_types.
+		exp_sym := c.table.sym(exp_typ)
+		if exp_sym.info is ast.FnType {
+			for idx, mut x in node.params {
+				if idx < exp_sym.info.func.params.len {
+					eparam_type := exp_sym.info.func.params[idx].typ
+					c.lambda_expr_fix_type_of_param(mut node, mut x, eparam_type)
+				}
+			}
+		}
 		return node.typ
 	}
 	if exp_typ in [0, ast.void_type] {
@@ -17,20 +33,18 @@ pub fn (mut c Checker) lambda_expr(mut node ast.LambdaExpr, exp_typ ast.Type) as
 		return ast.void_type
 	}
 	if exp_sym.info is ast.FnType {
-		if node.params.len != exp_sym.info.func.params.len {
+		if node.params.len > exp_sym.info.func.params.len {
 			c.error('lambda expression has ${node.params.len} params, but the expected fn callback needs ${exp_sym.info.func.params.len} params',
 				node.pos)
 			return ast.void_type
 		}
 		mut params := []ast.Param{}
-		mut generic_types := map[ast.Type]bool{}
+		mut generic_names := []string{}
 		for idx, mut x in node.params {
 			eparam := exp_sym.info.func.params[idx]
 			eparam_type := eparam.typ
 			c.lambda_expr_fix_type_of_param(mut node, mut x, eparam_type)
-			if eparam_type.has_flag(.generic) {
-				generic_types[eparam_type] = true
-			}
+			c.lambda_expr_push_generic_names(mut generic_names, eparam_type)
 			params << ast.Param{
 				pos:      x.pos
 				name:     x.name
@@ -38,23 +52,17 @@ pub fn (mut c Checker) lambda_expr(mut node ast.LambdaExpr, exp_typ ast.Type) as
 				type_pos: x.pos
 			}
 		}
+		for idx in node.params.len .. exp_sym.info.func.params.len {
+			eparam_type := exp_sym.info.func.params[idx].typ
+			c.lambda_expr_push_generic_names(mut generic_names, eparam_type)
+		}
+		c.append_omitted_callback_params(mut params, exp_sym.info.func.params, node.pos,
+			'__v_lambda_unused_param_', unsafe { nil })
 
 		is_variadic := false
 		return_type := exp_sym.info.func.return_type
 		return_type_pos := node.pos
-		if return_type.has_flag(.generic) {
-			generic_types[return_type] = true
-		}
-
-		mut generic_names := []string{}
-		for t, _ in generic_types {
-			gtnames := c.table.generic_type_names(t)
-			for x in gtnames {
-				if x !in generic_names {
-					generic_names << x
-				}
-			}
-		}
+		c.lambda_expr_push_generic_names(mut generic_names, return_type)
 
 		mut stmts := []ast.Stmt{}
 		mut has_return := false
@@ -83,7 +91,7 @@ pub fn (mut c Checker) lambda_expr(mut node ast.LambdaExpr, exp_typ ast.Type) as
 			return_type: return_type
 			is_method:   false
 		}
-		name := c.table.get_anon_fn_name(c.file.unique_prefix, func, node.pos.pos)
+		name := c.table.get_anon_fn_name(c.file.unique_prefix, func, node.pos)
 		func.name = name
 		idx := c.table.find_or_register_fn_type(func, true, false)
 		typ := ast.new_type(idx)
@@ -119,6 +127,14 @@ pub fn (mut c Checker) lambda_expr(mut node ast.LambdaExpr, exp_typ ast.Type) as
 	return exp_typ
 }
 
+fn (mut c Checker) lambda_expr_push_generic_names(mut generic_names []string, typ ast.Type) {
+	for generic_name in c.table.generic_type_names(typ) {
+		if generic_name !in generic_names {
+			generic_names << generic_name
+		}
+	}
+}
+
 pub fn (mut c Checker) lambda_expr_fix_type_of_param(mut node ast.LambdaExpr, mut pident ast.Ident, ptype ast.Type) {
 	if mut v := node.scope.find_var(pident.name) {
 		v.is_arg = true
@@ -149,8 +165,7 @@ pub fn (mut c Checker) support_lambda_expr_in_sort(param_type ast.Type, return_t
 		]
 		return_type: return_type
 	}
-	expected_fn_type := ast.new_type(c.table.find_or_register_fn_type(expected_fn, true,
-		false))
+	expected_fn_type := ast.new_type(c.table.find_or_register_fn_type(expected_fn, true, false))
 	c.lambda_expr(mut expr, expected_fn_type)
 }
 

@@ -6,6 +6,10 @@ enum SmallEnum as i8 {
 	e
 }
 
+struct SmallEnumWrap {
+	value SmallEnum
+}
+
 enum BigEnum as u64 {
 	a = 0xABCD_EF09_1234_5678
 	b = 0xFFFF_FFFF_FFFF_FFF0
@@ -24,12 +28,8 @@ enum BigIEnum as i64 {
 
 fn test_small_enum() {
 	dump(sizeof(SmallEnum))
-	$if tinyc {
-		// TODO: TCC currently ignores `__attribute__((packed))` for enums, and uses an int instead, even with -fshort-enums :-|
-		assert sizeof(SmallEnum) == 4
-	} $else {
-		assert sizeof(SmallEnum) == 1
-	}
+	assert sizeof(SmallEnum) == 1
+	assert sizeof(SmallEnumWrap) == 1
 	dump(i8(SmallEnum.a))
 	dump(i8(SmallEnum.b))
 	dump(i8(SmallEnum.c))

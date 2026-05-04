@@ -26,7 +26,7 @@ pub:
 @[params]
 pub struct BufferedReadLineConfig {
 pub:
-	delim u8 = `\n` // line delimiter
+	delim u8 = `\n` // line delimiter; default `\n` mode strips both `\n` and `\r\n`
 }
 
 // new_buffered_reader creates a new BufferedReader.
@@ -46,6 +46,9 @@ pub fn new_buffered_reader(o BufferedReaderConfig) &BufferedReader {
 
 // read fufills the Reader interface.
 pub fn (mut r BufferedReader) read(mut buf []u8) !int {
+	if buf.len == 0 {
+		return 0
+	}
 	if r.end_of_stream {
 		return Eof{}
 	}
@@ -81,28 +84,29 @@ fn (mut r BufferedReader) fill_buffer() bool {
 	if r.end_of_stream {
 		// we know we have already reached the end of stream
 		// so return early
-		return true
-	}
-	r.offset = 0
-	r.len = 0
-	r.len = r.reader.read(mut r.buf) or {
-		// end of stream was reached
-		r.end_of_stream = true
 		return false
 	}
-	if r.len == 0 {
+	for {
+		r.offset = 0
+		r.len = 0
+		r.len = r.reader.read(mut r.buf) or {
+			// end of stream was reached
+			r.end_of_stream = true
+			return false
+		}
+		if r.len > 0 {
+			r.fails = 0
+			return true
+		}
 		r.fails++
-	} else {
-		r.fails = 0
+		if r.fails >= r.mfails {
+			// When reading 0 bytes several times in a row, assume the stream has ended.
+			// This prevents infinite loops ¯\_(ツ)_/¯ ...
+			r.end_of_stream = true
+			return false
+		}
 	}
-	if r.fails >= r.mfails {
-		// When reading 0 bytes several times in a row, assume the stream has ended.
-		// This prevents infinite loops ¯\_(ツ)_/¯ ...
-		r.end_of_stream = true
-		return false
-	}
-	// we got some data
-	return true
+	return false
 }
 
 // needs_fill returns whether the buffer needs refilling.
@@ -116,8 +120,10 @@ pub fn (r BufferedReader) end_of_stream() bool {
 }
 
 // read_line attempts to read a line from the buffered reader.
-// It will read until it finds the specified line delimiter
-// such as (\n, the default or \0) or the end of stream.
+// It reads until it finds the specified delimiter or the end of stream.
+// The returned string does not include the delimiter.
+// With the default delimiter `\n`, both `\n` and `\r\n` line endings are
+// accepted, and neither terminator byte is included in the returned string.
 pub fn (mut r BufferedReader) read_line(config BufferedReadLineConfig) !string {
 	if r.end_of_stream {
 		return Eof{}
@@ -142,13 +148,15 @@ pub fn (mut r BufferedReader) read_line(config BufferedReadLineConfig) !string {
 			c := r.buf[i]
 			if c == config.delim {
 				// great, we hit something
-				// do some checking for whether we hit \r\n or just \n
-				if i != 0 && config.delim == `\n` && r.buf[i - 1] == `\r` {
-					x := i - 1
-					line << r.buf[r.offset..x]
-				} else {
-					line << r.buf[r.offset..i]
+				mut end := i
+				if config.delim == `\n` {
+					if i > r.offset && r.buf[i - 1] == `\r` {
+						end--
+					} else if i == r.offset && line.len > 0 && line[line.len - 1] == `\r` {
+						line.delete_last()
+					}
 				}
+				line << r.buf[r.offset..end]
 				r.offset = i + 1
 				return line.bytestr()
 			}

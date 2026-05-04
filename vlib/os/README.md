@@ -4,6 +4,9 @@
 command line arguments, reading/writing files, listing folders,
 handling processes etc.
 
+On Windows, `os.data_dir()` uses `%LocalAppData%` for user-specific
+application data.
+
 ---
 
 ### Security advice related to TOCTOU attacks

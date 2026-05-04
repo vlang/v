@@ -50,10 +50,10 @@ fn (d Dec64) get_string_64(neg bool, i_n_digit int, i_pad_digit int) string {
 
 	// rounding last used digit
 	if n_digit < out_len {
-		// println("out:[$out]")
+		// println("out:[${out}]")
 		out += ten_pow_table_64[out_len - n_digit - 1] * 5 // round to up
 		out /= ten_pow_table_64[out_len - n_digit]
-		// println("out1:[$out] ${d.m / ten_pow_table_64[out_len - n_digit ]}")
+		// println("out1:[${out}] ${d.m / ten_pow_table_64[out_len - n_digit ]}")
 		// fix issue #22424
 		out_div := d.m / ten_pow_table_64[out_len - n_digit]
 		if out_div < out && dec_digits(out_div) < dec_digits(out) {
@@ -65,7 +65,7 @@ fn (d Dec64) get_string_64(neg bool, i_n_digit int, i_pad_digit int) string {
 		// println("cmp: ${d.m/ten_pow_table_64[out_len - n_digit ]} ${out/ten_pow_table_64[out_len - n_digit ]}")
 
 		out_len = n_digit
-		// println("orig: ${out_len_original} new len: ${out_len} out:[$out]")
+		// println("orig: ${out_len_original} new len: ${out_len} out:[${out}]")
 	}
 
 	y := i + out_len
@@ -132,7 +132,7 @@ fn (d Dec64) get_string_64(neg bool, i_n_digit int, i_pad_digit int) string {
 	buf[i] = 0
 
 	return unsafe {
-		tos(&u8(&buf[0]), i)
+		tos(memdup(&buf[0], i + 1), i)
 	}
 }
 
@@ -207,8 +207,7 @@ fn f64_to_decimal(mant u64, exp u64) Dec64 {
 				// Same as min(e2 + (^mm & 1), pow5Factor64(mm)) >= q
 				// <=> e2 + (^mm & 1) >= q && pow5Factor64(mm) >= q
 				// <=> true && pow5Factor64(mm) >= q, since e2 >= q.
-				vm_is_trailing_zeros = multiple_of_power_of_five_64(mv - 1 - mm_shift,
-					q)
+				vm_is_trailing_zeros = multiple_of_power_of_five_64(mv - 1 - mm_shift, q)
 			} else if multiple_of_power_of_five_64(mv + 2, q) {
 				vp--
 			}

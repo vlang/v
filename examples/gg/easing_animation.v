@@ -60,8 +60,7 @@ fn (mut app App) draw_circle(label string, f easing.EasingFN) {
 	offset := 30
 	app.gg.draw_text_def(int(app.x) - 30, 5, label)
 	app.gg.draw_line(f32(app.x), offset, f32(app.x), f32(app.h + offset), gg.gray)
-	app.gg.draw_circle_filled(f32(app.x), f32(offset + f(app.t) * app.h), 10, gg.rgb(0,
-		0, 255))
+	app.gg.draw_circle_filled(f32(app.x), f32(offset + f(app.t) * app.h), 10, gg.rgb(0, 0, 255))
 	app.x += 120
 }
 
@@ -77,7 +76,8 @@ fn (mut app App) frame() {
 	for k, e in current_map {
 		app.draw_circle(k, e)
 	}
-	app.gg.draw_text_def(50, int(app.h + 50), 'Note: use left and right arrows to change functions. Frame: ${app.gg.frame:010} | t: ${app.t:6.3f} | kind: ${app.kind}.')
+	app.gg.draw_text_def(50, int(app.h + 50),
+		'Note: use left and right arrows to change functions. Frame: ${app.gg.frame:010} | t: ${app.t:6.3f} | kind: ${app.kind}.')
 	app.gg.end()
 }
 
@@ -86,7 +86,7 @@ fn (mut app App) change_functions(direction int) {
 	app.kind = all_keys[idx]
 }
 
-fn (mut app App) on_event(ev &gg.Event, x voidptr) {
+fn (mut app App) on_event(ev &gg.Event, _x voidptr) {
 	if ev.typ != .key_down {
 		return
 	}

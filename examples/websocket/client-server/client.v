@@ -58,6 +58,6 @@ fn start_client() !&websocket.Client {
 		return err
 	}
 
-	spawn ws.listen() // or { println(term.red('error on listen $err')) }
+	spawn ws.listen() // or { println(term.red('error on listen ${err}')) }
 	return ws
 }

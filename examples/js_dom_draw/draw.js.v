@@ -15,8 +15,8 @@ fn draw_line(mut context JS.CanvasRenderingContext2D, x1 int, y1 int, x2 int, y2
 	context.beginPath()
 	context.strokeStyle = 'black'.str
 	context.lineWidth = JS.Number(1)
-	context.moveTo(x1, y1)
-	context.lineTo(x2, y2)
+	context.moveTo(JS.Number(x1), JS.Number(y1))
+	context.lineTo(JS.Number(x2), JS.Number(y2))
 	context.stroke()
 	context.closePath()
 }
@@ -36,14 +36,16 @@ fn main() {
 	canvas_elem := document.getElementById('canvas'.str)?
 	canvas := get_canvas(canvas_elem)
 	ctx := canvas.getContext('2d'.str, js_undefined())?
-	context := match ctx {
+	mut context := JS.CanvasRenderingContext2D{}
+	match ctx {
 		JS.CanvasRenderingContext2D {
-			ctx
+			context = ctx
 		}
 		else {
 			panic('can not get 2d context')
 		}
 	}
+
 	mut state := DrawState{context, false, 0, 0}
 
 	canvas.addEventListener('mousedown'.str, fn [mut state] (event JS.Event) {
@@ -79,12 +81,13 @@ fn main() {
 				}
 				else {}
 			}
+
 			state.x = 0
 			state.y = 0
 			state.drawing = false
 		}
 	}, JS.EventListenerOptions{})
 	clear_btn.addEventListener('click'.str, fn [mut state, canvas] (_ JS.Event) {
-		state.context.clearRect(0, 0, canvas.width, canvas.height)
+		state.context.clearRect(JS.Number(0), JS.Number(0), canvas.width, canvas.height)
 	}, JS.EventListenerOptions{})
 }

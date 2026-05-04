@@ -6,11 +6,29 @@ module builder
 import os
 import v.pref
 import v.util
+import v.vmod
 
 pub type FnBackend = fn (mut b Builder)
 
+// should_find_windows_host_c_compiler reports whether Windows host compiler probing is needed.
+pub fn should_find_windows_host_c_compiler(pref_ &pref.Preferences) bool {
+	return pref_.backend == .c && pref_.os == .windows && !pref_.output_cross_c
+}
+
 pub fn compile(command string, pref_ &pref.Preferences, backend_cb FnBackend) {
+	check_if_input_file_exists(pref_)
 	check_if_output_folder_is_writable(pref_)
+	$if windows {
+		if should_find_windows_host_c_compiler(pref_) {
+			// Resolve the effective Windows C compiler before builder initialization.
+			mut probe := Builder{
+				pref: unsafe { pref_ }
+			}
+			probe.find_win_cc() or {}
+		}
+	}
+	mut pref_ref := unsafe { pref_ }
+	pref_ref.ccompiler_type = resolve_ccompiler_type(pref_ref.ccompiler, pref_ref.ccompiler_type)
 	// Construct the V object from command line arguments
 	mut b := new_builder(pref_)
 	if b.should_rebuild() {
@@ -22,7 +40,22 @@ pub fn compile(command string, pref_ &pref.Preferences, backend_cb FnBackend) {
 	b.run_compiled_executable_and_exit()
 }
 
+fn check_if_input_file_exists(pref_ &pref.Preferences) {
+	if pref_.path == '' || pref_.path == '-' {
+		return
+	}
+	if pref_.path.ends_with('.v') || pref_.path.ends_with('.vsh') || pref_.path.ends_with('.vv') {
+		if !os.exists(pref_.path) {
+			verror("${pref_.path} doesn't exist")
+		}
+	}
+}
+
 fn check_if_output_folder_is_writable(pref_ &pref.Preferences) {
+	if pref_.should_output_to_stdout() || pref_.check_only || pref_.only_check_syntax
+		|| pref_.backend == .interpret {
+		return
+	}
 	odir := os.dir(pref_.out_name)
 	// When pref.out_name is just the name of an executable, i.e. `./v -o executable main.v`
 	// without a folder component, just use the current folder instead:
@@ -30,6 +63,7 @@ fn check_if_output_folder_is_writable(pref_ &pref.Preferences) {
 	if odir.len == pref_.out_name.len {
 		output_folder = os.getwd()
 	}
+	os.mkdir_all(output_folder) or { verror(err.msg()) }
 	os.ensure_folder_is_writable(output_folder) or {
 		// An early error here, is better than an unclear C error later:
 		verror(err.msg())
@@ -119,18 +153,11 @@ fn (mut b Builder) run_compiled_executable_and_exit() {
 		}
 
 		actual_rf
-	} else if b.pref.backend == .golang {
-		go_basename := $if windows { 'go.exe' } $else { 'go' }
-		os.find_abs_path_of_executable(go_basename) or {
-			panic('Could not find `${go_basename}` in system path. Do you have Go installed?')
-		}
 	} else {
 		compiled_file
 	}
 	if b.pref.backend.is_js() || b.pref.backend == .wasm {
 		run_args << compiled_file
-	} else if b.pref.backend == .golang {
-		run_args << ['run', compiled_file]
 	}
 	run_args << b.pref.run_args
 
@@ -142,7 +169,10 @@ fn (mut b Builder) run_compiled_executable_and_exit() {
 	}
 	mut ret := 0
 	if b.pref.use_os_system_to_run {
-		command_to_run := os.quoted_path(run_file) + ' ' + run_args.join(' ')
+		mut command_to_run := os.quoted_path(run_file)
+		if run_args.len > 0 {
+			command_to_run += ' ' + util.args_quote_paths(run_args)
+		}
 		ret = os.system(command_to_run)
 		// eprintln('> ret: ${ret:5} | command_to_run: ${command_to_run}')
 	} else {
@@ -177,7 +207,7 @@ fn eshcb(_ os.Signal) {
 @[noreturn]
 fn serror(reason string, e IError) {
 	eprintln('could not ${reason} handler')
-	panic(e)
+	panic(e.msg())
 }
 
 fn (mut v Builder) cleanup_run_executable_after_exit(exefile string) {
@@ -210,21 +240,25 @@ pub fn (mut v Builder) set_module_lookup_paths() {
 	// By default, these are what (3) contains:
 	// 3.1) search in vlib/
 	// 3.2) search in ~/.vmodules/ (i.e. modules installed with vpm)
+	lookup_root := v.module_lookup_root()
 	v.module_search_paths = []
 	if v.pref.is_test {
 		v.module_search_paths << os.dir(v.compiled_dir) // pdir of _test.v
 	}
-	v.module_search_paths << v.compiled_dir
-	x := os.join_path(v.compiled_dir, 'modules')
+	v.module_search_paths << lookup_root
+	x := os.join_path(lookup_root, 'modules')
 	if v.pref.is_verbose {
 		println('x: "${x}"')
 	}
 
-	if os.exists(os.join_path(v.compiled_dir, 'src/modules')) {
-		v.module_search_paths << os.join_path(v.compiled_dir, 'src/modules')
+	if source_root := source_root_from_vmod_root(lookup_root) {
+		source_modules := os.join_path(source_root, 'modules')
+		if source_modules !in v.module_search_paths && os.exists(source_modules) {
+			v.module_search_paths << source_modules
+		}
 	}
-	if os.exists(os.join_path(v.compiled_dir, 'modules')) {
-		v.module_search_paths << os.join_path(v.compiled_dir, 'modules')
+	if os.exists(os.join_path(lookup_root, 'modules')) {
+		v.module_search_paths << os.join_path(lookup_root, 'modules')
 	}
 
 	v.module_search_paths << v.pref.lookup_path
@@ -232,6 +266,21 @@ pub fn (mut v Builder) set_module_lookup_paths() {
 		v.log('v.module_search_paths:')
 		println(v.module_search_paths)
 	}
+}
+
+fn (v &Builder) module_lookup_root() string {
+	// If `compiled_dir` is the base_url-configured source folder, treat the
+	// enclosing module folder as the lookup root so sibling `modules/` resolves.
+	mut mcache := vmod.get_cache()
+	vmod_file_location := mcache.get_by_folder(v.compiled_dir)
+	if vmod_file_location.vmod_file != '' && vmod_file_location.vmod_folder != v.compiled_dir {
+		if source_root := source_root_from_vmod_root(vmod_file_location.vmod_folder) {
+			if os.real_path(source_root) == v.compiled_dir {
+				return vmod_file_location.vmod_folder
+			}
+		}
+	}
+	return v.compiled_dir
 }
 
 pub fn (v Builder) get_builtin_files() []string {
@@ -246,17 +295,15 @@ pub fn (v Builder) get_builtin_files() []string {
 		if os.exists(os.join_path(location, 'builtin')) {
 			mut builtin_files := []string{}
 			if v.pref.backend.is_js() {
-				builtin_files << v.v_files_from_dir(os.join_path(location, 'builtin',
-					'js'))
+				builtin_files << v.v_files_from_dir(os.join_path(location, 'builtin', 'js'))
 			} else if v.pref.backend == .wasm {
-				builtin_files << v.v_files_from_dir(os.join_path(location, 'builtin',
-					'wasm'))
+				builtin_files << v.v_files_from_dir(os.join_path(location, 'builtin', 'wasm'))
 				if v.pref.os == .browser {
-					builtin_files << v.v_files_from_dir(os.join_path(location, 'builtin',
-						'wasm', 'browser'))
+					builtin_files << v.v_files_from_dir(os.join_path(location, 'builtin', 'wasm',
+						'browser'))
 				} else {
-					builtin_files << v.v_files_from_dir(os.join_path(location, 'builtin',
-						'wasm', 'wasi'))
+					builtin_files << v.v_files_from_dir(os.join_path(location, 'builtin', 'wasm',
+						'wasi'))
 				}
 			} else {
 				builtin_files << v.v_files_from_dir(os.join_path(location, 'builtin'))
@@ -324,7 +371,8 @@ pub fn (v &Builder) get_user_files() []string {
 		}
 		if !v_test_runner_prelude.contains('/') && !v_test_runner_prelude.contains('\\')
 			&& !v_test_runner_prelude.ends_with('.v') {
-			v_test_runner_prelude = os.join_path(preludes_path, 'test_runner_${v_test_runner_prelude}.v')
+			v_test_runner_prelude = os.join_path(preludes_path,
+				'test_runner_${v_test_runner_prelude}.v')
 		}
 		if !os.is_file(v_test_runner_prelude) || !os.is_readable(v_test_runner_prelude) {
 			eprintln('test runner error: File ${v_test_runner_prelude} should be readable.')

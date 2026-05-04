@@ -22,23 +22,36 @@ pub fn create_default_pass(action gfx.PassAction) gfx.Pass {
 	}
 }
 
+// sapp_to_gfx_pixelformat converts an sapp_pixel_format int to a gfx.PixelFormat.
+// The sapp and gfx pixel format enums have different integer values, so a direct
+// cast is incorrect.
+fn sapp_to_gfx_pixelformat(sapp_fmt int) gfx.PixelFormat {
+	// sapp_pixel_format: _DEFAULT=0, NONE=1, RGBA8=2, SRGB8A8=3, BGRA8=4, SBGRA8=5, DEPTH=6, DEPTH_STENCIL=7
+	return match sapp_fmt {
+		1 { gfx.PixelFormat.none }
+		2 { gfx.PixelFormat.rgba8 }
+		3 { gfx.PixelFormat.srgb8a8 }
+		4 { gfx.PixelFormat.bgra8 }
+		5 { gfx.PixelFormat.bgra8 } // sbgra8 has no gfx equivalent, use bgra8
+		6 { gfx.PixelFormat.depth }
+		7 { gfx.PixelFormat.depth_stencil }
+		else { gfx.PixelFormat.none }
+	}
+}
+
 // glue_environment returns a `gfx.Environment` compatible for use with `sapp` specific `gfx.Pass`es.
 // The retuned `gfx.Environment` can be used when rendering via `sapp`.
 // See also: documentation at the top of thirdparty/sokol/sokol_gfx.h
 pub fn glue_environment() gfx.Environment {
+	sapp_env := C.sapp_get_environment()
 	mut env := gfx.Environment{}
 	unsafe { vmemset(&env, 0, int(sizeof(env))) }
-	env.defaults.color_format = gfx.PixelFormat.from(color_format()) or { gfx.PixelFormat.none }
-	env.defaults.depth_format = gfx.PixelFormat.from(depth_format()) or { gfx.PixelFormat.none }
-	env.defaults.sample_count = sample_count()
+	env.defaults.color_format = sapp_to_gfx_pixelformat(sapp_env.defaults.color_format)
+	env.defaults.depth_format = sapp_to_gfx_pixelformat(sapp_env.defaults.depth_format)
+	env.defaults.sample_count = sapp_env.defaults.sample_count
 	$if macos && !darwin_sokol_glcore33 ? {
-		env.metal.device = metal_get_device()
+		env.metal.device = sapp_env.metal.device
 	}
-	// if windows and dx3d11
-	// env.d3d11.device = d3d11_get_device()
-	// env.d3d11.device_context = d3d11_get_device_context()
-	// if webgpu
-	// env.wgpu.device = wgpu_get_device()
 	return env
 }
 
@@ -46,28 +59,20 @@ pub fn glue_environment() gfx.Environment {
 // The retuned `gfx.Swapchain` can be used when rendering via `sapp`.
 // See also: documentation at the top of thirdparty/sokol/sokol_gfx.h
 pub fn glue_swapchain() gfx.Swapchain {
+	sapp_sc := C.sapp_get_swapchain()
 	mut swapchain := gfx.Swapchain{}
 	unsafe { vmemset(&swapchain, 0, int(sizeof(swapchain))) }
-	swapchain.width = width()
-	swapchain.height = height()
-	swapchain.sample_count = sample_count()
-	swapchain.color_format = gfx.PixelFormat.from(color_format()) or { gfx.PixelFormat.none }
-	swapchain.depth_format = gfx.PixelFormat.from(depth_format()) or { gfx.PixelFormat.none }
+	swapchain.width = sapp_sc.width
+	swapchain.height = sapp_sc.height
+	swapchain.sample_count = sapp_sc.sample_count
+	swapchain.color_format = sapp_to_gfx_pixelformat(sapp_sc.color_format)
+	swapchain.depth_format = sapp_to_gfx_pixelformat(sapp_sc.depth_format)
 	$if macos && !darwin_sokol_glcore33 ? {
-		swapchain.metal.current_drawable = metal_get_current_drawable()
-		swapchain.metal.depth_stencil_texture = metal_get_depth_stencil_texture()
-		swapchain.metal.msaa_color_texture = metal_get_msaa_color_texture()
-	}
-	// if windows and dx3d11
-	// swapchain.d3d11.render_view = d3d11_get_render_view()
-	// swapchain.d3d11.resolve_view = d3d11_get_resolve_view()
-	// swapchain.d3d11.depth_stencil_view = d3d11_get_depth_stencil_view()
-	// if webgpu
-	// swapchain.wgpu.render_view = wgpu_get_render_view()
-	// swapchain.wgpu.resolve_view = wgpu_get_resolve_view()
-	// swapchain.wgpu.depth_stencil_view = wgpu_get_depth_stencil_view()
-	$else {
-		swapchain.gl.framebuffer = gl_get_framebuffer()
+		swapchain.metal.current_drawable = sapp_sc.metal.current_drawable
+		swapchain.metal.depth_stencil_texture = sapp_sc.metal.depth_stencil_texture
+		swapchain.metal.msaa_color_texture = sapp_sc.metal.msaa_color_texture
+	} $else {
+		swapchain.gl.framebuffer = sapp_sc.gl.framebuffer
 	}
 	return swapchain
 }
@@ -244,27 +249,6 @@ pub fn html5_ask_leave_site(ask bool) {
 	C.sapp_html5_ask_leave_site(ask)
 }
 
-// Metal: get ARC-bridged pointer to Metal device object
-@[inline]
-pub fn metal_get_device() voidptr {
-	return voidptr(C.sapp_metal_get_device())
-}
-
-// Metal: get ARC-bridged pointer to current drawable
-pub fn metal_get_current_drawable() voidptr {
-	return voidptr(C.sapp_metal_get_current_drawable())
-}
-
-// Metal: get bridged pointer to MTKView's depth-stencil texture of type MTLTexture
-pub fn metal_get_depth_stencil_texture() voidptr {
-	return voidptr(C.sapp_metal_get_depth_stencil_texture())
-}
-
-// Metal: get bridged pointer to MTKView's msaa-color-texture of type MTLTexture (may be null)
-pub fn metal_get_msaa_color_texture() voidptr {
-	return voidptr(C.sapp_metal_get_msaa_color_texture())
-}
-
 // macOS: get ARC-bridged pointer to macOS NSWindow
 @[inline]
 pub fn macos_get_window() voidptr {
@@ -277,66 +261,28 @@ pub fn ios_get_window() voidptr {
 	return voidptr(C.sapp_ios_get_window())
 }
 
-// D3D11: get pointer to ID3D11Device object
-@[inline]
-pub fn d3d11_get_device() voidptr {
-	return voidptr(C.sapp_d3d11_get_device())
-}
-
-// D3D11: get pointer to ID3D11DeviceContext object
-@[inline]
-pub fn d3d11_get_device_context() voidptr {
-	return voidptr(C.sapp_d3d11_get_device_context())
-}
-
-// D3D11: get pointer to ID3D11RenderView object
-@[inline]
-pub fn d3d11_get_render_view() voidptr {
-	return voidptr(C.sapp_d3d11_get_render_view())
-}
-
-// D3D11: get pointer ID3D11RenderTargetView object for msaa-resolve (may return null)
-@[inline]
-pub fn d3d11_get_resolve_view() voidptr {
-	return voidptr(C.sapp_d3d11_get_resolve_view())
-}
-
-// D3D11: get pointer to ID3D11DepthStencilView
-@[inline]
-pub fn d3d11_get_depth_stencil_view() voidptr {
-	return voidptr(C.sapp_d3d11_get_depth_stencil_view())
-}
-
 // Win32: get the HWND window handle
 @[inline]
 pub fn win32_get_hwnd() voidptr {
 	return voidptr(C.sapp_win32_get_hwnd())
 }
 
-// WebGPU: get WGPUDevice handle
-pub fn wgpu_get_device() voidptr {
-	return voidptr(C.sapp_wgpu_get_device())
-}
-
-// WebGPU: get swapchain's WGPUTextureView handle for rendering
-pub fn wgpu_get_render_view() voidptr {
-	return voidptr(C.sapp_wgpu_get_render_view())
-}
-
-// WebGPU: get swapchain's MSAA-resolve WGPUTextureView (may return null)
-pub fn wgpu_get_resolve_view() voidptr {
-	return voidptr(C.sapp_wgpu_get_resolve_view())
-}
-
-// WebGPU: get swapchain's WGPUTextureView for the depth-stencil surface
-pub fn wgpu_get_depth_stencil_view() voidptr {
-	return voidptr(C.sapp_wgpu_get_depth_stencil_view())
-}
-
 // GL: get framebuffer object
 @[inline]
 pub fn gl_get_framebuffer() u32 {
 	return C.sapp_gl_get_framebuffer()
+}
+
+// X11: get display handle
+@[inline]
+pub fn x11_get_display() voidptr {
+	return voidptr(C.sapp_x11_get_display())
+}
+
+// X11: get window handle
+@[inline]
+pub fn x11_get_window() voidptr {
+	return voidptr(C.sapp_x11_get_window())
 }
 
 // Android: get native activity handle

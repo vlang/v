@@ -17,6 +17,9 @@ Examples:
                                sources.
   v -o h.c hello.v             Translate `hello.v` to `h.c` only. Do not compile
                                further.
+  v -v2 hello.v                Compile `hello.v` with the V2 frontend
+                               (`cmd/v2/v2.v`). Use `-b arm64` or
+                               `-backend arm64` to switch V2 backends.
   v -o - hello.v               Translates `hello.v` and outputs the C source 
                                code to stdout. Does not compile further.
   v watch hello.v              Re-do the same compilation when a source code
@@ -35,9 +38,9 @@ V supports the following commands:
 
 * Commonly Used Utilities:
   run                          Compile and run a V program. Delete the
-                               executable after the run.
-  crun                         Compile and run a V program without deleting the
-                               executable.
+                               executable if V created it for this run.
+  crun                         Compile and run a V program, keeping the
+                               executable for reuse.
                                If you run the same program a second time,
                                without changing the source files,
                                V will just run the executable, without
@@ -55,6 +58,9 @@ V supports the following commands:
                                example: `v watch run hello.v`
   where                        Find and print the location of current project
                                declarations.
+  quest                        Help us make V better, by doing a small randomly
+                               selected task, like triaging an issue, improving
+                               the documentation, testing, etc.
 
 * Installation Management Utilities:
   symlink                      Create a symbolic link for V.
@@ -65,8 +71,11 @@ V supports the following commands:
 
 * Package Management Utilities:
   install                      Install a module from VPM.
+  link                         Symlink the current project into VMODULES.
   remove                       Remove a module that was installed from VPM.
   search                       Search for a module from VPM.
+  unlink                       Remove the symlink for the current project
+                               from VMODULES.
   update                       Update an installed module from VPM.
   upgrade                      Upgrade all the outdated modules.
   list                         List all installed modules.
@@ -80,5 +89,5 @@ Use "v help other" to see less frequently used commands.
 Use "v help topics" to see a list of all known help topics.
 
 Note: Help is required to write more help topics.
-Only build, new, init, doc, fmt, vet, run, test, watch, search, install, 
-remove, update, bin2v, check-md are properly documented currently.
+Only build, new, init, doc, fmt, vet, run, test, watch, search, install,
+link, remove, unlink, update, bin2v, check-md are properly documented currently.

@@ -1,3 +1,5 @@
+// AI heuristic inspired by the expectimax 2048 solver approach described at:
+// https://github.com/nneonneo/2048-ai
 import gg
 import math
 import math.easing
@@ -7,33 +9,51 @@ import time
 
 const zooming_percent_per_frame = 5
 const movement_percent_per_frame = 10
+const tile_text_size_step = 8
+const min_tile_text_size = 8
 
-const window_title = 'V 2048'
 const default_window_width = 544
 const default_window_height = 560
 
 const possible_moves = [Direction.up, .right, .down, .left]
-const predictions_per_move = 300
-const prediction_depth = 8
+const ai_row_states = 1 << 16
+const ai_tt_size = 1 << 18
+const ai_time_budget_us = i64(5_000)
+const ai_min_search_depth = 2
+const ai_max_search_depth = 8
+const ai_abort_score = -1.0e30
+const ai_terminal_loss = -1.0e15
+const ai_spawn_two_prob = 0.9
+const ai_spawn_four_prob = 0.1
+const ai_snake_path_row = [0, 1, 2, 3, 7, 6, 5, 4, 8, 9, 10, 11, 15, 14, 13, 12]!
+const ai_snake_path_col = [0, 4, 8, 12, 13, 9, 5, 1, 2, 6, 10, 14, 15, 11, 7, 3]!
+const ai_eval_weights = [
+	[90.0, 70.0, 50.0, 30.0]!,
+	[8.0, 6.0, 4.0, 2.0]!,
+	[-2.0, -4.0, -6.0, -8.0]!,
+	[-30.0, -50.0, -70.0, -90.0]!,
+]
 
 struct App {
 mut:
-	gg          &gg.Context = unsafe { nil }
-	touch       TouchInfo
-	ui          Ui
-	theme       &Theme = themes[0]
-	theme_idx   int
-	board       Board
-	undo        []Undo
-	atickers    [4][4]f64
-	mtickers    [4][4]f64
-	state       GameState  = .play
-	tile_format TileFormat = .normal
-	moves       int
-	updates     u64
+	gg           &gg.Context = unsafe { nil }
+	touch        TouchInfo
+	ui           Ui
+	theme        &Theme = themes[0]
+	theme_idx    int
+	board        Board
+	undo         []Undo
+	atickers     [4][4]f64
+	mtickers     [4][4]f64
+	state        GameState  = .play
+	tile_format  TileFormat = .normal
+	moves        int
+	updates      u64
+	needs_redraw bool = true
 
 	is_ai_mode bool
 	ai_fpm     u64 = 8
+	ai_engine  AiEngine
 }
 
 struct Ui {
@@ -144,7 +164,6 @@ struct Undo {
 }
 
 struct TileLine {
-	ypos int
 mut:
 	field  [5]int
 	oidxs  [5]u32
@@ -195,6 +214,46 @@ enum Direction {
 	down
 	left
 	right
+}
+
+type AiBoard = u64
+
+struct AiEngine {
+mut:
+	initialized   bool
+	row_left      []u16
+	row_right     []u16
+	row_heuristic []f64
+	tt            []AiTtEntry
+	generation    u32
+}
+
+struct AiTtEntry {
+	board      AiBoard
+	score      f64
+	generation u32
+	depth      u8
+	kind       u8
+}
+
+struct AiSearchCtx {
+	watch       time.StopWatch
+	deadline_us i64
+	generation  u32
+mut:
+	nodes      u64
+	cache_hits u64
+	aborted    bool
+}
+
+struct AiMoveResult {
+mut:
+	move       Direction
+	score      f64
+	depth      int
+	nodes      u64
+	cache_hits u64
+	valid      bool
 }
 
 // Utility functions
@@ -278,9 +337,7 @@ fn (t TileLine) to_left() TileLine {
 fn (b Board) to_left() Board {
 	mut res := b
 	for y in 0 .. 4 {
-		mut hline := TileLine{
-			ypos: y
-		}
+		mut hline := TileLine{}
 		for x in 0 .. 4 {
 			hline.field[x] = b.field[y][x]
 			hline.oidxs[x] = b.oidxs[y][x]
@@ -300,6 +357,486 @@ fn yx2i(y int, x int) u32 {
 	return u32(y) << 16 | u32(x)
 }
 
+@[inline]
+fn quantized_tile_text_size(size int) int {
+	if size < min_tile_text_size {
+		return 0
+	}
+	return size / tile_text_size_step * tile_text_size_step
+}
+
+@[inline]
+fn animated_tile_text_size(base_size int, animation_scale f64) int {
+	// gg/fontstash caches glyphs by size, so quantize the zoom animation to keep the
+	// atlas stable during long autoplay sessions.
+	return quantized_tile_text_size(int(animation_scale * (base_size - 1)))
+}
+
+@[inline]
+fn reverse_row(row u16) u16 {
+	part0 := u16((row & 0x000f) << 12)
+	part1 := u16((row & 0x00f0) << 4)
+	part2 := u16((row & 0x0f00) >> 4)
+	part3 := u16((row & 0xf000) >> 12)
+	return part0 | part1 | part2 | part3
+}
+
+fn build_ai_row_left(row u16) (u16, bool) {
+	mut tiles := [4]u8{}
+	mut compact := [4]u8{}
+	mut compact_len := 0
+	for idx in 0 .. 4 {
+		tiles[idx] = u8((row >> (idx << 2)) & 0xf)
+		if tiles[idx] != 0 {
+			compact[compact_len] = tiles[idx]
+			compact_len++
+		}
+	}
+	mut merged := [4]u8{}
+	mut read_idx := 0
+	mut write_idx := 0
+	for read_idx < compact_len {
+		value := compact[read_idx]
+		if read_idx + 1 < compact_len && compact[read_idx + 1] == value {
+			merged[write_idx] = value + 1
+			read_idx += 2
+		} else {
+			merged[write_idx] = value
+			read_idx++
+		}
+		write_idx++
+	}
+	mut res := u16(0)
+	mut changed := false
+	for idx in 0 .. 4 {
+		res |= u16(merged[idx]) << (idx << 2)
+		if merged[idx] != tiles[idx] {
+			changed = true
+		}
+	}
+	return res, changed
+}
+
+fn ai_row_heuristic(row u16) f64 {
+	mut tiles := [4]int{}
+	mut empty_tiles := 0
+	mut mergeable_pairs := 0
+	mut smoothness := 0.0
+	mut monotonicity := 0.0
+	for idx in 0 .. 4 {
+		tiles[idx] = int((row >> (idx << 2)) & 0xf)
+		if tiles[idx] == 0 {
+			empty_tiles++
+		}
+	}
+	for idx in 0 .. 3 {
+		curr := tiles[idx]
+		next := tiles[idx + 1]
+		if curr != 0 && next != 0 {
+			smoothness -= math.abs(curr - next)
+			if curr == next {
+				mergeable_pairs++
+			}
+		}
+	}
+	mut left_penalty := 0.0
+	mut right_penalty := 0.0
+	for idx in 0 .. 3 {
+		left_penalty += math.max(0, tiles[idx + 1] - tiles[idx])
+		right_penalty += math.max(0, tiles[idx] - tiles[idx + 1])
+	}
+	monotonicity = -math.min(left_penalty, right_penalty)
+	return f64(empty_tiles) * 240.0 + f64(mergeable_pairs) * 500.0 + smoothness * 20.0 +
+		monotonicity * 70.0
+}
+
+fn (mut ai AiEngine) ensure_ready() {
+	if ai.initialized {
+		return
+	}
+	ai.row_left = []u16{len: ai_row_states}
+	ai.row_right = []u16{len: ai_row_states}
+	ai.row_heuristic = []f64{len: ai_row_states}
+	ai.tt = []AiTtEntry{len: ai_tt_size}
+	for i in 0 .. ai_row_states {
+		row := u16(i)
+		left, _ := build_ai_row_left(row)
+		reversed := reverse_row(row)
+		right_reversed, _ := build_ai_row_left(reversed)
+		ai.row_left[i] = left
+		ai.row_right[i] = reverse_row(right_reversed)
+		ai.row_heuristic[i] = ai_row_heuristic(row)
+	}
+	ai.initialized = true
+}
+
+@[inline]
+fn ai_row(board AiBoard, row_idx int) u16 {
+	return u16((u64(board) >> (row_idx * 16)) & 0xffff)
+}
+
+@[inline]
+fn ai_tile(board AiBoard, idx int) u8 {
+	return u8((u64(board) >> (idx * 4)) & 0xf)
+}
+
+fn ai_transpose(board AiBoard) AiBoard {
+	mut res := AiBoard(0)
+	for y in 0 .. 4 {
+		for x in 0 .. 4 {
+			src_idx := y << 2 + x
+			dst_idx := x << 2 + y
+			value := AiBoard(ai_tile(board, src_idx))
+			res |= value << (dst_idx * 4)
+		}
+	}
+	return res
+}
+
+@[inline]
+fn ai_pack_exponent(exponent int) AiBoard {
+	// AiBoard stores 4-bit exponents, so clamp larger freeplay tiles to avoid corrupting
+	// adjacent cells in the packed representation.
+	return AiBoard(u64(math.min(exponent, 15)))
+}
+
+fn board_to_ai(board Board) AiBoard {
+	mut res := AiBoard(0)
+	for y in 0 .. 4 {
+		for x in 0 .. 4 {
+			res |= ai_pack_exponent(board.field[y][x]) << ((y << 2 + x) << 2)
+		}
+	}
+	return res
+}
+
+@[inline]
+fn ai_empty_count(board AiBoard) int {
+	mut empty_tiles := 0
+	for idx in 0 .. 16 {
+		if ai_tile(board, idx) == 0 {
+			empty_tiles++
+		}
+	}
+	return empty_tiles
+}
+
+fn (ai &AiEngine) move_left(board AiBoard) (AiBoard, bool) {
+	mut res := AiBoard(0)
+	mut changed := false
+	for row_idx in 0 .. 4 {
+		row := ai_row(board, row_idx)
+		next := ai.row_left[int(row)]
+		res |= AiBoard(next) << (row_idx << 4)
+		changed = changed || row != next
+	}
+	return res, changed
+}
+
+fn (ai &AiEngine) move_right(board AiBoard) (AiBoard, bool) {
+	mut res := AiBoard(0)
+	mut changed := false
+	for row_idx in 0 .. 4 {
+		row := ai_row(board, row_idx)
+		next := ai.row_right[int(row)]
+		res |= AiBoard(next) << (row_idx << 4)
+		changed = changed || row != next
+	}
+	return res, changed
+}
+
+fn (ai &AiEngine) move_up(board AiBoard) (AiBoard, bool) {
+	transposed := ai_transpose(board)
+	moved, changed := ai.move_left(transposed)
+	return ai_transpose(moved), changed
+}
+
+fn (ai &AiEngine) move_down(board AiBoard) (AiBoard, bool) {
+	transposed := ai_transpose(board)
+	moved, changed := ai.move_right(transposed)
+	return ai_transpose(moved), changed
+}
+
+fn (ai &AiEngine) move_board(board AiBoard, move Direction) (AiBoard, bool) {
+	return match move {
+		.left { ai.move_left(board) }
+		.right { ai.move_right(board) }
+		.up { ai.move_up(board) }
+		.down { ai.move_down(board) }
+	}
+}
+
+@[direct_array_access]
+fn (ai &AiEngine) evaluate(board AiBoard) f64 {
+	mut score := 0.0
+	transposed := ai_transpose(board)
+	for row_idx in 0 .. 4 {
+		score += ai.row_heuristic[int(ai_row(board, row_idx))]
+		score += ai.row_heuristic[int(ai_row(transposed, row_idx))]
+	}
+	mut max_tile := u8(0)
+	mut max_in_corner := false
+	for y in 0 .. 4 {
+		for x in 0 .. 4 {
+			value := ai_tile(board, y << 2 + x)
+			score += f64(value) * ai_eval_weights[y][x]
+			if value > max_tile {
+				max_tile = value
+				max_in_corner = (x == 0 && y == 0)
+			}
+		}
+	}
+	if max_in_corner {
+		score += 1500.0 + f64(max_tile) * 180.0
+	} else {
+		score -= 300.0 + f64(max_tile) * 80.0
+	}
+	score += f64(ai_empty_count(board)) * 500.0
+	score += ai_snake_score(board, ai_snake_path_row)
+	score += ai_snake_score(board, ai_snake_path_col)
+	return score
+}
+
+fn ai_snake_score(board AiBoard, path [16]int) f64 {
+	mut score := 0.0
+	mut weight := 1.0
+	for idx in path {
+		value := f64(ai_tile(board, idx))
+		score += value * value * weight
+		weight *= 0.5
+	}
+	return score * 220.0
+}
+
+@[inline]
+fn (mut ctx AiSearchCtx) should_abort() bool {
+	if ctx.aborted {
+		return true
+	}
+	if ctx.nodes & 1023 == 0 && ctx.watch.elapsed().microseconds() >= ctx.deadline_us {
+		ctx.aborted = true
+		return true
+	}
+	return false
+}
+
+@[inline]
+fn ai_tt_index(board AiBoard, depth int, kind u8) int {
+	mut h := u64(board)
+	h ^= u64(depth) * 0x9e3779b97f4a7c15
+	h ^= u64(kind) * 0xbf58476d1ce4e5b9
+	h ^= h >> 30
+	h *= 0xbf58476d1ce4e5b9
+	h ^= h >> 27
+	h *= 0x94d049bb133111eb
+	h ^= h >> 31
+	return int(h & u64(ai_tt_size - 1))
+}
+
+fn (mut ai AiEngine) tt_lookup(board AiBoard, depth int, kind u8, mut ctx AiSearchCtx) ?f64 {
+	start_idx := ai_tt_index(board, depth, kind)
+	for probe in 0 .. 4 {
+		idx := (start_idx + probe) & (ai_tt_size - 1)
+		entry := ai.tt[idx]
+		if entry.generation != ctx.generation {
+			continue
+		}
+		if entry.board == board && entry.kind == kind && int(entry.depth) >= depth {
+			ctx.cache_hits++
+			return entry.score
+		}
+	}
+	return none
+}
+
+fn (mut ai AiEngine) tt_store(board AiBoard, depth int, kind u8, score f64, ctx AiSearchCtx) {
+	start_idx := ai_tt_index(board, depth, kind)
+	mut best_idx := start_idx
+	mut found_slot := false
+	for probe in 0 .. 4 {
+		idx := (start_idx + probe) & (ai_tt_size - 1)
+		entry := ai.tt[idx]
+		if entry.generation != ctx.generation || entry.board == board || int(entry.depth) <= depth {
+			best_idx = idx
+			found_slot = true
+			break
+		}
+	}
+	if !found_slot {
+		best_idx = start_idx
+	}
+	ai.tt[best_idx] = AiTtEntry{
+		board:      board
+		score:      score
+		generation: ctx.generation
+		depth:      u8(depth)
+		kind:       kind
+	}
+}
+
+fn (mut ai AiEngine) expectimax_max(board AiBoard, depth int, mut ctx AiSearchCtx) f64 {
+	ctx.nodes++
+	if ctx.should_abort() {
+		return ai_abort_score
+	}
+	if cached := ai.tt_lookup(board, depth, 0, mut ctx) {
+		return cached
+	}
+	if depth == 0 {
+		score := ai.evaluate(board)
+		ai.tt_store(board, depth, 0, score, ctx)
+		return score
+	}
+	mut best_score := ai_terminal_loss
+	mut has_move := false
+	for move in possible_moves {
+		next_board, is_valid := ai.move_board(board, move)
+		if !is_valid {
+			continue
+		}
+		has_move = true
+		score := ai.expectimax_chance(next_board, depth - 1, mut ctx)
+		if ctx.aborted {
+			return ai_abort_score
+		}
+		if score > best_score {
+			best_score = score
+		}
+	}
+	if !has_move {
+		return ai_terminal_loss
+	}
+	ai.tt_store(board, depth, 0, best_score, ctx)
+	return best_score
+}
+
+fn (mut ai AiEngine) expectimax_chance(board AiBoard, depth int, mut ctx AiSearchCtx) f64 {
+	ctx.nodes++
+	if ctx.should_abort() {
+		return ai_abort_score
+	}
+	if cached := ai.tt_lookup(board, depth, 1, mut ctx) {
+		return cached
+	}
+	empty_tiles := ai_empty_count(board)
+	if empty_tiles == 0 {
+		score := ai.expectimax_max(board, depth, mut ctx)
+		if !ctx.aborted {
+			ai.tt_store(board, depth, 1, score, ctx)
+		}
+		return score
+	}
+	cell_weight := 1.0 / f64(empty_tiles)
+	mut total_score := 0.0
+	for idx in 0 .. 16 {
+		if ai_tile(board, idx) != 0 {
+			continue
+		}
+		shift := idx << 2
+		two_board := board | (AiBoard(1) << shift)
+		two_score := ai.expectimax_max(two_board, depth, mut ctx)
+		if ctx.aborted {
+			return ai_abort_score
+		}
+		four_board := board | (AiBoard(2) << shift)
+		four_score := ai.expectimax_max(four_board, depth, mut ctx)
+		if ctx.aborted {
+			return ai_abort_score
+		}
+		total_score += cell_weight * (ai_spawn_two_prob * two_score +
+			ai_spawn_four_prob * four_score)
+	}
+	ai.tt_store(board, depth, 1, total_score, ctx)
+	return total_score
+}
+
+fn (mut ai AiEngine) first_valid_move(board AiBoard) ?Direction {
+	for move in possible_moves {
+		_, is_valid := ai.move_board(board, move)
+		if is_valid {
+			return move
+		}
+	}
+	return none
+}
+
+fn (mut ai AiEngine) best_move(board AiBoard) AiMoveResult {
+	ai.ensure_ready()
+	ai.generation++
+	mut ctx := AiSearchCtx{
+		watch:       time.new_stopwatch()
+		deadline_us: ai_time_budget_us
+		generation:  ai.generation
+	}
+	mut best := AiMoveResult{}
+	if fallback := ai.first_valid_move(board) {
+		best = AiMoveResult{
+			move:  fallback
+			score: ai_terminal_loss
+			valid: true
+		}
+	} else {
+		return best
+	}
+	empty_tiles := ai_empty_count(board)
+	mut depth_limit := ai_max_search_depth
+	if empty_tiles >= 6 {
+		depth_limit = 6
+	}
+	for depth := ai_min_search_depth; depth <= depth_limit; depth++ {
+		mut iter_best := AiMoveResult{
+			score: ai_terminal_loss
+		}
+		mut iter_valid := false
+		for move in possible_moves {
+			next_board, is_valid := ai.move_board(board, move)
+			if !is_valid {
+				continue
+			}
+			score := ai.expectimax_chance(next_board, depth - 1, mut ctx)
+			if ctx.aborted {
+				break
+			}
+			if !iter_valid || score > iter_best.score {
+				iter_best = AiMoveResult{
+					move:  move
+					score: score
+					depth: depth
+					valid: true
+				}
+				iter_valid = true
+			}
+		}
+		if ctx.aborted {
+			break
+		}
+		if iter_valid {
+			best = iter_best
+			best.nodes = ctx.nodes
+			best.cache_hits = ctx.cache_hits
+		}
+	}
+	best.nodes = ctx.nodes
+	best.cache_hits = ctx.cache_hits
+	return best
+}
+
+@[inline]
+fn (b Board) has_moves() bool {
+	for y in 0 .. 4 {
+		for x in 0 .. 4 {
+			value := b.field[y][x]
+			if value == 0 {
+				return true
+			}
+			if (x < 3 && value == b.field[y][x + 1]) || (y < 3 && value == b.field[y + 1][x]) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 fn (mut b Board) move(d Direction) (Board, bool) {
 	for y in 0 .. 4 {
 		for x in 0 .. 4 {
@@ -312,6 +849,7 @@ fn (mut b Board) move(d Direction) (Board, bool) {
 		.up { b.transpose().to_left().transpose() }
 		.down { b.transpose().hmirror().to_left().hmirror().transpose() }
 	}
+
 	// If the board hasn't changed, it's an illegal move, don't allow it.
 	for y in 0 .. 4 {
 		for x in 0 .. 4 {
@@ -324,23 +862,23 @@ fn (mut b Board) move(d Direction) (Board, bool) {
 }
 
 fn (mut b Board) is_game_over() bool {
+	return !b.has_moves()
+}
+
+@[inline]
+fn (mut app App) request_redraw() {
+	app.needs_redraw = true
+}
+
+fn (app &App) has_pending_animation() bool {
 	for y in 0 .. 4 {
 		for x in 0 .. 4 {
-			fidx := b.field[y][x]
-			if fidx == 0 {
-				// there are remaining zeros
-				return false
-			}
-			if (x > 0 && fidx == b.field[y][x - 1])
-				|| (x < 4 - 1 && fidx == b.field[y][x + 1])
-				|| (y > 0 && fidx == b.field[y - 1][x])
-				|| (y < 4 - 1 && fidx == b.field[y + 1][x]) {
-				// there are remaining merges
-				return false
+			if app.atickers[y][x] > 0.0 || app.mtickers[y][x] > 0.0 {
+				return true
 			}
 		}
 	}
-	return true
+	return false
 }
 
 fn (mut app App) update_tickers() {
@@ -368,6 +906,7 @@ fn (mut app App) new_game() {
 	app.moves = 0
 	app.new_random_tile()
 	app.new_random_tile()
+	app.request_redraw()
 }
 
 @[inline]
@@ -449,6 +988,7 @@ fn (mut app App) apply_new_board(new Board) {
 	app.board = new
 	app.undo << Undo{old, app.state}
 	app.new_random_tile()
+	app.request_redraw()
 }
 
 fn (mut app App) move(d Direction) {
@@ -459,62 +999,20 @@ fn (mut app App) move(d Direction) {
 	app.apply_new_board(new)
 }
 
-struct Prediction {
-mut:
-	move    Direction
-	mpoints f64
-	mcmoves f64
-}
-
-fn (p Prediction) str() string {
-	return '{ move: ${p.move:5}, mpoints: ${p.mpoints:8.2f}, mcmoves: ${p.mcmoves:6.2f} }'
-}
-
 fn (mut app App) ai_move() {
-	mut predictions := [4]Prediction{}
-	mut is_valid := false
 	think_watch := time.new_stopwatch()
-	for move in possible_moves {
-		move_idx := int(move)
-		predictions[move_idx].move = move
-		mut mpoints := 0
-		mut mcmoves := 0
-		for _ in 0 .. predictions_per_move {
-			mut cboard := app.board
-			cboard, is_valid = cboard.move(move)
-			if !is_valid || cboard.is_game_over() {
-				continue
-			}
-			mpoints += cboard.points
-			mut cmoves := 0
-			for !cboard.is_game_over() {
-				nmove := rand.element(possible_moves) or { Direction.up }
-				cboard, is_valid = cboard.move(nmove)
-				if !is_valid {
-					continue
-				}
-				cboard.place_random_tile()
-				cmoves++
-				if cmoves > prediction_depth {
-					break
-				}
-			}
-			mpoints += cboard.points
-			mcmoves += cmoves
-		}
-		predictions[move_idx].mpoints = f64(mpoints) / predictions_per_move
-		predictions[move_idx].mcmoves = f64(mcmoves) / predictions_per_move
+	search_result := app.ai_engine.best_move(board_to_ai(app.board))
+	if !search_result.valid {
+		return
 	}
-	mut bestprediction := Prediction{
-		mpoints: -1
+	elapsed_us := think_watch.elapsed().microseconds()
+	cache_rate := if search_result.nodes > 0 {
+		100.0 * f64(search_result.cache_hits) / f64(search_result.nodes)
+	} else {
+		0.0
 	}
-	for move_idx in 0 .. possible_moves.len {
-		if bestprediction.mpoints < predictions[move_idx].mpoints {
-			bestprediction = predictions[move_idx]
-		}
-	}
-	eprintln('Simulation time: ${think_watch.elapsed().microseconds():4}µs |  best ${bestprediction}')
-	app.move(bestprediction.move)
+	eprintln('AI ${elapsed_us:5}µs | depth ${search_result.depth:2} | nodes ${search_result.nodes:7} | cache ${cache_rate:5.1f}% | move ${search_result.move:5} | score ${search_result.score:9.2f}')
+	app.move(search_result.move)
 }
 
 fn (app &App) label_format(kind LabelKind) gg.TextCfg {
@@ -582,6 +1080,7 @@ fn (mut app App) set_theme(idx int) {
 	app.theme_idx = idx
 	app.theme = theme
 	app.gg.set_bg_color(theme.bg_color)
+	app.request_redraw()
 }
 
 fn (mut app App) resize() {
@@ -610,6 +1109,7 @@ fn (mut app App) resize() {
 		app.ui.y_padding = (app.ui.window_height - app.ui.window_width - app.ui.header_size) / 2
 		app.ui.x_padding = 0
 	}
+	app.request_redraw()
 }
 
 fn (app &App) draw() {
@@ -663,7 +1163,8 @@ fn (app &App) draw_tiles() {
 			th := tw // square tiles, w == h
 			xoffset := xstart + app.ui.padding_size + x * toffset
 			yoffset := ystart + app.ui.padding_size + y * toffset
-			app.gg.draw_rounded_rect_filled(xoffset, yoffset, tw, th, tw / 8, app.theme.tile_colors[0])
+			app.gg.draw_rounded_rect_filled(xoffset, yoffset, tw, th, tw / 8,
+				app.theme.tile_colors[0])
 		}
 	}
 
@@ -703,10 +1204,12 @@ fn (app &App) draw_one_tile(x int, y int, tidx int) {
 	if oidx != 0xFFFF_FFFF {
 		scaling := app.ui.tile_size * easing.in_out_quint(app.mtickers[y][x])
 		if ox != x {
-			dx = math.clip(int(scaling * (f64(ox) - f64(x))), -4 * app.ui.tile_size, 4 * app.ui.tile_size)
+			dx = math.clip(int(scaling * (f64(ox) - f64(x))), -4 * app.ui.tile_size,
+				4 * app.ui.tile_size)
 		}
 		if oy != y {
-			dy = math.clip(int(scaling * (f64(oy) - f64(y))), -4 * app.ui.tile_size, 4 * app.ui.tile_size)
+			dy = math.clip(int(scaling * (f64(oy) - f64(y))), -4 * app.ui.tile_size,
+				4 * app.ui.tile_size)
 		}
 	}
 	tile_color := if tidx < app.theme.tile_colors.len {
@@ -725,9 +1228,13 @@ fn (app &App) draw_one_tile(x int, y int, tidx int) {
 		xpos := xoffset + tw / 2
 		ypos := yoffset + th / 2
 		mut fmt := app.label_format(.tile)
+		text_size := animated_tile_text_size(fmt.size, anim_size)
+		if text_size == 0 {
+			return
+		}
 		fmt = gg.TextCfg{
 			...fmt
-			size: int(anim_size * (fmt.size - 1))
+			size: text_size
 		}
 		match app.tile_format {
 			.normal {
@@ -738,24 +1245,29 @@ fn (app &App) draw_one_tile(x int, y int, tidx int) {
 			}
 			.exponent {
 				app.gg.draw_text(xpos, ypos, '2', fmt)
-				fs2 := int(f32(fmt.size) * 0.67)
-				app.gg.draw_text(xpos + app.ui.tile_size / 10, ypos - app.ui.tile_size / 8,
-					'${tidx}', gg.TextCfg{
-					...fmt
-					size:  fs2
-					align: gg.HorizontalAlign.left
-				})
+				fs2 := quantized_tile_text_size(int(f32(fmt.size) * 0.67))
+				if fs2 > 0 {
+					app.gg.draw_text(xpos + app.ui.tile_size / 10, ypos - app.ui.tile_size / 8,
+						'${tidx}', gg.TextCfg{
+						...fmt
+						size:  fs2
+						align: gg.HorizontalAlign.left
+					})
+				}
 			}
 			.shifts {
-				fs2 := int(f32(fmt.size) * 0.6)
-				app.gg.draw_text(xpos, ypos, '2<<${tidx - 1}', gg.TextCfg{
-					...fmt
-					size: fs2
-				})
+				fs2 := quantized_tile_text_size(int(f32(fmt.size) * 0.6))
+				if fs2 > 0 {
+					app.gg.draw_text(xpos, ypos, '2<<${tidx - 1}', gg.TextCfg{
+						...fmt
+						size: fs2
+					})
+				}
 			}
 			.none {} // Don't draw any text here, colors only
 			.end {} // Should never get here
 		}
+
 		// oidx_fmt := gg.TextCfg{...fmt,size: 14}
 		// app.gg.draw_text(xoffset + 50, yoffset + 15, 'y:${oidx >> 16}|x:${oidx & 0xFFFF}|m:${app.mtickers[y][x]:5.3f}',	oidx_fmt)
 		// app.gg.draw_text(xoffset + 52, yoffset + 30, 'ox:${ox}|oy:${oy}', oidx_fmt)
@@ -819,7 +1331,8 @@ fn (mut app App) handle_swipe() {
 	dmax := if math.max(adx, ady) > 0 { math.max(adx, ady) } else { 1 }
 	tdiff := (e.time - s.time).milliseconds()
 	// TODO: make this calculation more accurate (don't use arbitrary numbers)
-	min_swipe_distance := int(math.sqrt(math.min(w, h) * tdiff / 100)) + 20
+	distance_factor := f64(math.min(w, h)) * f64(tdiff) / 100.0
+	min_swipe_distance := int(math.sqrt(distance_factor)) + 20
 	if dmax < min_swipe_distance {
 		return
 	}
@@ -854,6 +1367,7 @@ fn (mut app App) next_tile_format() {
 	if app.tile_format == .end {
 		app.tile_format = .normal
 	}
+	app.request_redraw()
 }
 
 @[inline]
@@ -863,24 +1377,48 @@ fn (mut app App) undo() {
 		app.board = undo.board
 		app.state = undo.state
 		app.moves--
+		app.request_redraw()
 	}
 }
 
 fn (mut app App) on_key_down(key gg.KeyCode) {
 	// these keys are independent from the game state:
 	match key {
-		.v { app.is_ai_mode = !app.is_ai_mode }
-		.page_up { app.ai_fpm = dump(math.min(app.ai_fpm + 1, 60)) }
-		.page_down { app.ai_fpm = dump(math.max(app.ai_fpm - 1, 1)) }
+		.v {
+			app.is_ai_mode = !app.is_ai_mode
+			app.request_redraw()
+		}
+		.page_up {
+			app.ai_fpm = dump(math.min(app.ai_fpm + 1, 60))
+			app.request_redraw()
+		}
+		.page_down {
+			app.ai_fpm = dump(math.max(app.ai_fpm - 1, 1))
+			app.request_redraw()
+		}
 		//
-		.escape { app.gg.quit() }
-		.n, .r { app.new_game() }
-		.backspace { app.undo() }
-		.enter { app.next_tile_format() }
-		.j { app.state = .over }
-		.t { app.next_theme() }
+		.escape {
+			app.gg.quit()
+		}
+		.n, .r {
+			app.new_game()
+		}
+		.backspace {
+			app.undo()
+		}
+		.enter {
+			app.next_tile_format()
+		}
+		.j {
+			app.state = .over
+			app.request_redraw()
+		}
+		.t {
+			app.next_theme()
+		}
 		else {}
 	}
+
 	if app.state in [.play, .freeplay] {
 		if !app.is_ai_mode {
 			match key {
@@ -895,6 +1433,7 @@ fn (mut app App) on_key_down(key gg.KeyCode) {
 	if app.state == .victory {
 		if key == .space {
 			app.state = .freeplay
+			app.request_redraw()
 		}
 	}
 }
@@ -953,26 +1492,40 @@ fn on_event(e &gg.Event, mut app App) {
 		}
 		else {}
 	}
+
+	if e.typ in [.key_down, .touches_began, .touches_ended, .mouse_down, .mouse_up, .resized,
+		.restored, .focused, .resumed] {
+		app.request_redraw()
+	}
 }
 
 fn frame(mut app App) {
+	is_ai_running := app.is_ai_mode && app.state in [.play, .freeplay]
+	mut has_pending_animation := app.has_pending_animation()
 	mut do_update := false
-	if app.gg.timer.elapsed().milliseconds() > 15 {
+	if (app.needs_redraw || has_pending_animation || is_ai_running)
+		&& app.gg.timer.elapsed().milliseconds() > 15 {
 		app.gg.timer.restart()
 		do_update = true
 		app.updates++
 	}
-	app.gg.begin()
 	if do_update {
 		app.update_tickers()
+		has_pending_animation = app.has_pending_animation()
 	}
-	app.draw()
-	app.gg.end()
-	if do_update && app.is_ai_mode && app.state in [.play, .freeplay]
-		&& app.updates % app.ai_fpm == 0 {
+	if app.needs_redraw || (do_update && (has_pending_animation || is_ai_running)) {
+		app.gg.begin()
+		app.draw()
+		app.gg.end()
+		app.needs_redraw = false
+	}
+	if do_update && is_ai_running && app.updates % app.ai_fpm == 0 {
 		app.ai_move()
 	}
-	if app.updates % 120 == 0 {
+	if has_pending_animation || is_ai_running {
+		app.request_redraw()
+	}
+	if do_update && app.updates % 120 == 0 {
 		// do GC once per 2 seconds
 		// eprintln('> gc_memory_use: ${gc_memory_use()}')
 		if gc_is_enabled() {

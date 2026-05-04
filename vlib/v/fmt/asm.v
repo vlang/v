@@ -111,6 +111,7 @@ fn (mut f Fmt) asm_arg(arg ast.AsmArg) {
 					panic('fmt: invalid addressing mode')
 				}
 			}
+
 			f.write(']')
 		}
 		ast.AsmDisp {

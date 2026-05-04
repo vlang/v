@@ -66,8 +66,8 @@ pub fn (mut sm SourceMap) add_mapping_list(source_name string, mapping_list []Ma
 		} else {
 			NameIndexType(Empty{})
 		}
-		sm.mappings.add_mapping(mapping.gen_line, mapping.gen_column, sources_ind, mapping.source_position,
-			names_ind)
+		sm.mappings.add_mapping(mapping.gen_line, mapping.gen_column, sources_ind,
+			mapping.source_position, names_ind)
 	}
 }
 
@@ -81,7 +81,7 @@ fn (mut sm SourceMap) export_mappings(mut writer io.Writer) {
 }
 
 fn (mut sm SourceMap) export_mappings_string() string {
-	mut output := StringWriter{}
+	mut output := &StringWriter{}
 
 	sm.mappings.export_mappings(mut output) or { panic('export failed') }
 	return output.bytes.bytestr()
@@ -91,6 +91,7 @@ fn (mut sm SourceMap) export_mappings_string() string {
 // Sourcemap Specs http://sourcemaps.info/spec.html
 pub fn (mut sm SourceMap) to_json() SourceMapJson {
 	mut source_map_json := map[string]json2.Any{}
+	mappings_json := sm.export_mappings_string()
 	source_map_json['version'] = sm.version
 	if sm.file != '' {
 		source_map_json['file'] = json2.Any(sm.file)
@@ -124,7 +125,7 @@ pub fn (mut sm SourceMap) to_json() SourceMapJson {
 		names_json << name
 	}
 	source_map_json['names'] = json2.Any(names_json)
-	source_map_json['mappings'] = sm.export_mappings_string()
+	source_map_json['mappings'] = json2.Any(mappings_json)
 	return source_map_json
 }
 

@@ -5,15 +5,60 @@
 
 module builtin
 
+@[inline]
+fn alloc_array_data_noscan(total_size u64) voidptr {
+	raw := vcalloc_noscan(array_data_allocation_size(total_size))
+	return unsafe { &u8(raw) + array_data_header_size() }
+}
+
+@[inline]
+fn alloc_array_data_noscan_uninit(total_size u64) voidptr {
+	raw := unsafe { malloc_noscan_uninit(array_data_allocation_size(total_size)) }
+	unsafe {
+		(&ArrayDataHeader(raw)).has_slices = false
+		return &u8(raw) + array_data_header_size()
+	}
+}
+
+@[inline]
+fn (mut a array) clone_shallow_to_cap_noscan(new_cap int) {
+	if new_cap <= 0 {
+		unsafe { a.flags.clear(.managed | .noscan_data | .is_slice) }
+		a.data = unsafe { nil }
+		a.offset = 0
+		a.cap = 0
+		return
+	}
+	total_size := u64(new_cap) * u64(a.element_size)
+	new_data := alloc_array_data_noscan_uninit(total_size)
+	copy_size := u64(a.len) * u64(a.element_size)
+	if a.data != unsafe { nil } && copy_size > 0 {
+		unsafe { vmemcpy(new_data, a.data, copy_size) }
+	}
+	a.data = new_data
+	a.offset = 0
+	a.cap = new_cap
+	unsafe { a.flags.set(.noscan_data) }
+	a.set_managed_flags(false)
+}
+
 fn __new_array_noscan(mylen int, cap int, elm_size int) array {
 	panic_on_negative_len(mylen)
 	panic_on_negative_cap(cap)
 	cap_ := if cap < mylen { mylen } else { cap }
+	total_size := u64(cap_) * u64(elm_size)
+	mut data := unsafe { nil }
+	if cap_ > 0 && mylen == 0 {
+		data = alloc_array_data_noscan_uninit(total_size)
+	} else {
+		data = alloc_array_data_noscan(total_size)
+	}
 	arr := array{
 		element_size: elm_size
-		data:         vcalloc_noscan(u64(cap_) * u64(elm_size))
+		data:         data
 		len:          mylen
 		cap:          cap_
+		flags:        .managed | .noscan_data
 	}
 	return arr
 }
@@ -24,9 +69,10 @@ fn __new_array_with_default_noscan(mylen int, cap int, elm_size int, val voidptr
 	cap_ := if cap < mylen { mylen } else { cap }
 	mut arr := array{
 		element_size: elm_size
-		data:         vcalloc_noscan(u64(cap_) * u64(elm_size))
+		data:         alloc_array_data_noscan(u64(cap_) * u64(elm_size))
 		len:          mylen
 		cap:          cap_
+		flags:        .managed | .noscan_data
 	}
 	if val != 0 && arr.data != unsafe { nil } {
 		if elm_size == 1 {
@@ -52,9 +98,10 @@ fn __new_array_with_multi_default_noscan(mylen int, cap int, elm_size int, val v
 	cap_ := if cap < mylen { mylen } else { cap }
 	mut arr := array{
 		element_size: elm_size
-		data:         vcalloc_noscan(u64(cap_) * u64(elm_size))
+		data:         alloc_array_data_noscan(u64(cap_) * u64(elm_size))
 		len:          mylen
 		cap:          cap_
+		flags:        .managed | .noscan_data
 	}
 	if val != 0 && arr.data != unsafe { nil } {
 		for i in 0 .. arr.len {
@@ -70,9 +117,10 @@ fn __new_array_with_array_default_noscan(mylen int, cap int, elm_size int, val a
 	cap_ := if cap < mylen { mylen } else { cap }
 	mut arr := array{
 		element_size: elm_size
-		data:         vcalloc_noscan(u64(cap_) * u64(elm_size))
+		data:         alloc_array_data_noscan(u64(cap_) * u64(elm_size))
 		len:          mylen
 		cap:          cap_
+		flags:        .managed | .noscan_data
 	}
 	for i in 0 .. arr.len {
 		val_clone := val.clone()
@@ -88,9 +136,10 @@ fn new_array_from_c_array_noscan(len int, cap int, elm_size int, c_array voidptr
 	cap_ := if cap < len { len } else { cap }
 	arr := array{
 		element_size: elm_size
-		data:         vcalloc_noscan(u64(cap_) * u64(elm_size))
+		data:         alloc_array_data_noscan(u64(cap_) * u64(elm_size))
 		len:          len
 		cap:          cap_
+		flags:        .managed | .noscan_data
 	}
 	// TODO: Write all memory functions (like memcpy) in V
 	unsafe { vmemcpy(arr.data, c_array, u64(len) * u64(elm_size)) }
@@ -115,12 +164,11 @@ fn (mut a array) ensure_cap_noscan(required int) {
 			// limit the capacity, since bigger values, will overflow the 32bit integer used to store it
 			cap = max_int
 		} else {
-			panic_n('array.ensure_cap_noscan: array needs to grow to cap (which is > 2^31):',
-				cap)
+			panic_n('array.ensure_cap_noscan: array needs to grow to cap (which is > 2^31):', cap)
 		}
 	}
 	new_size := u64(cap) * u64(a.element_size)
-	new_data := vcalloc_noscan(new_size)
+	new_data := alloc_array_data_noscan_uninit(new_size)
 	if a.data != unsafe { nil } {
 		unsafe { vmemcpy(new_data, a.data, u64(a.len) * u64(a.element_size)) }
 		// TODO: the old data may be leaked when no GC is used (ref-counting?)
@@ -128,6 +176,7 @@ fn (mut a array) ensure_cap_noscan(required int) {
 	a.data = new_data
 	a.offset = 0
 	a.cap = int(cap)
+	a.set_managed_flags(false)
 }
 
 // repeat returns a new array with the given array elements repeated given times.
@@ -144,11 +193,18 @@ fn (a array) repeat_to_depth_noscan(count int, depth int) array {
 	if size == 0 {
 		size = u64(a.element_size)
 	}
+	mut data := unsafe { nil }
+	if depth > 0 {
+		data = alloc_array_data(size)
+	} else {
+		data = alloc_array_data_noscan(size)
+	}
 	arr := array{
 		element_size: a.element_size
-		data:         if depth > 0 { vcalloc(size) } else { vcalloc_noscan(size) }
+		data:         data
 		len:          count * a.len
 		cap:          count * a.len
+		flags:        if depth == 0 { .managed | .noscan_data } else { .managed }
 	}
 	if a.len > 0 {
 		a_total_size := u64(a.len) * u64(a.element_size)
@@ -177,7 +233,12 @@ fn (mut a array) insert_noscan(i int, val voidptr) {
 	if a.len == max_int {
 		panic('array.insert_noscan: a.len reached max_int')
 	}
-	a.ensure_cap_noscan(a.len + 1)
+	required := a.len + 1
+	if a.needs_unique_shift(required) {
+		a.clone_shallow_to_cap_noscan(a.cap)
+	} else if required > a.cap {
+		a.ensure_cap_noscan(required)
+	}
 	unsafe {
 		vmemmove(a.get_unsafe(i + 1), a.get_unsafe(i), u64(a.len - i) * u64(a.element_size))
 		a.set_unsafe(i, val)
@@ -195,14 +256,18 @@ fn (mut a array) insert_many_noscan(i int, val voidptr, size int) {
 	if new_len > max_int {
 		panic_n('array.insert_many_noscan: max_int will be exceeded by a.len:', new_len)
 	}
-	a.ensure_cap_noscan(a.len + size)
+	if a.needs_unique_shift(int(new_len)) {
+		a.clone_shallow_to_cap_noscan(a.cap)
+	} else if int(new_len) > a.cap {
+		a.ensure_cap_noscan(int(new_len))
+	}
 	elem_size := a.element_size
 	unsafe {
 		iptr := a.get_unsafe(i)
 		vmemmove(a.get_unsafe(i + size), iptr, u64(a.len - i) * u64(elem_size))
 		vmemcpy(iptr, val, u64(size) * u64(elem_size))
 	}
-	a.len += size
+	a.len = int(new_len)
 }
 
 // prepend prepends one value to the array.
@@ -239,6 +304,11 @@ fn (mut a array) pop_noscan() voidptr {
 	}
 	new_len := a.len - 1
 	last_elem := unsafe { &u8(a.data) + u64(new_len) * u64(a.element_size) }
+	if a.needs_unique_shrink() {
+		copy := unsafe { memdup_noscan(last_elem, a.element_size) }
+		a.delete_many(new_len, 1)
+		return copy
+	}
 	a.len = new_len
 	// Note: a.cap is not changed here *on purpose*, so that
 	// further << ops on that array will be more efficient.
@@ -259,11 +329,18 @@ fn (a &array) clone_to_depth_noscan(depth int) array {
 	if size == 0 {
 		size++
 	}
+	mut data := unsafe { nil }
+	if depth == 0 {
+		data = alloc_array_data_noscan(size)
+	} else {
+		data = alloc_array_data(size)
+	}
 	mut arr := array{
 		element_size: a.element_size
-		data:         if depth == 0 { vcalloc_noscan(size) } else { vcalloc(size) }
+		data:         data
 		len:          a.len
 		cap:          a.cap
+		flags:        if depth == 0 { .managed | .noscan_data } else { .managed }
 	}
 	// Recursively clone-generated elements if array element is array type
 	if depth > 0 {
@@ -289,8 +366,11 @@ fn (mut a array) push_noscan(val voidptr) {
 	if a.len >= max_int {
 		panic('array.push_noscan: len bigger than max_int')
 	}
-	if a.len >= a.cap {
-		a.ensure_cap_noscan(a.len + 1)
+	required := a.len + 1
+	if a.needs_unique_append(required) {
+		a.clone_shallow_to_cap_noscan(a.cap)
+	} else if required > a.cap {
+		a.ensure_cap_noscan(required)
 	}
 	unsafe { vmemcpy(&u8(a.data) + u64(a.element_size) * u64(a.len), val, a.element_size) }
 	a.len++
@@ -308,15 +388,22 @@ fn (mut a array) push_many_noscan(val voidptr, size int) {
 		// string interpolation also uses <<; avoid it, use a fixed string for the panic
 		panic('array.push_many_noscan: new len exceeds max_int')
 	}
+	if a.needs_unique_append(int(new_len)) {
+		a.clone_shallow_to_cap_noscan(a.cap)
+	}
 	if a.data == val && a.data != 0 {
 		// handle `arr << arr`
 		copy := a.clone()
-		a.ensure_cap_noscan(a.len + size)
+		if int(new_len) > a.cap {
+			a.ensure_cap_noscan(int(new_len))
+		}
 		unsafe {
 			vmemcpy(a.get_unsafe(a.len), copy.data, u64(a.element_size) * u64(size))
 		}
 	} else {
-		a.ensure_cap_noscan(a.len + size)
+		if int(new_len) > a.cap {
+			a.ensure_cap_noscan(int(new_len))
+		}
 		if a.data != 0 && val != 0 {
 			unsafe { vmemcpy(a.get_unsafe(a.len), val, u64(a.element_size) * u64(size)) }
 		}
@@ -331,9 +418,10 @@ fn (a array) reverse_noscan() array {
 	}
 	mut arr := array{
 		element_size: a.element_size
-		data:         vcalloc_noscan(u64(a.cap) * u64(a.element_size))
+		data:         alloc_array_data_noscan(u64(a.cap) * u64(a.element_size))
 		len:          a.len
 		cap:          a.cap
+		flags:        .managed | .noscan_data
 	}
 	for i in 0 .. a.len {
 		unsafe { arr.set_unsafe(i, a.get_unsafe(a.len - 1 - i)) }

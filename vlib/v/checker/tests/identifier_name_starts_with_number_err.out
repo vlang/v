@@ -1,0 +1,6 @@
+vlib/v/checker/tests/identifier_name_starts_with_number_err.vv:2:6: error: identifier name `3a` cannot start with a number
+    1 | fn main() {
+    2 |     mut 3a := 1
+      |         ~~
+    3 |     println(3a)
+    4 | }

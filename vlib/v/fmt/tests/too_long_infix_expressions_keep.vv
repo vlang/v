@@ -32,7 +32,8 @@ fn s_adjustsoundparams(listener &Abc, source &Abc, vol &int, sep &int) int {
 		if approx_dist > (1200 * (1 << 16)) {
 			approx_dist = (1200 * (1 << 16))
 		}
-		*vol = 15 +((snd_SfxVolume - 15) * (((1200 * (1 << 16)) - approx_dist) >> 16)) / (((1200 * (1 << 16)) - (200 * (1 << 16))) >> 16)
+		*vol = 15 + ((snd_SfxVolume - 15) * (((1200 * (1 << 16)) -
+			approx_dist) >> 16)) / (((1200 * (1 << 16)) - (200 * (1 << 16))) >> 16)
 	} else {
 		*vol = (snd_SfxVolume * (((1200 * (1 << 16)) - approx_dist) >> 16)) / (((1200 * (1 << 16)) - (200 * (1 << 16))) >> 16)
 	}

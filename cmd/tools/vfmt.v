@@ -145,23 +145,28 @@ fn main() {
 		}
 		errors++
 	}
-	ecode := if has_internal_error { 5 } else { 0 }
+	if has_internal_error {
+		// When some files could not be processed due to internal vfmt errors,
+		// exit with code 5 regardless of format-diff errors in other files.
+		// This prevents exit codes like 7 (2+5) that confuse downstream CI checks.
+		exit(5)
+	}
 	if errors > 0 {
 		if !foptions.is_diff {
 			eprintln('Encountered a total of: ${errors} formatting errors.')
 		}
 		match true {
-			foptions.is_noerror { exit(0 + ecode) }
-			foptions.is_verify { exit(1 + ecode) }
-			foptions.is_c { exit(2 + ecode) }
-			else { exit(1 + ecode) }
+			foptions.is_noerror { exit(0) }
+			foptions.is_verify { exit(1) }
+			foptions.is_c { exit(2) }
+			else { exit(1) }
 		}
 	}
-	exit(ecode)
+	exit(0)
 }
 
 fn (foptions &FormatOptions) verify_file(prefs &pref.Preferences, fpath string) bool {
-	fcontent := foptions.formated_content_from_file(prefs, fpath)
+	fcontent := foptions.formated_content_from_file(prefs, fpath) or { return false }
 	content := os.read_file(fpath) or { return false }
 	return fcontent == content
 }
@@ -183,9 +188,12 @@ fn (foptions &FormatOptions) vlog(msg string) {
 	}
 }
 
-fn (foptions &FormatOptions) formated_content_from_file(prefs &pref.Preferences, file string) string {
+fn (foptions &FormatOptions) formated_content_from_file(prefs &pref.Preferences, file string) !string {
 	mut table := ast.new_table()
 	file_ast := parser.parse_file(file, mut table, .parse_comments, prefs)
+	if file_ast.errors.len > 0 {
+		return error('the file contains parser errors')
+	}
 	table.new_int = foptions.is_new_int
 	formated_content := fmt.fmt(file_ast, mut table, prefs, foptions.is_debug)
 	return formated_content
@@ -204,6 +212,9 @@ fn (foptions &FormatOptions) format_file(file string) {
 	foptions.vlog('vfmt2 running fmt.fmt over file: ${file}')
 	prefs, mut table := setup_preferences_and_table()
 	file_ast := parser.parse_file(file, mut table, .parse_comments, prefs)
+	if file_ast.errors.len > 0 {
+		exit(2)
+	}
 	// checker.new_checker(table, prefs).check(file_ast)
 	table.new_int = foptions.is_new_int
 	formatted_content := fmt.fmt(file_ast, mut table, prefs, foptions.is_debug)
@@ -217,6 +228,9 @@ fn (foptions &FormatOptions) format_pipe() {
 	prefs, mut table := setup_preferences_and_table()
 	input_text := os.get_raw_lines_joined()
 	file_ast := parser.parse_text(input_text, '', mut table, .parse_comments, prefs)
+	if file_ast.errors.len > 0 {
+		exit(1)
+	}
 	// checker.new_checker(table, prefs).check(file_ast)
 	table.new_int = foptions.is_new_int
 	formatted_content := fmt.fmt(file_ast, mut table, prefs, foptions.is_debug,
@@ -225,19 +239,6 @@ fn (foptions &FormatOptions) format_pipe() {
 	print(formatted_content)
 	flush_stdout()
 	foptions.vlog('fmt.fmt worked and ${formatted_content.len} bytes were written to stdout.')
-}
-
-fn print_compiler_options(compiler_params &pref.Preferences) {
-	eprintln('         os: ' + compiler_params.os.str())
-	eprintln('  ccompiler: ${compiler_params.ccompiler}')
-	eprintln('       path: ${compiler_params.path} ')
-	eprintln('   out_name: ${compiler_params.out_name} ')
-	eprintln('      vroot: ${compiler_params.vroot} ')
-	eprintln('lookup_path: ${compiler_params.lookup_path} ')
-	eprintln('   out_name: ${compiler_params.out_name} ')
-	eprintln('     cflags: ${compiler_params.cflags} ')
-	eprintln('    is_test: ${compiler_params.is_test} ')
-	eprintln('  is_script: ${compiler_params.is_script} ')
 }
 
 fn (mut foptions FormatOptions) post_process_file(file string, formatted_file_path string) ! {
@@ -303,11 +304,6 @@ fn (mut foptions FormatOptions) post_process_file(file string, formatted_file_pa
 	}
 	print(formatted_fc)
 	flush_stdout()
-}
-
-fn read_source_lines(file string) ![]string {
-	source_lines := os.read_lines(file) or { return error('can not read ${file}') }
-	return source_lines
 }
 
 @[noreturn]

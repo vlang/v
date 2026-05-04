@@ -11,6 +11,29 @@ fn (mut g JsGen) gen_plain_infix_expr(node ast.InfixExpr) {
 	cast_ty := if greater_typ == it.left_type { l_sym.cname } else { r_sym.cname }
 	g.write('new ${g.js_name(cast_ty)}( ')
 	g.cast_stack << greater_typ
+	if node.op == .power {
+		if !g.pref.output_es5 && ((l_sym.kind == .i64 || l_sym.kind == .u64)
+			|| (r_sym.kind == .i64 || r_sym.kind == .u64)) {
+			g.write('BigInt(')
+			g.expr(node.left)
+			g.gen_deref_ptr(node.left_type)
+			g.write('.valueOf()) ** BigInt(')
+			g.expr(node.right)
+			g.gen_deref_ptr(node.right_type)
+			g.write('.valueOf())')
+		} else {
+			g.write('Math.pow(')
+			g.expr(node.left)
+			g.gen_deref_ptr(node.left_type)
+			g.write('.valueOf(), ')
+			g.expr(node.right)
+			g.gen_deref_ptr(node.right_type)
+			g.write('.valueOf())')
+		}
+		g.cast_stack.delete_last()
+		g.write(')')
+		return
+	}
 	if !g.pref.output_es5 && ((l_sym.kind == .i64 || l_sym.kind == .u64)
 		|| (r_sym.kind == .i64 || r_sym.kind == .u64)) {
 		g.write('BigInt(')
@@ -196,6 +219,34 @@ fn (mut g JsGen) infix_expr_eq_op(node ast.InfixExpr) {
 			}
 			else {}
 		}
+	} else if !g.pref.output_es5
+		&& (left.sym.kind in [.i64, .u64] || right.sym.kind in [.i64, .u64]) {
+		if left.sym.kind in [.i64, .u64] && node.right is ast.IntegerLiteral {
+			g.expr(node.left)
+			g.gen_deref_ptr(node.left_type)
+			g.write('.valueOf() ${node.op.str()} ')
+			g.cast_stack << left.typ
+			g.expr(node.right)
+			g.cast_stack.delete_last()
+			g.gen_deref_ptr(node.right_type)
+			g.write('.valueOf()')
+		} else if right.sym.kind in [.i64, .u64] && node.left is ast.IntegerLiteral {
+			g.cast_stack << right.typ
+			g.expr(node.left)
+			g.cast_stack.delete_last()
+			g.gen_deref_ptr(node.left_type)
+			g.write('.valueOf() ${node.op.str()} ')
+			g.expr(node.right)
+			g.gen_deref_ptr(node.right_type)
+			g.write('.valueOf()')
+		} else {
+			g.expr(node.left)
+			g.gen_deref_ptr(node.left_type)
+			g.write('.valueOf() ${node.op.str()} ')
+			g.expr(node.right)
+			g.gen_deref_ptr(node.right_type)
+			g.write('.valueOf()')
+		}
 	} else {
 		g.expr(node.left)
 		g.gen_deref_ptr(node.left_type)
@@ -236,6 +287,34 @@ fn (mut g JsGen) infix_expr_cmp_op(node ast.InfixExpr) {
 			g.gen_deref_ptr(right.typ)
 			g.write(')')
 		}
+	} else if !g.pref.output_es5
+		&& (left.sym.kind in [.i64, .u64] || right.sym.kind in [.i64, .u64]) {
+		if left.sym.kind in [.i64, .u64] && node.right is ast.IntegerLiteral {
+			g.expr(node.left)
+			g.gen_deref_ptr(node.left_type)
+			g.write('.valueOf() ${node.op.str()} ')
+			g.cast_stack << left.typ
+			g.expr(node.right)
+			g.cast_stack.delete_last()
+			g.gen_deref_ptr(node.right_type)
+			g.write('.valueOf()')
+		} else if right.sym.kind in [.i64, .u64] && node.left is ast.IntegerLiteral {
+			g.cast_stack << right.typ
+			g.expr(node.left)
+			g.cast_stack.delete_last()
+			g.gen_deref_ptr(node.left_type)
+			g.write('.valueOf() ${node.op.str()} ')
+			g.expr(node.right)
+			g.gen_deref_ptr(node.right_type)
+			g.write('.valueOf()')
+		} else {
+			g.expr(node.left)
+			g.gen_deref_ptr(node.left_type)
+			g.write('.valueOf() ${node.op.str()} ')
+			g.expr(node.right)
+			g.gen_deref_ptr(node.right_type)
+			g.write('.valueOf()')
+		}
 	} else {
 		g.expr(node.left)
 		g.gen_deref_ptr(node.left_type)
@@ -255,6 +334,11 @@ fn (mut g JsGen) infix_expr_left_shift_op(node ast.InfixExpr) {
 		// arr << val
 		array_info := left.unaliased_sym.info as ast.Array
 		g.write('array_push(')
+		old_inside_left_shift := g.inside_left_shift
+		g.inside_left_shift = true
+		defer {
+			g.inside_left_shift = old_inside_left_shift
+		}
 		//&& array_info.elem_type != g.unwrap_generic(node.right_type)
 		if right.unaliased_sym.kind == .array && array_info.elem_type != right.typ {
 			g.expr(node.left)
@@ -362,7 +446,7 @@ fn (mut g JsGen) infix_is_not_is_op(node ast.InfixExpr) {
 
 fn (mut g JsGen) infix_expr(node ast.InfixExpr) {
 	match node.op {
-		.plus, .minus, .mul, .div, .mod {
+		.plus, .minus, .mul, .power, .div, .mod {
 			g.infix_expr_arithmetic_op(node)
 		}
 		.eq, .ne {

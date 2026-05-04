@@ -1,0 +1,9 @@
+[vlib/v/slow_tests/inout/dump_cross_reference_field.vv:16] window: &Window{
+    widgets: [Widget{
+        parent: &Window{
+            widgets: [Widget{
+                parent: &<circular>
+            }]
+        }
+    }]
+}

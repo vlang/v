@@ -8,21 +8,24 @@ import sync.pool
 
 @[markused]
 const turn_off_vcolors = os.setenv('VCOLORS', 'never', true)
+const is_silent = $if silent ? { true } $else { false }
 
 fn test_the_v_compiler_can_be_invoked() {
 	vexec := runner.full_path_to_v(5)
-	println('vexecutable: ${vexec}')
+	if !is_silent {
+		println('vexecutable: ${vexec}')
+	}
 	assert vexec != ''
 	vcmd := '${os.quoted_path(vexec)} -version'
 	r := os.execute_or_exit(vcmd)
 	assert r.exit_code == 0
-	// println('"$vcmd" exit_code: $r.exit_code | output: $r.output')
+	// println('"${vcmd}" exit_code: ${r.exit_code} | output: ${r.output}')
 	vcmd_error := '${os.quoted_path(vexec)} nonexisting.v'
 	r_error := os.execute(vcmd_error)
 	if r_error.exit_code < 0 {
 		panic(r_error.output)
 	}
-	// println('"$vcmd_error" exit_code: $r_error.exit_code | output: $r_error.output')
+	// println('"${vcmd_error}" exit_code: ${r_error.exit_code} | output: ${r_error.output}')
 	assert r_error.exit_code == 1
 	actual_error := r_error.output.trim_space()
 	assert actual_error == "builder error: nonexisting.v doesn't exist"
@@ -48,9 +51,8 @@ fn test_all_v_repl_files() {
 		bmark:   benchmark.new_benchmark()
 	}
 	// warmup, and ensure that the vrepl is compiled in single threaded mode if it does not exist
-	runner.run_repl_file(os.cache_dir(), session.options.vexec, 'vlib/v/slow_tests/repl/nothing.repl') or {
-		panic(err)
-	}
+	runner.run_repl_file(os.cache_dir(), session.options.vexec,
+		'vlib/v/slow_tests/repl/nothing.repl') or { panic(err) }
 	session.bmark.set_total_expected_steps(session.options.files.len)
 	mut pool_repl := pool.new_pool_processor(callback: worker_repl)
 	pool_repl.set_shared_context(session)
@@ -93,7 +95,9 @@ fn worker_repl(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 	session.bmark.ok()
 	tls_bench.ok()
 	os.rmdir_all(tfolder) or { panic(err) }
-	println(tls_bench.step_message_ok(fres))
+	if !is_silent {
+		println(tls_bench.step_message_ok(fres))
+	}
 	assert true
 	return pool.no_result
 }

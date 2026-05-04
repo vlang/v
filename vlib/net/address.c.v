@@ -16,31 +16,59 @@ const addr_ip_any = [4]u8{init: u8(0)}
 // new_ip6 creates a new Addr from the IP6 address family, based on the given port and addr
 pub fn new_ip6(port u16, addr [16]u8) Addr {
 	n_port := conv.hton16(port)
-	a := Addr{
-		f:    u8(AddrFamily.ip6)
-		addr: AddrData{
-			Ip6: Ip6{
-				port: n_port
+	$if macos || freebsd || openbsd || netbsd || dragonfly {
+		a := Addr{
+			len:  u8(sizeof(C.sockaddr_in6))
+			f:    u8(AddrFamily.ip6)
+			addr: AddrData{
+				Ip6: Ip6{
+					port: n_port
+				}
 			}
 		}
+		unsafe { vmemcpy(&a.addr.Ip6.addr[0], &addr[0], 16) }
+		return a
+	} $else {
+		a := Addr{
+			f:    u16(AddrFamily.ip6)
+			addr: AddrData{
+				Ip6: Ip6{
+					port: n_port
+				}
+			}
+		}
+		unsafe { vmemcpy(&a.addr.Ip6.addr[0], &addr[0], 16) }
+		return a
 	}
-	unsafe { vmemcpy(&a.addr.Ip6.addr[0], &addr[0], 16) }
-	return a
 }
 
 // new_ip creates a new Addr from the IPv4 address family, based on the given port and addr
 pub fn new_ip(port u16, addr [4]u8) Addr {
 	n_port := conv.hton16(port)
-	a := Addr{
-		f:    u8(AddrFamily.ip)
-		addr: AddrData{
-			Ip: Ip{
-				port: n_port
+	$if macos || freebsd || openbsd || netbsd || dragonfly {
+		a := Addr{
+			len:  u8(sizeof(C.sockaddr_in))
+			f:    u8(AddrFamily.ip)
+			addr: AddrData{
+				Ip: Ip{
+					port: n_port
+				}
 			}
 		}
+		unsafe { vmemcpy(&a.addr.Ip.addr[0], &addr[0], 4) }
+		return a
+	} $else {
+		a := Addr{
+			f:    u16(AddrFamily.ip)
+			addr: AddrData{
+				Ip: Ip{
+					port: n_port
+				}
+			}
+		}
+		unsafe { vmemcpy(&a.addr.Ip.addr[0], &addr[0], 4) }
+		return a
 	}
-	unsafe { vmemcpy(&a.addr.Ip.addr[0], &addr[0], 4) }
-	return a
 }
 
 fn temp_unix() !Addr {
@@ -89,13 +117,13 @@ const max_ip6_len = 46
 pub fn (a Ip) str() string {
 	buf := [max_ip_len]char{}
 
-	res := &char(C.inet_ntop(.ip, &a.addr, &buf[0], buf.len))
+	res := &char(C.inet_ntop(i32(AddrFamily.ip), &a.addr, &buf[0], buf.len))
 
 	if res == 0 {
 		return '<Unknown>'
 	}
 
-	saddr := unsafe { cstring_to_vstring(&buf[0]) }
+	saddr := unsafe { cstring_to_vstring(res) }
 	port := conv.ntoh16(a.port)
 	return '${saddr}:${port}'
 }
@@ -104,13 +132,13 @@ pub fn (a Ip) str() string {
 pub fn (a Ip6) str() string {
 	buf := [max_ip6_len]char{}
 
-	res := &char(C.inet_ntop(.ip6, &a.addr, &buf[0], buf.len))
+	res := &char(C.inet_ntop(i32(AddrFamily.ip6), &a.addr, &buf[0], buf.len))
 
 	if res == 0 {
 		return '<Unknown>'
 	}
 
-	saddr := unsafe { cstring_to_vstring(&buf[0]) }
+	saddr := unsafe { cstring_to_vstring(res) }
 	port := conv.ntoh16(a.port)
 	return '[${saddr}]:${port}'
 }
@@ -118,7 +146,7 @@ pub fn (a Ip6) str() string {
 const aoffset = __offsetof(Addr, addr)
 
 // len returns the length in bytes of the address `a`, depending on its family
-pub fn (a Addr) len() u32 {
+pub fn (a &Addr) len() u32 {
 	match a.family() {
 		.ip {
 			return sizeof(Ip) + aoffset
@@ -183,6 +211,23 @@ pub fn resolve_addrs_fuzzy(addr string, typ SocketType) ![]Addr {
 	return resolve_addrs(addr, .unix, typ)
 }
 
+fn wrap_getaddrinfo_error(code int) ! {
+	if code == 0 {
+		return
+	}
+	$if windows {
+		socket_error(0 - code)!
+	} $else {
+		if code == C.EAI_SYSTEM {
+			err_code := error_code()
+			return error_with_code('net: getaddrinfo failed: ${os.posix_get_error_msg(err_code)}',
+				err_code)
+		}
+		return error_with_code('net: getaddrinfo failed: ${unsafe { cstring_to_vstring(C.gai_strerror(code)) }}',
+			code)
+	}
+}
+
 // resolve_ipaddrs converts the given `addr`, `family` and `typ` to a list of addresses
 pub fn resolve_ipaddrs(addr string, family AddrFamily, typ SocketType) ![]Addr {
 	address, port := split_address(addr)!
@@ -213,13 +258,7 @@ pub fn resolve_ipaddrs(addr string, family AddrFamily, typ SocketType) ![]Addr {
 
 	sport := '${port}'
 
-	// This might look silly but is recommended by MSDN
-	$if windows {
-		socket_error(0 - C.getaddrinfo(&char(address.str), &char(sport.str), &hints, &results))!
-	} $else {
-		x := C.getaddrinfo(&char(address.str), &char(sport.str), &hints, &results)
-		wrap_error(x)!
-	}
+	wrap_getaddrinfo_error(C.getaddrinfo(&char(address.str), &char(sport.str), &hints, &results))!
 
 	defer {
 		C.freeaddrinfo(results)
@@ -306,6 +345,7 @@ pub fn peer_addr_from_socket_handle(handle int) !Addr {
 		}
 	}
 	mut size := sizeof(Addr)
-	socket_error_message(C.getpeername(handle, voidptr(&addr), &size), 'peer_addr_from_socket_handle failed')!
+	socket_error_message(C.getpeername(handle, voidptr(&addr), &size),
+		'peer_addr_from_socket_handle failed')!
 	return addr
 }

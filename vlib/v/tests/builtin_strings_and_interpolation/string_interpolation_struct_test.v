@@ -72,3 +72,101 @@ fn test_heap_circular_elem_auto_str() {
 	s := '${elem}'.replace('\n', '|')
 	assert s == '&Circular{|    next: &<circular>|}'
 }
+
+struct CrossRefWindow {
+mut:
+	widgets []CrossRefWidget
+}
+
+struct CrossRefWidget {
+mut:
+	parent &CrossRefWindow = unsafe { nil }
+}
+
+fn test_cross_reference_field_auto_str() {
+	mut window := &CrossRefWindow{}
+	mut widget := &CrossRefWidget{}
+	widget.parent = window
+	window.widgets << widget
+	s := '${window}'.replace('\n', '|')
+	assert s == '&CrossRefWindow{|    widgets: [CrossRefWidget{|        parent: &CrossRefWindow{|            widgets: [CrossRefWidget{|                parent: &<circular>|            }]|        }|    }]|}'
+}
+
+interface FamilyMember {
+	name string
+	age  u64
+}
+
+struct FamilySelf {
+mut:
+	brothers []&FamilyMember
+	name     string
+	age      u64
+}
+
+struct FamilyBrother {
+mut:
+	brothers []&FamilyMember
+	name     string
+	age      u64
+}
+
+fn test_cross_reference_interface_pointer_array_auto_str() {
+	mut me := &FamilySelf{
+		name: 'Foo'
+		age:  33
+	}
+	mut brother := &FamilyBrother{
+		name: 'Bar'
+		age:  32
+	}
+	me.brothers << brother
+	brother.brothers << me
+	s := '${me}'
+	assert s.contains('&FamilySelf{')
+	assert s.contains('brothers: [&FamilyMember(FamilyBrother{')
+	assert s.contains("name: 'Foo'")
+	assert s.contains("name: 'Bar'")
+	assert s.contains('brothers: [&<circular>]')
+}
+
+struct CircularArray {
+mut:
+	children []CircularArray
+}
+
+fn test_circular_array_field_auto_str_keeps_item_count() {
+	mut value := CircularArray{}
+	value.children << CircularArray{}
+	value.children << CircularArray{}
+	s := '${value}'.replace('\n', '|')
+	assert s == 'CircularArray{|    children: [<circular>, <circular>]|}'
+}
+
+struct ReturnedTree {
+mut:
+	root ReturnedNode
+	refs map[string]&ReturnedNode
+}
+
+@[heap]
+struct ReturnedNode {
+mut:
+	children []ReturnedNode
+}
+
+fn make_returned_tree() ReturnedTree {
+	mut tree := ReturnedTree{}
+	tree.root.children << ReturnedNode{}
+	tree.refs['root'] = &tree.root
+	tree.refs['child'] = &tree.root.children[0]
+	return tree
+}
+
+fn test_returned_struct_with_internal_pointer_map_field_auto_str() {
+	tree := make_returned_tree()
+	s := '${tree}'.replace('\n', '|')
+	assert s.contains('ReturnedTree{|')
+	assert s.contains('root: ReturnedNode{|        children: [<circular>]|    }')
+	assert s.contains("refs: {'root': &ReturnedNode{|        children: [<circular>]|    }, 'child': &ReturnedNode{|        children: []|    }}")
+}

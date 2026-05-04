@@ -126,6 +126,7 @@ fn (mut g JsGen) js_call(node ast.CallExpr) {
 			}
 			else {}
 		}
+
 		// end catch
 		g.dec_indent()
 		g.writeln('}')
@@ -186,6 +187,7 @@ fn (mut g JsGen) js_method_call(node ast.CallExpr) {
 			}
 			else {}
 		}
+
 		// end catch
 		g.dec_indent()
 		g.writeln('}')
@@ -295,7 +297,7 @@ fn (mut g JsGen) method_call(node ast.CallExpr) {
 						g.write(g.js_name(expr.name))
 						g.write(')')
 						return
-					} else if expr.kind == .variable {
+					} else if expr.kind == .variable && expr.info is ast.IdentVar {
 						v_sym := g.table.sym(expr.var_info().typ)
 						if v_sym.kind == .function {
 							g.write(g.js_name(expr.name))
@@ -336,11 +338,16 @@ fn (mut g JsGen) method_call(node ast.CallExpr) {
 
 		name = g.generic_fn_name(node.concrete_types, name)
 		g.write('${name}(')
-		g.expr(it.left)
+		g.expr_with_expected_type(it.left, unwrapped_rec_type)
 		g.gen_deref_ptr(it.left_type)
 		g.write(',')
 		for i, arg in it.args {
-			g.expr(arg.expr)
+			expected_arg_type := if i < it.expected_arg_types.len {
+				it.expected_arg_types[i]
+			} else {
+				arg.typ
+			}
+			g.expr_with_expected_type(arg.expr, expected_arg_type)
 			if i != it.args.len - 1 {
 				g.write(', ')
 			}
@@ -379,6 +386,7 @@ fn (mut g JsGen) method_call(node ast.CallExpr) {
 			}
 			else {}
 		}
+
 		// end catch
 		g.dec_indent()
 		g.writeln('}')
@@ -441,7 +449,12 @@ fn (mut g JsGen) gen_call_expr(it ast.CallExpr) {
 
 	g.write('${name}(')
 	for i, arg in it.args {
-		g.expr(arg.expr)
+		expected_arg_type := if i < it.expected_arg_types.len {
+			it.expected_arg_types[i]
+		} else {
+			arg.typ
+		}
+		g.expr_with_expected_type(arg.expr, expected_arg_type)
 		if i != it.args.len - 1 {
 			g.write(', ')
 		}
@@ -480,6 +493,7 @@ fn (mut g JsGen) gen_call_expr(it ast.CallExpr) {
 			}
 			else {}
 		}
+
 		// end catch
 		g.dec_indent()
 		g.writeln('}')
@@ -616,7 +630,7 @@ fn (mut g JsGen) gen_method_decl(it ast.FnDecl, typ FnGenType) {
 		g.table.cur_fn = &it
 	}
 	mut name := it.name
-	if name in ['+', '-', '*', '/', '%', '<', '=='] {
+	if name in ['+', '-', '*', '**', '/', '%', '<', '==', '[]', '[]='] {
 		name = util.replace_op(name)
 	}
 
@@ -789,7 +803,7 @@ fn (mut g JsGen) gen_anon_fn(mut fun ast.AnonFn) {
 		g.table.cur_fn = &it
 	}
 	mut name := it.name
-	if name in ['+', '-', '*', '/', '%', '<', '=='] {
+	if name in ['+', '-', '*', '**', '/', '%', '<', '==', '[]', '[]='] {
 		name = util.replace_op(name)
 	}
 	g.writeln('(function () { ')

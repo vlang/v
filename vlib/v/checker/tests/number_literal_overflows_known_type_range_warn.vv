@@ -1,0 +1,98 @@
+fn f_u8(a u8) {
+	_ = a
+}
+
+fn f_i8(a i8) {
+	_ = a
+}
+
+fn f_u16(a u16) {
+	_ = a
+}
+
+fn f_i16(a i16) {
+	_ = a
+}
+
+fn f_u32(a u32) {
+	_ = a
+}
+
+fn f_i32(a i32) {
+	_ = a
+}
+
+fn f_i64(a i64) {
+	_ = a
+}
+
+fn f_isize(a isize) {
+	_ = a
+}
+
+struct Sample {
+	i16_over_max    i16
+	i16_under_min   i16
+	i32_over_max    i32
+	i32_under_min   i32
+	i64_over_max    i64
+	i64_under_min   i64
+	i8_over_max     i8
+	i8_under_min    i8
+	isize_over_max  isize
+	isize_under_min isize
+	u16_over_max    u16
+	u32_over_max    u32
+	u8_over_max     u8
+}
+
+struct GenericSample[T] {
+	field T
+}
+
+fn main() {
+	f_u8(256)
+	f_i8(128)
+	f_i8(-129)
+	f_u16(65536)
+	f_i16(32768)
+	f_i16(-32769)
+	f_u32(4294967296)
+	f_i32(2147483648)
+	f_i32(-2147483649)
+	f_i64(9223372036854775808)
+	f_i64(-9223372036854775809)
+	f_isize(9223372036854775808)
+	f_isize(-9223372036854775809)
+
+	_ := Sample{
+		i16_over_max:    32768
+		i16_under_min:   -32769
+		i32_over_max:    2147483648
+		i32_under_min:   -2147483649
+		i64_over_max:    9223372036854775808
+		i64_under_min:   -9223372036854775809
+		i8_over_max:     128
+		i8_under_min:    -129
+		isize_over_max:  9223372036854775808
+		isize_under_min: -9223372036854775809
+		u16_over_max:    65536
+		u32_over_max:    4294967296
+		u8_over_max:     256
+	}
+
+	_ := GenericSample[u8]{256}
+	_ := GenericSample[u16]{65536}
+	_ := GenericSample[u32]{4294967296}
+
+	_ := GenericSample[i8]{128}
+	_ := GenericSample[i8]{-129}
+	_ := GenericSample[i16]{32768}
+	_ := GenericSample[i16]{-32769}
+	_ := GenericSample[i32]{2147483648}
+	_ := GenericSample[i32]{-2147483649}
+	_ := GenericSample[i64]{9223372036854775808}
+	_ := GenericSample[i64]{-9223372036854775809}
+	_ := GenericSample[isize]{9223372036854775808}
+	_ := GenericSample[isize]{-9223372036854775809}
+}

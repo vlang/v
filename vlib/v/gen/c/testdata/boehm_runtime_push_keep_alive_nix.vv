@@ -1,0 +1,56 @@
+// vtest vflags: -prod -gc boehm_full_opt -cc gcc
+struct Objective {
+	id string
+}
+
+struct Stage {
+	objectives []Objective
+}
+
+struct Document {
+	stages []Stage
+}
+
+fn make_doc() Document {
+	mut stages := []Stage{cap: 2}
+	for stage_index in 0 .. 2 {
+		mut objectives := []Objective{cap: 1}
+		objectives << Objective{
+			id: 'objective_${stage_index}_0'
+		}
+		stages << Stage{
+			objectives: objectives
+		}
+	}
+	return Document{
+		stages: stages
+	}
+}
+
+fn pressure_heap() {
+	for round in 0 .. 512 {
+		mut junk := []string{cap: 512}
+		for i in 0 .. 512 {
+			junk << 'junk_${round}_${i}_${'x'.repeat((i % 11) + 8)}'
+		}
+	}
+}
+
+fn validate(doc Document) ! {
+	first := doc.stages[0].objectives[0].id
+	last := doc.stages[1].objectives[0].id
+	if first != 'objective_0_0' {
+		return error('first objective corrupted: expected `objective_0_0`, got `${first}`')
+	}
+	if last != 'objective_1_0' {
+		return error('last objective corrupted: expected `objective_1_0`, got `${last}`')
+	}
+}
+
+fn main() {
+	doc := make_doc()
+	validate(doc) or { panic(err) }
+	pressure_heap()
+	validate(doc) or { panic(err) }
+	println('ok')
+}

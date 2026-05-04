@@ -1,0 +1,5 @@
+vlib/v/parser/tests/fn_decl_invalid_body_opener_lsbr_err.vv:1:9: error: unexpected token `[` after function signature, expecting `{`
+    1 | fn foo()[
+      |         ^
+    2 |     println('')
+    3 | ]

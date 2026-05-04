@@ -1,0 +1,2788 @@
+// Copyright (c) 2026 Alexander Medvednikov. All rights reserved.
+// Use of this source code is governed by an MIT license
+// that can be found in the LICENSE file.
+
+module transformer
+
+import v2.ast
+import v2.types
+import v2.token
+
+fn is_numeric_literal_expr(expr ast.Expr) bool {
+	match expr {
+		ast.BasicLiteral {
+			return expr.kind == .number
+		}
+		ast.PrefixExpr {
+			return expr.op == .minus && expr.expr is ast.BasicLiteral && expr.expr.kind == .number
+		}
+		ast.ParenExpr {
+			return is_numeric_literal_expr(expr.expr)
+		}
+		else {
+			return false
+		}
+	}
+}
+
+fn (mut t Transformer) synth_selector(lhs ast.Expr, field_name string, typ types.Type) ast.Expr {
+	pos := t.next_synth_pos()
+	t.register_synth_type(pos, typ)
+	return ast.Expr(ast.SelectorExpr{
+		lhs: lhs
+		rhs: ast.Ident{
+			name: field_name
+		}
+		pos: pos
+	})
+}
+
+// synth_selector_from_struct creates a typed SelectorExpr by looking up the field type
+// from the named struct in the environment. Falls back to a pos-only synth node if
+// the field type cannot be resolved.
+fn (mut t Transformer) synth_selector_from_struct(lhs ast.Expr, field_name string, struct_name string) ast.Expr {
+	pos := t.next_synth_pos()
+	if field_typ := t.lookup_struct_field_type(struct_name, field_name) {
+		t.register_synth_type(pos, field_typ)
+	}
+	return ast.Expr(ast.SelectorExpr{
+		lhs: lhs
+		rhs: ast.Ident{
+			name: field_name
+		}
+		pos: pos
+	})
+}
+
+fn (mut t Transformer) concrete_selector_for_known_lhs(expr ast.SelectorExpr) ?ast.Expr {
+	if expr.lhs !is ast.Ident {
+		return none
+	}
+	lhs_ident := expr.lhs as ast.Ident
+	if t.find_smartcast_for_expr(lhs_ident.name) != none {
+		return none
+	}
+	if t.selector_module_name(lhs_ident.name) != none {
+		return none
+	}
+	if t.scope != unsafe { nil } {
+		if obj := t.scope.lookup_parent(lhs_ident.name, 0) {
+			if obj is types.Const || obj is types.Global {
+				return none
+			}
+		}
+	}
+	lhs_type := t.lookup_var_type(lhs_ident.name) or {
+		t.resolve_expr_type(expr.lhs) or { return none }
+	}
+	base := t.unwrap_alias_and_pointer_type(lhs_type)
+	base_name := t.type_to_c_name(base)
+	if base_name == '' || t.is_sum_type(base_name) || t.is_interface_type(base_name) {
+		return none
+	}
+	lhs := ast.Expr(ast.ParenExpr{
+		expr: expr.lhs
+	})
+	if field_type := t.field_type_from_struct_like_type(lhs_type, expr.rhs.name) {
+		return t.synth_selector(lhs, expr.rhs.name, field_type)
+	}
+	return t.synth_selector_from_struct(lhs, expr.rhs.name, base_name)
+}
+
+fn sumtype_variant_union_field_name(sumtype_name string, variant_name string) string {
+	sumtype_module := if sumtype_name.contains('__') {
+		sumtype_name.all_before_last('__')
+	} else {
+		''
+	}
+	if variant_name.starts_with('Array_') || variant_name.starts_with('Map_') {
+		return variant_name
+	}
+	if variant_name.contains('__') {
+		variant_module := variant_name.all_before_last('__')
+		if variant_module == sumtype_module {
+			return variant_name.all_after_last('__')
+		}
+	}
+	return variant_name
+}
+
+fn (t &Transformer) type_has_field(typ types.Type, field_name string) bool {
+	base := t.unwrap_alias_and_pointer_type(typ)
+	if base is types.Struct {
+		for field in base.fields {
+			if field.name == field_name {
+				return true
+			}
+		}
+	}
+	type_name := t.type_to_c_name(base)
+	return t.lookup_struct_field_type(type_name, field_name) != none
+}
+
+struct SumtypeCommonFieldVariant {
+	typ       types.Type
+	name      string
+	field_typ types.Type
+	tag       int
+}
+
+fn (mut t Transformer) sumtype_common_field_variants(sumtype types.SumType, field_name string) ?[]SumtypeCommonFieldVariant {
+	mut variants := []SumtypeCommonFieldVariant{cap: sumtype.variants.len}
+	mut common_field_typ := types.Type(types.void_)
+	mut has_common_field_typ := false
+	for i, variant in sumtype.variants {
+		variant_base := t.unwrap_alias_and_pointer_type(variant)
+		if variant_base is types.Primitive || variant_base is types.String
+			|| variant_base is types.Enum {
+			continue
+		}
+		variant_name := t.type_to_c_name(variant)
+		if variant_name == '' {
+			continue
+		}
+		field_typ := t.field_type_from_struct_like_type(variant, field_name) or {
+			t.lookup_struct_field_type(variant_name, field_name) or { continue }
+		}
+		if has_common_field_typ {
+			if field_typ != common_field_typ {
+				return none
+			}
+		} else {
+			common_field_typ = field_typ
+			has_common_field_typ = true
+		}
+		variants << SumtypeCommonFieldVariant{
+			typ:       variant
+			name:      variant_name
+			field_typ: field_typ
+			tag:       i
+		}
+	}
+	if !has_common_field_typ {
+		return none
+	}
+	return variants
+}
+
+fn (mut t Transformer) sumtype_variant_common_field_access(sumtype_expr ast.Expr, sumtype_name string, variant SumtypeCommonFieldVariant, field_name string) ?ast.Expr {
+	is_native_backend := t.pref != unsafe { nil }
+		&& (t.pref.backend == .arm64 || t.pref.backend == .x64)
+	data_access := t.synth_selector(sumtype_expr, '_data', types.Type(types.voidptr_))
+	variant_access := if is_native_backend {
+		data_access
+	} else {
+		union_field := sumtype_variant_union_field_name(sumtype_name, variant.name)
+		t.synth_selector(data_access, '_${union_field}', types.Type(types.voidptr_))
+	}
+	cast_expr := ast.Expr(ast.CastExpr{
+		typ:  ast.Ident{
+			name: '${variant.name}*'
+		}
+		expr: variant_access
+	})
+	return t.synth_selector_from_struct(ast.Expr(ast.ParenExpr{
+		expr: cast_expr
+	}), field_name, variant.name)
+}
+
+fn (mut t Transformer) lower_sumtype_common_field_if_expr(sumtype_expr ast.Expr, sumtype_name string, field_name string, variants []SumtypeCommonFieldVariant, is_exhaustive bool) ?ast.Expr {
+	if variants.len == 0 {
+		return none
+	}
+	field_typ := variants[0].field_typ
+	t.register_synth_type(sumtype_expr.pos(), field_typ)
+	mut current := if is_exhaustive {
+		ast.Expr(ast.empty_expr)
+	} else {
+		ast.Expr(ast.IfExpr{
+			cond:  ast.empty_expr
+			stmts: [
+				ast.Stmt(ast.ExprStmt{
+					expr: t.zero_value_expr_for_type(field_typ)
+				}),
+			]
+			pos:   sumtype_expr.pos()
+		})
+	}
+	for i := variants.len - 1; i >= 0; i-- {
+		variant := variants[i]
+		field_access := t.sumtype_variant_common_field_access(sumtype_expr, sumtype_name, variant,
+			field_name) or { return none }
+		branch_stmts := [
+			ast.Stmt(ast.ExprStmt{
+				expr: field_access
+			}),
+		]
+		if is_exhaustive && i == variants.len - 1 {
+			current = ast.Expr(ast.IfExpr{
+				cond:  ast.empty_expr
+				stmts: branch_stmts
+				pos:   sumtype_expr.pos()
+			})
+			continue
+		}
+		tag_access := t.synth_selector(sumtype_expr, '_tag', types.Type(types.int_))
+		current = ast.Expr(ast.IfExpr{
+			cond:      t.make_infix_expr_at(.eq, tag_access, t.make_number_expr('${variant.tag}'),
+				sumtype_expr.pos())
+			stmts:     branch_stmts
+			else_expr: current
+			pos:       sumtype_expr.pos()
+		})
+	}
+	if current is ast.IfExpr {
+		t.register_synth_type(current.pos, variants[0].field_typ)
+	}
+	return current
+}
+
+fn (mut t Transformer) lower_sumtype_common_field_access(sumtype_expr ast.Expr, sumtype_name string, field_name string) ?ast.Expr {
+	typ := t.lookup_type(sumtype_name) or { return none }
+	if typ !is types.SumType {
+		return none
+	}
+	sumtype := typ as types.SumType
+	variants := t.sumtype_common_field_variants(sumtype, field_name) or { return none }
+	is_exhaustive := variants.len == sumtype.variants.len
+	if is_exhaustive && variants.len == 1 {
+		t.register_synth_type(sumtype_expr.pos(), variants[0].field_typ)
+		return t.sumtype_variant_common_field_access(sumtype_expr, sumtype_name, variants[0],
+			field_name)
+	}
+	if t.is_eval_backend() {
+		return none
+	}
+	return t.lower_sumtype_common_field_if_expr(sumtype_expr, sumtype_name, field_name, variants,
+		is_exhaustive)
+}
+
+fn (mut t Transformer) transform_sumtype_common_field_access(lhs ast.Expr, field_name string) ?ast.Expr {
+	lhs_type := if lhs is ast.Ident && t.find_smartcast_for_expr(lhs.name) == none {
+		t.lookup_var_type(lhs.name) or { t.resolve_expr_type(lhs) or { return none } }
+	} else {
+		t.resolve_expr_type(lhs) or { return none }
+	}
+	base := t.unwrap_alias_and_pointer_type(lhs_type)
+	if base !is types.SumType {
+		return none
+	}
+	sumtype_name := t.type_to_c_name(base)
+	return t.lower_sumtype_common_field_access(t.transform_expr(lhs), sumtype_name, field_name)
+}
+
+fn (mut t Transformer) try_expand_sumtype_common_field_assign_stmts(stmt ast.AssignStmt) ?[]ast.Stmt {
+	if stmt.op != .assign || stmt.lhs.len != 1 || stmt.rhs.len != 1
+		|| stmt.lhs[0] !is ast.SelectorExpr {
+		return none
+	}
+	lhs_sel := stmt.lhs[0] as ast.SelectorExpr
+	lhs_key := t.expr_to_string(lhs_sel.lhs)
+	if lhs_key != '' {
+		if ctx := t.find_smartcast_for_expr(lhs_key) {
+			if t.smartcast_context_applies_to_expr(lhs_sel.lhs, ctx) {
+				return none
+			}
+		}
+	}
+	lhs_type := if lhs_sel.lhs is ast.Ident && t.find_smartcast_for_expr(lhs_sel.lhs.name) == none {
+		t.lookup_var_type(lhs_sel.lhs.name) or {
+			t.resolve_expr_type(lhs_sel.lhs) or { return none }
+		}
+	} else {
+		t.resolve_expr_type(lhs_sel.lhs) or { return none }
+	}
+	base := t.unwrap_alias_and_pointer_type(lhs_type)
+	if base !is types.SumType {
+		return none
+	}
+	sumtype_name := t.type_to_c_name(base)
+	typ := t.lookup_type(sumtype_name) or { return none }
+	if typ !is types.SumType {
+		return none
+	}
+	sumtype := typ as types.SumType
+	variants := t.sumtype_common_field_variants(sumtype, lhs_sel.rhs.name) or { return none }
+	if variants.len == 0 || t.is_eval_backend() {
+		return none
+	}
+	sumtype_expr := t.transform_expr(lhs_sel.lhs)
+	rhs_expected := t.resolve_expr_with_expected_type(stmt.rhs[0], variants[0].field_typ)
+	rhs := t.transform_expr(rhs_expected)
+	is_exhaustive := variants.len == sumtype.variants.len
+	mut current := ast.Expr(ast.empty_expr)
+	for i := variants.len - 1; i >= 0; i-- {
+		variant := variants[i]
+		field_access := t.sumtype_variant_common_field_access(sumtype_expr, sumtype_name, variant,
+			lhs_sel.rhs.name) or { return none }
+		branch_stmts := [
+			ast.Stmt(ast.AssignStmt{
+				op:  .assign
+				lhs: [field_access]
+				rhs: [rhs]
+				pos: stmt.pos
+			}),
+		]
+		if is_exhaustive && i == variants.len - 1 {
+			current = ast.Expr(ast.IfExpr{
+				cond:  ast.empty_expr
+				stmts: branch_stmts
+				pos:   stmt.pos
+			})
+			continue
+		}
+		tag_access := t.synth_selector(sumtype_expr, '_tag', types.Type(types.int_))
+		current = ast.Expr(ast.IfExpr{
+			cond:      t.make_infix_expr_at(.eq, tag_access, t.make_number_expr('${variant.tag}'),
+				stmt.pos)
+			stmts:     branch_stmts
+			else_expr: current
+			pos:       stmt.pos
+		})
+	}
+	if current is ast.EmptyExpr {
+		return none
+	}
+	return [
+		ast.Stmt(ast.ExprStmt{
+			expr: current
+		}),
+	]
+}
+
+// lookup_struct_field_type returns the raw types.Type for a struct field.
+fn (t &Transformer) lookup_struct_field_type(struct_name string, field_name string) ?types.Type {
+	normalized_struct_name := struct_name.replace('.', '__')
+	mut sname := normalized_struct_name
+	mut mod := ''
+	dunder := normalized_struct_name.last_index('__') or { -1 }
+	if dunder >= 0 {
+		mod = normalized_struct_name[..dunder]
+		sname = normalized_struct_name[dunder + 2..]
+	}
+	// Try module scope first if qualified
+	if mod != '' {
+		if scope := t.cached_scopes[mod] {
+			if obj := scope.objects[sname] {
+				if obj is types.Type {
+					typ := types.Type(obj)
+					if typ is types.Struct {
+						for field in typ.fields {
+							if field.name == field_name {
+								return field.typ
+							}
+						}
+					}
+				}
+			}
+		}
+		for mod_name, scope in t.cached_scopes {
+			mod_short := if mod_name.contains('.') {
+				mod_name.all_after_last('.')
+			} else if mod_name.contains('__') {
+				mod_name.all_after_last('__')
+			} else {
+				mod_name
+			}
+			if mod_short != mod {
+				continue
+			}
+			if obj := scope.objects[sname] {
+				if obj is types.Type {
+					typ := types.Type(obj)
+					if typ is types.Struct {
+						for field in typ.fields {
+							if field.name == field_name {
+								return field.typ
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+	// For unqualified names, try the current module first to avoid
+	// collisions (e.g., ast.OptionType vs types.OptionType).
+	if mod == '' && t.cur_module != '' && t.cur_module != 'main' && t.cur_module != 'builtin' {
+		if cur_scope := t.cached_scopes[t.cur_module] {
+			if obj := cur_scope.objects[sname] {
+				if obj is types.Type {
+					typ := types.Type(obj)
+					if typ is types.Struct {
+						for field in typ.fields {
+							if field.name == field_name {
+								return field.typ
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+	// Fallback: scan all scopes
+	scope_keys := t.cached_scopes.keys()
+	for sk in scope_keys {
+		scope := t.cached_scopes[sk] or { continue }
+		if obj := scope.objects[normalized_struct_name] {
+			if obj is types.Type {
+				typ := types.Type(obj)
+				if typ is types.Struct {
+					for field in typ.fields {
+						if field.name == field_name {
+							return field.typ
+						}
+					}
+				}
+			}
+		}
+		if sname != normalized_struct_name {
+			if obj := scope.objects[sname] {
+				if obj is types.Type {
+					typ := types.Type(obj)
+					if typ is types.Struct {
+						for field in typ.fields {
+							if field.name == field_name {
+								return field.typ
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+	return none
+}
+
+// open_scope creates a new nested scope
+fn (mut t Transformer) apply_smartcast_field_access_ctx(sumtype_expr ast.Expr, field_name string, ctx SmartcastContext) ast.Expr {
+	// variant (short name) is used for union member access
+	// variant_full (full name) is used for type cast
+	variant_short := ctx.variant
+	// Extract simple variant name for _data._ accessor
+	// Union fields use: _Null (same-module Ident), _time__Time (cross-module SelectorExpr),
+	// _Array_json2__Any (composite). Only strip module prefix for same-module types.
+	// Union fields use the name as seen from the declaring module:
+	// same-module Ident → _Null, cross-module SelectorExpr → _time__Time.
+	// Strip module prefix when the variant's module matches the sumtype's module,
+	// because those variants were declared as Idents (no module prefix in the union).
+	sumtype_module := if ctx.sumtype.contains('__') {
+		ctx.sumtype.all_before_last('__')
+	} else {
+		''
+	}
+	variant_simple := if variant_short.starts_with('Array_') || variant_short.starts_with('Map_') {
+		// For composite types, use the short name to match union member
+		variant_short
+	} else if variant_short.contains('__') {
+		mod_prefix := variant_short.all_before_last('__')
+		if mod_prefix == sumtype_module {
+			variant_short.all_after_last('__')
+		} else {
+			variant_short
+		}
+	} else {
+		variant_short
+	}
+	// Use full variant name for type cast from context
+	mangled_variant := if ctx.variant_full != '' {
+		ctx.variant_full
+	} else if variant_short.contains('__') {
+		variant_short // Already has module prefix
+	} else if t.cur_module != '' && t.cur_module != 'main' && t.cur_module != 'builtin' {
+		'${t.cur_module}__${variant_short}'
+	} else {
+		variant_short
+	}
+	if sumtype_expr is ast.Ident {
+		if override_type := t.decl_type_overrides[sumtype_expr.name] {
+			base := t.unwrap_alias_and_pointer_type(override_type)
+			override_name := t.type_to_c_name(base)
+			if override_name != '' && !t.is_sum_type(override_name)
+				&& !t.is_interface_type(override_name) {
+				if field_type := t.field_type_from_struct_like_type(override_type, field_name) {
+					return t.synth_selector(ast.Expr(sumtype_expr), field_name, field_type)
+				}
+				return t.synth_selector_from_struct(ast.Expr(sumtype_expr), field_name,
+					override_name)
+			}
+			if type_names_match_for_smartcast(override_name, ctx.variant_full)
+				|| type_names_match_for_smartcast(override_name, ctx.variant) {
+				return t.synth_selector_from_struct(ast.Expr(sumtype_expr), field_name,
+					mangled_variant)
+			}
+		}
+	}
+	// For nested smartcasts, we need to transform the base of sumtype_expr to apply outer smartcasts
+	// E.g., for stmt.receiver.typ with outer smartcast on stmt, we need to transform stmt.receiver first.
+	// Temporarily remove this exact context to avoid applying it recursively.
+	mut removed_ctxs := t.remove_shadowed_smartcasts(ctx)
+	removed_ctxs << t.remove_matching_smartcasts(ctx)
+	transformed_base := t.transform_expr(sumtype_expr)
+	t.restore_smartcasts(removed_ctxs)
+	if t.expr_is_casted_to_type(transformed_base, '${mangled_variant}*') {
+		return t.synth_selector_from_struct(transformed_base, field_name, mangled_variant)
+	}
+	// Already concretely casted to this variant by an outer smartcast context.
+	if t.expr_is_casted_to_type(transformed_base, mangled_variant) {
+		return t.synth_selector_from_struct(transformed_base, field_name, mangled_variant)
+	}
+	// For interface smartcasts, use _object instead of _data
+	is_interface_ctx := ctx.sumtype.starts_with('__iface__')
+	if is_interface_ctx {
+		object_access := t.synth_selector(transformed_base, '_object', types.Type(types.voidptr_))
+		cast_expr := ast.CastExpr{
+			typ:  ast.Ident{
+				name: '${mangled_variant}*'
+			}
+			expr: object_access
+		}
+		return t.synth_selector_from_struct(ast.ParenExpr{
+			expr: ast.PrefixExpr{
+				op:   .mul
+				expr: ast.Expr(cast_expr)
+			}
+		}, field_name, mangled_variant)
+	}
+	// Create data access.
+	// For native backends (arm64/x64): _data is a plain i64 (void pointer) in the SSA struct.
+	// No union variant sub-field exists, so just use _data directly.
+	// For C backends: _data is a union, so access _data._variant for the specific member.
+	is_native_backend := t.pref != unsafe { nil }
+		&& (t.pref.backend == .arm64 || t.pref.backend == .x64)
+	data_access := t.synth_selector(transformed_base, '_data', types.Type(types.voidptr_))
+	variant_access := if is_native_backend {
+		data_access
+	} else {
+		t.synth_selector(data_access, '_${variant_simple}', types.Type(types.voidptr_))
+	}
+	if t.is_eval_backend() {
+		return t.synth_selector_from_struct(variant_access, field_name, mangled_variant)
+	}
+	if t.is_sum_type(mangled_variant) {
+		cast_expr := ast.Expr(ast.CastExpr{
+			typ:  ast.Ident{
+				name: '${mangled_variant}*'
+			}
+			expr: variant_access
+		})
+		sum_value := ast.Expr(ast.ParenExpr{
+			expr: ast.PrefixExpr{
+				op:   .mul
+				expr: cast_expr
+			}
+		})
+		if lowered := t.lower_sumtype_common_field_access(sum_value, mangled_variant, field_name) {
+			return lowered
+		}
+	}
+	// Create: (mangled_variant*)variant_access
+	cast_expr := ast.CastExpr{
+		typ:  ast.Ident{
+			name: '${mangled_variant}*'
+		}
+		expr: variant_access
+	}
+	// Create: (*cast_expr).field_name so smartcasted field writes stay assignable.
+	return t.synth_selector_from_struct(ast.Expr(ast.ParenExpr{
+		expr: ast.PrefixExpr{
+			op:   .mul
+			expr: ast.Expr(cast_expr)
+		}
+	}), field_name, mangled_variant)
+}
+
+fn (mut t Transformer) transform_array_init_expr(expr ast.ArrayInitExpr) ast.Expr {
+	is_native_backend := t.pref != unsafe { nil }
+		&& (t.pref.backend == .arm64 || t.pref.backend == .x64)
+	native_interface_elem_type := if is_native_backend {
+		t.get_interface_array_init_concrete_type(expr) or { '' }
+	} else {
+		''
+	}
+	// Transform value expressions
+	mut exprs := []ast.Expr{cap: expr.exprs.len}
+	for e in expr.exprs {
+		if native_interface_elem_type != '' {
+			if inner := t.get_interface_cast_inner_expr(e) {
+				exprs << t.transform_expr(inner)
+				continue
+			}
+		}
+		exprs << t.transform_expr(e)
+	}
+
+	// Check if this is a fixed-size array
+	mut is_fixed := false
+	mut array_typ := expr.typ
+	mut elem_type_expr := ast.empty_expr
+	// Check for ArrayFixedType or ArrayType (expr.typ is ast.Type sum type)
+	if expr.typ is ast.Type {
+		if expr.typ is ast.ArrayFixedType {
+			is_fixed = true
+		} else if expr.typ is ast.ArrayType {
+			elem_type_expr = expr.typ.elem_type
+		}
+	}
+	// For untyped `[]` literals, use checker-inferred type from context (assign/call/return).
+	if array_typ is ast.EmptyExpr {
+		if inferred := t.get_expr_type(ast.Expr(expr)) {
+			inferred_base := t.unwrap_alias_and_pointer_type(inferred)
+			match inferred_base {
+				types.Array {
+					array_typ = t.type_to_ast_type_expr(inferred_base)
+					elem_type_expr = t.type_to_ast_type_expr(inferred_base.elem_type)
+				}
+				types.ArrayFixed {
+					array_typ = t.type_to_ast_type_expr(inferred_base)
+					elem_type_expr = t.type_to_ast_type_expr(inferred_base.elem_type)
+					is_fixed = true
+				}
+				else {}
+			}
+		}
+	}
+	if native_interface_elem_type != '' {
+		elem_type_expr = ast.Expr(ast.Ident{
+			name: native_interface_elem_type
+		})
+		array_typ = ast.Expr(ast.Type(ast.ArrayType{
+			elem_type: elem_type_expr
+		}))
+	}
+	sum_elem_type_name := if elem_type_expr !is ast.EmptyExpr {
+		t.type_expr_to_c_name(elem_type_expr)
+	} else {
+		''
+	}
+	if sum_elem_type_name != '' && t.is_sum_type(sum_elem_type_name) {
+		for i, elem_expr in exprs {
+			if wrapped := t.wrap_sumtype_value_transformed(elem_expr, sum_elem_type_name) {
+				exprs[i] = wrapped
+			}
+		}
+	}
+	// Also check for [x, y, z]! syntax - parser marks this with len: PostfixExpr{op: .not}
+	if expr.len is ast.PostfixExpr {
+		postfix := expr.len as ast.PostfixExpr
+		if postfix.op == .not && postfix.expr is ast.EmptyExpr {
+			is_fixed = true
+		}
+	}
+
+	if is_fixed {
+		// Fixed-size array: keep as ArrayInitExpr
+		return ast.ArrayInitExpr{
+			typ:   array_typ
+			exprs: exprs
+			init:  t.transform_expr(expr.init)
+			cap:   if expr.cap !is ast.EmptyExpr { t.transform_expr(expr.cap) } else { expr.cap }
+			len:   if expr.len !is ast.EmptyExpr { t.transform_expr(expr.len) } else { expr.len }
+			pos:   expr.pos
+		}
+	}
+
+	if t.is_eval_backend() {
+		return ast.ArrayInitExpr{
+			typ:   array_typ
+			exprs: exprs
+			init:  if expr.init !is ast.EmptyExpr { t.transform_expr(expr.init) } else { expr.init }
+			cap:   if expr.cap !is ast.EmptyExpr { t.transform_expr(expr.cap) } else { expr.cap }
+			len:   if expr.len !is ast.EmptyExpr { t.transform_expr(expr.len) } else { expr.len }
+			pos:   expr.pos
+		}
+	}
+
+	// Dynamic array: transform to builtin__new_array_from_c_array_noscan(len, cap, sizeof(elem), values)
+	arr_len := exprs.len
+
+	// Handle empty dynamic arrays: lower to __new_array_with_default_noscan(len, cap, sizeof(elem), init)
+	if arr_len == 0 {
+		sizeof_expr := if elem_type_expr !is ast.EmptyExpr {
+			elem_type_expr
+		} else {
+			ast.Expr(ast.Ident{
+				name: 'int'
+			})
+		}
+		len_expr := ast.Expr(if expr.len !is ast.EmptyExpr {
+			t.transform_expr(expr.len)
+		} else {
+			ast.Expr(ast.BasicLiteral{
+				kind:  .number
+				value: '0'
+			})
+		})
+		cap_expr := ast.Expr(if expr.cap !is ast.EmptyExpr {
+			t.transform_expr(expr.cap)
+		} else {
+			ast.Expr(ast.BasicLiteral{
+				kind:  .number
+				value: '0'
+			})
+		})
+		mut init_expr := ast.Expr(if expr.init !is ast.EmptyExpr {
+			t.transform_expr(expr.init)
+		} else {
+			ast.Expr(ast.Ident{
+				name: 'nil'
+			})
+		})
+		if expr.init !is ast.EmptyExpr && is_numeric_literal_expr(init_expr) {
+			init_expr = ast.Expr(ast.CastExpr{
+				typ:  sizeof_expr
+				expr: init_expr
+			})
+		}
+		// If init expression uses `index`, expand to a for-loop that assigns each element.
+		if expr.init !is ast.EmptyExpr && t.expr_contains_ident_named(init_expr, 'index') {
+			return t.expand_array_init_with_index(len_expr, cap_expr, sizeof_expr, init_expr,
+				expr.pos)
+		}
+		// When element type is a reference type (array or map) and no explicit init,
+		// synthesize a proper default so inner elements get initialized correctly
+		// (not zero-filled via NULL, which leaves element_size=0 or hash_fn=null).
+		// sizeof_expr holds elem_type_expr before smartcasting, so use it to avoid issues.
+		elem_is_nested_array := elem_type_expr is ast.Type && elem_type_expr is ast.ArrayType
+		elem_is_map := elem_type_expr is ast.Type && elem_type_expr is ast.MapType
+		if expr.init is ast.EmptyExpr && elem_is_nested_array {
+			init_expr = ast.Expr(t.transform_array_init_expr(ast.ArrayInitExpr{
+				typ: sizeof_expr
+			}))
+		}
+		if expr.init is ast.EmptyExpr && elem_is_map {
+			init_expr = ast.Expr(t.transform_map_init_expr(ast.MapInitExpr{
+				typ: sizeof_expr
+			}))
+		}
+		// When element type is a struct with map fields and no explicit init,
+		// synthesize a struct default and use for-loop expansion so each element
+		// gets its own map allocation (memcpy would share internal pointers).
+		if expr.init is ast.EmptyExpr && !elem_is_nested_array && !elem_is_map {
+			if elem_type := t.get_expr_type(elem_type_expr) {
+				elem_base := t.unwrap_alias_and_pointer_type(elem_type)
+				if elem_base is types.Struct {
+					mut field_inits := []ast.FieldInit{}
+					for field in elem_base.fields {
+						if field.typ is types.Map {
+							map_type_expr := t.type_to_ast_type_expr(field.typ)
+							map_init := t.transform_map_init_expr(ast.MapInitExpr{
+								typ: map_type_expr
+							})
+							field_inits << ast.FieldInit{
+								name:  field.name
+								value: map_init
+							}
+						}
+					}
+					if field_inits.len > 0 {
+						struct_init := ast.Expr(ast.InitExpr{
+							typ:    elem_type_expr
+							fields: field_inits
+						})
+						return t.expand_array_init_with_index(len_expr, cap_expr, sizeof_expr,
+							struct_init, expr.pos)
+					}
+				}
+			}
+		}
+		// When init value is an array, use __new_array_with_array_default for deep cloning
+		// (shallow memcpy would share data pointers between all elements)
+		mut init_is_array := expr.init is ast.ArrayInitExpr
+		if !init_is_array && elem_is_nested_array && expr.init is ast.EmptyExpr {
+			init_is_array = true
+		}
+		if !init_is_array {
+			if init_type := t.get_expr_type(expr.init) {
+				init_base := t.unwrap_alias_and_pointer_type(init_type)
+				init_is_array = init_base is types.Array
+			}
+		}
+		if init_is_array {
+			return ast.CallExpr{
+				lhs:  ast.Ident{
+					name: '__new_array_with_array_default'
+				}
+				args: [
+					len_expr,
+					cap_expr,
+					ast.Expr(ast.KeywordOperator{
+						op:    .key_sizeof
+						exprs: [sizeof_expr]
+					}),
+					init_expr,
+					// depth parameter for clone_to_depth
+					ast.Expr(ast.BasicLiteral{
+						kind:  .number
+						value: '3'
+					}),
+				]
+				pos:  expr.pos
+			}
+		}
+		return ast.CallExpr{
+			lhs:  ast.Ident{
+				name: '__new_array_with_default_noscan'
+			}
+			args: [
+				len_expr,
+				cap_expr,
+				ast.Expr(ast.KeywordOperator{
+					op:    .key_sizeof
+					exprs: [sizeof_expr]
+				}),
+				init_expr,
+			]
+			pos:  expr.pos
+		}
+	}
+
+	// Determine element type name and sizeof argument
+	// First, try to get the array type from the type checker's annotations
+	mut elem_type_name := 'int'
+	mut elem_type_expr_resolved := elem_type_expr
+	if elem_type_expr_resolved is ast.EmptyExpr && exprs.len > 0 {
+		if arr_type := t.env.get_expr_type(expr.pos.id) {
+			match arr_type {
+				types.Array {
+					tn := t.type_to_c_name(arr_type.elem_type)
+					if tn != '' {
+						elem_type_name = tn
+						elem_type_expr_resolved = ast.Expr(ast.Ident{
+							name: tn
+						})
+					}
+				}
+				types.ArrayFixed {
+					tn := t.type_to_c_name(arr_type.elem_type)
+					if tn != '' {
+						elem_type_name = tn
+						elem_type_expr_resolved = ast.Expr(ast.Ident{
+							name: tn
+						})
+					}
+				}
+				else {}
+			}
+		}
+		// If env lookup failed, try getting element type from the ORIGINAL (untransformed)
+		// first expression, which preserves CastExpr and other type-annotated nodes
+		if elem_type_expr_resolved is ast.EmptyExpr {
+			orig_first := expr.exprs[0]
+			if elem_type := t.get_expr_type(orig_first) {
+				tn := t.type_to_c_name(elem_type)
+				if tn != '' {
+					elem_type_name = tn
+					elem_type_expr_resolved = ast.Expr(ast.Ident{
+						name: tn
+					})
+				}
+			} else {
+			}
+			// If still not resolved, check if first expr is a CallExpr and look up its return type
+			if elem_type_expr_resolved is ast.EmptyExpr {
+				first := exprs[0]
+				if first is ast.CallExpr || first is ast.CallOrCastExpr {
+					if ret_type := t.get_method_return_type(first) {
+						tn := t.type_to_c_name(ret_type)
+						if tn != '' {
+							elem_type_name = tn
+							elem_type_expr_resolved = ast.Expr(ast.Ident{
+								name: tn
+							})
+						}
+					} else if first is ast.CallExpr {
+						// Try looking up by function name for plain function calls
+						fn_name := if first.lhs is ast.Ident {
+							first.lhs.name
+						} else {
+							''
+						}
+						if fn_name != '' {
+							if ret_type2 := t.get_fn_return_type(fn_name) {
+								tn := t.type_to_c_name(ret_type2)
+								if tn != '' {
+									elem_type_name = tn
+									elem_type_expr_resolved = ast.Expr(ast.Ident{
+										name: tn
+									})
+								}
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+	sizeof_arg := if elem_type_expr_resolved !is ast.EmptyExpr {
+		elem_type_name = t.expr_to_type_name(elem_type_expr_resolved)
+		elem_type_expr_resolved
+	} else if exprs.len > 0 {
+		// Infer from first element
+		first := exprs[0]
+		if first is ast.BasicLiteral {
+			if first.kind == .number {
+				if first.value.contains('.') || first.value.contains('e')
+					|| first.value.contains('E') {
+					elem_type_name = 'f64'
+				} else {
+					elem_type_name = 'int'
+				}
+			} else if first.kind == .string {
+				elem_type_name = 'string'
+			}
+			ast.Expr(ast.Ident{
+				name: elem_type_name
+			})
+		} else if first is ast.StringLiteral {
+			elem_type_name = 'string'
+			ast.Expr(ast.Ident{
+				name: 'string'
+			})
+		} else if first is ast.SelectorExpr {
+			// For enum values like .trim_left, use int for sizeof
+			// Try to get actual enum type from environment
+			if enum_type := t.get_expr_type(first) {
+				type_name := t.type_to_c_name(enum_type)
+				if type_name != '' {
+					elem_type_name = type_name
+					ast.Expr(ast.Ident{
+						name: type_name
+					})
+				} else {
+					elem_type_name = 'int'
+					ast.Expr(ast.Ident{
+						name: 'int'
+					})
+				}
+			} else {
+				elem_type_name = 'int'
+				ast.Expr(ast.Ident{
+					name: 'int'
+				})
+			}
+		} else if first is ast.Ident {
+			// Try to get type from scope
+			var_type := t.get_var_type_name(first.name)
+			if var_type != '' {
+				elem_type_name = var_type
+				ast.Expr(ast.Ident{
+					name: var_type
+				})
+			} else {
+				// Default: use int
+				ast.Expr(ast.Ident{
+					name: 'int'
+				})
+			}
+		} else if first is ast.CallOrCastExpr {
+			// Handle cast expressions like u8(`0`) - infer element type from cast type
+			if first.lhs is ast.Ident {
+				cast_type := first.lhs.name
+				// Check if this is a primitive type cast
+				if cast_type in ['u8', 'i8', 'u16', 'i16', 'u32', 'i32', 'u64', 'i64', 'f32', 'f64',
+					'int', 'bool', 'byte', 'rune', 'voidptr', 'charptr', 'byteptr', 'usize', 'isize',
+					'string'] {
+					elem_type_name = cast_type
+					ast.Expr(ast.Ident{
+						name: cast_type
+					})
+				} else {
+					// Could be a struct cast - use the type name
+					elem_type_name = cast_type
+					ast.Expr(ast.Ident{
+						name: cast_type
+					})
+				}
+			} else {
+				// Default: use int
+				ast.Expr(ast.Ident{
+					name: 'int'
+				})
+			}
+		} else if first is ast.CastExpr {
+			// Handle explicit CastExpr nodes
+			elem_type_name = t.expr_to_type_name(first.typ)
+			ast.Expr(first.typ)
+		} else if first is ast.IndexExpr {
+			// Handle index expressions like s[i] - try to infer element type from the indexed container
+			// Also handle slice expressions like s[..i] which become IndexExpr with RangeExpr
+			// Extract first.lhs to avoid double smartcast in if-guard expansions
+			first_lhs := first.lhs
+			mut idx_sizeof := ast.Expr(ast.Ident{
+				name: 'int'
+			})
+			if first.expr is ast.RangeExpr {
+				// Slicing: s[a..b] returns the same type as s
+				if expr_type := t.get_expr_type(first_lhs) {
+					type_name := t.type_to_c_name(expr_type)
+					if type_name != '' {
+						elem_type_name = type_name
+						idx_sizeof = ast.Expr(ast.Ident{
+							name: type_name
+						})
+					}
+				}
+			} else if expr_type := t.get_expr_type(first_lhs) {
+				type_name := t.type_to_c_name(expr_type)
+				if type_name == 'string' {
+					// String indexing returns u8
+					elem_type_name = 'u8'
+					idx_sizeof = ast.Expr(ast.Ident{
+						name: 'u8'
+					})
+				} else if type_name.starts_with('Array_') {
+					// Array indexing returns element type
+					arr_elem := type_name[6..] // Remove 'Array_' prefix
+					elem_type_name = arr_elem
+					idx_sizeof = ast.Expr(ast.Ident{
+						name: arr_elem
+					})
+				}
+			}
+			idx_sizeof
+		} else if first is ast.CallExpr {
+			// Handle function calls - try to infer return type
+			if expr_type := t.get_expr_type(first) {
+				type_name := t.type_to_c_name(expr_type)
+				if type_name != '' {
+					elem_type_name = type_name
+					ast.Expr(ast.Ident{
+						name: type_name
+					})
+				} else {
+					ast.Expr(ast.Ident{
+						name: 'int'
+					})
+				}
+			} else {
+				// Try to infer from function name for common patterns
+				mut fn_name := ''
+				if first.lhs is ast.Ident {
+					fn_name = first.lhs.name
+				} else if first.lhs is ast.SelectorExpr {
+					fn_name = first.lhs.rhs.name
+				}
+				// Dynamic array construction functions return 'array' type
+				if fn_name in ['builtin__new_array_from_c_array_noscan',
+					'builtin__new_array_from_c_array', '__new_array_with_default_noscan',
+					'new_array_from_c_array'] {
+					elem_type_name = 'array'
+					ast.Expr(ast.Ident{
+						name: 'array'
+					})
+				} else if fn_name in ['substr', 'substr_unsafe', 'trim', 'trim_left', 'trim_right',
+					'to_upper', 'to_lower', 'replace', 'reverse', 'clone', 'repeat'] {
+					// String methods that return string
+					elem_type_name = 'string'
+					ast.Expr(ast.Ident{
+						name: 'string'
+					})
+				} else {
+					ast.Expr(ast.Ident{
+						name: 'int'
+					})
+				}
+			}
+		} else if first is ast.InitExpr {
+			// Struct literal - get the type name from the struct type
+			init_type_name := t.expr_to_type_name(first.typ)
+			if init_type_name != '' {
+				elem_type_name = init_type_name
+				ast.Expr(ast.Ident{
+					name: init_type_name
+				})
+			} else {
+				ast.Expr(ast.Ident{
+					name: 'int'
+				})
+			}
+		} else {
+			// Default: use int
+			ast.Expr(ast.Ident{
+				name: 'int'
+			})
+		}
+	} else {
+		ast.Expr(ast.Ident{
+			name: 'int'
+		})
+	}
+
+	// Create proper array type for the inner ArrayInitExpr.
+	// Use the resolved elem_type expression when available (preserves structured AST
+	// type info like ArrayType, PrefixExpr for &T, etc.). Only fall back to the mangled
+	// name string when no structured expression exists — the name-based path can lose
+	// type structure (e.g., 'Array_int*' gets misinterpreted as ptr(array) in SSA).
+	inner_elem_type := if elem_type_expr_resolved !is ast.EmptyExpr {
+		elem_type_expr_resolved
+	} else {
+		ast.Expr(ast.Ident{
+			name: elem_type_name
+		})
+	}
+	inner_array_typ := ast.Type(ast.ArrayType{
+		elem_type: inner_elem_type
+	})
+
+	return ast.CallExpr{
+		lhs:  ast.Ident{
+			name: 'builtin__new_array_from_c_array_noscan'
+		}
+		args: [
+			ast.Expr(ast.BasicLiteral{
+				kind:  .number
+				value: '${arr_len}'
+			}),
+			ast.Expr(ast.BasicLiteral{
+				kind:  .number
+				value: '${arr_len}'
+			}),
+			ast.Expr(ast.KeywordOperator{
+				op:    .key_sizeof
+				exprs: [sizeof_arg]
+			}),
+			ast.Expr(ast.ArrayInitExpr{
+				typ:   ast.Expr(inner_array_typ)
+				exprs: exprs
+			}),
+		]
+		pos:  expr.pos
+	}
+}
+
+fn (mut t Transformer) transform_map_init_expr(expr ast.MapInitExpr) ast.Expr {
+	// Determine key/value types from the explicit map type when available.
+	mut key_type_expr := ast.Expr(ast.Ident{
+		name: 'int'
+	})
+	mut val_type_expr := ast.Expr(ast.Ident{
+		name: 'int'
+	})
+	mut key_type_name := 'int'
+	mut have_explicit_map_type := false
+	match expr.typ {
+		ast.Type {
+			if expr.typ is ast.MapType {
+				mt := expr.typ as ast.MapType
+				key_type_expr = mt.key_type
+				val_type_expr = mt.value_type
+				key_type_name = t.expr_to_type_name(mt.key_type)
+				have_explicit_map_type = true
+			}
+		}
+		ast.Ident {
+			if explicit_map_typ := t.lookup_type(expr.typ.name) {
+				if explicit_map := t.unwrap_map_type(explicit_map_typ) {
+					key_type_expr = t.type_to_ast_type_expr(explicit_map.key_type)
+					val_type_expr = t.type_to_ast_type_expr(explicit_map.value_type)
+					key_type_name = t.type_to_c_name(explicit_map.key_type)
+					have_explicit_map_type = true
+				}
+			}
+		}
+		ast.SelectorExpr {
+			explicit_map_name := t.expr_to_type_name(expr.typ)
+			if explicit_map_name != '' {
+				if explicit_map_typ := t.lookup_type(explicit_map_name) {
+					if explicit_map := t.unwrap_map_type(explicit_map_typ) {
+						key_type_expr = t.type_to_ast_type_expr(explicit_map.key_type)
+						val_type_expr = t.type_to_ast_type_expr(explicit_map.value_type)
+						key_type_name = t.type_to_c_name(explicit_map.key_type)
+						have_explicit_map_type = true
+					}
+				}
+			}
+		}
+		else {}
+	}
+
+	// Empty map literals `{}` rely on checker-provided expected type.
+	// Use the inferred map type from the environment when the AST node doesn't carry one.
+	if !have_explicit_map_type {
+		if inferred := t.get_expr_type(ast.Expr(expr)) {
+			if inferred_map := t.unwrap_map_type(inferred) {
+				key_type_expr = t.type_to_ast_type_expr(inferred_map.key_type)
+				val_type_expr = t.type_to_ast_type_expr(inferred_map.value_type)
+				key_type_name = t.type_to_c_name(inferred_map.key_type)
+			}
+		}
+	}
+
+	// Transform key and value expressions (if any).
+	mut keys := []ast.Expr{cap: expr.keys.len}
+	mut vals := []ast.Expr{cap: expr.vals.len}
+	for k in expr.keys {
+		keys << t.transform_expr(k)
+	}
+	for v in expr.vals {
+		vals << t.transform_expr(v)
+	}
+
+	if keys.len > 0 && key_type_name != '' && key_type_name != 'int' {
+		mut needs_enum_key_resolution := false
+		for key_expr in keys {
+			if key_expr is ast.SelectorExpr && key_expr.lhs is ast.EmptyExpr {
+				needs_enum_key_resolution = true
+				break
+			}
+		}
+		if needs_enum_key_resolution {
+			for i, key_expr in keys {
+				keys[i] = t.transform_expr(t.resolve_enum_shorthand(key_expr, key_type_name))
+			}
+		}
+	}
+
+	// Infer map type from first entry when the checker didn't provide one.
+	if key_type_name == 'int' && keys.len > 0 {
+		first_key := keys[0]
+		first_val := vals[0]
+		if first_key is ast.BasicLiteral && first_key.kind == .string {
+			key_type_name = 'string'
+			key_type_expr = ast.Expr(ast.Ident{
+				name: 'string'
+			})
+		} else if first_key is ast.StringLiteral {
+			key_type_name = 'string'
+			key_type_expr = ast.Expr(ast.Ident{
+				name: 'string'
+			})
+		}
+		if first_val is ast.BasicLiteral && first_val.kind == .string {
+			val_type_expr = ast.Expr(ast.Ident{
+				name: 'string'
+			})
+		} else if first_val is ast.StringLiteral {
+			val_type_expr = ast.Expr(ast.Ident{
+				name: 'string'
+			})
+		}
+	}
+
+	if t.is_eval_backend() {
+		return ast.MapInitExpr{
+			typ:  if expr.typ !is ast.EmptyExpr { t.transform_expr(expr.typ) } else { expr.typ }
+			keys: keys
+			vals: vals
+			pos:  expr.pos
+		}
+	}
+
+	hash_fn, eq_fn, clone_fn, free_fn := map_runtime_key_fns_from_type_name(key_type_name)
+
+	// Empty map literal `{}`: lower to `new_map(sizeof(K), sizeof(V), &hash, &eq, &clone, &free)`.
+	if keys.len == 0 {
+		return ast.CallExpr{
+			lhs:  ast.Ident{
+				name: 'new_map'
+			}
+			args: [
+				ast.Expr(ast.KeywordOperator{
+					op:    .key_sizeof
+					exprs: [key_type_expr]
+				}),
+				ast.Expr(ast.KeywordOperator{
+					op:    .key_sizeof
+					exprs: [val_type_expr]
+				}),
+				ast.Expr(ast.PrefixExpr{
+					op:   .amp
+					expr: ast.Ident{
+						name: hash_fn
+					}
+				}),
+				ast.Expr(ast.PrefixExpr{
+					op:   .amp
+					expr: ast.Ident{
+						name: eq_fn
+					}
+				}),
+				ast.Expr(ast.PrefixExpr{
+					op:   .amp
+					expr: ast.Ident{
+						name: clone_fn
+					}
+				}),
+				ast.Expr(ast.PrefixExpr{
+					op:   .amp
+					expr: ast.Ident{
+						name: free_fn
+					}
+				}),
+			]
+			pos:  expr.pos
+		}
+	}
+
+	n := keys.len
+
+	// Create array types for keys and values.
+	key_array_typ := ast.Type(ast.ArrayType{
+		elem_type: key_type_expr
+	})
+	val_array_typ := ast.Type(ast.ArrayType{
+		elem_type: val_type_expr
+	})
+
+	// new_map_init_noscan_value(hash_fn, eq_fn, clone_fn, free_fn, n, key_size, val_size, keys, vals)
+	return ast.CallExpr{
+		lhs:  ast.Ident{
+			name: 'new_map_init_noscan_value'
+		}
+		args: [
+			ast.Expr(ast.PrefixExpr{
+				op:   .amp
+				expr: ast.Ident{
+					name: hash_fn
+				}
+			}),
+			ast.Expr(ast.PrefixExpr{
+				op:   .amp
+				expr: ast.Ident{
+					name: eq_fn
+				}
+			}),
+			ast.Expr(ast.PrefixExpr{
+				op:   .amp
+				expr: ast.Ident{
+					name: clone_fn
+				}
+			}),
+			ast.Expr(ast.PrefixExpr{
+				op:   .amp
+				expr: ast.Ident{
+					name: free_fn
+				}
+			}),
+			ast.Expr(ast.BasicLiteral{
+				kind:  .number
+				value: '${n}'
+			}),
+			ast.Expr(ast.KeywordOperator{
+				op:    .key_sizeof
+				exprs: [key_type_expr]
+			}),
+			ast.Expr(ast.KeywordOperator{
+				op:    .key_sizeof
+				exprs: [val_type_expr]
+			}),
+			ast.Expr(ast.ArrayInitExpr{
+				typ:   ast.Expr(key_array_typ)
+				exprs: keys
+			}),
+			ast.Expr(ast.ArrayInitExpr{
+				typ:   ast.Expr(val_array_typ)
+				exprs: vals
+			}),
+		]
+		pos:  expr.pos
+	}
+}
+
+fn (mut t Transformer) transform_init_expr(expr ast.InitExpr) ast.Expr {
+	// Typed empty map init: `map[K]V{}`.
+	// Lower here so backends do not need to special-case map InitExpr nodes.
+	if expr.fields.len == 0 {
+		match expr.typ {
+			ast.Type {
+				if expr.typ is ast.MapType {
+					if t.is_eval_backend() {
+						return ast.Expr(ast.MapInitExpr{
+							typ:  ast.Expr(ast.Type(expr.typ))
+							keys: []ast.Expr{}
+							vals: []ast.Expr{}
+							pos:  expr.pos
+						})
+					}
+					mt := expr.typ as ast.MapType
+					key_type_name := t.expr_to_type_name(mt.key_type)
+					hash_fn, eq_fn, clone_fn, free_fn :=
+						map_runtime_key_fns_from_type_name(key_type_name)
+					return ast.Expr(ast.CallExpr{
+						lhs:  ast.Ident{
+							name: 'new_map'
+						}
+						args: [
+							ast.Expr(ast.KeywordOperator{
+								op:    .key_sizeof
+								exprs: [mt.key_type]
+							}),
+							ast.Expr(ast.KeywordOperator{
+								op:    .key_sizeof
+								exprs: [mt.value_type]
+							}),
+							ast.Expr(ast.PrefixExpr{
+								op:   .amp
+								expr: ast.Ident{
+									name: hash_fn
+								}
+							}),
+							ast.Expr(ast.PrefixExpr{
+								op:   .amp
+								expr: ast.Ident{
+									name: eq_fn
+								}
+							}),
+							ast.Expr(ast.PrefixExpr{
+								op:   .amp
+								expr: ast.Ident{
+									name: clone_fn
+								}
+							}),
+							ast.Expr(ast.PrefixExpr{
+								op:   .amp
+								expr: ast.Ident{
+									name: free_fn
+								}
+							}),
+						]
+						pos:  expr.pos
+					})
+				}
+			}
+			else {}
+		}
+	}
+
+	// Get the struct type name for field type lookups
+	struct_type_name := t.get_init_expr_type_name(expr.typ)
+
+	// Transform field values recursively
+	// Note: ArrayInitExpr is NOT transformed here because cleanc uses field type info
+	// to determine if it's a fixed-size array (which transformer doesn't have access to)
+	mut fields := []ast.FieldInit{cap: expr.fields.len}
+	for field in expr.fields {
+		// Check if this field is a sum type and needs wrapping
+		mut field_type_name := t.get_struct_field_type_name(struct_type_name, field.name)
+		mut expected_field_type := types.Type(types.int_)
+		mut has_expected_field_type := false
+		mut pretransformed_value := ast.empty_expr
+		mut has_pretransformed_value := false
+		if direct_type := t.lookup_struct_field_type(struct_type_name, field.name) {
+			expected_field_type = direct_type
+			has_expected_field_type = true
+			field_type_name = t.type_to_c_name(direct_type)
+		} else if direct_type := t.get_init_expr_field_type(expr.typ, field.name) {
+			expected_field_type = direct_type
+			has_expected_field_type = true
+			field_type_name = t.type_to_c_name(direct_type)
+		} else if field_type_name != '' {
+			if expected_typ := t.lookup_type(field_type_name) {
+				expected_field_type = expected_typ
+				has_expected_field_type = true
+			}
+		} else {
+			// Fallback to direct type lookup from the init expression type.
+			field_type_name = t.get_init_expr_field_type_name(expr.typ, field.name)
+			if field_type_name != '' {
+				if expected_typ := t.lookup_type(field_type_name) {
+					expected_field_type = expected_typ
+					has_expected_field_type = true
+				}
+			}
+		}
+		mut field_value := field.value
+		is_sumtype_field := t.is_sum_type(field_type_name)
+		if has_expected_field_type {
+			field_value = t.resolve_expr_with_expected_type(field_value, expected_field_type)
+			fv_pos := field_value.pos()
+			if !is_sumtype_field && fv_pos.id != 0 {
+				t.synth_types[fv_pos.id] = expected_field_type
+			}
+			if t.is_eval_backend() {
+				if expected_field_type is types.OptionType
+					|| expected_field_type is types.ResultType {
+					base_type_name := t.type_to_c_name(expected_field_type.base_type())
+					if t.is_sum_type(base_type_name) {
+						if wrapped := t.wrap_sumtype_value(field_value, base_type_name) {
+							pretransformed_value = wrapped
+							has_pretransformed_value = true
+						}
+					}
+				}
+			}
+		}
+		if is_sumtype_field {
+			field_value_key := t.expr_to_string(field_value)
+			if field_value_key != '' {
+				if ctx := t.find_smartcast_for_expr(field_value_key) {
+					if ctx.sumtype == field_type_name
+						|| t.is_same_sumtype_name(ctx.sumtype, field_type_name) {
+						fields << ast.FieldInit{
+							name:  field.name
+							value: t.transform_expr_without_smartcast(field_value, field_value_key)
+						}
+						continue
+					}
+				}
+			}
+			// If the value is a variable whose declared type is already this sum type
+			// (e.g., `expr: ast.Expr` used in `GenericArgOrIndexExpr{expr: expr}`),
+			// skip wrapping. At the C level, the variable is already a tagged union
+			// of the correct type, so wrapping would produce invalid C.
+			if field_value is ast.Ident {
+				ident_value := field_value as ast.Ident
+				if var_type := t.lookup_var_type(ident_value.name) {
+					if var_type is types.SumType {
+						var_st_name := types.sum_type_name(var_type)
+						if var_st_name == field_type_name
+							|| match_sumtype_variant_name(var_st_name, [field_type_name]) != '' {
+							// Variable is already the target sum type. Remove any
+							// smartcast context temporarily so transform_expr returns
+							// the raw variable (tagged union value) without deref.
+							if sc_ctx := t.find_smartcast_for_expr(ident_value.name) {
+								removed := t.remove_matching_smartcasts(sc_ctx)
+								transformed_direct := t.transform_expr(field_value)
+								t.restore_smartcasts(removed)
+								fields << ast.FieldInit{
+									name:  field.name
+									value: transformed_direct
+								}
+							} else {
+								fields << ast.FieldInit{
+									name:  field.name
+									value: t.transform_expr(field_value)
+								}
+							}
+							continue
+						}
+					}
+				}
+			}
+			// This is a sum type field - wrap the value in sum type initialization
+			if wrapped := t.wrap_sumtype_value(field_value, field_type_name) {
+				fields << ast.FieldInit{
+					name:  field.name
+					value: wrapped
+				}
+				continue
+			}
+		}
+
+		old_expected_ierror := t.expected_ierror_init
+		if has_expected_field_type {
+			t.expected_ierror_init = t.is_ierror_type(expected_field_type)
+		}
+		transformed_value := if has_pretransformed_value {
+			pretransformed_value
+		} else if field_value is ast.ArrayInitExpr {
+			arr_value := field_value as ast.ArrayInitExpr
+			// If the array has len/cap but no literal elements (e.g., []int{len: 4}),
+			// use the normal transform_expr path which handles __new_array_with_default_noscan
+			if arr_value.exprs.len == 0
+				&& (arr_value.len !is ast.EmptyExpr || arr_value.cap !is ast.EmptyExpr) {
+				t.transform_expr(field_value)
+			} else {
+				// Transform array elements with sumtype wrapping if needed.
+				elem_sumtype := t.get_field_array_elem_sumtype_name(struct_type_name, field.name)
+				elem_interface_typ := t.get_field_array_elem_interface_type(struct_type_name,
+					field.name)
+				mut new_exprs := []ast.Expr{cap: arr_value.exprs.len}
+				for e in arr_value.exprs {
+					mut transformed := t.transform_expr(e)
+					if elem_sumtype != '' {
+						if wrapped := t.wrap_sumtype_value_transformed(transformed, elem_sumtype) {
+							new_exprs << wrapped
+							continue
+						}
+					}
+					if iface_typ := elem_interface_typ {
+						if !t.is_interface_cast(transformed) {
+							transformed = ast.Expr(ast.CallOrCastExpr{
+								lhs:  t.type_to_ast_type_expr(iface_typ)
+								expr: transformed
+							})
+						}
+					}
+					new_exprs << transformed
+				}
+				// Set elem type from struct field so
+				// transform_array_init_with_exprs uses the correct element type.
+				// This is critical when elements were wrapped in a sum type above,
+				// as the C array type must match the wrapped (sum type) elements.
+				mut arr_with_type := arr_value
+				elem_c_name := t.get_field_array_elem_c_name(struct_type_name, field.name)
+				if elem_c_name != '' {
+					arr_with_type = ast.ArrayInitExpr{
+						typ:   ast.Expr(ast.Type(ast.ArrayType{
+							elem_type: ast.Ident{
+								name: elem_c_name
+							}
+						}))
+						exprs: arr_value.exprs
+						init:  arr_value.init
+						cap:   arr_value.cap
+						len:   arr_value.len
+						pos:   arr_value.pos
+					}
+				}
+				// Use transform_array_init_with_exprs which handles both fixed and dynamic:
+				// - Fixed arrays stay as ArrayInitExpr for cleanc
+				// - Dynamic arrays are lowered to builtin__new_array_from_c_array_noscan
+				t.transform_array_init_with_exprs(arr_with_type, new_exprs)
+			}
+		} else {
+			t.transform_expr(field_value)
+		}
+		t.expected_ierror_init = old_expected_ierror
+		final_value := t.deref_init_field_value_if_needed(transformed_value, field_type_name)
+		fields << ast.FieldInit{
+			name:  field.name
+			value: final_value
+		}
+	}
+	fields = t.add_missing_struct_field_defaults(struct_type_name, fields)
+
+	// Check if this is an error struct literal that needs IError boxing
+	type_name := t.get_init_expr_type_name(expr.typ)
+	if t.expected_ierror_init && t.is_error_type_name(type_name) {
+		// Transform to IError struct init with explicit boxing
+		// Generate: IError{ ._object = &ErrorType{...}, ._type_id = __type_id_ErrorType,
+		//                   .type_name = IError_WrapperType_type_name_wrapper,
+		//                   .msg = IError_WrapperType_msg_wrapper,
+		//                   .code = IError_WrapperType_code_wrapper }
+		c_type_name := t.get_c_type_name(type_name)
+		// Determine wrapper type - types that embed Error use Error wrappers,
+		// types with custom msg/code methods use their own wrappers
+		wrapper_type := t.get_error_wrapper_type(type_name)
+
+		// Create &ErrorType{...} - heap-allocated error object
+		inner_init := ast.InitExpr{
+			typ:    expr.typ
+			fields: fields
+		}
+		heap_alloc := ast.PrefixExpr{
+			op:   .amp
+			expr: inner_init
+		}
+
+		return ast.InitExpr{
+			typ:    ast.Ident{
+				name: 'IError'
+			}
+			fields: [
+				ast.FieldInit{
+					name:  '_object'
+					value: heap_alloc
+				},
+				ast.FieldInit{
+					name:  '_type_id'
+					value: ast.Ident{
+						name: '__type_id_${c_type_name}'
+					}
+				},
+				ast.FieldInit{
+					name:  'type_name'
+					value: ast.Ident{
+						name: 'IError_${wrapper_type}_type_name_wrapper'
+					}
+				},
+				ast.FieldInit{
+					name:  'msg'
+					value: ast.Ident{
+						name: 'IError_${wrapper_type}_msg_wrapper'
+					}
+				},
+				ast.FieldInit{
+					name:  'code'
+					value: ast.Ident{
+						name: 'IError_${wrapper_type}_code_wrapper'
+					}
+				},
+			]
+		}
+	}
+
+	return ast.InitExpr{
+		typ:    expr.typ
+		fields: fields
+	}
+}
+
+fn (t &Transformer) deref_init_field_value_if_needed(value ast.Expr, expected_field_type_name string) ast.Expr {
+	if expected_field_type_name == '' {
+		return value
+	}
+	// Pointer-typed fields already expect an address.
+	if expected_field_type_name.starts_with('&') || expected_field_type_name.ends_with('*') {
+		return value
+	}
+	mut expected_base_c := ''
+	if expected_typ := t.lookup_type(expected_field_type_name) {
+		if expected_typ is types.Pointer {
+			return value
+		}
+		expected_base := t.unwrap_alias_and_pointer_type(expected_typ)
+		expected_base_c = t.type_to_c_name(expected_base)
+	}
+	value_typ := t.get_expr_type(value) or { return value }
+	if value_typ is types.Pointer {
+		value_base := t.unwrap_alias_and_pointer_type(value_typ.base_type)
+		value_base_c := t.type_to_c_name(value_base)
+		value_short := if value_base_c.contains('__') {
+			value_base_c.all_after_last('__')
+		} else {
+			value_base_c
+		}
+		if expected_base_c != '' {
+			expected_short := if expected_base_c.contains('__') {
+				expected_base_c.all_after_last('__')
+			} else {
+				expected_base_c
+			}
+			if expected_base_c == value_base_c || expected_short == value_short {
+				return ast.PrefixExpr{
+					op:   .mul
+					expr: value
+				}
+			}
+			return value
+		}
+		mut expected_c := t.v_type_name_to_c_name(expected_field_type_name)
+		if expected_c.ends_with('*') {
+			expected_c = expected_c[..expected_c.len - 1]
+		}
+		expected_short := if expected_c.contains('__') {
+			expected_c.all_after_last('__')
+		} else {
+			expected_c
+		}
+		raw_expected_short := if expected_field_type_name.contains('__') {
+			expected_field_type_name.all_after_last('__')
+		} else {
+			expected_field_type_name
+		}
+		if expected_c == value_base_c || expected_short == value_short
+			|| raw_expected_short == value_short {
+			return ast.PrefixExpr{
+				op:   .mul
+				expr: value
+			}
+		}
+	}
+	return value
+}
+
+fn (t &Transformer) get_init_expr_field_type(init_typ_expr ast.Expr, field_name string) ?types.Type {
+	init_typ := t.get_expr_type(init_typ_expr) or { return none }
+	base_typ := t.unwrap_alias_and_pointer_type(init_typ)
+	if base_typ is types.Struct {
+		for field in base_typ.fields {
+			if field.name == field_name {
+				return field.typ
+			}
+		}
+	}
+	return none
+}
+
+fn (t &Transformer) get_init_expr_field_type_name(init_typ_expr ast.Expr, field_name string) string {
+	init_typ := t.get_expr_type(init_typ_expr) or { return '' }
+	base_typ := t.unwrap_alias_and_pointer_type(init_typ)
+	if base_typ is types.Struct {
+		for field in base_typ.fields {
+			if field.name == field_name {
+				return t.type_to_name(field.typ)
+			}
+		}
+	}
+	return ''
+}
+
+fn (mut t Transformer) add_missing_struct_field_defaults(struct_name string, fields []ast.FieldInit) []ast.FieldInit {
+	if struct_name == '' {
+		return fields
+	}
+	struct_type := t.lookup_type(struct_name) or {
+		if struct_name.contains('Scope') || struct_name.contains('DenseArray')
+			|| struct_name.contains('Env') {
+		}
+		return fields
+	}
+	base_type := t.unwrap_alias_and_pointer_type(struct_type)
+	if base_type !is types.Struct {
+		if struct_name.contains('Scope') || struct_name.contains('DenseArray')
+			|| struct_name.contains('Env') {
+		}
+		return fields
+	}
+	struct_info := base_type as types.Struct
+	mut existing := map[string]bool{}
+	mut positional_idx := 0
+	for field in fields {
+		if field.name == '' {
+			// Positional field — map it to the corresponding struct field name
+			if positional_idx < struct_info.fields.len {
+				existing[struct_info.fields[positional_idx].name] = true
+			}
+			positional_idx++
+		} else {
+			existing[field.name] = true
+		}
+	}
+	mut out := []ast.FieldInit{cap: fields.len}
+	for field in fields {
+		out << field
+	}
+	for struct_field in struct_info.fields {
+		if struct_field.name in existing {
+			continue
+		}
+		if struct_field.default_expr !is ast.EmptyExpr
+			&& t.is_supported_struct_default_expr(struct_field.default_expr) {
+			resolved_default := t.resolve_expr_with_expected_type(struct_field.default_expr,
+				struct_field.typ)
+			out << ast.FieldInit{
+				name:  struct_field.name
+				value: t.transform_struct_field_default_expr(struct_name, resolved_default)
+			}
+			continue
+		}
+		field_type := t.unwrap_alias_and_pointer_type(struct_field.typ)
+		if field_type is types.Map {
+			if struct_name.contains('Scope') || struct_name.contains('Env') {
+			}
+			map_init := ast.Expr(ast.MapInitExpr{
+				typ: t.type_to_ast_type_expr(field_type)
+			})
+			out << ast.FieldInit{
+				name:  struct_field.name
+				value: t.transform_expr(map_init)
+			}
+			continue
+		}
+		if field_type is types.Array {
+			array_init := ast.Expr(ast.ArrayInitExpr{
+				typ: t.type_to_ast_type_expr(field_type)
+			})
+			out << ast.FieldInit{
+				name:  struct_field.name
+				value: t.transform_expr(array_init)
+			}
+			continue
+		}
+		if field_type is types.OptionType {
+			option_none := ast.Expr(ast.InitExpr{
+				typ:    t.type_to_ast_type_expr(field_type)
+				fields: [
+					ast.FieldInit{
+						name:  'state'
+						value: ast.BasicLiteral{
+							kind:  token.Token.number
+							value: '2'
+						}
+					},
+				]
+			})
+			out << ast.FieldInit{
+				name:  struct_field.name
+				value: t.transform_expr(option_none)
+			}
+			continue
+		}
+		if field_type is types.String {
+			out << ast.FieldInit{
+				name:  struct_field.name
+				value: ast.StringLiteral{
+					kind:  .v
+					value: "''"
+				}
+			}
+			continue
+		}
+		raw_field_type := types.resolve_alias(struct_field.typ)
+		if raw_field_type is types.Struct && t.struct_needs_explicit_default_init(raw_field_type, 0) {
+			out << ast.FieldInit{
+				name:  struct_field.name
+				value: t.transform_expr(ast.Expr(ast.InitExpr{
+					typ: t.type_to_ast_type_expr(types.Type(raw_field_type))
+				}))
+			}
+		}
+	}
+	// Also fill defaults for fields from embedded structs.
+	for emb in struct_info.embedded {
+		for struct_field in emb.fields {
+			if struct_field.name in existing {
+				continue
+			}
+			if struct_field.default_expr !is ast.EmptyExpr
+				&& t.is_supported_struct_default_expr(struct_field.default_expr) {
+				mut emb_struct_name := struct_name
+				if emb.name.contains('__') {
+					emb_struct_name = emb.name
+				}
+				resolved_default := t.resolve_expr_with_expected_type(struct_field.default_expr,
+					struct_field.typ)
+				out << ast.FieldInit{
+					name:  struct_field.name
+					value: t.transform_struct_field_default_expr(emb_struct_name, resolved_default)
+				}
+				continue
+			}
+			field_type := t.unwrap_alias_and_pointer_type(struct_field.typ)
+			if field_type is types.Map {
+				map_init := ast.Expr(ast.MapInitExpr{
+					typ: t.type_to_ast_type_expr(field_type)
+				})
+				out << ast.FieldInit{
+					name:  struct_field.name
+					value: t.transform_expr(map_init)
+				}
+				continue
+			}
+			if field_type is types.Array {
+				array_init := ast.Expr(ast.ArrayInitExpr{
+					typ: t.type_to_ast_type_expr(field_type)
+				})
+				out << ast.FieldInit{
+					name:  struct_field.name
+					value: t.transform_expr(array_init)
+				}
+				continue
+			}
+			if field_type is types.OptionType {
+				option_none := ast.Expr(ast.InitExpr{
+					typ:    t.type_to_ast_type_expr(field_type)
+					fields: [
+						ast.FieldInit{
+							name:  'state'
+							value: ast.BasicLiteral{
+								kind:  token.Token.number
+								value: '2'
+							}
+						},
+					]
+				})
+				out << ast.FieldInit{
+					name:  struct_field.name
+					value: t.transform_expr(option_none)
+				}
+				continue
+			}
+			if field_type is types.String {
+				out << ast.FieldInit{
+					name:  struct_field.name
+					value: ast.StringLiteral{
+						kind:  .v
+						value: "''"
+					}
+				}
+				continue
+			}
+			raw_field_type := types.resolve_alias(struct_field.typ)
+			if raw_field_type is types.Struct
+				&& t.struct_needs_explicit_default_init(raw_field_type, 0) {
+				out << ast.FieldInit{
+					name:  struct_field.name
+					value: t.transform_expr(ast.Expr(ast.InitExpr{
+						typ: t.type_to_ast_type_expr(types.Type(raw_field_type))
+					}))
+				}
+			}
+		}
+	}
+	return out
+}
+
+fn (mut t Transformer) struct_needs_explicit_default_init(struct_info types.Struct, depth int) bool {
+	if depth > 4 {
+		return false
+	}
+	for struct_field in struct_info.fields {
+		if struct_field.default_expr !is ast.EmptyExpr
+			&& is_safe_nested_struct_default_expr(struct_field.default_expr) {
+			return true
+		}
+	}
+	for emb in struct_info.embedded {
+		for struct_field in emb.fields {
+			if struct_field.default_expr !is ast.EmptyExpr
+				&& is_safe_nested_struct_default_expr(struct_field.default_expr) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+fn is_safe_nested_struct_default_expr(expr ast.Expr) bool {
+	match expr {
+		ast.BasicLiteral, ast.StringLiteral {
+			return true
+		}
+		ast.PrefixExpr {
+			return expr.op == .minus && expr.expr is ast.BasicLiteral
+		}
+		else {
+			return false
+		}
+	}
+}
+
+fn (mut t Transformer) transform_struct_field_default_expr(struct_name string, expr ast.Expr) ast.Expr {
+	if struct_name.contains('__') {
+		module_name := struct_name.all_before_last('__')
+		if module_name != '' && module_name != t.cur_module {
+			// Cross-module const defaults like `ast.empty_expr` must be qualified.
+			if expr is ast.Ident {
+				return ast.SelectorExpr{
+					lhs: ast.Ident{
+						name: module_name
+					}
+					rhs: expr
+				}
+			}
+			old_module := t.cur_module
+			t.cur_module = module_name
+			transformed := t.transform_expr(expr)
+			t.cur_module = old_module
+			return transformed
+		}
+	}
+	return t.transform_expr(expr)
+}
+
+fn (t &Transformer) get_init_expr_type_name(typ ast.Expr) string {
+	if typ is ast.Ident {
+		// Add module prefix if we're in a non-main module and the type is a known error type
+		base_name := typ.name
+		if t.cur_module != '' && t.cur_module != 'main' && t.cur_module != 'builtin' {
+			// Check if this is an error type that should be module-qualified
+			if base_name in ['Eof', 'NotExpected', 'MessageError', 'Error', 'FileNotOpenedError',
+				'SizeOfTypeIs0Error', 'ExecutableNotFoundError'] {
+				return '${t.cur_module}__${base_name}'
+			}
+		}
+		return base_name
+	}
+	if typ is ast.SelectorExpr {
+		// Module-qualified: os.Eof -> os__Eof
+		if typ.lhs is ast.Ident {
+			return '${typ.lhs.name}__${typ.rhs.name}'
+		}
+		return typ.rhs.name
+	}
+	return ''
+}
+
+// is_error_type_name checks if a type implements IError
+// This includes types that embed Error OR types that have msg() method
+fn (t &Transformer) get_struct_field_type_name(struct_name string, field_name string) string {
+	// Look up the struct type in scopes.
+	// For qualified names (e.g. "ast__CallExpr"), try the module scope directly first.
+	normalized_struct_name := struct_name.replace('.', '__')
+	dunder := normalized_struct_name.index('__') or { -1 }
+	if dunder >= 0 {
+		mod_name := normalized_struct_name[..dunder]
+		last_dunder := normalized_struct_name.last_index('__') or { dunder }
+		short_name := normalized_struct_name[last_dunder + 2..]
+		if mod_scope := t.cached_scopes[mod_name] {
+			if obj := mod_scope.objects[short_name] {
+				if obj is types.Type {
+					result := t.get_field_type_name(obj, field_name)
+					if result != '' {
+						return result
+					}
+				}
+			}
+			// Also try the full qualified name
+			if obj := mod_scope.objects[normalized_struct_name] {
+				if obj is types.Type {
+					result := t.get_field_type_name(obj, field_name)
+					if result != '' {
+						return result
+					}
+				}
+			}
+		}
+		for alt_mod_name, alt_scope in t.cached_scopes {
+			alt_short := if alt_mod_name.contains('.') {
+				alt_mod_name.all_after_last('.')
+			} else if alt_mod_name.contains('__') {
+				alt_mod_name.all_after_last('__')
+			} else {
+				alt_mod_name
+			}
+			if alt_short != mod_name {
+				continue
+			}
+			if obj := alt_scope.objects[short_name] {
+				if obj is types.Type {
+					result := t.get_field_type_name(obj, field_name)
+					if result != '' {
+						return result
+					}
+				}
+			}
+			if obj := alt_scope.objects[normalized_struct_name] {
+				if obj is types.Type {
+					result := t.get_field_type_name(obj, field_name)
+					if result != '' {
+						return result
+					}
+				}
+			}
+		}
+	}
+	// Prefer the current module scope for non-qualified names
+	// to avoid collisions (e.g., ast.FnType vs types.FnType both named "FnType").
+	if dunder < 0 && t.cur_module != '' && t.cur_module != 'main' && t.cur_module != 'builtin' {
+		if cur_scope := t.cached_scopes[t.cur_module] {
+			if obj := cur_scope.objects[normalized_struct_name] {
+				if obj is types.Type {
+					result := t.get_field_type_name(obj, field_name)
+					if result != '' {
+						return result
+					}
+				}
+			}
+		}
+	}
+	// Fallback: scan all scopes
+	scope_keys2 := t.cached_scopes.keys()
+	for sk in scope_keys2 {
+		scope := t.cached_scopes[sk] or { continue }
+		if obj := scope.objects[normalized_struct_name] {
+			if obj is types.Type {
+				return t.get_field_type_name(obj, field_name)
+			}
+		}
+		if dunder >= 0 {
+			last_dunder := normalized_struct_name.last_index('__') or { dunder }
+			short_name := normalized_struct_name[last_dunder + 2..]
+			if obj := scope.objects[short_name] {
+				if obj is types.Type {
+					return t.get_field_type_name(obj, field_name)
+				}
+			}
+		} else if t.cur_module != '' && t.cur_module != 'main' && t.cur_module != 'builtin' {
+			mangled := '${t.cur_module}__${normalized_struct_name}'
+			if obj := scope.objects[mangled] {
+				if obj is types.Type {
+					return t.get_field_type_name(obj, field_name)
+				}
+			}
+		}
+	}
+	return ''
+}
+
+// wrap_sumtype_value wraps a value in sum type initialization if needed
+// Returns the wrapped expression or none if the value type couldn't be determined
+fn (t &Transformer) resolve_field_type(var_name string, field_name string) string {
+	// First, check if variable is already an enum type
+	if _ := t.is_var_enum(var_name) {
+		// Variable is already an enum, no field access needed
+		return ''
+	}
+
+	// Check if variable is smartcasted - use the smartcast variant type
+	if ctx := t.find_smartcast_for_expr(var_name) {
+		return t.resolve_struct_field_type(ctx.variant, field_name)
+	}
+
+	// Look up variable type from scope
+	var_type_name := t.get_var_type_name(var_name)
+	if var_type_name != '' {
+		// Strip pointer prefix/suffix for struct lookup
+		mut clean_type := var_type_name
+		if clean_type.starts_with('&') {
+			clean_type = clean_type[1..]
+		}
+		if clean_type.ends_with('*') {
+			clean_type = clean_type[..clean_type.len - 1]
+		}
+		return t.resolve_struct_field_type(clean_type, field_name)
+	}
+
+	// Look up the variable in the current module's scope
+	mut scope := t.get_current_scope() or { return '' }
+	obj := scope.lookup_parent(var_name, 0) or { return '' }
+
+	// Get the variable's type
+	var_type := obj.typ()
+	return t.get_field_type_name(var_type, field_name)
+}
+
+// resolve_struct_field_type looks up a field type given a struct type name
+fn (t &Transformer) resolve_struct_field_type(struct_name string, field_name string) string {
+	// Look up the struct type in scopes
+	// Handle qualified names like "ast__SelectorExpr" - extract module and type name
+	normalized_struct_name := struct_name.replace('.', '__')
+	mut lookup_name := normalized_struct_name
+	mut lookup_module := ''
+	dunder := normalized_struct_name.index('__') or { -1 }
+	if dunder >= 0 {
+		lookup_module = normalized_struct_name[..dunder]
+		last_dunder := normalized_struct_name.last_index('__') or { dunder }
+		lookup_name = normalized_struct_name[last_dunder + 2..]
+	}
+	// Fast path: try the target module scope directly
+	if lookup_module != '' {
+		if mod_scope := t.cached_scopes[lookup_module] {
+			if obj := mod_scope.objects[lookup_name] {
+				if obj is types.Type {
+					result := t.get_field_type_name(obj, field_name)
+					if result != '' {
+						return result
+					}
+				}
+			}
+			if obj := mod_scope.objects[normalized_struct_name] {
+				if obj is types.Type {
+					result := t.get_field_type_name(obj, field_name)
+					if result != '' {
+						return result
+					}
+				}
+			}
+		}
+		for mod_name, mod_scope in t.cached_scopes {
+			mod_short := if mod_name.contains('.') {
+				mod_name.all_after_last('.')
+			} else if mod_name.contains('__') {
+				mod_name.all_after_last('__')
+			} else {
+				mod_name
+			}
+			if mod_short != lookup_module {
+				continue
+			}
+			if obj := mod_scope.objects[lookup_name] {
+				if obj is types.Type {
+					result := t.get_field_type_name(obj, field_name)
+					if result != '' {
+						return result
+					}
+				}
+			}
+			if obj := mod_scope.objects[normalized_struct_name] {
+				if obj is types.Type {
+					result := t.get_field_type_name(obj, field_name)
+					if result != '' {
+						return result
+					}
+				}
+			}
+		}
+	}
+	// Try current module scope
+	if t.cur_module != '' {
+		if cur_scope := t.cached_scopes[t.cur_module] {
+			if obj := cur_scope.objects[normalized_struct_name] {
+				if obj is types.Type {
+					result := t.get_field_type_name(obj, field_name)
+					if result != '' {
+						return result
+					}
+				}
+			}
+			if obj := cur_scope.objects[lookup_name] {
+				if obj is types.Type {
+					result := t.get_field_type_name(obj, field_name)
+					if result != '' {
+						return result
+					}
+				}
+			}
+		}
+	}
+	// Fallback: scan all scopes
+	scope_keys3 := t.cached_scopes.keys()
+	for sk in scope_keys3 {
+		scope := t.cached_scopes[sk] or { continue }
+		if obj := scope.objects[normalized_struct_name] {
+			if obj is types.Type {
+				return t.get_field_type_name(obj, field_name)
+			}
+		}
+		if obj := scope.objects[lookup_name] {
+			if obj is types.Type {
+				return t.get_field_type_name(obj, field_name)
+			}
+		}
+	}
+	return ''
+}
+
+// get_field_type_name gets the type name of a field from a Type
+fn (t &Transformer) get_field_type_name(typ types.Type, field_name string) string {
+	if typ is types.Struct {
+		for field in typ.fields {
+			if field.name == field_name {
+				return t.type_to_name(field.typ)
+			}
+		}
+	}
+	if typ is types.Pointer {
+		// Dereference pointer and recurse
+		return t.get_field_type_name(typ.base_type, field_name)
+	}
+	return ''
+}
+
+// get_field_array_elem_sumtype_name returns the sum type name of the array element type
+// for a struct field, if the field is an array of sum types. Returns '' otherwise.
+fn (t &Transformer) get_field_array_elem_sumtype_name(struct_name string, field_name string) string {
+	// Compute short name once outside the loop
+	dunder := struct_name.index('__') or { -1 }
+	short_name := if dunder >= 0 {
+		last_dunder := struct_name.last_index('__') or { dunder }
+		struct_name[last_dunder + 2..]
+	} else {
+		struct_name
+	}
+	// Try module scope directly first for qualified names
+	if dunder >= 0 {
+		mod_name := struct_name[..dunder]
+		if mod_scope := t.cached_scopes[mod_name] {
+			if obj := mod_scope.objects[short_name] {
+				if obj is types.Type {
+					if obj is types.Struct {
+						for field in obj.fields {
+							if field.name == field_name {
+								if field.typ is types.Array {
+									field_arr := field.typ as types.Array
+									elem_name := t.type_to_name(field_arr.elem_type)
+									if t.is_sum_type(elem_name) {
+										return elem_name
+									}
+								}
+								return ''
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+	scope_keys4 := t.cached_scopes.keys()
+	for sk in scope_keys4 {
+		scope := t.cached_scopes[sk] or { continue }
+		if obj := scope.objects[struct_name] {
+			if obj is types.Type {
+				if obj is types.Struct {
+					for field in obj.fields {
+						if field.name == field_name {
+							if field.typ is types.Array {
+								field_arr := field.typ as types.Array
+								elem_name := t.type_to_name(field_arr.elem_type)
+								if t.is_sum_type(elem_name) {
+									return elem_name
+								}
+							}
+							return ''
+						}
+					}
+				}
+			}
+		}
+		if dunder >= 0 {
+			if obj := scope.objects[short_name] {
+				if obj is types.Type {
+					if obj is types.Struct {
+						for field in obj.fields {
+							if field.name == field_name {
+								if field.typ is types.Array {
+									field_arr := field.typ as types.Array
+									elem_name := t.type_to_name(field_arr.elem_type)
+									if t.is_sum_type(elem_name) {
+										return elem_name
+									}
+								}
+								return ''
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+	return ''
+}
+
+fn (t &Transformer) get_field_array_elem_interface_type(struct_name string, field_name string) ?types.Type {
+	field_typ := t.lookup_struct_field_type(struct_name, field_name) or { return none }
+	match field_typ {
+		types.Array {
+			et := field_typ.elem_type
+			if et is types.Interface {
+				return et
+			}
+			if et is types.Alias && et.base_type is types.Interface {
+				return et
+			}
+		}
+		types.Alias {
+			if field_typ.base_type is types.Array {
+				et := field_typ.base_type.elem_type
+				if et is types.Interface {
+					return et
+				}
+				if et is types.Alias && et.base_type is types.Interface {
+					return et
+				}
+			}
+		}
+		else {}
+	}
+
+	return none
+}
+
+// get_field_array_elem_c_name returns the C type name for the element type of an array field
+fn (t &Transformer) get_field_array_elem_c_name(struct_name string, field_name string) string {
+	scope_keys5 := t.cached_scopes.keys()
+	for sk in scope_keys5 {
+		scope := t.cached_scopes[sk] or { continue }
+		if obj := scope.objects[struct_name] {
+			if obj is types.Type {
+				if obj is types.Struct {
+					for field in obj.fields {
+						if field.name == field_name {
+							if field.typ is types.Array {
+								field_arr := field.typ as types.Array
+								return t.type_to_c_name(field_arr.elem_type)
+							}
+							return ''
+						}
+					}
+				}
+			}
+		}
+	}
+	return ''
+}
+
+fn (t &Transformer) field_type_from_struct_like_type(typ types.Type, field_name string) ?types.Type {
+	base_type := t.unwrap_alias_and_pointer_type(typ)
+	match base_type {
+		types.Struct {
+			for field in base_type.fields {
+				if field.name == field_name {
+					return field.typ
+				}
+			}
+		}
+		types.Alias {
+			alias_base := t.unwrap_alias_and_pointer_type(base_type.base_type)
+			if alias_base is types.Struct {
+				for field in alias_base.fields {
+					if field.name == field_name {
+						return field.typ
+					}
+				}
+			}
+		}
+		else {}
+	}
+
+	return none
+}
+
+fn (t &Transformer) array_method_receiver_elem_type(call ast.CallExpr) ?types.Type {
+	if call.lhs !is ast.SelectorExpr {
+		return none
+	}
+	call_lhs := call.lhs as ast.SelectorExpr
+	if call_lhs.rhs.name !in ['last', 'first', 'pop', 'pop_left'] {
+		return none
+	}
+	receiver_type := t.resolve_expr_type(call_lhs.lhs) or { return none }
+	base_type := t.unwrap_alias_and_pointer_type(receiver_type)
+	return match base_type {
+		types.Array { base_type.elem_type }
+		types.ArrayFixed { base_type.elem_type }
+		else { none }
+	}
+}
+
+fn (t &Transformer) lookup_unique_struct_field_type(field_name string) ?types.Type {
+	mut found := types.Type(types.void_)
+	mut found_count := 0
+	for _, scope in t.cached_scopes {
+		for _, obj in scope.objects {
+			if obj is types.Type {
+				typ := types.Type(obj)
+				if typ is types.Struct {
+					for field in typ.fields {
+						if field.name == field_name {
+							found = field.typ
+							found_count++
+							break
+						}
+					}
+				}
+			}
+		}
+	}
+	if found_count == 1 {
+		return found
+	}
+	return none
+}
+
+// type_to_name converts a Type to its name string
+fn (t &Transformer) get_struct_field_type(expr ast.SelectorExpr) ?types.Type {
+	lhs_key := t.expr_to_string(expr.lhs)
+	if lhs_key != '' {
+		if ctx := t.find_smartcast_for_expr(lhs_key) {
+			if typ := t.lookup_type(ctx.variant_full) {
+				if field_type := t.field_type_from_struct_like_type(typ, expr.rhs.name) {
+					return field_type
+				}
+			}
+			if ctx.variant != ctx.variant_full {
+				if typ := t.lookup_type(ctx.variant) {
+					if field_type := t.field_type_from_struct_like_type(typ, expr.rhs.name) {
+						return field_type
+					}
+				}
+			}
+		}
+	}
+	if expr.lhs is ast.CallExpr {
+		if elem_type := t.array_method_receiver_elem_type(expr.lhs) {
+			if field_type := t.field_type_from_struct_like_type(elem_type, expr.rhs.name) {
+				return field_type
+			}
+		}
+	}
+	// Try to get the struct type from scope (for local variables and receivers)
+	mut struct_type_name := ''
+	if expr.lhs is ast.Ident {
+		lhs_name := expr.lhs.name
+		if lhs_type := t.lookup_var_type(lhs_name) {
+			if field_type := t.field_type_from_struct_like_type(lhs_type, expr.rhs.name) {
+				return field_type
+			}
+		}
+		lhs_type := t.get_var_type_name(lhs_name)
+		if lhs_type != '' {
+			// Remove pointer indicators: both V-style (&T) and C-style (T*)
+			struct_type_name = lhs_type.trim_left('&').trim_right('*')
+		}
+	}
+
+	// If we have a type name, look it up in the environment
+	if struct_type_name != '' {
+		// Types are defined at module level, not function level
+		// Use lookup_type which searches module scopes
+		looked_up_type := t.lookup_type(struct_type_name) or { return none }
+		base_type := if looked_up_type is types.Pointer {
+			looked_up_type.base_type
+		} else {
+			looked_up_type
+		}
+		if field_type := t.field_type_from_struct_like_type(base_type, expr.rhs.name) {
+			return field_type
+		}
+	}
+
+	// Fall back to get_expr_type for module-level lookups
+	if struct_type := t.get_expr_type(expr.lhs) {
+		if field_type := t.field_type_from_struct_like_type(struct_type, expr.rhs.name) {
+			return field_type
+		}
+	}
+	if struct_type := t.resolve_expr_type(expr.lhs) {
+		if field_type := t.field_type_from_struct_like_type(struct_type, expr.rhs.name) {
+			return field_type
+		}
+	}
+	if field_type := t.lookup_unique_struct_field_type(expr.rhs.name) {
+		return field_type
+	}
+
+	return none
+}
+
+// expand_array_init_with_index expands `[]T{len: n, init: expr_using_index}` into:
+//   mut _awi_tN = __new_array_with_default_noscan(len, cap, sizeof(T), nil)
+//   for (_v_index = 0; _v_index < _awi_tN.len; _v_index++) {
+//       ((T*)_awi_tN.data)[_v_index] = init_expr  (with `index` renamed to `_v_index`)
+//   }
+//   <returns _awi_tN ident>
+fn (mut t Transformer) expand_array_init_with_index(len_expr ast.Expr, cap_expr ast.Expr, sizeof_expr ast.Expr, init_expr ast.Expr, _pos token.Pos) ast.Expr {
+	t.temp_counter++
+	arr_name := '_awi_t${t.temp_counter}'
+	arr_ident := ast.Ident{
+		name: arr_name
+	}
+	idx_ident := ast.Ident{
+		name: '_v_index'
+	}
+
+	// 1. mut _awi_tN = __new_array_with_default_noscan(len, cap, sizeof(T), nil)
+	init_stmt := ast.Stmt(ast.AssignStmt{
+		op:  .decl_assign
+		lhs: [
+			ast.Expr(ast.ModifierExpr{
+				kind: .key_mut
+				expr: arr_ident
+			}),
+		]
+		rhs: [
+			ast.Expr(ast.CallExpr{
+				lhs:  ast.Ident{
+					name: '__new_array_with_default_noscan'
+				}
+				args: [
+					len_expr,
+					cap_expr,
+					ast.Expr(ast.KeywordOperator{
+						op:    .key_sizeof
+						exprs: [sizeof_expr]
+					}),
+					ast.Expr(ast.Ident{
+						name: 'nil'
+					}),
+				]
+			}),
+		]
+	})
+
+	// 2. Build assignment: ((T*)_awi_tN.data)[_v_index] = init_expr
+	//    with `index` renamed to `_v_index`
+	renamed_init := t.replace_ident_named(init_expr, 'index', '_v_index')
+	arr_data := t.synth_selector(arr_ident, 'data', types.Type(types.voidptr_))
+	// Use a simple Ident for the cast type name so cleanc renders it as
+	// ((ElemType*)data)[idx] without decomposing compound type expressions.
+	cast_type_name := t.expr_to_type_name(sizeof_expr)
+	elem_assign := ast.Stmt(ast.AssignStmt{
+		op:  .assign
+		lhs: [
+			ast.Expr(ast.IndexExpr{
+				lhs:  ast.CastExpr{
+					typ:  ast.Ident{
+						name: '${cast_type_name}*'
+					}
+					expr: arr_data
+				}
+				expr: idx_ident
+			}),
+		]
+		rhs: [renamed_init]
+	})
+
+	// 3. for (int _v_index = 0; _v_index < _awi_tN.len; _v_index++) { ... }
+	for_stmt := ast.Stmt(ast.ForStmt{
+		init:  ast.AssignStmt{
+			op:  .decl_assign
+			lhs: [ast.Expr(idx_ident)]
+			rhs: [ast.Expr(ast.BasicLiteral{
+				kind:  .number
+				value: '0'
+			})]
+		}
+		cond:  ast.InfixExpr{
+			op:  .lt
+			lhs: idx_ident
+			rhs: t.synth_selector(arr_ident, 'len', types.Type(types.int_))
+		}
+		post:  ast.AssignStmt{
+			op:  .assign
+			lhs: [ast.Expr(idx_ident)]
+			rhs: [
+				ast.Expr(ast.InfixExpr{
+					op:  .plus
+					lhs: idx_ident
+					rhs: ast.BasicLiteral{
+						kind:  .number
+						value: '1'
+					}
+				}),
+			]
+		}
+		stmts: [elem_assign]
+	})
+
+	// Emit init + for loop as pending statements
+	t.pending_stmts << init_stmt
+	t.pending_stmts << for_stmt
+
+	// Return the temp array ident as the expression value
+	return arr_ident
+}
+
+// replace_ident_named replaces all occurrences of an identifier named `old_name`
+// with a new identifier named `new_name` in an expression tree.
+fn (t &Transformer) replace_ident_named(expr ast.Expr, old_name string, new_name string) ast.Expr {
+	match expr {
+		ast.Ident {
+			if expr.name == old_name {
+				return ast.Ident{
+					name: new_name
+					pos:  expr.pos
+				}
+			}
+			return expr
+		}
+		ast.InfixExpr {
+			return ast.InfixExpr{
+				op:  expr.op
+				lhs: t.replace_ident_named(expr.lhs, old_name, new_name)
+				rhs: t.replace_ident_named(expr.rhs, old_name, new_name)
+				pos: expr.pos
+			}
+		}
+		ast.PrefixExpr {
+			return ast.PrefixExpr{
+				op:   expr.op
+				expr: t.replace_ident_named(expr.expr, old_name, new_name)
+				pos:  expr.pos
+			}
+		}
+		ast.ParenExpr {
+			return ast.ParenExpr{
+				expr: t.replace_ident_named(expr.expr, old_name, new_name)
+				pos:  expr.pos
+			}
+		}
+		ast.CallExpr {
+			mut new_args := []ast.Expr{cap: expr.args.len}
+			for arg in expr.args {
+				new_args << t.replace_ident_named(arg, old_name, new_name)
+			}
+			return ast.CallExpr{
+				lhs:  t.replace_ident_named(expr.lhs, old_name, new_name)
+				args: new_args
+				pos:  expr.pos
+			}
+		}
+		ast.CastExpr {
+			return ast.CastExpr{
+				typ:  expr.typ
+				expr: t.replace_ident_named(expr.expr, old_name, new_name)
+				pos:  expr.pos
+			}
+		}
+		ast.IndexExpr {
+			return ast.IndexExpr{
+				lhs:  t.replace_ident_named(expr.lhs, old_name, new_name)
+				expr: t.replace_ident_named(expr.expr, old_name, new_name)
+				pos:  expr.pos
+			}
+		}
+		ast.SelectorExpr {
+			return ast.SelectorExpr{
+				lhs: t.replace_ident_named(expr.lhs, old_name, new_name)
+				rhs: expr.rhs
+				pos: expr.pos
+			}
+		}
+		ast.ModifierExpr {
+			return ast.ModifierExpr{
+				kind: expr.kind
+				expr: t.replace_ident_named(expr.expr, old_name, new_name)
+				pos:  expr.pos
+			}
+		}
+		else {
+			return expr
+		}
+	}
+}
+
+// get_array_type_str returns the Array_T type string for an array expression using checker type info.

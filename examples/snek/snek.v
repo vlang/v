@@ -75,8 +75,8 @@ fn on_frame(mut app App) {
 	// draw everything:
 	app.gg.begin()
 	// draw food
-	app.gg.draw_rect_filled(tile_size * app.food.x, tile_size * app.food.y + top_height,
-		tile_size, tile_size, gg.red)
+	app.gg.draw_rect_filled(tile_size * app.food.x, tile_size * app.food.y + top_height, tile_size,
+		tile_size, gg.red)
 
 	// draw snake
 	for pos in app.snake[..app.snake.len - 1] {
@@ -86,14 +86,16 @@ fn on_frame(mut app App) {
 
 	// draw partial head
 	head := app.snake[0]
-	app.gg.draw_rect_filled(tile_size * (head.x + app.dir.x * progress), tile_size * (head.y +
-		app.dir.y * progress) + top_height, tile_size, tile_size, gg.blue)
+	app.gg.draw_rect_filled(tile_size * (head.x + app.dir.x * progress),
+
+		tile_size * (head.y + app.dir.y * progress) + top_height, tile_size, tile_size, gg.blue)
 
 	// draw partial tail
 	tail := app.snake.last()
 	tail_dir := app.snake[app.snake.len - 2] - tail
-	app.gg.draw_rect_filled(tile_size * (tail.x + tail_dir.x * progress), tile_size * (tail.y +
-		tail_dir.y * progress) + top_height, tile_size, tile_size, gg.blue)
+	app.gg.draw_rect_filled(tile_size * (tail.x + tail_dir.x * progress),
+
+		tile_size * (tail.y + tail_dir.y * progress) + top_height, tile_size, tile_size, gg.blue)
 
 	// draw score bar
 	app.gg.draw_rect_filled(0, 0, canvas_size, top_height, gg.black)
@@ -143,7 +145,7 @@ fn on_frame(mut app App) {
 }
 
 // events
-fn on_keydown(key gg.KeyCode, mod gg.Modifier, mut app App) {
+fn on_keydown(key gg.KeyCode, _mod gg.Modifier, mut app App) {
 	app.dir_queue << match key {
 		.w, .up {
 			Vec{0, -1}

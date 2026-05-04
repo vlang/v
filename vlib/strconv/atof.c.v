@@ -146,7 +146,11 @@ fn parser(s string) (ParserState, PrepNumber) {
 
 	// read mantissa
 	for i < s.len && s[i].is_digit() {
-		// println("$i => ${s[i]}")
+		if pn.mantissa == 0 && s[i] == c_zero {
+			i++
+			continue
+		}
+		// println("${i} => ${s[i]}")
 		if digx < digits {
 			pn.mantissa *= 10
 			pn.mantissa += u64(s[i] - c_zero)
@@ -161,6 +165,11 @@ fn parser(s string) (ParserState, PrepNumber) {
 	if i < s.len && s[i] == `.` {
 		i++
 		for i < s.len && s[i].is_digit() {
+			if pn.mantissa == 0 && s[i] == c_zero {
+				pn.exponent--
+				i++
+				continue
+			}
 			if digx < digits {
 				pn.mantissa *= 10
 				pn.mantissa += u64(s[i] - c_zero)
@@ -247,6 +256,9 @@ fn converter(mut pn PrepNumber) u64 {
 	s0 = u32(pn.mantissa & u64(0x00000000FFFFFFFF))
 	s1 = u32(pn.mantissa >> 32)
 	s2 = u32(0)
+	if pn.mantissa == 0 && pn.exponent <= 0 {
+		return if pn.negative { double_minus_zero } else { double_plus_zero }
+	}
 	// so we take the decimal exponent off
 	for pn.exponent > 0 {
 		q2, q1, q0 = lsl96(s2, s1, s0) // q = s * 2
@@ -417,13 +429,14 @@ fn converter(mut pn PrepNumber) u64 {
 	return result
 }
 
-@[params]
+@[markused; params]
 pub struct AtoF64Param {
 pub:
 	allow_extra_chars bool // allow extra characters after number
 }
 
 // atof64 parses the string `s`, and if possible, converts it into a f64 number
+@[markused]
 pub fn atof64(s string, param AtoF64Param) !f64 {
 	if s.len == 0 {
 		return error('expected a number found an empty string')
@@ -457,5 +470,6 @@ pub fn atof64(s string, param AtoF64Param) !f64 {
 			return error('not a number')
 		}
 	}
+
 	return unsafe { res.f }
 }

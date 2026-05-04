@@ -39,6 +39,18 @@ pub fn encode_binary[T](obj T, config EncodeConfig) ![]u8 {
 	return s.b
 }
 
+@[inline]
+fn normalize_attr_arg(value string) string {
+	mut normalized := value.trim_space()
+	if normalized.len > 1 {
+		if (normalized[0] == `'` && normalized[normalized.len - 1] == `'`)
+			|| (normalized[0] == `"` && normalized[normalized.len - 1] == `"`) {
+			normalized = normalized[1..normalized.len - 1]
+		}
+	}
+	return normalized
+}
+
 fn encode_struct[T](mut s EncodeState, obj T) ! {
 	$for field in T.fields {
 		mut is_skip := false
@@ -48,7 +60,7 @@ fn encode_struct[T](mut s EncodeState, obj T) ! {
 				match f[0].trim_space() {
 					'serialize' {
 						// @[serialize:'-']
-						if f[1].trim_space() == '-' {
+						if normalize_attr_arg(f[1]) == '-' {
 							is_skip = true
 						}
 					}
@@ -235,7 +247,7 @@ fn decode_struct[T](mut s DecodeState, _ T) !T {
 				match f[0].trim_space() {
 					'serialize' {
 						// @[serialize:'-']
-						if f[1].trim_space() == '-' {
+						if normalize_attr_arg(f[1]) == '-' {
 							is_skip = true
 						}
 					}

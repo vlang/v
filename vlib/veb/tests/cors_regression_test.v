@@ -9,7 +9,7 @@ const allowed_origin = 'https://vlang.io'
 
 fn get_port_and_url(test_number int) (int, string) {
 	p := base_port + test_number
-	return p, 'http://localhost:${p}'
+	return p, 'http://127.0.0.1:${p}'
 }
 
 pub struct Context {
@@ -41,7 +41,7 @@ fn setup(port int, o veb.CorsOptions) ! {
 	mut app := &App{}
 	app.use(veb.cors[Context](o))
 
-	go veb.run_at[App, Context](mut app, port: port, timeout_in_seconds: 2)
+	go veb.run_at[App, Context](mut app, port: port, timeout_in_seconds: 2, family: .ip)
 	// app startup time
 	_ := <-app.started
 }

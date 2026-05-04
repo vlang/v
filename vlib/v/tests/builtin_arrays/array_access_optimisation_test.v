@@ -1,7 +1,7 @@
 // vtest retry: 3
 import os
 
-const test = @VROOT + '/vlib/v/tests/testdata/test_array_bound.v'
+const test = @VEXEROOT + '/vlib/v/tests/testdata/test_array_bound.v'
 
 fn direct(line string) {
 	if !line.contains('\tmain__direct(') {

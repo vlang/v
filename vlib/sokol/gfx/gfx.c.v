@@ -33,33 +33,56 @@ pub fn is_valid() bool {
 }
 
 @[inline]
+fn ensure_initialized(op string) {
+	if is_valid() {
+		return
+	}
+	panic('sokol.gfx is not initialized; call gfx.setup(...) before ${op}')
+}
+
+@[inline]
 pub fn reset_state_cache() {
 	C.sg_reset_state_cache()
 }
 
 // resource creation, destruction and updating
+// make_buffer creates a GPU buffer.
+// make_buffer requires `gfx.setup(...)` to have completed first.
 @[inline]
 pub fn make_buffer(desc &BufferDesc) Buffer {
+	ensure_initialized('gfx.make_buffer(...)')
 	return C.sg_make_buffer(desc)
 }
 
+// make_image creates a GPU image.
+// make_image requires `gfx.setup(...)` to have completed first.
 @[inline]
 pub fn make_image(desc &ImageDesc) Image {
+	ensure_initialized('gfx.make_image(...)')
 	return C.sg_make_image(desc)
 }
 
+// make_sampler creates a GPU sampler.
+// make_sampler requires `gfx.setup(...)` to have completed first.
 @[inline]
 pub fn make_sampler(desc &SamplerDesc) Sampler {
+	ensure_initialized('gfx.make_sampler(...)')
 	return C.sg_make_sampler(desc)
 }
 
+// make_shader creates a GPU shader.
+// make_shader requires `gfx.setup(...)` to have completed first.
 @[inline]
 pub fn make_shader(desc &ShaderDesc) Shader {
+	ensure_initialized('gfx.make_shader(...)')
 	return C.sg_make_shader(desc)
 }
 
+// make_pipeline creates a GPU pipeline.
+// make_pipeline requires `gfx.setup(...)` to have completed first.
 @[inline]
 pub fn make_pipeline(desc &PipelineDesc) Pipeline {
+	ensure_initialized('gfx.make_pipeline(...)')
 	return C.sg_make_pipeline(desc)
 }
 
@@ -67,6 +90,7 @@ pub fn make_pipeline(desc &PipelineDesc) Pipeline {
 // See also: documentation at the top of thirdparty/sokol/sokol_gfx.h
 @[inline]
 pub fn make_attachments(const_desc &AttachmentsDesc) Attachments {
+	ensure_initialized('gfx.make_attachments(...)')
 	return C.sg_make_attachments(const_desc)
 }
 
@@ -179,7 +203,9 @@ pub fn query_desc() Desc {
 
 @[inline]
 pub fn query_backend() Backend {
-	return C.sg_query_backend()
+	unsafe {
+		return Backend(C.sg_query_backend())
+	}
 }
 
 @[inline]

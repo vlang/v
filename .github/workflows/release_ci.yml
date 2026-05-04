@@ -66,7 +66,7 @@ jobs:
       - name: Compile release binaries (Windows)
         if: runner.os == 'Windows'
         run: |
-          ./make.bat -msvc
+          ./makev.bat -msvc
           ./v -prod -cc msvc -o cmd/vprod.exe cmd/v
           ./v -prod -cc msvc cmd/tools/vup.v
           ./v -prod -cc msvc cmd/tools/vdoctor.v
@@ -102,7 +102,7 @@ jobs:
           mv ${{ matrix.artifact }} v/
           cd v/
       - name: Create artifact
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: ${{ matrix.target }}
           path: ${{ matrix.artifact }}
@@ -112,7 +112,7 @@ jobs:
     needs: release-build
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/download-artifact@v7
+      - uses: actions/download-artifact@v8
       - name: Create release
         uses: ncipollo/release-action@v1
         with:

@@ -8,14 +8,12 @@ import net.conv
 
 // select is used internally by V's ORM for processing `SELECT ` queries
 pub fn (db DB) select(config orm.SelectConfig, data orm.QueryData, where orm.QueryData) ![][]orm.Primitive {
-	query := orm.orm_select_gen(config, '"', true, '$', 1, where)
+	where_with_tenant := orm.apply_tenant_filter(config.table, where)
+	query := orm.orm_select_gen(config, '"', true, '$', 1, where_with_tenant)
 
-	rows := pg_stmt_worker(db, query, where, data)!
+	rows := pg_stmt_worker(db, query, where_with_tenant, data)!
 
 	mut ret := [][]orm.Primitive{}
-
-	if config.is_count {
-	}
 
 	for row in rows {
 		mut row_data := []orm.Primitive{}
@@ -32,22 +30,25 @@ pub fn (db DB) select(config orm.SelectConfig, data orm.QueryData, where orm.Que
 
 // insert is used internally by V's ORM for processing `INSERT ` queries
 pub fn (db DB) insert(table orm.Table, data orm.QueryData) ! {
-	query, converted_data := orm.orm_stmt_gen(.default, table, '"', .insert, true, '$',
-		1, data, orm.QueryData{})
+	query, converted_data :=
+		orm.orm_stmt_gen(.pg, table, '"', .insert, true, '$', 1, data, orm.QueryData{})
 	pg_stmt_worker(db, query, converted_data, orm.QueryData{})!
 }
 
 // update is used internally by V's ORM for processing `UPDATE ` queries
 pub fn (db DB) update(table orm.Table, data orm.QueryData, where orm.QueryData) ! {
-	query, _ := orm.orm_stmt_gen(.default, table, '"', .update, true, '$', 1, data, where)
-	pg_stmt_worker(db, query, data, where)!
+	where_with_tenant := orm.apply_tenant_filter(table, where)
+	query, _ := orm.orm_stmt_gen(.default, table, '"', .update, true, '$', 1, data,
+		where_with_tenant)
+	pg_stmt_worker(db, query, data, where_with_tenant)!
 }
 
 // delete is used internally by V's ORM for processing `DELETE ` queries
 pub fn (db DB) delete(table orm.Table, where orm.QueryData) ! {
+	where_with_tenant := orm.apply_tenant_filter(table, where)
 	query, _ := orm.orm_stmt_gen(.default, table, '"', .delete, true, '$', 1, orm.QueryData{},
-		where)
-	pg_stmt_worker(db, query, orm.QueryData{}, where)!
+		where_with_tenant)
+	pg_stmt_worker(db, query, orm.QueryData{}, where_with_tenant)!
 }
 
 // last_id is used internally by V's ORM for post-processing `INSERT ` queries
@@ -78,11 +79,47 @@ pub fn (db DB) drop(table orm.Table) ! {
 	pg_stmt_worker(db, query, orm.QueryData{}, orm.QueryData{})!
 }
 
+// orm_begin starts a transaction for ORM helpers.
+pub fn (db DB) orm_begin() ! {
+	db.begin()!
+}
+
+// orm_commit commits a transaction for ORM helpers.
+pub fn (db DB) orm_commit() ! {
+	db.commit()!
+}
+
+// orm_rollback rolls back a transaction for ORM helpers.
+pub fn (db DB) orm_rollback() ! {
+	db.rollback()!
+}
+
+// orm_savepoint creates a savepoint for ORM helpers.
+pub fn (db DB) orm_savepoint(name string) ! {
+	db.savepoint(name)!
+}
+
+// orm_rollback_to rolls back to a savepoint for ORM helpers.
+pub fn (db DB) orm_rollback_to(name string) ! {
+	db.rollback_to(name)!
+}
+
+// orm_release_savepoint releases a savepoint for ORM helpers.
+pub fn (db DB) orm_release_savepoint(name string) ! {
+	db.release_savepoint(name)!
+}
+
 // utils
 
 fn pg_stmt_binder(mut types []u32, mut vals []&char, mut lens []int, mut formats []int, d orm.QueryData) {
 	for data in d.data {
 		pg_stmt_match(mut types, mut vals, mut lens, mut formats, data)
+	}
+}
+
+fn pg_stmt_match_array[T](mut types []u32, mut vals []&char, mut lens []int, mut formats []int, data []T) {
+	for element in data {
+		pg_stmt_match(mut types, mut vals, mut lens, mut formats, orm.Primitive(element))
 	}
 }
 
@@ -188,9 +225,49 @@ fn pg_stmt_match(mut types []u32, mut vals []&char, mut lens []int, mut formats 
 			formats << 0 // ignored
 		}
 		[]orm.Primitive {
-			for element in data {
-				pg_stmt_match(mut types, mut vals, mut lens, mut formats, element)
-			}
+			pg_stmt_match_array(mut types, mut vals, mut lens, mut formats, data)
+		}
+		[]bool {
+			pg_stmt_match_array(mut types, mut vals, mut lens, mut formats, data)
+		}
+		[]f32 {
+			pg_stmt_match_array(mut types, mut vals, mut lens, mut formats, data)
+		}
+		[]f64 {
+			pg_stmt_match_array(mut types, mut vals, mut lens, mut formats, data)
+		}
+		[]i16 {
+			pg_stmt_match_array(mut types, mut vals, mut lens, mut formats, data)
+		}
+		[]i64 {
+			pg_stmt_match_array(mut types, mut vals, mut lens, mut formats, data)
+		}
+		[]i8 {
+			pg_stmt_match_array(mut types, mut vals, mut lens, mut formats, data)
+		}
+		[]int {
+			pg_stmt_match_array(mut types, mut vals, mut lens, mut formats, data)
+		}
+		[]string {
+			pg_stmt_match_array(mut types, mut vals, mut lens, mut formats, data)
+		}
+		[]time.Time {
+			pg_stmt_match_array(mut types, mut vals, mut lens, mut formats, data)
+		}
+		[]u16 {
+			pg_stmt_match_array(mut types, mut vals, mut lens, mut formats, data)
+		}
+		[]u32 {
+			pg_stmt_match_array(mut types, mut vals, mut lens, mut formats, data)
+		}
+		[]u64 {
+			pg_stmt_match_array(mut types, mut vals, mut lens, mut formats, data)
+		}
+		[]u8 {
+			pg_stmt_match_array(mut types, mut vals, mut lens, mut formats, data)
+		}
+		[]orm.InfixType {
+			pg_stmt_match_array(mut types, mut vals, mut lens, mut formats, data)
 		}
 	}
 }
@@ -231,6 +308,7 @@ fn pg_type_from_v(typ int) !string {
 			''
 		}
 	}
+
 	if str == '' {
 		return error('Unknown type ${typ}')
 	}
@@ -305,6 +383,7 @@ fn val_to_primitive(val ?string, typ int) !orm.Primitive {
 			}
 			else {}
 		}
+
 		return error('Unknown field type ${typ}')
 	} else {
 		return orm.Null{}

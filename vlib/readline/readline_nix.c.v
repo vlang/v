@@ -12,9 +12,9 @@ import term
 import os
 import encoding.utf8.east_asian
 
-fn C.raise(sig int)
+fn C.raise(sig i32)
 
-fn C.getppid() int
+fn C.getppid() i32
 
 // Action defines what actions to be executed.
 enum Action {
@@ -51,15 +51,17 @@ pub fn (mut r Readline) enable_raw_mode() {
 		return
 	}
 	mut raw := r.orig_termios
-	// println('> r.orig_termios: $r.orig_termios')
-	// println('>            raw: $raw')
-	raw.c_iflag &= termios.invert(C.BRKINT | C.ICRNL | C.INPCK | C.ISTRIP | C.IXON)
+	// println('> r.orig_termios: ${r.orig_termios}')
+	// println('>            raw: ${raw}')
+	raw.c_iflag &=
+		termios.invert(termios.flag(int(C.BRKINT) | int(C.ICRNL) | int(C.INPCK) | int(C.ISTRIP) | int(C.IXON)))
 	raw.c_cflag |= termios.flag(C.CS8)
-	raw.c_lflag &= termios.invert(C.ECHO | C.ICANON | C.IEXTEN | C.ISIG)
+	raw.c_lflag &=
+		termios.invert(termios.flag(int(C.ECHO) | int(C.ICANON) | int(C.IEXTEN) | int(C.ISIG)))
 	raw.c_cc[C.VMIN] = u8(1)
 	raw.c_cc[C.VTIME] = u8(0)
 	termios.tcsetattr(0, C.TCSADRAIN, mut raw)
-	// println('>   after    raw: $raw')
+	// println('>   after    raw: ${raw}')
 	r.is_raw = true
 	r.is_tty = true
 }
@@ -75,9 +77,10 @@ pub fn (mut r Readline) enable_raw_mode_nosig() {
 		return
 	}
 	mut raw := r.orig_termios
-	raw.c_iflag &= termios.invert(C.BRKINT | C.ICRNL | C.INPCK | C.ISTRIP | C.IXON)
+	raw.c_iflag &=
+		termios.invert(termios.flag(int(C.BRKINT) | int(C.ICRNL) | int(C.INPCK) | int(C.ISTRIP) | int(C.IXON)))
 	raw.c_cflag |= termios.flag(C.CS8)
-	raw.c_lflag &= termios.invert(C.ECHO | C.ICANON | C.IEXTEN)
+	raw.c_lflag &= termios.invert(termios.flag(int(C.ECHO) | int(C.ICANON) | int(C.IEXTEN)))
 	raw.c_cc[C.VMIN] = u8(1)
 	raw.c_cc[C.VTIME] = u8(0)
 	termios.tcsetattr(0, C.TCSADRAIN, mut raw)
@@ -265,6 +268,7 @@ fn (r Readline) analyse_extended_control() Action {
 		}
 		else {}
 	}
+
 	return .nothing
 }
 
@@ -282,6 +286,7 @@ fn (r Readline) analyse_extended_control_no_eat(last_c u8) Action {
 		}
 		else {}
 	}
+
 	return .nothing
 }
 
@@ -309,6 +314,7 @@ fn (mut r Readline) execute(a Action, c int) bool {
 		.completion { r.completion() }
 		else {}
 	}
+
 	return false
 }
 
