@@ -1219,17 +1219,36 @@ fn (mut decoder Decoder) decode_map[V](mut val map[string]V) ! {
 					decoder.decode_value(mut map_value)!
 				}
 
-				$if V.unaliased_typ is $map {
-					// V is itself a map (alias) - skip assignment to avoid V compiler
-					// confusion about element type of nested map aliases.
+				$if V is $alias && V.unaliased_typ is $map {
+					// V is a map alias (e.g. `type SyntaxStyle = map[string]X`).
+					// V's checker reports `val[key]` as the unaliased element type
+					// while `map_value` keeps the alias type, so direct assignment
+					// fails to type-check. Skip to keep generic instantiations
+					// compilable; decoding into map-alias map values is unsupported.
 				} $else $if K is string {
-					val[key_str] = map_value
+					$if V is $map {
+						val[key_str] = map_value.move()
+					} $else {
+						val[key_str] = map_value
+					}
 				} $else $if K is rune {
-					val[rune(key_str.int())] = map_value
+					$if V is $map {
+						val[rune(key_str.int())] = map_value.move()
+					} $else {
+						val[rune(key_str.int())] = map_value
+					}
 				} $else $if K is $int {
-					val[K(key_str.int())] = map_value
+					$if V is $map {
+						val[K(key_str.int())] = map_value.move()
+					} $else {
+						val[K(key_str.int())] = map_value
+					}
 				} $else {
-					val[key_str] = map_value
+					$if V is $map {
+						val[key_str] = map_value.move()
+					} $else {
+						val[key_str] = map_value
+					}
 				}
 			}
 		} else {
