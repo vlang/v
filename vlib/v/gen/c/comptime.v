@@ -272,7 +272,13 @@ fn (mut g Gen) comptime_selector(node ast.ComptimeSelector) {
 		g.write('*(')
 	}
 	g.expr(node.left)
-	if g.unwrap_generic(left_type).is_ptr() {
+	is_auto_heap_ident := node.left is ast.Ident && g.resolved_ident_is_auto_heap(node.left)
+	// When `g.expr` writes an auto-heap ident, it emits `(*(name))` by default,
+	// but skips the deref when it's an LHS / inside a selector LHS / assign-fn-var.
+	// In the deref-skipped case the C result is a pointer, so we need `->`.
+	auto_heap_no_deref := is_auto_heap_ident
+		&& (g.is_assign_lhs || g.inside_selector_lhs || g.inside_assign_fn_var)
+	if g.unwrap_generic(left_type).is_ptr() || auto_heap_no_deref {
 		g.write('->')
 	} else {
 		g.write('.')
@@ -298,7 +304,10 @@ fn (mut g Gen) comptime_selector(node ast.ComptimeSelector) {
 
 fn (mut g Gen) gen_comptime_selector(expr ast.ComptimeSelector) string {
 	left_type := g.resolved_expr_type(expr.left, expr.left_type)
-	arrow_or_dot := if left_type.is_ptr() { '->' } else { '.' }
+	is_auto_heap_ident := expr.left is ast.Ident && g.resolved_ident_is_auto_heap(expr.left)
+	auto_heap_no_deref := is_auto_heap_ident
+		&& (g.is_assign_lhs || g.inside_selector_lhs || g.inside_assign_fn_var)
+	arrow_or_dot := if left_type.is_ptr() || auto_heap_no_deref { '->' } else { '.' }
 	mut field_name := if expr.typ_key.contains('|') {
 		expr.typ_key.all_after('|')
 	} else {
