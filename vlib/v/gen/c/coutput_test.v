@@ -587,6 +587,17 @@ fn should_skip(relpath string) bool {
 			return true
 		}
 	}
+	if github_job == 'tcc-windows' {
+		test_path := os.join_path(vroot, relpath)
+		file_options := get_file_options(test_path)
+		if file_options.vflags.contains('-cc clang') {
+			// The Windows runner's clang toolchain produces V binaries that
+			// crash at startup on this CI; the test is still exercised by
+			// the macOS/Linux jobs.
+			eprintln('> skipping ${relpath} on ${github_job}, since `-cc clang` produces unstable binaries on this runner')
+			return true
+		}
+	}
 	return false
 }
 

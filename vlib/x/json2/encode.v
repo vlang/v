@@ -36,7 +36,11 @@ pub fn encode[T](val T, config EncoderOptions) string {
 }
 
 fn (mut encoder Encoder) encode_value[T](val T) {
-	$if T.unaliased_typ is string {
+	$if T is $interface {
+		encoder.encode_null()
+	} $else $if T.unaliased_typ is voidptr {
+		encoder.encode_null()
+	} $else $if T.unaliased_typ is string {
 		encoder.encode_string(string(val))
 	} $else $if T.unaliased_typ is bool {
 		encoder.encode_boolean(bool(val))
@@ -626,7 +630,13 @@ fn (mut encoder Encoder) cached_field_infos[T]() []EncoderFieldInfo {
 }
 
 fn (mut encoder Encoder) encode_struct_field_value[T](val T) {
-	$if T is $option {
+	$if T is $interface {
+		encoder.encode_null()
+	} $else $if T.unaliased_typ is voidptr {
+		encoder.encode_null()
+	} $else $if T.pointee_type is $interface {
+		encoder.encode_null()
+	} $else $if T is $option {
 		if val == none {
 			unsafe { encoder.output.push_many(null_string.str, null_string.len) }
 		} else {

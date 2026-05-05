@@ -26,7 +26,7 @@ typedef struct TlsContext TlsContext;
 
 TlsContext new_tls_context();
 
-static void vschannel_init(TlsContext *tls_ctx);
+static void vschannel_init(TlsContext *tls_ctx, BOOL validate_server_certificate);
 
 static void vschannel_cleanup(TlsContext *tls_ctx);
 
