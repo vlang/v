@@ -431,11 +431,6 @@ fn (mut p Preferences) try_to_use_tcc_by_default() {
 		return
 	}
 	if p.ccompiler == '' {
-		// tcc is known to fail several tests on macos, so do not
-		// try to use it by default, only when it is explicitly set
-		$if macos {
-			return
-		}
 		// use an optimizing compiler (i.e. gcc or clang) on -prod mode
 		if p.is_prod {
 			return
