@@ -273,7 +273,7 @@ pub fn (mut d Digest) write(data []u8) ! {
 	}
 
 	if bytes_remaining.len > 0 {
-		d.input_buffer = bytes_remaining
+		d.input_buffer = bytes_remaining.clone()
 	}
 }
 
