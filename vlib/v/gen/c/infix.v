@@ -1754,7 +1754,7 @@ fn (mut g Gen) infix_expr_and_or_op(node ast.InfixExpr) {
 }
 
 fn (mut g Gen) gen_is_none_check(node ast.InfixExpr) {
-	if node.left in [ast.Ident, ast.SelectorExpr, ast.IndexExpr, ast.CallExpr, ast.CTempVar] {
+	if node.left in [ast.Ident, ast.SelectorExpr, ast.IndexExpr, ast.CallExpr, ast.CTempVar, ast.CastExpr] {
 		// When a sumtype variable has been comptime-smartcast to an option variant
 		// (e.g. `$if t is ?string { if t == none { ... } }`), we need to access the
 		// sumtype's variant field directly rather than using .data on the sumtype.
