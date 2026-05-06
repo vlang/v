@@ -1,2 +1,2 @@
-._method__v_free = (void*) main__Bar_free,
-._method_next = (void*) main__Bar_next,
+._method__v_free = main__Bar_free_Interface_main__Foo_method_adapter,
+._method_next = main__Bar_next_Interface_main__Foo_method_adapter,

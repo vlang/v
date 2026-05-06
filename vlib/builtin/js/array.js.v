@@ -158,16 +158,21 @@ fn empty_array() array {
 	return JS.makeEmptyArray()
 }
 
+#function v_clone_for_array_value(value) {
+#if (value instanceof $ref || value instanceof voidptr || typeof value === 'function') return value;
+#return v_clone_value(value);
+#}
+
 fn (a &array) set_len(i int) {
 	#a.arr.arr.length=i
 }
 
 pub fn (mut a array) sort_with_compare(compare voidptr) {
-	v_sort(mut a, compare)
+	#v_sort(a, compare instanceof voidptr ? compare.val : compare)
 }
 
 pub fn (mut a array) sort_with_compare_old(compare voidptr) {
-	#a.val.arr.arr.sort(compare)
+	#a.val.arr.arr.sort(compare instanceof voidptr ? compare.val : compare)
 }
 
 pub fn (mut a array) sort() {
@@ -208,19 +213,22 @@ pub fn (a array) slice(start int, end int) array {
 
 pub fn (mut a array) insert(i int, val voidptr) {
 	#a.val.arr.make_copy()
-	#a.val.arr.arr.splice(i,0,val)
+	#a.val.arr.arr.splice(i,0,v_clone_for_array_value(val))
+	#a.val.arr.len.val = a.val.arr.arr.length
 }
 
 pub fn (mut a array) insert_many(i int, val voidptr, size int) {
-	#a.val.arr.arr.splice(i,0,...val.arr.slice(0,+size))
+	#a.val.arr.make_copy()
+	#a.val.arr.arr.splice(i,0,...val.arr.slice(0,+size).map(v_clone_for_array_value))
+	#a.val.arr.len.val = a.val.arr.arr.length
 }
 
 fn (mut a array) push(val voidptr) {
 	#a.val.arr.make_copy()
-	#if (arguments[2] && arguments[2].valueOf()) {a.val.arr.arr.push(...val)} else {
-	#a.val.arr.arr.push(val)
+	#if (arguments[2] && arguments[2].valueOf()) {a.val.arr.arr.push(...val.map(v_clone_for_array_value))} else {
+	#a.val.arr.arr.push(v_clone_for_array_value(val))
 	#}
-	#a.val.arr.len.val += 1
+	#a.val.arr.len.val = a.val.arr.arr.length
 }
 
 fn v_filter(arr array, callback fn (voidptr) bool) array {
@@ -302,6 +310,7 @@ fn arr_copy(mut dst array, src array, count int) {
 pub fn (mut a array) delete_many(i int, size int) {
 	#a.val.arr.make_copy()
 	#a.val.arr.arr.splice(i.valueOf(),size.valueOf())
+	#a.val.arr.len.val = a.val.arr.arr.length
 }
 
 // prepend prepends one value to the array.
@@ -331,6 +340,7 @@ pub fn (mut a array) reverse_in_place() {
 pub fn (mut a array) clear() {
 	#a.val.arr.make_copy()
 	#a.val.arr.arr.length = 0
+	#a.val.arr.len.val = 0
 }
 
 // reduce executes a given reducer function on each element of the array, resulting in a single output value.
@@ -350,7 +360,7 @@ pub fn (mut a array) pop() voidptr {
 	mut res := unsafe { nil }
 	#a.val.arr.make_copy()
 	#res = a.val.arr.arr.pop()
-	#a.val.arr.len.val -= 1
+	#a.val.arr.len.val = a.val.arr.arr.length
 
 	return res
 }

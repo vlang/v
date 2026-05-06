@@ -519,5 +519,6 @@ fn ownership_expr_ident_name(expr ast.Expr) string {
 		}
 		else {}
 	}
+
 	return ''
 }

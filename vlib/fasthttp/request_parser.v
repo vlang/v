@@ -1,8 +1,8 @@
 module fasthttp
 
 const empty_space = u8(` `)
-const cr_char = u8(`\r`)
-const lf_char = u8(`\n`)
+const cr_char = u8(0x0d)
+const lf_char = u8(0x0a)
 
 // libc memchr is AVX2-accelerated via glibc IFUNC
 @[inline]
@@ -144,4 +144,266 @@ fn (slice Slice) to_string(buffer []u8) string {
 		return ''
 	}
 	return buffer[slice.start..slice.start + slice.len].bytestr()
+}
+
+@[direct_array_access]
+fn find_header_end_in_buf(buf &u8, buf_len int) int {
+	for i := 0; i < buf_len - 1; i++ {
+		unsafe {
+			if buf[i] == `\n` {
+				if i + 1 < buf_len && buf[i + 1] == `\n` {
+					return i + 2
+				}
+				if i + 2 < buf_len && buf[i + 1] == `\r` && buf[i + 2] == `\n` {
+					return i + 3
+				}
+			}
+			if i + 3 < buf_len && buf[i] == `\r` && buf[i + 1] == `\n` && buf[i + 2] == `\r`
+				&& buf[i + 3] == `\n` {
+				return i + 4
+			}
+		}
+	}
+	return -1
+}
+
+// has_complete_body checks if a raw HTTP request buffer contains the full body
+// as indicated by the Content-Length or Transfer-Encoding headers. Returns true if:
+//   - there is no Content-Length header and no chunked encoding (body not expected)
+//   - Content-Length is 0
+//   - enough body bytes have been received
+//   - chunked encoding is complete (the zero-size chunk and trailers were parsed)
+// Returns false only when more body data is expected.
+@[direct_array_access]
+fn has_complete_body(buf &u8, buf_len int) bool {
+	header_end := find_header_end_in_buf(buf, buf_len)
+	if header_end < 0 {
+		return false // headers not complete yet
+	}
+	// Check for Transfer-Encoding: chunked header (case-insensitive)
+	if has_chunked_transfer_encoding_in_buf(buf, header_end) {
+		return has_complete_chunked_body(buf, buf_len, header_end)
+	}
+	content_length := parse_content_length_from_buf(buf, header_end)
+	if content_length <= 0 {
+		return true // no content-length or zero: body complete
+	}
+	body_received := buf_len - header_end
+	return body_received >= content_length
+}
+
+@[direct_array_access]
+fn has_complete_chunked_body(buf &u8, buf_len int, body_start int) bool {
+	mut pos := body_start
+	for {
+		lf_pos := find_line_lf_in_buf(buf, buf_len, pos)
+		if lf_pos < 0 {
+			return false
+		}
+		mut line_end := lf_pos
+		unsafe {
+			if line_end > pos && buf[line_end - 1] == `\r` {
+				line_end--
+			}
+		}
+		mut size_end := line_end
+		for i := pos; i < line_end; i++ {
+			unsafe {
+				if buf[i] == `;` {
+					size_end = i
+					break
+				}
+			}
+		}
+		mut size_start := pos
+		for size_start < size_end {
+			unsafe {
+				if buf[size_start] != ` ` && buf[size_start] != `\t` {
+					break
+				}
+			}
+			size_start++
+		}
+		for size_end > size_start {
+			unsafe {
+				if buf[size_end - 1] != ` ` && buf[size_end - 1] != `\t` {
+					break
+				}
+			}
+			size_end--
+		}
+		if size_start == size_end {
+			return true
+		}
+		mut chunk_size := 0
+		for i := size_start; i < size_end; i++ {
+			digit := chunked_hex_digit_value(unsafe { buf[i] })
+			if digit < 0 {
+				return true
+			}
+			if chunk_size > (max_int - digit) / 16 {
+				return true
+			}
+			chunk_size = chunk_size * 16 + digit
+		}
+		pos = lf_pos + 1
+		if chunk_size == 0 {
+			return has_complete_chunked_trailers(buf, buf_len, pos)
+		}
+		if chunk_size > buf_len - pos {
+			return false
+		}
+		data_end := pos + chunk_size
+		if data_end + 2 > buf_len {
+			return false
+		}
+		unsafe {
+			if buf[data_end] != `\r` || buf[data_end + 1] != `\n` {
+				return true
+			}
+		}
+		pos = data_end + 2
+	}
+	return false
+}
+
+@[direct_array_access]
+fn has_complete_chunked_trailers(buf &u8, buf_len int, start int) bool {
+	mut pos := start
+	for {
+		lf_pos := find_line_lf_in_buf(buf, buf_len, pos)
+		if lf_pos < 0 {
+			return false
+		}
+		mut line_end := lf_pos
+		unsafe {
+			if line_end > pos && buf[line_end - 1] == `\r` {
+				line_end--
+			}
+		}
+		if line_end == pos {
+			return true
+		}
+		pos = lf_pos + 1
+	}
+	return false
+}
+
+@[direct_array_access]
+fn find_line_lf_in_buf(buf &u8, buf_len int, start int) int {
+	for i := start; i < buf_len; i++ {
+		unsafe {
+			if buf[i] == `\n` {
+				return i
+			}
+		}
+	}
+	return -1
+}
+
+fn chunked_hex_digit_value(ch u8) int {
+	if ch >= `0` && ch <= `9` {
+		return int(ch - `0`)
+	}
+	if ch >= `a` && ch <= `f` {
+		return int(ch - `a` + 10)
+	}
+	if ch >= `A` && ch <= `F` {
+		return int(ch - `A` + 10)
+	}
+	return -1
+}
+
+// has_chunked_transfer_encoding_in_buf scans the header bytes for a
+// "Transfer-Encoding:" header whose value contains "chunked" (case-insensitive).
+@[direct_array_access]
+fn has_chunked_transfer_encoding_in_buf(buf &u8, header_end int) bool {
+	te_lower := 'transfer-encoding:'
+	for i := 0; i < header_end - te_lower.len; i++ {
+		unsafe {
+			if buf[i] != `\n` {
+				continue
+			}
+			pos := i + 1
+			if pos + te_lower.len > header_end {
+				continue
+			}
+			mut matched := true
+			for j := 0; j < te_lower.len; j++ {
+				mut ch := buf[pos + j]
+				if ch >= `A` && ch <= `Z` {
+					ch = ch + 32
+				}
+				if ch != te_lower[j] {
+					matched = false
+					break
+				}
+			}
+			if matched {
+				chunked_str := 'chunked'
+				for val_start := pos + te_lower.len; val_start < header_end - chunked_str.len; val_start++ {
+					if buf[val_start] == `\r` || buf[val_start] == `\n` {
+						break
+					}
+					mut cmatch := true
+					for k := 0; k < chunked_str.len; k++ {
+						mut ch2 := buf[val_start + k]
+						if ch2 >= `A` && ch2 <= `Z` {
+							ch2 = ch2 + 32
+						}
+						if ch2 != chunked_str[k] {
+							cmatch = false
+							break
+						}
+					}
+					if cmatch {
+						return true
+					}
+				}
+			}
+		}
+	}
+	return false
+}
+
+// parse_content_length_from_buf scans the header bytes for a Content-Length header
+// and returns its integer value, or -1 if not found.
+@[direct_array_access]
+fn parse_content_length_from_buf(buf &u8, header_end int) int {
+	cl_lower := 'content-length:'
+	for i := 0; i < header_end - cl_lower.len; i++ {
+		unsafe {
+			if buf[i] != `\n` {
+				continue
+			}
+			pos := i + 1
+			if pos + cl_lower.len > header_end {
+				continue
+			}
+			mut matched := true
+			for j := 0; j < cl_lower.len; j++ {
+				mut ch := buf[pos + j]
+				if ch >= `A` && ch <= `Z` {
+					ch = ch + 32
+				}
+				if ch != cl_lower[j] {
+					matched = false
+					break
+				}
+			}
+			if matched {
+				mut start := pos + cl_lower.len
+				for start < header_end && buf[start] == ` ` {
+					start++
+				}
+				mut val := 0
+				for start < header_end && buf[start] >= `0` && buf[start] <= `9` {
+					val = val * 10 + int(buf[start] - `0`)
+					start++
+				}
+				return val
+			}
+		}
+	}
+	return -1
 }

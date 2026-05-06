@@ -132,7 +132,12 @@ fn (mut p Parser) check_undefined_variables(names []string, val ast.Expr) ! {
 }
 
 fn (mut p Parser) check_cross_variables(exprs []ast.Expr, val ast.Expr) bool {
-	val_str := val.str()
+	// NOTE: For IndexExpr and SelectorExpr, we need to compare string representations.
+	// val_str must be computed before the match, because inside match arms `val` gets
+	// smartcast to the variant type, and calling .str() on e.g. IndexExpr would call
+	// the auto-generated struct str() instead of Expr.str().
+	// Only compute it for the types that actually need it.
+	val_str := if val is ast.IndexExpr || val is ast.SelectorExpr { val.str() } else { '' }
 	match val {
 		ast.Ident {
 			for expr in exprs {
@@ -182,12 +187,16 @@ fn (mut p Parser) check_cross_variables(exprs []ast.Expr, val ast.Expr) bool {
 		}
 		else {}
 	}
+
 	return false
 }
 
 fn (mut p Parser) partial_assign_stmt(left []ast.Expr) ast.Stmt {
 	p.is_stmt_ident = false
 	op := p.tok.kind
+	if op == .power_assign {
+		p.register_auto_import('math')
+	}
 	mut pos := p.tok.pos()
 	p.next()
 	mut right := []ast.Expr{cap: left.len}
@@ -232,7 +241,7 @@ fn (mut p Parser) partial_assign_stmt(left []ast.Expr) ast.Stmt {
 						name:         lx.name
 						expr:         if left.len == right.len { right[i] } else { ast.empty_expr }
 						share:        share
-						is_mut:       lx.is_mut || p.inside_for
+						is_mut:       p.scope_var_is_mut(lx.is_mut || p.inside_for)
 						is_static:    is_static
 						is_volatile:  is_volatile
 						pos:          lx.pos

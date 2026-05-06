@@ -1,0 +1,7 @@
+vlib/v/checker/tests/global_const_call_init_err.vv:8:16: cgen error: const global `bad` must be initialized with a C constant expression
+    6 | }
+    7 |
+    8 | __global const bad = make_value()
+      |                ~~~
+    9 |
+   10 | fn main() {

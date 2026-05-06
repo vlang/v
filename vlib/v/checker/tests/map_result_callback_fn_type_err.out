@@ -1,0 +1,20 @@
+vlib/v/checker/tests/map_result_callback_fn_type_err.vv:9:20: error: cannot use Result type in `map`
+    7 |         return n
+    8 |     }
+    9 |     _ = [1, 2, 3].map(fn (n int) !int {
+      |                       ~~~~~~~~~~~~~~~~~
+   10 |         return n
+   11 |     })
+vlib/v/checker/tests/map_result_callback_fn_type_err.vv:12:20: error: cannot use Result type in `map`
+   10 |         return n
+   11 |     })
+   12 |     _ = [1, 2, 3].map(named_result_cb)
+      |                       ~~~~~~~~~~~~~~~
+   13 |     _ = [1, 2, 3].map(cb)
+   14 | }
+vlib/v/checker/tests/map_result_callback_fn_type_err.vv:13:20: error: cannot use Result type in `map`
+   11 |     })
+   12 |     _ = [1, 2, 3].map(named_result_cb)
+   13 |     _ = [1, 2, 3].map(cb)
+      |                       ~~
+   14 | }

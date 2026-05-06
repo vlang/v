@@ -94,6 +94,14 @@ fn main() {
 				time.sleep(ctx.delay)
 				continue
 			}
+			if fs := os.stat(fname) {
+				if fs.size == 0 {
+					log.error('    retry ${retry + 1}/${ctx.retries}, got an empty (0 byte) file from url: ${url}.')
+					file_errors++
+					time.sleep(ctx.delay)
+					continue
+				}
+			}
 			downloaded++
 			break
 		}

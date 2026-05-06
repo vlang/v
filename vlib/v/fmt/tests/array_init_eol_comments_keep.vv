@@ -1,3 +1,5 @@
+import math
+
 fn abc() {
 	test_cases_f32 := [
 		f32_from_bits1(0x0000_0000), // +0

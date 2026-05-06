@@ -1,0 +1,34 @@
+@[nocopy]
+struct Resource {
+	handle int
+}
+
+const base_resource = Resource{
+	handle: 1
+}
+
+struct Holder {
+	field Resource = base_resource
+}
+
+fn takes_value(res Resource) {
+	_ = res
+}
+
+fn main() {
+	mut resource := Resource{
+		handle: 2
+	}
+	copy := resource
+	takes_value(resource)
+	_ = Holder{
+		field: resource
+	}
+	_ = fn [resource] () {
+		_ = resource.handle
+	}
+	_ = fn [mut resource] () {
+		_ = resource.handle
+	}
+	_ = copy
+}

@@ -136,19 +136,30 @@ const c_common_macros = '
 	#define E_STRUCT_DECL unsigned char _dummy_pad
 	#define E_STRUCT 0
 #endif
-#ifndef _WIN32
-	#if defined(__has_include) && !defined(__TINYC__)
-		#if __has_include(<execinfo.h>)
-			#include <execinfo.h>
-		#else
-			// On linux: int backtrace(void **__array, int __size);
-			// On BSD: size_t backtrace(void **, size_t);
-		#endif
-	#elif (defined(__linux__) && (defined(__GLIBC__) || defined(__GNU_LIBRARY__))) || defined(__APPLE__) || defined(__NetBSD__) || defined(__FreeBSD__) || defined(__DragonFly__)
+#if defined(__has_include) && !defined(__TINYC__)
+	#if __has_include(<execinfo.h>) && !defined(_WIN32)
+		#define __V_HAVE_EXECINFO_H 1
 		#include <execinfo.h>
 	#else
 		// On linux: int backtrace(void **__array, int __size);
 		// On BSD: size_t backtrace(void **, size_t);
+	#endif
+#elif (defined(__linux__) && (defined(__GLIBC__) || defined(__GNU_LIBRARY__))) || defined(__APPLE__) || defined(__NetBSD__) || defined(__FreeBSD__) || defined(__DragonFly__)
+	#define __V_HAVE_EXECINFO_H 1
+	#include <execinfo.h>
+#else
+	// On linux: int backtrace(void **__array, int __size);
+	// On BSD: size_t backtrace(void **, size_t);
+#endif
+#ifndef __V_HAVE_EXECINFO_H
+	#ifdef __cplusplus
+	extern "C" {
+	#endif
+	int backtrace(void **__array, int __size);
+	char **backtrace_symbols(void *const *__array, int __size);
+	void backtrace_symbols_fd(void *const *__array, int __size, int __fd);
+	#ifdef __cplusplus
+	}
 	#endif
 #endif
 #ifdef __TINYC__
@@ -179,7 +190,11 @@ const c_common_macros = '
 #endif
 #if defined(_WIN32) || defined(__CYGWIN__)
 	#define VV_EXP extern __declspec(dllexport)
-	#define VV_LOC static
+	#ifdef _VPARALLELCC
+		#define VV_LOC
+	#else
+		#define VV_LOC static
+	#endif
 #else
 	// 4 < gcc < 5 is used by some older Ubuntu LTS and Centos versions,
 	// and does not support __has_attribute(visibility) ...
@@ -192,14 +207,18 @@ const c_common_macros = '
 		#else
 			#define VV_EXP  extern __attribute__((visibility("default")))
 		#endif
-		#if defined(__clang__) && (defined(_VUSECACHE) || defined(_VBUILDMODULE) || defined(_VOBJECTFILE))
+		#if defined(_VOBJECTFILE) || (defined(__clang__) && (defined(_VUSECACHE) || defined(_VBUILDMODULE)))
 			#define VV_LOC static
 		#else
 			#define VV_LOC  __attribute__ ((visibility ("hidden")))
 		#endif
 	#else
 		#define VV_EXP extern
-		#define VV_LOC static
+		#ifdef _VPARALLELCC
+			#define VV_LOC
+		#else
+			#define VV_LOC static
+		#endif
 	#endif
 #endif
 #ifdef __cplusplus
@@ -249,13 +268,21 @@ const c_common_hidden_attr = '
 #endif
 '
 
+const c_common_callconv_attr = '
+#if !defined(VCALLCONV)
+	#ifdef _MSC_VER
+		#define VCALLCONV(name) __##name
+	#else
+		#define VCALLCONV(name) __attribute__((name))
+	#endif
+#endif
+'
+
 const c_common_noreturn_attr = '
 #if !defined(VNORETURN)
 	#if defined(__TINYC__)
-		#include <stdnoreturn.h>
-		#define VNORETURN noreturn
-	#endif
-	# if !defined(__TINYC__) && defined(__STDC_VERSION__) && __STDC_VERSION__ >= 201112L
+		#define VNORETURN __attribute__((noreturn))
+	# elif defined(__STDC_VERSION__) && __STDC_VERSION__ >= 201112L
 	#  define VNORETURN _Noreturn
 	# elif !defined(VNORETURN) && defined(__GNUC__) && __GNUC__ >= 2
 	#  define VNORETURN __attribute__((noreturn))
@@ -335,24 +362,401 @@ const c_helper_macros = '//============================== HELPER C MACROS ======
 #define _PUSH_MANY_noscan(arr, val, tmp, tmp_typ) {tmp_typ tmp = (val); builtin__array_push_many_noscan(arr, tmp.data, tmp.len);}
 '
 
-const c_headers = c_helper_macros + c_common_macros +
+const c_windows_msvc_intsizeof_macro = '#ifndef _INTSIZEOF\n\t#define _INTSIZEOF(n) \\\n\t\t((sizeof(n) + \\\n\t\tsizeof(int) - 1) & \\\n\t\t~(sizeof(int) - 1))\n#endif\n'
+
+const c_windows_msvc_va_arg_macro = '#ifndef va_arg\n\t#define va_arg(ap, t) \\\n\t\t(*(t*)((ap += \\\n\t\t_INTSIZEOF(t)) - \\\n\t\t_INTSIZEOF(t)))\n#endif\n'
+
+const c_headers = c_helper_macros + c_common_macros + c_common_callconv_attr +
 	r'
 // c_headers
 typedef int (*qsort_callback_func)(const void*, const void*);
-#include <stdio.h>  // TODO: remove all these includes, define all function signatures and types manually
+#if defined(_MSC_VER) && !defined(__clang__)
+	#define V_CRT_LINKAGE __declspec(dllimport)
+	#define V_CRT_CALL VCALLCONV(cdecl)
+#else
+	#define V_CRT_LINKAGE
+	#define V_CRT_CALL
+#endif
+#if (defined(_MSC_VER) && !defined(__clang__)) || defined(__cplusplus)
+// Under C++ (g++/clang++), let libc declare FILE/stdio/string/stdlib to keep
+// noexcept specifiers consistent — the manual extern "C" prototypes below
+// would otherwise conflict with system headers under -std=c++NN.
+#include <stdarg.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <stdarg.h> // for va_list
+#ifndef va_copy
+	#define va_copy(dest, src) ((dest) = (src))
+#endif
+#ifndef _TRUNCATE
+	#define _TRUNCATE ((size_t)-1)
+#endif
+#elif defined(__MINGW32__) || defined(__MINGW64__) || (defined(__clang__) && (defined(_WIN32) || defined(_WIN64)))
+typedef struct _iobuf FILE;
+FILE* __cdecl __acrt_iob_func(unsigned index);
+#define stdin  (__acrt_iob_func(0))
+#define stdout (__acrt_iob_func(1))
+#define stderr (__acrt_iob_func(2))
+#elif defined(__TINYC__) && (defined(_WIN32) || defined(_WIN64))
+#ifndef _FILE_DEFINED
+struct _iobuf {
+	char *_ptr;
+	int _cnt;
+	char *_base;
+	int _flag;
+	int _file;
+	int _charbuf;
+	int _bufsiz;
+	char *_tmpfname;
+};
+typedef struct _iobuf FILE;
+#define _FILE_DEFINED
+#endif
+	#if defined(_WIN64)
+FILE* __cdecl __iob_func(void);
+	#else
+		#ifdef _MSVCRT_
+extern FILE _iob[];
+			#define __iob_func() (_iob)
+		#else
+extern FILE (*_imp___iob)[];
+			#define __iob_func() (*_imp___iob)
+			#define _iob __iob_func()
+		#endif
+	#endif
+#define stdin (&__iob_func()[0])
+#define stdout (&__iob_func()[1])
+#define stderr (&__iob_func()[2])
+#elif defined(__vinix__)
+typedef struct __file FILE;
+extern FILE* stdin;
+extern FILE* stdout;
+extern FILE* stderr;
+struct __thread_data;
+struct __threadattr;
+// pthread_t handling for vinix builds:
+//  - Vinix kernel (freestanding, __STDC_HOSTED__=0): no libc, define
+//    pthread_t ourselves so V code that references it compiles.
+//  - util-vinix cross-compiled on a libc-providing host (hosted, e.g.
+//    glibc on Linux or macOS with -D__vinix__): pull pthread_t from
+//    libc to avoid colliding with the libc typedef.
+#if defined(__STDC_HOSTED__) && __STDC_HOSTED__ && defined(__has_include) && __has_include(<pthread.h>)
+#include <pthread.h>
+#else
+typedef struct __thread_data *pthread_t;
+#endif
+typedef __builtin_va_list va_list;
+#ifndef va_start
+	#define va_start(ap, v) __builtin_va_start(ap, v)
+#endif
+#ifndef va_arg
+	#define va_arg(ap, t) __builtin_va_arg(ap, t)
+#endif
+#ifndef va_end
+	#define va_end(ap) __builtin_va_end(ap)
+#endif
+#ifndef va_copy
+	#define va_copy(dest, src) __builtin_va_copy(dest, src)
+#endif
+#else
+	#if defined(__APPLE__) || defined(__FreeBSD__)
+typedef struct __sFILE FILE;
+extern FILE* __stdinp;
+extern FILE* __stdoutp;
+extern FILE* __stderrp;
+#define stdin __stdinp
+#define stdout __stdoutp
+#define stderr __stderrp
+	#elif defined(__NetBSD__) || defined(__DragonFly__)
+typedef struct __sFILE FILE;
+extern FILE* __stdinp;
+extern FILE* __stdoutp;
+extern FILE* __stderrp;
+#define stdin __stdinp
+#define stdout __stdoutp
+#define stderr __stderrp
+	#elif defined(__OpenBSD__)
+typedef struct __sFILE FILE;
+#ifndef _STDFILES_DECLARED
+	#define _STDFILES_DECLARED
+struct __sFstub { long _stub; };
+extern struct __sFstub __stdin[];
+extern struct __sFstub __stdout[];
+extern struct __sFstub __stderr[];
+#endif
+#define stdin ((struct __sFILE *)__stdin)
+#define stdout ((struct __sFILE *)__stdout)
+#define stderr ((struct __sFILE *)__stderr)
+	#elif defined(__BIONIC__)
+struct __sFILE;
+typedef struct __sFILE FILE;
+extern FILE* stdin;
+extern FILE* stdout;
+extern FILE* stderr;
+	#elif defined(__linux__) && !defined(__GLIBC__) && !defined(__GNU_LIBRARY__) && !defined(__BIONIC__) && !defined(__UCLIBC__)
+typedef struct _IO_FILE FILE;
+// musl exposes the stdio streams as `FILE *const`, so match that to stay
+// compatible with later <stdio.h> includes from headers like miniz.h.
+extern FILE* const stdin;
+extern FILE* const stdout;
+extern FILE* const stderr;
+	#else
+typedef struct _IO_FILE FILE;
+extern FILE* stdin;
+extern FILE* stdout;
+extern FILE* stderr;
+	#endif
+typedef __builtin_va_list va_list;
+#ifndef va_start
+	#define va_start(ap, v) __builtin_va_start(ap, v)
+#endif
+#ifndef va_arg
+	#define va_arg(ap, t) __builtin_va_arg(ap, t)
+#endif
+#ifndef va_end
+	#define va_end(ap) __builtin_va_end(ap)
+#endif
+#ifndef va_copy
+	#define va_copy(dest, src) __builtin_va_copy(dest, src)
+#endif
+#endif
+#if (!defined(_MSC_VER) || defined(__clang__)) && !defined(__cplusplus)
+// mingw-w64 stdio.h declares these as static __mingw_ovr inline overrides
+// when __USE_MINGW_ANSI_STDIO is on. Skip them under gcc+mingw to avoid
+// static-after-extern conflicts; clang+mingw needs them because it builds
+// with -Werror=implicit-function-declaration and does not hit the conflict.
+#if !((defined(__MINGW32__) || defined(__MINGW64__)) && !defined(__clang__))
+V_CRT_LINKAGE int V_CRT_CALL vfprintf(FILE *stream, const char *format, va_list ap);
+V_CRT_LINKAGE int V_CRT_CALL vsnprintf(char *str, size_t size, const char *format, va_list ap);
+V_CRT_LINKAGE int V_CRT_CALL fprintf(FILE *stream, const char *format, ...);
+V_CRT_LINKAGE int V_CRT_CALL printf(const char *format, ...);
+V_CRT_LINKAGE int V_CRT_CALL snprintf(char *str, size_t size, const char *format, ...);
+V_CRT_LINKAGE int V_CRT_CALL sprintf(char *str, const char *format, ...);
+V_CRT_LINKAGE int V_CRT_CALL sscanf(const char *str, const char *format, ...);
+V_CRT_LINKAGE int V_CRT_CALL scanf(const char *format, ...);
+#endif
+V_CRT_LINKAGE int V_CRT_CALL puts(const char *str);
+V_CRT_LINKAGE void V_CRT_CALL perror(const char *str);
+V_CRT_LINKAGE int V_CRT_CALL fputs(const char *str, FILE *stream);
+V_CRT_LINKAGE int V_CRT_CALL getchar(void);
+V_CRT_LINKAGE int V_CRT_CALL putchar(int ch);
+V_CRT_LINKAGE int V_CRT_CALL getc(FILE *stream);
+V_CRT_LINKAGE int V_CRT_CALL fgetc(FILE *stream);
+V_CRT_LINKAGE int V_CRT_CALL ungetc(int ch, FILE *stream);
+V_CRT_LINKAGE int V_CRT_CALL fflush(FILE *stream);
+V_CRT_LINKAGE int V_CRT_CALL feof(FILE *stream);
+V_CRT_LINKAGE int V_CRT_CALL ferror(FILE *stream);
+V_CRT_LINKAGE void V_CRT_CALL clearerr(FILE *stream);
+V_CRT_LINKAGE int V_CRT_CALL setvbuf(FILE *stream, char *buf, int mode, size_t size);
+V_CRT_LINKAGE long V_CRT_CALL ftell(FILE *stream);
+V_CRT_LINKAGE void V_CRT_CALL rewind(FILE *stream);
+V_CRT_LINKAGE FILE * V_CRT_CALL fopen(const char *filename, const char *mode);
+V_CRT_LINKAGE FILE * V_CRT_CALL fdopen(int fd, const char *mode);
+V_CRT_LINKAGE FILE * V_CRT_CALL freopen(const char *filename, const char *mode, FILE *stream);
+V_CRT_LINKAGE int V_CRT_CALL fileno(FILE *stream);
+V_CRT_LINKAGE size_t V_CRT_CALL fread(void *ptr, size_t size, size_t items, FILE *stream);
+V_CRT_LINKAGE size_t V_CRT_CALL fwrite(const void *ptr, size_t size, size_t items, FILE *stream);
+#if defined(__vinix__)
+V_CRT_LINKAGE char * V_CRT_CALL fgets(char *str, size_t size, FILE *stream);
+#else
+V_CRT_LINKAGE char * V_CRT_CALL fgets(char *str, int size, FILE *stream);
+#endif
+V_CRT_LINKAGE int V_CRT_CALL fclose(FILE *stream);
+#if defined(__vinix__)
+V_CRT_LINKAGE FILE * V_CRT_CALL popen(char *command, char *mode);
+#else
+V_CRT_LINKAGE FILE * V_CRT_CALL popen(const char *command, const char *mode);
+#endif
+V_CRT_LINKAGE int V_CRT_CALL pclose(FILE *stream);
+V_CRT_LINKAGE void * V_CRT_CALL malloc(size_t size);
+V_CRT_LINKAGE void * V_CRT_CALL calloc(size_t nitems, size_t size);
+V_CRT_LINKAGE void * V_CRT_CALL realloc(void *ptr, size_t size);
+V_CRT_LINKAGE void * V_CRT_CALL aligned_alloc(size_t alignment, size_t size);
+V_CRT_LINKAGE void V_CRT_CALL free(void *ptr);
+V_CRT_LINKAGE int V_CRT_CALL rand(void);
+V_CRT_LINKAGE void V_CRT_CALL srand(unsigned int seed);
+V_CRT_LINKAGE int V_CRT_CALL atexit(void (*cb)(void));
+V_CRT_LINKAGE void V_CRT_CALL exit(int status);
+V_CRT_LINKAGE int V_CRT_CALL abs(int n);
+V_CRT_LINKAGE int V_CRT_CALL atoi(const char *str);
+V_CRT_LINKAGE double V_CRT_CALL atof(const char *str);
+V_CRT_LINKAGE char * V_CRT_CALL getenv(const char *name);
+V_CRT_LINKAGE int V_CRT_CALL setenv(const char *name, const char *value, int overwrite);
+V_CRT_LINKAGE int V_CRT_CALL unsetenv(const char *name);
+V_CRT_LINKAGE int V_CRT_CALL system(const char *command);
+V_CRT_LINKAGE int V_CRT_CALL remove(const char *path);
+V_CRT_LINKAGE int V_CRT_CALL rename(const char *old_path, const char *new_path);
+V_CRT_LINKAGE char * V_CRT_CALL realpath(const char *path, char *resolved_path);
+V_CRT_LINKAGE int V_CRT_CALL mkstemp(char *stemplate);
+V_CRT_LINKAGE void V_CRT_CALL qsort(void *base, size_t items, size_t item_size, qsort_callback_func cb);
+#if defined(__vinix__)
+V_CRT_LINKAGE int V_CRT_CALL strcmp(char *left, char *right);
+V_CRT_LINKAGE int V_CRT_CALL strncmp(char *left, char *right, size_t n);
+#else
+V_CRT_LINKAGE int V_CRT_CALL strcmp(const char *left, const char *right);
+V_CRT_LINKAGE int V_CRT_CALL strncmp(const char *left, const char *right, size_t n);
+#endif
+#if !defined(_WIN32) && !defined(_WIN64) && !defined(__BIONIC__)
+V_CRT_LINKAGE char * V_CRT_CALL strdup(const char *str);
+#endif
+#if !defined(_WIN32) && !defined(_WIN64)
+V_CRT_LINKAGE int V_CRT_CALL strcasecmp(const char *left, const char *right);
+V_CRT_LINKAGE int V_CRT_CALL strncasecmp(const char *left, const char *right, size_t n);
+#endif
+#if defined(__vinix__)
+V_CRT_LINKAGE size_t V_CRT_CALL strlen(char *str);
+#else
+V_CRT_LINKAGE size_t V_CRT_CALL strlen(const char *str);
+#endif
+V_CRT_LINKAGE char * V_CRT_CALL strerror(int errnum);
+V_CRT_LINKAGE void * V_CRT_CALL memcpy(void *dest, const void *src, size_t n);
+V_CRT_LINKAGE void * V_CRT_CALL memmove(void *dest, const void *src, size_t n);
+V_CRT_LINKAGE void * V_CRT_CALL memset(void *dest, int ch, size_t n);
+V_CRT_LINKAGE int V_CRT_CALL memcmp(const void *left, const void *right, size_t n);
+V_CRT_LINKAGE void * V_CRT_CALL memchr(const void *str, int c, size_t n);
+V_CRT_LINKAGE char * V_CRT_CALL strchr(const char *str, int c);
+V_CRT_LINKAGE char * V_CRT_CALL strrchr(const char *str, int c);
+V_CRT_LINKAGE int V_CRT_CALL fseek(FILE *stream, long offset, int whence);
+V_CRT_LINKAGE isize V_CRT_CALL getline(char **lineptr, size_t *n, FILE *stream);
+#if defined(_WIN32) || defined(_WIN64)
+V_CRT_LINKAGE int V_CRT_CALL _fileno(FILE *stream);
+V_CRT_LINKAGE FILE * V_CRT_CALL _wfopen(const unsigned short *filename, const unsigned short *mode);
+V_CRT_LINKAGE int V_CRT_CALL _wremove(const unsigned short *path);
+V_CRT_LINKAGE void * V_CRT_CALL _aligned_malloc(size_t size, size_t alignment);
+V_CRT_LINKAGE void * V_CRT_CALL _aligned_realloc(void *memory, size_t size, size_t alignment);
+V_CRT_LINKAGE void V_CRT_CALL _aligned_free(void *memory);
+V_CRT_LINKAGE unsigned short * V_CRT_CALL _wgetenv(const unsigned short *varname);
+V_CRT_LINKAGE int V_CRT_CALL _wputenv(const unsigned short *envstring);
+#endif
+#if defined(_MSC_VER) && !defined(__clang__)
+#ifndef _TRUNCATE
+	#define _TRUNCATE ((size_t)-1)
+#endif
+V_CRT_LINKAGE int V_CRT_CALL _vscprintf(const char *format, va_list ap);
+V_CRT_LINKAGE int V_CRT_CALL _vsnprintf_s(char *buffer, size_t size, size_t count, const char *format, va_list ap);
+#endif
+#endif
+#ifndef _IOFBF
+	#define _IOFBF 0
+#endif
+#ifndef _IOLBF
+	#define _IOLBF 1
+#endif
+#ifndef _IONBF
+	#define _IONBF 2
+#endif
+#ifndef EOF
+	#define EOF (-1)
+#endif
+#ifndef SEEK_SET
+	#define SEEK_SET 0
+#endif
+#ifndef SEEK_CUR
+	#define SEEK_CUR 1
+#endif
+#ifndef SEEK_END
+	#define SEEK_END 2
+#endif
+#ifndef RAND_MAX
+enum {
+	#if defined(_MSC_VER)
+		RAND_MAX = 0x7fff
+	#else
+		RAND_MAX = 2147483647
+	#endif
+};
+#endif
+#undef V_CRT_LINKAGE
+#undef V_CRT_CALL
+static void v_stable_sort(void *base, size_t items, size_t item_size, qsort_callback_func cb) {
+	if (items < 2 || item_size == 0) {
+		return;
+	}
+	if (items > ((size_t)-1) / item_size) {
+		qsort(base, items, item_size, cb);
+		return;
+	}
+	const size_t bytes = items * item_size;
+	char *base_bytes = (char*)base;
+	char *tmp = (char*)malloc(bytes);
+	if (tmp == 0) {
+		qsort(base, items, item_size, cb);
+		return;
+	}
+	char *src = base_bytes;
+	char *dst = tmp;
+	for (size_t width = 1; width < items;) {
+		for (size_t left = 0; left < items;) {
+			size_t mid = left;
+			mid += width;
+			if (mid > items) {
+				mid = items;
+			}
+			size_t right = mid;
+			right += width;
+			if (right > items || right < mid) {
+				right = items;
+			}
+			size_t i = left;
+			size_t j = mid;
+			size_t k = left;
+			while (i < mid && j < right) {
+				char *leftp = src;
+				leftp += i * item_size;
+				char *rightp = src;
+				rightp += j * item_size;
+				char *dstp = dst;
+				dstp += k * item_size;
+				if (cb(leftp, rightp) <= 0) {
+					memcpy(dstp, leftp, item_size);
+					i++;
+				} else {
+					memcpy(dstp, rightp, item_size);
+					j++;
+				}
+				k++;
+			}
+			while (i < mid) {
+				char *dstp = dst;
+				dstp += k * item_size;
+				char *srcp = src;
+				srcp += i * item_size;
+				memcpy(dstp, srcp, item_size);
+				i++;
+				k++;
+			}
+			while (j < right) {
+				char *dstp = dst;
+				dstp += k * item_size;
+				char *srcp = src;
+				srcp += j * item_size;
+				memcpy(dstp, srcp, item_size);
+				j++;
+				k++;
+			}
+			left = right;
+		}
+		char *next_src = dst;
+		dst = src;
+		src = next_src;
+		if (width > items / 2) {
+			width = items;
+		} else {
+			width *= 2;
+		}
+	}
+	if (src != base_bytes) {
+		memcpy(base_bytes, src, bytes);
+	}
+	free(tmp);
+}
 #if defined(__TINYC__)
 // https://lists.nongnu.org/archive/html/tinycc-devel/2025-10/msg00007.html
 // gnu headers use to #define __attribute__ to empty for non-gcc compilers
 #undef __attribute__
 #endif
-#if defined(_MSC_VER)
+#if defined(_MSC_VER) && !defined(__clang__)
 // Ensure C99-like return semantics and NUL-termination for MSVC snprintf/vsnprintf.
-#ifndef va_copy
-	#define va_copy(dest, src) ((dest) = (src))
-#endif
 static int v__vsnprintf(char *s, size_t n, const char *fmt, va_list ap) {
 	va_list ap_copy;
 	va_copy(ap_copy, ap);
@@ -386,8 +790,8 @@ void _vinit(int ___argc, voidptr ___argv);
 void _vcleanup(void);
 #endif
 #ifdef _WIN32
-	// workaround for windows, export _vinit_caller/_vcleanup_caller, let dl.open()/dl.close() call it
-	// NOTE: This is hardcoded in vlib/dl/dl_windows.c.v!
+	// Export helpers so the autogenerated DllMain, or a user-defined one,
+	// can reuse the default V shared-library init/cleanup path.
 	#ifdef _VOBJECTFILE
 		static void _vinit_caller();
 		static void _vcleanup_caller();
@@ -396,7 +800,9 @@ void _vcleanup(void);
 		VV_EXP void _vcleanup_caller();
 	#endif
 #endif
+#if !defined(_WIN32)
 #define sigaction_size sizeof(sigaction);
+#endif
 #define _ARR_LEN(a) ( (sizeof(a)) / (sizeof(a[0])) )
 #if INTPTR_MAX == INT32_MAX
 	#define TARGET_IS_32BIT 1
@@ -412,7 +818,7 @@ void _vcleanup(void);
 #else
 	#error "Unknown architecture endianness"
 #endif
-#ifndef _WIN32
+#if !defined(_WIN32) && !defined(__vinix__)
 	#include <ctype.h>
 	#include <locale.h> // tolower
 	#include <sys/time.h>
@@ -424,7 +830,7 @@ void _vcleanup(void);
 		#define pthread_rwlockattr_setkind_np(a, b)
 	#endif
 #endif
-#if defined(__linux__) || defined(__APPLE__) || defined(__FreeBSD__) || defined(__DragonFly__) || defined(__vinix__) || defined(__serenity__) || defined(__sun) || defined(__plan9__) || defined(__OpenBSD__)
+#if (defined(__linux__) || defined(__APPLE__) || defined(__FreeBSD__) || defined(__DragonFly__) || defined(__serenity__) || defined(__sun) || defined(__plan9__) || defined(__OpenBSD__)) && !defined(__vinix__)
 	#include <sys/types.h>
 	#include <sys/wait.h> // for os__wait
 #endif
@@ -560,6 +966,7 @@ typedef u8 array_fixed_byte_300 [300];
 typedef struct sync__Channel* chan;
 #ifndef CUSTOM_DEFINE_no_bool
 	#ifndef __cplusplus
+		#if !defined(__STDC_VERSION__) || __STDC_VERSION__ < 202311L
 		#ifndef bool
 			#ifdef CUSTOM_DEFINE_4bytebool
 				typedef int bool;
@@ -568,6 +975,7 @@ typedef struct sync__Channel* chan;
 			#endif
 			#define true 1
 			#define false 0
+		#endif
 		#endif
 	#endif
 #endif
@@ -623,10 +1031,9 @@ typedef void (*MapCloneFn)(voidptr, voidptr);
 typedef void (*MapFreeFn)(voidptr);
 '
 
-const c_bare_headers = c_helper_macros + c_common_macros +
+const c_bare_headers = c_helper_macros + c_common_macros + c_common_callconv_attr +
 	'
 #define _VFREESTANDING
-typedef long unsigned int size_t;
 // Memory allocation related headers
 void *malloc(size_t size);
 void *calloc(size_t nitems, size_t size);
@@ -648,9 +1055,11 @@ static void _vcleanup(void);
 void _vinit(int ___argc, voidptr ___argv);
 void _vcleanup();
 #endif
+#if !defined(_WIN32)
 #define sigaction_size sizeof(sigaction);
+#endif
 #define _ARR_LEN(a) ( (sizeof(a)) / (sizeof(a[0])) )
-voidptr builtin__memdup(voidptr src, isize size);
+VV_LOC voidptr builtin__memdup(voidptr src, isize size);
 '
 
 const c_wyhash_headers = '

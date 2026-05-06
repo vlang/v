@@ -4,19 +4,24 @@ $if freebsd || openbsd {
 	#flag -I/usr/local/include
 	#flag -L/usr/local/lib
 }
-#flag -I@VEXEROOT/thirdparty/sqlite
 $if tinyc {
 	#flag -DSQLITE_DISABLE_INTRINSIC
 }
 $if $pkgconfig('sqlite3') {
 	#pkgconfig sqlite3
+	#include "sqlite3.h" # The SQLite header file is missing. Please install the corresponding development package.
 } $else $if windows {
-	#flag windows -L@VEXEROOT/thirdparty/sqlite
-	#flag windows @VEXEROOT/thirdparty/sqlite/sqlite3.o
+	#flag -I@VEXEROOT/thirdparty/sqlite
+	#flag @VEXEROOT/thirdparty/sqlite/sqlite3.c
+	#include "sqlite3.h" # The SQLite header file is missing. Please run vlib/db/sqlite/install_thirdparty_sqlite.vsh to download an SQLite amalgamation.
+} $else $if darwin {
+	// macOS ships libsqlite3, so do not require a separately downloaded amalgamation.
+	#flag darwin -lsqlite3
 } $else {
+	#flag -I@VEXEROOT/thirdparty/sqlite
+	#include "sqlite3.h" # The SQLite header file is missing. Please run vlib/db/sqlite/install_thirdparty_sqlite.vsh to download an SQLite amalgamation.
 	#flag @VEXEROOT/thirdparty/sqlite/sqlite3.c
 }
-#include "sqlite3.h" # The SQLite header file is missing. Please run vlib/db/sqlite/install_thirdparty_sqlite.vsh to download an SQLite amalgamation, or install its development package.
 
 // https://www.sqlite.org/rescode.html
 pub const sqlite_ok = 0
@@ -94,6 +99,16 @@ pub struct Row {
 pub mut:
 	vals  []string
 	names []string
+}
+
+// val returns the value at `index`.
+pub fn (row Row) val(index int) string {
+	return row.vals[index]
+}
+
+// values returns all row values.
+pub fn (row Row) values() []string {
+	return row.vals.clone()
 }
 
 // get_string returns the value for the given column name, or '' if the column is not found
@@ -480,6 +495,11 @@ pub fn (db &DB) exec_param(query string, param string) ![]Row {
 	return db.exec_param_many(query, [param])
 }
 
+// exec_param2 executes a query with two parameters provided as ? placeholders.
+pub fn (db &DB) exec_param2(query string, param string, param2 string) ![]Row {
+	return db.exec_param_many(query, [param, param2])
+}
+
 // create_table issues a "create table if not exists" command to the db.
 // It creates the table named 'table_name', with columns generated from 'columns' array.
 // The default columns type will be TEXT.
@@ -547,6 +567,7 @@ pub fn (mut db DB) begin(param Sqlite3TransactionParam) ! {
 		.immediate { sql_stmt += 'IMMEDIATE;' }
 		.exclusive { sql_stmt += 'EXCLUSIVE;' }
 	}
+
 	db.exec(sql_stmt)!
 }
 

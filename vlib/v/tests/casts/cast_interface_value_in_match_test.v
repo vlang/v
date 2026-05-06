@@ -9,6 +9,7 @@ fn t(v Number2) {
 		}
 		else {}
 	}
+
 	match v {
 		int {
 			x := isize(v)

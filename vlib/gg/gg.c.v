@@ -53,6 +53,7 @@ $if windows {
 
 $if macos {
 	fn C.gg_macos_resize_window(window voidptr, width int, height int)
+	fn C.gg_macos_set_window_resizable(window voidptr, resizable bool)
 }
 
 $if windows {
@@ -65,6 +66,7 @@ $if windows {
 
 	fn C.GetWindowRect(hwnd voidptr, rect &C.RECT) int
 	fn C.GetWindowLongW(hwnd voidptr, index int) i32
+	fn C.SetWindowLongW(hwnd voidptr, index int, new_long i32) i32
 	fn C.AdjustWindowRectEx(rect &C.RECT, style u32, menu int, ex_style u32) int
 	fn C.SetWindowPos(hwnd voidptr, hwnd_insert_after voidptr, x int, y int, cx int, cy int, flags u32) int
 }
@@ -103,8 +105,8 @@ pub struct Config {
 pub:
 	width         int = 800 // desired start width of the window
 	height        int = 600 // desired start height of the window
-	retina        bool    // TODO: implement or deprecate
-	resizable     bool    // TODO: implement or deprecate
+	retina        bool // TODO: implement or deprecate
+	resizable     bool = true // prevent user-initiated resizing when supported by the platform backend
 	user_data     voidptr // a custom pointer to the application data/instance. When it is not set explicitly, it will default to a pointer to the current gg.Context instance.
 	font_size     int     // TODO: implement or deprecate
 	create_window bool    // TODO: implement or deprecate
@@ -139,10 +141,11 @@ pub:
 	resized_fn FNEvent   = unsafe { nil } // Called once when the window has changed its size.
 	scroll_fn  FNEvent   = unsafe { nil } // Called while the user is scrolling. The direction of scrolling is indicated by either 1 or -1.
 	// wait_events       bool // set this to true for UIs, to save power
-	fullscreen    bool // set this to true, if you want your window to start in fullscreen mode (suitable for games/demos/screensavers)
-	scale         f32 = 1.0
-	sample_count  int // bigger values usually have performance impact, but can produce smoother/antialiased lines, if you draw lines or polygons (2 is usually good enough)
-	swap_interval int = 1 // 1 = 60fps, 2 = 30fps etc. Honored on Windows, macOS, Linux, iOS, and HTML5; Android support is not implemented yet.
+	fullscreen     bool // set this to true, if you want your window to start in fullscreen mode (suitable for games/demos/screensavers)
+	scale          f32 = 1.0
+	sample_count   int // bigger values usually have performance impact, but can produce smoother/antialiased lines, if you draw lines or polygons (2 is usually good enough)
+	texture_filter TextureFilter = .linear // default texture filter for newly created images; use `.nearest` for pixel art scaling
+	swap_interval  int           = 1       // 1 = 60fps, 2 = 30fps etc. Honored on Windows, macOS, Linux, iOS, and HTML5; Android support is not implemented yet.
 	// ved needs this
 	// init_text bool
 	font_path             string
@@ -269,6 +272,9 @@ fn gg_init_sokol_window(user_data voidptr) {
 	sgl_desc := sgl.Desc{}
 	sgl.setup(&sgl_desc)
 	ctx.set_scale()
+	if !ctx.config.resizable {
+		gg_apply_window_resizable()
+	}
 	// is_high_dpi := sapp.high_dpi()
 	// fb_w := sapp.width()
 	// fb_h := sapp.height()
@@ -526,9 +532,11 @@ fn gg_event_fn(ce voidptr, user_data voidptr) {
 			// dump(e)
 		}
 	}
-	$if linux && !sokol_wayland ? {
+
+	$if windows || (linux && !sokol_wayland ?) {
 		if e.typ == .key_down && e.key_code in [.backspace, .delete, .enter, .tab] {
-			// with X11, sokol does not send .char events for some keys; we will emulate them for consistency here:
+			// with Win32 and X11, sokol does not send .char events for some keys;
+			// we will emulate them for consistency here:
 			// NOTE: on Wayland (sokol_wayland), the backend already sends real CHAR events for these
 			// keys via xkb_state_key_get_utf8, so this block must not run there or events double-fire.
 			e.char_code = match e.key_code {
@@ -538,6 +546,7 @@ fn gg_event_fn(ce voidptr, user_data voidptr) {
 				.delete { 127 }
 				else { u32(e.key_code) }
 			}
+
 			e.key_code = .invalid
 			e.typ = .char
 			if ctx.config.event_fn != unsafe { nil } {
@@ -629,6 +638,27 @@ fn (mut ctx Context) set_cached_window_size(width int, height int) {
 	ctx.height = height
 	ctx.window.width = width
 	ctx.window.height = height
+}
+
+fn gg_apply_window_resizable() {
+	$if macos {
+		window := sapp.macos_get_window()
+		if window != unsafe { nil } {
+			C.gg_macos_set_window_resizable(window, false)
+		}
+	} $else $if windows {
+		hwnd := sapp.win32_get_hwnd()
+		if hwnd == unsafe { nil } {
+			return
+		}
+		mut style := u32(C.GetWindowLongW(hwnd, C.GWL_STYLE))
+		style &= ~u32(C.WS_SIZEBOX | C.WS_MAXIMIZEBOX)
+		C.SetWindowLongW(hwnd, C.GWL_STYLE, i32(style))
+		C.SetWindowPos(hwnd, unsafe { nil }, 0, 0, 0, 0,
+			u32(C.SWP_NOMOVE | C.SWP_NOSIZE | C.SWP_NOZORDER | C.SWP_NOACTIVATE | C.SWP_FRAMECHANGED))
+	} $else $if linux {
+		sapp.set_resizable(false)
+	}
 }
 
 fn gg_resize_window(width int, height int) {
@@ -834,6 +864,7 @@ pub fn (ctx &Context) end(options EndOptions) {
 			create_default_pass(dontcare_pass)
 		}
 	}
+
 	gfx.begin_pass(pass)
 	sgl.draw()
 	gfx.end_pass()

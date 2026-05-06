@@ -95,6 +95,7 @@ fn (mut s Snake) impulse(direction Orientation) {
 			vel.y = 0
 		}
 	}
+
 	s.direction = direction
 	s.velocity = vel
 }
@@ -152,6 +153,7 @@ fn (mut s Snake) grow() {
 			pos.y = head.pos.y
 		}
 	}
+
 	s.body << BodyPart{
 		pos:    pos
 		facing: head.facing
@@ -221,6 +223,7 @@ fn (s Snake) draw() {
 				.right { '>' }
 				.left { '<' }
 			}
+
 			a.termui.set_color(white)
 			a.termui.draw_text(part.pos.x, part.pos.y, text)
 		}
@@ -297,6 +300,7 @@ fn event(e &termui.Event, mut app App) {
 				.escape, .q { exit(0) }
 				else { exit(0) }
 			}
+
 			if e.code == .c {
 			} else if e.code == .escape {
 				exit(0)
@@ -304,6 +308,7 @@ fn event(e &termui.Event, mut app App) {
 		}
 		else {}
 	}
+
 	app.redraw = true
 }
 
@@ -354,6 +359,7 @@ fn (mut a App) draw() {
 			a.redraw = true
 		}
 	}
+
 	a.termui.set_color(blue)
 	a.termui.set_bg_color(white)
 	a.termui.draw_text(3 * block_size, a.height - (2 * block_size),

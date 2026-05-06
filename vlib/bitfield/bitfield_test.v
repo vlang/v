@@ -146,7 +146,7 @@ fn test_hamming() {
 	mut input1 := bitfield.new(len)
 	mut input2 := bitfield.new(len)
 	for i in 0 .. len {
-		match rand.intn(4) or { 0 } {
+		match rand.intn(4) {
 			0, 1 {
 				input1.set_bit(i)
 				count++
@@ -160,7 +160,7 @@ fn test_hamming() {
 				input2.set_bit(i)
 			}
 			else {}
-		}
+		} or { 0 }
 	}
 	assert count == bitfield.hamming(input1, input2)
 }

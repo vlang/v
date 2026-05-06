@@ -204,6 +204,7 @@ fn (mut p Parser) asm_stmt(is_top_level bool) ast.AsmStmt {
 						p.error('invalid token in assembly block')
 					}
 				}
+
 				if p.tok.kind == .comma {
 					p.next()
 				} else {
@@ -639,12 +640,14 @@ fn (mut p Parser) asm_ios(output bool) []ast.AsmIO {
 			}
 		}
 		mut expr := p.expr(0)
+		mut next_expr := ast.Expr(ast.EmptyExpr{})
 		if mut expr is ast.ParExpr {
-			expr = expr.expr
+			next_expr = expr.expr
 		} else {
 			p.error('asm in/output must be enclosed in brackets')
 			return []
 		}
+		expr = next_expr
 		mut alias := ''
 		if p.tok.kind == .key_as {
 			p.next()

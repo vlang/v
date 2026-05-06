@@ -68,7 +68,7 @@ fn test_methods_arg() {
 	s1 := S1{}
 	$for method in S1.methods {
 		arr := ['!', '3']
-		r := s1.$method(arr)
+		r := s1.$method(...arr)
 		assert r == '!!!'
 	}
 }

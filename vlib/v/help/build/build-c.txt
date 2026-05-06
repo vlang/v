@@ -58,6 +58,12 @@ see also `v help build`.
       When set to `windows` V will generate a `wWinMain` main function,
       even when you are not compiling `gg` apps.
 
+   -icon <path>
+   --icon=<path>
+   -seticon <path>
+      Embed the provided `.ico` or `.png` file as the icon of the generated
+      Windows executable. Use it only when V is producing a Windows `.exe`.
+
    -showcc
       Prints the C command that is used to build the program.
 
@@ -165,12 +171,17 @@ see also `v help build`.
 
    -m32, -m64
       Whether 32-bit or 64-bit machine code will be generated.
+      On x86 C backend builds, `-m32` also selects the i386 target unless you
+      already passed an explicit `-arch`, so `$if i386 {}` and `*.i386.v`
+      files follow the same target width.
       NB: if you need to produce 32-bit code, *and* you are cross compiling
       to another OS, you may need to also set the environment variable
       VCROSS_COMPILER_NAME or pass `-cc your-compiler` for a one-off override,
       in order to override the default cross compiler,
       that V will use (`x86_64-w64-mingw32-gcc` for targeting Windows, and
       `clang` for targeting Linux from other operating systems).
+      Note: the bundled Linux cross-compilation sysroot currently contains
+      x86_64 runtime files only, so `-os linux -arch arm64` is not supported yet.
 
    -macosx-version-min 11.0
       Only relevant on macos. It will be passed as -mmacosx-version-min=11.0 to
@@ -376,8 +387,10 @@ see also `v help build`.
 
    -thread-stack-size 4194304
       Set the thread stack size to 4MB. Use multiples of 4096.
-      The default is 8MB, which is enough for compiling V programs, with deeply
-      nested expressions (~40 levels).
+      The default is 8MB on 64-bit targets and 2MB on 32-bit targets.
+      8MB is enough for compiling V programs, with deeply nested
+      expressions (~40 levels), while 32-bit targets use a smaller default
+      to reduce per-thread memory usage.
       It may need to be increased, if you are getting stack overflow errors for
       deeply recursive programs like some of the stages of the V compiler itself,
       that use relatively few threads.

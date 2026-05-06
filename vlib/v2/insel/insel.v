@@ -48,5 +48,6 @@ fn select_op_name(prefix string, op ssa.OpCode) string {
 		.assign { 'copy' }
 		else { op.str() }
 	}
+
 	return '${prefix}.${suffix}'
 }

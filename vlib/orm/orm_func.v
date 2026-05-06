@@ -275,6 +275,7 @@ fn (qb_ &QueryBuilder[T]) parse_conditions(conds string, params []Primitive) ! {
 						OperationKind.eq
 					}
 				}
+
 				if current_op in [.is_null, .is_not_null]! {
 					qb.where.fields << current_field
 					qb.where.kinds << current_op
@@ -375,6 +376,13 @@ pub fn (qb_ &QueryBuilder[T]) select(fields ...string) !&QueryBuilder[T] {
 		}
 	}
 	qb.config.fields = fields
+	return qb
+}
+
+// distinct marks the query as `SELECT DISTINCT`.
+pub fn (qb_ &QueryBuilder[T]) distinct() !&QueryBuilder[T] {
+	mut qb := unsafe { qb_ }
+	qb.config.has_distinct = true
 	return qb
 }
 
@@ -784,6 +792,7 @@ fn (qb &QueryBuilder[T]) validate_aggregate_field(kind AggregateKind, field stri
 					.avg { '${@FN}(): `avg` requires a numeric field' }
 					else { '${@FN}(): aggregate requires a numeric field' }
 				}
+
 				return error(msg)
 			}
 		}
@@ -794,11 +803,13 @@ fn (qb &QueryBuilder[T]) validate_aggregate_field(kind AggregateKind, field stri
 					.max { '${@FN}(): `max` requires a numeric, string, or time.Time field' }
 					else { '${@FN}(): aggregate requires a numeric, string, or time.Time field' }
 				}
+
 				return error(msg)
 			}
 		}
 		else {}
 	}
+
 	return meta_field
 }
 

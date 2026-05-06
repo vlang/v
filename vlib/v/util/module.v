@@ -69,6 +69,12 @@ pub fn qualify_module(pref_ &pref.Preferences, mod string, file_path string) str
 		return mod
 	}
 	clean_file_path := file_path.all_before_last(os.path_separator)
+	// Use absolute path so mod_path_to_full_name can walk up to find v.mod
+	abs_clean_file_path := if os.is_abs_path(clean_file_path) {
+		clean_file_path
+	} else {
+		os.join_path_single(os.getwd(), clean_file_path)
+	}
 	// relative module (relative to working directory)
 	// TODO: find most stable solution & test with -usecache
 	//
@@ -77,28 +83,21 @@ pub fn qualify_module(pref_ &pref.Preferences, mod string, file_path string) str
 	// TODO: 2022-01-30: The lookup should be relative to the folder, in which the current file is,
 	// TODO: 2022-01-30: *NOT* to the working folder of the compiler, which can change easily.
 	if clean_file_path.replace(os.getwd() + os.path_separator, '') == mod {
+		if m1 := mod_path_to_full_name(pref_, mod, abs_clean_file_path) {
+			if m1 != mod {
+				trace_qualify(@FN, mod, file_path, 'module_res 2', m1,
+					'clean_file_path - getwd == mod, m1 == f(${abs_clean_file_path})')
+				return m1
+			}
+		}
 		trace_qualify(@FN, mod, file_path, 'module_res 2', mod,
 			'clean_file_path - getwd == mod, clean_file_path: ${clean_file_path}')
 		return mod
 	}
-	// Use absolute path so mod_path_to_full_name can walk up to find v.mod
-	abs_clean_file_path := if os.is_abs_path(clean_file_path) {
-		clean_file_path
-	} else {
-		os.join_path_single(os.getwd(), clean_file_path)
-	}
 	if m1 := mod_path_to_full_name(pref_, mod, abs_clean_file_path) {
 		trace_qualify(@FN, mod, file_path, 'module_res 3', m1, 'm1 == f(${abs_clean_file_path})')
-		// >  qualify_module: net  | file_path: /v/cleanv/vlib/net/util.v     | =>   module_res 3: net     ; m1 == f(/v/cleanv/vlib/net)
-		// >  qualify_module: term | file_path: /v/cleanv/vlib/term/control.v | =>   module_res 3: term    ; m1 == f(/v/cleanv/vlib/term)
-		// >  qualify_module: log  | file_path: /v/vls/lsp/log/log.v          | =>   module_res 3: lsp.log ; m1 == f(/v/vls/lsp/log)
-
-		// zzz BUG: when ../v.mod exists above V root folder:
-		// zzz >  qualify_module: help | file_path: /v/cleanv/cmd/v/help/help.v   | =>   module_res 3: v.cmd.v.help  ; m1 == f(/v/cleanv/cmd/v/help)
 		return m1
 	}
-	// zzzzzzz WORKING, when there is NO ../v.mod:
-	// zzzzzzz >  qualify_module: help | file_path: /v/cleanv/cmd/v/help/help.v   | =>   module_res 4: help          ; ---, clean_file_path: /v/cleanv/cmd/v/help
 	trace_qualify(@FN, mod, file_path, 'module_res 4', mod,
 		'---, clean_file_path: ${clean_file_path}')
 	return mod
@@ -148,7 +147,7 @@ fn mod_path_to_full_name(pref_ &pref.Preferences, mod string, path string) !stri
 					path_part := path_parts[j]
 					// we reached a vmod folder
 					if path_part in vmod_folders {
-						mod_full_name := normalize_src_based_mod_name(try_path.split(os.path_separator)[
+						mod_full_name := normalize_base_url_mod_name(try_path.split(os.path_separator)[
 							j + 1..].join('.'), try_path)
 						return mod_full_name
 					}
@@ -167,50 +166,40 @@ fn mod_path_to_full_name(pref_ &pref.Preferences, mod string, path string) !stri
 						if 'v.mod' in ls
 							&& (try_path_parts.len > i && try_path_parts[i] != 'v' && 'vlib' !in ls) {
 							last_v_mod = j
+							break
 						}
 						continue
 					}
 					break
 				}
 				if last_v_mod > -1 {
-					mod_full_name := normalize_src_based_mod_name(try_path_parts[last_v_mod..].join('.'),
+					mod_full_name := normalize_base_url_mod_name(try_path_parts[last_v_mod..].join('.'),
 						try_path)
 					return if mod_full_name.len < mod.len { mod } else { mod_full_name }
 				}
 			}
 		}
 	}
-	abs_pref_path := if os.is_abs_path(pref_.path) {
-		pref_.path
-	} else {
-		os.join_path_single(os.getwd(), pref_.path)
-	}
 	if os.is_abs_path(path) && os.is_dir(path) { // && path.contains(mod )
+		abs_pref_path := if os.is_abs_path(pref_.path) {
+			pref_.path
+		} else {
+			os.join_path_single(os.getwd(), pref_.path)
+		}
 		rel_mod_path := path.replace(abs_pref_path.all_before_last(os.path_separator) +
 			os.path_separator, '')
 		if rel_mod_path != path {
-			full_mod_name :=
-				normalize_src_based_mod_name(rel_mod_path.replace(os.path_separator, '.'), path)
-			return full_mod_name
+			return normalize_base_url_mod_name(rel_mod_path.replace(os.path_separator, '.'), path)
 		}
 	}
 	return error('module not found')
 }
 
-fn pref_path_to_source_root(pref_ &pref.Preferences) string {
-	pref_path_dir := if os.is_dir(pref_.path) { pref_.path } else { os.dir(pref_.path) }
-	real_pref_path_dir := os.real_path(pref_path_dir)
-	files := os.ls(real_pref_path_dir) or { return real_pref_path_dir }
-	if pref_.should_compile_filtered_files(real_pref_path_dir, files).len == 0 {
-		src_path := os.join_path(real_pref_path_dir, 'src')
-		if os.is_dir(src_path) {
-			return src_path
-		}
-	}
-	return real_pref_path_dir
-}
-
-fn normalize_src_based_mod_name(mod_full_name string, path string) string {
+// normalize_base_url_mod_name strips the `base_url` prefix from `mod_full_name`
+// when the module lives in a folder configured via v.mod's `base_url`. Without
+// this, a module rooted at `<pkg>/source/feature` would be named `pkg.source.feature`
+// instead of `pkg.feature`. The implicit `src/` fallback is intentionally gone.
+fn normalize_base_url_mod_name(mod_full_name string, path string) string {
 	real_path := os.real_path(path)
 	mut mcache := vmod.get_cache()
 	vmod_file_location := mcache.get_by_folder(real_path)
@@ -221,9 +210,18 @@ fn normalize_src_based_mod_name(mod_full_name string, path string) string {
 	if !real_path.starts_with(vmod_prefix) {
 		return mod_full_name
 	}
+	manifest := vmod.from_file(vmod_file_location.vmod_file) or { return mod_full_name }
+	if manifest.base_url == '' {
+		return mod_full_name
+	}
+	base_parts := os.norm_path(manifest.base_url).split(os.path_separator).filter(it.len > 0
+		&& it != '.')
+	if base_parts.len == 0 {
+		return mod_full_name
+	}
 	rel_path := real_path.all_after(vmod_prefix)
 	rel_parts := rel_path.split(os.path_separator)
-	if rel_parts.len == 0 || rel_parts[0] != 'src' {
+	if rel_parts.len < base_parts.len || rel_parts[..base_parts.len] != base_parts {
 		return mod_full_name
 	}
 	full_parts := mod_full_name.split('.')
@@ -231,6 +229,6 @@ fn normalize_src_based_mod_name(mod_full_name string, path string) string {
 		return mod_full_name
 	}
 	mut normalized_parts := full_parts[..full_parts.len - rel_parts.len].clone()
-	normalized_parts << rel_parts[1..]
+	normalized_parts << rel_parts[base_parts.len..]
 	return normalized_parts.join('.')
 }

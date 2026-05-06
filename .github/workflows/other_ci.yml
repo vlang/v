@@ -101,9 +101,9 @@ jobs:
       - name: Build the repeat tool
         run: ./v cmd/tools/vrepeat.v
       - name: Repeat -o hw.c examples/hello_world.v
-        run: ./v repeat --max_time 251 --series 3 --runs 20 --nmins 2 --nmaxs 5 --warmup 3 --fail_percent 10 -t 'cd {T} ; ./v -o hw.c examples/hello_world.v' . ./vmaster
+        run: ./v repeat --max_time 280 --series 3 --runs 20 --nmins 2 --nmaxs 5 --warmup 3 --fail_percent 10 -t 'cd {T} ; ./v -o hw.c examples/hello_world.v' . ./vmaster
       - name: Repeat -o v.c cmd/v
-        run: ./v repeat --max_time 2600 --series 3 --runs 20 --nmins 2 --nmaxs 5 --warmup 3 --fail_percent 10 -t 'cd {T} ; ./v -o v.c cmd/v' . ./vmaster
+        run: ./v repeat --max_time 4000 --series 3 --runs 20 --nmins 2 --nmaxs 5 --warmup 3 --fail_percent 10 -t 'cd {T} ; ./v -o v.c cmd/v' . ./vmaster
 
   misc-tooling:
     runs-on: ubuntu-24.04

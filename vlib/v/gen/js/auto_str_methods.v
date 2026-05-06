@@ -634,7 +634,11 @@ fn (mut g JsGen) gen_str_for_map(info ast.Map, _styp string, str_fn_name string)
 	g.definitions.writeln('\tfor (let j = 0; j < keys.length;j++) {')
 	g.definitions.writeln('\t\tlet key = keys[j];')
 	g.definitions.writeln('\t\tlet value = m.map[key].val;')
-	g.definitions.writeln('\t\tkey = new ${key_styp}(key);')
+	if key_sym.kind == .enum {
+		g.definitions.writeln('\t\tkey = +key;')
+	} else {
+		g.definitions.writeln('\t\tkey = new ${key_styp}(key);')
+	}
 	if key_sym.kind == .string {
 		g.definitions.writeln('\t\tstrings__Builder_write_string(sb, new string("\'" + key.str + "\'"));')
 	} else if key_sym.kind == .rune {
@@ -653,7 +657,7 @@ fn (mut g JsGen) gen_str_for_map(info ast.Map, _styp string, str_fn_name string)
 	} else if should_use_indent_func(val_sym.kind) && !val_sym.has_method('str') {
 		g.definitions.writeln('\t\tstrings__Builder_write_string(sb, indent_${elem_str_fn_name}(value, indent_count));')
 	} else if val_sym.kind in [.f32, .f64] {
-		g.definitions.writeln('\t\tstrings__Builder_write_string(sb, value.val + "");')
+		g.definitions.writeln('\t\tstrings__Builder_write_string(sb, new string(value.val + ""));')
 	} else if val_sym.kind == .rune {
 		g.definitions.writeln('\t\tlet x = new string("\`" + String.fromCharCode(value.val) + "\`");')
 		g.definitions.writeln('\t\tstrings__Builder_write_string(sb,x);')

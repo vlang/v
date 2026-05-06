@@ -750,6 +750,8 @@ fn (mut g Gen) gen_struct_decl(node ast.StructDecl) {
 				// Register field types for this instantiation
 				g.struct_field_types['${inst.c_name}.${field_name}'] = field_type
 			}
+			g.struct_field_lookup_cache = map[string]string{}
+			g.struct_field_lookup_miss = map[string]bool{}
 			if node.fields.len == 0 {
 				g.sb.writeln('\tu8 _dummy;')
 			}
@@ -861,6 +863,7 @@ fn (mut g Gen) infer_sum_variant_from_expr(type_name string, variants []string, 
 				''
 			}
 		}
+
 		if variant_hint != '' {
 			for i, v in variants {
 				v_short := if v.contains('__') { v.all_after_last('__') } else { v }
@@ -971,6 +974,60 @@ fn (mut g Gen) gen_sum_wrapped_init_field(sum_type_name string, init_expr ast.In
 	return false
 }
 
+fn (g &Gen) qualify_sum_payload_expr(expr ast.Expr, resolved_type string) ast.Expr {
+	if !resolved_type.contains('__') {
+		return expr
+	}
+	short_type := resolved_type.all_after_last('__')
+	return match expr {
+		ast.InitExpr {
+			if expr.typ is ast.Ident && expr.typ.name == short_type {
+				ast.Expr(ast.InitExpr{
+					typ:    ast.Ident{
+						name: resolved_type
+						pos:  expr.typ.pos
+					}
+					fields: expr.fields
+					pos:    expr.pos
+				})
+			} else {
+				expr
+			}
+		}
+		ast.CallOrCastExpr {
+			if expr.lhs is ast.Ident && expr.lhs.name == short_type {
+				ast.Expr(ast.CallOrCastExpr{
+					lhs:  ast.Ident{
+						name: resolved_type
+						pos:  expr.lhs.pos
+					}
+					expr: expr.expr
+					pos:  expr.pos
+				})
+			} else {
+				expr
+			}
+		}
+		ast.CastExpr {
+			if expr.typ is ast.Ident && expr.typ.name == short_type {
+				ast.Expr(ast.CastExpr{
+					typ:  ast.Ident{
+						name: resolved_type
+						pos:  expr.typ.pos
+					}
+					expr: expr.expr
+					pos:  expr.pos
+				})
+			} else {
+				expr
+			}
+		}
+		else {
+			expr
+		}
+	}
+}
+
 fn (mut g Gen) gen_sum_type_wrap(type_name string, field_name string, tag int, is_primitive bool, expr ast.Expr, inner_type string) {
 	_ = is_primitive
 	g.sb.write_string('((${type_name}){._tag = ${tag}, ._data._${field_name} = ')
@@ -985,6 +1042,11 @@ fn (mut g Gen) gen_sum_type_wrap(type_name string, field_name string, tag int, i
 		} else {
 			resolved_type = field_name
 		}
+	} else if !g.is_scalar_sum_payload_type(resolved_type)
+		&& resolved_type !in ['string', 'bool', 'voidptr', 'charptr', 'byteptr']
+		&& !resolved_type.contains('__') && !resolved_type.starts_with('Array_')
+		&& !resolved_type.starts_with('Map_') && type_name.contains('__') {
+		resolved_type = '${type_name.all_before_last('__')}__${resolved_type}'
 	}
 	if g.is_scalar_sum_payload_type(resolved_type) {
 		// Keep scalar payloads encoded in pointer-size space. Smartcast extraction expects this.
@@ -1010,8 +1072,9 @@ fn (mut g Gen) gen_sum_type_wrap(type_name string, field_name string, tag int, i
 		// dangling pointers to local variables that go out of scope.
 		g.tmp_counter++
 		tmp_name := '_st${g.tmp_counter}'
+		payload_expr := g.qualify_sum_payload_expr(expr, resolved_type)
 		g.sb.write_string('((void*)({ ${resolved_type} ${tmp_name} = ')
-		g.expr(expr)
+		g.expr(payload_expr)
 		g.sb.write_string('; memdup(&${tmp_name}, sizeof(${resolved_type})); }))')
 	}
 	g.sb.write_string('})')
@@ -1058,6 +1121,7 @@ fn (g &Gen) is_sum_payload_expr(node ast.Expr, variant string) bool {
 		}
 		else {}
 	}
+
 	return false
 }
 
@@ -1510,6 +1574,11 @@ fn (mut g Gen) gen_init_expr(node ast.InitExpr) {
 				} else {
 					resolved_type = variant_name
 				}
+			} else if !g.is_scalar_sum_payload_type(inner_type)
+				&& inner_type !in ['string', 'bool', 'voidptr', 'charptr', 'byteptr']
+				&& !inner_type.contains('__') && !inner_type.starts_with('Array_')
+				&& !inner_type.starts_with('Map_') && type_name.contains('__') {
+				resolved_type = '${type_name.all_before_last('__')}__${inner_type}'
 			}
 			if g.is_scalar_sum_payload_type(resolved_type) {
 				// Keep scalar payloads encoded in pointer-size space.
@@ -1532,8 +1601,9 @@ fn (mut g Gen) gen_init_expr(node ast.InitExpr) {
 			} else {
 				g.tmp_counter++
 				tmp_name := '_st${g.tmp_counter}'
+				payload_expr := g.qualify_sum_payload_expr(field.value, resolved_type)
 				g.sb.write_string('((void*)({ ${resolved_type} ${tmp_name} = ')
-				g.expr(field.value)
+				g.expr(payload_expr)
 				g.sb.write_string('; memdup(&${tmp_name}, sizeof(${resolved_type})); }))')
 			}
 			continue

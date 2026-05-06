@@ -425,6 +425,7 @@ fn (mut vt Vet) track_regex_assign(stmt ast.AssignStmt) {
 				continue
 			}
 		}
+
 		if vt.is_regex_value_expr(stmt.right[i]) {
 			vt.regex_vars[ident_name] = true
 		} else {

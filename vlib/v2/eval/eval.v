@@ -940,6 +940,7 @@ fn (e &Eval) sumtype_tag_from_value(info SumTypeInfo, value Value) ?int {
 		}
 		else {}
 	}
+
 	if nested := e.infer_nested_sumtype_variant(info, value) {
 		return nested.tag
 	}
@@ -1703,6 +1704,7 @@ fn (mut e Eval) contextual_sumtype_tag(target_expr ast.Expr, value Value) ?int {
 		}
 		else {}
 	}
+
 	return none
 }
 
@@ -2952,6 +2954,7 @@ fn (mut e Eval) exec_stmt(stmt ast.Stmt) !FlowSignal {
 			return error('v2.eval: unsupported statement `${stmt.type_name()}`')
 		}
 	}
+
 	return FlowSignal{
 		kind: .normal
 	}
@@ -2985,6 +2988,7 @@ fn (mut e Eval) exec_expr_stmt(expr ast.Expr) !FlowSignal {
 			_ = e.eval_expr(expr)!
 		}
 	}
+
 	return FlowSignal{
 		kind: .normal
 	}
@@ -3073,6 +3077,7 @@ fn can_update_target(expr ast.Expr) bool {
 		}
 		else {}
 	}
+
 	if expr is ast.PrefixExpr && expr.op in [.mul, .amp] {
 		return can_update_target(expr.expr)
 	}
@@ -3103,6 +3108,7 @@ fn (mut e Eval) update_target(expr ast.Expr, value Value) ! {
 		}
 		else {}
 	}
+
 	if expr is ast.PrefixExpr && expr.op in [.mul, .amp] {
 		return e.update_target(expr.expr, value)
 	}
@@ -3121,6 +3127,7 @@ fn assignable_ident_name(expr ast.Expr) ?string {
 		}
 		else {}
 	}
+
 	return none
 }
 
@@ -3349,6 +3356,7 @@ fn (mut e Eval) exec_for_in(for_in ast.ForInStmt, body []ast.Stmt) !FlowSignal {
 			return error('v2.eval: unsupported for-in iterable `${e.runtime_type_name(iterable)}`')
 		}
 	}
+
 	return FlowSignal{
 		kind: .normal
 	}
@@ -3586,6 +3594,7 @@ fn (mut e Eval) eval_expr(expr ast.Expr) !Value {
 				}
 				else {}
 			}
+
 			return TypeValue{
 				name: e.type_node_name(expr)
 			}
@@ -4075,6 +4084,7 @@ fn (mut e Eval) maybe_call_builder_wrapper(name string, args []ast.Expr) ?Value 
 				}
 				else {}
 			}
+
 			e.update_target(target_expr, ArrayValue{
 				values: items
 			}) or { return none }
@@ -4110,6 +4120,7 @@ fn builder_target_expr(expr ast.Expr) ?ast.Expr {
 		}
 		else {}
 	}
+
 	return none
 }
 
@@ -4425,6 +4436,7 @@ fn (e &Eval) value_is_type(value Value, rhs Value) bool {
 		string { rhs }
 		else { e.runtime_type_name(rhs) }
 	}
+
 	if value is StructValue && e.unwrap_sumtype_value(value, target_name) != none {
 		return true
 	}
@@ -4826,6 +4838,7 @@ fn (mut e Eval) eval_selector_expr(expr ast.SelectorExpr) !Value {
 		}
 		else {}
 	}
+
 	return error('v2.eval: unsupported selector `${expr.rhs.name}` on `${e.runtime_type_name(left)}` from `${expr.lhs.type_name()}` `${expr.lhs.name()}` in `${e.current_function_label()}`')
 }
 
@@ -5235,6 +5248,7 @@ fn (mut e Eval) call_value_method(receiver Value, method_name string, args []Val
 		}
 		else {}
 	}
+
 	return error('v2.eval: unsupported method `${method_name}` on `${e.runtime_type_name(receiver)}`')
 }
 

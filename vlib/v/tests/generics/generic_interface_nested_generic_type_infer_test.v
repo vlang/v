@@ -103,3 +103,104 @@ fn test_generic_interface_nested_generic_type_infer() {
 	assert ok
 	assert value == 1
 }
+
+// Regression test for #18471.
+interface Issue18471Returner[T] {
+	get() T
+}
+
+struct Issue18471Holder[T] {
+	value Issue18471Returner[T]
+}
+
+fn (h Issue18471Holder[T]) get() T {
+	return h.value.get()
+}
+
+struct Issue18471Number[T] {
+	value T
+}
+
+fn (n Issue18471Number[T]) get() T {
+	return n.value
+}
+
+struct Issue18471Box[T] {
+	value T
+}
+
+interface Issue18471BoxedValue[T] {
+	get() Issue18471Box[T]
+}
+
+fn (b Issue18471Box[T]) get() T {
+	return b.value
+}
+
+struct Issue18471BoxNumber[T] {
+	value T
+}
+
+fn (n Issue18471BoxNumber[T]) get() Issue18471Box[T] {
+	return Issue18471Box[T]{
+		value: n.value
+	}
+}
+
+struct Issue18471NestedBox[T] {
+	value Issue18471BoxedValue[T]
+}
+
+fn issue18471_nested_box[T](value Issue18471BoxedValue[T]) Issue18471BoxedValue[Issue18471BoxedValue[T]] {
+	return Issue18471NestedBox[T]{
+		value: value
+	}
+}
+
+fn (n Issue18471NestedBox[T]) get() Issue18471Box[Issue18471BoxedValue[T]] {
+	return Issue18471Box[Issue18471BoxedValue[T]]{
+		value: n.value
+	}
+}
+
+struct Issue18471PickSecond[T, Y] {
+	first  Issue18471BoxedValue[T]
+	second Issue18471BoxedValue[Y]
+}
+
+fn issue18471_pick_second[T, Y](first Issue18471BoxedValue[T], second Issue18471BoxedValue[Y]) Issue18471BoxedValue[Y] {
+	return Issue18471PickSecond[T, Y]{
+		first:  first
+		second: second
+	}
+}
+
+fn (p Issue18471PickSecond[T, Y]) get() Issue18471Box[Y] {
+	return p.second.get()
+}
+
+fn test_issue_18471_generic_interface_impl_resolves_concrete_return_type() {
+	value := Issue18471Holder[int]{
+		value: Issue18471Number[int]{
+			value: 7
+		}
+	}
+	assert value.get() == 7
+}
+
+fn test_issue_18471_generic_interface_impl_handles_nested_generic_return_types() {
+	nested := issue18471_nested_box[int](Issue18471BoxNumber[int]{
+		value: 9
+	})
+	inner := nested.get().value
+	assert inner.get().value == 9
+}
+
+fn test_issue_18471_generic_interface_impl_handles_multiple_receiver_generics() {
+	value := issue18471_pick_second[int, int](Issue18471BoxNumber[int]{
+		value: 1
+	}, Issue18471BoxNumber[int]{
+		value: 2
+	})
+	assert value.get().value == 2
+}

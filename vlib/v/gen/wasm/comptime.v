@@ -48,6 +48,7 @@ pub fn (mut g Gen) comptime_cond(cond ast.Expr) bool {
 		}
 		else {}
 	}
+
 	g.w_error('wasm.comptime_cond(): unhandled node: ' + cond.type_name())
 }
 
@@ -135,5 +136,6 @@ pub fn (mut g Gen) comptime_if_to_ifdef(name string, is_comptime_option bool) bo
 			*/
 		}
 	}
+
 	g.w_error('wasm.comptime_if_to_ifdef(): unhandled `${name}`, is_comptime_option: ${is_comptime_option}')
 }

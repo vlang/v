@@ -1,0 +1,28 @@
+module main
+
+struct ParserResult[I, O] {
+	i []I
+	o []O
+}
+
+type TCount = u32
+
+fn (count TCount) take_part[I, O](i []I) !ParserResult[I, O] {
+	if i.len < count {
+		return error('error1')
+	}
+	return ParserResult{
+		i: i[count..]
+		o: i[..count]
+	}
+}
+
+fn (count TCount) print_part[T](v T) {
+	_ = v
+}
+
+fn main() {
+	_ = [TCount(4).take_part]
+	f := TCount(4).print_part
+	_ = f
+}

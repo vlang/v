@@ -3,6 +3,11 @@ module checker
 import v.ast
 import v.token
 
+fn (mut c Checker) markused_power_runtime_support() {
+	// C/JS backends lower `**` directly at codegen time, so there is no
+	// function usage to mark here.
+}
+
 fn infix_expr_allows_auto_deref(expr ast.Expr) bool {
 	return expr is ast.Ident && expr.is_auto_deref_var()
 }
@@ -13,6 +18,28 @@ fn infix_expr_is_zero_integer_literal(expr ast.Expr) bool {
 
 fn infix_expr_is_nil_like(expr ast.Expr) bool {
 	return expr.is_nil() || (expr is ast.UnsafeExpr && expr.expr.is_nil())
+}
+
+fn (c &Checker) type_is_optionish(typ ast.Type, sym ast.TypeSymbol) bool {
+	return typ.has_flag(.option)
+		|| (sym.kind == .alias && sym.info is ast.Alias && sym.info.parent_type.has_flag(.option))
+}
+
+fn (c &Checker) is_string_like_type(typ ast.Type) bool {
+	return !typ.has_option_or_result() && typ.clear_flags() == ast.string_type
+}
+
+fn (c &Checker) is_char_or_rune_like_type(typ ast.Type) bool {
+	return !typ.has_option_or_result() && typ.clear_flags() in [ast.char_type, ast.rune_type]
+}
+
+fn (c &Checker) is_string_concat_type(typ ast.Type) bool {
+	return c.is_string_like_type(typ) || c.is_char_or_rune_like_type(typ)
+}
+
+fn (c &Checker) is_string_concat_pair(left ast.Type, right ast.Type) bool {
+	return c.is_string_concat_type(left) && c.is_string_concat_type(right)
+		&& (c.is_string_like_type(left) || c.is_string_like_type(right))
 }
 
 fn has_matching_reference_operator_overload(sym &ast.TypeSymbol, op string, receiver_type ast.Type, operand_type ast.Type) bool {
@@ -131,25 +158,39 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 	}
 
 	// `if n is ast.Ident && n.is_mut { ... }`
+	// Walk the left side of && chains to find `is` checks for smartcasting.
+	// NOTE: Uses a regular loop with explicit casts instead of
+	// `for mut left_node is ast.InfixExpr` to avoid a codegen bug where
+	// reassignment inside such a loop overwrites the pointed-to InfixExpr
+	// struct instead of reassigning the Expr variable.
 	if !c.inside_sql && node.op == .and {
-		mut left_node := node.left
-		for mut left_node is ast.InfixExpr {
-			if left_node.op == .and && mut left_node.right is ast.InfixExpr {
-				if left_node.right.op == .key_is {
+		mut left_expr := node.left
+		for {
+			if left_expr !is ast.InfixExpr {
+				break
+			}
+			mut left_infix := unsafe { &(left_expr as ast.InfixExpr) }
+			if left_infix.op == .and && left_infix.right is ast.InfixExpr {
+				mut right_infix := unsafe { &(left_infix.right as ast.InfixExpr) }
+				if right_infix.op == .key_is {
 					// search last `n is ast.Ident` in the left
-					from_type := c.expr(mut left_node.right.left)
-					to_type := c.expr(mut left_node.right.right)
-					c.autocast_in_if_conds(mut node.right, left_node.right.left, from_type, to_type)
+					from_type := c.expr(mut right_infix.left)
+					to_type := c.expr(mut right_infix.right)
+					c.autocast_in_if_conds(mut node.right, right_infix.left, from_type, to_type)
 				}
 			}
-			if left_node.op == .key_is {
+			if left_infix.op == .key_is {
 				// search `n is ast.Ident`
-				from_type := c.expr(mut left_node.left)
-				to_type := c.expr(mut left_node.right)
-				c.autocast_in_if_conds(mut node.right, left_node.left, from_type, to_type)
+				from_type := c.expr(mut left_infix.left)
+				to_type := c.expr(mut left_infix.right)
+				c.autocast_in_if_conds(mut node.right, left_infix.left, from_type, to_type)
 				break
-			} else if left_node.op == .and {
-				left_node = left_node.left
+			} else if left_infix.op == .and {
+				if left_infix.left is ast.InfixExpr {
+					left_expr = left_infix.left
+				} else {
+					break
+				}
 			} else {
 				break
 			}
@@ -176,7 +217,11 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 				}
 			}
 		} else if mut node.right is ast.ArrayInit {
-			if node.right.exprs.len == 0 && node.right.elem_type == ast.void_type {
+			left_value_type := c.table.value_type(c.unwrap_generic(left_type))
+			if node.right.is_fixed
+				&& c.table.final_sym(c.unwrap_generic(left_value_type)).kind == .interface {
+				c.expected_type = ast.void_type
+			} else if node.right.exprs.len == 0 && node.right.elem_type == ast.void_type {
 				// handle arr << [] where [] is empty
 				info := c.table.sym(left_type).array_info()
 				node.right.elem_type = info.elem_type
@@ -196,6 +241,14 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 		}
 	}
 	right_type = c.maybe_wrap_index_expr_smartcast(mut node.right, right_type)
+	if node.op in [.eq, .ne] {
+		left_type = c.maybe_wrap_option_compare_smartcast(mut node.left, left_type, node.right,
+			right_type)
+		node.left_type = left_type
+		left_sym = c.table.sym(left_type)
+		right_type = c.maybe_wrap_option_compare_smartcast(mut node.right, right_type, node.left,
+			left_type)
+	}
 	if node.op == .key_is {
 		c.inside_x_is_type = false
 	}
@@ -250,7 +303,7 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 	}
 	if left_type.is_any_kind_of_pointer() && !left_type.has_flag(.shared_f)
 		&& !node.left.is_auto_deref_var()
-		&& node.op in [.plus, .minus, .mul, .div, .mod, .xor, .amp, .pipe] {
+		&& node.op in [.plus, .minus, .mul, .power, .div, .mod, .xor, .amp, .pipe] {
 		if !c.pref.translated && ((right_type.is_any_kind_of_pointer() && node.op != .minus)
 			|| (!right_type.is_any_kind_of_pointer() && node.op !in [.plus, .minus])) {
 			if _ := left_sym.find_method(node.op.str()) {
@@ -275,6 +328,13 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 		}
 	}
 	mut return_type := left_type
+	if node.op == .plus && c.is_string_concat_pair(left_type, right_type) {
+		return_type = ast.string_type
+	}
+	left_is_explicit_ptr := left_type.is_any_kind_of_pointer() && !node.left.is_auto_deref_var()
+		&& left_final_sym.kind != .voidptr
+	right_is_explicit_ptr := right_type.is_any_kind_of_pointer() && !node.right.is_auto_deref_var()
+		&& right_final_sym.kind != .voidptr
 
 	if node.op != .key_is {
 		match mut node.left {
@@ -297,6 +357,7 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 		}
 		else {}
 	}
+
 	eq_ne := node.op in [.eq, .ne]
 	// Single side check
 	// Place these branches according to ops' usage frequency to accelerate.
@@ -340,7 +401,7 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 				}
 			}
 
-			c.check_option_infix_expr(node, left_type, right_type, left_sym, right_sym)
+			c.check_option_infix_expr(mut node, left_type, right_type, left_sym, right_sym)
 
 			// In SQL, `field == nil`/`field != nil` is lowered to NULL comparisons.
 			if !c.inside_sql {
@@ -415,9 +476,9 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 				}
 				.map {
 					map_info := right_final_sym.map_info()
-					c.check_expected(left_type, map_info.key_type) or {
-						c.error('left operand to `${node.op}` does not match the map key type: ${err.msg()}',
-							left_right_pos)
+					if !c.check_map_key_type(left_type, map_info.key_type) {
+						c.error('left operand to `${node.op}` does not match the map key type: ${c.map_key_expected_msg(left_type,
+							map_info.key_type, node.left, '')}', left_right_pos)
 					}
 					node.left_type = map_info.key_type
 				}
@@ -442,11 +503,15 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 					}
 				}
 			}
+
 			node.promoted_type = ast.bool_type
 			return ast.bool_type
 		}
-		.plus, .minus, .mul, .div, .mod, .xor, .amp, .pipe {
+		.plus, .minus, .mul, .power, .div, .mod, .xor, .amp, .pipe {
 			// binary operators that expect matching types
+			if node.op == .power {
+				c.markused_power_runtime_support()
+			}
 			unwrapped_left_type := c.unwrap_generic(left_type)
 			left_sym = c.table.sym(unwrapped_left_type)
 			unwrapped_right_type := c.unwrap_generic(right_type)
@@ -536,10 +601,18 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 				c.error('infix `${node.op}` is not defined for pointer values', left_right_pos)
 			}
 
-			if !c.pref.translated && left_sym.kind in [.array, .array_fixed, .map, .struct] {
+			if !c.pref.translated && !left_is_explicit_ptr
+				&& left_sym.kind in [.array, .array_fixed, .map, .struct] {
 				if left_sym.has_method_with_generic_parent(op_str) {
 					if method := left_sym.find_method_with_generic_parent(op_str) {
 						return_type = method.return_type
+						left_info := left_sym.info
+						if left_info is ast.Struct {
+							if left_info.concrete_types.len > 0 {
+								c.table.register_fn_concrete_types(method.fkey(),
+									left_info.concrete_types)
+							}
+						}
 					} else {
 						return_type = left_type
 					}
@@ -554,10 +627,18 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 							left_right_pos)
 					}
 				}
-			} else if !c.pref.translated && right_sym.kind in [.array, .array_fixed, .map, .struct] {
+			} else if !c.pref.translated && !right_is_explicit_ptr
+				&& right_sym.kind in [.array, .array_fixed, .map, .struct] {
 				if right_sym.has_method_with_generic_parent(op_str) {
 					if method := right_sym.find_method_with_generic_parent(op_str) {
 						return_type = method.return_type
+						right_info := right_sym.info
+						if right_info is ast.Struct {
+							if right_info.concrete_types.len > 0 {
+								c.table.register_fn_concrete_types(method.fkey(),
+									right_info.concrete_types)
+							}
+						}
 					} else {
 						return_type = right_type
 					}
@@ -592,46 +673,57 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 			} else {
 				unaliased_left_type := c.table.unalias_num_type(unwrapped_left_type)
 				unalias_right_type := c.table.unalias_num_type(unwrapped_right_type)
-				mut promoted_type := c.promote_keeping_aliases(unaliased_left_type,
-					unalias_right_type, left_sym.kind, right_sym.kind)
-				promoted_type = c.adjust_infix_int_literal_promotion(node.left, node.right,
-					unaliased_left_type, unalias_right_type, promoted_type)
-				// subtract pointers is allowed in unsafe block
-				is_allowed_pointer_arithmetic := left_type.is_any_kind_of_pointer()
-					&& right_type.is_any_kind_of_pointer() && node.op == .minus
-				if is_allowed_pointer_arithmetic {
-					promoted_type = ast.int_type
-				}
-				if promoted_type.idx() == ast.void_type_idx {
-					left_name := c.table.type_to_str(unwrapped_left_type)
-					right_name := c.table.type_to_str(unwrapped_right_type)
-					c.error('mismatched types `${left_name}` and `${right_name}`', left_right_pos)
-				} else if promoted_type.has_option_or_result() {
-					s := c.table.type_to_str(promoted_type)
-					c.error('`${node.op}` cannot be used with `${s}`', node.pos)
-				} else if promoted_type.is_float() {
-					if node.op in [.mod, .xor, .amp, .pipe] {
-						side := if unwrapped_left_type == promoted_type { 'left' } else { 'right' }
-						pos := if unwrapped_left_type == promoted_type {
-							left_pos
-						} else {
-							right_pos
-						}
-						name := if unwrapped_left_type == promoted_type {
-							left_sym.name
-						} else {
-							right_sym.name
-						}
-						if node.op == .mod {
-							c.error('float modulo not allowed, use math.fmod() instead', pos)
-						} else {
-							c.error('${side} type of `${op_str}` cannot be non-integer type `${name}`',
-								pos)
+				mut promoted_type := ast.void_type
+				if node.op == .plus
+					&& c.is_string_concat_pair(unaliased_left_type, unalias_right_type) {
+					promoted_type = ast.string_type
+				} else {
+					promoted_type = c.promote_keeping_aliases(unaliased_left_type,
+						unalias_right_type, left_sym.kind, right_sym.kind)
+					promoted_type = c.adjust_infix_int_literal_promotion(node.left, node.right,
+						unaliased_left_type, unalias_right_type, promoted_type)
+					// subtract pointers is allowed in unsafe block
+					is_allowed_pointer_arithmetic := left_type.is_any_kind_of_pointer()
+						&& right_type.is_any_kind_of_pointer() && node.op == .minus
+					if is_allowed_pointer_arithmetic {
+						promoted_type = ast.int_type
+					}
+					if promoted_type.idx() == ast.void_type_idx {
+						left_name := c.table.type_to_str(unwrapped_left_type)
+						right_name := c.table.type_to_str(unwrapped_right_type)
+						c.error('mismatched types `${left_name}` and `${right_name}`',
+							left_right_pos)
+					} else if promoted_type.has_option_or_result() {
+						s := c.table.type_to_str(promoted_type)
+						c.error('`${node.op}` cannot be used with `${s}`', node.pos)
+					} else if promoted_type.is_float() {
+						if node.op in [.mod, .xor, .amp, .pipe] {
+							side := if unwrapped_left_type == promoted_type {
+								'left'
+							} else {
+								'right'
+							}
+							pos := if unwrapped_left_type == promoted_type {
+								left_pos
+							} else {
+								right_pos
+							}
+							name := if unwrapped_left_type == promoted_type {
+								left_sym.name
+							} else {
+								right_sym.name
+							}
+							if node.op == .mod {
+								c.error('float modulo not allowed, use math.fmod() instead', pos)
+							} else {
+								c.error('${side} type of `${op_str}` cannot be non-integer type `${name}`',
+									pos)
+							}
 						}
 					}
-				}
-				if node.op in [.div, .mod] {
-					c.check_div_mod_by_zero(node.right, node.op)
+					if node.op in [.div, .mod] {
+						c.check_div_mod_by_zero(node.right, node.op)
+					}
 				}
 
 				left_sym = c.table.sym(unwrapped_left_type)
@@ -648,6 +740,18 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 							return_type = method.return_type
 						}
 					}
+				}
+				exact_left_sym := c.table.sym(unwrapped_left_type)
+				exact_right_sym := c.table.sym(unwrapped_right_type)
+				has_operator_overload := exact_left_sym.has_method_with_generic_parent(op_str)
+					|| left_final_sym.has_method_with_generic_parent(op_str)
+					|| exact_right_sym.has_method_with_generic_parent(op_str)
+					|| right_final_sym.has_method_with_generic_parent(op_str)
+				if has_operator_overload && exact_left_sym.kind in [.alias, .struct]
+					&& exact_right_sym.kind in [.alias, .struct]
+					&& !c.check_same_type_ignoring_pointers(unwrapped_left_type, unwrapped_right_type) {
+					c.error('infix expr: cannot use `${exact_right_sym.name}` (right expression) as `${exact_left_sym.name}`',
+						left_right_pos)
 				}
 				return_sym := c.table.sym(return_type)
 				if return_sym.info !is ast.Alias {
@@ -668,6 +772,16 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 			}
 			if left_sym.kind in [.array, .array_fixed] && right_sym.kind in [.array, .array_fixed] {
 				c.error('only `==` and `!=` are defined on arrays', node.pos)
+			} else if left_sym.kind == .function || right_sym.kind == .function {
+				left_name := c.table.type_to_str(unwrapped_left_type)
+				right_name := c.table.type_to_str(unwrapped_right_type)
+				if left_sym.kind == .function && right_sym.kind == .function
+					&& left_name == right_name {
+					c.error('undefined operation `${left_name}` ${node.op.str()} `${right_name}`',
+						left_right_pos)
+				} else {
+					c.error('mismatched types `${left_name}` and `${right_name}`', left_right_pos)
+				}
 			} else if left_sym.info is ast.Struct && left_sym.info.generic_types.len > 0 {
 				node.promoted_type = ast.bool_type
 				return ast.bool_type
@@ -732,7 +846,7 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 					}
 				}
 			} else {
-				c.check_option_infix_expr(node, left_type, right_type, left_sym, right_sym)
+				c.check_option_infix_expr(mut node, left_type, right_type, left_sym, right_sym)
 			}
 			if node.left.is_nil() || node.right.is_nil() {
 				c.error('cannot use `${node.op.str()}` with `nil`', node.pos)
@@ -806,7 +920,11 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 			right_expr := node.right
 			mut typ := match right_expr {
 				ast.TypeNode {
-					right_expr.typ
+					if right_expr.typ.has_flag(.generic) {
+						c.unwrap_generic(right_expr.typ)
+					} else {
+						right_expr.typ
+					}
 				}
 				ast.None {
 					ast.none_type_idx
@@ -825,6 +943,7 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 					ast.no_type
 				}
 			}
+
 			if typ != ast.no_type {
 				$if trace_ci_fixes ? {
 					source_path := if node.pos.file_idx >= 0
@@ -841,11 +960,13 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 							ast.None { 'none' }
 							else { typeof(right_expr).name }
 						}
+
 						eprintln('infix is left=${node.left} left_type=${c.table.type_to_str(left_type)} right_kind=${right_kind} right_type=${c.table.type_to_str(typ)} variant_var=${c.comptime.comptime_for_variant_var} file=${c.file.path} source=${source_path} line=${
 							node.pos.line_nr + 1}')
 					}
 				}
-				typ_sym := c.table.sym(typ)
+				resolved_typ := c.unwrap_generic(typ)
+				typ_sym := c.table.final_sym(resolved_typ)
 				op := node.op.str()
 				if left_type.has_flag(.option) && !c.inside_sql {
 					c.error('${node.left} is an Optional, it needs to be unwrapped first',
@@ -863,12 +984,32 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 						c.error('`${op}` can only be used to test for none in sql', node.pos)
 					}
 				} else if left_final_sym.kind !in [.interface, .sum_type]
-					&& !c.comptime.is_comptime(node.left) {
+					&& !c.comptime.is_comptime(node.left) && !c.is_orig_sumtype(node.left) {
 					c.error('`${op}` can only be used with interfaces and sum types', node.pos) // can be used in sql too, but keep err simple
 				} else if mut left_sym.info is ast.SumType {
-					if typ !in left_sym.info.variants
-						&& c.unwrap_generic(typ) !in left_sym.info.variants {
+					variant_typ := if left_type.nr_muls() > 0
+						&& typ.nr_muls() <= left_type.nr_muls() {
+						typ.set_nr_muls(0)
+					} else {
+						typ
+					}
+					if variant_typ !in left_sym.info.variants
+						&& c.unwrap_generic(variant_typ) !in left_sym.info.variants {
 						c.error('`${left_sym.name}` has no variant `${typ_sym.name}`', right_pos)
+					}
+				} else if c.is_orig_sumtype(node.left) {
+					// Variable is smartcast but original type is a sum type;
+					// allow the `is` check using the original type's variants.
+					if node.left is ast.Ident && node.left.obj is ast.Var {
+						orig_t := (node.left.obj as ast.Var).orig_type
+						orig_sym := c.table.sym(orig_t)
+						if orig_sym.info is ast.SumType {
+							if typ !in orig_sym.info.variants
+								&& c.unwrap_generic(typ) !in orig_sym.info.variants {
+								c.error('`${orig_sym.name}` has no variant `${typ_sym.name}`',
+									right_pos)
+							}
+						}
 					}
 				} else if left_sym.info is ast.Interface {
 					if typ_sym.kind != .interface && !c.type_implements(typ, left_type, right_pos) {
@@ -939,6 +1080,7 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 		}
 		else {}
 	}
+
 	// Do an ambiguous expression check for << >> and &, since they all have the same precedence (unlike in C)
 	if !c.is_builtin_mod && node.op in [.amp, .left_shift, .right_shift] {
 		if mut node.left is ast.InfixExpr {
@@ -988,7 +1130,7 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 	// TODO: move this to symmetric_check? Right now it would break `return 0` for `fn()?int `
 	if node.left !in [ast.Ident, ast.IndexExpr, ast.SelectorExpr, ast.ComptimeSelector]
 		|| node.op in [.eq, .ne] {
-		c.check_option_infix_expr(node, left_type, right_type, left_sym, right_sym)
+		c.check_option_infix_expr(mut node, left_type, right_type, left_sym, right_sym)
 	}
 
 	left_is_result := left_type.has_flag(.result)
@@ -1012,8 +1154,9 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 			right_type = c.unwrap_generic(right_type)
 			right_sym = c.table.sym(right_type)
 		}
-		types_match := c.symmetric_check(left_type, right_type)
-			&& c.symmetric_check(right_type, left_type)
+		is_string_concat := node.op == .plus && c.is_string_concat_pair(left_type, right_type)
+		types_match := is_string_concat || (c.symmetric_check(left_type, right_type)
+			&& c.symmetric_check(right_type, left_type))
 		left_allows_auto_deref := infix_expr_allows_auto_deref(node.left)
 		right_allows_auto_deref := infix_expr_allows_auto_deref(node.right)
 		unalias_left_type := c.table.unaliased_type(left_type)
@@ -1101,7 +1244,7 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 			c.error('infix expr: cannot use `${error_right_sym.name}` (right expression) as `${error_left_sym.name}`',
 				left_right_pos)
 		} else if left_type.is_ptr() {
-			for_ptr_op := c.table.type_is_for_pointer_arithmetic(left_type)
+			for_ptr_op := left_is_explicit_ptr || c.table.type_is_for_pointer_arithmetic(left_type)
 			if left_sym.language == .v && !c.pref.translated && !c.inside_unsafe && !for_ptr_op
 				&& right_type.is_int() {
 				sugg := ' (you can use it inside an `unsafe` block)'
@@ -1110,8 +1253,8 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 			}
 		}
 	}
-	if node.op == .plus && c.pref.warn_about_allocs && left_type == ast.string_type_idx
-		&& right_type == ast.string_type_idx {
+	if node.op == .plus && c.pref.warn_about_allocs
+		&& c.is_string_concat_pair(left_type, right_type) {
 		c.warn_alloc('string concatenation', node.pos)
 	}
 	/*
@@ -1181,8 +1324,9 @@ fn (mut c Checker) maybe_wrap_index_expr_smartcast(mut expr ast.Expr, expr_type 
 	if isnil(c.fn_scope) || expr_type in [ast.no_type, ast.void_type] {
 		return expr_type
 	}
-	if expr is ast.IndexExpr {
-		index_expr := expr as ast.IndexExpr
+	expr0 := expr
+	if expr0 is ast.IndexExpr {
+		index_expr := expr0
 		scope := c.fn_scope.innermost(index_expr.pos.pos)
 		expr_key := smartcast_index_expr_scope_key(index_expr)
 		if var := scope.find_var(expr_key) {
@@ -1190,18 +1334,79 @@ fn (mut c Checker) maybe_wrap_index_expr_smartcast(mut expr ast.Expr, expr_type 
 				cast_type := c.exposed_smartcast_type(var.orig_type, var.smartcasts.last(),
 					var.is_mut)
 				if cast_type != expr_type {
-					expr = ast.AsCast{
+					expr = ast.Expr(ast.AsCast{
 						expr:      ast.Expr(index_expr)
 						typ:       cast_type
 						expr_type: expr_type
 						pos:       index_expr.pos
-					}
+					})
 				}
 				return cast_type
 			}
 		}
 	}
 	return expr_type
+}
+
+fn (c &Checker) smartcast_expr_original_option_type(expr ast.Expr) ast.Type {
+	match expr {
+		ast.Ident {
+			if expr.obj is ast.Var {
+				var := expr.obj as ast.Var
+				if var.smartcasts.len > 0 && var.orig_type.has_flag(.option) {
+					return var.orig_type
+				}
+			}
+		}
+		ast.SelectorExpr {
+			if expr.expr_type != 0 {
+				expr_str := smartcast_selector_expr_str(expr)
+				scope_field := expr.scope.find_struct_field(expr_str, expr.expr_type,
+					expr.field_name)
+				if scope_field != unsafe { nil } && scope_field.smartcasts.len > 0
+					&& scope_field.orig_type.has_flag(.option) {
+					return scope_field.orig_type
+				}
+			}
+		}
+		ast.IndexExpr {
+			if !isnil(c.fn_scope) {
+				scope := c.fn_scope.innermost(expr.pos.pos)
+				expr_key := smartcast_index_expr_scope_key(expr)
+				if var := scope.find_var(expr_key) {
+					if var.smartcasts.len > 0 && var.orig_type.has_flag(.option) {
+						return var.orig_type
+					}
+				}
+			}
+		}
+		else {}
+	}
+
+	return ast.no_type
+}
+
+fn (mut c Checker) maybe_wrap_option_compare_smartcast(mut expr ast.Expr, expr_type ast.Type, other_expr ast.Expr, other_type ast.Type) ast.Type {
+	if expr_type.has_flag(.option) || expr_type.has_flag(.result) {
+		return expr_type
+	}
+	other_sym := c.table.sym(other_type)
+	other_is_optionish := c.type_is_optionish(other_type, other_sym) || other_expr is ast.None
+		|| other_sym.kind == .none
+	if !other_is_optionish {
+		return expr_type
+	}
+	orig_option_type := c.smartcast_expr_original_option_type(expr)
+	if orig_option_type == ast.no_type {
+		return expr_type
+	}
+	expr = ast.Expr(ast.AsCast{
+		expr:      expr
+		typ:       orig_option_type
+		expr_type: expr_type
+		pos:       expr.pos()
+	})
+	return orig_option_type
 }
 
 fn (mut c Checker) autocast_in_if_conds(mut right ast.Expr, from_expr ast.Expr, from_type ast.Type, to_type ast.Type) {
@@ -1315,10 +1520,19 @@ fn (mut c Checker) check_sort_external_variable_access(node ast.Expr) bool {
 			return true
 		}
 	}
+
 	return true
 }
 
-fn (mut c Checker) check_option_infix_expr(node ast.InfixExpr, left_type ast.Type, right_type ast.Type, left_sym ast.TypeSymbol, right_sym ast.TypeSymbol) {
+fn (c &Checker) option_payload_can_compare_to_nil(typ ast.Type, sym ast.TypeSymbol) bool {
+	mut option_type := typ
+	if sym.kind == .alias && sym.info is ast.Alias && sym.info.parent_type.has_flag(.option) {
+		option_type = sym.info.parent_type
+	}
+	return option_type.clear_option_and_result().is_any_kind_of_pointer()
+}
+
+fn (mut c Checker) check_option_infix_expr(mut node ast.InfixExpr, left_type ast.Type, right_type ast.Type, left_sym ast.TypeSymbol, right_sym ast.TypeSymbol) {
 	// SQL expressions can compare optional values directly, but anon fn bodies in SQL
 	// should keep regular option checks.
 	if c.inside_sql && !c.inside_anon_fn {
@@ -1328,6 +1542,12 @@ fn (mut c Checker) check_option_infix_expr(node ast.InfixExpr, left_type ast.Typ
 		|| (left_sym.kind == .alias && (left_sym.info as ast.Alias).parent_type.has_flag(.option))
 	right_is_option := right_type.has_flag(.option)
 		|| (right_sym.kind == .alias && (right_sym.info as ast.Alias).parent_type.has_flag(.option))
+	if left_is_option && node.right.is_nil()
+		&& c.option_payload_can_compare_to_nil(left_type, left_sym) {
+		node.right = ast.None{}
+		node.right_type = ast.none_type
+		return
+	}
 	if (node.left is ast.None && right_is_option)
 		|| (node.right is ast.None && left_is_option)
 		|| (left_sym.kind == .none || right_sym.kind == .none) {

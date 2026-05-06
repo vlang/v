@@ -24,12 +24,18 @@ fn (mut c Checker) match_expr(mut node ast.MatchExpr) ast.Type {
 	}
 	mut cond_type := ast.void_type
 	if node.is_comptime {
-		if node.cond is ast.AtExpr {
-			cond_type = c.expr(mut node.cond)
+		cond_expr := node.cond
+		if cond_expr is ast.AtExpr {
+			mut checked_cond := node.cond
+			cond_type = c.expr(mut checked_cond)
+			node.cond = checked_cond
 		} else {
 			// for field.name and generic type `T`
-			if node.cond is ast.SelectorExpr {
-				c.expr(mut node.cond)
+			is_selector_cond := node.cond is ast.SelectorExpr
+			if is_selector_cond {
+				mut selector_cond := node.cond
+				c.expr(mut selector_cond)
+				node.cond = selector_cond
 			}
 			cond_type = c.get_expr_type(node.cond)
 		}
@@ -204,6 +210,7 @@ fn (mut c Checker) match_expr(mut node ast.MatchExpr) ast.Type {
 										return ast.void_type
 									}
 								}
+
 								c_str = '${node.cond} == ${expr.name}'
 							}
 							ast.SelectorExpr {}
@@ -225,6 +232,7 @@ fn (mut c Checker) match_expr(mut node ast.MatchExpr) ast.Type {
 								return ast.void_type
 							}
 						}
+
 						if comptime_match_branch_result {
 							break
 						}
@@ -472,6 +480,7 @@ fn (mut c Checker) match_expr(mut node ast.MatchExpr) ast.Type {
 									}
 									else {}
 								}
+
 								if needs_explicit_cast {
 									c.error('${num} does not fit the range of `${c.table.type_to_str(infer_cast_type)}`',
 										stmt.pos)
@@ -495,7 +504,7 @@ fn (mut c Checker) match_expr(mut node ast.MatchExpr) ast.Type {
 		}
 		if node.is_comptime {
 			// branches may not have been processed by c.stmts()
-			if has_top_return(branch.stmts) {
+			if c.has_top_return(branch.stmts) {
 				nbranches_with_return++
 			} else {
 				nbranches_without_return++
@@ -641,22 +650,31 @@ fn (mut c Checker) get_match_case_int_key(mut expr ast.Expr, cond_sym ast.TypeSy
 	if !cond_sym.is_int() {
 		return none
 	}
-	if value := c.get_comptime_number_value(mut expr) {
+	// Only resolve literal values for dedup, not const idents.
+	// Different const names with the same value should be allowed.
+	if value := c.get_match_case_literal_value(mut expr) {
 		return value.str()
 	}
-	match expr {
-		ast.StringLiteral, ast.BoolLiteral, ast.FloatLiteral {
-			return none
-		}
-		else {}
+	return none
+}
+
+// Like get_comptime_number_value but does NOT resolve const idents.
+// This ensures different named consts with the same value are not flagged as duplicates.
+fn (mut c Checker) get_match_case_literal_value(mut expr ast.Expr) ?i64 {
+	if mut expr is ast.ParExpr {
+		return c.get_match_case_literal_value(mut expr.expr)
 	}
-	if value := c.eval_comptime_const_expr(expr, 0) {
-		if signed_value := value.i64() {
-			return signed_value.str()
-		}
-		if unsigned_value := value.u64() {
-			return unsigned_value.str()
-		}
+	if mut expr is ast.PrefixExpr && expr.op == .minus {
+		return -c.get_match_case_literal_value(mut expr.right)?
+	}
+	if mut expr is ast.CharLiteral {
+		return char_literal_number_value(expr.val)
+	}
+	if mut expr is ast.IntegerLiteral {
+		return expr.val.i64()
+	}
+	if mut expr is ast.CastExpr {
+		return c.get_match_case_literal_value(mut expr.expr)
 	}
 	return none
 }
@@ -676,6 +694,7 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, cond_type_sym ast.TypeSym
 	// branch_exprs is a histogram of how many times
 	// an expr was used in the match
 	mut branch_exprs := map[string]int{}
+	mut branch_expr_types := []ast.Type{}
 	is_multi_allowed_enum_match := cond_type_sym.info is ast.Enum
 		&& cond_type_sym.info.is_multi_allowed
 	mut branch_enum_values := map[i64]bool{}
@@ -684,6 +703,7 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, cond_type_sym ast.TypeSym
 		mut expr_types := []ast.TypeNode{}
 		for k, mut expr in branch.exprs {
 			mut key := ''
+			mut resolved_type_node := ast.no_type
 			// TODO: investigate why enums are different here:
 			if expr !is ast.EnumVal && !(node.is_comptime && expr is ast.ComptimeType) {
 				// ensure that the sub expressions of the branch are actually checked, before anything else:
@@ -768,12 +788,11 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, cond_type_sym ast.TypeSym
 			is_type_node := expr is ast.TypeNode || expr is ast.ComptimeType
 			match mut expr {
 				ast.TypeNode {
-					expr_typ := c.recheck_concrete_type(expr.typ)
-					key = c.table.type_to_str(expr_typ)
-					expr.typ = expr_typ
+					resolved_type_node = c.recheck_concrete_type(expr.typ)
+					key = c.table.type_to_str(resolved_type_node)
 					expr_types << ast.TypeNode{
 						...expr
-						typ: expr_typ
+						typ: resolved_type_node
 					}
 				}
 				ast.EnumVal {
@@ -795,6 +814,7 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, cond_type_sym ast.TypeSym
 					key = c.get_match_case_int_key(mut expr, cond_final_sym) or { (*expr).str() }
 				}
 			}
+
 			val := if key in branch_exprs { branch_exprs[key] } else { 0 }
 			if val == 1 {
 				c.error('match case `${key}` is handled more than once', branch.pos)
@@ -808,16 +828,17 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, cond_type_sym ast.TypeSym
 				}
 			}
 			if node.is_comptime {
+				expr_pos := expr.pos()
 				if is_type_node {
 					if is_comptime_value_match {
 						// type branch in a value match
-						c.error('can not matching a type in a value `\$match`', expr.pos())
+						c.error('can not matching a type in a value `\$match`', expr_pos)
 						return
 					}
 				} else if c.inside_x_matches_type {
 					// value branch in a type match
 					if expr in [ast.IntegerLiteral, ast.BoolLiteral, ast.StringLiteral] {
-						c.error('can not matching a value in a type `\$match`', expr.pos())
+						c.error('can not matching a value in a type `\$match`', expr_pos)
 						return
 					}
 				}
@@ -826,35 +847,39 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, cond_type_sym ast.TypeSym
 					if expr is ast.IntegerLiteral {
 						if mut node.cond is ast.ComptimeType {
 							if node.cond.kind != .int {
-								c.error('can not matching a int value(`${expr}`) in a non int type `\$match`, `${node.cond}` type is `${node.cond.kind}`',
-									expr.pos())
+								c.error('can not matching a int value(`${ast.Expr(expr)}`) in a non int type `\$match`, `${node.cond}` type is `${node.cond.kind}`',
+									expr_pos)
 								return
 							}
 						} else if node.cond_type !in ast.integer_type_idxs {
-							c.error('can not matching a int value(`${expr}`) in a non int type `\$match`, `${node.cond}` type is `${c.table.type_to_str(node.cond_type)}`',
-								expr.pos())
+							c.error('can not matching a int value(`${ast.Expr(expr)}`) in a non int type `\$match`, `${node.cond}` type is `${c.table.type_to_str(node.cond_type)}`',
+								expr_pos)
 							return
 						}
 					} else if expr is ast.BoolLiteral && node.cond_type != ast.bool_type {
-						c.error('can not matching a bool value(`${expr}`) in a non bool type `\$match`, `${node.cond}` type is `${c.table.type_to_str(node.cond_type)}`',
-							expr.pos())
+						c.error('can not matching a bool value(`${ast.Expr(expr)}`) in a non bool type `\$match`, `${node.cond}` type is `${c.table.type_to_str(node.cond_type)}`',
+							expr_pos)
 						return
 					} else if expr is ast.StringLiteral {
 						if mut node.cond is ast.ComptimeType {
 							if node.cond.kind != .string {
-								c.error('can not matching a string value(`${expr}`) in a non string type `\$match`, `${node.cond}` type is `${node.cond.kind}`',
-									expr.pos())
+								c.error('can not matching a string value(`${ast.Expr(expr)}`) in a non string type `\$match`, `${node.cond}` type is `${node.cond.kind}`',
+									expr_pos)
 								return
 							}
 						} else if node.cond_type != ast.string_type {
-							c.error('can not matching a string value(`${expr}`) in a non string type `\$match`, `${node.cond}` type is `${c.table.type_to_str(node.cond_type)}`',
-								expr.pos())
+							c.error('can not matching a string value(`${ast.Expr(expr)}`) in a non string type `\$match`, `${node.cond}` type is `${c.table.type_to_str(node.cond_type)}`',
+								expr_pos)
 							return
 						}
 					}
 				}
 			} else {
-				expr_type := c.expr(mut expr)
+				expr_type := if expr is ast.TypeNode {
+					resolved_type_node
+				} else {
+					c.expr(mut expr)
+				}
 				if expr_type.idx() == 0 {
 					// parser failed, stop checking
 					return
@@ -879,11 +904,11 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, cond_type_sym ast.TypeSym
 						}
 					}
 				} else if cond_match_sym.info is ast.SumType {
-					if expr_type !in cond_match_sym.info.variants {
+					if !c.table.sumtype_has_variant_recursive(cond_match_type, expr_type, true) {
 						expr_str := c.table.type_to_str(expr_type)
 						expect_str := c.table.type_to_str(node.cond_type)
 						sumtype_variant_names :=
-							cond_match_sym.info.variants.map(c.table.type_to_str_using_aliases(it, {}))
+							c.table.sumtype_matchable_variants(cond_match_type).map(c.table.type_to_str_using_aliases(it, {}))
 						suggestion := util.new_suggestion(expr_str, sumtype_variant_names)
 						c.error(suggestion.say('`${expect_str}` has no variant `${expr_str}`'),
 							expr.pos())
@@ -897,6 +922,14 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, cond_type_sym ast.TypeSym
 					expr_str := c.table.type_to_str(expr_type)
 					expect_str := c.table.type_to_str(node.cond_type)
 					c.error('cannot match `${expect_str}` with `${expr_str}`', expr.pos())
+				}
+				if is_type_node {
+					branch_expr_types << if is_alias_to_matchable_type
+						&& expr_type == node.cond_type {
+						cond_match_type
+					} else {
+						expr_type
+					}
 				}
 			}
 			branch_exprs[key] = val + 1
@@ -942,7 +975,7 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, cond_type_sym ast.TypeSym
 
 				allow_mut_selector_smartcast := node.cond is ast.SelectorExpr
 				c.smartcast(mut node.cond, node.cond_type, expr_type, mut branch.scope, false,
-					false, allow_mut_selector_smartcast)
+					false, allow_mut_selector_smartcast, true)
 			}
 		}
 	}
@@ -963,12 +996,9 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, cond_type_sym ast.TypeSym
 	} else {
 		match cond_match_sym.info {
 			ast.SumType {
-				for v in cond_match_sym.info.variants {
-					v_str := c.table.type_to_str(v)
-					if v_str !in branch_exprs {
-						is_exhaustive = false
-						unhandled << '`${v_str}`'
-					}
+				for v in c.table.sumtype_missing_variants(cond_match_type, branch_expr_types) {
+					is_exhaustive = false
+					unhandled << '`${c.table.type_to_str(v)}`'
 				}
 			}
 			//

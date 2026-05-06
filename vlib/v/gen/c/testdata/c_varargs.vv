@@ -1,3 +1,5 @@
+#include <stdarg.h>
+
 @[typedef]
 struct C.va_list {}
 

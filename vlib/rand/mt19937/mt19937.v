@@ -178,8 +178,8 @@ pub fn (mut rng MT19937RNG) block_size() int {
 	return 64
 }
 
-// free should be called when the generator is no longer needed
+// free should be called when the generator is no longer needed.
 @[unsafe]
 pub fn (mut rng MT19937RNG) free() {
-	unsafe { free(rng) }
+	unsafe { rng.state.free() }
 }

@@ -1,0 +1,35 @@
+type Int = int | u8
+
+struct Counter {
+mut:
+	value int
+}
+
+fn bump(mut values []int) {
+	values << 2
+}
+
+fn inc_copy(value int) int {
+	value += 1
+	return value
+}
+
+fn main() {
+	counter := Counter{}
+	counter.value++
+	arr := [1]
+	arr << 2
+	nums := [1]
+	bump(nums)
+	i := Int(0)
+	if i is int {
+		i = 1
+	}
+	match i {
+		int {
+			i = 2
+		}
+		u8 {}
+	}
+	println('${counter.value} ${arr.len} ${nums.len} ${inc_copy(1)} ${i}')
+}

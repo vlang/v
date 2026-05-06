@@ -51,6 +51,20 @@ enum Select {
 	except
 }
 
+fn ssl_timeout_deadline(timeout time.Duration) time.Time {
+	if timeout <= 0 || timeout == net.infinite_timeout {
+		return time.unix(0)
+	}
+	return time.now().add(timeout)
+}
+
+fn ssl_remaining_timeout(deadline time.Time) time.Duration {
+	if deadline.unix() == 0 {
+		return net.infinite_timeout
+	}
+	return deadline - time.now()
+}
+
 // close closes the ssl connection and does cleanup
 pub fn (mut s SSLConn) close() ! {
 	s.shutdown()!
@@ -63,7 +77,7 @@ pub fn (mut s SSLConn) shutdown() ! {
 	}
 
 	if s.ssl != 0 {
-		deadline := time.now().add(s.duration)
+		deadline := ssl_timeout_deadline(s.duration)
 		for {
 			mut res := C.SSL_shutdown(voidptr(s.ssl))
 			if res == 1 {
@@ -74,10 +88,10 @@ pub fn (mut s SSLConn) shutdown() ! {
 				break // We break to free rest of resources
 			}
 			if err_res == .ssl_error_want_read {
-				s.wait_for_read(deadline - time.now())!
+				s.wait_for_read(ssl_remaining_timeout(deadline))!
 				continue
 			} else if err_res == .ssl_error_want_write {
-				s.wait_for_write(deadline - time.now())!
+				s.wait_for_write(ssl_remaining_timeout(deadline))!
 				continue
 			}
 			if s.ssl != 0 {
@@ -190,9 +204,26 @@ pub fn (mut s SSLConn) dial(hostname string, port int) ! {
 	$if trace_ssl ? {
 		eprintln('${@METHOD} hostname: ${hostname} | port: ${port}')
 	}
-	s.owns_socket = true
 	mut tcp_conn := net.dial_tcp('${hostname}:${port}') or { return err }
+	mut connected := false
+	defer {
+		if !connected {
+			tcp_conn.close() or {}
+			if s.ssl != 0 {
+				unsafe { C.SSL_free(voidptr(s.ssl)) }
+				s.ssl = unsafe { nil }
+			}
+			if s.sslctx != 0 {
+				C.SSL_CTX_free(s.sslctx)
+				s.sslctx = unsafe { nil }
+			}
+			s.handle = 0
+			s.owns_socket = false
+		}
+	}
+	s.owns_socket = true
 	s.connect(mut tcp_conn, hostname) or { return err }
+	connected = true
 }
 
 fn (mut s SSLConn) complete_connect() ! {
@@ -200,7 +231,7 @@ fn (mut s SSLConn) complete_connect() ! {
 		eprintln(@METHOD)
 	}
 
-	deadline := time.now().add(s.duration)
+	deadline := ssl_timeout_deadline(s.duration)
 	for {
 		mut res := C.SSL_connect(voidptr(s.ssl))
 		if res == 1 {
@@ -209,11 +240,11 @@ fn (mut s SSLConn) complete_connect() ! {
 
 		err_res := ssl_error(res, s.ssl)!
 		if err_res == .ssl_error_want_read {
-			s.wait_for_read(deadline - time.now())!
+			s.wait_for_read(ssl_remaining_timeout(deadline))!
 			continue
 		}
 		if err_res == .ssl_error_want_write {
-			s.wait_for_write(deadline - time.now())!
+			s.wait_for_write(ssl_remaining_timeout(deadline))!
 			continue
 		}
 		return error('net.openssl SSLConn.complete_connect, could not connect using SSL. (${err_res}),err')
@@ -229,19 +260,15 @@ fn (mut s SSLConn) complete_connect() ! {
 
 			err_res := ssl_error(res, s.ssl)!
 			if err_res == .ssl_error_want_read {
-				s.wait_for_read(deadline - time.now())!
+				s.wait_for_read(ssl_remaining_timeout(deadline))!
 				continue
 			} else if err_res == .ssl_error_want_write {
-				s.wait_for_write(deadline - time.now())!
+				s.wait_for_write(ssl_remaining_timeout(deadline))!
 				continue
 			}
 			return error('net.openssl SSLConn.complete_connect, could not validate SSL certificate. (${err_res}),err')
 		}
-		$if openbsd {
-			pcert = C.SSL_get_peer_certificate(voidptr(s.ssl))
-		} $else {
-			pcert = C.SSL_get1_peer_certificate(voidptr(s.ssl))
-		}
+		pcert = C.v_net_openssl_get1_peer_certificate(s.ssl)
 		defer {
 			if pcert != 0 {
 				C.X509_free(pcert)
@@ -274,7 +301,7 @@ pub fn (mut s SSLConn) socket_read_into_ptr(buf_ptr &u8, len int) !int {
 		}
 	}
 
-	deadline := time.now().add(s.duration)
+	deadline := ssl_timeout_deadline(s.duration)
 	// s.wait_for_read(deadline - time.now())!
 	for {
 		res = C.SSL_read(voidptr(s.ssl), buf_ptr, len)
@@ -289,7 +316,7 @@ pub fn (mut s SSLConn) socket_read_into_ptr(buf_ptr &u8, len int) !int {
 			err_res := ssl_error(res, s.ssl)!
 			match err_res {
 				.ssl_error_want_read {
-					s.wait_for_read(deadline - time.now()) or {
+					s.wait_for_read(ssl_remaining_timeout(deadline)) or {
 						$if trace_ssl ? {
 							eprintln('${@METHOD} ---> res: ${err} .ssl_error_want_read')
 						}
@@ -297,7 +324,7 @@ pub fn (mut s SSLConn) socket_read_into_ptr(buf_ptr &u8, len int) !int {
 					}
 				}
 				.ssl_error_want_write {
-					s.wait_for_write(deadline - time.now()) or {
+					s.wait_for_write(ssl_remaining_timeout(deadline)) or {
 						$if trace_ssl ? {
 							eprintln('${@METHOD} ---> res: ${err} .ssl_error_want_write')
 						}
@@ -340,7 +367,7 @@ pub fn (mut s SSLConn) write_ptr(bytes &u8, len int) !int {
 		}
 	}
 
-	deadline := time.now().add(s.duration)
+	deadline := ssl_timeout_deadline(s.duration)
 	unsafe {
 		mut ptr_base := bytes
 		for total_sent < len {
@@ -350,10 +377,10 @@ pub fn (mut s SSLConn) write_ptr(bytes &u8, len int) !int {
 			if sent <= 0 {
 				err_res := ssl_error(sent, s.ssl)!
 				if err_res == .ssl_error_want_read {
-					s.wait_for_read(deadline - time.now())!
+					s.wait_for_read(ssl_remaining_timeout(deadline))!
 					continue
 				} else if err_res == .ssl_error_want_write {
-					s.wait_for_write(deadline - time.now())!
+					s.wait_for_write(ssl_remaining_timeout(deadline))!
 					continue
 				} else if err_res == .ssl_error_zero_return {
 					$if trace_ssl ? {
@@ -395,9 +422,10 @@ fn select(handle int, test Select, timeout time.Duration) !bool {
 	C.FD_ZERO(&set)
 	C.FD_SET(handle, &set)
 
-	deadline := time.now().add(timeout)
-	mut remaining_time := timeout.milliseconds()
-	for remaining_time > 0 {
+	is_infinite := timeout <= 0 || timeout == net.infinite_timeout
+	deadline := ssl_timeout_deadline(timeout)
+	mut remaining_time := if is_infinite { i64(0) } else { timeout.milliseconds() }
+	for is_infinite || remaining_time > 0 {
 		seconds := remaining_time / 1000
 		microseconds := (remaining_time % 1000) * 1000
 
@@ -405,7 +433,7 @@ fn select(handle int, test Select, timeout time.Duration) !bool {
 			tv_sec:  u64(seconds)
 			tv_usec: u64(microseconds)
 		}
-		timeval_timeout := if timeout < 0 {
+		timeval_timeout := if is_infinite {
 			&C.timeval(unsafe { nil })
 		} else {
 			&tt
@@ -423,10 +451,13 @@ fn select(handle int, test Select, timeout time.Duration) !bool {
 				res = net.socket_error(C.select(handle + 1, C.NULL, C.NULL, &set, timeval_timeout))!
 			}
 		}
+
 		if res < 0 {
 			if C.errno == C.EINTR {
 				// errno is 4, Spurious wakeup from signal, keep waiting
-				remaining_time = (deadline - time.now()).milliseconds()
+				if !is_infinite {
+					remaining_time = ssl_remaining_timeout(deadline).milliseconds()
+				}
 				continue
 			}
 			cerr := C.errno

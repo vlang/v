@@ -1,0 +1,9 @@
+import os
+
+@[noreturn]
+fn usage() {
+}
+
+fn main() {
+	println(os.args[1] or { usage() })
+}

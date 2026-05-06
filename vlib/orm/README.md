@@ -26,6 +26,7 @@ struct Foo {
 - `[table: 'name']` explicitly sets the name of the table for the struct
 - `[comment: 'table_comment']` explicitly sets the comment of the table for the struct
 - `[index: 'f1, f2, f3']` explicitly sets fields of the table (`f1`, `f2`, `f3`) as indexed
+- `[unique_key: 'f1, f2, f3']` adds a composite `UNIQUE` constraint for the listed fields
 
 ### Fields
 
@@ -168,6 +169,24 @@ for the V struct field (e.g., 0 int, or an empty string).  This allows the
 database to insert default values for auto-increment fields and where you have
 specified a default.
 
+### Upsert
+
+`upsert` inserts a row or updates the matching row when one of the table's
+primary or unique keys already exists.
+
+```v ignore
+foo := Foo{
+    name: 'abc'
+}
+
+sql db {
+    upsert foo into Foo
+}!
+```
+
+`upsert` currently supports flat ORM rows with primitive, enum, and `time.Time`
+fields.
+
 ### Select
 
 You can select rows from the database by passing the struct as the table, and
@@ -180,6 +199,17 @@ result := sql db {
 }!
 
 foo := result.first()
+```
+
+You can also select a subset of struct fields. The result type stays `[]Foo`;
+the selected fields are populated and the rest keep their zero values. Use the
+V struct field names here; `@[sql: 'column_name']` and `@[sql_select: 'expr']`
+are still applied automatically.
+
+```v ignore
+partial := sql db {
+    select id, name from Foo where id > 1
+}!
 ```
 
 ```v ignore
@@ -461,6 +491,12 @@ For a full-record update without spelling out each `set(...)` clause, use `orm.s
 `sum`, `avg`, `min`, and `max` return an `AggregateValue`. Use
 `as_int()`, `as_f64()`, `as_string()`, or `as_time()` to unwrap the typed
 value, or check `has_value` for empty result sets. `count` returns `int`.
+
+To remove duplicate rows from a query, mark it as `DISTINCT` before `query()`:
+
+```v ignore
+	distinct_roles := qb.select('role')!.distinct()!.query()!
+```
 
 9. Drop the table​​:
 

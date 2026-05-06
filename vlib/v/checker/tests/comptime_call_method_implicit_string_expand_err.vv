@@ -1,0 +1,12 @@
+module main
+
+struct Dummy {}
+
+fn (_ Dummy) sample(_ int) {}
+
+fn main() {
+	args := ['5']
+	$for method in Dummy.methods {
+		Dummy{}.$method(args)
+	}
+}

@@ -1,0 +1,7 @@
+vlib/v/checker/tests/opaque_c_typedef_struct_field_err.vv:7:6: error: cannot use opaque C struct `Foo` as a non-reference struct field; use `&Foo` instead
+    5 | 
+    6 | struct Bar {
+    7 |     foo Foo
+      |         ~~~
+    8 | }
+    9 | 

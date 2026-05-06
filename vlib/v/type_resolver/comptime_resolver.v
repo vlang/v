@@ -52,14 +52,10 @@ pub fn (t &ResolverInfo) is_comptime(node ast.Expr) bool {
 			node.ct_expr
 		}
 		ast.IndexExpr {
-			if node.left is ast.Ident {
-				node.left.ct_expr
-			} else {
-				false
-			}
+			t.has_comptime_expr(node.left)
 		}
 		ast.SelectorExpr {
-			return node.expr is ast.Ident && node.expr.ct_expr
+			t.has_comptime_expr(node.expr)
 		}
 		ast.InfixExpr {
 			return node.left_ct_expr || node.right_ct_expr
@@ -120,12 +116,11 @@ pub fn (mut t TypeResolver) typeof_type(node ast.Expr, default_type ast.Type) as
 			return f.typ
 		}
 	} else if node is ast.SelectorExpr && node.name_type != 0 {
-		if node.field_name in ['value_type', 'element_type'] {
-			return t.table.value_type(t.resolver.unwrap_generic(node.name_type))
-		} else if node.field_name == 'key_type' {
-			sym := t.table.sym(t.resolver.unwrap_generic(node.name_type))
-			if sym.info is ast.Map {
-				return t.resolver.unwrap_generic(sym.info.key_type)
+		if node.field_name in ['key_type', 'value_type', 'element_type', 'pointee_type',
+			'payload_type', 'variant_types'] {
+			resolved := t.typeof_field_type(node.name_type, node.field_name)
+			if resolved != ast.no_type {
+				return resolved
 			}
 		}
 	}
@@ -134,28 +129,73 @@ pub fn (mut t TypeResolver) typeof_type(node ast.Expr, default_type ast.Type) as
 
 // typeof_field_type resolves the T.<field_name> and typeof[T]().<field_name> type
 pub fn (mut t TypeResolver) typeof_field_type(typ ast.Type, field_name string) ast.Type {
+	unwrapped := t.resolver.unwrap_generic(typ)
 	match field_name {
 		'name' {
 			return ast.string_type
 		}
-		'idx' {
-			return t.resolver.unwrap_generic(typ)
+		'idx', 'typ' {
+			return unwrapped
 		}
 		'unaliased_typ' {
-			return t.table.unaliased_type(t.resolver.unwrap_generic(typ))
+			return t.table.unaliased_type(unwrapped)
 		}
 		'indirections' {
 			return ast.int_type
 		}
 		'key_type' {
-			sym := t.table.final_sym(t.resolver.unwrap_generic(typ))
+			sym := t.table.final_sym(unwrapped)
 			if sym.info is ast.Map {
 				return t.resolver.unwrap_generic(sym.info.key_type)
+			}
+			if unwrapped.has_flag(.generic) || t.table.generic_type_names(unwrapped).len > 0 {
+				return unwrapped
 			}
 			return ast.no_type
 		}
 		'value_type', 'element_type' {
-			return t.table.value_type(t.resolver.unwrap_generic(typ))
+			value_type := t.table.value_type(unwrapped)
+			if value_type != ast.void_type {
+				return t.resolver.unwrap_generic(value_type)
+			}
+			if unwrapped.has_flag(.generic) || t.table.generic_type_names(unwrapped).len > 0 {
+				return unwrapped
+			}
+			return ast.no_type
+		}
+		'pointee_type' {
+			if unwrapped.has_flag(.option) || unwrapped.has_flag(.result) {
+				inner := unwrapped.clear_option_and_result()
+				if inner.is_ptr() {
+					return inner.deref()
+				}
+			}
+			if unwrapped.is_ptr() {
+				return unwrapped.deref()
+			}
+			if unwrapped.has_flag(.generic) || t.table.generic_type_names(unwrapped).len > 0 {
+				return unwrapped
+			}
+			return ast.no_type
+		}
+		'payload_type' {
+			if unwrapped.has_flag(.option) || unwrapped.has_flag(.result) {
+				return unwrapped.clear_option_and_result()
+			}
+			if unwrapped.has_flag(.generic) || t.table.generic_type_names(unwrapped).len > 0 {
+				return unwrapped
+			}
+			return ast.no_type
+		}
+		'variant_types' {
+			sym := t.table.final_sym(unwrapped)
+			if sym.info is ast.SumType {
+				return ast.new_type(t.table.find_or_register_array(ast.int_type))
+			}
+			if unwrapped.has_flag(.generic) || t.table.generic_type_names(unwrapped).len > 0 {
+				return ast.new_type(t.table.find_or_register_array(ast.int_type))
+			}
+			return ast.no_type
 		}
 		else {
 			return typ
@@ -201,11 +241,39 @@ pub fn (t &TypeResolver) get_type_from_comptime_var(var ast.Ident) ast.Type {
 // get_comptime_selector_type retrieves the var.$(field.name) type when field_name is 'name' otherwise default_type is returned
 @[inline]
 pub fn (mut t TypeResolver) get_comptime_selector_type(node ast.ComptimeSelector, default_type ast.Type) ast.Type {
+	if node.is_method && t.info.comptime_for_method != unsafe { nil } {
+		mut method := *t.info.comptime_for_method
+		if method.params.len > 0 {
+			method.params = method.params[1..]
+		}
+		method.name = ''
+		return ast.new_type(t.table.find_or_register_fn_type(method, false, true))
+	}
 	if node.is_name && node.field_expr is ast.SelectorExpr
 		&& t.info.check_comptime_is_field_selector(node.field_expr) {
 		return t.resolver.unwrap_generic(t.info.comptime_for_field_type)
 	}
 	return default_type
+}
+
+// is_comptime_method_selector checks if the expression is a method loop variable or its `.name`.
+@[inline]
+pub fn (t &ResolverInfo) is_comptime_method_selector(node ast.Expr) bool {
+	if t.comptime_for_method_var == '' {
+		return false
+	}
+	match node {
+		ast.Ident {
+			return node.name == t.comptime_for_method_var
+		}
+		ast.SelectorExpr {
+			return node.field_name == 'name' && node.expr is ast.Ident
+				&& node.expr.name == t.comptime_for_method_var
+		}
+		else {
+			return false
+		}
+	}
 }
 
 // is_comptime_selector_field_name checks if the SelectorExpr is related to $for variable or generic letter accessing specific field name provided by `field_name`

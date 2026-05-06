@@ -36,10 +36,9 @@ pub fn strict_check[T](json_data string) StructCheckResult {
 
 		$for field in T.fields {
 			$if field.typ is $struct {
-				field_name := field.name
-				last_key := arrays.find_last(key_struct, fn [field_name] (k KeyStruct) bool {
-					return k.key == field_name
-				}) or { panic('field not found: ' + field.name) }
+				last_key := find_last_key(key_struct, field.name) or {
+					panic('field not found: ' + field.name)
+				}
 
 				// TODO: get path here from `last_key.key`
 				if last_key.value_type == .map {
@@ -71,6 +70,9 @@ fn check[T](val T, tokens []string, mut duplicates []string, mut superfluous []s
 
 		$for field in T.fields {
 			$if field.typ is $struct {
+				last_key := find_last_key(key_struct, field.name) or {
+					panic('field not found: ' + field.name)
+				}
 				if last_key.value_type == .map {
 					check(val.$(field.name), tokens[last_key.token_pos + 2..], mut duplicates, mut
 						superfluous)
@@ -80,7 +82,7 @@ fn check[T](val T, tokens []string, mut duplicates []string, mut superfluous []s
 	}
 }
 
-fn get_superfluous_keys[T](key_struct []x.json2.strict.KeyStruct) []string {
+fn get_superfluous_keys[T](key_struct []KeyStruct) []string {
 	mut superfluous := []string{}
 
 	struct_keys := get_keys_from_[T]()
@@ -95,9 +97,19 @@ fn get_superfluous_keys[T](key_struct []x.json2.strict.KeyStruct) []string {
 	return superfluous
 }
 
-fn get_duplicates_keys(key_struct []x.json2.strict.KeyStruct) []string {
+fn get_duplicates_keys(key_struct []KeyStruct) []string {
 	json_keys := key_struct.map(it.key).sorted()
 	return arrays.uniq_only_repeated(json_keys)
+}
+
+fn find_last_key(key_struct []KeyStruct, field_name string) ?KeyStruct {
+	for idx := key_struct.len; idx > 0; idx-- {
+		item := key_struct[idx - 1]
+		if item.key == field_name {
+			return item
+		}
+	}
+	return none
 }
 
 fn get_keys_from_[T]() []string {
@@ -111,7 +123,7 @@ fn get_keys_from_[T]() []string {
 }
 
 // get_keys_from_json .
-pub fn get_keys_from_json(tokens []string) []x.json2.strict.KeyStruct {
+pub fn get_keys_from_json(tokens []string) []KeyStruct {
 	mut key_structs := []KeyStruct{}
 
 	mut nested_map_count := 0

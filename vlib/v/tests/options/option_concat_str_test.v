@@ -10,6 +10,7 @@ fn test_str_concat() {
 		0 { 'abc' }
 		else { 'def' }
 	}
+
 	println(y)
 	assert y == '!!!def'
 }

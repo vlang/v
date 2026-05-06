@@ -112,6 +112,93 @@ fn test_orm_sql_select_attribute() {
 	assert qb_rows[0].name == 'ALICE'
 }
 
+fn test_orm_select_specific_fields() {
+	mut db := sqlite.connect(':memory:') or { panic(err) }
+	defer {
+		db.close() or {}
+	}
+
+	sql db {
+		create table User
+		create table SelectTransformUser
+	}!
+
+	sam := User{
+		age:  29
+		name: 'Sam'
+	}
+	alice := SelectTransformUser{
+		name: 'Alice'
+	}
+
+	sql db {
+		insert sam into User
+		insert alice into SelectTransformUser
+	}!
+
+	users := sql db {
+		select id, name from User where name == 'Sam'
+	}!
+
+	assert users.len == 1
+	assert users[0].id == 1
+	assert users[0].name == 'Sam'
+	assert users[0].age == 0
+	assert users[0].is_customer == false
+
+	transformed := sql db {
+		select name from SelectTransformUser where id == 1
+	}!
+
+	assert transformed.len == 1
+	assert transformed[0].name == 'ALICE'
+	assert transformed[0].id == 0
+}
+
+fn test_orm_order_by_explicit_asc() {
+	mut db := sqlite.connect(':memory:')!
+	defer {
+		db.close() or { panic(err) }
+	}
+
+	sql db {
+		create table User
+	}!
+
+	users := [
+		User{
+			age:  31
+			name: 'Alice'
+		},
+		User{
+			age:  19
+			name: 'Bob'
+		},
+		User{
+			age:  44
+			name: 'Charlie'
+		},
+	]
+
+	for user in users {
+		sql db {
+			insert user into User
+		}!
+	}
+
+	// vfmt off
+	rows := sql db {
+		select from User order by age asc limit 2
+	}!
+	// vfmt on
+
+	assert rows.len == 2
+	assert rows[0].name == 'Bob'
+	assert rows[0].age == 19
+	assert rows[1].name == 'Alice'
+	assert rows[1].age == 31
+}
+
 fn test_orm() {
 	db := sqlite.connect(':memory:') or { panic(err) }
 

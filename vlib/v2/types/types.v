@@ -83,7 +83,7 @@ pub:
 	elem_type Type
 }
 
-struct Channel {
+pub struct Channel {
 pub:
 	elem_type ?Type
 }
@@ -174,6 +174,11 @@ pub fn (f &FnType) get_param_names() []string {
 // is_variadic_fn reports whether this function type was declared variadic.
 pub fn (f &FnType) is_variadic_fn() bool {
 	return f.is_variadic
+}
+
+// is_noreturn reports whether the function is annotated with @[noreturn].
+pub fn (f &FnType) is_noreturn() bool {
+	return f.attributes.has(.noreturn)
 }
 
 // get_generic_types returns the concrete generic instantiations inferred for this function.
@@ -414,6 +419,10 @@ fn value_type_with_depth(t Type, depth int) Type {
 			if t.base_type is String {
 				// `&string` is used as pointer-to-first-string in several builtin APIs.
 				// Indexing it should yield `string`, not `u8`.
+				return string_
+			}
+			if t.base_type is Struct
+				&& (t.base_type.name == 'string' || t.base_type.name.ends_with('__string')) {
 				return string_
 			}
 			return value_type_with_depth(t.base_type, depth + 1)

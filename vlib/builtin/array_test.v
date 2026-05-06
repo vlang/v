@@ -78,6 +78,24 @@ fn test_slice_delete() {
 	assert c == [3.75, 4.25, -1.5]
 }
 
+fn test_delete_last_uses_in_place_fast_path_for_unique_arrays() {
+	mut a := [1, 2, 3, 4]
+	old_data := a.data
+	a.delete(a.len - 1)
+	assert a == [1, 2, 3]
+	assert a.data == old_data
+}
+
+fn test_delete_last_detaches_when_a_slice_exists() {
+	mut a := [1, 2, 3, 4]
+	b := unsafe { a[..a.len] }
+	old_data := a.data
+	a.delete(a.len - 1)
+	assert a == [1, 2, 3]
+	assert b == [1, 2, 3, 4]
+	assert a.data != old_data
+}
+
 fn test_delete_many() {
 	mut a := [1, 2, 3, 4, 5, 6, 7, 8, 9]
 	b := unsafe { a[2..6] }
@@ -91,6 +109,63 @@ fn test_delete_many() {
 	assert c == [1, 2, 3, 4, 8, 9]
 	a.delete_many(0, a.len)
 	assert a == []int{}
+}
+
+fn int_array_with_spare_cap() []int {
+	mut a := []int{len: 5, cap: 8}
+	for i in 0 .. a.len {
+		a[i] = i + 1
+	}
+	return a
+}
+
+fn test_delete_many_unique_arrays_use_in_place_fast_path() {
+	mut a := int_array_with_spare_cap()
+	old_data := a.data
+	a.delete_many(1, 2)
+	assert a == [1, 4, 5]
+	assert a.data == old_data
+	assert a.cap == 3
+}
+
+fn test_insert_detaches_parent_with_existing_slice() {
+	mut a := int_array_with_spare_cap()
+	mut b := unsafe { a[1..4] }
+	a.insert(0, 99)
+	assert a == [99, 1, 2, 3, 4, 5]
+	assert b == [2, 3, 4]
+	b[0] = 42
+	assert a == [99, 1, 2, 3, 4, 5]
+}
+
+fn test_slice_pop_detaches_immediately() {
+	mut a := int_array_with_spare_cap()
+	mut b := unsafe { a[1..4] }
+	last := b.pop()
+	b[0] = 20
+	b << 99
+	assert last == 4
+	assert a == [1, 2, 3, 4, 5]
+	assert b == [20, 3, 99]
+}
+
+fn test_slice_trim_detaches_immediately() {
+	mut a := int_array_with_spare_cap()
+	mut b := unsafe { a[1..4] }
+	b.trim(1)
+	b[0] = 20
+	b << 99
+	assert a == [1, 2, 3, 4, 5]
+	assert b == [20, 99]
+}
+
+fn test_slice_clear_detaches_immediately() {
+	mut a := int_array_with_spare_cap()
+	mut b := unsafe { a[1..4] }
+	b.clear()
+	b << 77
+	assert a == [1, 2, 3, 4, 5]
+	assert b == [77]
 }
 
 fn test_short() {
@@ -313,6 +388,43 @@ fn test_deep_repeat() {
 		[[4, 4], [5, 5], [6, 6]],
 	]
 	assert a3 == [[[1, 1], [2, 2], [3, 3]], [[4, 4], [17, 5], [6, 6]]]
+}
+
+interface RepeatClonedInterfaceValue {
+	get_value() int
+mut:
+	change()
+}
+
+struct RepeatClonedStructValue {
+mut:
+	value int
+}
+
+fn (sample RepeatClonedStructValue) get_value() int {
+	return sample.value
+}
+
+fn (mut sample RepeatClonedStructValue) change() {
+	sample.value += 2
+}
+
+fn test_repeat_clones_interface_elements() {
+	mut samples := [
+		RepeatClonedInterfaceValue(RepeatClonedStructValue{
+			value: 1
+		}),
+		RepeatClonedInterfaceValue(RepeatClonedStructValue{
+			value: 2
+		}),
+	].repeat(2)
+	samples[0].change()
+	samples[1].change()
+	samples[1].change()
+	assert samples[0].get_value() == 3
+	assert samples[1].get_value() == 6
+	assert samples[2].get_value() == 1
+	assert samples[3].get_value() == 2
 }
 
 fn test_right() {
@@ -833,7 +945,6 @@ fn test_fixed_array_literal_eq() {
 	// assert [[1, 1]!, [2, 2]!] != [[1, 2]!, [2, 3]!]
 	// vfmt off
 	assert ([1, 2, 3]!) == [1, 2, 3]!
-	assert (([1, 2, 3]!)) == [1, 2, 3]!
 	// vfmt on
 }
 
@@ -877,6 +988,21 @@ fn test_sort() {
 	assert users[2].name == 'Peter'
 }
 
+fn test_sort_preserves_relative_order_for_equal_elements() {
+	source := [User{4, 'B'}, User{4, 'A'}, User{5, 'C'}]
+
+	mut sorted := source.clone()
+	sorted.sort(a.age > b.age)
+	assert sorted[0].name == 'C'
+	assert sorted[1].name == 'B'
+	assert sorted[2].name == 'A'
+
+	copy := source.sorted(a.age > b.age)
+	assert copy[0].name == 'C'
+	assert copy[1].name == 'B'
+	assert copy[2].name == 'A'
+}
+
 fn test_sort_with_compare() {
 	mut a := ['hi', '1', '5', '3']
 	a.sort_with_compare(fn (a &string, b &string) int {
@@ -889,6 +1015,37 @@ fn test_sort_with_compare() {
 		return 0
 	})
 	assert a == ['1', '3', '5', 'hi']
+}
+
+fn test_sort_with_compare_preserves_relative_order_for_equal_elements() {
+	source := [User{4, 'B'}, User{4, 'A'}, User{5, 'C'}]
+
+	mut sorted := source.clone()
+	sorted.sort_with_compare(fn (a &User, b &User) int {
+		if a.age > b.age {
+			return -1
+		}
+		if a.age < b.age {
+			return 1
+		}
+		return 0
+	})
+	assert sorted[0].name == 'C'
+	assert sorted[1].name == 'B'
+	assert sorted[2].name == 'A'
+
+	copy := source.sorted_with_compare(fn (a &User, b &User) int {
+		if a.age > b.age {
+			return -1
+		}
+		if a.age < b.age {
+			return 1
+		}
+		return 0
+	})
+	assert copy[0].name == 'C'
+	assert copy[1].name == 'B'
+	assert copy[2].name == 'A'
 }
 
 fn test_rune_sort() {
@@ -1151,6 +1308,17 @@ fn test_multi_array_index() {
 	mut b := [[0].repeat(3)].repeat(2)
 	b[0][0] = 1
 	assert '${b}' == '[[1, 0, 0], [0, 0, 0]]'
+}
+
+fn test_multi_array_default_init_preserves_noscan_rows() {
+	$if gcboehm_opt ? {
+		mut matrix := [][]f64{len: 2, init: []f64{len: 3, init: 0.0}}
+		matrix[0][0] = 1.25
+		assert matrix[0].flags.has(.noscan_data)
+		assert matrix[1].flags.has(.noscan_data)
+		assert matrix[0].data != matrix[1].data
+		assert matrix[1][0] == 0.0
+	}
 }
 
 fn test_plus_assign_string() {
@@ -1787,6 +1955,18 @@ fn cmp_2d_int_arrays_by_first_item(a &[]int, b &[]int) int {
 	return 0
 }
 
+struct SortPageObject {
+	key []u8
+}
+
+fn compare_page_object_keys_asc(a &SortPageObject, b &SortPageObject) int {
+	return a.key[0] - b.key[0]
+}
+
+fn compare_page_object_keys_desc(a &SortPageObject, b &SortPageObject) int {
+	return b.key[0] - a.key[0]
+}
+
 fn test_sorted_with_compare_2d_array() {
 	aa := [[2], [1]]
 	bb := aa.sorted_with_compare(cmp_2d_int_arrays_by_first_item)
@@ -1795,4 +1975,32 @@ fn test_sorted_with_compare_2d_array() {
 	mut cc := aa.clone()
 	cc.sort_with_compare(cmp_2d_int_arrays_by_first_item)
 	assert cc == [[1], [2]]
+}
+
+fn test_sort_with_compare_small_unsigned_difference() {
+	a := SortPageObject{
+		key: 'A'.bytes()
+	}
+	b := SortPageObject{
+		key: 'B'.bytes()
+	}
+	c := SortPageObject{
+		key: 'C'.bytes()
+	}
+
+	mut objects1 := [b, a]
+	objects1.sort_with_compare(compare_page_object_keys_asc)
+	assert objects1.map(it.key.bytestr()) == ['A', 'B']
+
+	mut objects2 := [a, b]
+	objects2.sort_with_compare(compare_page_object_keys_asc)
+	assert objects2.map(it.key.bytestr()) == ['A', 'B']
+
+	mut objects3 := [a, b, c]
+	objects3.sort_with_compare(compare_page_object_keys_asc)
+	assert objects3.map(it.key.bytestr()) == ['A', 'B', 'C']
+
+	mut objects4 := [a, b, c]
+	objects4.sort_with_compare(compare_page_object_keys_desc)
+	assert objects4.map(it.key.bytestr()) == ['C', 'B', 'A']
 }

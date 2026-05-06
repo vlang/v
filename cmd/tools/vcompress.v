@@ -22,6 +22,7 @@ fn main() {
 			exit(1)
 		}
 	}
+
 	path := os.args[3]
 	content := os.read_bytes(path) or {
 		eprintln('unable to read "${path}": ${err}')
@@ -35,6 +36,7 @@ fn main() {
 			}
 		}
 	}
+
 	out_path := os.args[4]
 
 	os.write_file_array(out_path, compressed) or {

@@ -2,7 +2,7 @@
 // vtest build: present_node?
 import rand
 
-const strings = unique_strings(200, 10)
+const test_strings = unique_strings(200, 10)
 
 fn unique_strings(arr_len int, str_len int) []string {
 	mut arr := []string{cap: arr_len}
@@ -17,20 +17,20 @@ fn unique_strings(arr_len int, str_len int) []string {
 
 fn test_get_and_set_many() {
 	mut m := map[string]int{}
-	for i, s in strings {
+	for i, s in test_strings {
 		m[s] = i
 		assert m[s] == i
 		assert m.len == i + 1
 	}
-	for i, s in strings {
+	for i, s in test_strings {
 		assert m[s] == i
 	}
-	assert m.len == strings.len
+	assert m.len == test_strings.len
 }
 
 fn test_for_in_many() {
 	mut m := map[string]int{}
-	for i, s in strings {
+	for i, s in test_strings {
 		m[s] = i
 	}
 	for k, v in m {
@@ -40,24 +40,24 @@ fn test_for_in_many() {
 
 fn test_keys_many() {
 	mut m := map[string]int{}
-	for i, s in strings {
+	for i, s in test_strings {
 		m[s] = i
 	}
 	keys := m.keys()
-	assert keys.len == strings.len
+	assert keys.len == test_strings.len
 	assert keys.len == m.len
-	assert keys == strings
+	assert keys == test_strings
 }
 
 fn test_deletes_many() {
 	mut m := map[string]int{}
-	for i, s in strings {
+	for i, s in test_strings {
 		m[s] = i
 	}
-	for i, s in strings {
+	for i, s in test_strings {
 		m.delete(s)
 		assert m[s] == 0
-		assert m.len == strings.len - (i + 1)
+		assert m.len == test_strings.len - (i + 1)
 	}
 	assert m.len == 0
 	assert m.keys().len == 0
@@ -923,7 +923,7 @@ fn test_i64_keys() {
 	assert m.len == end
 	keys := m.keys()
 	for i in i64(0) .. end {
-		assert keys[i] == i
+		assert keys[int(i)] == i
 	}
 	for i in i64(0) .. end {
 		m.delete(i)
@@ -949,7 +949,7 @@ fn test_u64_keys() {
 	assert u64(m.len) == end
 	keys := m.keys()
 	for i in u64(0) .. end {
-		assert keys[i] == i
+		assert keys[int(i)] == i
 	}
 	for i in u64(0) .. end {
 		m.delete(i)

@@ -157,7 +157,8 @@ fn main() {
 			util.launch_tool(prefs.is_verbose, 'vdoc', ['doc', 'vlib'])
 		}
 		'interpret' {
-			util.launch_tool(prefs.is_verbose, 'builders/interpret_builder', os.args[1..])
+			eprintln('use v -v2 -eval file.v')
+			exit(1)
 		}
 		'get' {
 			eprintln('V Error: Use `v install` to install modules from vpm.vlang.io')
@@ -177,13 +178,14 @@ fn main() {
 			}
 		}
 	}
+
 	if prefs.is_help {
 		invoke_help_and_exit(args)
 	}
 
 	other_commands := ['run', 'crun', 'build', 'build-module', 'help', 'version', 'new', 'init',
 		'install', 'link', 'list', 'outdated', 'remove', 'search', 'show', 'unlink', 'update',
-		'upgrade', 'vlib-docs', 'interpret', 'translate']
+		'upgrade', 'vlib-docs', 'translate']
 	mut all_commands := []string{}
 	all_commands << external_tools
 	all_commands << other_commands
@@ -199,6 +201,7 @@ fn invoke_help_and_exit(remaining []string) {
 		2 { help.print_and_exit(remaining[1], exit_code: 0) }
 		else {}
 	}
+
 	eprintln('${term.highlight_command('v help')}: provide only one help topic.')
 	eprintln('For usage information, use ${term.highlight_command('v help')}.')
 	exit(1)
@@ -288,15 +291,9 @@ fn rebuild(prefs &pref.Preferences) {
 		.js_node, .js_freestanding, .js_browser {
 			util.launch_tool(prefs.is_verbose, 'builders/js_builder', os.args[1..])
 		}
-		.native {
-			util.launch_tool(prefs.is_verbose, 'builders/native_builder', os.args[1..])
-		}
 		.interpret {
-			util.launch_tool(prefs.is_verbose, 'builders/interpret_builder', os.args[1..])
-		}
-		.golang {
-			println('using Go WIP backend...')
-			util.launch_tool(prefs.is_verbose, 'builders/golang_builder', os.args[1..])
+			eprintln('use v -v2 -eval file.v')
+			exit(1)
 		}
 		.wasm {
 			util.launch_tool(prefs.is_verbose, 'builders/wasm_builder', os.args[1..])

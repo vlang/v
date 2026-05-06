@@ -976,6 +976,7 @@ fn (g TestGen) try_eval_int(e TestExpr) ?int {
 			return e.val
 		}
 	}
+
 	return none
 }
 
@@ -4737,6 +4738,7 @@ fn main() {
 			-1
 		}
 	}
+
 	print_int(result70) // 198
 
 	// 70.5 Match on Point with result assignment
@@ -4752,6 +4754,7 @@ fn main() {
 			num70e.x * num70e.y // 12
 		}
 	}
+
 	print_int(result70e) // 12
 
 	// ==================== 71. NESTED SMARTCAST ====================

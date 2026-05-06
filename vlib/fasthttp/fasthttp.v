@@ -7,10 +7,10 @@ import runtime
 import net
 import time
 
-#include <fcntl.h>
 #include <errno.h>
 
 $if !windows {
+	#include <fcntl.h>
 	#include <sys/socket.h>
 	#include <netinet/in.h>
 	#include <netinet/tcp.h>
@@ -23,7 +23,7 @@ const tiny_bad_request_response = 'HTTP/1.1 400 Bad Request\r\nContent-Length: 0
 const status_444_response = 'HTTP/1.1 444 No Response\r\nContent-Length: 0\r\nConnection: close\r\n\r\n'.bytes()
 const status_413_response = 'HTTP/1.1 413 Payload Too Large\r\nContent-Length: 0\r\nConnection: close\r\n\r\n'.bytes()
 
-fn C.socket(domain net.AddrFamily, typ net.SocketType, protocol i32) i32
+fn C.socket(domain i32, typ i32, protocol i32) i32
 
 fn C.bind(sockfd i32, addr &net.Addr, addrlen u32) i32
 
@@ -63,10 +63,18 @@ pub mut:
 	user_data      voidptr // User-defined context data
 }
 
+pub enum ResponseTakeoverMode {
+	none
+	manual
+	reusable
+}
+
 pub struct HttpResponse {
 pub:
-	content   []u8
-	file_path string
+	content       []u8
+	file_path     string
+	takeover_mode ResponseTakeoverMode
+	should_close  bool // if true, close the connection after sending (Connection: close)
 }
 
 // ServerConfig bundles the parameters needed to start a fasthttp server.
@@ -75,6 +83,7 @@ pub:
 	family                  net.AddrFamily = .ip6
 	port                    int            = 3000
 	max_request_buffer_size int            = 8192
+	timeout_in_seconds      int            = 30
 	handler                 fn (HttpRequest) !HttpResponse @[required]
 	user_data               voidptr
 }
@@ -112,11 +121,11 @@ pub fn (h ServerHandle) wait_till_running(params WaitTillRunningParams) !int {
 	if h.ptr == unsafe { nil } {
 		return error('server handle is not initialized')
 	}
-	$if windows {
-		return error('fasthttp server lifecycle control is not supported on windows')
-	} $else {
+	$if linux || bsd {
 		mut server := unsafe { &Server(h.ptr) }
 		return server.wait_till_running_impl(params)!
+	} $else {
+		return error('fasthttp server lifecycle control is only supported on linux and BSD-family OSes')
 	}
 }
 
@@ -125,15 +134,15 @@ pub fn (h ServerHandle) shutdown(params ShutdownParams) ! {
 	if h.ptr == unsafe { nil } {
 		return error('server handle is not initialized')
 	}
-	$if windows {
-		return error('fasthttp server lifecycle control is not supported on windows')
-	} $else {
+	$if linux || bsd {
 		mut server := unsafe { &Server(h.ptr) }
 		server.shutdown_impl(params)!
+	} $else {
+		return error('fasthttp server lifecycle control is only supported on linux and BSD-family OSes')
 	}
 }
 
-$if !windows {
+$if linux || bsd {
 	fn normalized_retry_period_ms(retry_period_ms int) int {
 		return if retry_period_ms > 0 { retry_period_ms } else { 1 }
 	}

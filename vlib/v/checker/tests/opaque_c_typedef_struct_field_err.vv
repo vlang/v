@@ -1,0 +1,10 @@
+@[typedef]
+struct C.Foo {}
+
+type Foo = C.Foo
+
+struct Bar {
+	foo Foo
+}
+
+fn main() {}

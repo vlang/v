@@ -8,8 +8,8 @@ mut:
 }
 
 fn (mut s StringRW) read(mut buf []u8) !int {
-	len := s.buf.len
-	buf = s.buf.str().bytes()
+	data := s.buf.str().bytes()
+	len := copy(mut buf, data)
 	s.buf = strings.new_builder(4096)
 	return len
 }
@@ -45,12 +45,12 @@ fn test_server_request_response() {
 		key:   'foo'
 		value: 'bar'
 	}
-	stream.write(new_request(method, params, id).encode().bytes())!
+	srv.stream.write(new_request(method, params, id).encode().bytes())!
 
 	srv.respond()!
 
 	mut enc_resp := []u8{len: 4096}
-	stream.read(mut enc_resp)!
+	srv.stream.read(mut enc_resp)!
 	resp := decode_response(enc_resp.bytestr())!
 
 	assert resp.jsonrpc == version
@@ -74,12 +74,12 @@ fn test_server_router_request_response() {
 		key:   'foo'
 		value: 'bar'
 	}
-	stream.write(new_request(method, params, id).encode().bytes())!
+	srv.stream.write(new_request(method, params, id).encode().bytes())!
 
 	srv.respond()!
 
 	mut enc_resp := []u8{len: 4096}
-	stream.read(mut enc_resp)!
+	srv.stream.read(mut enc_resp)!
 	mut resp := decode_response(enc_resp.bytestr())!
 
 	assert resp.jsonrpc == version
@@ -87,12 +87,12 @@ fn test_server_router_request_response() {
 	assert resp.error == ResponseError{}
 	assert resp.id == id
 
-	stream.write(new_request('unknown', params, id).encode().bytes())!
+	srv.stream.write(new_request('unknown', params, id).encode().bytes())!
 
 	srv.respond()!
 
 	enc_resp = []u8{len: 4096}
-	stream.read(mut enc_resp)!
+	srv.stream.read(mut enc_resp)!
 	resp = decode_response(enc_resp.bytestr())!
 
 	assert resp.jsonrpc == version

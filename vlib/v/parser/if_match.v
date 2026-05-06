@@ -112,7 +112,7 @@ fn (mut p Parser) if_expr(is_comptime bool, is_expr bool) ast.IfExpr {
 					is_mut = true
 					p.next()
 				}
-				var.is_mut = is_mut
+				var.is_mut = p.scope_var_is_mut(is_mut)
 				var.pos = p.tok.pos()
 				var.name = p.check_name()
 				var_names << var.name
@@ -302,7 +302,89 @@ fn (mut p Parser) resolve_at_expr(expr ast.AtExpr) !string {
 			return error('top level comptime only support `@MOD` `@OS` `@CCOMPILER` `@BACKEND` or `@PLATFORM`')
 		}
 	}
+
 	return ''
+}
+
+enum MatchCondOrBlockMode {
+	unsupported
+	no_err_var
+	with_err_var
+	already_set
+}
+
+fn (p &Parser) match_cond_or_block_mode(cond ast.Expr) MatchCondOrBlockMode {
+	return match cond {
+		ast.CallExpr {
+			if cond.or_block.kind == ast.OrKind.absent {
+				MatchCondOrBlockMode.with_err_var
+			} else {
+				MatchCondOrBlockMode.already_set
+			}
+		}
+		ast.Ident {
+			if cond.or_expr.kind == ast.OrKind.absent {
+				MatchCondOrBlockMode.no_err_var
+			} else {
+				MatchCondOrBlockMode.already_set
+			}
+		}
+		ast.IndexExpr {
+			if cond.or_expr.kind == ast.OrKind.absent {
+				MatchCondOrBlockMode.no_err_var
+			} else {
+				MatchCondOrBlockMode.already_set
+			}
+		}
+		ast.ParExpr {
+			p.match_cond_or_block_mode(cond.expr)
+		}
+		ast.PrefixExpr {
+			if cond.op == .arrow {
+				if cond.or_block.kind == ast.OrKind.absent {
+					MatchCondOrBlockMode.with_err_var
+				} else {
+					MatchCondOrBlockMode.already_set
+				}
+			} else {
+				MatchCondOrBlockMode.unsupported
+			}
+		}
+		ast.SelectorExpr {
+			if cond.or_block.kind == ast.OrKind.absent {
+				MatchCondOrBlockMode.with_err_var
+			} else {
+				MatchCondOrBlockMode.already_set
+			}
+		}
+		else {
+			MatchCondOrBlockMode.unsupported
+		}
+	}
+}
+
+fn (mut p Parser) set_match_cond_or_block(mut cond ast.Expr, or_expr ast.OrExpr) {
+	match mut cond {
+		ast.CallExpr {
+			cond.or_block = or_expr
+		}
+		ast.Ident {
+			cond.or_expr = or_expr
+		}
+		ast.IndexExpr {
+			cond.or_expr = or_expr
+		}
+		ast.ParExpr {
+			p.set_match_cond_or_block(mut cond.expr, or_expr)
+		}
+		ast.PrefixExpr {
+			cond.or_block = or_expr
+		}
+		ast.SelectorExpr {
+			cond.or_block = or_expr
+		}
+		else {}
+	}
 }
 
 fn (mut p Parser) match_expr(is_comptime bool, is_expr bool) ast.MatchExpr {
@@ -318,10 +400,10 @@ fn (mut p Parser) match_expr(is_comptime bool, is_expr bool) ast.MatchExpr {
 	p.inside_match = true
 	p.check(.key_match)
 	mut is_sum_type := false
-	cond := p.expr(0)
+	mut cond := p.expr(0)
 	mut cond_str := ''
 	if is_comptime && cond is ast.AtExpr && p.is_in_top_level_comptime(p.inside_assign_rhs) {
-		cond_str = p.resolve_at_expr(cond) or {
+		cond_str = p.resolve_at_expr(cond as ast.AtExpr) or {
 			p.error(err.msg())
 			return ast.MatchExpr{}
 		}
@@ -412,6 +494,7 @@ fn (mut p Parser) match_expr(is_comptime bool, is_expr bool) ast.MatchExpr {
 					}
 					else {}
 				}
+
 				comptime_skip_curr_stmts = cond_str != case_str
 				if !comptime_skip_curr_stmts {
 					comptime_has_true_branch = true
@@ -493,18 +576,44 @@ fn (mut p Parser) match_expr(is_comptime bool, is_expr bool) ast.MatchExpr {
 			break
 		}
 	}
-	match_last_pos := p.tok.pos()
+	mut match_last_pos := p.tok.pos()
+	if p.tok.kind == .rcbr {
+		p.check(.rcbr)
+		match_last_pos = p.prev_tok.pos()
+	}
+	if p.tok.kind == .key_orelse {
+		cond_or_mode := p.match_cond_or_block_mode(cond)
+		if cond_or_mode == .already_set {
+			p.error_with_pos('match condition already has an `or {}` block', p.tok.pos())
+			return ast.MatchExpr{}
+		}
+		if cond_or_mode == .unsupported {
+			p.error_with_pos('trailing `or {}` is only supported for match conditions that can use `or {}` directly',
+				p.tok.pos())
+			return ast.MatchExpr{}
+		}
+		err_var_mode := if cond_or_mode == .with_err_var {
+			OrBlockErrVarMode.with_err_var
+		} else {
+			OrBlockErrVarMode.no_err_var
+		}
+		or_stmts, or_pos, or_scope := p.or_block(err_var_mode)
+		p.set_match_cond_or_block(mut cond, ast.OrExpr{
+			kind:  .block
+			stmts: or_stmts
+			pos:   or_pos
+			scope: or_scope
+		})
+		match_last_pos = p.prev_tok.pos()
+	}
+	// return ast.StructInit{}
 	mut pos := token.Pos{
 		line_nr: match_first_pos.line_nr
 		pos:     match_first_pos.pos
 		len:     match_last_pos.pos - match_first_pos.pos + match_last_pos.len
 		col:     match_first_pos.col
 	}
-	if p.tok.kind == .rcbr {
-		p.check(.rcbr)
-	}
-	// return ast.StructInit{}
-	pos.update_last_line(p.prev_tok.line_nr)
+	pos.update_last_line(match_last_pos.line_nr)
 	return ast.MatchExpr{
 		is_comptime: is_comptime
 		is_expr:     is_expr_
@@ -804,6 +913,7 @@ fn (mut p Parser) comptime_if_cond(mut cond ast.Expr) bool {
 									return false
 								}
 							}
+
 							return is_true
 						}
 						else {
@@ -811,6 +921,7 @@ fn (mut p Parser) comptime_if_cond(mut cond ast.Expr) bool {
 							return false
 						}
 					}
+
 					p.error('invalid \$if condition')
 					return false
 				}

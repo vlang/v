@@ -130,6 +130,10 @@ $if sokol_wayland ? {
 	// === Key translation ===
 
 	fn wl_translate_key(keysym Xkb_keysym_t) KeyCode {
+		key := linux_translate_navigation_or_keypad_keysym(u32(keysym))
+		if key != .invalid {
+			return key
+		}
 		return match keysym {
 			xkb_key_space { .space }
 			xkb_key_apostrophe { .apostrophe }
@@ -183,16 +187,6 @@ $if sokol_wayland ? {
 			xkb_key_return { .enter }
 			xkb_key_tab { .tab }
 			xkb_key_backspace { .backspace }
-			xkb_key_insert { .insert }
-			xkb_key_delete { .delete }
-			xkb_key_right { .right }
-			xkb_key_left { .left }
-			xkb_key_down { .down }
-			xkb_key_up { .up }
-			xkb_key_page_up { .page_up }
-			xkb_key_page_down { .page_down }
-			xkb_key_home { .home }
-			xkb_key_end { .end }
 			xkb_key_caps_lock { .caps_lock }
 			xkb_key_scroll_lock { .scroll_lock }
 			xkb_key_num_lock { .num_lock }
@@ -223,23 +217,6 @@ $if sokol_wayland ? {
 			xkb_key_f23 { .f23 }
 			xkb_key_f24 { .f24 }
 			xkb_key_f25 { .f25 }
-			xkb_key_kp_0 { .kp_0 }
-			xkb_key_kp_1 { .kp_1 }
-			xkb_key_kp_2 { .kp_2 }
-			xkb_key_kp_3 { .kp_3 }
-			xkb_key_kp_4 { .kp_4 }
-			xkb_key_kp_5 { .kp_5 }
-			xkb_key_kp_6 { .kp_6 }
-			xkb_key_kp_7 { .kp_7 }
-			xkb_key_kp_8 { .kp_8 }
-			xkb_key_kp_9 { .kp_9 }
-			xkb_key_kp_decimal { .kp_decimal }
-			xkb_key_kp_divide { .kp_divide }
-			xkb_key_kp_multiply { .kp_multiply }
-			xkb_key_kp_subtract { .kp_subtract }
-			xkb_key_kp_add { .kp_add }
-			xkb_key_kp_enter { .kp_enter }
-			xkb_key_kp_equal { .kp_equal }
 			xkb_key_shift_l { .left_shift }
 			xkb_key_control_l { .left_control }
 			xkb_key_alt_l { .left_alt }
@@ -534,6 +511,7 @@ $if sokol_wayland ? {
 			u32(btn_middle) { MouseButton.middle }
 			else { MouseButton.invalid }
 		}
+
 		if sapp_btn != .invalid {
 			etype := if state == wl_pointer_button_state_pressed {
 				EventType.mouse_down
@@ -977,6 +955,38 @@ $if sokol_wayland ? {
 		voidptr(wl_data_device_selection),
 	]!
 	// === Main Wayland run function ===
+
+	fn wl_set_resizable(resizable bool) {
+		if g_sapp_state.wl.xdg_toplevel == unsafe { nil }
+			|| g_sapp_state.wl.surface == unsafe { nil } {
+			return
+		}
+		if resizable {
+			C.xdg_toplevel_set_min_size(g_sapp_state.wl.xdg_toplevel, 0, 0)
+			C.xdg_toplevel_set_max_size(g_sapp_state.wl.xdg_toplevel, 0, 0)
+		} else {
+			width := if g_sapp_state.window_width > 0 {
+				g_sapp_state.window_width
+			} else if g_sapp_state.wl.width > 0 {
+				g_sapp_state.wl.width
+			} else {
+				fallback_default_window_width
+			}
+			height := if g_sapp_state.window_height > 0 {
+				g_sapp_state.window_height
+			} else if g_sapp_state.wl.height > 0 {
+				g_sapp_state.wl.height
+			} else {
+				fallback_default_window_height
+			}
+			C.xdg_toplevel_set_min_size(g_sapp_state.wl.xdg_toplevel, i32(width), i32(height))
+			C.xdg_toplevel_set_max_size(g_sapp_state.wl.xdg_toplevel, i32(width), i32(height))
+		}
+		C.wl_surface_commit(g_sapp_state.wl.surface)
+		if g_sapp_state.wl.display != unsafe { nil } {
+			C.wl_display_flush(g_sapp_state.wl.display)
+		}
+	}
 
 	pub fn wl_run(desc &Desc) {
 		sapp_init_state(desc)

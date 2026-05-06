@@ -1,0 +1,12 @@
+vlib/v/checker/tests/const_import_conflict_err.vv:1:8: warning: module 'strings' is imported but never used. Use `import strings as _`, to silence this warning, or just remove the unused import line
+    1 | import strings
+      |        ~~~~~~~
+    2 |
+    3 | const strings = ['hello', 'world']
+vlib/v/checker/tests/const_import_conflict_err.vv:3:7: error: const `strings` conflicts with imported module `strings`
+    1 | import strings
+    2 |
+    3 | const strings = ['hello', 'world']
+      |       ~~~~~~~
+    4 |
+    5 | fn main() {

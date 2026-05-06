@@ -20,6 +20,21 @@ fn test_help_as_long_option() {
 	assert res.output.starts_with('V is a tool for managing V source code.')
 }
 
+fn test_run_help_text() {
+	res := os.execute(vexe + ' help')
+	assert res.exit_code == 0, res.output
+	assert res.output.contains('executable if V created it for this run.')
+	assert res.output.contains('Compile and run a V program, keeping the')
+	assert res.output.contains('executable for reuse.')
+}
+
+fn test_run_topic_mentions_conditional_cleanup() {
+	res := os.execute(vexe + ' help run')
+	assert res.exit_code == 0, res.output
+	assert res.output.contains('If `v run` created the executable for this run')
+	assert res.output.contains('If the executable already existed before the command')
+}
+
 fn test_all_topics() {
 	help_dir := os.join_path(@VEXEROOT, 'vlib', 'v', 'help')
 	topic_paths := os.walk_ext(help_dir, '.txt')

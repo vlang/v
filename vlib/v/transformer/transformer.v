@@ -9,6 +9,11 @@ import v.ast
 import v.token
 import v.util
 
+union U64F64 {
+	u u64
+	f f64
+}
+
 pub struct Transformer {
 	pref &pref.Preferences
 pub mut:
@@ -66,7 +71,7 @@ fn folded_float_literal(value f64, pos token.Pos) ast.FloatLiteral {
 	// ast.FloatLiteral stores source text, so the folded value needs a
 	// decimal/scientific form that reparses to the same bits.
 	short := value.str()
-	if math.f64_bits(short.f64()) == math.f64_bits(value) {
+	if transformer_f64_bits(short.f64()) == transformer_f64_bits(value) {
 		return ast.FloatLiteral{
 			val: short
 			pos: pos
@@ -77,6 +82,48 @@ fn folded_float_literal(value f64, pos token.Pos) ast.FloatLiteral {
 		val: exact
 		pos: pos
 	}
+}
+
+@[inline]
+fn transformer_f64_bits(value f64) u64 {
+	return unsafe {
+		U64F64{
+			f: value
+		}.u
+	}
+}
+
+@[ignore_overflow]
+fn folded_power_i64(base i64, exponent i64) i64 {
+	mut exp := exponent
+	mut power := base
+	mut value := i64(1)
+	if exp < 0 {
+		if base == 0 {
+			return -1
+		}
+		return if base * base != 1 {
+			0
+		} else {
+			if exp & 1 > 0 {
+				base
+			} else {
+				1
+			}
+		}
+	}
+	for exp > 0 {
+		if exp & 1 > 0 {
+			value *= power
+		}
+		power *= power
+		exp >>= 1
+	}
+	return value
+}
+
+fn folded_power_f64(base f64, exponent f64) f64 {
+	return math.pow(base, exponent)
 }
 
 pub fn (mut t Transformer) find_new_range(node ast.AssignStmt) {
@@ -225,6 +272,7 @@ pub fn (mut t Transformer) stmt(mut node ast.Stmt) ast.Stmt {
 					t.expr(mut node.expr)
 				}
 			}
+
 			if mut node.expr is ast.CallExpr && node.expr.is_expand_simple_interpolation {
 				t.simplify_nested_interpolation_in_sb(mut onode, mut node.expr, node.typ)
 			}
@@ -276,6 +324,7 @@ pub fn (mut t Transformer) stmt(mut node ast.Stmt) ast.Stmt {
 		}
 		ast.TypeDecl {}
 	}
+
 	return node
 }
 
@@ -538,6 +587,7 @@ pub fn (mut t Transformer) for_stmt(mut node ast.ForStmt) ast.Stmt {
 			}
 		}
 	}
+
 	for mut stmt in node.stmts {
 		stmt = t.stmt(mut stmt)
 	}
@@ -611,6 +661,11 @@ pub fn (mut t Transformer) expr(mut node ast.Expr) ast.Expr {
 			t.check_safe_array(mut node)
 			node.left = t.expr(mut node.left)
 			node.index = t.expr(mut node.index)
+			mut indices := []ast.Expr{cap: node.indices.len}
+			for mut index in node.indices {
+				indices << t.expr(mut index)
+			}
+			node.indices = indices
 			node.or_expr = t.expr(mut node.or_expr) as ast.OrExpr
 		}
 		ast.InfixExpr {
@@ -648,8 +703,10 @@ pub fn (mut t Transformer) expr(mut node ast.Expr) ast.Expr {
 			if node.stmts.len > 0 {
 				// todo fix [] => new_array_from_c_array() now
 				mut stmt := node.stmts.last()
-				if stmt is ast.ExprStmt && stmt.expr is ast.CallExpr {
-					((stmt as ast.ExprStmt).expr as ast.CallExpr).is_return_used = true
+				if mut stmt is ast.ExprStmt {
+					if mut stmt.expr is ast.CallExpr {
+						stmt.expr.is_return_used = true
+					}
 				}
 			}
 		}
@@ -703,6 +760,9 @@ pub fn (mut t Transformer) expr(mut node ast.Expr) ast.Expr {
 		ast.SqlExpr {
 			return t.sql_expr(mut node)
 		}
+		ast.SqlQueryDataExpr {
+			node.items = t.sql_query_data_items(node.items)
+		}
 		ast.StringInterLiteral {
 			for mut expr in node.exprs {
 				expr = t.expr(mut expr)
@@ -732,7 +792,33 @@ pub fn (mut t Transformer) expr(mut node ast.Expr) ast.Expr {
 		}
 		else {}
 	}
+
 	return node
+}
+
+fn (mut t Transformer) sql_query_data_items(items []ast.SqlQueryDataItem) []ast.SqlQueryDataItem {
+	mut new_items := []ast.SqlQueryDataItem{cap: items.len}
+	for item in items {
+		mut item_copy := item
+		new_items << t.sql_query_data_item(mut item_copy)
+	}
+	return new_items
+}
+
+fn (mut t Transformer) sql_query_data_item(mut item ast.SqlQueryDataItem) ast.SqlQueryDataItem {
+	match mut item {
+		ast.SqlQueryDataLeaf {
+			item.expr = t.expr(mut item.expr)
+		}
+		ast.SqlQueryDataIf {
+			for mut branch in item.branches {
+				branch.cond = t.expr(mut branch.cond)
+				branch.items = t.sql_query_data_items(branch.items)
+			}
+		}
+	}
+
+	return item
 }
 
 pub fn (mut t Transformer) call_expr(mut node ast.CallExpr) {
@@ -902,6 +988,12 @@ pub fn (mut t Transformer) infix_expr(mut node ast.InfixExpr) ast.Expr {
 									pos: pos
 								}
 							}
+							.power {
+								return ast.IntegerLiteral{
+									val: folded_power_i64(left_val, right_val).str()
+									pos: pos
+								}
+							}
 							.minus {
 								// HACK: prevent folding of `min_i64` values in `math` module
 								if left_val == -9223372036854775807 && right_val == 1 {
@@ -1008,6 +1100,12 @@ pub fn (mut t Transformer) infix_expr(mut node ast.InfixExpr) ast.Expr {
 							}
 							.mul {
 								return folded_float_literal(left_val * right_val, pos)
+							}
+							.power {
+								return ast.FloatLiteral{
+									val: folded_power_f64(left_val, right_val).str()
+									pos: pos
+								}
 							}
 							.minus {
 								return folded_float_literal(left_val - right_val, pos)
@@ -1148,6 +1246,7 @@ pub fn (mut t Transformer) infix_expr(mut node ast.InfixExpr) ast.Expr {
 				}
 			}
 		}
+
 		return node
 	}
 }

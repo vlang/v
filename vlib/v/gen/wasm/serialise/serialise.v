@@ -450,5 +450,6 @@ fn (mut p Pool) ptr(offset int) int {
 		}
 		else {}
 	}
+
 	return pos
 }

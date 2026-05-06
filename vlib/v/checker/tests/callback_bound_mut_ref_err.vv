@@ -1,0 +1,15 @@
+struct State {
+mut:
+	entered_text string
+}
+
+fn register(_on_click fn ()) {}
+
+fn show_entered_text(mut state &State) {
+	println(state.entered_text)
+}
+
+fn main() {
+	mut state := &State{}
+	register(show_entered_text(mut state))
+}

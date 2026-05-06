@@ -13,6 +13,7 @@ pub fn (f FnCommandCallback) str() string {
 pub struct Command {
 pub mut:
 	name            string
+	alias           string
 	usage           string
 	description     string
 	man_description string
@@ -57,6 +58,7 @@ pub fn (cmd &Command) str() string {
 	mut res := []string{}
 	res << 'Command{'
 	res << '	name: "${cmd.name}"'
+	res << '	alias: "${cmd.alias}"'
 	res << '	usage: "${cmd.usage}"'
 	res << '	version: "${cmd.version}"'
 	res << '	description: "${cmd.description}"'
@@ -86,6 +88,7 @@ pub fn (cmd &Command) str() string {
 			res << '	defaults.help.flag: ${cmd.defaults.help.flag}'
 		}
 	}
+
 	match cmd.defaults.man {
 		bool {
 			res << '	defaults.man: ${cmd.defaults.man}'
@@ -95,6 +98,7 @@ pub fn (cmd &Command) str() string {
 			res << '	defaults.man.flag: ${cmd.defaults.man.flag}'
 		}
 	}
+
 	match cmd.defaults.version {
 		bool {
 			res << '	defaults.version: ${cmd.defaults.version}'
@@ -104,6 +108,7 @@ pub fn (cmd &Command) str() string {
 			res << '	defaults.version.flag: ${cmd.defaults.version.flag}'
 		}
 	}
+
 	res << '}'
 	return res.join('\n')
 }
@@ -139,8 +144,16 @@ pub fn (mut cmd Command) add_commands(commands []Command) {
 // add_command adds `command` as a sub-command of this `Command`.
 pub fn (mut cmd Command) add_command(command Command) {
 	mut subcmd := command
-	if cmd.commands.contains(subcmd.name) {
-		eprintln_exit('Command with the name `${subcmd.name}` already exists')
+	for existing in cmd.commands {
+		if existing.name == subcmd.name {
+			eprintln_exit('Command with the name `${subcmd.name}` already exists')
+		}
+		if existing.alias != '' && existing.alias == subcmd.name {
+			eprintln_exit('Command with the name `${subcmd.name}` already exists as an alias')
+		}
+		if subcmd.alias != '' && existing.matches(subcmd.alias) {
+			eprintln_exit('Command alias `${subcmd.alias}` already exists')
+		}
 	}
 	subcmd.parent = unsafe { cmd }
 	cmd.commands << subcmd
@@ -282,7 +295,7 @@ fn (mut cmd Command) parse_commands() {
 		arg := cmd.args[i]
 		for j in 0 .. cmd.commands.len {
 			mut command := cmd.commands[j]
-			if command.name == arg {
+			if command.matches(arg) {
 				for flag in global_flags {
 					command.add_flag(flag)
 				}
@@ -309,6 +322,17 @@ fn (mut cmd Command) parse_commands() {
 	cmd.handle_cb(cmd.pre_execute, 'preexecution')
 	cmd.handle_cb(cmd.execute, 'execution')
 	cmd.handle_cb(cmd.post_execute, 'postexecution')
+}
+
+fn (cmd &Command) display_name() string {
+	if cmd.alias == '' {
+		return cmd.name
+	}
+	return '${cmd.name} (${cmd.alias})'
+}
+
+fn (cmd &Command) matches(token string) bool {
+	return cmd.name == token || (cmd.alias != '' && cmd.alias == token)
 }
 
 fn (mut cmd Command) handle_cb(cb FnCommandCallback, label string) {

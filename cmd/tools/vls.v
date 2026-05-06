@@ -430,6 +430,7 @@ fn (upd VlsUpdater) cli_error(err IError) {
 		}
 		.silent {}
 	}
+
 	exit(1)
 }
 

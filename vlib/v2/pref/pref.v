@@ -55,6 +55,7 @@ pub mut:
 	gc_mode               GarbageCollectionMode // Garbage collection mode (-gc flag)
 	backend               Backend
 	arch                  Arch = .auto
+	target_os             string
 	output_file           string
 	printfn_list          []string // List of function names whose generated C source should be printed
 	user_defines          []string // User-defined comptime flags via -d <name>
@@ -179,7 +180,10 @@ pub fn new_preferences_from_args(args []string) Preferences {
 	if backend_str_short.len == 0 {
 		backend_str_short = ''
 	}
-	backend_str := if backend_str_long.len > 0 {
+	eval_backend_requested := '-eval' in args || '--eval' in args
+	backend_str := if eval_backend_requested {
+		'eval'
+	} else if backend_str_long.len > 0 {
 		backend_str_long
 	} else if backend_str_short.len > 0 {
 		backend_str_short
@@ -235,6 +239,7 @@ pub fn new_preferences_from_args(args []string) Preferences {
 
 	output_file := cmdline.option(args, '-o', cmdline.option(args, '-output', ''))
 	ccompiler := cmdline.option(args, '-cc', '')
+	target_os := normalize_os_name(cmdline.option(args, '-os', ''))
 
 	// Parse -printfn option (comma-separated list of function names to print)
 	mut printfn_str := cmdline.option(args, '-printfn', '')
@@ -294,14 +299,14 @@ pub fn new_preferences_from_args(args []string) Preferences {
 	}
 
 	// Validate flags: error on unknown options
-	known_flags_with_values := ['-backend', '-b', '-o', '-output', '-arch', '-printfn', '-gc',
-		'-d', '-hot-fn', '-cc']
+	known_flags_with_values := ['-backend', '-b', '-o', '-output', '-arch', '-os', '-printfn',
+		'-gc', '-d', '-hot-fn', '-cc']
 	mut known_boolean_flags := ['--debug', '--verbose', '-v', '--skip-genv', '--skip-builtin',
 		'--skip-imports', '--skip-type-check', '--no-parallel', '-nocache', '--nocache',
 		'-nomarkused', '--nomarkused', '-showcc', '--showcc', '-stats', '--stats',
 		'-print-parsed-files', '--print-parsed-files', '-keepc', '--profile-alloc', '-profile-alloc',
 		'-enable-globals', '--enable-globals', '-shared', '--shared', '-O0', '--single-backend',
-		'-single-backend', '-prod', '-prealloc']
+		'-single-backend', '-prod', '-prealloc', '-eval', '--eval']
 	$if ownership ? {
 		known_boolean_flags << '-ownership'
 	}
@@ -315,7 +320,9 @@ pub fn new_preferences_from_args(args []string) Preferences {
 			eprintln('  -o <file>              Output file name')
 			eprintln('  -backend <name>        Backend: eval, cleanc, c, v, arm64, x64 (default: cleanc)')
 			eprintln('  -b <name>              Short for -backend')
+			eprintln('  -eval                  Short for -backend eval')
 			eprintln('  -arch <name>           Architecture: auto, x64, arm64 (default: auto)')
+			eprintln('  -os <name>             Target OS (default: host OS)')
 			eprintln('  -printfn <names>       Print generated C for functions (comma-separated)')
 			eprintln('  -stats, --stats        Print compilation statistics')
 			eprintln('  -nocache, --nocache    Disable build cache')
@@ -362,6 +369,7 @@ pub fn new_preferences_from_args(args []string) Preferences {
 		gc_mode:               gc_mode
 		backend:               backend
 		arch:                  arch
+		target_os:             target_os
 		output_file:           output_file
 		printfn_list:          printfn_list
 		user_defines:          all_defines
@@ -375,7 +383,7 @@ pub fn new_preferences_from_args(args []string) Preferences {
 pub fn new_preferences_using_options(options []string) Preferences {
 	// Default backend based on OS: macOS defaults to arm64, others to x64
 	mut backend := if os.user_os() == 'macos' { Backend.arm64 } else { Backend.x64 }
-	if '--eval' in options || 'eval' in options {
+	if '-eval' in options || '--eval' in options || 'eval' in options {
 		backend = .eval
 	} else if '--cleanc' in options || 'cleanc' in options {
 		backend = .cleanc
@@ -429,4 +437,12 @@ pub fn (p &Preferences) get_effective_arch() Arch {
 	}
 	// Auto-detect: macOS defaults to arm64, others to x64
 	return if os.user_os() == 'macos' { Arch.arm64 } else { Arch.x64 }
+}
+
+// get_effective_os returns the explicitly requested target OS, or the host OS.
+pub fn (p &Preferences) get_effective_os() string {
+	if p.target_os.len > 0 {
+		return p.target_os
+	}
+	return normalize_os_name(os.user_os())
 }

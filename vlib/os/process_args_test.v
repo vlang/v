@@ -19,6 +19,15 @@ fn test_v_run_quoted_args_with_spaces() {
 	assert res.output.starts_with("['1', 'Learn V', '3']")
 }
 
+fn test_v_run_quoted_args_with_spaces__use_os_system_to_run() {
+	echo_os_args := os.join_path(vroot, 'cmd/tools/test_os_args.v')
+	res :=
+		os.execute('${os.quoted_path(vexe)} -use-os-system-to-run run ${os.quoted_path(echo_os_args)} 1 "Learn V" 3')
+	println(res)
+	assert res.exit_code == 0
+	assert res.output.starts_with("['1', 'Learn V', '3']")
+}
+
 fn test_v_run_file_from_path_with_spaces() {
 	echo_os_args := os.join_path(vroot, 'cmd/tools/test_os_args.v')
 	spaced_dir := os.join_path(os.vtmp_dir(), 'v run path with spaces')

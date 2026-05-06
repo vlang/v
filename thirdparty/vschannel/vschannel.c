@@ -24,6 +24,8 @@ struct TlsContext {
 	CredHandle             h_client_creds;
 	CtxtHandle             h_context;
 	PCCERT_CONTEXT         p_pemote_cert_context;
+	INT                    last_error_code;
+	BOOL                   validate_server_certificate;
 	BOOL                   creds_initialized;
 	BOOL                   context_initialized;
 };
@@ -31,12 +33,26 @@ struct TlsContext {
 TlsContext new_tls_context() {
 	return (struct TlsContext) {
 		.cert_store            = NULL,
+		.last_error_code       = 0,
 		.socket                = INVALID_SOCKET,
+		.validate_server_certificate = TRUE,
 		.creds_initialized     = FALSE,
 		.context_initialized   = FALSE,
 		.p_pemote_cert_context = NULL
 	};
 };
+
+static void vschannel_clear_last_error(TlsContext *tls_ctx) {
+	tls_ctx->last_error_code = 0;
+}
+
+static void vschannel_set_last_error(TlsContext *tls_ctx, INT err_code) {
+	tls_ctx->last_error_code = err_code;
+}
+
+static INT vschannel_last_error(TlsContext *tls_ctx) {
+	return tls_ctx->last_error_code;
+}
 
 void vschannel_cleanup(TlsContext *tls_ctx) {
 	// Free the server certificate context.
@@ -70,8 +86,9 @@ void vschannel_cleanup(TlsContext *tls_ctx) {
 	}
 }
 
-void vschannel_init(TlsContext *tls_ctx) {
+void vschannel_init(TlsContext *tls_ctx, BOOL validate_server_certificate) {
 	tls_ctx->sspi = InitSecurityInterface();
+	tls_ctx->validate_server_certificate = validate_server_certificate;
 
 	if(tls_ctx->sspi == NULL) {
 		wprintf(L"Error 0x%x reading security interface.\n",
@@ -101,62 +118,72 @@ INT request(TlsContext *tls_ctx, INT iport, LPWSTR host, CHAR *req, DWORD req_le
 	protocol = SP_PROT_TLS1_2_CLIENT;
 
 	port_number = iport;
+	vschannel_clear_last_error(tls_ctx);
 
 	// Connect to server.
 	if(connect_to_server(tls_ctx, host, port_number)) {
-		wprintf(L"Error connecting to server\n");
 		vschannel_cleanup(tls_ctx);
 		return resp_length;
 	}
 
 	// Perform handshake
-	if(perform_client_handshake(tls_ctx, host, &ExtraData)) {
+	Status = perform_client_handshake(tls_ctx, host, &ExtraData);
+	if(Status) {
+		vschannel_set_last_error(tls_ctx, Status);
 		wprintf(L"Error performing handshake\n");
 		vschannel_cleanup(tls_ctx);
 		return resp_length;
 	}
 	tls_ctx->context_initialized = TRUE;
 
-	// Authenticate server's credentials.
+	if(tls_ctx->validate_server_certificate) {
+		// Authenticate server's credentials.
 
-	// Get server's certificate.
-	Status = tls_ctx->sspi->QueryContextAttributes(&tls_ctx->h_context,
-											 SECPKG_ATTR_REMOTE_CERT_CONTEXT,
-											 (PVOID)&tls_ctx->p_pemote_cert_context);
-	if(Status != SEC_E_OK) {
-		wprintf(L"Error 0x%x querying remote certificate\n", Status);
-		vschannel_cleanup(tls_ctx);
-		return resp_length;
+		// Get server's certificate.
+		Status = tls_ctx->sspi->QueryContextAttributes(&tls_ctx->h_context,
+												 SECPKG_ATTR_REMOTE_CERT_CONTEXT,
+												 (PVOID)&tls_ctx->p_pemote_cert_context);
+		if(Status != SEC_E_OK) {
+			vschannel_set_last_error(tls_ctx, Status);
+			wprintf(L"Error 0x%x querying remote certificate\n", Status);
+			vschannel_cleanup(tls_ctx);
+			return resp_length;
+		}
+
+		// Attempt to validate server certificate.
+		Status = verify_server_certificate(tls_ctx->p_pemote_cert_context, host,0);
+		if(Status) {
+			vschannel_set_last_error(tls_ctx, Status);
+			// The server certificate did not validate correctly. At this
+			// point, we cannot tell if we are connecting to the correct
+			// server, or if we are connecting to a "man in the middle"
+			// attack server.
+
+			// It is therefore best if we abort the connection.
+
+			wprintf(L"Error 0x%x authenticating server credentials!\n", Status);
+			vschannel_cleanup(tls_ctx);
+			return resp_length;
+		}
+
+		// Free the server certificate context.
+		CertFreeCertificateContext(tls_ctx->p_pemote_cert_context);
+		tls_ctx->p_pemote_cert_context = NULL;
 	}
-
-	// Attempt to validate server certificate.
-	Status = verify_server_certificate(tls_ctx->p_pemote_cert_context, host,0);
-	if(Status) {
-		// The server certificate did not validate correctly. At this
-		// point, we cannot tell if we are connecting to the correct 
-		// server, or if we are connecting to a "man in the middle" 
-		// attack server.
-
-		// It is therefore best if we abort the connection.
-
-		wprintf(L"Error 0x%x authenticating server credentials!\n", Status);
-		vschannel_cleanup(tls_ctx);
-		return resp_length;
-	}
-
-	// Free the server certificate context.
-	CertFreeCertificateContext(tls_ctx->p_pemote_cert_context);
-	tls_ctx->p_pemote_cert_context = NULL;
 
 	// Request from server
-	if(https_make_request(tls_ctx, req, req_len, out, &resp_length, afn)) {
+	Status = https_make_request(tls_ctx, req, req_len, out, &resp_length, afn);
+	if(Status) {
+		vschannel_set_last_error(tls_ctx, Status);
 		vschannel_cleanup(tls_ctx);
 		return resp_length;
 	}
 	
 	// Send a close_notify alert to the server and
 	// close down the connection.
-	if(disconnect_from_server(tls_ctx)) {
+	Status = disconnect_from_server(tls_ctx);
+	if(Status) {
+		vschannel_set_last_error(tls_ctx, Status);
 		wprintf(L"Error disconnecting from server\n");
 		vschannel_cleanup(tls_ctx);
 		return resp_length;
@@ -217,15 +244,10 @@ static SECURITY_STATUS create_credentials(TlsContext *tls_ctx) {
 	}
 
 	tls_ctx->schannel_cred.dwFlags |= SCH_CRED_NO_DEFAULT_CREDS;
+	tls_ctx->schannel_cred.dwFlags |= SCH_CRED_MANUAL_CRED_VALIDATION;
 
-	// The SCH_CRED_MANUAL_CRED_VALIDATION flag is specified because
-	// this sample verifies the server certificate manually. 
-	// Applications that expect to run on WinNT, Win9x, or WinME 
-	// should specify this flag and also manually verify the server
-	// certificate. Applications running on newer versions of Windows can
-	// leave off this flag, in which case the InitializeSecurityContext
-	// function will validate the server certificate automatically.
-	// tls_ctx->schannel_cred.dwFlags |= SCH_CRED_MANUAL_CRED_VALIDATION;
+	// Keep certificate validation under the caller's control. The validated
+	// path runs explicit hostname/chain validation after the handshake.
 
 	// Create an SSPI credential.
 
@@ -272,8 +294,9 @@ static INT connect_to_server(TlsContext *tls_ctx, LPWSTR host, INT port_number) 
 
 	Socket = socket(PF_INET, SOCK_STREAM, 0);
 	if(Socket == INVALID_SOCKET) {
-		wprintf(L"Error %d creating socket\n", WSAGetLastError());
-		return WSAGetLastError();
+		INT err_code = WSAGetLastError();
+		vschannel_set_last_error(tls_ctx, err_code);
+		return err_code;
 	}
 
 	LPWSTR connect_name = use_proxy ? psz_proxy_server : host;
@@ -282,13 +305,11 @@ static INT connect_to_server(TlsContext *tls_ctx, LPWSTR host, INT port_number) 
 	int res = wsprintf(service_name, L"%d", port_number);
 
 	if(WSAConnectByNameW(Socket,connect_name, service_name, &local_address_length, 
-		&local_address, &remote_address_length, &remote_address, &tv, NULL) == SOCKET_ERROR) {
-		wprintf(L"Error %d connecting to \"%s\" (%s)\n", 
-			WSAGetLastError(),
-			connect_name, 
-			service_name);
+		&local_address, &remote_address_length, &remote_address, &tv, NULL) == FALSE) {
+		INT err_code = WSAGetLastError();
+		vschannel_set_last_error(tls_ctx, err_code);
 		closesocket(Socket);
-		return WSAGetLastError();
+		return err_code;
 	}
 
 	if(use_proxy) {
@@ -305,15 +326,17 @@ static INT connect_to_server(TlsContext *tls_ctx, LPWSTR host, INT port_number) 
 
 		// Send message to proxy server
 		if(send(Socket, pbMessage, cbMessage, 0) == SOCKET_ERROR) {
-			wprintf(L"Error %d sending message to proxy!\n", WSAGetLastError());
-			return WSAGetLastError();
+			INT err_code = WSAGetLastError();
+			vschannel_set_last_error(tls_ctx, err_code);
+			return err_code;
 		}
 
 		// Receive message from proxy server
 		cbMessage = recv(Socket, pbMessage, 200, 0);
 		if(cbMessage == SOCKET_ERROR) {
-			wprintf(L"Error %d receiving message from proxy\n", WSAGetLastError());
-			return WSAGetLastError();
+			INT err_code = WSAGetLastError();
+			vschannel_set_last_error(tls_ctx, err_code);
+			return err_code;
 		}
 
 		// this sample is limited but in normal use it 
@@ -963,7 +986,13 @@ static DWORD verify_server_certificate( PCCERT_CONTEXT  pServerCert, LPWSTR host
 	ChainPara.RequestedUsage.Usage.cUsageIdentifier     = cUsages;
 	ChainPara.RequestedUsage.Usage.rgpszUsageIdentifier = rgszUsages;
 
-	if(!CertGetCertificateChain(NULL, pServerCert, NULL, pServerCert->hCertStore, &ChainPara, 0, NULL, &pChainContext)) {
+	// Best-effort TLS revocation check: detect a positively revoked leaf
+	// certificate, but let policy evaluation ignore unknown/offline status.
+	if(!CertGetCertificateChain(NULL, pServerCert, NULL, pServerCert->hCertStore, &ChainPara,
+		CERT_CHAIN_CACHE_END_CERT |
+		CERT_CHAIN_REVOCATION_CHECK_END_CERT |
+		CERT_CHAIN_REVOCATION_ACCUMULATIVE_TIMEOUT,
+		NULL, &pChainContext)) {
 		Status = GetLastError();
 		wprintf(L"Error 0x%x returned by CertGetCertificateChain!\n", Status);
 		goto cleanup;
@@ -978,6 +1007,7 @@ static DWORD verify_server_certificate( PCCERT_CONTEXT  pServerCert, LPWSTR host
 
 	memset(&PolicyPara, 0, sizeof(PolicyPara));
 	PolicyPara.cbSize            = sizeof(PolicyPara);
+	PolicyPara.dwFlags           = CERT_CHAIN_POLICY_IGNORE_ALL_REV_UNKNOWN_FLAGS;
 	PolicyPara.pvExtraPolicyPara = &polHttps;
 
 	memset(&PolicyStatus, 0, sizeof(PolicyStatus));

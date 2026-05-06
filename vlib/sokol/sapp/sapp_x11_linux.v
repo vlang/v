@@ -713,6 +713,22 @@ fn x11_translate_keysyms(keysyms &KeySym, width int) KeyCode {
 	}
 }
 
+fn x11_lookup_keysym(event &C.XEvent) KeySym {
+	mut keysym := KeySym(0)
+	unsafe {
+		C.XLookupString(&event.xkey, nil, 0, &keysym, nil)
+	}
+	return keysym
+}
+
+fn x11_translate_event_key(scancode int, keysym KeySym) KeyCode {
+	key := linux_translate_navigation_or_keypad_keysym(u32(keysym))
+	if key != .invalid {
+		return key
+	}
+	return x11_translate_key(scancode)
+}
+
 // XKB key name to keycode mapping entry
 struct X11KeymapEntry {
 mut:
@@ -1061,6 +1077,39 @@ fn x11_set_fullscreen(enable bool) {
 			 i64(g_sapp_state.x11.net_wm_state_fullscreen), 0, 1, 0)
 		}
 	}
+	C.XFlush(g_sapp_state.x11.display)
+}
+
+// set_resizable toggles whether the current Linux window can be resized by the window manager.
+pub fn set_resizable(resizable bool) {
+	$if sokol_wayland ? {
+		wl_set_resizable(resizable)
+	} $else {
+		x11_set_resizable(resizable)
+	}
+}
+
+fn x11_set_resizable(resizable bool) {
+	if g_sapp_state.x11.display == unsafe { nil } || g_sapp_state.x11.window == 0 {
+		return
+	}
+	mut hints := C.XAllocSizeHints()
+	if hints == unsafe { nil } {
+		return
+	}
+	hints.flags = pw_gravity
+	hints.win_gravity = center_gravity
+	if !resizable {
+		mut attribs := C.XWindowAttributes{}
+		C.XGetWindowAttributes(g_sapp_state.x11.display, g_sapp_state.x11.window, &attribs)
+		hints.flags |= i64(1 << 4) | i64(1 << 5) // PMinSize | PMaxSize
+		hints.min_width = attribs.width
+		hints.min_height = attribs.height
+		hints.max_width = attribs.width
+		hints.max_height = attribs.height
+	}
+	C.XSetWMNormalHints(g_sapp_state.x11.display, g_sapp_state.x11.window, hints)
+	C.XFree(hints)
 	C.XFlush(g_sapp_state.x11.display)
 }
 
@@ -1637,7 +1686,8 @@ fn x11_on_focusout(event &C.XEvent) {
 fn x11_on_keypress(event &C.XEvent) {
 	unsafe {
 		keycode := int(event.xkey.keycode)
-		key := x11_translate_key(keycode)
+		keysym := x11_lookup_keysym(event)
+		key := x11_translate_event_key(keycode, keysym)
 		repeat := x11_keypress_repeat(keycode)
 		mut mods := x11_mods(event.xkey.state)
 		// X11 doesn't set modifier bit on key down, so emulate that
@@ -1645,8 +1695,6 @@ fn x11_on_keypress(event &C.XEvent) {
 		if key != .invalid {
 			x11_key_event(.key_down, key, repeat, mods)
 		}
-		mut keysym := KeySym(0)
-		C.XLookupString(&event.xkey, nil, 0, &keysym, nil)
 		chr := x11_keysym_to_unicode(keysym)
 		if chr > 0 {
 			x11_char_event(u32(chr), repeat, mods)
@@ -1657,7 +1705,8 @@ fn x11_on_keypress(event &C.XEvent) {
 fn x11_on_keyrelease(event &C.XEvent) {
 	unsafe {
 		keycode := int(event.xkey.keycode)
-		key := x11_translate_key(keycode)
+		keysym := x11_lookup_keysym(event)
+		key := x11_translate_event_key(keycode, keysym)
 		x11_keyrelease_repeat(keycode)
 		if key != .invalid {
 			mut mods := x11_mods(event.xkey.state)

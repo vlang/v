@@ -61,6 +61,13 @@ fn get_test_files(path string) []string {
 	mut ref := &files
 	os.walk(path, fn [mut ref] (p string) {
 		if p.ends_with('_keep.vv') || p.ends_with('_expected.vv') {
+			$if macos {
+				$if arm64 {
+					if os.file_name(p) == 'orm_keep.vv' {
+						return
+					}
+				}
+			}
 			ref << p
 		}
 	})

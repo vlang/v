@@ -91,9 +91,7 @@ pub fn malloc_noscan(n isize) &u8 {
 		_memory_panic(@FN, n)
 	}
 	mut res := &u8(unsafe { nil })
-	$if native {
-		res = unsafe { C.malloc(n) }
-	} $else $if prealloc {
+	$if prealloc {
 		return unsafe { prealloc_malloc(n) }
 	} $else $if vgc ? {
 		unsafe {
@@ -325,8 +323,6 @@ pub fn vcalloc(n isize) &u8 {
 	}
 	$if prealloc {
 		return unsafe { prealloc_calloc(n) }
-	} $else $if native {
-		return unsafe { C.calloc(1, n) }
 	} $else $if vgc ? {
 		return unsafe { &u8(vgc_calloc(usize(n))) }
 	} $else $if gcboehm ? {
@@ -397,6 +393,13 @@ pub fn free(ptr voidptr) {
 		$if trace_free_nulls_break ? {
 			break_if_debugger_attached()
 		}
+		return
+	}
+	// `none__` is a process-wide singleton IError used by option/results to
+	// represent "no error object". Self-hosted builds can still route that
+	// sentinel through explicit cleanup paths under `-gc none`, so ignore it.
+	none_err := &C.IError(&none__)
+	if ptr == none_err._object {
 		return
 	}
 	$if prealloc {

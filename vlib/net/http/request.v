@@ -164,17 +164,21 @@ pub fn (req &Request) do() !Response {
 	mut url := urllib.parse(req.url) or { return error('http.Request.do: invalid url ${req.url}') }
 	mut rurl := url
 	mut resp := Response{}
+	mut method := req.method
+	mut data := req.data
+	mut header := req.header
 	mut nredirects := 0
 	for {
 		if nredirects == max_redirects {
 			return error('http.request.do: maximum number of redirects reached (${max_redirects})')
 		}
-		qresp := req.method_and_url_to_response(req.method, rurl)!
+		qresp := req.method_and_url_to_response(method, rurl, data, header)!
 		resp = qresp
 		if !req.allow_redirect {
 			break
 		}
-		if resp.status() !in [.moved_permanently, .found, .see_other, .temporary_redirect,
+		status := resp.status()
+		if status !in [.moved_permanently, .found, .see_other, .temporary_redirect,
 			.permanent_redirect] {
 			break
 		}
@@ -192,13 +196,48 @@ pub fn (req &Request) do() !Response {
 		qrurl := urllib.parse(redirect_url) or {
 			return error('http.request.do: invalid URL in redirect "${redirect_url}"')
 		}
+		method, data, header = redirected_request_parts(method, status, data, header)
 		rurl = qrurl
 		nredirects++
 	}
 	return resp
 }
 
-fn (req &Request) method_and_url_to_response(method Method, url urllib.URL) !Response {
+fn redirected_request_parts(method Method, status Status, data string, header Header) (Method, string, Header) {
+	next_method := redirected_method(method, status)
+	if next_method == method {
+		return method, data, header
+	}
+	mut next_header := header
+	next_header.delete(.content_length)
+	next_header.delete(.content_type)
+	next_header.delete(.transfer_encoding)
+	return next_method, '', next_header
+}
+
+fn redirected_method(method Method, status Status) Method {
+	return match status {
+		.see_other {
+			if method == Method.head {
+				Method.head
+			} else {
+				Method.get
+			}
+		}
+		.moved_permanently, .found {
+			if method == Method.post {
+				Method.get
+			} else {
+				method
+			}
+		}
+		else {
+			method
+		}
+	}
+}
+
+fn (req &Request) method_and_url_to_response(method Method, url urllib.URL, data string, header Header) !Response {
 	host_name := url.hostname()
 	scheme := url.scheme
 	p := url.escaped_path().trim_left('/')
@@ -216,7 +255,7 @@ fn (req &Request) method_and_url_to_response(method Method, url urllib.URL) !Res
 	if scheme == 'https' && req.proxy == unsafe { nil } {
 		// println('ssl_do( ${nport}, ${method}, ${host_name}, ${path} )')
 		for i in 0 .. req.max_retries {
-			res := req.ssl_do(nport, method, host_name, path) or {
+			res := req.ssl_do(nport, method, host_name, path, data, header) or {
 				if i == req.max_retries - 1 || is_no_need_retry_error(err.code()) {
 					return err
 				}
@@ -227,7 +266,7 @@ fn (req &Request) method_and_url_to_response(method Method, url urllib.URL) !Res
 	} else if scheme == 'http' && req.proxy == unsafe { nil } {
 		// println('http_do( ${nport}, ${method}, ${host_name}, ${path} )')
 		for i in 0 .. req.max_retries {
-			res := req.http_do('${host_name}:${nport}', method, path) or {
+			res := req.http_do('${host_name}:${nport}', method, path, data, header) or {
 				if i == req.max_retries - 1 || is_no_need_retry_error(err.code()) {
 					return err
 				}
@@ -237,7 +276,7 @@ fn (req &Request) method_and_url_to_response(method Method, url urllib.URL) !Res
 		}
 	} else if req.proxy != unsafe { nil } {
 		for i in 0 .. req.max_retries {
-			res := req.proxy.http_do(url, method, path, req) or {
+			res := req.proxy.http_do(url, method, path, req, data, header) or {
 				if i == req.max_retries - 1 || is_no_need_retry_error(err.code()) {
 					return err
 				}
@@ -250,6 +289,10 @@ fn (req &Request) method_and_url_to_response(method Method, url urllib.URL) !Res
 }
 
 fn (req &Request) build_request_headers(method Method, host_name string, port int, path string) string {
+	return req.build_request_headers_with(method, host_name, port, path, req.data, req.header)
+}
+
+fn (req &Request) build_request_headers_with(method Method, host_name string, port int, path string, data string, header Header) string {
 	mut sb := strings.new_builder(4096)
 	version := if req.version == .unknown { Version.v1_1 } else { req.version }
 	sb.write_string(method.str())
@@ -258,7 +301,7 @@ fn (req &Request) build_request_headers(method Method, host_name string, port in
 	sb.write_string(' ')
 	sb.write_string(version.str())
 	sb.write_string('\r\n')
-	if !req.header.contains(.host) {
+	if !header.contains(.host) {
 		sb.write_string('Host: ')
 		if port != 80 && port != 443 && port != 0 {
 			sb.write_string('${host_name}:${port}')
@@ -267,43 +310,47 @@ fn (req &Request) build_request_headers(method Method, host_name string, port in
 		}
 		sb.write_string('\r\n')
 	}
-	if !req.header.contains(.user_agent) {
+	if !header.contains(.user_agent) {
 		ua := req.user_agent
 		sb.write_string('User-Agent: ')
 		sb.write_string(ua)
 		sb.write_string('\r\n')
 	}
-	if !req.header.contains(.content_length) {
+	if !header.contains(.content_length) {
 		// Write Content-Length: 0 even if there's no content, since some APIs
 		// stop working without this header.
 		sb.write_string('Content-Length: ')
-		sb.write_string(req.data.len.str())
+		sb.write_string(data.len.str())
 		sb.write_string('\r\n')
 	}
 	chkey := CommonHeader.cookie.str()
-	for key in req.header.keys() {
+	for key in header.keys() {
 		if key == chkey {
 			continue
 		}
-		val := req.header.custom_values(key).join('; ')
+		val := header.custom_values(key).join('; ')
 		sb.write_string(key)
 		sb.write_string(': ')
 		sb.write_string(val)
 		sb.write_string('\r\n')
 	}
-	sb.write_string(req.build_request_cookies_header())
+	sb.write_string(req.build_request_cookies_header_with_header(header))
 	sb.write_string('Connection: close\r\n')
 	sb.write_string('\r\n')
-	sb.write_string(req.data)
+	sb.write_string(data)
 	return sb.str()
 }
 
 fn (req &Request) build_request_cookies_header() string {
+	return req.build_request_cookies_header_with_header(req.header)
+}
+
+fn (req &Request) build_request_cookies_header_with_header(header Header) string {
 	if req.cookies.len < 1 {
 		return ''
 	}
 	mut sb_cookie := strings.new_builder(1024)
-	hvcookies := req.header.values(.cookie)
+	hvcookies := header.values(.cookie)
 	total_cookies := req.cookies.len + hvcookies.len
 	sb_cookie.write_string('Cookie: ')
 	mut idx := 0
@@ -327,9 +374,9 @@ fn (req &Request) build_request_cookies_header() string {
 	return sb_cookie.str()
 }
 
-fn (req &Request) http_do(host string, method Method, path string) !Response {
+fn (req &Request) http_do(host string, method Method, path string, data string, header Header) !Response {
 	host_name, port := net.split_address(host)!
-	s := req.build_request_headers(method, host_name, port, path)
+	s := req.build_request_headers_with(method, host_name, port, path, data, header)
 	mut client := net.dial_tcp(host)!
 	client.set_read_timeout(req.read_timeout)
 	client.set_write_timeout(req.write_timeout)
@@ -340,9 +387,9 @@ fn (req &Request) http_do(host string, method Method, path string) !Response {
 		eprint(s)
 		eprintln('')
 	}
-	mut bytes := req.read_all_from_client_connection(client)!
+	response_data := req.read_all_from_client_connection(client)!
 	client.close()!
-	response_text := bytes.bytestr()
+	response_text := response_data.data.bytestr()
 	$if trace_http_response ? {
 		eprint('< ')
 		eprint(response_text)
@@ -351,7 +398,7 @@ fn (req &Request) http_do(host string, method Method, path string) !Response {
 	if req.on_finish != unsafe { nil } {
 		req.on_finish(req, u64(response_text.len))!
 	}
-	return parse_response(response_text)
+	return parse_received_response(response_text, response_data.info)
 }
 
 // abstract over reading the whole content from TCP or SSL connections:
@@ -367,14 +414,15 @@ enum ChunkedBodyTrackerState {
 
 struct ChunkedBodyTracker {
 mut:
-	state      ChunkedBodyTrackerState = .chunk_size
-	line_buf   []u8
-	chunk_left u64
-	complete   bool
-	invalid    bool
+	state       ChunkedBodyTrackerState = .chunk_size
+	line_buf    []u8
+	chunk_left  u64
+	decoded_len u64
+	complete    bool
+	invalid     bool
 }
 
-fn (mut tracker ChunkedBodyTracker) advance(data []u8) bool {
+fn (mut tracker ChunkedBodyTracker) advance(data []u8, mut decoded []u8) bool {
 	if tracker.complete || tracker.invalid || data.len == 0 {
 		return tracker.complete
 	}
@@ -406,9 +454,13 @@ fn (mut tracker ChunkedBodyTracker) advance(data []u8) bool {
 			.chunk_data {
 				available := data.len - i
 				if tracker.chunk_left < u64(available) {
+					decoded << data[i..i + int(tracker.chunk_left)]
+					tracker.decoded_len += tracker.chunk_left
 					i += int(tracker.chunk_left)
 					tracker.chunk_left = 0
 				} else {
+					decoded << data[i..]
+					tracker.decoded_len += u64(available)
 					tracker.chunk_left -= u64(available)
 					i = data.len
 				}
@@ -485,7 +537,42 @@ fn chunked_hex_value(ch u8) u8 {
 	return 0
 }
 
-fn (req &Request) receive_all_data_from_cb_in_builder(mut content strings.Builder, con voidptr, receive_chunk_cb FnReceiveChunk) ! {
+struct ReceivedResponseInfo {
+	headers_end         int = -1
+	is_chunked_transfer bool
+	has_truncated_body  bool
+}
+
+fn parse_received_response(response_text string, info ReceivedResponseInfo) !Response {
+	if info.is_chunked_transfer && info.has_truncated_body && info.headers_end > 0
+		&& info.headers_end <= response_text.len {
+		return parse_response(response_text[..info.headers_end])
+	}
+	return parse_response(response_text)
+}
+
+// response_has_no_body returns true when the HTTP method or status code
+// guarantees that no response body is sent (HEAD requests, 1xx informational,
+// 204 No Content, 304 Not Modified). For these, a `Content-Length` header
+// describes the body that *would* have been sent for a GET, so it must not
+// drive read termination or completion validation. (RFC 7230 §3.3.3)
+fn response_has_no_body(method Method, status_code int) bool {
+	if method == .head {
+		return true
+	}
+	return status_code in [101, 102, 103, 204, 304]
+}
+
+fn validate_received_response_completion(has_content_length bool, expected_size u64, body_so_far u64, is_chunked_transfer bool, chunked_complete bool) ! {
+	if has_content_length && body_so_far < expected_size {
+		return error('http.request: response body ended early: received ${body_so_far} of ${expected_size} bytes')
+	}
+	if is_chunked_transfer && !chunked_complete {
+		return error('http.request: incomplete chunked response')
+	}
+}
+
+fn (req &Request) receive_all_data_from_cb_in_builder(mut content strings.Builder, con voidptr, receive_chunk_cb FnReceiveChunk) !ReceivedResponseInfo {
 	mut buff := [bufsize]u8{}
 	bp := unsafe { &buff[0] }
 	mut readcounter := 0
@@ -499,10 +586,20 @@ fn (req &Request) receive_all_data_from_cb_in_builder(mut content strings.Builde
 	mut old_len := u64(0)
 	mut new_len := u64(0)
 	mut status_code := -1
+	mut has_truncated_body := false
 	for {
 		readcounter++
 		len := receive_chunk_cb(con, bp, bufsize) or {
 			if err is io.Eof {
+				body_so_far := if headers_end >= 0 && old_len > body_pos {
+					old_len - body_pos
+				} else {
+					u64(0)
+				}
+				if !response_has_no_body(req.method, status_code) {
+					validate_received_response_completion(has_content_length, expected_size,
+						body_so_far, is_chunked_transfer, chunked_body_tracker.complete)!
+				}
 				break
 			}
 			return err
@@ -514,6 +611,15 @@ fn (req &Request) receive_all_data_from_cb_in_builder(mut content strings.Builde
 			eprintln('-'.repeat(20))
 		}
 		if len <= 0 {
+			body_so_far := if headers_end >= 0 && old_len > body_pos {
+				old_len - body_pos
+			} else {
+				u64(0)
+			}
+			if !response_has_no_body(req.method, status_code) {
+				validate_received_response_completion(has_content_length, expected_size,
+					body_so_far, is_chunked_transfer, chunked_body_tracker.complete)!
+			}
 			break
 		}
 		new_len = old_len + u64(len)
@@ -576,23 +682,35 @@ fn (req &Request) receive_all_data_from_cb_in_builder(mut content strings.Builde
 		if headers_end >= 0 && new_len > body_pos {
 			body_so_far = u64(new_len) - body_pos
 		}
-		if req.on_progress_body != unsafe { nil } {
-			req.on_progress_body(req, bchunk, body_so_far, expected_size, status_code)!
+		mut progress_body_so_far := body_so_far
+		mut chunked_complete := false
+		if is_chunked_transfer {
+			mut dechunked := []u8{}
+			chunked_complete = chunked_body_tracker.advance(bchunk, mut dechunked)
+			progress_body_so_far = chunked_body_tracker.decoded_len
+			if req.on_progress_body != unsafe { nil } && dechunked.len > 0 {
+				req.on_progress_body(req, dechunked, progress_body_so_far, expected_size,
+					status_code)!
+			}
+		} else if req.on_progress_body != unsafe { nil } {
+			req.on_progress_body(req, bchunk, progress_body_so_far, expected_size, status_code)!
 		}
 		if !(req.stop_copying_limit > 0 && new_len > req.stop_copying_limit) {
 			unsafe { content.write_ptr(bp, len) }
+		} else if headers_end >= 0 && new_len > body_pos {
+			has_truncated_body = true
 		}
-		if is_chunked_transfer && chunked_body_tracker.advance(bchunk) {
+		if is_chunked_transfer && chunked_complete {
+			break
+		}
+		if headers_end >= 0 && response_has_no_body(req.method, status_code) {
+			// HEAD / 1xx / 204 / 304: response body is forbidden by the spec, so
+			// stop as soon as the headers terminator is in. Any `Content-Length`
+			// describes a body that will never be sent.
 			break
 		}
 		if has_content_length {
 			if expected_size > 0 && body_so_far >= expected_size {
-				break
-			}
-			// Some streaming responses may incorrectly send `Content-Length: 0` and then stream data.
-			// Only short-circuit zero-length bodies for statuses/methods that must not have a body.
-			if expected_size == 0
-				&& (req.method == .head || status_code in [101, 102, 103, 204, 304]) {
 				break
 			}
 		}
@@ -601,6 +719,11 @@ fn (req &Request) receive_all_data_from_cb_in_builder(mut content strings.Builde
 		}
 		old_len = new_len
 	}
+	return ReceivedResponseInfo{
+		headers_end:         headers_end
+		is_chunked_transfer: is_chunked_transfer
+		has_truncated_body:  has_truncated_body
+	}
 }
 
 fn read_from_tcp_connection_cb(con voidptr, buf &u8, bufsize int) !int {
@@ -608,10 +731,19 @@ fn read_from_tcp_connection_cb(con voidptr, buf &u8, bufsize int) !int {
 	return r.read_ptr(buf, bufsize)
 }
 
-fn (req &Request) read_all_from_client_connection(r &net.TcpConn) ![]u8 {
+struct ReceivedResponseBuffer {
+	data []u8
+	info ReceivedResponseInfo
+}
+
+fn (req &Request) read_all_from_client_connection(r &net.TcpConn) !ReceivedResponseBuffer {
 	mut content := strings.new_builder(4096)
-	req.receive_all_data_from_cb_in_builder(mut content, voidptr(r), read_from_tcp_connection_cb)!
-	return content
+	info := req.receive_all_data_from_cb_in_builder(mut content, voidptr(r),
+		read_from_tcp_connection_cb)!
+	return ReceivedResponseBuffer{
+		data: content
+		info: info
+	}
 }
 
 // referer returns 'Referer' header value of the given request
@@ -893,33 +1025,46 @@ pub fn parse_multipart_form(body string, boundary string) (map[string]string, ma
 	// dump(boundary)
 	mut form := map[string]string{}
 	mut files := map[string][]FileData{}
-	// TODO: do not use split, but only indexes, to reduce copying of potentially large data
-	sections := body.split(boundary)
-	fields := sections#[1..sections.len - 1]
+	if body.len == 0 || boundary.len == 0 || boundary.len > body.len {
+		return form, files
+	}
+	mut field_start := body.index_after_(boundary, 0)
+	if field_start == -1 {
+		return form, files
+	}
+	field_start += boundary.len
 	mut line_segments := []LineSegmentIndexes{cap: 100}
-	for field in fields {
+	for {
+		if field_start > body.len - boundary.len {
+			break
+		}
+		field_end := body.index_after_(boundary, field_start)
+		if field_end == -1 {
+			break
+		}
 		line_segments.clear()
-		mut line_idx, mut line_start := 0, 0
-		for cidx, c in field {
+		mut line_idx, mut line_start := 0, field_start
+		for cidx := field_start; cidx < field_end; cidx++ {
 			if line_idx >= 6 {
 				// no need to scan further
 				break
 			}
-			if c == `\n` {
+			if body[cidx] == `\n` {
 				line_segments << LineSegmentIndexes{line_start, cidx}
 				line_start = cidx + 1
 				line_idx++
 			}
 		}
-		line_segments << LineSegmentIndexes{line_start, field.len}
+		line_segments << LineSegmentIndexes{line_start, field_end}
+		field_start = field_end + boundary.len
 		if line_segments.len < 2 {
 			continue
 		}
-		line1 := field#[line_segments[1].start..line_segments[1].end]
+		line1 := body#[line_segments[1].start..line_segments[1].end]
 		line2 := if line_segments.len == 2 {
 			''
 		} else {
-			field#[line_segments[2].start..line_segments[2].end]
+			body#[line_segments[2].start..line_segments[2].end]
 		}
 		disposition := parse_disposition(line1.trim_space())
 		// Grab everything between the double quotes
@@ -942,7 +1087,11 @@ pub fn parse_multipart_form(body string, boundary string) (map[string]string, ma
 			// line4: DATA
 			// ...
 			// lineX: --
-			data := field[line_segments[4].start..field.len - 4] // each multipart field ends with \r\n--
+			data_end := field_end - 4 // each multipart field ends with \r\n--
+			if data_end < line_segments[4].start {
+				continue
+			}
+			data := body[line_segments[4].start..data_end]
 			// dump(data.limit(20).bytes())
 			// dump(data.len)
 			if name !in files {
@@ -958,7 +1107,11 @@ pub fn parse_multipart_form(body string, boundary string) (map[string]string, ma
 		if line_segments.len < 4 {
 			continue
 		}
-		form[name] = field[line_segments[3].start..field.len - 4]
+		data_end := field_end - 4
+		if data_end < line_segments[3].start {
+			continue
+		}
+		form[name] = body[line_segments[3].start..data_end]
 	}
 	// dump(form)
 	return form, files

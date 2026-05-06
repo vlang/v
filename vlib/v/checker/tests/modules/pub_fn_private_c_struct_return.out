@@ -1,4 +1,4 @@
-vlib/v/checker/tests/modules/pub_fn_private_c_struct_return/main.v:6:21: error: struct `C.Hidden` was declared as private to module `wrapper`, so it can not be used inside module `main`
+vlib/v/checker/tests/modules/pub_fn_private_c_struct_return/main.v:6:21: error: struct `C.Hidden` was declared as private to module `pub_fn_private_c_struct_return.wrapper`, so it can not be used inside module `main`
     4 | 
     5 | fn main() {
     6 |     _ = wrapper.leak().value

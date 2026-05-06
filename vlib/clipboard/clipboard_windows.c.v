@@ -72,10 +72,11 @@ fn (cb &Clipboard) get_clipboard_lock() bool {
 		if retries < 0 {
 			break
 		}
-		last_error = C.GetLastError()
 		if C.OpenClipboard(cb.hwnd) > 0 {
 			return true
-		} else if last_error != u32(C.ERROR_ACCESS_DENIED) {
+		}
+		last_error = C.GetLastError()
+		if last_error != u32(C.ERROR_ACCESS_DENIED) {
 			return false
 		}
 		time.sleep(cb.retry_delay * time.second)
@@ -186,9 +187,11 @@ pub fn (mut cb Clipboard) get_text() string {
 	if !cb.get_clipboard_lock() {
 		return ''
 	}
+	defer {
+		C.CloseClipboard()
+	}
 	h_data := C.GetClipboardData(C.CF_UNICODETEXT)
 	if h_data == unsafe { nil } {
-		C.CloseClipboard()
 		return ''
 	}
 	str := unsafe { string_from_wide(&u16(C.GlobalLock(C.HGLOBAL(h_data)))) }

@@ -1,4 +1,4 @@
-templates/template_keyword_ident_err.html:1:31: error: undefined ident: `import` (veb action: index)
+vlib/v/checker/tests/templates/template_keyword_ident_err.html:1:30: error: invalid expression: unexpected keyword `import`
     1 | @import 'example'
       |                  ^
 called from vlib/v/checker/tests/template_keyword_ident_err.vv:12:9
@@ -8,7 +8,7 @@ called from vlib/v/checker/tests/template_keyword_ident_err.vv:12:9
       |            ^
    13 | }
    14 | 
-templates/template_keyword_ident_err.html:1:31: error: expression does not return a value (veb action: index)
+vlib/v/checker/tests/templates/template_keyword_ident_err.html:1:30: error: expression does not return a value (veb action: index)
     1 | @import 'example'
       |                  ^
 called from vlib/v/checker/tests/template_keyword_ident_err.vv:12:9

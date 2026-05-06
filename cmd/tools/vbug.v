@@ -1,7 +1,7 @@
 import os
 import term
 import readline
-import net.urllib
+import vbugreport
 
 fn elog(msg string) {
 	eprintln(term.ecolorize(term.gray, msg))
@@ -164,45 +164,21 @@ fn main() {
 		confirm_or_exit('Are you sure you want to continue?')
 	}
 
-	// When updating this template, make sure to update `.github/ISSUE_TEMPLATE/bug_report.md` too
-	raw_body := '<!-- It is advisable to update all relevant modules using `v outdated` and `v install` -->
-
-<details>
-<summary>V version: ${vversion()}, press to see full `v doctor` output</summary>
-
-${vdoctor_output}
-</details>
-
-**What did you do?**
-`./v -g -o vdbg cmd/v && ./vdbg ${user_args} ${file_path} && ${os.real_path(generated_file)}`
-{file_content}
-
-**What did you see?**
-```
-${build_output}```
-
-**What did you expect to see?**
-
-${expected_result}
-
-'
-	mut encoded_body := urllib.query_escape(raw_body.replace_once('{file_content}',
-		'```v\n${file_content}\n```'))
-	mut generated_uri := 'https://github.com/vlang/v/issues/new?labels=Bug&body=${encoded_body}'
-	if generated_uri.len > 8192 {
-		// GitHub doesn't support URLs longer than 8192 characters
-		encoded_body = urllib.query_escape(raw_body.replace_once('{file_content}',
-			'See attached file `${file_path}`'))
-		generated_uri = 'https://github.com/vlang/v/issues/new?labels=Bug&body=${encoded_body}'
-		elog('> Your file is too big to be submitted.')
-		elog('> Go to the following URL, and attach your file:')
-		olog(generated_uri)
-	} else {
-		os.open_uri(generated_uri) or {
-			if is_verbose {
-				elog(err.str())
-			}
-			olog(generated_uri)
+	report := vbugreport.new_bug_report(file_path, generated_file, user_args, expected_result,
+		vversion(), vdoctor_output, file_content, build_output)
+	delivery := vbugreport.prepare_bug_report_delivery(report, file_path)
+	if delivery.mode == .local_report {
+		os.write_file(delivery.local_report_path, delivery.local_report_body) or {
+			elog('> unable to write the bug report file `${delivery.local_report_path}`: ${err}')
 		}
+		elog('> The full bug report is too large to prefill on GitHub.')
+		elog('> The full report was saved to `${delivery.local_report_path}`.')
+		elog('> Open the bug form below, then paste the saved markdown sections or attach the file:')
+	}
+	os.open_uri(delivery.uri) or {
+		if is_verbose {
+			elog(err.str())
+		}
+		olog(delivery.uri)
 	}
 }

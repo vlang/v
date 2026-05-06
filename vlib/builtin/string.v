@@ -2077,6 +2077,29 @@ pub fn (s string) trim_right(cutset string) string {
 	if s.len < 1 || cutset.len < 1 {
 		return s.clone()
 	}
+	if cutset.len == 1 {
+		cut := cutset[0]
+		mut pos_right := s.len - 1
+		for pos_right >= 0 && s[pos_right] == cut {
+			pos_right--
+		}
+		if pos_right < 0 {
+			return ''
+		}
+		return s.substr(0, pos_right + 1)
+	}
+	if cutset.len == 2 && cutset.is_pure_ascii() {
+		cut0 := cutset[0]
+		cut1 := cutset[1]
+		mut pos_right := s.len - 1
+		for pos_right >= 0 && (s[pos_right] == cut0 || s[pos_right] == cut1) {
+			pos_right--
+		}
+		if pos_right < 0 {
+			return ''
+		}
+		return s.substr(0, pos_right + 1)
+	}
 	if cutset.is_pure_ascii() {
 		return s.trim_chars(cutset, .trim_right)
 	} else {
@@ -2156,6 +2179,32 @@ fn (s string) at(idx int) u8 {
 	return unsafe { s.str[idx] }
 }
 
+@[markused]
+fn (s string) at_i64(idx i64) u8 {
+	$if !no_bounds_checking {
+		if idx < 0 || idx >= i64(s.len) {
+			panic_n2('string index out of range(idx,s.len):', idx, s.len)
+		}
+	}
+	return unsafe { s.str[int(idx)] }
+}
+
+@[markused]
+fn (s string) at_u64(idx u64) u8 {
+	$if !no_bounds_checking {
+		if idx >= u64(s.len) {
+			panic('string index out of range(idx,s.len): ' + idx.str() + ', ' +
+				impl_i64_to_string(s.len))
+		}
+	}
+	return unsafe { s.str[int(idx)] }
+}
+
+@[markused]
+fn (s string) at_ni(idx int) u8 {
+	return s.at(v_ni_index(idx, s.len))
+}
+
 // version of `at()` that is used in `a[i] or {`
 // return an error when the index is out of range
 fn (s string) at_with_check(idx int) ?u8 {
@@ -2165,6 +2214,31 @@ fn (s string) at_with_check(idx int) ?u8 {
 	unsafe {
 		return s.str[idx]
 	}
+}
+
+@[markused]
+fn (s string) at_with_check_i64(idx i64) ?u8 {
+	if idx < 0 || idx >= i64(s.len) {
+		return none
+	}
+	unsafe {
+		return s.str[int(idx)]
+	}
+}
+
+@[markused]
+fn (s string) at_with_check_u64(idx u64) ?u8 {
+	if idx >= u64(s.len) {
+		return none
+	}
+	unsafe {
+		return s.str[int(idx)]
+	}
+}
+
+@[markused]
+fn (s string) at_with_check_ni(idx int) ?u8 {
+	return s.at_with_check(v_ni_index(idx, s.len))
 }
 
 // Check if a string is an octal value. Returns 'true' if it is, or 'false' if it is not

@@ -17,10 +17,3 @@ vlib/v/checker/tests/struct_field_private_err.vv:15:10: error: cannot access pri
    14 | 
    15 | amod.foo(bar: 'bar')
       |          ~~~~~~~~~~
-   16 | 
-   17 | foo := amod.new_private_foo(12)
-vlib/v/checker/tests/struct_field_private_err.vv:18:9: error: field `v.checker.tests.amod.PrivateFoo.bar` is not public
-   16 | 
-   17 | foo := amod.new_private_foo(12)
-   18 | _ = foo.bar
-      |         ~~~

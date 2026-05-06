@@ -786,10 +786,7 @@ pub fn executable() string {
 					defer {
 						unsafe { sret.free() }
 					}
-					// remove '\\?\' from beginning (see link above)
-					sret_slice := sret[4..]
-					res := sret_slice.clone()
-					return res
+					return normalize_windows_extended_path_prefix(sret)
 				} else if final_len != 0 {
 					eprintln('os.executable() saw that the executable file path was too long')
 				}
@@ -912,10 +909,27 @@ pub fn getwd() string {
 	}
 }
 
+// normalize_windows_extended_path_prefix converts Win32 extended-length paths from
+// `GetFinalPathNameByHandleW` back to standard DOS and UNC paths.
+@[manualfree]
+fn normalize_windows_extended_path_prefix(path string) string {
+	$if windows {
+		if path.starts_with('\\\\?\\UNC\\') || path.starts_with('\\\\.\\UNC\\') {
+			return ('\\\\' + path[8..]).clone()
+		}
+		if path.starts_with('\\\\?\\') || path.starts_with('\\\\.\\') {
+			return path[4..].clone()
+		}
+	}
+	return path.clone()
+}
+
 // real_path returns the full absolute path for fpath, with all relative ../../, symlinks and so on resolved.
 // See http://pubs.opengroup.org/onlinepubs/9699919799/functions/realpath.html
 // Also https://insanecoding.blogspot.com/2007/11/pathmax-simply-isnt.html
 // and https://insanecoding.blogspot.com/2007/11/implementing-realpath-in-c.html
+// On Windows, extended-length path prefixes like `\\?\` and `\\?\UNC\` are normalized back
+// to standard DOS and UNC paths.
 // Note: this particular rabbit hole is *deep* ...
 @[manualfree]
 pub fn real_path(fpath string) string {
@@ -939,9 +953,11 @@ pub fn real_path(fpath string) string {
 			final_len := C.GetFinalPathNameByHandleW(file, pu16_fullpath, max_path_buffer_size, 0)
 			if final_len < u32(max_path_buffer_size) && final_len != 0 {
 				rt := unsafe { string_from_wide2(pu16_fullpath, int(final_len)) }
-				srt := rt[4..]
+				defer {
+					unsafe { rt.free() }
+				}
 				unsafe { res.free() }
-				res = srt.clone()
+				res = normalize_windows_extended_path_prefix(rt)
 			} else {
 				if final_len != 0 {
 					eprintln('os.real_path() saw that the file path was too long')
@@ -958,7 +974,7 @@ pub fn real_path(fpath string) string {
 				return fpath.clone()
 			}
 			unsafe { res.free() }
-			res = unsafe { string_from_wide(pu16_fullpath) }
+			res = normalize_windows_extended_path_prefix(unsafe { string_from_wide(pu16_fullpath) })
 		}
 	} $else {
 		ret := &char(C.realpath(&char(fpath.str), &char(&fullpath[0])))
@@ -989,8 +1005,8 @@ fn normalize_drive_letter(path string) {
 	// vfmt off
 	if path.len > 2 && path[0] >= `a` && path[0] <= `z` && path[1] == `:` && path[2] == path_separator[0] {
 		unsafe {
-			x := &path.str[0]
-			(*x) = *x - 32
+			mut x := &u8(path.str)
+			x[0] = x[0] - 32
 		}
 	}
 	// vfmt on

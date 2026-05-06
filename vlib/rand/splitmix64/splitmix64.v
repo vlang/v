@@ -90,8 +90,7 @@ pub fn (mut rng SplitMix64RNG) block_size() int {
 	return 64
 }
 
-// free should be called when the generator is no longer needed
+// free should be called when the generator is no longer needed.
 @[unsafe]
 pub fn (mut rng SplitMix64RNG) free() {
-	unsafe { free(rng) }
 }

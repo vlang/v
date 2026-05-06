@@ -1,0 +1,25 @@
+import veb
+
+struct Context {
+	veb.Context
+}
+
+@[params]
+struct Options[T] {
+	handler fn (mut ctx T) bool @[required]
+}
+
+struct Middleware[T] {}
+
+fn (mut m Middleware[T]) use(options Options[T]) {}
+
+struct App {
+	Middleware[Context]
+}
+
+fn (app App) before_request(mut ctx Context) {}
+
+fn main() {
+	mut app := &App{}
+	app.use(handler: app.before_request)
+}

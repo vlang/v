@@ -60,3 +60,33 @@ fn test_scoped_cname_prefers_escaped_cname_for_generic_scoped_names() {
 	}
 	assert sym.scoped_cname() == 'x__json2__Node_T_x__json2__ValueInfo'
 }
+
+fn test_fully_unaliased_type_preserves_nested_c_alias_pointers() {
+	source := 'type C.WCHAR = u16\ntype C.PWSTR = &C.WCHAR\ntype C.FILE_SHARE_MODE = u32'
+	mut t := ast.new_table()
+	parser.parse_text(source, '', mut t, .parse_comments, pref.new_preferences())
+
+	wchar_typ := t.type_idxs['C.WCHAR']!
+	pwide_typ := t.type_idxs['C.PWSTR']!
+	share_mode_typ := t.type_idxs['C.FILE_SHARE_MODE']!
+
+	assert t.fully_unaliased_type(wchar_typ) == ast.u16_type
+	assert t.fully_unaliased_type(pwide_typ) == ast.u16_type.ref()
+	assert t.fully_unaliased_type(share_mode_typ) == ast.u32_type
+}
+
+fn test_known_type_names_skips_partial_array_symbols() {
+	mut t := ast.new_table()
+	broken_array_idx := t.register_sym(ast.TypeSymbol{
+		kind:     .array
+		name:     '[]Broken'
+		cname:    'Array_Broken'
+		mod:      'main'
+		is_pub:   true
+		language: .v
+	})
+	broken_array_type := ast.idx_to_type(broken_array_idx)
+
+	assert !t.known_type_idx(broken_array_type)
+	assert '[]Broken' !in t.known_type_names()
+}

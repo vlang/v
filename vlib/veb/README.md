@@ -90,6 +90,42 @@ or for data that you want to share between different routes.
 A new `Context` struct is created every time a request is received,
 so it can contain different data for each request.
 
+## Parallel picoev workers
+
+The default non-SSL picoev backend can start more than one event loop by setting
+`nr_workers` in `RunParams`:
+
+```v
+module main
+
+import runtime
+import veb
+
+pub struct Context {
+	veb.Context
+}
+
+pub struct App {}
+
+pub fn (app &App) index(mut ctx Context) veb.Result {
+	return ctx.text('Hello from parallel veb')
+}
+
+fn main() {
+	mut app := &App{}
+	veb.run_at[App, Context](mut app,
+		host:       '0.0.0.0'
+		port:       8080
+		nr_workers: runtime.nr_jobs()
+	) or { panic(err) }
+}
+```
+
+`nr_workers` defaults to `1` to preserve the historical single-loop behavior.
+It only affects the default non-SSL picoev backend and currently requires Linux
+or Termux. When running with `-d new_veb`, the fasthttp backend is already
+multi-threaded and ignores `nr_workers`.
+
 ## HTTPS
 
 To serve HTTPS directly from `veb`, pass an `mbedtls.SSLConnectConfig` in `RunParams`:
@@ -130,10 +166,27 @@ shutdown. Once shutdown begins, it stops accepting new requests, waits for
 in-flight requests to finish, and only then exits. This is useful for deploys,
 tests, and management endpoints that trigger a stop after sending a response.
 
-The lifecycle controls come from the underlying `fasthttp.ServerHandle`
-(`wait_till_running()` and `shutdown(timeout: ...)`). If you need explicit
-server lifecycle management, use those lower-level hooks in the process that
-starts your app.
+You can store the server handle in your app by adding an optional
+`init_server(server &veb.Server)` method:
+
+```v
+module main
+
+import veb
+
+pub struct App {
+pub mut:
+	server &veb.Server = unsafe { nil }
+}
+
+pub fn (mut app App) init_server(server &veb.Server) {
+	app.server = server
+}
+```
+
+`veb.Server` forwards `wait_till_running()` and `shutdown(timeout: ...)`
+to the `new_veb` backend. These lifecycle controls are available only when
+running with `-d new_veb` without SSL.
 
 ## Defining endpoints
 
@@ -214,6 +267,8 @@ parameters are passed as arguments. V will cast the parameter to any of V's prim
 To pass a parameter to an endpoint, you simply define it inside an attribute, e. g.
 `@['/hello/:user]`.
 After it is defined in the attribute, you have to add it as a function parameter.
+Parameters after `ctx` are populated from strings, so they currently must be `string`,
+integer, or `bool`.
 
 **Example:**
 
@@ -326,6 +381,10 @@ pub fn (app &App) normal(mut ctx Context) veb.Result {
 In this example we defined an endpoint with a parameter first. If we access our app
 on the url http://localhost:port/normal we will not see `from normal`, but
 `from with_parameter, path: "normal"`.
+
+Routes with a variadic parameter such as `/:path...` are an exception. veb keeps
+them as fallbacks, so a later exact or non-variadic parameter route can still match
+before the variadic route handles the request.
 
 ### Custom not found page
 
@@ -950,6 +1009,8 @@ fn main() {
 
 You can do everything with a controller struct as with a regular `App` struct.
 Register middleware, add static files and you can even register other controllers!
+Static assets registered on either the main app or a controller keep working when
+controllers are mounted, including controllers mounted at `'/'`.
 
 ### Routing
 

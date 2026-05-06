@@ -4,6 +4,132 @@ module checker
 
 import v.ast
 
+fn checker_table_fn_lookup(table &ast.Table, name string) (ast.Fn, bool) {
+	if name !in table.fns {
+		return ast.Fn{}, false
+	}
+	return unsafe { table.fns[name] }, true
+}
+
+@[inline]
+fn (mut c Checker) is_nocopy_struct(typ_ ast.Type) bool {
+	mut typ := c.unwrap_generic(typ_).clear_option_and_result()
+	if typ == 0 || typ.is_ptr() {
+		return false
+	}
+	mut sym := c.table.final_sym(typ)
+	if sym.kind == .generic_inst && sym.info is ast.GenericInst {
+		sym = c.table.sym(ast.new_type(sym.info.parent_idx))
+	}
+	return sym.info is ast.Struct && sym.info.attrs.contains('nocopy')
+}
+
+fn assign_expr_is_auto_deref(expr ast.Expr) bool {
+	return expr.is_auto_deref_var()
+}
+
+fn (c &Checker) auto_deref_source_type_is_pointer(expr ast.Expr) bool {
+	if expr !is ast.Ident || c.table.cur_fn == unsafe { nil } || !expr.is_auto_deref_var() {
+		return false
+	}
+	ident := expr as ast.Ident
+	for param in c.table.cur_fn.params {
+		if param.name == ident.name {
+			source_typ := if param.orig_typ != 0 { param.orig_typ } else { param.typ }
+			return source_typ.is_any_kind_of_pointer()
+		}
+	}
+	return false
+}
+
+fn (mut c Checker) smartcasted_assign_lhs_type(expr ast.Expr, fallback_type ast.Type) ast.Type {
+	match expr {
+		ast.Ident {
+			if expr.obj is ast.Var && expr.obj.smartcasts.len > 0 {
+				if expr.obj.orig_type.has_flag(.option) {
+					return expr.obj.orig_type
+				}
+				if expr.obj.is_mut && expr.obj.orig_type != 0 {
+					orig_sym := c.table.final_sym(expr.obj.orig_type)
+					if orig_sym.kind == .sum_type {
+						return expr.obj.orig_type
+					}
+				}
+				return c.exposed_smartcast_type(expr.obj.orig_type, expr.obj.smartcasts.last(),
+					expr.obj.is_mut)
+			}
+		}
+		ast.SelectorExpr {
+			if expr.expr_type != 0 {
+				scope_field := expr.scope.find_struct_field(smartcast_selector_expr_str(expr),
+					expr.expr_type, expr.field_name)
+				if scope_field != unsafe { nil } && scope_field.smartcasts.len > 0 {
+					if scope_field.orig_type.has_flag(.option) {
+						return scope_field.orig_type
+					}
+					return c.exposed_smartcast_type(scope_field.orig_type,
+						scope_field.smartcasts.last(), scope_field.is_mut)
+				}
+			}
+		}
+		else {}
+	}
+
+	return fallback_type
+}
+
+fn (mut c Checker) reset_option_assignment_smartcast(mut expr ast.Ident, left_type ast.Type) {
+	if expr.scope == unsafe { nil } {
+		return
+	}
+	if var := expr.scope.find_var(expr.name) {
+		expr.scope.objects[expr.name] = ast.Var{
+			...var
+			typ:                     left_type
+			pos:                     var.pos
+			orig_type:               ast.no_type
+			smartcasts:              []ast.Type{}
+			is_assignment_smartcast: false
+			is_unwrapped:            false
+		}
+	}
+}
+
+fn (mut c Checker) update_option_assignment_smartcast(mut expr ast.Expr, left_type ast.Type, right ast.Expr, right_type ast.Type) {
+	if !left_type.has_flag(.option) {
+		return
+	}
+	match mut expr {
+		ast.Ident {
+			mut original_pos := expr.pos
+			if var := expr.scope.find_var(expr.name) {
+				original_pos = var.pos
+			}
+			if right_type == ast.none_type || right_type == ast.nil_type
+				|| right_type.has_flag(.option) || right.is_nil()
+				|| (right is ast.UnsafeExpr && right.expr.is_nil()) {
+				c.reset_option_assignment_smartcast(mut expr, left_type)
+				return
+			}
+			c.smartcast(mut expr, left_type, left_type.clear_flag(.option), mut expr.scope, false,
+				true, false, true)
+			if mut scope_var := expr.scope.find_var(expr.name) {
+				scope_var.is_assignment_smartcast = true
+				scope_var.pos = original_pos
+			}
+		}
+		else {}
+	}
+}
+
+@[inline]
+fn (c &Checker) disallow_implicit_int_to_f32_assign(got ast.Type, expected ast.Type) bool {
+	got_type := c.table.unalias_num_type(got).clear_flags()
+	expected_type := c.table.unalias_num_type(expected).clear_flags()
+	return expected_type == ast.f32_type
+		&& got_type in [ast.i32_type, ast.int_type, ast.i64_type, ast.isize_type, ast.u32_type, ast.u64_type, ast.usize_type]
+}
+
 // TODO: 980 line function
 fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 	prev_inside_assign := c.inside_assign
@@ -19,6 +145,7 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 		c.inside_assign = prev_inside_assign
 	}
 	is_decl := node.op == .decl_assign
+	original_op := node.op
 	mut right_first := node.right[0]
 	node.left_types = []
 	mut right_len := node.right.len
@@ -124,7 +251,8 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 			c.error('cannot use `none` in `unsafe` blocks', right.expr.pos)
 		}
 		if mut right is ast.AnonFn {
-			if right.decl.generic_names.len > 0 && right.inherited_vars.len == 0 {
+			if right.decl.generic_names.len > 0 && (right.inherited_vars.len == 0
+				|| !c.generic_anon_fn_can_use_current_context(right.decl.generic_names)) {
 				c.error('cannot assign generic function to a variable', right.decl.pos)
 			}
 		}
@@ -137,10 +265,8 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 						for i, mut left in node.left {
 							node.left_types << ast.void_type
 							if mut left is ast.Ident {
-								if left.info is ast.IdentVar {
-									mut ident_var_info := left.info as ast.IdentVar
-									ident_var_info.typ = ast.void_type
-									left.info = ident_var_info
+								if mut left.info is ast.IdentVar {
+									left.info.typ = ast.void_type
 									if mut left.obj is ast.Var {
 										left.obj.typ = ast.void_type
 									}
@@ -210,9 +336,6 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 				c.error('cannot dereference a function call on the left side of an assignment, use a temporary variable',
 					left.pos)
 			}
-		} else if mut left is ast.IndexExpr && left.index is ast.RangeExpr {
-			c.error('cannot reassign using range expression on the left side of an assignment',
-				left.pos)
 		} else if mut left is ast.Ident && node.op == .decl_assign {
 			if left.name in c.global_names {
 				c.note('the global variable named `${left.name}` already exists', left.pos)
@@ -230,6 +353,11 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 				c.is_index_assign = true
 			}
 			left_type = c.expr(mut left)
+			if left is ast.IndexExpr && left.index is ast.RangeExpr && !left.is_index_operator {
+				c.error('cannot reassign using range expression on the left side of an assignment',
+					left.pos)
+			}
+			left_type = c.smartcasted_assign_lhs_type(left, left_type)
 			c.is_index_assign = false
 			c.expected_type = c.unwrap_generic(left_type)
 			is_shared_re_assign = left is ast.Ident && left.info is ast.IdentVar
@@ -277,6 +405,8 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 		}
 		mut right := if i < node.right.len { node.right[i] } else { node.right[0] }
 		mut right_type := node.right_types[i]
+		right_pos := right.pos()
+		left_pos := left.pos()
 		if mut right is ast.Ident {
 			// resolve shared right variable
 			if right_type.has_flag(.shared_f) {
@@ -287,8 +417,20 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 			right_sym := c.table.sym(right_type)
 			if right_sym.info is ast.Struct {
 				if right_sym.info.generic_types.len > 0 {
-					if obj := right.scope.find(right.name) {
-						right_type = obj.typ
+					obj := right.scope.find_ptr(right.name)
+					if obj != unsafe { nil } {
+						match obj {
+							ast.ConstField {
+								right_type = obj.typ
+							}
+							ast.GlobalField {
+								right_type = obj.typ
+							}
+							ast.Var {
+								right_type = obj.typ
+							}
+							else {}
+						}
 					}
 				}
 			}
@@ -296,7 +438,9 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 				right_type = right_type.clear_flag(.option)
 			}
 		} else if right is ast.ComptimeSelector {
-			right_type = c.comptime.comptime_for_field_type
+			if !(right as ast.ComptimeSelector).is_method {
+				right_type = c.comptime.comptime_for_field_type
+			}
 		}
 		if is_decl || is_shared_re_assign {
 			// check generic struct init and return unwrap generic struct type
@@ -317,7 +461,8 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 					c.expr(mut right)
 				}
 			}
-			if right.is_auto_deref_var() && right_type.is_ptr() {
+			if assign_expr_is_auto_deref(right) && right_type.is_ptr()
+				&& !c.auto_deref_source_type_is_pointer(right) {
 				left_type = ast.mktyp(right_type.deref())
 			} else {
 				left_type = ast.mktyp(right_type)
@@ -353,7 +498,7 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 			&& right.name in c.global_names {
 			ident_var_info := left.info as ast.IdentVar
 			if ident_var_info.share == .shared_t {
-				c.error('cannot assign global variable to shared variable', right.pos())
+				c.error('cannot assign global variable to shared variable', right_pos)
 			}
 		}
 		if right_type.is_ptr() && left_type.is_ptr() {
@@ -376,27 +521,33 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 
 		if right is ast.StructInit {
 			right_sym := c.table.sym(right_type)
-			c.check_any_type(right_type, right_sym, right.pos())
+			c.check_any_type(right_type, right_sym, right_pos)
 		}
 
 		if left is ast.ParExpr && is_decl {
-			c.error('parentheses are not supported on the left side of `:=`', left.pos())
+			c.error('parentheses are not supported on the left side of `:=`', left_pos)
 		}
 		left = left.remove_par()
 		is_assign := node.op in [.assign, .decl_assign]
 		match mut left {
 			ast.Ident {
 				if (is_decl || left.kind == .blank_ident) && left_type.is_ptr()
-					&& mut right is ast.PrefixExpr && right.right_type == ast.int_literal_type_idx {
-					if mut right.right is ast.Ident && right.right.obj is ast.ConstField {
-						const_name := right.right.name.all_after_last('.')
-						const_val := (right.right.obj as ast.ConstField).expr
-						c.add_error_detail('Specify the type for the constant value. Example:')
-						c.add_error_detail('         `const ${const_name} = int(${const_val})`')
-						c.error('cannot assign a pointer to a constant with an integer literal value',
-							right.right.pos)
+					&& right is ast.PrefixExpr {
+					prefix_right := right as ast.PrefixExpr
+					if prefix_right.right_type == ast.int_literal_type_idx
+						&& prefix_right.right is ast.Ident {
+						ident_right := prefix_right.right as ast.Ident
+						if ident_right.obj is ast.ConstField {
+							const_name := ident_right.name.all_after_last('.')
+							const_val := (ident_right.obj as ast.ConstField).expr
+							c.add_error_detail('Specify the type for the constant value. Example:')
+							c.add_error_detail('         `const ${const_name} = int(${const_val})`')
+							c.error('cannot assign a pointer to a constant with an integer literal value',
+								ident_right.pos)
+						}
 					}
-				} else if left.kind == .blank_ident {
+				}
+				if left.kind == .blank_ident {
 					if !is_decl && mut right is ast.None {
 						c.error('cannot assign a `none` value to blank `_` identifier', right.pos)
 					}
@@ -423,7 +574,7 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 						//    println(x)
 						// }`
 						c.error('use of untyped nil in assignment (use `unsafe` | ${c.inside_unsafe})',
-							right.pos())
+							right_pos)
 					}
 					mut ident_var_info := left.info as ast.IdentVar
 					if ident_var_info.share == .shared_t || is_shared_re_assign {
@@ -503,8 +654,14 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 					}
 					if is_decl {
 						full_name := '${left.mod}.${left.name}'
-						if _ := c.file.global_scope.find_const(full_name) {
-							c.warn('duplicate of a const name `${full_name}`', left.pos)
+						scope_obj := c.file.global_scope.find_ptr(full_name)
+						if scope_obj != unsafe { nil } {
+							match scope_obj {
+								ast.ConstField {
+									c.warn('duplicate of a const name `${full_name}`', left.pos)
+								}
+								else {}
+							}
 						}
 						if left.name == left.mod && left.name != 'main' {
 							c.error('duplicate of a module name `${left.name}`', left.pos)
@@ -517,7 +674,7 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 					}
 					if node.op == .assign && left_type.has_flag(.option) && right is ast.UnsafeExpr
 						&& right.expr.is_nil() {
-						c.error('cannot assign `nil` to option value', right.pos())
+						c.error('cannot assign `nil` to option value', right_pos)
 					}
 				}
 			}
@@ -544,7 +701,10 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 			}
 			ast.SelectorExpr {
 				if mut left.expr is ast.IndexExpr {
-					if left.expr.is_map {
+					if left.expr.is_index_operator {
+						c.error('cannot assign through overloaded index expressions, use `[]=` instead',
+							left.pos)
+					} else if left.expr.is_map {
 						left.expr.is_setter = true
 					}
 				}
@@ -557,7 +717,7 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 					}
 				}
 				if left_type.has_flag(.option) && right is ast.UnsafeExpr && right.expr.is_nil() {
-					c.error('cannot assign `nil` to option value', right.pos())
+					c.error('cannot assign `nil` to option value', right_pos)
 				}
 			}
 			else {
@@ -578,6 +738,22 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 
 				if node.op == .assign && (left.is_literal() || left is ast.StructInit) {
 					c.error('non-name literal value `${left}` on left side of `=`', left.pos())
+				}
+			}
+		}
+
+		if mut left is ast.IndexExpr {
+			if left.is_index_operator && node.op != .decl_assign {
+				receiver_name := c.table.sym(c.unwrap_generic(left.left_type)).name
+				if left.setter_arg_type == 0 {
+					c.error('index assignment requires a `[]=` overload on type `${receiver_name}`',
+						left.pos)
+				} else if !left.left.is_lvalue() {
+					c.error('cannot assign through overloaded index on a non-lvalue receiver',
+						left.pos)
+				}
+				if node.op == .assign {
+					left_type = left.setter_arg_type
 				}
 			}
 		}
@@ -641,17 +817,22 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 							}
 						}
 					}
-				} else if mut left is ast.Ident && left.kind != .blank_ident
-					&& right is ast.IndexExpr {
-					right_index_expr := right as ast.IndexExpr
-					if right_index_expr.left is ast.Ident && right_index_expr.index is ast.RangeExpr
-						&& (right_index_expr.left.is_mut() || left.is_mut()) && !c.inside_unsafe {
+				} else if mut left is ast.Ident && left.kind != .blank_ident {
+					mut should_clone_slice := false
+					right_notice_pos := right.pos()
+					right_expr := right
+					if right_expr is ast.IndexExpr {
+						should_clone_slice = right_expr.left is ast.Ident
+							&& right_expr.index is ast.RangeExpr
+							&& (right_expr.left.is_mut() || left.is_mut()) && !c.inside_unsafe
+					}
+					if should_clone_slice {
 						// `mut a := arr[..]` auto add clone() -> `mut a := arr[..].clone()`
 						c.add_error_detail_with_pos('To silence this notice, use either an explicit `a[..].clone()`,
 or use an explicit `unsafe{ a[..] }`, if you do not want a copy of the slice.',
-							right.pos())
-						c.note('an implicit clone of the slice was done here', right.pos())
-						right = ast.CallExpr{
+							right_notice_pos)
+						c.note('an implicit clone of the slice was done here', right_notice_pos)
+						mut cloned_right := ast.CallExpr{
 							name:           'clone'
 							kind:           .clone
 							left:           right
@@ -662,8 +843,9 @@ or use an explicit `unsafe{ a[..] }`, if you do not want a copy of the slice.',
 							scope:          c.fn_scope
 							is_return_used: true
 						}
-						right_type = c.expr(mut right)
-						node.right[i] = right
+						right_type = c.expr(mut cloned_right)
+						right = cloned_right
+						node.right[i] = cloned_right
 					}
 				}
 			}
@@ -680,10 +862,15 @@ or use an explicit `unsafe{ a[..] }`, if you do not want a copy of the slice.',
 		}
 		if left_sym.kind == .map && is_assign && right_sym.kind == .map && !c.inside_unsafe
 			&& !left.is_blank_ident() && right.is_lvalue() && right !is ast.ComptimeSelector
-			&& (!right_type.is_ptr() || (right is ast.Ident && right.is_auto_deref_var())) {
+			&& (!right_type.is_ptr() || (right is ast.Ident && assign_expr_is_auto_deref(right))) {
 			// Do not allow `a = b`
 			c.error('cannot copy map: call `move` or `clone` method (or use a reference)',
 				right.pos())
+		}
+		if is_assign && !c.inside_unsafe && !left.is_blank_ident()
+			&& c.is_nocopy_struct(left_type_unwrapped) && c.is_nocopy_struct(right_type_unwrapped)
+			&& right !is ast.StructInit {
+			c.error('cannot copy @[nocopy] struct: use a reference instead', right.pos())
 		}
 		if left_sym.kind == .function && right_sym.info is ast.FnType {
 			return_sym := c.table.sym(right_sym.info.func.return_type)
@@ -691,7 +878,8 @@ or use an explicit `unsafe{ a[..] }`, if you do not want a copy of the slice.',
 			if right is ast.Ident {
 				ident := right as ast.Ident
 				if ident.kind == .function {
-					if func := c.table.find_fn(ident.name) {
+					func, has_func := checker_table_fn_lookup(c.table, ident.name)
+					if has_func {
 						missing_fn_concrete_types = func.generic_names.len > 0
 							&& ident.concrete_types.len == 0
 					}
@@ -715,7 +903,7 @@ or use an explicit `unsafe{ a[..] }`, if you do not want a copy of the slice.',
 				}
 			}
 		}
-		if left_type.is_any_kind_of_pointer() && !left.is_auto_deref_var() {
+		if left_type.is_any_kind_of_pointer() && !assign_expr_is_auto_deref(left) {
 			if !c.inside_unsafe && node.op !in [.assign, .decl_assign] {
 				// ptr op=
 				if !c.pref.translated && !c.file.is_translated {
@@ -755,17 +943,20 @@ or use an explicit `unsafe{ a[..] }`, if you do not want a copy of the slice.',
 			.assign {} // No need to do single side check for =. But here put it first for speed.
 			.plus_assign, .minus_assign {
 				// allow literal values to auto deref var (e.g.`for mut v in values { v += 1.0 }`)
-				left_deref := if left.is_auto_deref_var() && left_type.is_ptr() {
+				left_deref := if assign_expr_is_auto_deref(left) && left_type.is_ptr() {
 					left_type.deref()
 				} else {
 					left_type
 				}
-				if left_deref == ast.string_type {
+				if c.is_string_like_type(left_deref) {
 					if node.op != .plus_assign {
 						c.error('operator `${node.op}` not defined on left operand type `${left_sym.name}`',
 							left.pos())
 					}
-					if right_type != ast.string_type {
+					if node.op == .plus_assign && !c.is_string_concat_type(right_type) {
+						c.error('invalid right operand: ${left_sym.name} ${node.op} ${right_sym.name}',
+							right.pos())
+					} else if node.op != .plus_assign && !c.is_string_like_type(right_type) {
 						c.error('invalid right operand: ${left_sym.name} ${node.op} ${right_sym.name}',
 							right.pos())
 					}
@@ -779,7 +970,7 @@ or use an explicit `unsafe{ a[..] }`, if you do not want a copy of the slice.',
 						right.pos())
 				}
 			}
-			.mult_assign, .div_assign {
+			.mult_assign, .power_assign, .div_assign {
 				if !left_sym.is_number() && !c.table.final_sym(left_type_unwrapped).is_int()
 					&& left_sym.kind !in [.struct, .alias] {
 					c.error('operator ${node.op.str()} not defined on left operand type `${left_sym.name}`',
@@ -874,7 +1065,11 @@ or use an explicit `unsafe{ a[..] }`, if you do not want a copy of the slice.',
 			}
 			else {}
 		}
-		if node.op in [.plus_assign, .minus_assign, .mod_assign, .mult_assign, .div_assign]
+
+		if node.op == .power_assign {
+			c.markused_power_runtime_support()
+		}
+		if node.op in [.plus_assign, .minus_assign, .mod_assign, .mult_assign, .power_assign, .div_assign]
 			&& (left_sym.kind == .alias || (left_sym.kind == .struct && right_sym.kind == .struct)) {
 			left_name := c.table.type_to_str(left_type_unwrapped)
 			right_name := c.table.type_to_str(right_type_unwrapped)
@@ -890,8 +1085,10 @@ or use an explicit `unsafe{ a[..] }`, if you do not want a copy of the slice.',
 				.div_assign { '/' }
 				.mod_assign { '%' }
 				.mult_assign { '*' }
+				.power_assign { '**' }
 				else { 'unknown op' }
 			}
+
 			if left_sym.kind == .struct && (left_sym.info as ast.Struct).generic_types.len > 0 {
 				continue
 			}
@@ -901,6 +1098,11 @@ or use an explicit `unsafe{ a[..] }`, if you do not want a copy of the slice.',
 					c.error('operator `${extracted_op}` must return `${left_name}` to be used as an assignment operator',
 						node.pos)
 				}
+				if right_sym.kind in [.alias, .struct]
+					&& !c.check_same_type_ignoring_pointers(left_type_unwrapped, right_type_unwrapped) {
+					c.error('cannot assign to `${left}`: expected `${left_name}`, not `${right_name}`',
+						right.pos())
+				}
 			} else {
 				if method := parent_sym.find_method_with_generic_parent(extracted_op) {
 					c.mark_fn_decl_as_referenced(method.fkey())
@@ -908,6 +1110,11 @@ or use an explicit `unsafe{ a[..] }`, if you do not want a copy of the slice.',
 						&& (parent_sym.info as ast.Alias).parent_type != method.return_type {
 						c.error('operator `${extracted_op}` must return `${left_name}` to be used as an assignment operator',
 							node.pos)
+					}
+					if right_sym.kind in [.alias, .struct]
+						&& !c.check_same_type_ignoring_pointers(left_type_unwrapped, right_type_unwrapped) {
+						c.error('cannot assign to `${left}`: expected `${left_name}`, not `${right_name}`',
+							right.pos())
 					}
 				} else {
 					if !parent_sym.is_primitive() {
@@ -933,12 +1140,27 @@ or use an explicit `unsafe{ a[..] }`, if you do not want a copy of the slice.',
 					right.pos())
 			}
 			// Dual sides check (compatibility check)
-			c.check_expected(right_type_unwrapped, left_type_unwrapped) or {
+			is_string_plus_assign := original_op == .plus_assign
+				&& c.is_string_like_type(left_type_unwrapped)
+				&& c.is_string_concat_type(right_type_unwrapped)
+			assign_right_type := if
+				original_op in [.left_shift_assign, .right_shift_assign, .unsigned_right_shift_assign]
+				|| is_string_plus_assign {
+				left_type_unwrapped
+			} else {
+				right_type_unwrapped
+			}
+			if original_op == .assign
+				&& c.disallow_implicit_int_to_f32_assign(assign_right_type, left_type_unwrapped) {
+				c.error('cannot assign to `${left}`: ${c.expected_msg(assign_right_type,
+					left_type_unwrapped)}', right_pos)
+			}
+			c.check_expected(assign_right_type, left_type_unwrapped) or {
 				if left.is_auto_deref_arg() && left_type.is_ptr() {
 					left_deref := left_type.deref()
 					right_deref := if right.is_pure_literal() {
 						right.get_pure_type()
-					} else if right.is_auto_deref_var() && right_type.is_ptr() {
+					} else if assign_expr_is_auto_deref(right) && right_type.is_ptr() {
 						right_type.deref()
 					} else {
 						right_type
@@ -948,15 +1170,15 @@ or use an explicit `unsafe{ a[..] }`, if you do not want a copy of the slice.',
 					}
 				}
 				// allow literal values to auto deref var (e.g.`for mut v in values { v = 1.0 }`)
-				if left.is_auto_deref_var() || right.is_auto_deref_var() {
-					left_deref := if left.is_auto_deref_var() && left_type.is_ptr() {
+				if assign_expr_is_auto_deref(left) || assign_expr_is_auto_deref(right) {
+					left_deref := if assign_expr_is_auto_deref(left) && left_type.is_ptr() {
 						left_type.deref()
 					} else {
 						left_type
 					}
 					right_deref := if right.is_pure_literal() {
 						right.get_pure_type()
-					} else if right.is_auto_deref_var() && right_type.is_ptr() {
+					} else if assign_expr_is_auto_deref(right) && right_type.is_ptr() {
 						right_type.deref()
 					} else {
 						right_type
@@ -983,7 +1205,7 @@ or use an explicit `unsafe{ a[..] }`, if you do not want a copy of the slice.',
 						// disallow invalid `t.$(field.name)` type assignment
 						if !c.check_types(field_type, right_type) && !(c.inside_x_matches_type
 							|| field_sym.kind == .enum) {
-							c.error('cannot assign to `${left}`: ${c.expected_msg(right_type,
+							c.error('cannot assign to `${ast.Expr(left)}`: ${c.expected_msg(right_type,
 								field_type)}', right.pos())
 						}
 					} else {
@@ -991,10 +1213,10 @@ or use an explicit `unsafe{ a[..] }`, if you do not want a copy of the slice.',
 							if !var_option || (var_option && right_type_unwrapped != ast.none_type) {
 								if left_sym.kind == .array_fixed && right_sym.kind == .array
 									&& right is ast.ArrayInit {
-									c.add_error_detail('try `${left} = ${right}!` instead (with `!` after the array literal)')
-									c.error('cannot assign to `${left}`: ${err.msg()}', right.pos())
+									c.add_error_detail('try adding `!` after the array literal, e.g.: `${left} = [...]!`')
+									c.error('cannot assign to `${left}`: ${err.msg()}', right_pos)
 								} else {
-									c.error('cannot assign to `${left}`: ${err.msg()}', right.pos())
+									c.error('cannot assign to `${left}`: ${err.msg()}', right_pos)
 								}
 							}
 						}
@@ -1012,10 +1234,13 @@ or use an explicit `unsafe{ a[..] }`, if you do not want a copy of the slice.',
 		}
 		if left_sym.info is ast.Struct && !left_sym.info.is_anon && right is ast.StructInit
 			&& right.is_anon {
-			c.error('cannot assign anonymous `struct` to a typed `struct`', right.pos())
+			c.error('cannot assign anonymous `struct` to a typed `struct`', right_pos)
 		}
 		if right_sym.kind == .alias && right_sym.name == 'byte' {
 			c.error('byte is deprecated, use u8 instead', right.pos())
+		}
+		if original_op == .assign {
+			c.update_option_assignment_smartcast(mut left, left_type, right, right_type)
 		}
 	}
 	// this needs to run after the assign stmt left exprs have been run through checker

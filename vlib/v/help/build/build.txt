@@ -15,6 +15,9 @@ then run `./myfile -param1 abcde` and exit with its exit code".
 
 When compiling packages, V ignores files that end in '_test.v'.
 
+Use `v build script.vsh` to compile a `.vsh` script without running it.
+`v -skip-running script.vsh` works too.
+
 When compiling a single main package, V writes the resulting executable to an output file
 named after the build target. ('v abc.v' and 'v abc/' both write either 'abc' or 'abc.exe')
 The '.exe' suffix is added automatically, when writing a Windows executable.
@@ -40,14 +43,13 @@ NB: the build flags are shared with the run command too:
     Delegate direct compilation to the V2 frontend from `cmd/v2/v2.v`.
     Example: `v -v2 hello.v` or `v -v2 -b arm64 hello.v`.
     V2 defaults to the `cleanc` backend unless `-b`/`-backend` selects another one.
+    Use `v -v2 -eval file.v` to run the V2 eval backend.
 
   -b <backend>, -backend <backend>
     Specifies the backend that will be used for building the executable.
     Current list of supported backends:
     * `c` (default)       - V outputs C source code, which is then passed to a C compiler.
     * `go`                - V outputs Go source code, which is then passed to a Go compiler.
-    * `interpret`         - V will interpret the V program directly, instead of compiling it first.
-	                        Same as `v interpret file.v`.
     * `js`                - V outputs JS source code which can be passed to NodeJS to be ran.
     * `js_browser`        - V outputs JS source code ready for the browser.
     * `js_node`           - V outputs JS source code to run with nodejs.
@@ -139,6 +141,10 @@ NB: the build flags are shared with the run command too:
     extensively (like `math.big`), without constantly edititing their source code to remove/add
     the tag. Note: this option overrides -no-bounds-checking .
 
+  -disable-explicit-mutability, --disable-explicit-mutability
+    Allow ordinary variables and mutable call arguments in user code to omit explicit `mut`.
+    `mut`/`shared`/`atomic` in function and method signatures remain unchanged.
+
   -prof, -profile <file.txt>
     Compile the executable with all functions profiled.
     The profile results will be stored in `file.txt`.
@@ -180,7 +186,7 @@ NB: the build flags are shared with the run command too:
 
   -message-limit <limit>
     The maximum amount of warnings / errors / notices, that will be accumulated (defaults to 200).
-    The parser and checker, will return prematurely, once this limit has been reached.
+    The compiler may stop accumulating additional diagnostics, once this limit has been reached.
     Setting this to a negative value like -1, will disable the limit.
     Setting this to 0, will stop showing errors, but the compiler will still exit with a non zero
     exit code, if there are any.

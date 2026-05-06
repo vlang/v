@@ -6,14 +6,11 @@ import net.http
 
 pub type MiddlewareHandler[T] = fn (mut T) bool
 
-// TODO: get rid of this `voidptr` interface check when generic embedded
-// interfaces work properly, related: #19968
 interface MiddlewareApp {
-mut:
-	global_handlers       []voidptr
-	global_handlers_after []voidptr
-	route_handlers        []RouteMiddleware
-	route_handlers_after  []RouteMiddleware
+	get_handlers_for_route(route_path string) []RouteMiddleware
+	get_handlers_for_route_after(route_path string) []RouteMiddleware
+	get_global_handlers() []voidptr
+	get_global_handlers_after() []voidptr
 }
 
 struct RouteMiddleware {
@@ -110,6 +107,78 @@ fn (m &Middleware[T]) get_global_handlers_after() []voidptr {
 	return m.global_handlers_after
 }
 
+fn app_route_handlers[A](app &A, route_path string) []RouteMiddleware {
+	$if A is $struct {
+		$for field in A.fields {
+			$if field.is_embed {
+				$if field.name == 'Middleware' {
+					return app.$(field.name).get_handlers_for_route(route_path)
+				} $else $if field.typ is $struct {
+					handlers := app_route_handlers(app.$(field.name), route_path)
+					if handlers.len > 0 {
+						return handlers
+					}
+				}
+			}
+		}
+	}
+	return []RouteMiddleware{}
+}
+
+fn app_route_handlers_after[A](app &A, route_path string) []RouteMiddleware {
+	$if A is $struct {
+		$for field in A.fields {
+			$if field.is_embed {
+				$if field.name == 'Middleware' {
+					return app.$(field.name).get_handlers_for_route_after(route_path)
+				} $else $if field.typ is $struct {
+					handlers := app_route_handlers_after(app.$(field.name), route_path)
+					if handlers.len > 0 {
+						return handlers
+					}
+				}
+			}
+		}
+	}
+	return []RouteMiddleware{}
+}
+
+fn app_global_handlers[A](app &A) []voidptr {
+	$if A is $struct {
+		$for field in A.fields {
+			$if field.is_embed {
+				$if field.name == 'Middleware' {
+					return app.$(field.name).get_global_handlers()
+				} $else $if field.typ is $struct {
+					handlers := app_global_handlers(app.$(field.name))
+					if handlers.len > 0 {
+						return handlers
+					}
+				}
+			}
+		}
+	}
+	return []voidptr{}
+}
+
+fn app_global_handlers_after[A](app &A) []voidptr {
+	$if A is $struct {
+		$for field in A.fields {
+			$if field.is_embed {
+				$if field.name == 'Middleware' {
+					return app.$(field.name).get_global_handlers_after()
+				} $else $if field.typ is $struct {
+					handlers := app_global_handlers_after(app.$(field.name))
+					if handlers.len > 0 {
+						return handlers
+					}
+				}
+			}
+		}
+	}
+	return []voidptr{}
+}
+
 fn validate_middleware[T](mut ctx T, raw_handlers []voidptr) bool {
 	for handler in raw_handlers {
 		func := MiddlewareHandler[T](handler)
@@ -141,7 +210,7 @@ enum ContentEncoding {
 	zstd
 }
 
-// send_compressed_response compresses the response body and sends it to the client.
+// send_compressed_response compresses the response body and updates the response.
 // Returns true if compression should be skipped, false if compression was applied.
 fn send_compressed_response(mut ctx Context, encoding ContentEncoding) bool {
 	compressed, encoding_name := match encoding {
@@ -161,17 +230,15 @@ fn send_compressed_response(mut ctx Context, encoding ContentEncoding) bool {
 		}
 	}
 
-	// Take over the connection to have full control over the response
-	ctx.takeover_conn()
-
 	// Set HTTP headers for compressed content
 	ctx.res.header.add(.content_encoding, encoding_name)
 	ctx.res.header.set(.vary, 'Accept-Encoding')
-	ctx.res.header.set(.content_length, compressed.len.str())
 
-	fast_send_resp_header(mut ctx.conn, ctx.res) or {}
-	ctx.conn.write_ptr(&u8(compressed.data), compressed.len) or {}
-	ctx.conn.close() or {}
+	// Replace the response body with the compressed data and update Content-Length.
+	// The normal response path will handle sending it.
+	ctx.res.body = compressed.bytestr()
+	ctx.res.header.set(.content_length, compressed.len.str())
+	ctx.already_compressed = true
 
 	return false
 }
@@ -182,9 +249,9 @@ fn should_skip_compression(ctx Context) bool {
 	if ctx.already_compressed {
 		return true
 	}
-	// Skip compression for files in streaming mode (takeover == false)
+	// Skip compression for files in streaming mode (no takeover)
 	// Files in takeover mode (small files loaded in memory) are compressed
-	if ctx.return_type == .file && !ctx.takeover {
+	if ctx.return_type == .file && ctx.takeover_mode == .none {
 		return true
 	}
 	return false

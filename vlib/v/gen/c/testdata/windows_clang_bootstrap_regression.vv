@@ -1,0 +1,7 @@
+// vtest vflags: -os windows -cc clang
+fn main() {
+	_ = winapi_lasterr_str()
+	ch := chan int{}
+	ch <- 1
+	_ = <-ch or { 0 }
+}

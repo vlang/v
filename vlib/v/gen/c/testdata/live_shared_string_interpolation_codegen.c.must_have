@@ -1,0 +1,2 @@
+string _t1 = time__Time_str(t);
+builtin__println(builtin__string_plus_many(2, _MOV((string[2]){_S("Time: "),_t1})));

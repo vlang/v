@@ -31,14 +31,7 @@ pub fn (mut cs ComponentStore[T]) add(e Entity, value T) {
 @[heap]
 struct Registry {
 pub mut:
-	data map[string]IComponentStore
-}
-
-pub fn registry() &Registry {
-	mut r := &Registry{
-		data: map[string]IComponentStore{}
-	}
-	return r
+	data IComponentStore
 }
 
 fn main() {

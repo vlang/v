@@ -8,6 +8,42 @@ fn test_if_flag_not_given_return_default_values() {
 	assert 'stuff' == fp.string('a_string', 0, 'stuff', '')
 }
 
+fn test_if_flag_not_given_can_return_option_defaults() {
+	mut fp := flag.new_flag_parser([])
+	assert fp.bool_val('a_bool', 0, ?bool(none), '') == none
+	assert fp.int_val('an_int', 0, ?int(none), '') == none
+	assert fp.float_val('a_float', 0, ?f64(none), '') == none
+	assert fp.string_val('a_string', 0, ?string(none), '') == none
+}
+
+fn test_if_flag_not_given_preserves_typed_option_defaults() {
+	mut fp := flag.new_flag_parser([])
+	a_bool := fp.bool_val('a_bool', 0, ?bool(true), '')
+	an_int := fp.int_val('an_int', 0, ?int(42), '')
+	a_float := fp.float_val('a_float', 0, ?f64(1.5), '')
+	a_string := fp.string_val('a_string', 0, ?string('stuff'), '')
+	if value := a_bool {
+		assert value
+	} else {
+		assert false
+	}
+	if value := an_int {
+		assert value == 42
+	} else {
+		assert false
+	}
+	if value := a_float {
+		assert value == 1.5
+	} else {
+		assert false
+	}
+	if value := a_string {
+		assert value == 'stuff'
+	} else {
+		assert false
+	}
+}
+
 fn test_could_define_application_name_and_version() {
 	mut fp := flag.new_flag_parser([])
 	fp.application('test app')
@@ -21,6 +57,41 @@ fn test_could_define_application_name_and_version() {
 fn test_bool_flags_do_not_need_an_value() {
 	mut fp := flag.new_flag_parser(['--a_bool'])
 	assert true == fp.bool('a_bool', 0, false, '')
+}
+
+fn test_flag_values_can_be_returned_as_options() {
+	mut fp := flag.new_flag_parser([
+		'--an_int',
+		'42',
+		'--a_float=2.0',
+		'--a_string',
+		'stuff',
+		'--a_bool=false',
+	])
+	a_bool := fp.bool_val('a_bool', 0, ?bool(none), '')
+	an_int := fp.int_val('an_int', 0, ?int(none), '')
+	a_float := fp.float_val('a_float', 0, ?f64(none), '')
+	a_string := fp.string_val('a_string', 0, ?string(none), '')
+	if value := a_bool {
+		assert !value
+	} else {
+		assert false
+	}
+	if value := an_int {
+		assert value == 42
+	} else {
+		assert false
+	}
+	if value := a_float {
+		assert value == 2.0
+	} else {
+		assert false
+	}
+	if value := a_string {
+		assert value == 'stuff'
+	} else {
+		assert false
+	}
 }
 
 fn test_flags_could_be_defined_with_eq() {
@@ -177,6 +248,29 @@ fn test_allow_to_build_usage_message() {
 		}
 	}
 	assert all_strings_found
+}
+
+fn test_usage_shows_default_values_for_defaulted_options() {
+	mut fp := flag.new_flag_parser([])
+	fp.int('count', `c`, 34, 'My parameter')
+	fp.float('ratio', `r`, 1.25, 'My ratio')
+	fp.string('name', `n`, 'guest', 'My name')
+	fp.string('empty', 0, '', 'Empty string')
+	fp.bool('verbose', `v`, false, 'Be chatty')
+	usage := fp.usage()
+	assert usage.contains('My parameter (default 34)')
+	assert usage.contains('My ratio (default 1.25)')
+	assert usage.contains('My name (default "guest")')
+	assert usage.contains('Empty string (default "")')
+	assert usage.contains('Be chatty (default false)')
+}
+
+fn test_builtin_flags_do_not_show_default_values_in_usage() {
+	mut fp := flag.new_flag_parser([])
+	fp.finalize() or { panic(err) }
+	usage := fp.usage()
+	assert !usage.contains('display this help and exit (default false)')
+	assert !usage.contains('output version information and exit (default false)')
 }
 
 fn test_if_app_name_given_but_no_show_usage_message_still_contain_version() {

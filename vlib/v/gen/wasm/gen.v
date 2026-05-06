@@ -8,7 +8,6 @@ import v.pref
 import v.util
 import v.token
 import v.errors
-import v.eval
 import v.gen.wasm.serialise
 import wasm
 import os
@@ -23,7 +22,6 @@ mut:
 	warnings  []errors.Warning
 	errors    []errors.Error
 	table     &ast.Table = unsafe { nil }
-	eval      eval.Eval
 	enum_vals map[string]Enum
 
 	mod                    wasm.Module
@@ -262,6 +260,7 @@ pub fn (mut g Gen) fn_decl(node ast.FnDecl) {
 			}
 		}
 	}
+
 	if rt.has_flag(.result) {
 		g.v_error('result types are not implemented', node.return_type_pos)
 		retl << .i32_t // &IError
@@ -1624,6 +1623,9 @@ pub fn (mut g Gen) expr_stmt(node ast.Stmt, expected ast.Type) {
 			// assumed expected == void
 			g.asm_stmt(node)
 		}
+		ast.EmptyStmt {
+			// EmptyStmt nodes are emitted by earlier compiler passes for eliminated statements.
+		}
 		else {
 			g.w_error('wasm.expr_stmt(): unhandled node: ' + node.type_name())
 		}
@@ -1677,6 +1679,115 @@ mut:
 	fields map[string]i64
 }
 
+fn (mut g Gen) eval_enum_field_expr(expr ast.Expr) ?i64 {
+	match expr {
+		ast.IntegerLiteral {
+			return expr.val.i64()
+		}
+		ast.CharLiteral {
+			runes := expr.val.runes()
+			if runes.len == 0 {
+				return none
+			}
+			return i64(runes[0])
+		}
+		ast.BoolLiteral {
+			return if expr.val { i64(1) } else { i64(0) }
+		}
+		ast.ParExpr {
+			return g.eval_enum_field_expr(expr.expr)
+		}
+		ast.CastExpr {
+			return g.eval_enum_field_expr(expr.expr)
+		}
+		ast.PrefixExpr {
+			right := g.eval_enum_field_expr(expr.right)?
+			match expr.op {
+				.plus {
+					return right
+				}
+				.minus {
+					return -right
+				}
+				.bit_not {
+					return ~right
+				}
+				else {
+					return none
+				}
+			}
+		}
+		ast.InfixExpr {
+			left := g.eval_enum_field_expr(expr.left)?
+			right := g.eval_enum_field_expr(expr.right)?
+			match expr.op {
+				.plus {
+					return left + right
+				}
+				.minus {
+					return left - right
+				}
+				.mul {
+					return left * right
+				}
+				.div {
+					if right == 0 {
+						return none
+					}
+					return left / right
+				}
+				.mod {
+					if right == 0 {
+						return none
+					}
+					return left % right
+				}
+				.left_shift {
+					return i64(u64(left) << int(right))
+				}
+				.right_shift {
+					return left >> int(right)
+				}
+				.unsigned_right_shift {
+					return i64(u64(left) >> int(right))
+				}
+				.amp {
+					return left & right
+				}
+				.pipe {
+					return left | right
+				}
+				.xor {
+					return left ^ right
+				}
+				else {
+					return none
+				}
+			}
+		}
+		ast.Ident {
+			mut obj := expr.obj
+			if obj !in [ast.ConstField, ast.GlobalField] {
+				obj = expr.scope.find(expr.name) or { return none }
+			}
+			match mut obj {
+				ast.ConstField {
+					return g.eval_enum_field_expr(obj.expr)
+				}
+				ast.GlobalField {
+					return g.eval_enum_field_expr(obj.expr)
+				}
+				else {
+					return none
+				}
+			}
+		}
+		else {
+			return none
+		}
+	}
+}
+
 pub fn (mut g Gen) calculate_enum_fields() {
 	// `enum Enum as u64` is supported
 	for name, decl in g.table.enum_decls {
@@ -1684,7 +1795,9 @@ pub fn (mut g Gen) calculate_enum_fields() {
 		mut value := if decl.is_flag { i64(1) } else { 0 }
 		for field in decl.fields {
 			if field.has_expr {
-				value = g.eval.expr(field.expr, decl.typ).int_val()
+				value = g.eval_enum_field_expr(field.expr) or {
+					g.w_error('wasm: unsupported enum expression for `${name}.${field.name}`')
+				}
 			}
 			enum_vals.fields[field.name] = value
 			if decl.is_flag {
@@ -1703,7 +1816,6 @@ pub fn gen(files []&ast.File, mut table ast.Table, out_name string, w_pref &pref
 		table:     table
 		pref:      w_pref
 		files:     files
-		eval:      eval.new_eval(table, w_pref)
 		pool:      serialise.new_pool(table, store_relocs: true, null_terminated: false)
 		stack_top: stack_top
 		data_base: calc_align(stack_top + 1, 16)

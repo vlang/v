@@ -82,7 +82,15 @@ pub:
 }
 
 fn C.select(ndfs i32, readfds &C.fd_set, writefds &C.fd_set, exceptfds &C.fd_set, timeout &C.timeval) i32
-fn C.ioctl(fd i32, request u64, args ...voidptr) i32
+
+$if !windows {
+	fn C.ioctl(fd i32, request u64, args ...voidptr) i32
+}
+
+$if windows {
+	fn C._get_osfhandle(fd int) voidptr
+	fn C.PeekNamedPipe(hNamedPipe voidptr, lpBuffer voidptr, nBufferSize i32, lpBytesRead voidptr, lpTotalBytesAvail voidptr, lpBytesLeftThisMessage voidptr) bool
+}
 
 // These are C macros, but from the V's point of view, can be treated as C functions:
 fn C.FD_ZERO(fdset &C.fd_set)
@@ -96,9 +104,19 @@ pub fn fd_is_pending(fd int) bool {
 		return false
 	}
 	mut bytes_avail := int(0)
-	// `select` marks EOF as readable, while `FIONREAD` reports the number of unread bytes.
-	if C.ioctl(fd, u64(C.FIONREAD), &bytes_avail) == 0 {
-		return bytes_avail > 0
+	$if windows {
+		handle := voidptr(C._get_osfhandle(fd))
+		if handle != voidptr(-1) {
+			if C.PeekNamedPipe(handle, unsafe { nil }, int(0), unsafe { nil },
+				voidptr(&bytes_avail), unsafe { nil })
+			{
+				return bytes_avail > 0
+			}
+		}
+	} $else {
+		if C.ioctl(fd, u64(C.FIONREAD), &bytes_avail) == 0 {
+			return bytes_avail > 0
+		}
 	}
 	read_set := C.fd_set{}
 	C.FD_ZERO(&read_set)

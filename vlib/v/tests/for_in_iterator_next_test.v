@@ -47,6 +47,34 @@ pub fn (mut line_iterator AliasLineIterator) next() ?string {
 	return line_iterator.lines[line_iterator.idx]
 }
 
+struct SquareIterator {
+	arr []int
+mut:
+	idx int
+}
+
+interface Iterable[T] {
+mut:
+	idx int
+	next() ?T
+}
+
+fn (mut iter SquareIterator) next() ?string {
+	if iter.idx >= iter.arr.len {
+		return none
+	}
+	defer { iter.idx++ }
+	return (iter.arr[iter.idx] * iter.arr[iter.idx]).str()
+}
+
+fn collect_iterable(iter Iterable[string]) []string {
+	mut out := []string{}
+	for item in iter {
+		out << item
+	}
+	return out
+}
+
 fn test_main() {
 	mut out := []string{}
 	for line in iterator_as_interface() {
@@ -87,4 +115,11 @@ fn test_main() {
 
 	assert out[6] == 'LINE: alias'
 	assert out[7] == 'LINE: next'
+}
+
+fn test_for_in_generic_iterator_interface_param() {
+	iter := SquareIterator{
+		arr: [1, 2, 3, 4, 5]
+	}
+	assert collect_iterable(iter) == ['1', '4', '9', '16', '25']
 }

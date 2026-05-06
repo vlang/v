@@ -1,16 +1,27 @@
 fn test_gated_arrays() {
 	a := [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
+	assert a#[-1] == 9
+	assert a#[1] == 1
 	assert a#[-1..] == [9]
 	assert a#[..-9] == [0]
 	assert a#[-9..-7] == [1, 2]
 	assert a#[-2..] == [8, 9]
+	missing := a#[-11] or { 42 }
+	assert missing == 42
+
+	mut b := [1, 2, 3]
+	b#[-1] = 100
+	assert b == [1, 2, 100]
 
 	// fixed array
-	a1 := [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]!
+	mut a1 := [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]!
+	assert a1#[-1] == 9
 	assert a1#[-1..] == [9]
 	assert a1#[..-9] == [0]
 	assert a1#[-9..-7] == [1, 2]
 	assert a1#[-2..] == [8, 9]
+	a1#[-1] = 100
+	assert a1[9] == 100
 
 	// empty array
 	assert a#[-3..-4] == [] // start > end
@@ -21,10 +32,14 @@ fn test_gated_arrays() {
 
 fn test_gated_strings() {
 	a := '0123456789'
+	assert a#[-1] == `9`
+	assert a#[1] == `1`
 	assert a#[-1..] == '9'
 	assert a#[..-9] == '0'
 	assert a#[-9..-7] == '12'
 	assert a#[-2..] == '89'
+	missing := a#[-11] or { `x` }
+	assert missing == `x`
 
 	// empty string
 	assert a#[-3..-4] == '' // start > end

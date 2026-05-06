@@ -129,6 +129,7 @@ fn (mut state BFState) run() ? {
 				// I.e. they are treated like programmer comments.
 			}
 		}
+
 		i++
 		// increment the program counter to go to the next instruction
 		state.pc++

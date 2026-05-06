@@ -71,10 +71,70 @@ fn test_https_large_bodies_can_be_processed_concurrently() {
 	}
 }
 
+fn test_https_request_timeout_closes_the_connection() {
+	mut port_listener := net.listen_tcp(.ip, '127.0.0.1:0')!
+	port := port_listener.addr()!.port()!
+	port_listener.close()!
+
+	mut listener := mbedtls.new_ssl_listener('127.0.0.1:${port}', mbedtls.SSLConnectConfig{
+		cert:                   concurrent_large_response_test_cert
+		cert_key:               concurrent_large_response_test_key
+		validate:               false
+		in_memory_verification: true
+	})!
+	server := spawn serve_incomplete_https_response(mut listener)
+
+	mut req := http.new_request(.get, 'https://127.0.0.1:${port}', '')
+	req.read_timeout = 250 * time.millisecond
+	req.validate = false
+	req.do() or {
+		assert server.wait()
+		return
+	}
+	panic('expected the HTTPS request to time out')
+}
+
+fn test_https_chunked_body_is_returned_by_http_get_text() {
+	mut port_listener := net.listen_tcp(.ip, '127.0.0.1:0')!
+	port := port_listener.addr()!.port()!
+	port_listener.close()!
+
+	mut listener := mbedtls.new_ssl_listener('127.0.0.1:${port}', mbedtls.SSLConnectConfig{
+		cert:                   concurrent_large_response_test_cert
+		cert_key:               concurrent_large_response_test_key
+		validate:               false
+		in_memory_verification: true
+	})!
+	expected_body := concurrent_large_response_body()
+	server := spawn serve_chunked_html_response(mut listener, expected_body)
+
+	body := http.get_text('https://127.0.0.1:${port}/chunked')
+	server.wait()
+
+	assert body == expected_body
+}
+
 fn concurrent_large_response_body() string {
 	return '<html><body>' +
 		'<article><a href="/item">payload</a></article>'.repeat(concurrent_large_response_links) +
 		'</body></html>'
+}
+
+fn serve_incomplete_https_response(mut listener mbedtls.SSLListener) bool {
+	defer {
+		listener.shutdown() or {}
+	}
+	mut conn := listener.accept() or { panic(err) }
+	defer {
+		conn.shutdown() or {}
+	}
+	mut request_buf := []u8{len: 2048}
+	_ = conn.read(mut request_buf) or { return false }
+	conn.write_string('HTTP/1.1 200 OK\r\nContent-Length: 2\r\n') or { return false }
+	conn.set_read_timeout(time.second)
+	mut drain_buf := []u8{len: 128}
+	_ = conn.read(mut drain_buf) or { return err.code() != net.err_timed_out_code }
+	return false
 }
 
 fn serve_large_html_responses(mut listener mbedtls.SSLListener, body string, request_count int) {
@@ -87,6 +147,14 @@ fn serve_large_html_responses(mut listener mbedtls.SSLListener, body string, req
 		handlers << spawn write_large_html_response(mut conn, body)
 	}
 	handlers.wait()
+}
+
+fn serve_chunked_html_response(mut listener mbedtls.SSLListener, body string) {
+	defer {
+		listener.shutdown() or {}
+	}
+	mut conn := listener.accept() or { panic(err) }
+	write_chunked_html_response(mut conn, body)
 }
 
 fn write_large_html_response(mut conn mbedtls.SSLConn, body string) {
@@ -108,6 +176,31 @@ fn write_large_html_response(mut conn mbedtls.SSLConn, body string) {
 		start = end
 		time.sleep(1 * time.millisecond)
 	}
+}
+
+fn write_chunked_html_response(mut conn mbedtls.SSLConn, body string) {
+	defer {
+		conn.shutdown() or {}
+	}
+	mut request_buf := []u8{len: 2048}
+	_ = conn.read(mut request_buf) or { return }
+	header := 'HTTP/1.1 200 OK\r\nContent-Type: text/html\r\nTransfer-Encoding: chunked\r\nConnection: close\r\n\r\n'
+	conn.write_string(header) or { return }
+	mut start := 0
+	for start < body.len {
+		end := if start + concurrent_large_response_chunk_size > body.len {
+			body.len
+		} else {
+			start + concurrent_large_response_chunk_size
+		}
+		chunk := body[start..end]
+		conn.write_string('${chunk.len:x}\r\n') or { return }
+		conn.write_string(chunk) or { return }
+		conn.write_string('\r\n') or { return }
+		start = end
+		time.sleep(1 * time.millisecond)
+	}
+	conn.write_string('0\r\n\r\n') or { return }
 }
 
 fn concurrent_large_response_worker(mut pp pool.PoolProcessor, idx int, _wid int) &ConcurrentLargeResponseResult {

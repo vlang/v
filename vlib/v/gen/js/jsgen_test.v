@@ -76,6 +76,41 @@ fn test_issue_11379_js_browser_builtin_print_call_does_not_panic() {
 	assert os.exists(output)
 }
 
+fn test_issue_20667_js_can_compile_game_of_life_example() {
+	vexe := os.getenv('VEXE')
+	os.chdir(os.dir(vexe)) or {}
+	os.mkdir_all(output_dir) or { panic(err) }
+	program := os.join_path('examples', 'game_of_life', 'life.v')
+	output := os.join_path(output_dir, 'game_of_life.js')
+	res :=
+		os.execute('${os.quoted_path(vexe)} -prod -b js -w -o ${os.quoted_path(output)} ${os.quoted_path(program)}')
+	assert res.exit_code == 0, res.output
+	assert os.exists(output)
+}
+
+fn test_issue_23554_js_browser_interpolated_at_exprs_do_not_emit_nested_templates() {
+	vexe := os.getenv('VEXE')
+	os.chdir(os.dir(vexe)) or {}
+	os.mkdir_all(output_dir) or { panic(err) }
+	program := os.join_path(output_dir, 'issue_23554.v')
+	output := os.join_path(output_dir, 'issue_23554.js')
+	source := [
+		'fn main() {',
+		"\tprintln('\${@LOCATION}')",
+		"\tprintln('\${@FILE_LINE}')",
+		"\tprintln('X \${@LOCATION}')",
+		"\tprintln('X \${@FILE_LINE}')",
+		'}',
+	].join_lines()
+	os.write_file(program, source) or { panic(err) }
+	res :=
+		os.execute('${os.quoted_path(vexe)} -b js_browser -o ${os.quoted_path(output)} ${os.quoted_path(program)}')
+	assert res.exit_code == 0, res.output
+	js := os.read_file(output) or { panic(err) }
+	assert !js.contains('new string(`' + '$' + '{"')
+	assert os.exists(output)
+}
+
 fn find_test_files() []string {
 	files := os.ls(test_dir) or { panic(err) }
 	// The life example never exits, so tests would hang with it, skip

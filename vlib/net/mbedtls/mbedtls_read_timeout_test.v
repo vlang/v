@@ -1,6 +1,7 @@
 // vtest build: !(windows && tinyc) // TODO: fix these by adding declarations for the missing functions in the prebuilt tcc
 module mbedtls
 
+import net
 import time
 
 fn test_ssl_conn_read_timeout_can_be_configured_at_runtime() ! {
@@ -13,4 +14,7 @@ fn test_ssl_conn_read_timeout_can_be_configured_at_runtime() ! {
 	timeout := 5 * time.minute
 	conn.set_read_timeout(timeout)
 	assert conn.read_timeout() == timeout
+
+	conn.set_read_timeout(net.infinite_timeout)
+	assert conn.read_timeout() == net.infinite_timeout
 }

@@ -158,6 +158,7 @@ fn (mut vd VDoc) render_doc(d doc.Doc, out Output) (string, string) {
 		.json { vd.gen_json(d) }
 		else { vd.gen_plaintext(d) }
 	}
+
 	contents := d.contents.arr()
 	vd.process_all_examples(contents)
 	return name, output
@@ -181,6 +182,7 @@ fn (vd &VDoc) get_file_name(mod string, out Output) string {
 		.json { '.json' }
 		else { '.txt' }
 	}
+
 	return name
 }
 
@@ -367,9 +369,6 @@ fn (mut vd VDoc) generate_docs_from_file() {
 				vd.emit_generate_err(err)
 				exit(1)
 			}
-		}
-		if dcs.contents.len == 0 {
-			continue
 		}
 		if cfg.is_multi || (!cfg.is_multi && cfg.include_readme) {
 			readme := vd.get_readme(dirpath)

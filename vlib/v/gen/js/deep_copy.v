@@ -200,12 +200,13 @@ fn (mut g JsGen) final_gen_copy(typ StrType) {
 	}
 	match styp {
 		'byte', 'u8', 'u16', 'u32', 'u64', 'i16', 'i32', 'int', 'i64', 'isize', 'usize', 'bool',
-		'int_literal', 'float_literal', 'f32', 'f64', 'voidptr' {
+		'char', 'rune', 'int_literal', 'float_literal', 'f32', 'f64', 'voidptr' {
 			g.definitions.writeln('function ${sym.cname}_\$copy(it) { return new ${sym.cname}(it.val); }')
 			return
 		}
 		else {}
 	}
+
 	match sym.info {
 		ast.Alias {
 			g.gen_copy_for_alias(sym.info, styp, copy_fn_name)

@@ -6,27 +6,29 @@ module http
 import net.ssl
 import strings
 
-fn (req &Request) ssl_do(port int, method Method, host_name string, path string) !Response {
+fn (req &Request) ssl_do(port int, method Method, host_name string, path string, data string, header Header) !Response {
 	$if windows && !no_vschannel ? {
-		if req.validate {
-			return vschannel_ssl_do(req, port, method, host_name, path)
-		}
-		// vschannel enforces certificate validation during handshake.
-		// Use net.ssl when validation is explicitly disabled.
+		return vschannel_ssl_do(req, port, method, host_name, path, data, header)
 	}
-	return net_ssl_do(req, port, method, host_name, path)
+	return net_ssl_do(req, port, method, host_name, path, data, header)
 }
 
-fn net_ssl_do(req &Request, port int, method Method, host_name string, path string) !Response {
-	mut ssl_conn := ssl.new_ssl_conn(
-		verify:                 req.verify
-		cert:                   req.cert
-		cert_key:               req.cert_key
-		validate:               req.validate
-		in_memory_verification: req.in_memory_verification
-	)!
+fn net_ssl_do(req &Request, port int, method Method, host_name string, path string, data string, header Header) !Response {
 	mut retries := 0
+	req_headers := req.build_request_headers_with(method, host_name, port, path, data, header)
+	$if trace_http_request ? {
+		eprint('> ')
+		eprint(req_headers)
+		eprintln('')
+	}
 	for {
+		mut ssl_conn := ssl.new_ssl_conn(
+			verify:                 req.verify
+			cert:                   req.cert
+			cert_key:               req.cert_key
+			validate:               req.validate
+			in_memory_verification: req.in_memory_verification
+		)!
 		ssl_conn.dial(host_name, port) or {
 			retries++
 			if is_no_need_retry_error(err.code()) || retries >= req.max_retries {
@@ -34,17 +36,9 @@ fn net_ssl_do(req &Request, port int, method Method, host_name string, path stri
 			}
 			continue
 		}
-		break
+		return req.do_request(req_headers, mut ssl_conn)!
 	}
-
-	req_headers := req.build_request_headers(method, host_name, port, path)
-	$if trace_http_request ? {
-		eprint('> ')
-		eprint(req_headers)
-		eprintln('')
-	}
-
-	return req.do_request(req_headers, mut ssl_conn)!
+	return error('http.net_ssl_do: exhausted retries')
 }
 
 fn read_from_ssl_connection_cb(con voidptr, buf &u8, bufsize int) !int {
@@ -53,11 +47,13 @@ fn read_from_ssl_connection_cb(con voidptr, buf &u8, bufsize int) !int {
 }
 
 fn (req &Request) do_request(req_headers string, mut ssl_conn ssl.SSLConn) !Response {
+	defer {
+		ssl_conn.shutdown() or {}
+	}
 	ssl_conn.write_string(req_headers) or { return err }
 	mut content := strings.new_builder(4096)
-	req.receive_all_data_from_cb_in_builder(mut content, voidptr(ssl_conn),
+	response_info := req.receive_all_data_from_cb_in_builder(mut content, voidptr(ssl_conn),
 		read_from_ssl_connection_cb)!
-	ssl_conn.shutdown()!
 	response_text := content.str()
 	$if trace_http_response ? {
 		eprint('< ')
@@ -67,5 +63,5 @@ fn (req &Request) do_request(req_headers string, mut ssl_conn ssl.SSLConn) !Resp
 	if req.on_finish != unsafe { nil } {
 		req.on_finish(req, u64(response_text.len))!
 	}
-	return parse_response(response_text)
+	return parse_received_response(response_text, response_info)
 }

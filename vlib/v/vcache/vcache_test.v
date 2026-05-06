@@ -80,6 +80,14 @@ fn test_exists() {
 	assert y != z
 }
 
+fn test_temporary_options_reset_cached_key_paths() {
+	mut cm := vcache.new_cache_manager(['-os freebsd'])
+	path_before := cm.mod_postfix_with_key2cpath('builtin', '.o', '/tmp/gc.o')
+	cm.set_temporary_options(['-target x86_64-unknown-freebsd14.0'])
+	path_after := cm.mod_postfix_with_key2cpath('builtin', '.o', '/tmp/gc.o')
+	assert path_before != path_after
+}
+
 fn test_readme_exists_and_is_readable() {
 	vcache.new_cache_manager([])
 	freadme := os.join_path(vcache_folder, 'README.md')

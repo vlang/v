@@ -104,6 +104,7 @@ fn should_escape(c u8, mode EncodingMode) bool {
 		}
 		else {}
 	}
+
 	if mode == .encode_fragment {
 		// RFC 3986 §2.2 allows not escaping sub-delims. A subset of sub-delims are
 		// included in reserved from RFC 2396 §2.2. The remaining sub-delims do not

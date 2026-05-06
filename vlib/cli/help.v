@@ -30,7 +30,7 @@ fn help_cmd() Command {
 pub fn print_help_for_command(cmd Command) ! {
 	if cmd.args.len > 0 {
 		for sub_cmd in cmd.commands {
-			if sub_cmd.name == cmd.args[0] {
+			if sub_cmd.matches(cmd.args[0]) {
 				cmd_ := unsafe { &sub_cmd }
 				print(cmd_.help_message())
 				return
@@ -74,7 +74,7 @@ pub fn (cmd &Command) help_message() string {
 				max(name_len, abbrev_len + flag.name.len + spacing + 2) // + 2 for '--' in front
 		}
 		for command in cmd.commands {
-			name_len = max(name_len, command.name.len + spacing)
+			name_len = max(name_len, command.display_name().len + spacing)
 		}
 	} else {
 		for flag in cmd.flags {
@@ -85,7 +85,7 @@ pub fn (cmd &Command) help_message() string {
 				max(name_len, abbrev_len + flag.name.len + spacing + 1) // + 1 for '-' in front
 		}
 		for command in cmd.commands {
-			name_len = max(name_len, command.name.len + spacing)
+			name_len = max(name_len, command.display_name().len + spacing)
 		}
 	}
 	if cmd.flags.len > 0 {
@@ -114,9 +114,10 @@ pub fn (cmd &Command) help_message() string {
 	if cmd.commands.len > 0 {
 		help += '\nCommands:\n'
 		for command in cmd.commands {
+			command_name := command.display_name()
 			base_indent := ' '.repeat(base_indent_len)
-			description_indent := ' '.repeat(name_len - command.name.len)
-			help += '${base_indent}${command.name}${description_indent}' +
+			description_indent := ' '.repeat(name_len - command_name.len)
+			help += '${base_indent}${command_name}${description_indent}' +
 				pretty_description(command.description, base_indent_len + name_len) + '\n'
 		}
 	}

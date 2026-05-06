@@ -26,7 +26,17 @@ fn test_parse_inline_tags() {
 	assert p_tags.len == 1
 
 	p_tag := p_tags[0]
-	assert p_tag.str() == '<p>before <span>in between</span><text> after</text></p>'
+	assert p_tag.content == 'before <span>in between</span> after'
+	assert p_tag.str() == '<p>before <span>in between</span> after</p>'
 
 	assert p_tag.text() == 'before in between after'
+}
+
+fn test_parse_content_with_nested_tags() {
+	doc := parse('<tr id="line"><td><a href="#">wom<nobr>All</a></td></tr>')
+	td_tag := doc.get_tags(name: 'td')[0]
+	a_tag := td_tag.get_tags('a')[0]
+	assert td_tag.content == '<a href="#" >wom<nobr>All</nobr></a>'
+	assert a_tag.content == 'wom<nobr>All</nobr>'
+	assert td_tag.text() == 'womAll'
 }

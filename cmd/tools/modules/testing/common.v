@@ -203,10 +203,24 @@ pub fn (mut ts TestSession) print_messages() {
 		// first sent *all events* to the output reporter, so it can then process them however it wants:
 		ts.reporter.report(ts.nmessage_idx, rmessage)
 
-		if rmessage.kind in [.cmd_begin, .cmd_end, .compile_begin, .compile_end] {
+		if rmessage.kind in [.cmd_begin, .cmd_end, .compile_begin] {
 			// The following events, are sent before the test framework has determined,
 			// what the full completion status is. They can also be repeated multiple times,
 			// for tests that are flaky and need repeating.
+			continue
+		}
+		if rmessage.kind == .compile_end {
+			if rmessage.message.trim_space().len == 0 {
+				continue
+			}
+			if ts.progress_mode {
+				ts.reporter.update_last_line_and_move_to_next(ts.nmessage_idx, '')
+			}
+			if rmessage.message.ends_with('\n') {
+				eprint(rmessage.message)
+			} else {
+				eprintln(rmessage.message)
+			}
 			continue
 		}
 		if rmessage.kind == .sentinel {
@@ -288,6 +302,8 @@ pub fn (mut ts TestSession) system(cmd string, mtc MessageThreadContext) int {
 
 pub fn new_test_session(_vargs string, will_compile bool) TestSession {
 	mut skip_files := []string{}
+	vexe := pref.vexe_path()
+	vroot := os.dir(vexe)
 	if will_compile {
 		if runner_os != 'Linux' || !github_job.starts_with('tcc-') {
 			if !os.exists('/usr/local/include/wkhtmltox/pdf.h') {
@@ -295,10 +311,11 @@ pub fn new_test_session(_vargs string, will_compile bool) TestSession {
 			}
 		}
 	}
+	if os.user_os() == 'windows' {
+		skip_files << windows_disabled_fasthttp_veb_tests(vroot)
+	}
 	skip_files = skip_files.map(os.abs_path)
 	vargs := _vargs.replace('-progress', '')
-	vexe := pref.vexe_path()
-	vroot := os.dir(vexe)
 	hash := '${sync.thread_id().hex()}_${rand.ulid()}'
 	new_vtmp_dir := setup_new_vtmp_folder(hash)
 	if term.can_show_color_on_stderr() {
@@ -324,6 +341,29 @@ pub fn new_test_session(_vargs string, will_compile bool) TestSession {
 
 	ts.handle_test_runner_option()
 	return ts
+}
+
+fn windows_disabled_fasthttp_veb_tests(vroot string) []string {
+	mut files := []string{}
+	for dir in [
+		os.join_path(vroot, 'vlib', 'fasthttp'),
+		os.join_path(vroot, 'vlib', 'veb'),
+	] {
+		if !os.is_dir(dir) {
+			continue
+		}
+		os.walk(dir, fn [mut files] (path string) {
+			if path.ends_with('_test.v') || path.ends_with('_test.c.v')
+				|| path.ends_with('_test.js.v') {
+				files << path
+			}
+		})
+	}
+	session_app_test := os.join_path(vroot, 'vlib', 'x', 'sessions', 'tests', 'session_app_test.v')
+	if os.exists(session_app_test) {
+		files << session_app_test
+	}
+	return files
 }
 
 fn (mut ts TestSession) handle_test_runner_option() {

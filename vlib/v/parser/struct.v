@@ -12,6 +12,7 @@ fn (mut p Parser) struct_decl(is_anon bool) ast.StructDecl {
 	p.top_level_statement_start()
 	// save attributes, they will be changed later in fields
 	attrs := p.attrs
+	p.attrs = []
 	start_pos := p.tok.pos()
 	mut is_pub := p.tok.kind == .key_pub
 	mut is_shared := p.tok.kind == .key_shared
@@ -118,7 +119,9 @@ fn (mut p Parser) struct_decl(is_anon bool) ast.StructDecl {
 	mut global_pos := -1
 	mut module_pos := -1
 	mut is_field_mut := language == .c
-	mut is_field_pub := language == .c
+	// Anonymous struct parameter fields are part of the function's call surface,
+	// so callers in other modules must be able to initialize them.
+	mut is_field_pub := language == .c || (is_anon && p.inside_fn_param)
 	mut is_field_global := false
 	mut is_implements := false
 	mut implements_types := []ast.TypeNode{cap: 3} // ast.void_type
@@ -373,6 +376,7 @@ fn (mut p Parser) struct_decl(is_anon bool) ast.StructDecl {
 						// TODO: implement all types??
 						else {}
 					}
+
 					has_default_expr = true
 					comments << p.eat_comments(same_line: true)
 				}
@@ -475,7 +479,7 @@ fn (mut p Parser) struct_decl(is_anon bool) ast.StructDecl {
 		is_pub:     is_pub
 		is_builtin: name in ast.builtins
 	}
-	if p.table.has_deep_child_no_ref(&sym, name) {
+	if language == .v && p.table.has_deep_child_no_ref(&sym, name) {
 		p.error_with_pos('invalid recursive struct `${orig_name}`', name_pos)
 		return ast.StructDecl{}
 	}
@@ -596,6 +600,33 @@ fn (mut p Parser) struct_init(typ_str string, kind ast.StructInitKind, is_option
 	if is_option {
 		typ = typ.set_flag(.option)
 	}
+	return p.struct_init_from_parts(first_pos, typ_str, typ, ast.empty_expr,
+		struct_init_generic_types, kind)
+}
+
+fn (mut p Parser) struct_init_with_type_expr(type_expr ast.Expr, kind ast.StructInitKind) ast.StructInit {
+	p.init_generic_types = []ast.Type{}
+	mut typ := ast.void_type
+	mut typ_expr := type_expr
+	match type_expr {
+		ast.TypeNode {
+			typ = type_expr.typ
+			typ_expr = ast.empty_expr
+		}
+		ast.ParExpr {
+			if type_expr.expr is ast.TypeNode {
+				typ = type_expr.expr.typ
+				typ_expr = ast.empty_expr
+			}
+		}
+		else {}
+	}
+
+	return p.struct_init_from_parts(type_expr.pos(), type_expr.str(), typ, typ_expr, []ast.Type{},
+		kind)
+}
+
+fn (mut p Parser) struct_init_from_parts(first_pos token.Pos, typ_str string, typ ast.Type, typ_expr ast.Expr, struct_init_generic_types []ast.Type, kind ast.StructInitKind) ast.StructInit {
 	p.expr_mod = ''
 	if kind != .short_syntax {
 		p.check(.lcbr)
@@ -708,6 +739,7 @@ fn (mut p Parser) struct_init(typ_str string, kind ast.StructInitKind, is_option
 		unresolved:           typ.has_flag(.generic)
 		typ_str:              typ_str
 		typ:                  typ
+		typ_expr:             typ_expr
 		init_fields:          init_fields
 		update_expr:          update_expr
 		update_expr_pos:      update_expr_pos

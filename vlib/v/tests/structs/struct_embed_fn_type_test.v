@@ -27,3 +27,54 @@ fn test_struct_embed_fn_type() {
 	println(ret)
 	assert ret == 'click me'
 }
+
+interface FnExecutorMoreMethods {
+	more() string
+}
+
+interface FnExecutorMethods {
+	FnExecutorMoreMethods
+	one() string
+}
+
+type CommandFn = fn (s string) string
+
+fn (f CommandFn) more() string {
+	return f('more')
+}
+
+fn (f CommandFn) one() string {
+	return f('one')
+}
+
+struct CommandSet {
+	CommandFn
+}
+
+fn run_command(name string) string {
+	return name
+}
+
+fn use_command_api(cmd FnExecutorMethods) (string, string) {
+	return cmd.one(), cmd.more()
+}
+
+fn test_embed_named_fn_type_promotes_methods() {
+	cmd := CommandSet{
+		CommandFn: run_command
+	}
+
+	assert cmd.CommandFn.one() == 'one'
+	assert cmd.one() == 'one'
+	assert cmd.more() == 'more'
+
+	one, more := use_command_api(cmd)
+	assert one == 'one'
+	assert more == 'more'
+}
+
+fn test_embed_named_fn_type_zero_init() {
+	mut cmd := CommandSet{}
+	cmd.CommandFn = run_command
+	assert cmd.one() == 'one'
+}

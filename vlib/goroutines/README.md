@@ -1,5 +1,8 @@
 # goroutines
 
+> `goroutines` is experimental.
+> It landed after `0.5.1`, so `import goroutines` is not available in that release.
+
 Go-style goroutine runtime for V, implementing the GMP
 (Goroutine-Machine-Processor) scheduling model translated
 from the Go runtime (`src/runtime/proc.go`, `runtime2.go`,

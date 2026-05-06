@@ -5,6 +5,7 @@ module json
 
 import math
 import strconv
+import time
 
 #flag -I @VEXEROOT/thirdparty/cJSON
 #flag @VEXEROOT/thirdparty/cJSON/cJSON.o
@@ -203,6 +204,23 @@ fn decode_bool(root &C.cJSON) bool {
 		return false
 	}
 	return C.cJSON_IsTrue(root)
+}
+
+@[markused]
+fn decode_time(root &C.cJSON) !time.Time {
+	if isnil(root) || C.cJSON_IsNull(root) {
+		return time.Time{}
+	}
+	mut decoded_time := time.Time{}
+	if C.cJSON_IsString(root) {
+		decoded_time.from_json_string(decode_string(root))!
+		return decoded_time
+	}
+	if C.cJSON_IsNumber(root) {
+		decoded_time.from_json_number(json_print(root))!
+		return decoded_time
+	}
+	return error('expected time.Time to decode from a JSON string or number, got: ${json_print(root)}')
 }
 
 // ///////////////////

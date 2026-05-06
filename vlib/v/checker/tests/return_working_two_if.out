@@ -19,7 +19,7 @@ vlib/v/checker/tests/return_working_two_if.vv:9:6: notice: condition is always t
       |            ~~~~
    10 |             return ''
    11 |         } else {
-vlib/v/checker/tests/return_working_two_if.vv:3:4: warning: unused function: `foo`
+vlib/v/checker/tests/return_working_two_if.vv:3:4: notice: unused function: `foo`
     1 | fn main() {}
     2 | 
     3 | fn foo() string {

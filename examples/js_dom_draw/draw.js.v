@@ -45,6 +45,7 @@ fn main() {
 			panic('can not get 2d context')
 		}
 	}
+
 	mut state := DrawState{context, false, 0, 0}
 
 	canvas.addEventListener('mousedown'.str, fn [mut state] (event JS.Event) {
@@ -80,6 +81,7 @@ fn main() {
 				}
 				else {}
 			}
+
 			state.x = 0
 			state.y = 0
 			state.drawing = false

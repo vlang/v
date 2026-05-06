@@ -75,6 +75,7 @@ pub fn unescape_text(content string, config UnescapeConfig) !string {
 				buffer.write_rune(runes[index])
 			}
 		}
+
 		index++
 	}
 	return buffer.str()

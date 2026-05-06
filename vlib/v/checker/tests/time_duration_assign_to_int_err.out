@@ -1,0 +1,14 @@
+vlib/v/checker/tests/time_duration_assign_to_int_err.vv:10:3: error: cannot assign to field `x`: expected `int`, not `time.Duration`
+    8 |     d := time.second
+    9 |     _ := Foo{
+   10 |         x: d
+      |         ~~~~
+   11 |     }
+   12 | }
+vlib/v/checker/tests/time_duration_assign_to_int_err.vv:16:3: error: cannot assign to field `x`: expected `int`, not `time.Duration`
+   14 | fn bad_struct_init_direct() {
+   15 |     _ := Foo{
+   16 |         x: time.second
+      |         ~~~~~~~~~~~~~~
+   17 |     }
+   18 | }

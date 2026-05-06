@@ -22,5 +22,6 @@ fn test_match() {
 			foo() or { panic('error') }.trim('')
 		}
 	}
+
 	assert res == 'abc'
 }

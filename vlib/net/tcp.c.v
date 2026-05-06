@@ -487,7 +487,7 @@ pub fn (mut l TcpListener) accept() !&TcpConn {
 // The intention of this API, is to have a more efficient way to accept
 // connections, that are later processed by a thread pool, while the main
 // thread remains active, so that it can accept other connections.
-// See also vlib/vweb/vweb.v .
+// See also vlib/veb/veb.v .
 //
 // If you do not need that, just call `.accept()!` instead, which will call
 // `.set_sock()!` for you.
@@ -571,9 +571,9 @@ pub struct TcpSocket {
 @[noinline]
 pub fn new_tcp_socket(family AddrFamily) !TcpSocket {
 	handle := $if is_coroutine ? {
-		socket_error(C.photon_socket(family, SocketType.tcp, 0))!
+		socket_error(C.photon_socket(i32(family), i32(SocketType.tcp), 0))!
 	} $else {
-		socket_error(C.socket(family, SocketType.tcp, 0))!
+		socket_error(C.socket(i32(family), i32(SocketType.tcp), 0))!
 	}
 	mut s := TcpSocket{
 		handle: handle

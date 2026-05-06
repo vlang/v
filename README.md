@@ -75,7 +75,8 @@ language, very similar to the way it is right now.
 Usually, installing V is quite simple if you have an environment that already has a
 functional `git` installation.
 
-Note: On Windows, run `make.bat` instead of `make` in CMD, or `./make.bat` in PowerShell.
+Note: On Windows, run `makev.bat` instead of `make` in CMD, or `./makev.bat` in
+PowerShell.
 Note: On Ubuntu/Debian, you may need to run `sudo apt install git build-essential make` first.
 
 To get started, execute the following in your terminal/shell:
@@ -88,7 +89,7 @@ make
 That should be it, and you should find your V executable at `[path to V repo]/v`.
 `[path to V repo]` can be anywhere.
 
-(Like the note above says, on Windows, use `make.bat`, instead of `make`.)
+(Like the note above says, on Windows, use `makev.bat`, instead of `make`.)
 
 Now try running `./v run examples/hello_world.v` (or `v run examples/hello_world.v` in cmd shell).
 
@@ -187,7 +188,7 @@ On Termux, V needs some packages preinstalled - a working C compiler, also `libe
 Linux/macos:
 
 ```bash
-pkg install clang libexecinfo libgc libgc-static make git
+pkg install clang libexecinfo libgc libgc-static tcc make git
 pkg update
 git clone --depth=1 https://github.com/vlang/v
 cd v
@@ -195,6 +196,8 @@ make
 ./v symlink
 ```
 Note: there is *no* need for `sudo ./v symlink` on Termux (and sudo is not installed by default).
+For faster development builds, keep the Termux `tcc` package installed; V will use it by default
+when no compatible bundled `thirdparty/tcc` binary is available on the host.
 
 ### C compiler
 
@@ -258,6 +261,7 @@ shell/editor after that, so that it can pick up the new PATH variable.
 ## Editor/IDE Plugins
 
 - [Atom](https://github.com/vlang/awesome-v#atom)
+- [CodeLite](doc/codelite.md)
 - [Emacs](https://github.com/vlang/awesome-v#emacs)
 - [JetBrains](https://plugins.jetbrains.com/plugin/20287-vlang/docs/syntax-highlighting.html)
 - [Sublime Text 3](https://github.com/vlang/awesome-v#sublime-text-3)
@@ -425,6 +429,11 @@ Note the TCC website is old; the current TCC repository can be found
 [here](https://repo.or.cz/w/tinycc.git).
 V utilizes pre-built TCC binaries located at
 [https://github.com/vlang/tccbin/](https://github.com/vlang/tccbin/).
+On Linux, `make` retries the portable `thirdparty-linuxmusl-*` TCC bundle when
+the host-specific bundle does not run on the current system.
+To rebuild the bundled `thirdparty/tcc` in place from upstream TinyCC on the
+platforms that have an in-tree build script, run `make latest_tcc_source`.
+Pass `TCC_COMMIT=<hash-or-branch>` to pin a specific upstream revision.
 
 ### PVS-Studio
 

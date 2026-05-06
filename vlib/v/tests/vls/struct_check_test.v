@@ -21,7 +21,7 @@ struct TestData {
 
 const test_data = [
 	TestData{
-		cmd:    'v -check -vls-mode ${os.quoted_path(text_file)}'
+		cmd:    'v -w -check -vls-mode ${os.quoted_path(text_file)}'
 		output: '' // for a struct with `mut:` in it, should report no error
 	},
 ]

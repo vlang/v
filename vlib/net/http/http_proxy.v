@@ -75,6 +75,14 @@ pub fn new_http_proxy(raw_url string) !&HttpProxy {
 	}
 }
 
+// str returns the configured proxy URL for logging and debugging.
+pub fn (pr &HttpProxy) str() string {
+	if isnil(pr) {
+		return 'nil'
+	}
+	return pr.url
+}
+
 // host format - ip:port
 fn (pr &HttpProxy) build_proxy_headers(host string) string {
 	mut uheaders := []string{}
@@ -139,15 +147,22 @@ fn (pr &HttpProxy) connect_tcp(host string) !&net.TcpConn {
 	}
 }
 
-fn (pr &HttpProxy) http_do(host urllib.URL, _method Method, path string, req &Request) !Response {
-	host_name, port := net.split_address(host.hostname())!
+fn (pr &HttpProxy) http_do(host urllib.URL, method Method, path string, req &Request, data string, header Header) !Response {
+	host_name := host.hostname()
+	mut port := host.port().int()
+	if port == 0 {
+		port = if host.scheme == 'https' { 443 } else { 80 }
+	}
+	port_part := if (host.scheme == 'http' && port == 80) || (host.scheme == 'https' && port == 443) {
+		''
+	} else {
+		':${port}'
+	}
 
-	port_part := if port == 80 || port == 0 { '' } else { ':${port}' }
-
-	s := req.build_request_headers(req.method, host_name, port,
-		'${host.scheme}://${host_name}${port_part}${path}')
+	s := req.build_request_headers_with(method, host_name, port,
+		'${host.scheme}://${host_name}${port_part}${path}', data, header)
 	if host.scheme == 'https' {
-		mut client := pr.ssl_dial('${host.host}:443')!
+		mut client := pr.ssl_dial('${host_name}:${port}')!
 
 		$if windows {
 			return error('Windows Not SUPPORTED') // TODO: windows ssl
@@ -156,29 +171,27 @@ fn (pr &HttpProxy) http_do(host urllib.URL, _method Method, path string, req &Re
 			// client.shutdown()!
 			// return response_text
 		} $else {
-			response_text := req.do_request(req.build_request_headers(req.method, host_name, port, path), mut
-				client)!
-			client.shutdown()!
-			return response_text
+			return req.do_request(req.build_request_headers_with(method, host_name, port, path,
+				data, header), mut client)!
 		}
 	} else if host.scheme == 'http' {
-		mut client := pr.dial('${host.host}:80')!
+		mut client := pr.dial('${host_name}:${port}')!
 		client.set_read_timeout(req.read_timeout)
 		client.set_write_timeout(req.write_timeout)
 		client.write_string(s)!
 		$if trace_http_request ? {
 			eprintln('> ${s}')
 		}
-		mut bytes := req.read_all_from_client_connection(client)!
+		response_data := req.read_all_from_client_connection(client)!
 		client.close()!
-		response_text := bytes.bytestr()
+		response_text := response_data.data.bytestr()
 		$if trace_http_response ? {
 			eprintln('< ${response_text}')
 		}
 		if req.on_finish != unsafe { nil } {
 			req.on_finish(req, u64(response_text.len))!
 		}
-		return parse_response(response_text)
+		return parse_received_response(response_text, response_data.info)
 	}
 	return error('Invalid Scheme')
 }
@@ -197,7 +210,11 @@ fn (pr &HttpProxy) ssl_dial(host string) !&ssl.SSLConn {
 			validate:               false
 			in_memory_verification: false
 		)!
-		ssl_conn.connect(mut tcp, host.all_before_last(':'))!
+		ssl_conn.connect(mut tcp, host.all_before_last(':')) or {
+			tcp.close() or {}
+			return err
+		}
+		ssl_conn.owns_socket = true
 		return ssl_conn
 	} else if pr.scheme == 'socks5' {
 		return socks.socks5_ssl_dial(pr.host, host, pr.username, pr.password)!

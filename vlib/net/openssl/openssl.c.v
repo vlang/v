@@ -31,26 +31,20 @@ $if $pkgconfig('openssl') {
 		#flag -lssl -lcrypto
 	}
 	#flag linux -ldl -lpthread
-	// MacPorts
-	#flag darwin -I/opt/local/include
-	#flag darwin -L/opt/local/lib
-	// Brew
-	#flag darwin -I/usr/local/opt/openssl/include
-	#flag darwin -L/usr/local/opt/openssl/lib
-	// brew on macos-12 (ci runner)
-	#flag darwin -I/usr/local/opt/openssl@3/include
-	#flag darwin -L/usr/local/opt/openssl@3/lib
-	// Brew arm64
-	#flag darwin -I /opt/homebrew/opt/openssl/include
-	#flag darwin -L /opt/homebrew/opt/openssl/lib
-	// Procursus
-	#flag darwin -I/opt/procursus/include
-	#flag darwin -L/opt/procursus/lib
+	// Prefer a single matching macOS OpenSSL prefix to avoid mixing Intel and arm64 installs.
+	$if arm64 {
+		#flag darwin -I$when_first_existing('/opt/local/include','/opt/homebrew/opt/openssl/include','/opt/homebrew/opt/openssl@3/include','/opt/procursus/include','/usr/local/opt/openssl/include','/usr/local/opt/openssl@3/include')
+		#flag darwin -L$when_first_existing('/opt/local/lib','/opt/homebrew/opt/openssl/lib','/opt/homebrew/opt/openssl@3/lib','/opt/procursus/lib','/usr/local/opt/openssl/lib','/usr/local/opt/openssl@3/lib')
+	} $else {
+		#flag darwin -I$when_first_existing('/opt/local/include','/usr/local/opt/openssl/include','/usr/local/opt/openssl@3/include','/opt/procursus/include','/opt/homebrew/opt/openssl/include','/opt/homebrew/opt/openssl@3/include')
+		#flag darwin -L$when_first_existing('/opt/local/lib','/usr/local/opt/openssl/lib','/usr/local/opt/openssl@3/lib','/opt/procursus/lib','/opt/homebrew/opt/openssl/lib','/opt/homebrew/opt/openssl@3/lib')
+	}
 }
 
 #include <openssl/rand.h> # Please install OpenSSL development headers
 #include <openssl/ssl.h>
 #include <openssl/err.h>
+#insert "@VEXEROOT/vlib/net/openssl/openssl_compat.h"
 
 @[typedef]
 pub struct C.SSL {
@@ -127,7 +121,7 @@ fn C.SSL_do_handshake(&C.SSL) i32
 
 fn C.SSL_set_cipher_list(ctx &C.SSL, str &char) i32
 
-fn C.SSL_get1_peer_certificate(ssl &C.SSL) &C.X509
+fn C.v_net_openssl_get1_peer_certificate(ssl &C.SSL) &C.X509
 
 fn C.X509_free(const_cert &C.X509)
 
@@ -147,26 +141,16 @@ fn C.SSL_write(ssl &C.SSL, buf voidptr, buflen i32) i32
 
 fn C.SSL_read(ssl &C.SSL, buf voidptr, buflen i32) i32
 
-fn C.SSL_load_error_strings()
-
-fn C.SSL_library_init() i32
-
 fn C.SSLv23_client_method() &C.SSL_METHOD
 
 fn C.TLS_method() voidptr
 
 fn C.TLSv1_2_method() voidptr
 
-fn C.OPENSSL_init_ssl(opts u64, settings &C.OPENSSL_INIT_SETTINGS) i32
+fn C.v_net_openssl_init_ssl() i32
 
 fn init() {
-	$if ssl_pre_1_1_version ? {
-		// OPENSSL_VERSION_NUMBER < 0x10100000L
-		C.SSL_load_error_strings()
-		C.SSL_library_init()
-	} $else {
-		C.OPENSSL_init_ssl(C.OPENSSL_INIT_LOAD_SSL_STRINGS, 0)
-	}
+	C.v_net_openssl_init_ssl()
 }
 
 // ssl_error returns non error ssl code or error if unrecoverable and we should panic

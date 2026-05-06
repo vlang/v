@@ -1,6 +1,6 @@
 module notify
 
-// Implement the API
+// new returns an error when the current platform has no notifier backend.
 pub fn new() !FdNotifier {
-	panic('unsupported')
+	return error('os.notify is not supported on this platform')
 }

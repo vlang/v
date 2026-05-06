@@ -5,17 +5,21 @@ fn init() {
 	default_rng = new_default()
 }
 
-fn internal_fill_buffer_from_set(mut rng PRNG, charset string, mut buf []u8) {
+fn internal_fill_buffer_from_set(mut _ PRNG, _ string, mut _ []u8) {
 	panic('todo')
 }
 
-fn internal_string_from_set(mut rng PRNG, charset string, len int) string {
+// fn internal_string_from_set(mut rng PRNG, charset string, len int) string {
+fn internal_string_from_set(mut _ PRNG, charset string, len int) string {
 	result := ''
 	#
 	#const characters = charset.str;
 	#const charactersLength = characters.length;
 	#for (let i = 0;i < len.val;i++)
 	#result.str += characters.charAt(Math.random() * charactersLength);
+
+	_ = charset
+	_ = len
 
 	return result
 }

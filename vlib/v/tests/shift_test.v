@@ -86,6 +86,15 @@ fn test_shift_operators() {
 	assert x << 2 == 8
 }
 
+fn test_shift_assign_accepts_int_count_for_unsigned_left_operand() {
+	mut value := u64(1)
+	shift := int(3)
+	value <<= shift
+	assert value == u64(8)
+	value >>= shift
+	assert value == u64(1)
+}
+
 fn oversized_shift_count() u64 {
 	return u64(64)
 }

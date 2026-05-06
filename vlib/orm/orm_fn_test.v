@@ -417,6 +417,49 @@ fn test_orm_table_gen() {
 		},
 	], sql_type_from_v, false) or { panic(err) }
 	assert mult_unique_query == "CREATE TABLE IF NOT EXISTS 'test_table' ('id' SERIAL DEFAULT 10, 'test' TEXT, 'abc' INT64 DEFAULT 6754, /* test */UNIQUE('test', 'abc'), PRIMARY KEY('id'));"
+
+	table_with_unique := orm.Table{
+		name:  'test_table'
+		attrs: [
+			VAttribute{
+				name:    'unique_key'
+				has_arg: true
+				arg:     'test, abc'
+				kind:    .string
+			},
+		]
+	}
+	table_unique_query := orm.orm_table_gen(.default, table_with_unique, "'", true, 0, [
+		orm.TableField{
+			name:        'id'
+			typ:         typeof[int]().idx
+			nullable:    true
+			default_val: '10'
+			attrs:       [
+				VAttribute{
+					name: 'primary'
+				},
+				VAttribute{
+					name:    'sql'
+					has_arg: true
+					arg:     'serial'
+					kind:    .plain
+				},
+			]
+		},
+		orm.TableField{
+			name:     'test'
+			typ:      typeof[string]().idx
+			nullable: true
+		},
+		orm.TableField{
+			name:        'abc'
+			typ:         typeof[i64]().idx
+			nullable:    true
+			default_val: '6754'
+		},
+	], sql_type_from_v, false) or { panic(err) }
+	assert table_unique_query == "CREATE TABLE IF NOT EXISTS 'test_table' ('id' SERIAL DEFAULT 10, 'test' TEXT, 'abc' INT64 DEFAULT 6754, UNIQUE('test', 'abc'), PRIMARY KEY('id'));"
 }
 
 fn test_orm_table_gen_h2() {

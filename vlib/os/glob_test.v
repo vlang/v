@@ -42,7 +42,7 @@ fn test_glob_can_find_files_in_current_folder() {
 	os.chdir(@VMODROOT)!
 	matches := os.glob('*')!
 	assert '.gitignore' in matches
-	assert 'make.bat' in matches
+	assert 'makev.bat' in matches
 	assert 'Makefile' in matches
 	assert 'Dockerfile' in matches
 	assert 'README.md' in matches
@@ -64,7 +64,7 @@ fn test_glob_star() {
 	os.chdir(@VMODROOT)!
 	matches := os.glob('*ake*')!
 	assert 'Makefile' in matches
-	assert 'make.bat' in matches
+	assert 'makev.bat' in matches
 }
 
 fn test_glob_not_found() {

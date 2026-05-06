@@ -109,6 +109,7 @@ fn high_bits(r RingElement, p Params) [256]u8 {
 			panic('mldsa: unsupported gamma2') // unreachable
 		}
 	}
+
 	return w
 }
 
@@ -167,6 +168,7 @@ fn low_bits_exceed_bound(w RingElement, bound u32, p Params) bool {
 			panic('mldsa: unsupported gamma2') // unreachable
 		}
 	}
+
 	return false
 }
 
@@ -189,6 +191,7 @@ fn use_hint(r RingElement, h [256]u8, p Params) [256]u8 {
 			panic('mldsa: unsupported gamma2') // unreachable
 		}
 	}
+
 	return w
 }
 
@@ -246,6 +249,7 @@ fn make_hint(ct0 RingElement, w RingElement, cs2 RingElement, p Params) ([256]u8
 			panic('mldsa: unsupported gamma2') // unreachable
 		}
 	}
+
 	return h, count
 }
 

@@ -51,8 +51,10 @@ fn C._aligned_offset_realloc(voidptr, size isize, align isize, offset isize) voi
 fn C._aligned_msize(voidptr, align isize, offset isize) isize
 fn C._aligned_recalloc(voidptr, num isize, size isize, align isize) voidptr
 
-fn C.VirtualAlloc(voidptr, isize, u32, u32) voidptr
-fn C.VirtualProtect(voidptr, isize, u32, &u32) bool
+$if windows {
+	fn C.VirtualAlloc(voidptr, isize, u32, u32) voidptr
+	fn C.VirtualProtect(voidptr, isize, u32, &u32) bool
+}
 
 @[noreturn; trusted]
 fn C.exit(code i32)
@@ -276,7 +278,7 @@ fn C.syscall(number i32, va ...voidptr) i32
 fn C.sysctl(name &int, namelen u32, oldp voidptr, oldlenp voidptr, newp voidptr, newlen usize) i32
 
 @[trusted]
-fn C._fileno(i32) i32
+fn C._fileno(&C.FILE) i32
 
 pub type C.intptr_t = voidptr
 
@@ -340,9 +342,6 @@ fn C.GetStdHandle(u32) voidptr
 fn C.SetConsoleMode(voidptr, u32) bool
 
 fn C.GetConsoleMode(voidptr, &u32) bool
-
-@[trusted]
-fn C.GetCurrentProcessId() u32
 
 // fn C.setbuf()
 fn C.setbuf(voidptr, &char)
@@ -429,7 +428,7 @@ fn C.WSAGetLastError() i32
 
 fn C.closesocket(i32) i32
 
-fn C.vschannel_init(&C.TlsContext)
+fn C.vschannel_init(&C.TlsContext, C.BOOL)
 
 fn C.request(&C.TlsContext, i32, &u16, &u8, u32, &&u8, fn (voidptr, isize) voidptr) i32
 
@@ -460,15 +459,13 @@ fn C.CreateSemaphore(voidptr, i32, i32, voidptr) voidptr
 
 fn C.ReleaseSemaphore(voidptr, i32, voidptr) voidptr
 
-fn C.InitializeSRWLock(voidptr)
-
-fn C.AcquireSRWLockShared(voidptr)
-
-fn C.AcquireSRWLockExclusive(voidptr)
-
-fn C.ReleaseSRWLockShared(voidptr)
-
-fn C.ReleaseSRWLockExclusive(voidptr)
+$if windows {
+	fn C.InitializeSRWLock(voidptr)
+	fn C.AcquireSRWLockShared(voidptr)
+	fn C.AcquireSRWLockExclusive(voidptr)
+	fn C.ReleaseSRWLockShared(voidptr)
+	fn C.ReleaseSRWLockExclusive(voidptr)
+}
 
 // pthread.h
 fn C.pthread_self() usize
@@ -557,35 +554,37 @@ fn C.WrappedNSLog(str &u8)
 @[trusted]
 fn C.abs(number i32) i32
 
-fn C.GetDiskFreeSpaceExA(const_path &char, free_bytes_available_to_caller &u64, total_number_of_bytes &u64, total_number_of_free_bytes &u64) bool
+$if windows {
+	fn C.GetDiskFreeSpaceExA(const_path &char, free_bytes_available_to_caller &u64, total_number_of_bytes &u64, total_number_of_free_bytes &u64) bool
 
-fn C.GetNativeSystemInfo(voidptr)
+	fn C.GetNativeSystemInfo(voidptr)
 
-fn C.sysconf(name i32) i32
+	// C.SYSTEM_INFO contains information about the current computer system. This includes the architecture and type of the processor, the number of processors in the system, the page size, and other such information.
+	@[typedef]
+	pub struct C.SYSTEM_INFO {
+		// workaround: v doesn't support a truely C anon union/struct here
+		// union {
+		dwOemId u32
+		// struct {
+		wProcessorArchitecture u16
+		wReserved              u16
+		//	}
+		//}
+		dwPageSize                  u32
+		lpMinimumApplicationAddress voidptr
+		lpMaximumApplicationAddress voidptr
+		dwActiveProcessorMask       u32
+		dwNumberOfProcessors        u32
+		dwProcessorType             u32
+		dwAllocationGranularity     u32
+		wProcessorLevel             u16
+		wProcessorRevision          u16
+	}
 
-// C.SYSTEM_INFO contains information about the current computer system. This includes the architecture and type of the processor, the number of processors in the system, the page size, and other such information.
-@[typedef]
-pub struct C.SYSTEM_INFO {
-	// workaround: v doesn't support a truely C anon union/struct here
-	// union {
-	dwOemId u32
-	// struct {
-	wProcessorArchitecture u16
-	wReserved              u16
-	//	}
-	//}
-	dwPageSize                  u32
-	lpMinimumApplicationAddress voidptr
-	lpMaximumApplicationAddress voidptr
-	dwActiveProcessorMask       u32
-	dwNumberOfProcessors        u32
-	dwProcessorType             u32
-	dwAllocationGranularity     u32
-	wProcessorLevel             u16
-	wProcessorRevision          u16
+	fn C.GetSystemInfo(&C.SYSTEM_INFO)
+
+	@[typedef]
+	pub struct C.SRWLOCK {}
 }
 
-fn C.GetSystemInfo(&C.SYSTEM_INFO)
-
-@[typedef]
-pub struct C.SRWLOCK {}
+fn C.sysconf(name i32) i32

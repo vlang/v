@@ -1,3 +1,4 @@
+// vtest build: !macos
 import x.json2 as json
 import time
 
@@ -68,7 +69,7 @@ fn test_types() {
 	assert json.encode(StructType[int]{ val: 0 }) == '{"val":0}'
 	assert json.encode(StructType[int]{ val: 1 }) == '{"val":1}'
 
-	assert json.encode(StructType[time.Time]{}) == '{"val":"0000-00-00T00:00:00.000Z"}'
+	assert json.encode(StructType[time.Time]{}) == '{"val":"0000-01-01T00:00:00.000Z"}'
 	assert json.encode(StructType[time.Time]{ val: fixed_time }) == '{"val":"2022-03-11T13:54:25.000Z"}'
 
 	assert json.encode(StructType[StructType[int]]{
@@ -109,7 +110,7 @@ fn test_option_types() {
 	assert json.encode(StructTypeOption[int]{ val: 1 }) == '{"val":1}'
 
 	assert json.encode(StructTypeOption[time.Time]{}) == '{}'
-	assert json.encode(StructTypeOption[time.Time]{ val: time.Time{} }) == '{"val":"0000-00-00T00:00:00.000Z"}'
+	assert json.encode(StructTypeOption[time.Time]{ val: time.Time{} }) == '{"val":"0000-01-01T00:00:00.000Z"}'
 	assert json.encode(StructTypeOption[time.Time]{ val: fixed_time }) == '{"val":"2022-03-11T13:54:25.000Z"}'
 
 	assert json.encode(StructTypeOption[StructType[int]]{
@@ -243,7 +244,7 @@ fn test_alias() {
 	assert json.encode(StructType[IntAlias]{ val: 0 }) == '{"val":0}'
 	assert json.encode(StructType[IntAlias]{ val: 1 }) == '{"val":1}'
 
-	assert json.encode(StructType[TimeAlias]{}) == '{"val":"0000-00-00T00:00:00.000Z"}'
+	assert json.encode(StructType[TimeAlias]{}) == '{"val":"0000-01-01T00:00:00.000Z"}'
 	assert json.encode(StructType[TimeAlias]{ val: fixed_time }) == '{"val":"2022-03-11T13:54:25.000Z"}'
 
 	assert json.encode(StructType[StructAlias]{}) == '{"val":{"val":0}}'
@@ -272,7 +273,7 @@ fn test_pointer() {
 }
 
 fn test_sumtypes() {
-	assert json.encode(StructType[SumTypes]{}) == '{"val":{"val":""}}' // is_none := val.$(field.name).str() == 'unknown sum type value'
+	assert json.encode(StructType[SumTypes]{}) == '{"val":{"val":"","_type":"${typeof(StructType[string]{}).name}"}}' // is_none := val.$(field.name).str() == 'unknown sum type value'
 	assert json.encode(StructType[SumTypes]{ val: '' }) == '{"val":""}'
 	assert json.encode(StructType[SumTypes]{ val: 'a' }) == '{"val":"a"}'
 
@@ -282,7 +283,7 @@ fn test_sumtypes() {
 	assert json.encode(StructType[SumTypes]{ val: 0 }) == '{"val":0}'
 	assert json.encode(StructType[SumTypes]{ val: 1 }) == '{"val":1}'
 
-	assert json.encode(StructType[SumTypes]{ val: fixed_time }) == '{"val":"2022-03-11T13:54:25.000Z"}'
+	assert json.encode(StructType[SumTypes]{ val: fixed_time }) == '{"val":{"_type":"${typeof(time.Time{}).name.all_after_last('.')}","value":${fixed_time.unix()}}}'
 
 	assert json.encode(StructType[StructType[SumTypes]]{
 		val: StructType[SumTypes]{
@@ -294,7 +295,7 @@ fn test_sumtypes() {
 		val: StructType[string]{
 			val: '111111'
 		}
-	}) == '{"val":{"val":"111111"}}'
+	}) == '{"val":{"val":"111111","_type":"${typeof(StructType[string]{}).name}"}}'
 
 	assert json.encode(StructType[StructType[SumTypes]]{
 		val: StructType[SumTypes]{

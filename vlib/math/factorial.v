@@ -8,7 +8,7 @@ pub fn factorial(n f64) f64 {
 	}
 	// Otherwise return n!.
 	if n == f64(i64(n)) && n >= 0.0 {
-		return factorials_table[i64(n)]
+		return factorials_table[int(n)]
 	}
 	return gamma(n + 1.0)
 }
@@ -23,7 +23,7 @@ pub fn log_factorial(n f64) f64 {
 	if n != f64(i64(n)) {
 		return log_gamma(n + 1)
 	} else if n < log_factorials_table.len {
-		return log_factorials_table[i64(n)]
+		return log_factorials_table[int(n)]
 	}
 	// Otherwise return asymptotic expansion of ln(n!).
 	return log_factorial_asymptotic_expansion(int(n))

@@ -1,3 +1,4 @@
+// vtest vflags: -prod
 import veb
 import net.http
 import os
@@ -19,8 +20,14 @@ pub fn (mut app App) before_accept_loop() {
 	app.started <- true
 }
 
+@['/']
 pub fn (mut app App) index(mut ctx Context) veb.Result {
 	return ctx.text('Hello V!')
+}
+
+@['/redirect_root']
+pub fn (mut app App) redirect_root(mut ctx Context) veb.Result {
+	return ctx.redirect('/root.txt')
 }
 
 @[post]
@@ -85,6 +92,20 @@ fn run_app_test() {
 
 fn test_static_root() {
 	x := http.get('${localserver}/root.txt')!
+
+	assert x.status() == .ok
+	assert x.body == 'root'
+}
+
+fn test_route_attribute_root_with_static_handler() {
+	x := http.get('${localserver}/')!
+
+	assert x.status() == .ok
+	assert x.body == 'Hello V!'
+}
+
+fn test_redirect_to_static_root() {
+	x := http.get('${localserver}/redirect_root')!
 
 	assert x.status() == .ok
 	assert x.body == 'root'

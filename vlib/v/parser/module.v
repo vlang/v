@@ -12,6 +12,15 @@ fn (p &Parser) known_import(mod string) bool {
 	return mod in p.imports
 }
 
+fn (p &Parser) import_alias_for_mod(mod string) ?string {
+	for alias, imported_mod in p.imports {
+		if imported_mod == mod {
+			return alias
+		}
+	}
+	return none
+}
+
 fn (p &Parser) prepend_mod(name string) string {
 	// println('prepend_mod() name=${name} p.mod=${p.mod} expr_mod=${p.expr_mod}')
 	if p.expr_mod != '' {
@@ -34,16 +43,15 @@ fn (mut p Parser) register_used_import(alias string) {
 }
 
 fn (mut p Parser) register_used_import_for_symbol_name(sym_name string) {
-	short_import_name := sym_name.all_before_last('.').all_after_last('.')
+	mod_name := sym_name.all_before_last('.')
+	short_import_name := mod_name.all_after_last('.')
 	short_symbol_name := sym_name.all_after_last('.')
 	if p.is_imported_symbol(short_symbol_name) {
 		p.imported_symbols_used[short_symbol_name] = true
 	}
-	for alias, mod in p.imports {
-		if mod == short_import_name {
-			p.register_used_import(alias)
-			return
-		}
+	if alias := p.import_alias_for_mod(mod_name) {
+		p.register_used_import(alias)
+		return
 	}
 	p.register_used_import(short_import_name)
 }
@@ -174,6 +182,7 @@ fn (mut p Parser) module_decl() ast.Module {
 				'has_globals' {
 					p.has_globals = true
 				}
+				'strict_map_index' {}
 				'translated' {
 					p.is_translated = true
 				}
@@ -289,7 +298,7 @@ fn (mut p Parser) import_stmt() ast.Import {
 	}
 	pos_t := p.tok.pos()
 	if import_pos.line_nr == pos_t.line_nr {
-		if p.tok.kind !in [.lcbr, .eof, .comment, .semicolon, .key_import] {
+		if p.tok.kind !in [.lcbr, .rcbr, .eof, .comment, .semicolon, .key_import] {
 			p.error_with_pos('cannot import multiple modules at a time', pos_t)
 			return import_node
 		}

@@ -5,6 +5,44 @@ module c
 
 import v.ast
 
+fn (mut g Gen) if_guard_var_needs_gc_pin(scope &ast.Scope, name string) bool {
+	if g.pref.gc_mode !in [.boehm_full, .boehm_incr, .boehm_full_opt, .boehm_incr_opt] {
+		return false
+	}
+	if name == '_' {
+		return false
+	}
+	if v := scope.find_var(name) {
+		return v.is_auto_heap || v.typ.is_any_kind_of_pointer() || g.contains_ptr(v.typ)
+	}
+	return false
+}
+
+fn (g &Gen) if_guard_else_uses_err(node ast.IfExpr, branch_idx int) bool {
+	if !node.has_else || branch_idx != node.branches.len - 2 {
+		return false
+	}
+	else_branch := node.branches[branch_idx + 1]
+	if err_var := else_branch.scope.find_var('err') {
+		return err_var.is_used
+	}
+	return false
+}
+
+fn (mut g Gen) write_if_guard_gc_pin(scope &ast.Scope, name string, cvar_name string) {
+	if g.if_guard_var_needs_gc_pin(scope, name) {
+		g.writeln('\tGC_reachable_here(&${cvar_name});')
+	}
+}
+
+fn (mut g Gen) if_guard_error_cleanup(cvar_name string, expr_type ast.Type) {
+	if expr_type.has_flag(.option) {
+		g.writeln('\tif (${cvar_name}.state == 2 && ${cvar_name}.err._object != _const_none__._object) { builtin___v_free(${cvar_name}.err._object); }')
+	} else if expr_type.has_flag(.result) {
+		g.writeln('\tif (${cvar_name}.is_error && ${cvar_name}.err._object != _const_none__._object) { builtin___v_free(${cvar_name}.err._object); }')
+	}
+}
+
 fn (mut g Gen) need_tmp_var_in_if(node ast.IfExpr) bool {
 	if node.is_expr && (g.inside_ternary == 0 || g.is_assign_lhs) {
 		if g.is_autofree || node.typ.has_option_or_result() || node.is_comptime || g.is_assign_lhs {
@@ -43,6 +81,16 @@ fn (mut g Gen) need_tmp_var_in_expr(expr ast.Expr) bool {
 	}
 	match expr {
 		ast.ArrayInit {
+			elem_type := g.unwrap_generic(expr.elem_type)
+			elem_kind := if elem_type != 0 {
+				g.table.final_sym(elem_type).kind
+			} else {
+				ast.Kind.placeholder
+			}
+			if expr.has_index || (expr.has_len && (g.struct_has_array_or_map_field(elem_type)
+				|| (elem_kind in [.array, .map] && !expr.has_init))) {
+				return true
+			}
 			if g.need_tmp_var_in_expr(expr.len_expr) {
 				return true
 			}
@@ -107,6 +155,9 @@ fn (mut g Gen) need_tmp_var_in_expr(expr ast.Expr) bool {
 		}
 		ast.IndexExpr {
 			if expr.or_expr.kind != .absent {
+				return true
+			}
+			if g.need_tmp_var_in_expr(expr.left) {
 				return true
 			}
 			if g.need_tmp_var_in_expr(expr.index) {
@@ -182,8 +233,12 @@ fn (mut g Gen) need_tmp_var_in_expr(expr ast.Expr) bool {
 			sym := g.table.sym(expr.typ)
 			return sym.info is ast.Struct && sym.info.has_option
 		}
+		ast.SqlExpr {
+			return true
+		}
 		else {}
 	}
+
 	return false
 }
 
@@ -204,6 +259,7 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 	if use_outer_tmp {
 		g.outer_tmp_var = ''
 	}
+	resolved_node_typ := g.infer_if_expr_type(node)
 
 	// For simple if expressions we can use C's `?:`
 	// `if x > 0 { 1 } else { 2 }` => `(x > 0)? (1) : (2)`
@@ -216,7 +272,7 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 	tmp := if use_outer_tmp {
 		// Use the tmp var from outer context (e.g. from stmts_with_tmp_var)
 		saved_outer_tmp_var
-	} else if g.inside_if_option || (node.typ != ast.void_type && needs_tmp_var) {
+	} else if g.inside_if_option || (resolved_node_typ != ast.void_type && needs_tmp_var) {
 		g.new_tmp_var()
 	} else {
 		''
@@ -228,9 +284,9 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 	if needs_tmp_var {
 		exit_label = g.new_tmp_var()
 		node_typ := if g.inside_or_block {
-			node.typ.clear_option_and_result()
+			resolved_node_typ.clear_option_and_result()
 		} else {
-			node.typ
+			resolved_node_typ
 		}
 		// For generic functions, if the if-expression's type was set to a concrete type
 		// by the checker but we're generating a different generic instance, we need to
@@ -269,8 +325,8 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 		mut styp := g.styp(resolved_typ)
 		if (g.inside_if_option || node_typ.has_flag(.option)) && !g.inside_or_block {
 			raw_state = g.inside_if_option
-			if node.typ != ast.void_type {
-				g.last_if_option_type = node.typ
+			if resolved_node_typ != ast.void_type {
+				g.last_if_option_type = resolved_node_typ
 				defer(fn) {
 					g.last_if_option_type = tmp_if_option_type
 				}
@@ -298,7 +354,7 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 		if tmp != '' && !use_outer_tmp {
 			// Only declare the tmp var if it's not from outer context
 			mut declared_tmp := false
-			if node.typ == ast.void_type && g.last_if_option_type != 0 {
+			if resolved_node_typ == ast.void_type && g.last_if_option_type != 0 {
 				// nested if on return stmt
 				g.write2(g.styp(g.unwrap_generic(g.last_if_option_type)), ' ')
 			} else if resolved_sym.kind == .function && resolved_sym.info is ast.FnType {
@@ -331,9 +387,9 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 				g.write(' ? ')
 			}
 			prev_expected_cast_type := g.expected_cast_type
-			if node.is_expr
-				&& (g.table.sym(node.typ).kind == .sum_type || node.typ.has_flag(.shared_f)) {
-				g.expected_cast_type = node.typ
+			if node.is_expr && (g.table.sym(resolved_node_typ).kind == .sum_type
+				|| resolved_node_typ.has_flag(.shared_f)) {
+				g.expected_cast_type = resolved_node_typ
 			}
 			g.stmts(branch.stmts)
 			g.expected_cast_type = prev_expected_cast_type
@@ -348,6 +404,9 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 	mut is_guard := false
 	mut guard_idx := 0
 	mut guard_vars := []string{}
+	mut guard_expr_types := []ast.Type{len: node.branches.len}
+	mut guard_else_uses_err := []bool{len: node.branches.len}
+	mut guard_owns_error := []bool{len: node.branches.len}
 	for i, branch in node.branches {
 		cond := branch.cond
 		if cond is ast.IfGuardExpr {
@@ -356,6 +415,8 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 				guard_vars = []string{len: node.branches.len}
 			}
 			guard_idx = i // saves the last if guard index
+			guard_else_uses_err[i] = g.if_guard_else_uses_err(node, i)
+			guard_owns_error[i] = cond.expr is ast.IndexExpr
 			if cond.expr !in [ast.IndexExpr, ast.PrefixExpr] {
 				var_name := g.new_tmp_var()
 				guard_vars[i] = var_name
@@ -376,13 +437,13 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 				} else {
 					cond.expr_type
 				}
-				g.writeln('${g.styp(g.unwrap_generic(cond_expr_type))} ${var_name};')
+				g.writeln('${g.styp(g.unwrap_generic(cond_expr_type))} ${var_name} = {0};')
 			} else if cond.expr is ast.IndexExpr {
 				value_type := g.table.value_type(g.unwrap_generic(cond.expr.left_type))
 				if value_type.has_flag(.option) {
 					var_name := g.new_tmp_var()
 					guard_vars[i] = var_name
-					g.writeln('${g.styp(value_type)} ${var_name};')
+					g.writeln('${g.styp(value_type)} ${var_name} = {0};')
 				} else {
 					guard_vars[i] = ''
 				}
@@ -416,11 +477,15 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 			g.writeln('{')
 			// define `err` for the last branch after a `if val := opt {...}' guard
 			if is_guard && guard_idx == i - 1 {
-				if err_var := branch.scope.find_var('err') {
-					if err_var.is_used {
-						cvar_name := guard_vars[guard_idx]
-						g.writeln('\tIError err = ${cvar_name}.err;')
+				cvar_name := guard_vars[guard_idx]
+				if guard_else_uses_err[guard_idx] {
+					if err_var := branch.scope.find_var('err') {
+						if err_var.is_used {
+							g.writeln('\tIError err = ${cvar_name}.err;')
+						}
 					}
+				} else if guard_owns_error[guard_idx] && guard_expr_types[guard_idx] != 0 {
+					g.if_guard_error_cleanup(cvar_name, guard_expr_types[guard_idx])
 				}
 			}
 		} else if branch.cond is ast.IfGuardExpr {
@@ -450,6 +515,7 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 					}
 				}
 			}
+			guard_expr_types[i] = guard_expr_type
 			if var_name == '' {
 				short_opt = true // we don't need a further tmp, so use the one we'll get later
 				var_name = g.new_tmp_var()
@@ -494,14 +560,20 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 						g.write('\tmemcpy((${base_type}*)${cond_var_name}, &')
 						g.expr(branch.cond.expr)
 						g.writeln(', sizeof(${base_type}));')
+						g.write_if_guard_gc_pin(branch.scope, branch.cond.vars[0].name,
+							cond_var_name)
 					} else if short_opt_is_auto_heap {
 						g.write('\t${base_type}* ${cond_var_name} = HEAP(${base_type}, ')
 						g.expr(branch.cond.expr)
 						g.writeln(');')
+						g.write_if_guard_gc_pin(branch.scope, branch.cond.vars[0].name,
+							cond_var_name)
 					} else {
 						g.write('\t${base_type} ${cond_var_name} = ')
 						g.expr(branch.cond.expr)
 						g.writeln(';')
+						g.write_if_guard_gc_pin(branch.scope, branch.cond.vars[0].name,
+							cond_var_name)
 					}
 				} else {
 					mut is_auto_heap := false
@@ -524,13 +596,19 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 							&& !guard_typ.is_ptr()
 						if guard_is_heap_obj {
 							g.writeln('\t${base_type}* ${left_var_name} = (${base_type}*)${var_name}${dot_or_ptr}data;')
+							g.write_if_guard_gc_pin(branch.scope, branch.cond.vars[0].name,
+								left_var_name)
 						} else if is_auto_heap {
 							// Non-heap structs still need a dedicated heap copy when the guard value escapes.
 							// `@[heap]` structs already live behind the option data pointer and must not be copied.
 							g.writeln('\t${base_type}* ${left_var_name} = HEAP(${base_type}, *(${base_type}*)${var_name}${dot_or_ptr}data);')
+							g.write_if_guard_gc_pin(branch.scope, branch.cond.vars[0].name,
+								left_var_name)
 						} else if base_type.starts_with('Array_fixed') {
 							g.writeln('\t${base_type} ${left_var_name} = {0};')
 							g.writeln('memcpy(${left_var_name}, (${base_type}*)${var_name}.data, sizeof(${base_type}));')
+							g.write_if_guard_gc_pin(branch.scope, branch.cond.vars[0].name,
+								left_var_name)
 						} else {
 							expr_sym := g.table.sym(branch.cond.expr_type)
 							if expr_sym.info is ast.FnType {
@@ -541,9 +619,13 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 								} else {
 									g.writeln(' = (${base_type}*)${var_name}${dot_or_ptr}data;')
 								}
+								g.write_if_guard_gc_pin(branch.scope, branch.cond.vars[0].name,
+									left_var_name)
 							} else {
 								g.write('\t${base_type} ${left_var_name}')
 								g.writeln(' = *(${base_type}*)${var_name}${dot_or_ptr}data;')
+								g.write_if_guard_gc_pin(branch.scope, branch.cond.vars[0].name,
+									left_var_name)
 							}
 						}
 					} else if branch.cond.vars.len > 1 {
@@ -558,8 +640,12 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 									left_var_name := c_name(var.name)
 									if is_auto_heap {
 										g.writeln('\t${var_typ}* ${left_var_name} = (HEAP(${base_type}, *(${base_type}*)${var_name}.data).arg${vi});')
+										g.write_if_guard_gc_pin(branch.scope, var.name,
+											left_var_name)
 									} else {
 										g.writeln('\t${var_typ} ${left_var_name} = (*(${base_type}*)${var_name}.data).arg${vi};')
+										g.write_if_guard_gc_pin(branch.scope, var.name,
+											left_var_name)
 									}
 								}
 							}
@@ -628,9 +714,9 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 		}
 		if needs_tmp_var {
 			prev_expected_cast_type := g.expected_cast_type
-			if node.is_expr
-				&& (g.table.sym(node.typ).kind == .sum_type || node.typ.has_flag(.shared_f)) {
-				g.expected_cast_type = node.typ
+			if node.is_expr && (g.table.sym(resolved_node_typ).kind == .sum_type
+				|| resolved_node_typ.has_flag(.shared_f)) {
+				g.expected_cast_type = resolved_node_typ
 			}
 			g.stmts_with_tmp_var(branch.stmts, tmp)
 			g.write_defer_stmts(branch.scope, false, node.pos)
@@ -652,6 +738,16 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 		if !needs_tmp_var {
 			g.set_current_pos_as_last_stmt_pos()
 		}
+	}
+	for i, var_name in guard_vars {
+		if var_name == '' || guard_expr_types[i] == 0 || guard_else_uses_err[i]
+			|| !guard_owns_error[i] {
+			continue
+		}
+		if node.has_else && i == node.branches.len - 2 {
+			continue
+		}
+		g.if_guard_error_cleanup(var_name, guard_expr_types[i])
 	}
 	if needs_tmp_var {
 		// Close the extra scopes opened between branches to isolate

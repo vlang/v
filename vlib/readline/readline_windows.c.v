@@ -2,7 +2,8 @@
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 //
-// TODO: Windows version needs to be implemented.
+// Windows currently supports basic line reading and raw-character input.
+// The richer line-editing functionality is still implemented only on nix.
 // Will serve as more advanced input method
 // based on the work of https://github.com/AmokHuginnsson/replxx
 //
@@ -10,8 +11,77 @@ module readline
 
 import os
 
+#include <conio.h>
+#include <windows.h>
+
 // needed for parity with readline_default.c.v
 struct Termios {
+}
+
+fn C._getwch() i32
+
+fn (mut r Readline) set_raw_mode(keep_processed_input bool) {
+	if os.is_atty(0) <= 0 || os.getenv('TERM') == 'dumb' {
+		r.is_tty = false
+		r.is_raw = false
+		return
+	}
+	stdin_handle := C.GetStdHandle(C.STD_INPUT_HANDLE)
+	if stdin_handle == C.INVALID_HANDLE_VALUE || !C.GetConsoleMode(stdin_handle, &r.orig_stdin_mode) {
+		r.is_tty = false
+		r.is_raw = false
+		return
+	}
+	mut raw_mode := r.orig_stdin_mode & (~u32(C.ENABLE_LINE_INPUT | C.ENABLE_ECHO_INPUT))
+	if !keep_processed_input {
+		raw_mode &= ~u32(C.ENABLE_PROCESSED_INPUT)
+	}
+	if !C.SetConsoleMode(stdin_handle, raw_mode) {
+		r.is_tty = false
+		r.is_raw = false
+		return
+	}
+	r.is_tty = true
+	r.is_raw = true
+}
+
+// enable_raw_mode enables the raw mode of the terminal.
+// In raw mode all key presses are directly sent to the program and no interpretation is done.
+pub fn (mut r Readline) enable_raw_mode() {
+	r.set_raw_mode(false)
+}
+
+// enable_raw_mode_nosig enables the raw mode of the terminal while keeping console signal processing enabled.
+pub fn (mut r Readline) enable_raw_mode_nosig() {
+	r.set_raw_mode(true)
+}
+
+// disable_raw_mode disables the raw mode of the terminal.
+pub fn (mut r Readline) disable_raw_mode() {
+	if !r.is_raw {
+		return
+	}
+	stdin_handle := C.GetStdHandle(C.STD_INPUT_HANDLE)
+	if stdin_handle != C.INVALID_HANDLE_VALUE {
+		C.SetConsoleMode(stdin_handle, r.orig_stdin_mode)
+	}
+	r.is_raw = false
+}
+
+// read_char reads a single character.
+pub fn (r Readline) read_char() !int {
+	ch := int(C._getwch())
+	if ch < 0 {
+		return error('failed to read character')
+	}
+	if ch !in [0, 0xe0] {
+		return ch
+	}
+	extended := int(C._getwch())
+	if extended < 0 {
+		return error('failed to read character')
+	}
+	return int((u32(ch) << 16) | u32(extended))
 }
 
 // Only use standard os.get_line

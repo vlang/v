@@ -34,6 +34,7 @@ mut:
 	types           []string            // all the type definitions
 	interfaces      []string            // all the interface definitions
 	lines           []string            // all the other lines/statements
+	exec_lines      []string            // executable statements with restored runtime values
 	temp_lines      []string            // all the temporary expressions/printlns
 	vstartup_lines  []string            // lines in the `VSTARTUP` file
 	eval_func_lines []string            // same line of the `VSTARTUP` file, but used to test fn type
@@ -80,6 +81,18 @@ enum DeclType {
 	struct    // struct ...
 	interface // interface ...
 	stmt      // statement
+}
+
+struct SnapshotAssignment {
+	lhs  string
+	name string
+	op   string
+}
+
+struct TimeSnapshot {
+	unix       i64
+	nanosecond int
+	is_local   bool
 }
 
 fn new_repl(folder string) Repl {
@@ -244,7 +257,7 @@ fn (r &Repl) current_source_code(should_add_temp_lines bool, not_add_print bool)
 	all_lines << r.structs
 	all_lines << r.interfaces
 	all_lines << r.functions
-	all_lines << r.lines
+	all_lines << r.exec_lines
 
 	if should_add_temp_lines {
 		all_lines << r.temp_lines
@@ -286,9 +299,34 @@ fn (r &Repl) insert_source_code(typ DeclType, lines []string) string {
 	if typ == .fn {
 		all_lines << lines
 	}
-	all_lines << r.lines
+	all_lines << r.exec_lines
 	if typ == .stmt {
 		all_lines << lines
+	}
+	return all_lines.join('\n')
+}
+
+fn (r &Repl) current_display_source_code(should_add_temp_lines bool, not_add_print bool) string {
+	mut all_lines := r.import_to_source_code()
+	if vstartup != '' {
+		mut lines := []string{}
+		if !not_add_print {
+			lines = r.vstartup_lines.filter(!it.starts_with('print'))
+		} else {
+			lines = r.vstartup_lines.clone()
+		}
+		all_lines << lines
+	}
+	all_lines << r.includes
+	all_lines << r.types
+	all_lines << r.enums
+	all_lines << r.consts
+	all_lines << r.structs
+	all_lines << r.interfaces
+	all_lines << r.functions
+	all_lines << r.lines
+	if should_add_temp_lines {
+		all_lines << r.temp_lines
 	}
 	return all_lines.join('\n')
 }
@@ -306,8 +344,9 @@ fn (r &Repl) check_fn_type_kind(new_line string) FnType {
 	// -usecache keeps repeated REPL checks responsive by reusing cached modules.
 	// -w suppresses warnings from this synthetic println probe.
 	// -check just does syntax and checker analysis without generating/running code.
-	os_response :=
-		os.execute('${os.quoted_path(vexe)} -usecache -w -check ${os.quoted_path(check_file)}')
+	os_response := execute_repl_v_command(vexe, ['-usecache', '-w', '-check', check_file]) or {
+		return FnType.none
+	}
 	str_response := convert_output(os_response.output)
 	if os_response.exit_code != 0 && str_response.contains('can not print void expressions') {
 		return FnType.void
@@ -356,7 +395,7 @@ fn (mut r Repl) pin() {
 
 // print source code
 fn (mut r Repl) list_source() {
-	source_code := r.current_source_code(true, true)
+	source_code := r.current_display_source_code(true, true)
 	println('\n${source_code.replace('\n\n', '\n')}')
 }
 
@@ -460,6 +499,164 @@ fn remove_comment(oline string) string {
 	}
 
 	return oline[..i]
+}
+
+fn is_repl_ident_start(ch u8) bool {
+	return (`a` <= ch && ch <= `z`) || (`A` <= ch && ch <= `Z`) || ch == `_`
+}
+
+fn is_repl_ident_char(ch u8) bool {
+	return is_repl_ident_start(ch) || (`0` <= ch && ch <= `9`)
+}
+
+fn is_repl_ident(name string) bool {
+	if name.len == 0 || !is_repl_ident_start(name[0]) {
+		return false
+	}
+	for i := 1; i < name.len; i++ {
+		if !is_repl_ident_char(name[i]) {
+			return false
+		}
+	}
+	return true
+}
+
+fn find_assignment_operator(line string) (int, string) {
+	mut inside_string := false
+	mut escaped := false
+	mut string_delim := u8(0)
+	for i := 0; i < line.len; i++ {
+		match line[i] {
+			`"`, `'` {
+				if !escaped {
+					if inside_string && string_delim == line[i] {
+						inside_string = false
+					} else if !inside_string {
+						inside_string = true
+						string_delim = line[i]
+					}
+				} else {
+					escaped = false
+				}
+			}
+			`\\` {
+				if inside_string {
+					escaped = !escaped
+				} else {
+					escaped = false
+				}
+			}
+			`:` {
+				if !inside_string && i + 1 < line.len && line[i + 1] == `=` {
+					return i, ':='
+				}
+				escaped = false
+			}
+			`=` {
+				prev_is_assignment_op := i > 0
+					&& line[i - 1] in [`!`, `<`, `>`, `=`, `:`, `+`, `-`, `*`, `/`, `%`, `&`, `|`, `^`]
+				next_is_assignment_op := i + 1 < line.len && line[i + 1] == `=`
+				if !inside_string && !prev_is_assignment_op && !next_is_assignment_op {
+					return i, '='
+				}
+				escaped = false
+			}
+			else {
+				escaped = false
+			}
+		}
+	}
+	return -1, ''
+}
+
+fn parse_simple_assignment(line string) ?SnapshotAssignment {
+	idx, op := find_assignment_operator(line)
+	if idx < 1 {
+		return none
+	}
+	rhs_idx := idx + op.len
+	if rhs_idx >= line.len || line[rhs_idx..].trim_space().len == 0 {
+		return none
+	}
+	lhs := line[..idx].trim_space()
+	if lhs.len == 0 {
+		return none
+	}
+	mut name := lhs
+	if lhs.starts_with('mut ') {
+		name = lhs[4..].trim_space()
+	}
+	if name.len == 0 || name.contains_any(',.[({}: ') || !is_repl_ident(name) {
+		return none
+	}
+	return SnapshotAssignment{
+		lhs:  lhs
+		name: name
+		op:   op
+	}
+}
+
+fn repl_string_literal(s string) string {
+	escaped := s.replace_each(['\\', '\\\\', "'", "\\'", '\n', '\\n', '\r', '\\r', '\t', '\\t'])
+	return "'${escaped}'"
+}
+
+fn (mut r Repl) add_statement_line(display_line string, exec_line string) {
+	r.lines << display_line
+	r.exec_lines << exec_line
+}
+
+fn (mut r Repl) add_statement_lines(lines []string) {
+	r.lines << lines
+	r.exec_lines << lines
+}
+
+// Snapshot time.Time assignments so rerunning the accumulated source
+// keeps the original timestamp instead of calling time.now() again.
+fn (r &Repl) capture_time_snapshot(source_code string, assignment SnapshotAssignment) ?TimeSnapshot {
+	marker := '__vrepl_time_snapshot__${rand.ulid()}'
+	mut probe_source := source_code
+	probe_source += '\nprintln(${repl_string_literal(marker)} + \'\\t\' + typeof(${assignment.name}).name + \'\\t\' + ${assignment.name}.unix().str() + \'\\t\' + ${assignment.name}.nanosecond.str() + \'\\t\' + ${assignment.name}.is_local.str())\n'
+	probe_file := os.join_path(r.folder, '${rand.ulid()}.vrepl.time_snapshot.v')
+	os.write_file(probe_file, probe_source) or { return none }
+	defer {
+		os.rm(probe_file) or {}
+	}
+	result := repl_run_vfile(probe_file) or { return none }
+	if result.exit_code != 0 {
+		return none
+	}
+	lines := convert_output(result.output).trim_right('\n\r').split_into_lines()
+	prefix := '${marker}\t'
+	for i := lines.len - 1; i >= 0; i-- {
+		if !lines[i].starts_with(prefix) {
+			continue
+		}
+		parts := lines[i][prefix.len..].split('\t')
+		if parts.len != 4 || parts[0] != 'time.Time' {
+			return none
+		}
+		return TimeSnapshot{
+			unix:       parts[1].i64()
+			nanosecond: parts[2].int()
+			is_local:   parts[3] == 'true'
+		}
+	}
+	return none
+}
+
+fn snapshot_time_expr(snapshot TimeSnapshot) string {
+	base := 'time.unix_nanosecond(${snapshot.unix}, ${snapshot.nanosecond})'
+	if snapshot.is_local {
+		return base + '.as_local()'
+	}
+	return base + '.as_utc()'
+}
+
+fn (r &Repl) snapshot_assignment_line(source_code string, line string) string {
+	assignment := parse_simple_assignment(line) or { return line }
+	snapshot := r.capture_time_snapshot(source_code, assignment) or { return line }
+	return '${assignment.lhs} ${assignment.op} ${snapshot_time_expr(snapshot)}'
 }
 
 fn run_repl(workdir string, vrepl_prefix string) int {
@@ -597,7 +794,7 @@ fn run_repl(workdir string, vrepl_prefix string) int {
 				print_output(cur_line_output)
 				if s.exit_code == 0 && !cur_line_output.contains('warning:') {
 					r.last_output = s.output.clone()
-					r.lines << r.line
+					r.add_statement_line(r.line, r.line)
 				}
 			}
 		} else if r.line.contains('os.input(') {
@@ -609,7 +806,7 @@ fn run_repl(workdir string, vrepl_prefix string) int {
 			os.write_file(temp_file, source_code) or { panic(err) }
 			s := repl_run_vfile(temp_file) or { return 1 }
 			if s.exit_code == 0 {
-				r.lines << trans_line
+				r.add_statement_line(trans_line, trans_line)
 			}
 		} else {
 			func_call, fntype := r.function_call(r.line)
@@ -647,7 +844,7 @@ fn run_repl(workdir string, vrepl_prefix string) int {
 						print_output(cur_line_output)
 						if !cur_line_output.contains('warning:') {
 							r.last_output = s.output.clone()
-							r.lines << print_line
+							r.add_statement_line(print_line, print_line)
 						}
 					}
 					continue
@@ -727,7 +924,7 @@ fn run_repl(workdir string, vrepl_prefix string) int {
 					} else if was_interface {
 						r.interfaces << r.temp_lines
 					} else {
-						r.lines << r.temp_lines
+						r.add_statement_lines(r.temp_lines)
 					}
 				} else if starts_with_include {
 					r.includes << r.line
@@ -744,7 +941,8 @@ fn run_repl(workdir string, vrepl_prefix string) int {
 				} else if starts_with_interface {
 					r.interfaces << r.line
 				} else {
-					r.lines << r.line
+					exec_line := r.snapshot_assignment_line(temp_source_code, r.line)
+					r.add_statement_line(r.line, exec_line)
 				}
 			}
 			r.temp_lines.clear()
@@ -838,11 +1036,35 @@ fn cleanup_files(file string) {
 	}
 }
 
+fn execute_repl_v_command(v_path string, args []string) !os.Result {
+	$if windows {
+		mut process := os.new_process(v_path)
+		process.set_args(args)
+		process.set_redirect_stdio()
+		process.create_no_window = true
+		process.wait()
+		stdout_output := process.stdout_slurp()
+		stderr_output := process.stderr_slurp()
+		exit_code := process.code
+		process.close()
+		return os.Result{
+			exit_code: exit_code
+			output:    stdout_output + stderr_output
+		}
+	} $else {
+		mut cmd := os.quoted_path(v_path)
+		for arg in args {
+			cmd += ' ' + os.quoted_path(arg)
+		}
+		return os.execute(cmd)
+	}
+}
+
 fn repl_run_vfile(file string) !os.Result {
 	$if trace_repl_temp_files ? {
 		eprintln('>> repl_run_vfile file: ${file}')
 	}
-	s := os.execute('${os.quoted_path(vexe)} -message-limit 1 -repl run ${os.quoted_path(file)}')
+	s := execute_repl_v_command(vexe, ['-message-limit', '1', '-repl', 'run', file])!
 	if s.exit_code < 0 {
 		rerror(s.output)
 		return error(s.output)
@@ -857,7 +1079,7 @@ fn repl_check_vfile(file string) !os.Result {
 	// Declaration-only REPL lines do not need code generation or execution.
 	// Cached checks keep repeated imports and definitions responsive.
 	s :=
-		os.execute('${os.quoted_path(vexe)} -usecache -message-limit 1 -repl -check ${os.quoted_path(file)}')
+		execute_repl_v_command(vexe, ['-usecache', '-message-limit', '1', '-repl', '-check', file])!
 	if s.exit_code < 0 {
 		rerror(s.output)
 		return error(s.output)

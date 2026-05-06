@@ -8,12 +8,42 @@ import v.ast
 import v.token
 import v.errors
 import v.util
+import v.vmod
 
 const supported_comptime_calls = ['html', 'tmpl', 'env', 'embed_file', 'pkgconfig', 'compile_error',
-	'compile_warn', 'd', 'res']
+	'compile_warn', 'd', 'res', 'zero', 'new']
+const supported_comptime_for_kinds = ['methods', 'fields', 'values', 'variants', 'attributes',
+	'params']
 const comptime_types = ['map', 'array', 'array_dynamic', 'array_fixed', 'int', 'float', 'struct',
 	'interface', 'enum', 'sumtype', 'alias', 'function', 'option', 'shared', 'string', 'pointer',
 	'voidptr']
+
+fn find_veb_template_relative_to_vmod(compiled_vfile_path string, relative_path string) ?string {
+	mut mcache := vmod.get_cache()
+	vmod_file_location := mcache.get_by_file(compiled_vfile_path)
+	if vmod_file_location.vmod_file == '' {
+		return none
+	}
+	vmod_template_path := os.join_path(vmod_file_location.vmod_folder, relative_path)
+	if !os.exists(vmod_template_path) {
+		return none
+	}
+	return os.real_path(vmod_template_path)
+}
+
+fn find_existing_veb_template_in_vmod(compiled_vfile_path string, relative_paths []string) ?string {
+	for relative_path in relative_paths {
+		if path := find_veb_template_relative_to_vmod(compiled_vfile_path, relative_path) {
+			return path
+		}
+	}
+	return none
+}
+
+@[inline]
+fn is_supported_comptime_for_kind(name string) bool {
+	return name in supported_comptime_for_kinds
+}
 
 fn (mut p Parser) parse_comptime_type() ast.ComptimeType {
 	pos := p.tok.pos()
@@ -79,6 +109,7 @@ fn (mut p Parser) parse_comptime_type() ast.ComptimeType {
 			.unknown
 		}
 	}
+
 	return ast.ComptimeType{
 		kind: kind
 		pos:  pos
@@ -139,7 +170,7 @@ fn (mut p Parser) hash() ast.HashStmt {
 	}
 }
 
-const error_msg = 'only `\$tmpl()`, `\$env()`, `\$embed_file()`, `\$pkgconfig()`, `\$veb.html()`, `\$vweb.html()`, `\$compile_error()`, `\$compile_warn()`, `\$d()` and `\$res()` comptime functions are supported right now'
+const error_msg = 'only `\$tmpl()`, `\$env()`, `\$embed_file()`, `\$pkgconfig()`, `\$veb.html()`, `\$compile_error()`, `\$compile_warn()`, `\$d()`, `\$res()`, `\$zero()` and `\$new()` comptime functions are supported right now'
 
 fn (p &Parser) resolve_tmpl_path_expr(expr ast.Expr) ?string {
 	return p.resolve_tmpl_path_expr_with_depth(expr, 0)
@@ -268,6 +299,49 @@ fn (mut p Parser) resolve_tmpl_pseudo_variables(path string, pos token.Pos) ?str
 	return resolved
 }
 
+fn (p &Parser) is_comptime_type_selector_at(offset int) bool {
+	if p.peek_token(offset).kind == .key_typeof {
+		return true
+	}
+	if p.peek_token(offset).kind != .name {
+		return false
+	}
+	mut n := offset + 1
+	for p.peek_token(n).kind == .dot && p.peek_token(n + 1).kind == .name {
+		if is_array_init_type_expr_field(p.peek_token(n + 1).lit) {
+			return true
+		}
+		n += 2
+	}
+	return false
+}
+
+fn (p &Parser) is_comptime_type_expr_arg() bool {
+	if p.tok.kind in [.key_typeof, .dollar] {
+		return true
+	}
+	if p.tok.kind == .lsbr && p.peek_tok.kind == .rsbr {
+		return p.is_comptime_type_selector_at(2)
+	}
+	return p.is_comptime_type_selector_at(0)
+}
+
+fn (mut p Parser) comptime_call_type_arg() ast.Expr {
+	arg_pos := p.tok.pos()
+	if p.is_comptime_type_expr_arg() {
+		old_inside_array_init_type_expr := p.inside_array_init_type_expr
+		p.inside_array_init_type_expr = true
+		expr := p.expr(0)
+		p.inside_array_init_type_expr = old_inside_array_init_type_expr
+		return expr
+	}
+	typ := p.parse_type()
+	return ast.TypeNode{
+		typ: typ
+		pos: arg_pos.extend(p.prev_tok.pos())
+	}
+}
+
 fn (mut p Parser) comptime_call() ast.ComptimeCall {
 	err_node := ast.ComptimeCall{
 		scope: unsafe { nil }
@@ -277,28 +351,19 @@ fn (mut p Parser) comptime_call() ast.ComptimeCall {
 	p.check(.dollar)
 	mut is_veb := false
 	if p.peek_tok.kind == .dot {
-		name := p.check_name() // skip `vweb.html()` TODO
-		if name != 'vweb' && name != 'veb' {
+		name := p.check_name()
+		if name != 'veb' {
 			p.error(error_msg)
 			return err_node
 		}
 		import_mods := p.ast_imports.map(it.mod)
-		if name == 'vweb' {
-			if 'vweb' !in import_mods && 'x.vweb' !in import_mods {
-				p.error_with_pos('`\$vweb` cannot be used without importing vweb',
-					start_pos.extend(p.prev_tok.pos()))
-				return err_node
-			}
-			p.register_used_import('vweb')
-		} else if name == 'veb' {
-			if 'veb' !in import_mods {
-				p.error_with_pos('`\$veb` cannot be used without importing veb',
-					start_pos.extend(p.prev_tok.pos()))
-				return err_node
-			}
-			p.register_used_import('veb')
-			is_veb = true
+		if 'veb' !in import_mods {
+			p.error_with_pos('`\$veb` cannot be used without importing veb',
+				start_pos.extend(p.prev_tok.pos()))
+			return err_node
 		}
+		p.register_used_import('veb')
+		is_veb = true
 		p.check(.dot)
 	}
 	method_name := p.check_name()
@@ -391,15 +456,30 @@ fn (mut p Parser) comptime_call() ast.ComptimeCall {
 			args:        args
 			pos:         start_pos.extend(p.prev_tok.pos())
 		}
+	} else if method_name in ['zero', 'new'] {
+		arg_expr := p.comptime_call_type_arg()
+		p.check(.rpar)
+		return ast.ComptimeCall{
+			scope:       unsafe { nil }
+			method_name: method_name
+			kind:        if method_name == 'zero' { .zero } else { .new }
+			args:        [
+				ast.CallArg{
+					expr: arg_expr
+					pos:  arg_pos
+				},
+			]
+			pos:         start_pos.extend(p.prev_tok.pos())
+		}
 	}
 	has_string_arg := p.tok.kind == .string
 	mut literal_string_param := if is_html && !has_string_arg { '' } else { p.tok.lit }
 	mut arg := ast.CallArg{}
 	if is_html && !(has_string_arg || p.tok.kind == .rpar) {
-		p.error('expecting `\$vweb.html()` for a default template path or `\$vweb.html("/path/to/template.html")`')
+		p.error('expecting `\$veb.html()` for a default template path or `\$veb.html("/path/to/template.html")`')
 	}
 	if is_html && p.tok.kind != .string {
-		// $vweb.html() can have no arguments
+		// $veb.html() can have no arguments
 	} else {
 		arg_expr := p.expr(0)
 		if resolved_path := p.resolve_tmpl_path_expr(arg_expr) {
@@ -435,10 +515,11 @@ fn (mut p Parser) comptime_call() ast.ComptimeCall {
 			pos:         start_pos.extend(p.prev_tok.pos())
 		}
 	}
-	// Compile vweb html template to V code, parse that V code and embed the resulting V function
+	// Compile veb html template to V code, parse that V code and embed the resulting V function
 	// that returns an html string.
 	fn_path := p.cur_fn_name.split('_')
 	fn_path_joined := fn_path.join(os.path_separator)
+	fn_name_html := '${p.cur_fn_name}.html'
 	compiled_vfile_path := os.real_path(p.scanner.file_path.replace('/', os.path_separator))
 	tmpl_path := if is_html && !has_string_arg {
 		'${fn_path.last()}.html'
@@ -449,11 +530,10 @@ fn (mut p Parser) comptime_call() ast.ComptimeCall {
 		}
 		resolved_path
 	}
-	// Looking next to the vweb program
+	// Looking next to the veb program
 	dir := os.dir(compiled_vfile_path)
 	mut path := os.join_path_single(dir, fn_path_joined)
 	path += '.html'
-	path = os.real_path(path)
 	if !is_html || has_string_arg {
 		if os.is_abs_path(tmpl_path) {
 			path = tmpl_path
@@ -463,15 +543,43 @@ fn (mut p Parser) comptime_call() ast.ComptimeCall {
 	}
 	if !os.exists(path) {
 		if is_html {
-			// can be in `templates/`
-			path = os.join_path(dir, 'templates', fn_path_joined)
-			path += '.html'
+			if has_string_arg && !os.is_abs_path(tmpl_path) {
+				path = find_veb_template_relative_to_vmod(compiled_vfile_path, tmpl_path) or {
+					path
+				}
+			} else {
+				flat_path := os.join_path_single(dir, fn_name_html)
+				if os.exists(flat_path) {
+					path = flat_path
+				}
+				if !os.exists(path) {
+					// can be in `templates/`
+					path = os.join_path(dir, 'templates', fn_path_joined)
+					path += '.html'
+				}
+				if !os.exists(path) {
+					flat_template_path := os.join_path(dir, 'templates', fn_name_html)
+					if os.exists(flat_template_path) {
+						path = flat_template_path
+					}
+				}
+				if !os.exists(path) {
+					// Same-module subdirs and `base_url` can place route handlers below the module
+					// root while keeping `templates/` next to `v.mod`.
+					vmod_relative_paths := [
+						os.join_path('templates', fn_path_joined) + '.html',
+						os.join_path('templates', fn_name_html),
+					]
+					path = find_existing_veb_template_in_vmod(compiled_vfile_path,
+						vmod_relative_paths) or { path }
+				}
+			}
 		}
 		if !os.exists(path) {
 			if p.pref.is_fmt {
 				return ast.ComptimeCall{
 					scope:       unsafe { nil }
-					is_vweb:     true
+					is_template: true
 					is_veb:      is_veb
 					method_name: method_name
 					kind:        if is_html { .html } else { .tmpl }
@@ -516,19 +624,84 @@ fn (mut p Parser) comptime_call() ast.ComptimeCall {
 	}
 	mut file := parse_comptime(tmpl_path, v_code, mut p.table, p.pref, mut p.scope)
 	file.path = tmpl_path
-	// Store call stack info for template errors
-	file.call_stack = [
+	template_call_stack := [
 		errors.CallStackItem{
 			file_path: p.file_path
 			pos:       start_pos
 		},
 	]
+	// Store call stack info for template errors
+	file.call_stack = template_call_stack
 	// Transfer template paths and line mapping from parser to file for error reporting
 	file.template_paths = p.template_paths
 	file.template_line_map = p.template_line_map
+	for i, err in file.errors {
+		mut file_path := err.file_path
+		mut line_nr := err.pos.line_nr
+		if err.pos.line_nr >= 0 && err.pos.line_nr < file.template_line_map.len {
+			line_info := file.template_line_map[err.pos.line_nr]
+			file_path = line_info.tmpl_path
+			line_nr = line_info.tmpl_line
+		}
+		file.errors[i] = errors.Error{
+			message:    err.message
+			details:    err.details
+			file_path:  file_path
+			pos:        token.Pos{
+				...err.pos
+				line_nr: line_nr
+			}
+			reporter:   err.reporter
+			call_stack: if err.call_stack.len > 0 { err.call_stack } else { template_call_stack }
+		}
+	}
+	for i, warn in file.warnings {
+		mut file_path := warn.file_path
+		mut line_nr := warn.pos.line_nr
+		if warn.pos.line_nr >= 0 && warn.pos.line_nr < file.template_line_map.len {
+			line_info := file.template_line_map[warn.pos.line_nr]
+			file_path = line_info.tmpl_path
+			line_nr = line_info.tmpl_line
+		}
+		file.warnings[i] = errors.Warning{
+			message:    warn.message
+			details:    warn.details
+			file_path:  file_path
+			pos:        token.Pos{
+				...warn.pos
+				line_nr: line_nr
+			}
+			reporter:   warn.reporter
+			call_stack: if warn.call_stack.len > 0 { warn.call_stack } else { template_call_stack }
+		}
+	}
+	for i, notice in file.notices {
+		mut file_path := notice.file_path
+		mut line_nr := notice.pos.line_nr
+		if notice.pos.line_nr >= 0 && notice.pos.line_nr < file.template_line_map.len {
+			line_info := file.template_line_map[notice.pos.line_nr]
+			file_path = line_info.tmpl_path
+			line_nr = line_info.tmpl_line
+		}
+		file.notices[i] = errors.Notice{
+			message:    notice.message
+			details:    notice.details
+			file_path:  file_path
+			pos:        token.Pos{
+				...notice.pos
+				line_nr: line_nr
+			}
+			reporter:   notice.reporter
+			call_stack: if notice.call_stack.len > 0 {
+				notice.call_stack
+			} else {
+				template_call_stack
+			}
+		}
+	}
 	return ast.ComptimeCall{
 		scope:       unsafe { nil }
-		is_vweb:     true
+		is_template: true
 		is_veb:      is_veb
 		veb_tmpl:    file
 		method_name: method_name
@@ -546,6 +719,7 @@ fn (mut p Parser) comptime_for() ast.ComptimeFor {
 	// `$for field in App.fields {`
 	// `$for attr in App.attributes {`
 	// `$for variant in App.variants {`
+	// `$for variant in field.typ.variants {`
 	p.next()
 	p.check(.key_for)
 	var_pos := p.tok.pos()
@@ -563,8 +737,21 @@ fn (mut p Parser) comptime_for() ast.ComptimeFor {
 	if p.tok.lit[0].is_capital() || p.tok.lit in p.imports {
 		typ = p.parse_any_type(lang, false, true, false)
 	} else {
-		expr = p.ident(lang)
-		p.scope.mark_var_as_used((expr as ast.Ident).name)
+		mut selector_expr := ast.Expr(p.ident(lang))
+		p.scope.mark_var_as_used((selector_expr as ast.Ident).name)
+		for p.tok.kind == .dot && p.peek_tok.kind == .name
+			&& !is_supported_comptime_for_kind(p.peek_tok.lit) {
+			selector_expr = p.dot_expr(selector_expr)
+			if p.name_error {
+				return ast.ComptimeFor{}
+			}
+			if selector_expr !is ast.SelectorExpr {
+				p.error_with_pos('invalid expr, use a selector like `field.typ`',
+					selector_expr.pos())
+				return ast.ComptimeFor{}
+			}
+		}
+		expr = selector_expr
 	}
 	typ_pos = typ_pos.extend(p.prev_tok.pos())
 	p.check(.dot)
@@ -628,6 +815,7 @@ fn (mut p Parser) comptime_for() ast.ComptimeFor {
 			return ast.ComptimeFor{}
 		}
 	}
+
 	spos := p.tok.pos()
 	stmts := p.parse_block()
 	return ast.ComptimeFor{
@@ -673,6 +861,7 @@ fn (mut p Parser) at() ast.AtExpr {
 		'@PLATFORM' { token.AtKind.platform }
 		else { token.AtKind.unknown }
 	}
+
 	expr := ast.AtExpr{
 		name: name
 		pos:  p.tok.pos()

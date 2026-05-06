@@ -7,6 +7,7 @@ fn test_match_on_sumtype_alias_variants() {
 		int { a.str() }
 		string { a }
 	}
+
 	assert result == '10'
 }
 
@@ -40,7 +41,6 @@ fn test_match_on_sumtype_alias_parent_type_regression() {
 		AliasMatchSome[AliasMatchParseRes] {
 			match r.value {
 				AliasMatchResult[[]AliasMatchToken, AliasMatchParseErr] {}
-				else {}
 			}
 		}
 		AliasMatchNone[AliasMatchParseRes] {

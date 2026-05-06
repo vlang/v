@@ -38,7 +38,7 @@ jobs:
         run: |
           echo %VFLAGS%
           echo $VFLAGS
-          .\make.bat -msvc
+          .\makev.bat -msvc
           .\v.exe symlink
       - name: Build V with WX
         run: v -cflags /WX self

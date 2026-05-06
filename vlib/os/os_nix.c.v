@@ -1,7 +1,5 @@
 module os
 
-import strings
-
 #include <dirent.h>
 #include <unistd.h>
 #include <fcntl.h>
@@ -9,6 +7,14 @@ import strings
 #include <sys/types.h>
 #include <sys/statvfs.h>
 #include <utime.h>
+#insert "@VEXEROOT/vlib/os/execute_capture_nix.h"
+
+// short_path is a Windows-only helper that returns the DOS 8.3 short path.
+// On non-Windows platforms it simply returns the given path unchanged,
+// so that callers guarded by `$if windows { ... }` type-check on other targets.
+pub fn short_path(path string) string {
+	return path
+}
 
 // path_separator is the platform specific separator string, used between the folders and filenames in a path. It is '/' on POSIX, and '\\' on Windows.
 pub const path_separator = '/'
@@ -65,6 +71,8 @@ fn C.getppid() i32
 fn C.getgid() i32
 
 fn C.getegid() i32
+
+fn C.v_os_execute_capture_start(cmd &char, child_pid &int, read_fd &int) int
 
 enum GlobMatch {
 	exact
@@ -142,6 +150,7 @@ fn glob_match(dir string, pattern string, next_pattern string, mut matches []str
 				f.contains(pat)
 			}
 		}
+
 		if hit {
 			if is_dir(fpath) {
 				subdirs << fpath
@@ -319,37 +328,25 @@ pub fn mkdir(path string, params MkdirParams) ! {
 }
 
 // execute starts the specified command, waits for it to complete, and returns its output.
-@[manualfree]
 pub fn execute(cmd string) Result {
-	pcmd := 'exec 2>&1;${cmd}'
-	defer {
-		unsafe { pcmd.free() }
-	}
-	f := vpopen(pcmd)
-	if isnil(f) {
+	mut pid := 0
+	mut read_fd := -1
+	if C.v_os_execute_capture_start(&char(cmd.str), &pid, &read_fd) != 0 {
 		return Result{
 			exit_code: -1
 			output:    'exec("${cmd}") failed'
 		}
 	}
-	fd := fileno(f)
-	mut res := strings.new_builder(1024)
-	defer {
-		unsafe { res.free() }
-	}
-	buf := [4096]u8{}
-	unsafe {
-		pbuf := &buf[0]
-		for {
-			len := int(C.read(fd, pbuf, 4096))
-			if len == 0 {
-				break
-			}
-			res.write_ptr(pbuf, len)
+	soutput := fd_slurp(read_fd).join('')
+	fd_close(read_fd)
+	mut status := 0
+	if C.waitpid(pid, &status, 0) == -1 {
+		return Result{
+			exit_code: -1
+			output:    soutput
 		}
 	}
-	soutput := res.str()
-	exit_code := vpclose(f)
+	exit_code, _ := posix_wait4_to_exit_status(status)
 	return Result{
 		exit_code: exit_code
 		output:    soutput
@@ -440,8 +437,10 @@ pub fn (mut f File) close() {
 		return
 	}
 	f.is_opened = false
-	C.fflush(f.cfile)
-	C.fclose(f.cfile)
+	cfile := f.cfile
+	f.cfile = unsafe { nil }
+	C.fflush(cfile)
+	C.fclose(cfile)
 }
 
 fn C.mkstemp(stemplate &u8) i32
@@ -516,6 +515,7 @@ pub fn posix_set_permission_bit(path_s string, mode u32, enable bool) {
 		true { new_mode |= mode }
 		false { new_mode &= (0o7777 - mode) }
 	}
+
 	C.chmod(&char(path_s.str), int(new_mode))
 }
 

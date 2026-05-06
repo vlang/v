@@ -19,6 +19,7 @@ mut:
 	show_test_files    bool
 	use_absolute_paths bool
 	be_verbose         bool
+	lcov_output        string
 	filter             string
 	working_folder     string
 
@@ -106,12 +107,16 @@ fn (mut ctx Context) process_target(tfile string) ! {
 fn (mut ctx Context) show_report() ! {
 	filters := ctx.filter.split(',').filter(it != '')
 	if ctx.show_hotspots {
-		for location, hits in ctx.counters {
-			if filters.len > 0 {
-				if !filters.any(location.contains(it)) {
-					continue
-				}
+		mut locations := []string{cap: ctx.counters.len}
+		for location, _ in ctx.counters {
+			if !ctx.matches_filters(location, filters) {
+				continue
 			}
+			locations << location
+		}
+		locations.sort()
+		for location in locations {
+			hits := ctx.counters[location]
 			mut final_path := normalize_path(location)
 			if !ctx.use_absolute_paths {
 				final_path = location.all_after_first('${ctx.working_folder}/')
@@ -120,19 +125,9 @@ fn (mut ctx Context) show_report() ! {
 		}
 	}
 	if ctx.show_percentages {
-		for file, lines in ctx.lines_per_file {
-			if !ctx.show_test_files {
-				if file.ends_with('_test.v') || file.ends_with('_test.c.v') {
-					continue
-				}
-			}
-			if filters.len > 0 {
-				if !filters.any(file.contains(it)) {
-					continue
-				}
-			}
+		for file in ctx.sorted_hit_files(filters) {
 			total_lines := ctx.all_lines_per_file[file].len
-			executed_points := lines.len
+			executed_points := ctx.lines_per_file[file].len
 			coverage_percent := 100.0 * f64(executed_points) / f64(total_lines)
 			mut final_path := normalize_path(file)
 			if !ctx.use_absolute_paths {
@@ -141,10 +136,76 @@ fn (mut ctx Context) show_report() ! {
 			println('${final_path:-80s} | ${executed_points:6} | ${total_lines:6} | ${coverage_percent:6.2f}%')
 		}
 	}
+	if ctx.lcov_output != '' {
+		ctx.write_lcov_report(filters)!
+	}
 }
 
 fn normalize_path(path string) string {
 	return path.replace(os.path_separator, '/')
+}
+
+fn (ctx &Context) matches_filters(path string, filters []string) bool {
+	if filters.len == 0 {
+		return true
+	}
+	return filters.any(path.contains(it))
+}
+
+fn (ctx &Context) should_include_file(file string, filters []string) bool {
+	if !ctx.show_test_files && (file.ends_with('_test.v') || file.ends_with('_test.c.v')) {
+		return false
+	}
+	return ctx.matches_filters(file, filters)
+}
+
+fn (ctx &Context) sorted_hit_files(filters []string) []string {
+	mut files := []string{}
+	for file, _ in ctx.lines_per_file {
+		if !ctx.should_include_file(file, filters) {
+			continue
+		}
+		files << file
+	}
+	files.sort()
+	return files
+}
+
+fn (ctx &Context) sorted_files(filters []string) []string {
+	mut files := []string{}
+	for file, _ in ctx.all_lines_per_file {
+		if !ctx.should_include_file(file, filters) {
+			continue
+		}
+		files << file
+	}
+	files.sort()
+	return files
+}
+
+fn (ctx &Context) write_lcov_report(filters []string) ! {
+	output_path := os.real_path(ctx.lcov_output)
+	output_dir := os.dir(output_path)
+	if output_dir != '' && !os.exists(output_dir) {
+		os.mkdir_all(output_dir)!
+	}
+	mut output := []string{}
+	for file in ctx.sorted_files(filters) {
+		mut lines := ctx.all_lines_per_file[file].clone()
+		lines.sort()
+		hit_lines := ctx.lines_per_file[file].len
+		output << 'TN:'
+		output << 'SF:${normalize_path(file)}'
+		for line in lines {
+			hits := ctx.counters['${file}:${line}:']
+			output << 'DA:${line},${hits}'
+		}
+		output << 'LF:${lines.len}'
+		output << 'LH:${hit_lines}'
+		output << 'end_of_record'
+	}
+	os.write_file(output_path, output.join_lines())!
+	ctx.verbose('Wrote LCOV report to ${output_path}')
 }
 
 fn main() {
@@ -163,6 +224,8 @@ fn main() {
 	ctx.show_hotspots = fp.bool('hotspots', `H`, false,
 		'Show most frequently executed covered lines.')
 	ctx.show_percentages = fp.bool('percentages', `P`, true, 'Show coverage percentage per file.')
+	ctx.lcov_output = fp.string('lcov', 0, '',
+		'Write an LCOV line coverage report to the specified file path.')
 	ctx.show_test_files = fp.bool('show_test_files', `S`, false,
 		'Show `_test.v` files as well (normally filtered).')
 	ctx.use_absolute_paths = fp.bool('absolute', `A`, false,

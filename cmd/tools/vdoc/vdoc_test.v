@@ -219,6 +219,46 @@ pub fn greet() string {
 fn greet() string'
 }
 
+fn test_html_keeps_enum_comment_after_top_level_comptime_if() {
+	mod_dir := 'issue_23338'
+	os.mkdir(mod_dir)!
+	os.write_file(os.join_path(mod_dir, 'issue_23338.v'), 'module issue_23338
+
+\$if macos {
+}
+
+// Foo lorem ipsum foo.
+pub enum Foo {
+	foo
+}
+
+// Bar ipsum lorem bar.
+pub enum Bar {
+	bar
+}
+')!
+	res := os.execute_opt('${vexe_} doc -no-timestamp -m -f html -o - -html-only-contents ${os.quoted_path(
+		'./' + mod_dir)}') or { panic(err) }
+	assert res.exit_code == 0
+	output := res.output.replace('\r\n', '\n')
+	assert output.contains('Foo lorem ipsum foo.')
+	assert output.contains('Bar ipsum lorem bar.')
+}
+
+fn test_doc_generates_for_modules_without_public_symbols() {
+	mod_dir := 'module_without_public_symbols'
+	os.mkdir(mod_dir)!
+	os.write_file(os.join_path(mod_dir, 'module_without_public_symbols.v'), 'module module_without_public_symbols
+
+const internal = 1
+')!
+	res := os.execute_opt('${vexe_} doc -no-timestamp -f text -o - ${os.quoted_path('./' + mod_dir)}') or {
+		panic(err)
+	}
+	assert res.exit_code == 0
+	assert res.output.replace('\r\n', '\n').trim_space() == 'module module_without_public_symbols'
+}
+
 fn test_resolve_relative_markdown_link() {
 	base := 'https://github.com/vlang/v/blob/master/vlib/net/html/'
 	assert resolve_relative_markdown_link(base, 'parser_test.v') == 'https://github.com/vlang/v/blob/master/vlib/net/html/parser_test.v'
@@ -260,4 +300,20 @@ fn test_prepare_markdown_for_html_preserves_blockquote_linebreaks() ! {
 fn test_prepare_markdown_for_html_skips_fenced_code_blocks() {
 	input := '```sh\n> prompt\n> next\n```'
 	assert prepare_markdown_for_html(input) == input
+}
+
+fn test_markdown_renderer_preserves_wrapped_readme_markdown() ! {
+	input := '1. The basic atomic elements of this regex engine are the tokens.\n   In a query string a simple character is a token.\n\n- The basic element **is the token not the sequence of symbols**,\n  and the most simple token, is a single character.\n\n- `|` **the OR operator acts on tokens,** for example `abc|ebc` is not\n  `abc` OR `ebc`.'
+	mut renderer := markdown.HtmlRenderer{
+		transformer: &MdHtmlCodeHighlighter{
+			table: ast.new_table()
+		}
+	}
+	out := markdown.render(prepare_markdown_for_html(input), mut renderer)!
+	assert !out.contains('tokens.In')
+	assert !out.contains('mostsimple')
+	assert !out.contains('not<code>abc</code>')
+	assert out.contains('tokens. In a query string a simple character is a token.')
+	assert out.contains('the most simple token')
+	assert out.contains('is not <code>abc</code> OR <code>ebc</code>')
 }

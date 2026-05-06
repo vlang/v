@@ -8,6 +8,31 @@ import v.token
 import v.util
 import os
 
+fn table_fn_lookup(table &ast.Table, name string) (ast.Fn, bool) {
+	if name !in table.fns {
+		return ast.Fn{}, false
+	}
+	return unsafe { table.fns[name] }, true
+}
+
+fn comptime_define_idx(attrs []ast.Attr) int {
+	for idx in 0 .. attrs.len {
+		if attrs[idx].kind == .comptime_define {
+			return idx
+		}
+	}
+	return ast.invalid_type_idx
+}
+
+fn type_method_name_pos(sym &ast.TypeSymbol, name string, fallback token.Pos) token.Pos {
+	for method in sym.methods {
+		if method.name == name {
+			return method.name_pos
+		}
+	}
+	return fallback
+}
+
 fn (mut p Parser) call_expr(language ast.Language, mod string) ast.CallExpr {
 	first_pos := p.tok.pos()
 	mut name := if language == .js { p.check_js_name() } else { p.check_name() }
@@ -53,13 +78,22 @@ fn (mut p Parser) call_expr(language ast.Language, mod string) ast.CallExpr {
 	p.check(.lpar)
 	args := p.call_args()
 	if p.tok.kind != .rpar && !p.pref.is_vls {
-		params := p.table.fns[fn_name] or { unsafe { p.table.fns['${p.mod}.${fn_name}'] } }.params
+		mut params := []ast.Param{}
+		fn_info, has_fn_info := table_fn_lookup(p.table, fn_name)
+		if has_fn_info {
+			params = fn_info.params.clone()
+		} else {
+			mod_fn_info, has_mod_fn_info := table_fn_lookup(p.table, '${p.mod}.${fn_name}')
+			if has_mod_fn_info {
+				params = mod_fn_info.params.clone()
+			}
+		}
 		min_required_params := min_required_call_args(params)
 		if args.len < min_required_params && p.prev_tok.kind != .comma {
 			pos := if p.tok.kind == .eof { p.prev_tok.pos() } else { p.tok.pos() }
 			p.unexpected_with_pos(pos, expecting: '`,`')
 		} else if args.len > params.len {
-			ok_arg_pos := (args[params.len - 1] or { args[0] }).pos
+			ok_arg_pos := if params.len > 0 { args[params.len - 1].pos } else { args[0].pos }
 			pos := token.Pos{
 				...ok_arg_pos
 				col: u16(ok_arg_pos.col + ok_arg_pos.len)
@@ -428,6 +462,12 @@ fn (p &Parser) is_start_of_call_arg_expr() bool {
 	}
 }
 
+@[inline]
+fn (p &Parser) can_omit_comma_between_fn_params() bool {
+	return p.tok.line_nr > p.prev_tok.line_nr
+		&& p.tok.kind in [.name, .key_mut, .key_shared, .key_atomic, .ellipsis]
+}
+
 fn (mut p Parser) call_args() []ast.CallArg {
 	prev_inside_call_args := p.inside_call_args
 	p.inside_call_args = true
@@ -605,7 +645,7 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 			else {}
 		}
 	}
-	conditional_ctdefine_idx := fn_attrs.find_comptime_define() or { -1 }
+	conditional_ctdefine_idx := comptime_define_idx(fn_attrs)
 	is_pub := p.tok.kind == .key_pub
 	if is_pub {
 		p.next()
@@ -701,9 +741,7 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 			if is_duplicate && !p.pref.is_fmt {
 				if type_sym.kind == .enum
 					&& name in ['is_empty', 'has', 'all', 'set', 'set_all', 'clear', 'clear_all', 'toggle', 'zero', 'from'] {
-					if enum_fn := type_sym.find_method(name) {
-						name_pos = enum_fn.name_pos
-					}
+					name_pos = type_method_name_pos(type_sym, name, name_pos)
 					p.error_with_pos('duplicate method `${name}`, `${name}` is an enum type built-in method',
 						name_pos)
 				} else {
@@ -722,7 +760,8 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 				}
 			}
 		}
-	} else if p.tok.kind in [.plus, .minus, .mul, .div, .mod, .lt, .eq] && p.peek_tok.kind == .lpar {
+	} else if p.tok.kind in [.plus, .minus, .mul, .power, .div, .mod, .lt, .eq]
+		&& p.peek_tok.kind == .lpar {
 		name = p.tok.kind.str() // op_to_fn_name()
 		if rec.typ == ast.void_type {
 			p.error_with_pos('cannot use operator overloading with normal functions', p.tok.pos())
@@ -731,18 +770,43 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 			p.error_with_pos('cannot duplicate operator overload `${name}`', p.tok.pos())
 		}
 		p.next()
+	} else if p.tok.kind == .lsbr && p.peek_tok.kind == .rsbr && p.peek_token(2).kind == .lpar {
+		name = '[]'
+		if rec.typ == ast.void_type {
+			p.error_with_pos('cannot use operator overloading with normal functions', p.tok.pos())
+		}
+		if type_sym.has_method(name) {
+			p.error_with_pos('cannot duplicate operator overload `${name}`', p.tok.pos())
+		}
+		p.next()
+		p.next()
+	} else if p.tok.kind == .lsbr && p.peek_tok.kind == .rsbr && p.peek_token(2).kind == .assign
+		&& p.peek_token(3).kind == .lpar {
+		name = '[]='
+		if rec.typ == ast.void_type {
+			p.error_with_pos('cannot use operator overloading with normal functions', p.tok.pos())
+		}
+		if type_sym.has_method(name) {
+			p.error_with_pos('cannot duplicate operator overload `${name}`', p.tok.pos())
+		}
+		p.next()
+		p.next()
+		p.next()
 	} else if p.tok.kind in [.ne, .gt, .ge, .le] && p.peek_tok.kind == .lpar {
 		p.error_with_pos('cannot overload `!=`, `>`, `<=` and `>=` as they are auto generated from `==` and`<`',
 			p.tok.pos())
-	} else if p.tok.kind in [.plus_assign, .minus_assign, .div_assign, .mult_assign, .mod_assign] {
+	} else if p.tok.kind in [.plus_assign, .minus_assign, .div_assign, .mult_assign, .power_assign,
+		.mod_assign] {
 		extracted_op := match p.tok.kind {
 			.plus_assign { '+' }
 			.minus_assign { '-' }
 			.div_assign { '/' }
 			.mod_assign { '%' }
 			.mult_assign { '*' }
+			.power_assign { '**' }
 			else { 'unknown op' }
 		}
+
 		if type_sym.has_method(extracted_op) {
 			p.error('cannot overload `${p.tok.kind}`, operator is implicitly overloaded because the `${extracted_op}` operator is overloaded')
 		}
@@ -768,6 +832,7 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 			}
 			else {}
 		}
+
 		if rec_generic_types.len > 0 {
 			decl_generic_names := p.types_to_names(rec_generic_types, p.tok.pos(),
 				'rec_generic_types') or { return ast.FnDecl{
@@ -847,10 +912,11 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 		p.main_already_defined = true
 	}
 	is_test := (!is_method && params.len == 0) && p.inside_test_file
-		&& (short_fn_name.starts_with('test_') || short_fn_name.starts_with('testsuite_'))
+		&& (short_fn_name.starts_with('test_') || short_fn_name.starts_with('testsuite_')
+		|| short_fn_name in ['before_each', 'after_each'])
 	file_mode := p.file_backend_mode
 	if is_main {
-		if _ := p.table.find_fn('main.main') {
+		if 'main.main' in p.table.fns {
 			if '.' in os.args {
 				p.error_with_pos('multiple `main` functions detected, and you ran `v .`
 perhaps there are multiple V programs in this directory, and you need to
@@ -871,12 +937,17 @@ run them via `v file.v` instead',
 					scope: unsafe { nil }
 				}
 			}
+			effective_is_mut := if is_method && k == 0 {
+				param.is_mut
+			} else {
+				p.scope_var_is_mut(param.is_mut)
+			}
 			is_stack_obj := !param.typ.has_flag(.shared_f) && (param.is_mut || param.typ.is_ptr())
 			p.scope.register(ast.Var{
 				name:          param.name
 				typ:           param.typ
 				generic_typ:   if param.typ.has_flag(.generic) { param.typ } else { ast.Type(0) }
-				is_mut:        param.is_mut
+				is_mut:        effective_is_mut
 				is_auto_deref: param.is_mut
 				is_stack_obj:  is_stack_obj
 				pos:           param.pos
@@ -947,8 +1018,10 @@ run them via `v file.v` instead',
 			.wasm { 'WASM.${name}' }
 			else { p.prepend_mod(name) }
 		}
+
 		if language == .v {
-			if existing := p.table.fns[name] {
+			existing, has_existing := table_fn_lookup(p.table, name)
+			if has_existing {
 				if existing.name != '' {
 					if file_mode == .v && existing.file_mode != .v {
 						// a definition made in a .c.v file, should have a priority over a .v file definition of the same function
@@ -1238,7 +1311,7 @@ fn (mut p Parser) anon_fn() ast.AnonFn {
 			name:          param.name
 			typ:           param.typ
 			generic_typ:   if param.typ.has_flag(.generic) { param.typ } else { ast.Type(0) }
-			is_mut:        param.is_mut
+			is_mut:        p.scope_var_is_mut(param.is_mut)
 			is_auto_deref: param.is_mut
 			pos:           param.pos
 			is_used:       true
@@ -1574,6 +1647,7 @@ fn (mut p Parser) fn_params() ([]ast.Param, bool, bool, bool) {
 				if alanguage != .v {
 					p.check_for_impure_v(alanguage, type_pos[i])
 				}
+				can_omit_comma := p.can_omit_comma_between_fn_params()
 				params << ast.Param{
 					pos:        param_pos[i]
 					name:       para_name
@@ -1586,8 +1660,8 @@ fn (mut p Parser) fn_params() ([]ast.Param, bool, bool, bool) {
 					on_newline: prev_param_newline != param_pos[i].line_nr
 				}
 				prev_param_newline = param_pos[i].line_nr
-				// if typ.typ.kind == .variadic && p.tok.kind == .comma {
-				if is_variadic && p.tok.kind == .comma && p.peek_tok.kind != .rpar {
+				if is_variadic && ((p.tok.kind == .comma && p.peek_tok.kind != .rpar)
+					|| can_omit_comma) {
 					p.error_with_pos('cannot use ...(variadic) with non-final parameter ${para_name}',
 						param_pos[i])
 					return []ast.Param{}, false, false, false
@@ -1597,7 +1671,9 @@ fn (mut p Parser) fn_params() ([]ast.Param, bool, bool, bool) {
 				p.error_with_pos('expecting `)`', p.prev_tok.pos())
 				return []ast.Param{}, false, false, false
 			}
-			if p.tok.kind != .rpar {
+			if p.tok.kind == .comma {
+				p.next()
+			} else if p.tok.kind != .rpar && !p.can_omit_comma_between_fn_params() {
 				p.check(.comma)
 			}
 		}
@@ -1690,12 +1766,12 @@ fn (mut p Parser) closure_vars() []ast.Param {
 			has_inherited: var.is_inherited
 			is_used:       false
 			is_changed:    false
-			is_mut:        is_mut
+			is_mut:        p.scope_var_is_mut(is_mut)
 		})
 		vars << ast.Param{
 			pos:       var_pos
 			name:      var_name
-			is_mut:    is_mut
+			is_mut:    p.scope_var_is_mut(is_mut)
 			is_atomic: is_atomic
 			is_shared: is_shared
 		}

@@ -9,18 +9,18 @@ Dockerfile
 
 `v run .`
 
-A message like `[Vweb] Running app on http://localhost:3001/` should appear
+A message like `[veb] Running app on http://localhost:3001/` should appear
 
 `exit`
 
 # To implement new benchmarks in v
 
-In `examples/js_dom_draw_benchmark_chart/v_vweb_orm/src/main.v` path
+In `examples/js_dom_draw_benchmark_chart/v_veb_orm/src/main.v` path
 Create a route returning a `Response` struct like:
 
 ```v ignore
 @['/sqlite-memory/:count']
-pub fn (mut app App) sqlite_memory(count int) vweb.Result {
+pub fn (mut app App) sqlite_memory(mut ctx Context, count int) veb.Result {
 	mut insert_stopwatchs := []int{}
 	mut select_stopwatchs := []int{}
 	mut update_stopwatchs := []int{}
@@ -56,7 +56,7 @@ pub fn (mut app App) sqlite_memory(count int) vweb.Result {
 		@select:select_stopwatchs
 		update:	update_stopwatchs
 	}
-	return app.json(response)
+	return ctx.json(response)
 }
 
 ```

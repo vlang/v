@@ -4,6 +4,41 @@ module sapp
 // Linux-specific state structs for the V sokol_app backend.
 // Shared state (SappTiming, SappMouse, etc.) is in sapp_state.v.
 
+// X11 and XKB share keypad/navigation keysyms. Keep the stateful keypad mapping in one place so
+// Num Lock can flip keypad arrows between navigation keys and keypad digits consistently.
+fn linux_translate_navigation_or_keypad_keysym(keysym u32) KeyCode {
+	return match keysym {
+		0xff63, 0xff9e { .insert }
+		0xffff, 0xff9f { .delete }
+		0xff50, 0xff95 { .home }
+		0xff57, 0xff9c { .end }
+		0xff55, 0xff9a { .page_up }
+		0xff56, 0xff9b { .page_down }
+		0xff51, 0xff96 { .left }
+		0xff53, 0xff98 { .right }
+		0xff52, 0xff97 { .up }
+		0xff54, 0xff99 { .down }
+		0xffb0 { .kp_0 }
+		0xffb1 { .kp_1 }
+		0xffb2 { .kp_2 }
+		0xffb3 { .kp_3 }
+		0xff9d, 0xffb5 { .kp_5 }
+		0xffb4 { .kp_4 }
+		0xffb6 { .kp_6 }
+		0xffb7 { .kp_7 }
+		0xffb8 { .kp_8 }
+		0xffb9 { .kp_9 }
+		0xffac, 0xffae { .kp_decimal }
+		0xffaf { .kp_divide }
+		0xffaa { .kp_multiply }
+		0xffad { .kp_subtract }
+		0xffab { .kp_add }
+		0xff8d { .kp_enter }
+		0xffbd { .kp_equal }
+		else { .invalid }
+	}
+}
+
 // Wayland-specific state (only compiled when -d sokol_wayland is used)
 $if sokol_wayland ? {
 	struct SappWayland {

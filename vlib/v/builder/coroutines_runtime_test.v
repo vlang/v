@@ -5,7 +5,8 @@ import v.ast
 import v.pref
 
 fn test_ensure_imported_coroutines_runtime_downloads_photonwrapper() {
-	$if windows {
+	$if !macos && !linux {
+		// coroutines are only supported on macOS & Linux — see pref.ensure_coroutines_runtime
 		return
 	}
 	test_root := os.join_path(os.vtmp_dir(), 'v_builder_coroutines_runtime')

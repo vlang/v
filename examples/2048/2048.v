@@ -9,6 +9,8 @@ import time
 
 const zooming_percent_per_frame = 5
 const movement_percent_per_frame = 10
+const tile_text_size_step = 8
+const min_tile_text_size = 8
 
 const default_window_width = 544
 const default_window_height = 560
@@ -34,19 +36,20 @@ const ai_eval_weights = [
 
 struct App {
 mut:
-	gg          &gg.Context = unsafe { nil }
-	touch       TouchInfo
-	ui          Ui
-	theme       &Theme = themes[0]
-	theme_idx   int
-	board       Board
-	undo        []Undo
-	atickers    [4][4]f64
-	mtickers    [4][4]f64
-	state       GameState  = .play
-	tile_format TileFormat = .normal
-	moves       int
-	updates     u64
+	gg           &gg.Context = unsafe { nil }
+	touch        TouchInfo
+	ui           Ui
+	theme        &Theme = themes[0]
+	theme_idx    int
+	board        Board
+	undo         []Undo
+	atickers     [4][4]f64
+	mtickers     [4][4]f64
+	state        GameState  = .play
+	tile_format  TileFormat = .normal
+	moves        int
+	updates      u64
+	needs_redraw bool = true
 
 	is_ai_mode bool
 	ai_fpm     u64 = 8
@@ -352,6 +355,21 @@ fn (b Board) to_left() Board {
 
 fn yx2i(y int, x int) u32 {
 	return u32(y) << 16 | u32(x)
+}
+
+@[inline]
+fn quantized_tile_text_size(size int) int {
+	if size < min_tile_text_size {
+		return 0
+	}
+	return size / tile_text_size_step * tile_text_size_step
+}
+
+@[inline]
+fn animated_tile_text_size(base_size int, animation_scale f64) int {
+	// gg/fontstash caches glyphs by size, so quantize the zoom animation to keep the
+	// atlas stable during long autoplay sessions.
+	return quantized_tile_text_size(int(animation_scale * (base_size - 1)))
 }
 
 @[inline]
@@ -831,6 +849,7 @@ fn (mut b Board) move(d Direction) (Board, bool) {
 		.up { b.transpose().to_left().transpose() }
 		.down { b.transpose().hmirror().to_left().hmirror().transpose() }
 	}
+
 	// If the board hasn't changed, it's an illegal move, don't allow it.
 	for y in 0 .. 4 {
 		for x in 0 .. 4 {
@@ -844,6 +863,22 @@ fn (mut b Board) move(d Direction) (Board, bool) {
 
 fn (mut b Board) is_game_over() bool {
 	return !b.has_moves()
+}
+
+@[inline]
+fn (mut app App) request_redraw() {
+	app.needs_redraw = true
+}
+
+fn (app &App) has_pending_animation() bool {
+	for y in 0 .. 4 {
+		for x in 0 .. 4 {
+			if app.atickers[y][x] > 0.0 || app.mtickers[y][x] > 0.0 {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 fn (mut app App) update_tickers() {
@@ -871,6 +906,7 @@ fn (mut app App) new_game() {
 	app.moves = 0
 	app.new_random_tile()
 	app.new_random_tile()
+	app.request_redraw()
 }
 
 @[inline]
@@ -952,6 +988,7 @@ fn (mut app App) apply_new_board(new Board) {
 	app.board = new
 	app.undo << Undo{old, app.state}
 	app.new_random_tile()
+	app.request_redraw()
 }
 
 fn (mut app App) move(d Direction) {
@@ -1043,6 +1080,7 @@ fn (mut app App) set_theme(idx int) {
 	app.theme_idx = idx
 	app.theme = theme
 	app.gg.set_bg_color(theme.bg_color)
+	app.request_redraw()
 }
 
 fn (mut app App) resize() {
@@ -1071,6 +1109,7 @@ fn (mut app App) resize() {
 		app.ui.y_padding = (app.ui.window_height - app.ui.window_width - app.ui.header_size) / 2
 		app.ui.x_padding = 0
 	}
+	app.request_redraw()
 }
 
 fn (app &App) draw() {
@@ -1189,9 +1228,13 @@ fn (app &App) draw_one_tile(x int, y int, tidx int) {
 		xpos := xoffset + tw / 2
 		ypos := yoffset + th / 2
 		mut fmt := app.label_format(.tile)
+		text_size := animated_tile_text_size(fmt.size, anim_size)
+		if text_size == 0 {
+			return
+		}
 		fmt = gg.TextCfg{
 			...fmt
-			size: int(anim_size * (fmt.size - 1))
+			size: text_size
 		}
 		match app.tile_format {
 			.normal {
@@ -1202,24 +1245,29 @@ fn (app &App) draw_one_tile(x int, y int, tidx int) {
 			}
 			.exponent {
 				app.gg.draw_text(xpos, ypos, '2', fmt)
-				fs2 := int(f32(fmt.size) * 0.67)
-				app.gg.draw_text(xpos + app.ui.tile_size / 10, ypos - app.ui.tile_size / 8,
-					'${tidx}', gg.TextCfg{
-					...fmt
-					size:  fs2
-					align: gg.HorizontalAlign.left
-				})
+				fs2 := quantized_tile_text_size(int(f32(fmt.size) * 0.67))
+				if fs2 > 0 {
+					app.gg.draw_text(xpos + app.ui.tile_size / 10, ypos - app.ui.tile_size / 8,
+						'${tidx}', gg.TextCfg{
+						...fmt
+						size:  fs2
+						align: gg.HorizontalAlign.left
+					})
+				}
 			}
 			.shifts {
-				fs2 := int(f32(fmt.size) * 0.6)
-				app.gg.draw_text(xpos, ypos, '2<<${tidx - 1}', gg.TextCfg{
-					...fmt
-					size: fs2
-				})
+				fs2 := quantized_tile_text_size(int(f32(fmt.size) * 0.6))
+				if fs2 > 0 {
+					app.gg.draw_text(xpos, ypos, '2<<${tidx - 1}', gg.TextCfg{
+						...fmt
+						size: fs2
+					})
+				}
 			}
 			.none {} // Don't draw any text here, colors only
 			.end {} // Should never get here
 		}
+
 		// oidx_fmt := gg.TextCfg{...fmt,size: 14}
 		// app.gg.draw_text(xoffset + 50, yoffset + 15, 'y:${oidx >> 16}|x:${oidx & 0xFFFF}|m:${app.mtickers[y][x]:5.3f}',	oidx_fmt)
 		// app.gg.draw_text(xoffset + 52, yoffset + 30, 'ox:${ox}|oy:${oy}', oidx_fmt)
@@ -1319,6 +1367,7 @@ fn (mut app App) next_tile_format() {
 	if app.tile_format == .end {
 		app.tile_format = .normal
 	}
+	app.request_redraw()
 }
 
 @[inline]
@@ -1328,24 +1377,48 @@ fn (mut app App) undo() {
 		app.board = undo.board
 		app.state = undo.state
 		app.moves--
+		app.request_redraw()
 	}
 }
 
 fn (mut app App) on_key_down(key gg.KeyCode) {
 	// these keys are independent from the game state:
 	match key {
-		.v { app.is_ai_mode = !app.is_ai_mode }
-		.page_up { app.ai_fpm = dump(math.min(app.ai_fpm + 1, 60)) }
-		.page_down { app.ai_fpm = dump(math.max(app.ai_fpm - 1, 1)) }
+		.v {
+			app.is_ai_mode = !app.is_ai_mode
+			app.request_redraw()
+		}
+		.page_up {
+			app.ai_fpm = dump(math.min(app.ai_fpm + 1, 60))
+			app.request_redraw()
+		}
+		.page_down {
+			app.ai_fpm = dump(math.max(app.ai_fpm - 1, 1))
+			app.request_redraw()
+		}
 		//
-		.escape { app.gg.quit() }
-		.n, .r { app.new_game() }
-		.backspace { app.undo() }
-		.enter { app.next_tile_format() }
-		.j { app.state = .over }
-		.t { app.next_theme() }
+		.escape {
+			app.gg.quit()
+		}
+		.n, .r {
+			app.new_game()
+		}
+		.backspace {
+			app.undo()
+		}
+		.enter {
+			app.next_tile_format()
+		}
+		.j {
+			app.state = .over
+			app.request_redraw()
+		}
+		.t {
+			app.next_theme()
+		}
 		else {}
 	}
+
 	if app.state in [.play, .freeplay] {
 		if !app.is_ai_mode {
 			match key {
@@ -1360,6 +1433,7 @@ fn (mut app App) on_key_down(key gg.KeyCode) {
 	if app.state == .victory {
 		if key == .space {
 			app.state = .freeplay
+			app.request_redraw()
 		}
 	}
 }
@@ -1418,26 +1492,40 @@ fn on_event(e &gg.Event, mut app App) {
 		}
 		else {}
 	}
+
+	if e.typ in [.key_down, .touches_began, .touches_ended, .mouse_down, .mouse_up, .resized,
+		.restored, .focused, .resumed] {
+		app.request_redraw()
+	}
 }
 
 fn frame(mut app App) {
+	is_ai_running := app.is_ai_mode && app.state in [.play, .freeplay]
+	mut has_pending_animation := app.has_pending_animation()
 	mut do_update := false
-	if app.gg.timer.elapsed().milliseconds() > 15 {
+	if (app.needs_redraw || has_pending_animation || is_ai_running)
+		&& app.gg.timer.elapsed().milliseconds() > 15 {
 		app.gg.timer.restart()
 		do_update = true
 		app.updates++
 	}
-	app.gg.begin()
 	if do_update {
 		app.update_tickers()
+		has_pending_animation = app.has_pending_animation()
 	}
-	app.draw()
-	app.gg.end()
-	if do_update && app.is_ai_mode && app.state in [.play, .freeplay]
-		&& app.updates % app.ai_fpm == 0 {
+	if app.needs_redraw || (do_update && (has_pending_animation || is_ai_running)) {
+		app.gg.begin()
+		app.draw()
+		app.gg.end()
+		app.needs_redraw = false
+	}
+	if do_update && is_ai_running && app.updates % app.ai_fpm == 0 {
 		app.ai_move()
 	}
-	if app.updates % 120 == 0 {
+	if has_pending_animation || is_ai_running {
+		app.request_redraw()
+	}
+	if do_update && app.updates % 120 == 0 {
 		// do GC once per 2 seconds
 		// eprintln('> gc_memory_use: ${gc_memory_use()}')
 		if gc_is_enabled() {

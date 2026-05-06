@@ -66,20 +66,24 @@ pub fn (mut p Process) wait() {
 	p._wait()
 }
 
-// free the OS resources associated with the process.
-// Can be called multiple times, but will free the resources just once.
-// This sets the process state to .closed, which is final.
+// close frees the OS resources associated with the process.
+// It can be called multiple times, but will free the resources just once.
+// If the process has already finished, this sets the process state to
+// .closed, which is final.
 pub fn (mut p Process) close() {
 	if p.status in [.not_started, .closed] {
 		return
 	}
-	p.status = .closed
 	$if !windows {
 		for i in 0 .. 3 {
-			if p.stdio_fd[i] != 0 {
+			if p.stdio_fd[i] != -1 {
 				fd_close(p.stdio_fd[i])
+				p.stdio_fd[i] = -1
 			}
 		}
+	}
+	if p.status !in [.running, .stopped] {
+		p.status = .closed
 	}
 }
 

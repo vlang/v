@@ -138,6 +138,22 @@ pub mut:
 	align         int = -1
 }
 
+pub fn (sym TypeSymbol) aggregate_variant_type(idx int) Type {
+	info := sym.info
+	return match info {
+		Aggregate {
+			if idx >= 0 && idx < info.types.len {
+				info.types[idx]
+			} else {
+				Type(0)
+			}
+		}
+		else {
+			Type(0)
+		}
+	}
+}
+
 // max of 8
 pub enum TypeFlag as u32 {
 	option             = 1 << 24
@@ -213,10 +229,11 @@ pub mut:
 @[minify]
 pub struct Interface {
 pub mut:
-	types   []Type // all types that implement this interface
-	fields  []StructField
-	methods []Fn
-	embeds  []Type
+	types     []Type // all types that implement this interface immutably
+	mut_types []Type // all types that require a mutable interface binding
+	fields    []StructField
+	methods   []Fn
+	embeds    []Type
 	// `I1 is I2` conversions
 	conversions shared map[int][]Type
 	// generic interface support
@@ -226,6 +243,26 @@ pub mut:
 	concrete_types []Type
 	parent_type    Type
 	name_pos       token.Pos
+}
+
+pub fn (info &Interface) has_implementor(typ Type, include_mut_types bool) bool {
+	if info.types.any(it.idx() == typ.idx()) {
+		return true
+	}
+	return include_mut_types && info.mut_types.any(it.idx() == typ.idx())
+}
+
+pub fn (info &Interface) implementor_types(include_mut_types bool) []Type {
+	mut implementors := info.types.clone()
+	if !include_mut_types {
+		return implementors
+	}
+	for typ in info.mut_types {
+		if !implementors.any(it.idx() == typ.idx()) {
+			implementors << typ
+		}
+	}
+	return implementors
 }
 
 pub struct Enum {
@@ -584,6 +621,10 @@ pub fn (t Type) str() string {
 }
 
 pub fn (t &Table) type_str(typ Type) string {
+	idx := typ.idx()
+	if idx == 0 || idx >= t.type_symbols.len {
+		return 'unknown'
+	}
 	return t.sym(typ).name
 }
 
@@ -1468,6 +1509,7 @@ pub fn (t &Table) type_size(typ Type) (int, int) {
 			align = t.pointer_size
 		}
 	}
+
 	sym.size = size
 	sym.align = align
 	return size, align
@@ -1608,6 +1650,10 @@ pub fn (t &Table) type_to_str_using_aliases(typ Type, import_aliases map[string]
 		if cached_res := mt.cached_type_to_str[cache_key] {
 			return cached_res
 		}
+	}
+	idx := typ.idx()
+	if idx == 0 || idx >= t.type_symbols.len {
+		return 'unknown'
 	}
 	sym := t.sym(typ)
 	mut res := sym.name
@@ -1790,6 +1836,7 @@ pub fn (t &Table) type_to_str_using_aliases(typ Type, import_aliases map[string]
 		}
 		.aggregate {}
 	}
+
 	mut nr_muls := typ.nr_muls()
 	if typ.has_flag(.shared_f) {
 		nr_muls--
@@ -1883,12 +1930,18 @@ pub fn (t &Table) fn_signature_using_aliases(func &Fn, import_aliases map[string
 			sb.write_string(' ')
 		}
 		styp := t.type_to_str_using_aliases(typ, import_aliases)
-		if i == func.params.len - 1 && func.is_variadic {
+		if i == func.params.len - 1 && func.is_variadic && !func.is_c_variadic {
 			sb.write_string('...')
 			sb.write_string(styp)
 		} else {
 			sb.write_string(styp)
 		}
+	}
+	if func.is_c_variadic {
+		if func.params.len > 0 {
+			sb.write_string(', ')
+		}
+		sb.write_string('...')
 	}
 	sb.write_string(')')
 	if func.return_type != void_type {
@@ -2020,6 +2073,7 @@ pub fn (t &TypeSymbol) find_method_with_generic_parent(name string) ?Fn {
 		}
 		else {}
 	}
+
 	if m := t.find_method(name) {
 		if generic_names.len == concrete_types.len && concrete_types.len > 0 {
 			return specialize_method_with_concrete_types(m, generic_names, concrete_types)
@@ -2064,6 +2118,7 @@ pub fn (t &TypeSymbol) find_method_with_generic_parent(name string) ?Fn {
 		}
 		else {}
 	}
+
 	return none
 }
 
@@ -2269,6 +2324,7 @@ pub fn (t &TypeSymbol) get_methods() []Fn {
 		}
 		else {}
 	}
+
 	for method in inherited_methods {
 		if method.name in existing_method_names {
 			continue

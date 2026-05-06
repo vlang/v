@@ -111,7 +111,7 @@ fn test_stmt_prepare_returns_mysql_error_code() {
 		host:     '127.0.0.1'
 		port:     3306
 		username: 'root'
-		password: ''
+		password: '12345678'
 		dbname:   'mysql'
 	}
 
@@ -141,7 +141,7 @@ fn test_prepare_execute_returns_mysql_error_code() {
 		host:     '127.0.0.1'
 		port:     3306
 		username: 'root'
-		password: ''
+		password: '12345678'
 		dbname:   'mysql'
 	}
 

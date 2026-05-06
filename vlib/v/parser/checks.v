@@ -118,10 +118,46 @@ fn (mut p Parser) is_following_concrete_types() bool {
 }
 
 @[direct_array_access]
+fn (p &Parser) is_anon_struct_generic_arg(next_kind token.Kind) bool {
+	mut i := 2
+	mut nested_sbr_count := 0
+	mut nested_cbr_count := 0
+	for {
+		cur_tok := p.peek_token(i)
+		if cur_tok.kind == .eof {
+			return false
+		}
+		if cur_tok.kind == .lsbr {
+			nested_sbr_count++
+		} else if cur_tok.kind == .rsbr {
+			if nested_cbr_count == 0 && nested_sbr_count == 0 {
+				return p.peek_token(i + 1).kind == next_kind
+			}
+			if nested_sbr_count == 0 {
+				return false
+			}
+			nested_sbr_count--
+		} else if cur_tok.kind == .lcbr {
+			nested_cbr_count++
+		} else if cur_tok.kind == .rcbr {
+			if nested_cbr_count == 0 {
+				return false
+			}
+			nested_cbr_count--
+		}
+		i++
+	}
+	return false
+}
+
+@[direct_array_access]
 fn (p &Parser) is_generic_struct_init() bool {
 	lit0_is_capital := p.tok.kind != .eof && p.tok.lit.len > 0 && p.tok.lit[0].is_capital()
 	if !lit0_is_capital || p.peek_tok.kind != .lsbr {
 		return false
+	}
+	if p.peek_token(2).kind == .key_struct {
+		return p.is_anon_struct_generic_arg(.lcbr)
 	}
 	mut i := 2
 	mut nested_sbr_count := 0
@@ -190,6 +226,9 @@ fn (p &Parser) is_generic_call() bool {
 	if kind2 == .lsbr {
 		// case 1 (array or fixed array type)
 		return tok3.kind == .rsbr || (tok4.kind == .rsbr && p.is_typename(tok5))
+	}
+	if kind2 == .key_struct {
+		return p.is_anon_struct_generic_arg(.lpar)
 	}
 
 	if kind2 == .name {

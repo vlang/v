@@ -188,6 +188,7 @@ pub fn (mut g Gen) new_local(name string, typ_ ast.Type) Var {
 			g.w_error('new_local: type `${*ts}` (${ts.info.type_name()}) is not a supported local type')
 		}
 	}
+
 	g.local_vars << v
 	return v
 }
@@ -238,6 +239,7 @@ pub fn (mut g Gen) literal_to_constant_expression(typ_ ast.Type, init ast.Expr) 
 		}
 		else {}
 	}
+
 	return none
 }
 
@@ -314,6 +316,7 @@ pub fn (g &Gen) is_pure_type(typ ast.Type) bool {
 		}
 		else {}
 	}
+
 	return false
 }
 
@@ -897,7 +900,7 @@ pub fn (mut g Gen) housekeeping() {
 		g.mod.assign_global_init(hp, wasm.constexpr_value(heap_base))
 	}
 
-	if g.pref.os == .wasi {
+	if g.pref.os == .wasi && !g.pref.is_shared {
 		mut fn_start := g.mod.new_function('_start', [], [])
 		{
 			fn_start.call('_vinit')

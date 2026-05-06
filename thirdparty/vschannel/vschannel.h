@@ -26,9 +26,11 @@ typedef struct TlsContext TlsContext;
 
 TlsContext new_tls_context();
 
-static void vschannel_init(TlsContext *tls_ctx);
+static void vschannel_init(TlsContext *tls_ctx, BOOL validate_server_certificate);
 
 static void vschannel_cleanup(TlsContext *tls_ctx);
+
+static INT vschannel_last_error(TlsContext *tls_ctx);
 
 static INT request(TlsContext *tls_ctx, INT iport, LPWSTR host, CHAR *req, DWORD req_len, CHAR **out, vschannel_allocator afn);
 

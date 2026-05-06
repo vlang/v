@@ -222,6 +222,9 @@ fn (mut c Checker) check_expected_call_arg(got_ ast.Type, expected_ ast.Type, la
 	if got_ == expected_ {
 		return
 	}
+	if c.table.fully_unaliased_type(got_) == c.table.fully_unaliased_type(expected_) {
+		return
+	}
 	mut expected := c.table.unaliased_type(expected_)
 	is_aliased := expected != expected_
 	is_exp_sumtype := c.table.type_kind(expected_) == .sum_type
@@ -277,10 +280,14 @@ fn (mut c Checker) check_expected_call_arg(got_ ast.Type, expected_ ast.Type, la
 			}
 		}
 
-		// `fn foo(mut p &Expr); mut expr := Expr{}; foo(mut expr)`
-		if arg.is_mut && expected.nr_muls() > 1 && got.nr_muls() < expected.nr_muls() {
-			got_typ_str, expected_typ_str := c.get_string_names_of(got_, expected_)
-			return error('cannot use `${got_typ_str}` as `${expected_typ_str}`')
+		// `mut` normally contributes one more reference level, but auto-deref vars
+		// (like `mut` parameters) already store that lowered pointer depth in `got`.
+		if arg.is_mut && expected.nr_muls() > 1 {
+			got_muls := if arg.expr.is_auto_deref_var() { got.nr_muls() } else { got.nr_muls() + 1 }
+			if got_muls < expected.nr_muls() {
+				got_typ_str, expected_typ_str := c.get_string_names_of(got_, expected_)
+				return error('cannot use `${got_typ_str}` as `${expected_typ_str}`')
+			}
 		}
 
 		exp_sym_idx := expected.idx()
@@ -402,13 +409,20 @@ fn (mut c Checker) check_expected_call_arg(got_ ast.Type, expected_ ast.Type, la
 	}
 }
 
+fn (mut c Checker) normalized_array_interface_cast_type(typ ast.Type) ast.Type {
+	return c.table.unaliased_type(c.unwrap_generic(typ)).clear_flags(.generic, .variadic)
+}
+
 fn (mut c Checker) can_convert_array_to_interface_array(got ast.Type, expected ast.Type) bool {
 	if got.is_ptr() || expected.is_ptr() || got.has_option_or_result()
 		|| expected.has_option_or_result() {
 		return false
 	}
-	got_type := c.table.unaliased_type(c.unwrap_generic(got))
-	expected_type := c.table.unaliased_type(c.unwrap_generic(expected))
+	got_type := c.normalized_array_interface_cast_type(got)
+	expected_type := c.normalized_array_interface_cast_type(expected)
+	if got_type == expected_type {
+		return false
+	}
 	if c.table.final_sym(got_type).kind != .array || c.table.final_sym(expected_type).kind != .array {
 		return false
 	}
@@ -416,8 +430,8 @@ fn (mut c Checker) can_convert_array_to_interface_array(got ast.Type, expected a
 }
 
 fn (mut c Checker) can_convert_array_elem_to_interface_array(got ast.Type, expected ast.Type) bool {
-	got_type := c.table.unaliased_type(c.unwrap_generic(got))
-	mut expected_type := c.table.unaliased_type(c.unwrap_generic(expected))
+	got_type := c.normalized_array_interface_cast_type(got)
+	mut expected_type := c.normalized_array_interface_cast_type(expected)
 	got_sym := c.table.final_sym(got_type)
 	mut expected_sym := c.table.final_sym(expected_type)
 	if got_sym.kind == .array && expected_sym.kind == .array {
@@ -440,30 +454,30 @@ fn (mut c Checker) can_convert_array_elem_to_interface_array(got ast.Type, expec
 	return c.table.does_type_implement_interface(got_type, expected_type)
 }
 
-fn (mut c Checker) warn_if_integer_literal_overflow_for_known_type(expected ast.Type, expr ast.Expr, pos token.Pos) {
+fn (c &Checker) integer_literal_outside_type_range(expected ast.Type, expr ast.Expr) bool {
 	if !expected.is_int() {
-		return
+		return false
 	}
 	if expr !is ast.IntegerLiteral {
-		return
+		return false
 	}
 	int_lit := expr as ast.IntegerLiteral
 	mut lit := int_lit.val.replace('_', '')
 	if lit.len == 0 {
-		return
+		return false
 	}
 	is_negative := lit.starts_with('-')
 	if is_negative || lit.starts_with('+') {
 		lit = lit[1..]
 	}
 	if lit.len == 0 {
-		return
+		return false
 	}
 	literal_value := lit.u64()
 	bits, _ := c.table.type_size(expected.idx_type())
 	bit_size := bits * 8
 	if bit_size == 0 {
-		return
+		return false
 	}
 	mut outside_type_range := false
 	if expected.is_signed() {
@@ -484,11 +498,17 @@ fn (mut c Checker) warn_if_integer_literal_overflow_for_known_type(expected ast.
 			outside_type_range = literal_value > max_unsigned
 		}
 	}
-	if outside_type_range {
-		expected_type_str := c.table.type_to_str(expected.clear_flag(.variadic))
-		c.warn('value `${int_lit.val}` is outside the range of `${expected_type_str}` in argument, this will be considered hard error soon',
-			pos)
+	return outside_type_range
+}
+
+fn (mut c Checker) warn_if_integer_literal_overflow_for_known_type(expected ast.Type, expr ast.Expr, pos token.Pos) {
+	if !c.integer_literal_outside_type_range(expected, expr) {
+		return
 	}
+	int_lit := expr as ast.IntegerLiteral
+	expected_type_str := c.table.type_to_str(expected.clear_flag(.variadic))
+	c.warn('value `${int_lit.val}` is outside the range of `${expected_type_str}` in argument, this will be considered hard error soon',
+		pos)
 }
 
 fn (c &Checker) get_string_names_of(got ast.Type, expected ast.Type) (string, string) {
@@ -515,6 +535,9 @@ fn (c &Checker) check_same_module(got ast.Type, expected ast.Type) bool {
 
 fn (mut c Checker) check_basic(got ast.Type, expected ast.Type) bool {
 	if got == expected {
+		return true
+	}
+	if c.table.fully_unaliased_type(got) == c.table.fully_unaliased_type(expected) {
 		return true
 	}
 	unalias_got, unalias_expected := c.table.unalias_num_type(got), c.table.unalias_num_type(expected)
@@ -567,6 +590,9 @@ fn (mut c Checker) check_basic(got ast.Type, expected ast.Type) bool {
 	}
 	// sum type
 	if c.table.sumtype_has_variant(expected, ast.mktyp(got), false) {
+		return true
+	}
+	if c.generic_inst_sumtype_has_variant(expected, ast.mktyp(got)) {
 		return true
 	}
 	if exp_sym.kind == .placeholder && c.expected_type != ast.void_type {
@@ -647,6 +673,16 @@ fn (mut c Checker) check_matching_function_symbols(got_type_sym &ast.TypeSymbol,
 	if got_fn.return_type.has_flag(.result) != exp_fn.return_type.has_flag(.result) {
 		return false
 	}
+	got_return_type := c.table.unaliased_type(got_fn.return_type)
+	exp_return_type := c.table.unaliased_type(exp_fn.return_type)
+	got_return_sym := c.table.final_sym(got_return_type)
+	exp_return_sym := c.table.final_sym(exp_return_type)
+	if got_return_type != exp_return_type && !c.type_has_unresolved_generic_parts(got_return_type)
+		&& !c.type_has_unresolved_generic_parts(exp_return_type)
+		&& (got_return_sym.kind in [.voidptr, .any] || exp_return_sym.kind in [.voidptr, .any])
+		&& (!got_return_type.is_any_kind_of_pointer() || !exp_return_type.is_any_kind_of_pointer()) {
+		return false
+	}
 	if !c.check_basic(got_fn.return_type, exp_fn.return_type) {
 		return false
 	}
@@ -684,11 +720,22 @@ fn (mut c Checker) check_matching_function_symbols(got_type_sym &ast.TypeSymbol,
 			|| c.type_has_unresolved_generic_parts(exp_arg_typ) {
 			continue
 		}
-		if c.table.unaliased_type(got_arg_typ).idx() != c.table.unaliased_type(exp_arg_typ).idx() {
+		if !c.have_identical_fn_arg_type(got_arg_typ, exp_arg_typ) {
 			return false
 		}
 	}
 	return true
+}
+
+fn (mut c Checker) have_identical_fn_arg_type(got ast.Type, expected ast.Type) bool {
+	got_unaliased := c.table.unaliased_type(got)
+	expected_unaliased := c.table.unaliased_type(expected)
+	got_final_sym := c.table.final_sym(got_unaliased)
+	expected_final_sym := c.table.final_sym(expected_unaliased)
+	if got_final_sym.kind == .function && expected_final_sym.kind == .function {
+		return c.check_matching_function_symbols(got_final_sym, expected_final_sym)
+	}
+	return got_unaliased.idx() == expected_unaliased.idx()
 }
 
 fn (mut c Checker) check_shift(mut node ast.InfixExpr, left_type_ ast.Type, right_type_ ast.Type) ast.Type {
@@ -801,6 +848,7 @@ fn (mut c Checker) check_shift(mut node ast.InfixExpr, left_type_ ast.Type, righ
 							64
 						}
 					}
+
 					if ival > moffset && !c.pref.translated && !c.file.is_translated {
 						c.error('shift count for type `${left_sym_final.name}` too large (maximum: ${moffset} bits)',
 							node.right.pos())
@@ -828,6 +876,7 @@ fn (mut c Checker) check_shift(mut node ast.InfixExpr, left_type_ ast.Type, righ
 			return left_type
 		}
 	}
+
 	return left_type
 }
 
@@ -921,6 +970,9 @@ fn (c &Checker) promote_num(left_type ast.Type, right_type ast.Type) ast.Type {
 }
 
 fn (mut c Checker) check_expected(got ast.Type, expected ast.Type) ! {
+	if c.table.fully_unaliased_type(got) == c.table.fully_unaliased_type(expected) {
+		return
+	}
 	if !c.check_types(got, expected) {
 		return error(c.expected_msg(got, expected))
 	}
@@ -949,38 +1001,318 @@ fn (mut c Checker) symmetric_check(left ast.Type, right ast.Type) bool {
 	return c.check_basic(left, right)
 }
 
-fn (c &Checker) infer_composite_generic_type(gt_name string, generic_typ ast.Type, concrete_typ ast.Type) ast.Type {
-	param_sym := c.table.sym(generic_typ)
-	if param_sym.kind !in [.struct, .interface, .sum_type] {
-		return ast.void_type
+fn (c &Checker) type_args_from_generic_name(name string) []ast.Type {
+	if !name.contains('[') || !name.ends_with(']') {
+		return []ast.Type{}
 	}
-	arg_sym := c.table.sym(concrete_typ)
-	mut generic_types := []ast.Type{}
-	mut concrete_types := []ast.Type{}
-	match param_sym.info {
-		ast.Struct, ast.Interface, ast.SumType {
-			if param_sym.generic_types.len > 0 {
-				generic_types = param_sym.generic_types.clone()
+	mut parsed := []ast.Type{}
+	for arg_name in ast.split_generic_args(name.all_after_last('[').trim_right(']')) {
+		idx := c.table.find_type_idx(arg_name.trim_space())
+		if idx <= 0 {
+			return []ast.Type{}
+		}
+		parsed << ast.idx_to_type(idx)
+	}
+	return parsed
+}
+
+fn (c &Checker) generic_type_args_and_parent_idx(typ ast.Type) ([]ast.Type, int) {
+	mut base_typ := c.table.fully_unaliased_type(typ.clear_flags().clear_option_and_result())
+	if base_typ.nr_muls() > 0 {
+		base_typ = base_typ.deref()
+	}
+	sym := c.table.sym(base_typ)
+	match sym.info {
+		ast.Struct {
+			mut type_args := sym.info.concrete_types.clone()
+			if type_args.len == 0 && sym.generic_types.len > 0 {
+				type_args = sym.generic_types.clone()
+			}
+			if type_args.len == 0 {
+				type_args = sym.info.generic_types.clone()
+			}
+			if type_args.len == 0 {
+				type_args = c.type_args_from_generic_name(sym.name)
+			}
+			parent_idx := if sym.parent_idx > 0 {
+				sym.parent_idx
+			} else if sym.info.parent_type != 0 {
+				sym.info.parent_type.clear_flags().idx()
 			} else {
-				generic_types = param_sym.info.generic_types.clone()
+				base_typ.idx()
+			}
+			return type_args, parent_idx
+		}
+		ast.Interface {
+			mut type_args := sym.info.concrete_types.clone()
+			if type_args.len == 0 && sym.generic_types.len > 0 {
+				type_args = sym.generic_types.clone()
+			}
+			if type_args.len == 0 {
+				type_args = sym.info.generic_types.clone()
+			}
+			if type_args.len == 0 {
+				type_args = c.type_args_from_generic_name(sym.name)
+			}
+			parent_idx := if sym.parent_idx > 0 {
+				sym.parent_idx
+			} else if sym.info.parent_type != 0 {
+				sym.info.parent_type.clear_flags().idx()
+			} else {
+				base_typ.idx()
+			}
+			return type_args, parent_idx
+		}
+		ast.SumType {
+			mut type_args := sym.info.concrete_types.clone()
+			if type_args.len == 0 && sym.generic_types.len > 0 {
+				type_args = sym.generic_types.clone()
+			}
+			if type_args.len == 0 {
+				type_args = sym.info.generic_types.clone()
+			}
+			if type_args.len == 0 {
+				type_args = c.type_args_from_generic_name(sym.name)
+			}
+			parent_idx := if sym.parent_idx > 0 {
+				sym.parent_idx
+			} else if sym.info.parent_type != 0 {
+				sym.info.parent_type.clear_flags().idx()
+			} else {
+				base_typ.idx()
+			}
+			return type_args, parent_idx
+		}
+		ast.GenericInst {
+			parent_sym := c.table.sym(ast.new_type(sym.info.parent_idx))
+			if parent_sym.kind in [.struct, .interface, .sum_type] {
+				return sym.info.concrete_types.clone(), sym.info.parent_idx
 			}
 		}
 		else {}
 	}
-	match arg_sym.info {
-		ast.Struct, ast.Interface, ast.SumType {
-			concrete_types = arg_sym.info.concrete_types.clone()
+
+	return []ast.Type{}, 0
+}
+
+fn (mut c Checker) concrete_sumtype_variants(typ ast.Type) []ast.Type {
+	clean_typ := typ.clear_flags().clear_option_and_result()
+	sym := c.table.sym(clean_typ)
+	match sym.info {
+		ast.SumType {
+			return sym.info.variants.clone()
+		}
+		ast.GenericInst {
+			parent_sym := c.table.sym(ast.new_type(sym.info.parent_idx))
+			if parent_sym.info !is ast.SumType {
+				return []ast.Type{}
+			}
+			parent_info := parent_sym.info as ast.SumType
+			generic_names := c.table.get_generic_names(parent_info.generic_types)
+			mut variants := parent_info.variants.clone()
+			for i in 0 .. variants.len {
+				variant_sym := c.table.sym(variants[i])
+				if variants[i].has_flag(.generic) || variant_sym.kind == .generic_inst
+					|| c.type_has_unresolved_generic_parts(variants[i]) {
+					variants[i] = c.table.unwrap_generic_type(variants[i], generic_names,
+						sym.info.concrete_types)
+				}
+			}
+			return variants
+		}
+		else {
+			return []ast.Type{}
+		}
+	}
+}
+
+fn (mut c Checker) infer_sumtype_variant_generic_type(gt_name string, generic_typ ast.Type, concrete_typ ast.Type) ast.Type {
+	variants := c.concrete_sumtype_variants(generic_typ)
+	if variants.len == 0 {
+		return ast.void_type
+	}
+	actual_sym := c.table.sym(concrete_typ)
+	actual_base_name := if actual_sym.ngname != '' {
+		actual_sym.ngname
+	} else {
+		ast.strip_generic_params(actual_sym.name)
+	}
+	mut exact_variants := []ast.Type{}
+	mut structural_variants := []ast.Type{}
+	mut generic_variants := []ast.Type{}
+	for variant in variants {
+		variant_sym := c.table.sym(variant)
+		variant_base_name := if variant_sym.ngname != '' {
+			variant_sym.ngname
+		} else {
+			ast.strip_generic_params(variant_sym.name)
+		}
+		if variant_base_name == actual_base_name {
+			exact_variants << variant
+		} else if variant.has_flag(.generic) && c.table.sym(variant).name == gt_name {
+			generic_variants << variant
+		} else if gt_name in c.table.generic_type_names(variant)
+			|| c.type_has_unresolved_generic_parts(variant) {
+			structural_variants << variant
+		}
+	}
+	for variant_group in [exact_variants, structural_variants, generic_variants] {
+		for variant in variant_group {
+			inferred_type := c.infer_composite_generic_type(gt_name, variant, concrete_typ)
+			if inferred_type != ast.void_type {
+				return inferred_type
+			}
+		}
+	}
+	return ast.void_type
+}
+
+fn (mut c Checker) generic_inst_sumtype_has_variant(expected ast.Type, got ast.Type) bool {
+	exp_sym := c.table.sym(expected)
+	if exp_sym.kind != .generic_inst {
+		return false
+	}
+	variants := c.concrete_sumtype_variants(expected)
+	if variants.len == 0 {
+		return false
+	}
+	for variant in variants {
+		if c.check_types(got, variant) {
+			return true
+		}
+	}
+	return false
+}
+
+fn (mut c Checker) infer_composite_generic_type(gt_name string, generic_typ ast.Type, concrete_typ ast.Type) ast.Type {
+	if generic_typ == 0 || concrete_typ == 0 {
+		return ast.void_type
+	}
+	if generic_typ.has_flag(.option) && concrete_typ.has_flag(.option) {
+		return c.infer_composite_generic_type(gt_name, generic_typ.clear_flag(.option),
+			concrete_typ.clear_flag(.option))
+	}
+	if generic_typ.has_flag(.result) && concrete_typ.has_flag(.result) {
+		return c.infer_composite_generic_type(gt_name, generic_typ.clear_flag(.result),
+			concrete_typ.clear_flag(.result))
+	}
+	param_sym := c.table.sym(generic_typ)
+	if generic_typ.has_flag(.generic) && param_sym.name == gt_name {
+		mut inferred_type := concrete_typ
+		if generic_typ.nr_muls() > 0 && inferred_type.nr_muls() > 0 {
+			nr_muls := inferred_type.nr_muls() - generic_typ.nr_muls()
+			inferred_type = inferred_type.set_nr_muls(if nr_muls > 0 { nr_muls } else { 0 })
+		}
+		return inferred_type
+	}
+	arg_sym := c.table.sym(concrete_typ)
+	match param_sym.info {
+		ast.Array {
+			if arg_sym.info is ast.Array {
+				return c.infer_composite_generic_type(gt_name, param_sym.info.elem_type,
+					arg_sym.info.elem_type)
+			}
+			if arg_sym.info is ast.ArrayFixed {
+				return c.infer_composite_generic_type(gt_name, param_sym.info.elem_type,
+					arg_sym.info.elem_type)
+			}
+		}
+		ast.ArrayFixed {
+			if arg_sym.info is ast.ArrayFixed && param_sym.info.size == arg_sym.info.size {
+				return c.infer_composite_generic_type(gt_name, param_sym.info.elem_type,
+					arg_sym.info.elem_type)
+			}
+		}
+		ast.Map {
+			if arg_sym.info is ast.Map {
+				inferred_key_type := c.infer_composite_generic_type(gt_name,
+					param_sym.info.key_type, arg_sym.info.key_type)
+				if inferred_key_type != ast.void_type {
+					return inferred_key_type
+				}
+				return c.infer_composite_generic_type(gt_name, param_sym.info.value_type,
+					arg_sym.info.value_type)
+			}
+		}
+		ast.Chan {
+			if arg_sym.info is ast.Chan {
+				return c.infer_composite_generic_type(gt_name, param_sym.info.elem_type,
+					arg_sym.info.elem_type)
+			}
+		}
+		ast.FnType {
+			if arg_sym.info is ast.FnType {
+				if param_sym.info.func.params.len != arg_sym.info.func.params.len {
+					return ast.void_type
+				}
+				for i, expected_param in param_sym.info.func.params {
+					inferred_param_type := c.infer_composite_generic_type(gt_name,
+						expected_param.typ, arg_sym.info.func.params[i].typ)
+					if inferred_param_type != ast.void_type {
+						return inferred_param_type
+					}
+				}
+				return c.infer_composite_generic_type(gt_name, param_sym.info.func.return_type,
+					arg_sym.info.func.return_type)
+			}
+		}
+		ast.MultiReturn {
+			if arg_sym.info is ast.MultiReturn && param_sym.info.types.len == arg_sym.info.types.len {
+				for i, expected_type in param_sym.info.types {
+					inferred_type := c.infer_composite_generic_type(gt_name, expected_type,
+						arg_sym.info.types[i])
+					if inferred_type != ast.void_type {
+						return inferred_type
+					}
+				}
+			}
 		}
 		else {}
 	}
-	if generic_types.len == 0 || generic_types.len != concrete_types.len {
-		return ast.void_type
+
+	expected_type_args, expected_parent_idx := c.generic_type_args_and_parent_idx(generic_typ)
+	actual_type_args, actual_parent_idx := c.generic_type_args_and_parent_idx(concrete_typ)
+	if expected_parent_idx != 0 && actual_parent_idx != 0 && expected_type_args.len > 0
+		&& expected_type_args.len == actual_type_args.len {
+		mut parent_types_match := true
+		if expected_parent_idx != actual_parent_idx {
+			expected_parent_sym := c.table.sym(ast.idx_to_type(expected_parent_idx))
+			actual_parent_sym := c.table.sym(ast.idx_to_type(actual_parent_idx))
+			expected_parent_name := if expected_parent_sym.ngname != '' {
+				expected_parent_sym.ngname
+			} else {
+				ast.strip_generic_params(expected_parent_sym.name)
+			}
+			actual_parent_name := if actual_parent_sym.ngname != '' {
+				actual_parent_sym.ngname
+			} else {
+				ast.strip_generic_params(actual_parent_sym.name)
+			}
+			if expected_parent_name != actual_parent_name
+				&& expected_parent_sym.parent_idx != actual_parent_idx
+				&& actual_parent_sym.parent_idx != expected_parent_idx {
+				parent_types_match = false
+			}
+		}
+		if parent_types_match {
+			for i, expected_type_arg in expected_type_args {
+				inferred_type := c.infer_composite_generic_type(gt_name, expected_type_arg,
+					actual_type_args[i])
+				if inferred_type != ast.void_type {
+					return inferred_type
+				}
+			}
+		}
 	}
-	generic_names := generic_types.map(c.table.sym(it).name)
-	if gt_name !in generic_names {
-		return ast.void_type
+
+	// Sumtype coercion: if the expected type is a generic sumtype or a concrete
+	// generic sumtype instantiation, try to infer the generic type from its variants.
+	inferred_sumtype_type := c.infer_sumtype_variant_generic_type(gt_name, generic_typ,
+		concrete_typ)
+	if inferred_sumtype_type != ast.void_type {
+		return inferred_sumtype_type
 	}
-	return concrete_types[generic_names.index(gt_name)]
+	return ast.void_type
 }
 
 fn (mut c Checker) infer_struct_generic_types(typ ast.Type, node ast.StructInit) []ast.Type {
@@ -996,8 +1328,19 @@ fn (mut c Checker) infer_struct_generic_types(typ ast.Type, node ast.StructInit)
 						if ft.name == t.name && t.typ != 0 {
 							// unwrap to get base type for T if both are options
 							mut inferred_typ := ast.mktyp(t.typ)
-							if ft.typ.has_flag(.option) && inferred_typ.has_flag(.option) {
+							mut field_typ := ft.typ
+							if field_typ.has_flag(.option) && inferred_typ.has_flag(.option) {
+								field_typ = field_typ.clear_flag(.option)
 								inferred_typ = inferred_typ.clear_flag(.option)
+							}
+							if field_typ.nr_muls() > 0 && inferred_typ.nr_muls() > 0 {
+								field_muls := field_typ.nr_muls()
+								inferred_muls := inferred_typ.nr_muls()
+								inferred_typ = if inferred_muls >= field_muls {
+									inferred_typ.set_nr_muls(inferred_muls - field_muls)
+								} else {
+									inferred_typ.set_nr_muls(0)
+								}
 							}
 							concrete_types << inferred_typ
 							continue gname
@@ -1289,7 +1632,10 @@ fn (mut c Checker) infer_fn_generic_types(func &ast.Fn, mut node ast.CallExpr) {
 				param.typ
 			}
 			param_sym := c.table.sym(param_infer_typ)
-
+			mut param_is_interface := param_sym.kind == .interface
+			if !param_is_interface && param_sym.kind == .generic_inst {
+				param_is_interface = c.table.type_symbols[(param_sym.info as ast.GenericInst).parent_idx].kind == .interface
+			}
 			if (param_infer_typ.has_flag(.option) && arg.typ.has_flag(.option))
 				|| (param_infer_typ.has_flag(.result) && arg.typ.has_flag(.result)) {
 				param_inner := param_infer_typ.clear_option_and_result()
@@ -1382,6 +1728,9 @@ fn (mut c Checker) infer_fn_generic_types(func &ast.Fn, mut node ast.CallExpr) {
 							break
 						}
 					}
+				} else if arg_sym.info is ast.ArrayFixed && param_sym.info is ast.Array {
+					typ = c.infer_composite_generic_type(gt_name, param_sym.info.elem_type,
+						arg_sym.info.elem_type)
 				} else if arg_sym.info is ast.ArrayFixed && param_sym.info is ast.ArrayFixed {
 					mut arg_elem_typ, mut param_elem_typ := arg_sym.info.elem_type, param_sym.info.elem_type
 					mut arg_elem_sym, mut param_elem_sym := c.table.sym(arg_elem_typ), c.table.sym(param_elem_typ)
@@ -1449,25 +1798,18 @@ fn (mut c Checker) infer_fn_generic_types(func &ast.Fn, mut node ast.CallExpr) {
 							}
 						}
 					}
-				} else if arg_sym.kind in [.struct, .interface, .sum_type] {
-					mut generic_types := []ast.Type{}
-					mut concrete_types := []ast.Type{}
-					match arg_sym.info {
-						ast.Struct, ast.Interface, ast.SumType {
-							if param_sym.generic_types.len > 0 {
-								generic_types = param_sym.generic_types.clone()
-							} else {
-								generic_types = arg_sym.info.generic_types.clone()
-							}
-							concrete_types = arg_sym.info.concrete_types.clone()
-						}
-						else {}
+				} else if param_is_interface && arg_sym.kind != .any {
+					inferred_interface_type :=
+						c.unwrap_generic_interface(arg_typ, param_infer_typ, token.Pos{})
+					if inferred_interface_type != 0 {
+						typ = c.infer_composite_generic_type(gt_name, param_infer_typ,
+							inferred_interface_type)
 					}
-					generic_names := generic_types.map(c.table.sym(it).name)
-					if gt_name in generic_names && generic_types.len == concrete_types.len {
-						idx := generic_names.index(gt_name)
-						typ = concrete_types[idx]
+					if typ == ast.void_type {
+						typ = c.infer_composite_generic_type(gt_name, param_infer_typ, arg_typ)
 					}
+				} else if arg_sym.kind in [.struct, .interface, .sum_type, .generic_inst] {
+					typ = c.infer_composite_generic_type(gt_name, param_infer_typ, arg_typ)
 				} else if arg_sym.kind == .any && c.table.cur_fn.generic_names.len > 0
 					&& c.table.cur_fn.params.len > 0 && func.generic_names.len > 0
 					&& arg.expr is ast.Ident && arg_i !in arg_inferred {
@@ -1498,6 +1840,31 @@ fn (mut c Checker) infer_fn_generic_types(func &ast.Fn, mut node ast.CallExpr) {
 						}
 						typ = c.unwrap_generic(typ)
 						break
+					}
+				}
+				if typ == ast.void_type {
+					typ = c.infer_composite_generic_type(gt_name, param_infer_typ, arg_typ)
+					if typ == ast.void_type && arg.expr is ast.Ident && arg.expr.obj is ast.Var {
+						init_expr := arg.expr.obj.expr
+						if init_expr !is ast.EmptyExpr {
+							init_typ := match init_expr {
+								ast.CallExpr {
+									if init_expr.return_type_generic != 0 {
+										init_expr.return_type_generic
+									} else {
+										init_expr.return_type
+									}
+								}
+								else {
+									arg.expr.obj.typ
+								}
+							}
+
+							if init_typ != 0 {
+								typ = c.infer_composite_generic_type(gt_name, param_infer_typ,
+									init_typ)
+							}
+						}
 					}
 				}
 			}
@@ -1557,6 +1924,7 @@ fn (mut c Checker) is_contains_any_kind_of_pointer(typ ast.Type, mut checked_typ
 		}
 		else {}
 	}
+
 	return false
 }
 
@@ -1604,6 +1972,7 @@ fn (mut c Checker) os_raw_io_unsupported_type(typ ast.Type, path string, mut che
 		}
 		else {}
 	}
+
 	return none
 }
 

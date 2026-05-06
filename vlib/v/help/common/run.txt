@@ -6,6 +6,8 @@ Usage:
 This command is equivalent to running `v build` and running the compiled
 executable.
 The executable is passed the arguments as provided in [arguments...].
+If `v run` created the executable for this run, it is deleted afterwards.
+If the executable already existed before the command, it is kept.
 
 If the target is '-', it means that the V source code to build comes from stdin.
 If the '-o' option is not specified, and the target is '-', a temporary base

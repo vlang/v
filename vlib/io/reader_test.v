@@ -182,6 +182,20 @@ fn test_leftover() {
 	assert r.end_of_stream()
 }
 
+fn test_read_line_strips_crlf_across_buffer_fills() {
+	text := '12345\r\n67890\r\n'
+	mut s := StringReaderTest{
+		text: text
+	}
+	mut r := new_buffered_reader(reader: s, cap: 2)
+	assert r.read_line()! == '12345'
+	assert r.read_line()! == '67890'
+	if _ := r.read_line() {
+		assert false
+	}
+	assert r.end_of_stream()
+}
+
 fn test_totalread_read() {
 	text := 'Some testing text'
 	mut s := StringReaderTest{
@@ -213,6 +227,36 @@ fn test_buffered_reader_retries_zero_length_reads() {
 	assert total == text.len
 	assert buf[..total] == text.bytes()
 	assert r.total_read == total
+}
+
+struct NegativeReader {
+mut:
+	read_count int
+}
+
+fn (mut r NegativeReader) read(mut _ []u8) !int {
+	r.read_count++
+	return -1
+}
+
+fn test_read_all_errors_on_negative_read_count() {
+	mut reader := &NegativeReader{}
+	if _ := read_all(reader: reader) {
+		assert false
+	} else {
+		assert err.msg() == 'io.read_all: reader returned a negative read count (-1)'
+	}
+	assert reader.read_count == 1
+}
+
+fn test_read_any_errors_on_negative_read_count() {
+	mut reader := &NegativeReader{}
+	if _ := read_any(mut reader) {
+		assert false
+	} else {
+		assert err.msg() == 'io.read_any: reader returned a negative read count (-1)'
+	}
+	assert reader.read_count == 1
 }
 
 fn test_totalread_readline() {

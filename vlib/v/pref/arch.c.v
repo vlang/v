@@ -28,8 +28,7 @@ pub fn get_host_arch() Arch {
 	// current comptime branches by default, so there is a bootstrapping
 	// problem => the __V_architecture macro is used to resolve it.
 	// TODO: think about how to solve it for non C backends, perhaps we
-	// need a comptime `$if native {` too, and/or a mechanism to always
-	// generate all branches for specific functions?
+	// need a mechanism to always generate all branches for specific functions?
 	if C.__V_architecture <= int(Arch._auto) || C.__V_architecture >= int(Arch._max) {
 		return Arch.amd64
 	}

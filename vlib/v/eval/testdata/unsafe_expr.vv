@@ -1,3 +1,0 @@
-unsafe {
-	println(true)
-}

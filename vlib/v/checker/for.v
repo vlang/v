@@ -46,6 +46,8 @@ fn (mut c Checker) for_c_stmt(mut node ast.ForCStmt) {
 fn (mut c Checker) for_in_stmt(mut node ast.ForInStmt) {
 	c.in_for_count++
 	prev_loop_labels := c.loop_labels
+	cond_pos := node.cond.pos()
+	high_pos := node.high.pos()
 	mut typ := c.expr(mut node.cond)
 	if node.key_var.len > 0 && node.key_var != '_' {
 		c.check_valid_snake_case(node.key_var, 'variable name', node.pos)
@@ -83,18 +85,18 @@ fn (mut c Checker) for_in_stmt(mut node ast.ForInStmt) {
 				node.cond.pos().extend(node.high.pos()))
 		} else if high_type.has_option_or_result() {
 			c.error('the `high` value in a `for x in low..high {` loop, cannot be Result or Option',
-				node.high.pos())
+				high_pos)
 		} else if node.cond is ast.Ident && node.val_var == node.cond.name {
 			if node.is_range {
 				c.error('in a `for x in <range>` loop, the key or value iteration variable `${node.val_var}` can not be the same as the low variable',
-					node.cond.pos())
+					cond_pos)
 			} else {
 				c.error('in a `for x in array` loop, the key or value iteration variable `${node.val_var}` can not be the same as the low variable',
-					node.cond.pos())
+					cond_pos)
 			}
 		} else if node.high is ast.Ident && node.val_var == node.high.name {
 			c.error('in a `for x in <range>` loop, the key or value iteration variable `${node.val_var}` can not be the same as the high variable',
-				node.high.pos())
+				high_pos)
 		}
 
 		if high_type in [ast.int_type, ast.int_literal_type] {
@@ -107,7 +109,7 @@ fn (mut c Checker) for_in_stmt(mut node ast.ForInStmt) {
 	} else {
 		if node.cond is ast.Ident && node.cond.name in [node.key_var, node.val_var] {
 			c.error('in a `for x in array` loop, the key or value iteration variable `${node.val_var}` can not be the same as the low variable',
-				node.cond.pos())
+				cond_pos)
 		}
 		mut is_comptime := false
 		if (node.cond is ast.Ident && node.cond.ct_expr) || node.cond is ast.ComptimeSelector {
@@ -142,6 +144,7 @@ fn (mut c Checker) for_in_stmt(mut node ast.ForInStmt) {
 				}
 				else {}
 			}
+
 			if node.cond is ast.Ident {
 				cond_ident := node.cond as ast.Ident
 				if cond_ident.obj is ast.Var && c.table.is_interface_smartcast(cond_ident.obj)
@@ -210,6 +213,7 @@ fn (mut c Checker) for_in_stmt(mut node ast.ForInStmt) {
 					.map { unwrapped_sym.map_info().key_type }
 					else { ast.int_type }
 				}
+
 				node.key_type = key_type
 				node.scope.update_var_type(node.key_var, key_type)
 
@@ -250,6 +254,7 @@ fn (mut c Checker) for_in_stmt(mut node ast.ForInStmt) {
 					.map { sym.map_info().key_type }
 					else { ast.int_type }
 				}
+
 				node.key_type = key_type
 				node.scope.update_var_type(node.key_var, key_type)
 
@@ -344,9 +349,13 @@ fn (mut c Checker) for_stmt(mut node ast.ForStmt) {
 	}
 	if mut node.cond is ast.InfixExpr && node.cond.op == .key_is {
 		if node.cond.right is ast.TypeNode && node.cond.left in [ast.Ident, ast.SelectorExpr] {
-			if c.table.type_kind(node.cond.left_type) in [.sum_type, .interface] {
+			left_kind := c.table.type_kind(node.cond.left_type)
+			is_receiver_smartcast := left_kind == .placeholder && node.cond.left.is_auto_deref_var()
+				&& node.cond.left_type.is_ptr()
+				&& c.table.final_sym(node.cond.left_type).kind in [.sum_type, .interface]
+			if left_kind in [.sum_type, .interface] || is_receiver_smartcast {
 				c.smartcast(mut node.cond.left, node.cond.left_type, node.cond.right_type, mut
-					node.scope, false, false, false)
+					node.scope, false, false, false, false)
 			}
 		}
 	}

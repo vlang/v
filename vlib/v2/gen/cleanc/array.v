@@ -87,6 +87,59 @@ fn should_keep_builtin_array_decl(decl ast.FnDecl) bool {
 	]
 }
 
+fn array_interface_repeat_fn_name(iface_name string) string {
+	return '__v_array_repeat_interface__' + mangle_alias_component(iface_name)
+}
+
+fn (g &Gen) array_clone_depth_for_c_type(type_name string) int {
+	elem_type := array_alias_elem_type(type_name)
+	if elem_type == '' {
+		return 0
+	}
+	if elem_type == 'string' || elem_type == 'builtin__string' || elem_type == 'map'
+		|| elem_type.starts_with('Map_') {
+		return 1
+	}
+	if elem_type == 'array' || elem_type.starts_with('Array_') {
+		return 1 + g.array_clone_depth_for_c_type(elem_type)
+	}
+	return 0
+}
+
+fn (mut g Gen) emit_array_interface_repeat_decls() {
+	mut names := g.emitted_interface_bodies.keys()
+	names.sort()
+	for name in names {
+		g.sb.writeln('static inline array ${array_interface_repeat_fn_name(name)}(array a, int count);')
+	}
+	if names.len > 0 {
+		g.sb.writeln('')
+	}
+}
+
+fn (mut g Gen) emit_array_interface_repeat_body(iface_name string) {
+	repeat_fn := array_interface_repeat_fn_name(iface_name)
+	clone_fn := interface_clone_fn_name(iface_name)
+	g.sb.writeln('static inline array ${repeat_fn}(array a, int count) {')
+	g.sb.writeln('\tarray res = array__repeat_to_depth(a, count, 0);')
+	g.sb.writeln('\tif (a.len > 0) {')
+	g.sb.writeln('\t\tfor (int i = 0; i < res.len; ++i) {')
+	g.sb.writeln('\t\t\t((${iface_name}*)res.data)[i] = ${clone_fn}(((${iface_name}*)a.data)[i % a.len]);')
+	g.sb.writeln('\t\t}')
+	g.sb.writeln('\t}')
+	g.sb.writeln('\treturn res;')
+	g.sb.writeln('}')
+	g.sb.writeln('')
+}
+
+fn (mut g Gen) emit_array_interface_repeat_helpers() {
+	mut names := g.emitted_interface_bodies.keys()
+	names.sort()
+	for name in names {
+		g.emit_array_interface_repeat_body(name)
+	}
+}
+
 fn (mut g Gen) emit_missing_array_contains_fallbacks() {
 	mut fn_names := g.fn_param_types.keys()
 	fn_names.sort()
@@ -173,17 +226,8 @@ fn (mut g Gen) emit_deferred_fixed_array_aliases() {
 			continue
 		}
 		if info := g.collected_fixed_array_types[name] {
-			if info.elem_type in primitive_types
-				|| info.elem_type in ['char', 'voidptr', 'charptr', 'byteptr', 'void*', 'char*'] {
-				continue // already emitted in emit_runtime_aliases
-			}
-			// Only emit if the element type is already defined (struct body emitted).
-			// For struct element types, check if the struct body has been emitted.
-			elem_body_key := 'body_${info.elem_type}'
-			elem_alias_key := 'alias_${info.elem_type}'
-			if info.elem_type.contains('__') && elem_body_key !in g.emitted_types
-				&& elem_alias_key !in g.emitted_types && !info.elem_type.starts_with('Array_fixed_') {
-				continue // element struct not yet defined, defer
+			if !g.fixed_array_elem_type_ready(info.elem_type) {
+				continue
 			}
 			g.sb.writeln('typedef ${info.elem_type} ${name} [${info.size}];')
 			body_key := 'body_${name}'
@@ -197,6 +241,28 @@ fn (mut g Gen) emit_deferred_fixed_array_aliases() {
 			}
 		}
 	}
+}
+
+fn (g &Gen) fixed_array_elem_type_ready(elem_type string) bool {
+	if elem_type in primitive_types
+		|| elem_type in ['char', 'voidptr', 'charptr', 'byteptr', 'void*', 'char*'] {
+		return true
+	}
+	if elem_type in g.primitive_type_aliases {
+		return true
+	}
+	if elem_type.starts_with('Array_fixed_') {
+		return 'body_${elem_type}' in g.emitted_types || 'alias_${elem_type}' in g.emitted_types
+	}
+	if elem_type.ends_with('*') || g.is_c_type_name(elem_type) {
+		return true
+	}
+	if base_type := g.alias_base_types[elem_type] {
+		if base_type != elem_type {
+			return g.fixed_array_elem_type_ready(base_type)
+		}
+	}
+	return 'body_${elem_type}' in g.emitted_types || 'enum_${elem_type}' in g.emitted_types
 }
 
 fn (mut g Gen) array_append_elem_type(lhs ast.Expr, rhs ast.Expr) (bool, string) {
@@ -260,6 +326,15 @@ fn (mut g Gen) array_append_elem_type(lhs ast.Expr, rhs ast.Expr) (bool, string)
 			}
 		}
 	}
+	if is_generic_placeholder_c_type_name(elem_type) {
+		rhs_value := append_rhs_value_expr(rhs)
+		if rhs_value is ast.PrefixExpr && rhs_value.op == .mul && rhs_value.expr is ast.CastExpr {
+			target_type := g.expr_type_to_c(rhs_value.expr.typ)
+			if target_type.ends_with('*') {
+				elem_type = target_type.trim_right('*')
+			}
+		}
+	}
 	// When raw_type gives a module-qualified name (e.g. term__Coord) but the rhs
 	// is a local struct (e.g. Coord), prefer the rhs type to match the actual typedef.
 	if elem_type.contains('__') {
@@ -276,13 +351,39 @@ fn (mut g Gen) array_append_elem_type(lhs ast.Expr, rhs ast.Expr) (bool, string)
 	return true, unmangle_c_ptr_type(elem_type)
 }
 
+fn append_rhs_value_expr(expr ast.Expr) ast.Expr {
+	if expr is ast.UnsafeExpr && expr.stmts.len > 0 {
+		last := expr.stmts[expr.stmts.len - 1]
+		if last is ast.ExprStmt {
+			return last.expr
+		}
+	}
+	return expr
+}
+
 fn (mut g Gen) expr_is_array_value(expr ast.Expr) bool {
 	if expr is ast.ParenExpr {
 		return g.expr_is_array_value(expr.expr)
 	}
+	if expr is ast.UnsafeExpr {
+		return g.expr_is_array_value(append_rhs_value_expr(expr))
+	}
 	if expr is ast.PrefixExpr && expr.op == .mul {
 		// `*ptr_to_array` is an array value.
 		return g.expr_is_array_value(expr.expr)
+	}
+	if expr is ast.Ident {
+		if local_type := g.get_local_var_c_type(expr.name) {
+			if local_type == 'array' || local_type.starts_with('Array_') {
+				return true
+			}
+		}
+	}
+	if expr is ast.SelectorExpr {
+		field_type := g.selector_field_type(expr)
+		if field_type == 'array' || field_type.starts_with('Array_') {
+			return true
+		}
 	}
 	expr_type := g.get_expr_type(expr)
 	if expr_type == 'array' || expr_type.starts_with('Array_') {
@@ -388,6 +489,7 @@ fn (mut g Gen) infer_array_elem_type_from_expr(arr_expr ast.Expr) string {
 		}
 		else {}
 	}
+
 	if arr_expr is ast.ArrayInitExpr {
 		elem_type := g.extract_array_elem_type(arr_expr.typ)
 		if elem_type != '' {
@@ -494,6 +596,7 @@ fn (mut g Gen) infer_array_method_elem_type(expr ast.Expr) string {
 		}
 		else {}
 	}
+
 	return ''
 }
 
@@ -661,6 +764,7 @@ fn (g &Gen) extract_array_elem_expr(e ast.Expr) ast.Expr {
 		}
 		else {}
 	}
+
 	return ast.empty_expr
 }
 
@@ -685,6 +789,7 @@ fn (g &Gen) is_dynamic_array_type(e ast.Expr) bool {
 		}
 		else {}
 	}
+
 	return false
 }
 
@@ -701,6 +806,7 @@ fn extract_array_init_arg(expr ast.Expr) ?ast.ArrayInitExpr {
 		}
 		else {}
 	}
+
 	return none
 }
 
@@ -804,27 +910,8 @@ fn (mut g Gen) gen_typed_array_eq(elem_type string, call_args []ast.Expr) {
 		struct_type := g.lookup_struct_type_by_c_name(elem_type)
 		if struct_type.fields.len > 0 {
 			for field in struct_type.fields {
-				fname := field.name
-				ftype := field.typ
-				match ftype {
-					types.String {
-						g.sb.writeln('  if (!string__eq(_sa.${fname}, _sb.${fname})) _eq = false;')
-					}
-					types.Map {
-						c_type := g.types_type_to_c(ftype)
-						if c_type.starts_with('Map_') {
-							g.sb.writeln('  if (!${c_type}_map_eq(_sa.${fname}, _sb.${fname})) _eq = false;')
-						} else {
-							g.sb.writeln('  if (!map_map_eq(_sa.${fname}, _sb.${fname})) _eq = false;')
-						}
-					}
-					types.Array {
-						g.sb.writeln('  if (!__v2_array_eq(_sa.${fname}, _sb.${fname})) _eq = false;')
-					}
-					else {
-						g.sb.writeln('  if (_sa.${fname} != _sb.${fname}) _eq = false;')
-					}
-				}
+				eq_expr := g.eq_expr_for_type(field.typ, '_sa.${field.name}', '_sb.${field.name}')
+				g.sb.writeln('  if (!(${eq_expr})) _eq = false;')
 			}
 		} else {
 			// Struct not found, fall back to memcmp

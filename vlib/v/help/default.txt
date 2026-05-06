@@ -38,9 +38,9 @@ V supports the following commands:
 
 * Commonly Used Utilities:
   run                          Compile and run a V program. Delete the
-                               executable after the run.
-  crun                         Compile and run a V program without deleting the
-                               executable.
+                               executable if V created it for this run.
+  crun                         Compile and run a V program, keeping the
+                               executable for reuse.
                                If you run the same program a second time,
                                without changing the source files,
                                V will just run the executable, without

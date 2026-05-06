@@ -8,4 +8,4 @@ $if tinyc {
 	#flag windows @VEXEROOT/thirdparty/mysql/lib/libmysql.lib
 }
 
-#include <mysql.h> # Please install https://dev.mysql.com/downloads/installer/ , then put the include/ and lib/ folders in thirdparty/mysql. Do not forget to add thirdparty/mysql/bin and thirdparty/mysql/lib to PATH
+#include <mysql.h> # Please install https://dev.mysql.com/downloads/installer/ , then copy the include, lib, and bin folders to thirdparty/mysql. Make sure thirdparty/mysql/bin and thirdparty/mysql/lib are on PATH, or copy libmysql.dll next to the produced .exe

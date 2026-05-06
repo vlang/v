@@ -140,6 +140,10 @@ fn interface_wrapper_name(iface_name string, concrete_type string, method_name s
 		mangle_alias_component(concrete_type) + '_' + method_name
 }
 
+fn interface_clone_fn_name(iface_name string) string {
+	return '__v_interface_clone__' + mangle_alias_component(iface_name)
+}
+
 fn (mut g Gen) collect_interface_wrapper_specs() {
 	if g.interface_wrapper_specs.len > 0 {
 		return
@@ -234,6 +238,74 @@ fn (mut g Gen) emit_needed_interface_method_wrappers() {
 	for name in names {
 		spec := g.interface_wrapper_specs[name] or { continue }
 		g.emit_interface_method_wrapper_body(name, spec)
+	}
+}
+
+fn (mut g Gen) emit_interface_clone_decls() {
+	mut names := g.emitted_interface_bodies.keys()
+	names.sort()
+	for name in names {
+		g.sb.writeln('static inline ${name} ${interface_clone_fn_name(name)}(${name} x);')
+	}
+	if names.len > 0 {
+		g.sb.writeln('')
+	}
+}
+
+fn (mut g Gen) interface_clone_ptr_expr(ctype string, ptr_name string) string {
+	if ctype == 'string' || ctype == 'builtin__string' {
+		return '(${ctype}*)memdup(&(${ctype}){string__clone(*(${ctype}*)${ptr_name})}, sizeof(${ctype}))'
+	}
+	if ctype == 'map' || ctype.starts_with('Map_') {
+		return '(${ctype}*)memdup(&(${ctype}){map__clone((${ctype}*)${ptr_name})}, sizeof(${ctype}))'
+	}
+	if ctype == 'array' || ctype.starts_with('Array_') {
+		depth := g.array_clone_depth_for_c_type(ctype)
+		return '(${ctype}*)memdup(&(${ctype}){array__clone_to_depth((${ctype}*)${ptr_name}, ${depth})}, sizeof(${ctype}))'
+	}
+	return '(${ctype}*)memdup(${ptr_name}, sizeof(${ctype}))'
+}
+
+fn (mut g Gen) emit_interface_clone_body(iface_name string) {
+	clone_fn := interface_clone_fn_name(iface_name)
+	g.sb.writeln('static inline ${iface_name} ${clone_fn}(${iface_name} x) {')
+	g.sb.writeln('\tif (x._object == 0) {')
+	g.sb.writeln('\t\treturn x;')
+	g.sb.writeln('\t}')
+	data_fields := g.interface_data_fields[iface_name] or { []InterfaceDataFieldInfo{} }
+	for ctype in g.find_concrete_types_for_interface(iface_name) {
+		type_short := if ctype.contains('__') {
+			ctype.all_after_last('__')
+		} else {
+			ctype
+		}
+		type_id := interface_type_id_for_name(type_short)
+		clone_ptr_expr := g.interface_clone_ptr_expr(ctype, 'x._object')
+		g.sb.writeln('\tif (x._type_id == ${type_id}) {')
+		g.sb.writeln('\t\t${ctype}* _clone = ${clone_ptr_expr};')
+		g.sb.writeln('\t\t${iface_name} cloned = x;')
+		g.sb.writeln('\t\tcloned._object = (void*)_clone;')
+		for df in data_fields {
+			owner := g.embedded_owner_for(ctype, df.name)
+			if owner != '' {
+				g.sb.writeln('\t\tcloned.${df.name} = &(_clone->${owner}.${df.name});')
+			} else {
+				g.sb.writeln('\t\tcloned.${df.name} = &(_clone->${df.name});')
+			}
+		}
+		g.sb.writeln('\t\treturn cloned;')
+		g.sb.writeln('\t}')
+	}
+	g.sb.writeln('\treturn x;')
+	g.sb.writeln('}')
+	g.sb.writeln('')
+}
+
+fn (mut g Gen) emit_interface_clone_helpers() {
+	mut names := g.emitted_interface_bodies.keys()
+	names.sort()
+	for name in names {
+		g.emit_interface_clone_body(name)
 	}
 }
 
@@ -584,9 +656,18 @@ fn (mut g Gen) find_concrete_types_for_interface(iface_name string) []string {
 		for fn_name, _ in g.fn_return_types {
 			if fn_name.ends_with(first_suffix) {
 				base := fn_name[..fn_name.len - first_suffix.len]
-				if base.len > 0 && !g.is_interface_type(base) {
-					candidates[base] = true
+				if base.len == 0 || g.is_interface_type(base) {
+					continue
 				}
+				param_types := g.fn_param_types[fn_name] or { []string{} }
+				if param_types.len == 0 {
+					continue
+				}
+				receiver_type := param_types[0].trim_space().trim_right('*')
+				if receiver_type != base {
+					continue
+				}
+				candidates[base] = true
 			}
 		}
 	}
@@ -597,6 +678,16 @@ fn (mut g Gen) find_concrete_types_for_interface(iface_name string) []string {
 		for method in methods {
 			fn_name := '${cand}__${method.name}'
 			if fn_name !in g.fn_return_types {
+				has_all = false
+				break
+			}
+			param_types := g.fn_param_types[fn_name] or { []string{} }
+			if param_types.len == 0 {
+				has_all = false
+				break
+			}
+			receiver_type := param_types[0].trim_space().trim_right('*')
+			if receiver_type != cand {
 				has_all = false
 				break
 			}

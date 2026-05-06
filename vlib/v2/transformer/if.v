@@ -8,6 +8,65 @@ import v2.ast
 import v2.token
 import v2.types
 
+fn (mut t Transformer) register_if_guard_temp_and_payload_types(temp_name string, guard_lhs []ast.Expr, rhs ast.Expr) {
+	wrapper_type := t.expr_wrapper_type_for_or(rhs) or { return }
+	t.register_temp_var(temp_name, wrapper_type)
+	mut data_type := types.Type(types.voidptr_)
+	mut has_data_type := false
+	match wrapper_type {
+		types.ResultType {
+			data_type = wrapper_type.base_type
+			has_data_type = true
+		}
+		types.OptionType {
+			data_type = wrapper_type.base_type
+			has_data_type = true
+		}
+		else {}
+	}
+
+	if !has_data_type {
+		return
+	}
+	for lhs_expr in guard_lhs {
+		if lhs_name := assign_lhs_ident_name(lhs_expr) {
+			if lhs_name != '_' {
+				t.register_temp_var(lhs_name, data_type)
+			}
+		}
+	}
+}
+
+fn (mut t Transformer) transform_if_guard_else_expr(expr ast.Expr) ast.Expr {
+	if expr is ast.EmptyExpr {
+		return expr
+	}
+	transformed := t.transform_expr(expr)
+	mut else_stmts := []ast.Stmt{}
+	if t.pending_stmts.len > 0 {
+		else_stmts << t.pending_stmts
+		t.pending_stmts.clear()
+	}
+	if transformed is ast.UnsafeExpr {
+		else_stmts << transformed.stmts
+	} else {
+		if else_stmts.len == 0 {
+			return transformed
+		}
+		else_stmts << ast.ExprStmt{
+			expr: transformed
+		}
+	}
+	if else_stmts.len == 0 {
+		return ast.empty_expr
+	}
+	return ast.IfExpr{
+		cond:  ast.empty_expr
+		stmts: else_stmts
+		pos:   expr.pos()
+	}
+}
+
 // try_expand_if_guard_assign_stmts expands an if-guard assignment to multiple statements.
 // Transforms: x := if r := map[key] { r } else { default }
 // Into (for maps):
@@ -93,6 +152,125 @@ fn (mut t Transformer) try_expand_if_guard_assign_stmts(stmt ast.AssignStmt) ?[]
 		}
 	}
 
+	mut is_result := t.expr_returns_result(guard_rhs)
+	mut is_option := t.expr_returns_option(guard_rhs)
+	if !is_result && !is_option {
+		fn_name := t.get_call_fn_name(guard_rhs)
+		is_result = fn_name != '' && t.fn_returns_result(fn_name)
+		is_option = fn_name != '' && t.fn_returns_option(fn_name)
+	}
+	if is_result || is_option {
+		temp_name := t.gen_temp_name()
+		temp_ident := ast.Ident{
+			name: temp_name
+			pos:  synth_pos
+		}
+		mut data_type := types.Type(types.voidptr_)
+		mut has_data_type := false
+		if wrapper_type := t.expr_wrapper_type_for_or(guard_rhs) {
+			t.register_temp_var(temp_name, wrapper_type)
+			match wrapper_type {
+				types.ResultType {
+					data_type = wrapper_type.base_type
+					has_data_type = true
+				}
+				types.OptionType {
+					data_type = wrapper_type.base_type
+					has_data_type = true
+				}
+				else {}
+			}
+		}
+		if !has_data_type {
+			ret_type_name := t.get_call_return_type(guard_rhs)
+			if ret_type_name.starts_with('_option_') {
+				base_name := ret_type_name['_option_'.len..]
+				if base_type := t.c_return_base_type_to_type(base_name) {
+					data_type = base_type
+					has_data_type = true
+				}
+			} else if ret_type_name.starts_with('_result_') {
+				base_name := ret_type_name['_result_'.len..]
+				if base_type := t.c_return_base_type_to_type(base_name) {
+					data_type = base_type
+					has_data_type = true
+				}
+			}
+		}
+		if has_data_type && guard_var_name != '' {
+			t.register_temp_var(guard_var_name, data_type)
+		}
+		success_cond := if is_result {
+			ast.Expr(ast.PrefixExpr{
+				op:   .not
+				expr: t.synth_selector(temp_ident, 'is_error', types.Type(types.bool_))
+			})
+		} else {
+			t.make_infix_expr(.eq, t.synth_selector(temp_ident, 'state', types.Type(types.int_)),
+				t.make_number_expr('0'))
+		}
+		mut then_stmts := []ast.Stmt{}
+		then_stmts << ast.AssignStmt{
+			op:  .decl_assign
+			lhs: guard.stmt.lhs
+			rhs: [t.synth_selector(temp_ident, 'data', data_type)]
+			pos: guard.stmt.pos
+		}
+		for s in if_expr.stmts {
+			then_stmts << s
+		}
+		mut else_expr := if_expr.else_expr
+		if is_result && else_expr is ast.IfExpr {
+			else_if := else_expr as ast.IfExpr
+			if else_if.cond is ast.EmptyExpr {
+				mut else_stmts := []ast.Stmt{cap: else_if.stmts.len + 1}
+				else_stmts << ast.AssignStmt{
+					op:  .decl_assign
+					lhs: [ast.Expr(ast.Ident{
+						name: 'err'
+					})]
+					rhs: [
+						t.synth_selector(temp_ident, 'err', types.Type(types.Struct{
+							name: 'IError'
+						})),
+					]
+					pos: guard.stmt.pos
+				}
+				for s in else_if.stmts {
+					else_stmts << s
+				}
+				else_expr = ast.Expr(ast.IfExpr{
+					cond:  ast.empty_expr
+					stmts: else_stmts
+					pos:   else_if.pos
+				})
+			}
+		}
+		modified_if := ast.IfExpr{
+			cond:      success_cond
+			stmts:     then_stmts
+			else_expr: else_expr
+			pos:       synth_pos
+		}
+		if orig_type := t.get_expr_type(ast.Expr(if_expr)) {
+			t.register_synth_type(synth_pos, orig_type)
+		}
+		return [
+			ast.Stmt(ast.AssignStmt{
+				op:  .decl_assign
+				lhs: [ast.Expr(temp_ident)]
+				rhs: [guard_rhs]
+				pos: synth_pos
+			}),
+			ast.Stmt(ast.AssignStmt{
+				op:  stmt.op
+				lhs: stmt.lhs
+				rhs: [ast.Expr(modified_if)]
+				pos: stmt.pos
+			}),
+		]
+	}
+
 	// Non-map case: use original approach
 	mut stmts := []ast.Stmt{}
 
@@ -154,13 +332,24 @@ fn (mut t Transformer) try_expand_if_guard_stmt(stmt ast.ExprStmt) ?[]ast.Stmt {
 	rhs := guard.stmt.rhs[0]
 	synth_pos := t.next_synth_pos()
 
+	mut rhs_is_map_index := false
+	mut map_index_expr := ast.IndexExpr{}
+	if idx := t.map_index_expr_from_guard_rhs(rhs) {
+		rhs_is_map_index = true
+		map_index_expr = idx
+	}
+
 	// Check if RHS is a call that returns Result/Option
 	// First try expression-based lookup (works for both function and method calls)
-	mut is_result := t.expr_returns_result(rhs)
-	mut is_option := t.expr_returns_option(rhs)
+	mut is_result := false
+	mut is_option := false
+	if !rhs_is_map_index {
+		is_result = t.expr_returns_result(rhs)
+		is_option = t.expr_returns_option(rhs)
+	}
 
 	// Fallback to function name lookup for simple function calls
-	if !is_result && !is_option {
+	if !rhs_is_map_index && !is_result && !is_option {
 		fn_name := t.get_call_fn_name(rhs)
 		is_result = fn_name != '' && t.fn_returns_result(fn_name)
 		is_option = fn_name != '' && t.fn_returns_option(fn_name)
@@ -177,16 +366,77 @@ fn (mut t Transformer) try_expand_if_guard_stmt(stmt ast.ExprStmt) ?[]ast.Stmt {
 
 		mut stmts := []ast.Stmt{}
 
+		mut data_type := types.Type(types.voidptr_)
+		mut has_data_type := false
 		// Register temp variable type so cleanc can look up its type for .data unwrapping
-		if wrapper_type := t.get_expr_type(rhs) {
+		if wrapper_type := t.expr_wrapper_type_for_or(rhs) {
 			t.register_temp_var(temp_name, wrapper_type)
+			match wrapper_type {
+				types.ResultType {
+					data_type = wrapper_type.base_type
+					has_data_type = true
+				}
+				types.OptionType {
+					data_type = wrapper_type.base_type
+					has_data_type = true
+				}
+				else {}
+			}
+		} else if wrapper_type := t.get_expr_type(rhs) {
+			t.register_temp_var(temp_name, wrapper_type)
+			match wrapper_type {
+				types.ResultType {
+					data_type = wrapper_type.base_type
+					has_data_type = true
+				}
+				types.OptionType {
+					data_type = wrapper_type.base_type
+					has_data_type = true
+				}
+				else {}
+			}
+		}
+		if !has_data_type {
+			ret_type_name := t.get_call_return_type(rhs)
+			if ret_type_name.starts_with('_option_') {
+				base_name := ret_type_name['_option_'.len..]
+				if base_type := t.c_return_base_type_to_type(base_name) {
+					data_type = base_type
+					has_data_type = true
+				}
+			} else if ret_type_name.starts_with('_result_') {
+				base_name := ret_type_name['_result_'.len..]
+				if base_type := t.c_return_base_type_to_type(base_name) {
+					data_type = base_type
+					has_data_type = true
+				}
+			}
+		}
+		mut guard_var_name := ''
+		for lhs_expr in guard.stmt.lhs {
+			if lhs_expr is ast.Ident {
+				guard_var_name = lhs_expr.name
+				break
+			}
+			if lhs_expr is ast.ModifierExpr && lhs_expr.expr is ast.Ident {
+				guard_var_name = (lhs_expr.expr as ast.Ident).name
+				break
+			}
+		}
+		if has_data_type && guard_var_name != '' {
+			t.register_temp_var(guard_var_name, data_type)
 		}
 
 		// 1. _tmp := call()
+		transformed_rhs := t.transform_expr(rhs)
+		if t.pending_stmts.len > 0 {
+			stmts << t.pending_stmts
+			t.pending_stmts.clear()
+		}
 		stmts << ast.AssignStmt{
 			op:  .decl_assign
 			lhs: [ast.Expr(temp_ident)]
-			rhs: [t.transform_expr(rhs)]
+			rhs: [transformed_rhs]
 			pos: synth_pos
 		}
 
@@ -204,7 +454,7 @@ fn (mut t Transformer) try_expand_if_guard_stmt(stmt ast.ExprStmt) ?[]ast.Stmt {
 		// 3. Build if-body: attr := _tmp.data; original_body
 		// cleanc handles the cast and dereference when it sees .data on Result type
 		mut if_stmts := []ast.Stmt{}
-		data_access := t.synth_selector(temp_ident, 'data', types.Type(types.voidptr_))
+		data_access := t.synth_selector(temp_ident, 'data', data_type)
 		if_stmts << ast.AssignStmt{
 			op:  .decl_assign
 			lhs: guard.stmt.lhs
@@ -215,11 +465,38 @@ fn (mut t Transformer) try_expand_if_guard_stmt(stmt ast.ExprStmt) ?[]ast.Stmt {
 			if_stmts << s
 		}
 
+		mut else_expr := if_expr.else_expr
+		if is_result && else_expr is ast.IfExpr {
+			else_if := else_expr as ast.IfExpr
+			if else_if.cond is ast.EmptyExpr {
+				mut else_stmts := []ast.Stmt{cap: else_if.stmts.len + 1}
+				else_stmts << ast.AssignStmt{
+					op:  .decl_assign
+					lhs: [ast.Expr(ast.Ident{
+						name: 'err'
+					})]
+					rhs: [
+						t.synth_selector(temp_ident, 'err', types.Type(types.Struct{
+							name: 'IError'
+						})),
+					]
+					pos: else_if.pos
+				}
+				else_stmts << else_if.stmts
+				else_expr = ast.IfExpr{
+					cond:      else_if.cond
+					stmts:     else_stmts
+					else_expr: else_if.else_expr
+					pos:       else_if.pos
+				}
+			}
+		}
+
 		// 4. Build the if expression
 		modified_if := ast.IfExpr{
 			cond:      success_cond
 			stmts:     t.transform_stmts(if_stmts)
-			else_expr: t.transform_expr(if_expr.else_expr)
+			else_expr: t.transform_if_guard_else_expr(else_expr)
 			pos:       synth_pos
 		}
 		// Propagate the original IfExpr type to the synthesized node
@@ -239,8 +516,9 @@ fn (mut t Transformer) try_expand_if_guard_stmt(stmt ast.ExprStmt) ?[]ast.Stmt {
 	// Transform to: { _tmp := map__get_check(&map, &key); if (_tmp != nil) { x := *_tmp; use(x) } }
 	// For array lookups: if x := arr[i] { use(x) }
 	// Transform to: if (i < arr.len) { x := arr[i]; use(x) }
-	if rhs is ast.IndexExpr {
-		if map_expr_typ := t.get_expr_type(rhs.lhs) {
+	if rhs_is_map_index {
+		rhs_idx := map_index_expr
+		if map_expr_typ := t.get_expr_type(rhs_idx.lhs) {
 			if map_type := t.unwrap_map_type(map_expr_typ) {
 				// This is a map lookup - use map__get_check pattern
 				temp_name := t.gen_temp_name()
@@ -255,9 +533,9 @@ fn (mut t Transformer) try_expand_if_guard_stmt(stmt ast.ExprStmt) ?[]ast.Stmt {
 				})
 
 				map_arg := if t.is_pointer_type(map_expr_typ) {
-					t.transform_expr(rhs.lhs)
+					t.transform_expr(rhs_idx.lhs)
 				} else {
-					t.addr_of_expr_with_temp(rhs.lhs, map_expr_typ)
+					t.addr_of_expr_with_temp(rhs_idx.lhs, map_expr_typ)
 				}
 
 				get_check_call := ast.CallExpr{
@@ -266,7 +544,8 @@ fn (mut t Transformer) try_expand_if_guard_stmt(stmt ast.ExprStmt) ?[]ast.Stmt {
 					}
 					args: [
 						map_arg,
-						t.voidptr_cast(t.addr_of_expr_with_temp(rhs.expr, map_type.key_type)),
+						t.voidptr_cast(t.addr_of_expr_with_temp(rhs_idx.expr, t.map_key_type_for_expr(rhs_idx.expr,
+							map_type))),
 					]
 				}
 				temp_assign := ast.AssignStmt{
@@ -316,10 +595,11 @@ fn (mut t Transformer) try_expand_if_guard_stmt(stmt ast.ExprStmt) ?[]ast.Stmt {
 				]
 			}
 		}
-
+	} else if rhs is ast.IndexExpr {
+		rhs_idx := rhs
 		// This is an array lookup - generate bounds check: index < array.len
-		bounds_check := t.make_infix_expr_at(.lt, t.transform_expr(rhs.expr), t.synth_selector(t.transform_expr(rhs.lhs),
-			'len', types.Type(types.int_)), rhs.pos)
+		bounds_check := t.make_infix_expr_at(.lt, t.transform_expr(rhs_idx.expr), t.synth_selector(t.transform_expr(rhs_idx.lhs),
+			'len', types.Type(types.int_)), rhs_idx.pos)
 
 		// Build if body: guard_var := arr[i]; original_body
 		mut if_stmts := []ast.Stmt{}
@@ -565,8 +845,7 @@ fn (mut t Transformer) expand_return_if_expr(ie ast.IfExpr) []ast.Stmt {
 // Transforms: lhs = if cond { a } else { b }
 // Into: if cond { lhs = a } else { lhs = b }
 fn (mut t Transformer) try_expand_if_expr_assign_stmts(stmt ast.AssignStmt) ?[]ast.Stmt {
-	// Only handle simple assignment for now.
-	if stmt.op != .assign || stmt.lhs.len != 1 || stmt.rhs.len != 1 {
+	if stmt.op !in [.decl_assign, .assign] || stmt.lhs.len != 1 || stmt.rhs.len != 1 {
 		return none
 	}
 	rhs := stmt.rhs[0]
@@ -578,7 +857,24 @@ fn (mut t Transformer) try_expand_if_expr_assign_stmts(stmt ast.AssignStmt) ?[]a
 	if ie.else_expr is ast.EmptyExpr {
 		return none
 	}
-	return t.expand_assign_if_expr(stmt.lhs[0], ie)
+	expanded_if := t.expand_assign_if_expr(stmt.lhs[0], ie)
+	if stmt.op == .assign {
+		return expanded_if
+	}
+	decl_type := t.get_expr_type(rhs) or { return none }
+	decl_base := t.unwrap_alias_and_pointer_type(decl_type)
+	if decl_base !is types.Enum {
+		return none
+	}
+	mut result := []ast.Stmt{cap: expanded_if.len + 1}
+	result << ast.Stmt(ast.AssignStmt{
+		op:  .decl_assign
+		lhs: stmt.lhs
+		rhs: [t.zero_value_expr_for_type(decl_type)]
+		pos: stmt.pos
+	})
+	result << expanded_if
+	return result
 }
 
 // expand_assign_if_expr recursively expands an if-expression into if-statements
@@ -685,7 +981,7 @@ fn (t &Transformer) if_expr_is_value(ie ast.IfExpr) bool {
 //   x := 0; y := 0; w := 0; h := 0;
 //   if cond { x = a; y = b; w = c; h = d } else { x = e; y = f; w = g; h = h2 }
 fn (mut t Transformer) try_expand_tuple_if_assign_stmts(stmt ast.AssignStmt) ?[]ast.Stmt {
-	if stmt.op != .decl_assign {
+	if stmt.op !in [.decl_assign, .assign] {
 		return none
 	}
 	// Must have tuple LHS
@@ -743,18 +1039,19 @@ fn (mut t Transformer) try_expand_tuple_if_assign_stmts(stmt ast.AssignStmt) ?[]
 			}
 		}
 	}
-	// Build result: declarations for each variable, then the if-statement
+	// Build result: declarations for each variable when needed, then the if-statement.
 	mut result := []ast.Stmt{cap: n + 1}
-	for lhs_expr in tuple_lhs {
-		result << ast.Stmt(ast.AssignStmt{
-			op:  .decl_assign
-			lhs: [lhs_expr]
-			rhs: [ast.Expr(ast.BasicLiteral{
-				kind:  .number
-				value: '0'
-			})]
-			pos: stmt.pos
-		})
+	if stmt.op == .decl_assign {
+		for lhs_expr in tuple_lhs {
+			idx := result.len
+			zero_expr := t.tuple_if_decl_zero_value(if_expr, idx, n)
+			result << ast.Stmt(ast.AssignStmt{
+				op:  .decl_assign
+				lhs: [lhs_expr]
+				rhs: [zero_expr]
+				pos: stmt.pos
+			})
+		}
 	}
 	result << ast.Stmt(ast.ExprStmt{
 		expr: ast.IfExpr{
@@ -765,6 +1062,40 @@ fn (mut t Transformer) try_expand_tuple_if_assign_stmts(stmt ast.AssignStmt) ?[]
 		}
 	})
 	return result
+}
+
+fn (t &Transformer) tuple_if_decl_zero_value(if_expr ast.IfExpr, idx int, n int) ast.Expr {
+	if values := t.extract_branch_tuple_values(if_expr.stmts, n) {
+		if idx < values.len {
+			if expr_is_string_literal(values[idx]) {
+				return t.zero_value_expr_for_type(types.string_)
+			}
+			if typ := t.get_expr_type(values[idx]) {
+				return t.zero_value_expr_for_type(typ)
+			}
+		}
+	}
+	if if_expr.else_expr is ast.IfExpr {
+		else_if := if_expr.else_expr as ast.IfExpr
+		if values := t.extract_branch_tuple_values(else_if.stmts, n) {
+			if idx < values.len {
+				if expr_is_string_literal(values[idx]) {
+					return t.zero_value_expr_for_type(types.string_)
+				}
+				if typ := t.get_expr_type(values[idx]) {
+					return t.zero_value_expr_for_type(typ)
+				}
+			}
+		}
+	}
+	return ast.Expr(ast.BasicLiteral{
+		kind:  .number
+		value: '0'
+	})
+}
+
+fn expr_is_string_literal(expr ast.Expr) bool {
+	return expr is ast.StringLiteral || (expr is ast.BasicLiteral && expr.kind == .string)
 }
 
 // extract_branch_tuple_values extracts N values from a branch's last statement.
@@ -1078,7 +1409,7 @@ fn (t &Transformer) can_eval_comptime_cond(cond ast.Expr) bool {
 			return t.can_eval_comptime_cond(cond.expr)
 		}
 		ast.InfixExpr {
-			if cond.op == .key_is || cond.op == .not_is {
+			if cond.op in [.key_is, .key_isreftype, .not_is] {
 				return false
 			}
 			return t.can_eval_comptime_cond(cond.lhs) && t.can_eval_comptime_cond(cond.rhs)
@@ -1146,6 +1477,7 @@ fn (t &Transformer) eval_comptime_cond(cond ast.Expr) bool {
 		}
 		else {}
 	}
+
 	return false
 }
 

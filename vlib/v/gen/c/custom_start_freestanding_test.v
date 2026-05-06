@@ -35,3 +35,10 @@ fn test_linux_bare_startup_stub_stays_for_default_main() {
 	assert generated.contains('.globl _start')
 	assert !generated.contains('// export alias: _start -> main__start')
 }
+
+fn test_bare_prelude_uses_stddef_size_t() {
+	generated := generate_bare_output('module main\n\nfn main() {}\n')
+	assert generated.contains('#include <stddef.h>')
+	assert generated.contains('typedef size_t usize;')
+	assert !generated.contains('typedef long unsigned int size_t;')
+}

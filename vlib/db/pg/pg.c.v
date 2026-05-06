@@ -69,6 +69,28 @@ pub mut:
 	vals []?string
 }
 
+// val returns the value at `index`, flattening SQL NULL to an empty string.
+pub fn (row Row) val(index int) string {
+	if val := row.vals[index] {
+		return val
+	}
+	return ''
+}
+
+// values returns all row values, flattening SQL NULL to empty strings.
+pub fn (row Row) values() []string {
+	mut values := []string{cap: row.vals.len}
+	for val in row.vals {
+		values << if value := val { value } else { '' }
+	}
+	return values
+}
+
+// val_opt returns the raw optional value at `index`.
+pub fn (row Row) val_opt(index int) ?string {
+	return row.vals[index]
+}
+
 pub struct RowNoNull {
 pub mut:
 	vals []string
@@ -93,6 +115,7 @@ pub:
 	host     string = 'localhost'
 	port     int    = 5432
 	user     string
+	username string
 	password string
 	dbname   string
 }
@@ -235,7 +258,18 @@ fn escape_conninfo_value(value string) string {
 	return escaped.bytestr()
 }
 
-fn (config Config) conninfo() string {
+// connection_user returns the configured username, accepting both `user` and `username`.
+pub fn (config Config) connection_user() !string {
+	if config.user != '' && config.username != '' && config.user != config.username {
+		return error('db.pg: Config.user and Config.username must match when both are set')
+	}
+	if config.user != '' {
+		return config.user
+	}
+	return config.username
+}
+
+fn (config Config) conninfo() !string {
 	mut parts := []string{cap: 5}
 	if config.host != '' {
 		parts << 'host=${escape_conninfo_value(config.host)}'
@@ -243,8 +277,9 @@ fn (config Config) conninfo() string {
 	if config.port > 0 {
 		parts << 'port=${config.port}'
 	}
-	if config.user != '' {
-		parts << 'user=${escape_conninfo_value(config.user)}'
+	user := config.connection_user()!
+	if user != '' {
+		parts << 'user=${escape_conninfo_value(user)}'
 	}
 	if config.dbname != '' {
 		parts << 'dbname=${escape_conninfo_value(config.dbname)}'
@@ -260,7 +295,7 @@ fn (config Config) conninfo() string {
 // a connection error when something goes wrong.
 // Empty fields are omitted so libpq defaults can still apply.
 pub fn connect(config Config) !DB {
-	return connect_with_conninfo(config.conninfo())!
+	return connect_with_conninfo(config.conninfo()!)!
 }
 
 // connect_with_conninfo makes a new connection to the database server using
@@ -652,6 +687,7 @@ pub fn (db &DB) begin(param PQTransactionParam) ! {
 		.repeatable_read { sql_stmt += 'REPEATABLE READ' }
 		.serializable { sql_stmt += 'SERIALIZABLE' }
 	}
+
 	_ := C.PQexec(db.conn, &char(sql_stmt.str))
 	e := unsafe { C.PQerrorMessage(db.conn).vstring() }
 	if e != '' {

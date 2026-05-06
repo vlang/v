@@ -320,8 +320,9 @@ pub fn (mut v Builder) cc_msvc() {
 		eprintln('Sanitize not supported on msvc.')
 	}
 	// The C file we are compiling
-	// a << '"$TmpPath/${v.out_name_c}"'
-	a << '"' + os.real_path(v.out_name_c) + '"'
+	// Use /Tc<file> instead of /TC, otherwise .lib/.obj linker inputs are also
+	// treated as C sources.
+	a << '/Tc' + os.quoted_path(os.real_path(v.out_name_c))
 	if !v.ccoptions.debug_mode {
 		v.pref.cleanup_files << os.real_path(v.out_name_c)
 	}
@@ -357,6 +358,9 @@ pub fn (mut v Builder) cc_msvc() {
 
 	a << '/nologo' // NOTE: /NOLOGO is explicitly not recognised!
 	a << '/OUT:${os.quoted_path(v.pref.out_name)}'
+	if v.pref.is_livemain {
+		a << '/IMPLIB:${os.quoted_path(v.pref.out_name[..v.pref.out_name.len - 4] + '.lib')}'
+	}
 	a << r.library_paths()
 	if !all_cflags.contains('/DEBUG') {
 		// only use /DEBUG, if the user *did not* provide its own:
@@ -386,20 +390,29 @@ pub fn (mut v Builder) cc_msvc() {
 	}
 	a = filtered_args.clone()
 	v.dump_c_options(a)
-	args := '\xEF\xBB\xBF' + a.join(' ') // write a BOM to indicate the utf8 encoding of the file
-	// write args to a file so that we dont smash createprocess
-	os.write_file(out_name_cmd_line, args) or {
-		verror('Unable to write response file to "${out_name_cmd_line}"')
+	raw_args := a.join(' ')
+	mut args := raw_args
+	mut response_file := ''
+	mut cmd := '"${r.full_cl_exe_path}" ${raw_args.replace('\n', ' ')}'
+	if v.msvc_should_use_rsp(a) {
+		args = '\xEF\xBB\xBF' + raw_args // write a BOM to indicate the utf8 encoding of the file
+		// write args to a file so that we dont smash createprocess
+		os.write_file(out_name_cmd_line, args) or {
+			verror('Unable to write response file to "${out_name_cmd_line}"')
+		}
+		response_file = out_name_cmd_line
+		cmd = '"${r.full_cl_exe_path}" "@${out_name_cmd_line}"'
 	}
 	if !v.ccoptions.debug_mode {
-		v.pref.cleanup_files << out_name_cmd_line
+		if response_file != '' {
+			v.pref.cleanup_files << out_name_cmd_line
+		}
 		v.pref.cleanup_files << app_dir_out_name_c + '.obj'
 		v.pref.cleanup_files << app_dir_out_name + '.ilk'
 	}
-	cmd := '"${r.full_cl_exe_path}" "@${out_name_cmd_line}"'
 	// It is hard to see it at first, but the quotes above ARE balanced :-| ...
 	// Also the double quotes at the start ARE needed.
-	v.show_cc(cmd, out_name_cmd_line, args)
+	v.show_cc(cmd, response_file, args)
 	if os.user_os() != 'windows' && !v.pref.out_name.ends_with('.c') {
 		verror('cannot build with msvc on ${os.user_os()}')
 	}
@@ -416,27 +429,19 @@ pub fn (mut v Builder) cc_msvc() {
 	} else {
 		v.post_process_c_compiler_output(r.full_cl_exe_path, res)
 	}
+	v.apply_windows_icon_to_executable() or { verror(err.msg()) }
 	// println(res)
 	// println('C OUTPUT:')
 }
 
-fn (mut v Builder) build_thirdparty_obj_file_with_msvc(_mod string, path string, moduleflags []cflag.CFlag) {
+fn (mut v Builder) build_thirdparty_obj_file_with_msvc(mod string, path string, moduleflags []cflag.CFlag) {
 	if v.cached_msvc.valid == false {
 		verror('cannot find MSVC on this OS')
 	}
 	msvc := v.cached_msvc
 	trace_thirdparty_obj_files := 'trace_thirdparty_obj_files' in v.pref.compile_defines
-	// msvc expects .obj not .o
-	path_without_o_postfix := path[..path.len - 2] // remove .o
-	mut obj_path := if v.pref.is_debug {
-		// compiling in debug mode (-cg / -g), should produce and use its own completely separate .obj file,
-		// since it uses /MDD . Those .obj files can not be mixed with programs/objects compiled with just /MD .
-		// See https://stackoverflow.com/questions/924830/what-is-difference-btw-md-and-mdd-in-visualstudio-c
-		'${path_without_o_postfix}.debug.obj'
-	} else {
-		'${path_without_o_postfix}.obj'
-	}
-	obj_path = os.real_path(obj_path)
+	path_without_o_postfix := path.all_before_last('.')
+	obj_path := v.msvc_thirdparty_obj_path(mod, path, '')
 	if os.exists(obj_path) {
 		// println('${obj_path} already built.')
 		return
@@ -742,15 +747,8 @@ pub fn (mut v Builder) msvc_string_flags(cflags []cflag.CFlag) MsvcStringFlags {
 			// Note: gcc is smart enough to not need .lib files at all in most cases, the .dll is enough.
 			// When both a msvc .lib file and .dll file are present in the same folder,
 			// as for example for glfw3, compilation with gcc would fail.
-		} else if flag.value.ends_with('.o') {
-			// TODO: use flag.format() here as well; `#flag -L$when_first_existing(...)` is a more explicit way to achieve the same
-			// msvc expects .obj not .o
-			path_with_no_o := flag.value[..flag.value.len - 2]
-			if v.pref.is_debug {
-				other_flags << '"${path_with_no_o}.debug.obj"'
-			} else {
-				other_flags << '"${path_with_no_o}.obj"'
-			}
+		} else if flag.value.ends_with('.o') || flag.value.ends_with('.obj') {
+			other_flags << '"${v.msvc_thirdparty_obj_path(flag.mod, flag.value, flag.cached)}"'
 		} else if flag.value.starts_with('-D') {
 			defines << '/D${flag.value[2..]}'
 		} else {

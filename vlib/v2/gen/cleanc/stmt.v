@@ -213,7 +213,7 @@ fn (mut g Gen) gen_stmt(node ast.Stmt) {
 					g.sb.writeln(' };')
 					return
 				}
-				if expr_type == g.cur_fn_ret_type {
+				if expr_type == g.cur_fn_ret_type && expr !is ast.PrefixExpr {
 					g.sb.write_string('return ')
 					g.expr(expr)
 					g.sb.writeln(';')

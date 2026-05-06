@@ -682,6 +682,7 @@ pub fn (t Time) get_fmt_date_str(fmt_dlmtr FormatDelimiter, fmt_date FormatDate)
 		.yymmdd { '${year}|${t.month:02d}|${t.day:02d}' }
 		else { 'unknown enumeration ${fmt_date}' }
 	}
+
 	del := match fmt_dlmtr {
 		.dot { '.' }
 		.hyphen { '-' }
@@ -689,6 +690,7 @@ pub fn (t Time) get_fmt_date_str(fmt_dlmtr FormatDelimiter, fmt_date FormatDate)
 		.space { ' ' }
 		.no_delimiter { '' }
 	}
+
 	res = res.replace('|', del)
 	return res
 }

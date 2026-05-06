@@ -84,6 +84,31 @@ fn tool_recompilation_args(tool_name string, user_os string) []string {
 	return []string{}
 }
 
+fn temporary_tool_executable_path(vroot string, tool_name string) string {
+	sanitized_vroot := vroot.replace_each(['\\', '_', '/', '_', ':', '_'])
+	return path_of_executable(os.join_path(os.vtmp_dir(), 'tools', sanitized_vroot, tool_name))
+}
+
+fn fallback_tool_executable_path(vexe string, vroot string, tool_name string, tool_source string, tool_exe string, is_recompilation_disabled bool) string {
+	if !os.is_file(tool_source) {
+		return tool_exe
+	}
+	temporary_tool_exe := temporary_tool_executable_path(vroot, tool_name)
+	if is_recompilation_disabled && !os.exists(tool_exe) {
+		return temporary_tool_exe
+	}
+	tool_exe_dir := os.dir(tool_exe)
+	if os.is_writable(tool_exe_dir) {
+		return tool_exe
+	}
+	// Reuse a writable temp location when the packaged tool can not be updated in place.
+	if !os.exists(tool_exe) || os.exists(temporary_tool_exe)
+		|| should_recompile_tool(vexe, tool_source, tool_name, tool_exe) {
+		return temporary_tool_exe
+	}
+	return tool_exe
+}
+
 // is_escape_sequence returns `true` if `c` is considered a valid escape sequence denoter.
 @[inline]
 pub fn is_escape_sequence(c u8) bool {
@@ -119,6 +144,7 @@ pub fn launch_tool(is_verbose bool, tool_name string, args []string) {
 		tool_exe = path_of_executable(tool_basename)
 		tool_source = tool_basename + '.v'
 	}
+	original_tool_exe := tool_exe
 	if is_verbose {
 		println('launch_tool vexe        : ${vexe}')
 		println('launch_tool vroot       : ${vroot}')
@@ -128,7 +154,20 @@ pub fn launch_tool(is_verbose bool, tool_name string, args []string) {
 	}
 	disabling_file := recompilation.disabling_file(vroot)
 	is_recompilation_disabled := os.exists(disabling_file)
-	should_compile := !is_recompilation_disabled
+	tool_exe = fallback_tool_executable_path(vexe, vroot, tool_name, tool_source, tool_exe,
+		is_recompilation_disabled)
+	is_using_temporary_tool_exe := tool_exe != original_tool_exe
+	if !os.exists(tool_exe) && !os.exists(tool_source) {
+		eprintln('cannot find `${tool_name}`: missing both `${tool_exe}` and `${tool_source}`')
+		exit(1)
+	}
+	if !os.exists(tool_exe) && is_recompilation_disabled && !is_using_temporary_tool_exe {
+		eprintln('cannot find the prebuilt `${tool_name}` tool at `${tool_exe}`')
+		eprintln('Automatic tool recompilation is disabled by "${disabling_file}".')
+		eprintln('Please reinstall V from a complete package, or install V from source.')
+		exit(1)
+	}
+	should_compile := (!is_recompilation_disabled || is_using_temporary_tool_exe)
 		&& should_recompile_tool(vexe, tool_source, tool_name, tool_exe)
 	if is_verbose {
 		println('launch_tool should_compile: ${should_compile}')
@@ -154,6 +193,16 @@ pub fn launch_tool(is_verbose bool, tool_name string, args []string) {
 		if compilation_args.len > 0 {
 			compilation_command += ' ${args_quote_paths(compilation_args)} '
 		}
+		if is_using_temporary_tool_exe {
+			tmp_tool_dir := os.dir(tool_exe)
+			if !os.is_dir(tmp_tool_dir) {
+				os.mkdir_all(tmp_tool_dir) or {
+					eprintln('cannot prepare temporary tool folder `${tmp_tool_dir}`: ${err}')
+					exit(1)
+				}
+			}
+		}
+		compilation_command += ' -o ${os.quoted_path(tool_exe)} '
 		compilation_command += os.quoted_path(tool_source)
 		if is_verbose {
 			println('Compiling ${tool_name} with: "${compilation_command}"')
@@ -197,8 +246,8 @@ pub fn launch_tool(is_verbose bool, tool_name string, args []string) {
 							// `vup.exe` has logic to workaround that, and duplicating it here, is hard to debug/diagnose.
 							eprintln('Failed compilation of the `vup` tool, using the new V source code.')
 							eprintln('The new source code, is likely to be unsupported, by your existing older V executable.')
-							eprintln('Try running `make` or `make.bat` manually.')
-							eprintln('If that fails, clone V from source in a new folder, and run `make` or `make.bat` manually again there.')
+							eprintln('Try running `make` or `makev.bat` manually.')
+							eprintln('If that fails, clone V from source in a new folder, and run `make` or `makev.bat` manually again there.')
 							l.release()
 							exit(1)
 						}
@@ -216,8 +265,11 @@ pub fn launch_tool(is_verbose bool, tool_name string, args []string) {
 			tlog('lockfile released')
 		} else {
 			tlog('another process got the lock')
-			// wait till the other V tool recompilation process finished:
-			if l.wait_acquire(10 * time.second) {
+			// wait till the other V tool recompilation process finished;
+			// the timeout is intentionally generous, since on slow CI VMs
+			// (e.g. FreeBSD QEMU), recompiling a tool can take >10s, and
+			// falling through with a missing tool_exe leads to ENOENT on exec:
+			if l.wait_acquire(60 * time.second) {
 				tlog('the other process finished')
 				l.release()
 			} else {
@@ -236,7 +288,8 @@ pub fn launch_tool(is_verbose bool, tool_name string, args []string) {
 	} $else {
 		os.execvp(tool_exe, args) or {
 			eprintln('> error while executing: ${tool_exe} ${args}')
-			panic(err)
+			eprintln('> ${err}')
+			exit(1)
 		}
 	}
 	exit(2)
@@ -382,8 +435,11 @@ pub fn replace_op(s string) string {
 		'+' { '_plus' }
 		'-' { '_minus' }
 		'*' { '_mult' }
+		'**' { '_pow' }
 		'/' { '_div' }
 		'%' { '_mod' }
+		'[]' { '_index' }
+		'[]=' { '_index_set' }
 		'<' { '_lt' }
 		'>' { '_gt' }
 		'==' { '_eq' }
@@ -487,7 +543,12 @@ pub fn strip_main_name(name string) string {
 
 @[inline]
 pub fn no_dots(s string) string {
-	return s.replace_each(['.', '__', '-', '_'])
+	for ch in s {
+		if ch == `.` || ch == `-` {
+			return s.replace_each(['.', '__', '-', '_'])
+		}
+	}
+	return s
 }
 
 const map_prefix = 'map[string]'

@@ -38,17 +38,32 @@ fn (mut g Gen) gen_ctemp_var(mut tvar ast.CTempVar) {
 	final_sym := g.table.final_sym(tvar.typ)
 	if final_sym.info is ast.ArrayFixed {
 		tvar.is_fixed_ret = final_sym.info.is_fn_ret
-		g.writeln('${styp} ${tvar.name};')
 		if tvar.is_fixed_ret {
+			g.writeln('${styp} ${tvar.name};')
 			g.write('memcpy(${tvar.name}.ret_arr, ')
 			g.expr(tvar.orig)
 			g.writeln(' , sizeof(${styp[3..]}));')
+		} else if tvar.orig is ast.ArrayInit && tvar.orig.has_val && !tvar.orig.has_init
+			&& !tvar.orig.has_len && !tvar.orig.has_cap && !tvar.orig.has_index {
+			g.write('${styp} ${tvar.name} = ')
+			g.expr(tvar.orig)
+			g.writeln(';')
 		} else {
+			g.writeln('${styp} ${tvar.name};')
 			g.write('memcpy(&${tvar.name}, ')
 			g.expr(tvar.orig)
 			g.writeln(' , sizeof(${styp}));')
 		}
+	} else if final_sym.info is ast.FnType {
+		g.write_fn_ptr_decl(final_sym.info, tvar.name)
+		g.write(' = ')
+		g.expr(tvar.orig)
+		g.writeln(';')
 	} else {
+		if g.pref.gc_mode in [.boehm_full, .boehm_incr, .boehm_full_opt, .boehm_incr_opt]
+			&& g.contains_ptr(tvar.typ) {
+			g.write('volatile ')
+		}
 		g.write('${styp} ${tvar.name} = ')
 		g.expr(tvar.orig)
 		g.writeln(';')

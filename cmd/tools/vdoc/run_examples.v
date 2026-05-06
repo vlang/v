@@ -41,6 +41,7 @@ fn (mut vd VDoc) run_examples(dn doc.DocNode) {
 		.check { '-N -W -check' }
 		.skip { '' }
 	}
+
 	examples := dn.examples()
 	if examples.len == 0 {
 		return
