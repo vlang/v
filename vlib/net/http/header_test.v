@@ -21,8 +21,8 @@ fn test_header_invalid_key() {
 
 fn test_header_adds_multiple() {
 	mut h := new_header()
-	h.add(.accept, 'one')
-	h.add(.accept, 'two')
+	h.add(.accept, 'one') or { assert false, err.msg() }
+	h.add(.accept, 'two') or { assert false, err.msg() }
 
 	assert h.values(.accept) == ['one', 'two']
 }
@@ -81,9 +81,11 @@ fn test_header_delete_not_existing() {
 
 fn test_delete_header() {
 	mut r := new_request(.get, '', '')
-	r.header.set(.authorization, 'foo')
+	r.header.set(.authorization, 'foo') or { assert false, err.msg() }
 	r.header.delete(.authorization)
-	assert r.header.get(.authorization)! == ''
+	if x := r.header.get(.authorization) {
+		assert false, 'deleted header should not be retrievable, got ${x}'
+	}
 }
 
 fn test_custom_header() {
@@ -157,7 +159,7 @@ fn test_custom_values() {
 fn test_coerce_canonicalize() {
 	mut h := new_header()
 	h.add_custom('accept', 'foo')!
-	h.add(.accept, 'bar')
+	h.add(.accept, 'bar') or { assert false, err.msg() }
 	assert h.values(.accept) == ['foo', 'bar']
 	assert h.keys().len == 2
 }
@@ -183,7 +185,7 @@ fn test_render_version() {
 	mut h := new_header()
 	h.add_custom('accept', 'foo')!
 	h.add_custom('Accept', 'bar')!
-	h.add(.accept, 'baz')
+	h.add(.accept, 'baz') or { assert false, err.msg() }
 
 	s1_0 := h.render(version: .v1_0)
 	assert s1_0.contains('accept: foo\r\n')
@@ -236,8 +238,8 @@ fn test_render_canonicalize() {
 	mut h := new_header()
 	h.add_custom('accept', 'foo')!
 	h.add_custom('Accept', 'bar')!
-	h.add(.accept, 'baz')
-	h.add(.host, 'host')
+	h.add(.accept, 'baz') or { assert false, err.msg() }
+	h.add(.host, 'host') or { assert false, err.msg() }
 
 	s1_0 := h.render(version: .v1_1, canonicalize: true)
 	assert s1_0.contains('Accept: foo\r\n')
@@ -262,8 +264,8 @@ fn test_render_coerce_canonicalize() {
 	mut h := new_header()
 	h.add_custom('accept', 'foo')!
 	h.add_custom('Accept', 'bar')!
-	h.add(.accept, 'baz')
-	h.add(.host, 'host')
+	h.add(.accept, 'baz') or { assert false, err.msg() }
+	h.add(.host, 'host') or { assert false, err.msg() }
 
 	s1_0 := h.render(version: .v1_1, coerce: true, canonicalize: true)
 	assert s1_0.contains('Accept: foo\r\n')
@@ -286,7 +288,7 @@ fn test_render_coerce_canonicalize() {
 
 fn test_str() {
 	mut h := new_header()
-	h.add(.accept, 'text/html')
+	h.add(.accept, 'text/html') or { assert false, err.msg() }
 	h.add_custom('Accept', 'image/jpeg')!
 	h.add_custom('X-custom', 'Hello')!
 
@@ -386,7 +388,42 @@ fn test_parse_headers() ! {
 fn test_set_cookie() {
 	// multiple Set-Cookie headers should be sent when rendered
 	mut h := new_header()
-	h.add(.set_cookie, 'foo')
-	h.add(.set_cookie, 'bar')
+	h.add(.set_cookie, 'foo') or { assert false, err.msg() }
+	h.add(.set_cookie, 'bar') or { assert false, err.msg() }
 	assert h.render() == 'Set-Cookie: foo\r\nSet-Cookie: bar\r\n'
+}
+
+fn test_deleted_headers_are_ignored_everywhere() {
+	mut h := new_header()
+	h.add(.authorization, 'secret') or { assert false, err.msg() }
+	h.delete(.authorization)
+	assert !h.contains(.authorization)
+	assert !h.contains_custom('authorization')
+	assert h.render() == ''
+	assert h.entries().len == 0
+}
+
+fn test_header_add_custom_stops_at_max_headers() {
+	mut h := new_header()
+	for i in 0 .. max_headers {
+		h.add_custom('X-Test-${i}', '${i}') or { assert false, err.msg() }
+	}
+	h.add_custom('X-Overflow', 'boom') or {
+		assert err.msg().contains('maximum number of headers reached')
+		return
+	}
+	assert false, 'expected add_custom to fail after max_headers is reached'
+}
+
+fn test_header_add_silently_ignores_past_capacity() {
+	mut h := new_header()
+	for i in 0 .. max_headers {
+		h.add(.accept, 'val-${i}') or { assert false, err.msg() }
+	}
+	assert h.values(.accept).len == max_headers
+	h.add(.host, 'should-error') or {
+		assert err.msg().contains('maximum number of headers reached')
+		return
+	}
+	assert false, 'expected add to fail after max_headers is reached'
 }

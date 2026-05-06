@@ -1,265 +1,77 @@
+## HTTP/2, HTTP/3 & QUIC Protocol Compliance and Security Fixes
+*02 Mar 2026*
+
+#### Security fixes
+- QUIC crypto: Replace XOR-based header protection with proper AES-ECB per RFC 9001 §5.4
+- QUIC crypto: Use packet-number-derived nonces instead of random IVs per RFC 9001 §5.3
+- QUIC crypto: Fix initial_salt to match RFC 9001 v1 specification
+- QUIC stubs: Remove static global addresses, use per-connection allocation for concurrent safety
+- QUIC migration: Use crypto-random for path challenge tokens (was deterministic i*17)
+
+#### Protocol compliance fixes
+- HTTP/2 server: Add read_exact loop for reliable frame header reads
+- HTTP/2 client: Implement WINDOW_UPDATE flow control to prevent deadlock on large responses
+- HTTP/2 client: Add CONTINUATION frame support for large header blocks
+- HTTP/2 client: Send proper last_stream_id in GOAWAY frames
+- HTTP/2 frame: Ignore unknown frame types per RFC 7540 (was returning error)
+- HTTP/2 hpack: Handle 'never indexed' (0x10) representation per RFC 7541 §6.2.3
+- HTTP/2 hpack: Enforce dynamic table max size with eviction
+- HTTP/2 optimization: Fix encode_optimized for header indices >= 128
+- HTTP/3 client: Fix initial stream_id from 1 to 0 (client bidi: 0, 4, 8...)
+- HTTP/3 client: Use QPACK Decoder consistently (was mixing simplified/full decode)
+- HTTP/3 client: Add GOAWAY and SETTINGS exchange support
+- HTTP/3 server: Use proper atomic stream ID counter (was fabricating IDs)
+- HTTP/3 server: Fix double request processing
+- HTTP/3 server: Add mutex synchronization for connection state
+- HTTP/3 server: Use QPACK Encoder for response headers
+- HTTP/3 qpack: Implement Huffman decoding (was returning error)
+- HTTP/3 qpack: Wire DynamicTable to Encoder and Decoder
+- HTTP/3 encoding: Add 62-bit varint validation
+- QUIC ngtcp2: Add timer handling (get_expiry, handle_expiry, check_and_handle_timers)
+- QUIC migration: Fix cleanup_paths broken time comparison logic
+- Integration: Default to HTTP/2 for HTTPS (was incorrectly defaulting to HTTP/3)
+- Integration: Extract helper functions to deduplicate do_http2/do_http3
+
+#### Performance improvements
+- HTTP/2 huffman: Implement trie-based decode — O(n) per message (was O(n × 256 × max_bits))
+- HTTP/2 hpack: Document insert(0) bounded by max table size
+- HTTP/2 client: Add stream cleanup after response (prevents unbounded memory growth)
+- HTTP/2 client: Add configurable response timeout (default 30s)
+
+#### Code quality
+- HTTP/2 server: Replace println() with `$if debug {` eprintln() guards
+- QUIC handshake: Replace println() with `$if trace_quic ? {` eprintln() guards
+- HTTP/2 optimization: Remove dead code (fast_string_equal)
+- HTTP/3 qpack: Remove duplicate decode_integer function
+- HTTP/2 frame: Add RFC reference doc comments to frame structs
+- Type documentation: Add doc comments explaining v2/v3 Method mirror relationship
+- QUIC zero_rtt: Add integration and thread-safety TODO comments
+
+#### New tests
+- HTTP/2: huffman_trie_test.v (5 tests), hpack_test.v (+4), frame_test.v (+3), optimization_test.v (+4)
+- HTTP/3: v3_test.v (+10 encoding validation tests)
+
 ## V 0.5.1
+*13 Feb 2026*
 
-*9 Mar 2026*
+#### New features
+- Add HTTP/2 client with TLS + ALPN `h2` negotiation via mbedtls
+- Add HTTP/3 client with QUIC/ngtcp2 integration
+- Add mbedtls ALPN protocol negotiation support for `ssl_connection`
+- Add QUIC callback initialization and ngtcp2 crypto integration
+- Add `examples/http2/02_simple_client.v` HTTP/2 client demo
+- Add `examples/http3/01_simple_client.v` HTTP/3 client demo
 
-#### Improvements in the language
-
-- New clean and fast v2 backends: cleanc (similar to the old C backend), ssa/arm64, ssa/amd64,
-  cleanc backend can already self host!
-- Add a new generic solver stage (gated behind `-new-generic-solver`) (#26280)
-- Refactor $var to ${var} across entire repository, make vfmt always output the newer form
-  `${expr}` (#26494)
-- Fix support for match exprs with nested if exprs (#26599)
-- Add OS-specific headers support for #include directives (#26654) (fixes #26562)
-
-#### Checker improvements/fixes
-
-- Fix compiler panic on wrong arg count with or block (#26665)
-- Support gotodef for fn param and []Type (#26193)
-- Error for unwrapped option/result types used with in operator (fix #26208) (#26223)
-- Expand @VEXEROOT, @VMODROOT, DIR, $d(), $env() inside $embed_file(path) too (#26319)
-- Fix global empty const type check (fix #26324) (#26332)
-- Add error message call stack support (requested by #16127, #24575, etc) (#26356)
-- Fix option in struct member infix expr and swapped none comparion (fix #26351) (#26373)
-- Disallow `foo()? == foo` where foo returns `!string` (fix #26383) (#26403)
-- Unset `@VCURRENTHASH` for V build/bootstrapped outside of a Git repository (fix #26407) (#26426)
-- Check generic struct fields and initialisation (fix #26433) (fix #26436) (#26450)
-- Preserve mut in other non-none if branch (fix #26491) (#26495)
-- Fix sql statement using an unwrapped option value from an if guard (fix #26496) (#26505)
-- Add type checking for param of fn passed as generic arg (fix #26195) (#26257)
-- Add warning for `fn f(x u8) {} f(999)` (fix #26584) (fix #26585) (#26586)
-- Add passes for top level decls (fix #26306) (#26589)
-- Avoid panic on unresolved infix operand types in -check (fixes #26458) (#26607)
-- Fix shared array slice type with implicit clone (fixes #26663) (#26666)
-- Fix autofree crash with option/result method chains (#26694)
-
-#### Parser improvements
-
-- Disallow `[3]!int{}` (fix #26244) (#26249)
-- Get correct generics for generics struct fn with generic param (fix #26191) (#26251)
-- Fix dump() free bug for v.ast.TypeSymbol (fix #26282) (#26283)
-- Disallow `[T]` as fn return type  (#26530)
-- Show where another declaration is located (fixes #26483)
-- Fix `pub:` not being detected in structs in -vls-mode (#26581)
-- Fix anonymous function name collisions across files (#26642)
-- Remove @[minify] from structs with enum fields (#26661)
-
-#### Compiler internals
-
-- v.comptime,v.generics: unwrap receiver type, support more generic comptime exprs (#26350)
-- v.generic: improve new generic stage, unwrap generic ident info, set ct_expr to false if solved,
-  update receiver_type generic flag (#26366)
-- v.generics: improve the new generics stage, by fixing unwrapping in nested generic struct, also
-  fix suggestions from previous PR (#26430)
-- table: fix generics crash (fix #26438)
-- markused: add array method map and filter support (fix #26233) (#26238)
-- v.pref: exit early with an error message, if coroutines are not supported yet on the current
-  platform, instead of producing a cgen error (#26342)
-- builder: fix compile error message for -m32 (fix #16639) (#26353)
-- v.builder: add -stats for top level statements and non-vlib top level statements (#26451)
-- v.pref: improve musl detection; fixes __atomic_thread_fence for all musl nixes (fix #26449)
-  (#26460)
-- v.builder: always apply -fno-strict-aliasing too, on `-cc gcc -prod` to avoid the need for the
-  `-cflags -fno-inline-small-functions` workaround with gcc > 12.0 (fix #26512) (#26552)
-- v.scanner: optimise ident_dec_number, ident_oct_number, ident_hex_number, by using precomputed
-  digit_table and letter_table consts, instead of u8 method calls
-- v.scanner: eliminate str_helper_tokens changes outside string interpolation (fix speed loss after
-  106da40)
-- markused: add typ==0 guard for MapInit to fix panic in comptime $else branch (#26652)
-
-#### Standard library
-
-- builtin.closure: improve ppc64le closure if PIE (#26172)
-- rand.xoroshiro128pp: prevent generation of extra zeros in u16() (#26229)
-- thirdparty: fix tcc __atomic_thread_fence (fix #25856) (fix #26158) (#26185)
-- builtin.closure: use volatile register for s390x (fix #24383) (#26256)
-- thirdparty: update zstd patch with commit 8aa0369 (#26312)
-- regex.pcre: add non-greedy quantifiers like `*?`, `+?`, `??` (fix #26579) (#26582)
-- regex.pcre: optimise for speed the PCRE implementation (#26609)
-- atomic: and/or bitwise ops (#26646)
-- x.json2: add a `strict: true` mode for x.json2.decode(), that rejects string-to-number type
-  casting during decoding (fix #26082) (#26220)
-- builtin: add array.last_index() (#26252)
-- bitfield: fix pop_count(), add test (#26262)
-- io: deprecate the `io.string_reader` module (not used in vlib, with confusing and under
-  tested/documented API - see #25713 ) (#26274)
-- time: add Duration.times/1
-- os: add Pipe.write_string/1 (#26286)
-- gg: add .draw_ellipse_filled_rotate and .draw_ellipse_empty_rotate APIs (#26309)
-- gg: add draw_ellipse_thick and draw_ellipse_thick_rotate (#26327)
-- os: fix args quoting in win_spawn_process (fix #26261) (#26339)
-- gg: optimize ellipses draw functions (#26340)
-- gg: text_width_f
-- math: fix acosh() for 0.0 (#26360)
-- math: rewrite round() to match closely the Go version (and mpfr's one), update test (#26381)
-- gg: optimise the ``draw_rounded_rect_filled`` function (#26390)
-- os: add missing is_opened checks to File.read* functions (fix #26096) (#26413)
-- x.json2: add `@[json: name]` attr support for enum values (fix #26437) (#26441)
-- x.json2: rename Any.arr() to Any.as_array() for consistency with as_map(), as_map_of_string();
-  deprecate Any.arr() (#26455)
-- breaking,x.ttf: extract vlib/x/ttf/render_sokol_cpu.v in a separate module x.ttf.render_sokol,
-  to enable headless programs, that do not use gg, to not depend on OpenGL, DX12, Metal etc, through
-  sokol (#26477)
-- crypto.blake3: add @[direct_array_access] and improve f() performance (#26480)
-- crypto.rc4: add `@[direct_array_access]` (#26507)
-- x.crypto.slhdsa: fix slh signature testing on latest version (fix #24086) (#26519)
-- crypto.pbkdf2: replace a panic with an error return (#26526)
-- regex: fixed missing OR operation on anchor flag (#26540)
-- regex: new PCRE compliant regex submodule written in pure V, available through
-  `import regex.pcre` (#26545)
-- x.json2: fix decoding wrong value depending on field order (fix #26503) (#26571)
-- crypto: add shake128 and shake256 entries into crypto.Hash enum (#26576)
-- vlib: add x.atomics - implement native_x86-64_atomics in V and assembly, without depending on an
-  external C library (impl #26474) (#26529)
-- os: use _dyld_get_image_name() to increase compatibility with older versions of Mac OS X like
-  10.4 (#26617)
-- crypto: move up AEAD interface from experimental namespace to `cipher.AEAD` (#26632)
-- builtin: fix `camel_to_snake` underscore placement in uppercase runs (#26634)
-- time: parse_http_header_string (#26636)
-- flag: add DocOptions/Show to FlagParser (#26630)
-- runtime: fix issues with nr_cpus() (#26679)
-- thirdparty,sokol: add wayland support (#26682)
-- thirdparty,sokol: fix frame pacing issues on xwayland sessions, prevent sending some keycode
-  events on wayland (#26706)
-
-#### Web
-
-- net: add raw sockets support (implement feature request from #19565) (#26237)
-- veb: remove 2 clones of response bodies; reduce the GC load for the most common case (fix #25423)
-  (#26236)
-- wasm: support basic match keyword handling (#26246)
-- wasm: fix infinite loop using continue in C-like for loops (#26250)
-- wasm: add basic `for x in start .. end {` support (#26248)
-- wasm: implement basic string operations (#26260)
-- veb: fix double-send error when after-middleware sends response (#26270)
-- builder,wasm: fix pointer size to 4 for `-b wasm` before the checker stage (#26281)
-- wasm: support basic string interpolation (#26288)
-- wasm: fix string plus assign with call expr (#26287)
-- wasm: handle `for` in strings and FixedArrays (#26290)
-- wasm: support WASI program arguments and IO functions (#26294)
-- net.mbedtls: increase default timeout to 10s (like in Go): 550ms was too low
-- net: add jsonrpc module (#26330)
-- fasthttp,veb: static files via sendfile
-- wasm: fix size of pointers in structs (#26357)
-- thirdparty.mbedtls: upgrade to v3.6.5 (#26365)
-- wasm: only compile `.wasm.v`, and platform independent `.v` files (#26386)
-- fasthttp: fix sendfile (#26402)
-- wasm: add run support with wasm-micro-runtime/iwasm (#26417)
-- veb: fix unset Content-Length header, in responses with an empty body (#26431)
-- veb: fix error lines for html templates via source to source mapping
-- net.http: enable test for relative redirects (#26513)
-- fasthttp: fix IPv6 support (fix #26548) (#26549)
-- mbedtls: better ux around client timeout by mentioning the mbedtls_client_read_timeout_ms flag
-  (#26574)
-- Document `$veb.html()` too in the compiler error messages, as a known comptime function (#26605)
-- fasthttp: remove zero-byte initialization in read buffer #26640
-- net.http: stop reading after Content-Length bytes on keep-alive responses (#26669)
-
-#### ORM
-
-- Add explicit JOIN support (INNER, LEFT, RIGHT, FULL OUTER) (fix #21635) (#26400)
-- Support embedded structs
-- Make work with generic structs
-- Fix generic struct creation inside a generic function
-- Resolve generic inserting object type
-- Cgen bug fix (fixes #25847)
-- Handle inserting enum fields (#26680)
-- Add aggregate function support (#26697)
-- Add transaction API with savepoint-backed nesting (#26707)
-
-#### Database drivers
-
-- mysql: use correct link flag for both tcc and msvc (#26539)
-- pg: exec_no_null(); gx: remove deprecated test; parser/tmpl: %raw translations;
-  veb: time_to_render()
-- fix(db.sqlite): replace vstring() with tos_clone() to prevent use-after-free (#26700)
-- feat(db.sqlite): add Row.names, get_string/get_int, and improve exec_map (#26702)
-
-#### C backend
-
-- Fix multi dim fixed array with opt elem (fix #26243) (#26258)
-- Fix array.contains() when right is ref (fix #26253) (#26255)
-- Ast,checker,cgen,parser: fix comptime $if assign expr (fix #26061) (#26242)
-- Promote non generic sumtype pointer initialiations to the heap too (#26285)
-- Fix generic function error propagation type mismatch (fix #26263) (#26295)
-- Fix interface pass string ref arg (fix #26293) (#26296)
-- Fix shared array assigned call expr with fixed array (#26320)
-- Fix fixed array of option with different size (#26326)
-- Fix call with fixed array of builtin struct (#26328)
-- Fix array init with option array (fix #26329) (#26331)
-- Fix alias indent (fix #26272) (#26333)
-- Fix chan autostr (fix #26337) (#26338)
-- Transformer,markused,cgen: fix some problem for array init when use `-new-transformer` (#26341)
-- Fix `-assert backtraces` after e317c63
-- Fix for function-like macro '_BIONIC_AVAILABILITY_GUARD' which is not defined in older termux
-  releases (#26345)
-- Fix empty shared struct init (fix #16234) (#26354)
-- Add rv32 inline assembly support (#26362)
-- Fix fn arg for struct nested fields (fix #26346) (#26349)
-- Fix `+=` overloading for aliases, regression after 29e60da #23967 (fix #26416) (#26423)
-- Fix unused functions returning fixed arrays of custom structs (fix #26439) (#26440)
-- Fix or-block with fixed array constants with GCC 15.2 (fix #26442) (#26443)
-- Fix uninitialized interface bug (closes #17372)
-- Fix regression in `./v test vlib/toml` after 38ac4e6 (#26485)
-- Fix generation of struct initialisers for structs with option fields, inside ternaries (fix
-  #26476) (#26493)
-- Fix the saving of g.skip_stmt_pos and g.stmt_path_pos when generating anonymous fns (fix #26498)
-  (#26508)
-- Fix generic type handling bugs
-- Fix -autofree used for code doing "string ${f(@VEXE)} interpolation" (#26521)
-- Fix multi-return match in closure (fix #26558) (#26566)
-- Fix alias for interface and option types (fix #26551) (#26565)
-- Autofree fix generic math.min[T] used with time.Time (fix #26575) (#26577)
-- Fix extra dereference when indexing array of fns passed by pointer (fix #26556) (#26591)
-- Fix orm shared conn on sql expr (fixes #26479) (#26610)
-- Fix comptime match assign in generic fn, T.name string intp (fix #26053) (#26597)
-- Fix bit-field generation for option/result types in minified st… (#26670)
-- Use unsigned int for enum bit fields or unspecified size in @[minify] structs (#26678)
-- Fix auto-deref var in autofree string re-assignment (#26689)
-
-#### vfmt
-
-- Fix parser failing on duplicate methods in $if/$else blocks (fix #26271) (#26278)
-
-#### Tools
-
-- vwatch: fix process handle leak in kill_pgroup() (#26269)
-- vwatch: fix `-o` short flag conflict that broke hot reload (fix #26221) (#26277)
-- vcomplete: add git-fmt-hook command (#26396)
-- vrepl: fix handling of `//` inside string literals (fix #25603) (#26240)
-- v.help: add help for git-fmt-hook tool (#26394)
-- Add support for `v missdoc @vlib`
-- Add support for `v quest`
-- Add support for `v install --local gui`
-- Support .vcheckignore pattern files for `v check-md .` (#26623)
-
-#### Operating System support
-
-- msvc: split multi-token -I/-L values from pkg-config (#26637)
-- wasm: fix path separator in windows (#26264)
-- time: fix overflow in time.sys_mono_now() on windows (#26273)
-- sokol: fix errors for audio unsupported on OpenBSD (fix #26299) (#26305)
-- db.pg: improve support on OpenBSD (#26316)
-- os: fix get_raw_line for EOF on OpenBSD (fix #26361) (#26368)
-- Add support for vgit-fmt-hook on OpenBSD (fix #26344) (#26388)
-- builtin: use -Xlinker flags on macos, for compilers != tcc, to pass the rpath folder (fix for
-  folders with spaces)
-- builtin: fix for tcc builds on paths with spaces on linux
-- os: implement readlink/1 on !windows (#26405)
-- builtin: fix compilation with tcc on OpenBSD using libgc (fix #26447) (#26448)
-- fasthttp: multi threading fix reads in the socket in linux (#26478)
-- time: prevent linux time functions from being included in non-linux platforms (#26596)
-- Fix hanging when printing to console in a `-subsystem windows` executable (#26572)
-- builder: fix Windows pkgconfig paths and MSVC flags (#26631)
-- net.vschannel: chunk large TLS payloads to fix 16KB EncryptMessage crash on Windows (#26681)
-
-#### Examples
-
-- examples,strings: add a new `strings.lorem` module; use it in the Markov chain text generator
-  example (#26387)
-- Add examples/gg/pong/pong.v (#26528)
-- Improve pidigits.v using a much faster spigot algorithm
-- sokol: fix `v run examples/2048/` on macos (regressed after 5d6de17) (#26705)
+#### Bug fixes
+- Fix HPACK static table indexing off-by-one bug in HTTP/2 header compression
+- Fix Huffman decoder overflow in HTTP/2 HPACK decoding
+- Fix mbedtls ALPN memory safety: copy V strings to C heap for stable pointers
+- Fix `quic_stubs.c` global state: use per-connection malloc instead of shared globals
+- Fix `quic_stubs.c` NULL hostname validation before use
+- Fix HTTP/2 PUSH_PROMISE rejection per RFC 7540 §8.2
+- Fix `BufferPool.put()` buffer clearing bug
+- Fix `read_settings()` infinite loop risk by limiting to max 10 frames
+- Add `trace_quic` debug logging for discarded packets
 
 ## V 0.5.0
 

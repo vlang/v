@@ -455,6 +455,8 @@ pub fn parse(rawurl string) !URL {
 // sequences as part of the path for request targets.
 // The string rawurl is assumed not to have a #fragment suffix.
 // (Web browsers strip #fragment before sending the URL to a web server.)
+// Unlike `parse`, this correctly handles request-targets like `//path`
+// without misinterpreting the double-slash as an authority marker.
 pub fn parse_request_uri(rawurl string) !URL {
 	return parse_url(rawurl, true)
 }

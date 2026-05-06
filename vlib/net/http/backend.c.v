@@ -6,14 +6,21 @@ module http
 import net.ssl
 import strings
 
-fn (req &Request) ssl_do(port int, method Method, host_name string, path string, data string, header Header) !Response {
+fn (req &Request) ssl_do(port int, method Method, host_name string, path string, effective_data string) !Response {
 	$if windows && !no_vschannel ? {
-		return vschannel_ssl_do(req, port, method, host_name, path, data, header)
+		return vschannel_ssl_do(req, port, method, host_name, path, effective_data)
 	}
-	return net_ssl_do(req, port, method, host_name, path, data, header)
+	return net_ssl_do(req, port, method, host_name, path, effective_data)
 }
 
-fn net_ssl_do(req &Request, port int, method Method, host_name string, path string, data string, header Header) !Response {
+fn net_ssl_do(req &Request, port int, method Method, host_name string, path string, effective_data string) !Response {
+	mut ssl_conn := ssl.new_ssl_conn(
+		verify:                 req.verify
+		cert:                   req.cert
+		cert_key:               req.cert_key
+		validate:               req.validate
+		in_memory_verification: req.in_memory_verification
+	)!
 	mut retries := 0
 	req_headers := req.build_request_headers_with(method, host_name, port, path, data, header)
 	$if trace_http_request ? {
@@ -36,7 +43,14 @@ fn net_ssl_do(req &Request, port int, method Method, host_name string, path stri
 			}
 			continue
 		}
-		return req.do_request(req_headers, mut ssl_conn)!
+		break
+	}
+
+	req_headers := req.build_request_headers(method, host_name, port, path, effective_data)
+	$if trace_http_request ? {
+		eprint('> ')
+		eprint(req_headers)
+		eprintln('')
 	}
 	return error('http.net_ssl_do: exhausted retries')
 }

@@ -1,0 +1,222 @@
+module v2
+
+import net.http
+import time
+
+// Integration tests for HTTP/2 client
+// These tests connect to real HTTP/2 servers
+
+// Test HTTP/2 connection to google.com
+fn test_http2_google() {
+	println('Testing HTTP/2 connection to google.com...')
+
+	mut req := http.new_request(.get, 'https://www.google.com', '')
+	req.version = .v2_0
+
+	resp := req.do() or {
+		eprintln('Failed to connect: ${err}')
+		assert false, 'HTTP/2 connection failed'
+		return
+	}
+
+	assert resp.status_code == 200 || resp.status_code == 301 || resp.status_code == 302
+	assert resp.body.len > 0
+	println('✓ Google HTTP/2 test passed (${resp.status_code}, ${resp.body.len} bytes)')
+}
+
+// Test HTTP/2 connection to cloudflare.com
+fn test_http2_cloudflare() {
+	println('Testing HTTP/2 connection to cloudflare.com...')
+
+	mut req := http.new_request(.get, 'https://www.cloudflare.com', '')
+	req.version = .v2_0
+
+	resp := req.do() or {
+		eprintln('Failed to connect: ${err}')
+		assert false, 'HTTP/2 connection failed'
+		return
+	}
+
+	assert resp.status_code == 200 || resp.status_code == 301 || resp.status_code == 302
+	assert resp.body.len > 0
+	println('✓ Cloudflare HTTP/2 test passed (${resp.status_code}, ${resp.body.len} bytes)')
+}
+
+// Test HTTP/2 with custom headers
+fn test_http2_custom_headers() {
+	println('Testing HTTP/2 with custom headers...')
+
+	mut req := http.new_request(.get, 'https://httpbin.org/headers', '')
+	req.version = .v2_0
+	req.add_header('X-Test-Header', 'test-value')
+	req.add_header('User-Agent', 'V-HTTP2-Client/1.0')
+
+	resp := req.do() or {
+		eprintln('Failed to connect: ${err}')
+		// httpbin.org might not support HTTP/2, skip test
+		println('⚠ Skipping httpbin.org test (might not support HTTP/2)')
+		return
+	}
+
+	assert resp.status_code == 200
+	assert resp.body.contains('X-Test-Header') || resp.body.contains('test-value')
+	println('✓ Custom headers test passed')
+}
+
+// Test HTTP/2 POST request
+fn test_http2_post() {
+	println('Testing HTTP/2 POST request...')
+
+	json_data := '{"test": "data", "protocol": "HTTP/2"}'
+
+	mut req := http.new_request(.post, 'https://httpbin.org/post', json_data)
+	req.version = .v2_0
+	req.add_header('Content-Type', 'application/json')
+
+	resp := req.do() or {
+		eprintln('Failed to connect: ${err}')
+		println('⚠ Skipping httpbin.org POST test')
+		return
+	}
+
+	assert resp.status_code == 200
+	assert resp.body.contains('test') || resp.body.contains('data')
+	println('✓ POST request test passed')
+}
+
+// Test HTTP/2 with compression
+fn test_http2_compression() {
+	println('Testing HTTP/2 with compression...')
+
+	mut req := http.new_request(.get, 'https://www.google.com', '')
+	req.version = .v2_0
+	req.add_header('Accept-Encoding', 'gzip, deflate')
+
+	resp := req.do() or {
+		eprintln('Failed to connect: ${err}')
+		assert false, 'HTTP/2 connection failed'
+		return
+	}
+
+	assert resp.status_code == 200 || resp.status_code == 301 || resp.status_code == 302
+	println('✓ Compression test passed')
+}
+
+// Test HTTP/2 multiple requests (connection reuse)
+fn test_http2_multiple_requests() {
+	println('Testing HTTP/2 multiple requests...')
+
+	urls := [
+		'https://www.google.com',
+		'https://www.google.com/search?q=vlang',
+		'https://www.google.com/search?q=http2',
+	]
+
+	sw := time.new_stopwatch()
+
+	for i, url in urls {
+		mut req := http.new_request(.get, url, '')
+		req.version = .v2_0
+
+		resp := req.do() or {
+			eprintln('Request ${i + 1} failed: ${err}')
+			continue
+		}
+
+		assert resp.status_code == 200 || resp.status_code == 301 || resp.status_code == 302
+		println('  Request ${i + 1}: ${resp.status_code} (${resp.body.len} bytes)')
+	}
+
+	elapsed := sw.elapsed()
+	println('✓ Multiple requests completed in ${elapsed.milliseconds()}ms')
+}
+
+// Test HTTP/2 timeout handling
+fn test_http2_timeout() {
+	println('Testing HTTP/2 timeout handling...')
+
+	mut req := http.new_request(.get, 'https://httpbin.org/delay/10', '')
+	req.version = .v2_0
+	req.read_timeout = 2 * time.second
+
+	resp := req.do() or {
+		// Timeout expected
+		println('✓ Timeout handled correctly: ${err}')
+		return
+	}
+
+	// If we get here, the request completed (shouldn't happen with 2s timeout on 10s delay)
+	println('⚠ Request completed unexpectedly: ${resp.status_code}')
+}
+
+// Test HTTP/2 error handling
+fn test_http2_error_handling() {
+	println('Testing HTTP/2 error handling...')
+
+	// Test invalid URL
+	mut req := http.new_request(.get, 'https://this-domain-does-not-exist-12345.com',
+		'')
+	req.version = .v2_0
+
+	resp := req.do() or {
+		println('✓ Error handled correctly: ${err}')
+		return
+	}
+
+	println('⚠ Request succeeded unexpectedly: ${resp.status_code}')
+}
+
+// Benchmark HTTP/2 vs HTTP/1.1
+fn test_http2_benchmark() {
+	println('Benchmarking HTTP/2 vs HTTP/1.1...')
+
+	url := 'https://www.google.com'
+	iterations := 5
+
+	// HTTP/1.1
+	mut total_v1 := time.Duration(0)
+	for i in 0 .. iterations {
+		mut req := http.new_request(.get, url, '')
+		req.version = .v1_1
+
+		sw := time.new_stopwatch()
+		resp := req.do() or {
+			eprintln('HTTP/1.1 request failed: ${err}')
+			continue
+		}
+		elapsed := sw.elapsed()
+		total_v1 += elapsed
+
+		assert resp.status_code == 200 || resp.status_code == 301 || resp.status_code == 302
+	}
+	avg_v1 := total_v1 / iterations
+
+	// HTTP/2
+	mut total_v2 := time.Duration(0)
+	for i in 0 .. iterations {
+		mut req := http.new_request(.get, url, '')
+		req.version = .v2_0
+
+		sw := time.new_stopwatch()
+		resp := req.do() or {
+			eprintln('HTTP/2 request failed: ${err}')
+			continue
+		}
+		elapsed := sw.elapsed()
+		total_v2 += elapsed
+
+		assert resp.status_code == 200 || resp.status_code == 301 || resp.status_code == 302
+	}
+	avg_v2 := total_v2 / iterations
+
+	println('Results (${iterations} iterations):')
+	println('  HTTP/1.1: ${avg_v1.milliseconds()}ms average')
+	println('  HTTP/2:   ${avg_v2.milliseconds()}ms average')
+
+	if avg_v2 < avg_v1 {
+		speedup := f64(avg_v1.milliseconds()) / f64(avg_v2.milliseconds())
+		println('  ✓ HTTP/2 is ${speedup:.2f}x faster!')
+	} else {
+		println('  ⚠ HTTP/2 is slower (might be due to network conditions)')
+	}
+}

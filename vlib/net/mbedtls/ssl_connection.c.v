@@ -150,6 +150,7 @@ pub mut:
 	read_timeout time.Duration
 
 	owns_socket bool
+	alpn_list   voidptr // allocated C array of &&char for ALPN protocols, freed on shutdown
 }
 
 // SSLListener listens on a TCP port and accepts connection secured with TLS
@@ -354,6 +355,8 @@ pub:
 
 	in_memory_verification bool // if true, verify, cert, and cert_key are read from memory, not from a file
 
+	alpn_protocols []string // ALPN protocol names to negotiate (e.g. ['h2', 'http/1.1'])
+
 	get_certificate ?fn (mut SSLListener, string) !&SSLCerts
 
 	read_timeout time.Duration = default_mbedtls_client_read_timeout // the SSL client read timeout
@@ -437,7 +440,17 @@ pub fn (mut s SSLConn) shutdown() ! {
 	}
 	C.mbedtls_ssl_free(&s.ssl)
 	C.mbedtls_ssl_config_free(&s.conf)
-	free_rng(mut s.ctr_drbg, mut s.entropy)
+	if s.alpn_list != unsafe { nil } {
+		unsafe {
+			// Free each individually allocated protocol string
+			mut list := &&char(s.alpn_list)
+			for i := 0; list[i] != &char(0); i++ {
+				C.free(list[i])
+			}
+			C.free(s.alpn_list)
+		}
+		s.alpn_list = unsafe { nil }
+	}
 	if s.owns_socket {
 		net.shutdown(s.handle)
 		net.close(s.handle)!
@@ -468,18 +481,25 @@ fn (mut s SSLConn) init() ! {
 	unsafe {
 		C.mbedtls_ssl_conf_rng(&s.conf, C.mbedtls_ctr_drbg_random, &s.ctr_drbg)
 
-		// Enable ALPN for HTTP/1.1 (Required by strict servers like Rustls/Pijul)
-		// We allocate a small C array of strings: ["http/1.1", NULL]
-		// This memory must persist while the SSL config is active.
-		/*
-		alpn_list := &&char(C.malloc(2 * sizeof(voidptr)))
-		if alpn_list != 0 {
-			alpn_list[0] = c'http/1.1'
-			alpn_list[1] = &char(0)
-			C.mbedtls_ssl_conf_alpn_protocols(&s.conf, alpn_list)
+		// Set up ALPN protocols if configured.
+		// Each protocol string is copied to C heap memory to prevent
+		// V's GC from moving/freeing the strings before the SSL handshake completes.
+		if s.config.alpn_protocols.len > 0 {
+			count := s.config.alpn_protocols.len
+			// Allocate a null-terminated array of C string pointers
+			s.alpn_list = C.malloc((count + 1) * int(sizeof(voidptr)))
+			if s.alpn_list != nil {
+				mut list := &&char(s.alpn_list)
+				for i, proto in s.config.alpn_protocols {
+					c_str := &char(C.malloc(proto.len + 1))
+					C.memcpy(c_str, proto.str, proto.len)
+					c_str[proto.len] = 0
+					list[i] = c_str
+				}
+				list[count] = &char(0)
+				C.mbedtls_ssl_conf_alpn_protocols(&s.conf, list)
+			}
 		}
-		TODO free alpn_list
-		*/
 	}
 	if s.config.verify != '' || s.config.cert != '' || s.config.cert_key != '' {
 		s.certs = &SSLCerts{}
@@ -840,4 +860,14 @@ fn (mut s SSLConn) wait_for_write(timeout time.Duration) ! {
 // wait_for_read waits for a read io operation to be available
 fn (mut s SSLConn) wait_for_read(timeout time.Duration) ! {
 	return wait_for(s.handle, .read, timeout)
+}
+
+// get_alpn_selected returns the ALPN protocol selected during TLS handshake.
+// Returns none if no protocol was negotiated.
+pub fn (mut s SSLConn) get_alpn_selected() ?string {
+	result := C.mbedtls_ssl_get_alpn_protocol(&s.ssl)
+	if result == unsafe { nil } {
+		return none
+	}
+	return unsafe { result.vstring() }
 }

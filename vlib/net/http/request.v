@@ -24,7 +24,7 @@ pub struct Request {
 mut:
 	cookies map[string]string
 pub mut:
-	version    Version = .v1_1
+	version    Version = .unknown
 	method     Method  = .get
 	header     Header
 	host       string
@@ -54,6 +54,8 @@ pub mut:
 
 	stop_copying_limit   i64 = -1 // after this many bytes are received, stop copying to the response. Note that on_progress and on_progress_body callbacks, will continue to fire normally, until the full response is read, which allows you to implement streaming downloads, without keeping the whole big response in memory
 	stop_receiving_limit i64 = -1 // after this many bytes are received, break out of the loop that reads the response, effectively stopping the request early. No more on_progress callbacks will be fired. The on_finish callback will fire.
+
+	alt_svc_cache &AltSvcCache = unsafe { nil } // optional Alt-Svc cache for automatic HTTP/3 upgrade; create with new_alt_svc_cache()
 }
 
 @[manualfree]
@@ -130,7 +132,7 @@ pub fn (mut req Request) reset() {
 // add_header adds the key and value of an HTTP request header
 // To add a custom header, use add_custom_header
 pub fn (mut req Request) add_header(key CommonHeader, val string) {
-	req.header.add(key, val)
+	req.header.add(key, val) or {}
 }
 
 // add_custom_header adds the key and value of an HTTP request header
@@ -168,11 +170,13 @@ pub fn (req &Request) do() !Response {
 	mut data := req.data
 	mut header := req.header
 	mut nredirects := 0
+	mut method := req.method
+	mut effective_data := req.data
 	for {
 		if nredirects == max_redirects {
 			return error('http.request.do: maximum number of redirects reached (${max_redirects})')
 		}
-		qresp := req.method_and_url_to_response(method, rurl, data, header)!
+		qresp := req.method_and_url_to_response(method, rurl, effective_data)!
 		resp = qresp
 		if !req.allow_redirect {
 			break
@@ -182,6 +186,13 @@ pub fn (req &Request) do() !Response {
 			.permanent_redirect] {
 			break
 		}
+		// Per HTTP spec, 303 See Other requires switching to GET and dropping the body.
+		// 301/302 historically also switch to GET in practice (browser behavior).
+		if resp.status() in [.moved_permanently, .found, .see_other] {
+			method = .get
+			effective_data = ''
+		}
+		// 307/308 preserve the original method and body (no change needed)
 		// follow any redirects
 		mut redirect_url := resp.header.get(.location) or { '' }
 		if redirect_url.len > 0 && redirect_url[0] == `/` {
@@ -203,41 +214,7 @@ pub fn (req &Request) do() !Response {
 	return resp
 }
 
-fn redirected_request_parts(method Method, status Status, data string, header Header) (Method, string, Header) {
-	next_method := redirected_method(method, status)
-	if next_method == method {
-		return method, data, header
-	}
-	mut next_header := header
-	next_header.delete(.content_length)
-	next_header.delete(.content_type)
-	next_header.delete(.transfer_encoding)
-	return next_method, '', next_header
-}
-
-fn redirected_method(method Method, status Status) Method {
-	return match status {
-		.see_other {
-			if method == Method.head {
-				Method.head
-			} else {
-				Method.get
-			}
-		}
-		.moved_permanently, .found {
-			if method == Method.post {
-				Method.get
-			} else {
-				method
-			}
-		}
-		else {
-			method
-		}
-	}
-}
-
-fn (req &Request) method_and_url_to_response(method Method, url urllib.URL, data string, header Header) !Response {
+fn (req &Request) method_and_url_to_response(method Method, url urllib.URL, effective_data string) !Response {
 	host_name := url.hostname()
 	scheme := url.scheme
 	p := url.escaped_path().trim_left('/')
@@ -251,22 +228,42 @@ fn (req &Request) method_and_url_to_response(method Method, url urllib.URL, data
 			nport = 443
 		}
 	}
-	// println('fetch ${method}, ${scheme}, ${host_name}, ${nport}, ${path} ')
+
+	// Negotiate HTTP version (ALPN or explicit)
+	negotiated_version := req.negotiate_version(url)
+
+	// Route to appropriate HTTP version handler
 	if scheme == 'https' && req.proxy == unsafe { nil } {
-		// println('ssl_do( ${nport}, ${method}, ${host_name}, ${path} )')
-		for i in 0 .. req.max_retries {
-			res := req.ssl_do(nport, method, host_name, path, data, header) or {
-				if i == req.max_retries - 1 || is_no_need_retry_error(err.code()) {
-					return err
+		// Try HTTP/2 or HTTP/3 first for HTTPS
+		match negotiated_version {
+			.v3_0 {
+				// Try HTTP/3
+				res := req.do_http3(url) or {
+					// Fallback to HTTP/2
+					req.do_http2(url) or {
+						// Fallback to HTTP/1.1
+						return req.ssl_do_with_retry(nport, method, host_name, path, effective_data)!
+					}
 				}
-				continue
+				return res
 			}
-			return res
+			.v2_0 {
+				// Try HTTP/2
+				res := req.do_http2(url) or {
+					// Fallback to HTTP/1.1
+					return req.ssl_do_with_retry(nport, method, host_name, path, effective_data)!
+				}
+				return res
+			}
+			else {
+				// Use HTTP/1.1
+				return req.ssl_do_with_retry(nport, method, host_name, path, effective_data)!
+			}
 		}
 	} else if scheme == 'http' && req.proxy == unsafe { nil } {
-		// println('http_do( ${nport}, ${method}, ${host_name}, ${path} )')
+		// HTTP only supports HTTP/1.1
 		for i in 0 .. req.max_retries {
-			res := req.http_do('${host_name}:${nport}', method, path, data, header) or {
+			res := req.http_do('${host_name}:${nport}', method, path, effective_data) or {
 				if i == req.max_retries - 1 || is_no_need_retry_error(err.code()) {
 					return err
 				}
@@ -274,6 +271,7 @@ fn (req &Request) method_and_url_to_response(method Method, url urllib.URL, data
 			}
 			return res
 		}
+		return error('http request: max retries (${req.max_retries}) exceeded for ${scheme}://${host_name}')
 	} else if req.proxy != unsafe { nil } {
 		for i in 0 .. req.max_retries {
 			res := req.proxy.http_do(url, method, path, req, data, header) or {
@@ -284,15 +282,26 @@ fn (req &Request) method_and_url_to_response(method Method, url urllib.URL, data
 			}
 			return res
 		}
+		return error('http request: max retries (${req.max_retries}) exceeded for ${scheme}://${host_name}')
 	}
 	return error('http.request.method_and_url_to_response: unsupported scheme: "${scheme}"')
 }
 
-fn (req &Request) build_request_headers(method Method, host_name string, port int, path string) string {
-	return req.build_request_headers_with(method, host_name, port, path, req.data, req.header)
+// ssl_do_with_retry performs SSL request with retry logic
+fn (req &Request) ssl_do_with_retry(nport int, method Method, host_name string, path string, effective_data string) !Response {
+	for i in 0 .. req.max_retries {
+		res := req.ssl_do(nport, method, host_name, path, effective_data) or {
+			if i == req.max_retries - 1 || is_no_need_retry_error(err.code()) {
+				return err
+			}
+			continue
+		}
+		return res
+	}
+	return error('http.request.ssl_do_with_retry: max retries exceeded')
 }
 
-fn (req &Request) build_request_headers_with(method Method, host_name string, port int, path string, data string, header Header) string {
+fn (req &Request) build_request_headers(method Method, host_name string, port int, path string, effective_data string) string {
 	mut sb := strings.new_builder(4096)
 	version := if req.version == .unknown { Version.v1_1 } else { req.version }
 	sb.write_string(method.str())
@@ -301,7 +310,7 @@ fn (req &Request) build_request_headers_with(method Method, host_name string, po
 	sb.write_string(' ')
 	sb.write_string(version.str())
 	sb.write_string('\r\n')
-	if !header.contains(.host) {
+	if !req.header.contains_custom('host') {
 		sb.write_string('Host: ')
 		if port != 80 && port != 443 && port != 0 {
 			sb.write_string('${host_name}:${port}')
@@ -310,17 +319,17 @@ fn (req &Request) build_request_headers_with(method Method, host_name string, po
 		}
 		sb.write_string('\r\n')
 	}
-	if !header.contains(.user_agent) {
+	if !req.header.contains_custom('user-agent') {
 		ua := req.user_agent
 		sb.write_string('User-Agent: ')
 		sb.write_string(ua)
 		sb.write_string('\r\n')
 	}
-	if !header.contains(.content_length) {
+	if !req.header.contains_custom('content-length') {
 		// Write Content-Length: 0 even if there's no content, since some APIs
 		// stop working without this header.
 		sb.write_string('Content-Length: ')
-		sb.write_string(data.len.str())
+		sb.write_string(effective_data.len.str())
 		sb.write_string('\r\n')
 	}
 	chkey := CommonHeader.cookie.str()
@@ -337,7 +346,7 @@ fn (req &Request) build_request_headers_with(method Method, host_name string, po
 	sb.write_string(req.build_request_cookies_header_with_header(header))
 	sb.write_string('Connection: close\r\n')
 	sb.write_string('\r\n')
-	sb.write_string(data)
+	sb.write_string(effective_data)
 	return sb.str()
 }
 
@@ -374,9 +383,9 @@ fn (req &Request) build_request_cookies_header_with_header(header Header) string
 	return sb_cookie.str()
 }
 
-fn (req &Request) http_do(host string, method Method, path string, data string, header Header) !Response {
+fn (req &Request) http_do(host string, method Method, path string, effective_data string) !Response {
 	host_name, port := net.split_address(host)!
-	s := req.build_request_headers_with(method, host_name, port, path, data, header)
+	s := req.build_request_headers(method, host_name, port, path, effective_data)
 	mut client := net.dial_tcp(host)!
 	client.set_read_timeout(req.read_timeout)
 	client.set_write_timeout(req.write_timeout)
@@ -633,39 +642,22 @@ fn (req &Request) receive_all_data_from_cb_in_builder(mut content strings.Builde
 		if req.on_progress != unsafe { nil } {
 			req.on_progress(req, bchunk, u64(new_len))!
 		}
-		if headers_end < 0 {
-			unsafe { header_buf.write_ptr(bp, len) }
-			if header_buf.len >= headers_body_boundary.len {
-				header_str := header_buf.bytestr()
-				hidx := header_str.index_(headers_body_boundary)
-				if hidx >= 0 {
-					headers_end = hidx + headers_body_boundary.len
-					body_pos = u64(headers_end)
-					for line in header_str[..hidx].split('\r\n') {
-						if line.len == 0 {
-							continue
-						}
-						low := line.to_lower()
-						if low.starts_with('content-length:') {
-							raw_cl := line.all_after(':').trim_space()
-							mut valid_cl := raw_cl.len > 0
-							for ch in raw_cl {
-								if !ch.is_digit() {
-									valid_cl = false
-									break
-								}
-							}
-							if valid_cl {
-								expected_size = raw_cl.u64()
-								has_content_length = true
-							}
-						} else if low.starts_with('transfer-encoding:')
-							&& has_header_token(line.all_after(':').trim_space(), 'chunked') {
-							is_chunked_transfer = true
-						}
-					}
-					if is_chunked_transfer {
-						has_content_length = false
+		if body_pos == 0 {
+			bidx := schunk.index_(headers_body_boundary)
+			if bidx >= 0 {
+				body_buffer_offset := bidx + 4
+				bchunk = unsafe { (&u8(bchunk.data) + body_buffer_offset).vbytes(len - body_buffer_offset) }
+				body_pos = u64(old_len) + u64(body_buffer_offset)
+			}
+		}
+		body_so_far := u64(new_len) - body_pos
+		if req.on_progress_body != unsafe { nil } {
+			if expected_size == 0 {
+				lidx := schunk.index_('Content-Length: ')
+				if lidx > 0 {
+					esize := schunk[lidx..].all_before('\r\n').all_after(': ').u64()
+					if esize > 0 {
+						expected_size = esize
 					}
 				}
 			}
@@ -751,24 +743,74 @@ pub fn (req &Request) referer() string {
 	return req.header.get(.referer) or { '' }
 }
 
+// validate_and_parse_content_length strictly validates a Content-Length header value.
+// Rejects empty, non-numeric, negative, and overflow values.
+fn validate_and_parse_content_length(raw_value string) !int {
+	trimmed := raw_value.trim_space()
+	if trimmed.len == 0 {
+		return error('invalid Content-Length: empty value')
+	}
+	for c in trimmed {
+		if c < `0` || c > `9` {
+			return error('invalid Content-Length: "${trimmed}" is not a valid non-negative integer')
+		}
+	}
+	// max int is 2147483647 (10 digits); longer strings always overflow
+	if trimmed.len > 10 {
+		return error('invalid Content-Length: value exceeds maximum allowed size')
+	}
+	n := trimmed.int()
+	// 10-digit strings above 2147483647 wrap negative via .int()
+	if n < 0 {
+		return error('invalid Content-Length: value exceeds maximum allowed size')
+	}
+	return n
+}
+
+// read_request_body reads the request body using a validated Content-Length.
+// If max_body_size > 0 and the length exceeds it, returns an error.
+// If max_body_size == 0, no size limit is applied.
+fn read_request_body(mut reader io.BufferedReader, content_length_str string, max_body_size int) ![]u8 {
+	n := validate_and_parse_content_length(content_length_str)!
+	if max_body_size > 0 && n > max_body_size {
+		return error('request body too large: ${n} bytes exceeds limit of ${max_body_size} bytes')
+	}
+	if n > 0 {
+		mut body := []u8{len: n}
+		mut count := 0
+		for count < body.len {
+			count += reader.read(mut body[count..]) or { break }
+		}
+		if count < n {
+			return error('unexpected EOF while reading request body: got ${count} of ${n} bytes')
+		}
+		return body
+	}
+	return []u8{}
+}
+
 // parse_request parses a raw HTTP request into a Request object.
 // See also: `parse_request_head`, which parses only the headers.
 pub fn parse_request(mut reader io.BufferedReader) !Request {
 	mut request := parse_request_head(mut reader)!
-
-	// body
 	mut body := []u8{}
 	if length := request.header.get(.content_length) {
-		n := length.int()
-		if n > 0 {
-			body = []u8{len: n}
-			mut count := 0
-			for count < body.len {
-				count += reader.read(mut body[count..]) or { break }
-			}
-		}
+		body = read_request_body(mut reader, length, 0)!
 	}
+	request.data = body.bytestr()
+	return request
+}
 
+// parse_request_with_limit parses a raw HTTP request with body size enforcement.
+// If max_body_size > 0 and Content-Length exceeds it, returns an error.
+// If max_body_size == 0, no limit is applied (backward compatible).
+// See also: `parse_request`, which has no body size limit.
+pub fn parse_request_with_limit(mut reader io.BufferedReader, max_body_size int) !Request {
+	mut request := parse_request_head(mut reader)!
+	mut body := []u8{}
+	if length := request.header.get(.content_length) {
+		body = read_request_body(mut reader, length, max_body_size)!
+	}
 	request.data = body.bytestr()
 	return request
 }
@@ -908,7 +950,9 @@ fn parse_request_line(line string) !(Method, urllib.URL, Version) {
 	// method := method_from_str(words[0])
 	// target := urllib.parse(words[1])!
 	// version := version_from_str(words[2])
-	method := method_from_str(method_str)
+	method := method_from_str_known(method_str) or {
+		return error('unsupported method')
+	}
 	target := urllib.parse_request_uri(target_str)!
 	// println('before version_str="${version_str}"')
 	version := version_from_str(version_str)

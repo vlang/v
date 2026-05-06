@@ -184,7 +184,7 @@ pub fn new_response(conf ResponseConfig) Response {
 		header: conf.header
 	}
 	if resp.body != '' && !resp.header.contains(.content_length) {
-		resp.header.add(.content_length, resp.body.len.str())
+		resp.header.add(.content_length, resp.body.len.str()) or {}
 	}
 	resp.set_status(conf.status)
 	resp.set_version(conf.version)

@@ -81,37 +81,35 @@ mut:
 	redirects  int
 }
 
-fn (mut handler MyHttpHandler) handle(req http.Request) http.Response {
+fn (mut handler MyHttpHandler) handle(req http.ServerRequest) http.ServerResponse {
 	handler.counter++
-	// eprintln('${time.now()} | counter: ${handler.counter} | ${req.method} ${req.url}\n${req.header}\n${req.data} - 200 OK\n')
-	mut r := http.Response{
-		body:   req.data + ', ${req.url}'
-		header: req.header
-	}
-	match req.url.all_before('?') {
+	mut status_code := 200
+	mut body := req.body_text() + ', ${req.path}'
+	mut header := req.header
+
+	match req.path.all_before('?') {
 		'/endpoint', '/another/endpoint' {
-			r.set_status(.ok)
 			handler.oks++
 		}
 		'/redirect_to_big' {
-			r.header = http.new_header(key: .location, value: '/big')
-			r.status_msg = 'Moved permanently'
-			r.status_code = 301
+			header = http.new_header(key: .location, value: '/big')
+			status_code = 301
 			handler.redirects++
 		}
 		'/big' {
-			r.body = 'xyz def '.repeat(5_000)
-			r.set_status(.ok)
+			body = 'xyz def '.repeat(5_000)
 			handler.oks++
 		}
 		else {
-			r.set_status(.not_found)
+			status_code = 404
 			handler.not_founds++
 		}
 	}
-
-	r.set_version(req.version)
-	return r
+	return http.ServerResponse{
+		status_code: status_code
+		body:        body.bytes()
+		header:      header
+	}
 }
 
 fn test_server_custom_handler() {
@@ -170,7 +168,7 @@ fn test_server_custom_handler() {
 	assert progress_calls.finished_was_called
 	assert progress_calls.chunks.len > 1
 	assert progress_calls.reads.len > 1
-	assert progress_calls.chunks[0].bytestr().starts_with('HTTP/1.1 301 Moved permanently')
+	assert progress_calls.chunks[0].bytestr().starts_with('HTTP/1.1 301 Moved Permanently')
 	assert progress_calls.chunks[1].bytestr().starts_with('HTTP/1.1 200 OK')
 	assert progress_calls.chunks.last().bytestr().contains('xyz def')
 	assert progress_calls.redirected_to == ['http://${server.addr}/big']
@@ -204,23 +202,14 @@ mut:
 	counter int
 }
 
-fn (mut handler MyCountingHandler) handle(req http.Request) http.Response {
+fn (mut handler MyCountingHandler) handle(req http.ServerRequest) http.ServerResponse {
 	handler.counter++
-	mut r := http.Response{
-		body:   req.data + ', ${req.url}, counter: ${handler.counter}'
-		header: req.header
+	status_code := if req.path.all_before('?') == '/count' { 200 } else { 404 }
+	return http.ServerResponse{
+		status_code: status_code
+		body:        (req.body_text() + ', ${req.path}, counter: ${handler.counter}').bytes()
+		header:      req.header
 	}
-	match req.url.all_before('?') {
-		'/count' {
-			r.set_status(.ok)
-		}
-		else {
-			r.set_status(.not_found)
-		}
-	}
-
-	r.set_version(req.version)
-	return r
 }
 
 fn test_my_counting_handler_on_random_port() {
@@ -259,10 +248,10 @@ fn test_my_counting_handler_on_random_port() {
 
 struct MyCustomHttpHostHandler {}
 
-fn (mut handler MyCustomHttpHostHandler) handle(req http.Request) http.Response {
+fn (mut handler MyCustomHttpHostHandler) handle(req http.ServerRequest) http.ServerResponse {
 	dump(req.header)
-	return http.Response{
-		body: 'Host was: ${req.header.get(.host) or { '-' }}'
+	return http.ServerResponse{
+		body: 'Host was: ${req.header.get(.host) or { '-' }}'.bytes()
 	}
 }
 
@@ -481,18 +470,17 @@ mut:
 	request_count int
 }
 
-fn (mut handler KeepAliveHandler) handle(req http.Request) http.Response {
+fn (mut handler KeepAliveHandler) handle(req http.ServerRequest) http.ServerResponse {
 	handler.request_count++
-	mut r := http.Response{
-		body: 'request #${handler.request_count}: ${req.url}'
-	}
-	r.set_status(.ok)
-	r.set_version(req.version)
-	// Echo back the Connection header from the request if present
+	mut header := http.new_header()
 	if conn := req.header.get(.connection) {
-		r.header.set(.connection, conn)
+		header.set(.connection, conn) or {}
 	}
-	return r
+	return http.ServerResponse{
+		status_code: 200
+		body:        'request #${handler.request_count}'.bytes()
+		header:      header
+	}
 }
 
 fn test_server_keep_alive() {
@@ -665,6 +653,93 @@ fn test_server_max_keep_alive_requests() {
 	} else {
 		assert false, 'expected KeepAliveHandler, got ${typeof(server.handler).name}'
 	}
+}
+
+// Test backward-compatible Handler with handler_adapter
+struct ClassicEchoHandler {
+mut:
+	call_count int
+}
+
+fn (mut h ClassicEchoHandler) handle(req http.Request) http.Response {
+	h.call_count++
+	mut resp := http.Response{
+		body:   req.data
+		header: req.header
+	}
+	resp.set_status(.ok)
+	return resp
+}
+
+fn test_classic_handler_adapter() {
+	log.warn('${@FN} started')
+	defer { log.warn('${@FN} finished') }
+	mut classic := ClassicEchoHandler{}
+	adapted := http.handler_adapter(classic)
+	mut server := &http.Server{
+		accept_timeout:       atimeout
+		handler:              adapted
+		addr:                 '127.0.0.1:18202'
+		show_startup_message: false
+	}
+	t := spawn server.listen_and_serve()
+	server.wait_till_running() or {
+		estr := err.str()
+		if estr == 'maximum retries reached' {
+			log.error('>>>> Skipping test ${@FN} since its server could not start, err: ${err}')
+			return
+		}
+		log.fatal(estr)
+	}
+	x := http.fetch(url: 'http://${server.addr}/hello', data: 'world')!
+	assert x.body == 'world'
+	assert x.status_code == 200
+	server.stop()
+	t.wait()
+}
+
+// Test that body conversion preserves data with various content
+fn test_request_adapter_body_roundtrip() {
+	// Non-empty body
+	body_data := 'hello world'
+	req := http.Request{
+		method: .get
+		url:    '/test'
+		data:   body_data
+	}
+	sreq := http.request_to_server_request(&req)
+	assert sreq.body == body_data.bytes()
+	assert sreq.path == '/test'
+
+	// Empty body - should not allocate
+	empty_req := http.Request{
+		method: .get
+		url:    '/empty'
+		data:   ''
+	}
+	empty_sreq := http.request_to_server_request(&empty_req)
+	assert empty_sreq.body.len == 0
+	assert empty_sreq.path == '/empty'
+}
+
+fn test_response_adapter_body_roundtrip() {
+	// Non-empty body
+	body_bytes := 'response data'.bytes()
+	sresp := http.ServerResponse{
+		status_code: 200
+		body:        body_bytes
+	}
+	resp := http.server_response_to_response(sresp, .v1_1)
+	assert resp.body == 'response data'
+	assert resp.status_code == 200
+
+	// Empty body
+	empty_sresp := http.ServerResponse{
+		status_code: 204
+	}
+	empty_resp := http.server_response_to_response(empty_sresp, .v1_1)
+	assert empty_resp.body == ''
+	assert empty_resp.status_code == 204
 }
 
 fn read_http_response(mut conn net.TcpConn) !string {

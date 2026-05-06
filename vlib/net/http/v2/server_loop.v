@@ -1,0 +1,283 @@
+module v2
+
+// Frame dispatch loop and request handling for HTTP/2 server connections.
+import net.http.common
+
+// LoopState holds mutable state for the server frame processing loop.
+struct LoopState {
+mut:
+	decoder             Decoder
+	client_settings     ClientSettings
+	streams             map[u32]ServerStreamState
+	highest_stream_id   u32
+	conn_bytes_received u32
+	continuation_state  ContinuationState
+}
+
+fn (mut s Server) run_frame_loop(mut conn ServerConn, mut ctx ConnContext, initial_client_settings ClientSettings) u32 {
+	mut state := LoopState{
+		decoder:         new_decoder_with_limit(65536)
+		client_settings: initial_client_settings
+	}
+
+	for {
+		frame := s.read_frame(mut conn) or {
+			if err.msg().contains('EOF') {
+				break
+			}
+			send_goaway_and_close(mut conn, state.highest_stream_id, .protocol_error,
+				'read frame error: ${err}') or {}
+			break
+		}
+
+		s.dispatch_frame(frame, mut conn, mut ctx, mut state) or { break }
+	}
+
+	return state.highest_stream_id
+}
+
+// dispatch_frame routes a single frame to the appropriate handler.
+fn (mut s Server) dispatch_frame(frame Frame, mut conn ServerConn, mut ctx ConnContext, mut state LoopState) ! {
+	match frame.header.frame_type {
+		.settings {
+			s.handle_settings(mut conn, frame, mut state.client_settings, mut ctx) or {
+				return send_goaway_and_close(mut conn, state.highest_stream_id, .protocol_error,
+					'settings error: ${err}')
+			}
+		}
+		.headers {
+			s.dispatch_headers_frame(frame, mut conn, mut ctx, mut state)
+		}
+		.data {
+			state.conn_bytes_received = s.handle_data_in_loop(frame, mut state.streams, mut
+				ctx, mut conn, state.conn_bytes_received)
+		}
+		.continuation {
+			handle_continuation_in_loop(frame, mut state.continuation_state, mut state.streams, mut
+				conn, mut ctx, mut state.decoder, state.highest_stream_id, state.client_settings, mut
+				s)!
+		}
+		.priority {
+			handle_priority(frame)
+		}
+		.ping {
+			s.handle_ping(mut conn, frame) or {
+				return send_goaway_and_close(mut conn, state.highest_stream_id, .protocol_error,
+					'ping error: ${err}')
+			}
+		}
+		.window_update {
+			handle_window_update_in_loop(frame, mut ctx, mut conn) or {
+				return send_goaway_and_close(mut conn, state.highest_stream_id, .protocol_error,
+					'window_update error: ${err}')
+			}
+		}
+		.rst_stream {
+			ctx.flow.remove_stream(frame.header.stream_id)
+			state.streams.delete(frame.header.stream_id)
+		}
+		else {
+			// RFC 7540 §5.5: Implementations MUST ignore and discard frames of unknown type.
+			$if trace_http2 ? {
+				eprintln('[HTTP/2] Ignoring unknown frame type: 0x${u8(frame.header.frame_type):02x} on stream ${frame.header.stream_id}')
+			}
+		}
+	}
+}
+
+// dispatch_headers_frame tracks the highest stream ID and delegates to handle_headers_in_loop.
+fn (mut s Server) dispatch_headers_frame(frame Frame, mut conn ServerConn, mut ctx ConnContext, mut state LoopState) {
+	sid := frame.header.stream_id
+	if sid > 0 && sid > state.highest_stream_id {
+		state.highest_stream_id = sid
+	}
+	s.handle_headers_in_loop(frame, mut state.streams, mut ctx, mut conn, mut state.decoder,
+		state.client_settings, mut state.continuation_state)
+}
+
+fn (mut s Server) handle_headers_in_loop(frame Frame, mut streams map[u32]ServerStreamState, mut ctx ConnContext, mut conn ServerConn, mut decoder Decoder, cs ClientSettings, mut cont ContinuationState) {
+	stream_id := frame.header.stream_id
+	if stream_id == 0 {
+		send_goaway_and_close(mut conn, 0, .protocol_error, 'HEADERS on stream 0') or {}
+		return
+	}
+	if streams.len >= int(s.config.max_concurrent_streams) {
+		send_rst_stream(mut conn, stream_id, .refused_stream) or {}
+		return
+	}
+	hf := HeadersFrame.from_frame(frame) or {
+		send_goaway_and_close(mut conn, stream_id, .protocol_error, 'invalid HEADERS frame: ${err}') or {}
+		return
+	}
+	if !hf.end_headers {
+		cont.stream_id = stream_id
+		cont.raw_header_block = hf.headers.clone()
+		cont.count = 0
+		return
+	}
+	raw_decoded := decoder.decode(hf.headers) or {
+		send_goaway_and_close(mut conn, stream_id, .compression_error, 'header decode error: ${err}') or {}
+		return
+	}
+	decoded := join_cookie_headers(raw_decoded)
+	validate_request_headers(decoded) or {
+		$if trace_http2 ? {
+			eprintln('[HTTP/2] Malformed request on stream ${stream_id}: ${err}')
+		}
+		send_rst_stream(mut conn, stream_id, .protocol_error) or {}
+		return
+	}
+	method, path, host, header := extract_pseudo_headers(decoded)
+	streams[stream_id] = ServerStreamState{
+		method: method
+		path:   path
+		host:   host
+		header: header
+	}
+	ctx.flow.init_stream(stream_id, cs.initial_window_size)
+	if frame.header.has_flag(.end_stream) {
+		stream := streams[stream_id]
+		streams.delete(stream_id)
+		ctx.flow.remove_stream(stream_id)
+		request := build_request(stream_id, stream)
+		ctx.wg.add(1)
+		spawn s.dispatch_stream(mut conn, request, mut ctx)
+	}
+}
+
+fn (mut s Server) handle_data_in_loop(frame Frame, mut streams map[u32]ServerStreamState, mut ctx ConnContext, mut conn ServerConn, conn_bytes_received u32) u32 {
+	stream_id := frame.header.stream_id
+	if stream_id !in streams {
+		send_rst_stream(mut conn, stream_id, .protocol_error) or {}
+		return conn_bytes_received
+	}
+	df := DataFrame.from_frame(frame) or {
+		eprintln('[HTTP/2] DATA parse error: ${err}')
+		return conn_bytes_received
+	}
+	data_len := u32(df.data.len)
+	max_body := s.config.max_request_body_size
+	if max_body > 0 && streams[stream_id].body.len + int(data_len) > max_body {
+		send_rst_stream(mut conn, stream_id, .refused_stream) or {}
+		ctx.flow.remove_stream(stream_id)
+		streams.delete(stream_id)
+		return conn_bytes_received
+	}
+	streams[stream_id].body << df.data
+
+	mut updated_bytes := conn_bytes_received + data_len
+	conn_wu_threshold := s.config.initial_window_size / 2
+	if conn_wu_threshold > 0 && updated_bytes >= conn_wu_threshold {
+		send_window_update(mut conn, 0, updated_bytes) or {
+			eprintln('[HTTP/2] Failed to send connection WINDOW_UPDATE: ${err}')
+		}
+		updated_bytes = 0
+	}
+	if data_len > 0 {
+		send_window_update(mut conn, stream_id, data_len) or {
+			eprintln('[HTTP/2] Failed to send stream WINDOW_UPDATE: ${err}')
+		}
+	}
+	if df.end_stream {
+		stream := streams[stream_id]
+		streams.delete(stream_id)
+		request := build_request(stream_id, stream)
+		ctx.wg.add(1)
+		spawn s.dispatch_stream(mut conn, request, mut ctx)
+	}
+	return updated_bytes
+}
+
+fn handle_window_update_in_loop(frame Frame, mut ctx ConnContext, mut conn ServerConn) ! {
+	wuf := WindowUpdateFrame.from_frame(frame) or {
+		eprintln('[HTTP/2] Invalid WINDOW_UPDATE: ${err}')
+		return
+	}
+	if frame.header.stream_id == 0 {
+		ctx.flow.update_connection_window(wuf.window_increment)!
+	} else {
+		ctx.flow.update_stream_window(frame.header.stream_id, wuf.window_increment) or {
+			send_rst_stream(mut conn, frame.header.stream_id, .protocol_error) or {}
+			return
+		}
+	}
+}
+
+// extract_pseudo_headers extracts :method, :path, :authority, and regular headers from
+// decoded header fields. For CONNECT requests (RFC 7540 §8.3), :authority
+// is used as the path since :path is absent.
+fn extract_pseudo_headers(decoded []HeaderField) (string, string, string, common.Header) {
+	mut method_str := ''
+	mut path := ''
+	mut authority := ''
+	mut header := common.new_header()
+	for h in decoded {
+		match h.name {
+			':method' { method_str = h.value }
+			':path' { path = h.value }
+			':authority' { authority = h.value }
+			else { header.add_custom(h.name, h.value) or {} }
+		}
+	}
+	// RFC 7540 §8.3: CONNECT uses :authority as its target
+	if method_str == 'CONNECT' && path == '' {
+		path = authority
+	}
+	return method_str, path, authority, header
+}
+
+fn build_request(stream_id u32, stream ServerStreamState) ServerRequest {
+	mut header := stream.header
+	if stream.host != '' && !header.contains(.host) {
+		header.set(.host, stream.host) or {}
+	}
+	return ServerRequest{
+		method:    common.method_from_str(stream.method)
+		path:      stream.path
+		host:      stream.host
+		header:    header
+		body:      stream.body
+		version:   .v2_0
+		stream_id: u64(stream_id)
+	}
+}
+
+fn (mut s Server) dispatch_stream(mut conn ServerConn, request ServerRequest, mut ctx ConnContext) {
+	sid := u32(request.stream_id)
+	defer {
+		ctx.flow.remove_stream(sid)
+		ctx.wg.done()
+	}
+
+	h := s.handler or {
+		ctx.write_mu.lock()
+		error_response := ServerResponse{
+			status_code: 500
+			header:      common.from_map({'content-type': 'text/plain'})
+			body:        'no handler configured'.bytes()
+		}
+		s.send_response(mut conn, sid, error_response, mut ctx.encoder, mut
+			ctx.flow) or { eprintln('[HTTP/2] Failed to send error response: ${err}') }
+		ctx.write_mu.unlock()
+		return
+	}
+
+	response := h(request)
+
+	ctx.write_mu.lock()
+	s.send_response(mut conn, sid, response, mut ctx.encoder, mut ctx.flow) or {
+		eprintln('[HTTP/2] Failed to send response: ${err}')
+	}
+	ctx.write_mu.unlock()
+}
+
+fn send_goaway_and_close(mut conn ServerConn, last_stream_id u32, error_code ErrorCode, debug_msg string) ! {
+	goaway := GoAwayFrame{
+		last_stream_id: last_stream_id
+		error_code:     error_code
+		debug_data:     debug_msg.bytes()
+	}
+	frame_bytes := goaway.to_frame().encode()
+	conn.write(frame_bytes) or {}
+	return error('GOAWAY sent: ${debug_msg}')
+}

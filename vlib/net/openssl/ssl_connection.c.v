@@ -27,6 +27,8 @@ pub:
 	validate bool   // set this to true, if you want to stop requests, when their certificates are found to be invalid
 
 	in_memory_verification bool // if true, verify, cert, and cert_key are read from memory, not from a file
+
+	alpn_protocols []string // ALPN protocol names to negotiate (e.g. ['h2', 'http/1.1'])
 }
 
 // new_ssl_conn instance an new SSLCon struct
@@ -130,6 +132,26 @@ fn (mut s SSLConn) init() ! {
 	s.ssl = unsafe { &C.SSL(C.SSL_new(s.sslctx)) }
 	if s.ssl == 0 {
 		return error('net.openssl Could not create OpenSSL instance')
+	}
+
+	// Set up ALPN protocols if configured.
+	// OpenSSL requires wire format: each protocol prefixed by its length byte.
+	if s.config.alpn_protocols.len > 0 {
+		mut wire_len := 0
+		for proto in s.config.alpn_protocols {
+			wire_len += 1 + proto.len
+		}
+		mut wire := []u8{len: wire_len}
+		mut offset := 0
+		for proto in s.config.alpn_protocols {
+			wire[offset] = u8(proto.len)
+			offset++
+			for b in proto.bytes() {
+				wire[offset] = b
+				offset++
+			}
+		}
+		C.SSL_CTX_set_alpn_protos(s.sslctx, wire.data, u32(wire_len))
 	}
 
 	mut res := 0
@@ -494,4 +516,16 @@ fn (mut s SSLConn) wait_for_write(timeout time.Duration) ! {
 // wait_for_read waits for a read io operation to be available
 fn (mut s SSLConn) wait_for_read(timeout time.Duration) ! {
 	return wait_for(s.handle, .read, timeout)
+}
+
+// get_alpn_selected returns the ALPN protocol selected during TLS handshake.
+// Returns none if no protocol was negotiated.
+pub fn (mut s SSLConn) get_alpn_selected() ?string {
+	data := &u8(unsafe { nil })
+	len := u32(0)
+	C.SSL_get0_alpn_selected(s.ssl, &data, &len)
+	if data == unsafe { nil } || len == 0 {
+		return none
+	}
+	return unsafe { data.vstring_with_len(int(len)) }
 }

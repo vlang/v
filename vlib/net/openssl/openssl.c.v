@@ -149,6 +149,10 @@ fn C.TLSv1_2_method() voidptr
 
 fn C.v_net_openssl_init_ssl() i32
 
+fn C.SSL_CTX_set_alpn_protos(ctx &C.SSL_CTX, protos &u8, protos_len u32) int
+
+fn C.SSL_get0_alpn_selected(ssl &C.SSL, data &&u8, len &u32)
+
 fn init() {
 	C.v_net_openssl_init_ssl()
 }

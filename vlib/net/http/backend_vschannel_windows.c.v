@@ -18,13 +18,13 @@ fn C.vschannel_use_tls12_client_protocol()
 fn C.vschannel_init(tls_ctx &C.TlsContext, validate_server_certificate C.BOOL)
 fn C.vschannel_last_error(tls_ctx &C.TlsContext) int
 
-fn vschannel_ssl_do(req &Request, port int, method Method, host_name string, path string, data string, header Header) !Response {
+fn vschannel_ssl_do(req &Request, port int, method Method, host_name string, path string, effective_data string) !Response {
 	mut ctx := C.new_tls_context()
 	C.vschannel_use_tls12_client_protocol()
 	C.vschannel_init(&ctx, C.BOOL(if req.validate { 1 } else { 0 }))
 	mut buff := unsafe { malloc_noscan(C.vsc_init_resp_buff_size) }
 	addr := host_name
-	sdata := req.build_request_headers_with(method, host_name, port, path, data, header)
+	sdata := req.build_request_headers(method, host_name, port, path, effective_data)
 	$if trace_http_request ? {
 		eprintln('> ${sdata}')
 	}

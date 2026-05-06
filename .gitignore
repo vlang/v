@@ -161,11 +161,15 @@ autofuzz.log
 .project.gf
 .aider*
 
-# ignore common file names for bugs/reproductions
-bug*
-issue*
+# ignore temporary build/lock files
+*.lock
 
-# ignore cmd2/v stuff
-cmd/v2/*.txt
-cmd/v2/*.json
-.claude/
+# ignore serena agent working directory
+.serena/*
+CHANGELOG.md
+v
+vnew
+vnew.*
+
+docs/
+*.md

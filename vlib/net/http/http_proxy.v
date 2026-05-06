@@ -159,20 +159,21 @@ fn (pr &HttpProxy) http_do(host urllib.URL, method Method, path string, req &Req
 		':${port}'
 	}
 
-	s := req.build_request_headers_with(method, host_name, port,
-		'${host.scheme}://${host_name}${port_part}${path}', data, header)
+	s := req.build_request_headers(req.method, host_name, port, '${host.scheme}://${host_name}${port_part}${path}', req.data)
 	if host.scheme == 'https' {
 		mut client := pr.ssl_dial('${host_name}:${port}')!
 
 		$if windows {
 			return error('Windows Not SUPPORTED') // TODO: windows ssl
 			// response_text := req.do_request(req.build_request_headers(req.method, host_name,
-			// 	path))!
+			// 	path, req.data))!
 			// client.shutdown()!
 			// return response_text
 		} $else {
-			return req.do_request(req.build_request_headers_with(method, host_name, port, path,
-				data, header), mut client)!
+			response_text := req.do_request(req.build_request_headers(req.method, host_name,
+				port, path, req.data), mut client)!
+			client.shutdown()!
+			return response_text
 		}
 	} else if host.scheme == 'http' {
 		mut client := pr.dial('${host_name}:${port}')!
