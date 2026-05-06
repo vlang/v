@@ -81,6 +81,14 @@ fn tool_recompilation_args(tool_name string, user_os string) []string {
 		// FreeBSD's default tcc setup can not compile vdoc reliably.
 		return ['-cc', 'cc']
 	}
+	if tool_name == 'vpm' {
+		// vpm performs HTTPS requests against the package registry, so it
+		// pulls in the TLS layer. Build it against OpenSSL instead of the
+		// bundled mbedtls: tcc miscompiles mbedtls big-int routines on
+		// Apple Silicon, which causes TLS handshakes to spin forever in
+		// mbedtls_mpi_sub_abs / ecp_modp (e.g. `v install sdl` would hang).
+		return ['-d', 'use_openssl']
+	}
 	return []string{}
 }
 
