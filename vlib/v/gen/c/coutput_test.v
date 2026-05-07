@@ -261,6 +261,23 @@ fn test_no_main_exports_initialize_windows_runtime() {
 	}
 }
 
+fn test_coverage_output_checks_counter_file_open() {
+	os.chdir(vroot) or {}
+	test_source := os.join_path(os.vtmp_dir(), 'coutput_coverage_file_guard.vv')
+	os.write_file(test_source, 'fn main() {\n\tprintln("coverage")\n}\n')!
+	defer {
+		os.rm(test_source) or {}
+	}
+	coverage_dir := os.join_path(os.vtmp_dir(), 'coutput_coverage')
+	cmd := '${os.quoted_path(vexe)} -o - -coverage ${os.quoted_path(coverage_dir)} ${os.quoted_path(test_source)}'
+	compilation := os.execute(cmd)
+	ensure_compilation_succeeded(compilation, cmd)
+	assert compilation.output.contains('FILE *fp = fopen(cov_filename, "wb+");')
+	assert compilation.output.contains('if (fp == NULL) { return; }')
+	assert compilation.output.contains('nsecs = ts.tv_nsec;')
+	assert !compilation.output.contains('\nsecs = ts.tv_nsec;')
+}
+
 fn test_c_fallback_decl_uses_module_wide_c_includes() {
 	os.chdir(vroot) or {}
 	test_source := os.join_path(os.vtmp_dir(), 'coutput_module_c_include')
