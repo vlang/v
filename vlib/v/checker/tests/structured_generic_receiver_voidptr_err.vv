@@ -1,0 +1,16 @@
+struct ReceiverPatternExpect[T] {
+	value T
+}
+
+fn (e ReceiverPatternExpect[[]T]) array_item(value T) T {
+	if e.value.len == 0 {
+		return value
+	}
+	return e.value[0]
+}
+
+fn main() {
+	ReceiverPatternExpect[[]voidptr]{
+		value: []voidptr{}
+	}.array_item(unsafe { nil })
+}

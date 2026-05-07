@@ -255,6 +255,22 @@ fn (mut g Gen) infer_branch_expr_type(stmts []ast.Stmt) ast.Type {
 	return g.unwrap_generic(g.recheck_concrete_type(resolved_typ))
 }
 
+fn (mut g Gen) expected_rhs_type_for_expr(pos int, node_type ast.Type) ast.Type {
+	if pos < 0 || node_type == 0 || node_type == ast.void_type || !node_type.has_option_or_result() {
+		return ast.void_type
+	}
+	expected_type := g.expected_rhs_type_by_pos[pos] or { return ast.void_type }
+	if expected_type == 0 || expected_type == ast.void_type || expected_type.has_option_or_result() {
+		return ast.void_type
+	}
+	resolved_expected_type := g.unwrap_generic(g.recheck_concrete_type(expected_type))
+	if resolved_expected_type == 0 || resolved_expected_type == ast.void_type
+		|| resolved_expected_type.has_option_or_result() {
+		return ast.void_type
+	}
+	return resolved_expected_type
+}
+
 fn (mut g Gen) infer_if_expr_type(node ast.IfExpr) ast.Type {
 	if g.inside_return && g.inside_struct_init {
 		for branch in node.branches {
@@ -265,14 +281,18 @@ fn (mut g Gen) infer_if_expr_type(node ast.IfExpr) ast.Type {
 		}
 	}
 	if node.typ != 0 && node.typ != ast.void_type {
+		expected_rhs_type := g.expected_rhs_type_for_expr(node.pos.pos, node.typ)
+		if expected_rhs_type != ast.void_type {
+			return expected_rhs_type
+		}
 		resolved := g.unwrap_generic(g.recheck_concrete_type(node.typ))
 		// In generic functions, node.typ may have been mutated by the checker
 		// to a concrete type from the last processed instantiation. When the
-		// if-expr is used as a return value (g.inside_return), use the function's
+		// if-expr is used as a return expression, use the function's
 		// return type instead, which correctly resolves via cur_concrete_types.
 		// Only apply this override when the function's return type is actually
 		// generic — otherwise the if-expression type is concrete and correct.
-		if g.inside_return && !g.inside_struct_init && g.cur_fn != unsafe { nil }
+		if g.inside_return_expr && !g.inside_struct_init && g.cur_fn != unsafe { nil }
 			&& g.cur_concrete_types.len > 0 && g.cur_fn.return_type.has_flag(.generic) {
 			fn_ret := g.unwrap_generic(g.recheck_concrete_type(g.cur_fn.return_type))
 			if fn_ret != 0 && fn_ret != ast.void_type {
@@ -305,14 +325,18 @@ fn (mut g Gen) infer_match_expr_type(node ast.MatchExpr) ast.Type {
 		}
 	}
 	if node.return_type != 0 && node.return_type != ast.void_type {
+		expected_rhs_type := g.expected_rhs_type_for_expr(node.pos.pos, node.return_type)
+		if expected_rhs_type != ast.void_type {
+			return expected_rhs_type
+		}
 		resolved := g.unwrap_generic(g.recheck_concrete_type(node.return_type))
 		// In generic functions, node.return_type may have been mutated by the checker
 		// to a concrete type from the last processed instantiation. When the match is
-		// used as a return value (g.inside_return), use the function's return type
+		// used as a return expression, use the function's return type
 		// instead, which correctly resolves via cur_concrete_types.
 		// Only apply this override when the function's return type is actually
 		// generic — otherwise the match expression type is concrete and correct.
-		if g.inside_return && !g.inside_struct_init && g.cur_fn != unsafe { nil }
+		if g.inside_return_expr && !g.inside_struct_init && g.cur_fn != unsafe { nil }
 			&& g.cur_concrete_types.len > 0 && g.cur_fn.return_type.has_flag(.generic) {
 			fn_ret := g.unwrap_generic(g.recheck_concrete_type(g.cur_fn.return_type))
 			if fn_ret != 0 && fn_ret != ast.void_type {

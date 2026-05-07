@@ -65,31 +65,32 @@ pub struct Table {
 mut:
 	parsing_type string // name of the type to enable recursive type parsing
 pub mut:
-	type_symbols       []&TypeSymbol
-	type_idxs          map[string]int
-	fns                map[string]Fn
-	iface_types        map[string][]Type
-	dumps              map[int]string // needed for efficiently generating all _v_dump_expr_TNAME() functions
-	imports            []string       // List of all imports
-	modules            []string       // Topologically sorted list of all modules registered by the application
-	global_scope       &Scope = unsafe { nil }
-	cflags             []cflag.CFlag
-	redefined_fns      []string
-	fn_generic_types   map[string][][]Type // for generic functions
-	interfaces         map[int]InterfaceDecl
-	sumtypes           map[int]SumTypeDecl
-	cmod_prefix        string // needed for ast.type_to_str(Type) while vfmt; contains `os.`
-	is_fmt             bool
-	used_features      &UsedFeatures = &UsedFeatures{} // filled in by the builder via markused module, when pref.skip_unused = true;
-	veb_res_idx_cache  int // Cache of `veb.Result` type
-	veb_ctx_idx_cache  int // Cache of `veb.Context` type
-	panic_handler      FnPanicHandler = default_table_panic_handler
-	panic_userdata     voidptr        = unsafe { nil } // can be used to pass arbitrary data to panic_handler;
-	panic_npanics      int
-	cur_fn             &FnDecl     = unsafe { nil } // previously stored in Checker.cur_fn and Gen.cur_fn
-	cur_lambda         &LambdaExpr = unsafe { nil } // current lambda node
-	cur_concrete_types []Type // current concrete types, e.g. [int, string]
-	gostmts            int    // how many `go` statements there were in the parsed files.
+	type_symbols                []&TypeSymbol
+	type_idxs                   map[string]int
+	fns                         map[string]Fn
+	iface_types                 map[string][]Type
+	dumps                       map[int]string // needed for efficiently generating all _v_dump_expr_TNAME() functions
+	imports                     []string       // List of all imports
+	modules                     []string       // Topologically sorted list of all modules registered by the application
+	global_scope                &Scope = unsafe { nil }
+	cflags                      []cflag.CFlag
+	redefined_fns               []string
+	fn_generic_types            map[string][][]Type // for generic functions
+	structured_receiver_methods map[string][]Fn
+	interfaces                  map[int]InterfaceDecl
+	sumtypes                    map[int]SumTypeDecl
+	cmod_prefix                 string // needed for ast.type_to_str(Type) while vfmt; contains `os.`
+	is_fmt                      bool
+	used_features               &UsedFeatures = &UsedFeatures{} // filled in by the builder via markused module, when pref.skip_unused = true;
+	veb_res_idx_cache           int // Cache of `veb.Result` type
+	veb_ctx_idx_cache           int // Cache of `veb.Context` type
+	panic_handler               FnPanicHandler = default_table_panic_handler
+	panic_userdata              voidptr        = unsafe { nil } // can be used to pass arbitrary data to panic_handler;
+	panic_npanics               int
+	cur_fn                      &FnDecl     = unsafe { nil } // previously stored in Checker.cur_fn and Gen.cur_fn
+	cur_lambda                  &LambdaExpr = unsafe { nil } // current lambda node
+	cur_concrete_types          []Type // current concrete types, e.g. [int, string]
+	gostmts                     int    // how many `go` statements there were in the parsed files.
 	// When table.gostmts > 0, __VTHREADS__ is defined, which can be checked with `$if threads {`
 	enum_decls        map[string]EnumDecl
 	vls_info          map[string]VlsInfo
@@ -388,6 +389,21 @@ pub fn (mut t TypeSymbol) register_method(new_fn Fn) int {
 	// for faster lookup in the checker's fn_decl method
 	t.methods << new_fn
 	return t.methods.len - 1
+}
+
+fn receiver_pattern_method_key(parent_idx int, name string) string {
+	return '${parent_idx}.${name}'
+}
+
+pub fn (mut t Table) register_structured_receiver_method(new_fn Fn) {
+	if !t.receiver_type_is_structured_generic_pattern(new_fn.receiver_type) {
+		return
+	}
+	receiver := t.receiver_generic_types(new_fn.receiver_type) or { return }
+	key := receiver_pattern_method_key(receiver.parent_idx, new_fn.name)
+	mut methods := t.structured_receiver_methods[key] or { []Fn{} }
+	methods << new_fn
+	t.structured_receiver_methods[key] = methods
 }
 
 pub fn (mut t TypeSymbol) update_method(f Fn) int {
@@ -4076,6 +4092,14 @@ fn (mut t Table) should_auto_register_concrete_method(method Fn, parent_type Typ
 	if parent_idx == 0 || method.generic_names.len != concrete_types.len {
 		return false
 	}
+	for concrete_type in concrete_types {
+		if t.concrete_type_has_unresolved_generic_parts(concrete_type) {
+			return false
+		}
+	}
+	if t.receiver_type_is_structured_generic_pattern(method.receiver_type) {
+		return false
+	}
 	for i in 1 .. method.params.len {
 		param := method.params[i]
 		mut param_typ := param.typ
@@ -4101,6 +4125,144 @@ fn (mut t Table) should_auto_register_concrete_method(method Fn, parent_type Typ
 		}
 	}
 	return !t.type_contains_transformed_parent_inst(return_type, parent_idx, concrete_types)
+}
+
+fn (t &Table) concrete_type_has_unresolved_generic_parts(typ Type) bool {
+	if typ == 0 {
+		return false
+	}
+	if typ.has_flag(.generic) {
+		return true
+	}
+	idx := typ.idx()
+	if idx <= nil_type_idx {
+		return false
+	}
+	sym := t.sym(typ)
+	if sym.kind == .placeholder || (sym.kind == .any && !sym.is_builtin()) {
+		return true
+	}
+	match sym.info {
+		Array {
+			return t.concrete_type_has_unresolved_generic_parts(sym.info.elem_type)
+		}
+		ArrayFixed {
+			return t.concrete_type_has_unresolved_generic_parts(sym.info.elem_type)
+		}
+		Chan {
+			return t.concrete_type_has_unresolved_generic_parts(sym.info.elem_type)
+		}
+		Thread {
+			return t.concrete_type_has_unresolved_generic_parts(sym.info.return_type)
+		}
+		Map {
+			if t.concrete_type_has_unresolved_generic_parts(sym.info.key_type) {
+				return true
+			}
+			return t.concrete_type_has_unresolved_generic_parts(sym.info.value_type)
+		}
+		FnType {
+			if t.concrete_type_has_unresolved_generic_parts(sym.info.func.return_type) {
+				return true
+			}
+			for param in sym.info.func.params {
+				if t.concrete_type_has_unresolved_generic_parts(param.typ) {
+					return true
+				}
+			}
+			return false
+		}
+		MultiReturn {
+			for typ_ in sym.info.types {
+				if t.concrete_type_has_unresolved_generic_parts(typ_) {
+					return true
+				}
+			}
+			return false
+		}
+		Struct {
+			if sym.info.concrete_types.len > 0 {
+				for concrete_type in sym.info.concrete_types {
+					if t.concrete_type_has_unresolved_generic_parts(concrete_type) {
+						return true
+					}
+				}
+				return false
+			}
+			if sym.generic_types.len == sym.info.generic_types.len
+				&& sym.generic_types != sym.info.generic_types {
+				for generic_type in sym.generic_types {
+					if t.concrete_type_has_unresolved_generic_parts(generic_type) {
+						return true
+					}
+				}
+				return false
+			}
+			return sym.info.generic_types.len > 0
+		}
+		Interface {
+			if sym.info.concrete_types.len > 0 {
+				for concrete_type in sym.info.concrete_types {
+					if t.concrete_type_has_unresolved_generic_parts(concrete_type) {
+						return true
+					}
+				}
+				return false
+			}
+			if sym.generic_types.len == sym.info.generic_types.len
+				&& sym.generic_types != sym.info.generic_types {
+				for generic_type in sym.generic_types {
+					if t.concrete_type_has_unresolved_generic_parts(generic_type) {
+						return true
+					}
+				}
+				return false
+			}
+			return sym.info.is_generic
+		}
+		SumType {
+			if sym.info.concrete_types.len > 0 {
+				for concrete_type in sym.info.concrete_types {
+					if t.concrete_type_has_unresolved_generic_parts(concrete_type) {
+						return true
+					}
+				}
+				return false
+			}
+			if sym.generic_types.len == sym.info.generic_types.len
+				&& sym.generic_types != sym.info.generic_types {
+				for generic_type in sym.generic_types {
+					if t.concrete_type_has_unresolved_generic_parts(generic_type) {
+						return true
+					}
+				}
+				return false
+			}
+			return sym.info.is_generic
+		}
+		GenericInst {
+			for concrete_type in sym.info.concrete_types {
+				if t.concrete_type_has_unresolved_generic_parts(concrete_type) {
+					return true
+				}
+			}
+			return false
+		}
+		UnknownTypeInfo {
+			if sym.name.contains('[') && sym.name.contains(']') {
+				args := sym.name.all_after('[').trim_right(']').split(',')
+				for arg in args {
+					if util.is_generic_type_name(arg.trim_space()) {
+						return true
+					}
+				}
+			}
+			return false
+		}
+		else {
+			return false
+		}
+	}
 }
 
 fn (mut t Table) unwrap_method_types(ts &TypeSymbol, generic_names []string, concrete_types []Type) {
