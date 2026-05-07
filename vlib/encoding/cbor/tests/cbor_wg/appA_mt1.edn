@@ -1,0 +1,31 @@
+{
+  "title": "mt1",
+  "description": "Plain negative CBOR integers storable as major type 1 (mt1), from RFC 8949 appendix A",
+  "tests": [
+    {
+      "description": "mt1 minimum",
+      "encoded": h'3bffffffffffffffff',
+      "decoded": -18446744073709551616,
+    },
+    {
+      "description": "mt1 maximum",
+      "encoded": h'20',
+      "decoded": -1,
+    },
+    {
+      "description": "mt1 -10",
+      "encoded": h'29',
+      "decoded": -10,
+    }
+    {
+      "description": "mt1 -100",
+      "encoded": h'3863',
+      "decoded": -100,
+    }
+    {
+      "description": "mt1 -1000",
+      "encoded": h'3903e7',
+      "decoded": -1000,
+    }
+  ],
+}
