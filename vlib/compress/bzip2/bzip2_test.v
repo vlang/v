@@ -107,3 +107,30 @@ fn test_block_output_limit_guard() {
 	}
 	assert false
 }
+
+fn test_find_rle1_block_end_for_four_byte_runs() {
+	mut src := []u8{cap: 100000}
+	for i in 0 .. 25000 {
+		b := u8(i & 0xff)
+		for _ in 0 .. 4 {
+			src << b
+		}
+	}
+	end := find_rle1_block_end(src, 0, 100000)
+	assert end == 80000
+	assert rle1_encode(src[0..end]).len == 100000
+	assert rle1_encode(src[0..end + 4]).len > 100000
+}
+
+fn test_roundtrip_block_size_1_four_byte_runs() {
+	mut src := []u8{cap: 100000}
+	for i in 0 .. 25000 {
+		b := u8(i & 0xff)
+		for _ in 0 .. 4 {
+			src << b
+		}
+	}
+	compressed := compress(src, block_size: 1) or { panic(err) }
+	decompressed := decompress(compressed) or { panic(err) }
+	assert decompressed == src
+}

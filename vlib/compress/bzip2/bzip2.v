@@ -78,7 +78,7 @@ pub fn compress(src []u8, params CompressParams) ![]u8 {
 	if src.len > 0 {
 		mut pos := 0
 		for pos < src.len {
-			end := if pos + max_block < src.len { pos + max_block } else { src.len }
+			end := find_rle1_block_end(src, pos, max_block)
 			chunk := src[pos..end]
 			block := encode_block(chunk)!
 			w.write_bits(48, bzip2_block_magic)
@@ -832,6 +832,81 @@ fn rle1_encode(src []u8) []u8 {
 			}
 		}
 		i += run
+	}
+	return out
+}
+
+fn find_rle1_block_end(src []u8, start int, block_limit int) int {
+	if start >= src.len {
+		return start
+	}
+	mut end := start
+	mut encoded_len := 0
+	for end < src.len {
+		b := src[end]
+		mut run_len := 1
+		for end + run_len < src.len && src[end + run_len] == b {
+			run_len++
+		}
+		run_encoded_len := rle1_encoded_run_len(run_len)
+		if encoded_len + run_encoded_len <= block_limit {
+			encoded_len += run_encoded_len
+			end += run_len
+			continue
+		}
+		available := block_limit - encoded_len
+		if available <= 0 {
+			break
+		}
+		take := max_run_prefix_for_rle1(run_len, available)
+		if take <= 0 {
+			break
+		}
+		end += take
+		break
+	}
+	if end == start {
+		return start + 1
+	}
+	return end
+}
+
+fn max_run_prefix_for_rle1(run_len int, encoded_limit int) int {
+	if run_len <= 0 || encoded_limit <= 0 {
+		return 0
+	}
+	mut lo := 1
+	mut hi := run_len
+	mut best := 0
+	for lo <= hi {
+		mid := lo + (hi - lo) / 2
+		if rle1_encoded_run_len(mid) <= encoded_limit {
+			best = mid
+			lo = mid + 1
+		} else {
+			hi = mid - 1
+		}
+	}
+	return best
+}
+
+fn rle1_encoded_run_len(run_len int) int {
+	if run_len <= 0 {
+		return 0
+	}
+	if run_len <= 3 {
+		return run_len
+	}
+	full_chunks := run_len / 259
+	rem := run_len % 259
+	mut out := full_chunks * 5
+	if rem == 0 {
+		return out
+	}
+	if rem <= 3 {
+		out += rem
+	} else {
+		out += 5
 	}
 	return out
 }
