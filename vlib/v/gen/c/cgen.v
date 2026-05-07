@@ -8393,8 +8393,9 @@ fn (mut g Gen) lock_expr_mtx(expr ast.Expr) {
 }
 
 fn (mut g Gen) map_init(node ast.MapInit) {
-	unwrap_key_typ := g.unwrap_generic(node.key_type)
-	unwrap_val_typ := g.unwrap_generic(node.value_type).clear_flag(.result)
+	unwrap_key_typ, unwrap_val_typ_ := g.resolved_map_key_value_types(node.typ, node.key_type,
+		node.value_type)
+	unwrap_val_typ := unwrap_val_typ_.clear_flag(.result)
 	key_typ_str := g.styp(unwrap_key_typ)
 	value_typ_str := g.styp(unwrap_val_typ)
 	value_sym := g.table.sym(unwrap_val_typ)
@@ -8416,8 +8417,8 @@ fn (mut g Gen) map_init(node ast.MapInit) {
 		styp = g.styp(node.typ)
 		g.write('(${styp}*)builtin__memdup(ADDR(${styp}, ')
 	}
-	noscan_key := g.check_noscan(node.key_type)
-	noscan_value := g.check_noscan(node.value_type)
+	noscan_key := g.check_noscan(unwrap_key_typ)
+	noscan_value := g.check_noscan(unwrap_val_typ)
 	mut noscan := if noscan_key.len != 0 || noscan_value.len != 0 { '_noscan' } else { '' }
 	if noscan.len != 0 {
 		if noscan_key.len != 0 {
