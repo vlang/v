@@ -11600,9 +11600,21 @@ fn (mut g Gen) or_block_on_value(var_name string, or_block ast.OrExpr, return_ty
 		g.writeln('if (${cvar_name}${tmp_op}state != 0) {')
 	}
 	g.or_expr_return_type = return_type
-	if or_block.err_used || or_block_last_stmt_is_err(or_block.stmts)
-		|| (g.fn_decl != unsafe { nil } && (g.fn_decl.is_main || g.fn_decl.is_test)) {
-		g.writeln('\tIError err = ${cvar_name}${tmp_op}err;')
+	mut or_block_has_special_err := false
+	if err_obj := or_block.scope.objects['err'] {
+		if err_obj is ast.Var {
+			or_block_has_special_err = err_obj.is_special
+		}
+	}
+	or_block_needs_err := or_block_has_special_err
+		&& (or_block.err_used || or_block_last_stmt_is_err(or_block.stmts))
+	fn_forces_err := g.fn_decl != unsafe { nil } && (g.fn_decl.is_main || g.fn_decl.is_test)
+	if or_block_needs_err || fn_forces_err {
+		err_tmp := g.new_tmp_var()
+		g.writeln('\tIError ${err_tmp} = ${cvar_name}${tmp_op}err;')
+		if or_block_needs_err || cvar_name != 'err' {
+			g.writeln('\tIError err = ${err_tmp};')
+		}
 	}
 	g.inside_or_block = true
 	defer {
@@ -11696,9 +11708,21 @@ fn (mut g Gen) or_block(var_name string, or_block ast.OrExpr, return_type ast.Ty
 	g.write_v_source_line_info_pos(or_block.pos)
 	if or_block.kind == .block {
 		g.or_expr_return_type = return_type.clear_option_and_result()
-		if or_block.err_used || or_block_last_stmt_is_err(or_block.stmts)
-			|| (g.fn_decl != unsafe { nil } && (g.fn_decl.is_main || g.fn_decl.is_test)) {
-			g.writeln('\tIError err = ${cvar_name}${tmp_op}err;')
+		mut or_block_has_special_err := false
+		if err_obj := or_block.scope.objects['err'] {
+			if err_obj is ast.Var {
+				or_block_has_special_err = err_obj.is_special
+			}
+		}
+		or_block_needs_err := or_block_has_special_err
+			&& (or_block.err_used || or_block_last_stmt_is_err(or_block.stmts))
+		fn_forces_err := g.fn_decl != unsafe { nil } && (g.fn_decl.is_main || g.fn_decl.is_test)
+		if or_block_needs_err || fn_forces_err {
+			err_tmp := g.new_tmp_var()
+			g.writeln('\tIError ${err_tmp} = ${cvar_name}${tmp_op}err;')
+			if or_block_needs_err || cvar_name != 'err' {
+				g.writeln('\tIError err = ${err_tmp};')
+			}
 		}
 
 		g.inside_or_block = true
