@@ -4,10 +4,10 @@ pub type EventHandlerFn = fn (receiver voidptr, from string, to string)
 
 pub type ConditionFn = fn (receiver voidptr, from string, to string) bool
 
-fn dummy_event_handler_fn(receiver voidptr, from string, to string) {
+fn dummy_event_handler_fn(_ voidptr, _ string, _ string) {
 }
 
-fn dummy_condition_fn(receiver voidptr, from string, to string) bool {
+fn dummy_condition_fn(_ voidptr, _ string, _ string) bool {
 	return true
 }
 
