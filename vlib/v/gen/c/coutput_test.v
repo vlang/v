@@ -409,7 +409,7 @@ fn test_veb_implicit_ctx_alias_uses_user_context_name() {
 	defer {
 		os.rm(test_source) or {}
 	}
-	cmd := '${os.quoted_path(vexe)} -o - ${os.quoted_path(test_source)}'
+	cmd := '${os.quoted_path(vexe)} -gc boehm_full_opt -o - ${os.quoted_path(test_source)}'
 	compilation := os.execute(cmd)
 	ensure_compilation_succeeded(compilation, cmd)
 	mut normalized := compilation.output.replace('\t', ' ').replace('\n', ' ')

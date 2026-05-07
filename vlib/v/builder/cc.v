@@ -632,7 +632,8 @@ fn (mut v Builder) setup_ccompiler_options(ccompiler string) {
 	if ccoptions.cc == .unknown {
 		eprintln('Compilation with unknown C compiler `${cc_file_name}`')
 	}
-	if v.pref.os == .macos {
+	if v.pref.os == .macos && ccoptions.cc != .tcc {
+		// tcc does not understand -arch; it only targets the host arch.
 		darwin_target_arch := darwin_target_arch_name(v.pref.arch)
 		if darwin_target_arch != '' {
 			ccoptions.args << ['-arch', darwin_target_arch]
