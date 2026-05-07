@@ -133,6 +133,7 @@ fn propagate_cancel(mut parent Context, mut child Canceler) {
 			child.cancel(false, parent.err())
 			return
 		}
+		else {}
 	}
 	mut p := parent_cancel_context(mut parent) or {
 		spawn fn (mut parent Context, mut child Canceler) {
