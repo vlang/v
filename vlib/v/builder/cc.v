@@ -908,6 +908,7 @@ fn (mut v Builder) setup_ccompiler_options(ccompiler string) {
 	ccoptions.pre_args << defines
 	ccoptions.pre_args << others
 	ccoptions.linker_flags << libs
+	v.fixup_tcc_macos_comma_path_flags(mut ccoptions)
 	if v.pref.use_cache && v.pref.build_mode != .build_module {
 		if ccoptions.cc != .tcc {
 			$if linux {
@@ -2127,6 +2128,71 @@ fn sqlite_thirdparty_validation_error(mod string, obj_path string, source_file s
 		return 'The `db.sqlite` module expects the SQLite amalgamation files `sqlite3.c` and `sqlite3.h` in `${sqlite_dir}`. Run `v vlib/db/sqlite/install_thirdparty_sqlite.vsh`, or download the SQLite amalgamation package and place those files there.'
 	}
 	return ''
+}
+
+// fixup_tcc_macos_comma_path_flags works around the fact that both tcc and
+// clang split `-Wl,foo,bar` on every comma without an escape mechanism. When
+// V's install path contains a literal comma (used in CI to stress
+// space-paths), the `-Wl,-rpath,"@VEXEROOT/thirdparty/tcc/lib"` flag emitted
+// by builtin_d_gcboehm.c.v under `$if tinyc` expands into a path with a comma
+// and the linker rejects it. The bundled libgc.dylib also gets passed by
+// absolute path; that itself is fine, but the dylib's `LC_ID_DYLIB` is
+// `@rpath/libgc.dylib`, so the linked binary cannot find the library at
+// runtime once we strip the rpath flag.
+//
+// This helper copies the bundled dylib into a non-comma cache directory,
+// updates the copy's install_name to its own absolute path (so the linked
+// binary records that path in `LC_LOAD_DYLIB`), then rewrites the dylib flag
+// in the linker arguments to point at the copy and drops the now-broken rpath
+// flag. The bundled libgc.dylib itself is left untouched, so binaries built
+// before/elsewhere that rely on `@rpath/libgc.dylib` still work. The fixup is
+// applied for any cc, since V may fall back from tcc to clang and reuse the
+// already-emitted flags.
+fn (v &Builder) fixup_tcc_macos_comma_path_flags(mut ccoptions CcompilerOptions) {
+	$if !macos {
+		return
+	}
+	if v.pref.os != .macos {
+		return
+	}
+	tcc_lib_dir := os.real_path(os.join_path(v.pref.vroot, 'thirdparty', 'tcc', 'lib'))
+	if !tcc_lib_dir.contains(',') {
+		return
+	}
+	src_dylib := os.join_path(tcc_lib_dir, 'libgc.dylib')
+	if !os.exists(src_dylib) {
+		return
+	}
+	cache_dir := os.join_path(os.temp_dir(), 'v_tcc_libgc')
+	if cache_dir.contains(',') {
+		return
+	}
+	if !os.exists(cache_dir) {
+		os.mkdir_all(cache_dir) or { return }
+	}
+	cache_dylib := os.join_path(cache_dir, 'libgc.dylib')
+	src_mtime := os.file_last_mod_unix(src_dylib)
+	if !os.exists(cache_dylib) || os.file_last_mod_unix(cache_dylib) < src_mtime {
+		os.cp(src_dylib, cache_dylib) or { return }
+		idres :=
+			os.execute('install_name_tool -id ${os.quoted_path(cache_dylib)} ${os.quoted_path(cache_dylib)}')
+		if idres.exit_code != 0 {
+			if v.pref.is_verbose {
+				eprintln('install_name_tool -id for ${cache_dylib} failed: ${idres.output.trim_space()}')
+			}
+			return
+		}
+	}
+	cache_dylib_quoted := '"${cache_dylib}"'
+	suffix := os.path_separator + 'tcc' + os.path_separator + 'lib' + os.path_separator +
+		'libgc.dylib'
+	ccoptions.linker_flags = ccoptions.linker_flags.map(if it.ends_with(suffix + '"')
+		&& it.starts_with('"') {
+		cache_dylib_quoted
+	} else {
+		it
+	})
+	ccoptions.pre_args = ccoptions.pre_args.filter(!it.starts_with('-Wl,-rpath,'))
 }
 
 fn (v &Builder) should_compile_bundled_thirdparty_object_from_source(obj_path string, source_file string, source_kind SourceKind) bool {
