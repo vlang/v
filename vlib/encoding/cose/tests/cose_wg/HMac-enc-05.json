@@ -1,0 +1,38 @@
+{
+   "title":"HMAC-ENC-05: Direct key + HMAC-SHA256/64 - implicit",
+   "input":{
+      "plaintext":"This is the content.",
+      "mac0":{
+         "alg":"HS256/64",
+         "protected":{
+            "alg":"HS256/64"
+         },
+         "recipients":[
+            {
+               "unprotected":{
+                  "alg":"direct",
+                  "kid":"our-secret"
+               },
+               "key":{
+                  "kty":"oct",
+                  "kid":"our-secret",
+                  "use":"enc",
+                  "k":"hJtXIZ2uSN5kbQfbtTNWbpdmhkV8FJG-Onbc6mxCcYg"
+               }
+            }
+         ]
+      }
+   },
+   "intermediates":{
+      "ToMac_hex":"84644D41433043A101044054546869732069732074686520636F6E74656E742E",
+      "CEK_hex":"849B57219DAE48DE646D07DBB533566E976686457C1491BE3A76DCEA6C427188",
+      "recipients":[
+         {
+         }
+      ]
+   },
+   "output":{
+      "cbor_diag":"17([h'A10104', {}, h'546869732069732074686520636F6E74656E742E', h'11F9E357975FB849'])",
+      "cbor":"D18443A10104A054546869732069732074686520636F6E74656E742E4811F9E357975FB849"
+   }
+}
