@@ -44,7 +44,7 @@ fn test_with_cancel_cause_first_cause_wins() {
 
 	cancel(first)
 	cancel(second) // should be ignored
-	cancel(none)   // should be ignored
+	cancel(none) // should be ignored
 
 	assert cause(ctx).str() == 'first cause'
 }
