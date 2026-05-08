@@ -66,7 +66,7 @@ fn (c Components) derived_value(name string) !string {
 		}
 		'@authority' {
 			if a := c.authority {
-				a.to_lower()
+				normalize_authority(a, c.scheme)
 			} else {
 				return missing(name)
 			}
@@ -132,6 +132,38 @@ fn missing(name string) IError {
 	return MalformedMessage{
 		reason: 'covered component "${name}" is not present in the message'
 	}
+}
+
+// normalize_authority lowercases the authority and strips the port when
+// it equals the URI scheme's default (RFC 9421 §2.2.3 + RFC 9110 §4.2.3).
+// Without this, peers that emit `example.com` and peers that emit
+// `example.com:443` produce different signature bases for the same
+// resource and fail to interoperate.
+fn normalize_authority(authority string, scheme ?string) string {
+	lower := authority.to_lower()
+	port_colon := find_port_colon(lower) or { return lower }
+	port := lower[port_colon + 1..]
+	scheme_lower := if s := scheme { s.to_lower() } else { '' }
+	if (scheme_lower == 'https' && port == '443') || (scheme_lower == 'http' && port == '80') {
+		return lower[..port_colon]
+	}
+	return lower
+}
+
+// find_port_colon returns the index of the ':' that separates the port
+// in an authority, or `none` if no port is present. IPv6 literals embed
+// colons inside `[...]`; the port colon (if any) is the one immediately
+// following the closing bracket.
+fn find_port_colon(authority string) ?int {
+	if authority.starts_with('[') {
+		bracket := authority.index(']') or { return none }
+		if bracket + 1 < authority.len && authority[bracket + 1] == `:` {
+			return bracket + 1
+		}
+		return none
+	}
+	colon := authority.last_index(':') or { return none }
+	return colon
 }
 
 // trim_ows removes leading/trailing OWS (RFC 7230 §3.2.3 - SP and
