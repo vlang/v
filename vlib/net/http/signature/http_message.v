@@ -27,6 +27,12 @@ pub:
 	// the wire. Most signers leave it off (the verifier looks the alg
 	// up by `keyid`); set to true for explicit signalling.
 	include_alg bool
+	// scheme is used to reconstruct `@target-uri` and `@scheme` when
+	// `req.url` is origin-form (e.g. `/foo`, as produced by
+	// `http.parse_request*`). The default matches the common signing
+	// scenario (TLS-protected APIs). Ignored when `req.url` already
+	// carries a scheme.
+	scheme string = 'https'
 }
 
 // sign_request signs an HTTP request in place by appending the
@@ -39,7 +45,7 @@ pub:
 // RFC 9421 §7.2.1 RECOMMENDS the parameter for replay protection.
 // Pass an explicit `created: 0` only if you know you don't want it.
 pub fn sign_request(mut req http.Request, key Key, opts SignRequestOptions) ! {
-	c := request_components(req)!
+	c := request_components(req, opts.scheme)!
 	mut comps := opts.components.clone()
 	if comps.len == 0 {
 		comps = default_request_components(req)
@@ -69,6 +75,10 @@ pub struct VerifyRequestOptions {
 pub:
 	label    string
 	now_unix i64
+	// scheme — see SignRequestOptions.scheme. Both ends of the
+	// signature must agree on the scheme used to reconstruct the
+	// target URI, otherwise the signature bases differ.
+	scheme string = 'https'
 }
 
 // verify_request verifies a labelled signature on an HTTP request. If
@@ -76,7 +86,7 @@ pub:
 // one is checked. If `opts.now_unix > 0`, the `expires` parameter is
 // also enforced.
 pub fn verify_request(req http.Request, key Key, opts VerifyRequestOptions) ! {
-	c := request_components(req)!
+	c := request_components(req, opts.scheme)!
 	sig_input := merged_dict_field(req.header, 'Signature-Input') or {
 		return MalformedMessage{
 			reason: 'request has no Signature-Input header'
@@ -180,14 +190,13 @@ fn merged_dict_field(h http.Header, name string) ?string {
 }
 
 // request_components extracts the derived-component values from an
-// http.Request. The url field is parsed once; if it is not a valid
-// URL we surface a typed error rather than silently dropping
-// components that depend on it (@scheme, @authority, @path, @query).
-fn request_components(req http.Request) !Components {
-	mut c := Components{
-		method:     req.method.str()
-		target_uri: req.url
-	}
+// http.Request. `default_scheme` is used when `req.url` is in
+// origin-form (e.g. `/foo?bar=1`, as produced by `http.parse_request*`
+// for inbound HTTP/1.1 messages); in that case `@target-uri` is
+// reconstructed as `<scheme>://<authority><url>` per RFC 9110 §7.1.
+// If `req.url` is not a valid URL we surface a typed error rather
+// than silently dropping components that depend on it.
+fn request_components(req http.Request, default_scheme string) !Components {
 	parsed := urllib.parse(req.url) or {
 		return MalformedMessage{
 			reason: 'request url "${req.url}" is not a valid URL: ${err.msg()}'
@@ -198,11 +207,21 @@ fn request_components(req http.Request) !Components {
 	} else {
 		req.host
 	}
+	scheme := if parsed.scheme != '' { parsed.scheme } else { default_scheme }
+	mut c := Components{
+		method: req.method.str()
+	}
+	is_origin_form := req.url.starts_with('/')
+	c.target_uri = if is_origin_form && authority != '' {
+		'${scheme}://${authority}${req.url}'
+	} else {
+		req.url
+	}
 	if authority != '' {
 		c.authority = authority
 	}
-	if parsed.scheme != '' {
-		c.scheme = parsed.scheme
+	if scheme != '' {
+		c.scheme = scheme
 	}
 	if parsed.path != '' {
 		c.path = parsed.path

@@ -140,6 +140,65 @@ fn test_verify_request_rejects_expired_signature() {
 	verify_request(req, key)!
 }
 
+fn test_origin_form_request_target_uri_reconstructed() {
+	// Inbound HTTP/1.1 requests parsed by `http.parse_request*` carry
+	// the request target verbatim (`/foo?bar=1`), not an absolute URI.
+	// `request_components` must rebuild `<scheme>://<authority><url>`
+	// so the verifier sees the same `@target-uri` as a peer that signs
+	// with an absolute URL.
+	mut signing_req := http.Request{
+		method: .post
+		url:    'https://example.com/foo?bar=1'
+	}
+	signing_req.header.add_custom('Host', 'example.com')!
+	key := Key.hmac_sha256(test_secret.bytes())
+	sign_request(mut signing_req, key,
+		components: ['@method', '@target-uri']
+		created:    1
+	)!
+
+	// Receiver side: same request as it would land after parsing.
+	mut received := http.Request{
+		method: .post
+		url:    '/foo?bar=1'
+		host:   'example.com'
+	}
+	for k in signing_req.header.keys() {
+		for v in signing_req.header.custom_values(k) {
+			received.header.add_custom(k, v)!
+		}
+	}
+	verify_request(received, key)!
+}
+
+fn test_origin_form_uses_explicit_scheme() {
+	// HTTP-only deployment: caller must pass `scheme: 'http'` so both
+	// sides agree on the reconstructed target URI.
+	mut signing_req := http.Request{
+		method: .get
+		url:    'http://api.example.com/v1/items'
+	}
+	signing_req.header.add_custom('Host', 'api.example.com')!
+	key := Key.hmac_sha256(test_secret.bytes())
+	sign_request(mut signing_req, key,
+		components: ['@method', '@target-uri']
+		created:    1
+		scheme:     'http'
+	)!
+
+	mut received := http.Request{
+		method: .get
+		url:    '/v1/items'
+		host:   'api.example.com'
+	}
+	for k in signing_req.header.keys() {
+		for v in signing_req.header.custom_values(k) {
+			received.header.add_custom(k, v)!
+		}
+	}
+	verify_request(received, key, scheme: 'http')!
+}
+
 fn test_sign_two_signatures_coexist() {
 	mut req := build_request('https://example.com/foo')
 	k1 := Key.hmac_sha256('one'.bytes())
