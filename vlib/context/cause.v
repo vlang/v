@@ -20,7 +20,8 @@ pub type CancelCauseFunc = fn (cause IError)
 // embedded CancelContext.
 @[heap]
 struct CauseContext {
-	id string
+	id       string
+	deadline time.Time
 mut:
 	cancel_ctx CancelContext
 	cause      IError = none
@@ -72,6 +73,7 @@ pub fn with_deadline_cause(mut parent Context, d time.Time, deadline_cause IErro
 	mut ctx := &CauseContext{
 		id:         id
 		cancel_ctx: inner
+		deadline:   d
 	}
 	propagate_cancel(mut parent, mut ctx)
 	dur := d - time.now()
@@ -87,7 +89,9 @@ pub fn with_deadline_cause(mut parent Context, d time.Time, deadline_cause IErro
 	spawn fn (mut ctx CauseContext, dur time.Duration, deadline_cause IError) {
 		time.sleep(dur)
 		ctx.cancel_ctx.mutex.lock()
-		if ctx.cause is none {
+		// Only record deadline cause if the context wasn't already canceled,
+		// so that the first cancellation's cause (manual or from parent) wins.
+		if ctx.cancel_ctx.err is none {
 			ctx.cause = deadline_cause
 		}
 		ctx.cancel_ctx.mutex.unlock()
@@ -130,6 +134,9 @@ pub fn cause(ctx Context) IError {
 // --- CauseContext implements Context and Canceler ---
 
 pub fn (ctx &CauseContext) deadline() ?time.Time {
+	if ctx.deadline != time.Time{} {
+		return ctx.deadline
+	}
 	return none
 }
 
@@ -153,6 +160,19 @@ pub fn (ctx &CauseContext) str() string {
 }
 
 pub fn (mut ctx CauseContext) cancel(remove_from_parent bool, err IError) {
+	// If being canceled with the generic 'context canceled' error and we
+	// have a parent, propagate the parent's cause so children can retrieve it.
+	if err.str() == 'context canceled' {
+		match ctx.cancel_ctx.context {
+			EmptyContext {}
+			else {
+				parent_cause := cause(ctx.cancel_ctx.context)
+				if parent_cause !is none {
+					ctx.cause = parent_cause
+				}
+			}
+		}
+	}
 	ctx.cancel_ctx.cancel(false, err)
 	if remove_from_parent {
 		mut cc := &ctx.cancel_ctx.context
