@@ -12,7 +12,7 @@ fn process_stream_fin_events(mut events QuicStreamEvents, mut streams map[u64]&S
 			s.fin_received = true
 		} else {
 			streams[sid] = &Stream{
-				id: sid
+				id:           sid
 				fin_received: true
 			}
 		}
@@ -29,7 +29,7 @@ fn process_stream_close_events(mut events QuicStreamEvents, mut streams map[u64]
 			s.closed = true
 		} else {
 			streams[sid] = &Stream{
-				id: sid
+				id:     sid
 				closed: true
 			}
 		}
@@ -108,7 +108,9 @@ pub fn (mut c Connection) ensure_stream(stream_id u64) &Stream {
 	if s := c.streams[stream_id] {
 		return s
 	}
-	s := &Stream{id: stream_id}
+	s := &Stream{
+		id: stream_id
+	}
 	c.streams[stream_id] = s
 	return s
 }

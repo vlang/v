@@ -9,11 +9,11 @@ pub type Method = common.Method
 // Request represents a simplified HTTP/2 client request.
 pub struct Request {
 pub:
-	method  Method
-	url     string
-	host    string
-	data    string
-	header  common.Header
+	method Method
+	url    string
+	host   string
+	data   string
+	header common.Header
 }
 
 // Response represents a simplified HTTP/2 client response.

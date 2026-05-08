@@ -159,7 +159,8 @@ fn (pr &HttpProxy) http_do(host urllib.URL, method Method, path string, req &Req
 		':${port}'
 	}
 
-	s := req.build_request_headers(req.method, host_name, port, '${host.scheme}://${host_name}${port_part}${path}', req.data)
+	s := req.build_request_headers(req.method, host_name, port, '${host.scheme}://${host_name}${port_part}${path}',
+		req.data)
 	if host.scheme == 'https' {
 		mut client := pr.ssl_dial('${host_name}:${port}')!
 

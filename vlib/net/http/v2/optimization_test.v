@@ -135,10 +135,12 @@ fn test_encode_optimized_never_indexed_authorization() {
 	mut encoder := new_encoder()
 	mut buf := []u8{len: 4096}
 
-	headers := [HeaderField{
-		name:  'authorization'
-		value: 'Bearer secret-token'
-	}]
+	headers := [
+		HeaderField{
+			name:  'authorization'
+			value: 'Bearer secret-token'
+		},
+	]
 	n := encoder.encode_optimized(headers, mut buf)
 	assert n > 0, 'must produce output'
 	// First byte must have never-indexed prefix 0001xxxx (§6.2.3)
@@ -162,11 +164,13 @@ fn test_encode_optimized_never_indexed_sensitive_flag() {
 	mut encoder := new_encoder()
 	mut buf := []u8{len: 4096}
 
-	headers := [HeaderField{
-		name:      'x-custom-secret'
-		value:     'secret-value'
-		sensitive: true
-	}]
+	headers := [
+		HeaderField{
+			name:      'x-custom-secret'
+			value:     'secret-value'
+			sensitive: true
+		},
+	]
 	n := encoder.encode_optimized(headers, mut buf)
 	assert n > 0
 	assert (buf[0] & 0xf0) == 0x10, 'expected never-indexed prefix for sensitive header, got 0x${buf[0]:02x}'

@@ -655,9 +655,7 @@ pub fn (h Header) join(other Header) Header {
 	}
 	for k in other.keys() {
 		for v in other.custom_values(k, exact: true) {
-			combined.add_custom(k, v) or {
-				panic('unexpected error: ' + err.str())
-			}
+			combined.add_custom(k, v) or { panic('unexpected error: ' + err.str()) }
 		}
 	}
 	return combined

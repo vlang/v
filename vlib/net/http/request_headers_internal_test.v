@@ -6,7 +6,7 @@ fn test_build_request_headers_respects_case_insensitive_existing_headers() {
 		url:        'http://example.com'
 		data:       'hello'
 		user_agent: 'custom-agent'
-		header: new_custom_header_from_map({
+		header:     new_custom_header_from_map({
 			'host':           'example.com'
 			'user-agent':     'already-present'
 			'content-length': '999'

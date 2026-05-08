@@ -253,11 +253,14 @@ fn (mut s Server) dispatch_stream(mut conn ServerConn, request ServerRequest, mu
 		ctx.write_mu.lock()
 		error_response := ServerResponse{
 			status_code: 500
-			header:      common.from_map({'content-type': 'text/plain'})
+			header:      common.from_map({
+				'content-type': 'text/plain'
+			})
 			body:        'no handler configured'.bytes()
 		}
-		s.send_response(mut conn, sid, error_response, mut ctx.encoder, mut
-			ctx.flow) or { eprintln('[HTTP/2] Failed to send error response: ${err}') }
+		s.send_response(mut conn, sid, error_response, mut ctx.encoder, mut ctx.flow) or {
+			eprintln('[HTTP/2] Failed to send error response: ${err}')
+		}
 		ctx.write_mu.unlock()
 		return
 	}

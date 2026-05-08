@@ -43,11 +43,11 @@ pub mut:
 // ServerStreamState tracks the state of an HTTP/2 stream during request assembly.
 struct ServerStreamState {
 mut:
-	method     string
-	path       string
-	host       string
-	header     common.Header
-	body       []u8
+	method string
+	path   string
+	host   string
+	header common.Header
+	body   []u8
 }
 
 // Server is an HTTP/2 server.

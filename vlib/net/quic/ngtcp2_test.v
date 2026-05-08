@@ -185,7 +185,9 @@ fn test_process_stream_fin_events_sets_fin_received() {
 	// Arrange: simulate C callback having recorded FIN for stream 4
 	mut events := make_test_fin_events([i64(4)])
 
-	mut s := &Stream{id: 4}
+	mut s := &Stream{
+		id: 4
+	}
 	mut streams := map[u64]&Stream{}
 	streams[u64(4)] = s
 
@@ -202,9 +204,15 @@ fn test_process_stream_fin_events_handles_multiple_streams() {
 	// Arrange: FIN for streams 0, 4, and 8
 	mut events := make_test_fin_events([i64(0), 4, 8])
 
-	mut s0 := &Stream{id: 0}
-	mut s4 := &Stream{id: 4}
-	mut s8 := &Stream{id: 8}
+	mut s0 := &Stream{
+		id: 0
+	}
+	mut s4 := &Stream{
+		id: 4
+	}
+	mut s8 := &Stream{
+		id: 8
+	}
 	mut streams := map[u64]&Stream{}
 	streams[u64(0)] = s0
 	streams[u64(4)] = s4
@@ -225,7 +233,9 @@ fn test_process_stream_fin_events_does_not_affect_unrelated_streams() {
 	// Arrange: FIN for stream 99 (not in map), stream 4 is unrelated
 	mut events := make_test_fin_events([i64(99)])
 
-	mut s4 := &Stream{id: 4}
+	mut s4 := &Stream{
+		id: 4
+	}
 	mut streams := map[u64]&Stream{}
 	streams[u64(4)] = s4
 
@@ -243,7 +253,9 @@ fn test_process_stream_close_events_sets_closed() {
 	// Arrange: simulate C callback recording close for stream 4
 	mut events := make_test_close_events([i64(4)])
 
-	mut s := &Stream{id: 4}
+	mut s := &Stream{
+		id: 4
+	}
 	mut streams := map[u64]&Stream{}
 	streams[u64(4)] = s
 
@@ -260,8 +272,13 @@ fn test_drain_stream_events_pub_drains_fin_and_close() {
 	// Arrange: FIN on stream 4, close on stream 8
 	mut events := make_test_fin_events([i64(4)])
 	events.closed_stream_ids[0] = 8
-	events.closed_count = 1	mut s4 := &Stream{id: 4}
-	mut s8 := &Stream{id: 8}
+	events.closed_count = 1
+	mut s4 := &Stream{
+		id: 4
+	}
+	mut s8 := &Stream{
+		id: 8
+	}
 	mut streams := map[u64]&Stream{}
 	streams[u64(4)] = s4
 	streams[u64(8)] = s8
@@ -380,7 +397,9 @@ fn test_drain_stream_events_detects_overflow() {
 	mut events := make_test_fin_events([i64(4)])
 	events.overflow = 1
 
-	mut s4 := &Stream{id: 4}
+	mut s4 := &Stream{
+		id: 4
+	}
 	mut streams := map[u64]&Stream{}
 	streams[u64(4)] = s4
 
@@ -422,7 +441,10 @@ fn test_ensure_stream_creates_new() {
 
 fn test_ensure_stream_returns_existing() {
 	// ensure_stream should return existing stream without creating a new one
-	mut existing := &Stream{id: 7, fin_received: true}
+	mut existing := &Stream{
+		id:           7
+		fin_received: true
+	}
 	mut conn := Connection{}
 	conn.streams[u64(7)] = existing
 
@@ -442,7 +464,10 @@ fn test_stream_has_fin_returns_false_for_unknown() {
 fn test_stream_has_fin_returns_true() {
 	// stream_has_fin should return true when stream has fin_received
 	mut conn := Connection{}
-	conn.streams[u64(10)] = &Stream{id: 10, fin_received: true}
+	conn.streams[u64(10)] = &Stream{
+		id:           10
+		fin_received: true
+	}
 	assert conn.stream_has_fin(10) == true, 'stream with FIN should return true'
 	println('✓ stream_has_fin returns true for FIN stream')
 }
@@ -450,7 +475,10 @@ fn test_stream_has_fin_returns_true() {
 fn test_stream_has_fin_returns_false_when_no_fin() {
 	// stream_has_fin should return false when stream exists but no FIN
 	mut conn := Connection{}
-	conn.streams[u64(10)] = &Stream{id: 10, fin_received: false}
+	conn.streams[u64(10)] = &Stream{
+		id:           10
+		fin_received: false
+	}
 	assert conn.stream_has_fin(10) == false, 'stream without FIN should return false'
 	println('✓ stream_has_fin returns false when no FIN')
 }
@@ -458,7 +486,9 @@ fn test_stream_has_fin_returns_false_when_no_fin() {
 fn test_stream_exists() {
 	// stream_exists should return true for registered streams
 	mut conn := Connection{}
-	conn.streams[u64(5)] = &Stream{id: 5}
+	conn.streams[u64(5)] = &Stream{
+		id: 5
+	}
 	assert conn.stream_exists(5) == true, 'registered stream should exist'
 	assert conn.stream_exists(999) == false, 'unregistered stream should not exist'
 	println('✓ stream_exists works correctly')
@@ -470,7 +500,7 @@ fn test_send_with_data_returns_error_on_closed_connection() {
 	// H-NEW3: send() must check ensure_open() BEFORE C.ngtcp2_conn_get_max_data_left
 	// Bug: previously called C function with nil pointer before safety checks
 	mut conn := Connection{
-		closed: true
+		closed:      true
 		ngtcp2_conn: unsafe { nil }
 	}
 	conn.send(0, [u8(1), 2, 3]) or {
@@ -502,7 +532,9 @@ fn test_drain_stream_events_returns_error_on_overflow() {
 	mut events := make_test_fin_events([i64(4)])
 	events.overflow = 1
 
-	mut s4 := &Stream{id: 4}
+	mut s4 := &Stream{
+		id: 4
+	}
 	mut streams := map[u64]&Stream{}
 	streams[u64(4)] = s4
 
@@ -563,11 +595,13 @@ fn test_process_stream_data_events_populates_recv_data() {
 	mut events := make_test_recv_data_events([
 		TestRecvEntry{
 			stream_id: 4
-			data: [u8(0x48), 0x65, 0x6c, 0x6c, 0x6f]
+			data:      [u8(0x48), 0x65, 0x6c, 0x6c, 0x6f]
 		},
 	])
 
-	mut s4 := &Stream{id: 4}
+	mut s4 := &Stream{
+		id: 4
+	}
 	mut streams := map[u64]&Stream{}
 	streams[u64(4)] = s4
 
@@ -585,15 +619,17 @@ fn test_process_stream_data_events_appends_multiple_chunks() {
 	mut events := make_test_recv_data_events([
 		TestRecvEntry{
 			stream_id: 4
-			data: [u8(0x41), 0x42]
+			data:      [u8(0x41), 0x42]
 		},
 		TestRecvEntry{
 			stream_id: 4
-			data: [u8(0x43), 0x44]
+			data:      [u8(0x43), 0x44]
 		},
 	])
 
-	mut s4 := &Stream{id: 4}
+	mut s4 := &Stream{
+		id: 4
+	}
 	mut streams := map[u64]&Stream{}
 	streams[u64(4)] = s4
 
@@ -610,7 +646,7 @@ fn test_process_stream_data_events_auto_creates_stream() {
 	mut events := make_test_recv_data_events([
 		TestRecvEntry{
 			stream_id: 99
-			data: [u8(0xFF)]
+			data:      [u8(0xFF)]
 		},
 	])
 
@@ -632,14 +668,16 @@ fn test_drain_stream_events_includes_data_events() {
 	mut events := make_test_recv_data_events([
 		TestRecvEntry{
 			stream_id: 4
-			data: [u8(0x48), 0x49]
+			data:      [u8(0x48), 0x49]
 		},
 	])
 	// Also add a FIN event
 	events.fin_stream_ids[0] = 4
 	events.fin_count = 1
 
-	mut s4 := &Stream{id: 4}
+	mut s4 := &Stream{
+		id: 4
+	}
 	mut streams := map[u64]&Stream{}
 	streams[u64(4)] = s4
 
@@ -661,8 +699,8 @@ fn test_drain_stream_events_includes_data_events() {
 fn test_recv_returns_recv_data_not_sent_data() {
 	// recv() must return recv_data (from peer), not data (locally sent)
 	mut s4 := &Stream{
-		id: 4
-		data: [u8(0x01), 0x02] // locally sent data
+		id:        4
+		data:      [u8(0x01), 0x02]       // locally sent data
 		recv_data: [u8(0xAA), 0xBB, 0xCC] // received from peer
 	}
 	mut streams := map[u64]&Stream{}
@@ -738,7 +776,7 @@ fn test_recv_data_cleared_after_read() {
 	// O4: After reading recv_data, the buffer should be cleared so
 	// repeated reads don't return accumulated old data.
 	mut s4 := &Stream{
-		id: 4
+		id:        4
 		recv_data: [u8(0xAA), 0xBB, 0xCC]
 	}
 	mut streams := map[u64]&Stream{}
@@ -786,7 +824,11 @@ fn test_idle_timeout_monitor_uses_monotonic_clock() {
 	// Monotonic values are much smaller than wall-clock nanoseconds.
 	m := new_idle_timeout_monitor(30000)
 	mono_now := time.sys_mono_now()
-	diff := if m.last_activity > mono_now { m.last_activity - mono_now } else { mono_now - m.last_activity }
+	diff := if m.last_activity > mono_now {
+		m.last_activity - mono_now
+	} else {
+		mono_now - m.last_activity
+	}
 	assert diff < 100_000_000, 'last_activity should be close to sys_mono_now (diff: ${diff}ns)'
 	println('✓ IdleTimeoutMonitor uses monotonic clock')
 }
@@ -813,7 +855,9 @@ fn test_process_stream_data_events_rejects_negative_offset() {
 	events.recv_lengths[0] = i32(5)
 	events.recv_count = 1
 
-	mut s4 := &Stream{id: 4}
+	mut s4 := &Stream{
+		id: 4
+	}
 	mut streams := map[u64]&Stream{}
 	streams[u64(4)] = s4
 
@@ -831,7 +875,9 @@ fn test_process_stream_data_events_rejects_negative_length() {
 	events.recv_lengths[0] = i32(-1) // negative length
 	events.recv_count = 1
 
-	mut s4 := &Stream{id: 4}
+	mut s4 := &Stream{
+		id: 4
+	}
 	mut streams := map[u64]&Stream{}
 	streams[u64(4)] = s4
 

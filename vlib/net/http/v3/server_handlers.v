@@ -255,9 +255,7 @@ fn (mut s Server) check_fin_completions(mut conn ServerConnection, check_ids []u
 
 	for sid in completable {
 		stream := conn.streams[sid] or { continue }
-		s.process_request(mut conn, stream) or {
-			close_on_h3_error(mut conn, err)
-		}
+		s.process_request(mut conn, stream) or { close_on_h3_error(mut conn, err) }
 	}
 }
 

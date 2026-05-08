@@ -950,9 +950,7 @@ fn parse_request_line(line string) !(Method, urllib.URL, Version) {
 	// method := method_from_str(words[0])
 	// target := urllib.parse(words[1])!
 	// version := version_from_str(words[2])
-	method := method_from_str_known(method_str) or {
-		return error('unsupported method')
-	}
+	method := method_from_str_known(method_str) or { return error('unsupported method') }
 	target := urllib.parse_request_uri(target_str)!
 	// println('before version_str="${version_str}"')
 	version := version_from_str(version_str)

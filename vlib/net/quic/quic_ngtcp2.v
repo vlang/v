@@ -8,24 +8,24 @@ import time
 // Connection represents a QUIC connection backed by ngtcp2.
 pub struct Connection {
 pub mut:
-	remote_addr        string
-	conn_id            []u8
-	streams            map[u64]&Stream
-	next_stream_id     u64 = 1
-	closed             bool
-	ngtcp2_conn        voidptr
-	udp_socket         net.UdpConn
-	handshake_done     bool
-	send_buf           []u8
-	recv_buf           []u8
-	crypto_ctx         CryptoContext
-	path               Ngtcp2PathStruct
-	path_addrs         QuicPathAddrs
-	migration          ConnectionMigration
-	zero_rtt           ZeroRTTConnection
-	session_cache      &SessionCache = unsafe { nil }
-	idle_monitor       IdleTimeoutMonitor
-	stream_events      &QuicStreamEvents = unsafe { nil }
+	remote_addr    string
+	conn_id        []u8
+	streams        map[u64]&Stream
+	next_stream_id u64 = 1
+	closed         bool
+	ngtcp2_conn    voidptr
+	udp_socket     net.UdpConn
+	handshake_done bool
+	send_buf       []u8
+	recv_buf       []u8
+	crypto_ctx     CryptoContext
+	path           Ngtcp2PathStruct
+	path_addrs     QuicPathAddrs
+	migration      ConnectionMigration
+	zero_rtt       ZeroRTTConnection
+	session_cache  &SessionCache = unsafe { nil }
+	idle_monitor   IdleTimeoutMonitor
+	stream_events  &QuicStreamEvents = unsafe { nil }
 	// pending_fin_streams accumulates stream IDs that received FIN events
 	// during drain_stream_events. Callers (e.g. H3 server) read and clear
 	// this list to do targeted completion checks instead of sweeping all streams.

@@ -37,10 +37,10 @@ pub mut:
 	max_request_body_size int  = 10_485_760 // 10 MB, same default as HTTP/2 and HTTP/3
 	show_startup_message  bool = true
 	cert_file             string // TLS cert; when set with key_file, enables HTTPS
-	key_file             string
-	enable_h3            bool   // when true and TLS enabled, also serve HTTP/3 on UDP
-	tls_addr             string // optional TLS listen address for listen_and_serve_all()
-	h3_addr              string // optional HTTP/3 listen address for listen_and_serve_all()
+	key_file              string
+	enable_h3             bool   // when true and TLS enabled, also serve HTTP/3 on UDP
+	tls_addr              string // optional TLS listen address for listen_and_serve_all()
+	h3_addr               string // optional HTTP/3 listen address for listen_and_serve_all()
 }
 
 pub fn (mut s Server) listen_and_serve() {
