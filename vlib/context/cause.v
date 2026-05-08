@@ -133,6 +133,7 @@ pub fn cause(ctx Context) IError {
 
 // --- CauseContext implements Context and Canceler ---
 
+// deadline returns the deadline for the context, or none if no deadline is set.
 pub fn (ctx &CauseContext) deadline() ?time.Time {
 	if ctx.deadline != time.Time{} {
 		return ctx.deadline
@@ -140,14 +141,18 @@ pub fn (ctx &CauseContext) deadline() ?time.Time {
 	return none
 }
 
+// done returns a channel that is closed when the context is canceled.
 pub fn (mut ctx CauseContext) done() chan int {
 	return ctx.cancel_ctx.done()
 }
 
+// err returns the error that canceled the context, or none if not canceled.
 pub fn (mut ctx CauseContext) err() IError {
 	return ctx.cancel_ctx.err()
 }
 
+// value returns the cause context itself when the key matches cause_context_key,
+// otherwise delegates to the embedded cancel context.
 pub fn (ctx &CauseContext) value(key Key) ?Any {
 	if key == cause_context_key {
 		return ctx
@@ -155,10 +160,13 @@ pub fn (ctx &CauseContext) value(key Key) ?Any {
 	return ctx.cancel_ctx.value(key)
 }
 
+// str returns a string representation of the context (e.g. 'EmptyContext.with_cancel_cause').
 pub fn (ctx &CauseContext) str() string {
 	return context_name(ctx.cancel_ctx.context) + '.with_cancel_cause'
 }
 
+// cancel cancels the context. If remove_from_parent is true, it also removes
+// this context from its parent's children list. The err is recorded as the cause.
 pub fn (mut ctx CauseContext) cancel(remove_from_parent bool, err IError) {
 	// If being canceled with the generic 'context canceled' error and we
 	// have a parent, propagate the parent's cause so children can retrieve it.
