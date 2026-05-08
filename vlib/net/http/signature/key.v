@@ -261,17 +261,21 @@ fn ecdsa_key_from_xy_d(xy []u8, d []u8, is_priv bool) !Key {
 	coord := (xy.len - 1) / 2
 	x := xy[1..1 + coord]
 	y := xy[1 + coord..1 + coord * 2]
+	// `ecdsa.PrivateKey.bytes()` returns the scalar in minimal-length form
+	// (no leading zeros), so we pad it to the curve byte size; the wire
+	// layout that `ecdsa_sign` expects is fixed-width.
+	priv_d := if is_priv { pad_left(d, coord)! } else { d }
 	return match coord {
 		32 {
 			if is_priv {
-				Key.ecdsa_p256_private(x, y, d)
+				Key.ecdsa_p256_private(x, y, priv_d)
 			} else {
 				Key.ecdsa_p256_public(x, y)
 			}
 		}
 		48 {
 			if is_priv {
-				Key.ecdsa_p384_private(x, y, d)
+				Key.ecdsa_p384_private(x, y, priv_d)
 			} else {
 				Key.ecdsa_p384_public(x, y)
 			}
@@ -282,4 +286,20 @@ fn ecdsa_key_from_xy_d(xy []u8, d []u8, is_priv bool) !Key {
 			}
 		}
 	}
+}
+
+fn pad_left(b []u8, width int) ![]u8 {
+	if b.len == width {
+		return b
+	}
+	if b.len > width {
+		return MalformedMessage{
+			reason: 'ECDSA scalar wider (${b.len}) than curve coordinate size (${width})'
+		}
+	}
+	mut out := []u8{len: width}
+	for i, v in b {
+		out[width - b.len + i] = v
+	}
+	return out
 }
