@@ -344,3 +344,18 @@ fn test_to_plaintext_footnotes() {
 	assert text.contains('Footnotes:')
 	assert text.contains('[1] note body')
 }
+
+fn test_to_plaintext_table_rows_are_separated() {
+	text := to_plaintext('| a | b |\n|---|---|\n| 1 | 2 |', extensions: gfm())
+	assert text.contains('a | b |')
+	assert text.contains('1 | 2 |')
+	assert text.contains('a | b | \n1 | 2 |')
+	assert !text.contains('a | b | 1 | 2 |')
+}
+
+fn test_to_plaintext_blockquote_footnotes_share_global_order() {
+	text := to_plaintext('> quote[^q]\n\n[^q]: note body', footnotes: true)
+	assert text.contains('> quote[1]')
+	assert text.contains('Footnotes:')
+	assert text.contains('[1] note body')
+}

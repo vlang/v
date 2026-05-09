@@ -49,7 +49,8 @@ fn (mut r PlainTextRenderer) render_node(node &Node) {
 		.html_block { r.render_html_block(node) }
 		.link_ref_def, .footnote_def {}
 		.table { r.render_table(node) }
-		.table_head, .table_body, .table_row { r.render_children(node) }
+		.table_head, .table_body { r.render_children(node) }
+		.table_row { r.render_table_row(node) }
 		.table_cell { r.render_table_cell(node) }
 		.definition_list { r.render_children(node) }
 		.definition_term { r.render_definition_term(node) }
@@ -104,14 +105,18 @@ fn (mut r PlainTextRenderer) render_paragraph(node &Node) {
 fn (mut r PlainTextRenderer) render_blockquote(node &Node) {
 	mut inner := strings.new_builder(128)
 	mut rr := PlainTextRenderer{
-		opts:    r.opts
-		ref_map: r.ref_map
+		opts:     r.opts
+		ref_map:  r.ref_map
+		fn_order: r.fn_order.clone()
+		fn_nodes: r.fn_nodes
 	}
 	rr.sb = inner
 	rr.render_children(node)
 	for line in rr.sb.str().trim_right('\n').split('\n') {
 		r.sb.write_string('> ${line}\n')
 	}
+	// Keep footnote reference order discovered inside the blockquote.
+	r.fn_order = rr.fn_order
 	r.sb.write_string('\n')
 }
 
@@ -176,6 +181,11 @@ fn (mut r PlainTextRenderer) render_html_block(node &Node) {
 }
 
 fn (mut r PlainTextRenderer) render_table(node &Node) {
+	r.render_children(node)
+	r.sb.write_string('\n')
+}
+
+fn (mut r PlainTextRenderer) render_table_row(node &Node) {
 	r.render_children(node)
 	r.sb.write_string('\n')
 }
