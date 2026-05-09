@@ -6,6 +6,10 @@ struct OrmBulkUser {
 	age  int
 }
 
+struct OrmBulkDefaultRow {
+	id int @[primary; sql: serial]
+}
+
 fn test_orm_bulk_insert_update_and_upsert() {
 	mut db := sqlite.connect(':memory:')!
 	defer {
@@ -114,4 +118,30 @@ fn test_orm_bulk_insert_update_and_upsert() {
 	assert upserted_third.len == 1
 	assert upserted_third[0].name == 'Charlie'
 	assert upserted_third[0].age == 35
+}
+
+fn test_orm_bulk_insert_preserves_all_default_rows() {
+	mut db := sqlite.connect(':memory:')!
+	defer {
+		db.close() or { panic(err) }
+	}
+
+	sql db {
+		create table OrmBulkDefaultRow
+	}!
+
+	rows := [OrmBulkDefaultRow{}, OrmBulkDefaultRow{}, OrmBulkDefaultRow{}]
+
+	sql db {
+		insert rows into OrmBulkDefaultRow
+	}!
+
+	inserted := sql db {
+		select from OrmBulkDefaultRow order by id
+	}!
+
+	assert inserted.len == 3
+	assert inserted[0].id == 1
+	assert inserted[1].id == 2
+	assert inserted[2].id == 3
 }

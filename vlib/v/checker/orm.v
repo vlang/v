@@ -570,9 +570,17 @@ fn (mut c Checker) sql_stmt_line(mut node ast.SqlStmtLine) ast.Type {
 		insert_sym := c.table.sym(inserting_object_type)
 		if insert_sym.kind == .array {
 			is_array_insert = true
-			inserting_object_type = insert_sym.array_info().elem_type
-			if inserting_object_type.is_ptr() {
-				inserting_object_type = inserting_object_type.deref()
+			elem_type := insert_sym.array_info().elem_type
+			if elem_type.is_ptr() {
+				c.orm_error('bulk ${node.kind} currently supports only arrays of `${table_sym.name}` values',
+					node.pos)
+				return ast.void_type
+			}
+			inserting_object_type = c.unwrap_generic(elem_type)
+			if inserting_object_type != node.table_expr.typ {
+				c.orm_error('bulk ${node.kind} currently supports only arrays of `${table_sym.name}` values',
+					node.pos)
+				return ast.void_type
 			}
 		}
 
@@ -732,8 +740,13 @@ fn (mut c Checker) check_orm_array_update(mut node ast.SqlStmtLine, table_sym &a
 	array_ident := key_selector.expr as ast.Ident
 	array_name := array_ident.name
 	array_elem_type := c.orm_array_object_elem_type(node, array_name) or { return false }
-	if array_elem_type != node.table_expr.typ
-		&& !c.table.sumtype_has_variant(array_elem_type, node.table_expr.typ, false) {
+	if array_elem_type.is_ptr() {
+		node.is_array_update = true
+		c.orm_error('bulk update currently supports only arrays of `${table_sym.name}` values',
+			array_ident.pos)
+		return true
+	}
+	if c.unwrap_generic(array_elem_type) != node.table_expr.typ {
 		return false
 	}
 	info := table_sym.info as ast.Struct
@@ -801,10 +814,7 @@ fn (mut c Checker) orm_array_object_elem_type(node ast.SqlStmtLine, name string)
 		return none
 	}
 	mut elem_type := sym.array_info().elem_type
-	if elem_type.is_ptr() {
-		elem_type = elem_type.deref()
-	}
-	return c.unwrap_generic(elem_type)
+	return elem_type
 }
 
 fn (_ &Checker) orm_struct_field(fields []ast.StructField, name string) ?ast.StructField {

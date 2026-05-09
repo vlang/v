@@ -1,0 +1,18 @@
+import db.sqlite
+
+struct BulkPointerUser {
+	id   int @[primary]
+	name string
+}
+
+fn main() {
+	mut db := sqlite.connect(':memory:') or { panic(err) }
+	user := BulkPointerUser{
+		id:   1
+		name: 'Alice'
+	}
+	users := [&user]
+	sql db {
+		insert users into BulkPointerUser
+	}!
+}

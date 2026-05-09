@@ -844,7 +844,7 @@ fn (mut g Gen) write_orm_drop_table(node ast.SqlStmtLine, table_name string, con
 fn (mut g Gen) write_orm_insert(node &ast.SqlStmtLine, table_name string, connection_var_name string, result_var_name string,
 	or_expr &ast.OrExpr, _ []ast.Attr) {
 	if node.is_array_insert {
-		g.write_orm_bulk_insert(node, table_name, connection_var_name, result_var_name)
+		g.write_orm_bulk_insert(node, table_name, connection_var_name, result_var_name, or_expr)
 		return
 	}
 	last_ids_variable_name := g.new_tmp_var()
@@ -854,7 +854,7 @@ fn (mut g Gen) write_orm_insert(node &ast.SqlStmtLine, table_name string, connec
 		result_var_name, '', '', or_expr)
 }
 
-fn (mut g Gen) write_orm_bulk_insert(node &ast.SqlStmtLine, table_name string, connection_var_name string, result_var_name string) {
+fn (mut g Gen) write_orm_bulk_insert(node &ast.SqlStmtLine, table_name string, connection_var_name string, result_var_name string, or_expr &ast.OrExpr) {
 	fields := g.orm_non_array_fields(node.fields)
 	auto_fields := get_auto_field_idxs(fields)
 	row_type := g.styp(node.table_expr.typ)
@@ -868,6 +868,25 @@ fn (mut g Gen) write_orm_bulk_insert(node &ast.SqlStmtLine, table_name string, c
 	g.indent--
 	g.writeln('} else {')
 	g.indent++
+	if fields.len == auto_fields.len {
+		g.writeln('${result_var_name} = (${result_name}_void){0};')
+		g.writeln('for (${ast.int_type_name} ${idx_var} = 0; ${idx_var} < ${node.object_var}.len; ${idx_var}++) {')
+		g.indent++
+		g.writeln('${row_type} ${row_var} = (*(${row_type}*)builtin__array_get(${node.object_var}, ${idx_var}));')
+		row_result_var := g.new_tmp_var()
+		mut row_node := *node
+		row_node.object_var = row_var
+		row_node.is_array_insert = false
+		g.write_orm_insert(&row_node, table_name, connection_var_name, row_result_var, or_expr,
+			[]ast.Attr{})
+		g.or_block(row_result_var, *or_expr, ast.int_type.set_flag(.result))
+		g.writeln('${result_var_name} = ${row_result_var};')
+		g.indent--
+		g.writeln('}')
+		g.indent--
+		g.writeln('}')
+		return
+	}
 	g.writeln('Array_orm__Primitive ${data_var} = builtin____new_array_with_default_noscan(0, 0, sizeof(orm__Primitive), 0);')
 	g.writeln('for (${ast.int_type_name} ${idx_var} = 0; ${idx_var} < ${node.object_var}.len; ${idx_var}++) {')
 	g.indent++

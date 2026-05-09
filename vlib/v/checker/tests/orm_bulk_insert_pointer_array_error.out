@@ -1,0 +1,7 @@
+vlib/v/checker/tests/orm_bulk_insert_pointer_array_error.vv:16:10: error: ORM: bulk insert currently supports only arrays of `BulkPointerUser` values
+   14 |     users := [&user]
+   15 |     sql db {
+   16 |         insert users into BulkPointerUser
+      |                ~~~~~
+   17 |     }!
+   18 | }

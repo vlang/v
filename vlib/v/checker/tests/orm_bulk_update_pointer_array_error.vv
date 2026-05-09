@@ -1,0 +1,18 @@
+import db.sqlite
+
+struct BulkPointerUpdateUser {
+	id   int @[primary]
+	name string
+}
+
+fn main() {
+	mut db := sqlite.connect(':memory:') or { panic(err) }
+	user := BulkPointerUpdateUser{
+		id:   1
+		name: 'Alice'
+	}
+	users := [&user]
+	sql db {
+		update BulkPointerUpdateUser set name = users.name where id == users.id
+	}!
+}
