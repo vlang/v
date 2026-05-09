@@ -2372,6 +2372,10 @@ pub:
 pub mut:
 	object_var       string   // `user`
 	updated_columns  []string // for `update set x=y`
+	is_array_insert  bool
+	is_array_update  bool
+	array_update_var string
+	array_update_key string
 	table_expr       TypeNode
 	fields           []StructField
 	sub_structs      map[string]SqlStmtLine

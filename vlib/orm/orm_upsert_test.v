@@ -62,6 +62,48 @@ fn test_upsert_updates_existing_row_using_unique_field() {
 	assert rows[0].id == 1
 }
 
+fn test_upsert_updates_existing_rows_from_array() {
+	mut db := sqlite.connect(':memory:') or { panic(err) }
+	defer {
+		db.close() or {}
+	}
+
+	sql db {
+		create table UpsertUser
+	}!
+
+	users := [
+		UpsertUser{
+			username: 'alice'
+			age:      30
+		},
+		UpsertUser{
+			username: 'alice'
+			age:      31
+		},
+		UpsertUser{
+			username: 'bob'
+			age:      40
+		},
+	]
+
+	sql db {
+		upsert users into UpsertUser
+	}!
+
+	rows := sql db {
+		select from UpsertUser order by id
+	}!
+
+	assert rows.len == 2
+	assert rows[0].username == 'alice'
+	assert rows[0].age == 31
+	assert rows[0].id == 1
+	assert rows[1].username == 'bob'
+	assert rows[1].age == 40
+	assert rows[1].id == 2
+}
+
 fn test_upsert_updates_existing_row_using_composite_unique_key() {
 	mut db := sqlite.connect(':memory:') or { panic(err) }
 	defer {

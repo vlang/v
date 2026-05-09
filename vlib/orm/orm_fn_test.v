@@ -47,6 +47,38 @@ fn test_orm_stmt_gen_insert() {
 	assert query == "INSERT INTO 'Test' ('test', 'a') VALUES (?0, ?1);"
 }
 
+fn test_orm_stmt_gen_bulk_insert() {
+	table := orm.Table{
+		name: 'Test'
+	}
+	query, converted := orm.orm_stmt_gen(.default, table, "'", .insert, true, '?', 0, orm.QueryData{
+		fields:     ['name', 'age']
+		data:       [orm.Primitive('Alice'), orm.Primitive(25), orm.Primitive('Bob'), orm.Primitive(30)]
+		batch_rows: 2
+	}, orm.QueryData{})
+	assert query == "INSERT INTO 'Test' ('name', 'age') VALUES (?0, ?1), (?2, ?3);"
+	assert converted.data.len == 4
+}
+
+fn test_orm_stmt_gen_bulk_update() {
+	table := orm.Table{
+		name: 'Test'
+	}
+	query, _ := orm.orm_stmt_gen(.default, table, "'", .update, true, '?', 0, orm.QueryData{
+		fields:     ['name', 'age']
+		data:       [orm.Primitive(1), orm.Primitive('Alice'), orm.Primitive(2), orm.Primitive('Bob'),
+			orm.Primitive(1), orm.Primitive(25), orm.Primitive(2), orm.Primitive(30)]
+		batch_rows: 2
+		batch_key:  'id'
+	}, orm.QueryData{
+		fields: ['id', 'id']
+		data:   [orm.Primitive(1), orm.Primitive(2)]
+		kinds:  [.eq, .eq]
+		is_and: [false]
+	})
+	assert query == "UPDATE 'Test' SET 'name' = CASE 'id' WHEN ?0 THEN ?1 WHEN ?2 THEN ?3 ELSE 'name' END, 'age' = CASE 'id' WHEN ?4 THEN ?5 WHEN ?6 THEN ?7 ELSE 'age' END WHERE 'id' = ?8 OR 'id' = ?9;"
+}
+
 fn test_orm_stmt_gen_insert_default_values_pg() {
 	table := orm.Table{
 		name: 'Test'

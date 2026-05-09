@@ -159,6 +159,26 @@ foo_id := sql db {
 }!
 ```
 
+You can insert a flat array of records in one statement. Bulk inserts currently
+support primitive, enum, and `time.Time` fields.
+
+```v ignore
+users := [
+    User{
+        id:   1
+        name: 'Alice'
+    },
+    User{
+        id:   2
+        name: 'Bob'
+    },
+]
+
+sql db {
+    insert users into User
+}!
+```
+
 If the `id` field is marked as `sql: serial` and `primary`, the insert expression
 returns the database ID of the newly added object. Getting an ID of a newly
 added DB row is often useful.
@@ -181,6 +201,26 @@ foo := Foo{
 
 sql db {
     upsert foo into Foo
+}!
+```
+
+Arrays can be upserted too. The generic ORM implementation applies the same
+matching rules for each record.
+
+```v ignore
+users := [
+    User{
+        id:   1
+        name: 'Alice'
+    },
+    User{
+        id:   2
+        name: 'Bob'
+    },
+]
+
+sql db {
+    upsert users into User
 }!
 ```
 
@@ -305,6 +345,26 @@ as the table.
 ```v ignore
 sql db {
     update Foo set updated_at = time.now() where name == 'abc' && updated_at is none
+}!
+```
+
+You can update multiple rows from an array in one statement by using the array
+variable in each assigned value and in the key comparison.
+
+```v ignore
+updates := [
+    User{
+        id:   1
+        name: 'Alicia'
+    },
+    User{
+        id:   2
+        name: 'Robert'
+    },
+]
+
+sql db {
+    update User set name = updates.name where id == updates.id
 }!
 ```
 
