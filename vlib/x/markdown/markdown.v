@@ -112,12 +112,28 @@ pub fn to_html(src string, opts Options) string {
 	return md.convert(src)
 }
 
+// to_plaintext converts the markdown source to UTF-8 plain text with the given options.
+pub fn to_plaintext(src string, opts Options) string {
+	mut md := Markdown.new(opts)
+	return md.convert_plaintext(src)
+}
+
 // convert parses the markdown source and renders it to an HTML string.
 pub fn (mut m Markdown) convert(src string) string {
 	doc := m.parse(src)
 	mut r := HTMLRenderer{
 		opts:    m.opts
 		ref_map: m.ref_map // Use the updated ref_map after parse()
+	}
+	return r.render(doc)
+}
+
+// convert_plaintext parses the markdown source and renders it to UTF-8 plain text.
+pub fn (mut m Markdown) convert_plaintext(src string) string {
+	doc := m.parse(src)
+	mut r := PlainTextRenderer{
+		opts:    m.opts
+		ref_map: m.ref_map
 	}
 	return r.render(doc)
 }
