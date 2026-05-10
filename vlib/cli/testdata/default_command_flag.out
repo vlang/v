@@ -1,7 +1,7 @@
 Usage:  [flags] [commands]
 
 Flags:
-  -version            Prints version information.
+  -version            Print version information
 
 Commands:
-  help                Prints help information.
+  help                Print help information
