@@ -4532,7 +4532,8 @@ pub fn (mut t Table) generic_insts_to_concrete() {
 		}
 		if sym.info is Struct {
 			if sym.info.concrete_types.len > 0 && sym.info.parent_type.has_flag(.generic)
-				&& !sym.info.concrete_types.any(it.has_flag(.generic)) {
+				&& !sym.info.concrete_types.any(it.has_flag(.generic))
+				&& !sym.info.concrete_types.any(t.generic_type_names(it).len > 0) {
 				parent_sym := t.sym(sym.info.parent_type)
 				for method in parent_sym.methods {
 					if method.generic_names.len == sym.info.concrete_types.len
