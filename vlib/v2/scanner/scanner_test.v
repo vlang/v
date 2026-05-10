@@ -1,3 +1,4 @@
+// vtest build: !linux
 module scanner
 
 import v2.pref

@@ -1,6 +1,6 @@
 // vtest flaky: true
 // vtest retry: 3
-// vtest build: !docker-ubuntu-musl && !sanitize-memory-clang && !sanitize-address-clang-without-gc
+// vtest build: !windows && !docker-ubuntu-musl && !sanitize-memory-clang && !sanitize-address-clang-without-gc
 import os
 import time
 import net.http

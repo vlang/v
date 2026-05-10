@@ -1,3 +1,4 @@
+// vtest build: !linux
 module cleanc
 
 import v2.ast

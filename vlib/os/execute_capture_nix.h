@@ -47,19 +47,21 @@ static int v_os_execute_capture_start(const char *cmd, int *child_pid, int *read
 	return 0;
 }
 #else
-#if defined(__has_include) && __has_include(<spawn.h>)
-#include <spawn.h>
-#else
-// Provide minimal posix_spawn declarations when <spawn.h> is not available
-// (e.g. during cross-compilation with an incomplete sysroot).
-typedef struct { int __allocated; int __used; void *__actions; int __pad[16]; } posix_spawn_file_actions_t;
-typedef struct { short __flags; pid_t __pgrp; sigset_t __sd; sigset_t __ss; struct sched_param __sp; int __policy; int __pad[16]; } posix_spawnattr_t;
-int posix_spawn(pid_t *, const char *, const posix_spawn_file_actions_t *, const posix_spawnattr_t *, char *const [], char *const []);
-int posix_spawn_file_actions_init(posix_spawn_file_actions_t *);
-int posix_spawn_file_actions_destroy(posix_spawn_file_actions_t *);
-int posix_spawn_file_actions_adddup2(posix_spawn_file_actions_t *, int, int);
-int posix_spawn_file_actions_addclose(posix_spawn_file_actions_t *, int);
-#endif
+// Use opaque void* declarations for posix_spawn instead of #include <spawn.h>.
+// Including <spawn.h> transitively pulls in <features.h>/<sys/cdefs.h>, which
+// breaks under musl-gcc on the Ubuntu docker image where <sys/cdefs.h> is not
+// on the include path. The 128-byte buffer is comfortably larger than the
+// real posix_spawn_file_actions_t on glibc (~80 bytes) and musl (~40 bytes);
+// posix_spawn_file_actions_init() initializes the buffer, so its true layout
+// is not needed here. We pass NULL for posix_spawnattr_t, so it is not
+// declared. Calling these via void* is ABI-compatible: pointer parameters
+// are passed identically regardless of pointee type.
+typedef struct { unsigned char _opaque[128]; } v_posix_spawn_file_actions_t;
+extern int posix_spawn(pid_t *, const char *, const void *, const void *, char *const [], char *const []);
+extern int posix_spawn_file_actions_init(void *);
+extern int posix_spawn_file_actions_destroy(void *);
+extern int posix_spawn_file_actions_adddup2(void *, int, int);
+extern int posix_spawn_file_actions_addclose(void *, int);
 
 extern char **environ;
 
@@ -70,7 +72,7 @@ static int v_os_execute_capture_start(const char *cmd, int *child_pid, int *read
 	}
 	v_os_execute_set_cloexec(pipefd[0]);
 	v_os_execute_set_cloexec(pipefd[1]);
-	posix_spawn_file_actions_t actions;
+	v_posix_spawn_file_actions_t actions;
 	if (posix_spawn_file_actions_init(&actions) != 0) {
 		close(pipefd[0]);
 		close(pipefd[1]);

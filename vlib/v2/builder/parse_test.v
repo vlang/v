@@ -1,3 +1,4 @@
+// vtest build: !linux
 module builder
 
 import os

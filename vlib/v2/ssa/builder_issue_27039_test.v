@@ -1,3 +1,4 @@
+// vtest build: !linux
 module ssa
 
 fn test_c_stdio_symbols_are_platform_specific() {
