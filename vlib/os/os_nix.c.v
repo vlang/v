@@ -331,7 +331,10 @@ pub fn mkdir(path string, params MkdirParams) ! {
 pub fn execute(cmd string) Result {
 	mut pid := 0
 	mut read_fd := -1
-	if C.v_os_execute_capture_start(&char(cmd.str), &pid, &read_fd) != 0 {
+	v_os_execute_lock()
+	rc := C.v_os_execute_capture_start(&char(cmd.str), &pid, &read_fd)
+	v_os_execute_unlock()
+	if rc != 0 {
 		return Result{
 			exit_code: -1
 			output:    'exec("${cmd}") failed'
