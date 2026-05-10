@@ -10,13 +10,16 @@ fn test_tool_recompilation_args_force_system_cc_for_vdoc_on_freebsd() {
 
 fn test_tool_recompilation_args_use_openssl_for_vpm() {
 	assert tool_recompilation_args('vpm', 'macos') == ['-d', 'use_openssl']
-	assert tool_recompilation_args('vpm', 'linux') == ['-d', 'use_openssl']
-	assert tool_recompilation_args('vpm', 'windows') == ['-d', 'use_openssl']
 }
 
 fn test_tool_recompilation_args_do_not_change_other_tools_or_platforms() {
 	assert tool_recompilation_args('vfmt', 'freebsd').len == 0
 	assert tool_recompilation_args('vdoc', 'linux').len == 0
+	// musl-gcc on docker-ubuntu-musl can't find glibc's sys/cdefs.h that
+	// OpenSSL pulls in, so the `-d use_openssl` workaround is restricted to
+	// macOS where the original tcc/Apple-Silicon bug was reported.
+	assert tool_recompilation_args('vpm', 'linux').len == 0
+	assert tool_recompilation_args('vpm', 'windows').len == 0
 }
 
 fn test_fallback_tool_executable_path_uses_vtmp_for_missing_single_file_tool() {

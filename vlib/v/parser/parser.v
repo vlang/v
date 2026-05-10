@@ -3278,6 +3278,7 @@ fn (mut p Parser) type_decl() ast.TypeDecl {
 		cname:      util.no_dots(prepend_mod_name)
 		mod:        p.mod
 		parent_idx: pidx
+		language:   language
 		info:       ast.Alias{
 			parent_type: parent_type
 			language:    parent_language
