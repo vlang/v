@@ -1,4 +1,5 @@
 // vtest vflags: -prod
+// vtest build: !windows // fasthttp.Server.run is not implemented on windows yet
 import veb
 import net.http
 import os

@@ -35,6 +35,30 @@ mut:
 	active    bool = true
 }
 
+@[inline]
+fn rune_at_or_space(s string, pos int) rune {
+	if pos < 0 || pos >= s.len {
+		return ` `
+	}
+	char_len := utf8_char_len(s[pos])
+	if char_len <= 0 || pos + char_len > s.len {
+		return rune(s[pos])
+	}
+	return s[pos..pos + char_len].runes()[0]
+}
+
+@[inline]
+fn prev_rune_or_space(s string, pos int) rune {
+	if pos <= 0 {
+		return ` `
+	}
+	mut i := pos - 1
+	for i > 0 && (s[i] & u8(0xC0)) == u8(0x80) {
+		i--
+	}
+	return rune_at_or_space(s, i)
+}
+
 // parse parses the full inline source and returns a node slice.
 fn (mut p InlineParser) parse() []&Node {
 	mut result := []&Node{}
@@ -47,8 +71,8 @@ fn (mut p InlineParser) parse() []&Node {
 				p.pos++
 			}
 			run := p.src[start..p.pos]
-			before := if start > 0 { p.src[start - 1] } else { u8(` `) }
-			after := if p.pos < p.src.len { p.src[p.pos] } else { u8(` `) }
+			before := prev_rune_or_space(p.src, start)
+			after := rune_at_or_space(p.src, p.pos)
 			can_open := can_open_emphasis(ch, before, after)
 			can_close := can_close_emphasis(ch, before, after)
 			result << text_node(run)
@@ -248,13 +272,15 @@ fn (mut p InlineParser) parse_one() []&Node {
 			return [p.parse_newline()]
 		}
 		else {
+			r := rune_at_or_space(p.src, p.pos)
+			step := utf8_char_len(p.src[p.pos])
 			if p.opts.linkify {
 				if node := p.try_linkify() {
 					return [node]
 				}
 			}
-			p.pos++
-			return [text_node(c.ascii_str())]
+			p.pos += step
+			return [text_node(r.str())]
 		}
 	}
 }
@@ -283,7 +309,7 @@ fn merge_text_nodes(nodes []&Node) []&Node {
 }
 
 // can_open_emphasis reports whether a delimiter run can open emphasis.
-fn can_open_emphasis(delim u8, before u8, after u8) bool {
+fn can_open_emphasis(delim u8, before rune, after rune) bool {
 	left_flanking := !is_unicode_space(after) && (!is_ascii_punct(after) || is_unicode_space(before)
 		|| is_ascii_punct(before))
 	right_flanking := !is_unicode_space(before)
@@ -299,7 +325,7 @@ fn can_open_emphasis(delim u8, before u8, after u8) bool {
 }
 
 // can_close_emphasis reports whether a delimiter run can close emphasis.
-fn can_close_emphasis(delim u8, before u8, after u8) bool {
+fn can_close_emphasis(delim u8, before rune, after rune) bool {
 	left_flanking := !is_unicode_space(after) && (!is_ascii_punct(after) || is_unicode_space(before)
 		|| is_ascii_punct(before))
 	right_flanking := !is_unicode_space(before)
@@ -381,16 +407,16 @@ fn (mut p InlineParser) try_emphasis(c u8) ?&Node {
 
 	// Prevent splitting an intraword __ run into a synthetic single-underscore opener.
 	if c == `_` && run == 1 && start > 1 && p.src[start - 1] == `_` {
-		before2 := p.src[start - 2]
-		after1 := if start + run < p.src.len { p.src[start + run] } else { u8(` `) }
+		before2 := prev_rune_or_space(p.src, start - 1)
+		after1 := rune_at_or_space(p.src, start + run)
 		if is_wordish(before2) && is_wordish(after1) {
 			p.pos = start
 			return none
 		}
 	}
 
-	before := if start > 0 { p.src[start - 1] } else { u8(` `) }
-	after := if start + run < p.src.len { p.src[start + run] } else { u8(` `) }
+	before := prev_rune_or_space(p.src, start)
+	after := rune_at_or_space(p.src, start + run)
 	opener_can_open := can_open_emphasis(c, before, after)
 	opener_can_close := can_close_emphasis(c, before, after)
 
@@ -431,7 +457,7 @@ fn (mut p InlineParser) try_emphasis(c u8) ?&Node {
 // is_wordish reports whether c behaves like a word character for emphasis
 // boundary checks (includes non-ASCII bytes used in UTF-8 sequences).
 @[inline]
-fn is_wordish(c u8) bool {
+fn is_wordish(c rune) bool {
 	return !is_unicode_space(c) && !is_ascii_punct(c)
 }
 
@@ -454,8 +480,8 @@ fn (mut p InlineParser) match_close_delim(c u8, count int, opener_run int, opene
 			}
 			if close_run >= count {
 				// Verify right-flanking.
-				before_close := if close_pos > 0 { p.src[close_pos - 1] } else { u8(` `) }
-				after_close := if p.pos < p.src.len { p.src[p.pos] } else { u8(` `) }
+				before_close := prev_rune_or_space(p.src, close_pos)
+				after_close := rune_at_or_space(p.src, p.pos)
 				closer_can_close := can_close_emphasis(c, before_close, after_close)
 				closer_can_open := can_open_emphasis(c, before_close, after_close)
 				if closer_can_close {
@@ -511,12 +537,14 @@ fn (mut p InlineParser) match_close_delim(c u8, count int, opener_run int, opene
 		inner := p.parse_one()
 		if p.pos <= loop_start_pos {
 			// Safety net: force progress to avoid recursive delimiter stalls.
-			content_nodes << text_node(p.src[loop_start_pos].ascii_str())
-			p.pos = loop_start_pos + 1
+			fallback := rune_at_or_space(p.src, loop_start_pos)
+			content_nodes << text_node(fallback.str())
+			p.pos = loop_start_pos + utf8_char_len(p.src[loop_start_pos])
 			continue
 		}
 		content_nodes << inner
 	}
+
 	// Not found; reset.
 	p.pos = content_start
 	return none
@@ -722,8 +750,12 @@ fn parse_inline_link_dest_from(s string, start int) (string, string, int) {
 // skip_ws returns the position in s after skipping whitespace from start.
 fn skip_ws(s string, start int) int {
 	mut i := start
-	for i < s.len && (s[i] == ` ` || s[i] == `\t` || s[i] == `\n`) {
-		i++
+	for i < s.len {
+		ch := rune_at_or_space(s, i)
+		if ch !in unicode_space {
+			break
+		}
+		i += utf8_char_len(s[i])
 	}
 	return i
 }

@@ -323,3 +323,39 @@ fn test_emphasis_goldmark_parity_edge_cases() {
 	assert to_html('_a_*_b**_aba*') == '<p><em>a</em><em>_b**_aba</em></p>\n'
 	assert to_html('x_ ***b*ab*bb_a*a a') == '<p>x_ <em><em><em>b</em>ab</em>bb_a</em>a a</p>\n'
 }
+
+fn test_to_plaintext_basic_blocks_and_inlines() {
+	text := to_plaintext('# Héllo\n\nA *b* [site](https://example.com)')
+	assert text.contains('# Héllo')
+	assert text.contains('A *b* site (https://example.com)')
+}
+
+fn test_to_plaintext_task_list() {
+	text := to_plaintext('- [ ] todo\n- [x] done', task_list: true)
+	assert text.contains('☐')
+	assert text.contains('☑')
+	assert text.contains('todo')
+	assert text.contains('done')
+}
+
+fn test_to_plaintext_footnotes() {
+	text := to_plaintext('Text[^n]\n\n[^n]: note body', footnotes: true)
+	assert text.contains('Text[1]')
+	assert text.contains('Footnotes:')
+	assert text.contains('[1] note body')
+}
+
+fn test_to_plaintext_table_rows_are_separated() {
+	text := to_plaintext('| a | b |\n|---|---|\n| 1 | 2 |', extensions: gfm())
+	assert text.contains('a | b |')
+	assert text.contains('1 | 2 |')
+	assert text.contains('a | b | \n1 | 2 |')
+	assert !text.contains('a | b | 1 | 2 |')
+}
+
+fn test_to_plaintext_blockquote_footnotes_share_global_order() {
+	text := to_plaintext('> quote[^q]\n\n[^q]: note body', footnotes: true)
+	assert text.contains('> quote[1]')
+	assert text.contains('Footnotes:')
+	assert text.contains('[1] note body')
+}

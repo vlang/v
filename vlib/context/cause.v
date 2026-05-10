@@ -170,13 +170,26 @@ pub fn (ctx &CauseContext) str() string {
 pub fn (mut ctx CauseContext) cancel(remove_from_parent bool, err IError) {
 	// If being canceled with the generic 'context canceled' error and we
 	// have a parent, propagate the parent's cause so children can retrieve it.
+	// We walk the value chain directly instead of calling cause(): cause()
+	// would fall through to err() on a parent CancelContext, which would
+	// deadlock here because this cancel is typically invoked from within a
+	// parent's cancel() while that parent's mutex is held. The cause field
+	// on a CauseContext is always assigned before its cancel propagates, so
+	// reading it without locking is safe along this downward path.
 	if err.str() == 'context canceled' {
 		match ctx.cancel_ctx.context {
 			EmptyContext {}
 			else {
-				parent_cause := cause(ctx.cancel_ctx.context)
-				if parent_cause !is none {
-					ctx.cause = parent_cause
+				mut parent := ctx.cancel_ctx.context
+				if val := parent.value(cause_context_key) {
+					match val {
+						CauseContext {
+							if val.cause !is none {
+								ctx.cause = val.cause
+							}
+						}
+						else {}
+					}
 				}
 			}
 		}

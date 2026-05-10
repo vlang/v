@@ -340,7 +340,14 @@ pub fn execute(cmd string) Result {
 	soutput := fd_slurp(read_fd).join('')
 	fd_close(read_fd)
 	mut status := 0
-	if C.waitpid(pid, &status, 0) == -1 {
+	for {
+		C.errno = 0
+		if C.waitpid(pid, &status, 0) != -1 {
+			break
+		}
+		if C.errno == C.EINTR {
+			continue
+		}
 		return Result{
 			exit_code: -1
 			output:    soutput

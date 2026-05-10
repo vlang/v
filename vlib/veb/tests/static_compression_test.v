@@ -1,4 +1,4 @@
-// vtest build: !docker-ubuntu-musl // readonly-permission assertions can fail in that Docker setup
+// vtest build: !docker-ubuntu-musl && !windows // !windows: fasthttp.Server.run not implemented; !docker-ubuntu-musl: readonly-permission assertions can fail there
 import veb
 import net.http
 import os

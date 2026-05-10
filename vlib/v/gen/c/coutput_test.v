@@ -199,6 +199,32 @@ fn test_c_must_have_files() {
 	assert total_errors == 0
 }
 
+fn test_or_block_err_var_collision_does_not_emit_self_referential_err() {
+	os.chdir(vroot) or {}
+	path := os.join_path(testdata_folder, 'or_block_err_var_collision.vv')
+	cmd := '${os.quoted_path(vexe)} -o - ${os.quoted_path(path)}'
+	compilation := os.execute(cmd)
+	ensure_compilation_succeeded(compilation, cmd)
+	assert !compilation.output.contains('IError err = err.err;')
+	mut source_err_tmp := ''
+	mut has_visible_or_block_err := false
+	for line in compilation.output.split_into_lines() {
+		trimmed := line.trim_space()
+		if trimmed.starts_with('IError _t') && trimmed.ends_with(' = err.err;') {
+			source_err_tmp = trimmed.all_after('IError ').all_before(' = err.err;')
+		}
+		if trimmed.starts_with('IError _t') && trimmed.contains('.err;') {
+			err_tmp := trimmed.all_after('IError ').all_before(' = ')
+			if compilation.output.contains('IError err = ${err_tmp};') {
+				has_visible_or_block_err = true
+			}
+		}
+	}
+	assert source_err_tmp != ''
+	assert !compilation.output.contains('IError err = ${source_err_tmp};')
+	assert has_visible_or_block_err
+}
+
 fn test_imported_empty_interface_concat_does_not_emit_noop_array_cast_helper() {
 	os.chdir(vroot) or {}
 	path := os.join_path(vroot,
