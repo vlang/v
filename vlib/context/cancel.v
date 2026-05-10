@@ -136,14 +136,19 @@ fn propagate_cancel(mut parent Context, mut child Canceler) {
 		else {}
 	}
 	mut p := parent_cancel_context(mut parent) or {
-		spawn fn (mut parent Context, mut child Canceler) {
-			pdone := parent.done()
+		// Pre-extract the parent done channel and pass it by value into the
+		// spawn. The goroutine may outlive the caller's stack frame, so
+		// dereferencing `parent` inside the spawn (e.g. via parent.done())
+		// reads freed stack memory once the caller returns and reuses that
+		// region — observed as a consistent segfault in vlib/context/cause_test.v
+		// on Linux x86_64. Mirrors the fix in onecontext.run_two_contexts.
+		spawn fn (pdone chan int, mut parent Context, mut child Canceler) {
 			select {
 				_ := <-pdone {
 					child.cancel(false, parent.err())
 				}
 			}
-		}(mut parent, mut child)
+		}(done, mut parent, mut child)
 		return
 	}
 
