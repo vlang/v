@@ -162,26 +162,35 @@ jobs:
             fi
             # Mandatory: hostname not set in VM => some tests fail
             sudo hostname -s freebsd-ci
-            echo "### OS infos"
+            echo "::group::OS infos"
             uname -a
-            git config --global --add safe.directory .
+            echo "::endgroup::"
             # Build V
-            echo "### Build V"
+            echo "::group::Build V"
+            git config --global --add safe.directory .
             printf "VFLAGS = %s\n" "$VFLAGS"
-            gmake && ./v -showcc -o v cmd/v && sudo ./v symlink && ./v doctor
+            gmake && ./v -showcc -o v cmd/v && sudo ./v symlink
+            echo "::endgroup::"
+            echo "::group::v doctor"
+            ./v doctor
+            echo "::endgroup::"
             # Code in cmd/ is formatted
-            echo "### Check code in cmd/ is formatted"
+            echo "::group::Check code in cmd/ is formatted"
             ./v fmt -verify cmd/
+            echo "::endgroup::"
             # Check build-tools
-            echo "### Check build tools"
+            echo "::group::Check build tools"
             ./v -silent -N -W -check build-tools
+            echo "::endgroup::"
             # Test tools
-            echo "### Test tools"
+            echo "::group::Test tools"
             ./v -silent test-self cmd
+            echo "::endgroup::"
             # Test tools (-cstrict)
             if [ "$VFLAGS" != "-cc tcc" ]; then
-              echo "### Test tools (-cstrict)"
+              echo "::group::Test tools (-cstrict)"
               ./v -silent -W -cstrict test-self cmd
+              echo "::endgroup::"
             fi
 
   tools-openbsd:
@@ -208,24 +217,33 @@ jobs:
             sudo pkg_add git sqlite3 gmake boehm-gc libiconv
             # Mandatory: hostname not set in VM => some tests fail
             sudo hostname -s openbsd-ci
-            echo "### OS infos"
+            echo "::group::OS infos"
             uname -a
-            git config --global --add safe.directory .
+            echo "::endgroup::"
             # Build V
-            echo "### Build V"
+            echo "::group::Build V"
+            git config --global --add safe.directory .
             printf "VFLAGS = %s\n" "$VFLAGS"
-            gmake && ./v -showcc -o v cmd/v && sudo ./v symlink && ./v doctor
+            gmake && ./v -showcc -o v cmd/v && sudo ./v symlink
+            echo "::endgroup::"
+            echo "::group::v doctor"
+            ./v doctor
+            echo "::endgroup::"
             # Code in cmd/ is formatted
-            echo "### Check code in cmd/ is formatted"
+            echo "::group::Check code in cmd/ is formatted"
             ./v fmt -verify cmd/
+            echo "::endgroup::"
             # Check build-tools
-            echo "### Check build tools"
+            echo "::group::Check build tools"
             ./v -silent -N -W -check build-tools
+            echo "::endgroup::"
             # Test tools
-            echo "### Test tools"
+            echo "::group::Test tools"
             ./v -silent test-self cmd
+            echo "::endgroup::"
             # Test tools (-cstrict)
             if [ "$VFLAGS" != "-cc tcc" ]; then
-              echo "### Test tools (-cstrict)"
+              echo "::group::Test tools (-cstrict)"
               ./v -silent -W -cstrict test-self cmd
+              echo "::endgroup::"
             fi
