@@ -54,7 +54,7 @@ fn run_new_generic_solver_tests(root_label string, test_cmd string, expected_sum
 		}
 	}
 
-	failure_lines := res_lines.filter(it.starts_with(' FAIL'))
+	failure_lines := res_lines.filter(it.starts_with('FAIL'))
 	summary_lines := res_lines.filter(it.starts_with('Summary'))
 
 	actual_expected_summary := $if msvc { expected_summsvc } $else { expected_summary }
