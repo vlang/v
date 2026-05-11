@@ -844,6 +844,92 @@ fn test_server_initiated_request_returns_on_timeout() {
 	assert false, 'list_roots should have timed out'
 }
 
+fn test_late_response_after_timeout_does_not_leak_pending() {
+	mut server := new_server(name: 'late', version: '0')
+	server.dispatch_message(Request{
+		id:     encode_id(1)
+		method: 'initialize'
+		params: encode_initialize_params(InitializeParams{
+			protocol_version: protocol_version
+			capabilities:     '{}'
+			client_info:      Implementation{
+				name:    'c'
+				version: '0'
+			}
+		})
+	}.encode(), stdio_session_id, .stdio)!
+	server.dispatch_message(new_notification('notifications/initialized', empty).encode(),
+		stdio_session_id, .stdio)!
+
+	server.list_roots(stdio_session_id, 30 * time.millisecond) or {
+		assert err.msg().contains('timeout')
+	}
+
+	// The waiter has cleaned up its semaphore; a late reply must be dropped
+	// rather than parked in `pending_responses` forever.
+	mut server_request_id := ''
+	rlock server.state {
+		session := server.state.sessions[stdio_session_id]
+		server_request_id = '"server-${session.next_request_seq - 1}"'
+	}
+	server.dispatch_message('{"jsonrpc":"2.0","id":${server_request_id},"result":{"roots":[]}}',
+		stdio_session_id, .stdio)!
+
+	rlock server.state {
+		session := server.state.sessions[stdio_session_id]
+		assert session.pending_responses.len == 0
+	}
+}
+
+fn test_http_get_resume_drains_queue_before_replay() {
+	mut server_value := new_server(name: 'resume', version: '0', enable_logging: true)
+	mut server := &server_value
+	server_thread := spawn server.serve_http('127.0.0.1:0')
+	server.wait_till_running(max_retries: 200, retry_period_ms: 10)!
+	time.sleep(20 * time.millisecond)
+	url := 'http://${server.http_server.addr}/mcp'
+
+	session_id, mut header := http_initialize(url)!
+	header.set_custom(mcp_session_id_header, session_id)!
+	notification_response := http.fetch(
+		method: .post
+		url:    url
+		data:   new_notification('notifications/initialized', empty).encode()
+		header: header
+	)!
+	assert notification_response.status_code == 202
+
+	// First batch: drained on the initial GET, assigns ids 1..2.
+	server.notify_log(.info, 'svc', '"first"')
+	server.notify_log(.info, 'svc', '"second"')
+
+	mut get_header := http.new_header()
+	get_header.set(.accept, 'text/event-stream')
+	get_header.set_custom(mcp_session_id_header, session_id)!
+	first := http.fetch(method: .get, url: url, header: get_header)!
+	assert first.status_code == 200
+	assert first.body.contains('id: 1')
+	assert first.body.contains('id: 2')
+
+	// Second batch arrives while the client is between GETs — it stays in the
+	// notification queue and would be missed if the resume only replayed the
+	// event log without draining first.
+	server.notify_log(.info, 'svc', '"third"')
+	server.notify_log(.info, 'svc', '"fourth"')
+
+	mut resume_header := get_header
+	resume_header.set_custom(last_event_id_header, '2')!
+	resume := http.fetch(method: .get, url: url, header: resume_header)!
+	assert resume.status_code == 200
+	assert resume.body.contains('id: 3')
+	assert resume.body.contains('id: 4')
+	assert resume.body.contains('"third"')
+	assert resume.body.contains('"fourth"')
+
+	server.close()
+	server_thread.wait() or {}
+}
+
 fn test_http_returns_json_when_accept_lists_both() {
 	mut server_value := new_server(
 		name:    'json-default-server'

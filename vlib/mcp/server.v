@@ -796,11 +796,15 @@ fn (mut s Server) deliver_response(session_id string, response Response) {
 	key := pending_signal_key(session_id, response.id)
 	mut signal := unsafe { &sync.Semaphore(nil) }
 	lock s.state {
-		if session_id in s.state.sessions {
+		// Only stash the reply if a waiter is still listening on this id.
+		// `wait_for_response` removes its semaphore entry on timeout, so a
+		// missing signal means the request has been abandoned and any late
+		// reply must be dropped instead of accumulating in `pending_responses`.
+		signal = s.state.response_signals[key] or { unsafe { nil } }
+		if !isnil(signal) && session_id in s.state.sessions {
 			mut session := s.state.sessions[session_id]
 			session.pending_responses[response.id] = response
 			s.state.sessions[session_id] = session
-			signal = s.state.response_signals[key] or { unsafe { nil } }
 		}
 	}
 	if !isnil(signal) {
@@ -2340,6 +2344,11 @@ fn (mut s Server) handle_http_get(req http.Request, session_id string) http.Resp
 	last_event_id := last_event_id_text.int()
 	mut events := []LoggedEvent{}
 	if last_event_id_text != '' {
+		// Flush anything generated while the client was disconnected into the
+		// event log first, so the replay covers the whole gap. Without this
+		// step the resume only sees what was already drained before the drop,
+		// which defeats the point of `Last-Event-ID`.
+		s.drain_to_event_log(session_id)
 		events = s.replay_events_after(session_id, last_event_id)
 	} else {
 		events = s.drain_to_event_log(session_id)
