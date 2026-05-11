@@ -31,11 +31,22 @@ pub const server_not_initialized = ResponseError{
 	code:    -32002
 	message: 'Server not initialized.'
 }
+pub const resource_not_found = ResponseError{
+	code:    -32002
+	message: 'Resource not found.'
+}
+pub const url_elicitation_required = ResponseError{
+	code:    -32042
+	message: 'URL mode elicitation required.'
+}
 
 const default_content_type = 'application/json'
-const streamable_http_accept = 'application/json, text/event-stream'
-const content_length_header = 'Content-Length'
-const mcp_session_id_header = 'Mcp-Session-Id'
+const event_stream_content_type = 'text/event-stream'
+const streamable_http_accept = '${default_content_type}, ${event_stream_content_type}'
+const mcp_session_id_header = 'MCP-Session-Id'
+const mcp_protocol_version_header = 'MCP-Protocol-Version'
+const last_event_id_header = 'Last-Event-ID'
+const default_protocol_version = '2025-03-26'
 const process_poll_interval = 5 * time.millisecond
 const default_client_name = 'v.mcp'
 const default_client_version = 'dev'
@@ -93,11 +104,28 @@ pub fn (e EmptyObject) str() string {
 
 pub const empty_object = EmptyObject{}
 
-// Implementation identifies an MCP client or server implementation.
+// Icon describes a UI icon advertised by an MCP implementation, tool,
+// resource, resource template or prompt. `src` is required; `mime_type`,
+// `sizes` and `theme` are optional metadata mirroring the spec's `Icon` shape.
+pub struct Icon {
+pub:
+	src       string
+	mime_type string   @[json: mimeType; omitempty]
+	sizes     []string @[omitempty]
+	theme     string   @[omitempty]
+}
+
+// Implementation identifies an MCP client or server implementation. `name`
+// and `version` are required; `title`, `description`, `website_url` and
+// `icons` are optional 2025-11-25 metadata extensions (BaseMetadata + Icons).
 pub struct Implementation {
 pub:
-	name    string
-	version string
+	name        string
+	version     string
+	title       string @[omitempty]
+	description string @[omitempty]
+	website_url string @[json: websiteUrl; omitempty]
+	icons       []Icon @[omitempty]
 }
 
 // InitializeParams is the typed payload for the `initialize` request.
@@ -200,13 +228,25 @@ pub fn new_response[I, R](id I, result R, err ResponseError) Response {
 pub fn (resp Response) encode() string {
 	mut payload := '{"jsonrpc":"${jsonrpc_version}"'
 	if resp.error.code != 0 {
-		payload += ',"error":' + json.encode(resp.error)
+		payload += ',"error":' + encode_response_error(resp.error)
 	} else {
 		result_payload := if resp.result.len == 0 { null.str() } else { resp.result }
 		payload += ',"result":' + result_payload
 	}
 	id_payload := if resp.id.len == 0 { null.str() } else { resp.id }
 	return payload + ',"id":${id_payload}}'
+}
+
+// encode_response_error renders a ResponseError as JSON, preserving the
+// `data` payload as raw JSON. V's `json.encode` ignores the `@[raw]` tag on
+// encode, so a hand-rolled writer is required to keep the wire shape spec
+// compliant (the `data` field MAY be any JSON value per JSON-RPC 2.0).
+fn encode_response_error(err ResponseError) string {
+	mut fields := ['"code":${err.code}', '"message":${json.encode(err.message)}']
+	if err.data.trim_space() != '' {
+		fields << '"data":${err.data}'
+	}
+	return '{${fields.join(',')}}'
 }
 
 // decode_result decodes the response result into `T`.
@@ -241,9 +281,15 @@ struct MessageEnvelope {
 	error   ResponseError
 }
 
+// is_notification_id reports whether a JSON-RPC `id` field encodes the
+// "absent or null" form, which per spec marks the envelope as a notification.
+fn is_notification_id(id string) bool {
+	return id == '' || id == null.str()
+}
+
 fn (env MessageEnvelope) encode() string {
 	if env.method.len != 0 {
-		if env.id.len == 0 || env.id == null.str() {
+		if is_notification_id(env.id) {
 			return Notification{
 				method: env.method
 				params: env.params
@@ -443,7 +489,7 @@ fn (mut c Client) wait_for_response(expected_id string) !Response {
 		raw_message := c.transport.receive()!
 		envelope := decode_envelope(raw_message)!
 		if envelope.method.len != 0 {
-			if envelope.id.len == 0 || envelope.id == null.str() {
+			if is_notification_id(envelope.id) {
 				c.notifications << Notification{
 					method: envelope.method
 					params: envelope.params
@@ -484,6 +530,7 @@ fn (err NoFrameError) code() int {
 	return 0
 }
 
+// FrameExtraction holds a single stdio message and the unconsumed buffer remainder.
 struct FrameExtraction {
 	message   string
 	remaining string
@@ -491,10 +538,11 @@ struct FrameExtraction {
 
 struct HttpTransport {
 mut:
-	url        string
-	header     http.Header
-	session_id string
-	pending    []string
+	url              string
+	header           http.Header
+	session_id       string
+	protocol_version string
+	pending          []string
 }
 
 fn new_http_transport(url string, config ClientConfig) !HttpTransport {
@@ -522,6 +570,9 @@ fn (mut transport HttpTransport) send(message string) ! {
 	if transport.session_id != '' {
 		header.set_custom(mcp_session_id_header, transport.session_id)!
 	}
+	if transport.protocol_version != '' {
+		header.set_custom(mcp_protocol_version_header, transport.protocol_version)!
+	}
 	response := http.fetch(
 		method: .post
 		url:    transport.url
@@ -531,6 +582,11 @@ fn (mut transport HttpTransport) send(message string) ! {
 	if session_id := response.header.get_custom(mcp_session_id_header) {
 		transport.session_id = session_id
 	}
+	if transport.protocol_version == '' && transport.session_id != '' {
+		// First handshake response: capture the negotiated version so all
+		// subsequent requests carry MCP-Protocol-Version per spec §Transports.
+		transport.protocol_version = read_negotiated_version(response.body)
+	}
 	messages := parse_http_response_messages(response)!
 	if messages.len != 0 {
 		transport.pending << messages
@@ -539,6 +595,12 @@ fn (mut transport HttpTransport) send(message string) ! {
 	if response.status_code >= 400 {
 		return error('mcp.http: server returned HTTP ${response.status_code} without an MCP payload')
 	}
+}
+
+fn read_negotiated_version(body string) string {
+	envelope := decode_envelope(body) or { return '' }
+	result := json.decode(InitializeResult, envelope.result) or { return '' }
+	return result.protocol_version
 }
 
 fn (mut transport HttpTransport) receive() !string {
@@ -588,12 +650,12 @@ fn new_process_transport(command string, args []string) !ProcessTransport {
 }
 
 fn (mut transport ProcessTransport) send(message string) ! {
-	transport.process.stdin_write(encode_framed_message(message))
+	transport.process.stdin_write(encode_stdio_message(message))
 }
 
 fn (mut transport ProcessTransport) receive() !string {
 	for {
-		frame := try_extract_framed_message(transport.buffer) or {
+		frame := try_extract_stdio_message(transport.buffer) or {
 			if err.msg() != NoFrameError{}.msg() {
 				return err
 			}
@@ -612,7 +674,7 @@ fn (mut transport ProcessTransport) receive() !string {
 		}
 		if !transport.process.is_alive() {
 			transport.buffer += transport.process.stdout_slurp()
-			frame_after_exit := try_extract_framed_message(transport.buffer) or {
+			frame_after_exit := try_extract_stdio_message(transport.buffer) or {
 				if err.msg() != NoFrameError{}.msg() {
 					return err
 				}
@@ -732,43 +794,32 @@ fn is_json_payload(payload string) bool {
 	return trimmed[0] == `{` || trimmed[0] == `[`
 }
 
-fn encode_framed_message(message string) string {
-	return '${content_length_header}: ${message.len}\r\n\r\n${message}'
+// encode_stdio_message produces a newline-delimited stdio frame per MCP spec.
+// The MCP spec mandates that messages are delimited by newlines and MUST NOT
+// contain embedded newlines. Compact JSON encoding satisfies the latter; we
+// strip stray CR/LF defensively to keep the on-wire contract.
+fn encode_stdio_message(message string) string {
+	return message.replace('\r', '').replace('\n', '') + '\n'
 }
 
-fn try_extract_framed_message(buffer string) !FrameExtraction {
-	header_end := buffer.index('\r\n\r\n') or { return NoFrameError{} }
-	header_text := buffer[..header_end]
-	mut content_length := -1
-	for line in header_text.split('\r\n') {
-		if line.len == 0 {
-			continue
-		}
-		parts := line.split_nth(':', 2)
-		if parts.len != 2 {
-			continue
-		}
-		if parts[0].trim_space().to_lower() != content_length_header.to_lower() {
-			continue
-		}
-		length_text := parts[1].trim_space()
-		parsed_length := length_text.int()
-		if parsed_length == 0 && length_text != '0' {
-			return error('mcp.stdio: invalid Content-Length header `${length_text}`')
-		}
-		content_length = parsed_length
-		break
+// try_extract_stdio_message consumes the next newline-delimited frame from
+// `buffer`, returning the message body without its trailing newline.
+fn try_extract_stdio_message(buffer string) !FrameExtraction {
+	newline := buffer.index('\n') or { return NoFrameError{} }
+	mut end := newline
+	if end > 0 && buffer[end - 1] == `\r` {
+		end--
 	}
-	if content_length < 0 {
-		return error('mcp.stdio: missing Content-Length header')
+	message := buffer[..end].trim_space()
+	remaining := if newline + 1 >= buffer.len { '' } else { buffer[newline + 1..] }
+	if message.len == 0 {
+		return try_extract_stdio_message(remaining) or {
+			if err.msg() == NoFrameError{}.msg() {
+				return NoFrameError{}
+			}
+			err
+		}
 	}
-	body_start := header_end + 4
-	body_end := body_start + content_length
-	if buffer.len < body_end {
-		return NoFrameError{}
-	}
-	message := buffer[body_start..body_end]
-	remaining := if body_end >= buffer.len { '' } else { buffer[body_end..] }
 	return FrameExtraction{
 		message:   message
 		remaining: remaining
@@ -776,9 +827,7 @@ fn try_extract_framed_message(buffer string) !FrameExtraction {
 }
 
 fn encode_id[I](id I) string {
-	return $if I is string {
-		json.encode(id)
-	} $else $if I is int {
+	return $if I is int {
 		id.str()
 	} $else {
 		json.encode(id)
@@ -792,8 +841,6 @@ fn encode_value[T](value T) string {
 		value.str()
 	} $else $if T is Null {
 		value.str()
-	} $else $if T is string {
-		json.encode(value)
 	} $else {
 		json.encode(value)
 	}
@@ -801,7 +848,7 @@ fn encode_value[T](value T) string {
 
 fn decode_value[T](value string) !T {
 	$if T is Empty {
-		if value.len == 0 || value == null.str() {
+		if value == '' || value == null.str() {
 			return Empty{}
 		}
 		return error('mcp: expected an empty payload, got `${value}`')
