@@ -667,11 +667,13 @@ pub fn orm_stmt_gen(sql_dialect SQLDialect, table Table, q string, kind StmtKind
 
 			str += 'INSERT INTO ${q}${table.name}${q} '
 
-			if sql_dialect in [.sqlite, .pg, .h2] && are_values_empty {
-				str += 'DEFAULT VALUES'
-			} else if are_values_empty {
-				str += '() VALUES '
-				str += []string{len: row_count, init: '()'}.join(', ')
+			if are_values_empty {
+				if row_count == 1 && sql_dialect in [.sqlite, .pg, .h2] {
+					str += 'DEFAULT VALUES'
+				} else {
+					str += '() VALUES '
+					str += []string{len: row_count, init: '()'}.join(', ')
+				}
 			} else {
 				str += '('
 				str += select_fields.join(', ')
