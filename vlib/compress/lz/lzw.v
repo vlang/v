@@ -36,7 +36,7 @@ pub fn compress_lzw(data []u8) ![]u8 {
 pub fn decompress_lzw(data []u8) ![]u8 {
 	payload, expected_len := unwrap_payload(data, .lzw)!
 	if payload.len == 0 {
-		if expected_len == 0 {
+		if expected_len == i64(0) {
 			return []u8{}
 		}
 		return error('invalid lzw stream: missing codes')
@@ -85,7 +85,7 @@ pub fn decompress_lzw(data []u8) ![]u8 {
 		word = entry.clone()
 	}
 
-	if out.len != expected_len {
+	if i64(out.len) != expected_len {
 		return error('invalid lzw stream: length mismatch')
 	}
 	return out

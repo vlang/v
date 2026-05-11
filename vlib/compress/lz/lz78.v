@@ -37,7 +37,7 @@ pub fn compress_lz78(data []u8) ![]u8 {
 // decompress_lz78 decompresses data produced by compress_lz78.
 pub fn decompress_lz78(data []u8) ![]u8 {
 	payload, expected_len := unwrap_payload(data, .lz78)!
-	mut out := []u8{cap: expected_len}
+	mut out := []u8{cap: int(expected_len)}
 	mut dict := map[int][]u8{}
 	mut next_index := 1
 	mut pos := 0
@@ -78,7 +78,7 @@ pub fn decompress_lz78(data []u8) ![]u8 {
 		next_index++
 	}
 
-	if out.len != expected_len {
+	if i64(out.len) != expected_len {
 		return error('invalid lz78 stream: length mismatch')
 	}
 	return out

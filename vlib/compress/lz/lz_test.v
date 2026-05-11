@@ -43,3 +43,48 @@ fn test_mismatched_format_fails() {
 	}
 	assert false
 }
+
+fn test_decoded_length_too_large_fails() {
+	mut corrupt := []u8{}
+	corrupt << stream_magic
+	corrupt << u8(Format.lz77)
+	encode_uvarint(mut corrupt, u64(1) << 31)
+
+	decompress_lz77(corrupt) or {
+		assert err.msg().contains('decoded length too large')
+		return
+	}
+	assert false
+}
+
+fn test_match_offset_too_large_fails() {
+	mut corrupt := []u8{}
+	corrupt << stream_magic
+	corrupt << u8(Format.lz77)
+	encode_uvarint(mut corrupt, u64(4))
+	corrupt << u8(0)
+	corrupt << `A`
+	corrupt << u8(0x80)
+	encode_uvarint(mut corrupt, u64(1) << 63)
+
+	decompress_lz77(corrupt) or {
+		assert err.msg().contains('bad match offset')
+		return
+	}
+	assert false
+}
+
+fn test_high_entropy_roundtrip_large_window_formats() {
+	mut data := []u8{len: 128 * 1024}
+	mut state := u32(0x9e3779b9)
+	for i in 0 .. data.len {
+		state = state * 1664525 + 1013904223
+		data[i] = u8(state >> 24)
+	}
+
+	for format in [Format.lz4, .lzma] {
+		compressed := compress(data, format)!
+		decompressed := decompress(compressed, format)!
+		assert decompressed == data
+	}
+}

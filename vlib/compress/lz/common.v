@@ -9,6 +9,10 @@ struct MatchProfile {
 	max_literal int
 }
 
+const match_hash_bits = 16
+const match_hash_size = 1 << match_hash_bits
+const max_match_candidates = 64
+
 fn wrap_payload(format Format, source []u8, payload []u8) []u8 {
 	mut out := []u8{cap: stream_magic.len + 8 + payload.len}
 	out << stream_magic
@@ -18,7 +22,7 @@ fn wrap_payload(format Format, source []u8, payload []u8) []u8 {
 	return out
 }
 
-fn unwrap_payload(data []u8, format Format) !([]u8, int) {
+fn unwrap_payload(data []u8, format Format) !([]u8, i64) {
 	if data.len < stream_magic.len + 2 {
 		return error('invalid lz stream: too short')
 	}
@@ -29,17 +33,18 @@ fn unwrap_payload(data []u8, format Format) !([]u8, int) {
 	if wire_format != u8(format) {
 		return error('invalid lz stream: format mismatch')
 	}
-	decoded_len, mut pos, ok := decode_uvarint(data, stream_magic.len + 1)
+	decoded_len_u64, mut pos, ok := decode_uvarint(data, stream_magic.len + 1)
 	if !ok {
 		return error('invalid lz stream: bad length')
 	}
-	if decoded_len > u64(1 << 31) {
+	if decoded_len_u64 > u64(max_int) {
 		return error('invalid lz stream: decoded length too large')
 	}
+	decoded_len := i64(decoded_len_u64)
 	if pos > data.len {
 		return error('invalid lz stream: truncated payload')
 	}
-	return data[pos..], int(decoded_len)
+	return data[pos..], decoded_len
 }
 
 fn compress_with_profile(data []u8, profile MatchProfile, format Format) []u8 {
@@ -48,18 +53,24 @@ fn compress_with_profile(data []u8, profile MatchProfile, format Format) []u8 {
 	}
 	mut payload := []u8{cap: data.len}
 	mut literals := []u8{cap: profile.max_literal}
+	mut last_match := []int{len: match_hash_size, init: -1}
+	mut prev_match := []int{len: data.len, init: -1}
 	mut pos := 0
 	for pos < data.len {
-		offset, length := find_best_match(data, pos, profile)
+		offset, length := find_best_match(data, pos, profile, last_match, prev_match)
 		if length >= profile.min_match {
 			flush_literals(mut payload, mut literals)
 			emit_match(mut payload, offset, length, profile.min_match)
+			for i := pos; i < pos + length; i++ {
+				index_match_position(data, i, mut last_match, mut prev_match)
+			}
 			pos += length
 		} else {
 			literals << data[pos]
 			if literals.len == profile.max_literal {
 				flush_literals(mut payload, mut literals)
 			}
+			index_match_position(data, pos, mut last_match, mut prev_match)
 			pos++
 		}
 	}
@@ -69,7 +80,7 @@ fn compress_with_profile(data []u8, profile MatchProfile, format Format) []u8 {
 
 fn decompress_with_profile(data []u8, profile MatchProfile, format Format) ![]u8 {
 	payload, expected_len := unwrap_payload(data, format)!
-	mut out := []u8{cap: expected_len}
+	mut out := []u8{cap: int(expected_len)}
 	mut pos := 0
 	for pos < payload.len {
 		control := payload[pos]
@@ -89,39 +100,65 @@ fn decompress_with_profile(data []u8, profile MatchProfile, format Format) ![]u8
 			return error('invalid lz stream: truncated match offset')
 		}
 		pos = next_pos
-		if offset == 0 || int(offset) > out.len {
+		if offset == 0 || offset > u64(max_i64) || i64(offset) > i64(out.len) {
 			return error('invalid lz stream: bad match offset')
 		}
-		base := out.len - int(offset)
+		offset_int := int(offset)
+		base := out.len - offset_int
 		for i in 0 .. match_len {
 			out << out[base + i]
 		}
 	}
-	if out.len != expected_len {
+	if i64(out.len) != expected_len {
 		return error('invalid lz stream: length mismatch')
 	}
 	return out
 }
 
-fn find_best_match(data []u8, pos int, profile MatchProfile) (int, int) {
-	start := if pos > profile.window { pos - profile.window } else { 0 }
+fn find_best_match(data []u8, pos int, profile MatchProfile, last_match []int, prev_match []int) (int, int) {
+	if pos + profile.min_match > data.len {
+		return 0, 0
+	}
 	max_len := if pos + profile.max_match < data.len { profile.max_match } else { data.len - pos }
 	mut best_len := 0
 	mut best_offset := 0
-	for i := start; i < pos; i++ {
+	hash_idx := match_hash(data, pos)
+	mut candidates_checked := 0
+	mut i := last_match[hash_idx]
+	for i >= 0 && candidates_checked < max_match_candidates {
+		offset := pos - i
+		if offset > profile.window {
+			break
+		}
 		mut current_len := 0
 		for current_len < max_len && data[i + current_len] == data[pos + current_len] {
 			current_len++
 		}
 		if current_len > best_len {
 			best_len = current_len
-			best_offset = pos - i
+			best_offset = offset
 			if best_len == max_len {
 				break
 			}
 		}
+		i = prev_match[i]
+		candidates_checked++
 	}
 	return best_offset, best_len
+}
+
+fn index_match_position(data []u8, pos int, mut last_match []int, mut prev_match []int) {
+	if pos + 2 >= data.len {
+		return
+	}
+	hash_idx := match_hash(data, pos)
+	prev_match[pos] = last_match[hash_idx]
+	last_match[hash_idx] = pos
+}
+
+fn match_hash(data []u8, pos int) int {
+	v := (u32(data[pos]) << 16) | (u32(data[pos + 1]) << 8) | u32(data[pos + 2])
+	return int((v * u32(2654435761)) >> (32 - match_hash_bits))
 }
 
 fn flush_literals(mut payload []u8, mut literals []u8) {
