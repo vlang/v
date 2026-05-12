@@ -18,7 +18,7 @@ def encode_uvarint(value: int) -> bytes:
     return bytes(out)
 
 
-def decode_uvarint(data: bytes, pos: int) -> tuple[int, int]:
+def decode_uvarint(data: bytes, pos: int):
     value = 0
     shift = 0
     i = pos
