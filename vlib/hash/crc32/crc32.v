@@ -10,13 +10,16 @@ module crc32
 pub const ieee = u32(0xedb88320)
 pub const castagnoli = u32(0x82f63b78)
 pub const koopman = u32(0xeb31d82e)
-// crc32q uses the reflected (LSB-first) polynomial form.
-pub const q = u32(0xd5828281)
+// q is the standard CRC-32Q polynomial (MSB-first).
+pub const q = u32(0x814141ab)
+// q_reflected is the reflected (LSB-first) form of CRC-32Q polynomial.
+pub const q_reflected = u32(0xd5828281)
 
 // Named aliases for common CRC-32 variants.
 pub const crc32c = castagnoli
 pub const crc32k = koopman
 pub const crc32q = q
+pub const crc32q_reflected = q_reflected
 
 struct Crc32 {
 mut:
@@ -75,13 +78,15 @@ pub fn new(poly u32) &Crc32 {
 	return c
 }
 
-// sum_with_poly calculates the CRC-32 checksum of `b` for the provided reflected polynomial.
+// sum_with_poly calculates the CRC-32 checksum of `b` for the provided polynomial.
+// Built-in constants use their canonical parameter sets.
 pub fn sum_with_poly(poly u32, b []u8) u32 {
 	return match poly {
 		ieee { ieee_poly.checksum(b) }
 		crc32c { crc32c_poly.checksum(b) }
 		crc32k { crc32k_poly.checksum(b) }
-		crc32q { crc32q_poly.checksum(b) }
+		crc32q { crc32q_sum_internal(b) }
+		crc32q_reflected { crc32q_reflected_poly.checksum(b) }
 		else { new(poly).checksum(b) }
 	}
 }
@@ -89,7 +94,35 @@ pub fn sum_with_poly(poly u32, b []u8) u32 {
 const ieee_poly = new(ieee)
 const crc32c_poly = new(crc32c)
 const crc32k_poly = new(crc32k)
-const crc32q_poly = new(crc32q)
+const crc32q_reflected_poly = new(crc32q_reflected)
+const crc32q_table = crc32q_generate_table(q)
+
+@[direct_array_access]
+fn crc32q_generate_table(poly u32) []u32 {
+	mut table := []u32{len: 256}
+	for i in 0 .. 256 {
+		mut crc := u32(i) << 24
+		for _ in 0 .. 8 {
+			if crc & u32(0x80000000) != 0 {
+				crc = (crc << 1) ^ poly
+			} else {
+				crc <<= 1
+			}
+		}
+		table[i] = crc
+	}
+	return table
+}
+
+@[direct_array_access]
+fn crc32q_sum_internal(b []u8) u32 {
+	mut crc := u32(0)
+	for byte in b {
+		idx := u8((crc >> 24) ^ byte)
+		crc = crc32q_table[idx] ^ (crc << 8)
+	}
+	return crc
+}
 
 // sum calculates the CRC-32 checksum of `b` by using the IEEE polynomial.
 pub fn sum(b []u8) u32 {
@@ -108,5 +141,5 @@ pub fn sum_crc32k(b []u8) u32 {
 
 // sum_crc32q calculates the CRC-32Q checksum of `b`.
 pub fn sum_crc32q(b []u8) u32 {
-	return crc32q_poly.checksum(b)
+	return crc32q_sum_internal(b)
 }

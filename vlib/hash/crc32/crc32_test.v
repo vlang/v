@@ -1,42 +1,42 @@
 import hash.crc32
 
-const test_polys = [crc32.ieee, crc32.crc32c, crc32.crc32k, crc32.crc32q]
+const reflected_test_polys = [crc32.ieee, crc32.crc32c, crc32.crc32k, crc32.crc32q_reflected]
 
-fn sum_for_poly(poly u32, data []u8) u32 {
+fn sum_for_reflected_poly(poly u32, data []u8) u32 {
 	return match poly {
 		crc32.ieee { crc32.sum(data) }
 		crc32.crc32c { crc32.sum_crc32c(data) }
 		crc32.crc32k { crc32.sum_crc32k(data) }
-		crc32.crc32q { crc32.sum_crc32q(data) }
+		crc32.crc32q_reflected { crc32.sum_with_poly(crc32.crc32q_reflected, data) }
 		else { panic('unexpected polynomial in test') }
 	}
 }
 
-fn expected_crc_123456789(poly u32) u32 {
+fn expected_reflected_crc_123456789(poly u32) u32 {
 	return match poly {
 		crc32.ieee { u32(0xcbf43926) }
 		crc32.crc32c { u32(0xe3069283) }
 		crc32.crc32k { u32(0x2d3dd0ae) }
-		crc32.crc32q { u32(0xa9cc8179) }
+		crc32.crc32q_reflected { u32(0xa9cc8179) }
 		else { panic('unexpected polynomial in test') }
 	}
 }
 
-fn expected_crc_a(poly u32) u32 {
+fn expected_reflected_crc_a(poly u32) u32 {
 	return match poly {
 		crc32.ieee { u32(0xe8b7be43) }
 		crc32.crc32c { u32(0xc1d04330) }
 		crc32.crc32k { u32(0x0da2aa8a) }
-		crc32.crc32q { u32(0x248ca0a3) }
+		crc32.crc32q_reflected { u32(0x248ca0a3) }
 		else { panic('unexpected polynomial in test') }
 	}
 }
 
-fn assert_poly_paths_match(poly u32, data []u8) {
+fn assert_reflected_poly_paths_match(poly u32, data []u8) {
 	c := crc32.new(poly)
 	by_new := c.checksum(data)
 	assert by_new == crc32.sum_with_poly(poly, data)
-	assert by_new == sum_for_poly(poly, data)
+	assert by_new == sum_for_reflected_poly(poly, data)
 }
 
 fn test_hash_crc32() {
@@ -54,11 +54,18 @@ fn test_hash_crc32() {
 
 fn test_hash_crc32_variants() {
 	data := '123456789'.bytes()
-	for poly in test_polys {
-		expected := expected_crc_123456789(poly)
-		assert sum_for_poly(poly, data) == expected
-		assert_poly_paths_match(poly, data)
+	for poly in reflected_test_polys {
+		expected := expected_reflected_crc_123456789(poly)
+		assert sum_for_reflected_poly(poly, data) == expected
+		assert_reflected_poly_paths_match(poly, data)
 	}
+}
+
+fn test_hash_crc32q_standard() {
+	data := '123456789'.bytes()
+	assert crc32.sum_crc32q(data) == u32(0x3010bf7f)
+	assert crc32.sum_with_poly(crc32.crc32q, data) == u32(0x3010bf7f)
+	assert crc32.sum_crc32q('a'.bytes()) == u32(0xd1112b6b)
 }
 
 fn test_hash_crc32_update() {
@@ -78,17 +85,19 @@ fn test_hash_crc32_update() {
 fn test_hash_crc32_edge_cases() {
 	empty := ''.bytes()
 	one := 'a'.bytes()
-	for poly in test_polys {
-		assert sum_for_poly(poly, empty) == u32(0)
-		assert sum_for_poly(poly, one) == expected_crc_a(poly)
+	for poly in reflected_test_polys {
+		assert sum_for_reflected_poly(poly, empty) == u32(0)
+		assert sum_for_reflected_poly(poly, one) == expected_reflected_crc_a(poly)
 	}
+	assert crc32.sum_crc32q(empty) == u32(0)
 }
 
 fn test_hash_crc32_sum_with_poly() {
 	data := 'variant helper'.bytes()
-	for poly in test_polys {
-		assert_poly_paths_match(poly, data)
+	for poly in reflected_test_polys {
+		assert_reflected_poly_paths_match(poly, data)
 	}
+	assert crc32.sum_with_poly(crc32.crc32q, data) == crc32.sum_crc32q(data)
 }
 
 fn test_hash_crc32_sum_with_poly_custom() {
@@ -103,7 +112,7 @@ fn test_hash_crc32_all_polys_consistent() {
 	part1 := data[..7]
 	part2 := data[7..]
 
-	for poly in test_polys {
+	for poly in reflected_test_polys {
 		c := crc32.new(poly)
 		full := c.checksum(data)
 
@@ -112,13 +121,13 @@ fn test_hash_crc32_all_polys_consistent() {
 		split = c.update(split, part2)
 
 		assert full == split
-		assert full == sum_for_poly(poly, data)
+		assert full == sum_for_reflected_poly(poly, data)
 	}
 }
 
 fn test_hash_crc32_streaming_chunk_sizes() {
 	data := ('streaming data block '.repeat(64)).bytes()
-	for poly in test_polys {
+	for poly in reflected_test_polys {
 		c := crc32.new(poly)
 		expected := c.checksum(data)
 		for chunk_size in [1, 2, 3, 5, 7, 16, 31, 64, 128] {
