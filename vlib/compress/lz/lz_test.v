@@ -4,7 +4,7 @@ const sample_data = ('The quick brown fox jumps over the lazy dog. '.repeat(12) 
 	'aaaaaaaaabbbbbbbbbcccccccccdddddddddeeeeeeeee').bytes()
 
 fn test_roundtrip_all_formats() {
-	formats := [Format.lz77, .lz78, .lzw, .lz4, .lzss, .lzma, .lzjb]
+	formats := [Format.lz77, .lz78, .lzw, .lz4, .lzss, .lzma, .lzma2, .lzjb]
 	for format in formats {
 		compressed := compress(sample_data, format)!
 		decompressed := decompress(compressed, format)!
@@ -30,6 +30,9 @@ fn test_format_specific_api_roundtrip() {
 
 	lzma_data := compress_lzma(sample_data)!
 	assert decompress_lzma(lzma_data)! == sample_data
+
+	lzma2_data := compress_lzma2(sample_data)!
+	assert decompress_lzma2(lzma2_data)! == sample_data
 
 	lzjb_data := compress_lzjb(sample_data)!
 	assert decompress_lzjb(lzjb_data)! == sample_data
@@ -82,7 +85,7 @@ fn test_high_entropy_roundtrip_large_window_formats() {
 		data[i] = u8(state >> 24)
 	}
 
-	for format in [Format.lz4, .lzma] {
+	for format in [Format.lz4, .lzma, .lzma2] {
 		compressed := compress(data, format)!
 		decompressed := decompress(compressed, format)!
 		assert decompressed == data

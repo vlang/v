@@ -8,6 +8,7 @@ pub enum Format {
 	lz4
 	lzss
 	lzma
+	lzma2
 	lzjb
 }
 
@@ -21,6 +22,7 @@ pub fn format_from_string(name string) !Format {
 		'lz4' { .lz4 }
 		'lzss' { .lzss }
 		'lzma' { .lzma }
+		'lzma2' { .lzma2 }
 		'lzjb' { .lzjb }
 		else { return error('unknown lz format: ${name}') }
 	}
@@ -35,6 +37,7 @@ pub fn compress(data []u8, format Format) ![]u8 {
 		.lz4 { compress_lz4(data) }
 		.lzss { compress_lzss(data) }
 		.lzma { compress_lzma(data) }
+		.lzma2 { compress_lzma2(data) }
 		.lzjb { compress_lzjb(data) }
 	}
 }
@@ -48,6 +51,7 @@ pub fn decompress(data []u8, format Format) ![]u8 {
 		.lz4 { decompress_lz4(data) }
 		.lzss { decompress_lzss(data) }
 		.lzma { decompress_lzma(data) }
+		.lzma2 { decompress_lzma2(data) }
 		.lzjb { decompress_lzjb(data) }
 	}
 }

@@ -10,6 +10,7 @@ Supported formats:
 - `lz4`
 - `lzss`
 - `lzma`
+- `lzma2`
 - `lzjb`
 
 Use the generic API when selecting a format dynamically:
