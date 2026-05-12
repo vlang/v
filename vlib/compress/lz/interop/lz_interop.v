@@ -17,7 +17,7 @@ fn main() {
 
 	println('LZ interop input: ${data.len} bytes')
 
-	for format in [lz.Format.lz77, .lz78, .lzw, .lz4, .lzss, .lzma, .lzjb] {
+	for format in [lz.Format.lz77, .lz78, .lzw, .lz4, .lzss, .lzma, .lzma2, .lzjb] {
 		validate_v_roundtrip(data, format) or {
 			eprintln('V validation failed for ${format}: ${err.msg()}')
 			exit(1)
