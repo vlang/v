@@ -3775,7 +3775,14 @@ fn (mut t Table) unwrap_generic_type_ex_with_depth(typ Type, generic_names []str
 			// If concrete types still contain generic parameters (e.g. Vec3[U] where U
 			// is unresolved), don't create a partially-resolved struct entry. The struct
 			// will be properly instantiated when all type parameters are known.
-			if final_concrete_types.any(it.has_flag(.generic)) {
+			//
+			// Structural check via generic_type_names catches entries like `[]T`
+			// whose `.generic` Type-flag has been cleared but whose type structure
+			// still references an unresolved generic parameter. Without this check,
+			// such entries reach register_sym below and leak into codegen as
+			// `Array_T` / placeholder-typed struct fields.
+			if final_concrete_types.any(it.has_flag(.generic))
+				|| final_concrete_types.any(t.generic_type_names(it).len > 0) {
 				return typ
 			}
 		}
