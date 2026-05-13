@@ -113,6 +113,18 @@ fn test_record_generic_struct_bindings_filters_lifetime_params() {
 	assert instances[0].params_key == 'Value'
 }
 
+fn test_expr_type_to_c_lowers_pointer_type() {
+	mut g := Gen.new([])
+	pointer_type := ast.Expr(ast.Type(ast.PointerType{
+		base_type: ast.Expr(ast.Ident{
+			name: 'Foo'
+		})
+	}))
+	assert g.expr_type_to_c(pointer_type) == 'Foo*'
+	assert g.is_pointer_type(pointer_type)
+	assert g.receiver_type_to_scope_name(pointer_type) == 'Foo'
+}
+
 fn test_fixed_array_elem_type_ready_accepts_primitive_alias() {
 	mut g := Gen.new([])
 	g.primitive_type_aliases['sha3__Lane'] = true

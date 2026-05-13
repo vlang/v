@@ -603,6 +603,11 @@ fn (mut g Gen) is_pointer_type(e ast.Expr) bool {
 	if e is ast.ModifierExpr {
 		return g.is_pointer_type(e.expr)
 	}
+	if e is ast.Type {
+		if e is ast.PointerType {
+			return true
+		}
+	}
 	if e is ast.Ident {
 		if e.name in ['voidptr', 'charptr', 'byteptr'] || e.name.ends_with('ptr') {
 			return true
@@ -1685,6 +1690,9 @@ fn (g &Gen) receiver_type_to_scope_name(typ ast.Expr) string {
 		}
 	}
 	if typ is ast.Type {
+		if typ is ast.PointerType {
+			return g.receiver_type_to_scope_name(typ.base_type)
+		}
 		// Array type: []T -> "[]T"
 		if typ is ast.ArrayType {
 			elem := g.receiver_type_to_scope_name(typ.elem_type)
@@ -2592,6 +2600,9 @@ fn (mut g Gen) expr_type_to_c(e ast.Expr) string {
 			}
 			if e is ast.ChannelType {
 				return 'chan'
+			}
+			if e is ast.PointerType {
+				return g.expr_type_to_c(e.base_type) + '*'
 			}
 			if e is ast.TupleType {
 				mut elem_types := []string{cap: e.types.len}

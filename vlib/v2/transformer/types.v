@@ -3090,6 +3090,9 @@ fn (t &Transformer) get_receiver_type_name(typ ast.Expr) string {
 	}
 	if typ is ast.Type {
 		// Handle wrapped type variants (GenericType, etc.)
+		if typ is ast.PointerType {
+			return t.get_receiver_type_name(typ.base_type)
+		}
 		if typ is ast.GenericType {
 			// Type[T] -> Type
 			return t.get_receiver_type_name(typ.name)

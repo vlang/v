@@ -118,6 +118,9 @@ fn (mut g Gen) propagate_generic_bindings(e ast.Expr, parent_bindings map[string
 					g.propagate_generic_bindings(param, parent_bindings)
 				}
 			}
+			if e is ast.PointerType {
+				g.propagate_generic_bindings(e.base_type, parent_bindings)
+			}
 		}
 		ast.PrefixExpr {
 			g.propagate_generic_bindings(e.expr, parent_bindings)
@@ -186,6 +189,9 @@ fn (mut g Gen) scan_expr_for_generic_types(e ast.Expr) {
 			if e is ast.MapType {
 				g.scan_expr_for_generic_types(e.key_type)
 				g.scan_expr_for_generic_types(e.value_type)
+			}
+			if e is ast.PointerType {
+				g.scan_expr_for_generic_types(e.base_type)
 			}
 			if e is ast.OptionType {
 				g.scan_expr_for_generic_types(e.base_type)

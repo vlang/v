@@ -111,3 +111,41 @@ struct Holder[^a] {
 	assert csrc.contains('Value value;')
 	assert !csrc.contains('T value;')
 }
+
+fn test_generate_c_lowers_pointer_type_params_receivers_fields_and_generics() {
+	csrc := generate_c_for_test('
+struct Foo {
+	value int
+}
+
+struct Node[T] {
+	value T
+}
+
+struct Holder {
+	item &Foo
+	node &Node[Foo]
+}
+
+fn ptr_value(foo &Foo) int {
+	return foo.value
+}
+
+fn (foo &Foo) method_value() int {
+	return foo.value
+}
+
+fn main() {
+	foo := Foo{}
+	_ := ptr_value(&foo)
+	_ := foo.method_value()
+}
+')
+	assert csrc.contains('Foo* item;')
+	assert csrc.contains('Node* node;')
+	assert csrc.contains('Foo value;')
+	assert csrc.contains('ptr_value(Foo* foo)')
+	assert csrc.contains('Foo__method_value(Foo* foo)')
+	assert !csrc.contains('int item;')
+	assert !csrc.contains('int ptr_value(int foo)')
+}

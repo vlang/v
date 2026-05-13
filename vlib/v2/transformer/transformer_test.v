@@ -4206,6 +4206,17 @@ fn test_transformer_preserves_pointer_lifetime_in_v_syntax_but_not_c_names() {
 	assert t.type_to_c_name(ptr_type) == 'Fooptr'
 }
 
+fn test_transformer_uses_pointer_type_receiver_name_for_scope_key() {
+	t := create_test_transformer()
+	receiver := ast.Expr(ast.Type(ast.PointerType{
+		base_type: ast.Expr(ast.Ident{
+			name: 'Ignore'
+		})
+		lifetime:  'a'
+	}))
+	assert t.get_receiver_type_name(receiver) == 'Ignore'
+}
+
 fn test_transformer_preserves_lifetime_method_signature_and_nested_generic_return_type() {
 	files := transform_code_for_test('
 struct Ignore {}

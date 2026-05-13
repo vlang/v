@@ -530,6 +530,9 @@ fn collect_generic_placeholder_names_from_expr(expr ast.Expr, mut seen map[strin
 					collect_generic_placeholder_names_from_expr(expr.key_type, mut seen, mut out)
 					collect_generic_placeholder_names_from_expr(expr.value_type, mut seen, mut out)
 				}
+				ast.PointerType {
+					collect_generic_placeholder_names_from_expr(expr.base_type, mut seen, mut out)
+				}
 				ast.OptionType {
 					collect_generic_placeholder_names_from_expr(expr.base_type, mut seen, mut out)
 				}
@@ -972,6 +975,12 @@ fn infer_generic_type_bindings_from_param(param ast.Expr, concrete types.Type, g
 							concrete.value_type, generic_params, mut bindings)
 					}
 				}
+				ast.PointerType {
+					if concrete is types.Pointer {
+						infer_generic_type_bindings_from_param(param.base_type, concrete.base_type,
+							generic_params, mut bindings)
+					}
+				}
 				ast.OptionType {
 					if concrete is types.OptionType {
 						infer_generic_type_bindings_from_param(param.base_type, concrete.base_type,
@@ -1003,6 +1012,11 @@ fn direct_generic_placeholder_name(e ast.Expr) string {
 		}
 		ast.ModifierExpr {
 			return direct_generic_placeholder_name(e.expr)
+		}
+		ast.Type {
+			if e is ast.PointerType {
+				return direct_generic_placeholder_name(e.base_type)
+			}
 		}
 		else {}
 	}
@@ -4945,6 +4959,9 @@ fn expr_has_generic_placeholder(e ast.Expr) bool {
 				ast.MapType {
 					return expr_has_generic_placeholder(e.key_type)
 						|| expr_has_generic_placeholder(e.value_type)
+				}
+				ast.PointerType {
+					return expr_has_generic_placeholder(e.base_type)
 				}
 				ast.OptionType {
 					return expr_has_generic_placeholder(e.base_type)
