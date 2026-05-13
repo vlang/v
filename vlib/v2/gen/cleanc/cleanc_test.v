@@ -2,6 +2,7 @@
 module cleanc
 
 import v2.ast
+import v2.types
 
 fn test_c_string_literal_content_to_c_single_line() {
 	out := c_string_literal_content_to_c('hello')
@@ -55,6 +56,61 @@ fn test_struct_generic_params_need_bindings_returns_true_for_runtime_generic_par
 		}),
 	]
 	assert struct_generic_params_need_bindings(params)
+}
+
+fn test_runtime_generic_params_filter_lifetime_params() {
+	params := [
+		ast.Expr(ast.LifetimeExpr{
+			name: 'a'
+		}),
+		ast.Expr(ast.Ident{
+			name: 'T'
+		}),
+	]
+	args := [
+		ast.Expr(ast.LifetimeExpr{
+			name: 'a'
+		}),
+		ast.Expr(ast.Ident{
+			name: 'Value'
+		}),
+	]
+	filtered_args := runtime_generic_args(args)
+	assert runtime_generic_param_names(['^a', 'T']) == ['T']
+	assert generic_param_names(params) == ['T']
+	assert filtered_args.len == 1
+	assert filtered_args[0] is ast.Ident
+	assert (filtered_args[0] as ast.Ident).name == 'Value'
+}
+
+fn test_record_generic_struct_bindings_filters_lifetime_params() {
+	mut env := types.Environment.new()
+	mut scope := types.new_scope(unsafe { nil })
+	scope.insert('Ref', types.Object(types.Type(types.Struct{
+		name:           'Ref'
+		generic_params: ['^a', 'T']
+	})))
+	scope.insert('Value', types.Object(types.Type(types.Struct{
+		name: 'Value'
+	})))
+	lock env.scopes {
+		env.scopes['main'] = scope
+	}
+	mut g := Gen.new_with_env([], env)
+	g.record_generic_struct_bindings('Ref', 'Ref', [
+		ast.Expr(ast.LifetimeExpr{
+			name: 'a'
+		}),
+		ast.Expr(ast.Ident{
+			name: 'Value'
+		}),
+	])
+	bindings := (g.generic_struct_bindings['Ref'] or { panic('missing Ref binding') }).clone()
+	value_type := bindings['T'] or { panic('missing T binding') }
+	assert value_type.name() == 'Value'
+	instances := g.generic_struct_instances['Ref']
+	assert instances.len == 1
+	assert instances[0].params_key == 'Value'
 }
 
 fn test_fixed_array_elem_type_ready_accepts_primitive_alias() {

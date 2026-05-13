@@ -92,3 +92,22 @@ fn test_generate_c_uses_concrete_map_method_name_in_generic_comptime_body() {
 	assert csrc.contains('Map_string_int__query_item(')
 	assert !csrc.contains('map__query_item(')
 }
+
+fn test_generate_c_filters_lifetime_params_from_generic_struct_binding() {
+	csrc := generate_c_for_test('
+struct Value {
+	n int
+}
+
+struct Ref[^a, T] {
+	value T
+}
+
+struct Holder[^a] {
+	item Ref[^a, Value]
+}
+')
+	assert csrc.contains('struct Ref {')
+	assert csrc.contains('Value value;')
+	assert !csrc.contains('T value;')
+}

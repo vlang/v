@@ -16,6 +16,28 @@ fn struct_generic_params_need_bindings(params []ast.Expr) bool {
 	return false
 }
 
+fn runtime_generic_param_names(param_names []string) []string {
+	mut names := []string{cap: param_names.len}
+	for name in param_names {
+		if name.starts_with('^') {
+			continue
+		}
+		names << name
+	}
+	return names
+}
+
+fn runtime_generic_args(params []ast.Expr) []ast.Expr {
+	mut args := []ast.Expr{cap: params.len}
+	for param in params {
+		if param is ast.LifetimeExpr {
+			continue
+		}
+		args << param
+	}
+	return args
+}
+
 // collect_generic_struct_bindings scans all struct fields for GenericType
 // instantiations (e.g. LinkedList[ValueInfo]) and records the concrete type
 // bindings so that methods on generic structs can resolve their generic params.

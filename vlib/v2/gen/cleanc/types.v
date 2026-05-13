@@ -2706,15 +2706,16 @@ fn (g &Gen) is_c_type_name(name string) bool {
 fn (mut g Gen) record_generic_struct_bindings(struct_base_name string, struct_c_name string, concrete_params []ast.Expr) {
 	// Find the struct decl to get generic param names.
 	env_struct := g.lookup_struct_type(struct_base_name)
-	generic_param_names := env_struct.generic_params
-	if generic_param_names.len == 0 || generic_param_names.len != concrete_params.len {
+	generic_param_names := runtime_generic_param_names(env_struct.generic_params)
+	concrete_runtime_params := runtime_generic_args(concrete_params)
+	if generic_param_names.len == 0 || generic_param_names.len != concrete_runtime_params.len {
 		return
 	}
 	// Check that all concrete params are non-placeholder types.
 	mut bindings := map[string]types.Type{}
-	mut param_c_names := []string{cap: concrete_params.len}
+	mut param_c_names := []string{cap: concrete_runtime_params.len}
 	for i, param_name in generic_param_names {
-		concrete_expr := concrete_params[i]
+		concrete_expr := concrete_runtime_params[i]
 		if is_generic_placeholder_type_name(concrete_expr.name()) {
 			return
 		}
@@ -2762,14 +2763,15 @@ fn (mut g Gen) record_generic_struct_bindings(struct_base_name string, struct_c_
 // by resolving placeholder params through the parent struct's known bindings.
 fn (mut g Gen) record_generic_struct_bindings_with_parent(struct_base_name string, struct_c_name string, concrete_params []ast.Expr, parent_bindings map[string]types.Type) {
 	env_struct := g.lookup_struct_type(struct_base_name)
-	generic_param_names := env_struct.generic_params
-	if generic_param_names.len == 0 || generic_param_names.len != concrete_params.len {
+	generic_param_names := runtime_generic_param_names(env_struct.generic_params)
+	concrete_runtime_params := runtime_generic_args(concrete_params)
+	if generic_param_names.len == 0 || generic_param_names.len != concrete_runtime_params.len {
 		return
 	}
 	mut bindings := map[string]types.Type{}
-	mut param_c_names := []string{cap: concrete_params.len}
+	mut param_c_names := []string{cap: concrete_runtime_params.len}
 	for i, param_name in generic_param_names {
-		concrete_expr := concrete_params[i]
+		concrete_expr := concrete_runtime_params[i]
 		expr_name := concrete_expr.name()
 		if is_generic_placeholder_type_name(expr_name) {
 			if parent_type := parent_bindings[expr_name] {
@@ -2825,8 +2827,9 @@ fn (mut g Gen) resolve_generic_struct_c_name(base_name string, concrete_params [
 	if instances.len <= 1 {
 		return base_name
 	}
-	mut param_c_names := []string{cap: concrete_params.len}
-	for p in concrete_params {
+	concrete_runtime_params := runtime_generic_args(concrete_params)
+	mut param_c_names := []string{cap: concrete_runtime_params.len}
+	for p in concrete_runtime_params {
 		param_c_names << g.expr_type_to_c(p)
 	}
 	params_key := param_c_names.join('_')
@@ -3928,9 +3931,10 @@ fn (mut g Gen) resolve_generic_struct_field_name(expr ast.Expr) string {
 			// Build the params_key from active_generic_types
 			// Find the struct's generic params to know the order
 			env_struct := g.lookup_struct_type(c_name.all_after_last('__'))
-			if env_struct.generic_params.len > 0 {
-				mut param_c_names := []string{cap: env_struct.generic_params.len}
-				for param_name in env_struct.generic_params {
+			generic_param_names := runtime_generic_param_names(env_struct.generic_params)
+			if generic_param_names.len > 0 {
+				mut param_c_names := []string{cap: generic_param_names.len}
+				for param_name in generic_param_names {
 					if concrete := g.active_generic_types[param_name] {
 						param_c_names << g.types_type_to_c(concrete)
 					} else {
