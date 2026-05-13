@@ -710,21 +710,6 @@ const english_letters = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ'
 const hex_chars = '0123456789abcdef'
 const ascii_chars = '!"#$%&\'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ\\^_`abcdefghijklmnopqrstuvwxyz{|}~'
 
-// ulid generates an unique lexicographically sortable identifier.
-// See https://github.com/ulid/spec .
-// Note: ULIDs can leak timing information, if you make them public, because
-// you can infer the rate at which some resource is being created, like
-// users or business transactions.
-// (https://news.ycombinator.com/item?id=14526173)
-pub fn ulid() string {
-	return default_rng.ulid()
-}
-
-// ulid_at_millisecond does the same as `ulid` but takes a custom Unix millisecond timestamp via `unix_milli`.
-pub fn ulid_at_millisecond(unix_time_milli u64) string {
-	return default_rng.ulid_at_millisecond(unix_time_milli)
-}
-
 // string_from_set returns a string of length `len` containing random characters sampled from the given `charset`.
 pub fn string_from_set(charset string, len int) string {
 	return default_rng.string_from_set(charset, len)

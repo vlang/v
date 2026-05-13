@@ -113,8 +113,11 @@ pub fn (mut u UUIDSession) next() string {
 
 const ulid_encoding = '0123456789ABCDEFGHJKMNPQRSTVWXYZ'
 
+// internal_ulid_format encodes a 48-bit Unix millisecond timestamp and 128
+// bits of randomness (supplied as two u64s, of which only the low 45 + 35
+// bits are used) into a 26-character Crockford Base32 ULID.
 @[direct_array_access]
-fn internal_ulid_at_millisecond(mut rng PRNG, unix_time_milli u64) string {
+fn internal_ulid_format(unix_time_milli u64, rand_a u64, rand_b u64) string {
 	buflen := 26
 	mut buf := unsafe { malloc_noscan(27) }
 	mut t := unix_time_milli
@@ -126,8 +129,7 @@ fn internal_ulid_at_millisecond(mut rng PRNG, unix_time_milli u64) string {
 		t = t >> 5
 		i--
 	}
-	// first rand set
-	mut x := rng.u64()
+	mut x := rand_a
 	i = 10
 	for i < 19 {
 		unsafe {
@@ -136,8 +138,7 @@ fn internal_ulid_at_millisecond(mut rng PRNG, unix_time_milli u64) string {
 		x = x >> 5
 		i++
 	}
-	// second rand set
-	x = rng.u64()
+	x = rand_b
 	for i < 26 {
 		unsafe {
 			buf[i] = ulid_encoding[int(x & 0x1F)]
@@ -149,6 +150,28 @@ fn internal_ulid_at_millisecond(mut rng PRNG, unix_time_milli u64) string {
 		buf[26] = 0
 		return buf.vstring_with_len(buflen)
 	}
+}
+
+@[direct_array_access]
+fn internal_ulid_at_millisecond(mut rng PRNG, unix_time_milli u64) string {
+	return internal_ulid_format(unix_time_milli, rng.u64(), rng.u64())
+}
+
+// ulid generates a unique lexicographically sortable identifier whose
+// 80 random bits are sourced from the OS CSPRNG (see `crypto.rand.read`).
+// See https://github.com/ulid/spec .
+// Note: ULIDs can leak timing information, if you make them public, because
+// you can infer the rate at which some resource is being created, like
+// users or business transactions.
+// (https://news.ycombinator.com/item?id=14526173)
+pub fn ulid() string {
+	return ulid_at_millisecond(u64(time.utc().unix_milli()))
+}
+
+// ulid_at_millisecond does the same as `ulid` but takes a custom Unix millisecond timestamp via `unix_milli`.
+pub fn ulid_at_millisecond(unix_time_milli u64) string {
+	rand_a, rand_b := csprng_u64_pair()
+	return internal_ulid_format(unix_time_milli, rand_a, rand_b)
 }
 
 @[direct_array_access]
