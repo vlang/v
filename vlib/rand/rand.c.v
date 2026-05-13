@@ -1,13 +1,27 @@
 module rand
 
 import time
+import crypto.rand as crypto_rand
 
-// uuid_v4 generates a random (v4) UUID.
+// csprng_u64_pair reads 16 bytes from the OS CSPRNG and packs them into two
+// big-endian u64 values, suitable for feeding `internal_uuid`.
+fn csprng_u64_pair() (u64, u64) {
+	buf := crypto_rand.read(16) or { panic('rand: OS CSPRNG unavailable: ${err}') }
+	mut a := u64(0)
+	mut b := u64(0)
+	for i in 0 .. 8 {
+		a = (a << 8) | u64(buf[i])
+		b = (b << 8) | u64(buf[8 + i])
+	}
+	return a, b
+}
+
+// uuid_v4 generates a random (v4) UUID, sourcing its 122 random bits from the
+// OS CSPRNG (see `crypto.rand.read`).
 // See https://en.wikipedia.org/wiki/Universally_unique_identifier#Version_4_(random)
 // See https://datatracker.ietf.org/doc/html/rfc9562#name-uuid-version-4
 pub fn uuid_v4() string {
-	rand_1 := default_rng.u64()
-	rand_2 := default_rng.u64()
+	rand_1, rand_2 := csprng_u64_pair()
 	return internal_uuid(4, rand_1, rand_2)
 }
 
@@ -59,12 +73,14 @@ fn internal_uuid(version u8, rand_1 u64, rand_2 u64) string {
 	}
 }
 
-// uuid_v7 generates a time-ordered (v7) UUID.
+// uuid_v7 generates a time-ordered (v7) UUID. The 48-bit Unix millisecond
+// timestamp is concatenated with random bits drawn from the OS CSPRNG.
 // See https://datatracker.ietf.org/doc/html/rfc9562#name-uuid-version-7
 pub fn uuid_v7() string {
 	timestamp_48 := u64(time.now().unix_milli()) << 16
-	rand_1 := timestamp_48 | default_rng.u16()
-	rand_2 := default_rng.u64()
+	r1, r2 := csprng_u64_pair()
+	rand_1 := timestamp_48 | (r1 & 0xFFFF)
+	rand_2 := r2
 	return internal_uuid(7, rand_1, rand_2)
 }
 
@@ -88,7 +104,7 @@ pub fn (mut u UUIDSession) next() string {
 	// make place for holding 4 bits `version`
 	timestamp_shift_4bits := (timestamp & 0xFFFF_FFFF_FFFF_0000) | ((timestamp & 0x0000_0000_0000_FFFF) >> 4)
 	rand_1 := (timestamp_shift_4bits & 0xFFFF_FFFF_FFFF_FFC0) | u64(u.counter & 0x3F) // 6 bits session counter
-	rand_2 := default_rng.u64()
+	_, rand_2 := csprng_u64_pair()
 
 	u.counter++
 
