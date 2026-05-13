@@ -4217,6 +4217,24 @@ fn test_transformer_uses_pointer_type_receiver_name_for_scope_key() {
 	assert t.get_receiver_type_name(receiver) == 'Ignore'
 }
 
+fn test_transformer_uses_pointer_type_for_generic_specialization_token() {
+	t := create_test_transformer()
+	foo_ptr := ast.Expr(ast.Type(ast.PointerType{
+		base_type: ast.Expr(ast.Ident{
+			name: 'Foo'
+		})
+	}))
+	bar_ptr := ast.Expr(ast.Type(ast.PointerType{
+		base_type: ast.Expr(ast.Ident{
+			name: 'Bar'
+		})
+	}))
+	assert t.generic_specialization_token(foo_ptr) == 'Fooptr'
+	assert t.generic_specialization_token(bar_ptr) == 'Barptr'
+	assert t.generic_specialization_suffix([foo_ptr]) == '_T_Fooptr'
+	assert t.generic_specialization_suffix([bar_ptr]) == '_T_Barptr'
+}
+
 fn test_transformer_preserves_lifetime_method_signature_and_nested_generic_return_type() {
 	files := transform_code_for_test('
 struct Ignore {}

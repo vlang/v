@@ -3000,6 +3000,9 @@ fn (t &Transformer) generic_specialization_token(expr ast.Expr) string {
 			return sanitize_generic_token_part(t.type_expr_to_c_name(expr))
 		}
 		ast.Type {
+			if expr is ast.PointerType {
+				return t.generic_specialization_token(expr.base_type) + 'ptr'
+			}
 			return sanitize_generic_token_part(expr.name())
 		}
 		else {
