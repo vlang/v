@@ -5,8 +5,6 @@
 module rand
 
 import math.bits
-import math.big
-import encoding.binary
 
 // int_u64 returns a random unsigned 64-bit integer `u64` read from a real OS source of entropy.
 pub fn int_u64(max u64) !u64 {
@@ -41,7 +39,8 @@ fn bytes_to_u64(b []u8) []u64 {
 	mut z := []u64{len: ((b.len + ws - 1) / ws)}
 	mut i := b.len
 	for k := 0; i >= ws; k++ {
-		z[k] = binary.big_endian_u64(b[i - ws..i])
+		// Inlined big-endian u64 read (avoids depending on `encoding.binary`).
+		z[k] = u64(b[i - 8]) << 56 | u64(b[i - 7]) << 48 | u64(b[i - 6]) << 40 | u64(b[i - 5]) << 32 | u64(b[i - 4]) << 24 | u64(b[i - 3]) << 16 | u64(b[i - 2]) << 8 | u64(b[i - 1])
 		i -= ws
 	}
 	if i > 0 {
@@ -53,43 +52,4 @@ fn bytes_to_u64(b []u8) []u64 {
 		z[z.len - 1] = d
 	}
 	return z
-}
-
-// int_big creates a random `big.Integer` with range [0, n)
-// returns an error if `n` is 0 or negative.
-pub fn int_big(n big.Integer) !big.Integer {
-	if n.signum < 1 {
-		return error('`n` cannot be 0 or negative.')
-	}
-
-	max := n - big.integer_from_int(1)
-	len := max.bit_len()
-
-	if len == 0 {
-		// max = n - 1, if max = 0 then return max, as it is the only valid integer in [0, 1)
-		return max
-	}
-
-	// k is the maximum byte length needed to encode a value < n
-	k := (len + 7) / 8
-
-	// b is the number of bits in the most significant byte of n-1
-	mut b := u8(len % 8)
-	if b == 0 {
-		b = 8
-	}
-
-	mut result := big.Integer{}
-	for {
-		mut bytes := read(k)!
-
-		// Clear bits in the first byte to increase the probability that the result is < max
-		bytes[0] &= u8(int(1 << b) - 1)
-
-		result = big.integer_from_bytes(bytes)
-		if result < max {
-			break
-		}
-	}
-	return result
 }

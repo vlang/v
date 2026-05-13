@@ -1,6 +1,6 @@
 import math
 import math.big { Integer }
-import crypto.rand
+import crypto.rand.bigint
 
 struct SSS {
 mut:
@@ -11,7 +11,7 @@ mut:
 fn (s SSS) random() !Integer {
 	mut result := big.zero_int + s.prime
 	result = result - big.one_int
-	return rand.int_big(result)
+	return bigint.int_big(result)
 }
 
 // mod_inverse computes the multiplicative inverse of the number on the field
