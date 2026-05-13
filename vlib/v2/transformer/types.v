@@ -134,9 +134,6 @@ fn generated_fn_scope_key(fn_name string, module_name string) string {
 	if module_name == '' {
 		return fn_name
 	}
-	if fn_name.starts_with('${module_name}__') {
-		return fn_name
-	}
 	return '${module_name}__${fn_name}'
 }
 

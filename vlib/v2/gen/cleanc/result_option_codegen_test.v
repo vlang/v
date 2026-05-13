@@ -56,3 +56,20 @@ fn find_stop() int {
 	assert csrc.contains('_option_int _or_t')
 	assert csrc.contains('stop_index')
 }
+
+fn test_generate_c_expands_builtin_option_clone_if_guard() {
+	csrc := generate_result_option_c_for_test('
+interface IClone {}
+
+struct Bag implements IClone {
+	name ?string
+}
+
+fn copy_bag(b Bag) Bag {
+	return b.clone()
+}
+')
+	assert csrc.contains('builtin__Option_string__clone')
+	assert csrc.contains('.state == 0')
+	assert !csrc.contains('if (s)')
+}
