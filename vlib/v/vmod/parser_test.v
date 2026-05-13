@@ -17,6 +17,7 @@ fn test_ok() {
 		ok_source.replace('\n', '\r\n '), ok_source.replace('\n', '\n ')] {
 		content := vmod.decode(s)!
 		assert content.name == 'V'
+		assert content.base_url == ''
 		assert content.description == 'The V programming language.'
 		assert content.version == '0.7.7'
 		assert content.license == 'MIT'
@@ -26,6 +27,7 @@ fn test_ok() {
 	}
 	e := vmod.decode('Module{}')!
 	assert e.name == ''
+	assert e.base_url == ''
 	assert e.description == ''
 	assert e.version == ''
 	assert e.license == ''
@@ -40,6 +42,11 @@ fn test_invalid_start() {
 		return
 	}
 	assert false
+}
+
+fn test_base_url() {
+	content := vmod.decode("Module {\n\tname: 'V'\n\tbase_url: 'source'\n}")!
+	assert content.base_url == 'source'
 }
 
 fn test_invalid_end() {

@@ -29,6 +29,14 @@ $if sokol_wayland ? {
 
 $if windows {
 	#flag windows -lopengl32
+	$if msvc {
+		$if livemain ? {
+			#define SOKOL_DLL
+		}
+		$if sharedlive ? {
+			#define SOKOL_DLL
+		}
+	}
 }
 
 // Note that -lm is needed *only* for sokol_gl.h's usage of sqrtf(),
@@ -78,8 +86,6 @@ $if emscripten ? {
 // for simplicity, all header includes are here because import order matters and we dont have any way
 // to ensure import order with V yet
 
-@[use_once]
-#define SOKOL_IMPL
 // TODO: should not be defined for android graphic (apk/aab using sokol) builds, but we have no ways to undefine
 //#define SOKOL_NO_ENTRY
 #flag linux   -DSOKOL_NO_ENTRY
@@ -108,17 +114,40 @@ $if !no_sokol_app ? {
 		#define SOKOL_FORCE_EGL
 	}
 
+	$if macos {
+		$if sharedlive ? {
+		} $else {
+			// The live-reload dylib should reuse the host app's sokol_app symbols on macOS.
+			#define SOKOL_APP_IMPL
+		}
+	} $else $if windows {
+		$if sharedlive ? {
+		} $else {
+			// On Windows, the live-reload DLL links back to the host executable's
+			// import library, so it should not embed its own sokol_app backend.
+			#define SOKOL_APP_IMPL
+		}
+	} $else {
+		#define SOKOL_APP_IMPL
+	}
+
 	@[use_once]
 	#include "sokol_app.h"
 }
 
-@[use_once]
-#define SOKOL_IMPL
+$if windows && sharedlive ? {
+} $else {
+	@[use_once]
+	#define SOKOL_GFX_IMPL
+}
 #define SOKOL_NO_DEPRECATED
 #include "sokol_gfx.h"
 
-@[use_once]
-#define SOKOL_IMPL
+$if windows && sharedlive ? {
+} $else {
+	@[use_once]
+	#define SOKOL_IMPL
+}
 #include "util/sokol_gl.h"
 
 #include "sokol_v.post.h"

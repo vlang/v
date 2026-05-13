@@ -23,6 +23,7 @@ fn (mut t TypeB) next[T](_input T) f64 {
 	return 11
 }
 
+@[markused]
 fn new[S]() Calc[S] {
 	$if S is TypeA {
 		return Calc[TypeA]{

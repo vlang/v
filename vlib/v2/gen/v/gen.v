@@ -388,6 +388,7 @@ fn (mut g Gen) stmt(stmt ast.Stmt) {
 			g.writeln('')
 		}
 	}
+
 	// g.writeln('')
 }
 

@@ -19,9 +19,9 @@ pub fn __malloc(size usize) voidptr {
 }
 
 @[unsafe]
-pub fn memcpy(dest &C.void, src &C.void, n usize) &C.void {
+pub fn memcpy(dest &C.void, const_src &C.void, n usize) &C.void {
 	dest_ := unsafe { &u8(dest) }
-	src_ := unsafe { &u8(src) }
+	src_ := unsafe { &u8(const_src) }
 	unsafe {
 		for i in 0 .. int(n) {
 			dest_[i] = src_[i]
@@ -31,8 +31,8 @@ pub fn memcpy(dest &C.void, src &C.void, n usize) &C.void {
 }
 
 @[unsafe]
-fn strlen(_s &C.void) usize {
-	s := unsafe { &u8(_s) }
+fn strlen(const_s &char) usize {
+	s := unsafe { &u8(const_s) }
 	mut i := 0
 	for ; unsafe { s[i] } != 0; i++ {}
 	return usize(i)
@@ -70,9 +70,9 @@ fn memset(s &C.void, c int, n usize) &C.void {
 }
 
 @[unsafe]
-fn memmove(dest &C.void, src &C.void, n usize) &C.void {
+fn memmove(dest &C.void, const_src &C.void, n usize) &C.void {
 	dest_ := unsafe { &u8(dest) }
-	src_ := unsafe { &u8(src) }
+	src_ := unsafe { &u8(const_src) }
 	mut temp_buf := unsafe { malloc(int(n)) }
 	for i in 0 .. int(n) {
 		unsafe {
@@ -101,9 +101,9 @@ fn getchar() int {
 	return 0
 }
 
-fn memcmp(a &C.void, b &C.void, n usize) int {
-	a_ := unsafe { &u8(a) }
-	b_ := unsafe { &u8(b) }
+fn memcmp(const_a &C.void, const_b &C.void, n usize) int {
+	a_ := unsafe { &u8(const_a) }
+	b_ := unsafe { &u8(const_b) }
 	for i in 0 .. int(n) {
 		if unsafe { a_[i] != b_[i] } {
 			unsafe {

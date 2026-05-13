@@ -1,0 +1,7 @@
+vlib/v/checker/tests/assign_generic_closure_fn_err.vv:12:10: error: cannot assign generic function to a variable
+   10 | fn main() {
+   11 |     mut cmd := Cmd[string]{}
+   12 |     anon := fn [mut cmd] [T]() {
+      |             ~~~~~~~~~~~~~~~~~~~~
+   13 |         use_cmd(mut cmd)
+   14 |     }

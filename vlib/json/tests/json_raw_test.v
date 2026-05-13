@@ -5,6 +5,10 @@ struct TestOptionalRawString {
 	data ?string @[raw]
 }
 
+struct TestRawStringifiedObject {
+	metadata string @[raw]
+}
+
 fn test_raw_opt() {
 	test := TestOptionalRawString{
 		id:   1
@@ -35,4 +39,14 @@ fn test_raw_empty_string() {
 	encoded := json.encode(test)
 	r := json.decode(TestOptionalRawString, encoded)!.data or { 'z' }
 	assert r == '""'
+}
+
+fn test_stringified_object_returns_error_for_raw_field() {
+	stringified_json :=
+		json.encode('{"metadata":{"topLevelProperty":{"nestedProperty1":"Value 1"}}}')
+	json.decode(TestRawStringifiedObject, stringified_json) or {
+		assert err.msg().starts_with('Json element is not an object:')
+		return
+	}
+	assert false
 }

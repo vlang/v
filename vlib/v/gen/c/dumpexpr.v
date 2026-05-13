@@ -4,6 +4,13 @@ import v.ast
 import v.util
 import strings
 
+fn (mut g Gen) dump_arg_needs_gc_pin(typ ast.Type) bool {
+	if g.pref.gc_mode !in [.boehm_full, .boehm_incr, .boehm_full_opt, .boehm_incr_opt] {
+		return false
+	}
+	return typ.is_any_kind_of_pointer() || g.contains_ptr(typ)
+}
+
 fn (mut g Gen) dump_expr(node ast.DumpExpr) {
 	sexpr := ctoslit(node.expr.str())
 	fpath := cestring(g.file.path)
@@ -19,8 +26,7 @@ fn (mut g Gen) dump_expr(node ast.DumpExpr) {
 			resolved_call_type := g.resolve_return_type(node.expr)
 			if resolved_call_type != ast.void_type {
 				expr_type = g.unwrap_generic(resolved_call_type)
-				name = g.styp(expr_type.clear_flags(.shared_f, .result)).replace('*',
-					'')
+				name = g.styp(expr_type.clear_flags(.shared_f, .result)).replace('*', '')
 			}
 		}
 	}
@@ -29,13 +35,12 @@ fn (mut g Gen) dump_expr(node ast.DumpExpr) {
 			resolved_postfix_type := g.resolve_return_type(node.expr.expr)
 			if resolved_postfix_type != ast.void_type {
 				expr_type = g.unwrap_generic(resolved_postfix_type)
-				name = g.styp(expr_type.clear_flags(.shared_f, .result)).replace('*',
-					'')
+				name = g.styp(expr_type.clear_flags(.shared_f, .result)).replace('*', '')
 			}
 		}
 	}
-	resolved_expr_type := g.unwrap_generic(g.type_resolver.get_type_or_default(node.expr,
-		expr_type))
+	resolved_expr_type :=
+		g.unwrap_generic(g.type_resolver.get_type_or_default(node.expr, expr_type))
 	if resolved_expr_type != 0 && resolved_expr_type != expr_type {
 		expr_type = resolved_expr_type
 		name = g.styp(expr_type.clear_flags(.shared_f, .result)).replace('*', '')
@@ -53,6 +58,7 @@ fn (mut g Gen) dump_expr(node ast.DumpExpr) {
 		if node.expr is ast.Ident {
 			// var
 			if node.expr.info is ast.IdentVar {
+				ident_info := node.expr.var_info()
 				current_fn_ident_type := g.resolve_current_fn_generic_param_type(node.expr.name)
 				if current_fn_ident_type != 0 {
 					is_auto_deref := node.expr.obj is ast.Var && node.expr.obj.is_auto_deref
@@ -84,17 +90,16 @@ fn (mut g Gen) dump_expr(node ast.DumpExpr) {
 							if re != 0 {
 								expr_type = re
 							} else {
-								expr_type = g.unwrap_generic(node.expr.info.typ)
+								expr_type = g.unwrap_generic(ident_info.typ)
 							}
 						}
 					}
 				}
-				name = g.styp(expr_type.clear_flags(.shared_f, .result)).replace('*',
-					'')
+				name = g.styp(expr_type.clear_flags(.shared_f, .result)).replace('*', '')
 			}
 		} else if node.expr is ast.CallExpr {
-			name = g.styp(g.unwrap_generic(expr_type.clear_flags(.shared_f, .result))).replace('*',
-				'')
+			name =
+				g.styp(g.unwrap_generic(expr_type.clear_flags(.shared_f, .result))).replace('*', '')
 		} else {
 			expr_type = g.unwrap_generic(g.type_resolver.get_type_or_default(ast.Expr(node.expr),
 				expr_type))
@@ -151,8 +156,7 @@ fn (mut g Gen) dump_expr(node ast.DumpExpr) {
 			expr_type = g.type_resolver.get_type(ast.Expr(node.expr))
 			break
 		}
-		name = g.styp(g.unwrap_generic(expr_type.clear_flags(.shared_f, .result))).replace('*',
-			'')
+		name = g.styp(g.unwrap_generic(expr_type.clear_flags(.shared_f, .result))).replace('*', '')
 	} else if node.expr is ast.SelectorExpr && node.expr.expr is ast.Ident
 		&& (node.expr.expr as ast.Ident).ct_expr {
 		ct_expr_type := g.comptime_selector_type(node.expr)
@@ -166,8 +170,8 @@ fn (mut g Gen) dump_expr(node ast.DumpExpr) {
 		if ct_sym.kind !in [.sum_type, .interface] || node_sym.kind in [.sum_type, .interface]
 			|| expr_type.has_option_or_result() {
 			expr_type = ct_expr_type
-			name = g.styp(g.unwrap_generic(expr_type.clear_flags(.shared_f, .result))).replace('*',
-				'')
+			name =
+				g.styp(g.unwrap_generic(expr_type.clear_flags(.shared_f, .result))).replace('*', '')
 		}
 	}
 
@@ -192,17 +196,18 @@ fn (mut g Gen) dump_expr(node ast.DumpExpr) {
 				} else {
 					current_fn_ident_type
 				}
-				name = g.styp(expr_type.clear_flags(.shared_f, .result)).replace('*',
-					'')
+				name = g.styp(expr_type.clear_flags(.shared_f, .result)).replace('*', '')
 			}
 		}
-		if expr_type.is_ptr() && expr_type.has_flag(.option) {
+		if (expr_type.is_ptr() || expr_type.has_flag(.option_mut_param_t))
+			&& expr_type.has_flag(.option) {
 			if scope_var := node.expr.scope.find_var(node.expr.name) {
 				if scope_var.typ.has_flag(.option_mut_param_t) {
 					expr_type = scope_var.typ
 					// For mut option params, the type is ?&T. Strip the inner pointer
 					// from the name since __ptr is appended separately from is_ptr().
-					mut cleared_typ := expr_type.clear_flags(.shared_f, .result, .option_mut_param_t)
+					mut cleared_typ := expr_type.clear_flags(.shared_f, .result,
+						.option_mut_param_t)
 					if cleared_typ.has_flag(.option) {
 						inner := cleared_typ.clear_option_and_result()
 						if inner.is_ptr() {
@@ -214,8 +219,11 @@ fn (mut g Gen) dump_expr(node ast.DumpExpr) {
 			}
 		}
 	}
-	dump_fn_name := '_v_dump_expr_${name}' +
-		(if expr_type.is_ptr() { '__ptr'.repeat(expr_type.nr_muls()) } else { '' })
+	dump_fn_name := '_v_dump_expr_${name}' + (if expr_type.is_ptr() && !expr_type.has_flag(.option_mut_param_t) {
+		'__ptr'.repeat(expr_type.nr_muls())
+	} else {
+		''
+	})
 	g.write(' ${dump_fn_name}(${ctoslit(fpath)}, ${line}, ${sexpr}, ')
 	if expr_type.has_flag(.shared_f) {
 		g.write('&')
@@ -242,9 +250,10 @@ fn (mut g Gen) dump_expr(node ast.DumpExpr) {
 		if expr_type.has_flag(.option_mut_param_t) {
 			g.write('*')
 		}
-		if node.expr is ast.Ident && node.expr.obj is ast.Var && node.expr.obj.is_auto_deref
-			&& !expr_type.is_ptr() {
-			g.write('*')
+		if node.expr is ast.Ident && node.expr.obj is ast.Var {
+			if node.expr.obj.is_auto_deref && !expr_type.is_ptr() {
+				g.write('*')
+			}
 		}
 		for {
 			if node.expr is ast.Ident {
@@ -280,14 +289,19 @@ fn (mut g Gen) dump_expr_definitions() {
 	mut dump_fns := strings.new_builder(100)
 	mut dump_fn_defs := strings.new_builder(100)
 	for dump_type, cname in g.table.dumps {
-		dump_sym := g.table.sym(ast.idx_to_type(dump_type))
+		raw_typ := ast.idx_to_type(dump_type)
+		typ := if raw_typ.has_flag(.option_mut_param_t) && raw_typ.is_ptr() {
+			raw_typ.deref().clear_flag(.option_mut_param_t)
+		} else {
+			raw_typ
+		}
+		dump_sym := g.table.sym(typ)
 		// eprintln('>>> dump_type: ${dump_type} | cname: ${cname} | dump_sym: ${dump_sym.name}')
 		mut name := cname
 		if dump_sym.language == .c {
 			name = name[3..]
 		}
 		_, str_method_expects_ptr, _ := dump_sym.str_method_info()
-		typ := ast.idx_to_type(dump_type)
 		if g.pref.skip_unused
 			&& (!g.table.used_features.dump || typ.idx() !in g.table.used_features.used_syms) {
 			continue
@@ -345,6 +359,7 @@ fn (mut g Gen) dump_expr_definitions() {
 				}
 				else {}
 			}
+
 			is_fixed_arr_ret = true
 		} else {
 			str_dumparg_ret_type = str_dumparg_type
@@ -364,11 +379,12 @@ fn (mut g Gen) dump_expr_definitions() {
 		{
 			continue
 		}
-		mut surrounder := util.new_surrounder(3)
+		mut surrounder := util.new_surrounder(2)
 		int_str := g.get_str_fn(ast.int_type)
 		surrounder.add('\tstring sline = ${int_str}(line);', '\tbuiltin__string_free(&sline);')
 		if dump_sym.kind == .function && !is_option {
-			surrounder.add('\tstring value = ${to_string_fn_name}();', '\tbuiltin__string_free(&value);')
+			surrounder.add('\tstring value = ${to_string_fn_name}();',
+				'\tbuiltin__string_free(&value);')
 		} else if dump_sym.kind == .none {
 			surrounder.add('\tstring value = _S("none");', '\tbuiltin__string_free(&value);')
 		} else if is_ptr {
@@ -393,32 +409,29 @@ fn (mut g Gen) dump_expr_definitions() {
 			surrounder.add('\tstring value = ${to_string_fn_name}(${prefix}dump_arg);',
 				'\tbuiltin__string_free(&value);')
 		}
-		surrounder.add('
-	strings__Builder sb = strings__new_builder(64);
-', '
-	string res;
-	res = strings__Builder_str(&sb);
-	builtin__eprint(res);
-	builtin__string_free(&res);
-	strings__Builder_free(&sb);
-')
 		surrounder.builder_write_befores(mut dump_fns)
-		dump_fns.writeln("\tstrings__Builder_write_rune(&sb, '[');")
-		dump_fns.writeln('\tstrings__Builder_write_string(&sb, fpath);')
-		dump_fns.writeln("\tstrings__Builder_write_rune(&sb, ':');")
-		dump_fns.writeln('\tstrings__Builder_write_string(&sb, sline);')
-		dump_fns.writeln("\tstrings__Builder_write_rune(&sb, ']');")
-		dump_fns.writeln("\tstrings__Builder_write_rune(&sb, ' ');")
-		dump_fns.writeln('\tstrings__Builder_write_string(&sb, sexpr);')
-		dump_fns.writeln("\tstrings__Builder_write_rune(&sb, ':');")
-		dump_fns.writeln("\tstrings__Builder_write_rune(&sb, ' ');")
+		dump_fns.writeln('\tbuiltin__flush_stdout();')
+		dump_fns.writeln('\tbuiltin__flush_stderr();')
+		dump_fns.writeln('\tbuiltin___write_buf_to_fd(2, _S("[").str, _S("[").len);')
+		dump_fns.writeln('\tbuiltin___write_buf_to_fd(2, fpath.str, fpath.len);')
+		dump_fns.writeln('\tbuiltin___write_buf_to_fd(2, _S(":").str, _S(":").len);')
+		dump_fns.writeln('\tbuiltin___write_buf_to_fd(2, sline.str, sline.len);')
+		dump_fns.writeln('\tbuiltin___write_buf_to_fd(2, _S("] ").str, _S("] ").len);')
+		dump_fns.writeln('\tbuiltin___write_buf_to_fd(2, sexpr.str, sexpr.len);')
+		dump_fns.writeln('\tbuiltin___write_buf_to_fd(2, _S(": ").str, _S(": ").len);')
 		if is_ptr {
-			for i := 0; i < typ.nr_muls(); i++ {
-				dump_fns.writeln("\tstrings__Builder_write_rune(&sb, '&');")
+			ptr_prefix := '&'.repeat(typ.nr_muls())
+			dump_fns.writeln('\tbuiltin___write_buf_to_fd(2, _S("${ptr_prefix}").str, _S("${ptr_prefix}").len);')
+		}
+		dump_fns.writeln('\tbuiltin___writeln_to_fd(2, value);')
+		dump_fns.writeln('\tbuiltin__flush_stderr();')
+		if g.dump_arg_needs_gc_pin(typ) {
+			if is_ptr && !typ.has_flag(.option) {
+				dump_fns.writeln('\tGC_reachable_here(dump_arg);')
+			} else {
+				dump_fns.writeln('\tGC_reachable_here(&dump_arg);')
 			}
 		}
-		dump_fns.writeln('\tstrings__Builder_write_string(&sb, value);')
-		dump_fns.writeln("\tstrings__Builder_write_rune(&sb, '\\n');")
 		surrounder.builder_write_afters(mut dump_fns)
 		if is_fixed_arr_ret && !is_ptr {
 			tmp_var := g.new_tmp_var()

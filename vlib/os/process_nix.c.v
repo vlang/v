@@ -2,6 +2,30 @@ module os
 
 fn C.setpgid(pid i32, pgid i32) i32
 
+fn env_value_from_entries(env []string, name string) ?string {
+	prefix := '${name}='
+	for entry in env {
+		if entry.starts_with(prefix) {
+			return entry[prefix.len..]
+		}
+	}
+	return none
+}
+
+fn (p &Process) unix_resolve_filename() !string {
+	if is_abs_path(p.filename) {
+		return p.filename
+	}
+	if p.filename.contains(path_separator) {
+		if p.work_folder != '' {
+			return abs_path(p.filename)
+		}
+		return p.filename
+	}
+	path := env_value_from_entries(p.env, 'PATH') or { return error_failed_to_find_executable() }
+	return find_abs_path_of_executable_in_path_env(p.filename, path)
+}
+
 fn (mut p Process) unix_spawn_process() int {
 	mut pipeset := [6]int{}
 	if p.use_stdio_ctl {
@@ -50,13 +74,11 @@ fn (mut p Process) unix_spawn_process() int {
 		fd_close(pipeset[3])
 		fd_close(pipeset[5])
 	}
+	p.filename = p.unix_resolve_filename() or {
+		eprintln(err)
+		exit(1)
+	}
 	if p.work_folder != '' {
-		if !is_abs_path(p.filename) {
-			// Ensure p.filename contains an absolute path, so it
-			// can be located reliably, even after changing the
-			// current folder in the child process:
-			p.filename = abs_path(p.filename)
-		}
 		chdir(p.work_folder) or {}
 	}
 	execve(p.filename, p.args, p.env) or {

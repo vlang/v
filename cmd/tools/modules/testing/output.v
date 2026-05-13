@@ -7,6 +7,8 @@ pub enum MessageKind {
 	compile_end   // sent right after *each* _test.v file compilation, the message contains the output of that compilation
 	cmd_begin     // sent right before *each* _test.v file execution, the resulting status is not known yet, but the _test.v file itself is
 	cmd_end       // sent right after *each* _test.v file execution, the message contains the output of that execution
+	stats_output  // captured `v -stats test` output that should be shown verbatim on stdout
+	stats_error   // captured `v -stats test` output for failed commands, shown verbatim on stderr
 
 	ok   // success of a _test.v file
 	fail // failed _test.v file, one or more assertions failed

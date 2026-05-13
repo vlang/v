@@ -83,8 +83,8 @@ fn calculate_length(s &string) int {
 
 fn main() {
 	s := 'hello'.to_owned()
-len := calculate_length(&s)
-println(s) // ok — s was borrowed, not moved
+	len := calculate_length(&s)
+	println(s) // ok — s was borrowed, not moved
 }
 ```
 
@@ -95,7 +95,7 @@ Ownership mode also supports explicit named lifetimes with `^name`.
 Use `&^a T` for a borrowed reference with an explicit lifetime and `[^a]`
 in generic parameter and argument lists:
 
-```v okfmt
+```v ignore
 struct Ignore {}
 
 struct IgnoreMatch[^a] {}

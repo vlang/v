@@ -11,8 +11,9 @@ mut:
 	on_start(mut request Request, path string) !
 	// Called many times, once a chunk of data is received
 	on_chunk(request &Request, chunk []u8, already_received u64, expected u64) !
-	// Called once, at the end of the streaming download. Do cleanup here,
+	// Called once, at the end of the download attempt. Do cleanup here,
 	// like closing a file (opened in on_start), reporting stats etc.
+	// `response` will be empty when the request fails before a response is parsed.
 	on_finish(request &Request, response &Response) !
 }
 
@@ -55,13 +56,17 @@ pub fn download_file_with_progress(url string, path string, params DownloaderPar
 	}
 	mut req := prepare(config)!
 	d.on_start(mut req, path)!
-	response := req.do()!
+	mut response := Response{}
+	defer {
+		d.on_finish(req, response) or {}
+	}
+	response = req.do()!
 	$if windows && !no_vschannel ? {
 		// TODO: remove this, when windows supports streaming properly through vschannel
 		// For now though, just ensure that the complete body is "received" in one big chunk:
-		d.on_chunk(req, response.body.bytes(), 0, u64(response.body.len))!
+		body_len := u64(response.body.len)
+		d.on_chunk(req, response.body.bytes(), body_len, body_len)!
 	}
-	d.on_finish(req, response)!
 	return response
 }
 

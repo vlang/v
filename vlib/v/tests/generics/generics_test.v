@@ -505,8 +505,7 @@ fn test_multi_level_generics() {
 	}
 	assert three.foo.foo.foo == 10
 	assert get_multilevel_foo[MultiLevel[int]](two) == 10
-	assert get_multilevel_foo_2[MultiLevel[MultiLevel[int]], MultiLevel[MultiLevel[int]]](two,
-		two) == 20
+	assert get_multilevel_foo_2[MultiLevel[MultiLevel[int]], MultiLevel[MultiLevel[int]]](two, two) == 20
 }
 
 struct Empty_ {}

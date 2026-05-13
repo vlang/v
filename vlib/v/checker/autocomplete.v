@@ -272,6 +272,7 @@ fn (mut c Checker) ident_hover(node_ ast.Expr) {
 		}
 		else {}
 	}
+
 	if declaration == '' {
 		exit(0)
 	}
@@ -321,8 +322,7 @@ fn (c &Checker) vls_write_hover(declaration string, doc string) {
 		lines << ''
 		lines << doc
 	}
-	value := lines.join('\n').replace('\\', '\\\\').replace('"', '\\"').replace('\n',
-		'\\n')
+	value := lines.join('\n').replace('\\', '\\\\').replace('"', '\\"').replace('\n', '\\n')
 	println('{"contents":{"kind":"markdown","value":"${value}"}}')
 }
 
@@ -457,6 +457,7 @@ fn (mut c Checker) ident_gotodef(node_ ast.Expr) {
 		}
 		else {}
 	}
+
 	if pos.file_idx != -1 {
 		println('${c.table.filelist[pos.file_idx]}:${pos.line_nr + 1}:${pos.col}')
 	}
@@ -521,8 +522,7 @@ fn (mut c Checker) ident_autocomplete(node ast.Ident) {
 fn (mut c Checker) module_autocomplete(mod string) {
 	mut details := []Detail{cap: 128}
 	c.vls_gen_mod_funcs_details(mut details, mod)
-	c.vls_gen_mod_type_details(mut details, mod, .alias, .interface, .enum, .sum_type,
-		.struct)
+	c.vls_gen_mod_type_details(mut details, mod, .alias, .interface, .enum, .sum_type, .struct)
 	c.vls_gen_mod_consts_details(mut details, mod)
 	c.vls_write_details(details)
 }
@@ -575,7 +575,8 @@ fn (c &Checker) vls_gen_mod_funcs_details(mut details []Detail, mod string) {
 	for _, f in c.table.fns {
 		mut name := f.name
 		if f.is_pub && !f.is_method && !f.is_static_type_method && name.all_before_last('.') == mod {
-			name = name.all_after_last('.') // The user already typed `mod.`, so suggest the name without module
+			name =
+				name.all_after_last('.') // The user already typed `mod.`, so suggest the name without module
 			type_string := if f.return_type != ast.no_type {
 				c.table.type_to_str(f.return_type)
 			} else {
@@ -632,6 +633,7 @@ fn (c &Checker) vls_gen_mod_type_details(mut details []Detail, mod string, kinds
 						'${sym.kind}'
 					}
 				}
+
 				if info := c.table.vls_info['${key}_${sym.name}'] {
 					doc = info.doc
 				}
@@ -700,6 +702,7 @@ fn (c &Checker) vls_gen_type_details(mut details []Detail, sym ast.TypeSymbol) {
 		}
 		else {}
 	}
+
 	// Aliases and other types can have methods, add them
 	for method in sym.methods {
 		method_ret_type := c.table.sym(method.return_type)
@@ -757,6 +760,7 @@ fn (c &Checker) vls_map_v_kind_to_lsp_kind(kind ast.Kind) DetailKind {
 			return .text
 		}
 	}
+
 	return .text
 }
 

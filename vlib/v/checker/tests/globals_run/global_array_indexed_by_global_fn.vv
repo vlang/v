@@ -20,7 +20,7 @@ fn abc1() u64 {
 }
 
 pub fn current() &Local {
-	return cpu_locals[cpu_get_id()]
+	return cpu_locals[int(cpu_get_id())]
 }
 
 fn main() {

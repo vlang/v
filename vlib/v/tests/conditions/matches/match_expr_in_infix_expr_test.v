@@ -9,6 +9,7 @@ fn test_match_expr_in_infix_expr() {
 			false
 		}
 	}
+
 	println(a)
 	assert a == false
 	println(b)

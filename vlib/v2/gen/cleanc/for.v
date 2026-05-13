@@ -87,6 +87,7 @@ fn (mut g Gen) gen_stmt_inline(node ast.Stmt) {
 					.right_shift_assign { '>>=' }
 					else { '=' }
 				}
+
 				g.sb.write_string(' ${op_str} ')
 				g.expr(rhs)
 			}

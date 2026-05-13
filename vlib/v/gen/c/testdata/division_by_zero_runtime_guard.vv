@@ -1,0 +1,12 @@
+a := 42
+z := 0
+mut c := a / z
+c /= z
+mut d := a % z
+d %= z
+fa := f32(42)
+fz := f32(0)
+fc := fa / fz
+println(c)
+println(d)
+println(fc)

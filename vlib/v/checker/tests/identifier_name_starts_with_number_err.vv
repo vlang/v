@@ -1,0 +1,4 @@
+fn main() {
+	mut 3a := 1
+	println(3a)
+}

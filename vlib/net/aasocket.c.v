@@ -42,7 +42,7 @@ pub enum AddrFamily {
 	unspec = C.AF_UNSPEC
 }
 
-fn C.socket(domain AddrFamily, typ SocketType, protocol i32) i32
+fn C.socket(domain i32, typ i32, protocol i32) i32
 
 // fn C.setsockopt(sockfd int, level int, optname int, optval voidptr, optlen C.socklen_t) int
 fn C.setsockopt(sockfd i32, level i32, optname i32, optval voidptr, optlen u32) i32
@@ -56,40 +56,44 @@ fn C.ntohs(net u16) u16
 // fn C.bind(sockfd int, addr &C.sockaddr, addrlen C.socklen_t) int
 // use voidptr for arg 2 because sockaddr is a generic descriptor for any kind of socket operation,
 // it can also take sockaddr_in depending on the type of socket used in arg 1
-fn C.bind(sockfd i32, addr &Addr, addrlen u32) i32
+fn C.bind(sockfd i32, addr voidptr, addrlen u32) i32
 
 fn C.listen(sockfd i32, backlog i32) i32
 
 // fn C.accept(sockfd int, addr &C.sockaddr, addrlen &C.socklen_t) int
-fn C.accept(sockfd i32, addr &Addr, addrlen &u32) i32
+fn C.accept(sockfd i32, addr voidptr, addrlen &u32) i32
 
 fn C.getaddrinfo(node &char, service &char, hints &C.addrinfo, res &&C.addrinfo) i32
 
 fn C.freeaddrinfo(info &C.addrinfo)
 
+$if !windows {
+	fn C.gai_strerror(code i32) &char
+}
+
 // fn C.connect(sockfd int, addr &C.sockaddr, addrlen C.socklen_t) int
-fn C.connect(sockfd i32, addr &Addr, addrlen u32) i32
+fn C.connect(sockfd i32, addr voidptr, addrlen u32) i32
 
 // fn C.send(sockfd int, buf voidptr, len usize, flags int) usize
 fn C.send(sockfd i32, buf voidptr, len usize, flags i32) i32
 
 // fn C.sendto(sockfd int, buf voidptr, len usize, flags int, dest_add &C.sockaddr, addrlen C.socklen_t) usize
-fn C.sendto(sockfd i32, buf voidptr, len usize, flags i32, dest_add &Addr, addrlen u32) i32
+fn C.sendto(sockfd i32, buf voidptr, len usize, flags i32, dest_add voidptr, addrlen u32) i32
 
 // fn C.recv(sockfd int, buf voidptr, len usize, flags int) usize
 fn C.recv(sockfd i32, buf voidptr, len usize, flags i32) i32
 
 // fn C.recvfrom(sockfd int, buf voidptr, len usize, flags int, src_addr &C.sockaddr, addrlen &C.socklen_t) usize
-fn C.recvfrom(sockfd i32, buf voidptr, len usize, flags i32, src_addr &Addr, addrlen &u32) i32
+fn C.recvfrom(sockfd i32, buf voidptr, len usize, flags i32, src_addr voidptr, addrlen &u32) i32
 
 fn C.shutdown(socket i32, how i32) i32
 
 // fn C.getpeername(sockfd int, addr &C.sockaddr, addlen &C.socklen_t) int
-fn C.getpeername(sockfd i32, addr &Addr, addlen &u32) i32
+fn C.getpeername(sockfd i32, addr voidptr, addlen &u32) i32
 
-fn C.inet_ntop(af AddrFamily, src voidptr, dst &char, dst_size i32) &char
+fn C.inet_ntop(af i32, src voidptr, dst &char, dst_size i32) &char
 
-fn C.WSAAddressToStringA(lpsaAddress &Addr, dwAddressLength u32, lpProtocolInfo voidptr, lpszAddressString &char,
+fn C.WSAAddressToStringA(lpsaAddress voidptr, dwAddressLength u32, lpProtocolInfo voidptr, lpszAddressString &char,
 	lpdwAddressStringLength &u32) i32
 
 // fn C.getsockname(sockfd int, addr &C.sockaddr, addrlen &C.socklen_t) int
@@ -113,10 +117,10 @@ fn C.FD_SET(fd i32, fdset &C.fd_set)
 
 fn C.FD_ISSET(fd i32, fdset &C.fd_set) i32
 
-fn C.inet_pton(family AddrFamily, saddr &char, addr voidptr) i32
+fn C.inet_pton(family i32, saddr &char, addr voidptr) i32
 
-fn C.photon_socket(domain AddrFamily, typ SocketType, protocol i32) i32
-fn C.photon_connect(i32, &Addr, u32, timeout u64) i32
+fn C.photon_socket(domain i32, typ i32, protocol i32) i32
+fn C.photon_connect(i32, voidptr, u32, timeout u64) i32
 fn C.photon_accept(i32, voidptr, i32, timeout u64) i32
 fn C.photon_send(i32, voidptr, i32, i32, timeout u64) i32
 fn C.photon_recv(i32, voidptr, i32, i32, timeout u64) i32

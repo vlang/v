@@ -83,6 +83,7 @@ pub fn create_utf_string_with_bom(src []u8, utf_type string) []u8 {
 		}
 		else {}
 	}
+
 	return clone
 }
 
@@ -143,6 +144,7 @@ pub fn remove_utf_string_with_bom(src []u8, utf_type string) []u8 {
 		}
 		else {}
 	}
+
 	return clone
 }
 

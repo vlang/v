@@ -59,3 +59,83 @@ fn test_udp() {
 
 	l.close() or {}
 }
+
+fn udp_write_after_delay(addr string, delay time.Duration, payload string, done chan bool) {
+	time.sleep(delay)
+	mut conn := net.dial_udp(addr) or { panic(err) }
+	defer {
+		conn.close() or {}
+	}
+	conn.write_string(payload) or { panic(err) }
+	done <- true
+}
+
+fn test_udp_read_timeout_is_honored_for_blocking_reads() ! {
+	mut listener := net.listen_udp('127.0.0.1:0')!
+	defer {
+		listener.close() or {}
+	}
+	addr := listener.sock.address()!.str()
+	delay := 200 * time.millisecond
+	timeout := 20 * time.millisecond
+	payload := 'late udp packet'
+	done := chan bool{cap: 1}
+
+	spawn udp_write_after_delay(addr, delay, payload, done)
+	listener.set_read_timeout(timeout)
+
+	mut buf := []u8{len: payload.len}
+	if _, _ := listener.read(mut buf) {
+		assert false, 'expected udp read timeout before delayed packet arrived'
+	} else {
+		assert err.code() == net.err_timed_out_code
+	}
+
+	_ = <-done
+	listener.set_read_timeout(time.second)
+	read, _ := listener.read(mut buf)!
+	assert read == payload.len
+	assert buf[..read].bytestr() == payload
+}
+
+fn test_udp_multicast_ipv4_socket_options() ! {
+	mut listener := net.listen_udp('0.0.0.0:0')!
+	defer {
+		listener.close() or {}
+	}
+
+	listener.join_multicast_group('224.0.0.1', '0.0.0.0')!
+	listener.leave_multicast_group('224.0.0.1', '0.0.0.0')!
+	listener.set_multicast_ttl(2)!
+	listener.set_multicast_loop(true)!
+	listener.set_multicast_loop(false)!
+	listener.set_multicast_interface('0.0.0.0')!
+}
+
+fn test_udp_multicast_validates_inputs() ! {
+	mut listener := net.listen_udp('0.0.0.0:0')!
+	defer {
+		listener.close() or {}
+	}
+
+	mut ttl_failed := false
+	listener.set_multicast_ttl(-1) or {
+		ttl_failed = true
+		assert err.msg().contains('multicast ttl')
+	}
+	assert ttl_failed
+
+	mut non_multicast_failed := false
+	listener.join_multicast_group('127.0.0.1', '') or {
+		non_multicast_failed = true
+		assert err.msg().contains('not an ipv4 multicast address')
+	}
+	assert non_multicast_failed
+
+	mut iface_failed := false
+	listener.set_multicast_interface('not-an-ip') or {
+		iface_failed = true
+		assert err.msg().contains('ipv4 multicast interface')
+	}
+	assert iface_failed
+}

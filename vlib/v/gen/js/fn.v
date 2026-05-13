@@ -126,6 +126,7 @@ fn (mut g JsGen) js_call(node ast.CallExpr) {
 			}
 			else {}
 		}
+
 		// end catch
 		g.dec_indent()
 		g.writeln('}')
@@ -186,6 +187,7 @@ fn (mut g JsGen) js_method_call(node ast.CallExpr) {
 			}
 			else {}
 		}
+
 		// end catch
 		g.dec_indent()
 		g.writeln('}')
@@ -384,6 +386,7 @@ fn (mut g JsGen) method_call(node ast.CallExpr) {
 			}
 			else {}
 		}
+
 		// end catch
 		g.dec_indent()
 		g.writeln('}')
@@ -490,6 +493,7 @@ fn (mut g JsGen) gen_call_expr(it ast.CallExpr) {
 			}
 			else {}
 		}
+
 		// end catch
 		g.dec_indent()
 		g.writeln('}')
@@ -626,7 +630,7 @@ fn (mut g JsGen) gen_method_decl(it ast.FnDecl, typ FnGenType) {
 		g.table.cur_fn = &it
 	}
 	mut name := it.name
-	if name in ['+', '-', '*', '/', '%', '<', '=='] {
+	if name in ['+', '-', '*', '**', '/', '%', '<', '==', '[]', '[]='] {
 		name = util.replace_op(name)
 	}
 
@@ -799,7 +803,7 @@ fn (mut g JsGen) gen_anon_fn(mut fun ast.AnonFn) {
 		g.table.cur_fn = &it
 	}
 	mut name := it.name
-	if name in ['+', '-', '*', '/', '%', '<', '=='] {
+	if name in ['+', '-', '*', '**', '/', '%', '<', '==', '[]', '[]='] {
 		name = util.replace_op(name)
 	}
 	g.writeln('(function () { ')

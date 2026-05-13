@@ -44,6 +44,12 @@ fn main() {
 		assert false
 	}
 
+	// Test assigning a non-nil pointer to an optional pointer field after init
+	mut f2_non_nil := Foo2{}
+	boo := 'boo!'
+	f2_non_nil.name = &boo
+	assert f2_non_nil.name != none
+
 	// Test assigning nil to a struct pointer
 	mut f3 := &Foo2{}
 	unsafe {

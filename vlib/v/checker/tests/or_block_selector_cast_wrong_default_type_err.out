@@ -1,0 +1,6 @@
+vlib/v/checker/tests/or_block_selector_cast_wrong_default_type_err.vv:7:20: error: wrong return type `string` in the `or {}` block, expected `f64`
+    5 | fn main() {
+    6 |     h := SelectorCastHolder{}
+    7 |     _ := int(h.x or { 'bad' })
+      |                       ~~~~~
+    8 | }

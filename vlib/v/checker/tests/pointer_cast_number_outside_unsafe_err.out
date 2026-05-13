@@ -1,0 +1,32 @@
+vlib/v/checker/tests/pointer_cast_number_outside_unsafe_err.vv:6:5: error: cannot null cast a pointer, use &int(unsafe { nil })
+    4 | value := 1
+    5 | 
+    6 | _ = &int(0)
+      |     ~~~~~~~
+    7 | _ = &int(zero)
+    8 | _ = &int(one)
+vlib/v/checker/tests/pointer_cast_number_outside_unsafe_err.vv:7:5: error: cannot null cast a pointer, use &int(unsafe { nil })
+    5 | 
+    6 | _ = &int(0)
+    7 | _ = &int(zero)
+      |     ~~~~~~~~~~
+    8 | _ = &int(one)
+    9 | _ = &int(value)
+vlib/v/checker/tests/pointer_cast_number_outside_unsafe_err.vv:8:5: error: cannot cast a number to `&int` outside `unsafe`
+    6 | _ = &int(0)
+    7 | _ = &int(zero)
+    8 | _ = &int(one)
+      |     ~~~~~~~~~
+    9 | _ = &int(value)
+   10 | _ = &&int(0)
+vlib/v/checker/tests/pointer_cast_number_outside_unsafe_err.vv:9:5: error: cannot cast a number to `&int` outside `unsafe`
+    7 | _ = &int(zero)
+    8 | _ = &int(one)
+    9 | _ = &int(value)
+      |     ~~~~~~~~~~~
+   10 | _ = &&int(0)
+vlib/v/checker/tests/pointer_cast_number_outside_unsafe_err.vv:10:5: error: cannot null cast a pointer, use &&int(unsafe { nil })
+    8 | _ = &int(one)
+    9 | _ = &int(value)
+   10 | _ = &&int(0)
+      |     ~~~~~~~~

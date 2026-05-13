@@ -243,8 +243,7 @@ pub fn compile(pattern string) !Regex {
 	initial_flags := Flags{false, false, false}
 
 	// Phase 1: AST Parsing
-	nodes, _, final_group_count := parse_nodes(pattern, 0, `\0`, 0, initial_flags, mut
-		group_map)!
+	nodes, _, final_group_count := parse_nodes(pattern, 0, `\0`, 0, initial_flags, mut group_map)!
 
 	root := Node{
 		typ:   .group
@@ -644,6 +643,7 @@ fn parse_nodes(pattern string, pos_start int, terminator rune, group_counter_sta
 								`s` { current_flags.dot_all = true }
 								else {}
 							}
+
 							pos++
 						}
 						if pos < pattern.len {
@@ -827,6 +827,7 @@ fn parse_nodes(pattern string, pos_start int, terminator rune, group_counter_sta
 					}
 					else {}
 				}
+
 				if pos < pattern.len && pattern[pos] == `?` {
 					q.greedy = false
 					pos++
@@ -1090,6 +1091,7 @@ fn (r &Regex) vm_match(text string, start_pos int, mut m Machine) ?Match {
 					}
 				}
 			}
+
 			continue
 
 			backtrack:

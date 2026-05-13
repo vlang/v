@@ -22,6 +22,7 @@ fn test_assign_multi_expr_func() {
 		true { multireturner(0, 'good') }
 		false { multireturner(100, 'bad') }
 	}
+
 	assert g == 1
 	assert h == 'good'
 }
@@ -36,6 +37,7 @@ fn test_assign_multi_expr() {
 		true { 1, 2, 3 }
 		false { 4, 5, 6 }
 	}
+
 	assert a == 4
 	assert b == 5
 	assert c == 6

@@ -94,7 +94,7 @@ not an MVC framework however.)
 
 
 As you can see, there are no routing rules. The `index()` action handles the `/` request by default.
-Vweb often uses convention over configuration and adding a new action requires
+Veb often uses convention over configuration and adding a new action requires
 no routing rules either:
 
 ```v oksyntax
@@ -138,7 +138,7 @@ and update our `index()` action so that it returns the HTML view we just created
 ```v ignore
 // blog.v
 pub fn (app &App) index(mut ctx Context) veb.Result {
-	message := 'Hello, world from Vweb!'
+	message := 'Hello, world from Veb!'
 	return $veb.html()
 }
 ```
@@ -153,7 +153,7 @@ of `message`.
 You may notice something unusual: the `message` variable created in the `index()`
 action is automatically available in the view.
 
-It's another feature of Vweb to reduce the boilerplate in your web apps.
+It's another feature of Veb to reduce the boilerplate in your web apps.
 No need to create view models just to pass data, or use an unsafe and untyped
 alternative, like C#'s `ViewBag["message"]`.
 
@@ -178,8 +178,7 @@ that's done by the `$veb.html()` line.
 
 Now let's display some articles!
 
-We'll be using V's built-in ORM and a SQLite database.
-(V ORM will also support MySQL, Postgre, and SQL Server soon.)
+We'll be using [V's built-in ORM](https://docs.vlang.io/orm.html) and a SQLite database.
 
 Add a SQLite handle to `App`:
 
@@ -201,6 +200,8 @@ to have one DB connection for all requests. This improves the performance of the
 since a DB connection doesn't have to be set up for each request.
 
 ```v oksyntax
+import veb
+
 // blog.v
 fn main() {
 	mut app := &App{
@@ -361,7 +362,7 @@ pub fn (app &App) new_article(mut ctx Context) veb.Result {
 
 The decorator on our function tells Veb that it is an HTTP POST type operation.
 
-This time Vweb parses the HTTP form and assigns correct values with correct types to
+This time Veb parses the HTTP form and assigns correct values with correct types to
 function arguments, which saves a lot of typing (e.g. `title := app.form['title']` is
 not necessary).
 

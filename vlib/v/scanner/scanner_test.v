@@ -338,6 +338,18 @@ fn test_string_interpolation_with_nested_string_does_not_grow_str_helper_tokens_
 	assert_str_interpolation_works(0, '{'.repeat(100) + '}'.repeat(100))
 }
 
+fn test_dollar_sign_is_literal_without_braces() {
+	mut result := scan_tokens("'a$b'")
+	assert result.len == 1
+	assert result[0].kind == .string
+	assert result[0].lit == 'a$b'
+
+	result = scan_tokens('"a$b"')
+	assert result.len == 1
+	assert result[0].kind == .string
+	assert result[0].lit == 'a$b'
+}
+
 fn test_comment_string() {
 	mut result := scan_tokens('// single line comment will get an \\x01 prepended')
 	assert result[0].kind == .comment

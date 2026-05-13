@@ -53,7 +53,8 @@ fn (mut g Gen) write_coverage_stats() {
 	if !os.exists(coverage_meta_folder) {
 		os.mkdir_all(coverage_meta_folder) or {}
 	}
-	counter_ulid := rand.ulid() // rand.ulid provides a hash+timestamp, so that a collision is extremely unlikely
+	counter_ulid :=
+		rand.ulid() // rand.ulid provides a hash+timestamp, so that a collision is extremely unlikely
 	g.cov_declarations.writeln('')
 	g.cov_declarations.writeln('void vprint_coverage_stats() {')
 	g.cov_declarations.writeln('\tchar cov_filename[2048];')

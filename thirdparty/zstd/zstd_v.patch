@@ -76,6 +76,27 @@
  static COVER_ctx_t *g_coverCtx = NULL;
  #endif
  
+@@ -47390,7 +47412,7 @@ static int COVER_cmp8(COVER_ctx_t *ctx, const void *lp, const void *rp) {
+  * Same as COVER_cmp() except ties are broken by pointer value
+  */
+ #if (defined(_WIN32) && defined(_MSC_VER)) || defined(__APPLE__)
+ static int WIN_CDECL COVER_strict_cmp(void* g_coverCtx, const void* lp, const void* rp) {
+-#elif defined(_GNU_SOURCE)
++#elif defined(_GNU_SOURCE) && !defined(ZSTD_USE_C90_QSORT)
+ static int COVER_strict_cmp(const void *lp, const void *rp, void *g_coverCtx) {
+ #else /* C90 fallback.*/
+ static int COVER_strict_cmp(const void *lp, const void *rp) {
+@@ -47406,7 +47428,7 @@ static int COVER_strict_cmp(const void *lp, const void *rp) {
+  * Faster version for d <= 8.
+  */
+ #if (defined(_WIN32) && defined(_MSC_VER)) || defined(__APPLE__)
+ static int WIN_CDECL COVER_strict_cmp8(void* g_coverCtx, const void* lp, const void* rp) {
+-#elif defined(_GNU_SOURCE)
++#elif defined(_GNU_SOURCE) && !defined(ZSTD_USE_C90_QSORT)
+ static int COVER_strict_cmp8(const void *lp, const void *rp, void *g_coverCtx) {
+ #else /* C90 fallback.*/
+ static int COVER_strict_cmp8(const void *lp, const void *rp) {
+ 
 @@ -47405,7 +47427,7 @@
      qsort_r(ctx->suffix, ctx->suffixSize, sizeof(U32),
              ctx,

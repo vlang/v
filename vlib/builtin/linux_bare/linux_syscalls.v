@@ -223,221 +223,223 @@ enum WiSiCode {
 	cld_continued = 6 // stopped child has continued
 }
 
-fn split_int_errno(rc_in u64) (i64, Errno) {
-	rc := i64(rc_in)
-	if rc < 0 {
-		return i64(-1), unsafe { Errno(-rc) }
+$if !i386 {
+	fn split_int_errno(rc_in u64) (i64, Errno) {
+		rc := i64(rc_in)
+		if rc < 0 {
+			return i64(-1), unsafe { Errno(-rc) }
+		}
+		return rc, Errno.enoerror
 	}
-	return rc, Errno.enoerror
-}
 
-// 0 sys_read
-fn sys_read(fd i64, buf &u8, count u64) (i64, Errno) {
-	return split_int_errno(sys_call3(0, u64(fd), u64(buf), count))
-}
-
-// 1 sys_write
-pub fn sys_write(fd i64, buf &u8, count u64) (i64, Errno) {
-	return split_int_errno(sys_call3(1, u64(fd), u64(buf), count))
-}
-
-// 2 sys_open
-fn sys_open(filename &u8, flags i64, mode int) (i64, Errno) {
-	return split_int_errno(sys_call3(2, u64(filename), u64(flags), u64(mode)))
-}
-
-// 3 sys_close
-fn sys_close(fd i64) Errno {
-	return unsafe { Errno(-i64(sys_call1(3, u64(fd)))) }
-}
-
-// 9 sys_mmap
-fn sys_mmap(addr &u8, len u64, prot MemProt, flags MapFlags, fildes i64, off u64) (&u8, Errno) {
-	rc := sys_call6(9, u64(addr), len, u64(prot), u64(flags), fildes, off)
-	a, e := split_int_errno(rc)
-	return unsafe { &u8(a) }, e
-}
-
-// 11 sys_munmap
-fn sys_munmap(addr voidptr, len u64) Errno {
-	return unsafe { Errno(-sys_call2(11, u64(addr), len)) }
-}
-
-// 25 sys_mremap
-fn sys_mremap(old_addr voidptr, old_len u64, new_len u64, flags u64) (&u8, Errno) {
-	rc := sys_call4(25, u64(old_addr), old_len, new_len, flags)
-	a, e := split_int_errno(rc)
-	return unsafe { &u8(a) }, e
-}
-
-// 22  sys_pipe
-fn sys_pipe(filedes &int) Errno {
-	return unsafe { Errno(sys_call1(22, u64(filedes))) }
-}
-
-// 24 sys_sched_yield
-fn sys_sched_yield() Errno {
-	return unsafe { Errno(sys_call0(24)) }
-}
-
-// 28 sys_madvise
-fn sys_madvise(addr voidptr, len u64, advice int) Errno {
-	return unsafe { Errno(sys_call3(28, u64(addr), len, u64(advice))) }
-}
-
-// 39 sys_getpid
-fn sys_getpid() int {
-	return int(sys_call0(39))
-}
-
-// 57 sys_fork
-fn sys_fork() int {
-	return int(sys_call0(57))
-}
-
-// 58 sys_vfork
-fn sys_vfork() int {
-	return int(sys_call0(58))
-}
-
-// 33  sys_dup2
-fn sys_dup2(oldfd int, newfd int) (i64, Errno) {
-	return split_int_errno(sys_call2(33, u64(oldfd), u64(newfd)))
-}
-
-// 59  sys_execve
-fn sys_execve(filename &u8, argv []&u8, envp []&u8) int {
-	return int(sys_call3(59, u64(filename), u64(argv.data), u64(envp.data)))
-}
-
-// 60 sys_exit
-@[noreturn]
-fn sys_exit(ec int) {
-	sys_call1(60, u64(ec))
-	for {}
-}
-
-// 102 sys_getuid
-fn sys_getuid() int {
-	return int(sys_call0(102))
-}
-
-// 247 sys_waitid
-fn sys_waitid(which WiWhich, pid int, infop &int, options int, ru voidptr) Errno {
-	return unsafe {
-		Errno(sys_call5(247, u64(which), u64(pid), u64(infop), u64(options), u64(ru)))
+	// 0 sys_read
+	fn sys_read(fd i64, buf &u8, count u64) (i64, Errno) {
+		return split_int_errno(sys_call3(0, u64(fd), u64(buf), count))
 	}
-}
 
-fn sys_call0(scn u64) u64 {
-	mut res := u64(0)
+	// 1 sys_write
+	pub fn sys_write(fd i64, buf &u8, count u64) (i64, Errno) {
+		return split_int_errno(sys_call3(1, u64(fd), u64(buf), count))
+	}
+
+	// 2 sys_open
+	fn sys_open(filename &u8, flags i64, mode int) (i64, Errno) {
+		return split_int_errno(sys_call3(2, u64(filename), u64(flags), u64(mode)))
+	}
+
+	// 3 sys_close
+	fn sys_close(fd i64) Errno {
+		return unsafe { Errno(-i64(sys_call1(3, u64(fd)))) }
+	}
+
+	// 9 sys_mmap
+	fn sys_mmap(addr &u8, len u64, prot MemProt, flags MapFlags, fildes i64, off u64) (&u8, Errno) {
+		rc := sys_call6(9, u64(addr), len, u64(prot), u64(flags), fildes, off)
+		a, e := split_int_errno(rc)
+		return unsafe { &u8(a) }, e
+	}
+
+	// 11 sys_munmap
+	fn sys_munmap(addr voidptr, len u64) Errno {
+		return unsafe { Errno(-sys_call2(11, u64(addr), len)) }
+	}
+
+	// 25 sys_mremap
+	fn sys_mremap(old_addr voidptr, old_len u64, new_len u64, flags u64) (&u8, Errno) {
+		rc := sys_call4(25, u64(old_addr), old_len, new_len, flags)
+		a, e := split_int_errno(rc)
+		return unsafe { &u8(a) }, e
+	}
+
+	// 22  sys_pipe
+	fn sys_pipe(filedes &int) Errno {
+		return unsafe { Errno(sys_call1(22, u64(filedes))) }
+	}
+
+	// 24 sys_sched_yield
+	fn sys_sched_yield() Errno {
+		return unsafe { Errno(sys_call0(24)) }
+	}
+
+	// 28 sys_madvise
+	fn sys_madvise(addr voidptr, len u64, advice int) Errno {
+		return unsafe { Errno(sys_call3(28, u64(addr), len, u64(advice))) }
+	}
+
+	// 39 sys_getpid
+	fn sys_getpid() int {
+		return int(sys_call0(39))
+	}
+
+	// 57 sys_fork
+	fn sys_fork() int {
+		return int(sys_call0(57))
+	}
+
+	// 58 sys_vfork
+	fn sys_vfork() int {
+		return int(sys_call0(58))
+	}
+
+	// 33  sys_dup2
+	fn sys_dup2(oldfd int, newfd int) (i64, Errno) {
+		return split_int_errno(sys_call2(33, u64(oldfd), u64(newfd)))
+	}
+
+	// 59  sys_execve
+	fn sys_execve(filename &u8, argv []&u8, envp []&u8) int {
+		return int(sys_call3(59, u64(filename), u64(argv.data), u64(envp.data)))
+	}
+
+	// 60 sys_exit
+	@[noreturn]
+	fn sys_exit(ec int) {
+		sys_call1(60, u64(ec))
+		for {}
+	}
+
+	// 102 sys_getuid
+	fn sys_getuid() int {
+		return int(sys_call0(102))
+	}
+
+	// 247 sys_waitid
+	fn sys_waitid(which WiWhich, pid int, infop &int, options int, ru voidptr) Errno {
+		return unsafe {
+			Errno(sys_call5(247, u64(which), u64(pid), u64(infop), u64(options), u64(ru)))
+		}
+	}
+
+	fn sys_call0(scn u64) u64 {
+		mut res := u64(0)
+		asm amd64 {
+			syscall
+			; =a (res)
+			; 0 (scn)
+		}
+		return res
+	}
+
+	fn sys_call1(scn u64, arg1 u64) u64 {
+		mut res := u64(0)
+		asm amd64 {
+			syscall
+			; =a (res)
+			; 0 (scn)
+			  D (arg1)
+		}
+		return res
+	}
+
+	fn sys_call2(scn u64, arg1 u64, arg2 u64) u64 {
+		mut res := u64(0)
+		asm amd64 {
+			syscall
+			; =a (res)
+			; 0 (scn)
+			  D (arg1)
+			  S (arg2)
+		}
+		return res
+	}
+
+	fn sys_call3(scn u64, arg1 u64, arg2 u64, arg3 u64) u64 {
+		mut res := u64(0)
+		asm amd64 {
+			syscall
+			; =a (res)
+			; 0 (scn)
+			  D (arg1)
+			  S (arg2)
+			  d (arg3)
+		}
+		return res
+	}
+
+	fn sys_call4(scn u64, arg1 u64, arg2 u64, arg3 u64, arg4 u64) u64 {
+		mut res := u64(0)
+		asm amd64 {
+			mov r10, arg4
+			syscall
+			; =a (res)
+			; 0 (scn)
+			  D (arg1)
+			  S (arg2)
+			  d (arg3)
+			  g (arg4)
+			; r10
+		}
+		return res
+	}
+
+	fn sys_call5(scn u64, arg1 u64, arg2 u64, arg3 u64, arg4 u64, arg5 u64) u64 {
+		mut res := u64(0)
+		asm amd64 {
+			mov r10, arg4
+			mov r8, arg5
+			syscall
+			; =a (res)
+			; 0 (scn)
+			  D (arg1)
+			  S (arg2)
+			  d (arg3)
+			  g (arg4)
+			  g (arg5)
+			; r10
+			  r8
+		}
+		return res
+	}
+
+	fn sys_call6(scn u64, arg1 u64, arg2 u64, arg3 u64, arg4 u64, arg5 i64, arg6 u64) u64 {
+		mut res := u64(0)
+		asm amd64 {
+			mov r10, arg4
+			mov r8, arg5
+			mov r9, arg6
+			syscall
+			; =a (res)
+			; 0 (scn)
+			  D (arg1)
+			  S (arg2)
+			  d (arg3)
+			  g (arg4)
+			  g (arg5)
+			  g (arg6)
+			; r10
+			  r8
+			  r9
+		}
+		return res
+	}
+
 	asm amd64 {
+		.globl _start
+		_start:
+		call main
+		mov rax, 60
+		xor rdi, rdi
 		syscall
-		; =a (res)
-		; 0 (scn)
+		ret
 	}
-	return res
-}
-
-fn sys_call1(scn u64, arg1 u64) u64 {
-	mut res := u64(0)
-	asm amd64 {
-		syscall
-		; =a (res)
-		; 0 (scn)
-		  D (arg1)
-	}
-	return res
-}
-
-fn sys_call2(scn u64, arg1 u64, arg2 u64) u64 {
-	mut res := u64(0)
-	asm amd64 {
-		syscall
-		; =a (res)
-		; 0 (scn)
-		  D (arg1)
-		  S (arg2)
-	}
-	return res
-}
-
-fn sys_call3(scn u64, arg1 u64, arg2 u64, arg3 u64) u64 {
-	mut res := u64(0)
-	asm amd64 {
-		syscall
-		; =a (res)
-		; 0 (scn)
-		  D (arg1)
-		  S (arg2)
-		  d (arg3)
-	}
-	return res
-}
-
-fn sys_call4(scn u64, arg1 u64, arg2 u64, arg3 u64, arg4 u64) u64 {
-	mut res := u64(0)
-	asm amd64 {
-		mov r10, arg4
-		syscall
-		; =a (res)
-		; 0 (scn)
-		  D (arg1)
-		  S (arg2)
-		  d (arg3)
-		  g (arg4)
-		; r10
-	}
-	return res
-}
-
-fn sys_call5(scn u64, arg1 u64, arg2 u64, arg3 u64, arg4 u64, arg5 u64) u64 {
-	mut res := u64(0)
-	asm amd64 {
-		mov r10, arg4
-		mov r8, arg5
-		syscall
-		; =a (res)
-		; 0 (scn)
-		  D (arg1)
-		  S (arg2)
-		  d (arg3)
-		  g (arg4)
-		  g (arg5)
-		; r10
-		  r8
-	}
-	return res
-}
-
-fn sys_call6(scn u64, arg1 u64, arg2 u64, arg3 u64, arg4 u64, arg5 i64, arg6 u64) u64 {
-	mut res := u64(0)
-	asm amd64 {
-		mov r10, arg4
-		mov r8, arg5
-		mov r9, arg6
-		syscall
-		; =a (res)
-		; 0 (scn)
-		  D (arg1)
-		  S (arg2)
-		  d (arg3)
-		  g (arg4)
-		  g (arg5)
-		  g (arg6)
-		; r10
-		  r8
-		  r9
-	}
-	return res
-}
-
-asm amd64 {
-	.globl _start
-	_start:
-	call main
-	mov rax, 60
-	xor rdi, rdi
-	syscall
-	ret
 }

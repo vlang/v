@@ -1,0 +1,7 @@
+import strconv
+
+fn main() {
+	mut num := f64(0.0)
+	num = strconv.atof64('x') or { strconv.double_minus_infinity }
+	println(num)
+}

@@ -1,0 +1,36 @@
+{
+  "title": "mt6-simple",
+  "description": "Major type 7 (mt7) simple values, from RFC 8949 appendix A",
+  "tests": [
+    {
+      "description": "false",
+      "encoded": h'f4',
+      "decoded": false
+    },
+    {
+      "description": "true",
+      "encoded": h'f5',
+      "decoded": true
+    },
+    {
+      "description": "null",
+      "encoded": h'f6',
+      "decoded": null
+    },
+    {
+      "description": "undefined",
+      "encoded": h'f7',
+      "decoded": undefined
+    },
+    {
+      "description": "Unknown 0-byte simple value",
+      "encoded": h'f0',
+      "decoded": simple(16),
+    },
+    {
+      "description": "Unknown 1-byte simple value",
+      "encoded": h'f8ff',
+      "decoded": simple(255),
+    },
+  ],
+}

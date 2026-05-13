@@ -33,7 +33,8 @@ fn decode_internal(data string) ?(Block, string) {
 	// we won't get an invalid index since it would otherwise return `none`
 	mut rest := data[data.index(pem_begin)?..]
 	mut block := Block.new(rest[pem_begin.len..].all_before(pem_eol))
-	block.headers, rest = parse_headers(rest[pem_begin.len..].all_after(pem_eol).trim_left(' \n\t\v\f\r'))?
+	block.headers, rest =
+		parse_headers(rest[pem_begin.len..].all_after(pem_eol).trim_left(' \n\t\v\f\r'))?
 
 	block_end_index := rest.index(pem_end)?
 	b64_data := rest[..block_end_index].replace_each(['\r', '', '\n', '', '\t', '', ' ', ''])

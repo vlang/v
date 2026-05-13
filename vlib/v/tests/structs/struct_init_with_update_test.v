@@ -46,3 +46,17 @@ fn test_struct_init_with_update_expr2() {
 	assert b.s == 'AA'
 	assert b.n == 3
 }
+
+struct SharedSpreadAbc {
+	a string
+}
+
+fn test_struct_init_with_update_expr_from_rlock_shared_value() {
+	shared abc := SharedSpreadAbc{'a'}
+	abc_clone := rlock abc {
+		SharedSpreadAbc{
+			...abc
+		}
+	}
+	assert abc_clone == SharedSpreadAbc{'a'}
+}

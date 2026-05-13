@@ -24,7 +24,8 @@ fn test_string() {
 	}
 
 	assert json.encode(t) == '{"selector":"aa","selector2":["a","b"],"selector3":["z"]}'
-	assert json.decode(DocumentFindFilter[string], '{"selector":"aa","selector2":["a","b"],"selector3":["z"]}')! == t
+	assert json.decode(DocumentFindFilter[string],
+		'{"selector":"aa","selector2":["a","b"],"selector3":["z"]}')! == t
 }
 
 fn test_int() ! {

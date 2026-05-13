@@ -7,7 +7,7 @@ $if tinyc {
 
 fn setup_symlink(custom_link_dir string) {
 	// Create a symlink in a local folder (by default .\.bin\v.exe).
-	// Puts `v` in %PATH% without polluting it with anything else (like make.bat).
+	// Puts `v` in %PATH% without polluting it with anything else (like makev.bat).
 	// This will make `v` available on cmd.exe, PowerShell, and MinGW(MSYS)/WSL/Cygwin
 	vsymlinkdir := normalized_link_dir(custom_link_dir)
 	mut vsymlink := symlink_path(vsymlinkdir)
@@ -150,8 +150,8 @@ fn set_reg_value(reg_key voidptr, key string, value string) !bool {
 // letting them know that the system environment has changed and should be reloaded
 fn send_setting_change_msg(message_data string) !bool {
 	message_data_wide := message_data.to_wide()
-	if C.SendMessageTimeoutW(os.hwnd_broadcast, os.wm_settingchange, 0, unsafe { &u32(message_data_wide) },
-		os.smto_abortifhung, 5000, 0) == 0 {
+	if C.SendMessageTimeoutW(os.hwnd_broadcast, os.wm_settingchange, 0,
+		unsafe { &u32(message_data_wide) }, os.smto_abortifhung, 5000, 0) == 0 {
 		return error('Could not broadcast WM_SETTINGCHANGE')
 	}
 	return true

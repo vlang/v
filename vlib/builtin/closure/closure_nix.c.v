@@ -23,8 +23,8 @@ fn closure_alloc_platform() &u8 {
 	} $else {
 		// Main OS environments use mmap to get aligned pages
 		p = unsafe {
-			C.mmap(0, g_closure.v_page_size * 2, C.PROT_READ | C.PROT_WRITE, C.MAP_ANONYMOUS | C.MAP_PRIVATE,
-				-1, 0)
+			C.mmap(0, g_closure.v_page_size * 2, C.PROT_READ | C.PROT_WRITE,
+				C.MAP_ANONYMOUS | C.MAP_PRIVATE, -1, 0)
 		}
 		if p == &u8(C.MAP_FAILED) {
 			return unsafe { nil }

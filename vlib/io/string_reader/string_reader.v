@@ -227,8 +227,10 @@ pub fn (mut r StringReader) read(mut buf []u8) !int {
 }
 
 // read_line attempts to read a line from the reader.
-// It will read until it finds the specified line delimiter
-// such as (\n, the default or \0) or the end of stream.
+// It reads until it finds the specified delimiter or the end of stream.
+// The returned string does not include the delimiter.
+// When the delimiter is `\n`, a preceding `\r` is treated as part of CRLF
+// and is also omitted from the returned string.
 @[direct_array_access]
 pub fn (mut r StringReader) read_line(config io.BufferedReadLineConfig) !string {
 	if r.end_of_stream && r.needs_fill() {

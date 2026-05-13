@@ -1,0 +1,18 @@
+// vtest vflags: -prod -no-skip-unused
+const embedded_version = get_version()
+
+fn get_version() string {
+	data := $embed_file('embed_issue_12035.vv')
+	for line in data.to_string().split_into_lines() {
+		x := line.trim_space()
+		if x.starts_with('// version:') {
+			return x.all_after("'").all_before("'")
+		}
+	}
+	return '<unknown>'
+}
+
+// version: 'issue-12035'
+fn main() {
+	println(embedded_version)
+}

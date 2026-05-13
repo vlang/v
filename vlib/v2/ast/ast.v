@@ -672,6 +672,7 @@ pub fn StringLiteralKind.from_string_tinyv(s string) StringLiteralKind {
 		}
 		else {}
 	}
+
 	return .v
 }
 

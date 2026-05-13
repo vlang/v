@@ -1,0 +1,6 @@
+// vtest vflags: -freestanding
+import net
+
+fn main() {
+	_ = net.AddrFamily.ip
+}

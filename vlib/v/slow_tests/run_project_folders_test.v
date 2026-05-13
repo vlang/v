@@ -24,8 +24,7 @@ fn test_v_profile_works() {
 		}
 	}
 	for folder_path in folder_paths {
-		local_path := folder_path.replace(vroot + os.path_separator, '').replace('\\',
-			'/')
+		local_path := folder_path.replace(vroot + os.path_separator, '').replace('\\', '/')
 		println('...........   v run ${local_path}/')
 		t := time.ticks()
 		res := os.execute('${os.quoted_path(vexe)} run ${os.quoted_path(folder_path)}')

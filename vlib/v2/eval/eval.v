@@ -394,14 +394,16 @@ fn (mut e Eval) register_files(files []ast.File) ! {
 									file_name: file.name
 								}
 							}
-							normalized_receiver_name := receiver_type_name.trim_left('&').trim_right('*')
+							normalized_receiver_name :=
+								receiver_type_name.trim_left('&').trim_right('*')
 							if normalized_receiver_name != ''
 								&& normalized_receiver_name != receiver_type_name {
 								e.functions[file.mod]['${normalized_receiver_name}__${stmt.name}'] = FunctionDef{
 									decl:      stmt
 									file_name: file.name
 								}
-								short_normalized_name := normalized_receiver_name.all_after_last('.')
+								short_normalized_name :=
+									normalized_receiver_name.all_after_last('.')
 								if short_normalized_name != normalized_receiver_name {
 									e.functions[file.mod]['${short_normalized_name}__${stmt.name}'] = FunctionDef{
 										decl:      stmt
@@ -938,6 +940,7 @@ fn (e &Eval) sumtype_tag_from_value(info SumTypeInfo, value Value) ?int {
 		}
 		else {}
 	}
+
 	if nested := e.infer_nested_sumtype_variant(info, value) {
 		return nested.tag
 	}
@@ -1701,6 +1704,7 @@ fn (mut e Eval) contextual_sumtype_tag(target_expr ast.Expr, value Value) ?int {
 		}
 		else {}
 	}
+
 	return none
 }
 
@@ -2486,8 +2490,8 @@ fn (mut e Eval) maybe_call_builtin_function(module_name string, fn_name string, 
 				}
 			}
 			'write_file' {
-				os.write_file(e.expect_string_arg(args, 0) or { return MaybeValue{} },
-					e.expect_string_arg(args, 1) or { return MaybeValue{} }) or {
+				os.write_file(e.expect_string_arg(args, 0) or { return MaybeValue{} }, e.expect_string_arg(args,
+					1) or { return MaybeValue{} }) or {
 					return MaybeValue{
 						found: true
 						value: wrap_result_err(err.msg())
@@ -2763,8 +2767,9 @@ fn (mut e Eval) maybe_call_generated_array_helper(fn_name string, args []Value) 
 	if fn_name.ends_with('_join') && args.len >= 2 {
 		return MaybeValue{
 			found: true
-			value: array_value.values.map(e.value_string(it)).join(e.expect_string_arg(args,
-				1) or { return none })
+			value: array_value.values.map(e.value_string(it)).join(e.expect_string_arg(args, 1) or {
+				return none
+			})
 		}
 	}
 	if fn_name.ends_with('_str') {
@@ -2949,6 +2954,7 @@ fn (mut e Eval) exec_stmt(stmt ast.Stmt) !FlowSignal {
 			return error('v2.eval: unsupported statement `${stmt.type_name()}`')
 		}
 	}
+
 	return FlowSignal{
 		kind: .normal
 	}
@@ -2982,6 +2988,7 @@ fn (mut e Eval) exec_expr_stmt(expr ast.Expr) !FlowSignal {
 			_ = e.eval_expr(expr)!
 		}
 	}
+
 	return FlowSignal{
 		kind: .normal
 	}
@@ -3070,6 +3077,7 @@ fn can_update_target(expr ast.Expr) bool {
 		}
 		else {}
 	}
+
 	if expr is ast.PrefixExpr && expr.op in [.mul, .amp] {
 		return can_update_target(expr.expr)
 	}
@@ -3100,6 +3108,7 @@ fn (mut e Eval) update_target(expr ast.Expr, value Value) ! {
 		}
 		else {}
 	}
+
 	if expr is ast.PrefixExpr && expr.op in [.mul, .amp] {
 		return e.update_target(expr.expr, value)
 	}
@@ -3118,6 +3127,7 @@ fn assignable_ident_name(expr ast.Expr) ?string {
 		}
 		else {}
 	}
+
 	return none
 }
 
@@ -3346,6 +3356,7 @@ fn (mut e Eval) exec_for_in(for_in ast.ForInStmt, body []ast.Stmt) !FlowSignal {
 			return error('v2.eval: unsupported for-in iterable `${e.runtime_type_name(iterable)}`')
 		}
 	}
+
 	return FlowSignal{
 		kind: .normal
 	}
@@ -3583,6 +3594,7 @@ fn (mut e Eval) eval_expr(expr ast.Expr) !Value {
 				}
 				else {}
 			}
+
 			return TypeValue{
 				name: e.type_node_name(expr)
 			}
@@ -4072,6 +4084,7 @@ fn (mut e Eval) maybe_call_builder_wrapper(name string, args []ast.Expr) ?Value 
 				}
 				else {}
 			}
+
 			e.update_target(target_expr, ArrayValue{
 				values: items
 			}) or { return none }
@@ -4107,6 +4120,7 @@ fn builder_target_expr(expr ast.Expr) ?ast.Expr {
 		}
 		else {}
 	}
+
 	return none
 }
 
@@ -4422,6 +4436,7 @@ fn (e &Eval) value_is_type(value Value, rhs Value) bool {
 		string { rhs }
 		else { e.runtime_type_name(rhs) }
 	}
+
 	if value is StructValue && e.unwrap_sumtype_value(value, target_name) != none {
 		return true
 	}
@@ -4763,9 +4778,7 @@ fn (mut e Eval) eval_selector_expr(expr ast.SelectorExpr) !Value {
 			if zero_payload := e.zero_value_for_sumtype_data_field(left.type_name, expr.rhs.name) {
 				return zero_payload
 			}
-			if embedded_value := e.lookup_embedded_struct_field_value(left, expr.rhs.name,
-				0)
-			{
+			if embedded_value := e.lookup_embedded_struct_field_value(left, expr.rhs.name, 0) {
 				return embedded_value
 			}
 			if field_type := e.lookup_struct_field_type(left.type_name, expr.rhs.name) {
@@ -4825,6 +4838,7 @@ fn (mut e Eval) eval_selector_expr(expr ast.SelectorExpr) !Value {
 		}
 		else {}
 	}
+
 	return error('v2.eval: unsupported selector `${expr.rhs.name}` on `${e.runtime_type_name(left)}` from `${expr.lhs.type_name()}` `${expr.lhs.name()}` in `${e.current_function_label()}`')
 }
 
@@ -5165,9 +5179,8 @@ fn decode_string_literal(raw string) string {
 	if s.len >= 2 && ((s[0] == `"` && s[s.len - 1] == `"`) || (s[0] == `'` && s[s.len - 1] == `'`)) {
 		s = s[1..s.len - 1]
 	}
-	return s.replace('\\n', '\n').replace('\\r', '\r').replace('\\t', '\t').replace('\\0',
-		'\0').replace('\\"', '"').replace("\\'", "'").replace('\\`', '`').replace('\\\\',
-		'\\').replace('\\$', '$')
+	return s.replace('\\n', '\n').replace('\\r', '\r').replace('\\t', '\t').replace('\\0', '\0').replace('\\"',
+		'"').replace("\\'", "'").replace('\\`', '`').replace('\\\\', '\\').replace('\\$', '$')
 }
 
 fn (mut e Eval) eval_unsafe_expr(expr ast.UnsafeExpr) !Value {
@@ -5235,6 +5248,7 @@ fn (mut e Eval) call_value_method(receiver Value, method_name string, args []Val
 		}
 		else {}
 	}
+
 	return error('v2.eval: unsupported method `${method_name}` on `${e.runtime_type_name(receiver)}`')
 }
 
@@ -5311,8 +5325,7 @@ fn (mut e Eval) call_string_method(receiver string, method_name string, args []V
 			return receiver.repeat(int(e.value_as_int(args[0])!))
 		}
 		'replace' {
-			return receiver.replace(e.expect_string_arg(args, 0)!, e.expect_string_arg(args,
-				1)!)
+			return receiver.replace(e.expect_string_arg(args, 0)!, e.expect_string_arg(args, 1)!)
 		}
 		'split' {
 			return ArrayValue{

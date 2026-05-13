@@ -114,6 +114,7 @@ fn (r &NormalReporter) show_longest(label string, limit int, kind TaskKind) {
 			tasks = mall.values()
 		}
 	}
+
 	tasks.sort(a.duration > b.duration)
 	for tidx, task in tasks {
 		npath := task.path.replace('\\', '/').replace(r.vroot, '')

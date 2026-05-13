@@ -1,0 +1,7 @@
+vlib/v/checker/tests/enum_field_value_duplicate_f.vv:6:8: error: enum value `2` already exists
+    4 | enum Foo {
+    5 |     foo = x
+    6 |     bar = y
+      |           ^
+    7 | }
+Details: use `@[_allow_multiple_values]` attribute to allow multiple enum values. Use only when it is needed

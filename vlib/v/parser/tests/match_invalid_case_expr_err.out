@@ -1,0 +1,7 @@
+vlib/v/parser/tests/match_invalid_case_expr_err.vv:4:8: error: invalid expression: unexpected token `{`
+    2 |     x := 1
+    3 |     match true {
+    4 |         x >  {
+      |              ^
+    5 |             y := 0
+    6 |         }

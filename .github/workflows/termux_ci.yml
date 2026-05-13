@@ -41,11 +41,12 @@ jobs:
             echo "previous TERMUX_VERSION: $TERMUX_VERSION"
             export TERMUX_VERSION=0.118.3
             echo "explicit TERMUX_VERSION: $TERMUX_VERSION"
-            .github/workflows/retry.sh pkg update -y
-            .github/workflows/retry.sh pkg install -y clang libexecinfo libgc libgc-static make git
+            bash .github/workflows/retry.sh pkg update -y
+            bash .github/workflows/retry.sh pkg install -y clang libexecinfo libgc libgc-static make git
             git log -n4
             VFLAGS="-cc cc" make
             ./v symlink
+            export PATH="$HOME/.local/bin:/usr/local/bin:$PATH"
             v run examples/hello_world.v
             v run examples/primes.v
             v -e "import os; dump( os.user_os() )"

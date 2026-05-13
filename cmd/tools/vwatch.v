@@ -97,7 +97,7 @@ mut:
 	ignore_exts     []string // extensions of files that will be ignored, even if they change (useful for sqlite.db files for example)
 	cmd_before_run  string   // a command to run before each re-run
 	cmd_after_run   string   // a command to run after each re-run
-	only_watch      []string // If not empty, *all* files that trigger updates, should match *at least one* of these s.match_glob() patterns. This is also triggered for vweb apps, to monitor for just *.v,*.js,*.css,*.html in vweb projects.
+	only_watch      []string // If not empty, *all* files that trigger updates, should match *at least one* of these s.match_glob() patterns. This is also triggered for veb apps, to monitor for just *.v,*.js,*.css,*.html in veb projects.
 }
 
 struct ParsedWatchOptions {
@@ -176,23 +176,23 @@ fn (mut context Context) get_stats_for_affected_vfiles() []VFileStat {
 			}
 			paths << reported_used_files
 		}
-		mut is_vweb_found := false
+		mut is_veb_found := false
 		for vf in paths {
 			apaths[os.real_path(os.dir(vf))] = true
-			if vf.contains('vweb.v') {
-				is_vweb_found = true
+			if vf.contains('veb.v') {
+				is_veb_found = true
 			}
 		}
 
-		if is_vweb_found {
+		if is_veb_found {
 			if !os.args.any(it.starts_with('--only-watch')) {
 				context.only_watch = default_veb_suffixes.split_any(',')
-				// vweb is often used with SQLite .db or .sqlite3 files right next to the executable/source,
-				// that are updated by the vweb app, causing a restart of the app, which in turn causes the
+				// veb is often used with SQLite .db or .sqlite3 files right next to the executable/source,
+				// that are updated by the veb app, causing a restart of the app, which in turn causes the
 				// browser to reload the current page, that probably triggered the update in the first place.
 				// Note that the problem is not specific to SQLite, any database that stores its files in the
 				// current (project) folder, will also cause this.
-				println('`v watch` detected that you are compiling a vweb project.')
+				println('`v watch` detected that you are compiling a veb project.')
 				println('   Because of that, the `--only-watch=${default_veb_suffixes}` flag was also implied.')
 				println('   In result, `v watch` will ignore changes to other files.')
 				println('   Add your own --only-watch filter, if you wish to override that choice.')

@@ -3,6 +3,8 @@
 // that can be found in the LICENSE file.
 module profiler
 
+import context
+
 // Allocator interface - can be swapped at runtime
 // Similar to Jai's context.allocator design
 pub struct Allocator {

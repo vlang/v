@@ -114,6 +114,17 @@ fn C.WhitePixel(display &C.Display, screen_number i32) u32
 
 fn C.XFree(data voidptr)
 
+// X11 event type constants
+pub const C.DestroyNotify int
+pub const C.SelectionClear int
+pub const C.SelectionRequest int
+pub const C.SelectionNotify int
+pub const C.PropertyNotify int // X11 property/selection constants
+
+pub const C.CurrentTime int
+pub const C.PropModeReplace int
+pub const C.PropertyChangeMask i64
+
 fn todo_del() {}
 
 // X11 event types are defined in vlib/x/x11/x11.v
@@ -131,6 +142,8 @@ pub mut:
 
 const atom_names = ['TARGETS', 'CLIPBOARD', 'PRIMARY', 'SECONDARY', 'TEXT', 'UTF8_STRING',
 	'text/plain', 'text/html']
+const atom_types = [AtomType.targets, .clipboard, .primary, .secondary, .text, .utf8_string,
+	.text_plain, .text_html]
 
 // UNSUPPORTED TYPES: MULTIPLE, INCR, TIMESTAMP, image/bmp, image/jpeg, image/tiff, image/png
 // all the atom types we need
@@ -271,8 +284,8 @@ pub fn (mut cb Clipboard) get_text() string {
 	cb.got_text = false
 
 	// Request a list of possible conversions, if we're pasting.
-	C.XConvertSelection(cb.display, cb.selection, cb.get_atom(.targets), cb.selection,
-		cb.window, C.CurrentTime)
+	C.XConvertSelection(cb.display, cb.selection, cb.get_atom(.targets), cb.selection, cb.window,
+		C.CurrentTime)
 
 	// wait for the text to arrive
 	mut retries := 5
@@ -292,8 +305,8 @@ fn (mut cb Clipboard) transmit_selection(xse &C.XSelectionEvent) bool {
 	unsafe {
 		if xse.target == cb.get_atom(.targets) {
 			targets := cb.get_supported_targets()
-			C.XChangeProperty(xse.display, xse.requestor, xse.property, cb.get_atom(.xa_atom),
-				32, C.PropModeReplace, targets.data, targets.len)
+			C.XChangeProperty(xse.display, xse.requestor, xse.property, cb.get_atom(.xa_atom), 32,
+				C.PropModeReplace, targets.data, targets.len)
 		} else if cb.is_supported_target(xse.target) && cb.is_owner && cb.text != '' {
 			cb.mutex.lock()
 			C.XChangeProperty(xse.display, xse.requestor, xse.property, xse.target, 8,
@@ -374,13 +387,14 @@ fn (mut cb Clipboard) start_listener() {
 							sent_request = false
 							to_be_requested = Atom(0)
 							cb.mutex.lock()
-							prop := read_property(event.xselection.display, event.xselection.requestor,
-								event.xselection.property)
+							prop := read_property(event.xselection.display,
+								event.xselection.requestor, event.xselection.property)
 							C.XDeleteProperty(event.xselection.display, event.xselection.requestor,
 								event.xselection.property)
 							if cb.is_supported_target(prop.actual_type) {
 								cb.got_text = true
-								cb.text = prop.data.vstring() // TODO: return byteptr to support other mimetypes
+								cb.text =
+									prop.data.vstring() // TODO: return byteptr to support other mimetypes
 							}
 							cb.mutex.unlock()
 						}
@@ -401,11 +415,13 @@ fn (mut cb Clipboard) intern_atoms() {
 	cb.atoms << Atom(4) // XA_ATOM
 	cb.atoms << Atom(31) // XA_STRING
 	for i, name in atom_names {
-		only_if_exists := if i == int(AtomType.utf8_string) { 1 } else { 0 }
-		cb.atoms << C.XInternAtom(cb.display, &char(name.str), only_if_exists)
-		if i == int(AtomType.utf8_string) && cb.atoms[i] == Atom(0) {
-			cb.atoms[i] = cb.get_atom(.xa_string)
+		atom_type := atom_types[i]
+		only_if_exists := if atom_type == .utf8_string { 1 } else { 0 }
+		mut atom := C.XInternAtom(cb.display, &char(name.str), only_if_exists)
+		if atom_type == .utf8_string && atom == Atom(0) {
+			atom = cb.get_atom(.xa_string)
 		}
+		cb.atoms << atom
 	}
 }
 
@@ -420,8 +436,8 @@ fn read_property(d &C.Display, w Window, p Atom) Property {
 		if ret != 0 {
 			C.XFree(ret)
 		}
-		C.XGetWindowProperty(d, w, p, 0, read_bytes, 0, 0, &actual_type, &actual_format,
-			&nitems, &bytes_after, &ret)
+		C.XGetWindowProperty(d, w, p, 0, read_bytes, 0, 0, &actual_type, &actual_format, &nitems,
+			&bytes_after, &ret)
 		read_bytes *= 2
 		if bytes_after == 0 {
 			break

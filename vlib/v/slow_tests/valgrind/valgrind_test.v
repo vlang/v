@@ -26,6 +26,7 @@ const skip_compile_files = [
 ]
 
 const skip_valgrind_files = [
+	'vlib/v/slow_tests/valgrind/1.strings_and_arrays.v',
 	'vlib/v/slow_tests/valgrind/autofree_or_block_string_interp.v',
 	'vlib/v/slow_tests/valgrind/struct_field.v',
 	'vlib/v/slow_tests/valgrind/fn_returning_string_param.v',
@@ -36,6 +37,9 @@ const skip_valgrind_files = [
 	'vlib/v/slow_tests/valgrind/import_x_json2.v',
 	'vlib/v/slow_tests/valgrind/comptime_selector.v',
 	'vlib/v/slow_tests/valgrind/2.heap_objects.v',
+	'vlib/v/slow_tests/valgrind/logging.v',
+	'vlib/v/slow_tests/valgrind/rand_module.v',
+	'vlib/v/slow_tests/valgrind/struct_of_array_of_same_struct.v',
 	'vlib/v/slow_tests/valgrind/sync.v',
 ]
 

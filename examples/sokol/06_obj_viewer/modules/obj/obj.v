@@ -287,6 +287,7 @@ pub fn (mut obj_part ObjPart) parse_obj_buffer(rows []string, single_material bo
 				}
 				else {}
 			}
+
 			i++
 		}
 		// if c == 2 { break }
@@ -375,6 +376,7 @@ fn (mut obj_part ObjPart) load_materials() {
 					break
 				}
 			}
+
 			i++
 		}
 	}

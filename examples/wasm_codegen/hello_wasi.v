@@ -4,8 +4,9 @@ fn main() {
 	mut m := wasm.Module{}
 	m.enable_debug('vlang')
 	m.new_function_import('wasi_unstable', 'proc_exit', [.i32_t], [])
-	m.new_function_import('wasi_unstable', 'fd_write', [.i32_t, .i32_t, .i32_t, .i32_t],
-		[.i32_t])
+	m.new_function_import('wasi_unstable', 'fd_write', [.i32_t, .i32_t, .i32_t, .i32_t], [
+		.i32_t,
+	])
 	m.assign_memory('memory', true, 1, none)
 
 	m.new_data_segment('CIOVec.str', 0, [u8(8), 0, 0, 0]) // pointer to string

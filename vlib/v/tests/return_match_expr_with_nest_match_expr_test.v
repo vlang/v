@@ -17,6 +17,7 @@ fn get_foobar(f FooBar) FooBar {
 				true { false }
 				false { true }
 			}
+
 			Bar{
 				b: b
 			}

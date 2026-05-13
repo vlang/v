@@ -9,3 +9,16 @@ fn (a Foo) + (b Foo) Foo {
 fn (a Foo) % (b Foo) Foo {
 	return Foo{a.x % b.x}
 }
+
+struct Indexed {
+mut:
+	values []int
+}
+
+fn (i Indexed) [] (index int) int {
+	return i.values[index]
+}
+
+fn (mut i Indexed) []= (index int, value int) {
+	i.values[index] = value
+}

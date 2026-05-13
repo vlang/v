@@ -138,6 +138,22 @@ pub mut:
 	align         int = -1
 }
 
+pub fn (sym TypeSymbol) aggregate_variant_type(idx int) Type {
+	info := sym.info
+	return match info {
+		Aggregate {
+			if idx >= 0 && idx < info.types.len {
+				info.types[idx]
+			} else {
+				Type(0)
+			}
+		}
+		else {
+			Type(0)
+		}
+	}
+}
+
 // max of 8
 pub enum TypeFlag as u32 {
 	option             = 1 << 24
@@ -213,10 +229,11 @@ pub mut:
 @[minify]
 pub struct Interface {
 pub mut:
-	types   []Type // all types that implement this interface
-	fields  []StructField
-	methods []Fn
-	embeds  []Type
+	types     []Type // all types that implement this interface immutably
+	mut_types []Type // all types that require a mutable interface binding
+	fields    []StructField
+	methods   []Fn
+	embeds    []Type
 	// `I1 is I2` conversions
 	conversions shared map[int][]Type
 	// generic interface support
@@ -226,6 +243,26 @@ pub mut:
 	concrete_types []Type
 	parent_type    Type
 	name_pos       token.Pos
+}
+
+pub fn (info &Interface) has_implementor(typ Type, include_mut_types bool) bool {
+	if info.types.any(it.idx() == typ.idx()) {
+		return true
+	}
+	return include_mut_types && info.mut_types.any(it.idx() == typ.idx())
+}
+
+pub fn (info &Interface) implementor_types(include_mut_types bool) []Type {
+	mut implementors := info.types.clone()
+	if !include_mut_types {
+		return implementors
+	}
+	for typ in info.mut_types {
+		if !implementors.any(it.idx() == typ.idx()) {
+			implementors << typ
+		}
+	}
+	return implementors
 }
 
 pub struct Enum {
@@ -584,6 +621,10 @@ pub fn (t Type) str() string {
 }
 
 pub fn (t &Table) type_str(typ Type) string {
+	idx := typ.idx()
+	if idx == 0 || idx >= t.type_symbols.len {
+		return 'unknown'
+	}
 	return t.sym(typ).name
 }
 
@@ -1430,11 +1471,13 @@ pub fn (t &Table) type_size(typ Type) (int, int) {
 					align = t.pointer_size
 				}
 				Interface {
-					size = (sym.info.fields.len + 2) * t.pointer_size
+					interface_header_size := round_up(t.pointer_size + 4, t.pointer_size) +
+						t.pointer_size
+					size = interface_header_size + sym.info.fields.len * t.pointer_size
 					align = t.pointer_size
 					for etyp in sym.info.embeds {
 						esize, _ := t.type_size(etyp)
-						size += esize - 2 * t.pointer_size
+						size += esize - interface_header_size
 					}
 				}
 				else {
@@ -1466,6 +1509,7 @@ pub fn (t &Table) type_size(typ Type) (int, int) {
 			align = t.pointer_size
 		}
 	}
+
 	sym.size = size
 	sym.align = align
 	return size, align
@@ -1607,6 +1651,10 @@ pub fn (t &Table) type_to_str_using_aliases(typ Type, import_aliases map[string]
 			return cached_res
 		}
 	}
+	idx := typ.idx()
+	if idx == 0 || idx >= t.type_symbols.len {
+		return 'unknown'
+	}
 	sym := t.sym(typ)
 	mut res := sym.name
 	defer {
@@ -1652,11 +1700,9 @@ pub fn (t &Table) type_to_str_using_aliases(typ Type, import_aliases map[string]
 			elem_str := t.type_to_str_using_aliases(info.elem_type, import_aliases)
 			if info.size_expr is EmptyExpr {
 				res = '[${info.size}]${elem_str}'
-			} else if info.size_expr is Ident {
-				size_str := t.shorten_user_defined_typenames(info.size_expr.name, import_aliases)
-				res = '[${size_str}]${elem_str}'
 			} else {
-				res = '[${info.size_expr}]${elem_str}'
+				size_str := t.fixed_array_size_expr_to_str(info.size_expr, import_aliases)
+				res = '[${size_str}]${elem_str}'
 			}
 		}
 		.chan {
@@ -1715,10 +1761,21 @@ pub fn (t &Table) type_to_str_using_aliases(typ Type, import_aliases map[string]
 			if typ.has_flag(.generic) {
 				match sym.info {
 					Struct, Interface, SumType {
+						base_name := if sym.ngname == '' {
+							strip_extra_struct_types(res)
+						} else {
+							sym.ngname
+						}
+						res = t.shorten_user_defined_typenames(base_name, import_aliases)
+						generic_types := if sym.generic_types.len > 0 {
+							sym.generic_types
+						} else {
+							sym.info.generic_types
+						}
 						res += '['
-						for i, gtyp in sym.info.generic_types {
-							res += t.sym(gtyp).name
-							if i != sym.info.generic_types.len - 1 {
+						for i, gtyp in generic_types {
+							res += t.type_to_str_using_aliases(gtyp, import_aliases)
+							if i != generic_types.len - 1 {
 								res += ', '
 							}
 						}
@@ -1777,6 +1834,7 @@ pub fn (t &Table) type_to_str_using_aliases(typ Type, import_aliases map[string]
 		}
 		.aggregate {}
 	}
+
 	mut nr_muls := typ.nr_muls()
 	if typ.has_flag(.shared_f) {
 		nr_muls--
@@ -1796,6 +1854,34 @@ pub fn (t &Table) type_to_str_using_aliases(typ Type, import_aliases map[string]
 		res = '!${res}'
 	}
 	return res
+}
+
+// fixed_array_size_expr_to_str renders a fixed-array size expression preserving
+// fully-qualified enum names. The default `Expr.str()` drops the enum name on
+// `EnumVal` (returning `.value`), which produces invalid output when the size
+// is something like `int(TestEnum._max)` because the enum type cannot be
+// inferred from context inside the array brackets.
+fn (t &Table) fixed_array_size_expr_to_str(expr Expr, import_aliases map[string]string) string {
+	match expr {
+		CastExpr {
+			type_name := t.shorten_user_defined_typenames(t.type_to_str_using_aliases(expr.typ,
+				import_aliases), import_aliases)
+			return '${type_name}(${t.fixed_array_size_expr_to_str(expr.expr, import_aliases)})'
+		}
+		EnumVal {
+			if expr.enum_name != '' {
+				name := t.shorten_user_defined_typenames(expr.enum_name, import_aliases)
+				return '${name}.${expr.val}'
+			}
+			return '.${expr.val}'
+		}
+		Ident {
+			return t.shorten_user_defined_typenames(expr.name, import_aliases)
+		}
+		else {
+			return expr.str()
+		}
+	}
 }
 
 fn (t &Table) shorten_user_defined_typenames(original_name string, import_aliases map[string]string) string {
@@ -1870,12 +1956,18 @@ pub fn (t &Table) fn_signature_using_aliases(func &Fn, import_aliases map[string
 			sb.write_string(' ')
 		}
 		styp := t.type_to_str_using_aliases(typ, import_aliases)
-		if i == func.params.len - 1 && func.is_variadic {
+		if i == func.params.len - 1 && func.is_variadic && !func.is_c_variadic {
 			sb.write_string('...')
 			sb.write_string(styp)
 		} else {
 			sb.write_string(styp)
 		}
+	}
+	if func.is_c_variadic {
+		if func.params.len > 0 {
+			sb.write_string(', ')
+		}
+		sb.write_string('...')
 	}
 	sb.write_string(')')
 	if func.return_type != void_type {
@@ -2007,6 +2099,7 @@ pub fn (t &TypeSymbol) find_method_with_generic_parent(name string) ?Fn {
 		}
 		else {}
 	}
+
 	if m := t.find_method(name) {
 		if generic_names.len == concrete_types.len && concrete_types.len > 0 {
 			return specialize_method_with_concrete_types(m, generic_names, concrete_types)
@@ -2051,6 +2144,7 @@ pub fn (t &TypeSymbol) find_method_with_generic_parent(name string) ?Fn {
 		}
 		else {}
 	}
+
 	return none
 }
 
@@ -2256,6 +2350,7 @@ pub fn (t &TypeSymbol) get_methods() []Fn {
 		}
 		else {}
 	}
+
 	for method in inherited_methods {
 		if method.name in existing_method_names {
 			continue

@@ -5,7 +5,7 @@ vlib/v/checker/tests/cast_sumtype_as_generic_err.vv:15:10: error: cannot cast `b
       |             ~~~~~~~~~~~~~
    16 | }
 vlib/v/checker/tests/cast_sumtype_as_generic_err.vv:10:11: error: cannot cast `SumType` to `bool`
-    8 |
+    8 | 
     9 | fn (a SumType) cast_to[T]() T {
    10 |     return a as T
       |              ~~

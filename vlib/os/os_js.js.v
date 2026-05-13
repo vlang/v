@@ -40,6 +40,8 @@ fn kind_of_existing_path(path string) PathKind {
 	$if js_node {
 		#is_link.val = $fs.existsSync(path.str) && $fs.lstatSync(path.str).isSymbolicLink()
 		#is_dir.val = $fs.existsSync(path,str) && $fs.lstatSync(path.str).isDirectory()
+	} $else {
+		_ = path
 	}
 	return PathKind{
 		is_dir:  is_dir

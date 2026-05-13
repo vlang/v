@@ -77,6 +77,7 @@ fn test_match() {
 			assert false
 		}
 	}
+
 	println(color)
 	assert num == 3
 }

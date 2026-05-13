@@ -1,0 +1,10 @@
+struct Numbers {}
+
+fn (n Numbers) [] (index int) int {
+	return index
+}
+
+fn main() {
+	mut numbers := Numbers{}
+	numbers[0] = 1
+}

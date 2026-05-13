@@ -9,6 +9,7 @@ fn test_match_expr_skip_in_infix_expr_1() {
 			false
 		}
 	}
+
 	println(a)
 	assert a == false
 	println(b)
@@ -26,6 +27,7 @@ fn test_match_expr_skip_in_infix_expr_2() {
 			false
 		}
 	}
+
 	println(a)
 	assert a == true
 	println(b)

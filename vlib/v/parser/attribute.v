@@ -262,7 +262,8 @@ fn (mut p Parser) attributes() {
 		attrs := p.parse_attr(is_at)
 		for attr in attrs {
 			if p.attrs.contains(attr.name) && attr.name != 'wasm_export' {
-				p.error_with_pos('duplicate attribute `${attr.name}`', attr_start_pos.extend(p.prev_tok.pos()))
+				p.error_with_pos('duplicate attribute `${attr.name}`',
+					attr_start_pos.extend(p.prev_tok.pos()))
 				return
 			}
 			if attr.kind == .comptime_define {

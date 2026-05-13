@@ -63,7 +63,6 @@ $if linux {
 				// Alpine:
 				#flag $when_first_existing('/usr/lib/libatomic.so','/usr/lib/gcc/aarch64-pc-linux-musl/6/libatomic.so','/usr/lib/gcc/aarch64-pc-linux-musl/7/libatomic.so','/usr/lib/gcc/aarch64-pc-linux-musl/8/libatomic.so','/usr/lib/gcc/aarch64-pc-linux-musl/9/libatomic.so','/usr/lib/gcc/aarch64-pc-linux-musl/10/libatomic.so','/usr/lib/gcc/aarch64-pc-linux-musl/11/libatomic.so','/usr/lib/gcc/aarch64-pc-linux-musl/12/libatomic.so','/usr/lib/gcc/aarch64-pc-linux-musl/13/libatomic.so','/usr/lib/gcc/aarch64-pc-linux-musl/14/libatomic.so')
 			}
-			#flag @VEXEROOT/thirdparty/stdatomic/nix/atomic.S
 		}
 	}
 }
@@ -111,6 +110,10 @@ fn C.atomic_fetch_sub_u64(voidptr, u64) u64
 
 fn C.atomic_thread_fence(i32)
 fn C.cpu_relax()
+
+pub const C.memory_order_relaxed i32
+pub const C.memory_order_acquire i32
+pub const C.memory_order_release i32
 
 fn C.ANNOTATE_RWLOCK_CREATE(voidptr)
 fn C.ANNOTATE_RWLOCK_ACQUIRED(voidptr, i32)

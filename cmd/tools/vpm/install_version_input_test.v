@@ -53,14 +53,16 @@ fn test_reinstall_mod_with_version_installation() {
 	expect_args := [vexe, ident, tag, new_tag, install_path].join(' ')
 
 	// Decline.
-	decline_test := os.join_path(expect_tests_path, 'decline_reinstall_mod_with_version_installation.expect')
+	decline_test := os.join_path(expect_tests_path,
+		'decline_reinstall_mod_with_version_installation.expect')
 	manifest_path := os.join_path(install_path, 'v.mod')
 	last_modified := os.file_last_mod_unix(manifest_path)
 	cmd_ok(@LOCATION, '${expect_exe} ${decline_test} ${expect_args}')
 	assert last_modified == os.file_last_mod_unix(manifest_path)
 
 	// Accept.
-	accept_test := os.join_path(expect_tests_path, 'accept_reinstall_mod_with_version_installation.expect')
+	accept_test := os.join_path(expect_tests_path,
+		'accept_reinstall_mod_with_version_installation.expect')
 	cmd_ok(@LOCATION, '${expect_exe} ${accept_test} ${expect_args}')
 	manifest = get_vmod(ident)
 	assert manifest.name == ident

@@ -42,6 +42,7 @@ fn match_branch_extra_comma() {
 		Foo, Bar {}
 		int, string {}
 	}
+
 	match n {
 		0...5 {}
 		2, 3 {}
@@ -55,4 +56,10 @@ fn match_index_range_expr(var string) string {
 		var[1..2].contains('#') { var }
 		else { 'i#' + var }
 	}
+}
+
+fn match_condition_or_block() {
+	match read_bool() {
+		true {}
+	} or {}
 }

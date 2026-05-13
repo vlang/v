@@ -231,7 +231,8 @@ fn (b &Builder) module_source_files(modules []string) []string {
 	mut files_set := map[string]bool{}
 	for module_name in modules {
 		module_path := b.pref.get_vlib_module_path(module_name)
-		module_files := get_v_files_from_dir(module_path, b.pref.user_defines)
+		module_files := get_v_files_from_dir(module_path, b.pref.user_defines,
+			b.pref.get_effective_os())
 		for file in module_files {
 			files_set[file] = true
 		}
@@ -249,7 +250,7 @@ fn (b &Builder) core_cache_compiler_dependency_files() []string {
 		if !os.is_dir(dir) {
 			continue
 		}
-		for file in get_v_files_from_dir(dir, b.pref.user_defines) {
+		for file in get_v_files_from_dir(dir, b.pref.user_defines, b.pref.get_effective_os()) {
 			files_set[os.norm_path(file)] = true
 		}
 	}
@@ -354,8 +355,8 @@ fn (b &Builder) can_use_cached_core_headers() bool {
 	}
 	cc := configured_cc(b.pref.vroot)
 	cc_flags := configured_cflags()
-	if !b.can_use_cached_module_bundle(builtin_cache_name, builtin_cached_module_paths,
-		cc, cc_flags) {
+	if !b.can_use_cached_module_bundle(builtin_cache_name, builtin_cached_module_paths, cc,
+		cc_flags) {
 		return false
 	}
 	if vlib_cached_module_paths.len > 0
@@ -452,7 +453,7 @@ fn (b &Builder) source_fn_return_types(modules []string) map[string]string {
 	mut fn_returns := map[string]string{}
 	for module_name in modules {
 		module_dir := b.pref.get_vlib_module_path(module_name)
-		for file in get_v_files_from_dir(module_dir, b.pref.user_defines) {
+		for file in get_v_files_from_dir(module_dir, b.pref.user_defines, b.pref.get_effective_os()) {
 			lines := os.read_lines(file) or { continue }
 			for raw_line in lines {
 				line := raw_line.trim_space()
@@ -470,7 +471,7 @@ fn (b &Builder) source_fn_decls_for_module(module_name string) map[string]string
 	module_path := b.module_name_to_path(module_name)
 	module_dir := b.pref.get_vlib_module_path(module_path)
 	mut decls := map[string]string{}
-	for file in get_v_files_from_dir(module_dir, b.pref.user_defines) {
+	for file in get_v_files_from_dir(module_dir, b.pref.user_defines, b.pref.get_effective_os()) {
 		lines := os.read_lines(file) or { continue }
 		mut in_interface := false
 		mut interface_name := ''
@@ -545,7 +546,7 @@ fn (b &Builder) source_struct_field_types_for_module(module_name string) map[str
 	module_path := b.module_name_to_path(module_name)
 	module_dir := b.pref.get_vlib_module_path(module_path)
 	mut field_types := map[string]string{}
-	for file in get_v_files_from_dir(module_dir, b.pref.user_defines) {
+	for file in get_v_files_from_dir(module_dir, b.pref.user_defines, b.pref.get_effective_os()) {
 		lines := os.read_lines(file) or { continue }
 		mut in_struct := false
 		mut struct_name := ''
@@ -594,7 +595,7 @@ fn (mut b Builder) parse_module_source_files_for_headers(modules []string) []ast
 	mut source_paths := []string{}
 	for module_name in modules {
 		source_paths << get_v_files_from_dir(b.pref.get_vlib_module_path(module_name),
-			b.pref.user_defines)
+			b.pref.user_defines, b.pref.get_effective_os())
 	}
 	return parser_reused.parse_files(source_paths, mut b.file_set)
 }
@@ -685,8 +686,7 @@ fn (b &Builder) build_module_header_ast(source_files []ast.File, module_name str
 					type_decl_seen[type_decl.name] = true
 				}
 				ast.InterfaceDecl {
-					decl_stmts << ast.Stmt(b.resolved_header_interface_decl(module_name,
-						stmt))
+					decl_stmts << ast.Stmt(b.resolved_header_interface_decl(module_name, stmt))
 				}
 				ast.GlobalDecl {
 					mut gfields := []ast.FieldDecl{cap: stmt.fields.len}
@@ -796,7 +796,7 @@ fn (b &Builder) resolved_header_interface_decl(module_name string, stmt ast.Inte
 fn (b &Builder) append_source_type_alias_decls(module_name string, mut type_decl_stmts []ast.Stmt, mut type_decl_seen map[string]bool) {
 	module_path := b.module_name_to_path(module_name)
 	module_dir := b.pref.get_vlib_module_path(module_path)
-	for file in get_v_files_from_dir(module_dir, b.pref.user_defines) {
+	for file in get_v_files_from_dir(module_dir, b.pref.user_defines, b.pref.get_effective_os()) {
 		lines := os.read_lines(file) or { continue }
 		for raw_line in lines {
 			line := raw_line.trim_space()
@@ -1025,7 +1025,7 @@ fn (b &Builder) module_name_to_path(module_name string) string {
 fn (b &Builder) lookup_alias_source_type_expr(module_name string, type_name string) ?ast.Expr {
 	module_path := b.module_name_to_path(module_name)
 	module_dir := b.pref.get_vlib_module_path(module_path)
-	for file in get_v_files_from_dir(module_dir, b.pref.user_defines) {
+	for file in get_v_files_from_dir(module_dir, b.pref.user_defines, b.pref.get_effective_os()) {
 		lines := os.read_lines(file) or { continue }
 		for raw_line in lines {
 			line := raw_line.trim_space()
@@ -1150,7 +1150,7 @@ fn (b &Builder) module_defines_c_type(module_name string, type_name string) bool
 		'type C.${type_name}',
 		'pub type C.${type_name}',
 	]
-	for file in get_v_files_from_dir(module_dir, b.pref.user_defines) {
+	for file in get_v_files_from_dir(module_dir, b.pref.user_defines, b.pref.get_effective_os()) {
 		content := os.read_file(file) or { continue }
 		for pattern in patterns {
 			idx := content.index(pattern) or { continue }

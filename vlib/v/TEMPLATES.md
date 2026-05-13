@@ -8,6 +8,9 @@ to be used for other kinds of text output also.
 Each template directive begins with an `@` sign.
 Block directives are line-based: start with `@if`, `@for`, or `@else` on their own line,
 then close the block with `@end`, `@endif`, or `@endfor`.
+HTML templates also support brace-delimited control blocks, so `@if cond { ... }`,
+`@else { ... }`, and `@for item in items { ... }` can be closed with `}` instead.
+Inline one-line bodies like `@if cond { <span>shown</span> }` are supported too.
 Other directives only have `''` (string) parameters.
 
 For example:
@@ -33,6 +36,7 @@ For example:
 The if directive consists of the `@if` tag, the condition
 (using the same syntax as in V), and a block of template content.
 Close the block with `@end` or `@endif`.
+In HTML templates, you can also use a brace-delimited block and close it with `}`.
 
 ```
 @if <condition>
@@ -46,6 +50,12 @@ Close the block with `@end` or `@endif`.
 @if bool_val
     <span>This is shown if bool_val is true</span>
 @end
+```
+
+```html
+@if bool_val {
+    <span>This is shown if bool_val is true</span>
+}
 ```
 
 You can also use `@else`:
@@ -75,6 +85,8 @@ where you can write text, rendered for each iteration of the loop:
     ...
 @end
 ```
+
+In HTML templates, you can also use `@for <condition> { ... }` and close it with `}`.
 
 ### Example for @for
 

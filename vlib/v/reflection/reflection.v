@@ -147,17 +147,17 @@ pub:
 
 pub struct StructField {
 pub:
-	name   string   // field name
-	typ    VType    // type
-	attrs  []string // field attrs
-	is_pub bool     // is pub?
-	is_mut bool     // is mut?
+	name   string       // field name
+	typ    VType        // type
+	attrs  []VAttribute // field attrs
+	is_pub bool         // is pub?
+	is_mut bool         // is mut?
 }
 
 pub struct Struct {
 pub:
 	parent_idx int           // parent type
-	attrs      []string      // struct attrs
+	attrs      []VAttribute  // struct attrs
 	fields     []StructField // fields
 }
 
@@ -225,6 +225,7 @@ pub struct Function {
 pub:
 	mod_name     string        // module name
 	name         string        // function/method name
+	attrs        []VAttribute  // function/method attrs
 	args         []FunctionArg // function/method args
 	file_idx     int           // source file name
 	line_start   int           // decl start line

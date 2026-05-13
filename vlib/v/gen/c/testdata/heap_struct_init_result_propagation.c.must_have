@@ -1,0 +1,2 @@
+c->process = (HEAP(main__Process, ((main__Process){.path = (*(string*)
+,.argv = c->args,.dir = c->dir,})));

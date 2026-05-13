@@ -1,0 +1,6 @@
+vlib/v/checker/tests/index_operator_assignment_without_setter_err.vv:9:9: error: index assignment requires a `[]=` overload on type `Numbers`
+    7 | fn main() {
+    8 |     mut numbers := Numbers{}
+    9 |     numbers[0] = 1
+      |            ~~~
+   10 | }

@@ -374,6 +374,7 @@ fn main() {
 	mut soa_integrate := build_soa()
 	result_aos_integrate := bench_integrate_aos(mut aos_integrate)
 	result_soa_integrate := bench_integrate_soa(mut soa_integrate)
-	print_result('integrate position, velocity, and life', result_aos_integrate, result_soa_integrate)
+	print_result('integrate position, velocity, and life', result_aos_integrate,
+		result_soa_integrate)
 	C.Particle_SOA_free(&soa_integrate)
 }

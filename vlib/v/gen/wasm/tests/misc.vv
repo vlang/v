@@ -94,7 +94,7 @@ fn ptr_in_struct() {
 	mut s := HasPointers{1234, &msg, unsafe { nil }}
 	println(*s.msg)
 	s.same = &s
-	println(*&int(voidptr(s.same.a))) // FIXME: wont work without casts
+	println(*unsafe { &int(voidptr(s.same.a)) }) // FIXME: wont work without casts
 }
 
 fn main() {

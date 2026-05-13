@@ -96,5 +96,6 @@ pub fn (b u8) str_escaped() string {
 		32...126 { str = b.ascii_str() }
 		else { str = '0x' + b.hex() }
 	}
+
 	return str
 }

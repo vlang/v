@@ -584,6 +584,7 @@ fn (mut g Gen) gen_function(func ssa.Function) {
 							.srem { '%' }
 							else { '+' }
 						}
+
 						g.write_indent()
 						g.sb.write_string('${g.type_name(instr.typ)} ${val.name} = ')
 						g.gen_value(instr.operands[0])
@@ -603,6 +604,7 @@ fn (mut g Gen) gen_function(func ssa.Function) {
 							.ge { '>=' }
 							else { '==' }
 						}
+
 						g.write_indent()
 						g.sb.write_string('bool ${val.name} = ')
 						g.gen_value(instr.operands[0])

@@ -130,6 +130,10 @@ $if sokol_wayland ? {
 	// === Key translation ===
 
 	fn wl_translate_key(keysym Xkb_keysym_t) KeyCode {
+		key := linux_translate_navigation_or_keypad_keysym(u32(keysym))
+		if key != .invalid {
+			return key
+		}
 		return match keysym {
 			xkb_key_space { .space }
 			xkb_key_apostrophe { .apostrophe }
@@ -183,16 +187,6 @@ $if sokol_wayland ? {
 			xkb_key_return { .enter }
 			xkb_key_tab { .tab }
 			xkb_key_backspace { .backspace }
-			xkb_key_insert { .insert }
-			xkb_key_delete { .delete }
-			xkb_key_right { .right }
-			xkb_key_left { .left }
-			xkb_key_down { .down }
-			xkb_key_up { .up }
-			xkb_key_page_up { .page_up }
-			xkb_key_page_down { .page_down }
-			xkb_key_home { .home }
-			xkb_key_end { .end }
 			xkb_key_caps_lock { .caps_lock }
 			xkb_key_scroll_lock { .scroll_lock }
 			xkb_key_num_lock { .num_lock }
@@ -223,23 +217,6 @@ $if sokol_wayland ? {
 			xkb_key_f23 { .f23 }
 			xkb_key_f24 { .f24 }
 			xkb_key_f25 { .f25 }
-			xkb_key_kp_0 { .kp_0 }
-			xkb_key_kp_1 { .kp_1 }
-			xkb_key_kp_2 { .kp_2 }
-			xkb_key_kp_3 { .kp_3 }
-			xkb_key_kp_4 { .kp_4 }
-			xkb_key_kp_5 { .kp_5 }
-			xkb_key_kp_6 { .kp_6 }
-			xkb_key_kp_7 { .kp_7 }
-			xkb_key_kp_8 { .kp_8 }
-			xkb_key_kp_9 { .kp_9 }
-			xkb_key_kp_decimal { .kp_decimal }
-			xkb_key_kp_divide { .kp_divide }
-			xkb_key_kp_multiply { .kp_multiply }
-			xkb_key_kp_subtract { .kp_subtract }
-			xkb_key_kp_add { .kp_add }
-			xkb_key_kp_enter { .kp_enter }
-			xkb_key_kp_equal { .kp_equal }
 			xkb_key_shift_l { .left_shift }
 			xkb_key_control_l { .left_control }
 			xkb_key_alt_l { .left_alt }
@@ -310,7 +287,8 @@ $if sokol_wayland ? {
 		if g_sapp_state.wl.key_repeat_timer_fd >= 0 {
 			C.close(g_sapp_state.wl.key_repeat_timer_fd)
 		}
-		g_sapp_state.wl.key_repeat_timer_fd = C.timerfd_create(clock_monotonic, tfd_cloexec | tfd_nonblock)
+		g_sapp_state.wl.key_repeat_timer_fd = C.timerfd_create(clock_monotonic,
+			tfd_cloexec | tfd_nonblock)
 	}
 
 	fn wl_start_key_repeat(scancode u32) {
@@ -355,7 +333,8 @@ $if sokol_wayland ? {
 			if g_sapp_state.wl.xkb_state == unsafe { nil } {
 				return
 			}
-			keysym := C.xkb_state_key_get_one_sym(g_sapp_state.wl.xkb_state, g_sapp_state.wl.key_repeat_keycode)
+			keysym := C.xkb_state_key_get_one_sym(g_sapp_state.wl.xkb_state,
+				g_sapp_state.wl.key_repeat_keycode)
 			sapp_key := wl_translate_key(keysym)
 
 			if sapp_key != .invalid {
@@ -367,8 +346,8 @@ $if sokol_wayland ? {
 			}
 
 			mut buf := [8]u8{}
-			count := C.xkb_state_key_get_utf8(g_sapp_state.wl.xkb_state, g_sapp_state.wl.key_repeat_keycode,
-				&char(&buf[0]), usize(buf.len))
+			count := C.xkb_state_key_get_utf8(g_sapp_state.wl.xkb_state,
+				g_sapp_state.wl.key_repeat_keycode, &char(&buf[0]), usize(buf.len))
 			if count > 0 && count < buf.len {
 				codepoint := utf8_decode(&buf[0], count)
 				if codepoint > 0 && codepoint < 0x110000 {
@@ -532,6 +511,7 @@ $if sokol_wayland ? {
 			u32(btn_middle) { MouseButton.middle }
 			else { MouseButton.invalid }
 		}
+
 		if sapp_btn != .invalid {
 			etype := if state == wl_pointer_button_state_pressed {
 				EventType.mouse_down
@@ -600,10 +580,10 @@ $if sokol_wayland ? {
 			}
 			if g_sapp_state.wl.data_device_manager != unsafe { nil }
 				&& g_sapp_state.wl.data_device == unsafe { nil } {
-				g_sapp_state.wl.data_device = C.wl_data_device_manager_get_data_device(g_sapp_state.wl.data_device_manager,
-					seat)
-				C.wl_data_device_add_listener(g_sapp_state.wl.data_device, &wl_data_device_listener,
-					unsafe { nil })
+				g_sapp_state.wl.data_device =
+					C.wl_data_device_manager_get_data_device(g_sapp_state.wl.data_device_manager, seat)
+				C.wl_data_device_add_listener(g_sapp_state.wl.data_device,
+					&wl_data_device_listener, unsafe { nil })
 			}
 		} else if (caps & wl_seat_capability_pointer) == 0
 			&& g_sapp_state.wl.pointer != unsafe { nil } {
@@ -640,18 +620,18 @@ $if sokol_wayland ? {
 	fn wl_registry_handle_global(data voidptr, registry &C.wl_registry, name u32, iface &char, version u32) {
 		unsafe {
 			if C.strcmp(iface, c'wl_compositor') == 0 {
-				g_sapp_state.wl.compositor = &C.wl_compositor(C.wl_registry_bind(registry,
-					name, &C.wl_compositor_interface, 4))
+				g_sapp_state.wl.compositor = &C.wl_compositor(C.wl_registry_bind(registry, name,
+					&C.wl_compositor_interface, 4))
 			} else if C.strcmp(iface, c'xdg_wm_base') == 0 {
-				g_sapp_state.wl.xdg_wm_base = &C.xdg_wm_base(C.wl_registry_bind(registry,
-					name, &C.xdg_wm_base_interface, 1))
+				g_sapp_state.wl.xdg_wm_base = &C.xdg_wm_base(C.wl_registry_bind(registry, name,
+					&C.xdg_wm_base_interface, 1))
 			} else if C.strcmp(iface, c'wl_seat') == 0 {
-				g_sapp_state.wl.seat = &C.wl_seat(C.wl_registry_bind(registry, name, &C.wl_seat_interface,
-					5))
+				g_sapp_state.wl.seat = &C.wl_seat(C.wl_registry_bind(registry, name,
+					&C.wl_seat_interface, 5))
 				C.wl_seat_add_listener(g_sapp_state.wl.seat, &wl_seat_listener, nil)
 			} else if C.strcmp(iface, c'wl_shm') == 0 {
-				g_sapp_state.wl.shm = &C.wl_shm(C.wl_registry_bind(registry, name, &C.wl_shm_interface,
-					1))
+				g_sapp_state.wl.shm = &C.wl_shm(C.wl_registry_bind(registry, name,
+					&C.wl_shm_interface, 1))
 			} else if C.strcmp(iface, c'wl_data_device_manager') == 0 {
 				g_sapp_state.wl.data_device_manager = &C.wl_data_device_manager(C.wl_registry_bind(registry,
 					name, &C.wl_data_device_manager_interface, 3))
@@ -659,8 +639,8 @@ $if sokol_wayland ? {
 				g_sapp_state.wl.fractional_scale_mgr = &C.wp_fractional_scale_manager_v1(C.wl_registry_bind(registry,
 					name, &C.wp_fractional_scale_manager_v1_interface, 1))
 			} else if C.strcmp(iface, c'wp_viewporter') == 0 {
-				g_sapp_state.wl.viewporter = &C.wp_viewporter(C.wl_registry_bind(registry,
-					name, &C.wp_viewporter_interface, 1))
+				g_sapp_state.wl.viewporter = &C.wp_viewporter(C.wl_registry_bind(registry, name,
+					&C.wp_viewporter_interface, 1))
 			} else if C.strcmp(iface, c'wp_cursor_shape_manager_v1') == 0 {
 				g_sapp_state.wl.cursor_shape_manager = &C.wp_cursor_shape_manager_v1(C.wl_registry_bind(registry,
 					name, &C.wp_cursor_shape_manager_v1_interface, 1))
@@ -832,7 +812,8 @@ $if sokol_wayland ? {
 		mut buffer := [8192]u8{}
 		mut total_read := isize(0)
 		for {
-			n := C.read(fds[0], unsafe { &buffer[0] + total_read }, usize(buffer.len - int(total_read) - 1))
+			n := C.read(fds[0], unsafe { &buffer[0] + total_read }, usize(buffer.len -
+				int(total_read) - 1))
 			if n <= 0 {
 				break
 			}
@@ -975,6 +956,38 @@ $if sokol_wayland ? {
 	]!
 	// === Main Wayland run function ===
 
+	fn wl_set_resizable(resizable bool) {
+		if g_sapp_state.wl.xdg_toplevel == unsafe { nil }
+			|| g_sapp_state.wl.surface == unsafe { nil } {
+			return
+		}
+		if resizable {
+			C.xdg_toplevel_set_min_size(g_sapp_state.wl.xdg_toplevel, 0, 0)
+			C.xdg_toplevel_set_max_size(g_sapp_state.wl.xdg_toplevel, 0, 0)
+		} else {
+			width := if g_sapp_state.window_width > 0 {
+				g_sapp_state.window_width
+			} else if g_sapp_state.wl.width > 0 {
+				g_sapp_state.wl.width
+			} else {
+				fallback_default_window_width
+			}
+			height := if g_sapp_state.window_height > 0 {
+				g_sapp_state.window_height
+			} else if g_sapp_state.wl.height > 0 {
+				g_sapp_state.wl.height
+			} else {
+				fallback_default_window_height
+			}
+			C.xdg_toplevel_set_min_size(g_sapp_state.wl.xdg_toplevel, i32(width), i32(height))
+			C.xdg_toplevel_set_max_size(g_sapp_state.wl.xdg_toplevel, i32(width), i32(height))
+		}
+		C.wl_surface_commit(g_sapp_state.wl.surface)
+		if g_sapp_state.wl.display != unsafe { nil } {
+			C.wl_display_flush(g_sapp_state.wl.display)
+		}
+	}
+
 	pub fn wl_run(desc &Desc) {
 		sapp_init_state(desc)
 
@@ -1030,8 +1043,8 @@ $if sokol_wayland ? {
 		g_sapp_state.wl.fb_height = int(f32(g_sapp_state.wl.height) * g_sapp_state.wl.scale)
 
 		// Create EGL window
-		g_sapp_state.wl.egl_window = C.wl_egl_window_create(g_sapp_state.wl.surface, g_sapp_state.wl.fb_width,
-			g_sapp_state.wl.fb_height)
+		g_sapp_state.wl.egl_window = C.wl_egl_window_create(g_sapp_state.wl.surface,
+			g_sapp_state.wl.fb_width, g_sapp_state.wl.fb_height)
 		if g_sapp_state.wl.egl_window == unsafe { nil } {
 			eprintln('sokol_app: failed to create Wayland EGL window')
 			return

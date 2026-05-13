@@ -292,7 +292,8 @@ fn test_csv_string() {
 	csvr.dispose_csv_reader()
 
 	// test cr endline
-	csvr = csv.csv_reader(scr_buf: txt4.str, scr_buf_len: txt4.len, end_line_len: csv.endline_cr_len)!
+	csvr =
+		csv.csv_reader(scr_buf: txt4.str, scr_buf_len: txt4.len, end_line_len: csv.endline_cr_len)!
 	perform_test3(mut csvr)!
 	csvr.dispose_csv_reader()
 }

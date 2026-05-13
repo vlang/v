@@ -7,7 +7,7 @@ module depgraph
 
 import v.dotgraph
 
-struct DepGraphNode {
+pub struct DepGraphNode {
 pub mut:
 	name  string
 	value i64

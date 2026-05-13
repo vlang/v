@@ -42,8 +42,8 @@ fn (mut vt VetAnalyze) stmt(vet &Vet, stmt ast.Stmt) {
 		ast.AssignStmt {
 			if stmt.op == .plus_assign {
 				if stmt.right[0] in [ast.StringLiteral, ast.StringInterLiteral] {
-					vt.save_expr(stringconcat_cutoff, '${stmt.left[0].str()} += ${stmt.right[0].str()}',
-						vet.file, stmt.pos)
+					vt.save_expr(stringconcat_cutoff,
+						'${stmt.left[0].str()} += ${stmt.right[0].str()}', vet.file, stmt.pos)
 				}
 			}
 		}
@@ -102,14 +102,15 @@ fn (mut vt VetAnalyze) expr(vet &Vet, expr ast.Expr) {
 						vt.call_counter['${int(vt.cur_fn.receiver.typ)}.${expr.name}']++
 					}
 				}
-				vt.save_expr(callexpr_cutoff, '${left_str}.${expr.name}(${expr.args.map(it.str()).join(', ')})',
-					vet.file, expr.pos)
+				vt.save_expr(callexpr_cutoff,
+					'${left_str}.${expr.name}(${expr.args.map(it.str()).join(', ')})', vet.file,
+					expr.pos)
 			} else {
 				lock vt.call_counter {
 					vt.call_counter[expr.name]++
 				}
-				vt.save_expr(callexpr_cutoff, '${expr.name}(${expr.args.map(it.str()).join(', ')})',
-					vet.file, expr.pos)
+				vt.save_expr(callexpr_cutoff,
+					'${expr.name}(${expr.args.map(it.str()).join(', ')})', vet.file, expr.pos)
 			}
 		}
 		ast.AsCast {
@@ -162,7 +163,8 @@ fn (mut vt VetAnalyze) vet_repeated_code(mut vet Vet) {
 				}
 				for file, info_pos in info {
 					for k, pos in info_pos {
-						vet.notice_with_file(file, '${expr} occurs ${k + 1}/${occurrences} times in ${scope_name}.',
+						vet.notice_with_file(file,
+							'${expr} occurs ${k + 1}/${occurrences} times in ${scope_name}.',
 							pos.line_nr, .repeated_code)
 					}
 				}
@@ -179,7 +181,8 @@ fn (mut vt VetAnalyze) vet_inlining_fn(mut vet Vet) {
 			if calls < fns_call_cutoff {
 				continue
 			}
-			vet.notice_with_file(file, '${fn_name.all_after('.')} fn might be inlined (possibly called at least ${calls} times)',
+			vet.notice_with_file(file,
+				'${fn_name.all_after('.')} fn might be inlined (possibly called at least ${calls} times)',
 				pos.line_nr, .inline_fn)
 		}
 	}

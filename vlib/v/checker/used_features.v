@@ -11,6 +11,14 @@ fn (mut c Checker) markused_comptime_call(check bool, key string) {
 	}
 }
 
+fn comptime_call_last_arg_type(arg ast.CallArg) ast.Type {
+	return if arg.expr is ast.ArrayDecompose {
+		arg.expr.expr_type
+	} else {
+		arg.typ
+	}
+}
+
 fn (mut c Checker) markused_assertstmt_auto_str(mut node ast.AssertStmt) {
 	if !c.table.used_features.auto_str && !c.is_builtin_mod && mut node.expr is ast.InfixExpr {
 		if !c.table.sym(c.unwrap_generic(node.expr.left_type)).has_method('str') {
@@ -64,7 +72,8 @@ fn (mut c Checker) markused_castexpr(mut _ ast.CastExpr, _ ast.Type, mut final_t
 }
 
 fn (mut c Checker) markused_comptimecall(mut node ast.ComptimeCall) {
-	c.markused_comptime_call(true, '${int(c.unwrap_generic(c.comptime.comptime_for_method.receiver_type))}.${c.comptime.comptime_for_method.name}')
+	c.markused_comptime_call(true,
+		'${int(c.unwrap_generic(c.comptime.comptime_for_method.receiver_type))}.${c.comptime.comptime_for_method.name}')
 	if c.inside_anon_fn {
 		// $method passed to anon fn, mark all methods as used
 		sym := c.table.sym(c.unwrap_generic(node.left_type))
@@ -72,8 +81,9 @@ fn (mut c Checker) markused_comptimecall(mut node ast.ComptimeCall) {
 			c.table.used_features.comptime_calls['${int(c.unwrap_generic(m.receiver_type))}.${m.name}'] = true
 			if node.args.len > 0 && m.params.len > 0 {
 				last_param := m.params.last().typ
-				if (last_param.is_int() || last_param.is_bool())
-					&& c.table.final_sym(node.args.last().typ).kind == .array {
+				last_arg_type := comptime_call_last_arg_type(node.args.last())
+				if (last_param.is_int() || last_param.is_float()
+					|| last_param.is_bool()) && c.table.final_sym(last_arg_type).kind == .array {
 					c.table.used_features.comptime_calls['${ast.string_type_idx}.${c.table.type_to_str(m.params.last().typ)}'] = true
 				}
 			}
@@ -82,8 +92,9 @@ fn (mut c Checker) markused_comptimecall(mut node ast.ComptimeCall) {
 		m := c.comptime.comptime_for_method
 		if node.args.len > 0 && m.params.len > 0 {
 			last_param := m.params.last().typ
-			if (last_param.is_int() || last_param.is_bool())
-				&& c.table.final_sym(node.args.last().typ).kind == .array {
+			last_arg_type := comptime_call_last_arg_type(node.args.last())
+			if (last_param.is_int() || last_param.is_float() || last_param.is_bool())
+				&& c.table.final_sym(last_arg_type).kind == .array {
 				c.table.used_features.comptime_calls['${ast.string_type_idx}.${c.table.type_to_str(m.params.last().typ)}'] = true
 			}
 		}
@@ -124,6 +135,7 @@ fn (mut c Checker) markused_print_call(mut node ast.CallExpr) {
 			|| !c.table.sym(arg_typ).has_method('str') {
 			c.table.used_features.auto_str = true
 		} else {
+			c.mark_type_str_method_as_referenced(arg_typ)
 			if arg_typ.has_option_or_result() {
 				c.table.used_features.print_options = true
 			}
@@ -155,7 +167,8 @@ fn (mut c Checker) markused_print_call(mut node ast.CallExpr) {
 					c.table.used_features.auto_str_ptr = sym.info.fields.any(it.typ.is_ptr()
 						|| it.typ.is_pointer())
 				}
-				c.table.used_features.auto_str_arr = sym.info.fields.any(c.table.final_sym(it.typ).kind == .array)
+				c.table.used_features.auto_str_arr =
+					sym.info.fields.any(c.table.final_sym(it.typ).kind == .array)
 			}
 		}
 	}
@@ -165,6 +178,13 @@ fn (mut c Checker) markused_method_call(mut node ast.CallExpr, mut left_expr ast
 	if !left_type.has_flag(.generic) && mut left_expr is ast.Ident {
 		if left_expr.obj is ast.Var && left_expr.obj.ct_type_var == .smartcast {
 			c.table.used_features.comptime_calls['${int(left_type)}.${node.name}'] = true
+		}
+		if c.table.sym(left_type).kind == .alias {
+			c.table.used_features.comptime_calls['${int(left_type)}.${node.name}'] = true
+			// Alias method calls can also auto-resolve to pointer receivers in cgen.
+			if !left_type.is_ptr() {
+				c.table.used_features.comptime_calls['${int(left_type.ref())}.${node.name}'] = true
+			}
 		}
 	} else if left_type.has_flag(.generic) {
 		unwrapped_left := c.unwrap_generic(left_type)
@@ -184,6 +204,7 @@ fn (mut c Checker) markused_string_inter_lit(mut _ ast.StringInterLiteral, ftyp 
 	if !c.table.sym(ftyp).has_method('str') {
 		c.table.used_features.auto_str = true
 	} else {
+		c.mark_type_str_method_as_referenced(ftyp)
 		c.table.used_features.print_types[ftyp.idx()] = true
 	}
 	if ftyp.is_ptr() {

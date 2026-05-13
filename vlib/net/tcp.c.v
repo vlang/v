@@ -438,7 +438,8 @@ fn listen_tcp_with_family(family AddrFamily, saddr string, options ListenOptions
 	}
 
 	$if !net_nonblocking_sockets ? {
-		socket_error_message(res, 'listening on ${saddr} with maximum backlog pending queue of ${options.backlog}, failed')!
+		socket_error_message(res,
+			'listening on ${saddr} with maximum backlog pending queue of ${options.backlog}, failed')!
 		return &TcpListener(unsafe { nil }) // for compiler passed
 	} $else {
 		// non-blocking sockets may also not succeed immediately when they listen() and need to check the status and take action accordingly.
@@ -451,7 +452,8 @@ fn listen_tcp_with_family(family AddrFamily, saddr string, options ListenOptions
 					break
 				}
 			} else {
-				socket_error_message(res, 'listening on ${saddr} with maximum backlog pending queue of ${options.backlog}, failed')!
+				socket_error_message(res,
+					'listening on ${saddr} with maximum backlog pending queue of ${options.backlog}, failed')!
 				break // for compiler passed
 			}
 		}
@@ -485,7 +487,7 @@ pub fn (mut l TcpListener) accept() !&TcpConn {
 // The intention of this API, is to have a more efficient way to accept
 // connections, that are later processed by a thread pool, while the main
 // thread remains active, so that it can accept other connections.
-// See also vlib/vweb/vweb.v .
+// See also vlib/veb/veb.v .
 //
 // If you do not need that, just call `.accept()!` instead, which will call
 // `.set_sock()!` for you.
@@ -560,7 +562,7 @@ pub fn (c &TcpListener) addr() !Addr {
 	return c.sock.address()
 }
 
-struct TcpSocket {
+pub struct TcpSocket {
 	Socket
 }
 
@@ -569,9 +571,9 @@ struct TcpSocket {
 @[noinline]
 pub fn new_tcp_socket(family AddrFamily) !TcpSocket {
 	handle := $if is_coroutine ? {
-		socket_error(C.photon_socket(family, SocketType.tcp, 0))!
+		socket_error(C.photon_socket(i32(family), i32(SocketType.tcp), 0))!
 	} $else {
-		socket_error(C.socket(family, SocketType.tcp, 0))!
+		socket_error(C.socket(i32(family), i32(SocketType.tcp), 0))!
 	}
 	mut s := TcpSocket{
 		handle: handle

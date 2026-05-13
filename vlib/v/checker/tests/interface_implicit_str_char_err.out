@@ -1,0 +1,6 @@
+vlib/v/checker/tests/interface_implicit_str_char_err.vv:10:7: error: `char` doesn't implement method `str` of interface `Stringy`
+    8 | 
+    9 | fn main() {
+   10 |     take(char(91))
+      |          ~~~~~~~~
+   11 | }

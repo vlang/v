@@ -424,24 +424,38 @@ fn (mut context Context) parse_options() ! {
 	fp.limit_free_args_to_at_least(1)!
 	context.show_help = fp.bool('help', `h`, false, 'Show this help screen.')
 	context.run_count = fp.int('runs', `r`, 10, 'Run count. Default: 10')
-	context.repeats_count = fp.int('repeats', `R`, 1, 'Repeats count (it repeats everything, including reporting). Default: 1')
-	context.warmup = fp.int('warmup', `w`, 2, 'Warmup run count. These are done *at the start* of each series, and the timings are ignored. Default: 2')
-	context.series = fp.int('series', `s`, 1, 'Series count. `-s 2 -r 4 a b` => aaaabbbbaaaabbbb, while `-s 3 -r 2 a b` => aabbaabbaabb. Default: 1')
-	context.ignore_failed = fp.bool('ignore', `e`, false, 'Ignore failed commands (returning a non 0 exit code).')
-	context.no_vexe_setenv = fp.bool('no_vexe_reset', `N`, false, 'Do not reset the VEXE env variable at the start. \n                            By default, VEXE will be set to "", to allow for measuring different V executables. Use this option to override it')
-	context.use_newline = fp.bool('newline', `n`, false, 'Use \\n, do not overwrite the last line. Produces more output, but easier to diagnose.')
-	context.is_silent = fp.bool('silent', `S`, false, 'Do not show progress lines, print only the final summary. Suitable for CIs.')
+	context.repeats_count = fp.int('repeats', `R`, 1,
+		'Repeats count (it repeats everything, including reporting). Default: 1')
+	context.warmup = fp.int('warmup', `w`, 2,
+		'Warmup run count. These are done *at the start* of each series, and the timings are ignored. Default: 2')
+	context.series = fp.int('series', `s`, 1,
+		'Series count. `-s 2 -r 4 a b` => aaaabbbbaaaabbbb, while `-s 3 -r 2 a b` => aabbaabbaabb. Default: 1')
+	context.ignore_failed = fp.bool('ignore', `e`, false,
+		'Ignore failed commands (returning a non 0 exit code).')
+	context.no_vexe_setenv = fp.bool('no_vexe_reset', `N`, false,
+		'Do not reset the VEXE env variable at the start. \n                            By default, VEXE will be set to "", to allow for measuring different V executables. Use this option to override it')
+	context.use_newline = fp.bool('newline', `n`, false,
+		'Use \\n, do not overwrite the last line. Produces more output, but easier to diagnose.')
+	context.is_silent = fp.bool('silent', `S`, false,
+		'Do not show progress lines, print only the final summary. Suitable for CIs.')
 	if os.getenv('VREPEAT_SILENT') != '' {
 		context.is_silent = true
 	}
-	context.show_output = fp.bool('output', `O`, false, 'Show command stdout/stderr in the progress indicator for each command. Note: slower, for verbose commands.')
+	context.show_output = fp.bool('output', `O`, false,
+		'Show command stdout/stderr in the progress indicator for each command. Note: slower, for verbose commands.')
 	context.verbose = fp.bool('verbose', `v`, false, 'Be more verbose.')
-	context.fail_on_maxtime = fp.int('max_time', `m`, max_time, 'Fail with exit code 2, when first cmd takes above M milliseconds (regression). Default: ${max_time}')
-	context.fail_on_regress_percent = fp.int('fail_percent', `f`, max_fail_percent, 'Fail with exit code 3, when first cmd is X% slower than the rest (regression). Default: ${max_fail_percent}')
-	context.cmd_template = fp.string('template', `t`, '{T}', 'Command template. {T} will be substituted with the current command. Default: {T}. \n                            Here is an example, that will produce and run 24 permutations = (3 for opt) x (2 for source) x (4 = v names):\n                               v repeat -p opt=-check-syntax,-check,"-o x.c" -p source=examples/hello_world.v,examples/hanoi.v --template "./{T} {opt} {source}" vold vnew vold_prod vnew_prod')
-	cmd_params := fp.string_multi('parameter', `p`, 'A parameter substitution list. `pp=val1,val2,val2` means that {pp} in the template, will be substituted with *each* of val1, val2, val3.')
-	context.nmins = fp.int('nmins', `i`, 0, 'Ignore the BOTTOM X results (minimum execution time). Makes the results more robust to performance flukes. Default: 0')
-	context.nmaxs = fp.int('nmaxs', `a`, 0, 'Ignore the TOP X results (maximum execution time). Makes the results more robust to performance flukes. Default: 0')
+	context.fail_on_maxtime = fp.int('max_time', `m`, max_time,
+		'Fail with exit code 2, when first cmd takes above M milliseconds (regression). Default: ${max_time}')
+	context.fail_on_regress_percent = fp.int('fail_percent', `f`, max_fail_percent,
+		'Fail with exit code 3, when first cmd is X% slower than the rest (regression). Default: ${max_fail_percent}')
+	context.cmd_template = fp.string('template', `t`, '{T}',
+		'Command template. {T} will be substituted with the current command. Default: {T}. \n                            Here is an example, that will produce and run 24 permutations = (3 for opt) x (2 for source) x (4 = v names):\n                               v repeat -p opt=-check-syntax,-check,"-o x.c" -p source=examples/hello_world.v,examples/hanoi.v --template "./{T} {opt} {source}" vold vnew vold_prod vnew_prod')
+	cmd_params := fp.string_multi('parameter', `p`,
+		'A parameter substitution list. `pp=val1,val2,val2` means that {pp} in the template, will be substituted with *each* of val1, val2, val3.')
+	context.nmins = fp.int('nmins', `i`, 0,
+		'Ignore the BOTTOM X results (minimum execution time). Makes the results more robust to performance flukes. Default: 0')
+	context.nmaxs = fp.int('nmaxs', `a`, 0,
+		'Ignore the TOP X results (maximum execution time). Makes the results more robust to performance flukes. Default: 0')
 	for p in cmd_params {
 		parts := p.split('=')
 		if parts.len > 1 {

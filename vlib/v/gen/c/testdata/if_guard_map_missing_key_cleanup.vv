@@ -1,0 +1,10 @@
+fn has_value(items map[int]bool, key int) bool {
+	if value := items[key] {
+		return value
+	}
+	return false
+}
+
+fn main() {
+	assert !has_value({}, 1)
+}

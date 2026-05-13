@@ -16,8 +16,14 @@ __global ctx_ptr = &Context(unsafe { nil })
 
 // init initializes the terminal console with Config `cfg`.
 pub fn init(cfg Config) &Context {
+	caps := current_terminal_capabilities()
 	mut ctx := &Context{
-		cfg: cfg
+		cfg:                       cfg
+		enable_ansi256:            caps.enable_ansi256
+		supports_alternate_buffer: caps.supports_alternate_buffer
+		supports_sgr_mouse:        caps.supports_sgr_mouse
+		supports_sync_updates:     caps.supports_sync_updates
+		supports_window_title:     caps.supports_window_title
 	}
 	ctx.read_buf = []u8{cap: cfg.buffer_size}
 
@@ -27,6 +33,10 @@ pub fn init(cfg Config) &Context {
 
 @[inline]
 fn save_title() {
+	mut ctx := ctx_ptr
+	if unsafe { ctx == 0 } || !ctx.supports_window_title {
+		return
+	}
 	// restore the previously saved terminal title
 	print('\x1b[22;0t')
 	flush_stdout()
@@ -34,6 +44,10 @@ fn save_title() {
 
 @[inline]
 fn load_title() {
+	mut ctx := ctx_ptr
+	if unsafe { ctx == 0 } || !ctx.supports_window_title {
+		return
+	}
 	// restore the previously saved terminal title
 	print('\x1b[23;0t')
 	flush_stdout()

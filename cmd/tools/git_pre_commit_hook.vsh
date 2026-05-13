@@ -29,7 +29,8 @@ import term
 
 fn main() {
 	// This hook cares only about the changed V files, that will be committed, as reported by git itself:
-	changed := os.execute('git diff --cached --name-only --diff-filter=ACMR -- "*.v" "*.vsh" "*.vv"')
+	changed :=
+		os.execute('git diff --cached --name-only --diff-filter=ACMR -- "*.v" "*.vsh" "*.vv"')
 
 	all_changed_vfiles := changed.output.trim_space().split('\n')
 	// _input.vv files are NOT formatted on purpose.

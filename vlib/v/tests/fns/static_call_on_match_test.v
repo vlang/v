@@ -13,5 +13,6 @@ fn test_main() {
 			2
 		}
 	}
+
 	assert a == 1
 }

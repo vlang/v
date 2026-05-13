@@ -32,6 +32,23 @@ struct EntityToTest {
 	smth string @[notnull; sql_type: 'TEXT']
 }
 
+struct TutorialBlogArticle {
+	id    int @[primary; sql: serial]
+	title string
+	text  string
+}
+
+struct TutorialBlogApp {
+mut:
+	db sqlite.DB
+}
+
+fn (app &TutorialBlogApp) find_all_tutorial_blog_articles() []TutorialBlogArticle {
+	return sql app.db {
+		select from TutorialBlogArticle
+	} or { panic(err) }
+}
+
 fn test_sqlite_orm() {
 	mut db := sqlite.connect(':memory:') or { panic(err) }
 	defer {
@@ -263,4 +280,38 @@ fn test_sqlite_orm_supports_time_duration_alias_fields() {
 	}!
 	assert rows.len == 1
 	assert rows[0].duration == 3 * time.second
+}
+
+fn test_sqlite_orm_tutorial_style_select_method() {
+	mut app := TutorialBlogApp{
+		db: sqlite.connect(':memory:') or { panic(err) }
+	}
+	defer {
+		app.db.close() or { panic(err) }
+	}
+
+	sql app.db {
+		create table TutorialBlogArticle
+	}!
+
+	first_article := TutorialBlogArticle{
+		title: 'Hello, world!'
+		text:  'V is great.'
+	}
+	second_article := TutorialBlogArticle{
+		title: 'Second post.'
+		text:  'Hm... what should I write about?'
+	}
+
+	sql app.db {
+		insert first_article into TutorialBlogArticle
+		insert second_article into TutorialBlogArticle
+	}!
+
+	articles := app.find_all_tutorial_blog_articles()
+	assert articles.len == 2
+
+	mut titles := articles.map(it.title)
+	titles.sort()
+	assert titles == ['Hello, world!', 'Second post.']
 }

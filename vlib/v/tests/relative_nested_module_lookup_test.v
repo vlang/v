@@ -14,13 +14,16 @@ fn test_nested_module_lookup_works_with_relative_paths() {
 	defer {
 		os.rmdir_all(root) or {}
 	}
-	os.write_file(main_path, 'import mod\nimport mod.v2\n\nfn main() {\n\tmod.print_version()\n\tv2.print_version()\n}\n') or {
+	os.write_file(main_path,
+		'import mod\nimport mod.v2\n\nfn main() {\n\tmod.print_version()\n\tv2.print_version()\n}\n') or {
 		panic(err)
 	}
-	os.write_file(os.join_path(mod_dir, 'mod.v'), "module mod\n\nconst version = 'v1'\n\npub fn print_version() {\n\tprintln(mod.version)\n}\n") or {
+	os.write_file(os.join_path(mod_dir, 'mod.v'),
+		"module mod\n\nconst version = 'v1'\n\npub fn print_version() {\n\tprintln(mod.version)\n}\n") or {
 		panic(err)
 	}
-	os.write_file(os.join_path(v2_dir, 'mod.v'), "module v2\n\nconst version = 'v2'\n\npub fn print_version() {\n\tprintln(v2.version)\n}\n") or {
+	os.write_file(os.join_path(v2_dir, 'mod.v'),
+		"module v2\n\nconst version = 'v2'\n\npub fn print_version() {\n\tprintln(v2.version)\n}\n") or {
 		panic(err)
 	}
 	cmd := '${os.quoted_path(@VEXE)} run ${os.quoted_path(rel_main_path)}'

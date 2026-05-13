@@ -1,0 +1,6 @@
+vlib/v/checker/tests/private_struct_return_autostr_err.vv:5:7: error: cannot dump private type `v.checker.tests.amod.PrivateFoo` outside module `v.checker.tests.amod` without an explicit `str()` method
+    3 | fn main() {
+    4 |     a := amod.new_private_foo(1)
+    5 |     dump(a)
+      |          ^
+    6 | }

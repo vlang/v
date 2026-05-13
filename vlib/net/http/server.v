@@ -276,6 +276,7 @@ fn normalize_server_response(mut resp Response, req Request) {
 			resp.set_version(server_version)
 		}
 	}
+
 	status := status_from_int(resp.status_code)
 	if status.is_valid() {
 		if resp.status_msg == '' {

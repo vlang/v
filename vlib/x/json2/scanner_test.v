@@ -30,6 +30,15 @@ fn test_str_valid_unicode_escape_2() {
 	assert tok.lit.bytestr() == '✔'
 }
 
+fn test_str_valid_escaped_backslashes_before_string_end() {
+	mut sc := Scanner{
+		text: r'"some_value \n [ ] { } ( ) , ; ? * = ! \\@ \\"'.bytes()
+	}
+	tok := sc.scan()
+	assert tok.kind == .str
+	assert tok.lit.bytestr() == 'some_value \n [ ] { } ( ) , ; ? * = ! \\@ \\'
+}
+
 fn test_str_invalid_escape() {
 	mut sc := Scanner{
 		text: r'"\z"'.bytes()

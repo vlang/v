@@ -42,8 +42,10 @@ fn (pr PersonnelRecord) payload() ![]u8 {
 	out << asn1.encode(pr.name)!
 	out << asn1.encode_with_options(pr.title, 'context_specific:0;explicit;inner:26')!
 	out << asn1.encode(pr.number)!
-	out << asn1.encode_with_options(pr.date_of_hire, 'context_specific: 1; explicit; inner:application,false,3')!
-	out << asn1.encode_with_options(pr.name_of_spouse, 'context_specific: 2; explicit; inner:application,true,1')!
+	out << asn1.encode_with_options(pr.date_of_hire,
+		'context_specific: 1; explicit; inner:application,false,3')!
+	out << asn1.encode_with_options(pr.name_of_spouse,
+		'context_specific: 2; explicit; inner:application,true,1')!
 	out << asn1.encode_with_options(pr.children, 'context_specific: 3; implicit; inner:16')!
 
 	return out
@@ -75,12 +77,14 @@ fn PersonnelRecord.decode(bytes []u8) !PersonnelRecord {
 	employe_number := EmployeeNumber(emp_num)
 
 	// dateOfHire
-	doh := fields[3].unwrap_with_options('context_specific: 1; explicit; inner:application,false,3')!
+	doh :=
+		fields[3].unwrap_with_options('context_specific: 1; explicit; inner:application,false,3')!
 	doh_app := doh.into_object[asn1.ApplicationElement]()!
 	date_of_hire := Date(doh_app)
 
 	// nameOfSpouse
-	nosp := fields[4].unwrap_with_options('context_specific: 2; explicit; inner:application,true,1')!
+	nosp :=
+		fields[4].unwrap_with_options('context_specific: 2; explicit; inner:application,true,1')!
 	nosp_app := nosp.into_object[asn1.ApplicationElement]()!
 	name_of_spouse := Name(nosp_app)
 
@@ -138,7 +142,8 @@ fn ChildInformation.from_set(s asn1.Set) !ChildInformation {
 	}
 	fields := s.fields() // serialized name and dateOfBirth of ChildInformation
 	name := fields[0].into_object[asn1.ApplicationElement]()!
-	doh := fields[1].unwrap_with_options('context_specific: 0; explicit; inner:application,false,3')!
+	doh :=
+		fields[1].unwrap_with_options('context_specific: 0; explicit; inner:application,false,3')!
 	date := doh.into_object[asn1.ApplicationElement]()!
 	ch := ChildInformation{
 		name:          Name(name)
@@ -154,7 +159,8 @@ fn (ci ChildInformation) tag() asn1.Tag {
 fn (ci ChildInformation) payload() ![]u8 {
 	mut out := []u8{}
 	out << asn1.encode(ci.name)!
-	out << asn1.encode_with_options(ci.date_of_birth, 'context_specific: 0; explicit; inner:application,false,3')!
+	out << asn1.encode_with_options(ci.date_of_birth,
+		'context_specific: 0; explicit; inner:application,false,3')!
 
 	return out
 }
@@ -367,7 +373,8 @@ fn main() {
 	assert pr_record_output == expected_record_bytes
 
 	pr_record := PersonnelRecord.decode(pr_record_output)!
-	pr_record_encoded_back := asn1.encode_with_options(pr_record, 'application:0;implicit;inner:17')!
+	pr_record_encoded_back :=
+		asn1.encode_with_options(pr_record, 'application:0;implicit;inner:17')!
 
 	dump(pr_record_encoded_back == expected_record_bytes) // true
 }

@@ -15,11 +15,11 @@ const skip_files = [
 const skip_on_cstrict = [
 	'vlib/v/checker/tests/missing_c_lib_header_1.vv',
 	'vlib/v/checker/tests/missing_c_lib_header_with_explanation_2.vv',
+	'vlib/v/checker/tests/comptime_value_d_in_include_errors.vv',
+	'vlib/v/checker/tests/missing_shader_header_1.vv',
 ]
 
 const skip_on_ubuntu_musl = [
-	'vlib/v/checker/tests/vweb_tmpl_used_var.vv',
-	'vlib/v/checker/tests/vweb_routing_checks.vv',
 	'vlib/v/checker/tests/orm_op_with_option_and_none.vv',
 	'vlib/v/checker/tests/orm_unused_var.vv',
 	'vlib/v/tests/skip_unused/gg_code.vv',
@@ -96,10 +96,12 @@ fn test_all() {
 	run_dir := '${checker_dir}/run'
 	su_dir := 'vlib/v/tests/skip_unused'
 	no_closures_dir := 'vlib/v/tests/no_closures'
-	js_checker_tests := ['js_number_requires_explicit_cast.vv']
+	js_checker_tests := ['index_expr_implicit_int_downcast_err.vv',
+		'js_number_requires_explicit_cast.vv']
+	disable_explicit_mutability_tests := ['disable_explicit_mutability.vv']
 
 	checker_tests := get_tests_in_dir(checker_dir, false).filter(!it.contains('with_check_option')
-		&& it !in js_checker_tests)
+		&& it !in js_checker_tests && it !in disable_explicit_mutability_tests)
 	parser_tests := get_tests_in_dir(parser_dir, false)
 	scanner_tests := get_tests_in_dir(scanner_dir, false)
 	global_tests := get_tests_in_dir(global_dir, false)
@@ -108,8 +110,7 @@ fn test_all() {
 	run_tests := get_tests_in_dir(run_dir, false)
 	su_dir_tests := get_tests_in_dir(su_dir, false)
 	no_closures_tests := get_tests_in_dir(no_closures_dir, false)
-	checker_with_check_option_tests := get_tests_in_dir(checker_with_check_option_dir,
-		false)
+	checker_with_check_option_tests := get_tests_in_dir(checker_with_check_option_dir, false)
 
 	if os.user_os() == 'linux' {
 		mut su_tasks := Tasks{
@@ -176,13 +177,13 @@ fn test_all() {
 	tasks.add('', checker_dir, '', '.out', checker_tests, false)
 	tasks.add('', checker_dir, '-b js', '.js.out', js_checker_tests, false)
 	tasks.add('', scanner_dir, '', '.out', scanner_tests, false)
-	tasks.add('', checker_dir, '-enable-globals run', '.run.out', ['globals_error.vv'],
-		false)
-	tasks.add('', global_run_dir, '-enable-globals run', '.run.out', global_run_tests,
-		false)
+	tasks.add('', checker_dir, '-enable-globals run', '.run.out', ['globals_error.vv'], false)
+	tasks.add('', global_run_dir, '-enable-globals run', '.run.out', global_run_tests, false)
 	tasks.add('', global_dir, '-enable-globals', '.out', global_tests, false)
 	tasks.add('', module_dir, '-prod run', '.out', module_tests, true)
 	tasks.add('', run_dir, 'run', '.run.out', run_tests, false)
+	tasks.add('', checker_dir, '-disable-explicit-mutability run',
+		'.disable_explicit_mutability.run.out', disable_explicit_mutability_tests, false)
 	tasks.add('', checker_with_check_option_dir, '-check', '.out', checker_with_check_option_tests,
 		false)
 	tasks.add('', no_closures_dir, '-no-closures run', '.out', no_closures_tests, false)
@@ -252,6 +253,7 @@ fn (mut tasks Tasks) run() {
 		m_skip_files << 'vlib/v/checker/tests/missing_c_lib_header_1.vv'
 		m_skip_files << 'vlib/v/checker/tests/missing_c_lib_header_with_explanation_2.vv'
 		m_skip_files << 'vlib/v/checker/tests/comptime_value_d_in_include_errors.vv'
+		m_skip_files << 'vlib/v/checker/tests/missing_shader_header_1.vv'
 	}
 	$if msvc {
 		m_skip_files << 'vlib/v/checker/tests/asm_alias_does_not_exist.vv'
@@ -260,6 +262,7 @@ fn (mut tasks Tasks) run() {
 		m_skip_files << 'vlib/v/checker/tests/missing_c_lib_header_1.vv'
 		m_skip_files << 'vlib/v/checker/tests/missing_c_lib_header_with_explanation_2.vv'
 		m_skip_files << 'vlib/v/checker/tests/comptime_value_d_in_include_errors.vv'
+		m_skip_files << 'vlib/v/checker/tests/missing_shader_header_1.vv'
 	}
 	$if windows {
 		m_skip_files << 'vlib/v/checker/tests/invalid_utf8_string.vv'

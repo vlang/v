@@ -1,0 +1,7 @@
+vlib/v/checker/tests/or_block_u64_to_f64_err.vv:5:41: error: wrong return type `u64` in the `or {}` block, expected `f64`
+    3 | fn main() {
+    4 |     mut num := f64(0.0)
+    5 |     num = strconv.atof64('x') or { strconv.double_minus_infinity }
+      |                                            ~~~~~~~~~~~~~~~~~~~~~
+    6 |     println(num)
+    7 | }

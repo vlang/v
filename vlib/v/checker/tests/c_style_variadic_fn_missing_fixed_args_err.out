@@ -1,0 +1,8 @@
+vlib/v/checker/tests/c_style_variadic_fn_missing_fixed_args_err.vv:7:2: error: expected 2 arguments, but got 1
+    5 | 
+    6 | fn main() {
+    7 |     hello(1)
+      |     ~~~~~~~~
+    8 | }
+Details: have (int literal)
+         want (int, f64)

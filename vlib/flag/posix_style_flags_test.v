@@ -12,6 +12,9 @@ const posix_multi_short_args_2 = ['-vv', 'vvv', '-done', '-d', 'two', '-yxz', '2
 const posix_multi_short_args_3 = ['-vv', 'vvv', '-xyz', '2', '-done', '-d', 'two']
 const posix_multi_short_args_4 = ['-yxz2', '-vv', 'vvv', '-done', '-d', 'two']
 const posix_multi_short_args_1_err = ['-zxy']
+const repeatable_cluster_args_1 = ['-mv']
+const repeatable_cluster_args_2 = ['-vmm']
+const repeatable_cluster_args_3 = ['-mmv']
 
 struct Config {
 	linker_option string   @[short: m]
@@ -23,6 +26,11 @@ struct Config {
 	x             bool
 	b             bool @[only: y]
 	u             int  @[short: z]
+}
+
+struct RepeatableClusterConfig {
+	show_version bool @[only: v]
+	multi        int  @[only: m; repeats]
 }
 
 fn test_pure_posix_short() {
@@ -102,6 +110,24 @@ fn test_pure_posix_multi_short_err_1() {
 	} else {
 		assert err.msg() == 'can not assign non-integer value `xy` from flag `-zxy` to `Config.u`'
 	}
+}
+
+fn test_pure_posix_short_repeatable_cluster_1() {
+	config, _ := flag.to_struct[RepeatableClusterConfig](repeatable_cluster_args_1, style: .short)!
+	assert config.show_version
+	assert config.multi == 1
+}
+
+fn test_pure_posix_short_repeatable_cluster_2() {
+	config, _ := flag.to_struct[RepeatableClusterConfig](repeatable_cluster_args_2, style: .short)!
+	assert config.show_version
+	assert config.multi == 2
+}
+
+fn test_pure_posix_short_repeatable_cluster_3() {
+	config, _ := flag.to_struct[RepeatableClusterConfig](repeatable_cluster_args_3, style: .short)!
+	assert config.show_version
+	assert config.multi == 2
 }
 
 fn test_pure_posix_short_no_exe() {

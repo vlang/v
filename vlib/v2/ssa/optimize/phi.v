@@ -342,8 +342,8 @@ fn eliminate_phi_nodes(mut m ssa.Module) {
 		// For each predecessor that has copies, resolve with Briggs algorithm
 		for pki in 0 .. pred_copy_blocks.len {
 			pred_blk := pred_copy_blocks[pki]
-			resolve_parallel_copies_flat(mut m, pred_blk, pred_copy_dests[pred_blk], pred_copy_srcs[pred_blk], mut
-				src_ref_count, mut touched_ids)
+			resolve_parallel_copies_flat(mut m, pred_blk, pred_copy_dests[pred_blk],
+				pred_copy_srcs[pred_blk], mut src_ref_count, mut touched_ids)
 		}
 
 		// Cleanup: clear pred_copies for blocks we touched

@@ -9,6 +9,10 @@ struct OidWriteTest {
 	err IError
 }
 
+fn assert_no_error(err IError) {
+	assert err.str() == 'none'
+}
+
 fn test_write_oid() ! {
 	dt := [
 		OidWriteTest{[], [], error('ObjectIdentifier: bad oid int array')}, // empty arc
@@ -30,6 +34,7 @@ fn test_write_oid() ! {
 			continue
 		}
 
+		assert_no_error(item.err)
 		dst := oid.payload()!
 
 		assert dst == item.exp
@@ -68,12 +73,14 @@ fn test_oid_from_ints() ! {
 		BuildOidTest{[1, 40, 6], ObjectIdentifier{
 			value: [1, 40, 6]
 		}, error('ObjectIdentifier: bad oid int array')},
+		// when the first arc is 2, the second arc is not limited to 0..39
 		BuildOidTest{[2, 50, 6], ObjectIdentifier{
 			value: [2, 50, 6]
-		}, error('ObjectIdentifier: bad oid int array')},
+		}, none},
+		// still valid: value is well below the i32 limit checked by from_ints
 		BuildOidTest{[1, 4, 863123683], ObjectIdentifier{
 			value: [1, 4, 863123683]
-		}, error('overflow parse_int result')},
+		}, none},
 		BuildOidTest{[4, 0xab, 4], ObjectIdentifier{
 			value: [4, 0xab, 4]
 		}, error('ObjectIdentifier: bad oid int array')},
@@ -84,11 +91,12 @@ fn test_oid_from_ints() ! {
 			value: [2]
 		}, error('ObjectIdentifier: bad oid int array')},
 	]
-	for i, c in td {
+	for c in td {
 		s := ObjectIdentifier.from_ints(c.inp) or {
 			assert err == c.err
 			continue
 		}
+		assert_no_error(c.err)
 		assert s == c.out
 	}
 }
@@ -137,6 +145,7 @@ fn test_oid_from_string() ! {
 			assert err == s.err
 			continue
 		}
+		assert_no_error(s.err)
 		assert v == s.out
 	}
 }
@@ -188,6 +197,7 @@ fn test_serialize_decode_oid() {
 			continue
 		}
 
+		assert_no_error(t.err)
 		assert out == t.exp
 		// dump(out)
 		// decode back

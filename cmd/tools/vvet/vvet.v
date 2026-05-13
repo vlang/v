@@ -226,8 +226,8 @@ fn (mut vt Vet) vet_fn_documentation(lines []string, line string, lnumber int) {
 		}
 		if grab {
 			clean_line := line.all_before_last('{').trim(' ')
-			vt.warn('Function documentation seems to be missing for "${clean_line}".',
-				lnumber, .doc)
+			vt.warn('Function documentation seems to be missing for "${clean_line}".', lnumber,
+				.doc)
 		}
 	} else {
 		fn_name := ident_fn_name(line)
@@ -247,8 +247,8 @@ fn (mut vt Vet) vet_fn_documentation(lines []string, line string, lnumber int) {
 					&& !prev_prev_line.starts_with('//') {
 					grab = false
 					clean_line := line.all_before_last('{').trim(' ')
-					vt.warn('The documentation for "${clean_line}" seems incomplete.',
-						lnumber, .doc)
+					vt.warn('The documentation for "${clean_line}" seems incomplete.', lnumber,
+						.doc)
 					break
 				}
 
@@ -425,6 +425,7 @@ fn (mut vt Vet) track_regex_assign(stmt ast.AssignStmt) {
 				continue
 			}
 		}
+
 		if vt.is_regex_value_expr(stmt.right[i]) {
 			vt.regex_vars[ident_name] = true
 		} else {

@@ -15,6 +15,7 @@ fn test_match_expr_with_non_last_if_expr() {
 			'b'
 		}
 	}
+
 	println(out)
 	assert out == 'a'
 }

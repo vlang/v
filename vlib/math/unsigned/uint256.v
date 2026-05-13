@@ -249,7 +249,8 @@ pub fn (u Uint256) rsh(n u32) Uint256 {
 		s.hi = Uint128{u.hi.hi, 0}
 	} else if n > 64 {
 		shift := n - 64
-		s.lo = Uint128{u.lo.hi >> shift | u.hi.lo << (64 - shift), u.hi.lo >> shift | u.hi.hi << (64 - shift)}
+		s.lo =
+			Uint128{u.lo.hi >> shift | u.hi.lo << (64 - shift), u.hi.lo >> shift | u.hi.hi << (64 - shift)}
 		s.hi = Uint128{u.hi.hi >> shift, 0}
 	} else {
 		s.lo = Uint128{u.lo.lo >> n | u.lo.hi << (64 - n), u.lo.hi >> n | u.hi.lo << (64 - n)}
@@ -279,7 +280,8 @@ pub fn (u Uint256) lsh(n u32) Uint256 {
 	} else if n > 64 {
 		shift := n - 64
 		s.lo = Uint128{0, u.lo.lo << shift}
-		s.hi = Uint128{u.lo.lo >> (64 - shift) | u.lo.hi << shift, u.lo.hi >> (64 - shift) | u.hi.lo << shift}
+		s.hi =
+			Uint128{u.lo.lo >> (64 - shift) | u.lo.hi << shift, u.lo.hi >> (64 - shift) | u.hi.lo << shift}
 	} else {
 		s.lo = Uint128{u.lo.lo << n, u.lo.hi << n | u.lo.lo >> (64 - n)}
 		s.hi = Uint128{u.hi.lo << n | u.lo.hi >> (64 - n), u.hi.hi << n | u.hi.lo >> (64 - n)}
@@ -403,7 +405,8 @@ pub fn (u_ Uint256) str() string {
 		return u.lo.str()
 	}
 
-	mut buf := '000000000000000000000000000000000000000000000000000000000000000000000000000000'.bytes()
+	mut buf :=
+		'000000000000000000000000000000000000000000000000000000000000000000000000000000'.bytes()
 
 	for i := buf.len; true; i -= 19 {
 		q, mut r := u.quo_rem_64(u64(1e19))

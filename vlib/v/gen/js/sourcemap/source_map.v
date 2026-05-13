@@ -66,8 +66,8 @@ pub fn (mut sm SourceMap) add_mapping_list(source_name string, mapping_list []Ma
 		} else {
 			NameIndexType(Empty{})
 		}
-		sm.mappings.add_mapping(mapping.gen_line, mapping.gen_column, sources_ind, mapping.source_position,
-			names_ind)
+		sm.mappings.add_mapping(mapping.gen_line, mapping.gen_column, sources_ind,
+			mapping.source_position, names_ind)
 	}
 }
 

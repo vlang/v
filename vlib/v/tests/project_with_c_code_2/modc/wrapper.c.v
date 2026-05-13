@@ -1,6 +1,5 @@
 module modc
 
-#flag -I @VMODROOT/modc
 #flag @VMODROOT/modc/impl.o
 #include "header.h"
 

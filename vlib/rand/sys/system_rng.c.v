@@ -118,8 +118,7 @@ pub fn (r SysRNG) block_size() int {
 	return rand_bitsize
 }
 
-// free should be called when the generator is no longer needed
+// free should be called when the generator is no longer needed.
 @[unsafe]
 pub fn (mut rng SysRNG) free() {
-	unsafe { free(rng) }
 }

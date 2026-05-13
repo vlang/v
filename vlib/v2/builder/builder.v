@@ -6,6 +6,7 @@ module builder
 import os
 import v2.ast
 import v2.abi
+import v2.autofix
 import v2.eval
 import v2.gen.arm64
 import v2.gen.c
@@ -75,22 +76,28 @@ fn sanitize_staged_c_source(c_source string) string {
 	source = ensure_result_type(source, '_result_int', 'int')
 	source = ensure_result_type(source, '_result_rune', 'rune')
 	// Builtin function body replacements (V source doesn't lower correctly yet):
-	source = replace_generated_c_fn(source, 'string u64_to_hex(u64 nn, u8 len)', sanitized_u64_to_hex_fn())
+	source = replace_generated_c_fn(source, 'string u64_to_hex(u64 nn, u8 len)',
+		sanitized_u64_to_hex_fn())
 	source = replace_generated_c_fn(source, 'string u64_to_hex_no_leading_zeros(u64 nn, u8 len)',
 		sanitized_u64_to_hex_no_leading_zeros_fn())
-	source = replace_generated_c_fn(source, 'string u8__str_escaped(u8 b)', sanitized_u8_str_escaped_fn())
+	source = replace_generated_c_fn(source, 'string u8__str_escaped(u8 b)',
+		sanitized_u8_str_escaped_fn())
 	source = replace_generated_c_fn(source, 'int int_min(int a, int b)', sanitized_int_min_fn())
 	source = replace_generated_c_fn(source, 'int int_max(int a, int b)', sanitized_int_max_fn())
-	source = replace_generated_c_fn(source, 'int string__utf32_code(string _rune)', sanitized_string_utf32_code_fn())
-	source = replace_generated_c_fn(source, '_result_rune Array_u8__utf8_to_utf32(Array_u8 _bytes)',
+	source = replace_generated_c_fn(source, 'int string__utf32_code(string _rune)',
+		sanitized_string_utf32_code_fn())
+	source = replace_generated_c_fn(source,
+		'_result_rune Array_u8__utf8_to_utf32(Array_u8 _bytes)',
 		sanitized_array_u8_utf8_to_utf32_fn())
 	source = replace_generated_c_fn(source, 'rune impl_utf8_to_utf32(u8* _bytes, int _bytes_len)',
 		sanitized_impl_utf8_to_utf32_fn())
-	source = replace_generated_c_fn(source, 'int utf8_str_visible_length(string s)', sanitized_utf8_str_visible_length_fn())
+	source = replace_generated_c_fn(source, 'int utf8_str_visible_length(string s)',
+		sanitized_utf8_str_visible_length_fn())
 	// Array_u8_contains call convention:
 	source = source.replace("Array_u8_contains(res, '.')", "array__contains(res, &(u8[1]){'.'})")
 	// tos() buffer pointer cast:
-	source = source.replace('return tos(((u8)(&((u8*)buf.data)[((int)(0))])), i);', 'return tos(&((u8*)buf.data)[((int)(0))], i);')
+	source = source.replace('return tos(((u8)(&((u8*)buf.data)[((int)(0))])), i);',
+		'return tos(&((u8*)buf.data)[((int)(0))], i);')
 	// Pointer field access: &logger._object -> &logger->_object
 	// The C cast C.log__Logger(logger) is dropped by cleanc, leaving a missing -> dereference.
 	source = source.replace('&logger._object', '&logger->_object')
@@ -103,8 +110,6 @@ fn sanitize_staged_c_source(c_source string) string {
 	// UdpSocket result pointer auto-deref: .sock field is UdpSocket (value), result contains &UdpSocket.
 	source = source.replace('.sock = (*(net__UdpSocket**)(((u8*)(&_or_t54.err)) + sizeof(IError)))',
 		'.sock = *(*(net__UdpSocket**)(((u8*)(&_or_t54.err)) + sizeof(IError)))')
-	// Generic function specialization: convert_voidptr_to_t_T -> convert_voidptr_to_t_f64
-	source = source.replace('sync__convert_voidptr_to_t_T(', 'sync__convert_voidptr_to_t_f64(')
 	source = ensure_string_eq_impl(source)
 	// ObjC .m file references g_vui_webview_cookie_val as a global variable.
 	// The cleanc backend uses DarwinWebViewState singleton instead.
@@ -425,6 +430,29 @@ pub fn (mut b Builder) build(files []string) {
 		// b.print_flat_ast_summary()
 	}
 
+	// -autofix: rewrite source files to fix simple mistakes (missing `mut`, ...)
+	// before any further analysis. Only consider user-provided files so we never
+	// touch files in vlib/builtin or other system modules.
+	if b.pref.autofix {
+		mut user_set := map[string]bool{}
+		for u in b.user_files {
+			user_set[u] = true
+			abs := os.real_path(u)
+			user_set[abs] = true
+		}
+		mut user_ast_files := []ast.File{}
+		for f in b.files {
+			if user_set[f.name] || user_set[os.real_path(f.name)] {
+				user_ast_files << f
+			}
+		}
+		fixed := autofix.run(user_ast_files, b.file_set)
+		if fixed > 0 {
+			eprintln('autofix: rewrote ${fixed} location(s); re-run the compiler to use the updated source.')
+			exit(0)
+		}
+	}
+
 	if b.pref.skip_type_check {
 		b.env = types.Environment.new()
 	} else {
@@ -624,8 +652,8 @@ fn (mut b Builder) gen_cleanc() {
 
 	// Fast path: cache one core object (builtin+strconv), compile/link only the rest.
 	if use_cache && !b.pref.skip_builtin && b.has_module('builtin') && b.has_module('strconv') {
-		if b.gen_cleanc_with_cached_core(output_name, cc, cc_flags, cc_link_flags, error_limit_flag, mut
-			sw)
+		if b.gen_cleanc_with_cached_core(output_name, cc, cc_flags, cc_link_flags,
+			error_limit_flag, mut sw)
 		{
 			return
 		}
@@ -641,8 +669,7 @@ fn (mut b Builder) gen_cleanc() {
 	}
 	os.write_file(staged_c_file, sanitize_staged_c_source(c_source)) or { panic(err) }
 	println('[*] Wrote ${staged_c_file}')
-	b.compile_cleanc_executable(output_name, cc, cc_flags, cc_link_flags, error_limit_flag, mut
-		sw)
+	b.compile_cleanc_executable(output_name, cc, cc_flags, cc_link_flags, error_limit_flag, mut sw)
 }
 
 fn (b &Builder) is_cmd_v2_self_build() bool {
@@ -747,11 +774,14 @@ fn (mut b Builder) gen_ssa_c() {
 	if !b.pref.skip_builtin && b.has_module('builtin') && b.has_module('strconv')
 		&& b.ensure_core_cache_dir() {
 		cache_dir := b.core_cache_dir()
-		builtin_obj = b.ensure_cached_module_object(cache_dir, builtin_cache_name, builtin_cached_module_paths,
-			builtin_cached_module_names, cc, cc_flags, error_limit_flag) or { '' }
+		builtin_obj = b.ensure_cached_module_object(cache_dir, builtin_cache_name,
+			builtin_cached_module_paths, builtin_cached_module_names, cc, cc_flags,
+			error_limit_flag) or { '' }
 		if builtin_obj.len > 0 && vlib_cached_module_paths.len > 0 {
-			vlib_obj = b.ensure_cached_module_object(cache_dir, vlib_cache_name, vlib_cached_module_paths,
-				vlib_cached_module_names, cc, cc_flags, error_limit_flag) or { '' }
+			vlib_obj = b.ensure_cached_module_object(cache_dir, vlib_cache_name,
+				vlib_cached_module_paths, vlib_cached_module_names, cc, cc_flags, error_limit_flag) or {
+				''
+			}
 		}
 	}
 
@@ -855,8 +885,7 @@ fn (mut b Builder) gen_cleanc_source(modules []string) string {
 }
 
 fn (mut b Builder) gen_cleanc_source_for_cache(modules []string, cache_bundle_name string) string {
-	return b.gen_cleanc_source_with_options(modules, true, cache_bundle_name, []string{},
-		false)
+	return b.gen_cleanc_source_with_options(modules, true, cache_bundle_name, []string{}, false)
 }
 
 fn (mut b Builder) gen_cleanc_source_with_cache_init_calls(modules []string, cached_init_calls []string) string {
@@ -928,8 +957,8 @@ fn (mut b Builder) gen_cleanc_with_cached_core(output_name string, cc string, cc
 		return false
 	}
 
-	builtin_obj := b.ensure_cached_module_object(cache_dir, builtin_cache_name, builtin_cached_module_paths,
-		builtin_cached_module_names, cc, cc_flags, error_limit_flag) or {
+	builtin_obj := b.ensure_cached_module_object(cache_dir, builtin_cache_name,
+		builtin_cached_module_paths, builtin_cached_module_names, cc, cc_flags, error_limit_flag) or {
 		if os.getenv('V2_TRACE_CACHE') != '' {
 			eprintln('TRACE_CACHE cached_core=false reason=builtin_obj_failed')
 		}
@@ -937,8 +966,8 @@ fn (mut b Builder) gen_cleanc_with_cached_core(output_name string, cc string, cc
 	}
 	mut vlib_obj := ''
 	if vlib_cached_module_paths.len > 0 {
-		vlib_obj = b.ensure_cached_module_object(cache_dir, vlib_cache_name, vlib_cached_module_paths,
-			vlib_cached_module_names, cc, cc_flags, error_limit_flag) or {
+		vlib_obj = b.ensure_cached_module_object(cache_dir, vlib_cache_name,
+			vlib_cached_module_paths, vlib_cached_module_names, cc, cc_flags, error_limit_flag) or {
 			if os.getenv('V2_TRACE_CACHE') != '' {
 				eprintln('TRACE_CACHE cached_core=false reason=vlib_obj_failed')
 			}
@@ -1043,8 +1072,8 @@ fn (mut b Builder) gen_cleanc_with_cached_core(output_name string, cc string, cc
 	}
 	// Strip -c and -x flags from link command since we're linking, not compiling.
 	// -x objective-c would cause cc to treat .o files as source code.
-	mut link_flags := main_cc_flags.replace('-x objective-c', '').replace('-x c', '').replace(' -c ',
-		' ')
+	mut link_flags :=
+		main_cc_flags.replace('-x objective-c', '').replace('-x c', '').replace(' -c ', ' ')
 	mut link_cmd := '${main_cc} ${link_flags} -w "${main_obj}" "${builtin_obj}"'
 	if vlib_obj.len > 0 {
 		link_cmd += ' "${vlib_obj}"'
@@ -1319,8 +1348,8 @@ fn ast_file_module_name(file ast.File) string {
 	return 'main'
 }
 
-fn flag_os_matches(cond string) bool {
-	current := os.user_os().to_lower()
+fn flag_os_matches(cond string, target_os string) bool {
+	current := pref.normalize_os_name(target_os)
 	return match cond.to_lower() {
 		'darwin', 'macos', 'mac' { current == 'macos' || current == 'darwin' }
 		'linux' { current == 'linux' }
@@ -1401,7 +1430,7 @@ fn normalize_flag_value_for_file(flag_value string, file_path string) string {
 	return out.join(' ')
 }
 
-fn parse_flag_directive_line(line string, file_path string) ?string {
+fn parse_flag_directive_line(line string, file_path string, target_os string) ?string {
 	trimmed := line.trim_space()
 	if !trimmed.starts_with('#flag') {
 		return none
@@ -1421,7 +1450,7 @@ fn parse_flag_directive_line(line string, file_path string) ?string {
 		return none
 	}
 	if !parts[0].starts_with('-') && !parts[0].starts_with('@') && parts.len > 1 {
-		if !flag_os_matches(parts[0]) {
+		if !flag_os_matches(parts[0], target_os) {
 			return none
 		}
 		rest = rest[parts[0].len..].trim_space()
@@ -1479,7 +1508,8 @@ fn (b &Builder) collect_cflags_from_sources() string {
 	if !b.pref.skip_builtin {
 		for module_path in core_cached_module_paths {
 			vlib_path := b.pref.get_vlib_module_path(module_path)
-			module_files := get_v_files_from_dir(vlib_path, b.pref.user_defines)
+			module_files := get_v_files_from_dir(vlib_path, b.pref.user_defines,
+				b.pref.get_effective_os())
 			for mf in module_files {
 				if mf !in scanned_files {
 					scan_paths << mf
@@ -1503,7 +1533,7 @@ fn (b &Builder) collect_cflags_from_sources() string {
 				cond := trimmed[4..].trim_right('?{ ').trim_space()
 				if skip_depth > 0 {
 					skip_depth++
-				} else if !comptime_cond_matches(cond) {
+				} else if !comptime_cond_matches(cond, b.pref.get_effective_os()) {
 					skip_depth = 1
 				}
 				continue
@@ -1526,7 +1556,8 @@ fn (b &Builder) collect_cflags_from_sources() string {
 			// Replace @VEXEROOT before parsing so path normalization sees absolute paths
 			resolved_line := line.replace('@VEXEROOT', b.pref.vroot).replace('VEXEROOT',
 				b.pref.vroot)
-			mut flag := parse_flag_directive_line(resolved_line, scan_path) or { continue }
+			mut flag := parse_flag_directive_line(resolved_line, scan_path,
+				b.pref.get_effective_os()) or { continue }
 			// Build include flags from already-collected flags for compiling missing .o files
 			mut inc_flags := []string{}
 			for f in flags {
@@ -1587,18 +1618,18 @@ fn split_compile_and_link_flags(flags string) (string, string) {
 	return compile.join(' '), link.join(' ')
 }
 
-fn comptime_cond_matches(cond string) bool {
+fn comptime_cond_matches(cond string, target_os string) bool {
 	// Handle negation: $if !platform
 	if cond.starts_with('!') {
-		return !comptime_cond_matches(cond[1..])
+		return !comptime_cond_matches(cond[1..], target_os)
 	}
 	// Handle && conjunction
 	if and_idx := cond.index('&&') {
 		left := cond[..and_idx].trim_space()
 		right := cond[and_idx + 2..].trim_space()
-		return comptime_cond_matches(left) && comptime_cond_matches(right)
+		return comptime_cond_matches(left, target_os) && comptime_cond_matches(right, target_os)
 	}
-	current := os.user_os().to_lower()
+	current := pref.normalize_os_name(target_os)
 	return match cond.to_lower() {
 		'macos', 'darwin', 'mac' { current == 'macos' || current == 'darwin' }
 		'linux' { current == 'linux' }
@@ -1641,8 +1672,7 @@ fn tcc_flags(cc string, vroot string) string {
 		return ''
 	}
 	tcc_dir := os.join_path(vroot, 'thirdparty', 'tcc')
-	return '-I "${os.join_path(tcc_dir, 'lib', 'include')}" -L "${os.join_path(tcc_dir,
-		'lib')}"'
+	return '-I "${os.join_path(tcc_dir, 'lib', 'include')}" -L "${os.join_path(tcc_dir, 'lib')}"'
 }
 
 // run_cc_cmd_or_exit runs a C compiler command, falling back from tcc to cc
@@ -1726,6 +1756,11 @@ fn (mut b Builder) gen_native(backend_arch pref.Arch) {
 		eprintln('hint: use v2 compiled with v1 for native code generation')
 		return
 	}
+	mod.target = ssa.TargetData{
+		ptr_size:      8
+		endian_little: true
+		os:            b.pref.get_effective_os()
+	}
 	mut ssa_builder := ssa.Builder.new_with_env(mod, b.env)
 	mut native_sw := time.new_stopwatch()
 
@@ -1745,6 +1780,7 @@ fn (mut b Builder) gen_native(backend_arch pref.Arch) {
 			.eval { 'eval' }
 			else { '' }
 		}
+
 		for backend_mod in all_backends {
 			if backend_mod != own {
 				ssa_builder.skip_modules[backend_mod] = true

@@ -1,0 +1,2 @@
+u16* p = HEAP(u16, (0));
+main__Issue26997Inner* p = HEAP(main__Issue26997Inner

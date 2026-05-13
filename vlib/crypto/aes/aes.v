@@ -49,6 +49,7 @@ pub fn new_cipher(key []u8) cipher.Block {
 			// return error('crypto.aes: invalid key size ' + k.str())
 		}
 	}
+
 	// for now use generic version
 	return new_cipher_generic(key)
 }

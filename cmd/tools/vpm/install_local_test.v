@@ -93,12 +93,12 @@ fn test_install_from_local_git_repository_variants() {
 
 fn create_local_git_module(repo_path string, module_name string) {
 	os.mkdir_all(repo_path) or { panic(err) }
-	os.write_file(os.join_path(repo_path, 'v.mod'), "Module{\n\tname: '${module_name}'\n\tversion: '0.0.1'\n}\n") or {
-		panic(err)
-	}
+	os.write_file(os.join_path(repo_path, 'v.mod'),
+		"Module{\n\tname: '${module_name}'\n\tversion: '0.0.1'\n}\n") or { panic(err) }
 	cmd_ok(@LOCATION, 'git init ${os.quoted_path(repo_path)}')
 	cmd_ok(@LOCATION, 'git -C ${os.quoted_path(repo_path)} add v.mod')
-	cmd_ok(@LOCATION, 'git -C ${os.quoted_path(repo_path)} -c user.email="ci@vlang.io" -c user.name="V CI" commit -m "initial commit"')
+	cmd_ok(@LOCATION,
+		'git -C ${os.quoted_path(repo_path)} -c user.email="ci@vlang.io" -c user.name="V CI" commit -m "initial commit"')
 }
 
 fn file_url(path string) string {

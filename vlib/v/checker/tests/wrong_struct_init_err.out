@@ -1,6 +1,7 @@
-vlib/v/checker/tests/wrong_struct_init_err.vv:4:33: error: struct name must begin with capital letter
+vlib/v/checker/tests/wrong_struct_init_err.vv:4:33: error: unknown type `net.http.new_header`.
+Did you mean `http.Header`?
     2 | 
     3 | import net.http
     4 | _ := http.Response{header: http.new_header{} }
-      |                                 ~~~~~~~~~~
+      |                                 ~~~~~~~~~~~~
     5 |

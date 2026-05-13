@@ -1,0 +1,7 @@
+vlib/v/checker/tests/generic_interface_callback_arg_err.vv:14:6: error: cannot use `BaseInterface` as `CustomStruct` in argument 1 to `cb`
+   12 | fn callback[T](ctx BaseInterface, cb fn (T)) {
+   13 |     $if T is BaseInterface {
+   14 |         cb(ctx)
+      |            ~~~
+   15 |     }
+   16 | }

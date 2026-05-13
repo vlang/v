@@ -90,10 +90,7 @@ pub fn (mut r RawElement) set_mode(mode TaggedMode, force bool) ! {
 		if !force {
 			return error('unallowed_operation r.mode != none')
 		}
-		r.mode = mode
-		return
 	}
-
 	r.mode = mode
 }
 
@@ -120,10 +117,7 @@ pub fn (mut r RawElement) set_inner_tag(inner_tag Tag, force bool) ! {
 		if !force {
 			return error('.unallowed_operation, r.inner_tag != none')
 		}
-		r.inner_tag = inner_tag
-		return
 	}
-
 	r.inner_tag = inner_tag
 }
 
@@ -137,8 +131,6 @@ fn (mut r RawElement) set_default_value(value Element, force bool) ! {
 		if !force {
 			return error('The RawElement already default_value being set')
 		}
-		r.default_value = value
-		return
 	}
 	r.default_value = value
 }

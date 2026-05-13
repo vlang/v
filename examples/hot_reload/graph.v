@@ -75,6 +75,7 @@ fn (ctx &Context) draw() {
 		ctx.gg.draw_rect_filled(f32((w / 2) + x * scale), f32((h / 2) - y * scale), 2,
 			(f32(y) * scale), blue)
 		ctx.gg.draw_rect_filled(f32((w / 2) + x * scale), f32((h / 2) + y * scale), 2,
+
 			(f32(y) * scale) + 32, red)
 	}
 }

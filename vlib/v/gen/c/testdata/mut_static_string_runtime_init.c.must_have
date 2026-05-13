@@ -1,0 +1,4 @@
+static string stored_text;
+static bool _vstatic_init_
+if (!_vstatic_init_
+stored_text = _S("   ");

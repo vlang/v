@@ -14,7 +14,8 @@ fn main() {
 	fp.skip_executable()
 	fp.application('Sample generator for 1 billion rows challenge')
 	fp.description('The 1 billion rows challenge solved in V.\nFor details, see https://www.morling.dev/blog/one-billion-row-challenge/')
-	input_file := fp.string('city-file', `i`, 'cities.txt', 'Path to input file with cities and means list')
+	input_file := fp.string('city-file', `i`, 'cities.txt',
+		'Path to input file with cities and means list')
 	fp.limit_free_args_to_exactly(1)!
 	sample_count := fp.remaining_parameters()[0].u64()
 

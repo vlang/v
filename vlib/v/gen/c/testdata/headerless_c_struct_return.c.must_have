@@ -1,0 +1,2 @@
+extern main__ScreenIter setup_roots_iterator(main__Setup* r);
+main__ScreenIter iter = setup_roots_iterator(&setup);

@@ -1,3 +1,4 @@
+// vtest build: !linux
 module markused
 
 import v2.ast

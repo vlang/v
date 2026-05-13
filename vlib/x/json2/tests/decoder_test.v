@@ -49,6 +49,13 @@ fn test_raw_decode_string_with_dollarsign() {
 	assert str.str() == r'Hello $world'
 }
 
+fn test_raw_decode_map_with_escaped_backslashes_before_string_end() {
+	content := r'{"some_name": "some_value \n [ ] { } ( ) , ; ? * = ! \\@ \\"}'
+	raw_mp := json.decode[json.Any](content)!
+	mp := raw_mp.as_map()
+	assert mp['some_name'] or { 0 }.str() == 'some_value \n [ ] { } ( ) , ; ? * = ! \\@ \\'
+}
+
 fn test_raw_decode_map_with_whitespaces() {
 	raw_mp := json.decode[json.Any](' \n\t{"name":"Bob","age":20}\n\t')!
 	mp := raw_mp.as_map()

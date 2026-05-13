@@ -190,6 +190,7 @@ fn (mut g Gen) autofree_variable(v ast.Var) {
 				*/
 			}
 		}
+
 		g.autofree_var_call('builtin__string_free', v)
 		return
 	}

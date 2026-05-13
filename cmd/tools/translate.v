@@ -7,6 +7,21 @@ import v.util
 
 const vexe = os.getenv('VEXE')
 
+fn normalize_translate_args(args []string) []string {
+	if args.len > 0 && args[0] == '-wrapper' {
+		mut normalized := []string{cap: args.len}
+		normalized << 'wrapper'
+		normalized << args[1..]
+		return normalized
+	}
+	return args.clone()
+}
+
+fn show_usage_and_exit() {
+	eprintln('Wrong number of arguments. Use `v translate file.c` or `v translate wrapper file.c`.')
+	exit(3)
+}
+
 fn main() {
 	vmodules := os.vmodules_dir()
 	c2v_dir := os.join_path(vmodules, 'c2v')
@@ -19,7 +34,8 @@ fn main() {
 		os.mkdir_all(vmodules)!
 		println('C2V is not installed. Cloning C2V to ${c2v_dir} ...')
 		os.chdir(vmodules)!
-		res := os.execute('${os.quoted_path(vexe)} retry -- git clone --filter=blob:none https://github.com/vlang/c2v')
+		res :=
+			os.execute('${os.quoted_path(vexe)} retry -- git clone --filter=blob:none https://github.com/vlang/c2v')
 		if res.exit_code != 0 {
 			eprintln('Failed to download C2V.')
 			exit(1)
@@ -29,18 +45,19 @@ fn main() {
 	if !os.exists(c2v_bin) {
 		os.chdir(c2v_dir)!
 		println('Compiling c2v ...')
-		res2 := os.execute('${os.quoted_path(vexe)} -o ${os.quoted_path(c2v_bin)} -keepc -g -experimental .')
+		res2 :=
+			os.execute('${os.quoted_path(vexe)} -o ${os.quoted_path(c2v_bin)} -keepc -g -experimental .')
 		if res2.exit_code != 0 {
 			eprintln(res2.output)
 			eprintln('Failed to compile C2V. This should not happen. Please report it via GitHub.')
 			exit(2)
 		}
 	}
-	if os.args.len < 3 {
-		eprintln('Wrong number of arguments. Use `v translate file.c` .')
-		exit(3)
+	translate_args := normalize_translate_args(os.args[2..])
+	if translate_args.len == 0 || (translate_args.len == 1 && translate_args[0] == 'wrapper') {
+		show_usage_and_exit()
 	}
-	passed_args := util.args_quote_paths(os.args[2..])
+	passed_args := util.args_quote_paths(translate_args)
 	// println(passed_args)
 	os.chdir(os.wd_at_startup)!
 	c2v_cmd := '${os.quoted_path(c2v_bin)} ${passed_args}'

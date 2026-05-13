@@ -1,1 +1,9 @@
 int WINAPI wWinMain(HINSTANCE instance, HINSTANCE prev_instance, LPWSTR cmd_line, int show_cmd){
+con_valid = AttachConsole(ATTACH_PARENT_PROCESS);
+if (con_valid) {
+err = freopen_s(&res_fp, "CON", "w", stdout);
+err = freopen_s(&res_fp, "CON", "w", stderr);
+} else {
+err = freopen_s(&res_fp, "NUL", "w", stdout);
+err = freopen_s(&res_fp, "NUL", "w", stderr);
+}

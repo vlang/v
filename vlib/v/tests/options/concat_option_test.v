@@ -13,6 +13,7 @@ fn test_main() {
 			3, ?bool(false), ?bool(false), ?int(false), ?int(false)
 		}
 	}
+
 	assert a? == true
 	assert b == none
 	assert c == none

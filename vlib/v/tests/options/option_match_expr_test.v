@@ -13,6 +13,7 @@ fn test_none() {
 		none { 'num: none' }
 		else { 'num: ${pp.table_ref?}' }
 	}
+
 	assert tx_ref == 'num: none'
 }
 
@@ -26,5 +27,6 @@ fn test_not_none() {
 		none { 'num: none' }
 		else { 'num: ${pp.table_ref?}' }
 	}
+
 	assert tx_ref == 'num: 123'
 }

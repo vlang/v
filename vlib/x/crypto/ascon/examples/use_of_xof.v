@@ -10,8 +10,10 @@ fn main() {
 	msg := 'Example of Xof128 message'.bytes()
 	// expected output generated from the tool, with 32, 64 dan 75-bytes output
 	digest32 := hex.decode('424caaf68eb94aa251536bb6b565c0695b8944f932d011b1049df85b7f27d2f3')!
-	digest64 := hex.decode('424caaf68eb94aa251536bb6b565c0695b8944f932d011b1049df85b7f27d2f3bf704643a643c3f2dcfb1e0bc73ec55781b5283966d2d1da85d89794ca5c292e')!
-	digest75 := hex.decode('424caaf68eb94aa251536bb6b565c0695b8944f932d011b1049df85b7f27d2f3bf704643a643c3f2dcfb1e0bc73ec55781b5283966d2d1da85d89794ca5c292e36260815a8f10088e3804c')!
+	digest64 :=
+		hex.decode('424caaf68eb94aa251536bb6b565c0695b8944f932d011b1049df85b7f27d2f3bf704643a643c3f2dcfb1e0bc73ec55781b5283966d2d1da85d89794ca5c292e')!
+	digest75 :=
+		hex.decode('424caaf68eb94aa251536bb6b565c0695b8944f932d011b1049df85b7f27d2f3bf704643a643c3f2dcfb1e0bc73ec55781b5283966d2d1da85d89794ca5c292e36260815a8f10088e3804c')!
 
 	out32 := ascon.xof128(msg, 32)!
 	out64 := ascon.xof128(msg, 64)!

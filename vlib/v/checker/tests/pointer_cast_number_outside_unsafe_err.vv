@@ -1,0 +1,10 @@
+const zero = 0
+const one = 1
+
+value := 1
+
+_ = &int(0)
+_ = &int(zero)
+_ = &int(one)
+_ = &int(value)
+_ = &&int(0)

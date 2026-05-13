@@ -8,9 +8,14 @@ pub:
 
 fn (mut m map) internal_set(key JS.Any, val JS.Any) {
 	//$if es5 {
-	#if (key.hasOwnProperty('$toJS')) key = key.$toJS();
-	#if (!(key in m.val.map)) m.val.length++;
+	#let skey = key;
+	#if (key != null && typeof key.$toJS === 'function') key = key.$toJS();
+	#if (!(key in m.val.map)) {
+	#m.val.length++;
+	#m.val.map[key] = { key: skey, val: val };
+	#} else {
 	#m.val.map[key].val = val
+	#}
 	/*} $else {
 		# if (key.hasOwnProperty('$toJS')) key = key.$toJS();
 		# m.val.m.set(key,val);
@@ -22,8 +27,12 @@ fn (mut m map) internal_set(key JS.Any, val JS.Any) {
 fn (mut m map) internal_get(key JS.Any) JS.Any {
 	mut val := JS.Any(unsafe { nil })
 	//$if es5 {
-	#if (typeof key != "string" && key.hasOwnProperty('$toJS')) key = key.$toJS();
-	#val =  m.val.map[key].val
+	#if (typeof key != "string" && key != null && typeof key.$toJS === 'function') key = key.$toJS();
+	#if (key in m.val.map) {
+	#val = m.val.map[key].val
+	#} else {
+	#val = js_undefined()
+	#}
 	/*} $else {
 		# if (key.hasOwnProperty('$toJS')) key = key.$toJS();
 		# val = m.val.m.get(key)
@@ -34,15 +43,25 @@ fn (mut m map) internal_get(key JS.Any) JS.Any {
 
 #map.prototype.get = function (key) { return map_internal_get(this,key); }
 #map.prototype.set = function(key,val) { map_internal_set(this,key,val); }
-#map.prototype.has = function (key) { if (typeof key != "string" && key.hasOwnProperty('$toJS')) { key = key.$toJS() } return key in this.map; }
+#map.prototype.has = function (key) { if (typeof key != "string" && key != null && typeof key.$toJS === 'function') { key = key.$toJS() } return key in this.map; }
 // Removes the mapping of a particular key from the map.
 @[unsafe]
 pub fn (mut m map) delete(key JS.Any) {
-	#let k = key.hasOwnProperty('$toJS') ? key.$toJS() : key;
+	#let k = key != null && typeof key.$toJS === 'function' ? key.$toJS() : key;
 
-	#if (delete m.val.map[k]) { m.val.length--; };
+	#if (k in m.val.map) {
+	#delete m.val.map[k];
+	#m.val.length--;
+	#}
 
 	_ := key
+}
+
+pub fn (m map) clone() map {
+	mut res := m
+	#res = v_clone_value(m)
+
+	return res
 }
 
 pub fn (m &map) free() {}
@@ -72,4 +91,4 @@ pub fn (m map) values() array {
 #return res;
 #}
 
-#map.prototype.getOrSet = function (key, init) { if (this.map.has(key)) { return this.map.get(key); } else { this.map.set(key,init); return init; } }
+#map.prototype.getOrSet = function (key, init) { const skey = key; if (typeof key != "string" && key != null && typeof key.$toJS === 'function') { key = key.$toJS() } if (key in this.map) { return this.map[key].val; } this.length++; this.map[key] = { key: skey, val: init }; return this.map[key].val; }

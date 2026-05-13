@@ -12,3 +12,23 @@ vlib/v/checker/tests/var_duplicate_const.vv:4:5: warning: unused variable: `size
       |     ~~~~
     5 |     println(main.size)
     6 | }
+vlib/v/checker/tests/var_duplicate_const.vv:1:7: notice: unused constant: `size`
+    1 | const size = 22
+      |       ~~~~~~~~~
+    2 | 
+    3 | fn main() {
+================== C compilation error (from cc): ==============
+cc: /tmp/v_502/var_duplicate_const.01KNN5X7W4MVH2B58E9FG5GJKE.tmp.c:2139:36: error: use of undeclared identifier 'size'
+cc:  2139 |         builtin__println(builtin__int_str(size));
+cc:       |                                           ^
+cc: 1 error generated.
+================================================================
+Try passing `-g` when compiling, to see a .v file:line information, that correlates more with the C error.
+(Alternatively, pass `-show-c-output`, to print the full C error message).
+builder error: 
+==================
+C error found while compiling generated C code.
+This can be caused by invalid C interop code, C compiler flags, or a V compiler bug.
+If your code is pure V and this still happens, please report it using `v bug file.v`,
+or goto https://github.com/vlang/v/issues/new/choose .
+You can also use #help on Discord: https://discord.gg/vlang .

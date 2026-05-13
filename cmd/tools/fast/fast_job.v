@@ -62,7 +62,8 @@ fn main() {
 	elog('fast_job clone output repos...')
 	check_output_repo('https://github.com/vlang/website', 'gh-pages', 'fast.vlang.io/')
 	check_output_repo('https://github.com/vlang/docs/', 'main', 'docs.vlang.io/')
-	check_output_repo('https://github.com/vlang/docs/', 'generator', 'docs.vlang.io/docs_generator/')
+	check_output_repo('https://github.com/vlang/docs/', 'generator',
+		'docs.vlang.io/docs_generator/')
 
 	mut i := 0
 	for {

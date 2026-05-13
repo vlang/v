@@ -1,0 +1,1 @@
+GC_reachable_here(&abs_path);

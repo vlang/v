@@ -34,16 +34,18 @@ jobs:
       VTEST_SHOW_LONGEST_BY_TOTALTIME: 3
     steps:
       - uses: actions/checkout@v6
-      - name: Build with make.bat -tcc
+      - name: Build with makev.bat -tcc
         run: |
-          .\make.bat -tcc
+          .\makev.bat -tcc
           .\v.exe symlink
       - name: All code is formatted
         run: v -silent test-cleancode
       - name: Test new v.c
         run: |
           v -o v.c cmd/v
-          .\thirdparty\tcc\tcc.exe -Werror -w -ladvapi32 -lws2_32 -bt10 v.c
+          # Match makev.bat's Windows stack reserve; the direct TCC-built
+          # compiler can otherwise crash while compiling net.http-heavy scripts.
+          .\thirdparty\tcc\tcc.exe -Werror -w -ladvapi32 -lws2_32 -bt10 '-Wl,-stack=33554432' v.c
       - name: Install dependencies
         run: |
           v retry -- v setup-freetype

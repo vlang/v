@@ -149,7 +149,8 @@ fn test_key_signing_verifying_with_custom_hash() ! {
 		custom_hash:       sha512.new()
 	}
 	// online-generated signature with sha512 digest with the same params from https://emn178.github.io/online-tools/ecdsa/sign/
-	online_sign0 := hex.decode('3066023100b54b479b64961481074c4200a9dec83fb8a42bb7db53cf97f1da131504a058ead85d0a9e4e32be14098bc9b4d1a5a8dd023100f9c7de178a286329103f684d1eab1ccfe359c65a41a1459d7f535b703c57048f25931b1670ab4ec7a812d94c69063522')!
+	online_sign0 :=
+		hex.decode('3066023100b54b479b64961481074c4200a9dec83fb8a42bb7db53cf97f1da131504a058ead85d0a9e4e32be14098bc9b4d1a5a8dd023100f9c7de178a286329103f684d1eab1ccfe359c65a41a1459d7f535b703c57048f25931b1670ab4ec7a812d94c69063522')!
 	// library generated signature
 	sign0 := pvkey.sign(message_tobe_signed, opt0)!
 	v00 := pbkey.verify(message_tobe_signed, sign0, opt0)!
@@ -174,7 +175,8 @@ fn test_key_signing_verifying_with_custom_hash() ! {
 		custom_hash:        sha1.new()
 	}
 	// online-generated signature with SHA1 digest
-	online_sign1 := hex.decode('306602310084299d8a70bf512c25cd2b79ae36509572f2bd6f198baeee074683578a70b4af8008e1cf451a2df1a887cf43daff4eea023100dceb267fe5037025c2af9f37911e05a36cbe666dd90fd6904020b5db056e86f25f9439a0ccb443d113b174cab6e2ad61')!
+	online_sign1 :=
+		hex.decode('306602310084299d8a70bf512c25cd2b79ae36509572f2bd6f198baeee074683578a70b4af8008e1cf451a2df1a887cf43daff4eea023100dceb267fe5037025c2af9f37911e05a36cbe666dd90fd6904020b5db056e86f25f9439a0ccb443d113b174cab6e2ad61')!
 	// library generated signature
 	sign1 := pvkey.sign(message_tobe_signed, opt1)!
 	verified1 := pbkey.verify(message_tobe_signed, sign1, opt1)!

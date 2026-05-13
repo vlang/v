@@ -1,0 +1,14 @@
+module main
+
+#include "@DIR/c_file_for_c_global_fixed_array_reference.c"
+
+fn main() {
+	mut buffer := [4]u8{}
+	buffer = C.buffer
+	cast_buffer := [4]u8(C.buffer)
+	println(buffer.len)
+	println(buffer[0])
+	println(buffer[3])
+	println(cast_buffer[1])
+	println(cast_buffer[2])
+}

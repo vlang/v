@@ -9,7 +9,8 @@ fn test_option_propagation_panic_has_matching_line_info() {
 		os.rmdir_all(tmp_dir) or {}
 	}
 	source_path := os.join_path(os.real_path(tmp_dir), 'option_propagation_line_info.vv')
-	os.write_file(source_path, 'struct Foo{}\n\nfn (f Foo) foo() int {\n\treturn 1\n}\n\nfn new_foo() ?Foo {\n\treturn none\n}\n\nfn main() {\n\ti := new_foo()?.foo()\n\tprintln(i)\n}\n')!
+	os.write_file(source_path,
+		'struct Foo{}\n\nfn (f Foo) foo() int {\n\treturn 1\n}\n\nfn new_foo() ?Foo {\n\treturn none\n}\n\nfn main() {\n\ti := new_foo()?.foo()\n\tprintln(i)\n}\n')!
 	cmd := '${os.quoted_path(line_info_test_vexe)} -g -o - ${os.quoted_path(source_path)}'
 	res := os.execute(cmd)
 	assert res.exit_code == 0, '${cmd}\n${res.output}'

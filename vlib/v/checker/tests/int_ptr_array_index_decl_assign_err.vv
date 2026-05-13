@@ -1,0 +1,4 @@
+pub fn read_int(bytes []u8, mut offset &int) int {
+	offset_d := offset
+	return bytes[offset_d]
+}

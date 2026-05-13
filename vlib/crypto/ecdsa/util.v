@@ -70,15 +70,15 @@ pub fn pubkey_from_bytes(bytes []u8) !PublicKey {
 
 // bytes gets the bytes of public key.
 pub fn (pbk PublicKey) bytes() ![]u8 {
-	ppub := []u8{len: default_point_bufsize}
-	n := C.EVP_PKEY_get1_encoded_public_key(pbk.evpkey, voidptr(&ppub.data))
+	mut ppub := &u8(unsafe { nil })
+	n := C.EVP_PKEY_get1_encoded_public_key(pbk.evpkey, &ppub)
 	if n <= 0 {
-		C.OPENSSL_free(voidptr(ppub.data))
+		C.OPENSSL_free(voidptr(ppub))
 		return error('EVP_PKEY_get1_encoded_public_key failed')
 	}
-	out := ppub[..n].clone()
+	out := unsafe { ppub.vbytes(int(n)).clone() }
 	// ppub should be freed by calling `OPENSSL_free` or memleak happens.
-	C.OPENSSL_free(voidptr(ppub.data))
+	C.OPENSSL_free(voidptr(ppub))
 
 	return out
 }
@@ -241,7 +241,7 @@ fn key_group_name(key &C.EVP_PKEY) !string {
 		unsafe { gname.free() }
 		return error('fail to get group name')
 	}
-	group := gname[..gname_len].bytestr()
+	group := gname[..int(gname_len)].bytestr()
 	unsafe { gname.free() }
 	return group
 }

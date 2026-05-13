@@ -1,0 +1,5 @@
+vlib/v/parser/tests/assert_missing_comma_message_err.vv:2:15: error: unexpected string `bye`, expecting `,`
+    1 | fn main() {
+    2 |     assert false 'bye'
+      |                  ~~~~~
+    3 | }

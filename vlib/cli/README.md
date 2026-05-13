@@ -25,6 +25,7 @@ fn main() {
 		commands:    [
 			cli.Command{
 				name:    'sub'
+				alias:   's'
 				execute: fn (cmd cli.Command) ! {
 					println('hello subcommand')
 					return
@@ -36,3 +37,6 @@ fn main() {
 	app.parse(os.args)
 }
 ```
+
+Subcommands can set `alias` to accept a shorter invocation token, for example
+`example-app s`.

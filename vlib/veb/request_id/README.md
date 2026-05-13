@@ -99,6 +99,8 @@ fn (app &App) handler(mut ctx Context) veb.Result {
 The `Config` struct provides several configuration options:
 
 ```v okfmt
+import rand
+
 pub struct Config {
 pub:
 	next        ?fn (ctx &veb.Context) bool

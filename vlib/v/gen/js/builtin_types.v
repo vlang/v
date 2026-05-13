@@ -11,6 +11,7 @@ fn (mut g JsGen) to_js_typ_def_val(s string) string {
 		'JS.Array', 'JS.Map' { dval = '' }
 		else { dval = '{}' }
 	}
+
 	return dval
 }
 
@@ -31,6 +32,9 @@ fn (mut g JsGen) to_js_typ_val(t ast.Type) string {
 	match sym.kind {
 		.i8, .i16, .i32, .int, .i64, .u8, .u16, .u32, .u64, .f32, .f64, .int_literal,
 		.float_literal {
+			styp = '${prefix}${g.sym_to_js_typ(sym)}(0)'
+		}
+		.char {
 			styp = '${prefix}${g.sym_to_js_typ(sym)}(0)'
 		}
 		.bool {
@@ -56,6 +60,7 @@ fn (mut g JsGen) to_js_typ_val(t ast.Type) string {
 			styp = 'undefined'
 		}
 	}
+
 	return styp
 }
 
@@ -83,6 +88,9 @@ fn (mut g JsGen) sym_to_js_typ(sym ast.TypeSymbol) string {
 		}
 		.u8 {
 			styp = 'u8'
+		}
+		.char {
+			styp = 'char'
 		}
 		.u16 {
 			styp = 'u16'
@@ -128,6 +136,7 @@ fn (mut g JsGen) sym_to_js_typ(sym ast.TypeSymbol) string {
 			styp = 'undefined'
 		}
 	}
+
 	return styp
 }
 
@@ -253,6 +262,7 @@ pub fn (mut g JsGen) doc_typ(t ast.Type) string {
 			panic('TODO: unhandled thread in JS')
 		}
 	}
+
 	/*
 	else {
 			println('jsgen.typ: Unhandled type ${t}')
@@ -450,6 +460,17 @@ fn (mut g JsGen) gen_builtin_type_defs() {
 					typ_name:      typ_name
 					default_value: 'new Number(0)'
 					constructor:   'if (typeof(val) == "string") { this.val = val.charCodeAt() } else if (val instanceof string) { this.val = val.str.charCodeAt(); } else { this.val =  Math.round(Number(val)) }'
+					value_of:      'this.val | 0'
+					to_string:     'new string(this.val + "")'
+					eq:            'new bool(self.valueOf() === other.valueOf())'
+					to_jsval:      '+this'
+				)
+			}
+			'char' {
+				g.gen_builtin_prototype(
+					typ_name:      typ_name
+					default_value: 'new Number(0)'
+					constructor:   'let n = typeof(val) == "string" ? val.charCodeAt() : val instanceof string ? val.str.charCodeAt() : Math.round(Number(val)); n &= 0xff; this.val = n > 0x7f ? n - 0x100 : n'
 					value_of:      'this.val | 0'
 					to_string:     'new string(this.val + "")'
 					eq:            'new bool(self.valueOf() === other.valueOf())'

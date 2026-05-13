@@ -86,6 +86,9 @@ pub fn (ctx &Context) str() string {
 		CancelContext {
 			return ctx.str()
 		}
+		CauseContext {
+			return ctx.str()
+		}
 		TimerContext {
 			return ctx.str()
 		}

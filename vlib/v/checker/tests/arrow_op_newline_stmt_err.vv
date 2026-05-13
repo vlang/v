@@ -1,0 +1,10 @@
+fn main() {
+	ch := chan bool{}
+	write() or {
+		// keep the `or` block multiline so the receive starts on a later line
+		ch <- false
+	}
+	<-ch
+}
+
+fn write() ! {}

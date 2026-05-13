@@ -1016,6 +1016,7 @@ pub fn (mut func Function) load(typ NumType, align int, offset int) {
 		.f32_t { func.code << 0x2A } // f32.load
 		.f64_t { func.code << 0x2B } // f64.load
 	}
+
 	func.u32(u32(align))
 	func.u32(u32(offset))
 }
@@ -1042,6 +1043,7 @@ pub fn (mut func Function) load8(typ NumType, is_signed bool, align int, offset 
 		}
 		else {}
 	}
+
 	func.u32(u32(align))
 	func.u32(u32(offset))
 }
@@ -1068,6 +1070,7 @@ pub fn (mut func Function) load16(typ NumType, is_signed bool, align int, offset
 		}
 		else {}
 	}
+
 	func.u32(u32(align))
 	func.u32(u32(offset))
 }
@@ -1093,6 +1096,7 @@ pub fn (mut func Function) store(typ NumType, align int, offset int) {
 		.f32_t { func.code << 0x38 } // f32.store
 		.f64_t { func.code << 0x39 } // f64.store
 	}
+
 	func.u32(u32(align))
 	func.u32(u32(offset))
 }
@@ -1107,6 +1111,7 @@ pub fn (mut func Function) store8(typ NumType, align int, offset int) {
 		.i64_t { func.code << 0x3C } // i64.store8
 		else {}
 	}
+
 	func.u32(u32(align))
 	func.u32(u32(offset))
 }
@@ -1121,6 +1126,7 @@ pub fn (mut func Function) store16(typ NumType, align int, offset int) {
 		.i64_t { func.code << 0x3D } // i64.store16
 		else {}
 	}
+
 	func.u32(u32(align))
 	func.u32(u32(offset))
 }

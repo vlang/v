@@ -1,9 +1,9 @@
 module main
 
+import json
 import net.http
 import os
-import clipboard
-import json
+import vshare
 
 struct Response {
 	hash  string
@@ -11,8 +11,6 @@ struct Response {
 }
 
 fn main() {
-	mut cb := clipboard.new()
-
 	if os.args.len < 3 {
 		eprintln('Please provide a file')
 		exit(1)
@@ -42,7 +40,10 @@ fn main() {
 	response := json.decode(Response, share.body)!
 	url := 'https://play.vlang.io/p/${response.hash}'
 
-	cb.copy(url)
 	println(url)
-	println('Copied URL to clipboard.')
+	if vshare.copy_to_clipboard(url) {
+		println('Copied URL to clipboard.')
+	} else {
+		println('Clipboard copy unavailable. Copy the URL manually.')
+	}
 }

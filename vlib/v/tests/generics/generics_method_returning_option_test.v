@@ -28,3 +28,51 @@ fn test_generic_method_returning_option() {
 	a.diagnostics()!
 	assert true
 }
+
+interface Component {
+	is_component()
+}
+
+struct ActionRow {
+	components []Component
+}
+
+fn (_ ActionRow) is_component() {}
+
+fn (ar ActionRow) walk[T](f fn (T) bool) ?T {
+	for c in ar.components {
+		if c is T {
+			if f(c) {
+				return c
+			}
+		} else if c is ActionRow {
+			if d := c.walk(f) {
+				return d
+			}
+		}
+	}
+	return none
+}
+
+struct TextInput {
+	custom_id string
+	value     ?string
+}
+
+fn (_ TextInput) is_component() {}
+
+fn test_recursive_interface_method_inference() {
+	ar := ActionRow{
+		components: [
+			TextInput{
+				custom_id: 'foo'
+				value:     'bar'
+			},
+		]
+	}
+	d := ar.walk(fn (ti TextInput) bool {
+		return ti.custom_id == 'foo'
+	}) or { panic('expected TextInput') }
+	assert d.custom_id == 'foo'
+	assert d.value or { '' } == 'bar'
+}

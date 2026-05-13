@@ -12,7 +12,8 @@ pub fn (canvas Canvas) size() (int, int) {
 
 pub fn (canvas Canvas) string() string {
 	output := buffer_to_braille(canvas.layers, dots_to_braille_rune_map)
-	return arrays.join_to_string(output, '\n', |row| arrays.join_to_string(row, '', |character| '${character}'))
+	return arrays.join_to_string(output, '\n', |row| arrays.join_to_string(row, '',
+		|character| '${character}'))
 }
 
 pub fn (mut canvas Canvas) set(x int, y int) {

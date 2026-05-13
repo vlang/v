@@ -1,0 +1,39 @@
+// vtest vflags: -prod
+import os
+
+struct Process {
+	path string
+	argv []string
+	dir  string
+}
+
+struct Command {
+	path string
+	args []string
+	dir  string
+mut:
+	process &Process = unsafe { nil }
+}
+
+fn lookup(cmd string) !string {
+	return os.find_abs_path_of_executable(cmd)!
+}
+
+fn build(mut c Command) ! {
+	if !isnil(c.process) {
+		return error('reuse')
+	}
+	c.process = &Process{
+		path: lookup(c.path)!
+		argv: c.args
+		dir:  c.dir
+	}
+}
+
+fn main() {
+	mut cmd := Command{
+		path: 'bash'
+		args: ['-c', 'echo ok']
+	}
+	build(mut cmd) or { panic(err) }
+}

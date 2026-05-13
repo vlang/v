@@ -86,6 +86,7 @@ fn (mut app App) draw() {
 		for y, row in app.buf {
 			for x, i in row {
 				app.gg.draw_square_filled(t * width * scale + x * scale,
+
 					(size.height - height * scale) + y * scale, scale, palette[i])
 			}
 		}

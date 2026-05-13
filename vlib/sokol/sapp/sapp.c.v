@@ -273,6 +273,18 @@ pub fn gl_get_framebuffer() u32 {
 	return C.sapp_gl_get_framebuffer()
 }
 
+// X11: get display handle
+@[inline]
+pub fn x11_get_display() voidptr {
+	return voidptr(C.sapp_x11_get_display())
+}
+
+// X11: get window handle
+@[inline]
+pub fn x11_get_window() voidptr {
+	return voidptr(C.sapp_x11_get_window())
+}
+
 // Android: get native activity handle
 @[inline]
 pub fn android_get_native_activity() voidptr {

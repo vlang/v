@@ -1,0 +1,13 @@
+// vtest vflags: -gc none
+
+@[unsafe]
+fn set_get_static_text(text string) string {
+	mut static stored_text := '   '
+	if text != '' {
+		stored_text = text
+	}
+	return stored_text
+}
+
+println(unsafe { set_get_static_text('MyText') })
+println(unsafe { set_get_static_text('') })

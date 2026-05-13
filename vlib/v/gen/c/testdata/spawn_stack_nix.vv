@@ -1,3 +1,4 @@
+// vtest vflags: -arch i386
 module main
 
 fn main() {

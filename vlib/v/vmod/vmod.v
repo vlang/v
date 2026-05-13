@@ -11,6 +11,26 @@ pub fn get_cache() &ModFileCacher {
 	return private_file_cacher
 }
 
+// resolved_base_url returns the source folder configured by `base_url`,
+// resolved relative to the folder containing the `v.mod` file.
+pub fn (manifest Manifest) resolved_base_url(vmod_root string) string {
+	if manifest.base_url == '' {
+		return ''
+	}
+	return os.norm_path(os.join_path(vmod_root, manifest.base_url))
+}
+
+// source_root returns the folder where sources are looked up under a `v.mod`.
+// When `base_url` is set, it points at that folder; otherwise it falls back to
+// the folder containing `v.mod`. The previous implicit `src/` fallback is gone.
+pub fn (manifest Manifest) source_root(vmod_root string) string {
+	base_url := manifest.resolved_base_url(vmod_root)
+	if base_url != '' {
+		return base_url
+	}
+	return os.norm_path(vmod_root)
+}
+
 // This file provides a caching mechanism for seeking quickly whether a
 // given folder has a v.mod file in it or in any of its parent folders.
 //

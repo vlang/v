@@ -6,10 +6,10 @@ The `fasthttp` module is a high-performance HTTP server library for V that provi
 
 - **High Performance**: Uses platform-specific I/O multiplexing:
   - `epoll` on Linux for efficient connection handling
-  - `kqueue` on macOS for high-performance event notification
+  - `kqueue` on macOS and BSD for high-performance event notification
 - **Non-blocking I/O**: Handles multiple concurrent connections efficiently
 - **Simple API**: Easy-to-use request handler pattern
-- **Cross-platform**: Supports Linux and macOS
+- **Cross-platform**: Supports Linux, macOS, FreeBSD, OpenBSD, NetBSD and DragonFly
 
 ## Installation
 

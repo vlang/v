@@ -1,0 +1,26 @@
+module main
+
+struct Context {
+mut:
+	value int
+}
+
+struct App {}
+
+fn (_ App) index(mut ctx &Context) {
+	ctx.value++
+}
+
+fn call(app App, mut user_context Context) {
+	$for method in App.methods {
+		if method.name == 'index' {
+			app.$method(mut user_context)
+		}
+	}
+}
+
+fn main() {
+	app := App{}
+	mut ctx := Context{}
+	call(app, mut ctx)
+}

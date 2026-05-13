@@ -551,17 +551,15 @@ fn (mut s ReaderScanner) text_scan(line int, col int) !Token {
 				for _ in 0 .. 4 {
 					digit_line, digit_col := s.line, s.col
 					if !s.has_next_byte()! {
-						return new_scan_error('incomplete unicode escape', escape_line,
-							escape_col)
+						return new_scan_error('incomplete unicode escape', escape_line, escape_col)
 					}
 					digit := s.ch
 					if digit == `"` {
-						return new_scan_error('unicode escape must have 4 hex digits',
-							digit_line, digit_col)
+						return new_scan_error('unicode escape must have 4 hex digits', digit_line,
+							digit_col)
 					} else if !digit.is_hex_digit() {
 						x := digit.ascii_str()
-						return new_scan_error('`${x}` is not a hex digit', digit_line,
-							digit_col)
+						return new_scan_error('`${x}` is not a hex digit', digit_line, digit_col)
 					}
 					codepoint << digit
 					_ = s.read_byte()!
@@ -612,8 +610,7 @@ fn (mut s ReaderScanner) num_scan(line int, col int) !Token {
 			digits << first
 			_ = s.read_byte()!
 			if s.has_next_byte()! && s.ch.is_digit() {
-				return new_scan_error('leading zeroes in a number are not allowed', line,
-					col)
+				return new_scan_error('leading zeroes in a number are not allowed', line, col)
 			}
 		}
 	}

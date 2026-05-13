@@ -57,6 +57,9 @@ pub fn os_from_string(os_str string) !OS {
 		'macos' {
 			return .macos
 		}
+		'mac' {
+			return .macos
+		}
 		'darwin' {
 			return .macos
 		}

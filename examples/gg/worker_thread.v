@@ -11,7 +11,6 @@ import time
 const win_width = 600
 const win_height = 700
 const bg_color = gg.white
-const count_color = gg.black
 
 struct App {
 mut:

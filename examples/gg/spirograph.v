@@ -60,10 +60,11 @@ gg.start(
 				x += pdj[j] * math.sin(a - t) * cd600
 				y += pdj[j] * math.cos(a - t) * cd600
 			}
-			ctx.draw_rect_filled(f32(wsize.width / 2 + scale * x), f32(wsize.height / 2 + scale * y),
-				1, 1, colors[i % colors.len])
+			ctx.draw_rect_filled(f32(wsize.width / 2 + scale * x),
+				f32(wsize.height / 2 + scale * y), 1, 1, colors[i % colors.len])
 		}
-		ctx.draw_text(wsize.width / 2 - 170, wsize.height - 15, 'frame: ${ctx.frame:06}, k: ${k:4}, scale: ${scale:4}, arrows to change',
+		ctx.draw_text(wsize.width / 2 - 170, wsize.height - 15,
+			'frame: ${ctx.frame:06}, k: ${k:4}, scale: ${scale:4}, arrows to change',
 			color: colors[1]
 		)
 		ctx.end(how: .passthru)

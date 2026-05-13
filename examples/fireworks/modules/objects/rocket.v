@@ -15,8 +15,8 @@ pub mut:
 }
 
 pub fn (rocket Rocket) draw(mut ctx gg.Context) {
-	ctx.draw_circle_filled(rocket.pos.x, get_params().height - rocket.pos.y, get_params().rocket_radius,
-		rocket.color)
+	ctx.draw_circle_filled(rocket.pos.x, get_params().height - rocket.pos.y,
+		get_params().rocket_radius, rocket.color)
 }
 
 pub fn (mut rocket Rocket) explode() {

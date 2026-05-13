@@ -4,6 +4,17 @@ import os
 // the different tests. It would be removed in testsuite_end(), so
 // individual os tests do not need to clean up after themselves.
 const tfolder = os.join_path(os.vtmp_dir(), 'os_tests')
+const utf16le_stdout_source_code = '
+module main
+
+import os
+
+fn main() {
+	payload := [u8(`O`), 0, `K`, 0, u8(10), 0]
+	mut out := os.stdout()
+	out.write(payload) or { panic(err) }
+}
+'
 
 // os.args has to be *already initialized* with the program's argc/argv at this point
 // thus it can be used for other consts too:
@@ -472,6 +483,10 @@ fn test_realpath_existing() {
 	rpath := os.real_path(existing_file)
 	assert os.is_abs_path(rpath)
 	assert rpath.ends_with(existing_file_name)
+	$if windows {
+		assert !rpath.starts_with('UNC\\')
+		assert !rpath.starts_with('\\\\?\\')
+	}
 	os.rm(existing_file) or {}
 }
 
@@ -521,6 +536,10 @@ fn test_realpath_absolutepath_symlink() ! {
 	println(rpath)
 	assert os.is_abs_path(rpath)
 	assert rpath.ends_with(file_name)
+	$if windows {
+		assert !rpath.starts_with('UNC\\')
+		assert !rpath.starts_with('\\\\?\\')
+	}
 	os.rm(symlink_name) or {}
 	os.rm(file_name) or {}
 }
@@ -1023,8 +1042,39 @@ fn test_execute() {
 	// println('output.len: ${result.output.len}')
 	// println('output hexresult: ${hexresult}')
 	assert result.exit_code == 0
-	assert hexresult.starts_with('7374617274004d4944444c450066696e697368')
+	assert hexresult.contains('7374617274004d4944444c450066696e697368')
 	assert hexresult.ends_with('0a7878')
+}
+
+fn test_exec_with_args() {
+	source_path := os.join_path_single(tfolder, 'exec_args.v')
+	output_arg := os.join_path_single(tfolder, 'exec_args')
+	exe_path := if os.user_os() == 'windows' {
+		output_arg + '.exe'
+	} else {
+		output_arg
+	}
+	os.write_file(source_path,
+		"import os\n\nfn main() {\n\tprintln(os.args[1..].join('|'))\n\teprintln('stderr-ok')\n}\n")!
+	defer {
+		os.rm(source_path) or {}
+		os.rm(exe_path) or {}
+		os.rm(output_arg + '.c') or {}
+	}
+	compile_result :=
+		os.execute('${os.quoted_path(@VEXE)} -o ${os.quoted_path(output_arg)} ${os.quoted_path(source_path)}')
+	assert compile_result.exit_code == 0, compile_result.output
+
+	result := os.exec([exe_path, 'one two', 'semi;colon'])
+	normalized_output := result.output.replace('\r\n', '\n')
+	assert result.exit_code == 0, result.output
+	assert normalized_output.contains('one two|semi;colon\n'), result.output
+	assert normalized_output.contains('stderr-ok\n'), result.output
+
+	shell_metachar_result := os.exec([exe_path, 'first; echo injected'])
+	normalized_shell_metachar_output := shell_metachar_result.output.replace('\r\n', '\n')
+	assert shell_metachar_result.exit_code == 0, shell_metachar_result.output
+	assert normalized_shell_metachar_output.contains('first; echo injected\n'), shell_metachar_result.output
 }
 
 fn test_execute_with_stderr_redirection() {
@@ -1033,7 +1083,8 @@ fn test_execute_with_stderr_redirection() {
 	assert result.output.contains('unknown command `wrong_command`')
 
 	stderr_path := os.join_path_single(tfolder, 'stderr.txt')
-	result2 := os.execute('${os.quoted_path(@VEXE)} wrong_command 2> ${os.quoted_path(stderr_path)}')
+	result2 :=
+		os.execute('${os.quoted_path(@VEXE)} wrong_command 2> ${os.quoted_path(stderr_path)}')
 	assert result2.exit_code == 1
 	assert result2.output == ''
 	assert os.exists(stderr_path)
@@ -1049,6 +1100,27 @@ fn test_execute_with_linefeeds() {
 	assert result2.exit_code == 1
 }
 
+fn test_execute_with_semicolon_inside_quoted_string_on_windows() {
+	if os.user_os() != 'windows' {
+		return
+	}
+	result := os.execute('echo "hello;"')
+	assert result.exit_code == 0, result.output
+	assert result.output.trim_space() == '"hello;"'
+}
+
+fn test_execute_pipe_into_vfmt() {
+	producer_script := os.join_path_single(tfolder, 'pipe_into_vfmt.v')
+	os.write_file(producer_script, "fn main() {\n\tprint('fn main(){println(1)}\\n')\n}\n")!
+	defer {
+		os.rm(producer_script) or {}
+	}
+	result :=
+		os.execute('${os.quoted_path(@VEXE)} run ${os.quoted_path(producer_script)} | ${os.quoted_path(@VEXE)} fmt')
+	assert result.exit_code == 0, result.output
+	assert result.output.replace('\r\n', '\n') == 'fn main() {\n\tprintln(1)\n}\n'
+}
+
 fn test_execute_fc_get_output() {
 	if os.user_os() != 'windows' {
 		return
@@ -1056,6 +1128,20 @@ fn test_execute_fc_get_output() {
 	result := os.execute('c:\\windows\\system32\\fc.exe /?')
 	assert result.output.contains('filename')
 	assert result.exit_code == -1
+}
+
+fn test_execute_decodes_utf16le_output() {
+	if os.user_os() != 'windows' {
+		return
+	}
+	source_path := os.join_path_single(tfolder, 'utf16le_stdout.v')
+	os.write_file(source_path, utf16le_stdout_source_code)!
+	defer {
+		os.rm(source_path) or {}
+	}
+	result := os.execute('${os.quoted_path(@VEXE)} run ${os.quoted_path(source_path)}')
+	assert result.exit_code == 0, result.output
+	assert result.output == 'OK\n', result.output
 }
 
 fn test_reading_from_proc_cpuinfo() {

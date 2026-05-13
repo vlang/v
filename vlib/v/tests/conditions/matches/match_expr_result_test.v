@@ -8,6 +8,7 @@ fn test_case1() {
 		try('bar')! { 'c', 'd' }
 		else { 'e', 'f' }
 	}
+
 	assert a == 'a'
 	assert b == 'b'
 }
@@ -18,6 +19,7 @@ fn test_case2() {
 		try('bar') or { false } { 'c', 'd' }
 		else { 'e', 'f' }
 	}
+
 	assert a == 'a'
 	assert b == 'b'
 }

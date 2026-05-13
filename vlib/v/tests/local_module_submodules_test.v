@@ -13,7 +13,11 @@ fn temp_output_path(name string) string {
 }
 
 fn project_path() string {
-	return os.join_path(os.vtmp_dir(), 'local_module_submodules')
+	return os.join_path(os.real_path(os.vtmp_dir()), 'local_module_submodules')
+}
+
+fn issue_24649_project_path() string {
+	return os.join_path(os.real_path(os.vtmp_dir()), 'issue_24649_local_module_submodules')
 }
 
 fn write_local_module_submodules_project() {
@@ -31,11 +35,40 @@ fn write_local_module_submodules_project() {
 		'\n') or { panic(err) }
 }
 
+fn write_issue_24649_project() {
+	basepath := issue_24649_project_path()
+	os.rmdir_all(basepath) or {}
+	os.mkdir_all(os.join_path(basepath, 'my_math', 'my_integer')) or { panic(err) }
+	os.write_file(os.join_path(basepath, 'running_my_math.v'),
+		['module main', '', 'import my_math', 'import my_math.my_integer', '', 'fn main() {', '\ta := 34.5', '\tb := 13.2', '', "\tprintln('La suma de a y b es \${my_math.addition(a, b)}')", '', "\tprintln('La suma entera de a y b es \${my_integer.addition(a, b)}')", '}'].join('\n') +
+		'\n') or { panic(err) }
+	os.write_file(os.join_path(basepath, 'my_math', 'floating.v'),
+		['module my_math', '', 'pub fn addition(x f64, y f64) f64 {', '\treturn x +
+		y', '}'].join('\n') +
+		'\n') or { panic(err) }
+	os.write_file(os.join_path(basepath, 'my_math', 'my_integer', 'integer.v'),
+		['module my_integer', '', 'pub fn addition(x f64, y f64) int {', '\treturn int(x +
+		y)', '}'].join('\n') +
+		'\n') or { panic(err) }
+}
+
 fn compile_local_module_submodules(target string, out_name string) os.Result {
 	basepath := project_path()
 	write_local_module_submodules_project()
 	old_wd := os.getwd()
 	os.chdir(basepath) or { panic(err) }
+	defer {
+		os.chdir(old_wd) or {}
+		os.rmdir_all(basepath) or {}
+	}
+	return os.execute('${os.quoted_path(vexe)} -o ${os.quoted_path(out_name)} ${os.quoted_path(target)}')
+}
+
+fn compile_issue_24649_project(target string, out_name string, cwd string) os.Result {
+	basepath := issue_24649_project_path()
+	write_issue_24649_project()
+	old_wd := os.getwd()
+	os.chdir(cwd) or { panic(err) }
 	defer {
 		os.chdir(old_wd) or {}
 		os.rmdir_all(basepath) or {}
@@ -60,5 +93,50 @@ fn test_local_module_submodules_compile_from_project_dir() {
 		os.rm(out_name) or {}
 	}
 	res := compile_local_module_submodules('.', out_name)
+	assert res.exit_code == 0, res.output
+}
+
+fn test_issue_24649_submodules_compile_from_main_file() {
+	basepath := issue_24649_project_path()
+	out_name := temp_output_path('issue_24649_local_module_submodules_main')
+	os.rm(out_name) or {}
+	defer {
+		os.rm(out_name) or {}
+	}
+	res := compile_issue_24649_project('running_my_math.v', out_name, basepath)
+	assert res.exit_code == 0, res.output
+}
+
+fn test_issue_24649_submodules_compile_from_dot_slash_main_file() {
+	basepath := issue_24649_project_path()
+	out_name := temp_output_path('issue_24649_local_module_submodules_dot_main')
+	os.rm(out_name) or {}
+	defer {
+		os.rm(out_name) or {}
+	}
+	res := compile_issue_24649_project('./running_my_math.v', out_name, basepath)
+	assert res.exit_code == 0, res.output
+}
+
+fn test_issue_24649_submodules_compile_from_project_dir() {
+	basepath := issue_24649_project_path()
+	out_name := temp_output_path('issue_24649_local_module_submodules_dir')
+	os.rm(out_name) or {}
+	defer {
+		os.rm(out_name) or {}
+	}
+	res := compile_issue_24649_project('.', out_name, basepath)
+	assert res.exit_code == 0, res.output
+}
+
+fn test_issue_24649_submodules_compile_from_absolute_main_file() {
+	basepath := issue_24649_project_path()
+	out_name := temp_output_path('issue_24649_local_module_submodules_abs_main')
+	os.rm(out_name) or {}
+	defer {
+		os.rm(out_name) or {}
+	}
+	target := os.join_path(basepath, 'running_my_math.v')
+	res := compile_issue_24649_project(target, out_name, os.dir(basepath))
 	assert res.exit_code == 0, res.output
 }

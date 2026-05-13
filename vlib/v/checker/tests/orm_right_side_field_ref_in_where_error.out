@@ -4,4 +4,4 @@ vlib/v/checker/tests/orm_right_side_field_ref_in_where_error.vv:16:32: error: OR
    16 |         select from User where id == age
       |                                      ~~~
    17 |     }!
-   18 | 
+   18 |

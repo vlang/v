@@ -15,7 +15,6 @@ enum Category {
 	web
 	orm
 	db
-	native
 	cgen
 	js_backend
 	comptime
@@ -47,8 +46,6 @@ const category_titles = '#### Improvements in the language
 
 #### Database drivers
 
-#### Native backend
-
 #### C backend
 
 #### JavaScript backend
@@ -79,17 +76,11 @@ mut:
 
 const is_interactive = false
 
-// Instantly updates CHANGELOG.md without confirming each line
-fn no_interactive(_version string) {
-}
-
 fn main() {
 	mut version := ''
 
 	if os.args.len == 2 && os.args[1].starts_with('0.') {
 		version = os.args[1]
-		// no_interactive(version)
-		// return
 	} else {
 		println('Usage: v run tools/changelog_helper.v 0.4.5')
 		return
@@ -195,8 +186,6 @@ fn (mut app App) process_line(text string) ! {
 		category = .compiler_internals
 	} else if is_improvements(text) {
 		category = .improvements
-	} else if is_native(text) {
-		category = .native
 	} else if is_vfmt(text) {
 		category = .vfmt
 	} else if text.contains('docs:') || text.contains('doc:') {
@@ -265,6 +254,7 @@ fn (mut app App) process_line(text string) ! {
 			}
 			else {}
 		}
+
 		app.counter++
 	} else {
 		line := Line{category, s}
@@ -296,7 +286,6 @@ const category_map = {
 	.web:                '#### Web'
 	.orm:                '#### ORM'
 	.db:                 '#### Database drivers'
-	.native:             '#### Native backend'
 	.cgen:               '#### C backend'
 	.js_backend:         '#### JavaScript backend'
 	.comptime:           '#### Comptime'
@@ -325,7 +314,7 @@ fn (l Line) write_at_category(txt string) ?string {
 	// Trim "prefix:" for some categories
 	// mut capitalized := false
 	mut has_prefix := true
-	if l.category in [.cgen, .checker, .improvements, .native, .orm, .interpreter] {
+	if l.category in [.cgen, .checker, .improvements, .orm, .interpreter] {
 		has_prefix = false
 		if semicolon_pos := line_text.index(': ') {
 			prefix := line_text[..semicolon_pos]
@@ -526,9 +515,7 @@ fn is_parser(text string) bool {
 }
 
 const web_strings = [
-	'vweb',
 	'veb',
-	'x.vweb',
 	'websocket:',
 	'pico',
 	'x.sessions',
@@ -542,14 +529,6 @@ const web_strings = [
 
 fn is_web(text string) bool {
 	return is_xxx(text, web_strings)
-}
-
-const native_strings = [
-	'native:',
-]
-
-fn is_native(text string) bool {
-	return is_xxx(text, native_strings)
 }
 
 const vfmt_strings = [

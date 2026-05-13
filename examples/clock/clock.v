@@ -50,15 +50,13 @@ fn on_frame(mut app App) {
 	app.gg.begin()
 
 	for i in 0 .. 60 { // draw minute tics
-		draw_convex_poly_rotate(mut app.gg, app.dpi_scale, app.minutes_tic, tic_color,
-			i * 6)
+		draw_convex_poly_rotate(mut app.gg, app.dpi_scale, app.minutes_tic, tic_color, i * 6)
 	}
 	for i in 0 .. 12 { // hours
 		draw_convex_poly_rotate(mut app.gg, app.dpi_scale, app.hours_tic, tic_color, i * 30)
 	}
 	for i in 0 .. 4 { // 3 hours
-		draw_convex_poly_rotate(mut app.gg, app.dpi_scale, app.hours3_tic, tic_color,
-			i * 90)
+		draw_convex_poly_rotate(mut app.gg, app.dpi_scale, app.hours3_tic, tic_color, i * 90)
 	}
 
 	n := time.now()

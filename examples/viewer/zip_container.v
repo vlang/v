@@ -58,7 +58,8 @@ fn (mut app App) load_texture_from_zip() !(gfx.Image, gfx.Sampler, int, int) {
 		}
 		app.zip_index = item.container_index
 		// println("Opening the zip [${item.path}]")
-		app.zip = szip.open(item.path, szip.CompressionLevel.no_compression, szip.OpenMode.read_only)!
+		app.zip = szip.open(item.path, szip.CompressionLevel.no_compression,
+			szip.OpenMode.read_only)!
 	}
 	// println("Now get the image")
 	app.zip.open_entry_by_index(item.container_item_index)!

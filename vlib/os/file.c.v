@@ -1,10 +1,5 @@
 module os
 
-// Eof error means that we reach the end of the file.
-pub struct Eof {
-	Error
-}
-
 // NotExpected is a generic error that means that we receave a not expected error.
 pub struct NotExpected {
 	cause string
@@ -208,7 +203,7 @@ pub fn (mut f File) reopen(path string, mode string) ! {
 
 // read implements the Reader interface.
 pub fn (f &File) read(mut buf []u8) !int {
-	if !f.is_opened {
+	if !f.is_opened || isnil(f.cfile) {
 		return error_file_not_opened()
 	}
 	if buf.len == 0 {
@@ -236,7 +231,7 @@ pub fn (f &File) read(mut buf []u8) !int {
 // write implements the Writer interface.
 // It returns how many bytes were actually written.
 pub fn (mut f File) write(buf []u8) !int {
-	if !f.is_opened {
+	if !f.is_opened || isnil(f.cfile) {
 		return error_file_not_opened()
 	}
 	/*
@@ -665,7 +660,7 @@ pub fn (mut f File) seek(pos i64, mode SeekMode) ! {
 		$if windows {
 			res = C._fseeki64(f.cfile, pos, whence)
 		} $else {
-			res = C.fseeko(f.cfile, pos, whence)
+			res = C.fseek(f.cfile, pos, whence)
 		}
 	}
 	$if x32 {

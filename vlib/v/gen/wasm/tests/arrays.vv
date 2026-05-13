@@ -46,7 +46,7 @@ mut:
 fn test_stuff() &int {
 	a := AA{}
 
-	mut b := &int(0)
+	mut b := &int(unsafe { nil })
 	b = a.a[2]
 
 	return b

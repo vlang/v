@@ -47390,7 +47390,7 @@ static int COVER_cmp8(COVER_ctx_t *ctx, const void *lp, const void *rp) {
  */
 #if (defined(_WIN32) && defined(_MSC_VER)) || defined(__APPLE__)
 static int WIN_CDECL COVER_strict_cmp(void* g_coverCtx, const void* lp, const void* rp) {
-#elif defined(_GNU_SOURCE)
+#elif defined(_GNU_SOURCE) && !defined(ZSTD_USE_C90_QSORT)
 static int COVER_strict_cmp(const void *lp, const void *rp, void *g_coverCtx) {
 #else /* C90 fallback.*/
 static int COVER_strict_cmp(const void *lp, const void *rp) {
@@ -47406,7 +47406,7 @@ static int COVER_strict_cmp(const void *lp, const void *rp) {
  */
 #if (defined(_WIN32) && defined(_MSC_VER)) || defined(__APPLE__)
 static int WIN_CDECL COVER_strict_cmp8(void* g_coverCtx, const void* lp, const void* rp) {
-#elif defined(_GNU_SOURCE)
+#elif defined(_GNU_SOURCE) && !defined(ZSTD_USE_C90_QSORT)
 static int COVER_strict_cmp8(const void *lp, const void *rp, void *g_coverCtx) {
 #else /* C90 fallback.*/
 static int COVER_strict_cmp8(const void *lp, const void *rp) {

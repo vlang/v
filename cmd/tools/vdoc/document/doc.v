@@ -320,6 +320,7 @@ pub fn (mut d Doc) stmt(mut stmt ast.Stmt, filename string) !DocNode {
 			return error('invalid stmt type to document')
 		}
 	}
+
 	included := node.name in d.filter_symbol_names || node.parent_name in d.filter_symbol_names
 	if d.filter_symbol_names.len != 0 && !included {
 		return error('not included in the list of symbol names')
@@ -355,6 +356,14 @@ pub fn (mut d Doc) file_ast(mut file_ast ast.File) map[string]DocNode {
 					post_module_comments << comment
 				} else {
 					preceding_comments << comment
+				}
+				continue
+			} else if stmt.expr is ast.IfExpr && stmt.expr.is_comptime {
+				comments := ast_comments_to_doc_comments(stmt.expr.post_comments)
+				if collect_post_module_comments {
+					post_module_comments << comments
+				} else {
+					preceding_comments << comments
 				}
 				continue
 			}
@@ -507,9 +516,12 @@ pub fn (mut d Doc) file_asts(mut file_asts []ast.File) ! {
 		}
 		if d.with_head && i == 0 {
 			mut module_name := file_ast.mod.name
-			// if module_name != 'main' && d.parent_mod_name.len > 0 {
-			// 	module_name = d.parent_mod_name + '.' + module_name
-			// }
+			if module_name != file_ast.mod.short_name
+				&& !module_name.ends_with('.${file_ast.mod.short_name}') {
+				// qualify_module resolved by path instead of module name,
+				// use the short name from the source
+				module_name = file_ast.mod.short_name
+			}
 			d.head = DocNode{
 				name:    module_name
 				content: 'module ${module_name}'

@@ -22,6 +22,7 @@ fn count_messages(events []json2.Any) !int {
 				.reaction { 2 }
 				else { none }
 			}
+
 			if r := res {
 				return acc + r
 			}

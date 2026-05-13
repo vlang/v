@@ -1,6 +1,12 @@
 @[has_globals]
 module sapp
 
+$if linux_wayland_session ? {
+	$if !sokol_wayland ? {
+		$compile_error('`gg`/`sokol.sapp` cannot run in a Wayland-only Linux session without `-d sokol_wayland`.')
+	}
+}
+
 #preinclude <X11/Xlib.h>
 #preinclude <X11/Xatom.h>
 #preinclude <X11/Xutil.h>
@@ -621,6 +627,7 @@ mut:
 	event_mask   u64
 }
 
+@[typedef]
 pub struct C.XWindowAttributes {
 mut:
 	width     int
@@ -628,9 +635,30 @@ mut:
 	map_state int
 }
 
+pub struct C.XSizeHintsAspect {
+mut:
+	x int
+	y int
+}
+
+@[typedef]
 pub struct C.XSizeHints {
 mut:
 	flags       i64
+	x           int
+	y           int
+	width       int
+	height      int
+	min_width   int
+	min_height  int
+	max_width   int
+	max_height  int
+	width_inc   int
+	height_inc  int
+	min_aspect  C.XSizeHintsAspect
+	max_aspect  C.XSizeHintsAspect
+	base_width  int
+	base_height int
 	win_gravity int
 }
 

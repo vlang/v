@@ -1,0 +1,10 @@
+struct VecLike {}
+
+fn (v VecLike) magnitude() f64 {
+	return 1.0
+}
+
+fn main() {
+	a := VecLike{}
+	println(f64(a.magnitude))
+}

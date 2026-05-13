@@ -19,8 +19,7 @@ pub fn cubic_bezier(t f64, p []BezierPoint) BezierPoint {
 	if p.len != 4 {
 		panic('invalid p.len')
 	}
-	return cubic_bezier_coords(t, p[0].x, p[1].x, p[2].x, p[3].x, p[0].y, p[1].y, p[2].y,
-		p[3].y)
+	return cubic_bezier_coords(t, p[0].x, p[1].x, p[2].x, p[3].x, p[0].y, p[1].y, p[2].y, p[3].y)
 }
 
 // cubic_bezier_a returns a linear interpolation between the control points,

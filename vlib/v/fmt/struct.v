@@ -88,6 +88,7 @@ pub fn (mut f Fmt) struct_decl(node ast.StructDecl, is_anon bool) {
 			}
 			else {}
 		}
+
 		// Handle comments before the field
 		if field.pre_comments.len > 0 {
 			f.comments(field.pre_comments, level: .indent)
@@ -122,7 +123,8 @@ pub fn (mut f Fmt) struct_decl(node ast.StructDecl, is_anon bool) {
 		// Handle comments at the end of the line
 		if field.comments.len > 0 {
 			if field.has_default_expr {
-				f.write(' '.repeat(comment_align.max_len(field.pos.line_nr) - field.default_expr.str().len - 2))
+				f.write(' '.repeat(comment_align.max_len(field.pos.line_nr) -
+					field.default_expr.str().len - 2))
 			} else if field.attrs.len > 0 {
 				f.write(' '.repeat(comment_align.max_len(field.pos.line_nr) - attrs_len))
 			} else {
@@ -192,6 +194,18 @@ fn (mut f Fmt) write_anon_struct_field_decl(field_typ ast.Type, field_anon_decl 
 		}
 		else {}
 	}
+
+	return false
+}
+
+fn (mut f Fmt) write_anon_struct_type(typ ast.Type) bool {
+	sym := f.table.sym(typ)
+	if sym.info is ast.Struct && sym.info.is_anon {
+		f.struct_decl(ast.StructDecl{
+			fields: sym.info.fields
+		}, true)
+		return true
+	}
 	return false
 }
 
@@ -201,7 +215,8 @@ pub fn (mut f Fmt) struct_init(node ast.StructInit) {
 	defer {
 		f.is_struct_init = struct_init_save
 	}
-	sym_name := f.table.sym(node.typ).name
+	use_type_expr := node.typ_expr !is ast.EmptyExpr && node.typ == ast.void_type
+	sym_name := if use_type_expr { '' } else { f.table.sym(node.typ).name }
 	// f.write('<old name: ${type_sym.name}>')
 	mut name := if !sym_name.starts_with('C.') && !sym_name.starts_with('JS.') {
 		f.no_cur_mod(f.short_module(sym_name)) // TODO: f.type_to_str?
@@ -215,20 +230,64 @@ pub fn (mut f Fmt) struct_init(node ast.StructInit) {
 		f.write('?')
 	}
 	if node.is_anon {
+		// Write the full anonymous struct definition inline, e.g.:
+		// `struct { foo string; bar int }{}`
+		sym := f.table.sym(node.typ)
+		if sym.info is ast.Struct && sym.info.is_anon {
+			f.writeln('struct {')
+			f.indent++
+			for field in sym.info.fields {
+				f.write(field.name)
+				f.write(' ')
+				f.write(f.table.type_to_str_using_aliases(field.typ, f.mod2alias))
+				f.writeln('')
+			}
+			f.indent--
+			f.write('}')
+			if node.init_fields.len == 0 && !node.has_update_expr {
+				f.write('{}')
+			} else {
+				f.writeln('{')
+				f.indent++
+				for init_field in node.init_fields {
+					f.write('${init_field.name}: ')
+					f.expr(init_field.expr)
+					f.writeln('')
+				}
+				f.indent--
+				f.write('}')
+			}
+			return
+		}
 		f.write('struct ')
 	}
 	if node.init_fields.len == 0 && !node.has_update_expr {
 		// `Foo{}` on one line if there are no fields or comments
 		if node.pre_comments.len == 0 {
-			f.write('${name}{}')
+			if use_type_expr {
+				f.expr(node.typ_expr)
+				f.write('{}')
+			} else {
+				f.write('${name}{}')
+			}
 		} else {
-			f.writeln('${name}{')
+			if use_type_expr {
+				f.expr(node.typ_expr)
+				f.writeln('{')
+			} else {
+				f.writeln('${name}{')
+			}
 			f.comments(node.pre_comments, same_line: true, has_nl: true, level: .indent)
 			f.write('}')
 		}
 	} else if node.no_keys {
 		// `Foo{1,2,3}` (short syntax, no keys)
-		f.write('${name}{')
+		if use_type_expr {
+			f.expr(node.typ_expr)
+			f.write('{')
+		} else {
+			f.write('${name}{')
+		}
 		if node.has_update_expr {
 			f.write('...')
 			f.expr(node.update_expr)
@@ -250,7 +309,12 @@ pub fn (mut f Fmt) struct_init(node ast.StructInit) {
 			single_line_fields = false
 		}
 		if !use_short_args || node.is_anon {
-			f.write('${name}{')
+			if use_type_expr {
+				f.expr(node.typ_expr)
+				f.write('{')
+			} else {
+				f.write('${name}{')
+			}
 			if single_line_fields {
 				f.write(' ')
 			}
@@ -285,7 +349,8 @@ pub fn (mut f Fmt) struct_init(node ast.StructInit) {
 			mut value_align := new_field_align(use_break_line: true)
 			mut comment_align := new_field_align(use_threshold: true)
 			for init_field in node.init_fields {
-				value_align.add_info(init_field.name.len, init_field.pos.line_nr, init_field.has_break_line)
+				value_align.add_info(init_field.name.len, init_field.pos.line_nr,
+					init_field.has_break_line)
 				if init_field.end_comments.len > 0 {
 					comment_align.add_info(init_field.expr.str().len, init_field.pos.line_nr,
 						init_field.has_break_line)
@@ -304,9 +369,8 @@ pub fn (mut f Fmt) struct_init(node ast.StructInit) {
 				}
 				f.expr(init_field.expr)
 				if init_field.end_comments.len > 0 {
-					f.write(' '.repeat(
-						comment_align.max_len(init_field.pos.line_nr) - init_field.expr.str().len +
-						1))
+					f.write(' '.repeat(comment_align.max_len(init_field.pos.line_nr) -
+						init_field.expr.str().len + 1))
 					f.comments(init_field.end_comments, has_nl: false, level: .indent)
 				}
 				if single_line_fields {

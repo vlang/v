@@ -37,6 +37,12 @@ pub mut:
 
 // start an SSE connection
 pub fn start_connection(mut ctx veb.Context) &SSEConnection {
+	if ctx.conn == unsafe { nil } {
+		eprintln('[veb.sse] WARNING: SSE requires a direct TCP connection (ctx.conn) which is not available. Use `ctx.takeover_conn()` before starting an SSE connection.')
+		return &SSEConnection{
+			conn: unsafe { nil }
+		}
+	}
 	// Build and send HTTP response headers directly.
 	// SSE responses must NOT include Content-Length since data is streamed.
 	mut sb := strings.new_builder(256)
@@ -56,6 +62,9 @@ pub fn start_connection(mut ctx veb.Context) &SSEConnection {
 // send_message sends a single message to the http client that listens for SSE.
 // It does not close the connection, so you can use it many times in a loop.
 pub fn (mut sse SSEConnection) send_message(message SSEMessage) ! {
+	if sse.conn == unsafe { nil } {
+		return error('SSE connection is not available (no TCP connection)')
+	}
 	mut sb := strings.new_builder(512)
 	if message.id != '' {
 		sb.write_string('id: ${message.id}\n')
@@ -75,6 +84,9 @@ pub fn (mut sse SSEConnection) send_message(message SSEMessage) ! {
 
 // send a 'close' event and close the tcp connection.
 pub fn (mut sse SSEConnection) close() {
+	if sse.conn == unsafe { nil } {
+		return
+	}
 	sse.send_message(event: 'close', data: 'Closing the connection', retry: -1) or {}
 	sse.conn.close() or {}
 }

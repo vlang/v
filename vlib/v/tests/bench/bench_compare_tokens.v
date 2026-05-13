@@ -69,6 +69,7 @@ fn from_string(name string) token.Kind {
 					return .unknown
 				}
 			}
+
 			return .unknown
 		}
 		3 {
@@ -112,6 +113,7 @@ fn from_string(name string) token.Kind {
 					return .unknown
 				}
 			}
+
 			return .unknown
 		}
 		4 {

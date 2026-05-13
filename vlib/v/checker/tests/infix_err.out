@@ -1,26 +1,26 @@
 vlib/v/checker/tests/infix_err.vv:13:5: error: mismatched types `string` and `?string`
    11 | }
-   12 |
+   12 | 
    13 | _ = '' + f()
       |     ~~~~~~~~
    14 | _ = f() + ''
    15 | _ = f() + f()
 vlib/v/checker/tests/infix_err.vv:13:10: error: `?string` cannot be used as `string`, unwrap the option first
    11 | }
-   12 |
+   12 | 
    13 | _ = '' + f()
       |          ~~~
    14 | _ = f() + ''
    15 | _ = f() + f()
 vlib/v/checker/tests/infix_err.vv:14:5: error: mismatched types `?string` and `string`
-   12 |
+   12 | 
    13 | _ = '' + f()
    14 | _ = f() + ''
       |     ~~~~~~~~
    15 | _ = f() + f()
    16 |
 vlib/v/checker/tests/infix_err.vv:14:5: error: `?string` cannot be used as `string`, unwrap the option first
-   12 |
+   12 | 
    13 | _ = '' + f()
    14 | _ = f() + ''
       |     ~~~
@@ -31,31 +31,31 @@ vlib/v/checker/tests/infix_err.vv:15:9: error: `+` cannot be used with `?string`
    14 | _ = f() + ''
    15 | _ = f() + f()
       |         ^
-   16 |
+   16 | 
    17 | _ = 4 + g()
 vlib/v/checker/tests/infix_err.vv:15:5: error: `?string` cannot be used as `string`, unwrap the option first
    13 | _ = '' + f()
    14 | _ = f() + ''
    15 | _ = f() + f()
       |     ~~~
-   16 |
+   16 | 
    17 | _ = 4 + g()
 vlib/v/checker/tests/infix_err.vv:17:7: error: `+` cannot be used with `?int`
    15 | _ = f() + f()
-   16 |
+   16 | 
    17 | _ = 4 + g()
       |       ^
    18 | _ = int(0) + g()
    19 | _ = g() + int(3)
 vlib/v/checker/tests/infix_err.vv:17:9: error: `?int` cannot be used as `int literal`, unwrap the option first
    15 | _ = f() + f()
-   16 |
+   16 | 
    17 | _ = 4 + g()
       |         ~~~
    18 | _ = int(0) + g()
    19 | _ = g() + int(3)
 vlib/v/checker/tests/infix_err.vv:18:14: error: `?int` cannot be used as `int`, unwrap the option first
-   16 |
+   16 | 
    17 | _ = 4 + g()
    18 | _ = int(0) + g()
       |              ~~~
@@ -80,24 +80,24 @@ vlib/v/checker/tests/infix_err.vv:20:9: error: `+` cannot be used with `?int`
    19 | _ = g() + int(3)
    20 | _ = g() + 3
       |         ^
-   21 |
+   21 | 
    22 | // binary operands
 vlib/v/checker/tests/infix_err.vv:20:5: error: `?int` cannot be used as `int literal`, unwrap the option first
    18 | _ = int(0) + g()
    19 | _ = g() + int(3)
    20 | _ = g() + 3
       |     ~~~
-   21 |
+   21 | 
    22 | // binary operands
 vlib/v/checker/tests/infix_err.vv:23:5: error: left operand for `&&` is not a boolean
-   21 |
+   21 | 
    22 | // binary operands
    23 | _ = 1 && 2
       |     ^
    24 | _ = true || 2
    25 |
 vlib/v/checker/tests/infix_err.vv:23:10: error: right operand for `&&` is not a boolean
-   21 |
+   21 | 
    22 | // binary operands
    23 | _ = 1 && 2
       |          ^
@@ -108,17 +108,17 @@ vlib/v/checker/tests/infix_err.vv:24:13: error: right operand for `||` is not a 
    23 | _ = 1 && 2
    24 | _ = true || 2
       |             ^
-   25 |
+   25 | 
    26 | // boolean expressions
 vlib/v/checker/tests/infix_err.vv:24:5: error: infix expr: cannot use `int literal` (right expression) as `bool`
    22 | // binary operands
    23 | _ = 1 && 2
    24 | _ = true || 2
       |     ~~~~~~~~~
-   25 |
+   25 | 
    26 | // boolean expressions
 vlib/v/checker/tests/infix_err.vv:27:22: error: ambiguous boolean expression. use `()` to ensure correct order of operations
-   25 |
+   25 | 
    26 | // boolean expressions
    27 | _ = 1 == 1 && 2 == 2 || 3 == 3
       |                      ~~
@@ -136,7 +136,7 @@ vlib/v/checker/tests/infix_err.vv:29:5: error: mismatched types `int literal` an
    28 | _ = 1 == 1 && 2 == 2 || 3 == 3 && 4 == 4
    29 | _ = 1 + println('')
       |     ~~~~~~~~~~~~~~~
-   30 |
+   30 | 
    31 | // struct members
 vlib/v/checker/tests/infix_err.vv:36:11: error: `?string` cannot be used as `string`, unwrap the option first
    34 | }
@@ -164,5 +164,5 @@ vlib/v/checker/tests/infix_err.vv:39:19: error: `?string` cannot be used as `str
    38 | _ := data.name == name
    39 | _ := name == data.name
       |                   ~~~~
-   40 |
+   40 | 
    41 | // these should not error

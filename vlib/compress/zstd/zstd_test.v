@@ -154,7 +154,7 @@ fn compress_file(fname string, oname string, params CompressParams) ! {
 			output.size = buf_out_size
 			output.pos = 0
 			remaining := cctx.compress_stream2(output, input, mode)!
-			fout.write(buf_out[..output.pos])!
+			fout.write(buf_out[..int(output.pos)])!
 			finished = if last_chunk { remaining == 0 } else { input.pos == input.size }
 		}
 
@@ -202,7 +202,7 @@ fn decompress_file(fname string, oname string, params DecompressParams) ! {
 			output.size = buf_out_size
 			output.pos = 0
 			ret := dctx.decompress_stream(output, input)!
-			fout.write(buf_out[..output.pos])!
+			fout.write(buf_out[..int(output.pos)])!
 			last_ret = ret
 		}
 		if read_len < buf_in.len {
@@ -297,18 +297,21 @@ fn assert_decompress_error(data []u8, reason string) ! {
 }
 
 fn test_zstd_invalid_too_small() {
-	assert_decompress_error([]u8{}, 'An error occurred (e.g. invalid magic number, srcSize too small)')!
+	assert_decompress_error([]u8{},
+		'An error occurred (e.g. invalid magic number, srcSize too small)')!
 }
 
 fn test_zstd_invalid_magic_numbers() {
-	assert_decompress_error([]u8{len: 100}, 'An error occurred (e.g. invalid magic number, srcSize too small)')!
+	assert_decompress_error([]u8{len: 100},
+		'An error occurred (e.g. invalid magic number, srcSize too small)')!
 }
 
 fn test_zstd_invalid_compression() {
 	mut data := []u8{len: 100}
 	data[0] = 0x1f
 	data[1] = 0x8b
-	assert_decompress_error(data, 'An error occurred (e.g. invalid magic number, srcSize too small)')!
+	assert_decompress_error(data,
+		'An error occurred (e.g. invalid magic number, srcSize too small)')!
 }
 
 fn test_zstd_with_corruption1() {

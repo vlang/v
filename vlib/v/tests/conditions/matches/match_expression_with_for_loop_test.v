@@ -12,6 +12,7 @@ fn test_match_with_for_in_loop() {
 			[0]
 		}
 	}
+
 	println(b)
 	assert b == [0, 1, 2]
 }
@@ -30,6 +31,7 @@ fn test_match_with_for_c_loop() {
 			[0]
 		}
 	}
+
 	println(b)
 	assert b == [0, 1, 2]
 }
@@ -53,6 +55,7 @@ fn test_match_with_for_loop() {
 			[0]
 		}
 	}
+
 	println(b)
 	assert b == [0, 1, 2]
 }

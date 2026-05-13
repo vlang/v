@@ -55,11 +55,14 @@ fn atou_common(s string, type_max u64) !u64 {
 			}
 			underscored = false
 
-			oldx := x
-			x = (x * 10) + u64(c)
-			if x > type_max || oldx > x {
+			if x > type_max / 10 {
 				return error('strconv.atou: parsing "${s}": integer overflow')
 			}
+			x *= 10
+			if x > type_max - u64(c) {
+				return error('strconv.atou: parsing "${s}": integer overflow')
+			}
+			x += u64(c)
 		}
 	}
 	return x
@@ -67,29 +70,34 @@ fn atou_common(s string, type_max u64) !u64 {
 
 // atou8 is equivalent to parse_uint(s, 10, 0), converted to type u8.
 // It returns u8 in range [0..255] or an Error.
+@[markused]
 pub fn atou8(s string) !u8 {
 	return u8(atou_common(s, max_u8)!)
 }
 
 // atou16 is equivalent to parse_uint(s, 10, 0), converted to type u16.
 // It returns u16 in range [0..65535] or an Error.
+@[markused]
 pub fn atou16(s string) !u16 {
 	return u16(atou_common(s, max_u16)!)
 }
 
 // atou is equivalent to parse_uint(s, 10, 0), converted to type u32.
+@[markused]
 pub fn atou(s string) !u32 {
 	return u32(atou_common(s, max_u32)!)
 }
 
 // atou32 is identical to atou. Here to provide a symmetrical API with atoi/atoi32
 // It returns u32 in range [0..4294967295] or an Error.
+@[markused]
 pub fn atou32(s string) !u32 {
 	return u32(atou_common(s, max_u32)!)
 }
 
 // atou64 is equivalent to parse_uint(s, 10, 0), converted to type u64.
 // It returns u64 in range [0..18446744073709551615] or an Error.
+@[markused]
 pub fn atou64(s string) !u64 {
 	return u64(atou_common(s, max_u64)!)
 }

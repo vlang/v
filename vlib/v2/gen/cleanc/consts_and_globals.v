@@ -204,6 +204,74 @@ fn (mut g Gen) enum_const_selector_type(expr ast.Expr) string {
 }
 
 fn (mut g Gen) const_decl_storage_type(expr ast.Expr) string {
+	if expr is ast.UnsafeExpr {
+		mut wrapper_value_type_by_temp := map[string]string{}
+		for stmt in expr.stmts {
+			if stmt is ast.AssignStmt && stmt.lhs.len == 1 && stmt.rhs.len == 1
+				&& stmt.lhs[0] is ast.Ident {
+				lhs_name := (stmt.lhs[0] as ast.Ident).name
+				if raw_type := g.get_raw_type(stmt.rhs[0]) {
+					match raw_type {
+						types.OptionType {
+							wrapper_value_type_by_temp[lhs_name] =
+								g.types_type_to_c(raw_type.base_type)
+						}
+						types.ResultType {
+							wrapper_value_type_by_temp[lhs_name] =
+								g.types_type_to_c(raw_type.base_type)
+						}
+						else {}
+					}
+				}
+			}
+		}
+		if expr.stmts.len > 0 {
+			last := expr.stmts[expr.stmts.len - 1]
+			if last is ast.ExprStmt {
+				if last.expr is ast.SelectorExpr {
+					sel := last.expr as ast.SelectorExpr
+					if sel.rhs.name == 'data' && sel.lhs is ast.Ident {
+						if typ := wrapper_value_type_by_temp[(sel.lhs as ast.Ident).name] {
+							return typ
+						}
+					}
+				}
+				return g.const_decl_storage_type(last.expr)
+			}
+		}
+	}
+	if expr is ast.OrExpr {
+		if raw_type := g.get_raw_type(expr.expr) {
+			match raw_type {
+				types.OptionType {
+					return g.types_type_to_c(raw_type.base_type)
+				}
+				types.ResultType {
+					return g.types_type_to_c(raw_type.base_type)
+				}
+				else {}
+			}
+		}
+		if expr.stmts.len > 0 {
+			last := expr.stmts[expr.stmts.len - 1]
+			if last is ast.ExprStmt {
+				return g.const_decl_storage_type(last.expr)
+			}
+		}
+	}
+	if expr is ast.SelectorExpr && expr.rhs.name == 'data' {
+		if raw_type := g.get_raw_type(expr.lhs) {
+			match raw_type {
+				types.OptionType {
+					return g.types_type_to_c(raw_type.base_type)
+				}
+				types.ResultType {
+					return g.types_type_to_c(raw_type.base_type)
+				}
+				else {}
+			}
+		}
+	}
 	if expr is ast.Ident {
 		if const_expr := g.lookup_const_expr(g.cur_module, expr.name) {
 			return g.const_decl_storage_type(const_expr)
@@ -402,10 +470,15 @@ fn (mut g Gen) gen_const_decl_extern(node ast.ConstDecl) {
 
 fn (mut g Gen) gen_global_decl(node ast.GlobalDecl) {
 	for field in node.fields {
-		name := if g.cur_module != '' && g.cur_module != 'main' && g.cur_module != 'builtin' {
+		raw_name := if g.cur_module != '' && g.cur_module != 'main' && g.cur_module != 'builtin' {
 			'${g.cur_module}__${field.name}'
 		} else {
 			field.name
+		}
+		name := if raw_name.starts_with('C.') { raw_name.all_after('C.') } else { raw_name }
+		// Skip C globals that are already provided by C headers or cheaders.
+		if field.name.starts_with('C.') {
+			continue
 		}
 		key := 'global_${name}'
 		if key in g.emitted_types {
@@ -436,6 +509,26 @@ fn (mut g Gen) gen_global_decl(node ast.GlobalDecl) {
 		if typ == '' || typ == 'void' {
 			typ = 'int'
 		}
+		if typ.starts_with('Array_fixed_') {
+			g.fixed_array_globals[name] = true
+			g.global_var_types[name] = typ
+			g.sb.write_string('${typ} ${name}')
+			if field.value !is ast.EmptyExpr {
+				g.sb.write_string(' = ')
+				if field.value is ast.ArrayInitExpr {
+					array_init := field.value as ast.ArrayInitExpr
+					if array_init.exprs.len == 0 && array_init.init is ast.EmptyExpr {
+						g.sb.write_string('{0}')
+					} else {
+						g.expr(field.value)
+					}
+				} else {
+					g.expr(field.value)
+				}
+			}
+			g.sb.writeln(';')
+			continue
+		}
 		g.global_var_types[name] = typ
 		// With prealloc, g_memory_block must be thread-local so each thread
 		// gets its own arena and the bump allocator is safe without locks.
@@ -461,10 +554,15 @@ fn (mut g Gen) gen_global_decl(node ast.GlobalDecl) {
 
 fn (mut g Gen) gen_global_decl_extern(node ast.GlobalDecl) {
 	for field in node.fields {
-		name := if g.cur_module != '' && g.cur_module != 'main' && g.cur_module != 'builtin' {
+		raw_name := if g.cur_module != '' && g.cur_module != 'main' && g.cur_module != 'builtin' {
 			'${g.cur_module}__${field.name}'
 		} else {
 			field.name
+		}
+		name := if raw_name.starts_with('C.') { raw_name.all_after('C.') } else { raw_name }
+		// Skip C globals that are already provided by C headers or cheaders.
+		if field.name.starts_with('C.') {
+			continue
 		}
 		key := 'extern_global_${name}'
 		if key in g.emitted_types {

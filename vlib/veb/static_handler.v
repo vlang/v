@@ -58,8 +58,7 @@ fn (mut sh StaticHandler) scan_static_directory(directory_path string, mount_pat
 		for file in files {
 			full_path := os.join_path(directory_path, file)
 			if os.is_dir(full_path) {
-				sh.scan_static_directory(full_path, mount_path.trim_right('/') + '/' + file,
-					host)!
+				sh.scan_static_directory(full_path, mount_path.trim_right('/') + '/' + file, host)!
 			} else if file.contains('.') && !file.starts_with('.') && !file.ends_with('.') {
 				sh.host_serve_static(host, mount_path.trim_right('/') + '/' + file, full_path)!
 			}
@@ -145,4 +144,23 @@ pub fn (mut sh StaticHandler) host_serve_static(host string, url string, file_pa
 	}
 	sh.static_files[url] = file_path
 	sh.static_hosts[url] = host
+}
+
+fn app_static_handler[A](app &A) StaticHandler {
+	$if A is $struct {
+		$for field in A.fields {
+			$if field.is_embed {
+				$if field.name == 'StaticHandler' {
+					return app.$(field.name)
+				} $else $if field.typ is $struct {
+					return app_static_handler(app.$(field.name))
+				}
+			}
+		}
+	}
+	return StaticHandler{
+		static_files:      map[string]string{}
+		static_mime_types: map[string]string{}
+		static_hosts:      map[string]string{}
+	}
 }

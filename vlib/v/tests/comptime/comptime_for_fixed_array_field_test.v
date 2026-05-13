@@ -84,3 +84,32 @@ fn test_fixed_array_comptime_iteration() {
 	assert field_values[0].contains('999')
 	assert field_values[3].contains('iteration')
 }
+
+struct GenericOptionFilter[T] {
+mut:
+	selector  ?T
+	selector2 ?[]T
+	selector3 ?[1]T
+}
+
+fn process_generic_option_field[T](val T) {
+	_ = val
+}
+
+fn count_generic_option_fields[T](val T) int {
+	mut count := 0
+	$for f in T.fields {
+		process_generic_option_field(val.$(f.name))
+		count++
+	}
+	return count
+}
+
+fn test_comptime_for_generic_option_array_fields() {
+	t := GenericOptionFilter[string]{
+		selector:  'aa'
+		selector2: ['a', 'b']
+		selector3: ['z']!
+	}
+	assert count_generic_option_fields(t) == 3
+}

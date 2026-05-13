@@ -1,0 +1,2 @@
+builtin__string_plus_many(3, _MOV((string[3]){a, b, c}))
+builtin__string_plus_many(4, _MOV((string[4]){a, b, c, d}))

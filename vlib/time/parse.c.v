@@ -234,7 +234,8 @@ pub fn parse_rfc3339(s string) !Time {
 	}
 	if is_datetime {
 		// year, month, day := check_and_extract_date(s)!
-		hour_, minute_, second_, nanosecond_ = check_and_extract_time(s[date_format_buffer.len + 1..])!
+		hour_, minute_, second_, nanosecond_ =
+			check_and_extract_time(s[date_format_buffer.len + 1..])!
 	}
 
 	mut timezone_start_position := 0
@@ -469,7 +470,8 @@ pub fn parse_iso8601(s string) !Time {
 	year, month, day := parse_iso8601_date(parts[0])!
 	mut hour_, mut minute_, mut second_, mut microsecond_, mut nanosecond_, mut unix_offset, mut is_local_time := 0, 0, 0, 0, 0, i64(0), true
 	if parts.len == 2 {
-		hour_, minute_, second_, microsecond_, nanosecond_, unix_offset, is_local_time = parse_iso8601_time(parts[1])!
+		hour_, minute_, second_, microsecond_, nanosecond_, unix_offset, is_local_time =
+			parse_iso8601_time(parts[1])!
 	}
 	mut t := new(
 		year:       year
@@ -508,8 +510,8 @@ pub fn parse_rfc2822(s string) !Time {
 	mm := pos / 3 + 1
 	unsafe {
 		tmstr := malloc_noscan(s.len * 2)
-		count := C.snprintf(&char(tmstr), (s.len * 2), c'%s-%02d-%s %s', fields[3].str,
-			mm, fields[1].str, fields[4].str)
+		count := C.snprintf(&char(tmstr), (s.len * 2), c'%s-%02d-%s %s', fields[3].str, mm,
+			fields[1].str, fields[4].str)
 		return parse(tos(tmstr, count))
 	}
 }

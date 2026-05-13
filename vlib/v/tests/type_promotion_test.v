@@ -98,3 +98,21 @@ fn test_rune() {
 	assert e == i64(79)
 	assert typeof(e).name == 'i64'
 }
+
+fn test_int_literal_promotes_like_int_cast_for_small_unsigned_types() {
+	a := 300 + u8(120)
+	b := int(300) + u8(120)
+	c := 65536 + u16(1)
+
+	assert a == 420
+	assert typeof(a).name == 'int'
+	assert a == b
+	assert typeof(a).name == typeof(b).name
+
+	assert c == 65537
+	assert typeof(c).name == 'int'
+
+	d := 5 + u8(120)
+	assert d == u8(125)
+	assert typeof(d).name == 'u8'
+}

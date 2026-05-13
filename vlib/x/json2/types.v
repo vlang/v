@@ -2,9 +2,14 @@ module json2
 
 import time
 
+@[markused]
+const any_time_type_marker = time.Time{}
+
 // Any is a sum type that lists the possible types to be decoded and used.
 // `Any` priority order for numbers: floats -> signed integers -> unsigned integers
 // `Any` priority order for strings: string -> time.Time
+
+@[markused]
 pub type Any = []Any
 	| bool
 	| f64
@@ -30,6 +35,7 @@ pub struct Null {}
 pub const null = Null{}
 
 // from_json_null implements a custom decoder for json2
+@[markused]
 pub fn (mut n Null) from_json_null() {}
 
 // to_json implements a custom encoder for json2

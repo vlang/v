@@ -27,3 +27,19 @@ fn test_cast_to_empty_interface() {
 	assert ret_strings[6] == 'f64                8.88'
 	assert ret_strings[7] == 'f64                9.99'
 }
+
+type EmptyInterfaceCallback = fn ()
+
+fn empty_interface_callback() {}
+
+fn test_append_function_to_empty_interface_array() {
+	mut callbacks := []EmptyInterfaceCallback{}
+	callbacks << empty_interface_callback
+
+	mut values := []Any{}
+	values << callbacks
+	values << empty_interface_callback
+
+	assert values.len == 2
+	assert '${values}'.contains('Any(fn ())')
+}

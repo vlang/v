@@ -1,0 +1,14 @@
+vlib/v/checker/tests/match_duplicate_branch_mixed_int_literals.vv:3:3: error: match case `10` is handled more than once
+    1 | fn parse(ch u8) ! {
+    2 |     match ch {
+    3 |         ` `, `\t`, `\n`, 10 {
+      |         ~~~~~~~~~~~~~~~~~~~
+    4 |             // consume blanks
+    5 |         }
+vlib/v/checker/tests/match_duplicate_branch_mixed_int_literals.vv:17:3: error: match case `10` is handled more than once
+   15 | fn parse_cast(ch u8) ! {
+   16 |     match ch {
+   17 |         `\n`, u8(10) {
+      |         ~~~~~~~~~~~~
+   18 |             println('line feed')
+   19 |         }

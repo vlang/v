@@ -1,0 +1,36 @@
+module main
+
+@[heap]
+interface IGameObject {
+mut:
+	name  string
+	speed f32
+	owner ?&IGameObject
+	collision(mut o IGameObject)
+}
+
+@[heap]
+struct GameObject implements IGameObject {
+mut:
+	name  string
+	speed f32
+	owner ?&IGameObject
+}
+
+fn (mut gameobject GameObject) collision(mut o IGameObject) {
+	_ = o
+	if gameobject != gameobject.owner {
+		eprintln('Collision')
+	}
+}
+
+fn main() {
+	mut ship := &GameObject{
+		name: 'ship'
+	}
+	mut rocket := &GameObject{
+		name:  'rocket'
+		owner: ship
+	}
+	rocket.collision(mut ship)
+}

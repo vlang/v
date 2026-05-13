@@ -151,7 +151,7 @@ pub fn jaro_similarity(a string, b string) f64 {
 	}
 
 	// Maximum distance upto which matching is allowed
-	match_distance := max2(a_len, b_len) / 2 - 1
+	match_distance := max2(max2(a_len, b_len) / 2 - 1, 0)
 
 	mut a_matches := []bool{len: a_len}
 	mut b_matches := []bool{len: b_len}

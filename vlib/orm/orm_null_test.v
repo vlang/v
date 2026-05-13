@@ -32,8 +32,8 @@ fn (db MockDB) select(config orm.SelectConfig, data orm.QueryData, where orm.Que
 
 fn (db MockDB) insert(table orm.Table, data orm.QueryData) ! {
 	mut st := db.st
-	last, qdata := orm.orm_stmt_gen(.sqlite, table, '`', .insert, false, '?', 1, data,
-		orm.QueryData{})
+	last, qdata :=
+		orm.orm_stmt_gen(.sqlite, table, '`', .insert, false, '?', 1, data, orm.QueryData{})
 	st.last = last
 	st.data = qdata.data
 	st.where = []orm.Primitive{}
@@ -83,8 +83,7 @@ fn mock_type_from_v(typ int) !string {
 
 fn (db MockDB) create(table orm.Table, fields []orm.TableField) ! {
 	mut st := db.st
-	st.last = orm.orm_table_gen(.sqlite, table, '`', true, 0, fields, mock_type_from_v,
-		false)!
+	st.last = orm.orm_table_gen(.sqlite, table, '`', true, 0, fields, mock_type_from_v, false)!
 	return db.db.create(table, fields)
 }
 
@@ -110,6 +109,24 @@ mut:
 	f  int @[default: 33]
 	g  ?int
 	h  ?int = 55
+}
+
+@[unique_key: 'role_id, api_id, source_type, source_id']
+@[table: 'core_role_api']
+struct CoreRoleApi {
+	role_id     string
+	api_id      string
+	source_type string
+	source_id   string
+}
+
+fn test_struct_unique_key_attribute() {
+	db := MockDB.new()
+
+	sql db {
+		create table CoreRoleApi
+	}!
+	assert db.st.last == 'CREATE TABLE IF NOT EXISTS `core_role_api` (`role_id` string-type NOT NULL, `api_id` string-type NOT NULL, `source_type` string-type NOT NULL, `source_id` string-type NOT NULL, UNIQUE(`role_id`, `api_id`, `source_type`, `source_id`));'
 }
 
 fn test_option_struct_fields_and_none() {

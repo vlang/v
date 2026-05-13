@@ -4,7 +4,7 @@ module vec
 
 import math
 
-pub const vec_epsilon = f32(10e-7)
+pub const vec_epsilon = 10e-7
 
 // Vec2[T] is a generic struct representing a vector in 2D space.
 pub struct Vec2[T] {
@@ -307,7 +307,7 @@ pub fn (v Vec2[T]) eq(u Vec2[T]) bool {
 
 // eq_epsilon returns a bool indicating if the two vectors are equal within the module `vec_epsilon` const.
 pub fn (v Vec2[T]) eq_epsilon(u Vec2[T]) bool {
-	return v.eq_approx[T, f32](u, vec_epsilon)
+	return v.eq_approx[T, T](u, T(vec_epsilon))
 }
 
 // eq_approx returns whether these vectors are approximately equal within `tolerance`.

@@ -208,9 +208,12 @@ fn (mut app App) init_images_wrapper() {
 
 fn (mut app App) init_images() ! {
 	app.bird = app.gg.create_image_from_byte_array(asset.read_bytes('assets', 'img/bird.png')!)!
-	app.pipetop = app.gg.create_image_from_byte_array(asset.read_bytes('assets', 'img/pipetop.png')!)!
-	app.pipebottom = app.gg.create_image_from_byte_array(asset.read_bytes('assets', 'img/pipebottom.png')!)!
-	app.background = app.gg.create_image_from_byte_array(asset.read_bytes('assets', 'img/background.png')!)!
+	app.pipetop =
+		app.gg.create_image_from_byte_array(asset.read_bytes('assets', 'img/pipetop.png')!)!
+	app.pipebottom = app.gg.create_image_from_byte_array(asset.read_bytes('assets',
+		'img/pipebottom.png')!)!
+	app.background = app.gg.create_image_from_byte_array(asset.read_bytes('assets',
+		'img/background.png')!)!
 }
 
 fn frame(app &App) {
@@ -230,20 +233,18 @@ fn (app &App) display() {
 			app.gg.draw_image(f32(pipe.x), f32(pipe.y + pipe.height - app.pipetop.height),
 				app.pipetop.width, app.pipetop.height, app.pipetop)
 		} else {
-			app.gg.draw_image(f32(pipe.x), f32(pipe.y), app.pipebottom.width, app.pipebottom.height,
-				app.pipebottom)
+			app.gg.draw_image(f32(pipe.x), f32(pipe.y), app.pipebottom.width,
+				app.pipebottom.height, app.pipebottom)
 		}
 	}
 	for bird in app.birds {
 		if bird.alive {
-			app.gg.draw_image(f32(bird.x), f32(bird.y), app.bird.width, app.bird.height,
-				app.bird)
+			app.gg.draw_image(f32(bird.x), f32(bird.y), app.bird.width, app.bird.height, app.bird)
 		}
 	}
 	app.gg.draw_rect_filled(0, 510, app.background.width * 3, 5, gg.Color{0x21, 0x19, 0x28, 255})
 	app.gg.draw_rect_filled(0, 513, app.background.width * 3, app.background.height, bg_color)
-	app.gg.draw_rect_filled(550, 0, app.background.width + 50, app.background.height + 20,
-		bg_color)
+	app.gg.draw_rect_filled(550, 0, app.background.width + 50, app.background.height + 20, bg_color)
 	app.gg.draw_text_def(10, 25, 'Score: ${app.score}')
 	app.gg.draw_text_def(10, 50, 'Max Score: ${app.max_score}')
 	app.gg.draw_text_def(10, 75, 'Generation: ${app.generation}')

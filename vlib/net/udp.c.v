@@ -23,6 +23,19 @@ mut:
 	read_deadline  time.Time
 	read_timeout   time.Duration
 	write_timeout  time.Duration
+	is_blocking    bool = true
+}
+
+@[_pack: '1']
+struct Ipv4MulticastRequest {
+	multiaddr    [4]u8
+	interface_ip [4]u8
+}
+
+@[_pack: '1']
+struct Ipv6MulticastRequest {
+	multiaddr       [16]u8
+	interface_index u32
 }
 
 pub fn dial_udp(raddr string) !&UdpConn {
@@ -33,11 +46,15 @@ pub fn dial_udp(raddr string) !&UdpConn {
 		// bind to any port (or file) (we dont care in this
 		// case because we only care about the remote)
 		if sock := new_udp_socket_for_remote(addr) {
-			return &UdpConn{
+			mut conn := &UdpConn{
 				sock:          sock
 				read_timeout:  udp_default_read_timeout
 				write_timeout: udp_default_write_timeout
 			}
+			$if net_nonblocking_sockets ? {
+				conn.is_blocking = false
+			}
+			return conn
 		}
 	}
 
@@ -102,13 +119,21 @@ pub fn (c &UdpConn) read_ptr(buf_ptr &u8, len int) !(int, Addr) {
 		}
 	}
 	addr_len := sizeof(Addr)
-	mut res := wrap_read_result(C.recvfrom(c.sock.handle, voidptr(buf_ptr), len, 0, voidptr(&addr),
-		&addr_len))!
+	mut res := 0
+	if c.is_blocking {
+		// Honor read deadlines/timeouts before entering a blocking recvfrom call.
+		c.wait_for_read()!
+		res = wrap_read_result(C.recvfrom(c.sock.handle, voidptr(buf_ptr), len, 0, voidptr(&addr),
+			&addr_len))!
+	} else {
+		res = wrap_read_result(C.recvfrom(c.sock.handle, voidptr(buf_ptr), len, 0, voidptr(&addr),
+			&addr_len))!
+	}
 	if res > 0 {
 		return res, addr
 	}
 	code := error_code()
-	if code == int(error_ewouldblock) {
+	if code in [int(error_ewouldblock), int(error_eagain), C.EINTR] {
 		c.wait_for_read()!
 		// same setup as in tcp
 		res = wrap_read_result(C.recvfrom(c.sock.handle, voidptr(buf_ptr), len, 0, voidptr(&addr),
@@ -183,23 +208,136 @@ pub fn (mut c UdpConn) close() ! {
 	return c.sock.close()
 }
 
+// join_multicast_group joins the UDP socket to an IPv4 or IPv6 multicast group.
+// For IPv4 sockets, `iface_addr` must be an IPv4 address or `''` to use the default interface.
+// For IPv6 sockets, `iface_addr` must be a numeric interface index or `''` to use the default interface.
+pub fn (mut c UdpConn) join_multicast_group(multicast_addr string, iface_addr string) ! {
+	family := c.multicast_family()!
+	match family {
+		.ip {
+			mreq := Ipv4MulticastRequest{
+				multiaddr:    parse_ipv4_multicast_addr(multicast_addr)!
+				interface_ip: parse_ipv4_interface_addr(iface_addr)!
+			}
+			c.sock.set_option_raw(C.IPPROTO_IP, C.IP_ADD_MEMBERSHIP, &mreq,
+				sizeof(Ipv4MulticastRequest))!
+		}
+		.ip6 {
+			mreq := Ipv6MulticastRequest{
+				multiaddr:       parse_ipv6_multicast_addr(multicast_addr)!
+				interface_index: parse_ipv6_interface_index(iface_addr)!
+			}
+			c.sock.set_option_raw(C.IPPROTO_IPV6, ipv6_membership_socket_option(true), &mreq,
+				sizeof(Ipv6MulticastRequest))!
+		}
+		else {
+			return error('net: udp multicast is only supported on ip and ip6 sockets')
+		}
+	}
+}
+
+// leave_multicast_group leaves an IPv4 or IPv6 multicast group previously joined by the socket.
+// `iface_addr` follows the same rules as `join_multicast_group`.
+pub fn (mut c UdpConn) leave_multicast_group(multicast_addr string, iface_addr string) ! {
+	family := c.multicast_family()!
+	match family {
+		.ip {
+			mreq := Ipv4MulticastRequest{
+				multiaddr:    parse_ipv4_multicast_addr(multicast_addr)!
+				interface_ip: parse_ipv4_interface_addr(iface_addr)!
+			}
+			c.sock.set_option_raw(C.IPPROTO_IP, C.IP_DROP_MEMBERSHIP, &mreq,
+				sizeof(Ipv4MulticastRequest))!
+		}
+		.ip6 {
+			mreq := Ipv6MulticastRequest{
+				multiaddr:       parse_ipv6_multicast_addr(multicast_addr)!
+				interface_index: parse_ipv6_interface_index(iface_addr)!
+			}
+			c.sock.set_option_raw(C.IPPROTO_IPV6, ipv6_membership_socket_option(false), &mreq,
+				sizeof(Ipv6MulticastRequest))!
+		}
+		else {
+			return error('net: udp multicast is only supported on ip and ip6 sockets')
+		}
+	}
+}
+
+// set_multicast_ttl sets the IPv4 TTL or IPv6 hop limit used for outgoing multicast traffic.
+// Valid values are between 0 and 255 inclusive.
+pub fn (mut c UdpConn) set_multicast_ttl(ttl int) ! {
+	if ttl < 0 || ttl > 255 {
+		return error('net: multicast ttl must be between 0 and 255')
+	}
+	match c.multicast_family()! {
+		.ip {
+			c.sock.set_option_int(C.IPPROTO_IP, C.IP_MULTICAST_TTL, ttl)!
+		}
+		.ip6 {
+			c.sock.set_option_int(C.IPPROTO_IPV6, C.IPV6_MULTICAST_HOPS, ttl)!
+		}
+		else {
+			return error('net: udp multicast is only supported on ip and ip6 sockets')
+		}
+	}
+}
+
+// set_multicast_loop enables or disables local loopback for outgoing multicast packets.
+pub fn (mut c UdpConn) set_multicast_loop(enable bool) ! {
+	value := int(enable)
+	match c.multicast_family()! {
+		.ip {
+			c.sock.set_option_int(C.IPPROTO_IP, C.IP_MULTICAST_LOOP, value)!
+		}
+		.ip6 {
+			c.sock.set_option_int(C.IPPROTO_IPV6, C.IPV6_MULTICAST_LOOP, value)!
+		}
+		else {
+			return error('net: udp multicast is only supported on ip and ip6 sockets')
+		}
+	}
+}
+
+// set_multicast_interface sets the outgoing multicast interface for the UDP socket.
+// For IPv4 sockets, `iface_addr` must be an IPv4 address or `''` to clear it to the default interface.
+// For IPv6 sockets, `iface_addr` must be a numeric interface index or `''` to use the default interface.
+pub fn (mut c UdpConn) set_multicast_interface(iface_addr string) ! {
+	match c.multicast_family()! {
+		.ip {
+			addr := parse_ipv4_interface_addr(iface_addr)!
+			c.sock.set_option_raw(C.IPPROTO_IP, C.IP_MULTICAST_IF, &addr[0], sizeof([4]u8))!
+		}
+		.ip6 {
+			index := parse_ipv6_interface_index(iface_addr)!
+			c.sock.set_option_int(C.IPPROTO_IPV6, C.IPV6_MULTICAST_IF, int(index))!
+		}
+		else {
+			return error('net: udp multicast is only supported on ip and ip6 sockets')
+		}
+	}
+}
+
 pub fn listen_udp(laddr string) !&UdpConn {
 	addrs := resolve_addrs_fuzzy(laddr, .udp)!
 	// TODO(emily):
 	// here we are binding to the first address
 	// and that is probably not ideal
 	addr := addrs[0]
-	return &UdpConn{
+	mut conn := &UdpConn{
 		sock:          new_udp_socket(addr)!
 		read_timeout:  udp_default_read_timeout
 		write_timeout: udp_default_write_timeout
 	}
+	$if net_nonblocking_sockets ? {
+		conn.is_blocking = false
+	}
+	return conn
 }
 
 fn new_udp_socket(local_addr Addr) !&UdpSocket {
 	family := local_addr.family()
 
-	sockfd := socket_error(C.socket(family, SocketType.udp, 0))!
+	sockfd := socket_error(C.socket(i32(family), i32(SocketType.udp), 0))!
 	mut s := &UdpSocket{
 		handle: sockfd
 		l:      local_addr
@@ -249,6 +387,7 @@ fn new_udp_socket_for_remote(raddr Addr) !&UdpSocket {
 			panic('Invalid family')
 		}
 	}
+
 	mut sock := new_udp_socket(addr)!
 	sock.has_r = true
 	sock.r = raddr
@@ -256,6 +395,86 @@ fn new_udp_socket_for_remote(raddr Addr) !&UdpSocket {
 	return sock
 }
 
+fn (c &UdpConn) multicast_family() !AddrFamily {
+	family := c.sock.l.family()
+	if family !in [.ip, .ip6] {
+		return error('net: udp multicast is only supported on ip and ip6 sockets')
+	}
+	return family
+}
+
+fn normalize_ip_literal(address string) string {
+	if address.len >= 2 && address[0] == `[` && address[address.len - 1] == `]` {
+		return address[1..address.len - 1]
+	}
+	return address
+}
+
+fn parse_ipv4_interface_addr(iface_addr string) ![4]u8 {
+	if iface_addr.len == 0 {
+		return [4]u8{}
+	}
+	address := normalize_ip_literal(iface_addr)
+	mut parsed := [4]u8{}
+	if C.inet_pton(i32(AddrFamily.ip), &char(address.str), &parsed[0]) != 1 {
+		return error('net: ipv4 multicast interface must be an ipv4 address')
+	}
+	return parsed
+}
+
+fn parse_ipv4_multicast_addr(multicast_addr string) ![4]u8 {
+	address := normalize_ip_literal(multicast_addr)
+	mut parsed := [4]u8{}
+	if C.inet_pton(i32(AddrFamily.ip), &char(address.str), &parsed[0]) != 1 {
+		return error('net: invalid ipv4 multicast address `${multicast_addr}`')
+	}
+	if parsed[0] < 224 || parsed[0] > 239 {
+		return error('net: `${multicast_addr}` is not an ipv4 multicast address')
+	}
+	return parsed
+}
+
+fn parse_ipv6_multicast_addr(multicast_addr string) ![16]u8 {
+	address := normalize_ip_literal(multicast_addr)
+	mut parsed := [16]u8{}
+	if C.inet_pton(i32(AddrFamily.ip6), &char(address.str), &parsed[0]) != 1 {
+		return error('net: invalid ipv6 multicast address `${multicast_addr}`')
+	}
+	if parsed[0] != 0xff {
+		return error('net: `${multicast_addr}` is not an ipv6 multicast address')
+	}
+	return parsed
+}
+
+fn parse_ipv6_interface_index(iface_addr string) !u32 {
+	if iface_addr.len == 0 {
+		return 0
+	}
+	for ch in iface_addr {
+		if ch < `0` || ch > `9` {
+			return error('net: ipv6 multicast interface must be a numeric interface index')
+		}
+	}
+	return iface_addr.u32()
+}
+
+fn ipv6_membership_socket_option(join bool) int {
+	$if windows {
+		return if join { C.IPV6_ADD_MEMBERSHIP } else { C.IPV6_DROP_MEMBERSHIP }
+	} $else {
+		return if join { C.IPV6_JOIN_GROUP } else { C.IPV6_LEAVE_GROUP }
+	}
+}
+
+fn (mut s UdpSocket) set_option_raw(level int, opt int, value voidptr, value_len u32) ! {
+	socket_error(C.setsockopt(s.handle, level, opt, value, value_len))!
+}
+
+fn (mut s UdpSocket) set_option_int(level int, opt int, value int) ! {
+	s.set_option_raw(level, opt, &value, sizeof(int))!
+}
+
+// set_option_bool sets a boolean socket option on the UDP socket.
 pub fn (mut s UdpSocket) set_option_bool(opt SocketOption, value bool) ! {
 	// TODO: reenable when this `in` operation works again
 	// if opt !in opts_can_set {
@@ -265,13 +484,13 @@ pub fn (mut s UdpSocket) set_option_bool(opt SocketOption, value bool) ! {
 	// 	return err_option_wrong_type
 	// }
 	x := int(value)
-	socket_error(C.setsockopt(s.handle, C.SOL_SOCKET, int(opt), &x, sizeof(int)))!
+	s.set_option_int(C.SOL_SOCKET, int(opt), x)!
 }
 
+// set_dualstack enables or disables dual-stack behavior for IPv6 UDP sockets.
 pub fn (mut s UdpSocket) set_dualstack(on bool) ! {
 	x := int(!on)
-	socket_error(C.setsockopt(s.handle, C.IPPROTO_IPV6, int(SocketOption.ipv6_only), &x,
-		sizeof(int)))!
+	s.set_option_int(C.IPPROTO_IPV6, int(SocketOption.ipv6_only), x)!
 }
 
 // close shuts down and closes the socket for communication.

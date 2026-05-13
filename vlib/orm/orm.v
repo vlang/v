@@ -58,6 +58,20 @@ pub type Primitive = Null
 	| u64
 	| u8
 	| InfixType
+	| []bool
+	| []f32
+	| []f64
+	| []i16
+	| []i64
+	| []i8
+	| []int
+	| []string
+	| []time.Time
+	| []u16
+	| []u32
+	| []u64
+	| []u8
+	| []InfixType
 	| []Primitive
 
 pub struct Null {}
@@ -132,6 +146,7 @@ pub mut:
 
 pub enum SQLDialect {
 	default
+	h2
 	mysql
 	pg
 	sqlite
@@ -154,6 +169,7 @@ fn (kind OperationKind) to_str() string {
 		.in { 'IN' }
 		.not_in { 'NOT IN' }
 	}
+
 	return str
 }
 
@@ -442,6 +458,14 @@ fn trim_attr_arg(arg string) string {
 	return out
 }
 
+fn tenant_filter_array_primitive_type[T](value []T) int {
+	if value.len > 0 {
+		first := value[0]
+		return tenant_filter_primitive_type(Primitive(first))
+	}
+	return type_idx['int']
+}
+
 fn tenant_filter_primitive_type(value Primitive) int {
 	return match value {
 		bool {
@@ -495,6 +519,48 @@ fn tenant_filter_primitive_type(value Primitive) int {
 			} else {
 				type_idx['int']
 			}
+		}
+		[]bool {
+			tenant_filter_array_primitive_type(value)
+		}
+		[]f32 {
+			tenant_filter_array_primitive_type(value)
+		}
+		[]f64 {
+			tenant_filter_array_primitive_type(value)
+		}
+		[]i16 {
+			tenant_filter_array_primitive_type(value)
+		}
+		[]i64 {
+			tenant_filter_array_primitive_type(value)
+		}
+		[]i8 {
+			tenant_filter_array_primitive_type(value)
+		}
+		[]int {
+			tenant_filter_array_primitive_type(value)
+		}
+		[]string {
+			tenant_filter_array_primitive_type(value)
+		}
+		[]time.Time {
+			tenant_filter_array_primitive_type(value)
+		}
+		[]u16 {
+			tenant_filter_array_primitive_type(value)
+		}
+		[]u32 {
+			tenant_filter_array_primitive_type(value)
+		}
+		[]u64 {
+			tenant_filter_array_primitive_type(value)
+		}
+		[]u8 {
+			tenant_filter_array_primitive_type(value)
+		}
+		[]InfixType {
+			tenant_filter_array_primitive_type(value)
 		}
 	}
 }
@@ -572,43 +638,16 @@ pub fn orm_stmt_gen(sql_dialect SQLDialect, table Table, q string, kind StmtKind
 	start_pos int, data QueryData, where QueryData) (string, QueryData) {
 	mut str := ''
 	mut c := start_pos
-	mut data_fields := []string{}
-	mut data_data := []Primitive{}
+	insert_data := prepare_insert_query_data(data)
 
 	match kind {
 		.insert {
 			mut values := []string{}
 			mut select_fields := []string{}
 
-			for i in 0 .. data.fields.len {
-				column_name := data.fields[i]
-				is_auto_field := i in data.auto_fields
-
-				if data.data.len > 0 {
-					// skip fields and allow the database to insert default and
-					// serial (auto-increment) values where a default (or no)
-					// value was provided
-					if is_auto_field {
-						mut x := data.data[i]
-						skip_auto_field := match mut x {
-							Null { true }
-							string { x == '' }
-							i8, i16, int, i64, u8, u16, u32, u64 { u64(x) == 0 }
-							f32, f64 { f64(x) == 0 }
-							time.Time { x == time.Time{} }
-							bool { !x }
-							else { false }
-						}
-						if skip_auto_field {
-							continue
-						}
-					}
-
-					data_data << data.data[i]
-				}
+			for column_name in insert_data.fields {
 				select_fields << '${q}${column_name}${q}'
 				values << factory_insert_qm_value(num, qm, c)
-				data_fields << column_name
 				c++
 			}
 
@@ -616,7 +655,7 @@ pub fn orm_stmt_gen(sql_dialect SQLDialect, table Table, q string, kind StmtKind
 
 			are_values_empty := values.len == 0
 
-			if sql_dialect in [.sqlite, .pg] && are_values_empty {
+			if sql_dialect in [.sqlite, .pg, .h2] && are_values_empty {
 				str += 'DEFAULT VALUES'
 			} else {
 				str += '('
@@ -647,6 +686,7 @@ pub fn orm_stmt_gen(sql_dialect SQLDialect, table Table, q string, kind StmtKind
 								'/'
 							}
 						}
+
 						str += '${d.name} ${op} ${qm}'
 					} else {
 						str += '${qm}'
@@ -668,6 +708,7 @@ pub fn orm_stmt_gen(sql_dialect SQLDialect, table Table, q string, kind StmtKind
 			str += 'DELETE FROM ${q}${table.name}${q} WHERE '
 		}
 	}
+
 	// where
 	if kind == .update || kind == .delete {
 		str += gen_where_clause(where, q, qm, num, mut &c)
@@ -679,14 +720,155 @@ pub fn orm_stmt_gen(sql_dialect SQLDialect, table Table, q string, kind StmtKind
 	$if trace_orm ? {
 		eprintln('> orm: ${str}')
 	}
+	returned_data := if kind == .insert { insert_data } else { data }
 
-	return str, QueryData{
-		fields: data_fields
-		data:   data_data
-		types:  data.types
-		kinds:  data.kinds
-		is_and: data.is_and
+	return str, returned_data
+}
+
+fn prepare_insert_query_data(data QueryData) QueryData {
+	mut prepared := QueryData{
+		types:       data.types.clone()
+		kinds:       data.kinds.clone()
+		auto_fields: data.auto_fields.clone()
+		is_and:      data.is_and.clone()
 	}
+	for i, column_name in data.fields {
+		if i >= data.data.len {
+			prepared.fields << column_name
+			continue
+		}
+		if i in data.auto_fields && should_skip_insert_auto_field(data.data[i]) {
+			continue
+		}
+		prepared.fields << column_name
+		prepared.data << data.data[i]
+	}
+	return prepared
+}
+
+fn should_skip_insert_auto_field(value Primitive) bool {
+	mut x := value
+	return match mut x {
+		Null { true }
+		string { x == '' }
+		i8, i16, int, i64, u8, u16, u32, u64 { u64(x) == 0 }
+		f32, f64 { f64(x) == 0 }
+		time.Time { x == time.Time{} }
+		bool { !x }
+		else { false }
+	}
+}
+
+fn build_upsert_where(data QueryData, conflict_groups [][]string) !QueryData {
+	mut field_indexes := map[string]int{}
+	for i, field in data.fields {
+		field_indexes[field] = i
+	}
+	mut where := QueryData{}
+	for group in conflict_groups {
+		if group.len == 0 {
+			continue
+		}
+		start := where.fields.len
+		if start > 0 {
+			where.is_and << false
+		}
+		for i, field_name in group {
+			idx := field_indexes[field_name] or {
+				return error('${@FN}(): missing conflict field `${field_name}` in upsert data')
+			}
+			if idx >= data.data.len {
+				return error('${@FN}(): missing conflict value for `${field_name}` in upsert data')
+			}
+			where.fields << field_name
+			where.data << data.data[idx]
+			where.kinds << .eq
+			if i > 0 {
+				where.is_and << true
+			}
+		}
+		if group.len > 1 {
+			where.parentheses << [start, where.fields.len - 1]
+		}
+	}
+	return where
+}
+
+fn upsert_conflict_groups(data QueryData, conflict_groups [][]string) [][]string {
+	mut present_fields := map[string]bool{}
+	for field in data.fields {
+		present_fields[field] = true
+	}
+	mut usable := [][]string{}
+	for group in conflict_groups {
+		if group.len == 0 {
+			continue
+		}
+		mut ok := true
+		for field_name in group {
+			if field_name !in present_fields {
+				ok = false
+				break
+			}
+		}
+		if ok {
+			usable << group
+		}
+	}
+	return usable
+}
+
+pub struct UpsertData {
+pub:
+	valid bool
+pub mut:
+	insert_data QueryData
+	where       QueryData
+}
+
+// prepare_upsert resolves the filtered insert data and the conflict `WHERE` clause for an upsert.
+pub fn prepare_upsert(data QueryData, conflict_groups [][]string) UpsertData {
+	insert_data := prepare_insert_query_data(data)
+	usable_groups := upsert_conflict_groups(insert_data, conflict_groups)
+	if usable_groups.len == 0 {
+		return UpsertData{
+			insert_data: insert_data
+		}
+	}
+	where := build_upsert_where(insert_data, usable_groups) or {
+		return UpsertData{
+			insert_data: insert_data
+		}
+	}
+	return UpsertData{
+		valid:       true
+		insert_data: insert_data
+		where:       where
+	}
+}
+
+// upsert_count converts a `select count(*)` ORM result into an integer count.
+pub fn upsert_count(result [][]Primitive) int {
+	if result.len == 0 || result[0].len == 0 {
+		return 0
+	}
+	count_val := result[0][0]
+	return match count_val {
+		int { count_val }
+		i64 { int(count_val) }
+		u64 { int(count_val) }
+		else { 0 }
+	}
+}
+
+// upsert_missing_conflict_error returns the standard missing-conflict error for SQL upserts.
+pub fn upsert_missing_conflict_error(table Table) ! {
+	return error('upsert(): table `${table.name}` needs at least one primary or unique field with a concrete value')
+}
+
+// upsert_ambiguous_error returns the standard ambiguous-match error for SQL upserts.
+pub fn upsert_ambiguous_error(table Table) ! {
+	return error('upsert(): upsert on table `${table.name}` matched multiple rows')
 }
 
 // Generates an sql select stmt, from universal parameter
@@ -834,6 +1016,26 @@ fn gen_where_clause(where QueryData, q string, qm string, num bool, mut c &int) 
 // fields - See TableField
 // sql_from_v - Function which maps type indices to sql type names
 // alternative - Needed for msdb
+fn parse_table_attr_fields(table Table, attr VAttribute, valid_sql_field_names []string) ![]string {
+	if attr.arg == '' || attr.kind != .string {
+		return error("${attr.name} attribute needs to be in the format [${attr.name}: 'f1, f2, f3']")
+	}
+	mut attr_fields := []string{}
+	for raw_field_name in attr.arg.split(',') {
+		field_name := raw_field_name.trim_space()
+		if field_name == '' {
+			return error("${attr.name} attribute needs to be in the format [${attr.name}: 'f1, f2, f3']")
+		}
+		if field_name !in valid_sql_field_names {
+			return error("table `${table.name}` has no field's name: `${field_name}`")
+		}
+		if field_name !in attr_fields {
+			attr_fields << field_name
+		}
+	}
+	return attr_fields
+}
+
 pub fn orm_table_gen(sql_dialect SQLDialect, table Table, q string, defaults bool, def_unique_len int, fields []TableField, sql_from_v fn (int) !string,
 	alternative bool) !string {
 	mut str := 'CREATE TABLE IF NOT EXISTS ${q}${table.name}${q} ('
@@ -850,6 +1052,7 @@ pub fn orm_table_gen(sql_dialect SQLDialect, table Table, q string, defaults boo
 	mut table_comment := ''
 	mut field_comments := map[string]string{}
 	mut index_fields := []string{}
+	mut unique_key_fields := [][]string{}
 
 	valid_sql_field_names := fields.map(sql_field_name(it))
 
@@ -861,19 +1064,21 @@ pub fn orm_table_gen(sql_dialect SQLDialect, table Table, q string, defaults boo
 				}
 			}
 			'index' {
-				if attr.arg != '' && attr.kind == .string {
-					index_strings := attr.arg.split(',')
-					for i in index_strings {
-						x := i.trim_space()
-						if x !in valid_sql_field_names {
-							return error("table `${table.name}` has no field's name: `${x}`")
-						}
-						if x.len > 0 && x !in index_fields {
-							index_fields << x
-						}
+				attr_fields := parse_table_attr_fields(table, attr, valid_sql_field_names) or {
+					return err
+				}
+				for field_name in attr_fields {
+					if field_name !in index_fields {
+						index_fields << field_name
 					}
-				} else {
-					return error("index attribute needs to be in the format [index: 'f1, f2, f3']")
+				}
+			}
+			'unique_key' {
+				attr_fields := parse_table_attr_fields(table, attr, valid_sql_field_names) or {
+					return err
+				}
+				if attr_fields.len > 0 {
+					unique_key_fields << attr_fields
 				}
 			}
 			else {}
@@ -1032,6 +1237,13 @@ pub fn orm_table_gen(sql_dialect SQLDialect, table Table, q string, defaults boo
 			fs << '/* ${k} */UNIQUE(${tmp.join(', ')})'
 		}
 	}
+	for key_fields in unique_key_fields {
+		mut tmp := []string{}
+		for field_name in key_fields {
+			tmp << '${q}${field_name}${q}'
+		}
+		fs << 'UNIQUE(${tmp.join(', ')})'
+	}
 
 	if primary != '' {
 		fs << 'PRIMARY KEY(${q}${primary}${q})'
@@ -1051,7 +1263,7 @@ pub fn orm_table_gen(sql_dialect SQLDialect, table Table, q string, defaults boo
 	}
 	str += ';'
 
-	if sql_dialect == .pg {
+	if sql_dialect in [.pg, .h2] {
 		if table_comment != '' {
 			str += "\nCOMMENT ON TABLE \"${table.name}\" IS '${table_comment}';"
 		}
@@ -1059,7 +1271,7 @@ pub fn orm_table_gen(sql_dialect SQLDialect, table Table, q string, defaults boo
 			str += "\nCOMMENT ON COLUMN \"${table.name}\".\"${f}\" IS '${c}';"
 		}
 	}
-	if (sql_dialect == .pg || sql_dialect == .sqlite) && index_fields.len > 0 {
+	if sql_dialect in [.pg, .sqlite, .h2] && index_fields.len > 0 {
 		str += '\nCREATE INDEX "idx_${table.name}" ON "${table.name}" ("'
 		str += index_fields.join('","')
 		str += '");'

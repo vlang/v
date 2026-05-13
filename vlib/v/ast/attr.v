@@ -54,6 +54,7 @@ pub fn (a &Attr) str() string {
 		.string { '${quote}${arg}${quote}' }
 		.comptime_define { 'if ${arg}' }
 	}
+
 	return s
 }
 

@@ -34,7 +34,8 @@ fn test_parse_query() {
 }
 
 fn test_parse_query_orders() {
-	query_one := urllib.parse_query('https://someapi.com/endpoint?gamma=zalibaba&tau=1&alpha=alibaba&signature=alibaba123')!
+	query_one :=
+		urllib.parse_query('https://someapi.com/endpoint?gamma=zalibaba&tau=1&alpha=alibaba&signature=alibaba123')!
 	qvalues := query_one.values()
 	assert qvalues == ['zalibaba', '1', 'alibaba', 'alibaba123']
 }
@@ -118,7 +119,8 @@ fn test_parse() {
 			&& user.password == 'pass'
 	}
 
-	v := urllib.parse('https://vip.ffzy-online4.com/20230205/6094_d2720761/index.m3u8')!.resolve_reference(urllib.parse('2000k/hls/mixed.m3u8')!)!
+	v :=
+		urllib.parse('https://vip.ffzy-online4.com/20230205/6094_d2720761/index.m3u8')!.resolve_reference(urllib.parse('2000k/hls/mixed.m3u8')!)!
 	assert v.str() == 'https://vip.ffzy-online4.com/20230205/6094_d2720761/2000k/hls/mixed.m3u8'
 }
 

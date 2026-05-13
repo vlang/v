@@ -47,15 +47,16 @@ pub fn (db DB) select(config orm.SelectConfig, data orm.QueryData, where orm.Que
 
 // insert is used internally by V's ORM for processing `INSERT ` queries
 pub fn (db DB) insert(table orm.Table, data orm.QueryData) ! {
-	query, converted_data := orm.orm_stmt_gen(.sqlite, table, '`', .insert, true, '?',
-		1, data, orm.QueryData{})
+	query, converted_data :=
+		orm.orm_stmt_gen(.sqlite, table, '`', .insert, true, '?', 1, data, orm.QueryData{})
 	sqlite_stmt_worker(db, query, converted_data, orm.QueryData{})!
 }
 
 // update is used internally by V's ORM for processing `UPDATE ` queries
 pub fn (db DB) update(table orm.Table, data orm.QueryData, where orm.QueryData) ! {
 	where_with_tenant := orm.apply_tenant_filter(table, where)
-	query, _ := orm.orm_stmt_gen(.sqlite, table, '`', .update, true, '?', 1, data, where_with_tenant)
+	query, _ := orm.orm_stmt_gen(.sqlite, table, '`', .update, true, '?', 1, data,
+		where_with_tenant)
 	sqlite_stmt_worker(db, query, data, where_with_tenant)!
 }
 
@@ -78,8 +79,9 @@ pub fn (db DB) last_id() int {
 
 // create is used internally by V's ORM for processing table creation queries (DDL)
 pub fn (db DB) create(table orm.Table, fields []orm.TableField) ! {
-	query := orm.orm_table_gen(.sqlite, table, '`', true, 0, fields, sqlite_type_from_v,
-		false) or { return err }
+	query := orm.orm_table_gen(.sqlite, table, '`', true, 0, fields, sqlite_type_from_v, false) or {
+		return err
+	}
 	sqlite_stmt_worker(db, query, orm.QueryData{}, orm.QueryData{})!
 }
 
@@ -144,8 +146,35 @@ fn sqlite_stmt_binder(stmt Stmt, d orm.QueryData, query string, mut c &int) ! {
 		if err != 0 {
 			return stmt.db.error_message(err, query)
 		}
-		c++
+		if !sqlite_primitive_is_array(data) {
+			c++
+		}
 	}
+}
+
+fn sqlite_primitive_is_array(data orm.Primitive) bool {
+	return match data {
+		[]orm.Primitive, []bool, []f32, []f64, []i16, []i64, []i8, []int, []string, []time.Time,
+		[]u16, []u32, []u64, []u8, []orm.InfixType {
+			true
+		}
+		else {
+			false
+		}
+	}
+}
+
+fn bind_array[T](stmt Stmt, mut c &int, data []T) int {
+	mut err := 0
+	for element in data {
+		tmp_err := bind(stmt, mut c, orm.Primitive(element))
+		c++
+		if tmp_err != 0 {
+			err = tmp_err
+			break
+		}
+	}
+	return err
 }
 
 // Universal bind function
@@ -174,16 +203,52 @@ fn bind(stmt Stmt, mut c &int, data orm.Primitive) int {
 			err = stmt.bind_null(c)
 		}
 		[]orm.Primitive {
-			for element in data {
-				tmp_err := bind(stmt, mut c, element)
-				c++
-				if tmp_err != 0 {
-					err = tmp_err
-					break
-				}
-			}
+			err = bind_array(stmt, mut c, data)
+		}
+		[]bool {
+			err = bind_array(stmt, mut c, data)
+		}
+		[]f32 {
+			err = bind_array(stmt, mut c, data)
+		}
+		[]f64 {
+			err = bind_array(stmt, mut c, data)
+		}
+		[]i16 {
+			err = bind_array(stmt, mut c, data)
+		}
+		[]i64 {
+			err = bind_array(stmt, mut c, data)
+		}
+		[]i8 {
+			err = bind_array(stmt, mut c, data)
+		}
+		[]int {
+			err = bind_array(stmt, mut c, data)
+		}
+		[]string {
+			err = bind_array(stmt, mut c, data)
+		}
+		[]time.Time {
+			err = bind_array(stmt, mut c, data)
+		}
+		[]u16 {
+			err = bind_array(stmt, mut c, data)
+		}
+		[]u32 {
+			err = bind_array(stmt, mut c, data)
+		}
+		[]u64 {
+			err = bind_array(stmt, mut c, data)
+		}
+		[]u8 {
+			err = bind_array(stmt, mut c, data)
+		}
+		[]orm.InfixType {
+			err = bind_array(stmt, mut c, data)
 		}
 	}
+
 	return err
 }
 

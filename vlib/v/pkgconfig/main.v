@@ -186,18 +186,23 @@ fn parse_options(mut fp flag.FlagParser) &MainOptions {
 		exists:            fp.bool('exists', `e`, false, 'return 0 if pkg exists')
 		variables:         fp.bool('print-variables', `P`, false, 'display variable names')
 		requires:          fp.bool('print-requires', `r`, false, 'display requires of the module')
-		atleast:           fp.string('atleast-version', `a`, '', 'return 0 if pkg version is at least the given one')
-		atleastpc:         fp.string('atleast-pkgconfig-version', `A`, '', 'return 0 if pkgconfig version is at least the given one')
-		exactversion:      fp.string('exact-version', ` `, '', 'return 0 if pkg version is at least the given one')
+		atleast:           fp.string('atleast-version', `a`, '',
+			'return 0 if pkg version is at least the given one')
+		atleastpc:         fp.string('atleast-pkgconfig-version', `A`, '',
+			'return 0 if pkgconfig version is at least the given one')
+		exactversion:      fp.string('exact-version', ` `, '',
+			'return 0 if pkg version is at least the given one')
 		version:           fp.bool('version', `v`, false, 'show version of this tool')
-		cflags:            fp.bool('cflags', `c`, false, 'output all pre-processor and compiler flags')
+		cflags:            fp.bool('cflags', `c`, false,
+			'output all pre-processor and compiler flags')
 		cflags_only_path:  fp.bool('cflags-only-I', `I`, false, 'show only -I flags from CFLAGS')
 		cflags_only_other: fp.bool('cflags-only-other', ` `, false, 'show cflags without -I')
 		stat1c:            fp.bool('static', `s`, false, 'show --libs for static linking')
 		libs:              fp.bool('libs', `l`, false, 'output all linker flags')
 		libs_only_link:    fp.bool('libs-only-l', ` `, false, 'show only -l from ldflags')
 		libs_only_path:    fp.bool('libs-only-L', `L`, false, 'show only -L from ldflags')
-		libs_only_other:   fp.bool('libs-only-other', ` `, false, 'show flags not containing -l or -L')
+		libs_only_other:   fp.bool('libs-only-other', ` `, false,
+			'show flags not containing -l or -L')
 		args:              fp.args
 	}
 }

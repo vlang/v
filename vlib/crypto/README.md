@@ -81,7 +81,8 @@ fn main() {
 
 fn make_token(secret string) string {
 	header := base64.url_encode(json.encode(JwtHeader{'HS256', 'JWT'}).bytes())
-	payload := base64.url_encode(json.encode(JwtPayload{'1234567890', 'John Doe', 1516239022}).bytes())
+	payload :=
+		base64.url_encode(json.encode(JwtPayload{'1234567890', 'John Doe', 1516239022}).bytes())
 	signature := base64.url_encode(hmac.new(secret.bytes(), '${header}.${payload}'.bytes(),
 		sha256.sum, sha256.block_size))
 	jwt := '${header}.${payload}.${signature}'
@@ -100,5 +101,18 @@ fn decode_payload(token string) !JwtPayload {
 	token_split := token.split('.')
 	payload := json.decode(JwtPayload, base64.url_decode_str(token_split[1]))!
 	return payload
+}
+```
+
+### Argon2 Password Hashing
+
+```v
+import crypto.argon2
+
+fn main() {
+	hash := argon2.generate_from_password('correct horse battery staple'.bytes())!
+	println(hash)
+
+	argon2.compare_hash_and_password('correct horse battery staple'.bytes(), hash.bytes())!
 }
 ```

@@ -11,7 +11,8 @@ pub fn new(key []u8, data []u8, hash_func fn ([]u8) []u8, blocksize int) []u8 {
 
 	mut b_key := []u8{}
 	if key.len <= blocksize {
-		b_key = key.clone() // TODO: remove .clone() once https://github.com/vlang/v/issues/6604 gets fixed
+		b_key =
+			key.clone() // TODO: remove .clone() once https://github.com/vlang/v/issues/6604 gets fixed
 	} else {
 		b_key = hash_func(key)
 	}

@@ -4,8 +4,7 @@ import v.util.diff
 
 const vroot = @VMODROOT
 const test_file = os.join_path(vroot, 'vlib', 'v', 'tests', 'vls', 'goto_def_test_data.vv')
-const mod1_text_file = os.join_path(vroot, 'vlib', 'v', 'tests', 'vls', 'sample_mod1',
-	'sample.v')
+const mod1_text_file = os.join_path(vroot, 'vlib', 'v', 'tests', 'vls', 'sample_mod1', 'sample.v')
 
 struct TestCase {
 	name        string

@@ -4,6 +4,7 @@ fn test_match_aliases() {
 		`0`...`9`, `a`...`f` { 'OK' }
 		else { 'NOT OK' }
 	}
+
 	println(ret)
 	assert ret == 'OK'
 }

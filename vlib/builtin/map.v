@@ -119,6 +119,26 @@ fn (d &DenseArray) has_index(i int) bool {
 	return d.deletes == 0 || unsafe { d.all_deleted[i] } == 0
 }
 
+@[inline]
+fn (mut d DenseArray) trim_deleted_tail() {
+	if d.deletes == 0 {
+		return
+	}
+	for d.len > 0 && unsafe { d.all_deleted[d.len - 1] } != 0 {
+		unsafe {
+			d.all_deleted[d.len - 1] = 0
+		}
+		d.deletes--
+		d.len--
+	}
+	if d.deletes == 0 {
+		unsafe {
+			free(d.all_deleted)
+			d.all_deleted = nil
+		}
+	}
+}
+
 // Make space to append an element and return index
 // The growth-factor is roughly 1.125 `(x + (x >> 3))`
 @[inline]
@@ -432,9 +452,11 @@ fn (mut m map) ensure_extra_metas_grow() {
 	m.extra_metas += extra_metas_inc
 	mem_size := (m.even_index + 2 + m.extra_metas)
 	unsafe {
-		x := realloc_data(byteptr(m.metas), int(size_of_u32 * old_mem_size), int(size_of_u32 * mem_size))
+		x := realloc_data(byteptr(m.metas), int(size_of_u32 * old_mem_size),
+			int(size_of_u32 * mem_size))
 		m.metas = &u32(x)
-		vmemset(byteptr(m.metas) + (mem_size - extra_metas_inc) * size_of_u32, 0, int(sizeof(u32) * extra_metas_inc))
+		vmemset(byteptr(m.metas) + (mem_size - extra_metas_inc) * size_of_u32, 0,
+			int(sizeof(u32) * extra_metas_inc))
 	}
 }
 
@@ -446,7 +468,8 @@ fn (mut m map) ensure_extra_metas(probe_count u32) {
 		m.extra_metas += extra_metas_inc
 		mem_size := (m.even_index + 2 + m.extra_metas)
 		unsafe {
-			x := realloc_data(byteptr(m.metas), int(size_of_u32 * old_mem_size), int(size_of_u32 * mem_size))
+			x := realloc_data(byteptr(m.metas), int(size_of_u32 * old_mem_size),
+				int(size_of_u32 * mem_size))
 			m.metas = &u32(x)
 			vmemset(byteptr(m.metas) + (mem_size - extra_metas_inc) * size_of_u32, 0,
 				int(sizeof(u32) * extra_metas_inc))
@@ -672,6 +695,11 @@ fn (m &map) exists(key voidptr) bool {
 
 @[inline]
 fn (mut d DenseArray) delete(i int) {
+	if i == d.len - 1 {
+		d.len--
+		d.trim_deleted_tail()
+		return
+	}
 	if d.deletes == 0 {
 		d.all_deleted = vcalloc(d.cap) // sets to 0
 	}
@@ -876,5 +904,14 @@ pub fn (m &map) free() {
 		m.key_eq_fn = nil
 		m.clone_fn = nil
 		m.free_fn = nil
+		m.key_values.cap = 0
+		m.key_values.len = 0
+		m.key_values.deletes = 0
+		m.even_index = 0
+		m.cached_hashbits = 0
+		m.shift = 0
+		m.extra_metas = 0
+		m.has_string_keys = false
+		m.len = 0
 	}
 }

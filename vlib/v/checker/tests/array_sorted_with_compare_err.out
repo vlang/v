@@ -19,7 +19,7 @@ vlib/v/checker/tests/array_sorted_with_compare_err.vv:4:37: error: cannot use `f
       |                                        ~~~~~~~~~~~~~~~~~
     5 |     println(name1)
     6 |
-Details: expected argument 1 to be a pointer, but the passed argument 1 is NOT a pointer
+Details: `FnSortCB`'s expected argument `const_a` to be a pointer, but the passed argument `a` is NOT a pointer
 vlib/v/checker/tests/array_sorted_with_compare_err.vv:7:37: error: cannot use `int literal` as `fn (voidptr, voidptr) int` in argument 1 to `[]string.sorted_with_compare`
     5 |     println(name1)
     6 | 

@@ -24,8 +24,8 @@ pub fn vmemcpy(dest voidptr, const_src voidptr, n isize) voidptr {
 	}
 	$if trace_vmemcpy_nulls ? {
 		if dest == unsafe { 0 } || const_src == unsafe { 0 } {
-			C.fprintf(C.stderr, c'vmemcpy null pointers passed, dest: %p src: %p n: %6ld\n',
-				dest, const_src, n)
+			C.fprintf(C.stderr, c'vmemcpy null pointers passed, dest: %p src: %p n: %6ld\n', dest,
+				const_src, n)
 			print_backtrace()
 		}
 	}
@@ -89,8 +89,7 @@ pub fn vmemset(s voidptr, c int, n isize) voidptr {
 	}
 	$if trace_vmemset_nulls ? {
 		if s == unsafe { 0 } {
-			C.fprintf(C.stderr, c'vmemset null pointers passed s: %p, c: %6d, n: %6ld\n',
-				s, c, n)
+			C.fprintf(C.stderr, c'vmemset null pointers passed s: %p, c: %6d, n: %6ld\n', s, c, n)
 			print_backtrace()
 		}
 	}
@@ -105,20 +104,76 @@ pub fn vmemset(s voidptr, c int, n isize) voidptr {
 type FnSortCB = fn (const_a voidptr, const_b voidptr) int
 
 @[inline; unsafe]
+fn vsort_ptr_at(base voidptr, index usize, size usize) voidptr {
+	return unsafe { voidptr(&u8(base) + index * size) }
+}
+
+@[unsafe]
+fn vstable_sort_merge(source voidptr, dest voidptr, left usize, mid usize, right usize, size usize, sort_cb FnSortCB) {
+	mut left_index := left
+	mut right_index := mid
+	mut dest_index := left
+	for left_index < mid && right_index < right {
+		left_ptr := vsort_ptr_at(source, left_index, size)
+		right_ptr := vsort_ptr_at(source, right_index, size)
+		if sort_cb(left_ptr, right_ptr) <= 0 {
+			vmemcpy(vsort_ptr_at(dest, dest_index, size), left_ptr, isize(size))
+			left_index++
+		} else {
+			vmemcpy(vsort_ptr_at(dest, dest_index, size), right_ptr, isize(size))
+			right_index++
+		}
+		dest_index++
+	}
+	if left_index < mid {
+		vmemcpy(vsort_ptr_at(dest, dest_index, size), vsort_ptr_at(source, left_index, size),
+			isize((mid - left_index) * size))
+	}
+	if right_index < right {
+		vmemcpy(vsort_ptr_at(dest, dest_index, size), vsort_ptr_at(source, right_index, size),
+			isize((right - right_index) * size))
+	}
+}
+
+@[inline; unsafe]
 fn vqsort(base voidptr, nmemb usize, size usize, sort_cb FnSortCB) {
 	$if trace_vqsort ? {
-		C.fprintf(C.stderr, c'vqsort base: %p, nmemb: %6uld, size: %6uld, sort_cb: %p\n',
-			base, nmemb, size, sort_cb)
+		C.fprintf(C.stderr, c'vqsort base: %p, nmemb: %6uld, size: %6uld, sort_cb: %p\n', base,
+			nmemb, size, sort_cb)
 	}
-	if nmemb == 0 {
+	if nmemb < 2 || size == 0 {
 		return
 	}
 	$if trace_vqsort_nulls ? {
-		if base == unsafe { 0 } || u64(sort_cb) == 0 {
-			C.fprintf(C.stderr, c'vqsort null pointers passed base: %p, nmemb: %6uld, size: %6uld, sort_cb: %p\n',
+		if base == unsafe { 0 } || voidptr(sort_cb) == unsafe { nil } {
+			C.fprintf(C.stderr,
+				c'vqsort null pointers passed base: %p, nmemb: %6uld, size: %6uld, sort_cb: %p\n',
 				base, nmemb, size, sort_cb)
 			print_backtrace()
 		}
 	}
-	C.qsort(base, nmemb, size, voidptr(sort_cb))
+	total_size := isize(nmemb * size)
+	buffer := malloc(total_size)
+	defer {
+		free(buffer)
+	}
+	mut source := base
+	mut dest := voidptr(buffer)
+	mut width := usize(1)
+	for width < nmemb {
+		mut left := usize(0)
+		for left < nmemb {
+			mid := if left + width < nmemb { left + width } else { nmemb }
+			right := if left + width + width < nmemb { left + width + width } else { nmemb }
+			vstable_sort_merge(source, dest, left, mid, right, size, sort_cb)
+			left += width + width
+		}
+		mut tmp := source
+		source = dest
+		dest = tmp
+		width += width
+	}
+	if source != base {
+		vmemcpy(base, source, total_size)
+	}
 }

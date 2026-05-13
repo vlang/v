@@ -117,9 +117,24 @@ pub struct Test {
 	val string
 }
 
+struct SharedMapHolder {
+	a     int
+	cache shared map[u64]string
+}
+
 fn test_encode_struct() {
 	enc := json.encode(Test{'hello!'})
 	assert enc == '{"val":"hello!"}'
+}
+
+fn test_encode_struct_with_shared_map_field() {
+	mut holder := SharedMapHolder{
+		a: 1
+	}
+
+	rlock holder.cache {
+		assert json.encode(holder) == '{"a":1,"cache":{}}'
+	}
 }
 
 pub struct Uri {
@@ -169,13 +184,13 @@ fn test_encode_value() {
 fn test_encode_time() {
 	assert json.encode({
 		'bro': json.Any(time.Time{})
-	}) == '{"bro":"0000-00-00T00:00:00.000Z"}'
+	}) == '{"bro":"0000-01-01T00:00:00.000Z"}'
 
 	assert json.encode({
 		'bro': time.Time{}
-	}) == '{"bro":"0000-00-00T00:00:00.000Z"}'
+	}) == '{"bro":"0000-01-01T00:00:00.000Z"}'
 
-	assert json.encode(time.Time{}) == '"0000-00-00T00:00:00.000Z"'
+	assert json.encode(time.Time{}) == '"0000-01-01T00:00:00.000Z"'
 }
 
 fn test_encode_float() {

@@ -337,20 +337,20 @@ pub fn (mut e ElfObject) write(path string) {
 			break
 		}
 	}
-	write_shdr(mut buf, u32(off_symtab_name), sht_symtab, 0, u64(off_symtab), u64(size_symtab),
-		5, u32(first_global), 8, 24)
+	write_shdr(mut buf, u32(off_symtab_name), sht_symtab, 0, u64(off_symtab), u64(size_symtab), 5,
+		u32(first_global), 8, 24)
 
 	// 5: .strtab
 	write_shdr(mut buf, u32(off_strtab_name), sht_strtab, 0, u64(off_strtab), u64(e.str_table.len),
 		0, 0, 1, 0)
 
 	// 6: .rela.text (EntSize = 24)
-	write_shdr(mut buf, u32(off_rela_text_name), sht_rela, 0, u64(off_rela_text), u64(size_rela_text),
-		4, 1, 8, 24)
+	write_shdr(mut buf, u32(off_rela_text_name), sht_rela, 0, u64(off_rela_text),
+		u64(size_rela_text), 4, 1, 8, 24)
 
 	// 7: .shstrtab
-	write_shdr(mut buf, u32(off_shstrtab_name), sht_strtab, 0, u64(off_shstrtab), u64(e.shstr_table.len),
-		0, 0, 1, 0)
+	write_shdr(mut buf, u32(off_shstrtab_name), sht_strtab, 0, u64(off_shstrtab),
+		u64(e.shstr_table.len), 0, 0, 1, 0)
 
 	os.write_file_array(path, buf) or { panic(err) }
 }

@@ -9,7 +9,8 @@ import encoding.hex
 
 fn test_privatekey_from_bytes() ! {
 	// for sha2_128s
-	priv := hex.decode('4329f96b412b5d5ca9c730c9d54e52595265f6fc3ea67c183aa7043d90e949b8fd320c8fc0fa6a23462483535f131b9ea265848e7bb5f4d3cfd99de2595382b3')!
+	priv :=
+		hex.decode('4329f96b412b5d5ca9c730c9d54e52595265f6fc3ea67c183aa7043d90e949b8fd320c8fc0fa6a23462483535f131b9ea265848e7bb5f4d3cfd99de2595382b3')!
 	mut pv := PrivateKey.from_bytes(priv, .sha2_128s)!
 
 	sig := pv.sign('test'.bytes())!

@@ -92,8 +92,7 @@ fn test_wasm() {
 				continue
 			}
 		} else {
-			os.write_file(outfile, res_wasm.output.trim_right('\r\n').replace('\r\n',
-				'\n'))!
+			os.write_file(outfile, res_wasm.output.trim_right('\r\n').replace('\r\n', '\n'))!
 		}
 		bench.ok()
 		eprintln(bench.step_message_ok(relative_test_path))

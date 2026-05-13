@@ -97,22 +97,18 @@ fn (mut g Gen) assert_stmt(original_assert_statement ast.AssertStmt) {
 	}
 
 	if mut node.expr is ast.InfixExpr {
-		if node.expr.left is ast.CTempVar {
+		restore_left := node.expr.left is ast.CTempVar
+		restore_right := node.expr.right is ast.CTempVar
+		if restore_left {
 			node.expr.left = save_left
 		}
-		if node.expr.right is ast.CTempVar {
+		if restore_right {
 			node.expr.right = save_right
 		}
 	}
 }
 
-struct UnsupportedAssertCtempTransform {
-	Error
-}
-
-const unsupported_ctemp_assert_transform = IError(UnsupportedAssertCtempTransform{})
-
-fn (mut g Gen) assert_subexpression_to_ctemp(expr ast.Expr, expr_type ast.Type) !ast.Expr {
+fn (mut g Gen) assert_subexpression_to_ctemp(expr ast.Expr, expr_type ast.Type) ?ast.Expr {
 	match expr {
 		ast.CallExpr {
 			return g.new_ctemp_var_then_gen(expr, expr_type)
@@ -130,7 +126,7 @@ fn (mut g Gen) assert_subexpression_to_ctemp(expr ast.Expr, expr_type ast.Type) 
 				sym := g.table.final_sym(g.unwrap_generic(expr.expr.return_type))
 				if sym.kind == .struct {
 					if (sym.info as ast.Struct).is_union {
-						return unsupported_ctemp_assert_transform
+						return none
 					}
 				}
 				return g.new_ctemp_var_then_gen(expr, expr_type)
@@ -158,7 +154,8 @@ fn (mut g Gen) assert_subexpression_to_ctemp(expr ast.Expr, expr_type ast.Type) 
 			}
 		}
 	}
-	return unsupported_ctemp_assert_transform
+
+	return none
 }
 
 fn (mut g Gen) gen_assert_postfailure_mode(node ast.AssertStmt) {
@@ -166,6 +163,10 @@ fn (mut g Gen) gen_assert_postfailure_mode(node ast.AssertStmt) {
 	if g.pref.assert_failure_mode == .continues
 		|| g.fn_decl.attrs.any(it.name == 'assert_continues') {
 		return
+	}
+	if g.pref.is_test && !g.inside_defer_generation && g.cur_fn != unsafe { nil }
+		&& g.cur_fn.scope != unsafe { nil } {
+		g.write_defer_stmts_when_needed(g.innermost_active_defer_scope(node.pos), true, node.pos)
 	}
 	if g.pref.assert_failure_mode == .aborts || g.fn_decl.attrs.any(it.name == 'assert_aborts') {
 		g.writeln('\tabort();')
@@ -280,6 +281,7 @@ fn (mut g Gen) gen_assert_metainfo_common(node ast.AssertStmt) string {
 		}
 		else {}
 	}
+
 	return metaname
 }
 

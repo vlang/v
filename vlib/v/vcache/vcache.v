@@ -49,7 +49,8 @@ fn remove_old_cache_folder() {
 pub fn new_cache_manager(opts []string) CacheManager {
 	// use a path, that would not conflict with a user installable module. `import .cache` is not valid, => better than just `cache`:
 	vcache_basepath := os.getenv_opt('VCACHE') or { os.join_path(os.vmodules_dir(), '.cache') }
-	nlog(@FN, 'vcache_basepath: ${vcache_basepath}\n         opts: ${opts}\n      os.args: ${os.args.join(' ')}')
+	nlog(@FN,
+		'vcache_basepath: ${vcache_basepath}\n         opts: ${opts}\n      os.args: ${os.args.join(' ')}')
 	dlog(@FN, 'vcache_basepath: ${vcache_basepath} | opts:\n     ${opts}')
 	if !os.is_dir(vcache_basepath) {
 		remove_old_cache_folder()
@@ -86,6 +87,7 @@ pub fn new_cache_manager(opts []string) CacheManager {
 // without affecting the .original_vopts
 pub fn (mut cm CacheManager) set_temporary_options(new_opts []string) {
 	cm.vopts = cm.original_vopts + '#' + new_opts.join('|')
+	cm.k2cpath = map[string]string{}
 	dlog(@FN, 'cm.vopts:\n     ${cm.vopts}')
 }
 

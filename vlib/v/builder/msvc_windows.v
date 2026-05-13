@@ -25,7 +25,8 @@ fn find_windows_kit_internal(key RegKey, versions []string) !string {
 		unsafe {
 			for version in versions {
 				required_bytes := u32(0) // TODO: mut
-				result := C.RegQueryValueEx(key, version.to_wide(), 0, 0, 0, voidptr(&required_bytes))
+				result := C.RegQueryValueEx(key, version.to_wide(), 0, 0, 0,
+					voidptr(&required_bytes))
 				length := required_bytes / 2
 				if result != 0 {
 					continue
@@ -85,8 +86,8 @@ fn find_windows_kit_root_by_reg(target_arch string) !WindowsKit {
 	$if windows {
 		root_key := RegKey(0)
 		path := 'SOFTWARE\\Microsoft\\Windows Kits\\Installed Roots'
-		rc := C.RegOpenKeyEx(hkey_local_machine, path.to_wide(), 0, key_query_value | key_wow64_32key | key_enumerate_sub_keys,
-			voidptr(&root_key))
+		rc := C.RegOpenKeyEx(hkey_local_machine, path.to_wide(), 0,
+			key_query_value | key_wow64_32key | key_enumerate_sub_keys, voidptr(&root_key))
 
 		if rc != 0 {
 			return error('Unable to open root key')
@@ -161,7 +162,8 @@ fn find_vs_by_reg(vswhere_dir string, host_arch string, target_arch string) !VsI
 		// VSWhere is guaranteed to be installed at this location now
 		// If its not there then end user needs to update their visual studio
 		// installation!
-		res := os.execute('"${vswhere_dir}\\Microsoft Visual Studio\\Installer\\vswhere.exe" -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath')
+		res :=
+			os.execute('"${vswhere_dir}\\Microsoft Visual Studio\\Installer\\vswhere.exe" -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath')
 		// println('res: "${res}"')
 		if res.exit_code != 0 {
 			return error_with_code(res.output, res.exit_code)
@@ -318,8 +320,9 @@ pub fn (mut v Builder) cc_msvc() {
 		eprintln('Sanitize not supported on msvc.')
 	}
 	// The C file we are compiling
-	// a << '"$TmpPath/${v.out_name_c}"'
-	a << '"' + os.real_path(v.out_name_c) + '"'
+	// Use /Tc<file> instead of /TC, otherwise .lib/.obj linker inputs are also
+	// treated as C sources.
+	a << '/Tc' + os.quoted_path(os.real_path(v.out_name_c))
 	if !v.ccoptions.debug_mode {
 		v.pref.cleanup_files << os.real_path(v.out_name_c)
 	}
@@ -355,6 +358,9 @@ pub fn (mut v Builder) cc_msvc() {
 
 	a << '/nologo' // NOTE: /NOLOGO is explicitly not recognised!
 	a << '/OUT:${os.quoted_path(v.pref.out_name)}'
+	if v.pref.is_livemain {
+		a << '/IMPLIB:${os.quoted_path(v.pref.out_name[..v.pref.out_name.len - 4] + '.lib')}'
+	}
 	a << r.library_paths()
 	if !all_cflags.contains('/DEBUG') {
 		// only use /DEBUG, if the user *did not* provide its own:
@@ -384,20 +390,29 @@ pub fn (mut v Builder) cc_msvc() {
 	}
 	a = filtered_args.clone()
 	v.dump_c_options(a)
-	args := '\xEF\xBB\xBF' + a.join(' ') // write a BOM to indicate the utf8 encoding of the file
-	// write args to a file so that we dont smash createprocess
-	os.write_file(out_name_cmd_line, args) or {
-		verror('Unable to write response file to "${out_name_cmd_line}"')
+	raw_args := a.join(' ')
+	mut args := raw_args
+	mut response_file := ''
+	mut cmd := '"${r.full_cl_exe_path}" ${raw_args.replace('\n', ' ')}'
+	if v.msvc_should_use_rsp(a) {
+		args = '\xEF\xBB\xBF' + raw_args // write a BOM to indicate the utf8 encoding of the file
+		// write args to a file so that we dont smash createprocess
+		os.write_file(out_name_cmd_line, args) or {
+			verror('Unable to write response file to "${out_name_cmd_line}"')
+		}
+		response_file = out_name_cmd_line
+		cmd = '"${r.full_cl_exe_path}" "@${out_name_cmd_line}"'
 	}
 	if !v.ccoptions.debug_mode {
-		v.pref.cleanup_files << out_name_cmd_line
+		if response_file != '' {
+			v.pref.cleanup_files << out_name_cmd_line
+		}
 		v.pref.cleanup_files << app_dir_out_name_c + '.obj'
 		v.pref.cleanup_files << app_dir_out_name + '.ilk'
 	}
-	cmd := '"${r.full_cl_exe_path}" "@${out_name_cmd_line}"'
 	// It is hard to see it at first, but the quotes above ARE balanced :-| ...
 	// Also the double quotes at the start ARE needed.
-	v.show_cc(cmd, out_name_cmd_line, args)
+	v.show_cc(cmd, response_file, args)
 	if os.user_os() != 'windows' && !v.pref.out_name.ends_with('.c') {
 		verror('cannot build with msvc on ${os.user_os()}')
 	}
@@ -414,27 +429,19 @@ pub fn (mut v Builder) cc_msvc() {
 	} else {
 		v.post_process_c_compiler_output(r.full_cl_exe_path, res)
 	}
+	v.apply_windows_icon_to_executable() or { verror(err.msg()) }
 	// println(res)
 	// println('C OUTPUT:')
 }
 
-fn (mut v Builder) build_thirdparty_obj_file_with_msvc(_mod string, path string, moduleflags []cflag.CFlag) {
+fn (mut v Builder) build_thirdparty_obj_file_with_msvc(mod string, path string, moduleflags []cflag.CFlag) {
 	if v.cached_msvc.valid == false {
 		verror('cannot find MSVC on this OS')
 	}
 	msvc := v.cached_msvc
 	trace_thirdparty_obj_files := 'trace_thirdparty_obj_files' in v.pref.compile_defines
-	// msvc expects .obj not .o
-	path_without_o_postfix := path[..path.len - 2] // remove .o
-	mut obj_path := if v.pref.is_debug {
-		// compiling in debug mode (-cg / -g), should produce and use its own completely separate .obj file,
-		// since it uses /MDD . Those .obj files can not be mixed with programs/objects compiled with just /MD .
-		// See https://stackoverflow.com/questions/924830/what-is-difference-btw-md-and-mdd-in-visualstudio-c
-		'${path_without_o_postfix}.debug.obj'
-	} else {
-		'${path_without_o_postfix}.obj'
-	}
-	obj_path = os.real_path(obj_path)
+	path_without_o_postfix := path.all_before_last('.')
+	obj_path := v.msvc_thirdparty_obj_path(mod, path, '')
 	if os.exists(obj_path) {
 		// println('${obj_path} already built.')
 		return
@@ -452,7 +459,7 @@ fn (mut v Builder) build_thirdparty_obj_file_with_msvc(_mod string, path string,
 	defines := flags.defines.join(' ')
 
 	mut oargs := []string{}
-	env_cflags := os.getenv('CFLAGS')
+	env_cflags := os.getenv('CFLAGS').replace('\r', ' ').replace('\n', ' ')
 	mut all_cflags := '${env_cflags} ${v.pref.cflags}'
 	if all_cflags != ' ' {
 		oargs << all_cflags
@@ -478,7 +485,7 @@ fn (mut v Builder) build_thirdparty_obj_file_with_msvc(_mod string, path string,
 	oargs << inc_dirs
 	oargs << '/c "${cfile}"'
 	oargs << '/Fo"${obj_path}"'
-	env_ldflags := os.getenv('LDFLAGS')
+	env_ldflags := os.getenv('LDFLAGS').replace('\r', ' ').replace('\n', ' ')
 	mut all_ldflags := '${env_ldflags} ${v.pref.ldflags}'
 	if all_ldflags != '' {
 		oargs << all_ldflags
@@ -664,8 +671,8 @@ pub fn (mut v Builder) msvc_string_flags(cflags []cflag.CFlag) MsvcStringFlags {
 				}
 				real_libs << lib
 				if parts.len > 1 {
-					_, leftover := split_and_apply_gnu_flags(parts[1..].join(' '), mut
-						inc_paths, mut lib_paths, mut real_libs)
+					_, leftover := split_and_apply_gnu_flags(parts[1..].join(' '), mut inc_paths, mut
+						lib_paths, mut real_libs)
 					if leftover != '' {
 						other_flags << strip_quotes(leftover)
 					}
@@ -691,9 +698,7 @@ pub fn (mut v Builder) msvc_string_flags(cflags []cflag.CFlag) MsvcStringFlags {
 					if part == '' {
 						continue
 					}
-					if apply_gnu_flag_to_msvc(part, mut inc_paths, mut lib_paths, mut
-						real_libs)
-					{
+					if apply_gnu_flag_to_msvc(part, mut inc_paths, mut lib_paths, mut real_libs) {
 						continue
 					}
 					if !part.starts_with('-') {
@@ -726,9 +731,7 @@ pub fn (mut v Builder) msvc_string_flags(cflags []cflag.CFlag) MsvcStringFlags {
 					if part == '' {
 						continue
 					}
-					if apply_gnu_flag_to_msvc(part, mut inc_paths, mut lib_paths, mut
-						real_libs)
-					{
+					if apply_gnu_flag_to_msvc(part, mut inc_paths, mut lib_paths, mut real_libs) {
 						continue
 					}
 					if !part.starts_with('-') {
@@ -744,15 +747,8 @@ pub fn (mut v Builder) msvc_string_flags(cflags []cflag.CFlag) MsvcStringFlags {
 			// Note: gcc is smart enough to not need .lib files at all in most cases, the .dll is enough.
 			// When both a msvc .lib file and .dll file are present in the same folder,
 			// as for example for glfw3, compilation with gcc would fail.
-		} else if flag.value.ends_with('.o') {
-			// TODO: use flag.format() here as well; `#flag -L$when_first_existing(...)` is a more explicit way to achieve the same
-			// msvc expects .obj not .o
-			path_with_no_o := flag.value[..flag.value.len - 2]
-			if v.pref.is_debug {
-				other_flags << '"${path_with_no_o}.debug.obj"'
-			} else {
-				other_flags << '"${path_with_no_o}.obj"'
-			}
+		} else if flag.value.ends_with('.o') || flag.value.ends_with('.obj') {
+			other_flags << '"${v.msvc_thirdparty_obj_path(flag.mod, flag.value, flag.cached)}"'
 		} else if flag.value.starts_with('-D') {
 			defines << '/D${flag.value[2..]}'
 		} else {

@@ -1,0 +1,37 @@
+module main
+
+import gg
+
+const win_width = 100
+const win_height = 100
+
+struct App {
+mut:
+	gg    &gg.Context = unsafe { nil }
+	image int
+}
+
+fn main() {
+	mut app := &App{}
+	app.gg = gg.new_context(
+		width:        win_width
+		height:       win_height
+		window_title: 'issue 10989'
+		frame_fn:     frame
+		user_data:    app
+		init_fn:      initialize
+	)
+	app.gg.run()
+}
+
+fn initialize(mut app App) {
+	buffer := []u8{len: 10 * 10}
+	app.image = app.gg.new_streaming_image(10, 10, 1, pixel_format: .r8)
+	app.gg.update_pixel_data(app.image, buffer.data)
+}
+
+fn frame(mut app App) {
+	app.gg.begin()
+	app.gg.draw_image_by_id(0, 0, 10, 10, app.image)
+	app.gg.end()
+}

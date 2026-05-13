@@ -28,11 +28,15 @@ pub enum BodyType {
 	html
 }
 
-pub struct Client {
-mut:
-	conn     net.TcpConn
-	ssl_conn &ssl.SSLConn = unsafe { nil }
-	reader   ?&io.BufferedReader
+// Message stores one body variant and optional attachments for a Mail.
+pub struct Message {
+pub:
+	body        string
+	attachments []Attachment
+}
+
+// Config stores the settings used to connect a new SMTP client.
+pub struct Config {
 pub:
 	server   string
 	port     int = 25
@@ -41,11 +45,21 @@ pub:
 	from     string
 	ssl      bool
 	starttls bool
+	timeout  time.Duration
+}
+
+pub struct Client {
+	Config
+mut:
+	conn     net.TcpConn
+	ssl_conn &ssl.SSLConn = unsafe { nil }
+	reader   ?&io.BufferedReader
 pub mut:
 	is_open   bool
 	encrypted bool
 }
 
+// Mail stores the message headers and MIME payload sent by Client.send.
 pub struct Mail {
 pub:
 	from        string
@@ -57,6 +71,8 @@ pub:
 	body_type   BodyType
 	body        string
 	attachments []Attachment
+	html        Message
+	text        Message
 	boundary    string
 }
 
@@ -68,13 +84,13 @@ pub:
 }
 
 // new_client returns a new SMTP client and connects to it
-pub fn new_client(config Client) !&Client {
+pub fn new_client(config Config) !&Client {
 	if config.ssl && config.starttls {
 		return error('Can not use both implicit SSL and STARTTLS')
 	}
 
 	mut c := &Client{
-		...config
+		Config: config
 	}
 	c.reconnect()!
 	return c
@@ -86,7 +102,13 @@ pub fn (mut c Client) reconnect() ! {
 		return error('Already connected to server')
 	}
 
-	conn := net.dial_tcp('${c.server}:${c.port}') or { return error('Connecting to server failed') }
+	mut conn := net.dial_tcp('${c.server}:${c.port}') or {
+		return error('Connecting to server failed')
+	}
+	if c.timeout != 0 {
+		conn.set_read_timeout(c.timeout)
+		conn.set_write_timeout(c.timeout)
+	}
 	c.conn = conn
 
 	if c.ssl || c.encrypted {
@@ -220,14 +242,44 @@ fn (mut c Client) send_auth() ! {
 	c.expect_reply(.auth_ok)!
 }
 
+// envelope_addr extracts the bare mailbox from an address that may include a
+// display name. The SMTP envelope (`MAIL FROM:` / `RCPT TO:`) only accepts a
+// bare mailbox (RFC 5321), while `Mail.from`/`Mail.to` may also be written in
+// the RFC 5322 `Display Name <addr@example.com>` form for the message header.
+//
+// Only strip an angle-addr wrapper when the input actually ends in `>`; bare
+// mailboxes are returned unchanged. When walking for the opening `<`, quoted
+// strings are skipped so a quoted local-part like `"a<b"@example.com` is
+// preserved intact.
+fn envelope_addr(s string) string {
+	trimmed := s.trim_space()
+	if !trimmed.ends_with('>') {
+		return trimmed
+	}
+	mut in_quote := false
+	mut i := 0
+	for i < trimmed.len - 1 {
+		c := trimmed[i]
+		if c == `"` {
+			in_quote = !in_quote
+		} else if in_quote && c == `\\` && i + 1 < trimmed.len {
+			i++
+		} else if c == `<` && !in_quote {
+			return trimmed[i + 1..trimmed.len - 1]
+		}
+		i++
+	}
+	return trimmed
+}
+
 fn (mut c Client) send_mailfrom(from string) ! {
-	c.send_str('MAIL FROM: <${from}>\r\n')!
+	c.send_str('MAIL FROM:<${envelope_addr(from)}>\r\n')!
 	c.expect_reply(.action_ok)!
 }
 
 fn (mut c Client) send_mailto(to string) ! {
 	for rcpt in to.split(';') {
-		c.send_str('RCPT TO: <${rcpt}>\r\n')!
+		c.send_str('RCPT TO:<${envelope_addr(rcpt)}>\r\n')!
 		c.expect_reply(.action_ok)!
 	}
 }
@@ -238,10 +290,16 @@ fn (mut c Client) send_data() ! {
 }
 
 fn (mut c Client) send_body(cfg Mail) ! {
-	is_html := cfg.body_type == .html
+	c.send_str(cfg.message_data())!
+	c.expect_reply(.action_ok)!
+}
+
+fn (cfg &Mail) message_data() string {
 	date := cfg.date.custom_format('ddd, D MMM YYYY HH:mm ZZ')
 	nonascii_subject := cfg.subject.bytes().any(it < u8(` `) || it > u8(`~`))
-	mut sb := strings.new_builder(200)
+	parts, attachments := cfg.mime_parts()
+	mut sb := strings.new_builder(200 + cfg.body.len + cfg.text.body.len + cfg.html.body.len +
+		(cfg.attachments.len + cfg.text.attachments.len + cfg.html.attachments.len) * 200)
 	sb.write_string('From: ${cfg.from}\r\n')
 	sb.write_string('To: <${cfg.to.split(';').join('>; <')}>\r\n')
 	sb.write_string('Cc: <${cfg.cc.split(';').join('>; <')}>\r\n')
@@ -253,41 +311,132 @@ fn (mut c Client) send_body(cfg Mail) ! {
 	} else {
 		sb.write_string('Subject: ${cfg.subject}\r\n')
 	}
-	if cfg.attachments.len > 0 {
+	if parts.len > 1 || attachments.len > 0 {
 		sb.write_string('MIME-Version: 1.0\r\n')
-		sb.write_string('Content-Type: multipart/mixed; boundary="${cfg.boundary}"\r\n--${cfg.boundary}\r\n')
 	}
-	if is_html {
+
+	boundary := cfg.mime_boundary()
+	if parts.len > 1 && attachments.len > 0 {
+		alternative_boundary := '${boundary}-alternative'
+		write_multipart_header(mut sb, 'multipart/mixed', boundary)
+		write_multipart_boundary(mut sb, boundary)
+		write_multipart_header(mut sb, 'multipart/alternative', alternative_boundary)
+		for part in parts {
+			write_multipart_boundary(mut sb, alternative_boundary)
+			write_message_part(mut sb, part)
+		}
+		write_multipart_end(mut sb, alternative_boundary)
+		write_attachments(mut sb, attachments, boundary)
+	} else if parts.len > 1 {
+		write_multipart_header(mut sb, 'multipart/alternative', boundary)
+		for part in parts {
+			write_multipart_boundary(mut sb, boundary)
+			write_message_part(mut sb, part)
+		}
+		write_multipart_end(mut sb, boundary)
+	} else if attachments.len > 0 {
+		write_multipart_header(mut sb, 'multipart/mixed', boundary)
+		write_multipart_boundary(mut sb, boundary)
+		write_message_part(mut sb, parts[0])
+		write_attachments(mut sb, attachments, boundary)
+	} else {
+		write_message_part(mut sb, parts[0])
+	}
+	sb.write_string('.\r\n')
+	return sb.str()
+}
+
+struct MimePart {
+	body_type BodyType
+	body      string
+}
+
+fn (cfg &Mail) mime_parts() ([]MimePart, []Attachment) {
+	if cfg.text.body != '' || cfg.html.body != '' {
+		mut parts := []MimePart{cap: 2}
+		mut attachments := []Attachment{cap: cfg.text.attachments.len + cfg.html.attachments.len}
+		if cfg.text.body != '' {
+			parts << MimePart{
+				body_type: .text
+				body:      cfg.text.body
+			}
+		}
+		attachments << cfg.text.attachments
+		if cfg.html.body != '' {
+			parts << MimePart{
+				body_type: .html
+				body:      cfg.html.body
+			}
+		}
+		attachments << cfg.html.attachments
+		return parts, attachments
+	}
+	return [MimePart{
+		body_type: cfg.body_type
+		body:      cfg.body
+	}], cfg.attachments
+}
+
+fn (cfg &Mail) mime_boundary() string {
+	if cfg.boundary != '' {
+		return cfg.boundary
+	}
+	return 'v-smtp-boundary'
+}
+
+fn write_multipart_header(mut sb strings.Builder, multipart_type string, boundary string) {
+	sb.write_string('Content-Type: ${multipart_type}; boundary="${boundary}"\r\n\r\n')
+}
+
+fn write_multipart_boundary(mut sb strings.Builder, boundary string) {
+	sb.write_string('--${boundary}\r\n')
+}
+
+fn write_multipart_end(mut sb strings.Builder, boundary string) {
+	sb.write_string('--${boundary}--\r\n')
+}
+
+fn write_message_part(mut sb strings.Builder, part MimePart) {
+	if part.body_type == .html {
 		sb.write_string('Content-Type: text/html; charset=UTF-8\r\n')
 	} else {
 		sb.write_string('Content-Type: text/plain; charset=UTF-8\r\n')
 	}
 	sb.write_string('Content-Transfer-Encoding: base64\r\n\r\n')
-	sb.write_string(base64.encode_str(cfg.body))
+	sb.write_string(fold_base64(base64.encode_str(part.body)))
 	sb.write_string('\r\n')
-	if cfg.attachments.len > 0 {
-		sb.write_string('\r\n--${cfg.boundary}\r\n')
-		sb.write_string(cfg.attachments_to_string())
-	}
-	sb.write_string('\r\n.\r\n')
-	c.send_str(sb.str())!
-	c.expect_reply(.action_ok)!
 }
 
-fn (a &Attachment) to_string(boundary string) string {
+fn write_attachments(mut sb strings.Builder, attachments []Attachment, boundary string) {
+	for attachment in attachments {
+		write_multipart_boundary(mut sb, boundary)
+		sb.write_string(attachment.to_string())
+		sb.write_string('\r\n')
+	}
+	write_multipart_end(mut sb, boundary)
+}
+
+fn (a &Attachment) to_string() string {
 	crlf := '\r\n'
 	cid := if a.cid != '' {
 		'Content-ID: <${a.cid}>${crlf}'
 	} else {
 		''
 	}
-	return 'Content-Type: application/octet-stream${crlf}${cid}Content-Transfer-Encoding: base64${crlf}Content-Disposition: attachment; filename="${a.filename}"${crlf}${crlf}${base64.encode(a.bytes)}${crlf}--${boundary}${crlf}'
+	return 'Content-Type: application/octet-stream${crlf}${cid}Content-Transfer-Encoding: base64${crlf}Content-Disposition: attachment; filename="${a.filename}"${crlf}${crlf}${fold_base64(base64.encode(a.bytes))}'
 }
 
-fn (m &Mail) attachments_to_string() string {
-	mut res := ''
-	for a in m.attachments {
-		res += a.to_string(m.boundary)
+fn fold_base64(encoded string) string {
+	if encoded.len <= 76 {
+		return encoded
 	}
-	return if res.len > 0 { res[..res.len - 2] } else { '' } + '\r\n'
+	mut sb := strings.new_builder(encoded.len + encoded.len / 76 * 2)
+	for start := 0; start < encoded.len; start += 76 {
+		end := if start + 76 < encoded.len { start + 76 } else { encoded.len }
+		sb.write_string(encoded[start..end])
+		if end < encoded.len {
+			sb.write_string('\r\n')
+		}
+	}
+	return sb.str()
 }

@@ -1,0 +1,19 @@
+struct SomeStruct {
+	err ?IError
+}
+
+fn some_fn_that_produce_err() ! {
+	return error('hey')
+}
+
+fn (c SomeStruct) check() int {
+	some_fn_that_produce_err() or {
+		assert c.err? == err
+		return 0
+	}
+	return 1
+}
+
+fn main() {
+	SomeStruct{}.check()
+}

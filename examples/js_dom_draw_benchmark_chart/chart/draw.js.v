@@ -15,16 +15,6 @@ fn get_canvas(elem JS.HTMLElement) JS.HTMLCanvasElement {
 	}
 }
 
-fn draw_line(mut context JS.CanvasRenderingContext2D, _x1 int, _y1 int, _x2 int, _y2 int) {
-	context.beginPath()
-	context.strokeStyle = 'black'.str
-	context.lineWidth = JS.Number(1)
-	context.moveTo(JS.Number(0), JS.Number(0))
-	context.lineTo(JS.Number(100), JS.Number(100))
-	context.stroke()
-	context.closePath()
-}
-
 struct DrawState {
 mut:
 	context JS.CanvasRenderingContext2D
@@ -86,9 +76,10 @@ fn main() {
 
 		ctx := canvas[orm_stmt_kind].getContext('2d'.str, js_undefined())?
 
-		context := match ctx {
+		mut context := JS.CanvasRenderingContext2D{}
+		match ctx {
 			JS.CanvasRenderingContext2D {
-				ctx
+				context = ctx
 			}
 			else {
 				panic('can not get 2d context')
@@ -97,7 +88,8 @@ fn main() {
 
 		mut state := DrawState{context, false, 0, 0}
 
-		mut inserts_from_framework := canvas_elem[orm_stmt_kind].getAttribute('inserts_from_framework'.str)?
+		mut inserts_from_framework :=
+			canvas_elem[orm_stmt_kind].getAttribute('inserts_from_framework'.str)?
 
 		mut max_benchmark := canvas_elem[orm_stmt_kind].getAttribute('max_benchmark'.str)?
 

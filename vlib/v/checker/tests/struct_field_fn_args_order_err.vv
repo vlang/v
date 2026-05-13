@@ -1,0 +1,17 @@
+pub type WindowResizeFn = fn (window &Window, w int, h int)
+
+@[params]
+pub struct WindowParams {
+pub:
+	on_resize WindowResizeFn = unsafe { nil }
+}
+
+pub struct Window {}
+
+fn main() {
+	_ := WindowParams{
+		on_resize: fn (a int, b int, win &Window) {
+			println(win)
+		}
+	}
+}

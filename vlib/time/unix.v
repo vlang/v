@@ -43,7 +43,8 @@ pub fn unix_nanosecond(abs_unix_timestamp i64, nanosecond int) Time {
 		day_offset--
 	}
 	year, month, day := calculate_date_from_day_offset(day_offset)
-	hour_, minute_, second_ := calculate_time_from_second_offset(abs_unix_timestamp % seconds_per_day)
+	hour_, minute_, second_ :=
+		calculate_time_from_second_offset(abs_unix_timestamp % seconds_per_day)
 	return Time{
 		year:       year
 		month:      month

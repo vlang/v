@@ -98,6 +98,7 @@ pub fn u64tovarint(n u64) ![]u8 {
 			u8(0b11)
 		}
 	}
+
 	len := 1 << msb
 	mut result := []u8{len: len}
 	mut tn := n

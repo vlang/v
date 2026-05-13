@@ -36,14 +36,16 @@ fn main() {
 	canvas_elem := document.getElementById('canvas'.str)?
 	canvas := get_canvas(canvas_elem)
 	ctx := canvas.getContext('2d'.str, js_undefined())?
-	context := match ctx {
+	mut context := JS.CanvasRenderingContext2D{}
+	match ctx {
 		JS.CanvasRenderingContext2D {
-			ctx
+			context = ctx
 		}
 		else {
 			panic('can not get 2d context')
 		}
 	}
+
 	mut state := DrawState{context, false, 0, 0}
 
 	canvas.addEventListener('mousedown'.str, fn [mut state] (event JS.Event) {
@@ -79,6 +81,7 @@ fn main() {
 				}
 				else {}
 			}
+
 			state.x = 0
 			state.y = 0
 			state.drawing = false

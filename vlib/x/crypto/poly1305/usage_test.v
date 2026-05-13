@@ -63,7 +63,8 @@ fn test_create_and_verify_tag_with_poly1305_instance_in_incremental_updates() ! 
 	// we split above message to five msg block
 	msg0 := 'Any submission to the IETF intended by the Contributor for publication as all '.bytes()
 	msg1 := 'or part of an IETF Internet-Draft or RFC and any statement made within '.bytes()
-	msg2 := 'the context of an IETF activity is considered an "IETF Contribution". Such statements '.bytes()
+	msg2 :=
+		'the context of an IETF activity is considered an "IETF Contribution". Such statements '.bytes()
 	msg3 := 'include oral statements in IETF sessions, as well as written and electronic '.bytes()
 	msg4 := 'communications made at any time or place, which are addressed to'.bytes()
 	// lets creates buffers output and build the tag

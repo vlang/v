@@ -1,5 +1,5 @@
 vlib/v/checker/tests/eq_ne_op_wrong_type_err.vv:12:10: error: infix expr: cannot use `int literal` (right expression) as `Aaa`
-   10 |
+   10 | 
    11 | fn main() {
    12 |     println(Aaa{} == 10)
       |             ~~~~~~~~~~~
@@ -24,10 +24,10 @@ vlib/v/checker/tests/eq_ne_op_wrong_type_err.vv:15:10: error: infix expr: cannot
    14 |     println(Aaa{} != 10)
    15 |     println(10 != Aaa{})
       |             ~~~~~~~~~~~
-   16 |
+   16 | 
    17 |     println(Aaa{0} == AAaa{0})
 vlib/v/checker/tests/eq_ne_op_wrong_type_err.vv:29:10: error: infix expr: cannot use `Arr` (right expression) as `ArrAaa`
-   27 |
+   27 | 
    28 |     arr_aaa := ArrAaa(arr)
    29 |     println(arr_aaa == arr)
       |             ~~~~~~~~~~~~~~
@@ -52,17 +52,17 @@ vlib/v/checker/tests/eq_ne_op_wrong_type_err.vv:32:10: error: infix expr: cannot
    31 |     println(arr_aaa != arr)
    32 |     println(arr != arr_aaa)
       |             ~~~~~~~~~~~~~~
-   33 |
+   33 | 
    34 |     println(arr_aaa == [0])
 vlib/v/checker/tests/eq_ne_op_wrong_type_err.vv:34:10: error: infix expr: cannot use `[]int` (right expression) as `ArrAaa`
    32 |     println(arr != arr_aaa)
-   33 |
+   33 | 
    34 |     println(arr_aaa == [0])
       |             ~~~~~~~~~~~~~~
    35 |     println([1] == arr_aaa)
    36 |     println(arr_aaa != [0])
 vlib/v/checker/tests/eq_ne_op_wrong_type_err.vv:35:10: error: infix expr: cannot use `ArrAaa` (right expression) as `[]int`
-   33 |
+   33 | 
    34 |     println(arr_aaa == [0])
    35 |     println([1] == arr_aaa)
       |             ~~~~~~~~~~~~~~

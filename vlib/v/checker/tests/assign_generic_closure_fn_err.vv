@@ -1,0 +1,16 @@
+struct Cmd[T] {
+mut:
+	val T
+}
+
+fn use_cmd[T](mut cmd Cmd[T]) {
+	_ = cmd
+}
+
+fn main() {
+	mut cmd := Cmd[string]{}
+	anon := fn [mut cmd] [T]() {
+		use_cmd(mut cmd)
+	}
+	anon()
+}

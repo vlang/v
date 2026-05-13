@@ -1,0 +1,42 @@
+vlib/v/checker/tests/nocopy_struct_err.vv:11:19: error: cannot copy @[nocopy] struct: use a reference instead
+    9 | 
+   10 | struct Holder {
+   11 |     field Resource = base_resource
+      |                      ~~~~~~~~~~~~~
+   12 | }
+   13 |
+vlib/v/checker/tests/nocopy_struct_err.vv:22:10: error: cannot copy @[nocopy] struct: use a reference instead
+   20 |         handle: 2
+   21 |     }
+   22 |     copy := resource
+      |             ~~~~~~~~
+   23 |     takes_value(resource)
+   24 |     _ = Holder{
+vlib/v/checker/tests/nocopy_struct_err.vv:23:14: error: cannot pass @[nocopy] struct by value: use a reference instead
+   21 |     }
+   22 |     copy := resource
+   23 |     takes_value(resource)
+      |                 ~~~~~~~~
+   24 |     _ = Holder{
+   25 |         field: resource
+vlib/v/checker/tests/nocopy_struct_err.vv:25:10: error: cannot copy @[nocopy] struct: use a reference instead
+   23 |     takes_value(resource)
+   24 |     _ = Holder{
+   25 |         field: resource
+      |                ~~~~~~~~
+   26 |     }
+   27 |     _ = fn [resource] () {
+vlib/v/checker/tests/nocopy_struct_err.vv:27:10: error: cannot capture @[nocopy] struct by value: use a reference instead
+   25 |         field: resource
+   26 |     }
+   27 |     _ = fn [resource] () {
+      |             ~~~~~~~~
+   28 |         _ = resource.handle
+   29 |     }
+vlib/v/checker/tests/nocopy_struct_err.vv:30:14: error: cannot capture @[nocopy] struct by value: use a reference instead
+   28 |         _ = resource.handle
+   29 |     }
+   30 |     _ = fn [mut resource] () {
+      |                 ~~~~~~~~
+   31 |         _ = resource.handle
+   32 |     }

@@ -82,6 +82,7 @@ fn on_event(e &gg.Event, mut g Game) {
 			.r { g.restart() }
 			else {}
 		}
+
 		return
 	}
 	if e.typ != .mouse_down {

@@ -55,6 +55,7 @@ fn string_to_i64(s string) ?i64 {
 			s[index] == `-` && index == 0 {}
 			else { break }
 		}
+
 		index += 1
 	}
 

@@ -12,7 +12,8 @@ pub struct FunctionData {
 pub:
 	name        string
 	location    string
-	attrs       []string
+	attrs       []string     // legacy flattened attributes
+	attributes  []VAttribute // structured attributes for `attrs`
 	args        []FunctionParam
 	return_type int
 	typ         int

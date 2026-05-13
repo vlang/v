@@ -1,0 +1,16 @@
+fn main() {
+	mut s := 'hello'
+	s += ` `
+	s += 'world'
+	println(s)
+
+	mut ascii := ''
+	ascii += char(0x41)
+	ascii += `B`
+	println(ascii)
+
+	println(char(0x41) + 'AAAAA')
+	println('AAAAA' + char(0x41))
+	println(`!` + 'abc')
+	println('abc' + `!`)
+}

@@ -176,6 +176,6 @@ fn (mut b Builder) ssa_build_parallel(mut ssa_builder ssa.Builder, files []ast.F
 			}
 		}
 		mod.merge_worker_module(w_mod, func_data, seed_values, seed_instrs, seed_blocks,
-			seed_types)
+			seed_types, seed_funcs)
 	}
 }

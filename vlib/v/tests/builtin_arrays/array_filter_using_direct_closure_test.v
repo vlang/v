@@ -4,7 +4,7 @@ struct File {
 	is_dir bool
 }
 
-fn filter(all_files []File, interested_file File) []File {
+fn filter(all_files []main.File, interested_file File) []main.File {
 	println(interested_file)
 	return all_files.filter(fn [interested_file] (f File) bool {
 		println(interested_file)

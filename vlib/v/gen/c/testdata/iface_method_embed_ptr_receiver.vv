@@ -1,0 +1,20 @@
+interface Leveler {
+	level() int
+}
+
+struct Log {
+}
+
+fn (l &Log) level() int {
+	return 0
+}
+
+struct App implements Leveler {
+	Log
+}
+
+fn main() {
+	app := App{}
+	leveler := Leveler(&app)
+	_ = leveler.level()
+}

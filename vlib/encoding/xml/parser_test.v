@@ -117,6 +117,7 @@ fn test_single_element_parsing() ! {
 						count++
 					}
 				}
+
 				ch = next_char(mut reader, mut local_buf)!
 			}
 			else {

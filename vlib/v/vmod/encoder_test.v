@@ -46,6 +46,7 @@ fn test_encode_vmod_with_multiple_deps() {
 
 const mf_with_extra_fields = "Module {
 	name: 'V'
+	base_url: 'src'
 	description: 'The V programming language.'
 	version: '0.4.10'
 	license: 'MIT'

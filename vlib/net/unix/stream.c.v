@@ -274,8 +274,10 @@ pub fn listen_stream(socket_path string, options ListenOptions) !&StreamListener
 		C.unlink(&char(socket_path.str))
 	}
 
-	net.socket_error_message(C.bind(s.handle, voidptr(&addr), alen), 'binding to ${socket_path} failed')!
-	net.socket_error_message(C.listen(s.handle, options.backlog), 'listening on ${socket_path} with maximum backlog pending queue of ${options.backlog}, failed')!
+	net.socket_error_message(C.bind(s.handle, voidptr(&addr), alen),
+		'binding to ${socket_path} failed')!
+	net.socket_error_message(C.listen(s.handle, options.backlog),
+		'listening on ${socket_path} with maximum backlog pending queue of ${options.backlog}, failed')!
 	return &StreamListener{
 		sock:            s
 		accept_deadline: no_deadline
@@ -354,7 +356,8 @@ pub fn (mut l StreamListener) unlink() ! {
 	$if windows {
 		os.rm(l.sock.socket_path)!
 	} $else {
-		net.socket_error_message(C.unlink(&char(l.sock.socket_path.str)), 'could not unlink ${l.sock.socket_path}')!
+		net.socket_error_message(C.unlink(&char(l.sock.socket_path.str)),
+			'could not unlink ${l.sock.socket_path}')!
 	}
 }
 
@@ -382,9 +385,9 @@ mut:
 
 fn new_stream_socket(socket_path string) !StreamSocket {
 	handle := $if is_coroutine ? {
-		net.socket_error(C.photon_socket(.unix, .tcp, 0))!
+		net.socket_error(C.photon_socket(i32(net.AddrFamily.unix), i32(net.SocketType.tcp), 0))!
 	} $else {
-		net.socket_error(C.socket(.unix, .tcp, 0))!
+		net.socket_error(C.socket(i32(net.AddrFamily.unix), i32(net.SocketType.tcp), 0))!
 	}
 	mut s := StreamSocket{
 		handle:      handle

@@ -104,7 +104,7 @@ jobs:
           dir
           cd 'path with some $punctuation, and some spaces'
           dir
-          .\make.bat -tcc
+          .\makev.bat -tcc
       - name: v doctor
         run: |
           cd 'path with some $punctuation, and some spaces'

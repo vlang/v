@@ -86,8 +86,10 @@ fn main() {
 		vals: ['1', 'jackson', '']
 	}
 
-	response = db.exec_param_many('select * from users where username = ? and id = ?',
-		['bailey', '3'])!
+	response = db.exec_param_many('select * from users where username = ? and id = ?', [
+		'bailey',
+		'3',
+	])!
 	assert response[0] == mysql.Row{
 		vals: ['3', 'bailey', '']
 	}

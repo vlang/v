@@ -61,12 +61,10 @@ pub const invalid_request = error_with_code('Invalid request.', -32600)
 pub const method_not_found = error_with_code('Method not found.', -32601)
 pub const invalid_params = error_with_code('Invalid params', -32602)
 pub const internal_error = error_with_code('Internal error.', -32693)
-pub const server_error_start = error_with_code('Error occurred when starting server.',
-	-32099)
+pub const server_error_start = error_with_code('Error occurred when starting server.', -32099)
 pub const server_not_initialized = error_with_code('Server not initialized.', -32002)
 pub const unknown_error = error_with_code('Unknown error.', -32001)
-pub const server_error_end = error_with_code('Error occurred when stopping the server.',
-	-32000)
+pub const server_error_end = error_with_code('Error occurred when stopping the server.', -32000)
 pub const error_codes = [
 	parse_error.code(),
 	invalid_request.code(),

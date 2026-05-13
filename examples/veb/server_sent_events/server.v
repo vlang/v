@@ -28,17 +28,19 @@ pub fn (mut app App) index() veb.Result {
 }
 
 fn (mut app App) sse() veb.Result {
+	ctx.takeover_conn()
+	spawn handle_sse_conn(mut ctx)
+	return veb.no_result()
+}
+
+fn handle_sse_conn(mut ctx Context) {
 	mut session := sse.start_connection(mut ctx.Context)
-	// Note: you can setup session.write_timeout and session.headers here
-	// session.start() or { return app.server_error(501) }
-	session.send_message(data: 'ok') or { return ctx.server_error_with_status(.not_implemented) }
+	session.send_message(data: 'ok') or { return }
 	for {
 		data := '{"time": "${time.now().str()}", "random_id": "${rand.ulid()}"}'
-		session.send_message(event: 'ping', data: data) or {
-			return ctx.server_error_with_status(.not_implemented)
-		}
+		session.send_message(event: 'ping', data: data) or { break }
 		println('> sent event: ${data}')
 		time.sleep(1 * time.second)
 	}
-	return ctx.server_error_with_status(.not_implemented)
+	session.close()
 }

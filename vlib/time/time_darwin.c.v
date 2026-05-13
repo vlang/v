@@ -64,7 +64,7 @@ fn darwin_now() Time {
 	nsec := int(epoch_ns % i64(second))
 	loc_tm := C.tm{}
 	C.localtime_r(voidptr(&sec), &loc_tm)
-	return convert_ctime(loc_tm, nsec)
+	return convert_ctime_with_unix(loc_tm, nsec, sec + i64(loc_tm.tm_gmtoff))
 }
 
 // darwin_utc returns a better precision current time for macos

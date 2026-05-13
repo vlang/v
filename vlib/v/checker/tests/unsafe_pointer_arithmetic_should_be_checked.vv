@@ -13,3 +13,24 @@ fn test_ptr_infix() {
 	_ := q
 	_ := v
 }
+
+struct Foo {
+	x int
+}
+
+fn test_struct_ptr_infix() {
+	v := Foo{}
+	mut q := &v - 1
+	q = q + 3
+	_ := q
+	_ := v
+}
+
+fn test_ptr_to_struct_ptr_infix() {
+	v := Foo{}
+	p := &v
+	mut q := &p - 1
+	q = q + 3
+	_ := q
+	_ := p
+}

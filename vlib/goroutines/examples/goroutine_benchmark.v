@@ -52,8 +52,7 @@ fn bench_fan_out_fan_in(n int) {
 	elapsed := sw.elapsed()
 	us := elapsed.microseconds()
 	ns_per := elapsed.nanoseconds() / n
-	C.printf(c'fan-out/fan-in  %d goroutines: %lld us  (%lld ns/goroutine)\n', n, us,
-		ns_per)
+	C.printf(c'fan-out/fan-in  %d goroutines: %lld us  (%lld ns/goroutine)\n', n, us, ns_per)
 }
 
 // --- ping-pong ---
@@ -91,8 +90,7 @@ fn bench_ping_pong(n int) {
 	elapsed := sw.elapsed()
 	us := elapsed.microseconds()
 	ns_per := elapsed.nanoseconds() / n
-	C.printf(c'ping-pong       %d round-trips: %lld us  (%lld ns/round-trip)\n', n, us,
-		ns_per)
+	C.printf(c'ping-pong       %d round-trips: %lld us  (%lld ns/round-trip)\n', n, us, ns_per)
 }
 
 // --- contended channel ---

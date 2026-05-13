@@ -286,6 +286,7 @@ pub fn (mut db DB) get[T](key string) !T {
 				return error('`get()`: unexpected response type')
 			}
 		}
+
 		return error('`get()`: unsupported data type')
 	}
 	return T{}
@@ -419,6 +420,7 @@ pub fn (mut db DB) hgetall[T](key string) !map[string]T {
 							string { key_val }
 							else { return error('`hgetall()`: unexpected key type: ${key_val.type_name()}') }
 						}
+
 						// value
 						v := match val_val {
 							[]u8 { val_val.bytestr() }
@@ -426,6 +428,7 @@ pub fn (mut db DB) hgetall[T](key string) !map[string]T {
 							i64 { val_val.str() }
 							else { return error('`hgetall()`: unexpected value type: ${val_val.type_name()}') }
 						}
+
 						result[k] = v
 					}
 					return result
@@ -438,6 +441,7 @@ pub fn (mut db DB) hgetall[T](key string) !map[string]T {
 							i64 { v.str() }
 							else { return error('`hgetall()`: unexpected value type in map: ${v.type_name()}') }
 						}
+
 						result[k] = val_str
 					}
 					return result
@@ -455,12 +459,14 @@ pub fn (mut db DB) hgetall[T](key string) !map[string]T {
 							string { key_val }
 							else { return error('`hgetall()`: unexpected key type in RedisMap: ${key_val.type_name()}') }
 						}
+
 						v := match val_val {
 							[]u8 { val_val.bytestr() }
 							string { val_val }
 							i64 { val_val.str() }
 							else { return error('`hgetall()`: unexpected value type in RedisMap: ${val_val.type_name()}') }
 						}
+
 						result[k] = v
 					}
 					return result
@@ -484,12 +490,14 @@ pub fn (mut db DB) hgetall[T](key string) !map[string]T {
 							string { key_val }
 							else { return error('`hgetall()`: unexpected key type: ${key_val.type_name()}') }
 						}
+
 						v := match val_val {
 							[]u8 { val_val.bytestr().i64() }
 							string { val_val.i64() }
 							i64 { val_val }
 							else { return error('`hgetall()`: unexpected value type: ${val_val.type_name()}') }
 						}
+
 						result[k] = T(v)
 					}
 					return result
@@ -502,6 +510,7 @@ pub fn (mut db DB) hgetall[T](key string) !map[string]T {
 							i64 { v }
 							else { return error('`hgetall()`: unexpected value type in map: ${v.type_name()}') }
 						}
+
 						result[k] = T(n)
 					}
 					return result
@@ -519,12 +528,14 @@ pub fn (mut db DB) hgetall[T](key string) !map[string]T {
 							string { key_val }
 							else { return error('`hgetall()`: unexpected key type in RedisMap: ${key_val.type_name()}') }
 						}
+
 						n := match val_val {
 							[]u8 { val_val.bytestr().i64() }
 							string { val_val.i64() }
 							i64 { val_val }
 							else { return error('`hgetall()`: unexpected value type in RedisMap: ${val_val.type_name()}') }
 						}
+
 						result[k] = T(n)
 					}
 					return result
@@ -548,12 +559,14 @@ pub fn (mut db DB) hgetall[T](key string) !map[string]T {
 							string { key_val }
 							else { return error('`hgetall()`: unexpected key type: ${key_val.type_name()}') }
 						}
+
 						v := match val_val {
 							[]u8 { val_val }
 							string { val_val.bytes() }
 							i64 { val_val.str().bytes() }
 							else { return error('`hgetall()`: unexpected value type: ${val_val.type_name()}') }
 						}
+
 						result[k] = v
 					}
 					return result
@@ -566,6 +579,7 @@ pub fn (mut db DB) hgetall[T](key string) !map[string]T {
 							i64 { v.str().bytes() }
 							else { return error('`hgetall()`: unexpected value type in map: ${v.type_name()}') }
 						}
+
 						result[k] = b
 					}
 					return result
@@ -583,12 +597,14 @@ pub fn (mut db DB) hgetall[T](key string) !map[string]T {
 							string { key_val }
 							else { return error('`hgetall()`: unexpected key type in RedisMap: ${key_val.type_name()}') }
 						}
+
 						b := match val_val {
 							[]u8 { val_val }
 							string { val_val.bytes() }
 							i64 { val_val.str().bytes() }
 							else { return error('`hgetall()`: unexpected value type in RedisMap: ${val_val.type_name()}') }
 						}
+
 						result[k] = b
 					}
 					return result
@@ -681,6 +697,7 @@ fn (mut db DB) read_response_bulk_string() !RedisValue {
 				}
 			}
 		}
+
 		if term[0] != `\r` || term[1] != `\n` {
 			return error('invalid terminator for empty string')
 		}
@@ -1190,6 +1207,7 @@ fn (mut db DB) read_response() !RedisValue {
 			return error("`read_response()`: unknown response prefix byte=${prefix_val} data_hex=\"${hex}\" data_str=\"${db.resp_buf.bytestr()}\"")
 		}
 	}
+
 	return error('`read_response()`: unreachable code')
 }
 

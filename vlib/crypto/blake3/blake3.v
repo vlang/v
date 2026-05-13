@@ -208,8 +208,8 @@ pub fn (mut d Digest) write(data []u8) ! {
 
 	for d.input.len > chunk_size {
 		mut chunk := Chunk{}
-		words := chunk.process_input(d.input[..chunk_size], d.key_words, d.chunk_counter,
-			d.flags, false)
+		words := chunk.process_input(d.input[..chunk_size], d.key_words, d.chunk_counter, d.flags,
+			false)
 
 		d.add_node(Node{ chaining_value: words[..8] }, 0)
 

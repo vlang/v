@@ -91,8 +91,7 @@ pub fn (mut rng PCG32RNG) block_size() int {
 	return 32
 }
 
-// free should be called when the generator is no longer needed
+// free should be called when the generator is no longer needed.
 @[unsafe]
 pub fn (mut rng PCG32RNG) free() {
-	unsafe { free(rng) }
 }

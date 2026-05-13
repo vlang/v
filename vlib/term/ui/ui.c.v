@@ -75,8 +75,10 @@ pub fn (mut ctx Context) hide_cursor() {
 pub fn (mut ctx Context) set_color(c Color) {
 	if ctx.enable_rgb {
 		ctx.write('\x1b[38;2;${int(c.r)};${int(c.g)};${int(c.b)}m')
-	} else {
+	} else if ctx.enable_ansi256 {
 		ctx.write('\x1b[38;5;${rgb2ansi(c.r, c.g, c.b)}m')
+	} else {
+		ctx.write('\x1b[${30 + rgb2basic_ansi(c.r, c.g, c.b)}m')
 	}
 }
 
@@ -85,8 +87,10 @@ pub fn (mut ctx Context) set_color(c Color) {
 pub fn (mut ctx Context) set_bg_color(c Color) {
 	if ctx.enable_rgb {
 		ctx.write('\x1b[48;2;${int(c.r)};${int(c.g)};${int(c.b)}m')
-	} else {
+	} else if ctx.enable_ansi256 {
 		ctx.write('\x1b[48;5;${rgb2ansi(c.r, c.g, c.b)}m')
+	} else {
+		ctx.write('\x1b[${40 + rgb2basic_ansi(c.r, c.g, c.b)}m')
 	}
 }
 
@@ -117,8 +121,28 @@ pub fn (mut ctx Context) clear() {
 // set_window_title sets the string `s` as the window title.
 @[inline]
 pub fn (mut ctx Context) set_window_title(s string) {
+	if !ctx.supports_window_title {
+		return
+	}
 	print('\x1b]0;${s}\x07')
 	flush_stdout()
+}
+
+fn rgb2basic_ansi(r int, g int, b int) int {
+	mut best_index := 0
+	mut best_distance := -1
+	for i in 0 .. 8 {
+		ref := color_table[i]
+		dr := r - int((ref >> 16) & 0xff)
+		dg := g - int((ref >> 8) & 0xff)
+		db := b - int(ref & 0xff)
+		distance := dr * dr + dg * dg + db * db
+		if best_distance == -1 || distance < best_distance {
+			best_distance = distance
+			best_index = i
+		}
+	}
+	return best_index
 }
 
 // draw_point draws a point at position `x`,`y`.

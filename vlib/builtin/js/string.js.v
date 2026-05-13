@@ -8,6 +8,8 @@ pub:
 	len int
 }
 
+interface TosSource {}
+
 pub fn (s string) runes() []rune {
 	ret := JS.makeEmptyArray()
 	#for (r of s.str) array_push(ret,new rune(r),false);
@@ -276,7 +278,10 @@ pub fn (s string) int() int {
 
 // i64 returns the value of the string as i64 `'1'.i64() == i64(1)`.
 pub fn (s string) i64() i64 {
-	return i64(JS.parseInt(s.str))
+	mut res := i64(0)
+	#res = new i64(BigInt(s.str))
+
+	return res
 }
 
 // i8 returns the value of the string as i8 `'1'.i8() == i8(1)`.
@@ -317,14 +322,14 @@ pub fn (s string) u32() u32 {
 
 // u64 returns the value of the string as u64 `'1'.u64() == u64(1)`.
 pub fn (s string) u64() u64 {
-	return u64(JS.parseInt(s.str))
-}
-
-pub fn (s string) u8() u64 {
-	res := u8(0)
-	#res.val = u8(JS.parseInt(s.str))
+	mut res := u64(0)
+	#res = new u64(BigInt(s.str))
 
 	return res
+}
+
+pub fn (s string) u8() u8 {
+	return u8(JS.parseInt(s.str))
 }
 
 // trim_right strips any of the characters given in `cutset` from the right of the string.
@@ -1122,9 +1127,43 @@ pub fn (_rune string) utf32_code() int {
 	return res
 }
 
-pub fn tos(jsstr JS.String) string {
-	res := ''
-	#res.str = jsstr
+// tos converts a JS string or an addressable byte range into a V string.
+pub fn tos(source TosSource, lens ...int) string {
+	mut res := ''
+	#const source_value = source instanceof $ref ? source.valueOf() : source
+	if lens.len == 0 {
+		#if (source_value instanceof string) {
+		#res.str = source_value.str
+		#} else if (typeof source_value === 'string' || source_value instanceof String) {
+		#res.str = source_value.toString()
+		#} else {
+		panic('tos(): unsupported source in JS backend')
+		#}
+
+		return res
+	}
+	if lens.len != 1 {
+		panic('tos(): expected exactly one length argument')
+	}
+	len := lens[0]
+	if len < 0 {
+		panic('tos(): negative length')
+	}
+	#if (source_value === null || source_value === undefined) {
+	panic('tos(): nil string')
+	#}
+	#if (source && source._v_array !== undefined && source._v_index !== undefined) {
+	#const start = source._v_index.valueOf()
+	#for (let i = 0; i < len.valueOf(); ++i) res.str += String.fromCharCode(source._v_array.arr.get(new int(start + i)).valueOf())
+	#} else if (source_value.arr !== undefined && typeof source_value.arr.get === 'function') {
+	#for (let i = 0; i < len.valueOf(); ++i) res.str += String.fromCharCode(source_value.arr.get(new int(i)).valueOf())
+	#} else if (source_value instanceof string) {
+	#res.str = source_value.str.slice(0, len.valueOf())
+	#} else if (typeof source_value === 'string' || source_value instanceof String) {
+	#res.str = source_value.toString().slice(0, len.valueOf())
+	#} else {
+	panic('tos(): unsupported source in JS backend')
+	#}
 
 	return res
 }

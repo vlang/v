@@ -99,7 +99,12 @@ fn test_struct_sym() {
 	assert var.sym.kind == .struct
 	assert var.sym.mod == 'main'
 	assert (var.sym.info as reflection.Struct).attrs.len == 1
-	assert (var.sym.info as reflection.Struct).attrs == ['test_struct']
+	assert (var.sym.info as reflection.Struct).attrs == [
+		VAttribute{
+			name: 'test_struct'
+			kind: .plain
+		},
+	]
 
 	field := (var.sym.info as reflection.Struct).fields[0]
 	field_typ := field.typ
@@ -109,12 +114,27 @@ fn test_struct_sym() {
 	assert (field_sym.sym.info as reflection.Map).key_type.idx() == typeof[int]().idx
 	assert (field_sym.sym.info as reflection.Map).value_type.idx() == typeof[string]().idx
 	assert field.attrs.len == 1
+	assert field.attrs == [
+		VAttribute{
+			name: 'test'
+			kind: .plain
+		},
+	]
 
 	field2 := (var.sym.info as reflection.Struct).fields[1]
 	field2_typ := (var.sym.info as reflection.Struct).fields[1].typ
 	assert field2_typ.has_flag(.option)
 	assert field2.name == 'n'
 	assert field2.attrs.len == 2
-	assert field2.attrs == ['test2', 'test3']
+	assert field2.attrs == [
+		VAttribute{
+			name: 'test2'
+			kind: .plain
+		},
+		VAttribute{
+			name: 'test3'
+			kind: .plain
+		},
+	]
 	assert field2.is_pub == false
 }

@@ -160,7 +160,7 @@ fn print_backtrace_skipping_top_frames_mingw(skipframes int) bool {
 fn C.tcc_backtrace(fmt &char) i32
 
 fn print_backtrace_skipping_top_frames_tcc(skipframes int) bool {
-	$if tinyc && !native {
+	$if tinyc {
 		$if no_backtrace ? {
 			eprintln('backtraces are disabled')
 			return false

@@ -102,6 +102,7 @@ fn (mut mod Module) patch(ft Function) {
 				idx = mod.global_imports.len + patch.idx
 			}
 		}
+
 		mod.buf << ft.code[ptr..patch.pos]
 		mod.u32(u32(idx))
 		ptr = patch.pos

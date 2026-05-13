@@ -154,8 +154,7 @@ fn main() {
 		}
 
 		// Strip terminal control characters that script command may prepend
-		mut cleaned := gen_out.replace('\r\n', '\n').replace('\x04', '').replace('\x08',
-			'')
+		mut cleaned := gen_out.replace('\r\n', '\n').replace('\x04', '').replace('\x08', '')
 		// Remove "^D" literal string that macOS script may add
 		if cleaned.starts_with('^D') {
 			cleaned = cleaned[2..]

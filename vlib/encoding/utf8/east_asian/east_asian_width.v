@@ -26,6 +26,7 @@ pub fn display_width(s string, ambiguous_width int) int {
 			.full, .wide { int(2) }
 			else { int(1) }
 		}
+
 		i += c_len
 	}
 	return n

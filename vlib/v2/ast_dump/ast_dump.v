@@ -656,11 +656,6 @@ fn (mut jb JsonBuilder) write_interface_decl(stmt ast.InterfaceDecl) {
 	jb.sb.write_string(',\n')
 
 	jb.write_indent()
-	jb.sb.write_string('"implements": ')
-	jb.write_exprs(stmt.implements)
-	jb.sb.write_string(',\n')
-
-	jb.write_indent()
 	jb.sb.write_string('"embedded": ')
 	jb.write_exprs(stmt.embedded)
 	jb.sb.write_string(',\n')

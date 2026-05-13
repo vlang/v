@@ -64,10 +64,10 @@ pub fn rotate(angle f32, w Vector3) Matrix4 {
 	ay := axis.y
 	az := axis.z
 
-	return matrix4((ax * ax * cv) + cs, (ax * ay * cv) + az * sn, (ax * az * cv) - ay * sn,
-		0, (ay * ax * cv) - az * sn, (ay * ay * cv) + cs, (ay * az * cv) + ax * sn, 0,
-		(az * ax * cv) + ay * sn, (az * ay * cv) - ax * sn, (az * az * cv) + cs, 0, 0,
-		0, 0, 1)
+	return matrix4((ax * ax * cv) + cs, (ax * ay * cv) + az * sn, (ax * az * cv) - ay * sn, 0,
+		(ay * ax * cv) - az * sn, (ay * ay * cv) + cs, (ay * az * cv) + ax * sn, 0,
+
+		(az * ax * cv) + ay * sn, (az * ay * cv) - ax * sn, (az * az * cv) + cs, 0, 0, 0, 0, 1)
 }
 
 fn test_array_fixed_op_overload() {

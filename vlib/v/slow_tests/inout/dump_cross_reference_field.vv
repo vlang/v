@@ -1,0 +1,17 @@
+struct Window {
+mut:
+	widgets []Widget
+}
+
+struct Widget {
+mut:
+	parent &Window = unsafe { nil }
+}
+
+fn main() {
+	mut window := &Window{}
+	mut widget := &Widget{}
+	widget.parent = window
+	window.widgets << widget
+	dump(window)
+}

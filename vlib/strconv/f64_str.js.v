@@ -187,8 +187,7 @@ fn f64_to_decimal(mant u64, exp u64) Dec64 {
 				// Same as min(e2 + (^mm & 1), pow5Factor64(mm)) >= q
 				// <=> e2 + (^mm & 1) >= q && pow5Factor64(mm) >= q
 				// <=> true && pow5Factor64(mm) >= q, since e2 >= q.
-				vm_is_trailing_zeros = multiple_of_power_of_five_64(mv - 1 - mm_shift,
-					q)
+				vm_is_trailing_zeros = multiple_of_power_of_five_64(mv - 1 - mm_shift, q)
 			} else if multiple_of_power_of_five_64(mv + 2, q) {
 				vp--
 			}

@@ -43,3 +43,26 @@ fn test_array_of_reference_sumtype() {
 	assert parent.child_nodes[0].name == 'child'
 	assert ret == 0
 }
+
+fn test_array_of_reference_sumtype_attribute_variant_aliases_original_payload() {
+	mut parent := &Element{
+		name: 'parent'
+	}
+	attr := &Attribute{
+		name:  'foo'
+		value: 'bar'
+	}
+	parent.append_child(attr)
+
+	attr_node := &Node(attr)
+	assert parent.has_child(attr_node) == 0
+
+	if parent.child_nodes[0] is Attribute {
+		parent.child_nodes[0].value = 'baz'
+	} else {
+		assert false
+	}
+
+	assert attr.value == 'baz'
+	assert parent.child_nodes[0].name == 'foo'
+}

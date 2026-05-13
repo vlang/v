@@ -14,7 +14,8 @@ fn find_wasm_validate() !string {
 	// through install_wabt.vsh, since it is more likely to be known, recent, and stable:
 	thirdpart_wasm_validate_folder := os.join_path(@VEXEROOT, 'thirdparty', 'wabt', 'bin')
 	extension := $if windows { '.exe' } $else { '' }
-	wasm_validate_executable := os.join_path(thirdpart_wasm_validate_folder, 'wasm-validate${extension}')
+	wasm_validate_executable := os.join_path(thirdpart_wasm_validate_folder,
+		'wasm-validate${extension}')
 	if os.exists(wasm_validate_executable) {
 		return wasm_validate_executable
 	}

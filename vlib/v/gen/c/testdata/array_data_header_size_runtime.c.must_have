@@ -1,0 +1,4 @@
+VV_LOC int builtin__array_data_header_size(void) {
+return ((int)(sizeof(voidptr)));
+return ((u8*)(raw)) + builtin__array_data_header_size();
+return ((ArrayDataHeader*)(base_data - builtin__array_data_header_size()));

@@ -54,3 +54,8 @@ fn f4(g fn (int) string) {
 fn test_params_has_blank_ident() {
 	f4(|_| 'hello')
 }
+
+fn test_lambda_expr_can_omit_unused_callback_params() {
+	assert f1(|| 4) == 4
+	assert f2(|x| x + 4) == 14
+}

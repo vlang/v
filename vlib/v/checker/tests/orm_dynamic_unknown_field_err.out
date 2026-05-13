@@ -1,0 +1,8 @@
+vlib/v/checker/tests/orm_dynamic_unknown_field_err.vv:11:13: error: ORM: `User` structure has no field with name `zzz`.
+2 possibilities: `id`, `name`.
+    9 |     db := sqlite.connect(':memory:') or { panic(err) }
+   10 |     where_expr := {
+   11 |         if true { zzz == 'Alice' },
+      |                   ~~~
+   12 |     }
+   13 |     _ := sql db {

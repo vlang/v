@@ -6,9 +6,7 @@ $if !nofloat ? {
 	import strconv
 }
 
-$if !native {
-	#include <float.h>
-}
+#include <float.h>
 
 // str returns a string representation of the given `f64` in a suitable notation.
 @[inline]
@@ -35,8 +33,13 @@ pub fn (x f64) str() string {
 // strg return a `f64` as `string` in "g" printf format.
 @[inline]
 pub fn (x f64) strg() string {
-	if x == 0 {
-		return '0.0'
+	unsafe {
+		f := strconv.Float64u{
+			f: x
+		}
+		if f.u == strconv.double_minus_zero || f.u == strconv.double_plus_zero {
+			return '0.0'
+		}
 	}
 	abs_x := f64_abs(x)
 	if abs_x >= 0.0001 && abs_x < 1.0e6 {
@@ -101,8 +104,13 @@ pub fn (x f32) str() string {
 // strg return a `f32` as `string` in "g" printf format
 @[inline]
 pub fn (x f32) strg() string {
-	if x == 0 {
-		return '0.0'
+	unsafe {
+		f := strconv.Float32u{
+			f: x
+		}
+		if f.u == strconv.single_minus_zero || f.u == strconv.single_plus_zero {
+			return '0.0'
+		}
 	}
 	abs_x := f32_abs(x)
 	if abs_x >= 0.0001 && abs_x < 1.0e6 {
@@ -198,18 +206,10 @@ pub fn f64_max(a f64, b f64) f64 {
 pub fn (a f32) eq_epsilon(b f32) bool {
 	hi := f32_max(f32_abs(a), f32_abs(b))
 	delta := f32_abs(a - b)
-	$if native {
-		if hi > f32(1.0) {
-			return delta <= hi * (4 * 1.19209290e-7)
-		} else {
-			return (1 / (4 * 1.19209290e-7)) * delta <= hi
-		}
-	} $else {
-		if hi > f32(1.0) {
-			return delta <= hi * (4 * f32(C.FLT_EPSILON))
-		} else {
-			return (1 / (4 * f32(C.FLT_EPSILON))) * delta <= hi
-		}
+	if hi > f32(1.0) {
+		return delta <= hi * (4 * f32(C.FLT_EPSILON))
+	} else {
+		return (1 / (4 * f32(C.FLT_EPSILON))) * delta <= hi
 	}
 }
 
@@ -220,17 +220,9 @@ pub fn (a f32) eq_epsilon(b f32) bool {
 pub fn (a f64) eq_epsilon(b f64) bool {
 	hi := f64_max(f64_abs(a), f64_abs(b))
 	delta := f64_abs(a - b)
-	$if native {
-		if hi > 1.0 {
-			return delta <= hi * (4 * 2.2204460492503131e-16)
-		} else {
-			return (1 / (4 * 2.2204460492503131e-16)) * delta <= hi
-		}
-	} $else {
-		if hi > 1.0 {
-			return delta <= hi * (4 * f64(C.DBL_EPSILON))
-		} else {
-			return (1 / (4 * f64(C.DBL_EPSILON))) * delta <= hi
-		}
+	if hi > 1.0 {
+		return delta <= hi * (4 * f64(C.DBL_EPSILON))
+	} else {
+		return (1 / (4 * f64(C.DBL_EPSILON))) * delta <= hi
 	}
 }

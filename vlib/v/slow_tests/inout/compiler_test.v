@@ -55,7 +55,8 @@ fn test_all() {
 		tname := rand.ulid()
 		tbase := os.join_path(os.vtmp_dir(), tname)
 		texe := if os.user_os() == 'windows' { '${tbase}.exe' } else { tbase }
-		compilation := os.execute('${os.quoted_path(vexe)} -o ${os.quoted_path(tbase)} -cflags "-w" -cg ${os.quoted_path(program)}')
+		compilation :=
+			os.execute('${os.quoted_path(vexe)} -o ${os.quoted_path(tbase)} -cflags "-w" -cg ${os.quoted_path(program)}')
 		if compilation.exit_code < 0 {
 			panic(compilation.output)
 		}

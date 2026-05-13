@@ -1,0 +1,2 @@
+Array_int _v_dump_expr_Array_int(string fpath, int line, string sexpr, Array_int dump_arg) {
+GC_reachable_here(&dump_arg);

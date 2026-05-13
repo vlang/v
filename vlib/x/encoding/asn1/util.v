@@ -109,6 +109,7 @@ fn validate_date(year u16, month u8, day u8) bool {
 			return false
 		}
 	}
+
 	if day > dim {
 		return false
 	}

@@ -1,15 +1,15 @@
 module pref
 
-fn normalize_current_os_name(current_os string) string {
-	return match current_os.to_lower() {
+pub fn normalize_os_name(os_name string) string {
+	return match os_name.to_lower() {
 		'darwin', 'mac' { 'macos' }
-		else { current_os.to_lower() }
+		else { os_name.to_lower() }
 	}
 }
 
 // file_has_incompatible_os_suffix reports whether file is specialized for a different OS.
 pub fn file_has_incompatible_os_suffix(file string, current_os string) bool {
-	os_name := normalize_current_os_name(current_os)
+	os_name := normalize_os_name(current_os)
 	if os_name == 'windows' && file.contains('_nix.') {
 		return true
 	}

@@ -65,6 +65,7 @@ fn const_bool_value(expr ast.Expr) ?bool {
 		}
 		else {}
 	}
+
 	return none
 }
 

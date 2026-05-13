@@ -43,7 +43,8 @@ fn check_path(vexe string, dir string, tests []string) int {
 		program := path
 		print(path + ' ')
 		file_options := get_file_options(path)
-		res := os.execute('${os.quoted_path(vexe)} vet -nocolor ${file_options.vflags} ${os.quoted_path(program)}')
+		res :=
+			os.execute('${os.quoted_path(vexe)} vet -nocolor ${file_options.vflags} ${os.quoted_path(program)}')
 		if res.exit_code < 0 {
 			panic(res.output)
 		}

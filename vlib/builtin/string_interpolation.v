@@ -725,12 +725,12 @@ pub const si_g64_code = '0xfe0f'
 
 @[inline]
 pub fn str_intp_sq(in_str string) string {
-	return 'builtin__str_intp(2, _MOV((StrIntpData[]){{_S("\'"), ${si_s_code}, {.d_s = ${in_str}}, 0, 0, 0},{_S("\'"), 0, {.d_c = 0 }, 0, 0, 0}}))'
+	return 'builtin__str_intp(2, _MOV((StrIntpData[]){{_S("\'"), ${si_s_code}, {.d_s = ${in_str}}, 0, 0, 0},{_S("\'"), 0, {0}, 0, 0, 0}}))'
 }
 
 @[inline]
 pub fn str_intp_rune(in_str string) string {
-	return 'builtin__str_intp(2, _MOV((StrIntpData[]){{_S("\`"), ${si_s_code}, {.d_s = ${in_str}}, 0, 0, 0},{_S("\`"), 0, {.d_c = 0 }, 0, 0, 0}}))'
+	return 'builtin__str_intp(2, _MOV((StrIntpData[]){{_S("\`"), ${si_s_code}, {.d_s = ${in_str}}, 0, 0, 0},{_S("\`"), 0, {0}, 0, 0, 0}}))'
 }
 
 @[inline]
@@ -755,7 +755,7 @@ pub fn str_intp_sub(base_str string, in_str string) string {
 		st_str := base_str[..index]
 		if index + 2 < base_str.len {
 			en_str := base_str[index + 2..]
-			res_str := 'builtin__str_intp(2, _MOV((StrIntpData[]){{_S("${st_str}"), ${si_s_code}, {.d_s = ${in_str} }, 0, 0, 0},{_S("${en_str}"), 0, {.d_c = 0}, 0, 0, 0}}))'
+			res_str := 'builtin__str_intp(2, _MOV((StrIntpData[]){{_S("${st_str}"), ${si_s_code}, {.d_s = ${in_str} }, 0, 0, 0},{_S("${en_str}"), 0, {0}, 0, 0, 0}}))'
 			st_str.free()
 			en_str.free()
 			return res_str

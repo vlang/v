@@ -137,11 +137,3 @@ fn (mut state AppState) render_font() {
 	}
 	sfons.flush(fons)
 }
-
-fn line(sx f32, sy f32, ex f32, ey f32) {
-	sgl.begin_lines()
-	sgl.c4b(255, 255, 0, 128)
-	sgl.v2f(sx, sy)
-	sgl.v2f(ex, ey)
-	sgl.end()
-}

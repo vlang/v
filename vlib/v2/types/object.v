@@ -16,7 +16,7 @@ mut:
 	// color_    color
 }
 
-struct Const {
+pub struct Const {
 	ObjectCommon
 pub:
 	int_val int

@@ -108,7 +108,8 @@ fn test_scalar_set_canonical_bytes_on_noncanonical_value() {
 	b[31] += 1
 
 	mut s := sc_one
-	out := s.set_canonical_bytes(b[..]) or { sc_error } // set_canonical_bytes shouldn't worked on a non-canonical value"
+	out :=
+		s.set_canonical_bytes(b[..]) or { sc_error } // set_canonical_bytes shouldn't worked on a non-canonical value"
 	assert out == sc_error
 	assert s == sc_one
 }

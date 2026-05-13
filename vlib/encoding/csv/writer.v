@@ -58,6 +58,7 @@ pub fn (mut w Writer) write(record []string) !bool {
 					`\r`, `\n` { w.sb.write_string(le) }
 					else {}
 				}
+
 				field = field[1..]
 			}
 		}

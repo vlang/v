@@ -74,5 +74,6 @@ fn test_multi_generic_type() {
 			return
 		}
 	}
+
 	assert false
 }

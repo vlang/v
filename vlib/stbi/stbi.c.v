@@ -4,6 +4,8 @@
 
 module stbi
 
+import os
+
 @[if trace_stbi_allocations ?]
 fn trace_allocation(message string) {
 	eprintln(message)
@@ -113,6 +115,8 @@ fn C.stbi_load(filename &char, x &int, y &int, channels_in_file &int, desired_ch
 fn C.stbi_load_from_file(f voidptr, x &int, y &int, channels_in_file &int, desired_channels i32) &u8
 fn C.stbi_load_from_memory(buffer &u8, len i32, x &int, y &int, channels_in_file &int, desired_channels i32) &u8
 
+pub const C.STBI_rgb_alpha int
+
 @[params]
 pub struct LoadParams {
 pub:
@@ -127,6 +131,20 @@ pub:
 //    Converting/resizing it, should work fine though.
 pub fn load(path string, params LoadParams) !Image {
 	ext := path.all_after_last('.')
+	$if windows {
+		$if clang {
+			// stb's file-based loader crashes on Windows when compiled with clang.
+			// Read the file through V and decode the in-memory bytes instead.
+			file_bytes := os.read_bytes(path) or {
+				return error('stbi_image failed to load from "${path}"')
+			}
+			mut img := load_from_memory(file_bytes.data, file_bytes.len, params) or {
+				return error('stbi_image failed to load from "${path}"')
+			}
+			img.ext = ext
+			return img
+		}
+	}
 	mut res := Image{
 		ok:          true
 		ext:         ext
@@ -154,8 +172,8 @@ pub fn load_from_memory(buf &u8, bufsize int, params LoadParams) !Image {
 		ok:          true
 		nr_channels: params.desired_channels
 	}
-	res.data = C.stbi_load_from_memory(buf, bufsize, &res.width, &res.height, &res.original_nr_channels,
-		params.desired_channels)
+	res.data = C.stbi_load_from_memory(buf, bufsize, &res.width, &res.height,
+		&res.original_nr_channels, params.desired_channels)
 	if params.desired_channels == 0 {
 		res.nr_channels = res.original_nr_channels
 	}
@@ -189,8 +207,8 @@ pub fn resize_uint8(img &Image, output_w int, output_h int) !Image {
 		return error('stbi_image failed to resize file')
 	}
 
-	if 0 == C.stbir_resize_uint8_linear(img.data, img.width, img.height, 0, res.data,
-		output_w, output_h, 0, img.nr_channels) {
+	if 0 == C.stbir_resize_uint8_linear(img.data, img.width, img.height, 0, res.data, output_w,
+		output_h, 0, img.nr_channels) {
 		return error('stbi_image failed to resize file')
 	}
 	return res
@@ -201,51 +219,50 @@ pub fn resize_uint8(img &Image, output_w int, output_h int) !Image {
 // Write functions
 //
 //-----------------------------------------------------------------------------
-fn C.stbi_write_png(filename &char, w i32, h i32, comp i32, buffer &u8, stride_in_bytes i32) i32
-fn C.stbi_write_bmp(filename &char, w i32, h i32, comp i32, buffer &u8) i32
-fn C.stbi_write_tga(filename &char, w i32, h i32, comp i32, buffer &u8) i32
-fn C.stbi_write_jpg(filename &char, w i32, h i32, comp i32, buffer &u8, quality i32) i32
+fn C.stbi_write_png(filename &char, w i32, h i32, nr_channels i32, buffer &u8, stride_in_bytes i32) i32
+fn C.stbi_write_bmp(filename &char, w i32, h i32, nr_channels i32, buffer &u8) i32
+fn C.stbi_write_tga(filename &char, w i32, h i32, nr_channels i32, buffer &u8) i32
+fn C.stbi_write_jpg(filename &char, w i32, h i32, nr_channels i32, buffer &u8, quality i32) i32
 
-// fn C.stbi_write_hdr(filename &char, w int, h int, comp int, buffer &u8) int // buffer &u8 => buffer &f32
+// fn C.stbi_write_hdr(filename &char, w int, h int, nr_channels int, buffer &u8) int // buffer &u8 => buffer &f32
 
-// stbi_write_png write on path a PNG file
-// row_stride_in_bytes is usually equal to: w * comp
-// comp is the number of channels
-pub fn stbi_write_png(path string, w int, h int, comp int, buf &u8, row_stride_in_bytes int) ! {
-	if 0 == C.stbi_write_png(&char(path.str), w, h, comp, buf, row_stride_in_bytes) {
+// stbi_write_png writes a PNG file to `path`.
+// `nr_channels` is the number of channels in `buf`.
+// `row_stride_in_bytes` is usually `w * nr_channels`.
+pub fn stbi_write_png(path string, w int, h int, nr_channels int, buf &u8, row_stride_in_bytes int) ! {
+	if 0 == C.stbi_write_png(&char(path.str), w, h, nr_channels, buf, row_stride_in_bytes) {
 		return error('stbi_image failed to write png file to "${path}"')
 	}
 }
 
-// stbi_write_png write on path a BMP file
-// comp is the number of channels
-pub fn stbi_write_bmp(path string, w int, h int, comp int, buf &u8) ! {
-	if 0 == C.stbi_write_bmp(&char(path.str), w, h, comp, buf) {
+// stbi_write_bmp writes a BMP file to `path`.
+// `nr_channels` is the number of channels in `buf`.
+pub fn stbi_write_bmp(path string, w int, h int, nr_channels int, buf &u8) ! {
+	if 0 == C.stbi_write_bmp(&char(path.str), w, h, nr_channels, buf) {
 		return error('stbi_image failed to write bmp file to "${path}"')
 	}
 }
 
-// stbi_write_png write on path a TGA file
-// comp is the number of channels
-pub fn stbi_write_tga(path string, w int, h int, comp int, buf &u8) ! {
-	if 0 == C.stbi_write_tga(&char(path.str), w, h, comp, buf) {
+// stbi_write_tga writes a TGA file to `path`.
+// `nr_channels` is the number of channels in `buf`.
+pub fn stbi_write_tga(path string, w int, h int, nr_channels int, buf &u8) ! {
+	if 0 == C.stbi_write_tga(&char(path.str), w, h, nr_channels, buf) {
 		return error('stbi_image failed to write tga file to "${path}"')
 	}
 }
 
-// stbi_write_png write on path a JPG file
-// quality select the compression quality of the JPG
-// quality is between 1 and 100. Higher quality looks better but results in a bigger image.
-// comp is the number of channels
-pub fn stbi_write_jpg(path string, w int, h int, comp int, buf &u8, quality int) ! {
-	if 0 == C.stbi_write_jpg(&char(path.str), w, h, comp, buf, quality) {
+// stbi_write_jpg writes a JPG file to `path`.
+// `nr_channels` is the number of channels in `buf`.
+// `quality` controls the JPG compression quality and must be between 1 and 100.
+pub fn stbi_write_jpg(path string, w int, h int, nr_channels int, buf &u8, quality int) ! {
+	if 0 == C.stbi_write_jpg(&char(path.str), w, h, nr_channels, buf, quality) {
 		return error('stbi_image failed to write jpg file to "${path}"')
 	}
 }
 
 /*
-pub fn stbi_write_hdr(path string, w int, h int, comp int, buf &u8) ! {
-	if 0 == C.stbi_write_hdr(&char(path.str), w , h , comp , buf){
+pub fn stbi_write_hdr(path string, w int, h int, nr_channels int, buf &u8) ! {
+	if 0 == C.stbi_write_hdr(&char(path.str), w , h , nr_channels , buf){
 		return error('stbi_image failed to write hdr file to "${path}"')
 	}
 }

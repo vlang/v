@@ -176,6 +176,9 @@ fn C.mbedtls_net_init(&C.mbedtls_net_context)
 fn C.mbedtls_net_connect(&C.mbedtls_net_context, &char, &char, i32) i32
 fn C.mbedtls_net_bind(&C.mbedtls_net_context, &char, &char, i32) i32
 fn C.mbedtls_net_accept(&C.mbedtls_net_context, &C.mbedtls_net_context, voidptr, usize, &usize) i32
+fn C.mbedtls_net_recv(voidptr, &u8, usize) i32
+fn C.mbedtls_net_send(voidptr, &u8, usize) i32
+fn C.mbedtls_net_recv_timeout(voidptr, &u8, usize, u32) i32
 fn C.mbedtls_net_free(&C.mbedtls_net_context)
 
 fn C.mbedtls_ssl_init(&C.mbedtls_ssl_context)
@@ -183,8 +186,7 @@ fn C.mbedtls_ssl_setup(&C.mbedtls_ssl_context, &C.mbedtls_ssl_config) i32
 fn C.mbedtls_ssl_session_reset(&C.mbedtls_ssl_context)
 fn C.mbedtls_ssl_conf_authmode(&C.mbedtls_ssl_config, i32)
 fn C.mbedtls_ssl_conf_rng(&C.mbedtls_ssl_config, fn (voidptr, &u8, usize) int, &C.mbedtls_ctr_drbg_context)
-fn C.mbedtls_ssl_set_bio(&C.mbedtls_ssl_context, &C.mbedtls_net_context, &C.mbedtls_ssl_send_t, &C.mbedtls_ssl_recv_t,
-	&C.mbedtls_ssl_recv_timeout_t)
+fn C.mbedtls_ssl_set_bio(&C.mbedtls_ssl_context, &C.mbedtls_net_context, fn (voidptr, &u8, usize) i32, fn (voidptr, &u8, usize) i32, fn (voidptr, &u8, usize, u32) i32)
 fn C.mbedtls_ssl_conf_own_cert(&C.mbedtls_ssl_config, &C.mbedtls_x509_crt, &C.mbedtls_pk_context) i32
 fn C.mbedtls_ssl_conf_ca_chain(&C.mbedtls_ssl_config, &C.mbedtls_x509_crt, &C.mbedtls_x509_crl)
 fn C.mbedtls_ssl_set_hostname(&C.mbedtls_ssl_context, &char) i32

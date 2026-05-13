@@ -58,6 +58,7 @@ fn (mut app App) handle_key(key i64) ? {
 		`k` { freq = 523.25 }
 		else {}
 	}
+
 	if freq > 0 {
 		app.play(freq, c_note_start_amplitude)
 	}

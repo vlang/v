@@ -69,6 +69,13 @@ fn test_escape_dollar_in_string() {
 	assert i == 42
 }
 
+fn test_dollar_sign_is_literal_without_braces() {
+	b := 10
+	text := 'a$b'
+	assert text == 'a$b'
+	assert b == 10
+}
+
 fn test_implicit_str() {
 	i := 42
 	assert 'int ${i}' == 'int 42'
@@ -185,6 +192,14 @@ fn test_utf8_string_interpolation() {
 	assert ':${m2:7}:${d:-15}:' == ': Москва́:Antonín Dvořák :'
 	g := 'Πελοπόννησος'
 	assert '>${g:-13}<' == '>Πελοπόννησος <'
+}
+
+fn test_utf8_string_interpolation_uses_grapheme_clusters() {
+	assert '>${'\u006E\u0303':10}<' == '>         ñ<'
+	assert '>${'\U0001F3F3\uFE0F\u200D\U0001F308':10}<' == '>        🏳️‍🌈<'
+	assert '>${'ห์':10}<' == '>         ห์<'
+	assert '>${'ปีเตอร์':10}<' == '>     ปีเตอร์<'
+	assert '>${'👩🏽‍💻':10}<' == '>        👩🏽‍💻<'
 }
 
 struct Sss {

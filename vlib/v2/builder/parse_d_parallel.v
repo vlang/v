@@ -45,7 +45,8 @@ fn worker(mut wp util.WorkerPool[string, ast.File], mut pstate ParsingSharedStat
 				}
 				pstate.mark_module_as_parsed(mod.name)
 				mod_path := prefs.get_module_path(mod.name, ast_file.name)
-				wp.queue_jobs(get_v_files_from_dir(mod_path, prefs.user_defines))
+				wp.queue_jobs(get_v_files_from_dir(mod_path, prefs.user_defines,
+					prefs.get_effective_os()))
 			}
 		}
 		wp.push_result(ast_file)
@@ -78,7 +79,7 @@ fn (mut b Builder) parse_files_parallel(files []string) []ast.File {
 		} else {
 			for module_path in core_cached_module_paths {
 				worker_pool.queue_jobs(get_v_files_from_dir(b.pref.get_vlib_module_path(module_path),
-					b.pref.user_defines))
+					b.pref.user_defines, b.pref.get_effective_os()))
 			}
 		}
 	}

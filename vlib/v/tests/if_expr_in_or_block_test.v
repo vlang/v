@@ -103,3 +103,55 @@ fn test_if_expr_with_multiple_branches_in_or_block() {
 	}
 	assert val == 1
 }
+
+struct IfExprEmptyReply {
+	value int
+}
+
+struct IfExprRedisError {
+	msg_ string
+}
+
+fn (e IfExprRedisError) msg() string {
+	return e.msg_
+}
+
+fn (e IfExprRedisError) code() int {
+	return 0
+}
+
+const if_expr_nil_reply = IfExprRedisError{'nil'}
+
+type IfExprReply = IfExprEmptyReply | IfExprRedisError
+
+fn if_expr_read_reply(msg string) !IfExprReply {
+	return IError(IfExprRedisError{msg})
+}
+
+fn if_expr_decode_reply(msg string) IfExprReply {
+	return if_expr_read_reply(msg) or {
+		if err is IfExprRedisError {
+			if err == if_expr_nil_reply {
+				IfExprEmptyReply{0}
+			} else {
+				err
+			}
+		} else {
+			panic(err)
+		}
+	}
+}
+
+fn test_if_expr_in_or_block_with_smartcasted_interface_sumtype_value() {
+	reply1 := if_expr_decode_reply('nil')
+	assert reply1 is IfExprEmptyReply
+	if reply1 is IfExprEmptyReply {
+		assert reply1.value == 0
+	}
+
+	reply2 := if_expr_decode_reply('x')
+	assert reply2 is IfExprRedisError
+	if reply2 is IfExprRedisError {
+		assert reply2.msg_ == 'x'
+	}
+}
