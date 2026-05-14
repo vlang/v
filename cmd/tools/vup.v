@@ -255,9 +255,6 @@ fn get_make_cmd_name() string {
 	if os.user_os() == 'windows' {
 		return 'makev.bat'
 	}
-	if _ := os.find_abs_path_of_executable('gmake') {
-		return 'gmake'
-	}
 	cmd := 'make'
 	make_sure_cmd_is_available(cmd)
 	cc := os.getenv_opt('CC') or { 'cc' }
