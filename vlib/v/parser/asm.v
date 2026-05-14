@@ -640,7 +640,7 @@ fn (mut p Parser) asm_ios(output bool) []ast.AsmIO {
 			}
 		}
 		mut expr := p.expr(0)
-		mut next_expr := ast.Expr(ast.EmptyExpr{})
+		mut next_expr := ast.Expr(ast.EmptyExpr(0))
 		if mut expr is ast.ParExpr {
 			next_expr = expr.expr
 		} else {

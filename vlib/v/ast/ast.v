@@ -331,7 +331,7 @@ pub mut:
 pub fn (e &SelectorExpr) root_ident() ?Ident {
 	mut root := e.expr
 	for {
-		mut next_root := Expr(EmptyExpr{})
+		mut next_root := Expr(EmptyExpr(0))
 		if mut root is SelectorExpr {
 			next_root = root.expr
 		} else {
@@ -538,7 +538,7 @@ pub mut:
 	pre_comments         []Comment
 	typ_str              string // 'Foo'
 	typ                  Type   // the type of this struct
-	typ_expr             Expr = EmptyExpr{} // `typeof(x).idx` in `typeof(x).idx{}`
+	typ_expr             Expr = EmptyExpr(0) // `typeof(x).idx` in `typeof(x).idx{}`
 	generic_typ          Type // original generic struct type; reused for later concrete instantiations
 	update_expr          Expr // `a` in `...a`
 	update_expr_type     Type

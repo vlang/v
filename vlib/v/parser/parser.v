@@ -613,7 +613,7 @@ fn (mut p Parser) mark_last_call_return_as_used(mut last_stmt ast.Stmt) {
 					// last stmt has infix expr with CallExpr: foo()? + 'a'
 					mut left_expr := last_stmt.expr.left
 					for {
-						mut next_left_expr := ast.Expr(ast.EmptyExpr{})
+						mut next_left_expr := ast.Expr(ast.EmptyExpr(0))
 						if mut left_expr is ast.InfixExpr {
 							if left_expr.or_block.stmts.len > 0 {
 								mut or_block_last_stmt := left_expr.or_block.stmts.last()

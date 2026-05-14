@@ -1213,7 +1213,7 @@ fn (mut p Parser) prefix_expr() ast.Expr {
 				return right
 			}
 		}
-		mut unwrapped_right := ast.Expr(ast.EmptyExpr{})
+		mut unwrapped_right := ast.Expr(ast.EmptyExpr(0))
 		if mut right is ast.ParExpr {
 			if right.expr is ast.StructInit {
 				p.note_with_pos('unnecessary `()`, use `&${ast.Expr(right.expr)}` instead of `&(${ast.Expr(right.expr)})`',
