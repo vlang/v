@@ -26,7 +26,7 @@ download_vc:
 
 v:
 	@set -e; \
-	sys=`uname -s 2>/dev/null || echo Unknown`; \
+	sys=`uname -s 2>/dev/null || echo unknown`; \
 	arch=`uname -m 2>/dev/null || echo unknown`; \
 	set -- $(CFLAGS); \
 	ccflags=; \
