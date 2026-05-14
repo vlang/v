@@ -37,6 +37,7 @@ v:
 				ccflags="$$ccflags $$arg"; \
 				;; \
 			-O*) \
+				ccflags="$$ccflags $$arg"; \
 				unsafe_o=1; \
 				;; \
 			*) \
@@ -45,10 +46,7 @@ v:
 		esac; \
 	done; \
 	ccflags=$${ccflags# }; \
-	if [ $$unsafe_o -eq 1 ]; then \
-		ccflags="$$ccflags -O1"; \
-		ccflags=$${ccflags# }; \
-	fi; \
+	bootstrap_ccflags=$$ccflags; \
 	set -- $(LDFLAGS); \
 	ldflags=; \
 	for arg do \
@@ -69,10 +67,34 @@ v:
 	esac; \
 	ccflags=$${ccflags# }; \
 	ldflags=$${ldflags# }; \
-	$(CC) $$ccflags -std=gnu11 -w -o v1 vc/v.c -lm -lpthread $$ldflags || cmd/tools/cc_compilation_failed_non_windows.sh; \
+	if [ "$$sys" = Linux ]; then \
+		case "$$arch" in \
+			arm64|aarch64) \
+				if [ $$unsafe_o -eq 1 ]; then \
+					set -- $$ccflags; \
+					bootstrap_ccflags=; \
+					for arg do \
+						case "$$arg" in \
+							-O|-O0|-O1) \
+								bootstrap_ccflags="$$bootstrap_ccflags $$arg"; \
+								;; \
+							-O*) \
+								bootstrap_ccflags="$$bootstrap_ccflags -O1"; \
+								;; \
+							*) \
+								bootstrap_ccflags="$$bootstrap_ccflags $$arg"; \
+								;; \
+						esac; \
+					done; \
+					bootstrap_ccflags=$${bootstrap_ccflags# }; \
+				fi; \
+				;; \
+		esac; \
+	fi; \
+	$(CC) $$bootstrap_ccflags -std=gnu11 -w -o v1 vc/v.c -lm -lpthread $$ldflags || cmd/tools/cc_compilation_failed_non_windows.sh; \
 	set -- ./v1 -no-parallel -o v2 $(VFLAGS); \
-	if [ -n "$$ccflags" ]; then \
-		set -- "$$@" -cflags "$$ccflags"; \
+	if [ -n "$$bootstrap_ccflags" ]; then \
+		set -- "$$@" -cflags "$$bootstrap_ccflags"; \
 	fi; \
 	if [ -n "$$ldflags" ]; then \
 		set -- "$$@" -ldflags "$$ldflags"; \
