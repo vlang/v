@@ -11,6 +11,8 @@ struct SqlPrefix {
 	db_expr          ast.Expr
 	tmp_inside_match bool
 	is_dynamic       bool
+	has_unscoped     bool
+	unscoped_fields  []string
 }
 
 struct SqlQueryDataItemsBlock {
@@ -92,6 +94,26 @@ fn (mut p Parser) sql_prefix() SqlPrefix {
 	db_expr := p.check_expr(0) or {
 		p.unexpected(prepend_msg: 'invalid expression:', expecting: 'database')
 	}
+	// Parse optional unscoped(field1, field2, ...) or unscoped()
+	mut has_unscoped := false
+	mut unscoped_fields := []string{}
+	if p.tok.kind == .name && p.tok.lit == 'unscoped' {
+		has_unscoped = true
+		p.next()
+		p.check(.lpar)
+		if p.tok.kind != .rpar {
+			for {
+				field_name := p.check_name()
+				unscoped_fields << field_name
+				if p.tok.kind == .comma {
+					p.next()
+				} else {
+					break
+				}
+			}
+		}
+		p.check(.rpar)
+	}
 	p.check(.lcbr)
 	mut is_dynamic := false
 	if p.tok.kind == .name && p.tok.lit == 'dynamic' {
@@ -103,6 +125,8 @@ fn (mut p Parser) sql_prefix() SqlPrefix {
 		db_expr:          db_expr
 		tmp_inside_match: tmp_inside_match
 		is_dynamic:       is_dynamic
+		has_unscoped:     has_unscoped
+		unscoped_fields:  unscoped_fields
 	}
 }
 
@@ -280,6 +304,8 @@ fn (mut p Parser) sql_expr_after_prefix(prefix SqlPrefix) ast.Expr {
 			pos: table_pos
 		}
 		joins:            joins
+		has_unscoped:     prefix.has_unscoped
+		unscoped_fields:  prefix.unscoped_fields
 	}
 }
 
@@ -372,10 +398,12 @@ fn (mut p Parser) sql_stmt_after_prefix(prefix SqlPrefix) ast.SqlStmt {
 
 	pos.last_line = p.prev_tok.line_nr
 	return ast.SqlStmt{
-		pos:     pos.extend(p.prev_tok.pos())
-		db_expr: prefix.db_expr
-		lines:   lines
-		or_expr: or_expr
+		pos:             pos.extend(p.prev_tok.pos())
+		db_expr:         prefix.db_expr
+		lines:           lines
+		or_expr:         or_expr
+		unscoped_fields: prefix.unscoped_fields
+		has_unscoped:    prefix.has_unscoped
 	}
 }
 

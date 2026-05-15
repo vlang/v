@@ -1,12 +1,6 @@
-@[has_globals]
 module orm
 
 import time
-
-const default_tenant_filter_field_name = 'tenant_id'
-const tenant_filter_attr_name = 'tenant_filter'
-const tenant_field_attr_name = 'tenant_field'
-const ignore_tenant_filter_attr_name = 'ignore_tenant_filter'
 
 pub const num64 = [typeof[i64]().idx, typeof[u64]().idx]
 pub const nums = [
@@ -227,8 +221,9 @@ pub:
 
 pub struct Table {
 pub mut:
-	name  string
-	attrs []VAttribute
+	name   string
+	attrs  []VAttribute
+	fields []string // struct field names, used to skip scope filters that don't apply
 }
 
 pub struct TableField {
@@ -272,31 +267,64 @@ pub mut:
 	joins           []JoinConfig // JOIN clauses for this query
 }
 
-struct TenantFilterState {
-mut:
-	enabled            bool
-	field_name         string
-	has_current_tenant bool
-	current_tenant     Primitive
-}
-
-struct TenantFilterScopeState {
-	enabled            bool
-	has_current_tenant bool
-	current_tenant     Primitive
-}
-
-pub struct TenantFilterConfig {
+// QueryFilter defines a single auto-injected filter condition.
+pub struct QueryFilter {
 pub:
-	enabled    bool   = true
-	field_name string = default_tenant_filter_field_name
+	field    string
+	value    Primitive
+	operator OperationKind = .eq
 }
 
-__global tenant_filter_state = TenantFilterState{
-	enabled:            false
-	field_name:         default_tenant_filter_field_name
-	has_current_tenant: false
-	current_tenant:     null_primitive
+// DataScope holds a set of QueryFilter conditions automatically
+// applied to all queries through an orm.DB.
+pub struct DataScope {
+pub mut:
+	filters []QueryFilter = []QueryFilter{}
+	enabled bool          = true
+}
+
+// DB wraps a Connection with a DataScope, applying scope filters
+// to every query. It is the recommended way to handle multi-tenancy,
+// soft-delete, and other row-level security patterns.
+pub struct DB {
+pub mut:
+	conn            Connection
+	scope           DataScope
+	unscoped_fields []string // scope filters to skip, set by db.unscoped()
+}
+
+// new_db creates an orm.DB wrapping the given connection with the given DataScope.
+pub fn new_db(conn Connection, scope DataScope) DB {
+	return DB{
+		conn:            conn
+		scope:           scope
+		unscoped_fields: []string{}
+	}
+}
+
+// unscoped configures this DB to skip the specified DataScope filters.
+// All subsequent ORM operations through this DB will skip the named scope filters.
+// When called with no arguments, all scope filters are skipped.
+//
+// Middleware usage:
+// ```v
+// fn (mut ctx Context) setup_db() {
+//     if ctx.user.role == 'admin' {
+//         ctx.db.unscoped() // directly modifies ctx.db
+//     }
+// }
+// ```
+pub fn (mut db DB) unscoped(fields ...string) {
+	db.unscoped_fields = if fields.len == 0 {
+		['*']
+	} else {
+		fields
+	}
+}
+
+// reset_scopes clears the unscoped_fields, restoring normal DataScope filtering.
+pub fn (mut db DB) reset_scopes() {
+	db.unscoped_fields = []
 }
 
 // Interfaces gets called from the backend and can be implemented
@@ -330,145 +358,77 @@ mut:
 	orm_release_savepoint(name string) !
 }
 
-// configure_tenant_filter configures the global ORM tenant filter behavior.
-pub fn configure_tenant_filter(config TenantFilterConfig) {
-	tenant_filter_state.enabled = config.enabled
-	tenant_filter_state.field_name = normalize_tenant_filter_field_name(config.field_name)
+fn table_ignores_data_scope() bool {
+	return false
 }
 
-// set_tenant_filter_enabled enables or disables global tenant filtering.
-pub fn set_tenant_filter_enabled(enabled bool) {
-	tenant_filter_state.enabled = enabled
-}
-
-// set_current_tenant_id sets the current tenant id used by global tenant filtering.
-pub fn set_current_tenant_id(tenant_id Primitive) {
-	if tenant_id is Null {
-		clear_current_tenant_id()
-		return
-	}
-	tenant_filter_state.has_current_tenant = true
-	tenant_filter_state.current_tenant = tenant_id
-}
-
-// clear_current_tenant_id clears the current tenant id used by global tenant filtering.
-pub fn clear_current_tenant_id() {
-	tenant_filter_state.has_current_tenant = false
-	tenant_filter_state.current_tenant = null_primitive
-}
-
-// with_tenant executes `callback` with a temporary tenant id and enabled tenant filtering.
-pub fn with_tenant[T](tenant_id Primitive, callback fn () !T) !T {
-	saved := tenant_filter_scope_snapshot()
-	tenant_filter_state.enabled = true
-	tenant_filter_state.has_current_tenant = true
-	tenant_filter_state.current_tenant = tenant_id
-	defer {
-		tenant_filter_scope_restore(saved)
-	}
-	return callback()
-}
-
-// with_tenant_value executes `callback` with a temporary tenant id and enabled tenant filtering.
-pub fn with_tenant_value[T](tenant_id Primitive, callback fn () T) T {
-	saved := tenant_filter_scope_snapshot()
-	tenant_filter_state.enabled = true
-	tenant_filter_state.has_current_tenant = true
-	tenant_filter_state.current_tenant = tenant_id
-	defer {
-		tenant_filter_scope_restore(saved)
-	}
-	return callback()
-}
-
-// without_tenant_filter executes `callback` with tenant filtering temporarily disabled.
-pub fn without_tenant_filter[T](callback fn () !T) !T {
-	saved := tenant_filter_scope_snapshot()
-	tenant_filter_state.enabled = false
-	defer {
-		tenant_filter_scope_restore(saved)
-	}
-	return callback()
-}
-
-// without_tenant_filter_value executes `callback` with tenant filtering temporarily disabled.
-pub fn without_tenant_filter_value[T](callback fn () T) T {
-	saved := tenant_filter_scope_snapshot()
-	tenant_filter_state.enabled = false
-	defer {
-		tenant_filter_scope_restore(saved)
-	}
-	return callback()
-}
-
-// apply_tenant_filter appends the configured tenant filter condition to `where`.
-pub fn apply_tenant_filter(table Table, where QueryData) QueryData {
-	if !tenant_filter_state.enabled || !tenant_filter_state.has_current_tenant {
+// apply_data_scope appends all enabled DataScope filters to `where`.
+// `scope_skip_fields` specifies which filters to skip. `['*']` skips all filters.
+pub fn apply_data_scope(scope DataScope, table Table, where QueryData, scope_skip_fields []string) QueryData {
+	if !scope.enabled || scope.filters.len == 0 {
 		return where
 	}
-	if table_ignores_tenant_filter(table) {
+	if table_ignores_data_scope() {
 		return where
 	}
-	tenant_field_name := table_tenant_filter_field_name(table)
-	if tenant_field_name == '' || tenant_field_name in where.fields {
-		return where
+	mut where_scoped := clone_query_data(where)
+	skip_all := '*' in scope_skip_fields
+	for filter in scope.filters {
+		if filter.field == '' || filter.field in where_scoped.fields {
+			continue
+		}
+		if skip_all || filter.field in scope_skip_fields {
+			continue
+		}
+		if table.fields.len > 0 && filter.field !in table.fields {
+			continue
+		}
+		field_name := filter.field.clone()
+		original_fields_len := where_scoped.fields.len
+		if original_fields_len > 1 && !filter.operator.is_unary() {
+			where_scoped.parentheses << [0, original_fields_len - 1]
+		}
+		if original_fields_len > 0 && !filter.operator.is_unary() {
+			where_scoped.is_and << true
+		}
+		where_scoped.fields << field_name
+		where_scoped.data << filter.value
+		where_scoped.types << primitive_type(filter.value)
+		where_scoped.kinds << filter.operator
 	}
-	mut where_with_tenant := clone_query_data(where)
-	original_fields_len := where_with_tenant.fields.len
-	if original_fields_len > 1 {
-		// Preserve original WHERE precedence before appending `AND tenant = ...`.
-		where_with_tenant.parentheses << [0, original_fields_len - 1]
-	}
-	if original_fields_len > 0 {
-		where_with_tenant.is_and << true
-	}
-	where_with_tenant.fields << tenant_field_name
-	where_with_tenant.data << tenant_filter_state.current_tenant
-	where_with_tenant.types << tenant_filter_primitive_type(tenant_filter_state.current_tenant)
-	where_with_tenant.kinds << .eq
-	return where_with_tenant
+	return where_scoped
 }
 
-fn tenant_filter_scope_snapshot() TenantFilterScopeState {
-	return TenantFilterScopeState{
-		enabled:            tenant_filter_state.enabled
-		has_current_tenant: tenant_filter_state.has_current_tenant
-		current_tenant:     tenant_filter_state.current_tenant
+// apply_data_scope_insert injects DataScope field/value pairs into insert data.
+// `scope_skip_fields` specifies which filters to skip. `['*']` skips all filters.
+pub fn apply_data_scope_insert(scope DataScope, table Table, data QueryData, scope_skip_fields []string) QueryData {
+	if !scope.enabled || scope.filters.len == 0 {
+		return data
 	}
-}
-
-fn tenant_filter_scope_restore(saved TenantFilterScopeState) {
-	tenant_filter_state.enabled = saved.enabled
-	tenant_filter_state.has_current_tenant = saved.has_current_tenant
-	tenant_filter_state.current_tenant = saved.current_tenant
-}
-
-fn normalize_tenant_filter_field_name(field_name string) string {
-	name := trim_attr_arg(field_name)
-	if name == '' {
-		return default_tenant_filter_field_name
+	if table_ignores_data_scope() {
+		return data
 	}
-	return name
-}
-
-fn trim_attr_arg(arg string) string {
-	mut out := arg.trim_space()
-	if out.len >= 2 && ((out.starts_with("'") && out.ends_with("'"))
-		|| (out.starts_with('"') && out.ends_with('"'))) {
-		out = out[1..out.len - 1].trim_space()
+	mut data_scoped := clone_query_data(data)
+	skip_all := '*' in scope_skip_fields
+	for filter in scope.filters {
+		if filter.field == '' || filter.field in data_scoped.fields {
+			continue
+		}
+		if skip_all || filter.field in scope_skip_fields {
+			continue
+		}
+		if table.fields.len > 0 && filter.field !in table.fields {
+			continue
+		}
+		data_scoped.fields << filter.field
+		data_scoped.data << filter.value
+		data_scoped.types << primitive_type(filter.value)
 	}
-	return out
+	return data_scoped
 }
 
-fn tenant_filter_array_primitive_type[T](value []T) int {
-	if value.len > 0 {
-		first := value[0]
-		return tenant_filter_primitive_type(Primitive(first))
-	}
-	return type_idx['int']
-}
-
-fn tenant_filter_primitive_type(value Primitive) int {
+// primitive_type maps a Primitive value to its V type index.
+pub fn primitive_type(value Primitive) int {
 	return match value {
 		bool {
 			type_idx['bool']
@@ -513,110 +473,128 @@ fn tenant_filter_primitive_type(value Primitive) int {
 			type_idx['int']
 		}
 		InfixType {
-			tenant_filter_primitive_type(value.right)
+			primitive_type(value.right)
 		}
 		[]Primitive {
 			if value.len > 0 {
-				tenant_filter_primitive_type(value[0])
+				primitive_type(value[0])
 			} else {
 				type_idx['int']
 			}
 		}
 		[]bool {
-			tenant_filter_array_primitive_type(value)
+			primitive_type(Primitive(value[0]))
 		}
 		[]f32 {
-			tenant_filter_array_primitive_type(value)
+			primitive_type(Primitive(value[0]))
 		}
 		[]f64 {
-			tenant_filter_array_primitive_type(value)
+			primitive_type(Primitive(value[0]))
 		}
 		[]i16 {
-			tenant_filter_array_primitive_type(value)
+			primitive_type(Primitive(value[0]))
 		}
 		[]i64 {
-			tenant_filter_array_primitive_type(value)
+			primitive_type(Primitive(value[0]))
 		}
 		[]i8 {
-			tenant_filter_array_primitive_type(value)
+			primitive_type(Primitive(value[0]))
 		}
 		[]int {
-			tenant_filter_array_primitive_type(value)
+			primitive_type(Primitive(value[0]))
 		}
 		[]string {
-			tenant_filter_array_primitive_type(value)
+			primitive_type(Primitive(value[0]))
 		}
 		[]time.Time {
-			tenant_filter_array_primitive_type(value)
+			primitive_type(Primitive(value[0]))
 		}
 		[]u16 {
-			tenant_filter_array_primitive_type(value)
+			primitive_type(Primitive(value[0]))
 		}
 		[]u32 {
-			tenant_filter_array_primitive_type(value)
+			primitive_type(Primitive(value[0]))
 		}
 		[]u64 {
-			tenant_filter_array_primitive_type(value)
+			primitive_type(Primitive(value[0]))
 		}
 		[]u8 {
-			tenant_filter_array_primitive_type(value)
+			primitive_type(Primitive(value[0]))
 		}
 		[]InfixType {
-			tenant_filter_array_primitive_type(value)
+			primitive_type(Primitive(value[0]))
 		}
 	}
 }
 
-fn table_tenant_filter_field_name(table Table) string {
-	mut field_name := tenant_filter_state.field_name
-	for attr in table.attrs {
-		if attr_name_matches(attr.name, tenant_field_attr_name) && attr.has_arg {
-			override_field_name := trim_attr_arg(attr.arg)
-			if override_field_name != '' {
-				field_name = override_field_name
-			}
-		}
+fn trim_attr_arg(arg string) string {
+	mut out := arg.trim_space()
+	if out.len >= 2 && ((out.starts_with("'") && out.ends_with("'"))
+		|| (out.starts_with('"') && out.ends_with('"'))) {
+		out = out[1..out.len - 1].trim_space()
 	}
-	return normalize_tenant_filter_field_name(field_name)
-}
-
-fn table_ignores_tenant_filter(table Table) bool {
-	for attr in table.attrs {
-		if attr_name_matches(attr.name, ignore_tenant_filter_attr_name) {
-			if !attr.has_arg {
-				return true
-			}
-			if is_enabled := parse_bool_attr(attr.arg) {
-				return is_enabled
-			}
-			return true
-		}
-		if attr_name_matches(attr.name, tenant_filter_attr_name) && attr.has_arg {
-			if is_enabled := parse_bool_attr(attr.arg) {
-				return !is_enabled
-			}
-		}
-	}
-	return false
+	return out
 }
 
 fn attr_name_matches(name string, expected string) bool {
 	return name == expected || name.ends_with('.${expected}')
 }
 
-fn parse_bool_attr(raw string) ?bool {
-	value := trim_attr_arg(raw).to_lower()
-	return match value {
-		'1', 'true', 'yes', 'on' {
-			true
-		}
-		'0', 'false', 'no', 'off' {
-			false
-		}
-		else {
-			none
+// DB implements orm.Connection ------------------------------------------------
+
+// select fetches rows through the wrapped connection, with DataScope applied.
+pub fn (mut db DB) select(config SelectConfig, data QueryData, where QueryData) ![][]Primitive {
+	mut cfg := config
+	mut where_scoped := where
+	mut has_scope := false
+	if db.scope.enabled && db.scope.filters.len > 0 && !table_ignores_data_scope() {
+		for filter in db.scope.filters {
+			if filter.field == '' || filter.field in where_scoped.fields {
+				continue
+			}
+			where_scoped = apply_data_scope(db.scope, cfg.table, where, db.unscoped_fields)
+			// Only set has_scope if filters were actually added (not all skipped)
+			has_scope = where_scoped.fields.len > where.fields.len
+			break
 		}
 	}
+	if has_scope {
+		cfg.has_where = true
+	}
+	return db.conn.select(cfg, data, where_scoped)
+}
+
+// insert inserts a row through the wrapped connection, with DataScope applied.
+pub fn (mut db DB) insert(table Table, data QueryData) ! {
+	data_scoped := apply_data_scope_insert(db.scope, table, data, db.unscoped_fields)
+	return db.conn.insert(table, data_scoped)
+}
+
+// update updates rows through the wrapped connection, with DataScope applied.
+pub fn (mut db DB) update(table Table, data QueryData, where QueryData) ! {
+	where_scoped := apply_data_scope(db.scope, table, where, db.unscoped_fields)
+	return db.conn.update(table, data, where_scoped)
+}
+
+// delete deletes rows through the wrapped connection, with DataScope applied.
+pub fn (mut db DB) delete(table Table, where QueryData) ! {
+	where_scoped := apply_data_scope(db.scope, table, where, db.unscoped_fields)
+	return db.conn.delete(table, where_scoped)
+}
+
+// create creates a table through the wrapped connection.
+pub fn (mut db DB) create(table Table, fields []TableField) ! {
+	return db.conn.create(table, fields)
+}
+
+// drop drops a table through the wrapped connection.
+pub fn (mut db DB) drop(table Table) ! {
+	return db.conn.drop(table)
+}
+
+// last_id returns the last inserted id from the wrapped connection.
+pub fn (mut db DB) last_id() int {
+	return db.conn.last_id()
 }
 
 fn clone_query_data(data QueryData) QueryData {

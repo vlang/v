@@ -579,7 +579,11 @@ fn (mut g Gen) sql_select_expr(node ast.SqlExpr) {
 	connection_var_name := g.new_tmp_var()
 
 	g.writeln('')
-	g.write_orm_connection_init(connection_var_name, &node.db_expr)
+	if node.has_unscoped {
+		g.write_unscoped_connection_init(connection_var_name, &node.db_expr, node.unscoped_fields)
+	} else {
+		g.write_orm_connection_init(connection_var_name, &node.db_expr)
+	}
 	result_var := g.new_tmp_var()
 	result_c_typ := g.styp(node.typ)
 	g.writeln('${result_c_typ} ${result_var};')
@@ -592,7 +596,11 @@ fn (mut g Gen) sql_insert_expr(node ast.SqlExpr) {
 	left := g.go_before_last_stmt()
 	g.writeln('')
 	connection_var_name := g.new_tmp_var()
-	g.write_orm_connection_init(connection_var_name, &node.db_expr)
+	if node.has_unscoped {
+		g.write_unscoped_connection_init(connection_var_name, &node.db_expr, node.unscoped_fields)
+	} else {
+		g.write_orm_connection_init(connection_var_name, &node.db_expr)
+	}
 	table_name := g.get_table_name_by_struct_type(node.table_expr.typ)
 	table_attrs := g.get_table_attrs_by_struct_type(node.table_expr.typ)
 	result_var_name := g.new_tmp_var()
@@ -637,7 +645,11 @@ fn (mut g Gen) build_sql_stmt_line_from_sql_expr(node ast.SqlExpr) ast.SqlStmtLi
 fn (mut g Gen) sql_stmt(node ast.SqlStmt) {
 	connection_var_name := g.new_tmp_var()
 
-	g.write_orm_connection_init(connection_var_name, &node.db_expr)
+	if node.has_unscoped {
+		g.write_unscoped_connection_init(connection_var_name, &node.db_expr, node.unscoped_fields)
+	} else {
+		g.write_orm_connection_init(connection_var_name, &node.db_expr)
+	}
 
 	for line in node.lines {
 		g.sql_stmt_line(line, connection_var_name, node.or_expr)
@@ -710,14 +722,63 @@ fn (mut g Gen) write_orm_connection_init(connection_var_name string, db_expr &as
 	}
 }
 
+// write_unscoped_connection_init writes C code that creates a
+// Connection by copying the DB and setting unscoped_fields directly.
+// This inline approach works independently of whether unscoped() is mut or not.
+fn (mut g Gen) write_unscoped_connection_init(connection_var_name string, db_expr &ast.Expr, unscoped_fields []string) {
+	g.writeln('// ORM with unscoped')
+	tmp_db_var := g.new_tmp_var()
+	g.write('orm__DB ${tmp_db_var} = ')
+	g.expr(db_expr)
+	g.writeln(';')
+	// When unscoped() has no args, use ['*'] to skip all filters
+	fields := if unscoped_fields.len == 0 {
+		['*']
+	} else {
+		unscoped_fields
+	}
+	g.write('${tmp_db_var}.unscoped_fields = builtin__new_array_from_c_array(${fields.len}, ${fields.len}, sizeof(string), ')
+	if fields.len > 0 {
+		g.write('_MOV((string[${fields.len}]){')
+		for i, field in fields {
+			if i > 0 {
+				g.write(', ')
+			}
+			g.write('_S("${field}")')
+		}
+		g.write('})')
+	} else {
+		g.write('NULL')
+	}
+	g.writeln(');')
+	g.writeln('orm__Connection ${connection_var_name} = (orm__Connection){._orm__DB = &${tmp_db_var}, ._typ = _orm__Connection_orm__DB_index};')
+}
+
 // write_orm_table_struct writes C code for the orm.Table struct
 fn (mut g Gen) write_orm_table_struct(typ ast.Type) {
 	table_name := g.get_table_name_by_struct_type(typ)
 	table_attrs := g.get_table_attrs_by_struct_type(typ)
 
+	mut fields := g.orm_table_field_names(typ)
+
 	g.writeln('((orm__Table){')
 	g.indent++
 	g.writeln('.name = _S("${table_name}"),')
+	g.writeln('.fields = builtin__new_array_from_c_array(${fields.len}, ${fields.len}, sizeof(string),')
+	g.indent++
+	if fields.len > 0 {
+		g.write('_MOV((string[${fields.len}]){')
+		g.indent++
+		for field_name in fields {
+			g.write('_S("${field_name}"),')
+		}
+		g.indent--
+		g.writeln('})')
+	} else {
+		g.writeln('NULL // No fields')
+	}
+	g.indent--
+	g.writeln('),')
 	g.writeln('.attrs = builtin__new_array_from_c_array(${table_attrs.len}, ${table_attrs.len}, sizeof(VAttribute),')
 	g.indent++
 
@@ -2155,10 +2216,12 @@ fn (mut g Gen) write_orm_select(node ast.SqlExpr, connection_var_name string, re
 
 	g.writeln('(orm__QueryData) {')
 	g.indent++
+	g.writeln('.fields = builtin____new_array_with_default_noscan(0, 0, sizeof(string), 0),')
 	g.writeln('.types = builtin____new_array_with_default_noscan(0, 0, sizeof(${ast.int_type_name}), 0),')
 	g.writeln('.kinds = builtin____new_array_with_default_noscan(0, 0, sizeof(orm__OperationKind), 0),')
 	g.writeln('.is_and = builtin____new_array_with_default_noscan(0, 0, sizeof(bool), 0),')
 	g.writeln('.parentheses = builtin____new_array_with_default_noscan(0, 0, sizeof(Array_${ast.int_type_name}), 0),')
+	g.writeln('.auto_fields = builtin____new_array_with_default_noscan(0, 0, sizeof(${ast.int_type_name}), 0),')
 	if exprs.len > 0 {
 		g.write('.data = builtin__new_array_from_c_array(${exprs.len}, ${exprs.len}, sizeof(orm__Primitive),')
 		g.write(' _MOV((orm__Primitive[${exprs.len}]){')
@@ -2181,10 +2244,12 @@ fn (mut g Gen) write_orm_select(node ast.SqlExpr, connection_var_name string, re
 	} else {
 		g.writeln('(orm__QueryData) {')
 		g.indent++
+		g.writeln('.fields = builtin____new_array_with_default_noscan(0, 0, sizeof(string), 0),')
 		g.writeln('.types = builtin____new_array_with_default_noscan(0, 0, sizeof(${ast.int_type_name}), 0),')
 		g.writeln('.kinds = builtin____new_array_with_default_noscan(0, 0, sizeof(orm__OperationKind), 0),')
 		g.writeln('.is_and = builtin____new_array_with_default_noscan(0, 0, sizeof(bool), 0),')
 		g.writeln('.parentheses = builtin____new_array_with_default_noscan(0, 0, sizeof(Array_${ast.int_type_name}), 0),')
+		g.writeln('.auto_fields = builtin____new_array_with_default_noscan(0, 0, sizeof(${ast.int_type_name}), 0),')
 		g.writeln('.data = builtin____new_array_with_default_noscan(0, 0, sizeof(orm__Primitive), 0)')
 		g.indent--
 		g.writeln('}')
@@ -2463,6 +2528,8 @@ fn (g &Gen) get_db_expr_type(expr ast.Expr) ?ast.Type {
 		}
 	} else if expr is ast.SelectorExpr {
 		return g.table.unaliased_type(expr.typ)
+	} else if expr is ast.CallExpr {
+		return g.table.unaliased_type(expr.return_type)
 	}
 
 	return none
@@ -2473,6 +2540,26 @@ fn (g &Gen) get_table_attrs_by_struct_type(typ ast.Type) []ast.Attr {
 	sym := g.table.sym(typ)
 	info := sym.struct_info()
 	return info.attrs
+}
+
+// orm_table_field_names recursively collects field names from a struct type,
+// including fields from embedded structs. Used to populate Table.fields for
+// scope filter validation in apply_data_scope.
+fn (g &Gen) orm_table_field_names(typ ast.Type) []string {
+	sym := g.table.sym(typ)
+	info := sym.struct_info()
+	mut names := []string{}
+	for field in info.fields {
+		if field.is_embed {
+			embed_sym := g.table.sym(field.typ)
+			if embed_sym.info is ast.Struct {
+				names << g.orm_table_field_names(field.typ)
+			}
+		} else {
+			names << g.get_orm_column_name_from_struct_field(field)
+		}
+	}
+	return names
 }
 
 // get_table_name_by_struct_type converts the struct type to a table name.
