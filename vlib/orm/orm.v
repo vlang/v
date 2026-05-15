@@ -392,8 +392,10 @@ pub fn apply_data_scope(scope DataScope, table Table, where QueryData, scope_ski
 			where_scoped.is_and << true
 		}
 		where_scoped.fields << field_name
-		where_scoped.data << filter.value
-		where_scoped.types << primitive_type(filter.value)
+		if !filter.operator.is_unary() {
+			where_scoped.data << filter.value
+			where_scoped.types << primitive_type(filter.value)
+		}
 		where_scoped.kinds << filter.operator
 	}
 	return where_scoped
