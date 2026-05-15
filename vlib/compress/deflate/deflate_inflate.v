@@ -144,6 +144,9 @@ fn (mut r BitReader) huff_decode(t HuffTree) !u32 {
 		return error('inflate: invalid Huffman code')
 	}
 	len_ := int(entry & 0x1f)
+	if len_ > r.nbits {
+		return error('inflate: unexpected end of stream')
+	}
 	sym := entry >> 5
 	r.bits >>= u32(len_)
 	r.nbits -= len_

@@ -57,3 +57,11 @@ fn test_zlib_invalid_header_checksum() {
 	assert_decompress_error([u8(0x78), 0x9d, 0x00, 0x00, 0x00, 0x01],
 		'invalid zlib stream: bad header checksum')!
 }
+
+fn test_zlib_invalid_truncated_payload() {
+	decompress([u8(0x78), 0x9c, 0x03, 0x00, 0x00, 0x00, 0x01]) or {
+		assert err.msg().contains('unexpected end of stream')
+		return
+	}
+	assert false
+}
