@@ -16,6 +16,14 @@ struct NoScopeUserMulti {
 	deleted bool
 }
 
+@[table: 'scope_users']
+struct ScopeUser {
+	id        int @[primary; sql: serial]
+	name      string
+	tenant_id int
+	shop_id   int
+}
+
 fn test_unscoped_skips_tenant_filter_in_select() {
 	mut raw_db := sqlite.connect(':memory:') or { panic(err) }
 
@@ -429,6 +437,65 @@ fn test_unscoped_skip_all_in_delete() {
 		select from NoScopeUser where tenant_id == 2
 	}!
 	assert bob_gone.len == 0
+}
+
+// ---- Keyword syntax tests: sql db unscoped(field1, field2) ----------
+
+fn test_unscoped_keyword_multi_field_skip() {
+	mut raw_db := sqlite.connect(':memory:') or { panic(err) }
+
+	sql raw_db {
+		create table ScopeUser
+	}!
+
+	alice := ScopeUser{
+		name:      'Alice'
+		tenant_id: 1
+		shop_id:   1
+	}
+	bob := ScopeUser{
+		name:      'Bob'
+		tenant_id: 2
+		shop_id:   1
+	}
+	carol := ScopeUser{
+		name:      'Carol'
+		tenant_id: 2
+		shop_id:   2
+	}
+
+	sql raw_db {
+		insert alice into ScopeUser
+		insert bob into ScopeUser
+		insert carol into ScopeUser
+	}!
+
+	// Scope filters: tenant_id=1 AND shop_id=1 (only Alice matches)
+	mut db := orm.new_db(raw_db, orm.DataScope{
+		filters: [
+			orm.QueryFilter{
+				field: 'tenant_id'
+				value: orm.Primitive(1)
+			},
+			orm.QueryFilter{
+				field: 'shop_id'
+				value: orm.Primitive(1)
+			},
+		]
+	})
+
+	// Without unscoped - both filters apply, only Alice
+	users_filtered := sql db {
+		select from ScopeUser
+	}!
+	assert users_filtered.len == 1
+	assert users_filtered[0].name == 'Alice'
+
+	// Skip both tenant_id and shop_id - all users visible
+	users_all := sql db unscoped(tenant_id, shop_id) {
+		select from ScopeUser
+	}!
+	assert users_all.len == 3
 }
 
 // ---- Method call syntax tests: db.unscoped(fields...) ----------------
