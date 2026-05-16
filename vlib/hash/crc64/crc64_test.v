@@ -37,8 +37,8 @@ fn test_crc64_roundtrip_known_vector() {
 	data := '123456789'.bytes()
 	c := crc64.new(crc64.ecma)
 	result := c.checksum(data)
-	// CRC64-ECMA of "123456789" is a known non-zero value
-	assert result != u64(0)
+	// CRC-64-ECMA-182 check value
+	assert result == u64(0x6c40df5f0b497347)
 
 	// Verify consistency
 	assert crc64.sum(data) == result
@@ -72,14 +72,14 @@ fn test_crc64_streaming_chunk_sizes() {
 	expected := c.checksum(data)
 
 	for chunk_size in [1, 2, 3, 5, 7, 16, 31, 64, 128] {
-		mut state := ~u64(0)
+		mut state := u64(0)
 		mut start := 0
 		for start < data.len {
 			end := if start + chunk_size < data.len { start + chunk_size } else { data.len }
 			state = c.update_state(state, data[start..end])
 			start = end
 		}
-		assert ~state == expected
+		assert state == expected
 	}
 }
 
@@ -89,11 +89,11 @@ fn test_crc64_update_state() {
 	part2 := data[5..]
 	c := crc64.new(crc64.ecma)
 
-	mut state := ~u64(0)
+	mut state := u64(0)
 	state = c.update_state(state, part1)
 	state = c.update_state(state, part2)
 
-	assert ~state == c.checksum(data)
+	assert state == c.checksum(data)
 }
 
 fn test_crc64_sum_with_poly() {
@@ -119,12 +119,12 @@ fn test_crc64_large_input() {
 	assert result != u64(0)
 
 	// Verify consistency with streaming
-	mut state := ~u64(0)
+	mut state := u64(0)
 	for i := 0; i < large_data.len; i += 512 {
 		end := if i + 512 < large_data.len { i + 512 } else { large_data.len }
 		state = c.update_state(state, large_data[i..end])
 	}
-	assert ~state == result
+	assert state == result
 }
 
 fn test_crc64_all_bytes() {

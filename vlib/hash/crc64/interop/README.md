@@ -5,7 +5,7 @@ against reference implementations in C and Python.
 
 ## Overview
 
-The fixture verifies that `hash.crc64` produces identical CRC64-ECMA checksums when:
+The fixture verifies that `hash.crc64` produces identical CRC-64-ECMA-182 checksums when:
 - Computing the same data in V, C, and Python
 - Operating on various input patterns (empty, binary, text, large payloads)
 
@@ -51,10 +51,11 @@ Each vector is checksummed by:
 
 ## Polynomial
 
-All implementations use CRC64-ECMA:
+All implementations use CRC-64-ECMA-182:
 - Polynomial: `0x42F0E1EBA9EA3693`
-- Initial value: `~0` (all bits set)
-- Final XOR: invert result
+- Initial value: `0x0000000000000000`
+- Final XOR: `0x0000000000000000`
+- Check value for `"123456789"`: `0x6c40df5f0b497347`
 
 ## Prerequisites
 
@@ -82,4 +83,4 @@ Total:  10
 If the fixture fails:
 1. Ensure `gcc` and `python3` are in PATH
 2. Check that `hash.crc64` module can be imported (`v -silent test vlib/hash/crc64/`)
-3. Manual check: `python3 crc64_ref.py checksum 3132333435363738393` (should match C)
+3. Manual check: `python3 crc64_ref.py checksum 313233343536373839` (should match C)

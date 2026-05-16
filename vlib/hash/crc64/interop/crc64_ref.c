@@ -12,12 +12,12 @@ static uint64_t crc64_table[256];
 
 void crc64_init_table(void) {
 	for (int i = 0; i < 256; i++) {
-		uint64_t crc = (uint64_t)i;
+		uint64_t crc = (uint64_t)i << 56;
 		for (int j = 0; j < 8; j++) {
-			if (crc & 1) {
-				crc = (crc >> 1) ^ CRC64_ECMA;
+			if (crc & 0x8000000000000000ULL) {
+				crc = (crc << 1) ^ CRC64_ECMA;
 			} else {
-				crc >>= 1;
+				crc <<= 1;
 			}
 		}
 		crc64_table[i] = crc;
@@ -25,12 +25,12 @@ void crc64_init_table(void) {
 }
 
 uint64_t crc64_checksum(const uint8_t *data, size_t len) {
-	uint64_t crc = ~0ULL;
+	uint64_t crc = 0ULL;
 	for (size_t i = 0; i < len; i++) {
 		uint8_t byte = data[i];
-		crc = crc64_table[(uint8_t)(crc ^ byte)] ^ (crc >> 8);
+		crc = crc64_table[(uint8_t)((crc >> 56) ^ byte)] ^ (crc << 8);
 	}
-	return ~crc;
+	return crc;
 }
 
 int main(int argc, char *argv[]) {

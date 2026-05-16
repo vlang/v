@@ -14,21 +14,21 @@ class CRC64:
     def _make_table(poly):
         table = []
         for i in range(256):
-            crc = i
+            crc = i << 56
             for _ in range(8):
-                if crc & 1:
-                    crc = (crc >> 1) ^ poly
+                if crc & 0x8000000000000000:
+                    crc = (crc << 1) ^ poly
                 else:
-                    crc >>= 1
+                    crc <<= 1
             table.append(crc & 0xFFFFFFFFFFFFFFFF)
         return table
 
     def checksum(self, data):
         """Compute CRC64 checksum of data."""
-        crc = 0xFFFFFFFFFFFFFFFF
+        crc = 0
         for byte in data:
-            crc = self.table[(crc ^ byte) & 0xFF] ^ (crc >> 8)
-        return (~crc) & 0xFFFFFFFFFFFFFFFF
+            crc = self.table[((crc >> 56) ^ byte) & 0xFF] ^ ((crc << 8) & 0xFFFFFFFFFFFFFFFF)
+        return crc & 0xFFFFFFFFFFFFFFFF
 
 
 def main():

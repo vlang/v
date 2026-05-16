@@ -2,8 +2,8 @@
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 
-// This is a pure V implementation of CRC64, providing one standard variant
-// CRC-64-ECMA (polynomial 0x42F0E1EBA9EA3693) with table-driven computation.
+// This is a pure V implementation of CRC64, providing one standard variant:
+// CRC-64-ECMA-182 (poly 0x42F0E1EBA9EA3693, init 0, refin false, refout false, xorout 0).
 module crc64
 
 // Polynomial constants for CRC-64
@@ -14,18 +14,17 @@ mut:
 	table []u64
 }
 
-// generate_table populates a 256-word table from the specified polynomial `poly`
-// to represent the polynomial for efficient processing.
+// generate_table populates a 256-word MSB-first lookup table for `poly`.
 @[direct_array_access]
 fn (mut c Crc64) generate_table(poly u64) {
 	c.table = []u64{len: 256}
 	for i in 0 .. 256 {
-		mut crc := u64(i)
+		mut crc := u64(i) << 56
 		for _ in 0 .. 8 {
-			if crc & u64(1) == u64(1) {
-				crc = (crc >> 1) ^ poly
+			if crc & (u64(1) << 63) != 0 {
+				crc = (crc << 1) ^ poly
 			} else {
-				crc >>= u64(1)
+				crc <<= 1
 			}
 		}
 		c.table[i] = crc
@@ -36,27 +35,26 @@ fn (mut c Crc64) generate_table(poly u64) {
 fn (c &Crc64) update64(crc u64, b []u8) u64 {
 	mut next := crc
 	for i in 0 .. b.len {
-		next = c.table[u8(next) ^ b[i]] ^ (next >> 8)
+		next = c.table[u8(next >> 56) ^ b[i]] ^ (next << 8)
 	}
 	return next
 }
 
 // update_state updates an internal CRC state with the bytes in `b`.
-// Start from `0xffffffffffffffff` (~u64(0)) and finalize with `~state`.
+// For CRC-64-ECMA-182, use state 0 for a new stream.
 pub fn (c &Crc64) update_state(state u64, b []u8) u64 {
 	return c.update64(state, b)
 }
 
 // checksum returns the CRC-64 checksum of data `b` by using the polynomial represented by `c`'s table.
 pub fn (c &Crc64) checksum(b []u8) u64 {
-	return ~c.update_state(~u64(0), b)
+	return c.update_state(u64(0), b)
 }
 
 // update returns the updated CRC-64 checksum for `b`, starting from `crc`.
 // Use `crc = 0` for a fresh checksum, or pass a previous result to continue streaming.
 pub fn (c &Crc64) update(crc u64, b []u8) u64 {
-	state := c.update_state(~crc, b)
-	return ~state
+	return c.update_state(crc, b)
 }
 
 // new creates a `Crc64` polynomial.

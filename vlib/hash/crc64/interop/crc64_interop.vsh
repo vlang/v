@@ -8,6 +8,8 @@ struct TestVector {
 	data []u8
 }
 
+const ecma_check_123456789 = u64(0x6c40df5f0b497347)
+
 fn compile_c_helper(dir string) string {
 	ref_c := os.join_path(dir, 'crc64_ref.c')
 	ref_bin := os.join_path(dir, 'crc64_ref')
@@ -66,6 +68,13 @@ fn test_vector(name string, data []u8, ref_bin string, dir string) ! {
 		eprintln('  C:      0x${c_sum:016x}')
 		eprintln('  Python: 0x${py_sum:016x}')
 		return error('checksum mismatch')
+	}
+
+	if name == 'text_123456789' && v_sum != ecma_check_123456789 {
+		eprintln('FAIL: ${name}')
+		eprintln('  V:        0x${v_sum:016x}')
+		eprintln('  Expected: 0x${ecma_check_123456789:016x}')
+		return error('unexpected CRC-64-ECMA-182 check value')
 	}
 
 	println('OK: ${name} => 0x${v_sum:016x}')
