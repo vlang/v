@@ -70,7 +70,6 @@ jobs:
           v .
 
       - name: Test vtcc
-        if: runner.os == 'Linux' || runner.os == 'macOS'
         run: .github/workflows/compile_v_with_vtcc.sh
 
       - name: Test vsql compilation and examples

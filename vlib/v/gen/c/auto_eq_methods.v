@@ -198,6 +198,10 @@ fn (mut g Gen) gen_struct_equality_fn(left_type ast.Type) string {
 	g.generated_eq_fns << left_no_ptr
 
 	info := left.sym.struct_info()
+	if left.sym.language == .c && info.fields.len == 0 {
+		g.definitions.writeln('#define ${fn_name}_struct_eq(a, b) (false)')
+		return fn_name
+	}
 	g.definitions.writeln('${g.static_non_parallel}bool ${fn_name}_struct_eq(${ptr_styp} a, ${ptr_styp} b);')
 
 	mut fn_builder := strings.new_builder(512)

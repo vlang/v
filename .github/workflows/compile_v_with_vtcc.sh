@@ -21,6 +21,12 @@ cd ..
 ls -la vtcc/vtcc
 ./vtcc/vtcc --version
 
+if [[ "$(uname)" == "Darwin" ]]; then
+	show "macOS: vtcc built successfully (TCC cannot target ARM64, skipping full test)"
+	rm -rf vtcc/
+	exit 0
+fi
+
 show "Generate the C file, for the current V version"
 ./v -o vlang.c cmd/v
 ls -la vlang.c

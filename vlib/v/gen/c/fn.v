@@ -942,7 +942,9 @@ fn (mut g Gen) ensure_c_extern_signature_type_decl(typ_ ast.Type) {
 		ast.Struct {
 			if sym.language == .c && sym.cname.starts_with('C__') && !sym.info.is_anon {
 				c_struct_name := sym.cname[3..]
-				if sym.info.is_typedef {
+				if c_struct_name == 'va_list' {
+					// skip: already defined via __builtin_va_list in cheaders
+				} else if sym.info.is_typedef {
 					g.typedefs.writeln('typedef struct ${c_struct_name} ${c_struct_name};')
 				} else {
 					g.typedefs.writeln('struct ${c_struct_name};')
