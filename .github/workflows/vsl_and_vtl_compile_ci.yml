@@ -64,9 +64,6 @@ jobs:
       - name: Test with Pure V Backend
         run: ~/.vmodules/vsl/bin/test
       - name: Test with Pure V Backend and Pure V Math
-        env:
-          CFLAGS: ${{ runner.os == 'macOS' && '-I/opt/homebrew/opt/openblas/include' || '' }}
-          LDFLAGS: ${{ runner.os == 'macOS' && '-L/opt/homebrew/opt/openblas/lib' || '' }}
         run: ~/.vmodules/vsl/bin/test --use-cblas --skip-examples
 
   vtl-compiles:
@@ -114,7 +111,4 @@ jobs:
       - name: Test with Pure V Backend
         run: ~/.vmodules/vtl/bin/test
       - name: Test with Pure V Backend and Pure V Math
-        env:
-          CFLAGS: ${{ runner.os == 'macOS' && '-I/opt/homebrew/opt/openblas/include' || '' }}
-          LDFLAGS: ${{ runner.os == 'macOS' && '-L/opt/homebrew/opt/openblas/lib' || '' }}
         run: ~/.vmodules/vtl/bin/test --use-cblas
