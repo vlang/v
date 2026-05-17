@@ -49,6 +49,14 @@ jobs:
       - name: Cross-compilation of veb app to Linux with -d use_openssl
         run: ./v -d use_openssl -os linux examples/veb/veb_example.v
 
+      - name: Cross-compilation of vlang/gitly to Linux with -d use_openssl
+        run: |
+          ./v retry -- ./v install markdown
+          ./v retry -- ./v install pcre
+          ./v retry -- git clone --depth 1 https://github.com/vlang/gitly /tmp/gitly
+          ./v -d use_openssl -os linux /tmp/gitly
+          file /tmp/gitly/gitly
+
       - name: Cross-compilation to Windows
         run: |
           ./v -os windows cmd/v
