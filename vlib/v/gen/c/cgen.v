@@ -86,7 +86,6 @@ mut:
 	sorted_global_const_names            []string
 	file                                 &ast.File  = unsafe { nil }
 	table                                &ast.Table = unsafe { nil }
-	mods_with_c_includes                 map[string]bool
 	styp_cache                           map[ast.Type]string
 	no_eq_method_types                   map[ast.Type]bool // types that does not need to call its auto eq methods for optimization
 	generic_parts_cache                  []i8              // type idx -> 0 unknown, 1 false, 2 true
@@ -129,7 +128,6 @@ mut:
 	done_typedef_phase                   bool              // set after write_typedef_types() completes
 	late_chan_types                      shared []string   // concrete channel cnames discovered during file generation
 	emitted_chan_types                   map[string]bool   // concrete channel typedefs/helpers already emitted
-	c_extern_signature_types             map[string]bool   // C signature-only type decls already emitted
 	chan_pop_options                     map[string]string // types for `x := <-ch or {...}`
 	chan_push_options                    map[string]string // types for `ch <- x or {...}`
 	mtxs                                 string            // array of mutexes if the `lock` has multiple variables
@@ -392,7 +390,6 @@ pub fn gen(files []&ast.File, mut table ast.Table, pref_ &pref.Preferences) GenO
 		json_forward_decls:            strings.new_builder(100)
 		sql_buf:                       strings.new_builder(100)
 		table:                         table
-		mods_with_c_includes:          modules_with_c_includes(files)
 		pref:                          pref_
 		fn_decl:                       unsafe { nil }
 		anon_fn:                       unsafe { nil }
@@ -416,7 +413,6 @@ pub fn gen(files []&ast.File, mut table ast.Table, pref_ &pref.Preferences) GenO
 		has_debugger:                  'v.debug' in table.modules
 		reflection_strings:            &reflection_strings
 		generated_map_key_fns:         map[ast.Type]bool{}
-		c_extern_signature_types:      map[string]bool{}
 		boehm_keep_decl:               map[string]bool{}
 		boehm_keep_gen:                map[string]bool{}
 		boehm_keep_busy:               map[string]bool{}
@@ -1021,7 +1017,6 @@ fn cgen_process_one_file_cb(mut p pool.PoolProcessor, idx int, wid int) voidptr 
 		sql_buf:                            strings.new_builder(100)
 		cleanup:                            strings.new_builder(100)
 		table:                              global_g.table
-		mods_with_c_includes:               global_g.mods_with_c_includes
 		pref:                               global_g.pref
 		fn_decl:                            unsafe { nil }
 		anon_fn:                            unsafe { nil }
@@ -1061,7 +1056,6 @@ fn cgen_process_one_file_cb(mut p pool.PoolProcessor, idx int, wid int) voidptr 
 		has_debugger:                       'v.debug' in global_g.table.modules
 		reflection_strings:                 global_g.reflection_strings
 		generated_map_key_fns:              map[ast.Type]bool{}
-		c_extern_signature_types:           map[string]bool{}
 		boehm_keep_decl:                    map[string]bool{}
 		boehm_keep_gen:                     map[string]bool{}
 		boehm_keep_busy:                    map[string]bool{}
