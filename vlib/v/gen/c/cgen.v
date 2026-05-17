@@ -436,6 +436,9 @@ pub fn gen(files []&ast.File, mut table ast.Table, pref_ &pref.Preferences) GenO
 	}
 	global_g.init()
 	for file in files {
+		if file.path.starts_with(pref_.vlib) {
+			continue
+		}
 		for stmt in file.stmts {
 			if stmt is ast.HashStmt && stmt.kind == 'flag' && stmt.main.contains('-l') {
 				global_g.mods_with_c_libs[file.mod.name] = true
