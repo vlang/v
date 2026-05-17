@@ -30,6 +30,13 @@ jobs:
       - uses: actions/checkout@v6
         with:
           fetch-depth: 10
+      - name: Cache Homebrew downloads
+        uses: actions/cache@v4
+        with:
+          path: ~/Library/Caches/Homebrew
+          key: brew-cross-macos-${{ hashFiles('.github/workflows/cross_ci.yml') }}
+          restore-keys: |
+            brew-cross-macos-
       - name: Build V
         run: make -j4 && ./v symlink
 
@@ -71,6 +78,7 @@ jobs:
       - uses: actions/checkout@v6
         with:
           fetch-depth: 10
+      - uses: ./.github/actions/cache-apt-packages-action
       - name: Build v
         run: make -j4 && ./v symlink
 

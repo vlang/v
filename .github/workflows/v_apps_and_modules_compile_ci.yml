@@ -31,6 +31,20 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
+      - name: Cache apt packages
+        if: runner.os == 'Linux'
+        uses: ./.github/actions/cache-apt-packages-action
+
+      - name: Cache Homebrew downloads
+        if: runner.os == 'macOS'
+        uses: actions/cache@v4
+        with:
+          path: ~/Library/Caches/Homebrew
+          key: brew-${{ matrix.os }}-v_apps-${{ hashFiles('.github/workflows/v_apps_and_modules_compile_ci.yml') }}
+          restore-keys: |
+            brew-${{ matrix.os }}-v_apps-
+            brew-${{ matrix.os }}-
+
       - name: Build V
         id: build
         run: make && sudo ./v symlink

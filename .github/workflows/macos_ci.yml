@@ -35,6 +35,13 @@ jobs:
       VTEST_SHOW_LONGEST_BY_TOTALTIME: 3
     steps:
       - uses: actions/checkout@v6
+      - name: Cache Homebrew downloads
+        uses: actions/cache@v4
+        with:
+          path: ~/Library/Caches/Homebrew
+          key: brew-${{ matrix.os }}-${{ hashFiles('.github/workflows/macos_ci.yml', 'ci/macos_ci.vsh') }}
+          restore-keys: |
+            brew-${{ matrix.os }}-
       - name: Build V
         run: make -j4 && ./v symlink
       - name: Test symlink
