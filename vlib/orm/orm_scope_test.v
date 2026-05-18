@@ -638,6 +638,33 @@ fn test_apply_data_scope_wraps_parentheses() {
 	assert result.parentheses[0] == [0, 1]
 }
 
+fn test_apply_data_scope_with_unary_operator() {
+	// Unary operator (is_null) with existing WHERE — verifies is_and marker is appended
+	scope := orm.DataScope{
+		filters: [
+			orm.QueryFilter{
+				field:    'deleted_at'
+				operator: .is_null
+			},
+		]
+	}
+	where := orm.QueryData{
+		fields: ['tenant_id']
+		data:   [orm.Primitive(int(5))]
+		kinds:  [.eq]
+	}
+	table := orm.Table{
+		name:   'users'
+		fields: ['tenant_id', 'deleted_at']
+	}
+	result := orm.apply_data_scope(scope, table, where, [])
+	assert result.fields == ['tenant_id', 'deleted_at']
+	assert result.kinds == [.eq, .is_null]
+	assert result.is_and == [true]
+	// Unary operators don't add data values
+	assert result.data == [orm.Primitive(int(5))]
+}
+
 fn test_apply_data_scope_insert_adds_fields() {
 	scope := scope_single_tenant(99)
 	data := orm.QueryData{

@@ -221,9 +221,10 @@ pub:
 
 pub struct Table {
 pub mut:
-	name   string
-	attrs  []VAttribute
-	fields []string // struct field names, used to skip scope filters that don't apply
+	name    string
+	attrs   []VAttribute
+	fields  []string // struct field names, used to skip scope filters that don't apply
+	columns []string // SQL column names (parallel to fields), used for SQL generation
 }
 
 pub struct TableField {
@@ -387,15 +388,28 @@ pub fn apply_data_scope(scope DataScope, table Table, where QueryData, scope_ski
 		if table.fields.len > 0 && filter.field !in table.fields {
 			continue
 		}
-		field_name := filter.field.clone()
+		// Resolve SQL column name from struct field name
+		mut column_name := filter.field
+		if table.columns.len > 0 && table.columns.len == table.fields.len {
+			for j, field_name in table.fields {
+				if field_name == filter.field && j < table.columns.len {
+					column_name = table.columns[j]
+					break
+				}
+			}
+		}
+		// Check deduplation against SQL column name
+		if column_name in where_scoped.fields {
+			continue
+		}
 		original_fields_len := where_scoped.fields.len
-		if original_fields_len > 1 && !filter.operator.is_unary() {
+		if original_fields_len > 1 {
 			where_scoped.parentheses << [0, original_fields_len - 1]
 		}
-		if original_fields_len > 0 && !filter.operator.is_unary() {
+		if original_fields_len > 0 {
 			where_scoped.is_and << true
 		}
-		where_scoped.fields << field_name
+		where_scoped.fields << column_name
 		if !filter.operator.is_unary() {
 			where_scoped.data << filter.value
 			where_scoped.types << primitive_type(filter.value)
@@ -489,46 +503,102 @@ pub fn primitive_type(value Primitive) int {
 			}
 		}
 		[]bool {
-			primitive_type(Primitive(value[0]))
+			if value.len > 0 {
+				primitive_type(Primitive(value[0]))
+			} else {
+				type_idx['int']
+			}
 		}
 		[]f32 {
-			primitive_type(Primitive(value[0]))
+			if value.len > 0 {
+				primitive_type(Primitive(value[0]))
+			} else {
+				type_idx['int']
+			}
 		}
 		[]f64 {
-			primitive_type(Primitive(value[0]))
+			if value.len > 0 {
+				primitive_type(Primitive(value[0]))
+			} else {
+				type_idx['int']
+			}
 		}
 		[]i16 {
-			primitive_type(Primitive(value[0]))
+			if value.len > 0 {
+				primitive_type(Primitive(value[0]))
+			} else {
+				type_idx['int']
+			}
 		}
 		[]i64 {
-			primitive_type(Primitive(value[0]))
+			if value.len > 0 {
+				primitive_type(Primitive(value[0]))
+			} else {
+				type_idx['int']
+			}
 		}
 		[]i8 {
-			primitive_type(Primitive(value[0]))
+			if value.len > 0 {
+				primitive_type(Primitive(value[0]))
+			} else {
+				type_idx['int']
+			}
 		}
 		[]int {
-			primitive_type(Primitive(value[0]))
+			if value.len > 0 {
+				primitive_type(Primitive(value[0]))
+			} else {
+				type_idx['int']
+			}
 		}
 		[]string {
-			primitive_type(Primitive(value[0]))
+			if value.len > 0 {
+				primitive_type(Primitive(value[0]))
+			} else {
+				type_idx['int']
+			}
 		}
 		[]time.Time {
-			primitive_type(Primitive(value[0]))
+			if value.len > 0 {
+				primitive_type(Primitive(value[0]))
+			} else {
+				type_idx['int']
+			}
 		}
 		[]u16 {
-			primitive_type(Primitive(value[0]))
+			if value.len > 0 {
+				primitive_type(Primitive(value[0]))
+			} else {
+				type_idx['int']
+			}
 		}
 		[]u32 {
-			primitive_type(Primitive(value[0]))
+			if value.len > 0 {
+				primitive_type(Primitive(value[0]))
+			} else {
+				type_idx['int']
+			}
 		}
 		[]u64 {
-			primitive_type(Primitive(value[0]))
+			if value.len > 0 {
+				primitive_type(Primitive(value[0]))
+			} else {
+				type_idx['int']
+			}
 		}
 		[]u8 {
-			primitive_type(Primitive(value[0]))
+			if value.len > 0 {
+				primitive_type(Primitive(value[0]))
+			} else {
+				type_idx['int']
+			}
 		}
 		[]InfixType {
-			primitive_type(Primitive(value[0]))
+			if value.len > 0 {
+				primitive_type(Primitive(value[0]))
+			} else {
+				type_idx['int']
+			}
 		}
 	}
 }

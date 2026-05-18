@@ -716,6 +716,7 @@ fn (mut g Gen) write_orm_table_struct(typ ast.Type) {
 	table_attrs := g.get_table_attrs_by_struct_type(typ)
 
 	mut fields := g.orm_table_field_names(typ)
+	mut columns := g.orm_table_column_names(typ)
 
 	g.writeln('((orm__Table){')
 	g.indent++
@@ -732,6 +733,21 @@ fn (mut g Gen) write_orm_table_struct(typ ast.Type) {
 		g.writeln('})')
 	} else {
 		g.writeln('NULL // No fields')
+	}
+	g.indent--
+	g.writeln('),')
+	g.writeln('.columns = builtin__new_array_from_c_array(${columns.len}, ${columns.len}, sizeof(string),')
+	g.indent++
+	if columns.len > 0 {
+		g.write('_MOV((string[${columns.len}]){')
+		g.indent++
+		for column_name in columns {
+			g.write('_S("${column_name}"),')
+		}
+		g.indent--
+		g.writeln('})')
+	} else {
+		g.writeln('NULL // No columns')
 	}
 	g.indent--
 	g.writeln('),')
@@ -2513,6 +2529,26 @@ fn (g &Gen) orm_table_field_names(typ ast.Type) []string {
 			}
 		} else {
 			names << field.name
+		}
+	}
+	return names
+}
+
+// orm_table_column_names recursively collects SQL column names from a struct type,
+// including fields from embedded structs. Used to populate Table.columns for
+// SQL column name resolution in apply_data_scope.
+fn (g &Gen) orm_table_column_names(typ ast.Type) []string {
+	sym := g.table.sym(typ)
+	info := sym.struct_info()
+	mut names := []string{}
+	for field in info.fields {
+		if field.is_embed {
+			embed_sym := g.table.sym(field.typ)
+			if embed_sym.info is ast.Struct {
+				names << g.orm_table_column_names(field.typ)
+			}
+		} else {
+			names << g.get_orm_column_name_from_struct_field(field)
 		}
 	}
 	return names
