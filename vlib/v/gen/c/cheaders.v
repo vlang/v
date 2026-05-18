@@ -174,7 +174,7 @@ const c_common_macros = '
 	#define __NOINLINE
 	#define __IRQHANDLER
 	// #include <byteswap.h>
-	int tcc_backtrace(const char *fmt, ...);
+	// int tcc_backtrace(const char *fmt, ...);
 #endif
 // Use __offsetof_ptr instead of __offset_of, when you *do* have a valid pointer, to avoid UB:
 #ifndef __offsetof_ptr
