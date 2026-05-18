@@ -3669,6 +3669,11 @@ fn (mut g Gen) concrete_type_from_c_name(c_name string) ?types.Type {
 		})
 	}
 	if concrete := g.lookup_type_by_c_name(clean_name) {
+		if type_contains_generic_placeholder(concrete) {
+			return types.Type(types.Struct{
+				name: clean_name
+			})
+		}
 		return normalize_generic_concrete_type(concrete)
 	}
 	if primitive := resolve_primitive_type_name(clean_name) {
