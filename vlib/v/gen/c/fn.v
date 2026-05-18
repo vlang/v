@@ -655,7 +655,21 @@ fn (g &Gen) should_emit_c_extern_decl(node ast.FnDecl) bool {
 	if file_has_c_includes(node.source_file) {
 		return false
 	}
-	return file_links_c_source(node.source_file) || node.mod in g.mods_with_c_libs
+	if file_links_c_source(node.source_file) || node.mod in g.mods_with_c_libs {
+		return true
+	}
+	if g.pref.os == .vinix {
+		c_sym_name := node.name.after('.')
+		if c_sym_name.starts_with('__builtin_') {
+			return false
+		}
+		if c_sym_name in ['text_start', 'text_end', 'rodata_start', 'rodata_end', 'data_start',
+			'data_end', 'interrupt_thunks'] {
+			return false
+		}
+		return true
+	}
+	return false
 }
 
 fn (mut g Gen) is_used_by_main(node ast.FnDecl) bool {
