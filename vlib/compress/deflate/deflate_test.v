@@ -61,3 +61,11 @@ fn test_corrupt_checksum_fails() {
 	}
 	assert false
 }
+
+fn test_truncated_zlib_payload_fails() {
+	decompress([u8(0x78), 0x9c, 0x03, 0x00, 0x00, 0x00, 0x01]) or {
+		assert err.msg().contains('unexpected end of stream')
+		return
+	}
+	assert false
+}

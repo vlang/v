@@ -26,6 +26,7 @@ pub fn compress(data []u8, format CompressParams) ![]u8 {
 	}
 }
 
+// compress_zlib compresses data into a zlib stream (RFC 1950).
 pub fn compress_zlib(data []u8) ![]u8 {
 	payload := deflate_compress_fixed(data)
 	cksum := adler32(data)
@@ -71,7 +72,9 @@ pub fn decompress(data []u8) ![]u8 {
 	return inflate(data)
 }
 
-fn decompress_zlib(data []u8) ![]u8 {
+// decompress_zlib decompresses a zlib stream (RFC 1950) and returns the
+// decompressed bytes in a new array.
+pub fn decompress_zlib(data []u8) ![]u8 {
 	if data.len < 6 {
 		return error('invalid zlib stream: too short')
 	}
@@ -93,7 +96,9 @@ fn decompress_zlib(data []u8) ![]u8 {
 	return decoded
 }
 
-fn decompress_gzip(data []u8) ![]u8 {
+// decompress_gzip decompresses a gzip stream (RFC 1952) and returns the
+// decompressed bytes in a new array.
+pub fn decompress_gzip(data []u8) ![]u8 {
 	if data.len < 18 {
 		return error('invalid gzip stream: too short')
 	}
