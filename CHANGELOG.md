@@ -2181,7 +2181,7 @@
 - runtime: add free_memory/0 implementation for OpenBSD (fix #23579) (#23583)
 - Fix `v doctor` output on OpenBSD: get gcc version from egcc; do not run ldd to get the glibc
   version (fix #23576) (#23578)
-- make.bat: add note about antivirus programs on windows and compilation slowdowns (#23586)
+- makev.bat: add note about antivirus programs on windows and compilation slowdowns (#23586)
 - runtime: add free_memory/0 implementation for FreeBSD too (fix #23581) (#23594)
 - log,sync: fix macos CI failure when log.ThreadSafeLog is used explicitly in `v download` (#23613)
 - Let `v test .` show the running _test.v files each minute (set by
@@ -5254,7 +5254,7 @@ Final steps in making the Option type a first class type:
 - New official IntelliJ plugin: https://intellij-v.github.io.
 - Lots of new language documentation, a nicer table of contents.
 - Improved documentation for most of the vlib modules
-- `make.bat` & `v up` improvements on Windows.
+- `makev.bat` & `v up` improvements on Windows.
 - TeamCity test runner support via `v -test-runner teamcity foo_test.v`.
 - CI optimizations for faster runs.
 - New official AdventOfCode repo with AOC solutions, also added to CI.
