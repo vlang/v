@@ -354,6 +354,12 @@ fn (mut g Gen) expr_is_array_value(expr ast.Expr) bool {
 	if expr_type == 'array' || expr_type.starts_with('Array_') {
 		return true
 	}
+	if expr is ast.Ident {
+		local_type := g.get_local_var_c_type(expr.name) or { '' }
+		if local_type == 'array' || local_type.starts_with('Array_') {
+			return true
+		}
+	}
 	// Or-data-access: _or_tN.data where _or_tN has type _result_Array_X or _option_Array_X
 	if expr is ast.SelectorExpr && expr.rhs.name == 'data' {
 		if expr.lhs is ast.Ident {
@@ -419,6 +425,12 @@ fn (mut g Gen) expr_array_runtime_type(expr ast.Expr) string {
 		}
 	}
 	mut typ := g.get_expr_type(expr)
+	if expr is ast.Ident {
+		local_type := g.get_local_var_c_type(expr.name) or { '' }
+		if local_type == 'array' || local_type.starts_with('Array_') {
+			typ = local_type
+		}
+	}
 	if typ != '' && typ != 'int_literal' && typ != 'float_literal' {
 		return typ
 	}
@@ -755,8 +767,12 @@ fn (mut g Gen) gen_array_init_expr(node ast.ArrayInitExpr) {
 			return
 		}
 	}
-	// Empty array: should have been lowered by transformer to __new_array_with_default_noscan()
-	// Fallback: zero-init
+	// Empty dynamic arrays should have been lowered by transformer to
+	// __new_array_with_default_noscan(). Fixed arrays still use C zero-init.
+	if !is_dyn {
+		g.sb.write_string('{0}')
+		return
+	}
 	g.sb.write_string('(array){0}')
 }
 

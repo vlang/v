@@ -550,6 +550,10 @@ fn (mut b Builder) gen_cleanc() {
 	if env_flags.trim_space() != '' {
 		cc_flag_parts << env_flags.trim_space()
 	}
+	if cc.contains('tcc') && directive_compile_flags.contains('thirdparty/sqlite/sqlite3.c')
+		&& !directive_compile_flags.contains('SQLITE_DISABLE_INTRINSIC') {
+		cc_flag_parts << '-DSQLITE_DISABLE_INTRINSIC'
+	}
 	if directive_compile_flags.trim_space() != '' {
 		cc_flag_parts << directive_compile_flags.trim_space()
 	}
@@ -730,6 +734,10 @@ fn (mut b Builder) gen_ssa_c() {
 	if env_flags.trim_space() != '' {
 		cc_flag_parts << env_flags.trim_space()
 	}
+	if cc.contains('tcc') && directive_flags.contains('thirdparty/sqlite/sqlite3.c')
+		&& !directive_flags.contains('SQLITE_DISABLE_INTRINSIC') {
+		cc_flag_parts << '-DSQLITE_DISABLE_INTRINSIC'
+	}
 	if directive_flags.trim_space() != '' {
 		cc_flag_parts << directive_flags.trim_space()
 	}
@@ -764,7 +772,7 @@ fn (mut b Builder) gen_ssa_c() {
 	}
 
 	stage_start = sw.elapsed()
-	mut gen := c.Gen.new(mod)
+	mut gen := c.new_gen(mod)
 	gen.link_builtin = builtin_obj.len > 0
 	c_source := gen.gen()
 	print_time('C Gen', time.Duration(sw.elapsed() - stage_start))
@@ -1104,7 +1112,7 @@ fn (b &Builder) inject_cached_core_forward_decls(source string) string {
 			}
 		}
 	}
-	mut out := []string{cap: lines.len + decls.count('\n') + 2}
+	mut out := []string{cap: lines.len + count_byte_in_string(decls, `\n`) + 2}
 	mut saw_cached_decl := false
 	mut inserted := false
 	for line in lines {
@@ -1142,6 +1150,16 @@ fn (b &Builder) inject_cached_core_forward_decls(source string) string {
 		return decls + '\n' + source
 	}
 	return out.join('\n')
+}
+
+fn count_byte_in_string(s string, needle u8) int {
+	mut count := 0
+	for ch in s {
+		if ch == needle {
+			count++
+		}
+	}
+	return count
 }
 
 fn extract_typedef_name(line string) string {
@@ -1339,6 +1357,7 @@ fn flag_os_matches(cond string, target_os string) bool {
 		'darwin', 'macos', 'mac' { current == 'macos' || current == 'darwin' }
 		'linux' { current == 'linux' }
 		'windows' { current == 'windows' }
+		'bsd' { current in ['macos', 'freebsd', 'openbsd', 'netbsd', 'dragonfly'] }
 		'freebsd' { current == 'freebsd' }
 		'openbsd' { current == 'openbsd' }
 		'netbsd' { current == 'netbsd' }
@@ -1373,10 +1392,56 @@ fn resolve_flag_path(path string, file_dir string, vmod_root string) string {
 	return os.norm_path(os.join_path(file_dir, resolved))
 }
 
+fn expand_existing_path_macros(flag_value string) ?string {
+	mut out := ''
+	mut i := 0
+	for i < flag_value.len {
+		if flag_value[i] == `$` {
+			remainder := flag_value[i..]
+			mut literal := ''
+			if remainder.starts_with(r'$when_first_existing') {
+				literal = r'$when_first_existing'
+			} else if remainder.starts_with(r'$first_existing') {
+				literal = r'$first_existing'
+			}
+			if literal != '' {
+				if remainder.len <= literal.len || remainder[literal.len] != `(` {
+					out += flag_value[i].ascii_str()
+					i++
+					continue
+				}
+				params_part := remainder[literal.len + 1..]
+				params := params_part.all_before(')')
+				if params == params_part {
+					return none
+				}
+				paths := params.replace(',', '\n').split_into_lines().map(it.trim('\t \'"'))
+				mut found := ''
+				for path in paths {
+					if path != '' && os.exists(path) {
+						found = path
+						break
+					}
+				}
+				if found == '' {
+					return none
+				}
+				out += found
+				i += literal.len + 1 + params.len + 1
+				continue
+			}
+		}
+		out += flag_value[i].ascii_str()
+		i++
+	}
+	return out
+}
+
 fn normalize_flag_value_for_file(flag_value string, file_path string) string {
 	file_dir := os.dir(os.real_path(file_path))
 	vmod_root := find_vmod_root_for_file(file_path)
-	mut tokens := flag_value.fields()
+	expanded_flag_value := expand_existing_path_macros(flag_value) or { return '' }
+	mut tokens := expanded_flag_value.fields()
 	mut out := []string{}
 	mut i := 0
 	for i < tokens.len {
@@ -1614,11 +1679,17 @@ fn comptime_cond_matches(cond string, target_os string) bool {
 		right := cond[and_idx + 2..].trim_space()
 		return comptime_cond_matches(left, target_os) && comptime_cond_matches(right, target_os)
 	}
+	if or_idx := cond.index('||') {
+		left := cond[..or_idx].trim_space()
+		right := cond[or_idx + 2..].trim_space()
+		return comptime_cond_matches(left, target_os) || comptime_cond_matches(right, target_os)
+	}
 	current := normalize_target_os_name(target_os)
 	return match cond.to_lower() {
 		'macos', 'darwin', 'mac' { current == 'macos' || current == 'darwin' }
 		'linux' { current == 'linux' }
 		'windows' { current == 'windows' }
+		'bsd' { current in ['macos', 'freebsd', 'openbsd', 'netbsd', 'dragonfly'] }
 		'freebsd' { current == 'freebsd' }
 		'openbsd' { current == 'openbsd' }
 		'netbsd' { current == 'netbsd' }
@@ -1658,6 +1729,43 @@ fn tcc_flags(cc string, vroot string) string {
 	}
 	tcc_dir := os.join_path(vroot, 'thirdparty', 'tcc')
 	return '-I "${os.join_path(tcc_dir, 'lib', 'include')}" -L "${os.join_path(tcc_dir, 'lib')}"'
+}
+
+fn cc_recompile_flags_from_cmd(cmd string) string {
+	parts := cmd.fields()
+	mut flags := []string{}
+	mut i := 1 // skip compiler
+	for i < parts.len {
+		p := parts[i]
+		if p == '-o' {
+			i += 2
+			continue
+		}
+		if p == '-x' {
+			if i + 1 < parts.len && parts[i + 1] != 'none' {
+				flags << p
+				flags << parts[i + 1]
+			}
+			i += 2
+			continue
+		}
+		if p in ['-I', '-D', '-U', '-F', '-include', '-isystem', '-idirafter'] {
+			flags << p
+			if i + 1 < parts.len {
+				i++
+				flags << parts[i]
+			}
+			i++
+			continue
+		}
+		if p.starts_with('-I') || p.starts_with('-D') || p.starts_with('-U') || p.starts_with('-F')
+			|| p.starts_with('-std=') || p.starts_with('-W') || p.starts_with('-f')
+			|| p.starts_with('-m') || p == '-pthread' {
+			flags << p
+		}
+		i++
+	}
+	return flags.join(' ')
 }
 
 // run_cc_cmd_or_exit runs a C compiler command, falling back from tcc to cc
@@ -1708,6 +1816,7 @@ fn run_cc_cmd_or_exit(cmd string, stage string, show_cc bool) bool {
 			// cc cannot read .o files produced by tcc on macOS arm64. Recompile
 			// any cached .o files referenced in the command from their .c siblings
 			// using cc before retrying the link.
+			recompile_flags := cc_recompile_flags_from_cmd(fallback_cmd)
 			for tok in fallback_cmd.fields() {
 				clean_tok := tok.trim('"')
 				if !clean_tok.ends_with('.o') {
@@ -1721,7 +1830,7 @@ fn run_cc_cmd_or_exit(cmd string, stage string, show_cc bool) bool {
 				if !os.exists(c_sibling) {
 					continue
 				}
-				recompile_cmd := 'cc -w -Wno-incompatible-function-pointer-types -c "${c_sibling}" -o "${clean_tok}"'
+				recompile_cmd := 'cc ${recompile_flags} -w -Wno-incompatible-function-pointer-types -c "${c_sibling}" -o "${clean_tok}"'
 				if show_cc {
 					println(recompile_cmd)
 				}

@@ -3,11 +3,11 @@ module veb
 import compress.gzip
 import compress.zstd
 import hash
-import json
 import net
 import net.http
 import os
 import time
+import x.json2 as json
 
 enum ContextReturnType {
 	normal
@@ -185,7 +185,7 @@ pub fn (mut ctx Context) json[T](j T) Result {
 
 // Response with a pretty-printed JSON result
 pub fn (mut ctx Context) json_pretty[T](j T) Result {
-	json_s := json.encode_pretty(j)
+	json_s := json.encode(j, prettify: true)
 	return ctx.send_response_to_client('application/json', json_s)
 }
 

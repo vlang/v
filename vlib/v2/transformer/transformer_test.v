@@ -88,6 +88,193 @@ fn test_transform_folds_string_literal_concat() {
 	assert lit.value == 'left-right'
 }
 
+fn test_transform_keeps_generic_array_elem_equality_as_infix() {
+	mut t := create_transformer_with_vars({
+		'a': types.Type(types.Array{
+			elem_type: types.Type(types.NamedType('T'))
+		})
+		'e': types.Type(types.NamedType('T'))
+	})
+	t.cur_fn_generic_params = ['T']
+	t.generic_var_type_params = {
+		'a': 'T'
+	}
+	t.env.set_expr_type(101, types.string_)
+	t.env.set_expr_type(102, types.string_)
+
+	result := t.transform_infix_expr(ast.InfixExpr{
+		op:  .eq
+		lhs: ast.Expr(ast.IndexExpr{
+			lhs:  ast.Expr(ast.Ident{
+				name: 'a'
+			})
+			expr: ast.Expr(ast.Ident{
+				name: 'idx'
+			})
+			pos:  token.Pos{
+				id: 101
+			}
+		})
+		rhs: ast.Expr(ast.Ident{
+			pos:  token.Pos{
+				id: 102
+			}
+			name: 'e'
+		})
+	})
+
+	assert result is ast.InfixExpr, 'generic equality should stay for specialized codegen'
+}
+
+fn test_transform_generic_module_call_uses_specialized_name() {
+	mut t := create_test_transformer()
+	mut scope := types.new_scope(unsafe { nil })
+	scope.insert('json', types.Module{
+		name: 'x.json2'
+	})
+	t.scope = scope
+
+	result := t.transform_expr(ast.CallExpr{
+		lhs:  ast.Expr(ast.GenericArgOrIndexExpr{
+			lhs:  ast.Expr(ast.SelectorExpr{
+				lhs: ast.Expr(ast.Ident{
+					name: 'json'
+				})
+				rhs: ast.Ident{
+					name: 'decode'
+				}
+			})
+			expr: ast.Expr(ast.Ident{
+				name: 'GitHubRepoInfo'
+			})
+		})
+		args: [
+			ast.Expr(ast.Ident{
+				name: 'body'
+			}),
+		]
+	})
+
+	assert result is ast.CallExpr, 'expected CallExpr, got ${result.type_name()}'
+	call := result as ast.CallExpr
+	assert call.lhs is ast.Ident
+	assert (call.lhs as ast.Ident).name == 'json2__decode_T_GitHubRepoInfo'
+	assert call.args.len == 1
+}
+
+fn test_transform_generic_module_call_or_cast_uses_specialized_name() {
+	mut t := create_test_transformer()
+	mut scope := types.new_scope(unsafe { nil })
+	scope.insert('json', types.Module{
+		name: 'x.json2'
+	})
+	t.scope = scope
+
+	result := t.transform_expr(ast.CallOrCastExpr{
+		lhs:  ast.Expr(ast.GenericArgOrIndexExpr{
+			lhs:  ast.Expr(ast.SelectorExpr{
+				lhs: ast.Expr(ast.Ident{
+					name: 'json'
+				})
+				rhs: ast.Ident{
+					name: 'decode'
+				}
+			})
+			expr: ast.Expr(ast.Ident{
+				name: 'GitHubRepoInfo'
+			})
+		})
+		expr: ast.Expr(ast.SelectorExpr{
+			lhs: ast.Expr(ast.Ident{
+				name: 'resp'
+			})
+			rhs: ast.Ident{
+				name: 'body'
+			}
+		})
+	})
+
+	assert result is ast.CallExpr, 'expected CallExpr, got ${result.type_name()}'
+	call := result as ast.CallExpr
+	assert call.lhs is ast.Ident
+	assert (call.lhs as ast.Ident).name == 'json2__decode_T_GitHubRepoInfo'
+	assert call.args.len == 1
+}
+
+fn test_transform_generic_module_call_or_cast_uses_array_specialized_name() {
+	mut t := create_test_transformer()
+	mut scope := types.new_scope(unsafe { nil })
+	scope.insert('json', types.Module{
+		name: 'x.json2'
+	})
+	t.scope = scope
+
+	result := t.transform_expr(ast.CallOrCastExpr{
+		lhs:  ast.Expr(ast.GenericArgOrIndexExpr{
+			lhs:  ast.Expr(ast.SelectorExpr{
+				lhs: ast.Expr(ast.Ident{
+					name: 'json'
+				})
+				rhs: ast.Ident{
+					name: 'decode'
+				}
+			})
+			expr: ast.Expr(ast.Type(ast.ArrayType{
+				elem_type: ast.Expr(ast.Ident{
+					name: 'GitHubContributor'
+				})
+			}))
+		})
+		expr: ast.Expr(ast.SelectorExpr{
+			lhs: ast.Expr(ast.Ident{
+				name: 'resp'
+			})
+			rhs: ast.Ident{
+				name: 'body'
+			}
+		})
+	})
+
+	assert result is ast.CallExpr, 'expected CallExpr, got ${result.type_name()}'
+	call := result as ast.CallExpr
+	assert call.lhs is ast.Ident
+	assert (call.lhs as ast.Ident).name == 'json2__decode_T_Array_GitHubContributor'
+	assert call.args.len == 1
+}
+
+fn test_transform_bare_generic_call_uses_specialized_name() {
+	mut t := create_test_transformer()
+	result := t.transform_expr(ast.CallExpr{
+		lhs:  ast.Expr(ast.GenericArgs{
+			lhs:  ast.Expr(ast.Ident{
+				name: 'run_new'
+			})
+			args: [
+				ast.Expr(ast.Ident{
+					name: 'A'
+				}),
+				ast.Expr(ast.Ident{
+					name: 'X'
+				}),
+			]
+		})
+		args: [
+			ast.Expr(ast.Ident{
+				name: 'app'
+			}),
+			ast.Expr(ast.Ident{
+				name: 'params'
+			}),
+		]
+	})
+
+	assert result is ast.CallExpr, 'expected CallExpr, got ${result.type_name()}'
+	call := result as ast.CallExpr
+	assert call.lhs is ast.Ident
+	assert (call.lhs as ast.Ident).name == 'run_new_T_A_X'
+	assert call.args.len == 2
+}
+
 // Create a rune-like type that returns 'rune' from name()
 fn rune_type() types.Type {
 	return types.Alias{

@@ -436,6 +436,25 @@ fn (mut g Gen) gen_heap_interface_cast(type_name string, value_expr ast.Expr) bo
 		g.ierror_wrapper_bases[base_concrete] = true
 		g.needed_ierror_wrapper_bases[base_concrete] = true
 	}
+	if type_name in ['IError', 'builtin__IError'] && base_concrete != type_name
+		&& g.concrete_ierror_base_for_c_type(concrete_type) != '' {
+		g.sb.write_string('({ ${type_name}* _iface_t = (${type_name}*)malloc(sizeof(${type_name})); *_iface_t = ')
+		g.gen_ierror_from_concrete_expr(value_expr, concrete_type)
+		g.sb.write_string('; _iface_t; })')
+		return true
+	}
+	// IError constants like `none__ = IError(&None__{})` may be emitted before
+	// embedded Error metadata is available. Still use the IError wrapper shape so
+	// the generated C references wrapper functions, not missing direct methods.
+	if type_name in ['IError', 'builtin__IError'] && base_concrete != type_name {
+		base := g.qualify_ierror_concrete_base(base_concrete)
+		if base != '' && base != 'int' {
+			g.sb.write_string('({ ${type_name}* _iface_t = (${type_name}*)malloc(sizeof(${type_name})); *_iface_t = ')
+			g.gen_ierror_from_base_expr(base, value_expr, concrete_type)
+			g.sb.write_string('; _iface_t; })')
+			return true
+		}
+	}
 	// Generate: ({ InterfaceType* _iface = malloc(sizeof(InterfaceType));
 	//             *_iface = (InterfaceType){._object = (void*)value, ...}; _iface; })
 	g.sb.write_string('({ ${type_name}* _iface_t = (${type_name}*)malloc(sizeof(${type_name})); *_iface_t = ((${type_name}){._object = ')
@@ -458,15 +477,17 @@ fn (mut g Gen) gen_heap_interface_cast(type_name string, value_expr ast.Expr) bo
 	if methods := g.interface_methods[type_name] {
 		for method in methods {
 			mut fn_name := '${base_concrete}__${method.name}'
+			mut uses_embedded_method := false
 			if fn_name !in g.fn_param_is_ptr && fn_name !in g.fn_return_types {
 				resolved := g.resolve_embedded_method(base_concrete, method.name)
 				if resolved != '' {
 					fn_name = resolved
+					uses_embedded_method = true
 				}
 			}
 			mut target_name := fn_name
 			if ptr_params := g.fn_param_is_ptr[fn_name] {
-				if ptr_params.len > 0 && !ptr_params[0] {
+				if uses_embedded_method || (ptr_params.len > 0 && !ptr_params[0]) {
 					target_name = interface_wrapper_name(type_name, base_concrete, method.name)
 					g.needed_interface_wrappers[target_name] = true
 					if target_name !in g.interface_wrapper_specs {
@@ -527,6 +548,19 @@ fn (mut g Gen) gen_interface_cast(type_name string, value_expr ast.Expr) bool {
 	if concrete_type.ends_with('*') && value_expr is ast.PrefixExpr && value_expr.op == .mul {
 		effective_value = value_expr.expr
 	}
+	if type_name in ['IError', 'builtin__IError'] {
+		if g.gen_ierror_from_concrete_expr(effective_value, concrete_type) {
+			return true
+		}
+		// See the heap IError cast path above: fallback to wrapper-based IError
+		// construction even when embedded method metadata could not prove it.
+		base := g.qualify_ierror_concrete_base(base_concrete)
+		if base != '' && base != 'int' {
+			if g.gen_ierror_from_base_expr(base, effective_value, concrete_type) {
+				return true
+			}
+		}
+	}
 	is_rvalue := !concrete_type.ends_with('*') && !g.can_take_address(effective_value)
 	// Use a temp variable when there are data fields and the expression is complex
 	// (e.g., a function call returning a pointer). This avoids re-evaluating the
@@ -570,6 +604,7 @@ fn (mut g Gen) gen_interface_cast(type_name string, value_expr ast.Expr) bool {
 	if methods := g.interface_methods[type_name] {
 		for method in methods {
 			mut fn_name := '${base_concrete}__${method.name}'
+			mut uses_embedded_method := false
 			// If the method doesn't exist on the concrete type directly,
 			// try resolving through embedded structs (e.g. ssl__SSLConn embeds
 			// openssl__SSLConn, so ssl__SSLConn__addr → openssl__SSLConn__addr).
@@ -577,11 +612,12 @@ fn (mut g Gen) gen_interface_cast(type_name string, value_expr ast.Expr) bool {
 				resolved := g.resolve_embedded_method(base_concrete, method.name)
 				if resolved != '' {
 					fn_name = resolved
+					uses_embedded_method = true
 				}
 			}
 			mut target_name := fn_name
 			if ptr_params := g.fn_param_is_ptr[fn_name] {
-				if ptr_params.len > 0 && !ptr_params[0] {
+				if uses_embedded_method || (ptr_params.len > 0 && !ptr_params[0]) {
 					target_name = interface_wrapper_name(type_name, base_concrete, method.name)
 					g.needed_interface_wrappers[target_name] = true
 					if target_name !in g.interface_wrapper_specs {
@@ -638,6 +674,20 @@ fn expr_to_int_str(e ast.Expr) string {
 	return '0'
 }
 
+fn (mut g Gen) known_module_runtime_symbol(module_name string, symbol_name string) ?string {
+	if module_name == '' || symbol_name == '' {
+		return none
+	}
+	if scope := g.env_scope(module_name) {
+		if obj := scope.lookup(symbol_name) {
+			if obj is types.Const || obj is types.Global || obj is types.Fn {
+				return module_name
+			}
+		}
+	}
+	return none
+}
+
 // expr_to_int_str_with_env resolves fixed-array size expressions, handling
 // both literal numbers and named constants (looked up via type environment).
 fn (g &Gen) expr_to_int_str_with_env(e ast.Expr) string {
@@ -662,10 +712,11 @@ fn (g &Gen) expr_to_int_str_with_env(e ast.Expr) string {
 }
 
 fn (mut g Gen) local_var_c_type_for_expr(expr ast.Expr) ?string {
-	if expr !is ast.Ident {
+	unwrapped := strip_expr_wrappers(expr)
+	if unwrapped !is ast.Ident {
 		return none
 	}
-	name := expr.name()
+	name := unwrapped.name()
 	if name == '' {
 		return none
 	}
@@ -831,6 +882,10 @@ fn (mut g Gen) selector_use_ptr(lhs_expr ast.Expr) bool {
 			return local_type.ends_with('*')
 		}
 	}
+	lhs_type := g.get_expr_type(lhs_expr)
+	if lhs_type == 'chan' {
+		return true
+	}
 	return false
 }
 
@@ -926,6 +981,74 @@ fn (mut g Gen) gen_unwrapped_value_expr(expr ast.Expr) bool {
 	return false
 }
 
+fn (g &Gen) should_use_known_enum_field(enum_name string, field_name string) bool {
+	return enum_name != '' && !is_generic_placeholder_c_type_name(enum_name)
+		&& g.enum_has_field(enum_name, field_name)
+}
+
+fn (mut g Gen) enum_type_from_expr(expr ast.Expr, fallback string) string {
+	mut enum_type := fallback.trim_space().trim_right('*')
+	if enum_type != '' && enum_type != 'int' && !is_generic_placeholder_c_type_name(enum_type)
+		&& g.is_enum_type(enum_type) {
+		return enum_type
+	}
+	if raw_type := g.get_raw_type(expr) {
+		enum_type = g.types_type_to_c(raw_type).trim_space().trim_right('*')
+		if enum_type != '' && enum_type != 'int' && !is_generic_placeholder_c_type_name(enum_type)
+			&& g.is_enum_type(enum_type) {
+			return enum_type
+		}
+	}
+	if env_type := g.get_expr_type_from_env(expr) {
+		enum_type = env_type.trim_space().trim_right('*')
+		if enum_type != '' && enum_type != 'int' && !is_generic_placeholder_c_type_name(enum_type)
+			&& g.is_enum_type(enum_type) {
+			return enum_type
+		}
+	}
+	cast_type := extract_compare_cast_type(expr).trim_space().trim_right('*')
+	if cast_type != '' && cast_type != 'int' && !is_generic_placeholder_c_type_name(cast_type)
+		&& g.is_enum_type(cast_type) {
+		return cast_type
+	}
+	return ''
+}
+
+fn (mut g Gen) gen_enum_shorthand_compare(node &ast.InfixExpr, lhs_type string, rhs_type string) bool {
+	if node.op !in [.eq, .ne] {
+		return false
+	}
+	if node.rhs is ast.SelectorExpr {
+		rhs_sel := node.rhs as ast.SelectorExpr
+		if rhs_sel.lhs is ast.EmptyExpr {
+			enum_type := g.enum_type_from_expr(node.lhs, lhs_type)
+			if enum_type != '' && g.enum_has_field(enum_type, rhs_sel.rhs.name) {
+				g.sb.write_string('(')
+				g.expr(node.lhs)
+				g.sb.write_string(if node.op == .eq { ' == ' } else { ' != ' })
+				g.sb.write_string(g.enum_member_c_name(enum_type, rhs_sel.rhs.name))
+				g.sb.write_string(')')
+				return true
+			}
+		}
+	}
+	if node.lhs is ast.SelectorExpr {
+		lhs_sel := node.lhs as ast.SelectorExpr
+		if lhs_sel.lhs is ast.EmptyExpr {
+			enum_type := g.enum_type_from_expr(node.rhs, rhs_type)
+			if enum_type != '' && g.enum_has_field(enum_type, lhs_sel.rhs.name) {
+				g.sb.write_string('(')
+				g.sb.write_string(g.enum_member_c_name(enum_type, lhs_sel.rhs.name))
+				g.sb.write_string(if node.op == .eq { ' == ' } else { ' != ' })
+				g.expr(node.rhs)
+				g.sb.write_string(')')
+				return true
+			}
+		}
+	}
+	return false
+}
+
 fn (mut g Gen) gen_infix_expr(node &ast.InfixExpr) {
 	lhs_type := g.get_expr_type(node.lhs)
 	rhs_type := g.get_expr_type(node.rhs)
@@ -944,6 +1067,9 @@ fn (mut g Gen) gen_infix_expr(node &ast.InfixExpr) {
 		g.sb.write_string('}, false)')
 		return
 	}
+	if g.gen_enum_shorthand_compare(node, lhs_type, rhs_type) {
+		return
+	}
 	if node.op in [.logical_or, .and] {
 		g.sb.write_string('(')
 		if !g.gen_unwrapped_value_expr(node.lhs) {
@@ -955,6 +1081,31 @@ fn (mut g Gen) gen_infix_expr(node &ast.InfixExpr) {
 		}
 		g.sb.write_string(')')
 		return
+	}
+	if node.op in [.amp, .pipe, .xor] && node.lhs is ast.InfixExpr {
+		left := node.lhs as ast.InfixExpr
+		if left.op == .left_shift {
+			is_array_append, elem_type := g.array_append_elem_type(left.lhs, left.rhs)
+			if is_array_append {
+				combined_rhs := ast.InfixExpr{
+					lhs: left.rhs
+					op:  node.op
+					rhs: node.rhs
+					pos: node.pos
+				}
+				g.sb.write_string('array__push((array*)')
+				if g.expr_is_pointer(left.lhs) {
+					g.expr(left.lhs)
+				} else {
+					g.sb.write_string('&')
+					g.expr(left.lhs)
+				}
+				g.sb.write_string(', ')
+				g.gen_addr_of_expr(ast.Expr(combined_rhs), elem_type)
+				g.sb.write_string(')')
+				return
+			}
+		}
 	}
 	// Option none comparison: `opt == none` / `opt != none`.
 	if node.op in [.eq, .ne] {
@@ -1421,6 +1572,23 @@ fn (mut g Gen) gen_infix_expr(node &ast.InfixExpr) {
 		g.sb.write_string(') ${op} 0)')
 		return
 	}
+	if node.op in [.eq, .ne] && (lhs_type == 'map' || lhs_type.starts_with('Map_'))
+		&& (rhs_type == 'map' || rhs_type.starts_with('Map_')) {
+		if node.op == .ne {
+			g.sb.write_string('!')
+		}
+		map_eq_fn := if lhs_type.starts_with('Map_') && lhs_type == rhs_type {
+			'${lhs_type}_map_eq'
+		} else {
+			'map_map_eq'
+		}
+		g.sb.write_string('${map_eq_fn}(')
+		g.expr(node.lhs)
+		g.sb.write_string(', ')
+		g.expr(node.rhs)
+		g.sb.write_string(')')
+		return
+	}
 	mut cmp_type := ''
 	if g.should_use_memcmp_eq(lhs_type, rhs_type) {
 		// Use whichever type is non-empty; prefer lhs_type
@@ -1475,28 +1643,14 @@ fn (mut g Gen) gen_infix_expr(node &ast.InfixExpr) {
 		}
 		return
 	}
-	if node.op in [.plus, .minus, .mul, .div] && lhs_type != '' && rhs_type != ''
-		&& lhs_type == rhs_type && lhs_type !in primitive_types && lhs_type != 'string'
-		&& !lhs_type.ends_with('*') && !lhs_type.ends_with('ptr') {
-		op_name := match node.op {
-			.plus { 'plus' }
-			.minus { 'minus' }
-			.mul { 'mul' }
-			.div { 'div' }
-			else { '' }
-		}
-
-		if op_name != '' {
-			method_fn := '${lhs_type}__${op_name}'
-			if method_fn in g.fn_return_types || method_fn in g.fn_param_is_ptr {
-				g.sb.write_string('${method_fn}(')
-				g.expr(node.lhs)
-				g.sb.write_string(', ')
-				g.expr(node.rhs)
-				g.sb.write_string(')')
-				return
-			}
-		}
+	method_fn, operand_type := g.overloaded_arithmetic_method_for_infix(*node, lhs_type, rhs_type)
+	if method_fn != '' {
+		g.sb.write_string('${method_fn}(')
+		g.gen_overloaded_arithmetic_arg(node.lhs, lhs_type, operand_type)
+		g.sb.write_string(', ')
+		g.gen_overloaded_arithmetic_arg(node.rhs, rhs_type, operand_type)
+		g.sb.write_string(')')
+		return
 	}
 	// Comparison operators (<, <=, >, >=) on struct types with overloaded `<` operator.
 	// V derives: a < b → Type__lt(a, b), a > b → Type__lt(b, a),
@@ -2188,8 +2342,10 @@ fn (mut g Gen) expr(node ast.Expr) {
 				if lhs_name in ['bool', 'string', 'int', 'i8', 'i16', 'i32', 'i64', 'u8', 'u16',
 					'u32', 'u64', 'f32', 'f64', 'byte', 'rune'] {
 					if enum_name := g.enum_value_to_enum[rhs_name] {
-						g.sb.write_string(g.enum_member_c_name(enum_name, rhs_name))
-						return
+						if g.should_use_known_enum_field(enum_name, rhs_name) {
+							g.sb.write_string(g.enum_member_c_name(enum_name, rhs_name))
+							return
+						}
 					}
 				}
 				is_known_var := g.local_var_c_type_for_expr(lhs_expr) != none
@@ -2203,8 +2359,10 @@ fn (mut g Gen) expr(node ast.Expr) {
 					if lhs_name in ['bool', 'string', 'int', 'i8', 'i16', 'i32', 'i64', 'u8', 'u16',
 						'u32', 'u64', 'f32', 'f64', 'byte', 'rune'] {
 						if enum_name := g.enum_value_to_enum[rhs_name] {
-							g.sb.write_string(g.enum_member_c_name(enum_name, rhs_name))
-							return
+							if g.should_use_known_enum_field(enum_name, rhs_name) {
+								g.sb.write_string(g.enum_member_c_name(enum_name, rhs_name))
+								return
+							}
 						}
 					}
 				}
@@ -2235,8 +2393,10 @@ fn (mut g Gen) expr(node ast.Expr) {
 						}
 						if emit_enum_value {
 							enum_name := g.types_type_to_c(raw_type)
-							g.sb.write_string(g.enum_member_c_name(enum_name, rhs_name))
-							return
+							if !is_generic_placeholder_c_type_name(enum_name) {
+								g.sb.write_string(g.enum_member_c_name(enum_name, rhs_name))
+								return
+							}
 						}
 					}
 				}
@@ -2246,6 +2406,24 @@ fn (mut g Gen) expr(node ast.Expr) {
 			}
 			if g.gen_sum_variant_field_selector(sel) {
 				return
+			}
+			if lhs_expr is ast.SelectorExpr {
+				lhs_sel := lhs_expr as ast.SelectorExpr
+				if lhs_sel.lhs is ast.Ident {
+					lhs_mod := lhs_sel.lhs as ast.Ident
+					mut module_names := [lhs_mod.name]
+					resolved_mod_name := g.resolve_module_name(lhs_mod.name)
+					if resolved_mod_name !in module_names {
+						module_names << resolved_mod_name
+					}
+					for mod_name in module_names {
+						enum_name := '${mod_name}__${lhs_sel.rhs.name}'
+						if g.enum_has_field(enum_name, rhs_name) {
+							g.sb.write_string(g.enum_member_c_name(enum_name, rhs_name))
+							return
+						}
+					}
+				}
 			}
 			lhs_type := g.get_expr_type(lhs_expr)
 			if rhs_name in ['x', 'y', 'z', 'w'] {
@@ -2274,6 +2452,26 @@ fn (mut g Gen) expr(node ast.Expr) {
 			if variant_field := g.sum_data_variant_selector_field(sel) {
 				g.expr(lhs_expr)
 				g.sb.write_string('.${variant_field}')
+				return
+			}
+			if lhs_type.trim_right('*') == 'chan' && rhs_name in ['len', 'closed'] {
+				if rhs_name == 'len' {
+					g.sb.write_string('((int)atomic_load_u32(&((sync__Channel*)(')
+					g.expr(lhs_expr)
+					g.sb.write_string('))->read_avail))')
+				} else {
+					g.sb.write_string('(atomic_load_u16(&((sync__Channel*)(')
+					g.expr(lhs_expr)
+					g.sb.write_string('))->closed) != 0)')
+				}
+				return
+			}
+			lhs_string_type := g.builtin_string_field_lhs_type(lhs_expr, rhs_name)
+			if lhs_string_type != '' {
+				use_ptr := lhs_string_type.ends_with('*')
+				selector := if use_ptr { '->' } else { '.' }
+				g.expr(lhs_expr)
+				g.sb.write_string('${selector}${escape_c_keyword(rhs_name)}')
 				return
 			}
 			// Fixed-size array `.len` becomes compile-time length.
@@ -2339,14 +2537,17 @@ fn (mut g Gen) expr(node ast.Expr) {
 				if raw_type := g.get_raw_type(sel_expr) {
 					if raw_type is types.Enum {
 						enum_name := g.types_type_to_c(raw_type)
-						if g.enum_has_field(enum_name, rhs_name) {
+						if !is_generic_placeholder_c_type_name(enum_name)
+							&& g.enum_has_field(enum_name, rhs_name) {
 							g.sb.write_string(g.enum_member_c_name(enum_name, rhs_name))
 							return
 						}
 					}
 				}
 				if enum_name := g.get_expr_type_from_env(sel_expr) {
-					if enum_name != '' && enum_name != 'int' && g.is_enum_type(enum_name) {
+					if enum_name != '' && enum_name != 'int'
+						&& !is_generic_placeholder_c_type_name(enum_name)
+						&& g.is_enum_type(enum_name) {
 						if g.enum_has_field(enum_name, rhs_name) {
 							g.sb.write_string(g.enum_member_c_name(enum_name, rhs_name))
 							return
@@ -2354,7 +2555,7 @@ fn (mut g Gen) expr(node ast.Expr) {
 					}
 				}
 				// Use the definitive enum field mapping
-				if known_enum != '' {
+				if g.should_use_known_enum_field(known_enum, rhs_name) {
 					g.sb.write_string(g.enum_member_c_name(known_enum, rhs_name))
 					return
 				}
@@ -2376,6 +2577,16 @@ fn (mut g Gen) expr(node ast.Expr) {
 						g.sb.write_string('${mod_name}__${rhs_name}')
 					}
 					return
+				}
+				if !is_local {
+					if mod_name := g.known_module_runtime_symbol(lhs_ident.name, rhs_name) {
+						if rhs_name.starts_with('${mod_name}__') {
+							g.sb.write_string(rhs_name)
+						} else {
+							g.sb.write_string('${mod_name}__${rhs_name}')
+						}
+						return
+					}
 				}
 			}
 			// Method value in expression position: `obj.method` -> `Type__method`.
@@ -2568,6 +2779,9 @@ fn (mut g Gen) expr(node ast.Expr) {
 			g.expr(node.lhs)
 		}
 		ast.GenericArgOrIndexExpr {
+			if g.try_emit_generic_fn_value(node.lhs) {
+				return
+			}
 			if raw_type := g.get_raw_type(node.lhs) {
 				match raw_type {
 					types.FnType {
@@ -2601,10 +2815,43 @@ fn (mut g Gen) expr(node ast.Expr) {
 			})
 		}
 		ast.SqlExpr {
-			g.sb.write_string('/* [TODO] SqlExpr */ 0')
+			g.gen_sql_expr_placeholder(node)
 		}
 		ast.EmptyExpr {}
 	}
+}
+
+fn (mut g Gen) try_emit_generic_fn_value(lhs ast.Expr) bool {
+	if lhs is ast.Ident {
+		if _ := g.get_local_var_c_type(lhs.name) {
+			return false
+		}
+	}
+	name := g.resolve_call_name(lhs, 0)
+	if name == '' {
+		return false
+	}
+	if name in g.fn_param_is_ptr || name in g.fn_return_types {
+		g.sb.write_string(name)
+		return true
+	}
+	if _ := g.find_generic_fn_decl_by_base_name(name) {
+		g.sb.write_string(name)
+		return true
+	}
+	return false
+}
+
+fn (mut g Gen) gen_sql_expr_placeholder(node ast.SqlExpr) {
+	mut c_type := g.get_expr_type(ast.Expr(node)).trim_space()
+	if c_type == '' || c_type == 'int' {
+		if node.is_count {
+			c_type = 'int'
+		} else if node.table_name == '' {
+			c_type = '_result_void'
+		}
+	}
+	g.sb.write_string(zero_value_for_type(c_type))
 }
 
 fn extract_compare_cast_type(expr ast.Expr) string {
@@ -2631,6 +2878,27 @@ fn (mut g Gen) gen_stmts_from_expr(e ast.Expr) {
 	}
 }
 
+fn (mut g Gen) expr_is_explicit_value_of_type(expr ast.Expr, type_name string) bool {
+	match expr {
+		ast.InitExpr {
+			return g.expr_type_to_c(expr.typ) == type_name
+		}
+		ast.CastExpr {
+			return g.expr_type_to_c(expr.typ) == type_name
+		}
+		ast.CallOrCastExpr {
+			return g.call_or_cast_lhs_is_type(expr.lhs) && g.expr_type_to_c(expr.lhs) == type_name
+		}
+		ast.CallExpr {
+			return expr.args.len == 1 && g.call_or_cast_lhs_is_type(expr.lhs)
+				&& g.expr_type_to_c(expr.lhs) == type_name
+		}
+		else {
+			return false
+		}
+	}
+}
+
 fn (mut g Gen) gen_type_cast_expr(type_name string, expr ast.Expr) {
 	expr_type := g.get_expr_type(expr)
 	if expr is ast.BasicLiteral && expr.kind == .number && expr.value == '0' {
@@ -2653,7 +2921,18 @@ fn (mut g Gen) gen_type_cast_expr(type_name string, expr ast.Expr) {
 		return
 	}
 	if variants := g.sum_type_variants[type_name] {
+		if g.expr_is_explicit_value_of_type(expr, type_name) {
+			g.expr(expr)
+			return
+		}
 		mut inner_type := expr_type
+		if expr is ast.Ident {
+			if local_type := g.get_local_var_c_type(expr.name) {
+				if local_type != '' && local_type != 'int' {
+					inner_type = local_type
+				}
+			}
+		}
 		if expr is ast.SelectorExpr {
 			declared_field_type := g.selector_declared_field_type(expr)
 			if declared_field_type == type_name || (declared_field_type != ''
@@ -2958,15 +3237,14 @@ fn (mut g Gen) gen_sum_narrowed_selector(node ast.SelectorExpr) bool {
 	}
 	// Sum type narrowing path
 	variants := g.sum_type_variants[decl_type] or { return false }
-	narrowed_payload := strip_pointer_type_name(narrowed)
-	narrowed_short := if narrowed_payload.contains('__') {
-		narrowed_payload.all_after_last('__')
-	} else {
-		narrowed_payload
+	mut narrowed_payload := strip_pointer_type_name(narrowed)
+	narrowed_short := sum_type_variant_match_name(narrowed_payload)
+	mut variant_field := g.sum_type_variant_field_name(decl_type, narrowed_payload)
+	if variant_field !in variants {
+		variant_field = ''
 	}
-	mut variant_field := ''
 	for v in variants {
-		v_short := if v.contains('__') { v.all_after_last('__') } else { v }
+		v_short := sum_type_variant_match_name(v)
 		if v == narrowed_payload || v_short == narrowed_short
 			|| narrowed_payload.ends_with('__${v_short}') {
 			variant_field = v
@@ -2976,6 +3254,7 @@ fn (mut g Gen) gen_sum_narrowed_selector(node ast.SelectorExpr) bool {
 	if variant_field == '' {
 		return false
 	}
+	narrowed_payload = g.sum_type_variant_payload_type(decl_type, narrowed_payload, variant_field)
 	field_name := escape_c_keyword(node.rhs.name)
 	owner := g.embedded_owner_for(narrowed_payload, node.rhs.name)
 	// Inside a smartcast block, the is-check already confirmed the tag, so the
@@ -3011,15 +3290,14 @@ fn (mut g Gen) gen_sum_narrowed_ident(node ast.Ident) bool {
 	}
 	// Check if the declared type is a sum type
 	variants := g.sum_type_variants[decl_type] or { return false }
-	narrowed_payload := strip_pointer_type_name(narrowed)
-	narrowed_short := if narrowed_payload.contains('__') {
-		narrowed_payload.all_after_last('__')
-	} else {
-		narrowed_payload
+	mut narrowed_payload := strip_pointer_type_name(narrowed)
+	narrowed_short := sum_type_variant_match_name(narrowed_payload)
+	mut variant_field := g.sum_type_variant_field_name(decl_type, narrowed_payload)
+	if variant_field !in variants {
+		variant_field = ''
 	}
-	mut variant_field := ''
 	for v in variants {
-		v_short := if v.contains('__') { v.all_after_last('__') } else { v }
+		v_short := sum_type_variant_match_name(v)
 		if v == narrowed_payload || v_short == narrowed_short
 			|| narrowed_payload.ends_with('__${v_short}') {
 			variant_field = v
@@ -3029,6 +3307,7 @@ fn (mut g Gen) gen_sum_narrowed_ident(node ast.Ident) bool {
 	if variant_field == '' {
 		return false
 	}
+	narrowed_payload = g.sum_type_variant_payload_type(decl_type, narrowed_payload, variant_field)
 	// Generate the extraction expression
 	if g.is_scalar_sum_payload_type(narrowed_payload) {
 		// Scalar types: ((type)(intptr_t)(var._data._variant))
@@ -3041,6 +3320,61 @@ fn (mut g Gen) gen_sum_narrowed_ident(node ast.Ident) bool {
 		g.sb.write_string('(*((${narrowed_payload}*)(${node.name}._data._${variant_field})))')
 	}
 	return true
+}
+
+fn (mut g Gen) gen_sum_ident_as_payload_type(node ast.Ident, expected_type string) bool {
+	if expected_type == '' || expected_type == 'int' {
+		return false
+	}
+	decl_type := g.get_local_var_c_type(node.name) or { return false }
+	if decl_type == expected_type || decl_type == expected_type + '*' {
+		return false
+	}
+	variants := g.sum_type_variants[decl_type] or { return false }
+	mut variant_field := g.sum_type_variant_field_name(decl_type, expected_type)
+	if variant_field !in variants {
+		expected_short := sum_type_variant_match_name(expected_type)
+		for v in variants {
+			if v == expected_type || sum_type_variant_match_name(v) == expected_short
+				|| expected_type.ends_with('__${sum_type_variant_match_name(v)}') {
+				variant_field = v
+				break
+			}
+		}
+	}
+	if variant_field !in variants {
+		return false
+	}
+	payload_type := g.sum_type_variant_payload_type(decl_type, expected_type, variant_field)
+	if g.is_scalar_sum_payload_type(payload_type) {
+		g.sb.write_string('((${payload_type})(intptr_t)(${node.name}._data._${variant_field}))')
+		return true
+	}
+	g.sb.write_string('((((${payload_type}*)(${node.name}._data._${variant_field})) ? (*(((${payload_type}*)(${node.name}._data._${variant_field})))) : ${zero_value_for_type(payload_type)}))')
+	return true
+}
+
+fn sum_payload_ident_from_expr(expr ast.Expr) ?ast.Ident {
+	match expr {
+		ast.Ident {
+			return expr
+		}
+		ast.AsCastExpr {
+			return sum_payload_ident_from_expr(expr.expr)
+		}
+		ast.CastExpr {
+			return sum_payload_ident_from_expr(expr.expr)
+		}
+		ast.ParenExpr {
+			return sum_payload_ident_from_expr(expr.expr)
+		}
+		ast.ModifierExpr {
+			return sum_payload_ident_from_expr(expr.expr)
+		}
+		else {}
+	}
+
+	return none
 }
 
 // resolve_narrowed_selector_field_type resolves the field type of a SelectorExpr
@@ -3118,7 +3452,13 @@ fn (mut g Gen) gen_unsafe_expr(node ast.UnsafeExpr) {
 	// Last statement - if it's an ExprStmt, its value is the block's value
 	last := node.stmts[node.stmts.len - 1]
 	if last is ast.ExprStmt {
-		g.expr(last.expr)
+		if is_empty_expr(last.expr) {
+			if payload_expr := g.unsafe_expr_or_payload_value(node.stmts) {
+				g.expr(payload_expr)
+			}
+		} else {
+			g.expr(last.expr)
+		}
 		g.sb.write_string('; ')
 	} else {
 		g.gen_stmt(last)
@@ -3127,10 +3467,71 @@ fn (mut g Gen) gen_unsafe_expr(node ast.UnsafeExpr) {
 	g.sb.write_string('})')
 }
 
+fn (mut g Gen) unsafe_expr_or_payload_value(stmts []ast.Stmt) ?ast.Expr {
+	for stmt in stmts {
+		if stmt is ast.AssignStmt && stmt.op == .decl_assign && stmt.lhs.len == 1
+			&& stmt.rhs.len == 1 {
+			lhs := stmt.lhs[0]
+			if lhs !is ast.Ident {
+				continue
+			}
+			lhs_ident := lhs as ast.Ident
+			name := lhs_ident.name
+			if !name.starts_with('_or_t') {
+				continue
+			}
+			rhs := stmt.rhs[0]
+			mut wrapper_type := g.get_expr_type(rhs)
+			if (wrapper_type == '' || wrapper_type == 'int') && rhs is ast.CallExpr {
+				if ret_type := g.get_call_return_type(rhs.lhs, rhs.args) {
+					wrapper_type = ret_type
+				}
+			}
+			if wrapper_type.starts_with('_result_') {
+				if g.result_value_type(wrapper_type) == 'void' {
+					continue
+				}
+			} else if wrapper_type.starts_with('_option_') {
+				if option_value_type(wrapper_type) == 'void' {
+					continue
+				}
+			} else {
+				continue
+			}
+			return ast.Expr(ast.SelectorExpr{
+				lhs: ast.Ident{
+					name: name
+				}
+				rhs: ast.Ident{
+					name: 'data'
+				}
+			})
+		}
+	}
+	return none
+}
+
 fn (mut g Gen) gen_index_expr(node ast.IndexExpr) {
 	// Slice syntax: arr[a..b], arr[..b], arr[a..], s[a..b]
 	if node.expr is ast.RangeExpr {
 		panic('bug in v2 compiler: slice IndexExpr should have been lowered in v2.transformer')
+	}
+	if node.lhs is ast.SelectorExpr {
+		sel := node.lhs as ast.SelectorExpr
+		if sel.rhs.name == 'str' {
+			lhs_string_type := g.builtin_string_field_lhs_type(sel.lhs, sel.rhs.name)
+			if lhs_string_type != '' {
+				selector := if lhs_string_type.ends_with('*') { '->' } else { '.' }
+				g.expr(sel.lhs)
+				g.sb.write_string('${selector}${escape_c_keyword(sel.rhs.name)}[')
+				g.gen_index_expr_value(node.expr)
+				g.sb.write_string(']')
+				return
+			}
+		}
+	}
+	if g.try_emit_generic_fn_value(node.lhs) {
+		return
 	}
 	if node.lhs is ast.Ident {
 		if node.lhs.name in g.fixed_array_globals || node.lhs.name == 'rune_maps' {
@@ -3541,8 +3942,20 @@ fn (g &Gen) eval_comptime_flag(name string) bool {
 		'windows' {
 			return os.user_os() == 'windows'
 		}
+		'bsd' {
+			return os.user_os() in ['macos', 'freebsd', 'openbsd', 'netbsd', 'dragonfly']
+		}
 		'freebsd' {
 			return os.user_os() == 'freebsd'
+		}
+		'openbsd' {
+			return os.user_os() == 'openbsd'
+		}
+		'netbsd' {
+			return os.user_os() == 'netbsd'
+		}
+		'dragonfly' {
+			return os.user_os() == 'dragonfly'
 		}
 		'x64', 'amd64' {
 			return g.pref != unsafe { nil } && g.pref.arch == .x64
@@ -3706,6 +4119,9 @@ fn (g &Gen) comptime_type_matches(typ types.Type, rhs ast.Expr) bool {
 	if rhs is ast.Ident {
 		return g.comptime_matches_type_name(typ, rhs.name)
 	}
+	if rhs is ast.SelectorExpr {
+		return g.comptime_matches_selector_type_name(typ, rhs)
+	}
 	if rhs is ast.ComptimeExpr {
 		// $struct, $enum, $int, $float, $array, $map, $option, etc.
 		if rhs.expr is ast.Ident {
@@ -3718,6 +4134,26 @@ fn (g &Gen) comptime_type_matches(typ types.Type, rhs ast.Expr) bool {
 		return false
 	}
 	return false
+}
+
+fn (g &Gen) comptime_matches_selector_type_name(typ types.Type, selector ast.SelectorExpr) bool {
+	if selector.lhs !is ast.Ident {
+		return false
+	}
+	lhs_ident := selector.lhs as ast.Ident
+	mod_name := lhs_ident.name
+	type_name := selector.rhs.name
+	dot_name := '${mod_name}.${type_name}'
+	c_name := '${mod_name}__${type_name}'
+	resolved_name := typ.name()
+	if resolved_name == dot_name || resolved_name == c_name {
+		return true
+	}
+	resolved_c_name := g.types_type_to_c(typ)
+	if mod_name == g.cur_module && (resolved_name == type_name || resolved_c_name == type_name) {
+		return true
+	}
+	return resolved_c_name == c_name
 }
 
 // comptime_matches_type_name checks if a type matches a concrete type name.
@@ -3927,6 +4363,10 @@ fn (mut g Gen) gen_comptime_if_expr(node ast.IfExpr) {
 }
 
 fn (mut g Gen) gen_comptime_expr(node ast.ComptimeExpr) {
+	if is_veb_html_comptime_call(node.expr) {
+		g.sb.write_string('(veb__Result){0}')
+		return
+	}
 	if node.expr is ast.Ident {
 		name := node.expr.name
 		match name {
@@ -4011,6 +4451,29 @@ fn (mut g Gen) gen_comptime_expr(node ast.ComptimeExpr) {
 	g.expr(node.expr)
 }
 
+fn is_veb_html_comptime_call(expr ast.Expr) bool {
+	match expr {
+		ast.CallExpr {
+			return is_veb_html_comptime_lhs(expr.lhs)
+		}
+		ast.CallOrCastExpr {
+			return is_veb_html_comptime_lhs(expr.lhs)
+		}
+		else {
+			return false
+		}
+	}
+}
+
+fn is_veb_html_comptime_lhs(lhs ast.Expr) bool {
+	if lhs is ast.SelectorExpr {
+		if lhs.lhs is ast.Ident {
+			return lhs.lhs.name == 'veb' && lhs.rhs.name == 'html'
+		}
+	}
+	return false
+}
+
 fn comptime_string_arg(expr ast.Expr) string {
 	match expr {
 		ast.StringLiteral {
@@ -4056,7 +4519,10 @@ fn is_header_type_only_const_expr(expr ast.Expr) bool {
 }
 
 fn (mut g Gen) gen_cast_expr(node ast.CastExpr) {
-	type_name := g.expr_type_to_c(node.typ)
+	mut type_name := g.expr_type_to_c(node.typ)
+	if resolved_type := g.resolved_sum_data_cast_type(node) {
+		type_name = resolved_type
+	}
 	if node.expr is ast.BasicLiteral && node.expr.kind == .number && node.expr.value == '0' {
 		if type_name !in primitive_types && !type_name.ends_with('*') && !g.is_enum_type(type_name)
 			&& type_name !in ['void*', 'char*', 'byteptr', 'charptr', 'voidptr'] {
@@ -4079,7 +4545,7 @@ fn (mut g Gen) gen_cast_expr(node ast.CastExpr) {
 		}
 	}
 	if type_name.starts_with('_result_') {
-		value_type := g.result_value_type(type_name)
+		value_type := g.result_value_c_type(type_name)
 		if value_type != '' && value_type != 'void' {
 			g.sb.write_string('({ ${type_name} _res = (${type_name}){0}; ${value_type} _val = ')
 			g.expr(node.expr)
@@ -4147,12 +4613,26 @@ fn (mut g Gen) gen_cast_expr(node ast.CastExpr) {
 				cast_name = '${type_name}*'
 			}
 		}
+		if heap_payload_type := g.heap_sum_payload_cast_type(node, type_name) {
+			g.sb.write_string('((${cast_name})(*((${heap_payload_type}*)(${inner_str}))))')
+			return
+		}
 		g.sb.write_string('((${cast_name})(${inner_str}))')
 	}
 }
 
+fn (mut g Gen) heap_sum_payload_cast_type(node ast.CastExpr, type_name string) ?string {
+	if type_name.ends_with('*') || g.is_scalar_sum_payload_type(type_name) {
+		return none
+	}
+	if !g.is_sum_data_payload_selector(node.expr) {
+		return none
+	}
+	return type_name
+}
+
 fn (mut g Gen) gen_as_cast_expr(node ast.AsCastExpr) {
-	type_name := g.expr_type_to_c(node.typ)
+	mut type_name := g.expr_type_to_c(node.typ)
 	mut source_sum_type := g.get_expr_type(node.expr).trim_space().trim_right('*')
 	if raw_type := g.get_raw_type(node.expr) {
 		match raw_type {
@@ -4167,7 +4647,14 @@ fn (mut g Gen) gen_as_cast_expr(node ast.AsCastExpr) {
 			else {}
 		}
 	}
-	variant_field := g.sum_type_variant_field_name(source_sum_type, type_name)
+	mut variant_field := g.sum_type_variant_field_name(source_sum_type, type_name)
+	if !variant_field.contains('__') && type_name.contains('__') {
+		variant_field = type_name
+	}
+	type_name = g.sum_type_variant_payload_type(source_sum_type, type_name, variant_field)
+	if !variant_field.contains('__') && type_name.contains('__') {
+		variant_field = type_name
+	}
 	short_name := if type_name.contains('__') {
 		type_name.all_after_last('__')
 	} else {
@@ -4271,7 +4758,7 @@ fn (g &Gen) unwrap_parens(expr ast.Expr) ast.Expr {
 fn (mut g Gen) is_sum_data_ptr_deref(expr ast.Expr) bool {
 	inner := g.unwrap_parens(expr)
 	if inner is ast.CastExpr {
-		type_name := g.expr_type_to_c(inner.typ)
+		type_name := g.resolved_sum_data_cast_type(inner) or { g.expr_type_to_c(inner.typ) }
 		if type_name.ends_with('*') && !g.is_scalar_sum_payload_type(type_name.trim_right('*')) {
 			cast_inner := g.unwrap_parens(inner.expr)
 			if cast_inner is ast.SelectorExpr {
@@ -4290,11 +4777,100 @@ fn (mut g Gen) is_sum_data_ptr_deref(expr ast.Expr) bool {
 	return false
 }
 
+fn (mut g Gen) is_sum_data_payload_selector(expr ast.Expr) bool {
+	inner := g.unwrap_parens(expr)
+	sel := match inner {
+		ast.SelectorExpr {
+			inner
+		}
+		else {
+			return false
+		}
+	}
+
+	if !sel.rhs.name.starts_with('_') {
+		return false
+	}
+	lhs_sel := match sel.lhs {
+		ast.SelectorExpr {
+			sel.lhs
+		}
+		else {
+			return false
+		}
+	}
+
+	return lhs_sel.rhs.name == '_data'
+}
+
+fn (mut g Gen) resolved_sum_data_cast_type(node ast.CastExpr) ?string {
+	mut type_name := g.expr_type_to_c(node.typ)
+	mut ptr_suffix := ''
+	for type_name.ends_with('*') {
+		ptr_suffix += '*'
+		type_name = type_name[..type_name.len - 1]
+	}
+	cast_inner := g.unwrap_parens(node.expr)
+	sel := match cast_inner {
+		ast.SelectorExpr {
+			cast_inner
+		}
+		else {
+			return none
+		}
+	}
+
+	if !sel.rhs.name.starts_with('_') {
+		return none
+	}
+	lhs_sel := match sel.lhs {
+		ast.SelectorExpr {
+			sel.lhs
+		}
+		else {
+			return none
+		}
+	}
+
+	if lhs_sel.rhs.name != '_data' {
+		return none
+	}
+	raw_variant := sel.rhs.name[1..]
+	mut sum_type := ''
+	if raw_type := g.get_raw_type(lhs_sel.lhs) {
+		match raw_type {
+			types.SumType {
+				sum_type = g.types_type_to_c(raw_type)
+			}
+			types.Pointer {
+				if raw_type.base_type is types.SumType {
+					sum_type = g.types_type_to_c(raw_type.base_type)
+				}
+			}
+			types.Alias {
+				if raw_type.base_type is types.SumType {
+					sum_type = g.types_type_to_c(raw_type.base_type)
+				}
+			}
+			else {}
+		}
+	}
+	if sum_type == '' {
+		sum_type = g.get_expr_type(lhs_sel.lhs).trim_space().trim_right('*')
+	}
+	variant_field := g.sum_type_variant_field_name(sum_type, raw_variant)
+	payload_type := g.sum_type_variant_payload_type(sum_type, type_name, variant_field)
+	if payload_type == '' || payload_type == type_name {
+		return none
+	}
+	return payload_type + ptr_suffix
+}
+
 // get_cast_expr_type_name extracts the base type name from a CastExpr's target type.
 fn (mut g Gen) get_cast_expr_type_name(expr ast.Expr) string {
 	inner := g.unwrap_parens(expr)
 	if inner is ast.CastExpr {
-		type_name := g.expr_type_to_c(inner.typ)
+		type_name := g.resolved_sum_data_cast_type(inner) or { g.expr_type_to_c(inner.typ) }
 		return type_name.trim_right('*')
 	}
 	return ''

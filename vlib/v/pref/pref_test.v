@@ -230,6 +230,29 @@ fn test_explicit_gc_mode_is_forwarded_to_build_module() {
 	}
 }
 
+fn test_v_compiler_targets_default_to_no_gc() {
+	for target in [
+		os.join_path(vroot, 'cmd', 'v'),
+		os.join_path(vroot, 'cmd', 'v') + os.path_separator,
+		os.join_path(vroot, 'cmd', 'v', 'v.v'),
+		os.join_path(vroot, 'cmd', 'v2'),
+		os.join_path(vroot, 'cmd', 'v2') + os.path_separator,
+		os.join_path(vroot, 'cmd', 'v2', 'v2.v'),
+		os.join_path(vroot, 'cmd', 'tools', 'vfmt.v'),
+	] {
+		prefs, _ := pref.parse_args_and_show_errors([], ['', target], false)
+		assert prefs.gc_mode == .no_gc
+		assert prefs.build_options.join(' ').contains('-gc none')
+	}
+}
+
+fn test_v_compiler_targets_keep_explicit_gc_selection() {
+	target := os.join_path(vroot, 'cmd', 'v2', 'v2.v')
+	prefs, _ := pref.parse_args_and_show_errors([], ['', '-gc', 'boehm', target], false)
+	assert prefs.gc_mode == .boehm_full_opt
+	assert prefs.build_options.contains('-gc boehm')
+}
+
 fn test_cross_compile_defaults_windows_to_the_cross_compiler_arch() {
 	if pref.get_host_os() == .windows {
 		return
