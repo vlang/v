@@ -87,6 +87,9 @@ static int v_os_exec_capture_start(char *const argv[], int *child_pid, int *read
 // declared. Calling these via void* is ABI-compatible: pointer parameters
 // are passed identically regardless of pointee type.
 typedef struct { unsigned char _opaque[128]; } v_posix_spawn_file_actions_t;
+#ifdef __cplusplus
+extern "C" {
+#endif
 extern int posix_spawn(pid_t *, const char *, const void *, const void *, char *const [], char *const []);
 extern int posix_spawnp(pid_t *, const char *, const void *, const void *, char *const [], char *const []);
 extern int posix_spawn_file_actions_init(void *);
@@ -95,6 +98,9 @@ extern int posix_spawn_file_actions_adddup2(void *, int, int);
 extern int posix_spawn_file_actions_addclose(void *, int);
 
 extern char **environ;
+#ifdef __cplusplus
+}
+#endif
 
 static int v_os_execute_capture_start(const char *cmd, int *child_pid, int *read_fd) {
 	int pipefd[2];

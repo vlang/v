@@ -21,16 +21,6 @@ fn (mut p Parser) expect_type() ast.Expr {
 // pub fn (mut p Parser) try_type() !ast.Expr {
 fn (mut p Parser) try_type() ast.Expr {
 	match p.tok {
-		// lifetime: `^a`
-		.xor {
-			pos := p.pos
-			p.next()
-			name := p.expect_name()
-			return ast.LifetimeExpr{
-				name: name
-				pos:  pos
-			}
-		}
 		// pointer: `&type`
 		.amp {
 			p.next()
@@ -43,6 +33,15 @@ fn (mut p Parser) try_type() ast.Expr {
 				base_type: p.expect_type()
 				lifetime:  lifetime
 			})
+		}
+		// lifetime: `^a`
+		.xor {
+			pos := p.pos
+			p.next()
+			return ast.LifetimeExpr{
+				name: p.expect_name()
+				pos:  pos
+			}
 		}
 		// comptime type: `$enum` | `$struct` |  etc
 		.dollar {

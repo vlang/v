@@ -114,6 +114,7 @@ jobs:
       - uses: actions/checkout@v6
         with:
           fetch-depth: 10
+      - uses: ./.github/actions/cache-apt-packages-action
       - name: Build v
         run: make -j4 && ./v symlink
 

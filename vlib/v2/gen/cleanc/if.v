@@ -70,16 +70,30 @@ fn const_bool_value(expr ast.Expr) ?bool {
 }
 
 fn (mut g Gen) gen_decl_if_expr_branch(name string, stmts []ast.Stmt) {
-	if stmts.len == 0 {
+	last_idx := last_non_empty_stmt_index(stmts)
+	if last_idx < 0 {
 		return
 	}
 	for i, stmt in stmts {
-		if i == stmts.len - 1 && stmt is ast.ExprStmt {
+		if stmt is ast.EmptyStmt {
+			continue
+		}
+		if i == last_idx && stmt is ast.ExprStmt {
 			if stmt.expr is ast.IfExpr {
 				nested_if := stmt.expr as ast.IfExpr
 				if !g.if_expr_can_be_ternary(&nested_if) && nested_if.else_expr !is ast.EmptyExpr {
 					g.gen_decl_if_expr(name, &nested_if)
 					continue
+				}
+				if nested_if.else_expr is ast.EmptyExpr {
+					if payload_expr := g.unsafe_expr_or_payload_value(stmts) {
+						g.gen_stmt(stmt)
+						g.write_indent()
+						g.sb.write_string('${name} = ')
+						g.expr(payload_expr)
+						g.sb.writeln(';')
+						continue
+					}
 				}
 			}
 			// When the last expression is a void call (e.g. array__push from <<),
@@ -291,11 +305,20 @@ fn (g &Gen) extract_if_expr(expr ast.Expr) ?ast.IfExpr {
 	}
 }
 
+fn last_non_empty_stmt_index(stmts []ast.Stmt) int {
+	mut idx := stmts.len - 1
+	for idx >= 0 && stmts[idx] is ast.EmptyStmt {
+		idx--
+	}
+	return idx
+}
+
 fn (mut g Gen) branch_result_type(stmts []ast.Stmt) string {
-	if stmts.len == 0 {
+	last_idx := last_non_empty_stmt_index(stmts)
+	if last_idx < 0 {
 		return ''
 	}
-	last := stmts[stmts.len - 1]
+	last := stmts[last_idx]
 	match last {
 		ast.BlockStmt {
 			return g.branch_result_type(last.stmts)
@@ -450,9 +473,6 @@ fn (mut g Gen) get_if_expr_type(node &ast.IfExpr) string {
 			return g.cur_fn_ret_type
 		}
 		return env_type
-	}
-	if branch_type != '' && branch_type != 'int' {
-		return branch_type
 	}
 	if node.else_expr is ast.IfExpr {
 		else_if := node.else_expr as ast.IfExpr

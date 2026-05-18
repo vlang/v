@@ -32,6 +32,18 @@ jobs:
       VFLAGS: -no-parallel
     steps:
       - uses: actions/checkout@v6
+      - name: Cache apt packages
+        if: runner.os == 'Linux'
+        uses: ./.github/actions/cache-apt-packages-action
+      - name: Cache Homebrew downloads
+        if: runner.os == 'macOS'
+        uses: actions/cache@v5
+        with:
+          path: ~/Library/Caches/Homebrew
+          key: brew-${{ matrix.os }}-vsl-${{ hashFiles('.github/workflows/vsl_and_vtl_compile_ci.yml') }}
+          restore-keys: |
+            brew-${{ matrix.os }}-vsl-
+            brew-${{ matrix.os }}-
       - name: Build V
         id: build
         run: make && sudo ./v symlink
@@ -68,6 +80,18 @@ jobs:
       TERM: xterm
     steps:
       - uses: actions/checkout@v6
+      - name: Cache apt packages
+        if: runner.os == 'Linux'
+        uses: ./.github/actions/cache-apt-packages-action
+      - name: Cache Homebrew downloads
+        if: runner.os == 'macOS'
+        uses: actions/cache@v5
+        with:
+          path: ~/Library/Caches/Homebrew
+          key: brew-${{ matrix.os }}-vtl-${{ hashFiles('.github/workflows/vsl_and_vtl_compile_ci.yml') }}
+          restore-keys: |
+            brew-${{ matrix.os }}-vtl-
+            brew-${{ matrix.os }}-
       - name: Build V
         id: build
         run: make && sudo ./v symlink

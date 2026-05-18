@@ -19,7 +19,7 @@
     /* x86 architecture: uses PAUSE instruction for efficient spinning */
     #define cpu_relax() __asm__ __volatile__ ("pause")
 #elif defined(__aarch64__) || defined(_M_ARM64) || defined(__arm__) || defined(_M_ARM)
-    #if defined(__TINYC__)
+    #ifdef __TINYC__
         /* TCC compiler limitation: assembly not supported on ARM */
         #define cpu_relax()
     #else

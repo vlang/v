@@ -159,6 +159,9 @@ v -prealloc -d trace_prealloc -d new_veb run .
 ## HTTPS
 
 To serve HTTPS directly from `veb`, pass an `mbedtls.SSLConnectConfig` in `RunParams`:
+This built-in HTTPS listener is mbedtls-backed. When compiling with
+`-d use_openssl`, `veb` HTTP apps avoid `net.mbedtls`, but direct `veb`
+HTTPS startup is unavailable.
 
 ```v
 module main

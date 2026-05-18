@@ -56,6 +56,12 @@ fn test_out_files() {
 		pexe := os.join_path(output_path, '${basename}.exe')
 		//
 		file_options := get_file_options(path)
+		if user_os == 'windows' && file_options.vflags.contains('-cc clang') && gcc_path.len > 0
+			&& github_job.contains('gcc') {
+			eprintln('> skipping ${relpath} on gcc-windows, since it requires clang')
+			total_skips++
+			continue
+		}
 		alloptions := '-o ${os.quoted_path(pexe)} ${file_options.vflags}'
 		label := mj('v', file_options.vflags, 'run', relpath) + ' == ${mm(out_relpath)} '
 		//
@@ -70,8 +76,13 @@ fn test_out_files() {
 		run_ms := sw_run.elapsed().milliseconds()
 		//
 		if res.exit_code < 0 {
-			println('nope')
-			panic(res.output)
+			println('${term.red('FAIL')} C:${compile_ms:6}ms, R:${run_ms:2}ms ${label}')
+			println('  run crashed with exit code: ${res.exit_code}')
+			if res.output.len > 0 {
+				println(res.output)
+			}
+			total_errors++
+			continue
 		}
 		mut found := res.output.trim_right('\r\n').replace('\r\n', '\n')
 		mut expected := os.read_file(out_path)!
@@ -709,7 +720,7 @@ fn should_skip(relpath string) bool {
 			return true
 		}
 	}
-	if relpath.contains('freestanding_module_import_') {
+	if relpath.contains('freestanding_') {
 		$if !amd64 {
 			// https://github.com/vlang/v/issues/23397
 			eprintln('> skipping ${relpath} on != amd64')

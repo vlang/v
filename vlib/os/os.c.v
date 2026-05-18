@@ -112,7 +112,8 @@ fn find_cfile_size(fp &C.FILE) !int {
 			return error('ftell failed')
 		}
 		// fseek succeeded but ftell returned -1 (e.g. device files like NUL on Windows).
-		// Treat as zero-size to use the streaming fallback path.
+		// Rewind before returning so the caller can read from the beginning.
+		C.rewind(fp)
 		return 0
 	}
 	len := int(raw_fsize)

@@ -155,8 +155,8 @@ fn resolve_emphasis(mut nodes []&Node, mut delims []EmphDelim) {
 		delims[i].length -= use_len
 
 		mut emph := new_node(if use_len == 2 { .strong } else { .emphasis })
-		for child in nodes[opener_idx + 1..closer_idx] {
-			emph.append_child(child)
+		for child_idx in opener_idx + 1 .. closer_idx {
+			emph.append_child(nodes[child_idx])
 		}
 
 		n_inner := closer_idx - opener_idx - 1

@@ -308,11 +308,12 @@ pub fn (expr Expr) pos() token.Pos {
 // File (AST container)
 pub struct File {
 pub:
-	attributes []Attribute
-	mod        string
-	name       string
-	stmts      []Stmt
-	imports    []ImportStmt
+	attributes     []Attribute
+	mod            string
+	name           string
+	stmts          []Stmt
+	imports        []ImportStmt
+	selector_names map[int]string
 }
 
 pub enum Language {
@@ -753,8 +754,11 @@ pub fn (sif StringInterFormat) str() string {
 
 pub struct SqlExpr {
 pub:
-	expr Expr
-	pos  token.Pos
+	expr       Expr
+	table_name string
+	is_count   bool
+	is_create  bool
+	pos        token.Pos
 }
 
 pub struct UnsafeExpr {

@@ -35,9 +35,6 @@ fn module_path_join(base string, name string) string {
 pub fn (p &Preferences) get_module_path(mod string, importing_file_path string) string {
 	mod_path := mod.replace('.', os.path_separator)
 	vroot := p.effective_vroot()
-	if project_relative_path := find_project_relative_module_path(importing_file_path, mod_path) {
-		return project_relative_path
-	}
 	// TODO: is this the best order?
 	// vlib
 	vlib_path := module_path_join(module_path_join(vroot, 'vlib'), mod_path)
@@ -54,26 +51,10 @@ pub fn (p &Preferences) get_module_path(mod string, importing_file_path string) 
 		}
 		return vmodules_path
 	}
-	panic('Preferences.get_module_path: cannot find module path for `${mod}`')
-}
-
-fn find_project_relative_module_path(importing_file_path string, mod_path string) ?string {
-	// relative to file importing it, walking up to the module root. This is
-	// needed for nested modules that import top-level sibling modules.
-	mut dir := os.dir(importing_file_path)
-	for dir.len > 0 {
-		relative_path := module_path_join(dir, mod_path)
-		if dir_exists(relative_path) {
-			return relative_path
-		}
-		if dir_exists(module_path_join(dir, 'v.mod')) {
-			break
-		}
-		parent := os.dir(dir)
-		if parent == dir {
-			break
-		}
-		dir = parent
+	// relative to file importing it
+	relative_path := module_path_join(os.dir(importing_file_path), mod_path)
+	if dir_exists(relative_path) {
+		return relative_path
 	}
-	return none
+	panic('Preferences.get_module_path: cannot find module path for `${mod}`')
 }

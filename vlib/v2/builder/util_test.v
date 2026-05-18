@@ -1,4 +1,4 @@
-// vtest build: !linux
+// vtest build: !linux && !windows
 module builder
 
 import os
@@ -27,10 +27,52 @@ fn test_get_v_files_from_dir_uses_target_os() {
 	assert 'platform_macos.v' !in linux_names
 }
 
+fn test_get_v_files_from_dir_uses_d_and_notd_suffixes() {
+	tmp_dir := os.join_path(os.vtmp_dir(), 'v2_builder_define_suffix_${os.getpid()}')
+	os.mkdir_all(tmp_dir) or { panic(err) }
+	defer {
+		os.rmdir_all(tmp_dir) or {}
+	}
+	os.write_file(os.join_path(tmp_dir, 'common.v'), 'module test') or { panic(err) }
+	os.write_file(os.join_path(tmp_dir, 'ssl_d_use_openssl.v'), 'module test') or { panic(err) }
+	os.write_file(os.join_path(tmp_dir, 'ssl_notd_use_openssl.v'), 'module test') or { panic(err) }
+
+	default_names := get_v_files_from_dir(tmp_dir, []string{}, 'mac').map(os.file_name(it))
+	assert 'common.v' in default_names
+	assert 'ssl_d_use_openssl.v' !in default_names
+	assert 'ssl_notd_use_openssl.v' in default_names
+
+	openssl_names := get_v_files_from_dir(tmp_dir, ['use_openssl'], 'mac').map(os.file_name(it))
+	assert 'common.v' in openssl_names
+	assert 'ssl_d_use_openssl.v' in openssl_names
+	assert 'ssl_notd_use_openssl.v' !in openssl_names
+}
+
+fn test_get_v_files_from_dir_skips_prealloc_without_prealloc_flag() {
+	tmp_dir := os.join_path(os.vtmp_dir(), 'v2_builder_prealloc_${os.getpid()}')
+	os.mkdir_all(tmp_dir) or { panic(err) }
+	defer {
+		os.rmdir_all(tmp_dir) or {}
+	}
+	os.write_file(os.join_path(tmp_dir, 'common.v'), 'module test') or { panic(err) }
+	os.write_file(os.join_path(tmp_dir, 'prealloc.c.v'), 'module test') or { panic(err) }
+
+	default_names := get_v_files_from_dir(tmp_dir, []string{}, 'mac').map(os.file_name(it))
+	assert 'common.v' in default_names
+	assert 'prealloc.c.v' !in default_names
+
+	prealloc_names := get_v_files_from_dir(tmp_dir, ['prealloc'], 'mac').map(os.file_name(it))
+	assert 'common.v' in prealloc_names
+	assert 'prealloc.c.v' in prealloc_names
+}
+
 fn test_flag_helpers_use_target_os() {
 	assert flag_os_matches('macos', 'mac')
+	assert flag_os_matches('bsd', 'mac')
+	assert flag_os_matches('bsd', 'freebsd')
 	assert !flag_os_matches('linux', 'mac')
 	assert comptime_cond_matches('macos', 'mac')
+	assert comptime_cond_matches('linux || bsd', 'mac')
 	assert !comptime_cond_matches('linux', 'mac')
 	assert comptime_cond_matches('macos && !linux', 'mac')
 	macos_flag := parse_flag_directive_line('#flag macos -framework Cocoa', '/tmp/source.v', 'mac') or {
@@ -39,6 +81,22 @@ fn test_flag_helpers_use_target_os() {
 	linux_flag := parse_flag_directive_line('#flag linux -lm', '/tmp/source.v', 'mac') or { '' }
 	assert macos_flag == '-framework Cocoa'
 	assert linux_flag == ''
+}
+
+fn test_flag_helpers_expand_when_first_existing() {
+	tmp_dir := os.join_path(os.vtmp_dir(), 'v2_builder_when_first_${os.getpid()}')
+	existing_dir := os.join_path(tmp_dir, 'openssl_include')
+	os.mkdir_all(existing_dir) or { panic(err) }
+	defer {
+		os.rmdir_all(tmp_dir) or {}
+	}
+	missing_dir := os.join_path(tmp_dir, 'missing')
+	flag := parse_flag_directive_line("#flag darwin -I\$when_first_existing('${missing_dir}','${existing_dir}')", os.join_path(tmp_dir,
+		'source.v'), 'mac') or { '' }
+	assert flag == '-I${existing_dir}'
+	none_flag := parse_flag_directive_line("#flag darwin -I\$when_first_existing('${missing_dir}')", os.join_path(tmp_dir,
+		'source.v'), 'mac') or { '' }
+	assert none_flag == ''
 }
 
 fn test_file_has_incompatible_os_suffix_windows() {
@@ -54,6 +112,8 @@ fn test_file_has_incompatible_os_suffix_windows() {
 fn test_file_has_incompatible_os_suffix_non_windows_targets() {
 	assert !pref.file_has_incompatible_os_suffix('time_solaris.c.v', 'solaris')
 	assert !pref.file_has_incompatible_os_suffix('time_freebsd.c.v', 'freebsd')
+	assert !pref.file_has_incompatible_os_suffix('time_bsd.c.v', 'macos')
+	assert pref.file_has_incompatible_os_suffix('time_bsd.c.v', 'linux')
 	assert !pref.file_has_incompatible_os_suffix('time_darwin.c.v', 'macos')
 	assert !pref.file_has_incompatible_os_suffix('time_macos.c.v', 'darwin')
 	assert !pref.file_has_incompatible_os_suffix('time_android_outside_termux.c.v', 'android')
@@ -70,4 +130,19 @@ fn test_default_cc_uses_tcc_when_available() {
 	} else {
 		assert cc == 'cc'
 	}
+}
+
+fn test_cc_recompile_flags_from_cmd_keeps_include_paths() {
+	cmd := 'cc -I /tmp/include -I/tmp/other -Dfoo=1 -x objective-c -std=gnu11 -fwrapv "/tmp/main.c" -x none "/tmp/lib.o" -L/tmp/lib -lm -o "app"'
+	flags := cc_recompile_flags_from_cmd(cmd)
+	assert flags.contains('-I /tmp/include')
+	assert flags.contains('-I/tmp/other')
+	assert flags.contains('-Dfoo=1')
+	assert flags.contains('-x objective-c')
+	assert flags.contains('-std=gnu11')
+	assert flags.contains('-fwrapv')
+	assert !flags.contains('/tmp/lib.o')
+	assert !flags.contains('-L/tmp/lib')
+	assert !flags.contains('-lm')
+	assert !flags.contains('-o')
 }

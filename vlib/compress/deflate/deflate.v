@@ -55,8 +55,8 @@ pub fn compress_raw(data []u8) ![]u8 {
 	return deflate_compress_fixed(data)
 }
 
-// decompress decompresses a zlib (RFC 1950), gzip (RFC 1952),
-// or raw DEFLATE (RFC 1951) stream — format is auto-detected.
+// decompress decompresses a zlib (RFC 1950), gzip (RFC 1952), or raw DEFLATE (RFC 1951) stream.
+// The format is auto-detected.
 pub fn decompress(data []u8) ![]u8 {
 	if data.len >= 2 {
 		// gzip magic: 0x1f 0x8b

@@ -23,6 +23,14 @@ type Value = ArrayValue
 	| i64
 	| string
 
+fn value_f64_payload(value Value) f64 {
+	data := unsafe { (&u64(&value))[1] }
+	if data == 0 {
+		return 0.0
+	}
+	return unsafe { *(&f64(voidptr(data))) }
+}
+
 struct ArrayValue {
 mut:
 	elem_type_name string
@@ -4487,16 +4495,17 @@ fn (e &Eval) value_eq(left Value, right Value) bool {
 				return left == right
 			}
 			if right is f64 {
-				return f64(left) == right
+				return f64(left) == value_f64_payload(right)
 			}
 			return false
 		}
 		f64 {
+			left_f := value_f64_payload(left)
 			if right is f64 {
-				return left == right
+				return left_f == value_f64_payload(right)
 			}
 			if right is i64 {
-				return left == f64(right)
+				return left_f == f64(right)
 			}
 			return false
 		}
@@ -4647,7 +4656,7 @@ fn (mut e Eval) eval_prefix_expr(expr ast.PrefixExpr) !Value {
 		}
 		.minus {
 			if value is f64 {
-				f := -value
+				f := -value_f64_payload(value)
 				return f
 			}
 			return -e.value_as_int(value)!
@@ -6065,7 +6074,7 @@ fn (e &Eval) value_as_bool(value Value) !bool {
 	return match value {
 		bool { value }
 		i64 { value != 0 }
-		f64 { value != 0.0 }
+		f64 { value_f64_payload(value) != 0.0 }
 		string { value.len > 0 }
 		ArrayValue { value.values.len > 0 }
 		FlagsValue { false }
@@ -6082,7 +6091,7 @@ fn (e &Eval) value_as_int(value Value) !i64 {
 			value
 		}
 		f64 {
-			i64(value)
+			i64(value_f64_payload(value))
 		}
 		bool {
 			if value {
@@ -6106,7 +6115,7 @@ fn (e &Eval) value_as_int(value Value) !i64 {
 fn (e &Eval) value_as_f64(value Value) !f64 {
 	return match value {
 		f64 {
-			value
+			value_f64_payload(value)
 		}
 		i64 {
 			f64(value)
@@ -6174,8 +6183,11 @@ fn (e &Eval) value_string(value Value) string {
 		VoidValue {
 			''
 		}
-		bool, f64, i64, string {
+		bool, i64, string {
 			value.str()
+		}
+		f64 {
+			value_f64_payload(value).str()
 		}
 	}
 }
