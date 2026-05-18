@@ -90,7 +90,11 @@ pub fn decompress_zlib(data []u8) ![]u8 {
 	}
 	payload := data[2..data.len - 4]
 	expected := binary.big_endian_u32_at(data, data.len - 4)
-	decoded := inflate(payload)!
+	res := inflate_with_consumed(payload)!
+	if res.consumed != payload.len {
+		return error('invalid zlib stream: trailing data before adler32')
+	}
+	decoded := res.decoded
 	if adler32.sum(decoded) != expected {
 		return error('invalid zlib stream: adler32 mismatch')
 	}
@@ -139,7 +143,11 @@ pub fn decompress_gzip(data []u8) ![]u8 {
 	payload := data[pos..data.len - 8]
 	expected_crc := binary.little_endian_u32_at(data, data.len - 8)
 	expected_size := binary.little_endian_u32_at(data, data.len - 4)
-	decoded := inflate(payload)!
+	res := inflate_with_consumed(payload)!
+	if res.consumed != payload.len {
+		return error('invalid gzip stream: trailing data before trailer')
+	}
+	decoded := res.decoded
 	if crc32.sum(decoded) != expected_crc {
 		return error('invalid gzip stream: crc32 mismatch')
 	}

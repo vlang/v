@@ -65,3 +65,12 @@ fn test_zlib_invalid_truncated_payload() {
 	}
 	assert false
 }
+
+fn test_zlib_invalid_inserted_bytes_before_adler() {
+	enc := compress('zlib edge-case regression'.repeat(5).bytes())!
+	mut bad := []u8{cap: enc.len + 1}
+	bad << enc[..enc.len - 4]
+	bad << u8(0x7f)
+	bad << enc[enc.len - 4..]
+	assert_decompress_error(bad, 'invalid zlib stream: trailing data before adler32')!
+}

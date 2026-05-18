@@ -154,7 +154,14 @@ fn (mut r BitReader) huff_decode(t HuffTree) !u32 {
 }
 
 // inflate decompresses raw RFC 1951 DEFLATE data.
-fn inflate(data []u8) ![]u8 {
+struct InflateResult {
+	decoded  []u8
+	consumed int
+}
+
+// inflate_with_consumed decompresses raw RFC 1951 DEFLATE data and reports
+// how many input bytes were consumed by the DEFLATE bitstream.
+fn inflate_with_consumed(data []u8) !InflateResult {
 	mut r := BitReader{
 		buf: data
 	}
@@ -229,7 +236,17 @@ fn inflate(data []u8) ![]u8 {
 			break
 		}
 	}
-	return out
+	consumed := r.pos - (r.nbits >> 3)
+	return InflateResult{
+		decoded:  out
+		consumed: consumed
+	}
+}
+
+// inflate decompresses raw RFC 1951 DEFLATE data.
+fn inflate(data []u8) ![]u8 {
+	res := inflate_with_consumed(data)!
+	return res.decoded
 }
 
 @[direct_array_access]
