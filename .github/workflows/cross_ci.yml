@@ -31,7 +31,7 @@ jobs:
         with:
           fetch-depth: 10
       - name: Cache Homebrew downloads
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: ~/Library/Caches/Homebrew
           key: brew-cross-macos-${{ hashFiles('.github/workflows/cross_ci.yml') }}

@@ -37,7 +37,7 @@ jobs:
 
       - name: Cache Homebrew downloads
         if: runner.os == 'macOS'
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: ~/Library/Caches/Homebrew
           key: brew-${{ matrix.os }}-v_apps-${{ hashFiles('.github/workflows/v_apps_and_modules_compile_ci.yml') }}
