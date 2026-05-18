@@ -655,7 +655,7 @@ fn (g &Gen) should_emit_c_extern_decl(node ast.FnDecl) bool {
 	if file_has_c_includes(node.source_file) {
 		return false
 	}
-	return file_links_c_source(node.source_file) || node.mod in g.mods_with_c_libs
+	return file_links_c_source(node.source_file)
 }
 
 fn (mut g Gen) is_used_by_main(node ast.FnDecl) bool {
