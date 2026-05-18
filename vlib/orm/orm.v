@@ -227,8 +227,10 @@ pub:
 
 pub struct Table {
 pub mut:
-	name  string
-	attrs []VAttribute
+	name    string
+	attrs   []VAttribute
+	fields  []string // struct field names, used to skip scope filters that don't apply
+	columns []string // SQL column names (parallel to fields), used for SQL generation
 }
 
 pub struct TableField {
@@ -330,10 +332,13 @@ mut:
 	orm_release_savepoint(name string) !
 }
 
-// configure_tenant_filter configures the global ORM tenant filter behavior.
-pub fn configure_tenant_filter(config TenantFilterConfig) {
-	tenant_filter_state.enabled = config.enabled
-	tenant_filter_state.field_name = normalize_tenant_filter_field_name(config.field_name)
+fn table_ignores_data_scope(table Table) bool {
+	for attr in table.attrs {
+		if attr_name_matches(attr.name, 'unscoped') {
+			return true
+		}
+	}
+	return false
 }
 
 // set_tenant_filter_enabled enables or disables global tenant filtering.
@@ -406,12 +411,48 @@ pub fn apply_tenant_filter(table Table, where QueryData) QueryData {
 	if !tenant_filter_state.enabled || !tenant_filter_state.has_current_tenant {
 		return where
 	}
-	if table_ignores_tenant_filter(table) {
+	if table_ignores_data_scope(table) {
 		return where
 	}
-	tenant_field_name := table_tenant_filter_field_name(table)
-	if tenant_field_name == '' || tenant_field_name in where.fields {
-		return where
+	mut where_scoped := clone_query_data(where)
+	skip_all := '*' in scope_skip_fields
+	for filter in scope.filters {
+		if filter.field == '' || filter.field in where_scoped.fields {
+			continue
+		}
+		if skip_all || filter.field in scope_skip_fields {
+			continue
+		}
+		if table.fields.len > 0 && filter.field !in table.fields {
+			continue
+		}
+		// Resolve SQL column name from struct field name
+		mut column_name := filter.field
+		if table.columns.len > 0 && table.columns.len == table.fields.len {
+			for j, field_name in table.fields {
+				if field_name == filter.field && j < table.columns.len {
+					column_name = table.columns[j]
+					break
+				}
+			}
+		}
+		// Check deduplation against SQL column name
+		if column_name in where_scoped.fields {
+			continue
+		}
+		original_fields_len := where_scoped.fields.len
+		if original_fields_len > 1 {
+			where_scoped.parentheses << [0, original_fields_len - 1]
+		}
+		if original_fields_len > 0 {
+			where_scoped.is_and << true
+		}
+		where_scoped.fields << column_name
+		if !filter.operator.is_unary() {
+			where_scoped.data << filter.value
+			where_scoped.types << primitive_type(filter.value)
+		}
+		where_scoped.kinds << filter.operator
 	}
 	mut where_with_tenant := clone_query_data(where)
 	original_fields_len := where_with_tenant.fields.len
@@ -435,6 +476,26 @@ fn tenant_filter_scope_snapshot() TenantFilterScopeState {
 		has_current_tenant: tenant_filter_state.has_current_tenant
 		current_tenant:     tenant_filter_state.current_tenant
 	}
+	if table_ignores_data_scope(table) {
+		return data
+	}
+	mut data_scoped := clone_query_data(data)
+	skip_all := '*' in scope_skip_fields
+	for filter in scope.filters {
+		if filter.field == '' || filter.field in data_scoped.fields {
+			continue
+		}
+		if skip_all || filter.field in scope_skip_fields {
+			continue
+		}
+		if table.fields.len > 0 && filter.field !in table.fields {
+			continue
+		}
+		data_scoped.fields << filter.field
+		data_scoped.data << filter.value
+		data_scoped.types << primitive_type(filter.value)
+	}
+	return data_scoped
 }
 
 fn tenant_filter_scope_restore(saved TenantFilterScopeState) {
@@ -523,46 +584,102 @@ fn tenant_filter_primitive_type(value Primitive) int {
 			}
 		}
 		[]bool {
-			tenant_filter_array_primitive_type(value)
+			if value.len > 0 {
+				primitive_type(Primitive(value[0]))
+			} else {
+				type_idx['int']
+			}
 		}
 		[]f32 {
-			tenant_filter_array_primitive_type(value)
+			if value.len > 0 {
+				primitive_type(Primitive(value[0]))
+			} else {
+				type_idx['int']
+			}
 		}
 		[]f64 {
-			tenant_filter_array_primitive_type(value)
+			if value.len > 0 {
+				primitive_type(Primitive(value[0]))
+			} else {
+				type_idx['int']
+			}
 		}
 		[]i16 {
-			tenant_filter_array_primitive_type(value)
+			if value.len > 0 {
+				primitive_type(Primitive(value[0]))
+			} else {
+				type_idx['int']
+			}
 		}
 		[]i64 {
-			tenant_filter_array_primitive_type(value)
+			if value.len > 0 {
+				primitive_type(Primitive(value[0]))
+			} else {
+				type_idx['int']
+			}
 		}
 		[]i8 {
-			tenant_filter_array_primitive_type(value)
+			if value.len > 0 {
+				primitive_type(Primitive(value[0]))
+			} else {
+				type_idx['int']
+			}
 		}
 		[]int {
-			tenant_filter_array_primitive_type(value)
+			if value.len > 0 {
+				primitive_type(Primitive(value[0]))
+			} else {
+				type_idx['int']
+			}
 		}
 		[]string {
-			tenant_filter_array_primitive_type(value)
+			if value.len > 0 {
+				primitive_type(Primitive(value[0]))
+			} else {
+				type_idx['int']
+			}
 		}
 		[]time.Time {
-			tenant_filter_array_primitive_type(value)
+			if value.len > 0 {
+				primitive_type(Primitive(value[0]))
+			} else {
+				type_idx['int']
+			}
 		}
 		[]u16 {
-			tenant_filter_array_primitive_type(value)
+			if value.len > 0 {
+				primitive_type(Primitive(value[0]))
+			} else {
+				type_idx['int']
+			}
 		}
 		[]u32 {
-			tenant_filter_array_primitive_type(value)
+			if value.len > 0 {
+				primitive_type(Primitive(value[0]))
+			} else {
+				type_idx['int']
+			}
 		}
 		[]u64 {
-			tenant_filter_array_primitive_type(value)
+			if value.len > 0 {
+				primitive_type(Primitive(value[0]))
+			} else {
+				type_idx['int']
+			}
 		}
 		[]u8 {
-			tenant_filter_array_primitive_type(value)
+			if value.len > 0 {
+				primitive_type(Primitive(value[0]))
+			} else {
+				type_idx['int']
+			}
 		}
 		[]InfixType {
-			tenant_filter_array_primitive_type(value)
+			if value.len > 0 {
+				primitive_type(Primitive(value[0]))
+			} else {
+				type_idx['int']
+			}
 		}
 	}
 }
@@ -604,18 +721,17 @@ fn attr_name_matches(name string, expected string) bool {
 	return name == expected || name.ends_with('.${expected}')
 }
 
-fn parse_bool_attr(raw string) ?bool {
-	value := trim_attr_arg(raw).to_lower()
-	return match value {
-		'1', 'true', 'yes', 'on' {
-			true
-		}
-		'0', 'false', 'no', 'off' {
-			false
-		}
-		else {
-			none
-		}
+// DB implements orm.Connection ------------------------------------------------
+
+// select fetches rows through the wrapped connection, with DataScope applied.
+pub fn (mut db DB) select(config SelectConfig, data QueryData, where QueryData) ![][]Primitive {
+	mut cfg := config
+	mut where_scoped := where
+	mut has_scope := false
+	if db.scope.enabled && db.scope.filters.len > 0 && !table_ignores_data_scope(cfg.table) {
+		where_scoped = apply_data_scope(db.scope, cfg.table, where, db.unscoped_fields)
+		// Only set has_scope if filters were actually added (not all skipped)
+		has_scope = where_scoped.fields.len > where.fields.len
 	}
 }
 
