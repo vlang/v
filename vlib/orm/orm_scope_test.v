@@ -1313,3 +1313,90 @@ fn transactional_crud(mut db orm.TransactionalConnection, raw_db &sqlite.DB) ! {
 
 	db.orm_commit()!
 }
+
+// ---- Batch insert scope tests ----
+// Use a struct WITHOUT the scope fields — scope must inject them.
+// This validates batch_rows > 1 correctly replicates scope values per row.
+
+@[table: 'batch_scope_rows']
+struct BatchScopeRow {
+	id   int @[primary; sql: serial]
+	name string
+}
+
+fn test_data_scope_batch_insert_replicates_scope_values() {
+	mut raw_db := sqlite.connect(':memory:') or { panic(err) }
+
+	sql raw_db {
+		create table BatchScopeRow
+	}!
+
+	mut db := orm.new_db(raw_db, orm.DataScope{
+		filters: [
+			orm.QueryFilter{
+				field: 'tenant_id'
+				value: orm.Primitive(42)
+			},
+		]
+	})
+
+	batch := [
+		BatchScopeRow{
+			name: 'Alice'
+		},
+		BatchScopeRow{
+			name: 'Bob'
+		},
+		BatchScopeRow{
+			name: 'Carol'
+		},
+	]
+
+	sql db {
+		insert batch into BatchScopeRow
+	}!
+
+	users := sql raw_db {
+		select from BatchScopeRow
+	}!
+	assert users.len == 3
+}
+
+fn test_data_scope_batch_insert_multi_field_scope() {
+	mut raw_db := sqlite.connect(':memory:') or { panic(err) }
+
+	sql raw_db {
+		create table BatchScopeRow
+	}!
+
+	mut db := orm.new_db(raw_db, orm.DataScope{
+		filters: [
+			orm.QueryFilter{
+				field: 'tenant_id'
+				value: orm.Primitive(7)
+			},
+			orm.QueryFilter{
+				field: 'shop_id'
+				value: orm.Primitive(3)
+			},
+		]
+	})
+
+	batch := [
+		BatchScopeRow{
+			name: 'X'
+		},
+		BatchScopeRow{
+			name: 'Y'
+		},
+	]
+
+	sql db {
+		insert batch into BatchScopeRow
+	}!
+
+	users := sql raw_db {
+		select from BatchScopeRow
+	}!
+	assert users.len == 2
+}

@@ -417,6 +417,7 @@ fn apply_scope_filters(scope DataScope, table Table, qd QueryData, scope_skip_fi
 		return qd
 	}
 	mut result := clone_query_data(qd)
+	original_field_count := qd.fields.len
 	field_to_column := table_field_to_column_map(table)
 	// Wrap original WHERE clause in parentheses once, before adding scope filters
 	if mode == .where && result.fields.len > 1 {
@@ -451,6 +452,26 @@ fn apply_scope_filters(scope DataScope, table Table, qd QueryData, scope_skip_fi
 		}
 		if mode == .where {
 			result.kinds << filter.operator
+		}
+	}
+	// For batch inserts, scope values must be replicated per row.
+	// QueryData stores data in row-major order: row * fields.len + col.
+	// Scope filters append only one value per field, but batch_rows
+	// expects fields.len * batch_rows values in the data array.
+	if mode == .insert && result.batch_rows > 0 {
+		scope_field_count := result.fields.len - original_field_count
+		if scope_field_count > 0 {
+			mut new_data := []Primitive{cap: result.fields.len * result.batch_rows}
+			scope_data_start := original_field_count * result.batch_rows
+			for row in 0 .. result.batch_rows {
+				for col in 0 .. original_field_count {
+					new_data << result.data[row * original_field_count + col]
+				}
+				for s in 0 .. scope_field_count {
+					new_data << result.data[scope_data_start + s]
+				}
+			}
+			result.data = new_data
 		}
 	}
 	return result
