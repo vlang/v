@@ -3660,7 +3660,7 @@ fn (g &Gen) generic_struct_primary_instance_is_concrete(c_name string) bool {
 
 fn (mut g Gen) concrete_type_from_c_name(c_name string) ?types.Type {
 	clean_name := c_name.trim_space().trim_right('*')
-	if clean_name == '' || clean_name == 'int' {
+	if clean_name == '' {
 		return none
 	}
 	if g.generic_struct_primary_instance_is_concrete(clean_name) {
@@ -3676,6 +3676,9 @@ fn (mut g Gen) concrete_type_from_c_name(c_name string) ?types.Type {
 	}
 	if raw := g.resolve_c_type_to_raw(clean_name) {
 		return normalize_generic_concrete_type(raw)
+	}
+	if clean_name == 'int' {
+		return none
 	}
 	return normalize_generic_concrete_type(types.Type(types.Struct{
 		name: clean_name
