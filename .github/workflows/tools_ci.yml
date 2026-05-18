@@ -147,7 +147,7 @@ jobs:
     steps:
       - uses: actions/checkout@v6
       - name: Tests tools on FreeBSD with ${{ matrix.cc }}
-        uses: cross-platform-actions/action@v1.0.0
+        uses: cross-platform-actions/action@v1.1.0
         with:
           operating_system: freebsd
           version: '15.0'
@@ -205,7 +205,7 @@ jobs:
     steps:
       - uses: actions/checkout@v6
       - name: Tests tools on OpenBSD with ${{ matrix.cc }}
-        uses: cross-platform-actions/action@v1.0.0
+        uses: cross-platform-actions/action@v1.1.0
         with:
           operating_system: openbsd
           version: '7.8'
