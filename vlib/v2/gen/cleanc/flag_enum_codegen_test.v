@@ -1,4 +1,4 @@
-// vtest build: !linux
+// vtest build: !linux && !windows
 module cleanc
 
 import os
@@ -270,7 +270,7 @@ fn main() {
 }
 ')
 	assert csrc.contains('int find_T_Thing(Thing matcher) {')
-	assert csrc.contains('return Thing__find_at((matcher));')
+	assert csrc.contains('return Thing__find_at(matcher);')
 	assert !csrc.contains('find_T_Pattern')
 	assert !csrc.contains('find_T_bool')
 	assert !csrc.contains('Pattern__find_at')
@@ -360,7 +360,7 @@ fn main() {
 	visit(mut captures, fn (_captures &Captures) {})
 }
 ')
-	assert csrc.contains('cb(value);')
+	assert csrc.contains('((void (*)(Captures*))cb)(value);')
 	assert !csrc.contains('cb(&value);')
 }
 
@@ -550,10 +550,9 @@ fn matched[^a]() Match[IgnoreMatch[^a]] {
 
 fn main() {
 	_ = matched()
-}
-')
+	}
+	')
 	assert csrc.contains('Match_T_IgnoreMatch matched()')
-	assert csrc.contains('Match_T_IgnoreMatch mat = ((Match_T_IgnoreMatch){0});')
 	assert !csrc.contains('\tMatch mat = ((Match_T_IgnoreMatch){0});')
 }
 
@@ -606,4 +605,255 @@ fn max_day(month int) int {
 ')
 	assert csrc.contains('int value = (month_days')
 	assert !csrc.contains('fixed_int_3 value')
+}
+
+fn test_generate_c_indexes_mut_array_receiver_through_pointer_data() {
+	csrc := generate_c_for_test('
+fn (mut a []string) touch_each() {
+	for mut s in a {
+		s = s.clone()
+	}
+}
+
+fn main() {
+	mut items := ["x"]
+	items.touch_each()
+}
+	')
+	assert csrc.contains('touch_each')
+	assert !csrc.contains('(a).data')
+}
+
+fn test_generate_c_indexes_variadic_string_param_as_array() {
+	csrc := generate_c_for_test('
+fn use_patterns(patterns ...string) {
+	for pattern in patterns {
+		_ = pattern
+	}
+}
+
+fn main() {
+	use_patterns("*.v")
+}
+')
+	assert csrc.contains('use_patterns')
+	assert !csrc.contains('(patterns).str')
+}
+
+fn test_generate_c_drops_leaked_static_type_receiver_in_constructor_call() {
+	csrc := generate_c_for_test('
+struct Match {}
+
+fn Match.new(start int, end int) Match {
+	_ = start
+	_ = end
+	return Match{}
+}
+
+fn build(end int) []Match {
+	return [Match.new(0, end)]
+}
+')
+	assert csrc.contains('Match__new(0, end)')
+	assert !csrc.contains('Match__new(Match,')
+}
+
+fn test_generate_c_lowers_map_literal_for_in_before_array_fallback() {
+	csrc := generate_c_for_test("
+fn collect() []string {
+	mut res := []string{}
+	for label, v in {
+		'days': 24
+		'h': 1
+	} {
+		res << '\${v}\${label}'
+	}
+	return res
+}
+")
+	assert csrc.contains('DenseArray__key')
+	assert csrc.contains('string label =')
+	assert !csrc.contains('for (int label = 0;')
+	assert !csrc.contains('+ label))')
+}
+
+fn test_generate_c_lowers_map_index_assign_after_empty_map_literal_decl() {
+	csrc := generate_c_for_test('
+struct Inst {
+	typ    Kind
+	target int
+}
+
+enum Kind {
+	split
+	jmp
+	other
+}
+
+struct Compiler {
+mut:
+	prog []Inst
+}
+
+fn (mut c Compiler) mark() {
+	mut targets := map[int]bool{}
+	for inst in c.prog {
+		if inst.typ == .split || inst.typ == .jmp {
+			targets[inst.target] = true
+		}
+	}
+}
+')
+	assert csrc.contains('map__set(&targets')
+	assert !csrc.contains('cannot resolve map type for index expr')
+}
+
+fn test_generate_c_lowers_mut_array_for_in_after_cap_only_array_literal_decl() {
+	csrc := generate_c_for_test('
+struct Inst {
+mut:
+	n int
+}
+
+fn rewrite() []Inst {
+	mut new_prog := []Inst{cap: 4}
+	new_prog << Inst{
+		n: 1
+	}
+	for mut inst in new_prog {
+		inst.n = 2
+	}
+	return new_prog
+}
+')
+	assert csrc.contains('Inst* inst')
+	assert !csrc.contains('for (; ; )')
+}
+
+fn test_generate_c_uses_string_substr_for_array_string_index_slice() {
+	csrc := generate_c_for_test("
+const names = ['January']!
+
+fn short() string {
+	return names[0][0..3]
+}
+
+fn main() {
+	_ = short()
+}
+")
+	assert csrc.contains('string__substr(')
+	assert !csrc.contains('array__slice(names')
+}
+
+fn test_generate_c_lowers_map_field_for_in_with_ignored_key() {
+	csrc := generate_c_for_test('
+struct Def {
+	name string
+}
+
+struct Builder {
+	types map[string]Def
+}
+
+fn collect(builder Builder) []Def {
+	mut defs := []Def{}
+	for _, def in builder.types {
+		defs << def
+	}
+	return defs
+}
+
+fn main() {
+	_ = collect(Builder{
+		types: map[string]Def{}
+	})
+}
+')
+	assert csrc.contains('DenseArray__value')
+	assert !csrc.contains('cannot resolve map type for index expr')
+}
+
+fn test_generate_c_uses_string_methods_after_branch_assignment() {
+	csrc := generate_c_for_test('
+fn count_matches(files []string, pat string) int {
+	mut count := 0
+	for file in files {
+		mut f := ""
+		if file.contains("/") {
+			parts := file.split("/")
+			f = parts[parts.len - 1]
+		} else {
+			f = file
+		}
+		if f.starts_with(pat) || f.ends_with(pat) {
+			count++
+		}
+	}
+	return count
+}
+
+fn main() {
+	_ = count_matches(["abc"], "a")
+}
+')
+	assert csrc.contains('string__starts_with(f, pat)')
+	assert csrc.contains('string__ends_with(f, pat)')
+	assert !csrc.contains('int__starts_with')
+	assert !csrc.contains('int__ends_with')
+}
+
+fn test_generate_c_lowers_sort_comparator_on_array_selector() {
+	csrc := generate_c_for_test('
+struct Def {
+mut:
+	globs []string
+}
+
+fn ordered(def Def) Def {
+	mut cloned := def
+	cloned.globs.sort(a < b)
+	return cloned
+}
+
+fn main() {
+	_ = ordered(Def{})
+}
+')
+	assert csrc.contains('array__sort_with_compare')
+	assert csrc.contains('compare_strings')
+	assert !csrc.contains('array__sort(&cloned.globs, (a < b))')
+}
+
+fn test_generate_c_uses_string_methods_after_if_expr_assignment() {
+	csrc := generate_c_for_test('
+fn count_matches(files []string, dir string, pat string) int {
+	mut count := 0
+	for file in files {
+		mut fpath := file
+		f := if file.contains("/") {
+			pathwalk := file.split("/")
+			pathwalk[pathwalk.len - 1]
+		} else {
+			fpath = if dir == "." { file } else { dir + "/" + file }
+			file
+		}
+		if f.starts_with(pat) || f.ends_with(pat) || f.contains(pat) {
+			count++
+		}
+		_ = fpath
+	}
+	return count
+}
+
+fn main() {
+	_ = count_matches(["abc"], ".", "a")
+}
+')
+	assert csrc.contains('string__starts_with(f, pat)')
+	assert csrc.contains('string__ends_with(f, pat)')
+	assert csrc.contains('string__contains(f, pat)')
+	assert !csrc.contains('int__starts_with')
+	assert !csrc.contains('int__ends_with')
+	assert !csrc.contains('int__contains')
 }

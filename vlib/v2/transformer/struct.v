@@ -25,41 +25,6 @@ fn is_numeric_literal_expr(expr ast.Expr) bool {
 	}
 }
 
-fn ast_expr_raw_array_type_elem(expr ast.Expr) (ast.Expr, bool) {
-	if expr is ast.Type {
-		typ := expr as ast.Type
-		if typ is ast.ArrayType {
-			return typ.elem_type, true
-		}
-	}
-	expr_tag := unsafe { (&u64(&expr))[0] }
-	// ast.Expr Type variant in the native sumtype layout.
-	if expr_tag != 38 {
-		return ast.empty_expr, false
-	}
-	type_data := unsafe { (&u64(&expr))[1] }
-	if type_data == 0 {
-		return ast.empty_expr, false
-	}
-	type_words := unsafe { &u64(voidptr(type_data)) }
-	type_tag := unsafe { type_words[0] }
-	// ast.Type ArrayType variant in the native sumtype layout.
-	if type_tag != 2 {
-		return ast.empty_expr, false
-	}
-	array_data := unsafe { type_words[1] }
-	if array_data == 0 {
-		return ast.empty_expr, false
-	}
-	array_words := unsafe { &u64(voidptr(array_data)) }
-	mut elem_type := ast.empty_expr
-	unsafe {
-		(&u64(&elem_type))[0] = array_words[0]
-		(&u64(&elem_type))[1] = array_words[1]
-	}
-	return elem_type, true
-}
-
 fn (mut t Transformer) synth_selector(lhs ast.Expr, field_name string, typ types.Type) ast.Expr {
 	pos := t.next_synth_pos()
 	t.register_synth_type(pos, typ)
@@ -89,339 +54,18 @@ fn (mut t Transformer) synth_selector_from_struct(lhs ast.Expr, field_name strin
 	})
 }
 
-fn (mut t Transformer) concrete_selector_for_known_lhs(expr ast.SelectorExpr) ?ast.Expr {
-	if expr.lhs !is ast.Ident {
-		return none
-	}
-	lhs_ident := expr.lhs as ast.Ident
-	if t.find_smartcast_for_expr(lhs_ident.name) != none {
-		return none
-	}
-	if t.selector_module_name(lhs_ident.name) != none {
-		return none
-	}
-	if t.scope != unsafe { nil } {
-		if obj := t.scope.lookup_parent(lhs_ident.name, 0) {
-			if obj is types.Const || obj is types.Global {
-				return none
-			}
-		}
-	}
-	lhs_type := t.lookup_var_type(lhs_ident.name) or {
-		t.resolve_expr_type(expr.lhs) or { return none }
-	}
-	base := t.unwrap_alias_and_pointer_type(lhs_type)
-	base_name := t.type_to_c_name(base)
-	if base_name == '' || t.is_sum_type(base_name) || t.is_interface_type(base_name) {
-		return none
-	}
-	lhs := ast.Expr(ast.ParenExpr{
-		expr: expr.lhs
-	})
-	if field_type := t.field_type_from_struct_like_type(lhs_type, expr.rhs.name) {
-		return t.synth_selector(lhs, expr.rhs.name, field_type)
-	}
-	return t.synth_selector_from_struct(lhs, expr.rhs.name, base_name)
-}
-
-fn sumtype_variant_union_field_name(sumtype_name string, variant_name string) string {
-	sumtype_module := if sumtype_name.contains('__') {
-		sumtype_name.all_before_last('__')
-	} else {
-		''
-	}
-	if variant_name.starts_with('Array_') || variant_name.starts_with('Map_') {
-		return variant_name
-	}
-	if variant_name.contains('__') {
-		variant_module := variant_name.all_before_last('__')
-		if variant_module == sumtype_module {
-			return variant_name.all_after_last('__')
-		}
-	}
-	return variant_name
-}
-
-fn (t &Transformer) type_has_field(typ types.Type, field_name string) bool {
-	base := t.unwrap_alias_and_pointer_type(typ)
-	if base is types.Struct {
-		for field in base.fields {
-			if field.name == field_name {
-				return true
-			}
-		}
-	}
-	type_name := t.type_to_c_name(base)
-	return t.lookup_struct_field_type(type_name, field_name) != none
-}
-
-struct SumtypeCommonFieldVariant {
-	typ       types.Type
-	name      string
-	field_typ types.Type
-	tag       int
-}
-
-fn (mut t Transformer) sumtype_common_field_variants(sumtype types.SumType, field_name string) ?[]SumtypeCommonFieldVariant {
-	mut variants := []SumtypeCommonFieldVariant{cap: sumtype.variants.len}
-	mut common_field_typ := types.Type(types.void_)
-	mut has_common_field_typ := false
-	for i, variant in sumtype.variants {
-		variant_base := t.unwrap_alias_and_pointer_type(variant)
-		if variant_base is types.Primitive || variant_base is types.String
-			|| variant_base is types.Enum {
-			continue
-		}
-		variant_name := t.type_to_c_name(variant)
-		if variant_name == '' {
-			continue
-		}
-		field_typ := t.field_type_from_struct_like_type(variant, field_name) or {
-			t.lookup_struct_field_type(variant_name, field_name) or { continue }
-		}
-		if has_common_field_typ {
-			if field_typ != common_field_typ {
-				return none
-			}
-		} else {
-			common_field_typ = field_typ
-			has_common_field_typ = true
-		}
-		variants << SumtypeCommonFieldVariant{
-			typ:       variant
-			name:      variant_name
-			field_typ: field_typ
-			tag:       i
-		}
-	}
-	if !has_common_field_typ {
-		return none
-	}
-	return variants
-}
-
-fn (mut t Transformer) sumtype_variant_common_field_access(sumtype_expr ast.Expr, sumtype_name string, variant SumtypeCommonFieldVariant, field_name string) ?ast.Expr {
-	is_native_backend := t.pref != unsafe { nil }
-		&& (t.pref.backend == .arm64 || t.pref.backend == .x64)
-	data_access := t.synth_selector(sumtype_expr, '_data', types.Type(types.voidptr_))
-	variant_access := if is_native_backend {
-		data_access
-	} else {
-		union_field := sumtype_variant_union_field_name(sumtype_name, variant.name)
-		t.synth_selector(data_access, '_${union_field}', types.Type(types.voidptr_))
-	}
-	cast_expr := ast.Expr(ast.CastExpr{
-		typ:  ast.Ident{
-			name: '${variant.name}*'
-		}
-		expr: variant_access
-	})
-	return t.synth_selector_from_struct(ast.Expr(ast.ParenExpr{
-		expr: cast_expr
-	}), field_name, variant.name)
-}
-
-fn (mut t Transformer) lower_sumtype_common_field_if_expr(sumtype_expr ast.Expr, sumtype_name string, field_name string, variants []SumtypeCommonFieldVariant, is_exhaustive bool) ?ast.Expr {
-	if variants.len == 0 {
-		return none
-	}
-	field_typ := variants[0].field_typ
-	t.register_synth_type(sumtype_expr.pos(), field_typ)
-	mut current := if is_exhaustive {
-		ast.Expr(ast.empty_expr)
-	} else {
-		ast.Expr(ast.IfExpr{
-			cond:  ast.empty_expr
-			stmts: [
-				ast.Stmt(ast.ExprStmt{
-					expr: t.zero_value_expr_for_type(field_typ)
-				}),
-			]
-			pos:   sumtype_expr.pos()
-		})
-	}
-	for i := variants.len - 1; i >= 0; i-- {
-		variant := variants[i]
-		field_access := t.sumtype_variant_common_field_access(sumtype_expr, sumtype_name, variant,
-			field_name) or { return none }
-		branch_stmts := [
-			ast.Stmt(ast.ExprStmt{
-				expr: field_access
-			}),
-		]
-		if is_exhaustive && i == variants.len - 1 {
-			current = ast.Expr(ast.IfExpr{
-				cond:  ast.empty_expr
-				stmts: branch_stmts
-				pos:   sumtype_expr.pos()
-			})
-			continue
-		}
-		tag_access := t.synth_selector(sumtype_expr, '_tag', types.Type(types.int_))
-		current = ast.Expr(ast.IfExpr{
-			cond:      t.make_infix_expr_at(.eq, tag_access, t.make_number_expr('${variant.tag}'),
-				sumtype_expr.pos())
-			stmts:     branch_stmts
-			else_expr: current
-			pos:       sumtype_expr.pos()
-		})
-	}
-	if current is ast.IfExpr {
-		t.register_synth_type(current.pos, variants[0].field_typ)
-	}
-	return current
-}
-
-fn (mut t Transformer) lower_sumtype_common_field_access(sumtype_expr ast.Expr, sumtype_name string, field_name string) ?ast.Expr {
-	typ := t.lookup_type(sumtype_name) or { return none }
-	if typ !is types.SumType {
-		return none
-	}
-	sumtype := typ as types.SumType
-	variants := t.sumtype_common_field_variants(sumtype, field_name) or { return none }
-	is_exhaustive := variants.len == sumtype.variants.len
-	if is_exhaustive && variants.len == 1 {
-		t.register_synth_type(sumtype_expr.pos(), variants[0].field_typ)
-		return t.sumtype_variant_common_field_access(sumtype_expr, sumtype_name, variants[0],
-			field_name)
-	}
-	if t.is_eval_backend() {
-		return none
-	}
-	return t.lower_sumtype_common_field_if_expr(sumtype_expr, sumtype_name, field_name, variants,
-		is_exhaustive)
-}
-
-fn (mut t Transformer) transform_sumtype_common_field_access(lhs ast.Expr, field_name string) ?ast.Expr {
-	lhs_type := if lhs is ast.Ident && t.find_smartcast_for_expr(lhs.name) == none {
-		t.lookup_var_type(lhs.name) or { t.resolve_expr_type(lhs) or { return none } }
-	} else {
-		t.resolve_expr_type(lhs) or { return none }
-	}
-	base := t.unwrap_alias_and_pointer_type(lhs_type)
-	if base !is types.SumType {
-		return none
-	}
-	sumtype_name := t.type_to_c_name(base)
-	return t.lower_sumtype_common_field_access(t.transform_expr(lhs), sumtype_name, field_name)
-}
-
-fn (mut t Transformer) try_expand_sumtype_common_field_assign_stmts(stmt ast.AssignStmt) ?[]ast.Stmt {
-	if stmt.op != .assign || stmt.lhs.len != 1 || stmt.rhs.len != 1
-		|| stmt.lhs[0] !is ast.SelectorExpr {
-		return none
-	}
-	lhs_sel := stmt.lhs[0] as ast.SelectorExpr
-	lhs_key := t.expr_to_string(lhs_sel.lhs)
-	if lhs_key != '' {
-		if ctx := t.find_smartcast_for_expr(lhs_key) {
-			if t.smartcast_context_applies_to_expr(lhs_sel.lhs, ctx) {
-				return none
-			}
-		}
-	}
-	lhs_type := if lhs_sel.lhs is ast.Ident && t.find_smartcast_for_expr(lhs_sel.lhs.name) == none {
-		t.lookup_var_type(lhs_sel.lhs.name) or {
-			t.resolve_expr_type(lhs_sel.lhs) or { return none }
-		}
-	} else {
-		t.resolve_expr_type(lhs_sel.lhs) or { return none }
-	}
-	base := t.unwrap_alias_and_pointer_type(lhs_type)
-	if base !is types.SumType {
-		return none
-	}
-	sumtype_name := t.type_to_c_name(base)
-	typ := t.lookup_type(sumtype_name) or { return none }
-	if typ !is types.SumType {
-		return none
-	}
-	sumtype := typ as types.SumType
-	variants := t.sumtype_common_field_variants(sumtype, lhs_sel.rhs.name) or { return none }
-	if variants.len == 0 || t.is_eval_backend() {
-		return none
-	}
-	sumtype_expr := t.transform_expr(lhs_sel.lhs)
-	rhs_expected := t.resolve_expr_with_expected_type(stmt.rhs[0], variants[0].field_typ)
-	rhs := t.transform_expr(rhs_expected)
-	is_exhaustive := variants.len == sumtype.variants.len
-	mut current := ast.Expr(ast.empty_expr)
-	for i := variants.len - 1; i >= 0; i-- {
-		variant := variants[i]
-		field_access := t.sumtype_variant_common_field_access(sumtype_expr, sumtype_name, variant,
-			lhs_sel.rhs.name) or { return none }
-		branch_stmts := [
-			ast.Stmt(ast.AssignStmt{
-				op:  .assign
-				lhs: [field_access]
-				rhs: [rhs]
-				pos: stmt.pos
-			}),
-		]
-		if is_exhaustive && i == variants.len - 1 {
-			current = ast.Expr(ast.IfExpr{
-				cond:  ast.empty_expr
-				stmts: branch_stmts
-				pos:   stmt.pos
-			})
-			continue
-		}
-		tag_access := t.synth_selector(sumtype_expr, '_tag', types.Type(types.int_))
-		current = ast.Expr(ast.IfExpr{
-			cond:      t.make_infix_expr_at(.eq, tag_access, t.make_number_expr('${variant.tag}'),
-				stmt.pos)
-			stmts:     branch_stmts
-			else_expr: current
-			pos:       stmt.pos
-		})
-	}
-	if current is ast.EmptyExpr {
-		return none
-	}
-	return [
-		ast.Stmt(ast.ExprStmt{
-			expr: current
-		}),
-	]
-}
-
 // lookup_struct_field_type returns the raw types.Type for a struct field.
 fn (t &Transformer) lookup_struct_field_type(struct_name string, field_name string) ?types.Type {
-	normalized_struct_name := struct_name.replace('.', '__')
-	mut sname := normalized_struct_name
+	mut sname := struct_name
 	mut mod := ''
-	dunder := normalized_struct_name.last_index('__') or { -1 }
+	dunder := struct_name.last_index('__') or { -1 }
 	if dunder >= 0 {
-		mod = normalized_struct_name[..dunder]
-		sname = normalized_struct_name[dunder + 2..]
+		mod = struct_name[..dunder]
+		sname = struct_name[dunder + 2..]
 	}
 	// Try module scope first if qualified
 	if mod != '' {
 		if scope := t.cached_scopes[mod] {
-			if obj := scope.objects[sname] {
-				if obj is types.Type {
-					typ := types.Type(obj)
-					if typ is types.Struct {
-						for field in typ.fields {
-							if field.name == field_name {
-								return field.typ
-							}
-						}
-					}
-				}
-			}
-		}
-		for mod_name, scope in t.cached_scopes {
-			mod_short := if mod_name.contains('.') {
-				mod_name.all_after_last('.')
-			} else if mod_name.contains('__') {
-				mod_name.all_after_last('__')
-			} else {
-				mod_name
-			}
-			if mod_short != mod {
-				continue
-			}
 			if obj := scope.objects[sname] {
 				if obj is types.Type {
 					typ := types.Type(obj)
@@ -458,7 +102,7 @@ fn (t &Transformer) lookup_struct_field_type(struct_name string, field_name stri
 	scope_keys := t.cached_scopes.keys()
 	for sk in scope_keys {
 		scope := t.cached_scopes[sk] or { continue }
-		if obj := scope.objects[normalized_struct_name] {
+		if obj := scope.objects[struct_name] {
 			if obj is types.Type {
 				typ := types.Type(obj)
 				if typ is types.Struct {
@@ -470,7 +114,7 @@ fn (t &Transformer) lookup_struct_field_type(struct_name string, field_name stri
 				}
 			}
 		}
-		if sname != normalized_struct_name {
+		if sname != struct_name {
 			if obj := scope.objects[sname] {
 				if obj is types.Type {
 					typ := types.Type(obj)
@@ -528,30 +172,10 @@ fn (mut t Transformer) apply_smartcast_field_access_ctx(sumtype_expr ast.Expr, f
 	} else {
 		variant_short
 	}
-	if sumtype_expr is ast.Ident {
-		if override_type := t.decl_type_overrides[sumtype_expr.name] {
-			base := t.unwrap_alias_and_pointer_type(override_type)
-			override_name := t.type_to_c_name(base)
-			if override_name != '' && !t.is_sum_type(override_name)
-				&& !t.is_interface_type(override_name) {
-				if field_type := t.field_type_from_struct_like_type(override_type, field_name) {
-					return t.synth_selector(ast.Expr(sumtype_expr), field_name, field_type)
-				}
-				return t.synth_selector_from_struct(ast.Expr(sumtype_expr), field_name,
-					override_name)
-			}
-			if type_names_match_for_smartcast(override_name, ctx.variant_full)
-				|| type_names_match_for_smartcast(override_name, ctx.variant) {
-				return t.synth_selector_from_struct(ast.Expr(sumtype_expr), field_name,
-					mangled_variant)
-			}
-		}
-	}
 	// For nested smartcasts, we need to transform the base of sumtype_expr to apply outer smartcasts
 	// E.g., for stmt.receiver.typ with outer smartcast on stmt, we need to transform stmt.receiver first.
 	// Temporarily remove this exact context to avoid applying it recursively.
-	mut removed_ctxs := t.remove_shadowed_smartcasts(ctx)
-	removed_ctxs << t.remove_matching_smartcasts(ctx)
+	removed_ctxs := t.remove_matching_smartcasts(ctx)
 	transformed_base := t.transform_expr(sumtype_expr)
 	t.restore_smartcasts(removed_ctxs)
 	if t.expr_is_casted_to_type(transformed_base, '${mangled_variant}*') {
@@ -572,10 +196,7 @@ fn (mut t Transformer) apply_smartcast_field_access_ctx(sumtype_expr ast.Expr, f
 			expr: object_access
 		}
 		return t.synth_selector_from_struct(ast.ParenExpr{
-			expr: ast.PrefixExpr{
-				op:   .mul
-				expr: ast.Expr(cast_expr)
-			}
+			expr: cast_expr
 		}, field_name, mangled_variant)
 	}
 	// Create data access.
@@ -593,23 +214,6 @@ fn (mut t Transformer) apply_smartcast_field_access_ctx(sumtype_expr ast.Expr, f
 	if t.is_eval_backend() {
 		return t.synth_selector_from_struct(variant_access, field_name, mangled_variant)
 	}
-	if t.is_sum_type(mangled_variant) {
-		cast_expr := ast.Expr(ast.CastExpr{
-			typ:  ast.Ident{
-				name: '${mangled_variant}*'
-			}
-			expr: variant_access
-		})
-		sum_value := ast.Expr(ast.ParenExpr{
-			expr: ast.PrefixExpr{
-				op:   .mul
-				expr: cast_expr
-			}
-		})
-		if lowered := t.lower_sumtype_common_field_access(sum_value, mangled_variant, field_name) {
-			return lowered
-		}
-	}
 	// Create: (mangled_variant*)variant_access
 	cast_expr := ast.CastExpr{
 		typ:  ast.Ident{
@@ -617,13 +221,8 @@ fn (mut t Transformer) apply_smartcast_field_access_ctx(sumtype_expr ast.Expr, f
 		}
 		expr: variant_access
 	}
-	// Create: (*cast_expr).field_name so smartcasted field writes stay assignable.
-	return t.synth_selector_from_struct(ast.Expr(ast.ParenExpr{
-		expr: ast.PrefixExpr{
-			op:   .mul
-			expr: ast.Expr(cast_expr)
-		}
-	}), field_name, mangled_variant)
+	// Create: cast_expr->field_name (cleanc will handle pointer arrow vs dot)
+	return t.synth_selector_from_struct(ast.Expr(cast_expr), field_name, mangled_variant)
 }
 
 fn (mut t Transformer) transform_array_init_expr(expr ast.ArrayInitExpr) ast.Expr {
@@ -658,10 +257,6 @@ fn (mut t Transformer) transform_array_init_expr(expr ast.ArrayInitExpr) ast.Exp
 			elem_type_expr = expr.typ.elem_type
 		}
 	}
-	raw_elem_type, has_raw_array_type := ast_expr_raw_array_type_elem(expr.typ)
-	if elem_type_expr is ast.EmptyExpr && has_raw_array_type {
-		elem_type_expr = raw_elem_type
-	}
 	// For untyped `[]` literals, use checker-inferred type from context (assign/call/return).
 	if array_typ is ast.EmptyExpr {
 		if inferred := t.get_expr_type(ast.Expr(expr)) {
@@ -687,18 +282,6 @@ fn (mut t Transformer) transform_array_init_expr(expr ast.ArrayInitExpr) ast.Exp
 		array_typ = ast.Expr(ast.Type(ast.ArrayType{
 			elem_type: elem_type_expr
 		}))
-	}
-	sum_elem_type_name := if elem_type_expr !is ast.EmptyExpr {
-		t.type_expr_to_c_name(elem_type_expr)
-	} else {
-		''
-	}
-	if sum_elem_type_name != '' && t.is_sum_type(sum_elem_type_name) {
-		for i, elem_expr in exprs {
-			if wrapped := t.wrap_sumtype_value_transformed(elem_expr, sum_elem_type_name) {
-				exprs[i] = wrapped
-			}
-		}
 	}
 	// Also check for [x, y, z]! syntax - parser marks this with len: PostfixExpr{op: .not}
 	if expr.len is ast.PostfixExpr {
@@ -879,28 +462,6 @@ fn (mut t Transformer) transform_array_init_expr(expr ast.ArrayInitExpr) ast.Exp
 	// First, try to get the array type from the type checker's annotations
 	mut elem_type_name := 'int'
 	mut elem_type_expr_resolved := elem_type_expr
-	if elem_type_expr_resolved !is ast.EmptyExpr && exprs.len > 0 {
-		mut inferred_elem_name := t.expr_to_type_name(elem_type_expr_resolved)
-		if inferred_elem_name == '' {
-			inferred_elem_name = t.type_expr_to_c_name(elem_type_expr_resolved)
-		}
-		if inferred_elem_name.starts_with('Array_') && inferred_elem_name.ends_with('ptr') {
-			mut first_name := if expr.exprs.len > 0 {
-				t.concrete_array_literal_elem_name(expr.exprs[0])
-			} else {
-				''
-			}
-			if first_name == '' {
-				first_name = t.concrete_array_literal_elem_name(exprs[0])
-			}
-			if first_name != '' && !first_name.starts_with('Array_') && !first_name.ends_with('*') {
-				elem_type_name = first_name
-				elem_type_expr_resolved = ast.Expr(ast.Ident{
-					name: first_name
-				})
-			}
-		}
-	}
 	if elem_type_expr_resolved is ast.EmptyExpr && exprs.len > 0 {
 		if arr_type := t.env.get_expr_type(expr.pos.id) {
 			match arr_type {
@@ -911,23 +472,6 @@ fn (mut t Transformer) transform_array_init_expr(expr ast.ArrayInitExpr) ast.Exp
 						elem_type_expr_resolved = ast.Expr(ast.Ident{
 							name: tn
 						})
-						if tn.starts_with('Array_') && tn.ends_with('ptr') {
-							mut first_name := if expr.exprs.len > 0 {
-								t.concrete_array_literal_elem_name(expr.exprs[0])
-							} else {
-								''
-							}
-							if first_name == '' {
-								first_name = t.concrete_array_literal_elem_name(exprs[0])
-							}
-							if first_name != '' && !first_name.starts_with('Array_')
-								&& !first_name.ends_with('*') {
-								elem_type_name = first_name
-								elem_type_expr_resolved = ast.Expr(ast.Ident{
-									name: first_name
-								})
-							}
-						}
 					}
 				}
 				types.ArrayFixed {
@@ -1581,19 +1125,6 @@ fn (mut t Transformer) transform_init_expr(expr ast.InitExpr) ast.Expr {
 			}
 		}
 		if is_sumtype_field {
-			field_value_key := t.expr_to_string(field_value)
-			if field_value_key != '' {
-				if ctx := t.find_smartcast_for_expr(field_value_key) {
-					if ctx.sumtype == field_type_name
-						|| t.is_same_sumtype_name(ctx.sumtype, field_type_name) {
-						fields << ast.FieldInit{
-							name:  field.name
-							value: t.transform_expr_without_smartcast(field_value, field_value_key)
-						}
-						continue
-					}
-				}
-			}
 			// If the value is a variable whose declared type is already this sum type
 			// (e.g., `expr: ast.Expr` used in `GenericArgOrIndexExpr{expr: expr}`),
 			// skip wrapping. At the C level, the variable is already a tagged union
@@ -1637,10 +1168,6 @@ fn (mut t Transformer) transform_init_expr(expr ast.InitExpr) ast.Expr {
 			}
 		}
 
-		old_expected_ierror := t.expected_ierror_init
-		if has_expected_field_type {
-			t.expected_ierror_init = t.is_ierror_type(expected_field_type)
-		}
 		transformed_value := if has_pretransformed_value {
 			pretransformed_value
 		} else if field_value is ast.ArrayInitExpr {
@@ -1702,7 +1229,6 @@ fn (mut t Transformer) transform_init_expr(expr ast.InitExpr) ast.Expr {
 		} else {
 			t.transform_expr(field_value)
 		}
-		t.expected_ierror_init = old_expected_ierror
 		final_value := t.deref_init_field_value_if_needed(transformed_value, field_type_name)
 		fields << ast.FieldInit{
 			name:  field.name
@@ -1713,7 +1239,7 @@ fn (mut t Transformer) transform_init_expr(expr ast.InitExpr) ast.Expr {
 
 	// Check if this is an error struct literal that needs IError boxing
 	type_name := t.get_init_expr_type_name(expr.typ)
-	if t.expected_ierror_init && t.is_error_type_name(type_name) {
+	if t.is_error_type_name(type_name) {
 		// Transform to IError struct init with explicit boxing
 		// Generate: IError{ ._object = &ErrorType{...}, ._type_id = __type_id_ErrorType,
 		//                   .type_name = IError_WrapperType_type_name_wrapper,
@@ -1867,92 +1393,16 @@ fn (t &Transformer) get_init_expr_field_type_name(init_typ_expr ast.Expr, field_
 	return ''
 }
 
-struct TypeLookupWithModule {
-	typ         types.Type
-	module_name string
-}
-
-fn transformer_module_short_name(module_name string) string {
-	if module_name.contains('.') {
-		return module_name.all_after_last('.')
-	}
-	if module_name.contains('__') {
-		return module_name.all_after_last('__')
-	}
-	return module_name
-}
-
-fn (t &Transformer) lookup_type_with_module_name(name string) ?TypeLookupWithModule {
-	normalized_name := name.replace('.', '__')
-	mut lookup_name := normalized_name
-	mut lookup_module := t.cur_module
-	dunder := normalized_name.index('__') or { -1 }
-	if dunder >= 0 {
-		lookup_module = normalized_name[..dunder]
-		last_dunder := normalized_name.last_index('__') or { dunder }
-		lookup_name = normalized_name[last_dunder + 2..]
-	}
-	if scope := t.get_module_scope(lookup_module) {
-		if obj := scope.objects[lookup_name] {
-			if obj is types.Type {
-				if !is_type_valid(obj) {
-					return none
-				}
-				return TypeLookupWithModule{
-					typ:         types.Type(obj)
-					module_name: lookup_module
-				}
-			}
-		}
-	}
-	if lookup_module != '' {
-		for mod_name, scope in t.cached_scopes {
-			mod_short := transformer_module_short_name(mod_name)
-			if mod_short != lookup_module {
-				continue
-			}
-			if obj := scope.objects[lookup_name] {
-				if obj is types.Type {
-					if !is_type_valid(obj) {
-						continue
-					}
-					return TypeLookupWithModule{
-						typ:         types.Type(obj)
-						module_name: mod_short
-					}
-				}
-			}
-		}
-	}
-	if dunder < 0 {
-		for mod_name, fallback_scope in t.cached_scopes {
-			if fallback_obj := fallback_scope.objects[lookup_name] {
-				if fallback_obj is types.Type {
-					if !is_type_valid(fallback_obj) {
-						continue
-					}
-					return TypeLookupWithModule{
-						typ:         types.Type(fallback_obj)
-						module_name: transformer_module_short_name(mod_name)
-					}
-				}
-			}
-		}
-	}
-	return none
-}
-
 fn (mut t Transformer) add_missing_struct_field_defaults(struct_name string, fields []ast.FieldInit) []ast.FieldInit {
 	if struct_name == '' {
 		return fields
 	}
-	type_lookup := t.lookup_type_with_module_name(struct_name) or {
+	struct_type := t.lookup_type(struct_name) or {
 		if struct_name.contains('Scope') || struct_name.contains('DenseArray')
 			|| struct_name.contains('Env') {
 		}
 		return fields
 	}
-	struct_type := type_lookup.typ
 	base_type := t.unwrap_alias_and_pointer_type(struct_type)
 	if base_type !is types.Struct {
 		if struct_name.contains('Scope') || struct_name.contains('DenseArray')
@@ -1961,14 +1411,6 @@ fn (mut t Transformer) add_missing_struct_field_defaults(struct_name string, fie
 		return fields
 	}
 	struct_info := base_type as types.Struct
-	default_struct_short_name := if struct_info.name != '' { struct_info.name } else { struct_name }
-	default_struct_name := if default_struct_short_name.contains('__')
-		|| type_lookup.module_name == '' || type_lookup.module_name == 'main'
-		|| type_lookup.module_name == 'builtin' {
-		default_struct_short_name
-	} else {
-		'${type_lookup.module_name}__${default_struct_short_name}'
-	}
 	mut existing := map[string]bool{}
 	mut positional_idx := 0
 	for field in fields {
@@ -1996,11 +1438,8 @@ fn (mut t Transformer) add_missing_struct_field_defaults(struct_name string, fie
 				struct_field.typ)
 			out << ast.FieldInit{
 				name:  struct_field.name
-				value: t.transform_struct_field_default_expr(default_struct_name, resolved_default)
+				value: t.transform_struct_field_default_expr(struct_name, resolved_default)
 			}
-			continue
-		}
-		if t.is_pointer_type(struct_field.typ) {
 			continue
 		}
 		field_type := t.unwrap_alias_and_pointer_type(struct_field.typ)
@@ -2053,16 +1492,6 @@ fn (mut t Transformer) add_missing_struct_field_defaults(struct_name string, fie
 					value: "''"
 				}
 			}
-			continue
-		}
-		raw_field_type := types.resolve_alias(struct_field.typ)
-		if raw_field_type is types.Struct && t.struct_needs_explicit_default_init(raw_field_type, 0) {
-			out << ast.FieldInit{
-				name:  struct_field.name
-				value: t.transform_expr(ast.Expr(ast.InitExpr{
-					typ: t.type_to_ast_type_expr(types.Type(raw_field_type))
-				}))
-			}
 		}
 	}
 	// Also fill defaults for fields from embedded structs.
@@ -2073,7 +1502,7 @@ fn (mut t Transformer) add_missing_struct_field_defaults(struct_name string, fie
 			}
 			if struct_field.default_expr !is ast.EmptyExpr
 				&& t.is_supported_struct_default_expr(struct_field.default_expr) {
-				mut emb_struct_name := default_struct_name
+				mut emb_struct_name := struct_name
 				if emb.name.contains('__') {
 					emb_struct_name = emb.name
 				}
@@ -2083,9 +1512,6 @@ fn (mut t Transformer) add_missing_struct_field_defaults(struct_name string, fie
 					name:  struct_field.name
 					value: t.transform_struct_field_default_expr(emb_struct_name, resolved_default)
 				}
-				continue
-			}
-			if t.is_pointer_type(struct_field.typ) {
 				continue
 			}
 			field_type := t.unwrap_alias_and_pointer_type(struct_field.typ)
@@ -2136,56 +1562,10 @@ fn (mut t Transformer) add_missing_struct_field_defaults(struct_name string, fie
 						value: "''"
 					}
 				}
-				continue
-			}
-			raw_field_type := types.resolve_alias(struct_field.typ)
-			if raw_field_type is types.Struct
-				&& t.struct_needs_explicit_default_init(raw_field_type, 0) {
-				out << ast.FieldInit{
-					name:  struct_field.name
-					value: t.transform_expr(ast.Expr(ast.InitExpr{
-						typ: t.type_to_ast_type_expr(types.Type(raw_field_type))
-					}))
-				}
 			}
 		}
 	}
 	return out
-}
-
-fn (mut t Transformer) struct_needs_explicit_default_init(struct_info types.Struct, depth int) bool {
-	if depth > 4 {
-		return false
-	}
-	for struct_field in struct_info.fields {
-		if struct_field.default_expr !is ast.EmptyExpr
-			&& is_safe_nested_struct_default_expr(struct_field.default_expr) {
-			return true
-		}
-	}
-	for emb in struct_info.embedded {
-		for struct_field in emb.fields {
-			if struct_field.default_expr !is ast.EmptyExpr
-				&& is_safe_nested_struct_default_expr(struct_field.default_expr) {
-				return true
-			}
-		}
-	}
-	return false
-}
-
-fn is_safe_nested_struct_default_expr(expr ast.Expr) bool {
-	match expr {
-		ast.BasicLiteral, ast.StringLiteral {
-			return true
-		}
-		ast.PrefixExpr {
-			return expr.op == .minus && expr.expr is ast.BasicLiteral
-		}
-		else {
-			return false
-		}
-	}
 }
 
 fn (mut t Transformer) transform_struct_field_default_expr(struct_name string, expr ast.Expr) ast.Expr {
@@ -2201,23 +1581,6 @@ fn (mut t Transformer) transform_struct_field_default_expr(struct_name string, e
 					rhs: expr
 				}
 			}
-			if expr is ast.CallExpr && expr.lhs is ast.Ident {
-				fn_name := expr.lhs.name
-				if _ := t.lookup_fn_cached(module_name, fn_name) {
-					old_module := t.cur_module
-					t.cur_module = module_name
-					transformed := t.transform_call_expr(ast.CallExpr{
-						lhs:  ast.Ident{
-							name: '${module_name}__${fn_name}'
-							pos:  expr.pos
-						}
-						args: expr.args
-						pos:  expr.pos
-					})
-					t.cur_module = old_module
-					return transformed
-				}
-			}
 			old_module := t.cur_module
 			t.cur_module = module_name
 			transformed := t.transform_expr(expr)
@@ -2230,16 +1593,20 @@ fn (mut t Transformer) transform_struct_field_default_expr(struct_name string, e
 
 fn (t &Transformer) get_init_expr_type_name(typ ast.Expr) string {
 	if typ is ast.Ident {
-		// Add module prefix if we're in a non-main module and the type is a known error type
 		base_name := typ.name
 		if t.cur_module != '' && t.cur_module != 'main' && t.cur_module != 'builtin' {
-			// Check if this is an error type that should be module-qualified
-			if base_name in ['Eof', 'NotExpected', 'MessageError', 'Error', 'FileNotOpenedError',
-				'SizeOfTypeIs0Error', 'ExecutableNotFoundError'] {
+			if scope := t.cached_scopes[t.cur_module] {
+				if obj := scope.objects[base_name] {
+					if obj is types.Type {
+						return '${t.cur_module}__${base_name}'
+					}
+				}
+			}
+			if t.lookup_method_cached('${t.cur_module}__${base_name}', 'msg') != none {
 				return '${t.cur_module}__${base_name}'
 			}
 		}
-		return base_name
+		return t.qualify_type_name(base_name)
 	}
 	if typ is ast.SelectorExpr {
 		// Module-qualified: os.Eof -> os__Eof
@@ -2256,12 +1623,11 @@ fn (t &Transformer) get_init_expr_type_name(typ ast.Expr) string {
 fn (t &Transformer) get_struct_field_type_name(struct_name string, field_name string) string {
 	// Look up the struct type in scopes.
 	// For qualified names (e.g. "ast__CallExpr"), try the module scope directly first.
-	normalized_struct_name := struct_name.replace('.', '__')
-	dunder := normalized_struct_name.index('__') or { -1 }
+	dunder := struct_name.index('__') or { -1 }
 	if dunder >= 0 {
-		mod_name := normalized_struct_name[..dunder]
-		last_dunder := normalized_struct_name.last_index('__') or { dunder }
-		short_name := normalized_struct_name[last_dunder + 2..]
+		mod_name := struct_name[..dunder]
+		last_dunder := struct_name.last_index('__') or { dunder }
+		short_name := struct_name[last_dunder + 2..]
 		if mod_scope := t.cached_scopes[mod_name] {
 			if obj := mod_scope.objects[short_name] {
 				if obj is types.Type {
@@ -2272,35 +1638,7 @@ fn (t &Transformer) get_struct_field_type_name(struct_name string, field_name st
 				}
 			}
 			// Also try the full qualified name
-			if obj := mod_scope.objects[normalized_struct_name] {
-				if obj is types.Type {
-					result := t.get_field_type_name(obj, field_name)
-					if result != '' {
-						return result
-					}
-				}
-			}
-		}
-		for alt_mod_name, alt_scope in t.cached_scopes {
-			alt_short := if alt_mod_name.contains('.') {
-				alt_mod_name.all_after_last('.')
-			} else if alt_mod_name.contains('__') {
-				alt_mod_name.all_after_last('__')
-			} else {
-				alt_mod_name
-			}
-			if alt_short != mod_name {
-				continue
-			}
-			if obj := alt_scope.objects[short_name] {
-				if obj is types.Type {
-					result := t.get_field_type_name(obj, field_name)
-					if result != '' {
-						return result
-					}
-				}
-			}
-			if obj := alt_scope.objects[normalized_struct_name] {
+			if obj := mod_scope.objects[struct_name] {
 				if obj is types.Type {
 					result := t.get_field_type_name(obj, field_name)
 					if result != '' {
@@ -2314,7 +1652,7 @@ fn (t &Transformer) get_struct_field_type_name(struct_name string, field_name st
 	// to avoid collisions (e.g., ast.FnType vs types.FnType both named "FnType").
 	if dunder < 0 && t.cur_module != '' && t.cur_module != 'main' && t.cur_module != 'builtin' {
 		if cur_scope := t.cached_scopes[t.cur_module] {
-			if obj := cur_scope.objects[normalized_struct_name] {
+			if obj := cur_scope.objects[struct_name] {
 				if obj is types.Type {
 					result := t.get_field_type_name(obj, field_name)
 					if result != '' {
@@ -2328,21 +1666,20 @@ fn (t &Transformer) get_struct_field_type_name(struct_name string, field_name st
 	scope_keys2 := t.cached_scopes.keys()
 	for sk in scope_keys2 {
 		scope := t.cached_scopes[sk] or { continue }
-		if obj := scope.objects[normalized_struct_name] {
+		if obj := scope.objects[struct_name] {
 			if obj is types.Type {
 				return t.get_field_type_name(obj, field_name)
 			}
 		}
 		if dunder >= 0 {
-			last_dunder := normalized_struct_name.last_index('__') or { dunder }
-			short_name := normalized_struct_name[last_dunder + 2..]
+			short_name := struct_name[struct_name.last_index('__') or { dunder } + 2..]
 			if obj := scope.objects[short_name] {
 				if obj is types.Type {
 					return t.get_field_type_name(obj, field_name)
 				}
 			}
 		} else if t.cur_module != '' && t.cur_module != 'main' && t.cur_module != 'builtin' {
-			mangled := '${t.cur_module}__${normalized_struct_name}'
+			mangled := '${t.cur_module}__${struct_name}'
 			if obj := scope.objects[mangled] {
 				if obj is types.Type {
 					return t.get_field_type_name(obj, field_name)
@@ -2394,14 +1731,13 @@ fn (t &Transformer) resolve_field_type(var_name string, field_name string) strin
 fn (t &Transformer) resolve_struct_field_type(struct_name string, field_name string) string {
 	// Look up the struct type in scopes
 	// Handle qualified names like "ast__SelectorExpr" - extract module and type name
-	normalized_struct_name := struct_name.replace('.', '__')
-	mut lookup_name := normalized_struct_name
+	mut lookup_name := struct_name
 	mut lookup_module := ''
-	dunder := normalized_struct_name.index('__') or { -1 }
+	dunder := struct_name.index('__') or { -1 }
 	if dunder >= 0 {
-		lookup_module = normalized_struct_name[..dunder]
-		last_dunder := normalized_struct_name.last_index('__') or { dunder }
-		lookup_name = normalized_struct_name[last_dunder + 2..]
+		lookup_module = struct_name[..dunder]
+		last_dunder := struct_name.last_index('__') or { dunder }
+		lookup_name = struct_name[last_dunder + 2..]
 	}
 	// Fast path: try the target module scope directly
 	if lookup_module != '' {
@@ -2414,35 +1750,7 @@ fn (t &Transformer) resolve_struct_field_type(struct_name string, field_name str
 					}
 				}
 			}
-			if obj := mod_scope.objects[normalized_struct_name] {
-				if obj is types.Type {
-					result := t.get_field_type_name(obj, field_name)
-					if result != '' {
-						return result
-					}
-				}
-			}
-		}
-		for mod_name, mod_scope in t.cached_scopes {
-			mod_short := if mod_name.contains('.') {
-				mod_name.all_after_last('.')
-			} else if mod_name.contains('__') {
-				mod_name.all_after_last('__')
-			} else {
-				mod_name
-			}
-			if mod_short != lookup_module {
-				continue
-			}
-			if obj := mod_scope.objects[lookup_name] {
-				if obj is types.Type {
-					result := t.get_field_type_name(obj, field_name)
-					if result != '' {
-						return result
-					}
-				}
-			}
-			if obj := mod_scope.objects[normalized_struct_name] {
+			if obj := mod_scope.objects[struct_name] {
 				if obj is types.Type {
 					result := t.get_field_type_name(obj, field_name)
 					if result != '' {
@@ -2455,7 +1763,7 @@ fn (t &Transformer) resolve_struct_field_type(struct_name string, field_name str
 	// Try current module scope
 	if t.cur_module != '' {
 		if cur_scope := t.cached_scopes[t.cur_module] {
-			if obj := cur_scope.objects[normalized_struct_name] {
+			if obj := cur_scope.objects[struct_name] {
 				if obj is types.Type {
 					result := t.get_field_type_name(obj, field_name)
 					if result != '' {
@@ -2477,7 +1785,7 @@ fn (t &Transformer) resolve_struct_field_type(struct_name string, field_name str
 	scope_keys3 := t.cached_scopes.keys()
 	for sk in scope_keys3 {
 		scope := t.cached_scopes[sk] or { continue }
-		if obj := scope.objects[normalized_struct_name] {
+		if obj := scope.objects[struct_name] {
 			if obj is types.Type {
 				return t.get_field_type_name(obj, field_name)
 			}
@@ -2640,121 +1948,12 @@ fn (t &Transformer) get_field_array_elem_c_name(struct_name string, field_name s
 	return ''
 }
 
-fn (t &Transformer) field_type_from_struct_like_type(typ types.Type, field_name string) ?types.Type {
-	if types.type_name(typ) == '' {
-		return none
-	}
-	base_type := t.unwrap_alias_and_pointer_type(typ)
-	if types.type_name(base_type) == '' {
-		return none
-	}
-	match base_type {
-		types.Struct {
-			for field in base_type.fields {
-				if field.name == field_name {
-					return field.typ
-				}
-			}
-		}
-		types.Alias {
-			if types.type_name(base_type.base_type) == '' {
-				return none
-			}
-			alias_base := t.unwrap_alias_and_pointer_type(base_type.base_type)
-			if types.type_name(alias_base) == '' {
-				return none
-			}
-			if alias_base is types.Struct {
-				for field in alias_base.fields {
-					if field.name == field_name {
-						return field.typ
-					}
-				}
-			}
-		}
-		else {}
-	}
-
-	return none
-}
-
-fn (t &Transformer) array_method_receiver_elem_type(call ast.CallExpr) ?types.Type {
-	if call.lhs !is ast.SelectorExpr {
-		return none
-	}
-	call_lhs := call.lhs as ast.SelectorExpr
-	if call_lhs.rhs.name !in ['last', 'first', 'pop', 'pop_left'] {
-		return none
-	}
-	receiver_type := t.resolve_expr_type(call_lhs.lhs) or { return none }
-	base_type := t.unwrap_alias_and_pointer_type(receiver_type)
-	return match base_type {
-		types.Array { base_type.elem_type }
-		types.ArrayFixed { base_type.elem_type }
-		else { none }
-	}
-}
-
-fn (t &Transformer) lookup_unique_struct_field_type(field_name string) ?types.Type {
-	mut found := types.Type(types.void_)
-	mut found_count := 0
-	for _, scope in t.cached_scopes {
-		for _, obj in scope.objects {
-			if obj is types.Type {
-				typ := types.Type(obj)
-				if typ is types.Struct {
-					for field in typ.fields {
-						if field.name == field_name {
-							found = field.typ
-							found_count++
-							break
-						}
-					}
-				}
-			}
-		}
-	}
-	if found_count == 1 {
-		return found
-	}
-	return none
-}
-
 // type_to_name converts a Type to its name string
 fn (t &Transformer) get_struct_field_type(expr ast.SelectorExpr) ?types.Type {
-	lhs_key := t.expr_to_string(expr.lhs)
-	if lhs_key != '' {
-		if ctx := t.find_smartcast_for_expr(lhs_key) {
-			if typ := t.lookup_type(ctx.variant_full) {
-				if field_type := t.field_type_from_struct_like_type(typ, expr.rhs.name) {
-					return field_type
-				}
-			}
-			if ctx.variant != ctx.variant_full {
-				if typ := t.lookup_type(ctx.variant) {
-					if field_type := t.field_type_from_struct_like_type(typ, expr.rhs.name) {
-						return field_type
-					}
-				}
-			}
-		}
-	}
-	if expr.lhs is ast.CallExpr {
-		if elem_type := t.array_method_receiver_elem_type(expr.lhs) {
-			if field_type := t.field_type_from_struct_like_type(elem_type, expr.rhs.name) {
-				return field_type
-			}
-		}
-	}
 	// Try to get the struct type from scope (for local variables and receivers)
 	mut struct_type_name := ''
 	if expr.lhs is ast.Ident {
 		lhs_name := expr.lhs.name
-		if lhs_type := t.lookup_var_type(lhs_name) {
-			if field_type := t.field_type_from_struct_like_type(lhs_type, expr.rhs.name) {
-				return field_type
-			}
-		}
 		lhs_type := t.get_var_type_name(lhs_name)
 		if lhs_type != '' {
 			// Remove pointer indicators: both V-style (&T) and C-style (T*)
@@ -2772,24 +1971,38 @@ fn (t &Transformer) get_struct_field_type(expr ast.SelectorExpr) ?types.Type {
 		} else {
 			looked_up_type
 		}
-		if field_type := t.field_type_from_struct_like_type(base_type, expr.rhs.name) {
-			return field_type
+		match base_type {
+			types.Struct {
+				for field in base_type.fields {
+					if field.name == expr.rhs.name {
+						return field.typ
+					}
+				}
+			}
+			else {}
 		}
 	}
 
 	// Fall back to get_expr_type for module-level lookups
-	if struct_type := t.get_expr_type(expr.lhs) {
-		if field_type := t.field_type_from_struct_like_type(struct_type, expr.rhs.name) {
-			return field_type
-		}
+	struct_type := t.get_expr_type(expr.lhs) or { return none }
+
+	// If it's a pointer, dereference to get the struct
+	base_type := if struct_type is types.Pointer {
+		struct_type.base_type
+	} else {
+		struct_type
 	}
-	if struct_type := t.resolve_expr_type(expr.lhs) {
-		if field_type := t.field_type_from_struct_like_type(struct_type, expr.rhs.name) {
-			return field_type
+
+	// Look up the field in the struct
+	match base_type {
+		types.Struct {
+			for field in base_type.fields {
+				if field.name == expr.rhs.name {
+					return field.typ
+				}
+			}
 		}
-	}
-	if field_type := t.lookup_unique_struct_field_type(expr.rhs.name) {
-		return field_type
+		else {}
 	}
 
 	return none

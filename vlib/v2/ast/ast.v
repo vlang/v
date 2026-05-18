@@ -308,11 +308,12 @@ pub fn (expr Expr) pos() token.Pos {
 // File (AST container)
 pub struct File {
 pub:
-	attributes []Attribute
-	mod        string
-	name       string
-	stmts      []Stmt
-	imports    []ImportStmt
+	attributes     []Attribute
+	mod            string
+	name           string
+	stmts          []Stmt
+	imports        []ImportStmt
+	selector_names map[int]string
 }
 
 pub enum Language {

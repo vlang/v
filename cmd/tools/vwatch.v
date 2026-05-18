@@ -198,6 +198,16 @@ fn (mut context Context) get_stats_for_affected_vfiles() []VFileStat {
 				println('   Add your own --only-watch filter, if you wish to override that choice.')
 				println('')
 			}
+			// .tr translation files are loaded at runtime by veb (see vlib/veb/tr.v),
+			// so the compiler never reports them via -print-watched-files. Explicitly
+			// add `translations/` subdirectories of each project path, so edits to
+			// .tr files trigger a reload like .html does.
+			for path in apaths.keys() {
+				tr_dir := os.join_path_single(path, 'translations')
+				if os.is_dir(tr_dir) {
+					apaths[os.real_path(tr_dir)] = true
+				}
+			}
 		}
 		context.affected_paths = apaths.keys()
 		// context.elog('vfiles paths to be scanned: ${context.affected_paths}')

@@ -42,9 +42,7 @@ fn (mut g Gen) gen_for_stmt(node ast.ForStmt) {
 	// (e.g. _filter_it in nested map/filter) can shadow outer variables.
 	// Without save/restore, the inner type overwrites the outer in the flat map.
 	saved_local_types := g.runtime_local_types.clone()
-	g.runtime_loop_depth++
 	g.gen_stmts(node.stmts)
-	g.runtime_loop_depth--
 	g.runtime_local_types = saved_local_types.clone()
 	g.not_local_var_cache = map[string]bool{}
 	g.indent--

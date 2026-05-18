@@ -103,7 +103,7 @@ pub mut:
 	logger    C.saudio_logger
 }
 
-fn C.saudio_setup(desc &C.saudio_desc)
+fn C.saudio_setup(const_desc &C.saudio_desc)
 
 fn C.saudio_shutdown()
 
@@ -123,7 +123,7 @@ fn C.saudio_suspended() bool
 
 fn C.saudio_expect() i32
 
-fn C.saudio_push(frames &f32, num_frames i32) i32
+fn C.saudio_push(const_frames &f32, num_frames i32) i32
 
 // setup - setup sokol-audio
 pub fn setup(desc &C.saudio_desc) {

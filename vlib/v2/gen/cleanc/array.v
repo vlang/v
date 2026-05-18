@@ -37,13 +37,6 @@ fn should_keep_builtin_array_decl(decl ast.FnDecl) bool {
 		'__new_array_with_map_default',
 		'new_array_from_c_array',
 		'new_array_from_c_array_no_alloc',
-		'alloc_array_data_like',
-		'alloc_array_data_like_uninit',
-		'buffer_has_slices',
-		'mark_buffer_has_slices',
-		'needs_unique_append',
-		'needs_unique_shift',
-		'needs_unique_shrink',
 		'ensure_cap',
 		'repeat',
 		'repeat_to_depth',
@@ -91,7 +84,6 @@ fn should_keep_builtin_array_decl(decl ast.FnDecl) bool {
 		'pointers',
 		'panic_on_negative_len',
 		'panic_on_negative_cap',
-		'vbytes',
 	]
 }
 
@@ -176,7 +168,6 @@ fn (mut g Gen) emit_missing_array_contains_fallbacks() {
 			continue
 		}
 		g.emitted_types[fn_key] = true
-		g.late_fn_decls << 'bool ${fn_name}(${arr_type} a, ${elem_type} v);\n'
 		g.sb.writeln('')
 		// Fixed arrays are C arrays (e.g., voidptr[20]), not structs — use direct indexing.
 		is_fixed := arr_type.starts_with('Array_fixed_')
@@ -335,15 +326,6 @@ fn (mut g Gen) array_append_elem_type(lhs ast.Expr, rhs ast.Expr) (bool, string)
 			}
 		}
 	}
-	if is_generic_placeholder_c_type_name(elem_type) {
-		rhs_value := append_rhs_value_expr(rhs)
-		if rhs_value is ast.PrefixExpr && rhs_value.op == .mul && rhs_value.expr is ast.CastExpr {
-			target_type := g.expr_type_to_c(rhs_value.expr.typ)
-			if target_type.ends_with('*') {
-				elem_type = target_type.trim_right('*')
-			}
-		}
-	}
 	// When raw_type gives a module-qualified name (e.g. term__Coord) but the rhs
 	// is a local struct (e.g. Coord), prefer the rhs type to match the actual typedef.
 	if elem_type.contains('__') {
@@ -360,39 +342,13 @@ fn (mut g Gen) array_append_elem_type(lhs ast.Expr, rhs ast.Expr) (bool, string)
 	return true, unmangle_c_ptr_type(elem_type)
 }
 
-fn append_rhs_value_expr(expr ast.Expr) ast.Expr {
-	if expr is ast.UnsafeExpr && expr.stmts.len > 0 {
-		last := expr.stmts[expr.stmts.len - 1]
-		if last is ast.ExprStmt {
-			return last.expr
-		}
-	}
-	return expr
-}
-
 fn (mut g Gen) expr_is_array_value(expr ast.Expr) bool {
 	if expr is ast.ParenExpr {
 		return g.expr_is_array_value(expr.expr)
 	}
-	if expr is ast.UnsafeExpr {
-		return g.expr_is_array_value(append_rhs_value_expr(expr))
-	}
 	if expr is ast.PrefixExpr && expr.op == .mul {
 		// `*ptr_to_array` is an array value.
 		return g.expr_is_array_value(expr.expr)
-	}
-	if expr is ast.Ident {
-		if local_type := g.get_local_var_c_type(expr.name) {
-			if local_type == 'array' || local_type.starts_with('Array_') {
-				return true
-			}
-		}
-	}
-	if expr is ast.SelectorExpr {
-		field_type := g.selector_field_type(expr)
-		if field_type == 'array' || field_type.starts_with('Array_') {
-			return true
-		}
 	}
 	expr_type := g.get_expr_type(expr)
 	if expr_type == 'array' || expr_type.starts_with('Array_') {
@@ -500,27 +456,20 @@ fn (mut g Gen) infer_array_elem_type_from_expr(arr_expr ast.Expr) string {
 	}
 
 	if arr_expr is ast.ArrayInitExpr {
-		mut elem_type := g.extract_array_elem_type(arr_expr.typ)
-		if arr_expr.exprs.len > 0 {
-			first_expr_type := g.array_init_elem_type_from_expr(arr_expr.exprs[0])
-			if elem_type.starts_with('Array_')
-				&& (elem_type.ends_with('*') || elem_type.ends_with('ptr')) && first_expr_type != ''
-				&& !first_expr_type.starts_with('Array_') && !first_expr_type.ends_with('*') {
-				return first_expr_type
-			}
-			if elem_type != '' && first_expr_type != ''
-				&& first_expr_type.starts_with('${elem_type}_T_') {
-				return first_expr_type
-			}
-			if elem_type != '' && elem_type != 'int' && elem_type != 'int_literal' {
-				return elem_type
-			}
-			if first_expr_type != '' && first_expr_type != 'int' && first_expr_type != 'int_literal' {
-				return first_expr_type
-			}
+		elem_type := g.extract_array_elem_type(arr_expr.typ)
+		value_elem_type := g.infer_array_init_value_elem_type(arr_expr)
+		if (elem_type == '' || elem_type == 'int') && value_elem_type != ''
+			&& value_elem_type != 'int' {
+			return value_elem_type
 		}
 		if elem_type != '' {
 			return elem_type
+		}
+		if arr_expr.exprs.len > 0 {
+			first_expr_type := g.get_expr_type(arr_expr.exprs[0])
+			if first_expr_type != '' && first_expr_type != 'int' && first_expr_type != 'int_literal' {
+				return first_expr_type
+			}
 		}
 	}
 	// For slice calls, the return type is generic `array`; resolve from the source array.
@@ -570,6 +519,24 @@ fn (mut g Gen) infer_array_elem_type_from_expr(arr_expr ast.Expr) string {
 	}
 	// Last resort: string-based extraction (e.g. Array_int → int).
 	return array_alias_elem_type(arr_type)
+}
+
+fn (mut g Gen) infer_array_init_value_elem_type(node ast.ArrayInitExpr) string {
+	for expr in node.exprs {
+		mut elem_type := g.get_expr_type(expr)
+		if elem_type == '' || elem_type == 'int' || elem_type == 'int_literal'
+			|| elem_type == 'float_literal' || elem_type == 'void' {
+			if raw_type := g.get_raw_type(expr) {
+				elem_type = g.types_type_to_c(raw_type)
+			}
+		}
+		if elem_type == '' || elem_type == 'int' || elem_type == 'int_literal'
+			|| elem_type == 'float_literal' || elem_type == 'void' {
+			continue
+		}
+		return unmangle_c_ptr_type(elem_type)
+	}
+	return ''
 }
 
 // array_elem_type_from_raw extracts the element type from a raw types.Type
@@ -693,6 +660,27 @@ fn (mut g Gen) is_fixed_array_selector(sel ast.SelectorExpr) bool {
 	return false
 }
 
+fn interface_type_names_match(left string, right string) bool {
+	left_base := left.trim_right('*')
+	right_base := right.trim_right('*')
+	return left_base == right_base
+		|| left_base.all_after_last('__') == right_base.all_after_last('__')
+}
+
+fn (mut g Gen) expr_already_has_interface_type(expr ast.Expr, iface_type string) bool {
+	expr_type := g.get_expr_type(expr)
+	if expr_type != '' && interface_type_names_match(expr_type, iface_type)
+		&& g.is_interface_type(expr_type.trim_right('*')) {
+		return true
+	}
+	if raw_type := g.get_raw_type(expr) {
+		c_type := g.types_type_to_c(raw_type)
+		return c_type != '' && interface_type_names_match(c_type, iface_type)
+			&& g.is_interface_type(c_type.trim_right('*'))
+	}
+	return false
+}
+
 fn (mut g Gen) gen_array_init_expr(node ast.ArrayInitExpr) {
 	raw_elem := g.extract_array_elem_type(node.typ)
 	// Convert C pointer syntax to mangled name for composite types:
@@ -707,14 +695,9 @@ fn (mut g Gen) gen_array_init_expr(node ast.ArrayInitExpr) {
 	// Fallback: if dynamic array but elem type couldn't be extracted from type annotation,
 	// infer from the first expression (e.g., for [][2]int where inner [2]int has type info)
 	mut final_elem := elem_type
-	if is_dyn && node.exprs.len > 0 {
-		inferred := g.array_init_elem_type_from_expr(node.exprs[0])
-		should_use_inferred := final_elem == '' || final_elem == 'int'
-			|| final_elem == 'int_literal'
-			|| (inferred != '' && final_elem != '' && inferred.starts_with('${final_elem}_T_'))
-			|| (final_elem.starts_with('Array_') && final_elem.ends_with('ptr') && inferred != ''
-			&& !inferred.starts_with('Array_') && !inferred.ends_with('*'))
-		if should_use_inferred && inferred != '' && inferred != 'array' && inferred != 'int' {
+	if (final_elem == '' || final_elem == 'int') && is_dyn && node.exprs.len > 0 {
+		inferred := g.infer_array_init_value_elem_type(node)
+		if inferred != '' && inferred != 'array' && inferred != 'int' {
 			final_elem = inferred
 		}
 	}
@@ -729,7 +712,8 @@ fn (mut g Gen) gen_array_init_expr(node ast.ArrayInitExpr) {
 				if i > 0 {
 					g.sb.write_string(', ')
 				}
-				if is_iface_elem && g.gen_interface_cast(final_elem, e) {
+				if is_iface_elem && !g.expr_already_has_interface_type(e, final_elem)
+					&& g.gen_interface_cast(final_elem, e) {
 					// interface wrapping handled
 				} else {
 					g.expr(e)
@@ -776,40 +760,6 @@ fn (mut g Gen) gen_array_init_expr(node ast.ArrayInitExpr) {
 	g.sb.write_string('(array){0}')
 }
 
-fn (mut g Gen) array_init_elem_type_from_expr(expr ast.Expr) string {
-	if expr is ast.ModifierExpr {
-		return g.array_init_elem_type_from_expr(expr.expr)
-	}
-	if expr is ast.ParenExpr {
-		return g.array_init_elem_type_from_expr(expr.expr)
-	}
-	if expr is ast.PrefixExpr && expr.op == .amp {
-		return g.array_init_elem_type_from_expr(expr.expr)
-	}
-	if expr is ast.ArrayInitExpr {
-		return g.infer_array_elem_type_from_expr(expr)
-	}
-	if expr is ast.Ident {
-		if local_type := g.get_local_var_c_type(expr.name) {
-			return local_type
-		}
-	}
-	if expr is ast.IfExpr {
-		return g.get_if_expr_type(&expr)
-	}
-	if expr is ast.InitExpr {
-		init_type := g.expr_type_to_c(expr.typ)
-		return g.specialized_generic_c_name_from_type_expr(expr.typ, init_type)
-	}
-	mut inferred := g.get_expr_type(expr)
-	if (inferred == '' || inferred == 'int' || inferred == 'int_literal') && expr is ast.CallExpr {
-		if ret := g.get_call_return_type(expr.lhs, expr.args) {
-			inferred = ret
-		}
-	}
-	return inferred
-}
-
 // extract_array_elem_expr extracts the element type expression from an array type
 
 fn (g &Gen) extract_array_elem_expr(e ast.Expr) ast.Expr {
@@ -833,8 +783,7 @@ fn (g &Gen) extract_array_elem_expr(e ast.Expr) ast.Expr {
 fn (mut g Gen) extract_array_elem_type(e ast.Expr) string {
 	elem_expr := g.extract_array_elem_expr(e)
 	if elem_expr != ast.empty_expr {
-		elem_type := g.expr_type_to_c(elem_expr)
-		return g.specialized_generic_c_name_from_type_expr(elem_expr, elem_type)
+		return g.expr_type_to_c(elem_expr)
 	}
 	return ''
 }
@@ -971,8 +920,27 @@ fn (mut g Gen) gen_typed_array_eq(elem_type string, call_args []ast.Expr) {
 		struct_type := g.lookup_struct_type_by_c_name(elem_type)
 		if struct_type.fields.len > 0 {
 			for field in struct_type.fields {
-				eq_expr := g.eq_expr_for_type(field.typ, '_sa.${field.name}', '_sb.${field.name}')
-				g.sb.writeln('  if (!(${eq_expr})) _eq = false;')
+				fname := field.name
+				ftype := field.typ
+				match ftype {
+					types.String {
+						g.sb.writeln('  if (!string__eq(_sa.${fname}, _sb.${fname})) _eq = false;')
+					}
+					types.Map {
+						c_type := g.types_type_to_c(ftype)
+						if c_type.starts_with('Map_') {
+							g.sb.writeln('  if (!${c_type}_map_eq(_sa.${fname}, _sb.${fname})) _eq = false;')
+						} else {
+							g.sb.writeln('  if (!map_map_eq(_sa.${fname}, _sb.${fname})) _eq = false;')
+						}
+					}
+					types.Array {
+						g.sb.writeln('  if (!__v2_array_eq(_sa.${fname}, _sb.${fname})) _eq = false;')
+					}
+					else {
+						g.sb.writeln('  if (_sa.${fname} != _sb.${fname}) _eq = false;')
+					}
+				}
 			}
 		} else {
 			// Struct not found, fall back to memcmp

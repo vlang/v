@@ -11,14 +11,14 @@ fn list_dir_entries(path string) []string {
 }
 
 pub fn get_v_files_from_dir(dir string, user_defines []string, target_os string) []string {
-	if dir.len == 0 {
+	if dir == '' {
 		return []string{}
 	}
 	mod_files := list_dir_entries(dir)
 	mut v_files := []string{}
 	mut defaults := []string{}
 	for file in mod_files {
-		if file.len == 0 {
+		if file == '' {
 			continue
 		}
 		// Include .v files (including .c.v), exclude .js.v and test files
@@ -52,12 +52,12 @@ pub fn get_v_files_from_dir(dir string, user_defines []string, target_os string)
 			}
 		}
 		path := os.join_path(dir, file)
-		if path.len == 0 {
+		if path == '' {
 			continue
 		}
 		// Collect _default.c.v files separately; they are only included when
 		// no platform-specific variant exists (e.g. _darwin.c.v, _linux.c.v).
-		if string_bytes_has_suffix(file, 'default.c.v') {
+		if file.contains('default.c.v') {
 			defaults << path
 		} else {
 			v_files << path
@@ -65,68 +65,55 @@ pub fn get_v_files_from_dir(dir string, user_defines []string, target_os string)
 	}
 	// Add _default.c.v files only when no platform-specific variant was selected.
 	for dfile in defaults {
-		if !has_specialized_platform_file(dfile, v_files) {
+		no_postfix := fname_without_platform_postfix(dfile)
+		mut has_specialized := false
+		for vf in v_files {
+			if fname_without_platform_postfix(vf) == no_postfix {
+				has_specialized = true
+				break
+			}
+		}
+		if !has_specialized {
 			v_files << dfile
 		}
 	}
 	return v_files
 }
 
-fn has_specialized_platform_file(default_file string, files []string) bool {
-	default_suffix := 'default.c.v'
-	if !string_bytes_has_suffix(default_file, default_suffix) {
-		return false
-	}
-	prefix := default_file[..default_file.len - default_suffix.len]
-	platform_suffixes := [
+// fname_without_platform_postfix strips the platform-specific suffix from a file path,
+// so that e.g. "free_memory_impl_darwin.c.v" and "free_memory_impl_default.c.v" both
+// map to the same key, allowing detection of specialized vs default variants.
+fn fname_without_platform_postfix(file string) string {
+	return file.replace_each([
+		'default.c.v',
+		'_',
 		'nix.c.v',
+		'_',
 		'windows.c.v',
+		'_',
 		'linux.c.v',
+		'_',
 		'darwin.c.v',
+		'_',
 		'macos.c.v',
+		'_',
 		'android.c.v',
+		'_',
 		'termux.c.v',
+		'_',
 		'android_outside_termux.c.v',
+		'_',
 		'freebsd.c.v',
+		'_',
 		'openbsd.c.v',
+		'_',
 		'netbsd.c.v',
+		'_',
 		'dragonfly.c.v',
+		'_',
 		'solaris.c.v',
-	]
-	for file in files {
-		for suffix in platform_suffixes {
-			if file.len == prefix.len + suffix.len && string_bytes_has_prefix(file, prefix)
-				&& string_bytes_has_suffix(file, suffix) {
-				return true
-			}
-		}
-	}
-	return false
-}
-
-fn string_bytes_has_prefix(s string, prefix string) bool {
-	if s.len < prefix.len {
-		return false
-	}
-	for i in 0 .. prefix.len {
-		if s[i] != prefix[i] {
-			return false
-		}
-	}
-	return true
-}
-
-fn string_bytes_has_suffix(s string, suffix string) bool {
-	if s.len < suffix.len {
-		return false
-	}
-	start := s.len - suffix.len
-	for i in 0 .. suffix.len {
-		if s[start + i] != suffix[i] {
-			return false
-		}
-	}
-	return true
+		'_',
+	])
 }
 
 // extract_define_feature extracts the feature name from a _d_ or _notd_ filename.

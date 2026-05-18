@@ -17,10 +17,10 @@ mut:
 	file    &token.File = &token.File{}
 	scanner &scanner.Scanner
 	// track state
-	exp_lcbr             bool // expecting `{` parsing `x` in `for|if|match x {` etc
-	exp_pt               bool // expecting (p)ossible (t)ype from `p.expr()`
-	in_top_level         bool // inside top-level context (file scope / top-level comptime block)
-	in_match_branch_cond bool
+	exp_lcbr       bool // expecting `{` parsing `x` in `for|if|match x {` etc
+	exp_pt         bool // expecting (p)ossible (t)ype from `p.expr()`
+	in_top_level   bool // inside top-level context (file scope / top-level comptime block)
+	selector_names map[int]string
 	// token info : start
 	line      int
 	lit       string
@@ -48,6 +48,7 @@ fn (mut p Parser) init(filename string, src string, mut file_set token.FileSet) 
 	p.pos = token.Pos{}
 	p.tok = .unknown
 	p.tok_next_ = .unknown
+	p.selector_names = map[int]string{}
 	// init
 	// TODO: consider another way to pass in file set?
 	p.file = file_set.add_file(filename, -1, src.len)
@@ -147,10 +148,11 @@ pub fn (mut p Parser) parse_file(filename string, mut file_set token.FileSet) as
 		println('scan & parse ${filename} (${p.file.line_count()} LOC): ${parse_time.milliseconds()}ms (${parse_time.microseconds()}µs)')
 	}
 	return ast.File{
-		attributes: attributes
-		mod:        mod
-		name:       filename
-		imports:    imports
+		attributes:     attributes
+		mod:            mod
+		name:           filename
+		imports:        imports
+		selector_names: p.selector_names.clone()
 		// decls: decls
 		stmts: top_stmts
 	}
@@ -491,65 +493,6 @@ fn (mut p Parser) complete_simple_stmt(expr ast.Expr, expecting_semi bool) ast.S
 	}
 }
 
-fn (p &Parser) can_parse_init_after_expr(expr ast.Expr) bool {
-	if !p.exp_lcbr {
-		return true
-	}
-	if p.in_match_branch_cond {
-		return false
-	}
-	return expr_looks_like_type(expr)
-}
-
-fn expr_looks_like_type(expr ast.Expr) bool {
-	match expr {
-		ast.Type {
-			return true
-		}
-		ast.Keyword {
-			return expr.tok == .key_struct
-		}
-		ast.Ident {
-			return name_looks_like_type(expr.name)
-		}
-		ast.SelectorExpr {
-			return selector_name_looks_like_type(expr.rhs.name)
-		}
-		ast.GenericArgs {
-			return expr_looks_like_type(expr.lhs)
-		}
-		ast.GenericArgOrIndexExpr {
-			return expr_looks_like_type(expr.lhs)
-		}
-		ast.PrefixExpr {
-			return expr.op == .amp && expr_looks_like_type(expr.expr)
-		}
-		ast.ComptimeExpr {
-			return expr_looks_like_type(expr.expr)
-		}
-		else {
-			return false
-		}
-	}
-}
-
-fn name_looks_like_type(name string) bool {
-	return name.len > 0 && u8(name[0]).is_capital() && (name.len == 1 || name_has_lower(name))
-}
-
-fn selector_name_looks_like_type(name string) bool {
-	return name.len > 1 && u8(name[0]).is_capital() && name_has_lower(name)
-}
-
-fn name_has_lower(name string) bool {
-	for c in name.bytes() {
-		if c >= `a` && c <= `z` {
-			return true
-		}
-	}
-	return false
-}
-
 fn (mut p Parser) expr(min_bp token.BindingPower) ast.Expr {
 	// p.log('EXPR: ${p.tok} - ${p.line}')
 	// Self-hosted ARM64 builds can conflate `&` with backtick char tokens,
@@ -570,7 +513,7 @@ fn (mut p Parser) expr(min_bp token.BindingPower) ast.Expr {
 		mut prefix_rhs := ast.empty_expr
 		if p.tok == .name {
 			prefix_rhs = p.ident_or_named_type()
-			if p.tok == .lcbr && p.can_parse_init_after_expr(prefix_rhs) {
+			if p.tok == .lcbr && !p.exp_lcbr {
 				prefix_rhs = p.assoc_or_init_expr(prefix_rhs)
 			}
 			prefix_rhs = p.finish_expr(prefix_rhs, .highest)
@@ -583,13 +526,21 @@ fn (mut p Parser) expr(min_bp token.BindingPower) ast.Expr {
 			expr: prefix_rhs
 		}), min_bp)
 	}
+	if p.tok == .xor {
+		lifetime_pos := p.pos
+		p.next()
+		return p.finish_expr(ast.Expr(ast.LifetimeExpr{
+			name: p.expect_name()
+			pos:  lifetime_pos
+		}), min_bp)
+	}
 	if p.tok == .mul {
 		prefix_pos := p.pos
 		p.next()
 		mut prefix_rhs := ast.empty_expr
 		if p.tok == .name {
 			prefix_rhs = p.ident_or_named_type()
-			if p.tok == .lcbr && p.can_parse_init_after_expr(prefix_rhs) {
+			if p.tok == .lcbr && !p.exp_lcbr {
 				prefix_rhs = p.assoc_or_init_expr(prefix_rhs)
 			}
 			prefix_rhs = p.finish_expr(prefix_rhs, .highest)
@@ -954,7 +905,7 @@ fn (mut p Parser) expr(min_bp token.BindingPower) ast.Expr {
 					}
 					lhs = inner_type
 					// `[2]type{}`
-					if p.tok == .lcbr && p.can_parse_init_after_expr(lhs) {
+					if p.tok == .lcbr && !p.exp_lcbr {
 						p.next()
 						mut init := ast.empty_expr
 						if p.tok != .rcbr {
@@ -1009,7 +960,7 @@ fn (mut p Parser) expr(min_bp token.BindingPower) ast.Expr {
 					len:       exprs[0]
 				}))
 				// `[n]type{}`
-				if p.tok == .lcbr && p.can_parse_init_after_expr(lhs) {
+				if p.tok == .lcbr && !p.exp_lcbr {
 					p.next()
 					mut init := ast.empty_expr
 					if p.tok != .rcbr {
@@ -1043,7 +994,7 @@ fn (mut p Parser) expr(min_bp token.BindingPower) ast.Expr {
 					elem_type: p.expect_type()
 				}))
 				// `[]type{}`
-				if p.tok == .lcbr && p.can_parse_init_after_expr(lhs) {
+				if p.tok == .lcbr && !p.exp_lcbr {
 					p.next()
 					mut cap, mut init, mut len := ast.empty_expr, ast.empty_expr, ast.empty_expr
 					for p.tok != .rcbr {
@@ -1116,8 +1067,6 @@ fn (mut p Parser) expr(min_bp token.BindingPower) ast.Expr {
 				exp_lcbr = p.exp_lcbr
 				branch_pos := p.pos
 				p.exp_lcbr = true
-				in_match_branch_cond := p.in_match_branch_cond
-				p.in_match_branch_cond = true
 				first_cond_expr := p.expr_or_type(.lowest)
 				mut cond := [p.range_expr(first_cond_expr)]
 				for p.tok == .comma {
@@ -1125,7 +1074,6 @@ fn (mut p Parser) expr(min_bp token.BindingPower) ast.Expr {
 					next_cond_expr := p.expr_or_type(.lowest)
 					cond << p.range_expr(next_cond_expr)
 				}
-				p.in_match_branch_cond = in_match_branch_cond
 				p.exp_lcbr = exp_lcbr
 				branches << ast.MatchBranch{
 					cond:  cond
@@ -1164,14 +1112,13 @@ fn (mut p Parser) expr(min_bp token.BindingPower) ast.Expr {
 			// p.log('ast.UnsafeExpr')
 			unsafe_pos := p.pos
 			p.next()
-			in_top_level := p.in_top_level
-			p.in_top_level = false
-			stmts := p.block()
-			p.in_top_level = in_top_level
+			// exp_lcbr := p.exp_lcbr
+			// p.exp_lcbr = false
 			lhs = ast.Expr(ast.UnsafeExpr{
-				stmts: stmts
+				stmts: p.block()
 				pos:   unsafe_pos
 			})
+			// p.exp_lcbr = exp_lcbr
 		}
 		.name {
 			sql_pos := p.pos
@@ -1194,7 +1141,7 @@ fn (mut p Parser) expr(min_bp token.BindingPower) ast.Expr {
 				lhs = p.string_literal(ast.StringLiteralKind.from_string_tinyv(lit))
 			}
 			// `ident{}`
-			else if p.tok == .lcbr && p.can_parse_init_after_expr(lhs) {
+			else if p.tok == .lcbr && !p.exp_lcbr {
 				// TODO: move inits to expr loop? currently just handled where needed
 				// since this is not very many places. consider if it should be moved
 				// TODO: consider the following (tricky to parse)
@@ -1209,7 +1156,7 @@ fn (mut p Parser) expr(min_bp token.BindingPower) ast.Expr {
 			lhs = p.expect_type()
 			// only handle where actually needed instead of expr loop
 			// I may change my mind, however for now this seems best
-			if p.tok == .lcbr && p.can_parse_init_after_expr(lhs) {
+			if p.tok == .lcbr && !p.exp_lcbr {
 				lhs = p.assoc_or_init_expr(lhs)
 			} else if !p.exp_pt && p.tok != .lpar {
 				p.error('unexpected type')
@@ -1239,6 +1186,12 @@ fn (mut p Parser) expr(min_bp token.BindingPower) ast.Expr {
 
 fn (mut p Parser) finish_expr(input_lhs ast.Expr, min_bp token.BindingPower) ast.Expr {
 	mut lhs := input_lhs
+	mut lhs_name := ''
+	if lhs is ast.Ident {
+		lhs_name = lhs.name
+	} else if lhs is ast.SelectorExpr {
+		lhs_name = p.selector_names[lhs.pos.id] or { '' }
+	}
 	// expr chaining
 	// TODO: make sure there are no cases where we get stuck stuck in this loop
 	// for p.tok != .eof {
@@ -1249,6 +1202,7 @@ fn (mut p Parser) finish_expr(input_lhs ast.Expr, min_bp token.BindingPower) ast
 				expr: lhs
 				typ:  p.expect_type()
 			})
+			lhs_name = ''
 		} else if p.tok == .lpar {
 			pos := p.pos
 			exp_lcbr := p.exp_lcbr
@@ -1283,6 +1237,7 @@ fn (mut p Parser) finish_expr(input_lhs ast.Expr, min_bp token.BindingPower) ast
 					pos:  pos
 				})
 			}
+			lhs_name = ''
 		} else if p.tok in [.hash, .lsbr] {
 			idx_pos := p.pos
 			if p.tok == .hash {
@@ -1306,15 +1261,14 @@ fn (mut p Parser) finish_expr(input_lhs ast.Expr, min_bp token.BindingPower) ast
 					exprs << p.expr_or_type(.lowest)
 				}
 				p.expect(.rsbr)
-				generic_args := ast.Expr(ast.GenericArgs{
-					lhs:  lhs
-					args: exprs
-					pos:  idx_pos
-				})
-				if p.tok == .lcbr && p.can_parse_init_after_expr(generic_args) {
-					lhs = p.assoc_or_init_expr(generic_args)
+				if p.tok == .lcbr && !p.exp_lcbr {
+					lhs = p.assoc_or_init_expr(ast.GenericArgs{
+						lhs:  lhs
+						args: exprs
+						pos:  idx_pos
+					})
 				} else if p.tok == .lpar {
-					if exprs.len > 1 || expr is ast.GenericArgs {
+					if exprs.len > 1 || expr is ast.GenericArgs || expr is ast.LifetimeExpr {
 						lhs = ast.Expr(ast.GenericArgs{
 							lhs:  lhs
 							args: exprs
@@ -1341,7 +1295,7 @@ fn (mut p Parser) finish_expr(input_lhs ast.Expr, min_bp token.BindingPower) ast
 					}
 				} else {
 					if p.exp_pt && (expr is ast.GenericArgs || expr is ast.Ident
-						|| expr is ast.SelectorExpr) {
+						|| expr is ast.SelectorExpr || expr is ast.LifetimeExpr) {
 						lhs = ast.Expr(ast.GenericArgs{
 							lhs:  lhs
 							args: exprs
@@ -1356,26 +1310,39 @@ fn (mut p Parser) finish_expr(input_lhs ast.Expr, min_bp token.BindingPower) ast
 					}
 				}
 			}
+			lhs_name = ''
 		} else if p.tok == .dot {
 			dot_pos := p.pos
 			p.next()
 			if p.tok == .dollar {
 				p.next()
 				_ = p.expr(.lowest)
+				rhs := ast.Ident{
+					name: '__comptime_selector__'
+					pos:  p.pos
+				}
+				full_name := if lhs_name == '' { '' } else { lhs_name + '.' + rhs.name }
+				if full_name != '' && dot_pos.is_valid() {
+					p.selector_names[dot_pos.id] = full_name
+				}
 				lhs = ast.Expr(ast.SelectorExpr{
 					lhs: lhs
-					rhs: ast.Ident{
-						name: '__comptime_selector__'
-						pos:  p.pos
-					}
+					rhs: rhs
 					pos: dot_pos
 				})
+				lhs_name = full_name
 			} else {
+				rhs := p.ident_or_keyword()
+				full_name := if lhs_name == '' { '' } else { lhs_name + '.' + rhs.name }
+				if full_name != '' && dot_pos.is_valid() {
+					p.selector_names[dot_pos.id] = full_name
+				}
 				lhs = ast.Expr(ast.SelectorExpr{
 					lhs: lhs
-					rhs: p.ident_or_keyword()
+					rhs: rhs
 					pos: dot_pos
 				})
+				lhs_name = full_name
 			}
 		} else if p.tok in [.not, .question] {
 			postfix_pos := p.pos
@@ -1385,6 +1352,7 @@ fn (mut p Parser) finish_expr(input_lhs ast.Expr, min_bp token.BindingPower) ast
 				expr: lhs
 				pos:  postfix_pos
 			})
+			lhs_name = ''
 		} else if p.tok == .key_or {
 			pos := p.pos
 			p.next()
@@ -1393,6 +1361,7 @@ fn (mut p Parser) finish_expr(input_lhs ast.Expr, min_bp token.BindingPower) ast
 				stmts: p.block()
 				pos:   pos
 			})
+			lhs_name = ''
 		} else if min_bp == .lowest && p.tok in [.dotdot, .ellipsis] {
 			range_pos := p.pos
 			range_op := p.tok()
@@ -1465,7 +1434,7 @@ fn (mut p Parser) expr_or_type(min_bp token.BindingPower) ast.Expr {
 	// TODO: is there a better way to do this? see uses of `p.exp_pt`
 	exp_pt := p.exp_pt
 	p.exp_pt = true
-	expr := if p.tok == .xor { p.expect_type() } else { p.expr(min_bp) }
+	expr := p.expr(min_bp)
 	p.exp_pt = exp_pt
 	return expr
 }
@@ -1818,8 +1787,6 @@ fn (mut p Parser) comptime_match_expr() ast.Expr {
 		exp_lcbr = p.exp_lcbr
 		branch_pos := p.pos
 		p.exp_lcbr = true
-		in_match_branch_cond := p.in_match_branch_cond
-		p.in_match_branch_cond = true
 		first_cond_expr := p.expr_or_type(.lowest)
 		mut cond := [p.range_expr(first_cond_expr)]
 		for p.tok == .comma {
@@ -1827,7 +1794,6 @@ fn (mut p Parser) comptime_match_expr() ast.Expr {
 			next_cond_expr := p.expr_or_type(.lowest)
 			cond << p.range_expr(next_cond_expr)
 		}
-		p.in_match_branch_cond = in_match_branch_cond
 		p.exp_lcbr = exp_lcbr
 		branches << ast.MatchBranch{
 			cond:  cond
@@ -1846,20 +1812,6 @@ fn (mut p Parser) comptime_match_expr() ast.Expr {
 		})
 		pos:  match_pos
 	})
-}
-
-fn for_in_binding_expr(expr ast.Expr) bool {
-	match expr {
-		ast.Ident {
-			return true
-		}
-		ast.ModifierExpr {
-			return for_in_binding_expr(expr.expr)
-		}
-		else {
-			return false
-		}
-	}
 }
 
 fn (mut p Parser) for_stmt() ast.ForStmt {
@@ -1881,33 +1833,19 @@ fn (mut p Parser) for_stmt() ast.ForStmt {
 		if p.tok == .key_in {
 			// p.expect(.key_in)
 			p.next()
-			rhs := p.expr(.lowest)
-			if for_in_binding_expr(expr) && (expr2 is ast.EmptyExpr || for_in_binding_expr(expr2)) {
-				init = ast.Stmt(ast.ForInStmt{
-					key:   expr
-					value: expr2
-					expr:  rhs
-				})
-			} else {
-				cond = ast.Expr(ast.InfixExpr{
-					op:  .key_in
-					lhs: expr
-					rhs: rhs
-					pos: expr.pos()
-				})
-			}
+			init = ast.Stmt(ast.ForInStmt{
+				key:   expr
+				value: expr2
+				expr:  p.expr(.lowest)
+			})
 		} else if p.tok == .lcbr {
 			// `for x in y {`
 			// TODO: maybe handle this differently
 			if mut expr is ast.InfixExpr && expr.op == .key_in {
-				if for_in_binding_expr(expr.lhs) {
-					init = ast.Stmt(ast.ForInStmt{
-						value: expr.lhs
-						expr:  expr.rhs
-					})
-				} else {
-					cond = expr
-				}
+				init = ast.Stmt(ast.ForInStmt{
+					value: expr.lhs
+					expr:  expr.rhs
+				})
 			}
 			// `for x < y {`
 			else {
@@ -2757,11 +2695,7 @@ fn (mut p Parser) assoc_or_init_expr(typ ast.Expr) ast.Expr {
 	if p.tok == .ellipsis {
 		p.next()
 		lx := p.expr(.lowest)
-		if p.tok in [.comma, .semicolon] {
-			p.next()
-		} else if p.tok != .rcbr {
-			p.error_expected(.semicolon, p.tok)
-		}
+		p.expect(.semicolon)
 		mut fields := []ast.FieldInit{}
 		for p.tok != .rcbr {
 			if p.tok == .comma {
@@ -2773,11 +2707,7 @@ fn (mut p Parser) assoc_or_init_expr(typ ast.Expr) ast.Expr {
 				name:  field_name
 				value: p.expr(.lowest)
 			}
-			if p.tok in [.comma, .semicolon] {
-				p.next()
-			} else if p.tok != .rcbr {
-				p.error_expected(.semicolon, p.tok)
-			}
+			p.expect_semi()
 		}
 		p.next()
 		return ast.AssocExpr{
@@ -3008,8 +2938,12 @@ fn (mut p Parser) ident_or_selector_expr() ast.Expr {
 		if p.tok == .dollar {
 			p.next()
 			p.expr(.lowest)
+			full_name := ident.name + '.TODO: comptime selector'
+			if dot_pos.is_valid() {
+				p.selector_names[dot_pos.id] = full_name
+			}
 			return ast.SelectorExpr{
-				lhs: ident
+				lhs: ast.Expr(ident)
 				rhs: ast.Ident{
 					name: 'TODO: comptime selector'
 				}
@@ -3021,6 +2955,10 @@ fn (mut p Parser) ident_or_selector_expr() ast.Expr {
 		// - method calls (e.g. `mutex.lock()`)
 		// - enum values (e.g. `.select`)
 		rhs := p.ident_or_keyword()
+		full_name := ident.name + '.' + rhs.name
+		if dot_pos.is_valid() {
+			p.selector_names[dot_pos.id] = full_name
+		}
 		return ast.SelectorExpr{
 			lhs: ident
 			rhs: rhs

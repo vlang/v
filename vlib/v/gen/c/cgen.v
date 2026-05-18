@@ -86,7 +86,6 @@ mut:
 	sorted_global_const_names            []string
 	file                                 &ast.File  = unsafe { nil }
 	table                                &ast.Table = unsafe { nil }
-	mods_with_c_includes                 map[string]bool
 	styp_cache                           map[ast.Type]string
 	no_eq_method_types                   map[ast.Type]bool // types that does not need to call its auto eq methods for optimization
 	generic_parts_cache                  []i8              // type idx -> 0 unknown, 1 false, 2 true
@@ -129,7 +128,6 @@ mut:
 	done_typedef_phase                   bool              // set after write_typedef_types() completes
 	late_chan_types                      shared []string   // concrete channel cnames discovered during file generation
 	emitted_chan_types                   map[string]bool   // concrete channel typedefs/helpers already emitted
-	c_extern_signature_types             map[string]bool   // C signature-only type decls already emitted
 	chan_pop_options                     map[string]string // types for `x := <-ch or {...}`
 	chan_push_options                    map[string]string // types for `ch <- x or {...}`
 	mtxs                                 string            // array of mutexes if the `lock` has multiple variables
@@ -324,8 +322,9 @@ mut:
 	is_builtin_overflow_mod bool
 	do_int_overflow_checks  bool // outside a `@[ignore_overflow] fn abc() {}` or a function in `builtin.overflow`
 	//
-	tid string // the thread id of the file processor in the thread pool (log it to debug issues in parallel cgen)
-	fid int    // the index of ast.File that is currently processed (log it to debug issues in parallel cgen)
+	tid              string // the thread id of the file processor in the thread pool (log it to debug issues in parallel cgen)
+	fid              int    // the index of ast.File that is currently processed (log it to debug issues in parallel cgen)
+	mods_with_c_libs map[string]bool
 }
 
 @[heap]
@@ -392,7 +391,6 @@ pub fn gen(files []&ast.File, mut table ast.Table, pref_ &pref.Preferences) GenO
 		json_forward_decls:            strings.new_builder(100)
 		sql_buf:                       strings.new_builder(100)
 		table:                         table
-		mods_with_c_includes:          modules_with_c_includes(files)
 		pref:                          pref_
 		fn_decl:                       unsafe { nil }
 		anon_fn:                       unsafe { nil }
@@ -416,7 +414,6 @@ pub fn gen(files []&ast.File, mut table ast.Table, pref_ &pref.Preferences) GenO
 		has_debugger:                  'v.debug' in table.modules
 		reflection_strings:            &reflection_strings
 		generated_map_key_fns:         map[ast.Type]bool{}
-		c_extern_signature_types:      map[string]bool{}
 		boehm_keep_decl:               map[string]bool{}
 		boehm_keep_gen:                map[string]bool{}
 		boehm_keep_busy:               map[string]bool{}
@@ -438,6 +435,16 @@ pub fn gen(files []&ast.File, mut table ast.Table, pref_ &pref.Preferences) GenO
 		global_g.cleanups[mod] = strings.new_builder(100)
 	}
 	global_g.init()
+	for file in files {
+		if file.path.starts_with(pref_.vlib) {
+			continue
+		}
+		for stmt in file.stmts {
+			if stmt is ast.HashStmt && stmt.kind == 'flag' && stmt.main.contains('-l') {
+				global_g.mods_with_c_libs[file.mod.name] = true
+			}
+		}
+	}
 	util.timing_measure('cgen init')
 	global_g.tests_inited = false
 	global_g.file = files.last()
@@ -800,13 +807,13 @@ pub fn gen(files []&ast.File, mut table ast.Table, pref_ &pref.Preferences) GenO
 		for vsafe_fn_name, val in g.vsafe_arithmetic_ops {
 			styp := g.styp(val.typ)
 			if val.op == .div {
-				if g.pref.div_by_zero_is_zero {
+				if g.pref.no_builtin || g.pref.div_by_zero_is_zero {
 					b.writeln('static inline ${styp} ${vsafe_fn_name}(${styp} x, ${styp} y) { if (_unlikely_(0 == y)) { return 0; } else { return x / y; } }')
 				} else {
 					b.writeln('static inline ${styp} ${vsafe_fn_name}(${styp} x, ${styp} y) { if (_unlikely_(0 == y)) { builtin___v_panic(_S("division by zero")); } return x / y; }')
 				}
 			} else {
-				if g.pref.div_by_zero_is_zero {
+				if g.pref.no_builtin || g.pref.div_by_zero_is_zero {
 					b.writeln('static inline ${styp} ${vsafe_fn_name}(${styp} x, ${styp} y) { if (_unlikely_(0 == y)) { return x; } else { return x % y; } }')
 				} else {
 					b.writeln('static inline ${styp} ${vsafe_fn_name}(${styp} x, ${styp} y) { if (_unlikely_(0 == y)) { builtin___v_panic(_S("modulo by zero")); } return x % y; }')
@@ -1021,7 +1028,6 @@ fn cgen_process_one_file_cb(mut p pool.PoolProcessor, idx int, wid int) voidptr 
 		sql_buf:                            strings.new_builder(100)
 		cleanup:                            strings.new_builder(100)
 		table:                              global_g.table
-		mods_with_c_includes:               global_g.mods_with_c_includes
 		pref:                               global_g.pref
 		fn_decl:                            unsafe { nil }
 		anon_fn:                            unsafe { nil }
@@ -1061,7 +1067,6 @@ fn cgen_process_one_file_cb(mut p pool.PoolProcessor, idx int, wid int) voidptr 
 		has_debugger:                       'v.debug' in global_g.table.modules
 		reflection_strings:                 global_g.reflection_strings
 		generated_map_key_fns:              map[ast.Type]bool{}
-		c_extern_signature_types:           map[string]bool{}
 		boehm_keep_decl:                    map[string]bool{}
 		boehm_keep_gen:                     map[string]bool{}
 		boehm_keep_busy:                    map[string]bool{}

@@ -1,6 +1,7 @@
 module main
 
 struct DirLike {
+mut:
 	d_name [256]u8
 }
 

@@ -9,10 +9,11 @@ import v2.types
 
 // is_interface_var checks if a variable is an interface type by looking up its type in scope
 fn (t &Transformer) is_interface_var(name string) bool {
-	typ := t.lookup_var_type(name) or {
-		// Special case: 'err' in or-blocks is always IError interface.
-		return name == 'err'
+	// Special case: 'err' in or-blocks is always IError interface
+	if name == 'err' {
+		return true
 	}
+	typ := t.lookup_var_type(name) or { return false }
 	return typ is types.Interface
 }
 

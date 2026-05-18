@@ -30,6 +30,13 @@ jobs:
       - uses: actions/checkout@v6
         with:
           fetch-depth: 10
+      - name: Cache Homebrew downloads
+        uses: actions/cache@v4
+        with:
+          path: ~/Library/Caches/Homebrew
+          key: brew-cross-macos-${{ hashFiles('.github/workflows/cross_ci.yml') }}
+          restore-keys: |
+            brew-cross-macos-
       - name: Build V
         run: make -j4 && ./v symlink
 
@@ -49,6 +56,14 @@ jobs:
       - name: Cross-compilation of veb app to Linux with -d use_openssl
         run: ./v -d use_openssl -os linux examples/veb/veb_example.v
 
+      - name: Cross-compilation of vlang/gitly to Linux with -d use_openssl
+        run: |
+          ./v retry -- ./v install markdown
+          ./v retry -- ./v install pcre
+          ./v retry -- git clone --depth 1 https://github.com/vlang/gitly /tmp/gitly
+          ./v -d use_openssl -os linux /tmp/gitly
+          file /tmp/gitly/gitly
+
       - name: Cross-compilation to Windows
         run: |
           ./v -os windows cmd/v
@@ -63,6 +78,7 @@ jobs:
       - uses: actions/checkout@v6
         with:
           fetch-depth: 10
+      - uses: ./.github/actions/cache-apt-packages-action
       - name: Build v
         run: make -j4 && ./v symlink
 

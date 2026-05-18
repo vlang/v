@@ -81,7 +81,7 @@ pub fn decl_key(module_name string, decl ast.FnDecl, env &types.Environment) str
 	mod_name := normalize_module_name(module_name)
 	if is_method_decl(decl) {
 		receiver := receiver_primary_name(mod_name, decl, env)
-		return '${mod_name}|m|${receiver}|${decl.name}'
+		return '${mod_name}|m|${receiver}|${normalize_method_name(decl.name)}'
 	}
 	return '${mod_name}|f|${decl.name}'
 }
@@ -253,7 +253,9 @@ fn is_method_decl(decl ast.FnDecl) bool {
 }
 
 fn is_module_init(info FnInfo) bool {
-	return !is_method_decl(info.decl) && (info.decl.name == 'init' || info.decl.name == 'deinit')
+	return !is_method_decl(info.decl) && (info.decl.name == 'init'
+		|| info.decl.name == 'deinit'
+		|| info.decl.name.starts_with('__v_init_consts_'))
 }
 
 fn normalize_module_name(module_name string) string {
@@ -440,6 +442,27 @@ fn type_expr_receiver_candidates(mod_name string, expr ast.Expr) []string {
 fn receiver_names_from_decl(mod_name string, decl ast.FnDecl, env &types.Environment) []string {
 	mut out := []string{}
 	add_receiver_name_candidates(mut out, mod_name, receiver_type_expr_name(decl.receiver.typ))
+	match decl.receiver.typ {
+		ast.Ident {
+			name := sanitize_receiver_name(decl.receiver.typ.name)
+			add_unique_string(mut out, name)
+			add_unique_string(mut out, maybe_trim_module_prefix(mod_name, name))
+			if mod_name != '' && mod_name != 'main' {
+				add_unique_string(mut out, '${mod_name}__${name}')
+			}
+		}
+		ast.PrefixExpr {
+			if decl.receiver.typ.expr is ast.Ident {
+				name := sanitize_receiver_name(decl.receiver.typ.expr.name)
+				add_unique_string(mut out, name)
+				add_unique_string(mut out, maybe_trim_module_prefix(mod_name, name))
+				if mod_name != '' && mod_name != 'main' {
+					add_unique_string(mut out, '${mod_name}__${name}')
+				}
+			}
+		}
+		else {}
+	}
 
 	// Method on []ElemType — receiver name is Array_ElemType.
 	// Use the string name which includes [] prefix for array types.
@@ -475,8 +498,7 @@ fn receiver_primary_name(mod_name string, decl ast.FnDecl, env &types.Environmen
 }
 
 fn normalize_method_name(name string) string {
-	base_name := strip_generic_specialization_suffix(name)
-	return match base_name {
+	return match name {
 		'+' { 'plus' }
 		'-' { 'minus' }
 		'*' { 'mul' }
@@ -488,7 +510,7 @@ fn normalize_method_name(name string) string {
 		'>' { 'gt' }
 		'<=' { 'le' }
 		'>=' { 'ge' }
-		else { base_name }
+		else { name }
 	}
 }
 
@@ -1198,6 +1220,29 @@ fn (w &Walker) current_param_receiver_candidates(name string, mod_name string) [
 	return out
 }
 
+fn (w &Walker) current_receiver_candidates(name string, mod_name string) []string {
+	mut out := []string{}
+	if name == '' || w.cur_fn_decl.name == '' || !is_method_decl(w.cur_fn_decl)
+		|| w.cur_fn_decl.receiver.name != name {
+		return out
+	}
+	for receiver in type_expr_receiver_candidates(mod_name, w.cur_fn_decl.receiver.typ) {
+		add_unique_string(mut out, receiver)
+	}
+	generic_name := receiver_type_expr_name(w.cur_fn_decl.receiver.typ)
+	if generic_name == '' || w.env == unsafe { nil } {
+		return out
+	}
+	for bindings in w.current_fn_generic_bindings() {
+		if concrete := bindings[generic_name] {
+			for receiver in type_name_candidates_from_type(mod_name, concrete) {
+				add_unique_string(mut out, receiver)
+			}
+		}
+	}
+	return out
+}
+
 fn (w &Walker) current_fn_generic_bindings() []map[string]types.Type {
 	if w.env == unsafe { nil } || w.cur_fn_decl.name == '' {
 		return []map[string]types.Type{}
@@ -1234,6 +1279,9 @@ fn (w &Walker) receiver_candidates_for_expr(expr ast.Expr, mod_name string) []st
 				}
 			}
 			name := sanitize_receiver_name(expr.name)
+			for type_name in w.current_receiver_candidates(expr.name, mod_name) {
+				add_unique_string(mut out, type_name)
+			}
 			for type_name in w.current_param_receiver_candidates(expr.name, mod_name) {
 				add_unique_string(mut out, type_name)
 			}
@@ -1674,6 +1722,9 @@ fn (mut w Walker) walk_expr(expr ast.Expr, mod_name string) {
 					w.walk_expr(expr.value_type, mod_name)
 				}
 				ast.OptionType {
+					w.walk_expr(expr.base_type, mod_name)
+				}
+				ast.PointerType {
 					w.walk_expr(expr.base_type, mod_name)
 				}
 				ast.ResultType {
