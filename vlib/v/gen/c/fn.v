@@ -658,7 +658,7 @@ fn (g &Gen) should_emit_c_extern_decl(node ast.FnDecl) bool {
 	if file_links_c_source(node.source_file) || node.mod in g.mods_with_c_libs {
 		return true
 	}
-	if g.pref.os == .vinix {
+	if g.pref.os == .vinix && !node.source_file.path.starts_with(g.pref.vlib) {
 		c_sym_name := node.name.after('.')
 		if c_sym_name.starts_with('__builtin_') {
 			return false
