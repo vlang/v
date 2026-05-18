@@ -31,6 +31,20 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
+      - name: Cache apt packages
+        if: runner.os == 'Linux'
+        uses: ./.github/actions/cache-apt-packages-action
+
+      - name: Cache Homebrew downloads
+        if: runner.os == 'macOS'
+        uses: actions/cache@v4
+        with:
+          path: ~/Library/Caches/Homebrew
+          key: brew-${{ matrix.os }}-v_apps-${{ hashFiles('.github/workflows/v_apps_and_modules_compile_ci.yml') }}
+          restore-keys: |
+            brew-${{ matrix.os }}-v_apps-
+            brew-${{ matrix.os }}-
+
       - name: Build V
         id: build
         run: make && sudo ./v symlink
@@ -41,7 +55,7 @@ jobs:
             .github/workflows/disable_azure_mirror.sh
             v retry -- sudo apt -qq update
             v retry -- sudo apt -qq install libgc-dev libsodium-dev libssl-dev sqlite3 libsqlite3-dev
-            v retry -- sudo apt -qq install libfreetype6-dev libxi-dev libxcursor-dev libgl-dev libxrandr-dev libasound2-dev xfonts-75dpi xfonts-base libegl-dev
+            v retry -- sudo apt -qq install libfreetype6-dev libxi-dev libxcursor-dev libgl-dev libxrandr-dev libasound2-dev xfonts-75dpi xfonts-base libegl-dev libharfbuzz-dev libfribidi-dev libfontconfig1-dev libpango1.0-dev libglib2.0-dev libdbus-1-dev
             v retry -- sudo apt -qq install sassc libgit2-dev # needed by gitly
             v retry -- sudo apt -qq install libunwind-18-dev # needed by v-analyzer for libbacktrace
           else
@@ -56,7 +70,6 @@ jobs:
           v .
 
       - name: Test vtcc
-        if: runner.os == 'Linux'
         run: .github/workflows/compile_v_with_vtcc.sh
 
       - name: Test vsql compilation and examples

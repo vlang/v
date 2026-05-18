@@ -42,10 +42,10 @@ jobs:
         run: v retry -- v install sdl && v ~/.vmodules/sdl/setup.vsh
 
       - name: Install Shy
-        run: v retry -- v install https://github.com/larpon/shy
+        run: v retry -- v install https://github.com/medvednikov/shy
 
       - name: Clone Puzzle Vibes
-        run: v retry -- git clone https://github.com/larpon/puzzle_vibes/
+        run: v retry -- git clone https://github.com/medvednikov/puzzle_vibes/
 
       - name: Check PV compiles with -g
         run: cd puzzle_vibes && v -g .

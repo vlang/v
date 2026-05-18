@@ -6,7 +6,6 @@ module builder
 import os
 import v2.ast
 import v2.abi
-import v2.autofix
 import v2.eval
 import v2.gen.arm64
 import v2.gen.c
@@ -110,6 +109,8 @@ fn sanitize_staged_c_source(c_source string) string {
 	// UdpSocket result pointer auto-deref: .sock field is UdpSocket (value), result contains &UdpSocket.
 	source = source.replace('.sock = (*(net__UdpSocket**)(((u8*)(&_or_t54.err)) + sizeof(IError)))',
 		'.sock = *(*(net__UdpSocket**)(((u8*)(&_or_t54.err)) + sizeof(IError)))')
+	// Generic function specialization: convert_voidptr_to_t_T -> convert_voidptr_to_t_f64
+	source = source.replace('sync__convert_voidptr_to_t_T(', 'sync__convert_voidptr_to_t_f64(')
 	source = ensure_string_eq_impl(source)
 	// ObjC .m file references g_vui_webview_cookie_val as a global variable.
 	// The cleanc backend uses DarwinWebViewState singleton instead.
@@ -430,29 +431,6 @@ pub fn (mut b Builder) build(files []string) {
 		// b.print_flat_ast_summary()
 	}
 
-	// -autofix: rewrite source files to fix simple mistakes (missing `mut`, ...)
-	// before any further analysis. Only consider user-provided files so we never
-	// touch files in vlib/builtin or other system modules.
-	if b.pref.autofix {
-		mut user_set := map[string]bool{}
-		for u in b.user_files {
-			user_set[u] = true
-			abs := os.real_path(u)
-			user_set[abs] = true
-		}
-		mut user_ast_files := []ast.File{}
-		for f in b.files {
-			if user_set[f.name] || user_set[os.real_path(f.name)] {
-				user_ast_files << f
-			}
-		}
-		fixed := autofix.run(user_ast_files, b.file_set)
-		if fixed > 0 {
-			eprintln('autofix: rewrote ${fixed} location(s); re-run the compiler to use the updated source.')
-			exit(0)
-		}
-	}
-
 	if b.pref.skip_type_check {
 		b.env = types.Environment.new()
 	} else {
@@ -469,9 +447,11 @@ pub fn (mut b Builder) build(files []string) {
 	transform_start := sw.elapsed()
 	mut trans := transformer.Transformer.new_with_pref(b.files, b.env, b.pref)
 	trans.set_file_set(b.file_set)
-	// The parallel transformer still has shared-state merge races on larger
-	// ownership builds. Use the sequential transformer until that path is safe.
-	b.files = trans.transform_files(b.files)
+	b.files = if b.pref.no_parallel_transform || b.pref.ownership {
+		trans.transform_files(b.files)
+	} else {
+		b.transform_files_parallel(mut trans)
+	}
 	transform_time := time.Duration(sw.elapsed() - transform_start)
 	print_time('Transform', transform_time)
 
@@ -534,7 +514,10 @@ fn (mut b Builder) gen_cleanc() {
 	// (including cmd/v2 self-host and directory-style user module builds).
 	// Force single-unit cleanc generation there.
 	force_no_cache := b.should_disable_cleanc_cache()
-	mut use_cache := !b.pref.no_cache && !force_no_cache
+	use_cache := !b.pref.no_cache && !force_no_cache
+	if os.getenv('V2_TRACE_CACHE') != '' {
+		eprintln('TRACE_CACHE use_cache=${use_cache} no_cache=${b.pref.no_cache} force_no_cache=${force_no_cache} self_build=${b.is_cmd_v2_self_build()} files=${b.user_files}')
+	}
 
 	// Determine output name
 	output_name := if b.pref.output_file != '' {
@@ -554,15 +537,6 @@ fn (mut b Builder) gen_cleanc() {
 	// Switch to system cc (gcc/clang) when the default compiler is TCC.
 	if b.pref.is_prod && cc.contains('tcc') {
 		cc = 'cc'
-	}
-	if cc.contains('tcc') {
-		// TCC fallback can recompile one C source with cc, but cached-core builds
-		// link prebuilt .o files. If TCC link fails, falling back to cc would mix
-		// incompatible object formats on platforms like macOS.
-		use_cache = false
-	}
-	if os.getenv('V2_TRACE_CACHE') != '' {
-		eprintln('TRACE_CACHE use_cache=${use_cache} no_cache=${b.pref.no_cache} force_no_cache=${force_no_cache} self_build=${b.is_cmd_v2_self_build()} files=${b.user_files}')
 	}
 	directive_flags := b.collect_cflags_from_sources()
 	// Separate directive flags into compile-only and link-only flags.
@@ -1352,8 +1326,15 @@ fn ast_file_module_name(file ast.File) string {
 	return 'main'
 }
 
+fn normalize_target_os_name(target_os string) string {
+	return match target_os.to_lower() {
+		'darwin', 'mac' { 'macos' }
+		else { target_os.to_lower() }
+	}
+}
+
 fn flag_os_matches(cond string, target_os string) bool {
-	current := pref.normalize_os_name(target_os)
+	current := normalize_target_os_name(target_os)
 	return match cond.to_lower() {
 		'darwin', 'macos', 'mac' { current == 'macos' || current == 'darwin' }
 		'linux' { current == 'linux' }
@@ -1512,8 +1493,7 @@ fn (b &Builder) collect_cflags_from_sources() string {
 	if !b.pref.skip_builtin {
 		for module_path in core_cached_module_paths {
 			vlib_path := b.pref.get_vlib_module_path(module_path)
-			module_files := get_v_files_from_dir(vlib_path, b.pref.user_defines,
-				b.pref.get_effective_os())
+			module_files := get_v_files_from_dir(vlib_path, b.pref.user_defines, os.user_os())
 			for mf in module_files {
 				if mf !in scanned_files {
 					scan_paths << mf
@@ -1537,7 +1517,7 @@ fn (b &Builder) collect_cflags_from_sources() string {
 				cond := trimmed[4..].trim_right('?{ ').trim_space()
 				if skip_depth > 0 {
 					skip_depth++
-				} else if !comptime_cond_matches(cond, b.pref.get_effective_os()) {
+				} else if !comptime_cond_matches(cond, os.user_os()) {
 					skip_depth = 1
 				}
 				continue
@@ -1560,8 +1540,9 @@ fn (b &Builder) collect_cflags_from_sources() string {
 			// Replace @VEXEROOT before parsing so path normalization sees absolute paths
 			resolved_line := line.replace('@VEXEROOT', b.pref.vroot).replace('VEXEROOT',
 				b.pref.vroot)
-			mut flag := parse_flag_directive_line(resolved_line, scan_path,
-				b.pref.get_effective_os()) or { continue }
+			mut flag := parse_flag_directive_line(resolved_line, scan_path, os.user_os()) or {
+				continue
+			}
 			// Build include flags from already-collected flags for compiling missing .o files
 			mut inc_flags := []string{}
 			for f in flags {
@@ -1633,7 +1614,7 @@ fn comptime_cond_matches(cond string, target_os string) bool {
 		right := cond[and_idx + 2..].trim_space()
 		return comptime_cond_matches(left, target_os) && comptime_cond_matches(right, target_os)
 	}
-	current := pref.normalize_os_name(target_os)
+	current := normalize_target_os_name(target_os)
 	return match cond.to_lower() {
 		'macos', 'darwin', 'mac' { current == 'macos' || current == 'darwin' }
 		'linux' { current == 'linux' }
@@ -1651,9 +1632,6 @@ fn comptime_cond_matches(cond string, target_os string) bool {
 }
 
 fn default_cc(vroot string) string {
-	$if macos {
-		return 'cc'
-	}
 	// Try to use tcc by default, like v1 does.
 	tcc_path := os.join_path(vroot, 'thirdparty', 'tcc', 'tcc.exe')
 	if os.exists(tcc_path) {
@@ -1727,6 +1705,37 @@ fn run_cc_cmd_or_exit(cmd string, stage string, show_cc bool) bool {
 				}
 				fallback_cmd = filtered.join(' ')
 			}
+			// cc cannot read .o files produced by tcc on macOS arm64. Recompile
+			// any cached .o files referenced in the command from their .c siblings
+			// using cc before retrying the link.
+			for tok in fallback_cmd.fields() {
+				clean_tok := tok.trim('"')
+				if !clean_tok.ends_with('.o') {
+					continue
+				}
+				stem := clean_tok.all_before_last('.o')
+				mut c_sibling := stem + '.c'
+				if !os.exists(c_sibling) && stem.ends_with('.main') {
+					c_sibling = stem.all_before_last('.main') + '.c'
+				}
+				if !os.exists(c_sibling) {
+					continue
+				}
+				recompile_cmd := 'cc -w -Wno-incompatible-function-pointer-types -c "${c_sibling}" -o "${clean_tok}"'
+				if show_cc {
+					println(recompile_cmd)
+				}
+				rr := os.execute(recompile_cmd)
+				if rr.exit_code != 0 {
+					eprintln('cc recompile failed for ${c_sibling}:')
+					eprintln(rr.output)
+				}
+				// Invalidate stamp so future builds rebuild from .c too.
+				stamp_path := stem + '.stamp'
+				if os.exists(stamp_path) {
+					os.rm(stamp_path) or {}
+				}
+			}
 			run_cc_cmd_or_exit(fallback_cmd, stage, show_cc)
 			return true
 		}
@@ -1762,11 +1771,6 @@ fn (mut b Builder) gen_native(backend_arch pref.Arch) {
 		eprintln('error: native backend not available (compiled with stubbed ssa module)')
 		eprintln('hint: use v2 compiled with v1 for native code generation')
 		return
-	}
-	mod.target = ssa.TargetData{
-		ptr_size:      8
-		endian_little: true
-		os:            b.pref.get_effective_os()
 	}
 	mut ssa_builder := ssa.Builder.new_with_env(mod, b.env)
 	mut native_sw := time.new_stopwatch()

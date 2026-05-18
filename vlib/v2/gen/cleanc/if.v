@@ -451,9 +451,6 @@ fn (mut g Gen) get_if_expr_type(node &ast.IfExpr) string {
 		}
 		return env_type
 	}
-	if branch_type != '' && branch_type != 'int' {
-		return branch_type
-	}
 	if node.else_expr is ast.IfExpr {
 		else_if := node.else_expr as ast.IfExpr
 		t := g.get_if_expr_type(&else_if)

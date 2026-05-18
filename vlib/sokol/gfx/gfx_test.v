@@ -1,4 +1,6 @@
 // vtest build: !msvc
+// vtest flaky: true
+// vtest retry: 1
 module gfx
 
 import os

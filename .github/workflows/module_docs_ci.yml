@@ -34,6 +34,7 @@ jobs:
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v6
+      - uses: ./.github/actions/cache-apt-packages-action
       - name: Build V
         run: make -j4 && ./v symlink
       - name: Update packages, before running apt install

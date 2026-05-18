@@ -20,29 +20,8 @@ fn (mut g Gen) set_file_module(file ast.File) {
 	g.cur_module = 'main'
 }
 
-fn (mut g Gen) expr_with_expected_type(expected_type string, expr ast.Expr) bool {
-	if expected_type == '' || !g.is_enum_type(expected_type) {
-		return false
-	}
-	if expr is ast.SelectorExpr && expr.lhs is ast.EmptyExpr {
-		rhs_name := expr.rhs.name
-		if g.enum_has_field(expected_type, rhs_name) {
-			g.sb.write_string(g.enum_member_c_name(expected_type, rhs_name))
-			return true
-		}
-	}
-	return false
-}
-
 fn (mut g Gen) gen_stmts(stmts []ast.Stmt) {
-	if g.cur_fn_name == 'decode_value' && stmts.len > 0 {
-		C.fprintf(C.stderr, c'[gen_stmts] cur_fn=%s stmts.len=%d\n', g.cur_fn_name.str, stmts.len)
-	}
 	for i in 0 .. stmts.len {
-		if g.cur_fn_name == 'decode_value' {
-			valid := stmt_has_valid_data(stmts[i])
-			C.fprintf(C.stderr, c'[gen_stmts] stmt[%d] valid=%d\n', i, if valid { 1 } else { 0 })
-		}
 		g.gen_stmt(stmts[i])
 	}
 }
@@ -59,26 +38,6 @@ fn (mut g Gen) gen_stmt(node ast.Stmt) {
 			g.gen_assign_stmt(node)
 		}
 		ast.ExprStmt {
-			if g.cur_fn_name == 'decode_value' {
-				is_comptime := node.expr is ast.ComptimeExpr
-				is_if := node.expr is ast.IfExpr
-				is_call := node.expr is ast.CallExpr
-				is_ident := node.expr is ast.Ident
-				C.fprintf(C.stderr,
-					c'[gen_stmt/ExprStmt] valid=%d comptime=%d if=%d call=%d ident=%d\n', if expr_has_valid_data(node.expr) {
-					1
-				} else {
-					0
-				}, if is_comptime {
-					1
-				} else {
-					0
-				}, if is_if { 1 } else { 0 }, if is_call { 1 } else { 0 }, if is_ident {
-					1
-				} else {
-					0
-				})
-			}
 			if !expr_has_valid_data(node.expr) {
 				return
 			}
@@ -215,26 +174,48 @@ fn (mut g Gen) gen_stmt(node ast.Stmt) {
 				if (expr_type == '' || expr_type == 'int') && expr is ast.Ident {
 					expr_type = g.get_local_var_c_type(expr.name) or { expr_type }
 				}
-				if expr is ast.Ident && expr.name == 'err'
-					&& (expr_type == 'IError' || expr_type == 'builtin__IError') {
+				value_type := option_value_type(g.cur_fn_ret_type)
+				if expr is ast.Ident && expr.name == 'err' {
 					g.sb.write_string('return (${g.cur_fn_ret_type}){ .is_error=true, .err=')
 					g.expr(expr)
 					g.sb.writeln(' };')
 					return
 				}
 				if expr_type == 'IError' {
+					if value_type != '' && value_type != 'void' {
+						if expr is ast.CastExpr
+							&& g.expr_type_to_c(expr.typ) in ['IError', 'builtin__IError'] {
+							concrete_type := g.concrete_type_for_interface_value('IError',
+								expr.expr)
+							if concrete_type == value_type {
+								g.sb.write_string('return ({ ${g.cur_fn_ret_type} _opt = (${g.cur_fn_ret_type}){ .state = 2 }; ${value_type} _val = ')
+								g.expr(expr.expr)
+								g.sb.writeln('; _option_ok(&_val, (_option*)&_opt, sizeof(_val)); _opt; });')
+								return
+							}
+						} else if expr is ast.CallOrCastExpr
+							&& g.expr_type_to_c(expr.lhs) in ['IError', 'builtin__IError'] {
+							concrete_type := g.concrete_type_for_interface_value('IError',
+								expr.expr)
+							if concrete_type == value_type {
+								g.sb.write_string('return ({ ${g.cur_fn_ret_type} _opt = (${g.cur_fn_ret_type}){ .state = 2 }; ${value_type} _val = ')
+								g.expr(expr.expr)
+								g.sb.writeln('; _option_ok(&_val, (_option*)&_opt, sizeof(_val)); _opt; });')
+								return
+							}
+						}
+					}
 					g.sb.write_string('return (${g.cur_fn_ret_type}){ .is_error=true, .err=')
 					g.expr(expr)
 					g.sb.writeln(' };')
 					return
 				}
-				if expr_type == g.cur_fn_ret_type && expr !is ast.PrefixExpr {
+				if expr_type == g.cur_fn_ret_type {
 					g.sb.write_string('return ')
 					g.expr(expr)
 					g.sb.writeln(';')
 					return
 				}
-				value_type := option_value_type(g.cur_fn_ret_type)
 				if value_type == '' || value_type == 'void' {
 					g.sb.writeln('return (${g.cur_fn_ret_type}){ .state = 2 };')
 					return
@@ -264,7 +245,6 @@ fn (mut g Gen) gen_stmt(node ast.Stmt) {
 				g.sb.write_string('return ({ ${g.cur_fn_ret_type} _opt = (${g.cur_fn_ret_type}){ .state = 2 }; ${value_type} _val = ')
 				if value_type in g.sum_type_variants {
 					g.gen_type_cast_expr(value_type, expr)
-				} else if g.expr_with_expected_type(value_type, expr) {
 				} else {
 					g.expr(expr)
 				}
@@ -285,32 +265,12 @@ fn (mut g Gen) gen_stmt(node ast.Stmt) {
 				}
 				// `return err` propagates the error from the or-block
 				if expr is ast.Ident && expr.name == 'err' {
-					mut err_type := g.get_expr_type(expr)
-					if err_type == '' || err_type == 'int' {
-						err_type = g.get_local_var_c_type(expr.name) or { err_type }
-					}
-					if err_type == 'IError' || err_type == 'builtin__IError' {
-						g.sb.write_string('return (${g.cur_fn_ret_type}){ .is_error=true, .err=')
-						g.expr(expr)
-						g.sb.writeln(' };')
-						return
-					}
-				}
-				ierror_base := g.ierror_concrete_base_for_expr(expr)
-				if ierror_base != '' {
 					g.sb.write_string('return (${g.cur_fn_ret_type}){ .is_error=true, .err=')
-					g.gen_ierror_boxed_expr(expr, ierror_base)
+					g.expr(expr)
 					g.sb.writeln(' };')
 					return
 				}
 				value_type := g.result_value_type(g.cur_fn_ret_type)
-				if value_type != '' && g.is_enum_type(value_type) && expr is ast.SelectorExpr
-					&& expr.lhs is ast.EmptyExpr {
-					g.sb.write_string('return ({ ${g.cur_fn_ret_type} _res = (${g.cur_fn_ret_type}){0}; ${value_type} _val = ')
-					_ = g.expr_with_expected_type(value_type, expr)
-					g.sb.writeln('; _result_ok(&_val, (_result*)&_res, sizeof(_val)); _res; });')
-					return
-				}
 				if value_type in g.tuple_aliases && node.exprs.len > 1 {
 					field_types := g.tuple_aliases[value_type]
 					g.sb.write_string('return ({ ${g.cur_fn_ret_type} _res = (${g.cur_fn_ret_type}){0}; ${value_type} _val = (${value_type}){')
@@ -350,6 +310,12 @@ fn (mut g Gen) gen_stmt(node ast.Stmt) {
 					g.sb.writeln(';')
 					return
 				}
+				if g.concrete_ierror_base_for_c_type(expr_type) != '' {
+					g.sb.write_string('return (${g.cur_fn_ret_type}){ .is_error=true, .err=')
+					g.gen_ierror_from_concrete_expr(expr, expr_type)
+					g.sb.writeln(' };')
+					return
+				}
 				// For CallExpr in result-returning function, check if the called
 				// function also returns the same result type (passthrough).
 				if expr is ast.CallExpr {
@@ -369,7 +335,6 @@ fn (mut g Gen) gen_stmt(node ast.Stmt) {
 				g.sb.write_string('return ({ ${g.cur_fn_ret_type} _res = (${g.cur_fn_ret_type}){0}; ${value_type} _val = ')
 				if value_type in g.sum_type_variants {
 					g.gen_type_cast_expr(value_type, expr)
-				} else if g.expr_with_expected_type(value_type, expr) {
 				} else if g.is_interface_type(value_type) {
 					// Mut params are pointers — dereference when returning as value
 					if expr is ast.Ident && expr.name in g.cur_fn_mut_params {
@@ -428,7 +393,7 @@ fn (mut g Gen) gen_stmt(node ast.Stmt) {
 			if node.op == .key_break {
 				g.sb.writeln('break;')
 			} else if node.op == .key_continue {
-				if g.comptime_continue_label != '' && g.runtime_loop_depth == 0 {
+				if g.comptime_continue_label != '' {
 					g.sb.writeln('goto ${g.comptime_continue_label};')
 				} else {
 					g.sb.writeln('continue;')
@@ -526,36 +491,6 @@ fn (mut g Gen) gen_comptime_stmt(node ast.ComptimeStmt) {
 	g.sb.writeln('/* [TODO] ComptimeStmt */')
 }
 
-fn comptime_attr_value_string(expr ast.Expr) string {
-	match expr {
-		ast.BasicLiteral {
-			return expr.value.trim('\'"')
-		}
-		ast.StringLiteral {
-			return expr.value
-		}
-		ast.Ident {
-			return expr.name
-		}
-		else {
-			return expr.name().trim('\'"')
-		}
-	}
-}
-
-fn comptime_attr_strings(attrs []ast.Attribute) []string {
-	mut out := []string{cap: attrs.len}
-	for attr in attrs {
-		value := comptime_attr_value_string(attr.value)
-		if attr.name != '' {
-			out << '${attr.name}: ${value}'
-		} else if value != '' {
-			out << value
-		}
-	}
-	return out
-}
-
 fn (mut g Gen) gen_comptime_if_stmt(node ast.IfExpr) {
 	result := g.eval_comptime_cond(node.cond)
 	if os.getenv('V2_DEBUG_COMPTIME') != '' {
@@ -608,13 +543,6 @@ fn (mut g Gen) gen_comptime_for(node ast.ForStmt) {
 		return
 	}
 	struct_type := concrete as types.Struct
-	mut attrs_by_field := map[string][]string{}
-	struct_c_name := g.types_type_to_c(concrete)
-	if decl_info := g.find_struct_decl_info_by_c_name(struct_c_name) {
-		for ast_field in decl_info.decl.fields {
-			attrs_by_field[ast_field.name] = comptime_attr_strings(ast_field.attributes)
-		}
-	}
 	field_var := for_in.value.name()
 	// Save comptime state
 	prev_field_var := g.comptime_field_var
@@ -624,27 +552,25 @@ fn (mut g Gen) gen_comptime_for(node ast.ForStmt) {
 	prev_field_attrs := g.comptime_field_attrs
 	prev_field_idx := g.comptime_field_idx
 	prev_continue_label := g.comptime_continue_label
-	continue_base := g.tmp_counter
-	g.tmp_counter++
 	g.comptime_field_var = field_var
 	g.write_indent()
 	g.sb.writeln('{ /* comptime for ${field_var} in ${type_name}.fields */')
 	g.indent++
 	for i, field in struct_type.fields {
-		continue_label := '__v_ctf_continue_${continue_base}_${i}'
 		g.comptime_field_name = field.name
 		g.comptime_field_type = g.types_type_to_c(field.typ)
 		g.comptime_field_raw_type = field.typ
-		g.comptime_field_attrs = attrs_by_field[field.name] or { []string{} }
+		g.comptime_field_attrs = g.comptime_field_attribute_strings(struct_type.name, field)
 		g.comptime_field_idx = i
-		g.comptime_continue_label = continue_label
+		g.tmp_counter++
+		g.comptime_continue_label = '__v_ctf_continue_${g.tmp_counter}_${i}'
 		g.write_indent()
 		g.sb.writeln('{ /* field ${i}: ${field.name} */')
 		g.indent++
 		// Use ForStmt.stmts for the loop body
 		g.gen_stmts(node.stmts)
 		g.write_indent()
-		g.sb.writeln('${continue_label}:;')
+		g.sb.writeln('${g.comptime_continue_label}:;')
 		g.indent--
 		g.write_indent()
 		g.sb.writeln('}')
@@ -660,4 +586,38 @@ fn (mut g Gen) gen_comptime_for(node ast.ForStmt) {
 	g.comptime_field_attrs = prev_field_attrs
 	g.comptime_field_idx = prev_field_idx
 	g.comptime_continue_label = prev_continue_label
+}
+
+fn comptime_attribute_strings(attrs []ast.Attribute) []string {
+	mut out := []string{cap: attrs.len}
+	for attr in attrs {
+		if attr.name != '' {
+			if attr.value is ast.EmptyExpr {
+				out << attr.name
+			} else {
+				out << '${attr.name}: ${attr.value.name().trim("'")}'
+			}
+		} else if attr.value !is ast.EmptyExpr {
+			out << attr.value.name().trim("'")
+		}
+	}
+	return out
+}
+
+fn (mut g Gen) comptime_field_attribute_strings(struct_name string, field types.Field) []string {
+	for file in g.files {
+		for stmt in file.stmts {
+			if stmt is ast.StructDecl {
+				if stmt.name != struct_name && !struct_name.ends_with('__${stmt.name}') {
+					continue
+				}
+				for ast_field in stmt.fields {
+					if ast_field.name == field.name {
+						return comptime_attribute_strings(ast_field.attributes)
+					}
+				}
+			}
+		}
+	}
+	return comptime_attribute_strings(field.attributes)
 }

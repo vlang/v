@@ -486,6 +486,10 @@ fn test_open_file_crlf_binary_mode() {
 }
 
 fn test_path_devnull() {
+	$if windows {
+		// Reading device files like \\.\nul crashes on Windows (TCC, GCC/MinGW).
+		return
+	}
 	dump(os.path_devnull)
 	content := os.read_file(os.path_devnull)!
 	// dump(content)

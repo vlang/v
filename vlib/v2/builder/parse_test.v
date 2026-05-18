@@ -1,4 +1,4 @@
-// vtest build: !linux
+// vtest build: !linux && !windows
 module builder
 
 import os

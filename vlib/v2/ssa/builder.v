@@ -7,7 +7,6 @@ module ssa
 import v2.ast
 import v2.markused
 import v2.types
-import os
 
 struct DynConstArray {
 	arr_global_name  string // V array struct global name
@@ -76,62 +75,11 @@ mut:
 	// Array element types by variable name (for transformer-generated functions
 	// where checker position info is unavailable). Maps param/var name to element SSA type.
 	array_elem_types map[string]TypeID
-	// Local receiver type hints for aliases that collapse to primitive SSA shapes.
-	// Example: strings.Builder is []u8, but its methods must resolve before Array_i8 methods.
-	local_receiver_types map[string]string
 }
 
 struct LoopInfo {
 	cond_block BlockID
 	exit_block BlockID
-}
-
-fn c_stdio_symbol_for_os(c_name string, user_os string) string {
-	match c_name {
-		'stdin' {
-			return match user_os {
-				'macos', 'freebsd', 'netbsd', 'dragonfly' { '__stdinp' }
-				'openbsd' { '__stdin' }
-				else { 'stdin' }
-			}
-		}
-		'stdout' {
-			return match user_os {
-				'macos', 'freebsd', 'netbsd', 'dragonfly' { '__stdoutp' }
-				'openbsd' { '__stdout' }
-				else { 'stdout' }
-			}
-		}
-		'stderr' {
-			return match user_os {
-				'macos', 'freebsd', 'netbsd', 'dragonfly' { '__stderrp' }
-				'openbsd' { '__stderr' }
-				else { 'stderr' }
-			}
-		}
-		else {
-			return c_name
-		}
-	}
-}
-
-fn c_stdio_symbol_needs_load(user_os string) bool {
-	return user_os != 'openbsd'
-}
-
-fn c_float_macro_const(c_name string) (int, string) {
-	return match c_name {
-		'FLT_EPSILON' { 32, '1.19209290e-07' }
-		'DBL_EPSILON' { 64, '2.2204460492503131e-16' }
-		else { 0, '' }
-	}
-}
-
-fn (b &Builder) c_stdio_target_os() string {
-	if b.mod.target.os.len > 0 {
-		return b.mod.target.os
-	}
-	return os.user_os().to_lower()
 }
 
 pub fn Builder.new(mod &Module) &Builder {
@@ -273,7 +221,6 @@ pub fn (mut b Builder) build_all(files []ast.File) {
 		b.generate_wyhash_stub()
 		b.generate_ierror_stubs()
 		b.generate_fd_macro_stubs()
-		b.generate_tcc_backtrace_stub()
 	}
 
 	// Phase 4: Build function bodies
@@ -781,19 +728,6 @@ fn (mut b Builder) expr_type(e ast.Expr) TypeID {
 		}
 		ast.StringLiteral {
 			return b.get_string_type()
-		}
-		ast.ArrayInitExpr {
-			if e.typ != ast.empty_expr {
-				return b.ast_type_to_ssa(e.typ)
-			}
-			if e.len is ast.PostfixExpr {
-				postfix := e.len as ast.PostfixExpr
-				if postfix.op == .not && e.exprs.len > 0 {
-					elem_type := b.expr_type(e.exprs[0])
-					return b.mod.type_store.get_array(elem_type, e.exprs.len)
-				}
-			}
-			return b.get_array_type()
 		}
 		else {
 			return b.mod.type_store.get_int(64)
@@ -1315,32 +1249,9 @@ fn (mut b Builder) register_consts_and_globals(file ast.File) {
 						field.name
 					}
 					glob_type := if field.typ != ast.empty_expr {
-						if field.typ is ast.Type {
-							type_node := field.typ as ast.Type
-							if type_node is ast.ArrayFixedType {
-								elem_type := b.ast_type_to_ssa(type_node.elem_type)
-								arr_len := if type_node.len is ast.BasicLiteral {
-									int(parse_const_int_literal(type_node.len.value))
-								} else if type_node.len is ast.Ident {
-									b.resolve_const_int(type_node.len.name)
-								} else {
-									0
-								}
-								if arr_len > 0 {
-									b.mod.type_store.get_array(elem_type, arr_len)
-								} else {
-									b.ast_type_to_ssa(field.typ)
-								}
-							} else {
-								b.ast_type_to_ssa(field.typ)
-							}
-						} else {
-							b.ast_type_to_ssa(field.typ)
-						}
+						b.ast_type_to_ssa(field.typ)
 					} else if field.value is ast.ArrayInitExpr && field.value.typ != ast.empty_expr {
 						b.ast_type_to_ssa(field.value.typ)
-					} else if field.value != ast.empty_expr {
-						b.expr_type(field.value)
 					} else {
 						b.mod.type_store.get_int(64)
 					}
@@ -1982,50 +1893,6 @@ fn (b &Builder) try_eval_const_string(expr ast.Expr) string {
 }
 
 fn (mut b Builder) ast_type_to_ssa(typ ast.Expr) TypeID {
-	raw_prefix_inner, has_raw_prefix := ast_expr_raw_amp_prefix_inner(typ)
-	if has_raw_prefix {
-		inner := raw_prefix_inner
-		base := b.ast_type_to_ssa(inner)
-		return b.mod.type_store.get_ptr(base)
-	}
-	raw_pointer_inner, has_raw_pointer := ast_expr_raw_pointer_type_inner(typ)
-	if has_raw_pointer {
-		inner := raw_pointer_inner
-		base := b.ast_type_to_ssa(inner)
-		return b.mod.type_store.get_ptr(base)
-	}
-	raw_fixed_len, raw_fixed_elem, has_raw_fixed := ast_expr_raw_array_fixed_type_parts(typ)
-	if has_raw_fixed {
-		elem_type := b.ast_type_to_ssa(raw_fixed_elem)
-		arr_len := b.array_fixed_len_from_expr(raw_fixed_len)
-		if arr_len > 0 && elem_type != 0 {
-			return b.mod.type_store.get_array(elem_type, arr_len)
-		}
-		return b.mod.type_store.get_int(64)
-	}
-	if ast_expr_is_raw_array_type(typ) {
-		return b.get_array_type()
-	}
-	_, _, has_raw_map_type := ast_expr_raw_map_type_parts(typ)
-	if has_raw_map_type {
-		return b.struct_types['map'] or { b.mod.type_store.get_int(64) }
-	}
-	raw_option_inner, has_raw_option := ast_expr_raw_option_type_inner(typ)
-	if has_raw_option {
-		return b.get_option_wrapper_type(b.ast_type_to_ssa(raw_option_inner))
-	}
-	raw_result_inner, has_raw_result := ast_expr_raw_result_type_inner(typ)
-	if has_raw_result {
-		return b.get_result_wrapper_type(b.ast_type_to_ssa(raw_result_inner))
-	}
-	raw_tuple_types, has_raw_tuple := ast_expr_raw_tuple_type_parts(typ)
-	if has_raw_tuple {
-		mut elem_types := []TypeID{cap: raw_tuple_types.len}
-		for elem_typ in raw_tuple_types {
-			elem_types << b.ast_type_to_ssa(elem_typ)
-		}
-		return b.mod.type_store.get_tuple(elem_types)
-	}
 	match typ {
 		ast.Ident {
 			return b.ident_type_to_ssa(typ.name)
@@ -2119,7 +1986,13 @@ fn (mut b Builder) ast_type_node_to_ssa(typ ast.Type) TypeID {
 		ast.ArrayFixedType {
 			// [N]T → SSA array type with N elements of T
 			elem_type := b.ast_type_to_ssa(typ.elem_type)
-			arr_len := b.array_fixed_len_from_expr(typ.len)
+			arr_len := if typ.len is ast.BasicLiteral {
+				int(parse_const_int_literal(typ.len.value))
+			} else if typ.len is ast.Ident {
+				b.resolve_const_int(typ.len.name)
+			} else {
+				0
+			}
 			if arr_len > 0 {
 				return b.mod.type_store.get_array(elem_type, arr_len)
 			}
@@ -2138,6 +2011,10 @@ fn (mut b Builder) ast_type_node_to_ssa(typ ast.Type) TypeID {
 		ast.ResultType {
 			return b.get_result_wrapper_type(b.ast_type_to_ssa(typ.base_type))
 		}
+		ast.PointerType {
+			base := b.ast_type_to_ssa(typ.base_type)
+			return b.mod.type_store.get_ptr(base)
+		}
 		ast.TupleType {
 			mut elem_types := []TypeID{cap: typ.types.len}
 			for t in typ.types {
@@ -2145,24 +2022,10 @@ fn (mut b Builder) ast_type_node_to_ssa(typ ast.Type) TypeID {
 			}
 			return b.mod.type_store.get_tuple(elem_types)
 		}
-		ast.PointerType {
-			base := b.ast_type_to_ssa(typ.base_type)
-			return b.mod.type_store.get_ptr(base)
-		}
 		else {
 			return b.mod.type_store.get_int(64)
 		}
 	}
-}
-
-fn (mut b Builder) array_fixed_len_from_expr(expr ast.Expr) int {
-	if expr is ast.BasicLiteral {
-		return int(parse_const_int_literal(expr.value))
-	}
-	if expr is ast.Ident {
-		return b.resolve_const_int(expr.name)
-	}
-	return 0
 }
 
 fn (mut b Builder) ident_type_to_ssa(name string) TypeID {
@@ -2498,9 +2361,6 @@ pub fn (mut b Builder) should_build_fn(file_name string, decl ast.FnDecl) bool {
 	if b.cur_module in ['builtin', 'strings', 'strconv', 'bits', 'sha256', 'binary'] {
 		return true
 	}
-	if b.cur_module == 'os' && decl.name == 'getenv_opt' {
-		return true
-	}
 	// Always build .vh header declarations
 	if file_name.ends_with('.vh') {
 		return true
@@ -2570,7 +2430,6 @@ pub fn (mut b Builder) build_fn(decl ast.FnDecl) {
 	b.mut_ptr_params = map[string]bool{}
 	b.label_blocks = map[string]BlockID{}
 	b.array_elem_types = map[string]TypeID{}
-	b.local_receiver_types = map[string]string{}
 
 	// Clear params (they were registered in register_fn_sig for forward decls,
 	// but we need to re-create them here with proper alloca bindings)
@@ -2753,71 +2612,7 @@ fn (mut b Builder) unwrap_ident(expr ast.Expr) ?ast.Ident {
 	if expr is ast.ModifierExpr {
 		return b.unwrap_ident(expr.expr)
 	}
-	ident_name, has_ident_name := ast_expr_raw_ident_name(expr)
-	if has_ident_name {
-		return ast.Ident{
-			name: ident_name
-		}
-	}
 	return none
-}
-
-fn ast_expr_raw_ident_name(expr ast.Expr) (string, bool) {
-	if expr is ast.Ident {
-		return expr.name, true
-	}
-	expr_tag := unsafe { (&u64(&expr))[0] }
-	// ast.Expr Ident variant in the native sumtype layout.
-	if expr_tag != 13 {
-		return '', false
-	}
-	ident_data := unsafe { (&u64(&expr))[1] }
-	if ident_data == 0 {
-		return '', false
-	}
-	ident := unsafe { &ast.Ident(voidptr(ident_data)) }
-	return ident.name, true
-}
-
-fn (b &Builder) value_is_call_to(val_id ValueID, fn_name string) bool {
-	if val_id <= 0 || val_id >= b.mod.values.len {
-		return false
-	}
-	val := b.mod.values[val_id]
-	if val.kind != .instruction || val.index < 0 || val.index >= b.mod.instrs.len {
-		return false
-	}
-	instr := b.mod.instrs[val.index]
-	if instr.op != .call || instr.operands.len == 0 {
-		return false
-	}
-	callee_id := instr.operands[0]
-	if callee_id <= 0 || callee_id >= b.mod.values.len {
-		return false
-	}
-	callee := b.mod.values[callee_id]
-	return callee.kind == .func_ref && callee.name == fn_name
-}
-
-fn (b &Builder) alloca_has_store_from_call(var_id ValueID, fn_name string) bool {
-	if var_id <= 0 || var_id >= b.mod.values.len {
-		return false
-	}
-	for use_id in b.mod.values[var_id].uses {
-		if use_id <= 0 || use_id >= b.mod.values.len {
-			continue
-		}
-		use_val := b.mod.values[use_id]
-		if use_val.kind != .instruction || use_val.index < 0 || use_val.index >= b.mod.instrs.len {
-			continue
-		}
-		instr := b.mod.instrs[use_val.index]
-		if instr.op == .store && instr.operands.len >= 2 && instr.operands[1] == var_id
-			&& b.value_is_call_to(instr.operands[0], fn_name) {
-			return true
-		}
-	}
-	return false
 }
 
 fn (mut b Builder) build_assign(stmt ast.AssignStmt) {
@@ -2940,18 +2735,12 @@ fn (mut b Builder) build_assign(stmt ast.AssignStmt) {
 					[]ValueID{})
 				b.mod.add_instr(.store, b.cur_block, 0, [rhs_val, alloca])
 				b.vars[ident.name] = alloca
-				if b.value_is_call_to(rhs_val, 'strings__new_builder') {
-					b.local_receiver_types[ident.name] = 'strings__Builder'
-				}
 			} else if ident.name == '_' && stmt.op == .assign {
 				// Discard for plain assignment only; compound assignments (+=, etc.)
 				// must still execute (e.g. for loop counter `_ += 1`).
 				continue
 			} else {
 				// Assignment to existing variable (local or global)
-				if stmt.op == .assign {
-					b.local_receiver_types.delete(ident.name)
-				}
 				// Skip stores to const_array_globals — they are already initialized
 				// in the data segment. The runtime const init function would overwrite
 				// the first element with a stack pointer.
@@ -3501,7 +3290,7 @@ fn (mut b Builder) build_expr(expr ast.Expr) ValueID {
 			return b.build_infix(expr)
 		}
 		ast.PrefixExpr {
-			return b.build_prefix(&expr)
+			return b.build_prefix(expr)
 		}
 		ast.CallExpr {
 			return b.build_call(expr)
@@ -3553,7 +3342,8 @@ fn (mut b Builder) build_expr(expr ast.Expr) ValueID {
 			return b.build_array_init_expr(expr)
 		}
 		ast.MapInitExpr {
-			return b.build_map_init_expr(expr)
+			// TODO: map init
+			return b.mod.get_or_add_const(b.mod.type_store.get_int(64), '0')
 		}
 		ast.StringInterLiteral {
 			return b.build_string_inter_literal(expr)
@@ -4559,7 +4349,7 @@ fn (mut b Builder) build_infix(expr ast.InfixExpr) ValueID {
 	return b.mod.add_instr(op, b.cur_block, final_type, [lhs_v, rhs_v])
 }
 
-fn (mut b Builder) build_prefix(expr &ast.PrefixExpr) ValueID {
+fn (mut b Builder) build_prefix(expr ast.PrefixExpr) ValueID {
 	// Special case: &InitExpr (heap/pointer to struct init)
 	// Build the struct via alloca+GEP+store but return the pointer instead of loading
 	if expr.op == .amp && expr.expr is ast.InitExpr {
@@ -4654,55 +4444,6 @@ fn (mut b Builder) build_prefix(expr &ast.PrefixExpr) ValueID {
 		}
 	}
 
-	if expr.op == .amp {
-		// Address-of: return the addressable location directly when possible.
-		// Building the value form first can leave dead-but-emitted loads in the
-		// native backend, which is wrong for expressions like &module_global[0].
-		addr := b.build_addr(expr.expr)
-		if addr != 0 {
-			// Sumtype `_data` stores escape the current scope. Materialize a heap copy
-			// instead of passing through the address of stack-backed data.
-			if b.in_sumtype_data {
-				if heap_ptr := b.heap_copy_from_address(addr) {
-					return heap_ptr
-				}
-			}
-			return addr
-		}
-		val := b.build_expr(expr.expr)
-		// No addressable location (e.g. function call return value) –
-		// For function references, &fn_name is just the function pointer
-		// itself — no extra indirection needed.
-		if b.mod.values[val].kind == .func_ref {
-			return val
-		}
-		// For sumtype boxing, the pointee must outlive the wrapping scope.
-		if b.in_sumtype_data {
-			if heap_ptr := b.heap_copy_value(val) {
-				return heap_ptr
-			}
-		}
-		// For struct types, use heap allocation so the pointer survives
-		// the current scope (needed for sum type boxing where _data
-		// must outlive the wrapping function).
-		// For scalars, use stack alloca (they're typically short-lived).
-		val_type := b.mod.values[val].typ
-		if val_type != 0 {
-			ptr_type := b.mod.type_store.get_ptr(val_type)
-			typ_info := b.mod.type_store.types[val_type]
-			if typ_info.kind == .struct_t {
-				// Heap-allocate struct values to ensure pointer validity
-				heap_ptr := b.mod.add_instr(.heap_alloc, b.cur_block, ptr_type, []ValueID{})
-				b.mod.add_instr(.store, b.cur_block, 0, [val, heap_ptr])
-				return heap_ptr
-			}
-			alloca := b.mod.add_instr(.alloca, b.cur_block, ptr_type, []ValueID{})
-			b.mod.add_instr(.store, b.cur_block, 0, [val, alloca])
-			return alloca
-		}
-		return val
-	}
-
 	val := b.build_expr(expr.expr)
 
 	match expr.op {
@@ -4730,6 +4471,51 @@ fn (mut b Builder) build_prefix(expr &ast.PrefixExpr) ValueID {
 				val,
 				zero,
 			])
+		}
+		.amp {
+			// Address-of: return the alloca pointer for the variable
+			addr := b.build_addr(expr.expr)
+			if addr != 0 {
+				// Sumtype `_data` stores escape the current scope. Materialize a heap copy
+				// instead of passing through the address of stack-backed data.
+				if b.in_sumtype_data {
+					if heap_ptr := b.heap_copy_from_address(addr) {
+						return heap_ptr
+					}
+				}
+				return addr
+			}
+			// No addressable location (e.g. function call return value) –
+			// For function references, &fn_name is just the function pointer
+			// itself — no extra indirection needed.
+			if b.mod.values[val].kind == .func_ref {
+				return val
+			}
+			// For sumtype boxing, the pointee must outlive the wrapping scope.
+			if b.in_sumtype_data {
+				if heap_ptr := b.heap_copy_value(val) {
+					return heap_ptr
+				}
+			}
+			// For struct types, use heap allocation so the pointer survives
+			// the current scope (needed for sum type boxing where _data
+			// must outlive the wrapping function).
+			// For scalars, use stack alloca (they're typically short-lived).
+			val_type := b.mod.values[val].typ
+			if val_type != 0 {
+				ptr_type := b.mod.type_store.get_ptr(val_type)
+				typ_info := b.mod.type_store.types[val_type]
+				if typ_info.kind == .struct_t {
+					// Heap-allocate struct values to ensure pointer validity
+					heap_ptr := b.mod.add_instr(.heap_alloc, b.cur_block, ptr_type, []ValueID{})
+					b.mod.add_instr(.store, b.cur_block, 0, [val, heap_ptr])
+					return heap_ptr
+				}
+				alloca := b.mod.add_instr(.alloca, b.cur_block, ptr_type, []ValueID{})
+				b.mod.add_instr(.store, b.cur_block, 0, [val, alloca])
+				return alloca
+			}
+			return val
 		}
 		.bit_not {
 			neg_one := b.mod.get_or_add_const(b.mod.values[val].typ, '-1')
@@ -5551,17 +5337,6 @@ fn (mut b Builder) get_receiver_type_name(expr ast.Expr) string {
 	if expr is ast.StringLiteral || expr is ast.StringInterLiteral {
 		return 'string'
 	}
-	ident_name, has_ident_name := ast_expr_raw_ident_name(expr)
-	if has_ident_name {
-		if ident_name in b.local_receiver_types {
-			receiver_type := b.local_receiver_types[ident_name]
-			return receiver_type
-		}
-		if ident_name in b.vars
-			&& b.alloca_has_store_from_call(b.vars[ident_name], 'strings__new_builder') {
-			return 'strings__Builder'
-		}
-	}
 	if b.env != unsafe { nil } {
 		pos := expr.pos()
 		if pos.id != 0 {
@@ -5570,12 +5345,11 @@ fn (mut b Builder) get_receiver_type_name(expr ast.Expr) string {
 			}
 		}
 	}
-	if has_ident_name {
+	if expr is ast.Ident {
 		// Try to get the type from the SSA variable's alloca type.
 		// This is more reliable than env.get_expr_type in ARM64-compiled binaries
 		// where the type checker's expr_type_values may have corrupt entries.
-		if ident_name in b.vars {
-			var_id := b.vars[ident_name]
+		if var_id := b.vars[expr.name] {
 			mut var_type := b.mod.values[var_id].typ
 			// Alloca types are ptr(T), unwrap the pointer to get base type
 			if var_type != 0 {
@@ -5589,7 +5363,7 @@ fn (mut b Builder) get_receiver_type_name(expr ast.Expr) string {
 				}
 			}
 		}
-		return ident_name
+		return expr.name
 	}
 	// For CallExpr/CallOrCastExpr, try to infer receiver type from the called
 	// function's return type. This is needed when env.get_expr_type fails (e.g.,
@@ -5855,17 +5629,6 @@ fn (mut b Builder) build_selector(expr ast.SelectorExpr) ValueID {
 			i64_t := b.mod.type_store.get_int(64)
 			return b.mod.get_or_add_const(i64_t, '0')
 		}
-		match c_name {
-			'FLT_EPSILON' {
-				return b.mod.get_or_add_const(b.mod.type_store.get_float(32), '1.19209290e-07')
-			}
-			'DBL_EPSILON' {
-				return b.mod.get_or_add_const(b.mod.type_store.get_float(64),
-					'2.2204460492503131e-16')
-			}
-			else {}
-		}
-
 		// macOS errno: (*__error()) — call __error() which returns int*
 		if c_name == 'errno' {
 			i32_t := b.mod.type_store.get_int(32)
@@ -5874,25 +5637,19 @@ fn (mut b Builder) build_selector(expr ast.SelectorExpr) ValueID {
 			call_val := b.mod.add_instr(.call, b.cur_block, ptr_i32, [err_fn])
 			return b.mod.add_instr(.load, b.cur_block, i32_t, [call_val])
 		}
-		i8_t := b.mod.type_store.get_int(8)
-		ptr_t := b.mod.type_store.get_ptr(i8_t)
-		if c_name in ['stdin', 'stdout', 'stderr'] {
-			target_os := b.c_stdio_target_os()
-			symbol_name := c_stdio_symbol_for_os(c_name, target_os)
-			if c_stdio_symbol_needs_load(target_os) {
-				glob := b.mod.add_external_global(symbol_name, ptr_t)
-				b.global_refs[symbol_name] = glob
-				return b.mod.add_instr(.load, b.cur_block, ptr_t, [glob])
-			}
-			glob := b.mod.add_value_node(.global, ptr_t, symbol_name, 0)
-			b.global_refs[symbol_name] = glob
-			return glob
+		// Map C standard I/O streams to macOS-specific symbol names
+		macos_name := match c_name {
+			'stdout' { '__stdoutp' }
+			'stderr' { '__stderrp' }
+			'stdin' { '__stdinp' }
+			else { c_name }
 		}
 
-		// Not a known constant — emit as a global reference.
-		symbol_name := c_name
-		glob := b.mod.add_value_node(.global, ptr_t, symbol_name, 0)
-		b.global_refs[symbol_name] = glob
+		// Not a known constant — emit as a global reference (e.g. C.stdout, C.stderr)
+		i8_t := b.mod.type_store.get_int(8)
+		ptr_t := b.mod.type_store.get_ptr(i8_t)
+		glob := b.mod.add_value_node(.global, ptr_t, macos_name, 0)
+		b.global_refs[macos_name] = glob
 		return glob
 	}
 
@@ -6528,568 +6285,6 @@ fn (mut b Builder) build_if_expr(node ast.IfExpr) ValueID {
 	return b.mod.get_or_add_const(result_type, '0')
 }
 
-fn ssa_map_int_key_width_from_type_name(type_name string) int {
-	if type_name.contains('*') || type_name.ends_with('ptr') {
-		return 8
-	}
-	return match type_name {
-		'i8', 'u8', 'byte', 'bool', 'char' { 1 }
-		'i16', 'u16' { 2 }
-		'i64', 'u64', 'f64', 'usize', 'isize' { 8 }
-		else { 4 }
-	}
-}
-
-fn ssa_map_runtime_key_fns_from_type_name(key_type_name string) (string, string, string, string) {
-	if key_type_name == 'string' {
-		return 'map_hash_string', 'map_eq_string', 'map_clone_string', 'map_free_string'
-	}
-	width := ssa_map_int_key_width_from_type_name(key_type_name)
-	return 'map_hash_int_${width}', 'map_eq_int_${width}', 'map_clone_int_${width}', 'map_free_nop'
-}
-
-fn ast_expr_raw_map_type_parts(expr ast.Expr) (ast.Expr, ast.Expr, bool) {
-	if expr is ast.Type {
-		typ := expr as ast.Type
-		if typ is ast.MapType {
-			mt := typ as ast.MapType
-			return mt.key_type, mt.value_type, true
-		}
-	}
-	expr_tag := unsafe { (&u64(&expr))[0] }
-	// ast.Expr Type variant in the native sumtype layout.
-	if expr_tag != 38 {
-		return ast.empty_expr, ast.empty_expr, false
-	}
-	type_data := unsafe { (&u64(&expr))[1] }
-	if type_data == 0 {
-		return ast.empty_expr, ast.empty_expr, false
-	}
-	type_words := unsafe { &u64(voidptr(type_data)) }
-	type_tag := unsafe { type_words[0] }
-	// ast.Type MapType variant in the native sumtype layout.
-	if type_tag != 6 {
-		return ast.empty_expr, ast.empty_expr, false
-	}
-	map_data := unsafe { type_words[1] }
-	if map_data == 0 {
-		return ast.empty_expr, ast.empty_expr, false
-	}
-	map_words := unsafe { &u64(voidptr(map_data)) }
-	mut key_type := ast.empty_expr
-	mut val_type := ast.empty_expr
-	unsafe {
-		(&u64(&key_type))[0] = map_words[0]
-		(&u64(&key_type))[1] = map_words[1]
-		(&u64(&val_type))[0] = map_words[2]
-		(&u64(&val_type))[1] = map_words[3]
-	}
-	return key_type, val_type, true
-}
-
-fn ast_expr_raw_amp_prefix_inner(expr ast.Expr) (ast.Expr, bool) {
-	if expr is ast.PrefixExpr {
-		if expr.op == .amp {
-			return expr.expr, true
-		}
-		return ast.empty_expr, false
-	}
-	expr_tag := unsafe { (&u64(&expr))[0] }
-	// ast.Expr PrefixExpr variant in the native sumtype layout.
-	if expr_tag != 30 {
-		return ast.empty_expr, false
-	}
-	prefix_data := unsafe { (&u64(&expr))[1] }
-	if prefix_data == 0 {
-		return ast.empty_expr, false
-	}
-	prefix_words := unsafe { &u64(voidptr(prefix_data)) }
-	// token.Token.amp is the first enum value.
-	prefix_op := unsafe { prefix_words[0] }
-	if prefix_op & 0xffffffff != 0 {
-		return ast.empty_expr, false
-	}
-	mut inner := ast.empty_expr
-	unsafe {
-		(&u64(&inner))[0] = prefix_words[1]
-		(&u64(&inner))[1] = prefix_words[2]
-	}
-	return inner, true
-}
-
-fn ast_expr_raw_pointer_type_inner(expr ast.Expr) (ast.Expr, bool) {
-	if expr is ast.Type {
-		typ := expr as ast.Type
-		if typ is ast.PointerType {
-			pt := typ as ast.PointerType
-			return pt.base_type, true
-		}
-	}
-	expr_tag := unsafe { (&u64(&expr))[0] }
-	// ast.Expr Type variant in the native sumtype layout.
-	if expr_tag != 38 {
-		return ast.empty_expr, false
-	}
-	type_data := unsafe { (&u64(&expr))[1] }
-	if type_data == 0 {
-		return ast.empty_expr, false
-	}
-	type_words := unsafe { &u64(voidptr(type_data)) }
-	type_tag := unsafe { type_words[0] }
-	// ast.Type PointerType variant in the native sumtype layout.
-	if type_tag != 10 {
-		return ast.empty_expr, false
-	}
-	pointer_data := unsafe { type_words[1] }
-	if pointer_data == 0 {
-		return ast.empty_expr, false
-	}
-	pointer_words := unsafe { &u64(voidptr(pointer_data)) }
-	mut inner := ast.empty_expr
-	unsafe {
-		(&u64(&inner))[0] = pointer_words[0]
-		(&u64(&inner))[1] = pointer_words[1]
-	}
-	return inner, true
-}
-
-fn ast_expr_raw_array_fixed_type_parts(expr ast.Expr) (ast.Expr, ast.Expr, bool) {
-	if expr is ast.Type {
-		typ := expr as ast.Type
-		if typ is ast.ArrayFixedType {
-			aft := typ as ast.ArrayFixedType
-			return aft.len, aft.elem_type, true
-		}
-	}
-	expr_tag := unsafe { (&u64(&expr))[0] }
-	// ast.Expr Type variant in the native sumtype layout.
-	if expr_tag != 38 {
-		return ast.empty_expr, ast.empty_expr, false
-	}
-	type_data := unsafe { (&u64(&expr))[1] }
-	if type_data == 0 {
-		return ast.empty_expr, ast.empty_expr, false
-	}
-	type_words := unsafe { &u64(voidptr(type_data)) }
-	type_tag := unsafe { type_words[0] }
-	// ast.Type ArrayFixedType variant in the native sumtype layout.
-	if type_tag != 1 {
-		return ast.empty_expr, ast.empty_expr, false
-	}
-	fixed_data := unsafe { type_words[1] }
-	if fixed_data == 0 {
-		return ast.empty_expr, ast.empty_expr, false
-	}
-	fixed_words := unsafe { &u64(voidptr(fixed_data)) }
-	mut len_expr := ast.empty_expr
-	mut elem_expr := ast.empty_expr
-	unsafe {
-		(&u64(&len_expr))[0] = fixed_words[0]
-		(&u64(&len_expr))[1] = fixed_words[1]
-		(&u64(&elem_expr))[0] = fixed_words[2]
-		(&u64(&elem_expr))[1] = fixed_words[3]
-	}
-	return len_expr, elem_expr, true
-}
-
-fn ast_expr_raw_option_type_inner(expr ast.Expr) (ast.Expr, bool) {
-	if expr is ast.Type {
-		typ := expr as ast.Type
-		if typ is ast.OptionType {
-			ot := typ as ast.OptionType
-			return ot.base_type, true
-		}
-	}
-	return ast_expr_raw_type_with_base_inner(expr, 9)
-}
-
-fn ast_expr_raw_result_type_inner(expr ast.Expr) (ast.Expr, bool) {
-	if expr is ast.Type {
-		typ := expr as ast.Type
-		if typ is ast.ResultType {
-			rt := typ as ast.ResultType
-			return rt.base_type, true
-		}
-	}
-	return ast_expr_raw_type_with_base_inner(expr, 11)
-}
-
-fn ast_expr_raw_type_with_base_inner(expr ast.Expr, expected_type_tag u64) (ast.Expr, bool) {
-	expr_tag := unsafe { (&u64(&expr))[0] }
-	// ast.Expr Type variant in the native sumtype layout.
-	if expr_tag != 38 {
-		return ast.empty_expr, false
-	}
-	type_data := unsafe { (&u64(&expr))[1] }
-	if type_data == 0 {
-		return ast.empty_expr, false
-	}
-	type_words := unsafe { &u64(voidptr(type_data)) }
-	type_tag := unsafe { type_words[0] }
-	if type_tag != expected_type_tag {
-		return ast.empty_expr, false
-	}
-	inner_data := unsafe { type_words[1] }
-	if inner_data == 0 {
-		return ast.empty_expr, false
-	}
-	inner_words := unsafe { &u64(voidptr(inner_data)) }
-	mut inner := ast.empty_expr
-	unsafe {
-		(&u64(&inner))[0] = inner_words[0]
-		(&u64(&inner))[1] = inner_words[1]
-	}
-	return inner, true
-}
-
-fn ast_expr_is_raw_array_type(expr ast.Expr) bool {
-	if expr is ast.Type {
-		typ := expr as ast.Type
-		if typ is ast.ArrayType {
-			return true
-		}
-	}
-	expr_tag := unsafe { (&u64(&expr))[0] }
-	// ast.Expr Type variant in the native sumtype layout.
-	if expr_tag != 38 {
-		return false
-	}
-	type_data := unsafe { (&u64(&expr))[1] }
-	if type_data == 0 {
-		return false
-	}
-	type_words := unsafe { &u64(voidptr(type_data)) }
-	type_tag := unsafe { type_words[0] }
-	// ast.Type ArrayType variant in the native sumtype layout.
-	return type_tag == 2
-}
-
-fn ast_expr_raw_tuple_type_parts(expr ast.Expr) ([]ast.Expr, bool) {
-	if expr is ast.Type {
-		typ := expr as ast.Type
-		if typ is ast.TupleType {
-			tt := typ as ast.TupleType
-			return tt.types, true
-		}
-	}
-	expr_tag := unsafe { (&u64(&expr))[0] }
-	// ast.Expr Type variant in the native sumtype layout.
-	if expr_tag != 38 {
-		return []ast.Expr{}, false
-	}
-	type_data := unsafe { (&u64(&expr))[1] }
-	if type_data == 0 {
-		return []ast.Expr{}, false
-	}
-	type_words := unsafe { &u64(voidptr(type_data)) }
-	type_tag := unsafe { type_words[0] }
-	// ast.Type TupleType variant in the native sumtype layout.
-	if type_tag != 13 {
-		return []ast.Expr{}, false
-	}
-	tuple_data := unsafe { type_words[1] }
-	if tuple_data == 0 {
-		return []ast.Expr{}, false
-	}
-	tuple_type := unsafe { &ast.TupleType(voidptr(tuple_data)) }
-	return tuple_type.types, true
-}
-
-fn (mut b Builder) ast_type_expr_c_name(expr ast.Expr) string {
-	match expr {
-		ast.Ident {
-			return expr.name
-		}
-		ast.Type {
-			match expr {
-				ast.ArrayType {
-					elem_name := b.ast_type_expr_c_name(expr.elem_type)
-					return 'Array_${elem_name}'
-				}
-				ast.ArrayFixedType {
-					elem_name := b.ast_type_expr_c_name(expr.elem_type)
-					len := if expr.len is ast.BasicLiteral {
-						int(parse_const_int_literal(expr.len.value))
-					} else if expr.len is ast.Ident {
-						b.resolve_const_int(expr.len.name)
-					} else {
-						0
-					}
-					return 'Array_fixed_${elem_name}_${len}'
-				}
-				ast.MapType {
-					key_name := b.ast_type_expr_c_name(expr.key_type)
-					val_name := b.ast_type_expr_c_name(expr.value_type)
-					return 'Map_${key_name}_${val_name}'
-				}
-				ast.PointerType {
-					return '${b.ast_type_expr_c_name(expr.base_type)}ptr'
-				}
-				ast.OptionType {
-					return b.ast_type_expr_c_name(expr.base_type)
-				}
-				ast.ResultType {
-					return b.ast_type_expr_c_name(expr.base_type)
-				}
-				else {
-					return 'int'
-				}
-			}
-		}
-		ast.SelectorExpr {
-			if expr.lhs is ast.Ident {
-				return '${expr.lhs.name}__${expr.rhs.name}'
-			}
-			return expr.rhs.name
-		}
-		ast.PrefixExpr {
-			if expr.op == .amp {
-				return '${b.ast_type_expr_c_name(expr.expr)}ptr'
-			}
-			return b.ast_type_expr_c_name(expr.expr)
-		}
-		ast.ModifierExpr {
-			return b.ast_type_expr_c_name(expr.expr)
-		}
-		else {
-			return ''
-		}
-	}
-}
-
-fn ssa_type_name_expr(name string) ast.Expr {
-	return ast.Expr(ast.Ident{
-		name: name
-	})
-}
-
-fn ssa_type_name_to_c_name(name string) string {
-	trimmed := name.trim_space()
-	if trimmed.starts_with('[]') {
-		return 'Array_${ssa_type_name_to_c_name(trimmed[2..])}'
-	}
-	if trimmed.starts_with('&') {
-		return '${ssa_type_name_to_c_name(trimmed[1..])}ptr'
-	}
-	if trimmed.starts_with('map[') {
-		key_name, val_name, ok := ssa_map_type_name_parts(trimmed)
-		if ok {
-			return 'Map_${key_name}_${val_name}'
-		}
-	}
-	return trimmed.replace('.', '__')
-}
-
-fn ssa_map_type_name_parts(type_name string) (string, string, bool) {
-	if !type_name.starts_with('map[') {
-		return '', '', false
-	}
-	if close_idx := type_name.index(']') {
-		if close_idx <= 4 || close_idx + 1 >= type_name.len {
-			return '', '', false
-		}
-		key_name := ssa_type_name_to_c_name(type_name[4..close_idx])
-		val_name := ssa_type_name_to_c_name(type_name[close_idx + 1..])
-		return key_name, val_name, key_name != '' && val_name != ''
-	}
-	return '', '', false
-}
-
-fn (b &Builder) int_literal_expr(value int) ast.Expr {
-	return ast.Expr(ast.BasicLiteral{
-		kind:  .number
-		value: value.str()
-	})
-}
-
-fn (mut b Builder) map_init_type_info(expr ast.MapInitExpr) (ast.Expr, ast.Expr, string) {
-	mut key_type_expr := ast.Expr(ast.Ident{
-		name: 'int'
-	})
-	mut val_type_expr := ast.Expr(ast.Ident{
-		name: 'int'
-	})
-	mut key_type_name := 'int'
-	mut have_map_type := false
-
-	raw_key_type, raw_val_type, has_raw_map_type := ast_expr_raw_map_type_parts(expr.typ)
-	if has_raw_map_type {
-		key_type_expr = raw_key_type
-		val_type_expr = raw_val_type
-		key_type_name = b.ast_type_expr_c_name(raw_key_type)
-		have_map_type = true
-	} else {
-		match expr.typ {
-			ast.Type {
-				if expr.typ is ast.MapType {
-					mt := expr.typ as ast.MapType
-					key_type_expr = mt.key_type
-					val_type_expr = mt.value_type
-					key_type_name = b.ast_type_expr_c_name(mt.key_type)
-					have_map_type = true
-				}
-			}
-			ast.Ident {
-				key_type_name = expr.typ.name
-			}
-			else {}
-		}
-	}
-
-	if b.env != unsafe { nil } {
-		pos := ast.Expr(expr).pos()
-		if pos.id != 0 {
-			if typ := b.env.get_expr_type(pos.id) {
-				type_name := typ.name()
-				key_name, val_name, ok := ssa_map_type_name_parts(type_name)
-				if ok {
-					key_type_name = key_name
-					key_type_expr = ssa_type_name_expr(key_name)
-					val_type_expr = ssa_type_name_expr(val_name)
-					have_map_type = true
-				} else if typ is types.Map {
-					key_type_name = b.checked_type_c_name(typ.key_type)
-					key_type_expr = ssa_type_name_expr(key_type_name)
-					val_type_expr = ssa_type_name_expr(b.checked_type_c_name(typ.value_type))
-					have_map_type = true
-				}
-			}
-		}
-	}
-
-	if !have_map_type && expr.keys.len > 0 && expr.vals.len > 0 {
-		first_key := expr.keys[0]
-		first_val := expr.vals[0]
-		if first_key is ast.BasicLiteral && first_key.kind == .string {
-			key_type_name = 'string'
-			key_type_expr = ssa_type_name_expr('string')
-		} else if first_key is ast.StringLiteral {
-			key_type_name = 'string'
-			key_type_expr = ssa_type_name_expr('string')
-		} else if b.env != unsafe { nil } {
-			key_pos := first_key.pos()
-			if key_pos.id != 0 {
-				if key_typ := b.env.get_expr_type(key_pos.id) {
-					key_type_name = b.checked_type_c_name(key_typ)
-					key_type_expr = ssa_type_name_expr(key_type_name)
-				}
-			}
-		}
-		if first_val is ast.BasicLiteral && first_val.kind == .string {
-			val_type_expr = ssa_type_name_expr('string')
-		} else if first_val is ast.StringLiteral {
-			val_type_expr = ssa_type_name_expr('string')
-		} else if b.env != unsafe { nil } {
-			val_pos := first_val.pos()
-			if val_pos.id != 0 {
-				if val_typ := b.env.get_expr_type(val_pos.id) {
-					val_type_expr = ssa_type_name_expr(b.checked_type_c_name(val_typ))
-				}
-			}
-		}
-	}
-
-	return key_type_expr, val_type_expr, key_type_name
-}
-
-fn (mut b Builder) build_map_init_expr(expr ast.MapInitExpr) ValueID {
-	key_type_expr, val_type_expr, key_type_name := b.map_init_type_info(expr)
-	hash_fn, eq_fn, clone_fn, free_fn := ssa_map_runtime_key_fns_from_type_name(key_type_name)
-	key_size := ast.Expr(ast.KeywordOperator{
-		op:    .key_sizeof
-		exprs: [key_type_expr]
-	})
-	val_size := ast.Expr(ast.KeywordOperator{
-		op:    .key_sizeof
-		exprs: [val_type_expr]
-	})
-
-	if expr.keys.len == 0 {
-		return b.build_call(ast.CallExpr{
-			lhs:  ast.Ident{
-				name: 'new_map'
-			}
-			args: [
-				key_size,
-				val_size,
-				ast.Expr(ast.PrefixExpr{
-					op:   .amp
-					expr: ast.Ident{
-						name: hash_fn
-					}
-				}),
-				ast.Expr(ast.PrefixExpr{
-					op:   .amp
-					expr: ast.Ident{
-						name: eq_fn
-					}
-				}),
-				ast.Expr(ast.PrefixExpr{
-					op:   .amp
-					expr: ast.Ident{
-						name: clone_fn
-					}
-				}),
-				ast.Expr(ast.PrefixExpr{
-					op:   .amp
-					expr: ast.Ident{
-						name: free_fn
-					}
-				}),
-			]
-			pos:  expr.pos
-		})
-	}
-
-	return b.build_call(ast.CallExpr{
-		lhs:  ast.Ident{
-			name: 'new_map_init_noscan_value'
-		}
-		args: [
-			ast.Expr(ast.PrefixExpr{
-				op:   .amp
-				expr: ast.Ident{
-					name: hash_fn
-				}
-			}),
-			ast.Expr(ast.PrefixExpr{
-				op:   .amp
-				expr: ast.Ident{
-					name: eq_fn
-				}
-			}),
-			ast.Expr(ast.PrefixExpr{
-				op:   .amp
-				expr: ast.Ident{
-					name: clone_fn
-				}
-			}),
-			ast.Expr(ast.PrefixExpr{
-				op:   .amp
-				expr: ast.Ident{
-					name: free_fn
-				}
-			}),
-			b.int_literal_expr(expr.keys.len),
-			key_size,
-			val_size,
-			ast.Expr(ast.ArrayInitExpr{
-				typ:   ast.Expr(ast.Type(ast.ArrayType{
-					elem_type: key_type_expr
-				}))
-				exprs: expr.keys
-			}),
-			ast.Expr(ast.ArrayInitExpr{
-				typ:   ast.Expr(ast.Type(ast.ArrayType{
-					elem_type: val_type_expr
-				}))
-				exprs: expr.vals
-			}),
-		]
-		pos:  expr.pos
-	})
-}
-
 fn (mut b Builder) build_array_init_expr(expr ast.ArrayInitExpr) ValueID {
 	// If the array init has elements, alloca a fixed-size array on the stack,
 	// store each element, and return the pointer.
@@ -7346,41 +6541,6 @@ fn (mut b Builder) collect_init_expr_values(expr ast.InitExpr) (TypeID, []ValueI
 }
 
 fn (mut b Builder) build_init_expr(expr ast.InitExpr) ValueID {
-	if expr.fields.len == 0 {
-		_, _, has_raw_map_type := ast_expr_raw_map_type_parts(expr.typ)
-		if has_raw_map_type {
-			return b.build_map_init_expr(ast.MapInitExpr{
-				typ:  expr.typ
-				keys: []ast.Expr{}
-				vals: []ast.Expr{}
-				pos:  expr.pos
-			})
-		}
-		if expr.typ is ast.Type && expr.typ is ast.MapType {
-			return b.build_map_init_expr(ast.MapInitExpr{
-				typ:  ast.Expr(ast.Type(expr.typ))
-				keys: []ast.Expr{}
-				vals: []ast.Expr{}
-				pos:  expr.pos
-			})
-		}
-	}
-	if expr.fields.len == 0 && b.env != unsafe { nil } {
-		pos := ast.Expr(expr).pos()
-		if pos.id != 0 {
-			if typ := b.env.get_expr_type(pos.id) {
-				_, _, is_map_name := ssa_map_type_name_parts(typ.name())
-				if is_map_name || typ is types.Map {
-					return b.build_map_init_expr(ast.MapInitExpr{
-						typ:  ast.empty_expr
-						keys: []ast.Expr{}
-						vals: []ast.Expr{}
-						pos:  expr.pos
-					})
-				}
-			}
-		}
-	}
 	// Struct initialization: Type{ field: value, ... }
 	// Uses struct_init opcode: keeps aggregates as SSA values for better optimization.
 	// Lowered to alloca/GEP/store only when address is taken (build_init_expr_ptr).
@@ -8235,14 +7395,6 @@ fn (mut b Builder) build_addr(expr ast.Expr) ValueID {
 			if glob_id := b.find_global(expr.name) {
 				return glob_id
 			}
-			qualified_name := '${b.cur_module}__${expr.name}'
-			if glob_id := b.find_global(qualified_name) {
-				return glob_id
-			}
-			builtin_name := 'builtin__${expr.name}'
-			if glob_id := b.find_global(builtin_name) {
-				return glob_id
-			}
 			return 0
 		}
 		ast.SelectorExpr {
@@ -8311,23 +7463,7 @@ fn (mut b Builder) build_addr(expr ast.Expr) ValueID {
 			// Try address-based access first for fixed-size arrays and struct fields.
 			// This avoids loading large values (e.g., [256]char in C.dirent.d_name)
 			// and instead computes pointer + GEP.
-			mut base_addr := b.build_addr(expr.lhs)
-			if base_addr == 0 && expr.lhs is ast.Ident {
-				lhs_name := expr.lhs.name
-				if glob_id := b.find_global(lhs_name) {
-					base_addr = glob_id
-				} else {
-					qualified_name := '${b.cur_module}__${lhs_name}'
-					if glob_id := b.find_global(qualified_name) {
-						base_addr = glob_id
-					} else {
-						builtin_name := 'builtin__${lhs_name}'
-						if glob_id := b.find_global(builtin_name) {
-							base_addr = glob_id
-						}
-					}
-				}
-			}
+			base_addr := b.build_addr(expr.lhs)
 			if base_addr != 0 {
 				addr_typ_id := b.mod.values[base_addr].typ
 				if addr_typ_id < b.mod.type_store.types.len {
@@ -9825,21 +8961,6 @@ fn (mut b Builder) generate_fd_macro_stubs() {
 		result := b.mod.add_instr(.and_, entry, i32_t, [shifted, c1])
 		b.mod.add_instr(.ret, entry, 0, [result])
 	}
-}
-
-fn (mut b Builder) generate_tcc_backtrace_stub() {
-	if 'tcc_backtrace' !in b.fn_index {
-		return
-	}
-	func_idx := b.fn_index['tcc_backtrace']
-	if b.mod.funcs[func_idx].blocks.len > 0 {
-		return
-	}
-	b.mod.func_set_c_extern(func_idx, false)
-	entry := b.mod.add_block(func_idx, 'entry')
-	i32_t := b.mod.type_store.get_int(32)
-	zero := b.mod.get_or_add_const(i32_t, '0')
-	b.mod.add_instr(.ret, entry, 0, [zero])
 }
 
 fn (b &Builder) find_fd_fn(name string) ?string {

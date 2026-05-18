@@ -69,8 +69,11 @@ fn test_repl_bypasses_local_cmd_exe_on_windows() {
 	assert build_fake_cmd.exit_code == 0, build_fake_cmd.output
 	original_vexe := os.getenv('VEXE')
 	os.setenv('VEXE', vexec, true)
+	original_vflags := os.getenv('VFLAGS')
+	os.setenv('VFLAGS', '', true)
 	defer {
 		os.setenv('VEXE', original_vexe, true)
+		os.setenv('VFLAGS', original_vflags, true)
 	}
 	mut repl := os.new_process(vexec)
 	repl.set_args(['repl', '-replfolder', temp_dir, '-replprefix', 'cmd_bypass.'])

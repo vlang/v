@@ -1853,22 +1853,66 @@ fn (mut b Builder) cc_linux_cross() {
 	}
 	cflags := b.get_os_cflags()
 	defines, others, libs := cflags.defines_others_libs()
+	// Some modules pass a raw `#flag /path/to/file.c` to add an additional
+	// source file to the compile step (e.g. gitly's markdown module uses this
+	// for md4c-lib.c). The native build line just appends them to the main
+	// `clang ... main.c` invocation, but the cross-compile path uses
+	// `clang -c <main.c> -o <main.o>`, and clang refuses to combine `-c` with
+	// multiple inputs ("cannot specify -o when generating multiple output
+	// files"). Pull those out, compile each separately into its own .o, and
+	// hand the resulting objects to the linker step.
+	mut other_flags := []string{cap: others.len}
+	mut extra_sources := []string{}
+	for opt in others {
+		unq := opt.trim('"').trim("'")
+		ext := os.file_ext(unq).to_lower()
+		if ext in ['.c', '.cpp', '.cc', '.cxx', '.s'] && os.is_file(unq) {
+			extra_sources << unq
+		} else {
+			other_flags << opt
+		}
+	}
+	mut cc_name := b.pref.ccompiler
+	mut out_name := b.pref.out_name
+	$if windows {
+		out_name = out_name.trim_string_right('.exe')
+	}
+	mut extra_objs := []string{cap: extra_sources.len}
+	for src in extra_sources {
+		src_obj := os.join_path(os.vtmp_dir(), os.file_name(src) + '.' +
+			linux_cross_target.lib_dir + '.o')
+		mut src_args := []string{cap: 16}
+		src_args << '-w'
+		src_args << '-fPIC'
+		src_args << '-target ${linux_cross_target.triple}'
+		src_args << defines
+		src_args << '-I ${os.quoted_path('${sysroot}/include')}'
+		src_args << other_flags
+		src_args << '-o ${os.quoted_path(src_obj)}'
+		src_args << '-c ${os.quoted_path(src)}'
+		src_cmd := '${b.quote_compiler_name(cc_name)} ' + src_args.join(' ')
+		if b.pref.show_cc {
+			println(src_cmd)
+		}
+		src_res := os.execute(src_cmd)
+		if src_res.exit_code != 0 {
+			println('Cross compilation for Linux failed (extra source ${src}).')
+			verror(src_res.output)
+			return
+		}
+		extra_objs << src_obj
+	}
 	mut cc_args := []string{cap: 20}
 	cc_args << '-w'
 	cc_args << '-fPIC'
 	cc_args << '-target ${linux_cross_target.triple}'
 	cc_args << defines
 	cc_args << '-I ${os.quoted_path('${sysroot}/include')} '
-	cc_args << others
+	cc_args << other_flags
 	cc_args << '-o ${os.quoted_path(obj_file)}'
 	cc_args << '-c ${os.quoted_path(b.out_name_c)}'
 	cc_args << libs
 	b.dump_c_options(cc_args)
-	mut cc_name := b.pref.ccompiler
-	mut out_name := b.pref.out_name
-	$if windows {
-		out_name = out_name.trim_string_right('.exe')
-	}
 	cc_cmd := '${b.quote_compiler_name(cc_name)} ' + cc_args.join(' ')
 	if b.pref.show_cc {
 		println(cc_cmd)
@@ -1909,6 +1953,16 @@ fn (mut b Builder) cc_linux_cross() {
 		os.quoted_path('${sysroot}/crt1.o'),
 		os.quoted_path('${sysroot}/crti.o'),
 		os.quoted_path(obj_file),
+	]
+	for eobj in extra_objs {
+		linker_args << os.quoted_path(eobj)
+	}
+	// User-defined libraries (e.g. `-lpq` from db.pg) and extra object files
+	// must come before the system libraries they depend on. ld.lld resolves
+	// references left-to-right, so libpq.a needs to be encountered before
+	// -lssl/-lcrypto, otherwise its references to SSL_*/EVP_* stay unresolved.
+	linker_args << cflags.c_options_only_object_files()
+	linker_args << [
 		'-lc',
 		'-lcrypto',
 		'-lssl',
@@ -1917,7 +1971,6 @@ fn (mut b Builder) cc_linux_cross() {
 		'-lm',
 		'-ldl',
 	]
-	linker_args << cflags.c_options_only_object_files()
 	if os.exists(builtins_obj) {
 		linker_args << os.quoted_path(builtins_obj)
 	}

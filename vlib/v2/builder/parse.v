@@ -11,27 +11,15 @@ fn should_expand_single_file_input(input string) bool {
 	if os.file_name(input).ends_with('_test.v') {
 		return true
 	}
-	module_name := file_module_name(input)
-	return module_name.len > 0 && !string_bytes_eq(module_name, 'main')
+	module_name := file_module_name(input) or { return false }
+	return module_name != 'main'
 }
 
-fn string_bytes_eq(a string, b string) bool {
-	if a.len != b.len {
-		return false
-	}
-	for i in 0 .. a.len {
-		if a[i] != b[i] {
-			return false
-		}
-	}
-	return true
-}
-
-fn file_module_name(path string) string {
-	content := os.read_file(path) or { return '' }
+fn file_module_name(path string) ?string {
+	content := os.read_file(path) or { return none }
 	for raw_line in content.split_into_lines() {
 		line := raw_line.trim_space()
-		if line.len == 0 || line.starts_with('//') {
+		if line == '' || line.starts_with('//') {
 			continue
 		}
 		if line.starts_with('module ') {
@@ -39,7 +27,7 @@ fn file_module_name(path string) string {
 		}
 		break
 	}
-	return ''
+	return none
 }
 
 fn (mut b Builder) parse_files(files []string) []ast.File {
@@ -62,8 +50,7 @@ fn (mut b Builder) parse_files(files []string) []ast.File {
 		} else {
 			for module_path in core_cached_module_paths {
 				vlib_path := b.pref.get_vlib_module_path(module_path)
-				module_files := get_v_files_from_dir(vlib_path, b.pref.user_defines,
-					b.pref.get_effective_os())
+				module_files := get_v_files_from_dir(vlib_path, b.pref.user_defines, os.user_os())
 				parsed_module_files := parser_reused.parse_files(module_files, mut b.file_set)
 				ast_files << parsed_module_files
 			}
@@ -73,11 +60,11 @@ fn (mut b Builder) parse_files(files []string) []ast.File {
 	mut expanded_user_files := []string{}
 	mut seen_user_files := map[string]bool{}
 	for input in files {
-		if input.len == 0 {
+		if input == '' {
 			continue
 		}
 		if os.is_dir(input) {
-			dir_files := get_v_files_from_dir(input, b.pref.user_defines, b.pref.get_effective_os())
+			dir_files := get_v_files_from_dir(input, b.pref.user_defines, os.user_os())
 			for dir_file in dir_files {
 				if dir_file != '' && dir_file !in seen_user_files {
 					expanded_user_files << dir_file
@@ -91,8 +78,7 @@ fn (mut b Builder) parse_files(files []string) []ast.File {
 				expanded_user_files << input
 				seen_user_files[input] = true
 			}
-			dir_files := get_v_files_from_dir(os.dir(input), b.pref.user_defines,
-				b.pref.get_effective_os())
+			dir_files := get_v_files_from_dir(os.dir(input), b.pref.user_defines, os.user_os())
 			for dir_file in dir_files {
 				if dir_file != '' && dir_file !in seen_user_files {
 					expanded_user_files << dir_file
@@ -127,8 +113,7 @@ fn (mut b Builder) parse_files(files []string) []ast.File {
 				continue
 			}
 			mod_path := b.pref.get_module_path(mod.name, ast_file.name)
-			module_files := get_v_files_from_dir(mod_path, b.pref.user_defines,
-				b.pref.get_effective_os())
+			module_files := get_v_files_from_dir(mod_path, b.pref.user_defines, os.user_os())
 			if module_files.len == 0 {
 				continue
 			}

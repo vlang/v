@@ -419,7 +419,8 @@ fn test_live_windows_main_linker_args_export_host_symbols() {
 	], .gcc)
 	assert linker_args.contains('-Wl,--export-all-symbols')
 	assert linker_args.contains('-Wl,--out-implib,')
-	assert normalized_test_path(linker_args).contains(normalized_test_path(live_windows_import_lib_path(hot_reload_graph_example())))
+	expected_import_lib := os.file_name(live_windows_import_lib_path(hot_reload_graph_example()))
+	assert linker_args.contains(expected_import_lib), 'linker_args should contain ${expected_import_lib}'
 }
 
 fn test_live_windows_shared_linker_args_include_host_import_lib() {
@@ -432,7 +433,8 @@ fn test_live_windows_shared_linker_args_include_host_import_lib() {
 		'-shared',
 		hot_reload_graph_example(),
 	], .gcc)
-	assert normalized_test_path(linker_args).contains(normalized_test_path(live_windows_import_lib_path(hot_reload_graph_example())))
+	expected_import_lib := os.file_name(live_windows_import_lib_path(hot_reload_graph_example()))
+	assert linker_args.contains(expected_import_lib), 'linker_args should contain ${expected_import_lib}'
 }
 
 fn test_windows_cross_compile_args_match_shared_prod_args() {

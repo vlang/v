@@ -6,6 +6,7 @@ sdl2/
 SDL2_image/
 SDL2_mixer/
 SDL2_ttf/
-pg/
+pg/*
+!pg/pgport_stubs.c
 tcc/
 sqlite/

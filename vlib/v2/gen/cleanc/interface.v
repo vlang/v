@@ -20,11 +20,6 @@ struct InterfaceWrapperSpec {
 	method        InterfaceMethodInfo
 }
 
-struct IErrorEmbeddedWrapperInfo {
-	owner        string
-	wrapper_base string
-}
-
 struct InterfaceDataFieldInfo {
 	name   string
 	c_type string
@@ -279,9 +274,6 @@ fn (mut g Gen) emit_interface_clone_body(iface_name string) {
 	g.sb.writeln('\t}')
 	data_fields := g.interface_data_fields[iface_name] or { []InterfaceDataFieldInfo{} }
 	for ctype in g.find_concrete_types_for_interface(iface_name) {
-		if !g.c_type_complete_for_sizeof(ctype) {
-			continue
-		}
 		type_short := if ctype.contains('__') {
 			ctype.all_after_last('__')
 		} else {
@@ -317,6 +309,90 @@ fn (mut g Gen) emit_interface_clone_helpers() {
 	}
 }
 
+fn (mut g Gen) emit_option_string_clone_helper() {
+	if '_option_string' !in g.option_aliases {
+		return
+	}
+	g.sb.writeln('static _option_string builtin__Option_string__clone(_option_string s) {')
+	g.sb.writeln('\tif (s.state == 0) {')
+	g.sb.writeln('\t\tstring _val = string__clone(*(string*)(((u8*)(&s.err)) + sizeof(IError)));')
+	g.sb.writeln('\t\t_option_string _opt = (_option_string){ .state = 2 };')
+	g.sb.writeln('\t\t_option_ok(&_val, (_option*)&_opt, sizeof(_val));')
+	g.sb.writeln('\t\treturn _opt;')
+	g.sb.writeln('\t}')
+	g.sb.writeln('\treturn s;')
+	g.sb.writeln('}')
+	g.sb.writeln('')
+}
+
+fn (mut g Gen) struct_type_embeds_error(st types.Struct) bool {
+	for embedded in st.embedded {
+		embedded_c := g.types_type_to_c(embedded)
+		if short_type_name(embedded_c) == 'Error' {
+			return true
+		}
+		live_emb := if embedded.fields.len == 0 {
+			g.lookup_struct_type_by_c_name(embedded_c)
+		} else {
+			embedded
+		}
+		if (live_emb.fields.len > 0 || live_emb.embedded.len > 0)
+			&& g.struct_type_embeds_error(live_emb) {
+			return true
+		}
+	}
+	return false
+}
+
+fn (mut g Gen) struct_c_type_embeds_error(c_type string) bool {
+	st := g.lookup_struct_type_by_c_name(c_type.trim_right('*'))
+	if st.fields.len == 0 && st.embedded.len == 0 {
+		return false
+	}
+	return g.struct_type_embeds_error(st)
+}
+
+fn (mut g Gen) concrete_ierror_base_for_c_type(c_type string) string {
+	base := g.qualify_ierror_concrete_base(c_type.trim_right('*'))
+	if base == '' || base == 'int' || base in ['IError', 'builtin__IError'] {
+		return ''
+	}
+	if '${base}__msg' in g.fn_return_types || g.struct_c_type_embeds_error(base) {
+		return base
+	}
+	return ''
+}
+
+fn (mut g Gen) gen_ierror_from_concrete_expr(expr ast.Expr, expr_type string) bool {
+	mut base := ''
+	expr_base := g.ierror_concrete_base_for_expr(expr)
+	if expr_base != '' {
+		base = g.concrete_ierror_base_for_c_type(expr_base)
+	}
+	if base == '' {
+		base = g.concrete_ierror_base_for_c_type(expr_type)
+	}
+	if base == '' {
+		return false
+	}
+	g.ierror_wrapper_bases[base] = true
+	g.needed_ierror_wrapper_bases[base] = true
+	type_short := if base.contains('__') { base.all_after_last('__') } else { base }
+	type_id := interface_type_id_for_name(type_short)
+	if expr_type.ends_with('*') {
+		g.sb.write_string('((IError){._object = (void*)(')
+		g.expr(expr)
+		g.sb.write_string('), ._type_id = ${type_id}, .type_name = IError_${base}_type_name_wrapper, .msg = IError_${base}_msg_wrapper, .code = IError_${base}_code_wrapper})')
+		return true
+	}
+	tmp_name := '_ierr_obj${g.tmp_counter}'
+	g.tmp_counter++
+	g.sb.write_string('({ ${base}* ${tmp_name} = (${base}*)malloc(sizeof(${base})); *${tmp_name} = ')
+	g.expr(expr)
+	g.sb.write_string('; ((IError){._object = (void*)${tmp_name}, ._type_id = ${type_id}, .type_name = IError_${base}_type_name_wrapper, .msg = IError_${base}_msg_wrapper, .code = IError_${base}_code_wrapper}); })')
+	return true
+}
+
 fn (mut g Gen) collect_ierror_wrapper_bases() {
 	if g.ierror_wrapper_bases.len > 0 {
 		return
@@ -331,23 +407,19 @@ fn (mut g Gen) collect_ierror_wrapper_bases() {
 		}
 		g.ierror_wrapper_bases[base] = true
 	}
-	if g.env != unsafe { nil } {
-		scopes := g.env.snapshot_scopes()
-		for _, scope in scopes {
-			for _, obj in scope.objects {
-				typ := obj.typ()
-				if typ is types.Struct {
-					base := g.types_type_to_c(typ)
-					if base == '' || !is_c_identifier_like(base) {
-						continue
-					}
-					if _ := g.ierror_embedded_error_wrapper(base) {
-						g.ierror_wrapper_bases[base] = true
-					}
+	saved_module := g.cur_module
+	for file in g.files {
+		g.set_file_module(file)
+		for stmt in file.stmts {
+			if stmt is ast.StructDecl && stmt.language == .v && stmt.embedded.len > 0 {
+				base := g.get_struct_name(stmt)
+				if g.struct_c_type_embeds_error(base) {
+					g.ierror_wrapper_bases[base] = true
 				}
 			}
 		}
 	}
+	g.cur_module = saved_module
 }
 
 fn (mut g Gen) mark_needed_ierror_wrapper_from_ident(name string) {
@@ -390,42 +462,29 @@ fn (mut g Gen) emit_ierror_wrapper_body(base string) {
 	g.sb.writeln('\treturn ${c_static_v_string_expr(type_label)};')
 	g.sb.writeln('}')
 	g.sb.writeln('static string IError_${base}_msg_wrapper(void* _obj) {')
-	msg_fn := '${base}__msg'
-	if msg_fn in g.fn_return_types {
+	if '${base}__msg' in g.fn_return_types {
 		g.sb.writeln('\treturn ${base}__msg(*(${base}*)_obj);')
-	} else if embedded := g.ierror_embedded_error_wrapper(base) {
-		g.sb.writeln('\treturn ${embedded.wrapper_base}__msg(((${base}*)_obj)->${embedded.owner});')
+	} else if g.struct_c_type_embeds_error(base) && 'Error__msg' in g.fn_return_types {
+		g.sb.writeln('\treturn Error__msg(((${base}*)_obj)->Error);')
 	} else {
 		g.sb.writeln('\t(void)_obj;')
-		g.sb.writeln('\treturn (string){0};')
+		g.sb.writeln('\treturn ${c_empty_v_string_expr()};')
 	}
 	g.sb.writeln('}')
 	g.sb.writeln('static int IError_${base}_code_wrapper(void* _obj) {')
 	code_fn := '${base}__code'
+	error_code_fn := 'Error__code'
 	if code_fn in g.fn_return_types {
 		g.sb.writeln('\treturn ${base}__code(*(${base}*)_obj);')
-	} else if embedded := g.ierror_embedded_error_wrapper(base) {
-		g.sb.writeln('\treturn ${embedded.wrapper_base}__code(((${base}*)_obj)->${embedded.owner});')
+	} else if g.struct_c_type_embeds_error(base) && error_code_fn in g.fn_return_types {
+		g.sb.writeln('\treturn Error__code(((${base}*)_obj)->Error);')
+	} else if error_code_fn in g.fn_return_types {
+		g.sb.writeln('\treturn Error__code(*(Error*)_obj);')
 	} else {
 		g.sb.writeln('\t(void)_obj;')
 		g.sb.writeln('\treturn 1;')
 	}
 	g.sb.writeln('}')
-}
-
-fn (mut g Gen) ierror_embedded_error_wrapper(base string) ?IErrorEmbeddedWrapperInfo {
-	struct_type := g.lookup_struct_type_by_c_name(base)
-	for embedded in struct_type.embedded {
-		embedded_c_type := g.types_type_to_c(embedded).trim_right('*')
-		embedded_short := short_type_name(embedded_c_type)
-		if embedded_short == 'Error' || embedded_short == 'MessageError' {
-			return IErrorEmbeddedWrapperInfo{
-				owner:        embedded_owner_field_name(embedded_c_type)
-				wrapper_base: embedded_c_type
-			}
-		}
-	}
-	return none
 }
 
 fn (mut g Gen) emit_needed_ierror_wrappers() {
@@ -757,7 +816,10 @@ fn (mut g Gen) find_concrete_types_for_interface(iface_name string) []string {
 			}
 		}
 		if has_all {
-			result << cand
+			body_key := 'body_${cand}'
+			if body_key in g.emitted_types || body_key in g.pending_late_body_keys {
+				result << cand
+			}
 		}
 	}
 	result.sort()
