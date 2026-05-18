@@ -322,7 +322,7 @@ fn table_ignores_data_scope(table Table) bool {
 // DB implements orm.Connection with DataScope support.
 pub struct DB {
 pub mut:
-	conn Connection
+	conn TransactionalConnection
 pub:
 	scope           DataScope
 	unscoped_fields []string
@@ -349,7 +349,7 @@ pub:
 }
 
 // new_db creates a new DB with DataScope applied.
-pub fn new_db(conn Connection, scope DataScope) DB {
+pub fn new_db(conn TransactionalConnection, scope DataScope) DB {
 	return DB{
 		conn:            conn
 		scope:           scope
@@ -695,6 +695,38 @@ pub fn (mut db DB) drop(table Table) ! {
 // last_id returns the last inserted id from the wrapped connection.
 pub fn (mut db DB) last_id() int {
 	return db.conn.last_id()
+}
+
+// DB implements orm.TransactionalConnection (decorator) -----------------------
+
+// orm_begin begins a transaction on the underlying connection.
+pub fn (mut db DB) orm_begin() ! {
+	db.conn.orm_begin()!
+}
+
+// orm_commit commits the current transaction on the underlying connection.
+pub fn (mut db DB) orm_commit() ! {
+	db.conn.orm_commit()!
+}
+
+// orm_rollback rolls back the current transaction on the underlying connection.
+pub fn (mut db DB) orm_rollback() ! {
+	db.conn.orm_rollback()!
+}
+
+// orm_savepoint creates a savepoint with the given name on the underlying connection.
+pub fn (mut db DB) orm_savepoint(name string) ! {
+	db.conn.orm_savepoint(name)!
+}
+
+// orm_rollback_to rolls back to the named savepoint on the underlying connection.
+pub fn (mut db DB) orm_rollback_to(name string) ! {
+	db.conn.orm_rollback_to(name)!
+}
+
+// orm_release_savepoint releases the named savepoint on the underlying connection.
+pub fn (mut db DB) orm_release_savepoint(name string) ! {
+	db.conn.orm_release_savepoint(name)!
 }
 
 fn clone_query_data(data QueryData) QueryData {

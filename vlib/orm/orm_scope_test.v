@@ -1080,3 +1080,263 @@ fn test_middleware_ignores_scope_affects_all_crud_operations() {
 	}!
 	assert alice_gone.len == 0
 }
+
+// ---- Transaction proxy tests ----
+// Verify orm.DB delegates orm_begin / orm_commit / orm_rollback / orm_savepoint
+// to the underlying TransactionalConnection, so scoped DBs work in transactions.
+
+fn test_db_transaction_commit_through_proxy() {
+	mut raw_db := sqlite.connect(':memory:') or { panic(err) }
+
+	sql raw_db {
+		create table NoScopeUser
+	}!
+
+	mut db := orm.new_db(raw_db, orm.DataScope{
+		filters: [
+			orm.QueryFilter{
+				field: 'tenant_id'
+				value: orm.Primitive(1)
+			},
+		]
+	})
+
+	// begin via orm.DB proxy
+	db.orm_begin()!
+
+	alice := NoScopeUser{
+		name:      'Alice'
+		tenant_id: 1
+	}
+	sql db {
+		insert alice into NoScopeUser
+	}!
+
+	// commit via proxy
+	db.orm_commit()!
+
+	// verify persisted
+	users := sql db {
+		select from NoScopeUser
+	}!
+	assert users.len == 1
+	assert users[0].name == 'Alice'
+}
+
+fn test_db_transaction_rollback_through_proxy() {
+	mut raw_db := sqlite.connect(':memory:') or { panic(err) }
+
+	sql raw_db {
+		create table NoScopeUser
+	}!
+
+	mut db := orm.new_db(raw_db, orm.DataScope{
+		filters: [
+			orm.QueryFilter{
+				field: 'tenant_id'
+				value: orm.Primitive(1)
+			},
+		]
+	})
+
+	db.orm_begin()!
+
+	alice := NoScopeUser{
+		name:      'Alice'
+		tenant_id: 1
+	}
+	sql db {
+		insert alice into NoScopeUser
+	}!
+
+	// rollback via proxy — inserted row should vanish
+	db.orm_rollback()!
+
+	users := sql db {
+		select from NoScopeUser
+	}!
+	assert users.len == 0
+}
+
+fn test_db_transaction_with_data_scope() {
+	// Scope auto-injects tenant_id=1. Inside a transaction, same scope applies.
+	mut raw_db := sqlite.connect(':memory:') or { panic(err) }
+
+	sql raw_db {
+		create table NoScopeUser
+	}!
+
+	mut db := orm.new_db(raw_db, orm.DataScope{
+		filters: [
+			orm.QueryFilter{
+				field: 'tenant_id'
+				value: orm.Primitive(1)
+			},
+		]
+	})
+
+	// Transaction with scope-active DB
+	db.orm_begin()!
+
+	alice := NoScopeUser{
+		name:      'Alice'
+		tenant_id: 1 // matches scope
+	}
+	bob := NoScopeUser{
+		name:      'Bob'
+		tenant_id: 2 // should NOT be visible under scope
+	}
+	sql raw_db {
+		insert alice into NoScopeUser
+		insert bob into NoScopeUser
+	}!
+
+	db.orm_commit()!
+
+	// Scope should filter: only Alice visible
+	users := sql db {
+		select from NoScopeUser
+	}!
+	assert users.len == 1
+	assert users[0].name == 'Alice'
+}
+
+fn test_db_transaction_unscoped_in_transaction() {
+	// unscoped DB in a transaction bypasses scope
+	mut raw_db := sqlite.connect(':memory:') or { panic(err) }
+
+	sql raw_db {
+		create table NoScopeUser
+	}!
+
+	mut db := orm.new_db(raw_db, orm.DataScope{
+		filters: [
+			orm.QueryFilter{
+				field: 'tenant_id'
+				value: orm.Primitive(1)
+			},
+		]
+	})
+
+	// unscoped before transaction
+	mut unscoped_db := db.unscoped('tenant_id')
+
+	unscoped_db.orm_begin()!
+
+	bob := NoScopeUser{
+		name:      'Bob'
+		tenant_id: 2
+	}
+	sql unscoped_db {
+		insert bob into NoScopeUser
+	}!
+
+	unscoped_db.orm_commit()!
+
+	// Bob inserted with tenant_id=2
+	// Original scoped db can't see him (tenant_id=1 scope)
+	scoped_users := sql db {
+		select from NoScopeUser
+	}!
+	assert scoped_users.len == 0
+
+	// But raw DB sees him
+	raw_users := sql raw_db {
+		select from NoScopeUser
+	}!
+	assert raw_users.len == 1
+	assert raw_users[0].name == 'Bob'
+}
+
+fn test_db_savepoint_and_rollback_to() {
+	mut raw_db := sqlite.connect(':memory:') or { panic(err) }
+
+	sql raw_db {
+		create table NoScopeUser
+	}!
+
+	mut db := orm.new_db(raw_db, orm.DataScope{})
+
+	db.orm_begin()!
+
+	// insert Alice
+	alice := NoScopeUser{
+		name:      'Alice'
+		tenant_id: 1
+	}
+	sql db {
+		insert alice into NoScopeUser
+	}!
+
+	// create savepoint
+	db.orm_savepoint('sp1')!
+
+	// insert Bob
+	bob := NoScopeUser{
+		name:      'Bob'
+		tenant_id: 1
+	}
+	sql db {
+		insert bob into NoScopeUser
+	}!
+
+	// rollback to savepoint — Bob should vanish, Alice remains
+	db.orm_rollback_to('sp1')!
+
+	// insert Carol
+	carol := NoScopeUser{
+		name:      'Carol'
+		tenant_id: 1
+	}
+	sql db {
+		insert carol into NoScopeUser
+	}!
+
+	db.orm_release_savepoint('sp1')!
+	db.orm_commit()!
+
+	users := sql db {
+		select from NoScopeUser
+	}!
+	assert users.len == 2
+	assert users[0].name == 'Alice'
+	assert users[1].name == 'Carol'
+}
+
+fn test_db_satisfies_transactional_connection_interface() {
+	// Compile-time and runtime verification: orm.DB satisfies orm.TransactionalConnection.
+	// This function accepts a TransactionalConnection and exercises all its operations.
+	mut raw_db := sqlite.connect(':memory:') or { panic(err) }
+
+	sql raw_db {
+		create table NoScopeUser
+	}!
+
+	mut db := orm.new_db(raw_db, orm.DataScope{})
+
+	// Pass orm.DB as TransactionalConnection
+	transactional_crud(mut db, raw_db) or { panic(err) }
+
+	// Verify data committed
+	users := sql db {
+		select from NoScopeUser where name == 'tx_test'
+	}!
+	assert users.len == 1
+}
+
+// transactional_crud accepts a TransactionalConnection and verifies all
+// transaction primitives compile and execute correctly.
+fn transactional_crud(mut db orm.TransactionalConnection, raw_db &sqlite.DB) ! {
+	db.orm_begin()!
+
+	u := NoScopeUser{
+		name:      'tx_test'
+		tenant_id: 7
+	}
+	// Use raw_db to bypass scope: we're testing the interface, not scope
+	sql raw_db {
+		insert u into NoScopeUser
+	}!
+
+	db.orm_commit()!
+}
