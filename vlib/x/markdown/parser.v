@@ -15,7 +15,7 @@ const block_level_tags = [
 	'menuitem', 'meta', 'nav', 'noframes', 'ol', 'optgroup', 'option', 'p', 'param', 'search',
 	'section', 'summary', 'table', 'tbody', 'td', 'tfoot', 'th', 'thead', 'title', 'tr', 'track',
 	'ul'
-]
+]!
 // vfmt on
 
 // BlockParser parses markdown block structure line by line into an AST.
@@ -985,7 +985,7 @@ fn is_table_separator(line string) bool {
 		} else {
 			c
 		}
-		for ch in inner.bytes() {
+		for ch in inner.runes() {
 			if ch != `-` {
 				return false
 			}

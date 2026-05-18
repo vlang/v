@@ -90,8 +90,12 @@ fn parallel_request_handler[A, X](req fasthttp.HttpRequest) !fasthttp.HttpRespon
 	// Parse the request head into a standard `http.Request`, then copy just the body.
 	mut req2 := http.parse_request_head_str(head) or {
 		return fasthttp.HttpResponse{
-			content: 'HTTP/1.1 500 Internal Server Error\r\nContent-Length: 0\r\nConnection: close\r\n\r\n'.bytes()
+			content:       'HTTP/1.1 500 Internal Server Error\r\nContent-Length: 0\r\nConnection: close\r\n\r\n'.bytes()
+			content_owned: true
 		}
+	}
+	$if trace_prealloc ? {
+		unsafe { prealloc_scope_checkpoint(c'veb parsed http head') }
 	}
 	if req.body.len > 0 {
 		req2.data = req.buffer[req.body.start..req.body.start + req.body.len].bytestr()
@@ -100,7 +104,8 @@ fn parallel_request_handler[A, X](req fasthttp.HttpRequest) !fasthttp.HttpRespon
 	if transfer_encoding_is_chunked(req2.header) {
 		req2.data = decode_chunked_body(req2.data) or {
 			return fasthttp.HttpResponse{
-				content: 'HTTP/1.1 400 Bad Request\r\nContent-Length: 0\r\nConnection: close\r\n\r\n'.bytes()
+				content:       'HTTP/1.1 400 Bad Request\r\nContent-Length: 0\r\nConnection: close\r\n\r\n'.bytes()
+				content_owned: true
 			}
 		}
 	}
@@ -108,7 +113,10 @@ fn parallel_request_handler[A, X](req fasthttp.HttpRequest) !fasthttp.HttpRespon
 		return invalid_resp
 	}
 	// Create and populate the `veb.Context`.
-	completed_context := handle_request_and_route[A, X](mut global_app, req2, client_fd, params)
+	mut completed_context := handle_request_and_route[A, X](mut global_app, req2, client_fd, params)
+	$if trace_prealloc ? {
+		unsafe { prealloc_scope_checkpoint(c'veb handled route') }
+	}
 
 	match completed_context.takeover_mode {
 		.manual {
@@ -120,29 +128,42 @@ fn parallel_request_handler[A, X](req fasthttp.HttpRequest) !fasthttp.HttpRespon
 			}
 		}
 		.reusable {
+			should_close := should_close_connection(completed_context.req, completed_context.res,
+				completed_context.client_wants_to_close)
 			return fasthttp.HttpResponse{
 				takeover_mode: .reusable
-				should_close:  should_close_connection(completed_context.req,
-					completed_context.res, completed_context.client_wants_to_close)
+				should_close:  should_close
 			}
 		}
 		.none {}
 	}
 
-	if completed_context.return_type == .file {
+	should_close := should_close_connection(completed_context.req, completed_context.res,
+		completed_context.client_wants_to_close)
+	content := completed_context.res.bytes()
+	$if trace_prealloc ? {
+		unsafe { prealloc_scope_checkpoint(c'veb serialized response') }
+	}
+	unsafe { completed_context.res.body.free() }
+	completed_context.res.body = ''
+	return_type := completed_context.return_type
+	return_file := completed_context.return_file
+	unsafe { free(completed_context) }
+
+	if return_type == .file {
 		return fasthttp.HttpResponse{
-			content:      completed_context.res.bytes()
-			file_path:    completed_context.return_file
-			should_close: should_close_connection(completed_context.req, completed_context.res,
-				completed_context.client_wants_to_close)
+			content:       content
+			content_owned: true
+			file_path:     return_file
+			should_close:  should_close
 		}
 	}
 
 	// The fasthttp server expects a complete response buffer to be returned.
 	return fasthttp.HttpResponse{
-		content:      completed_context.res.bytes()
-		should_close: should_close_connection(completed_context.req, completed_context.res,
-			completed_context.client_wants_to_close)
+		content:       content
+		content_owned: true
+		should_close:  should_close
 	}
 } // handle_request_and_route is a unified function that creates the context,
 
@@ -158,11 +179,12 @@ fn content_length_validation_response(req fasthttp.HttpRequest, parsed http.Requ
 	}
 	if actual_length < expected_length {
 		return fasthttp.HttpResponse{
-			content: http_408.bytes()
+			content:       http_408.bytes()
+			content_owned: true
 		}
 	}
 	return fasthttp.HttpResponse{
-		content: http.new_response(
+		content:       http.new_response(
 			status: .bad_request
 			body:   'Mismatch of body length and Content-Length header'
 			header: http.new_header(
@@ -170,6 +192,7 @@ fn content_length_validation_response(req fasthttp.HttpRequest, parsed http.Requ
 				value: 'text/plain'
 			).join(headers_close)
 		).bytes()
+		content_owned: true
 	}
 }
 
@@ -192,9 +215,15 @@ fn handle_request_and_route[A, X](mut app A, req http.Request, _client_fd int, p
 		bad_ctx.request_error('Failed to parse form data: ${err.msg()}')
 		return bad_ctx
 	}
+	$if trace_prealloc ? {
+		unsafe { prealloc_scope_checkpoint(c'veb parsed url/form') }
+	}
 	host_with_port := req.header.get(.host) or { '' }
-	host, _ := urllib.split_host_port(host_with_port)
+	host := request_host_name(host_with_port)
 	page_gen_start := if params.benchmark_page_generation { time.ticks() } else { 0 }
+	$if trace_prealloc ? {
+		unsafe { prealloc_scope_checkpoint(c'veb parsed host') }
+	}
 	mut ctx := &Context{
 		req:                   req
 		page_gen_start:        page_gen_start
@@ -204,12 +233,16 @@ fn handle_request_and_route[A, X](mut app A, req http.Request, _client_fd int, p
 		form:                  form
 		files:                 files
 	}
+	mut user_context := X{
+		Context: ctx
+	}
+	$if trace_prealloc ? {
+		unsafe { prealloc_scope_checkpoint(c'veb context initialized') }
+	}
 	$if A is StaticApp {
-		ctx.custom_mime_types = app.static_mime_types.clone()
-		mut user_context := X{}
-		user_context.Context = ctx
+		ctx.custom_mime_types_ref = unsafe { &app.static_mime_types }
 		if serve_if_static[X](static_handler_config(app.static_files, app.static_mime_types,
-			app.static_hosts, app.enable_static_gzip, app.enable_static_zstd,
+			app.static_hosts, app.static_prefixes, app.enable_static_gzip, app.enable_static_zstd,
 			app.enable_static_compression, app.static_compression_max_size,
 			app.static_compression_mime_types, app.enable_markdown_negotiation), mut user_context,
 			url, host)
@@ -221,6 +254,9 @@ fn handle_request_and_route[A, X](mut app A, req http.Request, _client_fd int, p
 			return ctx
 		}
 	}
+	$if trace_prealloc ? {
+		unsafe { prealloc_scope_checkpoint(c'veb pre-route static checked') }
+	}
 	// Match controller paths first
 	$if A is ControllerInterface {
 		if completed_context := handle_controllers[X](params.controllers_sorted, ctx, mut url, host) {
@@ -228,9 +264,10 @@ fn handle_request_and_route[A, X](mut app A, req http.Request, _client_fd int, p
 		}
 	}
 	// Create a new user context and pass veb's context
-	mut user_context := X{}
-	user_context.Context = ctx
 	handle_route[A, X](mut app, mut user_context, url, host, params.routes)
+	$if trace_prealloc ? {
+		unsafe { prealloc_scope_checkpoint(c'veb route returned') }
+	}
 	// Preserve the handled context on the heap before the stack-local user context goes away.
 	unsafe {
 		*ctx = user_context.Context

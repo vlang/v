@@ -36,6 +36,12 @@ fn net_ssl_do(req &Request, port int, method Method, host_name string, path stri
 			}
 			continue
 		}
+		// Propagate the request's read timeout into the SSL backend.
+		// Without this, mbedtls keeps its init-time default and openssl falls back to no
+		// timeout at all on a stalled socket — see issue surfaced by macOS arm64 + tcc CI hangs.
+		if req.read_timeout > 0 {
+			ssl_conn.set_read_timeout(req.read_timeout)
+		}
 		return req.do_request(req_headers, mut ssl_conn)!
 	}
 	return error('http.net_ssl_do: exhausted retries')

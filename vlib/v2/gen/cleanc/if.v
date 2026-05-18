@@ -433,14 +433,23 @@ fn (mut g Gen) gen_if_expr_value(node &ast.IfExpr) {
 }
 
 fn (mut g Gen) get_if_expr_type(node &ast.IfExpr) string {
+	mut env_type := ''
 	if t := g.get_expr_type_from_env(ast.Expr(*node)) {
 		if t != '' {
-			return t
+			env_type = t
 		}
 	}
 	branch_type := g.branch_result_type(node.stmts)
 	if branch_type != '' && branch_type != 'int' {
-		return branch_type
+		if env_type == '' || env_type == 'int' || branch_type.starts_with('${env_type}_T_') {
+			return branch_type
+		}
+	}
+	if env_type != '' {
+		if g.cur_fn_ret_type.starts_with('${env_type}_T_') {
+			return g.cur_fn_ret_type
+		}
+		return env_type
 	}
 	if node.else_expr is ast.IfExpr {
 		else_if := node.else_expr as ast.IfExpr

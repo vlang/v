@@ -147,6 +147,110 @@ fn test_mark_used_tracks_method_calls_with_env_types() {
 	assert !used[unused_key]
 }
 
+fn test_mark_used_tracks_current_receiver_method_calls() {
+	mut env := types.Environment.new()
+	env.set_expr_type(32, types.Struct{
+		name: 'Builder'
+	})
+	builder_ptr := ast.Type(ast.PointerType{
+		base_type: ast.Ident{
+			name: 'Builder'
+			pos:  pos(33)
+		}
+	})
+	files := [
+		ast.File{
+			mod:   'main'
+			name:  'main.v'
+			stmts: [
+				ast.Stmt(ast.FnDecl{
+					name:  'main'
+					typ:   ast.FnType{}
+					pos:   pos(30)
+					stmts: [
+						ast.Stmt(ast.ExprStmt{
+							expr: ast.CallExpr{
+								lhs: ast.SelectorExpr{
+									lhs: ast.Ident{
+										name: 'b'
+										pos:  pos(32)
+									}
+									rhs: ast.Ident{
+										name: 'build'
+										pos:  pos(34)
+									}
+									pos: pos(34)
+								}
+								pos: pos(34)
+							}
+						}),
+					]
+				}),
+				ast.Stmt(ast.FnDecl{
+					is_method: true
+					receiver:  ast.Parameter{
+						name: 'b'
+						typ:  builder_ptr
+						pos:  pos(35)
+					}
+					name:      'build'
+					typ:       ast.FnType{}
+					pos:       pos(36)
+					stmts:     [
+						ast.Stmt(ast.ExprStmt{
+							expr: ast.CallExpr{
+								lhs: ast.SelectorExpr{
+									lhs: ast.Ident{
+										name: 'b'
+										pos:  pos(37)
+									}
+									rhs: ast.Ident{
+										name: 'helper'
+										pos:  pos(38)
+									}
+									pos: pos(38)
+								}
+								pos: pos(38)
+							}
+						}),
+					]
+				}),
+				ast.Stmt(ast.FnDecl{
+					is_method: true
+					receiver:  ast.Parameter{
+						name: 'b'
+						typ:  builder_ptr
+						pos:  pos(39)
+					}
+					name:      'helper'
+					typ:       ast.FnType{}
+					pos:       pos(40)
+				}),
+				ast.Stmt(ast.FnDecl{
+					is_method: true
+					receiver:  ast.Parameter{
+						name: 'b'
+						typ:  builder_ptr
+						pos:  pos(41)
+					}
+					name:      'unused'
+					typ:       ast.FnType{}
+					pos:       pos(42)
+				}),
+			]
+		},
+	]
+	used := mark_used(files, env)
+	main_key := decl_key('main', files[0].stmts[0] as ast.FnDecl, env)
+	build_key := decl_key('main', files[0].stmts[1] as ast.FnDecl, env)
+	helper_key := decl_key('main', files[0].stmts[2] as ast.FnDecl, env)
+	unused_key := decl_key('main', files[0].stmts[3] as ast.FnDecl, env)
+	assert used[main_key]
+	assert used[build_key]
+	assert used[helper_key]
+	assert !used[unused_key]
+}
+
 fn test_mark_used_keeps_all_functions_when_no_entry_root_exists() {
 	mut env := types.Environment.new()
 	files := [

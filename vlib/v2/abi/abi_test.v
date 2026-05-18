@@ -13,7 +13,7 @@ import v2.ssa
 import v2.token
 
 fn parse_code_for_test(code string) []ast.File {
-	tmp_file := '/tmp/v2_abi_parser_test_${os.getpid()}.v'
+	tmp_file := os.join_path(os.temp_dir(), 'v2_abi_parser_test_${os.getpid()}.v')
 	os.write_file(tmp_file, code) or { panic(err) }
 	defer {
 		os.rm(tmp_file) or {}

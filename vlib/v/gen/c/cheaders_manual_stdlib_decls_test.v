@@ -28,6 +28,7 @@ fn test_default_c_prelude_uses_manual_stdio_stdlib_string_and_stdarg_decls() {
 	assert generated_c.contains('V_CRT_LINKAGE int V_CRT_CALL mkstemp(char *stemplate);'), generated_c
 	assert generated_c.contains('V_CRT_LINKAGE int V_CRT_CALL strcmp(const char *left, const char *right);'), generated_c
 	assert generated_c.contains('V_CRT_LINKAGE int V_CRT_CALL strncmp(const char *left, const char *right, size_t n);'), generated_c
+	assert generated_c.contains('V_CRT_LINKAGE char * V_CRT_CALL strstr(const char *haystack, const char *needle);'), generated_c
 	assert generated_c.contains('#if !defined(_WIN32) && !defined(_WIN64) && !defined(__BIONIC__)'), generated_c
 	assert generated_c.contains('V_CRT_LINKAGE char * V_CRT_CALL strdup(const char *str);'), generated_c
 	assert generated_c.contains('V_CRT_LINKAGE int V_CRT_CALL rand(void);'), generated_c

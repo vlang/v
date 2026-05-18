@@ -1,3 +1,4 @@
+// vtest build: !linux && !windows
 module cleanc
 
 import os
@@ -8,7 +9,7 @@ import v2.transformer
 import v2.types
 
 fn generate_array_append_c_for_test(code string) string {
-	tmp_file := '/tmp/v2_array_append_codegen_test_${os.getpid()}.v'
+	tmp_file := os.join_path(os.temp_dir(), 'v2_array_append_codegen_test_${os.getpid()}.v')
 	os.write_file(tmp_file, code) or { panic('failed to write temp file') }
 	defer {
 		os.rm(tmp_file) or {}

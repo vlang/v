@@ -405,6 +405,8 @@ fn (mut g Gen) comptime_call(mut node ast.ComptimeCall) {
 		for stmt in node.veb_tmpl.stmts {
 			if stmt is ast.FnDecl {
 				if stmt.name.starts_with('main.veb_tmpl') {
+					prev_inside_veb_tmpl := g.inside_veb_tmpl
+					prev_veb_filter_fn_name := g.veb_filter_fn_name
 					if is_html {
 						g.inside_veb_tmpl = true
 						g.veb_filter_fn_name = 'veb__filter'
@@ -412,8 +414,10 @@ fn (mut g Gen) comptime_call(mut node ast.ComptimeCall) {
 					// insert stmts from veb_tmpl fn
 					g.stmts(stmt.stmts.filter(it !is ast.Return))
 					//
-					g.inside_veb_tmpl = false
-					g.veb_filter_fn_name = ''
+					if is_html {
+						g.inside_veb_tmpl = prev_inside_veb_tmpl
+						g.veb_filter_fn_name = prev_veb_filter_fn_name
+					}
 					break
 				}
 			}
@@ -1128,6 +1132,101 @@ fn (mut g Gen) pop_comptime_info() {
 	g.clear_type_resolution_caches()
 }
 
+fn (mut g Gen) eval_comptime_for_if_cond(cond ast.Expr) ?bool {
+	match cond {
+		ast.ParExpr {
+			return g.eval_comptime_for_if_cond(cond.expr)
+		}
+		ast.PrefixExpr {
+			if cond.op == .not {
+				return !(g.eval_comptime_for_if_cond(cond.right)?)
+			}
+		}
+		ast.InfixExpr {
+			match cond.op {
+				.and, .logical_or {
+					left := g.eval_comptime_for_if_cond(cond.left)?
+					right := g.eval_comptime_for_if_cond(cond.right)?
+					return if cond.op == .and { left && right } else { left || right }
+				}
+				.key_is, .not_is {
+					if cond.left is ast.SelectorExpr && cond.right is ast.TypeNode {
+						if cond.left.field_name == 'return_type' && cond.left.expr is ast.Ident
+							&& cond.left.expr.name == g.comptime.comptime_for_method_var {
+							left_type :=
+								g.table.unaliased_type(g.unwrap_generic(g.comptime.comptime_for_method_ret_type))
+							right_type := g.table.unaliased_type(g.unwrap_generic(cond.right.typ))
+							is_true := left_type == right_type
+							return if cond.op == .key_is { is_true } else { !is_true }
+						}
+					}
+				}
+				.eq, .ne {
+					if cond.left is ast.SelectorExpr && cond.right is ast.StringLiteral {
+						if cond.left.field_name == 'name' && cond.left.expr is ast.Ident
+							&& cond.left.expr.name == g.comptime.comptime_for_method_var {
+							is_true := g.comptime.comptime_for_method.name == cond.right.val
+							return if cond.op == .eq { is_true } else { !is_true }
+						}
+					}
+				}
+				else {}
+			}
+		}
+		else {}
+	}
+
+	return none
+}
+
+fn (mut g Gen) comptime_if_has_live_branch(node ast.IfExpr) bool {
+	if g.pref.output_cross_c || node.has_else {
+		return true
+	}
+	comptime_branch_context_str := g.gen_branch_context_string()
+	for branch in node.branches {
+		if evaluated := g.eval_comptime_for_if_cond(branch.cond) {
+			if evaluated {
+				return true
+			}
+			continue
+		}
+		mut idx_str := comptime_branch_context_str + '|id=${branch.id}|'
+		if g.comptime.inside_comptime_for && g.comptime.comptime_for_field_var != '' {
+			idx_str += '|field_type=${g.comptime.comptime_for_field_type}|'
+		}
+		if is_true := g.table.comptime_is_true[idx_str] {
+			if is_true.val {
+				return true
+			}
+		} else {
+			return true
+		}
+	}
+	return false
+}
+
+fn (mut g Gen) comptime_for_iteration_has_live_stmts(stmts []ast.Stmt) bool {
+	for stmt in stmts {
+		match stmt {
+			ast.EmptyStmt, ast.SemicolonStmt {}
+			ast.ExprStmt {
+				if stmt.expr is ast.IfExpr && stmt.expr.is_comptime {
+					if g.comptime_if_has_live_branch(stmt.expr) {
+						return true
+					}
+				} else {
+					return true
+				}
+			}
+			else {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 fn (mut g Gen) comptime_for(node ast.ComptimeFor) {
 	resolved_typ := if node.expr !is ast.EmptyExpr {
 		mut expr_typ := g.unwrap_generic(g.recheck_concrete_type(g.resolved_expr_type(node.expr,
@@ -1183,6 +1282,10 @@ fn (mut g Gen) comptime_for(node ast.ComptimeFor) {
 			g.comptime.comptime_for_method = unsafe { &method }
 			g.comptime.comptime_for_method_var = node.val_var
 			g.comptime.comptime_for_method_ret_type = method.return_type
+			if !g.comptime_for_iteration_has_live_stmts(node.stmts) {
+				g.pop_comptime_info()
+				continue
+			}
 			g.writeln('/* method ${i} : ${method.name} */ {')
 			g.writeln('\t${node.val_var}.name = _S("${method.name}");')
 			mlocation := util.cescaped_path(util.path_styled_for_error_messages(method.file))

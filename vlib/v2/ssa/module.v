@@ -10,7 +10,6 @@ pub struct TargetData {
 pub:
 	ptr_size      int
 	endian_little bool
-	os            string
 }
 
 @[heap]
@@ -387,7 +386,6 @@ pub fn (mut m Module) new_worker_module() &Module {
 
 	mut w := &Module{
 		name:              m.name
-		target:            m.target
 		shared_type_store: unsafe { nil }
 		type_store:        wts
 		env:               m.env
@@ -670,14 +668,11 @@ pub fn (mut m Module) merge_worker_module(w &Module, func_data []FuncSSAData, se
 			wfunc.typ
 		}
 		m.funcs << Function{
-			id:          m.funcs.len
-			name:        wfunc.name
-			typ:         new_typ
-			blocks:      new_blocks
-			params:      new_params
-			is_c_extern: wfunc.is_c_extern
-			linkage:     wfunc.linkage
-			call_conv:   wfunc.call_conv
+			id:     m.funcs.len
+			name:   wfunc.name
+			typ:    new_typ
+			blocks: new_blocks
+			params: new_params
 		}
 	}
 }

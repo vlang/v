@@ -11,6 +11,10 @@ mut:
 	status string
 }
 
+struct DynamicMemberFilter {
+	name ?string
+}
+
 @[table: 'dynamic_cast_members']
 struct DynamicCastMember {
 mut:
@@ -76,6 +80,21 @@ fn test_dynamic_select_with_inline_where_block() {
 	assert rows[0].name == 'Alice'
 	assert rows[0].email == 'alice@example.com'
 	assert rows[0].age == 31
+
+	filter := DynamicMemberFilter{
+		name: 'Alice'
+	}
+	where_expr := {
+		if name := filter.name {
+			name == name
+		}
+	}
+
+	guard_rows := sql db {
+		dynamic select from DynamicMember where where_expr
+	}!
+
+	assert guard_rows.len == 2
 }
 
 fn test_dynamic_update_with_alias_set_block() {
@@ -149,8 +168,13 @@ fn test_dynamic_update_with_alias_set_block_cast_expr() {
 	id := db.last_id()
 	next_name := 'Alicia'
 	next_required := true
+	filter := DynamicMemberFilter{
+		name: next_name
+	}
 	update_expr := {
-		name == next_name,
+		if name := filter.name {
+			name == name
+		},
 		is_required == u8(if next_required { 1 } else { 0 })
 	}
 

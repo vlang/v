@@ -319,35 +319,16 @@ pub fn (mut p Preferences) fill_with_defaults() {
 // defaults after the effective C compiler has been resolved.
 pub fn (mut p Preferences) normalize_gc_defaults_for_resolved_ccompiler() {
 	p.disable_tcc_shared_backtraces()
+	if p.prealloc {
+		p.gc_mode = .no_gc
+		p.clear_gc_options()
+		return
+	}
 	if p.os != .windows || p.ccompiler_type != .msvc || p.gc_set_by_flag {
 		return
 	}
 	p.gc_mode = .no_gc
-	p.compile_defines = p.compile_defines.filter(it !in windows_default_gc_defines)
-	p.compile_defines_all = p.compile_defines_all.filter(it !in windows_default_gc_defines)
-	for define in windows_default_gc_defines {
-		p.compile_values.delete(define)
-	}
-	mut build_options := []string{cap: p.build_options.len + 2}
-	mut i := 0
-	for i < p.build_options.len {
-		option := p.build_options[i]
-		if option == '-gc' {
-			i += 2
-			continue
-		}
-		if option.starts_with('-d ') {
-			define := option[3..].all_before('=')
-			if define in windows_default_gc_defines {
-				i++
-				continue
-			}
-		}
-		build_options << option
-		i++
-	}
-	build_options << ['-gc', 'none']
-	p.build_options = build_options
+	p.clear_gc_options()
 }
 
 fn (p &Preferences) default_output_name(rpath string) string {
@@ -431,6 +412,11 @@ fn (mut p Preferences) try_to_use_tcc_by_default() {
 		return
 	}
 	if p.ccompiler == '' {
+		// -prealloc uses thread-local allocator state. The bundled tcc does not
+		// support TLS declarations, so use the platform C compiler by default.
+		if p.prealloc {
+			return
+		}
 		// use an optimizing compiler (i.e. gcc or clang) on -prod mode
 		if p.is_prod {
 			return
@@ -474,6 +460,38 @@ pub fn default_tcc_compiler() string {
 		return bundled_tcc
 	}
 	return usable_system_tcc_compiler()
+}
+
+fn (mut p Preferences) clear_gc_options() {
+	p.compile_defines = p.compile_defines.filter(it !in windows_default_gc_defines)
+	p.compile_defines_all = p.compile_defines_all.filter(it !in windows_default_gc_defines)
+	for define in windows_default_gc_defines {
+		p.compile_values.delete(define)
+	}
+	mut build_options := []string{cap: p.build_options.len + 2}
+	mut i := 0
+	for i < p.build_options.len {
+		option := p.build_options[i]
+		if option == '-gc' {
+			i += 2
+			continue
+		}
+		if option.starts_with('-gc ') {
+			i++
+			continue
+		}
+		if option.starts_with('-d ') {
+			define := option[3..].all_before('=')
+			if define in windows_default_gc_defines {
+				i++
+				continue
+			}
+		}
+		build_options << option
+		i++
+	}
+	build_options << ['-gc', 'none']
+	p.build_options = build_options
 }
 
 pub fn (mut p Preferences) default_c_compiler() {

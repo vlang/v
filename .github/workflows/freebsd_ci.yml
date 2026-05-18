@@ -45,16 +45,18 @@ jobs:
             sudo pkg install -y alsa-lib libglvnd libXi libXcursor
             # Mandatory: hostname not set in VM => some tests fail
             sudo hostname -s freebsd-ci
-            echo "### OS infos"
+            echo "::group::OS infos"
             uname -a
+            echo "::endgroup::"
+            echo "::group::Build V"
             git config --global --add safe.directory .
-            echo "### Build V"
             gmake
             sudo ./v symlink
             export VTEST_SHOW_LONGEST_BY_RUNTIME=3
             export VTEST_SHOW_LONGEST_BY_COMPTIME=3
             export VTEST_SHOW_LONGEST_BY_TOTALTIME=3
             export VFLAGS='-cc tcc -no-retry-compilation'
+            echo "::endgroup::"
             ./v run ci/freebsd_ci.vsh all
 
   clang-freebsd:
@@ -79,16 +81,18 @@ jobs:
             sudo pkg install -y alsa-lib libglvnd libXi libXcursor
             # Mandatory: hostname not set in VM => some tests fail
             sudo hostname -s freebsd-ci
-            echo "### OS infos"
+            echo "::group::OS infos"
             uname -a
+            echo "::endgroup::"
+            echo "::group::Build V"
             git config --global --add safe.directory .
-            echo "### Build V"
             gmake
             sudo ./v symlink
             export VTEST_SHOW_LONGEST_BY_RUNTIME=3
             export VTEST_SHOW_LONGEST_BY_COMPTIME=3
             export VTEST_SHOW_LONGEST_BY_TOTALTIME=3
             export VFLAGS='-cc clang'
+            echo "::endgroup::"
             ./v run ci/freebsd_ci.vsh all
 
   gcc-freebsd:
@@ -113,14 +117,16 @@ jobs:
             sudo pkg install -y alsa-lib libglvnd libXi libXcursor
             # Mandatory: hostname not set in VM => some tests fail
             sudo hostname -s freebsd-ci
-            echo "### OS infos"
+            echo "::group::OS infos"
             uname -a
+            echo "::endgroup::"
+            echo "::group::Build V"
             git config --global --add safe.directory .
-            echo "### Build V"
             gmake
             sudo ./v symlink
             export VTEST_SHOW_LONGEST_BY_RUNTIME=3
             export VTEST_SHOW_LONGEST_BY_COMPTIME=3
             export VTEST_SHOW_LONGEST_BY_TOTALTIME=3
             export VFLAGS='-cc gcc'
+            echo "::endgroup::"
             ./v run ci/freebsd_ci.vsh all

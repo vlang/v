@@ -616,6 +616,7 @@ V_CRT_LINKAGE int V_CRT_CALL memcmp(const void *left, const void *right, size_t 
 V_CRT_LINKAGE void * V_CRT_CALL memchr(const void *str, int c, size_t n);
 V_CRT_LINKAGE char * V_CRT_CALL strchr(const char *str, int c);
 V_CRT_LINKAGE char * V_CRT_CALL strrchr(const char *str, int c);
+V_CRT_LINKAGE char * V_CRT_CALL strstr(const char *haystack, const char *needle);
 V_CRT_LINKAGE int V_CRT_CALL fseek(FILE *stream, long offset, int whence);
 V_CRT_LINKAGE isize V_CRT_CALL getline(char **lineptr, size_t *n, FILE *stream);
 #if defined(_WIN32) || defined(_WIN64)

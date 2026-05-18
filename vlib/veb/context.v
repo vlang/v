@@ -49,8 +49,9 @@ mut:
 	static_compression_mime_types []string
 	// controls whether veb should automatically send the response or whether the handler
 	// takes over response writing.
-	takeover_mode ContextTakeoverMode
-	return_file   string
+	takeover_mode         ContextTakeoverMode
+	return_file           string
+	custom_mime_types_ref &map[string]string = unsafe { nil }
 	// raw client file descriptor, used by the fasthttp backend to create a TcpConn
 	// on demand when takeover_conn() is called
 	client_fd int = -1
@@ -112,6 +113,10 @@ pub fn (mut ctx Context) send_response_to_client(mimetype string, response strin
 	// ctx.done is only set in this function, so in order to sent a response over the connection
 	// this value has to be set to true. Assuming the user doesn't use `ctx.conn` directly.
 	ctx.done = true
+	if ctx.res.body.len > 0 {
+		unsafe { ctx.res.body.free() }
+		ctx.res.body = ''
+	}
 	$if veb_livereload ? {
 		if mimetype == 'text/html' {
 			ctx.res.body = response.replace('</html>',
@@ -147,6 +152,8 @@ pub fn (mut ctx Context) send_response_to_client(mimetype string, response strin
 	}
 	if ctx.takeover_mode != .none && ctx.conn != unsafe { nil } {
 		fast_send_resp(mut ctx.conn, ctx.res) or {}
+		unsafe { ctx.res.body.free() }
+		ctx.res.body = ''
 	}
 	// result is send in `veb.v`, `handle_route`
 	return Result{}
@@ -183,6 +190,17 @@ pub fn (mut ctx Context) json_pretty[T](j T) Result {
 }
 
 // Response HTTP_OK with file as payload
+fn (ctx &Context) custom_mime_type(ext string) ?string {
+	if ct := ctx.custom_mime_types[ext] {
+		return ct
+	}
+	if unsafe { ctx.custom_mime_types_ref != nil } {
+		custom_mime_types := unsafe { *ctx.custom_mime_types_ref }
+		return custom_mime_types[ext]
+	}
+	return none
+}
+
 pub fn (mut ctx Context) file(file_path string) Result {
 	if !os.exists(file_path) {
 		eprintln('[veb] file "${file_path}" does not exist')
@@ -191,7 +209,7 @@ pub fn (mut ctx Context) file(file_path string) Result {
 	ext := os.file_ext(file_path)
 	mut content_type := ctx.content_type
 	if content_type.len == 0 {
-		if ct := ctx.custom_mime_types[ext] {
+		if ct := ctx.custom_mime_type(ext) {
 			content_type = ct
 		} else {
 			content_type = mime_types[ext]

@@ -281,6 +281,17 @@ fn (mut s SSLConn) complete_connect() ! {
 	}
 }
 
+// read_timeout returns the current SSL read timeout.
+pub fn (s &SSLConn) read_timeout() time.Duration {
+	return s.duration
+}
+
+// set_read_timeout sets the read timeout used for subsequent SSL reads.
+// A value of 0, or net.infinite_timeout means "wait forever".
+pub fn (mut s SSLConn) set_read_timeout(timeout time.Duration) {
+	s.duration = timeout
+}
+
 // addr retrieves the local ip address and port number for this connection
 pub fn (s &SSLConn) addr() !net.Addr {
 	return net.addr_from_socket_handle(s.handle)

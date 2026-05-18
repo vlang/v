@@ -109,6 +109,8 @@ fn sanitize_staged_c_source(c_source string) string {
 	// UdpSocket result pointer auto-deref: .sock field is UdpSocket (value), result contains &UdpSocket.
 	source = source.replace('.sock = (*(net__UdpSocket**)(((u8*)(&_or_t54.err)) + sizeof(IError)))',
 		'.sock = *(*(net__UdpSocket**)(((u8*)(&_or_t54.err)) + sizeof(IError)))')
+	// Generic function specialization: convert_voidptr_to_t_T -> convert_voidptr_to_t_f64
+	source = source.replace('sync__convert_voidptr_to_t_T(', 'sync__convert_voidptr_to_t_f64(')
 	source = ensure_string_eq_impl(source)
 	// ObjC .m file references g_vui_webview_cookie_val as a global variable.
 	// The cleanc backend uses DarwinWebViewState singleton instead.
@@ -445,7 +447,7 @@ pub fn (mut b Builder) build(files []string) {
 	transform_start := sw.elapsed()
 	mut trans := transformer.Transformer.new_with_pref(b.files, b.env, b.pref)
 	trans.set_file_set(b.file_set)
-	b.files = if b.pref.no_parallel_transform {
+	b.files = if b.pref.no_parallel_transform || b.pref.ownership {
 		trans.transform_files(b.files)
 	} else {
 		b.transform_files_parallel(mut trans)
@@ -1324,8 +1326,15 @@ fn ast_file_module_name(file ast.File) string {
 	return 'main'
 }
 
+fn normalize_target_os_name(target_os string) string {
+	return match target_os.to_lower() {
+		'darwin', 'mac' { 'macos' }
+		else { target_os.to_lower() }
+	}
+}
+
 fn flag_os_matches(cond string, target_os string) bool {
-	current := pref.normalize_os_name(target_os)
+	current := normalize_target_os_name(target_os)
 	return match cond.to_lower() {
 		'darwin', 'macos', 'mac' { current == 'macos' || current == 'darwin' }
 		'linux' { current == 'linux' }
@@ -1484,8 +1493,7 @@ fn (b &Builder) collect_cflags_from_sources() string {
 	if !b.pref.skip_builtin {
 		for module_path in core_cached_module_paths {
 			vlib_path := b.pref.get_vlib_module_path(module_path)
-			module_files := get_v_files_from_dir(vlib_path, b.pref.user_defines,
-				b.pref.get_effective_os())
+			module_files := get_v_files_from_dir(vlib_path, b.pref.user_defines, os.user_os())
 			for mf in module_files {
 				if mf !in scanned_files {
 					scan_paths << mf
@@ -1509,7 +1517,7 @@ fn (b &Builder) collect_cflags_from_sources() string {
 				cond := trimmed[4..].trim_right('?{ ').trim_space()
 				if skip_depth > 0 {
 					skip_depth++
-				} else if !comptime_cond_matches(cond, b.pref.get_effective_os()) {
+				} else if !comptime_cond_matches(cond, os.user_os()) {
 					skip_depth = 1
 				}
 				continue
@@ -1532,8 +1540,9 @@ fn (b &Builder) collect_cflags_from_sources() string {
 			// Replace @VEXEROOT before parsing so path normalization sees absolute paths
 			resolved_line := line.replace('@VEXEROOT', b.pref.vroot).replace('VEXEROOT',
 				b.pref.vroot)
-			mut flag := parse_flag_directive_line(resolved_line, scan_path,
-				b.pref.get_effective_os()) or { continue }
+			mut flag := parse_flag_directive_line(resolved_line, scan_path, os.user_os()) or {
+				continue
+			}
 			// Build include flags from already-collected flags for compiling missing .o files
 			mut inc_flags := []string{}
 			for f in flags {
@@ -1605,7 +1614,7 @@ fn comptime_cond_matches(cond string, target_os string) bool {
 		right := cond[and_idx + 2..].trim_space()
 		return comptime_cond_matches(left, target_os) && comptime_cond_matches(right, target_os)
 	}
-	current := pref.normalize_os_name(target_os)
+	current := normalize_target_os_name(target_os)
 	return match cond.to_lower() {
 		'macos', 'darwin', 'mac' { current == 'macos' || current == 'darwin' }
 		'linux' { current == 'linux' }
@@ -1696,6 +1705,37 @@ fn run_cc_cmd_or_exit(cmd string, stage string, show_cc bool) bool {
 				}
 				fallback_cmd = filtered.join(' ')
 			}
+			// cc cannot read .o files produced by tcc on macOS arm64. Recompile
+			// any cached .o files referenced in the command from their .c siblings
+			// using cc before retrying the link.
+			for tok in fallback_cmd.fields() {
+				clean_tok := tok.trim('"')
+				if !clean_tok.ends_with('.o') {
+					continue
+				}
+				stem := clean_tok.all_before_last('.o')
+				mut c_sibling := stem + '.c'
+				if !os.exists(c_sibling) && stem.ends_with('.main') {
+					c_sibling = stem.all_before_last('.main') + '.c'
+				}
+				if !os.exists(c_sibling) {
+					continue
+				}
+				recompile_cmd := 'cc -w -Wno-incompatible-function-pointer-types -c "${c_sibling}" -o "${clean_tok}"'
+				if show_cc {
+					println(recompile_cmd)
+				}
+				rr := os.execute(recompile_cmd)
+				if rr.exit_code != 0 {
+					eprintln('cc recompile failed for ${c_sibling}:')
+					eprintln(rr.output)
+				}
+				// Invalidate stamp so future builds rebuild from .c too.
+				stamp_path := stem + '.stamp'
+				if os.exists(stamp_path) {
+					os.rm(stamp_path) or {}
+				}
+			}
 			run_cc_cmd_or_exit(fallback_cmd, stage, show_cc)
 			return true
 		}
@@ -1731,11 +1771,6 @@ fn (mut b Builder) gen_native(backend_arch pref.Arch) {
 		eprintln('error: native backend not available (compiled with stubbed ssa module)')
 		eprintln('hint: use v2 compiled with v1 for native code generation')
 		return
-	}
-	mod.target = ssa.TargetData{
-		ptr_size:      8
-		endian_little: true
-		os:            b.pref.get_effective_os()
 	}
 	mut ssa_builder := ssa.Builder.new_with_env(mod, b.env)
 	mut native_sw := time.new_stopwatch()

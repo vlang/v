@@ -428,7 +428,17 @@ fn (mut g Gen) infix_expr_eq_op(node ast.InfixExpr) {
 			.struct {
 				ptr_typ := g.equality_fn(left.unaliased)
 				if left.typ.is_ptr() || right.typ.is_ptr() {
-					g.gen_struct_pointer_eq_op(node, left_type, right_type, ptr_typ)
+					// `&lvalue` on either side means the user is comparing addresses; skip the deep `_struct_eq` (`&StructInit{}` still does deep eq).
+					left_is_addr_of_lvalue := node.left is ast.PrefixExpr && node.left.op == .amp
+						&& node.left.right.is_lvalue()
+					right_is_addr_of_lvalue := node.right is ast.PrefixExpr && node.right.op == .amp
+						&& node.right.right.is_lvalue()
+					if left.typ.is_ptr() && right.typ.is_ptr()
+						&& (left_is_addr_of_lvalue || right_is_addr_of_lvalue) {
+						g.gen_plain_infix_expr(node)
+					} else {
+						g.gen_struct_pointer_eq_op(node, left_type, right_type, ptr_typ)
+					}
 				} else {
 					if node.op == .ne {
 						g.write('!')

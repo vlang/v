@@ -476,6 +476,26 @@ pub fn execute(cmd string) Result {
 	return unsafe { raw_execute(cmd) }
 }
 
+// exec starts the specified command with arguments, waits for it to complete, and returns its output.
+pub fn exec(args []string) Result {
+	if args.len == 0 {
+		return Result{
+			exit_code: -1
+			output:    'exec requires at least one argument'
+		}
+	}
+	mut command_line := requote_arg(args[0])
+	if args.len > 1 {
+		command_line += ' ' + requote_args(args[1..])
+	}
+	mut application_name := ''
+	filename_lc := args[0].to_lower_ascii()
+	if is_abs_path(args[0]) && !filename_lc.ends_with('.bat') && !filename_lc.ends_with('.cmd') {
+		application_name = args[0]
+	}
+	return windows_execute_command_line(command_line, application_name, args.join(' '), false)
+}
+
 // windows_execute_has_forbidden_shell_operator rejects only the command chaining operators that `cmd.exe`
 // treats specially outside double-quoted strings.
 fn windows_execute_has_forbidden_shell_operator(cmd string) bool {
@@ -507,6 +527,19 @@ fn windows_execute_has_forbidden_shell_operator(cmd string) bool {
 // user provided escape sequences.
 @[unsafe]
 pub fn raw_execute(cmd string) Result {
+	mut pcmd := cmd
+	if cmd.contains('./') {
+		pcmd = pcmd.replace('./', '.\\')
+	}
+	if cmd.contains('2>') {
+		pcmd = 'cmd /c "${pcmd}"'
+	} else {
+		pcmd = 'cmd /c "${pcmd} 2>&1"'
+	}
+	return windows_execute_command_line(pcmd, '', cmd, true)
+}
+
+fn windows_execute_command_line(command_line_text string, application_name string, display_cmd string, expand_environment bool) Result {
 	mut child_stdin := &u32(unsafe { nil })
 	mut child_stdout_read := &u32(unsafe { nil })
 	mut child_stdout_write := &u32(unsafe { nil })
@@ -545,25 +578,24 @@ pub fn raw_execute(cmd string) Result {
 		dw_flags:     u32(C.STARTF_USESTDHANDLES)
 	}
 
-	mut pcmd := cmd
-	if cmd.contains('./') {
-		pcmd = pcmd.replace('./', '.\\')
+	mut command_line_ptr := command_line_text.to_wide()
+	mut expanded_command_line := [32768]u16{}
+	if expand_environment {
+		C.ExpandEnvironmentStringsW(command_line_ptr, voidptr(&expanded_command_line), 32768)
+		command_line_ptr = unsafe { &expanded_command_line[0] }
 	}
-	if cmd.contains('2>') {
-		pcmd = 'cmd /c "${pcmd}"'
-	} else {
-		pcmd = 'cmd /c "${pcmd} 2>&1"'
+	mut application_name_ptr := &u16(unsafe { nil })
+	if application_name != '' {
+		application_name_ptr = application_name.to_wide()
 	}
-	command_line := [32768]u16{}
-	C.ExpandEnvironmentStringsW(pcmd.to_wide(), voidptr(&command_line), 32768)
-	create_process_ok := C.CreateProcessW(0, &command_line[0], 0, 0, C.TRUE, C.CREATE_NO_WINDOW, 0,
-		0, voidptr(&start_info), voidptr(&proc_info))
+	create_process_ok := C.CreateProcessW(application_name_ptr, command_line_ptr, 0, 0, C.TRUE,
+		C.CREATE_NO_WINDOW, 0, 0, voidptr(&start_info), voidptr(&proc_info))
 	if !create_process_ok {
 		error_num := int(C.GetLastError())
 		error_msg := get_error_msg(error_num)
 		return Result{
 			exit_code: error_num
-			output:    'exec failed (CreateProcess) with code ${error_num}: ${error_msg} cmd: ${cmd}'
+			output:    'exec failed (CreateProcess) with code ${error_num}: ${error_msg} cmd: ${display_cmd}'
 		}
 	}
 	C.CloseHandle(child_stdin)

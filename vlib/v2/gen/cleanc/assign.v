@@ -73,11 +73,7 @@ fn (mut g Gen) gen_assign_stmt(node ast.AssignStmt) {
 			}
 			g.write_indent()
 			g.sb.write_string('${typ} ${name} = ')
-			if typ == 'string' && is_none_like_expr(rhs_expr) {
-				g.sb.write_string('((string){.str = "", .len = 0, .is_lit = 1})')
-			} else {
-				g.expr(rhs_expr)
-			}
+			g.expr(rhs_expr)
 			g.sb.writeln(';')
 			g.remember_runtime_local_type(name, typ)
 		}
@@ -318,8 +314,6 @@ fn (mut g Gen) gen_assign_stmt(node ast.AssignStmt) {
 		// Rename V variables that clash with C type names
 		if name == 'array' {
 			name = '_v_array'
-		} else {
-			name = escape_c_keyword(name)
 		}
 		// Keep fixed-size arrays as C arrays in local declarations.
 		if rhs is ast.ArrayInitExpr {
@@ -370,14 +364,6 @@ fn (mut g Gen) gen_assign_stmt(node ast.AssignStmt) {
 			}
 		}
 		mut typ := g.get_expr_type(rhs)
-		mut type_from_selector_field := false
-		if rhs is ast.SelectorExpr {
-			field_type := g.selector_field_type(rhs)
-			if field_type != '' {
-				typ = field_type
-				type_from_selector_field = true
-			}
-		}
 		// For Ident RHS referencing a struct-typed constant (e.g., `col := no_color`
 		// where no_color is `#define`d as a Color struct literal), use the const type.
 		if (typ == 'int' || typ == '') && rhs is ast.Ident {
@@ -397,27 +383,13 @@ fn (mut g Gen) gen_assign_stmt(node ast.AssignStmt) {
 				typ = cast_type
 			}
 		}
-		if rhs is ast.PrefixExpr && rhs.op == .mul && rhs.expr is ast.CastExpr {
-			cast_type := g.expr_type_to_c(rhs.expr.typ)
-			if cast_type.ends_with('*') {
-				typ = cast_type.trim_right('*')
-			}
-		}
-		rhs_is_concrete_literal := rhs is ast.BasicLiteral || rhs is ast.StringLiteral
 		// For temp variables registered by the transformer with a specific type,
 		// prefer the scope-registered type over the RHS expression type.
 		if name.starts_with('_or_t') || name.starts_with('_tmp_') || name.starts_with('_defer_t') {
 			if raw_type := g.get_raw_type(lhs) {
 				scope_type := g.types_type_to_c(raw_type)
-				if scope_type != '' && scope_type != 'int' {
-					generic_container_fallback :=
-						(typ == 'array' && scope_type.starts_with('Array_'))
-						|| (typ == 'map' && scope_type.starts_with('Map_'))
-					if !rhs_is_concrete_literal && !type_from_selector_field && (typ == ''
-						|| typ == 'int' || typ == 'int_literal' || typ == 'void*'
-						|| typ == 'voidptr' || generic_container_fallback) {
-						typ = scope_type
-					}
+				if scope_type != '' && scope_type != 'int' && scope_type !in ['void*', 'voidptr'] {
+					typ = scope_type
 					// Ensure result/option wrapper types are registered so their
 					// typedef and struct definitions get emitted in the C output.
 					if scope_type.starts_with('_result_') || scope_type.starts_with('_option_') {
@@ -482,14 +454,6 @@ fn (mut g Gen) gen_assign_stmt(node ast.AssignStmt) {
 			target_type := g.expr_type_to_c(rhs.expr.typ)
 			if target_type != '' {
 				typ = target_type + '*'
-			}
-		}
-		mut type_from_typed_deref := false
-		if rhs is ast.PrefixExpr && rhs.op == .mul && rhs.expr is ast.CastExpr {
-			target_type := g.expr_type_to_c(rhs.expr.typ)
-			if target_type.ends_with('*') {
-				typ = target_type[..target_type.len - 1]
-				type_from_typed_deref = true
 			}
 		}
 		mut elem_type_from_array := false
@@ -577,8 +541,7 @@ fn (mut g Gen) gen_assign_stmt(node ast.AssignStmt) {
 				type_from_tuple_field = sel_lhs.name.starts_with('_tuple_t')
 			}
 		}
-		if !elem_type_from_array && !type_from_selector_field && !type_from_tuple_field
-			&& !rhs_is_concrete_literal && !type_from_typed_deref && name != ''
+		if !elem_type_from_array && !type_from_tuple_field && name != ''
 			&& g.cur_fn_scope != unsafe { nil } {
 			if obj := g.cur_fn_scope.lookup_parent(name, 0) {
 				if obj !is types.Module {
@@ -621,12 +584,6 @@ fn (mut g Gen) gen_assign_stmt(node ast.AssignStmt) {
 					}
 				}
 			}
-			if typ == '' || typ == 'int' || typ == 'int_literal' {
-				fn_ptr_ret := g.fn_pointer_return_type(rhs.lhs)
-				if fn_ptr_ret != '' && fn_ptr_ret != 'int' && fn_ptr_ret != 'void' {
-					typ = fn_ptr_ret
-				}
-			}
 			// For interface vtable method calls (e.g., w->size(w->_object)),
 			// look up the method's return type from the interface declaration.
 			if (typ == '' || typ == 'int') && rhs.lhs is ast.SelectorExpr {
@@ -646,6 +603,12 @@ fn (mut g Gen) gen_assign_stmt(node ast.AssignStmt) {
 			typ = 'usize'
 		}
 		mut rhs_type := g.get_expr_type(rhs)
+		if rhs is ast.IfExpr {
+			if_type := g.get_if_expr_type(&rhs)
+			if if_type != '' && if_type != 'int' {
+				rhs_type = if_type
+			}
+		}
 		if rhs_type == 'int' {
 			if rhs is ast.CallExpr {
 				if ret := g.get_call_return_type(rhs.lhs, rhs.args) {
@@ -666,17 +629,7 @@ fn (mut g Gen) gen_assign_stmt(node ast.AssignStmt) {
 			is_or_tmp := rhs.lhs is ast.Ident && rhs.lhs.name.starts_with('_or_t')
 			if container_type.starts_with('_result_') || container_type.starts_with('_option_')
 				|| is_or_tmp {
-				payload_type := if container_type.starts_with('_result_') {
-					g.result_value_type(container_type)
-				} else if container_type.starts_with('_option_') {
-					option_value_type(container_type)
-				} else {
-					''
-				}
-				cast_type := if payload_type != '' {
-					payload_type
-				} else if typ != '' && typ != 'int_literal' && typ != 'float_literal'
-					&& !typ.starts_with('_result_') && !typ.starts_with('_option_') {
+				cast_type := if typ != '' && typ != 'int_literal' && typ != 'float_literal' {
 					typ
 				} else if rhs_type != '' && rhs_type != 'int_literal' && rhs_type != 'float_literal' {
 					rhs_type
@@ -694,6 +647,9 @@ fn (mut g Gen) gen_assign_stmt(node ast.AssignStmt) {
 			|| typ == 'int_literal' || typ == 'void*' || typ == 'voidptr') && rhs_type != ''
 			&& rhs_type !in ['int', 'int_literal', 'float_literal']
 			&& !rhs_type.starts_with('_result_') && !rhs_type.starts_with('_option_') {
+			typ = rhs_type
+		}
+		if !elem_type_from_array && typ != '' && rhs_type.starts_with('${typ}_T_') {
 			typ = rhs_type
 		}
 		if (typ == '' || typ == 'int' || typ == 'int_literal') && rhs is ast.InfixExpr {
@@ -758,6 +714,43 @@ fn (mut g Gen) gen_assign_stmt(node ast.AssignStmt) {
 			g.expr(prefix_rhs.expr)
 			g.sb.writeln('));')
 			return
+		}
+		if name != '' && rhs is ast.PrefixExpr && rhs.op == .amp && rhs.expr is ast.SelectorExpr {
+			prefix_rhs := rhs as ast.PrefixExpr
+			sel := prefix_rhs.expr as ast.SelectorExpr
+			if sel.lhs is ast.CastExpr {
+				cast_expr := sel.lhs as ast.CastExpr
+				target_type := g.expr_type_to_c(cast_expr.typ)
+				if target_type != '' && target_type != 'int' {
+					mut field_type := typ.trim_right('*')
+					if field_type == 'voidptr' {
+						field_type = 'void*'
+					}
+					if field_type == '' || field_type == 'void' {
+						field_type = 'void*'
+					}
+					g.sb.write_string('${field_type} ${name} = ((${target_type}*)(')
+					g.expr(cast_expr.expr)
+					g.sb.writeln('))->${escape_c_keyword(sel.rhs.name)};')
+					g.remember_runtime_local_type(name, field_type)
+					return
+				}
+			}
+			c_typedef := g.c_typedef_for_interface_object_access(sel)
+			if c_typedef != '' {
+				mut field_type := typ.trim_right('*')
+				if field_type == 'voidptr' {
+					field_type = 'void*'
+				}
+				if field_type == '' || field_type == 'void' {
+					field_type = 'void*'
+				}
+				g.sb.write_string('${field_type} ${name} = ((${c_typedef}*)(')
+				g.expr(sel.lhs)
+				g.sb.writeln('))->${escape_c_keyword(sel.rhs.name)};')
+				g.remember_runtime_local_type(name, field_type)
+				return
+			}
 		}
 		if typ.ends_with('*') && rhs is ast.PrefixExpr && rhs.op == .amp {
 			prefix_rhs := rhs as ast.PrefixExpr
@@ -884,11 +877,6 @@ fn (mut g Gen) gen_assign_stmt(node ast.AssignStmt) {
 		}
 		if typ == '' || typ == 'void' {
 			typ = 'int'
-		}
-		g.register_alias_type(typ)
-		if typ.starts_with('Array_') && !typ.starts_with('Array_fixed_') && !typ.ends_with('*') {
-			g.sb.writeln('typedef array ${typ};')
-			g.write_indent()
 		}
 		// Check if declaring an interface pointer initialized with a concrete type
 		if typ.ends_with('*') && name != '' {
@@ -1059,6 +1047,11 @@ fn (mut g Gen) gen_assign_stmt(node ast.AssignStmt) {
 					g.sb.writeln(';')
 					return
 				}
+				g.write_indent()
+				g.sb.write_string('(void)(')
+				g.expr(rhs)
+				g.sb.writeln(');')
+				return
 			}
 		}
 		mut lhs_needs_deref := false

@@ -1,4 +1,5 @@
 // vtest retry: 3
+// vtest vflags: -d use_openssl
 module http
 
 import encoding.base64

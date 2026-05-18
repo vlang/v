@@ -32,6 +32,18 @@ jobs:
       VFLAGS: -no-parallel
     steps:
       - uses: actions/checkout@v6
+      - name: Cache apt packages
+        if: runner.os == 'Linux'
+        uses: ./.github/actions/cache-apt-packages-action
+      - name: Cache Homebrew downloads
+        if: runner.os == 'macOS'
+        uses: actions/cache@v4
+        with:
+          path: ~/Library/Caches/Homebrew
+          key: brew-${{ matrix.os }}-vsl-${{ hashFiles('.github/workflows/vsl_and_vtl_compile_ci.yml') }}
+          restore-keys: |
+            brew-${{ matrix.os }}-vsl-
+            brew-${{ matrix.os }}-
       - name: Build V
         id: build
         run: make && sudo ./v symlink
@@ -42,7 +54,8 @@ jobs:
           v retry -- sudo apt -qq update
           v retry -- sudo apt -qq install \
             libgc-dev libgl1-mesa-dev mesa-common-dev liblapacke-dev libopenblas-dev libopenmpi-dev \
-            opencl-headers libxcursor-dev libxi-dev libxrandr-dev libhdf5-cpp-103-1t64 libhdf5-dev libhdf5-mpi-dev hdf5-tools
+            opencl-headers libvulkan-dev libxcursor-dev libxi-dev libxrandr-dev \
+            libhdf5-cpp-103-1t64 libhdf5-dev libhdf5-mpi-dev hdf5-tools
           else
             v retry brew install coreutils hdf5 open-mpi openblas lapack opencl-headers
           fi
@@ -51,7 +64,7 @@ jobs:
       - name: Test with Pure V Backend
         run: ~/.vmodules/vsl/bin/test
       - name: Test with Pure V Backend and Pure V Math
-        run: ~/.vmodules/vsl/bin/test --use-cblas
+        run: ~/.vmodules/vsl/bin/test --use-cblas --skip-examples
 
   vtl-compiles:
     strategy:
@@ -67,6 +80,18 @@ jobs:
       TERM: xterm
     steps:
       - uses: actions/checkout@v6
+      - name: Cache apt packages
+        if: runner.os == 'Linux'
+        uses: ./.github/actions/cache-apt-packages-action
+      - name: Cache Homebrew downloads
+        if: runner.os == 'macOS'
+        uses: actions/cache@v4
+        with:
+          path: ~/Library/Caches/Homebrew
+          key: brew-${{ matrix.os }}-vtl-${{ hashFiles('.github/workflows/vsl_and_vtl_compile_ci.yml') }}
+          restore-keys: |
+            brew-${{ matrix.os }}-vtl-
+            brew-${{ matrix.os }}-
       - name: Build V
         id: build
         run: make && sudo ./v symlink

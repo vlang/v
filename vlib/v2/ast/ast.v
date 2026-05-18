@@ -33,6 +33,7 @@ pub type Expr = ArrayInitExpr
 	| Keyword
 	| KeywordOperator
 	| LambdaExpr
+	| LifetimeExpr
 	| LockExpr
 	| MapInitExpr
 	| MatchExpr
@@ -94,6 +95,7 @@ pub type Type = AnonStructType
 	| NilType
 	| NoneType
 	| OptionType
+	| PointerType
 	| ResultType
 	| ThreadType
 	| TupleType
@@ -154,6 +156,9 @@ pub fn (expr Expr) name() string {
 		}
 		Keyword {
 			expr.tok.str()
+		}
+		LifetimeExpr {
+			'^' + expr.name
 		}
 		ModifierExpr {
 			'${expr.kind} ${expr.expr.name()}'
@@ -239,6 +244,9 @@ pub fn (expr Expr) pos() token.Pos {
 		KeywordOperator {
 			expr.pos
 		}
+		LifetimeExpr {
+			expr.pos
+		}
 		LambdaExpr {
 			expr.pos
 		}
@@ -300,11 +308,12 @@ pub fn (expr Expr) pos() token.Pos {
 // File (AST container)
 pub struct File {
 pub:
-	attributes []Attribute
-	mod        string
-	name       string
-	stmts      []Stmt
-	imports    []ImportStmt
+	attributes     []Attribute
+	mod            string
+	name           string
+	stmts          []Stmt
+	imports        []ImportStmt
+	selector_names map[int]string
 }
 
 pub enum Language {
@@ -412,7 +421,7 @@ pub:
 pub struct GenericArgs {
 pub:
 	lhs  Expr
-	args []Expr // concrete types
+	args []Expr // concrete types and lifetimes
 	pos  token.Pos
 }
 
@@ -559,6 +568,12 @@ pub:
 	typ    Expr
 	is_mut bool
 	pos    token.Pos
+}
+
+pub struct LifetimeExpr {
+pub:
+	name string
+	pos  token.Pos
 }
 
 // name_str returns the parameter name.
@@ -1037,6 +1052,12 @@ pub struct NoneType {}
 pub struct OptionType {
 pub:
 	base_type Expr = empty_expr
+}
+
+pub struct PointerType {
+pub:
+	base_type Expr = empty_expr
+	lifetime  string
 }
 
 pub struct ResultType {

@@ -37,6 +37,7 @@ mut:
 	comptime_field_raw_type types.Type = types.Struct{} // raw types.Type for comptime checks
 	comptime_field_attrs    []string // current field attributes
 	comptime_field_idx      int      // current field index
+	comptime_continue_label string   // label for continue inside unrolled comptime field loops
 	comptime_val_var        string   // the struct variable being decoded (e.g., 'val')
 	comptime_val_type       string   // C type of val (e.g., 'Slack')
 
@@ -982,10 +983,6 @@ pub fn (mut g Gen) gen_passes_1_to_4() {
 						prev_generic_types := g.active_generic_types.clone()
 						for spec in specs {
 							g.active_generic_types = spec.generic_types.clone()
-							spec_key := 'fn_${spec.name}'
-							if spec_key !in g.fn_owner_file {
-								g.fn_owner_file[spec_key] = fi
-							}
 							g.gen_fn_head_with_name(stmt, spec.name)
 							g.sb.writeln(';')
 						}
@@ -997,6 +994,33 @@ pub fn (mut g Gen) gen_passes_1_to_4() {
 						}
 					}
 					continue
+				}
+				recv_gp := receiver_generic_param_names(stmt)
+				if recv_gp.len > 0 {
+					all_bindings := g.get_all_receiver_generic_bindings(stmt)
+					if all_bindings.len > 0 {
+						prev_generic_types := g.active_generic_types.clone()
+						for bindings in all_bindings {
+							g.active_generic_types = bindings.clone()
+							gfn_name := g.get_fn_name(stmt)
+							if gfn_name != '' {
+								g.gen_fn_head_with_name(stmt, gfn_name)
+								g.sb.writeln(';')
+							}
+						}
+						g.active_generic_types = prev_generic_types.clone()
+						continue
+					} else if bindings := g.get_receiver_generic_bindings(stmt) {
+						prev_generic_types := g.active_generic_types.clone()
+						g.active_generic_types = bindings.clone()
+						gfn_name := g.get_fn_name(stmt)
+						if gfn_name != '' {
+							g.gen_fn_head_with_name(stmt, gfn_name)
+							g.sb.writeln(';')
+						}
+						g.active_generic_types = prev_generic_types.clone()
+						continue
+					}
 				}
 				fn_name := g.get_fn_name(stmt)
 				if fn_name == '' {
@@ -1298,6 +1322,7 @@ pub fn (mut g Gen) gen_pass5_post() {
 	g.emit_needed_ierror_wrappers()
 	g.emit_needed_interface_method_wrappers()
 	g.emit_interface_clone_helpers()
+	g.emit_option_string_clone_helper()
 	g.emit_array_interface_repeat_helpers()
 	g.emit_live_reload_infrastructure()
 	if g.cache_bundle_name.len == 0 {
@@ -1905,6 +1930,19 @@ fn is_c_hex_digit(ch u8) bool {
 	return (ch >= `0` && ch <= `9`) || (ch >= `a` && ch <= `f`) || (ch >= `A` && ch <= `F`)
 }
 
+fn hex_nibble_value(ch u8) u32 {
+	if ch >= `0` && ch <= `9` {
+		return u32(ch - `0`)
+	}
+	if ch >= `a` && ch <= `f` {
+		return u32(ch - `a`) + 10
+	}
+	if ch >= `A` && ch <= `F` {
+		return u32(ch - `A`) + 10
+	}
+	return 0
+}
+
 fn escape_c_string_literal_segment(raw string) string {
 	mut sb := strings.new_builder(raw.len + 8)
 	mut i := 0
@@ -1927,6 +1965,32 @@ fn escape_c_string_literal_segment(raw string) string {
 				i += 4
 				// C hex escapes are greedy, so split adjacent literals before the
 				// next hex digit to keep the escape length fixed at two digits.
+				if i < raw.len && is_c_hex_digit(raw[i]) {
+					sb.write_string('""')
+				}
+				continue
+			}
+			// V \uXXXX universal char → emit UTF-8 byte sequence as \xNN escapes.
+			// C99/C11 forbid universal character names for code points below 0xA0
+			// (except $, @, `), so we can't pass them through to C verbatim.
+			if next == `u` && i + 5 < raw.len && is_c_hex_digit(raw[i + 2])
+				&& is_c_hex_digit(raw[i + 3]) && is_c_hex_digit(raw[i + 4])
+				&& is_c_hex_digit(raw[i + 5]) {
+				cp := u32(hex_nibble_value(raw[i + 2])) << 12 | u32(hex_nibble_value(raw[i + 3])) << 8 | u32(hex_nibble_value(raw[
+					i + 4])) << 4 | u32(hex_nibble_value(raw[i + 5]))
+				if cp < 0x80 {
+					sb.write_string('\\x${cp:02x}')
+				} else if cp < 0x800 {
+					b0 := 0xC0 | (cp >> 6)
+					b1 := 0x80 | (cp & 0x3F)
+					sb.write_string('\\x${b0:02x}\\x${b1:02x}')
+				} else {
+					b0 := 0xE0 | (cp >> 12)
+					b1 := 0x80 | ((cp >> 6) & 0x3F)
+					b2 := 0x80 | (cp & 0x3F)
+					sb.write_string('\\x${b0:02x}\\x${b1:02x}\\x${b2:02x}')
+				}
+				i += 6
 				if i < raw.len && is_c_hex_digit(raw[i]) {
 					sb.write_string('""')
 				}

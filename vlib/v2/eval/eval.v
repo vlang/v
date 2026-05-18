@@ -5796,6 +5796,13 @@ fn (e &Eval) type_node_name(typ ast.Type) string {
 		ast.OptionType {
 			'?${e.type_expr_name(typ.base_type)}'
 		}
+		ast.PointerType {
+			if typ.lifetime != '' {
+				'&^${typ.lifetime} ${e.type_expr_name(typ.base_type)}'
+			} else {
+				'&${e.type_expr_name(typ.base_type)}'
+			}
+		}
 		ast.ResultType {
 			'!${e.type_expr_name(typ.base_type)}'
 		}

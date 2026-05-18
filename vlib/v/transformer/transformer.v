@@ -808,7 +808,12 @@ fn (mut t Transformer) sql_query_data_items(items []ast.SqlQueryDataItem) []ast.
 fn (mut t Transformer) sql_query_data_item(mut item ast.SqlQueryDataItem) ast.SqlQueryDataItem {
 	match mut item {
 		ast.SqlQueryDataLeaf {
+			// The left side is an ORM field, but the right side can be a V variable
+			// with the same name, so `field == field` must not fold to `true`.
+			old_inside_sql := t.inside_sql
+			t.inside_sql = true
 			item.expr = t.expr(mut item.expr)
+			t.inside_sql = old_inside_sql
 		}
 		ast.SqlQueryDataIf {
 			for mut branch in item.branches {

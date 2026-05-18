@@ -18,7 +18,7 @@ fn main() {
 	if build_res.exit_code != 0 {
 		eprintln('Error: Failed to build v2')
 		eprintln(build_res.output)
-		return
+		exit(1)
 	}
 
 	// Determine backends from command line args.
@@ -51,7 +51,7 @@ fn main() {
 	}
 	if !os.exists(input_file) {
 		eprintln('Error: ${input_file} not found')
-		return
+		exit(1)
 	}
 
 	// Derive output binary name from input file
@@ -69,14 +69,15 @@ fn main() {
 		// Run Reference (v run test.v)
 		println('[*] Running reference: ${@VEXE} -enable-globals run ${input_file}...')
 		os.rm(ref_output_path) or {}
-		ref_cmd := '${@VEXE} -gc none -n -w -enable-globals run ${input_file} > ${ref_output_path} 2>&1'
+		ref_cc := if os.user_os() == 'macos' { '-cc cc ' } else { '' }
+		ref_cmd := '${@VEXE} -gc none ${ref_cc}-n -w -enable-globals run ${input_file} > ${ref_output_path} 2>&1'
 		ref_res := os.execute(ref_cmd)
 		ref_out := os.read_file(ref_output_path) or { '' }
 		os.rm(ref_output_path) or {}
 		if ref_res.exit_code != 0 {
 			eprintln('Error: Reference run failed')
 			eprintln(ref_out)
-			return
+			exit(1)
 		}
 		// Normalize newlines
 		expected_out = ref_out.trim_space().replace('\r\n', '\n')
@@ -213,6 +214,7 @@ fn main() {
 
 	if had_failures {
 		println('\n[FAILURE] One or more backends failed')
+		exit(1)
 	} else {
 		println('\n[SUCCESS] All requested backends passed')
 	}

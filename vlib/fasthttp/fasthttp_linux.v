@@ -258,6 +258,10 @@ fn send_terminal_response_and_drain(client_fd int, response []u8, mut client_buf
 }
 
 fn process_request(server &Server, epoll_fd int, client_fd int, request_buffer []u8, mut client_fds map[int]bool, mut client_buffers map[int][]u8, mut client_read_starts map[int]i64, mut closing_client_fds map[int]bool) {
+	mut request_arena := voidptr(unsafe { nil })
+	$if prealloc {
+		request_arena = unsafe { prealloc_scope_begin() }
+	}
 	client_read_starts.delete(client_fd)
 	server.begin_request()
 	defer {
@@ -267,19 +271,32 @@ fn process_request(server &Server, epoll_fd int, client_fd int, request_buffer [
 		eprintln('Error decoding request ${err}')
 		C.send(client_fd, tiny_bad_request_response.data, tiny_bad_request_response.len,
 			C.MSG_NOSIGNAL)
+		end_request_arena_current_thread(request_arena)
 		handle_client_closure(epoll_fd, client_fd, mut client_fds, mut client_buffers, mut
 			client_read_starts, mut closing_client_fds)
 		return
 	}
+	$if trace_prealloc ? {
+		unsafe { prealloc_scope_checkpoint(c'fasthttp decoded request') }
+	}
 	decoded_http_request.client_conn_fd = client_fd
 	decoded_http_request.user_data = server.user_data
-	response := server.request_handler(decoded_http_request) or {
+	mut response := server.request_handler(decoded_http_request) or {
 		eprintln('Error handling request ${err}')
 		C.send(client_fd, tiny_bad_request_response.data, tiny_bad_request_response.len,
 			C.MSG_NOSIGNAL)
+		end_request_arena_current_thread(request_arena)
 		handle_client_closure(epoll_fd, client_fd, mut client_fds, mut client_buffers, mut
 			client_read_starts, mut closing_client_fds)
 		return
+	}
+	$if trace_prealloc ? {
+		unsafe { prealloc_scope_checkpoint(c'fasthttp handler returned') }
+	}
+	response.attach_request_arena_if_empty(request_arena)
+	defer {
+		response.free_owned_content()
+		response.end_request_arena_current_thread()
 	}
 
 	match response.takeover_mode {
@@ -291,6 +308,7 @@ fn process_request(server &Server, epoll_fd int, client_fd int, request_buffer [
 			client_read_starts.delete(client_fd)
 			closing_client_fds.delete(client_fd)
 			remove_fd_from_epoll(epoll_fd, client_fd)
+			response.abandon_request_arena_current_thread()
 			return
 		}
 		.reusable {

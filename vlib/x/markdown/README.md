@@ -2,9 +2,12 @@
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 
-# vlib/x/markdown - Markdown Parser and HTML Renderer
+# vlib/x/markdown - Markdown Parser and Renderers
 
-A CommonMark-compliant Markdown parser and HTML renderer for V, with support for GitHub Flavored Markdown (GFM) extensions. Designed for feature parity with [github.com/yuin/goldmark](https://github.com/yuin/goldmark).
+A CommonMark-compliant Markdown parser for V, with HTML and console-friendly
+plain-text renderers, plus support for GitHub Flavored Markdown (GFM)
+extensions. Designed for feature parity with
+[github.com/yuin/goldmark](https://github.com/yuin/goldmark).
 
 ## Features
 
@@ -39,8 +42,9 @@ import x.markdown
 
 fn main() {
 	html := markdown.to_html('# Hello\n\nWorld')
+	text := markdown.to_plaintext('# Hello\n\nWorld')
 	println(html)
-	// Output: <h1>Hello</h1>\n<p>World</p>\n
+	println(text)
 }
 ```
 
@@ -108,6 +112,8 @@ fn main() {
 ### Top-Level Functions
 - `to_html(src: string) string` - Convert Markdown to HTML with default settings
 - `to_html(src: string, opts: Options) string` - Convert with custom options
+- `to_plaintext(src: string) string` - Convert Markdown to UTF-8 plain text
+- `to_plaintext(src: string, opts: Options) string` - Convert plain text with options
 - `parse_inline(src: string, opts: Options, ref_map: map) []&Node` - Parse inline content only
 
 ### Main Structs
@@ -118,6 +124,7 @@ to share link references.
 
 Methods:
 - `convert(src: string) string` - Parse and render to HTML in one call
+- `convert_plaintext(src: string) string` - Parse and render to plain text
 - `parse(src: string) &Node` - Parse to AST only
 
 #### `Options` (@[params])

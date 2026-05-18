@@ -472,9 +472,14 @@ pub fn (mut g Gen) gen_post_pass() {
 	// Add return-zero stub for unresolved symbols.
 	// When the linker can't resolve a symbol, it redirects calls here instead of
 	// letting them jump to the Mach-O header which corrupts memory.
-	g.macho.add_symbol('___unresolved_stub', u64(g.macho.text_data.len), false, 1)
+	unresolved_stub_offset := u64(g.macho.text_data.len)
+	g.macho.add_symbol('___unresolved_stub', unresolved_stub_offset, false, 1)
+	g.macho.add_symbol('_tcc_backtrace', unresolved_stub_offset, false, 1)
 	g.emit(0xD2800000) // mov x0, #0
 	g.emit(0xD2800001) // mov x1, #0
+	g.emit(0xD65F03C0) // ret
+	g.macho.add_symbol('_v_os_execute_capture_start', u64(g.macho.text_data.len), false, 1)
+	g.emit(0x12800000) // mov w0, #-1
 	g.emit(0xD65F03C0) // ret
 
 	// Dead-strip unreachable functions.

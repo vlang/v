@@ -1,7 +1,7 @@
 #include <stdio.h>
-extern int abc__addition(int x, int y);
+extern int abc_addition(int x, int y);
 int main() {
-	int res = abc__addition(10,20);
+	int res = abc_addition(10,20);
 	printf("Result of addition: %d\n", res);
 	return 0;
 }

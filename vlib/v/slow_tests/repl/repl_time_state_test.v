@@ -21,10 +21,27 @@ fn test_repl_keeps_time_assignments_stable_across_reads() {
 		'exit',
 	].join('\n')
 	os.write_file(input_file, input) or { panic(err) }
-	cmd := 'VEXE=${os.quoted_path(vexec)} ${os.quoted_path(vexec)} repl -replfolder ${os.quoted_path(temp_dir)} -replprefix "time_state." < ${os.quoted_path(input_file)}'
-	res := os.execute(cmd)
-	assert res.exit_code == 0, res.output
-	output := res.output.replace_each(['\r', '', '>>> ', '', '>>>', '', '... ', '',
+	original_vexe := os.getenv_opt('VEXE')
+	os.setenv('VEXE', vexec, true)
+	defer {
+		if old_vexe := original_vexe {
+			os.setenv('VEXE', old_vexe, true)
+		} else {
+			os.unsetenv('VEXE')
+		}
+	}
+	mut repl := os.new_process(vexec)
+	repl.set_args(['repl', '-replfolder', temp_dir, '-replprefix', 'time_state.'])
+	repl.set_redirect_stdio()
+	repl.create_no_window = true
+	repl.run()
+	repl.stdin_write(input + '\n')
+	repl.wait()
+	output_raw := repl.stdout_slurp() + repl.stderr_slurp()
+	exit_code := repl.code
+	repl.close()
+	assert exit_code == 0, output_raw
+	output := output_raw.replace_each(['\r', '', '>>> ', '', '>>>', '', '... ', '',
 		temp_dir + os.path_separator, '', os.dir(vexec) + os.path_separator, '']).trim_right('\n\r')
 	lines := output.split_into_lines()
 	assert lines.len == 2, 'expected 2 repl outputs, got ${lines.len}: ${lines}'
@@ -52,15 +69,18 @@ fn test_repl_bypasses_local_cmd_exe_on_windows() {
 	assert build_fake_cmd.exit_code == 0, build_fake_cmd.output
 	original_vexe := os.getenv('VEXE')
 	os.setenv('VEXE', vexec, true)
+	original_vflags := os.getenv('VFLAGS')
+	os.setenv('VFLAGS', '', true)
 	defer {
 		os.setenv('VEXE', original_vexe, true)
+		os.setenv('VFLAGS', original_vflags, true)
 	}
 	mut repl := os.new_process(vexec)
 	repl.set_args(['repl', '-replfolder', temp_dir, '-replprefix', 'cmd_bypass.'])
 	repl.set_redirect_stdio()
 	repl.create_no_window = true
 	repl.run()
-	repl.stdin_write('1+1\nexit\n')
+	repl.stdin_write('println(1 + 1)\nexit\n')
 	repl.wait()
 	output := repl.stdout_slurp() + repl.stderr_slurp()
 	repl.close()

@@ -7,6 +7,7 @@ import time
 // canceled is the error returned when the cancel function is called on a merged context
 pub const canceled = error('canceled context')
 
+@[heap]
 struct OneContext {
 mut:
 	ctx        context.Context
@@ -38,20 +39,23 @@ pub fn merge(ctx context.Context, ctxs ...context.Context) (context.Context, con
 // or none if no context has a deadline set.
 pub fn (octx OneContext) deadline() ?time.Time {
 	mut min := time.Time{}
+	mut found := false
 
 	if deadline := octx.ctx.deadline() {
 		min = deadline
+		found = true
 	}
 
 	for ctx in octx.ctxs {
 		if deadline := ctx.deadline() {
-			if min.unix() == 0 || deadline < min {
+			if !found || deadline < min {
 				min = deadline
 			}
+			found = true
 		}
 	}
 
-	if min.unix() == 0 {
+	if !found {
 		return none
 	}
 
@@ -124,10 +128,10 @@ pub fn (mut octx OneContext) cancel(err IError) {
 // run_two_contexts spawns a listener that cancels the merged context
 // when either of the two given contexts is done.
 pub fn (mut octx OneContext) run_two_contexts(mut ctx1 context.Context, mut ctx2 context.Context) {
-	spawn fn (mut octx OneContext, mut ctx1 context.Context, mut ctx2 context.Context) {
-		octx_cancel_done := octx.cancel_ctx.done()
-		c1done := ctx1.done()
-		c2done := ctx2.done()
+	octx_cancel_done := octx.cancel_ctx.done()
+	c1done := ctx1.done()
+	c2done := ctx2.done()
+	spawn fn (mut octx OneContext, octx_cancel_done chan int, c1done chan int, c2done chan int, mut ctx1 context.Context, mut ctx2 context.Context) {
 		select {
 			_ := <-octx_cancel_done {
 				octx.cancel(canceled)
@@ -136,18 +140,18 @@ pub fn (mut octx OneContext) run_two_contexts(mut ctx1 context.Context, mut ctx2
 				octx.cancel(ctx1.err())
 			}
 			_ := <-c2done {
-				octx.cancel(ctx1.err())
+				octx.cancel(ctx2.err())
 			}
 		}
-	}(mut &octx, mut &ctx1, mut &ctx2)
+	}(mut &octx, octx_cancel_done, c1done, c2done, mut ctx1, mut ctx2)
 }
 
 // run_multiple_contexts spawns a listener that cancels the merged context
 // when the given context is done.
 pub fn (mut octx OneContext) run_multiple_contexts(mut ctx context.Context) {
-	spawn fn (mut octx OneContext, mut ctx context.Context) {
-		octx_cancel_done := octx.cancel_ctx.done()
-		cdone := ctx.done()
+	octx_cancel_done := octx.cancel_ctx.done()
+	cdone := ctx.done()
+	spawn fn (mut octx OneContext, octx_cancel_done chan int, cdone chan int, mut ctx context.Context) {
 		select {
 			_ := <-octx_cancel_done {
 				octx.cancel(canceled)
@@ -156,5 +160,5 @@ pub fn (mut octx OneContext) run_multiple_contexts(mut ctx context.Context) {
 				octx.cancel(ctx.err())
 			}
 		}
-	}(mut &octx, mut &ctx)
+	}(mut &octx, octx_cancel_done, cdone, mut ctx)
 }

@@ -13,7 +13,7 @@ fn help_flag(with_abbrev bool) Flag {
 		flag:        .bool
 		name:        'help'
 		abbrev:      sabbrev
-		description: 'Prints help information.'
+		description: 'Print help information'
 	}
 }
 
@@ -21,7 +21,7 @@ fn help_cmd() Command {
 	return Command{
 		name:        'help'
 		usage:       '<command>'
-		description: 'Prints help information.'
+		description: 'Print help information'
 		execute:     print_help_for_command
 	}
 }

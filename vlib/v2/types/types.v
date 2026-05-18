@@ -176,11 +176,6 @@ pub fn (f &FnType) is_variadic_fn() bool {
 	return f.is_variadic
 }
 
-// is_noreturn reports whether the function is annotated with @[noreturn].
-pub fn (f &FnType) is_noreturn() bool {
-	return f.attributes.has(.noreturn)
-}
-
 // get_generic_types returns the concrete generic instantiations inferred for this function.
 pub fn (f &FnType) get_generic_types() []map[string]Type {
 	mut out := []map[string]Type{cap: f.generic_types.len}
@@ -208,6 +203,7 @@ pub:
 pub struct Pointer {
 pub:
 	base_type Type
+	lifetime  string
 }
 
 // struct String {
@@ -225,6 +221,7 @@ pub:
 	name         string
 	typ          Type
 	default_expr ast.Expr = ast.empty_expr
+	attributes   []ast.Attribute
 }
 
 // struct Method {
@@ -737,6 +734,9 @@ fn (t OptionType) name() string {
 }
 
 fn (t Pointer) name() string {
+	if t.lifetime != '' {
+		return '&^${t.lifetime} ' + t.base_type.name()
+	}
 	return '&' + t.base_type.name()
 }
 

@@ -128,17 +128,13 @@ pub fn (a Ip) str() string {
 	return '${saddr}:${port}'
 }
 
-// str returns a string representation of `a`
+// str returns a string representation of `a`. The IPv6 portion is
+// rendered per RFC 5952 by canonical_ipv6_from_bytes (pure V), instead
+// of libc's inet_ntop, which historically emits the deprecated
+// IPv4-compatible mixed form (`::a.b.c.d`) for any address with the
+// upper 96 bits zero.
 pub fn (a Ip6) str() string {
-	buf := [max_ip6_len]char{}
-
-	res := &char(C.inet_ntop(i32(AddrFamily.ip6), &a.addr, &buf[0], buf.len))
-
-	if res == 0 {
-		return '<Unknown>'
-	}
-
-	saddr := unsafe { cstring_to_vstring(res) }
+	saddr := canonical_ipv6_from_bytes(a.addr[..]) or { return '<Unknown>' }
 	port := conv.ntoh16(a.port)
 	return '[${saddr}]:${port}'
 }

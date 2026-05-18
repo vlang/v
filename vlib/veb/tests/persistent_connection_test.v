@@ -1,3 +1,4 @@
+// vtest build: !windows // fasthttp.Server.run is not implemented on windows yet
 import net
 import net.http
 import io

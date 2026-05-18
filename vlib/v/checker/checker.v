@@ -24,6 +24,15 @@ const generic_fn_cutoff_limit_per_fn = 10_000 // how many times post_process_gen
 
 const generic_fn_postprocess_iterations_cutoff_limit = 1_000_000
 
+fn has_ascii_upper(s string) bool {
+	for ch in s {
+		if ch >= `A` && ch <= `Z` {
+			return true
+		}
+	}
+	return false
+}
+
 // array_builtin_methods contains a list of all methods on array, that return other typed arrays.
 // i.e. that act as *pseudogeneric* methods, that need compiler support, so that the types of the results
 // are properly checked.
@@ -6696,7 +6705,8 @@ fn (mut c Checker) ident(mut node ast.Ident) ast.Type {
 		}
 		c_name := node.name.all_after('C.')
 		if !c.pref.translated && !c.file.is_translated && c_name.len > 0 && c_name[0] >= `a`
-			&& c_name[0] <= `z` && c_name !in c.table.export_names.values() {
+			&& c_name[0] <= `z` && !has_ascii_upper(c_name)
+			&& c_name !in c.table.export_names.values() {
 			c.error('undefined C identifier: `${node.name}`', node.pos)
 			return ast.int_type
 		}

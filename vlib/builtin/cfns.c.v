@@ -118,6 +118,7 @@ fn C.close(fd i32) i32
 
 fn C.strrchr(s &char, c i32) &char
 fn C.strchr(s &char, c i32) &char
+fn C.strstr(const_haystack &char, const_needle &char) &char
 
 // process execution, os.process:
 @[trusted]

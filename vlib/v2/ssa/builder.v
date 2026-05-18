@@ -7,7 +7,6 @@ module ssa
 import v2.ast
 import v2.markused
 import v2.types
-import os
 
 struct DynConstArray {
 	arr_global_name  string // V array struct global name
@@ -81,54 +80,6 @@ mut:
 struct LoopInfo {
 	cond_block BlockID
 	exit_block BlockID
-}
-
-fn c_stdio_symbol_for_os(c_name string, user_os string) string {
-	match c_name {
-		'stdin' {
-			return match user_os {
-				'macos', 'freebsd', 'netbsd', 'dragonfly' { '__stdinp' }
-				'openbsd' { '__stdin' }
-				else { 'stdin' }
-			}
-		}
-		'stdout' {
-			return match user_os {
-				'macos', 'freebsd', 'netbsd', 'dragonfly' { '__stdoutp' }
-				'openbsd' { '__stdout' }
-				else { 'stdout' }
-			}
-		}
-		'stderr' {
-			return match user_os {
-				'macos', 'freebsd', 'netbsd', 'dragonfly' { '__stderrp' }
-				'openbsd' { '__stderr' }
-				else { 'stderr' }
-			}
-		}
-		else {
-			return c_name
-		}
-	}
-}
-
-fn c_stdio_symbol_needs_load(user_os string) bool {
-	return user_os != 'openbsd'
-}
-
-fn c_float_macro_const(c_name string) (int, string) {
-	return match c_name {
-		'FLT_EPSILON' { 32, '1.19209290e-07' }
-		'DBL_EPSILON' { 64, '2.2204460492503131e-16' }
-		else { 0, '' }
-	}
-}
-
-fn (b &Builder) c_stdio_target_os() string {
-	if b.mod.target.os.len > 0 {
-		return b.mod.target.os
-	}
-	return os.user_os().to_lower()
 }
 
 pub fn Builder.new(mod &Module) &Builder {
@@ -270,7 +221,6 @@ pub fn (mut b Builder) build_all(files []ast.File) {
 		b.generate_wyhash_stub()
 		b.generate_ierror_stubs()
 		b.generate_fd_macro_stubs()
-		b.generate_tcc_backtrace_stub()
 	}
 
 	// Phase 4: Build function bodies
@@ -1300,6 +1250,8 @@ fn (mut b Builder) register_consts_and_globals(file ast.File) {
 					}
 					glob_type := if field.typ != ast.empty_expr {
 						b.ast_type_to_ssa(field.typ)
+					} else if field.value is ast.ArrayInitExpr && field.value.typ != ast.empty_expr {
+						b.ast_type_to_ssa(field.value.typ)
 					} else {
 						b.mod.type_store.get_int(64)
 					}
@@ -2059,6 +2011,10 @@ fn (mut b Builder) ast_type_node_to_ssa(typ ast.Type) TypeID {
 		ast.ResultType {
 			return b.get_result_wrapper_type(b.ast_type_to_ssa(typ.base_type))
 		}
+		ast.PointerType {
+			base := b.ast_type_to_ssa(typ.base_type)
+			return b.mod.type_store.get_ptr(base)
+		}
 		ast.TupleType {
 			mut elem_types := []TypeID{cap: typ.types.len}
 			for t in typ.types {
@@ -2327,6 +2283,9 @@ fn (mut b Builder) receiver_type_name(typ ast.Expr) string {
 		ast.Type {
 			// Handle type expressions used as receivers (e.g., []rune for (ra []rune) string())
 			inner := ast.Type(typ)
+			if inner is ast.PointerType {
+				return b.receiver_type_name(inner.base_type)
+			}
 			if inner is ast.ArrayType {
 				// []rune → Array_rune, []int → Array_int, etc.
 				elem_name := if inner.elem_type is ast.Ident {
@@ -2400,9 +2359,6 @@ pub fn (mut b Builder) should_build_fn(file_name string, decl ast.FnDecl) bool {
 	}
 	// Always build functions from core modules that the runtime needs
 	if b.cur_module in ['builtin', 'strings', 'strconv', 'bits', 'sha256', 'binary'] {
-		return true
-	}
-	if b.cur_module == 'os' && decl.name == 'getenv_opt' {
 		return true
 	}
 	// Always build .vh header declarations
@@ -5667,10 +5623,6 @@ fn (mut b Builder) build_selector(expr ast.SelectorExpr) ValueID {
 		if c_const_val.len > 0 {
 			return b.mod.get_or_add_const(b.mod.type_store.get_int(32), c_const_val)
 		}
-		float_width, float_value := c_float_macro_const(c_name)
-		if float_width > 0 {
-			return b.mod.get_or_add_const(b.mod.type_store.get_float(float_width), float_value)
-		}
 		// _wyp: wyhash secret array from wyhash.h. Our wyhash stub uses
 		// hardcoded constants, so this just needs to be a valid pointer.
 		if c_name == '_wyp' {
@@ -5685,25 +5637,19 @@ fn (mut b Builder) build_selector(expr ast.SelectorExpr) ValueID {
 			call_val := b.mod.add_instr(.call, b.cur_block, ptr_i32, [err_fn])
 			return b.mod.add_instr(.load, b.cur_block, i32_t, [call_val])
 		}
-		i8_t := b.mod.type_store.get_int(8)
-		ptr_t := b.mod.type_store.get_ptr(i8_t)
-		if c_name in ['stdin', 'stdout', 'stderr'] {
-			target_os := b.c_stdio_target_os()
-			symbol_name := c_stdio_symbol_for_os(c_name, target_os)
-			if c_stdio_symbol_needs_load(target_os) {
-				glob := b.mod.add_external_global(symbol_name, ptr_t)
-				b.global_refs[symbol_name] = glob
-				return b.mod.add_instr(.load, b.cur_block, ptr_t, [glob])
-			}
-			glob := b.mod.add_value_node(.global, ptr_t, symbol_name, 0)
-			b.global_refs[symbol_name] = glob
-			return glob
+		// Map C standard I/O streams to macOS-specific symbol names
+		macos_name := match c_name {
+			'stdout' { '__stdoutp' }
+			'stderr' { '__stderrp' }
+			'stdin' { '__stdinp' }
+			else { c_name }
 		}
 
-		// Not a known constant — emit as a global reference.
-		symbol_name := c_name
-		glob := b.mod.add_value_node(.global, ptr_t, symbol_name, 0)
-		b.global_refs[symbol_name] = glob
+		// Not a known constant — emit as a global reference (e.g. C.stdout, C.stderr)
+		i8_t := b.mod.type_store.get_int(8)
+		ptr_t := b.mod.type_store.get_ptr(i8_t)
+		glob := b.mod.add_value_node(.global, ptr_t, macos_name, 0)
+		b.global_refs[macos_name] = glob
 		return glob
 	}
 
@@ -9015,21 +8961,6 @@ fn (mut b Builder) generate_fd_macro_stubs() {
 		result := b.mod.add_instr(.and_, entry, i32_t, [shifted, c1])
 		b.mod.add_instr(.ret, entry, 0, [result])
 	}
-}
-
-fn (mut b Builder) generate_tcc_backtrace_stub() {
-	if 'tcc_backtrace' !in b.fn_index {
-		return
-	}
-	func_idx := b.fn_index['tcc_backtrace']
-	if b.mod.funcs[func_idx].blocks.len > 0 {
-		return
-	}
-	b.mod.func_set_c_extern(func_idx, false)
-	entry := b.mod.add_block(func_idx, 'entry')
-	i32_t := b.mod.type_store.get_int(32)
-	zero := b.mod.get_or_add_const(i32_t, '0')
-	b.mod.add_instr(.ret, entry, 0, [zero])
 }
 
 fn (b &Builder) find_fd_fn(name string) ?string {
