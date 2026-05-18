@@ -2355,12 +2355,10 @@ pub struct SqlStmt {
 pub:
 	pos token.Pos
 pub mut:
-	lines           []SqlStmtLine
-	db_expr         Expr // `db` in `sql db {`
-	or_expr         OrExpr
-	db_expr_type    Type     // the type of the `db` in `sql db {`
-	has_unscoped    bool     // true if unscoped() was used on this ORM block
-	unscoped_fields []string // fields to skip in DataScope via `unscoped(f1, f2)` in ORM block
+	lines        []SqlStmtLine
+	db_expr      Expr // `db` in `sql db {`
+	or_expr      OrExpr
+	db_expr_type Type // the type of the `db` in `sql db {`
 }
 
 pub struct SqlStmtLine {
@@ -2454,8 +2452,6 @@ pub mut:
 	or_expr              OrExpr
 	joins                []JoinClause // JOIN clauses for this query
 	aggregate_field_type Type
-	has_unscoped         bool     // true if unscoped() was used on this ORM block
-	unscoped_fields      []string // fields to skip in DataScope via `unscoped(f1, f2)` in ORM block
 }
 
 pub struct NodeError {

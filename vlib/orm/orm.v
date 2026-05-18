@@ -302,29 +302,28 @@ pub fn new_db(conn Connection, scope DataScope) DB {
 	}
 }
 
-// unscoped configures this DB to skip the specified DataScope filters.
-// All subsequent ORM operations through this DB will skip the named scope filters.
-// When called with no arguments, all scope filters are skipped.
+// unscoped returns a new DB with the specified DataScope filters skipped.
+// The original DB is not modified. When called with no arguments, all scope filters are skipped.
 //
-// Middleware usage:
+// Usage:
 // ```v
-// fn (mut ctx Context) setup_db() {
-//     if ctx.user.role == 'admin' {
-//         ctx.db.unscoped() // directly modifies ctx.db
-//     }
+// // Returns a new DB without tenant_id filter, original db unchanged
+// admin_db := db.unscoped('tenant_id')
+// rows := sql admin_db { select from User }!
+//
+// // In middleware, replace ctx.db:
+// if ctx.user.role == 'admin' {
+//     ctx.db = ctx.db.unscoped()
 // }
 // ```
-pub fn (mut db DB) unscoped(fields ...string) {
-	db.unscoped_fields = if fields.len == 0 {
+pub fn (db DB) unscoped(fields ...string) DB {
+	mut new_db := db
+	new_db.unscoped_fields = if fields.len == 0 {
 		['*']
 	} else {
 		fields
 	}
-}
-
-// reset_scopes clears the unscoped_fields, restoring normal DataScope filtering.
-pub fn (mut db DB) reset_scopes() {
-	db.unscoped_fields = []
+	return new_db
 }
 
 // Interfaces gets called from the backend and can be implemented

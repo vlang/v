@@ -62,7 +62,8 @@ fn test_unscoped_skips_tenant_filter_in_select() {
 	assert users_filtered[0].name == 'Alice'
 
 	// With db.unscoped('tenant_id') - scope skipped, all users visible
-	users_all := sql db unscoped(tenant_id) {
+	unscoped_db := db.unscoped('tenant_id')
+	users_all := sql unscoped_db {
 		select from NoScopeUser
 	}!
 	assert users_all.len == 2
@@ -99,7 +100,8 @@ fn test_unscoped_skip_all_in_select() {
 	})
 
 	// db.unscoped() skips ALL scope filters
-	users_all := sql db unscoped() {
+	unscoped_db := db.unscoped()
+	users_all := sql unscoped_db {
 		select from NoScopeUser
 	}!
 	assert users_all.len == 2
@@ -161,7 +163,8 @@ fn test_unscoped_selective_skip_in_multi_field_scope() {
 	assert users_filtered[0].name == 'A'
 
 	// Skip only 'org_id' - 'deleted' filter still applies
-	users := sql db unscoped(org_id) {
+	unscoped_db := db.unscoped('org_id')
+	users := sql unscoped_db {
 		select from NoScopeUserMulti
 	}!
 	// Should match deleted=false regardless of org_id
@@ -190,7 +193,8 @@ fn test_unscoped_skips_tenant_in_insert() {
 	alice := NoScopeUser{
 		name: 'Alice'
 	}
-	sql db unscoped(tenant_id) {
+	unscoped_db := db.unscoped('tenant_id')
+	sql unscoped_db {
 		insert alice into NoScopeUser
 	}!
 
@@ -222,7 +226,8 @@ fn test_unscoped_skip_all_in_insert() {
 	}
 
 	// db.unscoped() skips ALL scope field injection in insert
-	sql db unscoped() {
+	unscoped_db := db.unscoped()
+	sql unscoped_db {
 		insert bob into NoScopeUser
 	}!
 
@@ -278,7 +283,8 @@ fn test_unscoped_skips_tenant_in_update() {
 
 	// With db.unscoped('tenant_id'), the scope filter is skipped in the WHERE,
 	// so name='Bob' matches regardless of tenant_id
-	sql db unscoped(tenant_id) {
+	unscoped_db := db.unscoped('tenant_id')
+	sql unscoped_db {
 		update NoScopeUser set name = 'UpdatedByNoScope' where name == 'Bob'
 	}!
 
@@ -328,7 +334,8 @@ fn test_unscoped_skip_all_in_update() {
 	// making WHERE name='Bob' become (name='Bob' AND tenant_id=1 AND name='Alice'), which
 	// would not match anything due to the name conflict.
 	// With unscoped(), no scope filters are added, so name='Bob' matches directly.
-	sql db unscoped() {
+	unscoped_db := db.unscoped()
+	sql unscoped_db {
 		update NoScopeUser set name = 'UpdatedAll' where name == 'Bob'
 	}!
 
@@ -381,7 +388,8 @@ fn test_unscoped_skips_tenant_in_delete() {
 	assert bob_check.len == 1
 
 	// With db.unscoped('tenant_id'), scope filter skipped, Bob gets deleted
-	sql db unscoped(tenant_id) {
+	unscoped_db := db.unscoped('tenant_id')
+	sql unscoped_db {
 		delete from NoScopeUser where name == 'Bob'
 	}!
 
@@ -429,7 +437,8 @@ fn test_unscoped_skip_all_in_delete() {
 	// Without it, delete where name='Bob' becomes (name='Bob' AND tenant_id=1 AND name='Alice')
 	// which can't match (Bob != Alice).
 	// With unscoped(), delete where name='Bob' matches directly.
-	sql db unscoped() {
+	unscoped_db := db.unscoped()
+	sql unscoped_db {
 		delete from NoScopeUser where name == 'Bob'
 	}!
 
@@ -439,9 +448,7 @@ fn test_unscoped_skip_all_in_delete() {
 	assert bob_gone.len == 0
 }
 
-// ---- Keyword syntax tests: sql db unscoped(field1, field2) ----------
-
-fn test_unscoped_keyword_multi_field_skip() {
+fn test_unscoped_skip_multi_field_select() {
 	mut raw_db := sqlite.connect(':memory:') or { panic(err) }
 
 	sql raw_db {
@@ -471,7 +478,7 @@ fn test_unscoped_keyword_multi_field_skip() {
 	}!
 
 	// Scope filters: tenant_id=1 AND shop_id=1 (only Alice matches)
-	mut db := orm.new_db(raw_db, orm.DataScope{
+	db := orm.new_db(raw_db, orm.DataScope{
 		filters: [
 			orm.QueryFilter{
 				field: 'tenant_id'
@@ -492,171 +499,11 @@ fn test_unscoped_keyword_multi_field_skip() {
 	assert users_filtered[0].name == 'Alice'
 
 	// Skip both tenant_id and shop_id - all users visible
-	users_all := sql db unscoped(tenant_id, shop_id) {
+	unscoped_db := db.unscoped('tenant_id', 'shop_id')
+	users_all := sql unscoped_db {
 		select from ScopeUser
 	}!
 	assert users_all.len == 3
-}
-
-// ---- Method call syntax tests: db.unscoped(fields...) ----------------
-
-fn test_unscoped_method_call_in_select() {
-	mut raw_db := sqlite.connect(':memory:') or { panic(err) }
-
-	sql raw_db {
-		create table NoScopeUser
-	}!
-
-	alice := NoScopeUser{
-		name:      'Alice'
-		tenant_id: 1
-	}
-	bob := NoScopeUser{
-		name:      'Bob'
-		tenant_id: 2
-	}
-
-	sql raw_db {
-		insert alice into NoScopeUser
-		insert bob into NoScopeUser
-	}!
-
-	mut db := orm.new_db(raw_db, orm.DataScope{
-		filters: [
-			orm.QueryFilter{
-				field: 'tenant_id'
-				value: orm.Primitive(1)
-			},
-		]
-	})
-
-	// Without scope skip - only Alice (tenant_id=1) visible
-	users_filtered := sql db {
-		select from NoScopeUser
-	}!
-	assert users_filtered.len == 1
-	assert users_filtered[0].name == 'Alice'
-
-	// Using db.unscoped('tenant_id') - scope skipped, all users visible
-	db.unscoped('tenant_id')
-	users_all := sql db {
-		select from NoScopeUser
-	}!
-	assert users_all.len == 2
-
-	// Using db.unscoped() - all scope filters skipped
-	db.reset_scopes()
-	db.unscoped()
-	users_all2 := sql db {
-		select from NoScopeUser
-	}!
-	assert users_all2.len == 2
-}
-
-fn test_unscoped_method_call_in_update() {
-	mut raw_db := sqlite.connect(':memory:') or { panic(err) }
-
-	sql raw_db {
-		create table NoScopeUser
-	}!
-
-	alice := NoScopeUser{
-		name:      'Alice'
-		tenant_id: 1
-	}
-	bob := NoScopeUser{
-		name:      'Bob'
-		tenant_id: 2
-	}
-
-	sql raw_db {
-		insert alice into NoScopeUser
-		insert bob into NoScopeUser
-	}!
-
-	mut db := orm.new_db(raw_db, orm.DataScope{
-		filters: [
-			orm.QueryFilter{
-				field: 'tenant_id'
-				value: orm.Primitive(1)
-			},
-		]
-	})
-
-	// With scope, update where name='Bob' doesn't match (scope adds tenant_id=1)
-	sql db {
-		update NoScopeUser set name = 'Changed' where name == 'Bob'
-	}!
-
-	bob_still := sql raw_db {
-		select from NoScopeUser where tenant_id == 2
-	}!
-	assert bob_still.len == 1
-	assert bob_still[0].name == 'Bob'
-
-	// Using db.unscoped('tenant_id') - scope skipped, Bob gets updated
-	db.unscoped('tenant_id')
-	sql db {
-		update NoScopeUser set name = 'UpdatedViaMethod' where name == 'Bob'
-	}!
-
-	bob_updated := sql raw_db {
-		select from NoScopeUser where tenant_id == 2
-	}!
-	assert bob_updated.len == 1
-	assert bob_updated[0].name == 'UpdatedViaMethod'
-}
-
-fn test_unscoped_method_call_in_delete() {
-	mut raw_db := sqlite.connect(':memory:') or { panic(err) }
-
-	sql raw_db {
-		create table NoScopeUser
-	}!
-
-	alice := NoScopeUser{
-		name:      'Alice'
-		tenant_id: 1
-	}
-	bob := NoScopeUser{
-		name:      'Bob'
-		tenant_id: 2
-	}
-
-	sql raw_db {
-		insert alice into NoScopeUser
-		insert bob into NoScopeUser
-	}!
-
-	mut db := orm.new_db(raw_db, orm.DataScope{
-		filters: [
-			orm.QueryFilter{
-				field: 'tenant_id'
-				value: orm.Primitive(1)
-			},
-		]
-	})
-
-	// With scope, delete where name='Bob' doesn't match
-	sql db {
-		delete from NoScopeUser where name == 'Bob'
-	}!
-
-	bob_still := sql raw_db {
-		select from NoScopeUser where tenant_id == 2
-	}!
-	assert bob_still.len == 1
-
-	// Using db.unscoped('tenant_id') - scope skipped, Bob gets deleted
-	db.unscoped('tenant_id')
-	sql db {
-		delete from NoScopeUser where name == 'Bob'
-	}!
-
-	bob_gone := sql raw_db {
-		select from NoScopeUser where tenant_id == 2
-	}!
-	assert bob_gone.len == 0
 }
 
 // ---- DataScope tests -------------------------------------------------
@@ -968,10 +815,8 @@ fn test_middleware_admin_skips_all_scopes() {
 
 	// --- Middleware: on request entry, configure per-request db by role ---
 	// Admin role: skip all scopes
-	mut admin_db := base_db
-	admin_db.unscoped()
 	mut ctx := RequestCtx{
-		db: admin_db
+		db: base_db.unscoped()
 	}
 	// --- End middleware ---
 
@@ -1021,10 +866,8 @@ fn test_middleware_manager_skips_specific_scope() {
 	})
 
 	// --- Middleware: manager skips tenant_id filter ---
-	mut manager_db := base_db
-	manager_db.unscoped('tenant_id')
 	mut ctx := RequestCtx{
-		db: manager_db
+		db: base_db.unscoped('tenant_id')
 	}
 
 	// --- Business handler: just extract db from ctx ---
@@ -1114,10 +957,8 @@ fn test_middleware_mixed_roles_produce_isolated_results() {
 	})
 
 	// Request 1: admin - no scopes
-	mut admin_db := base_db
-	admin_db.unscoped()
 	mut admin_ctx := RequestCtx{
-		db: admin_db
+		db: base_db.unscoped()
 	}
 	// Request 2: normal user - full scopes
 	mut normal_ctx := RequestCtx{
@@ -1179,9 +1020,8 @@ fn test_middleware_ignores_scope_affects_all_crud_operations() {
 
 	// Middleware configures admin db at request entry
 	mut ctx := RequestCtx{
-		db: base_db
+		db: base_db.unscoped('tenant_id')
 	}
-	ctx.db.unscoped('tenant_id')
 
 	// Business handler: just extract db from ctx, use it like always
 	db := ctx.db

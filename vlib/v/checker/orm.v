@@ -240,14 +240,6 @@ fn (mut c Checker) sql_expr(mut node ast.SqlExpr) ast.Type {
 	if !c.check_db_expr(mut node.db_expr) {
 		return ast.void_type
 	}
-	if node.has_unscoped {
-		db_typ := c.table.find_type('orm.DB')
-		db_expr_type := c.expr(mut node.db_expr)
-		if db_typ == 0 || db_expr_type.idx() != db_typ {
-			c.error('`unscoped()` is only supported for `orm.DB`', node.db_expr.pos())
-			return ast.void_type
-		}
-	}
 
 	c.resolve_orm_table_expr_type(mut node.table_expr)
 
@@ -516,14 +508,6 @@ fn (mut c Checker) sql_expr(mut node ast.SqlExpr) ast.Type {
 fn (mut c Checker) sql_stmt(mut node ast.SqlStmt) ast.Type {
 	if !c.check_db_expr(mut node.db_expr) {
 		return ast.void_type
-	}
-	if node.has_unscoped {
-		db_typ := c.table.find_type('orm.DB')
-		db_expr_type := c.expr(mut node.db_expr)
-		if db_typ == 0 || db_expr_type.idx() != db_typ {
-			c.error('`unscoped()` is only supported for `orm.DB`', node.db_expr.pos())
-			return ast.void_type
-		}
 	}
 	node.db_expr_type = c.table.unaliased_type(c.expr(mut node.db_expr))
 

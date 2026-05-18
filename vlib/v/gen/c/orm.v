@@ -579,11 +579,7 @@ fn (mut g Gen) sql_select_expr(node ast.SqlExpr) {
 	connection_var_name := g.new_tmp_var()
 
 	g.writeln('')
-	if node.has_unscoped {
-		g.write_unscoped_connection_init(connection_var_name, &node.db_expr, node.unscoped_fields)
-	} else {
-		g.write_orm_connection_init(connection_var_name, &node.db_expr)
-	}
+	g.write_orm_connection_init(connection_var_name, &node.db_expr)
 	result_var := g.new_tmp_var()
 	result_c_typ := g.styp(node.typ)
 	g.writeln('${result_c_typ} ${result_var};')
@@ -596,11 +592,7 @@ fn (mut g Gen) sql_insert_expr(node ast.SqlExpr) {
 	left := g.go_before_last_stmt()
 	g.writeln('')
 	connection_var_name := g.new_tmp_var()
-	if node.has_unscoped {
-		g.write_unscoped_connection_init(connection_var_name, &node.db_expr, node.unscoped_fields)
-	} else {
-		g.write_orm_connection_init(connection_var_name, &node.db_expr)
-	}
+	g.write_orm_connection_init(connection_var_name, &node.db_expr)
 	table_name := g.get_table_name_by_struct_type(node.table_expr.typ)
 	table_attrs := g.get_table_attrs_by_struct_type(node.table_expr.typ)
 	result_var_name := g.new_tmp_var()
@@ -645,11 +637,7 @@ fn (mut g Gen) build_sql_stmt_line_from_sql_expr(node ast.SqlExpr) ast.SqlStmtLi
 fn (mut g Gen) sql_stmt(node ast.SqlStmt) {
 	connection_var_name := g.new_tmp_var()
 
-	if node.has_unscoped {
-		g.write_unscoped_connection_init(connection_var_name, &node.db_expr, node.unscoped_fields)
-	} else {
-		g.write_orm_connection_init(connection_var_name, &node.db_expr)
-	}
+	g.write_orm_connection_init(connection_var_name, &node.db_expr)
 
 	for line in node.lines {
 		g.sql_stmt_line(line, connection_var_name, node.or_expr)
@@ -720,38 +708,6 @@ fn (mut g Gen) write_orm_connection_init(connection_var_name string, db_expr &as
 		}
 		g.writeln(', ._typ = _orm__Connection_${db_ctype_name}_index};')
 	}
-}
-
-// write_unscoped_connection_init writes C code that creates a
-// Connection by copying the DB and setting unscoped_fields directly.
-// This inline approach works independently of whether unscoped() is mut or not.
-fn (mut g Gen) write_unscoped_connection_init(connection_var_name string, db_expr &ast.Expr, unscoped_fields []string) {
-	g.writeln('// ORM with unscoped')
-	tmp_db_var := g.new_tmp_var()
-	g.write('orm__DB ${tmp_db_var} = ')
-	g.expr(db_expr)
-	g.writeln(';')
-	// When unscoped() has no args, use ['*'] to skip all filters
-	fields := if unscoped_fields.len == 0 {
-		['*']
-	} else {
-		unscoped_fields
-	}
-	g.write('${tmp_db_var}.unscoped_fields = builtin__new_array_from_c_array(${fields.len}, ${fields.len}, sizeof(string), ')
-	if fields.len > 0 {
-		g.write('_MOV((string[${fields.len}]){')
-		for i, field in fields {
-			if i > 0 {
-				g.write(', ')
-			}
-			g.write('_S("${field}")')
-		}
-		g.write('})')
-	} else {
-		g.write('NULL')
-	}
-	g.writeln(');')
-	g.writeln('orm__Connection ${connection_var_name} = (orm__Connection){._orm__DB = &${tmp_db_var}, ._typ = _orm__Connection_orm__DB_index};')
 }
 
 // write_orm_table_struct writes C code for the orm.Table struct

@@ -95,10 +95,10 @@ pub fn pool_acquire_scoped(mut ctx Context) !(orm.DB, &sqlite.DB) {
 	mut scoped_db := base_db
 	match ctx.user.role {
 		'admin' {
-			scoped_db.unscoped()
+			scoped_db = scoped_db.unscoped()
 		}
 		'manager' {
-			scoped_db.unscoped('org_id')
+			scoped_db = scoped_db.unscoped('org_id')
 		}
 		'normal' {}
 		else {}

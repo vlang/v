@@ -1665,13 +1665,6 @@ pub fn (mut f Fmt) return_stmt(node ast.Return) {
 pub fn (mut f Fmt) sql_stmt(node ast.SqlStmt) {
 	f.write('sql ')
 	f.expr(node.db_expr)
-	if node.has_unscoped {
-		if node.unscoped_fields.len > 0 {
-			f.write(' unscoped(${node.unscoped_fields.join(', ')})')
-		} else {
-			f.write(' unscoped()')
-		}
-	}
 	f.writeln(' {')
 
 	for line in node.lines {
@@ -3350,13 +3343,6 @@ pub fn (mut f Fmt) sql_expr(node ast.SqlExpr) {
 	// sql app.db { select from Contributor where repo == id && user == 0 }
 	f.write('sql ')
 	f.expr(node.db_expr)
-	if node.has_unscoped {
-		if node.unscoped_fields.len > 0 {
-			f.write(' unscoped(${node.unscoped_fields.join(', ')})')
-		} else {
-			f.write(' unscoped()')
-		}
-	}
 	f.writeln(' {')
 	f.write('\t')
 	if node.is_dynamic {
