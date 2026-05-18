@@ -322,9 +322,8 @@ mut:
 	is_builtin_overflow_mod bool
 	do_int_overflow_checks  bool // outside a `@[ignore_overflow] fn abc() {}` or a function in `builtin.overflow`
 	//
-	tid              string // the thread id of the file processor in the thread pool (log it to debug issues in parallel cgen)
-	fid              int    // the index of ast.File that is currently processed (log it to debug issues in parallel cgen)
-	mods_with_c_libs map[string]bool
+	tid string // the thread id of the file processor in the thread pool (log it to debug issues in parallel cgen)
+	fid int    // the index of ast.File that is currently processed (log it to debug issues in parallel cgen)
 }
 
 @[heap]
@@ -435,16 +434,6 @@ pub fn gen(files []&ast.File, mut table ast.Table, pref_ &pref.Preferences) GenO
 		global_g.cleanups[mod] = strings.new_builder(100)
 	}
 	global_g.init()
-	for file in files {
-		if file.path.starts_with(pref_.vlib) {
-			continue
-		}
-		for stmt in file.stmts {
-			if stmt is ast.HashStmt && stmt.kind == 'flag' && stmt.main.contains('-l') {
-				global_g.mods_with_c_libs[file.mod.name] = true
-			}
-		}
-	}
 	util.timing_measure('cgen init')
 	global_g.tests_inited = false
 	global_g.file = files.last()
