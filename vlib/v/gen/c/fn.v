@@ -655,7 +655,10 @@ fn (g &Gen) should_emit_c_extern_decl(node ast.FnDecl) bool {
 	if file_has_c_includes(node.source_file) {
 		return false
 	}
-	if file_links_c_source(node.source_file) || node.mod in g.mods_with_c_libs {
+	if file_links_c_source(node.source_file) {
+		return true
+	}
+	if node.mod in g.mods_with_c_libs && node.mod !in g.mods_with_c_includes {
 		return true
 	}
 	if g.pref.os == .vinix && !node.source_file.path.starts_with(g.pref.vlib) {
