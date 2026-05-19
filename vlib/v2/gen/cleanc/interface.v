@@ -20,6 +20,12 @@ struct InterfaceWrapperSpec {
 	method        InterfaceMethodInfo
 }
 
+struct EmbeddedMethodResolve {
+	fn_name       string
+	owner_path    string
+	receiver_type string
+}
+
 struct InterfaceDataFieldInfo {
 	name   string
 	c_type string
@@ -191,6 +197,39 @@ fn (mut g Gen) collect_interface_wrapper_specs() {
 			}
 		}
 	}
+	for iface_name in iface_names {
+		methods := g.interface_methods[iface_name]
+		for file in g.files {
+			g.set_file_module(file)
+			for stmt in file.stmts {
+				if stmt is ast.StructDecl && stmt.language == .v {
+					concrete_type := g.get_struct_name(stmt)
+					if concrete_type == '' || g.is_interface_type(concrete_type) {
+						continue
+					}
+					for method in methods {
+						direct_name := '${concrete_type}__${method.name}'
+						if direct_name in g.fn_param_is_ptr || direct_name in g.fn_return_types {
+							continue
+						}
+						resolved := g.resolve_embedded_method_info(concrete_type, method.name) or {
+							continue
+						}
+						wrapper_name := interface_wrapper_name(iface_name, concrete_type,
+							method.name)
+						if wrapper_name in g.interface_wrapper_specs {
+							continue
+						}
+						g.interface_wrapper_specs[wrapper_name] = InterfaceWrapperSpec{
+							fn_name:       resolved.fn_name
+							concrete_type: concrete_type
+							method:        method
+						}
+					}
+				}
+			}
+		}
+	}
 }
 
 fn (mut g Gen) emit_interface_method_wrapper_decls() {
@@ -220,7 +259,31 @@ fn (mut g Gen) emit_interface_method_wrapper_body(name string, spec InterfaceWra
 	} else {
 		g.sb.write_string('\t')
 	}
-	g.sb.write_string('${spec.fn_name}(*(((${spec.concrete_type}*)_obj))')
+	mut receiver_type := spec.concrete_type
+	if param_types := g.fn_param_types[spec.fn_name] {
+		if param_types.len > 0 {
+			receiver_type = param_types[0].trim_space().trim_right('*')
+		}
+	}
+	ptr_params := g.fn_param_is_ptr[spec.fn_name] or { []bool{} }
+	receiver_is_ptr := ptr_params.len > 0 && ptr_params[0]
+	owner_path := if receiver_type != spec.concrete_type {
+		g.embedded_owner_path_for_type(spec.concrete_type, receiver_type)
+	} else {
+		''
+	}
+	g.sb.write_string('${spec.fn_name}(')
+	if owner_path != '' {
+		if receiver_is_ptr {
+			g.sb.write_string('&(((${spec.concrete_type}*)_obj)->${owner_path})')
+		} else {
+			g.sb.write_string('(((${spec.concrete_type}*)_obj)->${owner_path})')
+		}
+	} else if receiver_is_ptr {
+		g.sb.write_string('((${spec.concrete_type}*)_obj)')
+	} else {
+		g.sb.write_string('*(((${spec.concrete_type}*)_obj))')
+	}
 	for i in 0 .. spec.method.param_types.len {
 		g.sb.write_string(', _arg${i}')
 	}
@@ -328,7 +391,9 @@ fn (mut g Gen) emit_option_string_clone_helper() {
 fn (mut g Gen) struct_type_embeds_error(st types.Struct) bool {
 	for embedded in st.embedded {
 		embedded_c := g.types_type_to_c(embedded)
-		if short_type_name(embedded_c) == 'Error' {
+		if short_type_name(embedded_c) in ['Error', 'MessageError']
+			|| ('${embedded_c}__msg' in g.fn_return_types
+			&& '${embedded_c}__code' in g.fn_return_types) {
 			return true
 		}
 		live_emb := if embedded.fields.len == 0 {
@@ -363,22 +428,24 @@ fn (mut g Gen) concrete_ierror_base_for_c_type(c_type string) string {
 	return ''
 }
 
-fn (mut g Gen) gen_ierror_from_concrete_expr(expr ast.Expr, expr_type string) bool {
-	mut base := ''
-	expr_base := g.ierror_concrete_base_for_expr(expr)
-	if expr_base != '' {
-		base = g.concrete_ierror_base_for_c_type(expr_base)
+fn ierror_type_label_for_base(base string) string {
+	if base.contains('__') {
+		short_name := base.all_after_last('__')
+		if short_name != '' {
+			return short_name
+		}
 	}
-	if base == '' {
-		base = g.concrete_ierror_base_for_c_type(expr_type)
-	}
-	if base == '' {
+	return base
+}
+
+fn (mut g Gen) gen_ierror_from_base_expr(base string, expr ast.Expr, expr_type string) bool {
+	if base == '' || base == 'int' || base in ['IError', 'builtin__IError'] {
 		return false
 	}
 	g.ierror_wrapper_bases[base] = true
 	g.needed_ierror_wrapper_bases[base] = true
-	type_short := if base.contains('__') { base.all_after_last('__') } else { base }
-	type_id := interface_type_id_for_name(type_short)
+	type_label := ierror_type_label_for_base(base)
+	type_id := interface_type_id_for_name(type_label)
 	if expr_type.ends_with('*') {
 		g.sb.write_string('((IError){._object = (void*)(')
 		g.expr(expr)
@@ -393,10 +460,22 @@ fn (mut g Gen) gen_ierror_from_concrete_expr(expr ast.Expr, expr_type string) bo
 	return true
 }
 
-fn (mut g Gen) collect_ierror_wrapper_bases() {
-	if g.ierror_wrapper_bases.len > 0 {
-		return
+fn (mut g Gen) gen_ierror_from_concrete_expr(expr ast.Expr, expr_type string) bool {
+	mut base := ''
+	expr_base := g.ierror_concrete_base_for_expr(expr)
+	if expr_base != '' {
+		base = g.concrete_ierror_base_for_c_type(expr_base)
 	}
+	if base == '' {
+		base = g.concrete_ierror_base_for_c_type(expr_type)
+	}
+	if base == '' {
+		return false
+	}
+	return g.gen_ierror_from_base_expr(base, expr, expr_type)
+}
+
+fn (mut g Gen) collect_ierror_wrapper_bases() {
 	for fn_name, ret_type in g.fn_return_types {
 		if !fn_name.ends_with('__msg') || ret_type != 'string' {
 			continue
@@ -416,10 +495,63 @@ fn (mut g Gen) collect_ierror_wrapper_bases() {
 				if g.struct_c_type_embeds_error(base) {
 					g.ierror_wrapper_bases[base] = true
 				}
+			} else if stmt is ast.ConstDecl {
+				const_decl := stmt as ast.ConstDecl
+				for field in const_decl.fields {
+					if base := g.ierror_const_wrapper_base(field.value) {
+						g.ierror_wrapper_bases[base] = true
+					}
+				}
 			}
 		}
 	}
 	g.cur_module = saved_module
+}
+
+fn (mut g Gen) ierror_const_wrapper_base(expr ast.Expr) ?string {
+	match expr {
+		ast.CastExpr {
+			type_name := g.expr_type_to_c(expr.typ)
+			if type_name in ['IError', 'builtin__IError'] {
+				mut base :=
+					g.raw_concrete_type_for_interface_value(type_name, expr.expr).trim_right('*')
+				if base == '' || base == 'int' || base in ['IError', 'builtin__IError'] {
+					base = g.ierror_init_expr_base(expr.expr) or { '' }
+				}
+				base = g.qualify_ierror_concrete_base(base.trim_right('*'))
+				if base != '' && base != 'int' && base !in ['IError', 'builtin__IError'] {
+					return base
+				}
+			}
+			return g.ierror_const_wrapper_base(expr.expr)
+		}
+		ast.ParenExpr {
+			return g.ierror_const_wrapper_base(expr.expr)
+		}
+		else {
+			return none
+		}
+	}
+}
+
+fn (mut g Gen) ierror_init_expr_base(expr ast.Expr) ?string {
+	match expr {
+		ast.PrefixExpr {
+			return g.ierror_init_expr_base(expr.expr)
+		}
+		ast.ParenExpr {
+			return g.ierror_init_expr_base(expr.expr)
+		}
+		ast.InitExpr {
+			base := g.expr_type_to_c(expr.typ).trim_right('*')
+			if base != '' && base != 'int' {
+				return base
+			}
+		}
+		else {}
+	}
+
+	return none
 }
 
 fn (mut g Gen) mark_needed_ierror_wrapper_from_ident(name string) {
@@ -456,7 +588,7 @@ fn (mut g Gen) emit_ierror_wrapper_decls() {
 }
 
 fn (mut g Gen) emit_ierror_wrapper_body(base string) {
-	type_label := if base.contains('__') { base.all_after_last('__') } else { base }
+	type_label := ierror_type_label_for_base(base)
 	g.sb.writeln('static string IError_${base}_type_name_wrapper(void* _obj) {')
 	g.sb.writeln('\t(void)_obj;')
 	g.sb.writeln('\treturn ${c_static_v_string_expr(type_label)};')
@@ -464,8 +596,16 @@ fn (mut g Gen) emit_ierror_wrapper_body(base string) {
 	g.sb.writeln('static string IError_${base}_msg_wrapper(void* _obj) {')
 	if '${base}__msg' in g.fn_return_types {
 		g.sb.writeln('\treturn ${base}__msg(*(${base}*)_obj);')
-	} else if g.struct_c_type_embeds_error(base) && 'Error__msg' in g.fn_return_types {
-		g.sb.writeln('\treturn Error__msg(((${base}*)_obj)->Error);')
+	} else if resolved := g.resolve_embedded_method_info(base, 'msg') {
+		if params := g.fn_param_is_ptr[resolved.fn_name] {
+			if params.len > 0 && params[0] {
+				g.sb.writeln('\treturn ${resolved.fn_name}(&(((${base}*)_obj)->${resolved.owner_path}));')
+			} else {
+				g.sb.writeln('\treturn ${resolved.fn_name}(((${base}*)_obj)->${resolved.owner_path});')
+			}
+		} else {
+			g.sb.writeln('\treturn ${resolved.fn_name}(((${base}*)_obj)->${resolved.owner_path});')
+		}
 	} else {
 		g.sb.writeln('\t(void)_obj;')
 		g.sb.writeln('\treturn ${c_empty_v_string_expr()};')
@@ -473,13 +613,18 @@ fn (mut g Gen) emit_ierror_wrapper_body(base string) {
 	g.sb.writeln('}')
 	g.sb.writeln('static int IError_${base}_code_wrapper(void* _obj) {')
 	code_fn := '${base}__code'
-	error_code_fn := 'Error__code'
 	if code_fn in g.fn_return_types {
 		g.sb.writeln('\treturn ${base}__code(*(${base}*)_obj);')
-	} else if g.struct_c_type_embeds_error(base) && error_code_fn in g.fn_return_types {
-		g.sb.writeln('\treturn Error__code(((${base}*)_obj)->Error);')
-	} else if error_code_fn in g.fn_return_types {
-		g.sb.writeln('\treturn Error__code(*(Error*)_obj);')
+	} else if resolved := g.resolve_embedded_method_info(base, 'code') {
+		if params := g.fn_param_is_ptr[resolved.fn_name] {
+			if params.len > 0 && params[0] {
+				g.sb.writeln('\treturn ${resolved.fn_name}(&(((${base}*)_obj)->${resolved.owner_path}));')
+			} else {
+				g.sb.writeln('\treturn ${resolved.fn_name}(((${base}*)_obj)->${resolved.owner_path});')
+			}
+		} else {
+			g.sb.writeln('\treturn ${resolved.fn_name}(((${base}*)_obj)->${resolved.owner_path});')
+		}
 	} else {
 		g.sb.writeln('\t(void)_obj;')
 		g.sb.writeln('\treturn 1;')
@@ -622,20 +767,53 @@ fn (mut g Gen) interface_fields_resolved(node ast.InterfaceDecl) bool {
 // For example, ssl__SSLConn embeds openssl__SSLConn, so ssl__SSLConn__addr
 // resolves to openssl__SSLConn__addr.
 fn (mut g Gen) resolve_embedded_method(struct_name string, method_name string) string {
+	if resolved := g.resolve_embedded_method_info(struct_name, method_name) {
+		return resolved.fn_name
+	}
+	return ''
+}
+
+fn (mut g Gen) resolve_embedded_method_info(struct_name string, method_name string) ?EmbeddedMethodResolve {
 	st := g.lookup_struct_type_by_c_name(struct_name)
 	for emb in st.embedded {
-		emb_c_name := g.types_type_to_c(types.Type(emb))
+		emb_c_name := g.types_type_to_c(types.Type(emb)).trim_right('*')
 		if emb_c_name == '' {
 			continue
 		}
+		owner := embedded_owner_field_name(emb_c_name)
 		candidate := '${emb_c_name}__${method_name}'
 		if candidate in g.fn_param_is_ptr || candidate in g.fn_return_types {
-			return candidate
+			return EmbeddedMethodResolve{
+				fn_name:       candidate
+				owner_path:    owner
+				receiver_type: emb_c_name
+			}
 		}
-		// Recurse into nested embeddings
-		nested := g.resolve_embedded_method(emb_c_name, method_name)
+		nested := g.resolve_embedded_method_info(emb_c_name, method_name) or { continue }
+		return EmbeddedMethodResolve{
+			fn_name:       nested.fn_name
+			owner_path:    '${owner}.${nested.owner_path}'
+			receiver_type: nested.receiver_type
+		}
+	}
+	return none
+}
+
+fn (mut g Gen) embedded_owner_path_for_type(struct_name string, target_type string) string {
+	st := g.lookup_struct_type_by_c_name(struct_name)
+	target_base := target_type.trim_right('*')
+	for emb in st.embedded {
+		emb_c_name := g.types_type_to_c(types.Type(emb)).trim_right('*')
+		if emb_c_name == '' {
+			continue
+		}
+		owner := embedded_owner_field_name(emb_c_name)
+		if emb_c_name == target_base || short_type_name(emb_c_name) == short_type_name(target_base) {
+			return owner
+		}
+		nested := g.embedded_owner_path_for_type(emb_c_name, target_base)
 		if nested != '' {
-			return nested
+			return '${owner}.${nested}'
 		}
 	}
 	return ''

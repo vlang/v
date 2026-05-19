@@ -754,8 +754,11 @@ pub fn (sif StringInterFormat) str() string {
 
 pub struct SqlExpr {
 pub:
-	expr Expr
-	pos  token.Pos
+	expr       Expr
+	table_name string
+	is_count   bool
+	is_create  bool
+	pos        token.Pos
 }
 
 pub struct UnsafeExpr {

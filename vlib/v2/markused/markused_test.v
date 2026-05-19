@@ -251,6 +251,162 @@ fn test_mark_used_tracks_current_receiver_method_calls() {
 	assert !used[unused_key]
 }
 
+fn test_mark_used_tracks_embedded_methods_for_interface_conversions() {
+	mut env := types.Environment.new()
+	files := [
+		ast.File{
+			mod:   'main'
+			name:  'main.v'
+			stmts: [
+				ast.Stmt(ast.InterfaceDecl{
+					name:   'Logger'
+					fields: [
+						ast.FieldDecl{
+							name: 'get_level'
+							typ:  ast.Type(ast.FnType{})
+						},
+					]
+				}),
+				ast.Stmt(ast.GlobalDecl{
+					fields: [
+						ast.FieldDecl{
+							name: 'logger'
+							typ:  ast.Type(ast.PointerType{
+								base_type: ast.Ident{
+									name: 'Logger'
+									pos:  pos(60)
+								}
+							})
+						},
+					]
+				}),
+				ast.Stmt(ast.StructDecl{
+					name: 'Log'
+				}),
+				ast.Stmt(ast.StructDecl{
+					name:     'ThreadSafeLog'
+					embedded: [
+						ast.Expr(ast.Ident{
+							name: 'Log'
+							pos:  pos(61)
+						}),
+					]
+				}),
+				ast.Stmt(ast.FnDecl{
+					is_method: true
+					receiver:  ast.Parameter{
+						name: 'l'
+						typ:  ast.Ident{
+							name: 'Log'
+							pos:  pos(62)
+						}
+						pos:  pos(62)
+					}
+					name:      'get_level'
+					typ:       ast.FnType{}
+					pos:       pos(63)
+				}),
+				ast.Stmt(ast.FnDecl{
+					is_method: true
+					receiver:  ast.Parameter{
+						name: 'l'
+						typ:  ast.Ident{
+							name: 'Log'
+							pos:  pos(64)
+						}
+						pos:  pos(64)
+					}
+					name:      'unused'
+					typ:       ast.FnType{}
+					pos:       pos(65)
+				}),
+				ast.Stmt(ast.FnDecl{
+					name:  'main'
+					typ:   ast.FnType{}
+					pos:   pos(66)
+					stmts: [
+						ast.Stmt(ast.AssignStmt{
+							lhs: [
+								ast.Expr(ast.Ident{
+									name: 'logger'
+									pos:  pos(67)
+								}),
+							]
+							rhs: [
+								ast.Expr(ast.InitExpr{
+									typ: ast.Ident{
+										name: 'ThreadSafeLog'
+										pos:  pos(68)
+									}
+									pos: pos(68)
+								}),
+							]
+						}),
+					]
+				}),
+			]
+		},
+	]
+	used := mark_used(files, env)
+	main_key := decl_key('main', files[0].stmts[6] as ast.FnDecl, env)
+	get_level_key := decl_key('main', files[0].stmts[4] as ast.FnDecl, env)
+	unused_key := decl_key('main', files[0].stmts[5] as ast.FnDecl, env)
+	assert used[main_key]
+	assert used[get_level_key]
+	assert !used[unused_key]
+}
+
+fn test_mark_used_tracks_function_pointers_in_top_level_const_arrays() {
+	mut env := types.Environment.new()
+	files := [
+		ast.File{
+			mod:   'main'
+			name:  'main.v'
+			stmts: [
+				ast.Stmt(ast.ConstDecl{
+					fields: [
+						ast.FieldInit{
+							name:  'validators'
+							value: ast.ArrayInitExpr{
+								exprs: [
+									ast.Expr(ast.Ident{
+										name: 'accept'
+										pos:  pos(51)
+									}),
+								]
+								pos:   pos(50)
+							}
+						},
+					]
+				}),
+				ast.Stmt(ast.FnDecl{
+					name:  'main'
+					typ:   ast.FnType{}
+					pos:   pos(52)
+					stmts: []ast.Stmt{}
+				}),
+				ast.Stmt(ast.FnDecl{
+					name: 'accept'
+					typ:  ast.FnType{}
+					pos:  pos(53)
+				}),
+				ast.Stmt(ast.FnDecl{
+					name: 'dead'
+					typ:  ast.FnType{}
+					pos:  pos(54)
+				}),
+			]
+		},
+	]
+	used := mark_used(files, env)
+	main_key := decl_key('main', files[0].stmts[1] as ast.FnDecl, env)
+	accept_key := decl_key('main', files[0].stmts[2] as ast.FnDecl, env)
+	dead_key := decl_key('main', files[0].stmts[3] as ast.FnDecl, env)
+	assert used[main_key]
+	assert used[accept_key]
+	assert !used[dead_key]
+}
+
 fn test_mark_used_keeps_all_functions_when_no_entry_root_exists() {
 	mut env := types.Environment.new()
 	files := [

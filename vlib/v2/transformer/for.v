@@ -81,6 +81,23 @@ fn (t &Transformer) for_in_value_type(iter_type types.Type) types.Type {
 	return iter_type.value_type()
 }
 
+fn (t &Transformer) generic_iter_value_placeholder(expr ast.Expr) ?string {
+	match expr {
+		ast.Ident {
+			return t.generic_var_type_params[expr.name] or { none }
+		}
+		ast.ParenExpr {
+			return t.generic_iter_value_placeholder(expr.expr)
+		}
+		ast.ModifierExpr {
+			return t.generic_iter_value_placeholder(expr.expr)
+		}
+		else {}
+	}
+
+	return none
+}
+
 fn (mut t Transformer) iter_value_expr(orig ast.Expr, transformed ast.Expr, pos token.Pos, value_type types.Type) ast.Expr {
 	t.register_synth_type(pos, value_type)
 	base_expr := ast.Expr(ast.ParenExpr{
@@ -99,6 +116,34 @@ fn (mut t Transformer) iter_value_expr(orig ast.Expr, transformed ast.Expr, pos 
 		})
 	}
 	return base_expr
+}
+
+fn (mut t Transformer) smartcast_map_iter_value_expr(iter_expr ast.Expr, map_type types.Map) ast.Expr {
+	map_c_name := t.type_to_c_name(types.Type(map_type))
+	if map_c_name == '' {
+		return iter_expr
+	}
+	data_access := t.synth_selector(iter_expr, '_data', types.Type(types.voidptr_))
+	is_native_backend := t.pref != unsafe { nil }
+		&& (t.pref.backend == .arm64 || t.pref.backend == .x64)
+	variant_access := if is_native_backend {
+		data_access
+	} else {
+		t.synth_selector(data_access, '_${map_c_name}', types.Type(types.voidptr_))
+	}
+	cast_expr := ast.CastExpr{
+		typ:  ast.Ident{
+			name: '${map_c_name}*'
+		}
+		expr: variant_access
+	}
+	deref_expr := ast.PrefixExpr{
+		op:   .mul
+		expr: cast_expr
+	}
+	return ast.Expr(ast.ParenExpr{
+		expr: deref_expr
+	})
 }
 
 // try_expand_for_in_map expands map iteration to lower-level constructs.
@@ -183,7 +228,10 @@ fn (mut t Transformer) try_expand_for_in_map(stmt ast.ForStmt) ?[]ast.Stmt {
 	// result goes through transform_stmt again. Pre-transforming would cause double
 	// transformation (e.g., ArrayInitExpr args in new_map_init become full array
 	// construction calls instead of raw data arrays).
-	is_lvalue := for_in.expr is ast.Ident || for_in.expr is ast.SelectorExpr
+	smartcast_iter_expr := t.expr_to_string(for_in.expr)
+	is_smartcast_iter := smartcast_iter_expr != ''
+		&& t.find_smartcast_for_expr(smartcast_iter_expr) != none
+	is_lvalue := !is_smartcast_iter && (for_in.expr is ast.Ident || for_in.expr is ast.SelectorExpr)
 	mut map_ref := ast.Expr(ast.Ident{})
 	mut stmts := []ast.Stmt{}
 	if is_lvalue {
@@ -193,11 +241,17 @@ fn (mut t Transformer) try_expand_for_in_map(stmt ast.ForStmt) ?[]ast.Stmt {
 		map_tmp_ident := ast.Ident{
 			name: map_tmp_name
 		}
+		map_source := if is_smartcast_iter {
+			t.smartcast_map_iter_value_expr(for_in.expr, map_type)
+		} else {
+			for_in.expr
+		}
 		stmts << ast.AssignStmt{
 			op:  .decl_assign
 			lhs: [ast.Expr(map_tmp_ident)]
-			rhs: [ast.Expr(for_in.expr)]
+			rhs: [map_source]
 		}
+		t.register_temp_var(map_tmp_name, iter_type)
 		map_ref = ast.Expr(map_tmp_ident)
 	}
 
@@ -744,6 +798,11 @@ fn (mut t Transformer) transform_array_for_in(stmt ast.ForStmt, for_in ast.ForIn
 	value_type := t.for_in_value_type(iter_type)
 	t.scope.insert(key_name, key_type)
 	t.scope.insert(value_name, value_type)
+	had_generic_value := value_name in t.generic_var_type_params
+	old_generic_value := t.generic_var_type_params[value_name] or { '' }
+	if placeholder := t.generic_iter_value_placeholder(for_in.expr) {
+		t.generic_var_type_params[value_name] = placeholder
+	}
 	t.register_synth_type(idx_pos, key_type)
 
 	iter_pos := t.next_synth_pos()
@@ -786,6 +845,11 @@ fn (mut t Transformer) transform_array_for_in(stmt ast.ForStmt, for_in ast.ForIn
 	mut new_stmts := []ast.Stmt{cap: stmt.stmts.len + 1}
 	new_stmts << value_assign
 	transformed_body := t.transform_stmts(stmt.stmts)
+	if had_generic_value {
+		t.generic_var_type_params[value_name] = old_generic_value
+	} else {
+		t.generic_var_type_params.delete(value_name)
+	}
 	new_stmts << transformed_body
 
 	// Build: for (_idx := 0; _idx < arr.len; _idx++) { ... }

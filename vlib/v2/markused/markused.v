@@ -9,12 +9,29 @@ import v2.token
 import v2.types
 
 // Guard functions for ARM64 backend where default-initialized sum types have NULL data pointers.
+fn sumtype_payload_word_is_valid(tag_word u64, data_word u64) bool {
+	if data_word == 0 {
+		return false
+	}
+	// Native v2 backends use `(tag, data_ptr)` for sumtypes. If the first word
+	// looks like a small tag, the payload must be a real pointer, not a leaked
+	// enum/default value like `3`.
+	if tag_word < 256 {
+		return data_word >= 4096 && data_word < 281474976710656
+	}
+	return true
+}
+
 fn expr_ok(expr ast.Expr) bool {
-	return unsafe { (&u64(&expr))[1] } != 0
+	tag_word := unsafe { (&u64(&expr))[0] }
+	data_word := unsafe { (&u64(&expr))[1] }
+	return sumtype_payload_word_is_valid(tag_word, data_word)
 }
 
 fn stmt_ok(stmt ast.Stmt) bool {
-	return unsafe { (&u64(&stmt))[1] } != 0
+	tag_word := unsafe { (&u64(&stmt))[0] }
+	data_word := unsafe { (&u64(&stmt))[1] }
+	return sumtype_payload_word_is_valid(tag_word, data_word)
 }
 
 const builtin_cast_type_names = [
@@ -55,13 +72,15 @@ mut:
 
 	used_keys map[string]bool
 
-	module_names           map[string]bool
-	module_alias_to_real   map[string]string
-	type_names             map[string]bool
-	interface_type_names   map[string]bool
-	interface_method_names map[string][]string
-	methods_by_receiver    map[string][]int
-	struct_field_receivers map[string][]string
+	module_names              map[string]bool
+	module_alias_to_real      map[string]string
+	type_names                map[string]bool
+	interface_type_names      map[string]bool
+	interface_method_names    map[string][]string
+	methods_by_receiver       map[string][]int
+	struct_field_receivers    map[string][]string
+	struct_embedded_receivers map[string][]string
+	global_interface_names    map[string]string
 
 	lookup map[string][]int
 
@@ -88,16 +107,18 @@ pub fn decl_key(module_name string, decl ast.FnDecl, env &types.Environment) str
 
 fn new_walker(files []ast.File, env &types.Environment) Walker {
 	return Walker{
-		files:                  files
-		env:                    unsafe { env }
-		used_keys:              map[string]bool{}
-		module_names:           map[string]bool{}
-		type_names:             map[string]bool{}
-		interface_type_names:   map[string]bool{}
-		interface_method_names: map[string][]string{}
-		methods_by_receiver:    map[string][]int{}
-		struct_field_receivers: map[string][]string{}
-		lookup:                 map[string][]int{}
+		files:                     files
+		env:                       unsafe { env }
+		used_keys:                 map[string]bool{}
+		module_names:              map[string]bool{}
+		type_names:                map[string]bool{}
+		interface_type_names:      map[string]bool{}
+		interface_method_names:    map[string][]string{}
+		methods_by_receiver:       map[string][]int{}
+		struct_field_receivers:    map[string][]string{}
+		struct_embedded_receivers: map[string][]string{}
+		global_interface_names:    map[string]string{}
+		lookup:                    map[string][]int{}
 	}
 }
 
@@ -152,6 +173,7 @@ fn (mut w Walker) collect_defs() {
 				ast.StructDecl {
 					w.add_type_name(mod_name, stmt.name)
 					w.add_struct_field_receivers(mod_name, stmt)
+					w.add_struct_embedded_receivers(mod_name, stmt)
 				}
 				ast.EnumDecl {
 					w.add_type_name(mod_name, stmt.name)
@@ -162,6 +184,9 @@ fn (mut w Walker) collect_defs() {
 				}
 				ast.TypeDecl {
 					w.add_type_name(mod_name, stmt.name)
+				}
+				ast.GlobalDecl {
+					w.add_global_interface_names(mod_name, stmt)
 				}
 				ast.FnDecl {
 					if stmt.name == '' {
@@ -198,6 +223,7 @@ fn (mut w Walker) seed_roots() bool {
 				w.mark_fn(i)
 			}
 		}
+		w.seed_top_level_initializer_roots()
 		return true
 	}
 	for i, info in w.fns {
@@ -208,8 +234,26 @@ fn (mut w Walker) seed_roots() bool {
 	}
 	if has_root {
 		w.seed_generic_specialization_roots()
+		w.seed_top_level_initializer_roots()
 	}
 	return has_root
+}
+
+fn (mut w Walker) seed_top_level_initializer_roots() {
+	for file in w.files {
+		mod_name := normalize_module_name(file.mod)
+		for stmt in file.stmts {
+			if !stmt_ok(stmt) {
+				continue
+			}
+			match stmt {
+				ast.ConstDecl, ast.GlobalDecl {
+					w.walk_stmt(stmt, mod_name)
+				}
+				else {}
+			}
+		}
+	}
 }
 
 fn generic_base_name_from_key(key string) string {
@@ -662,6 +706,40 @@ fn (mut w Walker) add_struct_field_receivers(mod_name string, decl ast.StructDec
 	}
 }
 
+fn (mut w Walker) add_struct_embedded_receivers(mod_name string, decl ast.StructDecl) {
+	if decl.embedded.len == 0 {
+		return
+	}
+	mut struct_names := []string{}
+	add_receiver_name_candidates(mut struct_names, mod_name, decl.name)
+	for embedded in decl.embedded {
+		embedded_receivers := type_expr_receiver_candidates(mod_name, embedded)
+		if embedded_receivers.len == 0 {
+			continue
+		}
+		for struct_name in struct_names {
+			mut existing := w.struct_embedded_receivers[struct_name] or { []string{} }
+			for receiver in embedded_receivers {
+				add_unique_string(mut existing, receiver)
+			}
+			w.struct_embedded_receivers[struct_name] = existing
+		}
+	}
+}
+
+fn (mut w Walker) add_global_interface_names(mod_name string, decl ast.GlobalDecl) {
+	for field in decl.fields {
+		iface_name := w.interface_name_from_type_expr(field.typ, mod_name)
+		if iface_name == '' {
+			continue
+		}
+		w.global_interface_names[field.name] = iface_name
+		if mod_name != '' && mod_name != 'main' && mod_name != 'builtin' {
+			w.global_interface_names['${mod_name}__${field.name}'] = iface_name
+		}
+	}
+}
+
 fn (mut w Walker) add_method_receiver(receiver_name string, idx int) {
 	if receiver_name == '' {
 		return
@@ -865,6 +943,32 @@ fn (mut w Walker) mark_all_methods_for_receivers(receivers []string) {
 	}
 }
 
+fn (w &Walker) embedded_receivers_for(receivers []string) []string {
+	mut out := []string{}
+	mut seen := map[string]bool{}
+	mut stack := []string{}
+	for receiver in receivers {
+		if receiver == '' || receiver in seen {
+			continue
+		}
+		seen[receiver] = true
+		stack << receiver
+	}
+	for stack.len > 0 {
+		receiver := stack[stack.len - 1]
+		stack.delete(stack.len - 1)
+		embedded := w.struct_embedded_receivers[receiver] or { continue }
+		for embedded_receiver in embedded {
+			add_unique_string(mut out, embedded_receiver)
+			if embedded_receiver !in seen {
+				seen[embedded_receiver] = true
+				stack << embedded_receiver
+			}
+		}
+	}
+	return out
+}
+
 fn ierror_wrapper_base_from_ident(name string) string {
 	if !name.starts_with('IError_') {
 		return ''
@@ -935,6 +1039,84 @@ fn (mut w Walker) mark_interface_conversion_methods(target_expr ast.Expr, value_
 	w.mark_interface_conversion_methods_for_name(iface_name, value_expr, mod_name)
 }
 
+fn (w &Walker) interface_name_from_type_expr(expr ast.Expr, mod_name string) string {
+	match expr {
+		ast.Ident, ast.SelectorExpr {
+			return w.interface_name_from_expr(expr, mod_name)
+		}
+		ast.PrefixExpr {
+			if expr.op == .amp {
+				return w.interface_name_from_type_expr(expr.expr, mod_name)
+			}
+		}
+		ast.ModifierExpr {
+			return w.interface_name_from_type_expr(expr.expr, mod_name)
+		}
+		ast.Type {
+			match expr {
+				ast.PointerType {
+					return w.interface_name_from_type_expr(expr.base_type, mod_name)
+				}
+				ast.GenericType {
+					return w.interface_name_from_type_expr(expr.name, mod_name)
+				}
+				else {}
+			}
+		}
+		else {}
+	}
+
+	return ''
+}
+
+fn (w &Walker) interface_name_from_type(typ types.Type) string {
+	match typ {
+		types.Interface {
+			return typ.name
+		}
+		types.Pointer {
+			return w.interface_name_from_type(typ.base_type)
+		}
+		types.Alias {
+			return w.interface_name_from_type(typ.base_type)
+		}
+		else {}
+	}
+
+	return ''
+}
+
+fn (w &Walker) interface_name_from_expr_type(expr ast.Expr, mod_name string) string {
+	if expr is ast.Ident {
+		if iface_name := w.global_interface_names[expr.name] {
+			return iface_name
+		}
+		if mod_name != '' && mod_name != 'main' && mod_name != 'builtin' {
+			qualified := '${mod_name}__${expr.name}'
+			if iface_name := w.global_interface_names[qualified] {
+				return iface_name
+			}
+		}
+	}
+	if w.env != unsafe { nil } {
+		pos := expr.pos()
+		if pos.is_valid() {
+			if typ := w.env.get_expr_type(pos.id) {
+				return w.interface_name_from_type(typ)
+			}
+		}
+	}
+	return ''
+}
+
+fn (mut w Walker) mark_assignment_interface_conversion(lhs ast.Expr, rhs ast.Expr, mod_name string) {
+	iface_name := w.interface_name_from_expr_type(lhs, mod_name)
+	if iface_name == '' {
+		return
+	}
+	w.mark_interface_conversion_methods_for_name(iface_name, rhs, mod_name)
+}
+
 fn (mut w Walker) mark_interface_conversion_methods_for_name(iface_name string, value_expr ast.Expr, mod_name string) {
 	receivers := w.receiver_candidates_for_expr(value_expr, mod_name)
 	if receivers.len == 0 {
@@ -943,8 +1125,10 @@ fn (mut w Walker) mark_interface_conversion_methods_for_name(iface_name string, 
 	mut marked := false
 	if iface_name in w.interface_method_names {
 		prev_len := w.queue.len
+		embedded_receivers := w.embedded_receivers_for(receivers)
 		for method_name in w.interface_method_names[iface_name] {
 			w.mark_method_name(method_name, receivers)
+			w.mark_method_name(method_name, embedded_receivers)
 		}
 		marked = w.queue.len > prev_len
 	}
@@ -1434,6 +1618,11 @@ fn (mut w Walker) walk_stmt(stmt ast.Stmt, mod_name string) {
 			w.walk_expr(stmt.extra, mod_name)
 		}
 		ast.AssignStmt {
+			for i, rhs in stmt.rhs {
+				if i < stmt.lhs.len {
+					w.mark_assignment_interface_conversion(stmt.lhs[i], rhs, mod_name)
+				}
+			}
 			for expr in stmt.lhs {
 				w.walk_expr(expr, mod_name)
 			}

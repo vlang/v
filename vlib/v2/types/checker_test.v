@@ -407,6 +407,23 @@ fn test_pointer_base_type() {
 	assert found_int_ptr, 'pointer should have integer base type'
 }
 
+fn test_sum_type_equality_is_name_based() {
+	left := SumType{
+		name:     'Value'
+		variants: [Type(int_)]
+	}
+	right := SumType{
+		name:     'Value'
+		variants: [Type(string_)]
+	}
+	other := SumType{
+		name: 'Other'
+	}
+
+	assert left == right
+	assert left != other
+}
+
 // === Function Tests ===
 
 fn test_call_expr_return_type() {
@@ -570,6 +587,170 @@ fn main() {
 	env := check_code(code)
 	assert env.expr_type_values.len > 0, 'match expr should populate types'
 	assert has_type(env, 'string'), 'match expr should produce string type'
+}
+
+fn test_match_type_branch_smartcasts_array_variant() {
+	code := '
+type Value = string | []int
+
+fn value_len(value Value) int {
+	return match value {
+		[]int {
+			value.len
+		}
+		else {
+			0
+		}
+	}
+}
+'
+	env := check_code(code)
+
+	assert has_type(env, '[]int'), 'match type branch should smartcast array variants'
+}
+
+fn test_array_count_it_predicate() {
+	code := '
+fn count_first(values [][]int) int {
+	return values.count(it[0] == 1)
+}
+'
+	env := check_code(code)
+
+	assert has_type(env, 'int'), 'array.count should typecheck implicit it predicates'
+}
+
+fn test_or_block_propagated_fn_parameter_call() {
+	code := '
+fn fallback(cb fn (int) !string) string {
+	return cb(1) or {
+		cb(2)!
+	}
+}
+'
+	env := check_code(code)
+
+	assert has_type(env, 'string'), 'or block should unwrap propagated calls through fn parameters'
+}
+
+fn test_if_guard_optional_tuple_destructure() {
+	code := '
+fn pair() ?(string, string) {
+	return none
+}
+
+fn use_pair() {
+	if first, second := pair() {
+		_ := first.len
+		_ := second.len
+	}
+}
+'
+	env := check_code(code)
+
+	assert has_type(env, 'string'), 'if guard should destructure unwrapped optional tuples'
+}
+
+fn test_multiline_struct_init_method_call() {
+	code := '
+struct Tx {
+	inner int
+}
+
+fn (tx Tx) is_active() bool {
+	return true
+}
+
+fn active() bool {
+	return Tx{
+		inner: 1
+	}.is_active()
+}
+'
+	env := check_code(code)
+
+	assert has_type(env, 'bool'), 'multiline struct init method calls should use the struct type'
+}
+
+fn test_prefix_multiline_struct_init_method_call() {
+	code := '
+struct TxInner {}
+
+struct Tx {
+	inner &TxInner
+}
+
+fn (tx Tx) is_active() bool {
+	return true
+}
+
+fn active(owner &TxInner) bool {
+	return !Tx{
+		inner: owner
+	}.is_active()
+}
+'
+	env := check_code(code)
+
+	assert has_type(env, 'bool'), 'prefix multiline struct init method calls should use the method result type'
+}
+
+fn test_or_condition_prefix_multiline_struct_init_method_call() {
+	code := '
+struct TxInner {
+	active bool
+}
+
+struct SavepointInner {
+	active bool
+	owner  &TxInner
+}
+
+struct Savepoint {
+	inner &SavepointInner
+}
+
+struct Tx {
+	inner &TxInner
+}
+
+fn (tx Tx) is_active() bool {
+	return true
+}
+
+fn isnil(p &TxInner) bool {
+	return false
+}
+
+fn ensure_active(sp Savepoint) bool {
+	if !sp.inner.active || isnil(sp.inner.owner) || !Tx{
+		inner: sp.inner.owner
+	}.is_active() {
+		return false
+	}
+	return true
+}
+'
+	env := check_code(code)
+
+	assert has_type(env, 'bool'), 'or conditions should keep multiline init method receiver type'
+}
+
+fn test_map_enum_shorthand_keys() {
+	code := '
+enum Kind {
+	first
+	second
+}
+
+const labels = {
+	Kind.first: "first"
+	.second:   "second"
+}
+'
+	env := check_code(code)
+
+	assert has_type(env, 'map[Kind]string'), 'map keys should support enum shorthand after typed first key'
 }
 
 // === Cast Expression Tests ===

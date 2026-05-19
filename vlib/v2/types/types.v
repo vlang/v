@@ -263,6 +263,13 @@ pub mut:
 	variants []Type
 }
 
+fn (a SumType) == (b SumType) bool {
+	if a.name == b.name {
+		return true
+	}
+	return false
+}
+
 struct Thread {
 	elem_type ?Type
 	// return_type Type

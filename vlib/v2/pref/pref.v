@@ -281,6 +281,9 @@ pub fn new_preferences_from_args(args []string) Preferences {
 
 	mut all_defines := user_defines.clone()
 	all_defines << gc_defines
+	if '-prealloc' in args {
+		all_defines << 'prealloc'
+	}
 
 	options := cmdline.only_options(args)
 

@@ -33,22 +33,20 @@ pub fn get_v_files_from_dir(dir string, user_defines []string, target_os string)
 		if pref.file_has_incompatible_os_suffix(file, target_os) {
 			continue
 		}
+		if file.ends_with('prealloc.c.v') && 'prealloc' !in user_defines {
+			continue
+		}
 		// Conditional compilation files: _d_<feature> included when -d <feature> is set,
 		// _notd_<feature> included when -d <feature> is NOT set.
-		if file.contains('_d_') {
-			// Check if this is a _notd_ file (not-defined variant)
-			if file.contains('_notd_') {
-				// Include _notd_ files only when the feature is NOT defined
-				feature := extract_define_feature(file, '_notd_')
-				if feature.len > 0 && feature in user_defines {
-					continue // feature is defined, skip the _notd_ variant
-				}
-			} else {
-				// _d_ file (defined variant): include only when feature IS defined
-				feature := extract_define_feature(file, '_d_')
-				if feature.len == 0 || feature !in user_defines {
-					continue // feature not defined, skip
-				}
+		if file.contains('_notd_') {
+			feature := extract_define_feature(file, '_notd_')
+			if feature.len > 0 && feature in user_defines {
+				continue
+			}
+		} else if file.contains('_d_') {
+			feature := extract_define_feature(file, '_d_')
+			if feature.len == 0 || feature !in user_defines {
+				continue
 			}
 		}
 		path := os.join_path(dir, file)
@@ -96,6 +94,8 @@ fn fname_without_platform_postfix(file string) string {
 		'darwin.c.v',
 		'_',
 		'macos.c.v',
+		'_',
+		'bsd.c.v',
 		'_',
 		'android.c.v',
 		'_',

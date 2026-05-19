@@ -240,6 +240,15 @@ fn (mut g Gen) emit_vec_simd_fallback_aliases() {
 	g.sb.writeln('#endif')
 }
 
+fn (mut g Gen) emit_tinyc_arm_cpu_relax_fallback() {
+	g.sb.writeln('#if defined(__TINYC__) && (defined(__aarch64__) || defined(_M_ARM64) || defined(__arm__) || defined(_M_ARM))')
+	g.sb.writeln('#ifdef cpu_relax')
+	g.sb.writeln('#undef cpu_relax')
+	g.sb.writeln('#endif')
+	g.sb.writeln('#define cpu_relax() ((void)0)')
+	g.sb.writeln('#endif')
+}
+
 fn (mut g Gen) write_preamble() {
 	minimal_preamble := g.use_minimal_preamble()
 	g.sb.write_string(if minimal_preamble {
@@ -248,6 +257,7 @@ fn (mut g Gen) write_preamble() {
 		preamble_includes_full
 	})
 	g.emit_collected_c_directives()
+	g.emit_tinyc_arm_cpu_relax_fallback()
 	if g.pref != unsafe { nil } && g.pref.prealloc {
 		g.sb.writeln('#define _VPREALLOC (1)')
 		// Save the real free() before redefining it as a no-op.
@@ -283,7 +293,7 @@ fn (mut g Gen) write_preamble() {
 	g.sb.writeln('extern void* g_main_argv;')
 	g.emit_vec_simd_fallback_aliases()
 	if minimal_preamble {
-		g.sb.writeln('typedef struct sync__RwMutex { pthread_rwlock_t mutex; } sync__RwMutex;')
+		g.sb.writeln('typedef struct sync__RwMutex { pthread_rwlock_t mutex; u32 inited; } sync__RwMutex;')
 		g.sb.writeln('static inline void sync__RwMutex_rlock(sync__RwMutex* m) { pthread_rwlock_rdlock(&m->mutex); }')
 		g.sb.writeln('static inline void sync__RwMutex_runlock(sync__RwMutex* m) { pthread_rwlock_unlock(&m->mutex); }')
 		g.sb.writeln('static inline void sync__RwMutex_lock(sync__RwMutex* m) { pthread_rwlock_wrlock(&m->mutex); }')
@@ -372,7 +382,7 @@ fn (mut g Gen) write_preamble() {
 	g.sb.writeln('#define _MOV')
 	g.sb.writeln('typedef u8 termios__Cc;')
 	// sync__RwMutex for shared variables
-	g.sb.writeln('typedef struct sync__RwMutex { pthread_rwlock_t mutex; } sync__RwMutex;')
+	g.sb.writeln('typedef struct sync__RwMutex { pthread_rwlock_t mutex; u32 inited; } sync__RwMutex;')
 	g.sb.writeln('static inline void sync__RwMutex_rlock(sync__RwMutex* m) { pthread_rwlock_rdlock(&m->mutex); }')
 	g.sb.writeln('static inline void sync__RwMutex_runlock(sync__RwMutex* m) { pthread_rwlock_unlock(&m->mutex); }')
 	g.sb.writeln('static inline void sync__RwMutex_lock(sync__RwMutex* m) { pthread_rwlock_wrlock(&m->mutex); }')
@@ -428,13 +438,7 @@ fn (mut g Gen) emit_runtime_aliases() {
 	mut map_names := g.map_aliases.keys()
 	map_names.sort()
 	for name in map_names {
-		g.sb.writeln('typedef map ${name};')
-		// Forward-declare map helper functions (bodies generated later)
-		map_str_fn := '${name}_str'
-		if map_str_fn !in g.fn_return_types {
-			g.sb.writeln('string ${name}_str(${name} m);')
-		}
-		g.sb.writeln('bool ${name}_map_eq(${name} a, ${name} b);')
+		g.emit_map_alias_decl(name)
 	}
 	// Option/Result forward declarations (struct definitions emitted later
 	// after IError is defined, via emit_option_result_structs)
@@ -497,6 +501,26 @@ fn (mut g Gen) get_enum_name(node ast.EnumDecl) string {
 	return node.name
 }
 
+fn (mut g Gen) emit_map_alias_decl(name string) {
+	map_name := name.trim_right('*')
+	if !map_name.starts_with('Map_') {
+		return
+	}
+	alias_key := 'alias_${map_name}'
+	if alias_key in g.emitted_types {
+		return
+	}
+	g.emitted_types[alias_key] = true
+	g.map_aliases[map_name] = true
+	g.sb.writeln('typedef map ${map_name};')
+	// Forward-declare map helper functions (bodies generated later).
+	map_str_fn := '${map_name}_str'
+	if map_str_fn !in g.fn_return_types {
+		g.sb.writeln('string ${map_name}_str(${map_name} m);')
+	}
+	g.sb.writeln('bool ${map_name}_map_eq(${map_name} a, ${map_name} b);')
+}
+
 fn (mut g Gen) gen_enum_decl(node ast.EnumDecl) {
 	name := g.get_enum_name(node)
 	enum_key := 'enum_${name}'
@@ -521,7 +545,11 @@ fn (mut g Gen) gen_enum_decl(node ast.EnumDecl) {
 		g.sb.write_string('\t${g.enum_member_c_name(name, field.name)}')
 		if field.value !is ast.EmptyExpr {
 			g.sb.write_string(' = ')
-			g.expr(field.value)
+			if enum_value := g.enum_field_value_int_expr(field.value) {
+				g.sb.write_string(enum_value)
+			} else {
+				g.expr(field.value)
+			}
 		} else if is_flag {
 			g.sb.write_string(' = ${u64(1) << i}U')
 		}
@@ -565,6 +593,103 @@ fn (mut g Gen) gen_enum_decl(node ast.EnumDecl) {
 		g.sb.writeln('#define ${values_name} ((array){ .data = 0, .offset = 0, .len = 0, .cap = 0, .flags = 0, .element_size = sizeof(${name}) })')
 	}
 	g.sb.writeln('')
+}
+
+fn (mut g Gen) enum_field_value_int_expr(expr ast.Expr) ?string {
+	match expr {
+		ast.BasicLiteral {
+			if expr.kind == .number {
+				return sanitize_c_number_literal(expr.value)
+			}
+		}
+		ast.CallOrCastExpr {
+			return g.enum_field_value_int_expr(expr.expr)
+		}
+		ast.CastExpr {
+			return g.enum_field_value_int_expr(expr.expr)
+		}
+		ast.ParenExpr {
+			return g.enum_field_value_int_expr(expr.expr)
+		}
+		ast.PrefixExpr {
+			if expr.op == .minus {
+				if value := g.enum_field_value_int_expr(expr.expr) {
+					return '-${value}'
+				}
+			}
+		}
+		ast.SelectorExpr {
+			return g.enum_selector_int_value(expr)
+		}
+		else {}
+	}
+
+	return none
+}
+
+fn (mut g Gen) enum_selector_int_value(sel ast.SelectorExpr) ?string {
+	rhs_name := sel.rhs.name
+	if sel.lhs is ast.SelectorExpr {
+		lhs_sel := sel.lhs as ast.SelectorExpr
+		if lhs_sel.lhs is ast.Ident {
+			lhs_mod := lhs_sel.lhs as ast.Ident
+			mut module_names := [lhs_mod.name]
+			resolved_mod_name := g.resolve_module_name(lhs_mod.name)
+			if resolved_mod_name !in module_names {
+				module_names << resolved_mod_name
+			}
+			for mod_name in module_names {
+				enum_name := '${mod_name}__${lhs_sel.rhs.name}'
+				if value := g.enum_decl_field_int_value(enum_name, rhs_name) {
+					return value
+				}
+			}
+		}
+	}
+	if sel.lhs is ast.Ident {
+		lhs_name := sel.lhs.name
+		mut enum_names := [lhs_name]
+		if g.cur_module != '' && g.cur_module != 'main' && g.cur_module != 'builtin' {
+			enum_names << '${g.cur_module}__${lhs_name}'
+		}
+		for enum_name in enum_names {
+			if value := g.enum_decl_field_int_value(enum_name, rhs_name) {
+				return value
+			}
+		}
+	}
+	return none
+}
+
+fn (mut g Gen) enum_decl_field_int_value(enum_name string, field_name string) ?string {
+	short_name := enum_name.all_after_last('__')
+	module_name := if enum_name.contains('__') {
+		enum_name.all_before_last('__')
+	} else {
+		g.cur_module
+	}
+	for file in g.files {
+		if module_name != '' && file.mod != module_name {
+			continue
+		}
+		for stmt in file.stmts {
+			if stmt is ast.EnumDecl && stmt.name == short_name {
+				mut next_value := 0
+				for field in stmt.fields {
+					if field.value !is ast.EmptyExpr {
+						if value := g.enum_field_value_int_expr(field.value) {
+							next_value = value.int()
+						}
+					}
+					if field.name == field_name {
+						return '${next_value}'
+					}
+					next_value++
+				}
+			}
+		}
+	}
+	return none
 }
 
 // collect_force_emit_str_fns scans map_aliases and array_aliases to find which
@@ -997,7 +1122,11 @@ fn (g &Gen) parse_map_kv_types(kv_str string) (string, string) {
 		}
 	}
 	// For compound key types: try each underscore position and check if the
-	// key type is a known type alias/struct
+	// key type is a known type alias/struct. Keep the longest match: generic
+	// struct names can have their base type emitted too, e.g.
+	// `ApiResponse_T_Array_FileInfo_Array_int`.
+	mut best_key := ''
+	mut best_value := ''
 	for i := 1; i < kv_str.len; i++ {
 		if kv_str[i] == `_` {
 			key := kv_str[..i]
@@ -1006,11 +1135,14 @@ fn (g &Gen) parse_map_kv_types(kv_str string) (string, string) {
 				continue
 			}
 			// Verify key is a known type
-			if 'Map_${key}_' in g.map_aliases.keys().map(it + '_') || key in g.array_aliases
-				|| key in g.emitted_types || key in simple_types {
-				return key, value
+			if g.is_known_map_key_type(key, simple_types) {
+				best_key = key
+				best_value = value
 			}
 		}
+	}
+	if best_key != '' {
+		return best_key, best_value
 	}
 	// Last resort: split on last underscore
 	last_idx := kv_str.last_index('_') or { return '', '' }
@@ -1018,4 +1150,10 @@ fn (g &Gen) parse_map_kv_types(kv_str string) (string, string) {
 		return kv_str[..last_idx], kv_str[last_idx + 1..]
 	}
 	return '', ''
+}
+
+fn (g &Gen) is_known_map_key_type(key string, simple_types []string) bool {
+	return key in g.map_aliases || key in g.array_aliases || key in g.emitted_types
+		|| 'body_${key}' in g.emitted_types || 'alias_${key}' in g.emitted_types
+		|| 'enum_${key}' in g.emitted_types || key in simple_types
 }
