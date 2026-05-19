@@ -72,11 +72,11 @@ pub fn (mut ctx Context) create_image(file string, cfg ImageConfig) !Image {
 	img.texture_filter = cfg.texture_filter or { ctx.config.texture_filter }
 	img.nr_mipmaps = cfg.nr_mipmaps
 	img.ok = false
-	unsafe {
-		ctx.image_cache << img
-	}
 	if gfx.is_valid() && !ctx.native_rendering {
 		img.init_sokol_image()
+	}
+	unsafe {
+		ctx.image_cache << img
 	}
 	return img
 }
@@ -164,7 +164,7 @@ pub fn (mut ctx Context) new_streaming_image(w int, h int, channels int, sicfg S
 		height:       img.height
 		pixel_format: sicfg.pixel_format
 		num_slices:   1
-		num_mipmaps:  sicfg.num_mipmaps
+		num_mipmaps:  1
 		usage:        .stream
 		label:        &char(img.path.str)
 	}
@@ -296,7 +296,6 @@ pub:
 	wrap_v       gfx.Wrap        = .clamp_to_edge
 	min_filter   gfx.Filter      = .linear
 	mag_filter   gfx.Filter      = .linear
-	num_mipmaps  int             = 1
 }
 
 fn (filter TextureFilter) gfx_filter() gfx.Filter {
