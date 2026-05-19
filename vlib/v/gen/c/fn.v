@@ -691,8 +691,41 @@ fn (mut g Gen) ensure_extern_sig_type_decl(typ_ ast.Type) {
 		return
 	}
 	sym := g.table.sym(typ)
+	if sym.idx in g.emitted_extern_sig_typedefs {
+		return
+	}
+	g.emitted_extern_sig_typedefs[sym.idx] = true
 	if sym.is_builtin || sym.name in ['byte', 'i32', 'C.FILE'] {
 		return
+	}
+	match sym.info {
+		ast.FnType {
+			// A function-pointer parameter has its own params/return type, which
+			// may also reference struct types that are otherwise unreferenced in V.
+			g.ensure_extern_sig_type_decl(sym.info.func.return_type)
+			for param in sym.info.func.params {
+				g.ensure_extern_sig_type_decl(param.typ)
+			}
+			return
+		}
+		ast.Array {
+			g.ensure_extern_sig_type_decl(sym.info.elem_type)
+			return
+		}
+		ast.ArrayFixed {
+			g.ensure_extern_sig_type_decl(sym.info.elem_type)
+			return
+		}
+		ast.Map {
+			g.ensure_extern_sig_type_decl(sym.info.key_type)
+			g.ensure_extern_sig_type_decl(sym.info.value_type)
+			return
+		}
+		ast.Alias {
+			g.ensure_extern_sig_type_decl(sym.info.parent_type)
+			return
+		}
+		else {}
 	}
 	if sym.idx in g.table.used_features.used_syms {
 		return
