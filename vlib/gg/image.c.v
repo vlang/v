@@ -18,7 +18,7 @@ pub mut:
 	width          int
 	height         int
 	nr_channels    int
-  nr_mipmaps     int
+	nr_mipmaps     int
 	ok             bool
 	data           voidptr
 	ext            string
@@ -31,8 +31,8 @@ pub mut:
 
 @[params]
 pub struct ImageConfig {
-  nr_mipmaps int
-  texture_filter ?TextureFilter
+	nr_mipmaps     int
+	texture_filter ?TextureFilter
 }
 
 // destroy GPU resources associated with the image
@@ -49,8 +49,8 @@ fn (image &Image) destroy() {
 
 // create_image creates an `Image` from `file`.
 pub fn (mut ctx Context) create_image(file string, cfg ImageConfig) !Image {
-  $if android {
-    if !os.exists(file) {
+	$if android {
+		if !os.exists(file) {
 			image_data := os.read_apk_asset(file)!
 			mut image := ctx.create_image_from_byte_array(image_data, cfg)!
 
@@ -59,43 +59,42 @@ pub fn (mut ctx Context) create_image(file string, cfg ImageConfig) !Image {
 			return image
 		}
 	}
-  mut img := if ctx.native_rendering {
-			$if macos {
-        C.darwin_create_image(file)
-      } $else {
-        load_image(file)!
-      } 
-		} else { 
-      load_image(file)!
-    }
+	mut img := if ctx.native_rendering {
+		$if macos {
+			C.darwin_create_image(file)
+		} $else {
+			load_image(file)!
+		}
+	} else {
+		load_image(file)!
+	}
 	img.id = ctx.image_cache.len
 	img.texture_filter = cfg.texture_filter or { ctx.config.texture_filter }
-  img.nr_mipmaps = cfg.nr_mipmaps
-  img.ok = false
+	img.nr_mipmaps = cfg.nr_mipmaps
+	img.ok = false
 	unsafe {
 		ctx.image_cache << img
 	}
-  if gfx.is_valid() && !ctx.native_rendering {
-    img.init_sokol_image()
-  }
+	if gfx.is_valid() && !ctx.native_rendering {
+		img.init_sokol_image()
+	}
 	return img
-
 }
 
 // create_image_with_filter creates an `Image` from `file` with the requested texture filter.
 @[deprecated: 'use create_image instead']
 pub fn (mut ctx Context) create_image_with_filter(file string, texture_filter TextureFilter) !Image {
-  return ctx.create_image(file, texture_filter: texture_filter)
+	return ctx.create_image(file, texture_filter: texture_filter)
 }
 
 // init_sokol_image initializes this `Image` for use with the
 // sokol graphical backend system.
 pub fn (mut img Image) init_sokol_image() &Image {
-  nr_mipmaps := if img.nr_mipmaps >= 0 {
-    img.nr_mipmaps
-  } else {
-    (bits.len_32(u32(2*math.max(img.width, img.height) - 1))) / 2
-  }
+	nr_mipmaps := if img.nr_mipmaps >= 0 {
+		img.nr_mipmaps
+	} else {
+		(bits.len_32(u32(2 * math.max(img.width, img.height) - 1))) / 2
+	}
 	mut img_desc := gfx.ImageDesc{
 		width:       img.width
 		height:      img.height
@@ -215,8 +214,8 @@ pub fn (mut ctx Context) create_image_with_size(file string, width int, height i
 	if !gfx.is_valid() {
 		// Sokol is not initialized yet, add stbi object to a queue/cache
 		// ctx.image_queue << file
-		mut img := load_image(file) or { return Image{} }  
-    img.texture_filter = ctx.config.texture_filter
+		mut img := load_image(file) or { return Image{} }
+		img.texture_filter = ctx.config.texture_filter
 		img.width = width
 		img.height = height
 		img.ok = false
@@ -224,7 +223,9 @@ pub fn (mut ctx Context) create_image_with_size(file string, width int, height i
 		ctx.image_cache << img
 		return img
 	}
-	mut img := ctx.create_image(file, texture_filter: ctx.config.texture_filter) or { return Image{} }
+	mut img := ctx.create_image(file, texture_filter: ctx.config.texture_filter) or {
+		return Image{}
+	}
 	return img
 }
 
@@ -249,29 +250,29 @@ fn load_image(file string) !Image {
 //
 // See also: create_image_from_byte_array
 pub fn (mut ctx Context) create_image_from_memory(buf &u8, bufsize int, cfg ImageConfig) !Image {
-  stb_img := stbi.load_from_memory(buf, bufsize)!
-  mut img := Image{
-    width:          stb_img.width
+	stb_img := stbi.load_from_memory(buf, bufsize)!
+	mut img := Image{
+		width:          stb_img.width
 		height:         stb_img.height
 		nr_channels:    stb_img.nr_channels
-    nr_mipmaps:     cfg.nr_mipmaps
+		nr_mipmaps:     cfg.nr_mipmaps
 		ok:             stb_img.ok
 		data:           stb_img.data
 		ext:            stb_img.ext
 		id:             ctx.image_cache.len
 		texture_filter: cfg.texture_filter or { ctx.config.texture_filter }
-  }
-  if gfx.is_valid() && !ctx.native_rendering {
-    img.init_sokol_image() 
-  }
-  ctx.image_cache << img
-  return img
+	}
+	if gfx.is_valid() && !ctx.native_rendering {
+		img.init_sokol_image()
+	}
+	ctx.image_cache << img
+	return img
 }
 
 // create_image_from_memory_with_filter creates an `Image` from `buf` with the requested texture filter.
 @[deprecated: 'use create_image_from_memory instead']
 pub fn (mut ctx Context) create_image_from_memory_with_filter(buf &u8, bufsize int, texture_filter TextureFilter) !Image {
-  return ctx.create_image_from_memory(buf, bufsize, texture_filter: texture_filter)
+	return ctx.create_image_from_memory(buf, bufsize, texture_filter: texture_filter)
 }
 
 // create_image_from_byte_array creates an `Image` from the
