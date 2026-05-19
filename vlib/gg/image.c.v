@@ -13,7 +13,7 @@ import sokol.sgl
 // represent a bitmap/pixel based image in memory.
 @[heap; markused]
 pub struct Image {
-pub mut:
+pub:
 	id             int
 	width          int
 	height         int
@@ -31,6 +31,7 @@ pub mut:
 
 @[params]
 pub struct ImageConfig {
+pub mut:
 	nr_mipmaps     int
 	texture_filter ?TextureFilter
 }
