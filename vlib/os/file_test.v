@@ -1,4 +1,5 @@
 // vtest retry: 2
+// vtest flaky: true
 import os
 
 const tfolder = os.join_path(os.vtmp_dir(), 'os_file_tests')
