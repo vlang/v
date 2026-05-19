@@ -9739,6 +9739,36 @@ fn (mut g Gen) write_init_function() {
 		// provide a constructor/destructor pair, ensuring that all constants
 		// are initialized just once, and that they will be freed too.
 		// Note: os.args in this case will be [].
+		//
+		// Fix for vlang/v#27178: when the GC mode is one of the Boehm
+		// variants, host-spawned threads (Rust cargo workers, C# tasks,
+		// JNI threads, etc.) that enter V code must be registered with
+		// libgc via GC_register_my_thread() to avoid the libgc
+		// "Collecting from unknown thread" abort. The per-thread step
+		// is inherently caller-side, but `GC_allow_register_threads()`
+		// is process-level and can be done by V itself at library load
+		// time. Emit a constructor for it so the caller doesn't have
+		// to remember.
+		if g.pref.os != .windows && g.pref.gc_mode in [.boehm_full, .boehm_incr,
+			.boehm_full_opt, .boehm_incr_opt, .boehm_leak] {
+			g.writeln('__attribute__ ((constructor))')
+			g.writeln('static void _v_shared_lib_gc_init(void) {')
+			// Fix for macOS hardened-runtime: libgc's trampoline allocator
+			// requests rwx pages via mprotect(PROT_EXEC), which macOS
+			// hardened runtime refuses by default. Disabling executable
+			// pages before GC_INIT() opts libgc out of trampolines (it
+			// falls back to a non-JIT mark stack). Required for V `-prod`
+			// + shared lib + macOS, and harmless on Linux.
+			g.writeln('\tGC_set_pages_executable(0);')
+			g.writeln('#if defined(GC_THREADS)')
+			// Fix for vlang/v#27178: per-process thread-registration enable.
+			g.writeln('\tGC_allow_register_threads();')
+			g.writeln('#endif')
+			// Force explicit GC_INIT() so libgc doesn't lazy-init AFTER
+			// the trampoline pref has been overridden by something else.
+			g.writeln('\tGC_INIT();')
+			g.writeln('}')
+		}
 		if g.pref.os != .windows {
 			g.writeln('__attribute__ ((constructor))')
 		}
