@@ -119,7 +119,7 @@ mut:
 	options_pos_forward                  int               // insertion point to forward
 	options_forward                      []string          // to forward
 	options                              map[string]string // to avoid duplicates
-	emitted_extern_sig_typedefs          map[int]bool // type idx → already-emitted forward typedef (for C extern decls)
+	emitted_extern_sig_typedefs          map[int]bool      // type idx → already-emitted forward typedef (for C extern decls)
 	results_forward                      []string          // to forward
 	results                              map[string]string // to avoid duplicates
 	done_options                         shared []string   // to avoid duplicates

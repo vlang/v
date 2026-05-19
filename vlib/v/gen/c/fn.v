@@ -727,6 +727,7 @@ fn (mut g Gen) ensure_extern_sig_type_decl(typ_ ast.Type) {
 		}
 		else {}
 	}
+
 	if sym.idx in g.table.used_features.used_syms {
 		return
 	}
