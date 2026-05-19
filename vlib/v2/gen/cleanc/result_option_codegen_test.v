@@ -1,4 +1,4 @@
-// vtest build: !linux && !windows
+// vtest build: macos
 module cleanc
 
 import os

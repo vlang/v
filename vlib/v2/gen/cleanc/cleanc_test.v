@@ -1,3 +1,4 @@
+// vtest build: macos
 module cleanc
 
 import v2.ast
