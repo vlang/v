@@ -31,52 +31,56 @@ fn print_backtrace_skipping_top_frames_bsd(skipframes int) bool {
 				eprintln('C.backtrace returned less than 2 frames')
 				return false
 			}
-			nr_actual_frames := nr_ptrs - skipframes
-			csymbols := C.backtrace_symbols(voidptr(&buffer[skipframes]), nr_actual_frames)
-			atos_lines := bsd_backtrace_resolve_atos(&buffer[skipframes], nr_actual_frames)
-			for i in 0 .. nr_actual_frames {
-				sframe := unsafe { tos2(&u8(csymbols[i])) }
-				mut file_line := ''
-				if i < atos_lines.len {
-					file_line = atos_lines[i]
+			$if detailed_backtraces ? {
+				nr_actual_frames := nr_ptrs - skipframes
+				csymbols := C.backtrace_symbols(voidptr(&buffer[skipframes]), nr_actual_frames)
+				atos_lines := bsd_backtrace_resolve_atos(&buffer[skipframes], nr_actual_frames)
+				for i in 0 .. nr_actual_frames {
+					sframe := unsafe { tos2(&u8(csymbols[i])) }
+					mut file_line := ''
+					if i < atos_lines.len {
+						file_line = atos_lines[i]
+					}
+					// macOS format: `0   main   0x00000001047232f8 veb__run_T_main__App_main__Context + 356`
+					symbol_start := sframe.index('0x') or { -1 }
+					if symbol_start < 0 {
+						continue
+					}
+					rest := sframe[symbol_start..]
+					space_after_addr := rest.index(' ') or { -1 }
+					if space_after_addr < 0 {
+						continue
+					}
+					symbol_and_offset := rest[space_after_addr + 1..]
+					plus_pos := symbol_and_offset.index(' + ') or { -1 }
+					mut raw_symbol := symbol_and_offset
+					if plus_pos >= 0 {
+						raw_symbol = symbol_and_offset[..plus_pos]
+					}
+					// Skip C runtime frames that are not V functions:
+					if raw_symbol in ['main', 'start', '_main'] {
+						continue
+					}
+					mut demangled := ''
+					if plus_pos >= 0 {
+						demangled = demangle_v_symbol(raw_symbol) + symbol_and_offset[plus_pos..]
+					} else {
+						demangled = demangle_v_symbol(raw_symbol)
+					}
+					if file_line.len > 0 {
+						eprint(file_line)
+						eprint_space_padding(file_line, 45)
+						eprint(' | ')
+						eprintln(demangled)
+					} else {
+						eprintln(demangled)
+					}
 				}
-				// macOS format: `0   main   0x00000001047232f8 veb__run_T_main__App_main__Context + 356`
-				symbol_start := sframe.index('0x') or { -1 }
-				if symbol_start < 0 {
-					continue
+				if nr_actual_frames > 0 {
+					unsafe { C.free(csymbols) }
 				}
-				rest := sframe[symbol_start..]
-				space_after_addr := rest.index(' ') or { -1 }
-				if space_after_addr < 0 {
-					continue
-				}
-				symbol_and_offset := rest[space_after_addr + 1..]
-				plus_pos := symbol_and_offset.index(' + ') or { -1 }
-				mut raw_symbol := symbol_and_offset
-				if plus_pos >= 0 {
-					raw_symbol = symbol_and_offset[..plus_pos]
-				}
-				// Skip C runtime frames that are not V functions:
-				if raw_symbol in ['main', 'start', '_main'] {
-					continue
-				}
-				mut demangled := ''
-				if plus_pos >= 0 {
-					demangled = demangle_v_symbol(raw_symbol) + symbol_and_offset[plus_pos..]
-				} else {
-					demangled = demangle_v_symbol(raw_symbol)
-				}
-				if file_line.len > 0 {
-					eprint(file_line)
-					eprint_space_padding(file_line, 45)
-					eprint(' | ')
-					eprintln(demangled)
-				} else {
-					eprintln(demangled)
-				}
-			}
-			if nr_actual_frames > 0 {
-				unsafe { C.free(csymbols) }
+			} $else {
+				C.backtrace_symbols_fd(&buffer[skipframes], nr_ptrs - skipframes, 2)
 			}
 		}
 		return true
