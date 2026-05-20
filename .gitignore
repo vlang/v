@@ -169,3 +169,6 @@ issue*
 cmd/v2/*.txt
 cmd/v2/*.json
 .claude/
+.copilot/
+.agents/
+.codex/
