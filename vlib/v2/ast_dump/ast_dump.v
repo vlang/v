@@ -920,6 +920,9 @@ fn (mut jb JsonBuilder) write_expr(expr ast.Expr) {
 		ast.LambdaExpr {
 			jb.write_lambda_expr(expr)
 		}
+		ast.LifetimeExpr {
+			jb.write_lifetime_expr(expr)
+		}
 		ast.LockExpr {
 			jb.write_lock_expr(expr)
 		}
@@ -1571,6 +1574,28 @@ fn (mut jb JsonBuilder) write_lambda_expr(expr ast.LambdaExpr) {
 	jb.sb.write_string('}')
 }
 
+fn (mut jb JsonBuilder) write_lifetime_expr(expr ast.LifetimeExpr) {
+	jb.sb.write_string('{\n')
+	jb.indent++
+
+	jb.write_indent()
+	jb.sb.write_string('"type": "LifetimeExpr",\n')
+
+	jb.write_indent()
+	jb.sb.write_string('"name": ')
+	jb.write_string(expr.name)
+	jb.sb.write_string(',\n')
+
+	jb.write_indent()
+	jb.sb.write_string('"pos": ')
+	jb.write_pos(expr.pos)
+	jb.sb.write_string('\n')
+
+	jb.indent--
+	jb.write_indent()
+	jb.sb.write_string('}')
+}
+
 fn (mut jb JsonBuilder) write_lock_expr(expr ast.LockExpr) {
 	jb.sb.write_string('{\n')
 	jb.indent++
@@ -2049,6 +2074,9 @@ fn (mut jb JsonBuilder) write_type_expr(expr ast.Type) {
 		ast.OptionType {
 			jb.write_option_type(expr)
 		}
+		ast.PointerType {
+			jb.write_pointer_type(expr)
+		}
 		ast.ResultType {
 			jb.write_result_type(expr)
 		}
@@ -2206,6 +2234,28 @@ fn (mut jb JsonBuilder) write_option_type(typ ast.OptionType) {
 	jb.write_indent()
 	jb.sb.write_string('"base_type": ')
 	jb.write_expr(typ.base_type)
+	jb.sb.write_string('\n')
+
+	jb.indent--
+	jb.write_indent()
+	jb.sb.write_string('}')
+}
+
+fn (mut jb JsonBuilder) write_pointer_type(typ ast.PointerType) {
+	jb.sb.write_string('{\n')
+	jb.indent++
+
+	jb.write_indent()
+	jb.sb.write_string('"type": "PointerType",\n')
+
+	jb.write_indent()
+	jb.sb.write_string('"base_type": ')
+	jb.write_expr(typ.base_type)
+	jb.sb.write_string(',\n')
+
+	jb.write_indent()
+	jb.sb.write_string('"lifetime": ')
+	jb.write_string(typ.lifetime)
 	jb.sb.write_string('\n')
 
 	jb.indent--

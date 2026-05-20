@@ -56,6 +56,12 @@ fn test_out_files() {
 		pexe := os.join_path(output_path, '${basename}.exe')
 		//
 		file_options := get_file_options(path)
+		if user_os == 'windows' && file_options.vflags.contains('-cc clang') && gcc_path.len > 0
+			&& github_job.contains('gcc') {
+			eprintln('> skipping ${relpath} on gcc-windows, since it requires clang')
+			total_skips++
+			continue
+		}
 		alloptions := '-o ${os.quoted_path(pexe)} ${file_options.vflags}'
 		label := mj('v', file_options.vflags, 'run', relpath) + ' == ${mm(out_relpath)} '
 		//
@@ -70,8 +76,13 @@ fn test_out_files() {
 		run_ms := sw_run.elapsed().milliseconds()
 		//
 		if res.exit_code < 0 {
-			println('nope')
-			panic(res.output)
+			println('${term.red('FAIL')} C:${compile_ms:6}ms, R:${run_ms:2}ms ${label}')
+			println('  run crashed with exit code: ${res.exit_code}')
+			if res.output.len > 0 {
+				println(res.output)
+			}
+			total_errors++
+			continue
 		}
 		mut found := res.output.trim_right('\r\n').replace('\r\n', '\n')
 		mut expected := os.read_file(out_path)!
@@ -199,6 +210,32 @@ fn test_c_must_have_files() {
 	assert total_errors == 0
 }
 
+fn test_or_block_err_var_collision_does_not_emit_self_referential_err() {
+	os.chdir(vroot) or {}
+	path := os.join_path(testdata_folder, 'or_block_err_var_collision.vv')
+	cmd := '${os.quoted_path(vexe)} -o - ${os.quoted_path(path)}'
+	compilation := os.execute(cmd)
+	ensure_compilation_succeeded(compilation, cmd)
+	assert !compilation.output.contains('IError err = err.err;')
+	mut source_err_tmp := ''
+	mut has_visible_or_block_err := false
+	for line in compilation.output.split_into_lines() {
+		trimmed := line.trim_space()
+		if trimmed.starts_with('IError _t') && trimmed.ends_with(' = err.err;') {
+			source_err_tmp = trimmed.all_after('IError ').all_before(' = err.err;')
+		}
+		if trimmed.starts_with('IError _t') && trimmed.contains('.err;') {
+			err_tmp := trimmed.all_after('IError ').all_before(' = ')
+			if compilation.output.contains('IError err = ${err_tmp};') {
+				has_visible_or_block_err = true
+			}
+		}
+	}
+	assert source_err_tmp != ''
+	assert !compilation.output.contains('IError err = ${source_err_tmp};')
+	assert has_visible_or_block_err
+}
+
 fn test_imported_empty_interface_concat_does_not_emit_noop_array_cast_helper() {
 	os.chdir(vroot) or {}
 	path := os.join_path(vroot,
@@ -227,6 +264,55 @@ fn test_windows_sharedlive_string_interpolation_in_ternary_does_not_emit_inline_
 	}
 	assert !normalized.contains('? ( string _t')
 	assert compilation.output.contains('builtin__str_intp')
+}
+
+fn test_windows_tcc_atomic_postfix_uses_interlocked_helpers() {
+	os.chdir(vroot) or {}
+	cc := windows_tcc_ccompiler_for_coutput_test()
+	if cc == '' {
+		eprintln('> skipping ${@FN} since tcc is not available on windows')
+		return
+	}
+	test_source := os.join_path(os.vtmp_dir(), 'coutput_windows_tcc_atomic_postfix.vv')
+	os.write_file(test_source, 'module main
+
+struct App {
+mut:
+	idx atomic int
+}
+
+fn (mut app App) bump() {
+	app.idx++
+}
+
+fn main() {
+	mut app := App{}
+	app.bump()
+}
+')!
+	defer {
+		os.rm(test_source) or {}
+	}
+	cmd := '${os.quoted_path(vexe)} -o - -os windows -cc ${cc} ${os.quoted_path(test_source)}'
+	compilation := os.execute(cmd)
+	ensure_compilation_succeeded(compilation, cmd)
+	assert compilation.output.contains('thirdparty/stdatomic/win/atomic.h')
+	assert compilation.output.contains('InterlockedExchangeAdd')
+	assert !compilation.output.contains('__atomic_fetch_add')
+}
+
+fn windows_tcc_ccompiler_for_coutput_test() string {
+	if user_os != 'windows' {
+		return 'x86_64-w64-mingw32-tcc'
+	}
+	bundled_tcc := os.join_path(vroot, 'thirdparty', 'tcc', 'tcc.exe')
+	if os.is_file(bundled_tcc) && os.is_executable(bundled_tcc) {
+		return os.quoted_path(bundled_tcc)
+	}
+	if os.find_abs_path_of_executable('tcc') or { '' } != '' {
+		return 'tcc'
+	}
+	return ''
 }
 
 fn test_no_main_exports_initialize_windows_runtime() {
@@ -292,7 +378,7 @@ fn main() {
 
 fn test_c_fallback_decl_uses_c_helper_submodule_includes() {
 	test_source := os.join_path(os.vtmp_dir(), 'coutput_c_helper_include')
-	module_path := os.join_path(test_source, 'sdl')
+	module_path := os.join_path(test_source, 'coutput_sdl')
 	c_module_path := os.join_path(module_path, 'c')
 	os.rmdir_all(test_source) or {}
 	os.mkdir_all(c_module_path)!
@@ -310,13 +396,13 @@ pub const used_import = 1
 
 #include "${header_include_path}"
 ')!
-	os.write_file(os.join_path(module_path, 'sdl.v'), 'module sdl
+	os.write_file(os.join_path(module_path, 'coutput_sdl.v'), 'module coutput_sdl
 
-import sdl.c
+import coutput_sdl.c
 
 pub const used_import = c.used_import
 ')!
-	os.write_file(os.join_path(module_path, 'atomic.c.v'), 'module sdl
+	os.write_file(os.join_path(module_path, 'atomic.c.v'), 'module coutput_sdl
 
 fn C.c_helper_decl() bool
 
@@ -329,7 +415,7 @@ pub fn call() {
 	defer {
 		os.chdir(old_wd) or {}
 	}
-	cmd := '${os.quoted_path(vexe)} -shared -o - sdl'
+	cmd := '${os.quoted_path(vexe)} -shared -o - coutput_sdl'
 	compilation := os.execute(cmd)
 	ensure_compilation_succeeded(compilation, cmd)
 	assert compilation.output.contains('#include "${header_include_path}"')
@@ -409,7 +495,7 @@ fn test_veb_implicit_ctx_alias_uses_user_context_name() {
 	defer {
 		os.rm(test_source) or {}
 	}
-	cmd := '${os.quoted_path(vexe)} -o - ${os.quoted_path(test_source)}'
+	cmd := '${os.quoted_path(vexe)} -gc boehm_full_opt -o - ${os.quoted_path(test_source)}'
 	compilation := os.execute(cmd)
 	ensure_compilation_succeeded(compilation, cmd)
 	mut normalized := compilation.output.replace('\t', ' ').replace('\n', ' ')
@@ -420,6 +506,10 @@ fn test_veb_implicit_ctx_alias_uses_user_context_name() {
 }
 
 fn test_veb_implicit_ctx_alias_on_context_receiver_tmpl_not_found() {
+	if github_job.contains('musl') {
+		eprintln('> skipping ${@FN} on ${github_job}, since `-gc boehm_full_opt` links `__pthread_unregister_cancel`, which musl does not provide')
+		return
+	}
 	os.chdir(vroot) or {}
 	test_dir := os.join_path(os.vtmp_dir(), 'coutput_veb_context_receiver_tmpl_not_found')
 	os.rmdir_all(test_dir) or {}
@@ -445,6 +535,84 @@ fn test_veb_implicit_ctx_alias_on_context_receiver_tmpl_not_found() {
 	assert !not_found_body.contains('GC_reachable_here(&ctx);')
 	assert not_found_body.contains('GC_reachable_here(&c);')
 	assert not_found_body.contains('return veb__Context_html(&c->Context, _tmpl_res_')
+}
+
+fn test_veb_template_scope_gc_pin_does_not_escape_loop_var() {
+	if github_job.contains('musl') {
+		eprintln('> skipping ${@FN} on ${github_job}, since `-gc boehm_full_opt` links `__pthread_unregister_cancel`, which musl does not provide')
+		return
+	}
+	os.chdir(vroot) or {}
+	test_dir := os.join_path(os.vtmp_dir(), 'coutput_veb_template_scope_gc_pin')
+	os.rmdir_all(test_dir) or {}
+	os.mkdir_all(os.join_path(test_dir, 'templates'))!
+	template_lines := [
+		'<div class="tree-path">',
+		'  @if is_top_directory',
+		'    @for i, p in ctx.parts',
+		'      <a href="/@repo.user_name/@{ctx.make_path(branch_name, i)}">@p</a>',
+		'    @end',
+		'  @end',
+		'  @if is_repo_watcher',
+		'    <span>@watcher_count</span>',
+		'  @end',
+		'</div>',
+	]
+	os.write_file(os.join_path(test_dir, 'templates', 'tree.html'),
+		template_lines.join('\n') + '\n')!
+	test_source := os.join_path(test_dir, 'main.v')
+	source_lines := [
+		'module main',
+		'',
+		'import veb',
+		'',
+		'pub struct Context {',
+		'\tveb.Context',
+		'pub mut:',
+		'\tparts []string',
+		'}',
+		'',
+		'pub struct App {}',
+		'',
+		'pub struct Repo {',
+		'\tuser_name string',
+		'}',
+		'',
+		'pub fn (ctx &Context) make_path(branch_name string, i int) string {',
+		'\treturn branch_name + i.str()',
+		'}',
+		'',
+		'pub fn (mut app App) index(mut ctx Context) veb.Result {',
+		"\trepo := Repo{ user_name: 'gitly' }",
+		"\tbranch_name := 'master'",
+		'\tis_top_directory := true',
+		'\tis_repo_watcher := false',
+		'\twatcher_count := 0',
+		"\treturn \$veb.html('templates/tree.html')",
+		'}',
+		'',
+		'fn main() {',
+		'\tmut app := App{}',
+		"\tmut ctx := Context{ parts: ['src'] }",
+		'\t_ = app.index(mut ctx)',
+		'}',
+	]
+	os.write_file(test_source, source_lines.join('\n') + '\n')!
+	defer {
+		os.rmdir_all(test_dir) or {}
+	}
+	test_exe := os.join_path(test_dir, 'app')
+	compile_cmd := '${os.quoted_path(vexe)} -gc boehm_full_opt -o ${os.quoted_path(test_exe)} ${os.quoted_path(test_source)}'
+	ensure_compilation_succeeded(os.execute(compile_cmd), compile_cmd)
+	c_cmd := '${os.quoted_path(vexe)} -gc boehm_full_opt -o - ${os.quoted_path(test_source)}'
+	compilation := os.execute(c_cmd)
+	ensure_compilation_succeeded(compilation, c_cmd)
+	index_start := 'veb__Result main__App_index(main__App* app, main__Context* ctx) {'
+	assert compilation.output.contains(index_start)
+	index_body := compilation.output.all_after(index_start).all_before('VV_LOC void main__main')
+	assert index_body.contains('string p =')
+	assert !index_body.contains('GC_reachable_here(&p);')
+	assert index_body.contains('veb__Context_html(&ctx->Context, _tmpl_res_')
 }
 
 fn does_line_match_one_of_generated_lines(line string, generated_c_lines []string) bool {
@@ -523,6 +691,11 @@ fn should_skip(relpath string) bool {
 		eprintln('> skipping ${relpath} on ${github_job}, since gc related tests are not compatible with `-gc none`')
 		return true
 	}
+	if github_job.contains('musl')
+		&& relpath.ends_with('nested_aggregate_boehm_prod_keep_alive_nix.vv') {
+		eprintln('> skipping ${relpath} on ${github_job}, since `-prod -gc boehm_full_opt` pulls in `getcontext`, which musl does not provide')
+		return true
+	}
 	if user_os == 'windows' {
 		if relpath.contains('_nix.vv') {
 			eprintln('> skipping ${relpath} on windows')
@@ -545,6 +718,10 @@ fn should_skip(relpath string) bool {
 				eprintln('> skipping ${relpath} on msvc')
 				return true
 			}
+			if relpath.ends_with('cross_printfn_v_malloc.vv') {
+				eprintln('> skipping ${relpath} on msvc, since -cross -printfn does not emit a runnable executable')
+				return true
+			}
 			if relpath.contains('asm_') {
 				eprintln('> skipping ${relpath} on msvc, since it uses gcc-style inline asm')
 				return true
@@ -556,7 +733,7 @@ fn should_skip(relpath string) bool {
 			return true
 		}
 	}
-	if relpath.contains('freestanding_module_import_') {
+	if relpath.contains('freestanding_') {
 		$if !amd64 {
 			// https://github.com/vlang/v/issues/23397
 			eprintln('> skipping ${relpath} on != amd64')
@@ -587,7 +764,7 @@ fn should_skip(relpath string) bool {
 			return true
 		}
 	}
-	if github_job == 'tcc-windows' {
+	if github_job in ['tcc-windows', 'msvc-windows'] {
 		test_path := os.join_path(vroot, relpath)
 		file_options := get_file_options(test_path)
 		if file_options.vflags.contains('-cc clang') {

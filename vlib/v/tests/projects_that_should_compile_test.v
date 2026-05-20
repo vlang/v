@@ -324,9 +324,16 @@ fn test_usecache_build_module_sumtype_uses_canonical_type_id_helper() {
 			os.setenv('VTMP', old_vtmp, true)
 		}
 	}
-	res :=
-		os.execute('cd ${os.quoted_path(root)} && ${os.quoted_path(@VEXE)} -keepc build-module maker')
-	assert res.exit_code == 0, res.output
+	mut p := os.new_process(@VEXE)
+	p.set_work_folder(root)
+	p.set_args(['-keepc', 'build-module', 'maker'])
+	p.set_redirect_stdio()
+	p.wait()
+	stdout := p.stdout_slurp()
+	stderr := p.stderr_slurp()
+	exit_code := p.code
+	p.close()
+	assert exit_code == 0, '${stdout}${stderr}'
 	generated_c_path := os.join_path(vtmp_dir, 'maker.tmp.c')
 	assert os.exists(generated_c_path)
 	generated_c := os.read_file(generated_c_path)!

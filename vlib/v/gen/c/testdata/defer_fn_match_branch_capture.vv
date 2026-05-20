@@ -19,6 +19,7 @@ fn (mut o Object) f(x int) int {
 		}
 		else {}
 	}
+
 	return 42
 }
 

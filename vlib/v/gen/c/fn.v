@@ -3,7 +3,6 @@
 // that can be found in the LICENSE file.
 module c
 
-import os
 import strings
 import v.ast
 import v.util
@@ -11,97 +10,6 @@ import v.util
 // has[int]() => has_T_int()
 // has[int, string]() => has_T_int_string()
 const c_fn_name_escape_seq = ['[', '_T_', ', ', '_', ']', '']
-
-// c_manual_prelude_decl_names matches the C stdlib declarations emitted by `c_headers`.
-// When one of these symbols is declared in V as `fn C.name(...)`, cgen must not emit an
-// extra fallback prototype, or it can conflict with the prelude declaration.
-const c_manual_prelude_decl_names = [
-	'vfprintf',
-	'vsnprintf',
-	'fprintf',
-	'printf',
-	'snprintf',
-	'sprintf',
-	'sscanf',
-	'scanf',
-	'puts',
-	'perror',
-	'fputs',
-	'getchar',
-	'putchar',
-	'getc',
-	'fgetc',
-	'ungetc',
-	'fflush',
-	'feof',
-	'ferror',
-	'clearerr',
-	'setvbuf',
-	'ftell',
-	'rewind',
-	'fopen',
-	'fdopen',
-	'freopen',
-	'fileno',
-	'fread',
-	'fwrite',
-	'fgets',
-	'fclose',
-	'popen',
-	'pclose',
-	'malloc',
-	'calloc',
-	'realloc',
-	'aligned_alloc',
-	'free',
-	'rand',
-	'srand',
-	'atexit',
-	'exit',
-	'abs',
-	'atoi',
-	'atof',
-	'getenv',
-	'setenv',
-	'unsetenv',
-	'system',
-	'remove',
-	'rename',
-	'realpath',
-	'mkstemp',
-	'qsort',
-	'strcmp',
-	'strncmp',
-	'strdup',
-	'strcasecmp',
-	'strncasecmp',
-	'strlen',
-	'strerror',
-	'memcpy',
-	'memmove',
-	'memset',
-	'memcmp',
-	'memchr',
-	'strchr',
-	'strrchr',
-	'fseek',
-	'getline',
-	'__ctype_b_loc',
-]
-
-const vinix_c_linker_symbol_names = [
-	'text_start',
-	'text_end',
-	'rodata_start',
-	'rodata_end',
-	'data_start',
-	'data_end',
-	'interrupt_thunks',
-]
-
-const c_compiler_builtin_decl_names = [
-	'__builtin_return_address',
-]
 
 fn collect_function_defer_stmts(node &ast.FnDecl) []ast.DeferStmt {
 	mut defer_stmts := []ast.DeferStmt{cap: node.defer_stmts.len}
@@ -709,6 +617,137 @@ fn (g &Gen) raw_method_name_suffix(raw_method_name string, method_name string, g
 	return raw_method_name[method_name.len..]
 }
 
+fn file_has_c_includes(file &ast.File) bool {
+	if file == unsafe { nil } {
+		return false
+	}
+	for stmt in file.stmts {
+		if stmt is ast.HashStmt && stmt.kind in ['include', 'preinclude'] {
+			return true
+		}
+	}
+	return false
+}
+
+fn file_links_c_source(file &ast.File) bool {
+	if file == unsafe { nil } {
+		return false
+	}
+	for stmt in file.stmts {
+		if stmt is ast.HashStmt && stmt.kind == 'flag' {
+			if stmt.main.contains('.c ') || stmt.main.ends_with('.c') || stmt.main.contains('.cpp')
+				|| stmt.main.contains('.cc') || stmt.main.contains('.o ')
+				|| stmt.main.ends_with('.o') {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+fn (g &Gen) should_emit_c_extern_decl(node ast.FnDecl) bool {
+	if node.language != .c || node.is_c_extern {
+		return false
+	}
+	if node.source_file == unsafe { nil } {
+		return false
+	}
+	if file_has_c_includes(node.source_file) {
+		return false
+	}
+	if file_links_c_source(node.source_file) {
+		return true
+	}
+	if node.mod in g.mods_with_c_libs && node.mod !in g.mods_with_c_includes {
+		return true
+	}
+	if g.pref.os == .vinix && !node.source_file.path.starts_with(g.pref.vlib) {
+		c_sym_name := node.name.after('.')
+		if c_sym_name.starts_with('__builtin_') {
+			return false
+		}
+		if c_sym_name in ['text_start', 'text_end', 'rodata_start', 'rodata_end', 'data_start',
+			'data_end', 'interrupt_thunks'] {
+			return false
+		}
+		return true
+	}
+	return false
+}
+
+fn (mut g Gen) ensure_extern_sig_type_decls(node ast.FnDecl) {
+	g.ensure_extern_sig_type_decl(node.return_type)
+	for param in node.params {
+		g.ensure_extern_sig_type_decl(param.typ)
+	}
+}
+
+fn (mut g Gen) ensure_extern_sig_type_decl(typ_ ast.Type) {
+	if typ_ == 0 {
+		return
+	}
+	typ := typ_.clear_option_and_result().set_nr_muls(0).clear_flags(.generic, .variadic)
+	if typ == 0 {
+		return
+	}
+	sym := g.table.sym(typ)
+	if sym.idx in g.emitted_extern_sig_typedefs {
+		return
+	}
+	g.emitted_extern_sig_typedefs[sym.idx] = true
+	if sym.is_builtin || sym.name in ['byte', 'i32', 'C.FILE'] {
+		return
+	}
+	match sym.info {
+		ast.FnType {
+			// A function-pointer parameter has its own params/return type, which
+			// may also reference struct types that are otherwise unreferenced in V.
+			g.ensure_extern_sig_type_decl(sym.info.func.return_type)
+			for param in sym.info.func.params {
+				g.ensure_extern_sig_type_decl(param.typ)
+			}
+			return
+		}
+		ast.Array {
+			g.ensure_extern_sig_type_decl(sym.info.elem_type)
+			return
+		}
+		ast.ArrayFixed {
+			g.ensure_extern_sig_type_decl(sym.info.elem_type)
+			return
+		}
+		ast.Map {
+			g.ensure_extern_sig_type_decl(sym.info.key_type)
+			g.ensure_extern_sig_type_decl(sym.info.value_type)
+			return
+		}
+		ast.Alias {
+			g.ensure_extern_sig_type_decl(sym.info.parent_type)
+			return
+		}
+		else {}
+	}
+
+	if sym.info is ast.Struct {
+		if sym.language == .c && sym.cname.starts_with('C__') && !sym.info.is_anon {
+			// Empty `struct C.Foo {}` decls without a backing header (e.g. translated
+			// code) get no struct typedef from `write_types`. Without a file-scope
+			// forward decl, each prototype's `struct Foo*` introduces a prototype-
+			// scoped tag, and clang rejects pairs of decls as `conflicting types`.
+			c_struct_name := sym.cname[3..]
+			if c_struct_name != 'va_list' {
+				if sym.info.is_typedef {
+					g.typedefs.writeln('typedef struct ${c_struct_name} ${c_struct_name};')
+				} else {
+					g.typedefs.writeln('struct ${c_struct_name};')
+				}
+			}
+		} else if sym.idx !in g.table.used_features.used_syms {
+			g.typedefs.writeln('typedef struct ${sym.cname} ${sym.cname};')
+		}
+	}
+}
+
 fn (mut g Gen) is_used_by_main(node ast.FnDecl) bool {
 	$if trace_unused_by_main ? {
 		defer(fn) {
@@ -719,7 +758,7 @@ fn (mut g Gen) is_used_by_main(node ast.FnDecl) bool {
 			}
 		}
 	}
-	if g.should_emit_c_fallback_decl(node) {
+	if g.should_emit_c_extern_decl(node) {
 		return true
 	}
 	if node.is_c_extern {
@@ -815,152 +854,6 @@ fn (mut g Gen) is_used_by_main(node ast.FnDecl) bool {
 	return is_used_by_main
 }
 
-fn file_has_c_includes(file &ast.File) bool {
-	if file == unsafe { nil } {
-		return false
-	}
-	for stmt in file.stmts {
-		if stmt is ast.HashStmt && stmt.kind in ['include', 'preinclude'] {
-			return true
-		}
-	}
-	return false
-}
-
-fn modules_with_c_includes(files []&ast.File) map[string]bool {
-	mut mods := map[string]bool{}
-	for file in files {
-		if file_has_c_includes(file) {
-			mods[file.mod.name] = true
-			if file.mod.name.ends_with('.c') {
-				mods[file.mod.name.all_before_last('.')] = true
-			}
-		}
-	}
-	return mods
-}
-
-fn file_imports_c_header_module(file &ast.File) bool {
-	if file == unsafe { nil } {
-		return false
-	}
-	for imp in file.imports {
-		if imp.source_name.ends_with('.c') {
-			return true
-		}
-	}
-	return false
-}
-
-fn (g &Gen) module_has_c_header_module(file &ast.File) bool {
-	if file_imports_c_header_module(file) {
-		return true
-	}
-	if file == unsafe { nil } || g.table == unsafe { nil } || file.path == '' {
-		return false
-	}
-	helper_dir := os.join_path(os.dir(file.path), 'c')
-	for path in g.table.filelist {
-		if path.starts_with(helper_dir + os.path_separator) {
-			return true
-		}
-	}
-	return false
-}
-
-fn (g &Gen) c_prelude_provides_decl(c_sym_name string) bool {
-	return !g.pref.no_preludes && !g.pref.is_bare && c_sym_name in c_manual_prelude_decl_names
-}
-
-fn (g &Gen) should_emit_c_fallback_decl(node ast.FnDecl) bool {
-	c_sym_name := node.name.all_after_first('C__').all_after_first('C.')
-	if c_sym_name in c_compiler_builtin_decl_names {
-		return false
-	}
-	if g.pref.os == .vinix && c_sym_name in vinix_c_linker_symbol_names {
-		return false
-	}
-	if node.language != .c || node.is_c_extern || file_has_c_includes(node.source_file)
-		|| node.mod in g.mods_with_c_includes || g.module_has_c_header_module(node.source_file)
-		|| g.c_prelude_provides_decl(c_sym_name) {
-		return false
-	}
-	if node.source_file == unsafe { nil } {
-		return true
-	}
-	if !node.source_file.path.starts_with(g.pref.vlib) {
-		return true
-	}
-	return node.mod == 'main' || node.source_file.is_test
-}
-
-fn (g &Gen) should_emit_c_signature_type_decls(node ast.FnDecl) bool {
-	return node.is_c_extern || g.should_emit_c_fallback_decl(node)
-		|| (node.no_body && node.attrs.contains('c'))
-}
-
-fn (mut g Gen) ensure_c_extern_signature_type_decls(node ast.FnDecl) {
-	if !g.pref.skip_unused || !g.should_emit_c_signature_type_decls(node) {
-		return
-	}
-	g.ensure_c_extern_signature_type_decl(node.return_type)
-	for param in node.params {
-		g.ensure_c_extern_signature_type_decl(param.typ)
-	}
-}
-
-fn (mut g Gen) ensure_c_extern_signature_type_decl(typ_ ast.Type) {
-	if typ_ == 0 {
-		return
-	}
-	typ := typ_.clear_option_and_result().set_nr_muls(0).clear_flags(.generic, .variadic)
-	if typ == 0 {
-		return
-	}
-	sym := g.table.sym(typ)
-	if sym.is_builtin || sym.name in ['byte', 'i32', 'C.FILE'] {
-		return
-	}
-	if sym.idx in g.table.used_features.used_syms {
-		return
-	}
-	if sym.cname in g.c_extern_signature_types {
-		return
-	}
-	g.c_extern_signature_types[sym.cname] = true
-	match sym.info {
-		ast.Alias {
-			g.ensure_c_extern_signature_type_decl(sym.info.parent_type)
-			g.write_alias_typesymbol_declaration(sym)
-		}
-		ast.FnType {
-			for param in sym.info.func.params {
-				g.ensure_c_extern_signature_type_decl(param.typ)
-			}
-			g.ensure_c_extern_signature_type_decl(sym.info.func.return_type)
-		}
-		ast.Struct {
-			if sym.language == .c && sym.cname.starts_with('C__') && !sym.info.is_anon {
-				c_struct_name := sym.cname[3..]
-				if sym.info.is_typedef {
-					g.typedefs.writeln('typedef struct ${c_struct_name} ${c_struct_name};')
-				} else {
-					g.typedefs.writeln('struct ${c_struct_name};')
-				}
-			} else {
-				g.typedefs.writeln('typedef struct ${sym.cname} ${sym.cname};')
-			}
-		}
-		ast.Array {
-			g.ensure_c_extern_signature_type_decl(sym.info.elem_type)
-		}
-		ast.ArrayFixed {
-			g.ensure_c_extern_signature_type_decl(sym.info.elem_type)
-		}
-		else {}
-	}
-}
-
 fn (mut g Gen) fn_decl(node ast.FnDecl) {
 	$if trace_cgen_fn_decl ? {
 		eprintln('>   g.tid: ${g.tid} | g.fid: ${g.fid:3} | g.file.path: ${g.file.path} | fn_decl: ${node.name}')
@@ -982,7 +875,6 @@ fn (mut g Gen) fn_decl(node ast.FnDecl) {
 	if !g.is_used_by_main(node) {
 		return
 	}
-	g.ensure_c_extern_signature_type_decls(node)
 	if g.is_builtin_mod && g.pref.gc_mode == .boehm_leak && node.kind == .malloc {
 		g.definitions.write_string('#define builtin___v_malloc GC_MALLOC\n')
 		return
@@ -1011,15 +903,20 @@ fn (mut g Gen) fn_decl(node ast.FnDecl) {
 		g.do_int_overflow_checks = prev_do_int_overflow_checks
 	}
 
-	// Emit extern prototypes for headerless `fn C.some_name() int`
-	// declarations. Header-backed C declarations keep relying on the included
-	// prototypes to avoid redeclaration conflicts.
+	// handle `@[c_extern] fn C.some_name() int` declarations:
 	old_inside_c_extern := g.inside_c_extern
 	defer {
 		g.inside_c_extern = old_inside_c_extern
 	}
-	if node.is_c_extern || g.should_emit_c_fallback_decl(node) {
+	if node.language == .c && (node.is_c_extern || g.should_emit_c_extern_decl(node)) {
 		g.inside_c_extern = true
+		if g.pref.skip_unused {
+			g.ensure_extern_sig_type_decls(node)
+		}
+	} else if g.pref.skip_unused && node.no_body && node.language == .v {
+		// Body-less V fns (e.g. `@[c: 'NAME'] fn foo()`) emit a forward decl whose
+		// signature may reference opaque C structs that `write_types` skips.
+		g.ensure_extern_sig_type_decls(node)
 	}
 
 	g.gen_attrs(node.attrs)
@@ -1982,7 +1879,13 @@ fn (mut g Gen) gen_anon_fn_decl(mut node ast.AnonFn) {
 	g.stmt_path_pos = []
 	g.skip_stmt_pos = false
 	g.anon_fn = node
+	old_inside_return := g.inside_return
+	old_inside_return_expr := g.inside_return_expr
+	g.inside_return = false
+	g.inside_return_expr = false
 	g.fn_decl(decl)
+	g.inside_return_expr = old_inside_return_expr
+	g.inside_return = old_inside_return
 	g.anon_fn = was_anon_fn
 	g.skip_stmt_pos = prev_skip_stmt_pos
 	g.stmt_path_pos = prev_stmt_path_pos

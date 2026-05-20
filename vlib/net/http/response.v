@@ -7,6 +7,7 @@ import compress.gzip
 import compress.zlib
 import net.http.chunked
 import strconv
+import strings
 
 // Response represents the result of the request
 pub struct Response {
@@ -24,15 +25,37 @@ fn (mut resp Response) free() {
 
 // Formats resp to bytes suitable for HTTP response transmission
 pub fn (resp Response) bytes() []u8 {
-	// TODO: build []u8 directly; this uses two allocations
-	return resp.bytestr().bytes()
+	mut sb := strings.new_builder(resp.response_buffer_cap())
+	resp.write_into_builder(mut sb)
+	return unsafe { sb.reuse_as_plain_u8_array() }
 }
 
 // Formats resp to a string suitable for HTTP response transmission
 pub fn (resp Response) bytestr() string {
-	return 'HTTP/${resp.http_version} ${resp.status_code} ${resp.status_msg}\r\n' + '${resp.header.render(
+	mut sb := strings.new_builder(resp.response_buffer_cap())
+	resp.write_into_builder(mut sb)
+	res := sb.str()
+	unsafe { sb.free() }
+	return res
+}
+
+fn (resp Response) response_buffer_cap() int {
+	return resp.body.len + 64 + resp.header.cur_pos * 48
+}
+
+fn (resp Response) write_into_builder(mut sb strings.Builder) {
+	sb.write_string('HTTP/')
+	sb.write_string(resp.http_version)
+	sb.write_u8(` `)
+	sb.write_decimal(resp.status_code)
+	sb.write_u8(` `)
+	sb.write_string(resp.status_msg)
+	sb.write_string('\r\n')
+	resp.header.render_into_sb(mut sb,
 		version: resp.version()
-	)}\r\n' + resp.body
+	)
+	sb.write_string('\r\n')
+	sb.write_string(resp.body)
 }
 
 // Parse a raw HTTP response into a Response object

@@ -943,6 +943,9 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 			}
 			'-prealloc' {
 				res.prealloc = true
+				if !res.gc_set_by_flag {
+					res.gc_mode = .no_gc
+				}
 				res.build_options << arg
 			}
 			'-no-parallel' {

@@ -6,14 +6,14 @@ fn version_flag(with_abbrev bool) Flag {
 		flag:        .bool
 		name:        'version'
 		abbrev:      sabbrev
-		description: 'Prints version information.'
+		description: 'Print version information'
 	}
 }
 
 fn version_cmd() Command {
 	return Command{
 		name:        'version'
-		description: 'Prints version information.'
+		description: 'Print version information'
 		execute:     print_version_for_command
 	}
 }

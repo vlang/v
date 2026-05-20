@@ -459,7 +459,7 @@ fn (mut v Builder) build_thirdparty_obj_file_with_msvc(mod string, path string, 
 	defines := flags.defines.join(' ')
 
 	mut oargs := []string{}
-	env_cflags := os.getenv('CFLAGS')
+	env_cflags := os.getenv('CFLAGS').replace('\r', ' ').replace('\n', ' ')
 	mut all_cflags := '${env_cflags} ${v.pref.cflags}'
 	if all_cflags != ' ' {
 		oargs << all_cflags
@@ -485,7 +485,7 @@ fn (mut v Builder) build_thirdparty_obj_file_with_msvc(mod string, path string, 
 	oargs << inc_dirs
 	oargs << '/c "${cfile}"'
 	oargs << '/Fo"${obj_path}"'
-	env_ldflags := os.getenv('LDFLAGS')
+	env_ldflags := os.getenv('LDFLAGS').replace('\r', ' ').replace('\n', ' ')
 	mut all_ldflags := '${env_ldflags} ${v.pref.ldflags}'
 	if all_ldflags != '' {
 		oargs << all_ldflags

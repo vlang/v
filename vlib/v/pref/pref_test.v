@@ -230,6 +230,29 @@ fn test_explicit_gc_mode_is_forwarded_to_build_module() {
 	}
 }
 
+fn test_v_compiler_targets_default_to_no_gc() {
+	for target in [
+		os.join_path(vroot, 'cmd', 'v'),
+		os.join_path(vroot, 'cmd', 'v') + os.path_separator,
+		os.join_path(vroot, 'cmd', 'v', 'v.v'),
+		os.join_path(vroot, 'cmd', 'v2'),
+		os.join_path(vroot, 'cmd', 'v2') + os.path_separator,
+		os.join_path(vroot, 'cmd', 'v2', 'v2.v'),
+		os.join_path(vroot, 'cmd', 'tools', 'vfmt.v'),
+	] {
+		prefs, _ := pref.parse_args_and_show_errors([], ['', target], false)
+		assert prefs.gc_mode == .no_gc
+		assert prefs.build_options.join(' ').contains('-gc none')
+	}
+}
+
+fn test_v_compiler_targets_keep_explicit_gc_selection() {
+	target := os.join_path(vroot, 'cmd', 'v2', 'v2.v')
+	prefs, _ := pref.parse_args_and_show_errors([], ['', '-gc', 'boehm', target], false)
+	assert prefs.gc_mode == .boehm_full_opt
+	assert prefs.build_options.contains('-gc boehm')
+}
+
 fn test_cross_compile_defaults_windows_to_the_cross_compiler_arch() {
 	if pref.get_host_os() == .windows {
 		return
@@ -293,6 +316,23 @@ fn test_musl_keeps_explicit_gc_selection() {
 	prefs, _ := pref.parse_args_and_show_errors([], ['', '-musl', '-gc', 'boehm', target], false)
 	assert prefs.is_musl
 	assert prefs.gc_mode == .boehm_full_opt
+}
+
+fn test_prealloc_defaults_to_no_gc() {
+	target := os.join_path(vroot, 'examples', 'hello_world.v')
+	prefs, _ := pref.parse_args_and_show_errors([], ['', '-prealloc', target], false)
+	assert prefs.prealloc
+	assert prefs.gc_mode == .no_gc
+}
+
+fn test_prealloc_overrides_explicit_gc_selection() {
+	target := os.join_path(vroot, 'examples', 'hello_world.v')
+	prefs, _ := pref.parse_args_and_show_errors([], ['', '-gc', 'boehm', '-prealloc', target],
+		false)
+	assert prefs.prealloc
+	assert prefs.gc_mode == .no_gc
+	assert 'gcboehm' !in prefs.compile_defines
+	assert prefs.build_options.join(' ').contains('-gc none')
 }
 
 fn stale_windows_gc_prefs(gc_set_by_flag bool) pref.Preferences {
@@ -515,10 +555,21 @@ fn test_generate_c_project_creates_build_files() {
 		assert os.is_file(os.join_path(output_dir, rel_path))
 	}
 	build_command := os.read_file(os.join_path(output_dir, 'build_command.txt')) or { panic(err) }
-	assert build_command.contains(os.join_path(output_dir, 'json.c'))
+	generated_c_path := os.join_path(output_dir, 'json.c')
+	normalized_build_command := normalized_build_path(build_command)
+	assert normalized_build_command.contains(normalized_build_path(generated_c_path))
+		|| normalized_build_command.contains(normalized_build_path(os.short_path(generated_c_path)))
 	assert build_command.contains('cJSON.c')
 	assert !build_command.contains('.tmp.c')
 	assert !build_command.contains('.module.')
+}
+
+fn normalized_build_path(path string) string {
+	mut normalized := path.replace('\\', '/')
+	for normalized.contains('//') {
+		normalized = normalized.replace('//', '/')
+	}
+	return normalized
 }
 
 fn test_output_flag_accepts_directory_path() {

@@ -83,7 +83,7 @@ const force_external_syms = ['_malloc', '_free', '_calloc', '_realloc', '_exit',
 	'_pthread_mutex_unlock', '_pthread_mutex_destroy', '_pthread_self', '_pthread_create',
 	'_pthread_join', '_pthread_attr_init', '_pthread_attr_setstacksize', '_pthread_attr_destroy',
 	'_arc4random_buf',
-	'_proc_pidpath', '_backtrace', '_backtrace_symbols_fd',
+	'_proc_pidpath', '_backtrace', '_backtrace_symbols', '_backtrace_symbols_fd',
 	// macOS specific
 	'_dispatch_semaphore_create', '_dispatch_semaphore_signal',
 	'_dispatch_semaphore_wait', '_dispatch_time', '_dispatch_release', '_setvbuf', '_setbuf',
@@ -107,7 +107,7 @@ const force_external_syms = ['_malloc', '_free', '_calloc', '_realloc', '_exit',
 	// macOS stdin
 	'___stdinp',
 	// macOS dyld
-	'__dyld_get_image_name',
+	'__dyld_get_image_name', '__dyld_get_image_header',
 	// Math
 	'_cos', '_sin', '_tan', '_acos', '_asin', '_atan', '_atan2',
 	'_cosh', '_sinh', '_tanh', '_acosh', '_asinh', '_atanh',

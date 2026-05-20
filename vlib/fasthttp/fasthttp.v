@@ -70,11 +70,77 @@ pub enum ResponseTakeoverMode {
 }
 
 pub struct HttpResponse {
-pub:
+pub mut:
 	content       []u8
 	file_path     string
 	takeover_mode ResponseTakeoverMode
 	should_close  bool // if true, close the connection after sending (Connection: close)
+	// content_owned lets the backend free or move content after it has been sent.
+	content_owned bool
+	// request_arena is a prealloc scope handle that must be freed after sending.
+	request_arena voidptr
+}
+
+fn (mut resp HttpResponse) free_owned_content() {
+	if resp.content_owned && resp.content.cap > 0 {
+		unsafe { resp.content.free() }
+		resp.content = []u8{}
+	}
+}
+
+fn (mut resp HttpResponse) take_or_clone_content() []u8 {
+	if resp.content_owned {
+		content := resp.content
+		resp.content = []u8{}
+		return content
+	}
+	return resp.content.clone()
+}
+
+fn end_request_arena_current_thread(request_arena voidptr) {
+	$if prealloc {
+		if request_arena != unsafe { nil } {
+			unsafe { prealloc_scope_end(request_arena) }
+		}
+	}
+}
+
+fn leave_request_arena_current_thread(request_arena voidptr) {
+	$if prealloc {
+		if request_arena != unsafe { nil } {
+			unsafe { prealloc_scope_leave(request_arena) }
+		}
+	}
+}
+
+fn abandon_request_arena_current_thread(request_arena voidptr) {
+	$if prealloc {
+		if request_arena != unsafe { nil } {
+			unsafe { prealloc_scope_abandon(request_arena) }
+		}
+	}
+}
+
+fn (mut resp HttpResponse) attach_request_arena_if_empty(request_arena voidptr) {
+	if resp.request_arena == unsafe { nil } {
+		resp.request_arena = request_arena
+	}
+}
+
+fn (mut resp HttpResponse) end_request_arena_current_thread() {
+	end_request_arena_current_thread(resp.request_arena)
+	resp.request_arena = unsafe { nil }
+}
+
+fn (mut resp HttpResponse) abandon_request_arena_current_thread() {
+	abandon_request_arena_current_thread(resp.request_arena)
+	resp.request_arena = unsafe { nil }
+}
+
+fn (mut resp HttpResponse) take_request_arena() voidptr {
+	request_arena := resp.request_arena
+	resp.request_arena = unsafe { nil }
+	return request_arena
 }
 
 // ServerConfig bundles the parameters needed to start a fasthttp server.

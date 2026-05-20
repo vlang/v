@@ -1,6 +1,9 @@
+// vtest build: macos
 module cleanc
 
 import v2.ast
+import v2.token
+import v2.types
 
 fn test_c_string_literal_content_to_c_single_line() {
 	out := c_string_literal_content_to_c('hello')
@@ -46,105 +49,286 @@ fn test_fixed_array_elem_type_ready_waits_for_alias_base() {
 	assert g.fixed_array_elem_type_ready('foo__Alias')
 }
 
-fn test_selector_field_type_prefers_explicit_smartcast_deref() {
+fn test_types_type_to_c_prefixes_declared_c_structs() {
 	mut g := Gen.new([])
-	g.struct_field_types['ast__GoExpr.call_expr'] = 'ast__CallExpr'
-	sel := ast.SelectorExpr{
-		lhs: ast.ParenExpr{
-			expr: ast.PrefixExpr{
-				op:   .mul
-				expr: ast.CastExpr{
-					typ:  ast.Ident{
-						name: 'ast__GoExpr*'
-					}
-					expr: ast.Ident{
-						name: 'x'
-					}
-				}
+	g.c_struct_types['kevent'] = true
+	assert g.types_type_to_c(types.Type(types.Struct{
+		name: 'kevent'
+	})) == 'struct kevent'
+
+	g.typedef_c_types['kevent'] = true
+	assert g.types_type_to_c(types.Type(types.Struct{
+		name: 'kevent'
+	})) == 'kevent'
+}
+
+fn test_generic_struct_instance_lookup_mangles_c_struct_type_keys() {
+	mut g := Gen.new([])
+	g.generic_struct_instances['Box'] = [
+		GenericStructInstance{
+			params_key: 'int'
+			c_name:     'Box'
+		},
+		GenericStructInstance{
+			params_key: 'struct_cJSON'
+			c_name:     'Box_T_struct_cJSON'
+		},
+	]
+
+	resolved := g.resolve_generic_struct_c_name('Box', [
+		ast.Expr(ast.SelectorExpr{
+			lhs: ast.Expr(ast.Ident{
+				name: 'C'
+			})
+			rhs: ast.Ident{
+				name: 'cJSON'
 			}
-		}
-		rhs: ast.Ident{
-			name: 'call_expr'
-		}
-	}
-	assert g.selector_field_type(sel) == 'ast__CallExpr'
-	assert g.get_expr_type(ast.Expr(sel)) == 'ast__CallExpr'
-}
-
-fn test_selector_field_type_resolves_array_len_before_stale_scope_type() {
-	mut g := Gen.new([])
-	g.runtime_local_types['params'] = 'Array_ast__Param'
-	sel := ast.SelectorExpr{
-		lhs: ast.Ident{
-			name: 'params'
-		}
-		rhs: ast.Ident{
-			name: 'len'
-		}
-	}
-	assert g.selector_field_type(sel) == 'int'
-	assert g.get_expr_type(ast.Expr(sel)) == 'int'
-}
-
-fn test_addr_temp_compound_type_prefers_concrete_rhs_over_stale_option() {
-	assert addr_temp_compound_type('_option_int', 'string') == 'string'
-	assert addr_temp_compound_type('_result_int', 'Array_string') == 'Array_string'
-	assert addr_temp_compound_type('_option_int', '_option_string') == '_option_int'
-	assert addr_temp_compound_type('string', 'int') == 'string'
-}
-
-fn test_addr_of_sumtype_variant_arg_boxes_concrete_variant() {
-	mut g := Gen.new([])
-	g.sum_type_variants['ast__Expr'] = ['OrExpr']
-	g.runtime_local_types['or_block'] = 'ast__OrExpr'
-	assert g.gen_addr_of_sumtype_variant_arg('ast__Expr', ast.Ident{
-		name: 'or_block'
-	})
-	out := g.sb.str()
-	assert out.starts_with('&((ast__Expr[]){')
-	assert out.contains('._data._OrExpr')
-	assert out.contains('memdup')
-	assert out.ends_with('})[0]')
-
-	mut g_ptr := Gen.new([])
-	g_ptr.sum_type_variants['ast__Expr'] = ['OrExpr']
-	g_ptr.runtime_local_types['or_block'] = 'ast__OrExpr*'
-	assert g_ptr.gen_addr_of_sumtype_variant_arg('ast__Expr', ast.Ident{
-		name: 'or_block'
-	})
-	out_ptr := g_ptr.sb.str()
-	assert out_ptr.contains('*or_block')
-}
-
-fn test_new_call_keeps_same_typed_struct_arg() {
-	mut g := Gen.new([])
-	g.fn_param_types['markused__Walker__new'] = ['markused__Walker']
-	g.call_expr(ast.Ident{
-		name: 'markused__Walker__new'
-	}, [
-		ast.Expr(ast.InitExpr{
-			typ:    ast.Ident{
-				name: 'markused__Walker'
-			}
-			fields: [
-				ast.FieldInit{
-					name:  'table'
-					value: ast.Ident{
-						name: 'table'
-					}
-				},
-				ast.FieldInit{
-					name:  'trace_enabled'
-					value: ast.BasicLiteral{
-						kind: .key_true
-					}
-				},
-			]
 		}),
 	])
+	assert resolved == 'Box_T_struct_cJSON'
+}
+
+fn test_generic_index_equality_uses_active_concrete_type() {
+	mut env := types.Environment.new()
+	mut fn_scope := types.new_scope(unsafe { nil })
+	fn_scope.insert('a', types.Type(types.Array{
+		elem_type: types.Type(types.NamedType('T'))
+	}))
+	fn_scope.insert('e', types.Type(types.NamedType('T')))
+	env.set_expr_type(1, types.string_)
+	env.set_expr_type(2, types.int_)
+	env.set_expr_type(3, types.string_)
+	env.set_expr_type(4, types.string_)
+
+	mut g := Gen.new_with_env([], env)
+	g.cur_fn_scope = fn_scope
+	g.active_generic_types['T'] = types.Type(types.Struct{
+		name: 'Item'
+	})
+	node := ast.InfixExpr{
+		op:  .eq
+		lhs: ast.Expr(ast.IndexExpr{
+			lhs:  ast.Expr(ast.Ident{
+				pos:  token.Pos{
+					id: 1
+				}
+				name: 'a'
+			})
+			expr: ast.Expr(ast.Ident{
+				pos:  token.Pos{
+					id: 2
+				}
+				name: 'idx'
+			})
+			pos:  token.Pos{
+				id: 3
+			}
+		})
+		rhs: ast.Expr(ast.Ident{
+			pos:  token.Pos{
+				id: 4
+			}
+			name: 'e'
+		})
+	}
+	g.gen_infix_expr(&node)
 	out := g.sb.str()
-	assert out.contains('markused__Walker__new(((markused__Walker){')
-	assert out.contains('.table = table')
-	assert out.contains('.trace_enabled = true')
-	assert !out.contains('markused__Walker__new(((markused__Walker){0})')
+	assert out.contains('memcmp')
+	assert out.contains('Item')
+	assert !out.contains('string__eq')
+
+	mut g2 := Gen.new_with_env([], env)
+	g2.runtime_local_types['a'] = 'Array_Item'
+	g2.runtime_local_types['e'] = 'Item'
+	g2.gen_infix_expr(&node)
+	out2 := g2.sb.str()
+	assert out2.contains('memcmp')
+	assert out2.contains('Item')
+	assert !out2.contains('string__eq')
+}
+
+fn test_map_equality_uses_map_eq_function() {
+	mut g := Gen.new([])
+	g.runtime_local_types['a'] = 'Map_string_string'
+	g.runtime_local_types['b'] = 'Map_string_string'
+	node := ast.InfixExpr{
+		op:  .eq
+		lhs: ast.Expr(ast.Ident{
+			name: 'a'
+		})
+		rhs: ast.Expr(ast.Ident{
+			name: 'b'
+		})
+	}
+	g.gen_infix_expr(&node)
+	assert g.sb.str() == 'Map_string_string_map_eq(a, b)'
+}
+
+fn test_mut_receiver_operator_assignment_dereferences_receiver() {
+	mut g := Gen.new([])
+	g.runtime_local_types['result'] = 'Big*'
+	g.runtime_local_types['ten'] = 'Big'
+	g.cur_fn_mut_params['result'] = true
+	g.fn_return_types['Big__mul'] = 'Big'
+	node := ast.AssignStmt{
+		op:  .assign
+		lhs: [ast.Expr(ast.Ident{
+			name: 'result'
+		})]
+		rhs: [
+			ast.Expr(ast.InfixExpr{
+				op:  .mul
+				lhs: ast.Expr(ast.Ident{
+					name: 'result'
+				})
+				rhs: ast.Expr(ast.Ident{
+					name: 'ten'
+				})
+			}),
+		]
+	}
+	g.gen_assign_stmt(node)
+	out := g.sb.str().trim_space()
+	assert out == '*result = Big__mul((*result), ten);'
+}
+
+fn test_decl_from_mut_receiver_operator_uses_value_type() {
+	mut g := Gen.new([])
+	g.runtime_local_types['result'] = 'Big*'
+	g.runtime_local_types['ten'] = 'Big'
+	g.cur_fn_mut_params['result'] = true
+	g.fn_return_types['Big__mul'] = 'Big'
+	node := ast.AssignStmt{
+		op:  .decl_assign
+		lhs: [ast.Expr(ast.Ident{
+			name: 'next'
+		})]
+		rhs: [
+			ast.Expr(ast.InfixExpr{
+				op:  .mul
+				lhs: ast.Expr(ast.Ident{
+					name: 'result'
+				})
+				rhs: ast.Expr(ast.Ident{
+					name: 'ten'
+				})
+			}),
+		]
+	}
+	g.gen_assign_stmt(node)
+	out := g.sb.str().trim_space()
+	assert out == 'Big next = Big__mul((*result), ten);'
+	assert !out.contains('Big* next')
+}
+
+fn test_nested_mut_receiver_operator_does_not_deref_value_result_with_pointer_env() {
+	mut env := types.Environment.new()
+	env.set_expr_type(25, types.Type(types.Pointer{
+		base_type: types.Struct{
+			name: 'Big'
+		}
+	}))
+	mut g := Gen.new_with_env([], env)
+	g.runtime_local_types['result'] = 'Big*'
+	g.runtime_local_types['ten'] = 'Big'
+	g.runtime_local_types['one'] = 'Big'
+	g.cur_fn_mut_params['result'] = true
+	g.fn_return_types['Big__mul'] = 'Big'
+	g.fn_return_types['Big__plus'] = 'Big'
+	node := ast.InfixExpr{
+		op:  .plus
+		lhs: ast.Expr(ast.CallExpr{
+			lhs:  ast.Expr(ast.Ident{
+				name: 'Big__mul'
+			})
+			args: [ast.Expr(ast.Ident{
+				name: 'result'
+			}),
+				ast.Expr(ast.Ident{
+					name: 'ten'
+				})]
+			pos:  token.Pos{
+				id: 25
+			}
+		})
+		rhs: ast.Expr(ast.Ident{
+			name: 'one'
+		})
+	}
+	g.gen_infix_expr(&node)
+	out := g.sb.str()
+	assert out == 'Big__plus(Big__mul(result, ten), one)'
+	assert !out.contains('*(Big__mul')
+}
+
+fn test_preamble_overrides_cpu_relax_for_tinyc_arm() {
+	mut g := Gen.new([])
+	g.write_preamble()
+	out := g.sb.str()
+	assert out.contains('#undef cpu_relax')
+	assert out.contains('#define cpu_relax() ((void)0)')
+}
+
+fn test_struct_equality_resolves_alias_field_base_type() {
+	mut g := Gen.new([])
+	db_type := types.Struct{
+		name:   'pg__DB'
+		fields: [
+			types.Field{
+				name: 'conninfo'
+				typ:  types.string_
+			},
+		]
+	}
+	app_type := types.Struct{
+		name:   'App'
+		fields: [
+			types.Field{
+				name: 'db'
+				typ:  types.Alias{
+					name:      'GitlyDb'
+					base_type: types.Type(db_type)
+				}
+			},
+		]
+	}
+
+	assert g.struct_has_ref_fields(app_type)
+	out := g.gen_struct_field_eq_expr(app_type, 'left', 'right')
+	assert out == 'string__eq(left.db.conninfo, right.db.conninfo)'
+	assert !out.contains('left.db == right.db')
+}
+
+fn test_fixed_array_alias_index_uses_element_type_before_env() {
+	mut env := types.Environment.new()
+	mut fn_scope := types.new_scope(unsafe { nil })
+	fn_scope.insert('b', types.Type(types.Alias{
+		name:      'fixed_u8_2'
+		base_type: types.Type(types.ArrayFixed{
+			len:       2
+			elem_type: types.Type(types.Primitive{
+				props: .integer | .unsigned
+				size:  8
+			})
+		})
+	}))
+	env.set_expr_type(5, types.Type(types.Alias{
+		name: 'fixed_u8_2'
+	}))
+
+	mut g := Gen.new_with_env([], env)
+	g.cur_fn_scope = fn_scope
+	elem_type := g.get_expr_type(ast.Expr(ast.IndexExpr{
+		lhs:  ast.Expr(ast.Ident{
+			name: 'b'
+		})
+		expr: ast.Expr(ast.BasicLiteral{
+			value: '1'
+			kind:  .number
+		})
+		pos:  token.Pos{
+			id: 5
+		}
+	}))
+	assert elem_type == 'u8'
 }

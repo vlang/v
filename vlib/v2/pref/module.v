@@ -56,9 +56,5 @@ pub fn (p &Preferences) get_module_path(mod string, importing_file_path string) 
 	if dir_exists(relative_path) {
 		return relative_path
 	}
-	parent_relative_path := module_path_join(os.dir(os.dir(importing_file_path)), mod_path)
-	if dir_exists(parent_relative_path) {
-		return parent_relative_path
-	}
 	panic('Preferences.get_module_path: cannot find module path for `${mod}`')
 }

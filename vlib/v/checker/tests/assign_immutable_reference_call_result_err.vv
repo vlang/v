@@ -11,7 +11,9 @@ fn rere(a &User) &User {
 }
 
 fn main() {
-	ja := User{name: 'foo'}
+	ja := User{
+		name: 'foo'
+	}
 	mut x := rere(ja)
 	x.name = 'bar'
 }

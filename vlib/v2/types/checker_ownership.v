@@ -396,6 +396,90 @@ fn (mut c Checker) ownership_leave_fn(prev_fn string, prev_owned map[string]toke
 	c.borrowed_vars = prev_borrowed.clone()
 }
 
+fn ownership_stmts_terminate(stmts []ast.Stmt) bool {
+	for i := stmts.len - 1; i >= 0; i-- {
+		stmt := stmts[i]
+		if stmt is ast.EmptyStmt {
+			continue
+		}
+		return stmt is ast.ReturnStmt
+	}
+	return false
+}
+
+fn ownership_expr_terminates(expr ast.Expr) bool {
+	if expr is ast.IfExpr {
+		if_expr := expr as ast.IfExpr
+		if is_empty_expr(if_expr.cond) {
+			return ownership_stmts_terminate(if_expr.stmts)
+		}
+		if is_empty_expr(if_expr.else_expr) {
+			return false
+		}
+		return ownership_stmts_terminate(if_expr.stmts)
+			&& ownership_expr_terminates(if_expr.else_expr)
+	}
+	return false
+}
+
+fn ownership_merge_owned(a map[string]token.Pos, b map[string]token.Pos) map[string]token.Pos {
+	mut out := a.clone()
+	for name, pos in b {
+		out[name] = pos
+	}
+	return out
+}
+
+fn ownership_merge_moved(a map[string]MovedVar, b map[string]MovedVar) map[string]MovedVar {
+	mut out := a.clone()
+	for name, info in b {
+		out[name] = info
+	}
+	return out
+}
+
+fn ownership_merge_borrowed(a map[string][]BorrowInfo, b map[string][]BorrowInfo) map[string][]BorrowInfo {
+	mut out := a.clone()
+	for name, infos in b {
+		mut merged := out[name] or { []BorrowInfo{} }
+		merged << infos
+		out[name] = merged
+	}
+	return out
+}
+
+fn (mut c Checker) ownership_restore_state(owned map[string]token.Pos, moved map[string]MovedVar, borrowed map[string][]BorrowInfo) {
+	c.owned_vars = owned.clone()
+	c.moved_vars = moved.clone()
+	c.borrowed_vars = borrowed.clone()
+}
+
+fn (mut c Checker) ownership_merge_if_state(before_owned map[string]token.Pos, before_moved map[string]MovedVar, before_borrowed map[string][]BorrowInfo, then_owned map[string]token.Pos, then_moved map[string]MovedVar, then_borrowed map[string][]BorrowInfo, then_returns bool, has_else bool, else_owned map[string]token.Pos, else_moved map[string]MovedVar, else_borrowed map[string][]BorrowInfo, else_returns bool) {
+	if !has_else {
+		if then_returns {
+			c.ownership_restore_state(before_owned, before_moved, before_borrowed)
+			return
+		}
+		c.ownership_restore_state(ownership_merge_owned(before_owned, then_owned), ownership_merge_moved(before_moved,
+			then_moved), ownership_merge_borrowed(before_borrowed, then_borrowed))
+		return
+	}
+	if then_returns && else_returns {
+		c.ownership_restore_state(before_owned, before_moved, before_borrowed)
+		return
+	}
+	if then_returns {
+		c.ownership_restore_state(else_owned, else_moved, else_borrowed)
+		return
+	}
+	if else_returns {
+		c.ownership_restore_state(then_owned, then_moved, then_borrowed)
+		return
+	}
+	c.ownership_restore_state(ownership_merge_owned(then_owned, else_owned), ownership_merge_moved(then_moved,
+		else_moved), ownership_merge_borrowed(then_borrowed, else_borrowed))
+}
+
 // ownership_prescan_fn_bodies does a lightweight pre-scan of all pending function bodies
 // to detect which functions return owned values. This runs before the full checker pass
 // so that callers can know about ownership-returning functions regardless of declaration order.

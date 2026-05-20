@@ -107,8 +107,14 @@ fn find_cfile_size(fp &C.FILE) !int {
 	if raw_fsize != 0 && cseek != 0 {
 		return error('fseek failed')
 	}
-	if cseek != 0 && raw_fsize < 0 {
-		return error('ftell failed')
+	if raw_fsize < 0 {
+		if cseek != 0 {
+			return error('ftell failed')
+		}
+		// fseek succeeded but ftell returned -1 (e.g. device files like NUL on Windows).
+		// Rewind before returning so the caller can read from the beginning.
+		C.rewind(fp)
+		return 0
 	}
 	len := int(raw_fsize)
 	// For files > 2GB, C.ftell can return values that, when cast to `int`, can result in values below 0.

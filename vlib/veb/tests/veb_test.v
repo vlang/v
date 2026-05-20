@@ -1,5 +1,5 @@
 // vtest retry: 3
-// vtest build: !sanitized_job?
+// vtest build: !sanitized_job? && !windows // !windows: fasthttp.Server.run not implemented yet
 import os
 import time
 import x.json2 as json

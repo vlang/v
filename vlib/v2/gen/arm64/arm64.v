@@ -472,9 +472,14 @@ pub fn (mut g Gen) gen_post_pass() {
 	// Add return-zero stub for unresolved symbols.
 	// When the linker can't resolve a symbol, it redirects calls here instead of
 	// letting them jump to the Mach-O header which corrupts memory.
-	g.macho.add_symbol('___unresolved_stub', u64(g.macho.text_data.len), false, 1)
+	unresolved_stub_offset := u64(g.macho.text_data.len)
+	g.macho.add_symbol('___unresolved_stub', unresolved_stub_offset, false, 1)
+	g.macho.add_symbol('_tcc_backtrace', unresolved_stub_offset, false, 1)
 	g.emit(0xD2800000) // mov x0, #0
 	g.emit(0xD2800001) // mov x1, #0
+	g.emit(0xD65F03C0) // ret
+	g.macho.add_symbol('_v_os_execute_capture_start', u64(g.macho.text_data.len), false, 1)
+	g.emit(0x12800000) // mov w0, #-1
 	g.emit(0xD65F03C0) // ret
 
 	// Dead-strip unreachable functions.
@@ -1189,8 +1194,10 @@ pub fn (mut g Gen) gen_func(func mir.Function) {
 	// The Mach-O LC_MAIN entrypoint invokes `main` with C-style argc/argv in
 	// x0/x1. Persist them to builtin globals so `os.args` / `arguments()` work.
 	if func.name == 'main' {
-		g.store_entry_arg_to_global(0, 'g_main_argc')
-		g.store_entry_arg_to_global(1, 'g_main_argv')
+		g.store_entry_arg_to_global(0, 'builtin__g_main_argc', 4)
+		g.store_entry_arg_to_global(1, 'builtin__g_main_argv', 8)
+		g.store_entry_arg_to_global(0, 'g_main_argc', 4)
+		g.store_entry_arg_to_global(1, 'g_main_argv', 8)
 		// Call _vinit to initialize dynamic array constants
 		g.emit_call_to_named_fn('_vinit')
 	}
@@ -3995,11 +4002,94 @@ fn (mut g Gen) gen_instr(val_id int) {
 				result_size = g.type_size(instr.typ)
 				result_is_agg = result_typ.kind in [.struct_t, .array_t]
 			}
+			mut direct_load_agg_src_ptr_id := 0
+			mut direct_load_agg_needs_slot_deref := false
+			if tuple_is_agg_typ && tuple_val.kind == .instruction {
+				tuple_ins := g.mod.instrs[tuple_val.index]
+				if g.selected_opcode(tuple_ins) == .load && tuple_ins.operands.len > 0 {
+					load_ptr_id := tuple_ins.operands[0]
+					if load_ptr_id > 0 && load_ptr_id < g.mod.values.len {
+						direct_load_agg_src_ptr_id = load_ptr_id
+						load_ptr_val := g.mod.values[load_ptr_id]
+						if load_ptr_val.kind == .instruction {
+							load_ptr_instr := g.mod.instrs[load_ptr_val.index]
+							if g.selected_opcode(load_ptr_instr) == .alloca
+								&& g.alloca_slot_stores_pointer_like_values(load_ptr_id, tuple_val.typ) {
+								direct_load_agg_needs_slot_deref = true
+							}
+						}
+					}
+				}
+			}
 			if trace_extract {
 				eprintln('ARM64 EXTRACT fn=${g.cur_func_name} val=${val_id} tuple=${tuple_id} tuple_kind=${tuple_val.kind} tuple_name=`${tuple_val.name}` tuple_typ=${tuple_val.typ} idx=${idx} field_off=${field_byte_off} field_size=${field_elem_size} result_typ=${instr.typ} result_size=${result_size} tuple_agg=${tuple_is_agg_typ} tuple_large=${tuple_is_large_agg} scalar_ptr=${scalar_load_agg_src_ptr_id} scalar_elem_typ=${scalar_load_agg_ptr_elem_typ_id} needs_slot_deref=${scalar_load_agg_needs_slot_deref} tuple_off=${g.stack_map[tuple_id]}')
 			}
+			mut handled_direct_load_agg_extract := false
+			if direct_load_agg_src_ptr_id > 0 {
+				base_ptr_reg := g.get_operand_reg(direct_load_agg_src_ptr_id, 9)
+				mut agg_ptr_reg := base_ptr_reg
+				if direct_load_agg_needs_slot_deref {
+					agg_ptr_reg = if base_ptr_reg == 11 { 12 } else { 11 }
+					g.emit(asm_ldr(Reg(agg_ptr_reg), Reg(base_ptr_reg)))
+				}
+				if result_is_agg && result_size > 8 {
+					if dst_offset := g.stack_map[val_id] {
+						if g.is_effective_null_pointer_value(direct_load_agg_src_ptr_id) {
+							g.zero_fp_bytes(dst_offset, result_size)
+						} else {
+							g.copy_ptr_offset_to_fp_bytes(agg_ptr_reg, field_byte_off, dst_offset,
+								result_size)
+						}
+						handled_direct_load_agg_extract = true
+					}
+				} else {
+					if g.is_effective_null_pointer_value(direct_load_agg_src_ptr_id) {
+						g.emit_mov_reg(8, 31)
+					} else if field_elem_size in [1, 2, 4] {
+						mut field_addr_reg := 9
+						if field_addr_reg == agg_ptr_reg {
+							field_addr_reg = 10
+						}
+						if field_byte_off >= 0 && field_byte_off <= 0xFFF {
+							g.emit(asm_add_imm(Reg(field_addr_reg), Reg(agg_ptr_reg),
+								u32(field_byte_off)))
+						} else {
+							g.emit_mov_imm64(field_addr_reg, field_byte_off)
+							g.emit(asm_add_reg(Reg(field_addr_reg), Reg(agg_ptr_reg),
+								Reg(field_addr_reg)))
+						}
+						field_is_unsigned := if instr.typ > 0
+							&& instr.typ < g.mod.type_store.types.len {
+							g.mod.type_store.types[instr.typ].is_unsigned
+						} else {
+							false
+						}
+						match field_elem_size {
+							1 {
+								g.emit(asm_ldr_b(Reg(8), Reg(field_addr_reg)))
+							}
+							2 {
+								g.emit(asm_ldr_h(Reg(8), Reg(field_addr_reg)))
+							}
+							4 {
+								if field_is_unsigned {
+									g.emit(asm_ldr_w(Reg(8), Reg(field_addr_reg)))
+								} else {
+									g.emit(asm_ldrsw(Reg(8), Reg(field_addr_reg)))
+								}
+							}
+							else {}
+						}
+					} else {
+						g.emit_ldr_reg_offset(8, agg_ptr_reg, field_byte_off)
+					}
+					g.store_reg_to_val(8, val_id)
+					handled_direct_load_agg_extract = true
+				}
+			}
 			mut handled_scalar_load_struct_extract := false
-			if scalar_load_agg_src_ptr_id > 0 && scalar_load_agg_ptr_elem_typ_id > 0 {
+			if !handled_direct_load_agg_extract && scalar_load_agg_src_ptr_id > 0
+				&& scalar_load_agg_ptr_elem_typ_id > 0 {
 				base_ptr_reg := g.get_operand_reg(scalar_load_agg_src_ptr_id, 9)
 				mut agg_ptr_reg := base_ptr_reg
 				if scalar_load_agg_needs_slot_deref {
@@ -4066,8 +4156,8 @@ fn (mut g Gen) gen_instr(val_id int) {
 			// temporaries (typically pointer-sized). If extractvalue asks for a
 			// multi-word aggregate from such a temporary, read directly from the
 			// original load pointer instead of interpreting scalar spill bytes.
-			if result_is_agg && result_size > 8 && !tuple_is_agg_typ
-				&& tuple_val.kind == .instruction {
+			if !handled_direct_load_agg_extract && result_is_agg && result_size > 8
+				&& !tuple_is_agg_typ && tuple_val.kind == .instruction {
 				tuple_ins := g.mod.instrs[tuple_val.index]
 				if tuple_ins.op == .load && tuple_ins.operands.len > 0 {
 					load_src_id := tuple_ins.operands[0]
@@ -4103,8 +4193,9 @@ fn (mut g Gen) gen_instr(val_id int) {
 			// Some malformed MIR paths unwrap sumtype wrappers through `_tag` first, then
 			// request a pointer/aggregate extract from that scalar word. Recover by reading
 			// from the wrapper `_data` pointer directly.
-			if !handled_scalar_load_struct_extract && !handled_scalar_load_agg_extract
-				&& !tuple_is_agg_typ && tuple_val.kind == .instruction && instr.typ > 0
+			if !handled_direct_load_agg_extract && !handled_scalar_load_struct_extract
+				&& !handled_scalar_load_agg_extract && !tuple_is_agg_typ
+				&& tuple_val.kind == .instruction && instr.typ > 0
 				&& instr.typ < g.mod.type_store.types.len {
 				dst_typ := g.mod.type_store.types[instr.typ]
 				if (result_is_agg && result_size > 8) || dst_typ.kind == .ptr_t {
@@ -4132,8 +4223,8 @@ fn (mut g Gen) gen_instr(val_id int) {
 					}
 				}
 			}
-			if !handled_scalar_load_struct_extract && !handled_scalar_load_agg_extract
-				&& !handled_sumtype_tag_payload_extract {
+			if !handled_direct_load_agg_extract && !handled_scalar_load_struct_extract
+				&& !handled_scalar_load_agg_extract && !handled_sumtype_tag_payload_extract {
 				// If the tuple source is a string_literal (e.g. after mem2reg
 				// promotion of alloca → store → load), ensure the string struct
 				// has been materialized on the stack before we read from it.
@@ -5780,9 +5871,10 @@ fn (mut g Gen) load_struct_src_address_to_reg(reg int, val_id int, expected_stru
 			}
 		}
 		if expected_typ.kind == .struct_t && g.type_size(expected_struct_typ) > 16
-			&& g.value_is_large_struct(val_id) {
-			// Large struct values may already be represented as data pointers.
-			// Preserve that representation for indirect ABI arguments.
+			&& g.large_struct_stack_value_is_pointer(val_id) {
+			// Some large struct values are explicitly pointer-carried in their stack
+			// slot. Preserve that representation for indirect ABI arguments, but keep
+			// ordinary large structs/arrays by address so array headers are copied intact.
 			g.load_val_to_reg(reg, val_id)
 			return
 		}
@@ -7220,8 +7312,11 @@ fn (mut g Gen) emit_call_to_named_fn(fn_name string) {
 	g.emit(asm_bl_reloc())
 }
 
-fn (mut g Gen) store_entry_arg_to_global(reg int, global_name string) {
+fn (mut g Gen) store_entry_arg_to_global(reg int, global_name string, size int) {
 	if global_name == '' {
+		return
+	}
+	if global_name !in g.global_by_name {
 		return
 	}
 	sym_idx := g.macho.add_undefined('_' + global_name)
@@ -7229,7 +7324,7 @@ fn (mut g Gen) store_entry_arg_to_global(reg int, global_name string) {
 	g.emit(asm_adrp(Reg(9)))
 	g.macho.add_reloc(g.macho.text_data.len, sym_idx, arm64_reloc_pageoff12, false)
 	g.emit(asm_add_pageoff(Reg(9)))
-	g.emit_str_reg_offset(reg, 9, 0)
+	g.emit_str_reg_offset_sized(reg, 9, 0, size)
 }
 
 fn (mut g Gen) emit(code u32) {

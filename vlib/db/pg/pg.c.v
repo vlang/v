@@ -41,6 +41,10 @@ $if cross_compile ? && linux {
 	#include <libpq/pg_config.h>
 
 	//#flag -lpq // libpq.a is located in LINUXROOT/lib/x86_64-linux-gnu/libpq.a
+	// The bundled linuxroot ships libpq.a but no libpgcommon.a / libpgport.a,
+	// so libpq's references to pg_snprintf, strlcpy, pg_freeaddrinfo_all etc.
+	// are unresolved at link time. Provide minimal stubs that delegate to libc.
+	#flag @VEXEROOT/thirdparty/pg/pgport_stubs.c
 } $else {
 	// PostgreSQL Source Code
 	// https://doxygen.postgresql.org/libpq-fe_8h.html
