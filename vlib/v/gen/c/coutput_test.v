@@ -683,6 +683,11 @@ fn should_skip(relpath string) bool {
 		eprintln('> skipping ${relpath} on ${github_job}, since gc related tests are not compatible with `-gc none`')
 		return true
 	}
+	if github_job.contains('musl')
+		&& relpath.ends_with('nested_aggregate_boehm_prod_keep_alive_nix.vv') {
+		eprintln('> skipping ${relpath} on ${github_job}, since `-prod -gc boehm_full_opt` pulls in `getcontext`, which musl does not provide')
+		return true
+	}
 	if user_os == 'windows' {
 		if relpath.contains('_nix.vv') {
 			eprintln('> skipping ${relpath} on windows')
