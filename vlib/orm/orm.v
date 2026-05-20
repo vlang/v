@@ -709,12 +709,20 @@ pub fn (mut db DB) last_id() int {
 
 // DB implements orm.TransactionalConnection (decorator) -----------------------
 
+// unwrap_to_tx extracts a &TransactionalConnection from a Connection interface.
+// This is a workaround for V's codegen limitation: &struct_field cannot be
+// passed directly to an `as` cast because the cast function's return value
+// is not an lvalue in C. Copying to a local variable first makes &local valid.
+fn unwrap_to_tx(mut conn Connection) &TransactionalConnection {
+	mut c := conn
+	return unsafe { &c as TransactionalConnection }
+}
+
 // orm_begin begins a transaction on the underlying connection.
 // Returns an error if the underlying connection does not support transactions.
 pub fn (mut db DB) orm_begin() ! {
 	if db.conn is TransactionalConnection {
-		mut conn := db.conn
-		mut tc := unsafe { &conn as TransactionalConnection }
+		mut tc := unwrap_to_tx(mut db.conn)
 		tc.orm_begin()!
 	} else {
 		return error('orm.DB: underlying connection does not support transactions')
@@ -725,8 +733,7 @@ pub fn (mut db DB) orm_begin() ! {
 // Returns an error if the underlying connection does not support transactions.
 pub fn (mut db DB) orm_commit() ! {
 	if db.conn is TransactionalConnection {
-		mut conn := db.conn
-		mut tc := unsafe { &conn as TransactionalConnection }
+		mut tc := unwrap_to_tx(mut db.conn)
 		tc.orm_commit()!
 	} else {
 		return error('orm.DB: underlying connection does not support transactions')
@@ -737,8 +744,7 @@ pub fn (mut db DB) orm_commit() ! {
 // Returns an error if the underlying connection does not support transactions.
 pub fn (mut db DB) orm_rollback() ! {
 	if db.conn is TransactionalConnection {
-		mut conn := db.conn
-		mut tc := unsafe { &conn as TransactionalConnection }
+		mut tc := unwrap_to_tx(mut db.conn)
 		tc.orm_rollback()!
 	} else {
 		return error('orm.DB: underlying connection does not support transactions')
@@ -749,8 +755,7 @@ pub fn (mut db DB) orm_rollback() ! {
 // Returns an error if the underlying connection does not support transactions.
 pub fn (mut db DB) orm_savepoint(name string) ! {
 	if db.conn is TransactionalConnection {
-		mut conn := db.conn
-		mut tc := unsafe { &conn as TransactionalConnection }
+		mut tc := unwrap_to_tx(mut db.conn)
 		tc.orm_savepoint(name)!
 	} else {
 		return error('orm.DB: underlying connection does not support transactions')
@@ -761,8 +766,7 @@ pub fn (mut db DB) orm_savepoint(name string) ! {
 // Returns an error if the underlying connection does not support transactions.
 pub fn (mut db DB) orm_rollback_to(name string) ! {
 	if db.conn is TransactionalConnection {
-		mut conn := db.conn
-		mut tc := unsafe { &conn as TransactionalConnection }
+		mut tc := unwrap_to_tx(mut db.conn)
 		tc.orm_rollback_to(name)!
 	} else {
 		return error('orm.DB: underlying connection does not support transactions')
@@ -773,8 +777,7 @@ pub fn (mut db DB) orm_rollback_to(name string) ! {
 // Returns an error if the underlying connection does not support transactions.
 pub fn (mut db DB) orm_release_savepoint(name string) ! {
 	if db.conn is TransactionalConnection {
-		mut conn := db.conn
-		mut tc := unsafe { &conn as TransactionalConnection }
+		mut tc := unwrap_to_tx(mut db.conn)
 		tc.orm_release_savepoint(name)!
 	} else {
 		return error('orm.DB: underlying connection does not support transactions')
