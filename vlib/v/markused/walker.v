@@ -2808,18 +2808,19 @@ fn (mut w Walker) auto_str_needs_str_intp() bool {
 }
 
 fn (mut w Walker) auto_str_needs_isnil() bool {
+	mut visited := map[int]bool{}
 	for typ, _ in w.uses_str {
-		if w.type_auto_str_needs_isnil(typ) {
+		if w.type_auto_str_needs_isnil(typ, mut visited) {
 			return true
 		}
 	}
 	for typ_idx, _ in w.features.print_types {
-		if w.type_auto_str_needs_isnil(ast.Type(u32(typ_idx))) {
+		if w.type_auto_str_needs_isnil(ast.Type(u32(typ_idx)), mut visited) {
 			return true
 		}
 	}
 	for typ_idx, _ in w.table.dumps {
-		if w.type_auto_str_needs_isnil(ast.Type(u32(typ_idx))) {
+		if w.type_auto_str_needs_isnil(ast.Type(u32(typ_idx)), mut visited) {
 			return true
 		}
 	}
@@ -2858,7 +2859,7 @@ fn (mut w Walker) type_auto_str_needs_str_intp(typ ast.Type) bool {
 	}
 }
 
-fn (mut w Walker) type_auto_str_needs_isnil(typ ast.Type) bool {
+fn (mut w Walker) type_auto_str_needs_isnil(typ ast.Type, mut visited map[int]bool) bool {
 	resolved_typ := w.resolve_current_generic_type(typ).clear_option_and_result()
 	if resolved_typ == 0 || resolved_typ == ast.void_type || resolved_typ.has_flag(.generic) {
 		return false
@@ -2867,23 +2868,29 @@ fn (mut w Walker) type_auto_str_needs_isnil(typ ast.Type) bool {
 		|| resolved_typ.has_flag(.option_mut_param_t) {
 		return true
 	}
-	sym := w.table.final_sym(w.table.unaliased_type(resolved_typ))
+	final_typ := w.table.unaliased_type(resolved_typ)
+	key := int(final_typ.idx())
+	if key in visited {
+		return false
+	}
+	visited[key] = true
+	sym := w.table.final_sym(final_typ)
 	match sym.info {
 		ast.Array {
-			return w.type_auto_str_needs_isnil(sym.info.elem_type)
+			return w.type_auto_str_needs_isnil(sym.info.elem_type, mut visited)
 		}
 		ast.ArrayFixed {
-			return w.type_auto_str_needs_isnil(sym.info.elem_type)
+			return w.type_auto_str_needs_isnil(sym.info.elem_type, mut visited)
 		}
 		ast.Map {
-			return w.type_auto_str_needs_isnil(sym.info.key_type)
-				|| w.type_auto_str_needs_isnil(sym.info.value_type)
+			return w.type_auto_str_needs_isnil(sym.info.key_type, mut visited)
+				|| w.type_auto_str_needs_isnil(sym.info.value_type, mut visited)
 		}
 		ast.Struct {
-			return sym.info.fields.any(w.type_auto_str_needs_isnil(it.typ))
+			return sym.info.fields.any(w.type_auto_str_needs_isnil(it.typ, mut visited))
 		}
 		ast.SumType {
-			return sym.info.variants.any(w.type_auto_str_needs_isnil(it))
+			return sym.info.variants.any(w.type_auto_str_needs_isnil(it, mut visited))
 		}
 		ast.Interface {
 			return true
