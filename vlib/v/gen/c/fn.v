@@ -728,11 +728,12 @@ fn (mut g Gen) ensure_extern_sig_type_decl(typ_ ast.Type) {
 		else {}
 	}
 
-	if sym.idx in g.table.used_features.used_syms {
-		return
-	}
 	if sym.info is ast.Struct {
 		if sym.language == .c && sym.cname.starts_with('C__') && !sym.info.is_anon {
+			// Empty `struct C.Foo {}` decls without a backing header (e.g. translated
+			// code) get no struct typedef from `write_types`. Without a file-scope
+			// forward decl, each prototype's `struct Foo*` introduces a prototype-
+			// scoped tag, and clang rejects pairs of decls as `conflicting types`.
 			c_struct_name := sym.cname[3..]
 			if c_struct_name != 'va_list' {
 				if sym.info.is_typedef {
@@ -741,7 +742,7 @@ fn (mut g Gen) ensure_extern_sig_type_decl(typ_ ast.Type) {
 					g.typedefs.writeln('struct ${c_struct_name};')
 				}
 			}
-		} else {
+		} else if sym.idx !in g.table.used_features.used_syms {
 			g.typedefs.writeln('typedef struct ${sym.cname} ${sym.cname};')
 		}
 	}
@@ -912,6 +913,10 @@ fn (mut g Gen) fn_decl(node ast.FnDecl) {
 		if g.pref.skip_unused {
 			g.ensure_extern_sig_type_decls(node)
 		}
+	} else if g.pref.skip_unused && node.no_body && node.language == .v {
+		// Body-less V fns (e.g. `@[c: 'NAME'] fn foo()`) emit a forward decl whose
+		// signature may reference opaque C structs that `write_types` skips.
+		g.ensure_extern_sig_type_decls(node)
 	}
 
 	g.gen_attrs(node.attrs)

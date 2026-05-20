@@ -1561,6 +1561,10 @@ fn (mut w Walker) fn_decl_with_concrete_types(mut node ast.FnDecl, concrete_type
 	}
 	if node.no_body {
 		w.mark_fn_as_used(fkey)
+		// The forward decl emitted by cgen references these types; without
+		// marking them, `-skip_unused` strips their typedefs and the C compiler
+		// fails with `unknown type name` for body-less V fns mapped to C symbols.
+		w.mark_fn_ret_and_params(node.return_type, node.params)
 		return
 	}
 	if node.is_method {
