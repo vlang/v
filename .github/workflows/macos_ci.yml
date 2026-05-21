@@ -36,7 +36,7 @@ jobs:
     steps:
       - uses: actions/checkout@v6
       - name: Cache Homebrew downloads
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: ~/Library/Caches/Homebrew
           key: brew-${{ matrix.os }}-${{ hashFiles('.github/workflows/macos_ci.yml', 'ci/macos_ci.vsh') }}
@@ -84,8 +84,9 @@ jobs:
       ##        run: v run ci/macos_ci.vsh v_self_compilation_usecache
       - name: V self compilation with -parallel-cc
         run: v run ci/macos_ci.vsh v_self_compilation_parallel_cc
-      ##- name: v2 test suite
-      ##  run: bash cmd/v2/test_all.sh
+      - name: v2 test suite
+        if: ${{ false }} # Temporarily disabled.
+        run: v run cmd/v2/test_all.vsh -prod
       - name: Test password input
         run: v run ci/macos_ci.vsh test_password_input
       - name: Test readline

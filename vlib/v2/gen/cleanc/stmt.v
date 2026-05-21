@@ -10,6 +10,18 @@ import v2.types
 
 fn (mut g Gen) set_file_module(file ast.File) {
 	g.cur_file_name = file.name
+	g.cur_import_modules.clear()
+	for imp in file.imports {
+		mod_name := if imp.name.contains('.') { imp.name.all_after_last('.') } else { imp.name }
+		if imp.alias != '' {
+			g.cur_import_modules[imp.alias] = mod_name
+		}
+		if !imp.is_aliased && mod_name != '' {
+			g.cur_import_modules[mod_name] = mod_name
+		}
+	}
+	g.is_module_ident_cache.clear()
+	g.resolved_module_names.clear()
 	for stmt in file.stmts {
 		if stmt is ast.ModuleStmt {
 			g.cur_module = stmt.name.replace('.', '_')
@@ -174,6 +186,9 @@ fn (mut g Gen) gen_stmt(node ast.Stmt) {
 				if (expr_type == '' || expr_type == 'int') && expr is ast.Ident {
 					expr_type = g.get_local_var_c_type(expr.name) or { expr_type }
 				}
+				if (expr_type == '' || expr_type == 'int') && expr is ast.CallExpr {
+					expr_type = g.get_call_return_type(expr.lhs, expr.args) or { expr_type }
+				}
 				value_type := option_value_type(g.cur_fn_ret_type)
 				if expr is ast.Ident && expr.name == 'err' {
 					g.sb.write_string('return (${g.cur_fn_ret_type}){ .is_error=true, .err=')
@@ -221,6 +236,12 @@ fn (mut g Gen) gen_stmt(node ast.Stmt) {
 					return
 				}
 				if value_type in g.tuple_aliases {
+					if node.exprs.len == 1 && expr_type == value_type && node.exprs[0] !is ast.Tuple {
+						g.sb.write_string('return ({ ${g.cur_fn_ret_type} _opt = (${g.cur_fn_ret_type}){ .state = 2 }; ${value_type} _val = ')
+						g.expr(expr)
+						g.sb.writeln('; _option_ok(&_val, (_option*)&_opt, sizeof(_val)); _opt; });')
+						return
+					}
 					field_types := g.tuple_aliases[value_type]
 					mut tuple_exprs := shallow_copy_exprs(node.exprs)
 					if node.exprs.len == 1 && node.exprs[0] is ast.Tuple {
@@ -270,7 +291,7 @@ fn (mut g Gen) gen_stmt(node ast.Stmt) {
 					g.sb.writeln(' };')
 					return
 				}
-				value_type := g.result_value_type(g.cur_fn_ret_type)
+				value_type := g.result_value_c_type(g.cur_fn_ret_type)
 				if value_type in g.tuple_aliases && node.exprs.len > 1 {
 					field_types := g.tuple_aliases[value_type]
 					g.sb.write_string('return ({ ${g.cur_fn_ret_type} _res = (${g.cur_fn_ret_type}){0}; ${value_type} _val = (${value_type}){')

@@ -37,7 +37,7 @@ jobs:
         uses: ./.github/actions/cache-apt-packages-action
       - name: Cache Homebrew downloads
         if: runner.os == 'macOS'
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: ~/Library/Caches/Homebrew
           key: brew-${{ matrix.os }}-vsl-${{ hashFiles('.github/workflows/vsl_and_vtl_compile_ci.yml') }}
@@ -85,7 +85,7 @@ jobs:
         uses: ./.github/actions/cache-apt-packages-action
       - name: Cache Homebrew downloads
         if: runner.os == 'macOS'
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: ~/Library/Caches/Homebrew
           key: brew-${{ matrix.os }}-vtl-${{ hashFiles('.github/workflows/vsl_and_vtl_compile_ci.yml') }}

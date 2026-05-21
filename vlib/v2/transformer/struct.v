@@ -1442,6 +1442,9 @@ fn (mut t Transformer) add_missing_struct_field_defaults(struct_name string, fie
 			}
 			continue
 		}
+		if t.is_pointer_type(struct_field.typ) {
+			continue
+		}
 		field_type := t.unwrap_alias_and_pointer_type(struct_field.typ)
 		if field_type is types.Map {
 			if struct_name.contains('Scope') || struct_name.contains('Env') {
@@ -1512,6 +1515,9 @@ fn (mut t Transformer) add_missing_struct_field_defaults(struct_name string, fie
 					name:  struct_field.name
 					value: t.transform_struct_field_default_expr(emb_struct_name, resolved_default)
 				}
+				continue
+			}
+			if t.is_pointer_type(struct_field.typ) {
 				continue
 			}
 			field_type := t.unwrap_alias_and_pointer_type(struct_field.typ)

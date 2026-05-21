@@ -119,6 +119,7 @@ mut:
 	options_pos_forward                  int               // insertion point to forward
 	options_forward                      []string          // to forward
 	options                              map[string]string // to avoid duplicates
+	emitted_extern_sig_typedefs          map[int]bool      // type idx → already-emitted forward typedef (for C extern decls)
 	results_forward                      []string          // to forward
 	results                              map[string]string // to avoid duplicates
 	done_options                         shared []string   // to avoid duplicates
@@ -322,9 +323,10 @@ mut:
 	is_builtin_overflow_mod bool
 	do_int_overflow_checks  bool // outside a `@[ignore_overflow] fn abc() {}` or a function in `builtin.overflow`
 	//
-	tid              string // the thread id of the file processor in the thread pool (log it to debug issues in parallel cgen)
-	fid              int    // the index of ast.File that is currently processed (log it to debug issues in parallel cgen)
-	mods_with_c_libs map[string]bool
+	tid                  string // the thread id of the file processor in the thread pool (log it to debug issues in parallel cgen)
+	fid                  int    // the index of ast.File that is currently processed (log it to debug issues in parallel cgen)
+	mods_with_c_libs     map[string]bool
+	mods_with_c_includes map[string]bool
 }
 
 @[heap]
@@ -440,8 +442,13 @@ pub fn gen(files []&ast.File, mut table ast.Table, pref_ &pref.Preferences) GenO
 			continue
 		}
 		for stmt in file.stmts {
-			if stmt is ast.HashStmt && stmt.kind == 'flag' && stmt.main.contains('-l') {
-				global_g.mods_with_c_libs[file.mod.name] = true
+			if stmt is ast.HashStmt {
+				if stmt.kind == 'flag' && stmt.main.contains('-l') {
+					global_g.mods_with_c_libs[file.mod.name] = true
+				}
+				if stmt.kind in ['include', 'preinclude'] {
+					global_g.mods_with_c_includes[file.mod.name] = true
+				}
 			}
 		}
 	}

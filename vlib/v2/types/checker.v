@@ -506,6 +506,34 @@ fn empty_thread() Thread {
 	}
 }
 
+fn comptime_method_info_type() Type {
+	return Type(Struct{
+		name:   '__method_info'
+		fields: [
+			Field{
+				name: 'name'
+				typ:  Type(string_)
+			},
+			Field{
+				name: 'attrs'
+				typ:  Type(Array{
+					elem_type: Type(string_)
+				})
+			},
+			Field{
+				name: 'location'
+				typ:  Type(string_)
+			},
+			Field{
+				name: 'return_type'
+				typ:  Type(Struct{
+					name: '__type_info'
+				})
+			},
+		]
+	})
+}
+
 fn fn_with_return_type(fn_type FnType, return_type Type) FnType {
 	return FnType{
 		generic_params: fn_type.generic_params
@@ -562,7 +590,7 @@ fn (mut c Checker) register_imported_symbols(files []ast.File) {
 	builtin_scope := c.get_module_scope('builtin', universe)
 	for file in files {
 		mut file_scope := c.get_module_scope(file.mod, builtin_scope)
-		for imp in file.imports {
+		for imp in c.active_file_imports(file) {
 			if imp.symbols.len == 0 {
 				continue
 			}
@@ -580,6 +608,45 @@ fn (mut c Checker) register_imported_symbols(files []ast.File) {
 				}
 			}
 		}
+	}
+}
+
+fn (mut c Checker) active_file_imports(file ast.File) []ast.ImportStmt {
+	mut imports := file.imports.clone()
+	c.collect_active_imports_from_stmts(file.stmts, mut imports)
+	return imports
+}
+
+fn (mut c Checker) collect_active_imports_from_stmts(stmts []ast.Stmt, mut imports []ast.ImportStmt) {
+	for stmt in stmts {
+		match stmt {
+			ast.ImportStmt {
+				imports << stmt
+			}
+			ast.ExprStmt {
+				if stmt.expr is ast.ComptimeExpr && stmt.expr.expr is ast.IfExpr {
+					c.collect_active_imports_from_if_expr(stmt.expr.expr, mut imports)
+				}
+			}
+			else {}
+		}
+	}
+}
+
+fn (mut c Checker) collect_active_imports_from_if_expr(node ast.IfExpr, mut imports []ast.ImportStmt) {
+	if c.eval_comptime_cond(node.cond) {
+		c.collect_active_imports_from_stmts(node.stmts, mut imports)
+		return
+	}
+	match node.else_expr {
+		ast.IfExpr {
+			if node.else_expr.cond is ast.EmptyExpr {
+				c.collect_active_imports_from_stmts(node.else_expr.stmts, mut imports)
+			} else {
+				c.collect_active_imports_from_if_expr(node.else_expr, mut imports)
+			}
+		}
+		else {}
 	}
 }
 
@@ -644,7 +711,7 @@ pub fn (mut c Checker) preregister_scopes(file ast.File) {
 		scope: c.get_module_scope(file.mod, builtin_scope)
 	})
 	// add imports
-	for imp in file.imports {
+	for imp in c.active_file_imports(file) {
 		mod := if imp.is_aliased { imp.name.all_after_last('.') } else { imp.alias }
 		c.scope.insert(imp.alias, Module{ name: mod, scope: c.get_module_scope(mod, builtin_scope) })
 	}
@@ -692,6 +759,7 @@ fn (mut c Checker) preregister_all_types(files []ast.File) {
 	for file in files {
 		c.preregister_types(file)
 	}
+	c.register_imported_symbols(files)
 	c.process_pending_struct_decls()
 	c.process_pending_type_decls()
 	c.process_pending_interface_decls()
@@ -824,14 +892,11 @@ fn (mut c Checker) decl(decl ast.Stmt) {
 			}
 		}
 		ast.EnumDecl {
-			// TODO: if non builtin types can be used as part of
-			// the expr then these will need to get delayed also.
+			// Enum field value expressions are checked after all module
+			// types are pre-registered, so imported enum references like
+			// `http.Status.found` can resolve.
 			mut fields := []Field{}
 			for field in decl.fields {
-				// Type-check enum field value expressions
-				if field.value !is ast.EmptyExpr {
-					c.expr(field.value)
-				}
 				fields << Field{
 					name: field.name
 				}
@@ -1524,6 +1589,10 @@ fn (mut c Checker) or_expr(expr ast.OrExpr) Type {
 
 			// last stmt expr does does not return a type
 			// None is always valid in or-blocks (propagates the error)
+			if cond is ast.SqlExpr && expr_stmt_type !is Void && expr_stmt_type !is None
+				&& (cond_type is Void || !c.check_types(cond_type, expr_stmt_type)) {
+				return expr_stmt_type
+			}
 			if expr_stmt_type !is Void && expr_stmt_type !is None
 				&& !c.check_types(cond_type, expr_stmt_type) {
 				c.error_with_pos('or expr expecting ${cond_type.name()}, got ${expr_stmt_type.name()}',
@@ -1787,6 +1856,23 @@ fn (mut c Checker) expr_impl(expr ast.Expr) Type {
 				return embed_file_helper_type()
 			}
 			if cexpr is ast.CallExpr {
+				if cexpr.lhs is ast.SelectorExpr {
+					call_lhs := cexpr.lhs as ast.SelectorExpr
+					if call_lhs.lhs is ast.Ident {
+						mod_ident := call_lhs.lhs as ast.Ident
+						if mod_ident.name == 'veb' && call_lhs.rhs.name == 'html' {
+							for arg in cexpr.args {
+								c.expr(arg)
+							}
+							if typ := c.lookup_type_in_module('veb', 'Result') {
+								return typ
+							}
+							return Type(Struct{
+								name: 'veb__Result'
+							})
+						}
+					}
+				}
 				// Handle $d(name, default_value) — returns default value's type
 				if cexpr.lhs is ast.Ident && cexpr.lhs.name == 'd' && cexpr.args.len == 2 {
 					return c.expr(cexpr.args[1])
@@ -1879,6 +1965,11 @@ fn (mut c Checker) expr_impl(expr ast.Expr) Type {
 			typ := c.expr(expr.expr)
 			// The `!` operator (error propagation) unwraps result/option types
 			if expr.op == .not {
+				if typ is FnType {
+					if ret_type := typ.return_type {
+						return ret_type.unwrap()
+					}
+				}
 				return typ.unwrap()
 			}
 			return typ
@@ -1895,6 +1986,32 @@ fn (mut c Checker) expr_impl(expr ast.Expr) Type {
 		}
 		ast.SelectExpr {
 			c.stmt_list(expr.stmts)
+		}
+		ast.SqlExpr {
+			c.expr(expr.expr)
+			if expr.is_create {
+				return ResultType{
+					base_type: Type(void_)
+				}
+			}
+			if expr.is_count {
+				return Type(int_)
+			}
+			if expr.table_name != '' {
+				table_type := c.type_expr(ast.Ident{
+					name: expr.table_name
+					pos:  expr.pos
+				})
+				return Type(Array{
+					elem_type: table_type
+				})
+			}
+			if exp_type := c.expected_type {
+				return exp_type
+			}
+			return ResultType{
+				base_type: Type(void_)
+			}
 		}
 		ast.SelectorExpr {
 			// enum value: `.green`
@@ -2001,16 +2118,17 @@ fn (mut c Checker) type_expr(expr ast.Expr) Type {
 			if typ := c.lookup_type_in_scope_chain(resolved.name) {
 				return typ
 			}
+			if typ := c.lookup_type_in_imported_modules(resolved.name) {
+				return typ
+			}
 		}
 		ast.SelectorExpr {
-			if resolved.lhs is ast.Ident {
-				lhs_obj := c.ident(resolved.lhs)
-				if lhs_obj is Module {
-					if rhs_obj := lhs_obj.scope.lookup_parent(resolved.rhs.name, 0) {
-						if rhs_obj is Type {
-							return rhs_obj
-						}
-					}
+			parts := selector_expr_parts(resolved)
+			if parts.len >= 2 {
+				module_alias := parts[parts.len - 2]
+				type_name := parts[parts.len - 1]
+				if typ := c.lookup_type_in_module(module_alias, type_name) {
+					return typ
 				}
 			}
 		}
@@ -2024,6 +2142,82 @@ fn (mut c Checker) type_expr(expr ast.Expr) Type {
 	}
 
 	return c.expr(resolved)
+}
+
+fn (mut c Checker) lookup_type_in_module(module_alias string, type_name string) ?Type {
+	if module_obj := c.scope.lookup_parent(module_alias, 0) {
+		if module_obj is Module {
+			if rhs_obj := module_obj.scope.lookup_parent(type_name, 0) {
+				if rhs_obj is Type {
+					return rhs_obj
+				}
+			}
+		}
+	}
+	mut found := Type(void_)
+	mut ok := false
+	lock c.env.scopes {
+		if module_alias in c.env.scopes {
+			mod_scope := unsafe { c.env.scopes[module_alias] }
+			if rhs_obj := mod_scope.lookup_parent(type_name, 0) {
+				if rhs_obj is Type {
+					found = rhs_obj
+					ok = true
+				}
+			}
+		}
+	}
+	if ok {
+		return found
+	}
+	return none
+}
+
+fn (mut c Checker) lookup_type_in_imported_modules(type_name string) ?Type {
+	for _, obj in c.scope.objects {
+		match obj {
+			Module {
+				if rhs_obj := obj.scope.lookup_parent(type_name, 0) {
+					if rhs_obj is Type {
+						return rhs_obj
+					}
+				}
+				if obj.name == '' {
+					continue
+				}
+				if typ := c.lookup_type_in_module(obj.name, type_name) {
+					return typ
+				}
+			}
+			else {}
+		}
+	}
+	return none
+}
+
+fn selector_expr_parts(expr ast.SelectorExpr) []string {
+	mut parts := []string{}
+	collect_selector_expr_parts(ast.Expr(expr), mut parts)
+	return parts
+}
+
+fn collect_selector_expr_parts(expr ast.Expr, mut parts []string) bool {
+	match expr {
+		ast.Ident {
+			parts << expr.name
+			return true
+		}
+		ast.SelectorExpr {
+			if !collect_selector_expr_parts(expr.lhs, mut parts) {
+				return false
+			}
+			parts << expr.rhs.name
+			return true
+		}
+		else {
+			return false
+		}
+	}
 }
 
 fn (mut c Checker) type_node_expr(type_expr ast.Type) Type {
@@ -2502,6 +2696,7 @@ fn (mut c Checker) process_pending_struct_decls() {
 				name:         field.name
 				typ:          field_typ
 				default_expr: field.value
+				attributes:   field.attributes
 			}
 		}
 		mut embedded := []Struct{}
@@ -2869,8 +3064,13 @@ fn (mut c Checker) assign_stmt(stmt ast.AssignStmt, unwrap_optional bool) {
 		if unwrap_optional {
 			expr_type = expr_type.unwrap()
 		}
-		if rhs_type is Tuple {
-			expr_type = rhs_type.types[i]
+		if expr_type is Tuple {
+			expr_type = expr_type.types[i]
+		}
+		if expr_type is Void {
+			if fallback_type := c.sql_or_fallback_type(rx) {
+				expr_type = fallback_type
+			}
 		}
 		// promote untyped literals
 		expr_type = expr_type.typed_default()
@@ -2952,6 +3152,26 @@ fn (mut c Checker) assign_stmt(stmt ast.AssignStmt, unwrap_optional bool) {
 			}
 		}
 	}
+}
+
+fn (mut c Checker) sql_or_fallback_type(expr ast.Expr) ?Type {
+	if expr !is ast.OrExpr {
+		return none
+	}
+	or_expr := expr as ast.OrExpr
+	if or_expr.expr !is ast.SqlExpr {
+		return none
+	}
+	last_expr_idx := trailing_expr_stmt_index(or_expr.stmts)
+	if last_expr_idx < 0 {
+		return none
+	}
+	last_stmt := or_expr.stmts[last_expr_idx] as ast.ExprStmt
+	fallback_type := c.expr(last_stmt.expr).unwrap()
+	if fallback_type is Void || fallback_type is None {
+		return none
+	}
+	return fallback_type
 }
 
 // TODO:
@@ -3195,6 +3415,7 @@ fn (mut c Checker) fn_decl(decl ast.FnDecl) {
 			prev_scope.insert(decl.name, *obj)
 		}
 	}
+	c.maybe_insert_implicit_veb_context(fn_typ)
 	fn_scope := c.scope
 	scope_fn_name := if decl.is_method {
 		// Get receiver type name for method scope key.
@@ -3236,6 +3457,20 @@ fn (mut c Checker) fn_decl(decl ast.FnDecl) {
 		c.check_pending_fn_body(pending)
 	}
 	c.close_scope()
+}
+
+fn (mut c Checker) maybe_insert_implicit_veb_context(fn_typ FnType) {
+	if _ := c.scope.lookup('ctx') {
+		return
+	}
+	ret_type := fn_typ.return_type or { return }
+	if ret_type.name() !in ['veb__Result', 'veb.Result', 'Result'] {
+		return
+	}
+	ctx_type := c.lookup_type_in_scope_chain('Context') or { return }
+	c.scope.insert('ctx', object_from_type(Type(Pointer{
+		base_type: ctx_type
+	})))
 }
 
 // eval_comptime_cond evaluates a compile-time condition expression
@@ -3294,8 +3529,32 @@ fn (c &Checker) eval_comptime_flag(name string) bool {
 			}
 			return false
 		}
+		'bsd' {
+			$if macos || freebsd || openbsd || netbsd || dragonfly {
+				return true
+			}
+			return false
+		}
 		'freebsd' {
 			$if freebsd {
+				return true
+			}
+			return false
+		}
+		'openbsd' {
+			$if openbsd {
+				return true
+			}
+			return false
+		}
+		'netbsd' {
+			$if netbsd {
+				return true
+			}
+			return false
+		}
+		'dragonfly' {
+			$if dragonfly {
 				return true
 			}
 			return false
@@ -3502,7 +3761,7 @@ fn (mut c Checker) match_expr(expr ast.MatchExpr, used_as_expr bool) Type {
 		for cond in branch.cond {
 			expr_unwrapped := c.unwrap_ident(expr.expr)
 			cond_type := c.expr(cond)
-			if cond is ast.Ident || cond is ast.SelectorExpr {
+			if cond is ast.Ident || cond is ast.SelectorExpr || cond is ast.Type {
 				// `.value` enum value (without type)
 				if cond is ast.SelectorExpr && cond.lhs is ast.EmptyExpr {
 					continue
@@ -3610,6 +3869,7 @@ fn (mut c Checker) instantiate_generic_struct(base Struct, args []ast.Expr) Type
 			typ:          c.substitute_generic_type_with_stack(field.typ, generic_type_map,
 				substitution_stack)
 			default_expr: field.default_expr
+			attributes:   field.attributes
 		}
 	}
 	mut embedded := []Struct{cap: actual_base.embedded.len}
@@ -3626,6 +3886,7 @@ fn (mut c Checker) instantiate_generic_struct(base Struct, args []ast.Expr) Type
 				name:         field.name
 				typ:          fixed
 				default_expr: field.default_expr
+				attributes:   field.attributes
 			}
 		}
 	}
@@ -3663,6 +3924,7 @@ fn (mut c Checker) substitute_struct_generic_type_with_stack(st Struct, generic_
 			typ:          c.substitute_generic_type_with_stack(field.typ, generic_type_map,
 				next_stack)
 			default_expr: field.default_expr
+			attributes:   field.attributes
 		}
 	}
 	mut embedded := []Struct{cap: st.embedded.len}
@@ -4123,6 +4385,20 @@ fn (mut c Checker) infer_generic_type(param_type Type, arg_type Type, mut type_m
 
 fn (mut c Checker) call_expr(expr ast.CallExpr) Type {
 	lhs_expr := c.resolve_expr(expr.lhs)
+	if lhs_expr is ast.SelectorExpr {
+		if lhs_expr.lhs is ast.Ident {
+			lhs_ident := lhs_expr.lhs as ast.Ident
+			if lhs_ident.name == 'json' && lhs_expr.rhs.name == 'decode' && expr.args.len >= 2 {
+				decode_type := c.type_expr(expr.args[0])
+				for arg in expr.args[1..] {
+					c.expr(arg)
+				}
+				return ResultType{
+					base_type: decode_type
+				}
+			}
+		}
+	}
 	if lhs_expr is ast.Ident {
 		match lhs_expr.name {
 			'env' {
@@ -4288,11 +4564,8 @@ fn (mut c Checker) call_expr(expr ast.CallExpr) Type {
 		// compiler magic, call_expr & selector expr both end up needing information which
 		// the other one has
 		if lhs_expr is ast.SelectorExpr {
-			if lhs_expr.rhs.name in ['filter', 'map', 'any', 'all'] {
-				if rt := fn_.return_type {
-					// c.log('#### it variable inserted')
-					// fn_.scope.insert('it', rt)
-					it_type := rt.value_type()
+			if lhs_expr.rhs.name in ['filter', 'map', 'any', 'all', 'count'] {
+				if it_type := c.array_magic_it_type(lhs_expr.lhs) {
 					it_obj := object_from_type(it_type)
 					c.scope.objects['it'] = it_obj
 				}
@@ -4309,13 +4582,13 @@ fn (mut c Checker) call_expr(expr ast.CallExpr) Type {
 		// Type-check call arguments with parameter context so shorthand enum
 		// selectors like `.assign` resolve against the callee parameter type.
 		// Skip sort/sorted comparator sugar because that lambda form is lowered later.
-		// Skip map/filter/any/all calls: their body was already typechecked at line 2803
+		// Skip map/filter/any/all/count calls: their body was already typechecked at line 2803
 		// above with the correct 'it' scope. Re-typechecking here would use a stale scope
 		// (inner maps may have overwritten 'it') and corrupt position-based type info.
 		is_sort_cmp_call := lhs_expr is ast.SelectorExpr && lhs_expr.rhs.name in ['sort', 'sorted']
 			&& expr.args.len == 1
 		is_array_magic_call := lhs_expr is ast.SelectorExpr
-			&& lhs_expr.rhs.name in ['map', 'filter', 'any', 'all']
+			&& lhs_expr.rhs.name in ['map', 'filter', 'any', 'all', 'count']
 		if fn_.generic_params.len == 0 && !is_sort_cmp_call && !is_array_magic_call {
 			prev_expected := c.expected_type
 			for i, arg in expr.args {
@@ -4399,6 +4672,21 @@ fn (mut c Checker) call_expr(expr ast.CallExpr) Type {
 	}
 
 	c.error_with_pos('call on non fn: ${fn_.name()}', expr.pos)
+}
+
+fn (mut c Checker) array_magic_it_type(receiver ast.Expr) ?Type {
+	receiver_type := c.expr(receiver).base_type()
+	match receiver_type {
+		Array {
+			return receiver_type.elem_type
+		}
+		ArrayFixed {
+			return receiver_type.elem_type
+		}
+		else {
+			return none
+		}
+	}
 }
 
 fn (mut c Checker) call_expr_cast_target(lhs_expr ast.Expr) ?Type {
@@ -4594,6 +4882,10 @@ fn (mut c Checker) ident(ident ast.Ident) Object {
 							name: 'name'
 							typ:  Type(string_)
 						},
+						Field{
+							name: 'idx'
+							typ:  Type(int_)
+						},
 					]
 				})
 			})
@@ -4739,6 +5031,18 @@ fn (mut c Checker) selector_expr(expr ast.SelectorExpr) Type {
 	// else {
 	// 	panic('unexpected expr.lhs: ${expr.lhs.type_name()}')
 	// }
+	if expr.lhs is ast.SelectorExpr {
+		parts := selector_expr_parts(expr.lhs)
+		if parts.len >= 2 {
+			module_alias := parts[parts.len - 2]
+			type_name := parts[parts.len - 1]
+			if lhs_type := c.lookup_type_in_module(module_alias, type_name) {
+				if field_or_method_type := c.find_field_or_method(lhs_type, expr.rhs.name) {
+					return field_or_method_type
+				}
+			}
+		}
+	}
 	// TODO: this will be removed
 	// unset when checking lhs, only needed for rightmost selector
 	expecting_method := c.expecting_method
@@ -4822,6 +5126,11 @@ fn (mut c Checker) find_field_or_method(t Type, raw_name string) !Type {
 			return method
 		}
 	}
+	if name == 'methods' && !type_has_direct_field(t, name) {
+		return Array{
+			elem_type: comptime_method_info_type()
+		}
+	}
 	match t {
 		Alias {
 			al := t as Alias
@@ -4877,6 +5186,9 @@ fn (mut c Checker) find_field_or_method(t Type, raw_name string) !Type {
 			if name in ['any', 'all'] {
 				return fn_with_return_type(empty_fn_type(), Type(arr_type))
 			}
+			if name == 'count' {
+				return fn_with_return_type(empty_fn_type(), Type(int_))
+			}
 			if name in ['sort', 'sort_with_compare', 'reverse_in_place'] {
 				return fn_with_return_type(empty_fn_type(), Type(void_))
 			}
@@ -4922,6 +5234,8 @@ fn (mut c Checker) find_field_or_method(t Type, raw_name string) !Type {
 				return int_
 			} else if name in ['any', 'all', 'contains'] {
 				return fn_with_return_type(empty_fn_type(), bool_)
+			} else if name == 'count' {
+				return fn_with_return_type(empty_fn_type(), int_)
 			} else if name == 'index' {
 				return fn_with_return_type(empty_fn_type(), int_)
 			} else if name in ['sort', 'sort_with_compare', 'reverse_in_place'] {
@@ -5350,6 +5664,24 @@ fn (c &Checker) lookup_method_direct(t Type, name string) ?Type {
 		}
 	}
 	return none
+}
+
+fn type_has_direct_field(t Type, name string) bool {
+	match t {
+		Struct {
+			for field in t.fields {
+				if field.name == name {
+					return true
+				}
+			}
+		}
+		Pointer {
+			return type_has_direct_field(t.base_type, name)
+		}
+		else {}
+	}
+
+	return false
 }
 
 fn (mut c Checker) find_builtin_ptr_helper_method(name string) ?Type {

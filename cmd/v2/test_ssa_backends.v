@@ -90,6 +90,13 @@ fn main() {
 		// Run v2 with selected backend
 		println('[*] Running v2 -backend ${backend} ${input_file}...')
 		mut backend_flags := '-gc none -backend ${backend}'
+		if backend == 'arm64' {
+			if os.args.contains('-prod') {
+				backend_flags += ' -prod'
+			} else if os.args.contains('-O0') {
+				backend_flags += ' -O0'
+			}
+		}
 		if backend == 'cleanc' {
 			// cleanc needs full per-run codegen for this suite right now.
 			backend_flags += ' -nomarkused -nocache'

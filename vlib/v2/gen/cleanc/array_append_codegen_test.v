@@ -1,4 +1,4 @@
-// vtest build: !linux && !windows
+// vtest build: macos
 module cleanc
 
 import os
@@ -50,4 +50,87 @@ fn main() {
 ')
 	assert csrc.contains('array__push_many(')
 	assert !csrc.contains('&(u8[1]){new_array_from_c_array(')
+}
+
+fn test_generate_c_uses_push_many_for_local_array_append() {
+	csrc := generate_array_append_c_for_test('
+fn source() []u8 {
+	return [u8(1), 2]
+}
+
+fn main() {
+	mut dst := []u8{}
+	src := source()
+	dst << src
+}
+')
+	assert csrc.contains('array__push_many(')
+	assert !csrc.contains('&(u8[1]){src}')
+}
+
+fn test_generate_c_uses_push_many_for_fn_pointer_array_return_append() {
+	csrc := generate_array_append_c_for_test('
+fn source(data []u8) []u8 {
+	return data
+}
+
+fn consume(hash_func fn ([]u8) []u8) {
+	mut dst := []u8{}
+	src := hash_func(dst)
+	dst << src
+}
+
+fn main() {
+	consume(source)
+}
+')
+	assert csrc.contains('array__push_many(')
+	assert !csrc.contains('&(u8[1]){src}')
+}
+
+fn test_generate_c_keeps_bitwise_or_inside_array_append_value() {
+	csrc := generate_array_append_c_for_test('
+fn main() {
+	mut bytes := []u8{}
+	n1 := u8(1)
+	n0 := u8(2)
+	bytes << (n1 << 4) | n0
+}
+')
+	assert csrc.contains('array__push(')
+	assert csrc.contains('| n0')
+	assert !csrc.contains('}) | n0')
+}
+
+fn test_generate_c_indexes_local_array_that_shadows_function_name() {
+	csrc := generate_array_append_c_for_test('
+fn bytes() []u8 {
+	return []u8{}
+}
+
+fn main() {
+	mut bytes := [u8(1)]
+	bytes[0] &= u8(3)
+}
+')
+	assert csrc.contains('((u8*)bytes.data)[((int)(0))] &= ((u8)(3));')
+	assert !csrc.contains('bytes &= ((u8)(3));')
+}
+
+fn test_generate_c_uses_typed_zero_for_array_tuple_if_declarations() {
+	csrc := generate_array_append_c_for_test('
+fn pick(operand_a []u64, operand_b []u64) {
+	mut a, mut b := if operand_a.len >= operand_b.len {
+		operand_a, operand_b
+	} else {
+		operand_b, operand_a
+	}
+	_ = a
+	_ = b
+}
+')
+	assert csrc.contains('Array_u64 a = ((Array_u64){0});')
+	assert csrc.contains('Array_u64 b = ((Array_u64){0});')
+	assert !csrc.contains('Array_u64 a = 0;')
+	assert !csrc.contains('Array_u64 b = 0;')
 }

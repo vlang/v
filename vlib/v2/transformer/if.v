@@ -1171,8 +1171,32 @@ fn (t &Transformer) eval_comptime_flag(name string) bool {
 			}
 			return false
 		}
+		'bsd' {
+			$if macos || freebsd || openbsd || netbsd || dragonfly {
+				return true
+			}
+			return false
+		}
 		'freebsd' {
 			$if freebsd {
+				return true
+			}
+			return false
+		}
+		'openbsd' {
+			$if openbsd {
+				return true
+			}
+			return false
+		}
+		'netbsd' {
+			$if netbsd {
+				return true
+			}
+			return false
+		}
+		'dragonfly' {
+			$if dragonfly {
 				return true
 			}
 			return false

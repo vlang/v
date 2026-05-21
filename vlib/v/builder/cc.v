@@ -840,7 +840,9 @@ fn (mut v Builder) setup_ccompiler_options(ccompiler string) {
 				ccoptions.args << 'dynamic_lookup'
 			}
 		}
-		if v.pref.os == .windows && ccoptions.cc != .msvc {
+		if v.pref.os == .windows && ccoptions.cc !in [.msvc, .tcc] {
+			// tcc on Windows lacks `--out-implib` and `--export-all-symbols` support, so
+			// hot-reload examples skip the host-symbol export plumbing under tcc.
 			host_import_lib := v.tcc_quoted_path(live_windows_import_lib_path(v.pref.path))
 			if v.pref.is_livemain {
 				// Re-export host graphics/backend symbols so the live-reload DLL can reuse them.

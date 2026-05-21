@@ -5,7 +5,72 @@
 module cleanc
 
 import v2.ast
+import v2.token
 import v2.types
+
+fn is_zero_number_expr(expr ast.Expr) bool {
+	return expr is ast.BasicLiteral && expr.kind == .number && expr.value == '0'
+}
+
+fn (g &Gen) c_type_needs_typed_zero_expr(typ string) bool {
+	t := typ.trim_space()
+	if t == '' || t in primitive_types || t.ends_with('*') || g.is_enum_type(t) {
+		return false
+	}
+	if t in ['void*', 'char*', 'u8*', 'byteptr', 'charptr', 'voidptr'] {
+		return false
+	}
+	return true
+}
+
+fn (mut g Gen) gen_overloaded_compound_assign(lhs ast.Expr, rhs ast.Expr, op token.Token) bool {
+	if lhs !is ast.Ident {
+		return false
+	}
+	lhs_ident := lhs as ast.Ident
+	op_name := match op {
+		.plus_assign { 'plus' }
+		.minus_assign { 'minus' }
+		.mul_assign { 'mul' }
+		.div_assign { 'div' }
+		.mod_assign { 'mod' }
+		else { '' }
+	}
+
+	if op_name == '' {
+		return false
+	}
+	mut lhs_type := g.get_expr_type(lhs)
+	if local_type := g.get_local_var_c_type(lhs_ident.name) {
+		lhs_type = local_type
+	}
+	if lhs_type == '' || lhs_type in primitive_types || lhs_type == 'string'
+		|| lhs_type.ends_with('*') || lhs_type.ends_with('ptr') {
+		return false
+	}
+	mut rhs_type := g.get_expr_type(rhs)
+	if rhs is ast.Ident {
+		rhs_ident := rhs as ast.Ident
+		if local_type := g.get_local_var_c_type(rhs_ident.name) {
+			rhs_type = local_type
+		}
+	}
+	if rhs_type != '' && rhs_type != 'int' && rhs_type != lhs_type {
+		return false
+	}
+	method_fn := '${lhs_type}__${op_name}'
+	if method_fn !in g.fn_return_types && method_fn !in g.fn_param_is_ptr {
+		return false
+	}
+	g.write_indent()
+	g.expr(lhs)
+	g.sb.write_string(' = ${method_fn}(')
+	g.expr(lhs)
+	g.sb.write_string(', ')
+	g.expr(rhs)
+	g.sb.writeln(');')
+	return true
+}
 
 fn (mut g Gen) gen_assign_stmt(node ast.AssignStmt) {
 	lhs := node.lhs[0]
@@ -73,7 +138,11 @@ fn (mut g Gen) gen_assign_stmt(node ast.AssignStmt) {
 			}
 			g.write_indent()
 			g.sb.write_string('${typ} ${name} = ')
-			g.expr(rhs_expr)
+			if is_zero_number_expr(rhs_expr) && g.c_type_needs_typed_zero_expr(typ) {
+				g.sb.write_string(zero_value_for_type(typ))
+			} else {
+				g.expr(rhs_expr)
+			}
 			g.sb.writeln(';')
 			g.remember_runtime_local_type(name, typ)
 		}
@@ -364,6 +433,17 @@ fn (mut g Gen) gen_assign_stmt(node ast.AssignStmt) {
 			}
 		}
 		mut typ := g.get_expr_type(rhs)
+		mut typ_from_active_generic_init := false
+		if rhs is ast.InitExpr && g.active_generic_types.len > 0 {
+			init_type_name := rhs.typ.name()
+			if concrete := g.active_generic_types[init_type_name] {
+				concrete_type := g.types_type_to_c(concrete).trim_space()
+				if concrete_type != '' {
+					typ = concrete_type
+					typ_from_active_generic_init = true
+				}
+			}
+		}
 		// For Ident RHS referencing a struct-typed constant (e.g., `col := no_color`
 		// where no_color is `#define`d as a Color struct literal), use the const type.
 		if (typ == 'int' || typ == '') && rhs is ast.Ident {
@@ -541,8 +621,8 @@ fn (mut g Gen) gen_assign_stmt(node ast.AssignStmt) {
 				type_from_tuple_field = sel_lhs.name.starts_with('_tuple_t')
 			}
 		}
-		if !elem_type_from_array && !type_from_tuple_field && name != ''
-			&& g.cur_fn_scope != unsafe { nil } {
+		if !elem_type_from_array && !type_from_tuple_field && !typ_from_active_generic_init
+			&& name != '' && g.cur_fn_scope != unsafe { nil } {
 			if obj := g.cur_fn_scope.lookup_parent(name, 0) {
 				if obj !is types.Module {
 					obj_type := obj.typ()
@@ -878,6 +958,11 @@ fn (mut g Gen) gen_assign_stmt(node ast.AssignStmt) {
 		if typ == '' || typ == 'void' {
 			typ = 'int'
 		}
+		if name != '' && is_zero_number_expr(rhs) && g.c_type_needs_typed_zero_expr(typ) {
+			g.sb.write_string('${typ} ${name} = ${zero_value_for_type(typ)};')
+			g.remember_runtime_local_type(name, typ)
+			return
+		}
 		// Check if declaring an interface pointer initialized with a concrete type
 		if typ.ends_with('*') && name != '' {
 			decl_base := typ.trim_right('*')
@@ -1054,11 +1139,16 @@ fn (mut g Gen) gen_assign_stmt(node ast.AssignStmt) {
 				return
 			}
 		}
+		if g.gen_overloaded_compound_assign(lhs, rhs, node.op) {
+			return
+		}
 		mut lhs_needs_deref := false
 		// Only dereference for plain assignment, not compound assignments (+=, -=, etc.)
 		// For compound assignments on pointers (ptr += x), we want pointer arithmetic.
 		if node.op == .assign && lhs is ast.Ident {
-			if local_type := g.get_local_var_c_type(lhs.name) {
+			if lhs.name in g.cur_fn_mut_params {
+				lhs_needs_deref = true
+			} else if local_type := g.get_local_var_c_type(lhs.name) {
 				if local_type.ends_with('*') {
 					rhs_type := g.get_expr_type(rhs)
 					// Only dereference if we're sure the RHS is not a pointer.
@@ -1118,6 +1208,9 @@ fn (mut g Gen) gen_assign_stmt(node ast.AssignStmt) {
 					assign_lhs_type = field_type
 				}
 			}
+		}
+		if lhs_needs_deref && assign_lhs_type.ends_with('*') {
+			assign_lhs_type = assign_lhs_type[..assign_lhs_type.len - 1]
 		}
 		// When RHS is an array method (first/last/pop/pop_left), the call emission
 		// in fn.v already wraps with (*(elem_type*)call(...)). Skip the outer

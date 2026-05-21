@@ -3465,7 +3465,16 @@ fn main() {
 	}
 	print_int(sum_iter4) // 1+3+5 = 9
 
-	// 40.5 Nested for-in
+	// 40.5 While-style for with in condition
+	whitespace_loop_chars := [` `, `\t`, `\n`, `\r`]
+	whitespace_loop_text := '   x'
+	mut whitespace_loop_idx := 0
+	for whitespace_loop_text[whitespace_loop_idx] in whitespace_loop_chars {
+		whitespace_loop_idx++
+	}
+	print_int(whitespace_loop_idx) // 3
+
+	// 40.6 Nested for-in
 	arr_outer := [1, 2, 3]
 	arr_inner := [10, 20]
 	mut nested_sum := 0

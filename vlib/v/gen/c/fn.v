@@ -655,7 +655,97 @@ fn (g &Gen) should_emit_c_extern_decl(node ast.FnDecl) bool {
 	if file_has_c_includes(node.source_file) {
 		return false
 	}
-	return file_links_c_source(node.source_file) || node.mod in g.mods_with_c_libs
+	if file_links_c_source(node.source_file) {
+		return true
+	}
+	if node.mod in g.mods_with_c_libs && node.mod !in g.mods_with_c_includes {
+		return true
+	}
+	if g.pref.os == .vinix && !node.source_file.path.starts_with(g.pref.vlib) {
+		c_sym_name := node.name.after('.')
+		if c_sym_name.starts_with('__builtin_') {
+			return false
+		}
+		if c_sym_name in ['text_start', 'text_end', 'rodata_start', 'rodata_end', 'data_start',
+			'data_end', 'interrupt_thunks'] {
+			return false
+		}
+		return true
+	}
+	return false
+}
+
+fn (mut g Gen) ensure_extern_sig_type_decls(node ast.FnDecl) {
+	g.ensure_extern_sig_type_decl(node.return_type)
+	for param in node.params {
+		g.ensure_extern_sig_type_decl(param.typ)
+	}
+}
+
+fn (mut g Gen) ensure_extern_sig_type_decl(typ_ ast.Type) {
+	if typ_ == 0 {
+		return
+	}
+	typ := typ_.clear_option_and_result().set_nr_muls(0).clear_flags(.generic, .variadic)
+	if typ == 0 {
+		return
+	}
+	sym := g.table.sym(typ)
+	if sym.idx in g.emitted_extern_sig_typedefs {
+		return
+	}
+	g.emitted_extern_sig_typedefs[sym.idx] = true
+	if sym.is_builtin || sym.name in ['byte', 'i32', 'C.FILE'] {
+		return
+	}
+	match sym.info {
+		ast.FnType {
+			// A function-pointer parameter has its own params/return type, which
+			// may also reference struct types that are otherwise unreferenced in V.
+			g.ensure_extern_sig_type_decl(sym.info.func.return_type)
+			for param in sym.info.func.params {
+				g.ensure_extern_sig_type_decl(param.typ)
+			}
+			return
+		}
+		ast.Array {
+			g.ensure_extern_sig_type_decl(sym.info.elem_type)
+			return
+		}
+		ast.ArrayFixed {
+			g.ensure_extern_sig_type_decl(sym.info.elem_type)
+			return
+		}
+		ast.Map {
+			g.ensure_extern_sig_type_decl(sym.info.key_type)
+			g.ensure_extern_sig_type_decl(sym.info.value_type)
+			return
+		}
+		ast.Alias {
+			g.ensure_extern_sig_type_decl(sym.info.parent_type)
+			return
+		}
+		else {}
+	}
+
+	if sym.info is ast.Struct {
+		if sym.language == .c && sym.cname.starts_with('C__') && !sym.info.is_anon {
+			// Empty `struct C.Foo {}` decls without a backing header (e.g. translated
+			// code) get no struct typedef from `write_types`. Without a file-scope
+			// forward decl, each prototype's `struct Foo*` introduces a prototype-
+			// scoped tag, and clang rejects pairs of decls as `conflicting types`.
+			c_struct_name := sym.cname[3..]
+			if c_struct_name != 'va_list' {
+				if sym.info.is_typedef {
+					g.typedefs.writeln('typedef struct ${c_struct_name} ${c_struct_name};')
+				} else {
+					g.typedefs.writeln('struct ${c_struct_name};')
+				}
+			}
+		} else if sym.idx !in g.table.used_features.used_syms {
+			g.typedefs.writeln('typedef struct ${sym.cname} ${sym.cname};')
+		}
+	}
 }
 
 fn (mut g Gen) is_used_by_main(node ast.FnDecl) bool {
@@ -820,6 +910,13 @@ fn (mut g Gen) fn_decl(node ast.FnDecl) {
 	}
 	if node.language == .c && (node.is_c_extern || g.should_emit_c_extern_decl(node)) {
 		g.inside_c_extern = true
+		if g.pref.skip_unused {
+			g.ensure_extern_sig_type_decls(node)
+		}
+	} else if g.pref.skip_unused && node.no_body && node.language == .v {
+		// Body-less V fns (e.g. `@[c: 'NAME'] fn foo()`) emit a forward decl whose
+		// signature may reference opaque C structs that `write_types` skips.
+		g.ensure_extern_sig_type_decls(node)
 	}
 
 	g.gen_attrs(node.attrs)

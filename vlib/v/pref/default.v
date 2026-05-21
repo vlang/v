@@ -212,7 +212,7 @@ pub fn (mut p Preferences) fill_with_defaults() {
 		p.out_name = os.join_path(p.out_name, p.default_output_name(rpath))
 	}
 	npath := rpath.replace('\\', '/')
-	p.building_v = !p.is_repl && (npath.ends_with('cmd/v') || npath.ends_with('cmd/tools/vfmt.v'))
+	p.building_v = !p.is_repl && is_v_compiler_target(npath)
 	if p.os == .linux {
 		$if !linux {
 			p.parse_define('cross_compile')
@@ -313,6 +313,12 @@ pub fn (mut p Preferences) fill_with_defaults() {
 		}
 		p.no_parallel = true
 	}
+}
+
+fn is_v_compiler_target(npath string) bool {
+	target := npath.trim_right('/')
+	return target.ends_with('cmd/v') || target.ends_with('cmd/v/v.v') || target.ends_with('cmd/v2')
+		|| target.ends_with('cmd/v2/v2.v') || target.ends_with('cmd/tools/vfmt.v')
 }
 
 // normalize_gc_defaults_for_resolved_ccompiler clears stale compiler-dependent

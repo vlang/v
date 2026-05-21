@@ -146,6 +146,9 @@ fn (mut t Transformer) transform_expr(expr ast.Expr) ast.Expr {
 		ast.MapInitExpr {
 			t.transform_map_init_expr(expr)
 		}
+		ast.SqlExpr {
+			t.transform_sql_expr(expr)
+		}
 		ast.MatchExpr {
 			t.transform_match_expr(expr)
 		}
@@ -206,7 +209,7 @@ fn (mut t Transformer) transform_expr(expr ast.Expr) ast.Expr {
 			if ctx := t.find_smartcast_for_expr(expr.name) {
 				return t.apply_smartcast_direct_ctx(expr, ctx)
 			}
-			expr
+			ast.Expr(expr)
 		}
 		ast.StringInterLiteral {
 			// Transform interpolations, applying smart cast if needed
@@ -326,7 +329,7 @@ fn (mut t Transformer) transform_expr(expr ast.Expr) ast.Expr {
 			if expr.op == .key_go && expr.exprs.len > 0 {
 				return t.lower_go_call(expr)
 			}
-			expr
+			ast.Expr(expr)
 		}
 		else {
 			expr
@@ -338,6 +341,62 @@ fn (mut t Transformer) transform_expr(expr ast.Expr) ast.Expr {
 // without using an `is` check that would trigger smartcast narrowing.
 fn (t &Transformer) is_typeof_generic_args(ga ast.GenericArgs) bool {
 	return ga.lhs.name() == 'typeof'
+}
+
+fn (t &Transformer) resolve_typeof_generic_arg_type_name(arg ast.Expr) string {
+	type_name_from_expr := t.resolve_typeof_expr(arg)
+	if type_name_from_expr != '' {
+		return type_name_from_expr
+	}
+	type_name := t.expr_to_type_name(arg)
+	if type_name == '' {
+		return ''
+	}
+	return c_name_to_v_name(type_name)
+}
+
+fn (t &Transformer) resolve_specialized_typeof_call_type_name(call_name string) string {
+	marker := 'typeof_T_'
+	idx := call_name.index(marker) or { return '' }
+	type_name := call_name[idx + marker.len..]
+	if type_name == '' {
+		return ''
+	}
+	return c_name_to_v_name(type_name)
+}
+
+fn (t &Transformer) resolve_typeof_call_lhs_type_name(lhs ast.Expr) string {
+	if lhs is ast.GenericArgs {
+		if t.is_typeof_generic_args(lhs) && lhs.args.len > 0 {
+			return t.resolve_typeof_generic_arg_type_name(lhs.args[0])
+		}
+	}
+	if lhs is ast.GenericArgOrIndexExpr {
+		if lhs.lhs.name() == 'typeof' {
+			return t.resolve_typeof_generic_arg_type_name(lhs.expr)
+		}
+	}
+	if lhs is ast.Ident {
+		return t.resolve_specialized_typeof_call_type_name(lhs.name)
+	}
+	return ''
+}
+
+fn typeof_selector_result(type_name string, selector string, pos token.Pos) ?ast.Expr {
+	if type_name == '' {
+		return none
+	}
+	if selector == 'idx' {
+		return ast.Expr(typeof_idx_literal(type_name, pos))
+	}
+	if selector == 'name' {
+		return ast.Expr(ast.StringLiteral{
+			kind:  .v
+			value: quote_v_string_literal(type_name)
+			pos:   pos
+		})
+	}
+	return none
 }
 
 fn (mut t Transformer) transform_index_expr(expr ast.IndexExpr) ast.Expr {
@@ -634,35 +693,38 @@ fn (mut t Transformer) transform_slice_index_expr(lhs ast.Expr, orig_lhs ast.Exp
 // transform_selector_expr transforms a selector expression, applying smart cast if applicable
 fn (mut t Transformer) transform_selector_expr(expr ast.SelectorExpr) ast.Expr {
 	// typeof(x).name -> string literal with V type name
-	if expr.lhs is ast.KeywordOperator && expr.lhs.op == .key_typeof && expr.rhs.name == 'name' {
+	if expr.lhs is ast.KeywordOperator && expr.lhs.op == .key_typeof
+		&& expr.rhs.name in ['name', 'idx'] {
 		if expr.lhs.exprs.len > 0 {
 			type_name := t.resolve_typeof_expr(expr.lhs.exprs[0])
-			if type_name != '' {
-				return ast.StringLiteral{
-					kind:  .v
-					value: quote_v_string_literal(type_name)
-					pos:   expr.pos
-				}
+			if result := typeof_selector_result(type_name, expr.rhs.name, expr.pos) {
+				return result
 			}
 		}
 	}
 	// typeof[T]().name -> string literal with V type name
 	// Parser creates: SelectorExpr{lhs: CallExpr{lhs: GenericArgs{lhs: Ident{"typeof"}, args: [T]}}, rhs: "name"}
-	if expr.rhs.name == 'name' && expr.lhs is ast.CallExpr {
+	if expr.rhs.name in ['name', 'idx'] && expr.lhs is ast.CallExpr {
 		call := expr.lhs as ast.CallExpr
-		if call.lhs is ast.GenericArgs {
-			ga := call.lhs as ast.GenericArgs
-			if ga.lhs is ast.Ident && ga.lhs.name == 'typeof' && ga.args.len > 0 {
-				type_name := t.resolve_typeof_expr(ga.args[0])
-				if type_name != '' {
-					return ast.StringLiteral{
-						kind:  .v
-						value: quote_v_string_literal(type_name)
-						pos:   expr.pos
-					}
-				}
+		type_name := t.resolve_typeof_call_lhs_type_name(call.lhs)
+		if result := typeof_selector_result(type_name, expr.rhs.name, expr.pos) {
+			return result
+		}
+	}
+	if expr.rhs.name in ['name', 'idx'] && expr.lhs is ast.CallOrCastExpr {
+		call := expr.lhs as ast.CallOrCastExpr
+		if call.expr is ast.EmptyExpr {
+			type_name := t.resolve_typeof_call_lhs_type_name(call.lhs)
+			if result := typeof_selector_result(type_name, expr.rhs.name, expr.pos) {
+				return result
 			}
 		}
+	}
+	// Generated sumtype representation fields already have their base expression
+	// lowered. Do not apply smartcasts to them again on a later transform pass.
+	if expr.rhs.name in ['_tag', '_data'] || (expr.rhs.name.starts_with('_')
+		&& expr.lhs is ast.SelectorExpr && (expr.lhs as ast.SelectorExpr).rhs.name == '_data') {
+		return ast.Expr(expr)
 	}
 	// Check for smart cast field access: check ALL contexts in the stack
 	if t.has_active_smartcast() {
@@ -1388,6 +1450,50 @@ fn (mut t Transformer) transform_if_expr(expr ast.IfExpr) ast.Expr {
 	if expr.cond is ast.InfixExpr {
 		cond := expr.cond as ast.InfixExpr
 		if cond.op in [.key_is, .eq] && t.smartcast_context_from_is_check(cond) != none {
+			if ctx := t.smartcast_context_from_is_check(cond) {
+				if tag_value := t.smartcast_context_tag_value(ctx) {
+					mut removed_for_tag := []SmartcastRemoveResult{}
+					if cond.lhs is ast.Ident {
+						lhs_ident_name := (cond.lhs as ast.Ident).name
+						for {
+							if existing := t.remove_smartcast_for_expr_with_idx(lhs_ident_name) {
+								if t.is_sum_type(existing.ctx.variant) {
+									t.insert_smartcast_at(existing.idx, existing.ctx)
+									break
+								}
+								removed_for_tag << existing
+							} else {
+								break
+							}
+						}
+					}
+					transformed_lhs := t.transform_expr(cond.lhs)
+					for i := removed_for_tag.len - 1; i >= 0; i-- {
+						entry := removed_for_tag[i]
+						t.insert_smartcast_at(entry.idx, entry.ctx)
+					}
+
+					t.smartcast_stack << ctx
+					transformed_stmts := t.transform_stmts(expr.stmts)
+					t.pop_smartcast()
+
+					tag_check := ast.InfixExpr{
+						op:  token.Token.eq
+						lhs: t.synth_selector(transformed_lhs, '_tag', types.Type(types.int_))
+						rhs: ast.BasicLiteral{
+							kind:  token.Token.number
+							value: '${tag_value}'
+						}
+						pos: cond.pos
+					}
+					return ast.IfExpr{
+						cond:      tag_check
+						stmts:     transformed_stmts
+						else_expr: t.transform_expr(expr.else_expr)
+						pos:       expr.pos
+					}
+				}
+			}
 			// Get the variant type name from RHS
 			// Also extract module for qualified types like types.Type
 			mut variant_name := ''
@@ -1892,7 +1998,18 @@ fn (mut t Transformer) transform_infix_expr(expr ast.InfixExpr) ast.Expr {
 		}
 		if variant_name != '' {
 			mut sumtype_name := t.get_sumtype_name_for_expr(expr.lhs)
-			if sumtype_name == '' {
+			mut lhs_is_enum := t.get_enum_type_name(expr.lhs) != ''
+			if lhs_type := t.get_expr_type(expr.lhs) {
+				lhs_base := t.unwrap_alias_and_pointer_type(lhs_type)
+				lhs_is_enum = lhs_is_enum || lhs_base is types.Enum
+			}
+			rhs_is_enum_shorthand := expr.rhs is ast.SelectorExpr
+				&& (expr.rhs as ast.SelectorExpr).lhs is ast.EmptyExpr
+			rhs_is_type_like := variant_name.len > 0 && variant_name[0] >= `A`
+				&& variant_name[0] <= `Z`
+			can_find_sumtype_fallback := expr.op in [.key_is, .not_is] || rhs_is_type_like
+			if sumtype_name == '' && !lhs_is_enum && !rhs_is_enum_shorthand
+				&& can_find_sumtype_fallback {
 				sumtype_name = t.find_sumtype_for_variant(variant_name)
 			}
 			if sumtype_name != '' {
@@ -2305,6 +2422,25 @@ fn (mut t Transformer) transform_infix_expr(expr ast.InfixExpr) ast.Expr {
 	// If RHS is also an array, use push_many instead
 	// Note: map[key] << value is handled at the statement level
 	// by try_transform_map_index_push in transform_stmts.
+	if expr.op in [.amp, .pipe, .xor] && expr.lhs is ast.InfixExpr {
+		left := expr.lhs as ast.InfixExpr
+		if left.op == .left_shift {
+			if _ := t.get_array_elem_type_str(left.lhs) {
+				combined_rhs := ast.InfixExpr{
+					lhs: left.rhs
+					op:  expr.op
+					rhs: expr.rhs
+					pos: expr.pos
+				}
+				return t.transform_expr(ast.InfixExpr{
+					lhs: left.lhs
+					op:  .left_shift
+					rhs: combined_rhs
+					pos: left.pos
+				})
+			}
+		}
+	}
 	if expr.op == .left_shift {
 		if elem_type_name := t.get_array_elem_type_str(expr.lhs) {
 			if t.is_eval_backend() {
@@ -2322,7 +2458,9 @@ fn (mut t Transformer) transform_infix_expr(expr ast.InfixExpr) ast.Expr {
 			// annotated it with the LHS array type instead of the element enum type.
 			rhs_is_enum_shorthand := expr.rhs is ast.SelectorExpr
 				&& (expr.rhs as ast.SelectorExpr).lhs is ast.EmptyExpr
-			if !rhs_is_enum_shorthand {
+			rhs_is_bitwise_expr := expr.rhs is ast.InfixExpr
+				&& (expr.rhs as ast.InfixExpr).op in [.amp, .pipe, .xor, .left_shift, .right_shift]
+			if !rhs_is_enum_shorthand && !rhs_is_bitwise_expr {
 				if rhs_elem_type := t.array_value_elem_type(expr.rhs) {
 					rhs_is_array = t.array_elem_types_compatible(elem_type_name, rhs_elem_type)
 				} else {
@@ -2450,10 +2588,9 @@ fn (mut t Transformer) transform_infix_expr(expr ast.InfixExpr) ast.Expr {
 			} else {
 				transformed_rhs
 			}
-			// Wrap in sumtype if the array element type is a sumtype
-			push_elem := if t.is_sum_type(elem_type_name) {
-				t.wrap_sumtype_value_transformed(cloned_rhs, elem_type_name) or { cloned_rhs }
-			} else {
+			// Wrap in sumtype if the array element type accepts this variant.
+			// The wrapper helper already returns none for non-sumtype targets.
+			push_elem := t.wrap_sumtype_value_transformed(cloned_rhs, elem_type_name) or {
 				cloned_rhs
 			}
 			arr_literal := ast.ArrayInitExpr{
@@ -2547,9 +2684,12 @@ fn (mut t Transformer) transform_infix_expr(expr ast.InfixExpr) ast.Expr {
 		// If either side is known to be a string, the other must also be string
 		// (V is type-checked). This handles cases where is_string_expr fails on
 		// complex expressions like Result data access selectors.
-		should_transform := lhs_is_str || rhs_is_str
-			|| (lhs_is_str_literal && (expr.rhs is ast.Ident || expr.rhs is ast.SelectorExpr))
-			|| (rhs_is_str_literal && (expr.lhs is ast.Ident || expr.lhs is ast.SelectorExpr))
+		uses_generic_type := t.expr_uses_current_generic_type(expr.lhs)
+			|| t.expr_uses_current_generic_type(expr.rhs)
+		should_transform := !uses_generic_type && (lhs_is_str || rhs_is_str
+			|| (lhs_is_str_literal && (expr.rhs is ast.Ident
+			|| expr.rhs is ast.SelectorExpr))
+			|| (rhs_is_str_literal && (expr.lhs is ast.Ident || expr.lhs is ast.SelectorExpr)))
 		if should_transform {
 			// Transform string comparisons to function calls
 			match expr.op {

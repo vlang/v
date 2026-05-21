@@ -154,6 +154,7 @@ const skip_with_fsanitize_memory = [
 	'vlib/v/tests/orm_stmt_wrong_return_checking_test.v',
 	'vlib/v/tests/orm_table_name_test.v',
 	'vlib/v/tests/orm_array_field_test.v',
+	'vlib/v/tests/orm_bulk_insert_update_test.v', // MSan flags uninstrumented sqlite3BtreeOpen in libsqlite3.so
 	'vlib/v/tests/orm_handle_error_for_select_from_not_created_table_test.v',
 	'vlib/v/tests/orm_create_several_tables_test.v',
 	'vlib/v/tests/orm_update_test.v',
@@ -217,15 +218,19 @@ const skip_on_ubuntu_musl = [
 	'do_not_remove',
 	'vlib/arrays/parallel/parallel_test.v',
 	'vlib/builtin/js/array_test.js.v',
+	'vlib/db/pg_sqlite_consistency_test.v', // pg + sqlite dev headers pull in glibc-only sys/cdefs.h on musl-gcc
 	'vlib/db/sqlite/sqlite_test.v',
 	'vlib/db/sqlite/sqlite_orm_test.v',
 	'vlib/db/sqlite/sqlite_comptime_field_test.v',
 	'vlib/db/sqlite/sqlite_vfs_lowlevel_test.v',
 	'vlib/db/sqlite/parent_child_test.v',
 	'vlib/db/sqlite/sqlite_f32_test.v',
+	'vlib/gg/draw_rect_empty_test.v', // sokol.sapp needs X11/Xlib.h, not installed in the musl Docker image
+	'vlib/gg/text_rendering_test.v',
 	'vlib/orm/orm_test.v',
 	'vlib/orm/orm_sql_or_blocks_test.v',
 	'vlib/orm/orm_create_and_drop_test.v',
+	'vlib/orm/orm_dynamic_test.v',
 	'vlib/orm/orm_insert_test.v',
 	'vlib/orm/orm_insert_reserved_name_test.v',
 	'vlib/orm/orm_sum_type_insert_test.v',
@@ -247,7 +252,12 @@ const skip_on_ubuntu_musl = [
 	'vlib/orm/orm_option_subselect_test.v',
 	'vlib/orm/orm_func_test.v',
 	'vlib/orm/orm_where_in_test.v',
+	'vlib/sokol/gfx/gfx_test.v', // sokol_app.h needs GL/gl.h, not installed in the musl Docker image
+	'vlib/v/gen/c/sql_assert_temp_var_test.v', // sqlite header dependency pulls in glibc sys/cdefs.h on musl-gcc
+	'vlib/v/tests/concurrency/shared_nested_lock_runtime_test.v', // nested shared lock times out on the musl image
+	'vlib/v/tests/orm_bulk_insert_update_test.v',
 	'vlib/v/tests/orm_enum_test.v',
+	'vlib/v/tests/orm_if_expr_value_test.v',
 	'vlib/v/tests/orm_sub_struct_test.v',
 	'vlib/v/tests/orm_sub_array_struct_test.v',
 	'vlib/v/tests/orm_joined_tables_select_test.v',
@@ -258,11 +268,13 @@ const skip_on_ubuntu_musl = [
 	'vlib/v/tests/orm_create_several_tables_test.v',
 	'vlib/v/tests/orm_update_test.v',
 	'vlib/v/tests/orm_or_test.v',
+	'vlib/v/tests/shared_library_system_link_test.v', // musl libc.so is not a regular DSO; -lc shared link fails with hidden atexit
 	'vlib/v/tests/sql_statement_inside_fn_call_test.v',
 	'vlib/v/tests/websocket_logger_interface_should_compile_test.v',
 	'vlib/v/tests/fns/fn_literal_type_test.v',
 	'vlib/clipboard/clipboard_test.v',
 	'vlib/net/http/request_test.v',
+	'vlib/net/http/http_proxy_test.v', // pulls in libssl headers that include glibc-only sys/cdefs.h
 	'vlib/net/websocket/websocket_test.v',
 	'vlib/net/http/header_test.v',
 	'vlib/net/http/server_test.v',
