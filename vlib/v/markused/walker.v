@@ -2908,7 +2908,11 @@ fn (mut w Walker) type_auto_str_needs_isnil(typ ast.Type, mut visited map[int]bo
 }
 
 fn (mut w Walker) array_auto_str_needs_str_intp(elem_type ast.Type) bool {
-	resolved_elem_type := w.resolve_current_generic_type(elem_type).clear_option_and_result()
+	resolved_with_flags := w.resolve_current_generic_type(elem_type)
+	if resolved_with_flags.has_flag(.option) || resolved_with_flags.has_flag(.result) {
+		return true
+	}
+	resolved_elem_type := resolved_with_flags.clear_option_and_result()
 	if resolved_elem_type == 0 || resolved_elem_type == ast.void_type
 		|| resolved_elem_type.has_flag(.generic) {
 		return false
@@ -2920,7 +2924,7 @@ fn (mut w Walker) array_auto_str_needs_str_intp(elem_type ast.Type) bool {
 	if elem_sym.kind in [.f32, .f64, .rune, .string] {
 		return true
 	}
-	return elem_sym.kind in [.array, .array_fixed, .struct, .sum_type, .interface]
+	return elem_sym.kind in [.array, .array_fixed, .map, .struct, .sum_type, .interface]
 		&& !elem_sym.has_method('str')
 }
 
