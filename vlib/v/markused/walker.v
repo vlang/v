@@ -2850,6 +2850,9 @@ fn (mut w Walker) type_auto_str_needs_str_intp(typ ast.Type) bool {
 		ast.ArrayFixed {
 			return w.array_auto_str_needs_str_intp(sym.info.elem_type)
 		}
+		ast.Map {
+			return true
+		}
 		ast.Struct, ast.SumType, ast.Interface {
 			return true
 		}
