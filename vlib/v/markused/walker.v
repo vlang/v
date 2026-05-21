@@ -2842,6 +2842,10 @@ fn (mut w Walker) type_auto_str_needs_str_intp(typ ast.Type) bool {
 	if resolved_typ.is_ptr() || resolved_typ.is_pointer() {
 		return true
 	}
+	raw_sym := w.table.sym(resolved_typ)
+	if raw_sym.info is ast.Alias && !raw_sym.has_method('str') {
+		return true
+	}
 	sym := w.table.final_sym(w.table.unaliased_type(resolved_typ))
 	if sym.has_method('str') {
 		return false
