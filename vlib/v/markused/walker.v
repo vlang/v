@@ -1830,7 +1830,7 @@ pub fn (mut w Walker) call_expr(mut node ast.CallExpr) {
 	for arg in node.args {
 		w.expr(arg.expr)
 	}
-	if !node.is_variadic && node.args.any(it.expr is ast.ArrayDecompose) {
+	if node.args.any(it.expr is ast.ArrayDecompose) {
 		w.uses_interp = true
 	}
 	if node.is_variadic && node.expected_arg_types.last().has_flag(.option) {
