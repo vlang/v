@@ -2701,6 +2701,9 @@ fn (mut w Walker) string_inter_literal_needs_runtime(node ast.StringInterLiteral
 		if i >= node.need_fmts.len || node.need_fmts[i] || i >= node.fmts.len {
 			return true
 		}
+		if w.cur_fn_concrete_types.len > 0 && !node.need_fmts[i] {
+			return true
+		}
 		typ := w.resolve_current_generic_type(node.expr_types[i])
 		if typ == 0 || typ == ast.void_type || typ.has_flag(.generic) {
 			return true
