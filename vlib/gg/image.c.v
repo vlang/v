@@ -69,7 +69,7 @@ pub fn (mut ctx Context) create_image(file string, cfg ImageConfig) !Image {
 	$if macos {
 		if ctx.native_rendering {
 			mut img := C.darwin_create_image(file)
-			img.texture_filter = texture_filter
+			img.texture_filter = cfg.texture_filter or { ctx.config.texture_filter }
 
 			img.id = ctx.image_cache.len
 			unsafe {
