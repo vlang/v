@@ -2931,8 +2931,8 @@ fn (mut w Walker) array_auto_str_needs_str_intp(elem_type ast.Type) bool {
 	if elem_sym.kind in [.f32, .f64, .rune, .string] {
 		return true
 	}
-	return elem_sym.kind in [.array, .array_fixed, .map, .struct, .sum_type, .interface,
-		.multi_return]
+	return
+		elem_sym.kind in [.array, .array_fixed, .map, .struct, .sum_type, .interface, .multi_return]
 		&& !elem_sym.has_method('str')
 }
 
