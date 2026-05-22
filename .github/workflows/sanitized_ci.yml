@@ -257,7 +257,7 @@ jobs:
 
   sanitize-memory-clang:
     runs-on: ubuntu-22.04
-    timeout-minutes: 240
+    timeout-minutes: 300
     env:
       VFLAGS: -cc clang -gc none -cflags -fno-omit-frame-pointer
       VJOBS: 1

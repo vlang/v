@@ -506,6 +506,10 @@ fn test_veb_implicit_ctx_alias_uses_user_context_name() {
 }
 
 fn test_veb_implicit_ctx_alias_on_context_receiver_tmpl_not_found() {
+	if github_job.contains('musl') {
+		eprintln('> skipping ${@FN} on ${github_job}, since `-gc boehm_full_opt` links `__pthread_unregister_cancel`, which musl does not provide')
+		return
+	}
 	os.chdir(vroot) or {}
 	test_dir := os.join_path(os.vtmp_dir(), 'coutput_veb_context_receiver_tmpl_not_found')
 	os.rmdir_all(test_dir) or {}
@@ -534,6 +538,10 @@ fn test_veb_implicit_ctx_alias_on_context_receiver_tmpl_not_found() {
 }
 
 fn test_veb_template_scope_gc_pin_does_not_escape_loop_var() {
+	if github_job.contains('musl') {
+		eprintln('> skipping ${@FN} on ${github_job}, since `-gc boehm_full_opt` links `__pthread_unregister_cancel`, which musl does not provide')
+		return
+	}
 	os.chdir(vroot) or {}
 	test_dir := os.join_path(os.vtmp_dir(), 'coutput_veb_template_scope_gc_pin')
 	os.rmdir_all(test_dir) or {}
@@ -681,6 +689,11 @@ fn should_skip(relpath string) bool {
 		|| relpath.ends_with('scope_cleanup_boehm_leak.vv')
 		|| relpath.ends_with('gc_debugger_linux.vv')) {
 		eprintln('> skipping ${relpath} on ${github_job}, since gc related tests are not compatible with `-gc none`')
+		return true
+	}
+	if github_job.contains('musl')
+		&& relpath.ends_with('nested_aggregate_boehm_prod_keep_alive_nix.vv') {
+		eprintln('> skipping ${relpath} on ${github_job}, since `-prod -gc boehm_full_opt` pulls in `getcontext`, which musl does not provide')
 		return true
 	}
 	if user_os == 'windows' {

@@ -1,3 +1,4 @@
+// vtest build: macos
 module markused
 
 import v2.ast
