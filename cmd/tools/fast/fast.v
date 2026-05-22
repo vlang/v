@@ -74,6 +74,11 @@ fn main() {
 		ret := lsystem('${vdir}/v up')
 		if ret != 0 {
 			elog('failed to update V, exit_code: ${ret}')
+			// A failed `git pull --rebase` (e.g. on a shallow CI checkout)
+			// leaves the worktree with conflict markers in source files,
+			// which would break any subsequent V compilation step. Restore
+			// a clean state before returning.
+			lsystem('cd ${vdir} && git rebase --abort')
 			return
 		}
 	}

@@ -180,6 +180,13 @@ fn _option_clone(current &_option, mut option _option, size int) {
 	}
 }
 
+@[markused]
+fn _result_ok_markused() {
+	mut res := _result{}
+	// Keep _result_ok emitted for code that constructs Result directly.
+	_result_ok(unsafe { nil }, mut res, 0)
+}
+
 //
 
 const none__ = IError(&None__{})
