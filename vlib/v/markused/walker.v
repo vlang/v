@@ -2863,6 +2863,9 @@ fn (mut w Walker) type_auto_str_needs_str_intp(typ ast.Type) bool {
 		ast.Struct, ast.SumType, ast.Interface {
 			return true
 		}
+		ast.MultiReturn {
+			return true
+		}
 		else {
 			return false
 		}
