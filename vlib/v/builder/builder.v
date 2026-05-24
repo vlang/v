@@ -841,8 +841,7 @@ fn (b &Builder) candidate_belongs_to_foreign_project(candidate_path string, impo
 	}
 	for lookup in b.pref.lookup_path {
 		abs_lookup := os.real_path(lookup)
-		if abs_candidate == abs_lookup
-			|| abs_candidate.starts_with(abs_lookup + os.path_separator) {
+		if abs_candidate == abs_lookup || abs_candidate.starts_with(abs_lookup + os.path_separator) {
 			return false
 		}
 	}
