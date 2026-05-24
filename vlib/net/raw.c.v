@@ -38,7 +38,7 @@ pub:
 // new_raw_socket creates a new raw socket with the given configuration.
 // Raw sockets typically require elevated privileges (root/administrator).
 pub fn new_raw_socket(config RawSocketConfig) !&RawConn {
-	sockfd := socket_error(C.socket(config.family, SocketType.raw, int(config.protocol)))!
+	sockfd := socket_error(C.socket(i32(config.family), i32(SocketType.raw), i32(config.protocol)))!
 	mut s := &RawSocket{
 		handle:   sockfd
 		protocol: config.protocol

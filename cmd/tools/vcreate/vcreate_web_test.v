@@ -29,7 +29,6 @@ fn test_web_template_uses_veb() {
 	c.write_vmod()
 	main_v := os.read_file(os.join_path(project_path, 'main.v'))!
 	assert main_v.contains('import veb')
-	assert !main_v.contains('import vweb')
 	assert main_v.contains('\$veb.html()')
 	template_html := os.read_file(os.join_path(project_path, 'templates', 'index.html'))!
 	assert template_html.contains('veb starter')

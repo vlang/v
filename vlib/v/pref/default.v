@@ -15,11 +15,25 @@ pub fn new_preferences() &Preferences {
 	return p
 }
 
+const windows_default_gc_defines = ['gcboehm', 'gcboehm_full', 'gcboehm_incr', 'gcboehm_opt',
+	'gcboehm_leak', 'vgc']
+
 fn (p &Preferences) default_thread_stack_size() int {
 	return match p.arch {
 		.arm32, .rv32, .i386, .ppc, .wasm32 { 2 * 1024 * 1024 }
 		else { 8 * 1024 * 1024 }
 	}
+}
+
+fn (p &Preferences) is_linux_wayland_only_session() bool {
+	if p.os != .linux {
+		return false
+	}
+	if os.getenv('DISPLAY') != '' {
+		return false
+	}
+	return os.getenv('WAYLAND_DISPLAY') != ''
+		|| os.getenv('XDG_SESSION_TYPE').to_lower() == 'wayland'
 }
 
 fn (mut p Preferences) expand_lookup_paths() {
@@ -72,16 +86,14 @@ fn (mut p Preferences) setup_os_and_arch_when_not_explicitly_set() {
 		p.build_options << '-os ${host_os.lower()}'
 	}
 
-	if !p.output_cross_c {
-		if p.os != host_os {
-			// TODO: generalise this not only for macos->linux, after considering the consequences for vab/Android:
-			if host_os == .macos && p.os == .linux {
-				// Cross compilation from macos -> linux; assume AMD64 as the target architecture for now
-				if p.arch == ._auto {
-					p.set_default_arch(.amd64)
-				}
-				p.parse_define('use_bundled_libgc')
-			}
+	if !p.output_cross_c && p.os != host_os {
+		if p.os == .linux && p.arch == ._auto {
+			// The bundled linuxroot sysroot currently only contains x86_64 runtime files.
+			p.set_default_arch(.amd64)
+		}
+		// TODO: generalise this not only for macos->linux, after considering the consequences for vab/Android:
+		if host_os == .macos && p.os == .linux {
+			p.parse_define('use_bundled_libgc')
 		}
 	}
 }
@@ -200,7 +212,7 @@ pub fn (mut p Preferences) fill_with_defaults() {
 		p.out_name = os.join_path(p.out_name, p.default_output_name(rpath))
 	}
 	npath := rpath.replace('\\', '/')
-	p.building_v = !p.is_repl && (npath.ends_with('cmd/v') || npath.ends_with('cmd/tools/vfmt.v'))
+	p.building_v = !p.is_repl && is_v_compiler_target(npath)
 	if p.os == .linux {
 		$if !linux {
 			p.parse_define('cross_compile')
@@ -244,7 +256,7 @@ pub fn (mut p Preferences) fill_with_defaults() {
 		p.thread_stack_size = p.default_thread_stack_size()
 	}
 	p.ccompiler_type = cc_from_string(p.ccompiler)
-	p.disable_tcc_shared_backtraces()
+	p.normalize_gc_defaults_for_resolved_ccompiler()
 	p.is_test = p.path.ends_with('_test.v') || p.path.ends_with('_test.vv')
 		|| p.path.all_before_last('.v').all_before_last('.').ends_with('_test')
 	p.is_vsh = p.path.ends_with('.vsh') || p.raw_vsh_tmp_prefix != ''
@@ -260,6 +272,9 @@ pub fn (mut p Preferences) fill_with_defaults() {
 
 	final_os := p.os.lower()
 	p.parse_define(final_os)
+	if p.is_linux_wayland_only_session() && 'linux_wayland_session' !in p.compile_defines_all {
+		p.parse_define('linux_wayland_session')
+	}
 
 	// Prepare the cache manager. All options that can affect the generated cached .c files
 	// should go into res.cache_manager.vopts, which is used as a salt for the cache hash.
@@ -298,6 +313,28 @@ pub fn (mut p Preferences) fill_with_defaults() {
 		}
 		p.no_parallel = true
 	}
+}
+
+fn is_v_compiler_target(npath string) bool {
+	target := npath.trim_right('/')
+	return target.ends_with('cmd/v') || target.ends_with('cmd/v/v.v') || target.ends_with('cmd/v2')
+		|| target.ends_with('cmd/v2/v2.v') || target.ends_with('cmd/tools/vfmt.v')
+}
+
+// normalize_gc_defaults_for_resolved_ccompiler clears stale compiler-dependent
+// defaults after the effective C compiler has been resolved.
+pub fn (mut p Preferences) normalize_gc_defaults_for_resolved_ccompiler() {
+	p.disable_tcc_shared_backtraces()
+	if p.prealloc {
+		p.gc_mode = .no_gc
+		p.clear_gc_options()
+		return
+	}
+	if p.os != .windows || p.ccompiler_type != .msvc || p.gc_set_by_flag {
+		return
+	}
+	p.gc_mode = .no_gc
+	p.clear_gc_options()
 }
 
 fn (p &Preferences) default_output_name(rpath string) string {
@@ -375,24 +412,36 @@ fn (mut p Preferences) find_cc_if_cross_compiling() {
 }
 
 fn (mut p Preferences) try_to_use_tcc_by_default() {
-	bundled_tcc := usable_bundled_tcc_compiler(os.dir(vexe_path()))
+	preferred_tcc := default_tcc_compiler()
 	if p.ccompiler == 'tcc' {
-		p.ccompiler = if bundled_tcc != '' { bundled_tcc } else { 'tcc' }
+		p.ccompiler = if preferred_tcc != '' { preferred_tcc } else { 'tcc' }
 		return
 	}
 	if p.ccompiler == '' {
-		// tcc is known to fail several tests on macos, so do not
-		// try to use it by default, only when it is explicitly set
-		$if macos {
+		// -prealloc uses thread-local allocator state. The bundled tcc does not
+		// support TLS declarations, so use the platform C compiler by default.
+		if p.prealloc {
 			return
 		}
 		// use an optimizing compiler (i.e. gcc or clang) on -prod mode
 		if p.is_prod {
 			return
 		}
-		p.ccompiler = bundled_tcc
+		p.ccompiler = preferred_tcc
 		return
 	}
+}
+
+fn usable_system_tcc_compiler() string {
+	if get_host_os() != .termux {
+		return ''
+	}
+	system_tcc := os.find_abs_path_of_executable('tcc') or { return '' }
+	tcc_probe := os.execute('${os.quoted_path(system_tcc)} -v')
+	if tcc_probe.exit_code != 0 {
+		return ''
+	}
+	return system_tcc
 }
 
 fn usable_bundled_tcc_compiler(vroot string) string {
@@ -408,11 +457,47 @@ fn usable_bundled_tcc_compiler(vroot string) string {
 	return vtccexe
 }
 
-// default_tcc_compiler returns the bundled TinyCC path when it exists and works on the host.
+// default_tcc_compiler returns the preferred TinyCC path when it exists and works on the host.
 pub fn default_tcc_compiler() string {
 	vexe := vexe_path()
 	vroot := os.dir(vexe)
-	return usable_bundled_tcc_compiler(vroot)
+	bundled_tcc := usable_bundled_tcc_compiler(vroot)
+	if bundled_tcc != '' {
+		return bundled_tcc
+	}
+	return usable_system_tcc_compiler()
+}
+
+fn (mut p Preferences) clear_gc_options() {
+	p.compile_defines = p.compile_defines.filter(it !in windows_default_gc_defines)
+	p.compile_defines_all = p.compile_defines_all.filter(it !in windows_default_gc_defines)
+	for define in windows_default_gc_defines {
+		p.compile_values.delete(define)
+	}
+	mut build_options := []string{cap: p.build_options.len + 2}
+	mut i := 0
+	for i < p.build_options.len {
+		option := p.build_options[i]
+		if option == '-gc' {
+			i += 2
+			continue
+		}
+		if option.starts_with('-gc ') {
+			i++
+			continue
+		}
+		if option.starts_with('-d ') {
+			define := option[3..].all_before('=')
+			if define in windows_default_gc_defines {
+				i++
+				continue
+			}
+		}
+		build_options << option
+		i++
+	}
+	build_options << ['-gc', 'none']
+	p.build_options = build_options
 }
 
 pub fn (mut p Preferences) default_c_compiler() {

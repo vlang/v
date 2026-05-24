@@ -4,6 +4,13 @@ import v.ast
 import v.util
 import strings
 
+fn (mut g Gen) dump_arg_needs_gc_pin(typ ast.Type) bool {
+	if g.pref.gc_mode !in [.boehm_full, .boehm_incr, .boehm_full_opt, .boehm_incr_opt] {
+		return false
+	}
+	return typ.is_any_kind_of_pointer() || g.contains_ptr(typ)
+}
+
 fn (mut g Gen) dump_expr(node ast.DumpExpr) {
 	sexpr := ctoslit(node.expr.str())
 	fpath := cestring(g.file.path)
@@ -51,6 +58,7 @@ fn (mut g Gen) dump_expr(node ast.DumpExpr) {
 		if node.expr is ast.Ident {
 			// var
 			if node.expr.info is ast.IdentVar {
+				ident_info := node.expr.var_info()
 				current_fn_ident_type := g.resolve_current_fn_generic_param_type(node.expr.name)
 				if current_fn_ident_type != 0 {
 					is_auto_deref := node.expr.obj is ast.Var && node.expr.obj.is_auto_deref
@@ -82,7 +90,7 @@ fn (mut g Gen) dump_expr(node ast.DumpExpr) {
 							if re != 0 {
 								expr_type = re
 							} else {
-								expr_type = g.unwrap_generic(node.expr.info.typ)
+								expr_type = g.unwrap_generic(ident_info.typ)
 							}
 						}
 					}
@@ -191,7 +199,8 @@ fn (mut g Gen) dump_expr(node ast.DumpExpr) {
 				name = g.styp(expr_type.clear_flags(.shared_f, .result)).replace('*', '')
 			}
 		}
-		if expr_type.is_ptr() && expr_type.has_flag(.option) {
+		if (expr_type.is_ptr() || expr_type.has_flag(.option_mut_param_t))
+			&& expr_type.has_flag(.option) {
 			if scope_var := node.expr.scope.find_var(node.expr.name) {
 				if scope_var.typ.has_flag(.option_mut_param_t) {
 					expr_type = scope_var.typ
@@ -210,8 +219,11 @@ fn (mut g Gen) dump_expr(node ast.DumpExpr) {
 			}
 		}
 	}
-	dump_fn_name := '_v_dump_expr_${name}' +
-		(if expr_type.is_ptr() { '__ptr'.repeat(expr_type.nr_muls()) } else { '' })
+	dump_fn_name := '_v_dump_expr_${name}' + (if expr_type.is_ptr() && !expr_type.has_flag(.option_mut_param_t) {
+		'__ptr'.repeat(expr_type.nr_muls())
+	} else {
+		''
+	})
 	g.write(' ${dump_fn_name}(${ctoslit(fpath)}, ${line}, ${sexpr}, ')
 	if expr_type.has_flag(.shared_f) {
 		g.write('&')
@@ -277,14 +289,19 @@ fn (mut g Gen) dump_expr_definitions() {
 	mut dump_fns := strings.new_builder(100)
 	mut dump_fn_defs := strings.new_builder(100)
 	for dump_type, cname in g.table.dumps {
-		dump_sym := g.table.sym(ast.idx_to_type(dump_type))
+		raw_typ := ast.idx_to_type(dump_type)
+		typ := if raw_typ.has_flag(.option_mut_param_t) && raw_typ.is_ptr() {
+			raw_typ.deref().clear_flag(.option_mut_param_t)
+		} else {
+			raw_typ
+		}
+		dump_sym := g.table.sym(typ)
 		// eprintln('>>> dump_type: ${dump_type} | cname: ${cname} | dump_sym: ${dump_sym.name}')
 		mut name := cname
 		if dump_sym.language == .c {
 			name = name[3..]
 		}
 		_, str_method_expects_ptr, _ := dump_sym.str_method_info()
-		typ := ast.idx_to_type(dump_type)
 		if g.pref.skip_unused
 			&& (!g.table.used_features.dump || typ.idx() !in g.table.used_features.used_syms) {
 			continue
@@ -408,6 +425,13 @@ fn (mut g Gen) dump_expr_definitions() {
 		}
 		dump_fns.writeln('\tbuiltin___writeln_to_fd(2, value);')
 		dump_fns.writeln('\tbuiltin__flush_stderr();')
+		if g.dump_arg_needs_gc_pin(typ) {
+			if is_ptr && !typ.has_flag(.option) {
+				dump_fns.writeln('\tGC_reachable_here(dump_arg);')
+			} else {
+				dump_fns.writeln('\tGC_reachable_here(&dump_arg);')
+			}
+		}
 		surrounder.builder_write_afters(mut dump_fns)
 		if is_fixed_arr_ret && !is_ptr {
 			tmp_var := g.new_tmp_var()

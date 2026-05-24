@@ -7,6 +7,7 @@ $if !no_gc_threads ? {
 $if use_bundled_libgc ? {
 	#flag -DGC_BUILTIN_ATOMIC=1
 	#flag -I @VEXEROOT/thirdparty/libgc/include
+	#flag -DALL_INTERIOR_POINTERS=1
 	#flag @VEXEROOT/thirdparty/libgc/gc.o
 }
 
@@ -23,6 +24,7 @@ $if dynamic_boehm ? {
 			#flag -DGC_WIN32_THREADS=1
 			#flag -DGC_BUILTIN_ATOMIC=1
 			#flag -I @VEXEROOT/thirdparty/libgc/include
+			#flag -DALL_INTERIOR_POINTERS=1
 			#flag @VEXEROOT/thirdparty/libgc/gc.o
 		}
 	} $else {
@@ -48,14 +50,20 @@ $if dynamic_boehm ? {
 		#flag -I @VEXEROOT/thirdparty/libgc/include
 		$if (prod && !tinyc && !debug) || !(amd64 || arm64 || i386 || arm32 || rv64) {
 			// TODO: replace the architecture check with a `!$exists("@VEXEROOT/thirdparty/tcc/lib/libgc.a")` comptime call
+			#flag -DALL_INTERIOR_POINTERS=1
 			#flag @VEXEROOT/thirdparty/libgc/gc.o
 		} $else {
 			$if !use_bundled_libgc ? {
 				$if macos {
 					$if tinyc {
-						// tcc on macOS can leave the bundled GC archive symbols unresolved.
-						#flag @VEXEROOT/thirdparty/tcc/lib/libgc.dylib
-						#flag -Wl,-rpath,"@VEXEROOT/thirdparty/tcc/lib"
+						$if arm64 {
+							// tcc on macOS arm64 can leave the bundled GC archive symbols unresolved.
+							#flag @VEXEROOT/thirdparty/tcc/lib/libgc.dylib
+							#flag -Wl,-rpath,"@VEXEROOT/thirdparty/tcc/lib"
+						} $else {
+							// macOS amd64 tccbin only ships libgc.a (no .dylib).
+							#flag @VEXEROOT/thirdparty/tcc/lib/libgc.a
+						}
 					} $else {
 						#flag -L@VEXEROOT/thirdparty/tcc/lib
 						#flag -lgc
@@ -75,6 +83,7 @@ $if dynamic_boehm ? {
 		// Tested on FreeBSD 13.0-RELEASE-p3, with clang, gcc and tcc
 		#flag -DGC_BUILTIN_ATOMIC=1
 		#flag -DBUS_PAGE_FAULT=T_PAGEFLT
+		#flag -DALL_INTERIOR_POINTERS=1
 		$if !tinyc {
 			#flag -DUSE_MMAP
 			#flag -I @VEXEROOT/thirdparty/libgc/include
@@ -94,6 +103,7 @@ $if dynamic_boehm ? {
 		#flag -DGC_BUILTIN_ATOMIC=1
 		$if !tinyc {
 			#flag -I @VEXEROOT/thirdparty/libgc/include
+			#flag -DALL_INTERIOR_POINTERS=1
 			#flag @VEXEROOT/thirdparty/libgc/gc.o
 		}
 		$if tinyc {
@@ -122,10 +132,12 @@ $if dynamic_boehm ? {
 			#flag -I  @VEXEROOT/thirdparty/libatomic_ops
 
 			#flag -I @VEXEROOT/thirdparty/libgc/include
+			#flag -DALL_INTERIOR_POINTERS=1
 			#flag @VEXEROOT/thirdparty/libgc/gc.o
 		} $else {
 			#flag -DGC_BUILTIN_ATOMIC=1
 			#flag -I @VEXEROOT/thirdparty/libgc/include
+			#flag -DALL_INTERIOR_POINTERS=1
 			#flag @VEXEROOT/thirdparty/libgc/gc.o
 		}
 	} $else $if $pkgconfig('bdw-gc') {
@@ -179,7 +191,7 @@ fn C.GC_set_no_dls(i32)
 // protect memory block from being freed before this call
 fn C.GC_reachable_here(voidptr)
 
-// gc_is_enabled() returns true, if the GC is enabled at runtime.
+// gc_is_enabled returns true, if the GC is enabled at runtime.
 // See also gc_disable() and gc_enable().
 pub fn gc_is_enabled() bool {
 	return 0 == C.GC_is_disabled()
@@ -253,6 +265,8 @@ pub type FnGC_WarnCB = fn (const_msg &char, arg usize)
 
 fn C.GC_get_warn_proc() FnGC_WarnCB
 fn C.GC_set_warn_proc(cb FnGC_WarnCB)
+
+fn C.GC_register_displacement(offset usize)
 
 // gc_get_warn_proc returns the current callback fn, that will be used for printing GC warnings.
 pub fn gc_get_warn_proc() FnGC_WarnCB {

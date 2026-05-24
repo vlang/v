@@ -226,9 +226,22 @@ fn (mut t Transformer) apply_smartcast_field_access_ctx(sumtype_expr ast.Expr, f
 }
 
 fn (mut t Transformer) transform_array_init_expr(expr ast.ArrayInitExpr) ast.Expr {
+	is_native_backend := t.pref != unsafe { nil }
+		&& (t.pref.backend == .arm64 || t.pref.backend == .x64)
+	native_interface_elem_type := if is_native_backend {
+		t.get_interface_array_init_concrete_type(expr) or { '' }
+	} else {
+		''
+	}
 	// Transform value expressions
 	mut exprs := []ast.Expr{cap: expr.exprs.len}
 	for e in expr.exprs {
+		if native_interface_elem_type != '' {
+			if inner := t.get_interface_cast_inner_expr(e) {
+				exprs << t.transform_expr(inner)
+				continue
+			}
+		}
 		exprs << t.transform_expr(e)
 	}
 
@@ -261,6 +274,14 @@ fn (mut t Transformer) transform_array_init_expr(expr ast.ArrayInitExpr) ast.Exp
 				else {}
 			}
 		}
+	}
+	if native_interface_elem_type != '' {
+		elem_type_expr = ast.Expr(ast.Ident{
+			name: native_interface_elem_type
+		})
+		array_typ = ast.Expr(ast.Type(ast.ArrayType{
+			elem_type: elem_type_expr
+		}))
 	}
 	// Also check for [x, y, z]! syntax - parser marks this with len: PostfixExpr{op: .not}
 	if expr.len is ast.PostfixExpr {
@@ -1421,6 +1442,9 @@ fn (mut t Transformer) add_missing_struct_field_defaults(struct_name string, fie
 			}
 			continue
 		}
+		if t.is_pointer_type(struct_field.typ) {
+			continue
+		}
 		field_type := t.unwrap_alias_and_pointer_type(struct_field.typ)
 		if field_type is types.Map {
 			if struct_name.contains('Scope') || struct_name.contains('Env') {
@@ -1491,6 +1515,9 @@ fn (mut t Transformer) add_missing_struct_field_defaults(struct_name string, fie
 					name:  struct_field.name
 					value: t.transform_struct_field_default_expr(emb_struct_name, resolved_default)
 				}
+				continue
+			}
+			if t.is_pointer_type(struct_field.typ) {
 				continue
 			}
 			field_type := t.unwrap_alias_and_pointer_type(struct_field.typ)
@@ -1572,16 +1599,20 @@ fn (mut t Transformer) transform_struct_field_default_expr(struct_name string, e
 
 fn (t &Transformer) get_init_expr_type_name(typ ast.Expr) string {
 	if typ is ast.Ident {
-		// Add module prefix if we're in a non-main module and the type is a known error type
 		base_name := typ.name
 		if t.cur_module != '' && t.cur_module != 'main' && t.cur_module != 'builtin' {
-			// Check if this is an error type that should be module-qualified
-			if base_name in ['Eof', 'NotExpected', 'MessageError', 'Error', 'FileNotOpenedError',
-				'SizeOfTypeIs0Error', 'ExecutableNotFoundError'] {
+			if scope := t.cached_scopes[t.cur_module] {
+				if obj := scope.objects[base_name] {
+					if obj is types.Type {
+						return '${t.cur_module}__${base_name}'
+					}
+				}
+			}
+			if t.lookup_method_cached('${t.cur_module}__${base_name}', 'msg') != none {
 				return '${t.cur_module}__${base_name}'
 			}
 		}
-		return base_name
+		return t.qualify_type_name(base_name)
 	}
 	if typ is ast.SelectorExpr {
 		// Module-qualified: os.Eof -> os__Eof

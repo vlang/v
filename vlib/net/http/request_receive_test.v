@@ -97,3 +97,37 @@ fn test_receive_all_data_from_cb_in_builder_dechunks_progress_body_and_parses_tr
 	assert resp.status_code == 200
 	assert resp.body == ''
 }
+
+fn test_receive_all_data_from_cb_in_builder_errors_on_premature_eof_with_content_length() {
+	mut fixture := ReceiveAllDataFixture{
+		parts: [
+			'HTTP/1.1 200 OK\r\nContent-Length: 10\r\nContent-Type: text/plain\r\n\r\nhello',
+		]
+	}
+	mut req := Request{}
+	mut content := strings.new_builder(64)
+	req.receive_all_data_from_cb_in_builder(mut content, voidptr(&fixture),
+		receive_all_data_fixture_cb) or {
+		assert err.msg().contains('response body ended early')
+		assert err.msg().contains('5 of 10 bytes')
+		return
+	}
+	panic('expected an early EOF error for a truncated fixed-length response')
+}
+
+fn test_receive_all_data_from_cb_in_builder_errors_on_incomplete_chunked_response() {
+	mut fixture := ReceiveAllDataFixture{
+		parts: [
+			'HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\nContent-Type: text/plain\r\n\r\n4\r\nWi',
+			'ki\r\n6\r\nped',
+		]
+	}
+	mut req := Request{}
+	mut content := strings.new_builder(64)
+	req.receive_all_data_from_cb_in_builder(mut content, voidptr(&fixture),
+		receive_all_data_fixture_cb) or {
+		assert err.msg() == 'http.request: incomplete chunked response'
+		return
+	}
+	panic('expected an early EOF error for an incomplete chunked response')
+}

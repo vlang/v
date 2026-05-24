@@ -104,6 +104,15 @@ fn (m Module) install() InstallResult {
 	defer {
 		os.rmdir_all(m.tmp_path) or {}
 	}
+	// Run this check unconditionally — `m.is_installed` is computed via
+	// `git ls-remote`, which itself fails when `.git` is corrupted or
+	// inaccessible, so relying on it here would skip the guard in exactly
+	// the cases we most need to fail closed.
+	reason := local_git_changes_reason(m.install_path)
+	if reason != '' {
+		vpm_error('refusing to install `${m.name}`: `${m.install_path_fmted}` has local git work that would be lost (${reason}). Commit and push your changes, or remove the directory manually before retrying.')
+		exit(1)
+	}
 	if m.is_installed {
 		// Case: installed, but not an explicit version. Update instead of continuing the installation.
 		if m.version == '' && m.installed_version == '' {
@@ -164,6 +173,35 @@ fn (m Module) confirm_install() bool {
 			}
 		}
 	}
+}
+
+// local_git_changes_reason returns a non-empty reason string if `path` is a
+// git repository whose contents should not be silently overwritten — either
+// because it has uncommitted/unpushed work, or because git could not be
+// queried at all (in which case we fail closed rather than risk data loss).
+// Returns '' when the path is safe to overwrite (not a git repo, or a clean
+// repo fully in sync with its remote).
+fn local_git_changes_reason(path string) string {
+	if !os.exists(os.join_path(path, '.git')) {
+		return ''
+	}
+	quoted := os.quoted_path(path)
+	status := os.execute_opt('git -C ${quoted} status --porcelain') or {
+		return 'failed to run `git status`: ${err.msg()}'
+	}
+	if status.output.trim_space() != '' {
+		return 'uncommitted changes detected'
+	}
+	// Include `HEAD` so commits made on a detached HEAD (e.g. after
+	// `git clone -b <tag>`, the layout vpm uses for versioned installs) are
+	// also detected. `--branches` alone only walks local branch refs.
+	unpushed := os.execute_opt('git -C ${quoted} rev-list HEAD --branches --not --remotes') or {
+		return 'failed to run `git rev-list`: ${err.msg()}'
+	}
+	if unpushed.output.trim_space() != '' {
+		return 'unpushed local commits detected'
+	}
+	return ''
 }
 
 fn (m Module) remove() ! {

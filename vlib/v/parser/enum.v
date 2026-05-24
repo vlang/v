@@ -236,7 +236,7 @@ fn (mut p Parser) enum_decl() ast.EnumDecl {
 		isb.write_string('		return unsafe{ ${enum_name}(0) }\n')
 		isb.write_string('}\n')
 	}
-	// TODO: see why changing `W` to `T` below, later fails `v vlib/vweb/tests/middleware_test_server.v` with seemingly unrelated error
+	// TODO: see why changing `W` to `T` below, later fails with seemingly unrelated error
 	isb.write_string('${pubfn} ${enum_name}.from[W](input W) !${enum_name} {\n')
 	isb.write_string('	\$if input is \$int {\n')
 	isb.write_string('		val := unsafe{ ${enum_name}(input) }\n')

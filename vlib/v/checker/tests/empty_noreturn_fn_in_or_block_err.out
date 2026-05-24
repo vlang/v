@@ -1,0 +1,7 @@
+vlib/v/checker/tests/empty_noreturn_fn_in_or_block_err.vv:4:1: error: @[noreturn] functions should end with a call to another @[noreturn] function, or with an infinite `for {}` loop
+    2 | 
+    3 | @[noreturn]
+    4 | fn usage() {
+      | ~~~~~~~~~~
+    5 | }
+    6 | 

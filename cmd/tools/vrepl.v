@@ -344,8 +344,9 @@ fn (r &Repl) check_fn_type_kind(new_line string) FnType {
 	// -usecache keeps repeated REPL checks responsive by reusing cached modules.
 	// -w suppresses warnings from this synthetic println probe.
 	// -check just does syntax and checker analysis without generating/running code.
-	os_response :=
-		os.execute('${os.quoted_path(vexe)} -usecache -w -check ${os.quoted_path(check_file)}')
+	os_response := execute_repl_v_command(vexe, ['-usecache', '-w', '-check', check_file]) or {
+		return FnType.none
+	}
 	str_response := convert_output(os_response.output)
 	if os_response.exit_code != 0 && str_response.contains('can not print void expressions') {
 		return FnType.void
@@ -1035,11 +1036,35 @@ fn cleanup_files(file string) {
 	}
 }
 
+fn execute_repl_v_command(v_path string, args []string) !os.Result {
+	$if windows {
+		mut process := os.new_process(v_path)
+		process.set_args(args)
+		process.set_redirect_stdio()
+		process.create_no_window = true
+		process.wait()
+		stdout_output := process.stdout_slurp()
+		stderr_output := process.stderr_slurp()
+		exit_code := process.code
+		process.close()
+		return os.Result{
+			exit_code: exit_code
+			output:    stdout_output + stderr_output
+		}
+	} $else {
+		mut cmd := os.quoted_path(v_path)
+		for arg in args {
+			cmd += ' ' + os.quoted_path(arg)
+		}
+		return os.execute(cmd)
+	}
+}
+
 fn repl_run_vfile(file string) !os.Result {
 	$if trace_repl_temp_files ? {
 		eprintln('>> repl_run_vfile file: ${file}')
 	}
-	s := os.execute('${os.quoted_path(vexe)} -message-limit 1 -repl run ${os.quoted_path(file)}')
+	s := execute_repl_v_command(vexe, ['-message-limit', '1', '-repl', 'run', file])!
 	if s.exit_code < 0 {
 		rerror(s.output)
 		return error(s.output)
@@ -1054,7 +1079,7 @@ fn repl_check_vfile(file string) !os.Result {
 	// Declaration-only REPL lines do not need code generation or execution.
 	// Cached checks keep repeated imports and definitions responsive.
 	s :=
-		os.execute('${os.quoted_path(vexe)} -usecache -message-limit 1 -repl -check ${os.quoted_path(file)}')
+		execute_repl_v_command(vexe, ['-usecache', '-message-limit', '1', '-repl', '-check', file])!
 	if s.exit_code < 0 {
 		rerror(s.output)
 		return error(s.output)

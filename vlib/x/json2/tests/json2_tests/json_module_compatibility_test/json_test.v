@@ -386,7 +386,15 @@ fn test_encode_decode_sumtype() {
 
 	enc := json.encode(game, enum_as_int: true)
 
-	assert enc == '{"title":"Super Mega Game","player":{"name":"Monke"},"other":[{"tag":"Pen"},{"tag":"Cookie"},1,"Stool","${t.format_rfc3339()}"]}'
+	assert enc == '{"title":"Super Mega Game","player":{"name":"Monke","_type":"Human"},"other":[{"tag":"Pen","_type":"Item"},{"tag":"Cookie","_type":"Item"},1,"Stool",{"_type":"${typeof(time.Time{}).name.all_after_last('.')}","value":${t.unix()}}]}'
+
+	dec := json.decode[SomeGame](enc)!
+
+	assert game.title == dec.title
+	assert game.player == dec.player
+	assert (game.other[2] as Animal) == .cat
+	assert dec.other[2] == Entity(Animal.cat)
+	assert (game.other[4] as time.Time).unix() == (dec.other[4] as time.Time).unix()
 }
 
 struct Foo3 {
@@ -434,7 +442,7 @@ fn create_game_packet(data &GamePacketData) string {
 	return json.encode(data)
 }
 
-// fn test_encode_sumtype_defined_ahead() {
-// 	ret := create_game_packet(&GamePacketData(GPScale{}))
-// 	assert ret == '{"value":0}'
-// }
+fn test_encode_sumtype_defined_ahead() {
+	ret := create_game_packet(&GamePacketData(GPScale{}))
+	assert ret == '{"value":0,"_type":"GPScale"}'
+}

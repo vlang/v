@@ -4,6 +4,8 @@ import time
 import term
 import arrays
 
+const step_label_width = 5
+
 pub const b_ok = term.ok_message('OK  ')
 pub const b_fail = term.fail_message('FAIL')
 pub const b_skip = term.warn_message('SKIP')
@@ -166,6 +168,7 @@ pub:
 pub fn (b &Benchmark) step_message_with_label_and_duration(label string, msg string, sduration time.Duration,
 	opts MessageOptions) string {
 	timed_line := b.tdiff_in_ms(msg, sduration.microseconds())
+	flabel := format_step_label(label)
 	if b.nexpected_steps > 1 {
 		mut sprogress := ''
 		if b.nexpected_steps < 10 {
@@ -194,11 +197,19 @@ pub fn (b &Benchmark) step_message_with_label_and_duration(label string, msg str
 			}
 		}
 		if opts.preparation > 0 {
-			return '${label:-5s} [${sprogress}] C: ${f64(opts.preparation.microseconds()) / 1_000.0:7.1F} ms, R: ${timed_line}'
+			return '${flabel} [${sprogress}] C: ${f64(opts.preparation.microseconds()) / 1_000.0:7.1F} ms, R: ${timed_line}'
 		}
-		return '${label:-5s} [${sprogress}] ${timed_line}'
+		return '${flabel} [${sprogress}] ${timed_line}'
 	}
-	return '${label:-5s}${timed_line}'
+	return '${flabel}${timed_line}'
+}
+
+fn format_step_label(label string) string {
+	visible_len := term.strip_ansi(label).len
+	if visible_len >= step_label_width {
+		return label
+	}
+	return label + ' '.repeat(step_label_width - visible_len)
 }
 
 // step_message_with_label returns a string describing the current step using current time as duration.

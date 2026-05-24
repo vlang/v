@@ -1,5 +1,7 @@
 module flag
 
+import v.ast
+
 struct FlagData {
 	raw        string @[required]
 	field_name string @[required]
@@ -62,6 +64,115 @@ struct StructField {
 	attrs      map[string]string // collection of `@[x: y]` sat on the field, read via reflection
 	type_name  string
 	doc        string // documentation string sat via `@[xdoc: x y z]`
+}
+
+fn assign_single_flag_value[T](mut target T, default_value T, f FlagData, struct_name string, field_name string) ! {
+	_ = target
+	a_or_r := f.arg or { '${f.repeats}' }
+	$if T is int {
+		if !a_or_r.is_int() {
+			return error('can not assign non-integer value `${a_or_r}` from flag `${f.raw}` to `${struct_name}.${field_name}`')
+		}
+		target = a_or_r.int()
+	} $else $if T is i64 {
+		if !a_or_r.is_int() {
+			return error('can not assign non-integer value `${a_or_r}` from flag `${f.raw}` to `${struct_name}.${field_name}`')
+		}
+		target = a_or_r.i64()
+	} $else $if T is u64 {
+		if !a_or_r.is_int() {
+			return error('can not assign non-integer value `${a_or_r}` from flag `${f.raw}` to `${struct_name}.${field_name}`')
+		}
+		target = a_or_r.u64()
+	} $else $if T is i32 {
+		if !a_or_r.is_int() {
+			return error('can not assign non-integer value `${a_or_r}` from flag `${f.raw}` to `${struct_name}.${field_name}`')
+		}
+		target = a_or_r.i32()
+	} $else $if T is u32 {
+		if !a_or_r.is_int() {
+			return error('can not assign non-integer value `${a_or_r}` from flag `${f.raw}` to `${struct_name}.${field_name}`')
+		}
+		target = a_or_r.u32()
+	} $else $if T is i16 {
+		if !a_or_r.is_int() {
+			return error('can not assign non-integer value `${a_or_r}` from flag `${f.raw}` to `${struct_name}.${field_name}`')
+		}
+		target = a_or_r.i16()
+	} $else $if T is u16 {
+		if !a_or_r.is_int() {
+			return error('can not assign non-integer value `${a_or_r}` from flag `${f.raw}` to `${struct_name}.${field_name}`')
+		}
+		target = a_or_r.u16()
+	} $else $if T is i8 {
+		if !a_or_r.is_int() {
+			return error('can not assign non-integer value `${a_or_r}` from flag `${f.raw}` to `${struct_name}.${field_name}`')
+		}
+		target = a_or_r.i8()
+	} $else $if T is u8 {
+		if !a_or_r.is_int() {
+			return error('can not assign non-integer value `${a_or_r}` from flag `${f.raw}` to `${struct_name}.${field_name}`')
+		}
+		target = a_or_r.u8()
+	} $else $if T is f32 {
+		target = f.arg or { return error('failed appending ${f.raw} to ${field_name}') }
+			.f32()
+	} $else $if T is f64 {
+		target = f.arg or { return error('failed appending ${f.raw} to ${field_name}') }
+			.f64()
+	} $else $if T is bool {
+		if arg := f.arg {
+			return error('can not assign `${arg}` to bool field `${field_name}`')
+		}
+		target = !default_value
+	} $else $if T is string {
+		target = f.arg or { return error('failed appending ${f.raw} to ${field_name}') }
+			.str()
+	} $else {
+		return error('field type: ${T.name} for ${field_name} is not supported')
+	}
+}
+
+fn append_multi_flag_value[T](mut target T, f FlagData, field_name string) ! {
+	$if T is []string {
+		target << f.arg or { return error('failed appending ${f.raw} to ${field_name}') }
+			.str()
+	} $else $if T is []int {
+		target << f.arg or { return error('failed appending ${f.raw} to ${field_name}') }
+			.int()
+	} $else $if T is []i64 {
+		target << f.arg or { return error('failed appending ${f.raw} to ${field_name}') }
+			.i64()
+	} $else $if T is []u64 {
+		target << f.arg or { return error('failed appending ${f.raw} to ${field_name}') }
+			.u64()
+	} $else $if T is []i32 {
+		target << f.arg or { return error('failed appending ${f.raw} to ${field_name}') }
+			.i32()
+	} $else $if T is []u32 {
+		target << f.arg or { return error('failed appending ${f.raw} to ${field_name}') }
+			.u32()
+	} $else $if T is []i16 {
+		target << f.arg or { return error('failed appending ${f.raw} to ${field_name}') }
+			.i16()
+	} $else $if T is []u16 {
+		target << f.arg or { return error('failed appending ${f.raw} to ${field_name}') }
+			.u16()
+	} $else $if T is []i8 {
+		target << f.arg or { return error('failed appending ${f.raw} to ${field_name}') }
+			.i8()
+	} $else $if T is []u8 {
+		target << f.arg or { return error('failed appending ${f.raw} to ${field_name}') }
+			.u8()
+	} $else $if T is []f32 {
+		target << f.arg or { return error('failed appending ${f.raw} to ${field_name}') }
+			.f32()
+	} $else $if T is []f64 {
+		target << f.arg or { return error('failed appending ${f.raw} to ${field_name}') }
+			.f64()
+	} $else {
+		return error('field type: ${T.name} for multi value ${field_name} is not supported')
+	}
 }
 
 fn (sf StructField) shortest_match_name() ?string {
@@ -240,23 +351,17 @@ fn (fm FlagMapper) get_struct_info[T]() !StructInfo {
 			trace_println('\tmatch name: "${match_name}"')
 			used_names << match_name
 
-			$if field.typ is int {
-				hints.set(.is_int_type)
-			} $else $if field.typ is i64 {
-				hints.set(.is_int_type)
-			} $else $if field.typ is u64 {
-				hints.set(.is_int_type)
-			} $else $if field.typ is i32 {
-				hints.set(.is_int_type)
-			} $else $if field.typ is u32 {
-				hints.set(.is_int_type)
-			} $else $if field.typ is i16 {
-				hints.set(.is_int_type)
-			} $else $if field.typ is u16 {
-				hints.set(.is_int_type)
-			} $else $if field.typ is i8 {
-				hints.set(.is_int_type)
-			} $else $if field.typ is u8 {
+			if field.typ in [
+				int(ast.int_type),
+				int(ast.i64_type),
+				int(ast.u64_type),
+				int(ast.i32_type),
+				int(ast.u32_type),
+				int(ast.i16_type),
+				int(ast.u16_type),
+				int(ast.i8_type),
+				int(ast.u8_type),
+			] {
 				hints.set(.is_int_type)
 			}
 
@@ -270,11 +375,11 @@ fn (fm FlagMapper) get_struct_info[T]() !StructInfo {
 				hints.set(.is_ignore)
 			}
 
-			$if field.typ is bool {
+			if field.typ == int(ast.bool_type) {
 				trace_println('\tfield "${field.name}" is a bool')
 				hints.set(.is_bool)
 			}
-			$if field.is_array {
+			if field.is_array {
 				trace_println('\tfield "${field.name}" is array')
 				hints.set(.is_array)
 			}
@@ -897,156 +1002,11 @@ pub fn (fm FlagMapper) to_struct[T](defaults ?T) !T {
 		struct_name := T.name.all_after_last('.')
 		$for field in T.fields {
 			if f := fm.field_map_flag[field.name] {
-				a_or_r := f.arg or { '${f.repeats}' }
-				$if field.typ is int {
-					// TODO: find a way to move this kind of duplicate code out
-					if !a_or_r.is_int() {
-						return error('can not assign non-integer value `${a_or_r}` from flag `${f.raw}` to `${struct_name}.${field.name}`')
-					}
-					trace_dbg_println('${@FN}: assigning (int) ${struct_name}.${field.name} = ${a_or_r}')
-					result.$(field.name) = a_or_r.int()
-				} $else $if field.typ is i64 {
-					trace_dbg_println('${@FN}: assigning (i64) ${struct_name}.${field.name} = ${a_or_r}')
-					if !a_or_r.is_int() {
-						return error('can not assign non-integer value `${a_or_r}` from flag `${f.raw}` to `${struct_name}.${field.name}`')
-					}
-					result.$(field.name) = a_or_r.i64()
-				} $else $if field.typ is u64 {
-					trace_dbg_println('${@FN}: assigning (u64) ${struct_name}.${field.name} = ${a_or_r}')
-					if !a_or_r.is_int() {
-						return error('can not assign non-integer value `${a_or_r}` from flag `${f.raw}` to `${struct_name}.${field.name}`')
-					}
-					result.$(field.name) = a_or_r.u64()
-				} $else $if field.typ is i32 {
-					trace_dbg_println('${@FN}: assigning (i32) ${struct_name}.${field.name} = ${a_or_r}')
-					if !a_or_r.is_int() {
-						return error('can not assign non-integer value `${a_or_r}` from flag `${f.raw}` to `${struct_name}.${field.name}`')
-					}
-					result.$(field.name) = a_or_r.i32()
-				} $else $if field.typ is u32 {
-					trace_dbg_println('${@FN}: assigning (u32) ${struct_name}.${field.name} = ${a_or_r}')
-					if !a_or_r.is_int() {
-						return error('can not assign non-integer value `${a_or_r}` from flag `${f.raw}` to `${struct_name}.${field.name}`')
-					}
-					result.$(field.name) = a_or_r.u32()
-				} $else $if field.typ is i16 {
-					trace_dbg_println('${@FN}: assigning (i16) ${struct_name}.${field.name} = ${a_or_r}')
-					if !a_or_r.is_int() {
-						return error('can not assign non-integer value `${a_or_r}` from flag `${f.raw}` to `${struct_name}.${field.name}`')
-					}
-					result.$(field.name) = a_or_r.i16()
-				} $else $if field.typ is u16 {
-					trace_dbg_println('${@FN}: assigning (u16) ${struct_name}.${field.name} = ${a_or_r}')
-					if !a_or_r.is_int() {
-						return error('can not assign non-integer value `${a_or_r}` from flag `${f.raw}` to `${struct_name}.${field.name}`')
-					}
-					result.$(field.name) = a_or_r.u16()
-				} $else $if field.typ is i8 {
-					trace_dbg_println('${@FN}: assigning (i8) ${struct_name}.${field.name} = ${a_or_r}')
-					if !a_or_r.is_int() {
-						return error('can not assign non-integer value `${a_or_r}` from flag `${f.raw}` to `${struct_name}.${field.name}`')
-					}
-					result.$(field.name) = a_or_r.i8()
-				} $else $if field.typ is u8 {
-					trace_dbg_println('${@FN}: assigning (u8) ${struct_name}.${field.name} = ${a_or_r}')
-					if !a_or_r.is_int() {
-						return error('can not assign non-integer value `${a_or_r}` from flag `${f.raw}` to `${struct_name}.${field.name}`')
-					}
-					result.$(field.name) = a_or_r.u8()
-				} $else $if field.typ is f32 {
-					result.$(field.name) = f.arg or {
-						return error('failed appending ${f.raw} to ${field.name}')
-					}
-						.f32()
-				} $else $if field.typ is f64 {
-					result.$(field.name) = f.arg or {
-						return error('failed appending ${f.raw} to ${field.name}')
-					}
-						.f64()
-				} $else $if field.typ is bool {
-					if arg := f.arg {
-						return error('can not assign `${arg}` to bool field `${field.name}`')
-					}
-					result.$(field.name) = !the_default.$(field.name)
-				} $else $if field.typ is string {
-					trace_dbg_println('${@FN}: assigning (string) ${struct_name}.${field.name} = ${f.arg or {
-						'ERROR'
-					}
-						.str()}')
-					result.$(field.name) = f.arg or {
-						return error('failed appending ${f.raw} to ${field.name}')
-					}
-						.str()
-				} $else {
-					return error('field type: ${field.typ} for ${field.name} is not supported')
-				}
+				assign_single_flag_value(mut result.$(field.name), the_default.$(field.name), f,
+					struct_name, field.name)!
 			}
 			for f in fm.array_field_map_flag[field.name] {
-				// trace_println('${@FN}: appending ${field.name} << ${f.arg}')
-				$if field.typ is []string {
-					// TODO: find a way to move this kind of duplicate code out
-					result.$(field.name) << f.arg or {
-						return error('failed appending ${f.raw} to ${field.name}')
-					}
-						.str()
-				} $else $if field.typ is []int {
-					result.$(field.name) << f.arg or {
-						return error('failed appending ${f.raw} to ${field.name}')
-					}
-						.int()
-				} $else $if field.typ is []i64 {
-					result.$(field.name) << f.arg or {
-						return error('failed appending ${f.raw} to ${field.name}')
-					}
-						.i64()
-				} $else $if field.typ is []u64 {
-					result.$(field.name) << f.arg or {
-						return error('failed appending ${f.raw} to ${field.name}')
-					}
-						.u64()
-				} $else $if field.typ is []i32 {
-					result.$(field.name) << f.arg or {
-						return error('failed appending ${f.raw} to ${field.name}')
-					}
-						.i32()
-				} $else $if field.typ is []u32 {
-					result.$(field.name) << f.arg or {
-						return error('failed appending ${f.raw} to ${field.name}')
-					}
-						.u32()
-				} $else $if field.typ is []i16 {
-					result.$(field.name) << f.arg or {
-						return error('failed appending ${f.raw} to ${field.name}')
-					}
-						.i16()
-				} $else $if field.typ is []u16 {
-					result.$(field.name) << f.arg or {
-						return error('failed appending ${f.raw} to ${field.name}')
-					}
-						.u16()
-				} $else $if field.typ is []i8 {
-					result.$(field.name) << f.arg or {
-						return error('failed appending ${f.raw} to ${field.name}')
-					}
-						.i8()
-				} $else $if field.typ is []u8 {
-					result.$(field.name) << f.arg or {
-						return error('failed appending ${f.raw} to ${field.name}')
-					}
-						.u8()
-				} $else $if field.typ is []f32 {
-					result.$(field.name) << f.arg or {
-						return error('failed appending ${f.raw} to ${field.name}')
-					}
-						.f32()
-				} $else $if field.typ is []f64 {
-					result.$(field.name) << f.arg or {
-						return error('failed appending ${f.raw} to ${field.name}')
-					}
-						.f64()
-				} $else {
-					return error('field type: ${field.typ} for multi value ${field.name} is not supported')
-				}
+				append_multi_flag_value(mut result.$(field.name), f, field.name)!
 			}
 		}
 	} $else {

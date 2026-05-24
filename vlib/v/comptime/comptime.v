@@ -373,6 +373,11 @@ pub fn (mut c Comptime) expr(mut node ast.Expr) ast.Expr {
 		ast.IndexExpr {
 			node.left = c.expr(mut node.left)
 			node.index = c.expr(mut node.index)
+			mut indices := []ast.Expr{cap: node.indices.len}
+			for mut index in node.indices {
+				indices << c.expr(mut index)
+			}
+			node.indices = indices
 			node.or_expr = c.expr(mut node.or_expr) as ast.OrExpr
 		}
 		ast.InfixExpr {

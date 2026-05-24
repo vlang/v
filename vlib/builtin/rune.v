@@ -37,7 +37,7 @@ pub fn (c rune) repeat(count int) string {
 }
 
 // bytes converts a rune to an array of bytes.
-@[manualfree]
+@[manualfree; markused]
 pub fn (c rune) bytes() []u8 {
 	mut res := []u8{cap: 5}
 	mut buf := &u8(res.data)

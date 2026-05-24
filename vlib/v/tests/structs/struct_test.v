@@ -244,6 +244,30 @@ fn test_fixed_field() {
 	//}
 }
 */
+struct C.issue24102_child {
+	x int
+}
+
+struct C.issue24102_parent {
+	count int
+	Child C.issue24102_child
+}
+
+fn test_plain_c_struct_definition_with_nested_selector_and_str() {
+	parent := C.issue24102_parent{
+		count: 3
+		Child: C.issue24102_child{
+			x: 7
+		}
+	}
+	assert parent.count == 3
+	assert parent.Child.x == 7
+	rendered := '${parent}'
+	assert rendered.contains('count: 3')
+	assert rendered.contains('Child:')
+	assert rendered.contains('x: 7')
+}
+
 @[params]
 struct Config {
 mut:

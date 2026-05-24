@@ -14,7 +14,7 @@ jobs:
         run: |
           echo %VFLAGS%
           echo $VFLAGS
-          .\make.bat -msvc
+          .\makev.bat -msvc
           .\v.exe -cflags /WX self
       - name: Install dependencies
         run: |

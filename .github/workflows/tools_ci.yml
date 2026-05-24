@@ -95,7 +95,7 @@ jobs:
     steps:
       - uses: actions/checkout@v6
       - name: Build V
-        run: ./make.bat -${{ matrix.cc }} && ./v -o v2.exe cmd/v && ./v2 -showcc -o v.exe cmd/v && ./v symlink && ./v doctor
+        run: ./makev.bat -${{ matrix.cc }} && ./v -o v2.exe cmd/v && ./v2 -showcc -o v.exe cmd/v && ./v symlink && ./v doctor
       - name: Install SQLite (needed by vsqlite tool)
         run: .\.github\workflows\windows-install-sqlite.bat
       - name: Check build tools
@@ -146,8 +146,9 @@ jobs:
       VFLAGS: -cc ${{ matrix.cc }}
     steps:
       - uses: actions/checkout@v6
-      - name: Tests tools on FreeBSD with ${{ matrix.cc }}
-        uses: cross-platform-actions/action@v1.0.0
+
+      - name: Start FreeBSD VM with ${{ matrix.cc }}
+        uses: cross-platform-actions/action@v1.1.0
         with:
           operating_system: freebsd
           version: '15.0'
@@ -155,34 +156,46 @@ jobs:
           shell: sh
           sync_files: runner-to-vm
           environment_variables: VFLAGS
-          run: |
-            sudo pkg install -y git sqlite3 gmake boehm-gc-threaded libiconv
-            if [ "$VFLAGS" = "-cc gcc" ]; then
-              sudo pkg install -y gcc
-            fi
-            # Mandatory: hostname not set in VM => some tests fail
-            sudo hostname -s freebsd-ci
-            echo "### OS infos"
-            uname -a
-            git config --global --add safe.directory .
-            # Build V
-            echo "### Build V"
-            printf "VFLAGS = %s\n" "$VFLAGS"
-            gmake && ./v -showcc -o v cmd/v && sudo ./v symlink && ./v doctor
-            # Code in cmd/ is formatted
-            echo "### Check code in cmd/ is formatted"
-            ./v fmt -verify cmd/
-            # Check build-tools
-            echo "### Check build tools"
-            ./v -silent -N -W -check build-tools
-            # Test tools
-            echo "### Test tools"
-            ./v -silent test-self cmd
-            # Test tools (-cstrict)
-            if [ "$VFLAGS" != "-cc tcc" ]; then
-              echo "### Test tools (-cstrict)"
-              ./v -silent -W -cstrict test-self cmd
-            fi
+
+      - name: Tests tools on FreeBSD with ${{ matrix.cc }}
+        shell: cpa.sh {0}
+        run: |
+          sudo pkg install -y git sqlite3 gmake boehm-gc-threaded libiconv
+          if [ "$VFLAGS" = "-cc gcc" ]; then
+            sudo pkg install -y gcc
+          fi
+          # Mandatory: hostname not set in VM => some tests fail
+          sudo hostname -s freebsd-ci
+          echo "::group::OS infos"
+          uname -a
+          echo "::endgroup::"
+          # Build V
+          echo "::group::Build V"
+          git config --global --add safe.directory .
+          printf "VFLAGS = %s\n" "$VFLAGS"
+          gmake && ./v -showcc -o v cmd/v && sudo ./v symlink
+          echo "::endgroup::"
+          echo "::group::v doctor"
+          ./v doctor
+          echo "::endgroup::"
+          # Code in cmd/ is formatted
+          echo "::group::Check code in cmd/ is formatted"
+          ./v fmt -verify cmd/
+          echo "::endgroup::"
+          # Check build-tools
+          echo "::group::Check build tools"
+          ./v -silent -N -W -check build-tools
+          echo "::endgroup::"
+          # Test tools
+          echo "::group::Test tools"
+          ./v -silent test-self cmd
+          echo "::endgroup::"
+          # Test tools (-cstrict)
+          if [ "$VFLAGS" != "-cc tcc" ]; then
+            echo "::group::Test tools (-cstrict)"
+            ./v -silent -W -cstrict test-self cmd
+            echo "::endgroup::"
+          fi
 
   tools-openbsd:
     runs-on: ubuntu-latest
@@ -195,37 +208,49 @@ jobs:
       VFLAGS: -cc ${{ matrix.cc }}
     steps:
       - uses: actions/checkout@v6
-      - name: Tests tools on OpenBSD with ${{ matrix.cc }}
-        uses: cross-platform-actions/action@v1.0.0
+
+      - name: Start OpenBSD VM with ${{ matrix.cc }}
+        uses: cross-platform-actions/action@v1.1.0
         with:
           operating_system: openbsd
           version: '7.8'
           memory: 4G
-          shell: sh
           sync_files: runner-to-vm
           environment_variables: VFLAGS
-          run: |
-            sudo pkg_add git sqlite3 gmake boehm-gc libiconv
-            # Mandatory: hostname not set in VM => some tests fail
-            sudo hostname -s openbsd-ci
-            echo "### OS infos"
-            uname -a
-            git config --global --add safe.directory .
-            # Build V
-            echo "### Build V"
-            printf "VFLAGS = %s\n" "$VFLAGS"
-            gmake && ./v -showcc -o v cmd/v && sudo ./v symlink && ./v doctor
-            # Code in cmd/ is formatted
-            echo "### Check code in cmd/ is formatted"
-            ./v fmt -verify cmd/
-            # Check build-tools
-            echo "### Check build tools"
-            ./v -silent -N -W -check build-tools
-            # Test tools
-            echo "### Test tools"
-            ./v -silent test-self cmd
-            # Test tools (-cstrict)
-            if [ "$VFLAGS" != "-cc tcc" ]; then
-              echo "### Test tools (-cstrict)"
-              ./v -silent -W -cstrict test-self cmd
-            fi
+
+      - name: Tests tools on OpenBSD with ${{ matrix.cc }}
+        shell: cpa.sh {0}
+        run: |
+          sudo pkg_add git sqlite3 gmake boehm-gc libiconv
+          # Mandatory: hostname not set in VM => some tests fail
+          sudo hostname -s openbsd-ci
+          echo "::group::OS infos"
+          uname -a
+          echo "::endgroup::"
+          # Build V
+          echo "::group::Build V"
+          git config --global --add safe.directory .
+          printf "VFLAGS = %s\n" "$VFLAGS"
+          gmake && ./v -showcc -o v cmd/v && sudo ./v symlink
+          echo "::endgroup::"
+          echo "::group::v doctor"
+          ./v doctor
+          echo "::endgroup::"
+          # Code in cmd/ is formatted
+          echo "::group::Check code in cmd/ is formatted"
+          ./v fmt -verify cmd/
+          echo "::endgroup::"
+          # Check build-tools
+          echo "::group::Check build tools"
+          ./v -silent -N -W -check build-tools
+          echo "::endgroup::"
+          # Test tools
+          echo "::group::Test tools"
+          ./v -silent test-self cmd
+          echo "::endgroup::"
+          # Test tools (-cstrict)
+          if [ "$VFLAGS" != "-cc tcc" ]; then
+            echo "::group::Test tools (-cstrict)"
+            ./v -silent -W -cstrict test-self cmd
+            echo "::endgroup::"
+          fi

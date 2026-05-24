@@ -144,3 +144,41 @@ fn test_mysql() {
 		},
 	]
 }
+
+fn mysql_query_count_from_shared_connection(db mysql.DB) !int {
+	result := db.query('SELECT COUNT(*) as table_count FROM information_schema.tables')!
+	rows := result.maps()
+	return rows[0]['table_count'].int()
+}
+
+fn test_query_is_serialized_for_shared_connections() {
+	$if !network ? {
+		eprintln('> Skipping test ${@FN}, since `-d network` is not passed.')
+		eprintln('> This test requires a working mysql server running on localhost.')
+		return
+	}
+	config := mysql.Config{
+		host:     '127.0.0.1'
+		port:     3306
+		username: 'root'
+		password: '12345678'
+		dbname:   'mysql'
+	}
+
+	mut db := mysql.connect(config)!
+	defer {
+		db.close() or {}
+	}
+
+	threads := [
+		spawn mysql_query_count_from_shared_connection(db),
+		spawn mysql_query_count_from_shared_connection(db),
+		spawn mysql_query_count_from_shared_connection(db),
+		spawn mysql_query_count_from_shared_connection(db),
+	]
+	results := threads.wait()!
+	assert results.len == 4
+	for count in results {
+		assert count > 0
+	}
+}

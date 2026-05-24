@@ -36,4 +36,6 @@ pub mut:
 	last_completion_offset int
 	completion_list        []string
 	completion_callback    fn (string) []string = unsafe { nil }
+mut:
+	orig_stdin_mode u32 // Windows
 }

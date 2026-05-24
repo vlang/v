@@ -50,7 +50,7 @@ mut:
 
 fn Game.new() &Game {
 	mut g := &Game{}
-	g.ball_x, g.ball_y = g.width / 2, g.height - g.paddle_h
+	g.ball_x, g.ball_y = f32(g.width) / 2, f32(g.height) - g.paddle_h
 	g.init_bricks()
 	return g
 }
@@ -217,7 +217,7 @@ fn (mut g Game) update() {
 		g.play(.wall)
 	}
 	if g.ball_y > g.height {
-		g.ball_x, g.ball_y = g.paddle_x + g.paddle_w / 2, g.height - g.paddle_h
+		g.ball_x, g.ball_y = g.paddle_x + g.paddle_w / 2, f32(g.height) - g.paddle_h
 		g.ball_dy = -4
 		g.npaddles--
 		g.play(.lose_ball)
@@ -239,7 +239,7 @@ fn (mut g Game) update() {
 		} else if !(x_in_paddle > 40 && x_in_paddle < 60) {
 			r := 10 * (-0.5 + rand.f32())
 			g.ball_dx += r
-			g.ball_dx = int_min(int_max(-80, int(g.ball_dx * 10)), 80) / 10
+			g.ball_dx = f32(int_min(int_max(-80, int(g.ball_dx * 10)), 80)) / 10
 		}
 	}
 	// Brick collisions

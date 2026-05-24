@@ -13,6 +13,11 @@ struct SqlPrefix {
 	is_dynamic       bool
 }
 
+struct SqlQueryDataItemsBlock {
+	items        []ast.SqlQueryDataItem
+	end_comments []ast.Comment
+}
+
 fn sql_aggregate_kind_from_name(name string) ast.SqlAggregateKind {
 	return match name {
 		'count' { .count }
@@ -22,6 +27,36 @@ fn sql_aggregate_kind_from_name(name string) ast.SqlAggregateKind {
 		'max' { .max }
 		else { .none }
 	}
+}
+
+fn (mut p Parser) parse_sql_select_field_name() ast.SqlSelectField {
+	pos := p.tok.pos()
+	mut parts := []string{}
+	parts << p.check_name()
+	for p.tok.kind == .dot {
+		p.next()
+		parts << p.check_name()
+	}
+	return ast.SqlSelectField{
+		name: parts.join('.')
+		pos:  pos.extend(p.prev_tok.pos())
+	}
+}
+
+fn (mut p Parser) parse_sql_select_fields() []ast.SqlSelectField {
+	mut fields := []ast.SqlSelectField{}
+	for {
+		if p.tok.kind != .name {
+			p.error('expected an ORM select field before `from`')
+			return fields
+		}
+		fields << p.parse_sql_select_field_name()
+		if p.tok.kind != .comma {
+			break
+		}
+		p.next()
+	}
+	return fields
 }
 
 // select from User
@@ -87,6 +122,7 @@ fn (mut p Parser) sql_expr_after_prefix(prefix SqlPrefix) ast.Expr {
 	mut aggregate_kind := ast.SqlAggregateKind.none
 	mut aggregate_field := ''
 	mut has_distinct := false
+	mut requested_fields := []ast.SqlSelectField{}
 	if is_insert {
 		inserted_var = p.check_name()
 		p.scope.mark_var_as_used(inserted_var)
@@ -95,40 +131,48 @@ fn (mut p Parser) sql_expr_after_prefix(prefix SqlPrefix) ast.Expr {
 			p.error('expecting `into`')
 		}
 	} else if is_select {
-		n := p.check_name()
-		if n == 'distinct' {
+		if p.tok.kind == .name && p.tok.lit == 'distinct' {
 			has_distinct = true
-			n2 := p.check_name()
-			aggregate_kind = sql_aggregate_kind_from_name(n2)
+			p.next()
+		}
+		if p.tok.kind == .name {
+			aggregate_kind = sql_aggregate_kind_from_name(p.tok.lit)
+		}
+		if aggregate_kind == .count {
+			p.next()
+			n := p.check_name() // from
+			if n != 'from' {
+				p.error('expecting "from" in a "select count" ORM statement')
+			}
+		} else if aggregate_kind != .none {
+			p.next()
+			if p.tok.kind != .lpar {
+				p.error('expecting `(` after aggregate function in ORM select')
+			}
+			p.next()
+			if p.tok.kind != .name {
+				p.error('ORM aggregate functions only support a single field name argument')
+			}
+			aggregate_field = p.check_name()
+			if p.tok.kind != .rpar {
+				p.error('ORM aggregate functions only support a single field name argument')
+			}
+			p.next()
+			n := p.check_name() // from
+			if n != 'from' {
+				p.error('expecting `from` after ORM aggregate function')
+			}
+		} else if p.tok.kind == .name && p.tok.lit == 'from' {
+			p.next()
 		} else {
-			aggregate_kind = sql_aggregate_kind_from_name(n)
+			requested_fields = p.parse_sql_select_fields()
+			n := p.check_name() // from
+			if n != 'from' {
+				p.error('expecting `from` after ORM select fields')
+			}
 		}
 	}
 	mut typ := ast.void_type
-
-	if aggregate_kind == .count {
-		n := p.check_name() // from
-		if n != 'from' {
-			p.error('expecting "from" in a "select count" ORM statement')
-		}
-	} else if aggregate_kind != .none {
-		if p.tok.kind != .lpar {
-			p.error('expecting `(` after aggregate function in ORM select')
-		}
-		p.next()
-		if p.tok.kind != .name {
-			p.error('ORM aggregate functions only support a single field name argument')
-		}
-		aggregate_field = p.check_name()
-		if p.tok.kind != .rpar {
-			p.error('ORM aggregate functions only support a single field name argument')
-		}
-		p.next()
-		n := p.check_name() // from
-		if n != 'from' {
-			p.error('expecting `from` after ORM aggregate function')
-		}
-	}
 
 	table_pos := p.tok.pos()
 	table_type := p.parse_type() // `User`
@@ -173,9 +217,9 @@ fn (mut p Parser) sql_expr_after_prefix(prefix SqlPrefix) ast.Expr {
 		}
 		has_order = true
 		order_expr = p.expr(0)
-		if p.tok.kind == .name && p.tok.lit == 'desc' {
-			p.check_name() // `desc`
-			has_desc = true
+		if p.tok.kind == .name && p.tok.lit in ['asc', 'desc'] {
+			has_desc = p.tok.lit == 'desc'
+			p.check_name() // `asc` or `desc`
 		}
 	}
 
@@ -208,32 +252,34 @@ fn (mut p Parser) sql_expr_after_prefix(prefix SqlPrefix) ast.Expr {
 	p.inside_match = prefix.tmp_inside_match
 
 	return ast.SqlExpr{
-		aggregate_kind:  aggregate_kind
-		aggregate_field: aggregate_field
-		is_insert:       is_insert
-		typ:             typ.set_flag(.result)
-		or_expr:         or_expr
-		db_expr:         prefix.db_expr
-		where_expr:      where_expr
-		has_where:       has_where
-		has_limit:       has_limit
-		limit_expr:      limit_expr
-		has_offset:      has_offset
-		offset_expr:     offset_expr
-		has_order:       has_order
-		order_expr:      order_expr
-		has_desc:        has_desc
-		has_distinct:    has_distinct
-		is_array:        aggregate_kind == .none
-		is_generated:    false
-		is_dynamic:      is_dynamic
-		inserted_var:    inserted_var
-		pos:             prefix.pos.extend(p.prev_tok.pos())
-		table_expr:      ast.TypeNode{
+		aggregate_kind:   aggregate_kind
+		aggregate_field:  aggregate_field
+		is_insert:        is_insert
+		typ:              typ.set_flag(.result)
+		scope:            p.scope
+		or_expr:          or_expr
+		db_expr:          prefix.db_expr
+		where_expr:       where_expr
+		has_where:        has_where
+		has_limit:        has_limit
+		limit_expr:       limit_expr
+		has_offset:       has_offset
+		offset_expr:      offset_expr
+		has_order:        has_order
+		order_expr:       order_expr
+		has_desc:         has_desc
+		has_distinct:     has_distinct
+		is_array:         aggregate_kind == .none
+		is_generated:     false
+		is_dynamic:       is_dynamic
+		inserted_var:     inserted_var
+		requested_fields: requested_fields
+		pos:              prefix.pos.extend(p.prev_tok.pos())
+		table_expr:       ast.TypeNode{
 			typ: table_type
 			pos: table_pos
 		}
-		joins:           joins
+		joins:            joins
 	}
 }
 
@@ -539,18 +585,19 @@ fn is_sql_query_data_operator(kind token.Kind) bool {
 
 fn (mut p Parser) sql_query_data_expr() ast.Expr {
 	start_pos := p.tok.pos()
-	items := p.parse_sql_query_data_items_block()
+	block := p.parse_sql_query_data_items_block()
 	return ast.SqlQueryDataExpr{
-		pos:   start_pos.extend(p.prev_tok.pos())
-		items: items
+		pos:          start_pos.extend(p.prev_tok.pos())
+		items:        block.items
+		end_comments: block.end_comments
 	}
 }
 
-fn (mut p Parser) parse_sql_query_data_items_block() []ast.SqlQueryDataItem {
+fn (mut p Parser) parse_sql_query_data_items_block() SqlQueryDataItemsBlock {
 	p.check(.lcbr)
 	mut items := []ast.SqlQueryDataItem{}
+	mut pending_comments := p.eat_comments()
 	for {
-		p.eat_comments()
 		if p.tok.kind == .rcbr {
 			break
 		}
@@ -558,19 +605,29 @@ fn (mut p Parser) parse_sql_query_data_items_block() []ast.SqlQueryDataItem {
 			p.unexpected(got: 'eof, while parsing a dynamic ORM expression')
 			break
 		}
-		items << p.parse_sql_query_data_item()
-		p.eat_comments()
+		mut item := p.parse_sql_query_data_item()
+		item = sql_query_data_item_with_pre_comments(item, pending_comments)
+		pending_comments = []
+		item = sql_query_data_item_with_end_comments(item, p.eat_comments(same_line: true))
 		if p.tok.kind == .comma {
 			p.next()
+			item = sql_query_data_item_with_end_comments(item, p.eat_comments(same_line: true))
+			items << item
+			pending_comments = p.eat_comments()
 			continue
 		}
+		items << item
+		pending_comments = p.eat_comments()
 		if p.tok.kind != .rcbr {
 			p.error('expected `,` or `}` in a dynamic ORM expression')
 			break
 		}
 	}
 	p.check(.rcbr)
-	return items
+	return SqlQueryDataItemsBlock{
+		items:        items
+		end_comments: pending_comments
+	}
 }
 
 fn (mut p Parser) parse_sql_query_data_item() ast.SqlQueryDataItem {
@@ -584,23 +641,134 @@ fn (mut p Parser) parse_sql_query_data_item() ast.SqlQueryDataItem {
 	}
 }
 
+fn sql_query_data_item_with_pre_comments(item ast.SqlQueryDataItem, comments []ast.Comment) ast.SqlQueryDataItem {
+	if comments.len == 0 {
+		return item
+	}
+	return match item {
+		ast.SqlQueryDataLeaf {
+			mut leaf := item
+			leaf.pre_comments << comments
+			leaf
+		}
+		ast.SqlQueryDataIf {
+			mut if_item := item
+			if_item.pre_comments << comments
+			if_item
+		}
+	}
+}
+
+fn sql_query_data_item_with_end_comments(item ast.SqlQueryDataItem, comments []ast.Comment) ast.SqlQueryDataItem {
+	if comments.len == 0 {
+		return item
+	}
+	return match item {
+		ast.SqlQueryDataLeaf {
+			mut leaf := item
+			leaf.end_comments << comments
+			leaf
+		}
+		ast.SqlQueryDataIf {
+			mut if_item := item
+			if_item.end_comments << comments
+			if_item
+		}
+	}
+}
+
+fn (mut p Parser) parse_sql_query_data_if_guard_expr() ast.IfGuardExpr {
+	p.open_scope()
+	mut vars := []ast.IfGuardVar{}
+	mut var_names := []string{}
+	for {
+		mut var := ast.IfGuardVar{}
+		mut is_mut := false
+		if p.tok.kind == .key_mut {
+			is_mut = true
+			p.next()
+		}
+		var.is_mut = p.scope_var_is_mut(is_mut)
+		var.pos = p.tok.pos()
+		var.name = p.check_name()
+		var_names << var.name
+
+		if p.scope.known_var(var.name) {
+			p.error_with_pos('redefinition of `${var.name}`', var.pos)
+		}
+		vars << var
+		if p.tok.kind != .comma {
+			break
+		}
+		p.next()
+	}
+	p.check(.decl_assign)
+	old_assign_rhs := p.inside_assign_rhs
+	p.inside_assign_rhs = true
+	expr := p.expr(0)
+	p.inside_assign_rhs = old_assign_rhs
+	if expr !in [ast.CallExpr, ast.IndexExpr, ast.PrefixExpr, ast.SelectorExpr, ast.Ident] {
+		p.error_with_pos('if guard condition expression is illegal, it should return an Option',
+			expr.pos())
+	}
+	p.check_undefined_variables(var_names, expr) or { p.error_with_pos(err.msg(), expr.pos()) }
+	cond := ast.IfGuardExpr{
+		vars: vars
+		expr: expr
+	}
+	for var in vars {
+		p.scope.register(ast.Var{
+			name:   var.name
+			is_mut: var.is_mut
+			expr:   cond
+			pos:    var.pos
+		})
+	}
+	return cond
+}
+
 fn (mut p Parser) parse_sql_query_data_if_item() ast.SqlQueryDataItem {
 	start_pos := p.tok.pos()
 	mut branches := []ast.SqlQueryDataBranch{}
 	mut has_else := false
+	mut prev_guard := false
 	for {
 		branch_pos := p.tok.pos()
 		p.check(.key_if)
-		cond := p.expr(0)
-		items := p.parse_sql_query_data_items_block()
-		branches << ast.SqlQueryDataBranch{
-			pos:   branch_pos.extend(p.prev_tok.pos())
-			cond:  cond
-			items: items
+		mut cond := ast.empty_expr
+		mut has_guard_scope := false
+		if p.peek_token_after_var_list().kind == .decl_assign {
+			cond = p.parse_sql_query_data_if_guard_expr()
+			has_guard_scope = true
+			prev_guard = true
+		} else {
+			cond = p.expr(0)
+			prev_guard = false
 		}
-		p.eat_comments()
+		p.open_scope()
+		block := p.parse_sql_query_data_items_block()
+		p.close_scope()
+		if has_guard_scope {
+			p.close_scope()
+		}
+		branches << ast.SqlQueryDataBranch{
+			pos:          branch_pos.extend(p.prev_tok.pos())
+			cond:         cond
+			items:        block.items
+			end_comments: block.end_comments
+		}
+		comments_before_else := p.eat_comments()
 		if p.tok.kind != .key_else {
-			break
+			return ast.SqlQueryDataIf{
+				pos:          start_pos.extend(p.prev_tok.pos())
+				branches:     branches
+				has_else:     has_else
+				end_comments: comments_before_else
+			}
+		}
+		if comments_before_else.len > 0 {
+			last_idx := branches.len - 1
+			branches[last_idx].end_comments << comments_before_else
 		}
 		has_else = true
 		else_pos := p.tok.pos()
@@ -608,11 +776,24 @@ fn (mut p Parser) parse_sql_query_data_if_item() ast.SqlQueryDataItem {
 		if p.tok.kind == .key_if {
 			continue
 		}
-		else_items := p.parse_sql_query_data_items_block()
+		p.open_scope()
+		if prev_guard {
+			p.scope.register(ast.Var{
+				name:         'err'
+				typ:          ast.error_type
+				pos:          p.tok.pos()
+				is_used:      false
+				is_stack_obj: true
+				is_special:   true
+			})
+		}
+		else_block := p.parse_sql_query_data_items_block()
+		p.close_scope()
 		branches << ast.SqlQueryDataBranch{
-			pos:   else_pos.extend(p.prev_tok.pos())
-			cond:  ast.empty_expr
-			items: else_items
+			pos:          else_pos.extend(p.prev_tok.pos())
+			cond:         ast.empty_expr
+			items:        else_block.items
+			end_comments: else_block.end_comments
 		}
 		break
 	}
@@ -654,7 +835,7 @@ fn (mut p Parser) check_sql_where_expr_has_no_undefined_variables(expr &ast.Expr
 			return left_check_result
 		}
 
-		variable_names := if expr.left is ast.Ident { [expr.left.str()] } else { []string{} }
+		variable_names := if expr.left is ast.Ident { [expr.left.name] } else { []string{} }
 		right_check_result := p.check_sql_where_expr_has_no_undefined_variables(expr.right,
 			variable_names)
 

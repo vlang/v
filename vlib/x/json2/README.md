@@ -29,6 +29,9 @@ fn main() {
 }
 ```
 
+Enums encode as strings by default. Use `@[json_as_number]` on an enum to emit
+its integer value instead.
+
 #### decode[T]
 
 ```v

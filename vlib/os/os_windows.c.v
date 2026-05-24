@@ -23,6 +23,11 @@ fn C.CreateSymbolicLinkW(&u16, &u16, u32) i32
 // See https://docs.microsoft.com/en-us/windows/win32/api/winbase/nf-winbase-createhardlinkw
 fn C.CreateHardLinkW(&u16, &u16, C.SECURITY_ATTRIBUTES) i32
 
+// See https://learn.microsoft.com/en-us/windows/win32/api/winbase/nf-winbase-getshortpathnamew
+fn C.GetShortPathNameW(&u16, &u16, u32) u32
+
+fn C.AddVectoredExceptionHandler(u32, voidptr) voidptr
+
 fn C._getpid() i32
 
 const executable_suffixes = ['.exe', '.bat', '.cmd', '']
@@ -205,7 +210,16 @@ fn decode_windows_captured_output(raw string) string {
 		if !has_null {
 			return raw
 		}
-		// Contains null bytes — likely corrupted UTF-16LE.
+		mut nulls := 0
+		for i in 0 .. raw.len {
+			if raw[i] == 0 {
+				nulls++
+			}
+		}
+		if nulls * 4 < raw.len {
+			return raw
+		}
+		// Contains many null bytes - likely corrupted UTF-16LE.
 		// Strip null bytes and normalize \r\n to \n (text-mode artifacts).
 		mut cleaned := strings.new_builder(raw.len)
 		for i in 0 .. raw.len {
@@ -289,6 +303,33 @@ fn native_glob_pattern(pattern string, mut matches []string) ! {
 		}
 		matches << fpath
 	}
+}
+
+// short_path returns the Windows DOS 8.3 short path when it is available.
+// If the path does not exist, or if short names are unavailable, it returns the original path.
+pub fn short_path(path string) string {
+	if path == '' {
+		return ''
+	}
+	normalized := path.replace('/', '\\')
+	mut short_buf := [max_path_buffer_size]u16{}
+	mut wpath := normalized.to_wide()
+	defer {
+		unsafe { free(voidptr(wpath)) }
+	}
+	short_len := C.GetShortPathNameW(wpath, &short_buf[0], max_path_buffer_size)
+	if short_len > 0 && short_len < u32(max_path_buffer_size) {
+		return unsafe { string_from_wide2(&short_buf[0], int(short_len)) }
+	}
+	parent := dir(normalized)
+	if parent == '' || parent == '.' || parent == normalized || !is_dir(parent) {
+		return path
+	}
+	short_parent := short_path(parent)
+	if short_parent == parent {
+		return path
+	}
+	return join_path_single(short_parent, file_name(normalized))
 }
 
 pub fn utime(path string, actime i64, modtime i64) ! {
@@ -435,6 +476,26 @@ pub fn execute(cmd string) Result {
 	return unsafe { raw_execute(cmd) }
 }
 
+// exec starts the specified command with arguments, waits for it to complete, and returns its output.
+pub fn exec(args []string) Result {
+	if args.len == 0 {
+		return Result{
+			exit_code: -1
+			output:    'exec requires at least one argument'
+		}
+	}
+	mut command_line := requote_arg(args[0])
+	if args.len > 1 {
+		command_line += ' ' + requote_args(args[1..])
+	}
+	mut application_name := ''
+	filename_lc := args[0].to_lower_ascii()
+	if is_abs_path(args[0]) && !filename_lc.ends_with('.bat') && !filename_lc.ends_with('.cmd') {
+		application_name = args[0]
+	}
+	return windows_execute_command_line(command_line, application_name, args.join(' '), false)
+}
+
 // windows_execute_has_forbidden_shell_operator rejects only the command chaining operators that `cmd.exe`
 // treats specially outside double-quoted strings.
 fn windows_execute_has_forbidden_shell_operator(cmd string) bool {
@@ -466,6 +527,19 @@ fn windows_execute_has_forbidden_shell_operator(cmd string) bool {
 // user provided escape sequences.
 @[unsafe]
 pub fn raw_execute(cmd string) Result {
+	mut pcmd := cmd
+	if cmd.contains('./') {
+		pcmd = pcmd.replace('./', '.\\')
+	}
+	if cmd.contains('2>') {
+		pcmd = 'cmd /c "${pcmd}"'
+	} else {
+		pcmd = 'cmd /c "${pcmd} 2>&1"'
+	}
+	return windows_execute_command_line(pcmd, '', cmd, true)
+}
+
+fn windows_execute_command_line(command_line_text string, application_name string, display_cmd string, expand_environment bool) Result {
 	mut child_stdin := &u32(unsafe { nil })
 	mut child_stdout_read := &u32(unsafe { nil })
 	mut child_stdout_write := &u32(unsafe { nil })
@@ -504,25 +578,24 @@ pub fn raw_execute(cmd string) Result {
 		dw_flags:     u32(C.STARTF_USESTDHANDLES)
 	}
 
-	mut pcmd := cmd
-	if cmd.contains('./') {
-		pcmd = pcmd.replace('./', '.\\')
+	mut command_line_ptr := command_line_text.to_wide()
+	mut expanded_command_line := [32768]u16{}
+	if expand_environment {
+		C.ExpandEnvironmentStringsW(command_line_ptr, voidptr(&expanded_command_line), 32768)
+		command_line_ptr = unsafe { &expanded_command_line[0] }
 	}
-	if cmd.contains('2>') {
-		pcmd = 'cmd /c "${pcmd}"'
-	} else {
-		pcmd = 'cmd /c "${pcmd} 2>&1"'
+	mut application_name_ptr := &u16(unsafe { nil })
+	if application_name != '' {
+		application_name_ptr = application_name.to_wide()
 	}
-	command_line := [32768]u16{}
-	C.ExpandEnvironmentStringsW(pcmd.to_wide(), voidptr(&command_line), 32768)
-	create_process_ok := C.CreateProcessW(0, &command_line[0], 0, 0, C.TRUE, C.CREATE_NO_WINDOW, 0,
-		0, voidptr(&start_info), voidptr(&proc_info))
+	create_process_ok := C.CreateProcessW(application_name_ptr, command_line_ptr, 0, 0, C.TRUE,
+		C.CREATE_NO_WINDOW, 0, 0, voidptr(&start_info), voidptr(&proc_info))
 	if !create_process_ok {
 		error_num := int(C.GetLastError())
 		error_msg := get_error_msg(error_num)
 		return Result{
 			exit_code: error_num
-			output:    'exec failed (CreateProcess) with code ${error_num}: ${error_msg} cmd: ${cmd}'
+			output:    'exec failed (CreateProcess) with code ${error_num}: ${error_msg} cmd: ${display_cmd}'
 		}
 	}
 	C.CloseHandle(child_stdin)
@@ -599,8 +672,10 @@ pub fn (mut f File) close() {
 		return
 	}
 	f.is_opened = false
-	C.fflush(f.cfile)
-	C.fclose(f.cfile)
+	cfile := f.cfile
+	f.cfile = unsafe { nil }
+	C.fflush(cfile)
+	C.fclose(cfile)
 }
 
 pub struct ExceptionRecord {

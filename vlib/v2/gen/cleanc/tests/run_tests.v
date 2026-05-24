@@ -21,13 +21,13 @@ fn main() {
 	if build_res.exit_code != 0 {
 		eprintln('Error: Failed to build v2')
 		eprintln(build_res.output)
-		return
+		exit(1)
 	}
 
 	// Find all test files (*.v except run_tests.v).
 	test_files := os.ls(tests_dir) or {
 		eprintln('Error: Cannot list tests directory')
-		return
+		exit(1)
 	}
 
 	mut passed := 0
@@ -57,6 +57,12 @@ fn main() {
 
 		// Run the generated binary.
 		gen_res := os.execute(v2_output)
+		if gen_res.exit_code != 0 {
+			eprintln('  [FAIL] Generated binary exited with code ${gen_res.exit_code}')
+			eprintln(gen_res.output)
+			failed++
+			continue
+		}
 
 		// Run reference compiler (v1).
 		ref_res := os.execute('${@VEXE} -n -w -enable-globals run ${test_path}')
@@ -90,6 +96,7 @@ fn main() {
 	println('Results: ${passed}/${test_count} tests passed')
 	if failed > 0 {
 		println('${failed} tests FAILED')
+		exit(1)
 	}
 	println('Total time: ${time.since(t0)}')
 }

@@ -158,7 +158,7 @@ pub fn (mut ws WebhookServer) index() {
 // gen webhook
 pub fn (mut ws WebhookServer) genhook() veb.Result {
 	// request data
-	// println(ws.vweb.req.data)
+	// println(ws.req.data)
 	// TODO: parse request. json or urlencoded
 	// json.decode or net.urllib.parse
 	ws.gen_vc.generate()

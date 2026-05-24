@@ -2,6 +2,10 @@ module builtin
 
 // used to generate JS throw statements.
 
+$if js_node {
+	#var $fs = require('fs');
+}
+
 @[noreturn]
 pub fn js_throw(s any) {
 	#throw s
@@ -55,6 +59,31 @@ pub fn eprint(s string) {
 	} $else {
 		panic('Cannot `eprint` in a browser, use `println` instead')
 	}
+}
+
+// input_character gives back a single character, read from the standard input.
+// It returns -1 on error (when the input is finished (EOF), on a broken pipe etc).
+pub fn input_character() int {
+	$if js_node {
+		mut ch := -1
+		#try {
+		#const read_buffer = Buffer.alloc(1)
+		#const nbytes = $fs.readSync(0, read_buffer, 0, 1, null)
+		#if (nbytes > 0) { ch.val = read_buffer[0] }
+		#} catch (e) {}
+
+		return ch
+	} $else {
+		return -1
+	}
+}
+
+// print_character writes the single character `ch` to the standard output.
+// It returns the written character value, or panics if the active JS runtime
+// does not support stdout writes.
+pub fn print_character(ch u8) int {
+	print(ch.ascii_str())
+	return ch
 }
 
 // Exits the process in node, and halts execution in the browser

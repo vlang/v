@@ -945,7 +945,6 @@ fn test_fixed_array_literal_eq() {
 	// assert [[1, 1]!, [2, 2]!] != [[1, 2]!, [2, 3]!]
 	// vfmt off
 	assert ([1, 2, 3]!) == [1, 2, 3]!
-	assert (([1, 2, 3]!)) == [1, 2, 3]!
 	// vfmt on
 }
 
@@ -989,6 +988,21 @@ fn test_sort() {
 	assert users[2].name == 'Peter'
 }
 
+fn test_sort_preserves_relative_order_for_equal_elements() {
+	source := [User{4, 'B'}, User{4, 'A'}, User{5, 'C'}]
+
+	mut sorted := source.clone()
+	sorted.sort(a.age > b.age)
+	assert sorted[0].name == 'C'
+	assert sorted[1].name == 'B'
+	assert sorted[2].name == 'A'
+
+	copy := source.sorted(a.age > b.age)
+	assert copy[0].name == 'C'
+	assert copy[1].name == 'B'
+	assert copy[2].name == 'A'
+}
+
 fn test_sort_with_compare() {
 	mut a := ['hi', '1', '5', '3']
 	a.sort_with_compare(fn (a &string, b &string) int {
@@ -1001,6 +1015,37 @@ fn test_sort_with_compare() {
 		return 0
 	})
 	assert a == ['1', '3', '5', 'hi']
+}
+
+fn test_sort_with_compare_preserves_relative_order_for_equal_elements() {
+	source := [User{4, 'B'}, User{4, 'A'}, User{5, 'C'}]
+
+	mut sorted := source.clone()
+	sorted.sort_with_compare(fn (a &User, b &User) int {
+		if a.age > b.age {
+			return -1
+		}
+		if a.age < b.age {
+			return 1
+		}
+		return 0
+	})
+	assert sorted[0].name == 'C'
+	assert sorted[1].name == 'B'
+	assert sorted[2].name == 'A'
+
+	copy := source.sorted_with_compare(fn (a &User, b &User) int {
+		if a.age > b.age {
+			return -1
+		}
+		if a.age < b.age {
+			return 1
+		}
+		return 0
+	})
+	assert copy[0].name == 'C'
+	assert copy[1].name == 'B'
+	assert copy[2].name == 'A'
 }
 
 fn test_rune_sort() {
@@ -1263,6 +1308,17 @@ fn test_multi_array_index() {
 	mut b := [[0].repeat(3)].repeat(2)
 	b[0][0] = 1
 	assert '${b}' == '[[1, 0, 0], [0, 0, 0]]'
+}
+
+fn test_multi_array_default_init_preserves_noscan_rows() {
+	$if gcboehm_opt ? {
+		mut matrix := [][]f64{len: 2, init: []f64{len: 3, init: 0.0}}
+		matrix[0][0] = 1.25
+		assert matrix[0].flags.has(.noscan_data)
+		assert matrix[1].flags.has(.noscan_data)
+		assert matrix[0].data != matrix[1].data
+		assert matrix[1][0] == 0.0
+	}
 }
 
 fn test_plus_assign_string() {

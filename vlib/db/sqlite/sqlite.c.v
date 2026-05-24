@@ -4,19 +4,24 @@ $if freebsd || openbsd {
 	#flag -I/usr/local/include
 	#flag -L/usr/local/lib
 }
-#flag -I@VEXEROOT/thirdparty/sqlite
 $if tinyc {
 	#flag -DSQLITE_DISABLE_INTRINSIC
 }
 $if $pkgconfig('sqlite3') {
 	#pkgconfig sqlite3
+	#include "sqlite3.h" # The SQLite header file is missing. Please install the corresponding development package.
 } $else $if windows {
-	#flag windows -L@VEXEROOT/thirdparty/sqlite
-	#flag windows @VEXEROOT/thirdparty/sqlite/sqlite3.o
+	#flag -I@VEXEROOT/thirdparty/sqlite
+	#flag @VEXEROOT/thirdparty/sqlite/sqlite3.o
+	#include "sqlite3.h" # The SQLite header file is missing. Please run vlib/db/sqlite/install_thirdparty_sqlite.vsh to download an SQLite amalgamation.
+} $else $if darwin {
+	// macOS ships libsqlite3, so do not require a separately downloaded amalgamation.
+	#flag darwin -lsqlite3
 } $else {
+	#flag -I@VEXEROOT/thirdparty/sqlite
+	#include "sqlite3.h" # The SQLite header file is missing. Please run vlib/db/sqlite/install_thirdparty_sqlite.vsh to download an SQLite amalgamation.
 	#flag @VEXEROOT/thirdparty/sqlite/sqlite3.c
 }
-#include "sqlite3.h" # The SQLite header file is missing. Please run vlib/db/sqlite/install_thirdparty_sqlite.vsh to download an SQLite amalgamation, or install its development package.
 
 // https://www.sqlite.org/rescode.html
 pub const sqlite_ok = 0
@@ -127,6 +132,17 @@ pub fn (r &Row) get_int(col_name string) int {
 
 pub type Params = []string | [][]string
 
+fn sqlite_cstring(s string) &char {
+	cstr := unsafe { malloc_noscan(s.len + 1) }
+	unsafe {
+		if s.len > 0 {
+			vmemcpy(cstr, s.str, s.len)
+		}
+		cstr[s.len] = 0
+	}
+	return &char(cstr)
+}
+
 //
 fn C.sqlite3_open(&char, &&C.sqlite3) i32
 
@@ -174,7 +190,11 @@ fn C.sqlite3_changes(&C.sqlite3) i32
 // connect Opens the connection with a database.
 pub fn connect(path string) !DB {
 	db := &C.sqlite3(unsafe { nil })
-	code := C.sqlite3_open(&char(path.str), &db)
+	path_cstr := sqlite_cstring(path)
+	defer {
+		unsafe { free(path_cstr) }
+	}
+	code := C.sqlite3_open(path_cstr, &db)
 	if code != 0 {
 		return &SQLError{
 			msg:  unsafe { cstring_to_vstring(&char(C.sqlite3_errmsg(db))) }

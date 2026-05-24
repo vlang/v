@@ -1,0 +1,6 @@
+vlib/v/checker/tests/int_ptr_array_index_decl_assign_err.vv:3:15: error: non-integer index `&int` (array type `[]u8`)
+    1 | pub fn read_int(bytes []u8, mut offset &int) int {
+    2 |     offset_d := offset
+    3 |     return bytes[offset_d]
+      |                  ~~~~~~~~
+    4 | }

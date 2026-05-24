@@ -1,0 +1,6 @@
+vlib/v/checker/tests/array_sort_function_type_err.vv:7:9: error: undefined operation `&fn ()` > `&fn ()`
+    5 | fn main() {
+    6 |     mut x := [main, b, c]
+    7 |     x.sort(a > b)
+      |            ~~~~~
+    8 | }

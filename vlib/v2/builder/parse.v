@@ -30,6 +30,146 @@ fn file_module_name(path string) ?string {
 	return none
 }
 
+fn directory_primary_module(files []string) string {
+	for file in files {
+		if module_name := file_module_name(file) {
+			return module_name
+		}
+	}
+	return 'main'
+}
+
+fn collect_same_module_subdir_files(root string, dir string, module_name string, user_defines []string, target_os string, mut files []string, mut seen map[string]bool) {
+	for entry in list_dir_entries(dir) {
+		if entry == '' || entry.starts_with('.') {
+			continue
+		}
+		path := os.join_path(dir, entry)
+		if !os.is_dir(path) {
+			continue
+		}
+		if path != root && os.exists(os.join_path(path, 'v.mod')) {
+			continue
+		}
+		for file in get_v_files_from_dir(path, user_defines, target_os) {
+			if file in seen {
+				continue
+			}
+			if file_module_name(file) or { '' } != module_name {
+				continue
+			}
+			files << file
+			seen[file] = true
+		}
+		collect_same_module_subdir_files(root, path, module_name, user_defines, target_os, mut
+			files, mut seen)
+	}
+}
+
+fn get_user_v_files_from_dir(dir string, user_defines []string, target_os string) []string {
+	mut files := get_v_files_from_dir(dir, user_defines, target_os)
+	module_name := directory_primary_module(files)
+	mut seen := map[string]bool{}
+	for file in files {
+		seen[file] = true
+	}
+	collect_same_module_subdir_files(dir, dir, module_name, user_defines, target_os, mut files, mut
+		seen)
+	return files
+}
+
+fn ast_comptime_flag_matches(name string, user_defines []string, target_os string) bool {
+	lower_name := name.to_lower()
+	if lower_name in user_defines {
+		return true
+	}
+	return match lower_name {
+		'macos', 'darwin', 'mac', 'linux', 'windows', 'bsd', 'freebsd', 'openbsd', 'netbsd',
+		'dragonfly', 'android' {
+			flag_os_matches(lower_name, target_os)
+		}
+		else {
+			false
+		}
+	}
+}
+
+fn ast_comptime_cond_matches(cond ast.Expr, user_defines []string, target_os string) bool {
+	match cond {
+		ast.Ident {
+			return ast_comptime_flag_matches(cond.name, user_defines, target_os)
+		}
+		ast.PrefixExpr {
+			if cond.op == .not {
+				return !ast_comptime_cond_matches(cond.expr, user_defines, target_os)
+			}
+		}
+		ast.InfixExpr {
+			if cond.op == .and {
+				return ast_comptime_cond_matches(cond.lhs, user_defines, target_os)
+					&& ast_comptime_cond_matches(cond.rhs, user_defines, target_os)
+			}
+			if cond.op == .logical_or {
+				return ast_comptime_cond_matches(cond.lhs, user_defines, target_os)
+					|| ast_comptime_cond_matches(cond.rhs, user_defines, target_os)
+			}
+		}
+		ast.PostfixExpr {
+			if cond.op == .question && cond.expr is ast.Ident {
+				return cond.expr.name in user_defines
+			}
+		}
+		ast.ParenExpr {
+			return ast_comptime_cond_matches(cond.expr, user_defines, target_os)
+		}
+		else {}
+	}
+
+	return false
+}
+
+fn collect_active_imports_from_if_expr(node ast.IfExpr, user_defines []string, target_os string, mut imports []ast.ImportStmt) {
+	if ast_comptime_cond_matches(node.cond, user_defines, target_os) {
+		collect_active_imports_from_stmts(node.stmts, user_defines, target_os, mut imports)
+		return
+	}
+	match node.else_expr {
+		ast.IfExpr {
+			if node.else_expr.cond is ast.EmptyExpr {
+				collect_active_imports_from_stmts(node.else_expr.stmts, user_defines, target_os, mut
+					imports)
+			} else {
+				collect_active_imports_from_if_expr(node.else_expr, user_defines, target_os, mut
+					imports)
+			}
+		}
+		else {}
+	}
+}
+
+fn collect_active_imports_from_stmts(stmts []ast.Stmt, user_defines []string, target_os string, mut imports []ast.ImportStmt) {
+	for stmt in stmts {
+		match stmt {
+			ast.ImportStmt {
+				imports << stmt
+			}
+			ast.ExprStmt {
+				if stmt.expr is ast.ComptimeExpr && stmt.expr.expr is ast.IfExpr {
+					collect_active_imports_from_if_expr(stmt.expr.expr, user_defines, target_os, mut
+						imports)
+				}
+			}
+			else {}
+		}
+	}
+}
+
+fn active_file_imports(file ast.File, user_defines []string, target_os string) []ast.ImportStmt {
+	mut imports := file.imports.clone()
+	collect_active_imports_from_stmts(file.stmts, user_defines, target_os, mut imports)
+	return imports
+}
+
 fn (mut b Builder) parse_files(files []string) []ast.File {
 	mut parser_reused := parser.Parser.new(b.pref)
 	mut ast_files := []ast.File{}
@@ -50,7 +190,7 @@ fn (mut b Builder) parse_files(files []string) []ast.File {
 		} else {
 			for module_path in core_cached_module_paths {
 				vlib_path := b.pref.get_vlib_module_path(module_path)
-				module_files := get_v_files_from_dir(vlib_path, b.pref.user_defines)
+				module_files := get_v_files_from_dir(vlib_path, b.pref.user_defines, os.user_os())
 				parsed_module_files := parser_reused.parse_files(module_files, mut b.file_set)
 				ast_files << parsed_module_files
 			}
@@ -64,7 +204,7 @@ fn (mut b Builder) parse_files(files []string) []ast.File {
 			continue
 		}
 		if os.is_dir(input) {
-			dir_files := get_v_files_from_dir(input, b.pref.user_defines)
+			dir_files := get_user_v_files_from_dir(input, b.pref.user_defines, os.user_os())
 			for dir_file in dir_files {
 				if dir_file != '' && dir_file !in seen_user_files {
 					expanded_user_files << dir_file
@@ -78,7 +218,7 @@ fn (mut b Builder) parse_files(files []string) []ast.File {
 				expanded_user_files << input
 				seen_user_files[input] = true
 			}
-			dir_files := get_v_files_from_dir(os.dir(input), b.pref.user_defines)
+			dir_files := get_v_files_from_dir(os.dir(input), b.pref.user_defines, os.user_os())
 			for dir_file in dir_files {
 				if dir_file != '' && dir_file !in seen_user_files {
 					expanded_user_files << dir_file
@@ -108,12 +248,12 @@ fn (mut b Builder) parse_files(files []string) []ast.File {
 	}
 	for afi := 0; afi < ast_files.len; afi++ {
 		ast_file := ast_files[afi]
-		for mod in ast_file.imports {
+		for mod in active_file_imports(ast_file, b.pref.user_defines, os.user_os()) {
 			if mod.name in parsed_imports {
 				continue
 			}
 			mod_path := b.pref.get_module_path(mod.name, ast_file.name)
-			module_files := get_v_files_from_dir(mod_path, b.pref.user_defines)
+			module_files := get_v_files_from_dir(mod_path, b.pref.user_defines, os.user_os())
 			if module_files.len == 0 {
 				continue
 			}

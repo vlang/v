@@ -5,7 +5,7 @@ vlib/v/checker/tests/return_working_simple.vv:4:5: notice: condition is always t
       |        ~~~~
     5 |         return ''
     6 |     } else {
-vlib/v/checker/tests/return_working_simple.vv:3:4: warning: unused function: `foo`
+vlib/v/checker/tests/return_working_simple.vv:3:4: notice: unused function: `foo`
     1 | fn main() {}
     2 | 
     3 | fn foo() string {

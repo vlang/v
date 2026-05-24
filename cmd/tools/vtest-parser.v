@@ -6,11 +6,8 @@ import v.parser
 import v.ast
 import v.pref
 
-const vexe = os.real_path(os.getenv_opt('VEXE') or { @VEXE })
-const vroot = os.dir(vexe)
 const support_color = term.can_show_color_on_stderr() && term.can_show_color_on_stdout()
 const ecode_timeout = 101
-const ecode_memout = 102
 const ecode_details = {
 	-1:  'worker executable not found'
 	101: 'too slow'

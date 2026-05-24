@@ -98,6 +98,6 @@ It can be reduced *drastically*, though, by using the rendering methods built in
 and by only painting frames when your app's content has actually changed.
 
 Q: Why does the module only emit `keydown` events, and not `keyup` like `sokol`/`gg`?
-A: It's because of the way terminals emit events. Every key event is received as a keypress,
-and there isn't a way of telling terminals to send keyboard events differently,
-nor a reliable way of converting these into `keydown` / `keyup` events.
+A: `term.ui` emits `key_up` on Windows and on terminals that support the kitty keyboard
+protocol. Legacy terminal input still only provides `key_down`, so `key_up` is not
+available everywhere.

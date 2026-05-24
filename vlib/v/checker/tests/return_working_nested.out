@@ -12,7 +12,7 @@ vlib/v/checker/tests/return_working_nested.vv:7:6: notice: condition is always t
       |            ~~~~
     8 |             return ''
     9 |         }
-vlib/v/checker/tests/return_working_nested.vv:3:4: warning: unused function: `foo`
+vlib/v/checker/tests/return_working_nested.vv:3:4: notice: unused function: `foo`
     1 | fn main() {}
     2 | 
     3 | fn foo() string {

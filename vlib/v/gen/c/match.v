@@ -193,6 +193,16 @@ fn (mut g Gen) match_expr_sumtype(node ast.MatchExpr, is_expr bool, cond_var str
 		for {
 			g.aggregate_type_idx = sumtype_index
 			is_last := j == node.branches.len - 1 && sumtype_index == branch.exprs.len - 1
+			mut has_branch_type := false
+			mut had_old_branch_type := false
+			mut old_branch_type := ast.Type(0)
+			mut branch_type := ast.Type(0)
+			if cond_sym.kind == .sum_type && sumtype_index < branch.exprs.len {
+				branch_expr := unsafe { &branch.exprs[sumtype_index] }
+				if branch_expr is ast.TypeNode {
+					branch_type = branch_expr.typ
+				}
+			}
 			if branch.is_else || (use_ternary && is_last) {
 				if use_ternary {
 					// TODO: too many branches. maybe separate ?: matches
@@ -230,9 +240,6 @@ fn (mut g Gen) match_expr_sumtype(node ast.MatchExpr, is_expr bool, cond_var str
 				}
 				cur_expr := unsafe { &branch.exprs[sumtype_index] }
 				if cond_sym.kind == .sum_type {
-					if cur_expr is ast.TypeNode {
-						g.type_resolver.update_ct_type(cond_var, cur_expr.typ)
-					}
 					g.write('${dot_or_ptr}_typ == ')
 					if cur_expr is ast.None {
 						g.write('${ast.none_type.idx()} /* none */')
@@ -252,6 +259,15 @@ fn (mut g Gen) match_expr_sumtype(node ast.MatchExpr, is_expr bool, cond_var str
 				} else {
 					g.writeln(') {')
 				}
+			}
+			if branch_type != 0 {
+				has_branch_type = true
+				if old_type := g.type_resolver.type_map[cond_var] {
+					had_old_branch_type = true
+					old_branch_type = old_type
+				}
+				g.type_resolver.update_ct_type(cond_var, branch_type)
+				g.clear_type_resolution_caches()
 			}
 			if is_expr && tmp_var.len > 0
 				&& g.table.sym(resolved_return_type).kind in [.sum_type, .interface] {
@@ -276,6 +292,14 @@ fn (mut g Gen) match_expr_sumtype(node ast.MatchExpr, is_expr bool, cond_var str
 			g.write_defer_stmts(branch.scope, false, node.pos)
 			g.inside_interface_deref = inside_interface_deref_old
 			g.expected_cast_type = 0
+			if has_branch_type {
+				if had_old_branch_type {
+					g.type_resolver.update_ct_type(cond_var, old_branch_type)
+				} else {
+					g.type_resolver.type_map.delete(cond_var)
+				}
+				g.clear_type_resolution_caches()
+			}
 			if g.inside_ternary == 0 {
 				g.writeln('}')
 				g.set_current_pos_as_last_stmt_pos()

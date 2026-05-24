@@ -1,3 +1,4 @@
+// vtest build: macos
 module eval
 
 import os

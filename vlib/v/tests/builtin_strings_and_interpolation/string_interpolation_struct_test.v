@@ -92,6 +92,44 @@ fn test_cross_reference_field_auto_str() {
 	assert s == '&CrossRefWindow{|    widgets: [CrossRefWidget{|        parent: &CrossRefWindow{|            widgets: [CrossRefWidget{|                parent: &<circular>|            }]|        }|    }]|}'
 }
 
+interface FamilyMember {
+	name string
+	age  u64
+}
+
+struct FamilySelf {
+mut:
+	brothers []&FamilyMember
+	name     string
+	age      u64
+}
+
+struct FamilyBrother {
+mut:
+	brothers []&FamilyMember
+	name     string
+	age      u64
+}
+
+fn test_cross_reference_interface_pointer_array_auto_str() {
+	mut me := &FamilySelf{
+		name: 'Foo'
+		age:  33
+	}
+	mut brother := &FamilyBrother{
+		name: 'Bar'
+		age:  32
+	}
+	me.brothers << brother
+	brother.brothers << me
+	s := '${me}'
+	assert s.contains('&FamilySelf{')
+	assert s.contains('brothers: [&FamilyMember(FamilyBrother{')
+	assert s.contains("name: 'Foo'")
+	assert s.contains("name: 'Bar'")
+	assert s.contains('brothers: [&<circular>]')
+}
+
 struct CircularArray {
 mut:
 	children []CircularArray

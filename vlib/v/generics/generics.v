@@ -829,12 +829,15 @@ pub fn (mut g Generics) expr(mut node ast.Expr) ast.Expr {
 				name := if mut node.expr is ast.Ident {
 					// var
 					if node.expr.info is ast.IdentVar && node.expr.language == .v {
-						g.styp(g.unwrap_generic(node.expr.info.typ.clear_flags(.shared_f, .result))).replace('*', '')
+						ident_info := node.expr.var_info()
+						g.styp(g.unwrap_generic(ident_info.typ.clear_flags(.shared_f, .result))).replace('*',
+							'')
 					} else {
 						node.cname
 					}
 				} else if mut node.expr is ast.CallExpr {
-					g.styp(g.unwrap_generic(node.expr_type.clear_flags(.shared_f, .result))).replace('*', '').replace('.', '__')
+					g.styp(g.unwrap_generic(node.expr_type.clear_flags(.shared_f, .result))).replace('*',
+						'').replace('.', '__')
 				} else {
 					node.cname
 				}
@@ -959,6 +962,10 @@ pub fn (mut g Generics) expr(mut node ast.Expr) ast.Expr {
 			node.expr = g.expr(mut node.expr)
 		}
 		ast.IndexExpr {
+			mut indices := []ast.Expr{cap: node.indices.len}
+			for mut index in node.indices {
+				indices << g.expr(mut index)
+			}
 			if g.cur_concrete_types.len > 0 {
 				return ast.Expr(ast.IndexExpr{
 					...node
@@ -966,11 +973,13 @@ pub fn (mut g Generics) expr(mut node ast.Expr) ast.Expr {
 					typ:       g.unwrap_generic(node.typ)
 					left:      g.expr(mut node.left)
 					index:     g.expr(mut node.index)
+					indices:   indices
 					or_expr:   g.expr(mut node.or_expr) as ast.OrExpr
 				})
 			}
 			node.left = g.expr(mut node.left)
 			node.index = g.expr(mut node.index)
+			node.indices = indices
 			node.or_expr = g.expr(mut node.or_expr) as ast.OrExpr
 		}
 		ast.InfixExpr {

@@ -68,6 +68,49 @@ fn (g &Gen) is_scalar_zero_init_type(typ string) bool {
 	return g.is_enum_type(typ)
 }
 
+fn (g &Gen) global_initializer_needs_runtime(expr ast.Expr) bool {
+	match expr {
+		ast.EmptyExpr {
+			return false
+		}
+		ast.InitExpr, ast.MapInitExpr, ast.IfExpr, ast.CallOrCastExpr {
+			return true
+		}
+		ast.ArrayInitExpr {
+			if expr.typ is ast.Type && expr.typ is ast.ArrayFixedType {
+				return g.contains_call_expr(expr)
+			}
+			return true
+		}
+		ast.CastExpr {
+			return g.global_initializer_needs_runtime(expr.expr)
+		}
+		ast.ParenExpr {
+			return g.global_initializer_needs_runtime(expr.expr)
+		}
+		ast.PrefixExpr {
+			return g.global_initializer_needs_runtime(expr.expr)
+		}
+		ast.PostfixExpr {
+			return g.global_initializer_needs_runtime(expr.expr)
+		}
+		ast.ModifierExpr {
+			return g.global_initializer_needs_runtime(expr.expr)
+		}
+		ast.IndexExpr {
+			return g.global_initializer_needs_runtime(expr.lhs)
+				|| g.global_initializer_needs_runtime(expr.expr)
+		}
+		ast.InfixExpr {
+			return g.global_initializer_needs_runtime(expr.lhs)
+				|| g.global_initializer_needs_runtime(expr.rhs)
+		}
+		else {
+			return g.contains_call_expr(expr)
+		}
+	}
+}
+
 fn (mut g Gen) collect_runtime_const_targets() {
 	g.runtime_const_targets = map[string]bool{}
 	mut module_consts := map[string]map[string]bool{}
@@ -275,6 +318,102 @@ fn (mut g Gen) const_decl_storage_type(expr ast.Expr) string {
 	return typ
 }
 
+fn (mut g Gen) const_expr_c_value_for_header(expr ast.Expr) ?string {
+	return g.const_expr_c_value_for_header_in_module(expr, g.cur_module, 0)
+}
+
+fn (mut g Gen) const_expr_c_value_for_header_in_module(expr ast.Expr, mod string, depth int) ?string {
+	if depth > 20 {
+		return none
+	}
+	match expr {
+		ast.BasicLiteral {
+			if expr.kind == .number {
+				return sanitize_c_number_literal(expr.value)
+			}
+		}
+		ast.Ident {
+			if const_expr := g.lookup_const_expr(mod, expr.name) {
+				return g.const_expr_c_value_for_header_in_module(const_expr, mod, depth + 1)
+			}
+			if mod != 'builtin' {
+				if const_expr := g.lookup_const_expr('builtin', expr.name) {
+					return g.const_expr_c_value_for_header_in_module(const_expr, 'builtin', depth +
+						1)
+				}
+			}
+		}
+		ast.SelectorExpr {
+			if expr.lhs is ast.Ident {
+				lhs_ident := expr.lhs as ast.Ident
+				mut module_names := [lhs_ident.name]
+				resolved_mod_name := g.resolve_module_name(lhs_ident.name)
+				if resolved_mod_name !in module_names {
+					module_names << resolved_mod_name
+				}
+				for mod_name in module_names {
+					if const_expr := g.lookup_const_expr(mod_name, expr.rhs.name) {
+						return g.const_expr_c_value_for_header_in_module(const_expr, mod_name,
+
+							depth + 1)
+					}
+				}
+			}
+		}
+		ast.InfixExpr {
+			lhs := g.const_expr_c_value_for_header_in_module(expr.lhs, mod, depth + 1) or {
+				return none
+			}
+			rhs := g.const_expr_c_value_for_header_in_module(expr.rhs, mod, depth + 1) or {
+				return none
+			}
+			op := match expr.op {
+				.plus { '+' }
+				.minus { '-' }
+				.mul { '*' }
+				.div { '/' }
+				.mod { '%' }
+				.amp { '&' }
+				.pipe { '|' }
+				.xor { '^' }
+				.left_shift { '<<' }
+				.right_shift { '>>' }
+				else { return none }
+			}
+
+			return '(${lhs} ${op} ${rhs})'
+		}
+		ast.PrefixExpr {
+			value := g.const_expr_c_value_for_header_in_module(expr.expr, mod, depth + 1) or {
+				return none
+			}
+			op := match expr.op {
+				.minus { '-' }
+				.plus { '+' }
+				.bit_not { '~' }
+				else { return none }
+			}
+
+			return '${op}${value}'
+		}
+		ast.ParenExpr {
+			value := g.const_expr_c_value_for_header_in_module(expr.expr, mod, depth + 1) or {
+				return none
+			}
+			return '(${value})'
+		}
+		ast.CastExpr {
+			return g.const_expr_c_value_for_header_in_module(expr.expr, mod, depth + 1)
+		}
+		ast.CallOrCastExpr {
+			return g.const_expr_c_value_for_header_in_module(expr.expr, mod, depth + 1)
+		}
+		else {}
+	}
+
+	return none
+}
+
 fn (mut g Gen) emit_runtime_const_storage_decl(name string, typ string) {
 	if typ == 'string' {
 		g.sb.writeln('string ${name} = {0};')
@@ -441,6 +580,26 @@ fn (mut g Gen) gen_global_decl(node ast.GlobalDecl) {
 		if typ == '' || typ == 'void' {
 			typ = 'int'
 		}
+		if typ.starts_with('Array_fixed_') {
+			g.fixed_array_globals[name] = true
+			g.global_var_types[name] = typ
+			g.sb.write_string('${typ} ${name}')
+			if field.value !is ast.EmptyExpr {
+				g.sb.write_string(' = ')
+				if field.value is ast.ArrayInitExpr {
+					array_init := field.value as ast.ArrayInitExpr
+					if array_init.exprs.len == 0 && array_init.init is ast.EmptyExpr {
+						g.sb.write_string('{0}')
+					} else {
+						g.expr(field.value)
+					}
+				} else {
+					g.expr(field.value)
+				}
+			}
+			g.sb.writeln(';')
+			continue
+		}
 		g.global_var_types[name] = typ
 		// With prealloc, g_memory_block must be thread-local so each thread
 		// gets its own arena and the bump allocator is safe without locks.
@@ -451,7 +610,7 @@ fn (mut g Gen) gen_global_decl(node ast.GlobalDecl) {
 		}
 		if field.value !is ast.EmptyExpr {
 			// Function calls are not compile-time constants in C
-			if g.contains_call_expr(field.value) {
+			if g.global_initializer_needs_runtime(field.value) {
 				g.sb.writeln(';')
 			} else {
 				g.sb.write_string(' = ')

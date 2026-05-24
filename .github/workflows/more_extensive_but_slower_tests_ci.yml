@@ -35,7 +35,7 @@ jobs:
         run: make -j4 && ./v symlink
       - name: Build V (Windows)
         if: runner.os == 'Windows'
-        run: ./make.bat && ./v symlink
+        run: ./makev.bat && ./v symlink
 
       - name: Run additional crypto tests
         run: |

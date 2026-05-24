@@ -12,14 +12,15 @@ import strings
 import time
 
 pub struct Gen {
-	files []ast.File
-	env   &types.Environment = unsafe { nil }
-	pref  &pref.Preferences  = unsafe { nil }
 mut:
+	files                  []ast.File
+	env                    &types.Environment = unsafe { nil }
+	pref                   &pref.Preferences  = unsafe { nil }
 	sb                     strings.Builder
 	indent                 int
 	cur_fn_scope           &types.Scope = unsafe { nil }
 	cur_fn_name            string
+	cur_fn_c_name          string
 	cur_fn_ret_type        string
 	cur_fn_c_ret_type      string
 	cur_module             string
@@ -37,6 +38,7 @@ mut:
 	comptime_field_raw_type types.Type = types.Struct{} // raw types.Type for comptime checks
 	comptime_field_attrs    []string // current field attributes
 	comptime_field_idx      int      // current field index
+	comptime_continue_label string   // label for continue inside unrolled comptime field loops
 	comptime_val_var        string   // the struct variable being decoded (e.g., 'val')
 	comptime_val_type       string   // C type of val (e.g., 'Slack')
 
@@ -80,10 +82,19 @@ mut:
 	exported_const_seen         map[string]bool
 	exported_const_symbols      []ExportedConstSymbol
 	cur_file_name               string
+	cur_import_modules          map[string]string
 	is_module_ident_cache       map[string]bool    // per-function cache for is_module_ident results
 	not_local_var_cache         map[string]bool    // per-function negative cache for get_local_var_c_type
 	resolved_module_names       map[string]string  // per-function cache for resolve_module_name
 	cached_env_scopes           map[string]voidptr // cache of env_scope results (avoids repeated locking)
+	struct_field_lookup_cache   map[string]string
+	struct_field_lookup_miss    map[string]bool
+	struct_type_lookup_cache    map[string]types.Struct
+	struct_type_lookup_miss     map[string]bool
+	struct_decl_info_cache      map[string]StructDeclInfo
+	struct_decl_info_miss       map[string]bool
+	alias_base_lookup_cache     map[string]string
+	alias_base_lookup_miss      map[string]bool
 
 	const_exprs                map[string]string // const name → C expression string (for inlining)
 	const_types                map[string]string // const name → C type string
@@ -93,6 +104,8 @@ mut:
 	export_fn_names            map[string]string // V-qualified name → export name (from @[export:] attribute)
 	called_fn_names            map[string]bool
 	generic_spec_index         map[string][]string                // fn_name → matching keys in env.generic_types
+	generic_fn_decl_index      map[string]GenericFnDeclInfo       // generic fn C/base name → source location
+	specialized_fn_bases       map[string]bool                    // base C name with at least one _T_ specialization
 	late_generic_specs         map[string][]map[string]types.Type // additional comptime-discovered specs
 	anon_fn_defs               []string        // lifted anonymous function definitions
 	late_struct_defs           []string        // struct definitions discovered during pass 5 codegen
@@ -117,6 +130,7 @@ mut:
 	// E.g. [("json2__ValueInfo", {T: ValueInfo}), ("json2__StructFieldInfo", {T: StructFieldInfo})]
 	generic_struct_instances map[string][]GenericStructInstance
 	c_file_fn_keys           map[string]bool // fn_key -> emitted from a .c.v file, so plain .v fallback should be skipped
+	c_struct_types           map[string]bool // C struct names declared with `struct C.Name`
 	typedef_c_types          map[string]bool // C struct names with @[typedef] attribute (emit without 'struct' prefix)
 	blocked_fn_keys          map[string]bool // worker-only fn keys reserved to other pass5 chunks
 	cached_vhash             string          // cached git short hash for @VHASH/@VCURRENTHASH
@@ -143,13 +157,25 @@ struct ExportedConstSymbol {
 }
 
 struct StructDeclInfo {
-	decl ast.StructDecl
-	mod  string
+	decl      ast.StructDecl
+	mod       string
+	file_name string
 }
 
 struct InterfaceDeclInfo {
-	decl ast.InterfaceDecl
-	mod  string
+	decl      ast.InterfaceDecl
+	mod       string
+	file_name string
+}
+
+fn (mut g Gen) set_struct_info_context(info StructDeclInfo) {
+	g.cur_module = info.mod
+	g.cur_file_name = info.file_name
+}
+
+fn (mut g Gen) set_interface_info_context(info InterfaceDeclInfo) {
+	g.cur_module = info.mod
+	g.cur_file_name = info.file_name
 }
 
 struct FixedArrayInfo {
@@ -160,6 +186,11 @@ struct FixedArrayInfo {
 struct GenericFnSpecialization {
 	name          string
 	generic_types map[string]types.Type
+}
+
+struct GenericFnDeclInfo {
+	file_idx int
+	stmt_idx int
 }
 
 struct MapTypeInfo {
@@ -207,26 +238,62 @@ fn type_has_valid_data(typ types.Type) bool {
 	return unsafe { (&u64(&typ))[1] } != 0
 }
 
+fn count_substr_in_string(s string, needle string) int {
+	if needle.len == 0 {
+		return 0
+	}
+	mut count := 0
+	mut i := 0
+	for i <= s.len - needle.len {
+		if s[i..i + needle.len] == needle {
+			count++
+			i += needle.len
+		} else {
+			i++
+		}
+	}
+	return count
+}
+
 pub fn Gen.new(files []ast.File) &Gen {
-	return Gen.new_with_env_and_pref(files, unsafe { nil }, unsafe { nil })
+	mut g := new_gen_with_env_and_pref_impl(unsafe { nil }, unsafe { nil })
+	g.files = files
+	return g
 }
 
 pub fn Gen.new_with_env(files []ast.File, env &types.Environment) &Gen {
-	return Gen.new_with_env_and_pref(files, env, unsafe { nil })
+	mut g := new_gen_with_env_and_pref_impl(env, unsafe { nil })
+	g.files = files
+	return g
 }
 
 pub fn Gen.new_with_env_and_pref(files []ast.File, env &types.Environment, p &pref.Preferences) &Gen {
+	mut g := new_gen_with_env_and_pref_impl(env, p)
+	g.files = files
+	return g
+}
+
+fn new_gen_with_env_and_pref_impl(env &types.Environment, p &pref.Preferences) &Gen {
 	return &Gen{
-		files:                  files
-		env:                    unsafe { env }
-		pref:                   unsafe { p }
-		sb:                     strings.new_builder(10_000)
-		fn_param_is_ptr:        map[string][]bool{}
-		fn_param_types:         map[string][]string{}
-		fn_return_types:        map[string]string{}
-		runtime_local_types:    map[string]string{}
-		cur_fn_returned_idents: map[string]bool{}
-		active_generic_types:   map[string]types.Type{}
+		files:                     []ast.File{}
+		env:                       unsafe { env }
+		pref:                      unsafe { p }
+		sb:                        strings.new_builder(10_000)
+		fn_param_is_ptr:           map[string][]bool{}
+		fn_param_types:            map[string][]string{}
+		fn_return_types:           map[string]string{}
+		runtime_local_types:       map[string]string{}
+		cur_fn_returned_idents:    map[string]bool{}
+		active_generic_types:      map[string]types.Type{}
+		struct_field_lookup_cache: map[string]string{}
+		struct_field_lookup_miss:  map[string]bool{}
+		struct_type_lookup_cache:  map[string]types.Struct{}
+		struct_type_lookup_miss:   map[string]bool{}
+		struct_decl_info_cache:    map[string]StructDeclInfo{}
+		struct_decl_info_miss:     map[string]bool{}
+		alias_base_lookup_cache:   map[string]string{}
+		alias_base_lookup_miss:    map[string]bool{}
+		cur_import_modules:        map[string]string{}
 
 		fixed_array_fields:          map[string]bool{}
 		fixed_array_field_elem:      map[string]string{}
@@ -257,6 +324,10 @@ pub fn Gen.new_with_env_and_pref(files []ast.File, env &types.Environment, p &pr
 		runtime_const_targets:       map[string]bool{}
 		used_fn_keys:                map[string]bool{}
 		called_fn_names:             map[string]bool{}
+		generic_fn_decl_index:       map[string]GenericFnDeclInfo{}
+		specialized_fn_bases:        map[string]bool{}
+		c_struct_types:              map[string]bool{}
+		typedef_c_types:             map[string]bool{}
 		blocked_fn_keys:             map[string]bool{}
 	}
 }
@@ -468,7 +539,7 @@ fn should_keep_builtin_map_decl(decl ast.FnDecl) bool {
 fn should_keep_builtin_string_decl(decl ast.FnDecl) bool {
 	return decl.name in ['eq', 'plus', 'plus_two', 'substr', 'substr_unsafe', 'repeat', 'free',
 		'vstring', 'vstring_with_len', 'vstring_literal', 'vstring_literal_with_len', 'runes',
-		'join']
+		'join', 'compare_strings', 'compare_strings_by_len', 'compare_lower_strings']
 }
 
 fn should_always_emit_for_markused(path string) bool {
@@ -481,6 +552,7 @@ fn should_always_emit_for_markused(path string) bool {
 fn is_builtin_runtime_keep_file(path string) bool {
 	normalized := path.replace('\\', '/')
 	return normalized.ends_with('vlib/builtin/map.c.v')
+		|| normalized.ends_with('vlib/builtin/builtin.c.v')
 		|| normalized.ends_with('vlib/builtin/builtin.v')
 		|| normalized.ends_with('vlib/builtin/cfns_wrapper.c.v')
 		|| normalized.ends_with('vlib/builtin/allocation.c.v')
@@ -498,6 +570,7 @@ fn is_builtin_runtime_keep_file(path string) bool {
 		|| normalized.ends_with('vlib/strconv/f32_str.c.v')
 		|| normalized.ends_with('vlib/strconv/f64_str.c.v')
 		|| normalized.ends_with('vlib/math/bits/bits.v')
+		|| normalized.ends_with('vlib/math/bits/bits.c.v')
 		|| normalized.ends_with('vlib/sokol/memory/memory.c.v')
 }
 
@@ -575,7 +648,15 @@ pub fn (mut g Gen) gen_passes_1_to_4() {
 	g.generic_struct_bindings['stdatomic__AtomicVal'] = {
 		'T': types.Type(types.f64_)
 	}
-	g.discover_comptime_generic_specs()
+	g.build_generic_fn_decl_index()
+	for _ in 0 .. 4 {
+		before_generic_specs := g.late_generic_spec_count()
+		g.discover_comptime_generic_specs()
+		g.discover_nested_generic_specs()
+		if g.late_generic_spec_count() == before_generic_specs {
+			break
+		}
+	}
 	g.collect_fn_signatures()
 	g.collect_c_file_fn_keys()
 	g.collect_runtime_const_targets()
@@ -700,8 +781,21 @@ pub fn (mut g Gen) gen_passes_1_to_4() {
 			if !stmt_has_valid_data(stmt) {
 				continue
 			}
+			if stmt is ast.TypeDecl && stmt.variants.len == 0 && stmt.base_type !is ast.EmptyExpr
+				&& !type_decl_base_is_fn_type(stmt) {
+				g.gen_type_alias(stmt)
+			}
+		}
+	}
+	for file in g.files {
+		g.set_file_module(file)
+		for stmt in file.stmts {
+			if !stmt_has_valid_data(stmt) {
+				continue
+			}
 			if stmt is ast.TypeDecl {
-				if stmt.variants.len == 0 && stmt.base_type !is ast.EmptyExpr {
+				if stmt.variants.len == 0 && stmt.base_type !is ast.EmptyExpr
+					&& type_decl_base_is_fn_type(stmt) {
 					g.gen_type_alias(stmt)
 				} else if stmt.variants.len > 0 {
 					g.gen_sum_type_decl(stmt)
@@ -715,6 +809,8 @@ pub fn (mut g Gen) gen_passes_1_to_4() {
 	// Emit pointer element typedefs (e.g. 'typedef Color* Colorptr;') now that
 	// enums and type aliases have been defined.
 	g.emit_pointer_typedefs()
+	// Fixed arrays over aliases can be emitted once the aliases from pass 2 exist.
+	g.emit_deferred_fixed_array_aliases()
 
 	// Pass 3: Full struct definitions (use named struct/union to match forward decls)
 	// Collect all struct decls, then emit in dependency order
@@ -731,8 +827,9 @@ pub fn (mut g Gen) gen_passes_1_to_4() {
 					continue
 				}
 				all_structs << StructDeclInfo{
-					decl: stmt
-					mod:  g.cur_module
+					decl:      stmt
+					mod:       g.cur_module
+					file_name: file.name
 				}
 			} else if stmt is ast.InterfaceDecl {
 				for field in stmt.fields {
@@ -745,8 +842,9 @@ pub fn (mut g Gen) gen_passes_1_to_4() {
 				}
 				g.interface_decls[iface_c_name] = stmt
 				all_interfaces << InterfaceDeclInfo{
-					decl: stmt
-					mod:  g.cur_module
+					decl:      stmt
+					mod:       g.cur_module
+					file_name: file.name
 				}
 			}
 		}
@@ -756,7 +854,7 @@ pub fn (mut g Gen) gen_passes_1_to_4() {
 	// Also emit fixed array typedefs as soon as their element types are defined.
 	// Repeat until no more progress (simple topo sort with wrapper side-effects).
 	for info in all_structs {
-		g.cur_module = info.mod
+		g.set_struct_info_context(info)
 		if g.struct_is_leaf(info.decl) {
 			g.gen_struct_decl(info.decl)
 		}
@@ -766,7 +864,7 @@ pub fn (mut g Gen) gen_passes_1_to_4() {
 	for _ in 0 .. (all_structs.len * 2) {
 		mut progressed := false
 		for info in all_structs {
-			g.cur_module = info.mod
+			g.set_struct_info_context(info)
 			name := g.get_struct_name(info.decl)
 			body_key := 'body_${name}'
 			if body_key in g.emitted_types {
@@ -810,7 +908,7 @@ pub fn (mut g Gen) gen_passes_1_to_4() {
 	for _ in 0 .. (all_interfaces.len * 2) {
 		mut progressed := false
 		for info in all_interfaces {
-			g.cur_module = info.mod
+			g.set_interface_info_context(info)
 			name := g.get_interface_name(info.decl)
 			body_key := 'body_${name}'
 			if body_key in g.emitted_types {
@@ -828,14 +926,14 @@ pub fn (mut g Gen) gen_passes_1_to_4() {
 	// Emit any remaining interfaces before retrying structs/wrappers. This keeps
 	// option/result wrappers for interface payloads available before by-value users.
 	for info in all_interfaces {
-		g.cur_module = info.mod
+		g.set_interface_info_context(info)
 		g.gen_interface_decl(info.decl)
 	}
 	// Retry any structs that were waiting on interface bodies.
 	for _ in 0 .. all_structs.len {
 		mut progressed := false
 		for info in all_structs {
-			g.cur_module = info.mod
+			g.set_struct_info_context(info)
 			name := g.get_struct_name(info.decl)
 			body_key := 'body_${name}'
 			if body_key in g.emitted_types {
@@ -856,7 +954,7 @@ pub fn (mut g Gen) gen_passes_1_to_4() {
 	}
 	// Emit any remaining structs as a last resort for cyclic declarations.
 	for info in all_structs {
-		g.cur_module = info.mod
+		g.set_struct_info_context(info)
 		g.gen_struct_decl(info.decl)
 	}
 	_ = g.emit_ready_option_result_structs()
@@ -976,6 +1074,33 @@ pub fn (mut g Gen) gen_passes_1_to_4() {
 					}
 					continue
 				}
+				recv_gp := receiver_generic_param_names(stmt)
+				if recv_gp.len > 0 {
+					all_bindings := g.get_all_receiver_generic_bindings(stmt)
+					if all_bindings.len > 0 {
+						prev_generic_types := g.active_generic_types.clone()
+						for bindings in all_bindings {
+							g.active_generic_types = bindings.clone()
+							gfn_name := g.get_fn_name(stmt)
+							if gfn_name != '' {
+								g.gen_fn_head_with_name(stmt, gfn_name)
+								g.sb.writeln(';')
+							}
+						}
+						g.active_generic_types = prev_generic_types.clone()
+						continue
+					} else if bindings := g.get_receiver_generic_bindings(stmt) {
+						prev_generic_types := g.active_generic_types.clone()
+						g.active_generic_types = bindings.clone()
+						gfn_name := g.get_fn_name(stmt)
+						if gfn_name != '' {
+							g.gen_fn_head_with_name(stmt, gfn_name)
+							g.sb.writeln(';')
+						}
+						g.active_generic_types = prev_generic_types.clone()
+						continue
+					}
+				}
 				fn_name := g.get_fn_name(stmt)
 				if fn_name == '' {
 					continue
@@ -1014,6 +1139,8 @@ pub fn (mut g Gen) gen_passes_1_to_4() {
 	g.emit_ierror_wrapper_decls()
 	g.collect_interface_wrapper_specs()
 	g.emit_interface_method_wrapper_decls()
+	g.emit_interface_clone_decls()
+	g.emit_array_interface_repeat_decls()
 	stage_start = g.mark_cgen_step(stats_enabled, stats_scope, mut stats_sw, stage_start,
 		'pass 4 helper declarations')
 
@@ -1078,6 +1205,11 @@ fn (g &Gen) should_skip_plain_v_fallback_fn(fn_key string) bool {
 
 // gen_finalize runs post-pass-5 finalization and returns the complete C source string.
 pub fn (mut g Gen) gen_finalize() string {
+	stats_enabled := g.cgen_stats_enabled()
+	stats_scope := g.cgen_stats_scope_label()
+	mut stats_sw := time.new_stopwatch()
+	mut stage_start := stats_sw.elapsed()
+
 	// Generate test runner main if this is a test file (has test_ functions but no main)
 	// Skip when generating cached module sources (cache_bundle_name is set) - main belongs only in the main module source
 	if !g.has_main && g.test_fn_names.len > 0 && g.cache_bundle_name.len == 0 {
@@ -1093,7 +1225,7 @@ pub fn (mut g Gen) gen_finalize() string {
 		for fn_name, _ in g.fn_return_types {
 			// Module init functions: MODULE__init (e.g., rand__init)
 			// Skip methods (Type__method patterns where Type is capitalized)
-			if fn_name.ends_with('__init') && fn_name.count('__') == 1 {
+			if fn_name.ends_with('__init') && count_substr_in_string(fn_name, '__') == 1 {
 				first_char := fn_name[0]
 				if first_char >= `a` && first_char <= `z` {
 					if params := g.fn_param_is_ptr[fn_name] {
@@ -1112,6 +1244,8 @@ pub fn (mut g Gen) gen_finalize() string {
 				g.sb.writeln('\t${fn_name}();')
 			}
 		}
+		g.sb.writeln('\tg_main_argc = ___argc;')
+		g.sb.writeln('\tg_main_argv = (void*)___argv;')
 		for test_fn in g.test_fn_names {
 			msg_run := 'Running test: ${test_fn}...'
 			msg_ok := '  OK'
@@ -1124,11 +1258,15 @@ pub fn (mut g Gen) gen_finalize() string {
 		g.sb.writeln('\treturn 0;')
 		g.sb.writeln('}')
 	}
+	stage_start = g.mark_cgen_step(stats_enabled, stats_scope, mut stats_sw, stage_start,
+		'finalize test main')
 
 	g.emit_missing_array_contains_fallbacks()
 	g.emit_missing_runtime_fallbacks()
 	g.emit_cached_module_init_function()
 	g.emit_exported_const_symbols()
+	stage_start = g.mark_cgen_step(stats_enabled, stats_scope, mut stats_sw, stage_start,
+		'finalize fallbacks')
 
 	mut out := ''
 	// Emit deferred str macros for late-discovered generic struct instances.
@@ -1140,9 +1278,13 @@ pub fn (mut g Gen) gen_finalize() string {
 			g.late_struct_defs << '#define ${inst_name}__str(v) ((string){.str = "${label}", .len = ${label.len}, .is_lit = 1})\n#define ${inst_name}_str(v) ${inst_name}__str(v)\n'
 		}
 	}
+	stage_start = g.mark_cgen_step(stats_enabled, stats_scope, mut stats_sw, stage_start,
+		'finalize late str macros')
 	if g.anon_fn_defs.len > 0 || g.spawn_wrapper_defs.len > 0 || g.trampoline_defs.len > 0
 		|| g.late_struct_defs.len > 0 || g.pending_late_body_keys.len > 0 {
 		full := g.sb.str()
+		stage_start = g.mark_cgen_step(stats_enabled, stats_scope, mut stats_sw, stage_start,
+			'finalize snapshot')
 		mut out_sb := strings.new_builder(full.len + 4096)
 		unsafe { out_sb.write_ptr(full.str, g.pass5_start_pos) }
 		// Late-discovered generic struct definitions (discovered during setup/pass 4 codegen)
@@ -1181,12 +1323,20 @@ pub fn (mut g Gen) gen_finalize() string {
 	} else {
 		out = g.sb.str()
 	}
+	_ = g.mark_cgen_step(stats_enabled, stats_scope, mut stats_sw, stage_start, 'finalize output')
 	return out
 }
 
 // gen_pass5 generates Pass 5 (function bodies, globals, etc.) sequentially.
 fn (mut g Gen) gen_pass5() {
+	stats_enabled := g.cgen_stats_enabled()
+	stats_scope := g.cgen_stats_scope_label()
+	mut stats_sw := time.new_stopwatch()
+	mut stage_start := stats_sw.elapsed()
+
 	g.pass5_start_pos = g.sb.len
+	g.struct_field_lookup_cache = map[string]string{}
+	g.struct_field_lookup_miss = map[string]bool{}
 	g.collect_force_emit_str_fns()
 	// Pre-pass: emit extern forward declarations for all globals across all modules
 	for file in g.files {
@@ -1201,13 +1351,18 @@ fn (mut g Gen) gen_pass5() {
 		}
 		g.gen_file(file)
 	}
+	stage_start = g.mark_cgen_step(stats_enabled, stats_scope, mut stats_sw, stage_start,
+		'pass 5 files')
 	g.gen_pass5_post()
+	_ = g.mark_cgen_step(stats_enabled, stats_scope, mut stats_sw, stage_start, 'pass 5 post')
 }
 
 // gen_pass5_pre runs Pass 5 sequential pre-work: extern globals and extern consts
 // for non-emitted modules. Returns the list of file indices that need gen_file().
 pub fn (mut g Gen) gen_pass5_pre() []int {
 	g.pass5_start_pos = g.sb.len
+	g.struct_field_lookup_cache = map[string]string{}
+	g.struct_field_lookup_miss = map[string]bool{}
 	g.collect_force_emit_str_fns()
 	for file in g.files {
 		g.set_file_module(file)
@@ -1247,6 +1402,9 @@ pub fn (mut g Gen) gen_pass5_pre() []int {
 pub fn (mut g Gen) gen_pass5_post() {
 	g.emit_needed_ierror_wrappers()
 	g.emit_needed_interface_method_wrappers()
+	g.emit_interface_clone_helpers()
+	g.emit_option_string_clone_helper()
+	g.emit_array_interface_repeat_helpers()
 	g.emit_live_reload_infrastructure()
 	if g.cache_bundle_name.len == 0 {
 		g.emit_map_str_functions()
@@ -1331,9 +1489,12 @@ pub fn (g &Gen) new_pass5_worker(file_indices []int, worker_id int) &Gen {
 		export_fn_names:             g.export_fn_names.clone()
 		called_fn_names:             g.called_fn_names.clone()
 		generic_spec_index:          g.generic_spec_index.clone()
+		generic_fn_decl_index:       g.generic_fn_decl_index.clone()
+		specialized_fn_bases:        g.specialized_fn_bases.clone()
 		late_generic_specs:          g.late_generic_specs.clone()
 		generic_struct_bindings:     g.generic_struct_bindings.clone()
 		generic_struct_instances:    g.generic_struct_instances.clone()
+		c_struct_types:              g.c_struct_types.clone()
 		typedef_c_types:             g.typedef_c_types.clone()
 		// Per-worker mutable state (starts fresh).
 		// Each worker gets a unique tmp_counter offset to avoid name collisions
@@ -1344,11 +1505,20 @@ pub fn (g &Gen) new_pass5_worker(file_indices []int, worker_id int) &Gen {
 		runtime_local_types:         map[string]string{}
 		cur_fn_returned_idents:      map[string]bool{}
 		active_generic_types:        map[string]types.Type{}
+		cur_import_modules:          map[string]string{}
 		is_module_ident_cache:       map[string]bool{}
 		not_local_var_cache:         map[string]bool{}
 		resolved_module_names:       map[string]string{}
 		cur_fn_mut_params:           map[string]bool{}
 		cached_env_scopes:           map[string]voidptr{}
+		struct_field_lookup_cache:   map[string]string{}
+		struct_field_lookup_miss:    map[string]bool{}
+		struct_type_lookup_cache:    map[string]types.Struct{}
+		struct_type_lookup_miss:     map[string]bool{}
+		struct_decl_info_cache:      map[string]StructDeclInfo{}
+		struct_decl_info_miss:       map[string]bool{}
+		alias_base_lookup_cache:     map[string]string{}
+		alias_base_lookup_miss:      map[string]bool{}
 		needed_interface_wrappers:   map[string]bool{}
 		needed_ierror_wrapper_bases: map[string]bool{}
 		spawned_fns:                 map[string]bool{}
@@ -1400,6 +1570,13 @@ fn is_c_identifier_like(name string) bool {
 		}
 	}
 	return true
+}
+
+fn type_decl_base_is_fn_type(node ast.TypeDecl) bool {
+	if node.base_type is ast.Type {
+		return node.base_type is ast.FnType
+	}
+	return false
 }
 
 fn (mut g Gen) emit_missing_runtime_fallbacks() {
@@ -1727,6 +1904,10 @@ fn (mut g Gen) is_module_ident(name string) bool {
 			return result
 		}
 	}
+	if name in g.cur_import_modules {
+		g.is_module_ident_cache[name] = true
+		return true
+	}
 	if g.env != unsafe { nil } {
 		if mut scope := g.env_scope(g.cur_module) {
 			if obj := scope.lookup_parent(name, 0) {
@@ -1757,6 +1938,11 @@ fn (mut g Gen) resolve_module_name(name string) string {
 			g.resolved_module_names[name] = result
 			return result
 		}
+	}
+	if resolved := g.cur_import_modules[name] {
+		result = resolved
+		g.resolved_module_names[name] = result
+		return result
 	}
 	if g.env != unsafe { nil } {
 		if mut scope := g.env_scope(g.cur_module) {
@@ -1845,6 +2031,19 @@ fn is_c_hex_digit(ch u8) bool {
 	return (ch >= `0` && ch <= `9`) || (ch >= `a` && ch <= `f`) || (ch >= `A` && ch <= `F`)
 }
 
+fn hex_nibble_value(ch u8) u32 {
+	if ch >= `0` && ch <= `9` {
+		return u32(ch - `0`)
+	}
+	if ch >= `a` && ch <= `f` {
+		return u32(ch - `a`) + 10
+	}
+	if ch >= `A` && ch <= `F` {
+		return u32(ch - `A`) + 10
+	}
+	return 0
+}
+
 fn escape_c_string_literal_segment(raw string) string {
 	mut sb := strings.new_builder(raw.len + 8)
 	mut i := 0
@@ -1867,6 +2066,32 @@ fn escape_c_string_literal_segment(raw string) string {
 				i += 4
 				// C hex escapes are greedy, so split adjacent literals before the
 				// next hex digit to keep the escape length fixed at two digits.
+				if i < raw.len && is_c_hex_digit(raw[i]) {
+					sb.write_string('""')
+				}
+				continue
+			}
+			// V \uXXXX universal char → emit UTF-8 byte sequence as \xNN escapes.
+			// C99/C11 forbid universal character names for code points below 0xA0
+			// (except $, @, `), so we can't pass them through to C verbatim.
+			if next == `u` && i + 5 < raw.len && is_c_hex_digit(raw[i + 2])
+				&& is_c_hex_digit(raw[i + 3]) && is_c_hex_digit(raw[i + 4])
+				&& is_c_hex_digit(raw[i + 5]) {
+				cp := u32(hex_nibble_value(raw[i + 2])) << 12 | u32(hex_nibble_value(raw[i + 3])) << 8 | u32(hex_nibble_value(raw[
+					i + 4])) << 4 | u32(hex_nibble_value(raw[i + 5]))
+				if cp < 0x80 {
+					sb.write_string('\\x${cp:02x}')
+				} else if cp < 0x800 {
+					b0 := 0xC0 | (cp >> 6)
+					b1 := 0x80 | (cp & 0x3F)
+					sb.write_string('\\x${b0:02x}\\x${b1:02x}')
+				} else {
+					b0 := 0xE0 | (cp >> 12)
+					b1 := 0x80 | ((cp >> 6) & 0x3F)
+					b2 := 0x80 | (cp & 0x3F)
+					sb.write_string('\\x${b0:02x}\\x${b1:02x}\\x${b2:02x}')
+				}
+				i += 6
 				if i < raw.len && is_c_hex_digit(raw[i]) {
 					sb.write_string('""')
 				}

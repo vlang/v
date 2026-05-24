@@ -179,6 +179,13 @@ fn (mut c Checker) markused_method_call(mut node ast.CallExpr, mut left_expr ast
 		if left_expr.obj is ast.Var && left_expr.obj.ct_type_var == .smartcast {
 			c.table.used_features.comptime_calls['${int(left_type)}.${node.name}'] = true
 		}
+		if c.table.sym(left_type).kind == .alias {
+			c.table.used_features.comptime_calls['${int(left_type)}.${node.name}'] = true
+			// Alias method calls can also auto-resolve to pointer receivers in cgen.
+			if !left_type.is_ptr() {
+				c.table.used_features.comptime_calls['${int(left_type.ref())}.${node.name}'] = true
+			}
+		}
 	} else if left_type.has_flag(.generic) {
 		unwrapped_left := c.unwrap_generic(left_type)
 		c.table.used_features.comptime_calls['${int(unwrapped_left)}.${node.name}'] = true

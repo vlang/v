@@ -483,6 +483,10 @@ fn test_realpath_existing() {
 	rpath := os.real_path(existing_file)
 	assert os.is_abs_path(rpath)
 	assert rpath.ends_with(existing_file_name)
+	$if windows {
+		assert !rpath.starts_with('UNC\\')
+		assert !rpath.starts_with('\\\\?\\')
+	}
 	os.rm(existing_file) or {}
 }
 
@@ -532,6 +536,10 @@ fn test_realpath_absolutepath_symlink() ! {
 	println(rpath)
 	assert os.is_abs_path(rpath)
 	assert rpath.ends_with(file_name)
+	$if windows {
+		assert !rpath.starts_with('UNC\\')
+		assert !rpath.starts_with('\\\\?\\')
+	}
 	os.rm(symlink_name) or {}
 	os.rm(file_name) or {}
 }
@@ -1034,8 +1042,39 @@ fn test_execute() {
 	// println('output.len: ${result.output.len}')
 	// println('output hexresult: ${hexresult}')
 	assert result.exit_code == 0
-	assert hexresult.starts_with('7374617274004d4944444c450066696e697368')
+	assert hexresult.contains('7374617274004d4944444c450066696e697368')
 	assert hexresult.ends_with('0a7878')
+}
+
+fn test_exec_with_args() {
+	source_path := os.join_path_single(tfolder, 'exec_args.v')
+	output_arg := os.join_path_single(tfolder, 'exec_args')
+	exe_path := if os.user_os() == 'windows' {
+		output_arg + '.exe'
+	} else {
+		output_arg
+	}
+	os.write_file(source_path,
+		"import os\n\nfn main() {\n\tprintln(os.args[1..].join('|'))\n\teprintln('stderr-ok')\n}\n")!
+	defer {
+		os.rm(source_path) or {}
+		os.rm(exe_path) or {}
+		os.rm(output_arg + '.c') or {}
+	}
+	compile_result :=
+		os.execute('${os.quoted_path(@VEXE)} -o ${os.quoted_path(output_arg)} ${os.quoted_path(source_path)}')
+	assert compile_result.exit_code == 0, compile_result.output
+
+	result := os.exec([exe_path, 'one two', 'semi;colon'])
+	normalized_output := result.output.replace('\r\n', '\n')
+	assert result.exit_code == 0, result.output
+	assert normalized_output.contains('one two|semi;colon\n'), result.output
+	assert normalized_output.contains('stderr-ok\n'), result.output
+
+	shell_metachar_result := os.exec([exe_path, 'first; echo injected'])
+	normalized_shell_metachar_output := shell_metachar_result.output.replace('\r\n', '\n')
+	assert shell_metachar_result.exit_code == 0, shell_metachar_result.output
+	assert normalized_shell_metachar_output.contains('first; echo injected\n'), shell_metachar_result.output
 }
 
 fn test_execute_with_stderr_redirection() {

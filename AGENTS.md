@@ -249,11 +249,11 @@ See Build & Rebuild for rebuild triggers and flags.
 
 ## Prerequisites
 * Toolchain: `make`, `git`, and a C compiler (`clang` or `gcc`).
-* Windows: use `make.bat` for the initial build.
+* Windows: use `makev.bat` for the initial build.
 
 ## Build & Rebuild
 * Initial build (only if `./v` is missing): `make`
-  (Windows: `make.bat`).
+  (Windows: `makev.bat`).
 * Build `./vnew` (debug-friendly, recommended for agent workflows):
   `./v -g -keepc -o ./vnew cmd/v`
 * Never run `./v self` directly; only build `./vnew` with the commands
@@ -406,7 +406,7 @@ Only the following `$`-prefixed functions are supported:
 * `$embed_file('path')` - embed a file's contents into the binary.
   Paths can be absolute, relative to the source file, or use pseudo
   variables like `@VEXEROOT` or `@VMODROOT`.
-* `$tmpl('path')` - compile a V template file (used by vweb/veb).
+* `$tmpl('path')` - compile a V template file (used by veb).
 * `$env('VAR')` - read an environment variable at compile time.
 * `$d('ident', default)` - read a `-d ident=value` compile-time
   define, with a default fallback.

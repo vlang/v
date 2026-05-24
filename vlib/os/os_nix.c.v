@@ -9,6 +9,13 @@ module os
 #include <utime.h>
 #insert "@VEXEROOT/vlib/os/execute_capture_nix.h"
 
+// short_path is a Windows-only helper that returns the DOS 8.3 short path.
+// On non-Windows platforms it simply returns the given path unchanged,
+// so that callers guarded by `$if windows { ... }` type-check on other targets.
+pub fn short_path(path string) string {
+	return path
+}
+
 // path_separator is the platform specific separator string, used between the folders and filenames in a path. It is '/' on POSIX, and '\\' on Windows.
 pub const path_separator = '/'
 
@@ -66,6 +73,8 @@ fn C.getgid() i32
 fn C.getegid() i32
 
 fn C.v_os_execute_capture_start(cmd &char, child_pid &int, read_fd &int) int
+
+fn C.v_os_exec_capture_start(argv &&char, child_pid &int, read_fd &int) int
 
 enum GlobMatch {
 	exact
@@ -324,7 +333,10 @@ pub fn mkdir(path string, params MkdirParams) ! {
 pub fn execute(cmd string) Result {
 	mut pid := 0
 	mut read_fd := -1
-	if C.v_os_execute_capture_start(&char(cmd.str), &pid, &read_fd) != 0 {
+	v_os_execute_lock()
+	rc := C.v_os_execute_capture_start(&char(cmd.str), &pid, &read_fd)
+	v_os_execute_unlock()
+	if rc != 0 {
 		return Result{
 			exit_code: -1
 			output:    'exec("${cmd}") failed'
@@ -333,7 +345,61 @@ pub fn execute(cmd string) Result {
 	soutput := fd_slurp(read_fd).join('')
 	fd_close(read_fd)
 	mut status := 0
-	if C.waitpid(pid, &status, 0) == -1 {
+	for {
+		C.errno = 0
+		if C.waitpid(pid, &status, 0) != -1 {
+			break
+		}
+		if C.errno == C.EINTR {
+			continue
+		}
+		return Result{
+			exit_code: -1
+			output:    soutput
+		}
+	}
+	exit_code, _ := posix_wait4_to_exit_status(status)
+	return Result{
+		exit_code: exit_code
+		output:    soutput
+	}
+}
+
+// exec starts the specified command with arguments, waits for it to complete, and returns its output.
+pub fn exec(args []string) Result {
+	if args.len == 0 {
+		return Result{
+			exit_code: -1
+			output:    'exec requires at least one argument'
+		}
+	}
+	mut cargs := []&char{cap: args.len + 1}
+	for arg in args {
+		cargs << &char(arg.str)
+	}
+	cargs << &char(unsafe { nil })
+	mut pid := 0
+	mut read_fd := -1
+	v_os_execute_lock()
+	rc := C.v_os_exec_capture_start(cargs.data, &pid, &read_fd)
+	v_os_execute_unlock()
+	if rc != 0 {
+		return Result{
+			exit_code: -1
+			output:    'exec("${args[0]}") failed'
+		}
+	}
+	soutput := fd_slurp(read_fd).join('')
+	fd_close(read_fd)
+	mut status := 0
+	for {
+		C.errno = 0
+		if C.waitpid(pid, &status, 0) != -1 {
+			break
+		}
+		if C.errno == C.EINTR {
+			continue
+		}
 		return Result{
 			exit_code: -1
 			output:    soutput
@@ -430,8 +496,10 @@ pub fn (mut f File) close() {
 		return
 	}
 	f.is_opened = false
-	C.fflush(f.cfile)
-	C.fclose(f.cfile)
+	cfile := f.cfile
+	f.cfile = unsafe { nil }
+	C.fflush(cfile)
+	C.fclose(cfile)
 }
 
 fn C.mkstemp(stemplate &u8) i32

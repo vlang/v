@@ -21,13 +21,14 @@ pub fn (manifest Manifest) resolved_base_url(vmod_root string) string {
 }
 
 // source_root returns the folder where sources are looked up under a `v.mod`.
-// When `base_url` is missing, it preserves the existing `src/` fallback.
+// When `base_url` is set, it points at that folder; otherwise it falls back to
+// the folder containing `v.mod`. The previous implicit `src/` fallback is gone.
 pub fn (manifest Manifest) source_root(vmod_root string) string {
 	base_url := manifest.resolved_base_url(vmod_root)
 	if base_url != '' {
 		return base_url
 	}
-	return os.norm_path(os.join_path(vmod_root, 'src'))
+	return os.norm_path(vmod_root)
 }
 
 // This file provides a caching mechanism for seeking quickly whether a

@@ -59,6 +59,22 @@ fn run_generic_struct_orm_query[T](mut db sqlite.DB, value T) ![]DbValue[T] {
 	return rows
 }
 
+fn run_generic_table_orm_query[T](mut db sqlite.DB, value T) ![]T {
+	sql db {
+		create table T
+	}!
+
+	sql db {
+		insert value into T
+	}!
+
+	rows := sql db {
+		select from T
+	}!
+
+	return rows
+}
+
 fn test_orm_generic_struct_select_in_generic_fn() {
 	rows := run_generic_orm_query('test') or { panic(err) }
 	assert rows.len == 1
@@ -82,4 +98,18 @@ fn test_orm_generic_struct_select_with_inferred_struct_type() {
 
 	assert rows.len == 1
 	assert rows[0].data.name == 'test'
+}
+
+fn test_orm_generic_table_symbol_in_generic_fn() {
+	mut db := sqlite.connect(':memory:')!
+	defer {
+		db.close() or {}
+	}
+
+	rows := run_generic_table_orm_query(mut db, User{
+		name: 'generic'
+	}) or { panic(err) }
+
+	assert rows.len == 1
+	assert rows[0].name == 'generic'
 }

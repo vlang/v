@@ -55,11 +55,14 @@ fn atou_common(s string, type_max u64) !u64 {
 			}
 			underscored = false
 
-			oldx := x
-			x = (x * 10) + u64(c)
-			if x > type_max || oldx > x {
+			if x > type_max / 10 {
 				return error('strconv.atou: parsing "${s}": integer overflow')
 			}
+			x *= 10
+			if x > type_max - u64(c) {
+				return error('strconv.atou: parsing "${s}": integer overflow')
+			}
+			x += u64(c)
 		}
 	}
 	return x

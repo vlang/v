@@ -311,12 +311,12 @@ fn test_header_from_map() {
 
 fn test_custom_header_from_map() {
 	h := new_custom_header_from_map({
-		'Server': 'VWeb'
+		'Server': 'Veb'
 		'foo':    'bar'
 	})!
 	assert h.contains_custom('server')
 	assert h.contains_custom('foo')
-	assert h.get_custom('server') or { '' } == 'VWeb'
+	assert h.get_custom('server') or { '' } == 'Veb'
 	assert h.get_custom('foo') or { '' } == 'bar'
 }
 
@@ -326,7 +326,7 @@ fn test_header_join() {
 		CommonHeader.expires: 'yesterday'
 	})
 	h2 := new_custom_header_from_map({
-		'Server': 'VWeb'
+		'Server': 'Veb'
 		'foo':    'bar'
 	})!
 	h3 := h1.join(h2)

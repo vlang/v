@@ -1,3 +1,8 @@
+import os
+import rand
+
+const vexe = @VEXE
+
 struct Foo {
 mut:
 	a int
@@ -106,4 +111,61 @@ fn test_re_assign_map() {
 		}
 		assert m[0] == 1
 	}
+}
+
+struct SharedAssignStructA {
+	commands []string
+}
+
+struct SharedAssignStructB {
+	s SharedAssignStructA
+}
+
+fn test_assign_from_pointer_ident_with_nested_struct() {
+	mut src := &SharedAssignStructB{}
+	shared shared_copy := src
+	shared spread_copy := SharedAssignStructB{
+		...src
+	}
+	rlock shared_copy, spread_copy {
+		assert shared_copy.s.commands == []string{}
+		assert spread_copy.s.commands == []string{}
+	}
+}
+
+fn test_assign_from_pointer_ident_emits_shared_copy_in_c_output() {
+	tmp_dir := os.join_path(os.vtmp_dir(), 'shared_assign_cgen_${rand.ulid()}')
+	os.mkdir_all(tmp_dir) or { panic(err) }
+	defer {
+		os.rmdir_all(tmp_dir) or {}
+	}
+	source_path := os.join_path(tmp_dir, 'main.v')
+	c_path := os.join_path(tmp_dir, 'main.c')
+	source := [
+		'module main',
+		'',
+		'struct StructA {',
+		'\tcommands []string',
+		'}',
+		'',
+		'struct StructB {',
+		'\ts StructA',
+		'}',
+		'',
+		'fn main() {',
+		'\tmut src := &StructB{}',
+		'\tshared copy := src',
+		'\trlock copy {',
+		'\t\tprintln(copy.s)',
+		'\t}',
+		'}',
+	].join_lines()
+	os.write_file(source_path, source) or { panic(err) }
+	res :=
+		os.execute('${os.quoted_path(vexe)} -o ${os.quoted_path(c_path)} ${os.quoted_path(source_path)}')
+	assert res.exit_code == 0, res.output
+	csrc := os.read_file(c_path) or { panic(err) }
+	assert csrc.contains('__shared__main__StructB* copy = (__shared__main__StructB*)__dup__shared__main__StructB')
+	assert csrc.contains('*src}, sizeof(__shared__main__StructB))')
+	assert !csrc.contains('__shared__main__StructB* copy = src;')
 }

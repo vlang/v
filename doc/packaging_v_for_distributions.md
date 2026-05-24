@@ -51,7 +51,7 @@ version of V, and then advises the user to install V from source if he wants to 
 
 5) The V source repo contains sizable folders like `.git/` and `thirdparty/tcc/.git/` which will
 not be needed by users of packages (they are not useful if `v up` is disabled,
-as recommended previously). Some other files, such as `Makefile`, `make.bat`, and `GNUmakefile`
+as recommended previously). Some other files, such as `Makefile`, `makev.bat`, and `GNUmakefile`
 will not be used either, so they can also be safely removed.
 
 Depending on how stripped you want your package, you can remove the examples/ folder as well.

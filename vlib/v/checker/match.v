@@ -504,7 +504,7 @@ fn (mut c Checker) match_expr(mut node ast.MatchExpr) ast.Type {
 		}
 		if node.is_comptime {
 			// branches may not have been processed by c.stmts()
-			if has_top_return(branch.stmts) {
+			if c.has_top_return(branch.stmts) {
 				nbranches_with_return++
 			} else {
 				nbranches_without_return++
@@ -694,6 +694,7 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, cond_type_sym ast.TypeSym
 	// branch_exprs is a histogram of how many times
 	// an expr was used in the match
 	mut branch_exprs := map[string]int{}
+	mut branch_expr_types := []ast.Type{}
 	is_multi_allowed_enum_match := cond_type_sym.info is ast.Enum
 		&& cond_type_sym.info.is_multi_allowed
 	mut branch_enum_values := map[i64]bool{}
@@ -702,6 +703,7 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, cond_type_sym ast.TypeSym
 		mut expr_types := []ast.TypeNode{}
 		for k, mut expr in branch.exprs {
 			mut key := ''
+			mut resolved_type_node := ast.no_type
 			// TODO: investigate why enums are different here:
 			if expr !is ast.EnumVal && !(node.is_comptime && expr is ast.ComptimeType) {
 				// ensure that the sub expressions of the branch are actually checked, before anything else:
@@ -786,12 +788,11 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, cond_type_sym ast.TypeSym
 			is_type_node := expr is ast.TypeNode || expr is ast.ComptimeType
 			match mut expr {
 				ast.TypeNode {
-					expr_typ := c.recheck_concrete_type(expr.typ)
-					key = c.table.type_to_str(expr_typ)
-					expr.typ = expr_typ
+					resolved_type_node = c.recheck_concrete_type(expr.typ)
+					key = c.table.type_to_str(resolved_type_node)
 					expr_types << ast.TypeNode{
 						...expr
-						typ: expr_typ
+						typ: resolved_type_node
 					}
 				}
 				ast.EnumVal {
@@ -874,7 +875,11 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, cond_type_sym ast.TypeSym
 					}
 				}
 			} else {
-				expr_type := c.expr(mut expr)
+				expr_type := if expr is ast.TypeNode {
+					resolved_type_node
+				} else {
+					c.expr(mut expr)
+				}
 				if expr_type.idx() == 0 {
 					// parser failed, stop checking
 					return
@@ -899,11 +904,11 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, cond_type_sym ast.TypeSym
 						}
 					}
 				} else if cond_match_sym.info is ast.SumType {
-					if expr_type !in cond_match_sym.info.variants {
+					if !c.table.sumtype_has_variant_recursive(cond_match_type, expr_type, true) {
 						expr_str := c.table.type_to_str(expr_type)
 						expect_str := c.table.type_to_str(node.cond_type)
 						sumtype_variant_names :=
-							cond_match_sym.info.variants.map(c.table.type_to_str_using_aliases(it, {}))
+							c.table.sumtype_matchable_variants(cond_match_type).map(c.table.type_to_str_using_aliases(it, {}))
 						suggestion := util.new_suggestion(expr_str, sumtype_variant_names)
 						c.error(suggestion.say('`${expect_str}` has no variant `${expr_str}`'),
 							expr.pos())
@@ -917,6 +922,14 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, cond_type_sym ast.TypeSym
 					expr_str := c.table.type_to_str(expr_type)
 					expect_str := c.table.type_to_str(node.cond_type)
 					c.error('cannot match `${expect_str}` with `${expr_str}`', expr.pos())
+				}
+				if is_type_node {
+					branch_expr_types << if is_alias_to_matchable_type
+						&& expr_type == node.cond_type {
+						cond_match_type
+					} else {
+						expr_type
+					}
 				}
 			}
 			branch_exprs[key] = val + 1
@@ -983,12 +996,9 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, cond_type_sym ast.TypeSym
 	} else {
 		match cond_match_sym.info {
 			ast.SumType {
-				for v in cond_match_sym.info.variants {
-					v_str := c.table.type_to_str(v)
-					if v_str !in branch_exprs {
-						is_exhaustive = false
-						unhandled << '`${v_str}`'
-					}
+				for v in c.table.sumtype_missing_variants(cond_match_type, branch_expr_types) {
+					is_exhaustive = false
+					unhandled << '`${c.table.type_to_str(v)}`'
 				}
 			}
 			//

@@ -71,14 +71,14 @@ fn (mut c Checker) check_unused_declarations_in_stmts(stmts []ast.Stmt) {
 			ast.ConstDecl {
 				for field in stmt.fields {
 					if c.should_warn_about_unused_const(field) {
-						c.warn('unused constant: `${stripped_name(field.name)}`', field.pos)
+						c.note('unused constant: `${stripped_name(field.name)}`', field.pos)
 					}
 				}
 			}
 			ast.FnDecl {
 				if c.should_warn_about_unused_fn(stmt) {
 					name := if stmt.short_name != '' { stmt.short_name } else { stmt.get_name() }
-					c.warn('unused function: `${name}`', stmt.name_pos)
+					c.note('unused function: `${name}`', stmt.name_pos)
 				}
 			}
 			ast.ExprStmt {

@@ -146,7 +146,21 @@ fn sqlite_stmt_binder(stmt Stmt, d orm.QueryData, query string, mut c &int) ! {
 		if err != 0 {
 			return stmt.db.error_message(err, query)
 		}
-		c++
+		if !sqlite_primitive_is_array(data) {
+			c++
+		}
+	}
+}
+
+fn sqlite_primitive_is_array(data orm.Primitive) bool {
+	return match data {
+		[]orm.Primitive, []bool, []f32, []f64, []i16, []i64, []i8, []int, []string, []time.Time,
+		[]u16, []u32, []u64, []u8, []orm.InfixType {
+			true
+		}
+		else {
+			false
+		}
 	}
 }
 

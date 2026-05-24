@@ -81,6 +81,17 @@ fn tool_recompilation_args(tool_name string, user_os string) []string {
 		// FreeBSD's default tcc setup can not compile vdoc reliably.
 		return ['-cc', 'cc']
 	}
+	if tool_name == 'vpm' && user_os == 'macos' {
+		// vpm performs HTTPS requests against the package registry, so it
+		// pulls in the TLS layer. Build it against OpenSSL instead of the
+		// bundled mbedtls: tcc miscompiles mbedtls big-int routines on
+		// Apple Silicon, which causes TLS handshakes to spin forever in
+		// mbedtls_mpi_sub_abs / ecp_modp (e.g. `v install sdl` would hang).
+		// Restricted to macOS: musl-based Linux builds lack the glibc
+		// headers OpenSSL pulls in (e.g. `sys/cdefs.h`), so forcing it
+		// there breaks `v install` in the docker-ubuntu-musl CI.
+		return ['-d', 'use_openssl']
+	}
 	return []string{}
 }
 
@@ -246,8 +257,8 @@ pub fn launch_tool(is_verbose bool, tool_name string, args []string) {
 							// `vup.exe` has logic to workaround that, and duplicating it here, is hard to debug/diagnose.
 							eprintln('Failed compilation of the `vup` tool, using the new V source code.')
 							eprintln('The new source code, is likely to be unsupported, by your existing older V executable.')
-							eprintln('Try running `make` or `make.bat` manually.')
-							eprintln('If that fails, clone V from source in a new folder, and run `make` or `make.bat` manually again there.')
+							eprintln('Try running `make` or `makev.bat` manually.')
+							eprintln('If that fails, clone V from source in a new folder, and run `make` or `makev.bat` manually again there.')
 							l.release()
 							exit(1)
 						}
@@ -265,8 +276,11 @@ pub fn launch_tool(is_verbose bool, tool_name string, args []string) {
 			tlog('lockfile released')
 		} else {
 			tlog('another process got the lock')
-			// wait till the other V tool recompilation process finished:
-			if l.wait_acquire(10 * time.second) {
+			// wait till the other V tool recompilation process finished;
+			// the timeout is intentionally generous, since on slow CI VMs
+			// (e.g. FreeBSD QEMU), recompiling a tool can take >10s, and
+			// falling through with a missing tool_exe leads to ENOENT on exec:
+			if l.wait_acquire(60 * time.second) {
 				tlog('the other process finished')
 				l.release()
 			} else {
@@ -540,7 +554,12 @@ pub fn strip_main_name(name string) string {
 
 @[inline]
 pub fn no_dots(s string) string {
-	return s.replace_each(['.', '__', '-', '_'])
+	for ch in s {
+		if ch == `.` || ch == `-` {
+			return s.replace_each(['.', '__', '-', '_'])
+		}
+	}
+	return s
 }
 
 const map_prefix = 'map[string]'

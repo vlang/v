@@ -50,6 +50,7 @@ mut:
 	inside_unsafe_fn            bool
 	inside_str_interp           bool
 	inside_array_lit            bool
+	inside_array_init_type_expr bool // parsing `[]typeof(expr){}` element type expression
 	inside_in_array             bool
 	inside_infix                bool
 	inside_assign_rhs           bool // rhs assignment
@@ -119,6 +120,7 @@ mut:
 	left_comments               []ast.Comment
 	script_mode                 bool
 	script_mode_start_token     token.Token
+	pending_top_stmts           []ast.Stmt
 	generic_type_level          int  // to avoid infinite recursion segfaults due to compiler bugs in ensure_type_exists
 	main_already_defined        bool // TODO move to checker
 	is_vls                      bool
@@ -174,12 +176,17 @@ pub fn parse_comptime(tmpl_path string, text string, mut table ast.Table, pref_ 
 	$if trace_parse_comptime ? {
 		eprintln('> ${@MOD}.${@FN} text: ${text}')
 	}
+	pref_copy := *pref_
+	comptime_pref := &pref.Preferences{
+		...pref_copy
+		output_mode: .silent
+	}
 	mut p := Parser{
 		content:   .comptime
 		file_path: tmpl_path
-		scanner:   scanner.new_scanner(text, .skip_comments, pref_)
+		scanner:   scanner.new_scanner(text, .skip_comments, comptime_pref)
 		table:     table
-		pref:      pref_
+		pref:      comptime_pref
 		scope:     scope
 		errors:    []errors.Error{}
 		warnings:  []errors.Warning{}
@@ -356,12 +363,18 @@ pub fn (mut p Parser) parse() &ast.File {
 		break
 	}
 	for {
-		if p.tok.kind == .eof {
+		if p.tok.kind == .eof && p.pending_top_stmts.len == 0 {
 			// Imported module files are discovered after the initial parse pass,
 			// so unused import warnings are emitted later by the builder.
 			break
 		}
-		stmt := p.top_stmt()
+		stmt := if p.pending_top_stmts.len > 0 {
+			pending := p.pending_top_stmts[0]
+			p.pending_top_stmts.delete(0)
+			pending
+		} else {
+			p.top_stmt()
+		}
 		// clear the attributes after each statement
 		if !(stmt is ast.ExprStmt && stmt.expr is ast.Comment) {
 			p.attrs = []
@@ -915,6 +928,10 @@ fn comptime_if_expr_contains_top_stmt(if_expr ast.IfExpr) bool {
 }
 
 fn (mut p Parser) other_stmts(cur_stmt ast.Stmt) ast.Stmt {
+	old_inside_fn := p.inside_fn
+	old_cur_fn_name := p.cur_fn_name
+	old_cur_fn_scope := p.cur_fn_scope
+	old_label_names := p.label_names.clone()
 	p.inside_fn = true
 	if p.pref.is_script && !p.pref.is_test {
 		p.script_mode = true
@@ -926,32 +943,132 @@ fn (mut p Parser) other_stmts(cur_stmt ast.Stmt) ast.Stmt {
 
 		p.open_scope()
 		p.cur_fn_name = 'main.main'
-		mut stmts := []ast.Stmt{}
+		p.cur_fn_scope = p.scope
+		main_scope := p.scope
+		mut top_stmts := []ast.Stmt{}
+		mut main_stmts := []ast.Stmt{}
 		if cur_stmt != ast.empty_stmt {
-			stmts << cur_stmt
+			main_stmts << cur_stmt
 		}
 		for p.tok.kind != .eof {
-			stmts << p.stmt(false)
+			stmt := p.stmt(false)
+			if stmt is ast.FnDecl {
+				top_stmts << stmt
+				continue
+			}
+			main_stmts << stmt
 		}
+		main_label_names := p.label_names.clone()
 		p.close_scope()
 
 		p.script_mode = false
-		return ast.FnDecl{
+		p.inside_fn = old_inside_fn
+		p.cur_fn_name = old_cur_fn_name
+		p.cur_fn_scope = old_cur_fn_scope
+		p.label_names = old_label_names
+		main_fn := ast.FnDecl{
 			name:        'main.main'
 			short_name:  'main'
 			mod:         'main'
 			is_main:     true
-			stmts:       stmts
+			stmts:       main_stmts
 			file:        p.file_path
 			return_type: ast.void_type
-			scope:       p.scope
-			label_names: p.label_names
+			scope:       main_scope
+			label_names: main_label_names
 		}
+		if top_stmts.len == 0 {
+			return main_fn
+		}
+		p.pending_top_stmts << top_stmts
+		p.pending_top_stmts << ast.Stmt(main_fn)
+		first := p.pending_top_stmts[0]
+		p.pending_top_stmts.delete(0)
+		return first
 	} else if p.pref.is_fmt || p.pref.is_vet {
-		return p.stmt(false)
+		stmt := p.stmt(false)
+		p.inside_fn = old_inside_fn
+		p.cur_fn_name = old_cur_fn_name
+		p.cur_fn_scope = old_cur_fn_scope
+		p.label_names = old_label_names
+		return stmt
 	} else {
-		return p.error('bad top level statement ' + p.tok.str())
+		err := p.error('bad top level statement ' + p.tok.str())
+		p.inside_fn = old_inside_fn
+		p.cur_fn_name = old_cur_fn_name
+		p.cur_fn_scope = old_cur_fn_scope
+		p.label_names = old_label_names
+		return err
 	}
+}
+
+fn (p &Parser) relative_token(offset int) token.Token {
+	return match offset {
+		0 { p.tok }
+		1 { p.peek_tok }
+		else { p.peek_token(offset) }
+	}
+}
+
+fn (p &Parser) is_script_receiver_method_decl_start() bool {
+	mut fn_offset := 0
+	if p.tok.kind == .key_pub {
+		if p.peek_tok.kind != .key_fn {
+			return false
+		}
+		fn_offset = 1
+	} else if p.tok.kind != .key_fn {
+		return false
+	}
+	if p.relative_token(fn_offset + 1).kind != .lpar {
+		return false
+	}
+	mut offset := fn_offset + 2
+	mut paren_level := 1
+	for paren_level > 0 {
+		tok := p.relative_token(offset)
+		match tok.kind {
+			.lpar {
+				paren_level++
+			}
+			.rpar {
+				paren_level--
+			}
+			.eof {
+				return false
+			}
+			else {}
+		}
+
+		offset++
+	}
+	name_tok := p.relative_token(offset)
+	next_after_name := p.relative_token(offset + 1)
+	return name_tok.kind == .name && next_after_name.kind in [.lpar, .lsbr]
+}
+
+fn (mut p Parser) script_fn_decl() ast.FnDecl {
+	main_scope := p.scope
+	file_scope := if main_scope.parent != unsafe { nil } { main_scope.parent } else { main_scope }
+	old_script_mode := p.script_mode
+	old_inside_fn := p.inside_fn
+	old_cur_fn_name := p.cur_fn_name
+	old_cur_fn_scope := p.cur_fn_scope
+	old_label_names := p.label_names.clone()
+	p.script_mode = false
+	p.inside_fn = false
+	p.cur_fn_name = ''
+	p.cur_fn_scope = unsafe { nil }
+	p.scope = file_scope
+	defer {
+		p.script_mode = old_script_mode
+		p.inside_fn = old_inside_fn
+		p.cur_fn_name = old_cur_fn_name
+		p.cur_fn_scope = old_cur_fn_scope
+		p.label_names = old_label_names
+		p.scope = main_scope
+	}
+	return p.fn_decl()
 }
 
 // TODO: [if vfmt]
@@ -1294,6 +1411,18 @@ fn (mut p Parser) stmt(is_top_level bool) ast.Stmt {
 				name: name
 				pos:  spos
 			}
+		}
+		.key_pub {
+			if p.script_mode && p.is_script_receiver_method_decl_start() {
+				return p.script_fn_decl()
+			}
+			return p.parse_multi_expr(is_top_level)
+		}
+		.key_fn {
+			if p.script_mode && p.is_script_receiver_method_decl_start() {
+				return p.script_fn_decl()
+			}
+			return p.parse_multi_expr(is_top_level)
 		}
 		.key_const {
 			return p.error_with_pos('const can only be defined at the top level (outside of functions)',
@@ -2061,157 +2190,55 @@ fn (mut p Parser) or_block(err_var_mode OrBlockErrVarMode) ([]ast.Stmt, token.Po
 	return stmts, pos, or_scope
 }
 
+fn (mut p Parser) index_expr_part(is_gated bool) ast.Expr {
+	part_start_pos := p.tok.pos()
+	if p.tok.kind == .dotdot {
+		p.next()
+		mut high := ast.empty_expr
+		mut has_high := false
+		if p.tok.kind !in [.comma, .rsbr] {
+			high = p.expr(0)
+			has_high = true
+		}
+		return ast.RangeExpr{
+			low:      ast.empty_expr
+			high:     high
+			has_high: has_high
+			pos:      part_start_pos.extend(p.prev_tok.pos())
+			is_gated: is_gated
+		}
+	}
+	expr := p.expr(0)
+	if p.tok.kind != .dotdot {
+		return expr
+	}
+	p.next()
+	mut high := ast.empty_expr
+	mut has_high := false
+	if p.tok.kind !in [.comma, .rsbr] {
+		high = p.expr(0)
+		has_high = true
+	}
+	return ast.RangeExpr{
+		low:      expr
+		high:     high
+		has_low:  true
+		has_high: has_high
+		pos:      part_start_pos.extend(p.prev_tok.pos())
+		is_gated: is_gated
+	}
+}
+
 fn (mut p Parser) index_expr(left ast.Expr, is_gated bool) ast.IndexExpr {
 	// left == `a` in `a[0]`
 	start_pos := p.tok.pos()
 	p.next() // [
-	mut has_low := true
-	if p.tok.kind == .dotdot {
-		has_low = false
-		// [..end]
+	mut indices := []ast.Expr{}
+	indices << p.index_expr_part(is_gated)
+	for p.tok.kind == .comma && p.tok.pos().line_nr == start_pos.line_nr {
 		p.next()
-		mut high := ast.empty_expr
-		mut has_high := false
-		if p.tok.kind != .rsbr {
-			high = p.expr(0)
-			has_high = true
-		}
-
-		pos_high := start_pos.extend(p.tok.pos())
-		p.check(.rsbr)
-		mut or_kind_high := ast.OrKind.absent
-		mut or_stmts_high := []ast.Stmt{}
-		mut or_pos_high := token.Pos{}
-		mut or_scope := ast.empty_scope
-
-		if !p.or_is_handled {
-			// a[..end] or {...}
-			if p.tok.kind == .key_orelse {
-				or_stmts_high, or_pos_high, or_scope = p.or_block(.no_err_var)
-				return ast.IndexExpr{
-					left:     left
-					pos:      pos_high
-					index:    ast.RangeExpr{
-						low:      ast.empty_expr
-						high:     high
-						has_high: has_high
-						pos:      pos_high
-						is_gated: is_gated
-					}
-					or_expr:  ast.OrExpr{
-						kind:  .block
-						stmts: or_stmts_high
-						pos:   or_pos_high
-						scope: or_scope
-					}
-					is_gated: is_gated
-				}
-			}
-			// `a[start..end]!`
-			if p.tok.kind == .not {
-				or_pos_high = p.tok.pos()
-				or_kind_high = .propagate_result
-				or_scope = p.scope
-				p.next()
-			} else if p.tok.kind == .question {
-				p.error_with_pos('`?` for propagating errors from index expressions is no longer supported, use `!` instead of `?`',
-					p.tok.pos())
-			}
-		}
-
-		return ast.IndexExpr{
-			left:     left
-			pos:      pos_high
-			index:    ast.RangeExpr{
-				low:      ast.empty_expr
-				high:     high
-				has_high: has_high
-				pos:      pos_high
-				is_gated: is_gated
-			}
-			or_expr:  ast.OrExpr{
-				kind:  or_kind_high
-				stmts: or_stmts_high
-				scope: or_scope
-				pos:   or_pos_high
-			}
-			is_gated: is_gated
-		}
+		indices << p.index_expr_part(is_gated)
 	}
-	expr := p.expr(0) // `[expr]` or  `[expr..`
-	mut has_high := false
-
-	if p.tok.kind == .dotdot {
-		// either [start..end] or [start..]
-		p.next()
-		mut high := ast.empty_expr
-		if p.tok.kind != .rsbr {
-			has_high = true
-			high = p.expr(0)
-		}
-		pos_low := start_pos.extend(p.tok.pos())
-		p.check(.rsbr)
-		mut or_kind_low := ast.OrKind.absent
-		mut or_stmts_low := []ast.Stmt{}
-		mut or_pos_low := token.Pos{}
-		mut or_scope := ast.empty_scope
-		if !p.or_is_handled {
-			// a[start..end] or {...}
-			if p.tok.kind == .key_orelse {
-				or_stmts_low, or_pos_low, or_scope = p.or_block(.no_err_var)
-				return ast.IndexExpr{
-					left:     left
-					pos:      pos_low
-					index:    ast.RangeExpr{
-						low:      expr
-						high:     high
-						has_high: has_high
-						has_low:  has_low
-						pos:      pos_low
-						is_gated: is_gated
-					}
-					or_expr:  ast.OrExpr{
-						kind:  .block
-						stmts: or_stmts_low
-						pos:   or_pos_low
-						scope: or_scope
-					}
-					is_gated: is_gated
-				}
-			}
-			// `a[start..end]!`
-			if p.tok.kind == .not {
-				or_pos_low = p.tok.pos()
-				or_kind_low = .propagate_result
-				or_scope = p.scope
-				p.next()
-			} else if p.tok.kind == .question {
-				p.error_with_pos('`?` for propagating errors from index expressions is no longer supported, use `!` instead of `?`',
-					p.tok.pos())
-			}
-		}
-
-		return ast.IndexExpr{
-			left:     left
-			pos:      pos_low
-			index:    ast.RangeExpr{
-				low:      expr
-				high:     high
-				has_high: has_high
-				has_low:  has_low
-				pos:      pos_low
-				is_gated: is_gated
-			}
-			or_expr:  ast.OrExpr{
-				kind:  or_kind_low
-				stmts: or_stmts_low
-				scope: or_scope
-				pos:   or_pos_low
-			}
-			is_gated: is_gated
-		}
-	}
-	// [expr]
 	pos := start_pos.extend(p.tok.pos())
 	p.check(.rsbr)
 	mut or_kind := ast.OrKind.absent
@@ -2224,7 +2251,8 @@ fn (mut p Parser) index_expr(left ast.Expr, is_gated bool) ast.IndexExpr {
 			or_stmts, or_pos, or_scope = p.or_block(.no_err_var)
 			return ast.IndexExpr{
 				left:     left
-				index:    expr
+				index:    indices[0]
+				indices:  indices
 				pos:      pos
 				or_expr:  ast.OrExpr{
 					kind:  .block
@@ -2248,7 +2276,8 @@ fn (mut p Parser) index_expr(left ast.Expr, is_gated bool) ast.IndexExpr {
 	}
 	return ast.IndexExpr{
 		left:     left
-		index:    expr
+		index:    indices[0]
+		indices:  indices
 		pos:      pos
 		or_expr:  ast.OrExpr{
 			kind:  or_kind
@@ -2957,8 +2986,19 @@ fn (mut p Parser) global_decl() ast.GlobalDecl {
 	mut comments := []ast.Comment{}
 	for {
 		comments = p.eat_comments()
-		is_volatile := p.tok.kind == .key_volatile
-		if is_volatile {
+		mut is_volatile := false
+		mut is_const := false
+		for p.tok.kind in [.key_const, .key_volatile] {
+			match p.tok.kind {
+				.key_const {
+					is_const = true
+				}
+				.key_volatile {
+					is_volatile = true
+				}
+				else {}
+			}
+
 			p.next()
 		}
 		if is_block && p.tok.kind == .eof {
@@ -3022,6 +3062,7 @@ fn (mut p Parser) global_decl() ast.GlobalDecl {
 			comments:    comments
 			is_markused: is_markused
 			is_volatile: is_volatile
+			is_const:    is_const
 			is_exported: is_exported
 			is_weak:     is_weak
 			is_hidden:   is_hidden

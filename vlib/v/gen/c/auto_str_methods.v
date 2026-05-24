@@ -127,10 +127,10 @@ fn (mut g Gen) final_gen_str(typ StrType) {
 	}
 	styp := typ.styp
 	str_fn_name := g.get_str_fn(typ.typ)
-	if str_fn_name in g.str_fn_names {
-		return
-	}
 	lock g.str_fn_names {
+		if str_fn_name in g.str_fn_names {
+			return
+		}
 		g.str_fn_names << str_fn_name
 	}
 	if typ.typ.has_flag(.option) {
@@ -483,8 +483,21 @@ fn (mut g Gen) gen_str_for_interface(info ast.Interface, styp string, typ_str st
 					{_S("${clean_interface_v_type_name}("), ${si_s_code}, {.d_s = ${val}}, 0, 0, 0},
 					{_S(")"), 0, {0}, 0, 0, 0}
 				}))'
-				fn_builder.write_string2('\tif (x._typ == _${styp}_${sub_sym.cname}_index)',
-					' return ${res};\n')
+				if should_use_indent_func(sub_sym.kind) {
+					tmpvar := g.new_tmp_var()
+					fn_builder.writeln('\tif (x._typ == _${styp}_${sub_sym.cname}_index) {')
+					fn_builder.writeln('\t\tif (builtin__isnil(x._object) || builtin__autostr_addr_in_stack(x._object)) {')
+					fn_builder.writeln('\t\t\treturn builtin__isnil(x._object) ? _S("nil") : _S("<circular>");')
+					fn_builder.writeln('\t\t}')
+					fn_builder.writeln('\t\tbuiltin__autostr_addr_push(x._object);')
+					fn_builder.writeln('\t\tstring ${tmpvar} = ${res};')
+					fn_builder.writeln('\t\tbuiltin__autostr_addr_pop();')
+					fn_builder.writeln('\t\treturn ${tmpvar};')
+					fn_builder.writeln('\t}')
+				} else {
+					fn_builder.write_string2('\tif (x._typ == _${styp}_${sub_sym.cname}_index)',
+						' return ${res};\n')
+				}
 			} else {
 				fn_builder.write_string2('\tif (x._typ == _${styp}_${sub_sym.cname}_index)',
 					' return _S("<circular>");\n')
@@ -1062,6 +1075,22 @@ fn (mut g Gen) gen_str_for_struct(info ast.Struct, lang ast.Language, styp strin
 	for i, field in info.fields {
 		if attr := field.attrs.find_first('str') {
 			if attr.arg == 'skip' {
+				field_skips << i
+			}
+		}
+	}
+	// For @[typedef] C structs, V's declared field type may differ from the
+	// actual C struct field type (e.g. V declares a field as `voidptr` while
+	// the C header has it as a value struct like `FT_BBox`). Casting a struct
+	// to voidptr in the auto-generated str() would be a C compile error, so
+	// skip voidptr fields entirely for @[typedef] structs — users can write
+	// their own str() method if they need to print these opaque fields.
+	if is_c_struct && info.is_typedef {
+		for i, field in info.fields {
+			if i in field_skips {
+				continue
+			}
+			if field.typ in ast.cptr_types {
 				field_skips << i
 			}
 		}

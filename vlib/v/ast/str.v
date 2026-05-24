@@ -47,7 +47,7 @@ pub fn (node &FnDecl) modname() string {
 // it is used in table.used_fns and v.markused.
 pub fn (node &FnDecl) fkey() string {
 	if node.is_method {
-		return '${int(node.receiver.typ)}.${node.name}'
+		return fkey_from_receiver_type(node.receiver.typ, node.name)
 	}
 	return node.name
 }
@@ -60,16 +60,24 @@ pub fn (node &StructField) sfkey() string {
 
 pub fn (node &Fn) fkey() string {
 	if node.is_method {
-		return '${int(node.receiver_type)}.${node.name}'
+		return fkey_from_receiver_type(node.receiver_type, node.name)
 	}
 	return node.name
 }
 
 pub fn (node &CallExpr) fkey() string {
 	if node.is_method {
-		return '${int(node.receiver_type)}.${node.name}'
+		return fkey_from_receiver_type(node.receiver_type, node.name)
 	}
 	return node.name
+}
+
+fn fkey_from_receiver_type(receiver_type Type, name string) string {
+	mut builder := strings.new_builder(name.len + 24)
+	builder.write_string(int(receiver_type).str())
+	builder.write_u8(`.`)
+	builder.write_string(name)
+	return builder.str()
 }
 
 // These methods are used only by vfmt, vdoc, and for debugging.
@@ -469,7 +477,11 @@ pub fn (x Expr) str() string {
 			if x.has_init {
 				fields << 'init: ${x.init_expr.str()}'
 			}
-			typ_str := global_table.type_to_str(x.elem_type)
+			typ_str := if x.elem_type_expr !is EmptyExpr {
+				x.elem_type_expr.str()
+			} else {
+				global_table.type_to_str(x.elem_type)
+			}
 			if fields.len > 0 {
 				if x.is_fixed {
 					return '${x.exprs.str()}${typ_str}{${fields.join(', ')}}'
@@ -479,6 +491,8 @@ pub fn (x Expr) str() string {
 			} else {
 				if x.is_fixed {
 					return '${x.exprs.str()}${typ_str}{}'
+				} else if x.exprs.len == 0 && typ_str != '' {
+					return '[]${typ_str}{}'
 				} else {
 					return x.exprs.str()
 				}
@@ -589,7 +603,8 @@ pub fn (x Expr) str() string {
 			return parts.join('')
 		}
 		IndexExpr {
-			return '${x.left.str()}[${x.index.str()}]'
+			parts := if x.indices.len > 0 { x.indices } else { [x.index] }
+			return '${x.left.str()}[${parts.map(it.str()).join(', ')}]'
 		}
 		InfixExpr {
 			return '${x.left.str()} ${x.op.str()} ${x.right.str()}'
@@ -714,11 +729,15 @@ pub fn (x Expr) str() string {
 			return s + ' := ' + x.expr.str()
 		}
 		StructInit {
-			idx := x.typ.idx()
-			sname := if idx > 0 && idx < global_table.type_symbols.len {
-				global_table.type_symbols[idx].name
+			sname := if x.typ_expr !is EmptyExpr && x.typ == 0 {
+				x.typ_expr.str()
 			} else {
-				'unknown'
+				idx := x.typ.idx()
+				if idx > 0 && idx < global_table.type_symbols.len {
+					global_table.type_symbols[idx].name
+				} else {
+					'unknown'
+				}
 			}
 			return '${sname}{....}'
 		}

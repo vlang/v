@@ -242,14 +242,44 @@ fn (mut c Client) send_auth() ! {
 	c.expect_reply(.auth_ok)!
 }
 
+// envelope_addr extracts the bare mailbox from an address that may include a
+// display name. The SMTP envelope (`MAIL FROM:` / `RCPT TO:`) only accepts a
+// bare mailbox (RFC 5321), while `Mail.from`/`Mail.to` may also be written in
+// the RFC 5322 `Display Name <addr@example.com>` form for the message header.
+//
+// Only strip an angle-addr wrapper when the input actually ends in `>`; bare
+// mailboxes are returned unchanged. When walking for the opening `<`, quoted
+// strings are skipped so a quoted local-part like `"a<b"@example.com` is
+// preserved intact.
+fn envelope_addr(s string) string {
+	trimmed := s.trim_space()
+	if !trimmed.ends_with('>') {
+		return trimmed
+	}
+	mut in_quote := false
+	mut i := 0
+	for i < trimmed.len - 1 {
+		c := trimmed[i]
+		if c == `"` {
+			in_quote = !in_quote
+		} else if in_quote && c == `\\` && i + 1 < trimmed.len {
+			i++
+		} else if c == `<` && !in_quote {
+			return trimmed[i + 1..trimmed.len - 1]
+		}
+		i++
+	}
+	return trimmed
+}
+
 fn (mut c Client) send_mailfrom(from string) ! {
-	c.send_str('MAIL FROM: <${from}>\r\n')!
+	c.send_str('MAIL FROM:<${envelope_addr(from)}>\r\n')!
 	c.expect_reply(.action_ok)!
 }
 
 fn (mut c Client) send_mailto(to string) ! {
 	for rcpt in to.split(';') {
-		c.send_str('RCPT TO: <${rcpt}>\r\n')!
+		c.send_str('RCPT TO:<${envelope_addr(rcpt)}>\r\n')!
 		c.expect_reply(.action_ok)!
 	}
 }

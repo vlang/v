@@ -56,13 +56,31 @@ pub fn fd_slurp(fd int) []string {
 }
 
 // fd_read reads data from the file descriptor. It returns the read data, and how many bytes were read.
+// On signal interruption (EINTR), the read is retried so callers do not see spurious empty results
+// when a signal (for example a Boehm GC stop-the-world signal in a multi-threaded program) interrupts
+// a blocking read.
 pub fn fd_read(fd int, maxbytes int) (string, int) {
 	if fd == -1 {
 		return '', 0
 	}
 	unsafe {
 		mut buf := malloc_noscan(maxbytes + 1)
-		nbytes := int(C.read(fd, buf, maxbytes))
+		mut nbytes := 0
+		for {
+			$if !windows {
+				C.errno = 0
+			}
+			nbytes = int(C.read(fd, buf, maxbytes))
+			if nbytes >= 0 {
+				break
+			}
+			$if !windows {
+				if C.errno == C.EINTR {
+					continue
+				}
+			}
+			break
+		}
 		if nbytes < 0 {
 			free(buf)
 			return '', nbytes

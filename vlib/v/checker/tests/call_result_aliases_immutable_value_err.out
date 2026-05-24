@@ -12,9 +12,9 @@ vlib/v/checker/tests/call_result_aliases_immutable_value_err.vv:19:2: error: `id
       |     ~~~~~~~
    20 |
    21 |     ja := User{
-vlib/v/checker/tests/call_result_aliases_immutable_value_err.vv:24:7: error: `ja` is immutable, cannot have a mutable reference to an immutable object
+vlib/v/checker/tests/call_result_aliases_immutable_value_err.vv:24:11: error: `rere(ja).name` aliases mutable data from an immutable value
    22 |         name: 'foo'
    23 |     }
    24 |     rere(ja).name = 'bar'
-      |          ~~
+      |              ~~~~
    25 | }

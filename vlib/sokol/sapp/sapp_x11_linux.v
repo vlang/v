@@ -1080,6 +1080,39 @@ fn x11_set_fullscreen(enable bool) {
 	C.XFlush(g_sapp_state.x11.display)
 }
 
+// set_resizable toggles whether the current Linux window can be resized by the window manager.
+pub fn set_resizable(resizable bool) {
+	$if sokol_wayland ? {
+		wl_set_resizable(resizable)
+	} $else {
+		x11_set_resizable(resizable)
+	}
+}
+
+fn x11_set_resizable(resizable bool) {
+	if g_sapp_state.x11.display == unsafe { nil } || g_sapp_state.x11.window == 0 {
+		return
+	}
+	mut hints := C.XAllocSizeHints()
+	if hints == unsafe { nil } {
+		return
+	}
+	hints.flags = pw_gravity
+	hints.win_gravity = center_gravity
+	if !resizable {
+		mut attribs := C.XWindowAttributes{}
+		C.XGetWindowAttributes(g_sapp_state.x11.display, g_sapp_state.x11.window, &attribs)
+		hints.flags |= i64(1 << 4) | i64(1 << 5) // PMinSize | PMaxSize
+		hints.min_width = attribs.width
+		hints.min_height = attribs.height
+		hints.max_width = attribs.width
+		hints.max_height = attribs.height
+	}
+	C.XSetWMNormalHints(g_sapp_state.x11.display, g_sapp_state.x11.window, hints)
+	C.XFree(hints)
+	C.XFlush(g_sapp_state.x11.display)
+}
+
 fn x11_create_window(visual_ &C.Visual, depth int) {
 	mut vis := unsafe { visual_ }
 	mut dep := depth

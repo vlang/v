@@ -198,13 +198,25 @@ fn (mut f Fmt) write_anon_struct_field_decl(field_typ ast.Type, field_anon_decl 
 	return false
 }
 
+fn (mut f Fmt) write_anon_struct_type(typ ast.Type) bool {
+	sym := f.table.sym(typ)
+	if sym.info is ast.Struct && sym.info.is_anon {
+		f.struct_decl(ast.StructDecl{
+			fields: sym.info.fields
+		}, true)
+		return true
+	}
+	return false
+}
+
 pub fn (mut f Fmt) struct_init(node ast.StructInit) {
 	struct_init_save := f.is_struct_init
 	f.is_struct_init = true
 	defer {
 		f.is_struct_init = struct_init_save
 	}
-	sym_name := f.table.sym(node.typ).name
+	use_type_expr := node.typ_expr !is ast.EmptyExpr && node.typ == ast.void_type
+	sym_name := if use_type_expr { '' } else { f.table.sym(node.typ).name }
 	// f.write('<old name: ${type_sym.name}>')
 	mut name := if !sym_name.starts_with('C.') && !sym_name.starts_with('JS.') {
 		f.no_cur_mod(f.short_module(sym_name)) // TODO: f.type_to_str?
@@ -252,15 +264,30 @@ pub fn (mut f Fmt) struct_init(node ast.StructInit) {
 	if node.init_fields.len == 0 && !node.has_update_expr {
 		// `Foo{}` on one line if there are no fields or comments
 		if node.pre_comments.len == 0 {
-			f.write('${name}{}')
+			if use_type_expr {
+				f.expr(node.typ_expr)
+				f.write('{}')
+			} else {
+				f.write('${name}{}')
+			}
 		} else {
-			f.writeln('${name}{')
+			if use_type_expr {
+				f.expr(node.typ_expr)
+				f.writeln('{')
+			} else {
+				f.writeln('${name}{')
+			}
 			f.comments(node.pre_comments, same_line: true, has_nl: true, level: .indent)
 			f.write('}')
 		}
 	} else if node.no_keys {
 		// `Foo{1,2,3}` (short syntax, no keys)
-		f.write('${name}{')
+		if use_type_expr {
+			f.expr(node.typ_expr)
+			f.write('{')
+		} else {
+			f.write('${name}{')
+		}
 		if node.has_update_expr {
 			f.write('...')
 			f.expr(node.update_expr)
@@ -282,7 +309,12 @@ pub fn (mut f Fmt) struct_init(node ast.StructInit) {
 			single_line_fields = false
 		}
 		if !use_short_args || node.is_anon {
-			f.write('${name}{')
+			if use_type_expr {
+				f.expr(node.typ_expr)
+				f.write('{')
+			} else {
+				f.write('${name}{')
+			}
 			if single_line_fields {
 				f.write(' ')
 			}

@@ -23,7 +23,7 @@ const tiny_bad_request_response = 'HTTP/1.1 400 Bad Request\r\nContent-Length: 0
 const status_444_response = 'HTTP/1.1 444 No Response\r\nContent-Length: 0\r\nConnection: close\r\n\r\n'.bytes()
 const status_413_response = 'HTTP/1.1 413 Payload Too Large\r\nContent-Length: 0\r\nConnection: close\r\n\r\n'.bytes()
 
-fn C.socket(domain net.AddrFamily, typ net.SocketType, protocol i32) i32
+fn C.socket(domain i32, typ i32, protocol i32) i32
 
 fn C.bind(sockfd i32, addr &net.Addr, addrlen u32) i32
 
@@ -63,12 +63,84 @@ pub mut:
 	user_data      voidptr // User-defined context data
 }
 
+pub enum ResponseTakeoverMode {
+	none
+	manual
+	reusable
+}
+
 pub struct HttpResponse {
-pub:
-	content      []u8
-	file_path    string
-	takeover     bool // if true, the connection fd is handed off to the caller and must not be closed by fasthttp
-	should_close bool // if true, close the connection after sending (Connection: close)
+pub mut:
+	content       []u8
+	file_path     string
+	takeover_mode ResponseTakeoverMode
+	should_close  bool // if true, close the connection after sending (Connection: close)
+	// content_owned lets the backend free or move content after it has been sent.
+	content_owned bool
+	// request_arena is a prealloc scope handle that must be freed after sending.
+	request_arena voidptr
+}
+
+fn (mut resp HttpResponse) free_owned_content() {
+	if resp.content_owned && resp.content.cap > 0 {
+		unsafe { resp.content.free() }
+		resp.content = []u8{}
+	}
+}
+
+fn (mut resp HttpResponse) take_or_clone_content() []u8 {
+	if resp.content_owned {
+		content := resp.content
+		resp.content = []u8{}
+		return content
+	}
+	return resp.content.clone()
+}
+
+fn end_request_arena_current_thread(request_arena voidptr) {
+	$if prealloc {
+		if request_arena != unsafe { nil } {
+			unsafe { prealloc_scope_end(request_arena) }
+		}
+	}
+}
+
+fn leave_request_arena_current_thread(request_arena voidptr) {
+	$if prealloc {
+		if request_arena != unsafe { nil } {
+			unsafe { prealloc_scope_leave(request_arena) }
+		}
+	}
+}
+
+fn abandon_request_arena_current_thread(request_arena voidptr) {
+	$if prealloc {
+		if request_arena != unsafe { nil } {
+			unsafe { prealloc_scope_abandon(request_arena) }
+		}
+	}
+}
+
+fn (mut resp HttpResponse) attach_request_arena_if_empty(request_arena voidptr) {
+	if resp.request_arena == unsafe { nil } {
+		resp.request_arena = request_arena
+	}
+}
+
+fn (mut resp HttpResponse) end_request_arena_current_thread() {
+	end_request_arena_current_thread(resp.request_arena)
+	resp.request_arena = unsafe { nil }
+}
+
+fn (mut resp HttpResponse) abandon_request_arena_current_thread() {
+	abandon_request_arena_current_thread(resp.request_arena)
+	resp.request_arena = unsafe { nil }
+}
+
+fn (mut resp HttpResponse) take_request_arena() voidptr {
+	request_arena := resp.request_arena
+	resp.request_arena = unsafe { nil }
+	return request_arena
 }
 
 // ServerConfig bundles the parameters needed to start a fasthttp server.
@@ -115,11 +187,11 @@ pub fn (h ServerHandle) wait_till_running(params WaitTillRunningParams) !int {
 	if h.ptr == unsafe { nil } {
 		return error('server handle is not initialized')
 	}
-	$if windows {
-		return error('fasthttp server lifecycle control is not supported on windows')
-	} $else {
+	$if linux || bsd {
 		mut server := unsafe { &Server(h.ptr) }
 		return server.wait_till_running_impl(params)!
+	} $else {
+		return error('fasthttp server lifecycle control is only supported on linux and BSD-family OSes')
 	}
 }
 
@@ -128,15 +200,15 @@ pub fn (h ServerHandle) shutdown(params ShutdownParams) ! {
 	if h.ptr == unsafe { nil } {
 		return error('server handle is not initialized')
 	}
-	$if windows {
-		return error('fasthttp server lifecycle control is not supported on windows')
-	} $else {
+	$if linux || bsd {
 		mut server := unsafe { &Server(h.ptr) }
 		server.shutdown_impl(params)!
+	} $else {
+		return error('fasthttp server lifecycle control is only supported on linux and BSD-family OSes')
 	}
 }
 
-$if !windows {
+$if linux || bsd {
 	fn normalized_retry_period_ms(retry_period_ms int) int {
 		return if retry_period_ms > 0 { retry_period_ms } else { 1 }
 	}

@@ -13,6 +13,18 @@ const break_points = [0, 35, 60, 85, 93, 100]! // when to break a line depending
 const max_len = break_points[break_points.len - 1]
 const bs = '\\'
 
+fn call_arg_spread_str(arg ast.CallArg) string {
+	return match arg.expr {
+		ast.ArrayDecompose {
+			decompose := arg.expr as ast.ArrayDecompose
+			'...${decompose.expr.str()}'
+		}
+		else {
+			arg.str()
+		}
+	}
+}
+
 @[minify]
 pub struct Fmt {
 pub:
@@ -113,9 +125,6 @@ pub fn (f &Fmt) type_to_str_using_aliases(typ ast.Type, import_aliases map[strin
 	mut s := f.type_to_str_using_aliases(typ, import_aliases)
 	if s.contains('Result') {
 		println('${s}')
-	}
-	if s.starts_with('x.vweb') {
-		s = s.replace_once('x.vweb.', 'veb.')
 	}
 	return s
 }
@@ -932,12 +941,13 @@ pub fn (mut f Fmt) branch_stmt(node ast.BranchStmt) {
 }
 
 pub fn (mut f Fmt) comptime_for(node ast.ComptimeFor) {
-	typ := if node.typ != ast.void_type {
-		f.no_cur_mod(f.type_to_str_using_aliases(node.typ, f.mod2alias))
+	f.write('\$for ${node.val_var} in ')
+	if node.typ != ast.void_type {
+		f.write(f.no_cur_mod(f.type_to_str_using_aliases(node.typ, f.mod2alias)))
 	} else {
-		(node.expr as ast.Ident).name
+		f.expr(node.expr)
 	}
-	f.write('\$for ${node.val_var} in ${typ}.${node.kind.str()} {')
+	f.write('.${node.kind.str()} {')
 	if node.stmts.len > 0 || node.pos.line_nr < node.pos.last_line {
 		f.writeln('')
 		f.stmts(node.stmts)
@@ -1354,6 +1364,9 @@ pub fn (mut f Fmt) global_decl(node ast.GlobalDecl) {
 	}
 	for field in node.fields {
 		f.comments(field.comments, same_line: true)
+		if field.is_const {
+			f.write('const ')
+		}
 		if field.is_volatile {
 			f.write('volatile ')
 		}
@@ -1838,6 +1851,28 @@ struct Variant {
 	id   int
 }
 
+fn (mut f Fmt) sum_type_variant_comments(variant ast.TypeNode) {
+	if variant.end_comments.len == 0 {
+		return
+	}
+	mut same_line_comments := []ast.Comment{}
+	mut follow_up_comments := []ast.Comment{}
+	for comment in variant.end_comments {
+		if comment.pos.line_nr == variant.pos.last_line {
+			same_line_comments << comment
+		} else {
+			follow_up_comments << comment
+		}
+	}
+	if same_line_comments.len > 0 {
+		f.comments(same_line_comments, has_nl: false)
+	}
+	if follow_up_comments.len > 0 {
+		f.writeln('')
+		f.comments(follow_up_comments, has_nl: false, level: .indent)
+	}
+}
+
 pub fn (mut f Fmt) sum_type_decl(node ast.SumTypeDecl) {
 	f.attrs(node.attrs)
 	start_pos := f.out.len
@@ -1877,7 +1912,7 @@ pub fn (mut f Fmt) sum_type_decl(node ast.SumTypeDecl) {
 		}
 		f.write(variant.name)
 		if node.variants[variant.id].end_comments.len > 0 && is_multiline {
-			f.comments(node.variants[variant.id].end_comments, has_nl: false)
+			f.sum_type_variant_comments(node.variants[variant.id])
 		}
 	}
 	if !is_multiline {
@@ -1900,10 +1935,14 @@ pub fn (mut f Fmt) array_init(node ast.ArrayInit) {
 	if node.is_fixed && node.is_option {
 		f.write('?')
 	}
-	if node.exprs.len == 0 && node.typ != 0 && node.typ != ast.void_type {
+	if node.exprs.len == 0 && ((node.typ != 0 && node.typ != ast.void_type)
+		|| node.elem_type_expr !is ast.EmptyExpr) {
 		// `x := []string{}`
 		if node.alias_type != ast.void_type {
 			f.write(f.type_to_str_using_aliases(node.alias_type, f.mod2alias))
+		} else if node.elem_type_expr !is ast.EmptyExpr {
+			f.write('[]')
+			f.expr(node.elem_type_expr)
 		} else {
 			f.write(f.type_to_str_using_aliases(node.typ, f.mod2alias))
 		}
@@ -2177,6 +2216,8 @@ pub fn (mut f Fmt) call_expr(node ast.CallExpr) {
 			name := f.short_module(node.name)
 			if node.is_static_method {
 				f.write_static_method(node.name, name)
+			} else if node.is_paren_wrapped_call {
+				f.write('(${name})')
 			} else {
 				f.write(name)
 			}
@@ -2204,17 +2245,19 @@ fn (mut f Fmt) write_generic_call_if_require(node ast.CallExpr) {
 	if node.concrete_types.len > 0 {
 		f.write('[')
 		for i, concrete_type in node.concrete_types {
-			mut name := f.type_to_str_using_aliases(concrete_type, f.mod2alias)
 			tsym := f.table.sym(concrete_type)
-			if tsym.language != .js && !tsym.name.starts_with('JS.') {
-				name = f.short_module(name)
-			} else if tsym.language == .js && !tsym.name.starts_with('JS.') {
-				name = 'JS.' + name
+			if !f.write_anon_struct_type(concrete_type) {
+				mut name := f.type_to_str_using_aliases(concrete_type, f.mod2alias)
+				if tsym.language != .js && !tsym.name.starts_with('JS.') {
+					name = f.short_module(name)
+				} else if tsym.language == .js && !tsym.name.starts_with('JS.') {
+					name = 'JS.' + name
+				}
+				if tsym.language == .c {
+					name = 'C.' + name
+				}
+				f.write(name)
 			}
-			if tsym.language == .c {
-				name = 'C.' + name
-			}
-			f.write(name)
 			if i != node.concrete_types.len - 1 {
 				f.write(', ')
 			}
@@ -2316,22 +2359,14 @@ pub fn (mut f Fmt) chan_init(mut node ast.ChanInit) {
 }
 
 pub fn (mut f Fmt) comptime_call(node ast.ComptimeCall) {
-	if node.is_vweb {
+	if node.is_template {
 		if node.kind == .html {
 			if node.args.len == 1 && node.args[0].expr is ast.StringLiteral {
-				if node.is_veb {
-					f.write('\$veb.html(')
-				} else {
-					f.write('\$vweb.html(')
-				}
+				f.write('\$veb.html(')
 				f.expr(node.args[0].expr)
 				f.write(')')
 			} else {
-				if node.is_veb {
-					f.write('\$veb.html()')
-				} else {
-					f.write('\$vweb.html()')
-				}
+				f.write('\$veb.html()')
 			}
 		} else {
 			f.write('\$tmpl(')
@@ -2379,15 +2414,16 @@ pub fn (mut f Fmt) comptime_call(node ast.ComptimeCall) {
 					f.write('\$res()')
 				}
 			}
+			node.kind in [.zero, .new] {
+				f.write('\$${node.method_name}(')
+				f.expr(node.args[0].expr)
+				f.write(')')
+			}
 			else {
 				inner_args := if node.args_var != '' {
 					node.args_var
 				} else {
-					node.args.map(if it.expr is ast.ArrayDecompose {
-						'...${it.expr.expr.str()}'
-					} else {
-						it.str()
-					}).join(', ')
+					node.args.map(call_arg_spread_str).join(', ')
 				}
 				method_expr := if node.has_parens {
 					'(${node.method_name}(${inner_args}))'
@@ -2475,8 +2511,10 @@ pub fn (mut f Fmt) ident(node ast.Ident) {
 		if node.concrete_types.len > 0 {
 			f.write('[')
 			for i, concrete_type in node.concrete_types {
-				typ_name := f.type_to_str_using_aliases(concrete_type, f.mod2alias)
-				f.write(typ_name)
+				if !f.write_anon_struct_type(concrete_type) {
+					typ_name := f.type_to_str_using_aliases(concrete_type, f.mod2alias)
+					f.write(typ_name)
+				}
 				if i != node.concrete_types.len - 1 {
 					f.write(', ')
 				}
@@ -2494,11 +2532,12 @@ pub fn (mut f Fmt) ident(node ast.Ident) {
 pub fn (mut f Fmt) if_expr(node ast.IfExpr) {
 	dollar := if node.is_comptime { '$' } else { '' }
 	f.inside_comptime_if = node.is_comptime
-	mut is_ternary := node.branches.len == 2 && node.has_else
-		&& branch_is_single_line(node.branches[0]) && branch_is_single_line(node.branches[1])
-		&& (node.is_expr || f.is_assign || f.inside_const || f.is_struct_init
-		|| f.single_line_fields)
-	f.single_line_if = is_ternary
+	mut keep_single_line := node.branches.len == 1 && branch_is_single_line(node.branches[0])
+	is_ternary := node.branches.len == 2 && node.has_else && branch_is_single_line(node.branches[0])
+		&& branch_is_single_line(node.branches[1]) && (node.is_expr || f.is_assign
+		|| f.inside_const || f.is_struct_init || f.single_line_fields)
+	keep_single_line = keep_single_line || is_ternary
+	f.single_line_if = keep_single_line
 	start_pos := f.out.len
 	start_len := f.line_len
 	for {
@@ -2545,20 +2584,18 @@ pub fn (mut f Fmt) if_expr(node ast.IfExpr) {
 				}
 			}
 			f.write('{')
-			if is_ternary {
+			if keep_single_line {
 				f.write(' ')
 			} else {
 				f.writeln('')
 			}
 			f.stmts(branch.stmts)
-			if is_ternary {
+			if keep_single_line {
 				f.write(' ')
 			}
 		}
-		// When a single line if is really long, write it again as multiline,
-		// except it is part of an InfixExpr.
-		if is_ternary && f.line_len > max_len && !f.buffering {
-			is_ternary = false
+		if keep_single_line && f.line_len > max_len && !f.buffering {
+			keep_single_line = false
 			f.single_line_if = false
 			f.out.go_back_to(start_pos)
 			f.line_len = start_len
@@ -2571,11 +2608,19 @@ pub fn (mut f Fmt) if_expr(node ast.IfExpr) {
 	f.single_line_if = false
 	f.inside_comptime_if = false
 	if node.post_comments.len > 0 {
-		f.writeln('')
-		f.comments(node.post_comments,
-			has_nl:    false
-			prev_line: node.branches.last().body_pos.last_line
-		)
+		if keep_single_line {
+			f.comments(node.post_comments,
+				has_nl:    false
+				same_line: true
+				prev_line: node.branches.last().body_pos.last_line
+			)
+		} else {
+			f.writeln('')
+			f.comments(node.post_comments,
+				has_nl:    false
+				prev_line: node.branches.last().body_pos.last_line
+			)
+		}
 	}
 }
 
@@ -2585,6 +2630,44 @@ fn branch_is_single_line(b ast.IfBranch) bool {
 		return true
 	}
 	return false
+}
+
+fn sql_query_data_item_is_single_line(item ast.SqlQueryDataItem) bool {
+	return match item {
+		ast.SqlQueryDataLeaf {
+			item.pre_comments.len == 0 && item.end_comments.len == 0
+				&& item.pos.line_nr == item.pos.last_line && expr_is_single_line(item.expr)
+		}
+		ast.SqlQueryDataIf {
+			false
+		}
+	}
+}
+
+fn sql_query_data_branch_is_single_line(branch ast.SqlQueryDataBranch) bool {
+	return branch.end_comments.len == 0 && branch.pos.line_nr == branch.pos.last_line
+		&& branch.items.len == 1 && sql_query_data_item_is_single_line(branch.items[0])
+}
+
+fn sql_query_data_item_pre_comments(item ast.SqlQueryDataItem) []ast.Comment {
+	return match item {
+		ast.SqlQueryDataLeaf { item.pre_comments }
+		ast.SqlQueryDataIf { item.pre_comments }
+	}
+}
+
+fn sql_query_data_item_end_comments(item ast.SqlQueryDataItem) []ast.Comment {
+	return match item {
+		ast.SqlQueryDataLeaf { item.end_comments }
+		ast.SqlQueryDataIf { item.end_comments }
+	}
+}
+
+fn sql_query_data_item_last_line(item ast.SqlQueryDataItem) int {
+	return match item {
+		ast.SqlQueryDataLeaf { item.pos.last_line }
+		ast.SqlQueryDataIf { item.pos.last_line }
+	}
 }
 
 pub fn (mut f Fmt) if_guard_expr(node ast.IfGuardExpr) {
@@ -2609,7 +2692,13 @@ pub fn (mut f Fmt) index_expr(node ast.IndexExpr) {
 	last_index_expr_state := f.is_index_expr
 	f.is_index_expr = true
 	f.write('[')
-	f.expr(node.index)
+	parts := if node.indices.len > 0 { node.indices } else { [node.index] }
+	for i, part in parts {
+		if i > 0 {
+			f.write(', ')
+		}
+		f.expr(part)
+	}
 	f.write(']')
 	f.is_index_expr = last_index_expr_state
 	if node.or_expr.kind != .absent {
@@ -3282,6 +3371,13 @@ pub fn (mut f Fmt) sql_expr(node ast.SqlExpr) {
 			}
 			.none {}
 		}
+	} else if node.requested_fields.len > 0 {
+		for i, requested_field in node.requested_fields {
+			f.write(requested_field.name)
+			if i < node.requested_fields.len - 1 {
+				f.write(', ')
+			}
+		}
 	} else {
 		for i, fd in node.fields {
 			f.write(fd.name)
@@ -3289,6 +3385,9 @@ pub fn (mut f Fmt) sql_expr(node ast.SqlExpr) {
 				f.write(', ')
 			}
 		}
+	}
+	if node.aggregate_kind == .none && (node.requested_fields.len > 0 || node.fields.len > 0) {
+		f.write(' ')
 	}
 	if node.is_insert {
 		f.write('${node.inserted_var} into ${table_name}')
@@ -3339,24 +3438,44 @@ pub fn (mut f Fmt) sql_expr(node ast.SqlExpr) {
 }
 
 pub fn (mut f Fmt) sql_query_data_expr(node ast.SqlQueryDataExpr) {
-	if node.items.len == 0 {
+	if node.items.len == 0 && node.end_comments.len == 0 {
 		f.write('{}')
 		return
 	}
 	f.writeln('{')
 	f.indent++
-	for idx, item in node.items {
-		f.write_indent()
+	f.sql_query_data_items(node.items, node.end_comments)
+	f.indent--
+	f.write('}')
+}
+
+fn (mut f Fmt) sql_query_data_items(items []ast.SqlQueryDataItem, end_comments []ast.Comment) {
+	for idx, item in items {
+		f.sql_query_data_comment_lines(sql_query_data_item_pre_comments(item))
 		f.sql_query_data_item(item)
-		if idx < node.items.len - 1 {
-			f.writeln(',')
+		if idx < items.len - 1 || end_comments.len > 0 {
+			f.write(',')
+		}
+		item_end_comments := sql_query_data_item_end_comments(item)
+		if item_end_comments.len > 0 {
+			if item_end_comments[0].pos.line_nr == sql_query_data_item_last_line(item) {
+				f.comments(item_end_comments, same_line: true, has_nl: true, level: .keep)
+			} else {
+				f.writeln('')
+				f.sql_query_data_comment_lines(item_end_comments)
+			}
 		} else {
 			f.writeln('')
 		}
 	}
-	f.indent--
-	f.write_indent()
-	f.write('}')
+	f.sql_query_data_comment_lines(end_comments)
+}
+
+fn (mut f Fmt) sql_query_data_comment_lines(comments []ast.Comment) {
+	for comment in comments {
+		f.comment(comment)
+		f.writeln('')
+	}
 }
 
 fn (mut f Fmt) sql_query_data_item(item ast.SqlQueryDataItem) {
@@ -3377,7 +3496,8 @@ fn (mut f Fmt) sql_query_data_item(item ast.SqlQueryDataItem) {
 					f.expr(branch.cond)
 					f.write(' ')
 				}
-				f.sql_query_data_branch_items(branch.items)
+				f.sql_query_data_branch_items(branch.items, branch.end_comments,
+					sql_query_data_branch_is_single_line(branch))
 				if idx < item.branches.len - 1 {
 					f.write(' ')
 				}
@@ -3386,24 +3506,28 @@ fn (mut f Fmt) sql_query_data_item(item ast.SqlQueryDataItem) {
 	}
 }
 
-fn (mut f Fmt) sql_query_data_branch_items(items []ast.SqlQueryDataItem) {
-	if items.len == 0 {
+fn (mut f Fmt) sql_query_data_branch_items(items []ast.SqlQueryDataItem, end_comments []ast.Comment, keep_single_line bool) {
+	if items.len == 0 && end_comments.len == 0 {
 		f.write('{}')
 		return
 	}
+	if keep_single_line {
+		start_pos := f.out.len
+		start_len := f.line_len
+		f.write('{ ')
+		f.sql_query_data_item(items[0])
+		f.write(' }')
+		if !f.out.after(start_pos).contains('\n') && f.line_len <= max_len {
+			return
+		}
+		f.out.go_back_to(start_pos)
+		f.line_len = start_len
+		f.empty_line = start_len == 0
+	}
 	f.writeln('{')
 	f.indent++
-	for idx, item in items {
-		f.write_indent()
-		f.sql_query_data_item(item)
-		if idx < items.len - 1 {
-			f.writeln(',')
-		} else {
-			f.writeln('')
-		}
-	}
+	f.sql_query_data_items(items, end_comments)
 	f.indent--
-	f.write_indent()
 	f.write('}')
 }
 

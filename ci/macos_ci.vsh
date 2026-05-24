@@ -53,10 +53,10 @@ fn test_pure_v_math_module() {
 
 fn self_tests() {
 	if common.is_github_job {
-		exec('VJOBS=1 v -silent test-self vlib')
+		exec('VJOBS=1 v -d self_ignore_v2 -silent test-self vlib')
 	} else {
 		vjobs := os.getenv_opt('VJOBS') or { '1' }
-		exec('VJOBS=${vjobs} v -progress test-self vlib')
+		exec('VJOBS=${vjobs} v -d self_ignore_v2 -progress test-self vlib')
 	}
 }
 

@@ -1,0 +1,20 @@
+vlib/v/checker/tests/veb_bound_method_fn_field_return_type_err.vv:14:30: notice: unused parameter: `options`
+   12 | struct Middleware[T] {}
+   13 | 
+   14 | fn (mut m Middleware[T]) use(options Options[T]) {}
+      |                              ~~~~~~~
+   15 | 
+   16 | struct App {
+vlib/v/checker/tests/veb_bound_method_fn_field_return_type_err.vv:20:33: notice: unused parameter: `ctx`
+   18 | }
+   19 | 
+   20 | fn (app App) before_request(mut ctx Context) {}
+      |                                 ~~~
+   21 | 
+   22 | fn main() {
+vlib/v/checker/tests/veb_bound_method_fn_field_return_type_err.vv:24:10: error: cannot assign to field `handler`: expected `fn (mut Context) bool`, not `fn (mut Context)`
+   22 | fn main() {
+   23 |     mut app := &App{}
+   24 |     app.use(handler: app.before_request)
+      |             ~~~~~~~~~~~~~~~~~~~~~~~~~~~
+   25 | }

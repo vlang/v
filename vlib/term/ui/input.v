@@ -139,6 +139,7 @@ pub enum EventType {
 	mouse_drag
 	mouse_scroll
 	key_down
+	key_up
 	resized
 }
 

@@ -24,7 +24,6 @@ const skip_modules = [
 	'os.bare',
 	'os2',
 	'szip',
-	'v.eval',
 ]
 const is_verbose = os.getenv('VERBOSE') != ''
 

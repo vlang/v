@@ -15,4 +15,17 @@ fn main() {
 }
 ```
 
+For tags with nested markup, `tag.content` preserves the inner HTML:
+
+```v
+import net.html
+
+fn main() {
+	doc := html.parse('<p>before <span>in between</span> after</p>')
+	tag := doc.get_tags(name: 'p')[0]
+	println(tag.content) // before <span>in between</span> after
+	println(tag.text()) // before in between after
+}
+```
+
 More examples found on [`parser_test.v`](parser_test.v) and [`html_test.v`](html_test.v)

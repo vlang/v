@@ -33,6 +33,6 @@
     // Completeness
     // Skip type checking all .d.ts files.
     "skipLibCheck": true      },
-    "include": ["src/**/*"]
+    "include": ["index.ts"]
 
 }

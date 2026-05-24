@@ -90,7 +90,7 @@ fn fatal_socket_error(fd int) bool {
 // listen creates a listening tcp socket and returns its file descriptor.
 fn listen(config Config) !int {
 	// not using the `net` modules sockets, because not all socket options are defined
-	fd := C.socket(config.family, net.SocketType.tcp, 0)
+	fd := C.socket(i32(config.family), i32(net.SocketType.tcp), 0)
 	if fd == -1 {
 		return error('Failed to create socket')
 	}

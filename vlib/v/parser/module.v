@@ -182,6 +182,7 @@ fn (mut p Parser) module_decl() ast.Module {
 				'has_globals' {
 					p.has_globals = true
 				}
+				'strict_map_index' {}
 				'translated' {
 					p.is_translated = true
 				}
@@ -297,7 +298,7 @@ fn (mut p Parser) import_stmt() ast.Import {
 	}
 	pos_t := p.tok.pos()
 	if import_pos.line_nr == pos_t.line_nr {
-		if p.tok.kind !in [.lcbr, .eof, .comment, .semicolon, .key_import] {
+		if p.tok.kind !in [.lcbr, .rcbr, .eof, .comment, .semicolon, .key_import] {
 			p.error_with_pos('cannot import multiple modules at a time', pos_t)
 			return import_node
 		}

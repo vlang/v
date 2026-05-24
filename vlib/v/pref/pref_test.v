@@ -62,6 +62,14 @@ fn test_mac_is_alias_for_macos() {
 	assert !pref.OS.linux.is_target_of('mac')
 }
 
+fn test_bsd_target_matches_macos_and_bsd_systems() {
+	for os_kind in [pref.OS.macos, .freebsd, .openbsd, .netbsd, .dragonfly] {
+		assert os_kind.is_target_of('bsd')
+	}
+	assert !pref.OS.linux.is_target_of('bsd')
+	assert !pref.OS.windows.is_target_of('bsd')
+}
+
 fn test_disable_explicit_mutability_flag() {
 	target := os.join_path(vroot, 'examples', 'hello_world.v')
 	prefs, _ := pref.parse_args_and_show_errors([], ['-disable-explicit-mutability', target], false)
@@ -111,6 +119,35 @@ fn new_wasm_preferences() pref.Preferences {
 	}
 }
 
+fn new_c_preferences() pref.Preferences {
+	return pref.Preferences{
+		backend: .c
+		os:      .linux
+		arch:    .amd64
+	}
+}
+
+fn test_c_backend_filters_backend_specific_files() {
+	prefs := new_c_preferences()
+	dir := os.join_path(os.vtmp_dir(), 'c_backend_filters')
+	filtered := prefs.should_compile_filtered_files(dir, [
+		'mod.c.v',
+		'mod.js.v',
+		'mod.v',
+		'mod.wasm.v',
+	])
+	assert filtered == [
+		os.join_path(dir, 'mod.c.v'),
+		os.join_path(dir, 'mod.v'),
+	]
+}
+
+fn test_c_backend_skips_modules_with_only_non_c_variants() {
+	prefs := new_c_preferences()
+	filtered := prefs.should_compile_filtered_files('sus', ['sus.js.v', 'sus.wasm.v'])
+	assert filtered.len == 0
+}
+
 fn test_wasm_backend_filters_backend_specific_files() {
 	prefs := new_wasm_preferences()
 	dir := os.join_path(os.vtmp_dir(), 'wasm_backend_filters')
@@ -132,6 +169,57 @@ fn test_wasm_backend_skips_modules_with_only_c_and_js_variants() {
 	assert filtered.len == 0
 }
 
+fn filtered_file_names_for_os(os_kind pref.OS, files []string) []string {
+	prefs := pref.Preferences{
+		os: os_kind
+	}
+	dir := os.join_path(os.vtmp_dir(), 'environment_specific_files')
+	mut res := []string{}
+	for file in prefs.should_compile_filtered_files(dir, files) {
+		res << os.base(file)
+	}
+	return res
+}
+
+fn test_bsd_specific_files_are_filtered_by_target_os() {
+	for os_kind in [pref.OS.macos, .freebsd, .openbsd, .netbsd, .dragonfly] {
+		assert filtered_file_names_for_os(os_kind, ['mod_bsd.c.v', 'mod_bsd.v']) == [
+			'mod_bsd.c.v',
+			'mod_bsd.v',
+		]
+	}
+	assert filtered_file_names_for_os(.linux, ['mod_bsd.c.v', 'mod_bsd.v']).len == 0
+	assert filtered_file_names_for_os(.windows, ['mod_bsd.c.v', 'mod_bsd.v']).len == 0
+}
+
+fn test_bsd_specific_files_prefer_more_specific_variants() {
+	mut files := [
+		'main.v',
+		'something_default.c.v',
+		'something_windows.c.v',
+	]
+	assert filtered_file_names_for_os(.freebsd, files) == ['main.v', 'something_default.c.v']
+
+	files << 'something_nix.c.v'
+	assert filtered_file_names_for_os(.freebsd, files) == ['main.v', 'something_nix.c.v']
+
+	files << 'something_bsd.c.v'
+	assert filtered_file_names_for_os(.freebsd, files) == ['main.v', 'something_bsd.c.v']
+
+	files << 'something_freebsd.c.v'
+	assert filtered_file_names_for_os(.freebsd, files) == ['main.v', 'something_freebsd.c.v']
+}
+
+fn test_bsd_specific_files_prefer_darwin_on_macos() {
+	files := [
+		'main.v',
+		'something_nix.c.v',
+		'something_bsd.v',
+		'something_darwin.v',
+	]
+	assert filtered_file_names_for_os(.macos, files) == ['main.v', 'something_darwin.v']
+}
+
 fn test_explicit_gc_mode_is_forwarded_to_build_module() {
 	target := os.join_path(vroot, 'examples', 'hello_world.v')
 	for gc_mode in ['none', 'boehm', 'boehm_full', 'boehm_incr', 'boehm_full_opt', 'boehm_incr_opt',
@@ -142,6 +230,29 @@ fn test_explicit_gc_mode_is_forwarded_to_build_module() {
 	}
 }
 
+fn test_v_compiler_targets_default_to_no_gc() {
+	for target in [
+		os.join_path(vroot, 'cmd', 'v'),
+		os.join_path(vroot, 'cmd', 'v') + os.path_separator,
+		os.join_path(vroot, 'cmd', 'v', 'v.v'),
+		os.join_path(vroot, 'cmd', 'v2'),
+		os.join_path(vroot, 'cmd', 'v2') + os.path_separator,
+		os.join_path(vroot, 'cmd', 'v2', 'v2.v'),
+		os.join_path(vroot, 'cmd', 'tools', 'vfmt.v'),
+	] {
+		prefs, _ := pref.parse_args_and_show_errors([], ['', target], false)
+		assert prefs.gc_mode == .no_gc
+		assert prefs.build_options.join(' ').contains('-gc none')
+	}
+}
+
+fn test_v_compiler_targets_keep_explicit_gc_selection() {
+	target := os.join_path(vroot, 'cmd', 'v2', 'v2.v')
+	prefs, _ := pref.parse_args_and_show_errors([], ['', '-gc', 'boehm', target], false)
+	assert prefs.gc_mode == .boehm_full_opt
+	assert prefs.build_options.contains('-gc boehm')
+}
+
 fn test_cross_compile_defaults_windows_to_the_cross_compiler_arch() {
 	if pref.get_host_os() == .windows {
 		return
@@ -150,6 +261,28 @@ fn test_cross_compile_defaults_windows_to_the_cross_compiler_arch() {
 	prefs, _ := pref.parse_args_and_show_errors([], ['', '-os', 'windows', target], false)
 	assert prefs.arch == .amd64
 	assert prefs.ccompiler == 'x86_64-w64-mingw32-gcc'
+}
+
+fn test_cross_compile_windows_m32_uses_i386_arch_and_compiler() {
+	if pref.get_host_os() == .windows {
+		return
+	}
+	target := os.join_path(vroot, 'examples', 'hello_world.v')
+	prefs, _ := pref.parse_args_and_show_errors([], ['', '-os', 'windows', '-m32', target], false)
+	assert !prefs.m64
+	assert prefs.arch == .i386
+	assert prefs.ccompiler == 'i686-w64-mingw32-gcc'
+	assert prefs.build_options.contains('-m32')
+}
+
+fn test_cross_compile_defaults_linux_to_amd64() {
+	if pref.get_host_os() == .linux {
+		return
+	}
+	target := os.join_path(vroot, 'examples', 'hello_world.v')
+	prefs, _ := pref.parse_args_and_show_errors([], ['', '-os', 'linux', target], false)
+	assert prefs.arch == .amd64
+	assert prefs.ccompiler == 'clang'
 }
 
 fn test_cross_compile_infers_android_arch_from_vcross_compiler_name() {
@@ -185,6 +318,74 @@ fn test_musl_keeps_explicit_gc_selection() {
 	assert prefs.gc_mode == .boehm_full_opt
 }
 
+fn test_prealloc_defaults_to_no_gc() {
+	target := os.join_path(vroot, 'examples', 'hello_world.v')
+	prefs, _ := pref.parse_args_and_show_errors([], ['', '-prealloc', target], false)
+	assert prefs.prealloc
+	assert prefs.gc_mode == .no_gc
+}
+
+fn test_prealloc_overrides_explicit_gc_selection() {
+	target := os.join_path(vroot, 'examples', 'hello_world.v')
+	prefs, _ := pref.parse_args_and_show_errors([], ['', '-gc', 'boehm', '-prealloc', target],
+		false)
+	assert prefs.prealloc
+	assert prefs.gc_mode == .no_gc
+	assert 'gcboehm' !in prefs.compile_defines
+	assert prefs.build_options.join(' ').contains('-gc none')
+}
+
+fn stale_windows_gc_prefs(gc_set_by_flag bool) pref.Preferences {
+	mut prefs := pref.Preferences{
+		os:                  .windows
+		ccompiler_type:      .msvc
+		gc_mode:             .boehm_full_opt
+		gc_set_by_flag:      gc_set_by_flag
+		compile_defines:     ['gcboehm', 'gcboehm_full', 'gcboehm_opt', 'custom']
+		compile_defines_all: ['gcboehm', 'gcboehm_full', 'gcboehm_opt', 'custom']
+		compile_values:      map[string]string{}
+		build_options:       ['-prod', '-d gcboehm', '-d gcboehm_full', '-d gcboehm_opt']
+	}
+	prefs.compile_values['gcboehm'] = 'true'
+	prefs.compile_values['gcboehm_full'] = 'true'
+	prefs.compile_values['gcboehm_opt'] = 'true'
+	prefs.compile_values['custom'] = 'true'
+	return prefs
+}
+
+fn test_windows_msvc_gc_defaults_are_cleared_after_compiler_resolution() {
+	mut prefs := stale_windows_gc_prefs(false)
+
+	prefs.normalize_gc_defaults_for_resolved_ccompiler()
+
+	assert prefs.gc_mode == .no_gc
+	assert prefs.build_options == ['-prod', '-gc', 'none']
+	assert prefs.compile_defines == ['custom']
+	assert prefs.compile_defines_all == ['custom']
+	assert prefs.compile_values == {
+		'custom': 'true'
+	}
+}
+
+fn test_windows_msvc_gc_defaults_keep_explicit_gc_selection() {
+	mut prefs := stale_windows_gc_prefs(true)
+	prefs.build_options = ['-prod', '-gc', 'boehm', '-d gcboehm', '-d gcboehm_full', '-d gcboehm_opt']
+
+	prefs.normalize_gc_defaults_for_resolved_ccompiler()
+
+	assert prefs.gc_mode == .boehm_full_opt
+	assert prefs.build_options == ['-prod', '-gc', 'boehm', '-d gcboehm', '-d gcboehm_full',
+		'-d gcboehm_opt']
+	assert prefs.compile_defines == ['gcboehm', 'gcboehm_full', 'gcboehm_opt', 'custom']
+	assert prefs.compile_defines_all == ['gcboehm', 'gcboehm_full', 'gcboehm_opt', 'custom']
+	assert prefs.compile_values == {
+		'custom':       'true'
+		'gcboehm':      'true'
+		'gcboehm_full': 'true'
+		'gcboehm_opt':  'true'
+	}
+}
+
 fn test_m32_sets_i386_arch_when_not_explicitly_set() {
 	target := os.join_path(vroot, 'examples', 'hello_world.v')
 	prefs, _ := pref.parse_args_and_show_errors([], ['', '-m32', target], false)
@@ -214,6 +415,23 @@ fn test_v_cmds_and_flags() {
 
 	unknown_arg_for_cmd_res := os.execute('${vexe} build-module -xyz ${vroot}/vlib/math')
 	assert unknown_arg_for_cmd_res.output.trim_space() == 'Unknown argument `-xyz` for command `build-module`'
+
+	eval_removed_message := 'use v -v2 -eval file.v'
+	eval_flag_res := os.execute('${vexe} -eval ${vroot}/examples/hello_world.v')
+	assert eval_flag_res.exit_code == 1
+	assert eval_flag_res.output.trim_space() == eval_removed_message
+
+	eval_backend_res := os.execute('${vexe} -backend eval ${vroot}/examples/hello_world.v')
+	assert eval_backend_res.exit_code == 1
+	assert eval_backend_res.output.trim_space() == eval_removed_message
+
+	interpret_flag_res := os.execute('${vexe} -interpret ${vroot}/examples/hello_world.v')
+	assert interpret_flag_res.exit_code == 1
+	assert interpret_flag_res.output.trim_space() == eval_removed_message
+
+	interpret_command_res := os.execute('${vexe} interpret ${vroot}/examples/hello_world.v')
+	assert interpret_command_res.exit_code == 1
+	assert interpret_command_res.output.trim_space() == eval_removed_message
 
 	no_run_files_res := os.execute('${vexe} run')
 	assert no_run_files_res.output.trim_space() == 'v run: no v files listed'
@@ -337,10 +555,21 @@ fn test_generate_c_project_creates_build_files() {
 		assert os.is_file(os.join_path(output_dir, rel_path))
 	}
 	build_command := os.read_file(os.join_path(output_dir, 'build_command.txt')) or { panic(err) }
-	assert build_command.contains(os.join_path(output_dir, 'json.c'))
+	generated_c_path := os.join_path(output_dir, 'json.c')
+	normalized_build_command := normalized_build_path(build_command)
+	assert normalized_build_command.contains(normalized_build_path(generated_c_path))
+		|| normalized_build_command.contains(normalized_build_path(os.short_path(generated_c_path)))
 	assert build_command.contains('cJSON.c')
 	assert !build_command.contains('.tmp.c')
 	assert !build_command.contains('.module.')
+}
+
+fn normalized_build_path(path string) string {
+	mut normalized := path.replace('\\', '/')
+	for normalized.contains('//') {
+		normalized = normalized.replace('//', '/')
+	}
+	return normalized
 }
 
 fn test_output_flag_accepts_directory_path() {
@@ -377,4 +606,45 @@ fn test_tcc_shared_builds_disable_backtraces() {
 	}
 	regular_prefs.fill_with_defaults()
 	assert 'no_backtrace' !in regular_prefs.compile_defines_all
+}
+
+fn test_late_resolved_tcc_shared_builds_disable_backtraces() {
+	mut shared_prefs := &pref.Preferences{
+		path:      'libfoo.v'
+		is_shared: true
+		ccompiler: 'gcc'
+	}
+	shared_prefs.fill_with_defaults()
+	assert 'no_backtrace' !in shared_prefs.compile_defines_all
+
+	shared_prefs.ccompiler_type = .tinyc
+	shared_prefs.normalize_gc_defaults_for_resolved_ccompiler()
+
+	assert 'no_backtrace' in shared_prefs.compile_defines_all
+	assert shared_prefs.build_options.contains('-d no_backtrace')
+}
+
+fn test_wayland_only_linux_session_surfaces_a_v_error_for_gg() {
+	if os.user_os() == 'windows' {
+		return
+	}
+	pid := os.getpid()
+	test_dir := os.join_path(os.vtmp_dir(), 'v_issue_18030_gg_wayland_${pid}')
+	source_path := os.join_path(test_dir, 'main.v')
+	exe_path := os.join_path(test_dir, 'app')
+	source := 'import gg as _\n\nfn main() {}\n'
+	os.mkdir_all(test_dir) or { panic(err) }
+	os.write_file(source_path, source) or { panic(err) }
+	defer {
+		os.rmdir_all(test_dir) or {}
+	}
+	cmd := 'DISPLAY= WAYLAND_DISPLAY=wayland-0 XDG_SESSION_TYPE=wayland ${os.quoted_path(vexe)} -os linux -o ${os.quoted_path(exe_path)} ${os.quoted_path(source_path)}'
+	res := os.execute(cmd)
+	output := res.output.replace('\r', '')
+	if res.exit_code == 0 {
+		eprintln('> failed command: ${cmd}')
+	}
+	assert res.exit_code != 0
+	assert output.contains('Wayland-only Linux session without `-d sokol_wayland`')
+	assert !output.contains('C error. This should never happen.')
 }

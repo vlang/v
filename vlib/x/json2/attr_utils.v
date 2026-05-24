@@ -20,6 +20,7 @@ fn json_attr_value(attr string) ?string {
 	return unquote_attr_value(attr[5..])
 }
 
+@[markused]
 fn json_attr_value_range(attr string) ?(int, int) {
 	if !attr.starts_with('json:') {
 		return none
@@ -40,4 +41,14 @@ fn json_attr_value_range(attr string) ?(int, int) {
 		}
 	}
 	return start, end
+}
+
+@[inline]
+fn enum_uses_json_as_number[T]() bool {
+	$for attr in T.attributes {
+		if attr.name == 'json_as_number' {
+			return true
+		}
+	}
+	return false
 }

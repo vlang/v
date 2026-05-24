@@ -6,20 +6,16 @@ module http
 import net.ssl
 import strings
 
-fn (req &Request) ssl_do(port int, method Method, host_name string, path string) !Response {
+fn (req &Request) ssl_do(port int, method Method, host_name string, path string, data string, header Header) !Response {
 	$if windows && !no_vschannel ? {
-		if req.validate {
-			return vschannel_ssl_do(req, port, method, host_name, path)
-		}
-		// vschannel enforces certificate validation during handshake.
-		// Use net.ssl when validation is explicitly disabled.
+		return vschannel_ssl_do(req, port, method, host_name, path, data, header)
 	}
-	return net_ssl_do(req, port, method, host_name, path)
+	return net_ssl_do(req, port, method, host_name, path, data, header)
 }
 
-fn net_ssl_do(req &Request, port int, method Method, host_name string, path string) !Response {
+fn net_ssl_do(req &Request, port int, method Method, host_name string, path string, data string, header Header) !Response {
 	mut retries := 0
-	req_headers := req.build_request_headers(method, host_name, port, path)
+	req_headers := req.build_request_headers_with(method, host_name, port, path, data, header)
 	$if trace_http_request ? {
 		eprint('> ')
 		eprint(req_headers)
@@ -39,6 +35,12 @@ fn net_ssl_do(req &Request, port int, method Method, host_name string, path stri
 				return err
 			}
 			continue
+		}
+		// Propagate the request's read timeout into the SSL backend.
+		// Without this, mbedtls keeps its init-time default and openssl falls back to no
+		// timeout at all on a stalled socket — see issue surfaced by macOS arm64 + tcc CI hangs.
+		if req.read_timeout > 0 {
+			ssl_conn.set_read_timeout(req.read_timeout)
 		}
 		return req.do_request(req_headers, mut ssl_conn)!
 	}

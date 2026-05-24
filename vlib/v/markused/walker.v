@@ -7,6 +7,17 @@ module markused
 import v.ast
 import v.pref
 
+const simple_string_interpolation_default_precision = 987698
+
+struct MethodFkeyCacheEntry {
+	fkey     string
+	receiver ast.Type
+}
+
+struct SpecializedVarTypeCacheEntry {
+	typ ast.Type
+}
+
 pub struct Walker {
 pub mut:
 	table           &ast.Table        = unsafe { nil }
@@ -36,16 +47,23 @@ mut:
 	all_decltypes map[string]ast.TypeDecl
 	all_structs   map[string]ast.StructDecl
 
-	cur_fn                    string
-	cur_fn_concrete_types     []ast.Type
-	level                     int
-	is_builtin_mod            bool
-	is_direct_array_access    bool
-	inside_in_op              bool
-	inside_comptime           int
-	used_fn_generic_types     map[string][][]ast.Type
-	walked_fn_generic_types   map[string][][]ast.Type
-	keep_all_fn_generic_types map[string]bool
+	cur_fn                      string
+	cur_fn_concrete_types       []ast.Type
+	level                       int
+	is_builtin_mod              bool
+	is_direct_array_access      bool
+	inside_in_op                bool
+	inside_comptime             int
+	inside_comptime_if          int
+	used_fn_generic_types       map[string][][]ast.Type
+	used_fn_generic_type_keys   map[string]bool
+	walked_fn_generic_types     map[string][][]ast.Type
+	walked_fn_generic_type_keys map[string]bool
+	expanding_fn_generic_types  map[string]bool
+	keep_all_fn_generic_types   map[string]bool
+	json2_encode_field_helpers  map[string]bool
+	method_fkey_cache           map[string]MethodFkeyCacheEntry
+	specialized_var_type_cache  map[string]SpecializedVarTypeCacheEntry
 
 	// dependencies finding flags
 	uses_atomic                bool // has atomic
@@ -67,6 +85,7 @@ mut:
 	uses_mem_align             bool // @[aligned:N] for structs
 	uses_eq                    bool // has == op
 	uses_interp                bool // string interpolation
+	uses_interp_isnil          bool // pointer string interpolation
 	uses_guard                 bool
 	uses_orm                   bool
 	uses_str                   map[ast.Type]bool // has .str() calls, and for which types
@@ -102,6 +121,8 @@ pub fn Walker.new(params Walker) &Walker {
 		...params
 	}
 	new_walker.features = params.table.used_features
+	new_walker.method_fkey_cache = map[string]MethodFkeyCacheEntry{}
+	new_walker.specialized_var_type_cache = map[string]SpecializedVarTypeCacheEntry{}
 	return new_walker
 }
 
@@ -114,22 +135,24 @@ fn (mut w Walker) mark_fn_as_used(fkey string) {
 }
 
 fn (w &Walker) fn_generic_names(node ast.FnDecl) []string {
-	mut generic_names := []string{}
-	if node.is_method {
-		receiver_sym := w.table.sym(node.receiver.typ)
-		match receiver_sym.info {
-			ast.Struct {
-				generic_names << w.table.get_generic_names(receiver_sym.info.generic_types)
-			}
-			ast.Interface {
-				generic_names << w.table.get_generic_names(receiver_sym.info.generic_types)
-			}
-			ast.SumType {
-				generic_names << w.table.get_generic_names(receiver_sym.info.generic_types)
-			}
-			else {}
-		}
+	if !node.is_method {
+		return node.generic_names
 	}
+	mut generic_names := []string{}
+	receiver_sym := w.table.sym(node.receiver.typ)
+	match receiver_sym.info {
+		ast.Struct {
+			generic_names << w.table.get_generic_names(receiver_sym.info.generic_types)
+		}
+		ast.Interface {
+			generic_names << w.table.get_generic_names(receiver_sym.info.generic_types)
+		}
+		ast.SumType {
+			generic_names << w.table.get_generic_names(receiver_sym.info.generic_types)
+		}
+		else {}
+	}
+
 	// Only add method-level generic names that aren't already from the receiver
 	// (V puts inherited receiver generics into node.generic_names too).
 	for gn in node.generic_names {
@@ -166,13 +189,339 @@ fn (mut w Walker) resolve_current_concrete_types(types []ast.Type) []ast.Type {
 	return concrete_types
 }
 
+fn (w &Walker) current_generic_context() ([]string, []ast.Type) {
+	if w.cur_fn == '' {
+		return []string{}, []ast.Type{}
+	}
+	if w.cur_fn.contains('_T_') {
+		return w.specialized_generic_context_for(w.cur_fn)
+	}
+	if w.cur_fn_concrete_types.len == 0 {
+		return []string{}, []ast.Type{}
+	}
+	cur_fn := w.all_fns[w.cur_fn] or { return []string{}, []ast.Type{} }
+	generic_names := w.fn_generic_names(cur_fn)
+	if generic_names.len == 0 || generic_names.len != w.cur_fn_concrete_types.len {
+		return []string{}, []ast.Type{}
+	}
+	return generic_names, w.cur_fn_concrete_types.clone()
+}
+
+fn (w &Walker) current_generic_type_by_name(name string) ast.Type {
+	generic_names, concrete_types := w.current_generic_context()
+	if generic_names.len == 0 || generic_names.len != concrete_types.len {
+		return ast.no_type
+	}
+	idx := generic_names.index(name)
+	if idx < 0 || idx >= concrete_types.len {
+		return ast.no_type
+	}
+	return concrete_types[idx]
+}
+
+fn (w &Walker) has_sumtype_generic_context(types []ast.Type) bool {
+	for typ in types {
+		if typ == 0 {
+			continue
+		}
+		if w.table.final_sym(w.table.unaliased_type(typ)).kind == .sum_type {
+			return true
+		}
+	}
+	return false
+}
+
+fn (w &Walker) sumtype_variant_concrete_types(types []ast.Type) [][]ast.Type {
+	if types.len != 1 {
+		return [][]ast.Type{}
+	}
+	sumtype := w.table.unaliased_type(types[0])
+	sumtype_sym := w.table.final_sym(sumtype)
+	if sumtype_sym.kind != .sum_type || sumtype_sym.info !is ast.SumType {
+		return [][]ast.Type{}
+	}
+	mut concrete_types := [][]ast.Type{}
+	for variant in (sumtype_sym.info as ast.SumType).variants {
+		concrete_types << [variant]
+	}
+	return concrete_types
+}
+
+fn (mut w Walker) trusted_source_concrete_types(node ast.CallExpr, receiver_typ ast.Type) []ast.Type {
+	if node.raw_concrete_types.len > 0 {
+		return w.resolve_current_concrete_types(node.raw_concrete_types)
+	}
+	if node.concrete_types.len == 0 {
+		return []ast.Type{}
+	}
+	resolved_source_concrete_types := w.resolve_current_concrete_types(node.concrete_types)
+	if resolved_source_concrete_types.len == 0 {
+		return []ast.Type{}
+	}
+	caller_generic_names, _ := w.current_generic_context()
+	if caller_generic_names.len == 0 || w.inside_comptime_if > 0 {
+		return resolved_source_concrete_types
+	}
+	mut receiver_concrete_types := w.receiver_concrete_types(receiver_typ)
+	if receiver_concrete_types.len == 0 && node.receiver_concrete_type != 0
+		&& node.receiver_concrete_type != receiver_typ {
+		receiver_concrete_types = w.receiver_concrete_types(node.receiver_concrete_type)
+	}
+	if receiver_concrete_types.len > 0 && receiver_concrete_types == resolved_source_concrete_types {
+		return resolved_source_concrete_types
+	}
+	return []ast.Type{}
+}
+
+fn (mut w Walker) mark_json2_optional_field_helpers(concrete_typ ast.Type) {
+	concrete_sym := w.table.final_sym(w.table.unaliased_type(concrete_typ))
+	if concrete_sym.kind != .struct || concrete_sym.info !is ast.Struct {
+		return
+	}
+	struct_info := concrete_sym.info as ast.Struct
+	if mut create_value_from_optional_fn := w.all_fns['x.json2.create_value_from_optional'] {
+		for field in struct_info.fields {
+			if field.typ.has_flag(.option) {
+				w.fn_decl_with_concrete_types(mut create_value_from_optional_fn, [
+					field.typ.clear_flag(.option),
+				])
+			}
+		}
+	}
+}
+
+fn (mut w Walker) remember_generic_fn_instance(fkey string, concrete_types []ast.Type) {
+	resolved_concrete_types := w.resolve_current_concrete_types(concrete_types)
+	if resolved_concrete_types.len == 0 || resolved_concrete_types.any(it.has_flag(.generic)) {
+		return
+	}
+	w.record_used_fn_generic_types(fkey, resolved_concrete_types)
+	w.mark_fn_as_used(fkey)
+}
+
+fn (mut w Walker) mark_json2_encode_field_helpers(receiver_typ ast.Type, concrete_typ ast.Type) {
+	helper_key := '${int(receiver_typ)}:${int(concrete_typ)}'
+	if w.json2_encode_field_helpers[helper_key] {
+		return
+	}
+	w.json2_encode_field_helpers[helper_key] = true
+	concrete_sym := w.table.final_sym(w.table.unaliased_type(concrete_typ))
+	if concrete_sym.kind != .struct || concrete_sym.info !is ast.Struct {
+		return
+	}
+	struct_info := concrete_sym.info as ast.Struct
+	encode_struct_field_value_fkey, _ := w.resolve_method_fkey_for_type(receiver_typ,
+		'encode_struct_field_value')
+	mut encode_struct_field_value_fn := if encode_struct_field_value_fkey != '' {
+		w.all_fns[encode_struct_field_value_fkey] or { ast.FnDecl{} }
+	} else {
+		ast.FnDecl{}
+	}
+	mut struct_field_is_none_fn := w.all_fns['x.json2.struct_field_is_none'] or { ast.FnDecl{} }
+	mut struct_field_is_nil_fn := w.all_fns['x.json2.struct_field_is_nil'] or { ast.FnDecl{} }
+	mut check_not_empty_fn := w.all_fns['x.json2.check_not_empty'] or { ast.FnDecl{} }
+	for field in struct_info.fields {
+		if field.is_embed {
+			continue
+		}
+		if encode_struct_field_value_fn.name != '' {
+			w.remember_generic_fn_instance(encode_struct_field_value_fn.fkey(), [field.typ])
+		}
+		if struct_field_is_none_fn.name != '' && field.typ.has_flag(.option) {
+			w.remember_generic_fn_instance(struct_field_is_none_fn.fkey(), [field.typ])
+		}
+		if struct_field_is_nil_fn.name != '' && field.typ.nr_muls() > 0 {
+			w.remember_generic_fn_instance(struct_field_is_nil_fn.fkey(), [field.typ])
+		}
+		if check_not_empty_fn.name != '' {
+			w.remember_generic_fn_instance(check_not_empty_fn.fkey(), [field.typ])
+		}
+	}
+}
+
+fn (mut w Walker) resolve_comptime_condition_type(expr ast.Expr) ast.Type {
+	match expr {
+		ast.Ident {
+			if expr.obj.typ != 0 {
+				resolved_type := w.resolve_current_specialized_type(expr.obj.typ)
+				if resolved_type != 0 {
+					return resolved_type
+				}
+			}
+			resolved_type := w.resolve_current_specialized_var_type(expr.name)
+			if resolved_type != 0 {
+				return resolved_type
+			}
+			generic_type := w.current_generic_type_by_name(expr.name)
+			if generic_type != 0 {
+				return generic_type
+			}
+		}
+		ast.SelectorExpr {
+			if expr.expr is ast.Ident {
+				mut base_type := ast.no_type
+				if expr.expr.obj.typ != 0 {
+					base_type = w.resolve_current_specialized_type(expr.expr.obj.typ)
+				}
+				if base_type == 0 {
+					base_type = w.resolve_current_specialized_var_type(expr.expr.name)
+				}
+				if base_type == 0 {
+					base_type = w.current_generic_type_by_name(expr.expr.name)
+				}
+				if base_type == 0 {
+					return ast.no_type
+				}
+				return if expr.field_name == 'unaliased_typ' {
+					w.table.unaliased_type(base_type)
+				} else if expr.field_name == 'typ' {
+					base_type
+				} else {
+					ast.no_type
+				}
+			}
+		}
+		ast.TypeNode {
+			if expr.typ.has_flag(.generic) {
+				generic_name := w.table.sym(expr.typ).name
+				if generic_name != '' {
+					generic_type := w.current_generic_type_by_name(generic_name)
+					if generic_type != 0 {
+						return generic_type
+					}
+				}
+			}
+			return w.resolve_current_specialized_type(expr.typ)
+		}
+		else {}
+	}
+
+	return ast.no_type
+}
+
+fn (w &Walker) comptime_type_matches(left_type ast.Type, right ast.Expr) ?bool {
+	if left_type == 0 {
+		return none
+	}
+	match right {
+		ast.ComptimeType {
+			sym := w.table.sym(left_type)
+			return match right.kind {
+				.array { sym.info is ast.Array || sym.info is ast.ArrayFixed }
+				.array_dynamic { sym.info is ast.Array }
+				.array_fixed { sym.info is ast.ArrayFixed }
+				.iface { sym.info is ast.Interface }
+				.map { sym.info is ast.Map }
+				.struct { sym.info is ast.Struct }
+				.enum { sym.info is ast.Enum }
+				.sum_type { sym.info is ast.SumType }
+				.alias { sym.info is ast.Alias }
+				.function { sym.kind == .function }
+				.option { left_type.has_flag(.option) }
+				.shared { left_type.has_flag(.shared_f) }
+				.int { left_type.is_int() }
+				.float { left_type.is_float() }
+				.string { left_type.is_string() }
+				.pointer { left_type.is_ptr() }
+				.voidptr { w.table.unaliased_type(left_type) == ast.voidptr_type }
+				else { none }
+			}
+		}
+		ast.TypeNode {
+			sym := w.table.sym(right.typ)
+			if sym.info is ast.Interface {
+				return w.table.does_type_implement_interface(left_type, right.typ)
+			}
+			return left_type == right.typ
+		}
+		else {
+			return none
+		}
+	}
+}
+
+fn (mut w Walker) comptime_condition_is_true(expr ast.Expr) ?bool {
+	match expr {
+		ast.ParExpr {
+			return w.comptime_condition_is_true(expr.expr)
+		}
+		ast.InfixExpr {
+			match expr.op {
+				.key_is {
+					left_type := w.resolve_comptime_condition_type(expr.left)
+					if left_type == 0 {
+						return none
+					}
+					return w.comptime_type_matches(left_type, expr.right)
+				}
+				.and {
+					left := w.comptime_condition_is_true(expr.left)?
+					right := w.comptime_condition_is_true(expr.right)?
+					return left && right
+				}
+				.logical_or {
+					left := w.comptime_condition_is_true(expr.left)?
+					right := w.comptime_condition_is_true(expr.right)?
+					return left || right
+				}
+				else {
+					return none
+				}
+			}
+		}
+		ast.NodeError {
+			return true
+		}
+		else {
+			return none
+		}
+	}
+}
+
+fn (mut w Walker) resolve_comptime_if_branch(node ast.IfExpr) ?ast.IfBranch {
+	if !node.is_comptime {
+		return none
+	}
+	for i, branch in node.branches {
+		if node.has_else && i == node.branches.len - 1 {
+			return branch
+		}
+		cond_result := w.comptime_condition_is_true(branch.cond) or { return none }
+		if cond_result {
+			return branch
+		}
+	}
+	return none
+}
+
 fn (mut w Walker) record_used_fn_generic_types(fkey string, concrete_types []ast.Type) {
 	if concrete_types.len == 0 || concrete_types.any(it.has_flag(.generic)) {
 		return
 	}
-	if concrete_types !in w.used_fn_generic_types[fkey] {
-		w.used_fn_generic_types[fkey] << concrete_types.clone()
+	key := w.fn_generic_types_key(fkey, concrete_types)
+	if w.used_fn_generic_type_keys[key] {
+		return
 	}
+	w.used_fn_generic_type_keys[key] = true
+	w.used_fn_generic_types[fkey] << concrete_types.clone()
+}
+
+fn (w &Walker) fn_generic_types_key(fkey string, concrete_types []ast.Type) string {
+	mut parts := []string{cap: concrete_types.len}
+	for typ in concrete_types {
+		parts << w.table.type_to_str(typ)
+	}
+	return '${fkey}:${parts.join('|')}'
+}
+
+fn (mut w Walker) record_walked_fn_generic_types(fkey string, concrete_types []ast.Type) bool {
+	key := w.fn_generic_types_key(fkey, concrete_types)
+	if w.walked_fn_generic_type_keys[key] {
+		return false
+	}
+	w.walked_fn_generic_type_keys[key] = true
+	w.walked_fn_generic_types[fkey] << concrete_types.clone()
+	return true
 }
 
 @[inline]
@@ -285,7 +634,22 @@ pub fn (mut w Walker) mark_generic_fn_instances() {
 			continue
 		}
 		base_fkey := generic_fn.fkey()
-		for concrete_types in w.table.fn_generic_types[base_fkey] {
+		mut concrete_type_sets := [][]ast.Type{}
+		if w.keep_all_fn_generic_types[base_fkey] {
+			concrete_type_sets = w.table.fn_generic_types[base_fkey].clone()
+		} else {
+			for concrete_types in w.used_fn_generic_types[base_fkey] {
+				if concrete_types !in concrete_type_sets {
+					concrete_type_sets << concrete_types.clone()
+				}
+			}
+			for concrete_types in w.walked_fn_generic_types[base_fkey] {
+				if concrete_types !in concrete_type_sets {
+					concrete_type_sets << concrete_types.clone()
+				}
+			}
+		}
+		for concrete_types in concrete_type_sets {
 			if concrete_types.any(it.has_flag(.generic)) {
 				continue
 			}
@@ -293,7 +657,8 @@ pub fn (mut w Walker) mark_generic_fn_instances() {
 			mut fn_copy := ast.FnDecl{
 				...*generic_fn
 			}
-			w.fn_decl_with_fkey(mut fn_copy, specialized_fkey)
+			w.mark_fn_as_used(specialized_fkey)
+			w.fn_decl_with_concrete_types(mut fn_copy, concrete_types)
 		}
 	}
 }
@@ -650,11 +1015,14 @@ fn (mut w Walker) expr(node_ ast.Expr) {
 				w.expr(args.expr)
 			}
 			w.expr(node.or_block)
-			if node.is_vweb {
+			if node.is_template {
 				w.stmts(node.veb_tmpl.stmts)
 			}
 			if node.kind == .embed_file {
 				w.features.used_maps++
+			}
+			if node.kind == .new {
+				w.uses_memdup = true
 			}
 		}
 		ast.DumpExpr {
@@ -838,6 +1206,8 @@ fn (mut w Walker) expr(node_ ast.Expr) {
 						|| (right.idx() in [ast.u32_type_idx, ast.u64_type_idx] && left.is_signed()))
 				}
 				w.uses_eq = w.uses_eq || node.op in [.eq, .ne]
+			} else if node.op == .plus {
+				w.mark_string_concat_cast_helpers(node.left_type, right_type)
 			}
 		}
 		ast.IfGuardExpr {
@@ -851,6 +1221,15 @@ fn (mut w Walker) expr(node_ ast.Expr) {
 		}
 		ast.IfExpr {
 			w.expr(node.left)
+			if branch := w.resolve_comptime_if_branch(node) {
+				w.inside_comptime_if++
+				defer {
+					w.inside_comptime_if--
+				}
+				w.expr(branch.cond)
+				w.stmts(branch.stmts)
+				return
+			}
 			for b in node.branches {
 				w.expr(b.cond)
 				w.stmts(b.stmts)
@@ -982,7 +1361,12 @@ fn (mut w Walker) expr(node_ ast.Expr) {
 			w.mark_by_type(node.typ)
 		}
 		ast.StringInterLiteral {
-			w.uses_interp = true
+			if w.string_inter_literal_needs_runtime(node) {
+				w.uses_interp = true
+				w.uses_interp_isnil = w.uses_interp_isnil || w.string_inter_literal_uses_isnil(node)
+			} else {
+				w.mark_simple_string_inter_literal(node)
+			}
 			w.exprs(node.exprs)
 			for expr in node.fwidth_exprs {
 				if expr !is ast.EmptyExpr {
@@ -1157,15 +1541,18 @@ fn (mut w Walker) fn_decl_with_concrete_types(mut node ast.FnDecl, concrete_type
 	resolved_concrete_types := w.resolve_current_concrete_types(concrete_types)
 	if resolved_concrete_types.len > 0 {
 		w.record_used_fn_generic_types(fkey, resolved_concrete_types)
-		if resolved_concrete_types in w.walked_fn_generic_types[fkey] {
+		if !w.record_walked_fn_generic_types(fkey, resolved_concrete_types) {
 			w.mark_fn_as_used(fkey)
 			return
 		}
-		w.walked_fn_generic_types[fkey] << resolved_concrete_types.clone()
 	} else if w.used_fns[fkey] {
 		return
 	}
 	w.mark_fn_as_used(fkey)
+	if node.mod == 'x.json2' {
+		w.mark_by_sym_name('EnumData')
+		w.mark_by_sym_name('time.Time')
+	}
 	last_is_direct_array_access := w.is_direct_array_access
 	w.is_direct_array_access = node.is_direct_arr || w.pref.no_bounds_checking
 	defer { w.is_direct_array_access = last_is_direct_array_access }
@@ -1184,6 +1571,10 @@ fn (mut w Walker) fn_decl_with_concrete_types(mut node ast.FnDecl, concrete_type
 	}
 	if node.no_body {
 		w.mark_fn_as_used(fkey)
+		// The forward decl emitted by cgen references these types; without
+		// marking them, `-skip_unused` strips their typedefs and the C compiler
+		// fails with `unknown type name` for body-less V fns mapped to C symbols.
+		w.mark_fn_ret_and_params(node.return_type, node.params)
 		return
 	}
 	if node.is_method {
@@ -1194,17 +1585,32 @@ fn (mut w Walker) fn_decl_with_concrete_types(mut node ast.FnDecl, concrete_type
 	// For generic functions, mark the concrete param/return types for all instantiations.
 	// This is needed because mark_fn_ret_and_params skips types with .generic flag,
 	// but the cgen will emit concrete versions for all fn_generic_types entries.
-	if node.generic_names.len > 0 {
+	generic_names := w.fn_generic_names(node)
+	if generic_names.len > 0 {
+		mut concrete_type_lists := [][]ast.Type{}
+		if resolved_concrete_types.len > 0 {
+			concrete_type_lists << resolved_concrete_types.clone()
+		}
+		for concrete_type_list in w.table.fn_generic_types[fkey] {
+			if concrete_type_list !in concrete_type_lists {
+				concrete_type_lists << concrete_type_list
+			}
+		}
 		max_param_len := if node.is_method { node.params.len - 1 } else { node.params.len }
 		param_i := if node.is_method { 1 } else { 0 }
-		for concrete_type_list in w.table.fn_generic_types[fkey] {
-			// mark concrete return type
-			if node.return_type.has_flag(.generic) {
-				if resolved := w.table.convert_generic_type(node.return_type, node.generic_names,
+		for concrete_type_list in concrete_type_lists {
+			if node.is_method {
+				if resolved := w.table.convert_generic_type(node.receiver.typ, generic_names,
 					concrete_type_list)
 				{
 					w.mark_by_type(resolved)
 				}
+			}
+			// mark concrete return type
+			if resolved := w.table.convert_generic_type(node.return_type, generic_names,
+				concrete_type_list)
+			{
+				w.mark_by_type(resolved)
 			}
 			// mark concrete param types
 			for k, concrete_type in concrete_type_list {
@@ -1212,14 +1618,12 @@ fn (mut w Walker) fn_decl_with_concrete_types(mut node ast.FnDecl, concrete_type
 					break
 				}
 				param_typ := node.params[k + param_i].typ
-				if param_typ.has_flag(.generic) {
-					if resolved := w.table.convert_generic_type(param_typ, node.generic_names,
-						concrete_type_list)
-					{
-						w.mark_by_type(resolved)
-					} else if w.table.type_kind(param_typ) == .array {
-						w.mark_by_type(w.table.find_or_register_array(concrete_type))
-					}
+				if resolved := w.table.convert_generic_type(param_typ, generic_names,
+					concrete_type_list)
+				{
+					w.mark_by_type(resolved)
+				} else if param_typ.has_flag(.generic) && w.table.type_kind(param_typ) == .array {
+					w.mark_by_type(w.table.find_or_register_array(concrete_type))
 				}
 			}
 		}
@@ -1227,6 +1631,116 @@ fn (mut w Walker) fn_decl_with_concrete_types(mut node ast.FnDecl, concrete_type
 	prev_cur_fn := w.cur_fn
 	w.cur_fn = fkey
 	w.cur_fn_concrete_types = resolved_concrete_types
+	if node.mod == 'x.json2' && node.name == 'get_decoded_sumtype_workaround'
+		&& w.has_sumtype_generic_context(resolved_concrete_types) {
+		if mut copy_fn := w.all_fns['x.json2.copy_type'] {
+			for concrete_type_list in w.sumtype_variant_concrete_types(resolved_concrete_types) {
+				w.fn_decl_with_concrete_types(mut copy_fn, concrete_type_list)
+			}
+		}
+	}
+	if node.mod == 'x.json2' && node.name == 'get_struct_type_workaround'
+		&& w.has_sumtype_generic_context(resolved_concrete_types) {
+		check_struct_type_valid_fkey, _ := w.resolve_method_fkey_for_type(node.receiver.typ,
+			'check_struct_type_valid')
+		if check_struct_type_valid_fkey != '' {
+			if mut check_struct_type_valid_fn := w.all_fns[check_struct_type_valid_fkey] {
+				for concrete_type_list in w.sumtype_variant_concrete_types(resolved_concrete_types) {
+					if concrete_type_list.len != 1 {
+						continue
+					}
+					concrete_typ := w.table.unaliased_type(concrete_type_list[0])
+					concrete_sym := w.table.final_sym(concrete_typ)
+					if concrete_sym.kind == .struct && concrete_sym.name != 'time.Time' {
+						w.fn_decl_with_concrete_types(mut check_struct_type_valid_fn,
+							concrete_type_list)
+					}
+				}
+			}
+		}
+	}
+	if node.mod == 'x.json2' && node.name == 'decode_value' && node.is_method
+		&& resolved_concrete_types.len == 1 {
+		concrete_typ := w.table.unaliased_type(resolved_concrete_types[0])
+		concrete_sym := w.table.final_sym(concrete_typ)
+		if concrete_typ.is_number() || concrete_sym.kind == .enum {
+			decode_number_fkey, _ := w.resolve_method_fkey_for_type(node.receiver.typ,
+				'decode_number')
+			if decode_number_fkey != '' {
+				if mut decode_number_fn := w.all_fns[decode_number_fkey] {
+					w.fn_decl_with_concrete_types(mut decode_number_fn, resolved_concrete_types)
+				}
+			}
+		}
+		if concrete_sym.kind == .struct && concrete_sym.name != 'time.Time' {
+			if mut decode_struct_key_fn := w.all_fns['x.json2.decode_struct_key'] {
+				w.fn_decl_with_concrete_types(mut decode_struct_key_fn, resolved_concrete_types)
+			}
+			if mut check_required_struct_fields_fn := w.all_fns['x.json2.check_required_struct_fields'] {
+				w.fn_decl_with_concrete_types(mut check_required_struct_fields_fn,
+					resolved_concrete_types)
+			}
+			w.mark_json2_optional_field_helpers(concrete_typ)
+		}
+	}
+	if node.mod == 'x.json2' && node.name == 'decode_struct_key' && resolved_concrete_types.len == 1 {
+		w.mark_json2_optional_field_helpers(resolved_concrete_types[0])
+	}
+	if node.mod == 'x.json2' && node.name == 'decode_enum' {
+		w.uses_ct_values = true
+		w.mark_by_sym_name('EnumData')
+	}
+	if node.mod == 'x.json2' && node.name == 'encode_value' && node.is_method
+		&& resolved_concrete_types.len == 1 {
+		concrete_typ := w.table.unaliased_type(resolved_concrete_types[0])
+		concrete_sym := w.table.final_sym(concrete_typ)
+		if concrete_sym.kind == .sum_type {
+			for concrete_type_list in w.sumtype_variant_concrete_types([concrete_typ]) {
+				if concrete_type_list != resolved_concrete_types {
+					w.remember_generic_fn_instance(node.fkey(), concrete_type_list)
+				}
+			}
+		}
+		if concrete_sym.kind == .array {
+			encode_array_fkey, _ := w.resolve_method_fkey_for_type(node.receiver.typ,
+				'encode_array')
+			if encode_array_fkey != '' {
+				if mut encode_array_fn := w.all_fns[encode_array_fkey] {
+					w.remember_generic_fn_instance(encode_array_fn.fkey(), resolved_concrete_types)
+				}
+			}
+		}
+		if concrete_sym.kind == .map {
+			encode_map_fkey, _ := w.resolve_method_fkey_for_type(node.receiver.typ, 'encode_map')
+			if encode_map_fkey != '' {
+				if mut encode_map_fn := w.all_fns[encode_map_fkey] {
+					w.remember_generic_fn_instance(encode_map_fn.fkey(), resolved_concrete_types)
+				}
+			}
+		}
+		if concrete_sym.kind == .struct {
+			w.mark_json2_encode_field_helpers(node.receiver.typ, concrete_typ)
+		}
+		json_encoder_typ := w.table.find_type('x.json2.JsonEncoder')
+		if json_encoder_typ != 0
+			&& w.table.does_type_implement_interface(concrete_typ, json_encoder_typ) {
+			to_json_fkey, _ := w.resolve_method_fkey_for_type(concrete_typ, 'to_json')
+			if to_json_fkey != '' {
+				w.fn_by_name(to_json_fkey)
+			}
+		}
+		encodable_typ := w.table.find_type('x.json2.Encodable')
+		if encodable_typ != 0 && w.table.does_type_implement_interface(concrete_typ, encodable_typ) {
+			json_str_fkey, _ := w.resolve_method_fkey_for_type(concrete_typ, 'json_str')
+			if json_str_fkey != '' {
+				w.fn_by_name(json_str_fkey)
+			}
+		}
+	}
+	if node.mod == 'x.json2' && node.name == 'encode_struct_fields'
+		&& resolved_concrete_types.len == 1 {
+		w.mark_json2_encode_field_helpers(node.receiver.typ, resolved_concrete_types[0])
+	}
 	w.stmts(node.stmts)
 	w.defer_stmts(node.defer_stmts)
 	w.cur_fn = prev_cur_fn
@@ -1243,10 +1757,36 @@ fn (mut w Walker) fn_decl_with_fkey(mut node ast.FnDecl, walk_fkey string) {
 fn (w &Walker) receiver_concrete_types(typ ast.Type) []ast.Type {
 	sym := w.table.final_sym(typ)
 	return match sym.info {
-		ast.Struct { sym.info.concrete_types.clone() }
-		ast.Interface { sym.info.concrete_types.clone() }
-		ast.SumType { sym.info.concrete_types.clone() }
-		else { []ast.Type{} }
+		ast.Struct {
+			mut concrete_types := sym.info.concrete_types.clone()
+			if concrete_types.len == 0 && sym.generic_types.len == sym.info.generic_types.len
+				&& sym.generic_types != sym.info.generic_types {
+				concrete_types = sym.generic_types.clone()
+			}
+			concrete_types.map(it.clear_flag(.generic))
+		}
+		ast.Interface {
+			mut concrete_types := sym.info.concrete_types.clone()
+			if concrete_types.len == 0 && sym.generic_types.len == sym.info.generic_types.len
+				&& sym.generic_types != sym.info.generic_types {
+				concrete_types = sym.generic_types.clone()
+			}
+			concrete_types.map(it.clear_flag(.generic))
+		}
+		ast.SumType {
+			mut concrete_types := sym.info.concrete_types.clone()
+			if concrete_types.len == 0 && sym.generic_types.len == sym.info.generic_types.len
+				&& sym.generic_types != sym.info.generic_types {
+				concrete_types = sym.generic_types.clone()
+			}
+			concrete_types.map(it.clear_flag(.generic))
+		}
+		ast.GenericInst {
+			sym.info.concrete_types.map(it.clear_flag(.generic))
+		}
+		else {
+			[]ast.Type{}
+		}
 	}
 }
 
@@ -1290,6 +1830,9 @@ pub fn (mut w Walker) call_expr(mut node ast.CallExpr) {
 	for arg in node.args {
 		w.expr(arg.expr)
 	}
+	if node.args.any(it.expr is ast.ArrayDecompose) {
+		w.uses_interp = true
+	}
 	if node.is_variadic && node.expected_arg_types.last().has_flag(.option) {
 		w.used_option++
 	}
@@ -1308,18 +1851,16 @@ pub fn (mut w Walker) call_expr(mut node ast.CallExpr) {
 			w.mark_by_type(exp_type)
 		}
 	}
-	source_concrete_types := if node.raw_concrete_types.len > 0 {
+	source_concrete_types := if node.is_method
+		&& node.concrete_types.len > node.raw_concrete_types.len {
+		node.concrete_types
+	} else if node.raw_concrete_types.len > 0 {
 		node.raw_concrete_types
 	} else {
-		node.concrete_types
+		[]ast.Type{}
 	}
 	mut call_concrete_types := w.resolve_current_concrete_types(source_concrete_types)
-	concrete_types_to_mark := if call_concrete_types.len > 0 {
-		call_concrete_types
-	} else {
-		source_concrete_types
-	}
-	for concrete_type in concrete_types_to_mark {
+	for concrete_type in call_concrete_types {
 		w.mark_by_type(concrete_type)
 	}
 	if node.language == .c {
@@ -1515,6 +2056,7 @@ pub fn (mut w Walker) call_expr(mut node ast.CallExpr) {
 			ast.Struct { rsym.info.parent_type }
 			ast.Interface { rsym.info.parent_type }
 			ast.SumType { rsym.info.parent_type }
+			ast.GenericInst { ast.new_type(rsym.info.parent_idx) }
 			else { ast.Type(0) }
 		}
 
@@ -1539,9 +2081,40 @@ pub fn (mut w Walker) call_expr(mut node ast.CallExpr) {
 	}
 	if mut stmt := w.all_fns[resolved_fn_name] {
 		if !stmt.should_be_skipped && stmt.name == node.name {
-			keep_all_generic_types := stmt.generic_names.len > 0 && (call_concrete_types.len == 0
-				|| w.inside_comptime > 0 || (w.cur_fn_concrete_types.len > 0
-				&& node.raw_concrete_types.len == 0))
+			caller_generic_names, caller_concrete_types := w.current_generic_context()
+			if call_concrete_types.len == 0 {
+				call_concrete_types = w.trusted_source_concrete_types(node, receiver_typ)
+			}
+			if call_concrete_types.len == 0 {
+				callee_generic_names := w.fn_generic_names(stmt)
+				if caller_generic_names.len > 0
+					&& caller_generic_names.len == caller_concrete_types.len
+					&& callee_generic_names.len > 0 {
+					mut inherited_concrete_types := []ast.Type{cap: callee_generic_names.len}
+					for generic_name in callee_generic_names {
+						idx := caller_generic_names.index(generic_name)
+						if idx < 0 || idx >= caller_concrete_types.len {
+							inherited_concrete_types = []
+							break
+						}
+						inherited_concrete_types << caller_concrete_types[idx]
+					}
+					if inherited_concrete_types.len == callee_generic_names.len
+						&& inherited_concrete_types.all(!it.has_flag(.generic)) {
+						call_concrete_types = inherited_concrete_types.clone()
+					}
+				}
+			}
+			if call_concrete_types.len == 0 && node.raw_concrete_types.len == 0 {
+				call_concrete_types = w.resolve_current_concrete_types(node.concrete_types)
+			}
+			for concrete_type in call_concrete_types {
+				w.mark_by_type(concrete_type)
+			}
+			generic_call_inside_generic_caller := w.fn_generic_names(stmt).len > 0
+				&& node.raw_concrete_types.len == 0 && caller_generic_names.len > 0
+			keep_all_generic_types := (stmt.generic_names.len > 0 && call_concrete_types.len == 0)
+				|| generic_call_inside_generic_caller
 			if keep_all_generic_types {
 				w.keep_all_fn_generic_types[fn_name] = true
 			}
@@ -1550,11 +2123,24 @@ pub fn (mut w Walker) call_expr(mut node ast.CallExpr) {
 				&& call_concrete_types.len > 0)
 			if can_walk_method {
 				if keep_all_generic_types {
-					for concrete_type_list in w.table.fn_generic_types[fn_name] {
-						w.fn_decl_with_concrete_types(mut stmt, concrete_type_list)
+					if !w.expanding_fn_generic_types[fn_name] {
+						w.expanding_fn_generic_types[fn_name] = true
+						for concrete_type_list in w.table.fn_generic_types[fn_name] {
+							w.fn_decl_with_concrete_types(mut stmt, concrete_type_list)
+						}
+						w.expanding_fn_generic_types.delete(fn_name)
 					}
 				} else {
 					w.fn_decl_with_concrete_types(mut stmt, call_concrete_types)
+					if node.raw_concrete_types.len == 0 && w.inside_comptime > 0
+						&& w.has_sumtype_generic_context(caller_concrete_types)
+						&& stmt.mod == 'x.json2' && stmt.name in ['copy_type', 'decode_value'] {
+						for concrete_type_list in w.sumtype_variant_concrete_types(caller_concrete_types) {
+							if concrete_type_list != call_concrete_types {
+								w.fn_decl_with_concrete_types(mut stmt, concrete_type_list)
+							}
+						}
+					}
 				}
 			}
 			if node.return_type.has_flag(.option) {
@@ -1562,8 +2148,9 @@ pub fn (mut w Walker) call_expr(mut node ast.CallExpr) {
 			} else if node.return_type.has_flag(.result) {
 				w.used_result++
 			}
+			callee_generic_names := w.fn_generic_names(stmt)
 			if ((node.is_method && stmt.params.len > 1) || !node.is_method)
-				&& stmt.generic_names.len > 0 {
+				&& callee_generic_names.len > 0 {
 				// mark concrete generic param types (e.g. []T, ...Node[T]) as used
 				max_param_len := if node.is_method { stmt.params.len - 1 } else { stmt.params.len }
 				param_i := if node.is_method { 1 } else { 0 }
@@ -1580,7 +2167,7 @@ pub fn (mut w Walker) call_expr(mut node ast.CallExpr) {
 						param_typ := stmt.params[k + param_i].typ
 						if param_typ.has_flag(.generic) {
 							if resolved := w.table.convert_generic_type(param_typ,
-								stmt.generic_names, concrete_type_list)
+								callee_generic_names, concrete_type_list)
 							{
 								w.mark_by_type(resolved)
 							} else if w.table.type_kind(param_typ) == .array {
@@ -1596,7 +2183,11 @@ pub fn (mut w Walker) call_expr(mut node ast.CallExpr) {
 	}
 }
 
-fn (w &Walker) resolve_method_fkey_for_type(typ ast.Type, method_name string) (string, ast.Type) {
+fn (mut w Walker) resolve_method_fkey_for_type(typ ast.Type, method_name string) (string, ast.Type) {
+	cache_key := u32(typ).str() + ':' + method_name
+	if cached := w.method_fkey_cache[cache_key] {
+		return cached.fkey, cached.receiver
+	}
 	mut candidate_types := []ast.Type{}
 	for candidate in [typ] {
 		if candidate == 0 {
@@ -1626,19 +2217,42 @@ fn (w &Walker) resolve_method_fkey_for_type(typ ast.Type, method_name string) (s
 		sym := w.table.sym(candidate)
 		parent_fkey, parent_receiver := w.generic_parent_method_fkey(sym, method_name)
 		if parent_fkey != '' {
+			w.method_fkey_cache[cache_key] = MethodFkeyCacheEntry{
+				fkey:     parent_fkey
+				receiver: parent_receiver
+			}
 			return parent_fkey, parent_receiver
 		}
 		if method := sym.find_method_with_generic_parent(method_name) {
-			return w.method_decl_fkey(method)
+			fkey, receiver := w.method_decl_fkey(method)
+			w.method_fkey_cache[cache_key] = MethodFkeyCacheEntry{
+				fkey:     fkey
+				receiver: receiver
+			}
+			return fkey, receiver
 		}
 		if method := w.table.find_method(sym, method_name) {
-			return w.method_decl_fkey(method)
+			fkey, receiver := w.method_decl_fkey(method)
+			w.method_fkey_cache[cache_key] = MethodFkeyCacheEntry{
+				fkey:     fkey
+				receiver: receiver
+			}
+			return fkey, receiver
 		}
 		method, embed_types := w.table.find_method_from_embeds(w.table.final_sym(candidate),
 			method_name) or { ast.Fn{}, []ast.Type{} }
 		if embed_types.len != 0 {
-			return w.method_decl_fkey(method)
+			fkey, receiver := w.method_decl_fkey(method)
+			w.method_fkey_cache[cache_key] = MethodFkeyCacheEntry{
+				fkey:     fkey
+				receiver: receiver
+			}
+			return fkey, receiver
 		}
+	}
+	w.method_fkey_cache[cache_key] = MethodFkeyCacheEntry{
+		fkey:     ''
+		receiver: ast.no_type
 	}
 	return '', ast.no_type
 }
@@ -1675,7 +2289,7 @@ fn (w &Walker) method_decl_fkey(method ast.Fn) (string, ast.Type) {
 	return method.fkey(), method.receiver_type
 }
 
-fn (w &Walker) resolve_method_call_fkey(node ast.CallExpr) (string, ast.Type) {
+fn (mut w Walker) resolve_method_call_fkey(node ast.CallExpr) (string, ast.Type) {
 	mut candidate_types := []ast.Type{}
 	if node.left is ast.Ident && node.left.obj is ast.Var {
 		resolved_current_type := w.resolve_current_specialized_var_type(node.left.name)
@@ -1769,7 +2383,14 @@ fn (w &Walker) resolve_current_specialized_type(typ ast.Type) ast.Type {
 	if typ == 0 {
 		return ast.no_type
 	}
-	generic_names, concrete_types := w.specialized_generic_context_for(w.cur_fn)
+	mut generic_names, mut concrete_types := w.specialized_generic_context_for(w.cur_fn)
+	if (generic_names.len == 0 || generic_names.len != concrete_types.len) && w.cur_fn != ''
+		&& w.cur_fn_concrete_types.len > 0 {
+		if cur_fn_decl := w.all_fns[w.cur_fn] {
+			generic_names = w.fn_generic_names(cur_fn_decl)
+			concrete_types = w.cur_fn_concrete_types.clone()
+		}
+	}
 	if generic_names.len == 0 || generic_names.len != concrete_types.len {
 		return typ.clear_flag(.generic)
 	}
@@ -1791,9 +2412,23 @@ fn (w &Walker) generic_concrete_name(base_name string, concrete_types []ast.Type
 	return name
 }
 
-fn (w &Walker) resolve_current_specialized_var_type(var_name string) ast.Type {
+fn (w &Walker) specialized_var_type_cache_key(var_name string) string {
+	mut key := w.cur_fn + '\x00' + var_name
+	if !w.cur_fn.contains('_T_') {
+		for typ in w.cur_fn_concrete_types {
+			key += '\x00' + u32(typ).str()
+		}
+	}
+	return key
+}
+
+fn (mut w Walker) resolve_current_specialized_var_type(var_name string) ast.Type {
 	if var_name == '' || w.cur_fn == '' {
 		return ast.no_type
+	}
+	cache_key := w.specialized_var_type_cache_key(var_name)
+	if cached := w.specialized_var_type_cache[cache_key] {
+		return cached.typ
 	}
 	mut base_name := w.cur_fn
 	if w.cur_fn.contains('_T_') {
@@ -1808,6 +2443,9 @@ fn (w &Walker) resolve_current_specialized_var_type(var_name string) ast.Type {
 			}
 		}
 		if base_fn.name == '' {
+			w.specialized_var_type_cache[cache_key] = SpecializedVarTypeCacheEntry{
+				typ: ast.no_type
+			}
 			return ast.no_type
 		}
 	}
@@ -1821,6 +2459,9 @@ fn (w &Walker) resolve_current_specialized_var_type(var_name string) ast.Type {
 		concrete_types = w.cur_fn_concrete_types.clone()
 	}
 	if generic_names.len == 0 || generic_names.len != concrete_types.len {
+		w.specialized_var_type_cache[cache_key] = SpecializedVarTypeCacheEntry{
+			typ: ast.no_type
+		}
 		return ast.no_type
 	}
 	for param in base_fn.params {
@@ -1829,9 +2470,20 @@ fn (w &Walker) resolve_current_specialized_var_type(var_name string) ast.Type {
 		}
 		mut muttable := unsafe { &ast.Table(w.table) }
 		if resolved := muttable.convert_generic_type(param.typ, generic_names, concrete_types) {
-			return resolved.clear_flag(.generic)
+			resolved_typ := resolved.clear_flag(.generic)
+			w.specialized_var_type_cache[cache_key] = SpecializedVarTypeCacheEntry{
+				typ: resolved_typ
+			}
+			return resolved_typ
 		}
-		return param.typ.clear_flag(.generic)
+		resolved_typ := param.typ.clear_flag(.generic)
+		w.specialized_var_type_cache[cache_key] = SpecializedVarTypeCacheEntry{
+			typ: resolved_typ
+		}
+		return resolved_typ
+	}
+	w.specialized_var_type_cache[cache_key] = SpecializedVarTypeCacheEntry{
+		typ: ast.no_type
 	}
 	return ast.no_type
 }
@@ -2035,6 +2687,255 @@ fn (w &Walker) infer_expr_type(expr ast.Expr) ast.Type {
 	}
 }
 
+fn (mut w Walker) string_inter_literal_needs_runtime(node ast.StringInterLiteral) bool {
+	if w.pref.autofree || w.pref.gc_mode == .boehm_leak {
+		return true
+	}
+	if w.pref.os == .windows && w.pref.is_liveshared {
+		return true
+	}
+	if node.exprs.len == 0 || node.expr_types.len < node.exprs.len {
+		return true
+	}
+	for i in 0 .. node.exprs.len {
+		if i >= node.need_fmts.len || node.need_fmts[i] || i >= node.fmts.len {
+			return true
+		}
+		if w.cur_fn_concrete_types.len > 0 && !node.need_fmts[i] {
+			return true
+		}
+		typ := w.resolve_current_generic_type(node.expr_types[i])
+		if typ == 0 || typ == ast.void_type || typ.has_flag(.generic) {
+			return true
+		}
+		normalized_expr_type := w.table.fully_unaliased_type(typ)
+		if normalized_expr_type.is_any_kind_of_pointer() || normalized_expr_type.is_int_valptr()
+			|| normalized_expr_type.is_float_valptr() {
+			return true
+		}
+		expr := node.exprs[i]
+		if expr is ast.Ident && expr.obj is ast.Var {
+			expr_var := expr.obj as ast.Var
+			orig_type := w.resolve_current_generic_type(expr_var.orig_type)
+			if orig_type != 0
+				&& w.table.final_sym(w.table.unaliased_type(orig_type)).kind == .interface {
+				return true
+			}
+		}
+		if w.table.final_sym(typ).kind == .interface {
+			return true
+		}
+		if i < node.fwidths.len && node.fwidths[i] != 0 {
+			return true
+		}
+		if i < node.fwidth_exprs.len && node.fwidth_exprs[i] !is ast.EmptyExpr {
+			return true
+		}
+		if i < node.precisions.len
+			&& node.precisions[i] != simple_string_interpolation_default_precision {
+			return true
+		}
+		if i < node.precision_exprs.len && node.precision_exprs[i] !is ast.EmptyExpr {
+			return true
+		}
+		if i < node.pluss.len && node.pluss[i] {
+			return true
+		}
+		if i < node.fills.len && node.fills[i] {
+			return true
+		}
+	}
+	return false
+}
+
+fn (mut w Walker) string_inter_literal_uses_isnil(node ast.StringInterLiteral) bool {
+	for typ in node.expr_types {
+		resolved_typ := w.table.fully_unaliased_type(w.resolve_current_generic_type(typ))
+		if resolved_typ.is_any_kind_of_pointer() || resolved_typ.has_flag(.option_mut_param_t) {
+			return true
+		}
+	}
+	return false
+}
+
+fn (mut w Walker) mark_simple_string_inter_literal(node ast.StringInterLiteral) {
+	if node.vals.any(it.len > 0) && !w.uses_str_literal {
+		w.mark_by_sym_name('string')
+		w.uses_str_literal = true
+	}
+	for i in 0 .. node.exprs.len {
+		if i >= node.expr_types.len {
+			break
+		}
+		typ := w.resolve_current_generic_type(node.expr_types[i])
+		if typ != 0 && typ != ast.void_type && typ != ast.string_type {
+			w.uses_str[typ] = true
+		}
+	}
+}
+
+fn (mut w Walker) mark_string_concat_cast_helpers(left_type ast.Type, right_type ast.Type) {
+	left := w.table.unaliased_type(w.resolve_current_generic_type(left_type)).clear_flags()
+	right := w.table.unaliased_type(w.resolve_current_generic_type(right_type)).clear_flags()
+	if !(left in [ast.string_type, ast.char_type, ast.rune_type]
+		&& right in [ast.string_type, ast.char_type, ast.rune_type]
+		&& (left == ast.string_type || right == ast.string_type)) {
+		return
+	}
+	for typ in [left, right] {
+		if typ == ast.char_type {
+			w.fn_by_name('${ast.u8_type_idx}.ascii_str')
+		} else if typ == ast.rune_type {
+			w.fn_by_name('${ast.rune_type_idx}.str')
+		}
+	}
+}
+
+fn (mut w Walker) auto_str_needs_str_intp() bool {
+	for typ, _ in w.uses_str {
+		if w.type_auto_str_needs_str_intp(typ) {
+			return true
+		}
+	}
+	for typ_idx, _ in w.features.print_types {
+		if w.type_auto_str_needs_str_intp(ast.Type(u32(typ_idx))) {
+			return true
+		}
+	}
+	for typ_idx, _ in w.table.dumps {
+		if w.type_auto_str_needs_str_intp(ast.Type(u32(typ_idx))) {
+			return true
+		}
+	}
+	return false
+}
+
+fn (mut w Walker) auto_str_needs_isnil() bool {
+	mut visited := map[int]bool{}
+	for typ, _ in w.uses_str {
+		if w.type_auto_str_needs_isnil(typ, mut visited) {
+			return true
+		}
+	}
+	for typ_idx, _ in w.features.print_types {
+		if w.type_auto_str_needs_isnil(ast.Type(u32(typ_idx)), mut visited) {
+			return true
+		}
+	}
+	for typ_idx, _ in w.table.dumps {
+		if w.type_auto_str_needs_isnil(ast.Type(u32(typ_idx)), mut visited) {
+			return true
+		}
+	}
+	return false
+}
+
+fn (mut w Walker) type_auto_str_needs_str_intp(typ ast.Type) bool {
+	raw_typ := w.resolve_current_generic_type(typ)
+	if raw_typ.has_option_or_result() {
+		return true
+	}
+	resolved_typ := raw_typ.clear_option_and_result()
+	if resolved_typ == 0 || resolved_typ == ast.void_type || resolved_typ.has_flag(.generic) {
+		return false
+	}
+	if resolved_typ.is_ptr() || resolved_typ.is_pointer() {
+		return true
+	}
+	raw_sym := w.table.sym(resolved_typ)
+	if raw_sym.info is ast.Alias && !raw_sym.has_method('str') {
+		return true
+	}
+	sym := w.table.final_sym(w.table.unaliased_type(resolved_typ))
+	if sym.has_method('str') {
+		return false
+	}
+	match sym.info {
+		ast.Array {
+			return w.array_auto_str_needs_str_intp(sym.info.elem_type)
+		}
+		ast.ArrayFixed {
+			return w.array_auto_str_needs_str_intp(sym.info.elem_type)
+		}
+		ast.Map {
+			return true
+		}
+		ast.Struct, ast.SumType, ast.Interface {
+			return true
+		}
+		ast.MultiReturn {
+			return true
+		}
+		else {
+			return false
+		}
+	}
+}
+
+fn (mut w Walker) type_auto_str_needs_isnil(typ ast.Type, mut visited map[int]bool) bool {
+	resolved_typ := w.resolve_current_generic_type(typ).clear_option_and_result()
+	if resolved_typ == 0 || resolved_typ == ast.void_type || resolved_typ.has_flag(.generic) {
+		return false
+	}
+	if resolved_typ.is_ptr() || resolved_typ.is_pointer()
+		|| resolved_typ.has_flag(.option_mut_param_t) {
+		return true
+	}
+	final_typ := w.table.unaliased_type(resolved_typ)
+	key := int(final_typ.idx())
+	if key in visited {
+		return false
+	}
+	visited[key] = true
+	sym := w.table.final_sym(final_typ)
+	match sym.info {
+		ast.Array {
+			return w.type_auto_str_needs_isnil(sym.info.elem_type, mut visited)
+		}
+		ast.ArrayFixed {
+			return w.type_auto_str_needs_isnil(sym.info.elem_type, mut visited)
+		}
+		ast.Map {
+			return w.type_auto_str_needs_isnil(sym.info.key_type, mut visited)
+				|| w.type_auto_str_needs_isnil(sym.info.value_type, mut visited)
+		}
+		ast.Struct {
+			return sym.info.fields.any(w.type_auto_str_needs_isnil(it.typ, mut visited))
+		}
+		ast.SumType {
+			return sym.info.variants.any(w.type_auto_str_needs_isnil(it, mut visited))
+		}
+		ast.Interface {
+			return true
+		}
+		else {
+			return false
+		}
+	}
+}
+
+fn (mut w Walker) array_auto_str_needs_str_intp(elem_type ast.Type) bool {
+	resolved_with_flags := w.resolve_current_generic_type(elem_type)
+	if resolved_with_flags.has_flag(.option) || resolved_with_flags.has_flag(.result) {
+		return true
+	}
+	resolved_elem_type := resolved_with_flags.clear_option_and_result()
+	if resolved_elem_type == 0 || resolved_elem_type == ast.void_type
+		|| resolved_elem_type.has_flag(.generic) {
+		return false
+	}
+	if resolved_elem_type.is_ptr() || resolved_elem_type.is_pointer() {
+		return true
+	}
+	elem_sym := w.table.final_sym(w.table.unaliased_type(resolved_elem_type))
+	if elem_sym.kind in [.f32, .f64, .rune, .string] {
+		return true
+	}
+	return
+		elem_sym.kind in [.array, .array_fixed, .map, .struct, .sum_type, .interface, .multi_return]
+		&& !elem_sym.has_method('str')
+}
+
 @[inline]
 pub fn (mut w Walker) or_block(node ast.OrExpr) {
 	if node.kind == .block {
@@ -2072,11 +2973,19 @@ pub fn (mut w Walker) mark_by_sym_name(name string) {
 
 @[inline]
 pub fn (mut w Walker) mark_by_type(typ ast.Type) {
-	if typ == 0 || typ.has_flag(.generic) || typ in w.used_types {
+	if typ == 0 || typ.has_flag(.generic) {
+		return
+	}
+	if typ in w.used_types {
+		return
+	}
+	w.used_types[typ] = true
+	cleared_typ := typ.clear_option_and_result()
+	if cleared_typ != typ {
+		w.mark_by_type(cleared_typ)
 		return
 	}
 	w.mark_by_sym(w.table.sym(typ))
-	w.used_types[typ] = true
 }
 
 pub fn (mut w Walker) mark_by_sym(isym ast.TypeSymbol) {
@@ -2113,6 +3022,19 @@ pub fn (mut w Walker) mark_by_sym(isym ast.TypeSymbol) {
 				w.uses_mem_align = w.uses_mem_align || decl.is_aligned
 				for iface_typ in decl.implements_types {
 					w.mark_by_type(iface_typ.typ)
+					iface_sym := w.table.sym(iface_typ.typ)
+					for method in iface_sym.methods {
+						if impl_method := isym.find_method_with_generic_parent(method.name) {
+							w.fn_by_name(impl_method.fkey())
+						} else {
+							impl_method, _ := w.table.find_method_from_embeds(isym, method.name) or {
+								ast.Fn{}, []ast.Type{}
+							}
+							if impl_method.name != '' {
+								w.fn_by_name(impl_method.fkey())
+							}
+						}
+					}
 				}
 			}
 		}
@@ -2170,6 +3092,50 @@ pub fn (mut w Walker) mark_by_sym(isym ast.TypeSymbol) {
 		ast.Aggregate {
 			for typ in isym.info.types {
 				w.mark_by_type(typ)
+			}
+		}
+		ast.GenericInst {
+			parent_typ := ast.new_type(isym.info.parent_idx)
+			w.mark_by_type(parent_typ)
+			for concrete_type in isym.info.concrete_types {
+				w.mark_by_type(concrete_type)
+			}
+			parent_sym := w.table.sym(parent_typ)
+			match parent_sym.info {
+				ast.Struct {
+					generic_names := parent_sym.info.generic_types.map(w.table.sym(it).name)
+					for field in parent_sym.info.fields {
+						if resolved := w.table.convert_generic_type(field.typ, generic_names,
+							isym.info.concrete_types)
+						{
+							w.mark_by_type(resolved)
+						} else {
+							w.mark_by_type(field.typ)
+						}
+					}
+					for embed in parent_sym.info.embeds {
+						if resolved := w.table.convert_generic_type(embed, generic_names,
+							isym.info.concrete_types)
+						{
+							w.mark_by_type(resolved)
+						} else {
+							w.mark_by_type(embed)
+						}
+					}
+				}
+				ast.SumType {
+					generic_names := parent_sym.info.generic_types.map(w.table.sym(it).name)
+					for variant in parent_sym.info.variants {
+						if resolved := w.table.convert_generic_type(variant, generic_names,
+							isym.info.concrete_types)
+						{
+							w.mark_by_type(resolved)
+						} else {
+							w.mark_by_type(variant)
+						}
+					}
+				}
+				else {}
 			}
 		}
 		ast.Enum {
@@ -2402,6 +3368,202 @@ fn (mut w Walker) remove_unused_fn_generic_types() {
 			}
 		}
 	}
+	// Phase 6: Prune non-method generic functions to the concrete type sets
+	// that were actually reached during the markused walk.
+	for fkey, _ in w.table.fn_generic_types {
+		if w.keep_all_fn_generic_types[fkey] {
+			continue
+		}
+		fn_decl := w.all_fns[fkey] or { continue }
+		if fn_decl.is_method {
+			if w.table.generic_type_names(fn_decl.receiver.typ).len > 0 {
+				continue
+			}
+			mut kept_types := [][]ast.Type{}
+			for concrete_type_list in w.used_fn_generic_types[fkey] {
+				if concrete_type_list !in kept_types {
+					kept_types << concrete_type_list.clone()
+				}
+			}
+			for concrete_type_list in w.walked_fn_generic_types[fkey] {
+				if concrete_type_list !in kept_types {
+					kept_types << concrete_type_list.clone()
+				}
+			}
+			w.table.fn_generic_types[fkey] = kept_types
+			continue
+		}
+		mut kept_types := [][]ast.Type{}
+		for concrete_type_list in w.used_fn_generic_types[fkey] {
+			if concrete_type_list !in kept_types {
+				kept_types << concrete_type_list.clone()
+			}
+		}
+		for concrete_type_list in w.walked_fn_generic_types[fkey] {
+			if concrete_type_list !in kept_types {
+				kept_types << concrete_type_list.clone()
+			}
+		}
+		w.table.fn_generic_types[fkey] = kept_types
+	}
+}
+
+fn (mut w Walker) mark_emitted_generic_body_dependencies() {
+	for generic_fn in w.generic_fns {
+		w.mark_generic_body_dependencies_in_stmts(generic_fn.stmts)
+	}
+	for fkey, concrete_types in w.table.fn_generic_types {
+		if concrete_types.len == 0 {
+			continue
+		}
+		if fn_decl := w.all_fns[fkey] {
+			w.mark_generic_body_dependencies_in_stmts(fn_decl.stmts)
+		}
+	}
+}
+
+fn (mut w Walker) mark_comptime_resource_kind(kind ast.ComptimeForKind) {
+	match kind {
+		.attributes {
+			w.uses_ct_attribute = true
+		}
+		.variants {
+			w.uses_ct_variants = true
+		}
+		.params {
+			w.uses_ct_params = true
+		}
+		.values {
+			w.uses_ct_values = true
+		}
+		.fields {
+			w.uses_ct_fields = true
+		}
+		.methods {
+			w.uses_ct_methods = true
+		}
+	}
+}
+
+fn (mut w Walker) mark_generic_body_dependencies_in_stmts(stmts []ast.Stmt) {
+	for stmt_ in stmts {
+		stmt := unsafe { stmt_ }
+		match stmt {
+			ast.AssignStmt {
+				for expr in stmt.left {
+					w.mark_generic_body_dependencies_in_expr(expr)
+				}
+				for expr in stmt.right {
+					w.mark_generic_body_dependencies_in_expr(expr)
+				}
+			}
+			ast.Block {
+				w.mark_generic_body_dependencies_in_stmts(stmt.stmts)
+			}
+			ast.ComptimeFor {
+				w.mark_comptime_resource_kind(stmt.kind)
+				w.mark_generic_body_dependencies_in_stmts(stmt.stmts)
+			}
+			ast.ExprStmt {
+				w.mark_generic_body_dependencies_in_expr(stmt.expr)
+			}
+			ast.ForCStmt {
+				w.mark_generic_body_dependencies_in_stmts(stmt.stmts)
+			}
+			ast.ForInStmt {
+				w.mark_generic_body_dependencies_in_stmts(stmt.stmts)
+			}
+			ast.ForStmt {
+				w.mark_generic_body_dependencies_in_stmts(stmt.stmts)
+			}
+			ast.Return {
+				for expr in stmt.exprs {
+					w.mark_generic_body_dependencies_in_expr(expr)
+				}
+			}
+			else {}
+		}
+	}
+}
+
+fn (mut w Walker) mark_generic_body_dependencies_in_expr(expr_ ast.Expr) {
+	expr := unsafe { expr_ }
+	match expr {
+		ast.AnonFn {
+			w.mark_generic_body_dependencies_in_stmts(expr.decl.stmts)
+		}
+		ast.CallExpr {
+			w.mark_direct_non_generic_call(expr)
+			w.mark_generic_body_dependencies_in_expr(expr.left)
+			for arg in expr.args {
+				w.mark_generic_body_dependencies_in_expr(arg.expr)
+			}
+		}
+		ast.IfExpr {
+			for branch in expr.branches {
+				w.mark_generic_body_dependencies_in_expr(branch.cond)
+				w.mark_generic_body_dependencies_in_stmts(branch.stmts)
+			}
+		}
+		ast.InfixExpr {
+			w.mark_generic_body_dependencies_in_expr(expr.left)
+			w.mark_generic_body_dependencies_in_expr(expr.right)
+		}
+		ast.MatchExpr {
+			for branch in expr.branches {
+				w.mark_generic_body_dependencies_in_stmts(branch.stmts)
+			}
+		}
+		ast.ParExpr {
+			w.mark_generic_body_dependencies_in_expr(expr.expr)
+		}
+		ast.PrefixExpr {
+			w.mark_generic_body_dependencies_in_expr(expr.right)
+		}
+		ast.StringInterLiteral {
+			for sub_expr in expr.exprs {
+				w.mark_generic_body_dependencies_in_expr(sub_expr)
+			}
+			for sub_expr in expr.fwidth_exprs {
+				w.mark_generic_body_dependencies_in_expr(sub_expr)
+			}
+			for sub_expr in expr.precision_exprs {
+				w.mark_generic_body_dependencies_in_expr(sub_expr)
+			}
+		}
+		else {}
+	}
+}
+
+fn (mut w Walker) mark_direct_non_generic_call(node ast.CallExpr) {
+	if node.language == .c {
+		return
+	}
+	if node.is_method {
+		if node.left_type == 0 {
+			return
+		}
+		fkey, _ := w.resolve_method_fkey_for_type(node.left_type, node.name)
+		if fkey == '' {
+			return
+		}
+		fn_decl := w.all_fns[fkey] or { return }
+		if w.fn_generic_names(fn_decl).len == 0 {
+			w.fn_by_name(fkey)
+		}
+		return
+	}
+	mut fn_name := node.fkey()
+	if node.mod != '' {
+		qualified_name := '${node.mod}.${node.name}'
+		if qualified_name in w.all_fns {
+			fn_name = qualified_name
+		}
+	}
+	fn_decl := w.all_fns[fn_name] or { return }
+	if w.fn_generic_names(fn_decl).len == 0 {
+		w.fn_by_name(fn_name)
+	}
 }
 
 fn (mut w Walker) mark_resource_dependencies() {
@@ -2431,10 +3593,17 @@ fn (mut w Walker) mark_resource_dependencies() {
 			w.fn_by_name('str_intp')
 		}
 	}
-	if w.features.auto_str_ptr {
+	if w.features.auto_str_ptr && (w.features.auto_str || w.features.dump || w.uses_dump) {
 		w.fn_by_name('isnil')
 		w.fn_by_name('tos4')
+	}
+	if w.uses_interp_isnil || w.auto_str_needs_isnil() {
+		w.fn_by_name('isnil')
+	}
+	if w.auto_str_needs_str_intp() {
 		w.fn_by_name('str_intp')
+		w.mark_by_sym_name('StrIntpData')
+		w.mark_by_sym_name('StrIntpMem')
 	}
 	if w.uses_channel {
 		w.fn_by_name('sync.new_channel_st')
@@ -2501,6 +3670,15 @@ fn (mut w Walker) mark_resource_dependencies() {
 		w.fn_by_name(array_idx_str + '.slice')
 		w.fn_by_name(array_idx_str + '.get')
 	}
+	if w.pref.backend == .c
+		&& (w.uses_arr_getter || w.uses_arr_setter || w.uses_guard || w.uses_index_check) {
+		w.mark_builtin_array_method_as_used('get_i64')
+		w.mark_builtin_array_method_as_used('get_u64')
+		w.mark_builtin_array_method_as_used('get_with_check_i64')
+		w.mark_builtin_array_method_as_used('get_with_check_u64')
+		w.mark_builtin_array_method_as_used('set_i64')
+		w.mark_builtin_array_method_as_used('set_u64')
+	}
 	if w.uses_str_index {
 		w.fn_by_name(string_idx_str + '.at')
 		if w.uses_str_index_check {
@@ -2509,6 +3687,12 @@ fn (mut w Walker) mark_resource_dependencies() {
 		if w.uses_str_range {
 			w.fn_by_name(string_idx_str + '.substr')
 		}
+	}
+	if w.pref.backend == .c && w.uses_str_index {
+		w.fn_by_name(string_idx_str + '.at_i64')
+		w.fn_by_name(string_idx_str + '.at_u64')
+		w.fn_by_name(string_idx_str + '.at_with_check_i64')
+		w.fn_by_name(string_idx_str + '.at_with_check_u64')
 	}
 	for typ, _ in w.table.used_features.print_types {
 		w.mark_by_type(typ)
@@ -2629,6 +3813,15 @@ fn (mut w Walker) mark_resource_dependencies() {
 	if w.uses_fixed_arr_int {
 		w.fn_by_name('v_fixed_index')
 	}
+	if w.pref.backend == .c && w.uses_fixed_arr_int {
+		w.fn_by_name('v_fixed_index_i64')
+		w.fn_by_name('v_fixed_index_u64')
+	}
+	if w.pref.backend == .c
+		&& (w.uses_arr_range_index || w.uses_str_range_index || w.uses_range_index_check) {
+		w.fn_by_name('v_slice_index_i64')
+		w.fn_by_name('v_slice_index_u64')
+	}
 	if w.uses_str_range_index {
 		w.fn_by_name(string_idx_str + '.substr')
 	}
@@ -2744,13 +3937,15 @@ pub fn (mut w Walker) finalize(include_panic_deps bool) {
 			w.fn_by_name('__new_array_with_default_noscan')
 			w.fn_by_name(ref_array_idx_str + '.push_noscan')
 		}
-		w.fn_by_name('str_intp')
 		w.fn_by_name('__new_array_with_default')
 		w.fn_by_name(ref_array_idx_str + '.push')
 		w.fn_by_name(string_idx_str + '.substr')
 		w.fn_by_name('v_fixed_index')
-		w.mark_by_sym_name('StrIntpData')
-		w.mark_by_sym_name('StrIntpMem')
+		if w.uses_asserts || w.uses_debugger || w.uses_interp {
+			w.fn_by_name('str_intp')
+			w.mark_by_sym_name('StrIntpData')
+			w.mark_by_sym_name('StrIntpMem')
+		}
 	}
 	if w.uses_eq {
 		w.fn_by_name('fast_string_eq')
@@ -2766,6 +3961,10 @@ pub fn (mut w Walker) finalize(include_panic_deps bool) {
 	}
 	// remove unused symbols
 	w.remove_unused_fn_generic_types()
+	// Generic pruning can leave additional generic bodies to emit, which may
+	// need direct helper calls or resources like FieldData for `$for T.fields`.
+	w.mark_emitted_generic_body_dependencies()
+	w.mark_resource_dependencies()
 
 	if w.trace_enabled {
 		syms := w.used_syms.keys().map(w.table.type_to_str(it))

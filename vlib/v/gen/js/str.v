@@ -2,6 +2,10 @@ module js
 
 import v.ast
 
+fn escape_template_literal_value(s string) string {
+	return s.replace('\\', '\\\\').replace('`', '\\`').replace('$' + '{', '\\' + '$' + '{')
+}
+
 /*
 fn (mut g JsGen) gen_expr_to_string(expr ast.Expr, etype ast.Type) {
 	is_shared := etype.has_flag(.shared_f)

@@ -25,3 +25,20 @@ fn test_append_to_interface_array_makes_detached_copy() {
 	value.name = 'Second'
 	assert values[0].name == 'First'
 }
+
+fn new_named_value() !NamedValue {
+	return NamedValue{
+		name: 'First'
+	}
+}
+
+fn read_name(n Named) string {
+	return n.name
+}
+
+fn test_auto_heap_interface_arg_keeps_value_fields() {
+	value := new_named_value()!
+	face := Named(value)
+	assert read_name(value) == 'First'
+	assert read_name(face) == 'First'
+}

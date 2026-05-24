@@ -14,8 +14,47 @@ fn array_init_result_type(node ast.ArrayInit) ast.Type {
 	}
 }
 
+fn (mut c Checker) set_expected_array_literal_type(mut expr ast.Expr, expected_type ast.Type) {
+	if mut expr is ast.ArrayInit {
+		if expr.typ != ast.void_type || expr.elem_type != ast.void_type {
+			return
+		}
+		expected_array_type := expected_type.clear_option_and_result()
+		if expected_array_type.has_flag(.generic)
+			|| c.type_has_unresolved_generic_parts(expected_array_type) {
+			return
+		}
+		mut concrete_array_type := expected_array_type
+		expected_sym := c.table.sym(expected_array_type)
+		if expected_sym.info is ast.Alias {
+			concrete_array_type = expected_sym.info.parent_type.clear_option_and_result()
+			if c.table.final_sym(concrete_array_type).kind !in [.array, .array_fixed] {
+				return
+			}
+			expr.alias_type = expected_array_type
+		} else if c.table.final_sym(expected_array_type).kind !in [.array, .array_fixed] {
+			return
+		}
+		expected_elem_type := c.table.value_type(concrete_array_type)
+		if expected_elem_type == ast.void_type {
+			return
+		}
+		expected_elem_sym := c.table.final_sym(expected_elem_type)
+		if expected_elem_sym.kind in [.interface, .sum_type] {
+			return
+		}
+		expr.typ = concrete_array_type
+		expr.elem_type = expected_elem_type
+	}
+}
+
 fn is_inferred_fixed_array_size_expr(expr ast.Expr) bool {
 	return expr is ast.RangeExpr && !expr.has_low && !expr.has_high
+}
+
+fn is_array_init_type_expr_field(name string) bool {
+	return name in ['idx', 'typ', 'unaliased_typ', 'key_type', 'value_type', 'element_type',
+		'pointee_type', 'payload_type', 'variant_types', 'indirections']
 }
 
 fn (mut c Checker) fixed_array_contains_inferred_size(typ ast.Type) bool {
@@ -67,6 +106,71 @@ fn (mut c Checker) resolve_fixed_array_literal_type(typ ast.Type, elem_type ast.
 		resolved_typ = resolved_typ.set_flag(.option)
 	}
 	return resolved_typ
+}
+
+fn (mut c Checker) array_init_elem_type_from_expr(expr ast.Expr) ast.Type {
+	match expr {
+		ast.ParExpr {
+			return c.array_init_elem_type_from_expr(expr.expr)
+		}
+		ast.TypeNode {
+			return c.unwrap_generic(expr.typ)
+		}
+		ast.TypeOf {
+			return c.unwrap_generic(c.type_resolver.typeof_type(expr.expr, expr.typ))
+		}
+		ast.SelectorExpr {
+			if expr.is_field_typ {
+				return c.unwrap_generic(c.type_resolver.get_type(expr))
+			}
+			if expr.name_type != 0 && is_array_init_type_expr_field(expr.field_name) {
+				return c.unwrap_generic(c.type_resolver.typeof_field_type(expr.name_type,
+					expr.field_name))
+			}
+			if is_array_init_type_expr_field(expr.field_name) {
+				base_type := c.array_init_elem_type_from_expr(expr.expr)
+				if base_type != ast.void_type {
+					return c.unwrap_generic(c.type_resolver.typeof_field_type(base_type,
+						expr.field_name))
+				}
+			}
+			return ast.void_type
+		}
+		else {
+			return ast.void_type
+		}
+	}
+}
+
+fn (mut c Checker) resolve_array_init_elem_type_expr(mut node ast.ArrayInit) {
+	if node.elem_type_expr is ast.EmptyExpr {
+		return
+	}
+	old_expected_type := c.expected_type
+	c.expected_type = ast.void_type
+	c.expr(mut node.elem_type_expr)
+	c.expected_type = old_expected_type
+	resolved_elem_type := c.array_init_elem_type_from_expr(node.elem_type_expr)
+	if resolved_elem_type == ast.void_type {
+		c.error('array_init: invalid comptime type expression, expected a type field such as `typeof(expr).idx` or `T.typ`',
+			node.elem_type_pos)
+		return
+	}
+	if resolved_elem_type.has_flag(.result) {
+		c.error('arrays do not support storing Result values', node.elem_type_pos)
+		return
+	}
+	node.elem_type = resolved_elem_type
+	idx := c.table.find_or_register_array(resolved_elem_type)
+	node.typ = if resolved_elem_type.has_flag(.generic)
+		|| c.type_has_unresolved_generic_parts(resolved_elem_type) {
+		ast.new_type(idx).set_flag(.generic)
+	} else {
+		ast.new_type(idx)
+	}
+	if node.is_option {
+		node.typ = node.typ.set_flag(.option)
+	}
 }
 
 fn (mut c Checker) array_init(mut node ast.ArrayInit) ast.Type {
@@ -130,6 +234,9 @@ fn (mut c Checker) array_init(mut node ast.ArrayInit) ast.Type {
 			node.typ = ast.void_type
 			node.elem_type = ast.void_type
 		}
+	}
+	if node.typ == ast.void_type && node.elem_type_expr !is ast.EmptyExpr {
+		c.resolve_array_init_elem_type_expr(mut node)
 	}
 	mut elem_type := ast.void_type
 	unwrap_elem_type := c.unwrap_generic(node.elem_type)
@@ -833,6 +940,7 @@ fn (mut c Checker) map_init(mut node ast.MapInit) ast.Type {
 			c.expected_type = map_key_type
 			key_type := c.expr(mut key)
 			c.expected_type = map_val_type
+			c.set_expected_array_literal_type(mut val, map_val_type)
 			val_type := c.expr(mut val)
 			node.val_types << val_type
 			val_type_sym := c.table.sym(val_type)
@@ -1009,7 +1117,7 @@ fn (mut c Checker) check_append(mut node ast.InfixExpr, left_type ast.Type, righ
 	mut right_sym := c.table.sym(right_type)
 	mut left_sym := c.table.sym(left_type)
 	if left_type.has_flag(.option) && node.left is ast.Ident && node.left.or_expr.kind == .absent {
-		c.check_option_infix_expr(node, left_type, right_type, left_sym, right_sym)
+		c.check_option_infix_expr(mut node, left_type, right_type, left_sym, right_sym)
 	}
 	right_pos := node.right.pos()
 	// `array << elm`

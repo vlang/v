@@ -74,3 +74,19 @@ fn test_fully_unaliased_type_preserves_nested_c_alias_pointers() {
 	assert t.fully_unaliased_type(pwide_typ) == ast.u16_type.ref()
 	assert t.fully_unaliased_type(share_mode_typ) == ast.u32_type
 }
+
+fn test_known_type_names_skips_partial_array_symbols() {
+	mut t := ast.new_table()
+	broken_array_idx := t.register_sym(ast.TypeSymbol{
+		kind:     .array
+		name:     '[]Broken'
+		cname:    'Array_Broken'
+		mod:      'main'
+		is_pub:   true
+		language: .v
+	})
+	broken_array_type := ast.idx_to_type(broken_array_idx)
+
+	assert !t.known_type_idx(broken_array_type)
+	assert '[]Broken' !in t.known_type_names()
+}

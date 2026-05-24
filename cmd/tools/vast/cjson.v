@@ -33,11 +33,6 @@ fn create_number(val f64) &Node {
 }
 
 @[inline]
-fn create_bool(val bool) &Node {
-	return as_n(cjson.create_bool(val))
-}
-
-@[inline]
 fn create_true() &Node {
 	return as_n(cjson.create_true())
 }
@@ -50,11 +45,6 @@ fn create_false() &Node {
 @[inline]
 fn create_null() &Node {
 	return as_n(cjson.create_null())
-}
-
-@[inline]
-fn delete(b voidptr) {
-	unsafe { cjson.delete(b) }
 }
 
 @[inline]

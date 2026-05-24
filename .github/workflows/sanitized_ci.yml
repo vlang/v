@@ -90,6 +90,7 @@ jobs:
       VTEST_SHOW_LONGEST_BY_TOTALTIME: 3
     steps:
       - uses: actions/checkout@v6
+      - uses: ./.github/actions/cache-apt-packages-action
       - name: Build V
         run: make -j4 && ./v symlink
       - name: V doctor
@@ -125,6 +126,7 @@ jobs:
       VTEST_SHOW_LONGEST_BY_TOTALTIME: 3
     steps:
       - uses: actions/checkout@v6
+      - uses: ./.github/actions/cache-apt-packages-action
       - name: Build V
         run: make -j4 && ./v symlink
       - name: V doctor
@@ -160,6 +162,7 @@ jobs:
       VTEST_SHOW_LONGEST_BY_TOTALTIME: 3
     steps:
       - uses: actions/checkout@v6
+      - uses: ./.github/actions/cache-apt-packages-action
       - name: Build V
         run: make -j4 && ./v symlink
       - name: V doctor
@@ -200,7 +203,7 @@ jobs:
         run: |
           echo %VFLAGS%
           echo $VFLAGS
-          .\make.bat -msvc
+          .\makev.bat -msvc
           .\v.exe self
       - name: V doctor
         run: .\v.exe doctor
@@ -227,6 +230,7 @@ jobs:
       VTEST_SHOW_LONGEST_BY_TOTALTIME: 3
     steps:
       - uses: actions/checkout@v6
+      - uses: ./.github/actions/cache-apt-packages-action
       - name: Build V
         run: make -j4 && ./v symlink
       - name: V doctor
@@ -253,7 +257,7 @@ jobs:
 
   sanitize-memory-clang:
     runs-on: ubuntu-22.04
-    timeout-minutes: 240
+    timeout-minutes: 300
     env:
       VFLAGS: -cc clang -gc none -cflags -fno-omit-frame-pointer
       VJOBS: 1
@@ -263,6 +267,7 @@ jobs:
       VTEST_SHOW_LONGEST_BY_TOTALTIME: 3
     steps:
       - uses: actions/checkout@v6
+      - uses: ./.github/actions/cache-apt-packages-action
       - name: Build V
         run: make -j4 && ./v symlink
       - name: V doctor
@@ -300,6 +305,7 @@ jobs:
       VTEST_SHOW_LONGEST_BY_TOTALTIME: 3
     steps:
       - uses: actions/checkout@v6
+      - uses: ./.github/actions/cache-apt-packages-action
       - name: Build V
         run: make -j4 && ./v symlink
       - name: V doctor

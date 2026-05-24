@@ -1,0 +1,15 @@
+struct Default[T] {
+	v T
+}
+
+fn f[T](g fn (x T) int) {
+	assert g(Default[T]{}) == 42
+}
+
+struct Foo {
+	v int = 42
+}
+
+fn main() {
+	f[Foo](|foo| foo.v)
+}

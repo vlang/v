@@ -87,6 +87,59 @@ fn should_keep_builtin_array_decl(decl ast.FnDecl) bool {
 	]
 }
 
+fn array_interface_repeat_fn_name(iface_name string) string {
+	return '__v_array_repeat_interface__' + mangle_alias_component(iface_name)
+}
+
+fn (g &Gen) array_clone_depth_for_c_type(type_name string) int {
+	elem_type := array_alias_elem_type(type_name)
+	if elem_type == '' {
+		return 0
+	}
+	if elem_type == 'string' || elem_type == 'builtin__string' || elem_type == 'map'
+		|| elem_type.starts_with('Map_') {
+		return 1
+	}
+	if elem_type == 'array' || elem_type.starts_with('Array_') {
+		return 1 + g.array_clone_depth_for_c_type(elem_type)
+	}
+	return 0
+}
+
+fn (mut g Gen) emit_array_interface_repeat_decls() {
+	mut names := g.emitted_interface_bodies.keys()
+	names.sort()
+	for name in names {
+		g.sb.writeln('static inline array ${array_interface_repeat_fn_name(name)}(array a, int count);')
+	}
+	if names.len > 0 {
+		g.sb.writeln('')
+	}
+}
+
+fn (mut g Gen) emit_array_interface_repeat_body(iface_name string) {
+	repeat_fn := array_interface_repeat_fn_name(iface_name)
+	clone_fn := interface_clone_fn_name(iface_name)
+	g.sb.writeln('static inline array ${repeat_fn}(array a, int count) {')
+	g.sb.writeln('\tarray res = array__repeat_to_depth(a, count, 0);')
+	g.sb.writeln('\tif (a.len > 0) {')
+	g.sb.writeln('\t\tfor (int i = 0; i < res.len; ++i) {')
+	g.sb.writeln('\t\t\t((${iface_name}*)res.data)[i] = ${clone_fn}(((${iface_name}*)a.data)[i % a.len]);')
+	g.sb.writeln('\t\t}')
+	g.sb.writeln('\t}')
+	g.sb.writeln('\treturn res;')
+	g.sb.writeln('}')
+	g.sb.writeln('')
+}
+
+fn (mut g Gen) emit_array_interface_repeat_helpers() {
+	mut names := g.emitted_interface_bodies.keys()
+	names.sort()
+	for name in names {
+		g.emit_array_interface_repeat_body(name)
+	}
+}
+
 fn (mut g Gen) emit_missing_array_contains_fallbacks() {
 	mut fn_names := g.fn_param_types.keys()
 	fn_names.sort()
@@ -173,17 +226,8 @@ fn (mut g Gen) emit_deferred_fixed_array_aliases() {
 			continue
 		}
 		if info := g.collected_fixed_array_types[name] {
-			if info.elem_type in primitive_types
-				|| info.elem_type in ['char', 'voidptr', 'charptr', 'byteptr', 'void*', 'char*'] {
-				continue // already emitted in emit_runtime_aliases
-			}
-			// Only emit if the element type is already defined (struct body emitted).
-			// For struct element types, check if the struct body has been emitted.
-			elem_body_key := 'body_${info.elem_type}'
-			elem_alias_key := 'alias_${info.elem_type}'
-			if info.elem_type.contains('__') && elem_body_key !in g.emitted_types
-				&& elem_alias_key !in g.emitted_types && !info.elem_type.starts_with('Array_fixed_') {
-				continue // element struct not yet defined, defer
+			if !g.fixed_array_elem_type_ready(info.elem_type) {
+				continue
 			}
 			g.sb.writeln('typedef ${info.elem_type} ${name} [${info.size}];')
 			body_key := 'body_${name}'
@@ -197,6 +241,28 @@ fn (mut g Gen) emit_deferred_fixed_array_aliases() {
 			}
 		}
 	}
+}
+
+fn (g &Gen) fixed_array_elem_type_ready(elem_type string) bool {
+	if elem_type in primitive_types
+		|| elem_type in ['char', 'voidptr', 'charptr', 'byteptr', 'void*', 'char*'] {
+		return true
+	}
+	if elem_type in g.primitive_type_aliases {
+		return true
+	}
+	if elem_type.starts_with('Array_fixed_') {
+		return 'body_${elem_type}' in g.emitted_types || 'alias_${elem_type}' in g.emitted_types
+	}
+	if elem_type.ends_with('*') || g.is_c_type_name(elem_type) {
+		return true
+	}
+	if base_type := g.alias_base_types[elem_type] {
+		if base_type != elem_type {
+			return g.fixed_array_elem_type_ready(base_type)
+		}
+	}
+	return 'body_${elem_type}' in g.emitted_types || 'enum_${elem_type}' in g.emitted_types
 }
 
 fn (mut g Gen) array_append_elem_type(lhs ast.Expr, rhs ast.Expr) (bool, string) {
@@ -288,6 +354,12 @@ fn (mut g Gen) expr_is_array_value(expr ast.Expr) bool {
 	if expr_type == 'array' || expr_type.starts_with('Array_') {
 		return true
 	}
+	if expr is ast.Ident {
+		local_type := g.get_local_var_c_type(expr.name) or { '' }
+		if local_type == 'array' || local_type.starts_with('Array_') {
+			return true
+		}
+	}
 	// Or-data-access: _or_tN.data where _or_tN has type _result_Array_X or _option_Array_X
 	if expr is ast.SelectorExpr && expr.rhs.name == 'data' {
 		if expr.lhs is ast.Ident {
@@ -353,6 +425,12 @@ fn (mut g Gen) expr_array_runtime_type(expr ast.Expr) string {
 		}
 	}
 	mut typ := g.get_expr_type(expr)
+	if expr is ast.Ident {
+		local_type := g.get_local_var_c_type(expr.name) or { '' }
+		if local_type == 'array' || local_type.starts_with('Array_') {
+			typ = local_type
+		}
+	}
 	if typ != '' && typ != 'int_literal' && typ != 'float_literal' {
 		return typ
 	}
@@ -391,6 +469,11 @@ fn (mut g Gen) infer_array_elem_type_from_expr(arr_expr ast.Expr) string {
 
 	if arr_expr is ast.ArrayInitExpr {
 		elem_type := g.extract_array_elem_type(arr_expr.typ)
+		value_elem_type := g.infer_array_init_value_elem_type(arr_expr)
+		if (elem_type == '' || elem_type == 'int') && value_elem_type != ''
+			&& value_elem_type != 'int' {
+			return value_elem_type
+		}
 		if elem_type != '' {
 			return elem_type
 		}
@@ -448,6 +531,24 @@ fn (mut g Gen) infer_array_elem_type_from_expr(arr_expr ast.Expr) string {
 	}
 	// Last resort: string-based extraction (e.g. Array_int → int).
 	return array_alias_elem_type(arr_type)
+}
+
+fn (mut g Gen) infer_array_init_value_elem_type(node ast.ArrayInitExpr) string {
+	for expr in node.exprs {
+		mut elem_type := g.get_expr_type(expr)
+		if elem_type == '' || elem_type == 'int' || elem_type == 'int_literal'
+			|| elem_type == 'float_literal' || elem_type == 'void' {
+			if raw_type := g.get_raw_type(expr) {
+				elem_type = g.types_type_to_c(raw_type)
+			}
+		}
+		if elem_type == '' || elem_type == 'int' || elem_type == 'int_literal'
+			|| elem_type == 'float_literal' || elem_type == 'void' {
+			continue
+		}
+		return unmangle_c_ptr_type(elem_type)
+	}
+	return ''
 }
 
 // array_elem_type_from_raw extracts the element type from a raw types.Type
@@ -571,6 +672,27 @@ fn (mut g Gen) is_fixed_array_selector(sel ast.SelectorExpr) bool {
 	return false
 }
 
+fn interface_type_names_match(left string, right string) bool {
+	left_base := left.trim_right('*')
+	right_base := right.trim_right('*')
+	return left_base == right_base
+		|| left_base.all_after_last('__') == right_base.all_after_last('__')
+}
+
+fn (mut g Gen) expr_already_has_interface_type(expr ast.Expr, iface_type string) bool {
+	expr_type := g.get_expr_type(expr)
+	if expr_type != '' && interface_type_names_match(expr_type, iface_type)
+		&& g.is_interface_type(expr_type.trim_right('*')) {
+		return true
+	}
+	if raw_type := g.get_raw_type(expr) {
+		c_type := g.types_type_to_c(raw_type)
+		return c_type != '' && interface_type_names_match(c_type, iface_type)
+			&& g.is_interface_type(c_type.trim_right('*'))
+	}
+	return false
+}
+
 fn (mut g Gen) gen_array_init_expr(node ast.ArrayInitExpr) {
 	raw_elem := g.extract_array_elem_type(node.typ)
 	// Convert C pointer syntax to mangled name for composite types:
@@ -585,8 +707,8 @@ fn (mut g Gen) gen_array_init_expr(node ast.ArrayInitExpr) {
 	// Fallback: if dynamic array but elem type couldn't be extracted from type annotation,
 	// infer from the first expression (e.g., for [][2]int where inner [2]int has type info)
 	mut final_elem := elem_type
-	if final_elem == '' && is_dyn && node.exprs.len > 0 {
-		inferred := g.get_expr_type(node.exprs[0])
+	if (final_elem == '' || final_elem == 'int') && is_dyn && node.exprs.len > 0 {
+		inferred := g.infer_array_init_value_elem_type(node)
 		if inferred != '' && inferred != 'array' && inferred != 'int' {
 			final_elem = inferred
 		}
@@ -602,7 +724,8 @@ fn (mut g Gen) gen_array_init_expr(node ast.ArrayInitExpr) {
 				if i > 0 {
 					g.sb.write_string(', ')
 				}
-				if is_iface_elem && g.gen_interface_cast(final_elem, e) {
+				if is_iface_elem && !g.expr_already_has_interface_type(e, final_elem)
+					&& g.gen_interface_cast(final_elem, e) {
 					// interface wrapping handled
 				} else {
 					g.expr(e)
@@ -644,8 +767,12 @@ fn (mut g Gen) gen_array_init_expr(node ast.ArrayInitExpr) {
 			return
 		}
 	}
-	// Empty array: should have been lowered by transformer to __new_array_with_default_noscan()
-	// Fallback: zero-init
+	// Empty dynamic arrays should have been lowered by transformer to
+	// __new_array_with_default_noscan(). Fixed arrays still use C zero-init.
+	if !is_dyn {
+		g.sb.write_string('{0}')
+		return
+	}
 	g.sb.write_string('(array){0}')
 }
 

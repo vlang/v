@@ -41,7 +41,7 @@ cd v
 make
 ```
 
-Note: If you are on windows, outside of WSL, run `make.bat` instead of `make`, in a CMD shell.
+Note: If you are on windows, outside of WSL, run `makev.bat` instead of `make`, in a CMD shell.
 Note: On Ubuntu/Debian, you may need to run `sudo apt install git build-essential make` first.
 
 For more details, see the
@@ -84,7 +84,7 @@ by using any of the following commands in a terminal:
 * `v new abc` → creates a new project in the new folder `abc`, by default a "hello world" project.
 * `v new --web abcd` → creates a new project in the new folder `abcd`, using the veb template.
 
-The `v new --web` template uses `veb`, V's current web framework. `vweb` is deprecated.
+The `v new --web` template uses `veb`, V's web framework.
 
 ## Table of Contents
 
@@ -517,8 +517,8 @@ In development mode the compiler will warn you that you haven't used the variabl
 (you'll get an "unused variable" warning).
 In production mode (enabled by passing the `-prod` flag to v – `v -prod foo.v`)
 it will not compile at all (like in Go).
-The same warning or error also applies to private top-level functions and constants
-in the `main` module when they are never referenced.
+The compiler also emits an informational notice for private top-level functions
+and constants in the `main` module when they are never referenced.
 ```v
 fn main() {
 	a := 10
@@ -1356,6 +1356,10 @@ memory location when the size increases thus becoming independent from the
 parent array (*copy on grow*). In particular pushing elements to a slice
 does not alter the parent:
 
+When a slice expression like `a[2..4]` is assigned to another array outside
+`unsafe`, V inserts an implicit `.clone()` and shows a notice. The
+shared-memory examples below therefore use `unsafe {}` intentionally.
+
 ```v
 mut a := [0, 1, 2, 3, 4, 5]
 
@@ -1406,8 +1410,9 @@ println(b) // [7, 3]
 ```
 
 Note that, by default, V makes an implicit clone of the slice and displays a notice about this.
-So without the `.clone()` call the result of the code above will be the same. Make the slice in an
-`unsafe {}` block if you want to reuse memory, otherwise use explicit cloning.
+So without the `.clone()` call the result of the code above will be the same.
+Make the slice in an `unsafe {}` block if you want to reuse memory,
+otherwise use explicit cloning.
 
 ##### Slices with negative indexes
 
@@ -1528,6 +1533,25 @@ It's also possible to use an `or {}` block to handle missing keys:
 ```v
 mm := map[string]int{}
 val := mm['bad_key'] or { panic('key not found') }
+```
+
+Modules can opt into stricter map indexing:
+
+```v
+@[strict_map_index]
+module main
+
+fn main() {
+	m := {
+		'abc': 'xyz'
+	}
+	value := m['abc'] or { panic('missing map key') }
+	if other := m['abc'] {
+		println(other)
+	}
+	// m['bad_key'] // compile error in `@[strict_map_index]` modules
+	println(value)
+}
 ```
 
 You can also check, if a key is present, and get its value, if it was present, in one go:
@@ -1999,6 +2023,7 @@ match true {
 	2 == 2 { println('else if2') }
 	else { println('else') }
 }
+
 // 'else if2' should be printed
 ```
 
@@ -2011,6 +2036,7 @@ match false {
 	2 == 2 { println('else if2') }
 	else { println('else') }
 }
+
 // 'if' should be printed
 ```
 
@@ -2043,6 +2069,7 @@ typ := match c {
 	`a`...`z` { 'lowercase' }
 	else { 'other' }
 }
+
 println(typ)
 // 'lowercase'
 ```
@@ -2085,6 +2112,7 @@ num := match c {
 		0
 	}
 }
+
 println(num)
 // 1000
 ```
@@ -3634,8 +3662,25 @@ fn main() {
 * Module names must use `snake_case`.
 * Circular imports are not allowed.
 * You can have as many .v files in a module as you want.
-* You can create modules anywhere.
+* You can create modules anywhere under a valid V module lookup root.
 * All modules are compiled statically into a single executable.
+
+In normal projects, the nearest `v.mod` file is that lookup root.
+Besides package metadata, `v.mod` also acts as a relative module anchor:
+V prepends the folder containing `v.mod` to the module lookup path, so
+files beside or below it can import sibling modules under the same tree.
+
+For example, this layout works:
+
+```text
+myapp/
+├── v.mod
+├── main.v
+└── myapp/common/structs.v
+```
+
+`main.v` can use `import myapp.common`, and `structs.v` should still
+declare `module common`.
 
 ### Special considerations for project folders
 
@@ -3717,6 +3762,7 @@ match color {
 	.green { println('the color was green') }
 	.blue { println('the color was blue') }
 }
+
 println(int(color)) // prints 1
 ```
 
@@ -3758,7 +3804,7 @@ Output: `Grocery IDs: 0, 5, 6`.
 
 Compile-time `$if` blocks can also be used inside enum bodies to include fields conditionally.
 
-```v
+```v nofmt
 enum Feature {
 	base
 	$if beta ? {
@@ -5795,6 +5841,13 @@ for c in uk_customers {
 	println('customer: ${c.id}, ${c.name}, ${c.country}, ${c.nr_orders}')
 }
 
+// You can select just the fields you need. The result still has type `[]Customer`,
+// and non-selected fields keep their zero values.
+partial_customers := sql db {
+	select id, name from Customer where nr_orders > 0
+}!
+println(partial_customers)
+
 none_country_customers := sql db {
 	select from Customer where country is none
 }!
@@ -5999,6 +6052,10 @@ fn main() {
 A V *module* is a single folder with .v files inside. A V *package* can
 contain one or more V modules. A V *package* should have a `v.mod` file
 at its top folder, describing the contents of the package.
+
+That `v.mod` file is also the package's relative module anchor. When V
+compiles a file beside or below it, imports are resolved relative to the
+folder containing `v.mod`.
 
 V packages are installed normally in your `~/.vmodules` folder. That
 location can be overridden by setting the env variable `VMODULES`.
@@ -6592,6 +6649,28 @@ println('This program, was compiled at ${time.unix(@BUILD_TIMESTAMP.i64()).forma
 Having built-in JSON support is nice, but V also allows you to create efficient
 serializers for any data format. V has compile time `if` and `for` constructs:
 
+#### <h4 id="comptime-type-metadata">Type metadata</h4>
+
+Comptime type expressions expose metadata through fields like `.idx`, `.typ`,
+`.unaliased_typ`, `.indirections`, `.key_type`, `.value_type`, `.element_type`,
+`.pointee_type`, `.payload_type`, and `.variant_types`.
+
+```v
+fn zero_payload[T](x ?T) T {
+	return $zero(typeof(x).payload_type)
+}
+
+fn main() {
+	value := ?int(123)
+	assert zero_payload(value) == 0
+	assert typeof[map[string]int]().key_type == typeof[string]().idx
+	assert typeof[?&int]().payload_type == typeof[&int]().idx
+}
+```
+
+`$zero(Type)` returns the zero value for a comptime type expression.
+`$new(Type)` returns a pointer to a new zero value.
+
 #### <h4 id="comptime-fields">.fields</h4>
 
 You can iterate over struct fields using `.fields`, it also works with generic types
@@ -7050,12 +7129,15 @@ If a file has an environment-specific suffix, it will only be compiled for that 
 - `.c.v` => will be used only by the C backend. These files can contain C. code.
 - `.native.v` => will be used only by V's native backend.
 - `_nix.c.v` => will be used only on Unix systems (non Windows).
+- `_bsd.c.v` => will be used only on macOS, FreeBSD, OpenBSD, NetBSD, and DragonFly.
 - `_${os}.c.v` => will be used only on the specific `os` system.
   For example, `_windows.c.v` will be used only when compiling on Windows, or with `-os windows`.
 - `_default.c.v` => will be used only if there is NOT a more specific platform file.
   For example, if you have both `file_linux.c.v` and `file_default.c.v`,
   and you are compiling for linux, then only `file_linux.c.v` will be used,
   and `file_default.c.v` will be ignored.
+  BSD-specific files are ordered from most to least specific as
+  `_${os}.c.v`, `_bsd.c.v`, `_nix.c.v`, then `_default.c.v`.
 
 Here is a more complete example:
 
@@ -7455,7 +7537,7 @@ Operator overloading is possible for the following binary operators:
 
 Indexing can be overloaded too:
 
-```v
+```v oksyntax
 struct Buffer {
 mut:
 	data []int
@@ -7467,6 +7549,23 @@ fn (b Buffer) [] (index int) int {
 
 fn (mut b Buffer) []= (index int, value int) {
 	b.data[index] = value
+}
+```
+
+Custom types can also opt into multidimensional and slice syntax by taking
+`SliceIndex` or `[]SliceIndex`:
+
+```v
+struct Tensor {}
+
+fn (t Tensor) [] (parts []SliceIndex) Tensor {
+	return t
+}
+
+fn main() {
+	t := Tensor{}
+	_ = t[1..3, ..]
+	_ = t[2, 4..8]
 }
 ```
 
@@ -7491,8 +7590,10 @@ To improve safety and maintainability, operator overloading is limited.
 - Overloaded operators have to return the same type as the argument
   (the exceptions are `<` and `==`).
 - `[]` and `[]=` overloads are only allowed on structs and type aliases.
-- `[]` must take exactly one index argument and return a value.
-- `[]=` must take exactly an index and a value, use a `mut` receiver, and return nothing.
+- `[]` must take exactly one parameter and return a value.
+- `[]=` must take exactly a parameter and a value, use a `mut` receiver, and return nothing.
+- Use `SliceIndex` or `[]SliceIndex` for slice syntax like `tensor[1..3]`
+  or multidimensional syntax like `tensor[1, ..]`.
 
 #### Other restrictions
 
@@ -7868,6 +7969,9 @@ specification &ndash; as in the example [above](#atomics).
 
 An initializer for global variables must be explicitly converted to the
 desired target type. If no initializer is given a default initialization is done.
+Use `const` after `__global` (or inside the `__global ( ... )` block) when the symbol
+must stay a true C-level constant. Non-extern const globals currently require an explicit
+initializer that can be emitted directly in C global scope.
 Some objects like semaphores and mutexes require an explicit initialization *in place*, i.e.
 not with a value returned from a function call but with a method call by reference.
 A separate `init()` function can be used for this purpose &ndash; it will be called before `main()`:
@@ -8130,9 +8234,10 @@ dump(f)
 ```
 
 C globals can be exposed on the V side too. Use `@[c_extern] __global name C.Type`
-when you want to redeclare an external symbol explicitly. When the type already comes
-from the V context, direct references like `buffer = C.buffer` and `[4]u8(C.buffer)`
-can be used as well.
+when you want to redeclare an external symbol explicitly, or
+`@[c_extern] __global const name C.Type` for an external `extern const` symbol.
+When the type already comes from the V context, direct references like
+`buffer = C.buffer` and `[4]u8(C.buffer)` can be used as well.
 
 **Example of using a C function from stdio, by redeclaring it on the V side**
 ```v
@@ -8459,6 +8564,37 @@ To use a custom export name, use the `@[export]` attribute:
 fn foo() {
 }
 ```
+
+When compiling a Windows DLL with `-shared`, V generates a default `DllMain`
+that calls `_vinit_caller()` on `DLL_PROCESS_ATTACH` and `_vcleanup_caller()`
+on `DLL_PROCESS_DETACH`.
+
+If you export your own `DllMain`, V will not generate the default one. Call
+`C._vinit_caller()` and `C._vcleanup_caller()` from your entry point to keep
+the standard V runtime setup and teardown:
+
+```v oksyntax
+pub type C.DWORD = u32
+pub type C.LPVOID = voidptr
+
+fn C._vinit_caller()
+fn C._vcleanup_caller()
+
+@[export: 'DllMain']
+pub fn dll_main(hinst C.HINSTANCE, reason C.DWORD, reserved C.LPVOID) C.BOOL {
+	_ = hinst
+	_ = reserved
+	if reason == C.DWORD(1) {
+		C._vinit_caller()
+	} else if reason == C.DWORD(0) {
+		C._vcleanup_caller()
+	}
+	return C.BOOL(1)
+}
+```
+
+In the example above, `C.DWORD(1)` is `DLL_PROCESS_ATTACH` and `C.DWORD(0)`
+is `DLL_PROCESS_DETACH`.
 
 ### Translating C to V
 

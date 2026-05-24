@@ -31,14 +31,14 @@ fn (mut c Checker) check_sql_query_data_item(mut item ast.SqlQueryDataItem) {
 			c.check_sql_query_data_leaf(item)
 		}
 		ast.SqlQueryDataIf {
-			for branch in item.branches {
+			for mut branch in item.branches {
 				if branch.cond !is ast.EmptyExpr {
 					mut cond := branch.cond
 					c.expr(mut cond)
+					branch.cond = cond
 				}
-				for branch_item in branch.items {
-					mut item_copy := branch_item
-					c.check_sql_query_data_item(mut item_copy)
+				for mut branch_item in branch.items {
+					c.check_sql_query_data_item(mut branch_item)
 				}
 			}
 		}
@@ -132,19 +132,19 @@ fn (mut c Checker) resolve_sql_query_data_expr(expr ast.Expr) !ast.SqlQueryDataE
 
 fn (mut c Checker) check_dynamic_sql_query_data(expr ast.Expr, table_sym &ast.TypeSymbol,
 	fields []ast.StructField, context SqlQueryDataContext) bool {
-	resolved := c.resolve_sql_query_data_expr(expr) or {
+	mut resolved := c.resolve_sql_query_data_expr(expr) or {
 		c.orm_error(err.msg(), expr.pos())
 		return false
 	}
 	field_names := fields.map(it.name)
-	return c.check_dynamic_sql_query_data_items(resolved.items, table_sym, fields, field_names,
+	return c.check_dynamic_sql_query_data_items(mut resolved.items, table_sym, fields, field_names,
 		context)
 }
 
-fn (mut c Checker) check_dynamic_sql_query_data_items(items []ast.SqlQueryDataItem, table_sym &ast.TypeSymbol,
+fn (mut c Checker) check_dynamic_sql_query_data_items(mut items []ast.SqlQueryDataItem, table_sym &ast.TypeSymbol,
 	fields []ast.StructField, field_names []string, context SqlQueryDataContext) bool {
 	mut ok := true
-	for item in items {
+	for mut item in items {
 		match item {
 			ast.SqlQueryDataLeaf {
 				mut expr := item.expr
@@ -184,6 +184,7 @@ fn (mut c Checker) check_dynamic_sql_query_data_items(items []ast.SqlQueryDataIt
 							c.check_expr_has_no_fn_calls_with_non_orm_return_type(&where_expr)
 							c.check_where_expr_has_no_pointless_exprs(table_sym, field_names,
 								&where_expr)
+							item.expr = where_expr
 						}
 						.set_ {
 							if expr_.op != .eq {
@@ -199,11 +200,12 @@ fn (mut c Checker) check_dynamic_sql_query_data_items(items []ast.SqlQueryDataIt
 									break
 								}
 							}
-							mut rhs_expr := expr_.right
+							mut set_expr := item.expr
 							old_expected_type := c.expected_type
 							c.expected_type = field.typ
-							c.expr(mut rhs_expr)
+							c.expr(mut set_expr)
 							c.expected_type = old_expected_type
+							item.expr = set_expr
 						}
 					}
 				} else {
@@ -212,12 +214,13 @@ fn (mut c Checker) check_dynamic_sql_query_data_items(items []ast.SqlQueryDataIt
 				}
 			}
 			ast.SqlQueryDataIf {
-				for branch in item.branches {
+				for mut branch in item.branches {
 					if branch.cond !is ast.EmptyExpr {
 						mut cond := branch.cond
 						c.expr(mut cond)
+						branch.cond = cond
 					}
-					if !c.check_dynamic_sql_query_data_items(branch.items, table_sym, fields,
+					if !c.check_dynamic_sql_query_data_items(mut branch.items, table_sym, fields,
 						field_names, context) {
 						ok = false
 					}
@@ -238,23 +241,20 @@ fn (mut c Checker) sql_expr(mut node ast.SqlExpr) ast.Type {
 		return ast.void_type
 	}
 
+	c.resolve_orm_table_expr_type(mut node.table_expr)
+
 	// To avoid panics while working with `table_expr`,
 	// it is necessary to check if its type exists.
 	if !c.ensure_type_exists(node.table_expr.typ, node.pos) {
 		return ast.void_type
 	}
+
 	// Keep the SQL expression type aligned with the concretized ORM table type.
-	if c.table.cur_fn != unsafe { nil } && c.table.cur_fn.generic_names.len > 0
-		&& c.table.cur_concrete_types.len > 0 {
-		if c.needs_unwrap_generic_type(node.table_expr.typ) {
-			node.table_expr.typ = c.table.unwrap_generic_type(node.table_expr.typ,
-				c.table.cur_fn.generic_names, c.table.cur_concrete_types)
-		}
-		if c.needs_unwrap_generic_type(node.typ) {
-			node.typ = c.table.unwrap_generic_type(node.typ, c.table.cur_fn.generic_names,
-				c.table.cur_concrete_types)
-		}
+	resolved_node_typ := c.unwrap_generic(node.typ)
+	if resolved_node_typ != node.typ {
+		node.typ = resolved_node_typ
 	}
+
 	table_type := node.table_expr.typ
 	table_sym := c.table.sym(table_type)
 
@@ -335,6 +335,7 @@ fn (mut c Checker) sql_expr(mut node ast.SqlExpr) ast.Type {
 			has_where:    true
 			where_expr:   ast.None{}
 			typ:          field.typ.clear_flag(.option).set_flag(.result)
+			scope:        c.fn_scope
 			db_expr:      node.db_expr
 			table_expr:   ast.TypeNode{
 				pos: node.table_expr.pos
@@ -403,6 +404,24 @@ fn (mut c Checker) sql_expr(mut node ast.SqlExpr) ast.Type {
 	}
 
 	field_names := fields.map(it.name)
+	mut selected_fields := fields.clone()
+	if node.aggregate_kind == .none && node.requested_fields.len > 0 {
+		selected_fields = c.resolve_orm_selected_fields(node.requested_fields, fields, table_sym) or {
+			return ast.void_type
+		}
+		if has_primary {
+			selected_field_names := selected_fields.map(it.name)
+			for selected_field in selected_fields {
+				selected_field_type := c.table.final_type(selected_field.typ.clear_flag(.option))
+				if c.table.sym(selected_field_type).kind == .array
+					&& primary_field.name !in selected_field_names {
+					c.orm_error('selecting array field `${selected_field.name}` requires selecting primary field `${primary_field.name}` too',
+						node.pos)
+					return ast.void_type
+				}
+			}
+		}
+	}
 	if node.aggregate_kind != .none {
 		node.sub_structs = map[string]ast.SqlExpr{}
 		if node.aggregate_kind == .count {
@@ -424,7 +443,7 @@ fn (mut c Checker) sql_expr(mut node ast.SqlExpr) ast.Type {
 				c.orm_aggregate_return_type(node.aggregate_kind, aggregate_field.typ).set_flag(.result)
 		}
 	} else {
-		node.fields = fields
+		node.fields = selected_fields
 		node.sub_structs = sub_structs.move()
 	}
 
@@ -509,15 +528,12 @@ fn (mut c Checker) sql_stmt_line(mut node ast.SqlStmtLine) ast.Type {
 		c.inside_sql = false
 	}
 
+	c.resolve_orm_table_expr_type(mut node.table_expr)
+
 	// To avoid panics while working with `table_expr`,
 	// it is necessary to check if its type exists.
 	if !c.ensure_type_exists(node.table_expr.typ, node.pos) {
 		return ast.void_type
-	}
-	if c.table.cur_fn != unsafe { nil } && c.table.cur_fn.generic_names.len > 0
-		&& c.table.cur_concrete_types.len > 0 && c.needs_unwrap_generic_type(node.table_expr.typ) {
-		node.table_expr.typ = c.table.unwrap_generic_type(node.table_expr.typ,
-			c.table.cur_fn.generic_names, c.table.cur_concrete_types)
 	}
 	table_type := node.table_expr.typ
 	table_sym := c.table.sym(table_type)
@@ -540,16 +556,36 @@ fn (mut c Checker) sql_stmt_line(mut node ast.SqlStmtLine) ast.Type {
 			return ast.void_type
 		}
 		mut inserting_object_type := inserting_object.typ
+		mut is_array_insert := false
 
 		if inserting_object_type.is_ptr() {
 			inserting_object_type = inserting_object.typ.deref()
 		}
 
-		if c.table.cur_fn != unsafe { nil } && c.table.cur_fn.generic_names.len > 0
-			&& c.table.cur_concrete_types.len > 0
-			&& c.needs_unwrap_generic_type(inserting_object_type) {
-			inserting_object_type = c.table.unwrap_generic_type(inserting_object_type,
-				c.table.cur_fn.generic_names, c.table.cur_concrete_types)
+		resolved_object_type := c.unwrap_generic(inserting_object_type)
+		if resolved_object_type != inserting_object_type {
+			inserting_object_type = resolved_object_type
+		}
+
+		insert_sym := c.table.sym(inserting_object_type)
+		if insert_sym.kind == .array {
+			if node.kind == .upsert {
+				c.orm_error('upsert currently does not support arrays', node.pos)
+				return ast.void_type
+			}
+			is_array_insert = true
+			elem_type := insert_sym.array_info().elem_type
+			if elem_type.is_ptr() {
+				c.orm_error('bulk ${node.kind} currently supports only arrays of `${table_sym.name}` values',
+					node.pos)
+				return ast.void_type
+			}
+			inserting_object_type = c.unwrap_generic(elem_type)
+			if inserting_object_type != node.table_expr.typ {
+				c.orm_error('bulk ${node.kind} currently supports only arrays of `${table_sym.name}` values',
+					node.pos)
+				return ast.void_type
+			}
 		}
 
 		if inserting_object_type != node.table_expr.typ
@@ -560,6 +596,7 @@ fn (mut c Checker) sql_stmt_line(mut node ast.SqlStmtLine) ast.Type {
 			c.error('cannot use `${inserting_type_name}` as `${table_name}`', node.pos)
 			return ast.void_type
 		}
+		node.is_array_insert = is_array_insert
 	}
 
 	if table_sym.info !is ast.Struct {
@@ -583,8 +620,16 @@ fn (mut c Checker) sql_stmt_line(mut node ast.SqlStmtLine) ast.Type {
 	}
 	fields = insert_fields.clone()
 
-	mut sub_structs := map[int]ast.SqlStmtLine{}
+	mut sub_structs := map[string]ast.SqlStmtLine{}
 	non_primitive_fields := c.get_orm_non_primitive_fields(fields)
+
+	if node.is_array_insert && non_primitive_fields.len > 0 {
+		for field in non_primitive_fields {
+			c.orm_error('bulk ${node.kind} currently supports only primitive, enum, and time.Time fields',
+				field.pos)
+		}
+		return ast.void_type
+	}
 
 	for field in non_primitive_fields {
 		field_typ, field_sym := c.get_non_array_type(field.typ)
@@ -619,7 +664,7 @@ fn (mut c Checker) sql_stmt_line(mut node ast.SqlStmtLine) ast.Type {
 		tmp_inside_sql := c.inside_sql
 		c.sql_stmt_line(mut subquery_expr)
 		c.inside_sql = tmp_inside_sql
-		sub_structs[field.typ] = subquery_expr
+		sub_structs[field.name] = subquery_expr
 	}
 
 	node.fields = fields
@@ -661,6 +706,7 @@ fn (mut c Checker) sql_stmt_line(mut node ast.SqlStmtLine) ast.Type {
 			if !c.check_dynamic_sql_query_data(node.update_data_expr, table_sym, node.fields, .set_) {
 				return ast.void_type
 			}
+		} else if c.check_orm_array_update(mut node, table_sym) {
 		} else {
 			for i, mut expr in node.update_exprs {
 				column := node.updated_columns[i]
@@ -674,11 +720,114 @@ fn (mut c Checker) sql_stmt_line(mut node ast.SqlStmtLine) ast.Type {
 		}
 	}
 
-	if node.where_expr !is ast.EmptyExpr {
+	if node.where_expr !is ast.EmptyExpr && !node.is_array_update {
 		c.expr(mut node.where_expr)
 	}
 
 	return ast.void_type
+}
+
+fn (mut c Checker) check_orm_array_update(mut node ast.SqlStmtLine, table_sym &ast.TypeSymbol) bool {
+	if node.update_exprs.len == 0 || node.where_expr !is ast.InfixExpr {
+		return false
+	}
+	where_expr := node.where_expr as ast.InfixExpr
+	if where_expr.op != .eq || where_expr.left !is ast.Ident
+		|| where_expr.right !is ast.SelectorExpr {
+		return false
+	}
+	key_ident := where_expr.left as ast.Ident
+	key_selector := where_expr.right as ast.SelectorExpr
+	if key_selector.expr !is ast.Ident {
+		return false
+	}
+	array_ident := key_selector.expr as ast.Ident
+	array_name := array_ident.name
+	array_elem_type := c.orm_array_object_elem_type(node, array_name) or { return false }
+	if array_elem_type.is_ptr() {
+		node.is_array_update = true
+		c.orm_error('bulk update currently supports only arrays of `${table_sym.name}` values',
+			array_ident.pos)
+		return true
+	}
+	if c.unwrap_generic(array_elem_type) != node.table_expr.typ {
+		return false
+	}
+	info := table_sym.info as ast.Struct
+	key_field := c.orm_struct_field(info.fields, key_ident.name) or {
+		c.orm_error('type `${table_sym.name}` has no field named `${key_ident.name}`',
+			key_ident.pos)
+		return true
+	}
+	selector_key_field := c.orm_struct_field(info.fields, key_selector.field_name) or {
+		c.orm_error('type `${table_sym.name}` has no field named `${key_selector.field_name}`',
+			key_selector.pos)
+		return true
+	}
+	if !c.check_types(selector_key_field.typ, key_field.typ) {
+		c.orm_error('cannot use `${key_selector.field_name}` as update key `${key_ident.name}`',
+			key_selector.pos)
+		return true
+	}
+	for i, expr in node.update_exprs {
+		if expr !is ast.SelectorExpr {
+			return false
+		}
+		selector := expr as ast.SelectorExpr
+		if selector.expr !is ast.Ident {
+			return false
+		}
+		update_array_ident := selector.expr as ast.Ident
+		if update_array_ident.name != array_name {
+			return false
+		}
+		value_field := c.orm_struct_field(info.fields, selector.field_name) or {
+			c.orm_error('type `${table_sym.name}` has no field named `${selector.field_name}`',
+				selector.pos)
+			return true
+		}
+		column := node.updated_columns[i]
+		target_field := c.get_orm_field_by_column_name(node.fields, column) or { return false }
+		target_sym := c.table.final_sym(target_field.typ.clear_flag(.option))
+		if target_sym.kind == .struct && target_sym.name != 'time.Time' {
+			c.orm_error('bulk update currently supports only primitive, enum, and time.Time fields',
+				selector.pos)
+			return true
+		}
+		if !c.check_types(value_field.typ, target_field.typ) {
+			c.orm_error('cannot use `${selector.field_name}` as update value for `${target_field.name}`',
+				selector.pos)
+			return true
+		}
+	}
+	node.is_array_update = true
+	node.array_update_var = array_name
+	node.array_update_key = c.fetch_field_name(key_field)
+	return true
+}
+
+fn (mut c Checker) orm_array_object_elem_type(node ast.SqlStmtLine, name string) ?ast.Type {
+	obj := node.scope.find(name) or { return none }
+	mut typ := obj.typ
+	if typ.is_ptr() {
+		typ = typ.deref()
+	}
+	typ = c.unwrap_generic(typ)
+	sym := c.table.sym(typ)
+	if sym.kind != .array {
+		return none
+	}
+	mut elem_type := sym.array_info().elem_type
+	return elem_type
+}
+
+fn (_ &Checker) orm_struct_field(fields []ast.StructField, name string) ?ast.StructField {
+	for field in fields {
+		if field.name == name {
+			return field
+		}
+	}
+	return none
 }
 
 fn (mut c Checker) check_orm_struct_field_attrs(node ast.SqlStmtLine, field ast.StructField) {
@@ -1218,6 +1367,13 @@ fn (mut c Checker) check_db_expr(mut db_expr ast.Expr) bool {
 	return true
 }
 
+fn (mut c Checker) resolve_orm_table_expr_type(mut type_node ast.TypeNode) {
+	resolved_typ := c.unwrap_generic(type_node.typ)
+	if resolved_typ != type_node.typ {
+		type_node.typ = resolved_typ
+	}
+}
+
 fn (mut c Checker) check_orm_table_expr_type(type_node &ast.TypeNode) bool {
 	table_sym := c.table.sym(type_node.typ)
 
@@ -1272,6 +1428,33 @@ fn (mut c Checker) get_orm_field_by_column_name(fields []ast.StructField, column
 		}
 	}
 	return none
+}
+
+fn (mut c Checker) resolve_orm_selected_fields(requested_fields []ast.SqlSelectField, fields []ast.StructField, table_sym &ast.TypeSymbol) ?[]ast.StructField {
+	field_names := fields.map(it.name)
+	short_table_name := util.strip_mod_name(table_sym.name)
+	mut selected_field_names := map[string]bool{}
+	for requested_field in requested_fields {
+		mut field_name := requested_field.name
+		if field_name.starts_with('${table_sym.name}.') {
+			field_name = field_name.all_after('${table_sym.name}.')
+		} else if field_name.starts_with('${short_table_name}.') {
+			field_name = field_name.all_after('${short_table_name}.')
+		}
+		if field_name !in field_names {
+			c.orm_error(util.new_suggestion(field_name, field_names).say('`${table_sym.name}` structure has no field with name `${field_name}`'),
+				requested_field.pos)
+			return none
+		}
+		selected_field_names[field_name] = true
+	}
+	mut selected_fields := []ast.StructField{cap: requested_fields.len}
+	for field in fields {
+		if field.name in selected_field_names {
+			selected_fields << field
+		}
+	}
+	return selected_fields
 }
 
 // walkingdevel: Now I don't think it's a good solution
@@ -1332,6 +1515,8 @@ fn (mut c Checker) get_non_array_type(typ_ ast.Type) (ast.Type, &ast.TypeSymbol)
 // It checks that the joined table type exists and is a struct,
 // and validates the ON expression.
 fn (mut c Checker) check_orm_join_clause(mut join ast.JoinClause, main_table_sym &ast.TypeSymbol) bool {
+	c.resolve_orm_table_expr_type(mut join.table_expr)
+
 	// Check that the joined table type exists
 	if !c.ensure_type_exists(join.table_expr.typ, join.pos) {
 		return false

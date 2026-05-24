@@ -1,6 +1,7 @@
 module html
 
 import os
+import strings
 
 // The W3C Document Object Model (DOM) is a platform and language-neutral
 // interface that allows programs and scripts to dynamically access and
@@ -172,6 +173,24 @@ fn (mut dom DocumentObjectModel) construct(tag_list []&Tag) {
 		}
 	} // println(tag_list[root_index]) for debug purposes
 	dom.root = tag_list[0]
+	mut root := dom.root
+	dom.normalize_tag_content(mut root)
+}
+
+fn (mut dom DocumentObjectModel) normalize_tag_content(mut tag Tag) {
+	tag.text_content = tag.content
+	tag.content_is_inner_html = true
+	if tag.children.len == 0 {
+		return
+	}
+	mut inner_html := strings.new_builder(tag.content.len + tag.children.len * 32)
+	inner_html.write_string(tag.text_content)
+	for idx := 0; idx < tag.children.len; idx++ {
+		mut child := tag.children[idx]
+		dom.normalize_tag_content(mut child)
+		inner_html.write_string(child.str())
+	}
+	tag.content = inner_html.str()
 }
 
 // get_root returns the root of the document.

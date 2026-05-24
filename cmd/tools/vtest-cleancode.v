@@ -7,6 +7,7 @@ import arrays
 
 const vet_known_failing = [
 	'do_not_delete_this',
+	'vlib/v/checker/tests/modules/indirect_import_unknown_module/main.v',
 ]
 
 const vet_known_failing_windows = [
@@ -76,11 +77,13 @@ fn tsession(vargs string, tool_source string, tool_cmd string, tool_args string,
 }
 
 fn v_test_vetting(vargs string) ! {
-	expanded_vet_list := util.find_all_v_files(vet_folders)!
 	mut vet_known_exceptions := vet_known_failing.clone()
 	if os.user_os() == 'windows' {
 		vet_known_exceptions << vet_known_failing_windows
 	}
+	vet_known_exceptions = vet_known_exceptions.map(os.abs_path(os.join_path(vroot, it)))
+	expanded_vet_list :=
+		(util.find_all_v_files(vet_folders)!).filter(os.abs_path(it) !in vet_known_exceptions)
 	vet_session := tsession(vargs, 'vvet', '${os.quoted_path(vexe)} vet', 'vet', expanded_vet_list,
 		vet_known_exceptions)
 

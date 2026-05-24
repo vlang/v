@@ -197,11 +197,6 @@ pub fn (mut s Scope) reset_smartcasts(name string) {
 // selector_expr:  name.field_name
 pub fn (mut s Scope) register_struct_field(name string, field ScopeStructField) {
 	k := '${name}.${field.name}'
-	if f := s.struct_fields[k] {
-		if f.struct_type == field.struct_type {
-			return
-		}
-	}
 	s.struct_fields[k] = field
 }
 

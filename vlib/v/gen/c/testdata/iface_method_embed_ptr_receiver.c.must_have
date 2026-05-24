@@ -1,1 +1,1 @@
-._method_level = (void*) main__Log_level,
+._method_level = main__Log_level_Interface_main__Leveler_method_adapter,

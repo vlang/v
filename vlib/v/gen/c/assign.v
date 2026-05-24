@@ -35,7 +35,16 @@ fn (g &Gen) is_smartcast_assign_lhs(expr ast.Expr) bool {
 			}
 			scope_field := expr.scope.find_struct_field(smartcast_selector_expr_str(expr),
 				expr.expr_type, expr.field_name)
-			return scope_field != unsafe { nil } && scope_field.smartcasts.len > 0
+			if scope_field == unsafe { nil } || scope_field.smartcasts.len == 0 {
+				return false
+			}
+			// Option field smartcast on LHS: the assignment replaces the option
+			// as a whole (e.g. `s.x = 10` or `s.x = none` inside `if s.x != none`),
+			// so skip unwrap treatment that's only meant for sumtype reassignments.
+			if scope_field.orig_type.has_flag(.option) {
+				return false
+			}
+			return true
 		}
 		else {
 			return false
@@ -74,7 +83,104 @@ fn (mut g Gen) expr_in_value_context(expr ast.Expr, value_type ast.Type, expecte
 		else {}
 	}
 
+	if expected_type.has_flag(.shared_f) && !value_type.has_flag(.shared_f) && value_type.is_ptr()
+		&& !expected_type.has_option_or_result() {
+		g.expr_with_cast(expr_copy, value_type, expected_type)
+		return
+	}
 	g.expr(expr_copy)
+}
+
+fn (mut g Gen) auto_heap_assignment_uses_existing_storage(expr ast.Expr, expr_type ast.Type) bool {
+	// Reusing container-backed storage avoids leaking a fresh HEAP() copy for
+	// `@[heap]` values like `x := arr[i]`. Keep the old path under autofree,
+	// because aliasing array storage there would hand ownership to the local.
+	if g.is_autofree {
+		return false
+	}
+	return match expr {
+		ast.IndexExpr { g.auto_heap_array_index_uses_existing_storage(expr, expr_type) }
+		else { false }
+	}
+}
+
+fn (mut g Gen) auto_heap_array_index_uses_existing_storage(node ast.IndexExpr, expr_type ast.Type) bool {
+	if node.index is ast.RangeExpr || node.or_expr.kind != .absent || node.is_option {
+		return false
+	}
+	mut resolved_expr_type := g.recheck_concrete_type(g.resolved_expr_type(ast.Expr(node),
+		expr_type))
+	if resolved_expr_type == 0 || resolved_expr_type == ast.void_type {
+		resolved_expr_type = g.recheck_concrete_type(expr_type)
+	}
+	if resolved_expr_type == 0 || resolved_expr_type == ast.void_type {
+		resolved_expr_type = g.recheck_concrete_type(node.typ)
+	}
+	elem_type := g.unwrap_generic(resolved_expr_type)
+	if elem_type == 0 || elem_type.is_ptr() || !g.table.final_sym(elem_type).is_heap() {
+		return false
+	}
+	mut resolved_left_type := g.recheck_concrete_type(g.resolved_expr_type(node.left,
+		node.left_type))
+	if resolved_left_type == 0 || resolved_left_type == ast.void_type {
+		resolved_left_type = g.recheck_concrete_type(node.left_type)
+	}
+	left_sym := g.table.final_sym(g.unwrap_generic(resolved_left_type))
+	return left_sym.kind == .array
+}
+
+fn (mut g Gen) write_auto_heap_assignment_expr(expr ast.Expr, expr_type ast.Type) bool {
+	return match expr {
+		ast.IndexExpr { g.write_auto_heap_array_index_expr(expr, expr_type) }
+		else { false }
+	}
+}
+
+fn (mut g Gen) write_auto_heap_array_index_expr(node ast.IndexExpr, expr_type ast.Type) bool {
+	if !g.auto_heap_array_index_uses_existing_storage(node, expr_type) {
+		return false
+	}
+	mut resolved_expr_type := g.recheck_concrete_type(g.resolved_expr_type(ast.Expr(node),
+		expr_type))
+	if resolved_expr_type == 0 || resolved_expr_type == ast.void_type {
+		resolved_expr_type = g.recheck_concrete_type(expr_type)
+	}
+	if resolved_expr_type == 0 || resolved_expr_type == ast.void_type {
+		resolved_expr_type = g.recheck_concrete_type(node.typ)
+	}
+	elem_type := g.unwrap_generic(resolved_expr_type)
+	elem_type_str := g.styp(elem_type)
+	mut resolved_left_type := g.recheck_concrete_type(g.resolved_expr_type(node.left,
+		node.left_type))
+	if resolved_left_type == 0 || resolved_left_type == ast.void_type {
+		resolved_left_type = g.recheck_concrete_type(node.left_type)
+	}
+	left_type := if resolved_left_type != 0 { resolved_left_type } else { node.left_type }
+	left_is_ptr := left_type.is_ptr() || node.left.is_auto_deref_var()
+	left_is_shared := left_type.has_flag(.shared_f)
+	array_get_fn := if node.is_gated { 'builtin__array_get_ni' } else { 'builtin__array_get' }
+	g.write('((${elem_type_str}*)${array_get_fn}(')
+	if left_is_ptr && !left_is_shared {
+		g.write('*')
+	}
+	if node.left is ast.IndexExpr {
+		g.inside_array_index = true
+		g.expr(ast.Expr(node.left))
+		g.inside_array_index = false
+	} else {
+		g.expr(ast.Expr(node.left))
+	}
+	if left_is_shared {
+		if left_is_ptr {
+			g.write('->val')
+		} else {
+			g.write('.val')
+		}
+	}
+	g.write(', ')
+	g.expr(node.index)
+	g.write('))')
+	return true
 }
 
 fn (mut g Gen) write_assign_target_expr(left ast.Expr, var_type ast.Type) {
@@ -156,16 +262,16 @@ fn assign_expr_unwraps_option_or_result(expr ast.Expr) bool {
 }
 
 fn (mut g Gen) decl_assign_struct_init_needs_tmp(expr ast.Expr) bool {
-	node := match expr {
+	mut node := ast.StructInit{}
+	match expr {
 		ast.StructInit {
-			expr
+			node = expr
 		}
 		ast.ParExpr {
-			if expr.expr is ast.StructInit {
-				expr.expr
-			} else {
+			if expr.expr !is ast.StructInit {
 				return false
 			}
+			node = expr.expr as ast.StructInit
 		}
 		else {
 			return false
@@ -356,8 +462,9 @@ fn (mut g Gen) expr_opt_with_cast(expr ast.Expr, expr_typ ast.Type, ret_typ ast.
 				if ret_sym.kind == .sum_type {
 					exp_sym := g.table.sym(expr_typ)
 					fname := g.get_sumtype_casting_fn(expr_typ, ret_typ)
-					g.call_cfn_for_casting_expr(fname, expr, ret_typ, expr_typ, ret_sym.cname,
-						expr_typ.is_ptr(), exp_sym.kind == .function, g.styp(expr_typ))
+					g.call_cfn_for_casting_expr(fname, expr, ret_typ, expr_typ, expr_typ,
+						ret_sym.cname, expr_typ.is_ptr(), exp_sym.kind == .function,
+						g.styp(expr_typ))
 				} else {
 					g.write('*((${g.base_type(expr_typ)}*)')
 					g.expr(expr)
@@ -467,6 +574,7 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 		g.assign_op = .unknown
 		g.inside_assign = false
 		g.assign_ct_type.clear()
+		g.expected_rhs_type_by_pos.clear()
 		g.arraymap_set_pos = 0
 		g.is_arraymap_set = false
 		g.is_assign_lhs = false
@@ -525,8 +633,9 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 	}
 	// Free the old value assigned to this string var (only if it's `str = [new value]`
 	// or `x.str = [new value]` )
-	mut af := g.is_autofree && !g.is_builtin_mod && !g.is_autofree_tmp && node.op == .assign
-		&& node.left_types.len == 1 && node.left[0] in [ast.Ident, ast.SelectorExpr]
+	mut af := g.is_autofree && !g.is_builtin_mod && !g.is_autofree_tmp && node.left_types.len == 1
+		&& node.left[0] in [ast.Ident, ast.SelectorExpr] && (node.op == .assign
+		|| (node.op == .plus_assign && node.left_types[0] == ast.string_type))
 	if af && node.right.len == 1 && node.right[0] is ast.CallExpr {
 		call_expr := node.right[0] as ast.CallExpr
 		if call_expr.is_method && call_expr.left is ast.CallExpr {
@@ -538,7 +647,8 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 	if af {
 		first_left_type := node.left_types[0]
 		first_left_sym := g.table.sym(node.left_types[0])
-		if first_left_type == ast.string_type || first_left_sym.kind == .array {
+		if first_left_type == ast.string_type
+			|| (node.op == .assign && first_left_sym.kind == .array) {
 			type_to_free = if first_left_type == ast.string_type { 'string' } else { 'array' }
 			mut ok := true
 			left0 := node.left[0]
@@ -621,7 +731,15 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 				val_type = g.unwrap_generic(resolved_right_type)
 			}
 		}
-		val := node.right[i]
+		mut val := node.right[i]
+		expected_lhs_type := var_type
+		if expected_lhs_type != 0 && expected_lhs_type != ast.void_type
+			&& !expected_lhs_type.has_option_or_result() && val in [ast.IfExpr, ast.MatchExpr] {
+			g.expected_rhs_type_by_pos[val.pos().pos] = expected_lhs_type
+		}
+		mut str_add_rhs_tmp := ''
+		mut str_add_rhs_needs_free := false
+		mut skip_str_add_rhs_clone := false
 		if is_decl && g.cur_concrete_types.len > 0 && val is ast.CallExpr
 			&& val.return_type_generic != 0 {
 			mut resolved_val_type := g.resolve_return_type(val).clear_option_and_result()
@@ -812,8 +930,12 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 							}
 						}
 					} else if val is ast.ComptimeCall {
-						key_str := '${val.method_name}.return_type'
-						var_type = g.type_resolver.get_ct_type_or_default(key_str, var_type)
+						var_type = if val.kind in [.zero, .new] {
+							g.comptime_zero_new_result_type(val, var_type)
+						} else {
+							key_str := '${val.method_name}.return_type'
+							g.type_resolver.get_ct_type_or_default(key_str, var_type)
+						}
 						val_type = var_type
 						left.obj.typ = var_type
 						g.type_resolver.update_ct_type(left.name, var_type)
@@ -1028,6 +1150,9 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 				ast.ComptimeSelector {
 					should_recompute_decl_type = true
 				}
+				ast.ComptimeCall {
+					should_recompute_decl_type = val.kind in [.zero, .new]
+				}
 				ast.CastExpr {
 					should_recompute_decl_type = val.typ.has_flag(.generic)
 						|| g.type_has_unresolved_generic_parts(val.typ)
@@ -1054,8 +1179,10 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 					|| val.receiver_type.has_flag(.generic)
 					|| g.type_has_unresolved_generic_parts(val.receiver_type)))
 			}
-			mut resolved_val_type := if val is ast.Ident && val.or_expr.kind != .absent
-				&& g.cur_fn != unsafe { nil } && g.cur_concrete_types.len > 0 {
+			mut resolved_val_type := if val is ast.ComptimeCall && val.kind in [.zero, .new] {
+				g.comptime_zero_new_result_type(val, val_type)
+			} else if val is ast.Ident && val.or_expr.kind != .absent && g.cur_fn != unsafe { nil }
+				&& g.cur_concrete_types.len > 0 {
 				or_value_type := g.resolved_or_block_value_type(val.or_expr)
 				if or_value_type != 0 {
 					or_value_type
@@ -1114,7 +1241,8 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 				// When assigning from an auto-deref variable (e.g. mut ref param),
 				// the resolved type from scope includes the extra pointer level.
 				// Deref it to match the V value semantics.
-				if val is ast.Ident && val.is_auto_deref_var() && resolved_val_type.is_ptr() {
+				if val is ast.Ident && val.is_auto_deref_var() && resolved_val_type.is_ptr()
+					&& !g.auto_deref_source_type_is_pointer(val) {
 					resolved_val_type = resolved_val_type.deref()
 				}
 				// Preserve shared/atomic flags from the original declaration.
@@ -1308,7 +1436,7 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 			left_name := c_name(left.str())
 			is_fn_param := left is ast.Ident && left.is_auto_deref_var()
 			if is_fn_param {
-				// Function params use _option_T_ptr* type, copy data through pointer
+				// Function params use _option_T* type, copy data through pointer
 				val_base_type := g.base_type(val_type)
 				g.writeln('${left_name}->state = ${tmp_var}.state;')
 				g.writeln('memcpy(&${left_name}->data, ${tmp_var}.data, sizeof(${val_base_type}));')
@@ -1332,7 +1460,11 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 			} else if g.inside_for_c_stmt {
 				g.expr(val)
 			} else if var_type.has_flag(.option) {
-				g.expr_with_opt(val, val_type, var_type)
+				// Blank ident option types can be stale across generic instantiations.
+				// Use the actual RHS option type when it is available so `_ = val`
+				// does not rewrap the expression into a mismatched option payload.
+				blank_option_type := if val_type.has_flag(.option) { val_type } else { var_type }
+				g.expr_with_opt(val, val_type, blank_option_type)
 			} else {
 				if left_sym.kind == .function {
 					g.write('{void* _ = ')
@@ -1342,7 +1474,8 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 					// the checker's left_types[i] for blank idents can be
 					// overwritten by a later generic instantiation.
 					mut blank_styp := g.styp(val_type)
-					if val is ast.Ident && val.is_auto_deref_var() {
+					if val is ast.Ident && val.is_auto_deref_var()
+						&& !g.auto_deref_source_type_is_pointer(val) {
 						blank_styp = '${blank_styp}*'
 					}
 					if blank_styp.ends_with('*') {
@@ -1367,8 +1500,8 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 				}
 				g.writeln(';}')
 			}
-		} else if node.op == .assign && (is_fixed_array_init
-			|| (unaliased_right_sym.kind == .array_fixed && val in [ast.Ident, ast.CastExpr])) {
+		} else if node.op == .assign && (is_fixed_array_init || is_fixed_array_var
+			|| (unaliased_right_sym.kind == .array_fixed && val is ast.CastExpr)) {
 			// Fixed arrays
 			if unaliased_left_sym.kind != .array_fixed && unaliased_right_sym.kind == .array_fixed
 				&& (g.pref.translated || g.file.is_translated) {
@@ -1399,37 +1532,39 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 					g.writeln(', sizeof(${g.styp(var_type)}));')
 				}
 			} else {
-				mut v_var := ''
 				arr_typ := styp.trim('*')
-				if is_fixed_array_init {
-					right := val as ast.ArrayInit
-					v_var = g.new_tmp_var()
-					g.write('${arr_typ} ${v_var} = ')
-					g.expr(right)
-					g.writeln(';')
+				old_is_assign_lhs := g.is_assign_lhs
+				// For map IndexExpr LHS, keep is_assign_lhs = true so the index
+				// generator emits `map_get_and_set` (which inserts missing keys)
+				// instead of `map_get` (which returns a zero-default buffer).
+				left_is_map_index := left is ast.IndexExpr
+					&& g.table.final_sym(left.left_type).kind == .map
+				g.is_assign_lhs = left_is_map_index
+				left_expr := g.expr_string(left)
+				if !is_fixed_array_init && assign_expr_unwraps_option_or_result(val) {
+					// val has an or-block — its code generator emits unwrap
+					// statements via go_before_last_stmt(), so we must emit
+					// memcpy() inline. Capturing val with expr_string() would
+					// slurp those statements into the memcpy() argument list.
+					g.write('memcpy(${left_expr}, ')
+					g.expr(val)
+					g.writeln(', sizeof(${arr_typ}));')
 				} else {
-					v_var = g.expr_string(val)
-				}
-				pos := g.out.len
-				g.expr(left)
-
-				if g.is_arraymap_set && g.arraymap_set_pos >= 0 {
-					if g.arraymap_set_pos > 0 {
-						g.go_back_to(g.arraymap_set_pos)
+					mut fixed_right_expr := ''
+					if is_fixed_array_init {
+						right := val as ast.ArrayInit
+						right_var := g.new_tmp_var()
+						g.write('${arr_typ} ${right_var} = ')
+						g.expr(right)
+						g.writeln(';')
+						fixed_right_expr = right_var
+					} else {
+						fixed_right_expr = g.expr_string(val)
 					}
-					g.write(', &${v_var})')
-					g.is_arraymap_set = false
-					g.arraymap_set_pos = 0
-				} else {
-					g.go_back_to(pos)
-					is_var_mut := !is_decl && left.is_auto_deref_var()
-					addr_left := if is_var_mut { '' } else { '&' }
 					g.writeln('')
-					g.write('memcpy(${addr_left}')
-					g.expr(left)
-					addr_val := if is_fixed_array_var { '' } else { '&' }
-					g.writeln(', ${addr_val}${v_var}, sizeof(${arr_typ}));')
+					g.writeln('memcpy(${left_expr}, ${fixed_right_expr}, sizeof(${arr_typ}));')
 				}
+				g.is_assign_lhs = old_is_assign_lhs
 				g.is_assign_lhs = false
 			}
 		} else {
@@ -1480,7 +1615,31 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 				&& left.is_auto_deref_arg() {
 				is_mut_arg_pointer_rebind = true
 			}
-			if node.op == .plus_assign && unaliased_right_sym.kind == .string {
+			if node.op == .plus_assign && g.is_string_type(var_type)
+				&& g.is_string_concat_type(val_type) {
+				if g.is_autofree && !g.is_builtin_mod && !g.is_autofree_tmp
+					&& (!g.is_string_type(val_type)
+					|| val !in [ast.Ident, ast.StringLiteral, ast.SelectorExpr, ast.ComptimeSelector]) {
+					str_add_rhs_tmp = '_str_add_rhs_${node.pos.pos}_${i}'
+					if g.is_string_type(val_type) {
+						g.writeln(g.autofree_tmp_arg_init_stmt('string ${str_add_rhs_tmp} = ', val))
+					} else {
+						g.writeln('string ${str_add_rhs_tmp} = ${g.expr_string_with_cast(val,
+							val_type, ast.string_type)};')
+						val_type = ast.string_type
+					}
+					val = ast.Expr(ast.Ident{
+						mod:  g.cur_mod.name
+						name: str_add_rhs_tmp
+					})
+					str_add_rhs_needs_free = true
+					skip_str_add_rhs_clone = true
+					defer(fn) {
+						if str_add_rhs_needs_free {
+							g.writeln('builtin__string_free(&${str_add_rhs_tmp});')
+						}
+					}
+				}
 				if mut left is ast.IndexExpr {
 					if g.table.sym(left.left_type).kind == .array_fixed {
 						// strs[0] += str2 => `strs[0] = _string__plus(strs[0], str2)`
@@ -1795,7 +1954,8 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 			mut cloned := false
 			if g.is_autofree {
 				if right_sym.kind in [.array, .string] && !unwrapped_val_type.has_flag(.shared_f) {
-					if g.gen_clone_assignment(var_type, val, unwrapped_val_type, false) {
+					if !skip_str_add_rhs_clone
+						&& g.gen_clone_assignment(var_type, val, unwrapped_val_type, false) {
 						cloned = true
 					}
 				} else if right_sym.info is ast.Interface && var_type != ast.error_type {
@@ -1857,6 +2017,9 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 					} else {
 						is_option_unwrapped := assign_expr_unwraps_option_or_result(val)
 						is_option_auto_heap := is_auto_heap && is_option_unwrapped
+						auto_heap_uses_existing_storage := is_auto_heap && !is_fn_var
+							&& !is_option_auto_heap
+							&& g.auto_heap_assignment_uses_existing_storage(val, val_type)
 						// For large structs (with large fixed arrays), avoid stack-allocated
 						// compound literals which can cause stack overflow. Use vcalloc directly.
 						mut is_large_struct_heap := false
@@ -1864,7 +2027,8 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 							&& g.struct_has_large_fixed_array(val.typ) {
 							is_large_struct_heap = true
 						}
-						if is_auto_heap && !is_fn_var && !is_large_struct_heap {
+						if is_auto_heap && !is_fn_var && !is_large_struct_heap
+							&& !auto_heap_uses_existing_storage {
 							if aligned != 0 {
 								g.write('HEAP_align(${styp}, (')
 							} else {
@@ -1876,7 +2040,8 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 								}
 							}
 						}
-						if !is_fn_var && val.is_auto_deref_var() && !is_option_unwrapped {
+						if !is_fn_var && val.is_auto_deref_var() && !is_option_unwrapped
+							&& !g.auto_deref_source_type_is_pointer(val) {
 							g.write('*')
 						}
 						if (var_type.has_flag(.option) && val !in [ast.Ident, ast.SelectorExpr])
@@ -1982,7 +2147,11 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 								}
 							}
 							if nval == val {
-								g.expr_in_value_context(nval, val_type, var_type)
+								if auto_heap_uses_existing_storage {
+									g.write_auto_heap_assignment_expr(nval, val_type)
+								} else {
+									g.expr_in_value_context(nval, val_type, var_type)
+								}
 								if !is_fn_var && is_auto_heap && is_option_auto_heap
 									&& !is_large_struct_heap {
 									if aligned != 0 {
@@ -1995,7 +2164,7 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 							g.inside_assign_fn_var = old_inside_assign_fn_var
 						}
 						if !is_fn_var && is_auto_heap && !is_option_auto_heap
-							&& !is_large_struct_heap {
+							&& !auto_heap_uses_existing_storage && !is_large_struct_heap {
 							if aligned != 0 {
 								g.write('), ${aligned})')
 							} else {
@@ -2069,9 +2238,9 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 										&& right_type_for_compare == exp_type_for_compare
 									right_is_auto_heap := right_ident.is_auto_heap()
 										|| g.resolved_ident_is_auto_heap(right_ident)
-									use_raw_auto_heap_ident = right_is_auto_heap
-										&& !use_heap_pointed_ident && resolved_right_type != 0
-										&& !resolved_right_type.is_ptr()
+									use_raw_auto_heap_ident = exp_type.is_ptr()
+										&& right_is_auto_heap && !use_heap_pointed_ident
+										&& resolved_right_type != 0 && !resolved_right_type.is_ptr()
 								}
 							}
 							if use_heap_pointed_ident {

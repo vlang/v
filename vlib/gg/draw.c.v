@@ -75,7 +75,7 @@ pub fn (ctx &Context) draw_line(x f32, y f32, x2 f32, y2 f32, c Color) {
 	}
 	sgl.c4b(c.r, c.g, c.b, c.a)
 
-	sgl.begin_line_strip()
+	sgl.begin_lines()
 	sgl.v2f(x * ctx.scale, y * ctx.scale)
 	sgl.v2f(x2 * ctx.scale, y2 * ctx.scale)
 	sgl.end()

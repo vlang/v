@@ -28,7 +28,7 @@ sequence in big endian, we get `0x12345678`.
 
 For generic `T` data encoding/decoding, you can use `encode_binary[T]()` and `decode_binary[T]()`:
 
-```v
+```v oksyntax
 module main
 
 import encoding.binary

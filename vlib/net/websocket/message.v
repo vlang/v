@@ -216,8 +216,7 @@ pub fn (mut ws Client) parse_frame_header() !Frame {
 	for ws.get_state() == .open {
 		read_bytes := ws.socket_read_ptr(&rbuff[0], 1)!
 		if read_bytes == 0 {
-			// this is probably a timeout or close
-			continue
+			return error('websocket peer closed connection')
 		}
 		buffer[bytes_read] = rbuff[0]
 		bytes_read++

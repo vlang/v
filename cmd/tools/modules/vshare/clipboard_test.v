@@ -46,7 +46,12 @@ fn test_copy_to_clipboard_with_commands_uses_the_first_working_command() {
 			command:    fake_clipboard_command()
 		},
 	])
-	assert os.read_file(output_path)! == 'https://play.vlang.io/p/test'
+	output := os.read_file(output_path)!
+	$if windows {
+		assert output.trim_right('\r\n') == 'https://play.vlang.io/p/test'
+	} $else {
+		assert output == 'https://play.vlang.io/p/test'
+	}
 }
 
 fn fake_clipboard_command() string {

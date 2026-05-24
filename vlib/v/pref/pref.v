@@ -56,8 +56,7 @@ pub enum Subsystem {
 
 pub enum Backend {
 	c               // The (default) C backend
-	golang          // Go backend
-	interpret       // Interpret the ast
+	interpret       // Removed V1 interpreter backend; kept for compatibility diagnostics.
 	js_node         // The JavaScript NodeJS backend
 	js_browser      // The JavaScript browser backend
 	js_freestanding // The JavaScript freestanding backend
@@ -122,7 +121,7 @@ pub mut:
 	is_fmt             bool
 	is_vdoc            bool
 	is_vet             bool
-	is_vweb            bool // skip _ var warning in templates
+	is_template        bool // skip _ var warning in templates
 	is_ios_simulator   bool
 	is_apk             bool     // build as Android .apk format
 	is_help            bool     // -h, -help or --help was passed
@@ -247,6 +246,7 @@ pub mut:
 	build_options       []string    // list of options, that should be passed down to `build-module`, if needed for -usecache
 	cache_manager       vcache.CacheManager
 	gc_mode             GarbageCollectionMode = .unknown // .no_gc, .boehm, .boehm_leak, ...
+	gc_set_by_flag      bool              // true when the compiler receives `-gc`
 	assert_failure_mode AssertFailureMode // whether to call abort() or print_backtrace() after an assertion failure
 	message_limit       int = 200 // the maximum amount of warnings/errors/notices that will be accumulated
 	nofloat             bool // for low level code, like kernels: replaces f32 with u32 and f64 with u64
@@ -386,7 +386,6 @@ const internal_v_commands = [
 	'update',
 	'upgrade',
 	'vlib-docs',
-	'interpret',
 	'translate',
 ]
 
@@ -529,6 +528,11 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 			'-v2' {
 				res.use_v2 = true
 			}
+			'-eval', '--eval' {
+				if !use_v2_requested {
+					eprintln_exit('use v -v2 -eval file.v')
+				}
+			}
 			'-ownership' {
 				// Passed through to v2 compiler for ownership checking
 			}
@@ -584,6 +588,7 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 			}
 			'-gc' {
 				gc_mode := cmdline.option(args[i..], '-gc', '')
+				res.gc_set_by_flag = true
 				match gc_mode {
 					'none' {
 						res.gc_mode = .no_gc
@@ -683,6 +688,8 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 			}
 			'-live' {
 				res.is_livemain = true
+				res.compile_defines << 'livemain'
+				res.compile_defines_all << 'livemain'
 			}
 			'-sharedlive' {
 				res.is_liveshared = true
@@ -756,6 +763,7 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 			}
 			'-no-retry-compilation' {
 				res.retry_compilation = false
+				res.build_options << arg
 			}
 			'-musl' {
 				res.is_musl = true
@@ -935,6 +943,9 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 			}
 			'-prealloc' {
 				res.prealloc = true
+				if !res.gc_set_by_flag {
+					res.gc_mode = .no_gc
+				}
 				res.build_options << arg
 			}
 			'-no-parallel' {
@@ -950,7 +961,7 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 				eprintln_exit('The native backend has been removed. Use `v -v2 -b arm64` or `v -v2 -b x64` instead.')
 			}
 			'-interpret' {
-				res.backend = .interpret
+				eprintln_exit('use v -v2 -eval file.v')
 			}
 			'-W' {
 				res.warns_are_errors = true
@@ -1087,7 +1098,7 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 					continue
 				}
 				b := backend_from_string(sbackend) or {
-					eprintln_exit('Unknown V backend: ${sbackend}\nValid -backend choices are: c, go, interpret, js, js_node, js_browser, js_freestanding, wasm')
+					eprintln_exit('Unknown V backend: ${sbackend}\nValid -backend choices are: c, js, js_node, js_browser, js_freestanding, wasm, arm64, x64')
 				}
 				if b == .wasm {
 					res.compile_defines << 'wasm'
@@ -1299,18 +1310,7 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 		res.path = command
 		res.run_args = command_args
 	} else if command == 'interpret' {
-		res.backend = .interpret
-		res.path = command_args[0] or { eprintln_exit('v interpret: no v files listed') }
-		if res.path != '' {
-			must_exist(res.path)
-			if !res.path.ends_with('.v') && os.is_executable(res.path) && os.is_file(res.path)
-				&& os.is_file(res.path + '.v') {
-				eprintln_cond(show_output && !res.is_quiet,
-					'It looks like you wanted to run "${res.path}.v", so we went ahead and did that since "${res.path}" is an executable.')
-				res.path += '.v'
-			}
-		}
-		res.run_args = command_args[1..]
+		eprintln_exit('use v -v2 -eval file.v')
 	}
 	if command == 'build-module' {
 		res.build_mode = .build_module
@@ -1403,13 +1403,13 @@ pub fn backend_from_string(s string) !Backend {
 	// + a separate option, to choose the wanted JS output.
 	return match s {
 		'c' { .c }
-		'interpret' { .interpret }
+		'eval', 'interpret' { eprintln_exit('use v -v2 -eval file.v') }
 		'js', 'js_node' { .js_node }
 		'js_browser' { .js_browser }
 		'js_freestanding' { .js_freestanding }
 		'wasm' { .wasm }
 		'native' { eprintln_exit('The native backend has been removed. Use `v -v2 -b arm64` or `v -v2 -b x64` instead.') }
-		'go' { .golang }
+		'go', 'golang' { eprintln_exit('The Go backend has been removed. Use `v -v2 -b golang` instead.') }
 		else { error('Unknown backend type ${s}') }
 	}
 }
@@ -1421,14 +1421,31 @@ pub fn cc_from_string(s string) CompilerType {
 	}
 	cc := os.file_name(s).to_lower_ascii()
 	return match true {
-		cc.contains('tcc') || cc.contains('tinyc') { .tinyc }
-		cc.contains('gcc') { .gcc }
-		cc.contains('clang') { .clang }
-		cc.contains('emcc') { .emcc }
-		cc == 'cl' || cc == 'cl.exe' || cc.contains('msvc') { .msvc }
-		cc.contains('mingw') { .mingw }
-		cc.contains('++') { .cplusplus }
-		else { .gcc }
+		cc.contains('tcc') || cc.contains('tinyc') || cc.contains('tinygcc')
+			|| cc.contains('tiny_gcc') || cc.contains('tiny-gcc') {
+			.tinyc
+		}
+		cc.contains('gcc') {
+			.gcc
+		}
+		cc.contains('clang') {
+			.clang
+		}
+		cc.contains('emcc') {
+			.emcc
+		}
+		cc == 'cl' || cc == 'cl.exe' || cc.contains('msvc') {
+			.msvc
+		}
+		cc.contains('mingw') {
+			.mingw
+		}
+		cc.contains('++') {
+			.cplusplus
+		}
+		else {
+			.gcc
+		}
 	}
 }
 

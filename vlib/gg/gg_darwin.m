@@ -66,6 +66,20 @@ void gg_macos_resize_window(void *window_ptr, int width, int height) {
 	[window setContentSize:NSMakeSize((CGFloat)width, (CGFloat)height)];
 }
 
+void gg_macos_set_window_resizable(void *window_ptr, bool resizable) {
+	if (window_ptr == nil) {
+		return;
+	}
+	NSWindow *window = (__bridge NSWindow *)window_ptr;
+	NSWindowStyleMask style = [window styleMask];
+	if (resizable) {
+		style |= NSWindowStyleMaskResizable;
+	} else {
+		style &= ~NSWindowStyleMaskResizable;
+	}
+	[window setStyleMask:style];
+}
+
 void darwin_draw_string(int x, int y, string s, gg__TextCfg cfg) {
 	NSFont* font = [NSFont userFontOfSize:cfg.size];
 	// # NSFont*    font = [NSFont fontWithName:@"Roboto Mono" size:cfg.size];
@@ -114,6 +128,16 @@ void darwin_draw_rect(float x, float y, float width, float height, gg__Color c) 
 	NSRectFill(rect);
 }
 
+static void mark_view_tree_needs_display(NSView *view) {
+	if (view == nil) {
+		return;
+	}
+	[view setNeedsDisplay:YES];
+	for (NSView *subview in [view subviews]) {
+		mark_view_tree_needs_display(subview);
+	}
+}
+
 void darwin_window_refresh() {
 	dispatch_async(dispatch_get_main_queue(), ^{
 		NSWindow *window = [NSApp mainWindow];
@@ -123,7 +147,12 @@ void darwin_window_refresh() {
 		if (window == nil) {
 			return;
 		}
-		[[window contentView] setNeedsDisplay:YES];
+		NSView *contentView = [window contentView];
+		if (contentView == nil) {
+			return;
+		}
+		mark_view_tree_needs_display(contentView);
+		[window displayIfNeeded];
 	});
 
 	// puts("refresh");

@@ -7,7 +7,7 @@ $if tinyc {
 
 fn setup_symlink(custom_link_dir string) {
 	// Create a symlink in a local folder (by default .\.bin\v.exe).
-	// Puts `v` in %PATH% without polluting it with anything else (like make.bat).
+	// Puts `v` in %PATH% without polluting it with anything else (like makev.bat).
 	// This will make `v` available on cmd.exe, PowerShell, and MinGW(MSYS)/WSL/Cygwin
 	vsymlinkdir := normalized_link_dir(custom_link_dir)
 	mut vsymlink := symlink_path(vsymlinkdir)

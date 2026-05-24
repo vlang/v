@@ -1,14 +1,15 @@
-vlib/v/checker/tests/modules/unused_private_declarations/main.v:4:7: error: unused constant: `unused_const`
+vlib/v/checker/tests/modules/unused_private_declarations/main.v:4:7: notice: unused constant: `unused_const`
     2 | const used_by_pub_const = 3
     3 | const const_used_by_unused_fn = 2
     4 | const unused_const = 4
       |       ~~~~~~~~~~~~~~~~
     5 | 
     6 | fn used_fn() int {
-vlib/v/checker/tests/modules/unused_private_declarations/main.v:14:4: error: unused function: `unused_fn`
+vlib/v/checker/tests/modules/unused_private_declarations/main.v:14:4: notice: unused function: `unused_fn`
    12 | }
-   13 | 
+   13 |
    14 | fn unused_fn() int {
       |    ~~~~~~~~~
    15 |     return const_used_by_unused_fn
    16 | }
+1

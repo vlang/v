@@ -97,3 +97,45 @@ fn test_udp_read_timeout_is_honored_for_blocking_reads() ! {
 	assert read == payload.len
 	assert buf[..read].bytestr() == payload
 }
+
+fn test_udp_multicast_ipv4_socket_options() ! {
+	mut listener := net.listen_udp('0.0.0.0:0')!
+	defer {
+		listener.close() or {}
+	}
+
+	listener.join_multicast_group('224.0.0.1', '0.0.0.0')!
+	listener.leave_multicast_group('224.0.0.1', '0.0.0.0')!
+	listener.set_multicast_ttl(2)!
+	listener.set_multicast_loop(true)!
+	listener.set_multicast_loop(false)!
+	listener.set_multicast_interface('0.0.0.0')!
+}
+
+fn test_udp_multicast_validates_inputs() ! {
+	mut listener := net.listen_udp('0.0.0.0:0')!
+	defer {
+		listener.close() or {}
+	}
+
+	mut ttl_failed := false
+	listener.set_multicast_ttl(-1) or {
+		ttl_failed = true
+		assert err.msg().contains('multicast ttl')
+	}
+	assert ttl_failed
+
+	mut non_multicast_failed := false
+	listener.join_multicast_group('127.0.0.1', '') or {
+		non_multicast_failed = true
+		assert err.msg().contains('not an ipv4 multicast address')
+	}
+	assert non_multicast_failed
+
+	mut iface_failed := false
+	listener.set_multicast_interface('not-an-ip') or {
+		iface_failed = true
+		assert err.msg().contains('ipv4 multicast interface')
+	}
+	assert iface_failed
+}

@@ -1,11 +1,11 @@
 module builtin
 
-fn C.setvbuf(voidptr, &char, i32, usize) i32
+fn C.setvbuf(fstream &C.FILE, buffer &char, mode i32, size usize) i32
 
 // set_stream_unbuffered switches a stdio stream to unbuffered mode without using the
 // deprecated `setbuf` API on Windows toolchains.
 @[unsafe]
-fn set_stream_unbuffered(stream voidptr) {
+fn set_stream_unbuffered(stream &C.FILE) {
 	C.setvbuf(stream, &char(nil), C._IONBF, usize(0))
 }
 
@@ -64,6 +64,10 @@ pub fn flush_stdout() {
 	$if freestanding {
 		not_implemented := 'flush_stdout is not implemented\n'
 		bare_eprint(not_implemented.str, u64(not_implemented.len))
+	} $else $if builtin_write_buf_to_fd_should_use_c_write ? {
+		// Native backends do not reliably resolve C.stdout/C.stderr data symbols.
+		// Flush all libc output streams without referencing those globals directly.
+		C.fflush(unsafe { nil })
 	} $else {
 		C.fflush(C.stdout)
 	}
@@ -74,6 +78,10 @@ pub fn flush_stderr() {
 	$if freestanding {
 		not_implemented := 'flush_stderr is not implemented\n'
 		bare_eprint(not_implemented.str, u64(not_implemented.len))
+	} $else $if builtin_write_buf_to_fd_should_use_c_write ? {
+		// Native backends do not reliably resolve C.stdout/C.stderr data symbols.
+		// Flush all libc output streams without referencing those globals directly.
+		C.fflush(unsafe { nil })
 	} $else {
 		C.fflush(C.stderr)
 	}
@@ -95,9 +103,14 @@ pub fn flush_stderr() {
 // See https://www.gnu.org/software/libc/manual/html_node/Buffering-Concepts.html .
 // See https://pubs.opengroup.org/onlinepubs/9699919799/functions/V2_chap02.html#tag_15_05 .
 pub fn unbuffer_stdout() {
-	$if freestanding {
+	$if vinix {
+		return
+	} $else $if freestanding {
 		not_implemented := 'unbuffer_stdout is not implemented\n'
 		bare_eprint(not_implemented.str, u64(not_implemented.len))
+	} $else $if builtin_write_buf_to_fd_should_use_c_write ? {
+		// Native backends already print via write(), so there is no stdio buffer to adjust here.
+		return
 	} $else {
 		unsafe { set_stream_unbuffered(C.stdout) }
 	}
@@ -170,6 +183,11 @@ fn _write_buf_to_fd(fd int, buf &u8, buf_len int) {
 	mut ptr := unsafe { buf }
 	mut remaining_bytes := isize(buf_len)
 	mut x := isize(0)
+	$if windows {
+		if write_buf_to_console(fd, ptr, int(remaining_bytes)) {
+			return
+		}
+	}
 	$if freestanding || vinix || builtin_write_buf_to_fd_should_use_c_write ? {
 		// Flush any pending libc stdio output (from C.puts, C.putchar, etc.)
 		// before writing directly via write() syscall to prevent output reordering.

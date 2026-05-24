@@ -159,7 +159,8 @@ The End.
 [94mmodule[39m [32mmain[39m
     ## Description
     
-    This is an example of a an .md file, used for adding more rich text documentation in a project or module.
+    This is an example of a an .md file, used for adding more rich text
+    documentation in a project or module.
     
     This is a [link](https://vlang.io/) to the main V site.
     
@@ -345,6 +346,7 @@ The End.
     ```
     
     The End.
+    
 
 [94mconst[39m omega = [94m3[39m [90m// should be first[39m
 [94mconst[39m alpha = [94m5[39m [90m// should be in the middle[39m

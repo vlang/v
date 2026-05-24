@@ -36,3 +36,25 @@ fn test_is_tcc_compilation_failure_detects_tcc_alias_compiler() {
 	}
 	assert is_tcc_compilation_failure('cc', .unknown, '')
 }
+
+fn fake_windows_short_path(path string) string {
+	return path.replace(r'C:\Users\Léo', r'C:\Users\LEO~1')
+}
+
+fn test_rewrite_windows_path_arg_rewrites_quoted_object_paths() {
+	arg := r'"C:\Users\Léo\.vmodules\.cache\bc\artifact.o"'
+	expected := r'"C:\Users\LEO~1\.vmodules\.cache\bc\artifact.o"'
+	assert rewrite_windows_path_arg(arg, fake_windows_short_path) == expected
+}
+
+fn test_rewrite_windows_path_arg_rewrites_prefixed_paths() {
+	assert rewrite_windows_path_arg(r'-I"C:\Users\Léo\include"', fake_windows_short_path) == r'-I"C:\Users\LEO~1\include"'
+	assert rewrite_windows_path_arg(r'-L"C:\Users\Léo\lib"', fake_windows_short_path) == r'-L"C:\Users\LEO~1\lib"'
+	assert rewrite_windows_path_arg(r'-o "C:\Users\Léo\bin\tool.exe"', fake_windows_short_path) == r'-o "C:\Users\LEO~1\bin\tool.exe"'
+}
+
+fn test_rewrite_windows_path_arg_leaves_non_paths_alone() {
+	for arg in ['-bt25', '-std=c99', '-D_DEFAULT_SOURCE'] {
+		assert rewrite_windows_path_arg(arg, fake_windows_short_path) == arg
+	}
+}

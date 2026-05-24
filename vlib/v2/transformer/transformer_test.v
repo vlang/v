@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
-// vtest build: !windows
+// vtest build: macos
 module transformer
 
 import os
@@ -66,6 +66,213 @@ fn transform_code_for_test(code string) []ast.File {
 // string_type returns the builtin v2 string type.
 fn string_type() types.Type {
 	return types.string_
+}
+
+fn test_transform_folds_string_literal_concat() {
+	mut t := create_test_transformer()
+	result := t.transform_expr(ast.InfixExpr{
+		op:  .plus
+		lhs: ast.Expr(ast.StringLiteral{
+			kind:  .v
+			value: "'left-'"
+		})
+		rhs: ast.Expr(ast.StringLiteral{
+			kind:  .v
+			value: "'right'"
+		})
+	})
+
+	assert result is ast.StringLiteral, 'expected StringLiteral, got ${result.type_name()}'
+	lit := result as ast.StringLiteral
+	assert lit.kind == .v
+	assert lit.value == 'left-right'
+}
+
+fn test_transform_keeps_generic_array_elem_equality_as_infix() {
+	mut t := create_transformer_with_vars({
+		'a': types.Type(types.Array{
+			elem_type: types.Type(types.NamedType('T'))
+		})
+		'e': types.Type(types.NamedType('T'))
+	})
+	t.cur_fn_generic_params = ['T']
+	t.generic_var_type_params = {
+		'a': 'T'
+	}
+	t.env.set_expr_type(101, types.string_)
+	t.env.set_expr_type(102, types.string_)
+
+	result := t.transform_infix_expr(ast.InfixExpr{
+		op:  .eq
+		lhs: ast.Expr(ast.IndexExpr{
+			lhs:  ast.Expr(ast.Ident{
+				name: 'a'
+			})
+			expr: ast.Expr(ast.Ident{
+				name: 'idx'
+			})
+			pos:  token.Pos{
+				id: 101
+			}
+		})
+		rhs: ast.Expr(ast.Ident{
+			pos:  token.Pos{
+				id: 102
+			}
+			name: 'e'
+		})
+	})
+
+	assert result is ast.InfixExpr, 'generic equality should stay for specialized codegen'
+}
+
+fn test_transform_generic_module_call_uses_specialized_name() {
+	mut t := create_test_transformer()
+	mut scope := types.new_scope(unsafe { nil })
+	scope.insert('json', types.Module{
+		name: 'x.json2'
+	})
+	t.scope = scope
+
+	result := t.transform_expr(ast.CallExpr{
+		lhs:  ast.Expr(ast.GenericArgOrIndexExpr{
+			lhs:  ast.Expr(ast.SelectorExpr{
+				lhs: ast.Expr(ast.Ident{
+					name: 'json'
+				})
+				rhs: ast.Ident{
+					name: 'decode'
+				}
+			})
+			expr: ast.Expr(ast.Ident{
+				name: 'GitHubRepoInfo'
+			})
+		})
+		args: [
+			ast.Expr(ast.Ident{
+				name: 'body'
+			}),
+		]
+	})
+
+	assert result is ast.CallExpr, 'expected CallExpr, got ${result.type_name()}'
+	call := result as ast.CallExpr
+	assert call.lhs is ast.Ident
+	assert (call.lhs as ast.Ident).name == 'json2__decode_T_GitHubRepoInfo'
+	assert call.args.len == 1
+}
+
+fn test_transform_generic_module_call_or_cast_uses_specialized_name() {
+	mut t := create_test_transformer()
+	mut scope := types.new_scope(unsafe { nil })
+	scope.insert('json', types.Module{
+		name: 'x.json2'
+	})
+	t.scope = scope
+
+	result := t.transform_expr(ast.CallOrCastExpr{
+		lhs:  ast.Expr(ast.GenericArgOrIndexExpr{
+			lhs:  ast.Expr(ast.SelectorExpr{
+				lhs: ast.Expr(ast.Ident{
+					name: 'json'
+				})
+				rhs: ast.Ident{
+					name: 'decode'
+				}
+			})
+			expr: ast.Expr(ast.Ident{
+				name: 'GitHubRepoInfo'
+			})
+		})
+		expr: ast.Expr(ast.SelectorExpr{
+			lhs: ast.Expr(ast.Ident{
+				name: 'resp'
+			})
+			rhs: ast.Ident{
+				name: 'body'
+			}
+		})
+	})
+
+	assert result is ast.CallExpr, 'expected CallExpr, got ${result.type_name()}'
+	call := result as ast.CallExpr
+	assert call.lhs is ast.Ident
+	assert (call.lhs as ast.Ident).name == 'json2__decode_T_GitHubRepoInfo'
+	assert call.args.len == 1
+}
+
+fn test_transform_generic_module_call_or_cast_uses_array_specialized_name() {
+	mut t := create_test_transformer()
+	mut scope := types.new_scope(unsafe { nil })
+	scope.insert('json', types.Module{
+		name: 'x.json2'
+	})
+	t.scope = scope
+
+	result := t.transform_expr(ast.CallOrCastExpr{
+		lhs:  ast.Expr(ast.GenericArgOrIndexExpr{
+			lhs:  ast.Expr(ast.SelectorExpr{
+				lhs: ast.Expr(ast.Ident{
+					name: 'json'
+				})
+				rhs: ast.Ident{
+					name: 'decode'
+				}
+			})
+			expr: ast.Expr(ast.Type(ast.ArrayType{
+				elem_type: ast.Expr(ast.Ident{
+					name: 'GitHubContributor'
+				})
+			}))
+		})
+		expr: ast.Expr(ast.SelectorExpr{
+			lhs: ast.Expr(ast.Ident{
+				name: 'resp'
+			})
+			rhs: ast.Ident{
+				name: 'body'
+			}
+		})
+	})
+
+	assert result is ast.CallExpr, 'expected CallExpr, got ${result.type_name()}'
+	call := result as ast.CallExpr
+	assert call.lhs is ast.Ident
+	assert (call.lhs as ast.Ident).name == 'json2__decode_T_Array_GitHubContributor'
+	assert call.args.len == 1
+}
+
+fn test_transform_bare_generic_call_uses_specialized_name() {
+	mut t := create_test_transformer()
+	result := t.transform_expr(ast.CallExpr{
+		lhs:  ast.Expr(ast.GenericArgs{
+			lhs:  ast.Expr(ast.Ident{
+				name: 'run_new'
+			})
+			args: [
+				ast.Expr(ast.Ident{
+					name: 'A'
+				}),
+				ast.Expr(ast.Ident{
+					name: 'X'
+				}),
+			]
+		})
+		args: [
+			ast.Expr(ast.Ident{
+				name: 'app'
+			}),
+			ast.Expr(ast.Ident{
+				name: 'params'
+			}),
+		]
+	})
+
+	assert result is ast.CallExpr, 'expected CallExpr, got ${result.type_name()}'
+	call := result as ast.CallExpr
+	assert call.lhs is ast.Ident
+	assert (call.lhs as ast.Ident).name == 'run_new_T_A_X'
+	assert call.args.len == 2
 }
 
 // Create a rune-like type that returns 'rune' from name()
@@ -1344,4 +1551,130 @@ fn test_transform_not_in_inline_array_wraps_with_not() {
 	assert prefix.expr is ast.InfixExpr
 	inner := prefix.expr as ast.InfixExpr
 	assert inner.op == .logical_or
+}
+
+fn test_transformer_preserves_pointer_lifetime_in_v_syntax_but_not_c_names() {
+	mut t := create_test_transformer()
+	ptr_type := types.Type(types.Pointer{
+		base_type: types.Type(types.NamedType('Foo'))
+		lifetime:  'a'
+	})
+
+	ast_expr := t.type_to_ast_type_expr(ptr_type)
+	assert ast_expr is ast.Type
+	assert (ast_expr as ast.Type) is ast.PointerType
+	ptr_ast := (ast_expr as ast.Type) as ast.PointerType
+	assert ptr_ast.lifetime == 'a'
+	assert ptr_ast.base_type is ast.Ident
+	assert (ptr_ast.base_type as ast.Ident).name == 'Foo'
+
+	assert t.types_type_to_v(ptr_type) == '&^a Foo'
+	assert t.type_to_c_name(ptr_type) == 'Fooptr'
+}
+
+fn test_transformer_uses_pointer_type_receiver_name_for_scope_key() {
+	t := create_test_transformer()
+	receiver := ast.Expr(ast.Type(ast.PointerType{
+		base_type: ast.Expr(ast.Ident{
+			name: 'Ignore'
+		})
+		lifetime:  'a'
+	}))
+	assert t.get_receiver_type_name(receiver) == 'Ignore'
+}
+
+fn test_transformer_uses_pointer_type_for_generic_specialization_token() {
+	t := create_test_transformer()
+	foo_ptr := ast.Expr(ast.Type(ast.PointerType{
+		base_type: ast.Expr(ast.Ident{
+			name: 'Foo'
+		})
+	}))
+	bar_ptr := ast.Expr(ast.Type(ast.PointerType{
+		base_type: ast.Expr(ast.Ident{
+			name: 'Bar'
+		})
+	}))
+	assert t.generic_specialization_token(foo_ptr) == 'Fooptr'
+	assert t.generic_specialization_token(bar_ptr) == 'Barptr'
+	assert t.generic_specialization_suffix([foo_ptr]) == '_T_Fooptr'
+	assert t.generic_specialization_suffix([bar_ptr]) == '_T_Barptr'
+}
+
+fn test_transformer_preserves_lifetime_method_signature_and_nested_generic_return_type() {
+	files := transform_code_for_test('
+struct Ignore {}
+
+struct DirEntry {}
+
+struct Match[T] {
+	value T
+}
+
+struct IgnoreMatch[^a] {
+	ig &^a Ignore
+}
+
+fn (ig &^a Ignore) matched_dir_entry[^a](dent &DirEntry) Match[IgnoreMatch[^a]] {
+	return Match[IgnoreMatch[^a]]{
+		value: IgnoreMatch[^a]{
+			ig: ig
+		}
+	}
+}
+
+fn main() {
+	ig := Ignore{}
+	dent := DirEntry{}
+	ig.matched_dir_entry(&dent)
+}
+')
+	assert files.len == 1
+	file := files[0]
+	mut saw_method := false
+	mut saw_call := false
+	for stmt in file.stmts {
+		if stmt is ast.FnDecl && stmt.name == 'matched_dir_entry' {
+			saw_method = true
+			assert stmt.is_method
+			assert stmt.stmts.len > 0
+			assert stmt.receiver.typ is ast.Type
+			receiver_type := stmt.receiver.typ as ast.Type
+			assert receiver_type is ast.PointerType
+			receiver_ptr := receiver_type as ast.PointerType
+			assert receiver_ptr.lifetime == 'a'
+			assert stmt.typ.generic_params.len == 1
+			assert stmt.typ.generic_params[0] is ast.LifetimeExpr
+			assert (stmt.typ.generic_params[0] as ast.LifetimeExpr).name == 'a'
+			assert stmt.typ.return_type is ast.Type
+			return_type := stmt.typ.return_type as ast.Type
+			assert return_type is ast.GenericType
+			outer_generic := return_type as ast.GenericType
+			assert outer_generic.name is ast.Ident
+			assert (outer_generic.name as ast.Ident).name == 'Match'
+			assert outer_generic.params.len == 1
+			assert outer_generic.params[0] is ast.Type
+			inner_type := outer_generic.params[0] as ast.Type
+			assert inner_type is ast.GenericType
+			inner_generic := inner_type as ast.GenericType
+			assert inner_generic.name is ast.Ident
+			assert (inner_generic.name as ast.Ident).name == 'IgnoreMatch'
+			assert inner_generic.params.len == 1
+			assert inner_generic.params[0] is ast.LifetimeExpr
+			assert (inner_generic.params[0] as ast.LifetimeExpr).name == 'a'
+		}
+		if stmt is ast.FnDecl && stmt.name == 'main' {
+			assert stmt.stmts.len == 3
+			assert stmt.stmts[2] is ast.ExprStmt
+			expr_stmt := stmt.stmts[2] as ast.ExprStmt
+			assert expr_stmt.expr is ast.CallExpr
+			call := expr_stmt.expr as ast.CallExpr
+			assert call.lhs is ast.Ident
+			assert (call.lhs as ast.Ident).name == 'Ignore__matched_dir_entry'
+			assert call.args.len == 2
+			saw_call = true
+		}
+	}
+	assert saw_method
+	assert saw_call
 }

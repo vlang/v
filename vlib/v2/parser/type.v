@@ -24,9 +24,23 @@ fn (mut p Parser) try_type() ast.Expr {
 		// pointer: `&type`
 		.amp {
 			p.next()
-			return ast.PrefixExpr{
-				op:   .amp
-				expr: p.expect_type()
+			mut lifetime := ''
+			if p.tok == .xor {
+				p.next()
+				lifetime = p.expect_name()
+			}
+			return ast.Type(ast.PointerType{
+				base_type: p.expect_type()
+				lifetime:  lifetime
+			})
+		}
+		// lifetime: `^a`
+		.xor {
+			pos := p.pos
+			p.next()
+			return ast.LifetimeExpr{
+				name: p.expect_name()
+				pos:  pos
 			}
 		}
 		// comptime type: `$enum` | `$struct` |  etc

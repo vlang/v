@@ -36,3 +36,11 @@ fn test_decompose_variadic_generic_sumtype_array_arg() {
 	assert (params[0] as []u8).bytestr() == 'ab'
 	assert (params[1] as []u8).bytestr() == 'cd'
 }
+
+fn test_decompose_variadic_nested_string_array_arg() {
+	a := [['0']]
+	b := [['aa', 'bb']]
+	c := arrays.concat(a, ...b)
+	assert c == [['0'], ['aa', 'bb']]
+	assert c.str() == "[['0'], ['aa', 'bb']]"
+}

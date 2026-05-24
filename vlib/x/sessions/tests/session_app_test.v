@@ -3,7 +3,7 @@ import net.http
 import time
 import x.sessions
 import veb
-import x.sessions.vweb2_middleware
+import x.sessions.veb_middleware
 
 const port = 13010
 const localserver = 'http://127.0.0.1:${port}'
@@ -99,7 +99,7 @@ fn testsuite_begin() {
 		}
 	}
 
-	app.use(vweb2_middleware.create[User, Context](mut app.sessions))
+	app.use(veb_middleware.create[User, Context](mut app.sessions))
 
 	spawn veb.run_at[App, Context](mut app, port: port, family: .ip, timeout_in_seconds: 2)
 	// app startup time

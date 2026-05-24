@@ -17,6 +17,12 @@ pub fn (mut b Builder) rebuild_modules() {
 	if !b.pref.use_cache || b.pref.build_mode == .build_module {
 		return
 	}
+	if b.pref.check_only || b.pref.only_check_syntax {
+		// Check-only flows should not trigger side-effecting cache rebuilds.
+		// In the REPL import path that can compile imported `.c.v` modules
+		// and surface irrelevant missing-header errors for declaration-only checks.
+		return
+	}
 	all_files := b.parsed_files.map(it.path)
 	$if trace_invalidations ? {
 		eprintln('> rebuild_modules all_files: ${all_files}')

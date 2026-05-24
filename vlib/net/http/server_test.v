@@ -387,6 +387,95 @@ fn test_server_coerces_invalid_status_code_to_internal_server_error() {
 
 //
 
+struct RedirectMethodHandler {}
+
+fn (mut handler RedirectMethodHandler) handle(req http.Request) http.Response {
+	mut r := http.Response{}
+	match req.url {
+		'/redirect-301' {
+			r.header = http.new_header(key: .location, value: '/expect-get')
+			r.set_status(.moved_permanently)
+		}
+		'/redirect-302' {
+			r.header = http.new_header(key: .location, value: '/expect-get')
+			r.set_status(.found)
+		}
+		'/redirect-303' {
+			r.header = http.new_header(key: .location, value: '/expect-get')
+			r.set_status(.see_other)
+		}
+		'/redirect-307' {
+			r.header = http.new_header(key: .location, value: '/expect-post')
+			r.set_status(.temporary_redirect)
+		}
+		'/redirect-308' {
+			r.header = http.new_header(key: .location, value: '/expect-post')
+			r.set_status(.permanent_redirect)
+		}
+		'/expect-get' {
+			if req.method == .get && req.data == '' {
+				r.body = 'redirected-as-get'
+				r.set_status(.ok)
+			} else {
+				r.body = 'expected GET without a body, got ${req.method} `${req.data}`'
+				r.set_status(.method_not_allowed)
+			}
+		}
+		'/expect-post' {
+			if req.method == .post && req.data == 'payload' {
+				r.body = 'preserved-post'
+				r.set_status(.ok)
+			} else {
+				r.body = 'expected POST with payload, got ${req.method} `${req.data}`'
+				r.set_status(.method_not_allowed)
+			}
+		}
+		else {
+			r.set_status(.not_found)
+		}
+	}
+
+	r.set_version(req.version)
+	return r
+}
+
+fn test_redirects_change_post_to_get_only_when_required() {
+	log.warn('${@FN} started')
+	defer { log.warn('${@FN} finished') }
+	mut server := &http.Server{
+		accept_timeout:       atimeout
+		handler:              RedirectMethodHandler{}
+		addr:                 '127.0.0.1:18204'
+		show_startup_message: false
+	}
+	t := spawn server.listen_and_serve()
+	server.wait_till_running() or {
+		estr := err.str()
+		if estr == 'maximum retries reached' {
+			log.error('>>>> Skipping test ${@FN} since its server could not start, err: ${err}')
+			return
+		}
+		log.fatal(estr)
+	}
+
+	for path in ['/redirect-301', '/redirect-302', '/redirect-303'] {
+		resp := http.post('http://${server.addr}${path}', 'payload')!
+		assert resp.status() == .ok
+		assert resp.body == 'redirected-as-get'
+	}
+
+	for path in ['/redirect-307', '/redirect-308'] {
+		resp := http.post('http://${server.addr}${path}', 'payload')!
+		assert resp.status() == .ok
+		assert resp.body == 'preserved-post'
+	}
+
+	server.stop()
+	t.wait()
+}
+
+//
+
 struct KeepAliveHandler {
 mut:
 	request_count int

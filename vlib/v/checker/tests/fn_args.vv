@@ -7,7 +7,7 @@ fn fun(a fn (int)) {}
 fn basic() {
 	v := 4
 	uu8(&v)
-	arr([5]!)
+	arr([5.0]!)
 	fun(fn (i &int) {})
 	fun(fn (ii ...int) {})
 }

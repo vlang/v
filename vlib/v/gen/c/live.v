@@ -4,6 +4,17 @@ import os
 import v.pref
 import v.util
 
+fn live_runtime_quoted_path(target_os pref.OS, path string) string {
+	return match target_os {
+		.windows { '"${path.replace('"', '\\"')}"' }
+		else { "'" + path.replace("'", "'\\''") + "'" }
+	}
+}
+
+fn live_runtime_quoted_path_for_c_string(target_os pref.OS, path string) string {
+	return live_runtime_quoted_path(target_os, path).replace('\\', '\\\\').replace('"', '\\"')
+}
+
 fn (mut g Gen) generate_hotcode_reloading_declarations() {
 	if g.pref.os == .windows {
 		g.hotcode_definitions.writeln('HANDLE live_fn_mutex = 0;')
@@ -118,10 +129,21 @@ fn (mut g Gen) generate_hotcode_reloading_main_caller() {
 	}
 	vexe := util.cescaped_path(pref.vexe_path())
 	file := util.cescaped_path(g.pref.path)
-	ccpath := util.cescaped_path(g.pref.ccompiler)
+	ccpath := live_runtime_quoted_path_for_c_string(g.pref.os, g.pref.ccompiler)
 	ccompiler := '-cc ${ccpath}'
 	so_debug_flag := if g.pref.is_debug { '-cg' } else { '' }
-	vopts := '${ccompiler} ${so_debug_flag} -sharedlive -shared'
+	mut vopts := '${ccompiler} ${so_debug_flag} -sharedlive -shared'
+	if g.pref.os == .windows && g.is_cc_msvc && 'sokol' in g.table.imports {
+		mut import_lib_path := g.pref.out_name
+		ext := os.file_ext(import_lib_path)
+		if ext != '' {
+			import_lib_path = import_lib_path[..import_lib_path.len - ext.len] + '.lib'
+		} else {
+			import_lib_path += '.lib'
+		}
+		escaped_import_lib_path := util.cescaped_path(os.abs_path(import_lib_path))
+		vopts += " -ldflags \\\"${escaped_import_lib_path}\\\""
+	}
 
 	g.writeln('\t\t// start background reloading thread')
 	g.writeln('\t\tvoid* live_fn_mutex_addr = v_live_fn_mutex_ptr();')

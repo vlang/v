@@ -177,6 +177,10 @@ fn (mut p Parser) check_expr(precedence int) !ast.Expr {
 		.power {
 			node = p.power_prefix_expr()
 		}
+		.plus {
+			// +1, +a
+			node = p.prefix_expr()
+		}
 		.minus {
 			// -1, -a
 			if p.peek_tok.kind == .number && !(p.peek_token(2).kind == .power
@@ -326,8 +330,10 @@ fn (mut p Parser) check_expr(precedence int) !ast.Expr {
 				}
 				mut is_cast_expr := peek_n_tok.kind == .lpar && sbr_level == 0
 					&& peek_n_tok.line_nr == line_nr
-				// `[](?Type){}` (and `[N](?Type){}`) is an array init, not a cast.
-				if is_cast_expr && prev_n_tok.kind == .rsbr {
+				// If the matching `)` is followed by `{`, this can still be an array init when
+				// the element type itself contains parentheses, e.g. `[](?Type){}` or
+				// `[]thread (T1, T2){}`.
+				if is_cast_expr && (prev_n_tok.kind == .rsbr || prev_n_tok.lit == 'thread') {
 					mut par_level := 0
 					for i := n; true; i++ {
 						tk := p.peek_token(i)
@@ -536,7 +542,7 @@ fn (mut p Parser) parse_typeof_expr(start_pos token.Pos) ast.Expr {
 	p.check(.lpar)
 	expr := p.expr(0)
 	p.check(.rpar)
-	if p.tok.kind != .dot && p.tok.line_nr == p.prev_tok.line_nr {
+	if p.tok.kind != .dot && p.tok.line_nr == p.prev_tok.line_nr && !p.inside_array_init_type_expr {
 		if !p.inside_unsafe {
 			p.warn_with_pos('use e.g. `typeof(expr).name` or `sum_type_instance.type_name()` instead',
 				start_pos)
@@ -663,6 +669,21 @@ fn (mut p Parser) parse_offsetof_expr(start_pos token.Pos) ast.Expr {
 	}
 }
 
+fn (p &Parser) can_use_expr_as_struct_init_type(expr ast.Expr) bool {
+	return match expr {
+		ast.ParExpr {
+			p.can_use_expr_as_struct_init_type(expr.expr)
+		}
+		ast.SelectorExpr {
+			expr.expr is ast.TypeOf
+				&& expr.field_name in ['idx', 'typ', 'unaliased_typ', 'key_type', 'value_type', 'element_type', 'pointee_type', 'payload_type']
+		}
+		else {
+			false
+		}
+	}
+}
+
 fn (mut p Parser) expr_with_left(left ast.Expr, precedence int, is_stmt_ident bool) ast.Expr {
 	mut node := left
 	if p.inside_asm && p.prev_tok.pos().line_nr < p.tok.pos().line_nr {
@@ -674,9 +695,15 @@ fn (mut p Parser) expr_with_left(left ast.Expr, precedence int, is_stmt_ident bo
 	// Infix
 	for {
 		if p.tok.kind == .lpar && p.tok.line_nr == p.prev_tok.line_nr
-			&& node in [ast.CallExpr, ast.IndexExpr, ast.SelectorExpr] {
+			&& node in [ast.CallExpr, ast.IndexExpr, ast.ParExpr, ast.SelectorExpr] {
 			p.promote_if_expr_to_value(mut node)
 			node = p.call_expr_with_left(node)
+			p.is_stmt_ident = is_stmt_ident
+			continue
+		}
+		if !p.inside_array_init_type_expr && p.tok.kind == .lcbr && p.tok.is_next_to(p.prev_tok)
+			&& p.can_use_expr_as_struct_init_type(node) {
+			node = p.struct_init_with_type_expr(node, .normal)
 			p.is_stmt_ident = is_stmt_ident
 			continue
 		}
@@ -823,19 +850,51 @@ fn (mut p Parser) promote_if_expr_to_value(mut expr ast.Expr) {
 	}
 }
 
+fn unwrap_parenthesized_call_left(expr ast.Expr) ast.Expr {
+	return match expr {
+		ast.ParExpr { unwrap_parenthesized_call_left(expr.expr) }
+		else { expr }
+	}
+}
+
 fn (mut p Parser) call_expr_with_left(left ast.Expr) ast.CallExpr {
 	p.next()
 	pos := p.tok.pos()
 	args := p.call_args()
 	p.check(.rpar)
 	or_block := p.gen_or_block()
+	unwrapped_left := unwrap_parenthesized_call_left(left)
+	mut name := ''
+	mut name_pos := token.Pos{}
+	mut mod := ''
+	mut kind := ast.CallKind.unknown
+	if unwrapped_left is ast.Ident {
+		ident := unwrapped_left as ast.Ident
+		mut fn_name := ident.name
+		if p.is_imported_symbol(fn_name) {
+			check := !p.imported_symbols_used[fn_name]
+			fn_name = p.imported_symbols[fn_name]
+			if check {
+				p.register_used_import_for_symbol_name(fn_name)
+			}
+		}
+		name = fn_name
+		name_pos = ident.pos
+		mod = p.mod
+		kind = p.call_kind(fn_name)
+	}
 	return ast.CallExpr{
-		left:           left
-		args:           args
-		pos:            pos
-		scope:          p.scope
-		or_block:       or_block
-		is_return_used: p.expecting_value
+		name:                  name
+		name_pos:              name_pos
+		mod:                   mod
+		kind:                  kind
+		left:                  unwrapped_left
+		args:                  args
+		pos:                   pos
+		scope:                 p.scope
+		or_block:              or_block
+		is_return_used:        p.expecting_value
+		is_paren_wrapped_call: left is ast.ParExpr
 	}
 }
 
@@ -1036,11 +1095,12 @@ fn (mut p Parser) infix_expr(left ast.Expr) ast.Expr {
 		right = p.expr(if op == .power { precedence - 1 } else { precedence })
 	}
 	p.inside_assign_rhs = old_assign_rhs
-	if op in [.plus, .minus, .mul, .power, .div, .mod, .lt, .eq] && mut right is ast.PrefixExpr {
+	// Keep rejecting doubled operator forms like `5 - - -5`, but allow valid
+	// infix rhs expressions such as `a == -(-2)` and `a == +2`.
+	if op in [.plus, .minus, .mul] && mut right is ast.PrefixExpr {
 		mut right_expr := right.right
 		right_expr = right_expr.remove_par()
-		if right.op in [.plus, .minus, .mul, .power, .div, .mod, .lt, .eq]
-			&& right_expr.is_pure_literal() {
+		if right.op == op && right_expr.is_pure_literal() {
 			p.error_with_pos('invalid expression: unexpected token `${op}`', right_op_pos)
 		}
 	}

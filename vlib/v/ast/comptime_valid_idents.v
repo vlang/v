@@ -28,7 +28,11 @@ fn all_valid_comptime_idents() []string {
 pub fn eval_comptime_not_user_defined_ident(ident string, the_pref &pref.Preferences) !bool {
 	mut is_true := false
 	if ident in valid_comptime_if_os {
-		if ident_enum_val := pref.os_from_string(ident) {
+		// `$if bsd` is a family predicate matching any BSD-family target
+		// (macos, freebsd, openbsd, netbsd, dragonfly), not a specific OS.
+		if ident == 'bsd' {
+			is_true = the_pref.os in [.macos, .freebsd, .openbsd, .netbsd, .dragonfly]
+		} else if ident_enum_val := pref.os_from_string(ident) {
 			if ident_enum_val == the_pref.os {
 				is_true = true
 			}

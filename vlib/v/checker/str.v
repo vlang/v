@@ -90,6 +90,8 @@ fn (mut c Checker) string_inter_lit(mut node ast.StringInterLiteral) ast.Type {
 		} else if ftyp == ast.char_type && ftyp.nr_muls() == 0 {
 			c.error('expression returning type `char` cannot be used in string interpolation directly, print its address or cast it to an integer instead',
 				expr.pos())
+		} else if c.fail_if_private_implicit_str(ftyp, expr.pos(), 'interpolate') {
+			return ast.string_type
 		}
 		if ftyp == 0 {
 			return ast.void_type

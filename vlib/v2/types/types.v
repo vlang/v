@@ -203,6 +203,7 @@ pub:
 pub struct Pointer {
 pub:
 	base_type Type
+	lifetime  string
 }
 
 // struct String {
@@ -220,6 +221,7 @@ pub:
 	name         string
 	typ          Type
 	default_expr ast.Expr = ast.empty_expr
+	attributes   []ast.Attribute
 }
 
 // struct Method {
@@ -259,6 +261,13 @@ pub:
 	name string
 pub mut:
 	variants []Type
+}
+
+fn (a SumType) == (b SumType) bool {
+	if a.name == b.name {
+		return true
+	}
+	return false
 }
 
 struct Thread {
@@ -732,6 +741,9 @@ fn (t OptionType) name() string {
 }
 
 fn (t Pointer) name() string {
+	if t.lifetime != '' {
+		return '&^${t.lifetime} ' + t.base_type.name()
+	}
 	return '&' + t.base_type.name()
 }
 
