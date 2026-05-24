@@ -294,67 +294,67 @@ Did you mean `Ok[[]Token]`?
       |                        ^
   250 | }
   251 |
-vlib/datatypes/bstree.v:260:17: error: unknown type `Token`.
+vlib/datatypes/bstree.v:254:17: error: unknown type `Token`.
 Did you mean `Ok[[]Token]`?
-  258 | //```
-  259 | pub fn (bst &BSTree[T]) to_left(value T) !T {
-  260 |     if bst.is_empty() {
+  252 | // to_left returns the value of the node to the left of the node with `value` specified if it exists
+  253 | pub fn (bst &BSTree[T]) to_left(value T) !T {
+  254 |     if bst.is_empty() {
       |                    ^
-  261 |         return error('BSTree is empty')
-  262 |     }
-vlib/datatypes/bstree.v:263:22: error: unknown type `Token`.
+  255 |         return error('BSTree is empty')
+  256 |     }
+vlib/datatypes/bstree.v:257:22: error: unknown type `Token`.
 Did you mean `Ok[[]Token]`?
-  261 |         return error('BSTree is empty')
-  262 |     }
-  263 |     node := bst.get_node(bst.root, value)
+  255 |         return error('BSTree is empty')
+  256 |     }
+  257 |     node := bst.get_node(bst.root, value)
       |                         ^
-  264 |     if !node.is_init {
-  265 |         return error('BSTree is not initialized')
-vlib/datatypes/bstree.v:279:17: error: unknown type `Token`.
+  258 |     if !node.is_init {
+  259 |         return error('BSTree is not initialized')
+vlib/datatypes/bstree.v:270:17: error: unknown type `Token`.
 Did you mean `Ok[[]Token]`?
-  277 | //```
-  278 | pub fn (bst &BSTree[T]) to_right(value T) !T {
-  279 |     if bst.is_empty() {
+  268 | // to_right returns the value of the node to the right of the node with `value` specified if it exists
+  269 | pub fn (bst &BSTree[T]) to_right(value T) !T {
+  270 |     if bst.is_empty() {
       |                    ^
-  280 |         return error('BSTree is empty')
-  281 |     }
-vlib/datatypes/bstree.v:282:22: error: unknown type `Token`.
+  271 |         return error('BSTree is empty')
+  272 |     }
+vlib/datatypes/bstree.v:273:22: error: unknown type `Token`.
 Did you mean `Ok[[]Token]`?
-  280 |         return error('BSTree is empty')
-  281 |     }
-  282 |     node := bst.get_node(bst.root, value)
+  271 |         return error('BSTree is empty')
+  272 |     }
+  273 |     node := bst.get_node(bst.root, value)
       |                         ^
-  283 |     if !node.is_init {
-  284 |         return error('BSTree is not initialized')
-vlib/datatypes/bstree.v:293:17: error: unknown type `Token`.
+  274 |     if !node.is_init {
+  275 |         return error('BSTree is not initialized')
+vlib/datatypes/bstree.v:287:17: error: unknown type `Token`.
 Did you mean `Ok[[]Token]`?
-  291 | // Time complexity O(N) if the BST is not balanced
-  292 | pub fn (bst &BSTree[T]) max() !T {
-  293 |     if bst.is_empty() {
+  285 | // Time complexity O(N) if the BST is not balanced
+  286 | pub fn (bst &BSTree[T]) max() !T {
+  287 |     if bst.is_empty() {
       |                    ^
-  294 |         return error('BSTree is empty')
-  295 |     }
-vlib/datatypes/bstree.v:296:31: error: unknown type `Token`.
+  288 |         return error('BSTree is empty')
+  289 |     }
+vlib/datatypes/bstree.v:290:31: error: unknown type `Token`.
 Did you mean `Ok[[]Token]`?
-  294 |         return error('BSTree is empty')
-  295 |     }
-  296 |     max := bst.get_max_from_right(bst.root)
+  288 |         return error('BSTree is empty')
+  289 |     }
+  290 |     max := bst.get_max_from_right(bst.root)
       |                                  ^
-  297 |     if !max.is_init {
-  298 |         return error('BSTree is not initialized')
-vlib/datatypes/bstree.v:306:17: error: unknown type `Token`.
+  291 |     if !max.is_init {
+  292 |         return error('BSTree is not initialized')
+vlib/datatypes/bstree.v:300:17: error: unknown type `Token`.
 Did you mean `Ok[[]Token]`?
-  304 | // Time complexity O(N) if the BST is not balanced.
-  305 | pub fn (bst &BSTree[T]) min() !T {
-  306 |     if bst.is_empty() {
+  298 | // Time complexity O(N) if the BST is not balanced.
+  299 | pub fn (bst &BSTree[T]) min() !T {
+  300 |     if bst.is_empty() {
       |                    ^
-  307 |         return error('BSTree is empty')
-  308 |     }
-vlib/datatypes/bstree.v:309:30: error: unknown type `Token`.
+  301 |         return error('BSTree is empty')
+  302 |     }
+vlib/datatypes/bstree.v:303:30: error: unknown type `Token`.
 Did you mean `Ok[[]Token]`?
-  307 |         return error('BSTree is empty')
-  308 |     }
-  309 |     min := bst.get_min_from_left(bst.root)
+  301 |         return error('BSTree is empty')
+  302 |     }
+  303 |     min := bst.get_min_from_left(bst.root)
       |                                 ^
-  310 |     if !min.is_init {
-  311 |         return error('BSTree is not initialized')
+  304 |     if !min.is_init {
+  305 |         return error('BSTree is not initialized')

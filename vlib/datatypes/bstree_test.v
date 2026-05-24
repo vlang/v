@@ -85,6 +85,34 @@ fn test_get_left_on_empty_bst() {
 	assert right_val == -1
 }
 
+// Check if accessing the left node of the leftmost non root node panics
+fn test_to_left_on_leftmost_nonroot() {
+	mut bst := BSTree[int]{}
+
+	assert bst.insert(20)
+	assert bst.insert(10)
+	assert bst.insert(30)
+
+	min := bst.min() or { -1 }
+	assert min == 10
+	left_val := bst.to_left(min) or { -1 }
+	assert left_val == -1
+}
+
+// Check if accessing the right node of the rightmost non root node panics
+fn test_to_right_on_rightmost_nonroot() {
+	mut bst := BSTree[int]{}
+
+	assert bst.insert(20)
+	assert bst.insert(10)
+	assert bst.insert(30)
+
+	max := bst.max() or { -1 }
+	assert max == 30
+	right_val := bst.to_right(max) or { -1 }
+	assert right_val == -1
+}
+
 // Check the remove operation if it is able to remove
 // all elements required, and maintains the BST propriety.
 fn test_remove_from_bst_one() {
