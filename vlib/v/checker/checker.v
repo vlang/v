@@ -6410,10 +6410,12 @@ fn (mut c Checker) ident(mut node ast.Ident) ast.Type {
 		// Got a var with type T, return current generic type
 		if node.or_expr.kind != .absent {
 			if !info.typ.has_flag(.option) {
+				hint := c.smartcast_unwrap_hint(node.scope.find_var(node.name) or { unsafe { nil } })
 				if node.or_expr.kind == .propagate_option {
-					c.error('cannot use `?` on non-option variable', node.pos)
+					c.error('cannot use `?` on non-option variable${hint}', node.pos)
 				} else if node.or_expr.kind == .block {
-					c.error('cannot use `or {}` block on non-option variable', node.pos)
+					c.error('cannot use `or {}` block on non-option variable${hint}',
+						node.pos)
 				}
 			}
 			unwrapped_typ := typ.clear_option_and_result()
@@ -6559,10 +6561,13 @@ fn (mut c Checker) ident(mut node ast.Ident) ast.Type {
 							return typ.clear_flag(.result)
 						}
 						if !typ.has_flag(.option) {
+							hint := c.smartcast_unwrap_hint(&obj)
 							if node.or_expr.kind == .propagate_option {
-								c.error('cannot use `?` on non-option variable', node.pos)
+								c.error('cannot use `?` on non-option variable${hint}',
+									node.pos)
 							} else if node.or_expr.kind == .block {
-								c.error('cannot use `or {}` block on non-option variable', node.pos)
+								c.error('cannot use `or {}` block on non-option variable${hint}',
+									node.pos)
 							}
 						}
 						unwrapped_typ := typ.clear_option_and_result()
@@ -7352,6 +7357,17 @@ fn (mut c Checker) visible_var_type_for_read(v ast.Var) ast.Type {
 		return v.orig_type
 	}
 	return c.exposed_smartcast_type(v.orig_type, v.smartcasts.last(), v.is_mut)
+}
+
+fn (mut c Checker) smartcast_unwrap_hint(v &ast.Var) string {
+	if v == unsafe { nil } {
+		return ''
+	}
+	if v.smartcasts.len == 0 || !v.typ.has_flag(.option) {
+		return ''
+	}
+	narrowed := c.table.type_to_str(v.smartcasts.last())
+	return ' `${v.name}` (it was already unwrapped to `${narrowed}` by an earlier none check; use `${v.name}` directly)'
 }
 
 @[inline]
