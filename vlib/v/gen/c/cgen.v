@@ -10179,12 +10179,25 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 			g.inside_return_tmpl = true
 			g.expr(expr0)
 			g.inside_return_tmpl = false
-			ret_typ := g.ret_styp(g.unwrap_generic(g.fn_decl.return_type))
+			fn_ret_type := g.fn_decl.return_type
+			ret_typ := g.ret_styp(g.unwrap_generic(fn_ret_type))
+			tmpl_fn_name := g.fn_decl.name.replace('.', '__').to_lower() + expr0.pos.pos.str()
 			g.write_defer_stmts_when_needed(node.scope, true, node.pos)
 			if !g.is_builtin_mod {
 				g.autofree_scope_vars(node.pos.pos - 1, node.pos.line_nr, true)
 			}
-			g.writeln('return (${ret_typ}){0};')
+			if fn_ret_type.has_option_or_result() {
+				tmp := g.new_tmp_var()
+				g.writeln('${ret_typ} ${tmp} = {0};')
+				if fn_ret_type.has_flag(.result) {
+					g.writeln('builtin___result_ok(&(string[]) { _tmpl_res_${tmpl_fn_name} }, (_result*)(&${tmp}), sizeof(string));')
+				} else {
+					g.writeln('builtin___option_ok(&(string[]) { _tmpl_res_${tmpl_fn_name} }, (_option*)(&${tmp}), sizeof(string));')
+				}
+				g.writeln('return ${tmp};')
+			} else {
+				g.writeln('return _tmpl_res_${tmpl_fn_name};')
+			}
 			return
 		}
 	}
