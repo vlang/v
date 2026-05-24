@@ -186,12 +186,21 @@ pub fn init_universe() &Scope {
 	//               literal nesting, and pass-by-value to a function all
 	//               transfer ownership; reusing the source afterwards is a
 	//               compile error.
-	// Both are empty interfaces (no required methods).
+	//   * `Drop`  — explicit "needs cleanup" marker. A struct that implements
+	//               `Drop` MUST provide a `drop(mut self)` method. The checker
+	//               schedules `var.drop()` for every owned, non-moved binding
+	//               of such a type at scope exit (the schedule is exposed for
+	//               codegen via `drop_schedule`).
+	// All three are empty interfaces except `Drop`, which is satisfied by the
+	// presence of a `drop(mut self)` method.
 	universe_.insert('Copy', Type(Interface{
 		name: 'Copy'
 	}))
 	universe_.insert('Owned', Type(Interface{
 		name: 'Owned'
+	}))
+	universe_.insert('Drop', Type(Interface{
+		name: 'Drop'
 	}))
 	return universe_
 }

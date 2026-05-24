@@ -704,3 +704,107 @@ fn main() {
 	assert output.contains('has type `Widget`'), 'diagnostic should name Widget, got: ${output}'
 	assert !output.contains('has type `string`'), 'diagnostic should not say string, got: ${output}'
 }
+
+// === Drop interface tests ===
+
+fn test_drop_struct_with_method_ok() {
+	// A struct that implements Drop and provides a `drop()` method compiles.
+	code := '
+struct Resource implements Owned, Drop {
+mut:
+	handle int
+}
+
+fn (mut r Resource) drop() {
+	r.handle = 0
+}
+
+fn main() {
+	r := Resource{handle: 42}
+	println(r.handle)
+}
+'
+	exit_code, output := run_ownership_check(code)
+	assert exit_code == 0, 'Drop with drop() method should compile: ${output}'
+}
+
+fn test_drop_struct_missing_method_errors() {
+	// `implements Drop` without a `drop()` method must fail with a clear
+	// diagnostic pointing at the contract.
+	code := '
+struct Leaky implements Owned, Drop {
+	handle int
+}
+
+fn main() {
+	l := Leaky{handle: 1}
+	println(l.handle)
+}
+'
+	exit_code, output := run_ownership_check(code)
+	assert exit_code != 0, 'missing drop() should fail'
+	assert output.contains('struct `Leaky` implements `Drop`'), 'got: ${output}'
+	assert output.contains('drop(mut self)'), 'diagnostic should reference required signature, got: ${output}'
+}
+
+fn test_drop_only_marker_still_requires_method() {
+	// Drop without Owned still requires drop(); both marker interfaces are
+	// independent and the Drop contract stands on its own.
+	code := '
+struct Handle implements Drop {
+	fd int
+}
+
+fn main() {
+	h := Handle{fd: 3}
+	println(h.fd)
+}
+'
+	exit_code, output := run_ownership_check(code)
+	assert exit_code != 0, 'Drop without method should fail even without Owned'
+	assert output.contains('struct `Handle` implements `Drop`'), 'got: ${output}'
+}
+
+fn test_drop_unrelated_struct_unaffected() {
+	// A struct with neither Owned nor Drop should keep compiling as before;
+	// the new validator must not affect unmarked types.
+	code := '
+struct Plain {
+	x int
+}
+
+fn main() {
+	p := Plain{x: 1}
+	println(p.x)
+}
+'
+	exit_code, output := run_ownership_check(code)
+	assert exit_code == 0, 'unmarked struct must not be affected: ${output}'
+}
+
+fn test_drop_with_move_still_diagnoses_use() {
+	// A Drop+Owned struct that gets moved still produces the standard
+	// "use of moved value" diagnostic. Drop scheduling and move tracking
+	// must coexist on the same binding.
+	code := '
+struct Conn implements Owned, Drop {
+mut:
+	socket int
+}
+
+fn (mut c Conn) drop() {
+	c.socket = -1
+}
+
+fn main() {
+	c := Conn{socket: 7}
+	c2 := c
+	println(c.socket)
+	_ = c2
+}
+'
+	exit_code, output := run_ownership_check(code)
+	assert exit_code != 0, 'should fail: c moved into c2'
+	assert output.contains('use of moved value: `c`'), 'got: ${output}'
+	assert output.contains('has type `Conn`'), 'got: ${output}'
+}

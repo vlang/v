@@ -595,6 +595,16 @@ mut:
 	ownership_cur_fn string
 	// Borrow tracking: variables currently borrowed via &
 	borrowed_vars map[string][]BorrowInfo // var name -> list of active borrows
+	// Drop schedule: per-function list of owned bindings implementing the
+	// `Drop` interface. Each entry is the destructor call codegen must emit
+	// before the binding's owning scope exits. Populated as `Drop`-typed
+	// values are bound; pruned (via the `moved_vars` view) when they are
+	// moved or returned. Exposed so the transformer / backends can lower it.
+	drop_schedule map[string][]DropEntry
+	// Source positions for `implements Drop` struct declarations, indexed
+	// by struct name. Used to point the "missing drop method" diagnostic at
+	// the struct decl rather than at an unrelated use site.
+	ownership_drop_decl_positions map[string]token.Pos
 }
 
 pub fn Checker.new(prefs &pref.Preferences, file_set &token.FileSet, env &Environment) &Checker {
@@ -1045,6 +1055,7 @@ pub fn (mut c Checker) check_files(files []ast.File) {
 	c.process_pending_const_fields()
 	$if ownership ? {
 		c.ownership_prescan_fn_bodies()
+		c.ownership_validate_drop_impls()
 	}
 	c.process_pending_fn_bodies()
 	c.check_struct_field_defaults(files)
@@ -3656,6 +3667,17 @@ fn (mut c Checker) process_pending_struct_decls() {
 				implements_names << fallback_name
 			}
 		}
+		// Stash the struct declaration position keyed by name so that the
+		// ownership validator can attach the "missing drop method" diagnostic
+		// to the decl site instead of an arbitrary use site.
+		$if ownership ? {
+			for impl_name in implements_names {
+				if impl_name == 'Drop' || impl_name.all_after_last('__') == 'Drop' {
+					c.ownership_drop_decl_positions[pending.decl.name] = pending.decl.pos
+					break
+				}
+			}
+		}
 		mut fields := []Field{}
 		for field in pending.decl.fields {
 			field_typ := c.decl_field_type(field.typ)
@@ -3994,6 +4016,7 @@ pub fn (mut c Checker) process_all_deferred() {
 	c.process_pending_const_fields()
 	$if ownership ? {
 		c.ownership_prescan_fn_bodies()
+		c.ownership_validate_drop_impls()
 	}
 	c.process_pending_fn_bodies()
 }

@@ -730,12 +730,162 @@ fn ownership_type_display(t Type) string {
 //   - a non-Copy value is created (struct/array/map literal, fn returning
 //     non-Copy, etc.)
 //   - a string is explicitly upgraded via `.to_owned()`
+//
+// If `typ` implements the `Drop` interface, this also schedules a destructor
+// call to be emitted at scope exit (see `ownership_schedule_drop`).
 fn (mut c Checker) ownership_mark_owned(name string, typ Type, pos token.Pos) {
 	if name.len == 0 || name == '_' {
 		return
 	}
 	c.owned_vars[name] = pos
 	c.owned_var_types[name] = ownership_type_display(typ)
+	c.ownership_schedule_drop(name, typ, pos)
+}
+
+// is_drop_type reports whether `t` (or its alias / option / result base) is a
+// struct that declares `implements Drop`. Drop types must provide a
+// `drop(mut self)` method; the checker schedules a call to it at scope exit
+// for every owned, non-moved binding via `drop_schedule`.
+pub fn (c &Checker) is_drop_type(t Type) bool {
+	return c.is_drop_type_impl(t, 0)
+}
+
+fn (c &Checker) is_drop_type_impl(t Type, depth int) bool {
+	if depth > 16 {
+		return false
+	}
+	match t {
+		Alias {
+			return c.is_drop_type_impl(t.base_type, depth + 1)
+		}
+		OptionType {
+			return c.is_drop_type_impl(t.base_type, depth + 1)
+		}
+		ResultType {
+			return c.is_drop_type_impl(t.base_type, depth + 1)
+		}
+		Struct {
+			return c.struct_marker_matches(t, 'Drop')
+		}
+		else {
+			return false
+		}
+	}
+}
+
+// type_has_drop_method reports whether the type (or its base after unwrapping
+// alias / option / result) has a registered `drop(...)` method.
+fn (c &Checker) type_has_drop_method(t Type) bool {
+	mut cur := t
+	for _ in 0 .. 16 {
+		match cur {
+			Alias {
+				cur = (cur as Alias).base_type
+				continue
+			}
+			OptionType {
+				cur = (cur as OptionType).base_type
+				continue
+			}
+			ResultType {
+				cur = (cur as ResultType).base_type
+				continue
+			}
+			else {
+				break
+			}
+		}
+	}
+	name := cur.name()
+	if name.len == 0 {
+		return false
+	}
+	c.env.lookup_method(name, 'drop') or { return false }
+	return true
+}
+
+// DropEntry records a scheduled scope-exit destructor call. The codegen
+// integration (a follow-up) reads `Checker.drop_schedule` and emits
+// `var_name.drop()` immediately before each binding's owning scope ends.
+pub struct DropEntry {
+pub:
+	var_name  string    // local binding to drop
+	type_name string    // displayed type, for diagnostics / debug output
+	fn_name   string    // enclosing function (key into drop_schedule)
+	pos       token.Pos // position where the binding became owned
+}
+
+// ownership_schedule_drop records that `name` of type `typ` needs a
+// destructor call before its enclosing scope exits. No-op if the type does
+// not implement `Drop`. Safe to call multiple times for the same binding —
+// only the first registration sticks (later reassignments don't add new
+// drop entries, since the old value is overwritten and dropped by the
+// assignment-time hook).
+fn (mut c Checker) ownership_schedule_drop(name string, typ Type, pos token.Pos) {
+	if c.ownership_cur_fn.len == 0 {
+		return
+	}
+	if !c.is_drop_type(typ) {
+		return
+	}
+	existing := c.drop_schedule[c.ownership_cur_fn] or { []DropEntry{} }
+	for entry in existing {
+		if entry.var_name == name {
+			return
+		}
+	}
+	mut list := existing.clone()
+	list << DropEntry{
+		var_name:  name
+		type_name: ownership_type_display(typ)
+		fn_name:   c.ownership_cur_fn
+		pos:       pos
+	}
+	c.drop_schedule[c.ownership_cur_fn] = list
+}
+
+// ownership_validate_drop_impls verifies that every struct declaring
+// `implements Drop` actually provides a `drop(mut self)` method. Runs after
+// `preregister_all_fn_signatures` (so methods are visible) and before the
+// pending fn bodies are walked, so the diagnostic fires once per build.
+fn (mut c Checker) ownership_validate_drop_impls() {
+	mut to_check := []Struct{}
+	rlock c.env.scopes {
+		for _, mod_scope in c.env.scopes {
+			for _, obj in mod_scope.objects {
+				if obj is Type {
+					typ := obj as Type
+					if typ is Struct {
+						st := typ as Struct
+						if c.struct_marker_matches(st, 'Drop') {
+							to_check << st
+						}
+					}
+				}
+			}
+		}
+	}
+	for st in to_check {
+		if !c.type_has_drop_method(Type(st)) {
+			pos := c.ownership_drop_decl_positions[st.name] or { token.Pos{} }
+			c.ownership_emit_drop_method_missing(st.name, pos)
+		}
+	}
+}
+
+// ownership_emit_drop_method_missing prints the "missing drop method"
+// diagnostic. Kept separate so tests / callers can call it directly with a
+// synthesized position when needed.
+fn (mut c Checker) ownership_emit_drop_method_missing(struct_name string, pos token.Pos) {
+	if pos.id > 0 {
+		file := c.file_set.file(pos)
+		errors.error('struct `${struct_name}` implements `Drop` but does not provide a `drop(mut self)` method', errors.details(file,
+			file.position(pos), 2), .error, file.position(pos))
+	} else {
+		eprintln('error: struct `${struct_name}` implements `Drop` but does not provide a `drop(mut self)` method')
+	}
+	eprintln('  --> add `fn (mut s ${struct_name}) drop() { ... }` to satisfy the Drop contract')
+	exit(1)
 }
 
 // ownership_is_borrow_or_ref_rhs returns true if the RHS expression is itself
