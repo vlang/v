@@ -219,17 +219,28 @@ fn main() {
 		} else {
 			elog('   adding new docs...')
 			lexec('git add .')
-			// `git diff --cached --quiet` exits 0 when there is nothing staged.
-			if lexec_check('git diff --cached --quiet') {
-				elog('   nothing to commit; skipping push to docs.vlang.io/')
-			} else {
-				elog('   commiting...')
-				lexec('git commit -m "update docs for commit ${commit}"')
-				elog('   pushing...')
-				if !lexec_check('git push') {
-					elog('   WARNING: `git push` to docs.vlang.io/ failed')
-				} else {
-					elog('   uploading to docs.vlang.io/ done')
+			// `git diff --cached --quiet` exits 0 when there is nothing staged,
+			// 1 when there are staged changes, and >1 on real errors (e.g. a
+			// broken index). Treat >1 as an error rather than as "changes exist".
+			diff_cmd := 'git diff --cached --quiet'
+			elog('  lexec: ${diff_cmd}')
+			diff_res := os.execute(diff_cmd)
+			match diff_res.exit_code {
+				0 {
+					elog('   nothing to commit; skipping push to docs.vlang.io/')
+				}
+				1 {
+					elog('   commiting...')
+					lexec('git commit -m "update docs for commit ${commit}"')
+					elog('   pushing...')
+					if !lexec_check('git push') {
+						elog('   WARNING: `git push` to docs.vlang.io/ failed')
+					} else {
+						elog('   uploading to docs.vlang.io/ done')
+					}
+				}
+				else {
+					elog('   skipping docs.vlang.io upload: `${diff_cmd}` errored, exit_code: ${diff_res.exit_code}, output:\n${diff_res.output}')
 				}
 			}
 		}
