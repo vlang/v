@@ -234,3 +234,151 @@ fn main() {
 	exit_code, output := run_lifetime_check(code)
 	assert exit_code == 0, 'plain code must not be affected: ${output}'
 }
+
+// ----- Phase 2: elision / anonymous lifetimes / variance -----
+
+fn test_lifetime_elision_single_input_ok() {
+	// Opt-in elision: the fn declares `[^a]`, so elision rules apply.
+	// Single input reference + reference return → return implicitly
+	// borrows from that input. No explicit `^a` needed at use sites.
+	code := '
+struct Holder {
+	value int
+}
+
+fn first[^a](h &Holder) &Holder {
+	return h
+}
+
+fn main() {
+	h := Holder{value: 1}
+	r := first(&h)
+	println(r.value)
+}
+'
+	exit_code, output := run_lifetime_check(code)
+	assert exit_code == 0, 'single-input elision should compile: ${output}'
+}
+
+fn test_lifetime_anonymous_lifetime_ok() {
+	// `&^_ T` is the placeholder ("anonymous") form — explicitly opting
+	// into elision at the use site. Equivalent to a bare `&T` slot under
+	// an opted-in signature.
+	code := '
+struct Holder {
+	value int
+}
+
+fn first[^a](h &^_ Holder) &^_ Holder {
+	return h
+}
+
+fn main() {
+	h := Holder{value: 1}
+	r := first(&h)
+	println(r.value)
+}
+'
+	exit_code, output := run_lifetime_check(code)
+	assert exit_code == 0, 'anonymous lifetime should compile: ${output}'
+}
+
+fn test_lifetime_elision_method_receiver_ok() {
+	// On methods, the receiver counts as the input lifetime when
+	// elision needs to source a return lifetime.
+	code := '
+struct Cell {
+	value int
+}
+
+fn (c &Cell) borrow[^a]() &Cell {
+	return c
+}
+
+fn main() {
+	c := Cell{value: 1}
+	r := c.borrow()
+	println(r.value)
+}
+'
+	exit_code, output := run_lifetime_check(code)
+	assert exit_code == 0, 'method-receiver elision should compile: ${output}'
+}
+
+fn test_lifetime_elision_no_input_errors() {
+	// Return mentions a reference, but no parameter is borrowed —
+	// the caller would receive a dangling reference. Caught at the
+	// signature level before any body analysis.
+	code := '
+struct Holder {
+	value int
+}
+
+fn fabricate[^a]() &Holder {
+	return &Holder{value: 1}
+}
+
+fn main() {}
+'
+	exit_code, output := run_lifetime_check(code)
+	assert exit_code != 0, 'no-input elided return should fail'
+	assert output.contains('takes no reference parameters'), 'got: ${output}'
+	assert output.contains('fn `fabricate`'), 'should name the function, got: ${output}'
+}
+
+fn test_lifetime_elision_ambiguous_errors() {
+	// Two input references with distinct lifetimes — elision rule 2
+	// only applies when there is exactly one. User must annotate.
+	code := '
+struct A {
+	x int
+}
+
+struct B {
+	y int
+}
+
+struct Out {
+	z int
+}
+
+fn pick[^a](a &A, b &B) &Out {
+	return &Out{z: a.x + b.y}
+}
+
+fn main() {}
+'
+	exit_code, output := run_lifetime_check(code)
+	assert exit_code != 0, 'ambiguous elided return should fail'
+	assert output.contains('cannot infer return lifetime'), 'got: ${output}'
+	assert output.contains('fn `pick`'), 'should name the function, got: ${output}'
+}
+
+fn test_lifetime_elision_opt_in_legacy_unchanged() {
+	// CRITICAL: legacy code without `[^a]` must NOT be affected by
+	// elision rules. V has many existing fns like `fn (a array)
+	// data_header() &ArrayDataHeader` (value receiver, ref return)
+	// that would fail Rust-style strict elision. Opt-in keeps them
+	// untouched.
+	code := '
+struct Thing {
+	v int
+}
+
+fn legacy(x &Thing) &Thing {
+	return x
+}
+
+fn (t Thing) by_val_returns_ref() &Thing {
+	return &Thing{v: t.v}
+}
+
+fn no_params_returns_ref() &Thing {
+	return &Thing{v: 0}
+}
+
+fn main() {}
+'
+	exit_code, output := run_lifetime_check(code)
+	assert exit_code == 0, 'un-opted-in legacy code must not be affected: ${output}'
+}

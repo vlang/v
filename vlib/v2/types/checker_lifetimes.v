@@ -7,24 +7,59 @@
 // semantic check, so a typo like `&^b` in the body of a `[^a]`-generic
 // function was silently passed through.
 //
-// This module is the Phase 1 lifetime checker. It runs once per build,
-// gated by `-d ownership` (the same flag that turns on move/borrow
-// tracking), and validates:
+// This module is the lifetime checker. It runs once per build, gated by
+// `-d ownership` (the same flag that turns on move/borrow tracking), and
+// validates:
 //
-//   1. Every lifetime name used in a signature (parameter type, return
-//      type, struct field type, method receiver) refers to a lifetime that
-//      is declared in the enclosing generic-param list. Catches typos and
-//      omitted declarations.
+//   1. Every explicit lifetime name used in a signature (parameter type,
+//      return type, struct field type, method receiver) refers to a
+//      lifetime that is declared in the enclosing generic-param list.
+//      Catches typos and omitted declarations.
 //   2. No duplicate lifetime declarations within a single signature.
-//   3. A return type may only mention a lifetime that is also mentioned by
-//      at least one parameter (including the receiver for methods). This
+//   3. A return type may only mention an explicit lifetime that is also
+//      mentioned by at least one parameter (including the receiver). This
 //      is the signature-level "no dangling reference" rule: a function
-//      cannot synthesize an output reference out of thin air, so the
-//      returned reference must be tied to an input that the caller owns.
+//      cannot synthesize an output reference out of thin air.
 //
-// Phase 1 does NOT implement body-level borrow analysis (variables
-// outliving their referents, lifetime subtyping). Those require
-// control-flow-aware tracking and are left for a follow-up.
+// Phase 2 (this file): Lifetime elision and anonymous lifetimes.
+//
+//   Elision is OPT-IN per function. The user opts in by declaring at
+//   least one lifetime generic parameter on the function (e.g. `fn
+//   foo[^a](...)`). Existing V code with bare `&T` references in its
+//   signatures is unaffected — elision rules only apply once the user
+//   adds `[^a, ...]`. This is necessary because V allows returning
+//   `&T` from value-receiver methods (`fn (a Array) head() &T`) under
+//   its GC memory model; Rust-style strict elision would flag these
+//   as errors. Opt-in lets us add real checking incrementally without
+//   breaking the stdlib.
+//
+//   Once opted in, the validator applies Rust-style elision to bare
+//   `&T` (no `^`) and the anonymous form `&^_ T`:
+//
+//     - Each elided input reference is assigned its own synthetic
+//       input lifetime.
+//     - For elided output references the rules are, in priority
+//       order:
+//         a. If the fn is a method whose receiver is a reference, the
+//            receiver's lifetime is used.
+//         b. Otherwise, if the signature has exactly one input
+//            lifetime (explicit or synthetic), it is used.
+//         c. Otherwise: the elision is ambiguous and the validator
+//            errors, asking the user to annotate.
+//
+//   So `fn first[^a](h &Holder) &Holder` (a opted-in signature with
+//   elided refs) is accepted under rule (b), but `fn pick[^a](a &A,
+//   b &B) &Out` errors as ambiguous and the user must write the
+//   intended lifetime on the return position.
+//
+// Variance: V2 currently has no reference subtyping (no `&'long → &'short`
+// coercion), so variance rules are a no-op. Immutable references are
+// effectively covariant by construction; there are no mutable shared
+// references whose invariance would matter. Documented here for the
+// follow-up phase that introduces lifetime subtyping.
+//
+// Still NOT implemented: body-level borrow analysis (variables outliving
+// their referents). Requires control-flow-aware tracking.
 module types
 
 import v2.ast
@@ -56,30 +91,77 @@ fn (mut c Checker) lifetime_validate_stmt(stmt ast.Stmt) {
 }
 
 // lifetime_validate_fn_decl checks a single function or method declaration.
+// Validates explicit lifetimes (declared/undeclared, return-unbound) and
+// applies elision rules to elided refs (`&T`) and anonymous lifetimes
+// (`&^_ T`).
 fn (mut c Checker) lifetime_validate_fn_decl(decl ast.FnDecl) {
 	declared := c.lifetime_collect_declared(decl.typ.generic_params, 'fn `${decl.name}`')
-	// Treat the receiver as the 0th parameter for the input-lifetime set.
 	mut input_lifetimes := map[string]bool{}
+	mut receiver_has_ref := false
+	mut elision_synth_seq := 0
+
+	// Receiver counts as the 0th input.
 	if decl.is_method {
 		used := lifetime_collect_used_in_type(decl.receiver.typ)
 		for name in used {
 			c.lifetime_assert_declared(name, declared, decl.receiver.pos, 'fn `${decl.name}`')
 			input_lifetimes[name] = true
+			receiver_has_ref = true
+		}
+		recv_elided := lifetime_count_elided_slots(decl.receiver.typ)
+		for _ in 0 .. recv_elided {
+			synth := '\$self_${elision_synth_seq}'
+			elision_synth_seq++
+			input_lifetimes[synth] = true
+			receiver_has_ref = true
 		}
 	}
+
 	for param in decl.typ.params {
 		used := lifetime_collect_used_in_type(param.typ)
 		for name in used {
 			c.lifetime_assert_declared(name, declared, param.pos, 'fn `${decl.name}`')
 			input_lifetimes[name] = true
 		}
+		elided := lifetime_count_elided_slots(param.typ)
+		for _ in 0 .. elided {
+			synth := '\$elided_${elision_synth_seq}'
+			elision_synth_seq++
+			input_lifetimes[synth] = true
+		}
 	}
+
 	if decl.typ.return_type !is ast.EmptyExpr {
 		used := lifetime_collect_used_in_type(decl.typ.return_type)
 		for name in used {
 			c.lifetime_assert_declared(name, declared, decl.pos, 'fn `${decl.name}`')
 			if name !in input_lifetimes {
 				c.lifetime_error_return_unbound(name, decl.name, decl.pos)
+			}
+		}
+		// Elision rules apply ONLY to opted-in signatures (those that
+		// declare at least one lifetime generic param). Without opt-in,
+		// bare `&T` retains V's legacy unchecked semantics — this is
+		// necessary because V's stdlib has many value-receiver methods
+		// that return references (e.g. `array.data_header() &ArrayDataHeader`),
+		// which would otherwise all fail Rust-style strict elision.
+		if declared.len == 0 {
+			return
+		}
+		ret_elided := lifetime_count_elided_slots(decl.typ.return_type)
+		if ret_elided > 0 {
+			// Elision rules, in priority order:
+			//   a. Method receiver lifetime takes the return position.
+			//   b. Otherwise, exactly one input lifetime → use it.
+			//   c. Otherwise → ambiguous or impossible, error out.
+			if receiver_has_ref {
+				// OK — receiver lifetime covers the elided return.
+			} else if input_lifetimes.len == 1 {
+				// OK — single input lifetime is implicitly the return's.
+			} else if input_lifetimes.len == 0 {
+				c.lifetime_error_elision_no_input(decl.name, decl.pos)
+			} else {
+				c.lifetime_error_elision_ambiguous(decl.name, decl.pos, input_lifetimes)
 			}
 		}
 	}
@@ -166,6 +248,43 @@ fn (mut c Checker) lifetime_error_return_unbound(name string, fn_name string, po
 	exit(1)
 }
 
+fn (mut c Checker) lifetime_error_elision_no_input(fn_name string, pos token.Pos) {
+	if pos.is_valid() {
+		file := c.file_set.file(pos)
+		errors.error('fn `${fn_name}` returns a reference but takes no reference parameters; cannot infer return lifetime', errors.details(file,
+			file.position(pos), 2), .error, file.position(pos))
+	} else {
+		eprintln('error: fn `${fn_name}` returns a reference but takes no reference parameters; cannot infer return lifetime')
+	}
+	eprintln('  --> elided return references must borrow from an input reference')
+	eprintln('help: either take a `&T` parameter the return value can borrow from, or return an owned value')
+	exit(1)
+}
+
+fn (mut c Checker) lifetime_error_elision_ambiguous(fn_name string, pos token.Pos, inputs map[string]bool) {
+	mut names := []string{}
+	for k, _ in inputs {
+		// User-facing: hide synthetic lifetimes (start with `$`) behind a
+		// generic "<elided>" so the diagnostic doesn't leak internal IDs.
+		if k.starts_with('\$') {
+			names << '<elided>'
+		} else {
+			names << '^' + k
+		}
+	}
+	names.sort()
+	if pos.is_valid() {
+		file := c.file_set.file(pos)
+		errors.error('cannot infer return lifetime for fn `${fn_name}`: multiple input lifetimes in scope (${names.join(', ')})', errors.details(file,
+			file.position(pos), 2), .error, file.position(pos))
+	} else {
+		eprintln('error: cannot infer return lifetime for fn `${fn_name}`: multiple input lifetimes in scope (${names.join(', ')})')
+	}
+	eprintln('  --> elision rule 2 only applies when there is exactly one input lifetime')
+	eprintln('help: annotate the return type with the lifetime you intend, e.g. `&^a T`')
+	exit(1)
+}
+
 // lifetime_collect_used_in_type walks a type expression and returns the
 // set of lifetime names it references (bare, without the `^` sigil).
 // This is the workhorse that finds `^a` inside `&^a Foo`,
@@ -205,10 +324,73 @@ fn lifetime_walk_type(expr ast.Expr, mut out map[string]bool, depth int) {
 	}
 }
 
+// lifetime_count_elided_slots returns the number of reference slots in a
+// type that lack an explicit named lifetime. Both bare `&T` (no `^`) and
+// the anonymous lifetime form `&^_ T` count. Used by elision rules to
+// decide how many fresh synthetic lifetimes to mint for the signature.
+fn lifetime_count_elided_slots(expr ast.Expr) int {
+	mut counter := [0]
+	lifetime_walk_count(expr, mut counter, 0)
+	return counter[0]
+}
+
+fn lifetime_walk_count(expr ast.Expr, mut counter []int, depth int) {
+	if depth > 32 {
+		return
+	}
+	if expr is ast.Type {
+		lifetime_walk_count_inner(expr, mut counter, depth)
+	}
+}
+
+fn lifetime_walk_count_inner(t ast.Type, mut counter []int, depth int) {
+	match t {
+		ast.PointerType {
+			if t.lifetime.len == 0 || t.lifetime == '_' {
+				counter[0]++
+			}
+			lifetime_walk_count(t.base_type, mut counter, depth + 1)
+		}
+		ast.ArrayType {
+			lifetime_walk_count(t.elem_type, mut counter, depth + 1)
+		}
+		ast.ArrayFixedType {
+			lifetime_walk_count(t.elem_type, mut counter, depth + 1)
+		}
+		ast.MapType {
+			lifetime_walk_count(t.key_type, mut counter, depth + 1)
+			lifetime_walk_count(t.value_type, mut counter, depth + 1)
+		}
+		ast.OptionType {
+			lifetime_walk_count(t.base_type, mut counter, depth + 1)
+		}
+		ast.ResultType {
+			lifetime_walk_count(t.base_type, mut counter, depth + 1)
+		}
+		ast.TupleType {
+			for inner in t.types {
+				lifetime_walk_count(inner, mut counter, depth + 1)
+			}
+		}
+		ast.GenericType {
+			for p in t.params {
+				lifetime_walk_count(p, mut counter, depth + 1)
+			}
+		}
+		ast.FnType {
+			// Nested fn types are their own scope; their refs don't bubble
+			// up as elision slots of the outer signature.
+		}
+		else {}
+	}
+}
+
 fn lifetime_walk_type_inner(t ast.Type, mut out map[string]bool, depth int) {
 	match t {
 		ast.PointerType {
-			if t.lifetime.len > 0 {
+			// Anonymous (`^_`) is not a "named" lifetime; it's elided.
+			// Counted by lifetime_count_elided_slots, not here.
+			if t.lifetime.len > 0 && t.lifetime != '_' {
 				out[t.lifetime] = true
 			}
 			lifetime_walk_type(t.base_type, mut out, depth + 1)
