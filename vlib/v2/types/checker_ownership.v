@@ -670,6 +670,21 @@ fn (c &Checker) is_copy_type_impl(t Type, depth int) bool {
 	return true
 }
 
+// ownership_is_rc_or_arc_wrapper reports whether a struct is the
+// reference-counted wrapper `Rc[T]` or `Arc[T]` (recognised by name, under
+// any module). Treated as `Owned` so that `r2 := r1` moves r1 — matching
+// Rust semantics where Rc/Arc are *not* Copy and require an explicit
+// `.clone()` to share. Goal: source-translating Rust code that uses Rc/Arc.
+//
+// Name-based matching is intentional: there is no compiler-managed Rc/Arc
+// type in V2, so any struct the user (or a Rust-to-V translator) names `Rc`
+// or `Arc` participates in shared-ownership tracking. Only fires when
+// `-d ownership` is enabled, so simple V code is untouched.
+fn ownership_is_rc_or_arc_wrapper(st Struct) bool {
+	short := st.name.all_after_last('__')
+	return short == 'Rc' || short == 'Arc'
+}
+
 // is_owned_type reports whether values of this type are tracked for ownership.
 // A type is owned-tracked when the user has explicitly opted in:
 //   * struct: `struct X implements Owned { ... }`
@@ -696,6 +711,9 @@ fn (c &Checker) is_owned_type_impl(t Type, depth int) bool {
 			return c.is_owned_type_impl(t.base_type, depth + 1)
 		}
 		Struct {
+			if ownership_is_rc_or_arc_wrapper(t) {
+				return true
+			}
 			return c.struct_marker_matches(t, 'Owned')
 		}
 		else {

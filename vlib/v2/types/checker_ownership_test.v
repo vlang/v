@@ -517,6 +517,120 @@ fn main() {
 	assert output.contains('use of moved value: `s`'), 'got: ${output}'
 }
 
+// === Rc / Arc — shared-ownership wrappers for Rust source translation ===
+//
+// Any struct named `Rc` or `Arc` (under any module) is treated as `Owned` by
+// the ownership checker — matching Rust's semantics where Rc/Arc are *not*
+// Copy and require an explicit `.clone()` to share. The wrapper itself
+// doesn't need `implements Owned`, so a Rust-to-V translator can emit the
+// types verbatim without extra annotations.
+
+fn test_rc_moves_on_assign() {
+	code := '
+struct Rc[T] {
+	value T
+}
+
+fn main() {
+	r1 := Rc[int]{value: 42}
+	r2 := r1
+	println(r1.value)
+	_ = r2
+}
+'
+	exit_code, output := run_ownership_check(code)
+	assert exit_code != 0, 'Rc[T] should move on assign'
+	assert output.contains('use of moved value: `r1`'), 'got: ${output}'
+	assert output.contains('value moved to `r2`'), 'got: ${output}'
+}
+
+fn test_arc_moves_on_assign() {
+	code := '
+struct Arc[T] {
+	value T
+}
+
+fn main() {
+	a1 := Arc[int]{value: 42}
+	a2 := a1
+	println(a1.value)
+	_ = a2
+}
+'
+	exit_code, output := run_ownership_check(code)
+	assert exit_code != 0, 'Arc[T] should move on assign'
+	assert output.contains('use of moved value: `a1`'), 'got: ${output}'
+}
+
+fn test_rc_clone_prevents_move() {
+	// `.clone()` is the Rust escape hatch — calling it on an Rc returns
+	// a fresh handle, leaving the source still usable. The check passes
+	// even if downstream C codegen fails (we don't gate on exit_code).
+	code := '
+struct Rc[T] {
+	value T
+}
+
+fn (r &Rc[int]) clone() Rc[int] {
+	return Rc[int]{value: r.value}
+}
+
+fn main() {
+	r1 := Rc[int]{value: 42}
+	r2 := r1.clone()
+	println(r1.value)
+	println(r2.value)
+}
+'
+	_, output := run_ownership_check(code)
+	assert !output.contains('use of moved value'), 'clone should prevent move, got: ${output}'
+}
+
+fn test_rc_borrow_does_not_move() {
+	// `&r1` is a borrow, not a move — source remains usable.
+	code := '
+struct Rc[T] {
+	value T
+}
+
+fn takes_ref(r &Rc[int]) int {
+	return r.value
+}
+
+fn main() {
+	r1 := Rc[int]{value: 42}
+	x := takes_ref(&r1)
+	println(r1.value)
+	println(x)
+}
+'
+	_, output := run_ownership_check(code)
+	assert !output.contains('use of moved value'), 'borrow should not move, got: ${output}'
+}
+
+fn test_rc_recognised_under_module_prefix() {
+	// The detector strips module prefixes — a struct emitted by the
+	// translator as `sync.Rc` (mangled to `sync__Rc`) is recognised too.
+	// We can't easily express a fully-qualified struct in a single-file
+	// test, so we use a name that contains the canonical short name as
+	// the last segment.
+	code := '
+struct my__Rc[T] {
+	value T
+}
+
+fn main() {
+	r1 := my__Rc[int]{value: 1}
+	r2 := r1
+	println(r1.value)
+	_ = r2
+}
+'
+	exit_code, output := run_ownership_check(code)
+	assert exit_code != 0, 'module-prefixed Rc should still be tracked'
+	assert output.contains('use of moved value: `r1`'), 'got: ${output}'
+}
+
 // === Owned marker interface (non-string types) ===
 
 fn test_owned_struct_move_on_assign() {
