@@ -1044,6 +1044,36 @@ fn parse() !u64 {
 	assert !csrc.contains('u64 _val = main__make_error()')
 }
 
+fn test_generate_c_returns_ierror_local_from_result_function_as_error() {
+	csrc := generate_result_option_c_for_test('
+interface IError {
+	msg() string
+	code() int
+}
+
+struct MyError {}
+
+fn (err MyError) msg() string {
+	return "bad"
+}
+
+fn (err MyError) code() int {
+	return 1
+}
+
+fn make_error() IError {
+	return MyError{}
+}
+
+fn fail() !int {
+	e := make_error()
+	return e
+}
+	')
+	assert csrc.contains('return (_result_int){ .is_error=true, .err=e };')
+	assert !csrc.contains('int _val = e')
+}
+
 fn test_generate_c_keeps_option_if_guard_err_as_concrete_error_ref() {
 	csrc := generate_result_option_c_for_test('
 struct MyError {}

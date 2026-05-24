@@ -91,6 +91,9 @@ mut:
 	cur_fn_recv_param       string // Receiver parameter name (e.g., "w")
 	cur_fn_generic_params   []string
 	generic_var_type_params map[string]string
+	generic_fn_decl_names   map[string]bool
+	generic_fn_decl_stmts   map[string][]ast.Stmt
+	generic_fn_value_names  map[string]bool
 	// @[live] hot code reloading: function names and source file
 	live_fns         []LiveFn
 	live_source_file string
@@ -217,6 +220,9 @@ fn new_transformer_base(env &types.Environment, p &pref.Preferences) &Transforme
 		needed_sort_fns:             map[string]SortComparatorInfo{}
 		needed_go_wrappers:          map[string]GoWrapperInfo{}
 		generic_var_type_params:     map[string]string{}
+		generic_fn_decl_names:       map[string]bool{}
+		generic_fn_decl_stmts:       map[string][]ast.Stmt{}
+		generic_fn_value_names:      map[string]bool{}
 		runtime_const_inits_by_mod:  map[string][]RuntimeConstInit{}
 		runtime_const_init_fn_name:  map[string]string{}
 	}
@@ -250,6 +256,7 @@ pub fn (t &Transformer) new_worker_clone(worker_idx int) &Transformer {
 		needed_sort_fns:             map[string]SortComparatorInfo{}
 		needed_go_wrappers:          map[string]GoWrapperInfo{}
 		generic_var_type_params:     map[string]string{}
+		generic_fn_value_names:      t.generic_fn_value_names
 		runtime_const_inits_by_mod:  map[string][]RuntimeConstInit{}
 		runtime_const_init_fn_name:  map[string]string{}
 	}
@@ -780,8 +787,370 @@ fn (t &Transformer) is_var_enum(name string) ?string {
 	return none
 }
 
+fn generic_ref_short_name(expr ast.Expr) string {
+	if !expr_has_valid_data(expr) {
+		return ''
+	}
+	return match expr {
+		ast.Ident {
+			expr.name
+		}
+		ast.SelectorExpr {
+			expr.rhs.name
+		}
+		ast.GenericArgs {
+			generic_ref_short_name(expr.lhs)
+		}
+		ast.GenericArgOrIndexExpr {
+			generic_ref_short_name(expr.lhs)
+		}
+		ast.IndexExpr {
+			generic_ref_short_name(expr.lhs)
+		}
+		ast.ParenExpr {
+			generic_ref_short_name(expr.expr)
+		}
+		else {
+			''
+		}
+	}
+}
+
+fn (mut t Transformer) collect_generic_fn_value_refs(files []ast.File) {
+	t.collect_generic_fn_decl_names(files)
+	for file in files {
+		for stmt in file.stmts {
+			t.collect_generic_fn_value_refs_in_stmt(stmt, false)
+		}
+	}
+	t.collect_generic_fn_value_dependencies()
+}
+
+fn (mut t Transformer) collect_generic_fn_decl_names(files []ast.File) {
+	for file in files {
+		for stmt in file.stmts {
+			t.collect_generic_fn_decl_names_in_stmt(stmt)
+		}
+	}
+}
+
+fn (mut t Transformer) collect_generic_fn_decl_names_in_stmt(stmt ast.Stmt) {
+	if !stmt_has_valid_data(stmt) {
+		return
+	}
+	match stmt {
+		ast.ComptimeStmt {
+			t.collect_generic_fn_decl_names_in_stmt(stmt.stmt)
+		}
+		ast.ExprStmt {
+			t.collect_generic_fn_decl_names_in_expr(stmt.expr)
+		}
+		ast.FnDecl {
+			if has_non_lifetime_generic_params(stmt.typ.generic_params) {
+				t.generic_fn_decl_names[stmt.name] = true
+				t.generic_fn_decl_stmts[stmt.name] = stmt.stmts
+			}
+			for body_stmt in stmt.stmts {
+				t.collect_generic_fn_decl_names_in_stmt(body_stmt)
+			}
+		}
+		else {}
+	}
+}
+
+fn (mut t Transformer) collect_generic_fn_decl_names_in_expr(expr ast.Expr) {
+	if !expr_has_valid_data(expr) {
+		return
+	}
+	match expr {
+		ast.ComptimeExpr {
+			t.collect_generic_fn_decl_names_in_expr(expr.expr)
+		}
+		ast.IfExpr {
+			for stmt in expr.stmts {
+				t.collect_generic_fn_decl_names_in_stmt(stmt)
+			}
+			t.collect_generic_fn_decl_names_in_expr(expr.else_expr)
+		}
+		else {}
+	}
+}
+
+fn (mut t Transformer) collect_generic_fn_value_dependencies() {
+	mut processed := map[string]bool{}
+	for {
+		mut progressed := false
+		for name, _ in t.generic_fn_value_names {
+			if name in processed {
+				continue
+			}
+			processed[name] = true
+			progressed = true
+			if stmts := t.generic_fn_decl_stmts[name] {
+				t.collect_generic_fn_value_refs_in_stmts(stmts, true)
+			}
+		}
+		if !progressed {
+			break
+		}
+	}
+}
+
+fn (mut t Transformer) collect_generic_fn_value_refs_in_stmts(stmts []ast.Stmt, include_generic_calls bool) {
+	for stmt in stmts {
+		t.collect_generic_fn_value_refs_in_stmt(stmt, include_generic_calls)
+	}
+}
+
+fn (mut t Transformer) collect_generic_fn_value_refs_in_stmt(stmt ast.Stmt, include_generic_calls bool) {
+	if !stmt_has_valid_data(stmt) {
+		return
+	}
+	match stmt {
+		ast.AssertStmt {
+			t.collect_generic_fn_value_refs_in_expr(stmt.expr, include_generic_calls, false)
+			t.collect_generic_fn_value_refs_in_expr(stmt.extra, include_generic_calls, false)
+		}
+		ast.AssignStmt {
+			for expr in stmt.rhs {
+				t.collect_generic_fn_value_refs_in_expr(expr, include_generic_calls, false)
+			}
+		}
+		ast.BlockStmt {
+			t.collect_generic_fn_value_refs_in_stmts(stmt.stmts, include_generic_calls)
+		}
+		ast.ComptimeStmt {
+			t.collect_generic_fn_value_refs_in_stmt(stmt.stmt, include_generic_calls)
+		}
+		ast.ConstDecl {
+			for field in stmt.fields {
+				t.collect_generic_fn_value_refs_in_expr(field.value, include_generic_calls, false)
+			}
+		}
+		ast.DeferStmt {
+			t.collect_generic_fn_value_refs_in_stmts(stmt.stmts, include_generic_calls)
+		}
+		ast.EnumDecl {
+			for field in stmt.fields {
+				t.collect_generic_fn_value_refs_in_expr(field.value, include_generic_calls, false)
+			}
+		}
+		ast.ExprStmt {
+			t.collect_generic_fn_value_refs_in_expr(stmt.expr, include_generic_calls, false)
+		}
+		ast.FnDecl {
+			t.collect_generic_fn_value_refs_in_stmts(stmt.stmts, include_generic_calls)
+		}
+		ast.ForInStmt {
+			t.collect_generic_fn_value_refs_in_expr(stmt.expr, include_generic_calls, false)
+		}
+		ast.ForStmt {
+			t.collect_generic_fn_value_refs_in_stmt(stmt.init, include_generic_calls)
+			t.collect_generic_fn_value_refs_in_expr(stmt.cond, include_generic_calls, false)
+			t.collect_generic_fn_value_refs_in_stmt(stmt.post, include_generic_calls)
+			t.collect_generic_fn_value_refs_in_stmts(stmt.stmts, include_generic_calls)
+		}
+		ast.GlobalDecl {
+			for field in stmt.fields {
+				t.collect_generic_fn_value_refs_in_expr(field.value, include_generic_calls, false)
+			}
+		}
+		ast.LabelStmt {
+			t.collect_generic_fn_value_refs_in_stmt(stmt.stmt, include_generic_calls)
+		}
+		ast.ReturnStmt {
+			for expr in stmt.exprs {
+				t.collect_generic_fn_value_refs_in_expr(expr, include_generic_calls, false)
+			}
+		}
+		ast.StructDecl {
+			for field in stmt.fields {
+				t.collect_generic_fn_value_refs_in_expr(field.value, include_generic_calls, false)
+			}
+		}
+		else {}
+	}
+}
+
+fn (mut t Transformer) collect_generic_fn_value_refs_in_expr(expr ast.Expr, include_generic_calls bool, in_call_lhs bool) {
+	if !expr_has_valid_data(expr) {
+		return
+	}
+	match expr {
+		ast.ArrayInitExpr {
+			for item in expr.exprs {
+				t.collect_generic_fn_value_refs_in_expr(item, include_generic_calls, false)
+			}
+			t.collect_generic_fn_value_refs_in_expr(expr.init, include_generic_calls, false)
+			t.collect_generic_fn_value_refs_in_expr(expr.cap, include_generic_calls, false)
+			t.collect_generic_fn_value_refs_in_expr(expr.len, include_generic_calls, false)
+		}
+		ast.AsCastExpr {
+			t.collect_generic_fn_value_refs_in_expr(expr.expr, include_generic_calls, false)
+		}
+		ast.AssocExpr {
+			t.collect_generic_fn_value_refs_in_expr(expr.expr, include_generic_calls, false)
+			for field in expr.fields {
+				t.collect_generic_fn_value_refs_in_expr(field.value, include_generic_calls, false)
+			}
+		}
+		ast.CallExpr {
+			t.collect_generic_fn_value_refs_in_expr(expr.lhs, include_generic_calls, true)
+			for arg in expr.args {
+				t.collect_generic_fn_value_refs_in_expr(arg, include_generic_calls, false)
+			}
+		}
+		ast.CallOrCastExpr {
+			t.collect_generic_fn_value_refs_in_expr(expr.lhs, include_generic_calls, false)
+			t.collect_generic_fn_value_refs_in_expr(expr.expr, include_generic_calls, false)
+		}
+		ast.CastExpr {
+			t.collect_generic_fn_value_refs_in_expr(expr.expr, include_generic_calls, false)
+		}
+		ast.ComptimeExpr {
+			t.collect_generic_fn_value_refs_in_expr(expr.expr, include_generic_calls, false)
+		}
+		ast.FieldInit {
+			t.collect_generic_fn_value_refs_in_expr(expr.value, include_generic_calls, false)
+		}
+		ast.FnLiteral {
+			for captured in expr.captured_vars {
+				t.collect_generic_fn_value_refs_in_expr(captured, include_generic_calls, false)
+			}
+			t.collect_generic_fn_value_refs_in_stmts(expr.stmts, include_generic_calls)
+		}
+		ast.GenericArgs {
+			// Generic function values like `handler[A, X]` are instantiated later by
+			// cgen. Roots are value-position refs; callees are added transitively.
+			base_name := generic_ref_short_name(expr.lhs)
+			if (include_generic_calls || !in_call_lhs) && base_name in t.generic_fn_decl_names {
+				t.generic_fn_value_names[base_name] = true
+			}
+			t.collect_generic_fn_value_refs_in_expr(expr.lhs, include_generic_calls, in_call_lhs)
+			for arg in expr.args {
+				t.collect_generic_fn_value_refs_in_expr(arg, include_generic_calls, false)
+			}
+		}
+		ast.GenericArgOrIndexExpr {
+			base_name := generic_ref_short_name(expr.lhs)
+			if (include_generic_calls || !in_call_lhs) && base_name in t.generic_fn_decl_names {
+				t.generic_fn_value_names[base_name] = true
+			}
+			t.collect_generic_fn_value_refs_in_expr(expr.lhs, include_generic_calls, in_call_lhs)
+			t.collect_generic_fn_value_refs_in_expr(expr.expr, include_generic_calls, false)
+		}
+		ast.IfExpr {
+			t.collect_generic_fn_value_refs_in_expr(expr.cond, include_generic_calls, false)
+			t.collect_generic_fn_value_refs_in_stmts(expr.stmts, include_generic_calls)
+			t.collect_generic_fn_value_refs_in_expr(expr.else_expr, include_generic_calls, false)
+		}
+		ast.IfGuardExpr {
+			t.collect_generic_fn_value_refs_in_stmt(expr.stmt, include_generic_calls)
+		}
+		ast.IndexExpr {
+			name := generic_ref_short_name(expr.lhs)
+			if (include_generic_calls || !in_call_lhs) && name in t.generic_fn_decl_names {
+				t.generic_fn_value_names[name] = true
+			}
+			t.collect_generic_fn_value_refs_in_expr(expr.lhs, include_generic_calls, in_call_lhs)
+			t.collect_generic_fn_value_refs_in_expr(expr.expr, include_generic_calls, false)
+		}
+		ast.InfixExpr {
+			t.collect_generic_fn_value_refs_in_expr(expr.lhs, include_generic_calls, false)
+			t.collect_generic_fn_value_refs_in_expr(expr.rhs, include_generic_calls, false)
+		}
+		ast.InitExpr {
+			for field in expr.fields {
+				t.collect_generic_fn_value_refs_in_expr(field.value, include_generic_calls, false)
+			}
+		}
+		ast.KeywordOperator {
+			for item in expr.exprs {
+				t.collect_generic_fn_value_refs_in_expr(item, include_generic_calls, false)
+			}
+		}
+		ast.LambdaExpr {
+			t.collect_generic_fn_value_refs_in_expr(expr.expr, include_generic_calls, false)
+		}
+		ast.LockExpr {
+			for lock_expr in expr.lock_exprs {
+				t.collect_generic_fn_value_refs_in_expr(lock_expr, include_generic_calls, false)
+			}
+			for rlock_expr in expr.rlock_exprs {
+				t.collect_generic_fn_value_refs_in_expr(rlock_expr, include_generic_calls, false)
+			}
+			t.collect_generic_fn_value_refs_in_stmts(expr.stmts, include_generic_calls)
+		}
+		ast.MapInitExpr {
+			for key in expr.keys {
+				t.collect_generic_fn_value_refs_in_expr(key, include_generic_calls, false)
+			}
+			for val in expr.vals {
+				t.collect_generic_fn_value_refs_in_expr(val, include_generic_calls, false)
+			}
+		}
+		ast.MatchExpr {
+			t.collect_generic_fn_value_refs_in_expr(expr.expr, include_generic_calls, false)
+			for branch in expr.branches {
+				for cond in branch.cond {
+					t.collect_generic_fn_value_refs_in_expr(cond, include_generic_calls, false)
+				}
+				t.collect_generic_fn_value_refs_in_stmts(branch.stmts, include_generic_calls)
+			}
+		}
+		ast.ModifierExpr {
+			t.collect_generic_fn_value_refs_in_expr(expr.expr, include_generic_calls, false)
+		}
+		ast.OrExpr {
+			t.collect_generic_fn_value_refs_in_expr(expr.expr, include_generic_calls, false)
+			t.collect_generic_fn_value_refs_in_stmts(expr.stmts, include_generic_calls)
+		}
+		ast.ParenExpr {
+			t.collect_generic_fn_value_refs_in_expr(expr.expr, include_generic_calls, in_call_lhs)
+		}
+		ast.PostfixExpr {
+			t.collect_generic_fn_value_refs_in_expr(expr.expr, include_generic_calls, false)
+		}
+		ast.PrefixExpr {
+			t.collect_generic_fn_value_refs_in_expr(expr.expr, include_generic_calls, false)
+		}
+		ast.RangeExpr {
+			t.collect_generic_fn_value_refs_in_expr(expr.start, include_generic_calls, false)
+			t.collect_generic_fn_value_refs_in_expr(expr.end, include_generic_calls, false)
+		}
+		ast.SelectExpr {
+			t.collect_generic_fn_value_refs_in_stmt(expr.stmt, include_generic_calls)
+			t.collect_generic_fn_value_refs_in_stmts(expr.stmts, include_generic_calls)
+			t.collect_generic_fn_value_refs_in_expr(expr.next, include_generic_calls, false)
+		}
+		ast.SelectorExpr {
+			t.collect_generic_fn_value_refs_in_expr(expr.lhs, include_generic_calls, in_call_lhs)
+		}
+		ast.SqlExpr {
+			t.collect_generic_fn_value_refs_in_expr(expr.expr, include_generic_calls, false)
+		}
+		ast.StringInterLiteral {
+			for inter in expr.inters {
+				t.collect_generic_fn_value_refs_in_expr(inter.expr, include_generic_calls, false)
+				t.collect_generic_fn_value_refs_in_expr(inter.format_expr, include_generic_calls,
+					false)
+			}
+		}
+		ast.Tuple {
+			for item in expr.exprs {
+				t.collect_generic_fn_value_refs_in_expr(item, include_generic_calls, false)
+			}
+		}
+		ast.UnsafeExpr {
+			t.collect_generic_fn_value_refs_in_stmts(expr.stmts, include_generic_calls)
+		}
+		else {}
+	}
+}
+
 // pre_pass runs the sequential pre-pass: builds elided_fns and collects runtime const inits.
 pub fn (mut t Transformer) pre_pass(files []ast.File) {
+	t.collect_generic_fn_value_refs(files)
 	// Pre-pass: scan all function declarations for conditional compilation attributes
 	// to build elided_fns set before transforming call sites
 	for file in files {
@@ -3013,6 +3382,10 @@ fn (mut t Transformer) transform_assign_stmt(stmt ast.AssignStmt) ast.AssignStmt
 		if lhs_name != '' {
 			if rhs_type := t.fn_pointer_call_return_type(rhs_src[0]) {
 				t.register_temp_var(lhs_name, rhs_type)
+			} else if rhs_src[0] is ast.Ident || rhs_src[0] is ast.SelectorExpr {
+				if rhs_type := t.get_expr_type(rhs_src[0]) {
+					t.register_local_var_type(lhs_name, rhs_type)
+				}
 			}
 		}
 	}
@@ -3160,8 +3533,8 @@ fn (mut t Transformer) try_transform_map_index_assign(stmt ast.AssignStmt) ?ast.
 	} else {
 		return none
 	}
-	// Check if the indexed expression is a map and extract key/value types
-	map_expr_typ := t.get_expr_type(index_expr.lhs) or { return none }
+	// Check if the indexed expression is a map and extract key/value types.
+	map_expr_typ := t.map_index_lhs_type(index_expr.lhs) or { return none }
 	map_type := t.unwrap_map_type(map_expr_typ) or { return none }
 
 	// Transform to: { key_tmp := key; val_tmp := val; map__set(&m, &key_tmp, &val_tmp) }
@@ -3235,7 +3608,7 @@ fn (mut t Transformer) try_transform_map_selector_assign(stmt ast.AssignStmt, se
 		return none
 	}
 	// Verify this is a map type
-	map_expr_typ := t.get_expr_type(index_expr.lhs) or { return none }
+	map_expr_typ := t.map_index_lhs_type(index_expr.lhs) or { return none }
 	map_type := t.unwrap_map_type(map_expr_typ) or { return none }
 	// Get the C type name for the map value type
 	val_type_name := t.type_to_c_name(map_type.value_type)
@@ -3294,10 +3667,25 @@ fn (mut t Transformer) try_transform_map_selector_assign(stmt ast.AssignStmt, se
 // For nested map index expressions (e.g., `outer['key']` where the result is an inner map),
 // it uses map__get_and_set to get a pointer to the actual entry in the outer map,
 // avoiding the copy-on-read problem that would lose writes to the inner map.
+fn (t &Transformer) map_index_lhs_type(lhs ast.Expr) ?types.Type {
+	if typ := t.get_expr_type(lhs) {
+		return typ
+	}
+	if lhs is ast.SelectorExpr {
+		// Selector map fields can lack direct expression metadata in generic/cached
+		// module bodies. Recover the field type from the receiver struct so
+		// `handler.maps[key] or { ... }` still lowers through map__get_check.
+		if field_type := t.get_struct_field_type(lhs) {
+			return field_type
+		}
+	}
+	return none
+}
+
 fn (mut t Transformer) map_index_lhs_to_ptr(lhs ast.Expr, lhs_type types.Type) ast.Expr {
 	// Check if lhs is a map index expression (nested map case)
 	if lhs is ast.IndexExpr {
-		outer_type := t.get_expr_type(lhs.lhs) or {
+		outer_type := t.map_index_lhs_type(lhs.lhs) or {
 			// Fallback: take address of transformed expression
 			return t.addr_of_expr_with_temp(lhs, lhs_type)
 		}
@@ -3333,7 +3721,7 @@ fn (mut t Transformer) map_index_lhs_to_ptr(lhs ast.Expr, lhs_type types.Type) a
 
 fn (mut t Transformer) map_index_lhs_to_ptr_with_prefix(lhs ast.Expr, lhs_type types.Type, mut prefix_stmts []ast.Stmt) ast.Expr {
 	if lhs is ast.IndexExpr {
-		outer_type := t.get_expr_type(lhs.lhs) or {
+		outer_type := t.map_index_lhs_type(lhs.lhs) or {
 			return t.addr_of_with_prefix_temp(lhs, lhs_type, mut prefix_stmts)
 		}
 		if outer_map := t.unwrap_map_type(outer_type) {
@@ -3385,7 +3773,7 @@ fn (mut t Transformer) try_transform_map_index_push(stmt ast.ExprStmt) ?ast.Stmt
 	}
 	index_expr := infix.lhs as ast.IndexExpr
 	// Check if the indexed expression is a map with array value type
-	map_expr_typ := t.get_expr_type(index_expr.lhs) or { return none }
+	map_expr_typ := t.map_index_lhs_type(index_expr.lhs) or { return none }
 	map_type := t.unwrap_map_type(map_expr_typ) or { return none }
 	// Map values can be aliases of arrays (e.g. `[]int` -> `Array_int`). Unwrap aliases.
 	mut val_type := map_type.value_type
@@ -3528,7 +3916,7 @@ fn (mut t Transformer) try_transform_map_index_postfix(stmt ast.ExprStmt) ?ast.S
 		return none
 	}
 	// Verify this is a map type
-	map_expr_typ := t.get_expr_type(index_expr.lhs) or { return none }
+	map_expr_typ := t.map_index_lhs_type(index_expr.lhs) or { return none }
 	_ = t.unwrap_map_type(map_expr_typ) or { return none }
 	// Convert to simple assignment: m[key] = m[key] + 1 (or - 1 for --)
 	// Build the RHS directly to avoid compound→simple conversion inheriting a source
@@ -3938,6 +4326,12 @@ fn (mut t Transformer) gen_temp_name() string {
 fn (mut t Transformer) register_temp_var(name string, typ types.Type) {
 	if t.fn_root_scope != unsafe { nil } {
 		t.fn_root_scope.insert(name, typ)
+	}
+}
+
+fn (mut t Transformer) register_local_var_type(name string, typ types.Type) {
+	if t.fn_root_scope != unsafe { nil } {
+		t.fn_root_scope.insert_or_update(name, typ)
 	}
 }
 
@@ -5866,7 +6260,7 @@ fn (mut t Transformer) try_expand_map_index_or(or_expr ast.OrExpr, mut prefix_st
 	index_expr := or_expr.expr as ast.IndexExpr
 
 	// Get the map type from environment and extract key/value types
-	map_expr_typ := t.get_expr_type(index_expr.lhs) or { return none }
+	map_expr_typ := t.map_index_lhs_type(index_expr.lhs) or { return none }
 	map_type := t.unwrap_map_type(map_expr_typ) or { return none }
 	value_type := map_type.value_type
 
@@ -6037,7 +6431,7 @@ fn (mut t Transformer) try_expand_map_index_or_assign(stmt ast.AssignStmt, or_ex
 	index_expr := or_expr.expr as ast.IndexExpr
 
 	// Get the map type from environment and extract key/value types
-	map_expr_typ := t.get_expr_type(index_expr.lhs) or { return none }
+	map_expr_typ := t.map_index_lhs_type(index_expr.lhs) or { return none }
 	map_type := t.unwrap_map_type(map_expr_typ) or { return none }
 	value_type := map_type.value_type
 
@@ -8843,6 +9237,18 @@ fn (t &Transformer) is_string_expr(expr ast.Expr) bool {
 			} else {
 				lhs_type
 			}
+			lhs_type_name := t.type_to_name(lhs_type).trim_right('*')
+			if lhs_type_name != '' && lhs_type_name != 'string' {
+				if field_typ := t.lookup_struct_field_type(lhs_type_name, expr.rhs.name) {
+					field_found = true
+					if field_typ is types.String {
+						return true
+					}
+					if field_typ is types.Struct && (field_typ as types.Struct).name == 'string' {
+						return true
+					}
+				}
+			}
 			// string.str is &u8, string.len is int — none are strings
 			if base_type is types.String {
 				return false
@@ -8850,6 +9256,14 @@ fn (t &Transformer) is_string_expr(expr ast.Expr) bool {
 			if base_type is types.Struct {
 				if base_type.name == 'string' {
 					return false
+				}
+				if field_typ := t.lookup_struct_field_type(base_type.name, expr.rhs.name) {
+					if field_typ is types.String {
+						return true
+					}
+					if field_typ is types.Struct && (field_typ as types.Struct).name == 'string' {
+						return true
+					}
 				}
 				for field in base_type.fields {
 					if field.name == expr.rhs.name {

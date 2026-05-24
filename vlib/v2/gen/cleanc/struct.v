@@ -7,6 +7,30 @@ module cleanc
 import v2.ast
 import v2.types
 
+fn (mut g Gen) has_explicit_str_method_for_c_type(c_type_name string) bool {
+	old_file := g.cur_file_name
+	old_module := g.cur_module
+	old_import_modules := g.cur_import_modules.clone()
+	for file in g.files {
+		g.set_file_module(file)
+		for stmt in file.stmts {
+			if stmt is ast.FnDecl {
+				if stmt.is_method && stmt.name == 'str'
+					&& g.method_decl_c_name_for_module(g.cur_module, stmt) == '${c_type_name}__str' {
+					g.cur_file_name = old_file
+					g.cur_module = old_module
+					g.cur_import_modules = old_import_modules.clone()
+					return true
+				}
+			}
+		}
+	}
+	g.cur_file_name = old_file
+	g.cur_module = old_module
+	g.cur_import_modules = old_import_modules.clone()
+	return false
+}
+
 // collect_generic_struct_bindings scans all struct fields for GenericType
 // instantiations (e.g. LinkedList[ValueInfo]) and records the concrete type
 // bindings so that methods on generic structs can resolve their generic params.
@@ -31,7 +55,7 @@ fn (mut g Gen) collect_generic_struct_bindings() {
 				if stmt.typ.return_type !is ast.EmptyExpr {
 					g.scan_expr_for_generic_types(stmt.typ.return_type)
 				}
-				g.scan_stmts_for_generic_types(stmt.stmts)
+				g.scan_fn_body_for_generic_types(stmt, '')
 			}
 		}
 	}
@@ -89,7 +113,7 @@ fn (mut g Gen) collect_generic_struct_bindings() {
 				prev_generic_types := g.active_generic_types.clone()
 				for bindings in binding_sets {
 					g.active_generic_types = bindings.clone()
-					g.scan_stmts_for_generic_types(stmt.stmts)
+					g.scan_fn_body_for_generic_types(stmt, '')
 				}
 				g.active_generic_types = prev_generic_types.clone()
 			}
@@ -212,6 +236,7 @@ fn (mut g Gen) scan_expr_for_generic_types(e ast.Expr) {
 		}
 		ast.GenericArgOrIndexExpr {
 			// e.g. &Node[ValueInfo] → PrefixExpr { GenericArgOrIndexExpr { Ident("Node"), Ident("ValueInfo") } }
+			g.scan_generic_fn_value_for_specs(e)
 			base_name := g.expr_type_to_c(e.lhs)
 			arg_name := e.expr.name()
 			if !is_generic_placeholder_type_name(arg_name) {
@@ -224,6 +249,7 @@ fn (mut g Gen) scan_expr_for_generic_types(e ast.Expr) {
 			}
 		}
 		ast.GenericArgs {
+			g.scan_generic_fn_value_for_specs(e)
 			base_name := g.expr_type_to_c(e.lhs)
 			if e.args.len > 0 {
 				struct_base := if base_name.contains('__') {
@@ -322,6 +348,22 @@ fn (mut g Gen) generic_call_decl_from_lhs(lhs ast.Expr) ?ast.FnDecl {
 	if call_name == '' {
 		return none
 	}
+	for candidate in generic_call_decl_candidates(call_name) {
+		if info := g.generic_fn_decl_index[candidate] {
+			if info.file_idx >= 0 && info.file_idx < g.files.len {
+				file := g.files[info.file_idx]
+				if info.stmt_idx >= 0 && info.stmt_idx < file.stmts.len {
+					stmt := file.stmts[info.stmt_idx]
+					if stmt is ast.FnDecl {
+						return stmt
+					}
+				}
+			}
+		}
+	}
+	if g.generic_fn_decl_index.len > 0 {
+		return none
+	}
 	prev_module := g.cur_module
 	prev_file_name := g.cur_file_name
 	prev_active_generic_types := g.active_generic_types.clone()
@@ -341,6 +383,24 @@ fn (mut g Gen) generic_call_decl_from_lhs(lhs ast.Expr) ?ast.FnDecl {
 		}
 	}
 	return none
+}
+
+fn generic_call_decl_candidates(call_name string) []string {
+	mut candidates := []string{cap: 3}
+	if call_name != '' {
+		candidates << call_name
+	}
+	sanitized := sanitize_fn_ident(call_name)
+	if sanitized != '' && sanitized !in candidates {
+		candidates << sanitized
+	}
+	if call_name.contains('__') {
+		short_name := call_name.all_after_last('__')
+		if short_name != '' && short_name !in candidates {
+			candidates << short_name
+		}
+	}
+	return candidates
 }
 
 fn generic_call_short_name(lhs ast.Expr) string {
@@ -448,6 +508,7 @@ fn (mut g Gen) record_late_generic_call_spec_for_key(key string, bindings map[st
 		}
 	}
 	g.late_generic_specs[key] << bindings.clone()
+	g.index_late_generic_spec_key(key)
 }
 
 fn (mut g Gen) record_late_generic_call_spec(key string, bindings map[string]types.Type) {
@@ -458,6 +519,27 @@ fn (mut g Gen) record_late_generic_call_spec(key string, bindings map[string]typ
 		if short_key != key {
 			g.record_late_generic_call_spec_for_key(short_key, bindings)
 		}
+	}
+}
+
+fn (mut g Gen) index_late_generic_spec_key(key string) {
+	// Some generic function values are first discovered while emitting an earlier
+	// function body. Keep the specialization index in sync immediately so a later
+	// declaration in the same generation pass can emit the concrete body.
+	mut fn_name := key
+	bracket_idx := key.index_u8(`[`)
+	if bracket_idx > 0 {
+		fn_name = key[..bracket_idx]
+	}
+	dot_idx := fn_name.last_index_u8(`.`)
+	if dot_idx > 0 && dot_idx < fn_name.len - 1 {
+		short_name := fn_name[dot_idx + 1..]
+		if short_name.len > 0 && key !in g.generic_spec_index[short_name] {
+			g.generic_spec_index[short_name] << key
+		}
+	}
+	if fn_name.len > 0 && key !in g.generic_spec_index[fn_name] {
+		g.generic_spec_index[fn_name] << key
 	}
 }
 
@@ -495,6 +577,11 @@ fn (mut g Gen) scan_call_for_generic_fn_specs(call ast.CallExpr) {
 	if bindings.len != generic_params.len {
 		return
 	}
+	for _, concrete in bindings {
+		if !type_has_valid_data(concrete) || concrete is types.Void {
+			return
+		}
+	}
 	short_name := generic_call_short_name(call.lhs)
 	keys := if short_name == '' {
 		[]string{}
@@ -507,8 +594,82 @@ fn (mut g Gen) scan_call_for_generic_fn_specs(call ast.CallExpr) {
 	}
 }
 
+fn (mut g Gen) scan_generic_fn_value_for_specs(expr ast.Expr) {
+	decl := g.generic_call_decl_from_lhs(expr) or { return }
+	generic_params := g.generic_fn_param_names(decl)
+	if generic_params.len == 0 {
+		return
+	}
+	mut bindings := map[string]types.Type{}
+	type_args := generic_call_type_args(expr)
+	for i, param_name in generic_params {
+		if i >= type_args.len {
+			break
+		}
+		concrete := g.generic_type_arg_concrete_type(type_args[i]) or { continue }
+		bindings[param_name] = concrete
+	}
+	// Generic function values inside generic functions do not have call
+	// arguments to infer from. Substitute the surrounding function's concrete
+	// bindings so a value like handler[A, X] emits handler_T_App_Context.
+	for param_name in generic_params {
+		if param_name in bindings {
+			continue
+		}
+		if concrete := g.active_generic_types[param_name] {
+			bindings[param_name] = concrete
+		}
+	}
+	if bindings.len != generic_params.len {
+		return
+	}
+	for _, concrete in bindings {
+		if type_contains_generic_placeholder(concrete) {
+			return
+		}
+	}
+	short_name := generic_call_short_name(expr)
+	if short_name == '' {
+		return
+	}
+	g.record_late_generic_call_spec(short_name, bindings)
+}
+
 // scan_stmts_for_generic_types walks statements to find generic
 // type instantiations (e.g. LinkedList[StructFieldInfo]{} in function bodies).
+fn generic_body_scan_bindings_key(bindings map[string]types.Type) string {
+	if bindings.len == 0 {
+		return ''
+	}
+	mut keys := bindings.keys()
+	keys.sort()
+	mut parts := []string{cap: keys.len}
+	for key in keys {
+		concrete := bindings[key] or { continue }
+		parts << '${key}=${concrete.name()}'
+	}
+	return parts.join(',')
+}
+
+fn (mut g Gen) scan_fn_body_for_generic_types(node ast.FnDecl, spec_name string) {
+	if node.pos.id <= 0 {
+		g.scan_stmts_for_generic_types(node.stmts)
+		return
+	}
+	fn_key := node.pos.id.str()
+	bindings_key := if spec_name.len > 0 {
+		spec_name
+	} else {
+		generic_body_scan_bindings_key(g.active_generic_types)
+	}
+	cache_key := '${g.cur_module}:${fn_key}:${bindings_key}'
+	if cache_key in g.generic_body_scan_cache {
+		return
+	}
+	g.generic_body_scan_cache[cache_key] = true
+	g.scan_stmts_for_generic_types(node.stmts)
+}
+
 fn (mut g Gen) scan_stmts_for_generic_types(stmts []ast.Stmt) {
 	for stmt in stmts {
 		if stmt is ast.AssignStmt {
@@ -1069,15 +1230,20 @@ fn (mut g Gen) gen_struct_decl(node ast.StructDecl) {
 	}
 	// Emit fallback str macros for structs without explicit str() methods
 	struct_str_fn := '${name}__str'
-	if struct_str_fn !in g.fn_return_types {
+	has_explicit_str := g.has_explicit_str_method_for_c_type(name)
+	if g.cache_bundle_name == 'virtuals' && g.should_emit_current_file() && !has_explicit_str {
+		label := '${name}{}'
+		g.late_struct_defs << 'string ${name}__str(${name} v) { return (string){.str = "${label}", .len = ${label.len}, .is_lit = 1}; }\n#define ${name}_str(v) ${name}__str(v)\n'
+		g.fn_return_types[struct_str_fn] = 'string'
+	} else if !has_explicit_str && struct_str_fn !in g.fn_return_types {
 		label := '${name}{}'
 		g.sb.writeln('#define ${name}__str(v) ((string){.str = "${label}", .len = ${label.len}, .is_lit = 1})')
 		// Register the macro in fn_return_types so method resolution can find it
 		g.fn_return_types[struct_str_fn] = 'string'
-	}
-	struct_short_str_fn := '${name}_str'
-	if struct_short_str_fn !in g.fn_return_types {
-		g.sb.writeln('#define ${name}_str(v) ${name}__str(v)')
+		struct_short_str_fn := '${name}_str'
+		if struct_short_str_fn !in g.fn_return_types {
+			g.sb.writeln('#define ${name}_str(v) ${name}__str(v)')
+		}
 	}
 	g.sb.writeln('')
 	// Generate SoA (Structure of Arrays) companion struct and helpers for @[soa] structs
@@ -1687,14 +1853,59 @@ fn (mut g Gen) embedded_owner_for(struct_name string, field_name string) string 
 	if struct_name == '' {
 		return ''
 	}
-	key := '${struct_name}.${field_name}'
+	mut lookup_name := struct_name
+	if concrete := g.resolve_active_generic_type(strip_pointer_type_name(struct_name)) {
+		// Generic veb helpers are emitted in the framework module, where a short
+		// concrete name like `Context` can collide with `veb.Context`. Prefer the
+		// active generic's concrete struct metadata before doing module-relative
+		// name lookup, so promoted fields resolve through the app context embed.
+		if concrete is types.Struct {
+			for field in concrete.fields {
+				if field.name == field_name {
+					return ''
+				}
+			}
+			if info := g.lookup_embedded_field_info_in_struct(concrete, field_name) {
+				return info.owner
+			}
+		}
+		lookup_name = g.types_type_to_c(concrete)
+	}
+	if active_concrete := g.active_generic_concrete_struct_for_c_name(lookup_name) {
+		for field in active_concrete.fields {
+			if field.name == field_name {
+				return ''
+			}
+		}
+		if info := g.lookup_embedded_field_info_in_struct(active_concrete, field_name) {
+			return info.owner
+		}
+	}
+	key := '${lookup_name}.${field_name}'
 	if owner := g.embedded_field_owner[key] {
 		return owner
 	}
-	if info := g.lookup_embedded_field_info(struct_name, field_name) {
+	if info := g.lookup_embedded_field_info(lookup_name, field_name) {
 		return info.owner
 	}
 	return ''
+}
+
+fn (mut g Gen) active_generic_concrete_struct_for_c_name(c_name string) ?types.Struct {
+	lookup_name := strip_pointer_type_name(c_name)
+	if lookup_name == '' || g.active_generic_types.len == 0 {
+		return none
+	}
+	for _, concrete in g.active_generic_types {
+		concrete_c_name := strip_pointer_type_name(g.types_type_to_c(concrete))
+		if concrete_c_name != lookup_name && short_type_name(concrete_c_name) != lookup_name {
+			continue
+		}
+		if concrete is types.Struct {
+			return concrete
+		}
+	}
+	return none
 }
 
 fn (g &Gen) is_fn_pointer_alias_type(type_name string) bool {
@@ -2088,6 +2299,13 @@ fn (mut g Gen) init_field_expected_type(type_name string, env_struct types.Struc
 			return g.types_type_to_c(field.typ)
 		}
 	}
+	for emb in env_struct.embedded {
+		resolved_emb := g.resolve_embedded_struct(emb)
+		emb_name := embedded_struct_field_name(resolved_emb)
+		if emb_name == field_name {
+			return g.types_type_to_c(types.Type(resolved_emb))
+		}
+	}
 	if info := g.lookup_embedded_field_info(type_name, field_name) {
 		if info.field_type != '' {
 			return info.field_type
@@ -2144,8 +2362,35 @@ fn (mut g Gen) gen_channel_init_expr(node ast.InitExpr) bool {
 	return true
 }
 
+fn (mut g Gen) known_unqualified_struct_literal_type(type_name string) string {
+	if type_name == '' || type_name.contains('__') || type_name.starts_with('Array_')
+		|| type_name.starts_with('Map_') || type_name.starts_with('_option_')
+		|| type_name.starts_with('_result_') || type_name in primitive_types
+		|| type_name in ['bool', 'string', 'void*', 'voidptr'] {
+		return type_name
+	}
+	if 'body_${type_name}' in g.emitted_types {
+		return type_name
+	}
+	mut matches := []string{}
+	suffix := '__${type_name}'
+	for key in g.emitted_types.keys() {
+		if key.starts_with('body_') {
+			candidate := key['body_'.len..]
+			if candidate.ends_with(suffix) {
+				matches << candidate
+			}
+		}
+	}
+	if matches.len == 1 {
+		return matches[0]
+	}
+	return type_name
+}
+
 fn (mut g Gen) gen_init_expr(node ast.InitExpr) {
-	type_name := g.expr_type_to_c(node.typ)
+	mut type_name := g.expr_type_to_c(node.typ)
+	type_name = g.known_unqualified_struct_literal_type(type_name)
 	if g.gen_channel_init_expr(node) {
 		return
 	}
@@ -2319,7 +2564,7 @@ fn (mut g Gen) gen_init_expr(node ast.InitExpr) {
 				}
 			}
 		}
-		if g.should_deref_init_field_value(type_name, field.name, field.value) {
+		if g.should_deref_init_field_value(type_name, field.name, expected_field_type, field.value) {
 			g.sb.write_string('(*(')
 			g.expr(field.value)
 			g.sb.write_string('))')
@@ -2418,9 +2663,12 @@ fn gen_init_expr_is_none_option(node ast.InitExpr) bool {
 	return false
 }
 
-fn (mut g Gen) should_deref_init_field_value(struct_type string, field_name string, value ast.Expr) bool {
+fn (mut g Gen) should_deref_init_field_value(struct_type string, field_name string, expected_field_type string, value ast.Expr) bool {
 	expected_key := '${struct_type}.${field_name}'
-	mut expected := g.struct_field_types[expected_key] or { '' }
+	mut expected := expected_field_type
+	if expected == '' {
+		expected = g.struct_field_types[expected_key] or { '' }
+	}
 	if expected == '' && struct_type.contains('__') {
 		short_struct := struct_type.all_after_last('__')
 		short_expected_key := '${short_struct}.${field_name}'
@@ -2430,6 +2678,13 @@ fn (mut g Gen) should_deref_init_field_value(struct_type string, field_name stri
 		return false
 	}
 	mut value_type := g.get_expr_type(value)
+	if value is ast.Ident {
+		if local_type := g.get_local_var_c_type(value.name) {
+			if local_type != '' && local_type != 'int' {
+				value_type = local_type
+			}
+		}
+	}
 	// When the value is a SelectorExpr with .data on a result/option variable
 	// (e.g., _or_t48.data where _or_t48 is _result_SomeTypeptr), the generated
 	// C code extracts the pointer from the result data area. The V-level type

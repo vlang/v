@@ -723,6 +723,82 @@ fn (mut g Gen) local_var_c_type_for_expr(expr ast.Expr) ?string {
 	return g.get_local_var_c_type(name)
 }
 
+fn (mut g Gen) fn_type_alias_name_for_base_expr(base ast.Expr) ?string {
+	mut candidates := []string{}
+	base_c := g.expr_type_to_c(base).trim_space()
+	if base_c != '' {
+		candidates << base_c
+	}
+	base_name := base.name()
+	if base_name != '' {
+		candidates << base_name
+		if base_name.contains('.') {
+			candidates << base_name.replace('.', '__')
+		} else if g.cur_module != '' && g.cur_module != 'main' && g.cur_module != 'builtin'
+			&& !base_name.contains('__') {
+			candidates << '${g.cur_module}__${base_name}'
+		}
+	}
+	for candidate in candidates {
+		if candidate in g.fn_type_aliases {
+			return candidate
+		}
+	}
+	for candidate in candidates {
+		short_name := if candidate.contains('__') {
+			candidate.all_after_last('__')
+		} else {
+			candidate
+		}
+		if short_name == '' {
+			continue
+		}
+		for alias_name, _ in g.fn_type_aliases {
+			if alias_name == short_name || alias_name.ends_with('__${short_name}') {
+				return alias_name
+			}
+		}
+	}
+	return none
+}
+
+fn (mut g Gen) fn_type_alias_name_from_generic_name(name string) ?string {
+	mut base_name := name
+	if name.ends_with('_T') {
+		base_name = name[..name.len - 2]
+	} else if name.contains('_T_') {
+		base_name = name.all_before('_T_')
+	} else {
+		return none
+	}
+	return g.fn_type_alias_name_for_base_expr(ast.Ident{
+		name: base_name
+	})
+}
+
+fn (mut g Gen) fn_type_alias_cast_type(lhs ast.Expr) ?string {
+	match lhs {
+		ast.Ident {
+			return g.fn_type_alias_name_from_generic_name(lhs.name)
+		}
+		ast.SelectorExpr {
+			if alias_name := g.fn_type_alias_name_for_base_expr(lhs) {
+				return alias_name
+			}
+			return g.fn_type_alias_name_from_generic_name(lhs.rhs.name)
+		}
+		ast.GenericArgOrIndexExpr {
+			return g.fn_type_alias_name_for_base_expr(lhs.lhs)
+		}
+		ast.GenericArgs {
+			return g.fn_type_alias_name_for_base_expr(lhs.lhs)
+		}
+		else {
+			return none
+		}
+	}
+}
+
 fn (mut g Gen) call_or_cast_lhs_is_type(lhs ast.Expr) bool {
 	match lhs {
 		ast.Type {
@@ -804,6 +880,18 @@ fn (mut g Gen) call_or_cast_lhs_is_type(lhs ast.Expr) bool {
 		}
 		ast.PrefixExpr {
 			return g.call_or_cast_lhs_is_type(lhs.expr)
+		}
+		ast.GenericArgOrIndexExpr {
+			if _ := g.fn_type_alias_cast_type(lhs) {
+				return true
+			}
+			return g.call_or_cast_lhs_is_type(lhs.lhs)
+		}
+		ast.GenericArgs {
+			if _ := g.fn_type_alias_cast_type(lhs) {
+				return true
+			}
+			return g.call_or_cast_lhs_is_type(lhs.lhs)
 		}
 		else {
 			return false
@@ -1784,6 +1872,9 @@ fn (mut g Gen) expr(node ast.Expr) {
 			eprintln('TRACE_CORRUPT_EXPR file=${g.cur_file_name} fn=${g.cur_fn_name}')
 		}
 		g.sb.write_string('0 /* corrupt expr */')
+		return
+	}
+	if node is ast.CallExpr && g.try_gen_orm_create_call_expr(node) {
 		return
 	}
 	_ = g.get_expr_type(node)
@@ -2776,9 +2867,15 @@ fn (mut g Gen) expr(node ast.Expr) {
 			panic('bug in v2 compiler: IfGuardExpr should have been expanded in v2.transformer')
 		}
 		ast.GenericArgs {
+			if g.try_emit_generic_fn_value(node) {
+				return
+			}
 			g.expr(node.lhs)
 		}
 		ast.GenericArgOrIndexExpr {
+			if g.try_emit_generic_fn_value(node) {
+				return
+			}
 			if g.try_emit_generic_fn_value(node.lhs) {
 				return
 			}
@@ -2821,11 +2918,103 @@ fn (mut g Gen) expr(node ast.Expr) {
 	}
 }
 
-fn (mut g Gen) try_emit_generic_fn_value(lhs ast.Expr) bool {
+fn generic_fn_value_base_expr(expr ast.Expr) ast.Expr {
+	return match expr {
+		ast.GenericArgs {
+			expr.lhs
+		}
+		ast.GenericArgOrIndexExpr {
+			expr.lhs
+		}
+		else {
+			expr
+		}
+	}
+}
+
+fn (mut g Gen) generic_fn_value_specialized_name(expr ast.Expr) ?string {
+	decl := g.generic_call_decl_from_lhs(expr) or { return none }
+	generic_params := g.generic_fn_param_names(decl)
+	if generic_params.len == 0 {
+		return none
+	}
+	mut bindings := map[string]types.Type{}
+	type_args := generic_call_type_args(expr)
+	for i, param_name in generic_params {
+		if i >= type_args.len {
+			break
+		}
+		concrete := g.generic_type_arg_concrete_type(type_args[i]) or { continue }
+		bindings[param_name] = concrete
+	}
+	// Function values like request_handler[A, X] are emitted without call
+	// arguments, so generic placeholders must be resolved from the active
+	// enclosing specialization before choosing the C function pointer symbol.
+	for param_name in generic_params {
+		if param_name in bindings {
+			continue
+		}
+		if concrete := g.active_generic_types[param_name] {
+			bindings[param_name] = concrete
+		}
+	}
+	if bindings.len != generic_params.len {
+		return none
+	}
+	mut suffixes := []string{cap: generic_params.len}
+	for param_name in generic_params {
+		concrete := bindings[param_name] or { return none }
+		if type_contains_generic_placeholder(concrete) {
+			return none
+		}
+		suffixes << g.generic_specialization_token_from_type(concrete)
+	}
+	base_lhs := generic_fn_value_base_expr(expr)
+	base_name := g.resolve_call_name(base_lhs, 0)
+	if base_name == '' || suffixes.len == 0 {
+		return none
+	}
+	candidate := '${base_name}_T_${suffixes.join('_')}'
+	short_name := generic_call_short_name(expr)
+	if short_name != '' {
+		g.record_late_generic_call_spec(short_name, bindings)
+	}
+	g.ensure_specialized_call_signature(candidate)
+	return candidate
+}
+
+fn (mut g Gen) write_specialized_fn_value(name string) {
+	ret_type := g.fn_return_types[name] or {
+		g.sb.write_string(name)
+		return
+	}
+	param_types := g.fn_param_types[name] or {
+		g.sb.write_string(name)
+		return
+	}
+	// Generic function values can be referenced before the prototype pass has
+	// seen their late specialization. A block-scope prototype keeps the function
+	// pointer expression valid without depending on file-level declaration order.
+	g.sb.write_string('({ ${ret_type} ${name}(')
+	for i, param_type in param_types {
+		if i > 0 {
+			g.sb.write_string(', ')
+		}
+		g.sb.write_string(param_type)
+	}
+	g.sb.write_string('); ${name}; })')
+}
+
+fn (mut g Gen) try_emit_generic_fn_value(expr ast.Expr) bool {
+	lhs := generic_fn_value_base_expr(expr)
 	if lhs is ast.Ident {
 		if _ := g.get_local_var_c_type(lhs.name) {
 			return false
 		}
+	}
+	if specialized_name := g.generic_fn_value_specialized_name(expr) {
+		g.write_specialized_fn_value(specialized_name)
+		return true
 	}
 	name := g.resolve_call_name(lhs, 0)
 	if name == '' {
@@ -3514,7 +3703,8 @@ fn (mut g Gen) unsafe_expr_or_payload_value(stmts []ast.Stmt) ?ast.Expr {
 fn (mut g Gen) gen_index_expr(node ast.IndexExpr) {
 	// Slice syntax: arr[a..b], arr[..b], arr[a..], s[a..b]
 	if node.expr is ast.RangeExpr {
-		panic('bug in v2 compiler: slice IndexExpr should have been lowered in v2.transformer')
+		g.gen_slice_index_expr(node, node.expr as ast.RangeExpr)
+		return
 	}
 	if node.lhs is ast.SelectorExpr {
 		sel := node.lhs as ast.SelectorExpr
@@ -3615,7 +3805,7 @@ fn (mut g Gen) gen_index_expr(node ast.IndexExpr) {
 			}
 		}
 		if raw_type is types.Map {
-			g.panic_map_index_expr(node)
+			g.gen_map_index_expr(node, raw_type, false)
 			return
 		}
 		if raw_type is types.String {
@@ -3662,7 +3852,7 @@ fn (mut g Gen) gen_index_expr(node ast.IndexExpr) {
 				g.sb.write_string(']')
 				return
 			} else if raw_type.base_type is types.Map {
-				g.panic_map_index_expr(node)
+				g.gen_map_index_expr(node, raw_type.base_type as types.Map, true)
 				return
 			} else if raw_type.base_type is types.Pointer || raw_type.base_type is types.String {
 				// Pointer to pointer (e.g. &&char) or pointer to string (e.g. &string used as array):
@@ -3729,7 +3919,7 @@ fn (mut g Gen) gen_index_expr(node ast.IndexExpr) {
 		// Try to resolve the full Map type for fallback code generation.
 		if map_raw := g.get_raw_type(node.lhs) {
 			if map_raw is types.Map {
-				g.panic_map_index_expr(node)
+				g.gen_map_index_expr(node, map_raw, lhs_type.ends_with('*'))
 				return
 			}
 		}
@@ -3925,10 +4115,102 @@ fn (mut g Gen) gen_index_expr(node ast.IndexExpr) {
 	g.sb.write_string(']')
 }
 
-fn (mut g Gen) panic_map_index_expr(node ast.IndexExpr) {
+fn (mut g Gen) gen_slice_index_expr(node ast.IndexExpr, range ast.RangeExpr) {
+	// The transformer normally lowers slices, but unresolved method receivers can
+	// still carry raw slice syntax into cgen (for example `buf[..n].bytestr()`).
 	lhs_type := g.get_expr_type(node.lhs)
-	idx_src := '${node.lhs.name()}[${node.expr.name()}]'
-	panic('bug in v2 compiler: map IndexExpr should have been lowered in v2.transformer (file=${g.cur_file_name} fn=${g.cur_fn_name} pos=${node.pos} idx=${idx_src} lhs=${node.lhs.name()} lhs_type=${lhs_type})')
+	lhs_base_type := lhs_type.trim_right('*')
+	is_string := g.expr_resolves_to_string(node.lhs, lhs_base_type)
+	if is_string {
+		g.sb.write_string('string__substr(')
+	} else {
+		g.sb.write_string('array__slice(')
+	}
+	g.expr(node.lhs)
+	g.sb.write_string(', ')
+	if range.start is ast.EmptyExpr {
+		g.sb.write_string('0')
+	} else {
+		g.expr(range.start)
+	}
+	g.sb.write_string(', ')
+	if range.end is ast.EmptyExpr {
+		if is_string {
+			g.sb.write_string('2147483647')
+		} else {
+			g.expr(node.lhs)
+			if lhs_type.ends_with('*') {
+				g.sb.write_string('->len')
+			} else {
+				g.sb.write_string('.len')
+			}
+		}
+	} else if range.op == .ellipsis {
+		g.sb.write_string('(')
+		g.expr(range.end)
+		g.sb.write_string(' + 1)')
+	} else {
+		g.expr(range.end)
+	}
+	g.sb.write_string(')')
+}
+
+fn (mut g Gen) expr_resolves_to_string(expr ast.Expr, lhs_base_type string) bool {
+	if lhs_base_type == 'string' {
+		return true
+	}
+	if expr is ast.SelectorExpr {
+		if g.selector_declared_field_type(expr).trim_right('*') == 'string' {
+			return true
+		}
+		if g.selector_field_type(expr).trim_right('*') == 'string' {
+			return true
+		}
+	}
+	if raw_type := g.get_raw_type(expr) {
+		match raw_type {
+			types.String {
+				return true
+			}
+			types.Pointer {
+				return raw_type.base_type is types.String
+			}
+			types.Alias {
+				return raw_type.base_type is types.String
+			}
+			else {}
+		}
+	}
+	return false
+}
+
+fn (mut g Gen) gen_map_index_expr(node ast.IndexExpr, map_type types.Map, lhs_is_ptr bool) {
+	// The transformer normally lowers map reads to map__get. Generic functions
+	// kept for late function-value specialization can still reach cgen with raw
+	// `m[key]`, so emit the same expression-shaped map__get fallback here.
+	key_type := g.types_type_to_c(map_type.key_type)
+	value_type := g.types_type_to_c(map_type.value_type)
+	actual_lhs_is_ptr := lhs_is_ptr || g.expr_is_pointer(node.lhs)
+		|| g.get_expr_type(node.lhs).ends_with('*')
+	key_tmp := '_map_key${g.tmp_counter}'
+	g.tmp_counter++
+	zero_tmp := '_map_zero${g.tmp_counter}'
+	g.tmp_counter++
+	g.sb.write_string('({ ${key_type} ${key_tmp} = ')
+	g.expr(node.expr)
+	if value_type.ends_with('*') {
+		g.sb.write_string('; ${value_type} ${zero_tmp} = 0; (*(${value_type}*)map__get(')
+	} else {
+		g.sb.write_string('; ${value_type} ${zero_tmp} = (${value_type}){0}; (*(${value_type}*)map__get(')
+	}
+	if actual_lhs_is_ptr {
+		g.expr(node.lhs)
+	} else {
+		g.sb.write_string('&(')
+		g.expr(node.lhs)
+		g.sb.write_string(')')
+	}
+	g.sb.write_string(', (void*)&${key_tmp}, (void*)&${zero_tmp})); })')
 }
 
 fn (g &Gen) eval_comptime_flag(name string) bool {
@@ -4235,7 +4517,7 @@ fn (mut g Gen) gen_comptime_field_selector(sel ast.SelectorExpr) bool {
 		}
 		g.expr(lhs_expr)
 		selector := if use_ptr { '->' } else { '.' }
-		g.sb.write_string('${selector}${g.comptime_field_name}')
+		g.sb.write_string('${selector}${escape_c_keyword(g.comptime_field_name)}')
 		return true
 	}
 	// Handle field.name, field.typ, field.is_mut, etc.

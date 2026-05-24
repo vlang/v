@@ -14,10 +14,9 @@ fn (g &Gen) result_value_type(result_type string) string {
 	}
 	payload := result_type['_result_'.len..]
 	if payload.contains('_T_') {
-		if payload.ends_with('ptr') && !payload.ends_with('voidptr')
-			&& !payload.ends_with('byteptr') && !payload.ends_with('charptr') {
-			return payload[..payload.len - 3] + '*'
-		}
+		// Generic specialization names can end in `ptr` because a generic
+		// argument is a pointer, while the payload itself is still the
+		// specialized typedef (for example Foo_T_Barptr).
 		return payload
 	}
 	return unmangle_c_ptr_type(payload)
@@ -40,6 +39,7 @@ fn overloaded_arithmetic_method_part(node ast.InfixExpr) string {
 		.minus { 'minus' }
 		.mul { 'mul' }
 		.div { 'div' }
+		.mod { 'mod' }
 		else { '' }
 	}
 }
@@ -933,21 +933,19 @@ fn (mut g Gen) gen_type_alias(node ast.TypeDecl) {
 	if node.base_type is ast.Type {
 		if node.base_type is ast.FnType {
 			fn_type := node.base_type as ast.FnType
+			g.fn_type_aliases[name] = true
 			mut ret_type := 'void'
 			if fn_type.return_type !is ast.EmptyExpr {
 				ret_type = g.expr_type_to_c(fn_type.return_type)
 			}
+			ret_type = normalize_signature_type_name(ret_type, 'void')
+			ret_type = g.c_callback_return_type_from_v(ret_type)
 			g.sb.write_string('typedef ${ret_type} (*${name})(')
 			for i, param in fn_type.params {
 				if i > 0 {
 					g.sb.write_string(', ')
 				}
-				param_type := g.expr_type_to_c(param.typ)
-				if param.is_mut {
-					g.sb.write_string('${param_type}*')
-				} else {
-					g.sb.write_string(param_type)
-				}
+				g.sb.write_string(g.fn_type_alias_param_c_type(node, param))
 			}
 			g.sb.writeln(');')
 			return
@@ -976,6 +974,28 @@ fn (mut g Gen) gen_type_alias(node ast.TypeDecl) {
 			g.sb.writeln('#define ${name}__str(v) ${str_fn}(v)')
 		}
 	}
+}
+
+fn (mut g Gen) fn_type_alias_param_c_type(node ast.TypeDecl, param ast.Parameter) string {
+	param_name := param.typ.name()
+	mut is_generic_param := false
+	for generic_param in node.generic_params {
+		if generic_param.name() == param_name {
+			is_generic_param = true
+			break
+		}
+	}
+	// Generic function-type aliases are used as erased callbacks in C. A plain
+	// placeholder would otherwise fall back to f64, producing unusable typedefs
+	// like `fn (mut T)` -> `f64*` instead of the ABI-compatible `void*`.
+	if is_generic_param {
+		return 'void*'
+	}
+	param_type := g.expr_type_to_c(param.typ)
+	if param.is_mut {
+		return '${param_type}*'
+	}
+	return param_type
 }
 
 fn generic_type_base_name(expr ast.Expr) string {
@@ -2350,6 +2370,22 @@ fn (mut g Gen) get_expr_type(node ast.Expr) string {
 	// For IndexExpr on pointer-to-pointer or pointer-to-string types, prefer raw-type-based
 	// inference over env (env may store the wrong type, e.g. char instead of char*).
 	if node is ast.IndexExpr {
+		if node.expr is ast.RangeExpr {
+			if lhs_raw := g.get_raw_type(node.lhs) {
+				match lhs_raw {
+					types.Array {
+						return g.types_type_to_c(lhs_raw)
+					}
+					types.Pointer {
+						if lhs_raw.base_type is types.Array {
+							return g.types_type_to_c(lhs_raw.base_type)
+						}
+					}
+					else {}
+				}
+			}
+			return g.get_expr_type(node.lhs)
+		}
 		// Cross-check: if LHS has a known local C type ending in **, derive element type
 		if node.lhs is ast.Ident {
 			if mut fn_scope := g.ensure_cur_fn_scope() {
@@ -2452,10 +2488,43 @@ fn (mut g Gen) get_expr_type(node ast.Expr) string {
 		}
 		return typ + '*'
 	}
+	if node is ast.PrefixExpr && node.op == .mul {
+		// `*(&T(x))` is a value of T; env metadata can still carry the pointer type.
+		if deref_type := g.deref_address_of_cast_result_type(node) {
+			return deref_type
+		}
+	}
+	if node is ast.UnsafeExpr {
+		if unsafe_type := g.unsafe_expr_result_type(node) {
+			return unsafe_type
+		}
+	}
 	if node is ast.CallExpr {
+		if node.lhs is ast.Ident && node.lhs.name == 'array__slice' && node.args.len > 0 {
+			first_arg_type := g.get_expr_type(node.args[0]).trim_right('*')
+			if g.expr_resolves_to_string(node.args[0], first_arg_type) {
+				return 'string'
+			}
+		}
+		if node.args.len == 1 {
+			if cast_type := g.fn_type_alias_cast_type(node.lhs) {
+				return cast_type
+			}
+		}
+		if header_ret := g.header_get_result_type_before_env(node.lhs) {
+			return header_ret
+		}
 		fn_ptr_ret := g.fn_pointer_return_type(node.lhs)
 		if fn_ptr_ret != '' {
 			return fn_ptr_ret
+		}
+	}
+	if node is ast.CallOrCastExpr && !g.call_or_cast_lhs_is_type(node.lhs) {
+		if header_ret := g.header_get_result_type_before_env(node.lhs) {
+			return header_ret
+		}
+		if ret := g.get_call_return_type(node.lhs, [node.expr]) {
+			return ret
 		}
 	}
 	if node is ast.InfixExpr {
@@ -2547,6 +2616,12 @@ fn (mut g Gen) get_expr_type(node ast.Expr) string {
 			}
 			return t
 		} else if t in ['void*', 'voidptr'] && node is ast.IndexExpr {
+			// Function-typed generic bodies sometimes leave array element access with
+			// a void* env type. Prefer the container element type so `for x in []&T`
+			// does not emit `void* x` and then field-select through it.
+			if elem_type := g.index_expr_elem_type_from_lhs(node) {
+				return elem_type
+			}
 			// For IndexExpr, env returns void* for fixed-array element access.
 			// Try to infer element type from the container type.
 			container_type := g.get_expr_type(node.lhs)
@@ -2934,6 +3009,179 @@ fn (mut g Gen) get_expr_type(node ast.Expr) string {
 	}
 }
 
+fn (mut g Gen) unsafe_expr_result_type(node ast.UnsafeExpr) ?string {
+	if node.stmts.len == 0 {
+		return none
+	}
+	last := node.stmts[node.stmts.len - 1]
+	if last is ast.ExprStmt {
+		if last.expr is ast.SelectorExpr && last.expr.rhs.name == 'data'
+			&& last.expr.lhs is ast.Ident {
+			result_name := last.expr.lhs.name
+			for stmt in node.stmts[..node.stmts.len - 1] {
+				if stmt is ast.AssignStmt && stmt.op == .decl_assign && stmt.lhs.len == 1 {
+					stmt_lhs := stmt.lhs[0]
+					if stmt_lhs is ast.Ident && stmt_lhs.name == result_name {
+						wrapper_type := g.get_expr_type(stmt.rhs[0])
+						if wrapper_type.starts_with('_result_') {
+							value_type := g.result_value_type(wrapper_type)
+							if value_type != '' && value_type != 'void' {
+								return value_type
+							}
+						} else if wrapper_type.starts_with('_option_') {
+							value_type := option_value_type(wrapper_type)
+							if value_type != '' && value_type != 'void' {
+								return value_type
+							}
+						}
+					}
+				}
+			}
+		}
+		result_type := g.get_expr_type(last.expr)
+		if result_type != '' && result_type != 'int' && result_type != 'void' {
+			return result_type
+		}
+	}
+	return none
+}
+
+fn (mut g Gen) header_get_result_type_before_env(lhs ast.Expr) ?string {
+	if lhs is ast.Ident {
+		if lhs.name in ['http__Header__get', 'http__Header__get_custom', 'net__http__Header__get',
+			'net__http__Header__get_custom'] {
+			return '_result_string'
+		}
+	}
+	if lhs is ast.SelectorExpr {
+		if lhs.rhs.name !in ['get', 'get_custom'] {
+			return none
+		}
+		if lhs.lhs is ast.SelectorExpr {
+			receiver_sel := lhs.lhs as ast.SelectorExpr
+			if receiver_sel.rhs.name == 'header' {
+				return '_result_string'
+			}
+		}
+		receiver_type := g.method_receiver_base_type(lhs.lhs).trim_right('*')
+		if receiver_type == '' || receiver_type == 'int' {
+			return none
+		}
+		candidate := '${receiver_type}__${lhs.rhs.name}'
+		if ret := g.fn_return_types[candidate] {
+			if ret.starts_with('_result_') {
+				return ret
+			}
+		}
+		// Imported `net.http` can leave selector receiver metadata shortened to
+		// `Header` while the emitted method is still `http__Header__get`.
+		// Check the canonical C names before the env fallback turns the call
+		// into `void*` and loses the Result payload type.
+		if receiver_type in ['Header', 'http.Header', 'net.http.Header'] {
+			http_candidate := 'http__Header__' + lhs.rhs.name
+			if ret := g.fn_return_types[http_candidate] {
+				if ret.starts_with('_result_') {
+					return ret
+				}
+			}
+			net_http_candidate := 'net__http__Header__' + lhs.rhs.name
+			if ret := g.fn_return_types[net_http_candidate] {
+				if ret.starts_with('_result_') {
+					return ret
+				}
+			}
+		}
+		// net.http is flattened to `http__*` in V2 C names, while some paths still
+		// carry the module-qualified spelling in type metadata.
+		if receiver_type in ['http__Header', 'net__http__Header']
+			|| (g.cur_module == 'veb'
+			&& receiver_type in ['Header', 'http.Header', 'net.http.Header']) {
+			return '_result_string'
+		}
+	}
+	return none
+}
+
+fn (mut g Gen) deref_address_of_cast_result_type(node ast.PrefixExpr) ?string {
+	if node.op != .mul {
+		return none
+	}
+	inner := g.unwrap_parens(node.expr)
+	match inner {
+		ast.CastExpr {
+			target_type := g.expr_type_to_c(inner.typ)
+			if is_type_name_pointer_like(target_type) {
+				return strip_one_pointer_type_name(target_type)
+			}
+		}
+		ast.PrefixExpr {
+			if inner.op != .amp {
+				return none
+			}
+			return g.cast_target_value_type(inner.expr)
+		}
+		else {}
+	}
+
+	return none
+}
+
+fn (mut g Gen) cast_target_value_type(expr ast.Expr) ?string {
+	unwrapped := g.unwrap_parens(expr)
+	match unwrapped {
+		ast.CallOrCastExpr {
+			if unwrapped.expr !is ast.EmptyExpr && g.call_or_cast_lhs_is_type(unwrapped.lhs) {
+				typ := g.expr_type_to_c(unwrapped.lhs)
+				if typ != '' && typ != 'int' {
+					return typ
+				}
+			}
+		}
+		ast.CallExpr {
+			if unwrapped.args.len == 1 && g.call_or_cast_lhs_is_type(unwrapped.lhs) {
+				typ := g.expr_type_to_c(unwrapped.lhs)
+				if typ != '' && typ != 'int' {
+					return typ
+				}
+			}
+		}
+		ast.CastExpr {
+			typ := g.expr_type_to_c(unwrapped.typ)
+			if typ != '' && typ != 'int' {
+				return typ
+			}
+		}
+		else {}
+	}
+
+	return none
+}
+
+fn (mut g Gen) index_expr_elem_type_from_lhs(node ast.IndexExpr) ?string {
+	if node.expr is ast.RangeExpr {
+		return none
+	}
+	if raw_type := g.get_raw_type(node.lhs) {
+		match raw_type {
+			types.Array {
+				return g.types_type_to_c(raw_type.elem_type)
+			}
+			types.Pointer {
+				if raw_type.base_type is types.Array {
+					return g.types_type_to_c(raw_type.base_type.elem_type)
+				}
+			}
+			else {}
+		}
+	}
+	lhs_type := g.get_expr_type(node.lhs)
+	elem := array_alias_elem_type(lhs_type)
+	if elem != '' {
+		return elem
+	}
+	return none
+}
+
 // expr_type_to_c converts an AST type expression to a C type string
 fn (mut g Gen) vec_generic_type_to_c(lhs_name string, arg_type string) string {
 	base_name := if lhs_name.contains('__') { lhs_name.all_after_last('__') } else { lhs_name }
@@ -3022,6 +3270,12 @@ fn (mut g Gen) expr_type_to_c(e ast.Expr) string {
 			if imported_name := g.imported_symbol_c_type(name) {
 				return imported_name
 			}
+			if name.starts_with('C.') {
+				return name.all_after('C.')
+			}
+			if name.contains('.') {
+				return name.replace('.', '__')
+			}
 			if g.is_module_local_type(name) {
 				return g.cur_module + '__' + name
 			}
@@ -3104,6 +3358,9 @@ fn (mut g Gen) expr_type_to_c(e ast.Expr) string {
 		}
 		ast.GenericArgOrIndexExpr {
 			lhs_name := g.expr_type_to_c(e.lhs)
+			if alias_name := g.fn_type_alias_name_for_base_expr(e.lhs) {
+				return alias_name
+			}
 			if e.expr is ast.LifetimeExpr {
 				return lhs_name
 			}
@@ -3127,6 +3384,9 @@ fn (mut g Gen) expr_type_to_c(e ast.Expr) string {
 		}
 		ast.GenericArgs {
 			lhs_name := g.expr_type_to_c(e.lhs)
+			if alias_name := g.fn_type_alias_name_for_base_expr(e.lhs) {
+				return alias_name
+			}
 			concrete_args := non_lifetime_generic_args(e.args)
 			if concrete_args.len > 0 {
 				arg_type := g.expr_type_to_c(concrete_args[0])
@@ -4482,12 +4742,14 @@ fn (mut g Gen) selector_declared_field_type(sel ast.SelectorExpr) string {
 	if rhs == '' {
 		return ''
 	}
+	mut raw_resolved := ''
 	if lhs_raw := g.get_raw_type(sel.lhs) {
 		if field_type := selector_struct_field_type_from_type(lhs_raw, rhs) {
 			resolved := g.types_type_to_c(field_type)
-			if resolved != '' {
+			if resolved != '' && resolved !in ['int', 'array'] {
 				return resolved
 			}
+			raw_resolved = resolved
 		}
 	}
 	lhs_struct_name := g.selector_struct_name(sel.lhs)
@@ -4502,7 +4764,7 @@ fn (mut g Gen) selector_declared_field_type(sel ast.SelectorExpr) string {
 			return field_type
 		}
 	}
-	return ''
+	return raw_resolved
 }
 
 fn (mut g Gen) selector_generated_field_type(sel ast.SelectorExpr) string {
@@ -4681,6 +4943,14 @@ fn (mut g Gen) selector_vector_lane_type(sel ast.SelectorExpr) string {
 }
 
 fn (mut g Gen) selector_struct_name(expr ast.Expr) string {
+	if expr is ast.Ident {
+		if local_type := g.get_local_var_c_type(expr.name) {
+			base := strip_pointer_type_name(local_type)
+			if base != '' && base != 'int' && base !in ['void', 'void*', 'voidptr'] {
+				return base
+			}
+		}
+	}
 	if expr is ast.SelectorExpr {
 		field_type := g.selector_generated_field_type(expr)
 		if field_type != '' {
@@ -4761,6 +5031,17 @@ fn strip_pointer_type_name(name string) string {
 	}
 	for out.ends_with('*') {
 		out = out[..out.len - 1].trim_space()
+	}
+	return unmangle_c_ptr_type(out)
+}
+
+fn strip_one_pointer_type_name(name string) string {
+	mut out := name.trim_space()
+	if out.starts_with('&') {
+		return unmangle_c_ptr_type(out[1..].trim_space())
+	}
+	if out.ends_with('*') {
+		return unmangle_c_ptr_type(out[..out.len - 1].trim_space())
 	}
 	return unmangle_c_ptr_type(out)
 }

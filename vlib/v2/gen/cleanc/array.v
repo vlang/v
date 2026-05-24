@@ -266,11 +266,12 @@ fn (g &Gen) fixed_array_elem_type_ready(elem_type string) bool {
 }
 
 fn (mut g Gen) array_append_elem_type(lhs ast.Expr, rhs ast.Expr) (bool, string) {
-	mut lhs_type := g.get_expr_type(lhs)
+	mut lhs_type := g.get_expr_type(lhs).trim_space()
+	lhs_base_type := lhs_type.trim_right('*')
 	mut elem_type := ''
-	mut is_array_append := lhs_type == 'array' || lhs_type.starts_with('Array_')
-	if lhs_type.starts_with('Array_') {
-		elem_type = lhs_type['Array_'.len..].trim_right('*')
+	mut is_array_append := lhs_base_type == 'array' || lhs_base_type.starts_with('Array_')
+	if lhs_base_type.starts_with('Array_') {
+		elem_type = lhs_base_type['Array_'.len..]
 	}
 	if raw_type := g.get_raw_type(lhs) {
 		match raw_type {

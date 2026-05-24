@@ -331,6 +331,12 @@ fn (mut g Gen) gen_stmt(node ast.Stmt) {
 					g.sb.writeln(';')
 					return
 				}
+				if is_ierror_c_type(expr_type) {
+					g.sb.write_string('return (${g.cur_fn_ret_type}){ .is_error=true, .err=')
+					g.expr(expr)
+					g.sb.writeln(' };')
+					return
+				}
 				if g.concrete_ierror_base_for_c_type(expr_type) != '' {
 					g.sb.write_string('return (${g.cur_fn_ret_type}){ .is_error=true, .err=')
 					g.gen_ierror_from_concrete_expr(expr, expr_type)
@@ -351,6 +357,18 @@ fn (mut g Gen) gen_stmt(node ast.Stmt) {
 				}
 				if value_type == '' || value_type == 'void' {
 					g.sb.writeln('return (${g.cur_fn_ret_type}){ .is_error=false };')
+					return
+				}
+				if value_type.starts_with('Array_fixed_') {
+					g.sb.write_string('return ({ ${g.cur_fn_ret_type} _res = (${g.cur_fn_ret_type}){0}; ${value_type} _val = {0}; ')
+					is_zero_fixed_array := expr is ast.ArrayInitExpr && expr.exprs.len == 0
+						&& expr.init is ast.EmptyExpr
+					if !is_zero_fixed_array {
+						g.sb.write_string('memcpy(_val, ')
+						g.expr(expr)
+						g.sb.write_string(', sizeof(_val)); ')
+					}
+					g.sb.writeln('_result_ok(&_val, (_result*)&_res, sizeof(_val)); _res; });')
 					return
 				}
 				g.sb.write_string('return ({ ${g.cur_fn_ret_type} _res = (${g.cur_fn_ret_type}){0}; ${value_type} _val = ')

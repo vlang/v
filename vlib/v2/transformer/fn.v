@@ -79,6 +79,37 @@ fn (t &Transformer) get_fn_return_type(fn_name string) ?types.Type {
 	return none
 }
 
+fn (t &Transformer) type_from_param_type_expr(expr ast.Expr, generic_params []string) ?types.Type {
+	if expr is ast.Ident && expr.name in generic_params {
+		return types.Type(types.NamedType(expr.name))
+	}
+	type_name := t.expr_to_type_name(expr)
+	if type_name == '' {
+		return none
+	}
+	if typ := t.c_name_to_type(type_name) {
+		return typ
+	}
+	c_name := t.v_type_name_to_c_name(type_name)
+	if c_name != '' && c_name != type_name {
+		if typ := t.c_name_to_type(c_name) {
+			return typ
+		}
+	}
+	return none
+}
+
+fn (mut t Transformer) seed_fallback_fn_param_scope(params []ast.Parameter, generic_params []string) {
+	for param in params {
+		if param.name == '' || param.name == '_' {
+			continue
+		}
+		if typ := t.type_from_param_type_expr(param.typ, generic_params) {
+			t.register_local_var_type(param.name, typ)
+		}
+	}
+}
+
 // fn_returns_result checks if a function returns a Result type
 fn (t &Transformer) fn_returns_result(fn_name string) bool {
 	ret_type := t.get_fn_return_type(fn_name) or { return false }
@@ -864,7 +895,9 @@ fn (mut t Transformer) transform_fn_decl(decl ast.FnDecl) ast.FnDecl {
 				}
 			}
 		}
-		if !has_generic_types {
+		// Generic function values (`handler[T]`) are specialized later by cgen, not
+		// through the normal checked call path, so keep their bodies for that pass.
+		if !has_generic_types && decl.name !in t.generic_fn_value_names {
 			return ast.FnDecl{
 				attributes: decl.attributes
 				is_public:  decl.is_public
@@ -958,6 +991,7 @@ fn (mut t Transformer) transform_fn_decl(decl ast.FnDecl) ast.FnDecl {
 	} else {
 		'${t.cur_module}__${scope_fn_name}'
 	}
+	fn_generic_params := generic_param_names(decl.typ.generic_params)
 	if fn_scope := t.cached_fn_scopes[fn_scope_key] {
 		t.scope = types.new_scope(fn_scope)
 		t.fn_root_scope = t.scope
@@ -965,6 +999,7 @@ fn (mut t Transformer) transform_fn_decl(decl ast.FnDecl) ast.FnDecl {
 		// Fallback: create a new scope if function scope not found
 		t.open_scope()
 		t.fn_root_scope = t.scope
+		t.seed_fallback_fn_param_scope(decl.typ.params, fn_generic_params)
 	}
 
 	// Set current function return type for sum type wrapping in returns
@@ -1043,7 +1078,7 @@ fn (mut t Transformer) transform_fn_decl(decl ast.FnDecl) ast.FnDecl {
 	}
 	old_fn_generic_params := t.cur_fn_generic_params.clone()
 	old_generic_var_type_params := t.generic_var_type_params.clone()
-	t.cur_fn_generic_params = generic_param_names(decl.typ.generic_params)
+	t.cur_fn_generic_params = fn_generic_params.clone()
 	if t.generic_var_type_params.len == 0 {
 		t.generic_var_type_params = map[string]string{}
 	}
@@ -1838,7 +1873,10 @@ fn (mut t Transformer) transform_call_expr(expr ast.CallExpr) ast.Expr {
 	}
 	args = t.lower_variadic_args(expr.lhs, args)
 	return ast.CallExpr{
-		lhs:  expr.lhs
+		// The fallback path keeps unresolved calls in call form, but the lhs can
+		// still contain value expressions such as `buf[..n].bytestr`; lower those
+		// receivers here so backend codegen never sees raw slice syntax.
+		lhs:  t.transform_expr(expr.lhs)
 		args: args
 		pos:  expr.pos
 	}

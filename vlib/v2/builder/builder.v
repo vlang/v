@@ -30,18 +30,20 @@ const staged_main_obj_file = '/tmp/v2_codegen.tmp.main.o'
 struct Builder {
 	pref &pref.Preferences
 mut:
-	files               []ast.File
-	user_files          []string // original user-provided files (for output name)
-	file_set            &token.FileSet     = token.FileSet.new()
-	env                 &types.Environment = unsafe { nil } // Type checker environment
-	parsed_full_files_n int
-	parsed_vh_files_n   int
-	entry_v_lines_n     int
-	parsed_v_lines_n    int
-	parsed_full_files   []string
-	parsed_vh_files     []string
-	used_fn_keys        map[string]bool
-	used_vh_for_parse   bool
+	files                     []ast.File
+	user_files                []string // original user-provided files (for output name)
+	file_set                  &token.FileSet     = token.FileSet.new()
+	env                       &types.Environment = unsafe { nil } // Type checker environment
+	parsed_full_files_n       int
+	parsed_vh_files_n         int
+	entry_v_lines_n           int
+	parsed_v_lines_n          int
+	parsed_full_files         []string
+	parsed_vh_files           []string
+	used_fn_keys              map[string]bool
+	used_vh_for_parse         bool
+	used_import_vh_for_parse  bool
+	used_virtual_vh_for_parse bool
 }
 
 pub fn new_builder(prefs &pref.Preferences) &Builder {
@@ -65,6 +67,7 @@ fn (b &Builder) exec_build_c_file(output_name string) string {
 
 fn sanitize_staged_c_source(c_source string) string {
 	mut source := c_source
+	source = guard_tcc_stdatomic_preamble_when_using_compat_header(source)
 	// Remaining patches for codegen issues not yet fixed at the backend level.
 	// Pointer dereference for pass-by-pointer array params:
 	source = source.replace('(_idx_s < ((a)).len)', '(_idx_s < (*(a)).len)')
@@ -111,6 +114,8 @@ fn sanitize_staged_c_source(c_source string) string {
 		'.sock = *(*(net__UdpSocket**)(((u8*)(&_or_t54.err)) + sizeof(IError)))')
 	// Generic function specialization: convert_voidptr_to_t_T -> convert_voidptr_to_t_f64
 	source = source.replace('sync__convert_voidptr_to_t_T(', 'sync__convert_voidptr_to_t_f64(')
+	// Header-backed builds can lose the implicit address for channel semaphore fields.
+	source = source.replace('sync__Semaphore__wait(ch->', 'sync__Semaphore__wait(&ch->')
 	source = ensure_string_eq_impl(source)
 	// ObjC .m file references g_vui_webview_cookie_val as a global variable.
 	// The cleanc backend uses DarwinWebViewState singleton instead.
@@ -120,6 +125,107 @@ fn sanitize_staged_c_source(c_source string) string {
 		source = source + '\nstring g_vui_webview_cookie_val;\n'
 	}
 	return source
+}
+
+fn sanitize_cached_main_c_source(c_source string) string {
+	return strip_common_weak_sort_fallbacks(sanitize_cached_object_c_source(c_source))
+}
+
+fn sanitize_cached_object_c_source(c_source string) string {
+	mut source := c_source
+	source = guard_tcc_stdatomic_preamble_when_using_compat_header(source)
+	// Header-backed builds can lose the implicit address for channel semaphore fields.
+	source = source.replace('sync__Semaphore__wait(ch->', 'sync__Semaphore__wait(&ch->')
+	for c_typedef_name in [
+		'atomic_uintptr_t',
+		'pthread_condattr_t',
+		'pthread_rwlockattr_t',
+	] {
+		source = source.replace('struct ${c_typedef_name} ', '${c_typedef_name} ')
+	}
+	source = ensure_forward_typedefs_for_c_prefix(source, 'veb__MiddlewareOptions_T_')
+	return source
+}
+
+fn strip_common_weak_sort_fallbacks(c_source string) string {
+	mut source := c_source
+	for common_sort_helper in ['__sort_cmp_int_asc', '__sort_cmp_RepIndex_by_idx_asc'] {
+		source = strip_weak_c_function_definition(source, common_sort_helper)
+	}
+	return source
+}
+
+fn guard_tcc_stdatomic_preamble_when_using_compat_header(source string) string {
+	if !source.contains('/thirdparty/stdatomic/nix/atomic.h') {
+		return source
+	}
+	guarded := source.replace('#include <stdatomic.h>',
+		'#ifndef __TINYC__\n#include <stdatomic.h>\n#endif')
+	mut lines := guarded.split_into_lines()
+	mut out := []string{cap: lines.len + 6}
+	for line in lines {
+		if line.trim_space().starts_with('#include ')
+			&& line.contains('/thirdparty/stdatomic/nix/atomic.h') {
+			out << '#if defined(__TINYC__) && defined(__APPLE__) && defined(__aarch64__)'
+			out << '#define extern static'
+			out << '#endif'
+			out << line
+			out << '#if defined(__TINYC__) && defined(__APPLE__) && defined(__aarch64__)'
+			out << '#undef extern'
+			out << '#endif'
+			continue
+		}
+		out << line
+	}
+	return out.join('\n')
+}
+
+fn ensure_forward_typedefs_for_c_prefix(source string, prefix string) string {
+	names := c_identifier_names_with_prefix(source, prefix)
+	if names.len == 0 {
+		return source
+	}
+	mut typedefs := []string{}
+	for name in names {
+		if name.ends_with('_str') || name.ends_with('__str') {
+			continue
+		}
+		typedefs << 'typedef struct ${name} ${name};'
+	}
+	if typedefs.len == 0 {
+		return source
+	}
+	decls := typedefs.join('\n') + '\n'
+	marker := '// V primitive types\n'
+	if marker_idx := source.index(marker) {
+		insert_idx := marker_idx + marker.len
+		return source[..insert_idx] + decls + source[insert_idx..]
+	}
+	return decls + source
+}
+
+fn c_identifier_names_with_prefix(source string, prefix string) []string {
+	mut names_set := map[string]bool{}
+	mut pos := 0
+	for {
+		idx := source.index_after(prefix, pos) or { break }
+		mut end := idx + prefix.len
+		for end < source.len && is_c_identifier_byte(source[end]) {
+			end++
+		}
+		if end > idx {
+			names_set[source[idx..end]] = true
+		}
+		pos = end
+	}
+	mut names := names_set.keys()
+	names.sort()
+	return names
+}
+
+fn is_c_identifier_byte(ch u8) bool {
+	return (ch >= `a` && ch <= `z`) || (ch >= `A` && ch <= `Z`)
+		|| (ch >= `0` && ch <= `9`) || ch == `_`
 }
 
 // ensure_result_type ensures that a _result_* type has both typedef and struct definition
@@ -539,6 +645,11 @@ fn (mut b Builder) gen_cleanc() {
 		cc = 'cc'
 	}
 	directive_flags := b.collect_cflags_from_sources()
+	$if macos {
+		if cc.contains('tcc') && cflags_need_objc_mode(directive_flags) {
+			cc = 'cc'
+		}
+	}
 	// Separate directive flags into compile-only and link-only flags.
 	// -framework, -l, -L, .o/.a/.so/.dylib are linker flags and must NOT
 	// be passed during -c compilation (they can trigger unwanted header
@@ -550,7 +661,7 @@ fn (mut b Builder) gen_cleanc() {
 	if env_flags.trim_space() != '' {
 		cc_flag_parts << env_flags.trim_space()
 	}
-	if cc.contains('tcc') && directive_compile_flags.contains('thirdparty/sqlite/sqlite3.c')
+	if cc.contains('tcc') && directive_flags.contains('thirdparty/sqlite/sqlite3.c')
 		&& !directive_compile_flags.contains('SQLITE_DISABLE_INTRINSIC') {
 		cc_flag_parts << '-DSQLITE_DISABLE_INTRINSIC'
 	}
@@ -565,11 +676,11 @@ fn (mut b Builder) gen_cleanc() {
 		cc_flag_parts << tcc_extra.trim_space()
 	}
 	// macOS code can include Objective-C (.m) files via #include directives.
-	// Tell the C compiler to treat the source as Objective-C.
-	// Added unconditionally: if tcc is the compiler it will fail on other flags
-	// anyway and the fallback to cc/clang will use this flag properly.
+	// Tell the C compiler to treat the source as Objective-C only when needed.
 	$if macos {
-		cc_flag_parts << '-x objective-c'
+		if cflags_need_objc_mode(directive_flags) {
+			cc_flag_parts << '-x objective-c'
+		}
 	}
 	cc_flag_parts << '-std=gnu11'
 	cc_flag_parts << '-fwrapv'
@@ -681,9 +792,6 @@ fn (b &Builder) should_disable_cleanc_cache() bool {
 			|| input.ends_with('.vh') {
 			continue
 		}
-		if os.is_dir(input) {
-			return true
-		}
 	}
 	return false
 }
@@ -761,13 +869,12 @@ fn (mut b Builder) gen_ssa_c() {
 		&& b.ensure_core_cache_dir() {
 		cache_dir := b.core_cache_dir()
 		builtin_obj = b.ensure_cached_module_object(cache_dir, builtin_cache_name,
-			builtin_cached_module_paths, builtin_cached_module_names, cc, cc_flags,
-			error_limit_flag) or { '' }
+			builtin_cached_module_paths, builtin_cached_module_names, cc, cc_flags, '',
+			error_limit_flag, false) or { '' }
 		if builtin_obj.len > 0 && vlib_cached_module_paths.len > 0 {
 			vlib_obj = b.ensure_cached_module_object(cache_dir, vlib_cache_name,
-				vlib_cached_module_paths, vlib_cached_module_names, cc, cc_flags, error_limit_flag) or {
-				''
-			}
+				vlib_cached_module_paths, vlib_cached_module_names, cc, cc_flags, '',
+				error_limit_flag, false) or { '' }
 		}
 	}
 
@@ -867,18 +974,46 @@ fn (mut b Builder) gen_ssa_c() {
 }
 
 fn (mut b Builder) gen_cleanc_source(modules []string) string {
-	return b.gen_cleanc_source_with_options(modules, false, '', []string{}, true)
+	return b.gen_cleanc_source_with_options(modules, []string{}, false, '', []string{}, true,
+		[]string{})
 }
 
-fn (mut b Builder) gen_cleanc_source_for_cache(modules []string, cache_bundle_name string) string {
-	return b.gen_cleanc_source_with_options(modules, true, cache_bundle_name, []string{}, false)
+fn (mut b Builder) gen_cleanc_source_for_cache(modules []string, cache_bundle_name string, use_markused bool) string {
+	return b.gen_cleanc_source_with_options(modules, []string{}, true, cache_bundle_name,
+		[]string{}, use_markused, []string{})
+}
+
+fn (mut b Builder) gen_cleanc_source_for_cache_force(modules []string, cache_bundle_name string, use_markused bool, force_emit_fn_names []string) string {
+	return b.gen_cleanc_source_with_options(modules, []string{}, true, cache_bundle_name,
+		[]string{}, use_markused, force_emit_fn_names)
+}
+
+fn (mut b Builder) gen_cleanc_source_for_cache_files(modules []string, emit_files []string, cache_bundle_name string, use_markused bool) string {
+	return b.gen_cleanc_source_with_options(modules, emit_files, true, cache_bundle_name,
+		[]string{}, use_markused, []string{})
+}
+
+fn (mut b Builder) gen_cleanc_source_for_cache_files_force(modules []string, emit_files []string, cache_bundle_name string, use_markused bool, force_emit_fn_names []string) string {
+	return b.gen_cleanc_source_with_options(modules, emit_files, true, cache_bundle_name,
+		[]string{}, use_markused, force_emit_fn_names)
 }
 
 fn (mut b Builder) gen_cleanc_source_with_cache_init_calls(modules []string, cached_init_calls []string) string {
-	return b.gen_cleanc_source_with_options(modules, false, '', cached_init_calls, true)
+	return b.gen_cleanc_source_with_options(modules, []string{}, false, '', cached_init_calls,
+		true, []string{})
 }
 
-fn (mut b Builder) gen_cleanc_source_with_options(modules []string, export_const_symbols bool, cache_bundle_name string, cached_init_calls []string, use_markused bool) string {
+fn (mut b Builder) gen_cleanc_source_with_cache_init_calls_and_files(modules []string, emit_files []string, cached_init_calls []string, use_markused bool) string {
+	return b.gen_cleanc_source_with_options(modules, emit_files, false, '', cached_init_calls,
+		use_markused, []string{})
+}
+
+fn (mut b Builder) gen_cleanc_source_with_cache_init_calls_files_force(modules []string, emit_files []string, cached_init_calls []string, use_markused bool, force_emit_fn_names []string) string {
+	return b.gen_cleanc_source_with_options(modules, emit_files, false, '', cached_init_calls,
+		use_markused, force_emit_fn_names)
+}
+
+fn (mut b Builder) gen_cleanc_source_with_options(modules []string, emit_files []string, export_const_symbols bool, cache_bundle_name string, cached_init_calls []string, use_markused bool, force_emit_fn_names []string) string {
 	mut gen_files := []ast.File{cap: b.files.len}
 	for file in b.files {
 		gen_files << file
@@ -894,8 +1029,14 @@ fn (mut b Builder) gen_cleanc_source_with_options(modules []string, export_const
 	if modules.len > 0 {
 		gen.set_emit_modules(modules)
 	}
+	if emit_files.len > 0 {
+		gen.set_emit_files(emit_files)
+	}
 	if use_markused && b.used_fn_keys.len > 0 {
 		gen.set_used_fn_keys(b.used_fn_keys)
+	}
+	if force_emit_fn_names.len > 0 {
+		gen.set_force_emit_fn_names(force_emit_fn_names)
 	}
 	gen.set_export_const_symbols(export_const_symbols)
 	if cache_bundle_name.len > 0 {
@@ -922,18 +1063,6 @@ fn (mut b Builder) gen_cleanc_source_with_options(modules []string, export_const
 }
 
 fn (mut b Builder) gen_cleanc_with_cached_core(output_name string, cc string, cc_flags string, cc_link_flags string, error_limit_flag string, mut sw time.StopWatch) bool {
-	mut excluded := core_cached_module_names.clone()
-	if b.is_cmd_v2_self_build() {
-		excluded << v2compiler_cached_module_names
-	}
-	main_modules := b.collect_modules_excluding(excluded)
-	if main_modules.len == 0 {
-		if os.getenv('V2_TRACE_CACHE') != '' {
-			eprintln('TRACE_CACHE cached_core=false reason=no_main_modules')
-		}
-		return false
-	}
-
 	cache_dir := b.core_cache_dir()
 	if !b.ensure_core_cache_dir() {
 		// If we cannot create a readable/writable cache dir, fall back to full compilation.
@@ -944,34 +1073,175 @@ fn (mut b Builder) gen_cleanc_with_cached_core(output_name string, cc string, cc
 	}
 
 	builtin_obj := b.ensure_cached_module_object(cache_dir, builtin_cache_name,
-		builtin_cached_module_paths, builtin_cached_module_names, cc, cc_flags, error_limit_flag) or {
+		builtin_cached_module_paths, builtin_cached_module_names, cc, cc_flags, '',
+		error_limit_flag, false) or {
 		if os.getenv('V2_TRACE_CACHE') != '' {
 			eprintln('TRACE_CACHE cached_core=false reason=builtin_obj_failed')
 		}
 		return false
 	}
+	b.print_cached_bundle_modules(builtin_cache_name, builtin_cached_module_names)
 	mut vlib_obj := ''
 	if vlib_cached_module_paths.len > 0 {
 		vlib_obj = b.ensure_cached_module_object(cache_dir, vlib_cache_name,
-			vlib_cached_module_paths, vlib_cached_module_names, cc, cc_flags, error_limit_flag) or {
+			vlib_cached_module_paths, vlib_cached_module_names, cc, cc_flags, '', error_limit_flag,
+			false) or {
 			if os.getenv('V2_TRACE_CACHE') != '' {
 				eprintln('TRACE_CACHE cached_core=false reason=vlib_obj_failed')
 			}
 			return false
 		}
+		if vlib_obj.len > 0 {
+			b.print_cached_bundle_modules(vlib_cache_name, vlib_cached_module_names)
+		}
+	}
+	mut optional_cached_objs := []string{}
+	mut optional_cached_cache_names := []string{}
+	mut optional_cached_module_names := []string{}
+	mut imports_obj := ''
+	mut import_dependency_cache_names := []string{}
+	mut imports_cc_flags := ''
+	mut imports_cc_link_flags := ''
+	if veb_cached_module_paths.len > 0 && b.has_module('veb') {
+		veb_obj := b.ensure_cached_module_object(cache_dir, veb_cache_name,
+			veb_cached_module_paths, veb_cached_module_names, cc, cc_flags, cc_link_flags,
+			error_limit_flag, true) or {
+			if os.getenv('V2_TRACE_CACHE') != '' {
+				eprintln('TRACE_CACHE optional_cache=veb reason=${err}')
+			}
+			''
+		}
+		if veb_obj.len > 0 {
+			b.print_cached_bundle_modules(veb_cache_name, veb_cached_module_names)
+			optional_cached_objs << veb_obj
+			optional_cached_cache_names << veb_cache_name
+			optional_cached_module_names << veb_cached_module_names
+		}
 	}
 	mut v2compiler_obj := ''
 	if v2compiler_cached_module_paths.len > 0 && b.is_cmd_v2_self_build() {
 		v2compiler_obj = b.ensure_cached_module_object(cache_dir, v2compiler_cache_name,
-			v2compiler_cached_module_paths, v2compiler_cached_module_names, cc, cc_flags,
-			error_limit_flag) or {
+			v2compiler_cached_module_paths, v2compiler_cached_module_names, cc, cc_flags, '',
+			error_limit_flag, false) or {
 			if os.getenv('V2_TRACE_CACHE') != '' {
 				eprintln('TRACE_CACHE cached_core=false reason=v2compiler_obj_failed')
 			}
 			return false
 		}
+		if v2compiler_obj.len > 0 {
+			b.print_cached_bundle_modules(v2compiler_cache_name, v2compiler_cached_module_names)
+		}
+	}
+	mut dynamic_excluded := core_cached_module_names.clone()
+	for module_name in optional_cached_module_names {
+		dynamic_excluded << module_name
+	}
+	if b.is_cmd_v2_self_build() {
+		dynamic_excluded << v2compiler_cached_module_names
+	}
+	dynamic_excluded << 'main'
+	dynamic_cached_module_names := b.collect_modules_excluding(dynamic_excluded)
+	if dynamic_cached_module_names.len > 0 {
+		import_dependency_cache_names = [builtin_cache_name]
+		if vlib_obj.len > 0 {
+			import_dependency_cache_names << vlib_cache_name
+		}
+		if v2compiler_obj.len > 0 {
+			import_dependency_cache_names << v2compiler_cache_name
+		}
+		for cache_name in optional_cached_cache_names {
+			import_dependency_cache_names << cache_name
+		}
+		import_dependency_compile_flags, import_dependency_link_flags :=
+			b.cached_module_stamp_flags(import_dependency_cache_names)
+		imports_cc_flags = join_flag_strings(cc_flags, import_dependency_compile_flags)
+		imports_cc_link_flags = join_flag_strings(cc_link_flags, import_dependency_link_flags)
+		initial_import_force_names := b.force_local_import_fn_names(dynamic_cached_module_names)
+		imports_obj = b.ensure_cached_parsed_module_object_force(cache_dir, imports_cache_name,
+			dynamic_cached_module_names, import_dependency_cache_names, cc, imports_cc_flags,
+			imports_cc_link_flags, error_limit_flag, true, initial_import_force_names) or {
+			if os.getenv('V2_TRACE_CACHE') != '' {
+				eprintln('TRACE_CACHE optional_cache=imports reason=${err}')
+			}
+			if b.used_import_vh_for_parse {
+				return false
+			}
+			''
+		}
+		if imports_obj.len > 0 {
+			b.print_cached_bundle_modules(imports_cache_name, dynamic_cached_module_names)
+			optional_cached_objs << imports_obj
+			optional_cached_cache_names << imports_cache_name
+			optional_cached_module_names << dynamic_cached_module_names
+		}
+	}
+	mut virtual_groups := if b.used_virtual_vh_for_parse {
+		b.cached_virtual_manifest()
+	} else {
+		b.collect_virtual_main_modules()
+	}
+	mut virtual_source_files := []string{}
+	mut virtuals_obj := ''
+	if virtual_groups.len > 0 {
+		mut virtual_dependency_cache_names := [builtin_cache_name]
+		if vlib_obj.len > 0 {
+			virtual_dependency_cache_names << vlib_cache_name
+		}
+		if v2compiler_obj.len > 0 {
+			virtual_dependency_cache_names << v2compiler_cache_name
+		}
+		for cache_name in optional_cached_cache_names {
+			virtual_dependency_cache_names << cache_name
+		}
+		virtual_dependency_compile_flags, virtual_dependency_link_flags :=
+			b.cached_module_stamp_flags(virtual_dependency_cache_names)
+		virtual_cc_flags := join_flag_strings(cc_flags, virtual_dependency_compile_flags)
+		virtual_cc_link_flags := join_flag_strings(cc_link_flags, virtual_dependency_link_flags)
+		virtuals_obj = b.ensure_cached_virtual_module_object(cache_dir, virtual_groups,
+			virtual_dependency_cache_names, cc, virtual_cc_flags, virtual_cc_link_flags,
+			error_limit_flag, true) or {
+			if os.getenv('V2_TRACE_CACHE') != '' {
+				eprintln('TRACE_CACHE optional_cache=${virtuals_cache_name} reason=${err}')
+			}
+			if b.used_virtual_vh_for_parse {
+				return false
+			}
+			virtual_groups = []CachedVirtualModule{}
+			''
+		}
+		if virtuals_obj.len > 0 {
+			virtual_source_files = virtual_module_source_files(virtual_groups)
+			b.print_cached_bundle_modules(virtuals_cache_name, virtual_module_names(virtual_groups))
+		}
 	}
 	b.ensure_core_module_headers()
+	b.ensure_import_module_headers(dynamic_cached_module_names)
+	b.ensure_virtual_module_headers(virtual_groups)
+	mut excluded := core_cached_module_names.clone()
+	for module_name in optional_cached_module_names {
+		excluded << module_name
+	}
+	if b.is_cmd_v2_self_build() {
+		excluded << v2compiler_cached_module_names
+	}
+	main_modules := b.collect_modules_excluding(excluded)
+	if main_modules.len == 0 {
+		if os.getenv('V2_TRACE_CACHE') != '' {
+			eprintln('TRACE_CACHE cached_core=false reason=no_main_modules')
+		}
+		return false
+	}
+	mut linked_cache_names := [builtin_cache_name]
+	if vlib_obj.len > 0 {
+		linked_cache_names << vlib_cache_name
+	}
+	if v2compiler_obj.len > 0 {
+		linked_cache_names << v2compiler_cache_name
+	}
+	for cache_name in optional_cached_cache_names {
+		linked_cache_names << cache_name
+	}
+	cached_compile_flags, cached_link_flags := b.cached_module_stamp_flags(linked_cache_names)
 
 	// When TCC is the default compiler but fell back to cc for cache
 	// compilation (e.g. due to TCC not supporting certain C constructs),
@@ -980,7 +1250,8 @@ fn (mut b Builder) gen_cleanc_with_cached_core(output_name string, cc string, cc
 	// Also, -prod builds with -flto require gcc/clang for linking — TCC
 	// cannot link LTO object files.
 	mut main_cc := cc
-	mut main_cc_flags := cc_flags
+	mut main_cc_flags := join_flag_strings(cc_flags, cached_compile_flags)
+	main_cc_link_flags := join_flag_strings(cc_link_flags, cached_link_flags)
 	if cc.contains('tcc') && os.exists(builtin_obj) {
 		bytes := os.read_bytes(builtin_obj) or { []u8{} }
 		is_elf := bytes.len >= 4 && bytes[0] == 0x7f && bytes[1] == 0x45 && bytes[2] == 0x4c
@@ -993,7 +1264,7 @@ fn (mut b Builder) gen_cleanc_with_cached_core(output_name string, cc string, cc
 			main_cc = 'cc'
 			tcc_dir2 := cc.all_before_last('/tcc')
 			if tcc_dir2.len > 0 {
-				mut parts := cc_flags.fields()
+				mut parts := main_cc_flags.fields()
 				mut filtered := []string{cap: parts.len}
 				mut j := 0
 				for j < parts.len {
@@ -1028,8 +1299,56 @@ fn (mut b Builder) gen_cleanc_with_cached_core(output_name string, cc string, cc
 	if v2compiler_obj.len > 0 {
 		cached_init_calls << '__v2_cached_init_${v2compiler_cache_name}'
 	}
-	mut main_source := b.gen_cleanc_source_with_cache_init_calls(main_modules, cached_init_calls)
-	main_source = b.inject_cached_core_forward_decls(main_source)
+	for cache_name in optional_cached_cache_names {
+		cached_init_calls << '__v2_cached_init_${cache_name}'
+	}
+	all_main_emit_files := if virtual_source_files.len > 0 {
+		filter_out_source_files(b.module_source_files(main_modules), virtual_source_files)
+	} else {
+		[]string{}
+	}
+	mut force_main_fn_names := []string{}
+	mut virtual_sort_helper_names := []string{}
+	if virtuals_obj.len > 0 {
+		virtual_c_source := os.read_file(cache_path_join(cache_dir, '${virtuals_cache_name}.c')) or {
+			''
+		}
+		virtual_sort_helper_names = sort_cmp_fn_names_referenced_by_c(virtual_c_source)
+		force_main_fn_names = b.force_main_fn_names_referenced_by_cached_c(virtual_c_source,
+			virtual_source_files)
+	}
+	if all_main_emit_files.len > 0 {
+		force_main_fn_names = filter_out_names(merge_unique_strings(force_main_fn_names,
+			b.force_main_fn_names_for_emit_files(all_main_emit_files)), virtual_sort_helper_names)
+	}
+	mut main_source := if all_main_emit_files.len > 0 {
+		b.gen_cleanc_source_with_cache_init_calls_files_force(main_modules, all_main_emit_files,
+			cached_init_calls, true, force_main_fn_names)
+	} else {
+		b.gen_cleanc_source_with_cache_init_calls(main_modules, cached_init_calls)
+	}
+	if imports_obj.len > 0 && all_main_emit_files.len > 0 && !b.used_import_vh_for_parse {
+		mut import_ref_source := main_source
+		if virtuals_obj.len > 0 {
+			import_ref_source += '\n' + (os.read_file(cache_path_join(cache_dir, '${virtuals_cache_name}.c')) or {
+				''
+			})
+		}
+		import_force_names := b.force_module_fn_names_referenced_by_c(import_ref_source,
+			dynamic_cached_module_names, 2)
+		if import_force_names.len > 0 {
+			imports_obj = b.ensure_cached_parsed_module_object_force(cache_dir, imports_cache_name,
+				dynamic_cached_module_names, import_dependency_cache_names, cc, imports_cc_flags,
+				imports_cc_link_flags, error_limit_flag, true, import_force_names) or {
+				if os.getenv('V2_TRACE_CACHE') != '' {
+					eprintln('TRACE_CACHE optional_cache=imports_force reason=${err}')
+				}
+				return false
+			}
+		}
+	}
+	main_source = b.inject_cached_c_header_directives(main_source, linked_cache_names)
+	main_source = b.inject_cached_forward_decls(main_source, linked_cache_names)
 	print_time('C Gen', sw.elapsed())
 	if main_source == '' {
 		if os.getenv('V2_TRACE_CACHE') != '' {
@@ -1039,7 +1358,7 @@ fn (mut b Builder) gen_cleanc_with_cached_core(output_name string, cc string, cc
 	}
 
 	main_c_file := b.exec_build_c_file(output_name)
-	os.write_file(main_c_file, main_source) or { return false }
+	os.write_file(main_c_file, sanitize_cached_main_c_source(main_source)) or { return false }
 	println('[*] Wrote ${main_c_file}')
 
 	cc_start := sw.elapsed()
@@ -1067,9 +1386,15 @@ fn (mut b Builder) gen_cleanc_with_cached_core(output_name string, cc string, cc
 	if v2compiler_obj.len > 0 {
 		link_cmd += ' "${v2compiler_obj}"'
 	}
+	for obj in optional_cached_objs {
+		link_cmd += ' "${obj}"'
+	}
+	if virtuals_obj.len > 0 {
+		link_cmd += ' "${virtuals_obj}"'
+	}
 	link_cmd += ' -o "${output_name}"'
-	if cc_link_flags.len > 0 {
-		link_cmd += ' ${cc_link_flags}'
+	if main_cc_link_flags.len > 0 {
+		link_cmd += ' ${main_cc_link_flags}'
 	}
 	run_cc_cmd_or_exit(link_cmd, 'Linking', b.pref.show_cc)
 	print_time('CC', time.Duration(sw.elapsed() - cc_start))
@@ -1085,20 +1410,29 @@ fn (mut b Builder) gen_cleanc_with_cached_core(output_name string, cc string, cc
 	return true
 }
 
-fn (b &Builder) inject_cached_core_forward_decls(source string) string {
-	decls := b.cached_core_forward_decls()
+fn (b &Builder) inject_cached_forward_decls(source string, cache_names []string) string {
+	decls := b.cached_forward_decls(cache_names)
 	if decls == '' {
 		return source
 	}
 	// Split source into lines once, then collect existing names and inject.
 	mut lines := source.split_into_lines()
 	mut existing_names := map[string]bool{}
+	mut existing_forward_struct_typedefs := map[string]bool{}
 	for src_line in lines {
 		trimmed := src_line.trim_space()
-		if trimmed.starts_with('typedef ') && trimmed.ends_with(';') {
+		if trimmed.starts_with('typedef struct ') && trimmed.contains('{') {
+			name := extract_struct_typedef_head_name(trimmed)
+			if name.len > 0 {
+				existing_names[name] = true
+			}
+		} else if trimmed.starts_with('typedef ') && trimmed.ends_with(';') {
 			name := extract_typedef_name(trimmed)
 			if name.len > 0 {
 				existing_names[name] = true
+				if is_forward_struct_typedef(trimmed) {
+					existing_forward_struct_typedefs[name] = true
+				}
 			}
 		} else if trimmed.starts_with('#define ') {
 			// Extract macro name: "#define NAME" or "#define NAME(..."
@@ -1110,46 +1444,151 @@ fn (b &Builder) inject_cached_core_forward_decls(source string) string {
 			if end > 0 {
 				existing_names[rest[..end]] = true
 			}
+		} else if is_top_level_c_fn_decl(trimmed) {
+			fn_name := extract_fn_decl_name(trimmed)
+			if fn_name.len > 0 {
+				existing_names[fn_name] = true
+			}
 		}
 	}
-	mut out := []string{cap: lines.len + count_byte_in_string(decls, `\n`) + 2}
+	mut cached_early_typedefs := []string{}
+	mut cached_late_typedefs := []string{}
+	mut cached_fn_decls := []string{}
+	for decl_line in decls.split_into_lines() {
+		if decl_line == '' {
+			continue
+		}
+		if decl_line.starts_with('typedef ') {
+			name := extract_typedef_name(decl_line)
+			if name.len > 0 && name in existing_names && !(is_forward_struct_typedef(decl_line)
+				&& name in existing_forward_struct_typedefs) {
+				continue
+			}
+			if is_early_cached_typedef(decl_line) {
+				cached_early_typedefs << decl_line
+			} else {
+				cached_late_typedefs << decl_line
+			}
+			continue
+		}
+		fn_name := extract_fn_decl_name(decl_line)
+		if fn_name.len > 0 && fn_name in existing_names {
+			continue
+		}
+		cached_fn_decls << decl_line
+	}
+	mut cached_late_decls := []string{cap: cached_late_typedefs.len + cached_fn_decls.len}
+	cached_late_decls << cached_late_typedefs
+	cached_late_decls << cached_fn_decls
+	mut out := []string{cap: lines.len + cached_early_typedefs.len + cached_late_decls.len + 4}
 	mut saw_cached_decl := false
-	mut inserted := false
+	mut inserted_typedefs := cached_early_typedefs.len == 0
+	mut inserted_late_decls := cached_late_decls.len == 0
 	for line in lines {
+		if !inserted_typedefs && is_v_helper_forward_decl_boundary(line) {
+			out << cached_early_typedefs
+			out << ''
+			inserted_typedefs = true
+		}
 		out << line
 		if line.starts_with('void __v2_cached_init_') {
 			saw_cached_decl = true
 			continue
 		}
-		if saw_cached_decl && line == '' && !inserted {
-			for decl_line in decls.split_into_lines() {
-				if decl_line == '' {
-					continue
-				}
-				// Skip declarations whose name conflicts with main source.
-				if decl_line.starts_with('typedef ') {
-					name := extract_typedef_name(decl_line)
-					if name.len > 0 && name in existing_names {
-						continue
-					}
-				} else {
-					// Function forward declaration — extract fn name and skip
-					// if it conflicts with a #define macro in the main source.
-					fn_name := extract_fn_decl_name(decl_line)
-					if fn_name.len > 0 && fn_name in existing_names {
-						continue
-					}
-				}
-				out << decl_line
+		if saw_cached_decl && line == '' && !inserted_late_decls {
+			out << cached_late_decls
+			out << ''
+			inserted_late_decls = true
+		}
+	}
+	if !inserted_typedefs {
+		return cached_early_typedefs.join('\n') + '\n' + out.join('\n')
+	}
+	if !inserted_late_decls {
+		return cached_late_decls.join('\n') + '\n' + out.join('\n')
+	}
+	return out.join('\n')
+}
+
+fn (b &Builder) inject_cached_typedef_decls(source string, cache_names []string) string {
+	decls := b.cached_typedef_decls(cache_names)
+	if decls == '' {
+		return source
+	}
+	return inject_cached_typedef_decl_lines(source, decls.split_into_lines())
+}
+
+fn inject_cached_typedef_decl_lines(source string, decl_lines []string) string {
+	mut lines := source.split_into_lines()
+	mut existing_names := map[string]bool{}
+	for src_line in lines {
+		trimmed := src_line.trim_space()
+		if trimmed.starts_with('typedef struct ') && trimmed.contains('{') {
+			name := extract_struct_typedef_head_name(trimmed)
+			if name.len > 0 {
+				existing_names[name] = true
 			}
+		} else if trimmed.starts_with('typedef ') && trimmed.ends_with(';') {
+			name := extract_typedef_name(trimmed)
+			if name.len > 0 {
+				existing_names[name] = true
+			}
+		}
+	}
+	mut cached_typedefs := []string{}
+	for decl_line in decl_lines {
+		if decl_line == '' || !decl_line.starts_with('typedef ') {
+			continue
+		}
+		name := extract_typedef_name(decl_line)
+		if name.len > 0 && name in existing_names {
+			continue
+		}
+		if name.len > 0 {
+			existing_names[name] = true
+		}
+		cached_typedefs << decl_line
+	}
+	if cached_typedefs.len == 0 {
+		return source
+	}
+	mut out := []string{cap: lines.len + cached_typedefs.len + 1}
+	mut inserted := false
+	for line in lines {
+		if !inserted && is_v_helper_forward_decl_boundary(line) {
+			out << cached_typedefs
 			out << ''
 			inserted = true
 		}
+		out << line
 	}
 	if !inserted {
-		return decls + '\n' + source
+		return cached_typedefs.join('\n') + '\n' + out.join('\n')
 	}
 	return out.join('\n')
+}
+
+fn is_forward_struct_typedef(line string) bool {
+	trimmed := line.trim_space().trim_right('; ')
+	prefix := 'typedef struct '
+	if !trimmed.starts_with(prefix) {
+		return false
+	}
+	parts := trimmed[prefix.len..].fields()
+	return parts.len == 2 && parts[0] == parts[1]
+}
+
+fn extract_struct_typedef_head_name(line string) string {
+	prefix := 'typedef struct '
+	if !line.starts_with(prefix) {
+		return ''
+	}
+	rest := line[prefix.len..]
+	mut end := 0
+	for end < rest.len && rest[end] != `{` && !rest[end].is_space() {
+		end++
+	}
+	return rest[..end].trim_space()
 }
 
 fn count_byte_in_string(s string, needle u8) int {
@@ -1174,6 +1613,12 @@ fn extract_typedef_name(line string) string {
 		before_attr := trimmed[..attr_idx].trim_space()
 		last_space := before_attr.last_index(' ') or { return before_attr }
 		return before_attr[last_space + 1..]
+	}
+	if trimmed.ends_with(']') {
+		bracket_idx := trimmed.last_index('[') or { return '' }
+		before_bracket := trimmed[..bracket_idx].trim_space()
+		last_space := before_bracket.last_index(' ') or { return before_bracket }
+		return before_bracket[last_space + 1..]
 	}
 	if trimmed.ends_with('}') {
 		// "typedef struct X { ... } X" — find name after '}'
@@ -1202,15 +1647,89 @@ fn extract_fn_decl_name(line string) string {
 	return name
 }
 
-fn (b &Builder) cached_core_forward_decls() string {
+fn is_early_cached_typedef(line string) bool {
+	trimmed := line.trim_space()
+	if trimmed.starts_with('typedef struct _v_Array_fixed_') {
+		return true
+	}
+	return trimmed.starts_with('typedef ') && trimmed.contains(' Array_fixed_')
+		&& trimmed.contains('[') && trimmed.ends_with(';')
+}
+
+fn is_v_helper_forward_decl_boundary(line string) bool {
+	trimmed := line.trim_space()
+	return trimmed.starts_with('bool string__eq(') || trimmed.starts_with('bool __v2_array_eq(')
+}
+
+fn is_top_level_c_fn_decl(line string) bool {
+	trimmed := line.trim_space()
+	if !trimmed.ends_with(');') || !trimmed.contains('(') {
+		return false
+	}
+	if trimmed.starts_with('#') || trimmed.starts_with('typedef ') || trimmed.starts_with('struct ')
+		|| trimmed.starts_with('union ') || trimmed.starts_with('enum ')
+		|| trimmed.starts_with('return ') || trimmed.starts_with('if ')
+		|| trimmed.starts_with('for ') || trimmed.starts_with('while ')
+		|| trimmed.starts_with('switch ') {
+		return false
+	}
+	if trimmed.contains('=') {
+		return false
+	}
+	paren_idx := trimmed.index_u8(`(`)
+	if paren_idx > 0 {
+		before_paren := trimmed[..paren_idx].trim_space()
+		if !before_paren.contains(' ') && !before_paren.contains('*') {
+			return false
+		}
+	}
+	return extract_fn_decl_name(trimmed).len > 0
+}
+
+fn (b &Builder) inject_cached_c_header_directives(source string, cache_names []string) string {
+	directives := b.cached_c_header_directives(cache_names)
+	if directives == '' {
+		return source
+	}
+	mut existing := map[string]bool{}
+	for src_line in source.split_into_lines() {
+		line := src_line.trim_space()
+		if line.starts_with('#include ') || line.starts_with('#define ')
+			|| line.starts_with('#undef ') || line.starts_with('#pragma ') {
+			existing[line] = true
+		}
+	}
+	mut filtered := []string{}
+	for directive in directives.split_into_lines() {
+		if directive in existing {
+			continue
+		}
+		filtered << directive
+	}
+	if filtered.len == 0 {
+		return source
+	}
+	mut lines := source.split_into_lines()
+	for i, line in lines {
+		if line.trim_space() == '// V primitive types' {
+			mut out := []string{cap: lines.len + filtered.len + 1}
+			out << lines[..i]
+			out << filtered
+			out << ''
+			out << lines[i..]
+			return out.join('\n')
+		}
+	}
+	return filtered.join('\n') + '\n' + source
+}
+
+fn (b &Builder) cached_forward_decls(cache_names []string) string {
 	cache_dir := b.core_cache_dir()
 	mut seen := map[string]bool{}
+	mut seen_fn_names := map[string]bool{}
 	mut typedefs := []string{}
 	mut fn_decls := []string{}
-	// Only inject forward declarations from builtin and vlib caches.
-	// v2compiler types and function forward declarations are already
-	// emitted by the cleanc gen from the v2 module .vh headers.
-	for cache_name in [builtin_cache_name, vlib_cache_name] {
+	for cache_name in cache_names {
 		c_path := os.join_path(cache_dir, '${cache_name}.c')
 		if !os.exists(c_path) {
 			continue
@@ -1224,7 +1743,13 @@ fn (b &Builder) cached_core_forward_decls() string {
 			typedefs << td
 		}
 		for fd in fds {
-			if fd in seen {
+			fn_name := extract_fn_decl_name(fd)
+			if fn_name.len > 0 {
+				if fn_name in seen_fn_names {
+					continue
+				}
+				seen_fn_names[fn_name] = true
+			} else if fd in seen {
 				continue
 			}
 			seen[fd] = true
@@ -1237,17 +1762,165 @@ fn (b &Builder) cached_core_forward_decls() string {
 	return all.join('\n')
 }
 
+fn (b &Builder) cached_typedef_decls(cache_names []string) string {
+	cache_dir := b.core_cache_dir()
+	mut seen := map[string]bool{}
+	mut typedefs := []string{}
+	for cache_name in cache_names {
+		c_path := os.join_path(cache_dir, '${cache_name}.c')
+		if !os.exists(c_path) {
+			continue
+		}
+		tds, _ := top_level_c_decls(c_path)
+		for td in tds {
+			if td in seen {
+				continue
+			}
+			seen[td] = true
+			typedefs << td
+		}
+	}
+	return typedefs.join('\n')
+}
+
+fn (b &Builder) cached_c_header_directives(cache_names []string) string {
+	cache_dir := b.core_cache_dir()
+	mut seen := map[string]bool{}
+	mut directives := []string{}
+	for cache_name in cache_names {
+		c_path := os.join_path(cache_dir, '${cache_name}.c')
+		if !os.exists(c_path) {
+			continue
+		}
+		for line in top_level_c_header_directives(c_path) {
+			if line in seen {
+				continue
+			}
+			seen[line] = true
+			directives << line
+		}
+	}
+	return directives.join('\n')
+}
+
+fn (b &Builder) cached_module_stamp_flags(cache_names []string) (string, string) {
+	cache_dir := b.core_cache_dir()
+	mut compile_flags := ''
+	mut link_flags := ''
+	for cache_name in cache_names {
+		stamp_path := os.join_path(cache_dir, '${cache_name}.stamp')
+		stamp := os.read_file(stamp_path) or { continue }
+		for line in stamp.split_into_lines() {
+			if line.starts_with('cc_flags=') {
+				compile_flags = join_flag_strings(compile_flags, line['cc_flags='.len..])
+			} else if line.starts_with('cc_link_flags=') {
+				link_flags = join_flag_strings(link_flags, line['cc_link_flags='.len..])
+			}
+		}
+	}
+	return compile_flags, link_flags
+}
+
+fn join_flag_strings(a string, b string) string {
+	mut joined := []string{}
+	for flags in [a, b] {
+		for item in flag_string_items(flags) {
+			if item !in joined {
+				joined << item
+			}
+		}
+	}
+	return joined.join(' ')
+}
+
+fn flag_string_items(flags string) []string {
+	tokens := flags.fields()
+	mut items := []string{}
+	mut i := 0
+	for i < tokens.len {
+		tok := tokens[i]
+		if tok in ['-I', '-L', '-l', '-F', '-framework', '-isystem', '-include']
+			&& i + 1 < tokens.len {
+			items << '${tok} ${tokens[i + 1]}'
+			i += 2
+			continue
+		}
+		items << tok
+		i++
+	}
+	return items
+}
+
+fn is_c_conditional_directive(line string) bool {
+	trimmed := line.trim_space()
+	return trimmed.starts_with('#if') || trimmed.starts_with('#ifdef')
+		|| trimmed.starts_with('#ifndef') || trimmed.starts_with('#elif')
+		|| trimmed.starts_with('#else') || trimmed.starts_with('#endif')
+}
+
+fn top_level_c_header_directives(c_path string) []string {
+	lines := os.read_lines(c_path) or { return []string{} }
+	mut directives := []string{}
+	for raw_line in lines {
+		line := raw_line.trim_space()
+		if line == '// V primitive types' {
+			break
+		}
+		if line == '' || !line.starts_with('#') {
+			continue
+		}
+		if is_c_conditional_directive(line) {
+			continue
+		}
+		if cached_directive_emits_linked_symbols(line) {
+			continue
+		}
+		directives << line
+	}
+	return directives
+}
+
+fn cached_directive_emits_linked_symbols(line string) bool {
+	lower_value := line.trim_space().to_lower()
+	for marker in ['.c"', ".c'", '.c>', '.m"', ".m'", '.m>'] {
+		if lower_value.contains(marker) {
+			return true
+		}
+	}
+	return lower_value.contains('"miniz.h"') || lower_value.contains('<miniz.h>')
+		|| lower_value.contains('/miniz.h"') || lower_value.contains('/miniz.h>')
+}
+
 // top_level_c_decls extracts typedef declarations and function forward
 // declarations from a cached C source file.  Returns (typedefs, fn_decls).
 fn top_level_c_decls(c_path string) ([]string, []string) {
 	lines := os.read_lines(c_path) or { return []string{}, []string{} }
 	mut typedefs := []string{}
 	mut fn_decls := []string{}
-	for raw_line in lines {
+	mut i := 0
+	for i < lines.len {
+		raw_line := lines[i]
+		i++
 		if raw_line.len == 0 || raw_line[0] in [` `, `\t`, `\n`, `\r`] {
 			continue
 		}
 		line := raw_line.trim_space()
+		if line.starts_with('typedef struct ') && line.contains('{') && !line.ends_with(';') {
+			mut parts := [line]
+			for i < lines.len {
+				next_line := lines[i].trim_space()
+				i++
+				if next_line == '' {
+					continue
+				}
+				parts << next_line
+				if next_line.starts_with('}') && next_line.ends_with(';') {
+					break
+				}
+			}
+			typedefs << parts.join(' ')
+			continue
+		}
 		// Collect typedef lines (struct/union/array/map forward typedefs).
 		if line.starts_with('typedef ') && line.ends_with(';') {
 			typedefs << line
@@ -1262,7 +1935,7 @@ fn top_level_c_decls(c_path string) ([]string, []string) {
 			|| line.starts_with('for ') || line.starts_with('while ') || line.starts_with('switch ') {
 			continue
 		}
-		if line[0] == `(` || line[0] == `*` {
+		if line[0] == `(` || line[0] == `*` || line[0] == `&` || line[0] == `}` {
 			continue
 		}
 		if line.contains('=') {
@@ -1280,11 +1953,12 @@ fn top_level_c_decls(c_path string) ([]string, []string) {
 	return typedefs, fn_decls
 }
 
-fn (mut b Builder) ensure_cached_module_object(cache_dir string, cache_name string, module_paths []string, emit_modules []string, cc string, cc_flags string, error_limit_flag string) !string {
+fn (mut b Builder) ensure_cached_module_object(cache_dir string, cache_name string, module_paths []string, emit_modules []string, cc string, cc_flags string, cc_link_flags string, error_limit_flag string, use_markused bool) !string {
 	obj_path := cache_path_join(cache_dir, '${cache_name}.o')
 	stamp_path := cache_path_join(cache_dir, '${cache_name}.stamp')
 	c_path := cache_path_join(cache_dir, '${cache_name}.c')
-	expected_stamp := b.cache_stamp_for_modules(cache_name, module_paths, cc, cc_flags)
+	expected_stamp := b.cache_stamp_for_modules(cache_name, module_paths, cc, cc_flags,
+		cc_link_flags, use_markused)
 	if os.exists(obj_path) && os.exists(stamp_path) {
 		if current_stamp := os.read_file(stamp_path) {
 			if current_stamp == expected_stamp {
@@ -1295,17 +1969,636 @@ fn (mut b Builder) ensure_cached_module_object(cache_dir string, cache_name stri
 			}
 		}
 	}
+	if b.used_vh_for_parse {
+		if os.exists(obj_path) && os.exists(stamp_path) {
+			return obj_path
+		}
+		return error('missing cached ${cache_name} object for .vh parse')
+	}
 
-	module_source := b.gen_cleanc_source_for_cache(emit_modules, cache_name)
+	mut module_source := b.gen_cleanc_source_for_cache(emit_modules, cache_name, use_markused)
 	if module_source == '' {
 		return error('failed to generate C source for ${cache_name}')
 	}
-	os.write_file(c_path, module_source)!
+	if cache_name != builtin_cache_name {
+		module_source = strip_common_weak_sort_fallbacks(module_source)
+	}
+	os.write_file(c_path, sanitize_cached_object_c_source(module_source))!
 
 	compile_cmd := '${cc} ${cc_flags} -w -Wno-incompatible-function-pointer-types -c "${c_path}" -o "${obj_path}"${error_limit_flag}'
 	run_cc_cmd_or_exit(compile_cmd, 'C compilation', b.pref.show_cc)
 	os.write_file(stamp_path, expected_stamp)!
 	return obj_path
+}
+
+fn (mut b Builder) ensure_cached_parsed_module_object(cache_dir string, cache_name string, module_names []string, dependency_cache_names []string, cc string, cc_flags string, cc_link_flags string, error_limit_flag string, use_markused bool) !string {
+	return b.ensure_cached_parsed_module_object_force(cache_dir, cache_name, module_names,
+		dependency_cache_names, cc, cc_flags, cc_link_flags, error_limit_flag, use_markused,
+		[]string{})
+}
+
+fn (mut b Builder) ensure_cached_parsed_module_object_force(cache_dir string, cache_name string, module_names []string, dependency_cache_names []string, cc string, cc_flags string, cc_link_flags string, error_limit_flag string, use_markused bool, force_emit_fn_names []string) !string {
+	obj_path := cache_path_join(cache_dir, '${cache_name}.o')
+	stamp_path := cache_path_join(cache_dir, '${cache_name}.stamp')
+	c_path := cache_path_join(cache_dir, '${cache_name}.c')
+	mut expected_stamp := b.cache_stamp_for_parsed_modules(cache_name, module_names,
+		dependency_cache_names, cc, cc_flags, cc_link_flags, use_markused)
+	if force_emit_fn_names.len > 0 {
+		mut force_names := force_emit_fn_names.clone()
+		force_names.sort()
+		expected_stamp += '\nforce=${force_names.join(',')}'
+	}
+	if os.exists(obj_path) && os.exists(stamp_path) {
+		if current_stamp := os.read_file(stamp_path) {
+			if current_stamp == expected_stamp {
+				if os.getenv('V2VERBOSE') != '' {
+					println('[*] Reusing ${obj_path}')
+				}
+				return obj_path
+			}
+		}
+	}
+	if b.used_import_vh_for_parse {
+		if os.exists(obj_path) && os.exists(stamp_path) {
+			return obj_path
+		}
+		return error('missing cached ${cache_name} object for .vh parse')
+	}
+
+	mut force_names := force_emit_fn_names.clone()
+	mut module_source := if force_names.len > 0 {
+		b.gen_cleanc_source_for_cache_force(module_names, cache_name, use_markused, force_names)
+	} else {
+		b.gen_cleanc_source_for_cache(module_names, cache_name, use_markused)
+	}
+	if force_names.len > 0 {
+		for _ in 0 .. 3 {
+			body_text := c_function_bodies_for_names(module_source, force_names)
+			next_force := merge_unique_strings(force_names, b.force_module_fn_names_referenced_by_c(body_text,
+				module_names, 1))
+			if next_force.len == force_names.len {
+				break
+			}
+			force_names = next_force.clone()
+			module_source = b.gen_cleanc_source_for_cache_force(module_names, cache_name,
+				use_markused, force_names)
+		}
+	}
+	if module_source == '' {
+		return error('failed to generate C source for ${cache_name}')
+	}
+	module_source = strip_common_weak_sort_fallbacks(module_source)
+	if dependency_cache_names.len > 0 {
+		module_source = b.inject_cached_c_header_directives(module_source, dependency_cache_names)
+		module_source = b.inject_cached_typedef_decls(module_source, dependency_cache_names)
+	}
+	if !b.ensure_core_cache_dir() {
+		return error('failed to prepare cache dir for ${cache_name}')
+	}
+	os.write_file(c_path, sanitize_cached_object_c_source(module_source))!
+
+	compile_cmd := '${cc} ${cc_flags} -w -Wno-incompatible-function-pointer-types -c "${c_path}" -o "${obj_path}"${error_limit_flag}'
+	run_cc_cmd_or_exit(compile_cmd, 'C compilation', b.pref.show_cc)
+	os.write_file(stamp_path, expected_stamp)!
+	return obj_path
+}
+
+fn (mut b Builder) ensure_cached_virtual_module_object(cache_dir string, groups []CachedVirtualModule, dependency_cache_names []string, cc string, cc_flags string, cc_link_flags string, error_limit_flag string, use_markused bool) !string {
+	obj_path := cache_path_join(cache_dir, '${virtuals_cache_name}.o')
+	stamp_path := cache_path_join(cache_dir, '${virtuals_cache_name}.stamp')
+	c_path := cache_path_join(cache_dir, '${virtuals_cache_name}.c')
+	expected_stamp := b.cache_stamp_for_virtual_modules(groups, dependency_cache_names, cc,
+		cc_flags, cc_link_flags, use_markused)
+	if os.exists(obj_path) && os.exists(stamp_path) {
+		if current_stamp := os.read_file(stamp_path) {
+			if current_stamp == expected_stamp {
+				if os.getenv('V2VERBOSE') != '' {
+					println('[*] Reusing ${obj_path}')
+				}
+				return obj_path
+			}
+		}
+	}
+	if b.used_virtual_vh_for_parse {
+		if os.exists(obj_path) && os.exists(stamp_path) {
+			return obj_path
+		}
+		return error('missing cached ${virtuals_cache_name} object for .vh parse')
+	}
+
+	emit_files := virtual_module_source_files(groups)
+	mut module_source := b.gen_cleanc_source_for_cache_files(['main'], emit_files,
+		virtuals_cache_name, use_markused)
+	force_helpers := sort_cmp_fn_names_referenced_by_c(module_source)
+	if force_helpers.len > 0 {
+		module_source = b.gen_cleanc_source_for_cache_files_force(['main'], emit_files,
+			virtuals_cache_name, use_markused, force_helpers)
+	}
+	module_source = strip_common_weak_sort_fallbacks(module_source)
+	if module_source == '' {
+		return error('failed to generate C source for ${virtuals_cache_name}')
+	}
+	if dependency_cache_names.len > 0 {
+		module_source = b.inject_cached_c_header_directives(module_source, dependency_cache_names)
+		module_source = b.inject_cached_typedef_decls(module_source, dependency_cache_names)
+	}
+	os.write_file(c_path, sanitize_cached_object_c_source(module_source))!
+
+	compile_cmd := '${cc} ${cc_flags} -w -Wno-incompatible-function-pointer-types -c "${c_path}" -o "${obj_path}"${error_limit_flag}'
+	run_cc_cmd_or_exit(compile_cmd, 'C compilation', b.pref.show_cc)
+	os.write_file(stamp_path, expected_stamp)!
+	return obj_path
+}
+
+fn (b &Builder) force_main_fn_names_referenced_by_cached_c(c_source string, excluded_source_files []string) []string {
+	return b.force_main_fn_names_referenced_by_c_text(c_source, excluded_source_files, 2)
+}
+
+fn (b &Builder) force_main_fn_names_for_emit_files(emit_files []string) []string {
+	mut emit_set := map[string]bool{}
+	for file in emit_files {
+		emit_set[os.norm_path(file)] = true
+		emit_set[os.norm_path(os.abs_path(file))] = true
+	}
+	mut names := []string{}
+	mut seen := map[string]bool{}
+	for file in b.files {
+		if ast_file_module_name(file) != 'main' || file.name == '' || file.name.ends_with('.vh') {
+			continue
+		}
+		if !source_file_in_set(file.name, emit_set) {
+			continue
+		}
+		for stmt in file.stmts {
+			if stmt is ast.FnDecl {
+				name := main_fn_decl_c_name(stmt)
+				if name == '' || is_common_weak_sort_fallback_name(name) || name in seen {
+					continue
+				}
+				seen[name] = true
+				names << name
+			} else if stmt is ast.EnumDecl {
+				name := '${stmt.name}__str'
+				if name == '' || name in seen {
+					continue
+				}
+				seen[name] = true
+				names << name
+			}
+		}
+	}
+	return names
+}
+
+fn (b &Builder) force_local_import_fn_names(module_names []string) []string {
+	if module_names.len == 0 {
+		return []string{}
+	}
+	root := b.virtual_module_root()
+	mut module_set := map[string]bool{}
+	for module_name in module_names {
+		module_set[module_name] = true
+	}
+	mut names := []string{}
+	mut seen := map[string]bool{}
+	for file in b.files {
+		module_name := ast_file_module_name(file)
+		if module_name == 'main' || module_name !in module_set || file.name == ''
+			|| file.name.ends_with('.vh') {
+			continue
+		}
+		relative_path_under_root(root, file.name) or { continue }
+		for stmt in file.stmts {
+			if stmt is ast.FnDecl {
+				name := module_fn_decl_c_name(module_name, stmt)
+				if name == '' || is_common_weak_sort_fallback_name(name) || name in seen {
+					continue
+				}
+				seen[name] = true
+				names << name
+			} else if stmt is ast.EnumDecl {
+				name := '${module_name}__${stmt.name}__str'
+				if name == '' || name in seen {
+					continue
+				}
+				seen[name] = true
+				names << name
+			}
+		}
+	}
+	return names
+}
+
+fn (b &Builder) force_module_fn_names_referenced_by_c(c_source string, module_names []string, min_refs int) []string {
+	if c_source.len == 0 || module_names.len == 0 {
+		return []string{}
+	}
+	mut module_set := map[string]bool{}
+	for module_name in module_names {
+		module_set[module_name] = true
+	}
+	mut names := []string{}
+	mut seen := map[string]bool{}
+	for name in c_symbol_fn_names_for_modules(c_source, module_names, min_refs) {
+		if name == '' || is_common_weak_sort_fallback_name(name) || name in seen {
+			continue
+		}
+		seen[name] = true
+		names << name
+	}
+	for file in b.files {
+		module_name := ast_file_module_name(file)
+		if module_name !in module_set {
+			continue
+		}
+		for stmt in file.stmts {
+			if stmt is ast.FnDecl {
+				name := module_fn_decl_c_name(module_name, stmt)
+				if name == '' || is_common_weak_sort_fallback_name(name) || name in seen {
+					continue
+				}
+				if c_source.count('${name}(') >= min_refs {
+					seen[name] = true
+					names << name
+				}
+			} else if stmt is ast.EnumDecl {
+				name := '${module_name}__${stmt.name}__str'
+				if name == '' || name in seen {
+					continue
+				}
+				if c_source.count('${name}(') >= min_refs {
+					seen[name] = true
+					names << name
+				}
+			}
+		}
+	}
+	return names
+}
+
+fn c_symbol_fn_names_for_modules(c_source string, module_names []string, min_refs int) []string {
+	mut names := []string{}
+	mut seen := map[string]bool{}
+	for module_name in module_names {
+		if module_name == '' || module_name == 'main' || module_name == 'builtin' {
+			continue
+		}
+		prefix := '${module_name}__'
+		mut search_from := 0
+		for {
+			rel_idx := c_source[search_from..].index(prefix) or { break }
+			start := search_from + rel_idx
+			mut end := start + prefix.len
+			for end < c_source.len {
+				ch := c_source[end]
+				if (ch >= `a` && ch <= `z`) || (ch >= `A` && ch <= `Z`)
+					|| (ch >= `0` && ch <= `9`) || ch == `_` {
+					end++
+					continue
+				}
+				break
+			}
+			name := c_source[start..end]
+			search_from = end
+			if name == '' || name in seen {
+				continue
+			}
+			if end >= c_source.len || c_source[end] != `(` {
+				continue
+			}
+			if c_source.count('${name}(') >= min_refs {
+				seen[name] = true
+				names << name
+			}
+		}
+	}
+	return names
+}
+
+fn (b &Builder) force_main_fn_names_referenced_by_forced_c_bodies(c_source string, excluded_source_files []string, root_names []string) []string {
+	body_text := c_function_bodies_for_names(c_source, root_names)
+	if body_text.len == 0 {
+		return []string{}
+	}
+	return b.force_main_fn_names_referenced_by_c_text(body_text, excluded_source_files, 1)
+}
+
+fn (b &Builder) force_main_fn_names_referenced_by_c_text(c_source string, excluded_source_files []string, min_refs int) []string {
+	if c_source.len == 0 {
+		return []string{}
+	}
+	mut excluded := map[string]bool{}
+	for file in excluded_source_files {
+		excluded[os.norm_path(file)] = true
+		excluded[os.norm_path(os.abs_path(file))] = true
+	}
+	mut names := []string{}
+	mut seen := map[string]bool{}
+	for file in b.files {
+		if ast_file_module_name(file) != 'main' {
+			continue
+		}
+		for stmt in file.stmts {
+			if stmt is ast.FnDecl {
+				source_file := b.source_file_for_pos(stmt.pos, file.name)
+				if source_file_in_set(source_file, excluded) {
+					continue
+				}
+				if stmt.name.ends_with('__str') || stmt.name.starts_with('__sort_cmp_') {
+					continue
+				}
+				name := main_fn_decl_c_name(stmt)
+				if name == '' || name in seen {
+					continue
+				}
+				// Cached virtual C contains prototypes for referenced root functions.
+				// A second occurrence means a virtual body calls that root symbol.
+				if c_source.count('${name}(') >= min_refs {
+					seen[name] = true
+					names << name
+				}
+			} else if stmt is ast.EnumDecl {
+				if source_file_in_set(file.name, excluded) {
+					continue
+				}
+				name := '${stmt.name}__str'
+				if name == '' || name in seen {
+					continue
+				}
+				if c_source.count('${name}(') >= min_refs {
+					seen[name] = true
+					names << name
+				}
+			}
+		}
+	}
+	return names
+}
+
+fn c_function_bodies_for_names(c_source string, names []string) string {
+	mut bodies := []string{}
+	mut seen := map[string]bool{}
+	for name in names {
+		if name == '' || name in seen {
+			continue
+		}
+		seen[name] = true
+		body := c_function_body_for_name(c_source, name)
+		if body.len > 0 {
+			bodies << body
+		}
+	}
+	return bodies.join('\n')
+}
+
+fn c_function_body_for_name(c_source string, name string) string {
+	mut search_from := 0
+	pattern := '${name}('
+	for {
+		rel_idx := c_source[search_from..].index(pattern) or { break }
+		start := search_from + rel_idx
+		close_idx := c_source[start..].index_u8(`)`)
+		if close_idx < 0 {
+			search_from = start + pattern.len
+			continue
+		}
+		mut body_start := start + close_idx + 1
+		for body_start < c_source.len && c_source[body_start].is_space() {
+			body_start++
+		}
+		if body_start >= c_source.len || c_source[body_start] != `{` {
+			search_from = body_start
+			continue
+		}
+		mut depth := 0
+		for i := body_start; i < c_source.len; i++ {
+			ch := c_source[i]
+			if ch == `{` {
+				depth++
+			} else if ch == `}` {
+				depth--
+				if depth == 0 {
+					return c_source[body_start..i + 1]
+				}
+			}
+		}
+		break
+	}
+	return ''
+}
+
+fn strip_weak_c_function_definition(c_source string, name string) string {
+	pattern := '__attribute__((weak)) int ${name}('
+	start := c_source.index(pattern) or { return c_source }
+	open_rel := c_source[start..].index_u8(`{`)
+	if open_rel < 0 {
+		return c_source
+	}
+	body_start := start + open_rel
+	mut depth := 0
+	for i := body_start; i < c_source.len; i++ {
+		ch := c_source[i]
+		if ch == `{` {
+			depth++
+		} else if ch == `}` {
+			depth--
+			if depth == 0 {
+				mut end := i + 1
+				for end < c_source.len && c_source[end].is_space() {
+					end++
+				}
+				return c_source[..start] + c_source[end..]
+			}
+		}
+	}
+	return c_source
+}
+
+fn (b &Builder) source_file_for_pos(pos token.Pos, fallback string) string {
+	if pos.is_valid() {
+		return b.file_set.file(pos).name
+	}
+	return fallback
+}
+
+fn sort_cmp_fn_names_referenced_by_c(c_source string) []string {
+	return sort_cmp_fn_names_in_c(c_source, 2)
+}
+
+fn sort_cmp_fn_names_declared_in_c(c_source string) []string {
+	return sort_cmp_fn_names_in_c(c_source, 1)
+}
+
+fn sort_cmp_fn_names_in_c(c_source string, min_refs int) []string {
+	mut names := []string{}
+	mut seen := map[string]bool{}
+	mut search_from := 0
+	for {
+		rel_idx := c_source[search_from..].index('__sort_cmp_') or { break }
+		start := search_from + rel_idx
+		mut end := start
+		for end < c_source.len {
+			ch := c_source[end]
+			if (ch >= `a` && ch <= `z`) || (ch >= `A` && ch <= `Z`)
+				|| (ch >= `0` && ch <= `9`) || ch == `_` {
+				end++
+				continue
+			}
+			break
+		}
+		name := c_source[start..end]
+		search_from = end
+		if name == '' || name in seen {
+			continue
+		}
+		if is_common_weak_sort_fallback_name(name) {
+			continue
+		}
+		if c_source.count(name) >= min_refs {
+			seen[name] = true
+			names << name
+		}
+	}
+	return names
+}
+
+fn filter_out_names(names []string, excluded []string) []string {
+	if excluded.len == 0 {
+		return names
+	}
+	mut excluded_set := map[string]bool{}
+	for name in excluded {
+		excluded_set[name] = true
+	}
+	mut out := []string{cap: names.len}
+	for name in names {
+		if name !in excluded_set {
+			out << name
+		}
+	}
+	return out
+}
+
+fn is_common_weak_sort_fallback_name(name string) bool {
+	return name in ['__sort_cmp_int_asc', '__sort_cmp_RepIndex_by_idx_asc']
+}
+
+fn main_fn_decl_c_name(decl ast.FnDecl) string {
+	if decl.name == '' || decl.language == .c {
+		return ''
+	}
+	name := sanitize_builder_fn_ident(decl.name)
+	if !decl.is_method {
+		return name
+	}
+	receiver := main_fn_receiver_name(decl.receiver.typ)
+	if receiver == '' {
+		return ''
+	}
+	return '${receiver}__${name}'
+}
+
+fn module_fn_decl_c_name(module_name string, decl ast.FnDecl) string {
+	if decl.name == '' || decl.language == .c {
+		return ''
+	}
+	name := sanitize_builder_fn_ident(decl.name)
+	if !decl.is_method {
+		if module_name.len > 0 && module_name != 'builtin' && module_name != 'main' {
+			return '${module_name}__${name}'
+		}
+		return name
+	}
+	receiver := main_fn_receiver_name(decl.receiver.typ)
+	if receiver == '' {
+		return ''
+	}
+	if module_name.len > 0 && module_name != 'builtin' && module_name != 'main' {
+		return '${module_name}__${receiver}__${name}'
+	}
+	return '${receiver}__${name}'
+}
+
+fn main_fn_receiver_name(expr ast.Expr) string {
+	return match expr {
+		ast.Ident {
+			expr.name
+		}
+		ast.SelectorExpr {
+			expr.rhs.name
+		}
+		ast.PrefixExpr {
+			if expr.op == .amp {
+				main_fn_receiver_name(expr.expr)
+			} else {
+				''
+			}
+		}
+		ast.ModifierExpr {
+			main_fn_receiver_name(expr.expr)
+		}
+		ast.GenericArgs {
+			main_fn_receiver_name(expr.lhs)
+		}
+		ast.GenericArgOrIndexExpr {
+			main_fn_receiver_name(expr.lhs)
+		}
+		ast.Type {
+			match expr {
+				ast.PointerType {
+					main_fn_receiver_name(expr.base_type)
+				}
+				ast.GenericType {
+					main_fn_receiver_name(expr.name)
+				}
+				else {
+					''
+				}
+			}
+		}
+		else {
+			''
+		}
+	}
+}
+
+fn sanitize_builder_fn_ident(name string) string {
+	return match name {
+		'+' { 'plus' }
+		'-' { 'minus' }
+		'*' { 'mul' }
+		'/' { 'div' }
+		'%' { 'mod' }
+		'==' { 'eq' }
+		'!=' { 'ne' }
+		'<' { 'lt' }
+		'>' { 'gt' }
+		'<=' { 'le' }
+		'>=' { 'ge' }
+		'|' { 'pipe' }
+		'^' { 'xor' }
+		else { name }
+	}
+}
+
+fn merge_unique_strings(a []string, b []string) []string {
+	mut seen := map[string]bool{}
+	mut out := []string{cap: a.len + b.len}
+	for value in a {
+		if value == '' || value in seen {
+			continue
+		}
+		seen[value] = true
+		out << value
+	}
+	for value in b {
+		if value == '' || value in seen {
+			continue
+		}
+		seen[value] = true
+		out << value
+	}
+	return out
 }
 
 fn (b &Builder) has_module(module_name string) bool {
@@ -1333,6 +2626,25 @@ fn (b &Builder) collect_modules_excluding(excluded []string) []string {
 	mut modules := modules_set.keys()
 	modules.sort()
 	return modules
+}
+
+fn (b &Builder) print_cached_bundle_modules(cache_name string, module_names []string) {
+	if module_names.len == 0 {
+		return
+	}
+	stats_enabled := b.pref != unsafe { nil } && b.pref.stats
+	show_cc_enabled := b.pref != unsafe { nil } && b.pref.show_cc
+	if !stats_enabled && !show_cc_enabled && os.getenv('V2_TRACE_CACHE') == '' {
+		return
+	}
+	if stats_enabled {
+		println(' * Cached ${cache_name} modules: ${module_names.len}')
+		for module_name in module_names {
+			println('   [cache ${cache_name}] ${module_name}')
+		}
+		return
+	}
+	println('[*] Cached ${cache_name} modules: ${module_names.join(', ')}')
 }
 
 fn ast_file_module_name(file ast.File) string {
@@ -1566,6 +2878,7 @@ fn (b &Builder) collect_cflags_from_sources() string {
 			}
 		}
 	}
+	scan_paths.sort()
 	for scan_path in scan_paths {
 		if scan_path == '' || scan_path in scanned_files {
 			continue
@@ -1630,7 +2943,9 @@ fn (b &Builder) collect_cflags_from_sources() string {
 
 // split_compile_and_link_flags separates a flags string into compiler-only
 // flags (for -c compilation) and linker-only flags (for the link step).
-// Linker flags include: -l*, -L*, -framework, .o, .a, .so, .dylib files.
+// Linker flags include: -l*, -L*, -framework, C source files and
+// prebuilt object/library files.  Source files from #flag directives must not
+// be passed to per-module `-c -o module.o` cache compilations.
 fn split_compile_and_link_flags(flags string) (string, string) {
 	tokens := flags.fields()
 	mut compile := []string{}
@@ -1652,7 +2967,9 @@ fn split_compile_and_link_flags(flags string) (string, string) {
 				i++
 				link << tokens[i]
 			}
-		} else if tok.ends_with('.o') || tok.ends_with('.obj') || tok.ends_with('.a')
+		} else if tok.ends_with('.c') || tok.ends_with('.cc') || tok.ends_with('.cpp')
+			|| tok.ends_with('.cxx') || tok.ends_with('.m') || tok.ends_with('.mm')
+			|| tok.ends_with('.o') || tok.ends_with('.obj') || tok.ends_with('.a')
 			|| tok.ends_with('.so') || tok.ends_with('.dylib') {
 			link << tok
 		} else if tok == '-I' && i + 1 < tokens.len {
@@ -1729,6 +3046,20 @@ fn tcc_flags(cc string, vroot string) string {
 	}
 	tcc_dir := os.join_path(vroot, 'thirdparty', 'tcc')
 	return '-I "${os.join_path(tcc_dir, 'lib', 'include')}" -L "${os.join_path(tcc_dir, 'lib')}"'
+}
+
+fn cflags_need_objc_mode(flags string) bool {
+	lower_flags := flags.to_lower()
+	for tok in lower_flags.fields() {
+		clean := tok.trim('"\'')
+		if clean.ends_with('.m') || clean.ends_with('.mm') {
+			return true
+		}
+	}
+	return lower_flags.contains('-framework cocoa') || lower_flags.contains('-framework appkit')
+		|| lower_flags.contains('-framework foundation') || lower_flags.contains('-framework uikit')
+		|| lower_flags.contains('-framework metal') || lower_flags.contains('-framework metalkit')
+		|| lower_flags.contains('-framework quartzcore')
 }
 
 fn cc_recompile_flags_from_cmd(cmd string) string {
@@ -2164,11 +3495,11 @@ fn print_parse_summary(parsed_full_files_n int, parsed_vh_files_n int, entry_v_l
 				println('   [full] ${path}')
 			}
 		}
-		if parsed_vh_files.len > 0 {
-			println(' * Parsed .vh files:')
-			for path in parsed_vh_files {
-				println('   [vh] ${path}')
-			}
+	}
+	if (show_stats || print_parsed_files) && parsed_vh_files.len > 0 {
+		println(' * Parsed .vh files:')
+		for path in parsed_vh_files {
+			println('   [vh] ${path}')
 		}
 	}
 	if show_stats {

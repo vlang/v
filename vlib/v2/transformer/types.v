@@ -885,6 +885,44 @@ fn (t &Transformer) unwrap_map_type(typ types.Type) ?types.Map {
 	return none
 }
 
+fn (t &Transformer) field_type_from_receiver_type(receiver_type types.Type, field_name string) ?types.Type {
+	mut cur := receiver_type
+	for {
+		if cur is types.Pointer {
+			cur = cur.base_type
+			continue
+		}
+		if cur is types.Alias {
+			if field_typ := t.lookup_struct_field_type(cur.name, field_name) {
+				return field_typ
+			}
+			cur = cur.base_type
+			continue
+		}
+		break
+	}
+	if cur is types.Struct {
+		for field in cur.fields {
+			if field.name == field_name {
+				return field.typ
+			}
+		}
+	}
+	c_name := t.type_to_c_name(cur)
+	if c_name != '' {
+		if field_typ := t.lookup_struct_field_type(c_name, field_name) {
+			return field_typ
+		}
+	}
+	type_name := t.type_to_name(cur)
+	if type_name != '' && type_name != c_name {
+		if field_typ := t.lookup_struct_field_type(type_name, field_name) {
+			return field_typ
+		}
+	}
+	return none
+}
+
 fn map_int_key_width_from_type_name(type_name string) int {
 	// Strings are handled separately.
 	if type_name.contains('*') || type_name.ends_with('ptr') {
@@ -2196,6 +2234,23 @@ fn (t &Transformer) get_expr_type(expr ast.Expr) ?types.Type {
 		}
 		if typ := t.resolve_call_return_type(expr) {
 			return typ
+		}
+		return none
+	}
+	if expr is ast.SelectorExpr {
+		if lhs_type := t.get_expr_type(expr.lhs) {
+			if field_typ := t.field_type_from_receiver_type(lhs_type, expr.rhs.name) {
+				return field_typ
+			}
+		}
+		pos := expr.pos
+		if pos.is_valid() {
+			if typ := t.env.get_expr_type(pos.id) {
+				return typ
+			}
+			if typ := t.synth_types[pos.id] {
+				return typ
+			}
 		}
 		return none
 	}

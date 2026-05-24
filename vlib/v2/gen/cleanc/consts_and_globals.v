@@ -434,6 +434,22 @@ fn (g &Gen) is_generated_non_type_ident(expr ast.Expr) bool {
 	return value_ident.name.contains('__') && !g.is_type_name(value_ident.name)
 }
 
+fn (mut g Gen) is_type_only_const_expr(expr ast.Expr) bool {
+	if is_header_type_only_const_expr(expr) {
+		return true
+	}
+	if expr is ast.Ident {
+		if expr.name.contains('.') {
+			return g.is_type_name(g.expr_type_to_c(expr))
+		}
+		return g.is_type_name(expr.name)
+	}
+	if expr is ast.SelectorExpr {
+		return g.is_type_name(g.expr_type_to_c(expr))
+	}
+	return false
+}
+
 fn (mut g Gen) gen_const_decl_extern(node ast.ConstDecl) {
 	for field in node.fields {
 		name := g.generated_decl_name(field.name) or { continue }
@@ -450,7 +466,7 @@ fn (mut g Gen) gen_const_decl_extern(node ast.ConstDecl) {
 		if extern_key in g.emitted_types || macro_key in g.emitted_types {
 			continue
 		}
-		mut is_type_only := is_header_type_only_const_expr(field.value)
+		mut is_type_only := g.is_type_only_const_expr(field.value)
 		if is_type_only && g.is_generated_non_type_ident(field.value) {
 			is_type_only = false
 		}
@@ -562,7 +578,11 @@ fn (mut g Gen) gen_global_decl(node ast.GlobalDecl) {
 			elem_type := g.expr_type_to_c(fixed_typ.elem_type)
 			g.fixed_array_globals[name] = true
 			g.sb.write_string('${elem_type} ${name}[')
-			g.expr(fixed_typ.len)
+			if len_expr := g.const_expr_c_value_for_header(fixed_typ.len) {
+				g.sb.write_string(len_expr)
+			} else {
+				g.expr(fixed_typ.len)
+			}
 			g.sb.write_string(']')
 			if field.value !is ast.EmptyExpr {
 				g.sb.write_string(' = ')
@@ -645,7 +665,14 @@ fn (mut g Gen) gen_global_decl_extern(node ast.GlobalDecl) {
 			fixed_typ := field.typ as ast.ArrayFixedType
 			elem_type := g.expr_type_to_c(fixed_typ.elem_type)
 			g.sb.write_string('extern ${elem_type} ${name}[')
-			g.expr(fixed_typ.len)
+			// Extern declarations are emitted before module const definitions.
+			// Resolve const-backed fixed-array lengths now, so C does not see an
+			// undeclared bound like `extern int a[my_const];`.
+			if len_expr := g.const_expr_c_value_for_header(fixed_typ.len) {
+				g.sb.write_string(len_expr)
+			} else {
+				g.expr(fixed_typ.len)
+			}
 			g.sb.writeln('];')
 			continue
 		}
@@ -750,7 +777,7 @@ fn (mut g Gen) gen_const_decl(node ast.ConstDecl) {
 			continue
 		}
 		g.emitted_types[const_key] = true
-		mut is_type_only := is_header_type_only_const_expr(field.value)
+		mut is_type_only := g.is_type_only_const_expr(field.value)
 		if is_type_only && g.is_generated_non_type_ident(field.value) {
 			is_type_only = false
 		}

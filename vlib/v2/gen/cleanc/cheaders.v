@@ -148,32 +148,50 @@ fn normalize_c_directive_value(name string, raw string, file_name string, vroot 
 fn (mut g Gen) emit_collected_c_directives() {
 	mut seen := map[string]bool{}
 	for file in g.files {
-		g.collect_directives_from_stmts(file.stmts, file.name, mut seen)
+		g.set_file_module(file)
+		emit_implementation_directives := g.should_emit_current_file()
+		g.collect_directives_from_stmts(file.stmts, file.name, emit_implementation_directives, mut
+			seen)
 	}
 }
 
-fn (mut g Gen) collect_directives_from_stmts(stmts []ast.Stmt, file_name string, mut seen map[string]bool) {
+fn (mut g Gen) collect_directives_from_stmts(stmts []ast.Stmt, file_name string, emit_implementation_directives bool, mut seen map[string]bool) {
 	for stmt in stmts {
 		if stmt is ast.Directive {
-			g.emit_directive(stmt, file_name, mut seen)
+			g.emit_directive(stmt, file_name, emit_implementation_directives, mut seen)
 		} else if stmt is ast.ExprStmt {
-			g.collect_directives_from_expr(stmt.expr, file_name, mut seen)
+			g.collect_directives_from_expr(stmt.expr, file_name, emit_implementation_directives, mut
+				seen)
 		}
 	}
 }
 
-fn (mut g Gen) collect_directives_from_expr(expr ast.Expr, file_name string, mut seen map[string]bool) {
+fn (mut g Gen) collect_directives_from_expr(expr ast.Expr, file_name string, emit_implementation_directives bool, mut seen map[string]bool) {
 	if expr is ast.ComptimeExpr {
-		g.collect_directives_from_expr(expr.expr, file_name, mut seen)
+		g.collect_directives_from_expr(expr.expr, file_name, emit_implementation_directives, mut
+			seen)
 	} else if expr is ast.IfExpr {
-		g.collect_directives_from_stmts(expr.stmts, file_name, mut seen)
+		g.collect_directives_from_stmts(expr.stmts, file_name, emit_implementation_directives, mut
+			seen)
 		if expr.else_expr !is ast.EmptyExpr {
-			g.collect_directives_from_expr(expr.else_expr, file_name, mut seen)
+			g.collect_directives_from_expr(expr.else_expr, file_name,
+				emit_implementation_directives, mut seen)
 		}
 	}
 }
 
-fn (mut g Gen) emit_directive(stmt ast.Directive, file_name string, mut seen map[string]bool) {
+fn c_directive_emits_linked_symbols(value string) bool {
+	lower_value := value.trim_space().to_lower()
+	for marker in ['.c"', ".c'", '.c>', '.m"', ".m'", '.m>'] {
+		if lower_value.contains(marker) {
+			return true
+		}
+	}
+	return lower_value.contains('"miniz.h"') || lower_value.contains('<miniz.h>')
+		|| lower_value.contains('/miniz.h"') || lower_value.contains('/miniz.h>')
+}
+
+fn (mut g Gen) emit_directive(stmt ast.Directive, file_name string, emit_implementation_directives bool, mut seen map[string]bool) {
 	name := stmt.name.trim_space()
 	if name == '' || name == 'flag' {
 		return
@@ -197,6 +215,10 @@ fn (mut g Gen) emit_directive(stmt ast.Directive, file_name string, mut seen map
 	}
 	vroot := if g.pref != unsafe { nil } { g.pref.vroot } else { '' }
 	value := normalize_c_directive_value(emit_name, stmt.value, file_name, vroot)
+	if !emit_implementation_directives && emit_name == 'include'
+		&& c_directive_emits_linked_symbols(value) {
+		return
+	}
 	line := if value == '' { '#${emit_name}' } else { '#${emit_name} ${value}' }
 	if line in seen {
 		return
@@ -562,7 +584,17 @@ fn (mut g Gen) gen_enum_decl(node ast.EnumDecl) {
 	g.sb.writeln('} ${name};')
 	g.sb.writeln('')
 	enum_str_fn := '${name}__str'
-	if enum_str_fn !in g.fn_return_types {
+	has_explicit_str := g.has_explicit_str_method_for_c_type(name)
+	if !has_explicit_str && g.should_emit_current_file()
+		&& (g.cache_bundle_name == 'virtuals' || enum_str_fn in g.force_emit_fn_names) {
+		mut enum_str_expr := c_static_v_string_expr('unknown enum value')
+		for i := node.fields.len - 1; i >= 0; i-- {
+			field := node.fields[i]
+			enum_str_expr = '((v == ${g.enum_member_c_name(name, field.name)}) ? ${c_static_v_string_expr(field.name)} : ${enum_str_expr})'
+		}
+		g.late_struct_defs << 'string ${name}__str(${name} v) { return ${enum_str_expr}; }\n'
+		g.fn_return_types[enum_str_fn] = 'string'
+	} else if enum_str_fn !in g.fn_return_types {
 		// Emit a macro so the expression is type-checked only at use sites,
 		// where `string` is fully defined.
 		mut enum_str_expr := c_static_v_string_expr('unknown enum value')
@@ -769,8 +801,14 @@ fn (mut g Gen) emit_map_str_functions() {
 		g.sb.writeln('\t\tif (!DenseArray__has_index(&m.key_values, i)) continue;')
 		g.sb.writeln('\t\tif (!is_first) strings__Builder__write_string(&sb, (string){.str = ", ", .len = 2, .is_lit = 1});')
 		// Key
-		g.sb.writeln('\t\t${key_type} key = *(${key_type}*)DenseArray__key(&m.key_values, i);')
-		g.emit_map_str_write_val('key', key_type)
+		if key_type.starts_with('Array_fixed_') {
+			elem_type, arr_len := g.parse_fixed_array_type(key_type)
+			g.sb.writeln('\t\t${elem_type}* key_ptr = (${elem_type}*)DenseArray__key(&m.key_values, i);')
+			g.emit_fixed_array_str_write('key_ptr', elem_type, arr_len)
+		} else {
+			g.sb.writeln('\t\t${key_type} key = *(${key_type}*)DenseArray__key(&m.key_values, i);')
+			g.emit_map_str_write_val('key', key_type)
+		}
 		// Separator
 		g.sb.writeln('\t\tstrings__Builder__write_string(&sb, (string){.str = ": ", .len = 2, .is_lit = 1});')
 		// Value

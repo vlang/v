@@ -1002,6 +1002,77 @@ fn test_transform_map_index_push_lowers_to_map_get_and_set() {
 	assert map_call.args.len == 3
 }
 
+fn test_map_index_or_assign_uses_selector_field_map_type() {
+	map_type := types.Type(types.Map{
+		key_type:   string_type()
+		value_type: string_type()
+	})
+	handler_type := types.Type(types.Struct{
+		name:   'Handler'
+		fields: [
+			types.Field{
+				name: 'files'
+				typ:  map_type
+			},
+		]
+	})
+	mut module_scope := types.new_scope(unsafe { nil })
+	module_scope.insert('Handler', handler_type)
+	mut t := create_transformer_with_vars({
+		'handler': handler_type
+	})
+	t.cur_module = 'main'
+	t.cached_scopes = {
+		'main': module_scope
+	}
+
+	or_expr := ast.OrExpr{
+		expr:  ast.IndexExpr{
+			lhs:  ast.SelectorExpr{
+				lhs: ast.Ident{
+					name: 'handler'
+				}
+				rhs: ast.Ident{
+					name: 'files'
+				}
+			}
+			expr: ast.StringLiteral{
+				kind:  .v
+				value: "'index.html'"
+			}
+		}
+		stmts: [
+			ast.Stmt(ast.ReturnStmt{
+				exprs: [
+					ast.Expr(ast.StringLiteral{
+						kind:  .v
+						value: "''"
+					}),
+				]
+			}),
+		]
+	}
+	result := t.try_expand_map_index_or_assign(ast.AssignStmt{
+		op:  .decl_assign
+		lhs: [ast.Expr(ast.Ident{
+			name: 'file'
+		})]
+		rhs: [ast.Expr(or_expr)]
+	}, or_expr) or {
+		assert false, 'expected selector-field map or assignment to be expanded'
+		return
+	}
+
+	assert result.len == 3
+	temp_assign := result[0]
+	assert temp_assign is ast.AssignStmt
+	temp_rhs := (temp_assign as ast.AssignStmt).rhs[0]
+	assert temp_rhs is ast.CallExpr
+	temp_call := temp_rhs as ast.CallExpr
+	assert temp_call.lhs is ast.Ident
+	assert (temp_call.lhs as ast.Ident).name == 'map__get_check'
+}
+
 fn test_transform_init_expr_empty_typed_map_lowers_to_new_map() {
 	mut t := create_test_transformer()
 

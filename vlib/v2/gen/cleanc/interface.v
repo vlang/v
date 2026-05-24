@@ -428,6 +428,14 @@ fn (mut g Gen) concrete_ierror_base_for_c_type(c_type string) string {
 	return ''
 }
 
+fn is_ierror_c_type(c_type string) bool {
+	mut typ := c_type.trim_space().trim_right('*').trim_space()
+	if typ.starts_with('struct ') {
+		typ = typ['struct '.len..].trim_space()
+	}
+	return typ in ['IError', 'builtin__IError']
+}
+
 fn ierror_type_label_for_base(base string) string {
 	if base.contains('__') {
 		short_name := base.all_after_last('__')

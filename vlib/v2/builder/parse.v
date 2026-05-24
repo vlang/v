@@ -176,12 +176,7 @@ fn (mut b Builder) parse_files(files []string) []ast.File {
 	skip_builtin := b.pref.skip_builtin
 	mut use_core_headers := false
 	if !skip_builtin {
-		// TODO: restore .vh-based core parsing once the header summaries retain
-		// enough const/global initializer detail for downstream codegen.
-		// The current summaries lose information needed for builds like
-		// `v2 vlib/builtin/string_test.v`, producing invalid C for values such as
-		// `os.args` and `time.Duration` constants.
-		use_core_headers = false
+		use_core_headers = b.can_use_cached_core_headers_for_parse()
 		b.used_vh_for_parse = use_core_headers
 		if use_core_headers {
 			core_files := b.core_cached_parse_paths()
@@ -235,6 +230,12 @@ fn (mut b Builder) parse_files(files []string) []ast.File {
 	// Directory inputs and non-main module files were expanded above. Single-file
 	// `main` programs stay isolated, so `v2 hello.v` parses only `hello.v`,
 	// while `v2 .` and `v2 vlib/math/math_test.v` still parse their module files.
+	virtual_main_modules := b.collect_virtual_main_modules_from_paths(expanded_user_files)
+	if b.can_use_cached_virtual_headers_for_parse(virtual_main_modules) {
+		expanded_user_files = b.replace_virtual_sources_with_headers(expanded_user_files,
+			virtual_main_modules)
+		b.used_virtual_vh_for_parse = true
+	}
 	parsed_user_files := parser_reused.parse_files(expanded_user_files, mut b.file_set)
 	ast_files << parsed_user_files
 	skip_imports := b.pref.skip_imports
@@ -242,6 +243,8 @@ fn (mut b Builder) parse_files(files []string) []ast.File {
 		return ast_files
 	}
 	// parse imports
+	use_import_headers := b.can_use_cached_import_headers_for_parse()
+	b.used_import_vh_for_parse = use_import_headers
 	mut parsed_imports := []string{}
 	if !skip_builtin {
 		parsed_imports << core_cached_module_paths
@@ -251,6 +254,14 @@ fn (mut b Builder) parse_files(files []string) []ast.File {
 		for mod in active_file_imports(ast_file, b.pref.user_defines, os.user_os()) {
 			if mod.name in parsed_imports {
 				continue
+			}
+			if use_core_headers || use_import_headers {
+				if cached_path := b.cached_import_parse_path(mod.name) {
+					parsed_module_files := parser_reused.parse_files([cached_path], mut b.file_set)
+					ast_files << parsed_module_files
+					parsed_imports << mod.name
+					continue
+				}
 			}
 			mod_path := b.pref.get_module_path(mod.name, ast_file.name)
 			module_files := get_v_files_from_dir(mod_path, b.pref.user_defines, os.user_os())

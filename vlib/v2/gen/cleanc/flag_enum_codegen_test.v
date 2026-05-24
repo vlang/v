@@ -42,6 +42,12 @@ fn generate_c_for_test_files(sources []string) string {
 	return gen.gen()
 }
 
+fn test_result_value_type_preserves_generic_specialization_ptr_suffix() {
+	g := Gen{}
+	assert g.result_value_type('_result_sync__ThreadLocalStorage_T_Array_markdown__Nodeptr') == 'sync__ThreadLocalStorage_T_Array_markdown__Nodeptr'
+	assert g.result_value_type('_result_sqlite__Sqlite3_vfsptr') == 'sqlite__Sqlite3_vfs*'
+}
+
 fn test_generate_c_rewrites_flag_enum_zero_static_call() {
 	csrc := generate_c_for_test('
 @[flag]
@@ -409,6 +415,132 @@ fn test_markused_runtime_keep_rules_include_transitive_runtime_dependencies() {
 	})
 }
 
+fn test_collected_c_directives_follow_emit_modules() {
+	mut g := Gen.new([
+		ast.File{
+			name:  'core.v'
+			stmts: [
+				ast.ModuleStmt{
+					name: 'core'
+				},
+				ast.Directive{
+					name:  'include'
+					value: '"core_impl.c"'
+				},
+			]
+		},
+		ast.File{
+			name:  'feature.v'
+			stmts: [
+				ast.ModuleStmt{
+					name: 'feature'
+				},
+				ast.Directive{
+					name:  'include'
+					value: '<feature.h>'
+				},
+				ast.Directive{
+					name:  'include'
+					value: '"feature_impl.c"'
+				},
+			]
+		},
+	])
+	g.set_emit_modules(['core'])
+	g.write_preamble()
+	csrc := g.sb.str()
+	assert csrc.contains('#include "core_impl.c"')
+	assert csrc.contains('#include <feature.h>')
+	assert !csrc.contains('#include "feature_impl.c"')
+}
+
+fn test_gen_call_arg_keeps_ierror_for_ierror_param() {
+	mut g := Gen{
+		sb:                  strings.new_builder(16)
+		fn_param_types:      {
+			'uses': ['IError']
+		}
+		runtime_local_types: {
+			'err': 'struct IError'
+		}
+	}
+	g.gen_call_arg('uses', 0, ast.Ident{
+		name: 'err'
+	})
+	assert g.sb.str() == 'err'
+}
+
+fn test_header_type_const_emits_extern_ierror() {
+	mut g := Gen{
+		sb:            strings.new_builder(64)
+		emitted_types: {
+			'body_IError': true
+		}
+		fn_owner_file: map[string]int{}
+		const_exprs:   map[string]string{}
+	}
+	g.cur_module = 'net'
+	g.gen_const_decl_extern(ast.ConstDecl{
+		fields: [
+			ast.FieldInit{
+				name:  'err_timed_out'
+				value: ast.Ident{
+					name: 'IError'
+				}
+			},
+		]
+	})
+	csrc := g.sb.str()
+	assert csrc.contains('extern IError net__err_timed_out;')
+	assert !csrc.contains('#define net__err_timed_out IError')
+}
+
+fn test_header_type_const_emits_extern_qualified_type() {
+	mut g := Gen{
+		sb:            strings.new_builder(64)
+		emitted_types: {
+			'body_os__File': true
+		}
+		fn_owner_file: map[string]int{}
+		const_exprs:   map[string]string{}
+	}
+	g.cur_module = 'log'
+	g.gen_const_decl_extern(ast.ConstDecl{
+		fields: [
+			ast.FieldInit{
+				name:  'stderr'
+				value: ast.SelectorExpr{
+					lhs: ast.Expr(ast.Ident{
+						name: 'os'
+					})
+					rhs: ast.Ident{
+						name: 'File'
+					}
+				}
+			},
+		]
+	})
+	csrc := g.sb.str()
+	assert csrc.contains('extern os__File log__stderr;')
+	assert !csrc.contains('#define log__stderr os__File')
+}
+
+fn test_gen_return_propagates_struct_ierror_local_from_result_function() {
+	mut g := Gen{
+		sb:                  strings.new_builder(64)
+		cur_fn_ret_type:     '_result_int'
+		runtime_local_types: {
+			'e': 'struct IError'
+		}
+	}
+	g.gen_stmt(ast.ReturnStmt{
+		exprs: [ast.Expr(ast.Ident{
+			name: 'e'
+		})]
+	})
+	assert g.sb.str() == 'return (_result_int){ .is_error=true, .err=e };\n'
+}
+
 fn test_get_str_fn_for_type_prefers_concrete_str_before_alias_base() {
 	mut g := Gen.new([]ast.File{})
 	g.alias_base_types['openssl__SSLConn'] = 'mbedtls__SSLConn'
@@ -454,6 +586,53 @@ fn test_generate_c_treats_generic_arg_or_index_on_known_fn_as_fn_value() {
 		}
 	})
 	assert g.sb.str() == 'veb__handler'
+}
+
+fn test_generate_c_casts_generic_function_type_alias_call_expr() {
+	mut g := Gen{
+		sb:              strings.new_builder(64)
+		cur_module:      'veb'
+		fn_type_aliases: {
+			'veb__MiddlewareHandler': true
+		}
+	}
+	cast_lhs := ast.GenericArgOrIndexExpr{
+		lhs:  ast.Ident{
+			name: 'MiddlewareHandler'
+		}
+		expr: ast.Ident{
+			name: 'T'
+		}
+	}
+	g.call_expr(cast_lhs, [ast.Expr(ast.Ident{
+		name: 'handler'
+	})])
+	assert g.sb.str() == '((veb__MiddlewareHandler)(handler))'
+
+	g.sb = strings.new_builder(64)
+	g.gen_assign_stmt(ast.AssignStmt{
+		op:  .decl_assign
+		lhs: [ast.Expr(ast.Ident{
+			name: 'func'
+		})]
+		rhs: [
+			ast.Expr(ast.CallExpr{
+				lhs:  cast_lhs
+				args: [ast.Expr(ast.Ident{
+					name: 'handler'
+				})]
+			}),
+		]
+	})
+	assert g.sb.str() == 'veb__MiddlewareHandler func = ((veb__MiddlewareHandler)(handler));\n'
+
+	g.sb = strings.new_builder(64)
+	g.call_expr(ast.Ident{
+		name: 'MiddlewareHandler_T'
+	}, [ast.Expr(ast.Ident{
+		name: 'handler'
+	})])
+	assert g.sb.str() == '((veb__MiddlewareHandler)(handler))'
 }
 
 fn test_generate_c_resolves_specialized_generic_receiver_method() {
@@ -829,6 +1008,43 @@ fn main() {
 	assert csrc.contains('Array_fixed_int_4 stack = {0};')
 	assert !csrc.contains('memcpy(stack,')
 	assert !csrc.contains('(array){0}')
+}
+
+fn test_generate_c_resolves_const_backed_fixed_array_global_extern_len() {
+	csrc := generate_c_for_test('
+@[has_globals]
+module main
+
+const depth = 4
+
+__global (
+	stack [depth]int
+)
+
+fn main() {
+	_ = stack[0]
+}
+')
+	assert csrc.contains('extern int stack[4];')
+	assert !csrc.contains('extern int stack[depth];')
+}
+
+fn test_generate_c_uses_wrapped_fixed_array_return_for_fn_type_params() {
+	csrc := generate_c_for_test('
+fn call(cb fn () [4]u8) [4]u8 {
+	return cb()
+}
+
+fn make() [4]u8 {
+	return [4]u8{}
+}
+
+fn main() {
+	_ = call(make)
+}
+')
+	assert csrc.contains('_v_Array_fixed_u8_4 (*cb)(void)')
+	assert !csrc.contains('call(Array_fixed_u8_4 (*cb)(void))')
 }
 
 fn test_generate_c_filters_lifetime_params_from_generic_struct_binding() {
@@ -1391,6 +1607,27 @@ fn test_scan_expr_registers_array_tuple_alias_before_type_emit() {
 	assert gen.sb.str().contains('typedef struct Tuple_Array_u8_string_string')
 }
 
+fn test_generate_c_emits_late_generic_tuple_alias_before_forward_decl() {
+	mut gen := Gen.new([])
+	gen.emitted_types['body_array'] = true
+	gen.tuple_aliases['Tuple_Array_Foo_Array_Foo'] = ['Array_Foo', 'Array_Foo']
+	gen.fn_return_types['arrays__partition_T_Foo'] = 'Tuple_Array_Foo_Array_Foo'
+	gen.gen_fn_head_with_name(ast.FnDecl{
+		name: 'partition'
+	}, 'arrays__partition_T_Foo')
+	gen.sb.writeln(';')
+	csrc := gen.sb.str()
+	tuple_decl_idx := csrc.index('typedef struct Tuple_Array_Foo_Array_Foo') or {
+		assert false
+		return
+	}
+	partition_decl_idx := csrc.index('Tuple_Array_Foo_Array_Foo arrays__partition_T_Foo') or {
+		assert false
+		return
+	}
+	assert tuple_decl_idx < partition_decl_idx
+}
+
 fn test_generate_c_keeps_imported_module_generic_call_name() {
 	csrc := generate_c_for_test_files([
 		'
@@ -1481,6 +1718,16 @@ fn test_parse_map_kv_types_prefers_known_nested_map_alias_key() {
 	key_type, value_type := gen.parse_map_kv_types('Map_string_string_Array_int')
 	assert key_type == 'Map_string_string'
 	assert value_type == 'Array_int'
+}
+
+fn test_emit_map_str_uses_pointer_for_fixed_array_key() {
+	mut gen := Gen.new([])
+	gen.sb = strings.new_builder(1024)
+	gen.map_aliases['Map_Array_fixed_u8_4_int'] = true
+	gen.emit_map_str_functions()
+	csrc := gen.sb.str()
+	assert csrc.contains('u8* key_ptr = (u8*)DenseArray__key(&m.key_values, i);')
+	assert !csrc.contains('Array_fixed_u8_4 key = *')
 }
 
 fn test_parse_map_kv_types_prefers_longest_known_generic_key() {
@@ -1623,6 +1870,77 @@ fn (mut c Compiler) mark() {
 	assert !csrc.contains('cannot resolve map type for index expr')
 }
 
+fn test_generate_c_lowers_late_generic_selector_string_slice_and_map_assign() {
+	csrc := generate_c_for_test('
+struct Info {
+	position int
+	length   int
+}
+
+struct Decoder {
+	json string
+}
+
+fn (mut decoder Decoder) decode_map[V](mut val map[string]V) {
+	key_info := Info{
+		position: 0
+		length: 3
+	}
+	key_str := decoder.json[key_info.position + 1..key_info.position + key_info.length - 1]
+	mut map_value := V{}
+	val[key_str] = map_value
+}
+
+fn main() {
+	mut decoder := Decoder{
+		json: "\'x\'"
+	}
+	mut vals := map[string]string{}
+	decoder.decode_map(mut vals)
+}
+')
+	assert csrc.contains('string key_str = string__substr')
+	assert csrc.contains('map__set(')
+	assert !csrc.contains('array key_str = array__slice(decoder->json')
+	assert !csrc.contains('map__get(&(val)')
+}
+
+fn test_generate_c_specializes_comptime_field_generic_call_by_field_type() {
+	csrc := generate_c_for_test('
+fn struct_field_should_encode[T](val T) bool {
+	_ = val
+	return true
+}
+
+fn encode_fields[T](val T) bool {
+	mut ok := true
+	$for field in T.fields {
+		ok = struct_field_should_encode(val.$(field.name))
+	}
+	return ok
+}
+
+struct Repo {
+	id          int
+	unix        i64
+	description string
+}
+
+fn main() {
+	_ = struct_field_should_encode(1)
+	_ = encode_fields(Repo{
+		id: 1
+		unix: 2
+		description: "x"
+	})
+}
+')
+	assert csrc.contains('struct_field_should_encode_T_string(val.description)')
+	assert csrc.contains('val._unix')
+	assert !csrc.contains('val.unix')
+	assert !csrc.contains('struct_field_should_encode_T_Repo(val.description)')
+}
+
 fn test_generate_c_uses_statement_temps_for_nested_map_index_assign_defaults() {
 	csrc := generate_c_for_test("
 fn build() map[string]map[string]string {
@@ -1674,6 +1992,20 @@ fn main() {
 ")
 	assert csrc.contains('string__substr(')
 	assert !csrc.contains('array__slice(names')
+}
+
+fn test_array_append_elem_type_accepts_runtime_array_pointer() {
+	mut gen := Gen.new([])
+	gen.runtime_local_types['field_infos'] = 'array*'
+	is_append, elem_type := gen.array_append_elem_type(ast.Expr(ast.Ident{
+		name: 'field_infos'
+	}), ast.Expr(ast.InitExpr{
+		typ: ast.Ident{
+			name: 'FieldInfo'
+		}
+	}))
+	assert is_append
+	assert elem_type == 'FieldInfo'
 }
 
 fn test_generate_c_lowers_map_field_for_in_with_ignored_key() {
@@ -2549,7 +2881,9 @@ fn use_decode(mut decoder Decoder, mut t Time) ! {
 }
 ')
 	assert csrc.contains('time__Decoder__decode_time(decoder, val)')
-	assert !csrc.contains('time__Decoder__decode_struct(decoder, val)')
+	time_specialization := csrc.all_after('_result_void time__Decoder__decode_value_T_time_Time(time__Decoder* decoder, time__Time* val) {')
+		.all_before('_result_void time__Decoder__decode_value_T_')
+	assert !time_specialization.contains('time__Decoder__decode_struct(decoder, val)')
 }
 
 fn test_generate_c_passes_local_value_address_to_mut_receiver_method() {
@@ -3047,6 +3381,46 @@ fn use() {
 	assert !csrc.contains('json2__Encoder__encode_value_T_Request_int')
 }
 
+fn test_generate_c_skips_json2_void_specialization_from_voidptr_encode_path() {
+	csrc := generate_c_for_test('
+module json2
+
+struct Encoder {}
+
+fn (mut encoder Encoder) encode_value[T](val T) {
+	_ = encoder
+	$if T.unaliased_typ is voidptr {
+		unsafe {
+			encoder.encode_value(*val)
+		}
+	}
+}
+
+fn (mut encoder Encoder) encode_struct_fields[T](val T) bool {
+	_ = encoder
+	_ = val
+	return true
+}
+
+fn use(mut encoder Encoder, data voidptr) {
+	encoder.encode_value(data)
+}
+')
+	assert csrc.contains('void json2__Encoder__encode_value_T_voidptr(json2__Encoder* encoder, voidptr val)')
+	assert !csrc.contains('json2__Encoder__encode_value_T_void(')
+	assert !csrc.contains('json2__Encoder__encode_struct_fields_T_void(')
+}
+
+fn test_json2_encode_fallback_type_skips_void_but_keeps_voidptr() {
+	mut fallback_types := map[string]types.Type{}
+	add_json2_encode_value_fallback_type(mut fallback_types, types.Type(types.void_))
+	add_json2_encode_value_fallback_type(mut fallback_types, types.Type(types.Pointer{
+		base_type: types.Type(types.void_)
+	}))
+	assert 'void' !in fallback_types
+	assert fallback_types.len == 1
+}
+
 fn test_generate_c_lowers_generic_map_for_in_with_concrete_value_type() {
 	csrc := generate_c_for_test('
 module json2
@@ -3459,4 +3833,611 @@ struct Packet {
 	assert csrc.contains('#pragma pack(push, 1)\nstruct Packet {')
 	assert csrc.contains('u32 len;')
 	assert csrc.contains('};\n#pragma pack(pop)')
+}
+
+fn test_generate_c_keeps_stdatomic_atomicval_on_integer_fallback() {
+	stdatomic_src := "
+module stdatomic
+
+pub struct AtomicVal[T] {
+	val T
+}
+
+fn panic(msg string) {}
+
+pub fn new_atomic[T](val T) &AtomicVal[T] {
+	return &AtomicVal[T]{
+		val: val
+	}
+}
+
+pub fn (mut a AtomicVal[T]) add(delta T) T {
+	@DLR@if T is int {
+		return delta
+	}
+	panic('unreachable')
+}
+"
+	main_src := '
+module main
+
+import stdatomic
+
+fn main() {
+	mut counter := stdatomic.new_atomic(0)
+	counter.add(1)
+}
+'
+	csrc := generate_c_for_test_files([stdatomic_src.replace('@DLR@', '$'), main_src])
+	assert csrc.contains('int stdatomic__AtomicVal__add(stdatomic__AtomicVal* a, int delta)')
+	assert csrc.contains('return delta;')
+	assert csrc.contains('stdatomic__AtomicVal__add(counter, 1)')
+	assert !csrc.contains('stdatomic__AtomicVal_T_f64__add')
+}
+
+fn test_generate_c_specializes_generic_function_value_in_struct_initializer() {
+	transport_src := '
+module transport
+
+pub type RequestHandler = fn (req int) int
+
+pub struct ServerConfig {
+pub:
+	handler RequestHandler
+}
+
+pub fn serve(config ServerConfig) int {
+	return config.handler(7)
+}
+'
+	web_src := '
+module web
+
+import transport
+
+pub fn run_new[A, X](app A) int {
+	_ = app
+	config := transport.ServerConfig{
+		handler: parallel_request_handler[A, X]
+	}
+	return transport.serve(config)
+}
+
+fn parallel_request_handler[A, X](req int) int {
+	return route[A, X](req)
+}
+
+fn route[A, X](req int) int {
+	return req
+}
+'
+	main_src := '
+module main
+
+import web
+
+struct App {}
+struct Context {}
+
+fn main() {
+	_ = web.run_new[App, Context](App{})
+}
+'
+	csrc := generate_c_for_test_files([transport_src, web_src, main_src])
+	assert csrc.contains('int web__parallel_request_handler_T_App_Context(int req)')
+	assert csrc.contains('return web__route_T_App_Context(req);')
+	assert csrc.contains('.handler = ({ int web__parallel_request_handler_T_App_Context(int); web__parallel_request_handler_T_App_Context; })')
+	assert !csrc.contains('.handler = web__parallel_request_handler,')
+}
+
+fn test_generate_c_lowers_slice_receiver_before_fallback_method_call() {
+	csrc := generate_c_for_test('
+fn main() {
+	text := "abc"
+	_ = text[..2].contains("a")
+}
+')
+	assert csrc.contains('string__substr')
+}
+
+fn test_generate_c_infers_generic_slice_bytestr_return_type() {
+	csrc := generate_c_for_test('
+fn read_head[T](req T, buf []u8) string {
+	_ = req
+	head := buf[..1].bytestr()
+	return head
+}
+
+fn main() {
+	_ = read_head(0, [u8(65)])
+}
+')
+	assert csrc.contains('string head = Array_u8__bytestr(array__slice(buf, 0, 1));')
+	assert !csrc.contains('int head = Array_u8__bytestr')
+}
+
+fn test_generate_c_infers_unsafe_deref_cast_value_type() {
+	csrc := generate_c_for_test('
+struct RequestParams {
+	port int
+}
+
+fn read_params(ptr voidptr) RequestParams {
+	params := unsafe { *(&RequestParams(ptr)) }
+	return params
+}
+
+fn main() {
+	params := RequestParams{
+		port: 1
+	}
+	_ = read_params(voidptr(&params))
+}
+')
+	assert csrc.contains('RequestParams params = *(((RequestParams*)(ptr)));')
+	assert !csrc.contains('RequestParams* params = *(((RequestParams*)(ptr)));')
+}
+
+fn test_generate_c_infers_generic_unsafe_deref_cast_value_type() {
+	csrc := generate_c_for_test('
+struct RequestParams {
+	port int
+}
+
+struct Request {
+	user_data voidptr
+}
+
+fn read_params[T](req Request) RequestParams {
+	params := unsafe { *(&RequestParams(req.user_data)) }
+	return params
+}
+
+fn main() {
+	params := RequestParams{
+		port: 1
+	}
+	req := Request{
+		user_data: voidptr(&params)
+	}
+	_ = read_params[int](req)
+}
+')
+	assert csrc.contains('RequestParams params = *(((RequestParams*)(req.user_data)));')
+	assert !csrc.contains('RequestParams* params = *(((RequestParams*)(req.user_data)));')
+}
+
+fn test_generate_c_keeps_http_header_get_result_in_generic_function() {
+	csrc := generate_c_for_test('
+struct Header {}
+
+fn (h Header) get(key int) !string {
+	_ = h
+	_ = key
+	return ""
+}
+
+struct Request {
+	header Header
+}
+
+fn read_host[T](req Request) string {
+	host := req.header.get(0) or { "" }
+	return host
+}
+
+fn main() {
+	_ = read_host[int](Request{})
+}
+')
+	assert csrc.contains('_result_string _or_')
+	assert !csrc.contains('void* _or_')
+	assert !csrc.contains('int host =')
+}
+
+fn test_generate_c_keeps_imported_http_header_get_result_for_or_default() {
+	csrc := generate_c_for_test_files([
+		'
+module http
+
+pub enum CommonHeader {
+	host
+	accept
+}
+
+pub struct Header {}
+
+pub fn (h Header) get(key CommonHeader) !string {
+	_ = h
+	_ = key
+	return ""
+}
+
+pub struct Request {
+pub:
+	header Header
+}
+',
+		'
+module main
+
+import http
+
+fn handle(req http.Request) string {
+	host_with_port := req.header.get(.host) or { "" }
+	return host_with_port
+}
+',
+	])
+	assert csrc.contains('_result_string _or_')
+	assert !csrc.contains('void* _or_')
+	assert !csrc.contains('int host_with_port =')
+}
+
+fn test_generate_c_keeps_imported_http_header_get_result_in_generic_function() {
+	csrc := generate_c_for_test_files([
+		'
+module http
+
+pub enum CommonHeader {
+	host
+}
+
+pub struct Header {}
+
+pub fn (h Header) get(key CommonHeader) !string {
+	_ = h
+	_ = key
+	return ""
+}
+
+pub struct Request {
+pub:
+	header Header
+}
+',
+		'
+module main
+
+import http
+
+fn handle[T](req http.Request) string {
+	host_with_port := req.header.get(.host) or { "" }
+	return host_with_port
+}
+
+fn main() {
+	_ = handle[int](http.Request{})
+}
+',
+	])
+	assert csrc.contains('_result_string _or_')
+	assert csrc.contains('string host_with_port =')
+	assert !csrc.contains('void* _or_')
+	assert !csrc.contains('int host_with_port =')
+}
+
+fn test_generate_c_lowers_generic_promoted_embedded_field_selector() {
+	csrc := generate_c_for_test('
+struct Base {
+	value int
+}
+
+struct Wrapper {
+	Base
+}
+
+fn read_value[T](x &T) int {
+	return x.value
+}
+
+fn main() {
+	w := Wrapper{
+		Base: Base{
+			value: 7
+		}
+	}
+	_ = read_value[Wrapper](&w)
+}
+')
+	assert csrc.contains('return x->Base.value;')
+	assert !csrc.contains('return x->value;')
+}
+
+fn test_generate_c_lowers_generic_promoted_embedded_field_with_context_name_collision() {
+	csrc := generate_c_for_test_files([
+		'
+module http
+
+pub enum CommonHeader {
+	accept
+}
+
+pub struct Header {}
+
+pub fn (h Header) get(key CommonHeader) !string {
+	_ = h
+	_ = key
+	return ""
+}
+
+pub struct Request {
+pub:
+	header Header
+}
+',
+		'
+module veb
+
+import http
+
+pub struct Context {
+pub:
+	req http.Request
+}
+
+pub fn serve[X](user_context &X) string {
+	accept_header := user_context.req.header.get(.accept) or { "" }
+	return accept_header
+}
+',
+		'
+module main
+
+import veb
+
+pub struct Context {
+	veb.Context
+}
+
+fn boot(mut ctx Context) {
+	_ = veb.serve[Context](&ctx)
+}
+',
+	])
+	assert csrc.contains('http__Header__get(user_context->Context.req.header, http__CommonHeader__accept)')
+	assert !csrc.contains('http__Header__get(user_context->req.header')
+}
+
+fn test_generate_c_dereferences_pointer_for_embedded_struct_init_field() {
+	csrc := generate_c_for_test('
+struct Base {
+	value int
+}
+
+struct Wrapper {
+	Base
+}
+
+fn make_wrapper(ctx &Base) Wrapper {
+	return Wrapper{
+		Base: ctx
+	}
+}
+
+fn main() {
+	base := Base{
+		value: 7
+	}
+	_ = make_wrapper(&base)
+}
+')
+	assert csrc.contains('.Base = (*(ctx))')
+	assert !csrc.contains('.Base = ctx')
+}
+
+fn test_generate_c_lowers_string_plus_assign() {
+	csrc := generate_c_for_test('
+fn append_slash() string {
+	mut asked_path := "docs"
+	asked_path += "/"
+	return asked_path
+}
+
+fn main() {
+	_ = append_slash()
+}
+')
+	assert csrc.contains('asked_path = string__plus(asked_path, (string){.str = "/",')
+	assert !csrc.contains('asked_path += (string){.str = "/",')
+}
+
+fn test_generate_c_keeps_map_or_pointer_value_type() {
+	csrc := generate_c_for_test('
+struct Item {
+	value int
+}
+
+fn read_item(items map[int]&Item) &Item {
+	item := items[1] or { return &Item{} }
+	return item
+}
+
+fn main() {
+	mut items := map[int]&Item{}
+	items[1] = &Item{
+		value: 7
+	}
+	_ = read_item(items)
+}
+')
+	assert csrc.contains('Item* item = *((Item**)')
+	assert !csrc.contains('Item item = *((Item**)')
+}
+
+fn test_generate_c_lowers_selector_map_or_without_result_temp() {
+	csrc := generate_c_for_test('
+struct StaticHandler {
+	static_files map[string]string
+}
+
+struct Context {
+	value int
+}
+
+fn serve[X](app StaticHandler, mut ctx X, asked_path string) bool {
+	static_handler := app
+	static_file := static_handler.static_files[asked_path] or { return false }
+	_ = ctx
+	return static_file != ""
+}
+
+fn main() {
+	sh := StaticHandler{
+		static_files: map[string]string{}
+	}
+	mut ctx := Context{}
+	_ = serve[Context](sh, mut ctx, "/")
+}
+')
+	assert csrc.contains('map__get_check')
+	assert csrc.contains('string static_file = *((string*)')
+	assert !csrc.contains('string _or_t')
+}
+
+fn test_generate_c_preserves_explicit_generic_arg_for_array_result_forwarder() {
+	mut g := Gen{
+		sb:                   strings.new_builder(64)
+		runtime_local_types:  {
+			'rng':   'Rng'
+			'items': 'Array_Array_u8'
+		}
+		active_generic_types: {
+			'T': types.Type(types.Array{
+				elem_type: types.Type(types.Alias{
+					name:      'u8'
+					base_type: types.Type(types.Primitive{
+						props: .integer | .unsigned
+						size:  8
+					})
+				})
+			})
+		}
+		fn_return_types:      {
+			'Rng__elem_T_Array_u8': '_result_Array_u8'
+		}
+		fn_param_is_ptr:      {
+			'Rng__elem_T_Array_u8': [true, false]
+		}
+	}
+	g.call_expr(ast.GenericArgOrIndexExpr{
+		lhs:  ast.SelectorExpr{
+			lhs: ast.Ident{
+				name: 'rng'
+			}
+			rhs: ast.Ident{
+				name: 'elem'
+			}
+		}
+		expr: ast.Ident{
+			name: 'T'
+		}
+	}, [ast.Expr(ast.Ident{
+		name: 'items'
+	})])
+	assert g.sb.str() == 'Rng__elem_T_Array_u8(&rng, items)'
+}
+
+fn test_generate_c_wraps_fixed_array_result_with_memcpy() {
+	csrc := generate_c_for_test('
+fn first(items [][4]u8) ![4]u8 {
+	return items[0]
+}
+
+fn empty() ![4]u8 {
+	return [4]u8{}
+}
+')
+	assert csrc.contains('Array_fixed_u8_4 _val = {0}; memcpy(_val, ((Array_fixed_u8_4*)items.data)[((int)(0))], sizeof(_val));')
+	assert !csrc.contains('Array_fixed_u8_4 _val = ((Array_fixed_u8_4*)items.data)[0];')
+	assert !csrc.contains('memcpy(_val, {0}, sizeof(_val));')
+}
+
+fn test_generate_c_lowers_overloaded_mod_operator() {
+	mut g := Gen{
+		sb:                  strings.new_builder(64)
+		runtime_local_types: {
+			'a': 'big__Integer'
+			'b': 'big__Integer'
+		}
+		fn_return_types:     {
+			'big__Integer__mod': 'big__Integer'
+		}
+	}
+	g.expr(ast.InfixExpr{
+		op:  .mod
+		lhs: ast.Ident{
+			name: 'a'
+		}
+		rhs: ast.Ident{
+			name: 'b'
+		}
+	})
+	assert g.sb.str() == 'big__Integer__mod(a, b)'
+}
+
+fn test_generate_c_keeps_pointer_array_for_in_element_type() {
+	csrc := generate_c_for_test('
+struct Item {
+	name string
+}
+
+fn first(items []&Item) string {
+	for item in items {
+		return item.name
+	}
+	return ""
+}
+
+fn main() {
+	item := &Item{
+		name: "x"
+	}
+	_ = first([item])
+}
+')
+	assert csrc.contains('Item* item = ((Item**)(items).data)')
+	assert !csrc.contains('void* item = ((void**)(items).data)')
+}
+
+fn test_generate_c_specializes_nested_generic_call_with_function_type_arg() {
+	json_src := '
+module json2
+
+pub struct EncoderOptions {}
+
+pub fn encode[T](val T, config EncoderOptions) string {
+	_ = val
+	_ = config
+	return ""
+}
+'
+	main_src := '
+module main
+
+import json2
+
+fn value_fn(n int) string {
+	_ = n
+	return ""
+}
+
+struct App {}
+
+fn (mut app App) dispatch[T](j T) string {
+	_ = app
+	return json2.encode(j)
+}
+
+fn main() {
+	mut app := App{}
+	_ = app.dispatch(value_fn)
+}
+'
+	csrc := generate_c_for_test_files([json_src, main_src])
+	assert csrc.contains('json2__encode_T_fn_')
+	assert csrc.contains('App__dispatch_T_fn_')
+	assert csrc.contains('return json2__encode_T_fn_')
+	assert csrc.contains('((json2__EncoderOptions){0})')
+	assert !csrc.contains('((EncoderOptions){0})')
 }
