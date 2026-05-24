@@ -8198,8 +8198,9 @@ binary into an `.app`, code-sign it, and install it through Apple's tooling.
 A typical workflow:
 
 ```shell
-# 1. Generate C from V (using the iOS SDK paths V sets up)
-v -gc none -o build/main.c .
+# 1. Generate iOS-targeted C from V. The `-os ios` flag is required so
+#    `$if ios { ... }` branches and iOS-specific files are included.
+v -os ios -gc none -o build/main.c .
 
 # 2. Compile for the device with Xcode's clang and link the frameworks
 #    your app uses (UIKit, Foundation, AVFoundation, ...)
