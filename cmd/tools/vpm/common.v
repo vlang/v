@@ -308,8 +308,9 @@ fn get_installed_modules() []string {
 }
 
 fn get_path_of_existing_module(mod_name string) ?string {
-	name := get_name_from_url(mod_name) or { mod_name.replace('-', '_').to_lower() }
-	path := os.real_path(os.join_path(settings.vmodules_path, name.replace('.', os.path_separator)))
+	name := get_name_from_url(mod_name) or { mod_name }
+	rel_path := normalize_mod_path(name.replace('.', os.path_separator))
+	path := os.real_path(os.join_path(settings.vmodules_path, rel_path))
 	if !os.exists(path) {
 		vpm_error('failed to find `${name}` at `${path}`.')
 		return none
