@@ -16,12 +16,18 @@
 //   * `return &Foo{...}`        — address-take of a transient struct literal
 //
 // What's intentionally NOT caught (yet):
-//   * Escape via closures capturing local refs
 //   * Inter-procedural escape (calls that hide a borrow)
 //
 // What's caught beyond the return-borrow case:
 //   * `outer.field = &local`     — field-store escape (root must be non-local)
 //   * `outer_arr << &local`      — array-push escape (root must be non-local)
+//   * `return fn [&local] () {}` — closure-capture escape via return
+//   * `outer.field = fn [&local] () {}` / `outer_arr << fn [&local] () {}`
+//                                — closure-capture escape via store/push
+//
+// For closure-capture escape, `[&x]` and `[mut x]` are treated as borrows
+// (matching the ownership-checker convention); `[x]` is by-value and never
+// triggers the check.
 //
 // `return &param` is always SAFE — parameters outlive the call from the
 // caller's perspective. Method receivers are treated the same as params.
@@ -64,7 +70,13 @@ fn (mut c Checker) escape_check_fn_decl(decl ast.FnDecl) {
 	}
 	mut locals := map[string]bool{}
 	escape_collect_locals_stmts(decl.stmts, mut locals)
-	c.escape_walk_stmts(decl.stmts, locals, decl.name)
+	// Closure-borrow taint: any local bound to a closure literal that
+	// captures another body-local by `&`/`mut`. Tracked separately so the
+	// later walk can recognise `return cb` / `outer.f = cb` / `out << cb`
+	// when `cb` carries the borrow indirectly.
+	mut closure_borrow_locals := map[string]bool{}
+	escape_collect_closure_borrow_locals_stmts(decl.stmts, locals, mut closure_borrow_locals)
+	c.escape_walk_stmts(decl.stmts, locals, closure_borrow_locals, decl.name)
 }
 
 // escape_decl_opts_in returns true if the fn declares at least one
@@ -132,6 +144,51 @@ fn escape_collect_locals_stmt(stmt ast.Stmt, mut out map[string]bool) {
 	}
 }
 
+// escape_collect_closure_borrow_locals_stmts walks decl-assign statements and
+// records every local bound to a closure literal that captures another
+// body-local by `&`/`mut`. Walked nested blocks the same way as
+// `escape_collect_locals_*`. Only `:=` is considered: later re-assignment is
+// handled directly by the field-store path on the same RHS shape.
+fn escape_collect_closure_borrow_locals_stmts(stmts []ast.Stmt, locals map[string]bool, mut out map[string]bool) {
+	for stmt in stmts {
+		escape_collect_closure_borrow_locals_stmt(stmt, locals, mut out)
+	}
+}
+
+fn escape_collect_closure_borrow_locals_stmt(stmt ast.Stmt, locals map[string]bool, mut out map[string]bool) {
+	match stmt {
+		ast.AssignStmt {
+			if stmt.op == .decl_assign {
+				for i, lhs in stmt.lhs {
+					if i >= stmt.rhs.len {
+						continue
+					}
+					name := escape_lhs_decl_name(lhs)
+					if name.len == 0 {
+						continue
+					}
+					rhs := stmt.rhs[i]
+					if rhs is ast.FnLiteral {
+						if _ := escape_closure_borrow_reason(rhs, locals) {
+							out[name] = true
+						}
+					}
+				}
+			}
+		}
+		ast.BlockStmt {
+			escape_collect_closure_borrow_locals_stmts(stmt.stmts, locals, mut out)
+		}
+		ast.DeferStmt {
+			escape_collect_closure_borrow_locals_stmts(stmt.stmts, locals, mut out)
+		}
+		ast.ForStmt {
+			escape_collect_closure_borrow_locals_stmts(stmt.stmts, locals, mut out)
+		}
+		else {}
+	}
+}
+
 fn escape_collect_locals_expr(expr ast.Expr, mut out map[string]bool) {
 	match expr {
 		ast.IfExpr {
@@ -155,17 +212,17 @@ fn escape_collect_locals_expr(expr ast.Expr, mut out map[string]bool) {
 	}
 }
 
-fn (mut c Checker) escape_walk_stmts(stmts []ast.Stmt, locals map[string]bool, fn_name string) {
+fn (mut c Checker) escape_walk_stmts(stmts []ast.Stmt, locals map[string]bool, closure_borrow_locals map[string]bool, fn_name string) {
 	for stmt in stmts {
-		c.escape_walk_stmt(stmt, locals, fn_name)
+		c.escape_walk_stmt(stmt, locals, closure_borrow_locals, fn_name)
 	}
 }
 
-fn (mut c Checker) escape_walk_stmt(stmt ast.Stmt, locals map[string]bool, fn_name string) {
+fn (mut c Checker) escape_walk_stmt(stmt ast.Stmt, locals map[string]bool, closure_borrow_locals map[string]bool, fn_name string) {
 	match stmt {
 		ast.ReturnStmt {
 			for expr in stmt.exprs {
-				c.escape_check_returned_expr(expr, locals, fn_name)
+				c.escape_check_returned_expr(expr, locals, closure_borrow_locals, fn_name)
 			}
 		}
 		ast.AssignStmt {
@@ -178,65 +235,79 @@ fn (mut c Checker) escape_walk_stmt(stmt ast.Stmt, locals map[string]bool, fn_na
 					if i >= stmt.rhs.len {
 						continue
 					}
-					c.escape_check_field_store(lhs, stmt.rhs[i], locals, fn_name, stmt.pos)
+					c.escape_check_field_store(lhs, stmt.rhs[i], locals, closure_borrow_locals,
+						fn_name, stmt.pos)
 				}
 			}
 		}
 		ast.BlockStmt {
-			c.escape_walk_stmts(stmt.stmts, locals, fn_name)
+			c.escape_walk_stmts(stmt.stmts, locals, closure_borrow_locals, fn_name)
 		}
 		ast.DeferStmt {
-			c.escape_walk_stmts(stmt.stmts, locals, fn_name)
+			c.escape_walk_stmts(stmt.stmts, locals, closure_borrow_locals, fn_name)
 		}
 		ast.ForStmt {
-			c.escape_walk_stmts(stmt.stmts, locals, fn_name)
+			c.escape_walk_stmts(stmt.stmts, locals, closure_borrow_locals, fn_name)
 		}
 		ast.ExprStmt {
-			c.escape_walk_expr(stmt.expr, locals, fn_name)
+			c.escape_walk_expr(stmt.expr, locals, closure_borrow_locals, fn_name)
 		}
 		else {}
 	}
 }
 
-fn (mut c Checker) escape_walk_expr(expr ast.Expr, locals map[string]bool, fn_name string) {
+fn (mut c Checker) escape_walk_expr(expr ast.Expr, locals map[string]bool, closure_borrow_locals map[string]bool, fn_name string) {
 	match expr {
 		ast.IfExpr {
-			c.escape_walk_stmts(expr.stmts, locals, fn_name)
-			c.escape_walk_expr(expr.else_expr, locals, fn_name)
+			c.escape_walk_stmts(expr.stmts, locals, closure_borrow_locals, fn_name)
+			c.escape_walk_expr(expr.else_expr, locals, closure_borrow_locals, fn_name)
 		}
 		ast.MatchExpr {
 			for br in expr.branches {
-				c.escape_walk_stmts(br.stmts, locals, fn_name)
+				c.escape_walk_stmts(br.stmts, locals, closure_borrow_locals, fn_name)
 			}
 		}
 		ast.LockExpr {
-			c.escape_walk_stmts(expr.stmts, locals, fn_name)
+			c.escape_walk_stmts(expr.stmts, locals, closure_borrow_locals, fn_name)
 		}
 		ast.InfixExpr {
 			// `arr << x` is an InfixExpr with op == .left_shift. When the
 			// target array's root is non-local and `x` is `&local_thing`,
 			// we'd be stashing a dangling reference into outer storage.
 			if expr.op == .left_shift {
-				c.escape_check_array_push(expr, locals, fn_name)
+				c.escape_check_array_push(expr, locals, closure_borrow_locals, fn_name)
 			}
 		}
 		else {}
 	}
 }
 
-// escape_check_returned_expr fires when a return value is `& <something>`.
-// The operand is classified by `escape_borrow_reason` — if it represents a
-// short-lived storage location, we emit a dangling-reference diagnostic.
-fn (mut c Checker) escape_check_returned_expr(expr ast.Expr, locals map[string]bool, fn_name string) {
-	if expr !is ast.PrefixExpr {
+// escape_check_returned_expr fires when a return value either takes the
+// address of short-lived storage (`return &local`), returns an inline closure
+// that captured one (`return fn [&local] () {}`), or returns a local already
+// bound to such a closure (`cb := fn [&local] () {}; return cb`). All three
+// make a body-local outlive the function via the return value.
+fn (mut c Checker) escape_check_returned_expr(expr ast.Expr, locals map[string]bool, closure_borrow_locals map[string]bool, fn_name string) {
+	if expr is ast.PrefixExpr {
+		if expr.op == .amp {
+			if reason := escape_borrow_reason(expr.expr, locals) {
+				c.escape_error_returns_local(reason, fn_name, expr.pos)
+			}
+		}
 		return
 	}
-	pe := expr as ast.PrefixExpr
-	if pe.op != .amp {
+	if expr is ast.FnLiteral {
+		if reason := escape_closure_borrow_reason(expr, locals) {
+			c.escape_error_returns_local(reason, fn_name, expr.pos)
+		}
 		return
 	}
-	reason := escape_borrow_reason(pe.expr, locals) or { return }
-	c.escape_error_returns_local(reason, fn_name, pe.pos)
+	if expr is ast.Ident {
+		if expr.name in closure_borrow_locals {
+			c.escape_error_returns_local('closure `${expr.name}` capturing local by reference',
+				fn_name, expr.pos)
+		}
+	}
 }
 
 // escape_borrow_reason returns a short, user-facing reason string if
@@ -295,43 +366,85 @@ fn (mut c Checker) escape_error_returns_local(reason string, fn_name string, pos
 }
 
 // escape_check_field_store fires for `lhs = rhs` where lhs is a field/index
-// path with a non-local root and rhs is `&<short-lived storage>`. Storing the
-// reference into outer state lets it outlive the body-local it points at.
-fn (mut c Checker) escape_check_field_store(lhs ast.Expr, rhs ast.Expr, locals map[string]bool, fn_name string, pos token.Pos) {
+// path with a non-local root and rhs holds a borrow of body-local storage —
+// `&local`, `fn [&local] () {}`, or a local Ident bound to such a closure.
+// Storing such a value into outer state lets the borrow outlive the body-local.
+fn (mut c Checker) escape_check_field_store(lhs ast.Expr, rhs ast.Expr, locals map[string]bool, closure_borrow_locals map[string]bool, fn_name string, pos token.Pos) {
 	root := escape_lhs_root(lhs) or { return }
 	if root in locals {
 		// The LHS itself dies with the body; the borrow doesn't escape.
 		return
 	}
-	if rhs !is ast.PrefixExpr {
-		return
-	}
-	pe := rhs as ast.PrefixExpr
-	if pe.op != .amp {
-		return
-	}
-	reason := escape_borrow_reason(pe.expr, locals) or { return }
+	reason := escape_rhs_borrow_reason(rhs, locals, closure_borrow_locals) or { return }
 	path := escape_render_path(lhs)
 	c.escape_error_stores_local('stored into `${path}`', reason, fn_name, pos)
 }
 
-// escape_check_array_push fires for `arr << &local`. Same shape as the
-// field-store case: the destination array's root must outlive the local.
-fn (mut c Checker) escape_check_array_push(expr ast.InfixExpr, locals map[string]bool, fn_name string) {
+// escape_check_array_push fires for `arr << &local`, the inline-closure form
+// `arr << fn [&local] () {}`, and the bound-local form `arr << cb`. Same root
+// rule as the field-store case: the array's root must outlive the borrow.
+fn (mut c Checker) escape_check_array_push(expr ast.InfixExpr, locals map[string]bool, closure_borrow_locals map[string]bool, fn_name string) {
 	root := escape_lhs_root(expr.lhs) or { return }
 	if root in locals {
 		return
 	}
-	if expr.rhs !is ast.PrefixExpr {
-		return
-	}
-	pe := expr.rhs as ast.PrefixExpr
-	if pe.op != .amp {
-		return
-	}
-	reason := escape_borrow_reason(pe.expr, locals) or { return }
+	reason := escape_rhs_borrow_reason(expr.rhs, locals, closure_borrow_locals) or { return }
 	path := escape_render_path(expr.lhs)
 	c.escape_error_stores_local('pushed into `${path}`', reason, fn_name, expr.pos)
+}
+
+// escape_rhs_borrow_reason classifies a RHS expression and returns a short
+// user-facing reason if it produces a borrow of body-local storage; otherwise
+// none. Used by both the field-store and array-push checks to share the
+// same set of recognised borrow shapes.
+fn escape_rhs_borrow_reason(rhs ast.Expr, locals map[string]bool, closure_borrow_locals map[string]bool) ?string {
+	if rhs is ast.PrefixExpr {
+		if rhs.op == .amp {
+			return escape_borrow_reason(rhs.expr, locals)
+		}
+		return none
+	}
+	if rhs is ast.FnLiteral {
+		return escape_closure_borrow_reason(rhs, locals)
+	}
+	if rhs is ast.Ident {
+		if rhs.name in closure_borrow_locals {
+			return 'closure `${rhs.name}` capturing local by reference'
+		}
+	}
+	return none
+}
+
+// escape_closure_borrow_reason returns a reason if `lit` is a closure whose
+// capture list contains at least one borrow (`&x` or `mut x`) of a body-local.
+// `[x]` is by-value capture and is never a borrow, so it doesn't escape even
+// if the closure does.
+fn escape_closure_borrow_reason(lit ast.FnLiteral, locals map[string]bool) ?string {
+	for cv in lit.captured_vars {
+		match cv {
+			ast.PrefixExpr {
+				if cv.op == .amp && cv.expr is ast.Ident {
+					name := (cv.expr as ast.Ident).name
+					if name in locals {
+						return 'local variable `${name}` captured by reference into closure'
+					}
+				}
+			}
+			ast.ModifierExpr {
+				// `[mut x]` — mutable borrow into the closure (matches the
+				// ownership-checker convention of treating mut-capture as a
+				// borrow rather than a copy).
+				if cv.kind == .key_mut && cv.expr is ast.Ident {
+					name := (cv.expr as ast.Ident).name
+					if name in locals {
+						return 'local variable `${name}` captured by mutable reference into closure'
+					}
+				}
+			}
+			else {}
+		}
+	}
+	return none
 }
 
 // escape_lhs_root returns the name of the root identifier of a write target

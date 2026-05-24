@@ -342,3 +342,121 @@ fn main() {}
 	exit_code, output := run_escape_check(code)
 	assert exit_code == 0, 'pushing &local into local array is safe, got: ${output}'
 }
+
+// === Closure-capture escape: `fn [&local] () {}` ===
+//
+// A closure that captures a body-local by reference holds a borrow that dies
+// with the function. Letting the closure value itself escape (via return,
+// field-store, or array-push) carries the borrow out with it.
+
+fn test_escape_return_closure_borrow_errors() {
+	code := '
+fn dangling[^a]() fn () int {
+	x := 7
+	cb := fn [&x] () int {
+		return *x
+	}
+	return cb
+}
+
+fn main() {}
+'
+	exit_code, output := run_escape_check(code)
+	assert exit_code != 0, 'returning closure that borrows local should fail'
+	assert output.contains('closure `cb` capturing local by reference'), 'should mention the bound closure name, got: ${output}'
+	assert output.contains('does not survive `dangling`'), 'should name the function, got: ${output}'
+}
+
+fn test_escape_return_closure_by_value_ok() {
+	// `[x]` is a by-value capture — the closure owns its own copy and the
+	// outer `x` is irrelevant to its lifetime. Safe to return.
+	code := '
+fn safe[^a]() fn () int {
+	x := 7
+	cb := fn [x] () int {
+		return x
+	}
+	return cb
+}
+
+fn main() {}
+'
+	exit_code, output := run_escape_check(code)
+	assert exit_code == 0, 'returning closure with by-value capture is safe, got: ${output}'
+}
+
+fn test_escape_return_inline_closure_borrow_errors() {
+	// Same shape but with the closure literal returned inline, not via a
+	// local binding.
+	code := '
+fn dangling[^a]() fn () int {
+	x := 7
+	return fn [&x] () int {
+		return *x
+	}
+}
+
+fn main() {}
+'
+	exit_code, output := run_escape_check(code)
+	assert exit_code != 0, 'returning inline closure that borrows local should fail'
+	assert output.contains('captured by reference into closure'), 'got: ${output}'
+}
+
+fn test_escape_field_store_closure_borrow_errors() {
+	code := '
+struct Slot {
+mut:
+	cb fn () int = unsafe { nil }
+}
+
+fn stash[^a](mut s Slot) {
+	x := 7
+	s.cb = fn [&x] () int {
+		return *x
+	}
+}
+
+fn main() {}
+'
+	exit_code, output := run_escape_check(code)
+	assert exit_code != 0, 'storing closure-borrow into param.field should fail'
+	assert output.contains('stored into `s.cb`'), 'should name the LHS path, got: ${output}'
+	assert output.contains('captured by reference into closure'), 'got: ${output}'
+}
+
+fn test_escape_array_push_closure_borrow_errors() {
+	code := '
+fn collect[^a](mut callbacks []fn () int) {
+	x := 7
+	callbacks << fn [&x] () int {
+		return *x
+	}
+}
+
+fn main() {}
+'
+	exit_code, output := run_escape_check(code)
+	assert exit_code != 0, 'pushing closure-borrow into outer array should fail'
+	assert output.contains('pushed into `callbacks`'), 'should name the array, got: ${output}'
+	assert output.contains('captured by reference into closure'), 'got: ${output}'
+}
+
+fn test_escape_closure_mut_capture_errors() {
+	// `[mut x]` is treated as a borrow (matches the ownership-checker
+	// convention), so the same escape rule applies.
+	code := '
+fn dangling[^a]() fn () int {
+	mut x := 7
+	return fn [mut x] () int {
+		x = x + 1
+		return x
+	}
+}
+
+fn main() {}
+'
+	exit_code, output := run_escape_check(code)
+	assert exit_code != 0, 'returning closure with mut-borrow capture should fail'
+	assert output.contains('captured by mutable reference into closure'), 'got: ${output}'
+}
