@@ -12,6 +12,11 @@ struct GenCleancChunkArgs {
 	file_indices_ptr voidptr // &[]int — file indices to process
 }
 
+struct GenCleancWeightedFile {
+	idx  int
+	cost int
+}
+
 @[typedef]
 struct C.pthread_t {}
 
@@ -65,23 +70,37 @@ fn (mut b Builder) gen_cleanc_parallel(mut gen cleanc.Gen) {
 		return
 	}
 
-	// Split files into chunks using round-robin interleaving for balanced load.
-	// This avoids one worker getting all the heavy files (e.g., json2/decode.v, ui/window.v).
-	chunk_size := (n_files + n_jobs - 1) / n_jobs
 	mut thread_ids := []C.pthread_t{len: n_jobs}
 	mut args := []GenCleancChunkArgs{cap: n_jobs}
 	mut workers := []voidptr{cap: n_jobs}
 	mut chunk_indices := [][]int{cap: n_jobs}
+	mut chunk_costs := []int{cap: n_jobs}
 
 	mut chunk_idx := n_jobs
 	if chunk_idx > n_files {
 		chunk_idx = n_files
 	}
 	for ci := 0; ci < chunk_idx; ci++ {
-		chunk_indices << []int{cap: chunk_size}
+		chunk_indices << []int{}
+		chunk_costs << 0
 	}
-	for i := 0; i < n_files; i++ {
-		chunk_indices[i % chunk_idx] << emit_indices[i]
+	mut weighted_files := []GenCleancWeightedFile{cap: n_files}
+	for idx in emit_indices {
+		weighted_files << GenCleancWeightedFile{
+			idx:  idx
+			cost: gen.pass5_file_cost(idx)
+		}
+	}
+	weighted_files.sort(a.cost > b.cost)
+	for item in weighted_files {
+		mut target := 0
+		for ci := 1; ci < chunk_idx; ci++ {
+			if chunk_costs[ci] < chunk_costs[target] {
+				target = ci
+			}
+		}
+		chunk_indices[target] << item.idx
+		chunk_costs[target] += item.cost
 	}
 	stage_start = mark_cleanc_parallel_step(stats_enabled, mut stats_sw, stage_start,
 		'pass 5 chunk split')

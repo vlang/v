@@ -224,7 +224,7 @@ fn test_bound_before_request_named_middleware_does_not_timeout() {
 		write_timeout: 1500 * time.millisecond
 	})!
 	assert x.body == 'from index, 2'
-	assert x.header.get_custom('X-BEFORE-REQUEST-MIDDLEWARE')! == 'true'
+	assert x.header.get_custom('X-BEFORE-REQUEST-MIDDLEWARE')? == 'true'
 }
 
 fn test_unreachable_order() {

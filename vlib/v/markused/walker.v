@@ -7,6 +7,8 @@ module markused
 import v.ast
 import v.pref
 
+const simple_string_interpolation_default_precision = 987698
+
 struct MethodFkeyCacheEntry {
 	fkey     string
 	receiver ast.Type
@@ -83,6 +85,7 @@ mut:
 	uses_mem_align             bool // @[aligned:N] for structs
 	uses_eq                    bool // has == op
 	uses_interp                bool // string interpolation
+	uses_interp_isnil          bool // pointer string interpolation
 	uses_guard                 bool
 	uses_orm                   bool
 	uses_str                   map[ast.Type]bool // has .str() calls, and for which types
@@ -799,9 +802,30 @@ pub fn (mut w Walker) stmt(node_ ast.Stmt) {
 					}
 				}
 				cond_type_sym := w.table.sym(resolved_cond_type)
-				if next_fn := cond_type_sym.find_method('next') {
+				mut next_method := cond_type_sym.find_method('next')
+				// Generic instantiated structs (e.g. `Range[big.Integer]`) have
+				// no methods of their own; the `next` method lives on the
+				// generic parent (`Range[T]`). The concrete types from the
+				// instantiation must be propagated to the walker, otherwise
+				// `remove_unused_fn_generic_types` may overwrite
+				// `fn_generic_types[next]` with the union derived from other
+				// callers (e.g. only `[int]` from a direct `iter.next()`),
+				// dropping the receiver type used here.
+				mut receiver_concrete_types := []ast.Type{}
+				if next_method == none && cond_type_sym.info is ast.Struct {
+					if cond_type_sym.info.concrete_types.len > 0
+						&& cond_type_sym.info.parent_type != 0 {
+						parent_sym := w.table.sym(cond_type_sym.info.parent_type)
+						if parent_next := parent_sym.find_method('next') {
+							next_method = parent_next
+							receiver_concrete_types = w.receiver_concrete_types(resolved_cond_type)
+						}
+					}
+				}
+				if next_fn := next_method {
 					unsafe {
-						w.fn_decl(mut &ast.FnDecl(next_fn.source_fn))
+						w.fn_decl_with_concrete_types(mut &ast.FnDecl(next_fn.source_fn),
+							receiver_concrete_types)
 					}
 				}
 			}
@@ -1203,6 +1227,8 @@ fn (mut w Walker) expr(node_ ast.Expr) {
 						|| (right.idx() in [ast.u32_type_idx, ast.u64_type_idx] && left.is_signed()))
 				}
 				w.uses_eq = w.uses_eq || node.op in [.eq, .ne]
+			} else if node.op == .plus {
+				w.mark_string_concat_cast_helpers(node.left_type, right_type)
 			}
 		}
 		ast.IfGuardExpr {
@@ -1356,7 +1382,12 @@ fn (mut w Walker) expr(node_ ast.Expr) {
 			w.mark_by_type(node.typ)
 		}
 		ast.StringInterLiteral {
-			w.uses_interp = true
+			if w.string_inter_literal_needs_runtime(node) {
+				w.uses_interp = true
+				w.uses_interp_isnil = w.uses_interp_isnil || w.string_inter_literal_uses_isnil(node)
+			} else {
+				w.mark_simple_string_inter_literal(node)
+			}
 			w.exprs(node.exprs)
 			for expr in node.fwidth_exprs {
 				if expr !is ast.EmptyExpr {
@@ -1819,6 +1850,9 @@ pub fn (mut w Walker) call_expr(mut node ast.CallExpr) {
 	}
 	for arg in node.args {
 		w.expr(arg.expr)
+	}
+	if node.args.any(it.expr is ast.ArrayDecompose) {
+		w.uses_interp = true
 	}
 	if node.is_variadic && node.expected_arg_types.last().has_flag(.option) {
 		w.used_option++
@@ -2674,6 +2708,255 @@ fn (w &Walker) infer_expr_type(expr ast.Expr) ast.Type {
 	}
 }
 
+fn (mut w Walker) string_inter_literal_needs_runtime(node ast.StringInterLiteral) bool {
+	if w.pref.autofree || w.pref.gc_mode == .boehm_leak {
+		return true
+	}
+	if w.pref.os == .windows && w.pref.is_liveshared {
+		return true
+	}
+	if node.exprs.len == 0 || node.expr_types.len < node.exprs.len {
+		return true
+	}
+	for i in 0 .. node.exprs.len {
+		if i >= node.need_fmts.len || node.need_fmts[i] || i >= node.fmts.len {
+			return true
+		}
+		if w.cur_fn_concrete_types.len > 0 && !node.need_fmts[i] {
+			return true
+		}
+		typ := w.resolve_current_generic_type(node.expr_types[i])
+		if typ == 0 || typ == ast.void_type || typ.has_flag(.generic) {
+			return true
+		}
+		normalized_expr_type := w.table.fully_unaliased_type(typ)
+		if normalized_expr_type.is_any_kind_of_pointer() || normalized_expr_type.is_int_valptr()
+			|| normalized_expr_type.is_float_valptr() {
+			return true
+		}
+		expr := node.exprs[i]
+		if expr is ast.Ident && expr.obj is ast.Var {
+			expr_var := expr.obj as ast.Var
+			orig_type := w.resolve_current_generic_type(expr_var.orig_type)
+			if orig_type != 0
+				&& w.table.final_sym(w.table.unaliased_type(orig_type)).kind == .interface {
+				return true
+			}
+		}
+		if w.table.final_sym(typ).kind == .interface {
+			return true
+		}
+		if i < node.fwidths.len && node.fwidths[i] != 0 {
+			return true
+		}
+		if i < node.fwidth_exprs.len && node.fwidth_exprs[i] !is ast.EmptyExpr {
+			return true
+		}
+		if i < node.precisions.len
+			&& node.precisions[i] != simple_string_interpolation_default_precision {
+			return true
+		}
+		if i < node.precision_exprs.len && node.precision_exprs[i] !is ast.EmptyExpr {
+			return true
+		}
+		if i < node.pluss.len && node.pluss[i] {
+			return true
+		}
+		if i < node.fills.len && node.fills[i] {
+			return true
+		}
+	}
+	return false
+}
+
+fn (mut w Walker) string_inter_literal_uses_isnil(node ast.StringInterLiteral) bool {
+	for typ in node.expr_types {
+		resolved_typ := w.table.fully_unaliased_type(w.resolve_current_generic_type(typ))
+		if resolved_typ.is_any_kind_of_pointer() || resolved_typ.has_flag(.option_mut_param_t) {
+			return true
+		}
+	}
+	return false
+}
+
+fn (mut w Walker) mark_simple_string_inter_literal(node ast.StringInterLiteral) {
+	if node.vals.any(it.len > 0) && !w.uses_str_literal {
+		w.mark_by_sym_name('string')
+		w.uses_str_literal = true
+	}
+	for i in 0 .. node.exprs.len {
+		if i >= node.expr_types.len {
+			break
+		}
+		typ := w.resolve_current_generic_type(node.expr_types[i])
+		if typ != 0 && typ != ast.void_type && typ != ast.string_type {
+			w.uses_str[typ] = true
+		}
+	}
+}
+
+fn (mut w Walker) mark_string_concat_cast_helpers(left_type ast.Type, right_type ast.Type) {
+	left := w.table.unaliased_type(w.resolve_current_generic_type(left_type)).clear_flags()
+	right := w.table.unaliased_type(w.resolve_current_generic_type(right_type)).clear_flags()
+	if !(left in [ast.string_type, ast.char_type, ast.rune_type]
+		&& right in [ast.string_type, ast.char_type, ast.rune_type]
+		&& (left == ast.string_type || right == ast.string_type)) {
+		return
+	}
+	for typ in [left, right] {
+		if typ == ast.char_type {
+			w.fn_by_name('${ast.u8_type_idx}.ascii_str')
+		} else if typ == ast.rune_type {
+			w.fn_by_name('${ast.rune_type_idx}.str')
+		}
+	}
+}
+
+fn (mut w Walker) auto_str_needs_str_intp() bool {
+	for typ, _ in w.uses_str {
+		if w.type_auto_str_needs_str_intp(typ) {
+			return true
+		}
+	}
+	for typ_idx, _ in w.features.print_types {
+		if w.type_auto_str_needs_str_intp(ast.Type(u32(typ_idx))) {
+			return true
+		}
+	}
+	for typ_idx, _ in w.table.dumps {
+		if w.type_auto_str_needs_str_intp(ast.Type(u32(typ_idx))) {
+			return true
+		}
+	}
+	return false
+}
+
+fn (mut w Walker) auto_str_needs_isnil() bool {
+	mut visited := map[int]bool{}
+	for typ, _ in w.uses_str {
+		if w.type_auto_str_needs_isnil(typ, mut visited) {
+			return true
+		}
+	}
+	for typ_idx, _ in w.features.print_types {
+		if w.type_auto_str_needs_isnil(ast.Type(u32(typ_idx)), mut visited) {
+			return true
+		}
+	}
+	for typ_idx, _ in w.table.dumps {
+		if w.type_auto_str_needs_isnil(ast.Type(u32(typ_idx)), mut visited) {
+			return true
+		}
+	}
+	return false
+}
+
+fn (mut w Walker) type_auto_str_needs_str_intp(typ ast.Type) bool {
+	raw_typ := w.resolve_current_generic_type(typ)
+	if raw_typ.has_option_or_result() {
+		return true
+	}
+	resolved_typ := raw_typ.clear_option_and_result()
+	if resolved_typ == 0 || resolved_typ == ast.void_type || resolved_typ.has_flag(.generic) {
+		return false
+	}
+	if resolved_typ.is_ptr() || resolved_typ.is_pointer() {
+		return true
+	}
+	raw_sym := w.table.sym(resolved_typ)
+	if raw_sym.info is ast.Alias && !raw_sym.has_method('str') {
+		return true
+	}
+	sym := w.table.final_sym(w.table.unaliased_type(resolved_typ))
+	if sym.has_method('str') {
+		return false
+	}
+	match sym.info {
+		ast.Array {
+			return w.array_auto_str_needs_str_intp(sym.info.elem_type)
+		}
+		ast.ArrayFixed {
+			return w.array_auto_str_needs_str_intp(sym.info.elem_type)
+		}
+		ast.Map {
+			return true
+		}
+		ast.Struct, ast.SumType, ast.Interface {
+			return true
+		}
+		ast.MultiReturn {
+			return true
+		}
+		else {
+			return false
+		}
+	}
+}
+
+fn (mut w Walker) type_auto_str_needs_isnil(typ ast.Type, mut visited map[int]bool) bool {
+	resolved_typ := w.resolve_current_generic_type(typ).clear_option_and_result()
+	if resolved_typ == 0 || resolved_typ == ast.void_type || resolved_typ.has_flag(.generic) {
+		return false
+	}
+	if resolved_typ.is_ptr() || resolved_typ.is_pointer()
+		|| resolved_typ.has_flag(.option_mut_param_t) {
+		return true
+	}
+	final_typ := w.table.unaliased_type(resolved_typ)
+	key := int(final_typ.idx())
+	if key in visited {
+		return false
+	}
+	visited[key] = true
+	sym := w.table.final_sym(final_typ)
+	match sym.info {
+		ast.Array {
+			return w.type_auto_str_needs_isnil(sym.info.elem_type, mut visited)
+		}
+		ast.ArrayFixed {
+			return w.type_auto_str_needs_isnil(sym.info.elem_type, mut visited)
+		}
+		ast.Map {
+			return w.type_auto_str_needs_isnil(sym.info.key_type, mut visited)
+				|| w.type_auto_str_needs_isnil(sym.info.value_type, mut visited)
+		}
+		ast.Struct {
+			return sym.info.fields.any(w.type_auto_str_needs_isnil(it.typ, mut visited))
+		}
+		ast.SumType {
+			return sym.info.variants.any(w.type_auto_str_needs_isnil(it, mut visited))
+		}
+		ast.Interface {
+			return true
+		}
+		else {
+			return false
+		}
+	}
+}
+
+fn (mut w Walker) array_auto_str_needs_str_intp(elem_type ast.Type) bool {
+	resolved_with_flags := w.resolve_current_generic_type(elem_type)
+	if resolved_with_flags.has_flag(.option) || resolved_with_flags.has_flag(.result) {
+		return true
+	}
+	resolved_elem_type := resolved_with_flags.clear_option_and_result()
+	if resolved_elem_type == 0 || resolved_elem_type == ast.void_type
+		|| resolved_elem_type.has_flag(.generic) {
+		return false
+	}
+	if resolved_elem_type.is_ptr() || resolved_elem_type.is_pointer() {
+		return true
+	}
+	elem_sym := w.table.final_sym(w.table.unaliased_type(resolved_elem_type))
+	if elem_sym.kind in [.f32, .f64, .rune, .string] {
+		return true
+	}
+	return
+		elem_sym.kind in [.array, .array_fixed, .map, .struct, .sum_type, .interface, .multi_return]
+		&& !elem_sym.has_method('str')
+}
+
 @[inline]
 pub fn (mut w Walker) or_block(node ast.OrExpr) {
 	if node.kind == .block {
@@ -3331,10 +3614,17 @@ fn (mut w Walker) mark_resource_dependencies() {
 			w.fn_by_name('str_intp')
 		}
 	}
-	if w.features.auto_str_ptr {
+	if w.features.auto_str_ptr && (w.features.auto_str || w.features.dump || w.uses_dump) {
 		w.fn_by_name('isnil')
 		w.fn_by_name('tos4')
+	}
+	if w.uses_interp_isnil || w.auto_str_needs_isnil() {
+		w.fn_by_name('isnil')
+	}
+	if w.auto_str_needs_str_intp() {
 		w.fn_by_name('str_intp')
+		w.mark_by_sym_name('StrIntpData')
+		w.mark_by_sym_name('StrIntpMem')
 	}
 	if w.uses_channel {
 		w.fn_by_name('sync.new_channel_st')
@@ -3668,13 +3958,15 @@ pub fn (mut w Walker) finalize(include_panic_deps bool) {
 			w.fn_by_name('__new_array_with_default_noscan')
 			w.fn_by_name(ref_array_idx_str + '.push_noscan')
 		}
-		w.fn_by_name('str_intp')
 		w.fn_by_name('__new_array_with_default')
 		w.fn_by_name(ref_array_idx_str + '.push')
 		w.fn_by_name(string_idx_str + '.substr')
 		w.fn_by_name('v_fixed_index')
-		w.mark_by_sym_name('StrIntpData')
-		w.mark_by_sym_name('StrIntpMem')
+		if w.uses_asserts || w.uses_debugger || w.uses_interp {
+			w.fn_by_name('str_intp')
+			w.mark_by_sym_name('StrIntpData')
+			w.mark_by_sym_name('StrIntpMem')
+		}
 	}
 	if w.uses_eq {
 		w.fn_by_name('fast_string_eq')

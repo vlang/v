@@ -3367,7 +3367,8 @@ fn (mut g Gen) expr_with_tmp_var(expr ast.Expr, expr_typ ast.Type, ret_typ ast.T
 		g.write('${tmp_styp} ${tmp_var} = ')
 		g.gen_option_error(error_target_type, expr)
 		g.writeln(';')
-	} else if expr is ast.Ident && expr_typ == ast.error_type {
+	} else if expr is ast.Ident && expr_typ == ast.error_type
+		&& !(unwrapped_ret_typ.has_flag(.option) && unwrapped_ret_typ.idx() == ast.error_type_idx) {
 		g.writeln('${g.styp(unwrapped_ret_typ)} ${tmp_var} = {.state=2, .err=${expr.name}};')
 	} else {
 		mut simple_assign := false
@@ -10935,9 +10936,7 @@ fn (mut g Gen) write_init_function() {
 		g.export_funcs << '_vinit_caller'
 		g.writeln('void _vinit_caller() {')
 		g.writeln('\tstatic bool once = false; if (once) {return;} once = true;')
-		if g.pref.os == .windows {
-			g.gen_windows_shared_library_boehm_init()
-		}
+		g.gen_shared_library_boehm_init()
 		g.writeln('\t_vinit(0,0);')
 		g.writeln('}')
 

@@ -44,7 +44,7 @@ fn test_parse_response() {
 	assert x.status_code == 200
 	assert x.status_msg == 'OK'
 	assert x.header.contains(.content_length)
-	assert x.header.get(.content_length)! == '3'
+	assert x.header.get(.content_length)? == '3'
 	assert x.body == 'Foo'
 }
 
@@ -56,7 +56,7 @@ fn test_parse_response_with_cookies() {
 	assert x.status_code == 200
 	assert x.status_msg == 'OK'
 	assert x.header.contains(.content_length)
-	assert x.header.get(.content_length)! == '3'
+	assert x.header.get(.content_length)? == '3'
 	assert x.body == 'Foo'
 	response_cookie := x.cookies()
 	assert response_cookie[0].str() == 'id=${cookie_id}'
@@ -69,7 +69,7 @@ fn test_parse_response_with_cookies() {
 	assert x.status_code == 200
 	assert x.status_msg == 'OK'
 	assert x.header.contains(.content_length)
-	assert x.header.get(.content_length)! == '3'
+	assert x.header.get(.content_length)? == '3'
 	assert x.body == 'Foo'
 	response_cookie_base64 := x.cookies()
 	assert response_cookie_base64[0].str().split(';')[0] == 'enctoken=${cookie_base64}'

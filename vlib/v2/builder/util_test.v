@@ -99,6 +99,20 @@ fn test_flag_helpers_expand_when_first_existing() {
 	assert none_flag == ''
 }
 
+fn test_split_compile_and_link_flags_moves_c_sources_to_link_step() {
+	compile_flags, link_flags :=
+		split_compile_and_link_flags('-I /tmp/include -DMYFLAG thirdparty/sqlite/sqlite3.c -L/tmp/lib -lsqlite3 foo.o')
+	assert compile_flags == '-I /tmp/include -DMYFLAG'
+	assert link_flags == 'thirdparty/sqlite/sqlite3.c -L/tmp/lib -lsqlite3 foo.o'
+}
+
+fn test_cflags_need_objc_mode_only_for_objc_inputs() {
+	assert cflags_need_objc_mode('-framework Cocoa')
+	assert cflags_need_objc_mode('/tmp/clipboard_darwin.m -framework Foundation')
+	assert !cflags_need_objc_mode('-I /tmp/include -lssl -lcrypto /tmp/sqlite3.c')
+	assert !cflags_need_objc_mode('-I /tmp/project.m/include')
+}
+
 fn test_file_has_incompatible_os_suffix_windows() {
 	assert pref.file_has_incompatible_os_suffix('time_solaris.c.v', 'windows')
 	assert pref.file_has_incompatible_os_suffix('time_freebsd.c.v', 'windows')
