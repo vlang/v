@@ -371,6 +371,36 @@ fn test_macos_2048_build_does_not_force_deployment_target() {
 	assert !flags_output.contains('-mmacosx-version-min=')
 }
 
+fn test_vlib_import_does_not_match_user_project_dir() {
+	// Regression for vlang/v#27151: when V is invoked from inside another
+	// project that happens to have a `src/sync/` directory (e.g. coreutils),
+	// a vlib file that imports `sync` (via the `shared` keyword in
+	// `v.ast.Table`) must still resolve to vlib's sync module, not to the
+	// user's foreign `main` files.
+	project_dir := os.join_path(test_path, 'foreign_sync_27151')
+	os.rmdir_all(project_dir) or {}
+	os.mkdir_all(os.join_path(project_dir, 'src', 'sync'))!
+	os.mkdir_all(os.join_path(project_dir, 'src', 'app'))!
+	defer {
+		os.chdir(test_path) or {}
+		os.rmdir_all(project_dir) or {}
+	}
+	os.write_file(os.join_path(project_dir, 'v.mod'),
+		"Module {\n\tname: 'foreign_sync_27151'\n\tversion: '0.0.1'\n\tdescription: ''\n\tlicense: 'MIT'\n\tdependencies: []\n}\n")!
+	// `src/sync/sync.v` has no `module` declaration, so V defaults it to
+	// `module main`. It must not be picked up as the `sync` module when
+	// a vlib file (here, `v.ast`, which uses `shared`) imports `sync`.
+	os.write_file(os.join_path(project_dir, 'src', 'sync', 'sync.v'),
+		'import os\n\nfn run() {\n\tprintln(os.args)\n}\n')!
+	os.write_file(os.join_path(project_dir, 'src', 'app', 'app_test.v'),
+		'import v.ast\n\nfn test_vast_table_loads() {\n\t_ := ast.new_table()\n}\n')!
+	os.chdir(project_dir)!
+
+	res := os.execute('${os.quoted_path(vexe)} -check src/app/app_test.v')
+	assert res.exit_code == 0, res.output
+	assert !res.output.contains('bad module definition'), res.output
+}
+
 fn test_macos_arch_flag_is_forwarded_to_c_compiler() {
 	$if !macos {
 		return
