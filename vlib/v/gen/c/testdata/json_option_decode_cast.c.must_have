@@ -1,0 +1,3 @@
+builtin___option_ok(&(int[]){ 0 }, (_option*)&res, sizeof(int));
+Array_main__Bar[]){ builtin____new_array(0, 0, sizeof(main__Bar)) }, (_option*)&res
+builtin__array_free((array*)&res.data);

@@ -1,0 +1,23 @@
+module main
+
+import json
+
+struct Bar {
+	name string
+}
+
+struct Foo {
+	a ?int
+	b ?[]Bar
+}
+
+fn main() {
+	src := '{"a": 1, "b": [{"name": "x"}]}'
+	f := json.decode(Foo, src) or { return }
+	if v := f.a {
+		println(v)
+	}
+	if v := f.b {
+		println(v)
+	}
+}
