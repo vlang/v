@@ -1686,7 +1686,7 @@ fn (mut g Gen) emit_weak_generic_specializations_from_non_emit_files() {
 	old_file := g.cur_file_name
 	old_module := g.cur_module
 	old_import_modules := g.cur_import_modules.clone()
-	old_active_generic_types := g.active_generic_types.clone()
+	old_active_generic_types := g.active_generic_types
 	mut needed_names := g.called_fn_names.clone()
 	mut scanned := map[string]bool{}
 	for _ in 0 .. 8 {
@@ -1715,10 +1715,10 @@ fn (mut g Gen) emit_weak_generic_specializations_from_non_emit_files() {
 			break
 		}
 	}
-	g.active_generic_types = old_active_generic_types.clone()
+	g.active_generic_types = old_active_generic_types
 	g.cur_file_name = old_file
 	g.cur_module = old_module
-	g.cur_import_modules = old_import_modules.clone()
+	g.cur_import_modules = old_import_modules
 }
 
 fn (mut g Gen) scan_weak_generic_specializations_from_non_emit_files(mut needed_names map[string]bool, mut scanned map[string]bool) {
@@ -1821,22 +1821,21 @@ fn (mut g Gen) scan_weak_specialization_body(node &ast.FnDecl, fn_name string, g
 	g.generic_scan_called_names = map[string]bool{}
 	g.seed_fn_scan_runtime_types(*node, fn_name)
 	g.scan_fn_body_for_generic_types(*node, fn_name)
-	scan_called_names := g.generic_scan_called_names.clone()
+	for name, _ in g.generic_scan_called_names {
+		needed_names[name] = true
+	}
 	g.cur_fn_name = prev_fn_name
 	g.cur_fn_c_name = prev_fn_c_name
 	g.cur_fn_scope = prev_fn_scope
-	g.active_generic_types = prev_active_generic_types.clone()
-	g.runtime_local_types = prev_runtime_local_types.clone()
-	g.runtime_decl_types = prev_runtime_decl_types.clone()
-	g.not_local_var_cache = prev_not_local_var_cache.clone()
-	g.is_module_ident_cache = prev_is_module_ident_cache.clone()
-	g.resolved_module_names = prev_resolved_module_names.clone()
-	g.cur_fn_generic_params = prev_cur_fn_generic_params.clone()
+	g.active_generic_types = prev_active_generic_types
+	g.runtime_local_types = prev_runtime_local_types
+	g.runtime_decl_types = prev_runtime_decl_types
+	g.not_local_var_cache = prev_not_local_var_cache
+	g.is_module_ident_cache = prev_is_module_ident_cache
+	g.resolved_module_names = prev_resolved_module_names
+	g.cur_fn_generic_params = prev_cur_fn_generic_params
 	g.collect_generic_scan_calls = prev_collect_generic_scan_calls
-	g.generic_scan_called_names = prev_generic_scan_called_names.clone()
-	for name, _ in scan_called_names {
-		needed_names[name] = true
-	}
+	g.generic_scan_called_names = prev_generic_scan_called_names
 	g.add_late_weak_generic_names_since(late_before, mut needed_names)
 }
 

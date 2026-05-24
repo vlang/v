@@ -2190,13 +2190,13 @@ fn (mut g Gen) discover_nested_generic_specs() {
 					g.cur_fn_name = prev_fn_name
 					g.cur_fn_c_name = prev_fn_c_name
 					g.cur_fn_scope = prev_fn_scope
-					g.active_generic_types = prev_active_generic_types.clone()
-					g.runtime_local_types = prev_runtime_local_types.clone()
-					g.runtime_decl_types = prev_runtime_decl_types.clone()
-					g.not_local_var_cache = prev_not_local_var_cache.clone()
-					g.is_module_ident_cache = prev_is_module_ident_cache.clone()
-					g.resolved_module_names = prev_resolved_module_names.clone()
-					g.cur_fn_generic_params = prev_cur_fn_generic_params.clone()
+					g.active_generic_types = prev_active_generic_types
+					g.runtime_local_types = prev_runtime_local_types
+					g.runtime_decl_types = prev_runtime_decl_types
+					g.not_local_var_cache = prev_not_local_var_cache
+					g.is_module_ident_cache = prev_is_module_ident_cache
+					g.resolved_module_names = prev_resolved_module_names
+					g.cur_fn_generic_params = prev_cur_fn_generic_params
 				}
 			}
 		}
@@ -2262,13 +2262,13 @@ fn (mut g Gen) discover_direct_generic_call_specs() {
 					g.cur_fn_name = prev_fn_name
 					g.cur_fn_c_name = prev_fn_c_name
 					g.cur_fn_scope = prev_fn_scope
-					g.active_generic_types = prev_active_generic_types.clone()
-					g.runtime_local_types = prev_runtime_local_types.clone()
-					g.runtime_decl_types = prev_runtime_decl_types.clone()
-					g.not_local_var_cache = prev_not_local_var_cache.clone()
-					g.is_module_ident_cache = prev_is_module_ident_cache.clone()
-					g.resolved_module_names = prev_resolved_module_names.clone()
-					g.cur_fn_generic_params = prev_cur_fn_generic_params.clone()
+					g.active_generic_types = prev_active_generic_types
+					g.runtime_local_types = prev_runtime_local_types
+					g.runtime_decl_types = prev_runtime_decl_types
+					g.not_local_var_cache = prev_not_local_var_cache
+					g.is_module_ident_cache = prev_is_module_ident_cache
+					g.resolved_module_names = prev_resolved_module_names
+					g.cur_fn_generic_params = prev_cur_fn_generic_params
 				}
 				else {}
 			}

@@ -2791,6 +2791,22 @@ fn (mut g Gen) expr(node ast.Expr) {
 					}
 				}
 			}
+			// Transformer-generated or-block temps (`_or_t*`) can end up with a
+			// field-name mismatch when the checker resolved the call to the wrong
+			// overload (e.g. `header.get` typed as `http.get`). Trust the temp's
+			// actual C type and rewrite the field name accordingly.
+			if lhs_expr is ast.Ident && lhs_expr.name.starts_with('_or_t') {
+				if rhs_name == 'is_error' && lhs_type.starts_with('_option_') {
+					g.sb.write_string(lhs_expr.name)
+					g.sb.write_string('.state')
+					return
+				}
+				if rhs_name == 'state' && lhs_type.starts_with('_result_') {
+					g.sb.write_string(lhs_expr.name)
+					g.sb.write_string('.is_error')
+					return
+				}
+			}
 			if variant_field := g.sum_data_variant_selector_field(sel) {
 				g.expr(lhs_expr)
 				g.sb.write_string('.${variant_field}')

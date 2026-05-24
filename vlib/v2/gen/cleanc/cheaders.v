@@ -881,6 +881,12 @@ fn (mut g Gen) emit_map_str_functions() {
 		if '${name}_str' in g.fn_return_types {
 			continue
 		}
+		// Skip map aliases whose typedef wasn't emitted (late-registered aliases
+		// that reference unresolved short-name types). Without a typedef, the
+		// generated helper would reference an undeclared type.
+		if 'alias_${name}' !in g.emitted_types {
+			continue
+		}
 		// Parse key and value types from Map_K_V name
 		without_prefix := name.all_after('Map_')
 		key_type, value_type := g.parse_map_kv_types(without_prefix)
@@ -1053,6 +1059,10 @@ fn (mut g Gen) emit_map_eq_functions() {
 	mut map_names := g.map_aliases.keys()
 	map_names.sort()
 	for name in map_names {
+		// Skip late-registered map aliases without a typedef (see emit_map_str_functions).
+		if 'alias_${name}' !in g.emitted_types {
+			continue
+		}
 		without_prefix := name.all_after('Map_')
 		key_type, value_type := g.parse_map_kv_types(without_prefix)
 		if key_type == '' || value_type == '' {
