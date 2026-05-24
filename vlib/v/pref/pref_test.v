@@ -304,16 +304,12 @@ fn test_cross_compile_infers_android_arch_from_vcross_compiler_name() {
 	}
 }
 
-fn test_musl_defaults_to_no_gc() {
+fn test_musl_still_defaults_to_boehm_gc() {
+	// Regression test for https://github.com/vlang/v/issues/27090 .
+	// Alpine/musl programs must keep the boehm GC by default; otherwise
+	// long-running allocations grow without bound (see the issue's repro).
 	target := os.join_path(vroot, 'examples', 'hello_world.v')
 	prefs, _ := pref.parse_args_and_show_errors([], ['', '-musl', target], false)
-	assert prefs.is_musl
-	assert prefs.gc_mode == .no_gc
-}
-
-fn test_musl_keeps_explicit_gc_selection() {
-	target := os.join_path(vroot, 'examples', 'hello_world.v')
-	prefs, _ := pref.parse_args_and_show_errors([], ['', '-musl', '-gc', 'boehm', target], false)
 	assert prefs.is_musl
 	assert prefs.gc_mode == .boehm_full_opt
 }
