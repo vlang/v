@@ -367,7 +367,13 @@ pub fn (mut f Fmt) struct_init(node ast.StructInit) {
 				if !single_line_fields {
 					f.write(' '.repeat(value_align.max_len(init_field.pos.line_nr) - init_field.name.len))
 				}
+				if single_line_fields {
+					// Keep nested struct inits inline when the outer struct
+					// init is being formatted on a single line.
+					f.single_line_fields = true
+				}
 				f.expr(init_field.expr)
+				f.single_line_fields = false
 				if init_field.end_comments.len > 0 {
 					f.write(' '.repeat(comment_align.max_len(init_field.pos.line_nr) -
 						init_field.expr.str().len + 1))

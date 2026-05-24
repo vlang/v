@@ -28,9 +28,7 @@ fn test_short_struct_init_multi_fields_in_for_in_array() {
 
 fn test_mixed_struct_init_styles_in_for_in_array() {
 	mut got := []int{}
-	for x in [Int{}, Int{5}, Int{
-		val: 6
-	}] {
+	for x in [Int{}, Int{5}, Int{ val: 6 }] {
 		got << x.val
 	}
 	assert got == [0, 5, 6]
