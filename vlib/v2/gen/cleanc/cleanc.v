@@ -1722,16 +1722,16 @@ fn (mut g Gen) emit_weak_generic_specializations_from_non_emit_files() {
 		}
 		late_before := g.late_weak_generic_name_set()
 		$if trace_weak ? {
-			eprintln('[weak] emit-iter ${j} late_before=${late_before.len}')
+			eprintln('[weak] emit-iter ${j} late_before=${late_before.len} after_late_set rss_mb=${g.process_rss_mb()}')
 		}
 		mut emitted_decls := map[string]bool{}
 		g.emit_weak_generic_specialization_decls(needed_names, mut emitted_decls)
 		$if trace_weak ? {
-			eprintln('[weak] emit-iter ${j} after decls emitted=${emitted_decls.len} sb=${g.sb.len}')
+			eprintln('[weak] emit-iter ${j} after decls emitted=${emitted_decls.len} sb=${g.sb.len} rss_mb=${g.process_rss_mb()}')
 		}
 		g.emit_weak_generic_specialization_bodies(needed_names, mut emitted_bodies)
 		$if trace_weak ? {
-			eprintln('[weak] emit-iter ${j} after bodies emitted=${emitted_bodies.len} sb=${g.sb.len} late_total=${g.late_generic_spec_count()}')
+			eprintln('[weak] emit-iter ${j} after bodies emitted=${emitted_bodies.len} sb=${g.sb.len} late_total=${g.late_generic_spec_count()} rss_mb=${g.process_rss_mb()}')
 		}
 		before_needed := needed_names.len
 		g.add_late_weak_generic_names_since(late_before, mut needed_names)
@@ -1739,7 +1739,7 @@ fn (mut g Gen) emit_weak_generic_specializations_from_non_emit_files() {
 			before_scan := needed_names.len
 			g.scan_weak_generic_specializations_from_non_emit_files(mut needed_names, mut scanned)
 			$if trace_weak ? {
-				eprintln('[weak]   inner scan ${i} needed=${needed_names.len} scanned=${scanned.len} sb=${g.sb.len} late_total=${g.late_generic_spec_count()}')
+				eprintln('[weak]   inner scan ${i} needed=${needed_names.len} scanned=${scanned.len} sb=${g.sb.len} late_total=${g.late_generic_spec_count()} rss_mb=${g.process_rss_mb()}')
 			}
 			if needed_names.len == before_scan {
 				break
@@ -1781,13 +1781,32 @@ fn (mut g Gen) scan_weak_generic_specializations_from_non_emit_files(mut needed_
 }
 
 fn (mut g Gen) scan_weak_generic_fn_specializations(node &ast.FnDecl, mut needed_names map[string]bool, mut scanned map[string]bool) {
-	for spec in g.weak_generic_fn_specializations_for_names(node, needed_names) {
-		scan_key := '${g.cur_module}.${node.name}:${spec.name}'
-		if scan_key in scanned {
-			continue
+	$if trace_weak ? {
+		t_before := g.process_rss_mb()
+		specs_before_len := needed_names.len
+		mut scan_count := 0
+		for spec in g.weak_generic_fn_specializations_for_names(node, needed_names) {
+			scan_key := '${g.cur_module}.${node.name}:${spec.name}'
+			if scan_key in scanned {
+				continue
+			}
+			scanned[scan_key] = true
+			scan_count++
+			g.scan_weak_specialization_body(node, spec.name, spec.generic_types, mut needed_names)
 		}
-		scanned[scan_key] = true
-		g.scan_weak_specialization_body(node, spec.name, spec.generic_types, mut needed_names)
+		t_after := g.process_rss_mb()
+		if t_after - t_before > 50 || scan_count > 5 {
+			eprintln('[weak]   scan_fn ${g.cur_module}.${node.name} new_scans=${scan_count} rss_mb=${t_before}->${t_after} needed=${specs_before_len}->${needed_names.len}')
+		}
+	} $else {
+		for spec in g.weak_generic_fn_specializations_for_names(node, needed_names) {
+			scan_key := '${g.cur_module}.${node.name}:${spec.name}'
+			if scan_key in scanned {
+				continue
+			}
+			scanned[scan_key] = true
+			g.scan_weak_specialization_body(node, spec.name, spec.generic_types, mut needed_names)
+		}
 	}
 }
 
@@ -2085,6 +2104,27 @@ fn (mut g Gen) generic_types_from_specialized_fn_name(node ast.FnDecl, fn_name s
 	return generic_types
 }
 
+fn (g &Gen) process_rss_mb() i64 {
+	$if linux {
+		data := os.read_file('/proc/self/statm') or { return 0 }
+		parts := data.split(' ')
+		if parts.len < 2 {
+			return 0
+		}
+		pages := parts[1].i64()
+		page_size := i64(C.sysconf(C.PAGESIZE) or { 4096 })
+		return (pages * page_size) / (1024 * 1024)
+	}
+	$if macos {
+		out := os.execute('ps -o rss= -p ${os.getpid()}')
+		if out.exit_code != 0 {
+			return 0
+		}
+		return out.output.trim_space().i64() / 1024
+	}
+	return 0
+}
+
 fn (mut g Gen) split_specialization_suffix(suffix string, parts int) ?[]string {
 	if parts <= 0 || suffix == '' {
 		return none
@@ -2133,6 +2173,7 @@ fn (mut g Gen) emit_weak_generic_fn_specializations(node &ast.FnDecl, emit_body 
 		$if trace_weak ? {
 			before := g.sb.len
 			if emit_body {
+				eprintln('[weak]       SPEC begin ${spec.name} sb=${g.sb.len}')
 				g.gen_weak_fn_decl_with_name_ptr(node, spec.name)
 				emitted[spec.name] = true
 				delta := g.sb.len - before
