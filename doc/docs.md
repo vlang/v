@@ -8207,6 +8207,7 @@ v -os ios -gc none -o build/main.c .
 sdk="$(xcrun --sdk iphoneos --show-sdk-path)"
 xcrun --sdk iphoneos clang \
     -x objective-c \
+    -fobjc-arc \
     -arch arm64 \
     -isysroot "$sdk" \
     -miphoneos-version-min=15.0 \
