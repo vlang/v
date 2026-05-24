@@ -5,14 +5,16 @@
 // declaration without breaking C compilation. The declaration is guarded by
 // `#ifndef`, so the C preprocessor skips it whenever the symbol is a macro.
 
-#flag -lc
-
+@[c_extern]
 fn C.WIFSTOPPED(i32) bool
 
+@[c_extern]
 fn C.WCOREDUMP(i32) bool
 
+@[c_extern]
 fn C.WIFCONTINUED(i32) bool
 
+@[c_extern]
 fn C.WSTOPSIG(i32) int
 
 fn main() {
