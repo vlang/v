@@ -1250,3 +1250,119 @@ fn main() {
 	exit_code, output := run_ownership_check(code)
 	assert exit_code == 0, 'plain match should not be affected: ${output}'
 }
+
+// === Closure capture ownership tests ===
+// `fn [x] () { ... }` is V\'s explicit Go-style capture list. Under -d
+// ownership, a plain `[x]` capture of an owned var MOVES the var into the
+// closure (Rust\'s `move ||` semantics). `[mut x]` and `[&x]` are borrows.
+// Non-owned vars stay on V\'s copy-into-closure path.
+
+fn test_closure_capture_by_value_moves_owned() {
+	code := '
+struct Conn implements Owned {
+mut:
+	socket int
+}
+
+fn main() {
+	c := Conn{socket: 7}
+	cb := fn [c] () {
+		println(c.socket)
+	}
+	cb()
+	println(c.socket)
+}
+'
+	exit_code, output := run_ownership_check(code)
+	assert exit_code != 0, 'use after capture should fail'
+	assert output.contains('use of moved value: `c`'), 'got: ${output}'
+	assert output.contains('moved to `closure`'), 'should name the closure as the move target, got: ${output}'
+	assert output.contains('has type `Conn`'), 'got: ${output}'
+}
+
+fn test_closure_capture_no_outer_use_ok() {
+	// If the captured var is never used after the closure is constructed,
+	// the move is fine — no diagnostic should fire.
+	code := '
+struct Conn implements Owned {
+mut:
+	socket int
+}
+
+fn main() {
+	c := Conn{socket: 7}
+	cb := fn [c] () {
+		println(c.socket)
+	}
+	cb()
+}
+'
+	exit_code, output := run_ownership_check(code)
+	assert exit_code == 0, 'capture without outer reuse should compile: ${output}'
+}
+
+fn test_closure_capture_plain_struct_unaffected() {
+	// A non-Owned struct goes through V\'s normal copy-into-closure path —
+	// the outer var stays usable after the closure is constructed.
+	code := '
+struct Plain {
+mut:
+	x int
+}
+
+fn main() {
+	p := Plain{x: 1}
+	cb := fn [p] () {
+		println(p.x)
+	}
+	cb()
+	println(p.x)
+}
+'
+	exit_code, output := run_ownership_check(code)
+	assert exit_code == 0, 'non-Owned capture must not be affected: ${output}'
+}
+
+fn test_closure_capture_string_unaffected() {
+	// Plain strings aren\'t owned-tracked, so capturing them stays
+	// copy-in. Only `.to_owned()`-upgraded strings opt in.
+	code := "
+fn main() {
+	s := 'hello'
+	cb := fn [s] () {
+		println(s)
+	}
+	cb()
+	println(s)
+}
+"
+	exit_code, output := run_ownership_check(code)
+	assert exit_code == 0, 'plain string capture must not be affected: ${output}'
+}
+
+fn test_closure_capture_owned_then_consume_outside_fails() {
+	// Once captured by value, even simple consumption (passing to a
+	// consuming fn) outside the closure must fail.
+	code := '
+struct Conn implements Owned {
+mut:
+	socket int
+}
+
+fn take(c Conn) {
+	_ = c
+}
+
+fn main() {
+	c := Conn{socket: 7}
+	cb := fn [c] () {
+		println(c.socket)
+	}
+	cb()
+	take(c)
+}
+'
+	exit_code, output := run_ownership_check(code)
+	assert exit_code != 0, 'consume after capture should fail'
+	assert output.contains('use of moved value: `c`'), 'got: ${output}'
+}

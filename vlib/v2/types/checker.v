@@ -2784,6 +2784,12 @@ fn (mut c Checker) expr_impl(expr ast.Expr) Type {
 			return Type(void_)
 		}
 		ast.FnLiteral {
+			$if ownership ? {
+				// Captured owned vars are MOVED into the closure (Rust-style
+				// `move ||`). `mut x` / `&x` captures are borrows. See
+				// `ownership_check_closure_captures`.
+				c.ownership_check_closure_captures(expr)
+			}
 			return c.fn_type(expr.typ, FnTypeAttribute.empty)
 		}
 		ast.GenericArgs {

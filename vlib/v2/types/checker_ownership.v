@@ -1111,3 +1111,51 @@ fn (mut c Checker) ownership_check_method_call(expr ast.CallExpr) {
 		type_name:  type_name
 	}
 }
+
+// ownership_check_closure_captures fires when a closure literal (`fn [x,
+// mut y] () { ... }`) is constructed. The Go-style explicit capture list
+// is interpreted as:
+//
+//   * plain `[x]`         — capture by value; MOVES `x` into the closure
+//                           (matches Rust's `move ||` semantics for the
+//                           opted-in Owned types we track)
+//   * `[mut x]`           — mutable borrow, no move
+//   * `[&x]`              — immutable borrow, no move
+//
+// Only owned-tracked locals are affected; plain V values keep their
+// existing copy-into-closure semantics.
+fn (mut c Checker) ownership_check_closure_captures(expr ast.FnLiteral) {
+	for cv in expr.captured_vars {
+		// `mut x` and `&x` are borrows — leave the outer var intact.
+		if cv is ast.ModifierExpr {
+			continue
+		}
+		if cv is ast.PrefixExpr {
+			continue
+		}
+		name := ownership_expr_ident_name(cv)
+		if name.len == 0 || name !in c.owned_vars {
+			continue
+		}
+		if name in c.borrowed_vars {
+			borrows := c.borrowed_vars[name]
+			if borrows.len > 0 {
+				borrow := borrows[0]
+				file := c.file_set.file(expr.pos)
+				borrow_file := c.file_set.file(borrow.pos)
+				borrow_position := borrow_file.position(borrow.pos)
+				errors.error('cannot move `${name}` into closure: it is borrowed', errors.details(file,
+					file.position(expr.pos), 2), .error, file.position(expr.pos))
+				eprintln('  --> `${name}` is borrowed by `${borrow.borrower}` at ${borrow_position}')
+				exit(1)
+			}
+		}
+		type_name := c.owned_var_types[name] or { 'string' }
+		c.moved_vars[name] = MovedVar{
+			moved_to:      'closure'
+			move_pos:      expr.pos
+			suggest_clone: false
+			type_name:     type_name
+		}
+	}
+}
