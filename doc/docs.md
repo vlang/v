@@ -234,6 +234,7 @@ The `v new --web` template uses `veb`, V's web framework.
     * [Global Variables](#global-variables)
     * [Static Variables](#static-variables)
     * [Cross compilation](#cross-compilation)
+    * [Compiling for iOS](#compiling-for-ios)
     * [Debugging](#debugging)
         * [C Backend binaries Default](#c-backend-binaries-default)
         * [Native Backend binaries](#native-backend-binaries)
@@ -8166,6 +8167,79 @@ v -os linux -cc cosmocc .
 
 You will need to install Clang, LLD linker, and download a zip file with
 libraries and include files for Windows and Linux. V will provide you with a link.
+
+## Compiling for iOS
+
+V can target iOS when run on macOS. The Xcode command line tools must be
+installed (`xcode-select --install`); V uses `xcrun` to locate the iOS SDK
+and configures the C compiler automatically.
+
+To build for a real device (arm64):
+
+```shell
+v -os ios hello.v
+```
+
+To build for the iOS Simulator (x86_64 / arm64):
+
+```shell
+v -os ios -simulator hello.v
+```
+
+Under the hood, V invokes `xcrun --sdk iphoneos --show-sdk-path` (or
+`iphonesimulator` with `-simulator`), passes `-isysroot` and the appropriate
+`-arch` flags to clang, and adds `-miphoneos-version-min` /
+`-miphonesimulator-version-min` plus `-fobjc-arc` so that the generated C is
+compiled as Objective-C.
+
+The output is a Mach-O executable — enough to run from a jailbroken device or
+via a debugger, but to deploy to a stock iPhone you also need to bundle the
+binary into an `.app`, code-sign it, and install it through Apple's tooling.
+A typical workflow:
+
+```shell
+# 1. Generate C from V (using the iOS SDK paths V sets up)
+v -gc none -o build/main.c .
+
+# 2. Compile for the device with Xcode's clang and link the frameworks
+#    your app uses (UIKit, Foundation, AVFoundation, ...)
+sdk="$(xcrun --sdk iphoneos --show-sdk-path)"
+xcrun --sdk iphoneos clang \
+    -x objective-c \
+    -arch arm64 \
+    -isysroot "$sdk" \
+    -miphoneos-version-min=15.0 \
+    -framework Foundation \
+    -framework UIKit \
+    -lobjc \
+    build/main.c \
+    -o build/MyApp.app/MyApp
+
+# 3. Drop an Info.plist next to the binary, then code-sign with your
+#    development identity (see `security find-identity -v -p codesigning`)
+codesign --force --sign "Apple Development: you@example.com (TEAMID)" \
+    --entitlements entitlements.plist \
+    build/MyApp.app
+
+# 4. Install and launch on a connected device
+udid="$(xcrun devicectl list devices | awk '/connected/ {print $NF; exit}')"
+xcrun devicectl device install app    --device "$udid" build/MyApp.app
+xcrun devicectl device process launch --device "$udid" com.example.myapp
+```
+
+The device must be unlocked, trusted, and have Developer Mode enabled
+(`Settings → Privacy & Security → Developer Mode` on iOS 16+). A free
+Apple ID added in Xcode → Settings → Accounts is sufficient for signing
+development builds.
+
+Inside V code you can guard iOS-specific paths with `$if ios { ... }`, and
+add framework dependencies the same way you would with any Objective-C
+library, e.g.:
+
+```v ignore
+#flag -framework UIKit
+#flag -framework Foundation
+```
 
 ## Debugging
 
