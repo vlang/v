@@ -8,10 +8,8 @@ import time
 #include <sys/sendfile.h>
 #include <sys/stat.h>
 #include <netinet/tcp.h>
-#include <sys/poll.h>
 
 const epoll_wait_timeout_ms = 100
-const sendfile_poll_timeout_ms = 30_000
 const status_408_response = 'HTTP/1.1 408 Request Timeout\r\nContent-Type: text/plain\r\nContent-Length: 19\r\nConnection: close\r\n\r\n408 Request Timeout'.bytes()
 
 fn C.accept4(sockfd i32, addr &net.Addr, addrlen &u32, flags i32) i32
@@ -25,15 +23,6 @@ fn C.epoll_wait(__epfd i32, __events &C.epoll_event, __maxevents i32, __timeout 
 fn C.sendfile(out_fd i32, in_fd i32, offset &i64, count usize) i32
 
 fn C.fstat(fd i32, buf &C.stat) i32
-
-struct C.pollfd {
-mut:
-	fd      i32
-	events  i16
-	revents i16
-}
-
-fn C.poll(fds &C.pollfd, nfds u64, timeout i32) i32
 
 @[typedef]
 union C.epoll_data_t {
@@ -109,32 +98,31 @@ fn set_blocking(fd int, blocking bool) {
 	}
 }
 
-// wait_socket_writable blocks until the socket becomes writable or the timeout elapses.
-// Returns true if the socket is writable, false on timeout or unrecoverable error.
-fn wait_socket_writable(fd int, timeout_ms int) bool {
-	mut pfd := C.pollfd{
-		fd:     i32(fd)
-		events: i16(C.POLLOUT)
-	}
-	for {
-		ret := C.poll(&pfd, 1, timeout_ms)
-		if ret > 0 {
-			if pfd.revents & i16(C.POLLOUT) != 0 {
-				return true
-			}
-			// POLLHUP / POLLERR / POLLNVAL: peer closed or fd invalid.
-			return false
-		}
-		if ret == 0 {
-			// Timed out.
-			return false
-		}
-		if C.errno == C.EINTR {
-			continue
-		}
-		return false
-	}
-	return false
+// ClientWriteState carries the pending response bytes plus optional file data
+// for a connection that could not be drained in a single non-blocking write.
+// It lives in `client_write_states` until both the in-memory content and the
+// file body have been fully transferred. While a state exists, the connection
+// is also armed for EPOLLOUT so process_events can resume the write without
+// blocking the worker.
+struct ClientWriteState {
+mut:
+	content        []u8
+	content_pos    int
+	content_owned  bool
+	file_fd        int = -1
+	file_len       i64
+	file_pos       i64
+	should_close   bool
+	request_arena  voidptr
+	request_active bool
+	start_ns       i64
+}
+
+// drain_status describes the outcome of one try_drain_write() pass.
+enum DrainStatus {
+	done    // all bytes (content + file) have been sent
+	blocked // the kernel send buffer is full; come back on EPOLLOUT
+	failed  // unrecoverable error or peer closed mid-transfer
 }
 
 fn close_socket(fd int) bool {
@@ -244,7 +232,31 @@ fn handle_accept_loop(epoll_fd int, listen_fd int, mut client_fds map[int]bool) 
 	}
 }
 
-fn handle_client_closure(epoll_fd int, client_fd int, mut client_fds map[int]bool, mut client_buffers map[int][]u8, mut client_read_starts map[int]i64, mut closing_client_fds map[int]bool) {
+fn free_write_state(server &Server, client_fd int, mut client_write_states map[int]&ClientWriteState) {
+	mut state := client_write_states[client_fd] or { return }
+	if state.content_owned && state.content.cap > 0 {
+		unsafe { state.content.free() }
+	}
+	state.content = []u8{}
+	if state.file_fd != -1 {
+		C.close(state.file_fd)
+		state.file_fd = -1
+	}
+	$if prealloc {
+		if state.request_arena != unsafe { nil } {
+			unsafe { prealloc_scope_free_after(state.request_arena) }
+		}
+	}
+	state.request_arena = unsafe { nil }
+	if state.request_active {
+		server.end_request()
+		state.request_active = false
+	}
+	client_write_states.delete(client_fd)
+	unsafe { free(state) }
+}
+
+fn handle_client_closure(server &Server, epoll_fd int, client_fd int, mut client_fds map[int]bool, mut client_buffers map[int][]u8, mut client_read_starts map[int]i64, mut closing_client_fds map[int]bool, mut client_write_states map[int]&ClientWriteState) {
 	// Never close the listening socket here
 	if client_fd == 0 {
 		return
@@ -257,18 +269,19 @@ fn handle_client_closure(epoll_fd int, client_fd int, mut client_fds map[int]boo
 	client_buffers.delete(client_fd)
 	client_read_starts.delete(client_fd)
 	closing_client_fds.delete(client_fd)
+	free_write_state(server, client_fd, mut client_write_states)
 	remove_fd_from_epoll(epoll_fd, client_fd)
 	close_socket(client_fd)
 }
 
-fn close_worker_clients(epoll_fd int, mut client_fds map[int]bool, mut client_buffers map[int][]u8, mut client_read_starts map[int]i64, mut closing_client_fds map[int]bool) {
+fn close_worker_clients(server &Server, epoll_fd int, mut client_fds map[int]bool, mut client_buffers map[int][]u8, mut client_read_starts map[int]i64, mut closing_client_fds map[int]bool, mut client_write_states map[int]&ClientWriteState) {
 	for client_fd in client_fds.keys() {
-		handle_client_closure(epoll_fd, client_fd, mut client_fds, mut client_buffers, mut
-			client_read_starts, mut closing_client_fds)
+		handle_client_closure(server, epoll_fd, client_fd, mut client_fds, mut client_buffers, mut
+			client_read_starts, mut closing_client_fds, mut client_write_states)
 	}
 }
 
-fn drain_closing_client(epoll_fd int, client_fd int, mut client_fds map[int]bool, mut client_buffers map[int][]u8, mut client_read_starts map[int]i64, mut closing_client_fds map[int]bool) {
+fn drain_closing_client(server &Server, epoll_fd int, client_fd int, mut client_fds map[int]bool, mut client_buffers map[int][]u8, mut client_read_starts map[int]i64, mut closing_client_fds map[int]bool, mut client_write_states map[int]&ClientWriteState) {
 	mut drain_buf := []u8{len: 4096}
 	for {
 		bytes_read := C.recv(client_fd, unsafe { &drain_buf[0] }, drain_buf.len, 0)
@@ -276,13 +289,13 @@ fn drain_closing_client(epoll_fd int, client_fd int, mut client_fds map[int]bool
 			if C.errno == C.EAGAIN || C.errno == C.EWOULDBLOCK {
 				return
 			}
-			handle_client_closure(epoll_fd, client_fd, mut client_fds, mut client_buffers, mut
-				client_read_starts, mut closing_client_fds)
+			handle_client_closure(server, epoll_fd, client_fd, mut client_fds, mut client_buffers, mut
+				client_read_starts, mut closing_client_fds, mut client_write_states)
 			return
 		}
 		if bytes_read == 0 {
-			handle_client_closure(epoll_fd, client_fd, mut client_fds, mut client_buffers, mut
-				client_read_starts, mut closing_client_fds)
+			handle_client_closure(server, epoll_fd, client_fd, mut client_fds, mut client_buffers, mut
+				client_read_starts, mut closing_client_fds, mut client_write_states)
 			return
 		}
 	}
@@ -296,145 +309,64 @@ fn send_terminal_response_and_drain(client_fd int, response []u8, mut client_buf
 	closing_client_fds[client_fd] = true
 }
 
-fn process_request(server &Server, epoll_fd int, client_fd int, request_buffer []u8, mut client_fds map[int]bool, mut client_buffers map[int][]u8, mut client_read_starts map[int]i64, mut closing_client_fds map[int]bool) {
-	mut request_arena := voidptr(unsafe { nil })
-	$if prealloc {
-		request_arena = unsafe { prealloc_scope_begin() }
-	}
-	client_read_starts.delete(client_fd)
-	server.begin_request()
-	defer {
-		server.end_request()
-	}
-	mut decoded_http_request := decode_http_request(request_buffer) or {
-		eprintln('Error decoding request ${err}')
-		C.send(client_fd, tiny_bad_request_response.data, tiny_bad_request_response.len,
+// try_drain_write attempts to push the remaining bytes of `state.content` and
+// (if present) `state.file_fd` to the socket in non-blocking mode. It returns
+// `.done` once all data has been transferred, `.blocked` when the kernel send
+// buffer is full (EAGAIN/EWOULDBLOCK), or `.failed` on any unrecoverable error.
+// The caller is responsible for parking the state until EPOLLOUT fires (when
+// `.blocked` is returned) and for cleaning up via `free_write_state` once
+// `.done` or `.failed` is reached.
+fn try_drain_write(client_fd int, mut state ClientWriteState) DrainStatus {
+	// 1. Drain in-memory content (response headers + possibly a body).
+	for state.content_pos < state.content.len {
+		remaining := state.content.len - state.content_pos
+		sent := C.send(client_fd, unsafe { &state.content[state.content_pos] }, remaining,
 			C.MSG_NOSIGNAL)
-		end_request_arena_current_thread(request_arena)
-		handle_client_closure(epoll_fd, client_fd, mut client_fds, mut client_buffers, mut
-			client_read_starts, mut closing_client_fds)
-		return
-	}
-	$if trace_prealloc ? {
-		unsafe { prealloc_scope_checkpoint(c'fasthttp decoded request') }
-	}
-	decoded_http_request.client_conn_fd = client_fd
-	decoded_http_request.user_data = server.user_data
-	mut response := server.request_handler(decoded_http_request) or {
-		eprintln('Error handling request ${err}')
-		C.send(client_fd, tiny_bad_request_response.data, tiny_bad_request_response.len,
-			C.MSG_NOSIGNAL)
-		end_request_arena_current_thread(request_arena)
-		handle_client_closure(epoll_fd, client_fd, mut client_fds, mut client_buffers, mut
-			client_read_starts, mut closing_client_fds)
-		return
-	}
-	$if trace_prealloc ? {
-		unsafe { prealloc_scope_checkpoint(c'fasthttp handler returned') }
-	}
-	response.attach_request_arena_if_empty(request_arena)
-	defer {
-		response.free_owned_content()
-		response.end_request_arena_current_thread()
+		if sent > 0 {
+			state.content_pos += sent
+			continue
+		}
+		if sent < 0 {
+			errno_val := C.errno
+			if errno_val == C.EAGAIN || errno_val == C.EWOULDBLOCK {
+				return .blocked
+			}
+			if errno_val == C.EINTR {
+				continue
+			}
+			eprintln('ERROR: send() failed with errno=${errno_val}')
+			return .failed
+		}
+		// send() returning 0 on a non-blocking TCP socket is unusual; treat it as
+		// a failure rather than spin.
+		return .failed
 	}
 
-	match response.takeover_mode {
-		.manual {
-			// The handler has taken ownership of the connection.
-			// Remove from epoll and tracking, but do NOT close the fd.
-			client_fds.delete(client_fd)
-			client_buffers.delete(client_fd)
-			client_read_starts.delete(client_fd)
-			closing_client_fds.delete(client_fd)
-			remove_fd_from_epoll(epoll_fd, client_fd)
-			response.abandon_request_arena_current_thread()
-			return
-		}
-		.reusable {
-			set_blocking(client_fd, false)
-			client_buffers.delete(client_fd)
-			if server.is_shutting_down() || response.should_close {
-				handle_client_closure(epoll_fd, client_fd, mut client_fds, mut client_buffers, mut
-					client_read_starts, mut closing_client_fds)
-			}
-			return
-		}
-		.none {}
-	}
-
-	if response.content.len > 0 {
-		mut send_error := false
-		mut pos := 0
-		for pos < response.content.len {
-			sent := C.send(client_fd, unsafe { &response.content[pos] },
-				response.content.len - pos, C.MSG_NOSIGNAL)
-			if sent <= 0 {
-				eprintln('ERROR: send() failed with errno=${C.errno}')
-				send_error = true
-				break
-			}
-			pos += sent
-		}
-		if send_error {
-			handle_client_closure(epoll_fd, client_fd, mut client_fds, mut client_buffers, mut
-				client_read_starts, mut closing_client_fds)
-			return
-		}
-	}
-
-	if response.file_path != '' {
-		mut fd := C.open(response.file_path.str, C.O_RDONLY, 0)
-		if fd == -1 {
-			eprintln('ERROR: open file failed')
-			handle_client_closure(epoll_fd, client_fd, mut client_fds, mut client_buffers, mut
-				client_read_starts, mut closing_client_fds)
-			return
-		}
-		defer {
-			if fd != -1 {
-				C.close(fd)
-			}
-		}
-		mut st := C.stat{}
-		if C.fstat(fd, &st) != 0 {
-			eprintln('ERROR: fstat failed')
-			handle_client_closure(epoll_fd, client_fd, mut client_fds, mut client_buffers, mut
-				client_read_starts, mut closing_client_fds)
-			return
-		}
-		mut offset := i64(0)
-		mut remaining := i64(st.st_size)
-		for remaining > 0 {
-			ssize := C.sendfile(client_fd, fd, &offset, usize(remaining))
+	// 2. Drain the optional file body via sendfile(2). sendfile updates the
+	// offset pointer in place, so `state.file_pos` advances automatically.
+	if state.file_fd != -1 {
+		for state.file_pos < state.file_len {
+			remaining := state.file_len - state.file_pos
+			ssize := C.sendfile(client_fd, state.file_fd, &state.file_pos, usize(remaining))
 			if ssize > 0 {
-				remaining -= i64(ssize)
 				continue
 			}
 			if ssize == 0 {
 				// Short transfer: the file shrank between fstat() and now, or the
-				// peer closed. We've already promised the full Content-Length, so
-				// the response is now truncated -- closing the connection is the
-				// only way to keep keep-alive clients in sync.
+				// peer closed. We have already promised the full Content-Length,
+				// so the response is now truncated -- closing the connection is
+				// the only way to keep keep-alive clients in sync.
 				eprintln('ERROR: sendfile() returned 0 with ${remaining} bytes still pending; closing connection to avoid desync')
-				handle_client_closure(epoll_fd, client_fd, mut client_fds, mut client_buffers, mut
-					client_read_starts, mut closing_client_fds)
-				return
+				return .failed
 			}
 			errno_val := C.errno
+			if errno_val == C.EAGAIN || errno_val == C.EWOULDBLOCK {
+				return .blocked
+			}
+			if errno_val == C.EINTR {
+				continue
+			}
 			match errno_val {
-				C.EAGAIN, C.EWOULDBLOCK {
-					// Kernel send buffer is full. Wait for the socket to drain before retrying.
-					if !wait_socket_writable(client_fd, sendfile_poll_timeout_ms) {
-						eprintln('ERROR: sendfile() timed out waiting for socket to become writable')
-						handle_client_closure(epoll_fd, client_fd, mut client_fds, mut
-							client_buffers, mut client_read_starts, mut closing_client_fds)
-						return
-					}
-					continue
-				}
-				C.EINTR {
-					continue
-				}
 				C.EBADF {
 					eprintln('ERROR: sendfile() EBADF: input fd or socket not open for required access (errno=${errno_val})')
 				}
@@ -460,17 +392,223 @@ fn process_request(server &Server, epoll_fd int, client_fd int, request_buffer [
 					eprintln('ERROR: sendfile() failed with errno=${errno_val}')
 				}
 			}
-
-			handle_client_closure(epoll_fd, client_fd, mut client_fds, mut client_buffers, mut
-				client_read_starts, mut closing_client_fds)
-			return
+			return .failed
 		}
+		// Done with the file -- close the fd eagerly so keep-alive doesn't hold it open.
+		C.close(state.file_fd)
+		state.file_fd = -1
 	}
 
+	return .done
+}
+
+// arm_epollout switches the connection's epoll mask from EPOLLIN|EPOLLET to
+// EPOLLIN|EPOLLOUT|EPOLLET so the next round of pending bytes is delivered as
+// an EPOLLOUT event instead of blocking the worker.
+fn arm_epollout(epoll_fd int, client_fd int) int {
+	mut ev := C.epoll_event{
+		events: u32(C.EPOLLIN | C.EPOLLOUT | C.EPOLLET)
+	}
+	ev.data.fd = client_fd
+	return C.epoll_ctl(epoll_fd, C.EPOLL_CTL_MOD, client_fd, &ev)
+}
+
+// disarm_epollout restores the read-only epoll mask once the pending write has
+// fully drained.
+fn disarm_epollout(epoll_fd int, client_fd int) int {
+	mut ev := C.epoll_event{
+		events: u32(C.EPOLLIN | C.EPOLLET)
+	}
+	ev.data.fd = client_fd
+	return C.epoll_ctl(epoll_fd, C.EPOLL_CTL_MOD, client_fd, &ev)
+}
+
+// complete_write tears down the per-fd write state after a successful drain,
+// then either closes the connection or leaves it in keep-alive mode.
+fn complete_write(server &Server, epoll_fd int, client_fd int, mut client_fds map[int]bool, mut client_buffers map[int][]u8, mut client_read_starts map[int]i64, mut closing_client_fds map[int]bool, mut client_write_states map[int]&ClientWriteState) {
+	state := client_write_states[client_fd] or { return }
+	should_close := state.should_close
+	free_write_state(server, client_fd, mut client_write_states)
+	disarm_epollout(epoll_fd, client_fd)
 	client_buffers.delete(client_fd)
-	if server.is_shutting_down() || response.should_close {
-		handle_client_closure(epoll_fd, client_fd, mut client_fds, mut client_buffers, mut
-			client_read_starts, mut closing_client_fds)
+	if server.is_shutting_down() || should_close {
+		handle_client_closure(server, epoll_fd, client_fd, mut client_fds, mut client_buffers, mut
+			client_read_starts, mut closing_client_fds, mut client_write_states)
+	}
+}
+
+// handle_write resumes a blocked write when EPOLLOUT fires for `client_fd`.
+fn handle_write(server &Server, epoll_fd int, client_fd int, mut client_fds map[int]bool, mut client_buffers map[int][]u8, mut client_read_starts map[int]i64, mut closing_client_fds map[int]bool, mut client_write_states map[int]&ClientWriteState) {
+	mut state := client_write_states[client_fd] or { return }
+	status := try_drain_write(client_fd, mut state)
+	match status {
+		.done {
+			complete_write(server, epoll_fd, client_fd, mut client_fds, mut client_buffers, mut
+				client_read_starts, mut closing_client_fds, mut client_write_states)
+		}
+		.blocked {
+			// Still blocked -- stay armed for the next EPOLLOUT.
+		}
+		.failed {
+			handle_client_closure(server, epoll_fd, client_fd, mut client_fds, mut client_buffers, mut
+				client_read_starts, mut closing_client_fds, mut client_write_states)
+		}
+	}
+}
+
+fn process_request(server &Server, epoll_fd int, client_fd int, request_buffer []u8, mut client_fds map[int]bool, mut client_buffers map[int][]u8, mut client_read_starts map[int]i64, mut closing_client_fds map[int]bool, mut client_write_states map[int]&ClientWriteState) {
+	mut request_arena := voidptr(unsafe { nil })
+	$if prealloc {
+		request_arena = unsafe { prealloc_scope_begin() }
+	}
+	client_read_starts.delete(client_fd)
+	server.begin_request()
+	mut request_active := true
+
+	mut decoded_http_request := decode_http_request(request_buffer) or {
+		eprintln('Error decoding request ${err}')
+		C.send(client_fd, tiny_bad_request_response.data, tiny_bad_request_response.len,
+			C.MSG_NOSIGNAL)
+		end_request_arena_current_thread(request_arena)
+		if request_active {
+			server.end_request()
+		}
+		handle_client_closure(server, epoll_fd, client_fd, mut client_fds, mut client_buffers, mut
+			client_read_starts, mut closing_client_fds, mut client_write_states)
+		return
+	}
+	$if trace_prealloc ? {
+		unsafe { prealloc_scope_checkpoint(c'fasthttp decoded request') }
+	}
+	decoded_http_request.client_conn_fd = client_fd
+	decoded_http_request.user_data = server.user_data
+	mut response := server.request_handler(decoded_http_request) or {
+		eprintln('Error handling request ${err}')
+		C.send(client_fd, tiny_bad_request_response.data, tiny_bad_request_response.len,
+			C.MSG_NOSIGNAL)
+		end_request_arena_current_thread(request_arena)
+		if request_active {
+			server.end_request()
+		}
+		handle_client_closure(server, epoll_fd, client_fd, mut client_fds, mut client_buffers, mut
+			client_read_starts, mut closing_client_fds, mut client_write_states)
+		return
+	}
+	$if trace_prealloc ? {
+		unsafe { prealloc_scope_checkpoint(c'fasthttp handler returned') }
+	}
+	response.attach_request_arena_if_empty(request_arena)
+
+	match response.takeover_mode {
+		.manual {
+			// The handler has taken ownership of the connection.
+			// Remove from epoll and tracking, but do NOT close the fd.
+			client_fds.delete(client_fd)
+			client_buffers.delete(client_fd)
+			client_read_starts.delete(client_fd)
+			closing_client_fds.delete(client_fd)
+			remove_fd_from_epoll(epoll_fd, client_fd)
+			response.abandon_request_arena_current_thread()
+			response.free_owned_content()
+			if request_active {
+				server.end_request()
+			}
+			return
+		}
+		.reusable {
+			set_blocking(client_fd, false)
+			client_buffers.delete(client_fd)
+			response.free_owned_content()
+			response.end_request_arena_current_thread()
+			if request_active {
+				server.end_request()
+			}
+			if server.is_shutting_down() || response.should_close {
+				handle_client_closure(server, epoll_fd, client_fd, mut client_fds, mut client_buffers, mut
+					client_read_starts, mut closing_client_fds, mut client_write_states)
+			}
+			return
+		}
+		.none {}
+	}
+
+	// Open the file (if any) before constructing the state so we can fail fast
+	// while we still own the request arena via response.
+	mut file_fd := -1
+	mut file_len := i64(0)
+	if response.file_path != '' {
+		fd := C.open(response.file_path.str, C.O_RDONLY, 0)
+		if fd == -1 {
+			eprintln('ERROR: open file failed')
+			response.free_owned_content()
+			response.end_request_arena_current_thread()
+			if request_active {
+				server.end_request()
+			}
+			handle_client_closure(server, epoll_fd, client_fd, mut client_fds, mut client_buffers, mut
+				client_read_starts, mut closing_client_fds, mut client_write_states)
+			return
+		}
+		mut st := C.stat{}
+		if C.fstat(fd, &st) != 0 {
+			eprintln('ERROR: fstat failed')
+			C.close(fd)
+			response.free_owned_content()
+			response.end_request_arena_current_thread()
+			if request_active {
+				server.end_request()
+			}
+			handle_client_closure(server, epoll_fd, client_fd, mut client_fds, mut client_buffers, mut
+				client_read_starts, mut closing_client_fds, mut client_write_states)
+			return
+		}
+		file_fd = fd
+		file_len = i64(st.st_size)
+	}
+
+	// Move content + arena ownership into the per-fd state. After this point we
+	// must not touch the response's arena via end/free (it will be released by
+	// free_write_state once the drain completes).
+	content_bytes := response.take_or_clone_content()
+	arena_ptr := response.take_request_arena()
+	leave_request_arena_current_thread(arena_ptr)
+
+	mut state := &ClientWriteState{
+		content:        content_bytes
+		content_pos:    0
+		content_owned:  true
+		file_fd:        file_fd
+		file_len:       file_len
+		file_pos:       0
+		should_close:   response.should_close
+		request_arena:  arena_ptr
+		request_active: request_active
+		start_ns:       time.sys_mono_now()
+	}
+	// From here on, the state owns end_request bookkeeping.
+	request_active = false
+	client_write_states[client_fd] = state
+
+	status := try_drain_write(client_fd, mut state)
+	match status {
+		.done {
+			complete_write(server, epoll_fd, client_fd, mut client_fds, mut client_buffers, mut
+				client_read_starts, mut closing_client_fds, mut client_write_states)
+		}
+		.blocked {
+			// Kernel send buffer is full. Park the state and resume on EPOLLOUT.
+			client_buffers.delete(client_fd)
+			client_read_starts.delete(client_fd)
+			if arm_epollout(epoll_fd, client_fd) == -1 {
+				eprintln('ERROR: epoll_ctl(MOD, EPOLLOUT) failed errno=${C.errno}')
+				handle_client_closure(server, epoll_fd, client_fd, mut client_fds, mut client_buffers, mut
+					client_read_starts, mut closing_client_fds, mut client_write_states)
+			}
+		}
+		.failed {
+			handle_client_closure(server, epoll_fd, client_fd, mut client_fds, mut client_buffers, mut
+				client_read_starts, mut closing_client_fds, mut client_write_states)
+		}
 	}
 }
 
@@ -481,13 +619,14 @@ fn process_events(server &Server, epoll_fd int, listen_fd int) {
 	mut client_buffers := map[int][]u8{}
 	mut client_read_starts := map[int]i64{}
 	mut closing_client_fds := map[int]bool{}
+	mut client_write_states := map[int]&ClientWriteState{}
 	unsafe {
 		request_buffer.flags.set(.noslices | .nogrow | .noshrink)
 	}
 	for {
 		if server.is_shutting_down() && server.active_request_count() == 0 {
-			close_worker_clients(epoll_fd, mut client_fds, mut client_buffers, mut
-				client_read_starts, mut closing_client_fds)
+			close_worker_clients(server, epoll_fd, mut client_fds, mut client_buffers, mut
+				client_read_starts, mut closing_client_fds, mut client_write_states)
 			return
 		}
 		num_events := C.epoll_wait(epoll_fd, &events[0], max_connection_size, epoll_wait_timeout_ms)
@@ -518,25 +657,37 @@ fn process_events(server &Server, epoll_fd int, listen_fd int) {
 					continue
 				}
 				if client_fd > 0 {
-					// Try to send 444 No Response before closing abnormal connection
-					C.send(client_fd, status_444_response.data, status_444_response.len,
-						C.MSG_NOSIGNAL)
-					handle_client_closure(epoll_fd, client_fd, mut client_fds, mut client_buffers, mut
-						client_read_starts, mut closing_client_fds)
+					// Don't bother sending 444 if there is an in-flight write -- the
+					// peer is already disconnected and we want to tear down promptly.
+					if client_fd !in client_write_states {
+						C.send(client_fd, status_444_response.data, status_444_response.len,
+							C.MSG_NOSIGNAL)
+					}
+					handle_client_closure(server, epoll_fd, client_fd, mut client_fds, mut client_buffers, mut
+						client_read_starts, mut closing_client_fds, mut client_write_states)
 				} else {
 					eprintln('ERROR: Invalid FD from epoll: ${client_fd}')
 				}
 				continue
 			}
+			if events[i].events & u32(C.EPOLLOUT) != 0 {
+				handle_write(server, epoll_fd, client_fd, mut client_fds, mut client_buffers, mut
+					client_read_starts, mut closing_client_fds, mut client_write_states)
+				// If both EPOLLIN and EPOLLOUT fired, we still want to drain the
+				// socket -- fall through to the EPOLLIN branch below.
+				if client_fd !in client_fds {
+					continue
+				}
+			}
 			if events[i].events & u32(C.EPOLLIN) != 0 {
 				if server.is_shutting_down() {
-					handle_client_closure(epoll_fd, client_fd, mut client_fds, mut client_buffers, mut
-						client_read_starts, mut closing_client_fds)
+					handle_client_closure(server, epoll_fd, client_fd, mut client_fds, mut client_buffers, mut
+						client_read_starts, mut closing_client_fds, mut client_write_states)
 					continue
 				}
 				if closing_client_fds[client_fd] or { false } {
-					drain_closing_client(epoll_fd, client_fd, mut client_fds, mut client_buffers, mut
-						client_read_starts, mut closing_client_fds)
+					drain_closing_client(server, epoll_fd, client_fd, mut client_fds, mut client_buffers, mut
+						client_read_starts, mut closing_client_fds, mut client_write_states)
 					continue
 				}
 				// Read all available data from the socket
@@ -610,17 +761,17 @@ fn process_events(server &Server, epoll_fd int, listen_fd int) {
 				if request_complete {
 					process_request(server, epoll_fd, client_fd, readed_request_buffer, mut
 						client_fds, mut client_buffers, mut client_read_starts, mut
-						closing_client_fds)
+						closing_client_fds, mut client_write_states)
 				} else if recv_error {
 					// Unexpected recv error - send 444 No Response
 					C.send(client_fd, status_444_response.data, status_444_response.len,
 						C.MSG_NOSIGNAL)
-					handle_client_closure(epoll_fd, client_fd, mut client_fds, mut client_buffers, mut
-						client_read_starts, mut closing_client_fds)
+					handle_client_closure(server, epoll_fd, client_fd, mut client_fds, mut client_buffers, mut
+						client_read_starts, mut closing_client_fds, mut client_write_states)
 				} else if peer_closed || (total_bytes_read == 0 && readed_request_buffer.len == 0) {
 					// Normal client closure (FIN received)
-					handle_client_closure(epoll_fd, client_fd, mut client_fds, mut client_buffers, mut
-						client_read_starts, mut closing_client_fds)
+					handle_client_closure(server, epoll_fd, client_fd, mut client_fds, mut client_buffers, mut
+						client_read_starts, mut closing_client_fds, mut client_write_states)
 				} else if readed_request_buffer.len > 0 {
 					client_buffers[client_fd] = readed_request_buffer
 				}
@@ -634,6 +785,16 @@ fn process_events(server &Server, epoll_fd int, listen_fd int) {
 				if now - started >= timeout_ns {
 					send_terminal_response_and_drain(client_fd, status_408_response, mut
 						client_buffers, mut client_read_starts, mut closing_client_fds)
+				}
+			}
+			// Sweep write-side stalls: a client that armed EPOLLOUT but never
+			// drains within `timeout_in_seconds` gets the connection torn down so
+			// the worker isn't pinned waiting for a dead peer.
+			for client_fd in client_write_states.keys() {
+				state := client_write_states[client_fd] or { continue }
+				if state.start_ns > 0 && now - state.start_ns >= timeout_ns {
+					handle_client_closure(server, epoll_fd, client_fd, mut client_fds, mut client_buffers, mut
+						client_read_starts, mut closing_client_fds, mut client_write_states)
 				}
 			}
 		}
