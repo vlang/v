@@ -251,6 +251,21 @@ fn test_windows_default_c_compiler_falls_back_to_bundled_tcc_when_no_gcc() {
 	assert windows_default_c_compiler(test_root) == tcc_path
 }
 
+fn test_windows_default_c_compiler_keeps_gcc_when_bundled_tcc_is_broken() {
+	$if windows {
+		return
+	}
+	test_root := os.join_path(os.vtmp_dir(), 'v_pref_default_c_compiler_test')
+	prepare_test_tcc_binary(test_root, 'exit 1')
+	old_path := os.getenv('PATH')
+	os.setenv('PATH', os.join_path(test_root, 'no_such_path'), true)
+	defer {
+		os.setenv('PATH', old_path, true)
+		os.rmdir_all(test_root) or {}
+	}
+	assert windows_default_c_compiler(test_root) == 'gcc'
+}
+
 fn test_windows_default_c_compiler_keeps_gcc_when_neither_is_available() {
 	$if windows {
 		return

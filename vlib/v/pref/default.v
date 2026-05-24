@@ -478,9 +478,9 @@ fn windows_default_c_compiler(vroot string) string {
 	if os.find_abs_path_of_executable('gcc') or { '' } != '' {
 		return 'gcc'
 	}
-	vtccexe := os.join_path(vroot, 'thirdparty', 'tcc', 'tcc.exe')
-	if os.is_file(vtccexe) && os.is_executable(vtccexe) {
-		return vtccexe
+	bundled_tcc := usable_bundled_tcc_compiler(vroot)
+	if bundled_tcc != '' {
+		return bundled_tcc
 	}
 	return 'gcc'
 }
