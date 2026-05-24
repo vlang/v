@@ -1495,7 +1495,8 @@ fn (mut c Checker) check_uninitialized_struct_fields_and_embeds(node ast.StructI
 		}
 		field_is_option := field.typ.has_flag(.option)
 		if field.typ.is_ptr() && !field.typ.has_flag(.shared_f) && !field_is_option
-			&& !node.has_update_expr && !c.pref.translated && !c.file.is_translated {
+			&& !node.has_update_expr && !c.pref.translated && !c.file.is_translated
+			&& type_sym.language != .c {
 			// Skip this check during generic recheck (concrete instantiation),
 			// because generic code like `T{}` or `Struct[V]{}` cannot provide
 			// initializers for reference fields that only appear after type substitution.
