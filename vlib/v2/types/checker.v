@@ -1057,6 +1057,7 @@ pub fn (mut c Checker) check_files(files []ast.File) {
 		c.ownership_prescan_fn_bodies()
 		c.ownership_validate_drop_impls()
 		c.lifetime_validate_files(files)
+		c.escape_validate_files(files)
 	}
 	c.process_pending_fn_bodies()
 	c.check_struct_field_defaults(files)
