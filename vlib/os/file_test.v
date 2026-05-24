@@ -1,4 +1,5 @@
 // vtest retry: 2
+// vtest flaky: true
 import os
 
 const tfolder = os.join_path(os.vtmp_dir(), 'os_file_tests')
@@ -486,6 +487,10 @@ fn test_open_file_crlf_binary_mode() {
 }
 
 fn test_path_devnull() {
+	$if windows {
+		// Reading device files like \\.\nul crashes on Windows (TCC, GCC/MinGW).
+		return
+	}
 	dump(os.path_devnull)
 	content := os.read_file(os.path_devnull)!
 	// dump(content)

@@ -141,11 +141,15 @@ pub fn (db DB) insert(table orm.Table, data orm.QueryData) ! {
 	mut converted_primitive_array := db.convert_query_data_to_primitives(table.name, data)!
 
 	converted_primitive_data := orm.QueryData{
-		fields: data.fields
-		data:   converted_primitive_array
-		types:  []
-		kinds:  []
-		is_and: []
+		fields:      data.fields
+		data:        converted_primitive_array
+		types:       data.types
+		parentheses: data.parentheses
+		kinds:       data.kinds
+		auto_fields: data.auto_fields
+		is_and:      data.is_and
+		batch_rows:  data.batch_rows
+		batch_key:   data.batch_key
 	}
 
 	query, converted_data := orm.orm_stmt_gen(.default, table, '`', .insert, false, '?', 1,
@@ -509,16 +513,20 @@ fn mysql_type_from_v(typ int) !string {
 fn (db DB) convert_query_data_to_primitives(table string, data orm.QueryData) ![]orm.Primitive {
 	mut column_type_map := db.get_table_column_type_map(table)!
 	mut converted_data := []orm.Primitive{}
+	if data.fields.len == 0 {
+		return converted_data
+	}
 
-	for i, field in data.fields {
-		if data.data[i].type_name() == 'time.Time' {
+	for i, primitive in data.data {
+		field := data.fields[i % data.fields.len]
+		if primitive.type_name() == 'time.Time' {
 			if column_type_map[field] in ['datetime', 'timestamp'] {
-				converted_data << orm.Primitive((data.data[i] as time.Time).str())
+				converted_data << orm.Primitive((primitive as time.Time).str())
 			} else {
-				converted_data << data.data[i]
+				converted_data << primitive
 			}
 		} else {
-			converted_data << data.data[i]
+			converted_data << primitive
 		}
 	}
 

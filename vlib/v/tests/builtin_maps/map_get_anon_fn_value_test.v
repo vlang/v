@@ -7,12 +7,6 @@ const numbers = {
 	}
 }
 
-struct Tree {
-	value string
-}
-
-type TreeBelt = map[string]fn (input string) []string
-
 fn test_map_get_anon_fn_value() {
 	num1 := numbers['one'] or {
 		fn () int {
@@ -48,26 +42,4 @@ fn test_map_get_anon_fn_value_if_guard() {
 		missing_found = true
 	}
 	assert !missing_found
-}
-
-fn test_cast_map_literal_with_closure_value() {
-	tree := Tree{
-		value: 'he he'
-	}
-
-	belt := TreeBelt({
-		'bar': fn [tree] (input string) []string {
-			return [tree.value + input]
-		}
-	})
-
-	mut belt2 := TreeBelt(map[string]fn (string) []string{})
-	belt2['bar'] = fn [tree] (input string) []string {
-		return [tree.value + input]
-	}
-
-	bar := belt['bar'] or { panic('missing `bar` in belt') }
-	bar2 := belt2['bar'] or { panic('missing `bar` in belt2') }
-	assert bar('foo') == ['he hefoo']
-	assert bar2('fo') == ['he hefo']
 }

@@ -1046,6 +1046,37 @@ fn test_execute() {
 	assert hexresult.ends_with('0a7878')
 }
 
+fn test_exec_with_args() {
+	source_path := os.join_path_single(tfolder, 'exec_args.v')
+	output_arg := os.join_path_single(tfolder, 'exec_args')
+	exe_path := if os.user_os() == 'windows' {
+		output_arg + '.exe'
+	} else {
+		output_arg
+	}
+	os.write_file(source_path,
+		"import os\n\nfn main() {\n\tprintln(os.args[1..].join('|'))\n\teprintln('stderr-ok')\n}\n")!
+	defer {
+		os.rm(source_path) or {}
+		os.rm(exe_path) or {}
+		os.rm(output_arg + '.c') or {}
+	}
+	compile_result :=
+		os.execute('${os.quoted_path(@VEXE)} -o ${os.quoted_path(output_arg)} ${os.quoted_path(source_path)}')
+	assert compile_result.exit_code == 0, compile_result.output
+
+	result := os.exec([exe_path, 'one two', 'semi;colon'])
+	normalized_output := result.output.replace('\r\n', '\n')
+	assert result.exit_code == 0, result.output
+	assert normalized_output.contains('one two|semi;colon\n'), result.output
+	assert normalized_output.contains('stderr-ok\n'), result.output
+
+	shell_metachar_result := os.exec([exe_path, 'first; echo injected'])
+	normalized_shell_metachar_output := shell_metachar_result.output.replace('\r\n', '\n')
+	assert shell_metachar_result.exit_code == 0, shell_metachar_result.output
+	assert normalized_shell_metachar_output.contains('first; echo injected\n'), shell_metachar_result.output
+}
+
 fn test_execute_with_stderr_redirection() {
 	result := os.execute('${os.quoted_path(@VEXE)} wrong_command')
 	assert result.exit_code == 1

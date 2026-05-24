@@ -28,7 +28,7 @@ fn test_input_rune_iterator_with_unicode_input() {
 	p.wait()
 	assert p.code == 0
 	eprintln('done')
-	solines := olines.join('\n').trim_space().replace('\r', '')
+	solines := olines.join('').trim_space().replace('\r', '')
 	eprintln('solines.len: ${solines.len} | solines: ${solines}')
 	assert solines.len > 100
 	assert solines == '> i: 0000 | r: `П`

@@ -428,7 +428,17 @@ fn (mut g Gen) infix_expr_eq_op(node ast.InfixExpr) {
 			.struct {
 				ptr_typ := g.equality_fn(left.unaliased)
 				if left.typ.is_ptr() || right.typ.is_ptr() {
-					g.gen_struct_pointer_eq_op(node, left_type, right_type, ptr_typ)
+					// `&lvalue` on either side means the user is comparing addresses; skip the deep `_struct_eq` (`&StructInit{}` still does deep eq).
+					left_is_addr_of_lvalue := node.left is ast.PrefixExpr && node.left.op == .amp
+						&& node.left.right.is_lvalue()
+					right_is_addr_of_lvalue := node.right is ast.PrefixExpr && node.right.op == .amp
+						&& node.right.right.is_lvalue()
+					if left.typ.is_ptr() && right.typ.is_ptr()
+						&& (left_is_addr_of_lvalue || right_is_addr_of_lvalue) {
+						g.gen_plain_infix_expr(node)
+					} else {
+						g.gen_struct_pointer_eq_op(node, left_type, right_type, ptr_typ)
+					}
 				} else {
 					if node.op == .ne {
 						g.write('!')
@@ -1754,7 +1764,7 @@ fn (mut g Gen) infix_expr_and_or_op(node ast.InfixExpr) {
 }
 
 fn (mut g Gen) gen_is_none_check(node ast.InfixExpr) {
-	if node.left in [ast.Ident, ast.SelectorExpr, ast.IndexExpr, ast.CallExpr, ast.CTempVar] {
+	if node.left in [ast.Ident, ast.SelectorExpr, ast.IndexExpr, ast.CallExpr, ast.CTempVar, ast.CastExpr] {
 		// When a sumtype variable has been comptime-smartcast to an option variant
 		// (e.g. `$if t is ?string { if t == none { ... } }`), we need to access the
 		// sumtype's variant field directly rather than using .data on the sumtype.

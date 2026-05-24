@@ -2,7 +2,7 @@ module builder
 
 import os
 
-fn test_macos_tcc_boehm_uses_bundled_libgc_dylib() {
+fn test_macos_tcc_boehm_uses_bundled_libgc() {
 	$if !macos {
 		return
 	}
@@ -18,7 +18,7 @@ fn test_macos_tcc_boehm_uses_bundled_libgc_dylib() {
 		os.rm(exe_path) or {}
 	}
 	assert res.exit_code == 0
-	assert res.output.contains('thirdparty/tcc/lib/libgc.dylib')
-	assert res.output.contains('-rpath')
+	// macOS amd64 tccbin only ships libgc.a (no .dylib).
+	assert res.output.contains('thirdparty/tcc/lib/libgc.a')
 	assert !res.output.contains(' -lgc')
 }

@@ -619,6 +619,12 @@ fn (mut v Builder) setup_ccompiler_options(ccompiler string) {
 		if os.uname().machine == 'Power Macintosh' {
 			user_darwin_ppc = true
 		}
+
+		// Mac OS 10.4 and older requires Macports legacy software to build programs
+		if user_darwin_version <= 8 {
+			ccoptions.args << '-I' + @VEXEROOT + '/thirdparty/legacy/include/LegacySupport/'
+			ccoptions.args << @VEXEROOT + '/thirdparty/legacy/lib/libMacportsLegacySupport.a'
+		}
 	}
 	ccoptions.debug_mode = v.pref.is_debug
 	ccoptions.guessed_compiler = v.pref.ccompiler
@@ -632,7 +638,8 @@ fn (mut v Builder) setup_ccompiler_options(ccompiler string) {
 	if ccoptions.cc == .unknown {
 		eprintln('Compilation with unknown C compiler `${cc_file_name}`')
 	}
-	if v.pref.os == .macos {
+	if v.pref.os == .macos && ccoptions.cc != .tcc {
+		// tcc does not understand -arch; it only targets the host arch.
 		darwin_target_arch := darwin_target_arch_name(v.pref.arch)
 		if darwin_target_arch != '' {
 			ccoptions.args << ['-arch', darwin_target_arch]
@@ -769,6 +776,18 @@ fn (mut v Builder) setup_ccompiler_options(ccompiler string) {
 		$if !windows {
 			ccoptions.args << '-fPIC' // -Wl,-z,defs'
 		}
+		// Default to hidden symbol visibility for shared libraries, so only
+		// functions/globals tagged with `@[export: '…']` (which emit `VV_EXP`
+		// = `__attribute__((visibility("default")))`) end up in the ABI.
+		// Without this, every C symbol from the V runtime + stdlib is exported.
+		// Windows uses `__declspec(dllexport)` and the linker only exports
+		// tagged symbols, so the flag is unnecessary there.
+		// `-sharedlive` is skipped: live reload resolves `impl_live_*` symbols
+		// via `dlsym` from the host process, and those are emitted without
+		// `VV_EXP` on non-Windows (see vlib/v/gen/c/fn.v).
+		if !v.pref.is_liveshared && v.pref.os !in [.windows, .wasm32] && ccoptions.cc != .msvc {
+			ccoptions.args << '-fvisibility=hidden'
+		}
 		if v.pref.os == .linux && 'gcboehm' in v.pref.compile_defines_all {
 			// Keep shared-library GC symbols bound to the shared object itself.
 			// This avoids cross-DSO symbol interposition between multiple V binaries
@@ -839,7 +858,9 @@ fn (mut v Builder) setup_ccompiler_options(ccompiler string) {
 				ccoptions.args << 'dynamic_lookup'
 			}
 		}
-		if v.pref.os == .windows && ccoptions.cc != .msvc {
+		if v.pref.os == .windows && ccoptions.cc !in [.msvc, .tcc] {
+			// tcc on Windows lacks `--out-implib` and `--export-all-symbols` support, so
+			// hot-reload examples skip the host-symbol export plumbing under tcc.
 			host_import_lib := v.tcc_quoted_path(live_windows_import_lib_path(v.pref.path))
 			if v.pref.is_livemain {
 				// Re-export host graphics/backend symbols so the live-reload DLL can reuse them.
@@ -898,7 +919,7 @@ fn (mut v Builder) setup_ccompiler_options(ccompiler string) {
 	], false))
 	cflags := v.get_os_cflags()
 
-	if v.pref.build_mode != .build_module {
+	if v.pref.build_mode != .build_module && !v.pref.is_o {
 		only_o_files := cflags.c_options_only_object_files()
 		ccoptions.o_args << only_o_files
 	}
@@ -907,6 +928,7 @@ fn (mut v Builder) setup_ccompiler_options(ccompiler string) {
 	ccoptions.pre_args << defines
 	ccoptions.pre_args << others
 	ccoptions.linker_flags << libs
+	v.fixup_tcc_macos_comma_path_flags(mut ccoptions)
 	if v.pref.use_cache && v.pref.build_mode != .build_module {
 		if ccoptions.cc != .tcc {
 			$if linux {
@@ -1851,22 +1873,66 @@ fn (mut b Builder) cc_linux_cross() {
 	}
 	cflags := b.get_os_cflags()
 	defines, others, libs := cflags.defines_others_libs()
+	// Some modules pass a raw `#flag /path/to/file.c` to add an additional
+	// source file to the compile step (e.g. gitly's markdown module uses this
+	// for md4c-lib.c). The native build line just appends them to the main
+	// `clang ... main.c` invocation, but the cross-compile path uses
+	// `clang -c <main.c> -o <main.o>`, and clang refuses to combine `-c` with
+	// multiple inputs ("cannot specify -o when generating multiple output
+	// files"). Pull those out, compile each separately into its own .o, and
+	// hand the resulting objects to the linker step.
+	mut other_flags := []string{cap: others.len}
+	mut extra_sources := []string{}
+	for opt in others {
+		unq := opt.trim('"').trim("'")
+		ext := os.file_ext(unq).to_lower()
+		if ext in ['.c', '.cpp', '.cc', '.cxx', '.s'] && os.is_file(unq) {
+			extra_sources << unq
+		} else {
+			other_flags << opt
+		}
+	}
+	mut cc_name := b.pref.ccompiler
+	mut out_name := b.pref.out_name
+	$if windows {
+		out_name = out_name.trim_string_right('.exe')
+	}
+	mut extra_objs := []string{cap: extra_sources.len}
+	for src in extra_sources {
+		src_obj := os.join_path(os.vtmp_dir(), os.file_name(src) + '.' +
+			linux_cross_target.lib_dir + '.o')
+		mut src_args := []string{cap: 16}
+		src_args << '-w'
+		src_args << '-fPIC'
+		src_args << '-target ${linux_cross_target.triple}'
+		src_args << defines
+		src_args << '-I ${os.quoted_path('${sysroot}/include')}'
+		src_args << other_flags
+		src_args << '-o ${os.quoted_path(src_obj)}'
+		src_args << '-c ${os.quoted_path(src)}'
+		src_cmd := '${b.quote_compiler_name(cc_name)} ' + src_args.join(' ')
+		if b.pref.show_cc {
+			println(src_cmd)
+		}
+		src_res := os.execute(src_cmd)
+		if src_res.exit_code != 0 {
+			println('Cross compilation for Linux failed (extra source ${src}).')
+			verror(src_res.output)
+			return
+		}
+		extra_objs << src_obj
+	}
 	mut cc_args := []string{cap: 20}
 	cc_args << '-w'
 	cc_args << '-fPIC'
 	cc_args << '-target ${linux_cross_target.triple}'
 	cc_args << defines
 	cc_args << '-I ${os.quoted_path('${sysroot}/include')} '
-	cc_args << others
+	cc_args << other_flags
 	cc_args << '-o ${os.quoted_path(obj_file)}'
 	cc_args << '-c ${os.quoted_path(b.out_name_c)}'
 	cc_args << libs
 	b.dump_c_options(cc_args)
-	mut cc_name := b.pref.ccompiler
-	mut out_name := b.pref.out_name
-	$if windows {
-		out_name = out_name.trim_string_right('.exe')
-	}
 	cc_cmd := '${b.quote_compiler_name(cc_name)} ' + cc_args.join(' ')
 	if b.pref.show_cc {
 		println(cc_cmd)
@@ -1907,6 +1973,16 @@ fn (mut b Builder) cc_linux_cross() {
 		os.quoted_path('${sysroot}/crt1.o'),
 		os.quoted_path('${sysroot}/crti.o'),
 		os.quoted_path(obj_file),
+	]
+	for eobj in extra_objs {
+		linker_args << os.quoted_path(eobj)
+	}
+	// User-defined libraries (e.g. `-lpq` from db.pg) and extra object files
+	// must come before the system libraries they depend on. ld.lld resolves
+	// references left-to-right, so libpq.a needs to be encountered before
+	// -lssl/-lcrypto, otherwise its references to SSL_*/EVP_* stay unresolved.
+	linker_args << cflags.c_options_only_object_files()
+	linker_args << [
 		'-lc',
 		'-lcrypto',
 		'-lssl',
@@ -1915,7 +1991,6 @@ fn (mut b Builder) cc_linux_cross() {
 		'-lm',
 		'-ldl',
 	]
-	linker_args << cflags.c_options_only_object_files()
 	if os.exists(builtins_obj) {
 		linker_args << os.quoted_path(builtins_obj)
 	}
@@ -2126,6 +2201,71 @@ fn sqlite_thirdparty_validation_error(mod string, obj_path string, source_file s
 		return 'The `db.sqlite` module expects the SQLite amalgamation files `sqlite3.c` and `sqlite3.h` in `${sqlite_dir}`. Run `v vlib/db/sqlite/install_thirdparty_sqlite.vsh`, or download the SQLite amalgamation package and place those files there.'
 	}
 	return ''
+}
+
+// fixup_tcc_macos_comma_path_flags works around the fact that both tcc and
+// clang split `-Wl,foo,bar` on every comma without an escape mechanism. When
+// V's install path contains a literal comma (used in CI to stress
+// space-paths), the `-Wl,-rpath,"@VEXEROOT/thirdparty/tcc/lib"` flag emitted
+// by builtin_d_gcboehm.c.v under `$if tinyc` expands into a path with a comma
+// and the linker rejects it. The bundled libgc.dylib also gets passed by
+// absolute path; that itself is fine, but the dylib's `LC_ID_DYLIB` is
+// `@rpath/libgc.dylib`, so the linked binary cannot find the library at
+// runtime once we strip the rpath flag.
+//
+// This helper copies the bundled dylib into a non-comma cache directory,
+// updates the copy's install_name to its own absolute path (so the linked
+// binary records that path in `LC_LOAD_DYLIB`), then rewrites the dylib flag
+// in the linker arguments to point at the copy and drops the now-broken rpath
+// flag. The bundled libgc.dylib itself is left untouched, so binaries built
+// before/elsewhere that rely on `@rpath/libgc.dylib` still work. The fixup is
+// applied for any cc, since V may fall back from tcc to clang and reuse the
+// already-emitted flags.
+fn (v &Builder) fixup_tcc_macos_comma_path_flags(mut ccoptions CcompilerOptions) {
+	$if !macos {
+		return
+	}
+	if v.pref.os != .macos {
+		return
+	}
+	tcc_lib_dir := os.real_path(os.join_path(v.pref.vroot, 'thirdparty', 'tcc', 'lib'))
+	if !tcc_lib_dir.contains(',') {
+		return
+	}
+	src_dylib := os.join_path(tcc_lib_dir, 'libgc.dylib')
+	if !os.exists(src_dylib) {
+		return
+	}
+	cache_dir := os.join_path(os.temp_dir(), 'v_tcc_libgc')
+	if cache_dir.contains(',') {
+		return
+	}
+	if !os.exists(cache_dir) {
+		os.mkdir_all(cache_dir) or { return }
+	}
+	cache_dylib := os.join_path(cache_dir, 'libgc.dylib')
+	src_mtime := os.file_last_mod_unix(src_dylib)
+	if !os.exists(cache_dylib) || os.file_last_mod_unix(cache_dylib) < src_mtime {
+		os.cp(src_dylib, cache_dylib) or { return }
+		idres :=
+			os.execute('install_name_tool -id ${os.quoted_path(cache_dylib)} ${os.quoted_path(cache_dylib)}')
+		if idres.exit_code != 0 {
+			if v.pref.is_verbose {
+				eprintln('install_name_tool -id for ${cache_dylib} failed: ${idres.output.trim_space()}')
+			}
+			return
+		}
+	}
+	cache_dylib_quoted := '"${cache_dylib}"'
+	suffix := os.path_separator + 'tcc' + os.path_separator + 'lib' + os.path_separator +
+		'libgc.dylib'
+	ccoptions.linker_flags = ccoptions.linker_flags.map(if it.ends_with(suffix + '"')
+		&& it.starts_with('"') {
+		cache_dylib_quoted
+	} else {
+		it
+	})
+	ccoptions.pre_args = ccoptions.pre_args.filter(!it.starts_with('-Wl,-rpath,'))
 }
 
 fn (v &Builder) should_compile_bundled_thirdparty_object_from_source(obj_path string, source_file string, source_kind SourceKind) bool {

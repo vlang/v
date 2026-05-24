@@ -3,7 +3,7 @@
 // that can be found in the LICENSE file.
 module types
 
-pub type Object = Const | Fn | Global | Module | SmartCastSelector | Type
+pub type Object = Const | Fn | Global | Module | SmartCastSelector | Type | TypeObject
 
 // pub type Object = Const | Fn | Global | Module |
 // 	Alias | Array | Enum | Map | Pointer | Primitive | String | Struct | SumType
@@ -14,12 +14,18 @@ struct SmartCastSelector {
 	cast_type Type
 }
 
+pub struct TypeObject {
+pub:
+	typ Type
+}
+
 @[heap]
 pub struct Scope {
 pub:
 	parent &Scope = unsafe { nil }
 pub mut:
 	objects map[string]Object
+	types   map[string]Type
 	// TODO: try implement using original concept
 	field_smartcasts map[string]Type
 	// smartcasts map[string]Type
@@ -46,6 +52,9 @@ pub fn same_scope_ptr(a &Scope, b &Scope) bool {
 // TODO: try implement the alternate method I was experimenting with (SmartCastSelector)
 // i'm not sure if it is actually possible though. need to explore it.
 pub fn (s &Scope) lookup_field_smartcast(name string) ?Type {
+	if !scope_lookup_string_is_valid(name) {
+		return none
+	}
 	if name in s.field_smartcasts {
 		return s.field_smartcasts[name] or { return none }
 	}
@@ -56,6 +65,9 @@ pub fn (s &Scope) lookup_field_smartcast(name string) ?Type {
 }
 
 pub fn (s &Scope) lookup(name string) ?Object {
+	if !scope_lookup_string_is_valid(name) {
+		return none
+	}
 	if name in s.objects {
 		return s.objects[name] or { return none }
 	}
@@ -75,6 +87,31 @@ pub fn (s &Scope) lookup_parent(name string, pos int) ?Object {
 		}
 	}
 	// println('lookup_parent: NOT FOUND: ${name}')
+	return none
+}
+
+pub fn (s &Scope) lookup_type(name string) ?Type {
+	if !scope_lookup_string_is_valid(name) {
+		return none
+	}
+	if name in s.types {
+		return s.types[name] or { return none }
+	}
+	return none
+}
+
+pub fn (s &Scope) lookup_type_parent(name string, pos int) ?Type {
+	if typ := s.lookup_type(name) {
+		return typ
+		// if !pos.is_valid() || cmpPos(obj.scopePos(), pos) <= 0 {
+		// 	return s, obj
+		// }
+	}
+	if s.parent != unsafe { nil } {
+		if parent_typ := s.parent.lookup_type_parent(name, pos) {
+			return parent_typ
+		}
+	}
 	return none
 }
 
@@ -104,6 +141,13 @@ pub fn (s &Scope) lookup_parent_with_scope(name string, pos int) ?(&Scope, Objec
 }
 
 pub fn (mut s Scope) insert(name string, obj Object) {
+	if !scope_lookup_string_is_valid(name) {
+		return
+	}
+	trace_scope_fixed_array_object('insert_in', name, obj)
+	if typ := object_decl_type(obj) {
+		s.types[name] = typ
+	}
 	if name in s.objects {
 		existing := s.objects[name] or { return }
 		// Module scopes pre-register a self-module placeholder so code can
@@ -115,12 +159,76 @@ pub fn (mut s Scope) insert(name string, obj Object) {
 		return
 	}
 	s.objects[name] = obj
+	if stored := s.objects[name] {
+		trace_scope_fixed_array_object('insert_out', name, stored)
+	}
 }
 
 // insert_or_update always overwrites an existing entry. Used for fn_root_scope
 // where variables from nested scopes must be updated when re-declared.
 pub fn (mut s Scope) insert_or_update(name string, obj Object) {
+	if !scope_lookup_string_is_valid(name) {
+		return
+	}
+	trace_scope_fixed_array_object('insert_update_in', name, obj)
+	if typ := object_decl_type(obj) {
+		s.types[name] = typ
+	}
 	s.objects[name] = obj
+	if stored := s.objects[name] {
+		trace_scope_fixed_array_object('insert_update_out', name, stored)
+	}
+}
+
+fn trace_scope_fixed_array_object(label string, name string, obj Object) {
+	if name !in ['g_autostr_type_stack', 'g_autostr_addr_stack', 'g_v_os_execute_mutex_storage'] {
+		return
+	}
+	match obj {
+		Global {
+			trace_scope_fixed_array_type(label, name, obj.typ)
+		}
+		TypeObject {
+			trace_scope_fixed_array_type(label, name, obj.typ)
+		}
+		Type {
+			trace_scope_fixed_array_type(label, name, obj)
+		}
+		else {}
+	}
+}
+
+fn trace_scope_fixed_array_type(label string, name string, typ Type) {
+	if typ is ArrayFixed {
+		arr := typ as ArrayFixed
+		eprintln('SCOPE_TRACE ${label} name=${name} len=${arr.len} elem=${arr.elem_type.name()}')
+	}
+}
+
+pub fn (mut s Scope) insert_type(name string, typ Type) {
+	if !scope_lookup_string_is_valid(name) {
+		return
+	}
+	s.types[name] = typ
+}
+
+fn object_decl_type(obj Object) ?Type {
+	match obj {
+		Type {
+			return obj
+		}
+		else {}
+	}
+
+	return none
+}
+
+fn scope_lookup_string_is_valid(s string) bool {
+	if s.len <= 0 || s.len > 512 {
+		return false
+	}
+	ptr := unsafe { u64(voidptr(s.str)) }
+	return ptr > 4096
 }
 
 pub fn (s &Scope) print(recurse_parents bool) {
@@ -156,6 +264,9 @@ pub fn (obj &Object) typ() Type {
 		}
 		Type {
 			return obj
+		}
+		TypeObject {
+			return obj.typ
 		}
 	}
 }

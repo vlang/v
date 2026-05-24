@@ -9,70 +9,18 @@ import v2.token
 import v2.types
 import strings
 
-struct SumtypeConstructorPayload {
-	variant_name string
-	variant_type types.Type
-	value        ast.Expr
-	should_deref bool
-}
-
 // register_synth_type registers a type for a synthesized node position.
 // Accumulates in synth_types map for deferred application (thread-safe).
 fn (mut t Transformer) register_synth_type(pos token.Pos, typ types.Type) {
 	t.synth_types[pos.id] = typ
 }
 
-fn (mut t Transformer) with_synth_type(expr ast.Expr, typ types.Type) ast.Expr {
-	pos := t.next_synth_pos()
-	t.register_synth_type(pos, typ)
-	return match expr {
-		ast.Ident {
-			ast.Expr(ast.Ident{
-				name: expr.name
-				pos:  pos
-			})
-		}
-		ast.SelectorExpr {
-			ast.Expr(ast.SelectorExpr{
-				lhs: expr.lhs
-				rhs: expr.rhs
-				pos: pos
-			})
-		}
-		ast.IndexExpr {
-			ast.Expr(ast.IndexExpr{
-				lhs:      expr.lhs
-				expr:     expr.expr
-				is_gated: expr.is_gated
-				pos:      pos
-			})
-		}
-		ast.CallExpr {
-			ast.Expr(ast.CallExpr{
-				lhs:  expr.lhs
-				args: expr.args
-				pos:  pos
-			})
-		}
-		ast.CallOrCastExpr {
-			ast.Expr(ast.CallOrCastExpr{
-				lhs:  expr.lhs
-				expr: expr.expr
-				pos:  pos
-			})
-		}
-		else {
-			ast.Expr(ast.ParenExpr{
-				expr: expr
-				pos:  pos
-			})
-		}
+fn (t &Transformer) get_synth_type(pos token.Pos) ?types.Type {
+	if pos.id == 0 {
+		return none
 	}
-}
-
-fn (mut t Transformer) transform_expr_without_smartcast_as_type(expr ast.Expr, expr_str string, typ types.Type) ast.Expr {
-	transformed := t.transform_expr_without_smartcast(expr, expr_str)
-	return t.with_synth_type(transformed, typ)
+	typ := t.synth_types[pos.id] or { return none }
+	return t.normalize_type(typ)
 }
 
 // lookup_method_cached looks up a method by receiver type name and method name
@@ -130,6 +78,12 @@ fn (t &Transformer) lookup_fn_cached(module_name string, fn_name string) ?types.
 // register_generated_fn_scope creates a function scope for a transformer-generated function
 // (e.g. Array_int_contains, Array_string_str) and registers parameter types so cleanc
 // can resolve them via scope lookup instead of falling back to string-based inference.
+fn value_object_from_type(typ types.Type) types.Object {
+	return types.TypeObject{
+		typ: typ
+	}
+}
+
 fn (mut t Transformer) register_generated_fn_scope(fn_name string, module_name string, params []ast.Parameter) {
 	parent := t.get_module_scope(module_name) or { return }
 	mut fn_scope := types.new_scope(parent)
@@ -139,7 +93,7 @@ fn (mut t Transformer) register_generated_fn_scope(fn_name string, module_name s
 			continue
 		}
 		if param_type := t.c_name_to_type(type_name) {
-			fn_scope.insert(param.name, types.Object(param_type))
+			fn_scope.insert(param.name, value_object_from_type(param_type))
 		}
 	}
 	key := if module_name == '' { fn_name } else { '${module_name}__${fn_name}' }
@@ -177,6 +131,16 @@ fn (t &Transformer) c_name_to_type(name string) ?types.Type {
 		return types.Map{
 			key_type:   types.string_
 			value_type: value_type
+		}
+	}
+	if name.ends_with('ptr') && name !in ['byteptr', 'charptr', 'voidptr'] {
+		if typ := t.lookup_type(name) {
+			return typ
+		}
+		base_name := name[..name.len - 'ptr'.len]
+		base_type := t.c_name_to_type(base_name) or { return none }
+		return types.Pointer{
+			base_type: base_type
 		}
 	}
 	// Primitives and well-known types
@@ -260,61 +224,92 @@ fn (t &Transformer) c_name_to_type(name string) ?types.Type {
 				props: .untyped | .float
 			})
 		}
+		'char', 'rune', 'usize', 'isize', 'void', 'nil', 'none', 'byteptr', 'charptr', 'voidptr' {
+			types.builtin_type(name) or { return none }
+		}
 		else {
 			// Try looking up by name in module scopes
-			if typ := t.lookup_type(name) {
-				typ
-			} else {
-				t.synthetic_struct_type_from_c_name(name)
-			}
+			t.lookup_type(name)
 		}
 	}
-}
-
-fn (t &Transformer) synthetic_struct_type_from_c_name(name string) ?types.Type {
-	if name == '' || t.is_sum_type(name) || t.is_interface_type(name) {
-		return none
-	}
-	short_name := if name.contains('__') { name.all_after_last('__') } else { name }
-	if short_name.len == 0 || short_name[0] < `A` || short_name[0] > `Z` {
-		return none
-	}
-	return types.Type(types.Struct{
-		name: name
-	})
 }
 
 // lookup_var_type looks up a variable's type in the current scope chain
 fn (t &Transformer) lookup_var_type(name string) ?types.Type {
-	if typ := t.decl_type_overrides[name] {
-		return typ
-	}
 	if t.scope == unsafe { nil } {
+		if t.fn_root_scope != unsafe { nil } {
+			if typ := t.fn_root_scope.lookup_var_type(name) {
+				return t.normalize_type(typ)
+			}
+		}
+		if t.cur_module != '' {
+			if scope := t.get_module_scope(t.cur_module) {
+				if typ := scope.lookup_var_type(name) {
+					return t.normalize_type(typ)
+				}
+			}
+		}
+		if typ := t.lookup_imported_var_type(name) {
+			return typ
+		}
 		return none
 	}
 	mut scope := unsafe { t.scope }
-	if obj := scope.lookup_parent(name, 0) {
-		if obj is types.Module || obj is types.Fn {
-			return none
+	if typ := scope.lookup_var_type(name) {
+		return t.normalize_type(typ)
+	}
+	if t.fn_root_scope != unsafe { nil } {
+		if typ := t.fn_root_scope.lookup_var_type(name) {
+			return t.normalize_type(typ)
 		}
-		if obj is types.Type && name_looks_like_type_symbol(name) {
-			return none
+	}
+	if t.cur_module != '' {
+		if mod_scope := t.get_module_scope(t.cur_module) {
+			if typ := mod_scope.lookup_var_type(name) {
+				return t.normalize_type(typ)
+			}
 		}
-		return obj.typ()
+	}
+	if typ := t.lookup_imported_var_type(name) {
+		return typ
 	}
 	return none
 }
 
-fn name_looks_like_type_symbol(name string) bool {
-	if name == '' {
-		return false
+fn (t &Transformer) lookup_imported_var_type(name string) ?types.Type {
+	if name == '' || name.contains('__') || t.cur_module == '' {
+		return none
 	}
-	if name[0] >= `A` && name[0] <= `Z` {
-		return true
+	current_scope := t.get_module_scope(t.cur_module) or { return none }
+	mut keys := current_scope.objects.keys()
+	keys.sort()
+	mut found_type := types.Type(types.void_)
+	mut found := false
+	for key in keys {
+		obj := current_scope.objects[key] or { continue }
+		if obj !is types.Module {
+			continue
+		}
+		module_obj := obj as types.Module
+		module_name := if module_obj.name != '' { module_obj.name } else { key }
+		if module_name == '' || module_name == t.cur_module || module_name == 'C' {
+			continue
+		}
+		mut module_scope := module_obj.scope
+		if module_scope == unsafe { nil } {
+			module_scope = t.get_module_scope(module_name) or { continue }
+		}
+		typ := module_scope.lookup_var_type(name) or { continue }
+		if found {
+			return none
+		}
+		found_type = t.normalize_type(typ)
+		found = true
 	}
-	return name in ['bool', 'string', 'rune', 'byte', 'int', 'i8', 'i16', 'i32', 'i64', 'u8', 'u16',
-		'u32', 'u64', 'f32', 'f64', 'usize', 'isize', 'void', 'voidptr', 'charptr', 'byteptr',
-		'nil']
+	if found {
+		return found_type
+	}
+	return none
 }
 
 fn (t &Transformer) is_callable_type(typ types.Type) bool {
@@ -397,65 +392,61 @@ fn is_type_valid(typ types.Type) bool {
 	return true
 }
 
+fn (t &Transformer) live_alias_base_type(alias types.Alias) ?types.Type {
+	if alias.name != '' {
+		if live_type := t.lookup_type(alias.name) {
+			if live_type is types.Alias {
+				if types.type_has_valid_payload(live_type.base_type) {
+					return live_type.base_type
+				}
+			} else {
+				return live_type
+			}
+		}
+	}
+	if types.type_has_valid_payload(alias.base_type) {
+		return alias.base_type
+	}
+	return none
+}
+
+fn (t &Transformer) normalize_type(typ types.Type) types.Type {
+	if !types.type_has_valid_payload(typ) {
+		return typ
+	}
+	if typ is types.Alias {
+		if base_type := t.live_alias_base_type(typ) {
+			return types.Type(types.Alias{
+				name:      typ.name
+				base_type: base_type
+			})
+		}
+	}
+	return typ
+}
+
 // lookup_type looks up a type by name in the module scope
 fn (t &Transformer) lookup_type(name string) ?types.Type {
 	// Handle qualified names like "ast__Expr" by extracting module and type name
-	normalized_name := name.replace('.', '__')
-	mut lookup_name := normalized_name
+	mut lookup_name := name
 	mut lookup_module := t.cur_module
 	// Use index_of instead of split to avoid array allocation
-	dunder := normalized_name.index('__') or { -1 }
+	dunder := name.index('__') or { -1 }
 	if dunder >= 0 {
-		lookup_module = normalized_name[..dunder]
+		lookup_module = name[..dunder]
 		// Get the last segment after '__' (handles multi-part like "a__b__C")
-		last_dunder := normalized_name.last_index('__') or { dunder }
-		lookup_name = normalized_name[last_dunder + 2..]
+		last_dunder := name.last_index('__') or { dunder }
+		lookup_name = name[last_dunder + 2..]
+	} else if dot := name.last_index('.') {
+		lookup_module = name[..dot]
+		lookup_name = name[dot + 1..]
 	}
-	if scope := t.get_module_scope(lookup_module) {
-		if obj := scope.lookup_parent(lookup_name, 0) {
-			if obj is types.Type {
-				if !is_type_valid(obj) {
-					return none
-				}
-				return obj
-			}
-		}
+	mut scope := t.get_module_scope(lookup_module) or { return none }
+	typ := scope.lookup_type_parent(lookup_name, 0) or { return none }
+	if !is_type_valid(typ) {
+		return none
 	}
-	if lookup_module != '' {
-		for mod_name, scope in t.cached_scopes {
-			mod_short := if mod_name.contains('.') {
-				mod_name.all_after_last('.')
-			} else if mod_name.contains('__') {
-				mod_name.all_after_last('__')
-			} else {
-				mod_name
-			}
-			if mod_short != lookup_module {
-				continue
-			}
-			if obj := scope.lookup_parent(lookup_name, 0) {
-				if obj is types.Type {
-					if !is_type_valid(obj) {
-						continue
-					}
-					return obj
-				}
-			}
-		}
-	}
-	if dunder < 0 {
-		for _, fallback_scope in t.cached_scopes {
-			if fallback_obj := fallback_scope.objects[lookup_name] {
-				if fallback_obj is types.Type {
-					if !is_type_valid(fallback_obj) {
-						continue
-					}
-					return fallback_obj
-				}
-			}
-		}
-	}
-	return none
+	return typ
 }
 
 fn (t &Transformer) lookup_struct_type_any_module(name string) ?types.Struct {
@@ -465,11 +456,9 @@ fn (t &Transformer) lookup_struct_type_any_module(name string) ?types.Struct {
 		}
 	}
 	for _, scope in t.cached_scopes {
-		if obj := scope.objects[name] {
-			if obj is types.Type {
-				if obj is types.Struct {
-					return obj
-				}
+		if typ := scope.lookup_type(name) {
+			if typ is types.Struct {
+				return typ
 			}
 		}
 	}
@@ -552,6 +541,44 @@ fn (t &Transformer) is_flag_enum(type_name string) bool {
 	return false
 }
 
+fn transformer_selector_expr_parts(expr ast.SelectorExpr) []string {
+	mut parts := []string{}
+	collect_transformer_selector_expr_parts(ast.Expr(expr), mut parts)
+	return parts
+}
+
+fn collect_transformer_selector_expr_parts(expr ast.Expr, mut parts []string) bool {
+	match expr {
+		ast.Ident {
+			parts << expr.name
+			return true
+		}
+		ast.SelectorExpr {
+			if !collect_transformer_selector_expr_parts(expr.lhs, mut parts) {
+				return false
+			}
+			parts << expr.rhs.name
+			return true
+		}
+		else {
+			return false
+		}
+	}
+}
+
+fn (t &Transformer) selector_type_name(expr ast.SelectorExpr, full bool) string {
+	parts := transformer_selector_expr_parts(expr)
+	if parts.len == 0 {
+		return ''
+	}
+	if !full || parts.len == 1 {
+		return parts[parts.len - 1]
+	}
+	module_name := parts[parts.len - 2]
+	type_name := parts[parts.len - 1]
+	return '${module_name}__${type_name}'
+}
+
 // type_expr_to_variant_name converts a type AST expression (like []Any or
 // map[string]Any) to the mangled variant name used in sum type definitions
 // (e.g. Array_json2__Any, Map_string_json2__Any).
@@ -568,10 +595,7 @@ fn (t &Transformer) type_expr_to_variant_name(e ast.Expr) string {
 		return name
 	}
 	if e is ast.SelectorExpr {
-		sel := e as ast.SelectorExpr
-		if sel.lhs is ast.Ident {
-			return '${(sel.lhs as ast.Ident).name}__${sel.rhs.name}'
-		}
+		return t.selector_type_name(e, true)
 	}
 	return ''
 }
@@ -633,10 +657,72 @@ fn (t &Transformer) get_sum_type_variants(type_name string) []string {
 	return []string{}
 }
 
+fn sum_type_variant_match_name(name string) string {
+	c_name := name.replace('.', '__')
+	if c_name.starts_with('Array_') || c_name.starts_with('Array_fixed_')
+		|| c_name.starts_with('Map_') || c_name.starts_with('_option_')
+		|| c_name.starts_with('_result_') {
+		return c_name
+	}
+	if c_name.contains('__') {
+		return c_name.all_after_last('__')
+	}
+	return c_name
+}
+
+fn sum_type_variant_name_with_module(module_name string, variant_name string) string {
+	if module_name == '' || variant_name == '' || variant_name.contains('__')
+		|| variant_name.starts_with('Array_') || variant_name.starts_with('Array_fixed_')
+		|| variant_name.starts_with('Map_') {
+		return variant_name
+	}
+	return '${module_name}__${variant_name}'
+}
+
+fn qualify_sum_type_variant_for_match(sum_type_name string, variant_name string) string {
+	if variant_name == '' || variant_name.contains('__') || !sum_type_name.contains('__')
+		|| variant_name.starts_with('Array_') || variant_name.starts_with('Array_fixed_')
+		|| variant_name.starts_with('Map_') || variant_name.starts_with('_option_')
+		|| variant_name.starts_with('_result_') {
+		return variant_name
+	}
+	return '${sum_type_name.all_before_last('__')}__${variant_name}'
+}
+
+fn sum_type_variant_matches(variant string, target string) bool {
+	c_variant := variant.replace('.', '__')
+	c_target := target.replace('.', '__')
+	if c_variant == c_target {
+		return true
+	}
+	if c_variant == '' || c_target == '' {
+		return false
+	}
+	if c_variant.contains('__') && c_target.contains('__') {
+		return false
+	}
+	variant_short := sum_type_variant_match_name(c_variant)
+	target_short := sum_type_variant_match_name(c_target)
+	return variant_short == target_short || c_target.ends_with('__${variant_short}')
+}
+
+fn sum_type_variant_matches_for_sumtype(sum_type_name string, variant string, target string) bool {
+	return sum_type_variant_matches(qualify_sum_type_variant_for_match(sum_type_name, variant),
+		target)
+}
+
 // transform_sumtype_type_name lowers `receiver.type_name()` on a sum type into
 // a match expression on `receiver._tag` that returns the variant display name.
 fn (mut t Transformer) transform_sumtype_type_name(receiver ast.Expr) ?ast.Expr {
 	mut sumtype_name := t.get_sumtype_name_for_expr(receiver)
+	if sumtype_name == '' {
+		if receiver_type := t.get_expr_type(receiver) {
+			base_type := t.unwrap_alias_and_pointer_type(receiver_type)
+			if base_type is types.SumType {
+				sumtype_name = types.sum_type_name(base_type)
+			}
+		}
+	}
 	// Fallback: if name-based lookup fails, try direct type lookup
 	if sumtype_name == '' {
 		if receiver is ast.Ident {
@@ -699,39 +785,15 @@ fn (t &Transformer) is_sum_type(type_name string) bool {
 	return typ is types.SumType
 }
 
-fn (t &Transformer) normalize_sumtype_name(type_name string) string {
-	if type_name == '' {
-		return ''
-	}
-	mut name := type_name.replace('.', '__')
-	if t.is_sum_type(name) {
-		return name
-	}
-	if !name.contains('__') {
-		qualified := t.qualify_type_name(name)
-		if t.is_sum_type(qualified) {
-			return qualified
-		}
-	}
-	return name
-}
-
 // find_sumtype_for_variant finds the sum type that contains the given variant
 // This handles nested/aliased sum types by checking all known sum types
 fn (t &Transformer) find_sumtype_for_variant(variant_name string) string {
 	// Common sum types to check - prioritize Expr, Type, Stmt as they're most common
 	sumtypes := ['Expr', 'Type', 'Stmt', 'ast__Expr', 'ast__Type', 'ast__Stmt']
-	short_variant := if variant_name.contains('__') {
-		variant_name.all_after_last('__')
-	} else {
-		variant_name
-	}
-
 	for st in sumtypes {
 		variants := t.get_sum_type_variants(st)
 		for v in variants {
-			v_short := if v.contains('__') { v.all_after_last('__') } else { v }
-			if v == variant_name || v_short == short_variant || v_short == variant_name {
+			if sum_type_variant_matches_for_sumtype(st, v, variant_name) {
 				return st
 			}
 		}
@@ -739,41 +801,19 @@ fn (t &Transformer) find_sumtype_for_variant(variant_name string) string {
 	// Fallback: search sum types in the current module scope for user-defined types.
 	// Only search the current module to avoid cross-module matches that would
 	// incorrectly trigger smartcasting (e.g., types.Type containing Alias).
-	cur_mod := t.cur_module
+	cur_mod := if t.cur_module == '' { 'main' } else { t.cur_module }
 	scope := t.get_module_scope(cur_mod) or { return '' }
-	for obj_name, obj in scope.objects {
-		if obj is types.Type {
-			if obj is types.SumType {
-				st_name := if cur_mod != '' && cur_mod != 'main' && cur_mod != 'builtin' {
-					'${cur_mod}__${obj_name}'
-				} else {
-					obj_name
-				}
-				variants := t.get_sum_type_variants(st_name)
-				if variants.len == 0 {
-					// Try short name if qualified name didn't work
-					inner_variants := t.get_sum_type_variants(obj_name)
-					for v in inner_variants {
-						v_short := if v.contains('__') {
-							v.all_after_last('__')
-						} else {
-							v
-						}
-						if v == variant_name || v_short == short_variant || v_short == variant_name {
-							return obj_name
-						}
-					}
-					continue
-				}
-				for v in variants {
-					v_short := if v.contains('__') {
-						v.all_after_last('__')
-					} else {
-						v
-					}
-					if v == variant_name || v_short == short_variant || v_short == variant_name {
-						return st_name
-					}
+	for type_name, typ in scope.types {
+		if typ is types.SumType {
+			st_name := if cur_mod != '' && cur_mod != 'main' && cur_mod != 'builtin' {
+				'${cur_mod}__${type_name}'
+			} else {
+				type_name
+			}
+			variants := typ.get_variants()
+			for v in variants {
+				if sum_type_variant_matches_for_sumtype(st_name, v.name(), variant_name) {
+					return st_name
 				}
 			}
 		}
@@ -783,9 +823,6 @@ fn (t &Transformer) find_sumtype_for_variant(variant_name string) string {
 
 // get_var_type_name returns the type name of a variable from scope lookup
 fn (t &Transformer) get_var_type_name(name string) string {
-	if typ := t.decl_type_overrides[name] {
-		return t.type_to_name(typ)
-	}
 	if t.scope == unsafe { nil } {
 		return ''
 	}
@@ -828,6 +865,9 @@ fn (t &Transformer) v_type_name_to_c_name(v_name string) string {
 		elem := name[2..]
 		elem_c := t.v_type_name_to_c_name(elem)
 		return 'Array_${elem_c}'
+	}
+	if name.contains('.') {
+		return name.replace('.', '__')
 	}
 	// No conversion needed
 	return name
@@ -888,22 +928,10 @@ fn (t &Transformer) type_to_c_decl_name(typ types.Type) string {
 			elem_name := t.type_to_c_decl_name(typ.elem_type)
 			return 'Array_${elem_name}'
 		}
-		types.ArrayFixed {
-			elem_name := t.type_to_c_decl_name(typ.elem_type)
-			return 'Array_fixed_${elem_name}_${typ.len}'
-		}
 		types.Map {
 			key_name := t.type_to_c_decl_name(typ.key_type)
 			value_name := t.type_to_c_decl_name(typ.value_type)
 			return 'Map_${key_name}_${value_name}'
-		}
-		types.Tuple {
-			tuple_types := typ.get_types()
-			mut names := []string{cap: tuple_types.len}
-			for elem_type in tuple_types {
-				names << t.type_to_c_name(elem_type)
-			}
-			return 'Tuple_${names.join('_')}'
 		}
 		types.Struct {
 			// Replace . with __ for module-qualified names
@@ -957,11 +985,7 @@ fn (t &Transformer) expr_to_type_name(expr ast.Expr) string {
 		return name
 	}
 	if expr is ast.SelectorExpr {
-		// For module.Type, return module__Type
-		if expr.lhs is ast.Ident {
-			return '${expr.lhs.name}__${expr.rhs.name}'
-		}
-		return expr.rhs.name
+		return t.selector_type_name(expr, true)
 	}
 	if expr is ast.PrefixExpr {
 		// For &Type or *Type, preserve pointer type
@@ -993,6 +1017,25 @@ fn (t &Transformer) expr_to_type_name(expr ast.Expr) string {
 			value_type := t.expr_to_type_name(expr.value_type)
 			return 'Map_${key_type}_${value_type}'
 		}
+		if expr is ast.ArrayFixedType {
+			elem_type := t.expr_to_type_name(expr.elem_type)
+			if elem_type == '' {
+				return ''
+			}
+			len := if expr.len is ast.BasicLiteral {
+				(expr.len as ast.BasicLiteral).value
+			} else {
+				''
+			}
+			if len == '' {
+				return ''
+			}
+			return 'Array_fixed_${elem_type}_${len}'
+		}
+		if expr is ast.PointerType {
+			base_type := t.expr_to_type_name(expr.base_type)
+			return pointer_type_c_name(base_type)
+		}
 		if expr is ast.OptionType {
 			return t.expr_to_type_name(expr.base_type)
 		}
@@ -1001,6 +1044,18 @@ fn (t &Transformer) expr_to_type_name(expr ast.Expr) string {
 		}
 	}
 	return ''
+}
+
+fn pointer_type_c_name(base_type string) string {
+	if base_type == '' {
+		return ''
+	}
+	return match base_type {
+		'char' { 'charptr' }
+		'void' { 'voidptr' }
+		'u8', 'byte' { 'byteptr' }
+		else { '${base_type}ptr' }
+	}
 }
 
 fn (t &Transformer) unwrap_map_type(typ types.Type) ?types.Map {
@@ -1024,159 +1079,40 @@ fn (t &Transformer) unwrap_map_type(typ types.Type) ?types.Map {
 	return none
 }
 
-fn map_key_type_needs_expr_fallback(typ types.Type) bool {
-	if typ.name().starts_with('_option_') || typ.name().starts_with('_result_') {
-		return true
-	}
-	return match typ {
-		types.OptionType, types.ResultType, types.Void, types.None {
-			true
+fn (t &Transformer) field_type_from_receiver_type(receiver_type types.Type, field_name string) ?types.Type {
+	mut cur := receiver_type
+	for {
+		if cur is types.Pointer {
+			cur = cur.base_type
+			continue
 		}
-		else {
-			false
+		if cur is types.Alias {
+			if field_typ := t.lookup_struct_field_type(cur.name, field_name) {
+				return field_typ
+			}
+			cur = cur.base_type
+			continue
 		}
+		break
 	}
-}
-
-fn map_key_expr_fallback_is_usable(typ types.Type) bool {
-	if typ.name().starts_with('_option_') || typ.name().starts_with('_result_') {
-		return false
-	}
-	return match typ {
-		types.OptionType, types.ResultType, types.Void, types.None {
-			false
-		}
-		else {
-			true
+	if cur is types.Struct {
+		if field_typ := t.struct_field_type(cur, field_name) {
+			return field_typ
 		}
 	}
-}
-
-fn (mut t Transformer) map_key_expr_type(expr ast.Expr) ?types.Type {
-	if typ := t.get_expr_type(expr) {
-		return typ
+	c_name := t.type_to_c_name(cur)
+	if c_name != '' {
+		if field_typ := t.lookup_struct_field_type(c_name, field_name) {
+			return field_typ
+		}
 	}
-	if typ := t.resolve_expr_type(expr) {
-		return typ
-	}
-	if typ := t.infer_prop_type(expr) {
-		return typ
-	}
-	if expr is ast.InfixExpr && expr.op == .plus
-		&& (t.is_string_expr(expr.lhs) || t.is_string_expr(expr.rhs)) {
-		return types.Type(types.string_)
+	type_name := t.type_to_name(cur)
+	if type_name != '' && type_name != c_name {
+		if field_typ := t.lookup_struct_field_type(type_name, field_name) {
+			return field_typ
+		}
 	}
 	return none
-}
-
-fn (mut t Transformer) map_key_type_for_expr(expr ast.Expr, map_type types.Map) types.Type {
-	key_type := map_type.key_type
-	if !map_key_type_needs_expr_fallback(key_type) {
-		return key_type
-	}
-	if typ := t.map_key_expr_type(expr) {
-		if map_key_expr_fallback_is_usable(typ) {
-			return typ
-		}
-	}
-	return key_type
-}
-
-fn (mut t Transformer) map_index_expr_from_guard_rhs(expr ast.Expr) ?ast.IndexExpr {
-	mut index_expr := ast.IndexExpr{}
-	if expr is ast.IndexExpr {
-		index_expr = expr
-	} else if expr is ast.GenericArgOrIndexExpr {
-		if lhs_type := t.get_expr_type(expr.lhs) {
-			if t.is_callable_type(lhs_type) {
-				return none
-			}
-		}
-		index_expr = ast.IndexExpr{
-			lhs:      expr.lhs
-			expr:     expr.expr
-			is_gated: false
-			pos:      expr.pos
-		}
-	} else if expr is ast.GenericArgs {
-		if expr.args.len != 1 {
-			return none
-		}
-		if lhs_type := t.get_expr_type(expr.lhs) {
-			if t.is_callable_type(lhs_type) {
-				return none
-			}
-		}
-		index_expr = ast.IndexExpr{
-			lhs:      expr.lhs
-			expr:     expr.args[0]
-			is_gated: false
-			pos:      expr.pos
-		}
-	} else {
-		return none
-	}
-	if _ := t.get_map_type_for_expr(index_expr.lhs) {
-		return index_expr
-	}
-	return none
-}
-
-fn (t &Transformer) declared_sumtype_name_for_expr(expr ast.Expr) string {
-	mut typ := types.Type(types.void_)
-	mut found := false
-	if resolved_type := t.resolve_expr_type(expr) {
-		base := t.unwrap_alias_and_pointer_type(resolved_type)
-		if base is types.SumType {
-			type_name := t.type_to_c_name(base)
-			if type_name != '' {
-				return type_name
-			}
-		}
-	}
-	match expr {
-		ast.SelectorExpr {
-			if field_type := t.get_struct_field_type(expr) {
-				typ = field_type
-				found = true
-			}
-		}
-		ast.IndexExpr {
-			mut lhs_type_opt := t.get_expr_type(expr.lhs)
-			if lhs_type_opt == none && expr.lhs is ast.Ident {
-				lhs_type_opt = t.lookup_var_type(expr.lhs.name)
-			}
-			if lhs_type := lhs_type_opt {
-				base := t.unwrap_alias_and_pointer_type(lhs_type)
-				match base {
-					types.Array {
-						typ = base.elem_type
-						found = true
-					}
-					types.ArrayFixed {
-						typ = base.elem_type
-						found = true
-					}
-					types.Map {
-						typ = base.value_type
-						found = true
-					}
-					else {}
-				}
-			}
-		}
-		else {}
-	}
-
-	if !found {
-		return ''
-	}
-	base := t.unwrap_alias_and_pointer_type(typ)
-	type_name := t.type_to_c_name(base)
-	if type_name != '' && base is types.SumType {
-		return type_name
-	}
-	return ''
 }
 
 fn map_int_key_width_from_type_name(type_name string) int {
@@ -1206,9 +1142,6 @@ fn (t &Transformer) zero_value_expr_for_type(typ types.Type) ast.Expr {
 	// Keep this conservative and allocation-free. It is primarily used for
 	// default map index reads `m[key]` when the key is missing.
 	match typ {
-		types.OptionType {
-			return t.none_value_expr_for_option_type(typ)
-		}
 		types.String {
 			return ast.Expr(ast.StringLiteral{
 				kind:  .v
@@ -1221,6 +1154,10 @@ fn (t &Transformer) zero_value_expr_for_type(typ types.Type) ast.Expr {
 					kind:  .v
 					value: "''"
 				})
+			}
+			base_name := types.type_name(typ.base_type)
+			if base_name != '' && base_name != typ.name {
+				return t.zero_value_expr_for_type(typ.base_type)
 			}
 		}
 		else {}
@@ -1272,44 +1209,37 @@ fn (t &Transformer) zero_value_expr_for_type(typ types.Type) ast.Expr {
 				name: 'nil'
 			})
 		}
-		types.Enum {
-			return ast.Expr(ast.CastExpr{
-				typ:  t.type_to_ast_type_expr(typ)
-				expr: ast.BasicLiteral{
-					kind:  .number
-					value: '0'
+		types.Array {
+			elem_type := t.type_to_ast_type_expr(typ.elem_type)
+			return ast.Expr(ast.CallExpr{
+				lhs:  ast.Ident{
+					name: '__new_array_with_default_noscan'
 				}
+				args: [
+					ast.Expr(ast.BasicLiteral{
+						kind:  .number
+						value: '0'
+					}),
+					ast.Expr(ast.BasicLiteral{
+						kind:  .number
+						value: '0'
+					}),
+					ast.Expr(ast.KeywordOperator{
+						op:    .key_sizeof
+						exprs: [elem_type]
+					}),
+					ast.Expr(ast.Ident{
+						name: 'nil'
+					}),
+				]
 			})
 		}
 		else {}
 	}
 
 	// For aggregates, use a compound-literal zero init: `((T){0})`.
-	type_name := t.type_to_c_name(typ)
-	if type_name != '' {
-		return ast.Expr(ast.InitExpr{
-			typ: ast.Ident{
-				name: type_name
-			}
-		})
-	}
 	return ast.Expr(ast.InitExpr{
 		typ: t.type_to_ast_type_expr(typ)
-	})
-}
-
-fn (t &Transformer) none_value_expr_for_option_type(typ types.OptionType) ast.Expr {
-	return ast.Expr(ast.InitExpr{
-		typ:    t.type_to_ast_type_expr(types.Type(typ))
-		fields: [
-			ast.FieldInit{
-				name:  'state'
-				value: ast.Expr(ast.BasicLiteral{
-					kind:  .number
-					value: '2'
-				})
-			},
-		]
 	})
 }
 
@@ -1461,40 +1391,31 @@ fn (mut t Transformer) resolve_expr_with_expected_type(expr ast.Expr, expected t
 	}
 
 	match expected {
-		types.OptionType {
+		types.OptionType, types.ResultType {
 			match expr {
 				ast.Keyword {
 					if expr.tok == .key_none {
-						return t.none_value_expr_for_option_type(expected)
+						return expr
 					}
 				}
 				ast.Ident {
 					if expr.name == 'none' {
-						return t.none_value_expr_for_option_type(expected)
+						return expr
 					}
 				}
 				ast.Type {
 					if expr is ast.NoneType {
-						return t.none_value_expr_for_option_type(expected)
+						return ast.Expr(ast.Type(expr))
 					}
 				}
 				else {}
 			}
 
 			if expr_type := t.get_expr_type(expr) {
-				if expr_type is types.OptionType {
+				if expected is types.OptionType && expr_type is types.OptionType {
 					return expr
 				}
-			}
-			return ast.Expr(ast.CastExpr{
-				typ:  t.type_to_ast_type_expr(expected)
-				expr: expr
-				pos:  expr.pos()
-			})
-		}
-		types.ResultType {
-			if expr_type := t.get_expr_type(expr) {
-				if expr_type is types.ResultType {
+				if expected is types.ResultType && expr_type is types.ResultType {
 					return expr
 				}
 			}
@@ -1525,10 +1446,6 @@ fn (mut t Transformer) resolve_expr_with_inferred_enum_type(expr ast.Expr) ast.E
 	return expr
 }
 
-fn is_generic_placeholder_type_name(name string) bool {
-	return name in ['T', 'K', 'V'] || (name.len == 1 && name[0] >= `A` && name[0] <= `Z`)
-}
-
 fn (t &Transformer) type_to_ast_type_expr(typ types.Type) ast.Expr {
 	match typ {
 		types.Map {
@@ -1552,10 +1469,10 @@ fn (t &Transformer) type_to_ast_type_expr(typ types.Type) ast.Expr {
 			}))
 		}
 		types.Pointer {
-			return ast.Expr(ast.PrefixExpr{
-				op:   .amp
-				expr: t.type_to_ast_type_expr(typ.base_type)
-			})
+			return ast.Expr(ast.Type(ast.PointerType{
+				base_type: t.type_to_ast_type_expr(typ.base_type)
+				lifetime:  typ.lifetime
+			}))
 		}
 		types.OptionType {
 			return ast.Expr(ast.Type(ast.OptionType{
@@ -1573,12 +1490,6 @@ fn (t &Transformer) type_to_ast_type_expr(typ types.Type) ast.Expr {
 			})
 		}
 		else {
-			raw_name := typ.name()
-			if is_generic_placeholder_type_name(raw_name) {
-				return ast.Expr(ast.Ident{
-					name: raw_name
-				})
-			}
 			type_name := t.type_to_c_name(typ)
 			return ast.Expr(ast.Ident{
 				name: type_name
@@ -1588,7 +1499,6 @@ fn (t &Transformer) type_to_ast_type_expr(typ types.Type) ast.Expr {
 }
 
 // get_error_wrapper_type returns the wrapper type name for IError interface methods.
-// Types that embed Error use 'Error' wrappers; types with custom msg/code use their C type name.
 fn (t &Transformer) get_error_wrapper_type(type_name string) string {
 	base_name := if type_name.contains('__') {
 		type_name.all_after_last('__')
@@ -1605,7 +1515,21 @@ fn (t &Transformer) get_error_wrapper_type(type_name string) string {
 		// Has custom msg() method - use full type name for wrapper
 		return type_name
 	}
-	// No custom msg() method - use Error's wrapper
+	if typ := t.lookup_type(type_name) {
+		if typ is types.Struct {
+			for embedded in typ.embedded {
+				embedded_name := if embedded.name.contains('__') {
+					embedded.name.all_after_last('__')
+				} else {
+					embedded.name
+				}
+				if embedded_name == 'Error' {
+					return type_name
+				}
+			}
+		}
+	}
+	// No custom msg() method and no embedded Error - use Error's wrapper.
 	return 'Error'
 }
 
@@ -1638,9 +1562,7 @@ fn (t &Transformer) is_error_type_name(type_name string) bool {
 	}
 	if typ is types.Struct {
 		for embedded in typ.embedded {
-			if embedded.name == 'Error' || embedded.name.ends_with('.Error')
-				|| embedded.name == 'MessageError' || embedded.name.ends_with('.MessageError')
-				|| embedded.name.ends_with('__MessageError') {
+			if embedded.name == 'Error' || embedded.name.ends_with('.Error') {
 				return true
 			}
 		}
@@ -1650,21 +1572,6 @@ fn (t &Transformer) is_error_type_name(type_name string) bool {
 		return true
 	}
 	return false
-}
-
-fn (t &Transformer) is_ierror_type(typ types.Type) bool {
-	match typ {
-		types.Interface {
-			return typ.name == 'IError' || typ.name.ends_with('__IError')
-		}
-		types.NamedType {
-			name := string(typ)
-			return name == 'IError' || name.ends_with('__IError')
-		}
-		else {
-			return false
-		}
-	}
 }
 
 fn (t &Transformer) get_sumtype_name_for_expr(expr ast.Expr) string {
@@ -1696,15 +1603,6 @@ fn (t &Transformer) get_sumtype_name_for_expr(expr ast.Expr) string {
 	// Look up variable type from scope
 	// Unwrap ModifierExpr (e.g. `mut value` in `if mut value is Type`)
 	unwrapped_expr := if expr is ast.ModifierExpr { expr.expr } else { expr }
-	if direct_type := t.resolve_expr_type(unwrapped_expr) {
-		direct_base := t.unwrap_alias_and_pointer_type(direct_type)
-		if direct_base is types.SumType {
-			direct_name := t.type_to_c_name(direct_base)
-			if direct_name != '' && t.is_sum_type(direct_name) {
-				return direct_name
-			}
-		}
-	}
 	mut type_name := if unwrapped_expr is ast.Ident {
 		t.get_var_type_name(unwrapped_expr.name)
 	} else if unwrapped_expr is ast.SelectorExpr {
@@ -1799,6 +1697,10 @@ fn (t &Transformer) type_variant_name(typ ast.Type) string {
 		val_name := t.type_expr_name_full(typ.value_type)
 		return 'Map_${key_name}_${val_name}'
 	}
+	if typ is ast.PointerType {
+		base_name := t.type_expr_name(typ.base_type)
+		return '${base_name}ptr'
+	}
 	if typ is ast.GenericType {
 		// Foo[Bar] -> Foo (used for sumtype matching)
 		return t.type_expr_name(typ.name)
@@ -1811,6 +1713,7 @@ fn (t &Transformer) type_variant_name(typ ast.Type) string {
 		ast.NilType { 'NilType' }
 		ast.NoneType { 'NoneType' }
 		ast.OptionType { 'OptionType' }
+		ast.PointerType { 'PointerType' }
 		ast.ResultType { 'ResultType' }
 		ast.ThreadType { 'ThreadType' }
 		ast.TupleType { 'TupleType' }
@@ -1838,6 +1741,10 @@ fn (t &Transformer) type_variant_name_full(typ ast.Type) string {
 		val_name := t.type_expr_name_full(typ.value_type)
 		return 'Map_${key_name}_${val_name}'
 	}
+	if typ is ast.PointerType {
+		base_name := t.type_expr_name_full(typ.base_type)
+		return '${base_name}ptr'
+	}
 	return t.type_expr_name_full(typ)
 }
 
@@ -1846,9 +1753,12 @@ fn (t &Transformer) type_expr_name(expr ast.Expr) string {
 	if expr is ast.Ident {
 		return expr.name
 	}
+	if expr is ast.LifetimeExpr {
+		return '^' + expr.name
+	}
 	if expr is ast.SelectorExpr {
 		// ast.Attribute -> 'Attribute' (use short name for matching)
-		return expr.rhs.name
+		return t.selector_type_name(expr, false)
 	}
 	if expr is ast.Type {
 		return t.type_variant_name(expr)
@@ -1859,15 +1769,14 @@ fn (t &Transformer) type_expr_name(expr ast.Expr) string {
 // type_expr_name_full extracts the full type name with module prefix (for C mangling)
 fn (t &Transformer) type_expr_name_full(expr ast.Expr) string {
 	if expr is ast.Ident {
-		return expr.name
+		return t.qualify_type_name(expr.name)
+	}
+	if expr is ast.LifetimeExpr {
+		return 'lt__' + expr.name
 	}
 	if expr is ast.SelectorExpr {
 		// ast.Attribute -> 'ast__Attribute' (full name with module prefix for C)
-		if expr.lhs is ast.Ident {
-			mod := (expr.lhs as ast.Ident).name
-			return '${mod}__${expr.rhs.name}'
-		}
-		return expr.rhs.name
+		return t.selector_type_name(expr, true)
 	}
 	if expr is ast.Type {
 		return t.type_variant_name(expr)
@@ -1878,135 +1787,338 @@ fn (t &Transformer) type_expr_name_full(expr ast.Expr) string {
 fn (t &Transformer) sumtype_expr_needs_variant_inference(value ast.Expr) bool {
 	return value is ast.InitExpr || value is ast.ArrayInitExpr || value is ast.MapInitExpr
 		|| value is ast.BasicLiteral || value is ast.StringLiteral
-		|| value is ast.StringInterLiteral || value is ast.CastExpr
+		|| value is ast.StringInterLiteral || value is ast.CastExpr || value is ast.AsCastExpr
 }
 
-fn (mut t Transformer) sumtype_variant_from_expr_type(value ast.Expr, variants []string) (string, bool) {
-	mut typ := types.Type(types.void_)
-	mut found := false
+fn (t &Transformer) pointer_type_name_base(type_name string) string {
+	name := type_name.trim_space()
+	if name == '' || name in ['voidptr', 'charptr', 'byteptr'] {
+		return ''
+	}
+	if name.ends_with('*') {
+		base_name := name.trim_right('*')
+		if base_name != '' {
+			return base_name
+		}
+	}
+	if name.ends_with('ptr') {
+		base_name := name[..name.len - 3]
+		if base_name != '' {
+			return base_name
+		}
+	}
+	return ''
+}
+
+fn (t &Transformer) sumtype_pointer_base(type_name string) string {
+	base_name := t.pointer_type_name_base(type_name)
+	if t.is_sum_type(base_name) {
+		return base_name
+	}
+	return ''
+}
+
+fn (t &Transformer) expr_type_name_hint(value ast.Expr) string {
+	match value {
+		ast.ParenExpr {
+			return t.expr_type_name_hint(value.expr)
+		}
+		ast.ModifierExpr {
+			return t.expr_type_name_hint(value.expr)
+		}
+		ast.CastExpr {
+			return t.type_expr_to_c_name(value.typ)
+		}
+		ast.AsCastExpr {
+			return t.type_expr_to_c_name(value.typ)
+		}
+		ast.PrefixExpr {
+			if value.op == .mul {
+				inner_type := t.expr_type_name_hint(value.expr)
+				base_name := t.pointer_type_name_base(inner_type)
+				if base_name != '' {
+					return base_name
+				}
+			}
+			return t.expr_type_name_hint(value.expr)
+		}
+		ast.CallOrCastExpr {
+			if t.call_or_cast_lhs_is_type(value.lhs) {
+				return t.type_expr_to_c_name(value.lhs)
+			}
+		}
+		else {}
+	}
+
+	return ''
+}
+
+fn (t &Transformer) unwrap_addr_of_value_expr(value ast.Expr) ?ast.Expr {
+	match value {
+		ast.PrefixExpr {
+			if value.op == .amp {
+				return value.expr
+			}
+		}
+		ast.ParenExpr {
+			return t.unwrap_addr_of_value_expr(value.expr)
+		}
+		ast.ModifierExpr {
+			return t.unwrap_addr_of_value_expr(value.expr)
+		}
+		ast.CastExpr {
+			cast_type := t.type_expr_to_c_name(value.typ)
+			base_name := t.pointer_type_name_base(cast_type)
+			if base_name != '' {
+				if inner_type := t.get_expr_type(value.expr) {
+					inner_name := t.type_to_c_name(inner_type)
+					if t.type_names_match(inner_name, base_name) {
+						return value.expr
+					}
+				}
+			}
+		}
+		else {}
+	}
+
+	return none
+}
+
+fn (t &Transformer) expr_is_pointer_to_sumtype(value ast.Expr, sumtype_name string) bool {
+	if typ := t.get_expr_type(value) {
+		type_name := t.type_to_c_name(typ)
+		base_name := t.pointer_type_name_base(type_name)
+		if base_name != '' {
+			return t.is_same_sumtype_name(base_name, sumtype_name)
+		}
+	}
 	if value is ast.Ident {
 		if var_type := t.lookup_var_type(value.name) {
-			typ = var_type
-			found = true
-		}
-	} else if value is ast.SelectorExpr {
-		if field_type := t.get_struct_field_type(value) {
-			typ = field_type
-			found = true
+			type_name := t.type_to_c_name(var_type)
+			base_name := t.pointer_type_name_base(type_name)
+			if base_name != '' {
+				return t.is_same_sumtype_name(base_name, sumtype_name)
+			}
 		}
 	}
-	if !found {
-		return '', false
+	return false
+}
+
+fn (mut t Transformer) wrap_array_push_elem_value(value ast.Expr, elem_type_name string) ast.Expr {
+	if wrapped := t.wrap_sumtype_value_transformed(value, elem_type_name) {
+		return wrapped
 	}
-	mut is_pointer := false
-	if typ is types.Pointer {
-		is_pointer = true
-		typ = typ.base_type
+	sumtype_name := t.sumtype_pointer_base(elem_type_name)
+	if sumtype_name == '' {
+		return value
 	}
-	base := t.unwrap_alias_and_pointer_type(typ)
-	base_c_name := t.type_to_c_name(base)
-	if matched := t.match_variant(base_c_name, variants) {
-		return matched, is_pointer
+	if t.expr_is_pointer_to_sumtype(value, sumtype_name) {
+		return value
 	}
-	constructor_name := t.type_constructor_name(base)
-	if constructor_name != '' {
-		if matched := t.match_variant(constructor_name, variants) {
-			return matched, is_pointer
+	value_expr := t.unwrap_addr_of_value_expr(value) or { value }
+	wrapped_value := t.wrap_sumtype_value_transformed(value_expr, sumtype_name) or { return value }
+	return ast.PrefixExpr{
+		op:   .amp
+		expr: wrapped_value
+	}
+}
+
+fn (t &Transformer) generic_placeholder_from_type_expr(expr ast.Expr) ?string {
+	match expr {
+		ast.Ident {
+			if expr.name in t.cur_fn_generic_params {
+				return expr.name
+			}
+		}
+		ast.Type {
+			match expr {
+				ast.ArrayType {
+					return t.generic_placeholder_from_type_expr(expr.elem_type)
+				}
+				ast.ArrayFixedType {
+					return t.generic_placeholder_from_type_expr(expr.elem_type)
+				}
+				ast.MapType {
+					if placeholder := t.generic_placeholder_from_type_expr(expr.value_type) {
+						return placeholder
+					}
+					return t.generic_placeholder_from_type_expr(expr.key_type)
+				}
+				ast.OptionType {
+					return t.generic_placeholder_from_type_expr(expr.base_type)
+				}
+				ast.ResultType {
+					return t.generic_placeholder_from_type_expr(expr.base_type)
+				}
+				ast.PointerType {
+					return t.generic_placeholder_from_type_expr(expr.base_type)
+				}
+				ast.GenericType {
+					for param in expr.params {
+						if placeholder := t.generic_placeholder_from_type_expr(param) {
+							return placeholder
+						}
+					}
+				}
+				else {}
+			}
+		}
+		else {}
+	}
+
+	return none
+}
+
+fn (t &Transformer) expr_uses_current_generic_param(expr ast.Expr) bool {
+	match expr {
+		ast.Ident {
+			return expr.name in t.generic_var_type_params
+		}
+		ast.IndexExpr {
+			return t.expr_uses_current_generic_param(expr.lhs)
+		}
+		ast.ParenExpr {
+			return t.expr_uses_current_generic_param(expr.expr)
+		}
+		ast.ModifierExpr {
+			return t.expr_uses_current_generic_param(expr.expr)
+		}
+		ast.CastExpr {
+			if t.generic_placeholder_from_type_expr(expr.typ) != none {
+				return true
+			}
+			return t.expr_uses_current_generic_param(expr.expr)
+		}
+		else {
+			return false
 		}
 	}
-	return '', false
+}
+
+fn (t &Transformer) type_uses_current_generic_param(typ types.Type) bool {
+	match typ {
+		types.NamedType {
+			return string(typ) in t.cur_fn_generic_params
+		}
+		types.Array {
+			return t.type_uses_current_generic_param(typ.elem_type)
+		}
+		types.ArrayFixed {
+			return t.type_uses_current_generic_param(typ.elem_type)
+		}
+		types.Map {
+			return t.type_uses_current_generic_param(typ.key_type)
+				|| t.type_uses_current_generic_param(typ.value_type)
+		}
+		types.OptionType {
+			return t.type_uses_current_generic_param(typ.base_type)
+		}
+		types.ResultType {
+			return t.type_uses_current_generic_param(typ.base_type)
+		}
+		types.Pointer {
+			return t.type_uses_current_generic_param(typ.base_type)
+		}
+		types.Alias {
+			return t.type_uses_current_generic_param(typ.base_type)
+		}
+		types.FnType {
+			for param_type in typ.get_param_types() {
+				if t.type_uses_current_generic_param(param_type) {
+					return true
+				}
+			}
+			if ret_type := typ.get_return_type() {
+				return t.type_uses_current_generic_param(ret_type)
+			}
+			return false
+		}
+		else {
+			return false
+		}
+	}
+}
+
+fn (t &Transformer) expr_uses_current_generic_type(expr ast.Expr) bool {
+	if t.expr_uses_current_generic_param(expr) {
+		return true
+	}
+	if typ := t.get_expr_type(expr) {
+		return t.type_uses_current_generic_param(typ)
+	}
+	return false
 }
 
 // get_struct_field_type_name returns the type name of a field in a struct
+fn (t &Transformer) init_expr_sumtype_variant_name(init_expr ast.InitExpr, variants []string, sumtype_name string) string {
+	init_type_name := t.get_init_expr_type_name(init_expr.typ)
+	if init_type_name == '' || t.is_same_sumtype_name(init_type_name, sumtype_name) {
+		return ''
+	}
+	if variant_name := t.match_variant(init_type_name, variants) {
+		return variant_name
+	}
+	if t.cur_module != '' && t.cur_module != 'main' && t.cur_module != 'builtin' {
+		mangled := '${t.cur_module}__${init_type_name}'
+		if variant_name := t.match_variant(mangled, variants) {
+			return variant_name
+		}
+	}
+	return ''
+}
+
 fn (mut t Transformer) wrap_sumtype_value(value ast.Expr, sumtype_name string) ?ast.Expr {
+	if t.expr_uses_current_generic_param(value) {
+		return none
+	}
 	variants := t.get_sum_type_variants(sumtype_name)
 	if variants.len == 0 {
 		return none
 	}
-	value_key := t.expr_to_string(value)
-	if value_key != '' {
-		if ctx := t.find_smartcast_for_expr(value_key) {
-			if t.is_same_sumtype_name(ctx.sumtype, sumtype_name) {
-				if matched := t.match_variant(ctx.variant_full, variants) {
-					return t.build_sumtype_init(t.apply_smartcast_direct_ctx(value, ctx), matched,
-						sumtype_name)
-				}
-				if matched := t.match_variant(ctx.variant, variants) {
-					return t.build_sumtype_init(t.apply_smartcast_direct_ctx(value, ctx), matched,
-						sumtype_name)
-				}
-			}
-			if matched := t.match_variant(ctx.variant_full, variants) {
-				return t.build_sumtype_init(t.apply_smartcast_direct_ctx(value, ctx), matched,
-					sumtype_name)
-			}
-			if matched := t.match_variant(ctx.variant, variants) {
-				return t.build_sumtype_init(t.apply_smartcast_direct_ctx(value, ctx), matched,
-					sumtype_name)
-			}
+	mut init_variant_name := ''
+	if value is ast.InitExpr {
+		init_type_name := t.get_init_expr_type_name(value.typ)
+		if t.is_same_sumtype_name(init_type_name, sumtype_name) {
+			return none
+		}
+		init_variant_name = t.init_expr_sumtype_variant_name(value, variants, sumtype_name)
+	}
+	if declared_type := t.declared_expr_type_for_method_receiver(value) {
+		declared_c_name := t.type_to_c_name(declared_type)
+		if t.is_same_sumtype_name(declared_c_name, sumtype_name) && init_variant_name == '' {
+			return none
 		}
 	}
-	declared_sumtype := t.declared_sumtype_name_for_expr(value)
-	if declared_sumtype != '' && t.is_same_sumtype_name(declared_sumtype, sumtype_name) {
-		return none
-	}
-	if (sumtype_name == 'Expr' || sumtype_name.ends_with('__Expr')) && value is ast.SelectorExpr
-		&& value.rhs.name == 'expr' {
-		return none
-	}
 	// Determine the variant type from the checker's type info
-	mut typ := types.Type(types.void_)
-	mut has_expr_type := false
-	if expr_type := t.get_expr_type(value) {
-		typ = expr_type
-		has_expr_type = true
-	}
-	c_name := if has_expr_type { t.type_to_c_name(typ) } else { '' }
-	input_is_target_sumtype := c_name != '' && t.is_same_sumtype_name(c_name, sumtype_name)
+	typ := t.get_expr_type(value) or { return none }
+	c_name := t.type_to_c_name(typ)
+	input_is_target_sumtype := t.is_same_sumtype_name(c_name, sumtype_name)
 	// If the value's type IS the target sum type, no wrapping needed —
 	// the value is already the correct type (not a variant that needs wrapping).
-	if input_is_target_sumtype && !t.sumtype_expr_needs_variant_inference(value) {
+	if input_is_target_sumtype && init_variant_name == ''
+		&& !t.sumtype_expr_needs_variant_inference(value) {
 		return none
 	}
-	mut variant_name := ''
-	mut should_deref_pointer_value := false
 	// For Ident expressions, also check the variable's declared type.
 	// In multi-variant match arms, the checker may narrow to the first variant
 	// (e.g., Primitive) even though the runtime value could be any variant.
 	// The declared variable type is more reliable in this case.
 	if value is ast.Ident {
 		if var_type := t.lookup_var_type(value.name) {
-			mut checked_type := var_type
-			if var_type is types.Pointer {
-				checked_type = var_type.base_type
-				should_deref_pointer_value = true
-			} else if value.name in t.cur_fn_mut_params {
-				should_deref_pointer_value = true
-			}
-			var_c_name := t.type_to_c_name(checked_type)
+			var_c_name := t.type_to_c_name(var_type)
 			if t.is_same_sumtype_name(var_c_name, sumtype_name) {
 				return none
 			}
-			if matched := t.match_variant(var_c_name, variants) {
-				variant_name = matched
-			}
 		}
 	}
-	if has_expr_type && variant_name == '' && c_name != '' && c_name != 'void'
-		&& !input_is_target_sumtype {
+	mut variant_name := init_variant_name
+	if c_name != '' && c_name != 'void' && !input_is_target_sumtype {
 		variant_name = t.match_variant(c_name, variants) or { '' }
-	}
-	if variant_name == '' {
-		inferred_variant, is_pointer := t.sumtype_variant_from_expr_type(value, variants)
-		if inferred_variant != '' {
-			variant_name = inferred_variant
-			should_deref_pointer_value = is_pointer
-		}
 	}
 	// Fallback: use the type's V constructor name (e.g., types.Void → 'Void')
 	// This handles cases where type_to_c_name returns a C name (like 'void', 'string')
 	// that doesn't match the variant constructor name (like 'Void', 'String').
-	if has_expr_type && variant_name == '' && !input_is_target_sumtype {
+	if variant_name == '' && !input_is_target_sumtype {
 		constructor_name := t.type_constructor_name(typ)
 		if constructor_name != '' {
 			variant_name = t.match_variant(constructor_name, variants) or { '' }
@@ -2016,101 +2128,73 @@ fn (mut t Transformer) wrap_sumtype_value(value ast.Expr, sumtype_name string) ?
 		return none
 	}
 	// Transform the value then wrap
-	mut transformed_value := t.transform_expr(value)
-	if should_deref_pointer_value {
-		transformed_value = ast.PrefixExpr{
-			op:   .mul
-			expr: transformed_value
-		}
-	}
+	transformed_value := t.transform_expr(value)
 	return t.build_sumtype_init(transformed_value, variant_name, sumtype_name)
 }
 
-fn (mut t Transformer) wrap_transformed_variant_for_sumtype(value ast.Expr, sumtype_name string) ?ast.Expr {
-	variants := t.get_sum_type_variants(sumtype_name)
-	if variants.len == 0 {
+fn (mut t Transformer) transform_declared_sumtype_value(value ast.Expr, sumtype_name string) ?ast.Expr {
+	declared_type := t.declared_expr_type_for_method_receiver(value) or { return none }
+	declared_c_name := t.type_to_c_name(declared_type)
+	if !t.is_same_sumtype_name(declared_c_name, sumtype_name) {
 		return none
 	}
-	candidate := if value is ast.ModifierExpr { value.expr } else { value }
-	mut variant_name := ''
-	mut should_deref_pointer_value := false
-	if candidate is ast.Ident {
-		if var_type := t.lookup_var_type(candidate.name) {
-			mut checked_type := var_type
-			if var_type is types.Pointer {
-				checked_type = var_type.base_type
-				should_deref_pointer_value = true
-			}
-			var_c_name := t.type_to_c_name(checked_type)
-			if t.is_same_sumtype_name(var_c_name, sumtype_name) {
-				return none
-			}
-			variant_name = t.match_variant(var_c_name, variants) or { '' }
-		}
-	}
-	if variant_name == '' {
-		if inferred_type := t.infer_decl_type_from_transformed_expr(candidate) {
-			inferred_c_name := t.type_to_c_name(inferred_type)
-			if !t.is_same_sumtype_name(inferred_c_name, sumtype_name) {
-				variant_name = t.match_variant(inferred_c_name, variants) or { '' }
+	value_key := t.expr_to_string(value)
+	if value_key != '' {
+		if ctx := t.find_smartcast_for_expr(value_key) {
+			if t.is_same_sumtype_name(ctx.sumtype, sumtype_name) {
+				removed := t.remove_matching_smartcasts(ctx)
+				transformed := t.transform_expr(value)
+				t.restore_smartcasts(removed)
+				return transformed
 			}
 		}
 	}
-	if variant_name == '' {
-		return none
-	}
-	mut wrapped_value := candidate
-	if should_deref_pointer_value {
-		wrapped_value = ast.PrefixExpr{
-			op:   .mul
-			expr: wrapped_value
-		}
-	}
-	return t.build_sumtype_init(wrapped_value, variant_name, sumtype_name)
+	return t.transform_expr(value)
 }
 
 // wrap_sumtype_value_transformed wraps an already-transformed expression in sum type init
 fn (mut t Transformer) wrap_sumtype_value_transformed(value ast.Expr, sumtype_name string) ?ast.Expr {
+	if t.expr_uses_current_generic_param(value) {
+		return none
+	}
 	variants := t.get_sum_type_variants(sumtype_name)
 	if variants.len == 0 {
 		return none
 	}
-	declared_sumtype := t.declared_sumtype_name_for_expr(value)
-	if declared_sumtype != '' && t.is_same_sumtype_name(declared_sumtype, sumtype_name) {
-		return none
+	mut init_variant_name := ''
+	if value is ast.InitExpr {
+		init_value := value as ast.InitExpr
+		init_type_name := t.get_init_expr_type_name(init_value.typ)
+		if t.is_same_sumtype_name(init_type_name, sumtype_name) {
+			return none
+		}
+		init_variant_name = t.init_expr_sumtype_variant_name(init_value, variants, sumtype_name)
 	}
-	if (sumtype_name == 'Expr' || sumtype_name.ends_with('__Expr')) && value is ast.SelectorExpr
-		&& value.rhs.name == 'expr' {
-		return none
+	if declared_type := t.declared_expr_type_for_method_receiver(value) {
+		declared_c_name := t.type_to_c_name(declared_type)
+		if t.is_same_sumtype_name(declared_c_name, sumtype_name) && init_variant_name == '' {
+			return none
+		}
 	}
 	// For Ident expressions, check if the variable's declared type IS the target sum type.
-	mut variant_name := ''
-	mut should_deref_pointer_value := false
 	if value is ast.Ident {
-		if var_type := t.lookup_var_type(value.name) {
-			mut checked_type := var_type
-			if var_type is types.Pointer {
-				checked_type = var_type.base_type
-				should_deref_pointer_value = true
-			} else if value.name in t.cur_fn_mut_params {
-				should_deref_pointer_value = true
-			}
-			var_c_name := t.type_to_c_name(checked_type)
+		ident_value := value as ast.Ident
+		if var_type := t.lookup_var_type(ident_value.name) {
+			var_c_name := t.type_to_c_name(var_type)
 			if t.is_same_sumtype_name(var_c_name, sumtype_name) {
 				return none
 			}
-			if matched := t.match_variant(var_c_name, variants) {
-				variant_name = matched
-			}
 		}
 	}
+	mut variant_name := init_variant_name
 	// Try checker-provided type first (works for original expressions with valid pos.id)
 	mut input_is_target_sumtype2 := false
 	if typ := t.get_expr_type(value) {
 		c_name := t.type_to_c_name(typ)
 		input_is_target_sumtype2 = t.is_same_sumtype_name(c_name, sumtype_name)
 		// If the value's type IS the target sum type, no wrapping needed.
-		if input_is_target_sumtype2 && !t.sumtype_expr_needs_variant_inference(value) {
+		if input_is_target_sumtype2 && init_variant_name == ''
+			&& !t.sumtype_expr_needs_variant_inference(value) {
 			return none
 		}
 		if variant_name == '' && c_name != '' && c_name != 'void' && !input_is_target_sumtype2 {
@@ -2127,31 +2211,19 @@ fn (mut t Transformer) wrap_sumtype_value_transformed(value ast.Expr, sumtype_na
 	// Fallback: infer variant from expression structure (needed for already-transformed
 	// expressions that have lost their position IDs after transformation)
 	if variant_name == '' {
-		if inferred_type := t.infer_decl_type_from_transformed_expr(value) {
-			inferred_c_name := t.type_to_c_name(inferred_type)
-			if inferred_c_name != '' {
-				variant_name = t.match_variant(inferred_c_name, variants) or { '' }
-			}
-		}
 		if value is ast.InitExpr {
-			type_name := t.get_init_expr_type_name(value.typ)
-			matched := t.match_variant(type_name, variants) or { '' }
-			if matched != '' {
-				variant_name = matched
-			} else if t.cur_module != '' && t.cur_module != 'main' && t.cur_module != 'builtin' {
-				// Try with module prefix
-				mangled := '${t.cur_module}__${type_name}'
-				variant_name = t.match_variant(mangled, variants) or { '' }
-			}
+			init_value := value as ast.InitExpr
+			variant_name = t.init_expr_sumtype_variant_name(init_value, variants, sumtype_name)
 		}
 		if variant_name == '' && value is ast.BasicLiteral {
-			if value.kind == .number {
-				variant_name = if value.value.contains('.') {
+			lit_value := value as ast.BasicLiteral
+			if lit_value.kind == .number {
+				variant_name = if lit_value.value.contains('.') {
 					match_sumtype_variant_name('f64', variants)
 				} else {
 					match_sumtype_variant_name('int', variants)
 				}
-			} else if value.kind == .string {
+			} else if lit_value.kind == .string {
 				variant_name = match_sumtype_variant_name('string', variants)
 			}
 		}
@@ -2159,16 +2231,31 @@ fn (mut t Transformer) wrap_sumtype_value_transformed(value ast.Expr, sumtype_na
 			variant_name = match_sumtype_variant_name('string', variants)
 		}
 		if variant_name == '' && value is ast.Ident {
-			var_type_name := t.get_var_type_name(value.name)
+			ident_value := value as ast.Ident
+			var_type_name := t.get_var_type_name(ident_value.name)
 			if var_type_name != '' {
 				variant_name = t.match_variant(var_type_name, variants) or { '' }
 			}
 		}
 		if variant_name == '' && value is ast.CastExpr {
-			variant_name = t.match_variant(t.type_expr_name_full(value.typ), variants) or { '' }
+			cast_value := value as ast.CastExpr
+			variant_name = t.match_variant(t.type_expr_name_full(cast_value.typ), variants) or {
+				''
+			}
+		}
+		if variant_name == '' && value is ast.AsCastExpr {
+			as_value := value as ast.AsCastExpr
+			variant_name = t.match_variant(t.type_expr_name_full(as_value.typ), variants) or { '' }
+		}
+		if variant_name == '' {
+			hint_type := t.expr_type_name_hint(value)
+			if hint_type != '' {
+				variant_name = t.match_variant(hint_type, variants) or { '' }
+			}
 		}
 		if variant_name == '' && value is ast.CallExpr {
-			variant_name = match_sumtype_variant_name(t.get_call_return_type(ast.Expr(value)),
+			call_value := value as ast.CallExpr
+			variant_name = match_sumtype_variant_name(t.get_call_return_type(ast.Expr(call_value)),
 				variants)
 		}
 	}
@@ -2176,240 +2263,12 @@ fn (mut t Transformer) wrap_sumtype_value_transformed(value ast.Expr, sumtype_na
 		return none
 	}
 	// Value is already transformed, just wrap it
-	mut wrapped_value := value
-	if should_deref_pointer_value {
-		wrapped_value = ast.PrefixExpr{
-			op:   .mul
-			expr: wrapped_value
-		}
-	}
-	return t.build_sumtype_init(wrapped_value, variant_name, sumtype_name)
-}
-
-fn is_sumtype_inline_primitive_variant(variant_name string) bool {
-	return variant_name in ['int', 'i8', 'i16', 'i32', 'i64', 'u8', 'u16', 'u32', 'u64', 'f32',
-		'f64', 'bool', 'rune', 'byte', 'usize', 'isize']
-}
-
-fn (mut t Transformer) type_for_sumtype_constructor_value(value ast.Expr) ?types.Type {
-	if value is ast.Ident {
-		if var_type := t.lookup_var_type(value.name) {
-			return var_type
-		}
-	}
-	if value is ast.SelectorExpr {
-		if field_type := t.get_struct_field_type(value) {
-			return field_type
-		}
-	}
-	if expr_type := t.get_expr_type(value) {
-		return expr_type
-	}
-	return none
-}
-
-fn (mut t Transformer) sumtype_constructor_payload(value ast.Expr, sumtype_name string) ?SumtypeConstructorPayload {
-	variants := t.get_sum_type_variants(sumtype_name)
-	if variants.len == 0 {
-		return none
-	}
-	mut payload_value := unwrap_paren_expr(value)
-	mut should_deref := false
-	if payload_value is ast.PrefixExpr && payload_value.op == .amp {
-		payload_value = unwrap_paren_expr(payload_value.expr)
-	}
-	mut payload_type := t.type_for_sumtype_constructor_value(payload_value) or {
-		if fallback_type := t.get_expr_type(value) {
-			fallback_type
-		} else {
-			return none
-		}
-	}
-	if payload_type is types.Pointer {
-		payload_type = payload_type.base_type
-		should_deref = true
-	}
-	if payload_value is ast.Ident && payload_value.name in t.cur_fn_mut_params {
-		should_deref = true
-	}
-	base_type := t.unwrap_alias_and_pointer_type(payload_type)
-	base_c_name := t.type_to_c_name(base_type)
-	mut variant_name := t.match_variant(base_c_name, variants) or { '' }
-	if variant_name == '' {
-		constructor_name := t.type_constructor_name(base_type)
-		if constructor_name != '' {
-			variant_name = t.match_variant(constructor_name, variants) or { '' }
-		}
-	}
-	if variant_name == '' {
-		return none
-	}
-	variant_type := if resolved := t.lookup_type(variant_name) {
-		resolved
-	} else {
-		base_type
-	}
-	return SumtypeConstructorPayload{
-		variant_name: variant_name
-		variant_type: variant_type
-		value:        payload_value
-		should_deref: should_deref
-	}
-}
-
-fn (mut t Transformer) malloc_cast_expr(typ_expr ast.Expr, ptr_type types.Type, pos token.Pos) ast.Expr {
-	cast_pos := t.next_synth_pos()
-	t.register_synth_type(cast_pos, ptr_type)
-	return ast.Expr(ast.CastExpr{
-		typ:  ast.Expr(ast.PrefixExpr{
-			op:   .amp
-			expr: typ_expr
-			pos:  cast_pos
-		})
-		expr: ast.Expr(ast.CallExpr{
-			lhs:  ast.Expr(ast.SelectorExpr{
-				lhs: ast.Expr(ast.Ident{
-					name: 'C'
-					pos:  pos
-				})
-				rhs: ast.Ident{
-					name: 'malloc'
-					pos:  pos
-				}
-				pos: pos
-			})
-			args: [
-				ast.Expr(ast.KeywordOperator{
-					op:    .key_sizeof
-					exprs: [typ_expr]
-					pos:   pos
-				}),
-			]
-			pos:  pos
-		})
-		pos:  cast_pos
-	})
-}
-
-fn (mut t Transformer) lower_addr_of_sumtype_constructor(expr ast.PrefixExpr) ?ast.Expr {
-	if expr.op != .amp || expr.expr !is ast.CallOrCastExpr {
-		return none
-	}
-	cast_expr := expr.expr as ast.CallOrCastExpr
-	if !t.call_or_cast_lhs_is_type(cast_expr.lhs) {
-		return none
-	}
-	sumtype_name := t.type_expr_name_full(cast_expr.lhs)
-	if sumtype_name == '' || !t.is_sum_type(sumtype_name) {
-		return none
-	}
-	sumtype_type := t.lookup_type(sumtype_name) or { return none }
-	payload := t.sumtype_constructor_payload(cast_expr.expr, sumtype_name) or { return none }
-
-	saved_pending := t.pending_stmts.clone()
-	t.pending_stmts.clear()
-	mut payload_value := t.transform_expr(payload.value)
-	payload_pending := t.pending_stmts.clone()
-	t.pending_stmts = saved_pending
-	if payload.should_deref {
-		payload_value = ast.Expr(ast.PrefixExpr{
-			op:   .mul
-			expr: payload_value
-			pos:  expr.pos
-		})
-	}
-
-	mut stmts := []ast.Stmt{cap: payload_pending.len + 5}
-	for stmt in payload_pending {
-		stmts << stmt
-	}
-	mut sum_payload_value := payload_value
-	if !is_sumtype_inline_primitive_variant(payload.variant_name) {
-		payload_ptr_name := t.gen_temp_name()
-		payload_ptr_ident := ast.Ident{
-			name: payload_ptr_name
-			pos:  expr.pos
-		}
-		payload_ptr_type := types.Type(types.Pointer{
-			base_type: payload.variant_type
-		})
-		t.register_temp_var(payload_ptr_name, payload_ptr_type)
-		payload_type_expr := t.type_to_ast_type_expr(payload.variant_type)
-		stmts << ast.Stmt(ast.AssignStmt{
-			op:  .decl_assign
-			lhs: [ast.Expr(payload_ptr_ident)]
-			rhs: [t.malloc_cast_expr(payload_type_expr, payload_ptr_type, expr.pos)]
-			pos: expr.pos
-		})
-		stmts << ast.Stmt(ast.AssignStmt{
-			op:  .assign
-			lhs: [
-				ast.Expr(ast.PrefixExpr{
-					op:   .mul
-					expr: ast.Expr(payload_ptr_ident)
-					pos:  expr.pos
-				}),
-			]
-			rhs: [payload_value]
-			pos: expr.pos
-		})
-		sum_payload_value = ast.Expr(ast.PrefixExpr{
-			op:   .mul
-			expr: ast.Expr(payload_ptr_ident)
-			pos:  expr.pos
-		})
-	}
-
-	sum_init := t.build_sumtype_init(sum_payload_value, payload.variant_name, sumtype_name) or {
-		return none
-	}
-	sum_ptr_name := t.gen_temp_name()
-	sum_ptr_ident := ast.Ident{
-		name: sum_ptr_name
-		pos:  expr.pos
-	}
-	sum_ptr_type := types.Type(types.Pointer{
-		base_type: sumtype_type
-	})
-	t.register_temp_var(sum_ptr_name, sum_ptr_type)
-	sum_type_expr := t.type_to_ast_type_expr(sumtype_type)
-	stmts << ast.Stmt(ast.AssignStmt{
-		op:  .decl_assign
-		lhs: [ast.Expr(sum_ptr_ident)]
-		rhs: [t.malloc_cast_expr(sum_type_expr, sum_ptr_type, expr.pos)]
-		pos: expr.pos
-	})
-	stmts << ast.Stmt(ast.AssignStmt{
-		op:  .assign
-		lhs: [
-			ast.Expr(ast.PrefixExpr{
-				op:   .mul
-				expr: ast.Expr(sum_ptr_ident)
-				pos:  expr.pos
-			}),
-		]
-		rhs: [sum_init]
-		pos: expr.pos
-	})
-	stmts << ast.Stmt(ast.ExprStmt{
-		expr: ast.Expr(sum_ptr_ident)
-	})
-	return ast.Expr(ast.UnsafeExpr{
-		stmts: stmts
-		pos:   expr.pos
-	})
+	return t.build_sumtype_init(value, variant_name, sumtype_name)
 }
 
 // build_sumtype_init creates a sum type initialization expression
 fn (t &Transformer) build_sumtype_init(transformed_value ast.Expr, variant_name string, sumtype_name string) ?ast.Expr {
-	mut qualified_sumtype_name := sumtype_name
-	if !qualified_sumtype_name.contains('__') {
-		qualified_sumtype_name = t.qualify_type_name(sumtype_name)
-	}
-	mut variants := t.get_sum_type_variants(sumtype_name)
-	if variants.len == 0 && qualified_sumtype_name != sumtype_name {
-		variants = t.get_sum_type_variants(qualified_sumtype_name)
-	}
+	variants := t.get_sum_type_variants(sumtype_name)
 	// Find the tag value for this variant
 	mut tag_value := -1
 	for i, v in variants {
@@ -2433,8 +2292,8 @@ fn (t &Transformer) build_sumtype_init(transformed_value ast.Expr, variant_name 
 		// Only direct scalar variants are boxed inline in pointer space.
 		// Metadata carriers like `types.Type.Primitive` are regular structs whose payload
 		// is read through `_data` as a pointer, so they must not be treated as scalars.
-		mut is_primitive_variant := is_sumtype_inline_primitive_variant(variant_name)
-		if is_primitive_variant {
+		is_direct_variant := t.sumtype_variant_init_data_is_direct(variant_name)
+		if is_direct_variant {
 			// Primitive - use (void*)(intptr_t) cast to store value in pointer space
 			ast.Expr(ast.CastExpr{
 				typ:  ast.Ident{
@@ -2448,14 +2307,33 @@ fn (t &Transformer) build_sumtype_init(transformed_value ast.Expr, variant_name 
 				}
 			})
 		} else {
-			// Struct or string - take address and cast to void*
+			payload_type := if transformed_value is ast.InitExpr {
+				transformed_value.typ
+			} else {
+				ast.Expr(ast.Ident{
+					name: variant_name
+				})
+			}
+			// Struct or string payloads must outlive the expression that created them.
+			// Copy them before storing the payload pointer in the sumtype.
 			ast.Expr(ast.CastExpr{
 				typ:  ast.Ident{
 					name: 'voidptr'
 				}
-				expr: ast.PrefixExpr{
-					op:   token.Token.amp
-					expr: transformed_value
+				expr: ast.CallExpr{
+					lhs:  ast.Expr(ast.Ident{
+						name: 'memdup'
+					})
+					args: [
+						ast.Expr(ast.PrefixExpr{
+							op:   token.Token.amp
+							expr: transformed_value
+						}),
+						ast.Expr(ast.KeywordOperator{
+							op:    token.Token.key_sizeof
+							exprs: [payload_type]
+						}),
+					]
 				}
 			})
 		}
@@ -2467,7 +2345,7 @@ fn (t &Transformer) build_sumtype_init(transformed_value ast.Expr, variant_name 
 	// - "ast__InfixExpr" → "InfixExpr" (strip module prefix)
 	// - "[]ast__Attribute" → "Array_ast__Attribute" (array variant)
 	// - "map[K]V" → "Map_K_V" (map variant)
-	variant_field := if variant_name.starts_with('[]') {
+	short_variant := if variant_name.starts_with('[]') {
 		'Array_${variant_name[2..]}'
 	} else if variant_name.starts_with('map[') {
 		// map[K]V → Map_K_V
@@ -2480,13 +2358,13 @@ fn (t &Transformer) build_sumtype_init(transformed_value ast.Expr, variant_name 
 			variant_name
 		}
 	} else if variant_name.contains('__') {
-		sumtype_variant_union_field_name(qualified_sumtype_name, variant_name)
+		variant_name.all_after_last('__')
 	} else {
 		variant_name
 	}
 	return ast.InitExpr{
 		typ:    ast.Ident{
-			name: qualified_sumtype_name
+			name: sumtype_name
 		}
 		fields: [
 			ast.FieldInit{
@@ -2497,7 +2375,7 @@ fn (t &Transformer) build_sumtype_init(transformed_value ast.Expr, variant_name 
 				}
 			},
 			ast.FieldInit{
-				name:  '_data._${variant_field}'
+				name:  '_data._${short_variant}'
 				value: boxed_value
 			},
 		]
@@ -2511,10 +2389,8 @@ fn match_sumtype_variant_name(candidate string, variants []string) string {
 	if candidate in variants {
 		return candidate
 	}
-	cand_short := if candidate.contains('__') { candidate.all_after_last('__') } else { candidate }
 	for v in variants {
-		v_short := if v.contains('__') { v.all_after_last('__') } else { v }
-		if cand_short == v_short || cand_short == v {
+		if sum_type_variant_matches(v, candidate) {
 			return v
 		}
 	}
@@ -2533,9 +2409,6 @@ fn (t &Transformer) type_to_name(typ types.Type) string {
 	}
 	if typ is types.NamedType {
 		return string(typ)
-	}
-	if typ is types.Tuple {
-		return t.type_to_c_name(typ)
 	}
 	if typ is types.String {
 		return 'string'
@@ -2629,12 +2502,12 @@ fn (t &Transformer) resolve_module_name(name string) ?string {
 		mut scope := unsafe { t.scope }
 		if obj := scope.lookup_parent(name, 0) {
 			if obj is types.Module {
-				mod := unsafe { &types.Module(&obj) }
-				if mod.name != '' {
-					return mod.name
+				if obj.name != '' {
+					return obj.name
 				}
 				return name
 			}
+			return none
 		}
 	}
 	// Fallback: check current module scope
@@ -2642,9 +2515,8 @@ fn (t &Transformer) resolve_module_name(name string) ?string {
 		if mut mod_scope := t.get_module_scope(t.cur_module) {
 			if obj := mod_scope.lookup_parent(name, 0) {
 				if obj is types.Module {
-					mod := unsafe { &types.Module(&obj) }
-					if mod.name != '' {
-						return mod.name
+					if obj.name != '' {
+						return obj.name
 					}
 					return name
 				}
@@ -2652,29 +2524,6 @@ fn (t &Transformer) resolve_module_name(name string) ?string {
 		}
 	}
 	return none
-}
-
-fn (t &Transformer) selector_module_name(name string) ?string {
-	if t.scope != unsafe { nil } {
-		mut scope := unsafe { t.scope }
-		if obj := scope.lookup_parent(name, 0) {
-			if obj is types.Module {
-				mod := unsafe { &types.Module(&obj) }
-				if mod.name != '' {
-					return mod.name
-				}
-				return name
-			}
-			return none
-		}
-	}
-	if _ := t.cached_scopes[name] {
-		return name
-	}
-	if mod_name := t.cur_import_aliases[name] {
-		return mod_name
-	}
-	return t.resolve_module_name(name)
 }
 
 // is_module_ident checks if an identifier refers to a module
@@ -2720,18 +2569,60 @@ fn (t &Transformer) is_ptr_to_string_expr(expr ast.Expr) bool {
 // expr_has_valid_data checks if an Expr sum type has a valid data pointer.
 // On ARM64 backend, sum types are represented as (tag: u64, data_ptr: u64).
 // Default-initialized Expr{} has data_ptr=0 (NULL), which crashes on field access.
+fn sumtype_payload_word_is_valid(tag_word u64, data_word u64) bool {
+	if data_word == 0 {
+		return false
+	}
+	// Native v2 backends use `(tag, data_ptr)` for sumtypes. If the first word
+	// looks like a small tag, the payload must be a real pointer, not a leaked
+	// enum/default value like `3`.
+	if tag_word < 256 {
+		upper := data_word >> 32
+		lower := data_word & u64(0xffffffff)
+		if upper < 1024 && lower < 4096 {
+			return false
+		}
+		return data_word >= 4096 && data_word < 281474976710656
+	}
+	return true
+}
+
 fn stmt_has_valid_data(stmt ast.Stmt) bool {
-	// On ARM64 backend: word1 = data pointer; NULL means corrupt/default-initialized.
-	// On C backend: word1 = first 8 bytes of inline variant data; usually non-zero for valid statements.
-	word1 := unsafe { (&u64(&stmt))[1] }
-	return word1 != 0
+	// On native v2 backends: word0 = tag, word1 = data pointer.
+	// On C backend: word0 is pointer-like inline representation data.
+	tag_word := unsafe { (&u64(&stmt))[0] }
+	data_word := unsafe { (&u64(&stmt))[1] }
+	return sumtype_payload_word_is_valid(tag_word, data_word)
 }
 
 fn expr_has_valid_data(expr ast.Expr) bool {
-	// On ARM64 backend: word1 = data pointer; NULL means corrupt/default-initialized.
-	// On C backend: word1 = first 8 bytes of inline variant data; usually non-zero for valid expressions.
-	word1 := unsafe { (&u64(&expr))[1] }
-	return word1 != 0
+	// On native v2 backends: word0 = tag, word1 = data pointer.
+	// On C backend: word0 is pointer-like inline representation data.
+	tag_word := unsafe { (&u64(&expr))[0] }
+	data_word := unsafe { (&u64(&expr))[1] }
+	return sumtype_payload_word_is_valid(tag_word, data_word)
+}
+
+fn expr_has_valid_data_ref(expr &ast.Expr) bool {
+	// Read from the caller-owned Expr storage. ARM64-generated code can
+	// miscompile taking the address of a sumtype parameter by value.
+	tag_word := unsafe { (&u64(expr))[0] }
+	data_word := unsafe { (&u64(expr))[1] }
+	return sumtype_payload_word_is_valid(tag_word, data_word)
+}
+
+fn expr_array_has_valid_data(exprs []ast.Expr) bool {
+	if exprs.len == 0 {
+		return true
+	}
+	if exprs.len < 0 || exprs.cap < exprs.len || exprs.len > 1_000_000 {
+		return false
+	}
+	if exprs.data == unsafe { nil } {
+		return false
+	}
+	data_word := u64(voidptr(exprs.data))
+	return data_word >= 4096 && data_word < 281474976710656
 }
 
 // get_expr_type returns the types.Type for an expression by looking it up in the environment
@@ -2742,9 +2633,12 @@ fn (t &Transformer) get_expr_type(expr ast.Expr) ?types.Type {
 	if expr is ast.Ident {
 		// Try pos-based lookup first for Idents (faster)
 		pos := expr.pos
+		if typ := t.get_synth_type(pos) {
+			return typ
+		}
 		if pos.is_valid() {
 			if typ := t.env.get_expr_type(pos.id) {
-				return typ
+				return t.normalize_type(typ)
 			}
 		}
 		if typ := t.lookup_var_type(expr.name) {
@@ -2755,9 +2649,12 @@ fn (t &Transformer) get_expr_type(expr ast.Expr) ?types.Type {
 	// For UnsafeExpr, look at the type of the inner expression
 	if expr is ast.UnsafeExpr {
 		// Try pos-based lookup first
+		if typ := t.get_synth_type(expr.pos) {
+			return typ
+		}
 		if expr.pos.is_valid() {
 			if typ := t.env.get_expr_type(expr.pos.id) {
-				return typ
+				return t.normalize_type(typ)
 			}
 		}
 		if expr.stmts.len > 0 {
@@ -2773,27 +2670,97 @@ fn (t &Transformer) get_expr_type(expr ast.Expr) ?types.Type {
 	// For CallExpr/CallOrCastExpr, try pos then function return type lookup
 	if expr is ast.CallExpr {
 		pos := expr.pos
+		if typ := t.get_synth_type(pos) {
+			return typ
+		}
 		if pos.is_valid() {
 			if typ := t.env.get_expr_type(pos.id) {
-				return typ
+				return t.normalize_type(typ)
 			}
 		}
 		if typ := t.resolve_call_return_type(expr) {
-			return typ
+			return t.normalize_type(typ)
 		}
 		return none
 	}
 	if expr is ast.CallOrCastExpr {
 		pos := expr.pos
+		if typ := t.get_synth_type(pos) {
+			return typ
+		}
 		if pos.is_valid() {
 			if typ := t.env.get_expr_type(pos.id) {
-				return typ
+				return t.normalize_type(typ)
 			}
 		}
 		if typ := t.resolve_call_return_type(expr) {
-			return typ
+			return t.normalize_type(typ)
 		}
 		return none
+	}
+	if expr is ast.ArrayInitExpr {
+		pos := expr.pos
+		if typ := t.get_synth_type(pos) {
+			return typ
+		}
+		if pos.is_valid() {
+			if typ := t.env.get_expr_type(pos.id) {
+				return t.normalize_type(typ)
+			}
+		}
+		return t.get_array_init_expr_type(expr)
+	}
+	if expr is ast.SelectorExpr {
+		if lhs_type := t.get_expr_type(expr.lhs) {
+			if field_typ := t.field_type_from_receiver_type(lhs_type, expr.rhs.name) {
+				return t.normalize_type(field_typ)
+			}
+		}
+		pos := expr.pos
+		if typ := t.get_synth_type(pos) {
+			return typ
+		}
+		if pos.is_valid() {
+			if typ := t.env.get_expr_type(pos.id) {
+				return t.normalize_type(typ)
+			}
+		}
+		return none
+	}
+	if expr is ast.IndexExpr {
+		if expr.expr is ast.RangeExpr {
+			if lhs_type := t.get_expr_type(expr.lhs) {
+				return t.normalize_type(lhs_type)
+			}
+		}
+	}
+	if expr is ast.IndexExpr && expr.expr !is ast.RangeExpr {
+		if lhs_type := t.map_index_lhs_type(expr.lhs) {
+			if map_type := t.unwrap_map_type(lhs_type) {
+				return map_type.value_type
+			}
+			mut base_type := lhs_type
+			for {
+				if base_type is types.Pointer {
+					base_type = base_type.base_type
+					continue
+				}
+				if base_type is types.Alias {
+					base_type = t.live_alias_base_type(base_type) or { break }
+					continue
+				}
+				break
+			}
+			if base_type is types.Array {
+				return t.normalize_type(base_type.elem_type)
+			}
+			if base_type is types.ArrayFixed {
+				return t.normalize_type(base_type.elem_type)
+			}
+			if t.is_string_iterable_type(base_type) {
+				return string_iter_value_type()
+			}
+		}
 	}
 	// For other expression types, use the generic pos() dispatch
 	// Guard against corrupt sum type data in ARM64-compiled binaries
@@ -2801,17 +2768,178 @@ fn (t &Transformer) get_expr_type(expr ast.Expr) ?types.Type {
 		return none
 	}
 	pos := expr.pos()
-	if pos.id != 0 {
+	if typ := t.get_synth_type(pos) {
+		return typ
+	}
+	if pos.is_valid() {
 		if typ := t.env.get_expr_type(pos.id) {
-			return typ
-		}
-		// Check synth_types for types registered during the current transform pass
-		// (they haven't been applied to env yet).
-		if typ := t.synth_types[pos.id] {
-			return typ
+			return t.normalize_type(typ)
 		}
 	}
 	return none
+}
+
+fn (t &Transformer) declared_expr_type_for_method_receiver(expr ast.Expr) ?types.Type {
+	return t.declared_expr_type_for_method_receiver_inner(expr, t.expr_to_string(expr))
+}
+
+fn (t &Transformer) declared_expr_type_for_method_receiver_inner(expr ast.Expr, ignored_smartcast_expr string) ?types.Type {
+	expr_str := t.expr_to_string(expr)
+	if expr_str != '' && expr_str != ignored_smartcast_expr {
+		if ctx := t.find_smartcast_for_expr(expr_str) {
+			if ctx.variant_full != '' {
+				if typ := t.c_name_to_type(ctx.variant_full) {
+					return typ
+				}
+			}
+			if ctx.variant != '' {
+				if typ := t.c_name_to_type(ctx.variant) {
+					return typ
+				}
+			}
+		}
+	}
+	if expr is ast.Ident {
+		if typ := t.lookup_local_decl_type(expr.name) {
+			return typ
+		}
+		if typ := t.lookup_var_type(expr.name) {
+			return typ
+		}
+		return t.get_expr_type(expr)
+	}
+	if expr is ast.SelectorExpr {
+		if lhs_type := t.declared_expr_type_for_method_receiver_inner(expr.lhs,
+			ignored_smartcast_expr)
+		{
+			if field_typ := t.field_type_from_receiver_type(lhs_type, expr.rhs.name) {
+				return field_typ
+			}
+		}
+		return t.get_expr_type(expr)
+	}
+	if expr is ast.IndexExpr && expr.expr !is ast.RangeExpr {
+		if lhs_type := t.declared_expr_type_for_method_receiver_inner(expr.lhs,
+			ignored_smartcast_expr)
+		{
+			mut base_type := lhs_type
+			for {
+				if base_type is types.Pointer {
+					base_type = base_type.base_type
+					continue
+				}
+				if base_type is types.Alias {
+					base_type = base_type.base_type
+					continue
+				}
+				break
+			}
+			if base_type is types.Array {
+				return base_type.elem_type
+			}
+			if base_type is types.ArrayFixed {
+				return base_type.elem_type
+			}
+			if base_type is types.Map {
+				return base_type.value_type
+			}
+			if t.is_string_iterable_type(base_type) {
+				return string_iter_value_type()
+			}
+		}
+		return t.get_expr_type(expr)
+	}
+	if expr is ast.ParenExpr {
+		return t.declared_expr_type_for_method_receiver_inner(expr.expr, ignored_smartcast_expr)
+	}
+	if expr is ast.ModifierExpr {
+		return t.declared_expr_type_for_method_receiver_inner(expr.expr, ignored_smartcast_expr)
+	}
+	return t.get_expr_type(expr)
+}
+
+fn (t &Transformer) get_array_init_expr_type(expr ast.ArrayInitExpr) ?types.Type {
+	is_fixed := array_init_has_fixed_len_marker(expr)
+	if expr.typ !is ast.EmptyExpr {
+		if typ := t.type_from_param_type_expr(expr.typ, []) {
+			if is_fixed {
+				base := t.unwrap_alias_and_pointer_type(typ)
+				if base is types.Array {
+					return types.Type(types.ArrayFixed{
+						len:       expr.exprs.len
+						elem_type: base.elem_type
+					})
+				}
+			}
+			return typ
+		}
+	}
+	for elem in expr.exprs {
+		if typ := t.get_array_init_elem_expr_type(elem) {
+			if is_fixed {
+				return types.Type(types.ArrayFixed{
+					len:       expr.exprs.len
+					elem_type: typ
+				})
+			}
+			return types.Type(types.Array{
+				elem_type: typ
+			})
+		}
+	}
+	return none
+}
+
+fn (t &Transformer) get_array_init_elem_expr_type(expr ast.Expr) ?types.Type {
+	if typ := t.get_expr_type(expr) {
+		return concrete_literal_array_elem_type(typ)
+	}
+	match expr {
+		ast.StringLiteral, ast.StringInterLiteral {
+			return types.Type(types.string_)
+		}
+		ast.BasicLiteral {
+			match expr.kind {
+				.string {
+					return types.Type(types.string_)
+				}
+				.key_true, .key_false {
+					return types.Type(types.bool_)
+				}
+				.number {
+					if expr.value.contains('.') {
+						return types.Type(types.f64_)
+					}
+					return types.Type(types.int_)
+				}
+				.char {
+					return types.Type(types.int_)
+				}
+				else {}
+			}
+		}
+		else {}
+	}
+
+	return none
+}
+
+fn concrete_literal_array_elem_type(typ types.Type) types.Type {
+	if typ is types.Primitive && typ.props.has(.untyped) {
+		if typ.props.has(.float) {
+			return types.Type(types.f64_)
+		}
+		return types.Type(types.int_)
+	}
+	return typ
+}
+
+fn array_init_has_fixed_len_marker(expr ast.ArrayInitExpr) bool {
+	if expr.len is ast.PostfixExpr {
+		postfix := expr.len as ast.PostfixExpr
+		return postfix.op == .not && postfix.expr is ast.EmptyExpr
+	}
+	return false
 }
 
 fn sanitize_generic_token_part(name string) string {
@@ -2879,19 +3007,52 @@ fn (t &Transformer) generic_specialization_token(expr ast.Expr) string {
 		return t.generic_specialization_token_from_type(concrete)
 	}
 	match expr {
-		ast.PrefixExpr {
-			if expr.op == .amp {
-				return t.generic_specialization_token(expr.expr) + 'ptr'
-			}
-			return t.generic_specialization_token(expr.expr)
-		}
 		ast.Ident {
 			return sanitize_generic_token_part(expr.name)
 		}
 		ast.SelectorExpr {
-			return sanitize_generic_token_part(t.type_expr_to_c_name(expr))
+			return sanitize_generic_token_part(expr.name())
+		}
+		ast.PrefixExpr {
+			if expr.op == .amp {
+				return t.generic_specialization_token(expr.expr) + 'ptr'
+			}
+			return sanitize_generic_token_part(ast.Expr(expr).name())
 		}
 		ast.Type {
+			match expr {
+				ast.ArrayType {
+					return 'Array_' + t.generic_specialization_token(expr.elem_type)
+				}
+				ast.ArrayFixedType {
+					mut len_str := '0'
+					if expr.len is ast.BasicLiteral {
+						len_str = expr.len.value
+					}
+					return 'Array_fixed_' + t.generic_specialization_token(expr.elem_type) +
+						'_${len_str}'
+				}
+				ast.MapType {
+					return 'Map_' + t.generic_specialization_token(expr.key_type) + '_' +
+						t.generic_specialization_token(expr.value_type)
+				}
+				ast.OptionType {
+					return 'Option_' + t.generic_specialization_token(expr.base_type)
+				}
+				ast.ResultType {
+					return 'Result_' + t.generic_specialization_token(expr.base_type)
+				}
+				ast.PointerType {
+					return t.generic_specialization_token(expr.base_type) + 'ptr'
+				}
+				else {
+					type_name := t.expr_to_type_name(ast.Expr(expr))
+					if type_name != '' {
+						return sanitize_generic_token_part(type_name)
+					}
+				}
+			}
+
 			return sanitize_generic_token_part(expr.name())
 		}
 		else {
@@ -2982,6 +3143,9 @@ fn (t &Transformer) get_receiver_type_name(typ ast.Expr) string {
 	}
 	if typ is ast.Type {
 		// Handle wrapped type variants (GenericType, etc.)
+		if typ is ast.PointerType {
+			return t.get_receiver_type_name(typ.base_type)
+		}
 		if typ is ast.GenericType {
 			// Type[T] -> Type
 			return t.get_receiver_type_name(typ.name)
@@ -3029,8 +3193,7 @@ fn (t &Transformer) get_array_elem_type_str(expr ast.Expr) ?string {
 	if expr is ast.Ident {
 		// First try to get the actual type from scope
 		if typ := t.lookup_var_type(expr.name) {
-			// Unwrap pointer if needed
-			base_type := typ.base_type()
+			base_type := t.unwrap_alias_and_pointer_type(typ)
 			if base_type is types.Array {
 				// Use array_elem_type_name_for_helpers which handles Alias types safely
 				// (type_to_c_name_resolve_alias accesses .base_type which is malformed in self-host mode)
@@ -3041,16 +3204,32 @@ fn (t &Transformer) get_array_elem_type_str(expr ast.Expr) ?string {
 				elem_name := t.array_elem_type_name_for_helpers(base_type.elem_type)
 				return t.normalize_literal_type(elem_name)
 			}
-			// Handle strings.Builder alias
-			if base_type is types.Alias {
-				if base_type.name.contains('Builder') {
-					return 'u8'
-				}
+		}
+		if typ := t.get_expr_type(expr) {
+			base_type := t.unwrap_alias_and_pointer_type(typ)
+			if base_type is types.Array {
+				elem_name := t.array_elem_type_name_for_helpers(base_type.elem_type)
+				return t.normalize_literal_type(elem_name)
+			}
+			if base_type is types.ArrayFixed {
+				elem_name := t.array_elem_type_name_for_helpers(base_type.elem_type)
+				return t.normalize_literal_type(elem_name)
 			}
 		}
 		// Fallback to string-based detection
 		var_type_name := t.get_var_type_name(expr.name)
 		if var_type_name != '' {
+			if resolved_type := t.lookup_type(var_type_name) {
+				base_type := t.unwrap_alias_and_pointer_type(resolved_type)
+				if base_type is types.Array {
+					elem_name := t.array_elem_type_name_for_helpers(base_type.elem_type)
+					return t.normalize_literal_type(elem_name)
+				}
+				if base_type is types.ArrayFixed {
+					elem_name := t.array_elem_type_name_for_helpers(base_type.elem_type)
+					return t.normalize_literal_type(elem_name)
+				}
+			}
 			// Handle pointer to array (&[]T) - strip the & prefix first
 			mut type_to_check := var_type_name
 			if type_to_check.starts_with('&') {
@@ -3068,19 +3247,6 @@ fn (t &Transformer) get_array_elem_type_str(expr ast.Expr) ?string {
 				}
 				elem := c_type['Array_'.len..]
 				return t.normalize_literal_type(elem)
-			}
-			// Handle strings.Builder which is an alias for []u8
-			if c_type.starts_with('strings__Builder') || c_type == 'Builder' {
-				return 'u8'
-			}
-		}
-	}
-	if expr is ast.SelectorExpr {
-		if field_type := t.get_struct_field_type(expr) {
-			if array_type := t.get_array_type_str_from_type(field_type) {
-				if array_type.starts_with('Array_') {
-					return array_type['Array_'.len..]
-				}
 			}
 		}
 	}
@@ -3129,41 +3295,34 @@ fn (t &Transformer) get_array_elem_type_str(expr ast.Expr) ?string {
 		// This should be checked before method inference since a field named 'values'
 		// is different from a method called 'values()'
 		if field_type := t.get_struct_field_type(expr) {
-			if field_type is types.Array {
-				return t.array_elem_type_name_for_helpers(field_type.elem_type)
+			base_type := t.unwrap_alias_and_pointer_type(field_type)
+			if base_type is types.Array {
+				return t.array_elem_type_name_for_helpers(base_type.elem_type)
 			}
-			if field_type is types.ArrayFixed {
-				return t.array_elem_type_name_for_helpers(field_type.elem_type)
+			if base_type is types.ArrayFixed {
+				return t.array_elem_type_name_for_helpers(base_type.elem_type)
 			}
 		}
 	}
 	// Handle IndexExpr - map lookup that returns an array (e.g., g.pending_labels[blk])
 	if expr is ast.IndexExpr {
 		// Check if this is a map lookup returning an array
-		map_type := t.get_expr_type(expr.lhs) or { return none }
-		if map_type is types.Map {
-			if map_type.value_type is types.Array {
-				// Use alias-resolving version for array_contains function naming
-				return t.type_to_c_name_resolve_alias(map_type.value_type.elem_type)
+		map_expr_type := t.get_expr_type(expr.lhs) or { return none }
+		if map_type := t.unwrap_map_type(map_expr_type) {
+			value_type := t.unwrap_alias_and_pointer_type(map_type.value_type)
+			if value_type is types.Array {
+				return t.array_elem_type_name_for_helpers(value_type.elem_type)
 			}
-			if map_type.value_type is types.ArrayFixed {
-				return t.type_to_c_name_resolve_alias(map_type.value_type.elem_type)
+			if value_type is types.ArrayFixed {
+				return t.array_elem_type_name_for_helpers(value_type.elem_type)
 			}
 		}
 	}
 	// Also try getting from types.Environment
 	typ := t.get_expr_type(expr) or { return none }
-	// Unwrap pointer types (e.g., strings__Builder* -> strings__Builder)
-	base_typ := if typ is types.Pointer { typ.base_type } else { typ }
+	base_typ := t.unwrap_alias_and_pointer_type(typ)
 	if base_typ is types.Array {
-		// Use alias-resolving version for array_contains function naming
-		return t.type_to_c_name_resolve_alias(base_typ.elem_type)
-	}
-	// Check for type aliases like strings.Builder -> []u8
-	if base_typ is types.Struct {
-		if base_typ.name == 'strings__Builder' || base_typ.name == 'Builder' {
-			return 'u8'
-		}
+		return t.array_elem_type_name_for_helpers(base_typ.elem_type)
 	}
 	return none
 }
@@ -3179,38 +3338,8 @@ fn normalize_array_elem_type_name(type_name string) string {
 	for name.ends_with('*') && name.len > 0 {
 		name = name[..name.len - 1]
 	}
-	return name
-}
-
-fn (t &Transformer) canonical_array_elem_type_name(type_name string) string {
-	name := normalize_array_elem_type_name(type_name)
-	if name == '' {
-		return ''
-	}
-	if name.starts_with('Array_fixed_') {
-		payload := name['Array_fixed_'.len..]
-		last_underscore := payload.last_index('_') or { return name }
-		elem := t.canonical_array_elem_type_name(payload[..last_underscore])
-		return 'Array_fixed_${elem}_${payload[last_underscore + 1..]}'
-	}
-	if name.starts_with('Array_') {
-		elem := t.canonical_array_elem_type_name(name['Array_'.len..])
-		return 'Array_${elem}'
-	}
-	if typ := t.c_name_to_type(name) {
-		if typ is types.Alias {
-			resolved := t.type_to_c_name_resolve_alias(typ)
-			if resolved != '' {
-				return normalize_array_elem_type_name(resolved)
-			}
-		}
-		base := t.unwrap_alias_and_pointer_type(typ)
-		if base is types.Alias {
-			resolved := t.type_to_c_name_resolve_alias(base)
-			if resolved != '' {
-				return normalize_array_elem_type_name(resolved)
-			}
-		}
+	if name.contains('.') {
+		name = name.replace('.', '__')
 	}
 	return name
 }
@@ -3235,11 +3364,6 @@ fn (t &Transformer) array_elem_types_compatible(lhs_elem string, rhs_elem string
 	if left == right {
 		return true
 	}
-	canonical_left := t.canonical_array_elem_type_name(left)
-	canonical_right := t.canonical_array_elem_type_name(right)
-	if canonical_left != '' && canonical_left == canonical_right {
-		return true
-	}
 	left_is_array_like := left.starts_with('Array_') || left.starts_with('Array_fixed_')
 	right_is_array_like := right.starts_with('Array_') || right.starts_with('Array_fixed_')
 	if left_is_array_like != right_is_array_like {
@@ -3251,18 +3375,57 @@ fn (t &Transformer) array_elem_types_compatible(lhs_elem string, rhs_elem string
 	return false
 }
 
+fn (t &Transformer) array_init_value_elem_type(expr ast.ArrayInitExpr) ?string {
+	if expr.exprs.len == 0 {
+		return none
+	}
+	first_expr := expr.exprs[0]
+	if first_expr is ast.ArrayInitExpr {
+		if inner_elem := t.array_value_elem_type(first_expr) {
+			return 'Array_${inner_elem}'
+		}
+	}
+	if typ := t.get_expr_type(first_expr) {
+		type_name := t.type_to_c_name(typ)
+		if type_name != '' && type_name != 'void' {
+			return t.normalize_literal_type(type_name)
+		}
+	}
+	match first_expr {
+		ast.StringLiteral {
+			return 'string'
+		}
+		ast.BasicLiteral {
+			if first_expr.kind == .number {
+				return 'int'
+			}
+		}
+		else {}
+	}
+
+	return none
+}
+
+fn (t &Transformer) append_rhs_is_array_value_compatible(lhs_elem string, rhs ast.Expr) bool {
+	rhs_elem_type := t.array_value_elem_type(rhs) or {
+		lhs_is_nested_array := lhs_elem.starts_with('Array_')
+			|| lhs_elem.starts_with('Array_fixed_')
+		return t.is_array_value_expr(rhs) && !lhs_is_nested_array
+	}
+	if !t.array_elem_types_compatible(lhs_elem, rhs_elem_type) {
+		return false
+	}
+	if rhs is ast.ArrayInitExpr {
+		if literal_elem_type := t.array_init_value_elem_type(rhs) {
+			return t.array_elem_types_compatible(lhs_elem, literal_elem_type)
+		}
+	}
+	return true
+}
+
 fn (t &Transformer) array_value_elem_type(expr ast.Expr) ?string {
 	if elem_type := t.get_array_elem_type_str(expr) {
 		return elem_type
-	}
-	if typ := t.get_expr_type(expr) {
-		base := t.unwrap_alias_and_pointer_type(typ)
-		if base is types.Array {
-			return t.normalize_literal_type(t.array_elem_type_name_for_helpers(base.elem_type))
-		}
-		if base is types.ArrayFixed {
-			return t.normalize_literal_type(t.array_elem_type_name_for_helpers(base.elem_type))
-		}
 	}
 	// PostfixExpr `!` or `?` (error/option propagation) unwraps the inner expression.
 	// e.g., `parse_ipv4(address)!` → inner `parse_ipv4(address)` returns `![]u8`,
@@ -3340,131 +3503,8 @@ fn (t &Transformer) get_array_type_str(expr ast.Expr) ?string {
 			return 'Array_${override}'
 		}
 	}
-	if expr is ast.SelectorExpr {
-		if field_type := t.get_struct_field_type(expr) {
-			if array_type := t.get_array_type_str_from_type(field_type) {
-				return array_type
-			}
-		}
-	}
 	recv_type := t.get_expr_type(expr) or { return none }
-	return t.get_array_type_str_from_type(recv_type)
-}
-
-fn (t &Transformer) array_method_elem_type_name(expr ast.Expr) ?string {
-	mut receiver := ast.Expr(ast.empty_expr)
-	mut method_name := ''
-	if expr is ast.CallExpr {
-		if expr.lhs is ast.SelectorExpr {
-			sel := expr.lhs as ast.SelectorExpr
-			receiver = sel.lhs
-			method_name = sel.rhs.name
-		}
-	} else if expr is ast.CallOrCastExpr {
-		if expr.lhs is ast.SelectorExpr {
-			sel := expr.lhs as ast.SelectorExpr
-			receiver = sel.lhs
-			method_name = sel.rhs.name
-		}
-	}
-	if method_name !in ['last', 'first', 'pop', 'pop_left'] {
-		return none
-	}
-	array_type := t.get_array_type_str(receiver) or { return none }
-	if !array_type.starts_with('Array_') {
-		return none
-	}
-	return array_type['Array_'.len..]
-}
-
-fn (mut t Transformer) with_typed_array_method_receiver(expr ast.Expr, elem_type types.Type) ast.Expr {
-	array_type := types.Type(types.Array{
-		elem_type: elem_type
-	})
-	match expr {
-		ast.CallExpr {
-			if expr.lhs is ast.Ident
-				&& expr.lhs.name in ['array__last', 'array__first', 'array__pop', 'array__pop_left']
-				&& expr.args.len > 0 {
-				mut args := expr.args.clone()
-				args[0] = t.with_callsite_array_type(args[0], array_type)
-				return ast.Expr(ast.CallExpr{
-					lhs:  expr.lhs
-					args: args
-					pos:  expr.pos
-				})
-			}
-			if expr.lhs is ast.SelectorExpr {
-				sel := expr.lhs as ast.SelectorExpr
-				if sel.rhs.name in ['last', 'first', 'pop', 'pop_left'] {
-					typed_receiver := t.with_callsite_array_type(sel.lhs, array_type)
-					return ast.Expr(ast.CallExpr{
-						lhs:  ast.SelectorExpr{
-							lhs: typed_receiver
-							rhs: sel.rhs
-							pos: sel.pos
-						}
-						args: expr.args
-						pos:  expr.pos
-					})
-				}
-			}
-		}
-		ast.CallOrCastExpr {
-			if expr.lhs is ast.SelectorExpr {
-				sel := expr.lhs as ast.SelectorExpr
-				if sel.rhs.name in ['last', 'first', 'pop', 'pop_left'] {
-					typed_receiver := t.with_callsite_array_type(sel.lhs, array_type)
-					return ast.Expr(ast.CallOrCastExpr{
-						lhs:  ast.SelectorExpr{
-							lhs: typed_receiver
-							rhs: sel.rhs
-							pos: sel.pos
-						}
-						expr: expr.expr
-						pos:  expr.pos
-					})
-				}
-			}
-		}
-		else {}
-	}
-
-	return expr
-}
-
-fn (mut t Transformer) with_callsite_array_type(expr ast.Expr, array_type types.Type) ast.Expr {
-	pos := expr.pos()
-	if pos.is_valid() {
-		t.register_synth_type(pos, array_type)
-		return ast.Expr(ast.ParenExpr{
-			expr: expr
-			pos:  pos
-		})
-	}
-	return t.with_synth_type(ast.Expr(ast.ParenExpr{
-		expr: expr
-	}), array_type)
-}
-
-fn (t &Transformer) get_array_type_str_from_type(typ types.Type) ?string {
-	recv_type := typ
 	base := t.unwrap_alias_and_pointer_type(recv_type)
-	if base is types.Alias {
-		alias_base := t.unwrap_alias_and_pointer_type(base.base_type)
-		if alias_base is types.Array {
-			elem_type := t.array_elem_type_name_for_helpers(alias_base.elem_type)
-			if elem_type != '' && elem_type != 'void' {
-				return 'Array_${elem_type}'
-			}
-		}
-		if alias_base is types.ArrayFixed {
-			elem_type := t.array_elem_type_name_for_helpers(alias_base.elem_type)
-			if elem_type != '' && elem_type != 'void' {
-				return 'Array_fixed_${elem_type}_${alias_base.len}'
-			}
-		}
-	}
 	if base is types.Array {
 		elem_type := t.array_elem_type_name_for_helpers(base.elem_type)
 		if elem_type != '' && elem_type != 'void' {
@@ -3482,11 +3522,122 @@ fn (t &Transformer) get_array_type_str_from_type(typ types.Type) ?string {
 
 fn (t &Transformer) unwrap_alias_and_pointer_type(typ types.Type) types.Type {
 	mut cur := typ
-	for cur is types.Pointer {
-		ptr := cur as types.Pointer
-		cur = ptr.base_type
+	mut seen := map[string]bool{}
+	for {
+		if cur is types.Pointer {
+			ptr := cur as types.Pointer
+			cur = ptr.base_type
+			continue
+		}
+		if cur is types.Alias {
+			key := 'alias:${cur.name}'
+			if key in seen {
+				break
+			}
+			seen[key] = true
+			cur = t.live_alias_base_type(cur) or { break }
+			continue
+		}
+		if cur is types.NamedType {
+			name := string(cur)
+			key := 'named:${name}'
+			if key in seen {
+				break
+			}
+			seen[key] = true
+			if resolved := t.lookup_type(name) {
+				cur = resolved
+				continue
+			}
+		}
+		break
 	}
 	return cur
+}
+
+fn (t &Transformer) unwrap_alias_type(typ types.Type) types.Type {
+	mut cur := typ
+	mut seen := map[string]bool{}
+	for {
+		if cur is types.Alias {
+			key := 'alias:${cur.name}'
+			if key in seen {
+				break
+			}
+			seen[key] = true
+			cur = t.live_alias_base_type(cur) or { break }
+			continue
+		}
+		if cur is types.NamedType {
+			name := string(cur)
+			key := 'named:${name}'
+			if key in seen {
+				break
+			}
+			seen[key] = true
+			if resolved := t.lookup_type(name) {
+				cur = resolved
+				continue
+			}
+		}
+		break
+	}
+	return cur
+}
+
+fn (t &Transformer) sumtype_variant_data_is_direct(typ types.Type) bool {
+	base := t.unwrap_alias_type(typ)
+	return match base {
+		types.Primitive, types.Char, types.Enum, types.FnType, types.Interface, types.ISize,
+		types.Nil, types.None, types.Pointer, types.Rune, types.USize, types.Void {
+			true
+		}
+		else {
+			false
+		}
+	}
+}
+
+fn (t &Transformer) sumtype_variant_init_data_is_direct(variant_name string) bool {
+	if variant_name in ['int', 'i8', 'i16', 'i32', 'i64', 'u8', 'u16', 'u32', 'u64', 'bool', 'rune',
+		'byte', 'usize', 'isize', 'char', 'void', 'nil', 'none', 'byteptr', 'charptr', 'voidptr'] {
+		return true
+	}
+	variant_type := t.c_name_to_type(variant_name) or { return false }
+	return t.type_fits_inline_sumtype_data(variant_type, variant_name)
+}
+
+fn (t &Transformer) type_fits_inline_sumtype_data(typ types.Type, variant_name string) bool {
+	match typ {
+		types.Alias {
+			base := t.live_alias_base_type(typ) or { return false }
+			return t.type_fits_inline_sumtype_data(base, variant_name)
+		}
+		types.Primitive, types.Char, types.Enum, types.ISize, types.Nil, types.None, types.Rune,
+		types.USize, types.Void {
+			return true
+		}
+		types.Pointer {
+			return variant_name.ends_with('ptr')
+		}
+		else {
+			return false
+		}
+	}
+}
+
+fn (t &Transformer) smartcast_variant_data_is_direct(ctx SmartcastContext) bool {
+	if ctx.variant_full != '' {
+		if typ := t.lookup_type(ctx.variant_full) {
+			return t.sumtype_variant_data_is_direct(typ)
+		}
+	}
+	if ctx.variant != '' {
+		if typ := t.lookup_type(ctx.variant) {
+			return t.sumtype_variant_data_is_direct(typ)
+		}
+	}
+	return false
 }
 
 // get_array_nesting_depth returns the nesting depth of an array type.
@@ -3704,14 +3855,6 @@ fn (t &Transformer) type_to_c_name(typ types.Type) string {
 			val_c := t.type_to_c_name(typ.value_type)
 			return 'Map_${key_c}_${val_c}'
 		}
-		types.Tuple {
-			tuple_types := typ.get_types()
-			mut names := []string{cap: tuple_types.len}
-			for elem_type in tuple_types {
-				names << t.type_to_c_name(elem_type)
-			}
-			return 'Tuple_${names.join('_')}'
-		}
 		types.Pointer {
 			base_name := t.type_to_c_name(typ.base_type)
 			// Only use Tptr naming for known pointer aliases
@@ -3755,7 +3898,7 @@ fn (t &Transformer) type_to_c_name_resolve_alias(typ types.Type) string {
 			return alias_name
 		}
 		// Resolve to the underlying type
-		base := typ.base_type
+		base := t.live_alias_base_type(typ) or { return alias_name }
 		// If base is a primitive int type, use that
 		base_name := t.type_to_c_name(base)
 		if base_name in primitives {
@@ -3773,26 +3916,18 @@ fn (t &Transformer) get_enum_type_name(expr ast.Expr) string {
 	// Check scope for variable type
 	if expr is ast.Ident {
 		type_name := t.get_var_type_name(expr.name)
-		if type_name != ''
-			&& type_name !in ['int', 'i8', 'i16', 'i32', 'i64', 'u8', 'u16', 'u32', 'u64', 'f32', 'f64', 'string', 'bool', 'rune', 'voidptr', 'byteptr', 'charptr', 'nil'] {
+		if t.is_enum_type_name(type_name) {
 			return type_name
 		}
 	}
 	// Handle SelectorExpr - field access like p.status or p->status
 	if expr is ast.SelectorExpr {
-		if field_type := t.get_struct_field_type(expr) {
-			base := t.unwrap_alias_and_pointer_type(field_type)
-			if base is types.Enum {
-				return t.type_to_c_name(base)
-			}
-		}
 		// Try to get the field type by looking up the base type and field
 		base_type := t.get_enum_type_name(expr.lhs)
 		if base_type != '' {
 			// If base has a type, try to resolve field type
 			field_type := t.resolve_field_type(base_type, expr.rhs.name)
-			if field_type != '' && field_type != 'int' && field_type != 'string'
-				&& field_type != 'bool' {
+			if t.is_enum_type_name(field_type) {
 				return field_type
 			}
 		}
@@ -3803,16 +3938,14 @@ fn (t &Transformer) get_enum_type_name(expr ast.Expr) string {
 			// e.g. for `expr.op == .mul` after `expr is PrefixExpr`, find_smartcast_for_expr("expr")
 			// resolves to PrefixExpr, then PrefixExpr.op -> token__Token
 			field_type_via_var := t.resolve_field_type(lhs_ident.name, expr.rhs.name)
-			if field_type_via_var != '' && field_type_via_var != 'int'
-				&& field_type_via_var != 'string' && field_type_via_var != 'bool' {
+			if t.is_enum_type_name(field_type_via_var) {
 				return field_type_via_var
 			}
 			// Fall back to type-based lookup
 			lhs_type := t.get_var_type_name(lhs_ident.name)
 			if lhs_type != '' {
 				field_type := t.resolve_field_type(lhs_type, expr.rhs.name)
-				if field_type != '' && field_type != 'int' && field_type != 'string'
-					&& field_type != 'bool' {
+				if t.is_enum_type_name(field_type) {
 					return field_type
 				}
 			}
@@ -3826,6 +3959,20 @@ fn (t &Transformer) get_enum_type_name(expr ast.Expr) string {
 		}
 	}
 	return ''
+}
+
+fn generic_type_param_name(name string) bool {
+	return name in ['T', 'U', 'V', 'K', 'W']
+}
+
+fn (t &Transformer) is_enum_type_name(type_name string) bool {
+	if type_name == '' || generic_type_param_name(type_name) {
+		return false
+	}
+	if typ := t.lookup_type(type_name) {
+		return typ is types.Enum
+	}
+	return false
 }
 
 // find_var_type_in_stmts looks for a variable assignment in a list of statements
@@ -3849,11 +3996,26 @@ fn (t &Transformer) find_var_type_in_stmts(stmts []ast.Stmt, var_name string) st
 }
 
 fn (t &Transformer) is_pointer_type(typ types.Type) bool {
+	if !is_type_valid(typ) {
+		return false
+	}
 	match typ {
 		types.Pointer {
 			return true
 		}
 		types.Alias {
+			if !is_type_valid(typ.base_type) {
+				if resolved := t.lookup_type(typ.name) {
+					if resolved is types.Alias {
+						if is_type_valid(resolved.base_type) {
+							return t.is_pointer_type(resolved.base_type)
+						}
+						return false
+					}
+					return t.is_pointer_type(resolved)
+				}
+				return false
+			}
 			return t.is_pointer_type(typ.base_type)
 		}
 		else {
@@ -3865,7 +4027,7 @@ fn (t &Transformer) is_pointer_type(typ types.Type) bool {
 // is_pointer_type_expr returns true if the expression is of a pointer type
 fn (t &Transformer) is_pointer_type_expr(expr ast.Expr) bool {
 	if expr is ast.Ident {
-		if expr.name in t.cur_fn_mut_params {
+		if expr.name == t.cur_fn_recv_param && t.cur_fn_recv_is_ptr {
 			return true
 		}
 		if typ := t.lookup_var_type(expr.name) {
@@ -3906,29 +4068,8 @@ fn (t &Transformer) get_str_fn_name_for_type(typ types.Type) ?string {
 		types.Struct {
 			return '${typ.name}__str'
 		}
-		types.SumType {
-			return '${t.type_to_c_name(typ)}__str'
-		}
 		types.Enum {
 			return '${typ.name}__str'
-		}
-		types.NamedType {
-			name := string(typ)
-			if name == '' {
-				return none
-			}
-			if name.len == 1 && name[0] >= `A` && name[0] <= `Z` {
-				return none
-			}
-			if resolved := t.lookup_type(name) {
-				if resolved is types.NamedType {
-					if string(resolved) == name {
-						return none
-					}
-				}
-				return t.get_str_fn_name_for_type(resolved)
-			}
-			return '${t.type_to_c_name(typ)}__str'
 		}
 		types.Primitive {
 			if typ.props.has(types.Properties.boolean) {
@@ -3964,7 +4105,8 @@ fn (t &Transformer) get_str_fn_name_for_type(typ types.Type) ?string {
 		types.Alias {
 			// Recurse to base type — aliases to primitives (e.g., ValueID = int)
 			// don't have their own str() functions.
-			return t.get_str_fn_name_for_type(typ.base_type)
+			base_type := t.live_alias_base_type(typ) or { return none }
+			return t.get_str_fn_name_for_type(base_type)
 		}
 		else {
 			return none
@@ -4004,6 +4146,42 @@ fn (t &Transformer) resolve_typeof_expr(expr ast.Expr) string {
 		return t.types_type_to_v(raw_type)
 	}
 	return ''
+}
+
+fn typeof_type_idx(type_name string) int {
+	return match type_name {
+		'void' { 0 }
+		'voidptr' { 1 }
+		'byteptr' { 2 }
+		'charptr' { 3 }
+		'i8' { 4 }
+		'i16' { 5 }
+		'i32' { 6 }
+		'int' { 7 }
+		'i64' { 8 }
+		'isize' { 9 }
+		'u8', 'byte' { 10 }
+		'u16' { 11 }
+		'u32' { 12 }
+		'u64' { 13 }
+		'usize' { 14 }
+		'f32' { 15 }
+		'f64' { 16 }
+		'char' { 17 }
+		'bool' { 18 }
+		'none' { 19 }
+		'string' { 20 }
+		'rune' { 21 }
+		else { 0 }
+	}
+}
+
+fn typeof_idx_literal(type_name string, pos token.Pos) ast.BasicLiteral {
+	return ast.BasicLiteral{
+		value: typeof_type_idx(type_name).str()
+		kind:  .number
+		pos:   pos
+	}
 }
 
 // c_name_to_v_name converts a C-mangled name (e.g. "os__File") to V format ("os.File").
@@ -4061,6 +4239,9 @@ fn (t &Transformer) types_type_to_v(typ types.Type) string {
 		}
 		types.Pointer {
 			base := t.types_type_to_v(typ.base_type)
+			if typ.lifetime != '' {
+				return '&^${typ.lifetime} ' + base
+			}
 			return '&' + base
 		}
 		types.Array {
@@ -4079,6 +4260,9 @@ fn (t &Transformer) types_type_to_v(typ types.Type) string {
 		}
 		types.Alias {
 			return c_name_to_v_name(typ.name)
+		}
+		types.NamedType {
+			return c_name_to_v_name(string(typ))
 		}
 		types.Char {
 			return 'char'

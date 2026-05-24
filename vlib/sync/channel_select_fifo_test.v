@@ -52,6 +52,11 @@ fn test_select_waiters_are_fifo() {
 	wait_for_pop_subscribers(ch, 1)
 	spawn wait_select_once(ch, done, 'second')
 	wait_for_pop_subscribers(ch, 2)
+	// Let both goroutines settle into sem.wait() inside channel_select.
+	// Subscriber registration happens before the first non-blocking try,
+	// so there is a small window where the second goroutine is still in
+	// its initial try_pop before blocking.
+	time.sleep(50 * time.millisecond)
 	value := 999
 	ch.push(&value)
 	assert <-done == 'first:999'

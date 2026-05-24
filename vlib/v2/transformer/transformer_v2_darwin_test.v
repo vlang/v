@@ -1,6 +1,7 @@
 // Copyright (c) 2026 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
+// vtest build: macos
 module transformer
 
 import os
@@ -15,7 +16,8 @@ import v2.types
 // type in the environment after transformation.
 
 struct ExprTypeChecker {
-	env &types.Environment
+	env      &types.Environment
+	file_set &token.FileSet
 mut:
 	total         int
 	missing       int
@@ -25,6 +27,7 @@ mut:
 	generic_miss  int
 	cur_fn_name   string
 	fn_miss       map[string]int
+	seen_expr_ids map[int]bool
 }
 
 fn test_v2_transformer_all_exprs_have_types() {
@@ -101,7 +104,9 @@ fn test_v2_transformer_all_exprs_have_types() {
 
 	// --- Verify: every expression with a valid pos must have a type ---
 	mut etc := ExprTypeChecker{
-		env: env
+		env:           env
+		file_set:      file_set
+		seen_expr_ids: map[int]bool{}
 	}
 
 	for file in transformed {
@@ -217,6 +222,10 @@ fn (c &ExprTypeChecker) has_type(id int) bool {
 fn (mut c ExprTypeChecker) check_expr(expr ast.Expr) {
 	pos := expr.pos()
 	if pos.is_valid() {
+		if pos.id in c.seen_expr_ids {
+			return
+		}
+		c.seen_expr_ids[pos.id] = true
 		c.total++
 		if c.has_type(pos.id) {
 			// ok
@@ -229,6 +238,8 @@ fn (mut c ExprTypeChecker) check_expr(expr ast.Expr) {
 			kind := expr.type_name()
 			c.by_kind[kind] = c.by_kind[kind] + 1
 			if c.details.len < 100 {
+				file := c.file_set.file(pos)
+				position := file.position(pos)
 				extra := match expr {
 					ast.Ident { ' name="${expr.name}"' }
 					ast.BasicLiteral { ' val="${expr.value}"' }
@@ -247,7 +258,7 @@ fn (mut c ExprTypeChecker) check_expr(expr ast.Expr) {
 					else { '' }
 				}
 
-				c.details << 'id=${pos.id} kind=${kind}${extra}'
+				c.details << '${position} id=${pos.id} kind=${kind}${extra}'
 			}
 		}
 	}

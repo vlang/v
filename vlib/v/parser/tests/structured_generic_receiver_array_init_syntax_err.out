@@ -1,0 +1,6 @@
+vlib/v/parser/tests/structured_generic_receiver_array_init_syntax_err.vv:2:33: error: unexpected token `}`, expecting `)`
+    1 | struct ReceiverPatternExpect[T] {}
+    2 | fn (e ReceiverPatternExpect[[]T{}]) item(value T) T {
+      |                                 ^
+    3 |     return value
+    4 | }

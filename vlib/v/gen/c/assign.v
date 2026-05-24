@@ -574,6 +574,7 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 		g.assign_op = .unknown
 		g.inside_assign = false
 		g.assign_ct_type.clear()
+		g.expected_rhs_type_by_pos.clear()
 		g.arraymap_set_pos = 0
 		g.is_arraymap_set = false
 		g.is_assign_lhs = false
@@ -731,6 +732,11 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 			}
 		}
 		mut val := node.right[i]
+		expected_lhs_type := var_type
+		if expected_lhs_type != 0 && expected_lhs_type != ast.void_type
+			&& !expected_lhs_type.has_option_or_result() && val in [ast.IfExpr, ast.MatchExpr] {
+			g.expected_rhs_type_by_pos[val.pos().pos] = expected_lhs_type
+		}
 		mut str_add_rhs_tmp := ''
 		mut str_add_rhs_needs_free := false
 		mut skip_str_add_rhs_clone := false
@@ -2127,10 +2133,12 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 							g.inside_assign_fn_var = val is ast.PrefixExpr && val.op == .amp
 								&& is_fn_var
 							mut nval := val
+							mut nval_handled := false
 							if val is ast.PrefixExpr && val.right is ast.CallExpr {
 								call_expr := val.right as ast.CallExpr
 								if call_expr.name == 'new_array_from_c_array' {
 									nval = call_expr
+									nval_handled = true
 									if !var_type.has_flag(.shared_f) {
 										g.write('HEAP(${g.styp(var_type.clear_ref())}, ')
 									}
@@ -2140,7 +2148,7 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 									}
 								}
 							}
-							if nval == val {
+							if !nval_handled {
 								if auto_heap_uses_existing_storage {
 									g.write_auto_heap_assignment_expr(nval, val_type)
 								} else {

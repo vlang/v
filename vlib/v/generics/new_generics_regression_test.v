@@ -54,7 +54,7 @@ fn run_new_generic_solver_tests(root_label string, test_cmd string, expected_sum
 		}
 	}
 
-	failure_lines := res_lines.filter(it.starts_with(' FAIL'))
+	failure_lines := res_lines.filter(it.starts_with('FAIL'))
 	summary_lines := res_lines.filter(it.starts_with('Summary'))
 
 	actual_expected_summary := $if msvc { expected_summsvc } $else { expected_summary }
@@ -117,9 +117,9 @@ fn run_new_generic_solver_tests(root_label string, test_cmd string, expected_sum
 	println('')
 }
 
-const expected_summsvc_generics = 'Summary for all V _test.v files: 115 failed, 180 passed, 295 total.'
+const expected_summsvc_generics = 'Summary for all V _test.v files: 118 failed, 180 passed, 298 total.'
 // The exact failure count varies slightly across compilers.
-const expected_summary_generics = 'Summary for all V _test.v files: 111 failed, 184 passed, 295 total.'
+const expected_summary_generics = 'Summary for all V _test.v files: 114 failed, 184 passed, 298 total.'
 const expected_summsvc_vec = 'Summary for all V _test.v files: 3 failed, 3 total.'
 const expected_summary_vec = 'Summary for all V _test.v files: 3 failed, 3 total.'
 const expected_summsvc_flag = 'Summary for all V _test.v files: 21 passed, 21 total.'
@@ -159,6 +159,7 @@ const failing_tests = [
 	'vlib/v/tests/generics/generic_match_expr_test.v',
 	'vlib/v/tests/generics/generic_match_generic_interface_type_test.v',
 	'vlib/v/tests/generics/generic_method_fn_field_result_recheck_test.v',
+	'vlib/v/tests/generics/generic_method_slice_two_param_sibling_test.v',
 	'vlib/v/tests/generics/generic_method_with_variadic_generic_args_test.v',
 	'vlib/v/tests/generics/generic_mut_pointer_param_test.v',
 	'vlib/v/tests/generics/generic_operator_overload_test.v',
@@ -171,6 +172,7 @@ const failing_tests = [
 	'vlib/v/tests/generics/generic_selector_test.v',
 	'vlib/v/tests/generics/generic_selector_type_test.v',
 	'vlib/v/tests/generics/generic_smartcast_test.v',
+	'vlib/v/tests/generics/generic_sort_multi_instantiation_test.v',
 	'vlib/v/tests/generics/generic_spawn_test.v',
 	'vlib/v/tests/generics/generic_static_call_test.v',
 	'vlib/v/tests/generics/generic_struct_cstruct_test.v',
@@ -214,6 +216,7 @@ const failing_tests = [
 	'vlib/v/tests/generics/generics_mut_receiver_local_copy_regression_test.v',
 	'vlib/v/tests/generics/generics_nested_struct_init_test.v',
 	'vlib/v/tests/generics/generics_params_nested_generic_struct_short_syntax_test.v',
+	'vlib/v/tests/generics/generics_return_closure_test.v',
 	'vlib/v/tests/generics/generics_return_generics_struct_test.v',
 	'vlib/v/tests/generics/generics_stack_of_sumtype_push_test.v',
 	'vlib/v/tests/generics/generics_str_intp_test.v',

@@ -32,7 +32,7 @@ fn main() {
 	eval_runtime_args << runtime_args
 	prefs.eval_runtime_args = eval_runtime_args
 
-	mut b := builder.new_builder(prefs)
+	mut b := builder.new_builder(&prefs)
 	b.build(files)
 
 	// Auto-run test binaries after compilation (matching v1 behavior)

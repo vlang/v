@@ -22,6 +22,11 @@ fn run_source_with_timeout(source_name string, source string) !SourceRunResult {
 	mut p := os.new_process(vexe)
 	p.set_args(['run', source_path])
 	p.set_redirect_stdio()
+	// `v run` forks a grandchild for the compiled binary. On timeout, killing only the
+	// child V leaves that grandchild alive holding the stdout/stderr pipe ends, which
+	// makes stdout_slurp() block forever waiting for EOF (notably on musl, where the
+	// nested rwlock simply hangs instead of returning EDEADLK). Kill the whole pgroup.
+	p.use_pgroup = true
 	p.run()
 	mut timeout_ticks := 0
 	for p.is_alive() && timeout_ticks < source_run_timeout_ticks {
@@ -29,7 +34,7 @@ fn run_source_with_timeout(source_name string, source string) !SourceRunResult {
 		timeout_ticks++
 	}
 	if p.is_alive() {
-		p.signal_kill()
+		p.signal_pgkill()
 		p.wait()
 		stdout := p.stdout_slurp()
 		stderr := p.stderr_slurp()

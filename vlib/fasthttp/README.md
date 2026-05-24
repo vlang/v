@@ -168,6 +168,36 @@ detailed server implementation with multiple routes and controllers.
 - Use goroutines within handlers if you need to perform long-running operations without
   blocking the I/O loop
 
+## Request-scoped allocation with `-prealloc`
+
+When an application is compiled with `-prealloc`, `fasthttp` starts a scoped
+prealloc arena for each request before decoding the HTTP request and before
+calling the request handler. All V allocations made by the request parser, the
+handler, and code called by the handler use that request arena while the handler
+is running.
+
+The arena is freed as a unit after the response no longer needs request-owned
+data. On Linux the normal response path sends the response synchronously, then
+ends the request arena. On macOS and BSD the response buffer can be kept by the
+connection until `kqueue` finishes writing it; in that case `fasthttp` detaches
+the scope from the request thread and frees it after the write completes.
+
+This means request-local V allocations are cheap bump-pointer allocations, and
+freeing them does not require walking individual objects. Startup state, server
+state, and allocations made directly by C libraries are not part of a request
+arena. If a handler starts V `spawn` work while the request scope is active, the
+generated thread wrapper retains that scope until the spawned function returns;
+void spawned functions also run inside their own scoped arena, which is freed at
+thread exit. Manual takeover responses transfer ownership to user code and
+currently abandon the request arena, so long-lived takeover handlers should
+manage their own allocation lifetime explicitly.
+
+To inspect request arena usage while developing, build with:
+
+```sh
+v -prealloc -d trace_prealloc run .
+```
+
 ## Notes
 
 - HTTP headers are currently not parsed; the entire request is available in the buffer

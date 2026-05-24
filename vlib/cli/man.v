@@ -6,7 +6,7 @@ fn man_flag() Flag {
 	return Flag{
 		flag:        .bool
 		name:        'man'
-		description: 'Prints the auto-generated manpage.'
+		description: 'Print the auto-generated manpage'
 	}
 }
 
@@ -14,7 +14,7 @@ fn man_cmd() Command {
 	return Command{
 		name:        'man'
 		usage:       '<subcommand>'
-		description: 'Prints the auto-generated manpage.'
+		description: 'Print the auto-generated manpage'
 		execute:     print_manpage_for_command
 	}
 }

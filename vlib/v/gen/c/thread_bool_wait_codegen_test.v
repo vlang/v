@@ -26,6 +26,29 @@ fn test_thread_bool_waiter_is_declared_before_array_waiter_uses_it_on_windows() 
 	assert wait_call_idx > array_wait_def_idx, res.output
 }
 
+fn test_prealloc_spawn_args_use_c_malloc() {
+	tmp_dir := os.join_path(os.vtmp_dir(), 'prealloc_spawn_arg_codegen_test_${os.getpid()}')
+	os.mkdir_all(tmp_dir)!
+	defer {
+		os.rmdir_all(tmp_dir) or {}
+	}
+	source_path := os.join_path(os.real_path(tmp_dir), 'prealloc_spawn_arg.vv')
+	os.write_file(source_path,
+		"fn worker(s string) {\n\tprintln(s)\n}\n\nfn answer() int {\n\treturn 42\n}\n\nfn main() {\n\tt := spawn worker('ok')\n\tt.wait()\n\tt2 := spawn answer()\n\tprintln(t2.wait())\n}\n")!
+	cmd := '${os.quoted_path(thread_bool_wait_codegen_vexe)} -prealloc -o - ${os.quoted_path(source_path)}'
+	res := os.execute(cmd)
+	assert res.exit_code == 0, '${cmd}\n${res.output}'
+	assert res.output.contains('(thread_arg_main__worker *) malloc(sizeof(thread_arg_main__worker))'), res.output
+	assert res.output.contains('prealloc_scope = builtin__prealloc_scope_retain_current();'), res.output
+	assert res.output.contains('void* thread_prealloc_scope = builtin__prealloc_scope_begin();'), res.output
+	assert res.output.contains('builtin__prealloc_scope_end(thread_prealloc_scope);'), res.output
+	assert res.output.contains('builtin__prealloc_scope_release(arg->prealloc_scope);'), res.output
+	assert res.output.contains('free(arg);'), res.output
+	assert !res.output.contains('builtin___v_malloc(sizeof(thread_arg_main__worker))'), res.output
+	assert res.output.contains('malloc(sizeof(int))'), res.output
+	assert res.output.contains('free(ret_ptr);'), res.output
+}
+
 fn find_generated_c_line(lines []string, needle string, start int) int {
 	for idx := start; idx < lines.len; idx++ {
 		if lines[idx] == needle {

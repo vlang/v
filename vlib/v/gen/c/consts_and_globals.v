@@ -592,7 +592,12 @@ fn (mut g Gen) global_decl(node ast.GlobalDecl) {
 			continue
 		}
 		if field.is_extern {
-			def_builder.writeln('${extern}${field_visibility_kw}${qualifiers}${styp} ${attributes}${final_c_name}; // global 2')
+			tls_kw := if field.name == 'g_memory_block' && g.pref.prealloc {
+				'_Thread_local '
+			} else {
+				''
+			}
+			def_builder.writeln('${extern}${tls_kw}${field_visibility_kw}${qualifiers}${styp} ${attributes}${final_c_name}; // global 2')
 			g.global_const_defs[name] = GlobalConstDef{
 				mod:   node.mod
 				def:   def_builder.str()
@@ -602,7 +607,12 @@ fn (mut g Gen) global_decl(node ast.GlobalDecl) {
 		}
 		mut needs_ending_semicolon := false
 		if field.language != .c || field.has_expr {
-			def_builder.write_string('${extern}${field_visibility_kw}${qualifiers}${styp} ${attributes}${final_c_name}')
+			tls_kw := if field.name == 'g_memory_block' && g.pref.prealloc {
+				'_Thread_local '
+			} else {
+				''
+			}
+			def_builder.write_string('${extern}${tls_kw}${field_visibility_kw}${qualifiers}${styp} ${attributes}${final_c_name}')
 			needs_ending_semicolon = true
 		}
 		if field.has_expr || cinit {

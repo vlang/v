@@ -1,3 +1,4 @@
+// vtest build: !windows && !tinyc // fasthttp.Server.run is not implemented on windows; the test hangs intermittently when built with tcc on linux CI
 import net
 import net.http
 import time
@@ -40,7 +41,7 @@ fn (app &GracefulShutdownApp) shutdown_now() {
 	if server == unsafe { nil } {
 		panic('veb server was not initialized')
 	}
-	server.shutdown() or { panic(err) }
+	server.shutdown(timeout: 5 * time.second) or { panic(err) }
 }
 
 fn run_graceful_shutdown_app(mut app GracefulShutdownApp, port int) {

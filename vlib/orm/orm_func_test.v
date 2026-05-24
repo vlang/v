@@ -660,3 +660,100 @@ fn test_orm_func_invalid_index_field_name2() {
 	}
 	assert false, 'should not be here'
 }
+
+fn test_orm_func_update_many() {
+	mut db := sqlite.connect(':memory:')!
+	defer { db.close() or {} }
+	mut qb := orm.new_query[User](db)
+
+	qb.create()!
+
+	// Insert test records
+	users := [
+		User{
+			name: 'Alice'
+			age:  25
+			role: 'developer'
+		},
+		User{
+			name: 'Bob'
+			age:  30
+			role: 'manager'
+		},
+		User{
+			name: 'Carol'
+			age:  35
+			role: 'designer'
+		},
+	]
+	qb.insert_many(users)!
+
+	// Verify initial data
+	all_users := qb.query()!
+	assert all_users.len == 3
+	assert all_users[0].name == 'Alice'
+	assert all_users[1].name == 'Bob'
+	assert all_users[2].name == 'Carol'
+
+	// Batch update names by id
+	orm.update_many[User](mut db, [
+		User{
+			id:   1
+			name: 'Alice_updated'
+			age:  26
+		},
+		User{
+			id:   2
+			name: 'Bob_updated'
+			age:  31
+		},
+	], 'id', 'name', 'age')!
+
+	// Verify updated data
+	updated_users := qb.query()!
+	assert updated_users.len == 3
+	for u in updated_users {
+		match u.id {
+			1 {
+				assert u.name == 'Alice_updated'
+				assert u.age == 26
+				assert u.role == 'developer'
+			}
+			2 {
+				assert u.name == 'Bob_updated'
+				assert u.age == 31
+				assert u.role == 'manager'
+			}
+			3 {
+				assert u.name == 'Carol'
+				assert u.age == 35
+				assert u.role == 'designer'
+			}
+			else {
+				assert false
+			}
+		}
+	}
+
+	// Test update_many with single record
+	orm.update_many[User](mut db, [
+		User{
+			id:   3
+			name: 'Carol_updated'
+			age:  36
+		},
+	], 'id', 'name', 'age')!
+
+	single_result := qb.where('id = ?', 3)!.query()!
+	assert single_result.len == 1
+	assert single_result[0].name == 'Carol_updated'
+	assert single_result[0].age == 36
+	assert single_result[0].role == 'designer'
+
+	// Test update_many with empty values
+	orm.update_many[User](mut db, []User{}, 'id', 'name') or {
+		assert err.msg().contains('need at least one record')
+		return
+	}
+	assert false, 'should not be here'
+}

@@ -9,3 +9,4 @@ $if tinyc {
 }
 
 #include <mysql.h> # Please install https://dev.mysql.com/downloads/installer/ , then copy the include, lib, and bin folders to thirdparty/mysql. Make sure thirdparty/mysql/bin and thirdparty/mysql/lib are on PATH, or copy libmysql.dll next to the produced .exe
+#include "@VMODROOT/vlib/db/mysql/mysql_compat.h"

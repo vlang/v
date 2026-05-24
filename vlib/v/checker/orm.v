@@ -556,6 +556,7 @@ fn (mut c Checker) sql_stmt_line(mut node ast.SqlStmtLine) ast.Type {
 			return ast.void_type
 		}
 		mut inserting_object_type := inserting_object.typ
+		mut is_array_insert := false
 
 		if inserting_object_type.is_ptr() {
 			inserting_object_type = inserting_object.typ.deref()
@@ -566,6 +567,27 @@ fn (mut c Checker) sql_stmt_line(mut node ast.SqlStmtLine) ast.Type {
 			inserting_object_type = resolved_object_type
 		}
 
+		insert_sym := c.table.sym(inserting_object_type)
+		if insert_sym.kind == .array {
+			if node.kind == .upsert {
+				c.orm_error('upsert currently does not support arrays', node.pos)
+				return ast.void_type
+			}
+			is_array_insert = true
+			elem_type := insert_sym.array_info().elem_type
+			if elem_type.is_ptr() {
+				c.orm_error('bulk ${node.kind} currently supports only arrays of `${table_sym.name}` values',
+					node.pos)
+				return ast.void_type
+			}
+			inserting_object_type = c.unwrap_generic(elem_type)
+			if inserting_object_type != node.table_expr.typ {
+				c.orm_error('bulk ${node.kind} currently supports only arrays of `${table_sym.name}` values',
+					node.pos)
+				return ast.void_type
+			}
+		}
+
 		if inserting_object_type != node.table_expr.typ
 			&& !c.table.sumtype_has_variant(inserting_object_type, node.table_expr.typ, false) {
 			table_name := table_sym.name
@@ -574,6 +596,7 @@ fn (mut c Checker) sql_stmt_line(mut node ast.SqlStmtLine) ast.Type {
 			c.error('cannot use `${inserting_type_name}` as `${table_name}`', node.pos)
 			return ast.void_type
 		}
+		node.is_array_insert = is_array_insert
 	}
 
 	if table_sym.info !is ast.Struct {
@@ -599,6 +622,14 @@ fn (mut c Checker) sql_stmt_line(mut node ast.SqlStmtLine) ast.Type {
 
 	mut sub_structs := map[string]ast.SqlStmtLine{}
 	non_primitive_fields := c.get_orm_non_primitive_fields(fields)
+
+	if node.is_array_insert && non_primitive_fields.len > 0 {
+		for field in non_primitive_fields {
+			c.orm_error('bulk ${node.kind} currently supports only primitive, enum, and time.Time fields',
+				field.pos)
+		}
+		return ast.void_type
+	}
 
 	for field in non_primitive_fields {
 		field_typ, field_sym := c.get_non_array_type(field.typ)
@@ -675,6 +706,7 @@ fn (mut c Checker) sql_stmt_line(mut node ast.SqlStmtLine) ast.Type {
 			if !c.check_dynamic_sql_query_data(node.update_data_expr, table_sym, node.fields, .set_) {
 				return ast.void_type
 			}
+		} else if c.check_orm_array_update(mut node, table_sym) {
 		} else {
 			for i, mut expr in node.update_exprs {
 				column := node.updated_columns[i]
@@ -688,11 +720,114 @@ fn (mut c Checker) sql_stmt_line(mut node ast.SqlStmtLine) ast.Type {
 		}
 	}
 
-	if node.where_expr !is ast.EmptyExpr {
+	if node.where_expr !is ast.EmptyExpr && !node.is_array_update {
 		c.expr(mut node.where_expr)
 	}
 
 	return ast.void_type
+}
+
+fn (mut c Checker) check_orm_array_update(mut node ast.SqlStmtLine, table_sym &ast.TypeSymbol) bool {
+	if node.update_exprs.len == 0 || node.where_expr !is ast.InfixExpr {
+		return false
+	}
+	where_expr := node.where_expr as ast.InfixExpr
+	if where_expr.op != .eq || where_expr.left !is ast.Ident
+		|| where_expr.right !is ast.SelectorExpr {
+		return false
+	}
+	key_ident := where_expr.left as ast.Ident
+	key_selector := where_expr.right as ast.SelectorExpr
+	if key_selector.expr !is ast.Ident {
+		return false
+	}
+	array_ident := key_selector.expr as ast.Ident
+	array_name := array_ident.name
+	array_elem_type := c.orm_array_object_elem_type(node, array_name) or { return false }
+	if array_elem_type.is_ptr() {
+		node.is_array_update = true
+		c.orm_error('bulk update currently supports only arrays of `${table_sym.name}` values',
+			array_ident.pos)
+		return true
+	}
+	if c.unwrap_generic(array_elem_type) != node.table_expr.typ {
+		return false
+	}
+	info := table_sym.info as ast.Struct
+	key_field := c.orm_struct_field(info.fields, key_ident.name) or {
+		c.orm_error('type `${table_sym.name}` has no field named `${key_ident.name}`',
+			key_ident.pos)
+		return true
+	}
+	selector_key_field := c.orm_struct_field(info.fields, key_selector.field_name) or {
+		c.orm_error('type `${table_sym.name}` has no field named `${key_selector.field_name}`',
+			key_selector.pos)
+		return true
+	}
+	if !c.check_types(selector_key_field.typ, key_field.typ) {
+		c.orm_error('cannot use `${key_selector.field_name}` as update key `${key_ident.name}`',
+			key_selector.pos)
+		return true
+	}
+	for i, expr in node.update_exprs {
+		if expr !is ast.SelectorExpr {
+			return false
+		}
+		selector := expr as ast.SelectorExpr
+		if selector.expr !is ast.Ident {
+			return false
+		}
+		update_array_ident := selector.expr as ast.Ident
+		if update_array_ident.name != array_name {
+			return false
+		}
+		value_field := c.orm_struct_field(info.fields, selector.field_name) or {
+			c.orm_error('type `${table_sym.name}` has no field named `${selector.field_name}`',
+				selector.pos)
+			return true
+		}
+		column := node.updated_columns[i]
+		target_field := c.get_orm_field_by_column_name(node.fields, column) or { return false }
+		target_sym := c.table.final_sym(target_field.typ.clear_flag(.option))
+		if target_sym.kind == .struct && target_sym.name != 'time.Time' {
+			c.orm_error('bulk update currently supports only primitive, enum, and time.Time fields',
+				selector.pos)
+			return true
+		}
+		if !c.check_types(value_field.typ, target_field.typ) {
+			c.orm_error('cannot use `${selector.field_name}` as update value for `${target_field.name}`',
+				selector.pos)
+			return true
+		}
+	}
+	node.is_array_update = true
+	node.array_update_var = array_name
+	node.array_update_key = c.fetch_field_name(key_field)
+	return true
+}
+
+fn (mut c Checker) orm_array_object_elem_type(node ast.SqlStmtLine, name string) ?ast.Type {
+	obj := node.scope.find(name) or { return none }
+	mut typ := obj.typ
+	if typ.is_ptr() {
+		typ = typ.deref()
+	}
+	typ = c.unwrap_generic(typ)
+	sym := c.table.sym(typ)
+	if sym.kind != .array {
+		return none
+	}
+	mut elem_type := sym.array_info().elem_type
+	return elem_type
+}
+
+fn (_ &Checker) orm_struct_field(fields []ast.StructField, name string) ?ast.StructField {
+	for field in fields {
+		if field.name == name {
+			return field
+		}
+	}
+	return none
 }
 
 fn (mut c Checker) check_orm_struct_field_attrs(node ast.SqlStmtLine, field ast.StructField) {

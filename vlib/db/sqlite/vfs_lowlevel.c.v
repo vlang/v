@@ -200,6 +200,10 @@ pub enum OpenModeFlag {
 // (which is equivalent to 'win32' on Windows, and 'unix' on !Windows systems).
 pub fn connect_full(path string, mode_flags []OpenModeFlag, vfs_name string) !DB {
 	db := &C.sqlite3(unsafe { nil })
+	path_cstr := sqlite_cstring(path)
+	defer {
+		unsafe { free(path_cstr) }
+	}
 
 	mut flags := 0
 
@@ -209,9 +213,14 @@ pub fn connect_full(path string, mode_flags []OpenModeFlag, vfs_name string) !DB
 
 	mut pstr := unsafe { &char(0) }
 	if vfs_name != '' {
-		pstr = vfs_name.str
+		pstr = sqlite_cstring(vfs_name)
 	}
-	code := C.sqlite3_open_v2(&char(path.str), &db, flags, pstr)
+	defer {
+		if vfs_name != '' {
+			unsafe { free(pstr) }
+		}
+	}
+	code := C.sqlite3_open_v2(path_cstr, &db, flags, pstr)
 	if code != 0 {
 		return &SQLError{
 			msg:  unsafe { cstring_to_vstring(&char(C.sqlite3_errstr(code))) }

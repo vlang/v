@@ -632,7 +632,7 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 					}
 					else {
 						eprintln('unknown garbage collection mode `-gc ${gc_mode}`, supported modes are:`')
-						eprintln('  `-gc boehm` ............ select default Boehm mode (currently `boehm_full_opt`)')
+						eprintln('  `-gc boehm` ............ default GC-mode (currently `boehm_full_opt`)')
 						eprintln('  `-gc boehm_full` ....... classic full collection')
 						eprintln('  `-gc boehm_incr` ....... incremental collection')
 						eprintln('  `-gc boehm_full_opt` ... optimized classic full collection')
@@ -943,6 +943,9 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 			}
 			'-prealloc' {
 				res.prealloc = true
+				if !res.gc_set_by_flag {
+					res.gc_mode = .no_gc
+				}
 				res.build_options << arg
 			}
 			'-no-parallel' {

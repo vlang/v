@@ -47,6 +47,78 @@ fn test_orm_stmt_gen_insert() {
 	assert query == "INSERT INTO 'Test' ('test', 'a') VALUES (?0, ?1);"
 }
 
+fn test_orm_stmt_gen_bulk_insert() {
+	table := orm.Table{
+		name: 'Test'
+	}
+	query, converted := orm.orm_stmt_gen(.default, table, "'", .insert, true, '?', 0, orm.QueryData{
+		fields:     ['name', 'age']
+		data:       [orm.Primitive('Alice'), orm.Primitive(25), orm.Primitive('Bob'), orm.Primitive(30)]
+		batch_rows: 2
+	}, orm.QueryData{})
+	assert query == "INSERT INTO 'Test' ('name', 'age') VALUES (?0, ?1), (?2, ?3);"
+	assert converted.data.len == 4
+
+	pg_query, _ := orm.orm_stmt_gen(.pg, table, '"', .insert, true, '$', 1, orm.QueryData{
+		fields:     ['name', 'age']
+		data:       [orm.Primitive('Alice'), orm.Primitive(25), orm.Primitive('Bob'), orm.Primitive(30)]
+		batch_rows: 2
+	}, orm.QueryData{})
+	assert pg_query == 'INSERT INTO "Test" ("name", "age") VALUES ($1, $2), ($3, $4);'
+
+	mysql_query, _ := orm.orm_stmt_gen(.mysql, table, '`', .insert, false, '?', 1, orm.QueryData{
+		fields:     ['name', 'age']
+		data:       [orm.Primitive('Alice'), orm.Primitive(25), orm.Primitive('Bob'), orm.Primitive(30)]
+		batch_rows: 2
+	}, orm.QueryData{})
+	assert mysql_query == 'INSERT INTO `Test` (`name`, `age`) VALUES (?, ?), (?, ?);'
+}
+
+fn test_orm_stmt_gen_bulk_update() {
+	table := orm.Table{
+		name: 'Test'
+	}
+	query, _ := orm.orm_stmt_gen(.default, table, "'", .update, true, '?', 0, orm.QueryData{
+		fields:     ['name', 'age']
+		data:       [orm.Primitive(1), orm.Primitive('Alice'), orm.Primitive(2), orm.Primitive('Bob'),
+			orm.Primitive(1), orm.Primitive(25), orm.Primitive(2), orm.Primitive(30)]
+		batch_rows: 2
+		batch_key:  'id'
+	}, orm.QueryData{
+		fields: ['id', 'id']
+		data:   [orm.Primitive(1), orm.Primitive(2)]
+		kinds:  [.eq, .eq]
+		is_and: [false]
+	})
+	assert query == "UPDATE 'Test' SET 'name' = CASE 'id' WHEN ?0 THEN ?1 WHEN ?2 THEN ?3 ELSE 'name' END, 'age' = CASE 'id' WHEN ?4 THEN ?5 WHEN ?6 THEN ?7 ELSE 'age' END WHERE 'id' = ?8 OR 'id' = ?9;"
+
+	pg_query, _ := orm.orm_stmt_gen(.pg, table, '"', .update, true, '$', 1, orm.QueryData{
+		fields:     ['name']
+		data:       [orm.Primitive(1), orm.Primitive('Alice'), orm.Primitive(2), orm.Primitive('Bob')]
+		batch_rows: 2
+		batch_key:  'id'
+	}, orm.QueryData{
+		fields: ['id', 'id']
+		data:   [orm.Primitive(1), orm.Primitive(2)]
+		kinds:  [.eq, .eq]
+		is_and: [false]
+	})
+	assert pg_query == 'UPDATE "Test" SET "name" = CASE "id" WHEN $1 THEN $2 WHEN $3 THEN $4 ELSE "name" END WHERE "id" = $5 OR "id" = $6;'
+
+	mysql_query, _ := orm.orm_stmt_gen(.mysql, table, '`', .update, false, '?', 1, orm.QueryData{
+		fields:     ['name']
+		data:       [orm.Primitive(1), orm.Primitive('Alice'), orm.Primitive(2), orm.Primitive('Bob')]
+		batch_rows: 2
+		batch_key:  'id'
+	}, orm.QueryData{
+		fields: ['id', 'id']
+		data:   [orm.Primitive(1), orm.Primitive(2)]
+		kinds:  [.eq, .eq]
+		is_and: [false]
+	})
+	assert mysql_query == 'UPDATE `Test` SET `name` = CASE `id` WHEN ? THEN ? WHEN ? THEN ? ELSE `name` END WHERE `id` = ? OR `id` = ?;'
+}
+
 fn test_orm_stmt_gen_insert_default_values_pg() {
 	table := orm.Table{
 		name: 'Test'
@@ -61,6 +133,30 @@ fn test_orm_stmt_gen_insert_default_values_pg() {
 	assert query == "INSERT INTO 'Test' DEFAULT VALUES;"
 	assert converted.fields.len == 0
 	assert converted.data.len == 0
+}
+
+fn test_orm_stmt_gen_insert_default_values_mysql() {
+	table := orm.Table{
+		name: 'Test'
+	}
+	query, converted := orm.orm_stmt_gen(.mysql, table, '`', .insert, false, '?', 1, orm.QueryData{
+		fields:      ['id']
+		data:        [orm.Primitive(0)]
+		auto_fields: [0]
+	}, orm.QueryData{})
+	assert query == 'INSERT INTO `Test` () VALUES ();'
+	assert converted.fields.len == 0
+	assert converted.data.len == 0
+
+	bulk_query, bulk_converted := orm.orm_stmt_gen(.mysql, table, '`', .insert, false, '?', 1, orm.QueryData{
+		fields:      ['id']
+		data:        [orm.Primitive(0), orm.Primitive(0), orm.Primitive(0)]
+		auto_fields: [0]
+		batch_rows:  3
+	}, orm.QueryData{})
+	assert bulk_query == 'INSERT INTO `Test` () VALUES (), (), ();'
+	assert bulk_converted.fields.len == 0
+	assert bulk_converted.data.len == 0
 }
 
 fn test_orm_stmt_gen_h2_insert_default_values() {

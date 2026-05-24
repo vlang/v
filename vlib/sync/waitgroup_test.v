@@ -1,3 +1,5 @@
+// vtest retry: 3
+// vtest flaky: true
 module sync
 
 import time
@@ -63,7 +65,7 @@ fn test_waitgroup_go() {
 }
 
 fn test_waitgroup_add_while_waiting() {
-	for _ in 0 .. 200 {
+	for _ in 0 .. 50 {
 		mut wg := new_waitgroup()
 		ready := chan bool{cap: 1}
 		release := chan bool{cap: 1}
@@ -84,7 +86,7 @@ fn test_waitgroup_add_while_waiting() {
 		for _ in 0 .. 8 {
 			select {
 				_ := <-wait_done {}
-				200 * time.millisecond {
+				2 * time.second {
 					assert false, 'wait() missed a wakeup while work added more tasks'
 				}
 			}

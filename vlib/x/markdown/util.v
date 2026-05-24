@@ -98,15 +98,18 @@ fn url_encode(s string) string {
 fn normalize_label(s string) string {
 	mut out := strings.new_builder(s.len)
 	mut in_space := true // start true so we trim leading space
-	for i := 0; i < s.len; i++ {
-		c := s[i]
-		if c == ` ` || c == `\t` || c == `\n` || c == `\r` {
+	for ch in s.runes() {
+		if ch in unicode_space {
 			if !in_space {
 				out.write_u8(` `)
 				in_space = true
 			}
 		} else {
-			out.write_u8(ascii_lower(c))
+			if ch >= `A` && ch <= `Z` {
+				out.write_u8(u8(ch + 32))
+			} else {
+				out.write_string(ch.str())
+			}
 			in_space = false
 		}
 	}
@@ -129,14 +132,14 @@ fn ascii_lower(c u8) u8 {
 
 // is_unicode_space returns true for CommonMark Unicode whitespace.
 @[inline]
-fn is_unicode_space(c u8) bool {
+fn is_unicode_space(c rune) bool {
 	return c in unicode_space
 }
 
 // is_ascii_punct returns true if c is an ASCII punctuation character.
 @[inline]
-fn is_ascii_punct(c u8) bool {
-	return c in ascii_punct
+fn is_ascii_punct(c rune) bool {
+	return c <= 0x7f && u8(c) in ascii_punct
 }
 
 const digits = [`0`, `1`, `2`, `3`, `4`, `5`, `6`, `7`, `8`, `9`]!
@@ -163,12 +166,11 @@ fn is_alnum(c u8) bool {
 fn heading_id_from_text(text string) string {
 	mut sb := strings.new_builder(text.len)
 	mut prev_dash := true // start true so we trim leading dashes
-	for i := 0; i < text.len; i++ {
-		c := text[i]
-		if is_alnum(c) {
-			sb.write_u8(ascii_lower(c))
+	for ch in text.runes() {
+		if ch <= 0x7f && is_alnum(u8(ch)) {
+			sb.write_u8(ascii_lower(u8(ch)))
 			prev_dash = false
-		} else if c == `-` || is_unicode_space(c) || c == `_` {
+		} else if ch == `-` || ch == `_` || ch in unicode_space {
 			if !prev_dash {
 				sb.write_u8(`-`)
 				prev_dash = true
