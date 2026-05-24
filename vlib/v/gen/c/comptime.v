@@ -431,15 +431,13 @@ fn (mut g Gen) comptime_call(mut node ast.ComptimeCall) {
 			g.writeln('veb__Context_html(${g.veb_context_html_arg()}, _tmpl_res_${fn_name});')
 			g.writeln('strings__Builder_free(&sb_${fn_name});')
 			g.writeln('builtin__string_free(&_tmpl_res_${fn_name});')
-		} else {
-			// return $tmpl string
-			if g.inside_return_tmpl {
-				g.writeln('return _tmpl_res_${fn_name};')
-			} else {
-				g.write(cur_line)
-				g.write('_tmpl_res_${fn_name}')
-			}
+		} else if !g.inside_return_tmpl {
+			g.write(cur_line)
+			g.write('_tmpl_res_${fn_name}')
 		}
+		// when inside_return_tmpl, the cgen.v Return handler emits the
+		// return statement after defer/autofree so it can wrap the result
+		// for Option/Result return types (see issue #27094).
 		return
 	}
 	mut left_type := g.resolved_expr_type(node.left, node.left_type)
