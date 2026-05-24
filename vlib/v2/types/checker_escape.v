@@ -15,15 +15,15 @@
 //   * `return &local_arr[i]`    — index into a local container
 //   * `return &Foo{...}`        — address-take of a transient struct literal
 //
-// What's intentionally NOT caught (yet):
-//   * Inter-procedural escape (calls that hide a borrow)
-//
 // What's caught beyond the return-borrow case:
 //   * `outer.field = &local`     — field-store escape (root must be non-local)
 //   * `outer_arr << &local`      — array-push escape (root must be non-local)
 //   * `return fn [&local] () {}` — closure-capture escape via return
 //   * `outer.field = fn [&local] () {}` / `outer_arr << fn [&local] () {}`
 //                                — closure-capture escape via store/push
+//   * `return passthrough(&local)` — inter-procedural escape via a fn that
+//     returns one of its parameters (`fn passthrough(x &^a T) &^a T { return x }`).
+//     Also fires for the field-store and array-push forms.
 //
 // For closure-capture escape, `[&x]` and `[mut x]` are treated as borrows
 // (matching the ownership-checker convention); `[x]` is by-value and never
@@ -49,6 +49,11 @@ import v2.errors
 import v2.token
 
 fn (mut c Checker) escape_validate_files(files []ast.File) {
+	// Pre-pass: populate `escape_passthrough_fns` so the main walk can
+	// resolve calls to opt-in fns that return one of their parameters
+	// (`fn id[^a](x &^a T) &^a T { return x }`). Must precede the walk so a
+	// fn defined later in the same file is still recognised at its call site.
+	c.escape_prescan_passthrough_fns(files)
 	for file in files {
 		for stmt in file.stmts {
 			if stmt is ast.FnDecl {
@@ -56,6 +61,120 @@ fn (mut c Checker) escape_validate_files(files []ast.File) {
 			}
 		}
 	}
+}
+
+// escape_prescan_passthrough_fns walks opt-in (`[^a]`) fn decls and records
+// every parameter index that is returned directly. Used by the call-site
+// checker to flag `return passthrough(&local)` and friends. Non-opt-in fns
+// are skipped — the rule only matters when the signature claims a lifetime
+// relationship between the param and the return.
+fn (mut c Checker) escape_prescan_passthrough_fns(files []ast.File) {
+	for file in files {
+		for stmt in file.stmts {
+			if stmt is ast.FnDecl {
+				decl := stmt as ast.FnDecl
+				if !escape_decl_opts_in(decl) {
+					continue
+				}
+				indices := escape_collect_returned_param_indices(decl)
+				if indices.len > 0 {
+					c.escape_passthrough_fns[decl.name] = indices
+				}
+			}
+		}
+	}
+}
+
+// escape_collect_returned_param_indices returns every parameter index that
+// appears as the operand of a `return` in the fn body. Handles plain
+// `return param` and `return &param` (the `&` is a no-op for our purposes —
+// either way the borrow flows from caller-supplied storage back to the
+// caller, so a `&local` arg still escapes). Multiple branches that return
+// different params (`if cond { return a } else { return b }`) yield both
+// indices.
+fn escape_collect_returned_param_indices(decl ast.FnDecl) []int {
+	mut param_names := map[string]int{}
+	for i, param in decl.typ.params {
+		if param.name.len > 0 {
+			param_names[param.name] = i
+		}
+	}
+	if param_names.len == 0 {
+		return []int{}
+	}
+	mut out := map[int]bool{}
+	escape_collect_returned_param_indices_stmts(decl.stmts, param_names, mut out)
+	mut result := []int{}
+	for idx, _ in out {
+		result << idx
+	}
+	return result
+}
+
+fn escape_collect_returned_param_indices_stmts(stmts []ast.Stmt, param_names map[string]int, mut out map[int]bool) {
+	for stmt in stmts {
+		escape_collect_returned_param_indices_stmt(stmt, param_names, mut out)
+	}
+}
+
+fn escape_collect_returned_param_indices_stmt(stmt ast.Stmt, param_names map[string]int, mut out map[int]bool) {
+	match stmt {
+		ast.ReturnStmt {
+			for expr in stmt.exprs {
+				if name := escape_returned_param_name(expr) {
+					if name in param_names {
+						out[param_names[name]] = true
+					}
+				}
+			}
+		}
+		ast.BlockStmt {
+			escape_collect_returned_param_indices_stmts(stmt.stmts, param_names, mut out)
+		}
+		ast.DeferStmt {
+			escape_collect_returned_param_indices_stmts(stmt.stmts, param_names, mut out)
+		}
+		ast.ForStmt {
+			escape_collect_returned_param_indices_stmts(stmt.stmts, param_names, mut out)
+		}
+		ast.ExprStmt {
+			escape_collect_returned_param_indices_expr(stmt.expr, param_names, mut out)
+		}
+		else {}
+	}
+}
+
+fn escape_collect_returned_param_indices_expr(expr ast.Expr, param_names map[string]int, mut out map[int]bool) {
+	match expr {
+		ast.IfExpr {
+			escape_collect_returned_param_indices_stmts(expr.stmts, param_names, mut out)
+			escape_collect_returned_param_indices_expr(expr.else_expr, param_names, mut out)
+		}
+		ast.MatchExpr {
+			for br in expr.branches {
+				escape_collect_returned_param_indices_stmts(br.stmts, param_names, mut out)
+			}
+		}
+		ast.LockExpr {
+			escape_collect_returned_param_indices_stmts(expr.stmts, param_names, mut out)
+		}
+		else {}
+	}
+}
+
+// escape_returned_param_name unwraps `param` and `&param` (one `&` layer) and
+// returns the Ident name. Used by the pass-through prescan to recognise both
+// `return x` and `return &x` as pass-through shapes.
+fn escape_returned_param_name(expr ast.Expr) ?string {
+	if expr is ast.Ident {
+		return expr.name
+	}
+	if expr is ast.PrefixExpr {
+		if expr.op == .amp && expr.expr is ast.Ident {
+			return (expr.expr as ast.Ident).name
+		}
+	}
+	return none
 }
 
 fn (mut c Checker) escape_check_fn_decl(decl ast.FnDecl) {
@@ -284,9 +403,11 @@ fn (mut c Checker) escape_walk_expr(expr ast.Expr, locals map[string]bool, closu
 
 // escape_check_returned_expr fires when a return value either takes the
 // address of short-lived storage (`return &local`), returns an inline closure
-// that captured one (`return fn [&local] () {}`), or returns a local already
-// bound to such a closure (`cb := fn [&local] () {}; return cb`). All three
-// make a body-local outlive the function via the return value.
+// that captured one (`return fn [&local] () {}`), returns a local already
+// bound to such a closure (`cb := fn [&local] () {}; return cb`), or returns
+// the result of a pass-through fn whose relevant arg is `&local`
+// (`return passthrough(&local)`). All four make a body-local outlive the
+// function via the return value.
 fn (mut c Checker) escape_check_returned_expr(expr ast.Expr, locals map[string]bool, closure_borrow_locals map[string]bool, fn_name string) {
 	if expr is ast.PrefixExpr {
 		if expr.op == .amp {
@@ -307,7 +428,32 @@ fn (mut c Checker) escape_check_returned_expr(expr ast.Expr, locals map[string]b
 			c.escape_error_returns_local('closure `${expr.name}` capturing local by reference',
 				fn_name, expr.pos)
 		}
+		return
 	}
+	if call := escape_as_call(expr) {
+		if reason := c.escape_call_passthrough_reason(call, locals, closure_borrow_locals) {
+			c.escape_error_returns_local(reason, fn_name, call.pos)
+		}
+	}
+}
+
+// escape_as_call normalises a `CallExpr` or single-arg `CallOrCastExpr` into
+// a uniform `CallExpr` view. The parser produces `CallOrCastExpr` for the
+// `name(arg)` shape since it can't disambiguate call vs cast without type
+// info; we don't care about that distinction here — both forms carry an lhs
+// and an args list, and the inter-procedural rule applies identically.
+fn escape_as_call(expr ast.Expr) ?ast.CallExpr {
+	if expr is ast.CallExpr {
+		return expr
+	}
+	if expr is ast.CallOrCastExpr {
+		return ast.CallExpr{
+			lhs:  expr.lhs
+			args: [expr.expr]
+			pos:  expr.pos
+		}
+	}
+	return none
 }
 
 // escape_borrow_reason returns a short, user-facing reason string if
@@ -375,7 +521,7 @@ fn (mut c Checker) escape_check_field_store(lhs ast.Expr, rhs ast.Expr, locals m
 		// The LHS itself dies with the body; the borrow doesn't escape.
 		return
 	}
-	reason := escape_rhs_borrow_reason(rhs, locals, closure_borrow_locals) or { return }
+	reason := c.escape_rhs_borrow_reason(rhs, locals, closure_borrow_locals) or { return }
 	path := escape_render_path(lhs)
 	c.escape_error_stores_local('stored into `${path}`', reason, fn_name, pos)
 }
@@ -388,7 +534,7 @@ fn (mut c Checker) escape_check_array_push(expr ast.InfixExpr, locals map[string
 	if root in locals {
 		return
 	}
-	reason := escape_rhs_borrow_reason(expr.rhs, locals, closure_borrow_locals) or { return }
+	reason := c.escape_rhs_borrow_reason(expr.rhs, locals, closure_borrow_locals) or { return }
 	path := escape_render_path(expr.lhs)
 	c.escape_error_stores_local('pushed into `${path}`', reason, fn_name, expr.pos)
 }
@@ -396,8 +542,9 @@ fn (mut c Checker) escape_check_array_push(expr ast.InfixExpr, locals map[string
 // escape_rhs_borrow_reason classifies a RHS expression and returns a short
 // user-facing reason if it produces a borrow of body-local storage; otherwise
 // none. Used by both the field-store and array-push checks to share the
-// same set of recognised borrow shapes.
-fn escape_rhs_borrow_reason(rhs ast.Expr, locals map[string]bool, closure_borrow_locals map[string]bool) ?string {
+// same set of recognised borrow shapes. Lives on Checker so it can consult
+// the pass-through fn registry for the inter-procedural case.
+fn (c &Checker) escape_rhs_borrow_reason(rhs ast.Expr, locals map[string]bool, closure_borrow_locals map[string]bool) ?string {
 	if rhs is ast.PrefixExpr {
 		if rhs.op == .amp {
 			return escape_borrow_reason(rhs.expr, locals)
@@ -411,6 +558,71 @@ fn escape_rhs_borrow_reason(rhs ast.Expr, locals map[string]bool, closure_borrow
 		if rhs.name in closure_borrow_locals {
 			return 'closure `${rhs.name}` capturing local by reference'
 		}
+	}
+	if call := escape_as_call(rhs) {
+		return c.escape_call_passthrough_reason(call, locals, closure_borrow_locals)
+	}
+	return none
+}
+
+// escape_call_passthrough_reason returns a reason if `call` resolves to a
+// pre-scanned pass-through fn and the argument at one of the returned-param
+// indices is a borrow of body-local storage (`&local`, a closure literal
+// capturing a local by reference, or a local bound to such a closure).
+//
+// `<unknown fn>` calls — those we can't statically resolve to a name (method
+// calls on dynamic receivers, field-call indirection, ...) — are ignored. The
+// rule is intentionally conservative: only flag what we can prove.
+fn (c &Checker) escape_call_passthrough_reason(call ast.CallExpr, locals map[string]bool, closure_borrow_locals map[string]bool) ?string {
+	fn_name := escape_call_fn_short_name(call) or { return none }
+	if fn_name !in c.escape_passthrough_fns {
+		return none
+	}
+	indices := c.escape_passthrough_fns[fn_name]
+	for idx in indices {
+		if idx >= call.args.len {
+			continue
+		}
+		arg := call.args[idx]
+		if inner := escape_arg_borrow_reason(arg, locals, closure_borrow_locals) {
+			return '${inner}, passed through `${fn_name}`'
+		}
+	}
+	return none
+}
+
+// escape_arg_borrow_reason recognises the borrow shapes legal as a
+// pass-through argument: `&local`, `&local.f`, `&local[i]`, an inline closure
+// capturing a local by reference, or a local already bound to such a closure.
+// Same set the store / push / return checks already understand — kept as a
+// dedicated helper so the call-site rule stays in lockstep.
+fn escape_arg_borrow_reason(arg ast.Expr, locals map[string]bool, closure_borrow_locals map[string]bool) ?string {
+	if arg is ast.PrefixExpr {
+		if arg.op == .amp {
+			return escape_borrow_reason(arg.expr, locals)
+		}
+	}
+	if arg is ast.FnLiteral {
+		return escape_closure_borrow_reason(arg, locals)
+	}
+	if arg is ast.Ident {
+		if arg.name in closure_borrow_locals {
+			return 'closure `${arg.name}` capturing local by reference'
+		}
+	}
+	return none
+}
+
+// escape_call_fn_short_name extracts the short fn name from a CallExpr's
+// callee. Returns none for shapes we can't resolve (field-call on a value,
+// dynamically-computed fn, ...). Matches the keying used by the pass-through
+// prescan, which stores under `decl.name`.
+fn escape_call_fn_short_name(call ast.CallExpr) ?string {
+	if call.lhs is ast.Ident {
+		return (call.lhs as ast.Ident).name
+	}
+	if call.lhs is ast.SelectorExpr {
+		return (call.lhs as ast.SelectorExpr).rhs.name
 	}
 	return none
 }

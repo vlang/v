@@ -617,6 +617,12 @@ mut:
 	// out of program-wide mutable state, where the compiler can't see across
 	// function boundaries to know who else might still hold the binding.
 	ownership_owned_globals map[string]string
+	// Pass-through fn registry: `fn_name` -> list of parameter indices that
+	// the fn returns directly (`return param_i`). Populated by
+	// `escape_prescan_passthrough_fns` over opt-in (`[^a]`) fn decls, consulted
+	// at every escape site to catch inter-procedural leaks like
+	// `return passthrough(&local)`. See checker_escape.v.
+	escape_passthrough_fns map[string][]int
 }
 
 pub fn Checker.new(prefs &pref.Preferences, file_set &token.FileSet, env &Environment) &Checker {

@@ -460,3 +460,157 @@ fn main() {}
 	assert exit_code != 0, 'returning closure with mut-borrow capture should fail'
 	assert output.contains('captured by mutable reference into closure'), 'got: ${output}'
 }
+
+// ---------------------------------------------------------------------------
+// Inter-procedural escape: a fn that returns one of its parameters laundering
+// a `&local` borrow back to the caller. The pre-pass identifies pass-through
+// fns; the call-site check fires for the return / field-store / array-push
+// shapes the existing escape analyser already understands.
+
+fn test_escape_return_passthrough_local_errors() {
+	// `passthrough` returns its param. Calling it with `&local` would leak
+	// a borrow of the body-local through the return value.
+	code := '
+struct Bar {
+	v int
+}
+
+fn passthrough[^a](p &^a Bar) &^a Bar {
+	return p
+}
+
+fn dangling[^a](caller &^a Bar) &^a Bar {
+	local := Bar{v: 1}
+	return passthrough(&local)
+}
+
+fn main() {}
+'
+	exit_code, output := run_escape_check(code)
+	assert exit_code != 0, 'returning passthrough(&local) should fail'
+	assert output.contains('local variable `local`'), 'should name the local, got: ${output}'
+	assert output.contains('passed through `passthrough`'), 'should name the pass-through fn, got: ${output}'
+	assert output.contains('does not survive `dangling`'), 'should name the outer fn, got: ${output}'
+}
+
+fn test_escape_field_store_passthrough_local_errors() {
+	// Same rule for `outer.f = passthrough(&local)`.
+	code := '
+struct Bar {
+	v int
+}
+
+struct Holder {
+mut:
+	r &Bar = unsafe { nil }
+}
+
+fn passthrough[^a](p &^a Bar) &^a Bar {
+	return p
+}
+
+fn dangling[^a](mut h Holder) {
+	local := Bar{v: 1}
+	h.r = passthrough(&local)
+}
+
+fn main() {}
+'
+	exit_code, output := run_escape_check(code)
+	assert exit_code != 0, 'storing passthrough(&local) into h.r should fail'
+	assert output.contains('stored into `h.r`'), 'should name the LHS path, got: ${output}'
+	assert output.contains('passed through `passthrough`'), 'got: ${output}'
+}
+
+fn test_escape_array_push_passthrough_local_errors() {
+	// And for `outer_arr << passthrough(&local)`.
+	code := '
+struct Bar {
+	v int
+}
+
+fn passthrough[^a](p &^a Bar) &^a Bar {
+	return p
+}
+
+fn collect[^a](mut out []&Bar) {
+	local := Bar{v: 1}
+	out << passthrough(&local)
+}
+
+fn main() {}
+'
+	exit_code, output := run_escape_check(code)
+	assert exit_code != 0, 'pushing passthrough(&local) into outer array should fail'
+	assert output.contains('pushed into `out`'), 'should name the array, got: ${output}'
+	assert output.contains('passed through `passthrough`'), 'got: ${output}'
+}
+
+fn test_escape_passthrough_with_param_borrow_ok() {
+	// Same call shape, but the arg is `&caller` (a parameter borrow) — params
+	// outlive the call from the caller'\''s perspective, so this is safe.
+	code := '
+struct Bar {
+	v int
+}
+
+fn passthrough[^a](p &^a Bar) &^a Bar {
+	return p
+}
+
+fn safe_chain[^a](caller &^a Bar) &^a Bar {
+	return passthrough(caller)
+}
+
+fn main() {}
+'
+	exit_code, _ := run_escape_check(code)
+	assert exit_code == 0, '`return passthrough(caller)` should be allowed (param outlives the call)'
+}
+
+fn test_escape_non_passthrough_call_ok() {
+	// A non-pass-through call (returns a fresh value) hides nothing — even if
+	// its arg is `&local`, the return value does not borrow from it.
+	code := '
+struct Bar {
+	v int
+}
+
+fn make_copy[^a](p &^a Bar) Bar {
+	return Bar{v: p.v}
+}
+
+fn safe[^a](caller &^a Bar) Bar {
+	local := Bar{v: 1}
+	return make_copy(&local)
+}
+
+fn main() {}
+'
+	exit_code, _ := run_escape_check(code)
+	assert exit_code == 0, '`return make_copy(&local)` should be allowed (non-pass-through callee)'
+}
+
+fn test_escape_passthrough_non_optin_call_ignored() {
+	// The callee `helper` does NOT declare `[^a]`, so it is not added to the
+	// pass-through registry. The call site falls through to the existing
+	// rules; nothing else triggers, so this compiles cleanly.
+	code := '
+struct Bar {
+	v int
+}
+
+fn helper(p &Bar) &Bar {
+	return p
+}
+
+fn caller[^a](outer &^a Bar) &Bar {
+	local := Bar{v: 1}
+	return helper(&local)
+}
+
+fn main() {}
+'
+	exit_code, _ := run_escape_check(code)
+	assert exit_code == 0, 'non-opt-in callees are not tracked, so the call site is not flagged'
+}
