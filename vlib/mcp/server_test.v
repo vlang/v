@@ -212,7 +212,7 @@ fn test_server_http_sessions_and_delete() {
 		header: list_header
 	)!
 	assert list_response.status_code == 200
-	assert list_response.header.get(.content_type)!.starts_with(event_stream_content_type)
+	assert list_response.header.get(.content_type)?.starts_with(event_stream_content_type)
 	list_messages := parse_sse_messages(list_response.body)!
 	assert list_messages.len == 1
 	list_result := decode_response(list_messages[0])!.decode_result[ListToolsResult]()!
@@ -751,7 +751,7 @@ fn test_http_get_streams_queued_notifications_with_event_ids() {
 		header: get_header
 	)!
 	assert stream.status_code == 200
-	assert stream.header.get(.content_type)!.starts_with(event_stream_content_type)
+	assert stream.header.get(.content_type)?.starts_with(event_stream_content_type)
 	assert stream.body.contains('id: 1')
 	assert stream.body.contains('id: 2')
 	first_messages := parse_sse_messages(stream.body)!
@@ -958,7 +958,7 @@ fn test_http_returns_json_when_accept_lists_both() {
 		header: header
 	)!
 	assert ping_response.status_code == 200
-	assert ping_response.header.get(.content_type)!.starts_with(default_content_type)
+	assert ping_response.header.get(.content_type)?.starts_with(default_content_type)
 
 	server.close()
 	server_thread.wait() or {}

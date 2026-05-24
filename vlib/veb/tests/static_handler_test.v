@@ -134,7 +134,7 @@ fn test_custom_mime_types() {
 	x := http.get('${localserver}/unknown_mime.what')!
 
 	assert x.status() == .ok
-	assert x.header.get(.content_type)! == veb.mime_types['.txt']
+	assert x.header.get(.content_type)? == veb.mime_types['.txt']
 	assert x.body.trim_space() == 'unknown_mime'
 }
 
@@ -164,7 +164,7 @@ fn test_markdown_negotiation_priority_first() {
 	x := http.fetch(config)!
 
 	assert x.status() == .ok
-	assert x.header.get(.content_type)! == 'text/markdown'
+	assert x.header.get(.content_type)? == 'text/markdown'
 	assert x.body.contains('This is the about page in markdown format.')
 	assert !x.body.contains('about.html.md variant')
 	assert !x.body.contains('about/index.html.md variant')
@@ -179,7 +179,7 @@ fn test_markdown_negotiation_priority_second() {
 	x := http.fetch(config)!
 
 	assert x.status() == .ok
-	assert x.header.get(.content_type)! == 'text/markdown'
+	assert x.header.get(.content_type)? == 'text/markdown'
 	assert x.body.contains('# Page HTML Markdown')
 }
 
@@ -192,7 +192,7 @@ fn test_markdown_negotiation_directory_index() {
 	x := http.fetch(config)!
 
 	assert x.status() == .ok
-	assert x.header.get(.content_type)! == 'text/markdown'
+	assert x.header.get(.content_type)? == 'text/markdown'
 	assert x.body.contains('# Index HTML Markdown')
 }
 
@@ -202,7 +202,7 @@ fn test_markdown_direct_access() {
 	// Without Accept header
 	x_no_header := http.get('${localserver}/test.md')!
 	assert x_no_header.status() == .ok
-	assert x_no_header.header.get(.content_type)! == 'text/markdown'
+	assert x_no_header.header.get(.content_type)? == 'text/markdown'
 	assert x_no_header.body.contains('# Test Markdown')
 
 	// With Accept: text/markdown header - same result
@@ -212,7 +212,7 @@ fn test_markdown_direct_access() {
 	}
 	x_with_header := http.fetch(config)!
 	assert x_with_header.status() == .ok
-	assert x_with_header.header.get(.content_type)! == 'text/markdown'
+	assert x_with_header.header.get(.content_type)? == 'text/markdown'
 	assert x_with_header.body.contains('# Test Markdown')
 }
 

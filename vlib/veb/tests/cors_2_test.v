@@ -76,11 +76,11 @@ fn test_preflight() {
 	assert x.status() == .ok
 	assert x.body == 'ok'
 
-	assert x.header.get(.access_control_allow_origin)! == allowed_origin
+	assert x.header.get(.access_control_allow_origin)? == allowed_origin
 	if _ := x.header.get(.access_control_allow_credentials) {
 		assert false, 'Access-Control-Allow-Credentials should not be present the value is `false`'
 	}
-	assert x.header.get(.access_control_allow_methods)! == 'GET, HEAD'
+	assert x.header.get(.access_control_allow_methods)? == 'GET, HEAD'
 }
 
 fn test_invalid_origin() {

@@ -9,5 +9,5 @@ fn test_set_header_content_type_preserves_charset_parameter() {
 
 	ctx.text('Hello, World!')
 
-	assert ctx.res.header.get(.content_type)! == 'text/html; charset=utf-8'
+	assert ctx.res.header.get(.content_type)? == 'text/html; charset=utf-8'
 }
