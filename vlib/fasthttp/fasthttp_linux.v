@@ -8,8 +8,10 @@ import time
 #include <sys/sendfile.h>
 #include <sys/stat.h>
 #include <netinet/tcp.h>
+#include <sys/poll.h>
 
 const epoll_wait_timeout_ms = 100
+const sendfile_poll_timeout_ms = 30_000
 const status_408_response = 'HTTP/1.1 408 Request Timeout\r\nContent-Type: text/plain\r\nContent-Length: 19\r\nConnection: close\r\n\r\n408 Request Timeout'.bytes()
 
 fn C.accept4(sockfd i32, addr &net.Addr, addrlen &u32, flags i32) i32
@@ -23,6 +25,15 @@ fn C.epoll_wait(__epfd i32, __events &C.epoll_event, __maxevents i32, __timeout 
 fn C.sendfile(out_fd i32, in_fd i32, offset &i64, count usize) i32
 
 fn C.fstat(fd i32, buf &C.stat) i32
+
+struct C.pollfd {
+mut:
+	fd      i32
+	events  i16
+	revents i16
+}
+
+fn C.poll(fds &C.pollfd, nfds u64, timeout i32) i32
 
 @[typedef]
 union C.epoll_data_t {
@@ -96,6 +107,34 @@ fn set_blocking(fd int, blocking bool) {
 		// This adds the O_NONBLOCK flag from flags and set it.
 		C.fcntl(fd, C.F_SETFL, flags | C.O_NONBLOCK)
 	}
+}
+
+// wait_socket_writable blocks until the socket becomes writable or the timeout elapses.
+// Returns true if the socket is writable, false on timeout or unrecoverable error.
+fn wait_socket_writable(fd int, timeout_ms int) bool {
+	mut pfd := C.pollfd{
+		fd:     i32(fd)
+		events: i16(C.POLLOUT)
+	}
+	for {
+		ret := C.poll(&pfd, 1, timeout_ms)
+		if ret > 0 {
+			if pfd.revents & i16(C.POLLOUT) != 0 {
+				return true
+			}
+			// POLLHUP / POLLERR / POLLNVAL: peer closed or fd invalid.
+			return false
+		}
+		if ret == 0 {
+			// Timed out.
+			return false
+		}
+		if C.errno == C.EINTR {
+			continue
+		}
+		return false
+	}
+	return false
 }
 
 fn close_socket(fd int) bool {
@@ -365,22 +404,30 @@ fn process_request(server &Server, epoll_fd int, client_fd int, request_buffer [
 		}
 		mut offset := i64(0)
 		mut remaining := i64(st.st_size)
-		mut sf_retries := 0
 		for remaining > 0 {
 			ssize := C.sendfile(client_fd, fd, &offset, usize(remaining))
 			if ssize > 0 {
 				remaining -= i64(ssize)
-				sf_retries = 0
 				continue
+			}
+			if ssize == 0 {
+				// File shorter than reported size or peer closed; nothing more to send.
+				break
 			}
 			errno_val := C.errno
 			match errno_val {
-				C.EAGAIN, C.EWOULDBLOCK, C.EINTR {
-					if sf_retries < 3 {
-						sf_retries++
-						continue
+				C.EAGAIN, C.EWOULDBLOCK {
+					// Kernel send buffer is full. Wait for the socket to drain before retrying.
+					if !wait_socket_writable(client_fd, sendfile_poll_timeout_ms) {
+						eprintln('ERROR: sendfile() timed out waiting for socket to become writable')
+						handle_client_closure(epoll_fd, client_fd, mut client_fds, mut
+							client_buffers, mut client_read_starts, mut closing_client_fds)
+						return
 					}
-					eprintln('ERROR: sendfile() transient failure after ${sf_retries} retries (errno=${errno_val})')
+					continue
+				}
+				C.EINTR {
+					continue
 				}
 				C.EBADF {
 					eprintln('ERROR: sendfile() EBADF: input fd or socket not open for required access (errno=${errno_val})')
