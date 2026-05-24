@@ -202,8 +202,9 @@ pub:
 
 pub struct Pointer {
 pub:
+	lifetime string
+pub mut:
 	base_type Type
-	lifetime  string
 }
 
 // struct String {
@@ -345,8 +346,7 @@ pub fn (t Type) channel_elem_type() ?Type {
 }
 
 fn type_data_ptr_is_nil(t Type) bool {
-	p := unsafe { &u8(&t) + 8 }
-	return unsafe { *(&voidptr(p)) } == unsafe { nil }
+	return !type_has_valid_payload(t)
 }
 
 // Safely unwrap all Alias layers, guarding against null data pointers
@@ -585,20 +585,26 @@ fn (t Primitive) is_int_literal() bool {
 	return t.props.has(.untyped) && t.props.has(.integer)
 }
 
-pub fn type_name(t Type) string {
-	// Guard against corrupted sumtype values from ARM64 codegen.
-	// SSA sumtype layout: {i64 _tag, i64 _data}. For large variants, _data
-	// is a heap pointer. If _data is null, the match dispatch will crash.
+fn type_tag_has_inline_payload(tag u64) bool {
+	return tag == 4 || tag == 7 || tag == 11 || tag == 12 || tag == 15 || tag == 17 || tag == 18
+		|| tag == 23 || tag == 24
+}
+
+pub fn type_has_valid_payload(t Type) bool {
 	data := unsafe { *(&u64(&u8(&t) + 8)) }
 	if data == 0 {
 		tag := unsafe { *(&u64(&t)) }
-		// Small inline variants where zero _data is valid:
-		// Char(4), ISize(7), Nil(11), None(12), Primitive(15),
-		// Rune(17), String(18), USize(23), Void(24)
-		if tag != 4 && tag != 7 && tag != 11 && tag != 12 && tag != 15 && tag != 17 && tag != 18
-			&& tag != 23 && tag != 24 {
-			return '' // corrupted: large variant with null data pointer
-		}
+		return type_tag_has_inline_payload(tag)
+	}
+	return true
+}
+
+pub fn type_name(t Type) string {
+	// Guard against corrupted sumtype values from ARM64 codegen.
+	// SSA sumtype layout: {i64 _tag, i64 _data}. For large variants, _data
+	// is a heap pointer. Invalid payloads would crash match dispatch.
+	if !type_has_valid_payload(t) {
+		return ''
 	}
 	match t {
 		Primitive, Alias, Array, ArrayFixed, Channel, Char, Enum, FnType, Interface, ISize, Map,

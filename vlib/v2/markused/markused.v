@@ -17,6 +17,11 @@ fn sumtype_payload_word_is_valid(tag_word u64, data_word u64) bool {
 	// looks like a small tag, the payload must be a real pointer, not a leaked
 	// enum/default value like `3`.
 	if tag_word < 256 {
+		upper := data_word >> 32
+		lower := data_word & u64(0xffffffff)
+		if upper < 1024 && lower < 4096 {
+			return false
+		}
 		return data_word >= 4096 && data_word < 281474976710656
 	}
 	return true
@@ -31,6 +36,15 @@ fn expr_ok(expr ast.Expr) bool {
 fn stmt_ok(stmt ast.Stmt) bool {
 	tag_word := unsafe { (&u64(&stmt))[0] }
 	data_word := unsafe { (&u64(&stmt))[1] }
+	return sumtype_payload_word_is_valid(tag_word, data_word)
+}
+
+fn type_ok(typ types.Type) bool {
+	tag_word := unsafe { (&u64(&typ))[0] }
+	data_word := unsafe { (&u64(&typ))[1] }
+	if data_word == 0 {
+		return false
+	}
 	return sumtype_payload_word_is_valid(tag_word, data_word)
 }
 
@@ -60,6 +74,7 @@ const builtin_cast_type_names = [
 struct FnInfo {
 	key  string
 	mod  string
+	file string
 	decl ast.FnDecl
 }
 
@@ -67,8 +82,9 @@ struct Walker {
 	files []ast.File
 	env   &types.Environment = unsafe { nil }
 mut:
-	fns   []FnInfo
-	queue []int
+	fns               []FnInfo
+	queue             []int
+	queued_fn_indices map[int]bool
 
 	used_keys map[string]bool
 
@@ -110,6 +126,7 @@ fn new_walker(files []ast.File, env &types.Environment) Walker {
 		files:                     files
 		env:                       unsafe { env }
 		used_keys:                 map[string]bool{}
+		queued_fn_indices:         map[int]bool{}
 		module_names:              map[string]bool{}
 		type_names:                map[string]bool{}
 		interface_type_names:      map[string]bool{}
@@ -195,6 +212,7 @@ fn (mut w Walker) collect_defs() {
 					info := FnInfo{
 						key:  decl_key(mod_name, stmt, w.env)
 						mod:  mod_name
+						file: file.name
 						decl: stmt
 					}
 					w.fns << info
@@ -217,6 +235,7 @@ fn (mut w Walker) seed_roots() bool {
 	}
 	if has_root {
 		w.seed_generic_specialization_roots()
+		w.seed_codegen_required_roots()
 		// Also seed module init() functions (called from synthesized main)
 		for i, info in w.fns {
 			if is_module_init(info) {
@@ -234,9 +253,188 @@ fn (mut w Walker) seed_roots() bool {
 	}
 	if has_root {
 		w.seed_generic_specialization_roots()
+		w.seed_codegen_required_roots()
 		w.seed_top_level_initializer_roots()
 	}
 	return has_root
+}
+
+fn (mut w Walker) seed_codegen_required_roots() {
+	for i, info in w.fns {
+		if is_codegen_required_root(info) {
+			w.mark_fn(i)
+		}
+	}
+}
+
+fn is_codegen_required_root(info FnInfo) bool {
+	decl := info.decl
+	if should_always_emit_for_markused(info.file) {
+		return true
+	}
+	if info.mod == 'builtin' && decl.name == 'print_backtrace' {
+		return true
+	}
+	if info.mod == 'json2' && decl.name == 'enum_uses_json_as_number' {
+		return true
+	}
+	if info.mod == 'time' && decl.is_method && decl.receiver.typ is ast.Ident
+		&& decl.receiver.typ.name == 'Duration' {
+		return true
+	}
+	if info.mod == 'sync' {
+		if decl.name in ['try_pop_priv', 'try_push_priv', 'new_channel_st', 'new_spin_lock'] {
+			return true
+		}
+		if decl.is_method && decl.name == 'try_wait' {
+			return true
+		}
+	}
+	if is_builtin_map_file(info.file) && should_keep_builtin_map_decl(decl) {
+		return true
+	}
+	if is_builtin_string_file(info.file) && should_keep_builtin_string_decl(decl) {
+		return true
+	}
+	if is_builtin_array_file(info.file) && should_keep_builtin_array_decl(decl) {
+		return true
+	}
+	if decl.name == 'str' || decl.name.ends_with('__str') {
+		return true
+	}
+	if decl.name.starts_with('__sort_cmp_') {
+		return true
+	}
+	if decl.is_method {
+		if decl.name in ['+', '-', '*', '/', '%', '==', '!=', '<', '>', '<=', '>='] {
+			return true
+		}
+		if decl.receiver.typ is ast.Type && decl.receiver.typ is ast.ArrayType {
+			return true
+		}
+	}
+	return false
+}
+
+pub fn should_always_emit_for_markused(path string) bool {
+	if path.ends_with('.vh') {
+		return true
+	}
+	return is_builtin_runtime_keep_file(path)
+}
+
+pub fn is_builtin_runtime_keep_file(path string) bool {
+	normalized := path.replace('\\', '/')
+	return normalized.ends_with('vlib/builtin/map.c.v')
+		|| normalized.ends_with('vlib/builtin/builtin.c.v')
+		|| normalized.ends_with('vlib/builtin/builtin.v')
+		|| normalized.ends_with('vlib/builtin/cfns_wrapper.c.v')
+		|| normalized.ends_with('vlib/builtin/allocation.c.v')
+		|| normalized.ends_with('vlib/builtin/prealloc.c.v')
+		|| normalized.ends_with('vlib/builtin/panicing.c.v')
+		|| normalized.ends_with('vlib/builtin/chan_option_result.v')
+		|| normalized.ends_with('vlib/builtin/int.v') || normalized.ends_with('vlib/builtin/rune.v')
+		|| normalized.ends_with('vlib/builtin/float.c.v')
+		|| normalized.ends_with('vlib/builtin/utf8.v')
+		|| normalized.ends_with('vlib/builtin/utf8.c.v')
+		|| normalized.ends_with('vlib/strings/builder.c.v')
+		|| normalized.ends_with('vlib/strconv/utilities.v')
+		|| normalized.ends_with('vlib/strconv/utilities.c.v')
+		|| normalized.ends_with('vlib/strconv/ftoa.c.v')
+		|| normalized.ends_with('vlib/strconv/f32_str.c.v')
+		|| normalized.ends_with('vlib/strconv/f64_str.c.v')
+		|| normalized.ends_with('vlib/math/bits/bits.v')
+		|| normalized.ends_with('vlib/math/bits/bits.c.v')
+		|| normalized.ends_with('vlib/sokol/memory/memory.c.v')
+}
+
+pub fn is_builtin_map_file(path string) bool {
+	normalized := path.replace('\\', '/')
+	return normalized.ends_with('vlib/builtin/map.v')
+}
+
+pub fn should_keep_builtin_map_decl(decl ast.FnDecl) bool {
+	base_keep := decl.name in ['new_map', 'move', 'clear', 'key_to_index', 'meta_less',
+		'meta_greater', 'ensure_extra_metas', 'ensure_extra_metas_grow', 'set', 'expand', 'rehash',
+		'reserve', 'cached_rehash', 'get_and_set', 'get', 'get_check', 'exists', 'delete', 'keys',
+		'values', 'clone', 'free', 'key', 'value', 'has_index', 'zeros_to_end', 'new_dense_array']
+	return base_keep || decl.name.starts_with('map_eq_') || decl.name.starts_with('map_clone_')
+		|| decl.name.starts_with('map_free_')
+}
+
+pub fn is_builtin_string_file(path string) bool {
+	normalized := path.replace('\\', '/')
+	return normalized.ends_with('vlib/builtin/string.v')
+}
+
+pub fn should_keep_builtin_string_decl(decl ast.FnDecl) bool {
+	return decl.name in ['eq', 'plus', 'plus_two', 'substr', 'substr_unsafe', 'repeat', 'free',
+		'vstring', 'vstring_with_len', 'vstring_literal', 'vstring_literal_with_len', 'runes',
+		'join', 'compare_strings', 'compare_strings_by_len', 'compare_lower_strings']
+}
+
+pub fn is_builtin_array_file(path string) bool {
+	normalized := path.replace('\\', '/')
+	return normalized.ends_with('vlib/builtin/array.v')
+}
+
+pub fn should_keep_builtin_array_decl(decl ast.FnDecl) bool {
+	return decl.name in [
+		'__new_array',
+		'__new_array_with_default',
+		'__new_array_with_multi_default',
+		'__new_array_with_array_default',
+		'__new_array_with_map_default',
+		'new_array_from_c_array',
+		'new_array_from_c_array_no_alloc',
+		'ensure_cap',
+		'repeat',
+		'repeat_to_depth',
+		'insert',
+		'insert_many',
+		'prepend',
+		'prepend_many',
+		'delete',
+		'delete_many',
+		'clear',
+		'reset',
+		'trim',
+		'drop',
+		'get_unsafe',
+		'get',
+		'get_with_check',
+		'first',
+		'last',
+		'pop_left',
+		'pop',
+		'delete_last',
+		'slice',
+		'slice_ni',
+		'contains',
+		'clone_static_to_depth',
+		'clone',
+		'clone_to_depth',
+		'set_unsafe',
+		'set',
+		'push',
+		'push_many',
+		'reverse_in_place',
+		'reverse',
+		'free',
+		'sort',
+		'sort_with_compare',
+		'sorted_with_compare',
+		'copy',
+		'write_u8',
+		'write_rune',
+		'write_string',
+		'write_ptr',
+		'grow_cap',
+		'grow_len',
+		'pointers',
+		'panic_on_negative_len',
+		'panic_on_negative_cap',
+	]
 }
 
 fn (mut w Walker) seed_top_level_initializer_roots() {
@@ -759,12 +957,18 @@ fn (mut w Walker) mark_fn(idx int) {
 	}
 	info := w.fns[idx]
 	key := info.key
-	if key in w.used_keys {
+	was_used := key in w.used_keys
+	if !was_used {
+		w.used_keys[key] = true
+		w.mark_generic_binding_receiver_methods(info)
+	}
+	if idx in w.queued_fn_indices {
 		return
 	}
-	w.used_keys[key] = true
-	w.queue << idx
-	w.mark_generic_binding_receiver_methods(info)
+	w.queued_fn_indices[idx] = true
+	if info.decl.stmts.len > 0 {
+		w.queue << idx
+	}
 }
 
 fn (mut w Walker) mark_generic_binding_receiver_methods(info FnInfo) {
@@ -1070,14 +1274,23 @@ fn (w &Walker) interface_name_from_type_expr(expr ast.Expr, mod_name string) str
 }
 
 fn (w &Walker) interface_name_from_type(typ types.Type) string {
+	if !type_ok(typ) {
+		return ''
+	}
 	match typ {
 		types.Interface {
 			return typ.name
 		}
 		types.Pointer {
+			if !type_ok(typ.base_type) {
+				return ''
+			}
 			return w.interface_name_from_type(typ.base_type)
 		}
 		types.Alias {
+			if !type_ok(typ.base_type) {
+				return ''
+			}
 			return w.interface_name_from_type(typ.base_type)
 		}
 		else {}
@@ -1229,6 +1442,9 @@ fn (w &Walker) add_method_name_indices(name string, receivers []string, mut out 
 
 fn (w &Walker) call_lhs_decl_indices(lhs ast.Expr, mod_name string) []int {
 	mut out := []int{}
+	if !expr_ok(lhs) {
+		return out
+	}
 	match lhs {
 		ast.Ident {
 			w.add_fn_name_indices(lhs.name, mod_name, mut out)
@@ -1264,11 +1480,10 @@ fn (w &Walker) call_lhs_decl_indices(lhs ast.Expr, mod_name string) []int {
 					mod_ident := type_sel.lhs.name
 					type_name := type_sel.rhs.name
 					if mod_ident in w.module_names || mod_ident in w.type_names {
-						candidates := [
-							type_name,
-							'${mod_name}__${type_name}',
-							'${mod_ident}__${type_name}',
-						]
+						mut candidates := []string{cap: 3}
+						candidates << type_name
+						candidates << '${mod_name}__${type_name}'
+						candidates << '${mod_ident}__${type_name}'
 						w.add_method_name_indices(method_name, candidates, mut out)
 						return out
 					}
@@ -1346,6 +1561,9 @@ fn (mut w Walker) mark_result_error_return_methods(return_type ast.Expr, expr as
 }
 
 fn (w &Walker) call_lhs_fn_type(lhs ast.Expr, mod_name string) ?types.FnType {
+	if !expr_ok(lhs) {
+		return none
+	}
 	if w.env != unsafe { nil } {
 		if lhs_type := w.env.get_expr_type(lhs.pos().id) {
 			if lhs_type is types.FnType {
@@ -1445,6 +1663,9 @@ fn (w &Walker) current_fn_generic_bindings() []map[string]types.Type {
 
 fn (w &Walker) receiver_candidates_for_expr(expr ast.Expr, mod_name string) []string {
 	mut out := []string{}
+	if !expr_ok(expr) {
+		return out
+	}
 	pos := expr.pos()
 	if w.env != unsafe { nil } && pos.is_valid() {
 		if receiver_type := w.env.get_expr_type(pos.id) {
@@ -1542,6 +1763,9 @@ fn (w &Walker) is_cast_type_name(name string) bool {
 }
 
 fn (mut w Walker) mark_call_lhs(lhs ast.Expr, mod_name string) {
+	if !expr_ok(lhs) {
+		return
+	}
 	match lhs {
 		ast.Ident {
 			w.mark_fn_name(lhs.name, mod_name)
@@ -1599,6 +1823,22 @@ fn (mut w Walker) mark_call_lhs(lhs ast.Expr, mod_name string) {
 			w.mark_method_name_fallback(method_name)
 		}
 		else {}
+	}
+}
+
+fn (mut w Walker) mark_selector_fn_value(expr ast.SelectorExpr, mod_name string) {
+	if expr.lhs !is ast.Ident {
+		return
+	}
+	left := expr.lhs as ast.Ident
+	left_name := left.name
+	if left_name == 'C' {
+		w.mark_fn_name(expr.rhs.name, mod_name)
+		return
+	}
+	if left_name in w.module_names {
+		real_mod := w.module_alias_to_real[left_name] or { left_name }
+		w.mark_fn_name('${real_mod}__${expr.rhs.name}', mod_name)
 	}
 }
 
@@ -1861,6 +2101,7 @@ fn (mut w Walker) walk_expr(expr ast.Expr, mod_name string) {
 			w.walk_expr(expr.next, mod_name)
 		}
 		ast.SelectorExpr {
+			w.mark_selector_fn_value(expr, mod_name)
 			w.walk_expr(expr.lhs, mod_name)
 		}
 		ast.SqlExpr {

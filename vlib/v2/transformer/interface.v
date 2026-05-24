@@ -68,17 +68,8 @@ fn (t &Transformer) get_interface_receiver_type(expr ast.Expr) ?types.Type {
 
 // is_interface_cast checks if an expression is an interface cast like Calculator(value)
 fn (t &Transformer) is_interface_cast(expr ast.Expr) bool {
-	// Interface casts appear as CallOrCastExpr: InterfaceType(value)
-	if expr is ast.CallOrCastExpr {
-		if expr.lhs is ast.Ident {
-			// Look up the type name in the environment
-			type_name := (expr.lhs as ast.Ident).name
-			mut scope := t.get_current_scope() or { return false }
-			obj := scope.lookup_parent(type_name, 0) or { return false }
-			if obj is types.Type {
-				return obj is types.Interface
-			}
-		}
+	if t.get_interface_cast_inner_expr(expr) != none {
+		return true
 	}
 	return false
 }
@@ -109,21 +100,23 @@ fn (t &Transformer) get_interface_cast_concrete_type(expr ast.Expr) ?string {
 			return t.get_interface_cast_concrete_type(expr.expr)
 		}
 		ast.CallOrCastExpr {
-			if t.is_interface_cast(expr) {
+			if t.interface_type_expr_is_interface(expr.lhs) {
 				if concrete := t.get_expr_type_name(expr.expr) {
 					return concrete
 				}
 			}
 		}
+		ast.CallExpr {
+			if expr.args.len == 1 && t.interface_type_expr_is_interface(expr.lhs) {
+				if concrete := t.get_expr_type_name(expr.args[0]) {
+					return concrete
+				}
+			}
+		}
 		ast.CastExpr {
-			type_name := t.expr_to_type_name(expr.typ)
-			if type_name != '' {
-				if typ := t.lookup_type(type_name) {
-					if typ is types.Interface {
-						if concrete := t.get_expr_type_name(expr.expr) {
-							return concrete
-						}
-					}
+			if t.interface_type_expr_is_interface(expr.typ) {
+				if concrete := t.get_expr_type_name(expr.expr) {
+					return concrete
 				}
 			}
 		}
@@ -139,18 +132,18 @@ fn (t &Transformer) get_interface_cast_inner_expr(expr ast.Expr) ?ast.Expr {
 			return t.get_interface_cast_inner_expr(expr.expr)
 		}
 		ast.CallOrCastExpr {
-			if t.is_interface_cast(expr) {
+			if t.interface_type_expr_is_interface(expr.lhs) {
 				return expr.expr
 			}
 		}
+		ast.CallExpr {
+			if expr.args.len == 1 && t.interface_type_expr_is_interface(expr.lhs) {
+				return expr.args[0]
+			}
+		}
 		ast.CastExpr {
-			type_name := t.expr_to_type_name(expr.typ)
-			if type_name != '' {
-				if typ := t.lookup_type(type_name) {
-					if typ is types.Interface {
-						return expr.expr
-					}
-				}
+			if t.interface_type_expr_is_interface(expr.typ) {
+				return expr.expr
 			}
 		}
 		else {}
@@ -159,7 +152,27 @@ fn (t &Transformer) get_interface_cast_inner_expr(expr ast.Expr) ?ast.Expr {
 	return none
 }
 
-fn (t &Transformer) get_interface_array_init_concrete_type(expr ast.ArrayInitExpr) ?string {
+fn (t &Transformer) interface_type_expr_is_interface(expr ast.Expr) bool {
+	type_name := t.expr_to_type_name(expr)
+	if type_name != '' {
+		if typ := t.lookup_type(type_name) {
+			return typ is types.Interface
+		}
+	}
+	if expr is ast.Ident {
+		mut scope := t.get_current_scope() or { return false }
+		obj := scope.lookup_parent(expr.name, 0) or { return false }
+		if obj is types.Type {
+			return obj is types.Interface
+		}
+	}
+	return false
+}
+
+fn (t &Transformer) get_interface_array_init_concrete_type(expr &ast.ArrayInitExpr) ?string {
+	if !expr_array_has_valid_data(expr.exprs) {
+		return none
+	}
 	mut concrete_type := ''
 	for e in expr.exprs {
 		concrete := t.get_interface_cast_concrete_type(e) or { return none }
@@ -184,7 +197,7 @@ fn (t &Transformer) get_interface_array_expr_concrete_type(expr ast.Expr) ?strin
 			return t.get_interface_array_expr_concrete_type(expr.expr)
 		}
 		ast.ArrayInitExpr {
-			return t.get_interface_array_init_concrete_type(expr)
+			return t.get_interface_array_init_concrete_type(&expr)
 		}
 		ast.CallExpr {
 			if expr.lhs is ast.SelectorExpr {
