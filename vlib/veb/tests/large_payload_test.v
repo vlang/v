@@ -1,4 +1,5 @@
 // vtest retry: 3
+// vtest build: !windows // fasthttp.Server.run is not implemented on windows yet
 import veb
 import net.http
 import time
@@ -118,6 +119,23 @@ fn test_sendfile() {
 	x := http.get('${localserver}/file')!
 
 	assert x.body.len == veb.max_write * 10
+}
+
+// Regression test for https://github.com/vlang/v/issues/27080:
+// sendfile() returned EAGAIN once the kernel send buffer filled and
+// the server gave up after 3 tight-loop retries. With proper poll()
+// based waiting, files larger than the socket send buffer must still
+// transfer in full.
+fn test_sendfile_large_payload() {
+	// 8 MiB is well above the typical SO_SNDBUF (~200 KiB on Linux),
+	// so a single sendfile() call cannot drain the whole file.
+	size := 8 * 1024 * 1024
+	mut buf := []u8{len: size, init: `b`}
+	os.write_file(tmp_file, buf.bytestr())!
+
+	x := http.get('${localserver}/file')!
+
+	assert x.body.len == size
 }
 
 fn testsuite_end() {

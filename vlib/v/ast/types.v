@@ -1700,11 +1700,9 @@ pub fn (t &Table) type_to_str_using_aliases(typ Type, import_aliases map[string]
 			elem_str := t.type_to_str_using_aliases(info.elem_type, import_aliases)
 			if info.size_expr is EmptyExpr {
 				res = '[${info.size}]${elem_str}'
-			} else if info.size_expr is Ident {
-				size_str := t.shorten_user_defined_typenames(info.size_expr.name, import_aliases)
-				res = '[${size_str}]${elem_str}'
 			} else {
-				res = '[${info.size_expr}]${elem_str}'
+				size_str := t.fixed_array_size_expr_to_str(info.size_expr, import_aliases)
+				res = '[${size_str}]${elem_str}'
 			}
 		}
 		.chan {
@@ -1856,6 +1854,34 @@ pub fn (t &Table) type_to_str_using_aliases(typ Type, import_aliases map[string]
 		res = '!${res}'
 	}
 	return res
+}
+
+// fixed_array_size_expr_to_str renders a fixed-array size expression preserving
+// fully-qualified enum names. The default `Expr.str()` drops the enum name on
+// `EnumVal` (returning `.value`), which produces invalid output when the size
+// is something like `int(TestEnum._max)` because the enum type cannot be
+// inferred from context inside the array brackets.
+fn (t &Table) fixed_array_size_expr_to_str(expr Expr, import_aliases map[string]string) string {
+	match expr {
+		CastExpr {
+			type_name := t.shorten_user_defined_typenames(t.type_to_str_using_aliases(expr.typ,
+				import_aliases), import_aliases)
+			return '${type_name}(${t.fixed_array_size_expr_to_str(expr.expr, import_aliases)})'
+		}
+		EnumVal {
+			if expr.enum_name != '' {
+				name := t.shorten_user_defined_typenames(expr.enum_name, import_aliases)
+				return '${name}.${expr.val}'
+			}
+			return '.${expr.val}'
+		}
+		Ident {
+			return t.shorten_user_defined_typenames(expr.name, import_aliases)
+		}
+		else {
+			return expr.str()
+		}
+	}
 }
 
 fn (t &Table) shorten_user_defined_typenames(original_name string, import_aliases map[string]string) string {

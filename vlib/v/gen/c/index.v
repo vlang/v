@@ -373,7 +373,15 @@ fn (mut g Gen) index_of_array(node ast.IndexExpr, sym ast.TypeSymbol) {
 		info.elem_type
 	}
 	elem_sym := g.table.final_sym(elem_type)
-	left_is_ptr := array_left_type.is_ptr() || node.left.is_auto_deref_var()
+	mut left_is_ptr := array_left_type.is_ptr() || node.left.is_auto_deref_var()
+	// Auto-heap idents are pointers in C. `g.expr` writes `(*(name))` to deref them,
+	// but suppresses that deref when the ident is on an assign LHS / inside a selector
+	// LHS / inside an assign-fn-var context. In those cases the C result of `g.expr`
+	// is a pointer, so this IndexExpr must emit its own `*` before `array_get`.
+	if !left_is_ptr && node.left is ast.Ident && g.resolved_ident_is_auto_heap(node.left)
+		&& (g.is_assign_lhs || g.inside_selector_lhs || g.inside_assign_fn_var) {
+		left_is_ptr = true
+	}
 	result_type := match true {
 		gen_or && elem_type.has_flag(.option) {
 			node.typ.clear_flag(.option)

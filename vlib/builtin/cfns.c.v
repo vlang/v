@@ -118,6 +118,7 @@ fn C.close(fd i32) i32
 
 fn C.strrchr(s &char, c i32) &char
 fn C.strchr(s &char, c i32) &char
+fn C.strstr(const_haystack &char, const_needle &char) &char
 
 // process execution, os.process:
 @[trusted]
@@ -428,7 +429,7 @@ fn C.WSAGetLastError() i32
 
 fn C.closesocket(i32) i32
 
-fn C.vschannel_init(&C.TlsContext)
+fn C.vschannel_init(&C.TlsContext, C.BOOL)
 
 fn C.request(&C.TlsContext, i32, &u16, &u8, u32, &&u8, fn (voidptr, isize) voidptr) i32
 

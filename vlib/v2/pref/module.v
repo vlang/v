@@ -41,6 +41,18 @@ pub fn (p &Preferences) get_module_path(mod string, importing_file_path string) 
 	if dir_exists(vlib_path) {
 		return vlib_path
 	}
+	// V1 compiler modules under vlib/v use legacy bare sibling imports
+	// (`import token` from vlib/v/checker, with sources in vlib/v/token).
+	vlib_v_path := module_path_join(module_path_join(vroot, 'vlib'), 'v')
+	normalized_importer := importing_file_path.replace('\\', '/')
+	normalized_vlib_v := vlib_v_path.replace('\\', '/')
+	if normalized_importer.starts_with(normalized_vlib_v + '/')
+		|| normalized_importer.starts_with('vlib/v/') {
+		legacy_v_path := module_path_join(vlib_v_path, mod_path)
+		if dir_exists(legacy_v_path) {
+			return legacy_v_path
+		}
+	}
 	// ~/.vmodules
 	vmodules_path := module_path_join(p.vmodules_path, mod_path)
 	if dir_exists(vmodules_path) {
@@ -55,10 +67,6 @@ pub fn (p &Preferences) get_module_path(mod string, importing_file_path string) 
 	relative_path := module_path_join(os.dir(importing_file_path), mod_path)
 	if dir_exists(relative_path) {
 		return relative_path
-	}
-	parent_relative_path := module_path_join(os.dir(os.dir(importing_file_path)), mod_path)
-	if dir_exists(parent_relative_path) {
-		return parent_relative_path
 	}
 	panic('Preferences.get_module_path: cannot find module path for `${mod}`')
 }

@@ -86,7 +86,6 @@ mut:
 	sorted_global_const_names            []string
 	file                                 &ast.File  = unsafe { nil }
 	table                                &ast.Table = unsafe { nil }
-	mods_with_c_includes                 map[string]bool
 	styp_cache                           map[ast.Type]string
 	no_eq_method_types                   map[ast.Type]bool // types that does not need to call its auto eq methods for optimization
 	generic_parts_cache                  []i8              // type idx -> 0 unknown, 1 false, 2 true
@@ -120,6 +119,7 @@ mut:
 	options_pos_forward                  int               // insertion point to forward
 	options_forward                      []string          // to forward
 	options                              map[string]string // to avoid duplicates
+	emitted_extern_sig_typedefs          map[int]bool      // type idx → already-emitted forward typedef (for C extern decls)
 	results_forward                      []string          // to forward
 	results                              map[string]string // to avoid duplicates
 	done_options                         shared []string   // to avoid duplicates
@@ -129,7 +129,6 @@ mut:
 	done_typedef_phase                   bool              // set after write_typedef_types() completes
 	late_chan_types                      shared []string   // concrete channel cnames discovered during file generation
 	emitted_chan_types                   map[string]bool   // concrete channel typedefs/helpers already emitted
-	c_extern_signature_types             map[string]bool   // C signature-only type decls already emitted
 	chan_pop_options                     map[string]string // types for `x := <-ch or {...}`
 	chan_push_options                    map[string]string // types for `ch <- x or {...}`
 	mtxs                                 string            // array of mutexes if the `lock` has multiple variables
@@ -147,6 +146,7 @@ mut:
 	inside_ternary                       int  // ?: comma separated statements on a single line
 	inside_map_postfix                   bool // inside map++/-- postfix expr
 	inside_map_infix                     bool // inside map<</+=/-= infix expr
+	wrote_windows_tcc_atomic_include     bool
 	inside_left_shift                    bool // generating the left operand of `<<`
 	inside_assign                        bool
 	inside_map_index                     bool
@@ -323,8 +323,10 @@ mut:
 	is_builtin_overflow_mod bool
 	do_int_overflow_checks  bool // outside a `@[ignore_overflow] fn abc() {}` or a function in `builtin.overflow`
 	//
-	tid string // the thread id of the file processor in the thread pool (log it to debug issues in parallel cgen)
-	fid int    // the index of ast.File that is currently processed (log it to debug issues in parallel cgen)
+	tid                  string // the thread id of the file processor in the thread pool (log it to debug issues in parallel cgen)
+	fid                  int    // the index of ast.File that is currently processed (log it to debug issues in parallel cgen)
+	mods_with_c_libs     map[string]bool
+	mods_with_c_includes map[string]bool
 }
 
 @[heap]
@@ -391,7 +393,6 @@ pub fn gen(files []&ast.File, mut table ast.Table, pref_ &pref.Preferences) GenO
 		json_forward_decls:            strings.new_builder(100)
 		sql_buf:                       strings.new_builder(100)
 		table:                         table
-		mods_with_c_includes:          modules_with_c_includes(files)
 		pref:                          pref_
 		fn_decl:                       unsafe { nil }
 		anon_fn:                       unsafe { nil }
@@ -415,7 +416,6 @@ pub fn gen(files []&ast.File, mut table ast.Table, pref_ &pref.Preferences) GenO
 		has_debugger:                  'v.debug' in table.modules
 		reflection_strings:            &reflection_strings
 		generated_map_key_fns:         map[ast.Type]bool{}
-		c_extern_signature_types:      map[string]bool{}
 		boehm_keep_decl:               map[string]bool{}
 		boehm_keep_gen:                map[string]bool{}
 		boehm_keep_busy:               map[string]bool{}
@@ -437,6 +437,21 @@ pub fn gen(files []&ast.File, mut table ast.Table, pref_ &pref.Preferences) GenO
 		global_g.cleanups[mod] = strings.new_builder(100)
 	}
 	global_g.init()
+	for file in files {
+		if file.path.starts_with(pref_.vlib) {
+			continue
+		}
+		for stmt in file.stmts {
+			if stmt is ast.HashStmt {
+				if stmt.kind == 'flag' && stmt.main.contains('-l') {
+					global_g.mods_with_c_libs[file.mod.name] = true
+				}
+				if stmt.kind in ['include', 'preinclude'] {
+					global_g.mods_with_c_includes[file.mod.name] = true
+				}
+			}
+		}
+	}
 	util.timing_measure('cgen init')
 	global_g.tests_inited = false
 	global_g.file = files.last()
@@ -799,13 +814,13 @@ pub fn gen(files []&ast.File, mut table ast.Table, pref_ &pref.Preferences) GenO
 		for vsafe_fn_name, val in g.vsafe_arithmetic_ops {
 			styp := g.styp(val.typ)
 			if val.op == .div {
-				if g.pref.div_by_zero_is_zero {
+				if g.pref.no_builtin || g.pref.div_by_zero_is_zero {
 					b.writeln('static inline ${styp} ${vsafe_fn_name}(${styp} x, ${styp} y) { if (_unlikely_(0 == y)) { return 0; } else { return x / y; } }')
 				} else {
 					b.writeln('static inline ${styp} ${vsafe_fn_name}(${styp} x, ${styp} y) { if (_unlikely_(0 == y)) { builtin___v_panic(_S("division by zero")); } return x / y; }')
 				}
 			} else {
-				if g.pref.div_by_zero_is_zero {
+				if g.pref.no_builtin || g.pref.div_by_zero_is_zero {
 					b.writeln('static inline ${styp} ${vsafe_fn_name}(${styp} x, ${styp} y) { if (_unlikely_(0 == y)) { return x; } else { return x % y; } }')
 				} else {
 					b.writeln('static inline ${styp} ${vsafe_fn_name}(${styp} x, ${styp} y) { if (_unlikely_(0 == y)) { builtin___v_panic(_S("modulo by zero")); } return x % y; }')
@@ -1020,7 +1035,6 @@ fn cgen_process_one_file_cb(mut p pool.PoolProcessor, idx int, wid int) voidptr 
 		sql_buf:                            strings.new_builder(100)
 		cleanup:                            strings.new_builder(100)
 		table:                              global_g.table
-		mods_with_c_includes:               global_g.mods_with_c_includes
 		pref:                               global_g.pref
 		fn_decl:                            unsafe { nil }
 		anon_fn:                            unsafe { nil }
@@ -1060,7 +1074,6 @@ fn cgen_process_one_file_cb(mut p pool.PoolProcessor, idx int, wid int) voidptr 
 		has_debugger:                       'v.debug' in global_g.table.modules
 		reflection_strings:                 global_g.reflection_strings
 		generated_map_key_fns:              map[ast.Type]bool{}
-		c_extern_signature_types:           map[string]bool{}
 		boehm_keep_decl:                    map[string]bool{}
 		boehm_keep_gen:                     map[string]bool{}
 		boehm_keep_busy:                    map[string]bool{}
@@ -1589,7 +1602,17 @@ fn (mut g Gen) generic_fn_name(types []ast.Type, before string) string {
 		// E.g. `neg` (a specific fn) should produce the same name as `fn(int) int`.
 		sym := g.table.sym(normalized_typ)
 		if sym.info is ast.FnType && sym.kind == .function {
-			anon_cname := 'anon_fn_${g.table.fn_type_signature(sym.info.func)}'
+			mut anon_cname := 'anon_fn_${g.table.fn_type_signature(sym.info.func)}'
+			if normalized_typ.has_flag(.option) {
+				anon_cname = '${option_name}_${anon_cname}'
+			} else if normalized_typ.has_flag(.result) {
+				anon_cname = '${result_name}_${anon_cname}'
+			}
+			if normalized_typ.has_flag(.shared_f) {
+				anon_cname = '__shared__${anon_cname}'
+			} else if normalized_typ.has_flag(.atomic_f) {
+				anon_cname = 'atomic_${anon_cname}'
+			}
 			if anon_cname != typ_name {
 				typ_name = anon_cname
 			}
@@ -2082,13 +2105,21 @@ fn (mut g Gen) register_thread_wait_call(eltyp string) {
 		g.gowrappers.writeln('\tif (stat != WAIT_OBJECT_0) { builtin___v_panic(_S("error waiting thread")); }')
 		g.gowrappers.writeln('\tCloseHandle(thread.handle);')
 		g.gowrappers.writeln('\tres = *(${eltyp}*)(thread.ret_ptr);')
-		g.gowrappers.writeln('\tbuiltin___v_free(thread.ret_ptr);')
+		if g.pref.prealloc {
+			g.gowrappers.writeln('\tfree(thread.ret_ptr);')
+		} else {
+			g.gowrappers.writeln('\tbuiltin___v_free(thread.ret_ptr);')
+		}
 	} else {
 		g.gowrappers.writeln('\tvoid* ret_val;')
 		g.gowrappers.writeln('\tint stat = pthread_join(thread, &ret_val);')
 		g.gowrappers.writeln('\tif (stat != 0) { builtin___v_panic(_S("error waiting thread")); }')
 		g.gowrappers.writeln('\tres = *(${eltyp}*)ret_val;')
-		g.gowrappers.writeln('\tbuiltin___v_free(ret_val);')
+		if g.pref.prealloc {
+			g.gowrappers.writeln('\tfree(ret_val);')
+		} else {
+			g.gowrappers.writeln('\tbuiltin___v_free(ret_val);')
+		}
 	}
 	g.gowrappers.writeln('\treturn res;')
 	g.gowrappers.writeln('}')
@@ -3472,7 +3503,8 @@ fn (mut g Gen) expr_with_tmp_var(expr ast.Expr, expr_typ ast.Type, ret_typ ast.T
 		g.write('${tmp_styp} ${tmp_var} = ')
 		g.gen_option_error(error_target_type, expr)
 		g.writeln(';')
-	} else if expr is ast.Ident && expr_typ == ast.error_type {
+	} else if expr is ast.Ident && expr_typ == ast.error_type
+		&& !(unwrapped_ret_typ.has_flag(.option) && unwrapped_ret_typ.idx() == ast.error_type_idx) {
 		g.writeln('${g.styp(unwrapped_ret_typ)} ${tmp_var} = {.state=2, .err=${expr.name}};')
 	} else {
 		mut simple_assign := false
@@ -5797,6 +5829,75 @@ fn (mut g Gen) write_map_key_arg(expr ast.Expr, key_type ast.Type) {
 	g.write('}')
 }
 
+fn (mut g Gen) write_atomic_postfix_target(node ast.PostfixExpr) {
+	if node.expr.is_auto_deref_var() {
+		g.write('*')
+	}
+	g.expr(node.expr)
+	if node.typ.has_flag(.shared_f) {
+		g.write('->val')
+	}
+}
+
+fn (g &Gen) is_windows_tcc() bool {
+	return g.pref.os == .windows
+		&& (g.pref.ccompiler_type == .tinyc || pref.cc_from_string(g.pref.ccompiler) == .tinyc)
+}
+
+fn (mut g Gen) write_atomic_postfix_expr(node ast.PostfixExpr) {
+	atomic_value_styp := g.styp(node.typ.clear_flag(.atomic_f))
+	if g.is_windows_tcc() {
+		g.write_windows_tcc_atomic_postfix_expr(node, atomic_value_styp)
+		return
+	}
+	atomic_op := if node.op == .inc {
+		'__atomic_fetch_add'
+	} else {
+		'__atomic_fetch_sub'
+	}
+	g.write('${atomic_op}((${atomic_value_styp}*)&(')
+	g.write_atomic_postfix_target(node)
+	g.write('), 1, 5)')
+}
+
+fn (mut g Gen) write_windows_tcc_atomic_postfix_expr(node ast.PostfixExpr, atomic_value_styp string) {
+	if !g.wrote_windows_tcc_atomic_include {
+		atomic_h_path :=
+			os.join_path(@VEXEROOT, 'thirdparty', 'stdatomic', 'win', 'atomic.h').replace('\\', '/')
+		g.includes.writeln('#include "${atomic_h_path}"')
+		g.wrote_windows_tcc_atomic_include = true
+	}
+	base_typ := g.table.unaliased_type(g.unwrap_generic(node.typ.clear_flags(.shared_f, .atomic_f)))
+	mut atomic_fn := 'InterlockedExchangeAdd'
+	mut atomic_ptr_styp := 'LONG'
+	match base_typ.idx() {
+		ast.i8_type_idx, ast.u8_type_idx, ast.char_type_idx {
+			atomic_fn = 'InterlockedExchangeAdd8'
+			atomic_ptr_styp = 'char'
+		}
+		ast.i16_type_idx, ast.u16_type_idx {
+			atomic_fn = 'InterlockedExchangeAdd16'
+			atomic_ptr_styp = 'short'
+		}
+		ast.i64_type_idx, ast.u64_type_idx {
+			atomic_fn = 'InterlockedExchangeAdd64'
+			atomic_ptr_styp = 'LONG64'
+		}
+		ast.isize_type_idx, ast.usize_type_idx {
+			if g.pref.arch != .i386 {
+				atomic_fn = 'InterlockedExchangeAdd64'
+				atomic_ptr_styp = 'LONG64'
+			}
+		}
+		else {}
+	}
+
+	delta := if node.op == .inc { '1' } else { '-1' }
+	g.write('((${atomic_value_styp})${atomic_fn}((${atomic_ptr_styp} volatile*)&(')
+	g.write_atomic_postfix_target(node)
+	g.write('), ${delta}))')
+}
+
 fn (mut g Gen) expr(node_ ast.Expr) {
 	old_discard_or_result := g.discard_or_result
 	old_is_void_expr_stmt := g.is_void_expr_stmt
@@ -6109,21 +6210,7 @@ fn (mut g Gen) expr(node_ ast.Expr) {
 				&& g.pref.ccompiler_type != .msvc
 			g.inside_map_postfix = true
 			if is_atomic_postfix {
-				atomic_op := if node.op == .inc {
-					'__atomic_fetch_add'
-				} else {
-					'__atomic_fetch_sub'
-				}
-				atomic_value_styp := g.styp(node.typ.clear_flag(.atomic_f))
-				g.write('${atomic_op}((${atomic_value_styp}*)&(')
-				if node.expr.is_auto_deref_var() {
-					g.write('*')
-				}
-				g.expr(node.expr)
-				if node.typ.has_flag(.shared_f) {
-					g.write('->val')
-				}
-				g.write('), 1, 5)')
+				g.write_atomic_postfix_expr(node)
 			} else if node.is_c2v_prefix {
 				g.write(node.op.str())
 			}
@@ -6452,7 +6539,9 @@ fn (mut g Gen) type_name(raw_type ast.Type) {
 	sym := g.table.sym(typ)
 	mut s := ''
 	if sym.kind == .function {
-		if typ.is_ptr() {
+		if typ.has_option_or_result() {
+			s = g.table.type_to_str(g.unwrap_generic(typ))
+		} else if typ.is_ptr() {
 			s = '&' + g.fn_decl_str(sym.info as ast.FnType)
 		} else {
 			s = g.fn_decl_str(sym.info as ast.FnType)
@@ -6548,8 +6637,7 @@ fn (mut g Gen) typeof_expr(node ast.TypeOf) {
 		typ_name := g.table.get_type_name(fixed_info.elem_type)
 		g.write('_S("[${fixed_info.size}]${util.strip_main_name(typ_name)}")')
 	} else if sym.kind == .function {
-		info := sym.info as ast.FnType
-		g.write('_S("${g.fn_decl_str(info)}")')
+		g.write('_S("${util.strip_main_name(g.table.type_to_str(g.unwrap_generic(typ)))}")')
 	} else if typ.has_flag(.variadic) {
 		varg_elem_type_sym := g.table.sym(g.table.value_type(typ))
 		g.write('_S("...${util.strip_main_name(varg_elem_type_sym.name)}")')
@@ -7850,6 +7938,11 @@ fn (mut g Gen) scope_gc_pin_pregen(node_pos int) []ScopeGcPin {
 		|| g.pref.gc_mode !in [.boehm_full, .boehm_incr, .boehm_full_opt, .boehm_incr_opt] {
 		return []ScopeGcPin{}
 	}
+	if g.inside_veb_tmpl {
+		// Veb template statements are inlined into the route body; their AST scopes
+		// do not always match the generated C block scopes for template locals.
+		return []ScopeGcPin{}
+	}
 	if g.inside_defer_generation {
 		return []ScopeGcPin{}
 	}
@@ -7955,6 +8048,10 @@ fn (mut g Gen) scope_var_needs_gc_pin(obj ast.Var) bool {
 
 fn (mut g Gen) write_scope_gc_pins(pos token.Pos) {
 	if g.pref.gc_mode !in [.boehm_full, .boehm_incr, .boehm_full_opt, .boehm_incr_opt] {
+		return
+	}
+	if g.inside_veb_tmpl {
+		// See scope_gc_pin_pregen for why template code skips these pins.
 		return
 	}
 	if g.fn_decl == unsafe { nil } || g.fn_decl.scope == unsafe { nil } {
@@ -10674,7 +10771,17 @@ fn (mut g Gen) check_expr_is_const(expr ast.Expr) bool {
 			return expr.kind == .function || g.table.final_sym(expr.obj.typ).kind != .array_fixed
 		}
 		ast.StructInit {
-			return expr.init_fields.all(g.check_expr_is_const(it.expr))
+			// String fields expand to the `_S()` compound literal, which strict
+			// GCC rejects in a static initializer; fall back to runtime init.
+			for f in expr.init_fields {
+				if f.expr is ast.StringLiteral {
+					return false
+				}
+				if !g.check_expr_is_const(f.expr) {
+					return false
+				}
+			}
+			return true
 		}
 		ast.EnumVal {
 			return true
@@ -10965,9 +11072,7 @@ fn (mut g Gen) write_init_function() {
 		g.export_funcs << '_vinit_caller'
 		g.writeln('void _vinit_caller() {')
 		g.writeln('\tstatic bool once = false; if (once) {return;} once = true;')
-		if g.pref.os == .windows {
-			g.gen_windows_shared_library_boehm_init()
-		}
+		g.gen_shared_library_boehm_init()
 		g.writeln('\t_vinit(0,0);')
 		g.writeln('}')
 
@@ -13262,6 +13367,9 @@ fn (mut g Gen) panic_debug_info(pos token.Pos) (int, string, string, string) {
 // when available, or emits `imessage` through a C error otherwise.
 pub fn get_guarded_include_text(iname string, imessage string) string {
 	res := '
+	|#ifdef __TINYC__
+	|#include ${iname}
+	|#else
 	|#if defined(__has_include)
 	|#if __has_include(${iname})
 	|#include ${iname}
@@ -13271,6 +13379,7 @@ pub fn get_guarded_include_text(iname string, imessage string) string {
 	|#else
 	|#include ${iname}
 	|#endif
+	|#endif
 	'.strip_margin()
 	return res
 }
@@ -13279,6 +13388,9 @@ pub fn get_guarded_include_text(iname string, imessage string) string {
 // the best available integer types header, or emits `imessage` otherwise.
 pub fn get_inttypes_or_stdint_include_text(imessage string) string {
 	res := '
+	|#ifdef __TINYC__
+	|#include <inttypes.h>
+	|#else
 	|#if defined(__has_include)
 	|#if __has_include(<inttypes.h>)
 	|#include <inttypes.h>
@@ -13289,6 +13401,7 @@ pub fn get_inttypes_or_stdint_include_text(imessage string) string {
 	|#endif
 	|#else
 	|#include <stdint.h>
+	|#endif
 	|#endif
 	'.strip_margin()
 	return res

@@ -30,3 +30,5 @@ $if $pkgconfig('mysqlclient') {
 	#flag openbsd $when_first_existing('/usr/local/lib/libmysqlclient.so','/usr/local/lib/libmariadb.so')
 	#include <mysql.h> # Please install the mysql or mariadb development headers
 }
+
+#include "@VMODROOT/vlib/db/mysql/mysql_compat.h"

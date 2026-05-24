@@ -6,7 +6,6 @@ module veb
 import io
 import net
 import net.http
-import net.mbedtls
 import net.urllib
 import os
 import strconv
@@ -29,10 +28,18 @@ pub fn no_result() Result {
 struct Route {
 	methods []http.Method
 	path    string
+	words   []string
 	host    string
 mut:
 	middlewares       []RouteMiddleware
 	after_middlewares []RouteMiddleware
+}
+
+fn route_path_words(path string) []string {
+	if path.len == 0 || path == '/' {
+		return []string{}
+	}
+	return path.split('/').filter(it != '')
 }
 
 // Generate route structs for an app
@@ -48,6 +55,7 @@ fn generate_routes[A, X](app &A) !map[string]Route {
 			mut route := Route{
 				methods: http_methods
 				path:    route_path
+				words:   route_path_words(route_path)
 				host:    host
 			}
 
@@ -70,21 +78,6 @@ fn generate_routes[A, X](app &A) !map[string]Route {
 // run - start a new veb server, listening to all available addresses, at the specified `port`
 pub fn run[A, X](mut global_app A, port int) {
 	run_at[A, X](mut global_app, host: '', port: port, family: .ip6) or { panic(err.msg()) }
-}
-
-@[params]
-pub struct RunParams {
-pub:
-	// use `family: .ip, host: 'localhost'` when you want it to bind only to 127.0.0.1
-	family                    net.AddrFamily = .ip6
-	host                      string
-	port                      int  = default_port
-	nr_workers                int  = 1
-	show_startup_message      bool = true
-	timeout_in_seconds        int  = 30
-	max_request_buffer_size   int  = 8192
-	benchmark_page_generation bool // for the "page rendered in X ms"
-	ssl_config                mbedtls.SSLConnectConfig
 }
 
 struct SslRequestParams {
@@ -118,79 +111,6 @@ fn listen_addr(params RunParams) string {
 		return ':${params.port}'
 	}
 	return '${params.host}:${params.port}'
-}
-
-fn run_at_with_ssl[A, X](mut global_app A, params RunParams) ! {
-	routes := generate_routes[A, X](global_app)!
-	controllers_sorted := check_duplicate_routes_in_controllers[A](global_app, routes)!
-	if params.show_startup_message {
-		println('[veb] Running app on https://${startup_host(params)}:${params.port}/')
-	}
-	flush_stdout()
-	mut ssl_listener := mbedtls.new_ssl_listener(listen_addr(params), params.ssl_config)!
-	defer {
-		ssl_listener.shutdown() or {}
-	}
-	ssl_params := &SslRequestParams{
-		global_app:                unsafe { voidptr(&global_app) }
-		controllers_sorted:        controllers_sorted
-		routes:                    &routes
-		benchmark_page_generation: params.benchmark_page_generation
-		max_request_buffer_size:   if params.max_request_buffer_size > 0 {
-			params.max_request_buffer_size
-		} else {
-			max_read
-		}
-	}
-	$if A is BeforeAcceptApp {
-		global_app.before_accept_loop()
-	}
-	for {
-		mut ssl_conn := ssl_listener.accept() or {
-			eprintln('[veb] accept() failed, reason: ${err}; skipping')
-			continue
-		}
-		ssl_conn.duration = params.timeout_in_seconds * time.second
-		spawn handle_ssl_connection[A, X](mut ssl_conn, ssl_params)
-	}
-}
-
-fn handle_ssl_connection[A, X](mut ssl_conn mbedtls.SSLConn, params &SslRequestParams) {
-	defer {
-		ssl_conn.shutdown() or {}
-	}
-	mut reader := io.new_buffered_reader(
-		reader: ssl_conn
-		cap:    params.max_request_buffer_size
-	)
-	defer {
-		unsafe {
-			reader.free()
-		}
-	}
-	for {
-		req := read_request_from_buffered_reader(mut reader) or {
-			if err !is io.Eof {
-				write_ssl_response(mut ssl_conn, http_400) or {}
-			}
-			return
-		}
-		completed_context := handle_ssl_request[A, X](req, params) or {
-			write_ssl_response(mut ssl_conn, http_400) or {}
-			return
-		}
-		if completed_context.takeover_mode != .none {
-			eprintln('[veb] HTTPS connections do not support takeover connections yet; closing the connection after this response.')
-		}
-		write_ssl_context_response(mut ssl_conn, completed_context) or {
-			eprintln('[veb] error sending HTTPS response: ${err}')
-			return
-		}
-		if completed_context.takeover_mode != .none
-			|| should_close_connection(completed_context.req, completed_context.res, completed_context.client_wants_to_close) {
-			return
-		}
-	}
 }
 
 fn read_request_from_buffered_reader(mut reader io.BufferedReader) !http.Request {
@@ -278,7 +198,7 @@ fn handle_ssl_request[A, X](req http.Request, params &SslRequestParams) ?&Contex
 		return none
 	}
 	host_with_port := req.header.get(.host) or { '' }
-	host, _ := urllib.split_host_port(host_with_port)
+	host := request_host_name(host_with_port)
 	mut ctx := &Context{
 		req:            req
 		page_gen_start: page_gen_start
@@ -287,15 +207,17 @@ fn handle_ssl_request[A, X](req http.Request, params &SslRequestParams) ?&Contex
 		files:          files
 	}
 	ctx.client_wants_to_close = request_has_connection_close(req)
+	mut user_context := X{
+		Context: ctx
+	}
 	$if A is StaticApp {
-		ctx.custom_mime_types = global_app.static_mime_types.clone()
-		mut user_context := X{}
-		user_context.Context = ctx
+		ctx.custom_mime_types_ref = unsafe { &global_app.static_mime_types }
 		if serve_if_static[X](static_handler_config(global_app.static_files,
-			global_app.static_mime_types, global_app.static_hosts, global_app.enable_static_gzip,
-			global_app.enable_static_zstd, global_app.enable_static_compression,
-			global_app.static_compression_max_size, global_app.static_compression_mime_types,
-			global_app.enable_markdown_negotiation), mut user_context, url, host)
+			global_app.static_mime_types, global_app.static_hosts, global_app.static_prefixes,
+			global_app.enable_static_gzip, global_app.enable_static_zstd,
+			global_app.enable_static_compression, global_app.static_compression_max_size,
+			global_app.static_compression_mime_types, global_app.enable_markdown_negotiation), mut
+			user_context, url, host)
 		{
 			// Preserve the handled context on the heap before the stack-local user context goes away.
 			unsafe {
@@ -309,8 +231,6 @@ fn handle_ssl_request[A, X](req http.Request, params &SslRequestParams) ?&Contex
 			return completed_context
 		}
 	}
-	mut user_context := X{}
-	user_context.Context = ctx
 	handle_route[A, X](mut global_app, mut user_context, url, host, params.routes)
 	// Preserve the handled context on the heap before the stack-local user context goes away.
 	unsafe {
@@ -319,65 +239,73 @@ fn handle_ssl_request[A, X](req http.Request, params &SslRequestParams) ?&Contex
 	return ctx
 }
 
-fn write_ssl_context_response(mut ssl_conn mbedtls.SSLConn, completed_context &Context) ! {
-	if !completed_context.done && completed_context.return_type == .normal {
-		return error('context did not send a response')
-	}
-	match completed_context.return_type {
-		.normal {
-			write_ssl_response(mut ssl_conn, completed_context.res)!
-		}
-		.file {
-			write_ssl_response(mut ssl_conn, completed_context.res)!
-			if completed_context.return_file == '' {
-				return error('missing file response path')
-			}
-			mut file := os.open(completed_context.return_file)!
-			defer {
-				file.close()
-			}
-			mut buf := []u8{len: max_read}
-			for {
-				n := file.read(mut buf) or {
-					if err is io.Eof {
-						break
-					}
-					return err
-				}
-				if n <= 0 {
-					break
-				}
-				ssl_conn.write(buf[..n])!
-			}
-		}
-	}
-}
-
-fn write_ssl_response(mut ssl_conn mbedtls.SSLConn, resp http.Response) ! {
-	ssl_conn.write(resp.bytes())!
-}
-
 fn request_has_connection_close(req http.Request) bool {
-	return (req.header.get(.connection) or { '' }).to_lower() == 'close'
+	conn := req.header.get(.connection) or { return false }
+	return ascii_eq_ignore_case(conn, 'close')
+}
+
+fn request_host_name(host_with_port string) string {
+	if host_with_port.len == 0 {
+		return ''
+	}
+	if host_with_port[0] == `[` {
+		end := host_with_port.index_u8(`]`)
+		if end > 0 {
+			return host_with_port[1..end]
+		}
+		return host_with_port
+	}
+	colon := host_with_port.last_index_u8(`:`)
+	if colon == -1 {
+		return host_with_port
+	}
+	for i in 0 .. colon {
+		if host_with_port[i] == `:` {
+			return host_with_port
+		}
+	}
+	return host_with_port[..colon]
+}
+
+fn ascii_eq_ignore_case(a string, b string) bool {
+	if a.len != b.len {
+		return false
+	}
+	for i in 0 .. a.len {
+		mut ca := a[i]
+		if ca >= `A` && ca <= `Z` {
+			ca += 32
+		}
+		mut cb := b[i]
+		if cb >= `A` && cb <= `Z` {
+			cb += 32
+		}
+		if ca != cb {
+			return false
+		}
+	}
+	return true
 }
 
 fn should_close_connection(req http.Request, resp http.Response, client_wants_to_close bool) bool {
 	if client_wants_to_close {
 		return true
 	}
-	resp_conn := (resp.header.get(.connection) or { '' }).to_lower()
-	if resp_conn == 'close' {
-		return true
+	if resp_conn := resp.header.get(.connection) {
+		if ascii_eq_ignore_case(resp_conn, 'close') {
+			return true
+		}
+		if ascii_eq_ignore_case(resp_conn, 'keep-alive') {
+			return false
+		}
 	}
-	if resp_conn == 'keep-alive' {
-		return false
-	}
-	req_conn := (req.header.get(.connection) or { '' }).to_lower()
-	if req_conn == 'close' {
-		return true
-	}
-	if req_conn == 'keep-alive' {
-		return false
+	if req_conn := req.header.get(.connection) {
+		if ascii_eq_ignore_case(req_conn, 'close') {
+			return true
+		}
+		if ascii_eq_ignore_case(req_conn, 'keep-alive') {
+			return false
+		}
 	}
 	return req.version != .v1_1
 }
@@ -437,7 +365,7 @@ fn handle_route[A, X](mut app A, mut user_context X, url urllib.URL, host string
 		// Context.takeover_mode is set, so the user must send a response.
 	}
 
-	url_words := url.path.split('/').filter(it != '')
+	is_root_path := url.path.len == 0 || url.path == '/'
 
 	$if veb_livereload ? {
 		if url.path.starts_with('/veb_livereload/') {
@@ -460,6 +388,9 @@ fn handle_route[A, X](mut app A, mut user_context X, url urllib.URL, host string
 	if user_context.Context.done {
 		return
 	}
+	$if trace_prealloc ? {
+		unsafe { prealloc_scope_checkpoint(c'veb before_request done') }
+	}
 
 	// then execute global middleware functions
 	$if A is MiddlewareApp {
@@ -470,15 +401,82 @@ fn handle_route[A, X](mut app A, mut user_context X, url urllib.URL, host string
 	}
 
 	$if A is StaticApp {
-		if serve_if_static[X](static_handler_config(app.static_files, app.static_mime_types,
-			app.static_hosts, app.enable_static_gzip, app.enable_static_zstd,
-			app.enable_static_compression, app.static_compression_max_size,
-			app.static_compression_mime_types, app.enable_markdown_negotiation), mut user_context,
-			url, host)
-		{
-			// successfully served a static file
-			return
+		should_check_static := !is_root_path || app.enable_markdown_negotiation
+			|| app.static_files['/'] != '' || app.static_files['/index.html'] != ''
+			|| app.static_files['/index.htm'] != ''
+		if should_check_static {
+			if serve_if_static[X](static_handler_config(app.static_files, app.static_mime_types,
+				app.static_hosts, app.static_prefixes, app.enable_static_gzip,
+				app.enable_static_zstd, app.enable_static_compression,
+				app.static_compression_max_size, app.static_compression_mime_types,
+				app.enable_markdown_negotiation), mut user_context, url, host)
+			{
+				// successfully served a static file
+				return
+			}
 		}
+	}
+	$if trace_prealloc ? {
+		unsafe { prealloc_scope_checkpoint(c'veb route static checked') }
+	}
+	$if trace_prealloc ? {
+		unsafe { prealloc_scope_checkpoint(c'veb before route match') }
+	}
+
+	if is_root_path {
+		$for method in A.methods {
+			$if method.name == 'index' && method.return_type is Result {
+				route = (*routes)[method.name] or {
+					eprintln('[veb] parsed attributes for the `${method.name}` are not found, skipping...')
+					Route{}
+				}
+				if user_context.Context.req.method in route.methods
+					&& (route.host == '' || route.host == host)
+					&& (route.path == '/' || route.path == '/index') {
+					$if A is MiddlewareApp {
+						if validate_middleware[X](mut user_context, get_handlers_for_method(route.middlewares,
+							user_context.Context.req.method)) == false {
+							middleware_has_sent_response = true
+							return
+						}
+					}
+					can_have_data_args := user_context.Context.req.method == .post
+						|| user_context.Context.req.method == .get
+					if method.args.len > 1 && can_have_data_args {
+						mut args := []string{cap: method.args.len + 1}
+						data := if user_context.Context.req.method == .get {
+							user_context.Context.query
+						} else {
+							user_context.Context.form
+						}
+						for param in method.args[1..] {
+							args << data[param.name]
+						}
+						$if trace_prealloc ? {
+							unsafe { prealloc_scope_checkpoint(c'veb before route handler') }
+						}
+						app.$method(mut user_context, ...args)
+						$if trace_prealloc ? {
+							unsafe { prealloc_scope_checkpoint(c'veb after route handler') }
+						}
+					} else {
+						$if trace_prealloc ? {
+							unsafe { prealloc_scope_checkpoint(c'veb before route handler') }
+						}
+						app.$method(mut user_context)
+						$if trace_prealloc ? {
+							unsafe { prealloc_scope_checkpoint(c'veb after route handler') }
+						}
+					}
+					return
+				}
+			}
+		}
+	}
+
+	url_words := route_path_words(url.path)
+	$if trace_prealloc ? {
+		unsafe { prealloc_scope_checkpoint(c'veb route words parsed') }
 	}
 
 	// Route matching and match route specific middleware as last step
@@ -492,7 +490,7 @@ fn handle_route[A, X](mut app A, mut user_context X, url urllib.URL, host string
 			// Skip if the HTTP request method does not match the attributes
 			if user_context.Context.req.method in route.methods {
 				// Used for route matching
-				route_words := route.path.split('/').filter(it != '')
+				route_words := route.words
 
 				// Skip if the host does not match or is empty
 				if route.host == '' || route.host == host {
@@ -521,14 +519,27 @@ fn handle_route[A, X](mut app A, mut user_context X, url urllib.URL, host string
 							for param in method.args[1..] {
 								args << data[param.name]
 							}
+							$if trace_prealloc ? {
+								unsafe { prealloc_scope_checkpoint(c'veb before route handler') }
+							}
 							app.$method(mut user_context, ...args)
+							$if trace_prealloc ? {
+								unsafe { prealloc_scope_checkpoint(c'veb after route handler') }
+							}
 						} else {
+							$if trace_prealloc ? {
+								unsafe { prealloc_scope_checkpoint(c'veb before route handler') }
+							}
 							app.$method(mut user_context)
+							$if trace_prealloc ? {
+								unsafe { prealloc_scope_checkpoint(c'veb after route handler') }
+							}
 						}
 						return
 					}
 
-					if url_words.len == 0 && route_words == ['index'] && method.name == 'index' {
+					if url_words.len == 0 && route_words.len == 1 && route_words[0] == 'index'
+						&& method.name == 'index' {
 						$if A is MiddlewareApp {
 							if validate_middleware[X](mut user_context, get_handlers_for_method(route.middlewares,
 								user_context.Context.req.method)) == false {
@@ -548,9 +559,21 @@ fn handle_route[A, X](mut app A, mut user_context X, url urllib.URL, host string
 							for param in method.args[1..] {
 								args << data[param.name]
 							}
+							$if trace_prealloc ? {
+								unsafe { prealloc_scope_checkpoint(c'veb before route handler') }
+							}
 							app.$method(mut user_context, ...args)
+							$if trace_prealloc ? {
+								unsafe { prealloc_scope_checkpoint(c'veb after route handler') }
+							}
 						} else {
+							$if trace_prealloc ? {
+								unsafe { prealloc_scope_checkpoint(c'veb before route handler') }
+							}
 							app.$method(mut user_context)
+							$if trace_prealloc ? {
+								unsafe { prealloc_scope_checkpoint(c'veb after route handler') }
+							}
 						}
 						return
 					}
@@ -575,7 +598,13 @@ fn handle_route[A, X](mut app A, mut user_context X, url urllib.URL, host string
 							if method_args.len + 1 != method.args.len {
 								eprintln('[veb] warning: uneven parameters count (${method.args.len}) in `${method.name}`, compared to the veb route `${method.attrs}` (${method_args.len})')
 							}
+							$if trace_prealloc ? {
+								unsafe { prealloc_scope_checkpoint(c'veb before route handler') }
+							}
 							app.$method(mut user_context, ...method_args)
+							$if trace_prealloc ? {
+								unsafe { prealloc_scope_checkpoint(c'veb after route handler') }
+							}
 							return
 						}
 					}
@@ -599,7 +628,13 @@ fn handle_route[A, X](mut app A, mut user_context X, url urllib.URL, host string
 					if method_args.len + 1 != method.args.len {
 						eprintln('[veb] warning: uneven parameters count (${method.args.len}) in `${method.name}`, compared to the veb route `${method.attrs}` (${method_args.len})')
 					}
+					$if trace_prealloc ? {
+						unsafe { prealloc_scope_checkpoint(c'veb before route handler') }
+					}
 					app.$method(mut user_context, ...method_args)
+					$if trace_prealloc ? {
+						unsafe { prealloc_scope_checkpoint(c'veb after route handler') }
+					}
 					return
 				}
 			}
@@ -680,8 +715,18 @@ fn route_matches(url_words []string, route_words []string) ?[]string {
 // returns true if we served a static file, false otherwise
 fn serve_if_static[X](app StaticHandler, mut user_context X, url urllib.URL, host string) bool {
 	// TODO: handle url parameters properly - for now, ignore them
-	mut asked_path := url.path.clone()
+	mut asked_path := url.path
 	static_handler := app
+	if !static_handler.enable_markdown_negotiation && asked_path == '/'
+		&& static_handler.static_files['/'] == ''
+		&& static_handler.static_files['/index.html'] == ''
+		&& static_handler.static_files['/index.htm'] == '' {
+		return false
+	}
+	if !static_handler.enable_markdown_negotiation
+		&& !static_handler.may_contain_static_path(asked_path) {
+		return false
+	}
 
 	// Content negotiation for markdown files (if enabled)
 	if static_handler.enable_markdown_negotiation {
@@ -746,17 +791,34 @@ fn serve_if_static[X](app StaticHandler, mut user_context X, url urllib.URL, hos
 		static_handler.static_compression_max_size
 	} else {
 		1048576 // Default: 1MB
-	}, static_handler.static_compression_mime_types.clone())
+	}, static_handler.static_compression_mime_types)
 
 	user_context.send_file(mime_type, static_file)
 	return true
 }
 
-fn static_handler_config(static_files map[string]string, static_mime_types map[string]string, static_hosts map[string]string, enable_static_gzip bool, enable_static_zstd bool, enable_static_compression bool, static_compression_max_size int, static_compression_mime_types []string, enable_markdown_negotiation bool) StaticHandler {
+fn (sh StaticHandler) may_contain_static_path(path string) bool {
+	if sh.static_prefixes.len == 0 || path == '/' {
+		return true
+	}
+	for prefix in sh.static_prefixes {
+		if prefix.ends_with('/') {
+			if path.starts_with(prefix) {
+				return true
+			}
+		} else if path == prefix {
+			return true
+		}
+	}
+	return false
+}
+
+fn static_handler_config(static_files map[string]string, static_mime_types map[string]string, static_hosts map[string]string, static_prefixes []string, enable_static_gzip bool, enable_static_zstd bool, enable_static_compression bool, static_compression_max_size int, static_compression_mime_types []string, enable_markdown_negotiation bool) StaticHandler {
 	return StaticHandler{
 		static_files:                  static_files
 		static_mime_types:             static_mime_types
 		static_hosts:                  static_hosts
+		static_prefixes:               static_prefixes
 		enable_static_gzip:            enable_static_gzip
 		enable_static_zstd:            enable_static_zstd
 		enable_static_compression:     enable_static_compression

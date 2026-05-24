@@ -1,0 +1,16 @@
+{
+  "title": "mt2",
+  "description": "Byte strings, from RFC 8949 appendix A",
+  "tests": [
+    {
+      "description": "empty",
+      "encoded": h'40',
+      "decoded": h'',
+    },
+    {
+      "description": "four bytes in a byte string",
+      "encoded": h'4401020304',
+      "decoded": h'01020304',
+    },
+  ],
+}

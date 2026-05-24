@@ -1,4 +1,6 @@
 // vtest retry: 3
+// vtest vflags: -d use_openssl
+// vtest build: !windows
 module http
 
 import encoding.base64

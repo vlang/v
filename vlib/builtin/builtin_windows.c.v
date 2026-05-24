@@ -46,7 +46,7 @@ pub type C.LPTSTR = &C.TCHAR
 
 pub type C.LPCTSTR = &C.TCHAR
 
-fn C.WriteConsoleW(voidptr, &u16, u32, &u32, voidptr) bool
+fn C.WriteConsoleW(voidptr, &u16, u32, voidptr, voidptr) bool
 
 fn C._setmode(int, int) int
 
@@ -105,7 +105,7 @@ fn write_buf_to_console(fd int, buf &u8, buf_len int) bool {
 		mut wide_ptr := wide_buf
 		for remaining_chars > 0 {
 			mut chars_written := u32(0)
-			if !C.WriteConsoleW(console_handle, wide_ptr, u32(remaining_chars), &chars_written, nil)
+			if !C.WriteConsoleW(console_handle, wide_ptr, u32(remaining_chars), voidptr(&chars_written), nil)
 				|| chars_written == 0 {
 				return false
 			}

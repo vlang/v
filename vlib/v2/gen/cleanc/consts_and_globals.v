@@ -61,11 +61,131 @@ fn (g &Gen) generated_decl_name(field_name string) ?string {
 	return generated_decl_name_for_module(g.cur_module, field_name)
 }
 
+fn (mut g Gen) const_storage_name(name string) string {
+	if cname := g.const_c_names[name] {
+		return cname
+	}
+	if name in g.declared_fn_names {
+		cname := '__v_const_${name}'
+		g.const_c_names[name] = cname
+		return cname
+	}
+	return name
+}
+
+fn (g &Gen) renamed_const_name_for_ident(name string) ?string {
+	if generated_name := generated_decl_name_for_module(g.cur_module, name) {
+		if cname := g.const_c_names[generated_name] {
+			return cname
+		}
+	}
+	if cname := g.const_c_names[name] {
+		return cname
+	}
+	return none
+}
+
 fn (g &Gen) is_scalar_zero_init_type(typ string) bool {
 	if typ in primitive_types || typ.ends_with('*') || typ in ['byteptr', 'charptr', 'voidptr'] {
 		return true
 	}
 	return g.is_enum_type(typ)
+}
+
+fn (g &Gen) global_initializer_needs_runtime(expr ast.Expr) bool {
+	match expr {
+		ast.EmptyExpr {
+			return false
+		}
+		ast.InitExpr, ast.MapInitExpr, ast.IfExpr, ast.CallOrCastExpr {
+			return true
+		}
+		ast.OrExpr, ast.StringInterLiteral, ast.UnsafeExpr, ast.LockExpr, ast.MatchExpr {
+			return true
+		}
+		ast.ComptimeExpr {
+			return g.global_initializer_needs_runtime(expr.expr)
+		}
+		ast.ArrayInitExpr {
+			if expr.typ is ast.Type && expr.typ is ast.ArrayFixedType {
+				return g.contains_call_expr(expr)
+			}
+			return true
+		}
+		ast.CastExpr {
+			return g.global_initializer_needs_runtime(expr.expr)
+		}
+		ast.ParenExpr {
+			return g.global_initializer_needs_runtime(expr.expr)
+		}
+		ast.PrefixExpr {
+			return g.global_initializer_needs_runtime(expr.expr)
+		}
+		ast.PostfixExpr {
+			return g.global_initializer_needs_runtime(expr.expr)
+		}
+		ast.ModifierExpr {
+			return g.global_initializer_needs_runtime(expr.expr)
+		}
+		ast.IndexExpr {
+			return g.global_initializer_needs_runtime(expr.lhs)
+				|| g.global_initializer_needs_runtime(expr.expr)
+		}
+		ast.InfixExpr {
+			return g.global_initializer_needs_runtime(expr.lhs)
+				|| g.global_initializer_needs_runtime(expr.rhs)
+		}
+		else {
+			return g.contains_call_expr(expr)
+		}
+	}
+}
+
+fn (g &Gen) const_initializer_needs_runtime(expr ast.Expr) bool {
+	match expr {
+		ast.OrExpr, ast.StringInterLiteral, ast.UnsafeExpr, ast.IfExpr {
+			return true
+		}
+		ast.ComptimeExpr {
+			return g.const_initializer_needs_runtime(expr.expr)
+		}
+		ast.CastExpr {
+			return g.const_initializer_needs_runtime(expr.expr)
+		}
+		ast.ParenExpr {
+			return g.const_initializer_needs_runtime(expr.expr)
+		}
+		ast.PrefixExpr {
+			return g.const_initializer_needs_runtime(expr.expr)
+		}
+		ast.PostfixExpr {
+			return g.const_initializer_needs_runtime(expr.expr)
+		}
+		ast.ModifierExpr {
+			return g.const_initializer_needs_runtime(expr.expr)
+		}
+		ast.IndexExpr {
+			return g.const_initializer_needs_runtime(expr.lhs)
+				|| g.const_initializer_needs_runtime(expr.expr)
+		}
+		ast.InfixExpr {
+			return g.const_initializer_needs_runtime(expr.lhs)
+				|| g.const_initializer_needs_runtime(expr.rhs)
+		}
+		ast.ArrayInitExpr {
+			for elem in expr.exprs {
+				if g.const_initializer_needs_runtime(elem) {
+					return true
+				}
+			}
+			return (expr.init !is ast.EmptyExpr && g.const_initializer_needs_runtime(expr.init))
+				|| (expr.len !is ast.EmptyExpr && g.const_initializer_needs_runtime(expr.len))
+				|| (expr.cap !is ast.EmptyExpr && g.const_initializer_needs_runtime(expr.cap))
+		}
+		else {
+			return g.contains_call_expr(expr)
+		}
+	}
 }
 
 fn (mut g Gen) collect_runtime_const_targets() {
@@ -204,74 +324,6 @@ fn (mut g Gen) enum_const_selector_type(expr ast.Expr) string {
 }
 
 fn (mut g Gen) const_decl_storage_type(expr ast.Expr) string {
-	if expr is ast.UnsafeExpr {
-		mut wrapper_value_type_by_temp := map[string]string{}
-		for stmt in expr.stmts {
-			if stmt is ast.AssignStmt && stmt.lhs.len == 1 && stmt.rhs.len == 1
-				&& stmt.lhs[0] is ast.Ident {
-				lhs_name := (stmt.lhs[0] as ast.Ident).name
-				if raw_type := g.get_raw_type(stmt.rhs[0]) {
-					match raw_type {
-						types.OptionType {
-							wrapper_value_type_by_temp[lhs_name] =
-								g.types_type_to_c(raw_type.base_type)
-						}
-						types.ResultType {
-							wrapper_value_type_by_temp[lhs_name] =
-								g.types_type_to_c(raw_type.base_type)
-						}
-						else {}
-					}
-				}
-			}
-		}
-		if expr.stmts.len > 0 {
-			last := expr.stmts[expr.stmts.len - 1]
-			if last is ast.ExprStmt {
-				if last.expr is ast.SelectorExpr {
-					sel := last.expr as ast.SelectorExpr
-					if sel.rhs.name == 'data' && sel.lhs is ast.Ident {
-						if typ := wrapper_value_type_by_temp[(sel.lhs as ast.Ident).name] {
-							return typ
-						}
-					}
-				}
-				return g.const_decl_storage_type(last.expr)
-			}
-		}
-	}
-	if expr is ast.OrExpr {
-		if raw_type := g.get_raw_type(expr.expr) {
-			match raw_type {
-				types.OptionType {
-					return g.types_type_to_c(raw_type.base_type)
-				}
-				types.ResultType {
-					return g.types_type_to_c(raw_type.base_type)
-				}
-				else {}
-			}
-		}
-		if expr.stmts.len > 0 {
-			last := expr.stmts[expr.stmts.len - 1]
-			if last is ast.ExprStmt {
-				return g.const_decl_storage_type(last.expr)
-			}
-		}
-	}
-	if expr is ast.SelectorExpr && expr.rhs.name == 'data' {
-		if raw_type := g.get_raw_type(expr.lhs) {
-			match raw_type {
-				types.OptionType {
-					return g.types_type_to_c(raw_type.base_type)
-				}
-				types.ResultType {
-					return g.types_type_to_c(raw_type.base_type)
-				}
-				else {}
-			}
-		}
-	}
 	if expr is ast.Ident {
 		if const_expr := g.lookup_const_expr(g.cur_module, expr.name) {
 			return g.const_decl_storage_type(const_expr)
@@ -288,6 +340,13 @@ fn (mut g Gen) const_decl_storage_type(expr ast.Expr) string {
 	if expr is ast.SelectorExpr && expr.lhs is ast.Ident {
 		if const_expr := g.lookup_const_expr(expr.lhs.name, expr.rhs.name) {
 			return g.const_decl_storage_type(const_expr)
+		}
+	}
+	if expr is ast.CallExpr && expr.lhs is ast.Ident {
+		fn_name := (expr.lhs as ast.Ident).name
+		if fn_name in ['builtin__new_array_from_c_array_noscan', 'builtin__new_array_from_c_array',
+			'new_array_from_c_array'] {
+			return 'array'
 		}
 	}
 	enum_type := g.enum_const_selector_type(expr)
@@ -343,6 +402,102 @@ fn (mut g Gen) const_decl_storage_type(expr ast.Expr) string {
 	return typ
 }
 
+fn (mut g Gen) const_expr_c_value_for_header(expr ast.Expr) ?string {
+	return g.const_expr_c_value_for_header_in_module(expr, g.cur_module, 0)
+}
+
+fn (mut g Gen) const_expr_c_value_for_header_in_module(expr ast.Expr, mod string, depth int) ?string {
+	if depth > 20 {
+		return none
+	}
+	match expr {
+		ast.BasicLiteral {
+			if expr.kind == .number {
+				return sanitize_c_number_literal(expr.value)
+			}
+		}
+		ast.Ident {
+			if const_expr := g.lookup_const_expr(mod, expr.name) {
+				return g.const_expr_c_value_for_header_in_module(const_expr, mod, depth + 1)
+			}
+			if mod != 'builtin' {
+				if const_expr := g.lookup_const_expr('builtin', expr.name) {
+					return g.const_expr_c_value_for_header_in_module(const_expr, 'builtin', depth +
+						1)
+				}
+			}
+		}
+		ast.SelectorExpr {
+			if expr.lhs is ast.Ident {
+				lhs_ident := expr.lhs as ast.Ident
+				mut module_names := [lhs_ident.name]
+				resolved_mod_name := g.resolve_module_name(lhs_ident.name)
+				if resolved_mod_name !in module_names {
+					module_names << resolved_mod_name
+				}
+				for mod_name in module_names {
+					if const_expr := g.lookup_const_expr(mod_name, expr.rhs.name) {
+						return g.const_expr_c_value_for_header_in_module(const_expr, mod_name,
+
+							depth + 1)
+					}
+				}
+			}
+		}
+		ast.InfixExpr {
+			lhs := g.const_expr_c_value_for_header_in_module(expr.lhs, mod, depth + 1) or {
+				return none
+			}
+			rhs := g.const_expr_c_value_for_header_in_module(expr.rhs, mod, depth + 1) or {
+				return none
+			}
+			op := match expr.op {
+				.plus { '+' }
+				.minus { '-' }
+				.mul { '*' }
+				.div { '/' }
+				.mod { '%' }
+				.amp { '&' }
+				.pipe { '|' }
+				.xor { '^' }
+				.left_shift { '<<' }
+				.right_shift { '>>' }
+				else { return none }
+			}
+
+			return '(${lhs} ${op} ${rhs})'
+		}
+		ast.PrefixExpr {
+			value := g.const_expr_c_value_for_header_in_module(expr.expr, mod, depth + 1) or {
+				return none
+			}
+			op := match expr.op {
+				.minus { '-' }
+				.plus { '+' }
+				.bit_not { '~' }
+				else { return none }
+			}
+
+			return '${op}${value}'
+		}
+		ast.ParenExpr {
+			value := g.const_expr_c_value_for_header_in_module(expr.expr, mod, depth + 1) or {
+				return none
+			}
+			return '(${value})'
+		}
+		ast.CastExpr {
+			return g.const_expr_c_value_for_header_in_module(expr.expr, mod, depth + 1)
+		}
+		ast.CallOrCastExpr {
+			return g.const_expr_c_value_for_header_in_module(expr.expr, mod, depth + 1)
+		}
+		else {}
+	}
+
+	return none
+}
+
 fn (mut g Gen) emit_runtime_const_storage_decl(name string, typ string) {
 	if typ == 'string' {
 		g.sb.writeln('string ${name} = {0};')
@@ -363,23 +518,94 @@ fn (g &Gen) is_generated_non_type_ident(expr ast.Expr) bool {
 	return value_ident.name.contains('__') && !g.is_type_name(value_ident.name)
 }
 
+fn (mut g Gen) is_type_only_const_expr(expr ast.Expr) bool {
+	if is_header_type_only_const_expr(expr) {
+		return true
+	}
+	if expr is ast.Ident {
+		if expr.name.contains('.') {
+			return g.is_type_name(g.expr_type_to_c(expr))
+		}
+		return g.is_type_name(expr.name)
+	}
+	if expr is ast.SelectorExpr {
+		return g.is_type_name(g.expr_type_to_c(expr))
+	}
+	return false
+}
+
+struct FileScopeGenContext {
+	cur_fn_scope           &types.Scope = unsafe { nil }
+	cur_fn_name            string
+	cur_fn_c_name          string
+	cur_fn_ret_type        string
+	cur_fn_c_ret_type      string
+	cur_fn_scope_miss_key  string
+	runtime_local_types    map[string]string
+	runtime_decl_types     map[string]string
+	cur_fn_mut_params      map[string]bool
+	cur_fn_returned_idents map[string]bool
+	not_local_var_cache    map[string]bool
+}
+
+fn (mut g Gen) enter_file_scope_context() FileScopeGenContext {
+	ctx := FileScopeGenContext{
+		cur_fn_scope:           g.cur_fn_scope
+		cur_fn_name:            g.cur_fn_name
+		cur_fn_c_name:          g.cur_fn_c_name
+		cur_fn_ret_type:        g.cur_fn_ret_type
+		cur_fn_c_ret_type:      g.cur_fn_c_ret_type
+		cur_fn_scope_miss_key:  g.cur_fn_scope_miss_key
+		runtime_local_types:    g.runtime_local_types.clone()
+		runtime_decl_types:     g.runtime_decl_types.clone()
+		cur_fn_mut_params:      g.cur_fn_mut_params.clone()
+		cur_fn_returned_idents: g.cur_fn_returned_idents.clone()
+		not_local_var_cache:    g.not_local_var_cache.clone()
+	}
+	g.cur_fn_scope = unsafe { nil }
+	g.cur_fn_name = ''
+	g.cur_fn_c_name = ''
+	g.cur_fn_ret_type = ''
+	g.cur_fn_c_ret_type = ''
+	g.cur_fn_scope_miss_key = ''
+	g.runtime_local_types.clear()
+	g.runtime_decl_types.clear()
+	g.cur_fn_mut_params.clear()
+	g.cur_fn_returned_idents.clear()
+	g.not_local_var_cache.clear()
+	return ctx
+}
+
+fn (mut g Gen) leave_file_scope_context(ctx FileScopeGenContext) {
+	g.cur_fn_scope = ctx.cur_fn_scope
+	g.cur_fn_name = ctx.cur_fn_name
+	g.cur_fn_c_name = ctx.cur_fn_c_name
+	g.cur_fn_ret_type = ctx.cur_fn_ret_type
+	g.cur_fn_c_ret_type = ctx.cur_fn_c_ret_type
+	g.cur_fn_scope_miss_key = ctx.cur_fn_scope_miss_key
+	g.runtime_local_types = ctx.runtime_local_types.clone()
+	g.runtime_decl_types = ctx.runtime_decl_types.clone()
+	g.cur_fn_mut_params = ctx.cur_fn_mut_params.clone()
+	g.cur_fn_returned_idents = ctx.cur_fn_returned_idents.clone()
+	g.not_local_var_cache = ctx.not_local_var_cache.clone()
+}
+
 fn (mut g Gen) gen_const_decl_extern(node ast.ConstDecl) {
+	file_scope_ctx := g.enter_file_scope_context()
+	defer {
+		g.leave_file_scope_context(file_scope_ctx)
+	}
 	for field in node.fields {
 		name := g.generated_decl_name(field.name) or { continue }
-		// Skip consts that shadow a function with the same name — the
-		// function declaration takes precedence and a #define would break it.
-		// Only skip when a forward declaration was actually emitted (fn_owner_file).
-		if 'fn_${name}' in g.fn_owner_file {
-			continue
-		}
+		c_name := g.const_storage_name(name)
 		// Skip constants already emitted as either extern or #define
 		// (can happen when both .vh and full source files are parsed).
-		extern_key := 'extern_const_${name}'
-		macro_key := 'extern_const_macro_${name}'
+		extern_key := 'extern_const_${c_name}'
+		macro_key := 'extern_const_macro_${c_name}'
 		if extern_key in g.emitted_types || macro_key in g.emitted_types {
 			continue
 		}
-		mut is_type_only := is_header_type_only_const_expr(field.value)
+		mut is_type_only := g.is_type_only_const_expr(field.value)
 		if is_type_only && g.is_generated_non_type_ident(field.value) {
 			is_type_only = false
 		}
@@ -389,7 +615,7 @@ fn (mut g Gen) gen_const_decl_extern(node ast.ConstDecl) {
 				continue
 			}
 			g.emitted_types[extern_key] = true
-			g.sb.writeln('extern ${typ} ${name};')
+			g.sb.writeln('extern ${typ} ${c_name};')
 			continue
 		}
 		if is_type_only {
@@ -403,7 +629,7 @@ fn (mut g Gen) gen_const_decl_extern(node ast.ConstDecl) {
 				continue
 			}
 			g.emitted_types[key] = true
-			g.sb.writeln('extern ${typ} ${name};')
+			g.sb.writeln('extern ${typ} ${c_name};')
 			continue
 		}
 		value_expr := g.expr_to_string(field.value)
@@ -415,7 +641,7 @@ fn (mut g Gen) gen_const_decl_extern(node ast.ConstDecl) {
 		if value_expr.contains('__const_array_data_')
 			|| value_expr.contains('new_array_from_c_array') {
 			g.emitted_types[macro_key] = true
-			g.sb.writeln('extern array ${name};')
+			g.sb.writeln('extern array ${c_name};')
 			continue
 		}
 		mut macro_expr := value_expr
@@ -439,7 +665,7 @@ fn (mut g Gen) gen_const_decl_extern(node ast.ConstDecl) {
 					macro_expr
 				}
 				g.const_exprs[name] = resolved
-				g.sb.writeln('static const ${typ} ${name} = ${resolved};')
+				g.sb.writeln('static const ${typ} ${c_name} = ${resolved};')
 				continue
 			}
 		}
@@ -451,7 +677,7 @@ fn (mut g Gen) gen_const_decl_extern(node ast.ConstDecl) {
 				} else {
 					macro_expr
 				}
-				g.sb.writeln('static const ${typ} ${name} = ${resolved};')
+				g.sb.writeln('static const ${typ} ${c_name} = ${resolved};')
 				continue
 			}
 		}
@@ -460,11 +686,11 @@ fn (mut g Gen) gen_const_decl_extern(node ast.ConstDecl) {
 		if is_c_struct_init(field.value) {
 			typ := g.const_decl_storage_type(field.value)
 			if typ != '' && typ != 'void' && typ != 'int' {
-				g.sb.writeln('extern ${typ} ${name};')
+				g.sb.writeln('extern ${typ} ${c_name};')
 				continue
 			}
 		}
-		g.sb.writeln('#define ${name} ${macro_expr}')
+		g.sb.writeln('#define ${c_name} ${macro_expr}')
 	}
 }
 
@@ -491,7 +717,11 @@ fn (mut g Gen) gen_global_decl(node ast.GlobalDecl) {
 			elem_type := g.expr_type_to_c(fixed_typ.elem_type)
 			g.fixed_array_globals[name] = true
 			g.sb.write_string('${elem_type} ${name}[')
-			g.expr(fixed_typ.len)
+			if len_expr := g.const_expr_c_value_for_header(fixed_typ.len) {
+				g.sb.write_string(len_expr)
+			} else {
+				g.expr(fixed_typ.len)
+			}
 			g.sb.write_string(']')
 			if field.value !is ast.EmptyExpr {
 				g.sb.write_string(' = ')
@@ -539,7 +769,7 @@ fn (mut g Gen) gen_global_decl(node ast.GlobalDecl) {
 		}
 		if field.value !is ast.EmptyExpr {
 			// Function calls are not compile-time constants in C
-			if g.contains_call_expr(field.value) {
+			if g.global_initializer_needs_runtime(field.value) {
 				g.sb.writeln(';')
 			} else {
 				g.sb.write_string(' = ')
@@ -574,7 +804,14 @@ fn (mut g Gen) gen_global_decl_extern(node ast.GlobalDecl) {
 			fixed_typ := field.typ as ast.ArrayFixedType
 			elem_type := g.expr_type_to_c(fixed_typ.elem_type)
 			g.sb.write_string('extern ${elem_type} ${name}[')
-			g.expr(fixed_typ.len)
+			// Extern declarations are emitted before module const definitions.
+			// Resolve const-backed fixed-array lengths now, so C does not see an
+			// undeclared bound like `extern int a[my_const];`.
+			if len_expr := g.const_expr_c_value_for_header(fixed_typ.len) {
+				g.sb.write_string(len_expr)
+			} else {
+				g.expr(fixed_typ.len)
+			}
 			g.sb.writeln('];')
 			continue
 		}
@@ -634,6 +871,14 @@ fn (g &Gen) cached_init_function_name() string {
 	return '__v2_cached_init_${g.cache_bundle_name}'
 }
 
+fn module_const_init_fn_name(module_name string) string {
+	return if module_name == 'builtin' || module_name == 'main' {
+		'__v_init_consts_${module_name}'
+	} else {
+		'${module_name}____v_init_consts_${module_name}'
+	}
+}
+
 fn (mut g Gen) emit_cached_module_init_function() {
 	if !g.export_const_symbols || g.emit_modules.len == 0 || g.cache_bundle_name.len == 0 {
 		return
@@ -650,36 +895,31 @@ fn (mut g Gen) emit_cached_module_init_function() {
 	init_fn_name := g.cached_init_function_name()
 	g.sb.writeln('void ${init_fn_name}(void) {')
 	for module_name in init_modules {
-		init_fn := '${module_name}____v_init_consts_${module_name}'
+		init_fn := module_const_init_fn_name(module_name)
 		g.sb.writeln('\t${init_fn}();')
 	}
 	g.sb.writeln('}')
 }
 
 fn (g &Gen) module_has_const_init_fn(module_name string) bool {
-	init_fn := '${module_name}____v_init_consts_${module_name}'
+	init_fn := module_const_init_fn_name(module_name)
 	return init_fn in g.fn_return_types
 }
 
 fn (mut g Gen) gen_const_decl(node ast.ConstDecl) {
+	file_scope_ctx := g.enter_file_scope_context()
+	defer {
+		g.leave_file_scope_context(file_scope_ctx)
+	}
 	for field in node.fields {
 		name := g.generated_decl_name(field.name) or { continue }
-		// Skip consts that shadow a function with the same name —
-		// but only when a forward declaration was actually emitted
-		// for that function (fn_owner_file is populated in pass 4).
-		// Using fn_return_types alone is too broad: generic functions
-		// like math.max[f64] register math__max_f64 in fn_return_types
-		// but never emit a concrete function, falsely suppressing
-		// the math__max_f64 constant.
-		if 'fn_${name}' in g.fn_owner_file {
-			continue
-		}
-		const_key := 'const_${name}'
+		c_name := g.const_storage_name(name)
+		const_key := 'const_${c_name}'
 		if const_key in g.emitted_types {
 			continue
 		}
 		g.emitted_types[const_key] = true
-		mut is_type_only := is_header_type_only_const_expr(field.value)
+		mut is_type_only := g.is_type_only_const_expr(field.value)
 		if is_type_only && g.is_generated_non_type_ident(field.value) {
 			is_type_only = false
 		}
@@ -696,9 +936,9 @@ fn (mut g Gen) gen_const_decl(node ast.ConstDecl) {
 				continue
 			}
 			if typ == 'string' {
-				g.sb.writeln('string ${name} = {0};')
+				g.sb.writeln('string ${c_name} = {0};')
 			} else {
-				g.sb.writeln('${typ} ${name} = 0;')
+				g.sb.writeln('${typ} ${c_name} = 0;')
 			}
 			continue
 		}
@@ -707,7 +947,7 @@ fn (mut g Gen) gen_const_decl(node ast.ConstDecl) {
 			if typ == '' || typ == 'void' {
 				continue
 			}
-			g.emit_runtime_const_storage_decl(name, typ)
+			g.emit_runtime_const_storage_decl(c_name, typ)
 			continue
 		}
 		mut is_fixed_array_const := false
@@ -745,27 +985,33 @@ fn (mut g Gen) gen_const_decl(node ast.ConstDecl) {
 		}
 		if is_fixed_array_const && fixed_array_elem != '' {
 			g.fixed_array_globals[name] = true
+			g.fixed_array_globals[c_name] = true
 			if fixed_array_len > 0 {
-				g.sb.write_string('static const ${fixed_array_elem} ${name}[${fixed_array_len}] = ')
+				g.sb.write_string('static const ${fixed_array_elem} ${c_name}[${fixed_array_len}] = ')
 			} else {
-				g.sb.write_string('static const ${fixed_array_elem} ${name}[] = ')
+				g.sb.write_string('static const ${fixed_array_elem} ${c_name}[] = ')
 			}
-			g.expr(field.value)
+			if field.value is ast.ArrayInitExpr {
+				g.gen_fixed_array_initializer(field.value as ast.ArrayInitExpr)
+			} else {
+				g.expr(field.value)
+			}
 			g.sb.writeln(';')
 			continue
 		}
-		if g.try_emit_const_dynamic_array_call(name, field.value) {
+		if g.try_emit_const_dynamic_array_call(c_name, field.value) {
 			continue
 		}
 		typ := g.const_decl_storage_type(field.value)
-		// Function calls are not compile-time constants in C; emit as zero-initialized globals.
-		if g.contains_call_expr(field.value) {
-			g.emit_runtime_const_storage_decl(name, typ)
+		// Function calls and statement-expression lowerings are not compile-time
+		// constants in C; emit as zero-initialized globals.
+		if g.const_initializer_needs_runtime(field.value) {
+			g.emit_runtime_const_storage_decl(c_name, typ)
 			continue
 		}
 		if typ == 'string' {
 			// String constants need a global variable
-			g.sb.write_string('string ${name} = ')
+			g.sb.write_string('string ${c_name} = ')
 			g.expr(field.value)
 			g.sb.writeln(';')
 		} else if
@@ -776,9 +1022,9 @@ fn (mut g Gen) gen_const_decl(node ast.ConstDecl) {
 			// Qualified const names are safe as macros and work in C constant-expression
 			// contexts (array sizes, static initializers).
 			if name.contains('__') {
-				g.sb.writeln('#define ${name} ${value_expr}')
+				g.sb.writeln('#define ${c_name} ${value_expr}')
 				if g.export_const_symbols {
-					g.queue_exported_const_symbol(name, typ, value_expr)
+					g.queue_exported_const_symbol(c_name, typ, value_expr)
 				}
 			} else {
 				// Unqualified names use static const to avoid macro collisions.
@@ -789,27 +1035,28 @@ fn (mut g Gen) gen_const_decl(node ast.ConstDecl) {
 				} else {
 					value_expr
 				}
-				g.sb.writeln('static const ${typ} ${name} = ${resolved};')
+				g.sb.writeln('static const ${typ} ${c_name} = ${resolved};')
 			}
 		} else {
 			// C struct zero-init consts must be real global variables, not
 			// #define macros, because macros expand to temporaries — taking
 			// their address (&) or mutating them in-place has no effect.
 			if typ != '' && typ != 'void' && typ != 'int' && is_c_struct_init(field.value) {
-				g.sb.writeln('${typ} ${name} = {0};')
+				g.sb.writeln('${typ} ${c_name} = {0};')
 			} else if typ != '' && typ != 'void' && typ != 'int' && !typ.starts_with('Array_')
 				&& !typ.starts_with('Map_') && !typ.contains('*') && !typ.contains('(')
 				&& field.value is ast.InitExpr && (field.value as ast.InitExpr).fields.len == 0 {
 				// Zero-initialized struct const — emit as global variable.
-				g.sb.writeln('${typ} ${name} = {0};')
+				g.sb.writeln('${typ} ${c_name} = {0};')
 			} else {
 				// Fallback for aggregate literals and other complex consts.
-				g.sb.write_string('#define ${name} ')
+				g.sb.write_string('#define ${c_name} ')
 				g.expr(field.value)
 				g.sb.writeln('')
 			}
 			if typ != '' && typ != 'int' {
 				g.const_types[name] = typ
+				g.const_types[c_name] = typ
 			}
 		}
 	}

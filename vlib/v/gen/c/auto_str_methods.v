@@ -1079,6 +1079,22 @@ fn (mut g Gen) gen_str_for_struct(info ast.Struct, lang ast.Language, styp strin
 			}
 		}
 	}
+	// For @[typedef] C structs, V's declared field type may differ from the
+	// actual C struct field type (e.g. V declares a field as `voidptr` while
+	// the C header has it as a value struct like `FT_BBox`). Casting a struct
+	// to voidptr in the auto-generated str() would be a C compile error, so
+	// skip voidptr fields entirely for @[typedef] structs — users can write
+	// their own str() method if they need to print these opaque fields.
+	if is_c_struct && info.is_typedef {
+		for i, field in info.fields {
+			if i in field_skips {
+				continue
+			}
+			if field.typ in ast.cptr_types {
+				field_skips << i
+			}
+		}
+	}
 	fn_body.writeln('\tstring res = builtin__str_intp( ${(info.fields.len - field_skips.len) * 4 + 3}, _MOV((StrIntpData[]){')
 	fn_body.writeln('\t\t{_S("${clean_struct_v_type_name}{\\n"), 0, {0}, 0, 0, 0},')
 

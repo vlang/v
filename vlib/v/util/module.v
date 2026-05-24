@@ -133,6 +133,13 @@ fn mod_path_to_full_name(pref_ &pref.Preferences, mod string, path string) !stri
 			break
 		}
 	}
+	// Anchor the module-name boundary to the v.mod that contains the
+	// current compilation (`pref_.path`). Without this, a nested v.mod
+	// inside the project (e.g. a vendored sub-project at `dep/v.mod`)
+	// would shrink the qualified name: files at `dep/mymod` would become
+	// `mymod` instead of `dep.mymod`, breaking `import dep.mymod` from
+	// the outer project. See issue #27138.
+	pref_project_root := if in_vmod_path { '' } else { project_root_vmod_folder(pref_) }
 	path_parts := path.split(os.path_separator)
 	mod_path := mod.replace('.', os.path_separator)
 	// go back through each parent in path_parts and join with `mod_path` to see the dir exists
@@ -155,6 +162,16 @@ fn mod_path_to_full_name(pref_ &pref.Preferences, mod string, path string) !stri
 				// not in one of the `vmod_folders` so work backwards through each parent
 				// looking for for a `v.mod` file and break at the first path without it
 			} else {
+				if pref_project_root != '' {
+					real_try_path := os.real_path(try_path)
+					prefix := pref_project_root + os.path_separator
+					if real_try_path.starts_with(prefix) {
+						relative_parts := real_try_path.all_after(prefix).split(os.path_separator)
+						mod_full_name := normalize_base_url_mod_name(relative_parts.join('.'),
+							try_path)
+						return if mod_full_name.len < mod.len { mod } else { mod_full_name }
+					}
+				}
 				mut try_path_parts := try_path.split(os.path_separator)
 				// last index in try_path_parts that contains a `v.mod`
 				mut last_v_mod := -1
@@ -193,6 +210,37 @@ fn mod_path_to_full_name(pref_ &pref.Preferences, mod string, path string) !stri
 		}
 	}
 	return error('module not found')
+}
+
+// project_root_vmod_folder returns the absolute folder of the closest
+// enclosing v.mod for the current compilation (`pref_.path`). Module-name
+// qualification uses this as the boundary so a nested v.mod inside the
+// project does not silently rename its sub-modules.
+fn project_root_vmod_folder(pref_ &pref.Preferences) string {
+	if pref_.path == '' {
+		return ''
+	}
+	abs_pref_path := if os.is_abs_path(pref_.path) {
+		pref_.path
+	} else {
+		os.join_path_single(os.getwd(), pref_.path)
+	}
+	start := if os.is_dir(abs_pref_path) { abs_pref_path } else { os.dir(abs_pref_path) }
+	if start == '' {
+		return ''
+	}
+	mut cfolder := os.real_path(start)
+	for {
+		if os.is_file(os.join_path(cfolder, 'v.mod')) {
+			return cfolder
+		}
+		parent := os.dir(cfolder)
+		if parent == cfolder || parent == '' {
+			return ''
+		}
+		cfolder = parent
+	}
+	return ''
 }
 
 // normalize_base_url_mod_name strips the `base_url` prefix from `mod_full_name`

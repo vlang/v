@@ -322,7 +322,7 @@ fn (mut g Gen) dead_strip_functions() {
 	}
 	// Mark reachable functions starting from roots via BFS.
 	mut reachable := []bool{len: n_fns}
-	mut worklist := []int{cap: 256}
+	mut worklist := []int{}
 	for fi := 0; fi < n_fns; fi++ {
 		name := g.fn_names[fi]
 		if name == '__main' || name == '_main' || name == '_main__main'
@@ -472,9 +472,14 @@ pub fn (mut g Gen) gen_post_pass() {
 	// Add return-zero stub for unresolved symbols.
 	// When the linker can't resolve a symbol, it redirects calls here instead of
 	// letting them jump to the Mach-O header which corrupts memory.
-	g.macho.add_symbol('___unresolved_stub', u64(g.macho.text_data.len), false, 1)
+	unresolved_stub_offset := u64(g.macho.text_data.len)
+	g.macho.add_symbol('___unresolved_stub', unresolved_stub_offset, false, 1)
+	g.macho.add_symbol('_tcc_backtrace', unresolved_stub_offset, false, 1)
 	g.emit(0xD2800000) // mov x0, #0
 	g.emit(0xD2800001) // mov x1, #0
+	g.emit(0xD65F03C0) // ret
+	g.macho.add_symbol('_v_os_execute_capture_start', u64(g.macho.text_data.len), false, 1)
+	g.emit(0x12800000) // mov w0, #-1
 	g.emit(0xD65F03C0) // ret
 
 	// Dead-strip unreachable functions.
@@ -1189,8 +1194,10 @@ pub fn (mut g Gen) gen_func(func mir.Function) {
 	// The Mach-O LC_MAIN entrypoint invokes `main` with C-style argc/argv in
 	// x0/x1. Persist them to builtin globals so `os.args` / `arguments()` work.
 	if func.name == 'main' {
-		g.store_entry_arg_to_global(0, 'g_main_argc')
-		g.store_entry_arg_to_global(1, 'g_main_argv')
+		g.store_entry_arg_to_global(0, 'builtin__g_main_argc', 4)
+		g.store_entry_arg_to_global(1, 'builtin__g_main_argv', 8)
+		g.store_entry_arg_to_global(0, 'g_main_argc', 4)
+		g.store_entry_arg_to_global(1, 'g_main_argv', 8)
 		// Call _vinit to initialize dynamic array constants
 		g.emit_call_to_named_fn('_vinit')
 	}
@@ -2117,7 +2124,17 @@ fn (mut g Gen) gen_instr(val_id int) {
 				g.load_val_to_reg(dest_reg, data_word_id)
 			} else {
 				ptr_is_null_const = g.is_effective_null_pointer_value(ptr_id)
-				ptr_reg := g.get_operand_reg(ptr_id, 9)
+				mut ptr_reg := g.get_operand_reg(ptr_id, 9)
+				if ptr_id > 0 && ptr_id < g.mod.values.len {
+					ptr_val := g.mod.values[ptr_id]
+					if ptr_val.kind == .instruction {
+						ptr_instr := g.mod.instrs[ptr_val.index]
+						if g.selected_opcode(ptr_instr) == .alloca {
+							ptr_reg = if dest_reg == 9 { 10 } else { 9 }
+							g.load_address_of_val_to_reg(ptr_reg, ptr_id)
+						}
+					}
+				}
 				if trace_load {
 					mut rkind := ssa.TypeKind.void_t
 					mut rsize := 0
@@ -2426,7 +2443,7 @@ fn (mut g Gen) gen_instr(val_id int) {
 				mut base_ptr_reg := base_reg
 				if pointee_typ_id > 0 && pointee_typ_id < g.mod.type_store.types.len {
 					pointee_typ := g.mod.type_store.types[pointee_typ_id]
-					elem_size := if pointee_typ.kind == .array_t {
+					elem_size := if pointee_typ.kind == .array_t && !is_array_gep {
 						g.type_size(pointee_typ.elem_type)
 					} else {
 						g.type_size(pointee_typ_id)
@@ -2862,9 +2879,10 @@ fn (mut g Gen) gen_instr(val_id int) {
 				eprintln('ARM64 CALL_SRET fn=${g.cur_func_name} val=${val_id} callee_id=${callee_id} callee=`${callee_name}` args=${num_args}')
 			}
 
-			// Set x8 to destination address for indirect return.
+			// Keep the destination offset for the hidden indirect-return pointer.
+			// x8 is scratch for argument materialization, so set it only after
+			// all arguments have been loaded.
 			result_offset := g.stack_map[val_id]
-			g.emit_add_fp_imm(8, result_offset)
 
 			// Compute register mapping for multi-register struct args.
 			mut sr_arg_reg_start := []int{len: num_args}
@@ -2927,6 +2945,9 @@ fn (mut g Gen) gen_instr(val_id int) {
 					g.load_call_arg_to_reg(reg, instr.operands[a + 1], a, instr)
 				}
 			}
+
+			// Set x8 to destination address for indirect return.
+			g.emit_add_fp_imm(8, result_offset)
 
 			fn_val := g.mod.values[instr.operands[0]]
 			if fn_val.name != '' && fn_val.kind in [.unknown, .func_ref] {
@@ -3995,11 +4016,94 @@ fn (mut g Gen) gen_instr(val_id int) {
 				result_size = g.type_size(instr.typ)
 				result_is_agg = result_typ.kind in [.struct_t, .array_t]
 			}
+			mut direct_load_agg_src_ptr_id := 0
+			mut direct_load_agg_needs_slot_deref := false
+			if tuple_is_agg_typ && tuple_val.kind == .instruction {
+				tuple_ins := g.mod.instrs[tuple_val.index]
+				if g.selected_opcode(tuple_ins) == .load && tuple_ins.operands.len > 0 {
+					load_ptr_id := tuple_ins.operands[0]
+					if load_ptr_id > 0 && load_ptr_id < g.mod.values.len {
+						direct_load_agg_src_ptr_id = load_ptr_id
+						load_ptr_val := g.mod.values[load_ptr_id]
+						if load_ptr_val.kind == .instruction {
+							load_ptr_instr := g.mod.instrs[load_ptr_val.index]
+							if g.selected_opcode(load_ptr_instr) == .alloca
+								&& g.alloca_slot_stores_pointer_like_values(load_ptr_id, tuple_val.typ) {
+								direct_load_agg_needs_slot_deref = true
+							}
+						}
+					}
+				}
+			}
 			if trace_extract {
 				eprintln('ARM64 EXTRACT fn=${g.cur_func_name} val=${val_id} tuple=${tuple_id} tuple_kind=${tuple_val.kind} tuple_name=`${tuple_val.name}` tuple_typ=${tuple_val.typ} idx=${idx} field_off=${field_byte_off} field_size=${field_elem_size} result_typ=${instr.typ} result_size=${result_size} tuple_agg=${tuple_is_agg_typ} tuple_large=${tuple_is_large_agg} scalar_ptr=${scalar_load_agg_src_ptr_id} scalar_elem_typ=${scalar_load_agg_ptr_elem_typ_id} needs_slot_deref=${scalar_load_agg_needs_slot_deref} tuple_off=${g.stack_map[tuple_id]}')
 			}
+			mut handled_direct_load_agg_extract := false
+			if direct_load_agg_src_ptr_id > 0 {
+				base_ptr_reg := g.get_operand_reg(direct_load_agg_src_ptr_id, 9)
+				mut agg_ptr_reg := base_ptr_reg
+				if direct_load_agg_needs_slot_deref {
+					agg_ptr_reg = if base_ptr_reg == 11 { 12 } else { 11 }
+					g.emit(asm_ldr(Reg(agg_ptr_reg), Reg(base_ptr_reg)))
+				}
+				if result_is_agg && result_size > 8 {
+					if dst_offset := g.stack_map[val_id] {
+						if g.is_effective_null_pointer_value(direct_load_agg_src_ptr_id) {
+							g.zero_fp_bytes(dst_offset, result_size)
+						} else {
+							g.copy_ptr_offset_to_fp_bytes(agg_ptr_reg, field_byte_off, dst_offset,
+								result_size)
+						}
+						handled_direct_load_agg_extract = true
+					}
+				} else {
+					if g.is_effective_null_pointer_value(direct_load_agg_src_ptr_id) {
+						g.emit_mov_reg(8, 31)
+					} else if field_elem_size in [1, 2, 4] {
+						mut field_addr_reg := 9
+						if field_addr_reg == agg_ptr_reg {
+							field_addr_reg = 10
+						}
+						if field_byte_off >= 0 && field_byte_off <= 0xFFF {
+							g.emit(asm_add_imm(Reg(field_addr_reg), Reg(agg_ptr_reg),
+								u32(field_byte_off)))
+						} else {
+							g.emit_mov_imm64(field_addr_reg, field_byte_off)
+							g.emit(asm_add_reg(Reg(field_addr_reg), Reg(agg_ptr_reg),
+								Reg(field_addr_reg)))
+						}
+						field_is_unsigned := if instr.typ > 0
+							&& instr.typ < g.mod.type_store.types.len {
+							g.mod.type_store.types[instr.typ].is_unsigned
+						} else {
+							false
+						}
+						match field_elem_size {
+							1 {
+								g.emit(asm_ldr_b(Reg(8), Reg(field_addr_reg)))
+							}
+							2 {
+								g.emit(asm_ldr_h(Reg(8), Reg(field_addr_reg)))
+							}
+							4 {
+								if field_is_unsigned {
+									g.emit(asm_ldr_w(Reg(8), Reg(field_addr_reg)))
+								} else {
+									g.emit(asm_ldrsw(Reg(8), Reg(field_addr_reg)))
+								}
+							}
+							else {}
+						}
+					} else {
+						g.emit_ldr_reg_offset(8, agg_ptr_reg, field_byte_off)
+					}
+					g.store_reg_to_val(8, val_id)
+					handled_direct_load_agg_extract = true
+				}
+			}
 			mut handled_scalar_load_struct_extract := false
-			if scalar_load_agg_src_ptr_id > 0 && scalar_load_agg_ptr_elem_typ_id > 0 {
+			if !handled_direct_load_agg_extract && scalar_load_agg_src_ptr_id > 0
+				&& scalar_load_agg_ptr_elem_typ_id > 0 {
 				base_ptr_reg := g.get_operand_reg(scalar_load_agg_src_ptr_id, 9)
 				mut agg_ptr_reg := base_ptr_reg
 				if scalar_load_agg_needs_slot_deref {
@@ -4066,8 +4170,8 @@ fn (mut g Gen) gen_instr(val_id int) {
 			// temporaries (typically pointer-sized). If extractvalue asks for a
 			// multi-word aggregate from such a temporary, read directly from the
 			// original load pointer instead of interpreting scalar spill bytes.
-			if result_is_agg && result_size > 8 && !tuple_is_agg_typ
-				&& tuple_val.kind == .instruction {
+			if !handled_direct_load_agg_extract && result_is_agg && result_size > 8
+				&& !tuple_is_agg_typ && tuple_val.kind == .instruction {
 				tuple_ins := g.mod.instrs[tuple_val.index]
 				if tuple_ins.op == .load && tuple_ins.operands.len > 0 {
 					load_src_id := tuple_ins.operands[0]
@@ -4103,8 +4207,9 @@ fn (mut g Gen) gen_instr(val_id int) {
 			// Some malformed MIR paths unwrap sumtype wrappers through `_tag` first, then
 			// request a pointer/aggregate extract from that scalar word. Recover by reading
 			// from the wrapper `_data` pointer directly.
-			if !handled_scalar_load_struct_extract && !handled_scalar_load_agg_extract
-				&& !tuple_is_agg_typ && tuple_val.kind == .instruction && instr.typ > 0
+			if !handled_direct_load_agg_extract && !handled_scalar_load_struct_extract
+				&& !handled_scalar_load_agg_extract && !tuple_is_agg_typ
+				&& tuple_val.kind == .instruction && instr.typ > 0
 				&& instr.typ < g.mod.type_store.types.len {
 				dst_typ := g.mod.type_store.types[instr.typ]
 				if (result_is_agg && result_size > 8) || dst_typ.kind == .ptr_t {
@@ -4132,8 +4237,8 @@ fn (mut g Gen) gen_instr(val_id int) {
 					}
 				}
 			}
-			if !handled_scalar_load_struct_extract && !handled_scalar_load_agg_extract
-				&& !handled_sumtype_tag_payload_extract {
+			if !handled_direct_load_agg_extract && !handled_scalar_load_struct_extract
+				&& !handled_scalar_load_agg_extract && !handled_sumtype_tag_payload_extract {
 				// If the tuple source is a string_literal (e.g. after mem2reg
 				// promotion of alloca → store → load), ensure the string struct
 				// has been materialized on the stack before we read from it.
@@ -4987,6 +5092,21 @@ fn (g &Gen) alloca_store_value_is_pointer_like(val_id int, for_alloca_id int, de
 		seen_allocas)
 }
 
+fn (g &Gen) value_is_pointer_compatible_zero(val_id int) bool {
+	if val_id <= 0 || val_id >= g.mod.values.len {
+		return false
+	}
+	val := g.mod.values[val_id]
+	if val.kind != .constant || val.name != '0' {
+		return false
+	}
+	if val.typ <= 0 || val.typ >= g.mod.type_store.types.len {
+		return false
+	}
+	typ := g.mod.type_store.types[val.typ]
+	return typ.kind == .ptr_t || (typ.kind == .int_t && typ.width >= 64)
+}
+
 fn (g &Gen) alloca_store_value_is_pointer_like_inner(val_id int, for_alloca_id int, depth int, mut seen_allocas map[int]bool) bool {
 	if depth > 64 || val_id <= 0 || val_id >= g.mod.values.len {
 		return false
@@ -4999,17 +5119,13 @@ fn (g &Gen) alloca_store_value_is_pointer_like_inner(val_id int, for_alloca_id i
 		}
 	}
 	if val.kind == .constant {
-		// `0` may be used as a null pointer value in mixed pointer/non-pointer phis.
-		// Only treat as pointer-like if the constant type could hold a pointer
-		// (pointer type or pointer-width integer). Small integer constants like
-		// i8(0) or i16(0) are definitely NOT pointers.
+		// A pointer-typed zero is a null pointer. A pointer-width integer zero is
+		// only neutral when combined with real pointer values; by itself it is also
+		// used for scalar default values passed by address.
 		if val.name == '0' {
 			if val.typ > 0 && val.typ < g.mod.type_store.types.len {
 				ct := g.mod.type_store.types[val.typ]
 				if ct.kind == .ptr_t {
-					return true
-				}
-				if ct.kind == .int_t && ct.width >= 64 {
 					return true
 				}
 			}
@@ -5040,13 +5156,18 @@ fn (g &Gen) alloca_store_value_is_pointer_like_inner(val_id int, for_alloca_id i
 			if instr.operands.len == 0 {
 				return false
 			}
+			mut saw_pointer_like := false
 			for op_id in instr.operands {
+				if g.value_is_pointer_compatible_zero(op_id) {
+					continue
+				}
 				if !g.alloca_store_value_is_pointer_like_inner(op_id, for_alloca_id, depth + 1, mut
 					seen_allocas) {
 					return false
 				}
+				saw_pointer_like = true
 			}
-			return true
+			return saw_pointer_like
 		}
 		.load {
 			if instr.operands.len > 0 {
@@ -5153,6 +5274,9 @@ fn (g &Gen) alloca_slot_stores_pointer_like_values_inner(alloca_id int, param_el
 		}
 		src_id := use_instr.operands[0]
 		if src_id <= 0 || src_id >= g.mod.values.len {
+			continue
+		}
+		if g.value_is_pointer_compatible_zero(src_id) {
 			continue
 		}
 		if g.alloca_store_value_is_pointer_like_inner(src_id, alloca_id, depth + 1, mut
@@ -5372,6 +5496,21 @@ fn (mut g Gen) load_struct_arg_word_to_reg(dest_reg int, val_id int, word_idx in
 		g.emit_mov_reg(dest_reg, 31)
 		return
 	}
+	g.materialize_string_literal_value(val_id)
+	if expected_struct_typ > 0 && val_id > 0 && val_id < g.mod.values.len
+		&& expected_struct_typ < g.mod.type_store.types.len {
+		val := g.mod.values[val_id]
+		if val.typ == expected_struct_typ {
+			expected_typ := g.mod.type_store.types[expected_struct_typ]
+			expected_size := g.type_size(expected_struct_typ)
+			if expected_typ.kind == .struct_t && expected_size > 8 && expected_size <= 16 {
+				if offset := g.stack_map[val_id] {
+					g.emit_ldr_reg_offset(dest_reg, 29, offset + word_idx * 8)
+					return
+				}
+			}
+		}
+	}
 	// Get the source address of the struct value.
 	// expected_struct_typ lets us correctly handle pointer-backed struct values.
 	mut addr_reg := 9
@@ -5387,6 +5526,19 @@ fn (mut g Gen) load_struct_arg_word_to_reg(dest_reg int, val_id int, word_idx in
 		g.load_address_of_val_to_reg(addr_reg, val_id)
 	}
 	g.emit(asm_ldr_imm(Reg(dest_reg), Reg(addr_reg), u32(word_idx)))
+}
+
+fn (mut g Gen) materialize_string_literal_value(val_id int) {
+	if val_id <= 0 || val_id >= g.mod.values.len {
+		return
+	}
+	if g.mod.values[val_id].kind != .string_literal {
+		return
+	}
+	if _ := g.string_literal_offsets[val_id] {
+		return
+	}
+	g.load_val_to_reg(12, val_id)
 }
 
 // Loads a multi-register struct argument (9-16 bytes) into consecutive regs.
@@ -5780,9 +5932,10 @@ fn (mut g Gen) load_struct_src_address_to_reg(reg int, val_id int, expected_stru
 			}
 		}
 		if expected_typ.kind == .struct_t && g.type_size(expected_struct_typ) > 16
-			&& g.value_is_large_struct(val_id) {
-			// Large struct values may already be represented as data pointers.
-			// Preserve that representation for indirect ABI arguments.
+			&& g.large_struct_stack_value_is_pointer(val_id) {
+			// Some large struct values are explicitly pointer-carried in their stack
+			// slot. Preserve that representation for indirect ABI arguments, but keep
+			// ordinary large structs/arrays by address so array headers are copied intact.
 			g.load_val_to_reg(reg, val_id)
 			return
 		}
@@ -5791,6 +5944,17 @@ fn (mut g Gen) load_struct_src_address_to_reg(reg int, val_id int, expected_stru
 	if val.typ > 0 && val.typ < g.mod.type_store.types.len {
 		val_typ := g.mod.type_store.types[val.typ]
 		if val_typ.kind == .ptr_t && val_typ.elem_type == expected_struct_typ {
+			if val.kind == .instruction {
+				instr := g.mod.instrs[val.index]
+				if g.selected_opcode(instr) == .alloca {
+					if g.alloca_slot_stores_pointer_like_values(val_id, expected_struct_typ) {
+						g.load_val_to_reg(reg, val_id)
+					} else {
+						g.load_address_of_val_to_reg(reg, val_id)
+					}
+					return
+				}
+			}
 			g.load_val_to_reg(reg, val_id)
 			return
 		}
@@ -6217,7 +6381,8 @@ fn (mut g Gen) load_val_to_reg(reg int, val_id int) {
 					&& (g.env_trace_load == '*' || g.cur_func_name == g.env_trace_load) {
 					eprintln('LOAD_VAL fn=${g.cur_func_name} val=${val_id} off=${offset} reg=${reg} kind=${val.kind} name=${val.name}')
 				}
-				g.emit_ldr_reg_offset(reg, 29, offset)
+				load_size := g.stack_scalar_access_size_bytes(val.typ)
+				g.emit_ldr_reg_offset_sized(reg, 29, offset, load_size)
 				g.canonicalize_narrow_int_result(reg, val.typ)
 			} else {
 				g.emit_mov_imm64(reg, 0)
@@ -6298,7 +6463,8 @@ fn (mut g Gen) store_reg_to_val(reg int, val_id int) {
 			g.stats_skipped_stores++
 			cached_store = val_id > 0 && g.is_cacheable_last_store_reg(stored_reg)
 		} else {
-			g.emit_str_reg_offset(stored_reg, 29, offset)
+			store_size := g.stack_scalar_access_size_bytes(g.mod.values[val_id].typ)
+			g.emit_str_reg_offset_sized(stored_reg, 29, offset, store_size)
 		}
 	}
 	// Record only skipped stores. Regular stores can always be reloaded from stack.
@@ -7220,8 +7386,11 @@ fn (mut g Gen) emit_call_to_named_fn(fn_name string) {
 	g.emit(asm_bl_reloc())
 }
 
-fn (mut g Gen) store_entry_arg_to_global(reg int, global_name string) {
+fn (mut g Gen) store_entry_arg_to_global(reg int, global_name string, size int) {
 	if global_name == '' {
+		return
+	}
+	if global_name !in g.global_by_name {
 		return
 	}
 	sym_idx := g.macho.add_undefined('_' + global_name)
@@ -7229,7 +7398,7 @@ fn (mut g Gen) store_entry_arg_to_global(reg int, global_name string) {
 	g.emit(asm_adrp(Reg(9)))
 	g.macho.add_reloc(g.macho.text_data.len, sym_idx, arm64_reloc_pageoff12, false)
 	g.emit(asm_add_pageoff(Reg(9)))
-	g.emit_str_reg_offset(reg, 9, 0)
+	g.emit_str_reg_offset_sized(reg, 9, 0, size)
 }
 
 fn (mut g Gen) emit(code u32) {
@@ -7425,6 +7594,24 @@ fn (mut g Gen) mem_access_size_bytes(val_typ_id ssa.TypeID, ptr_val_id int) int 
 	}
 
 	return ptr_elem_size
+}
+
+fn (mut g Gen) stack_scalar_access_size_bytes(val_typ_id ssa.TypeID) int {
+	if val_typ_id <= 0 || val_typ_id >= g.mod.type_store.types.len {
+		return 8
+	}
+	val_typ := g.mod.type_store.types[val_typ_id]
+	match val_typ.kind {
+		.int_t, .float_t {
+			val_size := g.type_size(val_typ_id)
+			if val_size in [1, 2, 4] {
+				return val_size
+			}
+		}
+		else {}
+	}
+
+	return 8
 }
 
 fn (mut g Gen) pointer_carried_aggregate_size_bytes(ptr_id int, depth int, mut seen map[int]bool) int {
@@ -8901,47 +9088,42 @@ fn (mut g Gen) allocate_registers(func mir.Function) {
 		}
 	}
 
-	// Mark intervals that cross a function call
-	for _, mut interval in intervals {
-		for call_idx in call_indices {
-			if interval.start < call_idx && interval.end > call_idx {
-				interval.has_call = true
-				break
-			}
-		}
-	}
-
-	// Flatten intervals into parallel arrays to avoid pointer-deref and map-access
-	// patterns that break in ARM64-compiled binaries (chained-access bug).
+	// Flatten intervals into parallel arrays in instruction order. This keeps the
+	// active-list allocator linear; flattening from map iteration can produce
+	// arbitrary order and make the fallback insertion sort pathological on large
+	// functions like cleanc__Gen__get_expr_type.
 	mut iv_val_ids := []int{cap: intervals.len}
 	mut iv_starts := []int{cap: intervals.len}
 	mut iv_ends := []int{cap: intervals.len}
 	mut iv_has_call := []bool{cap: intervals.len}
-	for vid, iv in intervals {
-		iv_val_ids << vid
-		iv_starts << iv.start
-		iv_ends << iv.end
-		iv_has_call << iv.has_call
+	for blk_id in func.blocks {
+		blk := g.mod.blocks[blk_id]
+		for val_id in blk.instrs {
+			if iv := intervals[val_id] {
+				iv_val_ids << val_id
+				iv_starts << iv.start
+				iv_ends << iv.end
+				iv_has_call << false
+			}
+		}
 	}
 
-	// Sort by start time using insertion sort (avoids closure-based sort issues)
-	for si in 1 .. iv_val_ids.len {
-		key_vid := iv_val_ids[si]
-		key_start := iv_starts[si]
-		key_end := iv_ends[si]
-		key_call := iv_has_call[si]
-		mut sj := si - 1
-		for sj >= 0 && iv_starts[sj] > key_start {
-			iv_val_ids[sj + 1] = iv_val_ids[sj]
-			iv_starts[sj + 1] = iv_starts[sj]
-			iv_ends[sj + 1] = iv_ends[sj]
-			iv_has_call[sj + 1] = iv_has_call[sj]
-			sj--
+	// Mark intervals that cross a function call. call_indices are collected in
+	// instruction order, and iv_starts are now ordered too, so a single moving
+	// cursor replaces the previous O(intervals*calls) scan.
+	mut call_cursor := 0
+	for ii := 0; ii < iv_val_ids.len; ii++ {
+		start := iv_starts[ii]
+		end := iv_ends[ii]
+		for call_cursor < call_indices.len && call_indices[call_cursor] <= start {
+			call_cursor++
 		}
-		iv_val_ids[sj + 1] = key_vid
-		iv_starts[sj + 1] = key_start
-		iv_ends[sj + 1] = key_end
-		iv_has_call[sj + 1] = key_call
+		if call_cursor < call_indices.len && call_indices[call_cursor] < end {
+			iv_has_call[ii] = true
+			if mut iv := intervals[iv_val_ids[ii]] {
+				iv.has_call = true
+			}
+		}
 	}
 
 	// Active list as parallel arrays (end time, assigned register)

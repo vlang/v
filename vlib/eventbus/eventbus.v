@@ -12,12 +12,12 @@ mut:
 	registry &Registry[T] = unsafe { nil }
 }
 
-struct Registry[T] {
+pub struct Registry[T] {
 mut:
 	events []EventHandler[T]
 }
 
-struct EventHandler[T] {
+pub struct EventHandler[T] {
 	name     T
 	handler  EventHandlerFn = unsafe { nil }
 	receiver voidptr        = unsafe { nil }

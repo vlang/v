@@ -24,9 +24,23 @@ fn (mut p Parser) try_type() ast.Expr {
 		// pointer: `&type`
 		.amp {
 			p.next()
-			return ast.PrefixExpr{
-				op:   .amp
-				expr: p.expect_type()
+			mut lifetime := ''
+			if p.tok == .xor {
+				p.next()
+				lifetime = p.expect_name()
+			}
+			return ast.Type(ast.PointerType{
+				base_type: p.expect_type()
+				lifetime:  lifetime
+			})
+		}
+		// lifetime: `^a`
+		.xor {
+			pos := p.pos
+			p.next()
+			return ast.LifetimeExpr{
+				name: p.expect_name()
+				pos:  pos
 			}
 		}
 		// comptime type: `$enum` | `$struct` |  etc
@@ -59,11 +73,9 @@ fn (mut p Parser) try_type() ast.Expr {
 		// eg. typespec in struct field with modifier. other cases handled in expr()
 		.key_atomic, .key_shared {
 			kind := p.tok
+			pos := p.pos
 			p.next()
-			return ast.ModifierExpr{
-				kind: kind
-				expr: p.expect_type()
-			}
+			return modifier_expr_with_expr(kind, p.expect_type(), pos)
 		}
 		// function: `fn(type) type`
 		.key_fn {
@@ -177,11 +189,18 @@ fn (mut p Parser) try_type() ast.Expr {
 fn (mut p Parser) fn_type() ast.FnType {
 	generic_params := if p.tok == .lsbr { p.generic_list() } else { []ast.Expr{} }
 	params := p.fn_parameters()
-	return ast.FnType{
+	return_type := if p.tok != .semicolon { p.try_type() } else { ast.empty_expr }
+	return fn_type_with_return_type(generic_params, params, return_type)
+}
+
+fn fn_type_with_return_type(generic_params []ast.Expr, params []ast.Parameter, return_type ast.Expr) ast.FnType {
+	mut fn_type := ast.FnType{
 		generic_params: generic_params
 		params:         params
-		return_type:    if p.tok != .semicolon { p.try_type() } else { ast.empty_expr }
+		return_type:    ast.empty_expr
 	}
+	fn_type.return_type = return_type
+	return fn_type
 }
 
 // `ident` | `map[type]type | `(`chan`|`chan type`) | (`thread`|`thread type`)

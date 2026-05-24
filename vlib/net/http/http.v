@@ -26,8 +26,8 @@ pub mut:
 	user_ptr      voidptr = unsafe { nil }
 	verbose       bool
 	proxy         &HttpProxy = unsafe { nil }
-	read_timeout  i64        = 30 * time.second // timeout for reading the response; currently not used for direct https requests
-	write_timeout i64        = 30 * time.second // timeout for writing the request; currently not used for direct https requests
+	read_timeout  i64        = 30 * time.second // timeout for reading the response; applies to plain http and to direct https requests
+	write_timeout i64        = 30 * time.second // timeout for writing the request; applies to plain http (write timeouts are not enforced on the SSL write path yet)
 
 	validate               bool   // set this to true, if you want to stop requests, when their certificates are found to be invalid
 	verify                 string // the path to a rootca.pem file, containing trusted CA certificate(s)

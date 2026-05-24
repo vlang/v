@@ -820,6 +820,35 @@ fn (b &Builder) module_path_has_v_files(path string) bool {
 	return b.v_files_from_dir(path).len > 0
 }
 
+// candidate_belongs_to_foreign_project returns true when `candidate_path` is
+// neither inside the importer's `v.mod` tree nor inside a configured
+// `lookup_path` entry (vlib / vmodules). Such candidates are someone else's
+// source tree: e.g. when a `vlib/*` file imports `sync`, a sibling
+// `coreutils/src/sync` directory is not a real `sync` module and should be
+// skipped (see #27151). Comparing by path containment (rather than by the
+// nearest enclosing `v.mod`) keeps vendored dependencies like
+// `<project>/modules/<name>/` — which carry their own `v.mod` — resolvable
+// from `<project>`'s own code.
+fn (b &Builder) candidate_belongs_to_foreign_project(candidate_path string, importer_vmod_folder string) bool {
+	if importer_vmod_folder == '' {
+		return false
+	}
+	abs_candidate := os.real_path(candidate_path)
+	abs_importer_vmod := os.real_path(importer_vmod_folder)
+	if abs_candidate == abs_importer_vmod
+		|| abs_candidate.starts_with(abs_importer_vmod + os.path_separator) {
+		return false
+	}
+	for lookup in b.pref.lookup_path {
+		abs_lookup := os.real_path(lookup)
+		if abs_candidate == abs_lookup
+			|| abs_candidate.starts_with(abs_lookup + os.path_separator) {
+			return false
+		}
+	}
+	return true
+}
+
 // TODO: try to merge this & util.module functions to create a
 // reliable multi use function. see comments in util/module.v
 pub fn (b &Builder) find_module_path(mod string, fpath string) !string {
@@ -827,6 +856,26 @@ pub fn (b &Builder) find_module_path(mod string, fpath string) !string {
 	mut mcache := vmod.get_cache()
 	resolved_fpath := os.real_path(fpath)
 	vmod_file_location := mcache.get_by_file(resolved_fpath)
+	// Anchor the importer to the OUTERMOST enclosing `v.mod`, not the nearest
+	// one. A file at `<project>/modules/<name>/file.v` carries the vendored
+	// package's `v.mod` as its nearest root, but logically belongs to
+	// `<project>` — and must be able to see sibling vendored deps under
+	// `<project>/modules/`.
+	mut importer_vmod_folder := ''
+	if vmod_file_location.vmod_file.len != 0 {
+		importer_vmod_folder = vmod_file_location.vmod_folder
+		for {
+			parent := os.dir(importer_vmod_folder)
+			if parent == importer_vmod_folder {
+				break
+			}
+			parent_loc := mcache.get_by_folder(parent)
+			if parent_loc.vmod_file == '' {
+				break
+			}
+			importer_vmod_folder = parent_loc.vmod_folder
+		}
+	}
 	mod_path := module_path(mod)
 	mut module_lookup_paths := []string{}
 	if vmod_file_location.vmod_file.len != 0
@@ -852,6 +901,12 @@ pub fn (b &Builder) find_module_path(mod string, fpath string) !string {
 			println('  >> trying to find ${mod} in ${try_path} ..')
 		}
 		if found_path := find_module_path_from_search_root(search_path, mod) {
+			if b.candidate_belongs_to_foreign_project(found_path, importer_vmod_folder) {
+				if b.pref.is_verbose {
+					println('  << skipped ${found_path} (belongs to a different v.mod project) .')
+				}
+				continue
+			}
 			if b.module_path_has_v_files(found_path) {
 				if b.pref.is_verbose {
 					println('  << found ${found_path} .')
@@ -874,17 +929,22 @@ pub fn (b &Builder) find_module_path(mod string, fpath string) !string {
 			println('  >> trying to find ${mod} in ${try_path} ..')
 		}
 		if found_path := find_module_path_from_search_root(current_dir, mod) {
-			if b.module_path_has_v_files(found_path) {
+			if b.candidate_belongs_to_foreign_project(found_path, importer_vmod_folder) {
+				if b.pref.is_verbose {
+					println('  << skipped ${found_path} (belongs to a different v.mod project) .')
+				}
+			} else if b.module_path_has_v_files(found_path) {
 				if b.pref.is_verbose {
 					println('  << found ${found_path} .')
 				}
 				return found_path
-			}
-			if empty_module_path == '' {
-				empty_module_path = found_path
-			}
-			if b.pref.is_verbose {
-				println('  << skipped ${found_path} (no .v files) .')
+			} else {
+				if empty_module_path == '' {
+					empty_module_path = found_path
+				}
+				if b.pref.is_verbose {
+					println('  << skipped ${found_path} (no .v files) .')
+				}
 			}
 		}
 		parent_dir := os.dir(current_dir)

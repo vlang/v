@@ -122,10 +122,27 @@ mut:
 	read_start     i64 // monotonic timestamp (in microseconds) when first data was received
 
 	// Sendfile state
-	file_fd      int = -1
-	file_len     i64
-	file_pos     i64
-	should_close bool
+	file_fd       int = -1
+	file_len      i64
+	file_pos      i64
+	should_close  bool
+	request_arena voidptr
+}
+
+fn (mut c Conn) free_write_buf() {
+	if c.write_buf.cap > 0 {
+		unsafe { c.write_buf.free() }
+		c.write_buf = []u8{}
+	}
+}
+
+fn (mut c Conn) free_request_arena() {
+	$if prealloc {
+		if c.request_arena != unsafe { nil } {
+			unsafe { prealloc_scope_free_after(c.request_arena) }
+			c.request_arena = unsafe { nil }
+		}
+	}
 }
 
 pub struct Server {
@@ -181,7 +198,7 @@ fn delete_event(kq int, ident u64, filter i16, udata voidptr) {
 	C.kevent(kq, &ev, 1, unsafe { nil }, 0, unsafe { nil })
 }
 
-fn close_conn(server Server, kq int, c_ptr voidptr, mut clients map[int]voidptr) {
+fn close_conn(server &Server, kq int, c_ptr voidptr, mut clients map[int]voidptr) {
 	mut c := unsafe { &Conn(c_ptr) }
 	clients.delete(c.fd)
 	delete_event(kq, u64(c.fd), i16(C.EVFILT_READ), c)
@@ -191,9 +208,8 @@ fn close_conn(server Server, kq int, c_ptr voidptr, mut clients map[int]voidptr)
 		server.end_request()
 		c.request_active = false
 	}
-	if c.write_buf.cap > 0 {
-		unsafe { c.write_buf.free() }
-	}
+	c.free_write_buf()
+	c.free_request_arena()
 	if c.read_extra.cap > 0 {
 		unsafe { c.read_extra.free() }
 	}
@@ -261,14 +277,14 @@ fn send_request_timeout(fd int) {
 	C.send(fd, status_408_response.data, status_408_response.len, send_flags)
 }
 
-fn handle_write(server Server, kq int, c_ptr voidptr, mut clients map[int]voidptr) {
+fn handle_write(server &Server, kq int, c_ptr voidptr, mut clients map[int]voidptr) {
 	if send_pending(c_ptr) {
 		return
 	}
 	complete_response(server, kq, c_ptr, mut clients, true)
 }
 
-fn complete_response(server Server, kq int, c_ptr voidptr, mut clients map[int]voidptr, remove_write_event bool) {
+fn complete_response(server &Server, kq int, c_ptr voidptr, mut clients map[int]voidptr, remove_write_event bool) {
 	mut c := unsafe { &Conn(c_ptr) }
 	if remove_write_event {
 		delete_event(kq, u64(c.fd), i16(C.EVFILT_WRITE), c)
@@ -281,7 +297,8 @@ fn complete_response(server Server, kq int, c_ptr voidptr, mut clients map[int]v
 		server.end_request()
 		c.request_active = false
 	}
-	c.write_buf.clear()
+	c.free_write_buf()
+	c.free_request_arena()
 	c.write_pos = 0
 	c.read_len = 0
 	if c.read_extra.cap > 0 {
@@ -293,9 +310,13 @@ fn complete_response(server Server, kq int, c_ptr voidptr, mut clients map[int]v
 }
 
 // process_request handles a complete HTTP request: decodes, calls the handler,
-// sends the response (or handles takeover/sendfile). Runs in a spawned thread.
-fn process_request(server Server, kq int, c_ptr voidptr, mut clients map[int]voidptr) {
+// sends the response (or handles takeover/sendfile).
+fn process_request(server &Server, kq int, c_ptr voidptr, mut clients map[int]voidptr) {
 	mut c := unsafe { &Conn(c_ptr) }
+	mut request_arena := voidptr(unsafe { nil })
+	$if prealloc {
+		request_arena = unsafe { prealloc_scope_begin() }
+	}
 
 	mut req_buf := c.get_full_request_data()
 	if c.read_extra.cap > 0 {
@@ -305,19 +326,28 @@ fn process_request(server Server, kq int, c_ptr voidptr, mut clients map[int]voi
 
 	mut decoded := decode_http_request(req_buf) or {
 		send_bad_request(c.fd)
+		end_request_arena_current_thread(request_arena)
 		close_conn(server, kq, c_ptr, mut clients)
 		return
+	}
+	$if trace_prealloc ? {
+		unsafe { prealloc_scope_checkpoint(c'fasthttp decoded request') }
 	}
 	server.begin_request()
 	c.request_active = true
 	decoded.client_conn_fd = c.fd
 	decoded.user_data = server.user_data
 
-	resp := server.request_handler(decoded) or {
+	mut resp := server.request_handler(decoded) or {
 		send_bad_request(c.fd)
+		end_request_arena_current_thread(request_arena)
 		close_conn(server, kq, c_ptr, mut clients)
 		return
 	}
+	$if trace_prealloc ? {
+		unsafe { prealloc_scope_checkpoint(c'fasthttp handler returned') }
+	}
+	resp.attach_request_arena_if_empty(request_arena)
 
 	match resp.takeover_mode {
 		.manual {
@@ -330,6 +360,8 @@ fn process_request(server Server, kq int, c_ptr voidptr, mut clients map[int]voi
 				server.end_request()
 				c.request_active = false
 			}
+			resp.free_owned_content()
+			resp.abandon_request_arena_current_thread()
 			unsafe { free(c_ptr) }
 			return
 		}
@@ -342,6 +374,8 @@ fn process_request(server Server, kq int, c_ptr voidptr, mut clients map[int]voi
 				server.end_request()
 				c.request_active = false
 			}
+			resp.free_owned_content()
+			resp.end_request_arena_current_thread()
 			if server.is_shutting_down() || resp.should_close {
 				close_conn(server, kq, c_ptr, mut clients)
 			}
@@ -351,7 +385,14 @@ fn process_request(server Server, kq int, c_ptr voidptr, mut clients map[int]voi
 	}
 
 	c.should_close = resp.should_close
-	c.write_buf = resp.content.clone()
+	c.free_write_buf()
+	c.free_request_arena()
+	c.request_arena = resp.take_request_arena()
+	c.write_buf = resp.take_or_clone_content()
+	$if trace_prealloc ? {
+		unsafe { prealloc_scope_checkpoint(c'fasthttp response retained') }
+	}
+	leave_request_arena_current_thread(c.request_arena)
 	if resp.file_path != '' {
 		fd := C.open(resp.file_path.str, C.O_RDONLY, 0)
 		if fd != -1 {
@@ -398,7 +439,7 @@ fn (c &Conn) get_full_request_data() []u8 {
 	return req_buf
 }
 
-fn handle_read(server Server, kq int, c_ptr voidptr, mut clients map[int]voidptr) {
+fn handle_read(server &Server, kq int, c_ptr voidptr, mut clients map[int]voidptr) {
 	mut c := unsafe { &Conn(c_ptr) }
 
 	// Drain the socket for this kqueue notification. EV_CLEAR only rearms once
@@ -527,7 +568,7 @@ fn accept_clients(kq int, listen_fd int, mut clients map[int]voidptr) {
 	}
 }
 
-fn close_all_conns(server Server, kq int, mut clients map[int]voidptr) {
+fn close_all_conns(server &Server, kq int, mut clients map[int]voidptr) {
 	for client_fd in clients.keys() {
 		c_ptr := clients[client_fd] or { continue }
 		close_conn(server, kq, c_ptr, mut clients)

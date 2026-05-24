@@ -670,7 +670,8 @@ fn (mut g Gen) sql_stmt_line(stmt_line ast.SqlStmtLine, connection_var_name stri
 		g.write_orm_insert(node, table_name, connection_var_name, result_var_name, or_expr,
 			table_attrs)
 	} else if node.kind == .upsert {
-		g.write_orm_upsert(node, table_name, connection_var_name, result_var_name, table_attrs)
+		g.write_orm_upsert(node, table_name, connection_var_name, result_var_name, or_expr,
+			table_attrs)
 	} else if node.kind == .update {
 		g.write_orm_update(node, table_name, connection_var_name, result_var_name, table_attrs)
 	} else if node.kind == .delete {
@@ -842,6 +843,10 @@ fn (mut g Gen) write_orm_drop_table(node ast.SqlStmtLine, table_name string, con
 // write_orm_insert writes C code that calls ORM functions for inserting structs into a table.
 fn (mut g Gen) write_orm_insert(node &ast.SqlStmtLine, table_name string, connection_var_name string, result_var_name string,
 	or_expr &ast.OrExpr, _ []ast.Attr) {
+	if node.is_array_insert {
+		g.write_orm_bulk_insert(node, table_name, connection_var_name, result_var_name, or_expr)
+		return
+	}
 	last_ids_variable_name := g.new_tmp_var()
 
 	g.writeln('Array_orm__Primitive ${last_ids_variable_name} = builtin____new_array_with_default_noscan(0, 0, sizeof(orm__Primitive), 0);')
@@ -849,8 +854,102 @@ fn (mut g Gen) write_orm_insert(node &ast.SqlStmtLine, table_name string, connec
 		result_var_name, '', '', or_expr)
 }
 
+fn (mut g Gen) write_orm_bulk_insert(node &ast.SqlStmtLine, table_name string, connection_var_name string, result_var_name string, or_expr &ast.OrExpr) {
+	fields := g.orm_non_array_fields(node.fields)
+	auto_fields := get_auto_field_idxs(fields)
+	row_type := g.styp(node.table_expr.typ)
+	row_var := g.new_tmp_var()
+	idx_var := g.new_tmp_var()
+	data_var := g.new_tmp_var()
+	g.writeln('${result_name}_void ${result_var_name};')
+	g.writeln('if (${node.object_var}.len == 0) {')
+	g.indent++
+	g.writeln('${result_var_name} = (${result_name}_void){0};')
+	g.indent--
+	g.writeln('} else {')
+	g.indent++
+	if auto_fields.len > 0 {
+		g.writeln('${result_var_name} = (${result_name}_void){0};')
+		g.writeln('for (${ast.int_type_name} ${idx_var} = 0; ${idx_var} < ${node.object_var}.len; ${idx_var}++) {')
+		g.indent++
+		g.writeln('${row_type} ${row_var} = (*(${row_type}*)builtin__array_get(${node.object_var}, ${idx_var}));')
+		row_result_var := g.new_tmp_var()
+		mut row_node := *node
+		row_node.object_var = row_var
+		row_node.is_array_insert = false
+		g.write_orm_insert(&row_node, table_name, connection_var_name, row_result_var, or_expr,
+			[]ast.Attr{})
+		g.or_block(row_result_var, *or_expr, ast.int_type.set_flag(.result))
+		g.writeln('${result_var_name} = ${row_result_var};')
+		g.indent--
+		g.writeln('}')
+		g.indent--
+		g.writeln('}')
+		return
+	}
+	g.writeln('Array_orm__Primitive ${data_var} = builtin____new_array_with_default_noscan(0, 0, sizeof(orm__Primitive), 0);')
+	g.writeln('for (${ast.int_type_name} ${idx_var} = 0; ${idx_var} < ${node.object_var}.len; ${idx_var}++) {')
+	g.indent++
+	g.writeln('${row_type} ${row_var} = (*(${row_type}*)builtin__array_get(${node.object_var}, ${idx_var}));')
+	for field in fields {
+		g.write('builtin__array_push(&${data_var}, _MOV((orm__Primitive[1]){')
+		g.write_orm_field_access_to_primitive(field, row_var, node.table_expr.typ,
+			g.table.sym(node.table_expr.typ))
+		g.writeln('}));')
+	}
+	g.indent--
+	g.writeln('}')
+	g.writeln('// sql { insert into `${table_name}` }')
+	g.writeln('${result_var_name} = orm__Connection_name_table[${connection_var_name}._typ]._method_insert(')
+	g.indent++
+	g.writeln('${connection_var_name}._object, // Connection object')
+	g.write_orm_table_struct(node.table_expr.typ)
+	g.writeln(',')
+	g.writeln('(orm__QueryData){')
+	g.indent++
+	g.writeln('.fields = builtin__new_array_from_c_array(${fields.len}, ${fields.len}, sizeof(string),')
+	g.indent++
+	if fields.len > 0 {
+		g.writeln('_MOV((string[${fields.len}]){')
+		g.indent++
+		for f in fields {
+			g.writeln('_S("${g.get_orm_column_name_from_struct_field(f)}"),')
+		}
+		g.indent--
+		g.writeln('})')
+	} else {
+		g.writeln('NULL')
+	}
+	g.indent--
+	g.writeln('),')
+	g.writeln('.data = ${data_var},')
+	g.writeln('.types = builtin____new_array_with_default_noscan(0, 0, sizeof(${ast.int_type_name}), 0),')
+	if auto_fields.len > 0 {
+		g.writeln('.auto_fields = builtin__new_array_from_c_array(${auto_fields.len}, ${auto_fields.len}, sizeof(${ast.int_type_name}),')
+		g.indent++
+		g.write('_MOV((${ast.int_type_name}[${auto_fields.len}]){')
+		for i in auto_fields {
+			g.write(' ${i},')
+		}
+		g.writeln(' })),')
+		g.indent--
+	} else {
+		g.writeln('.auto_fields = builtin____new_array_with_default_noscan(0, 0, sizeof(${ast.int_type_name}), 0),')
+	}
+	g.writeln('.kinds = builtin____new_array_with_default_noscan(0, 0, sizeof(orm__OperationKind), 0),')
+	g.writeln('.is_and = builtin____new_array_with_default_noscan(0, 0, sizeof(bool), 0),')
+	g.writeln('.parentheses = builtin____new_array_with_default_noscan(0, 0, sizeof(Array_${ast.int_type_name}), 0),')
+	g.writeln('.batch_rows = ${node.object_var}.len,')
+	g.indent--
+	g.writeln('}')
+	g.indent--
+	g.writeln(');')
+	g.indent--
+	g.writeln('}')
+}
+
 fn (mut g Gen) write_orm_upsert(node &ast.SqlStmtLine, table_name string, connection_var_name string, result_var_name string,
-	table_attrs []ast.Attr) {
+	_ ast.OrExpr, table_attrs []ast.Attr) {
 	g.writeln('// sql { upsert into `${table_name}` }')
 	fields := node.fields
 	auto_fields := get_auto_field_idxs(fields)
@@ -1042,6 +1141,10 @@ fn (mut g Gen) write_orm_update(node &ast.SqlStmtLine, table_name string, connec
 	if node.is_dynamic {
 		dynamic_update_data_var = g.emit_dynamic_sql_query_data(node.update_data_expr)
 	}
+	if node.is_array_update {
+		g.write_orm_bulk_update(node, table_name, connection_var_name, result_var_name)
+		return
+	}
 	g.writeln('// sql { update `${table_name}` }')
 	g.writeln('${result_name}_void ${result_var_name} = orm__Connection_name_table[${connection_var_name}._typ]._method_update(')
 	g.indent++
@@ -1104,6 +1207,150 @@ fn (mut g Gen) write_orm_update(node &ast.SqlStmtLine, table_name string, connec
 	g.write_orm_where(node.where_expr)
 	g.indent--
 	g.writeln(');')
+}
+
+fn (mut g Gen) write_orm_bulk_update(node &ast.SqlStmtLine, table_name string, connection_var_name string, result_var_name string) {
+	row_type := g.styp(node.table_expr.typ)
+	row_var := g.new_tmp_var()
+	idx_var := g.new_tmp_var()
+	data_var := g.new_tmp_var()
+	where_data_var := g.new_tmp_var()
+	where_fields_var := g.new_tmp_var()
+	where_kinds_var := g.new_tmp_var()
+	where_is_and_var := g.new_tmp_var()
+	key_field := g.get_orm_field_by_column_name(node.fields, node.array_update_key) or {
+		verror('ORM: field "${node.array_update_key}" does not exist on "${g.sql_table_name}"')
+	}
+	g.writeln('${result_name}_void ${result_var_name};')
+	g.writeln('if (${node.array_update_var}.len == 0) {')
+	g.indent++
+	g.writeln('${result_var_name} = (${result_name}_void){0};')
+	g.indent--
+	g.writeln('} else {')
+	g.indent++
+	g.writeln('Array_orm__Primitive ${data_var} = builtin____new_array_with_default_noscan(0, 0, sizeof(orm__Primitive), 0);')
+	g.writeln('Array_orm__Primitive ${where_data_var} = builtin____new_array_with_default_noscan(0, 0, sizeof(orm__Primitive), 0);')
+	g.writeln('Array_string ${where_fields_var} = builtin____new_array_with_default_noscan(0, 0, sizeof(string), 0);')
+	g.writeln('Array_orm__OperationKind ${where_kinds_var} = builtin____new_array_with_default_noscan(0, 0, sizeof(orm__OperationKind), 0);')
+	g.writeln('Array_bool ${where_is_and_var} = builtin____new_array_with_default_noscan(0, 0, sizeof(bool), 0);')
+	g.writeln('for (${ast.int_type_name} ${idx_var} = 0; ${idx_var} < ${node.array_update_var}.len; ${idx_var}++) {')
+	g.indent++
+	g.writeln('${row_type} ${row_var} = (*(${row_type}*)builtin__array_get(${node.array_update_var}, ${idx_var}));')
+	g.writeln('builtin__array_push(&${where_fields_var}, _MOV((string[1]){ _S("${node.array_update_key}") }));')
+	g.writeln('builtin__array_push(&${where_kinds_var}, _MOV((orm__OperationKind[1]){ orm__OperationKind__eq }));')
+	g.writeln('if (${idx_var} > 0) {')
+	g.indent++
+	g.writeln('builtin__array_push(&${where_is_and_var}, _MOV((bool[1]){ false }));')
+	g.indent--
+	g.writeln('}')
+	g.write('builtin__array_push(&${where_data_var}, _MOV((orm__Primitive[1]){')
+	g.write_orm_field_access_to_primitive(key_field, row_var, node.table_expr.typ,
+		g.table.sym(node.table_expr.typ))
+	g.writeln('}));')
+	g.indent--
+	g.writeln('}')
+	for expr in node.update_exprs {
+		selector := expr as ast.SelectorExpr
+		value_field := get_orm_field_by_struct_field_name(node.fields, selector.field_name) or {
+			verror('ORM: field "${selector.field_name}" does not exist on "${g.sql_table_name}"')
+		}
+		g.writeln('for (${ast.int_type_name} ${idx_var} = 0; ${idx_var} < ${node.array_update_var}.len; ${idx_var}++) {')
+		g.indent++
+		g.writeln('${row_type} ${row_var} = (*(${row_type}*)builtin__array_get(${node.array_update_var}, ${idx_var}));')
+		g.write('builtin__array_push(&${data_var}, _MOV((orm__Primitive[1]){')
+		g.write_orm_field_access_to_primitive(key_field, row_var, node.table_expr.typ,
+			g.table.sym(node.table_expr.typ))
+		g.writeln('}));')
+		g.write('builtin__array_push(&${data_var}, _MOV((orm__Primitive[1]){')
+		g.write_orm_field_access_to_primitive(value_field, row_var, node.table_expr.typ,
+			g.table.sym(node.table_expr.typ))
+		g.writeln('}));')
+		g.indent--
+		g.writeln('}')
+	}
+	g.writeln('// sql { update `${table_name}` }')
+	g.writeln('${result_var_name} = orm__Connection_name_table[${connection_var_name}._typ]._method_update(')
+	g.indent++
+	g.writeln('${connection_var_name}._object, // Connection object')
+	g.write_orm_table_struct(node.table_expr.typ)
+	g.writeln(',')
+	g.writeln('(orm__QueryData){')
+	g.indent++
+	g.writeln('.fields = builtin__new_array_from_c_array(${node.updated_columns.len}, ${node.updated_columns.len}, sizeof(string),')
+	g.indent++
+	g.writeln('_MOV((string[${node.updated_columns.len}]){')
+	g.indent++
+	for field in node.updated_columns {
+		g.writeln('_S("${field}"),')
+	}
+	g.indent--
+	g.writeln('})')
+	g.indent--
+	g.writeln('),')
+	g.writeln('.data = ${data_var},')
+	g.writeln('.types = builtin____new_array_with_default_noscan(0, 0, sizeof(${ast.int_type_name}), 0),')
+	g.writeln('.auto_fields = builtin____new_array_with_default_noscan(0, 0, sizeof(${ast.int_type_name}), 0),')
+	g.writeln('.kinds = builtin____new_array_with_default_noscan(0, 0, sizeof(orm__OperationKind), 0),')
+	g.writeln('.is_and = builtin____new_array_with_default_noscan(0, 0, sizeof(bool), 0),')
+	g.writeln('.parentheses = builtin____new_array_with_default_noscan(0, 0, sizeof(Array_${ast.int_type_name}), 0),')
+	g.writeln('.batch_rows = ${node.array_update_var}.len,')
+	g.writeln('.batch_key = _S("${node.array_update_key}"),')
+	g.indent--
+	g.writeln('},')
+	g.writeln('(orm__QueryData){')
+	g.indent++
+	g.writeln('.fields = ${where_fields_var},')
+	g.writeln('.data = ${where_data_var},')
+	g.writeln('.types = builtin____new_array_with_default_noscan(0, 0, sizeof(${ast.int_type_name}), 0),')
+	g.writeln('.auto_fields = builtin____new_array_with_default_noscan(0, 0, sizeof(${ast.int_type_name}), 0),')
+	g.writeln('.kinds = ${where_kinds_var},')
+	g.writeln('.is_and = ${where_is_and_var},')
+	g.writeln('.parentheses = builtin____new_array_with_default_noscan(0, 0, sizeof(Array_${ast.int_type_name}), 0),')
+	g.indent--
+	g.writeln('}')
+	g.indent--
+	g.writeln(');')
+	g.indent--
+	g.writeln('}')
+}
+
+fn (mut g Gen) write_orm_field_access_to_primitive(field ast.StructField, object_var string, table_typ ast.Type,
+	inserting_object_sym &ast.TypeSymbol) {
+	final_field_typ := g.table.final_type(field.typ)
+	mut sym := g.table.sym(final_field_typ)
+	mut typ := g.orm_primitive_field_name(field.typ)
+	mut ctyp := sym.cname
+	if sym.kind == .struct && ctyp != 'time__Time' {
+		foreign_info := sym.info as ast.Struct
+		primary_field := g.get_orm_struct_primary_field(foreign_info.fields) or {
+			verror('ORM: struct field `${field.name}` of type `${sym.name}` has no primary field')
+		}
+		g.write_orm_field_access_to_primitive(primary_field,
+			'${object_var}.${orm_field_access_name(field.name)}',
+			final_field_typ.clear_flag(.option), g.table.sym(final_field_typ.clear_flag(.option)))
+		return
+	}
+	typ = vint2int(typ)
+	field_access := if inserting_object_sym.kind == .sum_type {
+		table_sym := g.table.sym(table_typ)
+		'(*${object_var}._${table_sym.cname}).${orm_field_access_name(field.name)}'
+	} else {
+		'${object_var}.${orm_field_access_name(field.name)}'
+	}
+	if final_field_typ.has_flag(.option) {
+		g.writeln('${field_access}.state == 2 ? _const_orm__null_primitive : orm__${typ}_to_primitive(*(${ctyp}*)(${field_access}.data)),')
+	} else {
+		g.writeln('orm__${typ}_to_primitive(${field_access}),')
+	}
+}
+
+fn get_orm_field_by_struct_field_name(fields []ast.StructField, name string) ?ast.StructField {
+	for field in fields {
+		if field.name == name {
+			return field
+		}
+	}
+	return none
 }
 
 // write_orm_delete writes C code that calls ORM functions for deleting rows.

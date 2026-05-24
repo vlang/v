@@ -1201,7 +1201,17 @@ fn (mut g Gen) gen_array_sort(node ast.CallExpr) {
 		g.gen_anon_fn_decl(mut lambda_node.func)
 	} else {
 		infix_expr := node.args[0].expr as ast.InfixExpr
-		comparison_type = g.unwrap(infix_expr.left_type.set_nr_muls(0))
+		// For plain `a < b` / `b < a`, the comparison_type is the element type.
+		// Avoid using `infix_expr.left_type` here because the AST node is shared
+		// across generic instantiations and may have been mutated by a later
+		// checker pass for a different concrete type. See vlang/v#27121.
+		comparison_left_type := if infix_expr.left is ast.Ident
+			&& (infix_expr.left.name == 'a' || infix_expr.left.name == 'b') {
+			elem_type
+		} else {
+			infix_expr.left_type
+		}
+		comparison_type = g.unwrap(comparison_left_type.set_nr_muls(0))
 		left_name := infix_expr.left.str()
 		if left_name.len > 1 {
 			compare_fn += '_by' +

@@ -110,6 +110,30 @@ fn test_try_to_use_tcc_by_default_skips_broken_bundled_tcc_off_musl() {
 	assert prefs.ccompiler == ''
 }
 
+fn test_try_to_use_tcc_by_default_skips_tcc_for_prealloc() {
+	$if windows {
+		return
+	}
+	test_root := os.join_path(os.vtmp_dir(), 'v_pref_default_tcc_compiler_test')
+	prepare_test_tcc_binary(test_root, 'exit 0')
+	fake_vexe := os.join_path(test_root, 'v')
+	old_vexe := os.getenv('VEXE')
+	os.setenv('VEXE', fake_vexe, true)
+	defer {
+		if old_vexe == '' {
+			os.unsetenv('VEXE')
+		} else {
+			os.setenv('VEXE', old_vexe, true)
+		}
+		os.rmdir_all(test_root) or {}
+	}
+	mut prefs := Preferences{
+		prealloc: true
+	}
+	prefs.try_to_use_tcc_by_default()
+	assert prefs.ccompiler == ''
+}
+
 fn test_usable_system_tcc_compiler_prefers_termux_tcc_from_path() {
 	$if windows {
 		return
@@ -194,6 +218,67 @@ fn test_try_to_use_tcc_by_default_resolves_explicit_tcc_to_system_tcc_on_termux(
 	}
 	prefs.try_to_use_tcc_by_default()
 	assert prefs.ccompiler == system_tcc
+}
+
+fn test_windows_default_c_compiler_prefers_gcc_when_available() {
+	$if windows {
+		return
+	}
+	test_root := os.join_path(os.vtmp_dir(), 'v_pref_default_c_compiler_test')
+	prepare_test_tcc_binary(test_root, 'exit 0')
+	fake_gcc := prepare_test_executable(test_root, 'bin/gcc', 'exit 0')
+	old_path := os.getenv('PATH')
+	os.setenv('PATH', os.dir(fake_gcc), true)
+	defer {
+		os.setenv('PATH', old_path, true)
+		os.rmdir_all(test_root) or {}
+	}
+	assert windows_default_c_compiler(test_root) == 'gcc'
+}
+
+fn test_windows_default_c_compiler_falls_back_to_bundled_tcc_when_no_gcc() {
+	$if windows {
+		return
+	}
+	test_root := os.join_path(os.vtmp_dir(), 'v_pref_default_c_compiler_test')
+	tcc_path := prepare_test_tcc_binary(test_root, 'exit 0')
+	old_path := os.getenv('PATH')
+	os.setenv('PATH', os.join_path(test_root, 'no_such_path'), true)
+	defer {
+		os.setenv('PATH', old_path, true)
+		os.rmdir_all(test_root) or {}
+	}
+	assert windows_default_c_compiler(test_root) == tcc_path
+}
+
+fn test_windows_default_c_compiler_keeps_gcc_when_bundled_tcc_is_broken() {
+	$if windows {
+		return
+	}
+	test_root := os.join_path(os.vtmp_dir(), 'v_pref_default_c_compiler_test')
+	prepare_test_tcc_binary(test_root, 'exit 1')
+	old_path := os.getenv('PATH')
+	os.setenv('PATH', os.join_path(test_root, 'no_such_path'), true)
+	defer {
+		os.setenv('PATH', old_path, true)
+		os.rmdir_all(test_root) or {}
+	}
+	assert windows_default_c_compiler(test_root) == 'gcc'
+}
+
+fn test_windows_default_c_compiler_keeps_gcc_when_neither_is_available() {
+	$if windows {
+		return
+	}
+	test_root := os.join_path(os.vtmp_dir(), 'v_pref_default_c_compiler_test')
+	os.rmdir_all(test_root) or {}
+	old_path := os.getenv('PATH')
+	os.setenv('PATH', os.join_path(test_root, 'no_such_path'), true)
+	defer {
+		os.setenv('PATH', old_path, true)
+		os.rmdir_all(test_root) or {}
+	}
+	assert windows_default_c_compiler(test_root) == 'gcc'
 }
 
 fn prepare_test_executable(test_root string, relative_path string, exit_line string) string {

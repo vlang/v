@@ -777,6 +777,13 @@ fn (mut c Checker) comptime_for(mut node ast.ComptimeFor) {
 			typ = c.unwrap_generic(node.typ)
 		}
 	}
+	// When the resolved type is FieldData, the expression refers to a comptime
+	// field variable (e.g. `$for method in field.methods` where `field` comes
+	// from an outer `$for field in T.fields`). In that case use the actual field
+	// type from the outer comptime loop instead of the FieldData descriptor type.
+	if node.typ == c.field_data_type {
+		typ = c.comptime.comptime_for_field_type
+	}
 	sym := if node.typ != c.field_data_type {
 		c.table.final_sym(typ)
 	} else {
@@ -1631,12 +1638,32 @@ fn (mut c Checker) check_compatible_types(left_type ast.Type, left_name string, 
 			return resolved_left_type.has_flag(.option) == right_type.has_flag(.option)
 				&& c.table.does_type_implement_interface(resolved_left_type, right_type)
 		}
-		if right_sym.info is ast.FnType && c.comptime.comptime_for_method_var == left_name {
+		if right_sym.info is ast.FnType && c.comptime.comptime_for_method_var != ''
+			&& c.comptime.comptime_for_method != unsafe { nil }
+			&& c.comptime.comptime_for_method_var == left_name {
 			right_fn_type := right_sym.info as ast.FnType
 			return c.table.fn_signature(right_fn_type.func,
 				skip_receiver: true
 				type_only:     true
 			) == c.table.fn_signature(c.comptime.comptime_for_method,
+				skip_receiver: true
+				type_only:     true
+			)
+		}
+		left_unaliased_type := c.table.fully_unaliased_type(resolved_left_type)
+		right_unaliased_type := c.table.fully_unaliased_type(right_type)
+		left_unaliased_sym := c.table.sym(left_unaliased_type)
+		right_unaliased_sym := c.table.sym(right_unaliased_type)
+		if left_unaliased_sym.info is ast.FnType && right_unaliased_sym.info is ast.FnType {
+			same_flags := left_unaliased_type.nr_muls() == right_unaliased_type.nr_muls()
+				&& left_unaliased_type.has_flag(.option) == right_unaliased_type.has_flag(.option)
+				&& left_unaliased_type.has_flag(.result) == right_unaliased_type.has_flag(.result)
+				&& left_unaliased_type.has_flag(.shared_f) == right_unaliased_type.has_flag(.shared_f)
+				&& left_unaliased_type.has_flag(.atomic_f) == right_unaliased_type.has_flag(.atomic_f)
+			return same_flags && c.table.fn_signature(left_unaliased_sym.info.func,
+				skip_receiver: true
+				type_only:     true
+			) == c.table.fn_signature(right_unaliased_sym.info.func,
 				skip_receiver: true
 				type_only:     true
 			)

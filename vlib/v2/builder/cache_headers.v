@@ -68,7 +68,76 @@ const vlib_cached_module_names = [
 	'textscanner',
 ]
 
+const veb_cache_name = 'veb'
+
+const veb_cached_module_paths = [
+	'veb',
+	'fasthttp',
+	'io',
+	'net',
+	'net.http',
+	'net.http.chunked',
+	'net.conv',
+	'net.openssl',
+	'net.socks',
+	'net.ssl',
+	'net.urllib',
+	'compress',
+	'compress.gzip',
+	'compress.zlib',
+	'compress.zstd',
+	'hash.crc32',
+	'math.big',
+	'sync',
+	'sync.stdatomic',
+	'x.json2',
+	'runtime',
+	'arrays',
+	'encoding.html',
+]
+
+const veb_cached_module_names = [
+	'veb',
+	'fasthttp',
+	'io',
+	'net',
+	'http',
+	'chunked',
+	'conv',
+	'openssl',
+	'socks',
+	'ssl',
+	'urllib',
+	'compress',
+	'gzip',
+	'zlib',
+	'zstd',
+	'crc32',
+	'big',
+	'sync',
+	'stdatomic',
+	'json2',
+	'runtime',
+	'arrays',
+	'html',
+]
+
 const v2compiler_cache_name = 'v2compiler'
+
+const imports_cache_name = 'imports'
+
+const virtuals_cache_name = 'virtuals'
+
+struct CachedImportModule {
+	import_path string
+	module_name string
+}
+
+struct CachedVirtualModule {
+	name         string
+	header_name  string
+	source_files []string
+}
 
 const v2compiler_cached_module_paths = [
 	'v2.ast',
@@ -118,9 +187,9 @@ const v2compiler_cached_module_names = [
 	'types',
 ]
 
-const core_cache_format = 'cc8'
+const core_cache_format = 'cc15'
 
-const core_headers_format = 'vh48'
+const core_headers_format = 'vh49'
 
 const core_cache_compiler_dependency_dirs = [
 	'vlib/v2/abi',
@@ -147,11 +216,16 @@ const core_cache_compiler_dependency_dirs = [
 	'vlib/v2/util',
 ]
 
-const core_cache_compiler_dependency_file_paths = ['cmd/v2/v2.v']
+const core_cache_compiler_dependency_file_paths = ['cmd/v2/v2.v', 'vlib/net/openssl/openssl_compat.h']
 
 fn (b &Builder) core_cache_dir() string {
 	base := if b.pref.is_prod { 'v2_cleanc_obj_cache_prod' } else { 'v2_cleanc_obj_cache' }
-	return cache_path_join(os.temp_dir(), base)
+	root := if b.pref.vroot.len > 0 { b.pref.vroot } else { os.getwd() }
+	root_key := sanitize_cache_part(os.norm_path(os.abs_path(root)))
+	if root_key.len == 0 {
+		return cache_path_join(os.temp_dir(), base)
+	}
+	return cache_path_join(os.temp_dir(), '${base}_${root_key}')
 }
 
 fn (b &Builder) ensure_core_cache_dir() bool {
@@ -180,6 +254,22 @@ fn (b &Builder) core_headers_stamp_path() string {
 	return cache_path_join(b.core_cache_dir(), 'cached_modules.vh.stamp')
 }
 
+fn (b &Builder) imports_headers_stamp_path() string {
+	return cache_path_join(b.core_cache_dir(), '${imports_cache_name}.vh.stamp')
+}
+
+fn (b &Builder) imports_manifest_path() string {
+	return cache_path_join(b.core_cache_dir(), '${imports_cache_name}.manifest')
+}
+
+fn (b &Builder) virtuals_headers_stamp_path() string {
+	return cache_path_join(b.core_cache_dir(), '${virtuals_cache_name}.vh.stamp')
+}
+
+fn (b &Builder) virtuals_manifest_path() string {
+	return cache_path_join(b.core_cache_dir(), '${virtuals_cache_name}.manifest')
+}
+
 fn (b &Builder) core_header_path(module_name string) string {
 	return cache_path_join(b.core_cache_dir(), '${module_name}.vh')
 }
@@ -198,6 +288,30 @@ fn (b &Builder) core_header_paths() []string {
 		paths << b.core_header_path(module_name)
 	}
 	return paths
+}
+
+fn (b &Builder) cached_header_paths() []string {
+	mut paths := b.core_header_paths()
+	for module_name in veb_cached_module_names {
+		paths << b.core_header_path(module_name)
+	}
+	return paths
+}
+
+fn cached_header_module_paths() []string {
+	mut paths := core_cached_module_paths.clone()
+	for module_path in veb_cached_module_paths {
+		paths << module_path
+	}
+	return paths
+}
+
+fn cached_header_module_names() []string {
+	mut names := core_cached_module_names.clone()
+	for module_name in veb_cached_module_names {
+		names << module_name
+	}
+	return names
 }
 
 fn (b &Builder) core_cached_parse_paths() []string {
@@ -230,10 +344,31 @@ fn (b &Builder) use_builtin_header_for_parse() bool {
 fn (b &Builder) module_source_files(modules []string) []string {
 	mut files_set := map[string]bool{}
 	for module_name in modules {
-		module_path := b.pref.get_vlib_module_path(module_name)
-		module_files := get_v_files_from_dir(module_path, b.pref.user_defines,
-			b.pref.get_effective_os())
+		module_files := b.source_files_for_module_name(module_name)
 		for file in module_files {
+			files_set[file] = true
+		}
+	}
+	mut files := files_set.keys()
+	files.sort()
+	return files
+}
+
+fn (b &Builder) source_files_for_module_name(module_name string) []string {
+	mut files_set := map[string]bool{}
+	for file in b.files {
+		if ast_file_module_name(file) != module_name {
+			continue
+		}
+		if file.name == '' || file.name.ends_with('.vh') {
+			continue
+		}
+		files_set[file.name] = true
+	}
+	if files_set.len == 0 {
+		module_path := b.module_name_to_path(module_name)
+		module_dir := b.pref.get_vlib_module_path(module_path)
+		for file in get_v_files_from_dir(module_dir, b.pref.user_defines, os.user_os()) {
 			files_set[file] = true
 		}
 	}
@@ -250,7 +385,7 @@ fn (b &Builder) core_cache_compiler_dependency_files() []string {
 		if !os.is_dir(dir) {
 			continue
 		}
-		for file in get_v_files_from_dir(dir, b.pref.user_defines, b.pref.get_effective_os()) {
+		for file in get_v_files_from_dir(dir, b.pref.user_defines, os.user_os()) {
 			files_set[os.norm_path(file)] = true
 		}
 	}
@@ -265,7 +400,209 @@ fn (b &Builder) core_cache_compiler_dependency_files() []string {
 	return files
 }
 
-fn (b &Builder) cache_stamp_for_modules(cache_name string, modules []string, cc string, cc_flags string) string {
+fn (b &Builder) user_entry_stamp_files() []string {
+	mut files_set := map[string]bool{}
+	user_defines := if b.pref != unsafe { nil } { b.pref.user_defines } else { []string{} }
+	for file in b.user_files {
+		if os.is_dir(file) {
+			mut found_parsed_files := false
+			for parsed_file in b.files {
+				if parsed_file.name == '' || parsed_file.name.ends_with('.vh') {
+					continue
+				}
+				relative_path_under_root(file, parsed_file.name) or { continue }
+				files_set[os.norm_path(parsed_file.name)] = true
+				found_parsed_files = true
+			}
+			if found_parsed_files {
+				continue
+			}
+			for source_file in get_user_v_files_from_dir(file, user_defines, os.user_os()) {
+				if source_file == '' || source_file.ends_with('.vh') {
+					continue
+				}
+				files_set[os.norm_path(source_file)] = true
+			}
+			continue
+		}
+		files_set[os.norm_path(file)] = true
+	}
+	mut files := files_set.keys()
+	files.sort()
+	return files
+}
+
+fn sanitize_cache_part(name string) string {
+	mut out := []u8{cap: name.len}
+	for ch in name {
+		if (ch >= `a` && ch <= `z`) || (ch >= `A` && ch <= `Z`)
+			|| (ch >= `0` && ch <= `9`) || ch == `_` {
+			out << u8(ch)
+		} else {
+			out << `_`
+		}
+	}
+	res := out.bytestr().trim('_')
+	if res == '' {
+		return 'unnamed'
+	}
+	return res
+}
+
+fn virtual_header_name(name string) string {
+	return 'main_${sanitize_cache_part(name)}'
+}
+
+fn (b &Builder) virtual_module_root() string {
+	for file in b.user_files {
+		if file != '' && os.is_dir(file) {
+			return os.norm_path(os.abs_path(file))
+		}
+	}
+	if b.user_files.len > 0 && b.user_files[0] != '' {
+		return os.norm_path(os.abs_path(os.dir(b.user_files[0])))
+	}
+	return os.norm_path(os.getwd())
+}
+
+fn relative_path_under_root(root string, file string) ?string {
+	if root == '' || file == '' {
+		return none
+	}
+	root_norm := os.norm_path(os.abs_path(root)).replace('\\', '/').trim_right('/')
+	file_norm := os.norm_path(os.abs_path(file)).replace('\\', '/')
+	if file_norm == root_norm {
+		return ''
+	}
+	prefix := root_norm + '/'
+	if !file_norm.starts_with(prefix) {
+		return none
+	}
+	return file_norm[prefix.len..]
+}
+
+fn (b &Builder) virtual_main_group_for_path(file string) ?string {
+	rel := relative_path_under_root(b.virtual_module_root(), file) or { return none }
+	if rel == '' || !rel.contains('/') {
+		return none
+	}
+	group := rel.all_before('/')
+	if group == '' || group.starts_with('.') {
+		return none
+	}
+	return group
+}
+
+fn (b &Builder) collect_virtual_main_modules() []CachedVirtualModule {
+	mut grouped := map[string][]string{}
+	for file in b.files {
+		if file.name == '' || file.name.ends_with('.vh') || ast_file_module_name(file) != 'main' {
+			continue
+		}
+		group := b.virtual_main_group_for_path(file.name) or { continue }
+		mut files := grouped[group] or { []string{} }
+		files << file.name
+		grouped[group] = files
+	}
+	return cached_virtual_modules_from_grouped_files(grouped)
+}
+
+fn (b &Builder) collect_virtual_main_modules_from_paths(paths []string) []CachedVirtualModule {
+	mut grouped := map[string][]string{}
+	for path in paths {
+		if path == '' || path.ends_with('.vh') || !os.exists(path) {
+			continue
+		}
+		if file_module_name(path) or { '' } != 'main' {
+			continue
+		}
+		group := b.virtual_main_group_for_path(path) or { continue }
+		mut files := grouped[group] or { []string{} }
+		files << path
+		grouped[group] = files
+	}
+	return cached_virtual_modules_from_grouped_files(grouped)
+}
+
+fn cached_virtual_modules_from_grouped_files(grouped map[string][]string) []CachedVirtualModule {
+	mut groups := []CachedVirtualModule{cap: grouped.len}
+	mut names := grouped.keys()
+	names.sort()
+	for name in names {
+		mut files := grouped[name].clone()
+		files.sort()
+		groups << CachedVirtualModule{
+			name:         name
+			header_name:  virtual_header_name(name)
+			source_files: files
+		}
+	}
+	return groups
+}
+
+fn virtual_module_source_files(groups []CachedVirtualModule) []string {
+	mut files := []string{}
+	mut seen := map[string]bool{}
+	for group in groups {
+		for file in group.source_files {
+			norm_file := os.norm_path(file)
+			if norm_file in seen {
+				continue
+			}
+			seen[norm_file] = true
+			files << file
+		}
+	}
+	files.sort()
+	return files
+}
+
+fn virtual_module_names(groups []CachedVirtualModule) []string {
+	mut names := []string{cap: groups.len}
+	for group in groups {
+		names << group.name
+	}
+	return names
+}
+
+fn filter_out_source_files(files []string, excluded []string) []string {
+	mut excluded_set := map[string]bool{}
+	for file in excluded {
+		excluded_set[os.norm_path(file)] = true
+		excluded_set[os.norm_path(os.abs_path(file))] = true
+	}
+	mut out := []string{cap: files.len}
+	for file in files {
+		if source_file_in_set(file, excluded_set) {
+			continue
+		}
+		out << file
+	}
+	return out
+}
+
+fn source_file_in_set(file string, file_set map[string]bool) bool {
+	norm_file := os.norm_path(file)
+	abs_file := os.norm_path(os.abs_path(file))
+	if norm_file in file_set || abs_file in file_set {
+		return true
+	}
+	for excluded, _ in file_set {
+		trimmed := excluded.trim_left('./')
+		if trimmed == '' {
+			continue
+		}
+		if norm_file == trimmed || abs_file == trimmed {
+			return true
+		}
+		if norm_file.ends_with('/${trimmed}') || abs_file.ends_with('/${trimmed}') {
+			return true
+		}
+	}
+	return false
+}
+
+fn (b &Builder) cache_stamp_for_modules(cache_name string, modules []string, cc string, cc_flags string, cc_link_flags string, use_markused bool) string {
 	source_files := b.module_source_files(modules)
 	compiler_files := b.core_cache_compiler_dependency_files()
 	mut lines := []string{cap: source_files.len + compiler_files.len + 10}
@@ -273,12 +610,14 @@ fn (b &Builder) cache_stamp_for_modules(cache_name string, modules []string, cc 
 	lines << 'format=${core_cache_format}'
 	lines << 'cc=${cc}'
 	lines << 'cc_flags=${cc_flags}'
+	lines << 'cc_link_flags=${cc_link_flags}'
+	lines << 'use_markused=${use_markused}'
 	lines << 'context_alloc=${b.pref.use_context_allocator}'
 	// Include user entry files in cache stamp: the transformer injects
 	// helper functions (str, eq, sort comparators) into builtin module AST
 	// based on types from the user's source file. Different source files
 	// produce different generated functions, so the cache must invalidate.
-	for file in b.user_files {
+	for file in b.user_entry_stamp_files() {
 		lines << 'entry:${file}:${os.file_last_mod_unix(file)}'
 	}
 	for file in source_files {
@@ -305,8 +644,12 @@ fn (b &Builder) core_cache_context_stamp() string {
 fn (b &Builder) header_stamp_for_modules(modules []string) string {
 	source_files := b.module_source_files(modules)
 	compiler_files := b.core_cache_compiler_dependency_files()
-	mut lines := []string{cap: source_files.len + compiler_files.len + 4}
+	entry_files := b.user_entry_stamp_files()
+	mut lines := []string{cap: source_files.len + compiler_files.len + entry_files.len + 4}
 	lines << 'format=${core_headers_format}'
+	for file in entry_files {
+		lines << 'entry:${file}:${os.file_last_mod_unix(file)}'
+	}
 	for file in source_files {
 		lines << '${file}:${os.file_last_mod_unix(file)}'
 	}
@@ -314,6 +657,141 @@ fn (b &Builder) header_stamp_for_modules(modules []string) string {
 		lines << '${file}:${os.file_last_mod_unix(file)}'
 	}
 	return lines.join('\n')
+}
+
+fn (b &Builder) cache_dependency_stamp_lines(cache_names []string) []string {
+	mut lines := []string{cap: cache_names.len}
+	for cache_name in cache_names {
+		stamp_path := cache_path_join(b.core_cache_dir(), '${cache_name}.stamp')
+		if !os.exists(stamp_path) {
+			continue
+		}
+		lines << 'dependency:${cache_name}:${os.file_last_mod_unix(stamp_path)}'
+	}
+	return lines
+}
+
+fn (b &Builder) cache_stamp_for_parsed_modules(cache_name string, module_names []string, dependency_cache_names []string, cc string, cc_flags string, cc_link_flags string, use_markused bool) string {
+	source_files := b.module_source_files(module_names)
+	compiler_files := b.core_cache_compiler_dependency_files()
+	dependency_lines := b.cache_dependency_stamp_lines(dependency_cache_names)
+	mut lines := []string{cap: source_files.len + compiler_files.len + module_names.len +
+		dependency_lines.len + 10}
+	lines << 'cache=${cache_name}'
+	lines << 'format=${core_cache_format}'
+	lines << 'cc=${cc}'
+	lines << 'cc_flags=${cc_flags}'
+	lines << 'cc_link_flags=${cc_link_flags}'
+	lines << 'use_markused=${use_markused}'
+	lines << 'context_alloc=${b.pref.use_context_allocator}'
+	for module_name in module_names {
+		lines << 'module:${module_name}'
+	}
+	lines << dependency_lines
+	for file in b.user_entry_stamp_files() {
+		lines << 'entry:${file}:${os.file_last_mod_unix(file)}'
+	}
+	for file in source_files {
+		lines << 'source:${file}:${os.file_last_mod_unix(file)}'
+	}
+	for file in compiler_files {
+		lines << 'compiler:${file}:${os.file_last_mod_unix(file)}'
+	}
+	return lines.join('\n')
+}
+
+fn (b &Builder) cache_stamp_for_virtual_modules(groups []CachedVirtualModule, dependency_cache_names []string, cc string, cc_flags string, cc_link_flags string, use_markused bool) string {
+	source_files := virtual_module_source_files(groups)
+	compiler_files := b.core_cache_compiler_dependency_files()
+	dependency_lines := b.cache_dependency_stamp_lines(dependency_cache_names)
+	mut lines := []string{cap: source_files.len + compiler_files.len + groups.len +
+		dependency_lines.len + 10}
+	lines << 'cache=${virtuals_cache_name}'
+	lines << 'format=${core_cache_format}'
+	lines << 'cc=${cc}'
+	lines << 'cc_flags=${cc_flags}'
+	lines << 'cc_link_flags=${cc_link_flags}'
+	lines << 'use_markused=${use_markused}'
+	lines << 'context_alloc=${b.pref.use_context_allocator}'
+	for group in groups {
+		lines << 'virtual:${group.name}:${group.header_name}'
+	}
+	lines << dependency_lines
+	for file in b.user_entry_stamp_files() {
+		lines << 'entry:${file}:${os.file_last_mod_unix(file)}'
+	}
+	for file in source_files {
+		lines << 'source:${file}:${os.file_last_mod_unix(file)}'
+	}
+	for file in compiler_files {
+		lines << 'compiler:${file}:${os.file_last_mod_unix(file)}'
+	}
+	return lines.join('\n')
+}
+
+fn (b &Builder) imports_header_stamp_for_modules(imports []CachedImportModule, module_names []string) string {
+	source_files := b.module_source_files(module_names)
+	compiler_files := b.core_cache_compiler_dependency_files()
+	mut lines := []string{cap: source_files.len + compiler_files.len + imports.len + 6}
+	lines << 'cache=${imports_cache_name}'
+	lines << 'format=${core_headers_format}'
+	for import_mod in imports {
+		lines << 'import:${import_mod.import_path}:${import_mod.module_name}'
+	}
+	for file in b.user_entry_stamp_files() {
+		lines << 'entry:${file}:${os.file_last_mod_unix(file)}'
+	}
+	for file in source_files {
+		lines << 'source:${file}:${os.file_last_mod_unix(file)}'
+	}
+	for file in compiler_files {
+		lines << 'compiler:${file}:${os.file_last_mod_unix(file)}'
+	}
+	return lines.join('\n')
+}
+
+fn (b &Builder) virtuals_header_stamp_for_modules(groups []CachedVirtualModule) string {
+	source_files := virtual_module_source_files(groups)
+	compiler_files := b.core_cache_compiler_dependency_files()
+	mut lines := []string{cap: source_files.len + compiler_files.len + groups.len + 6}
+	lines << 'cache=${virtuals_cache_name}'
+	lines << 'format=${core_headers_format}'
+	for group in groups {
+		lines << 'virtual:${group.name}:${group.header_name}'
+	}
+	for file in b.user_entry_stamp_files() {
+		lines << 'entry:${file}:${os.file_last_mod_unix(file)}'
+	}
+	for file in source_files {
+		lines << 'source:${file}:${os.file_last_mod_unix(file)}'
+	}
+	for file in compiler_files {
+		lines << 'compiler:${file}:${os.file_last_mod_unix(file)}'
+	}
+	return lines.join('\n')
+}
+
+fn stamp_file_lines_are_fresh(stamp string) bool {
+	for line in stamp.split_into_lines() {
+		if !(line.starts_with('entry:') || line.starts_with('source:')
+			|| line.starts_with('compiler:')) {
+			continue
+		}
+		colon_idx := line.last_index(':') or { return false }
+		path_idx := line.index(':') or { return false }
+		if colon_idx <= path_idx {
+			return false
+		}
+		file := line[path_idx + 1..colon_idx]
+		expected_mtime := line[colon_idx + 1..]
+		if !os.exists(file) {
+			return false
+		}
+		if '${os.file_last_mod_unix(file)}' != expected_mtime {
+			return false
+		}
+	}
+	return true
 }
 
 // can_use_cached_core_headers_for_parse checks whether .vh header files
@@ -326,16 +804,19 @@ fn (b &Builder) can_use_cached_core_headers_for_parse() bool {
 	if b.pref.no_cache || b.pref.skip_builtin {
 		return false
 	}
+	if b.pref.backend != .cleanc {
+		return false
+	}
 	if !b.ensure_core_cache_dir() {
 		return false
 	}
 	// Validate .vh header stamp (no cc/cc_flags — only source + compiler timestamps).
-	expected_header_stamp := b.header_stamp_for_modules(core_cached_module_paths)
+	expected_header_stamp := b.header_stamp_for_modules(cached_header_module_paths())
 	current_header_stamp := os.read_file(b.core_headers_stamp_path()) or { return false }
 	if current_header_stamp != expected_header_stamp {
 		return false
 	}
-	for header_path in b.core_header_paths() {
+	for header_path in b.cached_header_paths() {
 		if !os.exists(header_path) {
 			return false
 		}
@@ -343,7 +824,177 @@ fn (b &Builder) can_use_cached_core_headers_for_parse() bool {
 			return false
 		}
 	}
+	for cache_name in [builtin_cache_name, vlib_cache_name] {
+		if !os.exists(cache_path_join(b.core_cache_dir(), '${cache_name}.o'))
+			|| !os.exists(cache_path_join(b.core_cache_dir(), '${cache_name}.stamp')) {
+			return false
+		}
+	}
 	return true
+}
+
+fn (b &Builder) cached_import_manifest() []CachedImportModule {
+	manifest := os.read_file(b.imports_manifest_path()) or { return []CachedImportModule{} }
+	mut imports := []CachedImportModule{}
+	for line in manifest.split_into_lines() {
+		if !line.starts_with('import:') {
+			continue
+		}
+		rest := line['import:'.len..]
+		sep_idx := rest.last_index(':') or { continue }
+		import_path := rest[..sep_idx]
+		module_name := rest[sep_idx + 1..]
+		if import_path.len == 0 || module_name.len == 0 {
+			continue
+		}
+		imports << CachedImportModule{
+			import_path: import_path
+			module_name: module_name
+		}
+	}
+	return imports
+}
+
+fn (b &Builder) cached_virtual_manifest() []CachedVirtualModule {
+	manifest := os.read_file(b.virtuals_manifest_path()) or { return []CachedVirtualModule{} }
+	mut header_by_group := map[string]string{}
+	mut files_by_group := map[string][]string{}
+	for line in manifest.split_into_lines() {
+		if line.starts_with('virtual:') {
+			rest := line['virtual:'.len..]
+			sep_idx := rest.last_index(':') or { continue }
+			name := rest[..sep_idx]
+			header_name := rest[sep_idx + 1..]
+			if name == '' || header_name == '' {
+				continue
+			}
+			header_by_group[name] = header_name
+			continue
+		}
+		if line.starts_with('source:') {
+			rest := line['source:'.len..]
+			sep_idx := rest.index(':') or { continue }
+			name := rest[..sep_idx]
+			source_file := rest[sep_idx + 1..]
+			if name == '' || source_file == '' {
+				continue
+			}
+			mut files := files_by_group[name] or { []string{} }
+			files << source_file
+			files_by_group[name] = files
+		}
+	}
+	mut groups := []CachedVirtualModule{cap: header_by_group.len}
+	mut names := header_by_group.keys()
+	names.sort()
+	for name in names {
+		mut files := files_by_group[name] or { []string{} }
+		files.sort()
+		if files.len == 0 {
+			continue
+		}
+		groups << CachedVirtualModule{
+			name:         name
+			header_name:  header_by_group[name]
+			source_files: files
+		}
+	}
+	return groups
+}
+
+fn (b &Builder) can_use_cached_import_headers_for_parse() bool {
+	// Import header reuse is only safe when the cached manifest covers the full
+	// transitive import set. The parser currently discovers imports incrementally,
+	// so a partial manifest can mix cached .vh files with fresh source modules and
+	// leave the combined imports object stale.
+	return false
+}
+
+fn (b &Builder) can_use_cached_virtual_headers_for_parse(groups []CachedVirtualModule) bool {
+	if groups.len == 0 || b.pref.no_cache || b.pref.skip_builtin {
+		return false
+	}
+	if !b.ensure_core_cache_dir() {
+		return false
+	}
+	if !os.exists(cache_path_join(b.core_cache_dir(), '${virtuals_cache_name}.o'))
+		|| !os.exists(cache_path_join(b.core_cache_dir(), '${virtuals_cache_name}.stamp')) {
+		return false
+	}
+	expected_stamp := b.virtuals_header_stamp_for_modules(groups)
+	current_stamp := os.read_file(b.virtuals_headers_stamp_path()) or { return false }
+	if current_stamp != expected_stamp || !stamp_file_lines_are_fresh(current_stamp) {
+		return false
+	}
+	manifest_groups := b.cached_virtual_manifest()
+	if manifest_groups.len != groups.len {
+		return false
+	}
+	for group in groups {
+		header_path := b.core_header_path(group.header_name)
+		if !os.exists(header_path) || os.file_size(header_path) == 0 {
+			return false
+		}
+	}
+	return true
+}
+
+fn (b &Builder) replace_virtual_sources_with_headers(files []string, groups []CachedVirtualModule) []string {
+	if groups.len == 0 {
+		return files
+	}
+	mut source_to_group := map[string]CachedVirtualModule{}
+	for group in groups {
+		for file in group.source_files {
+			source_to_group[os.norm_path(os.abs_path(file))] = group
+		}
+	}
+	mut added_headers := map[string]bool{}
+	mut out := []string{cap: files.len}
+	for file in files {
+		norm_file := os.norm_path(os.abs_path(file))
+		if group := source_to_group[norm_file] {
+			if group.header_name !in added_headers {
+				out << b.core_header_path(group.header_name)
+				added_headers[group.header_name] = true
+			}
+			continue
+		}
+		out << file
+	}
+	return out
+}
+
+fn (b &Builder) cached_import_parse_path(module_path string) ?string {
+	if b.can_use_cached_import_headers_for_parse() {
+		for import_mod in b.cached_import_manifest() {
+			if import_mod.import_path != module_path {
+				continue
+			}
+			header_path := b.core_header_path(import_mod.module_name)
+			if !os.exists(header_path) || os.file_size(header_path) == 0 {
+				return none
+			}
+			return header_path
+		}
+	}
+	for i, cached_module_path in veb_cached_module_paths {
+		if module_path != cached_module_path {
+			continue
+		}
+		if !b.can_use_cached_module_bundle_for_parse(veb_cache_name, true) {
+			return none
+		}
+		if i >= veb_cached_module_names.len {
+			return none
+		}
+		header_path := b.core_header_path(veb_cached_module_names[i])
+		if !os.exists(header_path) || os.file_size(header_path) == 0 {
+			return none
+		}
+		return header_path
+	}
+	return none
 }
 
 fn (b &Builder) can_use_cached_core_headers() bool {
@@ -356,19 +1007,19 @@ fn (b &Builder) can_use_cached_core_headers() bool {
 	cc := configured_cc(b.pref.vroot)
 	cc_flags := configured_cflags()
 	if !b.can_use_cached_module_bundle(builtin_cache_name, builtin_cached_module_paths, cc,
-		cc_flags) {
+		cc_flags, '', false) {
 		return false
 	}
 	if vlib_cached_module_paths.len > 0
-		&& !b.can_use_cached_module_bundle(vlib_cache_name, vlib_cached_module_paths, cc, cc_flags) {
+		&& !b.can_use_cached_module_bundle(vlib_cache_name, vlib_cached_module_paths, cc, cc_flags, '', false) {
 		return false
 	}
-	expected_header_stamp := b.header_stamp_for_modules(core_cached_module_paths)
+	expected_header_stamp := b.header_stamp_for_modules(cached_header_module_paths())
 	current_header_stamp := os.read_file(b.core_headers_stamp_path()) or { return false }
 	if current_header_stamp != expected_header_stamp {
 		return false
 	}
-	for header_path in b.core_header_paths() {
+	for header_path in b.cached_header_paths() {
 		if !os.exists(header_path) {
 			return false
 		}
@@ -382,7 +1033,7 @@ fn (b &Builder) can_use_cached_core_headers() bool {
 	return true
 }
 
-fn (b &Builder) can_use_cached_module_bundle(cache_name string, module_paths []string, cc string, cc_flags string) bool {
+fn (b &Builder) can_use_cached_module_bundle(cache_name string, module_paths []string, cc string, cc_flags string, cc_link_flags string, use_markused bool) bool {
 	if !b.ensure_core_cache_dir() {
 		return false
 	}
@@ -393,18 +1044,34 @@ fn (b &Builder) can_use_cached_module_bundle(cache_name string, module_paths []s
 	if !os.exists(obj_path) || !os.exists(stamp_path) {
 		return false
 	}
-	expected_cache_stamp := b.cache_stamp_for_modules(cache_name, module_paths, cc, cc_flags)
+	expected_cache_stamp := b.cache_stamp_for_modules(cache_name, module_paths, cc, cc_flags,
+		cc_link_flags, use_markused)
 	current_cache_stamp := os.read_file(stamp_path) or { return false }
 	return current_cache_stamp == expected_cache_stamp
+}
+
+fn (b &Builder) can_use_cached_module_bundle_for_parse(cache_name string, use_markused bool) bool {
+	if !b.ensure_core_cache_dir() {
+		return false
+	}
+	obj_path := cache_path_join(b.core_cache_dir(), '${cache_name}.o')
+	stamp_path := cache_path_join(b.core_cache_dir(), '${cache_name}.stamp')
+	if !os.exists(obj_path) || !os.exists(stamp_path) {
+		return false
+	}
+	stamp := os.read_file(stamp_path) or { return false }
+	return stamp.contains('cache=${cache_name}\n')
+		&& stamp.contains('format=${core_cache_format}\n')
+		&& stamp.contains('use_markused=${use_markused}\n')
 }
 
 fn (mut b Builder) ensure_core_module_headers() {
 	if !b.ensure_core_cache_dir() {
 		return
 	}
-	expected_stamp := b.header_stamp_for_modules(core_cached_module_paths)
+	expected_stamp := b.header_stamp_for_modules(cached_header_module_paths())
 	mut has_headers := true
-	for header_path in b.core_header_paths() {
+	for header_path in b.cached_header_paths() {
 		if !os.exists(header_path) {
 			has_headers = false
 			break
@@ -420,13 +1087,15 @@ fn (mut b Builder) ensure_core_module_headers() {
 	if !needs_regen {
 		return
 	}
-	header_source_files := b.parse_module_source_files_for_headers(core_cached_module_paths)
-	source_fn_returns := b.source_fn_return_types(core_cached_module_paths)
-	for module_name in core_cached_module_names {
+	header_modules := cached_header_module_paths()
+	header_source_files := b.parse_module_source_files_for_headers(header_modules)
+	source_fn_returns := b.source_fn_return_types(header_modules)
+	for module_name in cached_header_module_names() {
 		header_ast := b.build_module_header_ast(header_source_files, module_name) or { return }
 		mut gen := v.new_gen(b.pref)
 		gen.gen(header_ast)
 		mut header_source := sanitize_header_source(gen.output_string(), source_fn_returns)
+		header_source = repair_interface_method_fn_syntax(header_source)
 		source_fn_decls := b.source_fn_decls_for_module(module_name)
 		header_source = merge_missing_source_fn_decls(header_source, source_fn_decls)
 		source_struct_fields := b.source_struct_field_types_for_module(module_name)
@@ -435,7 +1104,7 @@ fn (mut b Builder) ensure_core_module_headers() {
 			// Empty header would cause missing symbols in split compilation.
 			// Remove any partial headers already written and skip stamp update
 			// so the next build retries generation.
-			for cleanup_name in core_cached_module_names {
+			for cleanup_name in cached_header_module_names() {
 				os.rm(b.core_header_path(cleanup_name)) or {}
 			}
 			os.rm(b.core_headers_stamp_path()) or {}
@@ -449,18 +1118,165 @@ fn (mut b Builder) ensure_core_module_headers() {
 	os.write_file(b.core_headers_stamp_path(), expected_stamp) or {}
 }
 
+fn (mut b Builder) ensure_import_module_headers(module_names []string) {
+	if module_names.len == 0 || !b.ensure_core_cache_dir() {
+		return
+	}
+	imports := b.import_modules_for_cached_modules(module_names)
+	if imports.len == 0 {
+		return
+	}
+	expected_stamp := b.imports_header_stamp_for_modules(imports, module_names)
+	mut has_headers := true
+	for module_name in module_names {
+		header_path := b.core_header_path(module_name)
+		if !os.exists(header_path) || os.file_size(header_path) == 0 {
+			has_headers = false
+			break
+		}
+	}
+	if has_headers {
+		current_stamp := os.read_file(b.imports_headers_stamp_path()) or { '' }
+		if current_stamp == expected_stamp {
+			return
+		}
+	}
+	if b.used_import_vh_for_parse {
+		return
+	}
+	header_source_files := b.parse_module_source_files_for_headers(module_names)
+	source_fn_returns := b.source_fn_return_types(module_names)
+	for module_name in module_names {
+		header_ast := b.build_module_header_ast(header_source_files, module_name) or { return }
+		mut gen := v.new_gen(b.pref)
+		gen.gen(header_ast)
+		mut header_source := sanitize_header_source(gen.output_string(), source_fn_returns)
+		header_source = repair_interface_method_fn_syntax(header_source)
+		source_fn_decls := b.source_fn_decls_for_module(module_name)
+		header_source = merge_missing_source_fn_decls(header_source, source_fn_decls)
+		source_struct_fields := b.source_struct_field_types_for_module(module_name)
+		header_source = repair_missing_struct_field_types(header_source, source_struct_fields)
+		if header_source.len == 0 {
+			for cleanup_name in module_names {
+				os.rm(b.core_header_path(cleanup_name)) or {}
+			}
+			os.rm(b.imports_headers_stamp_path()) or {}
+			os.rm(b.imports_manifest_path()) or {}
+			return
+		}
+		if !header_source.ends_with('\n') {
+			header_source += '\n'
+		}
+		os.write_file(b.core_header_path(module_name), header_source) or { return }
+	}
+	mut manifest_lines := []string{cap: imports.len}
+	for import_mod in imports {
+		manifest_lines << 'import:${import_mod.import_path}:${import_mod.module_name}'
+	}
+	os.write_file(b.imports_manifest_path(), manifest_lines.join('\n')) or { return }
+	os.write_file(b.imports_headers_stamp_path(), expected_stamp) or {}
+}
+
+fn (mut b Builder) ensure_virtual_module_headers(groups []CachedVirtualModule) {
+	if groups.len == 0 || !b.ensure_core_cache_dir() {
+		return
+	}
+	expected_stamp := b.virtuals_header_stamp_for_modules(groups)
+	mut has_headers := true
+	for group in groups {
+		header_path := b.core_header_path(group.header_name)
+		if !os.exists(header_path) || os.file_size(header_path) == 0 {
+			has_headers = false
+			break
+		}
+	}
+	if has_headers {
+		current_stamp := os.read_file(b.virtuals_headers_stamp_path()) or { '' }
+		if current_stamp == expected_stamp {
+			return
+		}
+	}
+	if b.used_virtual_vh_for_parse {
+		return
+	}
+	source_files := virtual_module_source_files(groups)
+	header_source_files := b.parse_source_files_for_headers(source_files)
+	source_fn_returns := b.source_fn_return_types_for_files(source_files)
+	for group in groups {
+		header_ast := b.build_virtual_module_header_ast(header_source_files, group) or { return }
+		mut gen := v.new_gen(b.pref)
+		gen.gen(header_ast)
+		mut header_source := sanitize_header_source(gen.output_string(), source_fn_returns)
+		header_source = repair_interface_method_fn_syntax(header_source)
+		source_fn_decls := b.source_fn_decls_for_files(group.source_files)
+		header_source = merge_missing_source_fn_decls(header_source, source_fn_decls)
+		source_struct_fields := b.source_struct_field_types_for_files(group.source_files)
+		header_source = repair_missing_struct_field_types(header_source, source_struct_fields)
+		if header_source.len == 0 {
+			for cleanup_group in groups {
+				os.rm(b.core_header_path(cleanup_group.header_name)) or {}
+			}
+			os.rm(b.virtuals_headers_stamp_path()) or {}
+			os.rm(b.virtuals_manifest_path()) or {}
+			return
+		}
+		if !header_source.ends_with('\n') {
+			header_source += '\n'
+		}
+		os.write_file(b.core_header_path(group.header_name), header_source) or { return }
+	}
+	mut manifest_lines := []string{}
+	for group in groups {
+		manifest_lines << 'virtual:${group.name}:${group.header_name}'
+		for file in group.source_files {
+			manifest_lines << 'source:${group.name}:${file}'
+		}
+	}
+	os.write_file(b.virtuals_manifest_path(), manifest_lines.join('\n')) or { return }
+	os.write_file(b.virtuals_headers_stamp_path(), expected_stamp) or {}
+}
+
+fn (b &Builder) import_modules_for_cached_modules(module_names []string) []CachedImportModule {
+	mut module_set := map[string]bool{}
+	for module_name in module_names {
+		module_set[module_name] = true
+	}
+	mut import_set := map[string]bool{}
+	mut imports := []CachedImportModule{}
+	for file in b.files {
+		for import_stmt in active_file_imports(file, b.pref.user_defines, os.user_os()) {
+			module_name := import_stmt.name.all_after_last('.')
+			if module_name !in module_set {
+				continue
+			}
+			key := '${import_stmt.name}:${module_name}'
+			if key in import_set {
+				continue
+			}
+			import_set[key] = true
+			imports << CachedImportModule{
+				import_path: import_stmt.name
+				module_name: module_name
+			}
+		}
+	}
+	imports.sort(a.import_path < b.import_path)
+	return imports
+}
+
 fn (b &Builder) source_fn_return_types(modules []string) map[string]string {
+	return b.source_fn_return_types_for_files(b.module_source_files(modules))
+}
+
+fn (b &Builder) source_fn_return_types_for_files(files []string) map[string]string {
 	mut fn_returns := map[string]string{}
-	for module_name in modules {
-		module_dir := b.pref.get_vlib_module_path(module_name)
-		for file in get_v_files_from_dir(module_dir, b.pref.user_defines, b.pref.get_effective_os()) {
-			lines := os.read_lines(file) or { continue }
-			for raw_line in lines {
-				line := raw_line.trim_space()
-				info := parse_fn_signature_and_return(line) or { continue }
-				if info.return_type.len > 0 {
-					fn_returns[info.signature] = info.return_type
-				}
+	for file in files {
+		lines := os.read_lines(file) or { continue }
+		for raw_line in lines {
+			line := raw_line.trim_space()
+			info := parse_fn_signature_and_return(line) or { continue }
+			if info.return_type.len > 0 {
+				fn_returns[info.signature] = info.return_type
 			}
 		}
 	}
@@ -468,10 +1284,12 @@ fn (b &Builder) source_fn_return_types(modules []string) map[string]string {
 }
 
 fn (b &Builder) source_fn_decls_for_module(module_name string) map[string]string {
-	module_path := b.module_name_to_path(module_name)
-	module_dir := b.pref.get_vlib_module_path(module_path)
+	return b.source_fn_decls_for_files(b.source_files_for_module_name(module_name))
+}
+
+fn (b &Builder) source_fn_decls_for_files(files []string) map[string]string {
 	mut decls := map[string]string{}
-	for file in get_v_files_from_dir(module_dir, b.pref.user_defines, b.pref.get_effective_os()) {
+	for file in files {
 		lines := os.read_lines(file) or { continue }
 		mut in_interface := false
 		mut interface_name := ''
@@ -543,10 +1361,12 @@ fn (b &Builder) source_fn_decls_for_module(module_name string) map[string]string
 }
 
 fn (b &Builder) source_struct_field_types_for_module(module_name string) map[string]string {
-	module_path := b.module_name_to_path(module_name)
-	module_dir := b.pref.get_vlib_module_path(module_path)
+	return b.source_struct_field_types_for_files(b.source_files_for_module_name(module_name))
+}
+
+fn (b &Builder) source_struct_field_types_for_files(files []string) map[string]string {
 	mut field_types := map[string]string{}
-	for file in get_v_files_from_dir(module_dir, b.pref.user_defines, b.pref.get_effective_os()) {
+	for file in files {
 		lines := os.read_lines(file) or { continue }
 		mut in_struct := false
 		mut struct_name := ''
@@ -591,16 +1411,27 @@ fn (b &Builder) source_struct_field_types_for_module(module_name string) map[str
 }
 
 fn (mut b Builder) parse_module_source_files_for_headers(modules []string) []ast.File {
+	return b.parse_source_files_for_headers(b.module_source_files(modules))
+}
+
+fn (mut b Builder) parse_source_files_for_headers(source_paths []string) []ast.File {
 	mut parser_reused := parser.Parser.new(b.pref)
-	mut source_paths := []string{}
-	for module_name in modules {
-		source_paths << get_v_files_from_dir(b.pref.get_vlib_module_path(module_name),
-			b.pref.user_defines, b.pref.get_effective_os())
-	}
 	return parser_reused.parse_files(source_paths, mut b.file_set)
 }
 
 fn (b &Builder) build_module_header_ast(source_files []ast.File, module_name string) ?ast.File {
+	return b.build_header_ast_for_files(source_files, module_name, module_name, []string{})
+}
+
+fn (b &Builder) build_virtual_module_header_ast(source_files []ast.File, group CachedVirtualModule) ?ast.File {
+	return b.build_header_ast_for_files(source_files, 'main', group.header_name, group.source_files)
+}
+
+fn (b &Builder) build_header_ast_for_files(source_files []ast.File, module_name string, header_name string, allowed_files []string) ?ast.File {
+	mut allowed_set := map[string]bool{}
+	for file in allowed_files {
+		allowed_set[os.norm_path(file)] = true
+	}
 	mut found_module := false
 	mut module_stmt := ast.ModuleStmt{
 		name: module_name
@@ -613,6 +1444,9 @@ fn (b &Builder) build_module_header_ast(source_files []ast.File, module_name str
 	mut decl_stmts := []ast.Stmt{}
 	for file in source_files {
 		if ast_file_module_name(file) != module_name {
+			continue
+		}
+		if allowed_set.len > 0 && os.norm_path(file.name) !in allowed_set {
 			continue
 		}
 		for stmt in file.stmts {
@@ -738,7 +1572,12 @@ fn (b &Builder) build_module_header_ast(source_files []ast.File, module_name str
 			}
 		}
 	}
-	b.append_source_type_alias_decls(module_name, mut type_decl_stmts, mut type_decl_seen)
+	if allowed_set.len == 0 {
+		b.append_source_type_alias_decls(module_name, mut type_decl_stmts, mut type_decl_seen)
+	} else {
+		b.append_source_type_alias_decls_for_files(allowed_files, mut type_decl_stmts, mut
+			type_decl_seen)
+	}
 	if !found_module || enum_stmts.len + type_decl_stmts.len + decl_stmts.len == 0 {
 		return none
 	}
@@ -753,7 +1592,7 @@ fn (b &Builder) build_module_header_ast(source_files []ast.File, module_name str
 	header_stmts << decl_stmts
 	return ast.File{
 		mod:     module_stmt.name
-		name:    '${module_name}.vh'
+		name:    '${header_name}.vh'
 		stmts:   header_stmts
 		imports: import_stmts
 	}
@@ -794,9 +1633,12 @@ fn (b &Builder) resolved_header_interface_decl(module_name string, stmt ast.Inte
 }
 
 fn (b &Builder) append_source_type_alias_decls(module_name string, mut type_decl_stmts []ast.Stmt, mut type_decl_seen map[string]bool) {
-	module_path := b.module_name_to_path(module_name)
-	module_dir := b.pref.get_vlib_module_path(module_path)
-	for file in get_v_files_from_dir(module_dir, b.pref.user_defines, b.pref.get_effective_os()) {
+	b.append_source_type_alias_decls_for_files(b.source_files_for_module_name(module_name), mut
+		type_decl_stmts, mut type_decl_seen)
+}
+
+fn (b &Builder) append_source_type_alias_decls_for_files(files []string, mut type_decl_stmts []ast.Stmt, mut type_decl_seen map[string]bool) {
+	for file in files {
 		lines := os.read_lines(file) or { continue }
 		for raw_line in lines {
 			line := raw_line.trim_space()
@@ -997,6 +1839,21 @@ fn (b &Builder) module_name_to_path(module_name string) string {
 		'sha256' { 'crypto.sha256' }
 		'textscanner' { 'strings.textscanner' }
 		'termios' { 'term.termios' }
+		'http' { 'net.http' }
+		'chunked' { 'net.http.chunked' }
+		'conv' { 'net.conv' }
+		'openssl' { 'net.openssl' }
+		'socks' { 'net.socks' }
+		'ssl' { 'net.ssl' }
+		'urllib' { 'net.urllib' }
+		'gzip' { 'compress.gzip' }
+		'zlib' { 'compress.zlib' }
+		'zstd' { 'compress.zstd' }
+		'crc32' { 'hash.crc32' }
+		'big' { 'math.big' }
+		'stdatomic' { 'sync.stdatomic' }
+		'json2' { 'x.json2' }
+		'html' { 'encoding.html' }
 		'ast' { 'v2.ast' }
 		'abi' { 'v2.abi' }
 		'builder' { 'v2.builder' }
@@ -1023,9 +1880,7 @@ fn (b &Builder) module_name_to_path(module_name string) string {
 }
 
 fn (b &Builder) lookup_alias_source_type_expr(module_name string, type_name string) ?ast.Expr {
-	module_path := b.module_name_to_path(module_name)
-	module_dir := b.pref.get_vlib_module_path(module_path)
-	for file in get_v_files_from_dir(module_dir, b.pref.user_defines, b.pref.get_effective_os()) {
+	for file in b.source_files_for_module_name(module_name) {
 		lines := os.read_lines(file) or { continue }
 		for raw_line in lines {
 			line := raw_line.trim_space()
@@ -1059,8 +1914,11 @@ fn (b &Builder) header_const_type_expr(module_name string, field ast.FieldInit) 
 
 fn header_const_value_is_safe(expr ast.Expr) bool {
 	return match expr {
-		ast.BasicLiteral, ast.StringLiteral, ast.StringInterLiteral, ast.Ident, ast.SelectorExpr {
+		ast.BasicLiteral, ast.StringLiteral, ast.StringInterLiteral, ast.Ident {
 			true
+		}
+		ast.SelectorExpr {
+			header_const_selector_lhs_is_safe(expr.lhs)
 		}
 		ast.ParenExpr {
 			header_const_value_is_safe(expr.expr)
@@ -1082,6 +1940,23 @@ fn header_const_value_is_safe(expr ast.Expr) bool {
 				return false
 			}
 			header_const_value_is_safe(expr.expr)
+		}
+		ast.ComptimeExpr, ast.IfExpr {
+			true
+		}
+		else {
+			false
+		}
+	}
+}
+
+fn header_const_selector_lhs_is_safe(expr ast.Expr) bool {
+	return match expr {
+		ast.Ident {
+			true
+		}
+		ast.SelectorExpr {
+			header_const_selector_lhs_is_safe(expr.lhs)
 		}
 		else {
 			false
@@ -1142,15 +2017,12 @@ fn header_type_name_is_sane(type_name string) bool {
 }
 
 fn (b &Builder) module_defines_c_type(module_name string, type_name string) bool {
-	module_path := b.module_name_to_path(module_name)
-	module_dir := b.pref.get_vlib_module_path(module_path)
-	patterns := [
-		'struct C.${type_name}',
-		'pub struct C.${type_name}',
-		'type C.${type_name}',
-		'pub type C.${type_name}',
-	]
-	for file in get_v_files_from_dir(module_dir, b.pref.user_defines, b.pref.get_effective_os()) {
+	mut patterns := []string{cap: 4}
+	patterns << 'struct C.${type_name}'
+	patterns << 'pub struct C.${type_name}'
+	patterns << 'type C.${type_name}'
+	patterns << 'pub type C.${type_name}'
+	for file in b.source_files_for_module_name(module_name) {
 		content := os.read_file(file) or { continue }
 		for pattern in patterns {
 			idx := content.index(pattern) or { continue }
@@ -1158,7 +2030,8 @@ fn (b &Builder) module_defines_c_type(module_name string, type_name string) bool
 			end := idx + pattern.len
 			if end < content.len {
 				c := content[end]
-				if c == `_` || c.is_alnum() {
+				if c == `_` || (c >= `a` && c <= `z`) || (c >= `A` && c <= `Z`)
+					|| (c >= `0` && c <= `9`) {
 					continue
 				}
 			}
@@ -1281,8 +2154,10 @@ fn is_type_expr(expr ast.Expr) bool {
 		ast.Ident {
 			name := expr.name
 				name in ['bool', 'byte', 'char', 'f32', 'f64', 'i8', 'i16', 'i32', 'int', 'i64', 'isize', 'rune', 'string', 'u8', 'u16', 'u32', 'u64', 'usize', 'void', 'voidptr', 'byteptr', 'charptr']
-				|| name.starts_with('&') || name.starts_with('[]') || name.starts_with('?')
-				|| name.starts_with('!') || name.contains('[') || name.contains('__')
+				|| name.starts_with('&') || name.starts_with('[]')
+				|| name.starts_with('?') || name.starts_with('!')
+				|| name.contains('[') || name.contains('__')
+				|| (name.len > 0 && name[0].is_capital())
 		}
 		else {
 			false
@@ -1394,6 +2269,9 @@ fn header_type_node_is_usable(node ast.Type) bool {
 		ast.OptionType {
 			node.base_type !is ast.EmptyExpr && header_type_expr_is_usable(node.base_type)
 		}
+		ast.PointerType {
+			header_type_expr_is_usable(node.base_type)
+		}
 		ast.ResultType {
 			node.base_type !is ast.EmptyExpr && header_type_expr_is_usable(node.base_type)
 		}
@@ -1436,10 +2314,15 @@ fn parse_fn_signature_and_return(line string) ?FnReturnInfo {
 			i++
 		}
 	}
-	for i < line.len && !line[i].is_space() && line[i] != `(` {
-		i++
-	}
-	for i < line.len && line[i].is_space() {
+	mut generic_depth := 0
+	for i < line.len {
+		if line[i] == `[` {
+			generic_depth++
+		} else if line[i] == `]` && generic_depth > 0 {
+			generic_depth--
+		} else if line[i] == `(` && generic_depth == 0 {
+			break
+		}
 		i++
 	}
 	if i >= line.len || line[i] != `(` {
@@ -1661,6 +2544,34 @@ fn sanitize_header_source(source string, source_fn_returns map[string]string) st
 		if !in_type_block && !in_global_block && trimmed.len > 0
 			&& !header_is_module_level_line(trimmed) {
 			continue
+		}
+		out << line
+	}
+	return out.join('\n')
+}
+
+fn repair_interface_method_fn_syntax(source string) string {
+	lines := source.split_into_lines()
+	mut out := []string{cap: lines.len}
+	mut in_interface := false
+	for line in lines {
+		trimmed := line.trim_space()
+		if !in_interface && (trimmed.starts_with('interface ')
+			|| trimmed.starts_with('pub interface ')) && trimmed.ends_with('{') {
+			in_interface = true
+			out << line
+			continue
+		}
+		if in_interface && trimmed == '}' {
+			in_interface = false
+			out << line
+			continue
+		}
+		if in_interface {
+			if fn_idx := line.index(' fn(') {
+				out << line[..fn_idx] + line[fn_idx + ' fn'.len..]
+				continue
+			}
 		}
 		out << line
 	}

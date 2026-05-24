@@ -30,6 +30,9 @@ fn (g &Gen) if_guard_else_uses_err(node ast.IfExpr, branch_idx int) bool {
 }
 
 fn (mut g Gen) write_if_guard_gc_pin(scope &ast.Scope, name string, cvar_name string) {
+	if g.inside_veb_tmpl {
+		return
+	}
 	if g.if_guard_var_needs_gc_pin(scope, name) {
 		g.writeln('\tGC_reachable_here(&${cvar_name});')
 	}

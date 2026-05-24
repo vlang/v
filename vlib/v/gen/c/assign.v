@@ -2133,10 +2133,12 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 							g.inside_assign_fn_var = val is ast.PrefixExpr && val.op == .amp
 								&& is_fn_var
 							mut nval := val
+							mut nval_handled := false
 							if val is ast.PrefixExpr && val.right is ast.CallExpr {
 								call_expr := val.right as ast.CallExpr
 								if call_expr.name == 'new_array_from_c_array' {
 									nval = call_expr
+									nval_handled = true
 									if !var_type.has_flag(.shared_f) {
 										g.write('HEAP(${g.styp(var_type.clear_ref())}, ')
 									}
@@ -2146,7 +2148,7 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 									}
 								}
 							}
-							if nval == val {
+							if !nval_handled {
 								if auto_heap_uses_existing_storage {
 									g.write_auto_heap_assignment_expr(nval, val_type)
 								} else {

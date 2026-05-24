@@ -1,0 +1,526 @@
+{
+  "title": "good",
+  "description": "Good tests for RFC 8949",
+  "tests": [
+    # Integers
+    {
+      "description": "u8: non-preferred 0",
+      "roundtrip": false,
+      "encoded": h'18 00',
+      "decoded": 0,
+    },
+    {
+      "description": "u8: max",
+      "encoded": h'18 ff',
+      "decoded": 255,
+    },
+    {
+      "description": "s8: -1, not preferred",
+      "roundtrip": false,
+      "encoded": h'38 00',
+      "decoded": -1,
+    },
+    {
+      "description": "s8: min",
+      "encoded": h'38 ff',
+      "decoded": -256,
+    },
+    {
+      "description": "u16: max",
+      "encoded": h'19 ffff',
+      "decoded": 65535,
+    },
+    {
+      "description": "u16: 0, non-preferred",
+      "roundtrip": false,
+      "encoded": h'19 0000',
+      "decoded": 0,
+    },
+    {
+      "description": "s16: min",
+      "encoded": h'39 ffff',
+      "decoded": -65536,
+    },
+    {
+      "description": "s16: -1, non-preferred",
+      "roundtrip": false,
+      "encoded": h'39 0000',
+      "decoded": -1,
+    },
+    {
+      "description": "u32: max",
+      "encoded": h'1a ffffffff',
+      "decoded": 0xffffffff,
+    },
+    {
+      "description": "u32: 0, non-preferred",
+      "roundtrip": false,
+      "encoded": h'1a 00000000',
+      "decoded": 0,
+    },
+    {
+      "description": "u32: 65535, non-preferred",
+      "roundtrip": false,
+      "encoded": h'1a 0000ffff',
+      "decoded": 65535,
+    },
+    {
+      "description": "s32: -65537",
+      "encoded": h'3a 00010000',
+      "decoded": -65537,
+    },
+    {
+      "description": "s32: min",
+      "encoded": h'3a ffffffff',
+      "decoded": -0x100000000,
+    },
+    {
+      "description": "u64: 0, not preferred",
+      "roundtrip": false,
+      "encoded": h'1b 0000000000000000',
+      "decoded": 0,
+    },
+    {
+      "description": "u64: 65535, not preferred",
+      "roundtrip": false,
+      "encoded": h'1b 000000000000ffff',
+      "decoded": 65535,
+    },
+    {
+      "description": "u64: 65536, not preferred",
+      "roundtrip": false,
+      "encoded": h'1b 0000000000010000',
+      "decoded": 65536,
+    },
+    {
+      "description": "u64: MAX_SAFE_INTEGER",
+      "encoded": h'1b 001fffffffffffff',
+      "decoded": 0x1fffffffffffff,
+    },
+    {
+      "description": "u64: MIN_SAFE_INTEGER",
+      "encoded": h'3b 001ffffffffffffe',
+      "decoded": -0x1fffffffffffff,
+    },
+    {
+      "description": "s64: -1, not preferred",
+      "roundtrip": false,
+      "encoded": h'3b 0000000000000000',
+      "decoded": -1,
+    },
+    {
+      "description": "s64: -65536, not preferred",
+      "roundtrip": false,
+      "encoded": h'3b 000000000000ffff',
+      "decoded": -65536,
+    },
+    {
+      "description": "s64: -65537, not preferred",
+      "roundtrip": false,
+      "encoded": h'3b 0000000000010000',
+      "decoded": -65537,
+    },
+
+    # Floats
+    ## Around 2^53
+    {
+      "description": "MAX_SAFE_INTEGER + 1",
+      "encoded": h'fa 5a000000',
+      "decoded": 9007199254740992.0,
+    },
+    {
+      "description": "MAX_SAFE_INTEGER + 3",
+      "encoded": h'fb 4340000000000001',
+      "decoded": 9007199254740994.0,
+    },
+    {
+      "description": "MIN_SAFE_INTEGER - 1",
+      "encoded": h'fa da000000',
+      "decoded": -9007199254740992.0,
+    },
+    {
+      "description": "MIN_SAFE_INTEGER - 3",
+      "encoded": h'fb c340000000000001',
+      "decoded": -9007199254740994.0,
+    },
+    ## f16
+    {
+      "description": "f16: Min",
+      "encoded": h'f9 fbff',
+      "decoded": -65504.0,
+      "encodeOptions": {
+        "avoidInts": true,
+      },
+    },
+    {
+      "description": "f16: Second-smallest subnormal",
+      "encoded": h'f9 0002',
+      "decoded": 1.1920928955078125e-7,
+    },
+    {
+      "description": "f16: Second-smallest subnormal, negative",
+      "encoded": h'f9 8002',
+      "decoded": -1.1920928955078125e-7,
+    },
+    {
+      "description": "f16: Largest subnormal",
+      "roundtrip": false, # precision is lost with subnormal
+      "encoded": h'f9 03ff',
+      "decoded": 0.00006097555160522461,
+    },
+    {
+      "description": "f16: Largest subnormal, negative",
+      "roundtrip": false, # precision is lost with subnormal
+      "encoded": h'f9 83ff',
+      "decoded": -0.00006097555160522461,
+    },
+    {
+      "description": "f16: Closest to 1/3",
+      "encoded": h'f9 3555',
+      "decoded": 0.333251953125,
+    },
+    {
+      "description": "f16: Closest to -1/3",
+      "encoded": h'f9 b555',
+      "decoded": -0.333251953125,
+    },
+    {
+      "description": "f16: Largest number less than one",
+      "encoded": h'f9 3bff',
+      "decoded": 0.99951171875,
+    },
+    {
+      "description": "f16: Smallest number greater than -1",
+      "encoded": h'f9 bbff',
+      "decoded": -0.99951171875,
+    },
+    {
+      "description": "f16: Smallest number larger than one",
+      "encoded": h'f9 3c01',
+      "decoded": 1.0009765625,
+    },
+    {
+      "description": "f16: Largest number less than -1",
+      "encoded": h'f9 bc01',
+      "decoded": -1.0009765625,
+    },
+    {
+      "description": "f16: Largest odd number",
+      "encoded": h'f9 67ff',
+      "decoded": 2047.0,
+      "encodeOptions": {
+        "avoidInts": true,
+      },
+    },
+    {
+      "description": "f16: Smallest odd number",
+      "encoded": h'f9 e7ff',
+      "decoded": -2047.0,
+      "encodeOptions": {
+        "avoidInts": true,
+      },
+    },
+    {
+      "description": "f16: Closest value to pi",
+      "encoded": h'f9 4248',
+      "decoded": 3.140625,
+    },
+    {
+      "description": "f16: Closest value to -pi",
+      "encoded": h'f9 c248',
+      "decoded": -3.140625,
+    },
+    {
+      "description": "f16: Small positive",
+      "encoded": h'f9 4100',
+      "decoded": 2.5,
+    },
+    {
+      "description": "f16: Small negative",
+      "encoded": h'f9 c100',
+      "decoded": -2.5,
+    },
+
+    ## f32
+    {
+      "description": "f32: Min",
+      "encoded": h'fa ff7fffff',
+      "decoded": -3.4028234663852886e+38,
+    },
+    {
+      "description": "f32: Smallest subnormal",
+      "encoded": h'fa 00000001',
+      "decoded": 1.401298464324817e-45,
+    },
+    {
+      "description": "f32: Smallest subnormal, negative",
+      "encoded": h'fa 80000001',
+      "decoded": -1.401298464324817e-45,
+    },
+    {
+      "description": "f32: Largest subnormal",
+      "encoded": h'fa 007fffff',
+      "decoded": 1.1754942106924411e-38,
+    },
+    {
+      "description": "f32: Largest subnormal, negative",
+      "encoded": h'fa 807fffff',
+      "decoded": -1.1754942106924411e-38,
+    },
+    {
+      "description": "f32: Medium subnormal",
+      "encoded": h'fa 00001fff',
+      "decoded": 1.1478035721284577e-41,
+    },
+    {
+      "description": "f32: Medium subnormal, negative",
+      "encoded": h'fa 80001fff',
+      "decoded": -1.1478035721284577e-41,
+    },
+    {
+      "description": "f32: smallest positive normal number",
+      "encoded": h'fa 00800000',
+      "decoded": 1.1754943508222875e-38,
+    },
+    {
+      "description": "f32: largest negative normal number",
+      "encoded": h'fa 80800000',
+      "decoded": -1.1754943508222875e-38,
+    },
+    {
+      "description": "f32: largest number less than one",
+      "encoded": h'fa 3f7fffff',
+      "decoded": 0.9999999403953552,
+    },
+    {
+      "description": "f32: smallest number greater than -1",
+      "encoded": h'fa bf7fffff',
+      "decoded": -0.9999999403953552,
+    },
+    {
+      "description": "f32: one",
+      "roundtrip": false, # Not preferred encoding
+      "encoded": h'fa 3f800000',
+      "decoded": 1.0,
+    },
+    {
+      "description": "f32: -1",
+      "roundtrip": false, # Not preferred encoding
+      "encoded": h'fa bf800000',
+      "decoded": -1.0,
+    },
+    {
+      "description": "f32: smallest number larger than one",
+      "encoded": h'fa 3f800001',
+      "decoded": 1.0000001192092896,
+    },
+    {
+      "description": "f32: 0",
+      "roundtrip": false, # Not preferred encoding
+      "encoded": h'fa 00000000',
+      "decoded": 0.0,
+    },
+    {
+      "description": "f32: -0",
+      "roundtrip": false, # Not preferred encoding
+      "encoded": h'fa 80000000',
+      "decoded": -0.0,
+    },
+    {
+      "description": "f32: 1/3",
+      "encoded": h'fa 3eaaaaab',
+      "decoded": 0.3333333432674408,
+    },
+    {
+      "description": "f32: -1/3",
+      "encoded": h'fa beaaaaab',
+      "decoded": -0.3333333432674408,
+    },
+    {
+      "description": "f32: pi",
+      "encoded": h'fa 40490fdb',
+      "decoded": 3.1415927410125732,
+    },
+    {
+      "description": "f32: -pi",
+      "encoded": h'fa c0490fdb',
+      "decoded": -3.1415927410125732,
+    },
+
+
+    # f64
+    {
+      "description": "f64: Max",
+      "encoded": h'fb 7fefffffffffffff',
+      "decoded": 1.7976931348623157e+308,
+    },
+    {
+      "description": "f64: Min",
+      "encoded": h'fb ffefffffffffffff',
+      "decoded": -1.7976931348623157e+308,
+    },
+    {
+      "description": "f64: Min subnormal",
+      "encoded": h'fb 0000000000000001',
+      "decoded": 5e-324,
+    },
+    {
+      "description": "f64: Min subnormal, negative",
+      "encoded": h'fb 8000000000000001',
+      "decoded": -5e-324,
+    },
+    {
+      "description": "f64: Largest subnormal",
+      "encoded": h'fb 000FFFFFFFFFFFFF',
+      "decoded": 2.225073858507201e-308,
+    },
+    {
+      "description": "f64: Largest subnormal, negative",
+      "encoded": h'fb 800FFFFFFFFFFFFF',
+      "decoded": -2.225073858507201e-308,
+    },
+    {
+      "description": "f64: Smallest normal",
+      "encoded": h'fb 0010000000000000',
+      "decoded": 2.2250738585072014e-308,
+    },
+    {
+      "description": "f64: Smallest normal, negative",
+      "encoded": h'fb 8010000000000000',
+      "decoded": -2.2250738585072014e-308,
+    },
+    {
+      "description": "f64: 1/3",
+      "encoded": h'fb 3FD5555555555555',
+      "decoded": 0.3333333333333333,
+    },
+    {
+      "description": "f64: -1/3",
+      "encoded": h'fb BFD5555555555555',
+      "decoded": -0.3333333333333333,
+    },
+    {
+      "description": "f64: pi",
+      "encoded": h'fb 400921FB54442D18',
+      "decoded": 3.141592653589793,
+    },
+    {
+      "description": "f64: -pi",
+      "encoded": h'fb C00921FB54442D18',
+      "decoded": -3.141592653589793,
+    },
+
+    # Bigint
+    {
+      "description": "bigint: Positive",
+      "encoded": h'c2 49 1c0000000000000000',
+      "decoded": 0x1c0000000000000000,
+    },
+    {
+      "description": "bigint: Negative",
+      "encoded": h'c3 49 1c0000000000000000',
+      "decoded": -0x1c0000000000000001,
+    },
+
+    # UTF8 String
+    {
+      "description": "string: BOM",
+      "encoded": h'66 efbbbf424f4d',
+      "decoded": "\ufeffBOM",
+    },
+    {
+      "description": "string: combining",
+      "encoded": h'63 75cc88',
+      "decoded": "ü",
+    },
+    {
+      "description": "string: zalgo, length 1384",
+      "encoded": h'790568c6b8ccb7cd82cd8bccbfcd8acd98cc9bcc92cc95cc8dcc88ccbdcc8acc88cc8ccc83cda0cc84cd9bccbdcc88cc93cc87cc8ecd9fcd95ccbacc9ccc98cc9dcd9acd88cca9cca7cca4cd95cd99cd89cd96cd9cccadcc9ee1b8b3ccb7cc8ccc89cc80cd80ccbfcc83cc8dcd82cc90cc88cd90cc8ecc85cd98cc94cc86ccb2cd87ccaccca1cd9fcd8eccafccb3cca9cc9cea9cacccb4cda1cc84cd9ecc88cc83cc86cc80cc9acd8acd92cc87cd92cc94cc90cc89cc89cc91ccbecd8bcc84cc92cda0ccabcd89cca8e1b889ccb6ccbecc8ccc83cc94cd9bcd98cc8fcc8dcc8bcd86cda0cca8cca6cd9ccca9cca6ccabcd87ccbcccb0cd9fcca8cd9fcd9cccafccbccca4ccb9cd93cc9ecc97cc9fcc9fcc99cd9accb3ccb3cd9acc9fcca8c8a5ccb6ccbecc8ccc84cd82cd80cc8ccd92ccbecd82cc87cd9ecd90cd92cc88cc94cc8bcc89cc83cd97cd97cd98cc85cc90cc83cd90cc9acd91ccb1ccabcca7cd89ccbccca6cd88cca9ccb1cca8ccbccd8dccaecd8dcd87cd95e1b8a9ccb4cd8ccc8fcc86cc87cd8bcd81cc95cda0cc80cc87cc86cd9ecd98cc87cc89cc81cc84cd83cd9acd94ccbbcca5cd85cd8ecca5cc99cd9ccc9ecca6ccadccbccca8cca2cca1cd87ccb3ccaaccb3cc99ccb2cca2e1ba8accb4cd84cda0cd9dcd9bcc9acd92cc91cc92cc81cd9dcc87cd91cc8dcd9fcd96cca1cca3ccb0cc9eccaacca0cd88cd88ccaacca0ccbacca2cca7ccbbcd95ccb1ccbbccafcca5cd8dea9e8eccb7cc80cc83cc90cc91cd83cc93cd83cd92cc83cd90cda1ccbfcd9ecc95cc82cd98cc94cc88cd82cc8dcd97cca8cc9fcc9fccb2ccb1ccafccbbcd8eccb2cc96cc9dcd9ccd88ccbccd95cca8cca254ccb6cd83cc82cc94cc84cda0cc8bcc9acd97cc8ccd9dcc92cc83cc90cc8acc9bcc83cd86ccbdcc88cc94cca5cc9fccb0cd96cd8ecd8ecd94cd9fcd89cd94cc9ecca7cca7ccaecd89cd89cd94ccbacca9cd87cd88cd87cd8dcd89cd9accabcd93ccbae1b985ccb4cd81cc94cd9dcc92cd82cc95ccbfcc93cc8ccc95cd98cd82ccbdcc95cd83cc86cc9bcc94cc8dcd90cda0cd9ccd95cd87ccbccc9ecc9ccd96ccb3cd85ccb3cd8ecca2ccadccbbcd93ccb1e1bab0ccb8cd97cc95cc9acd8bcc82cc88cc86cd84cc94cd92cc81cc88cc8acc8ecc91cc94cd8accbecd8bcc85ccbecd98cc85cc8acc94cc8bcca5ccb9cca6ccafcd87cd9fcd9acca5cd89cd8dcd9fcd93ccafccbbcd87cca2ccb1ccadccb2cd89ccadcca4cd8dcca1cca3cc9cccb3cab2ccb8cd86cc90cc89cc83cc91ccacccbacc99cca6cc96ccbbcca8ccbbcca2ca89ccb4cd86cc8bcd86cd9ecd90cc81cd81cd8acc9bcda0cc84cc90cd9ecd8accbecca9cd96cd93ccb9ccb3cd8dccbccd89ccafcd8ecca5cd94cd85cc9dcca6cd8ecd93cca2c6bdccb7cd84cd86cc83cc95cd90cc92cc98cd93cc9dcca8cca4ccbcccafcd85ccafcd8dcd94cc9dcd87ccaccd9accaecca5ccb1ccbcccb1cca0ccadcc98cca3cc9dccbbcd9fccbccc97e1bbbcccb6cc94cd80cd92cd80cda0cc8fcc81cd9ecc92cd83cd92cd84cc9bcd92cd8ccd86cc8dcc94cc84cda1cd91cd83cd84cc8dcd97cda0cd80cca2cd88cd93cd8dcd93cca1cca4ccafcca1cca4ccaccca0ccb9cd9acc9ecc99ccbaccb1cca2cc9ccd95cca4cc99cca9ccb0cd8eccaee1b9bdccb7cc95cd92cc9acc81cd91cc90cda0cc97cca5cca9cd94cd87cca3cd99ccb1cc9ecca7cca6ccb2ccbbcc96cc9fccb3cc99ccaecca4cca2cca5cca3e1b8b8ccb6cc8ecd81cda1cc83cd91cd97cd8dcc9fcd88cc98ccb1ccb1cd8dcc9fcca9ccb3cd8eccbcccabcca0cd85cd8dcc96cd9acca0cd93cd9fcca4cca9cd8dccb9cc9fcca5ccbbcd9fc7b0ccb5cc83cd8cccbecc8acd8bcd89cd85ccaacd89ccb1cca0cd88cca2ccaccd9ccd8dccadccaaccb9cca6ccb1cca0cca1cd88',
+      "decoded": "Ƹ̷̧̛͕̺̜̘̝͚͈̩̤͕͙͉͖̭̞͂͋̿͊̒̍̈̽̊̈̌̃̄͛̽̈̓̇̎͘̕͟͜͠ḳ̷̡̲͇̬͎̯̳̩̜̌̉̀̀̿̃̍͂̐̈͐̎̅̔̆͘͟Ꜭ̴̨̫͉̄̈̃̆̀͊͒̇͒̔̐̉̉̑̾͋̄̒̚͡͞͠ḉ̶̨̨̨̦̩̦̫͇̼̰̯̼̤̹͓̞̗̟̟̙͚̳̳͚̟̾̌̃̔͛̏̍̋͆͘͜͟͟͜͠ȥ̶̧̨̱̫͉̼̦͈̩̱̼͍̮͍͇͕̾̌̄͂̀̌͒̾͂̇͐͒̈̔̋̉̃͗͗̅̐̃͐͑͘̚͞ḩ̴̨̢̡̢͚͔̻̥͎̥̙̞̦̭̼͇̳̪̳̙̲͌̏̆̇͋́̀̇̆̇̉́̄̓̕͘͜͠͞ͅẊ̴̡̢̧͖̣̰̞̪̠͈͈̪̠̺̻͕̱̻̯̥͍̈́͛͒̑̒́̇͑̍̚͟͠͝͝ꞎ̷̨̨̢̟̟̲̱̯̻͎̲̖̝͈̼͕̀̃̐̑̓̓̓͒̃͐̿̂̔̈͂̍͗̕͘͜͡͞Ţ̶̧̛̥̟̰͖͎͎͔͉͔̞̮͉͉͔̺̩͇͈͇͍͉͚̫͓̺̓̂̔̄̋͗̌̒̃̐̊̃͆̽̈̔̚͟͠͝ṅ̴̢̛͕͇̼̞̜͖̳̳͎̭̻͓̱́̔̒͂̿̓̌͂̽̓̆̔̍͐̕̕͘̕͜͝͠ͅḀ̸̢̡̹̦̯͇͚̥͉͍͓̯̻͇̱̭̲͉̭̤͍̣̜̳̆̀͗͋̂̈̆̈́̔͒́̈̊̎̑̔͊̾͋̅̾̅̊̔̋̕̚͘͟͟ʲ̸̨̢̬̺̙̦̖̻̻͆̐̉̃̑ʉ̴̢̛̩͖͓̹̳͍̼͉̯͎̥͔̝̦͎͓͆̋͆͐́́͊̄̐͊̾͞͠͞ͅƽ̷̨̘͓̝̤̼̯̯͍͔̝͇̬͚̮̥̱̼̱̠̭̘̣̝̻̼̗̈́͆̃͐̒̕͟ͅỼ̶̢̡̡̢̛͈͓͍͓̤̯̤̬̠̹͚̞̙̺̱̜͕̤̙̩̰͎̮̔̀͒̀̏́̒̓͒̈́͒͌͆̍̔̄͑̓̈́̍͗̀͠͞͡͠ṽ̷̧̢̗̥̩͔͇̣͙̱̞̦̲̻̖̟̳̙̮̤̥̣͒́͑̐̕̚͠Ḹ̶͍̟͈̘̱̱͍̟̩̳͎̼̫̠͍̖͚̠͓̤̩͍̹̟̥̻̎́̃͑͗͟͟͡ͅǰ̵̢̡͉̪͉̱̠͈̬͍̭̪̹̦̱̠͈̃͌̾̊͋͜ͅ",
+    },
+
+    # Date
+    {
+      "description": "Date: 0 epoch",
+      "encoded": h'c100',
+      "decoded": 1(0),
+    },
+    {
+      "description": "Date: 1 epoch",
+      "encoded": h'c101',
+      "decoded": 1(1),
+    },
+    {
+      "description": "Date: -1 epoch",
+      "encoded": h'c120',
+      "decoded": 1(-1),
+    },
+
+    # TODO: Large tag numbers, which have been reserved by IANA
+
+    # Map
+    {
+      "description": "Map: -0 key",
+      "roundtrip": false, # JS Map converts -0 to 0 in map key
+      "encoded": h'a1f9800080',
+      "decoded": {
+        -0.0: [],
+      },
+    },
+    {
+      "description": "Map: interesting keys",
+      "roundtrip": false,
+      "encoded": h'b81a808081008081808081810080f580f480f680f7800080613080fb3fb999999999999a8001802080f97c0080f9fc0080f97e0080c2491c000000000000000080a080a1808080a1a08080a1a18080808040804100806080616180c10080',
+      "decoded": {
+        []: [],
+        [0]: [],
+        [[]]: [],
+        [[0]]: [],
+        true: [],
+        false: [],
+        null: [],
+        undefined: [],
+        0: [],
+        "0": [],
+        0.1: [],
+        1: [],
+        -1: [],
+        Infinity: [],
+        -Infinity: [],
+        NaN: [],
+        0x1c0000000000000000: [],
+        {}: [],
+        {[]: []}: [],
+        {{}: []}: [],
+        {{[]: []}: []}: [],
+        h'': [],
+        h'00': [],
+        "": [],
+        "a": [],
+        1(0): []
+      },
+    },
+    {
+      "description": "array: deeply-nested",
+      "encoded": h'8181818181818181818181818181818181818181818181818181818181818181818181818181818181818181818181818181818181818181818181818181818181818181818181818181818181818181818181818181818181818181818181818181818181818181818181818181818181818181818181818181818181818181818181818181818181818181818181818181818181818181818181818181818181818181818181818181818181818181818181818181818181818181818181818181818181818181818181818181818181818181818181818181818181818181818181818181818181818181818181818181818181818181818181818181818181818181818181818181818181818181818181818181818181818181818181818181818181818181818181818181818181818181818181818181818181818181818181818181818181818181818181818181818181818181818181818181818181818181818181818181818181818181818181818181818181818181818181818181818181818181818181818181818181818181818181818181818181818181818181818181818181818181818181818181818181818181818181818181818181818181818181818181818181818181818181818181818181818181818181818181818181818181818181818181818181818181818181818181818100',
+      "decoded": [[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[0]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]],
+    },
+    {
+      "description": "map: deeply-nested key",
+      "encoded": h'a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a10000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000',
+      "decoded": {{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{0: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0}: 0},
+    },
+    {
+      "description": "map: deeply-nested value",
+      "encoded": h'a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a100a10000',
+      "decoded": {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: {0: 0}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    },
+
+    # JS edge cases
+    {
+      "description": "JS: __proto__ should be escaped (security)",
+      "encoded": h'a1695f5f70726f746f5f5f00',
+      "decoded": {"__proto__": 0},
+    }
+  ],
+}

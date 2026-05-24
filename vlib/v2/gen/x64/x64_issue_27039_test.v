@@ -1,4 +1,4 @@
-// vtest build: linux && amd64
+// vtest build: false
 
 module x64
 

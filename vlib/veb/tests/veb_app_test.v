@@ -1,4 +1,4 @@
-// vtest build: present_sqlite3? // imports db.sqlite
+// vtest build: present_sqlite3? && !windows // present_sqlite3?: imports db.sqlite; !windows: fasthttp.Server.run not implemented
 import veb
 import time
 import net.http

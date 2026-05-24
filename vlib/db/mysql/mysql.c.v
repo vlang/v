@@ -89,6 +89,13 @@ pub mut:
 	dbname   string
 	flag     ConnectionFlag
 
+	// ssl_mode controls the SSL/TLS negotiation policy via `MYSQL_OPT_SSL_MODE`.
+	// Set it to `.disabled` to connect to servers without TLS support
+	// (libmysqlclient 8.x otherwise tries `.preferred`/`.required`, which can
+	// fail against servers built without SSL). When left as `.unset`, no
+	// `MYSQL_OPT_SSL_MODE` call is made and the libmysqlclient default applies.
+	ssl_mode SslMode
+
 	// SSL params, only valid when set .client_ssl
 	ssl_key    string
 	ssl_cert   string
@@ -124,6 +131,11 @@ pub fn connect(config Config) !DB {
 		conn: C.mysql_init(0)
 	}
 	username := config.connection_user()!
+
+	if config.ssl_mode != .unset {
+		ssl_mode := int(config.ssl_mode)
+		db.set_option(C.MYSQL_OPT_SSL_MODE, &ssl_mode)
+	}
 
 	if config.flag.has(.client_ssl) {
 		if config.ssl_key.len > 0 {

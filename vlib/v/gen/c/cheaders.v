@@ -391,6 +391,18 @@ typedef int (*qsort_callback_func)(const void*, const void*);
 #ifndef _TRUNCATE
 	#define _TRUNCATE ((size_t)-1)
 #endif
+#elif defined(__NetBSD__)
+// NetBSD exposes stdin/stdout/stderr as macros into a single `__sF[3]`
+// array whose element size (sizeof(FILE)) depends on the platform and libc
+// version, so we cannot forward-declare them. The FreeBSD-style
+// `__stdinp/__stdoutp/__stderrp` symbols also do not exist on NetBSD (see
+// vlang/v#27190). Defer to the system headers for FILE, the stdio streams,
+// and the libc prototypes that would otherwise clash with the
+// `__restrict`-qualified declarations in NetBSD libc.
+#include <stdarg.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 #elif defined(__MINGW32__) || defined(__MINGW64__) || (defined(__clang__) && (defined(_WIN32) || defined(_WIN64)))
 typedef struct _iobuf FILE;
 FILE* __cdecl __acrt_iob_func(unsigned index);
@@ -467,7 +479,7 @@ extern FILE* __stderrp;
 #define stdin __stdinp
 #define stdout __stdoutp
 #define stderr __stderrp
-	#elif defined(__NetBSD__) || defined(__DragonFly__)
+	#elif defined(__DragonFly__)
 typedef struct __sFILE FILE;
 extern FILE* __stdinp;
 extern FILE* __stdoutp;
@@ -520,11 +532,13 @@ typedef __builtin_va_list va_list;
 	#define va_copy(dest, src) __builtin_va_copy(dest, src)
 #endif
 #endif
-#if (!defined(_MSC_VER) || defined(__clang__)) && !defined(__cplusplus)
+#if (!defined(_MSC_VER) || defined(__clang__)) && !defined(__cplusplus) && !defined(__NetBSD__)
 // mingw-w64 stdio.h declares these as static __mingw_ovr inline overrides
 // when __USE_MINGW_ANSI_STDIO is on. Skip them under gcc+mingw to avoid
 // static-after-extern conflicts; clang+mingw needs them because it builds
 // with -Werror=implicit-function-declaration and does not hit the conflict.
+// NetBSD pulls these prototypes from <stdio.h>/<stdlib.h>/<string.h> via
+// the include block above to avoid `__restrict` qualifier conflicts.
 #if !((defined(__MINGW32__) || defined(__MINGW64__)) && !defined(__clang__))
 V_CRT_LINKAGE int V_CRT_CALL vfprintf(FILE *stream, const char *format, va_list ap);
 V_CRT_LINKAGE int V_CRT_CALL vsnprintf(char *str, size_t size, const char *format, va_list ap);
@@ -616,6 +630,7 @@ V_CRT_LINKAGE int V_CRT_CALL memcmp(const void *left, const void *right, size_t 
 V_CRT_LINKAGE void * V_CRT_CALL memchr(const void *str, int c, size_t n);
 V_CRT_LINKAGE char * V_CRT_CALL strchr(const char *str, int c);
 V_CRT_LINKAGE char * V_CRT_CALL strrchr(const char *str, int c);
+V_CRT_LINKAGE char * V_CRT_CALL strstr(const char *haystack, const char *needle);
 V_CRT_LINKAGE int V_CRT_CALL fseek(FILE *stream, long offset, int whence);
 V_CRT_LINKAGE isize V_CRT_CALL getline(char **lineptr, size_t *n, FILE *stream);
 #if defined(_WIN32) || defined(_WIN64)

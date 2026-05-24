@@ -822,27 +822,29 @@ pub fn parse_request_head_str(s string) !Request {
 		return error('malformed request: no request line found')
 	}
 	line0 := s[..pos0].trim_space()
-	method, target, version := parse_request_line(line0)!
+	method, target, version := parse_request_line_fast(line0)!
 
 	// headers
 	mut header := new_header()
-	// split by newline and skip the first line (request line)
-	lines := s[pos0 + 1..].split('\n')
-
-	for line_raw in lines {
-		line := line_raw.trim_right('\r')
-
+	mut line_start := pos0 + 1
+	for line_start < s.len {
+		mut line_end := s.index_after_('\n', line_start)
+		if line_end == -1 {
+			line_end = s.len
+		}
+		mut line := s[line_start..line_end]
+		if line.len > 0 && line[line.len - 1] == `\r` {
+			line = line[..line.len - 1]
+		}
 		// IMPORTANT: HTTP headers end at the first empty line.
 		// If we hit this, we are now at the body, so we stop parsing headers.
 		if line == '' {
 			break
 		}
-
-		if !line.contains(':') {
+		mut pos := parse_header_fast(line) or {
+			line_start = line_end + 1
 			continue
 		}
-
-		mut pos := parse_header_fast(line)!
 		key := line[..pos]
 
 		// Skip space or tab after the colon
@@ -855,6 +857,7 @@ pub fn parse_request_head_str(s string) !Request {
 			value := line[val_start..]
 			header.add_custom(key, value)!
 		}
+		line_start = line_end + 1
 	}
 
 	mut request_cookies := map[string]string{}
@@ -864,12 +867,29 @@ pub fn parse_request_head_str(s string) !Request {
 
 	return Request{
 		method:  method
-		url:     target.str()
+		url:     target
 		header:  header
 		host:    (header.get(.host) or { '' }).clone()
 		version: version
 		cookies: request_cookies
 	}
+}
+
+fn parse_request_line_fast(line string) !(Method, string, Version) {
+	space1 := line.index_u8(` `)
+	if space1 <= 0 {
+		return error('bad request header')
+	}
+	space2_rel := line.index_after_(' ', space1 + 1)
+	if space2_rel == -1 || space2_rel == space1 + 1 || space2_rel >= line.len - 1 {
+		return error('bad request header')
+	}
+	method := method_from_str(line[..space1])
+	version := version_from_str(line[space2_rel + 1..])
+	if version == .unknown {
+		return error('unsupported version')
+	}
+	return method, line[space1 + 1..space2_rel], version
 }
 
 const headers_body_boundary = '\r\n\r\n'

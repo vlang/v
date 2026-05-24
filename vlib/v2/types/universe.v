@@ -109,6 +109,40 @@ const thread_ = Thread{
 // init_universe() references bool_, int_, u8_, etc., so they must be initialized first.
 const universe = init_universe()
 
+pub fn builtin_type(name string) ?Type {
+	return match name {
+		'bool' { Type(bool_) }
+		'i8' { Type(i8_) }
+		'i16' { Type(i16_) }
+		'i32' { Type(i32_) }
+		'int' { Type(int_) }
+		'i64' { Type(i64_) }
+		'u8' { Type(u8_) }
+		'byte' { Type(byte_) }
+		'u16' { Type(u16_) }
+		'u32' { Type(u32_) }
+		'u64' { Type(u64_) }
+		'f32' { Type(f32_) }
+		'f64' { Type(f64_) }
+		'string' { Type(string_) }
+		'chan' { Type(chan_) }
+		'char' { Type(char_) }
+		'isize' { Type(isize_) }
+		'usize' { Type(usize_) }
+		'rune' { Type(rune_) }
+		'void' { Type(void_) }
+		'nil' { Type(nil_) }
+		'none' { Type(none_) }
+		'byteptr' { Type(byteptr_) }
+		'charptr' { Type(charptr_) }
+		'voidptr' { Type(voidptr_) }
+		'int_literal' { Type(int_literal_) }
+		'float_literal' { Type(float_literal_) }
+		'thread' { Type(thread_) }
+		else { return none }
+	}
+}
+
 pub fn init_universe() &Scope {
 	mut universe_ := new_scope(unsafe { nil })
 	universe_.insert('bool', Type(bool_))
@@ -133,7 +167,7 @@ pub fn init_universe() &Scope {
 	universe_.insert('rune', Type(rune_))
 	universe_.insert('void', Type(void_))
 	universe_.insert('nil', Type(nil_))
-	universe_.insert('none', Type(nil_))
+	universe_.insert('none', Type(none_))
 	universe_.insert('byteptr', Type(byteptr_))
 	universe_.insert('charptr', Type(charptr_))
 	universe_.insert('voidptr', Type(voidptr_))

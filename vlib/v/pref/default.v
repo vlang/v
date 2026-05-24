@@ -212,7 +212,7 @@ pub fn (mut p Preferences) fill_with_defaults() {
 		p.out_name = os.join_path(p.out_name, p.default_output_name(rpath))
 	}
 	npath := rpath.replace('\\', '/')
-	p.building_v = !p.is_repl && (npath.ends_with('cmd/v') || npath.ends_with('cmd/tools/vfmt.v'))
+	p.building_v = !p.is_repl && is_v_compiler_target(npath)
 	if p.os == .linux {
 		$if !linux {
 			p.parse_define('cross_compile')
@@ -227,7 +227,7 @@ pub fn (mut p Preferences) fill_with_defaults() {
 		p.parse_define('cross') // TODO: remove when `$if cross {` works
 	}
 	if p.gc_mode == .unknown {
-		if p.backend != .c || p.building_v || p.is_bare || p.os == .windows || p.is_musl {
+		if p.backend != .c || p.building_v || p.is_bare || p.os == .windows {
 			p.gc_mode = .no_gc
 			p.build_options << ['-gc', 'none']
 		} else {
@@ -315,39 +315,26 @@ pub fn (mut p Preferences) fill_with_defaults() {
 	}
 }
 
+fn is_v_compiler_target(npath string) bool {
+	target := npath.trim_right('/')
+	return target.ends_with('cmd/v') || target.ends_with('cmd/v/v.v') || target.ends_with('cmd/v2')
+		|| target.ends_with('cmd/v2/v2.v') || target.ends_with('cmd/tools/vfmt.v')
+}
+
 // normalize_gc_defaults_for_resolved_ccompiler clears stale compiler-dependent
 // defaults after the effective C compiler has been resolved.
 pub fn (mut p Preferences) normalize_gc_defaults_for_resolved_ccompiler() {
 	p.disable_tcc_shared_backtraces()
+	if p.prealloc {
+		p.gc_mode = .no_gc
+		p.clear_gc_options()
+		return
+	}
 	if p.os != .windows || p.ccompiler_type != .msvc || p.gc_set_by_flag {
 		return
 	}
 	p.gc_mode = .no_gc
-	p.compile_defines = p.compile_defines.filter(it !in windows_default_gc_defines)
-	p.compile_defines_all = p.compile_defines_all.filter(it !in windows_default_gc_defines)
-	for define in windows_default_gc_defines {
-		p.compile_values.delete(define)
-	}
-	mut build_options := []string{cap: p.build_options.len + 2}
-	mut i := 0
-	for i < p.build_options.len {
-		option := p.build_options[i]
-		if option == '-gc' {
-			i += 2
-			continue
-		}
-		if option.starts_with('-d ') {
-			define := option[3..].all_before('=')
-			if define in windows_default_gc_defines {
-				i++
-				continue
-			}
-		}
-		build_options << option
-		i++
-	}
-	build_options << ['-gc', 'none']
-	p.build_options = build_options
+	p.clear_gc_options()
 }
 
 fn (p &Preferences) default_output_name(rpath string) string {
@@ -431,9 +418,9 @@ fn (mut p Preferences) try_to_use_tcc_by_default() {
 		return
 	}
 	if p.ccompiler == '' {
-		// tcc is known to fail several tests on macos, so do not
-		// try to use it by default, only when it is explicitly set
-		$if macos {
+		// -prealloc uses thread-local allocator state. The bundled tcc does not
+		// support TLS declarations, so use the platform C compiler by default.
+		if p.prealloc {
 			return
 		}
 		// use an optimizing compiler (i.e. gcc or clang) on -prod mode
@@ -481,10 +468,66 @@ pub fn default_tcc_compiler() string {
 	return usable_system_tcc_compiler()
 }
 
+// windows_default_c_compiler picks the host C compiler to default to on Windows.
+// `gcc` is the historical default, but plenty of Windows users only have the
+// bundled tcc that `makev.bat` provisions under `thirdparty/tcc/tcc.exe`.
+// Falling back to the bundled tcc when `gcc` isn't on PATH avoids confusing
+// "'gcc' is not recognized as an internal or external command" errors during
+// `v install`, `v outdated`, etc. (https://github.com/vlang/v/issues/27119).
+fn windows_default_c_compiler(vroot string) string {
+	if os.find_abs_path_of_executable('gcc') or { '' } != '' {
+		return 'gcc'
+	}
+	bundled_tcc := usable_bundled_tcc_compiler(vroot)
+	if bundled_tcc != '' {
+		return bundled_tcc
+	}
+	return 'gcc'
+}
+
+fn (mut p Preferences) clear_gc_options() {
+	p.compile_defines = p.compile_defines.filter(it !in windows_default_gc_defines)
+	p.compile_defines_all = p.compile_defines_all.filter(it !in windows_default_gc_defines)
+	for define in windows_default_gc_defines {
+		p.compile_values.delete(define)
+	}
+	mut build_options := []string{cap: p.build_options.len + 2}
+	mut i := 0
+	for i < p.build_options.len {
+		option := p.build_options[i]
+		if option == '-gc' {
+			i += 2
+			continue
+		}
+		if option.starts_with('-gc ') {
+			i++
+			continue
+		}
+		if option.starts_with('-d ') {
+			define := option[3..].all_before('=')
+			if define in windows_default_gc_defines {
+				i++
+				continue
+			}
+		}
+		build_options << option
+		i++
+	}
+	build_options << ['-gc', 'none']
+	p.build_options = build_options
+}
+
 pub fn (mut p Preferences) default_c_compiler() {
 	// TODO: fix $if after 'string'
 	$if windows {
-		p.ccompiler = 'gcc'
+		// -prealloc and -prod intentionally avoid the bundled tcc (see
+		// try_to_use_tcc_by_default); preserve that here so the Windows fallback
+		// does not silently re-select an incompatible compiler.
+		if p.prealloc || p.is_prod {
+			p.ccompiler = 'gcc'
+			return
+		}
+		p.ccompiler = windows_default_c_compiler(os.dir(vexe_path()))
 		return
 	}
 	if p.os == .ios {

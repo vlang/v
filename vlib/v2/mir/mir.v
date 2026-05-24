@@ -191,69 +191,93 @@ pub fn (m &Module) ssa() &ssa.Module {
 }
 
 pub fn (m &Module) type_size(typ_id ssa.TypeID) int {
+	mut visiting := map[ssa.TypeID]bool{}
+	return m.type_size_with_seen(typ_id, mut visiting)
+}
+
+fn (m &Module) type_size_with_seen(typ_id ssa.TypeID, mut visiting map[ssa.TypeID]bool) int {
 	if m.ssa_mod == unsafe { nil } || typ_id < 0 || typ_id >= m.ssa_mod.type_store.types.len {
 		return 0
 	}
 	if typ_id == 0 {
 		return 0
 	}
+	if visiting[typ_id] {
+		return 8
+	}
+	visiting[typ_id] = true
 	typ := m.ssa_mod.type_store.types[typ_id]
-	match typ.kind {
+	size := match typ.kind {
 		.void_t {
-			return 0
+			0
 		}
 		.int_t {
-			return if typ.width > 0 { (typ.width + 7) / 8 } else { 8 }
+			if typ.width > 0 { (typ.width + 7) / 8 } else { 8 }
 		}
 		.float_t {
-			return if typ.width > 0 { (typ.width + 7) / 8 } else { 8 }
+			if typ.width > 0 { (typ.width + 7) / 8 } else { 8 }
 		}
 		.ptr_t {
-			return 8
+			8
 		}
 		.array_t {
-			elem_size := m.type_size(typ.elem_type)
-			return typ.len * elem_size
+			elem_size := m.type_size_with_seen(typ.elem_type, mut visiting)
+			typ.len * elem_size
 		}
 		.struct_t {
 			mut total := 0
 			mut max_align := 1
 			for field_typ in typ.fields {
-				align := m.type_align(field_typ)
+				align := m.type_align_with_seen(field_typ, mut visiting)
 				if align > max_align {
 					max_align = align
 				}
 				if align > 1 && total % align != 0 {
 					total = (total + align - 1) & ~(align - 1)
 				}
-				total += m.type_size(field_typ)
+				total += m.type_size_with_seen(field_typ, mut visiting)
 			}
 			// Align struct size to its largest field alignment
 			if max_align > 1 && total % max_align != 0 {
 				total = (total + max_align - 1) & ~(max_align - 1)
 			}
-			return if total > 0 { total } else { 8 }
+			if total > 0 {
+				total
+			} else {
+				8
+			}
 		}
 		.func_t {
-			return 8
+			8
 		}
 		.label_t {
-			return 0
+			0
 		}
 		.metadata_t {
-			return 0
+			0
 		}
 	}
+
+	visiting.delete(typ_id)
+	return size
 }
 
 pub fn (m &Module) type_align(typ_id ssa.TypeID) int {
+	mut visiting := map[ssa.TypeID]bool{}
+	return m.type_align_with_seen(typ_id, mut visiting)
+}
+
+fn (m &Module) type_align_with_seen(typ_id ssa.TypeID, mut visiting map[ssa.TypeID]bool) int {
 	if m.ssa_mod != unsafe { nil } && typ_id > 0 && typ_id < m.ssa_mod.type_store.types.len {
+		if visiting[typ_id] {
+			return 8
+		}
 		typ := m.ssa_mod.type_store.types[typ_id]
 		if typ.kind == .array_t {
-			return m.type_align(typ.elem_type)
+			return m.type_align_with_seen(typ.elem_type, mut visiting)
 		}
 	}
-	size := m.type_size(typ_id)
+	size := m.type_size_with_seen(typ_id, mut visiting)
 	if size >= 8 {
 		return 8
 	}

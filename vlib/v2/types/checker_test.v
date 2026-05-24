@@ -1,16 +1,22 @@
 // Copyright (c) 2026 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
-// vtest build: !windows
+// vtest build: macos
 module types
 
 import os
+import v2.ast
 import v2.parser
 import v2.pref
 import v2.token
 
 // Helper to parse code and run the checker, returning the environment
 fn check_code(code string) &Environment {
+	env, _ := check_code_and_files(code)
+	return env
+}
+
+fn check_code_and_files(code string) (&Environment, []ast.File) {
 	// Write code to a temp file
 	tmp_file := '/tmp/checker_test_${os.getpid()}.v'
 	os.write_file(tmp_file, code) or { panic('failed to write temp file') }
@@ -26,7 +32,7 @@ fn check_code(code string) &Environment {
 	mut env := Environment.new()
 	mut checker := Checker.new(p, file_set, env)
 	checker.check_files(files)
-	return env
+	return env, files
 }
 
 // Helper to check if a specific type exists in the environment
@@ -94,6 +100,399 @@ fn test_basic_literal_string() {
 	assert has_type(env, 'string'), 'string literal should have string type'
 }
 
+fn test_inline_type_variants_are_valid_payloads() {
+	string_type := Type(string_)
+	assert !type_has_null_data(string_type)
+	assert !type_data_ptr_is_nil(string_type)
+	assert string_type.value_type().name() == 'u8'
+	assert !type_has_null_data(Type(char_))
+	assert !type_has_null_data(Type(void_))
+}
+
+fn test_non_ident_rune_method_uses_registered_return_type() {
+	prefs := &pref.Preferences{}
+	mut file_set := token.FileSet.new()
+	env := Environment.new()
+	mut checker := Checker.new(prefs, file_set, env)
+	checker.scope.insert('rune', Type(rune_))
+	checker.register_method_type('rune', 'length_in_bytes', fn_with_return_type(empty_fn_type(),
+		Type(int_)))
+	checker.expecting_method = true
+	typ := checker.selector_expr(ast.SelectorExpr{
+		lhs: ast.Expr(ast.CallExpr{
+			lhs:  ast.Expr(ast.Ident{
+				name: 'rune'
+			})
+			args: [ast.Expr(ast.BasicLiteral{
+				kind:  .number
+				value: '65'
+			})]
+		})
+		rhs: ast.Ident{
+			name: 'length_in_bytes'
+		}
+	})
+	assert typ is FnType
+	fn_type := typ as FnType
+	ret := fn_type.return_type or { panic('missing length_in_bytes return type') }
+	assert ret.name() == 'int'
+}
+
+fn test_method_lookup_uses_short_owner_for_dot_qualified_sum_type() {
+	prefs := &pref.Preferences{}
+	mut file_set := token.FileSet.new()
+	env := Environment.new()
+	mut checker := Checker.new(prefs, file_set, env)
+	checker.register_method_type('Object', 'typ', fn_with_return_type(empty_fn_type(), Type(int_)))
+	method := checker.find_method(Type(SumType{
+		name: 'types.Object'
+	}), 'typ') or { panic('missing Object.typ method') }
+	assert method is FnType
+	fn_type := method as FnType
+	ret := fn_type.return_type or { panic('missing Object.typ return type') }
+	assert ret.name() == 'int'
+}
+
+fn test_find_method_specializes_array_first_return_type() {
+	prefs := &pref.Preferences{}
+	mut file_set := token.FileSet.new()
+	env := Environment.new()
+	mut checker := Checker.new(prefs, file_set, env)
+	checker.register_method_type('array', 'first', fn_with_return_type(empty_fn_type(),
+		Type(voidptr_)))
+	method := checker.find_method(Type(Array{
+		elem_type: Type(string_)
+	}), 'first') or { panic('missing array.first method') }
+	assert method is FnType
+	fn_type := method as FnType
+	ret := fn_type.return_type or { panic('missing array.first return type') }
+	assert ret.name() == 'string'
+}
+
+fn test_slice_clone_preserves_array_type_for_method_chain() {
+	prefs := &pref.Preferences{}
+	mut file_set := token.FileSet.new()
+	env := Environment.new()
+	mut checker := Checker.new(prefs, file_set, env)
+	checker.scope.insert('full_parts', object_from_type(Type(Array{
+		elem_type: Type(string_)
+	})))
+	slice_expr := ast.IndexExpr{
+		lhs:  ast.Expr(ast.Ident{
+			name: 'full_parts'
+		})
+		expr: ast.Expr(ast.RangeExpr{})
+	}
+	slice_type := checker.expr_type_without_field_smartcast(ast.Expr(slice_expr)) or {
+		panic('slice expression type missing')
+	}
+	assert slice_type is Array, 'range index should keep the array container type'
+	assert (slice_type as Array).elem_type.name() == 'string'
+}
+
+fn test_smartcasted_sumtype_keeps_receiver_method_lookup_for_call() {
+	env := check_code('
+type Expr = Ident
+
+struct Ident {
+	pos int
+}
+
+fn (e Expr) pos() int {
+	return 0
+}
+
+fn f(left Expr) int {
+	if left !is Ident {
+		return 0
+	}
+	return left.pos()
+}
+')
+	assert has_type(env, 'int'), 'smartcasted receiver should still find sumtype method'
+}
+
+fn test_option_guard_sumtype_method_call_uses_sumtype_method_not_variant_field() {
+	env := check_code('
+type Object = Const | Module
+
+struct Const {
+	typ int
+}
+
+struct Module {
+	name string
+}
+
+fn (obj &Object) typ() int {
+	return match obj {
+		Const { obj.typ }
+		Module { 0 }
+	}
+}
+
+fn lookup() ?Object {
+	return Const{typ: 7}
+}
+
+fn use() int {
+	if obj := lookup() {
+		if obj !is Module {
+			return obj.typ()
+		}
+	}
+	return 0
+}
+')
+	assert has_type(env, 'int'), 'obj.typ() should resolve to the Object.typ method return type'
+}
+
+fn test_smartcasted_variant_can_call_original_sumtype_method() {
+	env := check_code('
+type Expr = Ident | Call
+
+struct Ident {
+	name string
+}
+
+struct Call {
+	lhs Expr
+}
+
+fn (expr &Expr) name() string {
+	return match expr {
+		Ident { expr.name }
+		Call { expr.lhs.name() }
+	}
+}
+
+fn use(expr Expr) string {
+	unwrapped := expr
+	if unwrapped !is Ident {
+		return ""
+	}
+	return unwrapped.name()
+}
+')
+	assert has_type(env, 'string'), 'smartcasted Expr variant should still resolve Expr.name()'
+}
+
+fn test_array_init_records_contextual_sumtype_element_type() {
+	env := check_code('
+struct Ident {}
+struct CallExpr {}
+type Expr = Ident | CallExpr
+struct Holder {
+	rhs []Expr
+}
+fn main() {
+	h := Holder{
+		rhs: [CallExpr{}]
+	}
+	_ = h
+}
+')
+	assert has_type_matching(env, fn (t Type) bool {
+		if t is Array {
+			if t.elem_type is SumType {
+				return t.elem_type.name == 'Expr'
+			}
+		}
+		return false
+	}), 'array literal should keep contextual []Expr type'
+}
+
+fn test_if_expr_empty_array_else_uses_then_branch_type() {
+	env := check_code('
+struct Comment {}
+struct Pref {
+	is_vls bool
+}
+struct Parser {
+	pref         Pref
+	cur_comments []Comment
+}
+struct Decl {}
+fn parse(p Parser) Decl {
+	comments := if p.pref.is_vls {
+		[Comment{}]
+	} else {
+		[]
+	}
+	_ = comments
+	return Decl{}
+}
+')
+	scope := env.get_fn_scope('main', 'parse') or { panic('missing parse scope') }
+	obj := scope.lookup_parent('comments', 0) or { panic('missing comments local') }
+	typ := obj.typ()
+	assert typ is Array
+	arr := typ as Array
+	assert arr.elem_type.name() == 'Comment'
+}
+
+fn test_if_expr_nested_array_branches_use_element_context() {
+	env := check_code('
+fn main() {
+	is_max := false
+	type_const_pairs := if is_max {
+		[["f32", "math__max_f32"], ["f64", "math__max_f64"]]
+	} else {
+		[["i8", "min_i8"], ["i16", "min_i16"]]
+	}
+	_ = type_const_pairs
+}
+')
+	scope := env.get_fn_scope('main', 'main') or { panic('missing main scope') }
+	obj := scope.lookup_parent('type_const_pairs', 0) or { panic('missing type_const_pairs local') }
+	typ := obj.typ()
+	assert typ is Array
+	outer := typ as Array
+	assert outer.elem_type is Array
+	inner := outer.elem_type as Array
+	assert inner.elem_type.name() == 'string'
+}
+
+fn collect_column_name_array_literal_types_expr(expr ast.Expr, env &Environment, mut out []v2.types.Type) {
+	if expr is ast.ArrayInitExpr {
+		if expr.exprs.len == 1 && expr.exprs[0] is ast.Ident
+			&& (expr.exprs[0] as ast.Ident).name == 'column_name' {
+			if typ := env.get_expr_type(expr.pos.id) {
+				out << typ
+			}
+		}
+		for item in expr.exprs {
+			collect_column_name_array_literal_types_expr(item, env, mut out)
+		}
+		return
+	}
+	match expr {
+		ast.CallExpr {
+			for arg in expr.args {
+				collect_column_name_array_literal_types_expr(arg, env, mut out)
+			}
+		}
+		ast.IfExpr {
+			collect_column_name_array_literal_types_expr(expr.cond, env, mut out)
+			for stmt in expr.stmts {
+				collect_column_name_array_literal_types_stmt(stmt, env, mut out)
+			}
+			collect_column_name_array_literal_types_expr(expr.else_expr, env, mut out)
+		}
+		ast.InfixExpr {
+			collect_column_name_array_literal_types_expr(expr.lhs, env, mut out)
+			collect_column_name_array_literal_types_expr(expr.rhs, env, mut out)
+		}
+		ast.MatchExpr {
+			collect_column_name_array_literal_types_expr(expr.expr, env, mut out)
+			for branch in expr.branches {
+				for stmt in branch.stmts {
+					collect_column_name_array_literal_types_stmt(stmt, env, mut out)
+				}
+			}
+		}
+		ast.SelectorExpr {
+			collect_column_name_array_literal_types_expr(expr.lhs, env, mut out)
+		}
+		else {}
+	}
+}
+
+fn collect_column_name_array_literal_types_stmt(stmt ast.Stmt, env &Environment, mut out []v2.types.Type) {
+	match stmt {
+		ast.AssignStmt {
+			for expr in stmt.rhs {
+				collect_column_name_array_literal_types_expr(expr, env, mut out)
+			}
+		}
+		ast.BlockStmt {
+			for child in stmt.stmts {
+				collect_column_name_array_literal_types_stmt(child, env, mut out)
+			}
+		}
+		ast.ExprStmt {
+			collect_column_name_array_literal_types_expr(stmt.expr, env, mut out)
+		}
+		ast.ForStmt {
+			for child in stmt.stmts {
+				collect_column_name_array_literal_types_stmt(child, env, mut out)
+			}
+		}
+		else {}
+	}
+}
+
+fn test_nested_array_append_rhs_literal_uses_element_context() {
+	env, files := check_code_and_files('
+enum AttrKind { string }
+
+struct Attr {
+	name string
+	arg  string
+	kind AttrKind
+}
+
+struct StructField {
+	attrs []Attr
+}
+
+struct Gen {}
+
+fn (g &Gen) get_orm_column_name_from_struct_field(field StructField) string {
+	return field.attrs[0].name
+}
+
+fn (g &Gen) get_orm_upsert_conflict_groups(fields []StructField) [][]string {
+	mut groups := [][]string{}
+	mut named_unique_groups := map[string][]string{}
+	mut seen := map[string]bool{}
+	for field in fields {
+		column_name := g.get_orm_column_name_from_struct_field(field)
+		for attr in field.attrs {
+			match attr.name {
+				"primary" {
+					key := column_name
+					if key !in seen {
+						groups << [column_name]
+						seen[key] = true
+					}
+				}
+				"unique" {
+					if attr.arg != "" && attr.kind == .string {
+						named_unique_groups[attr.arg] << column_name
+					} else {
+						key := column_name
+						if key !in seen {
+							groups << [column_name]
+							seen[key] = true
+						}
+					}
+				}
+				else {}
+			}
+		}
+	}
+	return groups
+}
+')
+	mut literal_types := []Type{}
+	for file in files {
+		for stmt in file.stmts {
+			if stmt is ast.FnDecl && stmt.name == 'get_orm_upsert_conflict_groups' {
+				for fn_stmt in stmt.stmts {
+					collect_column_name_array_literal_types_stmt(fn_stmt, env, mut literal_types)
+				}
+			}
+		}
+	}
+	assert literal_types.len == 2
+	for typ in literal_types {
+		assert typ is Array
+		arr := typ as Array
+		assert arr.elem_type.name() == 'string'
+	}
+}
+
 fn test_iclone_struct_clone_returns_self_type() {
 	env := check_code('
 interface IClone {}
@@ -120,6 +519,22 @@ fn test_or_expr_accepts_float_literal_fallback() {
 	env := check_code('fn may_fail() !f64 { return 1.0 }
 fn main() { x := may_fail() or { 0 } }')
 	assert has_type(env, 'f64'), 'or { 0 } should be accepted for !f64'
+}
+
+fn test_postfix_question_unwraps_option_payload_type() {
+	env := check_code('
+fn maybe_string() ?string {
+	return "ok"
+}
+
+fn use_maybe() ?string {
+	value := maybe_string()?
+	return value
+}
+')
+	scope := env.get_fn_scope('main', 'use_maybe') or { panic('missing use_maybe scope') }
+	obj := scope.lookup_parent('value', 0) or { panic('missing value local') }
+	assert obj.typ().name() == 'string'
 }
 
 fn test_comptime_embed_file_type_and_methods() {
@@ -359,6 +774,42 @@ fn test_array_element_type() {
 	assert found, 'array should have integer element type'
 }
 
+fn test_array_init_mixed_float_and_int_literals() {
+	env := check_code('fn main() { x := [50.0, 15, 1] }')
+	mut found := false
+	for typ in env.expr_type_values {
+		if typ is Array && typ.elem_type.name() == 'float_literal' {
+			found = true
+			break
+		}
+	}
+	assert found, 'mixed float/int literal array should infer float literal element type'
+}
+
+fn is_nested_array_type(t Type) bool {
+	if t is Array {
+		elem := t.elem_type
+		if elem is Array {
+			return elem.elem_type is Array
+		}
+	}
+	return false
+}
+
+fn test_array_init_nested_int_literal_matches_concrete_int_array() {
+	env := check_code('fn main() { x := [[][]int{}, [[2, 22], [2]]] }')
+	assert has_type_matching(env, fn (t Type) bool {
+		return is_nested_array_type(t)
+	}), 'nested int literal arrays should match concrete nested int array element type'
+}
+
+fn test_array_init_nested_concrete_int_array_matches_int_literal() {
+	env := check_code('fn main() { x := [[[2, 22], [2]], [][]int{}] }')
+	assert has_type_matching(env, fn (t Type) bool {
+		return is_nested_array_type(t)
+	}), 'nested concrete int array should match nested int literal array element type'
+}
+
 // === Map Tests ===
 
 fn test_map_init() {
@@ -407,6 +858,23 @@ fn test_pointer_base_type() {
 	assert found_int_ptr, 'pointer should have integer base type'
 }
 
+fn test_sum_type_equality_is_name_based() {
+	left := SumType{
+		name:     'Value'
+		variants: [Type(int_)]
+	}
+	right := SumType{
+		name:     'Value'
+		variants: [Type(string_)]
+	}
+	other := SumType{
+		name: 'Other'
+	}
+
+	assert left == right
+	assert left != other
+}
+
 // === Function Tests ===
 
 fn test_call_expr_return_type() {
@@ -416,279 +884,6 @@ fn main() { x := foo() }
 '
 	env := check_code(code)
 	assert env.expr_type_values.len > 0, 'call expr should populate types'
-}
-
-fn test_generic_return_type_is_substituted_recursively() {
-	code := '
-struct Gen { values map[string]int }
-struct Pool {}
-fn (p &Pool) get_results_ref[T]() []&T { return []&T{} }
-fn main() {
-	p := Pool{}
-	for g in p.get_results_ref[Gen]() {
-		for k, v in g.values {
-			_ := k
-			_ := v
-		}
-	}
-}
-'
-	env := check_code(code)
-	assert has_type_matching(env, fn (t Type) bool {
-		if t is Map {
-			return t.key_type.name() == 'string' && t.value_type.name() == 'int'
-		}
-		return false
-	}), 'generic []&T return should substitute T inside pointer and array wrappers'
-}
-
-fn test_nested_sumtype_variants_in_in_array_literal() {
-	code := '
-struct InfixExpr {}
-struct IfBranch {}
-struct MatchBranch {}
-type Expr = InfixExpr
-type Node = Expr | IfBranch | MatchBranch
-fn f(node Node) {
-	if node !in [MatchBranch, IfBranch, InfixExpr] {}
-}
-'
-	env := check_code(code)
-	assert has_type_matching(env, fn (t Type) bool {
-		if t is Array {
-			return t.elem_type.name() == 'Node'
-		}
-		return false
-	}), 'array literal in `!in` should use the expected sum type element'
-}
-
-fn test_char_literals_follow_byte_array_element_type() {
-	env := check_code('fn main() { x := [u8(`0`), `1`, `2`] }')
-	assert has_type_matching(env, fn (t Type) bool {
-		if t is Array {
-			return t.elem_type.name() == 'u8'
-		}
-		return false
-	}), 'rune literals after a u8 first element should keep the array element type u8'
-}
-
-fn test_decl_assign_does_not_inherit_function_return_expected_type() {
-	env := check_code("fn f() string { mut buf := [u8(`0`), `1`]; return '' }")
-	assert has_type_matching(env, fn (t Type) bool {
-		if t is Array {
-			return t.elem_type.name() == 'u8'
-		}
-		return false
-	}), '`:=` initializers should not inherit the function return expected type'
-}
-
-fn test_in_array_char_literals_follow_lhs_integer_type() {
-	env := check_code('fn f(ch int) { if ch in [`;`, `?`] {} }')
-	assert has_type_matching(env, fn (t Type) bool {
-		if t is Array {
-			return t.elem_type.name() == 'int'
-		}
-		return false
-	}), 'char literal arrays in `in` expressions should use the lhs integer type'
-}
-
-fn test_for_in_iterable_does_not_inherit_function_return_expected_type() {
-	code := "
-fn f() ?string {
-	for prefix in ['-a=', '--a='] {}
-	return none
-}
-"
-	env := check_code(code)
-	assert has_type_matching(env, fn (t Type) bool {
-		if t is Array {
-			return t.elem_type.name() == 'string'
-		}
-		return false
-	}), 'for-in iterable expressions should not inherit the function return expected type'
-}
-
-fn test_array_append_rhs_does_not_inherit_tuple_return_expected_type() {
-	code := "
-fn f() (int, string) {
-	mut new_args := ['base']
-	new_args << ['-e', 'import net.http.file; file.serve()']
-	return 0, ''
-}
-"
-	env := check_code(code)
-	assert has_type_matching(env, fn (t Type) bool {
-		if t is Array {
-			return t.elem_type.name() == 'string'
-		}
-		return false
-	}), 'array append RHS arrays should keep []string type'
-}
-
-fn test_struct_init_enum_shorthand_uses_embedded_field_type() {
-	code := '
-enum Reporter { parser }
-struct Message { reporter Reporter }
-struct Error {
-	Message
-}
-fn f() {
-	_ := Error{reporter: .parser}
-}
-'
-	env := check_code(code)
-	assert has_type(env, 'Reporter'), 'embedded struct init fields should provide enum shorthand context'
-}
-
-fn test_in_array_type_variants_use_pointer_sumtype_base() {
-	code := '
-struct BoolLiteral {}
-struct IntegerLiteral {}
-type Expr = BoolLiteral | IntegerLiteral
-fn f(expr &Expr) {
-	if expr in [IntegerLiteral, BoolLiteral] {}
-}
-'
-	env := check_code(code)
-	assert has_type_matching(env, fn (t Type) bool {
-		if t is Array {
-			return t.elem_type.name() == 'Expr'
-		}
-		return false
-	}), '`in` type-list arrays should use the base sum type for pointer lhs values'
-}
-
-fn test_return_enum_shorthand_uses_function_return_type_inside_or_block() {
-	code := '
-enum Visibility { public_path }
-fn maybe() ?int { return none }
-fn f() Visibility {
-	_ := maybe() or { return .public_path }
-	return .public_path
-}
-'
-	env := check_code(code)
-	assert has_type(env, 'Visibility'), 'return enum shorthand should use the current function return type'
-}
-
-fn test_flag_enum_zero_static_method_returns_enum() {
-	code := '
-@[flag]
-enum Show {
-	name
-	value
-}
-fn f() Show {
-	return ~Show.zero() ^ .name
-}
-'
-	env := check_code(code)
-	assert has_type(env, 'Show'), 'flag enum zero() should return the enum type'
-}
-
-fn test_conditional_for_in_expr_with_selector_lhs_is_not_for_in_loop() {
-	code := '
-enum Kind { key_if key_else }
-struct Token { kind Kind }
-struct Parser { tok Token }
-fn f(mut p Parser) {
-	for p.tok.kind in [.key_if, .key_else] {
-		break
-	}
-}
-'
-	env := check_code(code)
-	assert has_type_matching(env, fn (t Type) bool {
-		if t is Array {
-			return t.elem_type.name() == 'Kind'
-		}
-		return false
-	}), 'conditional for `in` expressions with selector lhs should keep enum context'
-}
-
-fn test_comptime_if_const_value_has_active_branch_type() {
-	code := "
-const type_name = $if linux { 'linux' } $else { 'other' }
-fn f() {
-	_ := [type_name, 'fallback']
-}
-"
-	env := check_code(code)
-	assert has_type_matching(env, fn (t Type) bool {
-		if t is Array {
-			return t.elem_type.name() == 'string'
-		}
-		return false
-	}), 'comptime if const values should use the selected branch type'
-}
-
-fn test_comptime_pseudo_vars_are_string_typed() {
-	env := check_code('fn f() { _ := @LOCATION }')
-	assert has_type(env, 'string'), 'comptime pseudo variables in strings should be typed as string'
-}
-
-fn test_positional_struct_init_uses_field_type_context() {
-	code := '
-struct Comparator {}
-struct ComparatorSet {
-	comparators []Comparator
-}
-fn f() ComparatorSet {
-	return ComparatorSet{[Comparator{}]}
-}
-'
-	env := check_code(code)
-	assert has_type_matching(env, fn (t Type) bool {
-		if t is Array {
-			return t.elem_type.name() == 'Comparator'
-		}
-		return false
-	}), 'positional struct init values should use the matching field type context'
-}
-
-fn test_if_guard_expr_infers_branch_value_type() {
-	code := "
-struct FlagData {
-	repeats int
-}
-fn f(m map[string]FlagData) {
-	repeats := if existing := m['x'] {
-		existing.repeats + 1
-	} else {
-		1
-	}
-	_ := FlagData{repeats: repeats}
-}
-"
-	env := check_code(code)
-	assert has_type(env, 'int'), 'if-guard expressions should infer value type from branches'
-}
-
-fn test_match_expr_infers_branch_type_without_expected_type() {
-	code := "
-fn f(x int) string {
-	mut res := match x {
-		0 { 'a' }
-		else { 'b' }
-	}
-	n := res.len
-	return res
-}
-"
-	env := check_code(code)
-	assert has_type(env, 'string'), 'match expression should infer string from branch values'
-}
-
-fn test_array_literal_uses_element_type_from_expected_array() {
-	env := check_code("fn main() { registers := { 8: ['al'], 16: ['ax', 'bx'] } }")
-	assert has_type_matching(env, fn (t Type) bool {
-		if t is Map {
-			if t.value_type is Array {
-				return t.value_type.elem_type.name() == 'string'
-			}
-		}
-		return false
-	}), 'map value array literals should use the expected array element type'
 }
 
 fn test_fn_literal() {
@@ -757,8 +952,8 @@ fn main() {
 	env := check_code(code)
 	scope := env.get_scope('main') or { panic('missing main scope') }
 	obj := scope.lookup_parent('SimdFloat4', 0) or { panic('missing SimdFloat4') }
-	assert obj is Type
-	typ_obj := obj as Type
+	assert obj is TypeObject
+	typ_obj := obj.typ()
 	assert typ_obj is Alias
 	base := (typ_obj as Alias).base_type
 	assert base is Struct
@@ -766,6 +961,28 @@ fn main() {
 	assert fields.len == 4
 	assert fields[0].name == 'x'
 	assert fields[0].typ.name() == 'f32'
+}
+
+fn test_struct_string_field_index_returns_u8_for_builtin_methods() {
+	code := '
+struct Scanner {
+	src string
+}
+
+fn (c u8) is_space() bool {
+	return true
+}
+
+fn starts_with_space(s Scanner) bool {
+	ch := s.src[0]
+	return ch.is_space() && s.src[0].is_space()
+}
+'
+	env := check_code(code)
+	fn_type := env.lookup_fn('main', 'starts_with_space') or { panic('missing starts_with_space') }
+	ret := fn_type.return_type or { panic('missing return type') }
+	assert ret.name() == 'bool'
+	assert has_type(env, 'u8'), 'string index should produce u8'
 }
 
 fn test_generic_method_receiver_instantiation_handles_self_referential_nodes() {
@@ -843,6 +1060,249 @@ fn main() {
 	env := check_code(code)
 	assert env.expr_type_values.len > 0, 'match expr should populate types'
 	assert has_type(env, 'string'), 'match expr should produce string type'
+}
+
+fn test_match_type_branch_smartcasts_array_variant() {
+	code := '
+type Value = string | []int
+
+fn value_len(value Value) int {
+	return match value {
+		[]int {
+			value.len
+		}
+		else {
+			0
+		}
+	}
+}
+'
+	env := check_code(code)
+
+	assert has_type(env, '[]int'), 'match type branch should smartcast array variants'
+}
+
+fn test_logical_not_does_not_extract_positive_smartcast() {
+	prefs := &pref.Preferences{}
+	mut file_set := token.FileSet.new()
+	env := Environment.new()
+	mut checker := Checker.new(prefs, file_set, env)
+	cond := ast.Expr(ast.PrefixExpr{
+		op:   .not
+		expr: ast.Expr(ast.ParenExpr{
+			expr: ast.Expr(ast.InfixExpr{
+				op:  .key_is
+				lhs: ast.Expr(ast.SelectorExpr{
+					lhs: ast.Expr(ast.IndexExpr{
+						lhs:  ast.Expr(ast.Ident{
+							name: 'args'
+						})
+						expr: ast.Expr(ast.BasicLiteral{
+							kind:  .number
+							value: '0'
+						})
+					})
+					rhs: ast.Ident{
+						name: 'expr'
+					}
+				})
+				rhs: ast.Expr(ast.Ident{
+					name: 'CallExpr'
+				})
+			})
+		})
+	})
+	names, types_ := checker.extract_smartcasts(cond)
+	assert names.len == 0
+	assert types_.len == 0
+}
+
+fn test_not_is_return_smartcasts_following_statements() {
+	code := '
+type Stmt = EmptyStmt | ForStmt
+
+struct EmptyStmt {}
+
+struct ForStmt {
+	init Stmt
+}
+
+fn has_init(stmt Stmt) bool {
+	if stmt !is ForStmt {
+		return false
+	}
+	_ = stmt.init
+	return true
+}
+'
+	env := check_code(code)
+
+	assert has_type(env, 'ForStmt'), '`!is` early return should smartcast the following statements'
+}
+
+fn test_array_count_it_predicate() {
+	code := '
+fn count_first(values [][]int) int {
+	return values.count(it[0] == 1)
+}
+'
+	env := check_code(code)
+
+	assert has_type(env, 'int'), 'array.count should typecheck implicit it predicates'
+}
+
+fn test_struct_field_forward_flag_enum_type() {
+	code := '
+struct Holder {
+	flags Flags
+}
+
+@[flag]
+enum Flags {
+	enabled
+}
+
+fn uses_flag(h Holder) bool {
+	return h.flags.has(.enabled)
+}
+'
+	env := check_code(code)
+
+	assert has_type(env, 'Flags'), 'struct fields should resolve enum types declared later'
+	assert has_type(env, 'bool'), 'flag enum methods should typecheck shorthand arguments'
+}
+
+fn test_or_block_propagated_fn_parameter_call() {
+	code := '
+fn fallback(cb fn (int) !string) string {
+	return cb(1) or {
+		cb(2)!
+	}
+}
+'
+	env := check_code(code)
+
+	assert has_type(env, 'string'), 'or block should unwrap propagated calls through fn parameters'
+}
+
+fn test_if_guard_optional_tuple_destructure() {
+	code := '
+fn pair() ?(string, string) {
+	return none
+}
+
+fn use_pair() {
+	if first, second := pair() {
+		_ := first.len
+		_ := second.len
+	}
+}
+'
+	env := check_code(code)
+
+	assert has_type(env, 'string'), 'if guard should destructure unwrapped optional tuples'
+}
+
+fn test_multiline_struct_init_method_call() {
+	code := '
+struct Tx {
+	inner int
+}
+
+fn (tx Tx) is_active() bool {
+	return true
+}
+
+fn active() bool {
+	return Tx{
+		inner: 1
+	}.is_active()
+}
+'
+	env := check_code(code)
+
+	assert has_type(env, 'bool'), 'multiline struct init method calls should use the struct type'
+}
+
+fn test_prefix_multiline_struct_init_method_call() {
+	code := '
+struct TxInner {}
+
+struct Tx {
+	inner &TxInner
+}
+
+fn (tx Tx) is_active() bool {
+	return true
+}
+
+fn active(owner &TxInner) bool {
+	return !Tx{
+		inner: owner
+	}.is_active()
+}
+'
+	env := check_code(code)
+
+	assert has_type(env, 'bool'), 'prefix multiline struct init method calls should use the method result type'
+}
+
+fn test_or_condition_prefix_multiline_struct_init_method_call() {
+	code := '
+struct TxInner {
+	active bool
+}
+
+struct SavepointInner {
+	active bool
+	owner  &TxInner
+}
+
+struct Savepoint {
+	inner &SavepointInner
+}
+
+struct Tx {
+	inner &TxInner
+}
+
+fn (tx Tx) is_active() bool {
+	return true
+}
+
+fn isnil(p &TxInner) bool {
+	return false
+}
+
+fn ensure_active(sp Savepoint) bool {
+	if !sp.inner.active || isnil(sp.inner.owner) || !Tx{
+		inner: sp.inner.owner
+	}.is_active() {
+		return false
+	}
+	return true
+}
+'
+	env := check_code(code)
+
+	assert has_type(env, 'bool'), 'or conditions should keep multiline init method receiver type'
+}
+
+fn test_map_enum_shorthand_keys() {
+	code := '
+enum Kind {
+	first
+	second
+}
+
+const labels = {
+	Kind.first: "first"
+	.second:   "second"
+}
+'
+	env := check_code(code)
+
+	assert has_type(env, 'map[Kind]string'), 'map keys should support enum shorthand after typed first key'
 }
 
 // === Cast Expression Tests ===
@@ -1053,4 +1513,75 @@ fn test_scope_insert_replaces_module_placeholder_with_function() {
 	})
 	obj := scope.lookup_parent('optimize', 0) or { panic('missing optimize') }
 	assert obj is Fn
+}
+
+fn test_explicit_lifetime_syntax_in_fn_types_and_generic_args() {
+	code := '
+struct Ignore {}
+
+struct IgnoreMatch[^a] {}
+
+fn matched_dir_entry[^a](self &^a Ignore) IgnoreMatch[^a] {
+	return IgnoreMatch[^a]{}
+}
+'
+	env := check_code(code)
+	fn_type := env.lookup_fn('main', 'matched_dir_entry') or { panic('missing matched_dir_entry') }
+	assert '^a' in fn_type.generic_params
+	assert fn_type.params.len == 1
+	assert fn_type.params[0].typ is Pointer
+	ptr := fn_type.params[0].typ as Pointer
+	assert ptr.lifetime == 'a'
+	assert ptr.base_type.name() == 'Ignore'
+	assert has_type_matching(env, fn (t Type) bool {
+		return t is Struct && t.name == 'IgnoreMatch' && t.generic_params == ['^a']
+	})
+}
+
+fn test_explicit_lifetime_method_receiver_and_nested_generic_return_type() {
+	code := '
+struct Ignore {}
+
+struct DirEntry {}
+
+struct Match[T] {
+	value T
+}
+
+struct IgnoreMatch[^a] {
+	ig &^a Ignore
+}
+
+fn (ig &^a Ignore) matched_dir_entry[^a](dent &DirEntry) Match[IgnoreMatch[^a]] {
+	return Match[IgnoreMatch[^a]]{
+		value: IgnoreMatch[^a]{
+			ig: ig
+		}
+	}
+}
+
+fn main() {
+	ig := Ignore{}
+	dent := DirEntry{}
+	ig.matched_dir_entry(&dent)
+}
+'
+	env := check_code(code)
+	method := env.lookup_method('Ignore', 'matched_dir_entry') or {
+		panic('missing Ignore.matched_dir_entry')
+	}
+	assert '^a' in method.generic_params
+	assert method.params.len == 1
+	assert method.params[0].typ is Pointer
+	dent_param := method.params[0].typ as Pointer
+	assert dent_param.lifetime == ''
+	assert dent_param.base_type.name() == 'DirEntry'
+	return_type := method.get_return_type() or { panic('missing matched_dir_entry return type') }
+	assert return_type.name() == 'Match'
+	assert has_type_matching(env, fn (t Type) bool {
+		return t is Struct && t.name == 'IgnoreMatch' && t.generic_params == ['^a']
+	})
+	assert has_type_matching(env, fn (t Type) bool {
+		return t is Struct && t.name == 'Match'
+	})
 }

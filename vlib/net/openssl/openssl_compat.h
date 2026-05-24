@@ -22,3 +22,13 @@ static X509 *v_net_openssl_get1_peer_certificate(SSL *ssl) {
 	return SSL_get1_peer_certificate(ssl);
 }
 #endif
+
+// LibreSSL and older OpenSSL-compatible headers may not expose the async
+// SSL_ERROR constants, but V's SSLError enum needs stable values for them.
+#ifndef SSL_ERROR_WANT_ASYNC
+#define SSL_ERROR_WANT_ASYNC 9
+#endif
+
+#ifndef SSL_ERROR_WANT_ASYNC_JOB
+#define SSL_ERROR_WANT_ASYNC_JOB 10
+#endif

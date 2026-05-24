@@ -121,11 +121,25 @@ fn (mut c Checker) struct_decl(mut node ast.StructDecl) {
 			sym := c.table.sym(field.typ)
 			if sym.info is ast.ArrayFixed && c.array_fixed_has_unresolved_size(sym.info) {
 				mut size_expr := unsafe { sym.info.size_expr }
+				old_typ := field.typ
 				field.typ = c.eval_array_fixed_sizes(mut size_expr, 0, sym.info.elem_type)
 				for mut symfield in struct_sym.info.fields {
 					if symfield.name == field.name {
 						symfield.typ = field.typ
 					}
+				}
+				// Overwrite the previously unresolved type symbol so that earlier
+				// expressions which captured its idx (e.g. IndexExpr.left_type from
+				// another file checked first) observe the resolved size. See #27078.
+				// Skip for generic structs: the size expression may reference a generic
+				// type parameter (e.g. `sizeof(T)`), which resolves to a placeholder size
+				// here; the correct per-instantiation size is computed later in struct_init.
+				if old_typ.idx() != field.typ.idx() && struct_sym.info.generic_types.len == 0 {
+					new_sym := c.table.sym(field.typ)
+					mut old_sym := c.table.type_symbols[old_typ.idx()]
+					old_sym.name = new_sym.name
+					old_sym.cname = new_sym.cname
+					old_sym.info = new_sym.info
 				}
 			}
 		}
@@ -164,7 +178,8 @@ fn (mut c Checker) struct_decl(mut node ast.StructDecl) {
 			if field.has_default_expr {
 				c.expected_type = field.typ
 				field.default_expr_typ = c.expr(mut field.default_expr)
-				if field.typ.is_ptr() != field.default_expr_typ.is_ptr() {
+				if field.typ.is_ptr() != field.default_expr_typ.is_ptr()
+					&& field.default_expr_typ.idx() !in ast.pointer_type_idxs {
 					default_pos := field.default_expr.pos()
 					if field.default_expr is ast.CallExpr {
 						err_desc := if field.typ.is_ptr() { 'is' } else { 'is not' }
@@ -1480,7 +1495,8 @@ fn (mut c Checker) check_uninitialized_struct_fields_and_embeds(node ast.StructI
 		}
 		field_is_option := field.typ.has_flag(.option)
 		if field.typ.is_ptr() && !field.typ.has_flag(.shared_f) && !field_is_option
-			&& !node.has_update_expr && !c.pref.translated && !c.file.is_translated {
+			&& !node.has_update_expr && !c.pref.translated && !c.file.is_translated
+			&& type_sym.language != .c {
 			// Skip this check during generic recheck (concrete instantiation),
 			// because generic code like `T{}` or `Struct[V]{}` cannot provide
 			// initializers for reference fields that only appear after type substitution.
