@@ -116,6 +116,11 @@ mut:
 	request_arena  voidptr
 	request_active bool
 	start_ns       i64
+	// epollout_armed records whether we actually had to register EPOLLOUT for
+	// this connection. When set, complete_write performs a DEL+ADD on the fd to
+	// re-deliver any pipelined request bytes that arrived during the write as a
+	// fresh EPOLLIN edge (level-triggered semantics are not used here).
+	epollout_armed bool
 }
 
 // drain_status describes the outcome of one try_drain_write() pass.
@@ -413,27 +418,30 @@ fn arm_epollout(epoll_fd int, client_fd int) int {
 	return C.epoll_ctl(epoll_fd, C.EPOLL_CTL_MOD, client_fd, &ev)
 }
 
-// disarm_epollout restores the read-only epoll mask once the pending write has
-// fully drained.
-fn disarm_epollout(epoll_fd int, client_fd int) int {
-	mut ev := C.epoll_event{
-		events: u32(C.EPOLLIN | C.EPOLLET)
-	}
-	ev.data.fd = client_fd
-	return C.epoll_ctl(epoll_fd, C.EPOLL_CTL_MOD, client_fd, &ev)
-}
-
 // complete_write tears down the per-fd write state after a successful drain,
 // then either closes the connection or leaves it in keep-alive mode.
 fn complete_write(server &Server, epoll_fd int, client_fd int, mut client_fds map[int]bool, mut client_buffers map[int][]u8, mut client_read_starts map[int]i64, mut closing_client_fds map[int]bool, mut client_write_states map[int]&ClientWriteState) {
 	state := client_write_states[client_fd] or { return }
 	should_close := state.should_close
+	epollout_was_armed := state.epollout_armed
 	free_write_state(server, client_fd, mut client_write_states)
-	disarm_epollout(epoll_fd, client_fd)
 	client_buffers.delete(client_fd)
 	if server.is_shutting_down() || should_close {
 		handle_client_closure(server, epoll_fd, client_fd, mut client_fds, mut client_buffers, mut
 			client_read_starts, mut closing_client_fds, mut client_write_states)
+		return
+	}
+	// Keep-alive: if EPOLLOUT was registered for the write, drop the fd from
+	// epoll and re-add it with the original EPOLLIN|EPOLLET mask. The re-add
+	// causes the kernel to fire a fresh edge for any pipelined request bytes
+	// that piled up in the recv buffer while we were write-blocked; a plain
+	// EPOLL_CTL_MOD would not generate that edge.
+	if epollout_was_armed {
+		remove_fd_from_epoll(epoll_fd, client_fd)
+		if add_fd_to_epoll(epoll_fd, client_fd, u32(C.EPOLLIN | C.EPOLLET)) == -1 {
+			handle_client_closure(server, epoll_fd, client_fd, mut client_fds, mut client_buffers, mut
+				client_read_starts, mut closing_client_fds, mut client_write_states)
+		}
 	}
 }
 
@@ -603,6 +611,8 @@ fn process_request(server &Server, epoll_fd int, client_fd int, request_buffer [
 				eprintln('ERROR: epoll_ctl(MOD, EPOLLOUT) failed errno=${C.errno}')
 				handle_client_closure(server, epoll_fd, client_fd, mut client_fds, mut client_buffers, mut
 					client_read_starts, mut closing_client_fds, mut client_write_states)
+			} else {
+				state.epollout_armed = true
 			}
 		}
 		.failed {
@@ -688,6 +698,15 @@ fn process_events(server &Server, epoll_fd int, listen_fd int) {
 				if closing_client_fds[client_fd] or { false } {
 					drain_closing_client(server, epoll_fd, client_fd, mut client_fds, mut client_buffers, mut
 						client_read_starts, mut closing_client_fds, mut client_write_states)
+					continue
+				}
+				if client_fd in client_write_states {
+					// A response is still being drained for this fd. Reading a new
+					// request now would overwrite the in-flight ClientWriteState and
+					// silently drop the response/file transfer. Defer until the write
+					// completes -- on keep-alive completion we re-arm EPOLLIN below so
+					// any bytes that arrived during the write get delivered as a fresh
+					// edge.
 					continue
 				}
 				// Read all available data from the socket
