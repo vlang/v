@@ -10936,9 +10936,7 @@ fn (mut g Gen) write_init_function() {
 		g.export_funcs << '_vinit_caller'
 		g.writeln('void _vinit_caller() {')
 		g.writeln('\tstatic bool once = false; if (once) {return;} once = true;')
-		if g.pref.os == .windows {
-			g.gen_windows_shared_library_boehm_init()
-		}
+		g.gen_shared_library_boehm_init()
 		g.writeln('\t_vinit(0,0);')
 		g.writeln('}')
 
