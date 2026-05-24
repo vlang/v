@@ -14,6 +14,7 @@ pub:
 	is_fn_call    bool      // true if moved via function call argument
 	suggest_clone bool = true // show clone suggestion in diagnostics
 	fn_name       string // function name (only when is_fn_call is true)
+	type_name     string = 'string' // type that does not implement Copy
 }
 
 // BorrowInfo tracks an active borrow of a variable.
@@ -34,7 +35,8 @@ fn (mut c Checker) ownership_check_ident(name string, pos token.Pos) {
 		move_position := move_file.position(info.move_pos)
 		errors.error('use of moved value: `${name}`', errors.details(file, file.position(pos), 2),
 			.error, file.position(pos))
-		eprintln('  --> move occurs because `${name}` has type `string`, which does not implement the `Copy` interface')
+		type_name := if info.type_name.len > 0 { info.type_name } else { 'string' }
+		eprintln('  --> move occurs because `${name}` has type `${type_name}`, which does not implement the `Copy` interface')
 		if info.is_fn_call {
 			eprintln('  --> value moved into function `${info.fn_name}` at ${move_position}')
 			eprintln('help: consider cloning the value if the performance cost is acceptable')
@@ -70,12 +72,17 @@ fn (mut c Checker) ownership_check_assign(lhs_name string, rhs ast.Expr, assign_
 				exit(1)
 			}
 		}
-		// Move: mark rhs as moved, mark lhs as owned
+		// Move: mark rhs as moved, mark lhs as owned. The LHS inherits the
+		// RHS's tracked type name so downstream diagnostics show the right
+		// type (e.g. `Foo` rather than the default `string`).
+		rhs_type_name := c.owned_var_types[rhs_name] or { 'string' }
 		c.moved_vars[rhs_name] = MovedVar{
-			moved_to: lhs_name
-			move_pos: assign_pos
+			moved_to:  lhs_name
+			move_pos:  assign_pos
+			type_name: rhs_type_name
 		}
 		c.owned_vars[lhs_name] = assign_pos
+		c.owned_var_types[lhs_name] = rhs_type_name
 	}
 	// Check if RHS is &ident (creating a reference to an owned variable)
 	if rhs is ast.PrefixExpr {
@@ -107,10 +114,12 @@ fn (mut c Checker) ownership_consume_expr(expr ast.Expr, pos token.Pos, target s
 			exit(1)
 		}
 	}
+	type_name := c.owned_var_types[name] or { 'string' }
 	c.moved_vars[name] = MovedVar{
 		moved_to:      target
 		move_pos:      pos
 		suggest_clone: false
+		type_name:     type_name
 	}
 }
 
@@ -180,11 +189,13 @@ fn (mut c Checker) ownership_check_call_args(expr ast.CallExpr) {
 					exit(1)
 				}
 			}
+			type_name := c.owned_var_types[arg_name] or { 'string' }
 			c.moved_vars[arg_name] = MovedVar{
 				moved_to:   fn_name
 				move_pos:   expr.pos
 				is_fn_call: true
 				fn_name:    fn_name
+				type_name:  type_name
 			}
 			// Track that parameter i of this function receives an owned value
 			key := '${fn_name}__param_${i}'
@@ -209,11 +220,13 @@ fn (mut c Checker) ownership_check_return(stmt ast.ReturnStmt) {
 			// This function returns an owned value — mark the function
 			c.ownership_fns[c.ownership_cur_fn] = true
 			// The returned variable is moved out of this scope
+			type_name := c.owned_var_types[name] or { 'string' }
 			c.moved_vars[name] = MovedVar{
 				moved_to:   c.ownership_cur_fn
 				move_pos:   c.owned_vars[name] // use the owned position as fallback
 				is_fn_call: true
 				fn_name:    c.ownership_cur_fn
+				type_name:  type_name
 			}
 		} else if ownership_is_to_owned_call(expr) {
 			// Direct return of .to_owned() call, e.g. `return 'x'.to_owned()`
@@ -250,7 +263,7 @@ fn (mut c Checker) ownership_mark_from_call_expr(lhs_name string, call ast.CallE
 	if call.lhs is ast.SelectorExpr {
 		sel := call.lhs as ast.SelectorExpr
 		if sel.rhs.name == 'to_owned' {
-			c.owned_vars[lhs_name] = pos
+			c.ownership_mark_owned(lhs_name, Type(string_), pos)
 			return true
 		}
 	}
@@ -258,7 +271,7 @@ fn (mut c Checker) ownership_mark_from_call_expr(lhs_name string, call ast.CallE
 	fn_name := ownership_call_fn_name(call)
 	// Check if calling a function that returns ownership
 	if fn_name in c.ownership_fns {
-		c.owned_vars[lhs_name] = pos
+		c.ownership_mark_owned(lhs_name, Type(string_), pos)
 		return true
 	}
 	// Check if the function returns a specific parameter and that parameter's arg was owned.
@@ -271,13 +284,21 @@ fn (mut c Checker) ownership_mark_from_call_expr(lhs_name string, call ast.CallE
 			arg_name := ownership_expr_ident_name(call.args[param_idx])
 			if arg_name.len > 0 {
 				if arg_name in c.owned_vars {
+					type_name := c.owned_var_types[arg_name] or { 'string' }
 					c.owned_vars[lhs_name] = pos
+					c.owned_var_types[lhs_name] = type_name
 					return true
 				}
 				if arg_name in c.moved_vars {
 					info := c.moved_vars[arg_name]
 					if info.is_fn_call && info.fn_name == fn_name {
+						type_name := if info.type_name.len > 0 {
+							info.type_name
+						} else {
+							'string'
+						}
 						c.owned_vars[lhs_name] = pos
+						c.owned_var_types[lhs_name] = type_name
 						return true
 					}
 				}
@@ -384,14 +405,18 @@ fn (mut c Checker) ownership_enter_fn(fn_name string, decl ast.FnDecl) {
 		key := '${fn_name}__param_${i}'
 		if key in c.ownership_fn_params {
 			c.owned_vars[param.name] = decl.pos
+			// Best-effort type display name; resolved from the parameter type
+			// expression via the checker's name helper.
+			c.owned_var_types[param.name] = c.type_ref_name(param.typ)
 		}
 	}
 }
 
 // ownership_leave_fn cleans up ownership tracking when leaving a function body.
-fn (mut c Checker) ownership_leave_fn(prev_fn string, prev_owned map[string]token.Pos, prev_moved map[string]MovedVar, prev_borrowed map[string][]BorrowInfo) {
+fn (mut c Checker) ownership_leave_fn(prev_fn string, prev_owned map[string]token.Pos, prev_owned_types map[string]string, prev_moved map[string]MovedVar, prev_borrowed map[string][]BorrowInfo) {
 	c.ownership_cur_fn = prev_fn
 	c.owned_vars = prev_owned.clone()
+	c.owned_var_types = prev_owned_types.clone()
 	c.moved_vars = prev_moved.clone()
 	c.borrowed_vars = prev_borrowed.clone()
 }
@@ -452,6 +477,16 @@ fn (mut c Checker) ownership_restore_state(owned map[string]token.Pos, moved map
 	c.owned_vars = owned.clone()
 	c.moved_vars = moved.clone()
 	c.borrowed_vars = borrowed.clone()
+	// Prune owned_var_types to match owned_vars after restore. Any owned var
+	// that disappeared from `owned` should have its cached type display dropped
+	// too, otherwise diagnostics would leak across branches.
+	mut new_types := map[string]string{}
+	for name, _ in owned {
+		if name in c.owned_var_types {
+			new_types[name] = c.owned_var_types[name]
+		}
+	}
+	c.owned_var_types = new_types.clone()
 }
 
 fn (mut c Checker) ownership_merge_if_state(before_owned map[string]token.Pos, before_moved map[string]MovedVar, before_borrowed map[string][]BorrowInfo, then_owned map[string]token.Pos, then_moved map[string]MovedVar, then_borrowed map[string][]BorrowInfo, then_returns bool, has_else bool, else_owned map[string]token.Pos, else_moved map[string]MovedVar, else_borrowed map[string][]BorrowInfo, else_returns bool) {
@@ -585,6 +620,134 @@ fn ownership_is_ownership_call(expr ast.Expr, ownership_fns map[string]bool) boo
 		if coce.lhs is ast.Ident {
 			return (coce.lhs as ast.Ident).name in ownership_fns
 		}
+	}
+	return false
+}
+
+// is_copy_type reports whether a type implements the `Copy` marker interface,
+// either intrinsically (primitives, pointers, enums, function types, channels,
+// strings) or explicitly via `struct X implements Copy`.
+//
+// Copy types are *never* moved on assignment. Non-Copy types are not
+// automatically moved either; only types that opt into ownership via
+// `implements Owned` (struct), `.to_owned()` (string), or a non-Copy
+// owned-tracked container are subject to move semantics. See `is_owned_type`.
+//
+// Backward compatibility: `string` is treated as Copy here. Ownership is
+// opted into per value via `.to_owned()`, preserving V's existing implicit
+// auto-clone semantics for plain string literals.
+pub fn (c &Checker) is_copy_type(t Type) bool {
+	return c.is_copy_type_impl(t, 0)
+}
+
+fn (c &Checker) is_copy_type_impl(t Type, depth int) bool {
+	if depth > 16 {
+		// Cycle guard for self-referential type aliases.
+		return true
+	}
+	match t {
+		Primitive, Char, Rune, ISize, USize, Enum, Pointer, FnType, Nil, None, Void, Channel,
+		Thread, NamedType, String {
+			return true
+		}
+		Alias {
+			return c.is_copy_type_impl(t.base_type, depth + 1)
+		}
+		OptionType {
+			return c.is_copy_type_impl(t.base_type, depth + 1)
+		}
+		ResultType {
+			return c.is_copy_type_impl(t.base_type, depth + 1)
+		}
+		Struct {
+			return c.struct_marker_matches(t, 'Copy')
+		}
+		Interface, Array, ArrayFixed, Map, SumType, Tuple {
+			return false
+		}
+	}
+
+	return true
+}
+
+// is_owned_type reports whether values of this type are tracked for ownership.
+// A type is owned-tracked when the user has explicitly opted in:
+//   * struct: `struct X implements Owned { ... }`
+//   * alias / option / result: opt-in propagates through transparently
+// Untracked types behave like today (auto-clone / shared reference), so
+// existing code keeps compiling. This is what the new "owned types beyond
+// string" path keys off in `assign_stmt`.
+pub fn (c &Checker) is_owned_type(t Type) bool {
+	return c.is_owned_type_impl(t, 0)
+}
+
+fn (c &Checker) is_owned_type_impl(t Type, depth int) bool {
+	if depth > 16 {
+		return false
+	}
+	match t {
+		Alias {
+			return c.is_owned_type_impl(t.base_type, depth + 1)
+		}
+		OptionType {
+			return c.is_owned_type_impl(t.base_type, depth + 1)
+		}
+		ResultType {
+			return c.is_owned_type_impl(t.base_type, depth + 1)
+		}
+		Struct {
+			return c.struct_marker_matches(t, 'Owned')
+		}
+		else {
+			return false
+		}
+	}
+}
+
+// struct_marker_matches checks whether a struct directly lists `target` in its
+// `implements` clause. Used for the `Copy` and `Owned` marker interfaces.
+fn (c &Checker) struct_marker_matches(st Struct, target string) bool {
+	for impl_name in st.implements {
+		if impl_name == target || impl_name.all_after_last('__') == target {
+			return true
+		}
+	}
+	return false
+}
+
+// ownership_type_display returns a short, user-facing name for a type, used in
+// the "move occurs because `x` has type `T`" diagnostic.
+fn ownership_type_display(t Type) string {
+	name := t.name()
+	if name.len > 0 {
+		return name
+	}
+	return '<unknown>'
+}
+
+// ownership_mark_owned records that the variable `name` holds an owned value
+// of type `typ`. Called when:
+//   - a non-Copy value is created (struct/array/map literal, fn returning
+//     non-Copy, etc.)
+//   - a string is explicitly upgraded via `.to_owned()`
+fn (mut c Checker) ownership_mark_owned(name string, typ Type, pos token.Pos) {
+	if name.len == 0 || name == '_' {
+		return
+	}
+	c.owned_vars[name] = pos
+	c.owned_var_types[name] = ownership_type_display(typ)
+}
+
+// ownership_is_borrow_or_ref_rhs returns true if the RHS expression is itself
+// a borrow (`&x`) or pointer construction that should not produce an owned
+// LHS even when the LHS's static type is non-Copy. This is used to avoid
+// marking `r := &foo` as owning a new value.
+fn ownership_is_borrow_or_ref_rhs(rhs ast.Expr) bool {
+	if rhs is ast.PrefixExpr {
+		return (rhs as ast.PrefixExpr).op == .amp
+	}
+	if rhs is ast.ModifierExpr {
+		return (rhs as ast.ModifierExpr).kind == .key_mut
 	}
 	return false
 }

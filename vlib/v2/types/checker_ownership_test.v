@@ -1,4 +1,4 @@
-// vtest build: false // TODO: ownership checker is still in development, re-enable when stable
+// Re-enabled for Copy/Owned trait test extension
 module types
 
 import os
@@ -350,8 +350,8 @@ fn main() {
 	s := 'hello'.to_owned()
 	r1 := &s
 	r2 := &s
-	println(r1)
-	println(r2)
+	println(*r1)
+	println(*r2)
 }
 "
 	exit_code, _ := run_ownership_check(code)
@@ -515,4 +515,192 @@ fn main() {
 	exit_code, output := run_ownership_check(code)
 	assert exit_code != 0, 'should fail: s moved into map literal'
 	assert output.contains('use of moved value: `s`'), 'got: ${output}'
+}
+
+// === Owned marker interface (non-string types) ===
+
+fn test_owned_struct_move_on_assign() {
+	code := '
+struct Resource implements Owned {
+	handle int
+}
+
+fn main() {
+	r := Resource{handle: 42}
+	r2 := r
+	println(r.handle)
+	_ = r2
+}
+'
+	exit_code, output := run_ownership_check(code)
+	assert exit_code != 0, 'should fail: Owned struct moved on assign'
+	assert output.contains('use of moved value: `r`'), 'got: ${output}'
+	assert output.contains('has type `Resource`'), 'got: ${output}'
+}
+
+fn test_owned_struct_no_move_when_unmarked() {
+	// A struct that does NOT `implements Owned` keeps existing V semantics:
+	// no ownership tracking, no move-on-assign.
+	code := '
+struct Foo {
+	x int
+}
+
+fn main() {
+	f := Foo{x: 1}
+	f2 := f
+	println(f.x)
+	println(f2.x)
+}
+'
+	exit_code, _ := run_ownership_check(code)
+	assert exit_code == 0, 'unmarked struct should not be tracked'
+}
+
+fn test_copy_struct_can_be_reused() {
+	// A struct that `implements Copy` is always copyable.
+	code := '
+struct Point implements Copy {
+	x int
+	y int
+}
+
+fn main() {
+	p := Point{x: 1, y: 2}
+	p2 := p
+	println(p.x + p2.y)
+}
+'
+	exit_code, _ := run_ownership_check(code)
+	assert exit_code == 0, 'Copy struct should be reusable after assign'
+}
+
+fn test_owned_struct_move_into_fn() {
+	code := '
+struct Resource implements Owned {
+	handle int
+}
+
+fn take(r Resource) {
+	println(r.handle)
+}
+
+fn main() {
+	r := Resource{handle: 1}
+	take(r)
+	println(r.handle)
+}
+'
+	exit_code, output := run_ownership_check(code)
+	assert exit_code != 0, 'should fail: Owned struct moved into fn'
+	assert output.contains('use of moved value: `r`'), 'got: ${output}'
+	assert output.contains('moved into function `take`'), 'got: ${output}'
+}
+
+fn test_owned_struct_borrow_ok() {
+	code := '
+struct Resource implements Owned {
+	handle int
+}
+
+fn borrow(r &Resource) int {
+	return r.handle
+}
+
+fn main() {
+	r := Resource{handle: 7}
+	h := borrow(&r)
+	println(r.handle)
+	println(h)
+}
+'
+	exit_code, _ := run_ownership_check(code)
+	assert exit_code == 0, '&r should borrow, not move'
+}
+
+fn test_owned_struct_returned_from_fn_is_owned() {
+	// A function returning an Owned-marked struct produces an owned value
+	// at the call site, regardless of any pre-scan: the type alone is
+	// enough to trigger ownership tracking.
+	code := '
+struct Resource implements Owned {
+	handle int
+}
+
+fn make_res() Resource {
+	return Resource{handle: 9}
+}
+
+fn main() {
+	r := make_res()
+	r2 := r
+	println(r.handle)
+	_ = r2
+}
+'
+	exit_code, output := run_ownership_check(code)
+	assert exit_code != 0, 'should fail: r owned via return type'
+	assert output.contains('use of moved value: `r`'), 'got: ${output}'
+	assert output.contains('has type `Resource`'), 'got: ${output}'
+}
+
+fn test_owned_struct_move_into_struct_field() {
+	code := '
+struct Resource implements Owned {
+	handle int
+}
+
+struct Holder {
+	res Resource
+}
+
+fn main() {
+	r := Resource{handle: 4}
+	_ := Holder{res: r}
+	println(r.handle)
+}
+'
+	exit_code, output := run_ownership_check(code)
+	assert exit_code != 0, 'should fail: r moved into Holder.res field'
+	assert output.contains('use of moved value: `r`'), 'got: ${output}'
+}
+
+fn test_owned_struct_borrow_blocks_move() {
+	code := '
+struct Resource implements Owned {
+	handle int
+}
+
+fn main() {
+	r := Resource{handle: 3}
+	rr := &r
+	r2 := r
+	println(rr.handle)
+	_ = r2
+}
+'
+	exit_code, output := run_ownership_check(code)
+	assert exit_code != 0, 'should fail: cannot move r while borrowed'
+	assert output.contains('cannot move `r` because it is borrowed'), 'got: ${output}'
+}
+
+fn test_owned_struct_diagnostic_uses_type_name() {
+	// Verify the diagnostic message references the actual user-defined
+	// type, not the placeholder "string".
+	code := '
+struct Widget implements Owned {
+	id int
+}
+
+fn main() {
+	w := Widget{id: 1}
+	w2 := w
+	println(w.id)
+	_ = w2
+}
+'
+	exit_code, output := run_ownership_check(code)
+	assert exit_code != 0, 'should fail'
+	assert output.contains('has type `Widget`'), 'diagnostic should name Widget, got: ${output}'
+	assert !output.contains('has type `string`'), 'diagnostic should not say string, got: ${output}'
 }

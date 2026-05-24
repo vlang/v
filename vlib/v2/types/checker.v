@@ -578,8 +578,11 @@ mut:
 	expr_stack []string
 	// Whether we are inside an unsafe{} block
 	inside_unsafe bool
-	// Ownership tracking: variables that hold owned values (from .to_owned())
+	// Ownership tracking: variables that hold owned values
+	// (from `.to_owned()` for strings, or any non-Copy value for other types).
 	owned_vars map[string]token.Pos // var name -> position where it became owned
+	// Display name of each owned variable's type, used in move diagnostics.
+	owned_var_types map[string]string // var name -> type display name
 	// Variables that have been moved (assigned to another variable)
 	moved_vars map[string]MovedVar // var name -> info about the move
 	// Functions that return owned values (detected from return statements)
@@ -3844,18 +3847,21 @@ fn (mut c Checker) check_pending_fn_body(pending PendingFnBody) {
 		// Ownership: save/restore per-function state
 		mut prev_ownership_fn := ''
 		mut prev_owned := map[string]token.Pos{}
+		mut prev_owned_types := map[string]string{}
 		mut prev_moved := map[string]MovedVar{}
 		mut prev_borrowed := map[string][]BorrowInfo{}
 		$if ownership ? {
 			prev_ownership_fn = c.ownership_cur_fn
 			prev_owned = c.owned_vars.clone()
+			prev_owned_types = c.owned_var_types.clone()
 			prev_moved = c.moved_vars.clone()
 			prev_borrowed = c.borrowed_vars.clone()
 			c.ownership_enter_fn(pending.decl.name, pending.decl)
 		}
 		c.stmt_list(pending.decl.stmts)
 		$if ownership ? {
-			c.ownership_leave_fn(prev_ownership_fn, prev_owned, prev_moved, prev_borrowed)
+			c.ownership_leave_fn(prev_ownership_fn, prev_owned, prev_owned_types, prev_moved,
+				prev_borrowed)
 		}
 		c.expected_type = expected_type
 		c.generic_params = prev_generic_params
@@ -4127,18 +4133,33 @@ fn (mut c Checker) assign_stmt(stmt ast.AssignStmt, unwrap_optional bool) {
 			} else {
 				''
 			}
-			if lhs_name.len > 0 {
+			if lhs_name.len > 0 && lhs_name != '_' {
 				if stmt.op == .decl_assign {
-					// Check if RHS is a .to_owned() call or ownership-returning function
-					if !c.ownership_mark_from_call(lhs_name, rx, stmt.pos) {
-						// Check if RHS is an owned variable (triggers move)
+					// 1. Match the `.to_owned()` / ownership-returning fn path
+					//    — the existing opt-in for `string` values.
+					marked := c.ownership_mark_from_call(lhs_name, rx, stmt.pos)
+					// 2. Standard move-on-assign for any already-owned RHS ident.
+					if !marked {
 						c.ownership_check_assign(lhs_name, rx, stmt.pos)
+					}
+					// 3. Copy/Owned trait: if the value's static type is
+					//    explicitly marked `implements Owned` and we didn't
+					//    already mark the LHS owned above, the LHS now owns
+					//    a fresh value (struct literal, call returning the
+					//    owned type, etc.). Borrows (`r := &foo`) are skipped
+					//    — they yield a pointer (Copy) regardless.
+					if !marked && lhs_name !in c.owned_vars && c.is_owned_type(expr_type)
+						&& !ownership_is_borrow_or_ref_rhs(rx) {
+						c.ownership_mark_owned(lhs_name, expr_type, stmt.pos)
 					}
 				} else if stmt.op == .assign {
 					// Reassignment: check if LHS is currently borrowed
 					c.ownership_check_reassign(lhs_name, stmt.pos)
 					// Also check if new value is owned (via .to_owned() or fn return)
-					c.ownership_mark_from_call(lhs_name, rx, stmt.pos)
+					marked := c.ownership_mark_from_call(lhs_name, rx, stmt.pos)
+					if !marked && c.is_owned_type(expr_type) && !ownership_is_borrow_or_ref_rhs(rx) {
+						c.ownership_mark_owned(lhs_name, expr_type, stmt.pos)
+					}
 				} else if stmt.op in [.left_shift, .left_shift_assign] {
 					lhs_base := lhs_type.base_type()
 					if lhs_type is Array || lhs_base is Array {

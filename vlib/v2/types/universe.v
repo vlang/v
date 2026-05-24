@@ -175,5 +175,23 @@ pub fn init_universe() &Scope {
 	universe_.insert('float_literal', Type(float_literal_))
 	universe_.insert('float_literal', Type(float_literal_))
 	universe_.insert('thread', Type(thread_))
+	// Built-in marker interfaces consumed by the ownership checker
+	// (`-d ownership`):
+	//   * `Copy`  — explicit "always-copy" marker. Assignment of a value of
+	//               this type never moves; the struct must not contain Owned
+	//               fields. Useful to document intent and lock the type in.
+	//   * `Owned` — explicit "move-on-assign" marker. A struct that
+	//               implements `Owned` is tracked just like a `.to_owned()`
+	//               string: assignment, struct-literal nesting, array/map
+	//               literal nesting, and pass-by-value to a function all
+	//               transfer ownership; reusing the source afterwards is a
+	//               compile error.
+	// Both are empty interfaces (no required methods).
+	universe_.insert('Copy', Type(Interface{
+		name: 'Copy'
+	}))
+	universe_.insert('Owned', Type(Interface{
+		name: 'Owned'
+	}))
 	return universe_
 }
