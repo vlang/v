@@ -922,3 +922,144 @@ fn main() {
 	assert output.contains('use of moved value: `c`'), 'got: ${output}'
 	assert output.contains('has type `Conn`'), 'got: ${output}'
 }
+
+// === Consuming-self method tests ===
+// A by-value receiver (`fn (s Foo)`) on an Owned type CONSUMES the receiver,
+// matching Rust\'s `fn(self)` vs `fn(&self)`. A `&` or `mut` receiver borrows
+// and never moves. Only fires when the receiver\'s static type opts into the
+// `Owned` marker — plain V types keep their auto-clone semantics.
+
+fn test_consume_self_method_moves_receiver() {
+	code := '
+struct Conn implements Owned {
+mut:
+	socket int
+}
+
+fn (c Conn) close() {
+	println(c.socket)
+}
+
+fn main() {
+	c := Conn{socket: 7}
+	c.close()
+	c.close()
+}
+'
+	exit_code, output := run_ownership_check(code)
+	assert exit_code != 0, 'second call should fail: receiver moved'
+	assert output.contains('use of moved value: `c`'), 'got: ${output}'
+	assert output.contains('moved into function `close`'), 'should name the consuming method, got: ${output}'
+	assert output.contains('has type `Conn`'), 'should show the Owned type, got: ${output}'
+}
+
+fn test_consume_self_borrow_receiver_does_not_move() {
+	// `(c &Conn)` is a borrow — calling it any number of times must not
+	// consume the receiver.
+	code := '
+struct Conn implements Owned {
+mut:
+	socket int
+}
+
+fn (c &Conn) peek() int {
+	return c.socket
+}
+
+fn main() {
+	c := Conn{socket: 7}
+	_ := c.peek()
+	_ := c.peek()
+	_ := c.peek()
+}
+'
+	exit_code, output := run_ownership_check(code)
+	assert exit_code == 0, 'borrow-receiver methods must not move: ${output}'
+}
+
+fn test_consume_self_mut_receiver_does_not_move() {
+	// `(mut c Conn)` is a mutable borrow — also not a move.
+	code := '
+struct Conn implements Owned {
+mut:
+	socket int
+}
+
+fn (mut c Conn) bump() {
+	c.socket = c.socket + 1
+}
+
+fn main() {
+	mut c := Conn{socket: 7}
+	c.bump()
+	c.bump()
+	c.bump()
+}
+'
+	exit_code, output := run_ownership_check(code)
+	assert exit_code == 0, 'mut-receiver methods must not move: ${output}'
+}
+
+fn test_consume_self_use_after_consume_fails() {
+	// After a consuming call, any subsequent use of the receiver — even
+	// reading a field — must produce a use-after-move diagnostic.
+	code := '
+struct Conn implements Owned {
+mut:
+	socket int
+}
+
+fn (c Conn) close() {
+}
+
+fn main() {
+	c := Conn{socket: 7}
+	c.close()
+	println(c.socket)
+}
+'
+	exit_code, output := run_ownership_check(code)
+	assert exit_code != 0, 'field read after consume should fail'
+	assert output.contains('use of moved value: `c`'), 'got: ${output}'
+}
+
+fn test_consume_self_plain_struct_unaffected() {
+	// CRITICAL: a struct WITHOUT `implements Owned` is plain V — its
+	// value-receiver methods continue to auto-clone and never trigger the
+	// consuming-self rule. This preserves stdlib compatibility.
+	code := '
+struct Plain {
+mut:
+	x int
+}
+
+fn (p Plain) describe() string {
+	return "x"
+}
+
+fn main() {
+	p := Plain{x: 1}
+	println(p.describe())
+	println(p.describe())
+	println(p.describe())
+}
+'
+	exit_code, output := run_ownership_check(code)
+	assert exit_code == 0, 'plain (un-marked) struct must not be affected: ${output}'
+}
+
+fn test_consume_self_string_methods_unaffected() {
+	// `string` is only owned-tracked when explicitly upgraded via `.to_owned()`.
+	// A plain string literal stays auto-clone, and its many built-in
+	// value-receiver methods (`split`, `trim`, ...) must keep working.
+	code := "
+fn main() {
+	s := 'hello world'
+	parts := s.split(' ')
+	println(parts.len)
+	println(s.len)
+}
+"
+	exit_code, output := run_ownership_check(code)
+	assert exit_code == 0, 'plain string methods must not be affected: ${output}'
+}

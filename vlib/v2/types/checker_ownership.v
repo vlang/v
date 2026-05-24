@@ -533,6 +533,9 @@ fn (mut c Checker) ownership_prescan_fn_bodies() {
 			c.ownership_fn_returns_param[pending.decl.name] = returned_param
 		}
 	}
+	// Pass 3: Find methods declared with a by-value receiver — calls to these
+	// methods on owned vars MOVE the receiver (consuming-self semantics).
+	c.ownership_prescan_value_receivers()
 }
 
 // ownership_prescan_returns_owned checks if a function body creates a .to_owned() value
@@ -936,4 +939,122 @@ fn ownership_expr_ident_name(expr ast.Expr) string {
 	}
 
 	return ''
+}
+
+// ownership_receiver_short_name extracts the short type name from a receiver
+// type expression. Returns empty string if the receiver isn't a recognisable
+// named type. Handles plain idents, generic instantiations (`Foo[T]` via
+// IndexExpr / GenericArgs), and module-qualified selectors (`pkg.Foo`).
+fn ownership_receiver_short_name(typ ast.Expr) string {
+	match typ {
+		ast.Ident {
+			return typ.name
+		}
+		ast.IndexExpr {
+			return ownership_receiver_short_name(typ.lhs)
+		}
+		ast.GenericArgs {
+			return ownership_receiver_short_name(typ.lhs)
+		}
+		ast.SelectorExpr {
+			return typ.rhs.name
+		}
+		else {
+			return ''
+		}
+	}
+}
+
+// ownership_prescan_value_receivers populates `ownership_value_receiver_methods`
+// with every method declared with a by-value receiver. A method's receiver is
+// considered by-value when it's neither marked `mut` nor prefixed with `&`.
+// Calls to such methods on owned vars MOVE the receiver — consuming-self
+// semantics, matching Rust's `fn(self)` vs `fn(&self)`.
+//
+// Borrow-receiver (`(s &Foo)`) and mut-receiver (`(mut s Foo)`) methods are
+// borrows and never move the receiver.
+fn (mut c Checker) ownership_prescan_value_receivers() {
+	for pending in c.pending_fn_bodies {
+		decl := pending.decl
+		if !decl.is_method {
+			continue
+		}
+		if decl.receiver.is_mut {
+			continue
+		}
+		if decl.receiver.typ is ast.PrefixExpr {
+			pe := decl.receiver.typ as ast.PrefixExpr
+			if pe.op == .amp {
+				continue
+			}
+		}
+		recv_name := ownership_receiver_short_name(decl.receiver.typ)
+		if recv_name.len == 0 {
+			continue
+		}
+		short := recv_name.all_after_last('__')
+		key := '${short}__${decl.name}'
+		c.ownership_value_receiver_methods[key] = true
+	}
+}
+
+// ownership_check_method_call fires when a method call is made on an owned
+// variable and the callee was declared with a by-value receiver. The receiver
+// is consumed exactly like a function-call argument move: marked moved, with a
+// diagnostic if it's currently borrowed.
+//
+// No-op when:
+//   * the call isn't a method call (no SelectorExpr)
+//   * the receiver isn't a tracked local
+//   * the method has a `&` / `mut` receiver (borrow, not move)
+//   * the type / method pair isn't in the prescan registry
+//   * the receiver's STATIC type doesn't `implements Owned` (this is why a
+//     `string` value tracked via `.to_owned()` isn't consumed by built-in
+//     value-receiver methods like `clone`/`split` — those stay auto-clone)
+fn (mut c Checker) ownership_check_method_call(expr ast.CallExpr) {
+	if expr.lhs !is ast.SelectorExpr {
+		return
+	}
+	sel := expr.lhs as ast.SelectorExpr
+	recv_name := ownership_expr_ident_name(sel.lhs)
+	if recv_name.len == 0 || recv_name !in c.owned_vars {
+		return
+	}
+	type_display := c.owned_var_types[recv_name] or { return }
+	short_type := type_display.all_after_last('__')
+	method_name := sel.rhs.name
+	key := '${short_type}__${method_name}'
+	if key !in c.ownership_value_receiver_methods {
+		return
+	}
+	// Only apply consuming-self to types that explicitly opt into `Owned`.
+	// This guards stdlib types whose value-receiver methods (`string.clone`,
+	// `string.split`, ...) are auto-clone in V's semantics — they must not
+	// trip the move tracker even when the value happens to be owned-tracked.
+	recv_type := c.lookup_type_in_scope_chain(short_type) or { return }
+	if !c.is_owned_type(recv_type) {
+		return
+	}
+	// Cannot move while borrowed.
+	if recv_name in c.borrowed_vars {
+		borrows := c.borrowed_vars[recv_name]
+		if borrows.len > 0 {
+			borrow := borrows[0]
+			file := c.file_set.file(expr.pos)
+			borrow_file := c.file_set.file(borrow.pos)
+			borrow_position := borrow_file.position(borrow.pos)
+			errors.error('cannot move `${recv_name}` because it is borrowed', errors.details(file,
+				file.position(expr.pos), 2), .error, file.position(expr.pos))
+			eprintln('  --> `${recv_name}` is borrowed by `${borrow.borrower}` at ${borrow_position}')
+			exit(1)
+		}
+	}
+	type_name := c.owned_var_types[recv_name] or { 'string' }
+	c.moved_vars[recv_name] = MovedVar{
+		moved_to:   method_name
+		move_pos:   expr.pos
+		is_fn_call: true
+		fn_name:    method_name
+		type_name:  type_name
+	}
 }

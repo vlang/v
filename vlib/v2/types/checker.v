@@ -605,6 +605,12 @@ mut:
 	// by struct name. Used to point the "missing drop method" diagnostic at
 	// the struct decl rather than at an unrelated use site.
 	ownership_drop_decl_positions map[string]token.Pos
+	// Consuming-self method registry: `${short_type}__${method_name}` -> true
+	// when the method has a by-value receiver (no `&`, no `mut`). Populated
+	// by `ownership_prescan_value_receivers` once all method signatures are
+	// visible, consulted at every call site to move the receiver of an owned
+	// var. See checker_ownership.v.
+	ownership_value_receiver_methods map[string]bool
 }
 
 pub fn Checker.new(prefs &pref.Preferences, file_set &token.FileSet, env &Environment) &Checker {
@@ -5897,6 +5903,9 @@ fn (mut c Checker) call_expr(expr &ast.CallExpr) Type {
 		// Ownership: check if any owned variables are passed as arguments (moves them)
 		$if ownership ? {
 			c.ownership_check_call_args(expr)
+			// Method calls on owned vars: a by-value receiver method (no `&`,
+			// no `mut`) consumes the receiver, matching Rust's `fn(self)`.
+			c.ownership_check_method_call(expr)
 		}
 		// TODO/FIXME: is FnType.return_type goin to stay optional
 		// or not and just use void in case of returning nothing
