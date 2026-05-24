@@ -1312,7 +1312,11 @@ fn (mut g Gen) gen_fn_decl(node &ast.FnDecl, skip bool) {
 			}
 		}
 	} else if g.inside_c_extern {
-		c_extern_fn_header := 'extern ${type_name} ${fn_attrs}${name.all_after_first('C__')}('
+		c_name := name.all_after_first('C__')
+		// Guard with #ifndef so the declaration is skipped when the C symbol
+		// is actually a preprocessor macro (e.g. WIFSTOPPED from <sys/wait.h>).
+		g.definitions.writeln('#ifndef ${c_name}')
+		c_extern_fn_header := 'extern ${type_name} ${fn_attrs}${c_name}('
 		g.definitions.write_string(c_extern_fn_header)
 	} else {
 		if !(node.is_pub || g.pref.is_debug) {
@@ -1360,7 +1364,9 @@ fn (mut g Gen) gen_fn_decl(node &ast.FnDecl, skip bool) {
 		&& !g.pref.is_test) || skip {
 		// Just a function header. Builtin function bodies are defined in builtin.o
 		g.definitions.writeln(');') // NO BODY')
-		if !g.inside_c_extern {
+		if g.inside_c_extern {
+			g.definitions.writeln('#endif')
+		} else {
 			g.writeln(');')
 		}
 		return
