@@ -57,6 +57,10 @@ fn (mut c Checker) ownership_check_ident(name string, pos token.Pos) {
 fn (mut c Checker) ownership_check_assign(lhs_name string, rhs ast.Expr, assign_pos token.Pos) {
 	// Check if RHS is an ident that is owned
 	rhs_name := ownership_expr_ident_name(rhs)
+	// Reject `local := g_owned` — moving out of an owned global is never allowed.
+	if rhs_name.len > 0 {
+		c.ownership_reject_global_move(rhs_name, assign_pos, lhs_name, false)
+	}
 	if rhs_name.len > 0 && rhs_name in c.owned_vars {
 		// Cannot move a variable that is currently borrowed
 		if rhs_name in c.borrowed_vars {
@@ -98,6 +102,10 @@ fn (mut c Checker) ownership_check_assign(lhs_name string, rhs ast.Expr, assign_
 
 fn (mut c Checker) ownership_consume_expr(expr ast.Expr, pos token.Pos, target string) {
 	name := ownership_expr_ident_name(expr)
+	// Reject pattern-match destructuring of an owned global into a binding.
+	if name.len > 0 {
+		c.ownership_reject_global_move(name, pos, target, false)
+	}
 	if name.len == 0 || name !in c.owned_vars {
 		return
 	}
@@ -174,6 +182,10 @@ fn (mut c Checker) ownership_check_call_args(expr ast.CallExpr) {
 		}
 		// Regular argument — moves ownership
 		arg_name := ownership_expr_ident_name(arg)
+		// Reject `f(g_owned)` for any owned global — must borrow/clone instead.
+		if arg_name.len > 0 {
+			c.ownership_reject_global_move(arg_name, expr.pos, fn_name, true)
+		}
 		if arg_name.len > 0 && arg_name in c.owned_vars {
 			// Cannot move a variable that is currently borrowed
 			if arg_name in c.borrowed_vars {
@@ -216,6 +228,11 @@ fn (mut c Checker) ownership_check_return(stmt ast.ReturnStmt) {
 	}
 	for expr in stmt.exprs {
 		name := ownership_expr_ident_name(expr)
+		// Reject `return g_owned` — handing a global out of a function moves it.
+		// ReturnStmt has no pos field, so we use the expression's position.
+		if name.len > 0 {
+			c.ownership_reject_global_move(name, ownership_expr_pos(expr), c.ownership_cur_fn, true)
+		}
 		if name.len > 0 && name in c.owned_vars {
 			// This function returns an owned value — mark the function
 			c.ownership_fns[c.ownership_cur_fn] = true
@@ -589,6 +606,10 @@ fn (mut c Checker) ownership_prescan_fn_bodies() {
 	// Pass 3: Find methods declared with a by-value receiver — calls to these
 	// methods on owned vars MOVE the receiver (consuming-self semantics).
 	c.ownership_prescan_value_receivers()
+	// Pass 4: Find `__global` decls whose declared type implements `Owned`
+	// (or is an Rc/Arc wrapper). Used to reject moves out of program-wide
+	// mutable state.
+	c.ownership_prescan_owned_globals()
 }
 
 // ownership_prescan_returns_owned checks if a function body creates a .to_owned() value
@@ -994,6 +1015,27 @@ fn ownership_expr_ident_name(expr ast.Expr) string {
 	return ''
 }
 
+// ownership_expr_pos extracts a position from an expression. Returns an empty
+// `token.Pos{}` for expressions without a direct position. Used where we need
+// to point at the offending expression but the surrounding statement (e.g.
+// `ReturnStmt`) doesn't carry its own position.
+fn ownership_expr_pos(expr ast.Expr) token.Pos {
+	match expr {
+		ast.Ident {
+			return expr.pos
+		}
+		ast.SelectorExpr {
+			return expr.pos
+		}
+		ast.CallExpr {
+			return expr.pos
+		}
+		else {
+			return token.Pos{}
+		}
+	}
+}
+
 // ownership_receiver_short_name extracts the short type name from a receiver
 // type expression. Returns empty string if the receiver isn't a recognisable
 // named type. Handles plain idents, generic instantiations (`Foo[T]` via
@@ -1070,7 +1112,22 @@ fn (mut c Checker) ownership_check_method_call(expr ast.CallExpr) {
 	}
 	sel := expr.lhs as ast.SelectorExpr
 	recv_name := ownership_expr_ident_name(sel.lhs)
-	if recv_name.len == 0 || recv_name !in c.owned_vars {
+	if recv_name.len == 0 {
+		return
+	}
+	// Reject `g_owned.consume_self()` — value-receiver calls on a global would
+	// move it. The static-type check below means we only fire on Owned types,
+	// matching the consuming-self semantics for plain locals.
+	if recv_name in c.ownership_owned_globals {
+		method_name := sel.rhs.name
+		short_type := c.ownership_owned_globals[recv_name].all_after_last('__')
+		key := '${short_type}__${method_name}'
+		if key in c.ownership_value_receiver_methods {
+			c.ownership_reject_global_move(recv_name, expr.pos, method_name, true)
+		}
+		return
+	}
+	if recv_name !in c.owned_vars {
 		return
 	}
 	type_display := c.owned_var_types[recv_name] or { return }
@@ -1112,6 +1169,53 @@ fn (mut c Checker) ownership_check_method_call(expr ast.CallExpr) {
 	}
 }
 
+// ownership_prescan_owned_globals walks every module scope and registers each
+// `__global` whose declared type implements `Owned` (or is an Rc/Arc wrapper).
+// These globals are then rejected at every move site so program-wide mutable
+// state can never be left in a half-moved condition — the compiler can't see
+// across function boundaries to know who else might still hold the binding.
+fn (mut c Checker) ownership_prescan_owned_globals() {
+	rlock c.env.scopes {
+		for _, mod_scope in c.env.scopes {
+			for _, obj in mod_scope.objects {
+				if obj is Global {
+					g := obj as Global
+					if c.is_owned_type(g.typ) {
+						c.ownership_owned_globals[g.name] = ownership_type_display(g.typ)
+					}
+				}
+			}
+		}
+	}
+}
+
+// ownership_reject_global_move emits the "cannot move out of global" diagnostic
+// and exits. Returns silently if `name` is not a tracked owned global.
+//   * `target`   — what the global is being moved into (var name / `closure` / fn name)
+//   * `is_call`  — set when the move is a function-call argument (changes the help text)
+fn (mut c Checker) ownership_reject_global_move(name string, pos token.Pos, target string, is_call bool) {
+	if name !in c.ownership_owned_globals {
+		return
+	}
+	type_name := c.ownership_owned_globals[name]
+	if pos.id > 0 {
+		file := c.file_set.file(pos)
+		errors.error('cannot move out of global `${name}`', errors.details(file,
+			file.position(pos), 2), .error, file.position(pos))
+	} else {
+		eprintln('error: cannot move out of global `${name}`')
+	}
+	eprintln('  --> global `${name}` has type `${type_name}`, which does not implement the `Copy` interface')
+	if is_call {
+		eprintln('  --> moving a global into `${target}` would leave the global in an undefined state')
+		eprintln('help: pass a borrow (`&${name}`) or clone (`${name}.clone()`) instead')
+	} else {
+		eprintln('  --> moving the global into `${target}` would leave the global in an undefined state')
+		eprintln('help: borrow with `&${name}` or copy with `${name}.clone()` instead')
+	}
+	exit(1)
+}
+
 // ownership_check_closure_captures fires when a closure literal (`fn [x,
 // mut y] () { ... }`) is constructed. The Go-style explicit capture list
 // is interpreted as:
@@ -1134,7 +1238,13 @@ fn (mut c Checker) ownership_check_closure_captures(expr ast.FnLiteral) {
 			continue
 		}
 		name := ownership_expr_ident_name(cv)
-		if name.len == 0 || name !in c.owned_vars {
+		if name.len == 0 {
+			continue
+		}
+		// Reject `fn [g_owned] () { ... }` — borrow form `[&g]` / `[mut g]` is
+		// fine (skipped above), but a by-value capture would move the global.
+		c.ownership_reject_global_move(name, expr.pos, 'closure', false)
+		if name !in c.owned_vars {
 			continue
 		}
 		if name in c.borrowed_vars {

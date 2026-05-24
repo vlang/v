@@ -611,6 +611,12 @@ mut:
 	// visible, consulted at every call site to move the receiver of an owned
 	// var. See checker_ownership.v.
 	ownership_value_receiver_methods map[string]bool
+	// Owned-global registry: `global_name` -> display type name. Populated by
+	// `ownership_prescan_owned_globals` from `__global` decls whose declared
+	// type implements `Owned` (or is an Rc/Arc wrapper). Used to reject moves
+	// out of program-wide mutable state, where the compiler can't see across
+	// function boundaries to know who else might still hold the binding.
+	ownership_owned_globals map[string]string
 }
 
 pub fn Checker.new(prefs &pref.Preferences, file_set &token.FileSet, env &Environment) &Checker {

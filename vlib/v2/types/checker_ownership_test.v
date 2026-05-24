@@ -1366,3 +1366,189 @@ fn main() {
 	assert exit_code != 0, 'consume after capture should fail'
 	assert output.contains('use of moved value: `c`'), 'got: ${output}'
 }
+
+// === Owned globals: moves out of `__global` of an Owned type are rejected ===
+//
+// `__global` declarations of types implementing `Owned` cannot be moved out of
+// because the compiler can't see across function boundaries to know who else
+// might still observe the binding. The escape hatches are `&g_x` (borrow) or
+// `g_x.clone()` (copy). Plain V values keep their auto-copy semantics.
+
+fn test_owned_global_assign_to_local_fails() {
+	code := '
+struct Conn implements Owned {
+mut:
+	socket int
+}
+
+__global g_conn = Conn{socket: 7}
+
+fn main() {
+	local := g_conn
+	println(local.socket)
+}
+'
+	exit_code, output := run_ownership_check(code)
+	assert exit_code != 0, 'should reject move out of owned global'
+	assert output.contains('cannot move out of global `g_conn`'), 'got: ${output}'
+	assert output.contains('has type `Conn`'), 'should name the type, got: ${output}'
+}
+
+fn test_owned_global_fn_call_arg_fails() {
+	code := '
+struct Conn implements Owned {
+mut:
+	socket int
+}
+
+__global g_conn = Conn{socket: 7}
+
+fn take(c Conn) {
+	_ = c
+}
+
+fn main() {
+	take(g_conn)
+}
+'
+	exit_code, output := run_ownership_check(code)
+	assert exit_code != 0, 'should reject moving global into fn call'
+	assert output.contains('cannot move out of global `g_conn`'), 'got: ${output}'
+	assert output.contains('into `take`'), 'should name the target fn, got: ${output}'
+}
+
+fn test_owned_global_borrow_arg_ok() {
+	// Passing `&g_conn` is the explicit escape hatch — must compile.
+	code := '
+struct Conn implements Owned {
+mut:
+	socket int
+}
+
+__global g_conn = Conn{socket: 7}
+
+fn inspect(c &Conn) {
+	println(c.socket)
+}
+
+fn main() {
+	inspect(&g_conn)
+}
+'
+	exit_code, output := run_ownership_check(code)
+	assert exit_code == 0, 'borrowing a global must succeed, got: ${output}'
+}
+
+fn test_owned_global_consuming_method_fails() {
+	code := '
+struct Conn implements Owned {
+mut:
+	socket int
+}
+
+fn (c Conn) close() {
+	_ = c.socket
+}
+
+__global g_conn = Conn{socket: 7}
+
+fn main() {
+	g_conn.close()
+}
+'
+	exit_code, output := run_ownership_check(code)
+	assert exit_code != 0, 'should reject consuming-self call on global'
+	assert output.contains('cannot move out of global `g_conn`'), 'got: ${output}'
+}
+
+fn test_owned_global_borrow_method_ok() {
+	// `&self` receiver is a borrow — calling it on a global is fine.
+	code := '
+struct Conn implements Owned {
+mut:
+	socket int
+}
+
+fn (c &Conn) port() int {
+	return c.socket
+}
+
+__global g_conn = Conn{socket: 7}
+
+fn main() {
+	println(g_conn.port())
+}
+'
+	exit_code, output := run_ownership_check(code)
+	assert exit_code == 0, 'borrow-receiver method on global must succeed, got: ${output}'
+}
+
+fn test_owned_global_closure_capture_fails() {
+	code := '
+struct Conn implements Owned {
+mut:
+	socket int
+}
+
+__global g_conn = Conn{socket: 7}
+
+fn main() {
+	cb := fn [g_conn] () {
+		println(g_conn.socket)
+	}
+	cb()
+}
+'
+	exit_code, output := run_ownership_check(code)
+	assert exit_code != 0, 'should reject by-value closure capture of global'
+	assert output.contains('cannot move out of global `g_conn`'), 'got: ${output}'
+	assert output.contains('into `closure`'), 'should mention closure as the target, got: ${output}'
+}
+
+fn test_owned_global_return_fails() {
+	code := '
+struct Conn implements Owned {
+mut:
+	socket int
+}
+
+__global g_conn = Conn{socket: 7}
+
+fn give() Conn {
+	return g_conn
+}
+
+fn main() {
+	c := give()
+	println(c.socket)
+}
+'
+	exit_code, output := run_ownership_check(code)
+	assert exit_code != 0, 'should reject returning an owned global'
+	assert output.contains('cannot move out of global `g_conn`'), 'got: ${output}'
+}
+
+fn test_plain_global_unaffected() {
+	// Non-Owned globals keep V auto-copy semantics — moving them must not
+	// trip the ownership checker.
+	code := '
+struct Plain {
+mut:
+	x int
+}
+
+__global g_plain = Plain{x: 1}
+
+fn take(p Plain) {
+	_ = p.x
+}
+
+fn main() {
+	local := g_plain
+	take(local)
+	take(g_plain)
+}
+'
+	exit_code, output := run_ownership_check(code)
+	assert exit_code == 0, 'non-Owned global must keep current semantics, got: ${output}'
+}
