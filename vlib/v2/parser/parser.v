@@ -1444,7 +1444,7 @@ fn (mut p Parser) finish_expr(input_lhs ast.Expr, min_bp token.BindingPower) ast
 			p.next()
 			if p.tok == .dollar {
 				p.next()
-				_ = p.expr(.lowest)
+				inner := p.expr(.lowest)
 				rhs_pos := p.pos
 				rhs_name := '__comptime_selector__'
 				full_name := if lhs_name == '' { rhs_name } else { lhs_name + '.' + rhs_name }
@@ -1452,6 +1452,21 @@ fn (mut p Parser) finish_expr(input_lhs ast.Expr, min_bp token.BindingPower) ast
 					p.selector_names[dot_pos.id] = full_name
 				}
 				lhs = selector_expr_with_rhs_name(lhs, rhs_pos, rhs_name, dot_pos)
+				// `app.$method(args)` — inner parses as CallExpr or CallOrCastExpr;
+				// lift its args onto our SelectorExpr so the call form is preserved.
+				if inner is ast.CallExpr {
+					lhs = ast.Expr(ast.CallExpr{
+						lhs:  lhs
+						args: inner.args
+						pos:  dot_pos
+					})
+				} else if inner is ast.CallOrCastExpr {
+					lhs = ast.Expr(ast.CallExpr{
+						lhs:  lhs
+						args: [inner.expr]
+						pos:  dot_pos
+					})
+				}
 				lhs_name = full_name
 			} else {
 				rhs_pos := p.pos
@@ -3332,11 +3347,14 @@ fn (mut p Parser) ident_or_selector_expr() ast.Expr {
 	p.next()
 	mut rhs_pos := p.pos
 	mut rhs_name := ''
+	mut comptime_inner := ast.Expr(ast.empty_expr)
+	mut is_comptime_selector := false
 	if p.tok == .dollar {
 		p.next()
-		p.expr(.lowest)
+		comptime_inner = p.expr(.lowest)
 		rhs_pos = p.pos
-		rhs_name = 'TODO: comptime selector'
+		rhs_name = '__comptime_selector__'
+		is_comptime_selector = true
 	} else {
 		rhs_name = p.expect_name_or_keyword()
 	}
@@ -3345,15 +3363,35 @@ fn (mut p Parser) ident_or_selector_expr() ast.Expr {
 		p.selector_names[dot_pos.id] = full_name
 	}
 	mut lhs := selector_expr_with_rhs_name(base, rhs_pos, rhs_name, dot_pos)
+	// `app.$method(args)` — inner parses as CallExpr or CallOrCastExpr;
+	// lift its args onto our SelectorExpr so the call form is preserved.
+	if is_comptime_selector {
+		if comptime_inner is ast.CallExpr {
+			lhs = ast.Expr(ast.CallExpr{
+				lhs:  lhs
+				args: comptime_inner.args
+				pos:  dot_pos
+			})
+		} else if comptime_inner is ast.CallOrCastExpr {
+			lhs = ast.Expr(ast.CallExpr{
+				lhs:  lhs
+				args: [comptime_inner.expr]
+				pos:  dot_pos
+			})
+		}
+	}
 	for p.tok == .dot {
 		next_dot_pos := p.pos
 		p.next()
 		rhs_pos = p.pos
+		mut inner_comptime := ast.Expr(ast.empty_expr)
+		mut inner_is_comptime := false
 		if p.tok == .dollar {
 			p.next()
-			p.expr(.lowest)
+			inner_comptime = p.expr(.lowest)
 			rhs_pos = p.pos
-			rhs_name = 'TODO: comptime selector'
+			rhs_name = '__comptime_selector__'
+			inner_is_comptime = true
 		} else {
 			rhs_name = p.expect_name_or_keyword()
 		}
@@ -3362,6 +3400,21 @@ fn (mut p Parser) ident_or_selector_expr() ast.Expr {
 			p.selector_names[next_dot_pos.id] = full_name
 		}
 		lhs = selector_expr_with_rhs_name(lhs, rhs_pos, rhs_name, next_dot_pos)
+		if inner_is_comptime {
+			if inner_comptime is ast.CallExpr {
+				lhs = ast.Expr(ast.CallExpr{
+					lhs:  lhs
+					args: inner_comptime.args
+					pos:  next_dot_pos
+				})
+			} else if inner_comptime is ast.CallOrCastExpr {
+				lhs = ast.Expr(ast.CallExpr{
+					lhs:  lhs
+					args: [inner_comptime.expr]
+					pos:  next_dot_pos
+				})
+			}
+		}
 	}
 	return lhs
 }

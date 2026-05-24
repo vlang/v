@@ -252,6 +252,96 @@ fn (t &Transformer) return_type_context_name(name string) string {
 	return name
 }
 
+// seed_scope_with_fn_params inserts the function's receiver (for methods)
+// and parameters into the current scope by name → resolved type. Used when
+// the checker did not cache a scope for this function (e.g. generic functions
+// whose only callsite is inside another function body).
+fn (mut t Transformer) seed_scope_with_fn_params(decl ast.FnDecl) {
+	if t.scope == unsafe { nil } {
+		return
+	}
+	if decl.is_method {
+		recv_name := decl.receiver.name
+		if recv_name != '' && t.scope.lookup_var_type(recv_name) == none {
+			if recv_type := t.lookup_type_from_expr(decl.receiver.typ) {
+				mut typ := recv_type
+				if decl.receiver.is_mut {
+					typ = types.Type(types.Pointer{
+						base_type: recv_type
+					})
+				}
+				t.scope.insert(recv_name, typ)
+			}
+		}
+	}
+	for param in decl.typ.params {
+		if param.name == '' {
+			continue
+		}
+		if t.scope.lookup_var_type(param.name) != none {
+			continue
+		}
+		if param_type := t.lookup_type_from_expr(param.typ) {
+			mut typ := param_type
+			if param.is_mut {
+				typ = types.Type(types.Pointer{
+					base_type: param_type
+				})
+			}
+			t.scope.insert(param.name, typ)
+		}
+	}
+}
+
+// lookup_type_from_expr resolves a type-expression AST node (Ident, SelectorExpr,
+// or ast.Type wrapping PointerType/OptionType/ResultType/etc.) to a `types.Type`.
+// Tries module-qualified names before short names so `http.Request` resolves to
+// `http__Request`.
+fn (t &Transformer) lookup_type_from_expr(expr ast.Expr) ?types.Type {
+	if expr is ast.Ident {
+		return t.lookup_type(expr.name)
+	}
+	if expr is ast.SelectorExpr {
+		if expr.lhs is ast.Ident {
+			lhs_ident := expr.lhs as ast.Ident
+			qualified := '${lhs_ident.name}__${expr.rhs.name}'
+			if typ := t.lookup_type(qualified) {
+				return typ
+			}
+		}
+		return t.lookup_type(expr.rhs.name)
+	}
+	if expr is ast.Type {
+		return t.lookup_type_from_ast_type(expr)
+	}
+	return none
+}
+
+fn (t &Transformer) lookup_type_from_ast_type(typ ast.Type) ?types.Type {
+	if typ is ast.PointerType {
+		base := t.lookup_type_from_expr(typ.base_type) or { return none }
+		return types.Type(types.Pointer{
+			base_type: base
+		})
+	}
+	if typ is ast.OptionType {
+		base := t.lookup_type_from_expr(typ.base_type) or { return none }
+		return types.Type(types.OptionType{
+			base_type: base
+		})
+	}
+	if typ is ast.ResultType {
+		base := t.lookup_type_from_expr(typ.base_type) or { return none }
+		return types.Type(types.ResultType{
+			base_type: base
+		})
+	}
+	// For other ast.Type variants (ArrayType, MapType, FnType, etc.), the
+	// caller's name extraction logic may not need them. Returning none lets
+	// callers fall back to other resolution paths.
+	return none
+}
+
 // get_method_return_type tries to get the return type for a method call.
 // Returns the return type if found, none otherwise.
 fn (t &Transformer) get_method_return_type(expr ast.Expr) ?types.Type {
@@ -1215,6 +1305,35 @@ fn (t &Transformer) get_call_fn_name(expr ast.Expr) string {
 	return ''
 }
 
+// is_method_call_expr returns true when `expr` is a call whose lhs is a method
+// receiver (`recv.method(...)`), as opposed to a module function call
+// (`mod.fn(...)`) or a direct identifier call (`fn(...)`).
+fn (t &Transformer) is_method_call_expr(expr ast.Expr) bool {
+	mut lhs := ast.empty_expr
+	if expr is ast.CallExpr {
+		lhs = t.unwrap_call_target_lhs(expr.lhs)
+	} else if expr is ast.CallOrCastExpr {
+		lhs = t.unwrap_call_target_lhs(expr.lhs)
+	} else {
+		return false
+	}
+	if lhs !is ast.SelectorExpr {
+		return false
+	}
+	sel := lhs as ast.SelectorExpr
+	// If sel.lhs is an Ident that resolves to a module, treat as module call.
+	if sel.lhs is ast.Ident {
+		mod_ident := (sel.lhs as ast.Ident).name
+		if t.get_module_scope(mod_ident) != none {
+			return false
+		}
+		if t.resolve_module_name(mod_ident) != none {
+			return false
+		}
+	}
+	return true
+}
+
 fn (t &Transformer) call_lhs_name(lhs ast.Expr) string {
 	unwrapped_lhs := t.unwrap_call_target_lhs(lhs)
 	match unwrapped_lhs {
@@ -1407,10 +1526,21 @@ fn (mut t Transformer) transform_fn_decl(decl ast.FnDecl) ast.FnDecl {
 		t.scope = types.new_scope(fn_scope)
 		t.fn_root_scope = t.scope
 	} else {
-		// Fallback: create a new scope if function scope not found
+		// Fallback: create a new scope if function scope not found.
+		// Generic function bodies are skipped by the checker when no
+		// specialization is recorded at body-check time, so no scope is
+		// cached. Seed the scope from the AST params/receiver so method
+		// return-type lookups in or-expr lowering keep working.
 		t.open_scope()
 		t.fn_root_scope = t.scope
 		t.seed_fallback_fn_param_scope(decl.typ.params, fn_generic_params)
+		// Cache the seeded scope locally and also publish directly to env.fn_scopes
+		// (lock-protected). Worker→main merge of cached_fn_scopes can silently drop
+		// keys inserted into a worker's map after clone, so we publish the entry
+		// through the shared environment as well — that's what cleanc reads at
+		// emit time via env.get_fn_scope(cur_module, fn_name).
+		t.cached_fn_scopes[fn_scope_key] = t.fn_root_scope
+		t.env.set_fn_scope(t.cur_module, scope_fn_name, t.fn_root_scope)
 	}
 	if decl.is_method && decl.receiver.name != '' && decl.receiver.name != '_' {
 		if typ := t.type_from_param_type_expr(decl.receiver.typ, fn_generic_params) {
@@ -1419,6 +1549,11 @@ fn (mut t Transformer) transform_fn_decl(decl ast.FnDecl) ast.FnDecl {
 		}
 	}
 	t.seed_fn_param_decl_types(decl.typ.params, fn_generic_params)
+	// Ensure params/receiver are present in scope. The checker may cache an
+	// empty scope for generic function bodies (no specialization recorded),
+	// so seed missing entries from the AST so method-return-type lookups in
+	// or-expr lowering (e.g. `req.header.get(.host) or { ... }`) work.
+	t.seed_scope_with_fn_params(decl)
 
 	// Set current function return type for sum type wrapping in returns
 	// and enum shorthand resolution

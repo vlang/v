@@ -2582,6 +2582,12 @@ fn (mut g Gen) expr(node ast.Expr) {
 					return
 				}
 			}
+			// Comptime method access interception: method.name, method.attrs, method.args, etc.
+			if g.comptime_method_var != '' {
+				if g.gen_comptime_method_selector(sel) {
+					return
+				}
+			}
 			// C.<ident> references C macros/constants directly (e.g. C.EOF -> EOF).
 			if lhs_expr is ast.Ident {
 				if lhs_name == 'C' {
@@ -4802,6 +4808,15 @@ fn (g &Gen) eval_comptime_cond(cond ast.Expr) bool {
 			}
 			// Handle `$if T is string`, `$if T.unaliased_typ is $struct`, `$if field.typ is string`, etc.
 			if cond.op == .key_is || cond.op == .not_is {
+				// Special case: `method.return_type is X` — compare AST exprs by name
+				if cond.lhs is ast.SelectorExpr {
+					lhs_sel := cond.lhs as ast.SelectorExpr
+					if lhs_sel.lhs is ast.Ident && lhs_sel.lhs.name == g.comptime_method_var
+						&& lhs_sel.rhs.name == 'return_type' {
+						result := g.ast_expr_type_matches(g.comptime_method_return_type, cond.rhs)
+						return if cond.op == .key_is { result } else { !result }
+					}
+				}
 				resolved := g.resolve_comptime_is_lhs(cond.lhs)
 				if resolved.matched {
 					result := g.comptime_type_matches(resolved.typ, cond.rhs)
@@ -4819,6 +4834,17 @@ fn (g &Gen) eval_comptime_cond(cond ast.Expr) bool {
 								rhs_lit := cond.rhs as ast.BasicLiteral
 								rhs_name := strip_literal_quotes(rhs_lit.value)
 								matched := g.comptime_field_name == rhs_name
+								return if cond.op == .eq { matched } else { !matched }
+							}
+						}
+					}
+					// method.name == "x" — string comparison
+					if lhs_sel.lhs is ast.Ident && lhs_sel.lhs.name == g.comptime_method_var {
+						if lhs_sel.rhs.name == 'name' {
+							if cond.rhs is ast.BasicLiteral {
+								rhs_lit := cond.rhs as ast.BasicLiteral
+								rhs_name := strip_literal_quotes(rhs_lit.value)
+								matched := g.comptime_method_name == rhs_name
 								return if cond.op == .eq { matched } else { !matched }
 							}
 						}
@@ -4893,6 +4919,50 @@ fn (g &Gen) resolve_comptime_is_lhs(lhs ast.Expr) ComptimeResolvedType {
 		}
 	}
 	return ComptimeResolvedType{}
+}
+
+// ast_expr_type_matches compares two AST type expressions by their normalized name.
+// Used for `$if method.return_type is X` where both sides are ast.Exprs.
+fn (g &Gen) ast_expr_type_matches(lhs ast.Expr, rhs ast.Expr) bool {
+	lhs_name := ast_type_expr_name(lhs)
+	rhs_name := ast_type_expr_name(rhs)
+	if lhs_name == '' || rhs_name == '' {
+		return false
+	}
+	if lhs_name == rhs_name {
+		return true
+	}
+	// Normalize: bare name on one side matches `mod.Name` on the other if the bare
+	// name is the same. e.g., `Result` matches `veb.Result`.
+	if lhs_name.ends_with('.' + rhs_name) || rhs_name.ends_with('.' + lhs_name) {
+		return true
+	}
+	// Common aliases
+	if (lhs_name == 'byte' && rhs_name == 'u8') || (lhs_name == 'u8' && rhs_name == 'byte') {
+		return true
+	}
+	if (lhs_name == 'int' && rhs_name == 'i32') || (lhs_name == 'i32' && rhs_name == 'int') {
+		return true
+	}
+	return false
+}
+
+// ast_type_expr_name extracts a normalized name from an AST type expression.
+fn ast_type_expr_name(e ast.Expr) string {
+	if e is ast.Ident {
+		return e.name
+	}
+	if e is ast.SelectorExpr {
+		lhs_name := ast_type_expr_name(e.lhs)
+		if lhs_name == '' {
+			return e.rhs.name
+		}
+		return lhs_name + '.' + e.rhs.name
+	}
+	if e is ast.EmptyExpr {
+		return 'void'
+	}
+	return ''
 }
 
 // comptime_unalias_type strips Alias layers from a type.
@@ -5161,6 +5231,119 @@ fn (mut g Gen) gen_comptime_field_selector(sel ast.SelectorExpr) bool {
 		}
 	}
 	return false
+}
+
+// gen_comptime_method_selector handles comptime method access patterns inside
+// `$for method in T.methods` loop bodies:
+// - method.name → V string literal
+// - method.location → V string literal (empty for now)
+// - method.attrs → []string array
+// - method.return_type → integer literal (placeholder type id 0)
+// - method.typ → integer literal (placeholder)
+// - method.args → []FunctionParam array literal
+// - method.args.len → integer literal
+// - method.name.str/.len → C string / int literal
+// Returns true if the selector was handled.
+fn (mut g Gen) gen_comptime_method_selector(sel ast.SelectorExpr) bool {
+	rhs_name := sel.rhs.name
+	if sel.lhs is ast.Ident {
+		if sel.lhs.name == g.comptime_method_var {
+			match rhs_name {
+				'name' {
+					g.sb.write_string(c_static_v_string_expr(g.comptime_method_name))
+					return true
+				}
+				'location' {
+					g.sb.write_string(c_static_v_string_expr(''))
+					return true
+				}
+				'return_type' {
+					g.sb.write_string('0 /* method.return_type */')
+					return true
+				}
+				'typ' {
+					g.sb.write_string('0 /* method.typ */')
+					return true
+				}
+				'attrs' {
+					g.write_string_array_literal(g.comptime_method_attrs)
+					return true
+				}
+				'args' {
+					g.write_function_param_array_literal(g.comptime_method_args, 0)
+					return true
+				}
+				else {}
+			}
+		}
+	}
+	// Handle method.name.str / method.name.len / method.args.len
+	if sel.lhs is ast.SelectorExpr {
+		inner := sel.lhs as ast.SelectorExpr
+		if inner.lhs is ast.Ident && inner.lhs.name == g.comptime_method_var {
+			inner_rhs := inner.rhs.name
+			if inner_rhs == 'name' {
+				match rhs_name {
+					'str' {
+						g.sb.write_string('"${g.comptime_method_name}"')
+						return true
+					}
+					'len' {
+						g.sb.write_string('${g.comptime_method_name.len}')
+						return true
+					}
+					else {}
+				}
+			}
+			if inner_rhs == 'args' && rhs_name == 'len' {
+				g.sb.write_string('${g.comptime_method_args.len}')
+				return true
+			}
+			if inner_rhs == 'attrs' && rhs_name == 'len' {
+				g.sb.write_string('${g.comptime_method_attrs.len}')
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// write_string_array_literal emits a V []string literal as a C
+// new_array_from_c_array(...) call.
+fn (mut g Gen) write_string_array_literal(items []string) {
+	if items.len == 0 {
+		g.sb.write_string('((Array_string){0})')
+		return
+	}
+	g.sb.write_string('new_array_from_c_array(${items.len}, ${items.len}, sizeof(string), (string[${items.len}]){')
+	for i, item in items {
+		if i > 0 {
+			g.sb.write_string(', ')
+		}
+		g.sb.write_string(c_static_v_string_expr(item))
+	}
+	g.sb.write_string('})')
+}
+
+// write_function_param_array_literal emits a V []FunctionParam literal.
+// `skip` is the number of leading params to drop (e.g. 1 to skip receiver — but
+// `method.args` historically did NOT include the receiver, so default is 0).
+fn (mut g Gen) write_function_param_array_literal(params []ast.Parameter, skip int) {
+	effective := if skip < params.len { params[skip..] } else { []ast.Parameter{} }
+	if effective.len == 0 {
+		g.sb.write_string('((Array_FunctionParam){0})')
+		return
+	}
+	g.sb.write_string('new_array_from_c_array(${effective.len}, ${effective.len}, sizeof(FunctionParam), (FunctionParam[${effective.len}]){')
+	for i, p in effective {
+		if i > 0 {
+			g.sb.write_string(', ')
+		}
+		g.sb.write_string('{.typ = 0, .name = ')
+		g.sb.write_string(c_static_v_string_expr(p.name))
+		g.sb.write_string('}')
+	}
+	g.sb.write_string('})')
 }
 
 fn (mut g Gen) gen_comptime_if_branch(stmts []ast.Stmt) {

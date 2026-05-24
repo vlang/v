@@ -577,7 +577,7 @@ fn (mut g Gen) gen_comptime_for(node ast.ForStmt) {
 	}
 	sel := for_in.expr as ast.SelectorExpr
 	kind := sel.rhs.name
-	if kind != 'fields' {
+	if kind !in ['fields', 'methods'] {
 		g.write_indent()
 		g.sb.writeln('/* [TODO] ComptimeFor ${kind} */')
 		return
@@ -594,6 +594,10 @@ fn (mut g Gen) gen_comptime_for(node ast.ForStmt) {
 		return
 	}
 	struct_type := g.comptime_for_struct_type(concrete, concrete as types.Struct)
+	if kind == 'methods' {
+		g.gen_comptime_for_methods(node, for_in, type_name, struct_type)
+		return
+	}
 	field_var := for_in.value.name()
 	// Save comptime state
 	prev_field_var := g.comptime_field_var
@@ -650,6 +654,93 @@ fn (mut g Gen) comptime_for_struct_type(concrete types.Type, fallback types.Stru
 		return full_struct_type
 	}
 	return fallback
+}
+
+// gen_comptime_for_methods emits the body of `$for method in T.methods` by
+// looping over the AST FnDecls whose receiver C-type matches T, setting the
+// `g.comptime_method_*` state per iteration, and recursively generating the
+// loop body so per-method selectors (method.name, method.attrs, etc.) and
+// `app.$method(...)` dispatch can be resolved by expr.v.
+fn (mut g Gen) gen_comptime_for_methods(node ast.ForStmt, for_in ast.ForInStmt, type_name string, struct_type types.Struct) {
+	concrete_struct_type := types.Type(struct_type)
+	struct_c_name := g.types_type_to_c(concrete_struct_type).trim_space().trim_right('*')
+	method_decls := g.collect_method_fndecls(struct_type.name, struct_c_name)
+	method_var := for_in.value.name()
+	prev_method_var := g.comptime_method_var
+	prev_method_name := g.comptime_method_name
+	prev_method_attrs := g.comptime_method_attrs
+	prev_method_return_type := g.comptime_method_return_type
+	prev_method_args := g.comptime_method_args
+	prev_method_idx := g.comptime_method_idx
+	prev_method_receiver_type := g.comptime_method_receiver_type
+	prev_method_struct_name := g.comptime_method_struct_name
+	prev_continue_label := g.comptime_continue_label
+	g.comptime_method_var = method_var
+	g.comptime_method_receiver_type = struct_c_name
+	g.comptime_method_struct_name = struct_type.name
+	g.write_indent()
+	g.sb.writeln('{ /* comptime for ${method_var} in ${type_name}.methods */')
+	g.indent++
+	for i, decl in method_decls {
+		g.comptime_method_name = decl.name
+		g.comptime_method_attrs = comptime_attribute_strings(decl.attributes)
+		g.comptime_method_return_type = decl.typ.return_type
+		g.comptime_method_args = decl.typ.params.clone()
+		g.comptime_method_idx = i
+		g.tmp_counter++
+		g.comptime_continue_label = '__v_ctm_continue_${g.tmp_counter}_${i}'
+		g.write_indent()
+		g.sb.writeln('{ /* method ${i}: ${decl.name} */')
+		g.indent++
+		g.gen_stmts(node.stmts)
+		g.write_indent()
+		g.sb.writeln('${g.comptime_continue_label}:;')
+		g.indent--
+		g.write_indent()
+		g.sb.writeln('}')
+	}
+	g.indent--
+	g.write_indent()
+	g.sb.writeln('}')
+	g.comptime_method_var = prev_method_var
+	g.comptime_method_name = prev_method_name
+	g.comptime_method_attrs = prev_method_attrs
+	g.comptime_method_return_type = prev_method_return_type
+	g.comptime_method_args = prev_method_args
+	g.comptime_method_idx = prev_method_idx
+	g.comptime_method_receiver_type = prev_method_receiver_type
+	g.comptime_method_struct_name = prev_method_struct_name
+	g.comptime_continue_label = prev_continue_label
+}
+
+// collect_method_fndecls walks all loaded files and returns FnDecls whose
+// receiver type matches either the struct V-name or its C-mangled name.
+fn (mut g Gen) collect_method_fndecls(struct_v_name string, struct_c_name string) []ast.FnDecl {
+	mut out := []ast.FnDecl{}
+	for file in g.files {
+		for stmt in file.stmts {
+			if stmt is ast.FnDecl {
+				if !stmt.is_method {
+					continue
+				}
+				if stmt.receiver.typ is ast.EmptyExpr {
+					continue
+				}
+				receiver_v_name := stmt.receiver.typ.name()
+				if receiver_v_name == struct_v_name || receiver_v_name == struct_c_name
+					|| short_type_name(struct_c_name) == receiver_v_name {
+					out << stmt
+					continue
+				}
+				// Compare resolved C name as fallback (handles module-qualified receivers).
+				receiver_c_name := g.expr_type_to_c(stmt.receiver.typ).trim_space().trim_right('*')
+				if receiver_c_name == struct_c_name {
+					out << stmt
+				}
+			}
+		}
+	}
+	return out
 }
 
 fn comptime_attribute_strings(attrs []ast.Attribute) []string {

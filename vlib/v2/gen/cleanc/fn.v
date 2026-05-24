@@ -8523,6 +8523,16 @@ fn (mut g Gen) call_expr(lhs ast.Expr, args []ast.Expr) {
 	for i in 0 .. args.len {
 		_ = g.get_expr_type(args[i])
 	}
+	// Comptime method dispatch: app.$method(args) inside `$for method in T.methods` loop.
+	// Parser stores the rhs as Ident{name: '__comptime_selector__'}; the current
+	// iteration's method name is in g.comptime_method_name.
+	if g.comptime_method_var != '' && lhs is ast.SelectorExpr {
+		rhs_name := lhs.rhs.name
+		if rhs_name == '__comptime_selector__' || rhs_name == 'TODO: comptime selector' {
+			g.gen_comptime_method_call(lhs.lhs, args)
+			return
+		}
+	}
 	if g.gen_json_decode_call(lhs, args) {
 		return
 	}
@@ -10600,4 +10610,67 @@ fn (mut g Gen) emit_generic_fn_macro(fn_name string, node ast.FnDecl) {
 			}
 		}
 	}
+}
+
+// gen_comptime_method_call emits a call to the current iteration's method:
+//   `app.$method(mut ctx)` -> `App__index(&app, &ctx)` (when method.name == 'index')
+// The receiver type is taken from comptime_method_receiver_type (the struct being iterated).
+fn (mut g Gen) gen_comptime_method_call(receiver ast.Expr, args []ast.Expr) {
+	method_name := g.comptime_method_name
+	recv_c_type := g.comptime_method_receiver_type
+	fn_name := '${recv_c_type}__${method_name}'
+
+	// Determine receiver expr C-side: pass by pointer if the function expects pointer.
+	ptr_params := g.fn_param_is_ptr[fn_name] or { []bool{} }
+	recv_wants_ptr := ptr_params.len > 0 && ptr_params[0]
+
+	mut recv_type := g.get_expr_type(receiver)
+	if receiver is ast.Ident {
+		if local_type := g.get_local_var_c_type(receiver.name) {
+			if local_type != '' && local_type != 'int' {
+				recv_type = local_type
+			}
+		}
+	}
+	recv_is_ptr := recv_type.ends_with('*')
+
+	g.sb.write_string('${fn_name}(')
+	if recv_wants_ptr && !recv_is_ptr {
+		g.sb.write_string('&')
+		g.expr(receiver)
+	} else if !recv_wants_ptr && recv_is_ptr {
+		g.sb.write_string('(*')
+		g.expr(receiver)
+		g.sb.write_string(')')
+	} else {
+		g.expr(receiver)
+	}
+
+	// Emit remaining args, unwrapping `mut x` (KeywordOperator) and skipping
+	// spread (`...args`) since runtime expansion isn't supported here.
+	for arg in args {
+		// Skip spread args (variadic forwarding) — not supported in comptime dispatch.
+		if arg is ast.PrefixExpr && arg.op == .ellipsis {
+			continue
+		}
+		g.sb.write_string(', ')
+		if arg is ast.KeywordOperator && arg.op == .key_mut && arg.exprs.len > 0 {
+			inner := arg.exprs[0]
+			mut inner_type := g.get_expr_type(inner)
+			if inner is ast.Ident {
+				if local_type := g.get_local_var_c_type(inner.name) {
+					if local_type != '' && local_type != 'int' {
+						inner_type = local_type
+					}
+				}
+			}
+			if !inner_type.ends_with('*') {
+				g.sb.write_string('&')
+			}
+			g.expr(inner)
+		} else {
+			g.expr(arg)
+		}
+	}
+	g.sb.write_string(')')
 }

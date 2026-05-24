@@ -50,6 +50,15 @@ mut:
 	comptime_continue_label string   // label for continue inside unrolled comptime field loops
 	comptime_val_var        string   // the struct variable being decoded (e.g., 'val')
 	comptime_val_type       string   // C type of val (e.g., 'Slack')
+	// Comptime $for method iteration state
+	comptime_method_var           string   // loop variable name (e.g., 'method')
+	comptime_method_name          string   // current method name (e.g., 'index')
+	comptime_method_attrs         []string // current method attributes
+	comptime_method_return_type   ast.Expr = ast.empty_expr // current method return type (AST expr)
+	comptime_method_args          []ast.Parameter // current method params (excluding receiver)
+	comptime_method_idx           int             // current method index
+	comptime_method_receiver_type string          // receiver C type (e.g., 'main__App')
+	comptime_method_struct_name   string          // receiver struct V name (e.g., 'App')
 
 	fixed_array_fields          map[string]bool
 	fixed_array_field_elem      map[string]string

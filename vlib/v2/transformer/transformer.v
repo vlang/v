@@ -4193,13 +4193,44 @@ fn (mut t Transformer) expand_direct_or_expr_assign(stmt ast.AssignStmt, or_expr
 	mut is_result := t.expr_returns_result(call_expr)
 	mut is_option := t.expr_returns_option(call_expr)
 
-	// Fallback to function name lookup for simple function calls
 	fn_name := t.get_call_fn_name(call_expr)
-	if !is_result && !is_option && fn_name != '' {
+	// Method-call detection: `recv.method(...)` where recv is not a module ident.
+	// For method calls, the short `fn_name` can collide with a top-level function
+	// (e.g. `header.get` vs `http.get`), so resolve the method return type first
+	// and skip the bare-name fallback when it's a method call.
+	is_method_call := t.is_method_call_expr(call_expr)
+	mut method_ret_base_type := ''
+	if !is_result && !is_option && is_method_call {
+		if ret_type := t.get_method_return_type(call_expr) {
+			if ret_type is types.ResultType {
+				is_result = true
+				method_ret_base_type = ret_type.base_type.name()
+			} else if ret_type is types.OptionType {
+				is_option = true
+				method_ret_base_type = ret_type.base_type.name()
+			}
+		}
+	}
+
+	// Fallback to function name lookup for non-method calls only.
+	if !is_result && !is_option && fn_name != '' && !is_method_call {
 		is_result = t.fn_returns_result(fn_name)
 		is_option = t.fn_returns_option(fn_name)
 	}
 
+	// Method-call fallback for the non-Result/Option case (e.g. checker stored
+	// a plain type at the position but the method actually returns ?T/!T).
+	if !is_result && !is_option && !is_method_call {
+		if ret_type := t.get_method_return_type(call_expr) {
+			if ret_type is types.ResultType {
+				is_result = true
+				method_ret_base_type = ret_type.base_type.name()
+			} else if ret_type is types.OptionType {
+				is_option = true
+				method_ret_base_type = ret_type.base_type.name()
+			}
+		}
+	}
 	if !is_result && !is_option {
 		if is_string_range_or {
 			is_result = true
@@ -4226,7 +4257,13 @@ fn (mut t Transformer) expand_direct_or_expr_assign(stmt ast.AssignStmt, or_expr
 
 	// Get base type using expression-based lookup first, then fallback
 	mut base_type := t.get_expr_base_type(call_expr)
-	if base_type == '' && fn_name != '' {
+	// Method-call: derive base_type from the resolved method return type.
+	// Prefer this over the bare-name fn lookup to avoid name collisions
+	// (e.g. `header.get` vs top-level `http.get`).
+	if (base_type == '' || is_method_call) && method_ret_base_type != '' {
+		base_type = method_ret_base_type
+	}
+	if base_type == '' && fn_name != '' && !is_method_call {
 		base_type = t.get_fn_return_base_type(fn_name)
 	}
 	// String range or-block: the checker typed this as plain string,
@@ -4251,11 +4288,13 @@ fn (mut t Transformer) expand_direct_or_expr_assign(stmt ast.AssignStmt, or_expr
 		// Register the resolved return wrapper type so cleanc can unwrap `.data`/`.err`.
 		if ret_type is types.ResultType || ret_type is types.OptionType {
 			t.register_temp_var(temp_name, ret_type)
+			t.register_synth_type(call_expr.pos(), ret_type)
 		}
 	} else if fn_name != '' {
 		if fn_ret := t.get_fn_return_type(fn_name) {
 			if fn_ret is types.ResultType || fn_ret is types.OptionType {
 				t.register_temp_var(temp_name, fn_ret)
+				t.register_synth_type(call_expr.pos(), fn_ret)
 			}
 		}
 	}
