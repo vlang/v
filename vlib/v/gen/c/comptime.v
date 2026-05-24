@@ -329,9 +329,13 @@ fn (mut g Gen) resolve_comptime_selector_field(node ast.ComptimeSelector, left_t
 		g.comptime.comptime_for_field_value.name
 	}
 	if node.field_expr is ast.SelectorExpr && g.comptime.comptime_for_field_var != ''
-		&& g.comptime.comptime_for_method_var == '' && node.field_expr.field_name == 'name' {
+		&& node.field_expr.field_name == 'name' {
 		if node.field_expr.expr is ast.Ident
 			&& node.field_expr.expr.name == g.comptime.comptime_for_field_var {
+			// The checker stores typ_key per AST node, so the cached field name
+			// in `typ_key` is stale after iteration; always prefer the current
+			// outer-loop field value here (also necessary when this `$(field.name)`
+			// is used inside a nested `$for method in field.methods`).
 			field_name = g.comptime.comptime_for_field_value.name
 		}
 	}

@@ -777,6 +777,13 @@ fn (mut c Checker) comptime_for(mut node ast.ComptimeFor) {
 			typ = c.unwrap_generic(node.typ)
 		}
 	}
+	// When the resolved type is FieldData, the expression refers to a comptime
+	// field variable (e.g. `$for method in field.methods` where `field` comes
+	// from an outer `$for field in T.fields`). In that case use the actual field
+	// type from the outer comptime loop instead of the FieldData descriptor type.
+	if node.typ == c.field_data_type {
+		typ = c.comptime.comptime_for_field_type
+	}
 	sym := if node.typ != c.field_data_type {
 		c.table.final_sym(typ)
 	} else {
