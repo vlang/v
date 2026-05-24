@@ -175,3 +175,63 @@ fn test_skip_unused_marks_dependencies_inside_generic_anon_fns() {
 		panic(res.output)
 	}
 }
+
+fn test_skip_unused_keeps_generic_next_for_for_in_when_direct_calls_use_other_types() {
+	// Regression for https://github.com/vlang/v/issues/27147 .
+	// A `for in` over a generic iterator instantiation (e.g. `Range[big.Integer]`)
+	// must emit the matching `next` instantiation, even when other code calls
+	// methods on a different instantiation of the same generic struct directly
+	// (e.g. `iter.next()` on a `Range[int]`).
+	tmp_dir := os.join_path(os.vtmp_dir(), 'v_issue_27147')
+	os.mkdir_all(tmp_dir) or { panic(err) }
+	defer {
+		os.rmdir_all(tmp_dir) or {}
+	}
+	source_path := os.join_path(tmp_dir, 'issue_27147.v')
+	binary_path := os.join_path(tmp_dir, 'issue_27147')
+	source := [
+		'module main',
+		'',
+		'import math.big',
+		'',
+		'struct Range[T] {',
+		'\tstart T',
+		'\tend   T',
+		'\tstep  T',
+		'mut:',
+		'\tcur T',
+		'}',
+		'',
+		'pub fn (mut r Range[T]) next() ?T {',
+		'\tif r.cur > r.end {',
+		'\t\treturn none',
+		'\t}',
+		'\tdefer { r.cur += r.step }',
+		'\treturn r.cur',
+		'}',
+		'',
+		'pub fn (mut r Range[T]) reset() {',
+		'\tr.cur = r.start',
+		'}',
+		'',
+		'pub fn range[T](start T, end T, step T) Range[T] {',
+		'\treturn Range[T]{start: start, end: end, step: step, cur: start}',
+		'}',
+		'',
+		'fn main() {',
+		'\tmut iter := range(0, 5, 1)',
+		'\titer.reset()',
+		'\titer.next()',
+		'\tend := big.integer_from_int(3)',
+		'\tfor i in range[big.Integer](big.zero_int, end, big.one_int) {',
+		'\t\tprintln(i)',
+		'\t}',
+		'}',
+	].join('\n')
+	os.write_file(source_path, source) or { panic(err) }
+	res :=
+		os.execute('${os.quoted_path(vexe)} -o ${os.quoted_path(binary_path)} ${os.quoted_path(source_path)}')
+	if res.exit_code != 0 {
+		panic(res.output)
+	}
+}

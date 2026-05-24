@@ -802,9 +802,30 @@ pub fn (mut w Walker) stmt(node_ ast.Stmt) {
 					}
 				}
 				cond_type_sym := w.table.sym(resolved_cond_type)
-				if next_fn := cond_type_sym.find_method('next') {
+				mut next_method := cond_type_sym.find_method('next')
+				// Generic instantiated structs (e.g. `Range[big.Integer]`) have
+				// no methods of their own; the `next` method lives on the
+				// generic parent (`Range[T]`). The concrete types from the
+				// instantiation must be propagated to the walker, otherwise
+				// `remove_unused_fn_generic_types` may overwrite
+				// `fn_generic_types[next]` with the union derived from other
+				// callers (e.g. only `[int]` from a direct `iter.next()`),
+				// dropping the receiver type used here.
+				mut receiver_concrete_types := []ast.Type{}
+				if next_method == none && cond_type_sym.info is ast.Struct {
+					if cond_type_sym.info.concrete_types.len > 0
+						&& cond_type_sym.info.parent_type != 0 {
+						parent_sym := w.table.sym(cond_type_sym.info.parent_type)
+						if parent_next := parent_sym.find_method('next') {
+							next_method = parent_next
+							receiver_concrete_types = w.receiver_concrete_types(resolved_cond_type)
+						}
+					}
+				}
+				if next_fn := next_method {
 					unsafe {
-						w.fn_decl(mut &ast.FnDecl(next_fn.source_fn))
+						w.fn_decl_with_concrete_types(mut &ast.FnDecl(next_fn.source_fn),
+							receiver_concrete_types)
 					}
 				}
 			}
