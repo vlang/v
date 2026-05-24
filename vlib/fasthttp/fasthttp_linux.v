@@ -411,8 +411,14 @@ fn process_request(server &Server, epoll_fd int, client_fd int, request_buffer [
 				continue
 			}
 			if ssize == 0 {
-				// File shorter than reported size or peer closed; nothing more to send.
-				break
+				// Short transfer: the file shrank between fstat() and now, or the
+				// peer closed. We've already promised the full Content-Length, so
+				// the response is now truncated -- closing the connection is the
+				// only way to keep keep-alive clients in sync.
+				eprintln('ERROR: sendfile() returned 0 with ${remaining} bytes still pending; closing connection to avoid desync')
+				handle_client_closure(epoll_fd, client_fd, mut client_fds, mut client_buffers, mut
+					client_read_starts, mut closing_client_fds)
+				return
 			}
 			errno_val := C.errno
 			match errno_val {
