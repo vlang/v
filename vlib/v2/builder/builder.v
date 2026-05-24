@@ -1523,29 +1523,86 @@ fn (b &Builder) collect_cflags_from_sources() string {
 		lines := os.read_lines(scan_path) or { continue }
 		// Track $if nesting to skip flags inside non-matching comptime blocks.
 		// skip_depth > 0 means we are inside a non-matching $if block.
+		// chain_matched[i] tracks whether the i-th enclosing $if chain has
+		// already matched some branch (so subsequent $else / $else $if at the
+		// same level should be skipped even if their cond would otherwise match).
 		mut skip_depth := 0
+		mut chain_matched := []bool{}
 		for line in lines {
 			trimmed := line.trim_space()
-			// Handle $if / $else / closing braces for comptime blocks
-			if trimmed.starts_with(r'$if ') {
-				cond := trimmed[4..].trim_right('?{ ').trim_space()
+			// Strip a leading "} " so chained patterns like "} $else $if X {" parse
+			// the same way as "$else $if X {" on their own line.
+			rest := if trimmed.starts_with('} ') { trimmed[2..].trim_space() } else { trimmed }
+			leading_close := rest != trimmed
+			// $else $if cond { (a chain continuation)
+			if rest.starts_with(r'$else $if ') {
+				new_cond := rest[10..].trim_right('?{ ').trim_space()
+				if skip_depth > 1 {
+					// nested skipping; just continue without touching outer state
+					continue
+				}
+				cur := chain_matched.len - 1
+				if cur < 0 {
+					continue
+				}
+				if chain_matched[cur] {
+					skip_depth = 1
+				} else if comptime_cond_matches(new_cond, os.user_os()) {
+					chain_matched[cur] = true
+					skip_depth = 0
+				} else {
+					skip_depth = 1
+				}
+				continue
+			}
+			// plain $else { (chain terminator)
+			if rest.starts_with(r'$else') {
+				if skip_depth > 1 {
+					continue
+				}
+				cur := chain_matched.len - 1
+				if cur < 0 {
+					continue
+				}
+				if chain_matched[cur] {
+					skip_depth = 1
+				} else {
+					chain_matched[cur] = true
+					skip_depth = 0
+				}
+				continue
+			}
+			// $if cond { (chain opener)
+			if rest.starts_with(r'$if ') {
+				cond := rest[4..].trim_right('?{ ').trim_space()
+				matched := comptime_cond_matches(cond, os.user_os())
+				chain_matched << matched
 				if skip_depth > 0 {
 					skip_depth++
-				} else if !comptime_cond_matches(cond, os.user_os()) {
+				} else if !matched {
 					skip_depth = 1
 				}
 				continue
 			}
-			if trimmed.starts_with(r'$else') || trimmed == r'} $else {' {
-				if skip_depth == 1 {
-					skip_depth = 0
-				} else if skip_depth == 0 {
-					skip_depth = 1
+			// closing }
+			if trimmed == '}' {
+				if skip_depth > 0 {
+					skip_depth--
+				}
+				if chain_matched.len > 0 {
+					chain_matched.delete_last()
 				}
 				continue
 			}
-			if trimmed == '}' && skip_depth > 0 {
-				skip_depth--
+			// "} something" where the leading } closed a chain but the rest is
+			// unrecognized: treat the } as a chain close.
+			if leading_close && rest == '' {
+				if skip_depth > 0 {
+					skip_depth--
+				}
+				if chain_matched.len > 0 {
+					chain_matched.delete_last()
+				}
 				continue
 			}
 			if skip_depth > 0 {
