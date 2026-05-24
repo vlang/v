@@ -693,8 +693,16 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 						right_name := c.table.type_to_str(unwrapped_right_type)
 						c.error('mismatched types `${left_name}` and `${right_name}`',
 							left_right_pos)
-					} else if promoted_type.has_option_or_result() {
-						s := c.table.type_to_str(promoted_type)
+					} else if promoted_type.has_flag(.result) || unwrapped_left_type.has_flag(.result)
+						|| unwrapped_right_type.has_flag(.result) {
+						result_type := if unwrapped_left_type.has_flag(.result) {
+							unwrapped_left_type
+						} else if unwrapped_right_type.has_flag(.result) {
+							unwrapped_right_type
+						} else {
+							promoted_type
+						}
+						s := c.table.type_to_str(result_type)
 						c.error('`${node.op}` cannot be used with `${s}`', node.pos)
 					} else if promoted_type.is_float() {
 						if node.op in [.mod, .xor, .amp, .pipe] {
@@ -1129,7 +1137,7 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 	}
 	// TODO: move this to symmetric_check? Right now it would break `return 0` for `fn()?int `
 	if node.left !in [ast.Ident, ast.IndexExpr, ast.SelectorExpr, ast.ComptimeSelector]
-		|| node.op in [.eq, .ne] {
+		|| node.op in [.eq, .ne, .plus, .minus, .mul, .power, .div, .mod, .xor, .amp, .pipe] {
 		c.check_option_infix_expr(mut node, left_type, right_type, left_sym, right_sym)
 	}
 
