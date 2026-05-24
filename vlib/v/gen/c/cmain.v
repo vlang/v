@@ -180,11 +180,14 @@ fn (mut g Gen) gen_boehm_gc_init() {
 	g.writeln('#endif')
 }
 
-fn (mut g Gen) gen_windows_shared_library_boehm_init() {
+fn (mut g Gen) gen_shared_library_boehm_init() {
 	if g.pref.gc_mode !in [.boehm_full, .boehm_incr, .boehm_full_opt, .boehm_incr_opt, .boehm_leak] {
 		return
 	}
 	g.writeln('#if defined(_VGCBOEHM)')
+	// macOS hardened runtime denies PROT_READ|PROT_WRITE|PROT_EXEC mappings from
+	// non-codesigned dylibs, so libgc must not request executable pages. The
+	// equivalent restriction applies to Windows DLLs.
 	g.writeln('\tGC_set_pages_executable(0);')
 	if g.pref.gc_mode in [.boehm_full_opt, .boehm_incr_opt] {
 		g.writeln('\tGC_set_free_space_divisor(2);')
