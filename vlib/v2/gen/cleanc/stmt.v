@@ -107,6 +107,7 @@ fn (mut g Gen) gen_stmt(node ast.Stmt) {
 			g.sb.writeln(';')
 		}
 		ast.ReturnStmt {
+			g.emit_scheduled_drops_at_return()
 			g.write_indent()
 			if g.is_tuple_alias(g.cur_fn_ret_type) {
 				if node.exprs.len == 1 {

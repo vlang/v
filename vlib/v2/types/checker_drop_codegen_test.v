@@ -148,3 +148,131 @@ fn main() {
 	assert output.contains('got 42'), 'expected user print, got: ${output}'
 	assert !output.contains('dropping'), 'no drop should fire for non-Drop type, got: ${output}'
 }
+
+fn test_drop_fires_before_early_return() {
+	// Phase 1B: early `return` mid-fn must drop every still-owned Drop binding
+	// declared before it, in LIFO order. Without this, fns that bail out via
+	// `if err { return }` leak every resource declared on the happy path.
+	code := "
+struct Foo implements Drop {
+	id int
+}
+
+fn (mut self Foo) drop() {
+	println('dropping ' + self.id.str())
+}
+
+fn run() {
+	a := Foo{id: 1}
+	b := Foo{id: 2}
+	_ = a.id
+	_ = b.id
+	println('before return')
+	return
+}
+
+fn main() {
+	run()
+	println('after run')
+}
+"
+	exit_code, output := run_drop_program(code)
+	assert exit_code == 0, 'program should exit 0: ${output}'
+	// Drops must fire BEFORE the caller observes the return — i.e. before
+	// 'after run' is printed — and in LIFO order (b first, then a).
+	before_idx := output.index('before return') or { -1 }
+	b_idx := output.index('dropping 2') or { -1 }
+	a_idx := output.index('dropping 1') or { -1 }
+	after_idx := output.index('after run') or { -1 }
+	assert before_idx >= 0 && b_idx > before_idx && a_idx > b_idx && after_idx > a_idx, 'drops must fire LIFO at early return, before caller resumes, got: ${output}'
+}
+
+fn test_drop_early_return_skips_moved_binding() {
+	// A binding moved into a fn call before the early return must NOT be
+	// dropped again at the return — its drop responsibility transferred.
+	code := "
+struct Foo implements Drop, Owned {
+	id int
+}
+
+fn (mut self Foo) drop() {
+	println('dropping ' + self.id.str())
+}
+
+fn take(f Foo) {
+	println('took ' + f.id.str())
+}
+
+fn run() {
+	a := Foo{id: 1}
+	b := Foo{id: 2}
+	take(a)
+	println('before return')
+	return
+	_ = b.id
+}
+
+fn main() {
+	run()
+}
+"
+	exit_code, output := run_drop_program(code)
+	assert exit_code == 0, 'program should exit 0: ${output}'
+	assert output.contains('took 1'), 'expected take call, got: ${output}'
+	assert output.contains('dropping 2'), 'b must drop at early return, got: ${output}'
+	// a was moved into take — must not produce a second drop for id=1.
+	dropping_1_count := output.count('dropping 1')
+	assert dropping_1_count == 0, 'moved binding must not drop at early return, got ${dropping_1_count} occurrences in: ${output}'
+}
+
+fn test_drop_multiple_returns_each_drop_independently() {
+	// Each return point gets its own drop set computed at that point. A fn
+	// with two return arms should drop the right bindings on each arm.
+	code := "
+struct Foo implements Drop {
+	id int
+}
+
+fn (mut self Foo) drop() {
+	println('dropping ' + self.id.str())
+}
+
+fn run(flag bool) {
+	a := Foo{id: 1}
+	_ = a.id
+	if flag {
+		b := Foo{id: 2}
+		_ = b.id
+		println('A')
+		return
+	}
+	c := Foo{id: 3}
+	_ = c.id
+	println('B')
+}
+
+fn main() {
+	run(true)
+	println('---')
+	run(false)
+}
+"
+	exit_code, output := run_drop_program(code)
+	assert exit_code == 0, 'program should exit 0: ${output}'
+	// Path A (flag=true): drops b then a at the early return.
+	// Path B (flag=false): drops c then a at natural exit.
+	sep_idx := output.index('---') or { -1 }
+	assert sep_idx > 0, 'expected separator, got: ${output}'
+	head := output[..sep_idx]
+	tail := output[sep_idx..]
+	a_head_idx := head.index('dropping 1') or { -1 }
+	b_head_idx := head.index('dropping 2') or { -1 }
+	assert b_head_idx >= 0 && a_head_idx > b_head_idx, 'early-return path must drop b then a, got: ${head}'
+
+	a_tail_idx := tail.index('dropping 1') or { -1 }
+	c_tail_idx := tail.index('dropping 3') or { -1 }
+	assert c_tail_idx >= 0 && a_tail_idx > c_tail_idx, 'natural-exit path must drop c then a, got: ${tail}'
+
+	// b was never declared on the B path.
+	assert !tail.contains('dropping 2'), 'b must not appear on B path, got: ${tail}'
+}

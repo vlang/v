@@ -214,7 +214,10 @@ fn (mut g Gen) gen_return_if_branch(stmts []ast.Stmt) {
 			ret_stmt := ast.ReturnStmt{
 				exprs: ret_exprs
 			}
+			prev_suppress := g.suppress_return_drop_emit
+			g.suppress_return_drop_emit = true
 			g.gen_stmt(ret_stmt)
+			g.suppress_return_drop_emit = prev_suppress
 		} else {
 			g.gen_stmt(stmt)
 		}
@@ -262,7 +265,10 @@ fn (mut g Gen) gen_return_if_expr(if_expr ast.IfExpr, emit_indent bool) {
 		else_stmt := ast.ReturnStmt{
 			exprs: else_exprs
 		}
+		prev_suppress := g.suppress_return_drop_emit
+		g.suppress_return_drop_emit = true
 		g.gen_stmt(else_stmt)
+		g.suppress_return_drop_emit = prev_suppress
 		g.indent--
 		g.write_indent()
 		g.sb.writeln('}')

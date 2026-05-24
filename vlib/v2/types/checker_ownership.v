@@ -253,6 +253,31 @@ fn (mut c Checker) ownership_check_return(stmt ast.ReturnStmt) {
 			c.ownership_fns[c.ownership_cur_fn] = true
 		}
 	}
+	// Snapshot drops live AT this return. Run after the loop above so any
+	// binding being returned is already in `moved_vars` and gets excluded.
+	c.ownership_snapshot_drops_at_return()
+}
+
+// ownership_snapshot_drops_at_return records the set of Drop-typed bindings
+// that are still owned at the current return point. Bindings being returned
+// (and thus moved out) are excluded — the surrounding loop in
+// `ownership_check_return` adds them to `moved_vars` before we run. The
+// snapshot is appended to `c.pending_return_drops` in source order; the
+// codegen counter consumes it positionally. An empty snapshot is appended
+// for returns with no live drops so the codegen counter stays aligned with
+// the source-order index of every ReturnStmt.
+fn (mut c Checker) ownership_snapshot_drops_at_return() {
+	scheduled := c.drop_schedule[c.ownership_cur_fn] or {
+		c.pending_return_drops << []DropEntry{}
+		return
+	}
+	mut live := []DropEntry{cap: scheduled.len}
+	for entry in scheduled {
+		if entry.var_name in c.owned_vars && entry.var_name !in c.moved_vars {
+			live << entry
+		}
+	}
+	c.pending_return_drops << live
 }
 
 // ownership_mark_from_call detects calls that produce owned values:
@@ -417,6 +442,7 @@ fn (mut c Checker) ownership_release_borrow(var_name string, borrower string) {
 // Marks parameters that received owned values from call sites as owned within this scope.
 fn (mut c Checker) ownership_enter_fn(fn_name string, decl ast.FnDecl) {
 	c.ownership_cur_fn = fn_name
+	c.pending_return_drops = [][]DropEntry{}
 	// Check if any parameters of this function received owned values at call sites
 	for i, param in decl.typ.params {
 		key := '${fn_name}__param_${i}'
@@ -977,6 +1003,24 @@ fn (mut c Checker) ownership_snapshot_drops_at_fn_exit(schedule_key string, publ
 			continue
 		}
 		c.env.drop_at_fn_exit[key] = live
+	}
+}
+
+// ownership_publish_pending_return_drops moves the per-return drop snapshots
+// collected for the current fn into `env.drop_at_returns` under each
+// publish key. Each entry is appended in source-order so the cleanc backend
+// can match them positionally by walking the fn body in the same order.
+// Skipped entirely when no returns were seen (all-drops-at-natural-exit
+// case), since the fn-exit map already covers it.
+fn (mut c Checker) ownership_publish_pending_return_drops(publish_keys []string) {
+	if c.pending_return_drops.len == 0 || publish_keys.len == 0 {
+		return
+	}
+	for key in publish_keys {
+		if key.len == 0 {
+			continue
+		}
+		c.env.drop_at_returns[key] = c.pending_return_drops.clone()
 	}
 }
 

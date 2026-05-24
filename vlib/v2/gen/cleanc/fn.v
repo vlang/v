@@ -4820,6 +4820,14 @@ fn (mut g Gen) gen_fn_decl_with_name_ptr(node &ast.FnDecl, fn_name string) {
 	g.cur_fn_c_name = fn_name
 	g.runtime_local_types.clear()
 	g.runtime_decl_types.clear()
+	// Drop/RAII (Phase 1B): preload per-return drop snapshots for this fn
+	// so the ReturnStmt handler can emit `Type__drop(&var)` in source order.
+	g.cur_fn_return_drops = if g.env != unsafe { nil } {
+		g.env.drop_at_returns[fn_name] or { [][]types.DropEntry{} }
+	} else {
+		[][]types.DropEntry{}
+	}
+	g.cur_fn_return_index = 0
 	g.cur_fn_returned_idents = g.collect_returned_idents(node.stmts)
 	g.is_module_ident_cache.clear()
 	g.not_local_var_cache.clear()
@@ -5072,6 +5080,28 @@ fn (mut g Gen) emit_scheduled_drops(stmts []ast.Stmt, fn_name string) {
 	if cleanc_stmts_end_with_return(stmts) {
 		return
 	}
+	for i := entries.len - 1; i >= 0; i-- {
+		entry := entries[i]
+		g.write_indent()
+		g.sb.writeln('${entry.type_name}__drop(&${entry.var_name});')
+	}
+}
+
+// emit_scheduled_drops_at_return writes destructor calls for the bindings
+// the checker recorded for the current ReturnStmt (Phase 1B). Snapshots
+// are consumed positionally — the counter advances every call so the next
+// ReturnStmt picks up the next snapshot. Drops emit in LIFO order
+// (declaration-order reverse) for a single coherent scope. Bindings being
+// returned (and thus moved out) were excluded by the checker.
+fn (mut g Gen) emit_scheduled_drops_at_return() {
+	if g.suppress_return_drop_emit {
+		return
+	}
+	if g.cur_fn_return_index >= g.cur_fn_return_drops.len {
+		return
+	}
+	entries := g.cur_fn_return_drops[g.cur_fn_return_index]
+	g.cur_fn_return_index++
 	for i := entries.len - 1; i >= 0; i-- {
 		entry := entries[i]
 		g.write_indent()

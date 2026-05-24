@@ -13,28 +13,41 @@ import time
 
 pub struct Gen {
 mut:
-	files                  []ast.File
-	env                    &types.Environment = unsafe { nil }
-	pref                   &pref.Preferences  = unsafe { nil }
-	sb                     strings.Builder
-	indent                 int
-	cur_fn_scope           &types.Scope = unsafe { nil }
-	cur_fn_name            string
-	cur_fn_c_name          string
-	cur_fn_ret_type        string
-	cur_fn_c_ret_type      string
-	cur_module             string
-	cur_fn_scope_miss_key  string
-	emitted_types          map[string]bool
-	fn_param_is_ptr        map[string][]bool
-	fn_param_types         map[string][]string
-	fn_return_types        map[string]string
-	v_fn_return_types      map[string]string
-	runtime_local_types    map[string]string
-	runtime_decl_types     map[string]string
-	cur_fn_returned_idents map[string]bool
-	active_generic_types   map[string]types.Type
-	cur_fn_generic_params  map[string]string
+	files                 []ast.File
+	env                   &types.Environment = unsafe { nil }
+	pref                  &pref.Preferences  = unsafe { nil }
+	sb                    strings.Builder
+	indent                int
+	cur_fn_scope          &types.Scope = unsafe { nil }
+	cur_fn_name           string
+	cur_fn_c_name         string
+	cur_fn_ret_type       string
+	cur_fn_c_ret_type     string
+	cur_module            string
+	cur_fn_scope_miss_key string
+	// Per-return drop snapshots for the current fn, populated by the
+	// checker. Indexed positionally by `cur_fn_return_index`, which the
+	// ReturnStmt handler increments. Reset at every fn entry. Empty for
+	// fns the checker didn't see (e.g., plain V without `-d ownership`).
+	cur_fn_return_drops [][]types.DropEntry
+	cur_fn_return_index int
+	// Set true while gen_return_if_branch synthesizes ReturnStmts for
+	// `return if cond { x } else { y }`. The synthesized statements go
+	// through the same ReturnStmt handler, but they represent the SAME
+	// source-level return — emitting drops for them again would consume
+	// the next snapshot (belonging to a later source return) and break
+	// the parallel counter the checker relies on.
+	suppress_return_drop_emit bool
+	emitted_types             map[string]bool
+	fn_param_is_ptr           map[string][]bool
+	fn_param_types            map[string][]string
+	fn_return_types           map[string]string
+	v_fn_return_types         map[string]string
+	runtime_local_types       map[string]string
+	runtime_decl_types        map[string]string
+	cur_fn_returned_idents    map[string]bool
+	active_generic_types      map[string]types.Type
+	cur_fn_generic_params     map[string]string
 	// Phase-1 generic monomorphization (V2_TRANSFORMER_MONOMORPH=1):
 	// when true, the transformer has already cloned generic FnDecls per
 	// env.generic_types binding. Cleanc skips its own spec emission paths

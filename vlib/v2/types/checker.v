@@ -38,6 +38,15 @@ pub mut:
 	// `Type__drop(&var)` calls before the fn's closing brace. Only populated
 	// when the checker runs with `-d ownership`; empty under plain V.
 	drop_at_fn_exit map[string][]DropEntry
+	// Drop-codegen handoff for early returns: per-fn list of per-return-stmt
+	// drop snapshots, in source order. The cleanc backend walks the fn body
+	// in the same order and maintains a parallel counter to match each
+	// ReturnStmt to its snapshot. Each inner []DropEntry is the set of
+	// bindings that must be dropped just BEFORE the corresponding return.
+	// Bindings that are themselves being returned (and thus moved out) are
+	// excluded by the checker — the return moves them. Only populated when
+	// the checker runs with `-d ownership`; empty under plain V.
+	drop_at_returns map[string][][]DropEntry
 }
 
 pub fn Environment.new() &Environment {
@@ -608,6 +617,11 @@ mut:
 	// values are bound; pruned (via the `moved_vars` view) when they are
 	// moved or returned. Exposed so the transformer / backends can lower it.
 	drop_schedule map[string][]DropEntry
+	// Per-fn list of per-return drop snapshots collected during checking,
+	// in source order. Reset at fn entry, published to
+	// `env.drop_at_returns[publish_key]` at fn exit. Transient — not used
+	// outside of fn body checking.
+	pending_return_drops [][]DropEntry
 	// Source positions for `implements Drop` struct declarations, indexed
 	// by struct name. Used to point the "missing drop method" diagnostic at
 	// the struct decl rather than at an unrelated use site.
@@ -3917,6 +3931,7 @@ fn (mut c Checker) check_pending_fn_body(pending PendingFnBody) {
 		$if ownership ? {
 			publish_keys := ownership_publish_keys_for(pending.module_name, pending.decl)
 			c.ownership_snapshot_drops_at_fn_exit(pending.decl.name, publish_keys)
+			c.ownership_publish_pending_return_drops(publish_keys)
 			c.ownership_leave_fn(prev_ownership_fn, prev_owned, prev_owned_types, prev_moved,
 				prev_borrowed)
 		}
