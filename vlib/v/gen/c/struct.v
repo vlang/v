@@ -1099,7 +1099,8 @@ fn (mut g Gen) struct_init_field_value(sfield ast.StructInitField) {
 		if expected_unwrap_sym.kind == .map && sfield.expr is ast.MapInit
 			&& !sfield.expected_type.has_option_or_result()
 			&& !sfield.expected_type.has_flag(.shared_f)
-			&& !sfield.expected_type.has_flag(.atomic_f) {
+			&& !sfield.expected_type.has_flag(.atomic_f)
+			&& !sfield.expected_type.is_ptr() {
 			expected_map_info := expected_unwrap_sym.map_info()
 			g.map_init(ast.MapInit{
 				...sfield.expr
