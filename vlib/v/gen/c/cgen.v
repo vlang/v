@@ -4263,6 +4263,9 @@ fn (mut g Gen) call_cfn_for_casting_expr(fname string, expr ast.Expr, exp ast.Ty
 				g.write('${promotion_macro_name}(${got_styp}, (')
 				rparen_n += 2
 			}
+		} else if is_sumtype_cast && !g.can_reuse_sumtype_variant_storage(exp, got_is_ptr) {
+			g.write('ADDR(${got_styp}, (')
+			rparen_n += 2
 		} else {
 			g.write('&')
 		}
