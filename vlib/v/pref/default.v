@@ -213,6 +213,13 @@ pub fn (mut p Preferences) fill_with_defaults() {
 	}
 	npath := rpath.replace('\\', '/')
 	p.building_v = !p.is_repl && is_v_compiler_target(npath)
+	if !p.is_repl && is_v2_compiler_target(npath) {
+		// v2 must always be compiled with `-gc none`: the v2 compiler manages
+		// its own arenas/move semantics and the boehm collector slows it down
+		// and inflates peak memory (multi-GB for non-trivial builds).
+		p.gc_mode = .no_gc
+		p.clear_gc_options()
+	}
 	if p.os == .linux {
 		$if !linux {
 			p.parse_define('cross_compile')
@@ -319,6 +326,11 @@ fn is_v_compiler_target(npath string) bool {
 	target := npath.trim_right('/')
 	return target.ends_with('cmd/v') || target.ends_with('cmd/v/v.v') || target.ends_with('cmd/v2')
 		|| target.ends_with('cmd/v2/v2.v') || target.ends_with('cmd/tools/vfmt.v')
+}
+
+fn is_v2_compiler_target(npath string) bool {
+	target := npath.trim_right('/')
+	return target.ends_with('cmd/v2') || target.ends_with('cmd/v2/v2.v')
 }
 
 // normalize_gc_defaults_for_resolved_ccompiler clears stale compiler-dependent
