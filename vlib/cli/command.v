@@ -18,19 +18,33 @@ pub mut:
 	description     string
 	man_description string
 	version         string
-	pre_execute     FnCommandCallback = unsafe { nil }
-	execute         FnCommandCallback = unsafe { nil }
-	post_execute    FnCommandCallback = unsafe { nil }
-	disable_flags   bool
-	sort_flags      bool
-	sort_commands   bool
-	parent          &Command = unsafe { nil }
-	commands        []Command
-	flags           []Flag
-	required_args   int
-	args            []string
-	posix_mode      bool
-	defaults        struct {
+	// group is the section title under which `--help` lists this sub-command
+	// in its parent's command listing. Empty falls back to the default
+	// `Commands:` section. The string is rendered verbatim followed by `:`
+	// — capitalisation is the caller's responsibility. Groups appear in the
+	// order their first member is declared, which can interact with
+	// `sort_commands` (sorting may change which member of each group comes
+	// first, hence which group is listed first).
+	group string
+	// examples lists invocations rendered under `Examples:` by `--help`.
+	// Each entry is one line; a leading `$` is conventional but not required.
+	examples []string
+	// learn_more is rendered under the `Learn more:` section by `--help`.
+	// Newlines split the block into separate lines.
+	learn_more    string
+	pre_execute   FnCommandCallback = unsafe { nil }
+	execute       FnCommandCallback = unsafe { nil }
+	post_execute  FnCommandCallback = unsafe { nil }
+	disable_flags bool
+	sort_flags    bool
+	sort_commands bool
+	parent        &Command = unsafe { nil }
+	commands      []Command
+	flags         []Flag
+	required_args int
+	args          []string
+	posix_mode    bool
+	defaults      struct {
 	pub:
 		help    Defaults = true
 		man     Defaults = true
@@ -63,6 +77,9 @@ pub fn (cmd &Command) str() string {
 	res << '	version: "${cmd.version}"'
 	res << '	description: "${cmd.description}"'
 	res << '	man_description: "${cmd.man_description}"'
+	res << '	group: "${cmd.group}"'
+	res << '	examples: ${cmd.examples}'
+	res << '	learn_more: "${cmd.learn_more}"'
 	res << '	disable_flags: ${cmd.disable_flags}'
 	res << '	sort_flags: ${cmd.sort_flags}'
 	res << '	sort_commands: ${cmd.sort_commands}'
