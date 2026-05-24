@@ -520,6 +520,13 @@ fn (mut p Preferences) clear_gc_options() {
 pub fn (mut p Preferences) default_c_compiler() {
 	// TODO: fix $if after 'string'
 	$if windows {
+		// -prealloc and -prod intentionally avoid the bundled tcc (see
+		// try_to_use_tcc_by_default); preserve that here so the Windows fallback
+		// does not silently re-select an incompatible compiler.
+		if p.prealloc || p.is_prod {
+			p.ccompiler = 'gcc'
+			return
+		}
 		p.ccompiler = windows_default_c_compiler(os.dir(vexe_path()))
 		return
 	}
