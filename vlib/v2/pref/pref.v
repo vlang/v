@@ -252,35 +252,21 @@ pub fn new_preferences_from_args(args []string) Preferences {
 		hot_fn_str = ''
 	}
 
-	// Parse -gc <mode> for garbage collection
+	// v2 always uses `-gc none`: the compiler manages its own arenas/move
+	// semantics, and external GCs (boehm/vgc) are not supported. Any value
+	// other than `none`/empty is rejected outright to avoid surprising the
+	// user with silently dropped GC defines.
 	gc_mode_str := cmdline.option(args, '-gc', '')
-	mut gc_mode := GarbageCollectionMode.no_gc
-	mut gc_defines := []string{}
+	gc_mode := GarbageCollectionMode.no_gc
 	match gc_mode_str {
-		'', 'none' {
-			gc_mode = .no_gc
-		}
-		'vgc' {
-			gc_mode = .vgc
-			gc_defines << 'vgc'
-		}
-		'boehm' {
-			gc_mode = .boehm
-			gc_defines << 'gcboehm'
-			gc_defines << 'gcboehm_full'
-			gc_defines << 'gcboehm_opt'
-		}
+		'', 'none' {}
 		else {
-			eprintln('error: unknown garbage collection mode `-gc ${gc_mode_str}`')
-			eprintln('  `-gc vgc` .............. V GC: concurrent tri-color mark-and-sweep (translated from Go)')
-			eprintln('  `-gc boehm` ............ Boehm-Demers-Weiser conservative GC')
-			eprintln('  `-gc none` ............. no garbage collection (default)')
+			eprintln('error: v2 only supports `-gc none` (got `-gc ${gc_mode_str}`)')
 			exit(1)
 		}
 	}
 
 	mut all_defines := user_defines.clone()
-	all_defines << gc_defines
 	if '-prealloc' in args {
 		all_defines << 'prealloc'
 	}
