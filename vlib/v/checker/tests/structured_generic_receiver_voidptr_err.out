@@ -1,0 +1,6 @@
+vlib/v/checker/tests/structured_generic_receiver_voidptr_err.vv:15:4: error: method `ReceiverPatternExpect[[]voidptr].array_item` cannot bind `voidptr` to a generic receiver pattern; cast the receiver to a concrete V type first
+   13 |     ReceiverPatternExpect[[]voidptr]{
+   14 |         value: []voidptr{}
+   15 |     }.array_item(unsafe { nil })
+      |       ~~~~~~~~~~~~~~~~~~~~~~~~~~
+   16 | }

@@ -1,0 +1,18 @@
+struct ReceiverPatternExpect[T] {
+	value T
+}
+
+fn (e ReceiverPatternExpect[map[K]K]) same_value(key K, value K) K {
+	if key in e.value {
+		return e.value[key]
+	}
+	return value
+}
+
+fn main() {
+	ReceiverPatternExpect[map[string]int]{
+		value: {
+			'one': 1
+		}
+	}.same_value('one', 'fallback')
+}

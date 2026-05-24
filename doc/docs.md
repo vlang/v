@@ -4716,6 +4716,76 @@ println(compare(1.1, 1.1)) //          0
 println(compare(1.1, 1.2)) //         -1
 ```
 
+#### Structured generic receiver patterns
+
+Generic methods can constrain their receiver to a *structured* shape of the
+wrapped type, and the checker will bind the inner type parameters from the
+concrete receiver.
+
+The most common case is requiring the wrapped type to be a dynamic array:
+
+```v
+struct Expect[T] {
+	value T
+}
+
+fn (e Expect[[]T]) first_or(value T) T {
+	if e.value.len == 0 {
+		return value
+	}
+	return e.value[0]
+}
+
+fn main() {
+	a := Expect[[]int]{value: [1, 2, 3]}
+	println(a.first_or(0)) // 1, T is bound to int
+
+	b := Expect[[]string]{value: []string{}}
+	println(b.first_or('none')) // none, T is bound to string
+}
+```
+
+Nested array patterns are matched recursively, so `Expect[[][]int]` binds
+`T = []int`, and `Expect[[]map[string]int]` binds `T = map[string]int`.
+
+Maps work the same way and can bind two parameters at once:
+
+```v
+struct Expect[T] {
+	value T
+}
+
+fn (e Expect[map[K]V]) get_or(key K, value V) V {
+	if key in e.value {
+		return e.value[key]
+	}
+	return value
+}
+
+fn main() {
+	m := Expect[map[string]int]{value: {'a': 1}}
+	println(m.get_or('a', 0)) // 1   (K = string, V = int)
+	println(m.get_or('b', -1)) // -1
+}
+```
+
+`Expect[map[string]map[string]int]` binds `K = string` and
+`V = map[string]int`.
+
+Rules:
+
+- `Expect[[]T]` matches dynamic arrays; fixed-size arrays are not matched.
+- `Expect[map[K]V]` matches maps.
+- Nested patterns are matched recursively.
+- Plain generic receivers like `Expect[T]` continue to work, and an exact
+  concrete receiver method (for example `fn (e Expect[[]int]) ...`) keeps
+  precedence over a structured pattern.
+- A repeated placeholder must bind consistently: `Expect[map[K]K]` on
+  `Expect[map[string]int]` is rejected because `K` cannot be both `string`
+  and `int`.
+- Raw `voidptr` is not allowed to bind into these patterns; cast through an
+  explicit V type instead.
+
 ## Concurrency
 
 ### Spawning Concurrent Tasks
