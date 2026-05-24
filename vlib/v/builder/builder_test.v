@@ -401,6 +401,34 @@ fn test_vlib_import_does_not_match_user_project_dir() {
 	assert !res.output.contains('bad module definition'), res.output
 }
 
+fn test_vendored_modules_dir_with_own_vmod_still_resolves() {
+	// Regression guard for the #27151 fix: a vendored dependency at
+	// `<project>/modules/<name>/` that carries its own `v.mod` must still
+	// resolve when imported from `<project>`'s own code. The foreign-project
+	// skip is path-based, so anything inside the importer's `v.mod` tree —
+	// including nested `v.mod`s under `modules/` — must remain visible.
+	project_dir := os.join_path(test_path, 'vendored_modules_27151')
+	os.rmdir_all(project_dir) or {}
+	os.mkdir_all(os.join_path(project_dir, 'modules', 'vendored'))!
+	defer {
+		os.chdir(test_path) or {}
+		os.rmdir_all(project_dir) or {}
+	}
+	os.write_file(os.join_path(project_dir, 'v.mod'),
+		"Module {\n\tname: 'vendored_modules_27151'\n\tversion: '0.0.1'\n\tdescription: ''\n\tlicense: 'MIT'\n\tdependencies: []\n}\n")!
+	os.write_file(os.join_path(project_dir, 'modules', 'vendored', 'v.mod'),
+		"Module {\n\tname: 'vendored'\n\tversion: '0.0.1'\n\tdescription: ''\n\tlicense: 'MIT'\n\tdependencies: []\n}\n")!
+	os.write_file(os.join_path(project_dir, 'modules', 'vendored', 'vendored.v'),
+		'module vendored\n\npub fn hello() string {\n\treturn "hi from vendored"\n}\n')!
+	os.write_file(os.join_path(project_dir, 'main.v'),
+		'module main\n\nimport vendored\n\nfn main() {\n\tprintln(vendored.hello())\n}\n')!
+	os.chdir(project_dir)!
+
+	res := os.execute('${os.quoted_path(vexe)} -check .')
+	assert res.exit_code == 0, res.output
+	assert !res.output.contains('not found'), res.output
+}
+
 fn test_macos_arch_flag_is_forwarded_to_c_compiler() {
 	$if !macos {
 		return

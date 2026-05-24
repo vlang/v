@@ -820,16 +820,25 @@ fn (b &Builder) module_path_has_v_files(path string) bool {
 	return b.v_files_from_dir(path).len > 0
 }
 
-// candidate_belongs_to_foreign_project returns true when `candidate_path` lives
-// inside a different `v.mod`-rooted project than the importer, and is not a
-// vlib/vmodules lookup entry. Such candidates are someone else's source tree:
-// e.g. when a `vlib/*` file imports `sync`, a sibling `coreutils/src/sync`
-// directory is not a real `sync` module and should be skipped (see #27151).
+// candidate_belongs_to_foreign_project returns true when `candidate_path` is
+// neither inside the importer's `v.mod` tree nor inside a configured
+// `lookup_path` entry (vlib / vmodules). Such candidates are someone else's
+// source tree: e.g. when a `vlib/*` file imports `sync`, a sibling
+// `coreutils/src/sync` directory is not a real `sync` module and should be
+// skipped (see #27151). Comparing by path containment (rather than by the
+// nearest enclosing `v.mod`) keeps vendored dependencies like
+// `<project>/modules/<name>/` — which carry their own `v.mod` — resolvable
+// from `<project>`'s own code.
 fn (b &Builder) candidate_belongs_to_foreign_project(candidate_path string, importer_vmod_folder string) bool {
 	if importer_vmod_folder == '' {
 		return false
 	}
 	abs_candidate := os.real_path(candidate_path)
+	abs_importer_vmod := os.real_path(importer_vmod_folder)
+	if abs_candidate == abs_importer_vmod
+		|| abs_candidate.starts_with(abs_importer_vmod + os.path_separator) {
+		return false
+	}
 	for lookup in b.pref.lookup_path {
 		abs_lookup := os.real_path(lookup)
 		if abs_candidate == abs_lookup
@@ -837,12 +846,7 @@ fn (b &Builder) candidate_belongs_to_foreign_project(candidate_path string, impo
 			return false
 		}
 	}
-	mut mcache := vmod.get_cache()
-	candidate_vmod_folder := mcache.get_by_folder(candidate_path).vmod_folder
-	if candidate_vmod_folder == '' || candidate_vmod_folder == importer_vmod_folder {
-		return false
-	}
-	return os.real_path(candidate_vmod_folder) != os.real_path(importer_vmod_folder)
+	return true
 }
 
 // TODO: try to merge this & util.module functions to create a
