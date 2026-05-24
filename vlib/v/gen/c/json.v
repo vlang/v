@@ -162,7 +162,7 @@ ${dec_fn_dec} {
 			} else {
 				g.type_default(base_type)
 			}
-			dec.writeln('\tbuiltin___option_ok(&(${base_type_str}[]){ ${base_value} }, (${styp}*)&res, sizeof(${base_type_str}));\n')
+			dec.writeln('\tbuiltin___option_ok(&(${base_type_str}[]){ ${base_value} }, (${option_name}*)&res, sizeof(${base_type_str}));\n')
 		}
 
 		extern_str := if g.pref.parallel_cc { 'extern ' } else { '' }
@@ -1191,7 +1191,7 @@ fn (mut g Gen) decode_array(utyp ast.Type, value_type ast.Type, fixed_array_size
 		} else {
 			array_element_assign += 'builtin__array_push${noscan}((array*)&res.data, &val);'
 			res_str += 'builtin___option_ok(&(${g.base_type(utyp)}[]) { builtin____new_array${noscan}(0, 0, sizeof(${styp})) }, (${option_name}*)&res, sizeof(${g.base_type(utyp)}));'
-			array_free_str += 'builtin__array_free(&res.data);'
+			array_free_str += 'builtin__array_free((array*)&res.data);'
 		}
 	} else {
 		if is_array_fixed_val {
