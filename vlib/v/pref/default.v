@@ -468,6 +468,23 @@ pub fn default_tcc_compiler() string {
 	return usable_system_tcc_compiler()
 }
 
+// windows_default_c_compiler picks the host C compiler to default to on Windows.
+// `gcc` is the historical default, but plenty of Windows users only have the
+// bundled tcc that `makev.bat` provisions under `thirdparty/tcc/tcc.exe`.
+// Falling back to the bundled tcc when `gcc` isn't on PATH avoids confusing
+// "'gcc' is not recognized as an internal or external command" errors during
+// `v install`, `v outdated`, etc. (https://github.com/vlang/v/issues/27119).
+fn windows_default_c_compiler(vroot string) string {
+	if os.find_abs_path_of_executable('gcc') or { '' } != '' {
+		return 'gcc'
+	}
+	vtccexe := os.join_path(vroot, 'thirdparty', 'tcc', 'tcc.exe')
+	if os.is_file(vtccexe) && os.is_executable(vtccexe) {
+		return vtccexe
+	}
+	return 'gcc'
+}
+
 fn (mut p Preferences) clear_gc_options() {
 	p.compile_defines = p.compile_defines.filter(it !in windows_default_gc_defines)
 	p.compile_defines_all = p.compile_defines_all.filter(it !in windows_default_gc_defines)
@@ -503,7 +520,7 @@ fn (mut p Preferences) clear_gc_options() {
 pub fn (mut p Preferences) default_c_compiler() {
 	// TODO: fix $if after 'string'
 	$if windows {
-		p.ccompiler = 'gcc'
+		p.ccompiler = windows_default_c_compiler(os.dir(vexe_path()))
 		return
 	}
 	if p.os == .ios {
