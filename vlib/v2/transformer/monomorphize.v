@@ -212,13 +212,13 @@ pub fn (mut t Transformer) substitute_type_in_type_node(typ ast.Type, bindings m
 			})
 		}
 		ast.GenericType {
-			mut new_params := []ast.Expr{cap: typ.params.len}
+			mut new_generic_params := []ast.Expr{cap: typ.params.len}
 			for p in typ.params {
-				new_params << t.substitute_type_in_expr(p, bindings)
+				new_generic_params << t.substitute_type_in_expr(p, bindings)
 			}
 			return ast.Type(ast.GenericType{
 				name:   typ.name
-				params: new_params
+				params: new_generic_params
 			})
 		}
 		ast.ChannelType {
