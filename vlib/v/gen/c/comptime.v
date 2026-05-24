@@ -434,7 +434,20 @@ fn (mut g Gen) comptime_call(mut node ast.ComptimeCall) {
 		} else {
 			// return $tmpl string
 			if g.inside_return_tmpl {
-				g.writeln('return _tmpl_res_${fn_name};')
+				fn_ret_type := g.fn_decl.return_type
+				if fn_ret_type.has_option_or_result() {
+					ret_styp := g.ret_styp(g.unwrap_generic(fn_ret_type))
+					tmp := g.new_tmp_var()
+					g.writeln('${ret_styp} ${tmp} = {0};')
+					if fn_ret_type.has_flag(.result) {
+						g.writeln('builtin___result_ok(&(string[]) { _tmpl_res_${fn_name} }, (_result*)(&${tmp}), sizeof(string));')
+					} else {
+						g.writeln('builtin___option_ok(&(string[]) { _tmpl_res_${fn_name} }, (_option*)(&${tmp}), sizeof(string));')
+					}
+					g.writeln('return ${tmp};')
+				} else {
+					g.writeln('return _tmpl_res_${fn_name};')
+				}
 			} else {
 				g.write(cur_line)
 				g.write('_tmpl_res_${fn_name}')
