@@ -4981,8 +4981,24 @@ fn (mut c Checker) match_expr(expr ast.MatchExpr, used_as_expr bool) Type {
 			c.expected_type = to_optional_type(Type(expr_base))
 		}
 	}
+	// Ownership: snapshot before any arm runs so each arm gets independent
+	// per-arm consumption tracking — a move inside arm 0 must not bleed into
+	// arm 1's view. Mirrors the if/else snapshot pattern in if_expr above.
+	mut ownership_before_owned := map[string]token.Pos{}
+	mut ownership_before_moved := map[string]MovedVar{}
+	mut ownership_before_borrowed := map[string][]BorrowInfo{}
+	mut ownership_arms := []OwnershipArmState{}
+	$if ownership ? {
+		ownership_before_owned = c.owned_vars.clone()
+		ownership_before_moved = c.moved_vars.clone()
+		ownership_before_borrowed = c.borrowed_vars.clone()
+	}
 	mut last_stmt_type := Type(void_)
 	for _, branch in expr.branches {
+		$if ownership ? {
+			c.ownership_restore_state(ownership_before_owned, ownership_before_moved,
+				ownership_before_borrowed)
+		}
 		c.open_scope()
 		for cond in branch.cond {
 			expr_unwrapped := c.unwrap_ident(expr.expr)
@@ -5020,7 +5036,19 @@ fn (mut c Checker) match_expr(expr ast.MatchExpr, used_as_expr bool) Type {
 				}
 			}
 		}
+		$if ownership ? {
+			ownership_arms << OwnershipArmState{
+				owned:      c.owned_vars.clone()
+				moved:      c.moved_vars.clone()
+				borrowed:   c.borrowed_vars.clone()
+				terminates: ownership_stmts_terminate(branch.stmts)
+			}
+		}
 		c.close_scope()
+	}
+	$if ownership ? {
+		c.ownership_merge_match_state(ownership_before_owned, ownership_before_moved,
+			ownership_before_borrowed, ownership_arms)
 	}
 	c.expected_type = expected_type
 	return last_stmt_type

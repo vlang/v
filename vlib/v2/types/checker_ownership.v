@@ -489,6 +489,59 @@ fn (mut c Checker) ownership_restore_state(owned map[string]token.Pos, moved map
 	c.owned_var_types = new_types.clone()
 }
 
+// OwnershipArmState is one match-arm's post-state snapshot. Used by
+// `ownership_merge_match_state` to fold N arms into a single after-match
+// ownership view, mirroring the if/else two-branch merge.
+pub struct OwnershipArmState {
+pub:
+	owned      map[string]token.Pos
+	moved      map[string]MovedVar
+	borrowed   map[string][]BorrowInfo
+	terminates bool
+}
+
+// ownership_merge_match_state folds N match-arm post-states into a single
+// after-match ownership view. Union semantics, mirroring `if/else`:
+//
+//   * If every arm terminates (each ends in `return`), the match itself
+//     can't fall through — restore the before-state so any code after the
+//     match (which is unreachable in this fn) inherits the un-mutated view.
+//   * Otherwise, a var moved in ANY non-terminating arm is moved after the
+//     match. A var newly-owned in any non-terminating arm is owned after.
+//
+// V's `match` is (effectively) exhaustive — every value reaches some arm —
+// so there's no phantom "fall-through" arm to add; a no-op arm contributes
+// nothing to the union anyway.
+fn (mut c Checker) ownership_merge_match_state(before_owned map[string]token.Pos, before_moved map[string]MovedVar, before_borrowed map[string][]BorrowInfo, arms []OwnershipArmState) {
+	if arms.len == 0 {
+		c.ownership_restore_state(before_owned, before_moved, before_borrowed)
+		return
+	}
+	mut any_falls_through := false
+	for arm in arms {
+		if !arm.terminates {
+			any_falls_through = true
+			break
+		}
+	}
+	if !any_falls_through {
+		c.ownership_restore_state(before_owned, before_moved, before_borrowed)
+		return
+	}
+	mut out_owned := before_owned.clone()
+	mut out_moved := before_moved.clone()
+	mut out_borrowed := before_borrowed.clone()
+	for arm in arms {
+		if arm.terminates {
+			continue
+		}
+		out_owned = ownership_merge_owned(out_owned, arm.owned)
+		out_moved = ownership_merge_moved(out_moved, arm.moved)
+		out_borrowed = ownership_merge_borrowed(out_borrowed, arm.borrowed)
+	}
+	c.ownership_restore_state(out_owned, out_moved, out_borrowed)
+}
+
 fn (mut c Checker) ownership_merge_if_state(before_owned map[string]token.Pos, before_moved map[string]MovedVar, before_borrowed map[string][]BorrowInfo, then_owned map[string]token.Pos, then_moved map[string]MovedVar, then_borrowed map[string][]BorrowInfo, then_returns bool, has_else bool, else_owned map[string]token.Pos, else_moved map[string]MovedVar, else_borrowed map[string][]BorrowInfo, else_returns bool) {
 	if !has_else {
 		if then_returns {

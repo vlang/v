@@ -1063,3 +1063,190 @@ fn main() {
 	exit_code, output := run_ownership_check(code)
 	assert exit_code == 0, 'plain string methods must not be affected: ${output}'
 }
+
+// === Match-arm ownership transfer tests ===
+// Each match arm gets independent ownership tracking (a move in arm 0 must
+// not be visible to arm 1\'s body). After the match, a var moved in ANY
+// non-terminating arm is moved. Arms that end in `return` don\'t contribute
+// to the post-match state. Mirrors the if/else merge already in place.
+
+fn test_match_arms_are_independent() {
+	// Every arm consumes `c` — that\'s fine because each arm starts from
+	// the pre-match snapshot. Without per-arm restore, arm 1 would see arm
+	// 0\'s move and the compile would fail spuriously.
+	code := '
+struct Conn implements Owned {
+mut:
+	socket int
+}
+
+fn take(c Conn) {
+	_ = c
+}
+
+fn main() {
+	c := Conn{socket: 7}
+	choice := 1
+	match choice {
+		0 { take(c) }
+		1 { take(c) }
+		else { take(c) }
+	}
+}
+'
+	exit_code, output := run_ownership_check(code)
+	assert exit_code == 0, 'each arm should start from pre-match state: ${output}'
+}
+
+fn test_match_consume_then_use_after_fails() {
+	// Consuming in an arm should poison the var after the match — any
+	// subsequent use is use-after-move.
+	code := '
+struct Conn implements Owned {
+mut:
+	socket int
+}
+
+fn take(c Conn) {
+	_ = c
+}
+
+fn main() {
+	c := Conn{socket: 7}
+	choice := 1
+	match choice {
+		0 { take(c) }
+		1 { take(c) }
+		else {}
+	}
+	println(c.socket)
+}
+'
+	exit_code, output := run_ownership_check(code)
+	assert exit_code != 0, 'use after consume-in-arm should fail'
+	assert output.contains('use of moved value: `c`'), 'got: ${output}'
+}
+
+fn test_match_terminating_arm_does_not_propagate_move() {
+	// An arm that ends in `return` exits the function — its moves should
+	// not appear in the after-match state, so code after the match can
+	// still use the var.
+	code := '
+struct Conn implements Owned {
+mut:
+	socket int
+}
+
+fn take(c Conn) {
+	_ = c
+}
+
+fn check(choice int) {
+	c := Conn{socket: 7}
+	match choice {
+		0 {
+			take(c)
+			return
+		}
+		else {}
+	}
+	println(c.socket)
+}
+
+fn main() {
+	check(1)
+}
+'
+	exit_code, output := run_ownership_check(code)
+	assert exit_code == 0, 'terminating arm move must not poison post-match state: ${output}'
+}
+
+fn test_match_all_arms_terminate_restores_before_state() {
+	// If every arm ends in return, the after-match block is unreachable.
+	// The before-state should be restored so any (unreachable) code below
+	// type-checks cleanly without spurious move errors.
+	code := '
+struct Conn implements Owned {
+mut:
+	socket int
+}
+
+fn take(c Conn) {
+	_ = c
+}
+
+fn check(choice int) int {
+	c := Conn{socket: 7}
+	match choice {
+		0 {
+			take(c)
+			return 0
+		}
+		1 {
+			take(c)
+			return 1
+		}
+		else {
+			take(c)
+			return 2
+		}
+	}
+	return -1
+}
+
+fn main() {
+	check(0)
+}
+'
+	exit_code, output := run_ownership_check(code)
+	assert exit_code == 0, 'all-arms-return match should not poison state: ${output}'
+}
+
+fn test_match_non_terminating_arm_propagates_move() {
+	// At least one arm consumes and falls through — the var IS moved after
+	// the match and subsequent use must be diagnosed.
+	code := '
+struct Conn implements Owned {
+mut:
+	socket int
+}
+
+fn take(c Conn) {
+	_ = c
+}
+
+fn check(choice int) {
+	c := Conn{socket: 7}
+	match choice {
+		0 { take(c) }
+		else {}
+	}
+	println(c.socket)
+}
+
+fn main() {
+	check(0)
+}
+'
+	exit_code, output := run_ownership_check(code)
+	assert exit_code != 0, 'fall-through consuming arm should poison post-match use'
+	assert output.contains('use of moved value: `c`'), 'got: ${output}'
+}
+
+fn test_match_no_moves_unaffected() {
+	// Plain match on a non-owned var should be entirely untouched — this
+	// is the legacy V codepath that must keep working.
+	code := '
+fn main() {
+	x := 3
+	match x {
+		0 { println("zero") }
+		1 { println("one") }
+		else { println("other") }
+	}
+	println(x)
+}
+'
+	exit_code, output := run_ownership_check(code)
+	assert exit_code == 0, 'plain match should not be affected: ${output}'
+}
