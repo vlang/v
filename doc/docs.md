@@ -4738,10 +4738,14 @@ fn (e Expect[[]T]) first_or(value T) T {
 }
 
 fn main() {
-	a := Expect[[]int]{value: [1, 2, 3]}
+	a := Expect[[]int]{
+		value: [1, 2, 3]
+	}
 	println(a.first_or(0)) // 1, T is bound to int
 
-	b := Expect[[]string]{value: []string{}}
+	b := Expect[[]string]{
+		value: []string{}
+	}
 	println(b.first_or('none')) // none, T is bound to string
 }
 ```
@@ -4764,7 +4768,11 @@ fn (e Expect[map[K]V]) get_or(key K, value V) V {
 }
 
 fn main() {
-	m := Expect[map[string]int]{value: {'a': 1}}
+	m := Expect[map[string]int]{
+		value: {
+			'a': 1
+		}
+	}
 	println(m.get_or('a', 0)) // 1   (K = string, V = int)
 	println(m.get_or('b', -1)) // -1
 }
