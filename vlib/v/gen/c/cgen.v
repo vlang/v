@@ -10186,7 +10186,13 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 			if !g.is_builtin_mod {
 				g.autofree_scope_vars(node.pos.pos - 1, node.pos.line_nr, true)
 			}
-			if fn_ret_type.has_option_or_result() {
+			// `$veb.html()` returns `veb.Result` and the template body
+			// already writes the rendered string to the response, so just
+			// return a zero-initialized Result here. Other tmpl kinds
+			// (`$tmpl(...)`) yield a string in `_tmpl_res_*`.
+			if expr0.kind == .html {
+				g.writeln('return (${ret_typ}){0};')
+			} else if fn_ret_type.has_option_or_result() {
 				tmp := g.new_tmp_var()
 				g.writeln('${ret_typ} ${tmp} = {0};')
 				if fn_ret_type.has_flag(.result) {
