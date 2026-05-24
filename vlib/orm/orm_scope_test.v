@@ -165,12 +165,12 @@ fn test_unscoped_selective_skip_in_multi_field_scope() {
 	// Skip only 'org_id' - 'deleted' filter still applies
 	unscoped_db := db.unscoped('org_id')
 	users := sql unscoped_db {
-		select from NoScopeUserMulti
+		select from NoScopeUserMulti order by name
 	}!
 	// Should match deleted=false regardless of org_id
 	assert users.len == 2
-	assert users[0].name in ['A', 'C']
-	assert users[1].name in ['A', 'C']
+	assert users[0].name == 'A'
+	assert users[1].name == 'C'
 }
 
 fn test_unscoped_skips_tenant_in_insert() {
@@ -1269,7 +1269,7 @@ fn test_db_savepoint_and_rollback_to() {
 	db.orm_commit()!
 
 	users := sql db {
-		select from NoScopeUser
+		select from NoScopeUser order by id
 	}!
 	assert users.len == 2
 	assert users[0].name == 'Alice'
