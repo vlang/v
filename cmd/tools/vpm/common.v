@@ -308,6 +308,22 @@ fn get_installed_modules() []string {
 }
 
 fn get_path_of_existing_module(mod_name string) ?string {
+	// When given a URL, also try the publisher/name layout used by
+	// registered-name installations (e.g. `<vmodules>/spytheman/vtray` for
+	// `https://github.com/spytheman/vtray`), in addition to the bare name.
+	is_url := mod_name.starts_with('http://') || mod_name.starts_with('https://')
+		|| mod_name.starts_with('git@')
+	if is_url {
+		publisher, name := get_ident_from_url(mod_name) or { '', '' }
+		if publisher != '' && name != '' {
+			rel_path := normalize_mod_path(os.join_path(publisher, name))
+			path := os.real_path(os.join_path(settings.vmodules_path, rel_path))
+			if os.exists(path) && os.is_dir(path) {
+				verbose_println_more(@FILE_LINE, @FN, 'mod_name: ${mod_name}, found path: ${path}')
+				return path
+			}
+		}
+	}
 	name := get_name_from_url(mod_name) or { mod_name }
 	rel_path := normalize_mod_path(name.replace('.', os.path_separator))
 	path := os.real_path(os.join_path(settings.vmodules_path, rel_path))
