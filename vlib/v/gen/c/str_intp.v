@@ -726,6 +726,25 @@ fn (mut g Gen) string_inter_literal(node ast.StringInterLiteral) {
 							fmts[i] = g.get_default_fmt(field_typ, field_typ)
 						}
 					}
+				} else if g.expr_is_auto_deref_var(expr_) && field_typ.is_ptr()
+					&& !field_typ.has_flag(.option) && !field_typ.has_flag(.shared_f) {
+					// `for mut x in arr` loop variables surface in C as pointers
+					// (e.g. `string*`), but `${x}` should interpolate the
+					// underlying value. Pick the format specifier from the
+					// dereferenced element type so it lands in the `%s` path
+					// instead of falling through to `%p`. The pointer type is
+					// preserved in expr_types so `str_val` still emits the
+					// required `*` when reading the value.
+					if !node_.need_fmts[i] {
+						deref_typ := field_typ.deref()
+						ftyp_sym := g.table.sym(deref_typ)
+						new_typ := if ftyp_sym.kind == .alias && !ftyp_sym.has_method('str') {
+							g.table.unalias_num_type(deref_typ)
+						} else {
+							deref_typ
+						}
+						fmts[i] = g.get_default_fmt(deref_typ, new_typ)
+					}
 				}
 			}
 			else {}
