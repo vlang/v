@@ -187,3 +187,158 @@ fn main() {}
 	assert exit_code != 0, 'dangling ref inside if-branch should fail'
 	assert output.contains('local variable `x`'), 'got: ${output}'
 }
+
+// === Field-store escape: `outer.field = &local` ===
+
+struct EscapeBag {
+mut:
+	r &int = unsafe { nil }
+}
+
+fn test_escape_field_store_into_param_errors() {
+	// Storing &local into a param-rooted field lets the borrow outlive
+	// the function — classic dangling-reference shape.
+	code := '
+struct Bag {
+mut:
+	r &int = unsafe { nil }
+}
+
+fn stash[^a](mut b Bag) {
+	x := 7
+	b.r = &x
+}
+
+fn main() {}
+'
+	exit_code, output := run_escape_check(code)
+	assert exit_code != 0, 'storing &local into param.field should fail'
+	assert output.contains('stored into `b.r`'), 'should name the LHS path, got: ${output}'
+	assert output.contains('local variable `x`'), 'should name the local, got: ${output}'
+	assert output.contains('does not survive `stash`'), 'should name the function, got: ${output}'
+}
+
+fn test_escape_field_store_of_local_field_errors() {
+	// `&local.field` is just as bad as `&local` — same root-is-local rule.
+	code := '
+struct Inner {
+	v int
+}
+
+struct Outer {
+	inner Inner
+}
+
+struct Bag {
+mut:
+	r &Inner = unsafe { nil }
+}
+
+fn stash[^a](mut b Bag) {
+	o := Outer{inner: Inner{v: 1}}
+	b.r = &o.inner
+}
+
+fn main() {}
+'
+	exit_code, output := run_escape_check(code)
+	assert exit_code != 0, 'storing &local.field into outer should fail'
+	assert output.contains('via field access'), 'should mention field access, got: ${output}'
+}
+
+fn test_escape_field_store_into_local_ok() {
+	// LHS root is itself a local — the borrow can't outlive its container,
+	// so the store is safe.
+	code := '
+struct Bag {
+mut:
+	r &int = unsafe { nil }
+}
+
+fn safe[^a](p &^a int) {
+	mut b := Bag{}
+	x := 7
+	b.r = &x
+	_ = p
+}
+
+fn main() {}
+'
+	exit_code, output := run_escape_check(code)
+	assert exit_code == 0, 'storing &local into local.field is safe, got: ${output}'
+}
+
+fn test_escape_field_store_no_optin_ok() {
+	// Fns without a lifetime generic param keep V's GC-backed semantics:
+	// the escape walker does not run, so even `outer.r = &local` compiles.
+	code := '
+struct Bag {
+mut:
+	r &int = unsafe { nil }
+}
+
+fn stash(mut b Bag) {
+	x := 7
+	b.r = &x
+}
+
+fn main() {}
+'
+	exit_code, output := run_escape_check(code)
+	assert exit_code == 0, 'legacy fn must not be affected: ${output}'
+}
+
+// === Array-push escape: `outer_arr << &local` ===
+
+fn test_escape_array_push_into_param_errors() {
+	code := '
+fn collect[^a](mut out []&int) {
+	x := 7
+	out << &x
+}
+
+fn main() {}
+'
+	exit_code, output := run_escape_check(code)
+	assert exit_code != 0, 'pushing &local into outer array should fail'
+	assert output.contains('pushed into `out`'), 'should name the array, got: ${output}'
+	assert output.contains('local variable `x`'), 'should name the local, got: ${output}'
+}
+
+fn test_escape_array_push_field_path_errors() {
+	// `bag.arr << &local` — same shape with a selector LHS.
+	code := '
+struct Bag {
+mut:
+	arr []&int
+}
+
+fn collect[^a](mut b Bag) {
+	x := 7
+	b.arr << &x
+}
+
+fn main() {}
+'
+	exit_code, output := run_escape_check(code)
+	assert exit_code != 0, 'pushing &local into param.field array should fail'
+	assert output.contains('pushed into `b.arr`'), 'should name the array path, got: ${output}'
+}
+
+fn test_escape_array_push_into_local_ok() {
+	// Pushing &local into another local array is safe — the array dies
+	// with the borrow.
+	code := '
+fn safe[^a](p &^a int) {
+	mut out := []&int{}
+	x := 7
+	out << &x
+	_ = p
+	_ = out
+}
+
+fn main() {}
+'
+	exit_code, output := run_escape_check(code)
+	assert exit_code == 0, 'pushing &local into local array is safe, got: ${output}'
+}

@@ -16,10 +16,12 @@
 //   * `return &Foo{...}`        — address-take of a transient struct literal
 //
 // What's intentionally NOT caught (yet):
-//   * Escape via field stores (`outer.field = &local`)
 //   * Escape via closures capturing local refs
-//   * Escape via array push (`outer_arr << &local`)
 //   * Inter-procedural escape (calls that hide a borrow)
+//
+// What's caught beyond the return-borrow case:
+//   * `outer.field = &local`     — field-store escape (root must be non-local)
+//   * `outer_arr << &local`      — array-push escape (root must be non-local)
 //
 // `return &param` is always SAFE — parameters outlive the call from the
 // caller's perspective. Method receivers are treated the same as params.
@@ -91,8 +93,11 @@ fn escape_collect_locals_stmt(stmt ast.Stmt, mut out map[string]bool) {
 		ast.AssignStmt {
 			if stmt.op == .decl_assign {
 				for lhs in stmt.lhs {
-					if lhs is ast.Ident {
-						out[(lhs as ast.Ident).name] = true
+					// `mut x := ...` parses the LHS as `ModifierExpr{Ident{x}}`,
+					// so unwrap one layer before recording the binding.
+					name := escape_lhs_decl_name(lhs)
+					if name.len > 0 {
+						out[name] = true
 					}
 				}
 			}
@@ -163,6 +168,20 @@ fn (mut c Checker) escape_walk_stmt(stmt ast.Stmt, locals map[string]bool, fn_na
 				c.escape_check_returned_expr(expr, locals, fn_name)
 			}
 		}
+		ast.AssignStmt {
+			// Only catch plain `=` (re-assignment). `:=` declares a fresh
+			// local — the RHS borrow can't outlive the new local that holds
+			// it, so it can't escape. Compound `+=`/`-=`/... never store a
+			// fresh reference into the LHS.
+			if stmt.op == .assign {
+				for i, lhs in stmt.lhs {
+					if i >= stmt.rhs.len {
+						continue
+					}
+					c.escape_check_field_store(lhs, stmt.rhs[i], locals, fn_name, stmt.pos)
+				}
+			}
+		}
 		ast.BlockStmt {
 			c.escape_walk_stmts(stmt.stmts, locals, fn_name)
 		}
@@ -192,6 +211,14 @@ fn (mut c Checker) escape_walk_expr(expr ast.Expr, locals map[string]bool, fn_na
 		}
 		ast.LockExpr {
 			c.escape_walk_stmts(expr.stmts, locals, fn_name)
+		}
+		ast.InfixExpr {
+			// `arr << x` is an InfixExpr with op == .left_shift. When the
+			// target array's root is non-local and `x` is `&local_thing`,
+			// we'd be stashing a dangling reference into outer storage.
+			if expr.op == .left_shift {
+				c.escape_check_array_push(expr, locals, fn_name)
+			}
 		}
 		else {}
 	}
@@ -264,5 +291,121 @@ fn (mut c Checker) escape_error_returns_local(reason string, fn_name string, pos
 		eprintln('error: cannot return reference to ${reason}: it does not survive `${fn_name}` returning')
 	}
 	eprintln('help: return the value by-move (drop the `&`), or have the caller pass storage in')
+	exit(1)
+}
+
+// escape_check_field_store fires for `lhs = rhs` where lhs is a field/index
+// path with a non-local root and rhs is `&<short-lived storage>`. Storing the
+// reference into outer state lets it outlive the body-local it points at.
+fn (mut c Checker) escape_check_field_store(lhs ast.Expr, rhs ast.Expr, locals map[string]bool, fn_name string, pos token.Pos) {
+	root := escape_lhs_root(lhs) or { return }
+	if root in locals {
+		// The LHS itself dies with the body; the borrow doesn't escape.
+		return
+	}
+	if rhs !is ast.PrefixExpr {
+		return
+	}
+	pe := rhs as ast.PrefixExpr
+	if pe.op != .amp {
+		return
+	}
+	reason := escape_borrow_reason(pe.expr, locals) or { return }
+	path := escape_render_path(lhs)
+	c.escape_error_stores_local('stored into `${path}`', reason, fn_name, pos)
+}
+
+// escape_check_array_push fires for `arr << &local`. Same shape as the
+// field-store case: the destination array's root must outlive the local.
+fn (mut c Checker) escape_check_array_push(expr ast.InfixExpr, locals map[string]bool, fn_name string) {
+	root := escape_lhs_root(expr.lhs) or { return }
+	if root in locals {
+		return
+	}
+	if expr.rhs !is ast.PrefixExpr {
+		return
+	}
+	pe := expr.rhs as ast.PrefixExpr
+	if pe.op != .amp {
+		return
+	}
+	reason := escape_borrow_reason(pe.expr, locals) or { return }
+	path := escape_render_path(expr.lhs)
+	c.escape_error_stores_local('pushed into `${path}`', reason, fn_name, expr.pos)
+}
+
+// escape_lhs_root returns the name of the root identifier of a write target
+// (`x`, `x.f`, `x[i]`, `x.f[i].g`, ...). Returns none for shapes we don't
+// recognise (calls, dereferences, ...).
+fn escape_lhs_root(lhs ast.Expr) ?string {
+	match lhs {
+		ast.Ident {
+			return lhs.name
+		}
+		ast.SelectorExpr {
+			root := lhs.leftmost()
+			if root is ast.Ident {
+				return (root as ast.Ident).name
+			}
+			return escape_lhs_root(root)
+		}
+		ast.IndexExpr {
+			return escape_lhs_root(lhs.lhs)
+		}
+		else {
+			return none
+		}
+	}
+}
+
+// escape_lhs_decl_name extracts the binding name from a `:=` LHS. Handles
+// the `mut x` form (parsed as `ModifierExpr{Ident{x}}`) as well as the
+// bare-Ident form. Returns '' for shapes we don't track (`_`, tuples, ...).
+fn escape_lhs_decl_name(lhs ast.Expr) string {
+	match lhs {
+		ast.Ident {
+			return lhs.name
+		}
+		ast.ModifierExpr {
+			if lhs.expr is ast.Ident {
+				return (lhs.expr as ast.Ident).name
+			}
+			return ''
+		}
+		else {
+			return ''
+		}
+	}
+}
+
+// escape_render_path produces a short, user-readable rendering of a write
+// target for diagnostics: `x.f`, `x[i]`, `x.f[i].g`. Falls back to '<expr>'
+// for shapes we don't print.
+fn escape_render_path(expr ast.Expr) string {
+	match expr {
+		ast.Ident {
+			return expr.name
+		}
+		ast.SelectorExpr {
+			return '${escape_render_path(expr.lhs)}.${expr.rhs.name}'
+		}
+		ast.IndexExpr {
+			return '${escape_render_path(expr.lhs)}[...]'
+		}
+		else {
+			return '<expr>'
+		}
+	}
+}
+
+fn (mut c Checker) escape_error_stores_local(action string, reason string, fn_name string, pos token.Pos) {
+	if pos.is_valid() {
+		file := c.file_set.file(pos)
+		errors.error('cannot store reference to ${reason} ${action}: it does not survive `${fn_name}` returning', errors.details(file,
+			file.position(pos), 2), .error, file.position(pos))
+	} else {
+		eprintln('error: cannot store reference to ${reason} ${action}: it does not survive `${fn_name}` returning')
+	}
+	eprintln('help: store the value by-move (drop the `&`), or restructure so the borrow is shorter-lived than the container')
 	exit(1)
 }
