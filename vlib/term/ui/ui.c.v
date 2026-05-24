@@ -19,9 +19,11 @@ pub fn (c Color) hex() string {
 
 // Synchronized Updates spec, designed to avoid tearing during renders
 // https://gitlab.com/gnachman/iterm2/-/wikis/synchronized-updates-spec
-const bsu = '\x1bP=1s\x1b\\'
+// The alternate `CSI ? 2026 h/l` sequences are preferred when no parameters
+// are passed, since they are correctly interpreted by terminals like screen.
+const bsu = '\x1b[?2026h'
 
-const esu = '\x1bP=2s\x1b\\'
+const esu = '\x1b[?2026l'
 
 // write puts the string `s` into the print buffer.
 @[inline]
