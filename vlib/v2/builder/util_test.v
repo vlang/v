@@ -113,35 +113,6 @@ fn test_cflags_need_objc_mode_only_for_objc_inputs() {
 	assert !cflags_need_objc_mode('-I /tmp/project.m/include')
 }
 
-fn test_top_level_c_decls_flattens_cached_tuple_typedefs() {
-	tmp_dir := os.join_path(os.vtmp_dir(), 'v2_builder_top_level_decls_${os.getpid()}')
-	os.mkdir_all(tmp_dir) or { panic(err) }
-	defer {
-		os.rmdir_all(tmp_dir) or {}
-	}
-	c_path := os.join_path(tmp_dir, 'cache.c')
-	os.write_file(c_path, '
-typedef array Array_Foo;
-typedef struct Tuple_Array_Foo_Array_Foo {
-	Array_Foo arg0;
-	Array_Foo arg1;
-} Tuple_Array_Foo_Array_Foo;
-Tuple_Array_Foo_Array_Foo arrays__partition_T_Foo(Array_Foo a);
-') or {
-		panic(err)
-	}
-	typedefs, fn_decls := top_level_c_decls(c_path)
-	assert 'typedef array Array_Foo;' in typedefs
-	assert 'typedef struct Tuple_Array_Foo_Array_Foo { Array_Foo arg0; Array_Foo arg1; } Tuple_Array_Foo_Array_Foo;' in typedefs
-	assert 'Tuple_Array_Foo_Array_Foo arrays__partition_T_Foo(Array_Foo a);' in fn_decls
-}
-
-fn test_extract_struct_typedef_head_name_handles_tuple_body_start() {
-	assert extract_struct_typedef_head_name('typedef struct Tuple_bool_bool {') == 'Tuple_bool_bool'
-	assert extract_struct_typedef_head_name('typedef struct Foo Foo;') == 'Foo'
-	assert extract_struct_typedef_head_name('typedef array Array_Foo;') == ''
-}
-
 fn test_file_has_incompatible_os_suffix_windows() {
 	assert pref.file_has_incompatible_os_suffix('time_solaris.c.v', 'windows')
 	assert pref.file_has_incompatible_os_suffix('time_freebsd.c.v', 'windows')

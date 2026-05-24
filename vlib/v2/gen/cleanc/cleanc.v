@@ -29,7 +29,9 @@ mut:
 	fn_param_is_ptr        map[string][]bool
 	fn_param_types         map[string][]string
 	fn_return_types        map[string]string
+	v_fn_return_types      map[string]string
 	runtime_local_types    map[string]string
+	runtime_decl_types     map[string]string
 	cur_fn_returned_idents map[string]bool
 	active_generic_types   map[string]types.Type
 	cur_fn_generic_params  map[string]string
@@ -79,6 +81,7 @@ mut:
 	global_var_types            map[string]string // global var name → C type string
 	primitive_type_aliases      map[string]bool   // type names that are aliases for primitive types
 	emit_modules                map[string]bool   // when set, emit consts/globals/fns only for these modules
+	type_modules                map[string]bool   // when set, alias/type helpers may reference only these modules
 	emit_files                  map[string]bool   // when set, emit consts/globals/fns only for these source files
 	export_const_symbols        bool
 	cache_bundle_name           string
@@ -91,6 +94,8 @@ mut:
 	not_local_var_cache         map[string]bool    // per-function negative cache for get_local_var_c_type
 	resolved_module_names       map[string]string  // per-function cache for resolve_module_name
 	cached_env_scopes           map[string]voidptr // cache of env_scope results (avoids repeated locking)
+	selector_field_type_cache   map[string]string
+	selector_field_type_miss    map[string]bool
 	struct_field_lookup_cache   map[string]string
 	struct_field_lookup_miss    map[string]bool
 	struct_type_lookup_cache    map[string]types.Struct
@@ -102,13 +107,18 @@ mut:
 
 	const_exprs                map[string]string // const name → C expression string (for inlining)
 	const_types                map[string]string // const name → C type string
+	const_c_names              map[string]string // generated const name → collision-free C symbol name
 	runtime_const_targets      map[string]bool   // module-scoped consts initialized in __v_init_consts_*
 	used_fn_keys               map[string]bool
 	force_emit_fn_names        map[string]bool   // function C names that must be emitted regardless of mark_used
+	weak_fn_names              map[string]bool   // function C names emitted as weak cross-cache specializations
 	export_fn_names            map[string]string // V-qualified name → export name (from @[export:] attribute)
 	called_fn_names            map[string]bool
+	declared_fn_names          map[string]bool // C function names that have a prototype/body head emitted
 	should_emit_fn_decl_cache  map[string]bool
 	generic_body_scan_cache    map[string]bool
+	collect_generic_scan_calls bool
+	generic_scan_called_names  map[string]bool
 	generic_spec_index         map[string][]string                // fn_name → matching keys in env.generic_types
 	generic_fn_decl_index      map[string]GenericFnDeclInfo       // generic fn C/base name → source location
 	specialized_fn_bases       map[string]bool                    // base C name with at least one _T_ specialization
@@ -212,6 +222,61 @@ fn is_empty_stmt(s ast.Stmt) bool {
 	return s is ast.EmptyStmt
 }
 
+fn generic_signature_struct_type_name(raw_name string) string {
+	mut name := raw_name.trim_space()
+	if name.starts_with('&') {
+		name = name[1..].trim_space()
+	}
+	for name.ends_with('*') {
+		name = name[..name.len - 1].trim_space()
+	}
+	if name == '' || !name.contains('_T_') {
+		return ''
+	}
+	if name in primitive_types || name in ['string', 'array', 'map', 'void*', 'char*', 'u8*'] {
+		return ''
+	}
+	if name.starts_with('Array_') || name.starts_with('Map_') || name.starts_with('Tuple_')
+		|| name.starts_with('_option_') || name.starts_with('_result_') {
+		return ''
+	}
+	return name
+}
+
+fn (mut g Gen) emit_forward_typedef_for_signature_type(raw_name string) bool {
+	name := generic_signature_struct_type_name(raw_name)
+	if name == '' || name in g.emitted_types {
+		return false
+	}
+	g.emitted_types[name] = true
+	g.sb.writeln('typedef struct ${name} ${name};')
+	return true
+}
+
+fn (mut g Gen) emit_forward_typedefs_for_signature_types() {
+	mut emitted_any := false
+	mut fn_names := g.fn_return_types.keys()
+	for fn_name in g.fn_param_types.keys() {
+		if fn_name !in fn_names {
+			fn_names << fn_name
+		}
+	}
+	fn_names.sort()
+	for fn_name in fn_names {
+		if ret_type := g.fn_return_types[fn_name] {
+			emitted_any = g.emit_forward_typedef_for_signature_type(ret_type) || emitted_any
+		}
+		if param_types := g.fn_param_types[fn_name] {
+			for param_type in param_types {
+				emitted_any = g.emit_forward_typedef_for_signature_type(param_type) || emitted_any
+			}
+		}
+	}
+	if emitted_any {
+		g.sb.writeln('')
+	}
+}
+
 fn (mut g Gen) get_v_hash() string {
 	if g.cached_vhash.len > 0 {
 		return g.cached_vhash
@@ -288,11 +353,15 @@ fn new_gen_with_env_and_pref_impl(env &types.Environment, p &pref.Preferences) &
 		fn_param_is_ptr:           map[string][]bool{}
 		fn_param_types:            map[string][]string{}
 		fn_return_types:           map[string]string{}
+		v_fn_return_types:         map[string]string{}
 		runtime_local_types:       map[string]string{}
+		runtime_decl_types:        map[string]string{}
 		cur_fn_returned_idents:    map[string]bool{}
 		active_generic_types:      map[string]types.Type{}
 		cur_fn_generic_params:     map[string]string{}
 		cur_fn_scope_miss_key:     ''
+		selector_field_type_cache: map[string]string{}
+		selector_field_type_miss:  map[string]bool{}
 		struct_field_lookup_cache: map[string]string{}
 		struct_field_lookup_miss:  map[string]bool{}
 		struct_type_lookup_cache:  map[string]types.Struct{}
@@ -321,6 +390,7 @@ fn new_gen_with_env_and_pref_impl(env &types.Environment, p &pref.Preferences) &
 		embedded_field_owner:        map[string]string{}
 		fixed_array_ret_wrappers:    map[string]string{}
 		emit_modules:                map[string]bool{}
+		type_modules:                map[string]bool{}
 		exported_const_seen:         map[string]bool{}
 		exported_const_symbols:      []ExportedConstSymbol{}
 		emitted_interface_bodies:    map[string]bool{}
@@ -331,10 +401,15 @@ fn new_gen_with_env_and_pref_impl(env &types.Environment, p &pref.Preferences) &
 		needed_ierror_wrapper_bases: map[string]bool{}
 		c_file_fn_keys:              map[string]bool{}
 		runtime_const_targets:       map[string]bool{}
+		const_c_names:               map[string]string{}
 		used_fn_keys:                map[string]bool{}
+		force_emit_fn_names:         map[string]bool{}
+		weak_fn_names:               map[string]bool{}
 		called_fn_names:             map[string]bool{}
+		declared_fn_names:           map[string]bool{}
 		should_emit_fn_decl_cache:   map[string]bool{}
 		generic_body_scan_cache:     map[string]bool{}
+		generic_scan_called_names:   map[string]bool{}
 		generic_fn_decl_index:       map[string]GenericFnDeclInfo{}
 		specialized_fn_bases:        map[string]bool{}
 		c_struct_types:              map[string]bool{}
@@ -386,6 +461,15 @@ pub fn (mut g Gen) set_emit_modules(modules []string) {
 	}
 }
 
+pub fn (mut g Gen) set_type_modules(modules []string) {
+	g.type_modules = map[string]bool{}
+	for module_name in modules {
+		if module_name != '' {
+			g.type_modules[module_name] = true
+		}
+	}
+}
+
 // set_emit_files limits body/const/global emission to the provided source files.
 // Type declarations and forward declarations are still emitted for all files.
 pub fn (mut g Gen) set_emit_files(files []string) {
@@ -396,6 +480,39 @@ pub fn (mut g Gen) set_emit_files(files []string) {
 			g.emit_files[os.norm_path(os.abs_path(file))] = true
 		}
 	}
+}
+
+fn (mut g Gen) collect_force_emit_sort_fns() {
+	if g.emit_files.len == 0 || g.cache_bundle_name.len > 0 {
+		return
+	}
+	old_file := g.cur_file_name
+	old_module := g.cur_module
+	old_import_modules := g.cur_import_modules.clone()
+	mut changed := false
+	for file in g.files {
+		g.set_file_module(file)
+		if g.cur_module != 'main' {
+			continue
+		}
+		for stmt in file.stmts {
+			if stmt is ast.FnDecl && stmt.name.starts_with('__sort_cmp_') {
+				fn_name := g.get_fn_name(stmt)
+				if fn_name != '' {
+					if fn_name !in g.force_emit_fn_names {
+						changed = true
+					}
+					g.force_emit_fn_names[fn_name] = true
+				}
+			}
+		}
+	}
+	if changed {
+		g.should_emit_fn_decl_cache = map[string]bool{}
+	}
+	g.cur_file_name = old_file
+	g.cur_module = old_module
+	g.cur_import_modules = old_import_modules.clone()
 }
 
 // set_cached_init_calls sets cache-init functions to invoke from generated main().
@@ -693,15 +810,16 @@ pub fn (mut g Gen) gen_passes_1_to_4() {
 		before_generic_specs := g.late_generic_spec_count()
 		g.discover_comptime_generic_specs()
 		g.discover_nested_generic_specs()
+		g.discover_direct_generic_call_specs()
 		if g.late_generic_spec_count() == before_generic_specs {
 			break
 		}
 	}
-	g.collect_fn_signatures()
+	g.collect_force_emit_sort_fns()
+	g.collect_fn_signatures_to_fixed_point()
 	g.collect_c_file_fn_keys()
 	g.collect_runtime_const_targets()
 	g.register_builder_methods()
-	g.build_generic_spec_index()
 	stage_start = g.mark_cgen_step(stats_enabled, stats_scope, mut stats_sw, stage_start, 'setup')
 
 	// Pre-collect all global variable names so they can be module-qualified
@@ -1022,9 +1140,9 @@ pub fn (mut g Gen) gen_passes_1_to_4() {
 		'pass 3.5 fixed-array return wrappers')
 
 	// Recursive array equality helper for nested arrays and string arrays.
-	// In cached-core builds, the body lives in the builtin cache unit and is
-	// forward-declared (by top_level_c_decls) in the main TU.  In single-TU
-	// builds, the body is emitted here directly.
+	// In cached-core builds, the body lives in the builtin cache unit. The
+	// prototype is emitted here from structured generator state; single-TU
+	// builds also emit the body directly.
 	g.sb.writeln('bool string__eq(string a, string b);')
 	g.sb.writeln('bool __v2_array_eq(array a, array b);')
 	if g.should_emit_module('builtin') {
@@ -1051,6 +1169,8 @@ pub fn (mut g Gen) gen_passes_1_to_4() {
 	stage_start = g.mark_cgen_step(stats_enabled, stats_scope, mut stats_sw, stage_start,
 		'pass 3.6 array helpers')
 
+	g.emit_forward_typedefs_for_signature_types()
+
 	// Pass 4: Function forward declarations
 	for fi, file in g.files {
 		g.set_file_module(file)
@@ -1060,9 +1180,6 @@ pub fn (mut g Gen) gen_passes_1_to_4() {
 			}
 			if stmt is ast.FnDecl {
 				if !g.should_emit_fn_decl_cached(g.cur_module, stmt) {
-					continue
-				}
-				if g.cached_init_calls.len > 0 && !g.should_emit_module(g.cur_module) {
 					continue
 				}
 				if stmt.language == .js {
@@ -1082,6 +1199,7 @@ pub fn (mut g Gen) gen_passes_1_to_4() {
 					if stmt.name in ['subscribe_method', 'unsubscribe_method'] {
 						spec_name := g.specialized_fn_name(stmt, string_types)
 						if spec_name != '' {
+							g.record_fn_owner_for_current_file(spec_name, fi)
 							g.gen_fn_head_with_name(stmt, spec_name)
 							g.sb.writeln(';')
 							g.active_generic_types = prev_generic_types.clone()
@@ -1090,6 +1208,7 @@ pub fn (mut g Gen) gen_passes_1_to_4() {
 					} else {
 						fn_name := g.get_fn_name(stmt)
 						if fn_name != '' {
+							g.record_fn_owner_for_current_file(fn_name, fi)
 							g.gen_fn_head_with_name(stmt, fn_name)
 							g.sb.writeln(';')
 							g.active_generic_types = prev_generic_types.clone()
@@ -1105,6 +1224,7 @@ pub fn (mut g Gen) gen_passes_1_to_4() {
 						prev_generic_types := g.active_generic_types.clone()
 						for spec in specs {
 							g.active_generic_types = spec.generic_types.clone()
+							g.record_fn_owner_for_current_file(spec.name, fi)
 							g.gen_fn_head_with_name(stmt, spec.name)
 							g.sb.writeln(';')
 						}
@@ -1126,6 +1246,7 @@ pub fn (mut g Gen) gen_passes_1_to_4() {
 							g.active_generic_types = bindings.clone()
 							gfn_name := g.get_fn_name(stmt)
 							if gfn_name != '' {
+								g.record_fn_owner_for_current_file(gfn_name, fi)
 								g.gen_fn_head_with_name(stmt, gfn_name)
 								g.sb.writeln(';')
 							}
@@ -1137,6 +1258,7 @@ pub fn (mut g Gen) gen_passes_1_to_4() {
 						g.active_generic_types = bindings.clone()
 						gfn_name := g.get_fn_name(stmt)
 						if gfn_name != '' {
+							g.record_fn_owner_for_current_file(gfn_name, fi)
 							g.gen_fn_head_with_name(stmt, gfn_name)
 							g.sb.writeln(';')
 						}
@@ -1161,9 +1283,7 @@ pub fn (mut g Gen) gen_passes_1_to_4() {
 				// Record first emittable file index for each function (for parallel dedup).
 				// File-filtered cache builds still emit prototypes for all files, but pass 5
 				// can only emit bodies for files admitted by should_emit_current_file().
-				if g.should_emit_current_file() && fn_key !in g.fn_owner_file {
-					g.fn_owner_file[fn_key] = fi
-				}
+				g.record_fn_owner_for_current_file(fn_name, fi)
 				if g.env != unsafe { nil } {
 					if fn_scope := g.env.get_fn_scope(g.cur_module, fn_name) {
 						g.cur_fn_scope = fn_scope
@@ -1189,6 +1309,10 @@ pub fn (mut g Gen) gen_passes_1_to_4() {
 	stage_start = g.mark_cgen_step(stats_enabled, stats_scope, mut stats_sw, stage_start,
 		'pass 4 helper declarations')
 
+	g.emit_enum_from_string_helpers()
+	stage_start = g.mark_cgen_step(stats_enabled, stats_scope, mut stats_sw, stage_start,
+		'pass 4.1 enum from_string')
+
 	// Pass 4.5: Emit constants after function forward declarations so const
 	// initializers can reference functions by name (for example function-pointer
 	// tables).
@@ -1212,6 +1336,16 @@ pub fn (mut g Gen) gen_passes_1_to_4() {
 
 	// Emit deferred Objective-C .m includes now that all types are defined.
 	g.emit_deferred_m_includes()
+}
+
+fn (mut g Gen) record_fn_owner_for_current_file(fn_name string, file_idx int) {
+	if fn_name == '' || !g.should_emit_current_file() {
+		return
+	}
+	fn_key := 'fn_${fn_name}'
+	if fn_key !in g.fn_owner_file {
+		g.fn_owner_file[fn_key] = file_idx
+	}
 }
 
 fn (mut g Gen) collect_c_file_fn_keys() {
@@ -1380,6 +1514,8 @@ fn (mut g Gen) gen_pass5() {
 	mut stage_start := stats_sw.elapsed()
 
 	g.pass5_start_pos = g.sb.len
+	g.selector_field_type_cache = map[string]string{}
+	g.selector_field_type_miss = map[string]bool{}
 	g.struct_field_lookup_cache = map[string]string{}
 	g.struct_field_lookup_miss = map[string]bool{}
 	g.collect_force_emit_str_fns()
@@ -1410,6 +1546,8 @@ fn (mut g Gen) gen_pass5() {
 // for non-emitted modules. Returns the list of file indices that need gen_file().
 pub fn (mut g Gen) gen_pass5_pre() []int {
 	g.pass5_start_pos = g.sb.len
+	g.selector_field_type_cache = map[string]string{}
+	g.selector_field_type_miss = map[string]bool{}
 	g.struct_field_lookup_cache = map[string]string{}
 	g.struct_field_lookup_miss = map[string]bool{}
 	g.collect_force_emit_str_fns()
@@ -1454,6 +1592,7 @@ pub fn (mut g Gen) gen_pass5_pre() []int {
 // gen_pass5_post runs post-Pass-5 finalization (interface wrappers, live reload, map helpers).
 pub fn (mut g Gen) gen_pass5_post() {
 	g.emit_forced_helpers_from_non_emit_files()
+	g.emit_weak_generic_specializations_from_non_emit_files()
 	g.emit_needed_ierror_wrappers()
 	g.emit_needed_interface_method_wrappers()
 	g.emit_interface_clone_helpers()
@@ -1520,6 +1659,453 @@ fn (mut g Gen) emit_forced_helpers_from_non_emit_files() {
 	g.cur_file_name = old_file
 	g.cur_module = old_module
 	g.cur_import_modules = old_import_modules.clone()
+}
+
+fn (mut g Gen) emit_weak_generic_specializations_from_non_emit_files() {
+	if g.emit_files.len == 0 || g.cache_bundle_name.len > 0 || g.fn_return_types.len == 0 {
+		return
+	}
+	old_file := g.cur_file_name
+	old_module := g.cur_module
+	old_import_modules := g.cur_import_modules.clone()
+	old_active_generic_types := g.active_generic_types.clone()
+	mut needed_names := g.called_fn_names.clone()
+	mut scanned := map[string]bool{}
+	for _ in 0 .. 8 {
+		before_needed := needed_names.len
+		g.scan_weak_generic_specializations_from_non_emit_files(mut needed_names, mut scanned)
+		if needed_names.len == before_needed {
+			break
+		}
+	}
+	mut emitted_bodies := map[string]bool{}
+	for _ in 0 .. 6 {
+		late_before := g.late_weak_generic_name_set()
+		mut emitted_decls := map[string]bool{}
+		g.emit_weak_generic_specialization_decls(needed_names, mut emitted_decls)
+		g.emit_weak_generic_specialization_bodies(needed_names, mut emitted_bodies)
+		before_needed := needed_names.len
+		g.add_late_weak_generic_names_since(late_before, mut needed_names)
+		for _ in 0 .. 8 {
+			before_scan := needed_names.len
+			g.scan_weak_generic_specializations_from_non_emit_files(mut needed_names, mut scanned)
+			if needed_names.len == before_scan {
+				break
+			}
+		}
+		if needed_names.len == before_needed {
+			break
+		}
+	}
+	g.active_generic_types = old_active_generic_types.clone()
+	g.cur_file_name = old_file
+	g.cur_module = old_module
+	g.cur_import_modules = old_import_modules.clone()
+}
+
+fn (mut g Gen) scan_weak_generic_specializations_from_non_emit_files(mut needed_names map[string]bool, mut scanned map[string]bool) {
+	for file in g.files {
+		g.set_file_module(file)
+		if g.should_emit_current_file() || file.name.ends_with('.vh') {
+			continue
+		}
+		for stmt in file.stmts {
+			if !stmt_has_valid_data(stmt) || stmt !is ast.FnDecl {
+				continue
+			}
+			decl := stmt as ast.FnDecl
+			if g.generic_fn_param_names(decl).len > 0 {
+				g.scan_weak_generic_fn_specializations(&decl, mut needed_names, mut scanned)
+			}
+			if receiver_generic_param_names(decl).len > 0 {
+				g.scan_weak_receiver_generic_method_specializations(&decl, mut needed_names, mut
+					scanned)
+			}
+		}
+	}
+}
+
+fn (mut g Gen) scan_weak_generic_fn_specializations(node &ast.FnDecl, mut needed_names map[string]bool, mut scanned map[string]bool) {
+	for spec in g.weak_generic_fn_specializations_for_names(node, needed_names) {
+		scan_key := '${g.cur_module}.${node.name}:${spec.name}'
+		if scan_key in scanned {
+			continue
+		}
+		scanned[scan_key] = true
+		g.scan_weak_specialization_body(node, spec.name, spec.generic_types, mut needed_names)
+	}
+}
+
+fn (mut g Gen) scan_weak_receiver_generic_method_specializations(node &ast.FnDecl, mut needed_names map[string]bool, mut scanned map[string]bool) {
+	mut bindings_list := g.get_all_receiver_generic_bindings(*node)
+	if bindings_list.len == 0 {
+		if bindings := g.get_receiver_generic_bindings(*node) {
+			bindings_list << bindings
+		}
+	}
+	for bindings in bindings_list {
+		prev_generic_types := g.active_generic_types.clone()
+		g.active_generic_types = bindings.clone()
+		fn_name := g.get_fn_name(*node)
+		g.active_generic_types = prev_generic_types.clone()
+		if fn_name == '' || fn_name !in needed_names {
+			continue
+		}
+		scan_key := '${g.cur_module}.${node.name}:${fn_name}'
+		if scan_key in scanned {
+			continue
+		}
+		scanned[scan_key] = true
+		g.scan_weak_specialization_body(node, fn_name, bindings, mut needed_names)
+	}
+}
+
+fn (mut g Gen) scan_weak_specialization_body(node &ast.FnDecl, fn_name string, generic_types map[string]types.Type, mut needed_names map[string]bool) {
+	late_before := g.late_weak_generic_name_set()
+	prev_fn_name := g.cur_fn_name
+	prev_fn_c_name := g.cur_fn_c_name
+	prev_fn_scope := g.cur_fn_scope
+	prev_active_generic_types := g.active_generic_types.clone()
+	prev_runtime_local_types := g.runtime_local_types.clone()
+	prev_runtime_decl_types := g.runtime_decl_types.clone()
+	prev_not_local_var_cache := g.not_local_var_cache.clone()
+	prev_is_module_ident_cache := g.is_module_ident_cache.clone()
+	prev_resolved_module_names := g.resolved_module_names.clone()
+	prev_cur_fn_generic_params := g.cur_fn_generic_params.clone()
+	prev_collect_generic_scan_calls := g.collect_generic_scan_calls
+	prev_generic_scan_called_names := g.generic_scan_called_names.clone()
+	scope_fn_name := if node.is_method {
+		v_type_name := g.receiver_type_to_scope_name(node.receiver.typ)
+		if v_type_name != '' {
+			'${v_type_name}__${node.name}'
+		} else {
+			node.name
+		}
+	} else {
+		node.name
+	}
+	g.cur_fn_name = node.name
+	g.cur_fn_c_name = fn_name
+	g.cur_fn_scope = unsafe { nil }
+	if g.env != unsafe { nil } {
+		if fn_scope := g.env.get_fn_scope(g.cur_module, scope_fn_name) {
+			g.cur_fn_scope = fn_scope
+		}
+	}
+	g.active_generic_types = generic_types.clone()
+	g.runtime_local_types = map[string]string{}
+	g.runtime_decl_types = map[string]string{}
+	g.not_local_var_cache = map[string]bool{}
+	g.is_module_ident_cache = map[string]bool{}
+	g.resolved_module_names = map[string]string{}
+	g.cur_fn_generic_params = map[string]string{}
+	g.collect_generic_scan_calls = true
+	g.generic_scan_called_names = map[string]bool{}
+	g.seed_fn_scan_runtime_types(*node, fn_name)
+	g.scan_fn_body_for_generic_types(*node, fn_name)
+	scan_called_names := g.generic_scan_called_names.clone()
+	g.cur_fn_name = prev_fn_name
+	g.cur_fn_c_name = prev_fn_c_name
+	g.cur_fn_scope = prev_fn_scope
+	g.active_generic_types = prev_active_generic_types.clone()
+	g.runtime_local_types = prev_runtime_local_types.clone()
+	g.runtime_decl_types = prev_runtime_decl_types.clone()
+	g.not_local_var_cache = prev_not_local_var_cache.clone()
+	g.is_module_ident_cache = prev_is_module_ident_cache.clone()
+	g.resolved_module_names = prev_resolved_module_names.clone()
+	g.cur_fn_generic_params = prev_cur_fn_generic_params.clone()
+	g.collect_generic_scan_calls = prev_collect_generic_scan_calls
+	g.generic_scan_called_names = prev_generic_scan_called_names.clone()
+	for name, _ in scan_called_names {
+		needed_names[name] = true
+	}
+	g.add_late_weak_generic_names_since(late_before, mut needed_names)
+}
+
+fn (mut g Gen) add_late_weak_generic_names_since(late_before map[string]bool, mut needed_names map[string]bool) {
+	late_after := g.late_weak_generic_name_set()
+	for name, _ in late_after {
+		if name !in late_before {
+			needed_names[name] = true
+		}
+	}
+}
+
+fn (mut g Gen) late_weak_generic_name_set() map[string]bool {
+	old_file := g.cur_file_name
+	old_module := g.cur_module
+	old_import_modules := g.cur_import_modules.clone()
+	old_active_generic_types := g.active_generic_types.clone()
+	mut names := map[string]bool{}
+	g.build_generic_spec_index()
+	for file in g.files {
+		g.set_file_module(file)
+		if g.should_emit_current_file() || file.name.ends_with('.vh') {
+			continue
+		}
+		for stmt in file.stmts {
+			if !stmt_has_valid_data(stmt) || stmt !is ast.FnDecl {
+				continue
+			}
+			decl := stmt as ast.FnDecl
+			if g.generic_fn_param_names(decl).len == 0 {
+				continue
+			}
+			for spec in g.late_generic_fn_specializations(decl) {
+				names[spec.name] = true
+			}
+		}
+	}
+	g.active_generic_types = old_active_generic_types.clone()
+	g.cur_file_name = old_file
+	g.cur_module = old_module
+	g.cur_import_modules = old_import_modules.clone()
+	return names
+}
+
+fn (mut g Gen) late_generic_fn_specializations(node ast.FnDecl) []GenericFnSpecialization {
+	generic_params := g.generic_fn_param_names(node)
+	if generic_params.len == 0 || g.env == unsafe { nil } {
+		return []GenericFnSpecialization{}
+	}
+	mut specs := []GenericFnSpecialization{}
+	mut seen := map[string]bool{}
+	for key in g.generic_spec_index[node.name] {
+		if key !in g.late_generic_specs || !g.generic_key_matches_decl(node, key) {
+			continue
+		}
+		for generic_types in g.late_generic_specs[key] {
+			mut skip_spec := false
+			mut normalized_generic_types := generic_types.clone()
+			for param_name in generic_params {
+				concrete0 := generic_types[param_name] or {
+					skip_spec = true
+					break
+				}
+				concrete := normalize_generic_concrete_type(concrete0)
+				normalized_generic_types[param_name] = concrete
+				if concrete.name() == 'void' || concrete.name() == param_name
+					|| type_contains_generic_placeholder(concrete)
+					|| !generic_concrete_type_is_runtime_specializable(concrete) {
+					skip_spec = true
+					break
+				}
+			}
+			if skip_spec
+				|| !g.generic_specialization_belongs_to_emit_modules(normalized_generic_types) {
+				continue
+			}
+			spec_name := g.specialized_fn_name(node, normalized_generic_types)
+			if spec_name == '' || spec_name in seen {
+				continue
+			}
+			seen[spec_name] = true
+			specs << GenericFnSpecialization{
+				name:          spec_name
+				generic_types: normalized_generic_types.clone()
+			}
+		}
+	}
+	return specs
+}
+
+fn (mut g Gen) emit_weak_generic_specialization_decls(needed_names map[string]bool, mut emitted map[string]bool) {
+	for file in g.files {
+		g.set_file_module(file)
+		if g.should_emit_current_file() || file.name.ends_with('.vh') {
+			continue
+		}
+		for stmt in file.stmts {
+			if !stmt_has_valid_data(stmt) || stmt !is ast.FnDecl {
+				continue
+			}
+			decl := stmt as ast.FnDecl
+			if g.generic_fn_param_names(decl).len > 0 {
+				g.emit_weak_generic_fn_specializations(&decl, false, needed_names, mut emitted)
+			}
+			if receiver_generic_param_names(decl).len > 0 {
+				g.emit_weak_receiver_generic_method_specializations(&decl, false, needed_names, mut
+					emitted)
+			}
+		}
+	}
+}
+
+fn (mut g Gen) emit_weak_generic_specialization_bodies(needed_names map[string]bool, mut emitted map[string]bool) {
+	for file in g.files {
+		g.set_file_module(file)
+		if g.should_emit_current_file() || file.name.ends_with('.vh') {
+			continue
+		}
+		for stmt in file.stmts {
+			if !stmt_has_valid_data(stmt) || stmt !is ast.FnDecl {
+				continue
+			}
+			decl := stmt as ast.FnDecl
+			if g.generic_fn_param_names(decl).len > 0 {
+				g.emit_weak_generic_fn_specializations(&decl, true, needed_names, mut emitted)
+			}
+			if receiver_generic_param_names(decl).len > 0 {
+				g.emit_weak_receiver_generic_method_specializations(&decl, true, needed_names, mut
+					emitted)
+			}
+		}
+	}
+}
+
+fn (mut g Gen) weak_generic_fn_specializations_for_names(node &ast.FnDecl, needed_names map[string]bool) []GenericFnSpecialization {
+	prev_generic_types := g.active_generic_types.clone()
+	mut specs := g.direct_generic_fn_specializations(*node)
+	if needed_names.len > 0 {
+		mut seen := map[string]bool{}
+		for spec in specs {
+			seen[spec.name] = true
+		}
+		for spec in g.generic_fn_specializations(*node) {
+			if spec.name !in needed_names || spec.name in seen {
+				continue
+			}
+			seen[spec.name] = true
+			specs << spec
+		}
+		generic_params := g.generic_fn_param_names(*node)
+		if generic_params.len > 0 {
+			prev_generic_types2 := g.active_generic_types.clone()
+			g.active_generic_types = map[string]types.Type{}
+			base_name := g.get_fn_name(*node)
+			g.active_generic_types = prev_generic_types2.clone()
+			prefix := '${base_name}_T_'
+			for called_name, _ in needed_names {
+				if !called_name.starts_with(prefix) || called_name in seen {
+					continue
+				}
+				generic_types := g.generic_types_from_specialized_fn_name(*node, called_name) or {
+					continue
+				}
+				seen[called_name] = true
+				specs << GenericFnSpecialization{
+					name:          called_name
+					generic_types: generic_types.clone()
+				}
+			}
+		}
+	}
+	mut filtered := []GenericFnSpecialization{}
+	for spec in specs {
+		if spec.name !in needed_names {
+			continue
+		}
+		filtered << spec
+	}
+	g.active_generic_types = prev_generic_types.clone()
+	return filtered
+}
+
+fn (mut g Gen) generic_types_from_specialized_fn_name(node ast.FnDecl, fn_name string) ?map[string]types.Type {
+	generic_params := g.generic_fn_param_names(node)
+	if generic_params.len == 0 {
+		return none
+	}
+	prev_generic_types := g.active_generic_types.clone()
+	g.active_generic_types = map[string]types.Type{}
+	base_name := g.get_fn_name(node)
+	g.active_generic_types = prev_generic_types.clone()
+	prefix := '${base_name}_T_'
+	if !fn_name.starts_with(prefix) {
+		return none
+	}
+	suffix := fn_name[prefix.len..]
+	tokens := g.split_specialization_suffix(suffix, generic_params.len) or { return none }
+	mut generic_types := map[string]types.Type{}
+	for i, param_name in generic_params {
+		concrete := g.concrete_type_from_specialization_token(tokens[i])
+		if type_contains_generic_placeholder(concrete)
+			|| !generic_concrete_type_is_runtime_specializable(concrete) {
+			return none
+		}
+		generic_types[param_name] = concrete
+	}
+	if g.specialized_fn_name(node, generic_types) != fn_name {
+		return none
+	}
+	return generic_types
+}
+
+fn (mut g Gen) split_specialization_suffix(suffix string, parts int) ?[]string {
+	if parts <= 0 || suffix == '' {
+		return none
+	}
+	if parts == 1 {
+		concrete := g.concrete_type_from_specialization_token(suffix)
+		if type_contains_generic_placeholder(concrete)
+			|| !generic_concrete_type_is_runtime_specializable(concrete) {
+			return none
+		}
+		return [suffix]
+	}
+	for i := 1; i < suffix.len - 1; i++ {
+		if suffix[i] != `_` {
+			continue
+		}
+		head := suffix[..i]
+		concrete := g.concrete_type_from_specialization_token(head)
+		if type_contains_generic_placeholder(concrete)
+			|| !generic_concrete_type_is_runtime_specializable(concrete) {
+			continue
+		}
+		tail := suffix[i + 1..]
+		if tail_tokens := g.split_specialization_suffix(tail, parts - 1) {
+			mut tokens := [head]
+			tokens << tail_tokens
+			return tokens
+		}
+	}
+	return none
+}
+
+fn (mut g Gen) emit_weak_generic_fn_specializations(node &ast.FnDecl, emit_body bool, needed_names map[string]bool, mut emitted map[string]bool) {
+	prev_generic_types := g.active_generic_types.clone()
+	specs := g.weak_generic_fn_specializations_for_names(node, needed_names)
+	for spec in specs {
+		if spec.name in emitted {
+			continue
+		}
+		g.active_generic_types = spec.generic_types.clone()
+		if emit_body {
+			g.gen_weak_fn_decl_with_name_ptr(node, spec.name)
+			emitted[spec.name] = true
+		} else {
+			g.gen_weak_fn_decl_head_with_name_ptr(node, spec.name)
+		}
+	}
+	g.active_generic_types = prev_generic_types.clone()
+}
+
+fn (mut g Gen) emit_weak_receiver_generic_method_specializations(node &ast.FnDecl, emit_body bool, needed_names map[string]bool, mut emitted map[string]bool) {
+	prev_generic_types := g.active_generic_types.clone()
+	mut bindings_list := g.get_all_receiver_generic_bindings(*node)
+	if bindings_list.len == 0 {
+		if bindings := g.get_receiver_generic_bindings(*node) {
+			bindings_list << bindings
+		}
+	}
+	for bindings in bindings_list {
+		g.active_generic_types = bindings.clone()
+		fn_name := g.get_fn_name(*node)
+		if fn_name == '' || fn_name !in needed_names {
+			continue
+		}
+		if fn_name in emitted {
+			continue
+		}
+		if emit_body {
+			g.gen_weak_fn_decl_with_name_ptr(node, fn_name)
+			emitted[fn_name] = true
+		} else {
+			g.gen_weak_fn_decl_head_with_name_ptr(node, fn_name)
+		}
+	}
+	g.active_generic_types = prev_generic_types.clone()
 }
 
 // gen_pass5_files generates function bodies for a range of file indices.
@@ -1765,6 +2351,7 @@ pub fn (g &Gen) new_pass5_worker(file_indices []int, worker_id int) &Gen {
 		fn_param_is_ptr:             g.fn_param_is_ptr.clone()
 		fn_param_types:              g.fn_param_types.clone()
 		fn_return_types:             g.fn_return_types.clone()
+		v_fn_return_types:           g.v_fn_return_types.clone()
 		struct_field_types:          g.struct_field_types.clone()
 		enum_value_to_enum:          g.enum_value_to_enum.clone()
 		enum_type_fields:            g.enum_type_fields.clone()
@@ -1782,6 +2369,7 @@ pub fn (g &Gen) new_pass5_worker(file_indices []int, worker_id int) &Gen {
 		embedded_field_owner:        g.embedded_field_owner.clone()
 		primitive_type_aliases:      g.primitive_type_aliases.clone()
 		emit_modules:                g.emit_modules.clone()
+		type_modules:                g.type_modules.clone()
 		emit_files:                  g.emit_files.clone()
 		emitted_result_structs:      g.emitted_result_structs.clone()
 		emitted_option_structs:      g.emitted_option_structs.clone()
@@ -1796,14 +2384,17 @@ pub fn (g &Gen) new_pass5_worker(file_indices []int, worker_id int) &Gen {
 		global_var_modules:          g.global_var_modules.clone()
 		const_exprs:                 g.const_exprs.clone()
 		const_types:                 g.const_types.clone()
+		const_c_names:               g.const_c_names.clone()
 		runtime_const_targets:       g.runtime_const_targets.clone()
 		export_const_symbols:        g.export_const_symbols
 		cache_bundle_name:           g.cache_bundle_name
 		cached_init_calls:           g.cached_init_calls.clone()
 		used_fn_keys:                g.used_fn_keys.clone()
 		force_emit_fn_names:         g.force_emit_fn_names.clone()
+		weak_fn_names:               g.weak_fn_names.clone()
 		export_fn_names:             g.export_fn_names.clone()
 		called_fn_names:             g.called_fn_names.clone()
+		declared_fn_names:           g.declared_fn_names.clone()
 		should_emit_fn_decl_cache:   g.should_emit_fn_decl_cache.clone()
 		generic_body_scan_cache:     g.generic_body_scan_cache.clone()
 		fn_type_aliases:             g.fn_type_aliases.clone()
@@ -1811,6 +2402,7 @@ pub fn (g &Gen) new_pass5_worker(file_indices []int, worker_id int) &Gen {
 		generic_fn_decl_index:       g.generic_fn_decl_index.clone()
 		specialized_fn_bases:        g.specialized_fn_bases.clone()
 		late_generic_specs:          g.late_generic_specs.clone()
+		generic_scan_called_names:   map[string]bool{}
 		generic_struct_bindings:     g.generic_struct_bindings.clone()
 		generic_struct_instances:    g.generic_struct_instances.clone()
 		c_struct_types:              g.c_struct_types.clone()
@@ -1822,6 +2414,7 @@ pub fn (g &Gen) new_pass5_worker(file_indices []int, worker_id int) &Gen {
 		emitted_types:               worker_emitted
 		blocked_fn_keys:             blocked_fn_keys
 		runtime_local_types:         map[string]string{}
+		runtime_decl_types:          map[string]string{}
 		cur_fn_returned_idents:      map[string]bool{}
 		active_generic_types:        map[string]types.Type{}
 		cur_fn_generic_params:       map[string]string{}
@@ -1832,6 +2425,8 @@ pub fn (g &Gen) new_pass5_worker(file_indices []int, worker_id int) &Gen {
 		resolved_module_names:       map[string]string{}
 		cur_fn_mut_params:           map[string]bool{}
 		cached_env_scopes:           map[string]voidptr{}
+		selector_field_type_cache:   map[string]string{}
+		selector_field_type_miss:    map[string]bool{}
 		struct_field_lookup_cache:   map[string]string{}
 		struct_field_lookup_miss:    map[string]bool{}
 		struct_type_lookup_cache:    map[string]types.Struct{}
@@ -2194,6 +2789,13 @@ fn escape_c_keyword(name string) string {
 	return n
 }
 
+fn c_local_name(name string) string {
+	if name == 'array' {
+		return '_v_array'
+	}
+	return escape_c_keyword(name)
+}
+
 fn sanitize_fn_ident(name string) string {
 	return match name {
 		'+' { 'plus' }
@@ -2281,6 +2883,18 @@ fn (mut g Gen) resolve_module_name(name string) string {
 	}
 	g.resolved_module_names[name] = result
 	return result
+}
+
+fn (g &Gen) is_current_or_imported_module(module_name string) bool {
+	if module_name == g.cur_module {
+		return true
+	}
+	for _, imported_module in g.cur_import_modules {
+		if imported_module == module_name {
+			return true
+		}
+	}
+	return false
 }
 
 fn sanitize_c_number_literal(lit string) string {

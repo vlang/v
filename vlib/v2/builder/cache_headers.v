@@ -220,7 +220,12 @@ const core_cache_compiler_dependency_file_paths = ['cmd/v2/v2.v', 'vlib/net/open
 
 fn (b &Builder) core_cache_dir() string {
 	base := if b.pref.is_prod { 'v2_cleanc_obj_cache_prod' } else { 'v2_cleanc_obj_cache' }
-	return cache_path_join(os.temp_dir(), base)
+	root := if b.pref.vroot.len > 0 { b.pref.vroot } else { os.getwd() }
+	root_key := sanitize_cache_part(os.norm_path(os.abs_path(root)))
+	if root_key.len == 0 {
+		return cache_path_join(os.temp_dir(), base)
+	}
+	return cache_path_join(os.temp_dir(), '${base}_${root_key}')
 }
 
 fn (b &Builder) ensure_core_cache_dir() bool {
@@ -397,6 +402,7 @@ fn (b &Builder) core_cache_compiler_dependency_files() []string {
 
 fn (b &Builder) user_entry_stamp_files() []string {
 	mut files_set := map[string]bool{}
+	user_defines := if b.pref != unsafe { nil } { b.pref.user_defines } else { []string{} }
 	for file in b.user_files {
 		if os.is_dir(file) {
 			mut found_parsed_files := false
@@ -411,7 +417,6 @@ fn (b &Builder) user_entry_stamp_files() []string {
 			if found_parsed_files {
 				continue
 			}
-			user_defines := if b.pref != unsafe { nil } { b.pref.user_defines } else { []string{} }
 			for source_file in get_user_v_files_from_dir(file, user_defines, os.user_os()) {
 				if source_file == '' || source_file.ends_with('.vh') {
 					continue
@@ -639,8 +644,12 @@ fn (b &Builder) core_cache_context_stamp() string {
 fn (b &Builder) header_stamp_for_modules(modules []string) string {
 	source_files := b.module_source_files(modules)
 	compiler_files := b.core_cache_compiler_dependency_files()
-	mut lines := []string{cap: source_files.len + compiler_files.len + 4}
+	entry_files := b.user_entry_stamp_files()
+	mut lines := []string{cap: source_files.len + compiler_files.len + entry_files.len + 4}
 	lines << 'format=${core_headers_format}'
+	for file in entry_files {
+		lines << 'entry:${file}:${os.file_last_mod_unix(file)}'
+	}
 	for file in source_files {
 		lines << '${file}:${os.file_last_mod_unix(file)}'
 	}
@@ -795,6 +804,9 @@ fn (b &Builder) can_use_cached_core_headers_for_parse() bool {
 	if b.pref.no_cache || b.pref.skip_builtin {
 		return false
 	}
+	if b.pref.backend != .cleanc {
+		return false
+	}
 	if !b.ensure_core_cache_dir() {
 		return false
 	}
@@ -891,35 +903,11 @@ fn (b &Builder) cached_virtual_manifest() []CachedVirtualModule {
 }
 
 fn (b &Builder) can_use_cached_import_headers_for_parse() bool {
-	if b.pref.no_cache || b.pref.skip_builtin {
-		return false
-	}
-	if !b.ensure_core_cache_dir() {
-		return false
-	}
-	if !os.exists(cache_path_join(b.core_cache_dir(), '${imports_cache_name}.o'))
-		|| !os.exists(cache_path_join(b.core_cache_dir(), '${imports_cache_name}.stamp')) {
-		return false
-	}
-	header_stamp := os.read_file(b.imports_headers_stamp_path()) or { return false }
-	if !header_stamp.contains('cache=${imports_cache_name}\n')
-		|| !header_stamp.contains('format=${core_headers_format}\n') {
-		return false
-	}
-	if !stamp_file_lines_are_fresh(header_stamp) {
-		return false
-	}
-	imports := b.cached_import_manifest()
-	if imports.len == 0 {
-		return false
-	}
-	for import_mod in imports {
-		header_path := b.core_header_path(import_mod.module_name)
-		if !os.exists(header_path) || os.file_size(header_path) == 0 {
-			return false
-		}
-	}
-	return true
+	// Import header reuse is only safe when the cached manifest covers the full
+	// transitive import set. The parser currently discovers imports incrementally,
+	// so a partial manifest can mix cached .vh files with fresh source modules and
+	// leave the combined imports object stale.
+	return false
 }
 
 fn (b &Builder) can_use_cached_virtual_headers_for_parse(groups []CachedVirtualModule) bool {
@@ -2029,12 +2017,11 @@ fn header_type_name_is_sane(type_name string) bool {
 }
 
 fn (b &Builder) module_defines_c_type(module_name string, type_name string) bool {
-	patterns := [
-		'struct C.${type_name}',
-		'pub struct C.${type_name}',
-		'type C.${type_name}',
-		'pub type C.${type_name}',
-	]
+	mut patterns := []string{cap: 4}
+	patterns << 'struct C.${type_name}'
+	patterns << 'pub struct C.${type_name}'
+	patterns << 'type C.${type_name}'
+	patterns << 'pub type C.${type_name}'
 	for file in b.source_files_for_module_name(module_name) {
 		content := os.read_file(file) or { continue }
 		for pattern in patterns {
@@ -2043,7 +2030,8 @@ fn (b &Builder) module_defines_c_type(module_name string, type_name string) bool
 			end := idx + pattern.len
 			if end < content.len {
 				c := content[end]
-				if c == `_` || c.is_alnum() {
+				if c == `_` || (c >= `a` && c <= `z`) || (c >= `A` && c <= `Z`)
+					|| (c >= `0` && c <= `9`) {
 					continue
 				}
 			}

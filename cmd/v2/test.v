@@ -37,6 +37,11 @@ mut:
 	labels map[int][]int
 }
 
+struct MapFieldIndexHolder {
+mut:
+	values map[string]i64
+}
+
 // For testing array push in map iteration
 struct Error76 {
 	msg    string
@@ -62,6 +67,16 @@ enum Permissions {
 	read
 	write
 	execute
+}
+
+@[flag]
+enum KeywordFlags {
+	read
+	unsigned
+}
+
+struct KeywordFlagBox {
+	flags KeywordFlags
 }
 
 // Enum for testing match with different return type
@@ -453,6 +468,13 @@ fn flag_enum_debug() int {
 	// This should be: read (1) | write (2) = 3
 	perms := Permissions.read | Permissions.write
 	return int(perms) // Expected: 3
+}
+
+fn flag_enum_keyword_field() int {
+	box := KeywordFlagBox{
+		flags: .read | .unsigned
+	}
+	return int(box.flags)
 }
 
 // Debug test - return has(.read) as int
@@ -1298,6 +1320,59 @@ fn test_map_or_array_value() {
 	// giving Array_types__Fn** instead of Array_types__Fnptr*
 
 	print_str('map or-block array value type: ok')
+}
+
+fn (mut h MapFieldIndexHolder) lookup_str(name string) string {
+	h.values[name] = 2147483647
+	if name in h.values {
+		return h.values[name].str()
+	}
+	return 'missing'
+}
+
+fn test_map_field_index_str_receiver() {
+	mut holder := MapFieldIndexHolder{
+		values: map[string]i64{}
+	}
+	result := holder.lookup_str('max_i32')
+	assert result == '2147483647'
+	print_str(result)
+}
+
+fn test_array_map_or_fallback_it() {
+	src := [1, -2, 3]
+	mapped := src.map(maybe_positive(it) or { it })
+	assert mapped.len == 3
+	assert mapped[0] == 1
+	assert mapped[1] == -2
+	assert mapped[2] == 3
+	print_str('array map or fallback it: ok')
+}
+
+fn test_dynamic_array_of_fixed_arrays() {
+	pairs := [
+		[1, 2]!,
+		[2, 3]!,
+		[1, 0]!,
+	]
+	mut got := []int{}
+	for pair in pairs {
+		got << pair[0]
+		got << pair[1]
+	}
+	assert got.len == 6
+	assert got[0] == 1
+	assert got[1] == 2
+	assert got[2] == 2
+	assert got[3] == 3
+	assert got[4] == 1
+	assert got[5] == 0
+	for i := 0; i < pairs.len; i++ {
+		pair := pairs[i]
+		assert pair[0] == got[i * 2]
+		assert pair[1] == got[i * 2 + 1]
+	}
+	print_str('dynamic array fixed-array elements: ok')
 }
 
 fn test_interface_fn_pointer_dispatch() {
@@ -3385,6 +3460,8 @@ fn main() {
 	print_int(flag_enum_check_args()) // Expected: 304 (perms=3, exec=4)
 	print_str('int args (exp 304):')
 	print_int(flag_enum_check_int_args()) // Expected: 304
+	print_str('keyword flag field (exp 3):')
+	print_int(flag_enum_keyword_field()) // Expected: 3 (read=1 | unsigned=2)
 	print_str('full test (exp 13):')
 	print_int(flag_enum_test()) // Expected: 13 (1 + 2 + 10)
 
@@ -5180,6 +5257,15 @@ fn main() {
 
 	print_str('--- Test 99: Array init with index ---')
 	test_array_init_with_index()
+
+	print_str('--- Test 100: Map field index .str() receiver ---')
+	test_map_field_index_str_receiver()
+
+	print_str('--- Test 101: Array map or-block fallback it ---')
+	test_array_map_or_fallback_it()
+
+	print_str('--- Test 102: Dynamic array of fixed arrays ---')
+	test_dynamic_array_of_fixed_arrays()
 
 	print_str('=== All tests completed ===')
 }

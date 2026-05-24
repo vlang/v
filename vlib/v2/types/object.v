@@ -24,12 +24,14 @@ pub:
 
 struct Global {
 	name string
-	typ  Type
+mut:
+	typ Type
 }
 
 pub struct Fn {
 	name string
 	// typ  FnType // signature
+mut:
 	typ Type // signature
 }
 

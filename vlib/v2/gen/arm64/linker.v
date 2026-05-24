@@ -503,13 +503,13 @@ pub fn (mut l Linker) link(output_path string, entry_name string) {
 	println('  codesign: ${time.since(t)}')
 	t = time.now()
 
-	os.write_file_array(output_path, l.buf) or { panic(err) }
+	tmp_output_path := '${output_path}.tmp.${os.getpid()}'
+	os.rm(tmp_output_path) or {}
+	os.write_file_array(tmp_output_path, l.buf) or { panic(err) }
+	os.chmod(tmp_output_path, 0o755) or {}
+	os.rename(tmp_output_path, output_path) or { panic(err) }
 
 	println('  file write: ${time.since(t)}')
-
-	// Make executable
-	os.chmod(output_path, 0o755) or {}
-
 	println('  TOTAL linker: ${time.since(t_total)}')
 }
 
@@ -893,10 +893,9 @@ fn (l Linker) generate_code_signature(ident string) []u8 {
 	// Compute page hashes in parallel (16KB pages)
 	mut all_hashes := []u8{len: n_pages * 32}
 	data_ptr := unsafe { &u8(l.buf.data) }
-	hash_ptr := unsafe { &u8(all_hashes.data) }
 	// Hash all pages sequentially. V's `spawn` is not supported on the native
 	// ARM64 backend, so we avoid threads here for self-hosting compatibility.
-	sha256_hash_pages(data_ptr, hash_ptr, 0, n_pages, code_limit)
+	sha256_hash_pages(data_ptr, mut all_hashes, 0, n_pages, code_limit)
 	sig << all_hashes
 
 	// Pad CodeDirectory to alignment
@@ -1249,7 +1248,9 @@ fn (mut l Linker) pad_to(target int) {
 		return
 	}
 	count := target - l.buf.len
-	unsafe { l.buf.grow_len(count) }
+	for _ in 0 .. count {
+		l.buf << u8(0)
+	}
 }
 
 // Write n zero bytes (efficient)
@@ -1257,7 +1258,9 @@ fn (mut l Linker) write_zeros(n int) {
 	if n <= 0 {
 		return
 	}
-	unsafe { l.buf.grow_len(n) }
+	for _ in 0 .. n {
+		l.buf << u8(0)
+	}
 }
 
 // Self-contained SHA-256 implementation. Zero heap allocations —
@@ -1337,7 +1340,7 @@ fn rotr32(x u32, n u32) u32 {
 
 // sha256_hash_pages hashes a range of 16KB pages in a worker thread.
 // Each thread writes 32-byte hashes into disjoint slots of the pre-allocated output buffer.
-fn sha256_hash_pages(data &u8, hashes &u8, page_start int, page_end int, code_limit int) {
+fn sha256_hash_pages(data &u8, mut hashes []u8, page_start int, page_end int, code_limit int) {
 	mut hash_buf := [32]u8{}
 	for page := page_start; page < page_end; page++ {
 		start := page * cs_page_size_arm64
@@ -1347,7 +1350,10 @@ fn sha256_hash_pages(data &u8, hashes &u8, page_start int, page_end int, code_li
 		}
 		unsafe {
 			sha256_hash(data + start, end - start, &hash_buf[0])
-			vmemcpy(hashes + page * 32, &hash_buf[0], 32)
+		}
+		hash_offset := page * 32
+		for i in 0 .. 32 {
+			hashes[hash_offset + i] = hash_buf[i]
 		}
 	}
 }

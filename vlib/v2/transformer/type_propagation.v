@@ -22,6 +22,15 @@ fn (mut t Transformer) propagate_types(files []ast.File) {
 	}
 }
 
+fn (mut t Transformer) prop_exprs(exprs []ast.Expr) {
+	if !expr_array_has_valid_data(exprs) {
+		return
+	}
+	for expr in exprs {
+		t.prop_expr(expr)
+	}
+}
+
 fn (mut t Transformer) prop_stmt(stmt ast.Stmt) {
 	if !stmt_has_valid_data(stmt) {
 		return
@@ -33,16 +42,16 @@ fn (mut t Transformer) prop_stmt(stmt ast.Stmt) {
 		}
 		ast.AssignStmt {
 			// Process RHS first so types are available for LHS propagation
-			for e in stmt.rhs {
-				t.prop_expr(e)
-			}
-			for i, e in stmt.lhs {
-				t.prop_expr(e)
-				// Propagate type from RHS to LHS if LHS is still untyped
-				lhs_pos := e.pos()
-				if lhs_pos.is_valid() && !t.has_prop_type(lhs_pos.id) && i < stmt.rhs.len {
-					if rhs_type := t.get_expr_type(stmt.rhs[i]) {
-						t.env.set_expr_type(lhs_pos.id, rhs_type)
+			t.prop_exprs(stmt.rhs)
+			if expr_array_has_valid_data(stmt.lhs) {
+				for i, e in stmt.lhs {
+					t.prop_expr(e)
+					// Propagate type from RHS to LHS if LHS is still untyped
+					lhs_pos := e.pos()
+					if lhs_pos.is_valid() && !t.has_prop_type(lhs_pos.id) && i < stmt.rhs.len {
+						if rhs_type := t.get_expr_type(stmt.rhs[i]) {
+							t.env.set_expr_type(lhs_pos.id, rhs_type)
+						}
 					}
 				}
 			}
@@ -102,9 +111,7 @@ fn (mut t Transformer) prop_stmt(stmt ast.Stmt) {
 			t.prop_stmt(stmt.stmt)
 		}
 		ast.ReturnStmt {
-			for e in stmt.exprs {
-				t.prop_expr(e)
-			}
+			t.prop_exprs(stmt.exprs)
 		}
 		ast.EnumDecl {
 			for f in stmt.fields {
@@ -123,9 +130,7 @@ fn (mut t Transformer) prop_expr(expr ast.Expr) {
 	match expr {
 		ast.ArrayInitExpr {
 			t.prop_expr(expr.typ)
-			for e in expr.exprs {
-				t.prop_expr(e)
-			}
+			t.prop_exprs(expr.exprs)
 			t.prop_expr(expr.init)
 			t.prop_expr(expr.cap)
 			t.prop_expr(expr.len)
@@ -143,9 +148,7 @@ fn (mut t Transformer) prop_expr(expr ast.Expr) {
 		}
 		ast.CallExpr {
 			t.prop_expr(expr.lhs)
-			for arg in expr.args {
-				t.prop_expr(arg)
-			}
+			t.prop_exprs(expr.args)
 		}
 		ast.CallOrCastExpr {
 			t.prop_expr(expr.lhs)
@@ -168,9 +171,7 @@ fn (mut t Transformer) prop_expr(expr ast.Expr) {
 		}
 		ast.GenericArgs {
 			t.prop_expr(expr.lhs)
-			for arg in expr.args {
-				t.prop_expr(arg)
-			}
+			t.prop_exprs(expr.args)
 		}
 		ast.GenericArgOrIndexExpr {
 			t.prop_expr(expr.lhs)
@@ -201,32 +202,22 @@ fn (mut t Transformer) prop_expr(expr ast.Expr) {
 			}
 		}
 		ast.KeywordOperator {
-			for e in expr.exprs {
-				t.prop_expr(e)
-			}
+			t.prop_exprs(expr.exprs)
 		}
 		ast.LambdaExpr {
 			t.prop_expr(expr.expr)
 		}
 		ast.LockExpr {
-			for e in expr.lock_exprs {
-				t.prop_expr(e)
-			}
-			for e in expr.rlock_exprs {
-				t.prop_expr(e)
-			}
+			t.prop_exprs(expr.lock_exprs)
+			t.prop_exprs(expr.rlock_exprs)
 			for s in expr.stmts {
 				t.prop_stmt(s)
 			}
 		}
 		ast.MapInitExpr {
 			t.prop_expr(expr.typ)
-			for k in expr.keys {
-				t.prop_expr(k)
-			}
-			for v in expr.vals {
-				t.prop_expr(v)
-			}
+			t.prop_exprs(expr.keys)
+			t.prop_exprs(expr.vals)
 		}
 		ast.MatchExpr {
 			t.prop_expr(expr.expr)
@@ -281,9 +272,7 @@ fn (mut t Transformer) prop_expr(expr ast.Expr) {
 			}
 		}
 		ast.Tuple {
-			for e in expr.exprs {
-				t.prop_expr(e)
-			}
+			t.prop_exprs(expr.exprs)
 		}
 		ast.UnsafeExpr {
 			for s in expr.stmts {
@@ -334,6 +323,9 @@ fn (t &Transformer) has_prop_type(id int) bool {
 
 // infer_prop_type tries to determine the type of an expression from its content.
 fn (mut t Transformer) infer_prop_type(expr ast.Expr) ?types.Type {
+	if typ := t.get_expr_type(expr) {
+		return typ
+	}
 	match expr {
 		ast.BasicLiteral {
 			match expr.kind {

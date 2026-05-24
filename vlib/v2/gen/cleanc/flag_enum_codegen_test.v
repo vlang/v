@@ -42,6 +42,46 @@ fn generate_c_for_test_files(sources []string) string {
 	return gen.gen()
 }
 
+struct CgenTestSource {
+	path string
+	code string
+}
+
+fn generate_c_for_test_sources_with_emit(sources []CgenTestSource, emit_rel_paths []string) string {
+	tmp_dir := os.join_path(os.temp_dir(), 'v2_flag_enum_codegen_test_${os.getpid()}')
+	os.rmdir_all(tmp_dir) or {}
+	os.mkdir_all(tmp_dir) or { panic('failed to create temp dir') }
+	defer {
+		os.rmdir_all(tmp_dir) or {}
+	}
+	mut paths := []string{cap: sources.len}
+	for source in sources {
+		tmp_file := os.join_path(tmp_dir, source.path)
+		os.mkdir_all(os.dir(tmp_file)) or { panic('failed to create temp source dir') }
+		os.write_file(tmp_file, source.code) or { panic('failed to write temp file') }
+		paths << tmp_file
+	}
+	mut emit_files := []string{cap: emit_rel_paths.len}
+	for rel_path in emit_rel_paths {
+		emit_files << os.join_path(tmp_dir, rel_path)
+	}
+	prefs := &vpref.Preferences{
+		backend:     .cleanc
+		no_parallel: true
+	}
+	mut file_set := token.FileSet.new()
+	mut par := parser.Parser.new(prefs)
+	files := par.parse_files(paths, mut file_set)
+	env := types.Environment.new()
+	mut checker := types.Checker.new(prefs, file_set, env)
+	checker.check_files(files)
+	mut trans := transformer.Transformer.new_with_pref(files, env, prefs)
+	mut gen := Gen.new_with_env_and_pref(trans.transform_files(files), env, prefs)
+	gen.set_emit_modules(['main'])
+	gen.set_emit_files(emit_files)
+	return gen.gen()
+}
+
 fn test_result_value_type_preserves_generic_specialization_ptr_suffix() {
 	g := Gen{}
 	assert g.result_value_type('_result_sync__ThreadLocalStorage_T_Array_markdown__Nodeptr') == 'sync__ThreadLocalStorage_T_Array_markdown__Nodeptr'
@@ -1677,6 +1717,8 @@ fn max_day(month int) int {
 	return value
 }
 ')
+	assert csrc.contains('static const int month_days[3] = {31, 28, 31};')
+	assert !csrc.contains('static const int month_days[3] = (int[3])')
 	assert csrc.contains('int value = (month_days')
 	assert !csrc.contains('fixed_int_3 value')
 }
@@ -1738,6 +1780,15 @@ fn test_parse_map_kv_types_prefers_longest_known_generic_key() {
 		gen.parse_map_kv_types('api__ApiSuccessResponse_T_Array_FileInfo_Array_int')
 	assert key_type == 'api__ApiSuccessResponse_T_Array_FileInfo'
 	assert value_type == 'Array_int'
+}
+
+fn test_map_alias_filter_accepts_module_qualified_key_type() {
+	mut gen := Gen.new([])
+	gen.cache_bundle_name = 'v2compiler'
+	gen.emit_modules['ssa'] = true
+	assert gen.alias_type_belongs_to_emit_modules('Map_ssa__TypeID_bool')
+	prefixes := gen.module_prefixes_in_c_name('Map_ssa__TypeID_bool')
+	assert prefixes == ['ssa']
 }
 
 fn test_generate_c_qualifies_imported_symbol_type() {
@@ -2085,6 +2136,43 @@ fn main() {
 	assert csrc.contains('array__sort_with_compare')
 	assert csrc.contains('compare_strings')
 	assert !csrc.contains('array__sort(&cloned.globs, (a < b))')
+}
+
+fn test_generate_c_emits_sort_comparator_for_file_filtered_main() {
+	csrc := generate_c_for_test_sources_with_emit([
+		CgenTestSource{
+			path: 'cached/issue.v'
+			code: '
+module main
+
+struct Issue {
+	created_at int
+}
+
+fn cached_route(mut issues []Issue) {
+	issues.sort(a.created_at > b.created_at)
+}
+'
+		},
+		CgenTestSource{
+			path: 'issue.v'
+			code: '
+module main
+
+fn root_route(mut issues []Issue) {
+	issues.sort(a.created_at > b.created_at)
+}
+
+fn main() {
+	mut issues := []Issue{}
+	root_route(mut issues)
+}
+'
+		},
+	], ['issue.v'])
+	assert csrc.contains('array__sort_with_compare(&issues, __sort_cmp_Issue_by_created_at_desc)')
+	assert csrc.contains('int __sort_cmp_Issue_by_created_at_desc(Issue* a, Issue* b);')
+	assert csrc.contains('int __sort_cmp_Issue_by_created_at_desc(Issue* a, Issue* b) {')
 }
 
 fn test_generate_c_uses_string_methods_after_if_expr_assignment() {
@@ -4196,6 +4284,9 @@ fn boot(mut ctx Context) {
 ',
 	])
 	assert csrc.contains('http__Header__get(user_context->Context.req.header, http__CommonHeader__accept)')
+	assert csrc.contains('_result_string _or_')
+	assert csrc.contains('string accept_header =')
+	assert !csrc.contains('http__Response accept_header =')
 	assert !csrc.contains('http__Header__get(user_context->req.header')
 }
 
@@ -4440,4 +4531,44 @@ fn main() {
 	assert csrc.contains('return json2__encode_T_fn_')
 	assert csrc.contains('((json2__EncoderOptions){0})')
 	assert !csrc.contains('((EncoderOptions){0})')
+}
+
+fn test_generate_c_renames_anonymous_function_params() {
+	csrc := generate_c_for_test('
+fn check(_ int, _ int) int {
+	return 0
+}
+
+fn main() {
+	_ = check(1, 2)
+}
+')
+	assert csrc.contains('int check(int _arg0, int _arg1)')
+	assert !csrc.contains('int check(int _, int _)')
+}
+
+fn test_generate_c_emits_late_generic_result_alias_before_forward_decl() {
+	csrc := generate_c_for_test('
+fn values[T](x T) ![]T {
+	_ = x
+	return []T{}
+}
+
+fn wrapper[U](x U) ![]U {
+	return values[U](x)
+}
+
+fn main() {
+	_ = wrapper[voidptr](unsafe { nil }) or { return }
+}
+')
+	alias_pos := csrc.index('typedef struct _result_Array_voidptr _result_Array_voidptr;') or {
+		assert false
+		return
+	}
+	decl_pos := csrc.index('_result_Array_voidptr values_T_voidptr(void* x);') or {
+		assert false
+		return
+	}
+	assert alias_pos < decl_pos
 }

@@ -15,15 +15,52 @@ fn should_expand_single_file_input(input string) bool {
 	return module_name != 'main'
 }
 
+fn is_module_line_space(ch u8) bool {
+	return ch == ` ` || ch == `\t` || ch == `\v` || ch == `\f`
+}
+
 fn file_module_name(path string) ?string {
 	content := os.read_file(path) or { return none }
-	for raw_line in content.split_into_lines() {
-		line := raw_line.trim_space()
-		if line == '' || line.starts_with('//') {
+	mut line_start := 0
+	for line_start <= content.len {
+		mut line_end := line_start
+		for line_end < content.len && content[line_end] != `\n` && content[line_end] != `\r` {
+			line_end++
+		}
+		mut start := line_start
+		for start < line_end && is_module_line_space(content[start]) {
+			start++
+		}
+		mut end := line_end
+		for end > start && is_module_line_space(content[end - 1]) {
+			end--
+		}
+		if start == end || (end - start >= 2 && content[start] == `/` && content[start + 1] == `/`) {
+			if line_end >= content.len {
+				break
+			}
+			if content[line_end] == `\r` && line_end + 1 < content.len
+				&& content[line_end + 1] == `\n` {
+				line_end++
+			}
+			line_start = line_end + 1
 			continue
 		}
-		if line.starts_with('module ') {
-			return line['module '.len..].trim_space().all_before(' ')
+		if end - start >= 7 && content[start] == `m` && content[start + 1] == `o`
+			&& content[start + 2] == `d` && content[start + 3] == `u` && content[start + 4] == `l`
+			&& content[start + 5] == `e` && is_module_line_space(content[start + 6]) {
+			mut name_start := start + 7
+			for name_start < end && is_module_line_space(content[name_start]) {
+				name_start++
+			}
+			mut name_end := name_start
+			for name_end < end && !is_module_line_space(content[name_end]) {
+				name_end++
+			}
+			if name_start < name_end {
+				return content[name_start..name_end]
+			}
+			return none
 		}
 		break
 	}
