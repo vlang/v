@@ -591,6 +591,111 @@ fn main() {}
 	assert exit_code == 0, '`return make_copy(&local)` should be allowed (non-pass-through callee)'
 }
 
+fn test_escape_passthrough_alias_local_errors() {
+	// Pass-through fn aliases its param to a local before returning. The
+	// pre-pass forwards `name := param` so this is still recognised.
+	code := '
+struct Bar {
+	v int
+}
+
+fn alias_passthrough[^a](p &^a Bar) &^a Bar {
+	y := p
+	return y
+}
+
+fn dangling[^a](caller &^a Bar) &^a Bar {
+	local := Bar{v: 1}
+	return alias_passthrough(&local)
+}
+
+fn main() {}
+'
+	exit_code, output := run_escape_check(code)
+	assert exit_code != 0, 'returning alias_passthrough(&local) should fail (aliased param)'
+	assert output.contains('passed through `alias_passthrough`'), 'got: ${output}'
+}
+
+fn test_escape_passthrough_alias_chain_errors() {
+	// Transitive aliases (`b := a; c := b; return c`) follow through too,
+	// since the alias table is populated in declaration order.
+	code := '
+struct Bar {
+	v int
+}
+
+fn chain_passthrough[^a](p &^a Bar) &^a Bar {
+	a := p
+	b := a
+	return b
+}
+
+fn dangling[^a](caller &^a Bar) &^a Bar {
+	local := Bar{v: 1}
+	return chain_passthrough(&local)
+}
+
+fn main() {}
+'
+	exit_code, output := run_escape_check(code)
+	assert exit_code != 0, 'returning a chained alias of a param should still fail'
+	assert output.contains('passed through `chain_passthrough`'), 'got: ${output}'
+}
+
+fn test_escape_passthrough_mut_alias_errors() {
+	// `mut y := param` parses with a ModifierExpr LHS; the alias collector
+	// unwraps that the same way the locals collector does.
+	code := '
+struct Bar {
+	v int
+}
+
+fn mut_alias_passthrough[^a](p &^a Bar) &^a Bar {
+	mut y := p
+	return y
+}
+
+fn dangling[^a](caller &^a Bar) &^a Bar {
+	local := Bar{v: 1}
+	return mut_alias_passthrough(&local)
+}
+
+fn main() {}
+'
+	exit_code, output := run_escape_check(code)
+	assert exit_code != 0, '`mut y := param` alias should still flag the call site'
+	assert output.contains('passed through `mut_alias_passthrough`'), 'got: ${output}'
+}
+
+fn test_escape_passthrough_non_aliased_local_ok() {
+	// `y := other_fn(...)` is NOT an alias of any param, so the callee is not
+	// pass-through and the call site stays unflagged. (Control case to make
+	// sure the alias detector doesn't over-eagerly classify fns.)
+	code := '
+struct Bar {
+	v int
+}
+
+fn make_bar() Bar {
+	return Bar{v: 1}
+}
+
+fn not_passthrough[^a](p &^a Bar) Bar {
+	y := make_bar()
+	return y
+}
+
+fn safe[^a](caller &^a Bar) Bar {
+	local := Bar{v: 1}
+	return not_passthrough(&local)
+}
+
+fn main() {}
+'
+	exit_code, _ := run_escape_check(code)
+	assert exit_code == 0, 'fn returning a fresh local (not a param alias) should not be pass-through'
+}
+
 fn test_escape_passthrough_non_optin_call_ignored() {
 	// The callee `helper` does NOT declare `[^a]`, so it is not added to the
 	// pass-through registry. The call site falls through to the existing

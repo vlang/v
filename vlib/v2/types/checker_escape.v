@@ -23,7 +23,9 @@
 //                                — closure-capture escape via store/push
 //   * `return passthrough(&local)` — inter-procedural escape via a fn that
 //     returns one of its parameters (`fn passthrough(x &^a T) &^a T { return x }`).
-//     Also fires for the field-store and array-push forms.
+//     Also fires for the field-store and array-push forms. The pre-pass
+//     follows one or more levels of `:=` aliasing inside the callee, so
+//     `fn f(x &^a T) &^a T { y := x; return y }` is recognised too.
 //
 // For closure-capture escape, `[&x]` and `[mut x]` are treated as borrows
 // (matching the ownership-checker convention); `[x]` is by-value and never
@@ -92,6 +94,12 @@ fn (mut c Checker) escape_prescan_passthrough_fns(files []ast.File) {
 // caller, so a `&local` arg still escapes). Multiple branches that return
 // different params (`if cond { return a } else { return b }`) yield both
 // indices.
+//
+// Also recognises one level of local aliasing: `y := param; return y` and
+// `y := &param; return y` (or `mut y := ...`) — the alias forwards the same
+// borrow, so the call site must still be flagged. Transitive chains
+// (`b := a; c := b; return c`) are followed because the alias table is
+// populated in declaration order before the return scan.
 fn escape_collect_returned_param_indices(decl ast.FnDecl) []int {
 	mut param_names := map[string]int{}
 	for i, param in decl.typ.params {
@@ -102,8 +110,12 @@ fn escape_collect_returned_param_indices(decl ast.FnDecl) []int {
 	if param_names.len == 0 {
 		return []int{}
 	}
+	// Seed the alias table with the params themselves so `return param` and
+	// `return alias_of_param` go through the same lookup path.
+	mut name_to_idx := param_names.clone()
+	escape_collect_param_aliases_stmts(decl.stmts, mut name_to_idx)
 	mut out := map[int]bool{}
-	escape_collect_returned_param_indices_stmts(decl.stmts, param_names, mut out)
+	escape_collect_returned_param_indices_stmts(decl.stmts, name_to_idx, mut out)
 	mut result := []int{}
 	for idx, _ in out {
 		result << idx
@@ -111,60 +123,106 @@ fn escape_collect_returned_param_indices(decl ast.FnDecl) []int {
 	return result
 }
 
-fn escape_collect_returned_param_indices_stmts(stmts []ast.Stmt, param_names map[string]int, mut out map[int]bool) {
+// escape_collect_param_aliases_stmts walks `:=` statements in declaration
+// order and forwards `name -> param_idx` whenever the RHS is a known
+// param-aliased name (or a `&` of one). Nested blocks are descended too:
+// inside the same fn body, an alias declared in any block can still feed a
+// later `return alias` at any depth. Statements that aren't decl-assigns are
+// ignored — re-assignment can change a binding's contents, but it can't
+// retroactively make a non-aliased binding pass-through.
+fn escape_collect_param_aliases_stmts(stmts []ast.Stmt, mut name_to_idx map[string]int) {
 	for stmt in stmts {
-		escape_collect_returned_param_indices_stmt(stmt, param_names, mut out)
+		escape_collect_param_aliases_stmt(stmt, mut name_to_idx)
 	}
 }
 
-fn escape_collect_returned_param_indices_stmt(stmt ast.Stmt, param_names map[string]int, mut out map[int]bool) {
+fn escape_collect_param_aliases_stmt(stmt ast.Stmt, mut name_to_idx map[string]int) {
 	match stmt {
-		ast.ReturnStmt {
-			for expr in stmt.exprs {
-				if name := escape_returned_param_name(expr) {
-					if name in param_names {
-						out[param_names[name]] = true
+		ast.AssignStmt {
+			if stmt.op == .decl_assign {
+				for i, lhs in stmt.lhs {
+					if i >= stmt.rhs.len {
+						continue
+					}
+					lhs_name := escape_lhs_decl_name(lhs)
+					if lhs_name.len == 0 {
+						continue
+					}
+					rhs_name := escape_returned_param_name(stmt.rhs[i]) or { continue }
+					if idx := name_to_idx[rhs_name] {
+						name_to_idx[lhs_name] = idx
 					}
 				}
 			}
 		}
 		ast.BlockStmt {
-			escape_collect_returned_param_indices_stmts(stmt.stmts, param_names, mut out)
+			escape_collect_param_aliases_stmts(stmt.stmts, mut name_to_idx)
 		}
 		ast.DeferStmt {
-			escape_collect_returned_param_indices_stmts(stmt.stmts, param_names, mut out)
+			escape_collect_param_aliases_stmts(stmt.stmts, mut name_to_idx)
 		}
 		ast.ForStmt {
-			escape_collect_returned_param_indices_stmts(stmt.stmts, param_names, mut out)
-		}
-		ast.ExprStmt {
-			escape_collect_returned_param_indices_expr(stmt.expr, param_names, mut out)
+			escape_collect_param_aliases_stmts(stmt.stmts, mut name_to_idx)
 		}
 		else {}
 	}
 }
 
-fn escape_collect_returned_param_indices_expr(expr ast.Expr, param_names map[string]int, mut out map[int]bool) {
+fn escape_collect_returned_param_indices_stmts(stmts []ast.Stmt, name_to_idx map[string]int, mut out map[int]bool) {
+	for stmt in stmts {
+		escape_collect_returned_param_indices_stmt(stmt, name_to_idx, mut out)
+	}
+}
+
+fn escape_collect_returned_param_indices_stmt(stmt ast.Stmt, name_to_idx map[string]int, mut out map[int]bool) {
+	match stmt {
+		ast.ReturnStmt {
+			for expr in stmt.exprs {
+				if name := escape_returned_param_name(expr) {
+					if name in name_to_idx {
+						out[name_to_idx[name]] = true
+					}
+				}
+			}
+		}
+		ast.BlockStmt {
+			escape_collect_returned_param_indices_stmts(stmt.stmts, name_to_idx, mut out)
+		}
+		ast.DeferStmt {
+			escape_collect_returned_param_indices_stmts(stmt.stmts, name_to_idx, mut out)
+		}
+		ast.ForStmt {
+			escape_collect_returned_param_indices_stmts(stmt.stmts, name_to_idx, mut out)
+		}
+		ast.ExprStmt {
+			escape_collect_returned_param_indices_expr(stmt.expr, name_to_idx, mut out)
+		}
+		else {}
+	}
+}
+
+fn escape_collect_returned_param_indices_expr(expr ast.Expr, name_to_idx map[string]int, mut out map[int]bool) {
 	match expr {
 		ast.IfExpr {
-			escape_collect_returned_param_indices_stmts(expr.stmts, param_names, mut out)
-			escape_collect_returned_param_indices_expr(expr.else_expr, param_names, mut out)
+			escape_collect_returned_param_indices_stmts(expr.stmts, name_to_idx, mut out)
+			escape_collect_returned_param_indices_expr(expr.else_expr, name_to_idx, mut out)
 		}
 		ast.MatchExpr {
 			for br in expr.branches {
-				escape_collect_returned_param_indices_stmts(br.stmts, param_names, mut out)
+				escape_collect_returned_param_indices_stmts(br.stmts, name_to_idx, mut out)
 			}
 		}
 		ast.LockExpr {
-			escape_collect_returned_param_indices_stmts(expr.stmts, param_names, mut out)
+			escape_collect_returned_param_indices_stmts(expr.stmts, name_to_idx, mut out)
 		}
 		else {}
 	}
 }
 
-// escape_returned_param_name unwraps `param` and `&param` (one `&` layer) and
+// escape_returned_param_name unwraps `name` and `&name` (one `&` layer) and
 // returns the Ident name. Used by the pass-through prescan to recognise both
-// `return x` and `return &x` as pass-through shapes.
+// `return x` and `return &x` as pass-through shapes, and the alias pass to
+// chain `y := &x` through to the same lookup.
 fn escape_returned_param_name(expr ast.Expr) ?string {
 	if expr is ast.Ident {
 		return expr.name
