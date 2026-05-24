@@ -2148,13 +2148,13 @@ fn (mut g Gen) discover_nested_generic_specs() {
 					prev_fn_name := g.cur_fn_name
 					prev_fn_c_name := g.cur_fn_c_name
 					prev_fn_scope := g.cur_fn_scope
-					prev_active_generic_types := g.active_generic_types.clone()
-					prev_runtime_local_types := g.runtime_local_types.clone()
-					prev_runtime_decl_types := g.runtime_decl_types.clone()
-					prev_not_local_var_cache := g.not_local_var_cache.clone()
-					prev_is_module_ident_cache := g.is_module_ident_cache.clone()
-					prev_resolved_module_names := g.resolved_module_names.clone()
-					prev_cur_fn_generic_params := g.cur_fn_generic_params.clone()
+					mut prev_active_generic_types := g.active_generic_types.clone()
+					mut prev_runtime_local_types := g.runtime_local_types.clone()
+					mut prev_runtime_decl_types := g.runtime_decl_types.clone()
+					mut prev_not_local_var_cache := g.not_local_var_cache.clone()
+					mut prev_is_module_ident_cache := g.is_module_ident_cache.clone()
+					mut prev_resolved_module_names := g.resolved_module_names.clone()
+					mut prev_cur_fn_generic_params := g.cur_fn_generic_params.clone()
 					scope_fn_name := if stmt.is_method {
 						v_type_name := g.receiver_type_to_scope_name(stmt.receiver.typ)
 						if v_type_name != '' {
@@ -2190,13 +2190,13 @@ fn (mut g Gen) discover_nested_generic_specs() {
 					g.cur_fn_name = prev_fn_name
 					g.cur_fn_c_name = prev_fn_c_name
 					g.cur_fn_scope = prev_fn_scope
-					g.active_generic_types = prev_active_generic_types
-					g.runtime_local_types = prev_runtime_local_types
-					g.runtime_decl_types = prev_runtime_decl_types
-					g.not_local_var_cache = prev_not_local_var_cache
-					g.is_module_ident_cache = prev_is_module_ident_cache
-					g.resolved_module_names = prev_resolved_module_names
-					g.cur_fn_generic_params = prev_cur_fn_generic_params
+					g.active_generic_types = prev_active_generic_types.move()
+					g.runtime_local_types = prev_runtime_local_types.move()
+					g.runtime_decl_types = prev_runtime_decl_types.move()
+					g.not_local_var_cache = prev_not_local_var_cache.move()
+					g.is_module_ident_cache = prev_is_module_ident_cache.move()
+					g.resolved_module_names = prev_resolved_module_names.move()
+					g.cur_fn_generic_params = prev_cur_fn_generic_params.move()
 				}
 			}
 		}
@@ -2227,13 +2227,13 @@ fn (mut g Gen) discover_direct_generic_call_specs() {
 					prev_fn_name := g.cur_fn_name
 					prev_fn_c_name := g.cur_fn_c_name
 					prev_fn_scope := g.cur_fn_scope
-					prev_active_generic_types := g.active_generic_types.clone()
-					prev_runtime_local_types := g.runtime_local_types.clone()
-					prev_runtime_decl_types := g.runtime_decl_types.clone()
-					prev_not_local_var_cache := g.not_local_var_cache.clone()
-					prev_is_module_ident_cache := g.is_module_ident_cache.clone()
-					prev_resolved_module_names := g.resolved_module_names.clone()
-					prev_cur_fn_generic_params := g.cur_fn_generic_params.clone()
+					mut prev_active_generic_types := g.active_generic_types.clone()
+					mut prev_runtime_local_types := g.runtime_local_types.clone()
+					mut prev_runtime_decl_types := g.runtime_decl_types.clone()
+					mut prev_not_local_var_cache := g.not_local_var_cache.clone()
+					mut prev_is_module_ident_cache := g.is_module_ident_cache.clone()
+					mut prev_resolved_module_names := g.resolved_module_names.clone()
+					mut prev_cur_fn_generic_params := g.cur_fn_generic_params.clone()
 					scope_fn_name := if stmt.is_method {
 						v_type_name := g.receiver_type_to_scope_name(stmt.receiver.typ)
 						if v_type_name != '' {
@@ -2262,13 +2262,13 @@ fn (mut g Gen) discover_direct_generic_call_specs() {
 					g.cur_fn_name = prev_fn_name
 					g.cur_fn_c_name = prev_fn_c_name
 					g.cur_fn_scope = prev_fn_scope
-					g.active_generic_types = prev_active_generic_types
-					g.runtime_local_types = prev_runtime_local_types
-					g.runtime_decl_types = prev_runtime_decl_types
-					g.not_local_var_cache = prev_not_local_var_cache
-					g.is_module_ident_cache = prev_is_module_ident_cache
-					g.resolved_module_names = prev_resolved_module_names
-					g.cur_fn_generic_params = prev_cur_fn_generic_params
+					g.active_generic_types = prev_active_generic_types.move()
+					g.runtime_local_types = prev_runtime_local_types.move()
+					g.runtime_decl_types = prev_runtime_decl_types.move()
+					g.not_local_var_cache = prev_not_local_var_cache.move()
+					g.is_module_ident_cache = prev_is_module_ident_cache.move()
+					g.resolved_module_names = prev_resolved_module_names.move()
+					g.cur_fn_generic_params = prev_cur_fn_generic_params.move()
 				}
 				else {}
 			}

@@ -1683,30 +1683,51 @@ fn (mut g Gen) emit_weak_generic_specializations_from_non_emit_files() {
 	if g.emit_files.len == 0 || g.cache_bundle_name.len > 0 || g.fn_return_types.len == 0 {
 		return
 	}
+	$if trace_weak ? {
+		eprintln('[weak] enter called_fn_names.len=${g.called_fn_names.len} late_generic_specs.len=${g.late_generic_specs.len}')
+	}
 	old_file := g.cur_file_name
 	old_module := g.cur_module
-	old_import_modules := g.cur_import_modules.clone()
-	old_active_generic_types := g.active_generic_types
+	mut old_import_modules := g.cur_import_modules.clone()
+	mut old_active_generic_types := g.active_generic_types.clone()
 	mut needed_names := g.called_fn_names.clone()
 	mut scanned := map[string]bool{}
-	for _ in 0 .. 8 {
+	for i in 0 .. 8 {
 		before_needed := needed_names.len
 		g.scan_weak_generic_specializations_from_non_emit_files(mut needed_names, mut scanned)
+		$if trace_weak ? {
+			eprintln('[weak] outer scan ${i} needed=${needed_names.len} scanned=${scanned.len} sb=${g.sb.len}')
+		}
 		if needed_names.len == before_needed {
 			break
 		}
 	}
 	mut emitted_bodies := map[string]bool{}
-	for _ in 0 .. 6 {
+	for j in 0 .. 6 {
+		$if trace_weak ? {
+			eprintln('[weak] emit-iter ${j} ENTER late_generic_specs=${g.late_generic_specs.len} late_total=${g.late_generic_spec_count()} needed=${needed_names.len} sb=${g.sb.len}')
+		}
 		late_before := g.late_weak_generic_name_set()
+		$if trace_weak ? {
+			eprintln('[weak] emit-iter ${j} late_before=${late_before.len}')
+		}
 		mut emitted_decls := map[string]bool{}
 		g.emit_weak_generic_specialization_decls(needed_names, mut emitted_decls)
+		$if trace_weak ? {
+			eprintln('[weak] emit-iter ${j} after decls emitted=${emitted_decls.len} sb=${g.sb.len}')
+		}
 		g.emit_weak_generic_specialization_bodies(needed_names, mut emitted_bodies)
+		$if trace_weak ? {
+			eprintln('[weak] emit-iter ${j} after bodies emitted=${emitted_bodies.len} sb=${g.sb.len} late_total=${g.late_generic_spec_count()}')
+		}
 		before_needed := needed_names.len
 		g.add_late_weak_generic_names_since(late_before, mut needed_names)
-		for _ in 0 .. 8 {
+		for i in 0 .. 8 {
 			before_scan := needed_names.len
 			g.scan_weak_generic_specializations_from_non_emit_files(mut needed_names, mut scanned)
+			$if trace_weak ? {
+				eprintln('[weak]   inner scan ${i} needed=${needed_names.len} scanned=${scanned.len} sb=${g.sb.len} late_total=${g.late_generic_spec_count()}')
+			}
 			if needed_names.len == before_scan {
 				break
 			}
@@ -1715,10 +1736,13 @@ fn (mut g Gen) emit_weak_generic_specializations_from_non_emit_files() {
 			break
 		}
 	}
-	g.active_generic_types = old_active_generic_types
+	g.active_generic_types = old_active_generic_types.move()
 	g.cur_file_name = old_file
 	g.cur_module = old_module
-	g.cur_import_modules = old_import_modules
+	g.cur_import_modules = old_import_modules.move()
+	$if trace_weak ? {
+		eprintln('[weak] exit needed=${needed_names.len} scanned=${scanned.len} sb=${g.sb.len}')
+	}
 }
 
 fn (mut g Gen) scan_weak_generic_specializations_from_non_emit_files(mut needed_names map[string]bool, mut scanned map[string]bool) {
@@ -1762,10 +1786,10 @@ fn (mut g Gen) scan_weak_receiver_generic_method_specializations(node &ast.FnDec
 		}
 	}
 	for bindings in bindings_list {
-		prev_generic_types := g.active_generic_types.clone()
+		mut prev_generic_types := g.active_generic_types.move()
 		g.active_generic_types = bindings.clone()
 		fn_name := g.get_fn_name(*node)
-		g.active_generic_types = prev_generic_types.clone()
+		g.active_generic_types = prev_generic_types.move()
 		if fn_name == '' || fn_name !in needed_names {
 			continue
 		}
@@ -1783,15 +1807,15 @@ fn (mut g Gen) scan_weak_specialization_body(node &ast.FnDecl, fn_name string, g
 	prev_fn_name := g.cur_fn_name
 	prev_fn_c_name := g.cur_fn_c_name
 	prev_fn_scope := g.cur_fn_scope
-	prev_active_generic_types := g.active_generic_types.clone()
-	prev_runtime_local_types := g.runtime_local_types.clone()
-	prev_runtime_decl_types := g.runtime_decl_types.clone()
-	prev_not_local_var_cache := g.not_local_var_cache.clone()
-	prev_is_module_ident_cache := g.is_module_ident_cache.clone()
-	prev_resolved_module_names := g.resolved_module_names.clone()
-	prev_cur_fn_generic_params := g.cur_fn_generic_params.clone()
+	mut prev_active_generic_types := g.active_generic_types.clone()
+	mut prev_runtime_local_types := g.runtime_local_types.clone()
+	mut prev_runtime_decl_types := g.runtime_decl_types.clone()
+	mut prev_not_local_var_cache := g.not_local_var_cache.clone()
+	mut prev_is_module_ident_cache := g.is_module_ident_cache.clone()
+	mut prev_resolved_module_names := g.resolved_module_names.clone()
+	mut prev_cur_fn_generic_params := g.cur_fn_generic_params.clone()
 	prev_collect_generic_scan_calls := g.collect_generic_scan_calls
-	prev_generic_scan_called_names := g.generic_scan_called_names.clone()
+	mut prev_generic_scan_called_names := g.generic_scan_called_names.clone()
 	scope_fn_name := if node.is_method {
 		v_type_name := g.receiver_type_to_scope_name(node.receiver.typ)
 		if v_type_name != '' {
@@ -1827,15 +1851,15 @@ fn (mut g Gen) scan_weak_specialization_body(node &ast.FnDecl, fn_name string, g
 	g.cur_fn_name = prev_fn_name
 	g.cur_fn_c_name = prev_fn_c_name
 	g.cur_fn_scope = prev_fn_scope
-	g.active_generic_types = prev_active_generic_types
-	g.runtime_local_types = prev_runtime_local_types
-	g.runtime_decl_types = prev_runtime_decl_types
-	g.not_local_var_cache = prev_not_local_var_cache
-	g.is_module_ident_cache = prev_is_module_ident_cache
-	g.resolved_module_names = prev_resolved_module_names
-	g.cur_fn_generic_params = prev_cur_fn_generic_params
+	g.active_generic_types = prev_active_generic_types.move()
+	g.runtime_local_types = prev_runtime_local_types.move()
+	g.runtime_decl_types = prev_runtime_decl_types.move()
+	g.not_local_var_cache = prev_not_local_var_cache.move()
+	g.is_module_ident_cache = prev_is_module_ident_cache.move()
+	g.resolved_module_names = prev_resolved_module_names.move()
+	g.cur_fn_generic_params = prev_cur_fn_generic_params.move()
 	g.collect_generic_scan_calls = prev_collect_generic_scan_calls
-	g.generic_scan_called_names = prev_generic_scan_called_names
+	g.generic_scan_called_names = prev_generic_scan_called_names.move()
 	g.add_late_weak_generic_names_since(late_before, mut needed_names)
 }
 
@@ -1851,8 +1875,8 @@ fn (mut g Gen) add_late_weak_generic_names_since(late_before map[string]bool, mu
 fn (mut g Gen) late_weak_generic_name_set() map[string]bool {
 	old_file := g.cur_file_name
 	old_module := g.cur_module
-	old_import_modules := g.cur_import_modules.clone()
-	old_active_generic_types := g.active_generic_types.clone()
+	mut old_import_modules := g.cur_import_modules.clone()
+	mut old_active_generic_types := g.active_generic_types.clone()
 	mut names := map[string]bool{}
 	g.build_generic_spec_index()
 	for file in g.files {
@@ -1873,10 +1897,10 @@ fn (mut g Gen) late_weak_generic_name_set() map[string]bool {
 			}
 		}
 	}
-	g.active_generic_types = old_active_generic_types.clone()
+	g.active_generic_types = old_active_generic_types.move()
 	g.cur_file_name = old_file
 	g.cur_module = old_module
-	g.cur_import_modules = old_import_modules.clone()
+	g.cur_import_modules = old_import_modules.move()
 	return names
 }
 
@@ -1971,7 +1995,7 @@ fn (mut g Gen) emit_weak_generic_specialization_bodies(needed_names map[string]b
 }
 
 fn (mut g Gen) weak_generic_fn_specializations_for_names(node &ast.FnDecl, needed_names map[string]bool) []GenericFnSpecialization {
-	prev_generic_types := g.active_generic_types.clone()
+	mut prev_generic_types := g.active_generic_types.clone()
 	mut specs := g.direct_generic_fn_specializations(*node)
 	if needed_names.len > 0 {
 		mut seen := map[string]bool{}
@@ -1987,10 +2011,10 @@ fn (mut g Gen) weak_generic_fn_specializations_for_names(node &ast.FnDecl, neede
 		}
 		generic_params := g.generic_fn_param_names(*node)
 		if generic_params.len > 0 {
-			prev_generic_types2 := g.active_generic_types.clone()
+			mut prev_generic_types2 := g.active_generic_types.move()
 			g.active_generic_types = map[string]types.Type{}
 			base_name := g.get_fn_name(*node)
-			g.active_generic_types = prev_generic_types2.clone()
+			g.active_generic_types = prev_generic_types2.move()
 			prefix := '${base_name}_T_'
 			for called_name, _ in needed_names {
 				if !called_name.starts_with(prefix) || called_name in seen {
@@ -2014,7 +2038,7 @@ fn (mut g Gen) weak_generic_fn_specializations_for_names(node &ast.FnDecl, neede
 		}
 		filtered << spec
 	}
-	g.active_generic_types = prev_generic_types.clone()
+	g.active_generic_types = prev_generic_types.move()
 	return filtered
 }
 
@@ -2023,10 +2047,10 @@ fn (mut g Gen) generic_types_from_specialized_fn_name(node ast.FnDecl, fn_name s
 	if generic_params.len == 0 {
 		return none
 	}
-	prev_generic_types := g.active_generic_types.clone()
+	mut prev_generic_types := g.active_generic_types.move()
 	g.active_generic_types = map[string]types.Type{}
 	base_name := g.get_fn_name(node)
-	g.active_generic_types = prev_generic_types.clone()
+	g.active_generic_types = prev_generic_types.move()
 	prefix := '${base_name}_T_'
 	if !fn_name.starts_with(prefix) {
 		return none
@@ -2081,25 +2105,44 @@ fn (mut g Gen) split_specialization_suffix(suffix string, parts int) ?[]string {
 }
 
 fn (mut g Gen) emit_weak_generic_fn_specializations(node &ast.FnDecl, emit_body bool, needed_names map[string]bool, mut emitted map[string]bool) {
-	prev_generic_types := g.active_generic_types.clone()
+	mut prev_generic_types := g.active_generic_types.move()
 	specs := g.weak_generic_fn_specializations_for_names(node, needed_names)
+	$if trace_weak ? {
+		if emit_body && specs.len > 5 {
+			eprintln('[weak]     fn=${node.name} specs=${specs.len}')
+		}
+	}
 	for spec in specs {
 		if spec.name in emitted {
 			continue
 		}
 		g.active_generic_types = spec.generic_types.clone()
-		if emit_body {
-			g.gen_weak_fn_decl_with_name_ptr(node, spec.name)
-			emitted[spec.name] = true
-		} else {
-			g.gen_weak_fn_decl_head_with_name_ptr(node, spec.name)
+		$if trace_weak ? {
+			before := g.sb.len
+			if emit_body {
+				g.gen_weak_fn_decl_with_name_ptr(node, spec.name)
+				emitted[spec.name] = true
+				delta := g.sb.len - before
+				if delta > 100_000 {
+					eprintln('[weak]       SPEC ${spec.name} grew sb by ${delta}')
+				}
+			} else {
+				g.gen_weak_fn_decl_head_with_name_ptr(node, spec.name)
+			}
+		} $else {
+			if emit_body {
+				g.gen_weak_fn_decl_with_name_ptr(node, spec.name)
+				emitted[spec.name] = true
+			} else {
+				g.gen_weak_fn_decl_head_with_name_ptr(node, spec.name)
+			}
 		}
 	}
-	g.active_generic_types = prev_generic_types.clone()
+	g.active_generic_types = prev_generic_types.move()
 }
 
 fn (mut g Gen) emit_weak_receiver_generic_method_specializations(node &ast.FnDecl, emit_body bool, needed_names map[string]bool, mut emitted map[string]bool) {
-	prev_generic_types := g.active_generic_types.clone()
+	mut prev_generic_types := g.active_generic_types.move()
 	mut bindings_list := g.get_all_receiver_generic_bindings(*node)
 	if bindings_list.len == 0 {
 		if bindings := g.get_receiver_generic_bindings(*node) {
@@ -2122,7 +2165,7 @@ fn (mut g Gen) emit_weak_receiver_generic_method_specializations(node &ast.FnDec
 			g.gen_weak_fn_decl_head_with_name_ptr(node, fn_name)
 		}
 	}
-	g.active_generic_types = prev_generic_types.clone()
+	g.active_generic_types = prev_generic_types.move()
 }
 
 // gen_pass5_files generates function bodies for a range of file indices.
