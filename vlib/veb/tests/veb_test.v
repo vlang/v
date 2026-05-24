@@ -128,16 +128,16 @@ fn test_a_simple_tcp_client_html_page() {
 // net.http client based tests follow:
 fn assert_common_http_headers(x http.Response) ! {
 	assert x.status() == .ok
-	assert x.header.get(.server)! == 'veb'
-	assert x.header.get(.content_length)!.int() > 0
+	assert x.header.get(.server) or { '' } == 'veb'
+	assert (x.header.get(.content_length) or { '0' }).int() > 0
 }
 
 fn test_http_client_index() {
 	x := http.get('http://${localserver}/') or { panic(err) }
 	assert_common_http_headers(x)!
-	assert x.header.get(.content_type)! == 'text/plain'
+	assert x.header.get(.content_type)? == 'text/plain'
 	assert x.body == 'Welcome to veb'
-	assert x.header.get(.connection)! == 'close'
+	assert x.header.get(.connection)? == 'close'
 }
 
 fn test_http_client_404() {
@@ -157,14 +157,14 @@ fn test_http_client_404() {
 fn test_http_client_simple() {
 	x := http.get('http://${localserver}/simple') or { panic(err) }
 	assert_common_http_headers(x)!
-	assert x.header.get(.content_type)! == 'text/plain'
+	assert x.header.get(.content_type)? == 'text/plain'
 	assert x.body == 'A simple result'
 }
 
 fn test_http_client_html_page() {
 	x := http.get('http://${localserver}/html_page') or { panic(err) }
 	assert_common_http_headers(x)!
-	assert x.header.get(.content_type)! == 'text/html'
+	assert x.header.get(.content_type)? == 'text/html'
 	assert x.body == '<h1>ok</h1>'
 }
 
@@ -206,7 +206,7 @@ fn test_http_client_json_post() {
 	$if debug_net_socket_client ? {
 		eprintln('/json_echo endpoint response: ${x}')
 	}
-	assert x.header.get(.content_type)! == 'application/json'
+	assert x.header.get(.content_type)? == 'application/json'
 	assert x.body == json_for_ouser
 	nuser := json.decode[User](x.body) or { User{} }
 	assert '${ouser}' == '${nuser}'
@@ -215,7 +215,7 @@ fn test_http_client_json_post() {
 	$if debug_net_socket_client ? {
 		eprintln('/json endpoint response: ${x}')
 	}
-	assert x.header.get(.content_type)! == 'application/json'
+	assert x.header.get(.content_type)? == 'application/json'
 	assert x.body == json_for_ouser
 	nuser2 := json.decode[User](x.body) or { User{} }
 	assert '${ouser}' == '${nuser2}'
@@ -296,7 +296,7 @@ fn test_empty_response_body_has_content_length() {
 
 	mut x := req.do()!
 	assert x.status() == .ok
-	assert x.header.get(.content_length)! == '0'
+	assert x.header.get(.content_length)? == '0'
 }
 
 fn test_http_client_shutdown_does_not_work_without_a_cookie() {

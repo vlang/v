@@ -84,13 +84,13 @@ pub mut:
 }
 
 // returns the request header data from the key
-pub fn (ctx &Context) get_header(key http.CommonHeader) !string {
-	return ctx.req.header.get(key)!
+pub fn (ctx &Context) get_header(key http.CommonHeader) ?string {
+	return ctx.req.header.get(key)
 }
 
 // returns the request header data from the key
-pub fn (ctx &Context) get_custom_header(key string) !string {
-	return ctx.req.header.get_custom(key)!
+pub fn (ctx &Context) get_custom_header(key string) ?string {
+	return ctx.req.header.get_custom(key)
 }
 
 // set a header on the response object

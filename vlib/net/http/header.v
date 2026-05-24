@@ -554,13 +554,13 @@ pub fn (h Header) contains_custom(key string, flags HeaderQueryConfig) bool {
 
 // get gets the first value for the CommonHeader, or none if the key
 // does not exist.
-pub fn (h Header) get(key CommonHeader) !string {
+pub fn (h Header) get(key CommonHeader) ?string {
 	return h.get_custom(key.str())
 }
 
 // get_custom gets the first value for the custom header, or none if
 // the key does not exist.
-pub fn (h Header) get_custom(key string, flags HeaderQueryConfig) !string {
+pub fn (h Header) get_custom(key string, flags HeaderQueryConfig) ?string {
 	if flags.exact {
 		for i := 0; i < h.cur_pos; i++ {
 			// for kv in h.data {
@@ -579,7 +579,7 @@ pub fn (h Header) get_custom(key string, flags HeaderQueryConfig) !string {
 			}
 		}
 	}
-	return error('none')
+	return none
 }
 
 // starting_with gets the first header starting with key, or none if
