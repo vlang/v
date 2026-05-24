@@ -35,6 +35,11 @@ mut:
 	cur_fn_returned_idents map[string]bool
 	active_generic_types   map[string]types.Type
 	cur_fn_generic_params  map[string]string
+	// Phase-1 generic monomorphization (V2_TRANSFORMER_MONOMORPH=1):
+	// when true, the transformer has already cloned generic FnDecls per
+	// env.generic_types binding. Cleanc skips its own spec emission paths
+	// for any FnDecl with non-empty generic_params to avoid duplicates.
+	monomorphize_in_transformer bool
 	// Comptime $for field iteration state
 	comptime_field_var      string // variable name (e.g., 'field')
 	comptime_field_name     string // current field name (e.g., 'id')
@@ -415,6 +420,7 @@ fn new_gen_with_env_and_pref_impl(env &types.Environment, p &pref.Preferences) &
 		c_struct_types:              map[string]bool{}
 		typedef_c_types:             map[string]bool{}
 		blocked_fn_keys:             map[string]bool{}
+		monomorphize_in_transformer: os.getenv('V2_TRANSFORMER_MONOMORPH') != ''
 	}
 }
 
@@ -1219,6 +1225,9 @@ pub fn (mut g Gen) gen_passes_1_to_4() {
 				}
 				// Generic functions: emit as macros for known simple functions
 				if g.generic_fn_param_names(stmt).len > 0 {
+					if g.monomorphize_in_transformer {
+						continue
+					}
 					specs := g.generic_fn_specializations(stmt)
 					if specs.len > 0 {
 						prev_generic_types := g.active_generic_types.clone()

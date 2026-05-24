@@ -121,6 +121,12 @@ mut:
 	// Instead of writing directly to env.set_expr_type during parallel transform,
 	// store here and apply after merge.
 	synth_types map[int]types.Type
+	// Phase-1 generic monomorphization (behind V2_TRANSFORMER_MONOMORPH=1).
+	// When enabled, the transformer clones generic FnDecls per
+	// env.generic_types binding before code generation. cleanc consults
+	// monomorphized_specs to skip duplicate weak emission of the same names.
+	monomorphize_enabled bool
+	monomorphized_specs  map[string]bool
 }
 
 fn escape_c_keyword(name string) string {
@@ -282,6 +288,8 @@ fn new_transformer_base(env &types.Environment, p &pref.Preferences) &Transforme
 		runtime_const_storage_known: map[string]bool{}
 		interface_concrete_types:    map[string]string{}
 		smartcast_expr_counts:       map[string]int{}
+		monomorphize_enabled:        os.getenv('V2_TRANSFORMER_MONOMORPH') != ''
+		monomorphized_specs:         map[string]bool{}
 	}
 	return t
 }
@@ -1744,8 +1752,13 @@ fn (mut t Transformer) inject_embed_file_helper(mut result []ast.File) {
 // transform_files transforms all files and returns transformed copies
 pub fn (mut t Transformer) transform_files(files []ast.File) []ast.File {
 	t.pre_pass(files)
-	mut result := []ast.File{cap: files.len}
-	for file in files {
+	files_to_transform := if t.monomorphize_enabled {
+		t.monomorphize_pass(files)
+	} else {
+		files
+	}
+	mut result := []ast.File{cap: files_to_transform.len}
+	for file in files_to_transform {
 		result << t.transform_file(file)
 	}
 	t.post_pass(mut result)

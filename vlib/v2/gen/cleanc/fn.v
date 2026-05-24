@@ -463,6 +463,9 @@ fn (mut g Gen) collect_fn_signatures() {
 						g.active_generic_types = prev_generic_types.clone()
 					}
 					if g.generic_fn_param_names(stmt).len > 0 {
+						if g.monomorphize_in_transformer {
+							continue
+						}
 						prev_generic_types := g.active_generic_types.clone()
 						prev_fn_name := g.cur_fn_name
 						prev_fn_c_name := g.cur_fn_c_name
@@ -4663,6 +4666,11 @@ fn (mut g Gen) gen_fn_decl_ptr(node &ast.FnDecl) {
 		// maxof[T]/minof[T] are compile-time functions fully inlined by the transformer.
 		// Skip emitting stub bodies (which contain invalid C).
 		if node.name in ['maxof', 'minof'] {
+			return
+		}
+		if g.monomorphize_in_transformer {
+			// Transformer pre-emitted cloned, non-generic FnDecls for every needed
+			// instantiation. Skip the original generic body entirely.
 			return
 		}
 		prev_generic_types := g.active_generic_types.clone()
