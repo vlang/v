@@ -856,10 +856,25 @@ pub fn (b &Builder) find_module_path(mod string, fpath string) !string {
 	mut mcache := vmod.get_cache()
 	resolved_fpath := os.real_path(fpath)
 	vmod_file_location := mcache.get_by_file(resolved_fpath)
-	importer_vmod_folder := if vmod_file_location.vmod_file.len != 0 {
-		vmod_file_location.vmod_folder
-	} else {
-		''
+	// Anchor the importer to the OUTERMOST enclosing `v.mod`, not the nearest
+	// one. A file at `<project>/modules/<name>/file.v` carries the vendored
+	// package's `v.mod` as its nearest root, but logically belongs to
+	// `<project>` — and must be able to see sibling vendored deps under
+	// `<project>/modules/`.
+	mut importer_vmod_folder := ''
+	if vmod_file_location.vmod_file.len != 0 {
+		importer_vmod_folder = vmod_file_location.vmod_folder
+		for {
+			parent := os.dir(importer_vmod_folder)
+			if parent == importer_vmod_folder {
+				break
+			}
+			parent_loc := mcache.get_by_folder(parent)
+			if parent_loc.vmod_file == '' {
+				break
+			}
+			importer_vmod_folder = parent_loc.vmod_folder
+		}
 	}
 	mod_path := module_path(mod)
 	mut module_lookup_paths := []string{}
