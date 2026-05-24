@@ -693,7 +693,8 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 						right_name := c.table.type_to_str(unwrapped_right_type)
 						c.error('mismatched types `${left_name}` and `${right_name}`',
 							left_right_pos)
-					} else if promoted_type.has_flag(.result) || unwrapped_left_type.has_flag(.result)
+					} else if promoted_type.has_flag(.result)
+						|| unwrapped_left_type.has_flag(.result)
 						|| unwrapped_right_type.has_flag(.result) {
 						result_type := if unwrapped_left_type.has_flag(.result) {
 							unwrapped_left_type

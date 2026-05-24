@@ -785,8 +785,7 @@ fn (mut v Builder) setup_ccompiler_options(ccompiler string) {
 		// `-sharedlive` is skipped: live reload resolves `impl_live_*` symbols
 		// via `dlsym` from the host process, and those are emitted without
 		// `VV_EXP` on non-Windows (see vlib/v/gen/c/fn.v).
-		if !v.pref.is_liveshared && v.pref.os !in [.windows, .wasm32]
-			&& ccoptions.cc != .msvc {
+		if !v.pref.is_liveshared && v.pref.os !in [.windows, .wasm32] && ccoptions.cc != .msvc {
 			ccoptions.args << '-fvisibility=hidden'
 		}
 		if v.pref.os == .linux && 'gcboehm' in v.pref.compile_defines_all {

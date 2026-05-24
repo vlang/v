@@ -193,9 +193,9 @@ fn test_importing_submodule_through_nested_vmod_works_issue_27138() {
 	os.write_file(os.join_path(root, 'v.mod'), "Module {\n\tname: 'bug_project'\n}\n")!
 	os.write_file(os.join_path(root, 'dep', 'v.mod'), "Module {\n\tname: 'dep'\n}\n")!
 	os.write_file(os.join_path(root, 'dep', 'mymod', 'types.v'),
-		'module mymod\n\npub enum Color {\n\tred\n\tgreen\n}\n\npub fn color_name(c Color) string {\n\treturn match c {\n\t\t.red { \'red\' }\n\t\t.green { \'green\' }\n\t}\n}\n')!
+		"module mymod\n\npub enum Color {\n\tred\n\tgreen\n}\n\npub fn color_name(c Color) string {\n\treturn match c {\n\t\t.red { 'red' }\n\t\t.green { 'green' }\n\t}\n}\n")!
 	os.write_file(os.join_path(root, 'main.v'),
-		"module main\n\nimport dep.mymod\n\nfn main() {\n\tprintln(mymod.color_name(mymod.Color.red))\n}\n")!
+		'module main\n\nimport dep.mymod\n\nfn main() {\n\tprintln(mymod.color_name(mymod.Color.red))\n}\n')!
 	res := vrun_ok_in_dir(root, 'run', '.')
 	assert res.trim_space() == 'red'
 }

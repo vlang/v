@@ -397,6 +397,7 @@ fn try_drain_write(client_fd int, mut state ClientWriteState) DrainStatus {
 					eprintln('ERROR: sendfile() failed with errno=${errno_val}')
 				}
 			}
+
 			return .failed
 		}
 		// Done with the file -- close the fd eagerly so keep-alive doesn't hold it open.
@@ -532,8 +533,9 @@ fn process_request(server &Server, epoll_fd int, client_fd int, request_buffer [
 				server.end_request()
 			}
 			if server.is_shutting_down() || response.should_close {
-				handle_client_closure(server, epoll_fd, client_fd, mut client_fds, mut client_buffers, mut
-					client_read_starts, mut closing_client_fds, mut client_write_states)
+				handle_client_closure(server, epoll_fd, client_fd, mut client_fds, mut
+					client_buffers, mut client_read_starts, mut closing_client_fds, mut
+					client_write_states)
 			}
 			return
 		}
@@ -609,8 +611,9 @@ fn process_request(server &Server, epoll_fd int, client_fd int, request_buffer [
 			client_read_starts.delete(client_fd)
 			if arm_epollout(epoll_fd, client_fd) == -1 {
 				eprintln('ERROR: epoll_ctl(MOD, EPOLLOUT) failed errno=${C.errno}')
-				handle_client_closure(server, epoll_fd, client_fd, mut client_fds, mut client_buffers, mut
-					client_read_starts, mut closing_client_fds, mut client_write_states)
+				handle_client_closure(server, epoll_fd, client_fd, mut client_fds, mut
+					client_buffers, mut client_read_starts, mut closing_client_fds, mut
+					client_write_states)
 			} else {
 				state.epollout_armed = true
 			}
@@ -673,8 +676,9 @@ fn process_events(server &Server, epoll_fd int, listen_fd int) {
 						C.send(client_fd, status_444_response.data, status_444_response.len,
 							C.MSG_NOSIGNAL)
 					}
-					handle_client_closure(server, epoll_fd, client_fd, mut client_fds, mut client_buffers, mut
-						client_read_starts, mut closing_client_fds, mut client_write_states)
+					handle_client_closure(server, epoll_fd, client_fd, mut client_fds, mut
+						client_buffers, mut client_read_starts, mut closing_client_fds, mut
+						client_write_states)
 				} else {
 					eprintln('ERROR: Invalid FD from epoll: ${client_fd}')
 				}
@@ -691,13 +695,15 @@ fn process_events(server &Server, epoll_fd int, listen_fd int) {
 			}
 			if events[i].events & u32(C.EPOLLIN) != 0 {
 				if server.is_shutting_down() {
-					handle_client_closure(server, epoll_fd, client_fd, mut client_fds, mut client_buffers, mut
-						client_read_starts, mut closing_client_fds, mut client_write_states)
+					handle_client_closure(server, epoll_fd, client_fd, mut client_fds, mut
+						client_buffers, mut client_read_starts, mut closing_client_fds, mut
+						client_write_states)
 					continue
 				}
 				if closing_client_fds[client_fd] or { false } {
-					drain_closing_client(server, epoll_fd, client_fd, mut client_fds, mut client_buffers, mut
-						client_read_starts, mut closing_client_fds, mut client_write_states)
+					drain_closing_client(server, epoll_fd, client_fd, mut client_fds, mut
+						client_buffers, mut client_read_starts, mut closing_client_fds, mut
+						client_write_states)
 					continue
 				}
 				if client_fd in client_write_states {
@@ -785,12 +791,14 @@ fn process_events(server &Server, epoll_fd int, listen_fd int) {
 					// Unexpected recv error - send 444 No Response
 					C.send(client_fd, status_444_response.data, status_444_response.len,
 						C.MSG_NOSIGNAL)
-					handle_client_closure(server, epoll_fd, client_fd, mut client_fds, mut client_buffers, mut
-						client_read_starts, mut closing_client_fds, mut client_write_states)
+					handle_client_closure(server, epoll_fd, client_fd, mut client_fds, mut
+						client_buffers, mut client_read_starts, mut closing_client_fds, mut
+						client_write_states)
 				} else if peer_closed || (total_bytes_read == 0 && readed_request_buffer.len == 0) {
 					// Normal client closure (FIN received)
-					handle_client_closure(server, epoll_fd, client_fd, mut client_fds, mut client_buffers, mut
-						client_read_starts, mut closing_client_fds, mut client_write_states)
+					handle_client_closure(server, epoll_fd, client_fd, mut client_fds, mut
+						client_buffers, mut client_read_starts, mut closing_client_fds, mut
+						client_write_states)
 				} else if readed_request_buffer.len > 0 {
 					client_buffers[client_fd] = readed_request_buffer
 				}
@@ -812,8 +820,9 @@ fn process_events(server &Server, epoll_fd int, listen_fd int) {
 			for client_fd in client_write_states.keys() {
 				state := client_write_states[client_fd] or { continue }
 				if state.start_ns > 0 && now - state.start_ns >= timeout_ns {
-					handle_client_closure(server, epoll_fd, client_fd, mut client_fds, mut client_buffers, mut
-						client_read_starts, mut closing_client_fds, mut client_write_states)
+					handle_client_closure(server, epoll_fd, client_fd, mut client_fds, mut
+						client_buffers, mut client_read_starts, mut closing_client_fds, mut
+						client_write_states)
 				}
 			}
 		}
