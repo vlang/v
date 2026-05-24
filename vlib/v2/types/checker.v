@@ -31,6 +31,13 @@ pub mut:
 	expr_type_values     []Type // indexed by pos.id for positive IDs
 	expr_type_neg_values []Type // indexed by -pos.id for negative IDs (synth nodes)
 	selector_names       map[int]string
+	// Drop-codegen handoff: per-fn list of bindings whose `drop(mut self)`
+	// method must be called at the fn's natural exit, in declaration order.
+	// Populated by `ownership_snapshot_drops_at_fn_exit` after each fn body
+	// is checked (with moves removed), read by the cleanc backend to emit
+	// `Type__drop(&var)` calls before the fn's closing brace. Only populated
+	// when the checker runs with `-d ownership`; empty under plain V.
+	drop_at_fn_exit map[string][]DropEntry
 }
 
 pub fn Environment.new() &Environment {
@@ -3908,6 +3915,8 @@ fn (mut c Checker) check_pending_fn_body(pending PendingFnBody) {
 		}
 		c.stmt_list(pending.decl.stmts)
 		$if ownership ? {
+			publish_keys := ownership_publish_keys_for(pending.module_name, pending.decl)
+			c.ownership_snapshot_drops_at_fn_exit(pending.decl.name, publish_keys)
 			c.ownership_leave_fn(prev_ownership_fn, prev_owned, prev_owned_types, prev_moved,
 				prev_borrowed)
 		}
@@ -4197,7 +4206,10 @@ fn (mut c Checker) assign_stmt(stmt ast.AssignStmt, unwrap_optional bool) {
 					//    a fresh value (struct literal, call returning the
 					//    owned type, etc.). Borrows (`r := &foo`) are skipped
 					//    — they yield a pointer (Copy) regardless.
-					if !marked && lhs_name !in c.owned_vars && c.is_owned_type(expr_type)
+					//    Drop types are also marked owned even when not Owned,
+					//    so the scope-exit drop call gets scheduled.
+					if !marked && lhs_name !in c.owned_vars
+						&& (c.is_owned_type(expr_type) || c.is_drop_type(expr_type))
 						&& !ownership_is_borrow_or_ref_rhs(rx) {
 						c.ownership_mark_owned(lhs_name, expr_type, stmt.pos)
 					}
@@ -4206,7 +4218,8 @@ fn (mut c Checker) assign_stmt(stmt ast.AssignStmt, unwrap_optional bool) {
 					c.ownership_check_reassign(lhs_name, stmt.pos)
 					// Also check if new value is owned (via .to_owned() or fn return)
 					marked := c.ownership_mark_from_call(lhs_name, rx, stmt.pos)
-					if !marked && c.is_owned_type(expr_type) && !ownership_is_borrow_or_ref_rhs(rx) {
+					if !marked && (c.is_owned_type(expr_type) || c.is_drop_type(expr_type))
+						&& !ownership_is_borrow_or_ref_rhs(rx) {
 						c.ownership_mark_owned(lhs_name, expr_type, stmt.pos)
 					}
 				} else if stmt.op in [.left_shift, .left_shift_assign] {

@@ -5031,6 +5031,13 @@ fn (mut g Gen) gen_fn_decl_with_name_ptr(node &ast.FnDecl, fn_name string) {
 	}
 	g.gen_stmts(node.stmts)
 
+	// Drop/RAII: invoke `Type__drop(&var)` for each still-owned binding
+	// the checker scheduled. Only emitted at the natural fn exit (no
+	// early-return support yet) and skipped when the body ends in an
+	// explicit `return` (those drops would be unreachable). Phase 1B
+	// will weave drops through every return point.
+	g.emit_scheduled_drops(node.stmts, fn_name)
+
 	// Implicit return 0 for main
 	if is_program_main {
 		g.write_indent()
@@ -5046,6 +5053,41 @@ fn (mut g Gen) gen_fn_decl_with_name_ptr(node &ast.FnDecl, fn_name string) {
 	g.indent--
 	g.sb.writeln('}')
 	g.sb.writeln('')
+}
+
+// emit_scheduled_drops writes destructor calls for the bindings the
+// checker recorded under `fn_name` in `env.drop_at_fn_exit`. Calls are
+// emitted in reverse declaration order (LIFO: last declared, first
+// dropped) and skipped entirely if the body's last statement is an
+// explicit `return` — the drops would be unreachable code after such a
+// return, and Phase 1B will handle per-return drop weaving instead.
+fn (mut g Gen) emit_scheduled_drops(stmts []ast.Stmt, fn_name string) {
+	if g.env == unsafe { nil } {
+		return
+	}
+	entries := g.env.drop_at_fn_exit[fn_name] or { return }
+	if entries.len == 0 {
+		return
+	}
+	if cleanc_stmts_end_with_return(stmts) {
+		return
+	}
+	for i := entries.len - 1; i >= 0; i-- {
+		entry := entries[i]
+		g.write_indent()
+		g.sb.writeln('${entry.type_name}__drop(&${entry.var_name});')
+	}
+}
+
+fn cleanc_stmts_end_with_return(stmts []ast.Stmt) bool {
+	for i := stmts.len - 1; i >= 0; i-- {
+		stmt := stmts[i]
+		if stmt is ast.EmptyStmt {
+			continue
+		}
+		return stmt is ast.ReturnStmt
+	}
+	return false
 }
 
 fn (mut g Gen) gen_json2_decode_string_body(node &ast.FnDecl) bool {

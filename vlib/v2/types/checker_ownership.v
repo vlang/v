@@ -939,6 +939,92 @@ fn (mut c Checker) ownership_schedule_drop(name string, typ Type, pos token.Pos)
 	c.drop_schedule[c.ownership_cur_fn] = list
 }
 
+// ownership_snapshot_drops_at_fn_exit publishes the Drop bindings that are
+// still owned at the end of the fn whose schedule lives under `schedule_key`
+// (typically `c.ownership_cur_fn`, the bare decl name). Bindings that were
+// moved out (no longer in `owned_vars`) are skipped — their drop
+// responsibility transferred to the receiver of the move. Declaration order
+// is preserved so the cleanc backend can emit drops in LIFO order (last
+// declared, first dropped). The published entry is stored in
+// `c.env.drop_at_fn_exit` under EACH alias in `publish_keys`, so the
+// backend can look up by whatever C-mangled name it computes for the fn
+// (e.g. `main`, `main__do_stuff`, `Foo__bar`). Must be called while
+// `c.owned_vars` still reflects the fn's final ownership state — i.e.,
+// before `ownership_leave_fn` restores the caller's state.
+fn (mut c Checker) ownership_snapshot_drops_at_fn_exit(schedule_key string, publish_keys []string) {
+	if schedule_key.len == 0 || publish_keys.len == 0 {
+		return
+	}
+	scheduled := c.drop_schedule[schedule_key] or { return }
+	if scheduled.len == 0 {
+		return
+	}
+	mut live := []DropEntry{cap: scheduled.len}
+	for entry in scheduled {
+		// Must still be owned AND not yet moved out. `owned_vars` alone is
+		// insufficient: existing call/return paths add to `moved_vars`
+		// without removing the original entry from `owned_vars`, so a check
+		// of both flags is the only way to spot a moved binding.
+		if entry.var_name in c.owned_vars && entry.var_name !in c.moved_vars {
+			live << entry
+		}
+	}
+	if live.len == 0 {
+		return
+	}
+	for key in publish_keys {
+		if key.len == 0 {
+			continue
+		}
+		c.env.drop_at_fn_exit[key] = live
+	}
+}
+
+// ownership_publish_keys_for builds the list of C-mangled fn names under
+// which a fn's drop schedule should be published, so the cleanc backend
+// can match by whichever convention it picks. Mirrors cleanc's
+// `get_fn_name` shape:
+//   - `main` (free, name=="main")  → ["main"]
+//   - free fn `foo` in module `m`  → ["m__foo", "foo"]
+//   - method `Foo.bar`              → ["Foo__bar", "bar"]
+// The bare name is included as a fallback so a generic-module test rig
+// (which calls without a module prefix) still resolves.
+fn ownership_publish_keys_for(module_name string, decl ast.FnDecl) []string {
+	mut keys := []string{cap: 2}
+	if !decl.is_method && decl.name == 'main' {
+		keys << 'main'
+		return keys
+	}
+	if decl.is_method {
+		recv_name := ownership_method_receiver_name(decl)
+		if recv_name.len > 0 {
+			keys << '${recv_name}__${decl.name}'
+		}
+	} else if module_name.len > 0 {
+		keys << '${module_name}__${decl.name}'
+	}
+	keys << decl.name
+	return keys
+}
+
+// ownership_method_receiver_name extracts the receiver type's bare name from
+// a method decl. Strips pointer wrappers and module prefixes so the result
+// matches cleanc's `expr_type_to_c(receiver.typ).trim('*').all_after_last('__')`
+// for the common cases.
+fn ownership_method_receiver_name(decl ast.FnDecl) string {
+	mut expr := decl.receiver.typ
+	if mut expr is ast.PrefixExpr {
+		expr = expr.expr
+	}
+	if mut expr is ast.Ident {
+		return expr.name
+	}
+	if mut expr is ast.SelectorExpr {
+		return expr.rhs.name
+	}
+	return ''
+}
+
 // ownership_validate_drop_impls verifies that every struct declaring
 // `implements Drop` actually provides a `drop(mut self)` method. Runs after
 // `preregister_all_fn_signatures` (so methods are visible) and before the

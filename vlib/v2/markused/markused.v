@@ -243,6 +243,7 @@ fn (mut w Walker) seed_roots() bool {
 			}
 		}
 		w.seed_top_level_initializer_roots()
+		w.seed_drop_method_roots()
 		return true
 	}
 	for i, info in w.fns {
@@ -255,6 +256,7 @@ fn (mut w Walker) seed_roots() bool {
 		w.seed_generic_specialization_roots()
 		w.seed_codegen_required_roots()
 		w.seed_top_level_initializer_roots()
+		w.seed_drop_method_roots()
 	}
 	return has_root
 }
@@ -263,6 +265,27 @@ fn (mut w Walker) seed_codegen_required_roots() {
 	for i, info in w.fns {
 		if is_codegen_required_root(info) {
 			w.mark_fn(i)
+		}
+	}
+}
+
+// seed_drop_method_roots marks every `Type.drop` method as live for the
+// types that the ownership checker recorded in `env.drop_at_fn_exit`. The
+// cleanc backend will emit synthetic `Type__drop(&var)` calls at fn-exit
+// for those bindings; without seeding the methods here, dead-code elim
+// would strip the bodies and leave the linker with unresolved symbols.
+fn (mut w Walker) seed_drop_method_roots() {
+	if w.env == unsafe { nil } {
+		return
+	}
+	mut seen := map[string]bool{}
+	for _, entries in w.env.drop_at_fn_exit {
+		for entry in entries {
+			if entry.type_name.len == 0 || entry.type_name in seen {
+				continue
+			}
+			seen[entry.type_name] = true
+			w.mark_method_name('drop', [entry.type_name])
 		}
 	}
 }
