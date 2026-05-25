@@ -6508,13 +6508,17 @@ fn struct_field_names(file ast.File, struct_name string) []string {
 }
 
 fn parse_code_with_defines_for_test(code string, defines []string) []ast.File {
+	return parse_code_with_prefs_for_test(code, .cleanc, defines)
+}
+
+fn parse_code_with_prefs_for_test(code string, backend vpref.Backend, defines []string) []ast.File {
 	tmp_file := '/tmp/v2_parser_cond_field_test_${os.getpid()}.v'
 	os.write_file(tmp_file, code) or { panic('failed to write temp file') }
 	defer {
 		os.rm(tmp_file) or {}
 	}
 	prefs := &vpref.Preferences{
-		backend:      .cleanc
+		backend:      backend
 		no_parallel:  true
 		user_defines: defines
 	}
@@ -6678,4 +6682,29 @@ $else {
 ', ['feat_b'])
 	assert files.len == 1
 	assert struct_field_names(files[0], 'Container') == ['tag']
+}
+
+// `tinyc` and `builtin_write_buf_to_fd_should_use_c_write` are recognized by
+// the shared `pref.comptime_flag_value` and evaluate true on the native
+// backends. Confirms the parser sees the same flag set the transformer does.
+fn test_struct_comptime_native_backend_flags() {
+	files := parse_code_with_prefs_for_test('
+module main
+
+struct Container {
+$if tinyc ? {
+	tinyc_field string
+}
+$if builtin_write_buf_to_fd_should_use_c_write ? {
+	write_field string
+}
+$if new_int ? {
+	never_field string
+}
+	always int
+}
+', .x64, [])
+	assert files.len == 1
+	assert struct_field_names(files[0], 'Container') == ['tinyc_field', 'write_field',
+		'always']
 }

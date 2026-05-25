@@ -5,6 +5,7 @@
 module transformer
 
 import v2.ast
+import v2.pref
 import v2.token
 import v2.types
 
@@ -1320,114 +1321,8 @@ fn (t &Transformer) eval_comptime_cond(cond ast.Expr) bool {
 	return false
 }
 
-// eval_comptime_flag evaluates a single comptime flag/identifier
+// eval_comptime_flag delegates to the shared `pref.comptime_flag_value` so
+// the parser and the transformer recognize exactly the same flag names.
 fn (t &Transformer) eval_comptime_flag(name string) bool {
-	match name {
-		'macos', 'darwin' {
-			$if macos {
-				return true
-			}
-			return false
-		}
-		'linux' {
-			$if linux {
-				return true
-			}
-			return false
-		}
-		'windows' {
-			$if windows {
-				return true
-			}
-			return false
-		}
-		'bsd' {
-			$if macos || freebsd || openbsd || netbsd || dragonfly {
-				return true
-			}
-			return false
-		}
-		'freebsd' {
-			$if freebsd {
-				return true
-			}
-			return false
-		}
-		'openbsd' {
-			$if openbsd {
-				return true
-			}
-			return false
-		}
-		'netbsd' {
-			$if netbsd {
-				return true
-			}
-			return false
-		}
-		'dragonfly' {
-			$if dragonfly {
-				return true
-			}
-			return false
-		}
-		'x64', 'amd64' {
-			$if amd64 {
-				return true
-			}
-			return false
-		}
-		'arm64', 'aarch64' {
-			$if arm64 {
-				return true
-			}
-			return false
-		}
-		'little_endian' {
-			$if little_endian {
-				return true
-			}
-			return false
-		}
-		'big_endian' {
-			$if big_endian {
-				return true
-			}
-			return false
-		}
-		'debug' {
-			$if debug {
-				return true
-			}
-			return false
-		}
-		'native' {
-			return t.pref != unsafe { nil } && (t.pref.backend == .arm64 || t.pref.backend == .x64)
-		}
-		// Native backend cannot resolve C.stdout/C.stderr data symbols through GOT,
-		// so use C.write() instead of fwrite() for I/O operations.
-		'builtin_write_buf_to_fd_should_use_c_write' {
-			return t.pref != unsafe { nil } && (t.pref.backend == .arm64 || t.pref.backend == .x64)
-		}
-		'tinyc' {
-			// For native backends, inline assembly from V source is not supported
-			// by the SSA builder. Pretend we're TinyCC so that $if arm64 && !tinyc
-			// guards select the software fallback path instead of inline asm.
-			return t.pref != unsafe { nil } && (t.pref.backend == .arm64 || t.pref.backend == .x64)
-		}
-		'prealloc' {
-			return t.pref != unsafe { nil } && t.pref.prealloc
-		}
-		// Feature flags that are typically false
-		'new_int', 'gcboehm', 'autofree', 'ppc64' {
-			return false
-		}
-		else {
-			// Check user-defined comptime flags from -d <name>
-			if t.pref != unsafe { nil } && name in t.pref.user_defines {
-				return true
-			}
-			return false
-		}
-	}
+	return pref.comptime_flag_value(t.pref, name)
 }
