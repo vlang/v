@@ -1197,7 +1197,7 @@ pub fn (mut c Checker) get_module_scope(module_name string, parent &Scope) &Scop
 pub fn (mut c Checker) check_flat(flat &ast.FlatAst) {
 	c.register_selector_names_from_flat(flat)
 	files := flat.to_files()
-	c.preregister_all_scopes(files)
+	c.preregister_all_scopes_from_flat(flat)
 	c.preregister_all_types(files)
 	c.register_imported_symbols_from_flat(flat)
 	c.collect_fn_signatures_only = true
@@ -1269,6 +1269,36 @@ fn (mut c Checker) active_file_imports_from_flat(flat &ast.FlatAst, ff ast.FlatF
 	stmts := flat.read_file_stmts(ff)
 	c.collect_active_imports_from_stmts(stmts, mut imports)
 	return imports
+}
+
+// preregister_all_scopes_from_flat mirrors preregister_all_scopes but pulls
+// each file's mod + imports through the FlatAst readers, no []ast.File hop.
+fn (mut c Checker) preregister_all_scopes_from_flat(flat &ast.FlatAst) {
+	for ff in flat.files {
+		c.preregister_scopes_from_flat(flat, ff)
+	}
+}
+
+fn (mut c Checker) preregister_scopes_from_flat(flat &ast.FlatAst, ff ast.FlatFile) {
+	builtin_scope := c.get_module_scope('builtin', universe)
+	mod := flat.file_mod(ff)
+	mod_scope := c.get_module_scope(mod, builtin_scope)
+	c.scope = mod_scope
+	// add self (own module) for constants. can use own module prefix inside module
+	c.scope.insert(mod, Module{
+		name:  mod
+		scope: c.get_module_scope(mod, builtin_scope)
+	})
+	// add imports (including comptime-conditional)
+	for imp in c.active_file_imports_from_flat(flat, ff) {
+		import_mod := if imp.is_aliased { imp.name.all_after_last('.') } else { imp.alias }
+		c.scope.insert(imp.alias, Module{
+			name:  import_mod
+			scope: c.get_module_scope(import_mod, builtin_scope)
+		})
+	}
+	// add C
+	c.scope.insert('C', Module{ name: 'C', scope: c.c_scope })
 }
 
 pub fn (mut c Checker) check_files(files []ast.File) {
