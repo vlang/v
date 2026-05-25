@@ -234,8 +234,24 @@ pub fn (mut p Parser) parse_file(filename string, mut file_set token.FileSet) as
 	mut script_stmts := []ast.Stmt{}
 	mut main_already_defined := false
 	for p.tok != .eof {
+		// Late `import` statements (after the initial import section, or
+		// after any top-level decl): keep recording them in `file.imports`
+		// so module-qualified references resolve, instead of silently
+		// routing into the synthesized main body.
+		if p.tok == .key_import {
+			import_stmt := p.import_stmt()
+			p.expect(.semicolon)
+			imports << import_stmt
+			top_stmts << import_stmt
+			continue
+		}
 		if mod == 'main' && !p.is_top_stmt_start() {
+			// Script-mode statements parse as if inside a function body
+			// (no top-level decl dispatch), since they will be wrapped
+			// into the synthesized `fn main()`.
+			p.in_top_level = false
 			stmt := p.stmt()
+			p.in_top_level = true
 			script_stmts << stmt
 			continue
 		}
