@@ -463,7 +463,7 @@ fn (mut encoder Encoder) encode_sumtype[T](val T) {
 					}
 				} $else $if variant.typ is $map {
 					encoder.encode_value(val)
-				} $else $if variant.typ is $array {
+				} $else $if variant.typ is $array_dynamic {
 					if T.name in ['x.json2.Any', 'json2.Any', 'Any'] {
 						variant_value := val
 						encoder.encode_value(variant_value)
