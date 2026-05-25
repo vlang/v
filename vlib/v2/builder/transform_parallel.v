@@ -38,7 +38,11 @@ fn transform_chunk_thread(arg voidptr) voidptr {
 
 fn (mut b Builder) transform_files_parallel(mut trans transformer.Transformer) []ast.File {
 	// Pre-pass: sequential (builds elided_fns and runtime const inits)
-	trans.pre_pass(b.files)
+	if b.flat_check_enabled {
+		trans.pre_pass_from_flat(&b.flat)
+	} else {
+		trans.pre_pass(b.files)
+	}
 
 	// Per-file transformation: parallel
 	n_jobs := runtime.nr_jobs()
