@@ -228,14 +228,76 @@ pub fn (mut p Parser) parse_file(filename string, mut file_set token.FileSet) as
 		top_stmts << import_stmt
 	}
 	p.in_top_level = true
+	// Script-mode: when in `main` module, top-level statements that are not
+	// declarations are collected into a synthesized `fn main()`, allowing
+	// programs without an explicit `fn main` (matching v1 behavior).
+	mut script_stmts := []ast.Stmt{}
+	mut main_already_defined := false
+	// Once the first script statement is seen, the rest of the file is
+	// parsed in function-body context (in_top_level=false). This matches
+	// v1's "all definitions must occur before code in script mode" — a
+	// `const`/`fn`/etc. that appears after a script stmt then surfaces as
+	// a parse error rather than being silently kept as a file-scope decl.
+	mut script_started := false
 	for p.tok != .eof {
+		// `import` is only allowed in the initial import section at the
+		// top of the file. A late `import` would otherwise (in script mode)
+		// be routed through `p.stmt()` into the synthesized `fn main()` —
+		// reject it with a clear error matching v1's behavior.
+		if p.tok == .key_import {
+			p.error('`import x` can only be declared at the beginning of the file')
+		}
+		if mod == 'main' && (script_started || !p.is_top_stmt_start()) {
+			// Script-mode statements parse as if inside a function body
+			// (no top-level decl dispatch), since they will be wrapped
+			// into the synthesized `fn main()`.
+			p.in_top_level = false
+			stmt := p.stmt()
+			p.in_top_level = true
+			script_stmts << stmt
+			script_started = true
+			continue
+		}
 		top_stmt := p.top_stmt()
 		// if top_stmt is ast.Decl {
 		// 	decls << top_stmt
 		// }
+		if top_stmt is ast.FnDecl {
+			if !top_stmt.is_method && top_stmt.name == 'main' {
+				main_already_defined = true
+			}
+		}
+		// Script-mode: a top-level `$if cond { ... }` whose body contains
+		// runtime statements (e.g. `println(...)`) needs to be wrapped into
+		// the synthesized `fn main()` so it actually executes. Comptime $if
+		// blocks containing only declarations (e.g. `$if !macos { fn C.x() }`)
+		// stay at file scope. A `fn main` nested inside any branch counts
+		// as user-defined main and suppresses script-main synthesis.
+		if mod == 'main' && top_stmt is ast.ExprStmt {
+			inner := unwrap_comptime_expr(top_stmt.expr)
+			if inner is ast.IfExpr {
+				if comptime_if_expr_contains_fn_main(inner) {
+					main_already_defined = true
+				}
+				if !comptime_if_expr_contains_top_stmt(inner) {
+					script_stmts << top_stmt
+					script_started = true
+					continue
+				}
+			}
+		}
 		top_stmts << top_stmt
 	}
 	p.in_top_level = false
+	if script_stmts.len > 0 {
+		if main_already_defined {
+			p.error('function `main` is already defined, put your script statements inside it')
+		}
+		top_stmts << ast.FnDecl{
+			name:  'main'
+			stmts: script_stmts
+		}
+	}
 	if p.pref.verbose {
 		parse_time := sw.elapsed()
 		println('scan & parse ${filename} (${p.file.line_count()} LOC): ${parse_time.milliseconds()}ms (${parse_time.microseconds()}µs)')
@@ -248,6 +310,90 @@ pub fn (mut p Parser) parse_file(filename string, mut file_set token.FileSet) as
 		selector_names: p.selector_names.clone()
 		// decls: decls
 		stmts: top_stmts
+	}
+}
+
+// unwrap_comptime_expr returns the inner expression of a `$expr` wrapper,
+// or the expression itself when it is not a ComptimeExpr.
+fn unwrap_comptime_expr(expr ast.Expr) ast.Expr {
+	if expr is ast.ComptimeExpr {
+		return expr.expr
+	}
+	return expr
+}
+
+// comptime_if_expr_contains_top_stmt reports whether every branch of a
+// comptime `$if` chain contains only top-level statements (declarations,
+// directives, or nested top-level `$if`s). Returns false if any branch
+// contains a runtime CallExpr / CallOrCastExpr / AssignStmt — in script
+// mode such blocks are wrapped into the synthesized `fn main()`.
+// Ported from v1 `vlib/v/parser/parser.v::comptime_if_expr_contains_top_stmt`.
+fn comptime_if_expr_contains_top_stmt(if_expr ast.IfExpr) bool {
+	for stmt in if_expr.stmts {
+		if stmt is ast.ExprStmt {
+			inner := unwrap_comptime_expr(stmt.expr)
+			if inner is ast.IfExpr {
+				if !comptime_if_expr_contains_top_stmt(inner) {
+					return false
+				}
+			} else if inner is ast.CallExpr || inner is ast.CallOrCastExpr {
+				return false
+			}
+		} else if stmt is ast.AssignStmt {
+			return false
+		}
+		// `ast.Directive` (e.g. `#flag`, `#include`) is only valid at file
+		// scope — it does not by itself prove the branch is declaration-only,
+		// so we keep scanning the remaining stmts (and the `$else` chain
+		// below) instead of short-circuiting. A runtime stmt found later
+		// still disqualifies the branch and forces script-main wrapping.
+	}
+	if if_expr.else_expr is ast.IfExpr {
+		else_ie := if_expr.else_expr as ast.IfExpr
+		if !comptime_if_expr_contains_top_stmt(else_ie) {
+			return false
+		}
+	}
+	return true
+}
+
+// comptime_if_expr_contains_fn_main reports whether any branch of a
+// comptime `$if` chain declares `fn main`. Used to suppress synthesis
+// of a script `main` when a user-defined `main` is hidden behind a
+// platform-conditional block (e.g. `$if windows { fn main() {} }`).
+fn comptime_if_expr_contains_fn_main(if_expr ast.IfExpr) bool {
+	for stmt in if_expr.stmts {
+		if stmt is ast.FnDecl {
+			if !stmt.is_method && stmt.name == 'main' {
+				return true
+			}
+		} else if stmt is ast.ExprStmt {
+			inner := unwrap_comptime_expr(stmt.expr)
+			if inner is ast.IfExpr {
+				if comptime_if_expr_contains_fn_main(inner) {
+					return true
+				}
+			}
+		}
+	}
+	if if_expr.else_expr is ast.IfExpr {
+		else_ie := if_expr.else_expr as ast.IfExpr
+		if comptime_if_expr_contains_fn_main(else_ie) {
+			return true
+		}
+	}
+	return false
+}
+
+// is_top_stmt_start reports whether the current token can start a top-level
+// declaration. Used to detect script-mode statements (e.g. bare `println(...)`
+// in `main` module) which are wrapped into a synthesized `fn main()`.
+fn (p &Parser) is_top_stmt_start() bool {
+	return match p.tok {
+		.dollar, .hash, .key_asm, .key_const, .key_enum, .key_fn, .key_global,
+		.key_interface, .key_pub, .key_struct, .key_union, .key_type, .attribute,
+		.lsbr { true }
+		else { false }
 	}
 }
 
