@@ -44,13 +44,18 @@ fn (mut b Builder) transform_files_parallel(mut trans transformer.Transformer) [
 		trans.pre_pass(b.files)
 	}
 
+	// When flat is enabled, materialize per-file input from FlatAst so the
+	// parallel worker chunks no longer alias `b.files` between parse and
+	// transform.
+	input_files := if b.flat_check_enabled { b.flat.to_files() } else { b.files }
+
 	// Per-file transformation: parallel
 	n_jobs := runtime.nr_jobs()
-	n_files := b.files.len
+	n_files := input_files.len
 	if n_files <= 1 || n_jobs <= 1 {
 		mut result := []ast.File{cap: n_files}
 		for i := 0; i < n_files; i++ {
-			result << trans.transform_file_pub(b.files[i])
+			result << trans.transform_file_pub(input_files[i])
 		}
 		trans.post_pass(mut result)
 		return result
@@ -75,7 +80,7 @@ fn (mut b Builder) transform_files_parallel(mut trans transformer.Transformer) [
 	mut i := 0
 	for i < n_files {
 		end := if i + chunk_size < n_files { i + chunk_size } else { n_files }
-		chunk := b.files[i..end]
+		chunk := input_files[i..end]
 		args << TransformChunkArgs{
 			t:          unsafe { voidptr(trans) }
 			files:      chunk
