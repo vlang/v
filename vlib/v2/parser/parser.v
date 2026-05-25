@@ -233,6 +233,12 @@ pub fn (mut p Parser) parse_file(filename string, mut file_set token.FileSet) as
 	// programs without an explicit `fn main` (matching v1 behavior).
 	mut script_stmts := []ast.Stmt{}
 	mut main_already_defined := false
+	// Once the first script statement is seen, the rest of the file is
+	// parsed in function-body context (in_top_level=false). This matches
+	// v1's "all definitions must occur before code in script mode" — a
+	// `const`/`fn`/etc. that appears after a script stmt then surfaces as
+	// a parse error rather than being silently kept as a file-scope decl.
+	mut script_started := false
 	for p.tok != .eof {
 		// `import` is only allowed in the initial import section at the
 		// top of the file. A late `import` would otherwise (in script mode)
@@ -241,7 +247,7 @@ pub fn (mut p Parser) parse_file(filename string, mut file_set token.FileSet) as
 		if p.tok == .key_import {
 			p.error('`import x` can only be declared at the beginning of the file')
 		}
-		if mod == 'main' && !p.is_top_stmt_start() {
+		if mod == 'main' && (script_started || !p.is_top_stmt_start()) {
 			// Script-mode statements parse as if inside a function body
 			// (no top-level decl dispatch), since they will be wrapped
 			// into the synthesized `fn main()`.
@@ -249,6 +255,7 @@ pub fn (mut p Parser) parse_file(filename string, mut file_set token.FileSet) as
 			stmt := p.stmt()
 			p.in_top_level = true
 			script_stmts << stmt
+			script_started = true
 			continue
 		}
 		top_stmt := p.top_stmt()
