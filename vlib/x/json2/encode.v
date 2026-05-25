@@ -519,6 +519,10 @@ fn (mut encoder Encoder) encode_sumtype_struct_variant[T](val T, variant_name st
 
 fn (mut encoder Encoder) encode_array_of_sumtype_variants[T](val []T) {
 	encoder.output << `[`
+	if encoder.prettify {
+		encoder.increment_level()
+		encoder.add_indent()
+	}
 	for i, item in val {
 		$if T is time.Time {
 			encoder.encode_value(item)
@@ -534,6 +538,14 @@ fn (mut encoder Encoder) encode_array_of_sumtype_variants[T](val []T) {
 		}
 		if i < val.len - 1 {
 			encoder.output << `,`
+			if encoder.prettify {
+				encoder.add_indent()
+			}
+		} else {
+			if encoder.prettify {
+				encoder.decrement_level()
+				encoder.add_indent()
+			}
 		}
 	}
 	encoder.output << `]`
