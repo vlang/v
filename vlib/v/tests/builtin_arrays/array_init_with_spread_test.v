@@ -80,3 +80,16 @@ fn test_array_spread_appended_string_variable() {
 	s = 'mutated'
 	assert arr == ['a', 'b', 'c']
 }
+
+type Ints = []int
+
+// Regression: type-alias of an array should be accepted as a spread base.
+fn test_array_spread_alias_base() {
+	a := Ints([10, 20, 30])
+	b := [...a, 40]
+	assert b.len == 4
+	assert b[0] == 10
+	assert b[3] == 40
+	c := [...a]
+	assert c.len == 3
+}

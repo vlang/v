@@ -411,7 +411,9 @@ fn (mut c Checker) array_init(mut node ast.ArrayInit) ast.Type {
 	if node.has_update_expr {
 		// `[...base, e1, e2]` — array update/spread literal
 		update_typ := c.expr(mut node.update_expr)
-		update_sym := c.table.sym(update_typ)
+		// Resolve through type aliases so `type Ints = []int; [...Ints(...)]`
+		// is accepted; use final_sym to look past aliases of arrays.
+		update_sym := c.table.final_sym(update_typ)
 		if update_sym.kind != .array {
 			c.error('invalid array update: non-array type `${c.table.type_to_str(update_typ)}`',
 				node.update_expr_pos)
