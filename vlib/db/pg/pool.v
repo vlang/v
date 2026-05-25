@@ -216,6 +216,24 @@ fn (mut p Pool) release(conn &Conn) {
 		p.mu.unlock()
 		return
 	}
+	// If a recent set_max_open() shrank the cap below open_count, this
+	// returning slot has to be retired even when a waiter is queued —
+	// otherwise the fast hand-off keeps open_count pinned above the new
+	// limit forever under steady traffic. Wake the waiter with a retry
+	// sentinel so it re-evaluates capacity under the new cap.
+	if p.max_open > 0 && p.open_count > p.max_open {
+		physical_close_handle(slot.handle)
+		p.open_count--
+		if p.waiters.len > 0 {
+			waiter := p.waiters[0]
+			p.waiters.delete(0)
+			waiter <- IdleSlot{
+				handle: unsafe { nil }
+			}
+		}
+		p.mu.unlock()
+		return
+	}
 	// Healthy conn: prefer handing it directly to a waiter. Send under the
 	// lock (cap:1 makes it non-blocking) so close() can't slip in and orphan
 	// the popped waiter with a live conn.
