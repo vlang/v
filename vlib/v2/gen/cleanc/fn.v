@@ -2364,7 +2364,7 @@ fn (g &Gen) fallback_generic_bindings_for_names(param_names []string) ?map[strin
 				if concrete.name() == param_name || type_contains_generic_placeholder(concrete) {
 					continue
 				}
-				if !generic_concrete_type_is_runtime_specializable(concrete) {
+				if !g.generic_concrete_type_is_runtime_specializable(concrete) {
 					continue
 				}
 				if !g.generic_specialization_belongs_to_emit_modules({
@@ -2428,7 +2428,7 @@ fn (mut g Gen) generic_fn_specializations_with_fallback(node ast.FnDecl, include
 				// is invalid. Keep `voidptr` specializations, skip only true void.
 				if concrete.name() == 'void' || concrete.name() == param_name
 					|| type_contains_generic_placeholder(concrete)
-					|| !generic_concrete_type_is_runtime_specializable(concrete) {
+					|| !g.generic_concrete_type_is_runtime_specializable(concrete) {
 					skip_spec = true
 					break
 				}
@@ -2570,7 +2570,7 @@ fn (mut g Gen) generic_fn_specializations_with_fallback(node ast.FnDecl, include
 							concrete := normalize_generic_concrete_type(bound_concrete)
 							if concrete.name() == param_name
 								|| type_contains_generic_placeholder(concrete)
-								|| !generic_concrete_type_is_runtime_specializable(concrete) {
+								|| !g.generic_concrete_type_is_runtime_specializable(concrete) {
 								continue
 							}
 							if !g.accepts_broad_generic_fallback_type(node, concrete) {
@@ -2600,7 +2600,7 @@ fn (mut g Gen) generic_fn_specializations_with_fallback(node ast.FnDecl, include
 							concrete := normalize_generic_concrete_type(bound_concrete)
 							if concrete.name() == param_name
 								|| type_contains_generic_placeholder(concrete)
-								|| !generic_concrete_type_is_runtime_specializable(concrete) {
+								|| !g.generic_concrete_type_is_runtime_specializable(concrete) {
 								continue
 							}
 							if !g.accepts_broad_generic_fallback_type(node, concrete) {
@@ -2617,7 +2617,7 @@ fn (mut g Gen) generic_fn_specializations_with_fallback(node ast.FnDecl, include
 			add_json2_encode_value_nested_fallback_types(mut fallback_types)
 		}
 		for _, concrete in fallback_types {
-			if !generic_concrete_type_is_runtime_specializable(concrete) {
+			if !g.generic_concrete_type_is_runtime_specializable(concrete) {
 				continue
 			}
 			if !g.accepts_broad_generic_fallback_type(node, concrete) {
@@ -2654,7 +2654,7 @@ fn (mut g Gen) generic_fn_specializations_with_fallback(node ast.FnDecl, include
 			}
 			mut bindings_supported := true
 			for _, concrete in bindings {
-				if !generic_concrete_type_is_runtime_specializable(concrete)
+				if !g.generic_concrete_type_is_runtime_specializable(concrete)
 					|| !g.accepts_broad_generic_fallback_type(node, concrete) {
 					bindings_supported = false
 					break
@@ -2915,7 +2915,7 @@ fn (mut g Gen) add_json2_fallback_type_from_specialized_fn_name(mut fallback_typ
 		}
 		concrete := g.concrete_type_from_specialization_token(token)
 		if type_contains_generic_placeholder(concrete)
-			|| !generic_concrete_type_is_runtime_specializable(concrete) {
+			|| !g.generic_concrete_type_is_runtime_specializable(concrete) {
 			continue
 		}
 		fallback_types[concrete.name()] = concrete
@@ -3849,7 +3849,7 @@ fn (mut g Gen) record_late_single_generic_call_spec_from_c_type(fn_name string, 
 	if type_contains_generic_placeholder(concrete) {
 		return
 	}
-	if !generic_concrete_type_is_runtime_specializable(concrete) {
+	if !g.generic_concrete_type_is_runtime_specializable(concrete) {
 		return
 	}
 	g.record_late_generic_call_spec(fn_name, {
@@ -3963,7 +3963,7 @@ fn (mut g Gen) generic_call_has_concrete_arg_bindings(decl ast.FnDecl, call_args
 	}
 	for param_name in generic_params {
 		concrete := bindings[param_name] or { return false }
-		if !generic_concrete_type_is_runtime_specializable(concrete) {
+		if !g.generic_concrete_type_is_runtime_specializable(concrete) {
 			return false
 		}
 	}
@@ -7467,9 +7467,6 @@ fn (mut g Gen) resolve_call_name(lhs ast.Expr, _arg_count int) string {
 	if name == 'builtin__new_array_from_c_array_noscan' {
 		name = 'new_array_from_c_array'
 	}
-	if name == 'builtin__new_array_from_array_and_c_array' {
-		name = 'new_array_from_array_and_c_array'
-	}
 	if name == 'builtin__array_push_noscan' {
 		name = 'array__push'
 	}
@@ -9012,17 +9009,8 @@ fn (mut g Gen) call_expr(lhs ast.Expr, args []ast.Expr) {
 						ident_name
 					}
 					// Try looking up in the declaring module's scope
-					mut module_names := []string{}
-					if module_name := g.module_storage_vars[ident_name] {
-						module_names << module_name
-					}
-					if ident_name.contains('__') {
-						module_names << ident_name.all_before_last('__')
-					} else {
-						module_names << g.cur_module
-						module_names << 'builtin'
-					}
-					for mod_name in module_names {
+					global_mod := g.global_var_modules[short_name] or { '' }
+					for mod_name in [global_mod, g.cur_module, 'builtin'] {
 						if mod_name == '' {
 							continue
 						}
@@ -9370,9 +9358,6 @@ fn (mut g Gen) call_expr(lhs ast.Expr, args []ast.Expr) {
 	// Transformer helper maps directly to builtin implementation name in vlib.
 	if name == 'builtin__new_array_from_c_array_noscan' {
 		name = 'new_array_from_c_array'
-	}
-	if name == 'builtin__new_array_from_array_and_c_array' {
-		name = 'new_array_from_array_and_c_array'
 	}
 	if name == 'builtin__array_push_noscan' {
 		name = 'array__push'

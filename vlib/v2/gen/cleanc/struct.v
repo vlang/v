@@ -581,12 +581,32 @@ fn (g &Gen) active_generic_bindings_matching_embedded_args(embedded_args []strin
 			}
 			active
 		}
-		if !generic_concrete_type_is_runtime_specializable(concrete) {
+		if !g.generic_concrete_type_is_runtime_specializable(concrete) {
 			return none
 		}
 		bindings[param_name] = concrete
 	}
 	return bindings
+}
+
+fn (g &Gen) generic_concrete_type_is_runtime_specializable(typ types.Type) bool {
+	if !generic_concrete_type_is_runtime_specializable(typ) {
+		return false
+	}
+	concrete := normalize_generic_concrete_type(typ)
+	c_name := g.types_type_to_c(concrete)
+	if c_name != '' {
+		if struct_typ := g.lookup_type_by_c_name_const(c_name) {
+			if struct_typ is types.Struct
+				&& type_contains_generic_placeholder(types.Type(struct_typ)) {
+				return false
+			}
+		}
+	}
+	if c_name != '' && c_name in g.generic_struct_instances && c_name !in g.generic_struct_bindings {
+		return false
+	}
+	return true
 }
 
 fn (g &Gen) active_generic_bindings_matching_embedded_suffix(lhs ast.Expr, generic_params []string) ?map[string]types.Type {
@@ -637,7 +657,7 @@ fn (mut g Gen) generic_type_arg_concrete_type(arg ast.Expr) ?types.Type {
 	}
 	c_name := g.expr_type_to_c(arg).trim_space().trim_right('*')
 	concrete := g.concrete_type_from_c_name(c_name) or { return none }
-	if !generic_concrete_type_is_runtime_specializable(concrete) {
+	if !g.generic_concrete_type_is_runtime_specializable(concrete) {
 		return none
 	}
 	return concrete
@@ -711,7 +731,7 @@ fn (mut g Gen) record_late_generic_call_spec_for_key(key string, bindings map[st
 		return
 	}
 	for _, concrete in bindings {
-		if !generic_concrete_type_is_runtime_specializable(concrete) {
+		if !g.generic_concrete_type_is_runtime_specializable(concrete) {
 			return
 		}
 	}
@@ -755,7 +775,7 @@ fn (mut g Gen) record_generic_scan_call_name(lhs ast.Expr, arg_count int, generi
 	mut suffixes := []string{cap: generic_params.len}
 	for param_name in generic_params {
 		concrete := bindings[param_name] or { return }
-		if !generic_concrete_type_is_runtime_specializable(concrete) {
+		if !g.generic_concrete_type_is_runtime_specializable(concrete) {
 			return
 		}
 		suffixes << g.generic_specialization_token_from_type(concrete)
@@ -889,7 +909,7 @@ fn (mut g Gen) scan_call_for_generic_fn_specs(call ast.CallExpr) {
 		return
 	}
 	for _, concrete in bindings {
-		if !generic_concrete_type_is_runtime_specializable(concrete) {
+		if !g.generic_concrete_type_is_runtime_specializable(concrete) {
 			return
 		}
 	}
@@ -947,7 +967,7 @@ fn (mut g Gen) scan_generic_fn_value_for_specs(expr ast.Expr) {
 		return
 	}
 	for _, concrete in bindings {
-		if !generic_concrete_type_is_runtime_specializable(concrete) {
+		if !g.generic_concrete_type_is_runtime_specializable(concrete) {
 			return
 		}
 	}

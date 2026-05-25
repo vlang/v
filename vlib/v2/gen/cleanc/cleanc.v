@@ -104,9 +104,10 @@ mut:
 	needed_ierror_wrapper_bases map[string]bool
 	tmp_counter                 int
 	cur_fn_mut_params           map[string]bool   // names of mut params in current function
-	module_storage_vars         map[string]string // qualified storage C name -> module name
-	c_extern_module_storage     map[string]string // qualified storage C name -> raw C extern name
+	global_var_modules          map[string]string // global var name → module name
 	global_var_types            map[string]string // global var name → C type string
+	module_storage_vars         map[string]string // module-prefixed storage symbol -> declaring module
+	c_extern_module_storage     map[string]string // module-prefixed C extern symbol -> raw C name
 	primitive_type_aliases      map[string]bool   // type names that are aliases for primitive types
 	emit_modules                map[string]bool   // when set, emit consts/globals/fns only for these modules
 	type_modules                map[string]bool   // when set, alias/type helpers may reference only these modules
@@ -417,8 +418,6 @@ fn new_gen_with_env_and_pref_impl(env &types.Environment, p &pref.Preferences) &
 		emitted_option_structs:      map[string]bool{}
 		embedded_field_owner:        map[string]string{}
 		fixed_array_ret_wrappers:    map[string]string{}
-		module_storage_vars:         map[string]string{}
-		c_extern_module_storage:     map[string]string{}
 		emit_modules:                map[string]bool{}
 		type_modules:                map[string]bool{}
 		exported_const_seen:         map[string]bool{}
@@ -430,6 +429,8 @@ fn new_gen_with_env_and_pref_impl(env &types.Environment, p &pref.Preferences) &
 		ierror_wrapper_bases:        map[string]bool{}
 		needed_ierror_wrapper_bases: map[string]bool{}
 		c_file_fn_keys:              map[string]bool{}
+		module_storage_vars:         map[string]string{}
+		c_extern_module_storage:     map[string]string{}
 		runtime_const_targets:       map[string]bool{}
 		const_c_names:               map[string]string{}
 		used_fn_keys:                map[string]bool{}
@@ -814,17 +815,23 @@ pub fn (mut g Gen) gen_passes_1_to_4() {
 	mut stage_start := stats_sw.elapsed()
 
 	g.write_preamble()
-	stage_start = g.mark_cgen_step(stats_enabled, stats_scope, mut stats_sw, stage_start, 'setup.preamble')
+	stage_start = g.mark_cgen_step(stats_enabled, stats_scope, mut stats_sw, stage_start,
+		'setup.preamble')
 	g.collect_typedef_c_types()
-	stage_start = g.mark_cgen_step(stats_enabled, stats_scope, mut stats_sw, stage_start, 'setup.typedef_c_types')
+	stage_start = g.mark_cgen_step(stats_enabled, stats_scope, mut stats_sw, stage_start,
+		'setup.typedef_c_types')
 	g.build_generic_fn_decl_index()
-	stage_start = g.mark_cgen_step(stats_enabled, stats_scope, mut stats_sw, stage_start, 'setup.generic_fn_decl_index')
+	stage_start = g.mark_cgen_step(stats_enabled, stats_scope, mut stats_sw, stage_start,
+		'setup.generic_fn_decl_index')
 	g.collect_generic_struct_bindings()
-	stage_start = g.mark_cgen_step(stats_enabled, stats_scope, mut stats_sw, stage_start, 'setup.generic_struct_bindings')
+	stage_start = g.mark_cgen_step(stats_enabled, stats_scope, mut stats_sw, stage_start,
+		'setup.generic_struct_bindings')
 	g.collect_module_type_names()
-	stage_start = g.mark_cgen_step(stats_enabled, stats_scope, mut stats_sw, stage_start, 'setup.module_type_names')
+	stage_start = g.mark_cgen_step(stats_enabled, stats_scope, mut stats_sw, stage_start,
+		'setup.module_type_names')
 	g.collect_runtime_aliases()
-	stage_start = g.mark_cgen_step(stats_enabled, stats_scope, mut stats_sw, stage_start, 'setup.runtime_aliases')
+	stage_start = g.mark_cgen_step(stats_enabled, stats_scope, mut stats_sw, stage_start,
+		'setup.runtime_aliases')
 	// Force eventbus generic structs to use T=string binding.
 	// Without full monomorphization, eventbus methods assume T=string
 	// (see fn.v hardcoded eventbus workaround).
@@ -852,20 +859,26 @@ pub fn (mut g Gen) gen_passes_1_to_4() {
 			break
 		}
 	}
-	stage_start = g.mark_cgen_step(stats_enabled, stats_scope, mut stats_sw, stage_start, 'setup.discover_generic_specs')
+	stage_start = g.mark_cgen_step(stats_enabled, stats_scope, mut stats_sw, stage_start,
+		'setup.discover_generic_specs')
 	g.collect_force_emit_sort_fns()
-	stage_start = g.mark_cgen_step(stats_enabled, stats_scope, mut stats_sw, stage_start, 'setup.force_emit_sort_fns')
+	stage_start = g.mark_cgen_step(stats_enabled, stats_scope, mut stats_sw, stage_start,
+		'setup.force_emit_sort_fns')
 	g.collect_fn_signatures_to_fixed_point()
-	stage_start = g.mark_cgen_step(stats_enabled, stats_scope, mut stats_sw, stage_start, 'setup.fn_signatures')
+	stage_start = g.mark_cgen_step(stats_enabled, stats_scope, mut stats_sw, stage_start,
+		'setup.fn_signatures')
 	g.collect_c_file_fn_keys()
-	stage_start = g.mark_cgen_step(stats_enabled, stats_scope, mut stats_sw, stage_start, 'setup.c_file_fn_keys')
+	stage_start = g.mark_cgen_step(stats_enabled, stats_scope, mut stats_sw, stage_start,
+		'setup.c_file_fn_keys')
 	g.collect_runtime_const_targets()
-	stage_start = g.mark_cgen_step(stats_enabled, stats_scope, mut stats_sw, stage_start, 'setup.runtime_const_targets')
+	stage_start = g.mark_cgen_step(stats_enabled, stats_scope, mut stats_sw, stage_start,
+		'setup.runtime_const_targets')
 	g.register_builder_methods()
-	stage_start = g.mark_cgen_step(stats_enabled, stats_scope, mut stats_sw, stage_start, 'setup.register_builder_methods')
+	stage_start = g.mark_cgen_step(stats_enabled, stats_scope, mut stats_sw, stage_start,
+		'setup.register_builder_methods')
 	stage_start = g.mark_cgen_step(stats_enabled, stats_scope, mut stats_sw, stage_start, 'setup')
 
-	// Pre-collect module storage names by qualified C name.
+	// Pre-collect all global variable names so they can be module-qualified
 	for file in g.files {
 		g.set_file_module(file)
 		for stmt in file.stmts {
@@ -874,16 +887,20 @@ pub fn (mut g Gen) gen_passes_1_to_4() {
 			}
 			if stmt is ast.GlobalDecl {
 				for field in stmt.fields {
+					storage_name := module_storage_field_c_name(g.cur_module, stmt, field)
+					qualified_name := module_storage_c_name(g.cur_module, if field.name.starts_with('C.') {
+						field.name.all_after('C.')
+					} else {
+						field.name
+					})
 					if module_storage_field_is_c_extern(stmt, field) {
-						if !field.name.starts_with('C.') {
-							qualified_name := module_storage_c_name(g.cur_module, field.name)
-							g.c_extern_module_storage[qualified_name] = module_storage_field_c_name(g.cur_module,
-								stmt, field)
-						}
-						continue
+						g.c_extern_module_storage[qualified_name] = storage_name
+					} else {
+						g.module_storage_vars[storage_name] = g.cur_module
 					}
-					name := module_storage_c_name(g.cur_module, field.name)
-					g.module_storage_vars[name] = g.cur_module
+					if g.cur_module != '' && g.cur_module != 'main' && g.cur_module != 'builtin' {
+						g.global_var_modules[field.name] = g.cur_module
+					}
 				}
 			}
 		}
@@ -1452,6 +1469,13 @@ pub fn (mut g Gen) gen_finalize() string {
 		for init_call in g.cached_init_calls {
 			g.sb.writeln('\t${init_call}();')
 		}
+		// Runtime constants like builtin.max_int must be initialized before module
+		// init() functions, since init paths can allocate and use array bounds.
+		for fn_name, _ in g.fn_return_types {
+			if fn_name.contains('__v_init_consts_') {
+				g.sb.writeln('\t${fn_name}();')
+			}
+		}
 		// Call module init() functions and __v_init_consts_main — test files have
 		// no main() function, so the transformer's injected init calls are not present.
 		for fn_name, _ in g.fn_return_types {
@@ -1468,12 +1492,6 @@ pub fn (mut g Gen) gen_finalize() string {
 						g.sb.writeln('\t${fn_name}();')
 					}
 				}
-			}
-		}
-		// Call all module const initialization functions
-		for fn_name, _ in g.fn_return_types {
-			if fn_name.contains('__v_init_consts_') {
-				g.sb.writeln('\t${fn_name}();')
 			}
 		}
 		g.sb.writeln('\tg_main_argc = ___argc;')
@@ -1625,10 +1643,12 @@ pub fn (mut g Gen) gen_pass5_pre() []int {
 			for stmt in file.stmts {
 				if stmt is ast.GlobalDecl {
 					for field in stmt.fields {
-						if module_storage_field_is_c_extern(stmt, field) {
-							continue
+						gname := if g.cur_module != '' && g.cur_module != 'main'
+							&& g.cur_module != 'builtin' {
+							'${g.cur_module}__${field.name}'
+						} else {
+							field.name
 						}
-						gname := module_storage_c_name(g.cur_module, field.name)
 						if gname !in g.global_owner_file {
 							g.global_owner_file[gname] = fi
 						}
@@ -1979,7 +1999,7 @@ fn (mut g Gen) late_generic_fn_specializations(node ast.FnDecl) []GenericFnSpeci
 				normalized_generic_types[param_name] = concrete
 				if concrete.name() == 'void' || concrete.name() == param_name
 					|| type_contains_generic_placeholder(concrete)
-					|| !generic_concrete_type_is_runtime_specializable(concrete) {
+					|| !g.generic_concrete_type_is_runtime_specializable(concrete) {
 					skip_spec = true
 					break
 				}
@@ -2113,7 +2133,7 @@ fn (mut g Gen) generic_types_from_specialized_fn_name(node ast.FnDecl, fn_name s
 	for i, param_name in generic_params {
 		concrete := g.concrete_type_from_specialization_token(tokens[i])
 		if type_contains_generic_placeholder(concrete)
-			|| !generic_concrete_type_is_runtime_specializable(concrete) {
+			|| !g.generic_concrete_type_is_runtime_specializable(concrete) {
 			return none
 		}
 		generic_types[param_name] = concrete
@@ -2157,7 +2177,7 @@ fn (mut g Gen) split_specialization_suffix(suffix string, parts int) ?[]string {
 	if parts == 1 {
 		concrete := g.concrete_type_from_specialization_token(suffix)
 		if type_contains_generic_placeholder(concrete)
-			|| !generic_concrete_type_is_runtime_specializable(concrete) {
+			|| !g.generic_concrete_type_is_runtime_specializable(concrete) {
 			return none
 		}
 		return [suffix]
@@ -2169,7 +2189,7 @@ fn (mut g Gen) split_specialization_suffix(suffix string, parts int) ?[]string {
 		head := suffix[..i]
 		concrete := g.concrete_type_from_specialization_token(head)
 		if type_contains_generic_placeholder(concrete)
-			|| !generic_concrete_type_is_runtime_specializable(concrete) {
+			|| !g.generic_concrete_type_is_runtime_specializable(concrete) {
 			continue
 		}
 		tail := suffix[i + 1..]
@@ -2520,12 +2540,12 @@ pub fn (g &Gen) new_pass5_worker(file_indices []int, worker_id int) &Gen {
 		collected_fixed_array_types: g.collected_fixed_array_types.clone()
 		collected_map_types:         g.collected_map_types.clone()
 		c_file_fn_keys:              g.c_file_fn_keys.clone()
-		module_storage_vars:         g.module_storage_vars.clone()
-		c_extern_module_storage:     g.c_extern_module_storage.clone()
-		global_var_types:            g.global_var_types.clone()
+		global_var_modules:          g.global_var_modules.clone()
 		const_exprs:                 g.const_exprs.clone()
 		const_types:                 g.const_types.clone()
 		const_c_names:               g.const_c_names.clone()
+		module_storage_vars:         g.module_storage_vars.clone()
+		c_extern_module_storage:     g.c_extern_module_storage.clone()
 		runtime_const_targets:       g.runtime_const_targets.clone()
 		export_const_symbols:        g.export_const_symbols
 		cache_bundle_name:           g.cache_bundle_name
