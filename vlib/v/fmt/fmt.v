@@ -1993,9 +1993,21 @@ pub fn (mut f Fmt) array_init(node ast.ArrayInit) {
 		f.write('...')
 		f.expr(node.update_expr)
 		if node.exprs.len > 0 {
-			f.write(', ')
+			f.write(',')
 		}
-		last_line_nr = node.update_expr_pos.last_line
+		if node.update_expr_comments.len > 0 {
+			f.write(' ')
+			f.comments(node.update_expr_comments,
+				prev_line: node.update_expr_pos.last_line
+				has_nl:    false
+			)
+			last_line_nr = node.update_expr_comments.last().pos.last_line
+		} else {
+			last_line_nr = node.update_expr_pos.last_line
+		}
+		if node.exprs.len > 0 && node.update_expr_comments.len == 0 {
+			f.write(' ')
+		}
 	}
 	for i, c in node.pre_cmnts {
 		if i < node.pre_cmnts.len - 1 {

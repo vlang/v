@@ -3418,6 +3418,19 @@ fn (mut e Eval) eval_expr(expr ast.Expr) !Value {
 				}
 			}
 			mut values := []Value{cap: expr.exprs.len}
+			// Spread syntax `[...base, e1, e2]` — prepend the base array's
+			// values before any explicit elements.
+			if expr.update_expr !is ast.EmptyExpr {
+				base_value := e.eval_expr(expr.update_expr)!
+				if base_value is ArrayValue {
+					for v in base_value.values {
+						values << v
+					}
+					if elem_type_name == '' {
+						elem_type_name = base_value.elem_type_name
+					}
+				}
+			}
 			for item in expr.exprs {
 				values << e.eval_expr(item)!
 			}

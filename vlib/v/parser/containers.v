@@ -225,6 +225,9 @@ fn (mut p Parser) array_init(is_option bool, alias_array_type ast.Type) ast.Arra
 				p.check(.ellipsis)
 				update_expr = p.expr(0)
 				update_expr_pos = update_expr.pos()
+				// Eat comments that may sit between the spread base and the
+				// separating comma, e.g. `[...base /* keep */, 3]`.
+				update_expr_comments << p.eat_comments(same_line: true)
 				if p.tok.kind == .comma {
 					p.next()
 				}
