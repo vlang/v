@@ -74,7 +74,7 @@ pub fn (mut m MachOObject) add_symbol(name string, addr u64, is_ext bool, sect u
 	// Add new symbol
 	idx := m.symbols.len
 	name_off := m.str_table.len
-	m.str_table << name.bytes()
+	unsafe { m.str_table.push_many(name.str, name.len) }
 	m.str_table << 0
 
 	m.symbols << Symbol{
@@ -97,7 +97,7 @@ pub fn (mut m MachOObject) add_undefined(name string) int {
 
 	idx := m.symbols.len
 	name_off := m.str_table.len
-	m.str_table << name.bytes()
+	unsafe { m.str_table.push_many(name.str, name.len) }
 	m.str_table << 0
 
 	m.symbols << Symbol{

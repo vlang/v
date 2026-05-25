@@ -145,7 +145,7 @@ fn (mut t Transformer) smartcast_map_iter_value_expr(iter_expr ast.Expr, map_typ
 	}
 	data_access := t.synth_selector(iter_expr, '_data', types.Type(types.voidptr_))
 	is_native_backend := t.pref != unsafe { nil }
-		&& (t.pref.backend == .arm64 || t.pref.backend == .x64)
+		&& t.is_native_be
 	variant_access := if is_native_backend {
 		data_access
 	} else {
@@ -567,7 +567,7 @@ fn (mut t Transformer) transform_for_stmt(stmt ast.ForStmt) ast.ForStmt {
 				t.close_scope()
 				return result
 			}
-			if t.pref.backend == .arm64 || t.pref.backend == .x64 {
+			if t.is_native_be {
 				result := t.transform_untyped_for_in(stmt, for_in)
 				t.close_scope()
 				return result
