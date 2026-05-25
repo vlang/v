@@ -2104,6 +2104,10 @@ fn (mut g Gen) generic_types_from_specialized_fn_name(node ast.FnDecl, fn_name s
 	return generic_types
 }
 
+// process_rss_mb returns the current process's resident set size in
+// megabytes, or 0 if it can't be determined. Used by the `trace_weak`
+// diagnostics to track peak memory across codegen passes. Linux reads
+// `/proc/self/statm`; macOS shells out to `ps`; other platforms return 0.
 fn (g &Gen) process_rss_mb() i64 {
 	$if linux {
 		data := os.read_file('/proc/self/statm') or { return 0 }

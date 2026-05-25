@@ -328,6 +328,10 @@ fn is_v_compiler_target(npath string) bool {
 		|| target.ends_with('cmd/v2/v2.v') || target.ends_with('cmd/tools/vfmt.v')
 }
 
+// is_v2_compiler_target reports whether the given resolved input path is
+// building the v2 compiler itself (the `cmd/v2` directory or its `v2.v`
+// entry point). Used to force `-gc none` for v2 since the v2 compiler
+// manages its own arenas and breaks under boehm.
 fn is_v2_compiler_target(npath string) bool {
 	target := npath.trim_right('/')
 	return target.ends_with('cmd/v2') || target.ends_with('cmd/v2/v2.v')
