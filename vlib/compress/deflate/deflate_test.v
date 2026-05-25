@@ -61,3 +61,37 @@ fn test_corrupt_checksum_fails() {
 	}
 	assert false
 }
+
+fn test_truncated_zlib_payload_fails() {
+	decompress([u8(0x78), 0x9c, 0x03, 0x00, 0x00, 0x00, 0x01]) or {
+		assert err.msg().contains('unexpected end of stream')
+		return
+	}
+	assert false
+}
+
+fn test_zlib_inserted_bytes_before_adler_fails() {
+	enc := compress('zlib injected trailer bytes'.repeat(4).bytes())!
+	mut bad := []u8{cap: enc.len + 2}
+	bad << enc[..enc.len - 4]
+	bad << [u8(0xaa), 0x55]
+	bad << enc[enc.len - 4..]
+	decompress(bad) or {
+		assert err.msg() == 'invalid zlib stream: trailing data before adler32'
+		return
+	}
+	assert false
+}
+
+fn test_gzip_inserted_bytes_before_trailer_fails() {
+	enc := compress('gzip injected trailer bytes'.repeat(4).bytes(), format: .gzip)!
+	mut bad := []u8{cap: enc.len + 1}
+	bad << enc[..enc.len - 8]
+	bad << u8(0x42)
+	bad << enc[enc.len - 8..]
+	decompress(bad) or {
+		assert err.msg() == 'invalid gzip stream: trailing data before trailer'
+		return
+	}
+	assert false
+}

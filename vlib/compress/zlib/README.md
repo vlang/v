@@ -1,7 +1,7 @@
 ## Description
 
-`compress.zlib` is a module that assists in the compression and
-decompression of binary data using `zlib` compression
+`compress.zlib` is a small wrapper around `compress.deflate` for working with zlib streams
+(RFC 1950).
 
 ## Examples
 
@@ -9,9 +9,9 @@ decompression of binary data using `zlib` compression
 import compress.zlib
 
 fn main() {
-	uncompressed := 'Hello world!'
-	compressed := zlib.compress(uncompressed.bytes())!
-	decompressed := zlib.decompress(compressed)!
-	assert decompressed == uncompressed.bytes()
+	data := 'Hello world!'.bytes()
+	compressed := zlib.compress(data) or { panic(err) }
+	decompressed := zlib.decompress(compressed) or { panic(err) }
+	assert decompressed == data
 }
 ```
