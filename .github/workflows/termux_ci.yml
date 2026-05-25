@@ -3,6 +3,8 @@ name: CI Termux
 on:
   workflow_dispatch:
   push:
+    branches:
+      - master
     paths-ignore:
       - '**.md'
       - '**.yml'

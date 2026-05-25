@@ -3,6 +3,8 @@ name: Symlink CI
 on:
   workflow_dispatch:
   push:
+    branches:
+      - master
     paths:
       - 'cmd/tools/vsymlink/**.v'
       - '.github/workflows/symlink_ci.yml'

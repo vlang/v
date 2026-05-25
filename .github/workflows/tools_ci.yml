@@ -2,6 +2,8 @@ name: Tools CI
 
 on:
   push:
+    branches:
+      - master
     paths:
       - 'cmd/**'
       - '!cmd/tools/vpm/**'

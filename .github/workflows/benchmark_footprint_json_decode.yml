@@ -2,6 +2,8 @@ name: json decoder benchmark CI
 
 on:
   push:
+    branches:
+      - master
     paths:
       - 'vlib/x/json2/**' # Trigger on changes in this folder
 

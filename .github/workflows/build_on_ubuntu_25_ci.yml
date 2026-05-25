@@ -3,6 +3,8 @@ name: CI Ubuntu 25 GCC 14.2
 on:
   workflow_dispatch:
   push:
+    branches:
+      - master
     paths-ignore:
       - '**.md'
       - '**.yml'

@@ -2,6 +2,8 @@ name: More extensive but slower tests
 
 on:
   push:
+    branches:
+      - master
     paths-ignore:
       - '**.md'
       - '**.yml'

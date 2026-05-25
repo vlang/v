@@ -12,6 +12,8 @@ on:
       - 'cmd/tools/vdoc/theme/**.html'
       - '**/module_docs_ci.yml'
   push:
+    branches:
+      - master
     paths:
       - 'vlib/**.v'
       - 'vlib/**.md'

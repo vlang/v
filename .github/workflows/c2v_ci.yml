@@ -2,6 +2,8 @@ name: C2V apps
 
 on:
   push:
+    branches:
+      - master
     paths-ignore:
       - '**.md'
       - '**.yml'
