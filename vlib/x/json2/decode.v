@@ -1188,7 +1188,7 @@ fn (mut decoder Decoder) decode_array[T](mut val []T) ! {
 				val << array_element
 			}
 		} else if array_info.value_kind == .null {
-			// allow `null` for non-option array fields, leave value as empty array
+			decoder.skip_current_value()
 		} else {
 			decoder.decode_error('Expected array, but got ${array_info.value_kind}')!
 		}
@@ -1282,7 +1282,7 @@ fn (mut decoder Decoder) decode_map[V](mut val map[string]V) ! {
 				}
 			}
 		} else if map_info.value_kind == .null {
-			// allow `null` for non-option map fields, leave value as empty map
+			decoder.skip_current_value()
 		} else {
 			decoder.decode_error('Expected object, but got ${map_info.value_kind}')!
 		}
