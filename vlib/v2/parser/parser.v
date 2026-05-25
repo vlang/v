@@ -3110,6 +3110,10 @@ fn (mut p Parser) parse_comptime_struct_field_branch(language ast.Language, forc
 	p.exp_lcbr = exp_lcbr
 	p.allow_init_in_exp_lcbr = allow_init_in_exp_lcbr
 	cond_matches := !force_skip && p.eval_comptime_cond(cond)
+	// Allow `{` on next line after `cond ?` — scanner inserts `;` after `?`.
+	if p.tok == .semicolon && p.peek() == .lcbr {
+		p.next()
+	}
 	p.expect(.lcbr)
 	if cond_matches {
 		p.parse_struct_field_list(language, mut embedded, mut fields)
@@ -3133,11 +3137,18 @@ fn (mut p Parser) parse_comptime_struct_field_branch(language ast.Language, forc
 	}
 	p.next() // $
 	p.next() // else
+	// `else` may be followed by auto-inserted `;` if `$if` / `{` is on the next line.
+	if p.tok == .semicolon && p.peek() == .dollar {
+		p.next()
+	}
 	if p.tok == .dollar && p.peek() == .key_if {
 		// `$else $if` — propagate match status so at most one branch fires.
 		new_force_skip := force_skip || cond_matches
 		p.parse_comptime_struct_field_branch(language, new_force_skip, mut embedded, mut fields)
 		return
+	}
+	if p.tok == .semicolon && p.peek() == .lcbr {
+		p.next()
 	}
 	p.expect(.lcbr)
 	else_matches := !force_skip && !cond_matches

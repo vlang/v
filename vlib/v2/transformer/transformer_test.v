@@ -6637,6 +6637,28 @@ $else {
 	assert struct_field_names(files[0], 'Container') == ['val', 'always']
 }
 
+// Regression: `{` starts on the line after `$if cond ?`. The scanner inserts
+// a `;` after `?`, which must not block the opening brace.
+fn test_struct_comptime_if_lcbr_on_next_line() {
+	files := parse_code_with_defines_for_test('
+module main
+
+struct Container {
+$if my_feature ?
+{
+	val string = "on"
+}
+$else
+{
+	val string = "off"
+}
+	always int
+}
+', ['my_feature'])
+	assert files.len == 1
+	assert struct_field_names(files[0], 'Container') == ['val', 'always']
+}
+
 // Regression: `$else $if` chain where each `$else` starts on a new line.
 fn test_struct_comptime_else_if_on_next_line() {
 	files := parse_code_with_defines_for_test('
