@@ -12,7 +12,9 @@ import math.bits
 pub struct Gen {
 	mod &mir.Module
 mut:
-	elf &ElfObject
+	elf        &ElfObject
+	macho      &MachOObject
+	obj_format ObjectFormat
 
 	stack_map      map[int]int
 	alloca_offsets map[int]int
@@ -41,8 +43,19 @@ mut:
 
 pub fn Gen.new(mod &mir.Module) &Gen {
 	return &Gen{
-		mod: mod
-		elf: ElfObject.new()
+		mod:        mod
+		elf:        ElfObject.new()
+		macho:      MachOObject.new()
+		obj_format: .elf
+	}
+}
+
+pub fn Gen.new_with_format(mod &mir.Module, obj_format ObjectFormat) &Gen {
+	return &Gen{
+		mod:        mod
+		elf:        ElfObject.new()
+		macho:      MachOObject.new()
+		obj_format: obj_format
 	}
 }
 
@@ -62,13 +75,13 @@ pub fn (mut g Gen) gen() {
 		if gvar.linkage == .external {
 			continue
 		}
-		for g.elf.data_data.len % 8 != 0 {
-			g.elf.data_data << 0
+		for g.data_len() % 8 != 0 {
+			g.add_data_byte(0)
 		}
-		addr := u64(g.elf.data_data.len)
-		g.elf.add_symbol(gvar.name, addr, false, 2)
+		addr := u64(g.data_len())
+		g.add_symbol(gvar.name, addr, false, .data)
 		if gvar.initial_data.len > 0 {
-			g.elf.data_data << gvar.initial_data
+			g.add_data(gvar.initial_data)
 		} else if gvar.is_constant {
 			size := g.type_size(gvar.typ)
 			mut bytes := []u8{len: if size > 0 { size } else { 8 }}
@@ -79,20 +92,20 @@ pub fn (mut g Gen) gen() {
 					bytes[i] = u8(u64(gvar.initial_value) >> (i * 8))
 				}
 			}
-			g.elf.data_data << bytes
+			g.add_data(bytes)
 		} else {
 			// For regular globals, initialize with zeros
 			size := g.type_size(gvar.typ)
 			data_size := if size > 0 { size } else { 8 }
 			for _ in 0 .. data_size {
-				g.elf.data_data << 0
+				g.add_data_byte(0)
 			}
 		}
 	}
 }
 
 fn (mut g Gen) gen_func(func mir.Function) {
-	g.curr_offset = g.elf.text_data.len
+	g.curr_offset = g.text_len()
 	g.stack_map = map[int]int{}
 	g.alloca_offsets = map[int]int{}
 	g.block_offsets = map[int]int{}
@@ -182,7 +195,7 @@ fn (mut g Gen) gen_func(func mir.Function) {
 		g.stack_size += 8
 	}
 
-	g.elf.add_symbol(func.name, u64(g.curr_offset), true, 1)
+	g.add_symbol(func.name, u64(g.curr_offset), true, .text)
 
 	// Prologue
 	asm_endbr64(mut g)
@@ -280,7 +293,7 @@ fn (mut g Gen) gen_func(func mir.Function) {
 
 	for blk_id in func.blocks {
 		blk := g.mod.blocks[blk_id]
-		g.block_offsets[blk_id] = g.elf.text_data.len - g.curr_offset
+		g.block_offsets[blk_id] = g.text_len() - g.curr_offset
 
 		if offsets := g.pending_labels[blk_id] {
 			for off in offsets {
@@ -435,8 +448,8 @@ fn (mut g Gen) gen_instr(val_id int) {
 			asm_mov_reg_imm64(mut g, rsi, u64(alloc_size))
 			asm_xor_eax_eax(mut g)
 			asm_call_rel32(mut g)
-			sym_idx := g.elf.add_undefined('calloc')
-			g.elf.add_text_reloc(u64(g.elf.text_data.len), sym_idx, 4, -4)
+			sym_idx := g.add_undefined('calloc')
+			g.add_call_reloc(sym_idx)
 			g.emit_u32(0)
 			g.store_reg_to_val(0, val_id)
 		}
@@ -490,9 +503,9 @@ fn (mut g Gen) gen_instr(val_id int) {
 
 			if fn_val.name != '' && fn_val.kind in [.unknown, .func_ref] {
 				asm_call_rel32(mut g)
-				sym_idx := g.elf.add_undefined(fn_val.name)
+				sym_idx := g.add_undefined(fn_val.name)
 				// Use R_X86_64_PLT32 (4) for function calls to support shared libraries (libc)
-				g.elf.add_text_reloc(u64(g.elf.text_data.len), sym_idx, 4, -4)
+				g.add_call_reloc(sym_idx)
 				g.emit_u32(0)
 			} else {
 				g.load_val_to_reg(int(r10), instr.operands[0])
@@ -544,8 +557,8 @@ fn (mut g Gen) gen_instr(val_id int) {
 
 			if fn_val.name != '' && fn_val.kind in [.unknown, .func_ref] {
 				asm_call_rel32(mut g)
-				sym_idx := g.elf.add_undefined(fn_val.name)
-				g.elf.add_text_reloc(u64(g.elf.text_data.len), sym_idx, 4, -4)
+				sym_idx := g.add_undefined(fn_val.name)
+				g.add_call_reloc(sym_idx)
 				g.emit_u32(0)
 			} else {
 				g.load_val_to_reg(int(r10), instr.operands[0])
@@ -666,7 +679,7 @@ fn (mut g Gen) gen_instr(val_id int) {
 				asm_je_rel32(mut g)
 				target_idx := g.mod.values[instr.operands[i + 1]].index
 				if off := g.block_offsets[target_idx] {
-					rel := off - (g.elf.text_data.len - g.curr_offset + 4)
+					rel := off - (g.text_len() - g.curr_offset + 4)
 					g.emit_u32(u32(rel))
 				} else {
 					g.record_pending_label(target_idx)
@@ -920,7 +933,7 @@ fn (mut g Gen) emit_unsigned_int_to_float(src_size int, result_size int, val_id 
 	}
 	asm_test_rax_rax(mut g)
 	asm_jns_rel32(mut g)
-	normal_patch := g.elf.text_data.len
+	normal_patch := g.text_len()
 	g.emit_u32(0)
 	asm_mov_reg_reg(mut g, rcx, rax)
 	asm_and_rcx_imm8(mut g, 1)
@@ -929,7 +942,7 @@ fn (mut g Gen) emit_unsigned_int_to_float(src_size int, result_size int, val_id 
 	g.emit_signed_int_to_float(result_size, .uitofp, val_id)
 	asm_add_float_xmm0_xmm0(mut g, result_size)
 	asm_jmp_rel32(mut g)
-	end_patch := g.elf.text_data.len
+	end_patch := g.text_len()
 	g.emit_u32(0)
 	g.patch_rel32(normal_patch)
 	g.emit_signed_int_to_float(result_size, .uitofp, val_id)
@@ -955,11 +968,11 @@ fn (mut g Gen) emit_float_to_unsigned_int(src_size int, dst_size int, val_id int
 	g.load_fp_2p63_to_xmm1(src_size, val_id)
 	asm_ucomis_xmm0_xmm1(mut g, src_size)
 	asm_jae_rel32(mut g)
-	big_patch := g.elf.text_data.len
+	big_patch := g.text_len()
 	g.emit_u32(0)
 	g.emit_float_to_signed_int(src_size, .fptoui, val_id)
 	asm_jmp_rel32(mut g)
-	end_patch := g.elf.text_data.len
+	end_patch := g.text_len()
 	g.emit_u32(0)
 	g.patch_rel32(big_patch)
 	asm_sub_float_xmm0_xmm1(mut g, src_size)
@@ -978,18 +991,18 @@ fn (mut g Gen) load_fp_2p63_to_xmm1(size int, val_id int) {
 	} else {
 		g.unsupported_numeric_conversion(.fptoui, size, 8, val_id)
 	}
-	str_offset := g.elf.rodata.len
-	g.elf.rodata << bytes
+	str_offset := g.rodata_len()
+	g.add_rodata(bytes)
 	sym_name := 'L_fp_${g.curr_offset}_${str_offset}'
-	sym_idx := g.elf.add_symbol(sym_name, u64(str_offset), false, 3)
+	sym_idx := g.add_symbol(sym_name, u64(str_offset), false, .rodata)
 	asm_lea_reg_rip(mut g, r10)
-	g.elf.add_text_reloc(u64(g.elf.text_data.len), sym_idx, 2, -4)
+	g.add_rip_reloc(sym_idx)
 	g.emit_u32(0)
 	asm_load_xmm_mem_base_disp_size(mut g, 1, r10, 0, size)
 }
 
 fn (mut g Gen) patch_rel32(patch_pos int) {
-	target := g.elf.text_data.len
+	target := g.text_len()
 	rel := target - (patch_pos + 4)
 	g.write_u32(patch_pos, u32(rel))
 }
@@ -1335,7 +1348,7 @@ fn (g Gen) selected_opcode(instr mir.Instruction) ssa.OpCode {
 fn (mut g Gen) emit_jmp(target_idx int) {
 	asm_jmp_rel32(mut g)
 	if off := g.block_offsets[target_idx] {
-		rel := off - (g.elf.text_data.len - g.curr_offset + 4)
+		rel := off - (g.text_len() - g.curr_offset + 4)
 		g.emit_u32(u32(rel))
 	} else {
 		g.record_pending_label(target_idx)
@@ -1575,15 +1588,15 @@ fn (mut g Gen) load_val_to_reg(reg int, val_id int) {
 				}
 			}
 
-			str_offset := g.elf.rodata.len
-			g.elf.rodata << raw_bytes
-			g.elf.rodata << 0
+			str_offset := g.rodata_len()
+			g.add_rodata(raw_bytes)
+			g.add_rodata_byte(0)
 			sym_name := 'L_str_${g.curr_offset}_${str_offset}'
-			sym_idx := g.elf.add_symbol(sym_name, u64(str_offset), false, 3)
+			sym_idx := g.add_symbol(sym_name, u64(str_offset), false, .rodata)
 
 			// lea reg, [rip + disp]
 			asm_lea_reg_rip(mut g, Reg(reg))
-			g.elf.add_text_reloc(u64(g.elf.text_data.len), sym_idx, 2, -4)
+			g.add_rip_reloc(sym_idx)
 			g.emit_u32(0)
 		} else {
 			int_val := val.name.i64()
@@ -1597,8 +1610,8 @@ fn (mut g Gen) load_val_to_reg(reg int, val_id int) {
 		}
 	} else if val.kind == .global {
 		asm_lea_reg_rip(mut g, Reg(reg))
-		sym_idx := g.elf.add_undefined(val.name)
-		g.elf.add_text_reloc(u64(g.elf.text_data.len), sym_idx, 2, -4)
+		sym_idx := g.add_undefined(val.name)
+		g.add_rip_reloc(sym_idx)
 		g.emit_u32(0)
 	} else if val.kind == .string_literal {
 		g.materialize_string_literal(reg, val_id)
@@ -1627,15 +1640,15 @@ fn (mut g Gen) store_reg_to_val(reg int, val_id int) {
 
 fn (mut g Gen) materialize_string_literal(reg int, val_id int) {
 	val := g.mod.values[val_id]
-	str_offset := g.elf.rodata.len
-	g.elf.rodata << val.name.bytes()
-	g.elf.rodata << 0
+	str_offset := g.rodata_len()
+	g.add_rodata(val.name.bytes())
+	g.add_rodata_byte(0)
 	sym_name := 'L_str_${g.curr_offset}_${str_offset}'
-	sym_idx := g.elf.add_symbol(sym_name, u64(str_offset), false, 3)
+	sym_idx := g.add_symbol(sym_name, u64(str_offset), false, .rodata)
 
 	slot_off := g.stack_map[val_id]
 	asm_lea_reg_rip(mut g, rax)
-	g.elf.add_text_reloc(u64(g.elf.text_data.len), sym_idx, 2, -4)
+	g.add_rip_reloc(sym_idx)
 	g.emit_u32(0)
 	asm_store_rbp_disp_reg_size(mut g, slot_off + g.struct_field_offset_bytes(val.typ, 0), rax, 8)
 	asm_mov_reg_imm32(mut g, rax, u32(val.index))
@@ -1757,33 +1770,9 @@ fn (g Gen) map_reg(r int) u8 {
 	return u8(r)
 }
 
-fn (mut g Gen) emit(b u8) {
-	g.elf.text_data << b
-}
-
-fn (mut g Gen) emit_u32(v u32) {
-	g.emit(u8(v))
-	g.emit(u8(v >> 8))
-	g.emit(u8(v >> 16))
-	g.emit(u8(v >> 24))
-}
-
-fn (mut g Gen) emit_u64(v u64) {
-	g.emit_u32(u32(v))
-	g.emit_u32(u32(v >> 32))
-}
-
 fn (mut g Gen) record_pending_label(blk int) {
-	off := g.elf.text_data.len - g.curr_offset
+	off := g.text_len() - g.curr_offset
 	g.pending_labels[blk] << off
-}
-
-fn (mut g Gen) write_u32(off int, v u32) {
-	binary.little_endian_put_u32(mut g.elf.text_data[off..off + 4], v)
-}
-
-pub fn (mut g Gen) write_file(path string) {
-	g.elf.write(path)
 }
 
 // Register Allocation Logic
