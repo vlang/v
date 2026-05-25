@@ -23,6 +23,7 @@ import v2.token
 import v2.transformer
 import v2.types
 import time
+import runtime
 
 const staged_c_file = '/tmp/v2_codegen.tmp.c'
 const staged_main_obj_file = '/tmp/v2_codegen.tmp.main.o'
@@ -99,9 +100,18 @@ fn (mut b Builder) compile_cleanc_executable(output_name string, cc string, cc_f
 	println('[*] Compiled ${output_name}')
 }
 
+fn print_rss(stage string) {
+	if os.getenv('V2_MEM') == '' {
+		return
+	}
+	bytes := runtime.used_memory() or { 0 }
+	eprintln('  [mem] ${stage}: ${bytes / (1024 * 1024)} MB')
+}
+
 pub fn (mut b Builder) build(files []string) {
 	b.user_files = files
 	mut sw := time.new_stopwatch()
+	print_rss('start')
 	$if parallel ? {
 		b.files = if b.pref.no_parallel {
 			b.parse_files(files)
@@ -113,6 +123,7 @@ pub fn (mut b Builder) build(files []string) {
 	}
 	parse_time := sw.elapsed()
 	print_time('Scan & Parse', parse_time)
+	print_rss('after parse')
 	b.update_parse_summary_counts()
 	print_parse_summary(b.parsed_full_files_n, b.parsed_vh_files_n, b.entry_v_lines_n,
 		b.parsed_v_lines_n, b.pref.stats, b.pref.print_parsed_files, b.parsed_full_files,
@@ -132,6 +143,7 @@ pub fn (mut b Builder) build(files []string) {
 	}
 	type_check_time := time.Duration(sw.elapsed() - parse_time)
 	print_time('Type Check', type_check_time)
+	print_rss('after type check')
 
 	// Transform AST (flag enum desugaring, etc.)
 	transform_start := sw.elapsed()
@@ -144,6 +156,7 @@ pub fn (mut b Builder) build(files []string) {
 	}
 	transform_time := time.Duration(sw.elapsed() - transform_start)
 	print_time('Transform', transform_time)
+	print_rss('after transform')
 
 	// Mark used functions/methods for backend pruning.
 	if b.pref.no_markused {
@@ -159,6 +172,7 @@ pub fn (mut b Builder) build(files []string) {
 		}
 		mark_used_time := time.Duration(sw.elapsed() - mark_used_start)
 		print_time('Mark Used', mark_used_time)
+		print_rss('after markused')
 	}
 
 	// Generate output based on backend
@@ -190,6 +204,7 @@ pub fn (mut b Builder) build(files []string) {
 	}
 
 	print_time('Total', sw.elapsed())
+	print_rss('after codegen (peak)')
 }
 
 fn (mut b Builder) gen_v_files() {
