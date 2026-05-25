@@ -116,7 +116,8 @@ fn get_array_element_type[T](_arr []T) T {
 }
 
 fn (mut decoder Decoder) check_array_type_valid[T](arr []T, current_node &Node[ValueInfo]) bool {
-	return decoder.check_element_type_valid(get_array_element_type(arr), current_node)
+	element := get_array_element_type(arr)
+	return decoder.check_element_type_valid(element, current_node)
 }
 
 fn (mut decoder Decoder) get_array_type_workaround[T](initialized_sumtype T) bool {

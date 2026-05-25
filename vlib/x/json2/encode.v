@@ -463,6 +463,14 @@ fn (mut encoder Encoder) encode_sumtype[T](val T) {
 					}
 				} $else $if variant.typ is $map {
 					encoder.encode_value(val)
+				} $else $if variant.typ is $array_dynamic {
+					if T.name in ['x.json2.Any', 'json2.Any', 'Any'] {
+						variant_value := val
+						encoder.encode_value(variant_value)
+					} else {
+						variant_value := val
+						encoder.encode_array_of_sumtype_variants(variant_value)
+					}
 				} $else {
 					variant_value := val
 					encoder.encode_value(variant_value)
@@ -509,6 +517,40 @@ fn (mut encoder Encoder) encode_sumtype_struct_variant[T](val T, variant_name st
 	encoder.output << `}`
 }
 
+fn (mut encoder Encoder) encode_array_of_sumtype_variants[T](val []T) {
+	encoder.output << `[`
+	if encoder.prettify {
+		encoder.increment_level()
+		encoder.add_indent()
+	}
+	for i, item in val {
+		$if T is time.Time {
+			encoder.encode_value(item)
+		} $else $if T is JsonEncoder {
+			encoder.encode_value(item)
+		} $else $if T is Encodable {
+			encoder.encode_value(item)
+		} $else $if T is $struct {
+			elem_name := sumtype_variant_name(T.name)
+			encoder.encode_sumtype_struct_variant(item, elem_name)
+		} $else {
+			encoder.encode_value(item)
+		}
+		if i < val.len - 1 {
+			encoder.output << `,`
+			if encoder.prettify {
+				encoder.add_indent()
+			}
+		} else {
+			if encoder.prettify {
+				encoder.decrement_level()
+				encoder.add_indent()
+			}
+		}
+	}
+	encoder.output << `]`
+}
+
 @[markused]
 fn (mut encoder Encoder) encode_sumtype_time_variant(val time.Time, variant_name string) {
 	encoder.output << `{`
@@ -538,19 +580,7 @@ fn get_value_from_optional[T](val ?T) T {
 }
 
 fn check_not_empty[T](val T) ?bool {
-	$if T.indirections != 0 {
-		return val != unsafe { nil }
-	} $else $if T.unaliased_typ is string {
-		if val == '' {
-			return false
-		}
-	} $else $if T.unaliased_typ is $int || T.unaliased_typ is $float {
-		if val == 0 {
-			return false
-		}
-	} $else $if T.unaliased_typ is $array || T.unaliased_typ is $map {
-		return val.len != 0
-	} $else $if val is ?string {
+	$if val is ?string {
 		opt := ?string(val)
 		if sval := opt {
 			return sval != ''
@@ -574,6 +604,20 @@ fn check_not_empty[T](val T) ?bool {
 			return fval != 0.0
 		}
 		return false
+	} $else $if T is $option {
+		return !struct_field_is_none(val)
+	} $else $if T.indirections != 0 {
+		return val != unsafe { nil }
+	} $else $if T.unaliased_typ is string {
+		if val == '' {
+			return false
+		}
+	} $else $if T.unaliased_typ is $int || T.unaliased_typ is $float {
+		if val == 0 {
+			return false
+		}
+	} $else $if T.unaliased_typ is $array || T.unaliased_typ is $map {
+		return val.len != 0
 	}
 	return true
 }
