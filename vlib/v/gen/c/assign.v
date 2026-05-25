@@ -427,6 +427,46 @@ fn (mut g Gen) expr_opt_with_alias(expr ast.Expr, expr_typ ast.Type, ret_typ ast
 	return ret_var
 }
 
+// expr_result_with_alias handles conversion from different result alias type name
+fn (mut g Gen) expr_result_with_alias(expr ast.Expr, expr_typ ast.Type, ret_typ ast.Type) string {
+	styp := g.base_type(ret_typ)
+
+	line := g.go_before_last_stmt().trim_space()
+	g.empty_line = true
+
+	ret_var := g.new_tmp_var()
+	ret_styp := g.styp(ret_typ).replace('*', '_ptr')
+	g.writeln('${ret_styp} ${ret_var} = {.is_error=false, .err=_const_none__, .data={E_STRUCT}};')
+
+	is_result_expr := expr_typ.has_flag(.result)
+	if is_result_expr {
+		g.write('builtin___result_clone((${result_name}*)')
+	} else {
+		g.write('builtin___result_ok(&(${styp}[]){ ')
+	}
+	has_addr := is_result_expr && expr !in [ast.Ident, ast.SelectorExpr]
+	if has_addr {
+		expr_styp := g.styp(expr_typ).replace('*', '_ptr')
+		g.write('ADDR(${expr_styp}, ')
+	} else if is_result_expr {
+		g.write('&')
+	}
+	g.expr(expr)
+	if has_addr {
+		g.write(')')
+	}
+	if !is_result_expr {
+		g.write(' }')
+	}
+	g.writeln(', (${result_name}*)&${ret_var}, sizeof(${styp}));')
+	g.write(line)
+	if g.inside_return {
+		g.write(' ')
+	}
+	g.write(ret_var)
+	return ret_var
+}
+
 // expr_opt_with_cast is used in cast expr when converting compatible option types
 // e.g. ?int(?u8(0))
 fn (mut g Gen) expr_opt_with_cast(expr ast.Expr, expr_typ ast.Type, ret_typ ast.Type) string {

@@ -3920,6 +3920,7 @@ pub fn (mut w Walker) finalize(include_panic_deps bool) {
 	}
 	if w.used_result > 0 {
 		w.fn_by_name('_result_ok')
+		w.fn_by_name('_result_clone')
 		w.mark_by_sym_name('_result')
 	}
 	if (w.used_option + w.used_result + w.used_none) > 0 {
