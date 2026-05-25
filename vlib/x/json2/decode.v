@@ -577,6 +577,7 @@ fn decode_struct_key[T](mut decoder Decoder, val T, key_info ValueInfo, prefix s
 					} $else $if field.unaliased_typ is $map {
 						if decoder.current_node.value.value_kind == .null
 							&& !field_info.is_required {
+							new_val.$(field.name).clear()
 							decoder.skip_current_value()
 						} else {
 							decoder.decode_map(mut new_val.$(field.name))!
@@ -951,6 +952,7 @@ fn (mut decoder Decoder) decode_value[T](mut val T) ! {
 										} $else $if field.unaliased_typ is $map {
 											if decoder.current_node.value.value_kind == .null
 												&& !field_info.is_required {
+												val.$(field.name).clear()
 												decoder.skip_current_value()
 											} else {
 												decoder.decode_map(mut val.$(field.name))!
