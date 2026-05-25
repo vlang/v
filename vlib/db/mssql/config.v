@@ -77,11 +77,9 @@ pub fn (cfg Config) get_conn_str() string {
 	}
 	if cfg.options.len > 0 {
 		mut option_keys := cfg.options.keys()
-		$if macos {
-			option_keys.sort()
-		} $else {
+		$if tinyc {
 			// Manual insertion sort avoids relying on the generic .sort() helper,
-			// which has tripped tcc bounds-check builds in CI on non-macOS.
+			// which has tripped tcc bounds-check builds in CI.
 			for i in 1 .. option_keys.len {
 				key := option_keys[i]
 				mut j := i
@@ -91,6 +89,8 @@ pub fn (cfg Config) get_conn_str() string {
 				}
 				option_keys[j] = key
 			}
+		} $else {
+			option_keys.sort()
 		}
 		for key in option_keys {
 			append_conn_part(mut parts, key, cfg.options[key])
