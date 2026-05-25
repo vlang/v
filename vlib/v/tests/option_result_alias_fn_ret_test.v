@@ -11,19 +11,23 @@ struct Bb {
 type Aa = Bb
 
 fn returns_b_option() ?Bb {
-	return Bb{s: 'b'}
+	return Bb{
+		s: 'b'
+	}
 }
 
 fn returns_b_result() !Bb {
-	return Bb{s: 'b'}
+	return Bb{
+		s: 'b'
+	}
 }
 
 fn returns_bs_option() ?[]Bb {
-	return [Bb{s: 'b'}]
+	return [Bb{ s: 'b' }]
 }
 
 fn returns_bs_result() ![]Bb {
-	return [Bb{s: 'b'}]
+	return [Bb{ s: 'b' }]
 }
 
 fn case_a() !Aa {
@@ -43,11 +47,11 @@ fn case_d() ![]Aa {
 }
 
 fn case_e() !Aa {
-	return (returns_b_result())
+	return returns_b_result()
 }
 
 fn case_f() ?Aa {
-	return (returns_b_option())
+	return returns_b_option()
 }
 
 fn test_result_alias_direct() {

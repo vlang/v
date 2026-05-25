@@ -10708,11 +10708,9 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 				} else {
 					g.expr_with_opt(expr0, type0, ret_type)
 				}
-			} else if ret_type.has_flag(.result) && type0.has_flag(.result)
-				&& type0 != ret_type
+			} else if ret_type.has_flag(.result) && type0.has_flag(.result) && type0 != ret_type
 				&& unwrap_paren_call_expr(expr0) is ast.CallExpr
-				&& g.table.are_payloads_alias_compatible(type0.clear_flag(.result),
-				ret_type.clear_flag(.result)) {
+				&& g.table.are_payloads_alias_compatible(type0.clear_flag(.result), ret_type.clear_flag(.result)) {
 				// return foo() (or `return (foo())`) where foo() returns a different
 				// but layout-equivalent result alias (e.g. `!Aa` vs `!Bb` with
 				// `type Aa = Bb`, or `![]Aa` vs `![]Bb`). The two C structs are
@@ -11949,8 +11947,7 @@ fn (mut g Gen) or_block_on_value(var_name string, or_block ast.OrExpr, return_ty
 		// consumed the option/result via its own or-block; the effective
 		// value of the last expression is void, so do not try to write
 		// `*(T*) tmp.data = <void>` (see issue #27012).
-		if last_expr_stmt.expr is ast.CallExpr
-			&& last_expr_stmt.expr.or_block.kind != .absent
+		if last_expr_stmt.expr is ast.CallExpr && last_expr_stmt.expr.or_block.kind != .absent
 			&& last_expr_typ.clear_option_and_result() == ast.void_type {
 			last_expr_typ = ast.void_type
 		}
@@ -12067,8 +12064,7 @@ fn (mut g Gen) or_block(var_name string, or_block ast.OrExpr, return_type ast.Ty
 			// consumed the option/result via its own or-block; the effective
 			// value of the last expression is void, so do not try to write
 			// `*(T*) tmp.data = <void>` (see issue #27012).
-			if last_expr_stmt.expr is ast.CallExpr
-				&& last_expr_stmt.expr.or_block.kind != .absent
+			if last_expr_stmt.expr is ast.CallExpr && last_expr_stmt.expr.or_block.kind != .absent
 				&& last_expr_typ.clear_option_and_result() == ast.void_type {
 				last_expr_typ = ast.void_type
 			}

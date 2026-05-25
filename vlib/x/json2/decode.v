@@ -566,8 +566,7 @@ fn decode_struct_key[T](mut decoder Decoder, val T, key_info ValueInfo, prefix s
 							}
 						}
 					} $else $if field.unaliased_typ is $array_dynamic {
-						if decoder.current_node.value.value_kind == .null
-							&& !field_info.is_required {
+						if decoder.current_node.value.value_kind == .null && !field_info.is_required {
 							new_val.$(field.name).clear()
 							decoder.skip_current_value()
 						} else {
@@ -575,8 +574,7 @@ fn decode_struct_key[T](mut decoder Decoder, val T, key_info ValueInfo, prefix s
 							decoder.decode_array(mut new_val.$(field.name))!
 						}
 					} $else $if field.unaliased_typ is $map {
-						if decoder.current_node.value.value_kind == .null
-							&& !field_info.is_required {
+						if decoder.current_node.value.value_kind == .null && !field_info.is_required {
 							new_val.$(field.name).clear()
 							decoder.skip_current_value()
 						} else {
@@ -585,8 +583,8 @@ fn decode_struct_key[T](mut decoder Decoder, val T, key_info ValueInfo, prefix s
 					} $else $if field.unaliased_typ is string {
 						value_info := decoder.current_node.value
 						if value_info.value_kind == .object || value_info.value_kind == .array {
-							new_val.$(field.name) = decoder.json[value_info.position..value_info.position +
-								value_info.length]
+							new_val.$(field.name) = decoder.json[value_info.position..
+								value_info.position + value_info.length]
 							decoder.skip_current_value()
 						} else if value_info.value_kind == .null && !field_info.is_required {
 							new_val.$(field.name) = ''
@@ -961,8 +959,8 @@ fn (mut decoder Decoder) decode_value[T](mut val T) ! {
 											value_info := decoder.current_node.value
 											if value_info.value_kind == .object
 												|| value_info.value_kind == .array {
-												val.$(field.name) = decoder.json[value_info.position..value_info.position +
-													value_info.length]
+												val.$(field.name) = decoder.json[value_info.position..
+													value_info.position + value_info.length]
 												decoder.skip_current_value()
 											} else if value_info.value_kind == .null
 												&& !field_info.is_required {

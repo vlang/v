@@ -8,7 +8,9 @@ struct Item {
 }
 
 fn get_item() !Item {
-	return Item{id: 1}
+	return Item{
+		id: 1
+	}
 }
 
 fn get_item_err() !Item {
@@ -23,9 +25,7 @@ fn test_nested_or_block_with_void_result_inner_succeeds() {
 	mut traces := []string{}
 	get_item() or {
 		traces << 'outer: ${err}'
-		do_void() or {
-			traces << 'inner: ${err}'
-		}
+		do_void() or { traces << 'inner: ${err}' }
 	}
 	// Outer call succeeded -> or-block is never entered.
 	assert traces.len == 0
@@ -35,9 +35,7 @@ fn test_nested_or_block_with_void_result_outer_errors() {
 	mut traces := []string{}
 	get_item_err() or {
 		traces << 'outer: ${err}'
-		do_void() or {
-			traces << 'inner: ${err}'
-		}
+		do_void() or { traces << 'inner: ${err}' }
 	}
 	assert traces.len == 2
 	assert traces[0] == 'outer: outer'

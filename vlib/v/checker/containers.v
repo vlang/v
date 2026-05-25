@@ -430,8 +430,7 @@ fn (mut c Checker) array_init(mut node ast.ArrayInit) ast.Type {
 			if expr is ast.CallExpr {
 				ret_sym := c.table.sym(typ)
 				if ret_sym.kind == .array_fixed {
-					node.expr_types[node.expr_types.len - 1] = c.cast_fixed_array_ret(typ,
-						ret_sym)
+					node.expr_types[node.expr_types.len - 1] = c.cast_fixed_array_ret(typ, ret_sym)
 				}
 				node.has_callexpr = true
 			}

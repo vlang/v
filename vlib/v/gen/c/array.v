@@ -202,7 +202,8 @@ fn (mut g Gen) array_init(node ast.ArrayInit, var_name string) {
 		if len == 0 {
 			g.write('((${elem_styp}*)0))')
 		} else {
-			prepared_exprs := g.prepare_array_init_exprs(node.exprs, expr_types, resolved_elem_type.typ)
+			prepared_exprs := g.prepare_array_init_exprs(node.exprs, expr_types,
+				resolved_elem_type.typ)
 			g.write('_MOV((${elem_styp}[${len}]){')
 			for i, expr in prepared_exprs {
 				actual_expr := array_init_orig_expr(expr)

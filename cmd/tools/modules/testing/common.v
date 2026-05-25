@@ -598,8 +598,7 @@ fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 		}
 		if !os.is_executable(v2_bin) {
 			ts.append_message(.info, 'SKIP ${relative_file}: v2 binary not built. Run: ${os.quoted_path(ts.vexe)} -o ${os.quoted_path(v2_bin)} ${os.quoted_path(os.join_path(ts.vroot,
-				'cmd', 'v2', 'v2.v'))}',
-				mtc)
+				'cmd', 'v2', 'v2.v'))}', mtc)
 			ts.benchmark.skip()
 			tls_bench.skip()
 			return pool.no_result
@@ -949,14 +948,13 @@ pub fn h_divider() {
 // flag, so this is used when forwarding `v test` options to v2 for
 // `_test.vv2` files. Keep these lists in sync with v2's pref validator.
 fn filter_args_for_v2(compile_options []string) string {
-	v2_value_flags := ['-backend', '-b', '-o', '-output', '-arch', '-printfn', '-gc',
-		'-d', '-hot-fn', '-cc']
-	v2_bool_flags := ['--debug', '--verbose', '-v', '--skip-genv', '--skip-builtin',
-		'--skip-imports', '--skip-type-check', '--no-parallel', '-nocache', '--nocache',
-		'-nomarkused', '--nomarkused', '-showcc', '--showcc', '-stats', '--stats',
-		'-print-parsed-files', '--print-parsed-files', '-keepc', '--profile-alloc',
-		'-profile-alloc', '-enable-globals', '--enable-globals', '-shared', '--shared',
-		'-O0', '--single-backend', '-single-backend', '-prod', '-prealloc',
+	v2_value_flags := ['-backend', '-b', '-o', '-output', '-arch', '-printfn', '-gc', '-d', '-hot-fn',
+		'-cc']
+	v2_bool_flags := ['--debug', '--verbose', '-v', '--skip-genv', '--skip-builtin', '--skip-imports',
+		'--skip-type-check', '--no-parallel', '-nocache', '--nocache', '-nomarkused', '--nomarkused',
+		'-showcc', '--showcc', '-stats', '--stats', '-print-parsed-files', '--print-parsed-files',
+		'-keepc', '--profile-alloc', '-profile-alloc', '-enable-globals', '--enable-globals',
+		'-shared', '--shared', '-O0', '--single-backend', '-single-backend', '-prod', '-prealloc',
 		'-ownership']
 	tokens := vflags.tokenize_to_args(compile_options.join(' '))
 	mut out := []string{}

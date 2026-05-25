@@ -1,6 +1,6 @@
 const base_array = [
-	1
-	2
+	1,
+	2,
 ]
 
 const base_strings = ['a', 'b']
@@ -13,8 +13,7 @@ struct Point {
 const base_points = [Point{1, 2}, Point{3, 4}]
 
 fn test_array_init_with_spread() {
-	complete := [
-		...base_array,
+	complete := [...base_array,
 		3,
 		4,
 	]

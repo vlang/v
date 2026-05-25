@@ -6556,7 +6556,9 @@ $if my_feature ? {
 }
 	always_present int
 }
-', ['my_feature'])
+', [
+		'my_feature',
+	])
 	assert files.len == 1
 	assert struct_field_names(files[0], 'Container') == ['feature_val', 'always_present']
 }
@@ -6589,7 +6591,9 @@ $if feat_a ? {
 	tag string = "default"
 }
 }
-', ['feat_b'])
+', [
+		'feat_b',
+	])
 	assert files.len == 1
 	names := struct_field_names(files[0], 'Container')
 	assert names == ['tag']
@@ -6616,7 +6620,9 @@ struct Container {
 	name   string
 	debug_only int @[if present_flag ?]
 }
-', ['present_flag'])
+', [
+		'present_flag',
+	])
 	assert files.len == 1
 	assert struct_field_names(files[0], 'Container') == ['name', 'debug_only']
 }
@@ -6658,7 +6664,9 @@ $else
 }
 	always int
 }
-', ['my_feature'])
+', [
+		'my_feature',
+	])
 	assert files.len == 1
 	assert struct_field_names(files[0], 'Container') == ['val', 'always']
 }
@@ -6679,7 +6687,9 @@ $else {
 	tag string = "default"
 }
 }
-', ['feat_b'])
+', [
+		'feat_b',
+	])
 	assert files.len == 1
 	assert struct_field_names(files[0], 'Container') == ['tag']
 }
@@ -6703,8 +6713,8 @@ $if new_int ? {
 }
 	always int
 }
-', .x64, [])
+',
+		.x64, [])
 	assert files.len == 1
-	assert struct_field_names(files[0], 'Container') == ['tinyc_field', 'write_field',
-		'always']
+	assert struct_field_names(files[0], 'Container') == ['tinyc_field', 'write_field', 'always']
 }

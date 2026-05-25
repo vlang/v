@@ -403,9 +403,21 @@ fn (mut t Transformer) transform_array_init_expr(expr ast.ArrayInitExpr) ast.Exp
 		return ast.ArrayInitExpr{
 			typ:         array_typ
 			exprs:       exprs
-			init:        if expr.init !is ast.EmptyExpr { t.transform_expr(expr.init) } else { expr.init }
-			cap:         if expr.cap !is ast.EmptyExpr { t.transform_expr(expr.cap) } else { expr.cap }
-			len:         if expr.len !is ast.EmptyExpr { t.transform_expr(expr.len) } else { expr.len }
+			init:        if expr.init !is ast.EmptyExpr {
+				t.transform_expr(expr.init)
+			} else {
+				expr.init
+			}
+			cap:         if expr.cap !is ast.EmptyExpr {
+				t.transform_expr(expr.cap)
+			} else {
+				expr.cap
+			}
+			len:         if expr.len !is ast.EmptyExpr {
+				t.transform_expr(expr.len)
+			} else {
+				expr.len
+			}
 			update_expr: if expr.update_expr !is ast.EmptyExpr {
 				t.transform_expr(expr.update_expr)
 			} else {

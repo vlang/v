@@ -3683,6 +3683,7 @@ fn (p &Parser) eval_comptime_cond(cond ast.Expr) bool {
 		}
 		else {}
 	}
+
 	return false
 }
 
