@@ -3735,6 +3735,36 @@ fn (mut g Gen) expr_is_voidptr_cast(expr ast.Expr) bool {
 	}
 }
 
+// expr_yields_struct_value detects expressions that evaluate to a struct VALUE
+// (not a pointer), e.g. struct literals or already-emitted sum type wraps.
+// Used to decide if `memdup(expr, sizeof)` is unsafe (memdup expects a pointer).
+fn (mut g Gen) expr_yields_struct_value(expr ast.Expr) bool {
+	match expr {
+		ast.InitExpr {
+			return true
+		}
+		ast.ParenExpr {
+			return g.expr_yields_struct_value(expr.expr)
+		}
+		ast.ModifierExpr {
+			return g.expr_yields_struct_value(expr.expr)
+		}
+		ast.CastExpr {
+			cast_type := g.expr_type_to_c(expr.typ)
+			if cast_type in ['void*', 'voidptr'] {
+				return false
+			}
+			if cast_type.ends_with('*') {
+				return false
+			}
+			return g.expr_yields_struct_value(expr.expr)
+		}
+		else {
+			return false
+		}
+	}
+}
+
 fn (mut g Gen) is_type_reference_expr(node ast.Expr) bool {
 	match node {
 		ast.Ident {

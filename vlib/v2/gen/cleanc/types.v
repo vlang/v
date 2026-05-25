@@ -589,6 +589,26 @@ fn (mut g Gen) collect_module_type_names() {
 							g.fixed_array_field_elem[struct_key] = elem_type
 						}
 					}
+					// Register each embedded struct as a synthetic field under the
+					// outer struct so `outer.EmbedName` (explicit embed access) can
+					// be resolved by `lookup_struct_field_type_by_name`. Without
+					// this, type inference for `outer.EmbedName.f` falls back to
+					// `int`, which breaks if-expression temp typing among others.
+					for emb in stmt.embedded {
+						emb_c_type := g.expr_type_to_c(emb)
+						emb_name := embedded_owner_field_name(emb_c_type)
+						if emb_name == '' {
+							continue
+						}
+						full_key := stmt.name + '.' + emb_name
+						struct_key := struct_name + '.' + emb_name
+						if full_key !in g.struct_field_types {
+							g.struct_field_types[full_key] = emb_c_type
+						}
+						if struct_key !in g.struct_field_types {
+							g.struct_field_types[struct_key] = emb_c_type
+						}
+					}
 				}
 				ast.EnumDecl {
 					enum_name := g.get_enum_name(stmt)
@@ -2826,6 +2846,11 @@ fn (mut g Gen) get_expr_type(node ast.Expr) string {
 	// For IndexExpr on pointer-to-pointer or pointer-to-string types, prefer raw-type-based
 	// inference over env (env may store the wrong type, e.g. char instead of char*).
 	if node is ast.IndexExpr {
+		if g.comptime_method_var != '' {
+			if comptime_t := g.comptime_method_args_index_type(node) {
+				return comptime_t
+			}
+		}
 		if node.expr is ast.RangeExpr {
 			if lhs_raw := g.get_raw_type(node.lhs) {
 				match lhs_raw {
@@ -3590,6 +3615,44 @@ fn (mut g Gen) cast_target_value_type(expr ast.Expr) ?string {
 		else {}
 	}
 
+	return none
+}
+
+// comptime_method_args_index_type detects index/slice expressions on the comptime
+// `method.args` selector (e.g. `method.args[i]`, `method.args[1..]`,
+// `(method.args[1..])[i]`) and returns the corresponding element/container C type.
+// Returns none when the expression does not chain back to `method.args`.
+fn (g &Gen) comptime_method_args_index_type(node ast.IndexExpr) ?string {
+	if g.comptime_method_var == '' {
+		return none
+	}
+	is_slice := node.expr is ast.RangeExpr
+	mut cur := strip_expr_wrappers(node.lhs)
+	for {
+		if cur is ast.SelectorExpr {
+			if cur.lhs is ast.Ident && cur.lhs.name == g.comptime_method_var
+				&& cur.rhs.name == 'args' {
+				return if is_slice { 'Array_FunctionParam' } else { 'FunctionParam' }
+			}
+			return none
+		}
+		if cur is ast.IndexExpr {
+			cur = strip_expr_wrappers(cur.lhs)
+			continue
+		}
+		// Transformer lowers `method.args[lo..hi]` to
+		// `array__slice[_ni](method.args, lo, hi)`. Drill into the first arg.
+		if cur is ast.CallExpr {
+			if cur.lhs is ast.Ident
+				&& cur.lhs.name in ['array__slice', 'array__slice_ni', 'builtin__array__slice', 'builtin__array__slice_ni']
+				&& cur.args.len > 0 {
+				cur = strip_expr_wrappers(cur.args[0])
+				continue
+			}
+			return none
+		}
+		return none
+	}
 	return none
 }
 

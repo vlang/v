@@ -88,6 +88,12 @@ fn (t &Transformer) type_from_param_type_expr(expr ast.Expr, generic_params []st
 	if expr is ast.Ident && expr.name in generic_params {
 		return types.Type(types.NamedType(expr.name))
 	}
+	// Resolve from the AST directly so nested type shapes like `&map[K]V`
+	// don't lose structure round-tripping through C-style name strings
+	// (which are ambiguous for pointer-of-map vs. map-of-pointer).
+	if typ := t.lookup_type_from_expr(expr) {
+		return typ
+	}
 	type_name := t.expr_to_type_name(expr)
 	if type_name == '' {
 		return none
@@ -336,7 +342,21 @@ fn (t &Transformer) lookup_type_from_ast_type(typ ast.Type) ?types.Type {
 			base_type: base
 		})
 	}
-	// For other ast.Type variants (ArrayType, MapType, FnType, etc.), the
+	if typ is ast.MapType {
+		key := t.lookup_type_from_expr(typ.key_type) or { return none }
+		value := t.lookup_type_from_expr(typ.value_type) or { return none }
+		return types.Type(types.Map{
+			key_type:   key
+			value_type: value
+		})
+	}
+	if typ is ast.ArrayType {
+		elem := t.lookup_type_from_expr(typ.elem_type) or { return none }
+		return types.Type(types.Array{
+			elem_type: elem
+		})
+	}
+	// For other ast.Type variants (ArrayFixedType, FnType, etc.), the
 	// caller's name extraction logic may not need them. Returning none lets
 	// callers fall back to other resolution paths.
 	return none

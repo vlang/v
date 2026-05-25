@@ -5771,6 +5771,11 @@ fn (mut g Gen) expr_is_pointer(arg ast.Expr) bool {
 			// For C typedef struct casts like C.log__Logger(ptr), if the source is a pointer,
 			// the result is also a pointer (type pun cast). The cast doesn't unwrap the pointer.
 			if target_type.contains('__') && g.expr_is_pointer(arg.expr) {
+				// Sum-type casts construct a sum value from the source, they are not
+				// pointer-preserving aliases.
+				if target_type in g.sum_type_variants {
+					return false
+				}
 				return true
 			}
 			return false
@@ -10718,11 +10723,27 @@ fn (mut g Gen) gen_comptime_method_call(receiver ast.Expr, args []ast.Expr) {
 		g.expr(receiver)
 	}
 
-	// Emit remaining args, unwrapping `mut x` (KeywordOperator) and skipping
-	// spread (`...args`) since runtime expansion isn't supported here.
+	// Emit remaining args. Unwraps `mut x` (KeywordOperator). For `...args`
+	// spread, expand to one indexed access per remaining target param slot,
+	// typed using the resolved fn's parameter types.
+	param_types := g.fn_param_types[fn_name] or { []string{} }
+	expected_extra := if param_types.len > 0 { param_types.len - 1 } else { 0 }
+	mut emitted := 0
 	for arg in args {
-		// Skip spread args (variadic forwarding) — not supported in comptime dispatch.
 		if arg is ast.PrefixExpr && arg.op == .ellipsis {
+			remaining := expected_extra - emitted
+			for d_count in 0 .. remaining {
+				slot_idx := 1 + emitted
+				elem_type := if slot_idx < param_types.len {
+					param_types[slot_idx]
+				} else {
+					'string'
+				}
+				g.sb.write_string(', ((${elem_type}*)(')
+				g.expr(arg.expr)
+				g.sb.write_string(').data)[${d_count}]')
+				emitted++
+			}
 			continue
 		}
 		g.sb.write_string(', ')
@@ -10742,6 +10763,19 @@ fn (mut g Gen) gen_comptime_method_call(receiver ast.Expr, args []ast.Expr) {
 			g.expr(inner)
 		} else {
 			g.expr(arg)
+		}
+		emitted++
+	}
+	// Pad missing arg slots with zero-initialized values. The comptime
+	// `$for method in T.methods` loop generates a call branch for every
+	// method, even those whose source-level call site (e.g. an `else`
+	// branch with no `...args`) passes fewer args than the method
+	// expects. Such branches are dead at runtime, but C still type-checks
+	// the call and needs the right arity.
+	if emitted < expected_extra {
+		for slot in (1 + emitted) .. param_types.len {
+			pt := param_types[slot]
+			g.sb.write_string(', (${pt}){0}')
 		}
 	}
 	g.sb.write_string(')')

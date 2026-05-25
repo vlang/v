@@ -3760,6 +3760,19 @@ fn (t &Transformer) map_index_lhs_type(lhs ast.Expr) ?types.Type {
 			return field_type
 		}
 	}
+	// Unwrap `(expr)` so callers don't need to know about ParenExpr wrappers.
+	if lhs is ast.ParenExpr {
+		return t.map_index_lhs_type(lhs.expr)
+	}
+	// `*ptr` where ptr is `&map[K]V`: resolve via the pointer deref so we
+	// hand callers the underlying map type, not the pointer.
+	if lhs is ast.PrefixExpr && lhs.op == .mul {
+		if inner_type := t.get_expr_type(lhs.expr) {
+			if inner_type is types.Pointer {
+				return inner_type.base_type
+			}
+		}
+	}
 	if typ := t.get_expr_type(lhs) {
 		return typ
 	}
