@@ -109,6 +109,7 @@ The `v new --web` template uses `veb`, V's web framework.
     * [Runes](#runes)
     * [Numbers](#numbers)
     * [Arrays](#arrays)
+        * [Array update syntax](#array-update-syntax)
         * [Multidimensional arrays](#multidimensional-arrays)
         * [Array methods](#array-methods)
         * [Array slices](#array-slices)
@@ -1102,6 +1103,27 @@ assert count == [0, 1, 2, 3]
 mut square := []int{len: 6, init: index * index}
 // square == [0, 1, 4, 9, 16, 25]
 ```
+
+#### Array update syntax
+
+V lets you initialise an array by spreading an existing array, optionally
+followed by additional elements:
+
+```v
+base := [1, 2]
+a := [...base, 3, 4]
+assert a == [1, 2, 3, 4]
+
+// Append to a copy of `base`, leaving `base` itself unchanged:
+mut b := [...base]
+b << 99
+assert base == [1, 2]
+assert b == [1, 2, 99]
+```
+
+This is functionally equivalent to cloning the array and appending to it,
+except that you don't have to declare a mutable variable for the intermediate
+value, and the additional elements may be inlined at the call site.
 
 #### Array Types
 

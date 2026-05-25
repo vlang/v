@@ -163,6 +163,10 @@ fn (mut p Parser) array_init(is_option bool, alias_array_type ast.Type) ast.Arra
 	mut has_init := false
 	mut has_index := false
 	mut init_expr := ast.empty_expr
+	mut has_update_expr := false
+	mut update_expr := ast.empty_expr
+	mut update_expr_pos := token.Pos{}
+	mut update_expr_comments := []ast.Comment{}
 	if alias_array_type == ast.void_type {
 		p.check(.lsbr)
 		if p.tok.kind == .rsbr {
@@ -215,6 +219,21 @@ fn (mut p Parser) array_init(is_option bool, alias_array_type ast.Type) ast.Arra
 			p.last_enum_name = ''
 			p.last_enum_mod = ''
 			pre_cmnts = p.eat_comments()
+			if p.tok.kind == .ellipsis {
+				// updating init `[...base_array, 3, 4]`
+				has_update_expr = true
+				p.check(.ellipsis)
+				update_expr = p.expr(0)
+				update_expr_pos = update_expr.pos()
+				// Eat comments that may sit between the spread base and the
+				// separating comma, e.g. `[...base /* keep */, 3]`.
+				update_expr_comments << p.eat_comments(same_line: true)
+				if p.tok.kind == .comma {
+					p.next()
+				}
+				update_expr_comments << p.eat_comments(same_line: true)
+				update_expr_comments << p.eat_comments()
+			}
 			for i := 0; p.tok.kind !in [.rsbr, .eof]; i++ {
 				exprs << if p.tok.kind == .dotdot && p.peek_tok.kind == .rsbr {
 					ast.Expr(ast.RangeExpr{
@@ -365,26 +384,30 @@ fn (mut p Parser) array_init(is_option bool, alias_array_type ast.Type) ast.Arra
 	}
 	pos := first_pos.extend_with_last_line(last_pos, p.prev_tok.line_nr)
 	return ast.ArrayInit{
-		is_fixed:       is_fixed
-		has_val:        has_val
-		mod:            p.mod
-		elem_type:      elem_type
-		typ:            array_type
-		alias_type:     alias_array_type
-		exprs:          exprs
-		ecmnts:         ecmnts
-		pre_cmnts:      pre_cmnts
-		elem_type_expr: elem_type_expr
-		pos:            pos
-		elem_type_pos:  elem_type_pos
-		has_len:        has_len
-		len_expr:       len_expr
-		has_cap:        has_cap
-		has_init:       has_init
-		has_index:      has_index
-		cap_expr:       cap_expr
-		init_expr:      init_expr
-		is_option:      is_option
+		is_fixed:             is_fixed
+		has_val:              has_val
+		mod:                  p.mod
+		elem_type:            elem_type
+		typ:                  array_type
+		alias_type:           alias_array_type
+		exprs:                exprs
+		ecmnts:               ecmnts
+		pre_cmnts:            pre_cmnts
+		elem_type_expr:       elem_type_expr
+		pos:                  pos
+		elem_type_pos:        elem_type_pos
+		has_len:              has_len
+		len_expr:             len_expr
+		has_cap:              has_cap
+		has_init:             has_init
+		has_index:            has_index
+		cap_expr:             cap_expr
+		init_expr:            init_expr
+		is_option:            is_option
+		has_update_expr:      has_update_expr
+		update_expr:          update_expr
+		update_expr_pos:      update_expr_pos
+		update_expr_comments: update_expr_comments
 	}
 }
 

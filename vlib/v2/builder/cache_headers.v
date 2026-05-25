@@ -1550,12 +1550,15 @@ fn (b &Builder) build_header_ast_for_files(source_files []ast.File, module_name 
 							name:       field.name
 							typ:        global_typ
 							attributes: field.attributes
+							is_public:  field.is_public
+							is_mut:     field.is_mut
 						}
 					}
 					if gfields.len > 0 {
 						decl_stmts << ast.Stmt(ast.GlobalDecl{
 							attributes: stmt.attributes
 							fields:     gfields
+							is_public:  stmt.is_public
 						})
 					}
 				}
@@ -2515,7 +2518,7 @@ fn sanitize_header_source(source string, source_fn_returns map[string]string) st
 				}
 			}
 		}
-		if trimmed == '__global (' {
+		if header_starts_global_block(trimmed) {
 			in_global_block = true
 			global_start_line = line
 			global_body_lines = []string{}
@@ -2558,6 +2561,10 @@ fn sanitize_header_source(source string, source_fn_returns map[string]string) st
 		out << line
 	}
 	return out.join('\n')
+}
+
+fn header_starts_global_block(trimmed string) bool {
+	return trimmed == '__global (' || trimmed == 'pub __global ('
 }
 
 fn repair_interface_method_fn_syntax(source string) string {
@@ -2607,7 +2614,7 @@ fn header_is_module_level_line(trimmed string) bool {
 		|| trimmed.starts_with('const ') || trimmed.starts_with('pub const ')
 		|| trimmed.starts_with('interface ') || trimmed.starts_with('pub interface ')
 		|| trimmed.starts_with('union ') || trimmed.starts_with('pub union ')
-		|| trimmed.starts_with('__global')
+		|| trimmed.starts_with('__global') || trimmed.starts_with('pub __global')
 }
 
 fn header_starts_type_block(trimmed string) bool {

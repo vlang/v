@@ -7434,6 +7434,9 @@ fn (mut g Gen) resolve_call_name(lhs ast.Expr, _arg_count int) string {
 	if name == 'builtin__new_array_from_c_array_noscan' {
 		name = 'new_array_from_c_array'
 	}
+	if name == 'builtin__new_array_from_array_and_c_array' {
+		name = 'new_array_from_array_and_c_array'
+	}
 	if name == 'builtin__array_push_noscan' {
 		name = 'array__push'
 	}
@@ -8955,8 +8958,17 @@ fn (mut g Gen) call_expr(lhs ast.Expr, args []ast.Expr) {
 						ident_name
 					}
 					// Try looking up in the declaring module's scope
-					global_mod := g.global_var_modules[short_name] or { '' }
-					for mod_name in [global_mod, g.cur_module, 'builtin'] {
+					mut module_names := []string{}
+					if module_name := g.module_storage_vars[ident_name] {
+						module_names << module_name
+					}
+					if ident_name.contains('__') {
+						module_names << ident_name.all_before_last('__')
+					} else {
+						module_names << g.cur_module
+						module_names << 'builtin'
+					}
+					for mod_name in module_names {
 						if mod_name == '' {
 							continue
 						}
@@ -9304,6 +9316,9 @@ fn (mut g Gen) call_expr(lhs ast.Expr, args []ast.Expr) {
 	// Transformer helper maps directly to builtin implementation name in vlib.
 	if name == 'builtin__new_array_from_c_array_noscan' {
 		name = 'new_array_from_c_array'
+	}
+	if name == 'builtin__new_array_from_array_and_c_array' {
+		name = 'new_array_from_array_and_c_array'
 	}
 	if name == 'builtin__array_push_noscan' {
 		name = 'array__push'

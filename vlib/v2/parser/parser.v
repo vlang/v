@@ -272,7 +272,7 @@ fn (mut p Parser) top_stmt() ast.Stmt {
 			return p.fn_decl(false, [])
 		}
 		.key_global {
-			return p.global_decl([])
+			return p.global_decl(false, [])
 		}
 		// NOTE: handling moved to parse_file
 		// .key_import {
@@ -296,6 +296,7 @@ fn (mut p Parser) top_stmt() ast.Stmt {
 				.key_const { return p.const_decl(true) }
 				.key_enum { return p.enum_decl(true, []) }
 				.key_fn { return p.fn_decl(true, []) }
+				.key_global { return p.global_decl(true, []) }
 				.key_interface { return p.interface_decl(true, []) }
 				.key_struct, .key_union { return p.struct_decl(true, []) }
 				.key_type { return p.type_decl(true) }
@@ -342,7 +343,7 @@ fn (mut p Parser) stmt() ast.Stmt {
 				}
 			}
 			.key_global {
-				return p.global_decl([])
+				return p.global_decl(false, [])
 			}
 			.key_interface {
 				return p.interface_decl(false, [])
@@ -353,6 +354,7 @@ fn (mut p Parser) stmt() ast.Stmt {
 					.key_const { return p.const_decl(true) }
 					.key_enum { return p.enum_decl(true, []) }
 					.key_fn { return p.fn_decl(true, []) }
+					.key_global { return p.global_decl(true, []) }
 					.key_interface { return p.interface_decl(true, []) }
 					.key_struct, .key_union { return p.struct_decl(true, []) }
 					.key_type { return p.type_decl(true) }
@@ -493,7 +495,7 @@ fn (mut p Parser) attribute_stmt() ast.Stmt {
 			return p.fn_decl(is_pub, attributes)
 		}
 		.key_global {
-			return p.global_decl(attributes)
+			return p.global_decl(is_pub, attributes)
 		}
 		.key_interface {
 			return p.interface_decl(is_pub, attributes)
@@ -957,6 +959,15 @@ fn (mut p Parser) expr(min_bp token.BindingPower) ast.Expr {
 			// ArrayType in CastExpr: `[]type` in `[]type(x)` set lhs to type, cast handled later
 			pos := p.pos
 			p.next()
+			// Spread syntax `[...base, e1, e2]` — parsed before regular elements.
+			mut update_expr := ast.empty_expr
+			if p.tok == .ellipsis {
+				p.next()
+				update_expr = p.expr(.lowest)
+				if p.tok == .comma || p.tok == .semicolon {
+					p.next()
+				}
+			}
 			// exprs in first `[]` eg. (`1,2,3,4` in `[1,2,3,4]) | (`2` in `[2]int{}`)
 			mut exprs := []ast.Expr{}
 			for p.tok != .rsbr {
@@ -1055,6 +1066,11 @@ fn (mut p Parser) expr(min_bp token.BindingPower) ast.Expr {
 				else {
 					lhs = array_init_expr_with_parts(ast.empty_expr, exprs, ast.empty_expr,
 						ast.empty_expr, ast.empty_expr, pos)
+					if update_expr !is ast.EmptyExpr {
+						mut arr_init := lhs as ast.ArrayInitExpr
+						arr_init.update_expr = update_expr
+						lhs = ast.Expr(arr_init)
+					}
 					for i := 1; i < exprs_arr.len; i++ {
 						exprs2 := exprs_arr[i]
 						if exprs2.len != 1 {
@@ -1149,6 +1165,11 @@ fn (mut p Parser) expr(min_bp token.BindingPower) ast.Expr {
 			} else {
 				lhs = array_init_expr_with_parts(ast.empty_expr, exprs, ast.empty_expr,
 					ast.empty_expr, ast.empty_expr, pos)
+				if update_expr !is ast.EmptyExpr {
+					mut arr_init := lhs as ast.ArrayInitExpr
+					arr_init.update_expr = update_expr
+					lhs = ast.Expr(arr_init)
+				}
 			}
 		}
 		.key_match {
@@ -2792,7 +2813,7 @@ fn (mut p Parser) enum_decl(is_public bool, attributes []ast.Attribute) ast.Enum
 	}
 }
 
-fn (mut p Parser) global_decl(attributes []ast.Attribute) ast.GlobalDecl {
+fn (mut p Parser) global_decl(is_public bool, attributes []ast.Attribute) ast.GlobalDecl {
 	p.next()
 	// NOTE: this got changed at some stage (or perhaps was never forced)
 	// if p.tok != .lpar {
@@ -2805,6 +2826,15 @@ fn (mut p Parser) global_decl(attributes []ast.Attribute) ast.GlobalDecl {
 	}
 	mut fields := []ast.FieldDecl{}
 	for {
+		mut field_is_public := is_public
+		if p.tok == .key_pub {
+			p.next()
+			field_is_public = true
+		}
+		field_is_mut := p.tok == .key_mut
+		if field_is_mut {
+			p.next()
+		}
 		mut name := p.expect_name()
 		// Handle qualified names like C.errno, C.stdin, etc.
 		for p.tok == .dot {
@@ -2818,13 +2848,17 @@ fn (mut p Parser) global_decl(attributes []ast.Attribute) ast.GlobalDecl {
 			value := p.expr(.lowest)
 			p.in_top_level = prev_top_level
 			fields << ast.FieldDecl{
-				name:  name
-				value: value
+				name:      name
+				value:     value
+				is_public: field_is_public
+				is_mut:    field_is_mut
 			}
 		} else {
 			fields << ast.FieldDecl{
-				name: name
-				typ:  p.expect_type()
+				name:      name
+				typ:       p.expect_type()
+				is_public: field_is_public
+				is_mut:    field_is_mut
 			}
 		}
 		p.expect(.semicolon)
@@ -2839,6 +2873,7 @@ fn (mut p Parser) global_decl(attributes []ast.Attribute) ast.GlobalDecl {
 	return ast.GlobalDecl{
 		attributes: attributes
 		fields:     fields
+		is_public:  is_public
 	}
 }
 
@@ -3664,6 +3699,7 @@ fn (p &Parser) eval_comptime_cond(cond ast.Expr) bool {
 		}
 		else {}
 	}
+
 	return false
 }
 

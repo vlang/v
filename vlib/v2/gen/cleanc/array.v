@@ -56,6 +56,7 @@ fn should_keep_builtin_array_decl(decl ast.FnDecl) bool {
 		'__new_array_with_map_default',
 		'new_array_from_c_array',
 		'new_array_from_c_array_no_alloc',
+		'new_array_from_array_and_c_array',
 		'ensure_cap',
 		'repeat',
 		'repeat_to_depth',

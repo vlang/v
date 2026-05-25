@@ -38,6 +38,24 @@ fn (b &Builder) is_macos_target() bool {
 	return normalize_target_os_name(b.target_os) == 'macos'
 }
 
+fn ssa_module_storage_name(module_name string, name string) string {
+	if name == '' || name.starts_with('C.') {
+		return name
+	}
+	if module_name == 'C' {
+		return 'C.${name}'
+	}
+	if module_name != '' && module_name != 'main' {
+		return '${module_name}__${name}'
+	}
+	return name
+}
+
+fn ssa_module_storage_field_is_c_extern(node ast.GlobalDecl, field ast.FieldDecl) bool {
+	return field.name.starts_with('C.') || node.attributes.has('c_extern')
+		|| field.attributes.has('c_extern')
+}
+
 struct DynConstArray {
 	arr_global_name  string // V array struct global name
 	data_global_name string // raw data global name
@@ -1501,12 +1519,18 @@ fn (mut b Builder) register_consts_and_globals(file ast.File) {
 			}
 			ast.GlobalDecl {
 				for field in stmt.fields {
-					glob_name := if b.cur_module != '' && b.cur_module != 'main' {
-						'${b.cur_module}__${field.name}'
-					} else {
-						field.name
-					}
 					glob_type := b.global_field_type(field)
+					if ssa_module_storage_field_is_c_extern(stmt, field)
+						&& !field.name.starts_with('C.') {
+						glob_id := b.mod.add_external_global(field.name, glob_type)
+						b.global_refs[field.name] = glob_id
+						qualified_name := ssa_module_storage_name(b.cur_module, field.name)
+						if qualified_name != field.name {
+							b.global_refs[qualified_name] = glob_id
+						}
+						continue
+					}
+					glob_name := ssa_module_storage_name(b.cur_module, field.name)
 					initial_value := if field.value != ast.empty_expr {
 						b.try_eval_const_int(field.value)
 					} else {
@@ -2971,11 +2995,7 @@ fn (mut b Builder) build_assign(stmt ast.AssignStmt) {
 					mut ptr := ValueID(0)
 					if p := b.vars[ident.name] {
 						ptr = p
-					} else if glob_id := b.find_global(ident.name) {
-						ptr = glob_id
-					} else if glob_id := b.find_global('${b.cur_module}__${ident.name}') {
-						ptr = glob_id
-					} else if glob_id := b.find_global('builtin__${ident.name}') {
+					} else if glob_id := b.find_global_ident(ident.name) {
 						ptr = glob_id
 					}
 					if ptr != 0 {
@@ -3005,11 +3025,7 @@ fn (mut b Builder) build_assign(stmt ast.AssignStmt) {
 				mut ptr := ValueID(0)
 				if p := b.vars[ident.name] {
 					ptr = p
-				} else if glob_id := b.find_global(ident.name) {
-					ptr = glob_id
-				} else if glob_id := b.find_global('${b.cur_module}__${ident.name}') {
-					ptr = glob_id
-				} else if glob_id := b.find_global('builtin__${ident.name}') {
+				} else if glob_id := b.find_global_ident(ident.name) {
 					ptr = glob_id
 				}
 				if ptr != 0 {
@@ -3058,8 +3074,9 @@ fn (mut b Builder) build_assign(stmt ast.AssignStmt) {
 				// Do NOT skip if RHS is a function call (e.g. new_array_from_c_array
 				// for dynamic arrays — those need their _vinit assignment).
 				if rhs is ast.ArrayInitExpr {
+					module_const_name := ssa_module_storage_name(b.cur_module, ident.name)
 					if ident.name in b.const_array_globals
-						|| '${b.cur_module}__${ident.name}' in b.const_array_globals
+						|| module_const_name in b.const_array_globals
 						|| 'builtin__${ident.name}' in b.const_array_globals {
 						continue
 					}
@@ -3067,11 +3084,7 @@ fn (mut b Builder) build_assign(stmt ast.AssignStmt) {
 				mut ptr := ValueID(0)
 				if p := b.vars[ident.name] {
 					ptr = p
-				} else if glob_id := b.find_global(ident.name) {
-					ptr = glob_id
-				} else if glob_id := b.find_global('${b.cur_module}__${ident.name}') {
-					ptr = glob_id
-				} else if glob_id := b.find_global('builtin__${ident.name}') {
+				} else if glob_id := b.find_global_ident(ident.name) {
 					ptr = glob_id
 				}
 				if ptr != 0 {
@@ -4283,18 +4296,7 @@ fn (mut b Builder) build_ident(ident ast.Ident) ValueID {
 		}
 	}
 	// Try as global variable
-	if glob_id := b.find_global(ident.name) {
-		glob_typ := b.mod.values[glob_id].typ
-		elem_typ := b.mod.type_store.types[glob_typ].elem_type
-		return b.mod.add_instr(.load, b.cur_block, elem_typ, [glob_id])
-	}
-	// Try with prefixes for globals too
-	if glob_id := b.find_global(builtin_const) {
-		glob_typ := b.mod.values[glob_id].typ
-		elem_typ := b.mod.type_store.types[glob_typ].elem_type
-		return b.mod.add_instr(.load, b.cur_block, elem_typ, [glob_id])
-	}
-	if glob_id := b.find_global(qualified_name) {
+	if glob_id := b.find_global_ident(ident.name) {
 		glob_typ := b.mod.values[glob_id].typ
 		elem_typ := b.mod.type_store.types[glob_typ].elem_type
 		return b.mod.add_instr(.load, b.cur_block, elem_typ, [glob_id])
@@ -4320,16 +4322,23 @@ fn (mut b Builder) find_global(name string) ?ValueID {
 }
 
 fn (mut b Builder) find_global_ident(name string) ?ValueID {
+	if name.starts_with('C.') {
+		return b.find_global(name)
+	}
+	qualified_name := ssa_module_storage_name(b.cur_module, name)
+	if qualified_name != name {
+		if glob_id := b.find_global(qualified_name) {
+			return glob_id
+		}
+	}
 	if glob_id := b.find_global(name) {
 		return glob_id
 	}
-	qualified_name := '${b.cur_module}__${name}'
-	if glob_id := b.find_global(qualified_name) {
-		return glob_id
-	}
-	builtin_name := 'builtin__${name}'
-	if glob_id := b.find_global(builtin_name) {
-		return glob_id
+	builtin_name := ssa_module_storage_name('builtin', name)
+	if builtin_name != name && builtin_name != qualified_name {
+		if glob_id := b.find_global(builtin_name) {
+			return glob_id
+		}
 	}
 	return none
 }
@@ -6482,39 +6491,46 @@ fn (mut b Builder) build_selector(expr ast.SelectorExpr) ValueID {
 	// Module-qualified constant/global access: os.args, pref.Backend, etc.
 	// When LHS is a module name, resolve module__field as a constant or global.
 	if expr.lhs is ast.Ident {
-		mod_name := expr.lhs.name.replace('.', '_')
-		qualified := '${mod_name}__${expr.rhs.name}'
-		// Try as float constant (inline as f64)
-		if fval := b.float_const_values[qualified] {
-			return b.mod.get_or_add_const(b.mod.type_store.get_float(64), fval)
+		mut mod_name := ''
+		if resolved_mod := b.selector_module_name(expr) {
+			mod_name = resolved_mod
+		} else if b.env == unsafe { nil } {
+			mod_name = expr.lhs.name.replace('.', '_')
 		}
-		// Try as compile-time constant
-		if qualified in b.const_values {
-			ct := if qualified in b.const_value_types {
-				b.const_value_types[qualified]
-			} else {
-				b.mod.type_store.get_int(64)
+		if mod_name != '' {
+			qualified := ssa_module_storage_name(mod_name, expr.rhs.name)
+			// Try as float constant (inline as f64)
+			if fval := b.float_const_values[qualified] {
+				return b.mod.get_or_add_const(b.mod.type_store.get_float(64), fval)
 			}
-			return b.mod.get_or_add_const(ct, b.const_values[qualified].str())
-		}
-		// Try as string constant
-		if qualified in b.string_const_values {
-			return b.build_string_literal(ast.StringLiteral{
-				kind:  .v
-				value: b.string_const_values[qualified]
-			})
-		}
-		// Try as constant array global (return pointer directly for indexing)
-		if qualified in b.const_array_globals {
+			// Try as compile-time constant
+			if qualified in b.const_values {
+				ct := if qualified in b.const_value_types {
+					b.const_value_types[qualified]
+				} else {
+					b.mod.type_store.get_int(64)
+				}
+				return b.mod.get_or_add_const(ct, b.const_values[qualified].str())
+			}
+			// Try as string constant
+			if qualified in b.string_const_values {
+				return b.build_string_literal(ast.StringLiteral{
+					kind:  .v
+					value: b.string_const_values[qualified]
+				})
+			}
+			// Try as constant array global (return pointer directly for indexing)
+			if qualified in b.const_array_globals {
+				if glob_id := b.find_global(qualified) {
+					return glob_id
+				}
+			}
+			// Try as global variable (runtime-initialized constants like os.args)
 			if glob_id := b.find_global(qualified) {
-				return glob_id
+				glob_typ := b.mod.values[glob_id].typ
+				elem_typ := b.mod.type_store.types[glob_typ].elem_type
+				return b.mod.add_instr(.load, b.cur_block, elem_typ, [glob_id])
 			}
-		}
-		// Try as global variable (runtime-initialized constants like os.args)
-		if glob_id := b.find_global(qualified) {
-			glob_typ := b.mod.values[glob_id].typ
-			elem_typ := b.mod.type_store.types[glob_typ].elem_type
-			return b.mod.add_instr(.load, b.cur_block, elem_typ, [glob_id])
 		}
 	}
 
@@ -8677,6 +8693,14 @@ fn (mut b Builder) build_addr(expr ast.Expr) ValueID {
 			return 0
 		}
 		ast.SelectorExpr {
+			if expr.lhs is ast.Ident {
+				if mod_name := b.selector_module_name(expr) {
+					qualified := ssa_module_storage_name(mod_name, expr.rhs.name)
+					if glob_id := b.find_global(qualified) {
+						return glob_id
+					}
+				}
+			}
 			// Get address of base (not the loaded value)
 			mut base := b.build_addr(expr.lhs)
 			if base == 0 {

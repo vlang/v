@@ -1,0 +1,18 @@
+module state
+
+__global mut private_ticks = 0
+pub __global mut total_ticks = 0
+
+fn bump_private() {
+	private_ticks += 1
+}
+
+pub fn tick() int {
+	bump_private()
+	total_ticks += 1
+	return private_ticks
+}
+
+pub fn private_tick_count() int {
+	return private_ticks
+}

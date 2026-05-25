@@ -3278,11 +3278,14 @@ fn (mut t Transformer) transform_global_decl(decl ast.GlobalDecl) ast.GlobalDecl
 			typ:        t.transform_expr(field.typ)
 			value:      t.transform_expr(field.value)
 			attributes: field.attributes
+			is_public:  field.is_public
+			is_mut:     field.is_mut
 		}
 	}
 	return ast.GlobalDecl{
 		attributes: decl.attributes
 		fields:     fields
+		is_public:  decl.is_public
 	}
 }
 
