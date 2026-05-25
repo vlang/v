@@ -395,7 +395,15 @@ fn (mut g Gen) stmt(stmt ast.Stmt) {
 fn (mut g Gen) expr(expr ast.Expr) {
 	match expr {
 		ast.ArrayInitExpr {
-			if expr.exprs.len > 0 {
+			if expr.update_expr !is ast.EmptyExpr {
+				g.write('[...')
+				g.expr(expr.update_expr)
+				if expr.exprs.len > 0 {
+					g.write(', ')
+					g.expr_list(expr.exprs, ', ')
+				}
+				g.write(']')
+			} else if expr.exprs.len > 0 {
 				g.write('[')
 				g.expr_list(expr.exprs, ', ')
 				g.write(']')

@@ -1359,12 +1359,13 @@ fn (mut t Transformer) resolve_expr_with_expected_type(expr ast.Expr, expected t
 		ast.ArrayInitExpr {
 			if expr.typ is ast.EmptyExpr && (base is types.Array || base is types.ArrayFixed) {
 				return ast.ArrayInitExpr{
-					typ:   t.type_to_ast_type_expr(base)
-					exprs: expr.exprs
-					init:  expr.init
-					cap:   expr.cap
-					len:   expr.len
-					pos:   expr.pos
+					typ:         t.type_to_ast_type_expr(base)
+					exprs:       expr.exprs
+					init:        expr.init
+					cap:         expr.cap
+					len:         expr.len
+					update_expr: expr.update_expr
+					pos:         expr.pos
 				}
 			}
 		}

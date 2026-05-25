@@ -338,12 +338,13 @@ pub enum DeferMode {
 // Expressions
 pub struct ArrayInitExpr {
 pub mut:
-	typ   Expr = empty_expr
-	exprs []Expr
-	init  Expr = empty_expr
-	cap   Expr = empty_expr
-	len   Expr = empty_expr
-	pos   token.Pos
+	typ         Expr = empty_expr
+	exprs       []Expr
+	init        Expr = empty_expr
+	cap         Expr = empty_expr
+	len         Expr = empty_expr
+	update_expr Expr = empty_expr // `a` in `[...a, 3, 4]`
+	pos         token.Pos
 }
 
 pub struct AsCastExpr {

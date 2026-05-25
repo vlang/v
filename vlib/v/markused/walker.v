@@ -113,6 +113,7 @@ mut:
 	uses_arr_getter            bool
 	uses_arr_clone             bool
 	uses_arr_sorted            bool
+	uses_array_update          bool // has [...expr, ...]
 	uses_type_name             bool // sum_type.type_name()
 }
 
@@ -927,6 +928,10 @@ fn (mut w Walker) expr(node_ ast.Expr) {
 			w.expr(node.cap_expr)
 			w.expr(node.init_expr)
 			w.exprs(node.exprs)
+			if node.has_update_expr {
+				w.expr(node.update_expr)
+				w.uses_array_update = true
+			}
 			if w.table.final_sym(node.typ).kind == .array {
 				if !w.inside_in_op {
 					w.uses_array = true
@@ -3661,6 +3666,11 @@ fn (mut w Walker) mark_resource_dependencies() {
 	}
 	if w.uses_map_update {
 		w.fn_by_name('new_map_update_init')
+	}
+	if w.uses_array_update {
+		w.fn_by_name('new_array_from_array_and_c_array')
+		w.uses_array = true
+		w.uses_arr_clone = true
 	}
 	if w.uses_mem_align {
 		w.fn_by_name('memdup_align')

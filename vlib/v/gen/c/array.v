@@ -188,6 +188,36 @@ fn (mut g Gen) array_init(node ast.ArrayInit, var_name string) {
 				g.write(')')
 			}
 		}
+	} else if node.has_update_expr {
+		// `[...base, e1, e2]`
+		elem_styp := g.styp(resolved_elem_type.typ)
+		if len == 0 {
+			g.write('builtin__new_array_from_array_and_c_array(&(')
+			g.expr(node.update_expr)
+			g.write('), 0, sizeof(${elem_styp}), ((${elem_styp}*)0))')
+		} else {
+			prepared_exprs := g.prepare_array_init_exprs(node.exprs, expr_types, resolved_elem_type.typ)
+			g.write('builtin__new_array_from_array_and_c_array(&(')
+			g.expr(node.update_expr)
+			g.write('), ${len}, sizeof(${elem_styp}), _MOV((${elem_styp}[${len}]){')
+			for i, expr in prepared_exprs {
+				expr_type := if expr_types.len > i { expr_types[i] } else { resolved_elem_type.typ }
+				if resolved_elem_type.typ.has_flag(.option) {
+					g.expr_with_opt(expr, expr_type, resolved_elem_type.typ)
+				} else {
+					g.expr_with_cast(expr, expr_type, resolved_elem_type.typ)
+				}
+				if i != len - 1 {
+					g.write(', ')
+				}
+			}
+			g.write('}))')
+		}
+		if g.is_shared {
+			g.write('}, sizeof(${shared_styp}))')
+		} else if is_amp {
+			g.write(')')
+		}
 	} else if len == 0 {
 		// `[]int{len: 6, cap:10, init:22}`
 		g.array_init_with_fields(node, elem_type, is_amp, shared_styp, var_name)

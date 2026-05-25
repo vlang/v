@@ -1989,6 +1989,14 @@ pub fn (mut f Fmt) array_init(node ast.ArrayInit) {
 			f.writeln('')
 		}
 	}
+	if node.has_update_expr {
+		f.write('...')
+		f.expr(node.update_expr)
+		if node.exprs.len > 0 {
+			f.write(', ')
+		}
+		last_line_nr = node.update_expr_pos.last_line
+	}
 	for i, c in node.pre_cmnts {
 		if i < node.pre_cmnts.len - 1 {
 			if c.pos.last_line < node.pre_cmnts[i + 1].pos.line_nr {

@@ -1010,6 +1010,11 @@ fn (mut jb JsonBuilder) write_array_init_expr(expr ast.ArrayInitExpr) {
 	jb.sb.write_string(',\n')
 
 	jb.write_indent()
+	jb.sb.write_string('"update_expr": ')
+	jb.write_expr(expr.update_expr)
+	jb.sb.write_string(',\n')
+
+	jb.write_indent()
 	jb.sb.write_string('"pos": ')
 	jb.write_pos(expr.pos)
 	jb.sb.write_string('\n')

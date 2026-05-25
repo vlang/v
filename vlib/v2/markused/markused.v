@@ -410,6 +410,7 @@ pub fn should_keep_builtin_array_decl(decl ast.FnDecl) bool {
 		'__new_array_with_map_default',
 		'new_array_from_c_array',
 		'new_array_from_c_array_no_alloc',
+		'new_array_from_array_and_c_array',
 		'ensure_cap',
 		'repeat',
 		'repeat_to_depth',
@@ -1035,6 +1036,10 @@ fn called_fn_name_candidates(name string) []string {
 	}
 	if name == 'builtin__new_array_from_c_array_noscan' {
 		add_unique_string(mut out, 'new_array_from_c_array')
+		return out
+	}
+	if name == 'builtin__new_array_from_array_and_c_array' {
+		add_unique_string(mut out, 'new_array_from_array_and_c_array')
 		return out
 	}
 	if name == 'builtin__array_push_noscan' {
@@ -1981,6 +1986,7 @@ fn (mut w Walker) walk_expr(expr ast.Expr, mod_name string) {
 			w.walk_expr(expr.init, mod_name)
 			w.walk_expr(expr.cap, mod_name)
 			w.walk_expr(expr.len, mod_name)
+			w.walk_expr(expr.update_expr, mod_name)
 		}
 		ast.AsCastExpr {
 			w.walk_expr(expr.expr, mod_name)

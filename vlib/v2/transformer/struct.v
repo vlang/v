@@ -401,13 +401,24 @@ fn (mut t Transformer) transform_array_init_expr(expr ast.ArrayInitExpr) ast.Exp
 
 	if t.is_eval_backend() {
 		return ast.ArrayInitExpr{
-			typ:   array_typ
-			exprs: exprs
-			init:  if expr.init !is ast.EmptyExpr { t.transform_expr(expr.init) } else { expr.init }
-			cap:   if expr.cap !is ast.EmptyExpr { t.transform_expr(expr.cap) } else { expr.cap }
-			len:   if expr.len !is ast.EmptyExpr { t.transform_expr(expr.len) } else { expr.len }
-			pos:   expr.pos
+			typ:         array_typ
+			exprs:       exprs
+			init:        if expr.init !is ast.EmptyExpr { t.transform_expr(expr.init) } else { expr.init }
+			cap:         if expr.cap !is ast.EmptyExpr { t.transform_expr(expr.cap) } else { expr.cap }
+			len:         if expr.len !is ast.EmptyExpr { t.transform_expr(expr.len) } else { expr.len }
+			update_expr: if expr.update_expr !is ast.EmptyExpr {
+				t.transform_expr(expr.update_expr)
+			} else {
+				expr.update_expr
+			}
+			pos:         expr.pos
 		}
+	}
+
+	// Spread syntax `[...base, e1, e2]` — lower to
+	// builtin__new_array_from_array_and_c_array(&base, n, sizeof(elem), {e1, e2}).
+	if expr.update_expr !is ast.EmptyExpr {
+		return t.transform_array_spread_expr(expr, exprs, elem_type_expr)
 	}
 
 	// Dynamic array: transform to builtin__new_array_from_c_array_noscan(len, cap, sizeof(elem), values)
@@ -863,6 +874,69 @@ fn (mut t Transformer) transform_array_init_expr(expr ast.ArrayInitExpr) ast.Exp
 				typ:   ast.Expr(inner_array_typ)
 				exprs: exprs
 			}),
+		]
+		pos:  expr.pos
+	}
+}
+
+fn (mut t Transformer) transform_array_spread_expr(expr ast.ArrayInitExpr, exprs []ast.Expr, hint_elem_type_expr ast.Expr) ast.Expr {
+	update_expr := t.transform_expr(expr.update_expr)
+	// Resolve element type from the base array.
+	mut elem_type_expr := hint_elem_type_expr
+	if elem_type_expr is ast.EmptyExpr {
+		if base_type := t.get_expr_type(expr.update_expr) {
+			base_unwrapped := t.unwrap_alias_and_pointer_type(base_type)
+			if base_unwrapped is types.Array {
+				elem_type_expr = t.type_to_ast_type_expr(base_unwrapped.elem_type)
+			}
+		}
+	}
+	sizeof_arg := if elem_type_expr !is ast.EmptyExpr {
+		elem_type_expr
+	} else {
+		ast.Expr(ast.Ident{
+			name: 'int'
+		})
+	}
+	addr_of_base := ast.Expr(ast.PrefixExpr{
+		op:   .amp
+		expr: update_expr
+		pos:  expr.pos
+	})
+	new_count := exprs.len
+	mut data_arg := ast.Expr(ast.CastExpr{
+		typ:  ast.Expr(ast.Ident{
+			name: 'voidptr'
+		})
+		expr: ast.Expr(ast.BasicLiteral{
+			kind:  .number
+			value: '0'
+		})
+	})
+	if new_count > 0 {
+		inner_array_typ := ast.Type(ast.ArrayType{
+			elem_type: sizeof_arg
+		})
+		data_arg = ast.Expr(ast.ArrayInitExpr{
+			typ:   ast.Expr(inner_array_typ)
+			exprs: exprs
+		})
+	}
+	return ast.CallExpr{
+		lhs:  ast.Ident{
+			name: 'builtin__new_array_from_array_and_c_array'
+		}
+		args: [
+			addr_of_base,
+			ast.Expr(ast.BasicLiteral{
+				kind:  .number
+				value: '${new_count}'
+			}),
+			ast.Expr(ast.KeywordOperator{
+				op:    .key_sizeof
+				exprs: [sizeof_arg]
+			}),
+			data_arg,
 		]
 		pos:  expr.pos
 	}
