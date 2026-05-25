@@ -48,6 +48,10 @@ mut:
 	used_virtual_vh_for_parse bool
 	flat_roundtrip_enabled    bool // V2_FLAT_ROUNDTRIP=1: route parses through streaming + to_files()
 	flat_check_enabled        bool // V2_CHECK_FLAT=1: route type-check through Checker.check_flat
+	// flat caches the FlatAst representation of b.files. Populated once after
+	// parsing when flat_check_enabled is set, so type_check_files (and any
+	// future flat consumers) skip the redundant flatten_files() pass.
+	flat ast.FlatAst
 }
 
 pub fn new_builder(prefs &pref.Preferences) &Builder {
@@ -131,6 +135,9 @@ pub fn (mut b Builder) build(files []string) {
 	parse_time := sw.elapsed()
 	print_time('Scan & Parse', parse_time)
 	print_rss('after parse')
+	if b.flat_check_enabled {
+		b.flat = ast.flatten_files(b.files)
+	}
 	b.update_parse_summary_counts()
 	print_parse_summary(b.parsed_full_files_n, b.parsed_vh_files_n, b.entry_v_lines_n,
 		b.parsed_v_lines_n, b.pref.stats, b.pref.print_parsed_files, b.parsed_full_files,
