@@ -425,11 +425,11 @@ fn aliases() []Alias {
 }
 
 fn render() string {
-	mut lines := []string{}
+	mut last := ""
 	for alias in aliases() {
-		lines << "    \${alias.name}:\\"\${alias.description}\\""
+		last = "    \${alias.name}:\\"\${alias.description}\\""
 	}
-	return lines.join("\\n")
+	return last
 }
 ')
 	assert csrc.contains('"    %s:\\"%s\\""')

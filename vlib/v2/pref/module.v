@@ -31,10 +31,41 @@ fn module_path_join(base string, name string) string {
 	return base + os.path_separator + name
 }
 
+fn module_root_for_file(path string) string {
+	mut dir := os.dir(path)
+	for dir.len > 0 {
+		if os.exists(module_path_join(dir, 'v.mod')) {
+			return dir
+		}
+		parent := os.dir(dir)
+		if parent == dir {
+			break
+		}
+		dir = parent
+	}
+	return ''
+}
+
 // check for relative and then vlib
 pub fn (p &Preferences) get_module_path(mod string, importing_file_path string) string {
 	mod_path := mod.replace('.', os.path_separator)
 	vroot := p.effective_vroot()
+	// relative to file importing it
+	relative_path := module_path_join(os.dir(importing_file_path), mod_path)
+	if dir_exists(relative_path) {
+		return relative_path
+	}
+	module_root := module_root_for_file(importing_file_path)
+	if module_root != '' {
+		root_relative_path := module_path_join(module_root, mod_path)
+		if dir_exists(root_relative_path) {
+			return root_relative_path
+		}
+	}
+	cwd_relative_path := module_path_join(os.getwd(), mod_path)
+	if dir_exists(cwd_relative_path) {
+		return cwd_relative_path
+	}
 	// TODO: is this the best order?
 	// vlib
 	vlib_path := module_path_join(module_path_join(vroot, 'vlib'), mod_path)
@@ -62,11 +93,6 @@ pub fn (p &Preferences) get_module_path(mod string, importing_file_path string) 
 			return src_path
 		}
 		return vmodules_path
-	}
-	// relative to file importing it
-	relative_path := module_path_join(os.dir(importing_file_path), mod_path)
-	if dir_exists(relative_path) {
-		return relative_path
 	}
 	panic('Preferences.get_module_path: cannot find module path for `${mod}`')
 }
