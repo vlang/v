@@ -579,10 +579,11 @@ fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 	if ts.show_stats {
 		skip_running = ''
 	}
-	reproduce_cmd := '${os.quoted_path(ts.vexe)} ${reproduce_options.join(' ')} ${os.quoted_path(file)}'
 	compile_options := cmd_options.filter(it != '-silent')
 	mut compile_vexe := ts.vexe
 	mut compile_args := '${skip_running} ${compile_options.join(' ')}'
+	mut reproduce_vexe := ts.vexe
+	mut reproduce_args := reproduce_options.join(' ')
 	// `_test.vv2` files are v2-only integration tests: full V programs that
 	// exercise v2-specific syntax. Compile them with the v2 binary instead of
 	// v1, forwarding only flags that v2 recognizes — v2 errors on unknown
@@ -605,7 +606,12 @@ fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 		}
 		compile_vexe = v2_bin
 		compile_args = filter_args_for_v2(compile_options)
+		// Reproduction command must invoke v2 too, otherwise the suggested
+		// rerun fails immediately on v2-only syntax.
+		reproduce_vexe = v2_bin
+		reproduce_args = filter_args_for_v2(reproduce_options)
 	}
+	reproduce_cmd := '${os.quoted_path(reproduce_vexe)} ${reproduce_args} ${os.quoted_path(file)}'
 	cmd := '${os.quoted_path(compile_vexe)} ${compile_args} ${os.quoted_path(file)}'
 	run_cmd := if run_js {
 		'node ${os.quoted_path(generated_binary_fpath)}'
