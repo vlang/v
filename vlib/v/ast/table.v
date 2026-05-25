@@ -1054,6 +1054,41 @@ pub fn (t &Table) unaliased_type(typ Type) Type {
 	return typ
 }
 
+// are_payloads_alias_compatible reports whether two types describe the same
+// in-memory payload after fully unaliasing both sides, including recursively
+// through arrays/fixed arrays/maps. It does NOT permit numeric promotions
+// or any other shape change — meant for checks that need true layout
+// equivalence (e.g. gating result/option memcpy-based clones, or checking
+// that `!Alias <- !T` is valid when `type Alias = T`).
+pub fn (t &Table) are_payloads_alias_compatible(a Type, b Type) bool {
+	if a == b {
+		return true
+	}
+	a_unaliased := t.fully_unaliased_type(a)
+	b_unaliased := t.fully_unaliased_type(b)
+	if a_unaliased == b_unaliased {
+		return true
+	}
+	a_sym := t.sym(a_unaliased)
+	b_sym := t.sym(b_unaliased)
+	if a_sym.kind != b_sym.kind {
+		return false
+	}
+	if a_sym.info is Array && b_sym.info is Array {
+		return a_sym.info.nr_dims == b_sym.info.nr_dims
+			&& t.are_payloads_alias_compatible(a_sym.info.elem_type, b_sym.info.elem_type)
+	}
+	if a_sym.info is ArrayFixed && b_sym.info is ArrayFixed {
+		return a_sym.info.size == b_sym.info.size
+			&& t.are_payloads_alias_compatible(a_sym.info.elem_type, b_sym.info.elem_type)
+	}
+	if a_sym.info is Map && b_sym.info is Map {
+		return t.are_payloads_alias_compatible(a_sym.info.key_type, b_sym.info.key_type)
+			&& t.are_payloads_alias_compatible(a_sym.info.value_type, b_sym.info.value_type)
+	}
+	return false
+}
+
 // fully_unaliased_type unwraps alias chains while preserving pointer indirections and flags.
 @[inline]
 pub fn (t &Table) fully_unaliased_type(typ Type) Type {

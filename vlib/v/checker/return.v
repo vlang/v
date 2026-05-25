@@ -222,7 +222,8 @@ fn (mut c Checker) return_stmt(mut node ast.Return) {
 				exprv.pos())
 		}
 		if got_type.has_flag(.result) && (!exp_type.has_flag(.result)
-			|| !c.check_types(got_type.clear_flag(.result), exp_type.clear_flag(.result))) {
+			|| !c.table.are_payloads_alias_compatible(got_type.clear_flag(.result),
+				exp_type.clear_flag(.result))) {
 			c.error('cannot use `${c.table.type_to_str(got_type)}` as ${c.error_type_name(exp_type)} in return argument',
 				exprv.pos())
 		}

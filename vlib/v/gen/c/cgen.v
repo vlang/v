@@ -10550,11 +10550,12 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 					g.expr_with_opt(expr0, type0, ret_type)
 				}
 			} else if ret_type.has_flag(.result) && expr0 is ast.CallExpr
-				&& type0.has_flag(.result) && type0 != ret_type {
-				// return foo() where foo() returns a different result alias than current fn
-				// (e.g. `!Aa` vs `!Bb` with `type Aa = Bb`, or `![]Aa` vs `![]Bb`).
-				// The two C structs are distinct even though their payloads are
-				// layout-compatible, so emit a memcpy-based clone (fixes vlang/v#27056).
+				&& type0.has_flag(.result) && type0 != ret_type
+				&& g.table.are_payloads_alias_compatible(type0.clear_flag(.result),
+				ret_type.clear_flag(.result)) {
+				// return foo() where foo() returns a different but layout-equivalent
+				// result alias (e.g. `!Aa` vs `!Bb` with `type Aa = Bb`, or `![]Aa` vs
+				// `![]Bb`). The two C structs are distinct, so emit a memcpy-based clone.
 				g.expr_result_with_alias(expr0, type0, ret_type)
 			} else {
 				if fn_return_is_fixed_array && !type0.has_option_or_result() {
