@@ -72,11 +72,10 @@ $if windows {
 @[heap]
 pub struct Conn {
 mut:
-	conn        voidptr = unsafe { nil }
-	pool        &Pool   = unsafe { nil }
-	created_at  time.Time
-	bad         bool
-	checked_out bool // true while held by a caller; flipped under Pool.mu
+	conn       voidptr = unsafe { nil }
+	pool       &Pool   = unsafe { nil }
+	created_at time.Time
+	bad        bool
 }
 
 pub struct Row {
@@ -305,10 +304,11 @@ fn (config Config) conninfo() !string {
 	return parts.join(' ')
 }
 
-// connect_conn opens a single libpq connection using a conninfo string.
-// It is the low-level helper used by `DB`/`Pool`; callers that want a
-// thread-safe handle should use `connect()` (returns `&DB`).
-fn connect_conn(conninfo string, pool &Pool) !&Conn {
+// connect_slot opens a single libpq connection and returns it as an
+// `IdleSlot` (raw handle + creation timestamp). The pool wraps the slot in a
+// fresh `&Conn` per checkout so the wrapper cannot be revived by a stale
+// reference after release.
+fn connect_slot(conninfo string) !IdleSlot {
 	conn := C.PQconnectdb(&char(conninfo.str))
 	if conn == 0 {
 		return error('libpq memory allocation error')
@@ -322,21 +322,47 @@ fn connect_conn(conninfo string, pool &Pool) !&Conn {
 		C.PQfinish(conn)
 		return error('Connection to a PG database failed: ${error_msg}')
 	}
-	return &Conn{
-		conn:       conn
-		pool:       unsafe { pool }
+	return IdleSlot{
+		handle:     conn
 		created_at: time.now()
 	}
 }
 
-// ensure_active errors if the handle has been returned to the pool. Methods
-// that touch libpq directly call this so that a stale &Conn kept by user code
-// after close() can't issue queries on a PGconn* that has been re-handed to
-// another caller. The pool flips `checked_out` to false under its mutex
-// during release(), so the worst case is a benign error on a torn-down
-// handle. (Pooled-only operations like LISTEN/NOTIFY all funnel through here.)
+// physical_close_handle tears down a raw libpq handle. Used by the pool when
+// it discards an expired/broken slot or unwinds during shutdown.
+fn physical_close_handle(handle voidptr) {
+	if handle != unsafe { nil } {
+		C.PQfinish(handle)
+	}
+}
+
+// slot_expired reports whether `slot` has lived longer than `max_lifetime`.
+// A `max_lifetime` of zero means "no limit".
+fn slot_expired(slot IdleSlot, max_lifetime time.Duration) bool {
+	if max_lifetime <= 0 {
+		return false
+	}
+	return time.now() - slot.created_at > max_lifetime
+}
+
+// slot_bad reports whether the libpq handle in `slot` is no longer usable.
+fn slot_bad(slot IdleSlot) bool {
+	if slot.bad {
+		return true
+	}
+	if slot.handle == unsafe { nil } {
+		return true
+	}
+	status := unsafe { ConnStatusType(C.PQstatus(slot.handle)) }
+	return status == .bad
+}
+
+// ensure_active errors if this wrapper has been detached from its handle.
+// The pool nils `c.conn` during release() so any stale `&Conn` kept by user
+// code becomes inert here — it can never reach the underlying PGconn*, even
+// if the pool has since handed that same physical handle to another caller.
 fn (c &Conn) ensure_active() ! {
-	if !c.checked_out && !isnil(c.pool) {
+	if isnil(c.conn) {
 		return error('pg: operation on released Conn (was close() called?)')
 	}
 }
@@ -440,10 +466,9 @@ fn res_to_result(res voidptr) Result {
 }
 
 // close releases this conn back to its pool. Safe to call more than once:
-// the pool tracks an internal checked-out flag and ignores duplicate
-// releases (guards against e.g. an early manual close + a deferred close
-// enqueuing the same handle twice and letting two callers receive the
-// same PGconn*).
+// `release` detaches the wrapper from the underlying handle on the first
+// call (nils `c.conn`), so any subsequent close or method invocation on the
+// same `&Conn` is a no-op or a benign error rather than a use-after-free.
 pub fn (mut c Conn) close() ! {
 	if isnil(c.pool) {
 		unsafe { c.physical_close() }
