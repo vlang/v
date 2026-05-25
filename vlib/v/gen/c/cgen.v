@@ -11922,6 +11922,15 @@ fn (mut g Gen) or_block_on_value(var_name string, or_block ast.OrExpr, return_ty
 				else {}
 			}
 		}
+		// `call() or { ... }` whose call returns `!void`/`?void` has already
+		// consumed the option/result via its own or-block; the effective
+		// value of the last expression is void, so do not try to write
+		// `*(T*) tmp.data = <void>` (see issue #27012).
+		if last_expr_stmt.expr is ast.CallExpr
+			&& last_expr_stmt.expr.or_block.kind != .absent
+			&& last_expr_typ.clear_option_and_result() == ast.void_type {
+			last_expr_typ = ast.void_type
+		}
 		last_expr_produces_value = last_expr_typ != ast.void_type
 	}
 	if last_expr_produces_value {
@@ -12030,6 +12039,15 @@ fn (mut g Gen) or_block(var_name string, or_block ast.OrExpr, return_type ast.Ty
 					}
 					else {}
 				}
+			}
+			// `call() or { ... }` whose call returns `!void`/`?void` has already
+			// consumed the option/result via its own or-block; the effective
+			// value of the last expression is void, so do not try to write
+			// `*(T*) tmp.data = <void>` (see issue #27012).
+			if last_expr_stmt.expr is ast.CallExpr
+				&& last_expr_stmt.expr.or_block.kind != .absent
+				&& last_expr_typ.clear_option_and_result() == ast.void_type {
+				last_expr_typ = ast.void_type
 			}
 			last_expr_produces_value = last_expr_typ != ast.void_type
 		}
