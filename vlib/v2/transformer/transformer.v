@@ -293,7 +293,8 @@ fn new_transformer_base(env &types.Environment, p &pref.Preferences) &Transforme
 		smartcast_expr_counts:       map[string]int{}
 		monomorphize_enabled:        os.getenv('V2_TRANSFORMER_MONOMORPH') != ''
 		monomorphized_specs:         map[string]bool{}
-		is_native_be:                p != unsafe { nil } && (p.backend == .arm64 || p.backend == .x64)
+		is_native_be:                p != unsafe { nil }
+			&& (p.backend == .arm64 || p.backend == .x64)
 	}
 	return t
 }
@@ -2061,8 +2062,7 @@ fn (t &Transformer) expr_depends_on_runtime_const(mod string, expr ast.Expr) boo
 }
 
 fn (mut t Transformer) collect_runtime_const_inits(files []ast.File) {
-	is_native := t.pref != unsafe { nil }
-		&& (t.is_native_be || t.pref.backend == .c)
+	is_native := t.pref != unsafe { nil } && (t.is_native_be || t.pref.backend == .c)
 	t.runtime_const_inits_by_mod.clear()
 	t.runtime_const_modules.clear()
 	t.runtime_const_init_fn_name.clear()
@@ -2347,13 +2347,13 @@ fn (mut t Transformer) transform_expr_in_module(mod string, expr ast.Expr) ast.E
 fn (mut t Transformer) runtime_const_init_fn_stmt(mod string, fn_name string, inits []RuntimeConstInit) ast.Stmt {
 	mut stmts := []ast.Stmt{cap: inits.len}
 	for item in inits {
-		saved_pending := t.pending_stmts.clone()
-		t.pending_stmts.clear()
+		saved_pending := t.pending_stmts
+		t.pending_stmts = []ast.Stmt{}
 		old_skip_if := t.skip_if_value_lowering
 		t.skip_if_value_lowering = true
 		transformed_expr := t.transform_expr_in_module(mod, item.expr)
 		t.skip_if_value_lowering = old_skip_if
-		generated_pending := t.pending_stmts.clone()
+		generated_pending := t.pending_stmts
 		t.pending_stmts = saved_pending
 		for pending_stmt in generated_pending {
 			stmts << pending_stmt
@@ -4283,10 +4283,10 @@ fn (mut t Transformer) transform_or_call_expr(call_expr ast.Expr) (ast.Expr, []a
 	if t.pref == unsafe { nil } || t.pref.backend != .cleanc {
 		return t.transform_expr(call_expr), []ast.Stmt{}
 	}
-	saved_pending := t.pending_stmts.clone()
-	t.pending_stmts.clear()
+	saved_pending := t.pending_stmts
+	t.pending_stmts = []ast.Stmt{}
 	transformed_call := t.transform_expr(call_expr)
-	call_pending := t.pending_stmts.clone()
+	call_pending := t.pending_stmts
 	t.pending_stmts = saved_pending
 	return transformed_call, call_pending
 }
@@ -4391,8 +4391,7 @@ fn (mut t Transformer) expand_direct_or_expr_assign(stmt ast.AssignStmt, or_expr
 		}
 	}
 
-	if t.is_native_be
-		&& is_string_range_or {
+	if t.is_native_be && is_string_range_or {
 		// String ranges still need the native inline bounds-check path because the
 		// checker records them as `string` instead of `!string`.
 		idx_expr := call_expr as ast.IndexExpr
@@ -4638,10 +4637,10 @@ fn (mut t Transformer) gen_typed_temp_ident(typ types.Type) ast.Ident {
 }
 
 fn (mut t Transformer) transform_expr_with_captured_pending(expr ast.Expr) (ast.Expr, []ast.Stmt) {
-	saved_pending := t.pending_stmts.clone()
-	t.pending_stmts.clear()
+	saved_pending := t.pending_stmts
+	t.pending_stmts = []ast.Stmt{}
 	transformed := t.transform_expr(expr)
-	captured := t.pending_stmts.clone()
+	captured := t.pending_stmts
 	t.pending_stmts = saved_pending
 	return transformed, captured
 }
@@ -4994,8 +4993,8 @@ fn (mut t Transformer) try_expand_filter_or_map_expr(expr ast.Expr) ?ast.Expr {
 	// Transform generated statements while lowering the synthetic loop with the
 	// array type already resolved above. Nested expression expansions inside the
 	// loop body stay scoped to that loop.
-	saved_pending := t.pending_stmts.clone()
-	t.pending_stmts.clear()
+	saved_pending := t.pending_stmts
+	t.pending_stmts = []ast.Stmt{}
 	mut generated_stmts := []ast.Stmt{cap: 2}
 	if has_cache_stmt {
 		generated_stmts << cache_stmt
@@ -5006,7 +5005,7 @@ fn (mut t Transformer) try_expand_filter_or_map_expr(expr ast.Expr) ?ast.Expr {
 	t.open_scope()
 	transformed_for := ast.Stmt(t.transform_array_for_in(raw_for_stmt, for_in_stmt, iter_type))
 	t.close_scope()
-	inner_pending := t.pending_stmts.clone()
+	inner_pending := t.pending_stmts
 	t.pending_stmts = saved_pending
 	t.pending_stmts << transformed_generated
 	t.pending_stmts << transformed_for
@@ -5118,8 +5117,8 @@ fn (mut t Transformer) expand_any_or_all_expr(method_name string, receiver_expr 
 		}
 		stmts: loop_body
 	})
-	saved_pending := t.pending_stmts.clone()
-	t.pending_stmts.clear()
+	saved_pending := t.pending_stmts
+	t.pending_stmts = []ast.Stmt{}
 	transformed_init := t.transform_stmt(init_stmt)
 	transformed_for := t.transform_stmt(for_stmt)
 	t.pending_stmts = saved_pending
@@ -5200,8 +5199,8 @@ fn (mut t Transformer) expand_count_expr(receiver_expr ast.Expr, body_expr ast.E
 		}
 		stmts: loop_body
 	})
-	saved_pending := t.pending_stmts.clone()
-	t.pending_stmts.clear()
+	saved_pending := t.pending_stmts
+	t.pending_stmts = []ast.Stmt{}
 	transformed_init := t.transform_stmt(init_stmt)
 	transformed_for := t.transform_stmt(for_stmt)
 	t.pending_stmts = saved_pending
@@ -6086,15 +6085,15 @@ fn (mut t Transformer) try_expand_or_expr_stmt(stmt ast.ExprStmt) ?[]ast.Stmt {
 	// pending_stmts (e.g., lower_if_expr_value creates _if_tN). These must
 	// be placed AFTER the or-expr prefix_stmts (which define _or_tN used
 	// by the if condition), not before.
-	saved_pending := t.pending_stmts.clone()
-	t.pending_stmts.clear()
+	saved_pending := t.pending_stmts
+	t.pending_stmts = []ast.Stmt{}
 	// The expression is used at statement level (ExprStmt), so skip
 	// IfExpr value lowering which would create temp variables for void results.
 	saved_skip_if := t.skip_if_value_lowering
 	t.skip_if_value_lowering = true
 	transformed_new := t.transform_expr(new_expr)
 	t.skip_if_value_lowering = saved_skip_if
-	inner_pending := t.pending_stmts.clone()
+	inner_pending := t.pending_stmts
 	t.pending_stmts = saved_pending
 	// Merge: prefix_stmts first (or-expr decls), then any inner pending
 	for ip in inner_pending {
@@ -6754,8 +6753,7 @@ fn (mut t Transformer) expand_single_or_expr(or_expr ast.OrExpr, mut prefix_stmt
 		is_result = true
 	}
 
-	if t.is_native_be
-		&& is_string_range_or {
+	if t.is_native_be && is_string_range_or {
 		idx_expr := call_expr as ast.IndexExpr
 		return t.expand_string_range_or_native_expr(idx_expr, or_expr.stmts, mut prefix_stmts)
 	}
@@ -9242,8 +9240,8 @@ fn (mut t Transformer) lower_assoc_expr(node ast.AssocExpr, take_addr bool) ast.
 	// Save pending_stmts from outer context to prevent field value transforms
 	// (which may call transform_stmts internally, e.g., for if-expression branches)
 	// from draining our accumulated stmts into the wrong scope.
-	saved_pending := t.pending_stmts.clone()
-	t.pending_stmts.clear()
+	saved_pending := t.pending_stmts
+	t.pending_stmts = []ast.Stmt{}
 	mut assoc_stmts := []ast.Stmt{cap: 1 + node.fields.len * 2}
 	assoc_stmts << ast.Stmt(ast.AssignStmt{
 		op:  .decl_assign
@@ -10148,8 +10146,7 @@ fn (mut t Transformer) apply_smartcast_direct_ctx(original_expr ast.Expr, ctx Sm
 	// For native backends (arm64/x64): _data is a plain i64 (void pointer) in the SSA struct.
 	// No union variant sub-field exists, so just use _data directly.
 	// For C backends: _data is a union, so access _data._variant for the specific member.
-	is_native_backend := t.pref != unsafe { nil }
-		&& t.is_native_be
+	is_native_backend := t.pref != unsafe { nil } && t.is_native_be
 	data_access := t.synth_selector(transformed_base, '_data', types.Type(types.voidptr_))
 	variant_access := if is_native_backend {
 		data_access
@@ -10260,8 +10257,7 @@ fn (mut t Transformer) apply_smartcast_receiver_ctx(sumtype_expr ast.Expr, ctx S
 	// Create data access.
 	// For native backends: _data is a plain i64, no union variant sub-field.
 	// For C backends: _data is a union, access _data._variant.
-	is_native_backend2 := t.pref != unsafe { nil }
-		&& t.is_native_be
+	is_native_backend2 := t.pref != unsafe { nil } && t.is_native_be
 	data_access := t.synth_selector(transformed_base, '_data', types.Type(types.voidptr_))
 	variant_access := if is_native_backend2 {
 		data_access
@@ -12972,8 +12968,7 @@ fn (mut t Transformer) generate_fixed_array_str_fn(fn_name string) ast.Stmt {
 	}
 
 	// Create parameter: a Array_fixed_T_N
-	param_type := if t.pref != unsafe { nil }
-		&& t.is_native_be {
+	param_type := if t.pref != unsafe { nil } && t.is_native_be {
 		ast.Expr(ast.PrefixExpr{
 			op:   .amp
 			expr: ast.Ident{
