@@ -1,6 +1,7 @@
 module deflate
 
 import encoding.binary
+import hash.adler32
 import hash.crc32
 
 // CompressFormat selects the output container around the RFC 1951 payload.
@@ -28,7 +29,7 @@ pub fn compress(data []u8, format CompressParams) ![]u8 {
 
 pub fn compress_zlib(data []u8) ![]u8 {
 	payload := deflate_compress_fixed(data)
-	cksum := adler32(data)
+	cksum := adler32.sum(data)
 	mut out := []u8{cap: 2 + payload.len + 4}
 	out << u8(0x78) // CMF: CM=8 deflate, CINFO=7 (32K window)
 	out << u8(0x9c) // FLG: default compression, FCHECK satisfies (CMF*256+FLG)%31==0
@@ -71,7 +72,9 @@ pub fn decompress(data []u8) ![]u8 {
 	return inflate(data)
 }
 
-fn decompress_zlib(data []u8) ![]u8 {
+// decompress_zlib decompresses a zlib stream (RFC 1950) and returns the
+// decompressed bytes in a new array.
+pub fn decompress_zlib(data []u8) ![]u8 {
 	if data.len < 6 {
 		return error('invalid zlib stream: too short')
 	}
@@ -86,14 +89,18 @@ fn decompress_zlib(data []u8) ![]u8 {
 	}
 	payload := data[2..data.len - 4]
 	expected := binary.big_endian_u32_at(data, data.len - 4)
-	decoded := inflate(payload)!
-	if adler32(decoded) != expected {
-		return error('invalid zlib stream: adler32 mismatch')
+	res := inflate_with_consumed(payload)!
+	if res.consumed != payload.len {
+		return error('invalid zlib stream: trailing data before adler32')
 	}
+	decoded := res.decoded
+	if adler32.sum(decoded) != expected { return error('invalid zlib stream: adler32 mismatch') }
 	return decoded
 }
 
-fn decompress_gzip(data []u8) ![]u8 {
+// decompress_gzip decompresses a gzip stream (RFC 1952) and returns the
+// decompressed bytes in a new array.
+pub fn decompress_gzip(data []u8) ![]u8 {
 	if data.len < 18 {
 		return error('invalid gzip stream: too short')
 	}
@@ -133,7 +140,11 @@ fn decompress_gzip(data []u8) ![]u8 {
 	payload := data[pos..data.len - 8]
 	expected_crc := binary.little_endian_u32_at(data, data.len - 8)
 	expected_size := binary.little_endian_u32_at(data, data.len - 4)
-	decoded := inflate(payload)!
+	res := inflate_with_consumed(payload)!
+	if res.consumed != payload.len {
+		return error('invalid gzip stream: trailing data before trailer')
+	}
+	decoded := res.decoded
 	if crc32.sum(decoded) != expected_crc {
 		return error('invalid gzip stream: crc32 mismatch')
 	}
@@ -141,17 +152,6 @@ fn decompress_gzip(data []u8) ![]u8 {
 		return error('invalid gzip stream: size mismatch')
 	}
 	return decoded
-}
-
-fn adler32(data []u8) u32 {
-	mod_adler := u32(65521)
-	mut a := u32(1)
-	mut b := u32(0)
-	for byte_ in data {
-		a = (a + u32(byte_)) % mod_adler
-		b = (b + a) % mod_adler
-	}
-	return (b << 16) | a
 }
 
 fn bit_reverse(v u32, n int) u32 {
