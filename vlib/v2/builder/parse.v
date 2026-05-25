@@ -207,6 +207,18 @@ fn active_file_imports(file ast.File, user_defines []string, target_os string) [
 	return imports
 }
 
+// parse_batch routes a parser.parse_files() call through either the direct
+// path or the streaming+roundtrip path (V2_FLAT_ROUNDTRIP=1). The roundtrip
+// mode exercises Parser.parse_files_to_flat + FlatAst.to_files() under real
+// load, validating Phase 2 lossless conversion before consumers migrate.
+fn (mut b Builder) parse_batch(mut parser_reused parser.Parser, files []string) []ast.File {
+	if b.flat_roundtrip_enabled {
+		flat := parser_reused.parse_files_to_flat(files, mut b.file_set)
+		return flat.to_files()
+	}
+	return parser_reused.parse_files(files, mut b.file_set)
+}
+
 fn (mut b Builder) parse_files(files []string) []ast.File {
 	mut parser_reused := parser.Parser.new(b.pref)
 	mut ast_files := []ast.File{}
@@ -218,13 +230,13 @@ fn (mut b Builder) parse_files(files []string) []ast.File {
 		b.used_vh_for_parse = use_core_headers
 		if use_core_headers {
 			core_files := b.core_cached_parse_paths()
-			parsed_core_files := parser_reused.parse_files(core_files, mut b.file_set)
+			parsed_core_files := b.parse_batch(mut parser_reused, core_files)
 			ast_files << parsed_core_files
 		} else {
 			for module_path in core_cached_module_paths {
 				vlib_path := b.pref.get_vlib_module_path(module_path)
 				module_files := get_v_files_from_dir(vlib_path, b.pref.user_defines, target_os)
-				parsed_module_files := parser_reused.parse_files(module_files, mut b.file_set)
+				parsed_module_files := b.parse_batch(mut parser_reused, module_files)
 				ast_files << parsed_module_files
 			}
 		}
@@ -274,7 +286,7 @@ fn (mut b Builder) parse_files(files []string) []ast.File {
 			virtual_main_modules)
 		b.used_virtual_vh_for_parse = true
 	}
-	parsed_user_files := parser_reused.parse_files(expanded_user_files, mut b.file_set)
+	parsed_user_files := b.parse_batch(mut parser_reused, expanded_user_files)
 	ast_files << parsed_user_files
 	skip_imports := b.pref.skip_imports
 	if skip_imports {
@@ -295,7 +307,9 @@ fn (mut b Builder) parse_files(files []string) []ast.File {
 			}
 			if use_core_headers || use_import_headers {
 				if cached_path := b.cached_import_parse_path(mod.name) {
-					parsed_module_files := parser_reused.parse_files([cached_path], mut b.file_set)
+					parsed_module_files := b.parse_batch(mut parser_reused, [
+						cached_path,
+					])
 					ast_files << parsed_module_files
 					parsed_imports << mod.name
 					continue
@@ -306,7 +320,7 @@ fn (mut b Builder) parse_files(files []string) []ast.File {
 			if module_files.len == 0 {
 				continue
 			}
-			parsed_module_files := parser_reused.parse_files(module_files, mut b.file_set)
+			parsed_module_files := b.parse_batch(mut parser_reused, module_files)
 			ast_files << parsed_module_files
 			parsed_imports << mod.name
 		}

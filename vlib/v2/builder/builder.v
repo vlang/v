@@ -46,6 +46,7 @@ mut:
 	used_vh_for_parse         bool
 	used_import_vh_for_parse  bool
 	used_virtual_vh_for_parse bool
+	flat_roundtrip_enabled    bool // V2_FLAT_ROUNDTRIP=1: route parses through streaming + to_files()
 }
 
 pub fn new_builder(prefs &pref.Preferences) &Builder {
@@ -54,6 +55,7 @@ pub fn new_builder(prefs &pref.Preferences) &Builder {
 			pref:                   prefs
 			used_fn_keys:           map[string]bool{}
 			cached_called_fn_names: map[string]bool{}
+			flat_roundtrip_enabled: os.getenv('V2_FLAT_ROUNDTRIP') != ''
 		}
 	}
 }
@@ -113,6 +115,9 @@ pub fn (mut b Builder) build(files []string) {
 	mut sw := time.new_stopwatch()
 	print_rss('start')
 	$if parallel ? {
+		if b.flat_roundtrip_enabled && !b.pref.no_parallel {
+			eprintln('warning: V2_FLAT_ROUNDTRIP=1 only routes through the serial parser; pass --no-parallel to exercise it')
+		}
 		b.files = if b.pref.no_parallel {
 			b.parse_files(files)
 		} else {
@@ -2234,7 +2239,7 @@ fn (b &Builder) print_flat_ast_summary() {
 	if legacy_stats.allocs > 0 {
 		alloc_delta_pct = (f64(legacy_stats.allocs) - f64(flat_allocs)) * 100.0 / f64(legacy_stats.allocs)
 	}
-	println(' * AST nodes:      legacy=${legacy_nodes}, flat=${flat_stats.nodes}')
+	println(' * AST nodes:      legacy=${legacy_nodes}, flat=${flat_stats.nodes} (edges=${flat_stats.edges}, strings=${flat_stats.strings})')
 	println(' * AST memory est: legacy=${legacy_stats.bytes_estimate}B, flat=${flat_stats.bytes_estimate}B (${mem_delta_pct:.2f}% reduction)')
 	println(' * AST allocs:     legacy=${legacy_stats.allocs}, flat=${flat_allocs} (${alloc_delta_pct:.2f}% reduction)')
 	if os.getenv('V2_FLAT_HIST') != '' {

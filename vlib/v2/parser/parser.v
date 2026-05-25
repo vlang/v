@@ -165,7 +165,15 @@ pub fn (mut p Parser) parse_files(files []string, mut file_set token.FileSet) []
 // would produce, but never holds more than one file's legacy AST resident.
 // The result is signature-equivalent to the two-step path (regression-tested).
 pub fn (mut p Parser) parse_files_to_flat(files []string, mut file_set token.FileSet) ast.FlatAst {
-	mut builder := ast.new_flat_builder()
+	mut total_bytes := i64(0)
+	for file in files {
+		if file == '' {
+			continue
+		}
+		total_bytes += os.file_size(file)
+	}
+	nodes_cap, edges_cap, strings_cap := ast.arena_caps_for_bytes(total_bytes)
+	mut builder := ast.new_flat_builder_with_capacity(nodes_cap, edges_cap, strings_cap)
 	for file in files {
 		if file == '' {
 			continue

@@ -3,6 +3,7 @@
 // that can be found in the LICENSE file.
 module ast
 
+import os
 import v2.token
 
 // FlatAst is a contiguous, index-based AST representation. Every node lives
@@ -190,11 +191,40 @@ pub mut:
 
 // flatten_files converts recursive v2 AST files into a flat, index-based graph.
 pub fn flatten_files(files []File) FlatAst {
-	mut b := new_flat_builder()
+	mut total_bytes := i64(0)
+	for file in files {
+		if file.name == '' {
+			continue
+		}
+		total_bytes += os.file_size(file.name)
+	}
+	nodes_cap, edges_cap, strings_cap := arena_caps_for_bytes(total_bytes)
+	mut b := new_flat_builder_with_capacity(nodes_cap, edges_cap, strings_cap)
 	for file in files {
 		b.append_file(file)
 	}
 	return b.flat
+}
+
+// arena_caps_for_bytes returns (nodes_cap, edges_cap, strings_cap) sized from
+// total source-byte estimate. Calibrated against the v2 self-host parse:
+// ~150 nodes/KB, ~170 edges/KB, ~5 unique strings/KB. Floors match the
+// default seed caps so tiny inputs don't waste arena space.
+pub fn arena_caps_for_bytes(total_bytes i64) (int, int, int) {
+	kb := int(total_bytes / 1024) + 1
+	mut nodes_cap := 150 * kb
+	mut edges_cap := 170 * kb
+	mut strings_cap := 5 * kb
+	if nodes_cap < 1024 {
+		nodes_cap = 1024
+	}
+	if edges_cap < 2048 {
+		edges_cap = 2048
+	}
+	if strings_cap < 512 {
+		strings_cap = 512
+	}
+	return nodes_cap, edges_cap, strings_cap
 }
 
 // legacy_ast_stats estimates dynamic memory and node counts for the recursive AST.
@@ -319,12 +349,21 @@ mut:
 // new_flat_builder returns a fresh FlatBuilder seeded with reasonable arena
 // capacities. Callers may resize after measuring (b.flat.nodes.grow_cap, ...).
 pub fn new_flat_builder() FlatBuilder {
+	return new_flat_builder_with_capacity(1024, 2048, 512)
+}
+
+// new_flat_builder_with_capacity lets callers pre-size the three arenas up
+// front when an estimate is available (e.g. derived from total source size).
+// Empirically the v2 self-host produces ~150 nodes/KB, ~165 edges/KB and ~5
+// unique strings/KB; supplying tight caps avoids the geometric realloc churn
+// that dominates the streaming parse path.
+pub fn new_flat_builder_with_capacity(nodes_cap int, edges_cap int, strings_cap int) FlatBuilder {
 	return FlatBuilder{
 		flat:       FlatAst{
 			files:   []FlatFile{}
-			nodes:   []FlatNode{cap: 1024}
-			edges:   []FlatEdge{cap: 2048}
-			strings: []string{cap: 512}
+			nodes:   []FlatNode{cap: nodes_cap}
+			edges:   []FlatEdge{cap: edges_cap}
+			strings: []string{cap: strings_cap}
 		}
 		string_ids: map[string]int{}
 	}
