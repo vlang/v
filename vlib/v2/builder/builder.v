@@ -2228,13 +2228,26 @@ fn (mut b Builder) update_parse_summary_counts() {
 	mut parsed_vh_files_n := 0
 	mut parsed_full_files := []string{}
 	mut parsed_vh_files := []string{}
-	for file in b.files {
-		if file.name.ends_with('.vh') {
-			parsed_vh_files_n++
-			parsed_vh_files << file.name
-		} else {
-			parsed_full_files_n++
-			parsed_full_files << file.name
+	if b.flat_check_enabled {
+		for ff in b.flat.files {
+			name := b.flat.file_name(ff)
+			if name.ends_with('.vh') {
+				parsed_vh_files_n++
+				parsed_vh_files << name
+			} else {
+				parsed_full_files_n++
+				parsed_full_files << name
+			}
+		}
+	} else {
+		for file in b.files {
+			if file.name.ends_with('.vh') {
+				parsed_vh_files_n++
+				parsed_vh_files << file.name
+			} else {
+				parsed_full_files_n++
+				parsed_full_files << file.name
+			}
 		}
 	}
 	b.parsed_full_files_n = parsed_full_files_n
@@ -2253,7 +2266,7 @@ fn (mut b Builder) update_parse_summary_counts() {
 fn (b &Builder) print_flat_ast_summary() {
 	legacy_stats := ast.legacy_ast_stats(b.files)
 	legacy_nodes := ast.count_legacy_nodes(b.files)
-	flat := ast.flatten_files(b.files)
+	flat := if b.flat_check_enabled { b.flat } else { ast.flatten_files(b.files) }
 	flat_stats := flat.stats()
 	mut mem_delta_pct := f64(0)
 	if legacy_stats.bytes_estimate > 0 {
@@ -2303,12 +2316,23 @@ fn count_v_lines_for_paths(paths []string) int {
 fn (b &Builder) count_parsed_v_lines() int {
 	mut parsed_paths := []string{}
 	mut seen_files := map[string]bool{}
-	for file in b.files {
-		if file.name in seen_files {
-			continue
+	if b.flat_check_enabled {
+		for ff in b.flat.files {
+			name := b.flat.file_name(ff)
+			if name in seen_files {
+				continue
+			}
+			seen_files[name] = true
+			parsed_paths << name
 		}
-		seen_files[file.name] = true
-		parsed_paths << file.name
+	} else {
+		for file in b.files {
+			if file.name in seen_files {
+				continue
+			}
+			seen_files[file.name] = true
+			parsed_paths << file.name
+		}
 	}
 	return count_v_lines_for_paths(parsed_paths)
 }
