@@ -2802,6 +2802,20 @@ fn (mut t Transformer) inject_main_runtime_const_init_calls(mut files []ast.File
 	} else {
 		map[string]bool{}
 	}
+	for mod in t.runtime_const_modules {
+		if minimal_windows_x64_runtime && mod !in init_modules {
+			continue
+		}
+		fn_name := t.runtime_const_init_fn_name[mod] or { continue }
+		call_name := runtime_const_init_call_name(mod, fn_name)
+		init_calls << ast.ExprStmt{
+			expr: ast.CallExpr{
+				lhs: ast.Ident{
+					name: call_name
+				}
+			}
+		}
+	}
 	for file in files {
 		if file.mod in seen_init_mods {
 			continue
@@ -2820,20 +2834,6 @@ fn (mut t Transformer) inject_main_runtime_const_init_calls(mut files []ast.File
 					}
 				}
 				break
-			}
-		}
-	}
-	for mod in t.runtime_const_modules {
-		if minimal_windows_x64_runtime && mod !in init_modules {
-			continue
-		}
-		fn_name := t.runtime_const_init_fn_name[mod] or { continue }
-		call_name := runtime_const_init_call_name(mod, fn_name)
-		init_calls << ast.ExprStmt{
-			expr: ast.CallExpr{
-				lhs: ast.Ident{
-					name: call_name
-				}
 			}
 		}
 	}

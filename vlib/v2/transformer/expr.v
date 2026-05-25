@@ -1133,7 +1133,15 @@ fn (mut t Transformer) transform_match_branch_stmts(stmts []ast.Stmt) []ast.Stmt
 		if last.expr is ast.IfExpr {
 			t.skip_if_value_lowering = true
 		}
-		transformed_expr := t.transform_expr(last.expr)
+		mut branch_expr := last.expr
+		if t.cur_fn_ret_type_name != '' {
+			if ret_type := t.lookup_type(t.cur_fn_ret_type_name) {
+				if ret_type is types.Enum {
+					branch_expr = t.resolve_expr_with_expected_type(branch_expr, ret_type)
+				}
+			}
+		}
+		transformed_expr := t.transform_expr(branch_expr)
 		t.skip_if_value_lowering = saved_skip_if_value_lowering
 		final_pending := t.pending_stmts
 		t.pending_stmts = saved_pending
@@ -1775,6 +1783,12 @@ fn (mut t Transformer) transform_if_expr(expr ast.IfExpr) ast.Expr {
 				fn_name := t.get_call_fn_name(rhs)
 				is_result = fn_name != '' && t.fn_returns_result(fn_name)
 				is_option = fn_name != '' && t.fn_returns_option(fn_name)
+			}
+			if !is_result && !is_option {
+				if ret_type := t.fn_pointer_call_return_type(rhs) {
+					is_result = ret_type is types.ResultType || ret_type.name().starts_with('!')
+					is_option = ret_type is types.OptionType || ret_type.name().starts_with('?')
+				}
 			}
 			if is_result {
 				// Handle Result if-guard using temp variable pattern

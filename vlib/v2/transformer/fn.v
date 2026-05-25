@@ -1113,7 +1113,7 @@ fn (t &Transformer) fn_pointer_call_return_type(expr ast.Expr) ?types.Type {
 
 	if lhs is ast.Ident {
 		if lhs.name in t.local_fn_pointer_return_types {
-			ret := t.local_fn_pointer_return_types[lhs.name]
+			ret := t.local_fn_pointer_return_types[lhs.name] or { return none }
 			return ret
 		}
 		fn_type := t.lookup_fn_pointer_var_type(lhs.name) or { return none }
@@ -1173,7 +1173,9 @@ fn (t &Transformer) expr_returns_option(expr ast.Expr) bool {
 		return wrapper_type is types.OptionType
 	}
 	if typ := t.get_expr_type(expr) {
-		return typ is types.OptionType
+		if typ is types.OptionType || typ.name().starts_with('?') {
+			return true
+		}
 	}
 	if ret := t.fn_pointer_call_return_type(expr) {
 		return ret is types.OptionType || ret.name().starts_with('?')
@@ -1206,7 +1208,9 @@ fn (t &Transformer) expr_returns_result(expr ast.Expr) bool {
 		return false
 	}
 	if typ := t.get_expr_type(expr) {
-		return typ is types.ResultType
+		if typ is types.ResultType || typ.name().starts_with('!') {
+			return true
+		}
 	}
 	if ret := t.fn_pointer_call_return_type(expr) {
 		return ret is types.ResultType || ret.name().starts_with('!')
@@ -1898,6 +1902,9 @@ fn (mut t Transformer) transform_call_expr(expr ast.CallExpr) ast.Expr {
 	// $d reads from compile-time environment; we just use the default.
 	if expr.lhs is ast.Ident && expr.lhs.name == 'd' && expr.args.len == 2 {
 		return t.transform_expr(expr.args[1])
+	}
+	if transformed_embed := t.transform_embed_file_chain_lhs(ast.Expr(expr), expr.pos) {
+		return t.transform_expr(transformed_embed)
 	}
 	// Inline generic math functions (abs[T], min[T], max[T], maxof[T], minof[T]).
 	// Generic function declarations are not instantiated by the compiler, so these

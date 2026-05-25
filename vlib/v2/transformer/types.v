@@ -1354,6 +1354,7 @@ fn (t &Transformer) expr_is_casted_to_type(expr ast.Expr, target string) bool {
 }
 
 fn (mut t Transformer) resolve_expr_with_expected_type(expr ast.Expr, expected types.Type) ast.Expr {
+	expr_pos := expr.pos()
 	base := t.unwrap_alias_and_pointer_type(expected)
 	match expr {
 		ast.ArrayInitExpr {
@@ -1396,17 +1397,29 @@ fn (mut t Transformer) resolve_expr_with_expected_type(expr ast.Expr, expected t
 			match expr {
 				ast.Keyword {
 					if expr.tok == .key_none {
-						return expr
+						return ast.Expr(ast.CastExpr{
+							typ:  t.type_to_ast_type_expr(expected)
+							expr: expr
+							pos:  expr_pos
+						})
 					}
 				}
 				ast.Ident {
 					if expr.name == 'none' {
-						return expr
+						return ast.Expr(ast.CastExpr{
+							typ:  t.type_to_ast_type_expr(expected)
+							expr: expr
+							pos:  expr_pos
+						})
 					}
 				}
 				ast.Type {
 					if expr is ast.NoneType {
-						return ast.Expr(ast.Type(expr))
+						return ast.Expr(ast.CastExpr{
+							typ:  t.type_to_ast_type_expr(expected)
+							expr: ast.Expr(ast.Type(expr))
+							pos:  expr_pos
+						})
 					}
 				}
 				else {}

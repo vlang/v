@@ -3749,6 +3749,52 @@ fn test_resolve_expr_with_expected_type_resolves_enum_shorthand() {
 	assert (resolved as ast.Ident).name == 'ast__StringLiteralKind__v'
 }
 
+fn test_resolve_expr_with_expected_type_casts_none_to_option() {
+	mut t := create_test_transformer()
+	expected := types.Type(types.OptionType{
+		base_type: types.Type(types.Array{
+			elem_type: types.Type(types.u8_)
+		})
+	})
+	resolved := t.resolve_expr_with_expected_type(ast.Expr(ast.Type(ast.NoneType{})), expected)
+	assert resolved is ast.CastExpr
+	cast := resolved as ast.CastExpr
+	assert cast.expr is ast.Type
+	assert cast.typ is ast.Type
+	assert cast.typ as ast.Type is ast.OptionType
+}
+
+fn test_transform_return_match_branch_resolves_enum_shorthand_to_return_type() {
+	enum_typ := types.Type(types.Enum{
+		name: 'CompletionType'
+	})
+	mut scope := types.new_scope(unsafe { nil })
+	scope.insert('CompletionType', enum_typ)
+	mut t := create_test_transformer()
+	t.cur_module = 'main'
+	t.cur_fn_ret_type_name = 'CompletionType'
+	t.preserve_match_branch_value = true
+	t.cached_scopes = {
+		'main': scope
+	}
+	stmts := [
+		ast.Stmt(ast.ExprStmt{
+			expr: ast.Expr(ast.SelectorExpr{
+				lhs: ast.empty_expr
+				rhs: ast.Ident{
+					name: 'encoding'
+				}
+			})
+		}),
+	]
+	transformed := t.transform_match_branch_stmts(stmts)
+	assert transformed.len == 1
+	assert transformed[0] is ast.ExprStmt
+	expr := (transformed[0] as ast.ExprStmt).expr
+	assert expr is ast.Ident
+	assert (expr as ast.Ident).name == 'CompletionType__encoding'
+}
+
 fn test_transform_selector_enum_uses_declared_parent_owner() {
 	enum_typ := types.Type(types.Enum{
 		name: 'StrIntpType'

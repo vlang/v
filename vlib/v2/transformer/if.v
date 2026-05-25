@@ -229,6 +229,12 @@ fn (mut t Transformer) try_expand_if_guard_stmt(stmt ast.ExprStmt) ?[]ast.Stmt {
 		is_result = fn_name != '' && t.fn_returns_result(fn_name)
 		is_option = fn_name != '' && t.fn_returns_option(fn_name)
 	}
+	if !is_result && !is_option {
+		if ret_type := t.fn_pointer_call_return_type(rhs) {
+			is_result = ret_type is types.ResultType || ret_type.name().starts_with('!')
+			is_option = ret_type is types.OptionType || ret_type.name().starts_with('?')
+		}
+	}
 
 	if is_result || is_option {
 		// Handle Result/Option if-guard
@@ -1339,5 +1345,10 @@ fn (t &Transformer) eval_comptime_cond(cond ast.Expr) bool {
 // eval_comptime_flag delegates to the shared `pref.comptime_flag_value` so
 // the parser and the transformer recognize exactly the same flag names.
 fn (t &Transformer) eval_comptime_flag(name string) bool {
+	// Fast path: the three native-backend gated flags hit the cached bool
+	// rather than the helper's repeated pref/backend comparisons.
+	if name == 'native' || name == 'builtin_write_buf_to_fd_should_use_c_write' || name == 'tinyc' {
+		return t.is_native_be
+	}
 	return pref.comptime_flag_value(t.pref, name)
 }
