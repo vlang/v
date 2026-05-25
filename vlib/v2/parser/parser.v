@@ -3119,12 +3119,11 @@ fn (mut p Parser) parse_comptime_struct_field_branch(language ast.Language, forc
 		p.parse_struct_field_list(language, mut tmp_emb, mut tmp_flds)
 	}
 	p.next() // rcbr
-	// Allow `} $else` or `};\n$else`. Always swallow any auto-inserted `;` so
-	// the outer field loop doesn't try to parse it as a field type.
-	if p.tok == .semicolon {
-		if p.peek() == .dollar && p.peek_dollar_keyword() == 'else' {
-			p.next()
-		}
+	// `};\n$else` — auto-inserted `;` sits between `}` and `$`. Consume it so
+	// `peek_dollar_keyword` (which reads the source bytes at the scanner offset
+	// for the *current* token) sees the `else` letters past `$`.
+	if p.tok == .semicolon && p.peek() == .dollar {
+		p.next()
 	}
 	if !(p.tok == .dollar && p.peek_dollar_keyword() == 'else') {
 		if p.tok == .semicolon {

@@ -6616,3 +6616,44 @@ struct Container {
 	assert files.len == 1
 	assert struct_field_names(files[0], 'Container') == ['name', 'debug_only']
 }
+
+// Regression: `$else` starts on the line after `}`. The auto-inserted `;`
+// between `}` and `$` must not hide the `$else` branch.
+fn test_struct_comptime_else_on_next_line() {
+	files := parse_code_with_defines_for_test('
+module main
+
+struct Container {
+$if my_feature ? {
+	val string = "on"
+}
+$else {
+	val string = "off"
+}
+	always int
+}
+', [])
+	assert files.len == 1
+	assert struct_field_names(files[0], 'Container') == ['val', 'always']
+}
+
+// Regression: `$else $if` chain where each `$else` starts on a new line.
+fn test_struct_comptime_else_if_on_next_line() {
+	files := parse_code_with_defines_for_test('
+module main
+
+struct Container {
+$if feat_a ? {
+	tag string = "A"
+}
+$else $if feat_b ? {
+	tag string = "B"
+}
+$else {
+	tag string = "default"
+}
+}
+', ['feat_b'])
+	assert files.len == 1
+	assert struct_field_names(files[0], 'Container') == ['tag']
+}
