@@ -2027,6 +2027,12 @@ fn (mut b Builder) gen_native(backend_arch pref.Arch) {
 		'out'
 	}
 
+	if arch == .x64 && os.user_os() == 'windows' {
+		eprintln('error: the v2 x64 native backend does not support Windows yet')
+		eprintln('hint: Windows x64 requires COFF object output and the Windows x64 calling convention')
+		exit(1)
+	}
+
 	if arch == .arm64 && os.user_os() == 'macos' {
 		// Use built-in linker for ARM64 macOS
 		stage_start = native_sw.elapsed()
@@ -2066,7 +2072,12 @@ fn (mut b Builder) gen_native(backend_arch pref.Arch) {
 			}
 			gen.write_file(obj_file)
 		} else {
-			mut gen := x64.Gen.new(&mir_mod)
+			obj_format := if os.user_os() == 'macos' {
+				x64.ObjectFormat.macho
+			} else {
+				x64.ObjectFormat.elf
+			}
+			mut gen := x64.Gen.new_with_format(&mir_mod, obj_format)
 			gen.gen()
 			gen.write_file(obj_file)
 		}
