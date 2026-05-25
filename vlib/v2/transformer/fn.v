@@ -1926,7 +1926,7 @@ fn (mut t Transformer) transform_call_expr(expr ast.CallExpr) ast.Expr {
 	// Check if this is a flag enum method call: receiver.has(arg) or receiver.all(arg)
 	if expr.lhs is ast.SelectorExpr {
 		sel := expr.lhs as ast.SelectorExpr
-		if t.pref != unsafe { nil } && (t.pref.backend == .arm64 || t.pref.backend == .x64) {
+		if t.is_native_be {
 			if concrete := t.get_native_default_interface_concrete_type(sel.lhs, sel.rhs.name) {
 				call_args := t.lower_missing_call_args(expr.lhs, expr.args)
 				mut native_args := []ast.Expr{cap: call_args.len + 1}
@@ -2105,7 +2105,7 @@ fn (mut t Transformer) transform_call_expr(expr ast.CallExpr) ast.Expr {
 			transformed_iface_args = t.lower_variadic_args(expr.lhs, transformed_iface_args)
 			// Native backends (arm64/x64): resolve to direct concrete method call.
 			// `iface.method(args...)` → `ConcreteType__method(iface, args...)`
-			if t.pref != unsafe { nil } && (t.pref.backend == .arm64 || t.pref.backend == .x64) {
+			if t.is_native_be {
 				if concrete := t.get_interface_concrete_type_for_expr(sel.lhs) {
 					resolved_method := '${concrete}__${sel.rhs.name}'
 					mut native_args := []ast.Expr{cap: transformed_iface_args.len + 1}
@@ -3872,7 +3872,7 @@ fn (mut t Transformer) transform_call_or_cast_expr(expr ast.CallOrCastExpr) ast.
 	// Check if this is a flag enum method call: receiver.has(arg) or receiver.all(arg)
 	if expr.lhs is ast.SelectorExpr {
 		sel := expr.lhs as ast.SelectorExpr
-		if t.pref != unsafe { nil } && (t.pref.backend == .arm64 || t.pref.backend == .x64) {
+		if t.is_native_be {
 			if concrete := t.get_native_default_interface_concrete_type(sel.lhs, sel.rhs.name) {
 				mut call_args := []ast.Expr{}
 				if expr.expr !is ast.EmptyExpr {
@@ -4032,7 +4032,7 @@ fn (mut t Transformer) transform_call_or_cast_expr(expr ast.CallOrCastExpr) ast.
 			}
 			transformed_iface_args = t.lower_variadic_args(expr.lhs, transformed_iface_args)
 			// Native backends (arm64/x64): resolve to direct concrete method call.
-			if t.pref != unsafe { nil } && (t.pref.backend == .arm64 || t.pref.backend == .x64) {
+			if t.is_native_be {
 				if concrete := t.get_interface_concrete_type_for_expr(sel.lhs) {
 					resolved_iface_method := '${concrete}__${sel.rhs.name}'
 					mut native_iface_args := []ast.Expr{cap: transformed_iface_args.len + 1}

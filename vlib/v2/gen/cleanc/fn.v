@@ -6426,8 +6426,14 @@ fn (mut g Gen) gen_direct_fn_pointer_call(lhs ast.Expr, call_args []ast.Expr) bo
 			g.sb.write_string(', ')
 		}
 		if i < fnptr_param_is_ptr.len && fnptr_param_is_ptr[i] && arg is ast.ModifierExpr {
+			inner := arg.expr
+			if g.expr_is_pointer(inner)
+				|| (inner is ast.Ident && inner.name in g.cur_fn_mut_params) {
+				g.expr(inner)
+				continue
+			}
 			g.sb.write_u8(`&`)
-			g.expr(arg.expr)
+			g.expr(inner)
 			continue
 		}
 		g.expr(arg)

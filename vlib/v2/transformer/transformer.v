@@ -127,6 +127,9 @@ mut:
 	// monomorphized_specs to skip duplicate weak emission of the same names.
 	monomorphize_enabled bool
 	monomorphized_specs  map[string]bool
+	// Cached at construction: avoids per-block t.pref nil/enum re-check in
+	// hot loops (transform_stmts, IfGuardExpr handling, OrExpr expansion, etc).
+	is_native_be bool
 }
 
 fn escape_c_keyword(name string) string {
@@ -290,6 +293,7 @@ fn new_transformer_base(env &types.Environment, p &pref.Preferences) &Transforme
 		smartcast_expr_counts:       map[string]int{}
 		monomorphize_enabled:        os.getenv('V2_TRANSFORMER_MONOMORPH') != ''
 		monomorphized_specs:         map[string]bool{}
+		is_native_be:                p != unsafe { nil } && (p.backend == .arm64 || p.backend == .x64)
 	}
 	return t
 }
@@ -330,6 +334,7 @@ pub fn (t &Transformer) new_worker_clone(worker_idx int) &Transformer {
 		runtime_const_storage_known: map[string]bool{}
 		interface_concrete_types:    map[string]string{}
 		smartcast_expr_counts:       map[string]int{}
+		is_native_be:                t.is_native_be
 	}
 }
 
@@ -1577,7 +1582,7 @@ pub fn (mut t Transformer) post_pass(mut result []ast.File) {
 	if !t.is_eval_backend() {
 		t.inject_main_runtime_const_init_calls(mut result)
 	}
-	if t.pref != unsafe { nil } && (t.pref.backend == .arm64 || t.pref.backend == .x64) {
+	if t.is_native_be {
 		t.inject_live_reload(mut result)
 	}
 	// Apply accumulated synth types to the environment.
@@ -2057,7 +2062,7 @@ fn (t &Transformer) expr_depends_on_runtime_const(mod string, expr ast.Expr) boo
 
 fn (mut t Transformer) collect_runtime_const_inits(files []ast.File) {
 	is_native := t.pref != unsafe { nil }
-		&& (t.pref.backend == .arm64 || t.pref.backend == .x64 || t.pref.backend == .c)
+		&& (t.is_native_be || t.pref.backend == .c)
 	t.runtime_const_inits_by_mod.clear()
 	t.runtime_const_modules.clear()
 	t.runtime_const_init_fn_name.clear()
@@ -2901,15 +2906,27 @@ fn (mut t Transformer) append_transformed_stmt(mut result []ast.Stmt, stmt ast.S
 
 fn (mut t Transformer) transform_stmts(stmts []ast.Stmt) []ast.Stmt {
 	mut result := []ast.Stmt{cap: stmts.len}
-	is_native_be := t.pref != unsafe { nil } && (t.pref.backend == .arm64 || t.pref.backend == .x64)
+	is_native_be := t.is_native_be
 	block_smartcast_depth := t.smartcast_stack.len
-	block_smartcast_stack := t.smartcast_stack.clone()
-	block_smartcast_counts := t.smartcast_expr_counts.clone()
+	// Lazy snapshot: most blocks enter with an empty smartcast stack. Cloning an
+	// empty stack/map is cheap but still allocates; multiply by tens of thousands
+	// of blocks and it adds up. Only snapshot when there is state to restore.
+	has_smartcast_state := block_smartcast_depth > 0
+	block_smartcast_stack := if has_smartcast_state {
+		t.smartcast_stack.clone()
+	} else {
+		[]SmartcastContext{}
+	}
+	block_smartcast_counts := if has_smartcast_state {
+		t.smartcast_expr_counts.clone()
+	} else {
+		map[string]int{}
+	}
 	for stmt in stmts {
 		if t.smartcast_stack.len < block_smartcast_depth {
 			t.smartcast_stack = block_smartcast_stack.clone()
 			t.smartcast_expr_counts = block_smartcast_counts.clone()
-		} else {
+		} else if t.smartcast_stack.len > block_smartcast_depth {
 			t.truncate_smartcasts(block_smartcast_depth)
 		}
 		// Check for OrExpr assignment that expands to multiple statements
@@ -3199,7 +3216,7 @@ fn (mut t Transformer) transform_stmts(stmts []ast.Stmt) []ast.Stmt {
 			}
 			// For native backends, transform obj.field++ / obj.field-- to compound assignment
 			// to avoid the build_postfix code path which has issues in self-hosted binaries.
-			if t.pref.backend == .arm64 || t.pref.backend == .x64 {
+			if t.is_native_be {
 				if postfix_assign := t.try_transform_selector_postfix(stmt) {
 					result << postfix_assign
 					continue
@@ -3250,7 +3267,7 @@ fn (mut t Transformer) transform_stmts(stmts []ast.Stmt) []ast.Stmt {
 	if t.smartcast_stack.len < block_smartcast_depth {
 		t.smartcast_stack = block_smartcast_stack.clone()
 		t.smartcast_expr_counts = block_smartcast_counts.clone()
-	} else {
+	} else if t.smartcast_stack.len > block_smartcast_depth {
 		t.truncate_smartcasts(block_smartcast_depth)
 	}
 	return result
@@ -4376,7 +4393,7 @@ fn (mut t Transformer) expand_direct_or_expr_assign(stmt ast.AssignStmt, or_expr
 		}
 	}
 
-	if t.pref != unsafe { nil } && (t.pref.backend == .arm64 || t.pref.backend == .x64)
+	if t.is_native_be
 		&& is_string_range_or {
 		// String ranges still need the native inline bounds-check path because the
 		// checker records them as `string` instead of `!string`.
@@ -6739,7 +6756,7 @@ fn (mut t Transformer) expand_single_or_expr(or_expr ast.OrExpr, mut prefix_stmt
 		is_result = true
 	}
 
-	if t.pref != unsafe { nil } && (t.pref.backend == .arm64 || t.pref.backend == .x64)
+	if t.is_native_be
 		&& is_string_range_or {
 		idx_expr := call_expr as ast.IndexExpr
 		return t.expand_string_range_or_native_expr(idx_expr, or_expr.stmts, mut prefix_stmts)
@@ -7691,7 +7708,7 @@ fn (mut t Transformer) expand_lock_expr(expr ast.LockExpr) []ast.Stmt {
 	mut result := []ast.Stmt{}
 	// For native backends (arm64/x64), skip lock/unlock calls since there's
 	// no threading support and the sync module is not available.
-	is_native := t.pref != unsafe { nil } && (t.pref.backend == .arm64 || t.pref.backend == .x64)
+	is_native := t.is_native_be
 	// Emit lock calls
 	if !is_native {
 		for lock_expr in expr.lock_exprs {
@@ -9098,7 +9115,7 @@ fn (mut t Transformer) transform_return_stmt(stmt ast.ReturnStmt) ast.ReturnStmt
 			// original expression which still has valid checker position/type info.
 			// wrap_sumtype_value calls transform_expr internally, so the value
 			// is properly transformed.
-			if t.pref != unsafe { nil } && (t.pref.backend == .arm64 || t.pref.backend == .x64) {
+			if t.is_native_be {
 				if wrapped := t.wrap_sumtype_value(expr, t.cur_fn_ret_type_name) {
 					exprs << wrapped
 					continue
@@ -10134,7 +10151,7 @@ fn (mut t Transformer) apply_smartcast_direct_ctx(original_expr ast.Expr, ctx Sm
 	// No union variant sub-field exists, so just use _data directly.
 	// For C backends: _data is a union, so access _data._variant for the specific member.
 	is_native_backend := t.pref != unsafe { nil }
-		&& (t.pref.backend == .arm64 || t.pref.backend == .x64)
+		&& t.is_native_be
 	data_access := t.synth_selector(transformed_base, '_data', types.Type(types.voidptr_))
 	variant_access := if is_native_backend {
 		data_access
@@ -10246,7 +10263,7 @@ fn (mut t Transformer) apply_smartcast_receiver_ctx(sumtype_expr ast.Expr, ctx S
 	// For native backends: _data is a plain i64, no union variant sub-field.
 	// For C backends: _data is a union, access _data._variant.
 	is_native_backend2 := t.pref != unsafe { nil }
-		&& (t.pref.backend == .arm64 || t.pref.backend == .x64)
+		&& t.is_native_be
 	data_access := t.synth_selector(transformed_base, '_data', types.Type(types.voidptr_))
 	variant_access := if is_native_backend2 {
 		data_access
@@ -12958,7 +12975,7 @@ fn (mut t Transformer) generate_fixed_array_str_fn(fn_name string) ast.Stmt {
 
 	// Create parameter: a Array_fixed_T_N
 	param_type := if t.pref != unsafe { nil }
-		&& (t.pref.backend == .arm64 || t.pref.backend == .x64) {
+		&& t.is_native_be {
 		ast.Expr(ast.PrefixExpr{
 			op:   .amp
 			expr: ast.Ident{

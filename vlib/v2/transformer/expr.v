@@ -73,7 +73,7 @@ fn (mut t Transformer) transform_expr(expr ast.Expr) ast.Expr {
 					inner = t.rename_substr_to_checked(inner)
 				}
 				is_native_backend := t.pref != unsafe { nil }
-					&& (t.pref.backend == .arm64 || t.pref.backend == .x64)
+					&& t.is_native_be
 				if is_native_backend {
 					return ast.Expr(ast.PostfixExpr{
 						op:   expr.op
@@ -2942,7 +2942,7 @@ fn (mut t Transformer) transform_infix_expr(expr ast.InfixExpr) ast.Expr {
 		// For native backends, lower to C.memcmp(&a, &b, N * sizeof(T)) == 0
 		// Only for memcmp-safe element types (primitives, fixed arrays of primitives).
 		// Dynamic arrays, strings, maps, and structs contain heap pointers.
-		if (t.pref.backend == .arm64 || t.pref.backend == .x64) && expr.op in [.eq, .ne] {
+		if t.is_native_be && expr.op in [.eq, .ne] {
 			if lhs_type := t.get_expr_type(expr.lhs) {
 				lhs_base := t.unwrap_alias_and_pointer_type(lhs_type)
 				if lhs_base is types.ArrayFixed {
