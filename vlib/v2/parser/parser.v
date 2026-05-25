@@ -3618,7 +3618,9 @@ fn (p &Parser) can_eval_comptime_cond(cond ast.Expr) bool {
 			if cond.op != .question {
 				return false
 			}
-			return cond.expr is ast.Ident
+			// `feature?` is a flag wrapped in `?`; the inner expression follows
+			// the same shape rules (e.g. `(!feature)?` is allowed).
+			return p.can_eval_comptime_cond(cond.expr)
 		}
 		ast.ParenExpr {
 			return p.can_eval_comptime_cond(cond.expr)
@@ -3651,12 +3653,10 @@ fn (p &Parser) eval_comptime_cond(cond ast.Expr) bool {
 			}
 		}
 		ast.PostfixExpr {
-			// `feature?` form
+			// `feature?` form — the `?` is syntactic sugar for the inner flag
+			// expression, so just delegate to it.
 			if cond.op == .question {
-				inner := cond.expr
-				if inner is ast.Ident {
-					return p.eval_comptime_flag(inner.name)
-				}
+				return p.eval_comptime_cond(cond.expr)
 			}
 		}
 		ast.ParenExpr {

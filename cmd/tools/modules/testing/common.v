@@ -588,7 +588,10 @@ fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 	// v1 (v2 has its own CLI and ignores most v1 flags).
 	is_vv2 := relative_file.ends_with('_test.vv2')
 	if is_vv2 {
-		v2_bin := os.join_path(ts.vroot, 'cmd', 'v2', 'v2')
+		mut v2_bin := os.join_path(ts.vroot, 'cmd', 'v2', 'v2')
+		$if windows {
+			v2_bin += '.exe'
+		}
 		if !os.is_executable(v2_bin) {
 			ts.append_message(.info, 'SKIP ${relative_file}: v2 binary not built. Run: ${os.quoted_path(ts.vexe)} -o ${os.quoted_path(v2_bin)} ${os.quoted_path(os.join_path(ts.vroot,
 				'cmd', 'v2', 'v2.v'))}',
