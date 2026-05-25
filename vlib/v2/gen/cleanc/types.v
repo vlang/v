@@ -589,6 +589,26 @@ fn (mut g Gen) collect_module_type_names() {
 							g.fixed_array_field_elem[struct_key] = elem_type
 						}
 					}
+					// Register each embedded struct as a synthetic field under the
+					// outer struct so `outer.EmbedName` (explicit embed access) can
+					// be resolved by `lookup_struct_field_type_by_name`. Without
+					// this, type inference for `outer.EmbedName.f` falls back to
+					// `int`, which breaks if-expression temp typing among others.
+					for emb in stmt.embedded {
+						emb_c_type := g.expr_type_to_c(emb)
+						emb_name := embedded_owner_field_name(emb_c_type)
+						if emb_name == '' {
+							continue
+						}
+						full_key := stmt.name + '.' + emb_name
+						struct_key := struct_name + '.' + emb_name
+						if full_key !in g.struct_field_types {
+							g.struct_field_types[full_key] = emb_c_type
+						}
+						if struct_key !in g.struct_field_types {
+							g.struct_field_types[struct_key] = emb_c_type
+						}
+					}
 				}
 				ast.EnumDecl {
 					enum_name := g.get_enum_name(stmt)
