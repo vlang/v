@@ -120,22 +120,42 @@ fn (mut p Pool) release(conn &Conn) {
 			new_conn := connect_conn(conninfo, unsafe { p }) or {
 				p.mu.lock()
 				p.open_count--
+				// Capacity is now open but the dial just failed. Wake every
+				// other parked waiter too, otherwise they hang forever waiting
+				// for a release that will never come (e.g. max_open=1).
+				extras := p.waiters.clone()
+				p.waiters = []chan &Conn{}
 				p.mu.unlock()
+				waiter.close()
+				for w in extras {
+					w.close()
+				}
+				return
+			}
+			p.mu.lock()
+			if p.closed {
+				// Pool closed during the dial: drop the new conn and signal the waiter.
+				p.open_count--
+				p.mu.unlock()
+				unsafe { new_conn.physical_close() }
 				waiter.close()
 				return
 			}
 			waiter <- new_conn
+			p.mu.unlock()
 			return
 		}
 		p.mu.unlock()
 		return
 	}
-	// Healthy conn: prefer handing it directly to a waiter
+	// Healthy conn: prefer handing it directly to a waiter. Send under the
+	// lock (cap:1 makes it non-blocking) so close() can't slip in and orphan
+	// the popped waiter with a live conn.
 	if p.waiters.len > 0 {
 		waiter := p.waiters[0]
 		p.waiters.delete(0)
-		p.mu.unlock()
 		waiter <- c
+		p.mu.unlock()
 		return
 	}
 	// Park as idle, unless we'd exceed max_idle (0 = keep no idle conns)
