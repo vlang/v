@@ -47,6 +47,7 @@ mut:
 	used_import_vh_for_parse  bool
 	used_virtual_vh_for_parse bool
 	flat_roundtrip_enabled    bool // V2_FLAT_ROUNDTRIP=1: route parses through streaming + to_files()
+	flat_check_enabled        bool // V2_CHECK_FLAT=1: route type-check through Checker.check_flat
 }
 
 pub fn new_builder(prefs &pref.Preferences) &Builder {
@@ -56,6 +57,7 @@ pub fn new_builder(prefs &pref.Preferences) &Builder {
 			used_fn_keys:           map[string]bool{}
 			cached_called_fn_names: map[string]bool{}
 			flat_roundtrip_enabled: os.getenv('V2_FLAT_ROUNDTRIP') != ''
+			flat_check_enabled:     os.getenv('V2_CHECK_FLAT') != ''
 		}
 	}
 }

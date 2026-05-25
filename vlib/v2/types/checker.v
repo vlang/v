@@ -1192,12 +1192,42 @@ pub fn (mut c Checker) get_module_scope(module_name string, parent &Scope) &Scop
 }
 
 // check_flat is the Phase 2 consumer entry point: accepts a FlatAst directly
-// rather than []ast.File. The current implementation rehydrates internally,
-// but future work will progressively replace that with direct FlatAst reads
-// (selector_names, file metadata, then statements) so the legacy AST need
-// never be materialized.
+// rather than []ast.File. Migrated steps read fields from FlatFile without
+// rehydrating; everything else still goes through to_files() until ported.
 pub fn (mut c Checker) check_flat(flat &ast.FlatAst) {
-	c.check_files(flat.to_files())
+	c.register_selector_names_from_flat(flat)
+	files := flat.to_files()
+	c.preregister_all_scopes(files)
+	c.preregister_all_types(files)
+	c.register_imported_symbols(files)
+	c.collect_fn_signatures_only = true
+	c.preregister_all_fn_signatures(files)
+	c.collect_fn_signatures_only = false
+	c.register_imported_symbols(files)
+	for file in files {
+		c.check_file(file)
+	}
+	c.process_pending_const_fields()
+	$if ownership ? {
+		c.ownership_prescan_fn_bodies()
+		c.ownership_validate_drop_impls()
+		c.lifetime_validate_files(files)
+		c.escape_validate_files(files)
+	}
+	c.process_pending_fn_bodies()
+	c.check_struct_field_defaults(files)
+	c.check_enum_field_values(files)
+}
+
+// register_selector_names_from_flat reads selector_names directly from
+// FlatFile entries without rehydrating to legacy ast.File. First example of
+// a Phase 2 consumer reading the flat representation in place.
+fn (mut c Checker) register_selector_names_from_flat(flat &ast.FlatAst) {
+	for ff in flat.files {
+		for id, name in ff.selector_names {
+			c.env.selector_names[id] = name
+		}
+	}
 }
 
 pub fn (mut c Checker) check_files(files []ast.File) {
