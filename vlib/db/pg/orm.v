@@ -8,6 +8,7 @@ import net.conv
 
 // select is used internally by V's ORM for processing `SELECT ` queries.
 pub fn (c &Conn) select(config orm.SelectConfig, data orm.QueryData, where orm.QueryData) ![][]orm.Primitive {
+	c.ensure_active()!
 	where_with_tenant := orm.apply_tenant_filter(config.table, where)
 	query := orm.orm_select_gen(config, '"', true, '$', 1, where_with_tenant)
 
@@ -28,6 +29,7 @@ pub fn (c &Conn) select(config orm.SelectConfig, data orm.QueryData, where orm.Q
 
 // insert is used internally by V's ORM for processing `INSERT ` queries.
 pub fn (c &Conn) insert(table orm.Table, data orm.QueryData) ! {
+	c.ensure_active()!
 	query, converted_data :=
 		orm.orm_stmt_gen(.pg, table, '"', .insert, true, '$', 1, data, orm.QueryData{})
 	pg_stmt_worker(c, query, converted_data, orm.QueryData{})!
@@ -35,6 +37,7 @@ pub fn (c &Conn) insert(table orm.Table, data orm.QueryData) ! {
 
 // update is used internally by V's ORM for processing `UPDATE ` queries.
 pub fn (c &Conn) update(table orm.Table, data orm.QueryData, where orm.QueryData) ! {
+	c.ensure_active()!
 	where_with_tenant := orm.apply_tenant_filter(table, where)
 	query, _ := orm.orm_stmt_gen(.default, table, '"', .update, true, '$', 1, data,
 		where_with_tenant)
@@ -43,6 +46,7 @@ pub fn (c &Conn) update(table orm.Table, data orm.QueryData, where orm.QueryData
 
 // delete is used internally by V's ORM for processing `DELETE ` queries.
 pub fn (c &Conn) delete(table orm.Table, where orm.QueryData) ! {
+	c.ensure_active()!
 	where_with_tenant := orm.apply_tenant_filter(table, where)
 	query, _ := orm.orm_stmt_gen(.default, table, '"', .delete, true, '$', 1, orm.QueryData{},
 		where_with_tenant)

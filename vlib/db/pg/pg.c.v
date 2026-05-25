@@ -329,6 +329,18 @@ fn connect_conn(conninfo string, pool &Pool) !&Conn {
 	}
 }
 
+// ensure_active errors if the handle has been returned to the pool. Methods
+// that touch libpq directly call this so that a stale &Conn kept by user code
+// after close() can't issue queries on a PGconn* that has been re-handed to
+// another caller. The pool flips `checked_out` to false under its mutex
+// during release(), so the worst case is a benign error on a torn-down
+// handle. (Pooled-only operations like LISTEN/NOTIFY all funnel through here.)
+fn (c &Conn) ensure_active() ! {
+	if !c.checked_out && !isnil(c.pool) {
+		return error('pg: operation on released Conn (was close() called?)')
+	}
+}
+
 // is_bad reports whether the underlying libpq connection has gone bad
 // (e.g. dropped TCP, server idle-timeout).
 pub fn (c &Conn) is_bad() bool {
@@ -483,18 +495,21 @@ pub fn (c &Conn) q_strings(query string) ![]db.pg.Row {
 
 // exec submits a command to the database server and wait for the result, returning an error on failure and a row set on success
 pub fn (c &Conn) exec(query string) ![]db.pg.Row {
+	c.ensure_active()!
 	res := C.PQexec(c.conn, &char(query.str))
 	return c.handle_error_or_rows(res, 'exec')
 }
 
 // exec_no_null works like exec, but the fields can't be NULL, no optionals
 pub fn (c &Conn) exec_no_null(query string) ![]RowNoNull {
+	c.ensure_active()!
 	res := C.PQexec(c.conn, &char(query.str))
 	return c.handle_error_or_rows_no_null(res, 'exec')
 }
 
 // exec_result submits a command to the database server and wait for the result, returning an error on failure and a `Result` set on success
 pub fn (c &Conn) exec_result(query string) !Result {
+	c.ensure_active()!
 	res := C.PQexec(c.conn, &char(query.str))
 	return c.handle_error_or_result(res, 'exec_result')
 }
@@ -508,6 +523,7 @@ fn rows_first_or_empty(rows []db.pg.Row) !Row {
 
 // exec_one executes a query and returns its first row as a result, or an error on failure
 pub fn (c &Conn) exec_one(query string) !Row {
+	c.ensure_active()!
 	res := C.PQexec(c.conn, &char(query.str))
 	e := unsafe { C.PQerrorMessage(c.conn).vstring() }
 	if e != '' {
@@ -520,6 +536,7 @@ pub fn (c &Conn) exec_one(query string) !Row {
 
 // exec_param_many executes a query with the parameters provided as ($1), ($2), ($n)
 pub fn (c &Conn) exec_param_many(query string, params []string) ![]db.pg.Row {
+	c.ensure_active()!
 	unsafe {
 		mut param_vals := []&char{len: params.len}
 		for i in 0 .. params.len {
@@ -533,6 +550,7 @@ pub fn (c &Conn) exec_param_many(query string, params []string) ![]db.pg.Row {
 
 // exec_param_many executes a query with the parameters provided as ($1), ($2), ($n) and returns a `Result`
 pub fn (c &Conn) exec_param_many_result(query string, params []string) !Result {
+	c.ensure_active()!
 	unsafe {
 		mut param_vals := []&char{len: params.len}
 		for i in 0 .. params.len {
@@ -556,6 +574,7 @@ pub fn (c &Conn) exec_param2(query string, param string, param2 string) ![]db.pg
 
 // prepare submits a request to create a prepared statement with the given parameters, and waits for completion. You must provide the number of parameters (`$1, $2, $3 ...`) used in the statement
 pub fn (c &Conn) prepare(name string, query string, num_params int) ! {
+	c.ensure_active()!
 	res :=
 		C.PQprepare(c.conn, &char(name.str), &char(query.str), num_params, 0) // defining param types is optional
 
@@ -564,6 +583,7 @@ pub fn (c &Conn) prepare(name string, query string, num_params int) ! {
 
 // exec_prepared sends a request to execute a prepared statement with given parameters, and waits for the result. The number of parameters must match with the parameters declared in the prepared statement.
 pub fn (c &Conn) exec_prepared(name string, params []string) ![]db.pg.Row {
+	c.ensure_active()!
 	unsafe {
 		mut param_vals := []&char{len: params.len}
 		for i in 0 .. params.len {
@@ -578,6 +598,7 @@ pub fn (c &Conn) exec_prepared(name string, params []string) ![]db.pg.Row {
 // exec_prepared sends a request to execute a prepared statement with given parameters, and waits for the result. The number of parameters must match with the parameters declared in the prepared statement.
 // returns `Result`
 pub fn (c &Conn) exec_prepared_result(name string, params []string) !Result {
+	c.ensure_active()!
 	unsafe {
 		mut param_vals := []&char{len: params.len}
 		for i in 0 .. params.len {
@@ -654,6 +675,7 @@ fn (c &Conn) handle_error(res voidptr, elabel string) ! {
 // copy_expert executes COPY command
 // https://www.postgresql.org/docs/9.5/libpq-copy.html
 pub fn (c &Conn) copy_expert(query string, mut file io.ReaderWriter) !int {
+	c.ensure_active()!
 	mut res := C.PQexec(c.conn, &char(query.str))
 	status := unsafe { ExecStatusType(C.PQresultStatus(res)) }
 	defer {
@@ -745,6 +767,7 @@ pub:
 // should use `DB.begin()` instead, which returns a `Tx` that owns the
 // underlying conn for the lifetime of the transaction.
 pub fn (c &Conn) begin_on_conn(param PQTransactionParam) ! {
+	c.ensure_active()!
 	mut sql_stmt := 'BEGIN TRANSACTION ISOLATION LEVEL '
 	match param.transaction_level {
 		.read_uncommitted { sql_stmt += 'READ UNCOMMITTED' }
@@ -763,6 +786,7 @@ pub fn (c &Conn) begin_on_conn(param PQTransactionParam) ! {
 
 // commit commits the current transaction on this connection.
 pub fn (c &Conn) commit() ! {
+	c.ensure_active()!
 	_ := C.PQexec(c.conn, c'COMMIT;')
 	e := unsafe { C.PQerrorMessage(c.conn).vstring() }
 	if e != '' {
@@ -773,6 +797,7 @@ pub fn (c &Conn) commit() ! {
 
 // rollback rolls back the current transaction on this connection.
 pub fn (c &Conn) rollback() ! {
+	c.ensure_active()!
 	_ := C.PQexec(c.conn, c'ROLLBACK;')
 	e := unsafe { C.PQerrorMessage(c.conn).vstring() }
 	if e != '' {
@@ -783,6 +808,7 @@ pub fn (c &Conn) rollback() ! {
 
 // rollback_to rolls back to a specified savepoint on this connection.
 pub fn (c &Conn) rollback_to(savepoint string) ! {
+	c.ensure_active()!
 	if !savepoint.is_identifier() {
 		return error('savepoint should be a identifier string')
 	}
@@ -797,6 +823,7 @@ pub fn (c &Conn) rollback_to(savepoint string) ! {
 
 // savepoint creates a new savepoint on this connection.
 pub fn (c &Conn) savepoint(savepoint string) ! {
+	c.ensure_active()!
 	if !savepoint.is_identifier() {
 		return error('savepoint should be a identifier string')
 	}
@@ -811,6 +838,7 @@ pub fn (c &Conn) savepoint(savepoint string) ! {
 
 // release_savepoint releases a specified savepoint on this connection.
 pub fn (c &Conn) release_savepoint(savepoint string) ! {
+	c.ensure_active()!
 	if !savepoint.is_identifier() {
 		return error('savepoint should be a identifier string')
 	}
@@ -846,6 +874,7 @@ pub fn (res Result) as_structs[T](mapper fn (Result, Row) !T) ![]T {
 // listen registers the connection to receive notifications on the specified channel.
 // After calling this, use consume_input() and get_notification() to receive notifications.
 pub fn (c &Conn) listen(channel string) ! {
+	c.ensure_active()!
 	if !channel.is_identifier() {
 		return error('channel name should be a valid identifier')
 	}
@@ -861,6 +890,7 @@ pub fn (c &Conn) listen(channel string) ! {
 // unlisten unregisters the connection from receiving notifications on the specified channel.
 // Use unlisten_all() to unregister from all channels.
 pub fn (c &Conn) unlisten(channel string) ! {
+	c.ensure_active()!
 	if !channel.is_identifier() {
 		return error('channel name should be a valid identifier')
 	}
@@ -875,6 +905,7 @@ pub fn (c &Conn) unlisten(channel string) ! {
 
 // unlisten_all unregisters the connection from all notification channels.
 pub fn (c &Conn) unlisten_all() ! {
+	c.ensure_active()!
 	_ := C.PQexec(c.conn, c'UNLISTEN *;')
 	e := unsafe { C.PQerrorMessage(c.conn).vstring() }
 	if e != '' {
@@ -886,6 +917,7 @@ pub fn (c &Conn) unlisten_all() ! {
 // notify sends a notification on the specified channel with an optional payload.
 // All connections currently listening on that channel will receive the notification.
 pub fn (c &Conn) notify(channel string, payload string) ! {
+	c.ensure_active()!
 	if !channel.is_identifier() {
 		return error('channel name should be a valid identifier')
 	}
@@ -914,6 +946,7 @@ pub fn (c &Conn) notify(channel string, payload string) ! {
 // This must be called before get_notification() to ensure pending notifications are processed.
 // Returns true on success, false if there was an error reading from the connection.
 pub fn (c &Conn) consume_input() !bool {
+	c.ensure_active()!
 	result := C.PQconsumeInput(c.conn)
 	if result == 0 {
 		e := unsafe { C.PQerrorMessage(c.conn).vstring() }
@@ -927,6 +960,7 @@ pub fn (c &Conn) consume_input() !bool {
 // Returns none if there are no pending notifications.
 // You should call consume_input() before this to ensure all pending notifications are available.
 pub fn (c &Conn) get_notification() ?Notification {
+	c.ensure_active() or { return none }
 	notify := C.PQnotifies(c.conn)
 	if notify == unsafe { nil } {
 		return none
@@ -945,5 +979,6 @@ pub fn (c &Conn) get_notification() ?Notification {
 // This is useful for applications that want to use select() or poll() to wait
 // for notifications without blocking. Returns -1 if no valid socket.
 pub fn (c &Conn) socket() int {
+	c.ensure_active() or { return -1 }
 	return C.PQsocket(c.conn)
 }
