@@ -169,7 +169,12 @@ fn mod_path_to_full_name(pref_ &pref.Preferences, mod string, path string) !stri
 						relative_parts := real_try_path.all_after(prefix).split(os.path_separator)
 						mod_full_name := normalize_base_url_mod_name(relative_parts.join('.'),
 							try_path)
-						return if mod_full_name.len < mod.len { mod } else { mod_full_name }
+						if mod_full_name.len < mod.len {
+							return mod
+						}
+						if !module_name_has_empty_part(mod_full_name) {
+							return mod_full_name
+						}
 					}
 				}
 				mut try_path_parts := try_path.split(os.path_separator)
@@ -192,7 +197,12 @@ fn mod_path_to_full_name(pref_ &pref.Preferences, mod string, path string) !stri
 				if last_v_mod > -1 {
 					mod_full_name := normalize_base_url_mod_name(try_path_parts[last_v_mod..].join('.'),
 						try_path)
-					return if mod_full_name.len < mod.len { mod } else { mod_full_name }
+					if mod_full_name.len < mod.len {
+						return mod
+					}
+					if !module_name_has_empty_part(mod_full_name) {
+						return mod_full_name
+					}
 				}
 			}
 		}
@@ -210,6 +220,18 @@ fn mod_path_to_full_name(pref_ &pref.Preferences, mod string, path string) !stri
 		}
 	}
 	return error('module not found')
+}
+
+fn module_name_has_empty_part(name string) bool {
+	if name == '' {
+		return true
+	}
+	for part in name.split('.') {
+		if part == '' {
+			return true
+		}
+	}
+	return false
 }
 
 // project_root_vmod_folder returns the absolute folder of the closest
