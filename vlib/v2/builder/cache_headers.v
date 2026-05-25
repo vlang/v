@@ -368,7 +368,8 @@ fn (b &Builder) source_files_for_module_name(module_name string) []string {
 	if files_set.len == 0 {
 		module_path := b.module_name_to_path(module_name)
 		module_dir := b.pref.get_vlib_module_path(module_path)
-		for file in get_v_files_from_dir(module_dir, b.pref.user_defines, os.user_os()) {
+		for file in get_v_files_from_dir(module_dir, b.pref.user_defines,
+			b.pref.target_os_or_host()) {
 			files_set[file] = true
 		}
 	}
@@ -385,7 +386,7 @@ fn (b &Builder) core_cache_compiler_dependency_files() []string {
 		if !os.is_dir(dir) {
 			continue
 		}
-		for file in get_v_files_from_dir(dir, b.pref.user_defines, os.user_os()) {
+		for file in get_v_files_from_dir(dir, b.pref.user_defines, b.pref.target_os_or_host()) {
 			files_set[os.norm_path(file)] = true
 		}
 	}
@@ -417,7 +418,8 @@ fn (b &Builder) user_entry_stamp_files() []string {
 			if found_parsed_files {
 				continue
 			}
-			for source_file in get_user_v_files_from_dir(file, user_defines, os.user_os()) {
+			for source_file in get_user_v_files_from_dir(file, user_defines,
+				b.pref.target_os_or_host()) {
 				if source_file == '' || source_file.ends_with('.vh') {
 					continue
 				}
@@ -613,6 +615,7 @@ fn (b &Builder) cache_stamp_for_modules(cache_name string, modules []string, cc 
 	lines << 'cc_link_flags=${cc_link_flags}'
 	lines << 'use_markused=${use_markused}'
 	lines << 'context_alloc=${b.pref.use_context_allocator}'
+	lines << 'target_os=${b.pref.target_os_or_host()}'
 	// Include user entry files in cache stamp: the transformer injects
 	// helper functions (str, eq, sort comparators) into builtin module AST
 	// based on types from the user's source file. Different source files
@@ -647,6 +650,7 @@ fn (b &Builder) header_stamp_for_modules(modules []string) string {
 	entry_files := b.user_entry_stamp_files()
 	mut lines := []string{cap: source_files.len + compiler_files.len + entry_files.len + 4}
 	lines << 'format=${core_headers_format}'
+	lines << 'target_os=${b.pref.target_os_or_host()}'
 	for file in entry_files {
 		lines << 'entry:${file}:${os.file_last_mod_unix(file)}'
 	}
@@ -684,6 +688,7 @@ fn (b &Builder) cache_stamp_for_parsed_modules(cache_name string, module_names [
 	lines << 'cc_link_flags=${cc_link_flags}'
 	lines << 'use_markused=${use_markused}'
 	lines << 'context_alloc=${b.pref.use_context_allocator}'
+	lines << 'target_os=${b.pref.target_os_or_host()}'
 	for module_name in module_names {
 		lines << 'module:${module_name}'
 	}
@@ -713,6 +718,7 @@ fn (b &Builder) cache_stamp_for_virtual_modules(groups []CachedVirtualModule, de
 	lines << 'cc_link_flags=${cc_link_flags}'
 	lines << 'use_markused=${use_markused}'
 	lines << 'context_alloc=${b.pref.use_context_allocator}'
+	lines << 'target_os=${b.pref.target_os_or_host()}'
 	for group in groups {
 		lines << 'virtual:${group.name}:${group.header_name}'
 	}
@@ -735,6 +741,7 @@ fn (b &Builder) imports_header_stamp_for_modules(imports []CachedImportModule, m
 	mut lines := []string{cap: source_files.len + compiler_files.len + imports.len + 6}
 	lines << 'cache=${imports_cache_name}'
 	lines << 'format=${core_headers_format}'
+	lines << 'target_os=${b.pref.target_os_or_host()}'
 	for import_mod in imports {
 		lines << 'import:${import_mod.import_path}:${import_mod.module_name}'
 	}
@@ -756,6 +763,7 @@ fn (b &Builder) virtuals_header_stamp_for_modules(groups []CachedVirtualModule) 
 	mut lines := []string{cap: source_files.len + compiler_files.len + groups.len + 6}
 	lines << 'cache=${virtuals_cache_name}'
 	lines << 'format=${core_headers_format}'
+	lines << 'target_os=${b.pref.target_os_or_host()}'
 	for group in groups {
 		lines << 'virtual:${group.name}:${group.header_name}'
 	}
@@ -1063,6 +1071,7 @@ fn (b &Builder) can_use_cached_module_bundle_for_parse(cache_name string, use_ma
 	return stamp.contains('cache=${cache_name}\n')
 		&& stamp.contains('format=${core_cache_format}\n')
 		&& stamp.contains('use_markused=${use_markused}\n')
+		&& stamp.contains('target_os=${b.pref.target_os_or_host()}\n')
 }
 
 fn (mut b Builder) ensure_core_module_headers() {
@@ -1244,7 +1253,8 @@ fn (b &Builder) import_modules_for_cached_modules(module_names []string) []Cache
 	mut import_set := map[string]bool{}
 	mut imports := []CachedImportModule{}
 	for file in b.files {
-		for import_stmt in active_file_imports(file, b.pref.user_defines, os.user_os()) {
+		for import_stmt in active_file_imports(file, b.pref.user_defines,
+			b.pref.target_os_or_host()) {
 			module_name := import_stmt.name.all_after_last('.')
 			if module_name !in module_set {
 				continue

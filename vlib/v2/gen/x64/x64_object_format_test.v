@@ -11,6 +11,10 @@ fn read_u32_le(data []u8, off int) u32 {
 		off + 3]) << 24)
 }
 
+fn read_u16_le(data []u8, off int) u16 {
+	return u16(data[off]) | (u16(data[off + 1]) << 8)
+}
+
 fn read_string(data []u8, off int) string {
 	mut end := off
 	for end < data.len && data[end] != 0 {
@@ -103,6 +107,9 @@ fn test_macho_object_format_prefixes_external_symbols() {
 	assert ObjectFormat.elf.symbol_name('main') == 'main'
 	assert ObjectFormat.elf.symbol_name('calloc') == 'calloc'
 	assert ObjectFormat.elf.symbol_name('__stdoutp') == '__stdoutp'
+	assert ObjectFormat.coff.symbol_name('main') == 'main'
+	assert ObjectFormat.coff.symbol_name('calloc') == 'calloc'
+	assert ObjectFormat.coff.symbol_name('__stdoutp') == '__stdoutp'
 }
 
 fn test_elf_writer_reuses_undefined_symbol_when_it_is_defined_later() {
@@ -197,4 +204,147 @@ fn test_macho_writer_serializes_text_relocations_and_symbols() {
 	assert data[sym_off + 5] == 0
 	assert data[sym_off + 16 + 4] == 0x0e
 	assert data[sym_off + 16 + 5] == 2
+}
+
+fn test_coff_writer_emits_x64_relocatable_object() {
+	path := temp_object_path('coff')
+	defer {
+		os.rm(path) or {}
+	}
+
+	mut obj := CoffObject.new()
+	obj.text_data << u8(0xc3)
+	obj.rodata << 'hello'.bytes()
+	obj.rodata << 0
+	obj.data_data << [u8(1), 2, 3, 4]
+	obj.add_symbol('main', 0, true, 1)
+	obj.write(path)
+
+	data := os.read_bytes(path) or { panic(err) }
+	assert data.len > 20 + (3 * 40)
+	assert read_u16_le(data, 0) == coff_image_file_machine_amd64
+	assert read_u16_le(data, 2) == 3
+	assert read_u16_le(data, 16) == 0
+	assert data[20..28].bytestr().trim_right('\0') == '.text'
+	assert data[60..68].bytestr().trim_right('\0') == '.rdata'
+	assert data[100..108].bytestr().trim_right('\0') == '.data'
+	assert read_u32_le(data, 8) == 156
+	assert read_u32_le(data, 20 + 16) == 1
+	assert read_u32_le(data, 20 + 20) == 140
+	assert read_u32_le(data, 20 + 20) % 4 == 0
+	assert read_u32_le(data, 60 + 16) == 6
+	assert read_u32_le(data, 60 + 20) == 144
+	assert read_u32_le(data, 60 + 20) % 4 == 0
+	assert read_u32_le(data, 100 + 16) == 4
+	assert read_u32_le(data, 100 + 20) == 152
+	assert read_u32_le(data, 100 + 20) % 4 == 0
+	assert read_u32_le(data, 8) % 4 == 0
+	assert read_u32_le(data, 20 + 36) & coff_image_scn_mem_execute != 0
+	assert read_u32_le(data, 60 + 36) & coff_image_scn_mem_read != 0
+	assert read_u32_le(data, 100 + 36) & coff_image_scn_mem_write != 0
+}
+
+fn test_coff_writer_serializes_symbols_and_string_table() {
+	path := temp_object_path('coff_symbols')
+	defer {
+		os.rm(path) or {}
+	}
+
+	mut obj := CoffObject.new()
+	undef_idx := obj.add_undefined('external_long_symbol_name')
+	pure_undef_idx := obj.add_undefined('calloc')
+	main_idx := obj.add_symbol('main', 0, true, 1)
+	defined_idx := obj.add_symbol('global_long_symbol_name', 16, false, 3)
+	local_idx := obj.add_symbol('L_local_data', 4, false, 2)
+	late_def_idx := obj.add_symbol('external_long_symbol_name', 8, false, 2)
+	obj.write(path)
+
+	assert late_def_idx == undef_idx
+
+	data := os.read_bytes(path) or { panic(err) }
+	sym_off := int(read_u32_le(data, 8))
+	nsyms := int(read_u32_le(data, 12))
+	assert nsyms == 5
+
+	string_table_off := sym_off + (nsyms * 18)
+	string_table_size := int(read_u32_le(data, string_table_off))
+	assert string_table_size > 4
+
+	main_off := sym_off + (main_idx * 18)
+	assert data[main_off..main_off + 8].bytestr().trim_right('\0') == 'main'
+	assert read_u32_le(data, main_off + 8) == 0
+	assert read_u16_le(data, main_off + 12) == 1
+	assert read_u16_le(data, main_off + 14) == coff_image_sym_dtype_function
+	assert data[main_off + 16] == coff_image_sym_class_external
+
+	defined_off := sym_off + (defined_idx * 18)
+	assert read_u32_le(data, defined_off) == 0
+	defined_name_off := int(read_u32_le(data, defined_off + 4))
+	assert read_string(data, string_table_off + defined_name_off) == 'global_long_symbol_name'
+	assert read_u32_le(data, defined_off + 8) == 16
+	assert read_u16_le(data, defined_off + 12) == 3
+
+	late_def_off := sym_off + (late_def_idx * 18)
+	late_def_name_off := int(read_u32_le(data, late_def_off + 4))
+	assert read_string(data, string_table_off + late_def_name_off) == 'external_long_symbol_name'
+	assert read_u32_le(data, late_def_off + 8) == 8
+	assert read_u16_le(data, late_def_off + 12) == 2
+
+	pure_undef_off := sym_off + (pure_undef_idx * 18)
+	assert data[pure_undef_off..pure_undef_off + 8].bytestr().trim_right('\0') == 'calloc'
+	assert read_u32_le(data, pure_undef_off + 8) == 0
+	assert read_u16_le(data, pure_undef_off + 12) == 0
+	assert data[pure_undef_off + 16] == coff_image_sym_class_external
+
+	local_off := sym_off + (local_idx * 18)
+	assert read_u32_le(data, local_off) == 0
+	local_name_off := int(read_u32_le(data, local_off + 4))
+	assert read_string(data, string_table_off + local_name_off) == 'L_local_data'
+	assert read_u16_le(data, local_off + 12) == 2
+	assert data[local_off + 16] == coff_image_sym_class_static
+}
+
+fn test_coff_writer_serializes_text_relocations() {
+	path := temp_object_path('coff_relocs')
+	defer {
+		os.rm(path) or {}
+	}
+
+	mut obj := CoffObject.new()
+	obj.text_data << [u8(0xe8), 0, 0, 0, 0, 0x48, 0x8d, 0x05, 0, 0, 0, 0]
+	call_sym := obj.add_undefined('calloc')
+	data_sym := obj.add_symbol('L_str_0', 0, false, 2)
+	obj.add_text_reloc(1, call_sym, coff_image_rel_amd64_rel32)
+	obj.add_text_reloc(8, data_sym, coff_image_rel_amd64_rel32)
+	obj.write(path)
+
+	data := os.read_bytes(path) or { panic(err) }
+	text_section_off := 20
+	reloc_off := int(read_u32_le(data, text_section_off + 24))
+	nreloc := int(read_u16_le(data, text_section_off + 32))
+	assert nreloc == 2
+	assert reloc_off == 152
+	assert reloc_off % 4 == 0
+	assert read_u32_le(data, 8) == 172
+	assert read_u32_le(data, 8) % 4 == 0
+
+	assert read_u32_le(data, reloc_off) == 1
+	assert read_u32_le(data, reloc_off + 4) == u32(call_sym)
+	assert read_u16_le(data, reloc_off + 8) == coff_image_rel_amd64_rel32
+	assert read_u32_le(data, reloc_off + 10) == 8
+	assert read_u32_le(data, reloc_off + 14) == u32(data_sym)
+	assert read_u16_le(data, reloc_off + 18) == coff_image_rel_amd64_rel32
+}
+
+fn test_coff_writer_rejects_relocation_count_overflow() {
+	section := CoffSection{
+		name:   '.text'
+		relocs: []CoffRelocation{len: 0x10000}
+	}
+	if _ := coff_relocation_count_for_header(section) {
+		assert false
+	} else {
+		assert err.msg().contains('COFF section .text has 65536 relocations')
+		assert err.msg().contains('extended relocations are not supported')
+	}
 }

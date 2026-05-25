@@ -113,6 +113,132 @@ fn test_x64_large_struct_call_is_lowered_to_call_sret() {
 	assert call_instr.op == .call_sret
 }
 
+fn test_x64_sysv_sixteen_byte_struct_return_stays_direct() {
+	mut ssa_mod := ssa.Module.new('abi_test_x64_sysv_16_ret')
+	i64_t := ssa_mod.type_store.get_int(64)
+	struct16_t := ssa_mod.type_store.register(ssa.Type{
+		kind:   .struct_t
+		fields: [i64_t, i64_t]
+	})
+
+	callee_id := ssa_mod.new_function('callee', struct16_t, [])
+	callee_entry := ssa_mod.add_block(callee_id, 'entry')
+	zero := ssa_mod.get_or_add_const(i64_t, '0')
+	ssa_mod.add_instr(.ret, callee_entry, 0, [zero])
+
+	caller_id := ssa_mod.new_function('caller', i64_t, [])
+	caller_entry := ssa_mod.add_block(caller_id, 'entry')
+	fn_val := ssa_mod.add_value_node(.unknown, 0, 'callee', 0)
+	call_val := ssa_mod.add_instr(.call, caller_entry, struct16_t, [fn_val])
+	ssa_mod.add_instr(.ret, caller_entry, 0, [zero])
+
+	mut mir_mod := mir.lower_from_ssa(ssa_mod)
+	lower(mut mir_mod, .x64)
+
+	call_instr := mir_mod.instrs[mir_mod.values[call_val].index]
+	assert call_instr.op == .call
+	assert !call_instr.abi_ret_indirect
+}
+
+fn test_x64_windows_struct_return_classification() {
+	mut ssa_mod := ssa.Module.new('abi_test_x64_windows_ret')
+	i64_t := ssa_mod.type_store.get_int(64)
+	i8_t := ssa_mod.type_store.get_int(8)
+	struct8_t := ssa_mod.type_store.register(ssa.Type{
+		kind:   .struct_t
+		fields: [i64_t]
+	})
+	struct9_t := ssa_mod.type_store.register(ssa.Type{
+		kind:   .struct_t
+		fields: [i64_t, i8_t]
+	})
+	struct16_t := ssa_mod.type_store.register(ssa.Type{
+		kind:   .struct_t
+		fields: [i64_t, i64_t]
+	})
+
+	fn8 := ssa_mod.new_function('ret8', struct8_t, [])
+	fn9 := ssa_mod.new_function('ret9', struct9_t, [])
+	fn16 := ssa_mod.new_function('ret16', struct16_t, [])
+
+	mut mir_mod := mir.lower_from_ssa(ssa_mod)
+	lower_with_x64_abi(mut mir_mod, .x64, .windows)
+
+	assert !mir_mod.funcs[fn8].abi_ret_indirect
+	assert mir_mod.funcs[fn9].abi_ret_indirect
+	assert mir_mod.funcs[fn16].abi_ret_indirect
+}
+
+fn test_x64_windows_struct_param_classification() {
+	mut ssa_mod := ssa.Module.new('abi_test_x64_windows_param')
+	i64_t := ssa_mod.type_store.get_int(64)
+	i8_t := ssa_mod.type_store.get_int(8)
+	struct8_t := ssa_mod.type_store.register(ssa.Type{
+		kind:   .struct_t
+		fields: [i64_t]
+	})
+	struct9_t := ssa_mod.type_store.register(ssa.Type{
+		kind:   .struct_t
+		fields: [i64_t, i8_t]
+	})
+	struct16_t := ssa_mod.type_store.register(ssa.Type{
+		kind:   .struct_t
+		fields: [i64_t, i64_t]
+	})
+
+	fn_id := ssa_mod.new_function('callee', i64_t, [])
+	param8 := ssa_mod.add_value_node(.argument, struct8_t, 's8', 0)
+	param9 := ssa_mod.add_value_node(.argument, struct9_t, 's9', 0)
+	param16 := ssa_mod.add_value_node(.argument, struct16_t, 's16', 0)
+	ssa_mod.funcs[fn_id].params << [param8, param9, param16]
+
+	mut mir_mod := mir.lower_from_ssa(ssa_mod)
+	lower_with_x64_abi(mut mir_mod, .x64, .windows)
+
+	assert mir_mod.funcs[fn_id].abi_param_class == [.in_reg, .indirect, .indirect]
+}
+
+fn test_x64_windows_callsite_struct_arg_classification() {
+	mut ssa_mod := ssa.Module.new('abi_test_x64_windows_call_arg')
+	i64_t := ssa_mod.type_store.get_int(64)
+	i8_t := ssa_mod.type_store.get_int(8)
+	struct8_t := ssa_mod.type_store.register(ssa.Type{
+		kind:   .struct_t
+		fields: [i64_t]
+	})
+	struct9_t := ssa_mod.type_store.register(ssa.Type{
+		kind:   .struct_t
+		fields: [i64_t, i8_t]
+	})
+	struct16_t := ssa_mod.type_store.register(ssa.Type{
+		kind:   .struct_t
+		fields: [i64_t, i64_t]
+	})
+
+	callee_id := ssa_mod.new_function('callee', i64_t, [])
+	param8 := ssa_mod.add_value_node(.argument, struct8_t, 's8', 0)
+	param9 := ssa_mod.add_value_node(.argument, struct9_t, 's9', 0)
+	param16 := ssa_mod.add_value_node(.argument, struct16_t, 's16', 0)
+	ssa_mod.funcs[callee_id].params << [param8, param9, param16]
+
+	caller_id := ssa_mod.new_function('caller', i64_t, [])
+	arg8 := ssa_mod.add_value_node(.argument, struct8_t, 'arg8', 0)
+	arg9 := ssa_mod.add_value_node(.argument, struct9_t, 'arg9', 0)
+	arg16 := ssa_mod.add_value_node(.argument, struct16_t, 'arg16', 0)
+	ssa_mod.funcs[caller_id].params << [arg8, arg9, arg16]
+	caller_entry := ssa_mod.add_block(caller_id, 'entry')
+	fn_val := ssa_mod.add_value_node(.unknown, 0, 'callee', 0)
+	call_val := ssa_mod.add_instr(.call, caller_entry, i64_t, [fn_val, arg8, arg9, arg16])
+	zero := ssa_mod.get_or_add_const(i64_t, '0')
+	ssa_mod.add_instr(.ret, caller_entry, 0, [zero])
+
+	mut mir_mod := mir.lower_from_ssa(ssa_mod)
+	lower_with_x64_abi(mut mir_mod, .x64, .windows)
+
+	call_instr := mir_mod.instrs[mir_mod.values[call_val].index]
+	assert call_instr.abi_arg_class == [.in_reg, .indirect, .indirect]
+}
+
 fn test_arm64_external_large_struct_call_is_lowered_to_call_sret() {
 	mut ssa_mod := ssa.Module.new('abi_test_external')
 	i64_t := ssa_mod.type_store.get_int(64)

@@ -1785,6 +1785,113 @@ fn module_init_call_name(mod string) string {
 	return 'init'
 }
 
+fn (t &Transformer) uses_minimal_windows_x64_runtime() bool {
+	return t.pref != unsafe { nil } && t.pref.backend == .x64 && t.pref.get_effective_arch() == .x64
+		&& t.pref.target_os_or_host().to_lower() == 'windows'
+}
+
+fn (t &Transformer) collect_runtime_init_imports_from_if_expr(node ast.IfExpr, mut imports []ast.ImportStmt) {
+	if t.eval_comptime_cond(node.cond) {
+		t.collect_runtime_init_imports_from_stmts(node.stmts, mut imports)
+		return
+	}
+	match node.else_expr {
+		ast.IfExpr {
+			if node.else_expr.cond is ast.EmptyExpr {
+				t.collect_runtime_init_imports_from_stmts(node.else_expr.stmts, mut imports)
+			} else {
+				t.collect_runtime_init_imports_from_if_expr(node.else_expr, mut imports)
+			}
+		}
+		else {}
+	}
+}
+
+fn (t &Transformer) collect_runtime_init_imports_from_stmts(stmts []ast.Stmt, mut imports []ast.ImportStmt) {
+	for stmt in stmts {
+		match stmt {
+			ast.ImportStmt {
+				imports << stmt
+			}
+			ast.ExprStmt {
+				if stmt.expr is ast.ComptimeExpr && stmt.expr.expr is ast.IfExpr {
+					t.collect_runtime_init_imports_from_if_expr(stmt.expr.expr, mut imports)
+				}
+			}
+			else {}
+		}
+	}
+}
+
+fn (t &Transformer) active_runtime_init_imports(file ast.File) []ast.ImportStmt {
+	mut imports := file.imports.clone()
+	t.collect_runtime_init_imports_from_stmts(file.stmts, mut imports)
+	return imports
+}
+
+fn runtime_init_available_modules(files []ast.File) map[string]bool {
+	mut available := map[string]bool{}
+	available[''] = true
+	available['main'] = true
+	for file in files {
+		if file.mod != '' {
+			available[file.mod] = true
+		}
+	}
+	return available
+}
+
+fn add_runtime_init_module_key(mut modules map[string]bool, name string, available map[string]bool) bool {
+	if name == '' {
+		return false
+	}
+	mut changed := false
+	mut matched_available := false
+	mut candidates := [name]
+	if name.contains('.') {
+		short_name := name.all_after_last('.')
+		if short_name != '' {
+			candidates << short_name
+		}
+	}
+	for candidate in candidates {
+		if candidate !in available {
+			continue
+		}
+		matched_available = true
+		if candidate !in modules {
+			modules[candidate] = true
+			changed = true
+		}
+	}
+	if !matched_available && name !in modules {
+		modules[name] = true
+		changed = true
+	}
+	return changed
+}
+
+fn (t &Transformer) imported_runtime_init_modules(files []ast.File) map[string]bool {
+	mut modules := map[string]bool{}
+	modules[''] = true
+	available_modules := runtime_init_available_modules(files)
+	add_runtime_init_module_key(mut modules, 'main', available_modules)
+	mut changed := true
+	for changed {
+		changed = false
+		for file in files {
+			if file.mod !in modules {
+				continue
+			}
+			for imp in t.active_runtime_init_imports(file) {
+				changed = add_runtime_init_module_key(mut modules, imp.name, available_modules)
+					|| changed
+			}
+		}
+	}
+	return modules
+}
+
 fn is_builtin_main_arg_global(mod string, name string) bool {
 	return mod == 'builtin' && (name == 'g_main_argc' || name == 'g_main_argv')
 }
@@ -2578,8 +2685,17 @@ fn (mut t Transformer) inject_test_main(mut files []ast.File) {
 fn (mut t Transformer) inject_main_runtime_const_init_calls(mut files []ast.File) {
 	mut init_calls := []ast.Stmt{}
 	mut seen_init_mods := map[string]bool{}
+	minimal_windows_x64_runtime := t.uses_minimal_windows_x64_runtime()
+	init_modules := if minimal_windows_x64_runtime {
+		t.imported_runtime_init_modules(files)
+	} else {
+		map[string]bool{}
+	}
 	for file in files {
 		if file.mod in seen_init_mods {
+			continue
+		}
+		if minimal_windows_x64_runtime && file.mod !in init_modules {
 			continue
 		}
 		for stmt in file.stmts {
@@ -2597,6 +2713,9 @@ fn (mut t Transformer) inject_main_runtime_const_init_calls(mut files []ast.File
 		}
 	}
 	for mod in t.runtime_const_modules {
+		if minimal_windows_x64_runtime && mod !in init_modules {
+			continue
+		}
 		fn_name := t.runtime_const_init_fn_name[mod] or { continue }
 		call_name := runtime_const_init_call_name(mod, fn_name)
 		init_calls << ast.ExprStmt{

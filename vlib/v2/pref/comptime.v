@@ -12,52 +12,34 @@ module pref
 pub fn comptime_flag_value(pref &Preferences, name string) bool {
 	match name {
 		'macos', 'darwin' {
-			$if macos {
-				return true
-			}
-			return false
+			return normalize_current_os_name(pref.target_os_or_host()) == 'macos'
 		}
 		'linux' {
-			$if linux {
-				return true
-			}
-			return false
+			return normalize_current_os_name(pref.target_os_or_host()) == 'linux'
 		}
 		'windows' {
-			$if windows {
-				return true
-			}
-			return false
+			return normalize_current_os_name(pref.target_os_or_host()) == 'windows'
 		}
 		'bsd' {
-			$if macos || freebsd || openbsd || netbsd || dragonfly {
-				return true
-			}
-			return false
+			return normalize_current_os_name(pref.target_os_or_host()) in [
+				'macos',
+				'freebsd',
+				'openbsd',
+				'netbsd',
+				'dragonfly',
+			]
 		}
 		'freebsd' {
-			$if freebsd {
-				return true
-			}
-			return false
+			return normalize_current_os_name(pref.target_os_or_host()) == 'freebsd'
 		}
 		'openbsd' {
-			$if openbsd {
-				return true
-			}
-			return false
+			return normalize_current_os_name(pref.target_os_or_host()) == 'openbsd'
 		}
 		'netbsd' {
-			$if netbsd {
-				return true
-			}
-			return false
+			return normalize_current_os_name(pref.target_os_or_host()) == 'netbsd'
 		}
 		'dragonfly' {
-			$if dragonfly {
-				return true
-			}
-			return false
+			return normalize_current_os_name(pref.target_os_or_host()) == 'dragonfly'
 		}
 		'x64', 'amd64' {
 			$if amd64 {
@@ -91,6 +73,11 @@ pub fn comptime_flag_value(pref &Preferences, name string) bool {
 		}
 		'native' {
 			return pref != unsafe { nil } && (pref.backend == .arm64 || pref.backend == .x64)
+		}
+		'v2_native_windows_pe_minimal' {
+			return pref != unsafe { nil } && pref.backend == .x64
+				&& pref.get_effective_arch() == .x64
+				&& normalize_current_os_name(pref.target_os_or_host()) == 'windows'
 		}
 		// Native backend cannot resolve C.stdout/C.stderr data symbols through GOT,
 		// so use C.write() instead of fwrite() for I/O operations.

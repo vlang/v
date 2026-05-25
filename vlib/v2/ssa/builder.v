@@ -27,6 +27,17 @@ fn enum_field_symbol_name(name string) string {
 	return escaped
 }
 
+fn normalize_target_os_name(target_os string) string {
+	return match target_os.to_lower() {
+		'macos', 'darwin' { 'macos' }
+		else { target_os.to_lower() }
+	}
+}
+
+fn (b &Builder) is_macos_target() bool {
+	return normalize_target_os_name(b.target_os) == 'macos'
+}
+
 fn ssa_module_storage_name(module_name string, name string) string {
 	if name == '' || name.starts_with('C.') {
 		return name
@@ -72,6 +83,11 @@ pub mut:
 	// Native self-hosted builds use the SSA sumtype layout directly; guard
 	// against null large-variant payloads before matching types.Type.
 	guard_invalid_type_payloads bool
+	// Target OS for lowering target-specific C globals.
+	target_os string
+	// When set, native Windows PE builds rely on markused instead of retaining
+	// broad builtin runtime modules before linking.
+	minimal_runtime_roots bool
 mut:
 	env       &types.Environment = unsafe { nil }
 	cur_func  int                = -1
@@ -167,6 +183,8 @@ pub fn (mut b Builder) new_worker_clone(worker_mod &Module, worker_idx int) &Bui
 	return &Builder{
 		mod:                    worker_mod
 		env:                    b.env
+		target_os:              b.target_os
+		minimal_runtime_roots:  b.minimal_runtime_roots
 		struct_types:           b.struct_types.clone()
 		enum_values:            b.enum_values.clone()
 		fn_index:               b.fn_index.clone()
@@ -271,7 +289,7 @@ pub fn (mut b Builder) build_all(files []ast.File) {
 	}
 
 	// Phase 3.5: Generate synthetic stubs for transformer-generated functions
-	if b.hot_fn.len == 0 {
+	if b.hot_fn.len == 0 && !b.minimal_runtime_roots {
 		b.generate_array_eq_stub()
 		b.generate_wymix_stub()
 		b.generate_wyhash64_stub()
@@ -2625,18 +2643,21 @@ pub fn (mut b Builder) should_build_fn(file_name string, decl ast.FnDecl) bool {
 	if b.used_fn_keys.len == 0 {
 		return true // No markused data — build everything
 	}
-	// Always build init_consts, init, deinit, main
-	if decl.name.starts_with('__v_init_consts_') {
-		return true
-	}
-	if decl.name == 'init' || decl.name == 'deinit' {
-		return true
-	}
 	if decl.name == 'main' {
 		return true
 	}
+	// Always build init_consts, init, deinit unless a minimal native runtime path
+	// relies on markused to keep only roots that are actually reached.
+	if decl.name.starts_with('__v_init_consts_') || decl.name == 'init' || decl.name == 'deinit' {
+		if b.minimal_runtime_roots {
+			key := markused.decl_key(b.cur_module, decl, b.env)
+			return key in b.used_fn_keys
+		}
+		return true
+	}
 	// Always build functions from core modules that the runtime needs
-	if b.cur_module in ['builtin', 'strings', 'strconv', 'bits', 'sha256', 'binary'] {
+	if !b.minimal_runtime_roots
+		&& b.cur_module in ['builtin', 'strings', 'strconv', 'bits', 'sha256', 'binary'] {
 		return true
 	}
 	// Always build .vh header declarations
@@ -2646,7 +2667,7 @@ pub fn (mut b Builder) should_build_fn(file_name string, decl ast.FnDecl) bool {
 	// Keep transformer-generated array/map method specializations
 	if decl.is_method {
 		mangled := b.mangle_fn_name(decl)
-		if mangled.contains('__Array_') || mangled.contains('__Map_') {
+		if !b.minimal_runtime_roots && (mangled.contains('__Array_') || mangled.contains('__Map_')) {
 			return true
 		}
 	}
@@ -6429,35 +6450,41 @@ fn (mut b Builder) build_selector(expr ast.SelectorExpr) ValueID {
 		}
 		// macOS errno: (*__error()) — call __error() which returns int*
 		if c_name == 'errno' {
-			i32_t := b.mod.type_store.get_int(32)
-			ptr_i32 := b.mod.type_store.get_ptr(i32_t)
-			err_fn := b.get_or_create_fn_ref('__error', ptr_i32)
-			call_val := b.mod.add_instr(.call, b.cur_block, ptr_i32, [err_fn])
-			return b.mod.add_instr(.load, b.cur_block, i32_t, [call_val])
+			if b.is_macos_target() {
+				i32_t := b.mod.type_store.get_int(32)
+				ptr_i32 := b.mod.type_store.get_ptr(i32_t)
+				err_fn := b.get_or_create_fn_ref('__error', ptr_i32)
+				call_val := b.mod.add_instr(.call, b.cur_block, ptr_i32, [err_fn])
+				return b.mod.add_instr(.load, b.cur_block, i32_t, [call_val])
+			}
 		}
-		// Map C standard I/O streams to macOS-specific symbol names
-		macos_name := match c_name {
-			'stdout' { '__stdoutp' }
-			'stderr' { '__stderrp' }
-			'stdin' { '__stdinp' }
-			else { c_name }
+		// Map C standard I/O streams to macOS-specific symbol names only for macOS.
+		target_name := if b.is_macos_target() {
+			match c_name {
+				'stdout' { '__stdoutp' }
+				'stderr' { '__stderrp' }
+				'stdin' { '__stdinp' }
+				else { c_name }
+			}
+		} else {
+			c_name
 		}
 
 		i8_t := b.mod.type_store.get_int(8)
 		ptr_t := b.mod.type_store.get_ptr(i8_t)
-		if c_name in ['stdout', 'stderr', 'stdin'] {
+		if b.is_macos_target() && c_name in ['stdout', 'stderr', 'stdin'] {
 			// `__stdoutp` / `__stdinp` / `__stderrp` are libSystem `FILE*` variables.
 			// Reading the V expression `C.stdout` must yield the FILE* value, not the
 			// address of the variable. The external global is pre-registered on the
 			// main module (build_all) so worker modules see it via seeded values.
-			glob := b.mod.add_external_global(macos_name, ptr_t)
-			b.global_refs[macos_name] = glob
+			glob := b.mod.add_external_global(target_name, ptr_t)
+			b.global_refs[target_name] = glob
 			return b.mod.add_instr(.load, b.cur_block, ptr_t, [glob])
 		}
 
 		// Not a known constant — emit as a global reference (e.g. C.stdout, C.stderr)
-		glob := b.mod.add_value_node(.global, ptr_t, macos_name, 0)
-		b.global_refs[macos_name] = glob
+		glob := b.mod.add_value_node(.global, ptr_t, target_name, 0)
+		b.global_refs[target_name] = glob
 		return glob
 	}
 
