@@ -950,7 +950,8 @@ fn filter_args_for_v2(compile_options []string) string {
 		'-nomarkused', '--nomarkused', '-showcc', '--showcc', '-stats', '--stats',
 		'-print-parsed-files', '--print-parsed-files', '-keepc', '--profile-alloc',
 		'-profile-alloc', '-enable-globals', '--enable-globals', '-shared', '--shared',
-		'-O0', '--single-backend', '-single-backend', '-prod', '-prealloc']
+		'-O0', '--single-backend', '-single-backend', '-prod', '-prealloc',
+		'-ownership']
 	tokens := vflags.tokenize_to_args(compile_options.join(' '))
 	mut out := []string{}
 	mut i := 0
