@@ -143,9 +143,10 @@ fn (mut ctx Context) should_test(path string, backend string) ShouldTestStatus {
 	}
 	// `_test.vv2` files are v2-only integration tests. They are full V programs
 	// (with `main()`) that exercise v2-specific syntax; the test runner routes
-	// them through the v2 binary instead of v1.
+	// them through the v2 binary instead of v1. Honor `-run-only` so targeted
+	// runs do not pull in unrelated vv2 tests.
 	if path.ends_with('_test.vv2') {
-		return .test
+		return ctx.should_test_when_it_contains_matching_fns(path, backend)
 	}
 	if path.ends_with('.v') && path.count('.') == 2 {
 		if !path.all_before_last('.v').all_before_last('.').ends_with('_test') {
