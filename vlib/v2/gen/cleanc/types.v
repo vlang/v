@@ -2650,21 +2650,14 @@ fn (g &Gen) global_var_type_for_ident(name string) ?string {
 	if global_type := g.global_var_types[name] {
 		return global_type
 	}
-	if name.contains('__') {
-		return none
-	}
-	if module_name := g.global_var_modules[name] {
-		if !g.is_current_or_imported_module(module_name) {
-			return none
-		}
-		qualified := if module_name != '' && module_name != 'main' && module_name != 'builtin' {
-			'${module_name}__${name}'
-		} else {
-			name
-		}
+	qualified := module_storage_c_name(g.cur_module, name)
+	if qualified in g.module_storage_vars {
 		if global_type := g.global_var_types[qualified] {
 			return global_type
 		}
+	}
+	if name.contains('__') {
+		return none
 	}
 	return none
 }

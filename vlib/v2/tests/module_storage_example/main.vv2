@@ -1,0 +1,12 @@
+module main
+
+import state
+
+fn main() {
+	assert state.total_ticks == 0
+	assert state.tick() == 1
+	assert state.tick() == 2
+	state.total_ticks += 10
+	assert state.total_ticks == 12
+	assert state.private_tick_count() == 2
+}

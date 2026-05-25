@@ -2078,34 +2078,32 @@ fn (mut g Gen) expr(node ast.Expr) {
 				if handled_ident {
 					return
 				}
-				// Check global_var_modules first - globals may appear as types.Type in scope
-				// instead of types.Global, so is_local_var check would incorrectly block them
-				if !is_local_var && !node.name.contains('__') && node.name in g.global_var_modules
-					&& g.is_current_or_imported_module(g.global_var_modules[node.name]) {
-					g.sb.write_string('${g.global_var_modules[node.name]}__${node.name}')
+				const_key := 'const_${g.cur_module}__${node.name}'
+				global_key := 'global_${g.cur_module}__${node.name}'
+				module_storage_name := module_storage_c_name(g.cur_module, node.name)
+				if !is_local_var && node.name in g.global_var_types
+					&& module_storage_name !in g.global_var_types {
+					g.sb.write_string(node.name)
+				} else if !is_local_var && module_storage_name in g.module_storage_vars {
+					g.sb.write_string(module_storage_name)
+				} else if g.cur_module != '' && g.cur_module != 'main' && g.cur_module != 'builtin'
+					&& !node.name.contains('__') && !is_local_var
+					&& ((const_key in g.emitted_types || global_key in g.emitted_types)
+					|| g.is_module_local_const_or_global(node.name)) {
+					g.sb.write_string('${g.cur_module}__${node.name}')
+				} else if g.cur_module != '' && g.cur_module != 'main' && g.cur_module != 'builtin'
+					&& !node.name.contains('__') && !is_local_var && !g.is_module_ident(node.name)
+					&& g.is_module_local_fn(node.name) && !g.is_type_name(node.name) {
+					g.sb.write_string('${g.cur_module}__${sanitize_fn_ident(node.name)}')
 				} else {
-					const_key := 'const_${g.cur_module}__${node.name}'
-					global_key := 'global_${g.cur_module}__${node.name}'
-					if g.cur_module != '' && g.cur_module != 'main' && g.cur_module != 'builtin'
-						&& !node.name.contains('__') && !is_local_var
-						&& ((const_key in g.emitted_types || global_key in g.emitted_types)
-						|| g.is_module_local_const_or_global(node.name)) {
-						g.sb.write_string('${g.cur_module}__${node.name}')
-					} else if g.cur_module != '' && g.cur_module != 'main'
-						&& g.cur_module != 'builtin' && !node.name.contains('__') && !is_local_var
-						&& !g.is_module_ident(node.name) && g.is_module_local_fn(node.name)
-						&& !g.is_type_name(node.name) {
-						g.sb.write_string('${g.cur_module}__${sanitize_fn_ident(node.name)}')
-					} else {
-						mut ident_name := node.name
-						if g.cur_module != '' {
-							double_prefix := '${g.cur_module}__${g.cur_module}__'
-							if ident_name.starts_with(double_prefix) {
-								ident_name = ident_name[g.cur_module.len + 2..]
-							}
+					mut ident_name := node.name
+					if g.cur_module != '' {
+						double_prefix := '${g.cur_module}__${g.cur_module}__'
+						if ident_name.starts_with(double_prefix) {
+							ident_name = ident_name[g.cur_module.len + 2..]
 						}
-						g.sb.write_string(c_local_name(ident_name))
 					}
+					g.sb.write_string(c_local_name(ident_name))
 				}
 			}
 		}

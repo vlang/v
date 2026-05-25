@@ -231,20 +231,24 @@ fn f(fields []StructField) {
 	assert csrc.contains('map__set(&field_usages')
 }
 
-fn test_imported_module_global_ident_uses_declaring_module_prefix() {
+fn test_module_storage_selector_uses_declaring_module_prefix() {
 	mut g := Gen.new([])
 	g.cur_module = 'checker'
 	g.cur_import_modules['ast'] = 'ast'
-	g.global_var_modules['global_table'] = 'ast'
-	g.expr(ast.Expr(ast.Ident{
-		name: 'global_table'
+	g.expr(ast.Expr(ast.SelectorExpr{
+		lhs: ast.Expr(ast.Ident{
+			name: 'ast'
+		})
+		rhs: ast.Ident{
+			name: 'global_table'
+		}
 	}))
 	assert g.sb.str() == 'ast__global_table'
 
 	mut local_g := Gen.new([])
 	local_g.cur_module = 'checker'
 	local_g.cur_import_modules['ast'] = 'ast'
-	local_g.global_var_modules['global_table'] = 'ast'
+	local_g.module_storage_vars['ast__global_table'] = 'ast'
 	local_g.runtime_local_types['global_table'] = 'int'
 	local_g.expr(ast.Expr(ast.Ident{
 		name: 'global_table'
@@ -252,19 +256,23 @@ fn test_imported_module_global_ident_uses_declaring_module_prefix() {
 	assert local_g.sb.str() == 'global_table'
 }
 
-fn test_imported_module_global_ident_type_resolves_receiver_methods() {
+fn test_module_storage_selector_type_resolves_receiver_methods() {
 	mut g := Gen.new([])
 	g.cur_module = 'transformer'
 	g.cur_import_modules['ast'] = 'ast'
-	g.global_var_modules['global_table'] = 'ast'
 	g.global_var_types['ast__global_table'] = 'ast__Table*'
 	g.fn_return_types['ast__Table__type_to_str'] = 'string'
 	g.fn_param_is_ptr['ast__Table__type_to_str'] = [true, false]
 	g.fn_param_types['ast__Table__type_to_str'] = ['ast__Table*', 'ast__Type']
 	g.runtime_local_types['typ'] = 'ast__Type'
 	g.call_expr(ast.Expr(ast.SelectorExpr{
-		lhs: ast.Expr(ast.Ident{
-			name: 'global_table'
+		lhs: ast.Expr(ast.SelectorExpr{
+			lhs: ast.Expr(ast.Ident{
+				name: 'ast'
+			})
+			rhs: ast.Ident{
+				name: 'global_table'
+			}
 		})
 		rhs: ast.Ident{
 			name: 'type_to_str'
