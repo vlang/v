@@ -2237,6 +2237,20 @@ fn (b &Builder) print_flat_ast_summary() {
 	println(' * AST nodes:      legacy=${legacy_nodes}, flat=${flat_stats.nodes}')
 	println(' * AST memory est: legacy=${legacy_stats.bytes_estimate}B, flat=${flat_stats.bytes_estimate}B (${mem_delta_pct:.2f}% reduction)')
 	println(' * AST allocs:     legacy=${legacy_stats.allocs}, flat=${flat_allocs} (${alloc_delta_pct:.2f}% reduction)')
+	if os.getenv('V2_FLAT_HIST') != '' {
+		hist := flat.count_nodes_by_kind()
+		mut keys := hist.keys()
+		keys.sort_with_compare(fn [hist] (a &string, b &string) int {
+			return hist[*b] - hist[*a]
+		})
+		println(' * AST per-kind histogram (top 20):')
+		for i, k in keys {
+			if i >= 20 {
+				break
+			}
+			println('     ${k:-30s} ${hist[k]}')
+		}
+	}
 }
 
 fn count_v_lines_for_paths(paths []string) int {

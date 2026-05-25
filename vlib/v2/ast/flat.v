@@ -237,6 +237,16 @@ pub fn (flat &FlatAst) stats() FlatAstStats {
 	}
 }
 
+// count_nodes_by_kind returns a tally of how many nodes exist of each kind.
+// Useful for spotting structural overhead (e.g., aux_list wrappers).
+pub fn (flat &FlatAst) count_nodes_by_kind() map[string]int {
+	mut hist := map[string]int{}
+	for n in flat.nodes {
+		hist[n.kind.str()]++
+	}
+	return hist
+}
+
 // count_reachable_nodes traverses from file roots and counts unique reachable nodes.
 pub fn (flat &FlatAst) count_reachable_nodes() int {
 	if flat.nodes.len == 0 || flat.files.len == 0 {
@@ -303,6 +313,8 @@ mut:
 	flat          FlatAst
 	string_ids    map[string]int
 	empty_list_id FlatNodeId = invalid_flat_node_id
+	empty_expr_id FlatNodeId = invalid_flat_node_id
+	empty_stmt_id FlatNodeId = invalid_flat_node_id
 }
 
 fn new_flat_builder() FlatBuilder {
@@ -581,6 +593,12 @@ fn (mut b FlatBuilder) add_stmt(stmt Stmt) FlatNodeId {
 				0, 0, edges)
 		}
 		EmptyStmt {
+			if int(stmt) == 0 {
+				if b.empty_stmt_id == invalid_flat_node_id {
+					b.empty_stmt_id = b.emit(.stmt_empty, token.Pos{}, -1, 0, 0, 0, []FlatEdge{})
+				}
+				return b.empty_stmt_id
+			}
 			return b.emit(.stmt_empty, token.Pos{}, -1, int(stmt), 0, 0, []FlatEdge{})
 		}
 		EnumDecl {
@@ -807,6 +825,14 @@ fn (mut b FlatBuilder) add_expr(expr Expr) FlatNodeId {
 			])
 		}
 		EmptyExpr {
+			// All EmptyExpr instances in the parser are `EmptyExpr(0)` (see
+			// ast.empty_expr). Share one node — 65k+ duplicates per build.
+			if int(expr) == 0 {
+				if b.empty_expr_id == invalid_flat_node_id {
+					b.empty_expr_id = b.emit(.expr_empty, token.Pos{}, -1, 0, 0, 0, []FlatEdge{})
+				}
+				return b.empty_expr_id
+			}
 			return b.emit(.expr_empty, token.Pos{}, -1, int(expr), 0, 0, []FlatEdge{})
 		}
 		FnLiteral {
