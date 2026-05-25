@@ -1192,30 +1192,31 @@ pub fn (mut c Checker) get_module_scope(module_name string, parent &Scope) &Scop
 }
 
 // check_flat is the Phase 2 consumer entry point: accepts a FlatAst directly
-// rather than []ast.File. Migrated steps read fields from FlatFile without
-// rehydrating; everything else still goes through to_files() until ported.
+// rather than []ast.File. Every step reads from the FlatAst; legacy
+// []ast.File is only materialized for the ownership pass, which still
+// drives off the recursive AST.
 pub fn (mut c Checker) check_flat(flat &ast.FlatAst) {
 	c.register_selector_names_from_flat(flat)
-	files := flat.to_files()
 	c.preregister_all_scopes_from_flat(flat)
 	c.preregister_all_types_from_flat(flat)
 	c.collect_fn_signatures_only = true
 	c.preregister_all_fn_signatures_from_flat(flat)
 	c.collect_fn_signatures_only = false
 	c.register_imported_symbols_from_flat(flat)
-	for file in files {
-		c.check_file(file)
+	for ff in flat.files {
+		c.check_file_from_flat(flat, ff)
 	}
 	c.process_pending_const_fields()
 	$if ownership ? {
+		files := flat.to_files()
 		c.ownership_prescan_fn_bodies()
 		c.ownership_validate_drop_impls()
 		c.lifetime_validate_files(files)
 		c.escape_validate_files(files)
 	}
 	c.process_pending_fn_bodies()
-	c.check_struct_field_defaults(files)
-	c.check_enum_field_values(files)
+	c.check_struct_field_defaults_from_flat(flat)
+	c.check_enum_field_values_from_flat(flat)
 }
 
 // register_selector_names_from_flat reads selector_names directly from
@@ -1357,6 +1358,109 @@ fn (mut c Checker) preregister_fn_signatures_from_flat(flat &ast.FlatAst, ff ast
 		c.preregister_fn_signature_stmt(stmt)
 	}
 	c.collect_fn_signatures_only = prev_collect
+}
+
+// check_file_from_flat mirrors check_file but pulls mod + stmts straight
+// from the FlatAst, so the heavy per-file pass no longer needs a rehydrated
+// ast.File.
+pub fn (mut c Checker) check_file_from_flat(flat &ast.FlatAst, ff ast.FlatFile) {
+	mod := flat.file_mod(ff)
+	mut sw := time.StopWatch{}
+	if c.pref.verbose {
+		sw = time.new_stopwatch()
+	}
+	c.cur_file_module = mod
+	mut mod_scope := &Scope(unsafe { nil })
+	lock c.env.scopes {
+		if mod in c.env.scopes {
+			mod_scope = unsafe { c.env.scopes[mod] }
+		} else {
+			panic('not found for mod: ${mod}')
+		}
+	}
+	c.scope = mod_scope
+	stmts := flat.read_file_stmts(ff)
+	for stmt in stmts {
+		match stmt {
+			ast.ConstDecl, ast.EnumDecl, ast.InterfaceDecl, ast.StructDecl, ast.TypeDecl {
+				continue
+			}
+			ast.FnDecl {
+				continue
+			}
+			else {
+				c.decl(stmt)
+			}
+		}
+	}
+	for stmt in stmts {
+		c.stmt(stmt)
+	}
+	if c.pref.verbose {
+		check_time := sw.elapsed()
+		println('type check ${flat.file_name(ff)}: ${check_time.milliseconds()}ms (${check_time.microseconds()}µs)')
+	}
+}
+
+// check_struct_field_defaults_from_flat visits struct field default value
+// expressions across every FlatFile without rehydrating ast.File.
+fn (mut c Checker) check_struct_field_defaults_from_flat(flat &ast.FlatAst) {
+	for ff in flat.files {
+		mod := flat.file_mod(ff)
+		mut mod_scope := &Scope(unsafe { nil })
+		lock c.env.scopes {
+			if mod in c.env.scopes {
+				mod_scope = unsafe { c.env.scopes[mod] }
+			} else {
+				continue
+			}
+		}
+		c.scope = mod_scope
+		c.cur_file_module = mod
+		for stmt in flat.read_file_stmts(ff) {
+			if stmt is ast.StructDecl {
+				for field in stmt.fields {
+					if field.value !is ast.EmptyExpr {
+						field_typ := c.type_expr(field.typ)
+						prev_expected := c.expected_type
+						c.expected_type = to_optional_type(field_typ)
+						c.expr(field.value)
+						$if ownership ? {
+							c.ownership_consume_expr(field.value, field.value.pos(), 'struct field')
+						}
+						c.expected_type = prev_expected
+					}
+				}
+			}
+		}
+	}
+}
+
+// check_enum_field_values_from_flat visits enum field value expressions
+// across every FlatFile without rehydrating ast.File.
+fn (mut c Checker) check_enum_field_values_from_flat(flat &ast.FlatAst) {
+	for ff in flat.files {
+		mod := flat.file_mod(ff)
+		mut mod_scope := &Scope(unsafe { nil })
+		lock c.env.scopes {
+			if mod in c.env.scopes {
+				mod_scope = unsafe { c.env.scopes[mod] }
+			} else {
+				continue
+			}
+		}
+		c.scope = mod_scope
+		c.cur_file_module = mod
+		for stmt in flat.read_file_stmts(ff) {
+			if stmt is ast.EnumDecl {
+				for field in stmt.fields {
+					if field.value !is ast.EmptyExpr {
+						c.expr(field.value)
+					}
+				}
+			}
+		}
+	}
 }
 
 pub fn (mut c Checker) check_files(files []ast.File) {
