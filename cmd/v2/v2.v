@@ -37,7 +37,12 @@ fn main() {
 
 	// Auto-run test binaries after compilation (matching v1 behavior)
 	if prefs.output_file == '' && is_test_file(files) {
-		output_name := os.file_name(files.last()).all_before_last('.v')
+		last := os.file_name(files.last())
+		output_name := if last.ends_with('.vv2') {
+			last.all_before_last('.vv2')
+		} else {
+			last.all_before_last('.v')
+		}
 		if os.exists(output_name) {
 			ret := os.system('./' + output_name)
 			os.rm(output_name) or {}
@@ -93,7 +98,7 @@ fn run_ast_command(args []string) {
 
 fn is_test_file(files []string) bool {
 	for file in files {
-		if file.ends_with('_test.v') {
+		if file.ends_with('_test.v') || file.ends_with('_test.vv2') {
 			return true
 		}
 	}
