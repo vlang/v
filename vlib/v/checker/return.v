@@ -23,6 +23,18 @@ fn (mut c Checker) error_unaliased_type_name(exp_type ast.Type) string {
 	return c.error_type_name(c.table.unaliased_type(exp_type))
 }
 
+// returns_call_like_result_expr reports whether `expr` is a `CallExpr`,
+// possibly wrapped in redundant `ParExpr`s. Used to decide whether the
+// return path is shaped like `return foo()` / `return (foo())` — the
+// shapes for which cgen can emit a `_result_*` alias clone.
+fn returns_call_like_result_expr(expr ast.Expr) bool {
+	mut e := expr
+	for e is ast.ParExpr {
+		e = e.expr
+	}
+	return e is ast.CallExpr
+}
+
 // TODO: non deferred
 fn (mut c Checker) return_stmt(mut node ast.Return) {
 	if c.table.cur_fn == unsafe { nil } {
@@ -221,10 +233,22 @@ fn (mut c Checker) return_stmt(mut node ast.Return) {
 			c.error('cannot use `${c.table.type_to_str(got_type)}` as ${c.error_type_name(exp_type)} in return argument',
 				exprv.pos())
 		}
-		if got_type.has_flag(.result) && (!exp_type.has_flag(.result)
-			|| c.table.type_to_str(got_type) != c.table.type_to_str(exp_type)) {
-			c.error('cannot use `${c.table.type_to_str(got_type)}` as ${c.error_type_name(exp_type)} in return argument',
-				exprv.pos())
+		if got_type.has_flag(.result) {
+			// Accept payload-equivalent aliases only when the expression is a
+			// call (optionally wrapped in `()`); the cgen alias clone path only
+			// handles bare calls today. For anything else, fall back to a
+			// strict identity check so cgen never emits a struct cast between
+			// distinct `_result_*` types (which C rejects).
+			payload_compat := if returns_call_like_result_expr(exprv) {
+				c.table.are_payloads_alias_compatible(got_type.clear_flag(.result),
+					exp_type.clear_flag(.result))
+			} else {
+				got_type.clear_flag(.result) == exp_type.clear_flag(.result)
+			}
+			if !exp_type.has_flag(.result) || !payload_compat {
+				c.error('cannot use `${c.table.type_to_str(got_type)}` as ${c.error_type_name(exp_type)} in return argument',
+					exprv.pos())
+			}
 		}
 		if exprv is ast.ComptimeCall && exprv.kind == .tmpl
 			&& c.table.final_sym(exp_type).kind != .string {

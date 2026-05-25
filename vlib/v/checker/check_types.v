@@ -579,6 +579,25 @@ fn (mut c Checker) check_basic(got ast.Type, expected ast.Type) bool {
 		if c.table.type_to_str(got) == c.table.type_to_str(expected).trim('&') {
 			return true
 		}
+		// `[]Alias` ↔ `[]Parent` when `Alias = Parent` (and the same for maps/fixed arrays).
+		// `check_basic` is otherwise blind to aliases nested inside container types.
+		if got_sym.kind == .array && got_sym.info is ast.Array && exp_sym.info is ast.Array {
+			if got_sym.info.nr_dims == exp_sym.info.nr_dims
+				&& c.table.fully_unaliased_type(got_sym.info.elem_type) == c.table.fully_unaliased_type(exp_sym.info.elem_type) {
+				return true
+			}
+		} else if got_sym.kind == .array_fixed && got_sym.info is ast.ArrayFixed
+			&& exp_sym.info is ast.ArrayFixed {
+			if got_sym.info.size == exp_sym.info.size
+				&& c.table.fully_unaliased_type(got_sym.info.elem_type) == c.table.fully_unaliased_type(exp_sym.info.elem_type) {
+				return true
+			}
+		} else if got_sym.kind == .map && got_sym.info is ast.Map && exp_sym.info is ast.Map {
+			if c.table.fully_unaliased_type(got_sym.info.key_type) == c.table.fully_unaliased_type(exp_sym.info.key_type)
+				&& c.table.fully_unaliased_type(got_sym.info.value_type) == c.table.fully_unaliased_type(exp_sym.info.value_type) {
+				return true
+			}
+		}
 	}
 	if !unalias_got.is_ptr() && got_sym.kind == .array_fixed
 		&& unalias_expected.is_any_kind_of_pointer() {
