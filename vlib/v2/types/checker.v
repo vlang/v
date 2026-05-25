@@ -1191,6 +1191,15 @@ pub fn (mut c Checker) get_module_scope(module_name string, parent &Scope) &Scop
 	return scope
 }
 
+// check_flat is the Phase 2 consumer entry point: accepts a FlatAst directly
+// rather than []ast.File. The current implementation rehydrates internally,
+// but future work will progressively replace that with direct FlatAst reads
+// (selector_names, file metadata, then statements) so the legacy AST need
+// never be materialized.
+pub fn (mut c Checker) check_flat(flat &ast.FlatAst) {
+	c.check_files(flat.to_files())
+}
+
 pub fn (mut c Checker) check_files(files []ast.File) {
 	// c.file_set = unsafe { file_set }
 	for file in files {
