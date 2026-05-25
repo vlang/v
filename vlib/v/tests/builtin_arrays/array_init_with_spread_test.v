@@ -60,3 +60,23 @@ fn test_array_spread_chained() {
 	second := [...first, 4]
 	assert second == [1, 2, 3, 4]
 }
+
+// Regression: `[...base]` should produce an independent deep copy. Modifying
+// an inner []int after the spread must not affect the base.
+fn test_array_spread_nested_arrays_are_deep_cloned() {
+	mut base := [[1, 2], [3, 4]]
+	mut copy := [...base]
+	copy[0] << 99
+	assert base[0] == [1, 2]
+	assert copy[0] == [1, 2, 99]
+}
+
+// Regression: appended string variables must be cloned, matching the
+// behavior of the regular `[s1, s2]` array-literal path.
+fn test_array_spread_appended_string_variable() {
+	base := ['a', 'b']
+	mut s := 'c'
+	arr := [...base, s]
+	s = 'mutated'
+	assert arr == ['a', 'b', 'c']
+}

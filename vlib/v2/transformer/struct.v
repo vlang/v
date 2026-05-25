@@ -416,7 +416,8 @@ fn (mut t Transformer) transform_array_init_expr(expr ast.ArrayInitExpr) ast.Exp
 	}
 
 	// Spread syntax `[...base, e1, e2]` — lower to
-	// builtin__new_array_from_array_and_c_array(&base, n, sizeof(elem), {e1, e2}).
+	// builtin__new_array_from_array_and_c_array(array__clone_to_depth(&base, depth),
+	//   n, sizeof(elem), {e1, e2}).
 	if expr.update_expr !is ast.EmptyExpr {
 		return t.transform_array_spread_expr(expr, exprs, elem_type_expr)
 	}
@@ -883,11 +884,18 @@ fn (mut t Transformer) transform_array_spread_expr(expr ast.ArrayInitExpr, exprs
 	update_expr := t.transform_expr(expr.update_expr)
 	// Resolve element type from the base array.
 	mut elem_type_expr := hint_elem_type_expr
-	if elem_type_expr is ast.EmptyExpr {
-		if base_type := t.get_expr_type(expr.update_expr) {
-			base_unwrapped := t.unwrap_alias_and_pointer_type(base_type)
-			if base_unwrapped is types.Array {
+	mut clone_depth := 0
+	if base_type := t.get_expr_type(expr.update_expr) {
+		base_unwrapped := t.unwrap_alias_and_pointer_type(base_type)
+		if base_unwrapped is types.Array {
+			if elem_type_expr is ast.EmptyExpr {
 				elem_type_expr = t.type_to_ast_type_expr(base_unwrapped.elem_type)
+			}
+			// Match V2 `.clone()` semantics for nested arrays: deep-clone inner
+			// arrays so `[...nested]` doesn't share inner storage with `nested`.
+			nesting := t.get_array_nesting_depth(base_type)
+			if nesting > 1 {
+				clone_depth = nesting - 1
 			}
 		}
 	}
@@ -898,9 +906,17 @@ fn (mut t Transformer) transform_array_spread_expr(expr ast.ArrayInitExpr, exprs
 			name: 'int'
 		})
 	}
-	addr_of_base := ast.Expr(ast.PrefixExpr{
-		op:   .amp
-		expr: update_expr
+	cloned_base := ast.Expr(ast.CallExpr{
+		lhs:  ast.Ident{
+			name: 'array__clone_to_depth'
+		}
+		args: [
+			update_expr,
+			ast.Expr(ast.BasicLiteral{
+				kind:  .number
+				value: '${clone_depth}'
+			}),
+		]
 		pos:  expr.pos
 	})
 	new_count := exprs.len
@@ -927,7 +943,7 @@ fn (mut t Transformer) transform_array_spread_expr(expr ast.ArrayInitExpr, exprs
 			name: 'builtin__new_array_from_array_and_c_array'
 		}
 		args: [
-			addr_of_base,
+			cloned_base,
 			ast.Expr(ast.BasicLiteral{
 				kind:  .number
 				value: '${new_count}'

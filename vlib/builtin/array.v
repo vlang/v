@@ -334,11 +334,12 @@ fn new_array_from_c_array(len int, cap int, elm_size int, c_array voidptr) array
 }
 
 // Private function, used by V (`merged := [...base, 4, 5]`).
-// It returns a new owned array obtained by cloning `base`, then appending
-// `new_count` additional elements stored contiguously at `c_array`.
-fn new_array_from_array_and_c_array(base &array, new_count int, elm_size int, c_array voidptr) array {
+// `base` is already an independent (typed/deep) clone produced by the caller
+// (cgen emits `array_clone_static_to_depth(base, depth)`), so this helper just
+// appends `new_count` additional elements stored contiguously at `c_array`.
+fn new_array_from_array_and_c_array(base array, new_count int, elm_size int, c_array voidptr) array {
 	panic_on_negative_len(new_count)
-	mut arr := base.clone()
+	mut arr := base
 	if new_count > 0 && c_array != unsafe { nil } {
 		unsafe { arr.push_many(c_array, new_count) }
 	}
