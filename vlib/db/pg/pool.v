@@ -129,12 +129,17 @@ fn (mut p Pool) acquire() !&Conn {
 			p.mu.unlock()
 			return p.wrap_slot(slot)
 		}
-		// At capacity: wait for a release/close to signal us. Senders set up
-		// the slot under the lock and transfer ownership via this channel.
+		// At capacity: wait for a release/close/cap-raise to signal us.
+		// Senders transfer slot ownership via this channel; a sentinel slot
+		// with a nil handle means "capacity changed, retry the acquire
+		// loop" (used by set_max_open when raising the limit).
 		waiter := chan IdleSlot{cap: 1}
 		p.waiters << waiter
 		p.mu.unlock()
 		slot := <-waiter or { return error('pg: pool was closed while waiting for connection') }
+		if isnil(slot.handle) {
+			continue
+		}
 		return p.wrap_slot(slot)
 	}
 	return error('pg: unreachable')
@@ -286,6 +291,22 @@ fn (mut p Pool) set_max_open(n int) {
 			p.open_count--
 		}
 	}
+	// Raise: wake parked waiters so they can retry the acquire loop and
+	// dial against the new headroom. Without this nudge they stay blocked
+	// until some other release happens, which may never come if all current
+	// conns are long-lived.
+	if p.waiters.len > 0 && (nn == 0 || p.open_count < nn) {
+		spare := if nn == 0 { p.waiters.len } else { nn - p.open_count }
+		mut n_wake := if spare < p.waiters.len { spare } else { p.waiters.len }
+		for n_wake > 0 {
+			waiter := p.waiters[0]
+			p.waiters.delete(0)
+			waiter <- IdleSlot{
+				handle: unsafe { nil }
+			}
+			n_wake--
+		}
+	}
 	p.mu.unlock()
 }
 
@@ -323,11 +344,14 @@ fn (mut p Pool) stash_last_id(id int) {
 }
 
 // take_last_id returns the last-inserted id stashed by this thread's most
-// recent `DB.insert`, or 0 if there is none.
+// recent `DB.insert`, or 0 if there is none. Consuming on read keeps the
+// map bounded as threads come and go, and prevents a future thread that
+// reuses this tid from observing a stale id before doing its own insert.
 fn (mut p Pool) take_last_id() int {
 	tid := sync.thread_id()
 	p.last_ids_mu.lock()
 	id := p.last_ids[tid] or { i64(0) }
+	p.last_ids.delete(tid)
 	p.last_ids_mu.unlock()
 	return int(id)
 }
