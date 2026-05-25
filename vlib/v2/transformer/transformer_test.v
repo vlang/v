@@ -6694,9 +6694,8 @@ $else {
 	assert struct_field_names(files[0], 'Container') == ['tag']
 }
 
-// `tinyc` and `builtin_write_buf_to_fd_should_use_c_write` are recognized by
-// the shared `pref.comptime_flag_value` and evaluate true on the native
-// backends. Confirms the parser sees the same flag set the transformer does.
+// Native backend flags are recognized by the shared `pref.comptime_flag_value`.
+// Confirms the parser sees the same flag set the transformer does.
 fn test_struct_comptime_native_backend_flags() {
 	files := parse_code_with_prefs_for_test('
 module main
@@ -6704,6 +6703,9 @@ module main
 struct Container {
 $if tinyc ? {
 	tinyc_field string
+}
+$if no_backtrace ? {
+	no_backtrace_field string
 }
 $if builtin_write_buf_to_fd_should_use_c_write ? {
 	write_field string
@@ -6716,5 +6718,6 @@ $if new_int ? {
 ',
 		.x64, [])
 	assert files.len == 1
-	assert struct_field_names(files[0], 'Container') == ['tinyc_field', 'write_field', 'always']
+	assert struct_field_names(files[0], 'Container') == ['tinyc_field', 'no_backtrace_field',
+		'write_field', 'always']
 }
