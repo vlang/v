@@ -423,10 +423,13 @@ fn comptime_if_expr_contains_fn_main(if_expr ast.IfExpr) bool {
 // in `main` module) which are wrapped into a synthesized `fn main()`.
 fn (p &Parser) is_top_stmt_start() bool {
 	return match p.tok {
-		.dollar, .hash, .key_asm, .key_const, .key_enum, .key_fn, .key_global,
-		.key_interface, .key_pub, .key_struct, .key_union, .key_type, .attribute,
-		.lsbr { true }
-		else { false }
+		.dollar, .hash, .key_asm, .key_const, .key_enum, .key_fn, .key_global, .key_interface,
+		.key_pub, .key_struct, .key_union, .key_type, .attribute, .lsbr {
+			true
+		}
+		else {
+			false
+		}
 	}
 }
 
@@ -794,7 +797,12 @@ fn (mut p Parser) expr(min_bp token.BindingPower) ast.Expr {
 	// p.log('EXPR: ${p.tok} - ${p.line}')
 	// Self-hosted ARM64 builds can conflate `&` with backtick char tokens,
 	// so disambiguate the two from the source byte before token matching.
-	start_char := if p.scanner.pos < p.scanner.src.len { p.scanner.src[p.scanner.pos] } else { `\0` }
+	start_offset := p.pos.offset - p.file.base
+	start_char := if start_offset >= 0 && start_offset < p.scanner.src.len {
+		p.scanner.src[start_offset]
+	} else {
+		`\0`
+	}
 	if start_char == `\`` {
 		char_pos := p.pos
 		char_value := p.lit()
@@ -855,6 +863,13 @@ fn (mut p Parser) expr(min_bp token.BindingPower) ast.Expr {
 		.key_false, .key_true, .number {
 			lhs = ast.Expr(ast.BasicLiteral{
 				kind:  p.tok
+				value: p.lit()
+				pos:   p.pos
+			})
+		}
+		.char {
+			lhs = ast.Expr(ast.BasicLiteral{
+				kind:  .char
 				value: p.lit()
 				pos:   p.pos
 			})
