@@ -2846,6 +2846,11 @@ fn (mut g Gen) get_expr_type(node ast.Expr) string {
 	// For IndexExpr on pointer-to-pointer or pointer-to-string types, prefer raw-type-based
 	// inference over env (env may store the wrong type, e.g. char instead of char*).
 	if node is ast.IndexExpr {
+		if g.comptime_method_var != '' {
+			if comptime_t := g.comptime_method_args_index_type(node) {
+				return comptime_t
+			}
+		}
 		if node.expr is ast.RangeExpr {
 			if lhs_raw := g.get_raw_type(node.lhs) {
 				match lhs_raw {
@@ -3610,6 +3615,44 @@ fn (mut g Gen) cast_target_value_type(expr ast.Expr) ?string {
 		else {}
 	}
 
+	return none
+}
+
+// comptime_method_args_index_type detects index/slice expressions on the comptime
+// `method.args` selector (e.g. `method.args[i]`, `method.args[1..]`,
+// `(method.args[1..])[i]`) and returns the corresponding element/container C type.
+// Returns none when the expression does not chain back to `method.args`.
+fn (g &Gen) comptime_method_args_index_type(node ast.IndexExpr) ?string {
+	if g.comptime_method_var == '' {
+		return none
+	}
+	is_slice := node.expr is ast.RangeExpr
+	mut cur := strip_expr_wrappers(node.lhs)
+	for {
+		if cur is ast.SelectorExpr {
+			if cur.lhs is ast.Ident && cur.lhs.name == g.comptime_method_var
+				&& cur.rhs.name == 'args' {
+				return if is_slice { 'Array_FunctionParam' } else { 'FunctionParam' }
+			}
+			return none
+		}
+		if cur is ast.IndexExpr {
+			cur = strip_expr_wrappers(cur.lhs)
+			continue
+		}
+		// Transformer lowers `method.args[lo..hi]` to
+		// `array__slice[_ni](method.args, lo, hi)`. Drill into the first arg.
+		if cur is ast.CallExpr {
+			if cur.lhs is ast.Ident
+				&& cur.lhs.name in ['array__slice', 'array__slice_ni', 'builtin__array__slice', 'builtin__array__slice_ni']
+				&& cur.args.len > 0 {
+				cur = strip_expr_wrappers(cur.args[0])
+				continue
+			}
+			return none
+		}
+		return none
+	}
 	return none
 }
 
