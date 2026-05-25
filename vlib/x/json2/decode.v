@@ -570,6 +570,18 @@ fn decode_struct_key[T](mut decoder Decoder, val T, key_info ValueInfo, prefix s
 						decoder.decode_array(mut new_val.$(field.name))!
 					} $else $if field.unaliased_typ is $map {
 						decoder.decode_map(mut new_val.$(field.name))!
+					} $else $if field.unaliased_typ is string {
+						value_info := decoder.current_node.value
+						if value_info.value_kind == .object || value_info.value_kind == .array {
+							new_val.$(field.name) = decoder.json[value_info.position..value_info.position +
+								value_info.length]
+							decoder.skip_current_value()
+						} else if value_info.value_kind == .null && !field_info.is_required {
+							new_val.$(field.name) = ''
+							decoder.skip_current_value()
+						} else {
+							decoder.decode_value(mut new_val.$(field.name))!
+						}
 					} $else $if field.indirections == 1 {
 						if decoder.current_node.value.value_kind == .null {
 							new_val.$(field.name) = unsafe { nil }
@@ -921,6 +933,22 @@ fn (mut decoder Decoder) decode_value[T](mut val T) ! {
 											decoder.decode_array(mut val.$(field.name))!
 										} $else $if field.unaliased_typ is $map {
 											decoder.decode_map(mut val.$(field.name))!
+										} $else $if field.unaliased_typ is string {
+											value_info := decoder.current_node.value
+											if value_info.value_kind == .object
+												|| value_info.value_kind == .array {
+												val.$(field.name) = decoder.json[value_info.position..value_info.position +
+													value_info.length]
+												decoder.skip_current_value()
+											} else if value_info.value_kind == .null
+												&& !field_info.is_required {
+												val.$(field.name) = ''
+												decoder.skip_current_value()
+											} else {
+												mut decoded_field_value := val.$(field.name)
+												decoder.decode_value(mut decoded_field_value)!
+												val.$(field.name) = decoded_field_value
+											}
 										} $else $if field.indirections == 1 {
 											if decoder.current_node.value.value_kind == .null {
 												val.$(field.name) = unsafe { nil }
@@ -1159,6 +1187,8 @@ fn (mut decoder Decoder) decode_array[T](mut val []T) ! {
 
 				val << array_element
 			}
+		} else if array_info.value_kind == .null {
+			// allow `null` for non-option array fields, leave value as empty array
 		} else {
 			decoder.decode_error('Expected array, but got ${array_info.value_kind}')!
 		}
@@ -1251,6 +1281,8 @@ fn (mut decoder Decoder) decode_map[V](mut val map[string]V) ! {
 					}
 				}
 			}
+		} else if map_info.value_kind == .null {
+			// allow `null` for non-option map fields, leave value as empty map
 		} else {
 			decoder.decode_error('Expected object, but got ${map_info.value_kind}')!
 		}
