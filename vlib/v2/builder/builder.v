@@ -179,7 +179,7 @@ pub fn (mut b Builder) build(files []string) {
 	trans.set_file_set(b.file_set)
 	b.files = if b.pref.no_parallel_transform || b.pref.ownership {
 		if b.flat_check_enabled {
-			trans.transform_files_from_flat(&b.flat, b.files)
+			trans.transform_files_from_flat(&b.flat)
 		} else {
 			trans.transform_files(b.files)
 		}

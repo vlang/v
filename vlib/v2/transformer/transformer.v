@@ -1816,11 +1816,12 @@ pub fn (mut t Transformer) transform_files(files []ast.File) []ast.File {
 }
 
 // transform_files_from_flat drives the same per-file transform pipeline
-// but seeds the pre-pass accumulators from FlatAst. The per-file transform
-// still operates on rehydrated legacy ast.File values — wiring the
-// flat-native transform_file is a later step.
-pub fn (mut t Transformer) transform_files_from_flat(flat &ast.FlatAst, files []ast.File) []ast.File {
+// but seeds the pre-pass accumulators from FlatAst and rehydrates per-file
+// input from flat itself. The per-file transform still operates on legacy
+// ast.File values — wiring the flat-native transform_file is a later step.
+pub fn (mut t Transformer) transform_files_from_flat(flat &ast.FlatAst) []ast.File {
 	t.pre_pass_from_flat(flat)
+	files := flat.to_files()
 	files_to_transform := if t.monomorphize_enabled {
 		t.monomorphize_pass(files)
 	} else {
