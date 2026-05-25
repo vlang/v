@@ -77,16 +77,20 @@ pub fn (cfg Config) get_conn_str() string {
 	}
 	if cfg.options.len > 0 {
 		mut option_keys := cfg.options.keys()
-		// Manual insertion sort avoids relying on the generic .sort() helper
-		// which has tripped tcc bounds-check builds in CI.
-		for i in 1 .. option_keys.len {
-			key := option_keys[i]
-			mut j := i
-			for j > 0 && option_keys[j - 1] > key {
-				option_keys[j] = option_keys[j - 1]
-				j--
+		$if macos {
+			option_keys.sort()
+		} $else {
+			// Manual insertion sort avoids relying on the generic .sort() helper,
+			// which has tripped tcc bounds-check builds in CI on non-macOS.
+			for i in 1 .. option_keys.len {
+				key := option_keys[i]
+				mut j := i
+				for j > 0 && option_keys[j - 1] > key {
+					option_keys[j] = option_keys[j - 1]
+					j--
+				}
+				option_keys[j] = key
 			}
-			option_keys[j] = key
 		}
 		for key in option_keys {
 			append_conn_part(mut parts, key, cfg.options[key])
