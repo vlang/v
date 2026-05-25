@@ -872,7 +872,12 @@ pub fn (t &Table) resolve_common_sumtype_fields(mut sym TypeSymbol) {
 			}
 		}
 
+		mut counted_field_names := map[string]bool{}
 		for field in fields {
+			if field.name in counted_field_names {
+				continue
+			}
+			counted_field_names[field.name] = true
 			if field.name !in field_map {
 				field_map[field.name] = field
 				field_usages[field.name]++
