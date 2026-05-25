@@ -4,7 +4,6 @@
 
 module cleanc
 
-import os
 import v2.ast
 import v2.types
 
@@ -36,6 +35,26 @@ fn (mut g Gen) gen_stmts(stmts []ast.Stmt) {
 	for i in 0 .. stmts.len {
 		g.gen_stmt(stmts[i])
 	}
+}
+
+fn (mut g Gen) gen_scoped_stmts(stmts []ast.Stmt) {
+	saved_runtime_local_types := g.runtime_local_types.clone()
+	saved_runtime_decl_types := g.runtime_decl_types.clone()
+	saved_not_local_var_cache := g.not_local_var_cache.clone()
+	g.gen_stmts(stmts)
+	g.runtime_local_types = saved_runtime_local_types.clone()
+	g.runtime_decl_types = saved_runtime_decl_types.clone()
+	g.not_local_var_cache = saved_not_local_var_cache.clone()
+}
+
+fn (mut g Gen) gen_scoped_expr_stmts(expr ast.Expr) {
+	saved_runtime_local_types := g.runtime_local_types.clone()
+	saved_runtime_decl_types := g.runtime_decl_types.clone()
+	saved_not_local_var_cache := g.not_local_var_cache.clone()
+	g.gen_stmts_from_expr(expr)
+	g.runtime_local_types = saved_runtime_local_types.clone()
+	g.runtime_decl_types = saved_runtime_decl_types.clone()
+	g.not_local_var_cache = saved_not_local_var_cache.clone()
 }
 
 fn (mut g Gen) gen_stmt(node ast.Stmt) {
@@ -88,6 +107,7 @@ fn (mut g Gen) gen_stmt(node ast.Stmt) {
 			g.sb.writeln(';')
 		}
 		ast.ReturnStmt {
+			g.emit_scheduled_drops_at_return()
 			g.write_indent()
 			if g.is_tuple_alias(g.cur_fn_ret_type) {
 				if node.exprs.len == 1 {
@@ -266,6 +286,7 @@ fn (mut g Gen) gen_stmt(node ast.Stmt) {
 				g.sb.write_string('return ({ ${g.cur_fn_ret_type} _opt = (${g.cur_fn_ret_type}){ .state = 2 }; ${value_type} _val = ')
 				if value_type in g.sum_type_variants {
 					g.gen_type_cast_expr(value_type, expr)
+				} else if g.gen_auto_deref_value_param_arg(value_type, expr) {
 				} else {
 					g.expr(expr)
 				}
@@ -331,6 +352,12 @@ fn (mut g Gen) gen_stmt(node ast.Stmt) {
 					g.sb.writeln(';')
 					return
 				}
+				if is_ierror_c_type(expr_type) {
+					g.sb.write_string('return (${g.cur_fn_ret_type}){ .is_error=true, .err=')
+					g.expr(expr)
+					g.sb.writeln(' };')
+					return
+				}
 				if g.concrete_ierror_base_for_c_type(expr_type) != '' {
 					g.sb.write_string('return (${g.cur_fn_ret_type}){ .is_error=true, .err=')
 					g.gen_ierror_from_concrete_expr(expr, expr_type)
@@ -353,6 +380,18 @@ fn (mut g Gen) gen_stmt(node ast.Stmt) {
 					g.sb.writeln('return (${g.cur_fn_ret_type}){ .is_error=false };')
 					return
 				}
+				if value_type.starts_with('Array_fixed_') {
+					g.sb.write_string('return ({ ${g.cur_fn_ret_type} _res = (${g.cur_fn_ret_type}){0}; ${value_type} _val = {0}; ')
+					is_zero_fixed_array := expr is ast.ArrayInitExpr && expr.exprs.len == 0
+						&& expr.init is ast.EmptyExpr
+					if !is_zero_fixed_array {
+						g.sb.write_string('memcpy(_val, ')
+						g.expr(expr)
+						g.sb.write_string(', sizeof(_val)); ')
+					}
+					g.sb.writeln('_result_ok(&_val, (_result*)&_res, sizeof(_val)); _res; });')
+					return
+				}
 				g.sb.write_string('return ({ ${g.cur_fn_ret_type} _res = (${g.cur_fn_ret_type}){0}; ${value_type} _val = ')
 				if value_type in g.sum_type_variants {
 					g.gen_type_cast_expr(value_type, expr)
@@ -368,11 +407,7 @@ fn (mut g Gen) gen_stmt(node ast.Stmt) {
 				} else {
 					// Dereference mut parameters when returning by value in result-wrapping
 					// (mut params are pointers, but _val expects a value)
-					if expr is ast.Ident && expr.name in g.cur_fn_mut_params {
-						g.sb.write_string('(*')
-						g.expr(expr)
-						g.sb.write_string(')')
-					} else {
+					if !g.gen_auto_deref_value_param_arg(value_type, expr) {
 						g.expr(expr)
 					}
 				}
@@ -383,7 +418,8 @@ fn (mut g Gen) gen_stmt(node ast.Stmt) {
 			if node.exprs.len > 0 {
 				g.sb.write_string(' ')
 				expr := node.exprs[0]
-				if g.cur_fn_ret_type in g.sum_type_variants {
+				if g.gen_return_mut_param_value(expr) {
+				} else if g.cur_fn_ret_type in g.sum_type_variants {
 					g.gen_type_cast_expr(g.cur_fn_ret_type, expr)
 				} else if g.is_interface_type(g.cur_fn_ret_type) {
 					if g.get_expr_type(expr) == g.cur_fn_ret_type {
@@ -398,6 +434,7 @@ fn (mut g Gen) gen_stmt(node ast.Stmt) {
 					// to return the pointer directly.
 					deref := expr.expr as ast.PrefixExpr
 					g.expr(deref.expr)
+				} else if g.gen_auto_deref_value_param_arg(g.cur_fn_ret_type, expr) {
 				} else {
 					g.expr(expr)
 				}
@@ -488,9 +525,6 @@ fn (mut g Gen) gen_stmt(node ast.Stmt) {
 }
 
 fn (mut g Gen) gen_comptime_stmt(node ast.ComptimeStmt) {
-	if os.getenv('V2_DEBUG_COMPTIME') != '' {
-		eprintln('[gen_comptime_stmt] fn=${g.cur_fn_name}')
-	}
 	inner := node.stmt
 	if inner is ast.ForStmt {
 		g.gen_comptime_for(inner)
@@ -514,9 +548,6 @@ fn (mut g Gen) gen_comptime_stmt(node ast.ComptimeStmt) {
 
 fn (mut g Gen) gen_comptime_if_stmt(node ast.IfExpr) {
 	result := g.eval_comptime_cond(node.cond)
-	if os.getenv('V2_DEBUG_COMPTIME') != '' {
-		eprintln('[comptime_if_stmt] cond=${node.cond.name()} result=${result} fn=${g.cur_fn_name}')
-	}
 	if result {
 		g.gen_stmts(node.stmts)
 		return
@@ -547,7 +578,7 @@ fn (mut g Gen) gen_comptime_for(node ast.ForStmt) {
 	}
 	sel := for_in.expr as ast.SelectorExpr
 	kind := sel.rhs.name
-	if kind != 'fields' {
+	if kind !in ['fields', 'methods'] {
 		g.write_indent()
 		g.sb.writeln('/* [TODO] ComptimeFor ${kind} */')
 		return
@@ -563,7 +594,11 @@ fn (mut g Gen) gen_comptime_for(node ast.ForStmt) {
 		g.sb.writeln('/* ComptimeFor: ${type_name} is not a struct */')
 		return
 	}
-	struct_type := concrete as types.Struct
+	struct_type := g.comptime_for_struct_type(concrete, concrete as types.Struct)
+	if kind == 'methods' {
+		g.gen_comptime_for_methods(node, for_in, type_name, struct_type)
+		return
+	}
 	field_var := for_in.value.name()
 	// Save comptime state
 	prev_field_var := g.comptime_field_var
@@ -609,6 +644,106 @@ fn (mut g Gen) gen_comptime_for(node ast.ForStmt) {
 	g.comptime_continue_label = prev_continue_label
 }
 
+fn (mut g Gen) comptime_for_struct_type(concrete types.Type, fallback types.Struct) types.Struct {
+	struct_c_name := g.types_type_to_c(concrete).trim_space().trim_right('*')
+	if struct_c_name == '' {
+		return fallback
+	}
+	full_struct_type := g.lookup_struct_type_by_c_name(struct_c_name)
+	if full_struct_type.fields.len > 0
+		&& !type_contains_generic_placeholder(types.Type(full_struct_type)) {
+		return full_struct_type
+	}
+	return fallback
+}
+
+// gen_comptime_for_methods emits the body of `$for method in T.methods` by
+// looping over the AST FnDecls whose receiver C-type matches T, setting the
+// `g.comptime_method_*` state per iteration, and recursively generating the
+// loop body so per-method selectors (method.name, method.attrs, etc.) and
+// `app.$method(...)` dispatch can be resolved by expr.v.
+fn (mut g Gen) gen_comptime_for_methods(node ast.ForStmt, for_in ast.ForInStmt, type_name string, struct_type types.Struct) {
+	concrete_struct_type := types.Type(struct_type)
+	struct_c_name := g.types_type_to_c(concrete_struct_type).trim_space().trim_right('*')
+	method_decls := g.collect_method_fndecls(struct_type.name, struct_c_name)
+	method_var := for_in.value.name()
+	prev_method_var := g.comptime_method_var
+	prev_method_name := g.comptime_method_name
+	prev_method_attrs := g.comptime_method_attrs
+	prev_method_return_type := g.comptime_method_return_type
+	prev_method_args := g.comptime_method_args
+	prev_method_idx := g.comptime_method_idx
+	prev_method_receiver_type := g.comptime_method_receiver_type
+	prev_method_struct_name := g.comptime_method_struct_name
+	prev_continue_label := g.comptime_continue_label
+	g.comptime_method_var = method_var
+	g.comptime_method_receiver_type = struct_c_name
+	g.comptime_method_struct_name = struct_type.name
+	g.write_indent()
+	g.sb.writeln('{ /* comptime for ${method_var} in ${type_name}.methods */')
+	g.indent++
+	for i, decl in method_decls {
+		g.comptime_method_name = decl.name
+		g.comptime_method_attrs = comptime_attribute_strings(decl.attributes)
+		g.comptime_method_return_type = decl.typ.return_type
+		g.comptime_method_args = decl.typ.params.clone()
+		g.comptime_method_idx = i
+		g.tmp_counter++
+		g.comptime_continue_label = '__v_ctm_continue_${g.tmp_counter}_${i}'
+		g.write_indent()
+		g.sb.writeln('{ /* method ${i}: ${decl.name} */')
+		g.indent++
+		g.gen_stmts(node.stmts)
+		g.write_indent()
+		g.sb.writeln('${g.comptime_continue_label}:;')
+		g.indent--
+		g.write_indent()
+		g.sb.writeln('}')
+	}
+	g.indent--
+	g.write_indent()
+	g.sb.writeln('}')
+	g.comptime_method_var = prev_method_var
+	g.comptime_method_name = prev_method_name
+	g.comptime_method_attrs = prev_method_attrs
+	g.comptime_method_return_type = prev_method_return_type
+	g.comptime_method_args = prev_method_args
+	g.comptime_method_idx = prev_method_idx
+	g.comptime_method_receiver_type = prev_method_receiver_type
+	g.comptime_method_struct_name = prev_method_struct_name
+	g.comptime_continue_label = prev_continue_label
+}
+
+// collect_method_fndecls walks all loaded files and returns FnDecls whose
+// receiver type matches either the struct V-name or its C-mangled name.
+fn (mut g Gen) collect_method_fndecls(struct_v_name string, struct_c_name string) []ast.FnDecl {
+	mut out := []ast.FnDecl{}
+	for file in g.files {
+		for stmt in file.stmts {
+			if stmt is ast.FnDecl {
+				if !stmt.is_method {
+					continue
+				}
+				if stmt.receiver.typ is ast.EmptyExpr {
+					continue
+				}
+				receiver_v_name := stmt.receiver.typ.name()
+				if receiver_v_name == struct_v_name || receiver_v_name == struct_c_name
+					|| short_type_name(struct_c_name) == receiver_v_name {
+					out << stmt
+					continue
+				}
+				// Compare resolved C name as fallback (handles module-qualified receivers).
+				receiver_c_name := g.expr_type_to_c(stmt.receiver.typ).trim_space().trim_right('*')
+				if receiver_c_name == struct_c_name {
+					out << stmt
+				}
+			}
+		}
+	}
+	return out
+}
+
 fn comptime_attribute_strings(attrs []ast.Attribute) []string {
 	mut out := []string{cap: attrs.len}
 	for attr in attrs {
@@ -623,6 +758,32 @@ fn comptime_attribute_strings(attrs []ast.Attribute) []string {
 		}
 	}
 	return out
+}
+
+fn (mut g Gen) gen_return_mut_param_value(expr ast.Expr) bool {
+	if expr !is ast.Ident || g.cur_fn_ret_type.ends_with('*') {
+		return false
+	}
+	ident := expr as ast.Ident
+	if ident.name !in g.cur_fn_mut_params {
+		return false
+	}
+	local_type := (g.get_local_var_c_type(ident.name) or { '' }).trim_space()
+	if !local_type.ends_with('*') {
+		return false
+	}
+	local_base := local_type.trim_right('*')
+	ret_base := g.cur_fn_ret_type.trim_right('*')
+	if local_base == '' || ret_base == '' {
+		return false
+	}
+	if local_base != ret_base && short_type_name(local_base) != short_type_name(ret_base) {
+		return false
+	}
+	g.sb.write_string('(*')
+	g.expr(expr)
+	g.sb.write_string(')')
+	return true
 }
 
 fn (mut g Gen) comptime_field_attribute_strings(struct_name string, field types.Field) []string {

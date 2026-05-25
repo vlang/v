@@ -2074,7 +2074,17 @@ pub fn (mut f Fmt) array_init(node ast.ArrayInit) {
 			if !is_new_line && i > 0 {
 				f.write(' ')
 			}
+			// When the array stays on a single source line, keep nested
+			// struct inits on a single line too (instead of expanding their
+			// named fields onto multiple lines).
+			keep_struct_inline := !line_break && expr is ast.StructInit
+				&& expr.pos.line_nr == expr.pos.last_line && expr.pre_comments.len == 0
+			old_single_line_fields := f.single_line_fields
+			if keep_struct_inline {
+				f.single_line_fields = true
+			}
 			f.expr(expr)
+			f.single_line_fields = old_single_line_fields
 		}
 		mut last_comment_was_inline := false
 		mut has_comments := node.ecmnts[i].len > 0

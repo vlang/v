@@ -1,0 +1,8 @@
+#ifndef WIFSTOPPED
+extern bool WIFSTOPPED(i32 _d1);
+#ifndef WCOREDUMP
+extern bool WCOREDUMP(i32 _d1);
+#ifndef WIFCONTINUED
+extern bool WIFCONTINUED(i32 _d1);
+#ifndef WSTOPSIG
+extern int WSTOPSIG(i32 _d1);

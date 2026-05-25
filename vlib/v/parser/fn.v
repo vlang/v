@@ -840,7 +840,16 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 			} }
 			fn_generic_names := generic_names.clone()
 			generic_names = p.table.generic_type_names(rec.typ)
+			mut is_structured_receiver_pattern := false
 			if decl_generic_names.len != generic_names.len {
+				structured_generic_names :=
+					p.table.structured_receiver_generic_pattern_names(rec.typ)
+				if structured_generic_names.len > 0 {
+					generic_names = structured_generic_names.clone()
+					is_structured_receiver_pattern = true
+				}
+			}
+			if decl_generic_names.len != generic_names.len && !is_structured_receiver_pattern {
 				plural := if decl_generic_names.len == 1 { '' } else { 's' }
 				p.error_with_pos('expected ${decl_generic_names.len} generic parameter${plural}, got ${generic_names.len}',
 					rec.type_pos)
@@ -980,7 +989,7 @@ run them via `v file.v` instead',
 				scope: unsafe { nil }
 			}
 		}
-		type_sym_method_idx = type_sym.register_method(ast.Fn{
+		method := ast.Fn{
 			name:          name
 			file_mode:     file_mode
 			params:        params
@@ -1010,7 +1019,9 @@ run them via `v file.v` instead',
 			language: language
 			//
 			is_expand_simple_interpolation: is_expand_simple_interpolation
-		})
+		}
+		type_sym_method_idx = type_sym.register_method(method)
+		p.table.register_structured_receiver_method(method)
 	} else {
 		name = match language {
 			.c { 'C.${name}' }

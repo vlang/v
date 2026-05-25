@@ -1044,6 +1044,60 @@ fn parse() !u64 {
 	assert !csrc.contains('u64 _val = main__make_error()')
 }
 
+fn test_generate_c_returns_ierror_local_from_result_function_as_error() {
+	csrc := generate_result_option_c_for_test('
+interface IError {
+	msg() string
+	code() int
+}
+
+struct MyError {}
+
+fn (err MyError) msg() string {
+	return "bad"
+}
+
+fn (err MyError) code() int {
+	return 1
+}
+
+fn make_error() IError {
+	return MyError{}
+}
+
+fn fail() !int {
+	e := make_error()
+	return e
+}
+	')
+	assert csrc.contains('return (_result_int){ .is_error=true, .err=e };')
+	assert !csrc.contains('int _val = e')
+}
+
+fn test_generate_c_keeps_concrete_error_literal_when_context_is_concrete() {
+	csrc := generate_result_option_c_for_test('
+struct MyError {}
+
+fn (err MyError) msg() string {
+	return "bad"
+}
+
+fn (err MyError) code() int {
+	return 1
+}
+
+fn main() {
+	mut errors := []MyError{}
+	err := MyError{}
+	errors << err
+}
+	')
+	assert csrc.contains('MyError err = ((MyError){')
+	assert csrc.contains('array__push(((array*)(&errors)), &(MyError[1]){err});')
+	assert !csrc.contains('IError err =')
+	assert !csrc.contains('&(MyError[1]){((IError)')
+}
+
 fn test_generate_c_keeps_option_if_guard_err_as_concrete_error_ref() {
 	csrc := generate_result_option_c_for_test('
 struct MyError {}
@@ -1094,6 +1148,26 @@ fn demo() !int {
 	assert csrc.contains('Reader* _iface_t')
 	assert csrc.contains('ByteReader__read')
 	assert !csrc.contains('consume(&rdr)')
+}
+
+fn test_generate_c_unwraps_interface_method_result_payload_for_propagation() {
+	csrc := generate_result_option_c_for_test('
+interface Reader {
+mut:
+	read(mut []u8) !int
+}
+
+fn read_full(mut reader Reader, mut buf []u8) ! {
+	mut offset := 0
+	for offset < buf.len {
+		n := reader.read(mut buf[offset..])!
+		offset += n
+	}
+}
+	')
+	assert csrc.contains('_result_int _or_t')
+	assert csrc.contains('int n = (*(int*)')
+	assert !csrc.contains('int n = ;')
 }
 
 fn test_generate_c_preserves_c_pointer_cast_selector_field_access() {
@@ -1398,6 +1472,13 @@ fn test_sum_type_variant_field_name_preserves_module_qualified_variant() {
 	assert gen.sum_type_variant_field_name('json2__Any', 'Array_json2__Any') == 'Array_json2__Any'
 	assert gen.sum_type_variant_field_name('json2__Any', 'Map_string_json2__Any') == 'Map_string_json2__Any'
 	assert gen.sum_type_variant_field_name('json2__Any', 'Map_string_Any') == 'Map_string_json2__Any'
+	gen.sum_type_variants['ast__Type'] = ['ast__FnType']
+	assert gen.sum_type_variant_field_name('ast__Type', 'types__FnType') == 'types__FnType'
+	if _ := gen.sum_variant_tag_path('ast__Type', 'types__FnType', []string{}) {
+		assert false
+	} else {
+		assert true
+	}
 }
 
 fn test_sum_data_variant_selector_field_preserves_module_qualified_variant() {

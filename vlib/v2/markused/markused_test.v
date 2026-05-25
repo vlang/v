@@ -12,6 +12,14 @@ fn pos(id int) token.Pos {
 	}
 }
 
+fn test_interface_name_from_type_handles_unresolved_alias_base_type() {
+	mut env := types.Environment.new()
+	w := new_walker([], env)
+	assert w.interface_name_from_type(types.Type(types.Alias{
+		name: 'UnresolvedAlias'
+	})) == ''
+}
+
 fn test_mark_used_tracks_transitive_function_calls() {
 	mut env := types.Environment.new()
 	files := [
@@ -73,6 +81,65 @@ fn test_mark_used_tracks_transitive_function_calls() {
 	assert used[foo_key]
 	assert used[bar_key]
 	assert !used[dead_key]
+}
+
+fn test_mark_used_walks_duplicate_declaration_with_body() {
+	mut env := types.Environment.new()
+	files := [
+		ast.File{
+			mod:   'main'
+			name:  'main.v'
+			stmts: [
+				ast.Stmt(ast.FnDecl{
+					name:  'main'
+					typ:   ast.FnType{}
+					pos:   pos(20)
+					stmts: [
+						ast.Stmt(ast.ExprStmt{
+							expr: ast.CallExpr{
+								lhs: ast.Ident{
+									name: 'foo'
+									pos:  pos(21)
+								}
+								pos: pos(21)
+							}
+						}),
+					]
+				}),
+				ast.Stmt(ast.FnDecl{
+					name: 'foo'
+					typ:  ast.FnType{}
+					pos:  pos(22)
+				}),
+				ast.Stmt(ast.FnDecl{
+					name:  'foo'
+					typ:   ast.FnType{}
+					pos:   pos(23)
+					stmts: [
+						ast.Stmt(ast.ExprStmt{
+							expr: ast.CallExpr{
+								lhs: ast.Ident{
+									name: 'bar'
+									pos:  pos(24)
+								}
+								pos: pos(24)
+							}
+						}),
+					]
+				}),
+				ast.Stmt(ast.FnDecl{
+					name: 'bar'
+					typ:  ast.FnType{}
+					pos:  pos(25)
+				}),
+			]
+		},
+	]
+	used := mark_used(files, env)
+	foo_key := decl_key('main', files[0].stmts[1] as ast.FnDecl, env)
+	bar_key := decl_key('main', files[0].stmts[3] as ast.FnDecl, env)
+	assert used[foo_key]
+	assert used[bar_key]
 }
 
 fn test_mark_used_tracks_method_calls_with_env_types() {
@@ -252,6 +319,187 @@ fn test_mark_used_tracks_current_receiver_method_calls() {
 	assert !used[unused_key]
 }
 
+fn test_mark_used_walks_codegen_required_str_methods() {
+	mut env := types.Environment.new()
+	files := [
+		ast.File{
+			mod:   'main'
+			name:  'main.v'
+			stmts: [
+				ast.Stmt(ast.FnDecl{
+					name: 'main'
+					typ:  ast.FnType{}
+					pos:  pos(90)
+				}),
+			]
+		},
+		ast.File{
+			mod:   'time'
+			name:  'time.v'
+			stmts: [
+				ast.Stmt(ast.StructDecl{
+					name: 'Time'
+				}),
+				ast.Stmt(ast.FnDecl{
+					is_method: true
+					receiver:  ast.Parameter{
+						name: 't'
+						typ:  ast.Ident{
+							name: 'Time'
+							pos:  pos(91)
+						}
+						pos:  pos(91)
+					}
+					name:      'str'
+					typ:       ast.FnType{}
+					pos:       pos(92)
+					stmts:     [
+						ast.Stmt(ast.ReturnStmt{
+							exprs: [
+								ast.Expr(ast.CallExpr{
+									lhs: ast.SelectorExpr{
+										lhs: ast.Ident{
+											name: 't'
+											pos:  pos(93)
+										}
+										rhs: ast.Ident{
+											name: 'format_ss'
+											pos:  pos(94)
+										}
+										pos: pos(94)
+									}
+									pos: pos(94)
+								}),
+							]
+						}),
+					]
+				}),
+				ast.Stmt(ast.FnDecl{
+					is_method: true
+					receiver:  ast.Parameter{
+						name: 't'
+						typ:  ast.Ident{
+							name: 'Time'
+							pos:  pos(95)
+						}
+						pos:  pos(95)
+					}
+					name:      'format_ss'
+					typ:       ast.FnType{}
+					pos:       pos(96)
+				}),
+			]
+		},
+	]
+	used := mark_used(files, env)
+	main_key := decl_key('main', files[0].stmts[0] as ast.FnDecl, env)
+	str_key := decl_key('time', files[1].stmts[1] as ast.FnDecl, env)
+	format_key := decl_key('time', files[1].stmts[2] as ast.FnDecl, env)
+	assert used[main_key]
+	assert used[str_key]
+	assert used[format_key]
+}
+
+fn test_mark_used_walks_codegen_required_sync_method_roots() {
+	mut env := types.Environment.new()
+	spin_lock_ptr := ast.Expr(ast.PrefixExpr{
+		pos:  pos(110)
+		op:   .amp
+		expr: ast.Ident{
+			name: 'SpinLock'
+			pos:  pos(111)
+		}
+	})
+	files := [
+		ast.File{
+			mod:   'main'
+			name:  'main.v'
+			stmts: [
+				ast.Stmt(ast.FnDecl{
+					name: 'main'
+					typ:  ast.FnType{}
+					pos:  pos(112)
+				}),
+			]
+		},
+		ast.File{
+			mod:   'sync'
+			name:  'channels.c.v'
+			stmts: [
+				ast.Stmt(ast.StructDecl{
+					name: 'SpinLock'
+				}),
+				ast.Stmt(ast.StructDecl{
+					name:   'Channel'
+					fields: [
+						ast.FieldDecl{
+							name: 'read_sub_mtx'
+							typ:  spin_lock_ptr
+						},
+					]
+				}),
+				ast.Stmt(ast.FnDecl{
+					is_method: true
+					receiver:  ast.Parameter{
+						name: 'ch'
+						typ:  ast.Ident{
+							name: 'Channel'
+							pos:  pos(113)
+						}
+						pos:  pos(113)
+					}
+					name:      'try_wait'
+					typ:       ast.FnType{}
+					pos:       pos(114)
+					stmts:     [
+						ast.Stmt(ast.ExprStmt{
+							expr: ast.CallExpr{
+								lhs: ast.SelectorExpr{
+									lhs: ast.SelectorExpr{
+										lhs: ast.Ident{
+											name: 'ch'
+											pos:  pos(115)
+										}
+										rhs: ast.Ident{
+											name: 'read_sub_mtx'
+											pos:  pos(116)
+										}
+										pos: pos(116)
+									}
+									rhs: ast.Ident{
+										name: 'lock'
+										pos:  pos(117)
+									}
+									pos: pos(117)
+								}
+								pos: pos(117)
+							}
+						}),
+					]
+				}),
+				ast.Stmt(ast.FnDecl{
+					is_method: true
+					receiver:  ast.Parameter{
+						name: 's'
+						typ:  spin_lock_ptr
+						pos:  pos(118)
+					}
+					name:      'lock'
+					typ:       ast.FnType{}
+					pos:       pos(119)
+				}),
+			]
+		},
+	]
+	used := mark_used(files, env)
+	main_key := decl_key('main', files[0].stmts[0] as ast.FnDecl, env)
+	try_wait_key := decl_key('sync', files[1].stmts[2] as ast.FnDecl, env)
+	lock_key := decl_key('sync', files[1].stmts[3] as ast.FnDecl, env)
+	assert used[main_key]
+	assert used[try_wait_key]
+	assert used[lock_key]
+}
+
 fn test_mark_used_tracks_embedded_methods_for_interface_conversions() {
 	mut env := types.Environment.new()
 	files := [
@@ -406,6 +654,128 @@ fn test_mark_used_tracks_function_pointers_in_top_level_const_arrays() {
 	assert used[main_key]
 	assert used[accept_key]
 	assert !used[dead_key]
+}
+
+fn test_mark_used_tracks_module_function_values_as_call_args() {
+	mut env := types.Environment.new()
+	callback_type := ast.Type(ast.FnType{
+		params:      [
+			ast.Parameter{
+				typ: ast.Ident{
+					name: 'string'
+					pos:  pos(70)
+				}
+			},
+		]
+		return_type: ast.Ident{
+			name: 'string'
+			pos:  pos(71)
+		}
+	})
+	files := [
+		ast.File{
+			mod:     'main'
+			name:    'main.v'
+			imports: [
+				ast.ImportStmt{
+					name: 'term'
+				},
+			]
+			stmts:   [
+				ast.Stmt(ast.FnDecl{
+					name:  'main'
+					typ:   ast.FnType{}
+					pos:   pos(72)
+					stmts: [
+						ast.Stmt(ast.ExprStmt{
+							expr: ast.CallExpr{
+								lhs:  ast.SelectorExpr{
+									lhs: ast.Ident{
+										name: 'term'
+										pos:  pos(73)
+									}
+									rhs: ast.Ident{
+										name: 'colorize'
+										pos:  pos(74)
+									}
+									pos: pos(74)
+								}
+								args: [
+									ast.Expr(ast.SelectorExpr{
+										lhs: ast.Ident{
+											name: 'term'
+											pos:  pos(75)
+										}
+										rhs: ast.Ident{
+											name: 'green'
+											pos:  pos(76)
+										}
+										pos: pos(76)
+									}),
+									ast.Expr(ast.BasicLiteral{
+										kind:  .string
+										value: 'ok'
+										pos:   pos(77)
+									}),
+								]
+								pos:  pos(74)
+							}
+						}),
+					]
+				}),
+			]
+		},
+		ast.File{
+			mod:   'term'
+			name:  'term.v'
+			stmts: [
+				ast.Stmt(ast.FnDecl{
+					name: 'colorize'
+					typ:  ast.FnType{
+						params:      [
+							ast.Parameter{
+								name: 'cfn'
+								typ:  callback_type
+								pos:  pos(78)
+							},
+							ast.Parameter{
+								name: 's'
+								typ:  ast.Ident{
+									name: 'string'
+									pos:  pos(79)
+								}
+								pos:  pos(79)
+							},
+						]
+						return_type: ast.Ident{
+							name: 'string'
+							pos:  pos(80)
+						}
+					}
+					pos:  pos(81)
+				}),
+				ast.Stmt(ast.FnDecl{
+					name: 'green'
+					typ:  ast.FnType{}
+					pos:  pos(82)
+				}),
+				ast.Stmt(ast.FnDecl{
+					name: 'red'
+					typ:  ast.FnType{}
+					pos:  pos(83)
+				}),
+			]
+		},
+	]
+	used := mark_used(files, env)
+	main_key := decl_key('main', files[0].stmts[0] as ast.FnDecl, env)
+	colorize_key := decl_key('term', files[1].stmts[0] as ast.FnDecl, env)
+	green_key := decl_key('term', files[1].stmts[1] as ast.FnDecl, env)
+	red_key := decl_key('term', files[1].stmts[2] as ast.FnDecl, env)
+	assert used[main_key]
+	assert used[colorize_key]
+	assert used[green_key]
+	assert !used[red_key]
 }
 
 fn test_mark_used_keeps_all_functions_when_no_entry_root_exists() {

@@ -183,6 +183,23 @@ fn test_module_resolution_is_independent_of_working_directory() {
 	assert res_app.trim_space() == 'Hello 16!'
 }
 
+fn test_importing_submodule_through_nested_vmod_works_issue_27138() {
+	root := os.join_path(os.vtmp_dir(), 'v_issue_27138_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	os.mkdir_all(os.join_path(root, 'dep', 'mymod'))!
+	os.write_file(os.join_path(root, 'v.mod'), "Module {\n\tname: 'bug_project'\n}\n")!
+	os.write_file(os.join_path(root, 'dep', 'v.mod'), "Module {\n\tname: 'dep'\n}\n")!
+	os.write_file(os.join_path(root, 'dep', 'mymod', 'types.v'),
+		"module mymod\n\npub enum Color {\n\tred\n\tgreen\n}\n\npub fn color_name(c Color) string {\n\treturn match c {\n\t\t.red { 'red' }\n\t\t.green { 'green' }\n\t}\n}\n")!
+	os.write_file(os.join_path(root, 'main.v'),
+		'module main\n\nimport dep.mymod\n\nfn main() {\n\tprintln(mymod.color_name(mymod.Color.red))\n}\n')!
+	res := vrun_ok_in_dir(root, 'run', '.')
+	assert res.trim_space() == 'red'
+}
+
 fn test_running_project_from_its_own_vmod_with_parent_vmod_works_issue_26828() {
 	root := os.join_path(os.vtmp_dir(), 'v_issue_26828_${os.getpid()}')
 	os.rmdir_all(root) or {}

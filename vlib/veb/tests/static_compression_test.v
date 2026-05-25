@@ -228,8 +228,8 @@ fn test_gzip_compression_with_accept_encoding() {
 	x := req.do()!
 
 	assert x.status() == .ok
-	assert x.header.get(.content_encoding)! == 'gzip'
-	assert x.header.get(.vary)! == 'Accept-Encoding'
+	assert x.header.get(.content_encoding)? == 'gzip'
+	assert x.header.get(.vary)? == 'Accept-Encoding'
 
 	// HTTP client auto-decompresses gzip, so verify the content directly
 	assert x.body == test_file_content
@@ -264,11 +264,11 @@ fn test_gz_file_cache_creation() {
 	// Second request should use cached .gz file
 	y := req.do()!
 	assert y.status() == .ok
-	assert y.header.get(.content_encoding)! == 'gzip'
+	assert y.header.get(.content_encoding)? == 'gzip'
 
 	// Verify Content-Length matches .gz file size (tests os.file_size() code path)
 	gz_file_size := os.file_size(gz_path)
-	content_length := y.header.get(.content_length)!.u64()
+	content_length := y.header.get(.content_length)?.u64()
 	assert content_length == gz_file_size, 'Content-Length should match .gz file size'
 }
 
@@ -284,7 +284,7 @@ fn test_large_file_not_auto_compressed() {
 
 	assert x.status() == .ok
 	// File should be compressed as it's under 1MB threshold
-	assert x.header.get(.content_encoding)! == 'gzip'
+	assert x.header.get(.content_encoding)? == 'gzip'
 }
 
 fn test_already_compressed_flag() {
@@ -322,7 +322,7 @@ fn test_readonly_filesystem_fallback() {
 
 	assert x.status() == .ok
 	// Should still be compressed.
-	assert x.header.get(.content_encoding)! == 'gzip'
+	assert x.header.get(.content_encoding)? == 'gzip'
 
 	// Verify that .gz file was NOT created beside the source file.
 	gz_path := '${readonly_file}.gz'
@@ -355,7 +355,7 @@ fn test_readonly_filesystem_fallback_zstd() {
 
 	assert x.status() == .ok
 	// Should still be compressed.
-	assert x.header.get(.content_encoding)! == 'zstd'
+	assert x.header.get(.content_encoding)? == 'zstd'
 
 	// Verify that .zst file was NOT created beside the source file.
 	zst_path := '${readonly_file}.zst'
@@ -380,8 +380,8 @@ fn test_precompressed_gz_file_served() {
 
 	assert x.status() == .ok
 	// Should serve the manually pre-compressed .gz file
-	assert x.header.get(.content_encoding)! == 'gzip'
-	assert x.header.get(.vary)! == 'Accept-Encoding'
+	assert x.header.get(.content_encoding)? == 'gzip'
+	assert x.header.get(.vary)? == 'Accept-Encoding'
 
 	// HTTP client auto-decompresses gzip, so verify the content directly
 	large_content := 'X'.repeat(2000)
@@ -399,8 +399,8 @@ fn test_no_auto_compression_with_max_size_zero() {
 
 	assert x.status() == .ok
 	// Should serve the manually pre-compressed .gz file
-	assert x.header.get(.content_encoding)! == 'gzip'
-	assert x.header.get(.vary)! == 'Accept-Encoding'
+	assert x.header.get(.content_encoding)? == 'gzip'
+	assert x.header.get(.vary)? == 'Accept-Encoding'
 
 	// HTTP client auto-decompresses gzip, so verify the content directly
 	large_content := 'X'.repeat(2000)
@@ -436,8 +436,8 @@ fn test_zstd_preferred_over_gzip() {
 	x := req.do()!
 
 	assert x.status() == .ok
-	assert x.header.get(.content_encoding)! == 'zstd', 'zstd should be preferred over gzip'
-	assert x.header.get(.vary)! == 'Accept-Encoding'
+	assert x.header.get(.content_encoding)? == 'zstd', 'zstd should be preferred over gzip'
+	assert x.header.get(.vary)? == 'Accept-Encoding'
 
 	// Verify the body is valid zstd
 	decompressed := zstd.decompress(x.body.bytes()) or {
@@ -462,11 +462,11 @@ fn test_zst_file_cache_creation() {
 	// Second request should use cached .zst file
 	y := req.do()!
 	assert y.status() == .ok
-	assert y.header.get(.content_encoding)! == 'zstd'
+	assert y.header.get(.content_encoding)? == 'zstd'
 
 	// Verify Content-Length matches .zst file size
 	zst_file_size := os.file_size(zst_path)
-	content_length := y.header.get(.content_length)!.u64()
+	content_length := y.header.get(.content_length)?.u64()
 	assert content_length == zst_file_size, 'Content-Length should match .zst file size'
 }
 
@@ -477,8 +477,8 @@ fn test_precompressed_zst_file_served() {
 	x := req.do()!
 
 	assert x.status() == .ok
-	assert x.header.get(.content_encoding)! == 'zstd'
-	assert x.header.get(.vary)! == 'Accept-Encoding'
+	assert x.header.get(.content_encoding)? == 'zstd'
+	assert x.header.get(.vary)? == 'Accept-Encoding'
 
 	// Verify it's the pre-compressed content
 	large_content := 'X'.repeat(2000)
@@ -496,7 +496,7 @@ fn test_gzip_fallback_when_zstd_not_supported() {
 	x := req.do()!
 
 	assert x.status() == .ok
-	assert x.header.get(.content_encoding)! == 'gzip', 'should fallback to gzip when zstd not supported'
+	assert x.header.get(.content_encoding)? == 'gzip', 'should fallback to gzip when zstd not supported'
 
 	// HTTP client auto-decompresses gzip, so verify the content directly
 	assert x.body == test_file_content
@@ -511,8 +511,8 @@ fn test_gzip_only_serves_gzip() {
 	x := req.do()!
 
 	assert x.status() == .ok
-	assert x.header.get(.content_encoding)! == 'gzip', 'gzip-only mode should serve gzip'
-	assert x.header.get(.vary)! == 'Accept-Encoding'
+	assert x.header.get(.content_encoding)? == 'gzip', 'gzip-only mode should serve gzip'
+	assert x.header.get(.vary)? == 'Accept-Encoding'
 
 	// HTTP client auto-decompresses gzip, so verify the content directly
 	assert x.body == test_file_content
@@ -526,7 +526,7 @@ fn test_gzip_only_ignores_zstd_request() {
 
 	assert x.status() == .ok
 	// Should serve gzip, NOT zstd (because only enable_static_gzip is set)
-	assert x.header.get(.content_encoding)! == 'gzip', 'gzip-only mode should serve gzip even when client supports zstd'
+	assert x.header.get(.content_encoding)? == 'gzip', 'gzip-only mode should serve gzip even when client supports zstd'
 
 	// HTTP client auto-decompresses gzip, so verify the content directly
 	assert x.body == test_file_content
@@ -557,8 +557,8 @@ fn test_zstd_only_serves_zstd() {
 	x := req.do()!
 
 	assert x.status() == .ok
-	assert x.header.get(.content_encoding)! == 'zstd', 'zstd-only mode should serve zstd'
-	assert x.header.get(.vary)! == 'Accept-Encoding'
+	assert x.header.get(.content_encoding)? == 'zstd', 'zstd-only mode should serve zstd'
+	assert x.header.get(.vary)? == 'Accept-Encoding'
 
 	// Verify the body is valid zstd
 	decompressed := zstd.decompress(x.body.bytes()) or {
@@ -576,7 +576,7 @@ fn test_zstd_only_ignores_gzip_request() {
 
 	assert x.status() == .ok
 	// Should serve zstd, not gzip (because only enable_static_zstd is set)
-	assert x.header.get(.content_encoding)! == 'zstd', 'zstd-only mode should serve zstd even when client supports gzip'
+	assert x.header.get(.content_encoding)? == 'zstd', 'zstd-only mode should serve zstd even when client supports gzip'
 
 	decompressed := zstd.decompress(x.body.bytes()) or {
 		assert false, 'failed to decompress zstd response: ${err}'
@@ -607,8 +607,8 @@ fn test_static_compression_mime_filter_allows_matching_types() {
 	x := req.do()!
 
 	assert x.status() == .ok
-	assert x.header.get(.content_encoding)! == 'gzip'
-	assert x.header.get(.vary)! == 'Accept-Encoding'
+	assert x.header.get(.content_encoding)? == 'gzip'
+	assert x.header.get(.vary)? == 'Accept-Encoding'
 	assert x.body == filtered_css_content
 
 	gz_path := find_cached_static_file('filtered.css', '.gz')

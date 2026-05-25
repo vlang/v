@@ -689,14 +689,7 @@ fn (mut g Gen) index_of_fixed_array(node ast.IndexExpr, sym ast.TypeSymbol) {
 
 fn (mut g Gen) index_of_map(node ast.IndexExpr, sym ast.TypeSymbol) {
 	gen_or := node.or_expr.kind != .absent || node.is_option
-	mut map_left_type := g.recheck_concrete_type(node.left_type)
-	resolved_left_type := g.recheck_concrete_type(g.resolved_expr_type(node.left, node.left_type))
-	if resolved_left_type != 0
-		&& (g.cur_concrete_types.len > 0 || map_left_type == 0 || map_left_type.has_flag(.generic)
-		|| g.type_has_unresolved_generic_parts(map_left_type)
-		|| g.unwrap_generic(resolved_left_type) != g.unwrap_generic(map_left_type)) {
-		map_left_type = resolved_left_type
-	}
+	map_left_type := g.resolved_map_type_from_expr(node.left, node.left_type)
 	mut left_is_ptr := map_left_type.is_ptr()
 	if !left_is_ptr && g.is_assign_lhs && node.left is ast.Ident
 		&& g.resolved_ident_is_auto_heap(node.left) {
@@ -712,14 +705,10 @@ fn (mut g Gen) index_of_map(node ast.IndexExpr, sym ast.TypeSymbol) {
 	} else {
 		sym.info as ast.Map
 	}
-	mut key_type := g.unwrap_generic(g.recheck_concrete_type(info.key_type))
-	mut val_type := g.unwrap_generic(g.recheck_concrete_type(info.value_type))
-	if key_type == 0 {
-		key_type = info.key_type
-	}
-	if val_type == 0 {
-		val_type = info.value_type
-	}
+	key_type_, val_type_ := g.resolved_map_key_value_types(map_left_type, info.key_type,
+		info.value_type)
+	mut key_type := key_type_
+	mut val_type := val_type_
 	if node.left is ast.Ident {
 		ident_key_type := g.resolved_ident_map_key_type(node.left)
 		if ident_key_type != 0 {

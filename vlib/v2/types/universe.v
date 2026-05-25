@@ -109,6 +109,40 @@ const thread_ = Thread{
 // init_universe() references bool_, int_, u8_, etc., so they must be initialized first.
 const universe = init_universe()
 
+pub fn builtin_type(name string) ?Type {
+	return match name {
+		'bool' { Type(bool_) }
+		'i8' { Type(i8_) }
+		'i16' { Type(i16_) }
+		'i32' { Type(i32_) }
+		'int' { Type(int_) }
+		'i64' { Type(i64_) }
+		'u8' { Type(u8_) }
+		'byte' { Type(byte_) }
+		'u16' { Type(u16_) }
+		'u32' { Type(u32_) }
+		'u64' { Type(u64_) }
+		'f32' { Type(f32_) }
+		'f64' { Type(f64_) }
+		'string' { Type(string_) }
+		'chan' { Type(chan_) }
+		'char' { Type(char_) }
+		'isize' { Type(isize_) }
+		'usize' { Type(usize_) }
+		'rune' { Type(rune_) }
+		'void' { Type(void_) }
+		'nil' { Type(nil_) }
+		'none' { Type(none_) }
+		'byteptr' { Type(byteptr_) }
+		'charptr' { Type(charptr_) }
+		'voidptr' { Type(voidptr_) }
+		'int_literal' { Type(int_literal_) }
+		'float_literal' { Type(float_literal_) }
+		'thread' { Type(thread_) }
+		else { return none }
+	}
+}
+
 pub fn init_universe() &Scope {
 	mut universe_ := new_scope(unsafe { nil })
 	universe_.insert('bool', Type(bool_))
@@ -133,7 +167,7 @@ pub fn init_universe() &Scope {
 	universe_.insert('rune', Type(rune_))
 	universe_.insert('void', Type(void_))
 	universe_.insert('nil', Type(nil_))
-	universe_.insert('none', Type(nil_))
+	universe_.insert('none', Type(none_))
 	universe_.insert('byteptr', Type(byteptr_))
 	universe_.insert('charptr', Type(charptr_))
 	universe_.insert('voidptr', Type(voidptr_))
@@ -141,5 +175,32 @@ pub fn init_universe() &Scope {
 	universe_.insert('float_literal', Type(float_literal_))
 	universe_.insert('float_literal', Type(float_literal_))
 	universe_.insert('thread', Type(thread_))
+	// Built-in marker interfaces consumed by the ownership checker
+	// (`-d ownership`):
+	//   * `Copy`  — explicit "always-copy" marker. Assignment of a value of
+	//               this type never moves; the struct must not contain Owned
+	//               fields. Useful to document intent and lock the type in.
+	//   * `Owned` — explicit "move-on-assign" marker. A struct that
+	//               implements `Owned` is tracked just like a `.to_owned()`
+	//               string: assignment, struct-literal nesting, array/map
+	//               literal nesting, and pass-by-value to a function all
+	//               transfer ownership; reusing the source afterwards is a
+	//               compile error.
+	//   * `Drop`  — explicit "needs cleanup" marker. A struct that implements
+	//               `Drop` MUST provide a `drop(mut self)` method. The checker
+	//               schedules `var.drop()` for every owned, non-moved binding
+	//               of such a type at scope exit (the schedule is exposed for
+	//               codegen via `drop_schedule`).
+	// All three are empty interfaces except `Drop`, which is satisfied by the
+	// presence of a `drop(mut self)` method.
+	universe_.insert('Copy', Type(Interface{
+		name: 'Copy'
+	}))
+	universe_.insert('Owned', Type(Interface{
+		name: 'Owned'
+	}))
+	universe_.insert('Drop', Type(Interface{
+		name: 'Drop'
+	}))
 	return universe_
 }

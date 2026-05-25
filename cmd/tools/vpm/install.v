@@ -195,7 +195,11 @@ fn local_git_changes_reason(path string) string {
 	// Include `HEAD` so commits made on a detached HEAD (e.g. after
 	// `git clone -b <tag>`, the layout vpm uses for versioned installs) are
 	// also detected. `--branches` alone only walks local branch refs.
-	unpushed := os.execute_opt('git -C ${quoted} rev-list HEAD --branches --not --remotes') or {
+	// Negate `--tags` as well: vpm's versioned installs clone with `-b <tag>`,
+	// which leaves HEAD detached at a tag without creating a remote tracking
+	// branch, so HEAD would otherwise appear as unpushed even on a pristine
+	// clone.
+	unpushed := os.execute_opt('git -C ${quoted} rev-list HEAD --branches --not --remotes --tags') or {
 		return 'failed to run `git rev-list`: ${err.msg()}'
 	}
 	if unpushed.output.trim_space() != '' {

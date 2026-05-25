@@ -234,6 +234,7 @@ The `v new --web` template uses `veb`, V's web framework.
     * [Global Variables](#global-variables)
     * [Static Variables](#static-variables)
     * [Cross compilation](#cross-compilation)
+    * [Compiling for iOS](#compiling-for-ios)
     * [Debugging](#debugging)
         * [C Backend binaries Default](#c-backend-binaries-default)
         * [Native Backend binaries](#native-backend-binaries)
@@ -4716,6 +4717,84 @@ println(compare(1.1, 1.1)) //          0
 println(compare(1.1, 1.2)) //         -1
 ```
 
+#### Structured generic receiver patterns
+
+Generic methods can constrain their receiver to a *structured* shape of the
+wrapped type, and the checker will bind the inner type parameters from the
+concrete receiver.
+
+The most common case is requiring the wrapped type to be a dynamic array:
+
+```v
+struct Expect[T] {
+	value T
+}
+
+fn (e Expect[[]T]) first_or(value T) T {
+	if e.value.len == 0 {
+		return value
+	}
+	return e.value[0]
+}
+
+fn main() {
+	a := Expect[[]int]{
+		value: [1, 2, 3]
+	}
+	println(a.first_or(0)) // 1, T is bound to int
+
+	b := Expect[[]string]{
+		value: []string{}
+	}
+	println(b.first_or('none')) // none, T is bound to string
+}
+```
+
+Nested array patterns are matched recursively, so `Expect[[][]int]` binds
+`T = []int`, and `Expect[[]map[string]int]` binds `T = map[string]int`.
+
+Maps work the same way and can bind two parameters at once:
+
+```v
+struct Expect[T] {
+	value T
+}
+
+fn (e Expect[map[K]V]) get_or(key K, value V) V {
+	if key in e.value {
+		return e.value[key]
+	}
+	return value
+}
+
+fn main() {
+	m := Expect[map[string]int]{
+		value: {
+			'a': 1
+		}
+	}
+	println(m.get_or('a', 0)) // 1   (K = string, V = int)
+	println(m.get_or('b', -1)) // -1
+}
+```
+
+`Expect[map[string]map[string]int]` binds `K = string` and
+`V = map[string]int`.
+
+Rules:
+
+- `Expect[[]T]` matches dynamic arrays; fixed-size arrays are not matched.
+- `Expect[map[K]V]` matches maps.
+- Nested patterns are matched recursively.
+- Plain generic receivers like `Expect[T]` continue to work, and an exact
+  concrete receiver method (for example `fn (e Expect[[]int]) ...`) keeps
+  precedence over a structured pattern.
+- A repeated placeholder must bind consistently: `Expect[map[K]K]` on
+  `Expect[map[string]int]` is rejected because `K` cannot be both `string`
+  and `int`.
+- Raw `voidptr` is not allowed to bind into these patterns; cast through an
+  explicit V type instead.
+
 ## Concurrency
 
 ### Spawning Concurrent Tasks
@@ -8096,6 +8175,81 @@ v -os linux -cc cosmocc .
 
 You will need to install Clang, LLD linker, and download a zip file with
 libraries and include files for Windows and Linux. V will provide you with a link.
+
+## Compiling for iOS
+
+V can target iOS when run on macOS. The Xcode command line tools must be
+installed (`xcode-select --install`); V uses `xcrun` to locate the iOS SDK
+and configures the C compiler automatically.
+
+To build for a real device (arm64):
+
+```shell
+v -os ios hello.v
+```
+
+To build for the iOS Simulator (x86_64 / arm64):
+
+```shell
+v -os ios -simulator hello.v
+```
+
+Under the hood, V invokes `xcrun --sdk iphoneos --show-sdk-path` (or
+`iphonesimulator` with `-simulator`), passes `-isysroot` and the appropriate
+`-arch` flags to clang, and adds `-miphoneos-version-min` /
+`-miphonesimulator-version-min` plus `-fobjc-arc` so that the generated C is
+compiled as Objective-C.
+
+The output is a Mach-O executable — enough to run from a jailbroken device or
+via a debugger, but to deploy to a stock iPhone you also need to bundle the
+binary into an `.app`, code-sign it, and install it through Apple's tooling.
+A typical workflow:
+
+```shell
+# 1. Generate iOS-targeted C from V. The `-os ios` flag is required so
+#    `$if ios { ... }` branches and iOS-specific files are included.
+v -os ios -gc none -o build/main.c .
+
+# 2. Compile for the device with Xcode's clang and link the frameworks
+#    your app uses (UIKit, Foundation, AVFoundation, ...)
+sdk="$(xcrun --sdk iphoneos --show-sdk-path)"
+xcrun --sdk iphoneos clang \
+    -x objective-c \
+    -fobjc-arc \
+    -arch arm64 \
+    -isysroot "$sdk" \
+    -miphoneos-version-min=15.0 \
+    -framework Foundation \
+    -framework UIKit \
+    -lobjc \
+    build/main.c \
+    -o build/MyApp.app/MyApp
+
+# 3. Drop an Info.plist next to the binary, then code-sign with your
+#    development identity (see `security find-identity -v -p codesigning`)
+codesign --force --sign "Apple Development: you@example.com (TEAMID)" \
+    --entitlements entitlements.plist \
+    build/MyApp.app
+
+# 4. Install and launch on a connected device
+udid="$(xcrun devicectl list devices | awk '/connected/ {print $NF; exit}')"
+xcrun devicectl device install app    --device "$udid" build/MyApp.app
+xcrun devicectl device process launch --device "$udid" com.example.myapp
+```
+
+The device must be unlocked, trusted, and have Developer Mode enabled
+(`Settings → Privacy & Security → Developer Mode` on iOS 16+). A free
+Apple ID added in Xcode → Settings → Accounts is sufficient for signing
+development builds.
+
+Inside V code you can guard iOS-specific paths with `$if ios { ... }`, and
+add framework dependencies the same way you would with any Objective-C
+library, e.g.:
+
+```v ignore
+#flag -framework UIKit
+#flag -framework Foundation
+```
 
 ## Debugging
 

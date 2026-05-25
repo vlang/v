@@ -37,7 +37,25 @@ fn lsystem(cmd string) int {
 
 fn lexec(cmd string) string {
 	elog('  lexec: ${cmd}')
-	return os.execute(cmd).output.trim_right('\r\n')
+	res := os.execute(cmd)
+	if res.exit_code != 0 {
+		elog('  lexec FAILED, exit_code: ${res.exit_code}, output:\n${res.output}')
+	}
+	return res.output.trim_right('\r\n')
+}
+
+// lexec_check runs cmd, logs its exit code and output, and returns true on success.
+// Use it for critical steps where a failure should short-circuit the rest of a sequence,
+// e.g. when a failed `git pull` would otherwise leave the docs.vlang.io repo in a state
+// where the subsequent `git push` is silently a no-op.
+fn lexec_check(cmd string) bool {
+	elog('  lexec_check: ${cmd}')
+	res := os.execute(cmd)
+	if res.exit_code != 0 {
+		elog('  lexec_check FAILED, exit_code: ${res.exit_code}, output:\n${res.output}')
+		return false
+	}
+	return true
 }
 
 fn main() {
@@ -194,16 +212,38 @@ fn main() {
 		os.chdir('${fast_dir}/docs.vlang.io/')!
 		elog('Uploading to docs.vlang.io/ ...')
 		elog('   pulling upstream changes...')
-		lexec('git pull')
-		elog('   running build.vsh...')
-		lexec('${vdir}/vprod run build.vsh')
-		elog('   adding new docs...')
-		lexec('git add .')
-		elog('   commiting...')
-		lexec('git commit -am "update docs for commit ${commit}"')
-		elog('   pushing...')
-		lexec('git push')
-		elog('   uploading to fast.vlang.io/ done')
+		if !lexec_check('git pull') {
+			elog('   skipping docs.vlang.io upload: `git pull` failed')
+		} else if !lexec_check('${vdir}/vprod run build.vsh') {
+			elog('   skipping docs.vlang.io upload: `vprod run build.vsh` failed')
+		} else {
+			elog('   adding new docs...')
+			lexec('git add .')
+			// `git diff --cached --quiet` exits 0 when there is nothing staged,
+			// 1 when there are staged changes, and >1 on real errors (e.g. a
+			// broken index). Treat >1 as an error rather than as "changes exist".
+			diff_cmd := 'git diff --cached --quiet'
+			elog('  lexec: ${diff_cmd}')
+			diff_res := os.execute(diff_cmd)
+			match diff_res.exit_code {
+				0 {
+					elog('   nothing to commit; skipping push to docs.vlang.io/')
+				}
+				1 {
+					elog('   commiting...')
+					lexec('git commit -m "update docs for commit ${commit}"')
+					elog('   pushing...')
+					if !lexec_check('git push') {
+						elog('   WARNING: `git push` to docs.vlang.io/ failed')
+					} else {
+						elog('   uploading to docs.vlang.io/ done')
+					}
+				}
+				else {
+					elog('   skipping docs.vlang.io upload: `${diff_cmd}` errored, exit_code: ${diff_res.exit_code}, output:\n${diff_res.output}')
+				}
+			}
+		}
 		os.chdir(fast_dir)!
 	}
 }

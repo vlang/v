@@ -1054,6 +1054,7 @@ fn is_header_const_type_expr(expr ast.Expr) bool {
 				name in ['bool', 'byte', 'char', 'f32', 'f64', 'i8', 'i16', 'i32', 'int', 'i64', 'isize', 'rune', 'string', 'u8', 'u16', 'u32', 'u64', 'usize', 'void', 'voidptr', 'byteptr', 'charptr']
 				|| name.starts_with('&') || name.starts_with('[]') || name.starts_with('?')
 				|| name.starts_with('!') || name.contains('[') || name.contains('__')
+				|| name.contains('.')
 		}
 		else {
 			false

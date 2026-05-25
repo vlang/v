@@ -329,9 +329,13 @@ fn (mut g Gen) resolve_comptime_selector_field(node ast.ComptimeSelector, left_t
 		g.comptime.comptime_for_field_value.name
 	}
 	if node.field_expr is ast.SelectorExpr && g.comptime.comptime_for_field_var != ''
-		&& g.comptime.comptime_for_method_var == '' && node.field_expr.field_name == 'name' {
+		&& node.field_expr.field_name == 'name' {
 		if node.field_expr.expr is ast.Ident
 			&& node.field_expr.expr.name == g.comptime.comptime_for_field_var {
+			// The checker stores typ_key per AST node, so the cached field name
+			// in `typ_key` is stale after iteration; always prefer the current
+			// outer-loop field value here (also necessary when this `$(field.name)`
+			// is used inside a nested `$for method in field.methods`).
 			field_name = g.comptime.comptime_for_field_value.name
 		}
 	}
@@ -427,15 +431,13 @@ fn (mut g Gen) comptime_call(mut node ast.ComptimeCall) {
 			g.writeln('veb__Context_html(${g.veb_context_html_arg()}, _tmpl_res_${fn_name});')
 			g.writeln('strings__Builder_free(&sb_${fn_name});')
 			g.writeln('builtin__string_free(&_tmpl_res_${fn_name});')
-		} else {
-			// return $tmpl string
-			if g.inside_return_tmpl {
-				g.writeln('return _tmpl_res_${fn_name};')
-			} else {
-				g.write(cur_line)
-				g.write('_tmpl_res_${fn_name}')
-			}
+		} else if !g.inside_return_tmpl {
+			g.write(cur_line)
+			g.write('_tmpl_res_${fn_name}')
 		}
+		// when inside_return_tmpl, the cgen.v Return handler emits the
+		// return statement after defer/autofree so it can wrap the result
+		// for Option/Result return types (see issue #27094).
 		return
 	}
 	mut left_type := g.resolved_expr_type(node.left, node.left_type)

@@ -776,6 +776,18 @@ fn (mut v Builder) setup_ccompiler_options(ccompiler string) {
 		$if !windows {
 			ccoptions.args << '-fPIC' // -Wl,-z,defs'
 		}
+		// Default to hidden symbol visibility for shared libraries, so only
+		// functions/globals tagged with `@[export: '…']` (which emit `VV_EXP`
+		// = `__attribute__((visibility("default")))`) end up in the ABI.
+		// Without this, every C symbol from the V runtime + stdlib is exported.
+		// Windows uses `__declspec(dllexport)` and the linker only exports
+		// tagged symbols, so the flag is unnecessary there.
+		// `-sharedlive` is skipped: live reload resolves `impl_live_*` symbols
+		// via `dlsym` from the host process, and those are emitted without
+		// `VV_EXP` on non-Windows (see vlib/v/gen/c/fn.v).
+		if !v.pref.is_liveshared && v.pref.os !in [.windows, .wasm32] && ccoptions.cc != .msvc {
+			ccoptions.args << '-fvisibility=hidden'
+		}
 		if v.pref.os == .linux && 'gcboehm' in v.pref.compile_defines_all {
 			// Keep shared-library GC symbols bound to the shared object itself.
 			// This avoids cross-DSO symbol interposition between multiple V binaries

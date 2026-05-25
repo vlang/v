@@ -227,7 +227,7 @@ pub fn (mut p Preferences) fill_with_defaults() {
 		p.parse_define('cross') // TODO: remove when `$if cross {` works
 	}
 	if p.gc_mode == .unknown {
-		if p.backend != .c || p.building_v || p.is_bare || p.os == .windows || p.is_musl {
+		if p.backend != .c || p.building_v || p.is_bare || p.os == .windows {
 			p.gc_mode = .no_gc
 			p.build_options << ['-gc', 'none']
 		} else {
@@ -468,6 +468,23 @@ pub fn default_tcc_compiler() string {
 	return usable_system_tcc_compiler()
 }
 
+// windows_default_c_compiler picks the host C compiler to default to on Windows.
+// `gcc` is the historical default, but plenty of Windows users only have the
+// bundled tcc that `makev.bat` provisions under `thirdparty/tcc/tcc.exe`.
+// Falling back to the bundled tcc when `gcc` isn't on PATH avoids confusing
+// "'gcc' is not recognized as an internal or external command" errors during
+// `v install`, `v outdated`, etc. (https://github.com/vlang/v/issues/27119).
+fn windows_default_c_compiler(vroot string) string {
+	if os.find_abs_path_of_executable('gcc') or { '' } != '' {
+		return 'gcc'
+	}
+	bundled_tcc := usable_bundled_tcc_compiler(vroot)
+	if bundled_tcc != '' {
+		return bundled_tcc
+	}
+	return 'gcc'
+}
+
 fn (mut p Preferences) clear_gc_options() {
 	p.compile_defines = p.compile_defines.filter(it !in windows_default_gc_defines)
 	p.compile_defines_all = p.compile_defines_all.filter(it !in windows_default_gc_defines)
@@ -503,7 +520,14 @@ fn (mut p Preferences) clear_gc_options() {
 pub fn (mut p Preferences) default_c_compiler() {
 	// TODO: fix $if after 'string'
 	$if windows {
-		p.ccompiler = 'gcc'
+		// -prealloc and -prod intentionally avoid the bundled tcc (see
+		// try_to_use_tcc_by_default); preserve that here so the Windows fallback
+		// does not silently re-select an incompatible compiler.
+		if p.prealloc || p.is_prod {
+			p.ccompiler = 'gcc'
+			return
+		}
+		p.ccompiler = windows_default_c_compiler(os.dir(vexe_path()))
 		return
 	}
 	if p.os == .ios {

@@ -371,6 +371,97 @@ fn test_macos_2048_build_does_not_force_deployment_target() {
 	assert !flags_output.contains('-mmacosx-version-min=')
 }
 
+fn test_vlib_import_does_not_match_user_project_dir() {
+	// Regression for vlang/v#27151: when V is invoked from inside another
+	// project that happens to have a `src/sync/` directory (e.g. coreutils),
+	// a vlib file that imports `sync` (via the `shared` keyword in
+	// `v.ast.Table`) must still resolve to vlib's sync module, not to the
+	// user's foreign `main` files.
+	project_dir := os.join_path(test_path, 'foreign_sync_27151')
+	os.rmdir_all(project_dir) or {}
+	os.mkdir_all(os.join_path(project_dir, 'src', 'sync'))!
+	os.mkdir_all(os.join_path(project_dir, 'src', 'app'))!
+	defer {
+		os.chdir(test_path) or {}
+		os.rmdir_all(project_dir) or {}
+	}
+	os.write_file(os.join_path(project_dir, 'v.mod'),
+		"Module {\n\tname: 'foreign_sync_27151'\n\tversion: '0.0.1'\n\tdescription: ''\n\tlicense: 'MIT'\n\tdependencies: []\n}\n")!
+	// `src/sync/sync.v` has no `module` declaration, so V defaults it to
+	// `module main`. It must not be picked up as the `sync` module when
+	// a vlib file (here, `v.ast`, which uses `shared`) imports `sync`.
+	os.write_file(os.join_path(project_dir, 'src', 'sync', 'sync.v'),
+		'import os\n\nfn run() {\n\tprintln(os.args)\n}\n')!
+	os.write_file(os.join_path(project_dir, 'src', 'app', 'app_test.v'),
+		'import v.ast\n\nfn test_vast_table_loads() {\n\t_ := ast.new_table()\n}\n')!
+	os.chdir(project_dir)!
+
+	res := os.execute('${os.quoted_path(vexe)} -check src/app/app_test.v')
+	assert res.exit_code == 0, res.output
+	assert !res.output.contains('bad module definition'), res.output
+}
+
+fn test_vendored_sibling_modules_with_own_vmod_resolve_each_other() {
+	// Regression guard for the #27151 fix: when both the importer and the
+	// imported module live as siblings under `<project>/modules/` and each
+	// carry their own `v.mod`, the foreign-project check must still let them
+	// see one another. The importer's `v.mod` anchor needs to climb to the
+	// outermost project root, not stop at its own vendored package.
+	project_dir := os.join_path(test_path, 'vendored_sibling_27151')
+	os.rmdir_all(project_dir) or {}
+	os.mkdir_all(os.join_path(project_dir, 'modules', 'foo'))!
+	os.mkdir_all(os.join_path(project_dir, 'modules', 'bar'))!
+	defer {
+		os.chdir(test_path) or {}
+		os.rmdir_all(project_dir) or {}
+	}
+	os.write_file(os.join_path(project_dir, 'v.mod'),
+		"Module {\n\tname: 'vendored_sibling_27151'\n\tversion: '0.0.1'\n\tdescription: ''\n\tlicense: 'MIT'\n\tdependencies: []\n}\n")!
+	os.write_file(os.join_path(project_dir, 'modules', 'foo', 'v.mod'),
+		"Module {\n\tname: 'foo'\n\tversion: '0.0.1'\n\tdescription: ''\n\tlicense: 'MIT'\n\tdependencies: []\n}\n")!
+	os.write_file(os.join_path(project_dir, 'modules', 'bar', 'v.mod'),
+		"Module {\n\tname: 'bar'\n\tversion: '0.0.1'\n\tdescription: ''\n\tlicense: 'MIT'\n\tdependencies: []\n}\n")!
+	os.write_file(os.join_path(project_dir, 'modules', 'bar', 'bar.v'),
+		'module bar\n\npub fn name() string {\n\treturn "bar"\n}\n')!
+	os.write_file(os.join_path(project_dir, 'modules', 'foo', 'foo.v'),
+		'module foo\n\nimport bar\n\npub fn hello() string {\n\treturn bar.name()\n}\n')!
+	os.write_file(os.join_path(project_dir, 'main.v'),
+		'module main\n\nimport foo\n\nfn main() {\n\tprintln(foo.hello())\n}\n')!
+	os.chdir(project_dir)!
+
+	res := os.execute('${os.quoted_path(vexe)} -check .')
+	assert res.exit_code == 0, res.output
+	assert !res.output.contains('not found'), res.output
+}
+
+fn test_vendored_modules_dir_with_own_vmod_still_resolves() {
+	// Regression guard for the #27151 fix: a vendored dependency at
+	// `<project>/modules/<name>/` that carries its own `v.mod` must still
+	// resolve when imported from `<project>`'s own code. The foreign-project
+	// skip is path-based, so anything inside the importer's `v.mod` tree —
+	// including nested `v.mod`s under `modules/` — must remain visible.
+	project_dir := os.join_path(test_path, 'vendored_modules_27151')
+	os.rmdir_all(project_dir) or {}
+	os.mkdir_all(os.join_path(project_dir, 'modules', 'vendored'))!
+	defer {
+		os.chdir(test_path) or {}
+		os.rmdir_all(project_dir) or {}
+	}
+	os.write_file(os.join_path(project_dir, 'v.mod'),
+		"Module {\n\tname: 'vendored_modules_27151'\n\tversion: '0.0.1'\n\tdescription: ''\n\tlicense: 'MIT'\n\tdependencies: []\n}\n")!
+	os.write_file(os.join_path(project_dir, 'modules', 'vendored', 'v.mod'),
+		"Module {\n\tname: 'vendored'\n\tversion: '0.0.1'\n\tdescription: ''\n\tlicense: 'MIT'\n\tdependencies: []\n}\n")!
+	os.write_file(os.join_path(project_dir, 'modules', 'vendored', 'vendored.v'),
+		'module vendored\n\npub fn hello() string {\n\treturn "hi from vendored"\n}\n')!
+	os.write_file(os.join_path(project_dir, 'main.v'),
+		'module main\n\nimport vendored\n\nfn main() {\n\tprintln(vendored.hello())\n}\n')!
+	os.chdir(project_dir)!
+
+	res := os.execute('${os.quoted_path(vexe)} -check .')
+	assert res.exit_code == 0, res.output
+	assert !res.output.contains('not found'), res.output
+}
+
 fn test_macos_arch_flag_is_forwarded_to_c_compiler() {
 	$if !macos {
 		return

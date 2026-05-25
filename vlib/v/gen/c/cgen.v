@@ -1796,6 +1796,111 @@ fn (mut g Gen) type_has_unresolved_generic_parts_uncached(typ ast.Type) bool {
 	}
 }
 
+fn (mut g Gen) typedef_type_has_unresolved_generic_placeholder_parts(typ ast.Type) bool {
+	if typ == 0 {
+		return false
+	}
+	if typ.has_flag(.generic) {
+		return true
+	}
+	idx := typ.idx()
+	if idx <= ast.nil_type_idx {
+		return false
+	}
+	sym := g.table.sym(typ)
+	if sym.kind == .placeholder || (sym.kind == .any && !sym.is_builtin()) {
+		return true
+	}
+	match sym.info {
+		ast.Array {
+			return g.typedef_type_has_unresolved_generic_placeholder_parts(sym.info.elem_type)
+		}
+		ast.ArrayFixed {
+			return g.typedef_type_has_unresolved_generic_placeholder_parts(sym.info.elem_type)
+		}
+		ast.Chan {
+			return g.typedef_type_has_unresolved_generic_placeholder_parts(sym.info.elem_type)
+		}
+		ast.Thread {
+			return g.typedef_type_has_unresolved_generic_placeholder_parts(sym.info.return_type)
+		}
+		ast.Map {
+			if g.typedef_type_has_unresolved_generic_placeholder_parts(sym.info.key_type) {
+				return true
+			}
+			return g.typedef_type_has_unresolved_generic_placeholder_parts(sym.info.value_type)
+		}
+		ast.FnType {
+			if g.typedef_type_has_unresolved_generic_placeholder_parts(sym.info.func.return_type) {
+				return true
+			}
+			for param in sym.info.func.params {
+				if g.typedef_type_has_unresolved_generic_placeholder_parts(param.typ) {
+					return true
+				}
+			}
+			return false
+		}
+		ast.MultiReturn {
+			for typ_ in sym.info.types {
+				if g.typedef_type_has_unresolved_generic_placeholder_parts(typ_) {
+					return true
+				}
+			}
+			return false
+		}
+		ast.Struct {
+			for concrete_type in sym.info.concrete_types {
+				if g.typedef_type_has_unresolved_generic_placeholder_parts(concrete_type) {
+					return true
+				}
+			}
+			return false
+		}
+		ast.Interface {
+			for concrete_type in sym.info.concrete_types {
+				if g.typedef_type_has_unresolved_generic_placeholder_parts(concrete_type) {
+					return true
+				}
+			}
+			return false
+		}
+		ast.SumType {
+			for concrete_type in sym.info.concrete_types {
+				if g.typedef_type_has_unresolved_generic_placeholder_parts(concrete_type) {
+					return true
+				}
+			}
+			return false
+		}
+		ast.GenericInst {
+			for concrete_type in sym.info.concrete_types {
+				if g.typedef_type_has_unresolved_generic_placeholder_parts(concrete_type) {
+					return true
+				}
+			}
+			return false
+		}
+		ast.UnknownTypeInfo {
+			if util.is_generic_type_name(sym.name) {
+				return true
+			}
+			if sym.name.contains('[') && sym.name.contains(']') {
+				args := sym.name.all_after('[').trim_right(']').split(',')
+				for arg in args {
+					if util.is_generic_type_name(arg.trim_space()) {
+						return true
+					}
+				}
+			}
+			return false
+		}
+		else {
+			return false
+		}
+	}
+}
+
 fn (mut g Gen) result_type_name(t ast.Type) (string, string) {
 	mut base := g.base_type(t)
 	mut styp := ''
@@ -2618,7 +2723,14 @@ pub fn (mut g Gen) write_typedef_types() {
 		}
 		match sym.kind {
 			.array {
-				info := sym.info as ast.Array
+				info := if sym.info is ast.Array {
+					sym.info
+				} else {
+					continue
+				}
+				if g.typedef_type_has_unresolved_generic_placeholder_parts(info.elem_type) {
+					continue
+				}
 				elem_sym := g.table.sym(info.elem_type)
 				if !g.pref.no_preludes && elem_sym.kind != .placeholder
 					&& !info.elem_type.has_flag(.generic) {
@@ -2627,7 +2739,14 @@ pub fn (mut g Gen) write_typedef_types() {
 				}
 			}
 			.array_fixed {
-				info := sym.info as ast.ArrayFixed
+				info := if sym.info is ast.ArrayFixed {
+					sym.info
+				} else {
+					continue
+				}
+				if g.typedef_type_has_unresolved_generic_placeholder_parts(info.elem_type) {
+					continue
+				}
 				base_elem_sym := g.fixed_array_base_elem_sym(info.elem_type)
 				if base_elem_sym.kind != .struct && base_elem_sym.is_builtin() {
 					styp := sym.cname
@@ -2672,9 +2791,26 @@ pub fn (mut g Gen) write_typedef_types() {
 				}
 			}
 			.chan {
+				info := if sym.info is ast.Chan {
+					sym.info
+				} else {
+					continue
+				}
+				if g.typedef_type_has_unresolved_generic_placeholder_parts(info.elem_type) {
+					continue
+				}
 				g.ensure_chan_type_definition(ast.new_type(sym.idx))
 			}
 			.map {
+				info := if sym.info is ast.Map {
+					sym.info
+				} else {
+					continue
+				}
+				if g.typedef_type_has_unresolved_generic_placeholder_parts(info.key_type)
+					|| g.typedef_type_has_unresolved_generic_placeholder_parts(info.value_type) {
+					continue
+				}
 				g.type_definitions.writeln('typedef map ${sym.cname};')
 			}
 			else {
@@ -3367,7 +3503,8 @@ fn (mut g Gen) expr_with_tmp_var(expr ast.Expr, expr_typ ast.Type, ret_typ ast.T
 		g.write('${tmp_styp} ${tmp_var} = ')
 		g.gen_option_error(error_target_type, expr)
 		g.writeln(';')
-	} else if expr is ast.Ident && expr_typ == ast.error_type {
+	} else if expr is ast.Ident && expr_typ == ast.error_type
+		&& !(unwrapped_ret_typ.has_flag(.option) && unwrapped_ret_typ.idx() == ast.error_type_idx) {
 		g.writeln('${g.styp(unwrapped_ret_typ)} ${tmp_var} = {.state=2, .err=${expr.name}};')
 	} else {
 		mut simple_assign := false
@@ -8483,8 +8620,9 @@ fn (mut g Gen) lock_expr_mtx(expr ast.Expr) {
 }
 
 fn (mut g Gen) map_init(node ast.MapInit) {
-	unwrap_key_typ := g.unwrap_generic(node.key_type)
-	unwrap_val_typ := g.unwrap_generic(node.value_type).clear_flag(.result)
+	unwrap_key_typ, unwrap_val_typ_ := g.resolved_map_key_value_types(node.typ, node.key_type,
+		node.value_type)
+	unwrap_val_typ := unwrap_val_typ_.clear_flag(.result)
 	key_typ_str := g.styp(unwrap_key_typ)
 	value_typ_str := g.styp(unwrap_val_typ)
 	value_sym := g.table.sym(unwrap_val_typ)
@@ -8506,8 +8644,8 @@ fn (mut g Gen) map_init(node ast.MapInit) {
 		styp = g.styp(node.typ)
 		g.write('(${styp}*)builtin__memdup(ADDR(${styp}, ')
 	}
-	noscan_key := g.check_noscan(node.key_type)
-	noscan_value := g.check_noscan(node.value_type)
+	noscan_key := g.check_noscan(unwrap_key_typ)
+	noscan_value := g.check_noscan(unwrap_val_typ)
 	mut noscan := if noscan_key.len != 0 || noscan_value.len != 0 { '_noscan' } else { '' }
 	if noscan.len != 0 {
 		if noscan_key.len != 0 {
@@ -10181,12 +10319,31 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 			g.inside_return_tmpl = true
 			g.expr(expr0)
 			g.inside_return_tmpl = false
-			ret_typ := g.ret_styp(g.unwrap_generic(g.fn_decl.return_type))
+			fn_ret_type := g.fn_decl.return_type
+			ret_typ := g.ret_styp(g.unwrap_generic(fn_ret_type))
+			tmpl_fn_name := g.fn_decl.name.replace('.', '__').to_lower() + expr0.pos.pos.str()
 			g.write_defer_stmts_when_needed(node.scope, true, node.pos)
 			if !g.is_builtin_mod {
 				g.autofree_scope_vars(node.pos.pos - 1, node.pos.line_nr, true)
 			}
-			g.writeln('return (${ret_typ}){0};')
+			// `$veb.html()` returns `veb.Result` and the template body
+			// already writes the rendered string to the response, so just
+			// return a zero-initialized Result here. Other tmpl kinds
+			// (`$tmpl(...)`) yield a string in `_tmpl_res_*`.
+			if expr0.kind == .html {
+				g.writeln('return (${ret_typ}){0};')
+			} else if fn_ret_type.has_option_or_result() {
+				tmp := g.new_tmp_var()
+				g.writeln('${ret_typ} ${tmp} = {0};')
+				if fn_ret_type.has_flag(.result) {
+					g.writeln('builtin___result_ok(&(string[]) { _tmpl_res_${tmpl_fn_name} }, (_result*)(&${tmp}), sizeof(string));')
+				} else {
+					g.writeln('builtin___option_ok(&(string[]) { _tmpl_res_${tmpl_fn_name} }, (_option*)(&${tmp}), sizeof(string));')
+				}
+				g.writeln('return ${tmp};')
+			} else {
+				g.writeln('return _tmpl_res_${tmpl_fn_name};')
+			}
 			return
 		}
 	}
@@ -10938,9 +11095,7 @@ fn (mut g Gen) write_init_function() {
 		g.export_funcs << '_vinit_caller'
 		g.writeln('void _vinit_caller() {')
 		g.writeln('\tstatic bool once = false; if (once) {return;} once = true;')
-		if g.pref.os == .windows {
-			g.gen_windows_shared_library_boehm_init()
-		}
+		g.gen_shared_library_boehm_init()
 		g.writeln('\t_vinit(0,0);')
 		g.writeln('}')
 
@@ -11116,6 +11271,32 @@ fn (mut g Gen) write_types(symbols []&ast.TypeSymbol) {
 			ast.Struct {
 				if !struct_names[name]
 					&& (!g.pref.skip_unused || sym.idx in g.table.used_features.used_syms) {
+					mut struct_has_unresolved_type := false
+					for concrete_type in sym.info.concrete_types {
+						if g.typedef_type_has_unresolved_generic_placeholder_parts(concrete_type) {
+							struct_has_unresolved_type = true
+							break
+						}
+					}
+					if !struct_has_unresolved_type {
+						for field in sym.info.fields {
+							if g.typedef_type_has_unresolved_generic_placeholder_parts(field.typ) {
+								struct_has_unresolved_type = true
+								break
+							}
+						}
+					}
+					if !struct_has_unresolved_type {
+						for embed in sym.info.embeds {
+							if g.typedef_type_has_unresolved_generic_placeholder_parts(embed) {
+								struct_has_unresolved_type = true
+								break
+							}
+						}
+					}
+					if struct_has_unresolved_type {
+						continue
+					}
 					// generate field option types for fixed array of option non-builtin types
 					// before the struct declaration
 					opt_fields :=
@@ -11147,6 +11328,16 @@ fn (mut g Gen) write_types(symbols []&ast.TypeSymbol) {
 			ast.GenericInst {
 				if struct_names[name]
 					|| (g.pref.skip_unused && sym.idx !in g.table.used_features.used_syms) {
+					continue
+				}
+				mut has_unresolved_concrete_type := false
+				for concrete_type in sym.info.concrete_types {
+					if g.typedef_type_has_unresolved_generic_placeholder_parts(concrete_type) {
+						has_unresolved_concrete_type = true
+						break
+					}
+				}
+				if has_unresolved_concrete_type {
 					continue
 				}
 				parent_sym := g.table.sym(ast.new_type(sym.info.parent_idx))

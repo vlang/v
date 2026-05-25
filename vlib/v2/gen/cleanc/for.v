@@ -51,8 +51,10 @@ fn (mut g Gen) gen_for_stmt(node ast.ForStmt) {
 	// (e.g. _filter_it in nested map/filter) can shadow outer variables.
 	// Without save/restore, the inner type overwrites the outer in the flat map.
 	saved_local_types := g.runtime_local_types.clone()
+	saved_decl_types := g.runtime_decl_types.clone()
 	g.gen_stmts(node.stmts)
 	g.runtime_local_types = saved_local_types.clone()
+	g.runtime_decl_types = saved_decl_types.clone()
 	g.not_local_var_cache.clear()
 	g.indent--
 	g.write_indent()
@@ -115,6 +117,7 @@ fn (mut g Gen) gen_map_for_in_stmt(node ast.ForStmt, for_in ast.ForInStmt) bool 
 	key_name := if for_in.key is ast.Ident { for_in.key.name } else { '' }
 	value_name := if for_in.value is ast.Ident { for_in.value.name } else { '' }
 	saved_local_types := g.runtime_local_types.clone()
+	saved_decl_types := g.runtime_decl_types.clone()
 	if key_name != '' && key_name != '_' {
 		g.write_indent()
 		g.sb.writeln('${key_type} ${key_name} = *((${key_type}*)DenseArray__key(&${map_tmp}.key_values, ${idx_tmp}));')
@@ -122,7 +125,7 @@ fn (mut g Gen) gen_map_for_in_stmt(node ast.ForStmt, for_in ast.ForInStmt) bool 
 			g.write_indent()
 			g.sb.writeln('${key_name} = string__clone(${key_name});')
 		}
-		g.runtime_local_types[key_name] = key_type
+		g.remember_runtime_local_type(key_name, key_type)
 	}
 	if value_name != '' && value_name != '_' {
 		g.write_indent()
@@ -131,10 +134,11 @@ fn (mut g Gen) gen_map_for_in_stmt(node ast.ForStmt, for_in ast.ForInStmt) bool 
 			g.write_indent()
 			g.sb.writeln('${value_name} = string__clone(${value_name});')
 		}
-		g.runtime_local_types[value_name] = value_type
+		g.remember_runtime_local_type(value_name, value_type)
 	}
 	g.gen_stmts(node.stmts)
 	g.runtime_local_types = saved_local_types.clone()
+	g.runtime_decl_types = saved_decl_types.clone()
 	g.not_local_var_cache.clear()
 	g.indent--
 	g.write_indent()
@@ -203,7 +207,7 @@ fn (mut g Gen) gen_stmt_inline(node ast.Stmt) {
 				// Register the for-loop init variable so assignments inside
 				// the loop body don't re-declare it.
 				if name != '' && typ != '' {
-					g.runtime_local_types[name] = typ
+					g.remember_runtime_local_type(name, typ)
 				}
 			} else {
 				g.expr(lhs)

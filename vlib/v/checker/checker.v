@@ -84,6 +84,7 @@ pub mut:
 	strict_map_index_in_module  bool     // true if the current module has @[strict_map_index] attribute
 	const_var                   &ast.ConstField = unsafe { nil } // the current constant, when checking const declarations
 	const_deps                  []string
+	const_eval_stack            []string // names of constants currently being recursively resolved (to break cycles via anon fn bodies)
 	const_names                 []string
 	global_names                []string
 	locked_names                []string // vars that are currently locked
@@ -3439,6 +3440,7 @@ fn (mut c Checker) const_decl(mut node ast.ConstDecl) {
 	}
 	for i, mut field in node.fields {
 		c.const_deps << field.name
+		c.const_eval_stack << field.name
 		prev_const_var := c.const_var
 		c.const_var = unsafe { field }
 		mut typ := c.check_expr_option_or_result_call(field.expr, c.expr(mut field.expr))
@@ -3476,6 +3478,7 @@ fn (mut c Checker) const_decl(mut node ast.ConstDecl) {
 			}
 		}
 		c.const_deps = []
+		c.const_eval_stack.pop()
 		c.const_var = prev_const_var
 	}
 }
@@ -6350,7 +6353,9 @@ fn (mut c Checker) ident(mut node ast.Ident) ast.Type {
 		// detect cycles, while allowing for references to the same constant,
 		// used inside its initialisation like: `struct Abc { x &Abc } ... const a = [ Abc{0}, Abc{unsafe{&a[0]}} ]!`
 		// see vlib/v/tests/const_fixed_array_containing_references_to_itself_test.v
-		if unsafe { c.const_var != 0 } && name == c.const_var.name {
+		// references inside anonymous function bodies are runtime-only, so they
+		// cannot create an initialisation-time cycle (fix #27087)
+		if unsafe { c.const_var != 0 } && name == c.const_var.name && !c.inside_anon_fn {
 			if mut c.const_var.expr is ast.ArrayInit && c.const_var.expr.is_fixed
 				&& c.expected_type.nr_muls() > 0 {
 				elem_typ := c.expected_type.deref()
@@ -6366,7 +6371,9 @@ fn (mut c Checker) ident(mut node ast.Ident) ast.Type {
 			c.error('cycle in constant `${c.const_var.name}`', node.pos)
 			return ast.void_type
 		}
-		c.const_deps << name
+		if !c.inside_anon_fn {
+			c.const_deps << name
+		}
 	}
 	if node.kind == .blank_ident {
 		if node.tok_kind !in [.assign, .decl_assign] {
@@ -6403,10 +6410,12 @@ fn (mut c Checker) ident(mut node ast.Ident) ast.Type {
 		// Got a var with type T, return current generic type
 		if node.or_expr.kind != .absent {
 			if !info.typ.has_flag(.option) {
+				hint :=
+					c.smartcast_unwrap_hint(node.scope.find_var(node.name) or { unsafe { nil } })
 				if node.or_expr.kind == .propagate_option {
-					c.error('cannot use `?` on non-option variable', node.pos)
+					c.error('cannot use `?` on non-option variable${hint}', node.pos)
 				} else if node.or_expr.kind == .block {
-					c.error('cannot use `or {}` block on non-option variable', node.pos)
+					c.error('cannot use `or {}` block on non-option variable${hint}', node.pos)
 				}
 			}
 			unwrapped_typ := typ.clear_option_and_result()
@@ -6552,10 +6561,12 @@ fn (mut c Checker) ident(mut node ast.Ident) ast.Type {
 							return typ.clear_flag(.result)
 						}
 						if !typ.has_flag(.option) {
+							hint := c.smartcast_unwrap_hint(&obj)
 							if node.or_expr.kind == .propagate_option {
-								c.error('cannot use `?` on non-option variable', node.pos)
+								c.error('cannot use `?` on non-option variable${hint}', node.pos)
 							} else if node.or_expr.kind == .block {
-								c.error('cannot use `or {}` block on non-option variable', node.pos)
+								c.error('cannot use `or {}` block on non-option variable${hint}',
+									node.pos)
 							}
 						}
 						unwrapped_typ := typ.clear_option_and_result()
@@ -6606,11 +6617,44 @@ fn (mut c Checker) ident(mut node ast.Ident) ast.Type {
 					}
 					mut typ := obj.typ
 					if typ == 0 {
+						// a constant currently being recursively resolved is
+						// referenced again. Inside an anonymous function body the
+						// reference is runtime-only (fix #27087), so fall back to
+						// the expected type without caching it; otherwise this is
+						// a real multi-step initialisation cycle (e.g. a -> b -> a).
+						if obj.name in c.const_eval_stack {
+							if !c.inside_anon_fn {
+								c.error('cycle in constant `${obj.name}`', node.pos)
+								return ast.void_type
+							}
+							fallback_typ := if c.expected_type != ast.void_type {
+								c.expected_type
+							} else {
+								ast.void_type
+							}
+							node.name = name
+							node.kind = .constant
+							node.info = ast.IdentVar{
+								typ: fallback_typ
+							}
+							node.obj = obj
+							c.mark_const_decl_as_referenced(obj.name)
+							return fallback_typ
+						}
 						old_c_mod := c.mod
 						c.mod = obj.mod
 						inside_const := c.inside_const
 						c.inside_const = true
+						// the constant's own initializer is evaluated at
+						// init-time, even if the caller is checking an
+						// anon function body; clear inside_anon_fn so a
+						// cycle hit during this recursion is reported.
+						inside_anon_fn := c.inside_anon_fn
+						c.inside_anon_fn = false
+						c.const_eval_stack << obj.name
 						typ = c.expr(mut obj.expr)
+						c.const_eval_stack.pop()
+						c.inside_anon_fn = inside_anon_fn
 						c.inside_const = inside_const
 						c.mod = old_c_mod
 
@@ -7312,6 +7356,17 @@ fn (mut c Checker) visible_var_type_for_read(v ast.Var) ast.Type {
 		return v.orig_type
 	}
 	return c.exposed_smartcast_type(v.orig_type, v.smartcasts.last(), v.is_mut)
+}
+
+fn (mut c Checker) smartcast_unwrap_hint(v &ast.Var) string {
+	if v == unsafe { nil } {
+		return ''
+	}
+	if v.smartcasts.len == 0 || !v.typ.has_flag(.option) {
+		return ''
+	}
+	narrowed := c.table.type_to_str(v.smartcasts.last())
+	return ' `${v.name}` (it was already unwrapped to `${narrowed}` by an earlier none check; use `${v.name}` directly)'
 }
 
 @[inline]
