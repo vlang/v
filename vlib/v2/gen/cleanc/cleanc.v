@@ -2112,7 +2112,8 @@ fn (g &Gen) process_rss_mb() i64 {
 			return 0
 		}
 		pages := parts[1].i64()
-		page_size := i64(C.sysconf(C.PAGESIZE) or { 4096 })
+		raw_page_size := i64(C.sysconf(C.PAGESIZE))
+		page_size := if raw_page_size > 0 { raw_page_size } else { i64(4096) }
 		return (pages * page_size) / (1024 * 1024)
 	}
 	$if macos {
