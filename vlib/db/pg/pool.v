@@ -44,6 +44,9 @@ fn new_pool(conninfo string, cfg PoolConfig) &Pool {
 		max_idle:     cfg.max_idle_conns
 		max_lifetime: cfg.conn_max_lifetime
 	}
+	if p.max_open < 0 {
+		p.max_open = 0
+	}
 	if p.max_idle < 0 {
 		p.max_idle = 0
 	}
