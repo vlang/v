@@ -245,15 +245,6 @@ struct SortComparatorInfo {
 	is_string_cmp bool
 }
 
-pub fn Transformer.new(env &types.Environment) &Transformer {
-	mut t := new_transformer_base(env, unsafe { nil })
-	cwd := os.getwd()
-	if root := detect_vmodroot_from_path(cwd) {
-		t.comptime_vmodroot = root
-	}
-	return t
-}
-
 pub fn Transformer.new_with_pref(env &types.Environment, p &pref.Preferences) &Transformer {
 	mut t := new_transformer_base(env, p)
 	if p != unsafe { nil } && p.vroot.len > 0 {
@@ -389,22 +380,6 @@ pub fn (mut t Transformer) merge_worker(w &Transformer) {
 // transform_file_standalone transforms a single file, for use in parallel workers.
 pub fn (mut t Transformer) transform_file_pub(file ast.File) ast.File {
 	return t.transform_file(file)
-}
-
-fn resolve_comptime_vmodroot(files []ast.File, p &pref.Preferences) string {
-	if p != unsafe { nil } && p.vroot.len > 0 {
-		return p.vroot
-	}
-	for file in files {
-		if root := detect_vmodroot_from_path(file.name) {
-			return root
-		}
-	}
-	cwd := os.getwd()
-	if root := detect_vmodroot_from_path(cwd) {
-		return root
-	}
-	return ''
 }
 
 fn detect_vmodroot_from_path(path string) ?string {
