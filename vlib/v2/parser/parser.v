@@ -248,6 +248,20 @@ pub fn (mut p Parser) parse_file(filename string, mut file_set token.FileSet) as
 				main_already_defined = true
 			}
 		}
+		// Script-mode: a top-level `$if cond { ... }` whose body contains
+		// runtime statements (e.g. `println(...)`) needs to be wrapped into
+		// the synthesized `fn main()` so it actually executes. Comptime $if
+		// blocks containing only declarations (e.g. `$if !macos { fn C.x() }`)
+		// stay at file scope.
+		if mod == 'main' && top_stmt is ast.ExprStmt {
+			inner := unwrap_comptime_expr(top_stmt.expr)
+			if inner is ast.IfExpr {
+				if !comptime_if_expr_contains_top_stmt(inner) {
+					script_stmts << top_stmt
+					continue
+				}
+			}
+		}
 		top_stmts << top_stmt
 	}
 	p.in_top_level = false
@@ -273,6 +287,47 @@ pub fn (mut p Parser) parse_file(filename string, mut file_set token.FileSet) as
 		// decls: decls
 		stmts: top_stmts
 	}
+}
+
+// unwrap_comptime_expr returns the inner expression of a `$expr` wrapper,
+// or the expression itself when it is not a ComptimeExpr.
+fn unwrap_comptime_expr(expr ast.Expr) ast.Expr {
+	if expr is ast.ComptimeExpr {
+		return expr.expr
+	}
+	return expr
+}
+
+// comptime_if_expr_contains_top_stmt reports whether every branch of a
+// comptime `$if` chain contains only top-level statements (declarations,
+// directives, or nested top-level `$if`s). Returns false if any branch
+// contains a runtime CallExpr / CallOrCastExpr / AssignStmt — in script
+// mode such blocks are wrapped into the synthesized `fn main()`.
+// Ported from v1 `vlib/v/parser/parser.v::comptime_if_expr_contains_top_stmt`.
+fn comptime_if_expr_contains_top_stmt(if_expr ast.IfExpr) bool {
+	for stmt in if_expr.stmts {
+		if stmt is ast.ExprStmt {
+			inner := unwrap_comptime_expr(stmt.expr)
+			if inner is ast.IfExpr {
+				if !comptime_if_expr_contains_top_stmt(inner) {
+					return false
+				}
+			} else if inner is ast.CallExpr || inner is ast.CallOrCastExpr {
+				return false
+			}
+		} else if stmt is ast.AssignStmt {
+			return false
+		} else if stmt is ast.Directive {
+			return true
+		}
+	}
+	if if_expr.else_expr is ast.IfExpr {
+		else_ie := if_expr.else_expr as ast.IfExpr
+		if !comptime_if_expr_contains_top_stmt(else_ie) {
+			return false
+		}
+	}
+	return true
 }
 
 // is_top_stmt_start reports whether the current token can start a top-level
