@@ -210,7 +210,9 @@ fn (mut g Gen) gen_stmt(node ast.Stmt) {
 					expr_type = g.get_call_return_type(expr.lhs, expr.args) or { expr_type }
 				}
 				value_type := option_value_type(g.cur_fn_ret_type)
-				if expr is ast.Ident && expr.name == 'err' {
+				if expr is ast.Ident && expr.name == 'err' && (g.get_local_var_c_type(expr.name) or {
+					'IError'
+				}) in ['IError', 'builtin__IError'] {
 					g.sb.write_string('return (${g.cur_fn_ret_type}){ .is_error=true, .err=')
 					g.expr(expr)
 					g.sb.writeln(' };')
@@ -305,8 +307,11 @@ fn (mut g Gen) gen_stmt(node ast.Stmt) {
 					g.sb.writeln(' };')
 					return
 				}
-				// `return err` propagates the error from the or-block
-				if expr is ast.Ident && expr.name == 'err' {
+				// `return err` propagates the error from the or-block. A user local
+				// named `err` can still be a concrete error value and must be wrapped.
+				if expr is ast.Ident && expr.name == 'err' && (g.get_local_var_c_type(expr.name) or {
+					'IError'
+				}) in ['IError', 'builtin__IError'] {
 					g.sb.write_string('return (${g.cur_fn_ret_type}){ .is_error=true, .err=')
 					g.expr(expr)
 					g.sb.writeln(' };')
