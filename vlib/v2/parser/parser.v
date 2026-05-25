@@ -228,14 +228,38 @@ pub fn (mut p Parser) parse_file(filename string, mut file_set token.FileSet) as
 		top_stmts << import_stmt
 	}
 	p.in_top_level = true
+	// Script-mode: when in `main` module, top-level statements that are not
+	// declarations are collected into a synthesized `fn main()`, allowing
+	// programs without an explicit `fn main` (matching v1 behavior).
+	mut script_stmts := []ast.Stmt{}
+	mut main_already_defined := false
 	for p.tok != .eof {
+		if mod == 'main' && !p.is_top_stmt_start() {
+			stmt := p.stmt()
+			script_stmts << stmt
+			continue
+		}
 		top_stmt := p.top_stmt()
 		// if top_stmt is ast.Decl {
 		// 	decls << top_stmt
 		// }
+		if top_stmt is ast.FnDecl {
+			if !top_stmt.is_method && top_stmt.name == 'main' {
+				main_already_defined = true
+			}
+		}
 		top_stmts << top_stmt
 	}
 	p.in_top_level = false
+	if script_stmts.len > 0 {
+		if main_already_defined {
+			p.error('function `main` is already defined, put your script statements inside it')
+		}
+		top_stmts << ast.FnDecl{
+			name:  'main'
+			stmts: script_stmts
+		}
+	}
 	if p.pref.verbose {
 		parse_time := sw.elapsed()
 		println('scan & parse ${filename} (${p.file.line_count()} LOC): ${parse_time.milliseconds()}ms (${parse_time.microseconds()}µs)')
@@ -248,6 +272,18 @@ pub fn (mut p Parser) parse_file(filename string, mut file_set token.FileSet) as
 		selector_names: p.selector_names.clone()
 		// decls: decls
 		stmts: top_stmts
+	}
+}
+
+// is_top_stmt_start reports whether the current token can start a top-level
+// declaration. Used to detect script-mode statements (e.g. bare `println(...)`
+// in `main` module) which are wrapped into a synthesized `fn main()`.
+fn (p &Parser) is_top_stmt_start() bool {
+	return match p.tok {
+		.dollar, .hash, .key_asm, .key_const, .key_enum, .key_fn, .key_global,
+		.key_interface, .key_pub, .key_struct, .key_union, .key_type, .attribute,
+		.lsbr { true }
+		else { false }
 	}
 }
 
