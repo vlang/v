@@ -2976,10 +2976,26 @@ fn (mut p Parser) struct_decl(is_public bool, attributes []ast.Attribute) ast.St
 // returns (embedded_types, fields)
 fn (mut p Parser) struct_decl_fields(language ast.Language, expect_semi bool) ([]ast.Expr, []ast.FieldDecl) {
 	p.expect(.lcbr)
-	// fields
 	mut embedded := []ast.Expr{}
 	mut fields := []ast.FieldDecl{}
+	p.parse_struct_field_list(language, mut embedded, mut fields)
+	p.next() // rcbr
+	if expect_semi {
+		p.expect(.semicolon)
+	}
+	return embedded, fields
+}
+
+// parse_struct_field_list parses fields until it hits `}`. Handles `$if` blocks
+// and `@[if cond ?]` field attributes by evaluating the condition at parse time
+// and omitting non-selected fields from the AST.
+fn (mut p Parser) parse_struct_field_list(language ast.Language, mut embedded []ast.Expr, mut fields []ast.FieldDecl) {
 	for p.tok != .rcbr {
+		// `$if cond { ... } $else { ... }` block grouping a set of fields.
+		if p.tok == .dollar && p.peek() == .key_if {
+			p.parse_comptime_struct_field_branch(language, false, mut embedded, mut fields)
+			continue
+		}
 		is_pub := p.tok == .key_pub
 		if is_pub {
 			p.next()
@@ -3009,11 +3025,13 @@ fn (mut p Parser) struct_decl_fields(language ast.Language, expect_semi bool) ([
 			if p.tok == .semicolon {
 				p.next()
 			}
-			fields << ast.FieldDecl{
-				name:       field_name
-				typ:        field_type
-				value:      field_value
-				attributes: field_attributes
+			if !attributes_elide_field(field_attributes, p) {
+				fields << ast.FieldDecl{
+					name:       field_name
+					typ:        field_type
+					value:      field_value
+					attributes: field_attributes
+				}
 			}
 			continue
 		}
@@ -3051,18 +3069,90 @@ fn (mut p Parser) struct_decl_fields(language ast.Language, expect_semi bool) ([
 		if p.tok == .semicolon {
 			p.next()
 		}
-		fields << ast.FieldDecl{
-			name:       field_name
-			typ:        field_type
-			value:      field_value
-			attributes: field_attributes
+		if !attributes_elide_field(field_attributes, p) {
+			fields << ast.FieldDecl{
+				name:       field_name
+				typ:        field_type
+				value:      field_value
+				attributes: field_attributes
+			}
 		}
 	}
-	p.next()
-	if expect_semi {
-		p.expect(.semicolon)
+}
+
+// attributes_elide_field returns true if any `@[if cond ?]` attribute evaluates
+// to false, meaning the field should be omitted from the struct.
+fn attributes_elide_field(attributes []ast.Attribute, p &Parser) bool {
+	for attr in attributes {
+		if attr.comptime_cond !is ast.EmptyExpr {
+			if !p.eval_comptime_cond(attr.comptime_cond) {
+				return true
+			}
+		}
 	}
-	return embedded, fields
+	return false
+}
+
+// parse_comptime_struct_field_branch parses a `$if cond { ... } $else ...`
+// block in a struct field position. Only the matched branch's fields are added
+// to `embedded`/`fields`; other branches are parsed and discarded so token
+// positions stay correct. `force_skip` propagates "already matched" through
+// `$else $if` chains so at most one branch contributes fields.
+fn (mut p Parser) parse_comptime_struct_field_branch(language ast.Language, force_skip bool, mut embedded []ast.Expr, mut fields []ast.FieldDecl) {
+	p.next() // $
+	p.next() // if
+	// `p.expr` would otherwise greedily parse `linux { ... }` as a struct init.
+	exp_lcbr := p.exp_lcbr
+	allow_init_in_exp_lcbr := p.allow_init_in_exp_lcbr
+	p.exp_lcbr = true
+	p.allow_init_in_exp_lcbr = true
+	cond := p.expr(.lowest)
+	p.exp_lcbr = exp_lcbr
+	p.allow_init_in_exp_lcbr = allow_init_in_exp_lcbr
+	cond_matches := !force_skip && p.eval_comptime_cond(cond)
+	p.expect(.lcbr)
+	if cond_matches {
+		p.parse_struct_field_list(language, mut embedded, mut fields)
+	} else {
+		mut tmp_emb := []ast.Expr{}
+		mut tmp_flds := []ast.FieldDecl{}
+		p.parse_struct_field_list(language, mut tmp_emb, mut tmp_flds)
+	}
+	p.next() // rcbr
+	// Allow `} $else` or `};\n$else`. Always swallow any auto-inserted `;` so
+	// the outer field loop doesn't try to parse it as a field type.
+	if p.tok == .semicolon {
+		if p.peek() == .dollar && p.peek_dollar_keyword() == 'else' {
+			p.next()
+		}
+	}
+	if !(p.tok == .dollar && p.peek_dollar_keyword() == 'else') {
+		if p.tok == .semicolon {
+			p.next()
+		}
+		return
+	}
+	p.next() // $
+	p.next() // else
+	if p.tok == .dollar && p.peek() == .key_if {
+		// `$else $if` — propagate match status so at most one branch fires.
+		new_force_skip := force_skip || cond_matches
+		p.parse_comptime_struct_field_branch(language, new_force_skip, mut embedded, mut fields)
+		return
+	}
+	p.expect(.lcbr)
+	else_matches := !force_skip && !cond_matches
+	if else_matches {
+		p.parse_struct_field_list(language, mut embedded, mut fields)
+	} else {
+		mut tmp_emb := []ast.Expr{}
+		mut tmp_flds := []ast.FieldDecl{}
+		p.parse_struct_field_list(language, mut tmp_emb, mut tmp_flds)
+	}
+	p.next() // rcbr
+	if p.tok == .semicolon {
+		p.next()
+	}
 }
 
 fn (mut p Parser) select_expr() ast.SelectExpr {
@@ -3479,4 +3569,141 @@ fn (mut p Parser) error_with_pos(msg string, pos token.Pos) {
 fn (mut p Parser) error_with_position(msg string, pos token.Position) {
 	p.error_message(msg, .error, pos)
 	exit(1)
+}
+
+// eval_comptime_cond evaluates a compile-time condition expression at parse
+// time. Used by struct field parsing for conditional `$if` blocks and
+// `@[if cond ?]` field attributes. Mirrors the transformer's eval_comptime_cond
+// but only handles the subset of constructs valid at parse time. Falls back to
+// `false` for anything it cannot evaluate.
+fn (p &Parser) eval_comptime_cond(cond ast.Expr) bool {
+	match cond {
+		ast.Ident {
+			return p.eval_comptime_flag(cond.name)
+		}
+		ast.PrefixExpr {
+			if cond.op == .not {
+				return !p.eval_comptime_cond(cond.expr)
+			}
+		}
+		ast.InfixExpr {
+			if cond.op == .and {
+				return p.eval_comptime_cond(cond.lhs) && p.eval_comptime_cond(cond.rhs)
+			}
+			if cond.op == .logical_or {
+				return p.eval_comptime_cond(cond.lhs) || p.eval_comptime_cond(cond.rhs)
+			}
+		}
+		ast.PostfixExpr {
+			// `feature?` form
+			if cond.op == .question {
+				inner := cond.expr
+				if inner is ast.Ident {
+					return p.eval_comptime_flag(inner.name)
+				}
+			}
+		}
+		ast.ParenExpr {
+			return p.eval_comptime_cond(cond.expr)
+		}
+		else {}
+	}
+	return false
+}
+
+// eval_comptime_flag evaluates a single comptime flag name.
+fn (p &Parser) eval_comptime_flag(name string) bool {
+	match name {
+		'macos', 'darwin' {
+			$if macos {
+				return true
+			}
+			return false
+		}
+		'linux' {
+			$if linux {
+				return true
+			}
+			return false
+		}
+		'windows' {
+			$if windows {
+				return true
+			}
+			return false
+		}
+		'bsd' {
+			$if macos || freebsd || openbsd || netbsd || dragonfly {
+				return true
+			}
+			return false
+		}
+		'freebsd' {
+			$if freebsd {
+				return true
+			}
+			return false
+		}
+		'openbsd' {
+			$if openbsd {
+				return true
+			}
+			return false
+		}
+		'netbsd' {
+			$if netbsd {
+				return true
+			}
+			return false
+		}
+		'dragonfly' {
+			$if dragonfly {
+				return true
+			}
+			return false
+		}
+		'x64', 'amd64' {
+			$if amd64 {
+				return true
+			}
+			return false
+		}
+		'arm64', 'aarch64' {
+			$if arm64 {
+				return true
+			}
+			return false
+		}
+		'little_endian' {
+			$if little_endian {
+				return true
+			}
+			return false
+		}
+		'big_endian' {
+			$if big_endian {
+				return true
+			}
+			return false
+		}
+		'debug' {
+			$if debug {
+				return true
+			}
+			return false
+		}
+		'native' {
+			return p.pref != unsafe { nil }
+				&& (p.pref.backend == .arm64 || p.pref.backend == .x64)
+		}
+		'prealloc' {
+			return p.pref != unsafe { nil } && p.pref.prealloc
+		}
+		else {
+			if p.pref != unsafe { nil } && name in p.pref.user_defines {
+				return true
+			}
+			return false
+		}
+	}
 }
