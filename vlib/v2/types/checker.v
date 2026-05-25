@@ -775,6 +775,125 @@ fn value_object_from_type(name string, typ Type) Object {
 	return obj
 }
 
+fn global_decl_field_is_c_extern(decl ast.GlobalDecl, field ast.FieldDecl) bool {
+	return field.name.starts_with('C.') || decl.attributes.has('c_extern')
+		|| field.attributes.has('c_extern')
+}
+
+fn module_storage_object(module_name string, decl ast.GlobalDecl, field ast.FieldDecl, typ Type) Global {
+	storage_module := if global_decl_field_is_c_extern(decl, field) { '' } else { module_name }
+	mut obj := Global{
+		name:      field.name
+		mod:       storage_module
+		is_public: field.is_public
+		is_mut:    field.is_mut
+		typ:       Type(void_)
+	}
+	obj.typ = typ
+	return obj
+}
+
+fn (mut c Checker) module_storage_predecl_type(field ast.FieldDecl) Type {
+	if field.typ !is ast.EmptyExpr {
+		return c.type_expr(field.typ)
+	}
+	match field.value {
+		ast.BasicLiteral, ast.StringLiteral {
+			return c.expr(field.value)
+		}
+		else {}
+	}
+
+	return Type(int_)
+}
+
+fn (mut c Checker) preregister_module_storage_decl(decl ast.GlobalDecl) {
+	for field in decl.fields {
+		field_type := c.module_storage_predecl_type(field)
+		obj := module_storage_object(c.cur_file_module, decl, field, field_type)
+		c.scope.insert(field.name, obj)
+	}
+}
+
+fn (obj Global) is_module_storage() bool {
+	return obj.mod != ''
+}
+
+fn (obj Global) requires_explicit_module_storage_mut() bool {
+	_ = obj
+	// This V2 palier keeps legacy `__global name` mutable on purpose, so
+	// existing V2/runtime sources do not need syntax that the V1 parser/vfmt
+	// still rejects. `is_mut` remains source metadata for the explicit spelling.
+	return false
+}
+
+fn (mut c Checker) module_storage_for_lhs(expr ast.Expr) ?Global {
+	unwrapped := c.unwrap_expr(expr)
+	match unwrapped {
+		ast.Ident {
+			if obj := c.scope.lookup_parent(unwrapped.name, 0) {
+				if obj is Global && obj.is_module_storage() {
+					return obj
+				}
+			}
+		}
+		ast.SelectorExpr {
+			if unwrapped.lhs is ast.Ident {
+				lhs_ident := unwrapped.lhs as ast.Ident
+				if lhs_obj := c.scope.lookup_parent(lhs_ident.name, 0) {
+					if lhs_obj is Module {
+						if rhs_obj := lhs_obj.scope.lookup_parent(unwrapped.rhs.name, 0) {
+							if rhs_obj is Global && rhs_obj.is_module_storage() {
+								declaring_mod := if rhs_obj.mod != '' {
+									rhs_obj.mod
+								} else {
+									lhs_obj.name
+								}
+								if declaring_mod != c.cur_file_module && !rhs_obj.is_public {
+									c.error_with_pos('module global `${lhs_ident.name}.${unwrapped.rhs.name}` is private',
+										unwrapped.pos)
+									return none
+								}
+								return rhs_obj
+							}
+						}
+					}
+					if lhs_obj is Global && lhs_obj.is_module_storage() {
+						return lhs_obj
+					}
+				}
+			}
+			if storage := c.module_storage_for_lhs(unwrapped.lhs) {
+				return storage
+			}
+		}
+		ast.IndexExpr {
+			if storage := c.module_storage_for_lhs(unwrapped.lhs) {
+				return storage
+			}
+		}
+		else {}
+	}
+
+	return none
+}
+
+fn (mut c Checker) check_module_storage_assignment(lhs ast.Expr, op token.Token, pos token.Pos) {
+	if op == .decl_assign {
+		return
+	}
+	if storage := c.module_storage_for_lhs(lhs) {
+		if storage.requires_explicit_module_storage_mut() && !storage.is_mut {
+			mut display_name := storage.name
+			if storage.mod != '' && !storage.name.starts_with('${storage.mod}.') {
+				display_name = '${storage.mod}.${storage.name}'
+			}
+			c.error_with_pos('cannot assign to immutable module global `${display_name}`; declare it with `__global mut`',
+				pos)
+		}
+	}
+}
+
 fn is_empty_expr(e ast.Expr) bool {
 	return e is ast.EmptyExpr
 }
@@ -1120,6 +1239,9 @@ fn (mut c Checker) register_imported_symbols(files []ast.File) {
 			for symbol in imp.symbols {
 				if symbol is ast.Ident {
 					if sym_obj := import_scope.lookup_parent(symbol.name, 0) {
+						if sym_obj is Global && sym_obj.is_module_storage() {
+							continue
+						}
 						file_scope.insert(symbol.name, sym_obj)
 					}
 				}
@@ -1316,6 +1438,9 @@ fn (mut c Checker) preregister_type_stmt(stmt ast.Stmt) {
 		ast.ConstDecl, ast.EnumDecl, ast.InterfaceDecl, ast.StructDecl, ast.TypeDecl {
 			c.decl(stmt)
 		}
+		ast.GlobalDecl {
+			c.preregister_module_storage_decl(stmt)
+		}
 		ast.ExprStmt {
 			c.preregister_active_comptime_decl_stmt(stmt, true, false)
 		}
@@ -1374,6 +1499,11 @@ fn (mut c Checker) preregister_decl_stmts(stmts []ast.Stmt, want_types bool, wan
 			ast.FnDecl {
 				if want_fns {
 					c.decl(stmt)
+				}
+			}
+			ast.GlobalDecl {
+				if want_types {
+					c.preregister_module_storage_decl(stmt)
 				}
 			}
 			ast.ExprStmt {
@@ -1441,11 +1571,8 @@ fn (mut c Checker) decl(decl ast.Stmt) {
 				} else if field.value !is ast.EmptyExpr {
 					field_type = c.expr(field.value)
 				}
-				obj := Global{
-					name: field.name
-					typ:  field_type
-				}
-				c.scope.insert(field.name, obj)
+				obj := module_storage_object(c.cur_file_module, decl, field, field_type)
+				c.scope.insert_or_update(field.name, obj)
 			}
 		}
 		ast.InterfaceDecl {
@@ -2949,6 +3076,9 @@ fn (mut c Checker) expr_impl(expr ast.Expr) Type {
 			return c.expr(expr.expr)
 		}
 		ast.PostfixExpr {
+			if expr.op in [.inc, .dec] {
+				c.check_module_storage_assignment(expr.expr, expr.op, expr.pos)
+			}
 			typ := c.expr(expr.expr)
 			// The `!` and `?` propagation operators unwrap result/option types.
 			if expr.op in [.not, .question] {
@@ -3196,6 +3326,9 @@ fn (mut c Checker) lookup_object_in_imported_modules(name string) ?Object {
 			match obj {
 				Module {
 					if rhs_obj := obj.scope.lookup_parent(name, 0) {
+						if rhs_obj is Global && rhs_obj.is_module_storage() {
+							continue
+						}
 						return rhs_obj
 					}
 					if obj.name == '' {
@@ -3204,6 +3337,9 @@ fn (mut c Checker) lookup_object_in_imported_modules(name string) ?Object {
 					if module_obj := c.scope.lookup_parent(obj.name, 0) {
 						if module_obj is Module {
 							if rhs_obj := module_obj.scope.lookup_parent(name, 0) {
+								if rhs_obj is Global && rhs_obj.is_module_storage() {
+									continue
+								}
 								return rhs_obj
 							}
 						}
@@ -3389,11 +3525,8 @@ fn (mut c Checker) stmt(stmt ast.Stmt) {
 				} else {
 					c.expr(field.value)
 				}
-				obj := Global{
-					name: field.name
-					typ:  field_type
-				}
-				c.scope.insert(field.name, obj)
+				obj := module_storage_object(c.cur_file_module, stmt, field, field_type)
+				c.scope.insert_or_update(field.name, obj)
 			}
 		}
 		ast.DeferStmt {
@@ -3913,10 +4046,12 @@ fn (mut c Checker) check_pending_fn_body(pending PendingFnBody) {
 	}
 	if !has_decl_generic_params || c.env.cur_generic_types.len > 0 {
 		prev_scope := c.scope
+		prev_module := c.cur_file_module
 		prev_fn_root_scope := c.fn_root_scope
 		prev_fallback_vars := c.fallback_vars.clone()
 		prev_generic_params := c.generic_params.clone()
 		c.scope = pending.scope
+		c.cur_file_module = pending.module_name
 		c.fn_root_scope = pending.scope
 		c.fallback_vars = map[string]Type{}
 		for param in pending.typ.params {
@@ -3969,6 +4104,7 @@ fn (mut c Checker) check_pending_fn_body(pending PendingFnBody) {
 		c.fn_root_scope = prev_fn_root_scope
 		c.env.set_fn_scope(pending.module_name, pending.scope_fn_name, pending.scope)
 		c.scope = prev_scope
+		c.cur_file_module = prev_module
 	}
 	c.env.cur_generic_types = []
 }
@@ -4154,6 +4290,7 @@ fn (mut c Checker) assign_stmt(stmt ast.AssignStmt, unwrap_optional bool) {
 		} else {
 			c.expr(rx)
 		}
+		c.check_module_storage_assignment(lx, stmt.op, stmt.pos)
 		// if t := expected_type {
 		// 	c.log('AssignStmt: setting expected_type to: ${t.name()}')
 		// } else {
@@ -6478,6 +6615,14 @@ fn (mut c Checker) selector_expr(expr ast.SelectorExpr) Type {
 					}
 					c.error_with_pos('missing ${expr.lhs.name}.${expr.rhs.name}', expr.pos)
 					return Type(void_)
+				}
+				if rhs_obj is Global && rhs_obj.is_module_storage() {
+					declaring_mod := if rhs_obj.mod != '' { rhs_obj.mod } else { lhs_obj.name }
+					if declaring_mod != c.cur_file_module && !rhs_obj.is_public {
+						c.error_with_pos('module global `${expr.lhs.name}.${expr.rhs.name}` is private',
+							expr.pos)
+						return Type(void_)
+					}
 				}
 				if expr.lhs.name == 'os' && expr.rhs.name == 'args' && rhs_obj.typ() is Void {
 					return os_args_array_type()

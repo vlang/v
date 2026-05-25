@@ -989,7 +989,7 @@ pub type Type = u32
 
 pub struct Table {}
 
-__global global_table = &Table(unsafe { nil })
+pub __global global_table = &Table(unsafe { nil })
 
 pub fn (t &Table) type_to_str(typ Type) string {
 	_ = t
@@ -1013,7 +1013,7 @@ struct FnDecl {
 }
 
 fn call(node &FnDecl) string {
-	return global_table.type_to_str(node.receiver.typ)
+	return ast.global_table.type_to_str(node.receiver.typ)
 }
 '
 		},

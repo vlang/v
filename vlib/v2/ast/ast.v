@@ -405,6 +405,8 @@ pub:
 	typ        Expr = empty_expr // can be empty as used for const (unless we use something else)
 	value      Expr = empty_expr
 	attributes []Attribute
+	is_public  bool
+	is_mut     bool
 }
 
 pub struct FieldInit {
@@ -908,6 +910,7 @@ pub struct GlobalDecl {
 pub:
 	attributes []Attribute
 	fields     []FieldDecl
+	is_public  bool
 }
 
 pub struct ImportStmt {

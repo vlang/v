@@ -621,6 +621,9 @@ fn (mut jb JsonBuilder) write_global_decl(stmt ast.GlobalDecl) {
 	jb.sb.write_string(',\n')
 
 	jb.write_indent()
+	jb.sb.write_string('"is_public": ${stmt.is_public},\n')
+
+	jb.write_indent()
 	jb.sb.write_string('"fields": ')
 	jb.write_field_decls(stmt.fields)
 	jb.sb.write_string('\n')
@@ -1279,6 +1282,13 @@ fn (mut jb JsonBuilder) write_field_decl(field ast.FieldDecl) {
 	jb.write_indent()
 	jb.sb.write_string('"attributes": ')
 	jb.write_attributes(field.attributes)
+	jb.sb.write_string(',\n')
+
+	jb.write_indent()
+	jb.sb.write_string('"is_public": ${field.is_public},\n')
+
+	jb.write_indent()
+	jb.sb.write_string('"is_mut": ${field.is_mut}')
 	jb.sb.write_string('\n')
 
 	jb.indent--

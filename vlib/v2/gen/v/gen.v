@@ -277,10 +277,23 @@ fn (mut g Gen) stmt(stmt ast.Stmt) {
 			g.expr(stmt.expr)
 		}
 		ast.GlobalDecl {
+			if stmt.attributes.len > 0 {
+				g.attributes(stmt.attributes)
+				g.writeln('')
+			}
+			if stmt.is_public {
+				g.write('pub ')
+			}
 			g.writeln('__global (')
 			g.indent++
 			for field in stmt.fields {
 				// TODO
+				if field.is_public && !stmt.is_public {
+					g.write('pub ')
+				}
+				if field.is_mut {
+					g.write('mut ')
+				}
 				g.write(field.name)
 				// if field.value != none {
 				if field.value !is ast.EmptyExpr {

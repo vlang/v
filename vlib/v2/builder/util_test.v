@@ -2,6 +2,7 @@
 module builder
 
 import os
+import v2.ast
 import v2.pref
 
 fn test_get_v_files_from_dir_uses_target_os() {
@@ -104,6 +105,76 @@ fn test_split_compile_and_link_flags_moves_c_sources_to_link_step() {
 		split_compile_and_link_flags('-I /tmp/include -DMYFLAG thirdparty/sqlite/sqlite3.c -L/tmp/lib -lsqlite3 foo.o')
 	assert compile_flags == '-I /tmp/include -DMYFLAG'
 	assert link_flags == 'thirdparty/sqlite/sqlite3.c -L/tmp/lib -lsqlite3 foo.o'
+}
+
+fn test_sanitize_header_source_preserves_public_module_storage() {
+	source := 'module state
+
+pub __global (
+	mut count int
+	pub mut shared int
+)
+
+pub __global mut total int
+'
+	sanitized := sanitize_header_source(source, map[string]string{})
+	assert sanitized.contains('pub __global (')
+	assert sanitized.contains('mut count int')
+	assert sanitized.contains('pub mut shared int')
+	assert sanitized.contains('pub __global mut total int')
+}
+
+fn test_build_module_header_ast_preserves_module_storage_flags() {
+	mut prefs := pref.new_preferences()
+	mut b := new_builder(&prefs)
+	source_file := ast.File{
+		mod:   'state'
+		name:  'state.v'
+		stmts: [
+			ast.Stmt(ast.ModuleStmt{
+				name: 'state'
+			}),
+			ast.Stmt(ast.GlobalDecl{
+				is_public: true
+				fields:    [
+					ast.FieldDecl{
+						name:      'private_count'
+						typ:       ast.Ident{
+							name: 'int'
+						}
+						is_mut:    true
+						is_public: false
+					},
+					ast.FieldDecl{
+						name:      'shared_count'
+						typ:       ast.Ident{
+							name: 'int'
+						}
+						is_mut:    true
+						is_public: true
+					},
+				]
+			}),
+		]
+	}
+	header := b.build_module_header_ast([source_file], 'state') or {
+		panic('missing module storage header')
+	}
+	mut found := false
+	for stmt in header.stmts {
+		if stmt is ast.GlobalDecl {
+			found = true
+			assert stmt.is_public
+			assert stmt.fields.len == 2
+			assert stmt.fields[0].name == 'private_count'
+			assert stmt.fields[0].is_mut
+			assert !stmt.fields[0].is_public
+			assert stmt.fields[1].name == 'shared_count'
+			assert stmt.fields[1].is_mut
+			assert stmt.fields[1].is_public
+		}
+	}
+	assert found
 }
 
 fn test_cflags_need_objc_mode_only_for_objc_inputs() {
