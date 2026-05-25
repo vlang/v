@@ -7425,6 +7425,13 @@ fn (mut g Gen) emit(code u32) {
 }
 
 fn (mut g Gen) record_pending_label(blk int) {
+	// Guard against unresolved or out-of-range block IDs (e.g. -1 from
+	// val_to_block misses). The old O(N^2) scan tolerated these by simply
+	// never matching them later; preserve that behavior here instead of
+	// indexing pending_head[blk] out-of-bounds.
+	if blk < 0 || blk >= g.pending_head.len {
+		return
+	}
 	off := g.macho.text_data.len - g.curr_offset
 	new_idx := g.pending_label_offs.len
 	prev_head := g.pending_head[blk]

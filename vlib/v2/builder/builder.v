@@ -129,7 +129,7 @@ pub fn (mut b Builder) build(files []string) {
 		b.parsed_v_lines_n, b.pref.stats, b.pref.print_parsed_files, b.parsed_full_files,
 		b.parsed_vh_files)
 	if b.pref.stats {
-		// b.print_flat_ast_summary()
+		b.print_flat_ast_summary()
 	}
 
 	if b.pref.skip_type_check {
@@ -2218,7 +2218,6 @@ fn (mut b Builder) update_parse_summary_counts() {
 	}
 }
 
-/*
 fn (b &Builder) print_flat_ast_summary() {
 	legacy_stats := ast.legacy_ast_stats(b.files)
 	legacy_nodes := ast.count_legacy_nodes(b.files)
@@ -2231,7 +2230,6 @@ fn (b &Builder) print_flat_ast_summary() {
 	println(' * AST nodes: legacy=${legacy_nodes}, flat=${flat_stats.nodes}')
 	println(' * AST memory est: legacy=${legacy_stats.bytes_estimate}B, flat=${flat_stats.bytes_estimate}B (${mem_delta_pct:.2f}% reduction)')
 }
-*/
 
 fn count_v_lines_for_paths(paths []string) int {
 	mut seen_paths := map[string]bool{}

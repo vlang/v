@@ -1540,7 +1540,7 @@ fn (mut t Transformer) transform_fn_decl(decl ast.FnDecl) ast.FnDecl {
 		'${t.cur_module}__${scope_fn_name}'
 	}
 	fn_generic_params := generic_param_names(decl.typ.generic_params)
-	old_local_decl_types := t.local_decl_types.clone()
+	mut old_local_decl_types := t.local_decl_types.move()
 	t.local_decl_types = map[string]types.Type{}
 	if fn_scope := t.cached_fn_scopes[fn_scope_key] {
 		t.scope = types.new_scope(fn_scope)
@@ -1657,9 +1657,9 @@ fn (mut t Transformer) transform_fn_decl(decl ast.FnDecl) ast.FnDecl {
 		t.cur_fn_recv_param = ''
 		t.cur_fn_recv_is_ptr = false
 	}
-	old_fn_generic_params := t.cur_fn_generic_params.clone()
-	old_generic_var_type_params := t.generic_var_type_params.clone()
-	t.cur_fn_generic_params = fn_generic_params.clone()
+	old_fn_generic_params := t.cur_fn_generic_params
+	mut old_generic_var_type_params := t.generic_var_type_params.move()
+	t.cur_fn_generic_params = fn_generic_params
 	if t.generic_var_type_params.len == 0 {
 		t.generic_var_type_params = map[string]string{}
 	}
@@ -1670,15 +1670,15 @@ fn (mut t Transformer) transform_fn_decl(decl ast.FnDecl) ast.FnDecl {
 			}
 		}
 	}
-	old_smartcast_stack := t.smartcast_stack.clone()
-	old_smartcast_expr_counts := t.smartcast_expr_counts.clone()
-	t.smartcast_stack.clear()
+	old_smartcast_stack := t.smartcast_stack
+	mut old_smartcast_expr_counts := t.smartcast_expr_counts.move()
+	t.smartcast_stack = []SmartcastContext{cap: 4}
 	t.smartcast_expr_counts = map[string]int{}
 	transformed_stmts := t.transform_stmts(decl.stmts)
 	t.smartcast_stack = old_smartcast_stack
-	t.smartcast_expr_counts = old_smartcast_expr_counts.clone()
+	t.smartcast_expr_counts = old_smartcast_expr_counts.move()
 	t.cur_fn_generic_params = old_fn_generic_params
-	t.generic_var_type_params = old_generic_var_type_params.clone()
+	t.generic_var_type_params = old_generic_var_type_params.move()
 	t.cur_fn_name_str = old_fn_name_str
 	t.cur_fn_recv_prefix = old_fn_recv_prefix
 	t.cur_fn_recv_param = old_fn_recv_param
@@ -1697,7 +1697,7 @@ fn (mut t Transformer) transform_fn_decl(decl ast.FnDecl) ast.FnDecl {
 	if t.fn_root_scope != unsafe { nil } {
 		t.cached_fn_scopes[fn_scope_key] = t.fn_root_scope
 	}
-	t.local_decl_types = old_local_decl_types.clone()
+	t.local_decl_types = old_local_decl_types.move()
 
 	// Restore previous scope and fn_root_scope
 	t.scope = old_scope
