@@ -38,19 +38,19 @@ pub mut:
 	skip_genv             bool
 	skip_builtin          bool
 	skip_imports          bool
-	skip_type_check       bool                  // Skip type checking phase (for backends that don't need it yet)
-	no_parallel           bool                  // when true, run type check sequentially (default: parallel)
-	no_parallel_transform bool                  // when true, run transform sequentially (default: parallel)
-	no_cache              bool                  // Disable build cache
-	no_markused           bool                  // Disable markused stage and dead-function pruning
-	show_cc               bool                  // Print C compiler command(s)
-	stats                 bool                  // Print extended statistics
-	print_parsed_files    bool                  // Print all parsed files grouped by full/.vh parse mode
-	keep_c                bool                  // Keep generated C file after compilation
-	use_context_allocator bool                  // Use context allocator for heap allocations (enables profiling)
-	is_shared_lib         bool                  // Compile to shared library (.dylib/.so) for live reload
-	no_optimize           bool                  // -O0: skip SSA optimization (mem2reg, phi elimination)
-	is_prod               bool                  // -prod: use -O3 optimization for C compiler
+	skip_type_check       bool // Skip type checking phase (for backends that don't need it yet)
+	no_parallel           bool // when true, run type check sequentially (default: parallel)
+	no_parallel_transform bool // when true, run transform sequentially (default: parallel)
+	no_cache              bool // Disable build cache
+	no_markused           bool // Disable markused stage and dead-function pruning
+	show_cc               bool // Print C compiler command(s)
+	stats                 bool // Print extended statistics
+	print_parsed_files    bool // Print all parsed files grouped by full/.vh parse mode
+	keep_c                bool // Keep generated C file after compilation
+	use_context_allocator bool // Use context allocator for heap allocations (enables profiling)
+	is_shared_lib         bool // Compile to shared library (.dylib/.so) for live reload
+	no_optimize           bool = true // skip SSA optimization (mem2reg, phi elimination); cleared by -prod
+	is_prod               bool                  // -prod: enable SSA optimization + -O3 -flto for C compiler
 	prealloc              bool                  // -prealloc: use arena allocation (bump-pointer, not thread-safe)
 	gc_mode               GarbageCollectionMode // Garbage collection mode (-gc flag)
 	backend               Backend
@@ -332,9 +332,9 @@ pub fn new_preferences_from_args(args []string) Preferences {
 			eprintln('  -nocache, --nocache    Disable build cache')
 			eprintln('  -d <name>              Define a comptime flag')
 			eprintln('  -enable-globals        Accepted for v1 compatibility')
-			eprintln('  -prod                  Production build: optimize with -O3 -flto')
+			eprintln('  -prod                  Production build: enable SSA optimization + -O3 -flto')
 			eprintln('  -prealloc              Use arena allocation (faster, not thread-safe)')
-			eprintln('  -O0                    Skip SSA optimization (faster compile, slower code)')
+			eprintln('  -O0                    Skip SSA optimization (default; use -prod to enable)')
 			$if ownership ? {
 				eprintln('  -ownership             Enable ownership checking for strings')
 			}
@@ -365,7 +365,7 @@ pub fn new_preferences_from_args(args []string) Preferences {
 		keep_c:                '-keepc' in options
 		use_context_allocator: '--profile-alloc' in options || '-profile-alloc' in options
 		is_shared_lib:         '-shared' in options || '--shared' in options
-		no_optimize:           '-O0' in options
+		no_optimize:           '-O0' in options || '-prod' !in options
 		is_prod:               '-prod' in options
 		prealloc:              '-prealloc' in options
 		single_backend:        '--single-backend' in options || '-single-backend' in options
@@ -424,7 +424,7 @@ pub fn new_preferences_using_options(options []string) Preferences {
 		print_parsed_files:    '-print-parsed-files' in options || '--print-parsed-files' in options
 		use_context_allocator: '--profile-alloc' in options || '-profile-alloc' in options
 		is_shared_lib:         '-shared' in options || '--shared' in options
-		no_optimize:           '-O0' in options
+		no_optimize:           '-O0' in options || '-prod' !in options
 		is_prod:               '-prod' in options
 		prealloc:              '-prealloc' in options
 		single_backend:        '--single-backend' in options || '-single-backend' in options
