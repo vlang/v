@@ -40,6 +40,11 @@ fn ssa_module_storage_name(module_name string, name string) string {
 	return name
 }
 
+fn ssa_module_storage_field_is_c_extern(node ast.GlobalDecl, field ast.FieldDecl) bool {
+	return field.name.starts_with('C.') || node.attributes.has('c_extern')
+		|| field.attributes.has('c_extern')
+}
+
 struct DynConstArray {
 	arr_global_name  string // V array struct global name
 	data_global_name string // raw data global name
@@ -1496,8 +1501,18 @@ fn (mut b Builder) register_consts_and_globals(file ast.File) {
 			}
 			ast.GlobalDecl {
 				for field in stmt.fields {
-					glob_name := ssa_module_storage_name(b.cur_module, field.name)
 					glob_type := b.global_field_type(field)
+					if ssa_module_storage_field_is_c_extern(stmt, field)
+						&& !field.name.starts_with('C.') {
+						glob_id := b.mod.add_external_global(field.name, glob_type)
+						b.global_refs[field.name] = glob_id
+						qualified_name := ssa_module_storage_name(b.cur_module, field.name)
+						if qualified_name != field.name {
+							b.global_refs[qualified_name] = glob_id
+						}
+						continue
+					}
+					glob_name := ssa_module_storage_name(b.cur_module, field.name)
 					initial_value := if field.value != ast.empty_expr {
 						b.try_eval_const_int(field.value)
 					} else {

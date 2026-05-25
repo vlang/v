@@ -166,3 +166,33 @@ fn main() {
 	}
 	assert a_id != b_id
 }
+
+fn test_module_storage_c_extern_raw_global_uses_c_symbol_in_ssa() {
+	m := module_storage_ssa_for_test_sources('c_extern_raw', {
+		'ext/ext.v': 'module ext
+
+@[c_extern]
+pub __global raw_status int
+
+pub fn read_status() int {
+	return raw_status
+}
+'
+		'main.v':    'module main
+
+import ext
+
+fn main() {
+	_ = ext.raw_status
+	_ = ext.read_status()
+}
+'
+	})
+	names := module_storage_ssa_global_names(m)
+	assert 'raw_status' in names
+	assert 'ext__raw_status' !in names
+	_ := module_storage_ssa_global_value_id(m, 'raw_status') or {
+		panic('missing raw_status C extern global')
+	}
+	assert module_storage_ssa_global_value_id(m, 'ext__raw_status') == none
+}

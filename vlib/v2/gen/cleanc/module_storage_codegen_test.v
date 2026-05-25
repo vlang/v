@@ -214,10 +214,62 @@ import cwrap
 
 fn main() {
 	_ = cwrap.read_status()
+	_ = cwrap.raw_status
 }
 '
 	})
 	assert csrc.contains('extern int raw_status;'), csrc
 	assert csrc.contains('return raw_status;'), csrc
+	assert csrc.count('raw_status') >= 3, csrc
 	assert !csrc.contains('cwrap__raw_status'), csrc
+}
+
+fn test_generate_c_keeps_qualified_c_extern_global_alias_unmangled() {
+	csrc := module_storage_csrc_for_test_sources({
+		'cwrap/runtime.c.v': '@[translated]
+module cwrap
+
+@[c_extern; hidden; markused]
+__global raw_status int
+'
+		'main.v':            'module main
+
+import cwrap as cw
+
+fn main() {
+	_ = cw.raw_status
+}
+'
+	})
+	assert csrc.contains('extern int raw_status;'), csrc
+	assert csrc.count('raw_status') >= 2, csrc
+	assert !csrc.contains('cwrap__raw_status'), csrc
+	assert !csrc.contains('cw__raw_status'), csrc
+}
+
+fn test_generate_c_keeps_plain_module_c_extern_global_unmangled() {
+	csrc := module_storage_csrc_for_test_sources({
+		'ext/ext.v': 'module ext
+
+@[c_extern]
+pub __global raw_status int
+
+pub fn read_status() int {
+	return raw_status
+}
+'
+		'main.v':    'module main
+
+import ext
+
+fn main() {
+	_ = ext.raw_status
+	_ = ext.read_status()
+}
+'
+	})
+	assert csrc.contains('extern int raw_status;'), csrc
+	assert csrc.contains('return raw_status;'), csrc
+	assert csrc.contains('(void)(raw_status);'), csrc
+	assert !csrc.contains('ext__raw_status'), csrc
 }

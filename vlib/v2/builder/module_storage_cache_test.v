@@ -116,3 +116,52 @@ fn main() {
 	assert private_code != 0, 'cached private module storage should fail'
 	assert private_output.contains('module global `state.hidden` is private'), private_output
 }
+
+fn test_module_storage_c_extern_import_cache_uses_raw_symbol() {
+	tmp_dir := module_storage_cache_tmp_dir('c_extern_import')
+	os.rmdir_all(tmp_dir) or {}
+	os.mkdir_all(os.join_path(tmp_dir, 'ext')) or { panic(err) }
+	defer {
+		os.rmdir_all(tmp_dir) or {}
+	}
+	mut prefs := pref.new_preferences()
+	mut cache_builder := new_builder(&prefs)
+	cache_dir := cache_builder.core_cache_dir()
+	os.rmdir_all(cache_dir) or {}
+	c_path := os.join_path(tmp_dir, 'raw_status.c')
+	os.write_file(c_path, 'int raw_status = 7;\n') or { panic(err) }
+	os.write_file(os.join_path(tmp_dir, 'ext', 'ext.v'), 'module ext
+
+@[c_extern]
+pub __global raw_status int
+
+pub fn read_status() int {
+	return raw_status
+}
+') or {
+		panic(err)
+	}
+	main_path := os.join_path(tmp_dir, 'main.v')
+	os.write_file(main_path, 'module main
+
+import ext
+
+#flag ${c_path}
+
+fn main() {
+	_ = ext.raw_status
+	_ = ext.read_status()
+}
+') or {
+		panic(err)
+	}
+	out_path := os.join_path(tmp_dir, 'out')
+	cmd := '${os.quoted_path(@VEXE)} -v -v2 -keepc -o ${os.quoted_path(out_path)} ${os.quoted_path(main_path)} 2>&1'
+	res := os.execute(cmd)
+	assert res.exit_code == 0, res.output
+	ext_header := os.read_file(cache_builder.core_header_path('ext')) or { panic(err) }
+	assert ext_header.contains('@[c_extern]'), ext_header
+	imports_c := os.read_file(os.join_path(cache_dir, 'imports.c')) or { panic(err) }
+	assert imports_c.contains('return raw_status;'), imports_c
+	assert !imports_c.contains('ext__raw_status'), imports_c
+}

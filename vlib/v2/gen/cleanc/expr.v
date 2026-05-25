@@ -784,6 +784,18 @@ fn (mut g Gen) known_module_runtime_symbol(module_name string, symbol_name strin
 	return none
 }
 
+fn (mut g Gen) module_selector_storage_c_name(module_name string, symbol_name string) string {
+	c_name := if symbol_name.starts_with('${module_name}__') {
+		symbol_name
+	} else {
+		'${module_name}__${symbol_name}'
+	}
+	if raw_c_name := g.c_extern_module_storage[c_name] {
+		return raw_c_name
+	}
+	return c_name
+}
+
 // expr_to_int_str_with_env resolves fixed-array size expressions, handling
 // both literal numbers and named constants (looked up via type environment).
 fn (g &Gen) expr_to_int_str_with_env(e ast.Expr) string {
@@ -2927,20 +2939,12 @@ fn (mut g Gen) expr(node ast.Expr) {
 				is_local := g.local_var_c_type_for_expr(lhs_expr) != none
 				if g.is_module_ident(lhs_ident.name) && !is_local {
 					mod_name := g.resolve_module_name(lhs_ident.name)
-					if rhs_name.starts_with('${mod_name}__') {
-						g.sb.write_string(rhs_name)
-					} else {
-						g.sb.write_string('${mod_name}__${rhs_name}')
-					}
+					g.sb.write_string(g.module_selector_storage_c_name(mod_name, rhs_name))
 					return
 				}
 				if !is_local {
 					if mod_name := g.known_module_runtime_symbol(lhs_ident.name, rhs_name) {
-						if rhs_name.starts_with('${mod_name}__') {
-							g.sb.write_string(rhs_name)
-						} else {
-							g.sb.write_string('${mod_name}__${rhs_name}')
-						}
+						g.sb.write_string(g.module_selector_storage_c_name(mod_name, rhs_name))
 						return
 					}
 				}
