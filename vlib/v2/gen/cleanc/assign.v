@@ -671,6 +671,7 @@ fn (mut g Gen) gen_assign_stmt(node ast.AssignStmt) {
 		if name == 'array' {
 			name = '_v_array'
 		}
+		decl_c_name := c_local_name(name)
 		// Keep fixed-size arrays as C arrays in local declarations.
 		if rhs is ast.ArrayInitExpr {
 			array_init := rhs as ast.ArrayInitExpr
@@ -716,7 +717,7 @@ fn (mut g Gen) gen_assign_stmt(node ast.AssignStmt) {
 				g.remember_runtime_local_type(name, fixed_name)
 				is_literal_size := fixed_len is ast.BasicLiteral
 					&& (fixed_len as ast.BasicLiteral).kind == .number
-				g.sb.write_string('${storage_prefix}${elem_type} ${name}[')
+				g.sb.write_string('${storage_prefix}${elem_type} ${decl_c_name}[')
 				g.expr(fixed_len)
 				if array_init.exprs.len == 0 {
 					if array_init.init !is ast.EmptyExpr && is_literal_size {
@@ -730,7 +731,7 @@ fn (mut g Gen) gen_assign_stmt(node ast.AssignStmt) {
 						// Non-literal sizes are VLAs in C99 and cannot use = {0}
 						g.sb.writeln('];')
 						g.write_indent()
-						g.sb.writeln('memset(${name}, 0, sizeof(${name}));')
+						g.sb.writeln('memset(${decl_c_name}, 0, sizeof(${decl_c_name}));')
 					}
 				} else {
 					g.sb.write_string('] = {')
@@ -748,7 +749,7 @@ fn (mut g Gen) gen_assign_stmt(node ast.AssignStmt) {
 		}
 		if rhs is ast.CallExpr {
 			if orm_ret := g.orm_create_call_result_type(rhs) {
-				g.sb.write_string('${orm_ret} ${name} = ')
+				g.sb.write_string('${orm_ret} ${decl_c_name} = ')
 				g.expr(rhs)
 				g.sb.writeln(';')
 				g.remember_runtime_local_type(name, orm_ret)
@@ -1113,13 +1114,13 @@ fn (mut g Gen) gen_assign_stmt(node ast.AssignStmt) {
 				|| is_or_tmp {
 				cast_type := g.option_result_data_cast_type(container_type, typ, rhs_type)
 				if cast_type.starts_with('Array_fixed_') {
-					g.sb.write_string('${cast_type} ${name}; memcpy(${name}, (${cast_type}*)(((u8*)(&')
+					g.sb.write_string('${cast_type} ${decl_c_name}; memcpy(${decl_c_name}, (${cast_type}*)(((u8*)(&')
 					g.expr(rhs.lhs)
 					g.sb.writeln('.err)) + sizeof(IError)), sizeof(${cast_type}));')
 					g.remember_runtime_local_type(name, cast_type)
 					return
 				}
-				g.sb.write_string('${cast_type} ${name} = (*(${cast_type}*)(((u8*)(&')
+				g.sb.write_string('${cast_type} ${decl_c_name} = (*(${cast_type}*)(((u8*)(&')
 				g.expr(rhs.lhs)
 				g.sb.writeln('.err)) + sizeof(IError)));')
 				g.remember_runtime_local_type(name, cast_type)
@@ -1144,13 +1145,13 @@ fn (mut g Gen) gen_assign_stmt(node ast.AssignStmt) {
 		typ = unmangle_c_ptr_type(typ)
 		if name != '' && rhs_type.starts_with('_result_') && !typ.starts_with('_result_') {
 			if typ.starts_with('Array_fixed_') {
-				g.sb.write_string('${typ} ${name}; { ${rhs_type} _tmp = ')
+				g.sb.write_string('${typ} ${decl_c_name}; { ${rhs_type} _tmp = ')
 				g.expr(rhs)
-				g.sb.writeln('; memcpy(${name}, (${typ}*)(((u8*)(&_tmp.err)) + sizeof(IError)), sizeof(${typ})); }')
+				g.sb.writeln('; memcpy(${decl_c_name}, (${typ}*)(((u8*)(&_tmp.err)) + sizeof(IError)), sizeof(${typ})); }')
 				g.remember_runtime_local_type(name, typ)
 				return
 			}
-			g.sb.write_string('${typ} ${name} = ({ ${rhs_type} _tmp = ')
+			g.sb.write_string('${typ} ${decl_c_name} = ({ ${rhs_type} _tmp = ')
 			g.expr(rhs)
 			g.sb.writeln('; (*(${typ}*)(((u8*)(&_tmp.err)) + sizeof(IError))); });')
 			g.remember_runtime_local_type(name, typ)
@@ -1158,13 +1159,13 @@ fn (mut g Gen) gen_assign_stmt(node ast.AssignStmt) {
 		}
 		if name != '' && rhs_type.starts_with('_option_') && !typ.starts_with('_option_') {
 			if typ.starts_with('Array_fixed_') {
-				g.sb.write_string('${typ} ${name}; { ${rhs_type} _tmp = ')
+				g.sb.write_string('${typ} ${decl_c_name}; { ${rhs_type} _tmp = ')
 				g.expr(rhs)
-				g.sb.writeln('; memcpy(${name}, (${typ}*)(((u8*)(&_tmp.err)) + sizeof(IError)), sizeof(${typ})); }')
+				g.sb.writeln('; memcpy(${decl_c_name}, (${typ}*)(((u8*)(&_tmp.err)) + sizeof(IError)), sizeof(${typ})); }')
 				g.remember_runtime_local_type(name, typ)
 				return
 			}
-			g.sb.write_string('${typ} ${name} = ({ ${rhs_type} _tmp = ')
+			g.sb.write_string('${typ} ${decl_c_name} = ({ ${rhs_type} _tmp = ')
 			g.expr(rhs)
 			g.sb.writeln('; (*(${typ}*)(((u8*)(&_tmp.err)) + sizeof(IError))); });')
 			g.remember_runtime_local_type(name, typ)
@@ -1184,11 +1185,11 @@ fn (mut g Gen) gen_assign_stmt(node ast.AssignStmt) {
 						}
 					}
 				}
-				g.sb.writeln('${typ} ${name};')
+				g.sb.writeln('${typ} ${decl_c_name};')
 				if name != '' {
 					g.remember_runtime_local_type(name, typ)
 				}
-				g.gen_decl_if_expr(name, typ, &rhs)
+				g.gen_decl_if_expr(decl_c_name, typ, &rhs)
 				return
 			}
 		}
@@ -1201,7 +1202,7 @@ fn (mut g Gen) gen_assign_stmt(node ast.AssignStmt) {
 			if base_type != '' && base_type != 'void' {
 				heap_name := '_heap_t${g.tmp_counter}'
 				g.tmp_counter++
-				g.sb.write_string('${typ} ${name} = ({ ${base_type}* ${heap_name} = (${base_type}*)malloc(sizeof(${base_type})); *${heap_name} = ')
+				g.sb.write_string('${typ} ${decl_c_name} = ({ ${base_type}* ${heap_name} = (${base_type}*)malloc(sizeof(${base_type})); *${heap_name} = ')
 				g.expr(prefix_rhs.expr)
 				g.sb.writeln('; ${heap_name}; });')
 				g.remember_runtime_local_type(name, typ)
@@ -1210,7 +1211,7 @@ fn (mut g Gen) gen_assign_stmt(node ast.AssignStmt) {
 		}
 		if typ.ends_with('**') && rhs is ast.PrefixExpr && rhs.op == .amp {
 			prefix_rhs := rhs as ast.PrefixExpr
-			g.sb.write_string('${typ} ${name} = ((${typ})(')
+			g.sb.write_string('${typ} ${decl_c_name} = ((${typ})(')
 			g.expr(prefix_rhs.expr)
 			g.sb.writeln('));')
 			if name != '' {
@@ -1232,7 +1233,7 @@ fn (mut g Gen) gen_assign_stmt(node ast.AssignStmt) {
 					if field_type == '' || field_type == 'void' {
 						field_type = 'void*'
 					}
-					g.sb.write_string('${field_type} ${name} = ((${target_type}*)(')
+					g.sb.write_string('${field_type} ${decl_c_name} = ((${target_type}*)(')
 					g.expr(cast_expr.expr)
 					g.sb.writeln('))->${escape_c_keyword(sel.rhs.name)};')
 					g.remember_runtime_local_type(name, field_type)
@@ -1248,7 +1249,7 @@ fn (mut g Gen) gen_assign_stmt(node ast.AssignStmt) {
 				if field_type == '' || field_type == 'void' {
 					field_type = 'void*'
 				}
-				g.sb.write_string('${field_type} ${name} = ((${c_typedef}*)(')
+				g.sb.write_string('${field_type} ${decl_c_name} = ((${c_typedef}*)(')
 				g.expr(sel.lhs)
 				g.sb.writeln('))->${escape_c_keyword(sel.rhs.name)};')
 				g.remember_runtime_local_type(name, field_type)
@@ -1258,7 +1259,7 @@ fn (mut g Gen) gen_assign_stmt(node ast.AssignStmt) {
 		if typ.ends_with('*') && rhs is ast.PrefixExpr && rhs.op == .amp {
 			prefix_rhs := rhs as ast.PrefixExpr
 			if prefix_rhs.expr is ast.CallExpr && prefix_rhs.expr.args.len == 1 {
-				g.sb.write_string('${typ} ${name} = ((${typ})(')
+				g.sb.write_string('${typ} ${decl_c_name} = ((${typ})(')
 				g.expr(prefix_rhs.expr.args[0])
 				g.sb.writeln('));')
 				if name != '' {
@@ -1267,7 +1268,7 @@ fn (mut g Gen) gen_assign_stmt(node ast.AssignStmt) {
 				return
 			}
 			if prefix_rhs.expr is ast.CastExpr {
-				g.sb.write_string('${typ} ${name} = ((${typ})(')
+				g.sb.write_string('${typ} ${decl_c_name} = ((${typ})(')
 				g.expr(prefix_rhs.expr.expr)
 				g.sb.writeln('));')
 				if name != '' {
@@ -1277,7 +1278,7 @@ fn (mut g Gen) gen_assign_stmt(node ast.AssignStmt) {
 			}
 			if prefix_rhs.expr is ast.ParenExpr {
 				if prefix_rhs.expr.expr is ast.CallExpr && prefix_rhs.expr.expr.args.len == 1 {
-					g.sb.write_string('${typ} ${name} = ((${typ})(')
+					g.sb.write_string('${typ} ${decl_c_name} = ((${typ})(')
 					g.expr(prefix_rhs.expr.expr.args[0])
 					g.sb.writeln('));')
 					if name != '' {
@@ -1286,7 +1287,7 @@ fn (mut g Gen) gen_assign_stmt(node ast.AssignStmt) {
 					return
 				}
 				if prefix_rhs.expr.expr is ast.CastExpr {
-					g.sb.write_string('${typ} ${name} = ((${typ})(')
+					g.sb.write_string('${typ} ${decl_c_name} = ((${typ})(')
 					g.expr(prefix_rhs.expr.expr.expr)
 					g.sb.writeln('));')
 					if name != '' {
@@ -1313,7 +1314,7 @@ fn (mut g Gen) gen_assign_stmt(node ast.AssignStmt) {
 			if params_str == '' {
 				params_str = 'void'
 			}
-			g.sb.write_string('${ret_type} (*${name})(${params_str}) = ')
+			g.sb.write_string('${ret_type} (*${decl_c_name})(${params_str}) = ')
 			g.expr(rhs)
 			g.sb.writeln(';')
 			// Register the return type so map/filter can infer result type
@@ -1325,11 +1326,11 @@ fn (mut g Gen) gen_assign_stmt(node ast.AssignStmt) {
 			if call_ret := g.get_call_return_type(rhs.lhs, rhs.args) {
 				if call_ret == typ {
 					wrapper_type := g.c_fn_return_type_from_v(typ)
-					g.sb.writeln('${typ} ${name};')
+					g.sb.writeln('${typ} ${decl_c_name};')
 					g.write_indent()
 					g.sb.write_string('{ ${wrapper_type} _tmp = ')
 					g.expr(rhs)
-					g.sb.writeln('; memcpy(${name}, _tmp.ret_arr, sizeof(${typ})); }')
+					g.sb.writeln('; memcpy(${decl_c_name}, _tmp.ret_arr, sizeof(${typ})); }')
 					g.remember_runtime_local_type(name, typ)
 					return
 				}
@@ -1337,7 +1338,7 @@ fn (mut g Gen) gen_assign_stmt(node ast.AssignStmt) {
 		}
 		if typ.starts_with('Array_fixed_') && !typ.ends_with('*') && rhs !is ast.ArrayInitExpr
 			&& rhs !is ast.CallExpr {
-			g.sb.writeln('${typ} ${name};')
+			g.sb.writeln('${typ} ${decl_c_name};')
 			g.write_indent()
 			// For fixed arrays, check if RHS is a zero-init or type-incompatible pattern.
 			// UnsafeExpr wrapping an array init, plain InitExpr, or dynamic array type
@@ -1353,9 +1354,9 @@ fn (mut g Gen) gen_assign_stmt(node ast.AssignStmt) {
 				}
 			}
 			if is_fixed_arr_zero {
-				g.sb.writeln('memset(${name}, 0, sizeof(${typ}));')
+				g.sb.writeln('memset(${decl_c_name}, 0, sizeof(${typ}));')
 			} else {
-				g.sb.write_string('memcpy(${name}, ')
+				g.sb.write_string('memcpy(${decl_c_name}, ')
 				g.expr(rhs)
 				g.sb.writeln(', sizeof(${typ}));')
 			}
@@ -1390,7 +1391,7 @@ fn (mut g Gen) gen_assign_stmt(node ast.AssignStmt) {
 		can_emit_none := typ.starts_with('_option_') || typ in ['IError', 'builtin__IError']
 			|| is_type_name_pointer_like(typ) || typ in ['void*', 'voidptr', 'byteptr', 'charptr']
 		if name != '' && (rhs_is_none || rhs_is_option_zero) && can_emit_none {
-			g.sb.write_string('${typ} ${name} = ')
+			g.sb.write_string('${typ} ${decl_c_name} = ')
 			g.gen_none_literal_for_type(typ)
 			g.sb.writeln(';')
 			g.remember_runtime_local_type(name, typ)
@@ -1412,7 +1413,7 @@ fn (mut g Gen) gen_assign_stmt(node ast.AssignStmt) {
 				decl_rhs_base := decl_rhs_type.trim_right('*')
 				if decl_rhs_base != '' && decl_rhs_base != 'int' && decl_rhs_base != decl_base
 					&& !g.is_interface_type(decl_rhs_base) {
-					g.sb.write_string('${typ} ${name} = ')
+					g.sb.write_string('${typ} ${decl_c_name} = ')
 					if !g.gen_heap_interface_cast(decl_base, rhs) {
 						g.expr(rhs)
 					}
@@ -1453,7 +1454,7 @@ fn (mut g Gen) gen_assign_stmt(node ast.AssignStmt) {
 			if lhs_fixed_type.ends_with('*') && base_type != '' && base_type != 'void' {
 				heap_name := '_heap_t${g.tmp_counter}'
 				g.tmp_counter++
-				g.sb.write_string('${lhs.name} = ({ ${base_type}* ${heap_name} = (${base_type}*)malloc(sizeof(${base_type})); *${heap_name} = ')
+				g.sb.write_string('${c_local_name(lhs.name)} = ({ ${base_type}* ${heap_name} = (${base_type}*)malloc(sizeof(${base_type})); *${heap_name} = ')
 				g.expr(prefix_rhs.expr)
 				g.sb.writeln('; ${heap_name}; });')
 				return
