@@ -71,6 +71,17 @@ fn test_array_spread_nested_arrays_are_deep_cloned() {
 	assert copy[0] == [1, 2, 99]
 }
 
+// Regression: assigning into a nested element of the spread copy must not
+// mutate the base. Catches shallow-copy regressions in any backend that
+// reuses the base's inner storage.
+fn test_array_spread_nested_element_assignment_isolated() {
+	mut base := [[1, 2]]
+	mut b := [...base]
+	b[0][0] = 9
+	assert base[0][0] == 1
+	assert b[0][0] == 9
+}
+
 // Regression: appended string variables must be cloned, matching the
 // behavior of the regular `[s1, s2]` array-literal path.
 fn test_array_spread_appended_string_variable() {
