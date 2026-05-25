@@ -116,13 +116,18 @@ pub fn (mut db DB) select(config orm.SelectConfig, data orm.QueryData, where orm
 	return c.select(config, data, where)
 }
 
-// insert acquires a conn from the pool and runs the ORM INSERT on it.
+// insert acquires a conn from the pool, runs the ORM INSERT on it, and
+// stashes LASTVAL() captured on the same session for the calling thread.
+// V's `sql db { insert ... }` macro emits a follow-up `db.last_id()` call;
+// stashing here lets that read return the correct id even though the pool
+// may hand out a different conn for the second call.
 pub fn (mut db DB) insert(table orm.Table, data orm.QueryData) ! {
 	mut c := db.pool.acquire()!
 	defer {
 		c.close() or {}
 	}
 	c.insert(table, data)!
+	db.pool.stash_last_id(c.last_id())
 }
 
 // update acquires a conn from the pool and runs the ORM UPDATE on it.
@@ -161,14 +166,13 @@ pub fn (mut db DB) drop(table orm.Table) ! {
 	c.drop(table)!
 }
 
-// last_id is intentionally undefined on `DB`: LASTVAL is session-scoped and a
-// pool would route it to a random conn. Use the `Tx` or pinned `Conn` API.
+// last_id returns the id stashed by this thread's most recent `DB.insert`
+// (or 0 if there is none). LASTVAL() itself is session-scoped, so calling
+// it on a freshly-checked-out pool conn would return the wrong value or 0;
+// `DB.insert` captures it on the same conn that ran the INSERT and stashes
+// it per-thread, which is what V's ORM macro expects.
 pub fn (mut db DB) last_id() int {
-	mut c := db.pool.acquire() or { return 0 }
-	defer {
-		c.close() or {}
-	}
-	return c.last_id()
+	return db.pool.take_last_id()
 }
 
 // ---- ORM on Tx (use the pinned conn) ----

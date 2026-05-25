@@ -72,10 +72,11 @@ $if windows {
 @[heap]
 pub struct Conn {
 mut:
-	conn       voidptr = unsafe { nil }
-	pool       &Pool   = unsafe { nil }
-	created_at time.Time
-	bad        bool
+	conn        voidptr = unsafe { nil }
+	pool        &Pool   = unsafe { nil }
+	created_at  time.Time
+	bad         bool
+	checked_out bool // true while held by a caller; flipped under Pool.mu
 }
 
 pub struct Row {
@@ -426,8 +427,11 @@ fn res_to_result(res voidptr) Result {
 	return Result{cols, rows}
 }
 
-// close releases this conn back to its pool. If the conn was created
-// outside a pool, the underlying libpq connection is torn down.
+// close releases this conn back to its pool. Safe to call more than once:
+// the pool tracks an internal checked-out flag and ignores duplicate
+// releases (guards against e.g. an early manual close + a deferred close
+// enqueuing the same handle twice and letting two callers receive the
+// same PGconn*).
 pub fn (mut c Conn) close() ! {
 	if isnil(c.pool) {
 		unsafe { c.physical_close() }

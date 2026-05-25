@@ -34,11 +34,18 @@ mut:
 	open_count   int
 	waiters      []chan &Conn
 	closed       bool
+	// last_ids stores the per-thread last-inserted id so DB.last_id() returns
+	// the value captured on the same pooled conn that ran the INSERT, instead
+	// of calling LASTVAL() on whatever conn the pool happens to hand out next
+	// (which is session-scoped and would return 0 or a wrong value).
+	last_ids_mu &sync.Mutex = unsafe { nil }
+	last_ids    map[u64]i64
 }
 
 fn new_pool(conninfo string, cfg PoolConfig) &Pool {
 	mut p := &Pool{
 		mu:           sync.new_mutex()
+		last_ids_mu:  sync.new_mutex()
 		conninfo:     conninfo
 		max_open:     cfg.max_open_conns
 		max_idle:     cfg.max_idle_conns
@@ -69,6 +76,8 @@ fn (mut p Pool) acquire() !&Conn {
 				p.open_count--
 				continue
 			}
+			mut mc := unsafe { conn }
+			mc.checked_out = true
 			p.mu.unlock()
 			return conn
 		}
@@ -83,9 +92,12 @@ fn (mut p Pool) acquire() !&Conn {
 				p.mu.unlock()
 				return err
 			}
+			mut mc := unsafe { conn }
+			mc.checked_out = true
 			return conn
 		}
-		// At capacity: wait for a release/close to signal us
+		// At capacity: wait for a release/close to signal us. Senders flip
+		// checked_out under the lock before transferring ownership.
 		waiter := chan &Conn{cap: 1}
 		p.waiters << waiter
 		p.mu.unlock()
@@ -101,6 +113,15 @@ fn (mut p Pool) release(conn &Conn) {
 	}
 	mut c := unsafe { conn }
 	p.mu.lock()
+	// Idempotency guard: a second close() on the same handle (manual + deferred
+	// close, double-defer, etc.) would otherwise enqueue the conn twice and let
+	// two callers receive the same PGconn*, violating libpq's single-thread
+	// usage rule.
+	if !c.checked_out {
+		p.mu.unlock()
+		return
+	}
+	c.checked_out = false
 	if p.closed {
 		p.mu.unlock()
 		unsafe { c.physical_close() }
@@ -141,6 +162,8 @@ fn (mut p Pool) release(conn &Conn) {
 				waiter.close()
 				return
 			}
+			mut mnc := unsafe { new_conn }
+			mnc.checked_out = true
 			waiter <- new_conn
 			p.mu.unlock()
 			return
@@ -154,6 +177,7 @@ fn (mut p Pool) release(conn &Conn) {
 	if p.waiters.len > 0 {
 		waiter := p.waiters[0]
 		p.waiters.delete(0)
+		c.checked_out = true
 		waiter <- c
 		p.mu.unlock()
 		return
@@ -233,4 +257,25 @@ fn (mut p Pool) set_conn_max_lifetime(d time.Duration) {
 	p.mu.lock()
 	p.max_lifetime = d
 	p.mu.unlock()
+}
+
+// stash_last_id records `id` as the last-inserted id for the current thread.
+// Called by `DB.insert` right after running INSERT on the pinned conn, so the
+// next `DB.last_id()` call on the same thread returns this exact value rather
+// than running LASTVAL() on a different pooled session.
+fn (mut p Pool) stash_last_id(id int) {
+	tid := sync.thread_id()
+	p.last_ids_mu.lock()
+	p.last_ids[tid] = i64(id)
+	p.last_ids_mu.unlock()
+}
+
+// take_last_id returns the last-inserted id stashed by this thread's most
+// recent `DB.insert`, or 0 if there is none.
+fn (mut p Pool) take_last_id() int {
+	tid := sync.thread_id()
+	p.last_ids_mu.lock()
+	id := p.last_ids[tid] or { i64(0) }
+	p.last_ids_mu.unlock()
+	return int(id)
 }
