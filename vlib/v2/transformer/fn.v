@@ -137,6 +137,30 @@ fn (mut t Transformer) seed_fn_param_decl_types(params []ast.Parameter, generic_
 	}
 }
 
+fn (mut t Transformer) seed_fn_pointer_param_return_types(params []ast.Parameter, generic_params []string) {
+	for param in params {
+		if param.name == '' || param.name == '_' {
+			continue
+		}
+		if ret_type := t.fn_type_expr_return_type(param.typ, generic_params) {
+			t.local_fn_pointer_return_types[param.name] = ret_type
+		}
+	}
+}
+
+fn (t &Transformer) fn_type_expr_return_type(expr ast.Expr, generic_params []string) ?types.Type {
+	mut fn_type := ast.FnType{}
+	mut ok := false
+	if expr is ast.Type && expr is ast.FnType {
+		fn_type = expr as ast.FnType
+		ok = true
+	}
+	if !ok || fn_type.return_type is ast.EmptyExpr {
+		return none
+	}
+	return t.type_from_param_type_expr(fn_type.return_type, generic_params)
+}
+
 // fn_returns_result checks if a function returns a Result type
 fn (t &Transformer) fn_returns_result(fn_name string) bool {
 	ret_type := t.get_fn_return_type(fn_name) or { return false }
@@ -305,7 +329,19 @@ fn (mut t Transformer) seed_scope_with_fn_params(decl ast.FnDecl) {
 // `http__Request`.
 fn (t &Transformer) lookup_type_from_expr(expr ast.Expr) ?types.Type {
 	if expr is ast.Ident {
-		return t.lookup_type(expr.name)
+		if typ := t.lookup_type(expr.name) {
+			return typ
+		}
+		if typ := t.c_name_to_type(expr.name) {
+			return typ
+		}
+		c_name := t.v_type_name_to_c_name(expr.name)
+		if c_name != '' && c_name != expr.name {
+			if typ := t.c_name_to_type(c_name) {
+				return typ
+			}
+		}
+		return none
 	}
 	if expr is ast.SelectorExpr {
 		if expr.lhs is ast.Ident {
@@ -316,6 +352,12 @@ fn (t &Transformer) lookup_type_from_expr(expr ast.Expr) ?types.Type {
 			}
 		}
 		return t.lookup_type(expr.rhs.name)
+	}
+	if expr is ast.GenericArgs {
+		return t.lookup_type_from_expr(expr.lhs)
+	}
+	if expr is ast.GenericArgOrIndexExpr {
+		return t.lookup_type_from_expr(expr.lhs)
 	}
 	if expr is ast.Type {
 		return t.lookup_type_from_ast_type(expr)
@@ -356,6 +398,9 @@ fn (t &Transformer) lookup_type_from_ast_type(typ ast.Type) ?types.Type {
 			elem_type: elem
 		})
 	}
+	if typ is ast.GenericType {
+		return t.lookup_type_from_expr(typ.name)
+	}
 	// For other ast.Type variants (ArrayFixedType, FnType, etc.), the
 	// caller's name extraction logic may not need them. Returning none lets
 	// callers fall back to other resolution paths.
@@ -390,6 +435,11 @@ fn (t &Transformer) get_method_return_type(expr ast.Expr) ?types.Type {
 			base_type := t.unwrap_alias_and_pointer_type(receiver_type)
 			t.append_method_lookup_type_name(mut lookup_type_names, base_type.name())
 		}
+		if receiver_type := t.get_expr_type(sel_expr.lhs) {
+			t.append_method_lookup_type_name(mut lookup_type_names, receiver_type.name())
+			base_type := t.unwrap_alias_and_pointer_type(receiver_type)
+			t.append_method_lookup_type_name(mut lookup_type_names, base_type.name())
+		}
 		if sel_expr.lhs is ast.SelectorExpr {
 			selector_type_name := t.get_selector_type_name(sel_expr.lhs as ast.SelectorExpr)
 			if selector_type_name != '' {
@@ -400,6 +450,11 @@ fn (t &Transformer) get_method_return_type(expr ast.Expr) ?types.Type {
 			t.append_method_lookup_type_name(mut lookup_type_names, var_type_name)
 		}
 		if receiver_type := t.resolve_expr_type(sel_expr.lhs) {
+			if ret_type := t.interface_method_return_type(receiver_type, method_name) {
+				return ret_type
+			}
+		}
+		if receiver_type := t.get_expr_type(sel_expr.lhs) {
 			if ret_type := t.interface_method_return_type(receiver_type, method_name) {
 				return ret_type
 			}
@@ -1057,6 +1112,10 @@ fn (t &Transformer) fn_pointer_call_return_type(expr ast.Expr) ?types.Type {
 	}
 
 	if lhs is ast.Ident {
+		if lhs.name in t.local_fn_pointer_return_types {
+			ret := t.local_fn_pointer_return_types[lhs.name]
+			return ret
+		}
 		fn_type := t.lookup_fn_pointer_var_type(lhs.name) or { return none }
 		if ret := fn_type.get_return_type() {
 			return ret
@@ -1116,6 +1175,9 @@ fn (t &Transformer) expr_returns_option(expr ast.Expr) bool {
 	if typ := t.get_expr_type(expr) {
 		return typ is types.OptionType
 	}
+	if ret := t.fn_pointer_call_return_type(expr) {
+		return ret is types.OptionType || ret.name().starts_with('?')
+	}
 	if ret := t.get_method_return_type(expr) {
 		return ret is types.OptionType
 	}
@@ -1145,6 +1207,9 @@ fn (t &Transformer) expr_returns_result(expr ast.Expr) bool {
 	}
 	if typ := t.get_expr_type(expr) {
 		return typ is types.ResultType
+	}
+	if ret := t.fn_pointer_call_return_type(expr) {
+		return ret is types.ResultType || ret.name().starts_with('!')
 	}
 	if ret := t.get_method_return_type(expr) {
 		return ret is types.ResultType
@@ -1569,6 +1634,7 @@ fn (mut t Transformer) transform_fn_decl(decl ast.FnDecl) ast.FnDecl {
 		}
 	}
 	t.seed_fn_param_decl_types(decl.typ.params, fn_generic_params)
+	t.seed_fn_pointer_param_return_types(decl.typ.params, fn_generic_params)
 	// Ensure params/receiver are present in scope. The checker may cache an
 	// empty scope for generic function bodies (no specialization recorded),
 	// so seed missing entries from the AST so method-return-type lookups in
@@ -1658,8 +1724,11 @@ fn (mut t Transformer) transform_fn_decl(decl ast.FnDecl) ast.FnDecl {
 		t.cur_fn_recv_is_ptr = false
 	}
 	old_fn_generic_params := t.cur_fn_generic_params
+	mut old_local_fn_pointer_return_types := t.local_fn_pointer_return_types.move()
 	mut old_generic_var_type_params := t.generic_var_type_params.move()
 	t.cur_fn_generic_params = fn_generic_params
+	t.local_fn_pointer_return_types = map[string]types.Type{}
+	t.seed_fn_pointer_param_return_types(decl.typ.params, fn_generic_params)
 	if t.generic_var_type_params.len == 0 {
 		t.generic_var_type_params = map[string]string{}
 	}
@@ -1678,6 +1747,7 @@ fn (mut t Transformer) transform_fn_decl(decl ast.FnDecl) ast.FnDecl {
 	t.smartcast_stack = old_smartcast_stack
 	t.smartcast_expr_counts = old_smartcast_expr_counts.move()
 	t.cur_fn_generic_params = old_fn_generic_params
+	t.local_fn_pointer_return_types = old_local_fn_pointer_return_types.move()
 	t.generic_var_type_params = old_generic_var_type_params.move()
 	t.cur_fn_name_str = old_fn_name_str
 	t.cur_fn_recv_prefix = old_fn_recv_prefix

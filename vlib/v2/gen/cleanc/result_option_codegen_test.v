@@ -830,6 +830,170 @@ fn use(m Match[Item]) bool {
 	assert csrc.contains('_option_sample__Item sample__Match__inner')
 }
 
+fn test_generate_c_expands_lifetime_generic_option_field_if_guard() {
+	csrc := generate_result_option_c_for_test('
+struct Searcher {}
+
+struct Core[^s] {
+	searcher &^s Searcher
+mut:
+	binary_byte_offset_ ?usize
+	line_number ?u64
+}
+
+fn (core Core[^s]) binary_byte_offset[^s]() ?u64 {
+	if offset := core.binary_byte_offset_ {
+		return u64(offset)
+	}
+	return none
+}
+
+fn (mut core Core[^s]) detect_binary[^s]() bool {
+	if _ := core.binary_byte_offset_ {
+		return true
+	}
+	return false
+}
+
+fn (mut core Core[^s]) count_lines[^s]() {
+	if line_number := core.line_number {
+		core.line_number = line_number + 1
+	}
+}
+
+fn use_it(searcher &Searcher) {
+	mut core := Core{
+		searcher: searcher
+	}
+	_ = core.binary_byte_offset()
+	_ = core.detect_binary()
+	core.count_lines()
+}
+
+fn main() {
+	s := Searcher{}
+	use_it(&s)
+}
+')
+	assert csrc.contains('_option_usize _or_t')
+	assert csrc.contains('usize offset = (*(usize*)')
+	assert csrc.contains('u64 line_number = (*(u64*)')
+	assert !csrc.contains('if (core.binary_byte_offset_)')
+	assert !csrc.contains('if (core->binary_byte_offset_)')
+	assert !csrc.contains('if (core->line_number)')
+	assert !csrc.contains('u64 _val = ({ _option_u64')
+}
+
+fn test_generate_c_expands_result_unwrap_method_receiver_if_guard() {
+	csrc := generate_result_option_c_for_test('
+struct FallibleUsize {
+	has_value bool
+	value usize
+}
+
+fn FallibleUsize.some(value usize) FallibleUsize {
+	return FallibleUsize{
+		has_value: true
+		value: value
+	}
+}
+
+fn (opt FallibleUsize) get() ?usize {
+	if !opt.has_value {
+		return none
+	}
+	return opt.value
+}
+
+struct Core[^s] {
+	marker &^s int
+}
+
+fn (mut core Core[^s]) shortest_match[^s]() !FallibleUsize {
+	_ = core
+	return FallibleUsize.some(1)
+}
+
+fn (mut core Core[^s]) use_it[^s]() !bool {
+	if _ := core.shortest_match()!.get() {
+		return true
+	}
+	return false
+}
+
+fn main() {
+	x := 1
+	mut core := Core{
+		marker: &x
+	}
+	_ = core.use_it() or { false }
+}
+')
+	assert csrc.contains('_result_FallibleUsize _or_t')
+	assert csrc.contains('_option_usize _or_t')
+	assert csrc.contains('FallibleUsize__get((*(FallibleUsize*)')
+	assert !csrc.contains('array__get(((FallibleUsize)')
+}
+
+fn test_generate_c_uses_branch_local_type_for_if_expr_result() {
+	csrc := generate_result_option_c_for_test('
+struct Match {
+	start_ usize
+	end_ usize
+}
+
+fn Match.new(start usize, end usize) Match {
+	return Match{
+		start_: start
+		end_: end
+	}
+}
+
+fn (m Match) start() usize {
+	return m.start_
+}
+
+fn (m Match) end() usize {
+	return m.end_
+}
+
+fn (m Match) is_empty() bool {
+	return m.start_ == m.end_
+}
+
+struct FallibleMatch {
+	has_value bool
+	value Match
+}
+
+fn (opt FallibleMatch) get() ?Match {
+	if !opt.has_value {
+		return none
+	}
+	return opt.value
+}
+
+fn use_it(maybe FallibleMatch) bool {
+	invert_match := if line := maybe.get() {
+		range := Match.new(0, line.start())
+		range
+	} else {
+		range := Match.new(0, 10)
+		range
+	}
+	return invert_match.is_empty()
+}
+
+fn main() {
+	_ = use_it(FallibleMatch{})
+}
+')
+	assert csrc.contains('Match invert_match = ({')
+	assert !csrc.contains('int invert_match = ({')
+	assert csrc.contains('Match__is_empty(invert_match)')
+	assert !csrc.contains('int__is_empty(invert_match)')
+}
+
 fn test_generate_c_emits_c_struct_option_and_result_payload_wrappers() {
 	csrc := generate_result_option_c_for_test('
 struct C.Widget {
@@ -1168,6 +1332,67 @@ fn read_full(mut reader Reader, mut buf []u8) ! {
 	assert csrc.contains('_result_int _or_t')
 	assert csrc.contains('int n = (*(int*)')
 	assert !csrc.contains('int n = ;')
+}
+
+fn test_generate_c_preserves_static_lifetime_constructor_and_interface_pointer_field() {
+	csrc := generate_result_option_c_for_test('
+interface Reader {
+mut:
+	read(mut []u8) !int
+}
+
+struct ByteReader {}
+
+fn (mut rdr ByteReader) read(mut buf []u8) !int {
+	return 0
+}
+
+struct Config {}
+
+struct TranscodingReader[^r] {
+mut:
+	rdr &^r Reader
+	config Config
+}
+
+fn TranscodingReader.new[^r](rdr &^r Reader, config Config) TranscodingReader[^r] {
+	return TranscodingReader[^r]{
+		rdr: rdr
+		config: config
+	}
+}
+
+fn (mut rdr TranscodingReader[^r]) read[^r](mut buf []u8) !int {
+	return rdr.rdr.read(mut buf)
+}
+
+struct LineBuffer {}
+
+struct LineBufferReader[^r, ^b] {
+mut:
+	rdr &^r Reader
+	buf &^b LineBuffer
+}
+
+fn LineBufferReader.new[^r, ^b](rdr &^r Reader, buf &^b LineBuffer) LineBufferReader[^r, ^b] {
+	return LineBufferReader[^r, ^b]{
+		rdr: rdr
+		buf: buf
+	}
+}
+
+fn use_it(mut read_from Reader, config Config, buf &LineBuffer) ! {
+	mut decoded := TranscodingReader.new(&read_from, config)
+	mut rdr := LineBufferReader.new(&decoded, buf)
+	_ = rdr
+}
+	')
+	assert csrc.contains('return ((TranscodingReader){.rdr = rdr,.config = config})')
+	assert csrc.contains('return ((LineBufferReader){.rdr = rdr,.buf = buf})')
+	assert csrc.contains('LineBufferReader rdr = LineBufferReader__new(')
+	assert !csrc.contains('TranscodingReader rdr = TranscodingReader__new')
+	assert !csrc.contains('Config__read')
+	assert !csrc.contains('LineBuffer__read')
 }
 
 fn test_generate_c_preserves_c_pointer_cast_selector_field_access() {

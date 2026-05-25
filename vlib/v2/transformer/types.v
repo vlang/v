@@ -2699,6 +2699,36 @@ fn (t &Transformer) get_expr_type(expr ast.Expr) ?types.Type {
 		}
 		return none
 	}
+	if expr is ast.CastExpr {
+		if typ := t.type_from_param_type_expr(expr.typ, []) {
+			return t.normalize_type(typ)
+		}
+		pos := expr.pos
+		if typ := t.get_synth_type(pos) {
+			return typ
+		}
+		if pos.is_valid() {
+			if typ := t.env.get_expr_type(pos.id) {
+				return t.normalize_type(typ)
+			}
+		}
+		return none
+	}
+	if expr is ast.AsCastExpr {
+		if typ := t.type_from_param_type_expr(expr.typ, []) {
+			return t.normalize_type(typ)
+		}
+		pos := expr.pos
+		if typ := t.get_synth_type(pos) {
+			return typ
+		}
+		if pos.is_valid() {
+			if typ := t.env.get_expr_type(pos.id) {
+				return t.normalize_type(typ)
+			}
+		}
+		return none
+	}
 	if expr is ast.ArrayInitExpr {
 		pos := expr.pos
 		if typ := t.get_synth_type(pos) {

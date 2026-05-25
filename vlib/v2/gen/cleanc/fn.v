@@ -651,7 +651,7 @@ fn (mut g Gen) register_fn_signature(node ast.FnDecl, fn_name string) {
 	g.ensure_tuple_alias_for_fn_return(node, ret_type)
 	mut params := []bool{}
 	mut param_types := []string{}
-	if node.is_method && node.receiver.name != '' {
+	if node.is_method && !node.is_static && node.receiver.name != '' {
 		recv_type := normalize_signature_type_name(g.expr_type_to_c(node.receiver.typ), 'void*')
 		params << (node.receiver.is_mut || recv_type.ends_with('*'))
 		param_types << if node.receiver.is_mut && !recv_type.ends_with('*') {
@@ -2280,7 +2280,7 @@ fn (mut g Gen) discover_direct_generic_call_specs() {
 }
 
 fn (mut g Gen) seed_fn_scan_runtime_types(node ast.FnDecl, fn_name string) {
-	if node.is_method && node.receiver.name != '' {
+	if node.is_method && !node.is_static && node.receiver.name != '' {
 		mut receiver_type := ''
 		if sig_param_types := g.fn_param_types[fn_name] {
 			if sig_param_types.len > 0 {
@@ -2294,7 +2294,16 @@ fn (mut g Gen) seed_fn_scan_runtime_types(node ast.FnDecl, fn_name string) {
 			g.remember_runtime_local_type(node.receiver.name, receiver_type)
 		}
 	}
-	mut param_ptr_offset := if node.is_method { 1 } else { 0 }
+	mut param_ptr_offset := 0
+	if node.is_method && !node.is_static && node.receiver.name != '' {
+		if sig_param_types := g.fn_param_types[fn_name] {
+			if sig_param_types.len == node.typ.params.len + 1 {
+				param_ptr_offset = 1
+			}
+		} else if !node.is_static {
+			param_ptr_offset = 1
+		}
+	}
 	if g.needs_implicit_veb_ctx_param(&node, fn_name) {
 		ctx_type := g.implicit_veb_ctx_c_type()
 		g.remember_runtime_local_type('ctx', ctx_type)
@@ -4891,7 +4900,7 @@ fn (mut g Gen) gen_fn_decl_with_name_ptr(node &ast.FnDecl, fn_name string) {
 	// Track mut parameter names for pointer detection
 	g.cur_fn_mut_params.clear()
 	g.cur_fn_generic_params.clear()
-	if node.is_method && node.receiver.name != '' {
+	if node.is_method && !node.is_static && node.receiver.name != '' {
 		mut receiver_type := ''
 		if sig_param_types := g.fn_param_types[fn_name] {
 			if sig_param_types.len > 0 {
@@ -4907,7 +4916,7 @@ fn (mut g Gen) gen_fn_decl_with_name_ptr(node &ast.FnDecl, fn_name string) {
 	}
 	// Register receiver type in local runtime type cache so chained selector
 	// resolution (e.g. a.x.y) can infer field types reliably.
-	if node.is_method && node.receiver.name != '' {
+	if node.is_method && !node.is_static && node.receiver.name != '' {
 		mut receiver_type := ''
 		if sig_param_types := g.fn_param_types[fn_name] {
 			if sig_param_types.len > 0 {
@@ -4926,7 +4935,16 @@ fn (mut g Gen) gen_fn_decl_with_name_ptr(node &ast.FnDecl, fn_name string) {
 		g.cur_fn_mut_params['ctx'] = true
 		g.remember_runtime_local_type('ctx', ctx_type)
 	}
-	mut param_ptr_offset := if node.is_method { 1 } else { 0 }
+	mut param_ptr_offset := 0
+	if node.is_method && node.receiver.name != '' {
+		if sig_param_types := g.fn_param_types[fn_name] {
+			if sig_param_types.len == node.typ.params.len + 1 {
+				param_ptr_offset = 1
+			}
+		} else if !node.is_static {
+			param_ptr_offset = 1
+		}
+	}
 	if g.needs_implicit_veb_ctx_param(node, fn_name) {
 		param_ptr_offset++
 	}
@@ -6427,8 +6445,7 @@ fn (mut g Gen) gen_direct_fn_pointer_call(lhs ast.Expr, call_args []ast.Expr) bo
 		}
 		if i < fnptr_param_is_ptr.len && fnptr_param_is_ptr[i] && arg is ast.ModifierExpr {
 			inner := arg.expr
-			if g.expr_is_pointer(inner)
-				|| (inner is ast.Ident && inner.name in g.cur_fn_mut_params) {
+			if g.expr_is_pointer(inner) || (inner is ast.Ident && inner.name in g.cur_fn_mut_params) {
 				g.expr(inner)
 				continue
 			}
@@ -6732,6 +6749,12 @@ fn (mut g Gen) gen_call_arg(fn_name string, idx int, arg ast.Expr) {
 	if expected_param_type != '' && g.gen_auto_deref_value_param_arg(expected_param_type, base_arg) {
 		return
 	}
+	if expected_param_type != ''
+		&& (expected_param_type.contains('(*)') || g.is_fn_pointer_alias_type(expected_param_type))
+		&& base_arg is ast.FnLiteral {
+		g.expr(base_arg)
+		return
+	}
 	if expected_param_type.ends_with('*')
 		&& g.gen_sum_ident_payload_pointer_arg(base_arg, expected_param_type.trim_right('*')) {
 		return
@@ -6867,6 +6890,10 @@ fn (mut g Gen) gen_call_arg(fn_name string, idx int, arg ast.Expr) {
 				want_ptr = true
 			}
 		}
+	}
+	if has_pointer_param_info && want_ptr && base_arg is ast.FnLiteral {
+		g.expr(base_arg)
+		return
 	}
 	if has_pointer_param_info {
 		if want_ptr && base_arg is ast.PrefixExpr && base_arg.op == .amp {
@@ -7595,11 +7622,32 @@ fn (mut g Gen) resolve_ident_receiver_method_call_name(name string, lhs ast.Expr
 	}
 	method_name := name.all_after_last('__')
 	if receiver_type := g.get_receiver_expr_type_for_method(call_args[0]) {
+		declared_owner := name.all_before_last('__')
+		if declared_owner != '' {
+			if declared_method := g.resolve_method_on_concrete_type(declared_owner, method_name) {
+				if declared_method == name
+					&& !method_receiver_c_type_matches_owner(receiver_type, declared_owner) {
+					return name
+				}
+			}
+		}
 		if concrete_method := g.resolve_method_on_concrete_type(receiver_type, method_name) {
 			return concrete_method
 		}
 	}
 	return name
+}
+
+fn method_receiver_c_type_matches_owner(receiver_type string, owner string) bool {
+	mut lhs := strip_pointer_type_name(unmangle_c_ptr_type(receiver_type.trim_space()))
+	mut rhs := strip_pointer_type_name(unmangle_c_ptr_type(owner.trim_space()))
+	if lhs == '' || rhs == '' {
+		return false
+	}
+	if lhs == rhs {
+		return true
+	}
+	return short_type_name(lhs) == short_type_name(rhs)
 }
 
 fn (mut g Gen) get_call_return_type(lhs ast.Expr, call_args []ast.Expr) ?string {
@@ -10200,7 +10248,13 @@ fn (mut g Gen) gen_fn_literal(node ast.FnLiteral) {
 	g.sb.write_string('({ ')
 	for capture in capture_infos {
 		g.sb.write_string('${capture.storage_name} = ')
-		g.expr(capture.assign_expr)
+		if capture.is_mut && !g.expr_is_pointer(capture.assign_expr)
+			&& !g.expr_produces_pointer(capture.assign_expr) {
+			g.sb.write_u8(`&`)
+			g.expr(capture.assign_expr)
+		} else {
+			g.expr(capture.assign_expr)
+		}
 		g.sb.write_string('; ')
 	}
 	g.sb.write_string('${anon_name}; })')

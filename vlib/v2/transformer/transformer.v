@@ -89,7 +89,8 @@ mut:
 	// Declared storage types for local variables in the current function.
 	// These stay separate from checker/current expression types, which can be
 	// narrowed by smartcasts while the variable is still stored as its declared type.
-	local_decl_types map[string]types.Type
+	local_decl_types              map[string]types.Type
+	local_fn_pointer_return_types map[string]types.Type
 	// Track whether post-pass should inject the synthetic embed_file helper type.
 	needed_embed_file_helper bool
 	// Override array element types for variables whose checker-inferred type is wrong
@@ -260,29 +261,30 @@ pub fn Transformer.new_with_pref(env &types.Environment, p &pref.Preferences) &T
 
 fn new_transformer_base(env &types.Environment, p &pref.Preferences) &Transformer {
 	mut t := &Transformer{
-		pref:                        unsafe { p }
-		env:                         unsafe { env }
-		needed_str_fns:              map[string]string{}
-		needed_clone_fns:            map[string]string{}
-		needed_array_contains_fns:   map[string]ArrayMethodInfo{}
-		needed_array_index_fns:      map[string]ArrayMethodInfo{}
-		needed_array_last_index_fns: map[string]ArrayMethodInfo{}
-		needed_sort_fns:             map[string]SortComparatorInfo{}
-		needed_go_wrappers:          map[string]GoWrapperInfo{}
-		local_decl_types:            map[string]types.Type{}
-		generic_var_type_params:     map[string]string{}
-		generic_fn_decl_names:       map[string]bool{}
-		generic_fn_decl_stmts:       map[string][]ast.Stmt{}
-		generic_fn_value_names:      map[string]bool{}
-		runtime_const_inits_by_mod:  map[string][]RuntimeConstInit{}
-		runtime_const_init_fn_name:  map[string]string{}
-		runtime_const_known:         map[string]bool{}
-		runtime_const_storage_known: map[string]bool{}
-		interface_concrete_types:    map[string]string{}
-		smartcast_expr_counts:       map[string]int{}
-		monomorphize_enabled:        os.getenv('V2_TRANSFORMER_MONOMORPH') != ''
-		monomorphized_specs:         map[string]bool{}
-		is_native_be:                p != unsafe { nil }
+		pref:                          unsafe { p }
+		env:                           unsafe { env }
+		needed_str_fns:                map[string]string{}
+		needed_clone_fns:              map[string]string{}
+		needed_array_contains_fns:     map[string]ArrayMethodInfo{}
+		needed_array_index_fns:        map[string]ArrayMethodInfo{}
+		needed_array_last_index_fns:   map[string]ArrayMethodInfo{}
+		needed_sort_fns:               map[string]SortComparatorInfo{}
+		needed_go_wrappers:            map[string]GoWrapperInfo{}
+		local_decl_types:              map[string]types.Type{}
+		local_fn_pointer_return_types: map[string]types.Type{}
+		generic_var_type_params:       map[string]string{}
+		generic_fn_decl_names:         map[string]bool{}
+		generic_fn_decl_stmts:         map[string][]ast.Stmt{}
+		generic_fn_value_names:        map[string]bool{}
+		runtime_const_inits_by_mod:    map[string][]RuntimeConstInit{}
+		runtime_const_init_fn_name:    map[string]string{}
+		runtime_const_known:           map[string]bool{}
+		runtime_const_storage_known:   map[string]bool{}
+		interface_concrete_types:      map[string]string{}
+		smartcast_expr_counts:         map[string]int{}
+		monomorphize_enabled:          os.getenv('V2_TRANSFORMER_MONOMORPH') != ''
+		monomorphized_specs:           map[string]bool{}
+		is_native_be:                  p != unsafe { nil }
 			&& (p.backend == .arm64 || p.backend == .x64)
 	}
 	return t
@@ -298,33 +300,34 @@ pub fn (mut t Transformer) set_file_set(fs &token.FileSet) {
 // worker_idx offsets synth_pos_counter so workers don't generate conflicting IDs.
 pub fn (t &Transformer) new_worker_clone(worker_idx int) &Transformer {
 	return &Transformer{
-		pref:                        unsafe { t.pref }
-		env:                         unsafe { t.env }
-		elided_fns:                  t.elided_fns
-		comptime_vmodroot:           t.comptime_vmodroot
-		file_set:                    unsafe { t.file_set }
-		cached_scopes:               t.cached_scopes
-		cached_methods:              t.cached_methods
-		cached_method_keys:          t.cached_method_keys
-		cached_fn_scopes:            t.cached_fn_scopes
-		synth_pos_counter:           -(worker_idx * 100_000)
-		needed_str_fns:              map[string]string{}
-		needed_clone_fns:            map[string]string{}
-		needed_array_contains_fns:   map[string]ArrayMethodInfo{}
-		needed_array_index_fns:      map[string]ArrayMethodInfo{}
-		needed_array_last_index_fns: map[string]ArrayMethodInfo{}
-		needed_sort_fns:             map[string]SortComparatorInfo{}
-		needed_go_wrappers:          map[string]GoWrapperInfo{}
-		local_decl_types:            map[string]types.Type{}
-		generic_var_type_params:     map[string]string{}
-		generic_fn_value_names:      t.generic_fn_value_names
-		runtime_const_inits_by_mod:  map[string][]RuntimeConstInit{}
-		runtime_const_init_fn_name:  map[string]string{}
-		runtime_const_known:         map[string]bool{}
-		runtime_const_storage_known: map[string]bool{}
-		interface_concrete_types:    map[string]string{}
-		smartcast_expr_counts:       map[string]int{}
-		is_native_be:                t.is_native_be
+		pref:                          unsafe { t.pref }
+		env:                           unsafe { t.env }
+		elided_fns:                    t.elided_fns
+		comptime_vmodroot:             t.comptime_vmodroot
+		file_set:                      unsafe { t.file_set }
+		cached_scopes:                 t.cached_scopes
+		cached_methods:                t.cached_methods
+		cached_method_keys:            t.cached_method_keys
+		cached_fn_scopes:              t.cached_fn_scopes
+		synth_pos_counter:             -(worker_idx * 100_000)
+		needed_str_fns:                map[string]string{}
+		needed_clone_fns:              map[string]string{}
+		needed_array_contains_fns:     map[string]ArrayMethodInfo{}
+		needed_array_index_fns:        map[string]ArrayMethodInfo{}
+		needed_array_last_index_fns:   map[string]ArrayMethodInfo{}
+		needed_sort_fns:               map[string]SortComparatorInfo{}
+		needed_go_wrappers:            map[string]GoWrapperInfo{}
+		local_decl_types:              map[string]types.Type{}
+		local_fn_pointer_return_types: map[string]types.Type{}
+		generic_var_type_params:       map[string]string{}
+		generic_fn_value_names:        t.generic_fn_value_names
+		runtime_const_inits_by_mod:    map[string][]RuntimeConstInit{}
+		runtime_const_init_fn_name:    map[string]string{}
+		runtime_const_known:           map[string]bool{}
+		runtime_const_storage_known:   map[string]bool{}
+		interface_concrete_types:      map[string]string{}
+		smartcast_expr_counts:         map[string]int{}
+		is_native_be:                  t.is_native_be
 	}
 }
 
@@ -6622,12 +6625,18 @@ fn (mut t Transformer) extract_or_expr(expr ast.Expr, mut prefix_stmts []ast.Stm
 					pos:  expr.pos
 				}
 			}
+			mut new_lhs := expr.lhs
+			if expr.lhs is ast.SelectorExpr {
+				new_lhs = t.extract_or_expr_from_method_lhs(expr.lhs, mut prefix_stmts)
+			} else if t.expr_has_or_expr(expr.lhs) {
+				new_lhs = t.extract_or_expr(expr.lhs, mut prefix_stmts)
+			}
 			mut new_args := []ast.Expr{cap: expr.args.len}
 			for arg in expr.args {
 				new_args << t.extract_or_expr(arg, mut prefix_stmts)
 			}
 			return ast.CallExpr{
-				lhs:  expr.lhs
+				lhs:  new_lhs
 				args: new_args
 				pos:  expr.pos
 			}
@@ -6639,6 +6648,12 @@ fn (mut t Transformer) extract_or_expr(expr ast.Expr, mut prefix_stmts []ast.Stm
 					expr: expr.expr
 					pos:  expr.pos
 				}
+			}
+			mut new_lhs := expr.lhs
+			if expr.lhs is ast.SelectorExpr {
+				new_lhs = t.extract_or_expr_from_method_lhs(expr.lhs, mut prefix_stmts)
+			} else if t.expr_has_or_expr(expr.lhs) {
+				new_lhs = t.extract_or_expr(expr.lhs, mut prefix_stmts)
 			}
 			// When the single argument is directly an OrExpr and the lhs is a function
 			// call (not a type cast), the `or {}` MAY belong to the call result.
@@ -6669,7 +6684,7 @@ fn (mut t Transformer) extract_or_expr(expr ast.Expr, mut prefix_stmts []ast.Stm
 			}
 			new_inner := t.extract_or_expr(expr.expr, mut prefix_stmts)
 			return ast.CallOrCastExpr{
-				lhs:  expr.lhs
+				lhs:  new_lhs
 				expr: new_inner
 				pos:  expr.pos
 			}

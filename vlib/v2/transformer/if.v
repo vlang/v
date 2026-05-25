@@ -211,7 +211,11 @@ fn (mut t Transformer) try_expand_if_guard_stmt(stmt ast.ExprStmt) ?[]ast.Stmt {
 		return none
 	}
 
-	rhs := guard.stmt.rhs[0]
+	mut rhs := guard.stmt.rhs[0]
+	mut guard_prefix_stmts := []ast.Stmt{}
+	if t.expr_has_or_expr(rhs) {
+		rhs = t.extract_or_expr(rhs, mut guard_prefix_stmts)
+	}
 	synth_pos := t.next_synth_pos()
 
 	// Check if RHS is a call that returns Result/Option
@@ -239,6 +243,9 @@ fn (mut t Transformer) try_expand_if_guard_stmt(stmt ast.ExprStmt) ?[]ast.Stmt {
 
 		mut stmts := []ast.Stmt{}
 		mut data_type := types.Type(types.voidptr_)
+		for prefix_stmt in guard_prefix_stmts {
+			stmts << prefix_stmt
+		}
 
 		// Register temp variable type so cleanc can look up its type for .data unwrapping
 		if wrapper_type := t.expr_wrapper_type_for_or(rhs) {
@@ -254,6 +261,14 @@ fn (mut t Transformer) try_expand_if_guard_stmt(stmt ast.ExprStmt) ?[]ast.Stmt {
 				is_option = true
 			}
 		} else if wrapper_type := t.get_expr_type(rhs) {
+			t.register_temp_var(temp_name, wrapper_type)
+			t.register_synth_type(temp_pos, wrapper_type)
+			if wrapper_type is types.ResultType {
+				data_type = wrapper_type.base_type
+			} else if wrapper_type is types.OptionType {
+				data_type = wrapper_type.base_type
+			}
+		} else if wrapper_type := t.fn_pointer_call_return_type(rhs) {
 			t.register_temp_var(temp_name, wrapper_type)
 			t.register_synth_type(temp_pos, wrapper_type)
 			if wrapper_type is types.ResultType {

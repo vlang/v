@@ -1716,9 +1716,11 @@ fn (mut g Gen) gen_assign_stmt(node ast.AssignStmt) {
 			rhs_type := g.get_expr_type(rhs)
 			lhs_base := assign_lhs_type.trim_right('*')
 			rhs_base2 := rhs_type.trim_right('*')
+			rhs_casts_to_lhs := rhs is ast.CastExpr && g.expr_type_to_c(rhs.typ) == assign_lhs_type
 			// Auto-wrap raw value into Option/Result when LHS is Option/Result and RHS is not.
-			if assign_lhs_type.starts_with('_option_') && !rhs_type.starts_with('_option_')
-				&& rhs_type !in ['', 'int', 'void'] && !is_none_like_expr(rhs) {
+			if assign_lhs_type.starts_with('_option_') && !rhs_casts_to_lhs
+				&& !rhs_type.starts_with('_option_') && rhs_type !in ['', 'int', 'void']
+				&& !is_none_like_expr(rhs) {
 				value_type := option_value_type(assign_lhs_type)
 				if value_type != '' && value_type != 'void' {
 					g.sb.write_string('({ ${assign_lhs_type} _opt = (${assign_lhs_type}){ .state = 2 }; ${value_type} _val = ')
@@ -1728,8 +1730,8 @@ fn (mut g Gen) gen_assign_stmt(node ast.AssignStmt) {
 					return
 				}
 			}
-			if assign_lhs_type.starts_with('_result_') && !rhs_type.starts_with('_result_')
-				&& rhs_type !in ['', 'int', 'void'] {
+			if assign_lhs_type.starts_with('_result_') && !rhs_casts_to_lhs
+				&& !rhs_type.starts_with('_result_') && rhs_type !in ['', 'int', 'void'] {
 				value_type := g.result_value_type(assign_lhs_type)
 				if value_type != '' && value_type != 'void' {
 					g.sb.write_string('({ ${assign_lhs_type} _res = (${assign_lhs_type}){0}; ${value_type} _val = ')

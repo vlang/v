@@ -1810,6 +1810,12 @@ fn (mut t Transformer) transform_if_expr(expr ast.IfExpr) ast.Expr {
 					if wrapper_type is types.ResultType {
 						data_type = wrapper_type.base_type
 					}
+				} else if wrapper_type := t.fn_pointer_call_return_type(rhs) {
+					t.register_temp_var(temp_name, wrapper_type)
+					t.register_synth_type(temp_pos, wrapper_type)
+					if wrapper_type is types.ResultType {
+						data_type = wrapper_type.base_type
+					}
 				}
 
 				// 1. _tmp := result_call()
@@ -1881,6 +1887,12 @@ fn (mut t Transformer) transform_if_expr(expr ast.IfExpr) ast.Expr {
 						data_type = wrapper_type.base_type
 					}
 				} else if wrapper_type := t.get_expr_type(rhs) {
+					t.register_temp_var(temp_name, wrapper_type)
+					t.register_synth_type(temp_pos, wrapper_type)
+					if wrapper_type is types.OptionType {
+						data_type = wrapper_type.base_type
+					}
+				} else if wrapper_type := t.fn_pointer_call_return_type(rhs) {
 					t.register_temp_var(temp_name, wrapper_type)
 					t.register_synth_type(temp_pos, wrapper_type)
 					if wrapper_type is types.OptionType {
@@ -3240,6 +3252,9 @@ fn (mut t Transformer) transform_comptime_expr(expr ast.ComptimeExpr) ast.Expr {
 }
 
 fn (mut t Transformer) transform_embed_file_comptime_chain(expr ast.Expr, comptime_pos token.Pos) ?ast.Expr {
+	if transformed := t.transform_embed_file_chain_lhs(expr, comptime_pos) {
+		return transformed
+	}
 	match expr {
 		ast.SelectorExpr {
 			if transformed_lhs := t.transform_embed_file_chain_lhs(expr.lhs, comptime_pos) {
@@ -3288,6 +3303,24 @@ fn (mut t Transformer) transform_embed_file_chain_lhs(expr ast.Expr, comptime_po
 					pos:  comptime_pos
 				}, expr.args)
 			}
+			if expr.lhs is ast.SelectorExpr {
+				sel := expr.lhs as ast.SelectorExpr
+				if transformed_base := t.transform_embed_file_chain_lhs(sel.lhs, comptime_pos) {
+					mut args := []ast.Expr{cap: expr.args.len}
+					for arg in expr.args {
+						args << t.transform_expr(arg)
+					}
+					return ast.Expr(ast.CallExpr{
+						lhs:  ast.Expr(ast.SelectorExpr{
+							lhs: transformed_base
+							rhs: sel.rhs
+							pos: sel.pos
+						})
+						args: args
+						pos:  expr.pos
+					})
+				}
+			}
 		}
 		ast.CallOrCastExpr {
 			if expr.lhs is ast.Ident && expr.lhs.name == 'embed_file' {
@@ -3295,6 +3328,20 @@ fn (mut t Transformer) transform_embed_file_chain_lhs(expr ast.Expr, comptime_po
 					expr: ast.Expr(expr)
 					pos:  comptime_pos
 				}, [expr.expr])
+			}
+		}
+		ast.SelectorExpr {
+			if transformed_lhs := t.transform_embed_file_chain_lhs(expr.lhs, comptime_pos) {
+				return ast.Expr(ast.SelectorExpr{
+					lhs: transformed_lhs
+					rhs: expr.rhs
+					pos: expr.pos
+				})
+			}
+		}
+		ast.ComptimeExpr {
+			if transformed_inner := t.transform_embed_file_comptime_chain(expr.expr, expr.pos) {
+				return transformed_inner
 			}
 		}
 		else {}

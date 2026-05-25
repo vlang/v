@@ -3442,6 +3442,10 @@ fn (mut g Gen) expr_is_explicit_value_of_type(expr ast.Expr, type_name string) b
 
 fn (mut g Gen) gen_type_cast_expr(type_name string, expr ast.Expr) {
 	expr_type := g.get_expr_type(expr)
+	if type_name.starts_with('_option_') && is_none_like_expr(expr) {
+		g.sb.write_string('(${type_name}){ .state = 2 }')
+		return
+	}
 	if expr is ast.BasicLiteral && expr.kind == .number && expr.value == '0' {
 		if type_name !in primitive_types && !type_name.ends_with('*') && !g.is_enum_type(type_name)
 			&& type_name !in ['void*', 'char*', 'byteptr', 'charptr', 'voidptr'] {
@@ -5655,10 +5659,25 @@ fn (mut g Gen) gen_cast_expr(node ast.CastExpr) {
 	if resolved_type := g.resolved_sum_data_cast_type(node) {
 		type_name = resolved_type
 	}
+	if type_name.starts_with('_option_') && is_none_like_expr(node.expr) {
+		g.sb.write_string('(${type_name}){ .state = 2 }')
+		return
+	}
 	if node.expr is ast.BasicLiteral && node.expr.kind == .number && node.expr.value == '0' {
 		if type_name !in primitive_types && !type_name.ends_with('*') && !g.is_enum_type(type_name)
 			&& type_name !in ['void*', 'char*', 'byteptr', 'charptr', 'voidptr'] {
 			g.sb.write_string(zero_value_for_type(type_name))
+			return
+		}
+	}
+	if type_name.starts_with('_option_') || type_name.starts_with('_result_') {
+		expr_type := g.get_expr_type(node.expr)
+		if expr_type == type_name {
+			g.expr(node.expr)
+			return
+		}
+		if node.expr is ast.CastExpr && g.expr_type_to_c(node.expr.typ) == type_name {
+			g.expr(node.expr)
 			return
 		}
 	}

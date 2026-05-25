@@ -255,6 +255,13 @@ fn type_contains_generic_placeholder_inner(typ types.Type, mut seen map[string]b
 				}
 				seen[key] = true
 			}
+			if typ.generic_params.len > 0 && !typ.name.contains('_T_') {
+				for param_name in typ.generic_params {
+					if !param_name.starts_with('^') && is_generic_placeholder_type_name(param_name) {
+						return true
+					}
+				}
+			}
 			for field in typ.fields {
 				if type_contains_generic_placeholder_inner(field.typ, mut seen) {
 					return true
