@@ -182,6 +182,14 @@ pub fn (mut b Builder) build_all(files []ast.File) {
 	b.mod.add_global('g_main_argc', i32_t, false)
 	b.mod.add_global('g_main_argv', ptr_ptr_t, false)
 
+	// Pre-register libSystem stdio externs on the main module so that worker
+	// modules inherit them and the arm64 backend emits GOT-indirect loads when
+	// `C.stdout` / `C.stdin` / `C.stderr` are referenced.
+	for stdio_sym in ['__stdoutp', '__stdinp', '__stderrp'] {
+		glob := b.mod.add_external_global(stdio_sym, ptr_t)
+		b.global_refs[stdio_sym] = glob
+	}
+
 	// Phase 1a: Register core builtin types first (string, array) since other structs depend on them.
 	// First, register builtin enums (e.g., ArrayFlags) so their types resolve correctly
 	// when registering struct fields for array/string.
@@ -6426,9 +6434,19 @@ fn (mut b Builder) build_selector(expr ast.SelectorExpr) ValueID {
 			else { c_name }
 		}
 
-		// Not a known constant — emit as a global reference (e.g. C.stdout, C.stderr)
 		i8_t := b.mod.type_store.get_int(8)
 		ptr_t := b.mod.type_store.get_ptr(i8_t)
+		if c_name in ['stdout', 'stderr', 'stdin'] {
+			// `__stdoutp` / `__stdinp` / `__stderrp` are libSystem `FILE*` variables.
+			// Reading the V expression `C.stdout` must yield the FILE* value, not the
+			// address of the variable. The external global is pre-registered on the
+			// main module (build_all) so worker modules see it via seeded values.
+			glob := b.mod.add_external_global(macos_name, ptr_t)
+			b.global_refs[macos_name] = glob
+			return b.mod.add_instr(.load, b.cur_block, ptr_t, [glob])
+		}
+
+		// Not a known constant — emit as a global reference (e.g. C.stdout, C.stderr)
 		glob := b.mod.add_value_node(.global, ptr_t, macos_name, 0)
 		b.global_refs[macos_name] = glob
 		return glob
