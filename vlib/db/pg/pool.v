@@ -208,7 +208,8 @@ fn (mut p Pool) release(conn &Conn) {
 		return
 	}
 	// Park as idle, unless we'd exceed max_idle (0 = keep no idle conns)
-	if p.idle.len >= p.max_idle {
+	// or we are over a recently-shrunk max_open and need to converge.
+	if p.idle.len >= p.max_idle || (p.max_open > 0 && p.open_count > p.max_open) {
 		physical_close_handle(slot.handle)
 		p.open_count--
 		p.mu.unlock()
@@ -258,7 +259,19 @@ fn (mut p Pool) set_max_open(n int) {
 	}
 	p.mu.lock()
 	p.max_open = nn
-	// If shrinking below open_count, idle conns get pruned as they come back.
+	// Shrink: drop idle slots until we are back under the new cap. Without
+	// this, acquire() pops idle slots before checking max_open, so two
+	// callers could still both succeed after set_max_open_conns(1) when two
+	// warm conns are parked. In-use conns can't be reclaimed here — they get
+	// discarded on release once open_count is over the cap.
+	if nn > 0 {
+		for p.idle.len > 0 && p.open_count > nn {
+			slot := p.idle.last()
+			p.idle.delete_last()
+			physical_close_handle(slot.handle)
+			p.open_count--
+		}
+	}
 	p.mu.unlock()
 }
 
