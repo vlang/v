@@ -814,11 +814,17 @@ pub fn (mut g Gen) gen_passes_1_to_4() {
 	mut stage_start := stats_sw.elapsed()
 
 	g.write_preamble()
+	stage_start = g.mark_cgen_step(stats_enabled, stats_scope, mut stats_sw, stage_start, 'setup.preamble')
 	g.collect_typedef_c_types()
+	stage_start = g.mark_cgen_step(stats_enabled, stats_scope, mut stats_sw, stage_start, 'setup.typedef_c_types')
 	g.build_generic_fn_decl_index()
+	stage_start = g.mark_cgen_step(stats_enabled, stats_scope, mut stats_sw, stage_start, 'setup.generic_fn_decl_index')
 	g.collect_generic_struct_bindings()
+	stage_start = g.mark_cgen_step(stats_enabled, stats_scope, mut stats_sw, stage_start, 'setup.generic_struct_bindings')
 	g.collect_module_type_names()
+	stage_start = g.mark_cgen_step(stats_enabled, stats_scope, mut stats_sw, stage_start, 'setup.module_type_names')
 	g.collect_runtime_aliases()
+	stage_start = g.mark_cgen_step(stats_enabled, stats_scope, mut stats_sw, stage_start, 'setup.runtime_aliases')
 	// Force eventbus generic structs to use T=string binding.
 	// Without full monomorphization, eventbus methods assume T=string
 	// (see fn.v hardcoded eventbus workaround).
@@ -846,11 +852,17 @@ pub fn (mut g Gen) gen_passes_1_to_4() {
 			break
 		}
 	}
+	stage_start = g.mark_cgen_step(stats_enabled, stats_scope, mut stats_sw, stage_start, 'setup.discover_generic_specs')
 	g.collect_force_emit_sort_fns()
+	stage_start = g.mark_cgen_step(stats_enabled, stats_scope, mut stats_sw, stage_start, 'setup.force_emit_sort_fns')
 	g.collect_fn_signatures_to_fixed_point()
+	stage_start = g.mark_cgen_step(stats_enabled, stats_scope, mut stats_sw, stage_start, 'setup.fn_signatures')
 	g.collect_c_file_fn_keys()
+	stage_start = g.mark_cgen_step(stats_enabled, stats_scope, mut stats_sw, stage_start, 'setup.c_file_fn_keys')
 	g.collect_runtime_const_targets()
+	stage_start = g.mark_cgen_step(stats_enabled, stats_scope, mut stats_sw, stage_start, 'setup.runtime_const_targets')
 	g.register_builder_methods()
+	stage_start = g.mark_cgen_step(stats_enabled, stats_scope, mut stats_sw, stage_start, 'setup.register_builder_methods')
 	stage_start = g.mark_cgen_step(stats_enabled, stats_scope, mut stats_sw, stage_start, 'setup')
 
 	// Pre-collect module storage names by qualified C name.
