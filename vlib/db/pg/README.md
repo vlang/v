@@ -124,6 +124,42 @@ When you use `pg.connect(pg.Config{ ... })`, empty `Config` fields are omitted f
 generated libpq connection string. That lets libpq defaults, `PGPASSWORD`, and `.pgpass`
 apply when you do not set those fields in code.
 
+## Thread Safety & Connection Pool
+
+`pg.connect()` returns a `&DB` that is safe to share across V threads. Internally
+`DB` holds a pool of `Conn` objects (one libpq `PGconn*` each); every method on
+`DB` transparently checks a `Conn` out of the pool for the duration of the call
+and returns it when done. This matches Go's `database/sql.DB` model.
+
+```v ignore
+mut db := pg.connect(pg.Config{ ... })!
+defer { db.close() or {} }
+
+// Pool defaults: unlimited open conns, 2 idle conns kept warm, no lifetime cap.
+// Tune them like Go:
+db.set_max_open_conns(50)
+db.set_max_idle_conns(10)
+db.set_conn_max_lifetime(30 * time.minute)
+```
+
+For operations that must run on the **same physical connection** — LISTEN/NOTIFY,
+session-scoped prepared statements, manual transactions — pin a conn with
+`db.conn()` or open a transaction with `db.begin()`:
+
+```v ignore
+// Pinned connection: returned to the pool when conn.close() is called.
+mut c := db.conn()!
+defer { c.close() or {} }
+c.listen('my_channel')!
+
+// Transaction: the conn is pinned for the lifetime of the Tx and released on
+// commit() or rollback().
+mut tx := db.begin()!
+tx.exec('UPDATE accounts SET balance = balance - 100 WHERE id = 1')!
+tx.exec('UPDATE accounts SET balance = balance + 100 WHERE id = 2')!
+tx.commit()!
+```
+
 ## Using Parameterized Queries
 
 Parameterized queries (exec_param, etc.) in V require the use of the following syntax: ($n).
@@ -143,33 +179,40 @@ channel will receive them.
 
 ### Basic Usage
 
+LISTEN/NOTIFY is session-scoped, so you must pin a `Conn` from the pool —
+calling `db.listen()` would only listen on whichever pooled conn happens to
+serve that one call.
+
 ```v ignore
 import db.pg
 
 fn main() {
-	db := pg.connect(pg.Config{ user: 'postgres', password: 'password', dbname: 'mydb' })!
+	mut db := pg.connect(pg.Config{ user: 'postgres', password: 'password', dbname: 'mydb' })!
 	defer { db.close() or {} }
 
+	mut c := db.conn()!
+	defer { c.close() or {} }
+
 	// Start listening on a channel
-	db.listen('my_channel')!
+	c.listen('my_channel')!
 
 	// From another connection or session, send a notification
-	db.notify('my_channel', 'Hello, World!')!
+	c.notify('my_channel', 'Hello, World!')!
 
 	// Process incoming data from the server
-	db.consume_input()!
+	c.consume_input()!
 
 	// Check for notifications
-	if notification := db.get_notification() {
+	if notification := c.get_notification() {
 		println('Received notification on channel: ${notification.channel}')
 		println('Payload: ${notification.payload}')
 		println('From server process: ${notification.pid}')
 	}
 
 	// Stop listening
-	db.unlisten('my_channel')!
+	c.unlisten('my_channel')!
 	// Or unlisten from all channels
-	db.unlisten_all()!
+	c.unlisten_all()!
 }
 ```
 
@@ -182,20 +225,23 @@ import db.pg
 import time
 
 fn main() {
-	db := pg.connect(pg.Config{ user: 'postgres', password: 'password', dbname: 'mydb' })!
+	mut db := pg.connect(pg.Config{ user: 'postgres', password: 'password', dbname: 'mydb' })!
 	defer { db.close() or {} }
 
-	db.listen('events')!
+	mut c := db.conn()!
+	defer { c.close() or {} }
+
+	c.listen('events')!
 
 	// Get socket fd for polling (useful with select/epoll)
-	socket_fd := db.socket()
+	socket_fd := c.socket()
 	println('Socket FD: ${socket_fd}')
 
 	// Simple polling loop
 	for {
-		db.consume_input()!
+		c.consume_input()!
 		for {
-			notification := db.get_notification() or { break }
+			notification := c.get_notification() or { break }
 			println('Event: ${notification.channel} - ${notification.payload}')
 		}
 		time.sleep(100 * time.millisecond)
