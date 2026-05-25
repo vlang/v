@@ -581,7 +581,30 @@ fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 	}
 	reproduce_cmd := '${os.quoted_path(ts.vexe)} ${reproduce_options.join(' ')} ${os.quoted_path(file)}'
 	compile_options := cmd_options.filter(it != '-silent')
-	cmd := '${os.quoted_path(ts.vexe)} ${skip_running} ${compile_options.join(' ')} ${os.quoted_path(file)}'
+	mut compile_vexe := ts.vexe
+	mut compile_args := '${skip_running} ${compile_options.join(' ')}'
+	// `_test.vv2` files are v2-only integration tests: full V programs that
+	// exercise v2-specific syntax. Compile them with the v2 binary instead of
+	// v1 (v2 has its own CLI and ignores most v1 flags).
+	is_vv2 := relative_file.ends_with('_test.vv2')
+	if is_vv2 {
+		v2_bin := os.join_path(ts.vroot, 'cmd', 'v2', 'v2')
+		if !os.is_executable(v2_bin) {
+			ts.append_message(.info, 'SKIP ${relative_file}: v2 binary not built. Run: ${os.quoted_path(ts.vexe)} -o ${os.quoted_path(v2_bin)} ${os.quoted_path(os.join_path(ts.vroot,
+				'cmd', 'v2', 'v2.v'))}',
+				mtc)
+			ts.benchmark.skip()
+			tls_bench.skip()
+			return pool.no_result
+		}
+		compile_vexe = v2_bin
+		compile_args = if produces_file_output {
+			'-o ${os.quoted_path(generated_binary_fpath)}'
+		} else {
+			''
+		}
+	}
+	cmd := '${os.quoted_path(compile_vexe)} ${compile_args} ${os.quoted_path(file)}'
 	run_cmd := if run_js {
 		'node ${os.quoted_path(generated_binary_fpath)}'
 	} else {

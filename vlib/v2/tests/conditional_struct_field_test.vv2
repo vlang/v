@@ -1,0 +1,34 @@
+// End-to-end test for v2's conditional struct field parsing.
+// Exercises `$if cond { ... }` / `$else $if` / `$else` blocks and the
+// per-field `@[if cond ?]` attribute. Compiled and run via the v2 binary.
+
+module main
+
+struct Container {
+	name string
+$if !no_log ? {
+	logger string = 'default'
+}
+	always int = 42
+$if my_feature ? {
+	feature_val string = 'on'
+} $else {
+	feature_val string = 'off'
+}
+	dev_menu    string = 'dev' @[if !no_dev_menu ?]
+	never_built string = 'nope' @[if absent_flag ?]
+}
+
+fn main() {
+	c := Container{
+		name: 'app'
+	}
+	assert c.name == 'app'
+	assert c.logger == 'default'
+	assert c.always == 42
+	// `my_feature` is not defined → `$else` branch contributes the field.
+	assert c.feature_val == 'off'
+	// `no_dev_menu` is not defined → `!no_dev_menu` is true → field kept.
+	assert c.dev_menu == 'dev'
+	println('conditional_struct_field_test PASS')
+}
