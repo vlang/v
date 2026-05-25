@@ -192,13 +192,7 @@ pub mut:
 pub fn flatten_files(files []File) FlatAst {
 	mut b := new_flat_builder()
 	for file in files {
-		file_id := b.add_file(file)
-		b.flat.files << FlatFile{
-			file_id:        file_id
-			name_idx:       b.intern(file.name)
-			mod_idx:        b.intern(file.mod)
-			selector_names: file.selector_names
-		}
+		b.append_file(file)
 	}
 	return b.flat
 }
@@ -307,17 +301,24 @@ pub fn (flat &FlatAst) string_at(idx int) string {
 	return flat.strings[idx]
 }
 
-// FlatBuilder converts legacy AST nodes into FlatAst entries.
-struct FlatBuilder {
+// FlatBuilder is the incremental builder behind FlatAst. It is public so
+// front-ends (parser, type checker, ...) can append nodes directly without
+// going through the legacy recursive AST. The legacy converters (add_expr,
+// add_stmt, ...) remain internal to this module and are exposed via the
+// `append_file(File)` shim used during the Phase 2 transition.
+pub struct FlatBuilder {
+pub mut:
+	flat FlatAst
 mut:
-	flat          FlatAst
 	string_ids    map[string]int
 	empty_list_id FlatNodeId = invalid_flat_node_id
 	empty_expr_id FlatNodeId = invalid_flat_node_id
 	empty_stmt_id FlatNodeId = invalid_flat_node_id
 }
 
-fn new_flat_builder() FlatBuilder {
+// new_flat_builder returns a fresh FlatBuilder seeded with reasonable arena
+// capacities. Callers may resize after measuring (b.flat.nodes.grow_cap, ...).
+pub fn new_flat_builder() FlatBuilder {
 	return FlatBuilder{
 		flat:       FlatAst{
 			files:   []FlatFile{}
@@ -327,6 +328,21 @@ fn new_flat_builder() FlatBuilder {
 		}
 		string_ids: map[string]int{}
 	}
+}
+
+// append_file converts one legacy File into flat nodes and registers it as a
+// root. Designed for streaming use: the caller can drop the legacy `file`
+// immediately after this returns, capping peak memory at ~one file's legacy
+// AST plus the cumulative flat representation.
+pub fn (mut b FlatBuilder) append_file(file File) FlatNodeId {
+	file_id := b.add_file(file)
+	b.flat.files << FlatFile{
+		file_id:        file_id
+		name_idx:       b.intern(file.name)
+		mod_idx:        b.intern(file.mod)
+		selector_names: file.selector_names
+	}
+	return file_id
 }
 
 fn (mut b FlatBuilder) intern(s string) int {

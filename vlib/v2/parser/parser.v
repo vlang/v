@@ -159,6 +159,23 @@ pub fn (mut p Parser) parse_files(files []string, mut file_set token.FileSet) []
 	return ast_files
 }
 
+// parse_files_to_flat parses each input file, immediately appends it to a
+// FlatBuilder, and drops the legacy File. This is the Phase 2 entry point:
+// it produces the same FlatAst that `ast.flatten_files(p.parse_files(...))`
+// would produce, but never holds more than one file's legacy AST resident.
+// The result is signature-equivalent to the two-step path (regression-tested).
+pub fn (mut p Parser) parse_files_to_flat(files []string, mut file_set token.FileSet) ast.FlatAst {
+	mut builder := ast.new_flat_builder()
+	for file in files {
+		if file == '' {
+			continue
+		}
+		legacy := p.parse_file(file, mut file_set)
+		builder.append_file(legacy)
+	}
+	return builder.flat
+}
+
 pub fn (mut p Parser) parse_file(filename string, mut file_set token.FileSet) ast.File {
 	if filename == '' {
 		panic('parser.parse_file empty filename')
