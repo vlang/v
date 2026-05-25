@@ -43,6 +43,13 @@ fn type_check_worker_phase2(mut wp util.WorkerPool[ast.File, CheckResult], env &
 }
 
 fn (mut b Builder) type_check_files_parallel() &types.Environment {
+	// FlatAst-driven type check is sequential today (check_flat). When it is
+	// enabled we delegate to the serial path so V2_CHECK_FLAT=1 isn't silently
+	// ignored under `-d parallel`. A parallel flat pipeline is future work.
+	if b.flat_check_enabled {
+		return b.type_check_files()
+	}
+
 	env := types.Environment.new()
 
 	// Phase 1: Preregister all scopes and type names in parallel
