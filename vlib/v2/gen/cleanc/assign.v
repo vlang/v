@@ -1716,6 +1716,29 @@ fn (mut g Gen) gen_assign_stmt(node ast.AssignStmt) {
 			rhs_type := g.get_expr_type(rhs)
 			lhs_base := assign_lhs_type.trim_right('*')
 			rhs_base2 := rhs_type.trim_right('*')
+			// Auto-wrap raw value into Option/Result when LHS is Option/Result and RHS is not.
+			if assign_lhs_type.starts_with('_option_') && !rhs_type.starts_with('_option_')
+				&& rhs_type !in ['', 'int', 'void'] && !is_none_like_expr(rhs) {
+				value_type := option_value_type(assign_lhs_type)
+				if value_type != '' && value_type != 'void' {
+					g.sb.write_string('({ ${assign_lhs_type} _opt = (${assign_lhs_type}){ .state = 2 }; ${value_type} _val = ')
+					g.expr(rhs)
+					g.sb.write_string('; _option_ok(&_val, (_option*)&_opt, sizeof(_val)); _opt; })')
+					g.sb.writeln(';')
+					return
+				}
+			}
+			if assign_lhs_type.starts_with('_result_') && !rhs_type.starts_with('_result_')
+				&& rhs_type !in ['', 'int', 'void'] {
+				value_type := g.result_value_type(assign_lhs_type)
+				if value_type != '' && value_type != 'void' {
+					g.sb.write_string('({ ${assign_lhs_type} _res = (${assign_lhs_type}){0}; ${value_type} _val = ')
+					g.expr(rhs)
+					g.sb.write_string('; _result_ok(&_val, (_result*)&_res, sizeof(_val)); _res; })')
+					g.sb.writeln(';')
+					return
+				}
+			}
 			if lhs_base in g.sum_type_variants && rhs_base2 != lhs_base && rhs_base2 != 'void' {
 				g.gen_type_cast_expr(lhs_base, rhs)
 			} else if g.is_interface_type(lhs_base) && rhs_base2 != '' && rhs_base2 != 'int'

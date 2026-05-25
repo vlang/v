@@ -5771,6 +5771,11 @@ fn (mut g Gen) expr_is_pointer(arg ast.Expr) bool {
 			// For C typedef struct casts like C.log__Logger(ptr), if the source is a pointer,
 			// the result is also a pointer (type pun cast). The cast doesn't unwrap the pointer.
 			if target_type.contains('__') && g.expr_is_pointer(arg.expr) {
+				// Sum-type casts construct a sum value from the source, they are not
+				// pointer-preserving aliases.
+				if target_type in g.sum_type_variants {
+					return false
+				}
 				return true
 			}
 			return false
