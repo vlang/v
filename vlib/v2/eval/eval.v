@@ -3418,6 +3418,23 @@ fn (mut e Eval) eval_expr(expr ast.Expr) !Value {
 				}
 			}
 			mut values := []Value{cap: expr.exprs.len}
+			// Spread syntax `[...base, e1, e2]` — prepend the base array's
+			// values before any explicit elements. Deep-clone each item so
+			// the new array does not alias the base's nested storage (mirrors
+			// the runtime `array__clone_to_depth` semantics used by lowered
+			// codegen paths).
+			if expr.update_expr !is ast.EmptyExpr {
+				base_value := e.eval_expr(expr.update_expr)!
+				if base_value is ArrayValue {
+					cloned_base := e.clone_array_to_depth(base_value, 100)
+					for v in cloned_base.values {
+						values << v
+					}
+					if elem_type_name == '' {
+						elem_type_name = base_value.elem_type_name
+					}
+				}
+			}
 			for item in expr.exprs {
 				values << e.eval_expr(item)!
 			}

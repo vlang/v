@@ -2513,6 +2513,34 @@ fn (mut c Checker) expr_impl(expr ast.Expr) Type {
 			// the native stack before the general expression-depth guard can recover.
 			// NOTE: expr.init is not processed here because it may contain
 			// enum shorthands (.value) that require array element type context.
+			// `[...base, e1, e2]` — spread / update syntax
+			if expr.update_expr !is ast.EmptyExpr {
+				update_type := c.expr(expr.update_expr)
+				mut update_base := resolve_alias(update_type)
+				if update_base is Pointer {
+					update_base = resolve_alias((update_base as Pointer).base_type)
+				}
+				if update_base !is Array {
+					c.error_with_pos('invalid array update: non-array type `${update_type.name()}`',
+						expr.pos)
+					return Type(void_)
+				}
+				array_t := update_base as Array
+				elem_type := array_t.elem_type
+				for elem_expr in expr.exprs {
+					expected_type_prev := c.expected_type
+					c.expected_type = to_optional_type(elem_type)
+					got_type := c.expr(elem_expr)
+					c.expected_type = expected_type_prev
+					if !c.check_types(elem_type, got_type) {
+						c.error_with_pos('expecting element of type: ${elem_type.name()}, got ${got_type.name()}',
+							expr.pos)
+					}
+				}
+				return Type(Array{
+					elem_type: elem_type
+				})
+			}
 			// `[1,2,3,4]`
 			if expr.exprs.len > 0 {
 				expected_type_prev := c.expected_type

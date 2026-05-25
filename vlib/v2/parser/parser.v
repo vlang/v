@@ -957,6 +957,15 @@ fn (mut p Parser) expr(min_bp token.BindingPower) ast.Expr {
 			// ArrayType in CastExpr: `[]type` in `[]type(x)` set lhs to type, cast handled later
 			pos := p.pos
 			p.next()
+			// Spread syntax `[...base, e1, e2]` — parsed before regular elements.
+			mut update_expr := ast.empty_expr
+			if p.tok == .ellipsis {
+				p.next()
+				update_expr = p.expr(.lowest)
+				if p.tok == .comma || p.tok == .semicolon {
+					p.next()
+				}
+			}
 			// exprs in first `[]` eg. (`1,2,3,4` in `[1,2,3,4]) | (`2` in `[2]int{}`)
 			mut exprs := []ast.Expr{}
 			for p.tok != .rsbr {
@@ -1055,6 +1064,11 @@ fn (mut p Parser) expr(min_bp token.BindingPower) ast.Expr {
 				else {
 					lhs = array_init_expr_with_parts(ast.empty_expr, exprs, ast.empty_expr,
 						ast.empty_expr, ast.empty_expr, pos)
+					if update_expr !is ast.EmptyExpr {
+						mut arr_init := lhs as ast.ArrayInitExpr
+						arr_init.update_expr = update_expr
+						lhs = ast.Expr(arr_init)
+					}
 					for i := 1; i < exprs_arr.len; i++ {
 						exprs2 := exprs_arr[i]
 						if exprs2.len != 1 {
@@ -1149,6 +1163,11 @@ fn (mut p Parser) expr(min_bp token.BindingPower) ast.Expr {
 			} else {
 				lhs = array_init_expr_with_parts(ast.empty_expr, exprs, ast.empty_expr,
 					ast.empty_expr, ast.empty_expr, pos)
+				if update_expr !is ast.EmptyExpr {
+					mut arr_init := lhs as ast.ArrayInitExpr
+					arr_init.update_expr = update_expr
+					lhs = ast.Expr(arr_init)
+				}
 			}
 		}
 		.key_match {

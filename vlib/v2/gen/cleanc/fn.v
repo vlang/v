@@ -7434,6 +7434,9 @@ fn (mut g Gen) resolve_call_name(lhs ast.Expr, _arg_count int) string {
 	if name == 'builtin__new_array_from_c_array_noscan' {
 		name = 'new_array_from_c_array'
 	}
+	if name == 'builtin__new_array_from_array_and_c_array' {
+		name = 'new_array_from_array_and_c_array'
+	}
 	if name == 'builtin__array_push_noscan' {
 		name = 'array__push'
 	}
@@ -9304,6 +9307,9 @@ fn (mut g Gen) call_expr(lhs ast.Expr, args []ast.Expr) {
 	// Transformer helper maps directly to builtin implementation name in vlib.
 	if name == 'builtin__new_array_from_c_array_noscan' {
 		name = 'new_array_from_c_array'
+	}
+	if name == 'builtin__new_array_from_array_and_c_array' {
+		name = 'new_array_from_array_and_c_array'
 	}
 	if name == 'builtin__array_push_noscan' {
 		name = 'array__push'
