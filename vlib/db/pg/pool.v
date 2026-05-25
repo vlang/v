@@ -116,6 +116,17 @@ fn (mut p Pool) acquire() !&Conn {
 				p.mu.unlock()
 				return err
 			}
+			// close() may have run while we were dialing outside the lock.
+			// Honor the close contract by tearing the fresh handle down
+			// instead of returning a live Conn after shutdown.
+			p.mu.lock()
+			if p.closed {
+				p.open_count--
+				p.mu.unlock()
+				physical_close_handle(slot.handle)
+				return error('pg: pool is closed')
+			}
+			p.mu.unlock()
 			return p.wrap_slot(slot)
 		}
 		// At capacity: wait for a release/close to signal us. Senders set up
@@ -151,6 +162,9 @@ fn (mut p Pool) release(conn &Conn) {
 	c.pool = unsafe { nil }
 	p.mu.lock()
 	if p.closed {
+		// close() only decremented open_count for slots it found parked;
+		// in-use conns are accounted for here as they trickle back.
+		p.open_count--
 		p.mu.unlock()
 		physical_close_handle(slot.handle)
 		return
