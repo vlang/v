@@ -86,6 +86,59 @@ fn (r &FlatReader) read_file(ff FlatFile) File {
 	}
 }
 
+// read_file_imports rehydrates only the static `imports` list of a file
+// without materializing the full File. Consumers that still need to walk
+// comptime-conditional imports can combine this with read_file_stmts.
+pub fn (flat &FlatAst) read_file_imports(ff FlatFile) []ImportStmt {
+	r := FlatReader{
+		flat: unsafe { flat }
+	}
+	n := r.node(ff.file_id)
+	imports_id := r.edge(n, 1)
+	mut imports := []ImportStmt{}
+	for cid in r.list_children(imports_id) {
+		s := r.read_stmt(cid)
+		if s is ImportStmt {
+			imports << s
+		}
+	}
+	return imports
+}
+
+// read_file_stmts rehydrates only the top-level statements of a file.
+// Used by consumers that walk file.stmts for comptime-conditional imports
+// or other top-level analysis without needing attrs/imports/selector_names.
+pub fn (flat &FlatAst) read_file_stmts(ff FlatFile) []Stmt {
+	r := FlatReader{
+		flat: unsafe { flat }
+	}
+	n := r.node(ff.file_id)
+	stmts_id := r.edge(n, 2)
+	mut stmts := []Stmt{}
+	for cid in r.list_children(stmts_id) {
+		stmts << r.read_stmt(cid)
+	}
+	return stmts
+}
+
+// file_mod returns the module name for a FlatFile via the interned strings.
+@[inline]
+pub fn (flat &FlatAst) file_mod(ff FlatFile) string {
+	if ff.mod_idx < 0 || ff.mod_idx >= flat.strings.len {
+		return ''
+	}
+	return flat.strings[ff.mod_idx]
+}
+
+// file_name returns the source filename for a FlatFile.
+@[inline]
+pub fn (flat &FlatAst) file_name(ff FlatFile) string {
+	if ff.name_idx < 0 || ff.name_idx >= flat.strings.len {
+		return ''
+	}
+	return flat.strings[ff.name_idx]
+}
+
 fn (r &FlatReader) read_attribute(id FlatNodeId) Attribute {
 	n := r.node(id)
 	return Attribute{
@@ -296,7 +349,11 @@ fn (r &FlatReader) read_stmt(id FlatNodeId) Stmt {
 			})
 		}
 		.stmt_defer {
-			mode := if (n.flags & flag_defer_func) != 0 { DeferMode.function } else { DeferMode.scoped }
+			mode := if (n.flags & flag_defer_func) != 0 {
+				DeferMode.function
+			} else {
+				DeferMode.scoped
+			}
 			mut stmts := []Stmt{cap: n.edge_count}
 			for i in 0 .. n.edge_count {
 				stmts << r.read_stmt(r.edge(n, i))
@@ -489,9 +546,9 @@ fn (r &FlatReader) read_expr(id FlatNodeId) Expr {
 	n := r.node(id)
 	// Types and aux nodes can appear where an Expr is expected.
 	match n.kind {
-		.typ_anon_struct, .typ_array_fixed, .typ_array, .typ_channel, .typ_fn,
-		.typ_generic, .typ_map, .typ_nil, .typ_none, .typ_option, .typ_pointer,
-		.typ_result, .typ_thread, .typ_tuple {
+		.typ_anon_struct, .typ_array_fixed, .typ_array, .typ_channel, .typ_fn, .typ_generic,
+		.typ_map, .typ_nil, .typ_none, .typ_option, .typ_pointer, .typ_result, .typ_thread,
+		.typ_tuple {
 			return Expr(r.read_type(id))
 		}
 		.aux_field_init {
@@ -499,6 +556,7 @@ fn (r &FlatReader) read_expr(id FlatNodeId) Expr {
 		}
 		else {}
 	}
+
 	match n.kind {
 		.expr_array_init {
 			typ := r.read_expr(r.edge(n, 0))

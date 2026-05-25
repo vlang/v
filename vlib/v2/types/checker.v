@@ -1199,11 +1199,11 @@ pub fn (mut c Checker) check_flat(flat &ast.FlatAst) {
 	files := flat.to_files()
 	c.preregister_all_scopes(files)
 	c.preregister_all_types(files)
-	c.register_imported_symbols(files)
+	c.register_imported_symbols_from_flat(flat)
 	c.collect_fn_signatures_only = true
 	c.preregister_all_fn_signatures(files)
 	c.collect_fn_signatures_only = false
-	c.register_imported_symbols(files)
+	c.register_imported_symbols_from_flat(flat)
 	for file in files {
 		c.check_file(file)
 	}
@@ -1228,6 +1228,47 @@ fn (mut c Checker) register_selector_names_from_flat(flat &ast.FlatAst) {
 			c.env.selector_names[id] = name
 		}
 	}
+}
+
+// register_imported_symbols_from_flat mirrors register_imported_symbols but
+// pulls each file's mod + imports + top stmts via the FlatAst readers.
+// Still rehydrates the top stmts so comptime-conditional imports can be
+// evaluated; that walk is contained but unavoidable without a flat
+// comptime-cond evaluator.
+fn (mut c Checker) register_imported_symbols_from_flat(flat &ast.FlatAst) {
+	builtin_scope := c.get_module_scope('builtin', universe)
+	for ff in flat.files {
+		mod := flat.file_mod(ff)
+		mut file_scope := c.get_module_scope(mod, builtin_scope)
+		for imp in c.active_file_imports_from_flat(flat, ff) {
+			if imp.symbols.len == 0 {
+				continue
+			}
+			import_mod := if imp.is_aliased {
+				imp.name.all_after_last('.')
+			} else {
+				imp.alias
+			}
+			mut import_scope := c.get_module_scope(import_mod, builtin_scope)
+			for symbol in imp.symbols {
+				if symbol is ast.Ident {
+					if sym_obj := import_scope.lookup_parent(symbol.name, 0) {
+						file_scope.insert(symbol.name, sym_obj)
+					}
+				}
+			}
+		}
+	}
+}
+
+// active_file_imports_from_flat returns the import statements declared in a
+// FlatFile, including those guarded by comptime `$if` blocks whose condition
+// currently evaluates true.
+fn (mut c Checker) active_file_imports_from_flat(flat &ast.FlatAst, ff ast.FlatFile) []ast.ImportStmt {
+	mut imports := flat.read_file_imports(ff)
+	stmts := flat.read_file_stmts(ff)
+	c.collect_active_imports_from_stmts(stmts, mut imports)
+	return imports
 }
 
 pub fn (mut c Checker) check_files(files []ast.File) {
