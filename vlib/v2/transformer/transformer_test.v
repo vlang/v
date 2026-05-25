@@ -66,7 +66,7 @@ fn transform_code_for_test(code string) []ast.File {
 	mut env := types.Environment.new()
 	mut checker := types.Checker.new(prefs, file_set, env)
 	checker.check_files(files)
-	mut transformer := Transformer.new_with_pref(files, env, prefs)
+	mut transformer := Transformer.new_with_pref(env, prefs)
 	return transformer.transform_files(files)
 }
 
@@ -86,7 +86,7 @@ fn transform_code_with_env_for_test(code string) (&types.Environment, []ast.File
 	mut env := types.Environment.new()
 	mut checker := types.Checker.new(prefs, file_set, env)
 	checker.check_files(files)
-	mut transformer := Transformer.new_with_pref(files, env, prefs)
+	mut transformer := Transformer.new_with_pref(env, prefs)
 	transformed := transformer.transform_files(files)
 	return env, transformed
 }
@@ -120,7 +120,7 @@ fn transform_sources_for_test(sources []TestSource) []ast.File {
 	mut env := types.Environment.new()
 	mut checker := types.Checker.new(prefs, file_set, env)
 	checker.check_files(files)
-	mut transformer := Transformer.new_with_pref(files, env, prefs)
+	mut transformer := Transformer.new_with_pref(env, prefs)
 	return transformer.transform_files(files)
 }
 

@@ -245,8 +245,7 @@ struct SortComparatorInfo {
 	is_string_cmp bool
 }
 
-pub fn Transformer.new(files []ast.File, env &types.Environment) &Transformer {
-	_ = files
+pub fn Transformer.new(env &types.Environment) &Transformer {
 	mut t := new_transformer_base(env, unsafe { nil })
 	cwd := os.getwd()
 	if root := detect_vmodroot_from_path(cwd) {
@@ -255,8 +254,7 @@ pub fn Transformer.new(files []ast.File, env &types.Environment) &Transformer {
 	return t
 }
 
-pub fn Transformer.new_with_pref(files []ast.File, env &types.Environment, p &pref.Preferences) &Transformer {
-	_ = files
+pub fn Transformer.new_with_pref(env &types.Environment, p &pref.Preferences) &Transformer {
 	mut t := new_transformer_base(env, p)
 	if p != unsafe { nil } && p.vroot.len > 0 {
 		t.comptime_vmodroot = p.vroot

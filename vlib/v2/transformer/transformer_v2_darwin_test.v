@@ -99,7 +99,7 @@ fn test_v2_transformer_all_exprs_have_types() {
 	checker.check_files(ast_files)
 
 	// --- Transform ---
-	mut trans := Transformer.new_with_pref(ast_files, env, prefs)
+	mut trans := Transformer.new_with_pref(env, prefs)
 	transformed := trans.transform_files(ast_files)
 
 	// --- Verify: every expression with a valid pos must have a type ---

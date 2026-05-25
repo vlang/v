@@ -35,7 +35,7 @@ fn generate_array_append_c_for_test_files(sources []string) string {
 	env := types.Environment.new()
 	mut checker := types.Checker.new(prefs, file_set, env)
 	checker.check_files(files)
-	mut trans := transformer.Transformer.new_with_pref(files, env, prefs)
+	mut trans := transformer.Transformer.new_with_pref(env, prefs)
 	mut gen := Gen.new_with_env_and_pref(trans.transform_files(files), env, prefs)
 	return gen.gen()
 }

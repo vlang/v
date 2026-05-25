@@ -175,7 +175,7 @@ pub fn (mut b Builder) build(files []string) {
 
 	// Transform AST (flag enum desugaring, etc.)
 	transform_start := sw.elapsed()
-	mut trans := transformer.Transformer.new_with_pref(b.files, b.env, b.pref)
+	mut trans := transformer.Transformer.new_with_pref(b.env, b.pref)
 	trans.set_file_set(b.file_set)
 	b.files = if b.pref.no_parallel_transform || b.pref.ownership {
 		if b.flat_check_enabled {
