@@ -271,12 +271,17 @@ pub fn (mut p Parser) parse_file(filename string, mut file_set token.FileSet) as
 		// runtime statements (e.g. `println(...)`) needs to be wrapped into
 		// the synthesized `fn main()` so it actually executes. Comptime $if
 		// blocks containing only declarations (e.g. `$if !macos { fn C.x() }`)
-		// stay at file scope.
+		// stay at file scope. A `fn main` nested inside any branch counts
+		// as user-defined main and suppresses script-main synthesis.
 		if mod == 'main' && top_stmt is ast.ExprStmt {
 			inner := unwrap_comptime_expr(top_stmt.expr)
 			if inner is ast.IfExpr {
+				if comptime_if_expr_contains_fn_main(inner) {
+					main_already_defined = true
+				}
 				if !comptime_if_expr_contains_top_stmt(inner) {
 					script_stmts << top_stmt
+					script_started = true
 					continue
 				}
 			}
@@ -350,6 +355,34 @@ fn comptime_if_expr_contains_top_stmt(if_expr ast.IfExpr) bool {
 		}
 	}
 	return true
+}
+
+// comptime_if_expr_contains_fn_main reports whether any branch of a
+// comptime `$if` chain declares `fn main`. Used to suppress synthesis
+// of a script `main` when a user-defined `main` is hidden behind a
+// platform-conditional block (e.g. `$if windows { fn main() {} }`).
+fn comptime_if_expr_contains_fn_main(if_expr ast.IfExpr) bool {
+	for stmt in if_expr.stmts {
+		if stmt is ast.FnDecl {
+			if !stmt.is_method && stmt.name == 'main' {
+				return true
+			}
+		} else if stmt is ast.ExprStmt {
+			inner := unwrap_comptime_expr(stmt.expr)
+			if inner is ast.IfExpr {
+				if comptime_if_expr_contains_fn_main(inner) {
+					return true
+				}
+			}
+		}
+	}
+	if if_expr.else_expr is ast.IfExpr {
+		else_ie := if_expr.else_expr as ast.IfExpr
+		if comptime_if_expr_contains_fn_main(else_ie) {
+			return true
+		}
+	}
+	return false
 }
 
 // is_top_stmt_start reports whether the current token can start a top-level
