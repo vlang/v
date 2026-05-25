@@ -1198,10 +1198,9 @@ pub fn (mut c Checker) check_flat(flat &ast.FlatAst) {
 	c.register_selector_names_from_flat(flat)
 	files := flat.to_files()
 	c.preregister_all_scopes_from_flat(flat)
-	c.preregister_all_types(files)
-	c.register_imported_symbols_from_flat(flat)
+	c.preregister_all_types_from_flat(flat)
 	c.collect_fn_signatures_only = true
-	c.preregister_all_fn_signatures(files)
+	c.preregister_all_fn_signatures_from_flat(flat)
 	c.collect_fn_signatures_only = false
 	c.register_imported_symbols_from_flat(flat)
 	for file in files {
@@ -1299,6 +1298,65 @@ fn (mut c Checker) preregister_scopes_from_flat(flat &ast.FlatAst, ff ast.FlatFi
 	}
 	// add C
 	c.scope.insert('C', Module{ name: 'C', scope: c.c_scope })
+}
+
+// preregister_all_types_from_flat mirrors preregister_all_types but reads
+// each file's mod + top-level stmts directly from the FlatAst.
+fn (mut c Checker) preregister_all_types_from_flat(flat &ast.FlatAst) {
+	for ff in flat.files {
+		c.preregister_types_from_flat(flat, ff)
+	}
+	c.register_imported_symbols_from_flat(flat)
+	c.process_pending_struct_decls()
+	c.process_pending_type_decls()
+	c.process_pending_interface_decls()
+}
+
+fn (mut c Checker) preregister_types_from_flat(flat &ast.FlatAst, ff ast.FlatFile) {
+	mod := flat.file_mod(ff)
+	c.cur_file_module = mod
+	mut mod_scope := &Scope(unsafe { nil })
+	lock c.env.scopes {
+		if mod in c.env.scopes {
+			mod_scope = unsafe { c.env.scopes[mod] }
+		} else {
+			eprintln('warning: scope not found for mod: ${mod}, skipping')
+			return
+		}
+	}
+	c.scope = mod_scope
+	for stmt in flat.read_file_stmts(ff) {
+		c.preregister_type_stmt(stmt)
+	}
+}
+
+// preregister_all_fn_signatures_from_flat mirrors preregister_all_fn_signatures
+// but reads each file's mod + top-level stmts directly from the FlatAst.
+fn (mut c Checker) preregister_all_fn_signatures_from_flat(flat &ast.FlatAst) {
+	for ff in flat.files {
+		c.preregister_fn_signatures_from_flat(flat, ff)
+	}
+}
+
+fn (mut c Checker) preregister_fn_signatures_from_flat(flat &ast.FlatAst, ff ast.FlatFile) {
+	mod := flat.file_mod(ff)
+	c.cur_file_module = mod
+	mut mod_scope := &Scope(unsafe { nil })
+	lock c.env.scopes {
+		if mod in c.env.scopes {
+			mod_scope = unsafe { c.env.scopes[mod] }
+		} else {
+			eprintln('warning: scope not found for mod: ${mod}, skipping')
+			return
+		}
+	}
+	c.scope = mod_scope
+	prev_collect := c.collect_fn_signatures_only
+	c.collect_fn_signatures_only = true
+	for stmt in flat.read_file_stmts(ff) {
+		c.preregister_fn_signature_stmt(stmt)
+	}
+	c.collect_fn_signatures_only = prev_collect
 }
 
 pub fn (mut c Checker) check_files(files []ast.File) {
