@@ -20,6 +20,32 @@ pub fn (flat &FlatAst) to_files() []File {
 	return files
 }
 
+// to_files_range rehydrates the FlatFiles in [start, end) without touching
+// the rest of the FlatAst. Used by the streaming builder, where each
+// parse_batch appends to a shared FlatBuilder and only needs to return the
+// freshly added files to the caller.
+pub fn (flat &FlatAst) to_files_range(start int, end int) []File {
+	mut lo := start
+	mut hi := end
+	if lo < 0 {
+		lo = 0
+	}
+	if hi > flat.files.len {
+		hi = flat.files.len
+	}
+	if hi <= lo {
+		return []File{}
+	}
+	r := FlatReader{
+		flat: unsafe { flat }
+	}
+	mut files := []File{cap: hi - lo}
+	for i in lo .. hi {
+		files << r.read_file(flat.files[i])
+	}
+	return files
+}
+
 // FlatReader is a thin cursor over a FlatAst that reconstructs legacy nodes.
 struct FlatReader {
 	flat &FlatAst

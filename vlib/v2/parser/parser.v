@@ -174,6 +174,15 @@ pub fn (mut p Parser) parse_files_to_flat(files []string, mut file_set token.Fil
 	}
 	nodes_cap, edges_cap, strings_cap := ast.arena_caps_for_bytes(total_bytes)
 	mut builder := ast.new_flat_builder_with_capacity(nodes_cap, edges_cap, strings_cap)
+	p.parse_files_into_flat(files, mut file_set, mut builder)
+	return builder.flat
+}
+
+// parse_files_into_flat streams files into a caller-owned FlatBuilder.
+// Used by the builder to accumulate a single FlatAst across multiple
+// parse batches (core, user, imports) without throwing away the builder
+// between calls.
+pub fn (mut p Parser) parse_files_into_flat(files []string, mut file_set token.FileSet, mut builder ast.FlatBuilder) {
 	for file in files {
 		if file == '' {
 			continue
@@ -181,7 +190,6 @@ pub fn (mut p Parser) parse_files_to_flat(files []string, mut file_set token.Fil
 		legacy := p.parse_file(file, mut file_set)
 		builder.append_file(legacy)
 	}
-	return builder.flat
 }
 
 pub fn (mut p Parser) parse_file(filename string, mut file_set token.FileSet) ast.File {

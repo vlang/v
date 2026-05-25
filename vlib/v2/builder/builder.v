@@ -48,10 +48,16 @@ mut:
 	used_virtual_vh_for_parse bool
 	flat_roundtrip_enabled    bool // V2_FLAT_ROUNDTRIP=1: route parses through streaming + to_files()
 	flat_check_enabled        bool // V2_CHECK_FLAT=1: route type-check through Checker.check_flat
-	// flat caches the FlatAst representation of b.files. Populated once after
-	// parsing when flat_check_enabled is set, so type_check_files (and any
-	// future flat consumers) skip the redundant flatten_files() pass.
-	flat ast.FlatAst
+	// flat caches the FlatAst representation of b.files. When
+	// flat_check_enabled is set, parse_batch streams directly into
+	// flat_builder so b.flat is built incrementally during parsing rather
+	// than via a redundant flatten_files() pass afterwards.
+	flat         ast.FlatAst
+	flat_builder ast.FlatBuilder
+	// flat_builder_inited tracks whether flat_builder has been seeded with
+	// pre-sized arenas. We can only size after we know the input set, so
+	// the first parse_batch call lazily initializes it.
+	flat_builder_inited bool
 }
 
 pub fn new_builder(prefs &pref.Preferences) &Builder {
@@ -136,7 +142,15 @@ pub fn (mut b Builder) build(files []string) {
 	print_time('Scan & Parse', parse_time)
 	print_rss('after parse')
 	if b.flat_check_enabled {
-		b.flat = ast.flatten_files(b.files)
+		if b.flat_builder_inited {
+			// parse_batch streamed every file into flat_builder; flat is
+			// already built, no second pass needed.
+			b.flat = b.flat_builder.flat
+		} else {
+			// Parallel parsing bypasses parse_batch, so the streaming
+			// builder never saw the files. Fall back to a one-shot flatten.
+			b.flat = ast.flatten_files(b.files)
+		}
 	}
 	b.update_parse_summary_counts()
 	print_parse_summary(b.parsed_full_files_n, b.parsed_vh_files_n, b.entry_v_lines_n,

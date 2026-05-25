@@ -208,15 +208,35 @@ fn active_file_imports(file ast.File, user_defines []string, target_os string) [
 }
 
 // parse_batch routes a parser.parse_files() call through either the direct
-// path or the streaming+roundtrip path (V2_FLAT_ROUNDTRIP=1). The roundtrip
-// mode exercises Parser.parse_files_to_flat + FlatAst.to_files() under real
-// load, validating Phase 2 lossless conversion before consumers migrate.
+// path, the roundtrip path (V2_FLAT_ROUNDTRIP=1), or — when V2_CHECK_FLAT=1
+// is also set — the streaming-into-shared-FlatBuilder path. The latter
+// accumulates a single FlatAst across all batches so the checker can read
+// it without a separate flatten_files() pass.
 fn (mut b Builder) parse_batch(mut parser_reused parser.Parser, files []string) []ast.File {
+	if b.flat_check_enabled {
+		b.ensure_flat_builder_inited()
+		pre := b.flat_builder.flat.files.len
+		parser_reused.parse_files_into_flat(files, mut b.file_set, mut b.flat_builder)
+		post := b.flat_builder.flat.files.len
+		return b.flat_builder.flat.to_files_range(pre, post)
+	}
 	if b.flat_roundtrip_enabled {
 		flat := parser_reused.parse_files_to_flat(files, mut b.file_set)
 		return flat.to_files()
 	}
 	return parser_reused.parse_files(files, mut b.file_set)
+}
+
+// ensure_flat_builder_inited lazily seeds b.flat_builder on first use.
+// Pre-sizing per total source bytes would be ideal here but the full
+// input set isn't known until the import walk finishes, so we accept
+// geometric growth and revisit if profiles call for it.
+fn (mut b Builder) ensure_flat_builder_inited() {
+	if b.flat_builder_inited {
+		return
+	}
+	b.flat_builder = ast.new_flat_builder()
+	b.flat_builder_inited = true
 }
 
 fn (mut b Builder) parse_files(files []string) []ast.File {
