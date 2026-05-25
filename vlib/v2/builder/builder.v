@@ -2227,8 +2227,16 @@ fn (b &Builder) print_flat_ast_summary() {
 	if legacy_stats.bytes_estimate > 0 {
 		mem_delta_pct = (f64(legacy_stats.bytes_estimate) - f64(flat_stats.bytes_estimate)) * 100.0 / f64(legacy_stats.bytes_estimate)
 	}
-	println(' * AST nodes: legacy=${legacy_nodes}, flat=${flat_stats.nodes}')
+	// Flat AST uses 4 arenas (files, nodes, edges, strings) regardless of payload
+	// count; each is one allocation amortised across millions of cells.
+	flat_allocs := u64(4)
+	mut alloc_delta_pct := f64(0)
+	if legacy_stats.allocs > 0 {
+		alloc_delta_pct = (f64(legacy_stats.allocs) - f64(flat_allocs)) * 100.0 / f64(legacy_stats.allocs)
+	}
+	println(' * AST nodes:      legacy=${legacy_nodes}, flat=${flat_stats.nodes}')
 	println(' * AST memory est: legacy=${legacy_stats.bytes_estimate}B, flat=${flat_stats.bytes_estimate}B (${mem_delta_pct:.2f}% reduction)')
+	println(' * AST allocs:     legacy=${legacy_stats.allocs}, flat=${flat_allocs} (${alloc_delta_pct:.2f}% reduction)')
 }
 
 fn count_v_lines_for_paths(paths []string) int {

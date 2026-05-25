@@ -19,16 +19,16 @@ pub const invalid_flat_node_id = FlatNodeId(-1)
 
 // flag bit positions used by FlatNode.flags. Bits are reused per variant;
 // see add_* helpers below for the exact mapping.
-pub const flag_is_public     = u8(1) << 0
-pub const flag_is_mut        = u8(1) << 1
-pub const flag_is_method     = u8(1) << 2
-pub const flag_is_static     = u8(1) << 3
-pub const flag_is_union      = u8(1) << 4
-pub const flag_is_gated      = u8(1) << 5
-pub const flag_is_aliased    = u8(1) << 6  // ImportStmt
-pub const flag_defer_func    = u8(1) << 7  // DeferStmt.mode == .function
-pub const flag_is_count      = u8(1) << 6  // SqlExpr (reuse aliased bit)
-pub const flag_is_create     = u8(1) << 7  // SqlExpr (reuse defer bit)
+pub const flag_is_public = u8(1) << 0
+pub const flag_is_mut = u8(1) << 1
+pub const flag_is_method = u8(1) << 2
+pub const flag_is_static = u8(1) << 3
+pub const flag_is_union = u8(1) << 4
+pub const flag_is_gated = u8(1) << 5
+pub const flag_is_aliased = u8(1) << 6 // ImportStmt
+pub const flag_defer_func = u8(1) << 7 // DeferStmt.mode == .function
+pub const flag_is_count = u8(1) << 6 // SqlExpr (reuse aliased bit)
+pub const flag_is_create = u8(1) << 7 // SqlExpr (reuse defer bit)
 
 // FlatNodeKind is a dense tag for every stored AST node variant.
 pub enum FlatNodeKind {
@@ -181,6 +181,10 @@ pub mut:
 	array_bytes    u64
 	string_entries int
 	string_bytes   u64
+	// allocs counts distinct heap allocations the GC must track: every
+	// sumtype variant payload, every dynamic array (spine), and every
+	// string buffer. Flat AST collapses these to a handful of arenas.
+	allocs         u64
 	bytes_estimate u64
 }
 
@@ -527,8 +531,7 @@ fn (mut b FlatBuilder) add_stmt(stmt Stmt) FlatNodeId {
 			for e in stmt.rhs {
 				b.push_expr(mut edges, e)
 			}
-			return b.emit(.stmt_assign, stmt.pos, -1, stmt.lhs.len, u16(int(stmt.op)),
-				0, edges)
+			return b.emit(.stmt_assign, stmt.pos, -1, stmt.lhs.len, u16(int(stmt.op)), 0, edges)
 		}
 		BlockStmt {
 			mut edges := []FlatEdge{cap: stmt.stmts.len}
@@ -570,8 +573,8 @@ fn (mut b FlatBuilder) add_stmt(stmt Stmt) FlatNodeId {
 			mut edges := []FlatEdge{}
 			// ct_cond carried as a child aux_string node when non-empty
 			if stmt.ct_cond.len > 0 {
-				id := b.emit(.aux_string, token.Pos{}, b.intern(stmt.ct_cond), -1,
-					0, 0, []FlatEdge{})
+				id := b.emit(.aux_string, token.Pos{}, b.intern(stmt.ct_cond), -1, 0, 0,
+					[]FlatEdge{})
 				b.push_edge(mut edges, id)
 			}
 			return b.emit(.stmt_directive, token.Pos{}, b.intern(stmt.name), b.intern(stmt.value),
@@ -619,8 +622,8 @@ fn (mut b FlatBuilder) add_stmt(stmt Stmt) FlatNodeId {
 			b.push_edge(mut edges, b.add_type(Type(stmt.typ)))
 			b.push_edge(mut edges, b.make_list_attribute(stmt.attributes))
 			b.push_edge(mut edges, b.make_list_stmt(stmt.stmts))
-			return b.emit(.stmt_fn_decl, stmt.pos, b.intern(stmt.name), -1, u16(int(stmt.language)),
-				flags, edges)
+			return b.emit(.stmt_fn_decl, stmt.pos, b.intern(stmt.name), -1,
+				u16(int(stmt.language)), flags, edges)
 		}
 		ForInStmt {
 			mut edges := []FlatEdge{cap: 3}
@@ -654,8 +657,8 @@ fn (mut b FlatBuilder) add_stmt(stmt Stmt) FlatNodeId {
 			for sym in stmt.symbols {
 				b.push_expr(mut edges, sym)
 			}
-			return b.emit(.stmt_import, token.Pos{}, b.intern(stmt.name), b.intern(stmt.alias),
-				0, flags, edges)
+			return b.emit(.stmt_import, token.Pos{}, b.intern(stmt.name), b.intern(stmt.alias), 0,
+				flags, edges)
 		}
 		InterfaceDecl {
 			mut flags := u8(0)
@@ -667,8 +670,8 @@ fn (mut b FlatBuilder) add_stmt(stmt Stmt) FlatNodeId {
 			b.push_edge(mut edges, b.make_list_expr(stmt.generic_params))
 			b.push_edge(mut edges, b.make_list_expr(stmt.embedded))
 			b.push_edge(mut edges, b.make_list_field_decl(stmt.fields))
-			return b.emit_simple_with_flags_name(.stmt_interface_decl, token.Pos{},
-				flags, b.intern(stmt.name), edges)
+			return b.emit_simple_with_flags_name(.stmt_interface_decl, token.Pos{}, flags,
+				b.intern(stmt.name), edges)
 		}
 		LabelStmt {
 			return b.emit(.stmt_label, token.Pos{}, b.intern(stmt.name), -1, 0, 0, [
@@ -678,8 +681,7 @@ fn (mut b FlatBuilder) add_stmt(stmt Stmt) FlatNodeId {
 			])
 		}
 		ModuleStmt {
-			return b.emit(.stmt_module, token.Pos{}, b.intern(stmt.name), -1, 0, 0,
-				[]FlatEdge{})
+			return b.emit(.stmt_module, token.Pos{}, b.intern(stmt.name), -1, 0, 0, []FlatEdge{})
 		}
 		ReturnStmt {
 			mut edges := []FlatEdge{cap: stmt.exprs.len}
@@ -702,8 +704,8 @@ fn (mut b FlatBuilder) add_stmt(stmt Stmt) FlatNodeId {
 			b.push_edge(mut edges, b.make_list_expr(stmt.embedded))
 			b.push_edge(mut edges, b.make_list_expr(stmt.generic_params))
 			b.push_edge(mut edges, b.make_list_field_decl(stmt.fields))
-			return b.emit(.stmt_struct_decl, stmt.pos, b.intern(stmt.name), -1, u16(int(stmt.language)),
-				flags, edges)
+			return b.emit(.stmt_struct_decl, stmt.pos, b.intern(stmt.name), -1,
+				u16(int(stmt.language)), flags, edges)
 		}
 		TypeDecl {
 			mut flags := u8(0)
@@ -715,8 +717,8 @@ fn (mut b FlatBuilder) add_stmt(stmt Stmt) FlatNodeId {
 			b.push_edge(mut edges, b.make_list_attribute([]Attribute{}))
 			b.push_edge(mut edges, b.make_list_expr(stmt.generic_params))
 			b.push_edge(mut edges, b.make_list_expr(stmt.variants))
-			return b.emit(.stmt_type_decl, token.Pos{}, b.intern(stmt.name), -1, u16(int(stmt.language)),
-				flags, edges)
+			return b.emit(.stmt_type_decl, token.Pos{}, b.intern(stmt.name), -1,
+				u16(int(stmt.language)), flags, edges)
 		}
 		[]Attribute {
 			// handled at top of function
@@ -745,6 +747,7 @@ fn (mut b FlatBuilder) add_expr(expr Expr) FlatNodeId {
 		}
 		else {}
 	}
+
 	match expr {
 		ArrayInitExpr {
 			mut edges := []FlatEdge{cap: 4 + expr.exprs.len}
@@ -773,8 +776,8 @@ fn (mut b FlatBuilder) add_expr(expr Expr) FlatNodeId {
 			return b.emit_simple(.expr_assoc, expr.pos, edges)
 		}
 		BasicLiteral {
-			return b.emit(.expr_basic_literal, expr.pos, b.intern(expr.value), -1, u16(int(expr.kind)),
-				0, []FlatEdge{})
+			return b.emit(.expr_basic_literal, expr.pos, b.intern(expr.value), -1,
+				u16(int(expr.kind)), 0, []FlatEdge{})
 		}
 		CallExpr {
 			mut edges := []FlatEdge{cap: 1 + expr.args.len}
@@ -817,8 +820,7 @@ fn (mut b FlatBuilder) add_expr(expr Expr) FlatNodeId {
 			}
 			// extra stores captured_vars.len so the boundary between captured
 			// vars and stmts is recoverable.
-			return b.emit(.expr_fn_literal, expr.pos, -1, expr.captured_vars.len, 0,
-				0, edges)
+			return b.emit(.expr_fn_literal, expr.pos, -1, expr.captured_vars.len, 0, 0, edges)
 		}
 		GenericArgOrIndexExpr {
 			mut edges := []FlatEdge{cap: 2}
@@ -885,8 +887,7 @@ fn (mut b FlatBuilder) add_expr(expr Expr) FlatNodeId {
 			for e in expr.exprs {
 				b.push_expr(mut edges, e)
 			}
-			return b.emit(.expr_keyword_operator, expr.pos, -1, -1, u16(int(expr.op)),
-				0, edges)
+			return b.emit(.expr_keyword_operator, expr.pos, -1, -1, u16(int(expr.op)), 0, edges)
 		}
 		LambdaExpr {
 			mut edges := []FlatEdge{cap: 1 + expr.args.len}
@@ -900,8 +901,7 @@ fn (mut b FlatBuilder) add_expr(expr Expr) FlatNodeId {
 			return b.emit(.expr_lifetime, expr.pos, b.intern(expr.name), -1, 0, 0, []FlatEdge{})
 		}
 		LockExpr {
-			mut edges := []FlatEdge{cap: expr.lock_exprs.len + expr.rlock_exprs.len +
-				expr.stmts.len}
+			mut edges := []FlatEdge{cap: expr.lock_exprs.len + expr.rlock_exprs.len + expr.stmts.len}
 			for e in expr.lock_exprs {
 				b.push_expr(mut edges, e)
 			}
@@ -937,8 +937,7 @@ fn (mut b FlatBuilder) add_expr(expr Expr) FlatNodeId {
 		ModifierExpr {
 			mut edges := []FlatEdge{cap: 1}
 			b.push_expr(mut edges, expr.expr)
-			return b.emit(.expr_modifier, expr.pos, -1, -1, u16(int(expr.kind)), 0,
-				edges)
+			return b.emit(.expr_modifier, expr.pos, -1, -1, u16(int(expr.kind)), 0, edges)
 		}
 		OrExpr {
 			mut edges := []FlatEdge{cap: 1 + expr.stmts.len}
@@ -998,8 +997,7 @@ fn (mut b FlatBuilder) add_expr(expr Expr) FlatNodeId {
 			if expr.is_create {
 				flags |= flag_is_create
 			}
-			return b.emit(.expr_sql, expr.pos, b.intern(expr.table_name), -1, 0, flags,
-				[
+			return b.emit(.expr_sql, expr.pos, b.intern(expr.table_name), -1, 0, flags, [
 				FlatEdge{
 					child_id: b.add_expr(expr.expr)
 				},
@@ -1009,12 +1007,11 @@ fn (mut b FlatBuilder) add_expr(expr Expr) FlatNodeId {
 			mut edges := []FlatEdge{cap: 2}
 			b.push_edge(mut edges, b.make_list_strings(expr.values))
 			b.push_edge(mut edges, b.make_list_string_inter(expr.inters))
-			return b.emit(.expr_string_inter, expr.pos, -1, -1, u16(int(expr.kind)),
-				0, edges)
+			return b.emit(.expr_string_inter, expr.pos, -1, -1, u16(int(expr.kind)), 0, edges)
 		}
 		StringLiteral {
-			return b.emit(.expr_string, expr.pos, b.intern(expr.value), -1, u16(int(expr.kind)),
-				0, []FlatEdge{})
+			return b.emit(.expr_string, expr.pos, b.intern(expr.value), -1, u16(int(expr.kind)), 0,
+				[]FlatEdge{})
 		}
 		Tuple {
 			mut edges := []FlatEdge{cap: expr.exprs.len}
@@ -1098,8 +1095,7 @@ fn (mut b FlatBuilder) add_type(typ Type) FlatNodeId {
 		PointerType {
 			mut edges := []FlatEdge{cap: 1}
 			b.push_expr(mut edges, typ.base_type)
-			return b.emit(.typ_pointer, token.Pos{}, b.intern(typ.lifetime), -1, 0,
-				0, edges)
+			return b.emit(.typ_pointer, token.Pos{}, b.intern(typ.lifetime), -1, 0, 0, edges)
 		}
 		ResultType {
 			mut edges := []FlatEdge{cap: 1}
@@ -1190,11 +1186,22 @@ fn (mut w LegacyAstWalker) add_array_storage(elem_size u32, len int) {
 		return
 	}
 	w.stats.array_bytes += u64(elem_size) * u64(len)
+	w.stats.allocs++
 }
 
 fn (mut w LegacyAstWalker) add_string(s string) {
 	w.stats.string_entries++
 	w.stats.string_bytes += u64(s.len)
+	if s.len > 0 {
+		w.stats.allocs++
+	}
+}
+
+// add_variant_payload accounts for one heap allocation behind a sumtype slot
+// (e.g., AssignStmt, CallExpr, ArrayType) plus its struct bytes.
+fn (mut w LegacyAstWalker) add_variant_payload(size u32) {
+	w.stats.node_bytes += u64(size)
+	w.stats.allocs++
 }
 
 fn (mut w LegacyAstWalker) walk_file(file File) {
@@ -1210,31 +1217,98 @@ fn (mut w LegacyAstWalker) walk_stmt(stmt Stmt) {
 		return
 	}
 	w.stats.stmt_nodes++
-	w.stats.node_bytes += u64(sizeof(Stmt))
+	// Sumtype slot is counted by parent (array storage / field sizeof).
+	// Add only the heap-allocated variant payload.
 	match stmt {
-		AssignStmt { w.scan_dynamic(stmt) }
-		AssertStmt { w.scan_dynamic(stmt) }
-		AsmStmt { w.scan_dynamic(stmt) }
-		BlockStmt { w.scan_dynamic(stmt) }
-		ComptimeStmt { w.scan_dynamic(stmt) }
-		ConstDecl { w.scan_dynamic(stmt) }
-		DeferStmt { w.scan_dynamic(stmt) }
-		Directive { w.scan_dynamic(stmt) }
+		AssignStmt {
+			w.add_variant_payload(sizeof(AssignStmt))
+			w.scan_dynamic(stmt)
+		}
+		AssertStmt {
+			w.add_variant_payload(sizeof(AssertStmt))
+			w.scan_dynamic(stmt)
+		}
+		AsmStmt {
+			w.add_variant_payload(sizeof(AsmStmt))
+			w.scan_dynamic(stmt)
+		}
+		BlockStmt {
+			w.add_variant_payload(sizeof(BlockStmt))
+			w.scan_dynamic(stmt)
+		}
+		ComptimeStmt {
+			w.add_variant_payload(sizeof(ComptimeStmt))
+			w.scan_dynamic(stmt)
+		}
+		ConstDecl {
+			w.add_variant_payload(sizeof(ConstDecl))
+			w.scan_dynamic(stmt)
+		}
+		DeferStmt {
+			w.add_variant_payload(sizeof(DeferStmt))
+			w.scan_dynamic(stmt)
+		}
+		Directive {
+			w.add_variant_payload(sizeof(Directive))
+			w.scan_dynamic(stmt)
+		}
 		EmptyStmt {}
-		EnumDecl { w.scan_dynamic(stmt) }
-		ExprStmt { w.scan_dynamic(stmt) }
-		FlowControlStmt { w.scan_dynamic(stmt) }
-		FnDecl { w.scan_dynamic(stmt) }
-		ForInStmt { w.scan_dynamic(stmt) }
-		ForStmt { w.scan_dynamic(stmt) }
-		GlobalDecl { w.scan_dynamic(stmt) }
-		ImportStmt { w.scan_dynamic(stmt) }
-		InterfaceDecl { w.scan_dynamic(stmt) }
-		LabelStmt { w.scan_dynamic(stmt) }
-		ModuleStmt { w.scan_dynamic(stmt) }
-		ReturnStmt { w.scan_dynamic(stmt) }
-		StructDecl { w.scan_dynamic(stmt) }
-		TypeDecl { w.scan_dynamic(stmt) }
+		EnumDecl {
+			w.add_variant_payload(sizeof(EnumDecl))
+			w.scan_dynamic(stmt)
+		}
+		ExprStmt {
+			w.add_variant_payload(sizeof(ExprStmt))
+			w.scan_dynamic(stmt)
+		}
+		FlowControlStmt {
+			w.add_variant_payload(sizeof(FlowControlStmt))
+			w.scan_dynamic(stmt)
+		}
+		FnDecl {
+			w.add_variant_payload(sizeof(FnDecl))
+			w.scan_dynamic(stmt)
+		}
+		ForInStmt {
+			w.add_variant_payload(sizeof(ForInStmt))
+			w.scan_dynamic(stmt)
+		}
+		ForStmt {
+			w.add_variant_payload(sizeof(ForStmt))
+			w.scan_dynamic(stmt)
+		}
+		GlobalDecl {
+			w.add_variant_payload(sizeof(GlobalDecl))
+			w.scan_dynamic(stmt)
+		}
+		ImportStmt {
+			w.add_variant_payload(sizeof(ImportStmt))
+			w.scan_dynamic(stmt)
+		}
+		InterfaceDecl {
+			w.add_variant_payload(sizeof(InterfaceDecl))
+			w.scan_dynamic(stmt)
+		}
+		LabelStmt {
+			w.add_variant_payload(sizeof(LabelStmt))
+			w.scan_dynamic(stmt)
+		}
+		ModuleStmt {
+			w.add_variant_payload(sizeof(ModuleStmt))
+			w.scan_dynamic(stmt)
+		}
+		ReturnStmt {
+			w.add_variant_payload(sizeof(ReturnStmt))
+			w.scan_dynamic(stmt)
+		}
+		StructDecl {
+			w.add_variant_payload(sizeof(StructDecl))
+			w.scan_dynamic(stmt)
+		}
+		TypeDecl {
+			w.add_variant_payload(sizeof(TypeDecl))
+			w.scan_dynamic(stmt)
+		}
 		[]Attribute {}
 	}
 }
@@ -1251,105 +1325,247 @@ fn (mut w LegacyAstWalker) walk_expr(expr Expr) {
 		}
 		else {}
 	}
+
 	w.stats.expr_nodes++
-	w.stats.node_bytes += u64(sizeof(Expr))
+	// Sumtype slot is counted by parent; add only heap variant payload.
 	match expr {
-		ArrayInitExpr { w.scan_dynamic(expr) }
-		AsCastExpr { w.scan_dynamic(expr) }
-		AssocExpr { w.scan_dynamic(expr) }
-		BasicLiteral { w.scan_dynamic(expr) }
-		CallExpr { w.scan_dynamic(expr) }
-		CallOrCastExpr { w.scan_dynamic(expr) }
-		CastExpr { w.scan_dynamic(expr) }
-		ComptimeExpr { w.scan_dynamic(expr) }
+		ArrayInitExpr {
+			w.add_variant_payload(sizeof(ArrayInitExpr))
+			w.scan_dynamic(expr)
+		}
+		AsCastExpr {
+			w.add_variant_payload(sizeof(AsCastExpr))
+			w.scan_dynamic(expr)
+		}
+		AssocExpr {
+			w.add_variant_payload(sizeof(AssocExpr))
+			w.scan_dynamic(expr)
+		}
+		BasicLiteral {
+			w.add_variant_payload(sizeof(BasicLiteral))
+			w.scan_dynamic(expr)
+		}
+		CallExpr {
+			w.add_variant_payload(sizeof(CallExpr))
+			w.scan_dynamic(expr)
+		}
+		CallOrCastExpr {
+			w.add_variant_payload(sizeof(CallOrCastExpr))
+			w.scan_dynamic(expr)
+		}
+		CastExpr {
+			w.add_variant_payload(sizeof(CastExpr))
+			w.scan_dynamic(expr)
+		}
+		ComptimeExpr {
+			w.add_variant_payload(sizeof(ComptimeExpr))
+			w.scan_dynamic(expr)
+		}
 		EmptyExpr {}
-		FnLiteral { w.scan_dynamic(expr) }
-		GenericArgOrIndexExpr { w.scan_dynamic(expr) }
-		GenericArgs { w.scan_dynamic(expr) }
-		Ident { w.scan_dynamic(expr) }
-		IfExpr { w.scan_dynamic(expr) }
-		IfGuardExpr { w.scan_dynamic(expr) }
-		IndexExpr { w.scan_dynamic(expr) }
-		InfixExpr { w.scan_dynamic(expr) }
-		InitExpr { w.scan_dynamic(expr) }
+		FnLiteral {
+			w.add_variant_payload(sizeof(FnLiteral))
+			w.scan_dynamic(expr)
+		}
+		GenericArgOrIndexExpr {
+			w.add_variant_payload(sizeof(GenericArgOrIndexExpr))
+			w.scan_dynamic(expr)
+		}
+		GenericArgs {
+			w.add_variant_payload(sizeof(GenericArgs))
+			w.scan_dynamic(expr)
+		}
+		Ident {
+			w.add_variant_payload(sizeof(Ident))
+			w.scan_dynamic(expr)
+		}
+		IfExpr {
+			w.add_variant_payload(sizeof(IfExpr))
+			w.scan_dynamic(expr)
+		}
+		IfGuardExpr {
+			w.add_variant_payload(sizeof(IfGuardExpr))
+			w.scan_dynamic(expr)
+		}
+		IndexExpr {
+			w.add_variant_payload(sizeof(IndexExpr))
+			w.scan_dynamic(expr)
+		}
+		InfixExpr {
+			w.add_variant_payload(sizeof(InfixExpr))
+			w.scan_dynamic(expr)
+		}
+		InitExpr {
+			w.add_variant_payload(sizeof(InitExpr))
+			w.scan_dynamic(expr)
+		}
 		Keyword {}
-		KeywordOperator { w.scan_dynamic(expr) }
-		LambdaExpr { w.scan_dynamic(expr) }
-		LifetimeExpr { w.scan_dynamic(expr) }
-		LockExpr { w.scan_dynamic(expr) }
-		MapInitExpr { w.scan_dynamic(expr) }
-		MatchExpr { w.scan_dynamic(expr) }
-		ModifierExpr { w.scan_dynamic(expr) }
-		OrExpr { w.scan_dynamic(expr) }
-		ParenExpr { w.scan_dynamic(expr) }
-		PostfixExpr { w.scan_dynamic(expr) }
-		PrefixExpr { w.scan_dynamic(expr) }
-		RangeExpr { w.scan_dynamic(expr) }
-		SelectExpr { w.scan_dynamic(expr) }
-		SelectorExpr { w.scan_dynamic(expr) }
-		SqlExpr { w.scan_dynamic(expr) }
-		StringInterLiteral { w.scan_dynamic(expr) }
-		StringLiteral { w.scan_dynamic(expr) }
-		Tuple { w.scan_dynamic(expr) }
-		UnsafeExpr { w.scan_dynamic(expr) }
+		KeywordOperator {
+			w.add_variant_payload(sizeof(KeywordOperator))
+			w.scan_dynamic(expr)
+		}
+		LambdaExpr {
+			w.add_variant_payload(sizeof(LambdaExpr))
+			w.scan_dynamic(expr)
+		}
+		LifetimeExpr {
+			w.add_variant_payload(sizeof(LifetimeExpr))
+			w.scan_dynamic(expr)
+		}
+		LockExpr {
+			w.add_variant_payload(sizeof(LockExpr))
+			w.scan_dynamic(expr)
+		}
+		MapInitExpr {
+			w.add_variant_payload(sizeof(MapInitExpr))
+			w.scan_dynamic(expr)
+		}
+		MatchExpr {
+			w.add_variant_payload(sizeof(MatchExpr))
+			w.scan_dynamic(expr)
+		}
+		ModifierExpr {
+			w.add_variant_payload(sizeof(ModifierExpr))
+			w.scan_dynamic(expr)
+		}
+		OrExpr {
+			w.add_variant_payload(sizeof(OrExpr))
+			w.scan_dynamic(expr)
+		}
+		ParenExpr {
+			w.add_variant_payload(sizeof(ParenExpr))
+			w.scan_dynamic(expr)
+		}
+		PostfixExpr {
+			w.add_variant_payload(sizeof(PostfixExpr))
+			w.scan_dynamic(expr)
+		}
+		PrefixExpr {
+			w.add_variant_payload(sizeof(PrefixExpr))
+			w.scan_dynamic(expr)
+		}
+		RangeExpr {
+			w.add_variant_payload(sizeof(RangeExpr))
+			w.scan_dynamic(expr)
+		}
+		SelectExpr {
+			w.add_variant_payload(sizeof(SelectExpr))
+			w.scan_dynamic(expr)
+		}
+		SelectorExpr {
+			w.add_variant_payload(sizeof(SelectorExpr))
+			w.scan_dynamic(expr)
+		}
+		SqlExpr {
+			w.add_variant_payload(sizeof(SqlExpr))
+			w.scan_dynamic(expr)
+		}
+		StringInterLiteral {
+			w.add_variant_payload(sizeof(StringInterLiteral))
+			w.scan_dynamic(expr)
+		}
+		StringLiteral {
+			w.add_variant_payload(sizeof(StringLiteral))
+			w.scan_dynamic(expr)
+		}
+		Tuple {
+			w.add_variant_payload(sizeof(Tuple))
+			w.scan_dynamic(expr)
+		}
+		UnsafeExpr {
+			w.add_variant_payload(sizeof(UnsafeExpr))
+			w.scan_dynamic(expr)
+		}
 		FieldInit, Type {}
 	}
 }
 
 fn (mut w LegacyAstWalker) walk_type(typ Type) {
 	w.stats.type_nodes++
-	w.stats.node_bytes += u64(sizeof(Type))
+	// Sumtype slot is counted by parent; add only heap variant payload.
 	match typ {
-		AnonStructType { w.scan_dynamic(typ) }
-		ArrayFixedType { w.scan_dynamic(typ) }
-		ArrayType { w.scan_dynamic(typ) }
-		ChannelType { w.scan_dynamic(typ) }
-		FnType { w.scan_dynamic(typ) }
-		GenericType { w.scan_dynamic(typ) }
-		MapType { w.scan_dynamic(typ) }
+		AnonStructType {
+			w.add_variant_payload(sizeof(AnonStructType))
+			w.scan_dynamic(typ)
+		}
+		ArrayFixedType {
+			w.add_variant_payload(sizeof(ArrayFixedType))
+			w.scan_dynamic(typ)
+		}
+		ArrayType {
+			w.add_variant_payload(sizeof(ArrayType))
+			w.scan_dynamic(typ)
+		}
+		ChannelType {
+			w.add_variant_payload(sizeof(ChannelType))
+			w.scan_dynamic(typ)
+		}
+		FnType {
+			w.add_variant_payload(sizeof(FnType))
+			w.scan_dynamic(typ)
+		}
+		GenericType {
+			w.add_variant_payload(sizeof(GenericType))
+			w.scan_dynamic(typ)
+		}
+		MapType {
+			w.add_variant_payload(sizeof(MapType))
+			w.scan_dynamic(typ)
+		}
 		NilType {}
 		NoneType {}
-		OptionType { w.scan_dynamic(typ) }
-		PointerType { w.scan_dynamic(typ) }
-		ResultType { w.scan_dynamic(typ) }
-		ThreadType { w.scan_dynamic(typ) }
-		TupleType { w.scan_dynamic(typ) }
+		OptionType {
+			w.add_variant_payload(sizeof(OptionType))
+			w.scan_dynamic(typ)
+		}
+		PointerType {
+			w.add_variant_payload(sizeof(PointerType))
+			w.scan_dynamic(typ)
+		}
+		ResultType {
+			w.add_variant_payload(sizeof(ResultType))
+			w.scan_dynamic(typ)
+		}
+		ThreadType {
+			w.add_variant_payload(sizeof(ThreadType))
+			w.scan_dynamic(typ)
+		}
+		TupleType {
+			w.add_variant_payload(sizeof(TupleType))
+			w.scan_dynamic(typ)
+		}
 	}
 }
 
+// Plain-struct walkers: storage is counted at parent (inline field) or array
+// level. Only scan for dynamic content here.
+
 fn (mut w LegacyAstWalker) walk_attribute(attr Attribute) {
 	w.stats.aux_nodes++
-	w.stats.node_bytes += u64(sizeof(Attribute))
 	w.scan_dynamic(attr)
 }
 
 fn (mut w LegacyAstWalker) walk_field_init(field FieldInit) {
 	w.stats.aux_nodes++
-	w.stats.node_bytes += u64(sizeof(FieldInit))
 	w.scan_dynamic(field)
 }
 
 fn (mut w LegacyAstWalker) walk_field_decl(field FieldDecl) {
 	w.stats.aux_nodes++
-	w.stats.node_bytes += u64(sizeof(FieldDecl))
 	w.scan_dynamic(field)
 }
 
 fn (mut w LegacyAstWalker) walk_parameter(param Parameter) {
 	w.stats.aux_nodes++
-	w.stats.node_bytes += u64(sizeof(Parameter))
 	w.scan_dynamic(param)
 }
 
 fn (mut w LegacyAstWalker) walk_match_branch(branch MatchBranch) {
 	w.stats.aux_nodes++
-	w.stats.node_bytes += u64(sizeof(MatchBranch))
 	w.scan_dynamic(branch)
 }
 
 fn (mut w LegacyAstWalker) walk_string_inter(inter StringInter) {
 	w.stats.aux_nodes++
-	w.stats.node_bytes += u64(sizeof(StringInter))
 	w.scan_dynamic(inter)
 }
 
