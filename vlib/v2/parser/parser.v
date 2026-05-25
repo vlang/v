@@ -234,16 +234,12 @@ pub fn (mut p Parser) parse_file(filename string, mut file_set token.FileSet) as
 	mut script_stmts := []ast.Stmt{}
 	mut main_already_defined := false
 	for p.tok != .eof {
-		// Late `import` statements (after the initial import section, or
-		// after any top-level decl): keep recording them in `file.imports`
-		// so module-qualified references resolve, instead of silently
-		// routing into the synthesized main body.
+		// `import` is only allowed in the initial import section at the
+		// top of the file. A late `import` would otherwise (in script mode)
+		// be routed through `p.stmt()` into the synthesized `fn main()` —
+		// reject it with a clear error matching v1's behavior.
 		if p.tok == .key_import {
-			import_stmt := p.import_stmt()
-			p.expect(.semicolon)
-			imports << import_stmt
-			top_stmts << import_stmt
-			continue
+			p.error('`import x` can only be declared at the beginning of the file')
 		}
 		if mod == 'main' && !p.is_top_stmt_start() {
 			// Script-mode statements parse as if inside a function body
@@ -333,9 +329,12 @@ fn comptime_if_expr_contains_top_stmt(if_expr ast.IfExpr) bool {
 			}
 		} else if stmt is ast.AssignStmt {
 			return false
-		} else if stmt is ast.Directive {
-			return true
 		}
+		// `ast.Directive` (e.g. `#flag`, `#include`) is only valid at file
+		// scope — it does not by itself prove the branch is declaration-only,
+		// so we keep scanning the remaining stmts (and the `$else` chain
+		// below) instead of short-circuiting. A runtime stmt found later
+		// still disqualifies the branch and forces script-main wrapping.
 	}
 	if if_expr.else_expr is ast.IfExpr {
 		else_ie := if_expr.else_expr as ast.IfExpr
