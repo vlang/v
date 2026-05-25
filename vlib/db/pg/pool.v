@@ -18,7 +18,7 @@ pub:
 pub struct PoolConfig {
 pub:
 	max_open_conns    int // 0 = unlimited
-	max_idle_conns    int = 2
+	max_idle_conns    int = 2 // 0 = keep no idle conns
 	conn_max_lifetime time.Duration // 0 = unlimited
 }
 
@@ -138,8 +138,8 @@ fn (mut p Pool) release(conn &Conn) {
 		waiter <- c
 		return
 	}
-	// Park as idle, unless we'd exceed max_idle
-	if p.max_idle > 0 && p.idle.len >= p.max_idle {
+	// Park as idle, unless we'd exceed max_idle (0 = keep no idle conns)
+	if p.idle.len >= p.max_idle {
 		unsafe { c.physical_close() }
 		p.open_count--
 		p.mu.unlock()
