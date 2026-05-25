@@ -3025,7 +3025,7 @@ fn (mut p Parser) parse_struct_field_list(language ast.Language, mut embedded []
 			if p.tok == .semicolon {
 				p.next()
 			}
-			if !attributes_elide_field(field_attributes, p) {
+			if !attributes_elide_field(field_attributes, mut p) {
 				fields << ast.FieldDecl{
 					name:       field_name
 					typ:        field_type
@@ -3069,7 +3069,7 @@ fn (mut p Parser) parse_struct_field_list(language ast.Language, mut embedded []
 		if p.tok == .semicolon {
 			p.next()
 		}
-		if !attributes_elide_field(field_attributes, p) {
+		if !attributes_elide_field(field_attributes, mut p) {
 			fields << ast.FieldDecl{
 				name:       field_name
 				typ:        field_type
@@ -3081,10 +3081,16 @@ fn (mut p Parser) parse_struct_field_list(language ast.Language, mut embedded []
 }
 
 // attributes_elide_field returns true if any `@[if cond ?]` attribute evaluates
-// to false, meaning the field should be omitted from the struct.
-fn attributes_elide_field(attributes []ast.Attribute, p &Parser) bool {
+// to false, meaning the field should be omitted from the struct. Conditions
+// that aren't shaped like flag expressions (e.g. type checks) are rejected
+// rather than silently dropped — see `can_eval_comptime_cond`.
+fn attributes_elide_field(attributes []ast.Attribute, mut p Parser) bool {
 	for attr in attributes {
 		if attr.comptime_cond !is ast.EmptyExpr {
+			if !p.can_eval_comptime_cond(attr.comptime_cond) {
+				p.error_with_pos('@[if ...] struct-field condition must be a compile-time flag expression (no type checks)',
+					attr.comptime_cond.pos())
+			}
 			if !p.eval_comptime_cond(attr.comptime_cond) {
 				return true
 			}
@@ -3109,6 +3115,10 @@ fn (mut p Parser) parse_comptime_struct_field_branch(language ast.Language, forc
 	cond := p.expr(.lowest)
 	p.exp_lcbr = exp_lcbr
 	p.allow_init_in_exp_lcbr = allow_init_in_exp_lcbr
+	if !p.can_eval_comptime_cond(cond) {
+		p.error_with_pos('\$if struct-field condition must be a compile-time flag expression (no type checks)',
+			cond.pos())
+	}
 	cond_matches := !force_skip && p.eval_comptime_cond(cond)
 	// Allow `{` on next line after `cond ?` — scanner inserts `;` after `?`.
 	if p.tok == .semicolon && p.peek() == .lcbr {
@@ -3581,11 +3591,47 @@ fn (mut p Parser) error_with_position(msg string, pos token.Position) {
 	exit(1)
 }
 
+// can_eval_comptime_cond reports whether `cond` is shaped like a flag
+// expression decidable at parse time (idents, `!`, `&&`, `||`, postfix `?`,
+// parens). Anything else — notably type checks like `T is string` — is left
+// for a later stage. Struct field parsing rejects non-evaluable conditions
+// with a parse error rather than silently choosing a branch, because the
+// field set affects layout / type checking.
+fn (p &Parser) can_eval_comptime_cond(cond ast.Expr) bool {
+	match cond {
+		ast.Ident {
+			return true
+		}
+		ast.PrefixExpr {
+			if cond.op != .not {
+				return false
+			}
+			return p.can_eval_comptime_cond(cond.expr)
+		}
+		ast.InfixExpr {
+			if cond.op != .and && cond.op != .logical_or {
+				return false
+			}
+			return p.can_eval_comptime_cond(cond.lhs) && p.can_eval_comptime_cond(cond.rhs)
+		}
+		ast.PostfixExpr {
+			if cond.op != .question {
+				return false
+			}
+			return cond.expr is ast.Ident
+		}
+		ast.ParenExpr {
+			return p.can_eval_comptime_cond(cond.expr)
+		}
+		else {
+			return false
+		}
+	}
+}
+
 // eval_comptime_cond evaluates a compile-time condition expression at parse
-// time. Used by struct field parsing for conditional `$if` blocks and
-// `@[if cond ?]` field attributes. Mirrors the transformer's eval_comptime_cond
-// but only handles the subset of constructs valid at parse time. Falls back to
-// `false` for anything it cannot evaluate.
+// time. Callers must have checked `can_eval_comptime_cond` first; this
+// function assumes the condition is in the supported shape.
 fn (p &Parser) eval_comptime_cond(cond ast.Expr) bool {
 	match cond {
 		ast.Ident {
