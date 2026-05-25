@@ -211,6 +211,7 @@ fn (mut b Builder) parse_files(files []string) []ast.File {
 	mut parser_reused := parser.Parser.new(b.pref)
 	mut ast_files := []ast.File{}
 	skip_builtin := b.pref.skip_builtin
+	target_os := b.pref.target_os_or_host()
 	mut use_core_headers := false
 	if !skip_builtin {
 		use_core_headers = b.can_use_cached_core_headers_for_parse()
@@ -222,7 +223,7 @@ fn (mut b Builder) parse_files(files []string) []ast.File {
 		} else {
 			for module_path in core_cached_module_paths {
 				vlib_path := b.pref.get_vlib_module_path(module_path)
-				module_files := get_v_files_from_dir(vlib_path, b.pref.user_defines, os.user_os())
+				module_files := get_v_files_from_dir(vlib_path, b.pref.user_defines, target_os)
 				parsed_module_files := parser_reused.parse_files(module_files, mut b.file_set)
 				ast_files << parsed_module_files
 			}
@@ -236,7 +237,7 @@ fn (mut b Builder) parse_files(files []string) []ast.File {
 			continue
 		}
 		if os.is_dir(input) {
-			dir_files := get_user_v_files_from_dir(input, b.pref.user_defines, os.user_os())
+			dir_files := get_user_v_files_from_dir(input, b.pref.user_defines, target_os)
 			for dir_file in dir_files {
 				if dir_file != '' && dir_file !in seen_user_files {
 					expanded_user_files << dir_file
@@ -250,7 +251,7 @@ fn (mut b Builder) parse_files(files []string) []ast.File {
 				expanded_user_files << input
 				seen_user_files[input] = true
 			}
-			dir_files := get_v_files_from_dir(os.dir(input), b.pref.user_defines, os.user_os())
+			dir_files := get_v_files_from_dir(os.dir(input), b.pref.user_defines, target_os)
 			for dir_file in dir_files {
 				if dir_file != '' && dir_file !in seen_user_files {
 					expanded_user_files << dir_file
@@ -288,7 +289,7 @@ fn (mut b Builder) parse_files(files []string) []ast.File {
 	}
 	for afi := 0; afi < ast_files.len; afi++ {
 		ast_file := ast_files[afi]
-		for mod in active_file_imports(ast_file, b.pref.user_defines, os.user_os()) {
+		for mod in active_file_imports(ast_file, b.pref.user_defines, target_os) {
 			if mod.name in parsed_imports {
 				continue
 			}
@@ -301,7 +302,7 @@ fn (mut b Builder) parse_files(files []string) []ast.File {
 				}
 			}
 			mod_path := b.pref.get_module_path(mod.name, ast_file.name)
-			module_files := get_v_files_from_dir(mod_path, b.pref.user_defines, os.user_os())
+			module_files := get_v_files_from_dir(mod_path, b.pref.user_defines, target_os)
 			if module_files.len == 0 {
 				continue
 			}

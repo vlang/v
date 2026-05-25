@@ -762,6 +762,28 @@ fn asm_store_xmm_rbp_disp(mut g Gen, xmm int, disp int, size int) {
 	}
 }
 
+fn asm_store_xmm_mem_base_disp_size(mut g Gen, xmm int, base Reg, disp int, size int) {
+	base_hw := g.map_reg(int(base))
+	if size == 4 {
+		g.emit(0xF3)
+	} else {
+		g.emit(0xF2)
+	}
+	mut rex := u8(0)
+	if xmm >= 8 {
+		rex |= 4
+	}
+	if base_hw >= 8 {
+		rex |= 1
+	}
+	if rex != 0 {
+		g.emit(0x40 | rex)
+	}
+	g.emit(0x0F)
+	g.emit(0x11)
+	asm_emit_modrm_base_disp(mut g, u8(xmm & 7), base_hw, disp)
+}
+
 fn asm_load_xmm_rbp_disp(mut g Gen, xmm int, disp int, size int) {
 	if size == 4 {
 		g.emit(0xF3)

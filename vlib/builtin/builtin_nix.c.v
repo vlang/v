@@ -34,3 +34,10 @@ pub fn panic_lasterr(base string) {
 fn write_buf_to_console(fd int, buf &u8, buf_len int) bool {
 	return false
 }
+
+// write_buf_to_fd_kernel32 is a Windows-only helper for the minimal V2 PE path.
+// Keep a non-Windows stub so optional compile-time branches type-check while
+// bootstrapping V on other hosts.
+fn write_buf_to_fd_kernel32(fd int, buf &u8, buf_len int) bool {
+	return false
+}

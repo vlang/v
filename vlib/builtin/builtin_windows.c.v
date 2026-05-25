@@ -47,6 +47,10 @@ pub type C.LPTSTR = &C.TCHAR
 pub type C.LPCTSTR = &C.TCHAR
 
 fn C.WriteConsoleW(voidptr, &u16, u32, voidptr, voidptr) bool
+fn C.WriteFile(voidptr, voidptr, u32, voidptr, voidptr) bool
+fn C.GetProcessHeap() voidptr
+fn C.HeapAlloc(voidptr, u32, usize) voidptr
+fn C.HeapFree(voidptr, u32, voidptr) bool
 
 fn C._setmode(int, int) int
 
@@ -114,6 +118,91 @@ fn write_buf_to_console(fd int, buf &u8, buf_len int) bool {
 		}
 		return true
 	}
+}
+
+@[manualfree]
+fn write_buf_to_console_kernel32(fd int, buf &u8, buf_len int) bool {
+	if buf_len <= 0 || (fd != 1 && fd != 2) {
+		return false
+	}
+	console_handle := C.GetStdHandle(if fd == 2 { std_error_handle } else { std_output_handle })
+	if isnil(console_handle) {
+		return false
+	}
+	mut mode := u32(0)
+	if !C.GetConsoleMode(console_handle, &mode) {
+		return false
+	}
+	unsafe {
+		wide_len := C.MultiByteToWideChar(cp_utf8, 0, &char(buf), buf_len, 0, 0)
+		if wide_len <= 0 {
+			return false
+		}
+		heap := C.GetProcessHeap()
+		if isnil(heap) {
+			return false
+		}
+		wide_size := usize((wide_len + 1) * int(sizeof(u16)))
+		mut wide_buf := &u16(C.HeapAlloc(heap, 0, wide_size))
+		if isnil(wide_buf) {
+			return false
+		}
+		defer {
+			C.HeapFree(heap, 0, wide_buf)
+		}
+		converted := C.MultiByteToWideChar(cp_utf8, 0, &char(buf), buf_len, wide_buf, wide_len)
+		if converted <= 0 {
+			return false
+		}
+		wide_buf[converted] = 0
+		mut remaining_chars := converted
+		mut wide_ptr := wide_buf
+		for remaining_chars > 0 {
+			mut chars_written := u32(0)
+			if !C.WriteConsoleW(console_handle, wide_ptr, u32(remaining_chars), voidptr(&chars_written), nil)
+				|| chars_written == 0 {
+				return false
+			}
+			wide_ptr += int(chars_written)
+			remaining_chars -= int(chars_written)
+		}
+		return true
+	}
+}
+
+fn write_buf_to_fd_kernel32(fd int, buf &u8, buf_len int) bool {
+	if buf_len <= 0 {
+		return true
+	}
+	if fd != 1 && fd != 2 {
+		return false
+	}
+	if write_buf_to_console_kernel32(fd, buf, buf_len) {
+		return true
+	}
+	handle_id := if fd == 2 { std_error_handle } else { std_output_handle }
+	handle := C.GetStdHandle(handle_id)
+	if isnil(handle) {
+		return false
+	}
+	mut ptr := unsafe { buf }
+	mut remaining_bytes := buf_len
+	unsafe {
+		for remaining_bytes > 0 {
+			chunk := if remaining_bytes > int(0x7fffffff) {
+				int(0x7fffffff)
+			} else {
+				remaining_bytes
+			}
+			mut written := u32(0)
+			if !C.WriteFile(handle, ptr, u32(chunk), voidptr(&written), nil) || written == 0 {
+				return false
+			}
+			ptr += int(written)
+			remaining_bytes -= int(written)
+		}
+	}
+	return true
 }
 
 @[markused]
