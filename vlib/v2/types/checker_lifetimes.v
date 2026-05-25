@@ -78,6 +78,14 @@ fn (mut c Checker) lifetime_validate_files(files []ast.File) {
 	}
 }
 
+fn (mut c Checker) lifetime_validate_files_from_flat(flat &ast.FlatAst) {
+	for ff in flat.files {
+		for stmt in flat.read_file_stmts(ff) {
+			c.lifetime_validate_stmt(stmt)
+		}
+	}
+}
+
 fn (mut c Checker) lifetime_validate_stmt(stmt ast.Stmt) {
 	match stmt {
 		ast.FnDecl {

@@ -65,6 +65,34 @@ fn (mut c Checker) escape_validate_files(files []ast.File) {
 	}
 }
 
+fn (mut c Checker) escape_validate_files_from_flat(flat &ast.FlatAst) {
+	c.escape_prescan_passthrough_fns_from_flat(flat)
+	for ff in flat.files {
+		for stmt in flat.read_file_stmts(ff) {
+			if stmt is ast.FnDecl {
+				c.escape_check_fn_decl(stmt as ast.FnDecl)
+			}
+		}
+	}
+}
+
+fn (mut c Checker) escape_prescan_passthrough_fns_from_flat(flat &ast.FlatAst) {
+	for ff in flat.files {
+		for stmt in flat.read_file_stmts(ff) {
+			if stmt is ast.FnDecl {
+				decl := stmt as ast.FnDecl
+				if !escape_decl_opts_in(decl) {
+					continue
+				}
+				indices := escape_collect_returned_param_indices(decl)
+				if indices.len > 0 {
+					c.escape_passthrough_fns[decl.name] = indices
+				}
+			}
+		}
+	}
+}
+
 // escape_prescan_passthrough_fns walks opt-in (`[^a]`) fn decls and records
 // every parameter index that is returned directly. Used by the call-site
 // checker to flag `return passthrough(&local)` and friends. Non-opt-in fns

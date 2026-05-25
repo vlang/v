@@ -1208,11 +1208,10 @@ pub fn (mut c Checker) check_flat(flat &ast.FlatAst) {
 	}
 	c.process_pending_const_fields()
 	$if ownership ? {
-		files := flat.to_files()
 		c.ownership_prescan_fn_bodies()
 		c.ownership_validate_drop_impls()
-		c.lifetime_validate_files(files)
-		c.escape_validate_files(files)
+		c.lifetime_validate_files_from_flat(flat)
+		c.escape_validate_files_from_flat(flat)
 	}
 	c.process_pending_fn_bodies()
 	c.check_struct_field_defaults_from_flat(flat)
