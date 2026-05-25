@@ -1059,9 +1059,27 @@ fn (mut t Transformer) collect_generic_fn_value_refs(files []ast.File) {
 	t.collect_generic_fn_value_dependencies()
 }
 
+fn (mut t Transformer) collect_generic_fn_value_refs_from_flat(flat &ast.FlatAst) {
+	t.collect_generic_fn_decl_names_from_flat(flat)
+	for ff in flat.files {
+		for stmt in flat.read_file_stmts(ff) {
+			t.collect_generic_fn_value_refs_in_stmt(stmt, false)
+		}
+	}
+	t.collect_generic_fn_value_dependencies()
+}
+
 fn (mut t Transformer) collect_generic_fn_decl_names(files []ast.File) {
 	for file in files {
 		for stmt in file.stmts {
+			t.collect_generic_fn_decl_names_in_stmt(stmt)
+		}
+	}
+}
+
+fn (mut t Transformer) collect_generic_fn_decl_names_from_flat(flat &ast.FlatAst) {
+	for ff in flat.files {
+		for stmt in flat.read_file_stmts(ff) {
 			t.collect_generic_fn_decl_names_in_stmt(stmt)
 		}
 	}
@@ -1404,6 +1422,32 @@ pub fn (mut t Transformer) pre_pass(files []ast.File) {
 		t.collect_runtime_const_inits(files)
 	}
 	// Cache scope and method maps for lock-free access during transform.
+	t.cache_env_maps()
+}
+
+// pre_pass_from_flat is the FlatAst-driven equivalent of pre_pass. Reads
+// file-level stmts via flat.read_file_stmts(ff) so the transformer no
+// longer depends on a pre-rehydrated []ast.File for its accumulators.
+// The per-stmt walks reuse the existing recursive visitors, which still
+// operate on legacy ast.Stmt/Expr — flat-native walks are a later step.
+pub fn (mut t Transformer) pre_pass_from_flat(flat &ast.FlatAst) {
+	t.collect_generic_fn_value_refs_from_flat(flat)
+	for ff in flat.files {
+		for stmt in flat.read_file_stmts(ff) {
+			if stmt is ast.FnDecl {
+				for attr in stmt.attributes {
+					if attr.comptime_cond !is ast.EmptyExpr {
+						if !t.eval_comptime_cond(attr.comptime_cond) {
+							t.elided_fns[stmt.name] = true
+						}
+					}
+				}
+			}
+		}
+	}
+	if !t.is_eval_backend() {
+		t.collect_runtime_const_inits_from_flat(flat)
+	}
 	t.cache_env_maps()
 }
 
@@ -1771,6 +1815,25 @@ pub fn (mut t Transformer) transform_files(files []ast.File) []ast.File {
 	return result
 }
 
+// transform_files_from_flat drives the same per-file transform pipeline
+// but seeds the pre-pass accumulators from FlatAst. The per-file transform
+// still operates on rehydrated legacy ast.File values — wiring the
+// flat-native transform_file is a later step.
+pub fn (mut t Transformer) transform_files_from_flat(flat &ast.FlatAst, files []ast.File) []ast.File {
+	t.pre_pass_from_flat(flat)
+	files_to_transform := if t.monomorphize_enabled {
+		t.monomorphize_pass(files)
+	} else {
+		files
+	}
+	mut result := []ast.File{cap: files_to_transform.len}
+	for file in files_to_transform {
+		result << t.transform_file(file)
+	}
+	t.post_pass(mut result)
+	return result
+}
+
 fn runtime_const_init_base_name(mod string) string {
 	mut suffix := if mod == '' { 'main' } else { mod }
 	suffix = suffix.replace('.', '_').replace('-', '_')
@@ -2116,6 +2179,72 @@ fn (mut t Transformer) collect_runtime_const_inits(files []ast.File) {
 							continue
 						}
 						t.record_runtime_const_init(file.mod, field.name, field.value)
+						changed = true
+					}
+				}
+			}
+		}
+	}
+}
+
+fn (mut t Transformer) collect_runtime_const_inits_from_flat(flat &ast.FlatAst) {
+	is_native := t.pref != unsafe { nil } && (t.is_native_be || t.pref.backend == .c)
+	t.runtime_const_inits_by_mod.clear()
+	t.runtime_const_modules.clear()
+	t.runtime_const_init_fn_name.clear()
+	t.runtime_const_known = map[string]bool{}
+	t.runtime_const_storage_known = map[string]bool{}
+	for ff in flat.files {
+		mod := flat.file_mod(ff)
+		for stmt in flat.read_file_stmts(ff) {
+			if stmt is ast.ConstDecl {
+				for field in stmt.fields {
+					if t.const_initializer_emits_storage(field.value, is_native) {
+						t.runtime_const_storage_known[runtime_const_known_key(mod, field.name)] = true
+					}
+				}
+			}
+		}
+	}
+	for ff in flat.files {
+		mod := flat.file_mod(ff)
+		for stmt in flat.read_file_stmts(ff) {
+			if stmt is ast.ConstDecl {
+				for field in stmt.fields {
+					if !t.needs_runtime_const_init(field.value, is_native) {
+						continue
+					}
+					t.record_runtime_const_init(mod, field.name, field.value)
+				}
+			}
+			if stmt is ast.GlobalDecl {
+				for field in stmt.fields {
+					if is_builtin_main_arg_global(mod, field.name) {
+						continue
+					}
+					if !t.needs_runtime_global_init(field.value) {
+						continue
+					}
+					t.record_runtime_const_init(mod, field.name, field.value)
+				}
+			}
+		}
+	}
+	mut changed := true
+	for changed {
+		changed = false
+		for ff in flat.files {
+			mod := flat.file_mod(ff)
+			for stmt in flat.read_file_stmts(ff) {
+				if stmt is ast.ConstDecl {
+					for field in stmt.fields {
+						if runtime_const_known_key(mod, field.name) in t.runtime_const_known {
+							continue
+						}
+						if !t.expr_depends_on_runtime_const(mod, field.value) {
+							continue
+						}
+						t.record_runtime_const_init(mod, field.name, field.value)
 						changed = true
 					}
 				}
