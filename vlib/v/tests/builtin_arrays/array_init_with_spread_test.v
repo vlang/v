@@ -82,6 +82,14 @@ fn test_array_spread_nested_element_assignment_isolated() {
 	assert b[0][0] == 9
 }
 
+// Regression: indexing a spread literal inline (`[...base, 3][0]`) must keep
+// the spread base in the AST instead of dropping it during parsing.
+fn test_array_spread_indexed_inline() {
+	assert [...base_array, 3][0] == 1
+	assert [...base_array, 3][1] == 2
+	assert [...base_array, 3][2] == 3
+}
+
 // Regression: appended string variables must be cloned, matching the
 // behavior of the regular `[s1, s2]` array-literal path.
 fn test_array_spread_appended_string_variable() {

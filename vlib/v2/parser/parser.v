@@ -1064,6 +1064,11 @@ fn (mut p Parser) expr(min_bp token.BindingPower) ast.Expr {
 				else {
 					lhs = array_init_expr_with_parts(ast.empty_expr, exprs, ast.empty_expr,
 						ast.empty_expr, ast.empty_expr, pos)
+					if update_expr !is ast.EmptyExpr {
+						mut arr_init := lhs as ast.ArrayInitExpr
+						arr_init.update_expr = update_expr
+						lhs = ast.Expr(arr_init)
+					}
 					for i := 1; i < exprs_arr.len; i++ {
 						exprs2 := exprs_arr[i]
 						if exprs2.len != 1 {
