@@ -243,11 +243,15 @@ fn (mut w Walker) walk_fn_body_cursor(flat &ast.FlatAst, decl_id ast.FlatNodeId,
 // fallback decodes the stmt and delegates to walk_stmt so partial coverage
 // stays bit-identical with the legacy walker.
 //
-// Ported arms: stmt_assert, stmt_assign, stmt_block, stmt_comptime,
-// stmt_const_decl, stmt_defer, stmt_enum_decl, stmt_expr, stmt_for,
-// stmt_for_in, stmt_global_decl, stmt_label, stmt_return, stmt_struct_decl,
-// stmt_type_decl. Nested expressions are still routed through walk_expr
-// (decoded per edge) until walk_expr itself gets a cursor-input port.
+// Ported arms: stmt_assert, stmt_assign, stmt_attributes, stmt_block,
+// stmt_comptime, stmt_const_decl, stmt_defer, stmt_enum_decl, stmt_expr,
+// stmt_for, stmt_for_in, stmt_global_decl, stmt_label, stmt_return,
+// stmt_struct_decl, stmt_type_decl — every kind the legacy walk_stmt
+// matched explicitly. Nested expressions are still routed through
+// walk_expr (decoded per edge) until walk_expr itself gets a cursor-input
+// port. The else arm catches stmt kinds the legacy walker ignored
+// (stmt_asm/_directive/_empty/_flow_control/_fn_decl/_import/_interface_decl
+// /_module) plus any future kinds; it stays in place as a safety net.
 fn (mut w Walker) walk_stmt_cursor(c ast.Cursor, mod_name string) {
 	if !c.is_valid() {
 		return
@@ -256,6 +260,19 @@ fn (mut w Walker) walk_stmt_cursor(c ast.Cursor, mod_name string) {
 		.stmt_assert {
 			w.walk_expr_cursor_edge(c, 0, mod_name)
 			w.walk_expr_cursor_edge(c, 1, mod_name)
+		}
+		.stmt_attributes {
+			// edge 0 = aux_list of aux_attribute children; each attribute has
+			// edge 0 = value expr, edge 1 = comptime_cond expr.
+			attrs := c.list_at(0)
+			for i in 0 .. attrs.len() {
+				attr := attrs.at(i)
+				if !attr.is_valid() {
+					continue
+				}
+				w.walk_expr_cursor_edge(attr, 0, mod_name)
+				w.walk_expr_cursor_edge(attr, 1, mod_name)
+			}
 		}
 		.stmt_assign {
 			ec := c.edge_count()
