@@ -1252,18 +1252,18 @@ fn (mut g Gen) encode_array(utyp ast.Type, value_type ast.Type, fixed_array_size
 	styp := g.styp(value_type)
 	fn_name := js_enc_name(styp)
 
-	mut data_str := ''
+	mut data_expr := ''
 	mut size_str := ''
 
 	if utyp.has_flag(.option) {
-		data_str, size_str = if fixed_array_size > -1 {
+		data_expr, size_str = if fixed_array_size > -1 {
 			// fixed array
 			'(${styp}*)(*(${g.base_type(utyp)}*)val.data)', '${fixed_array_size}'
 		} else {
 			'(${styp}*)(*(${g.base_type(utyp)}*)val.data).data', '(*(${g.base_type(utyp)}*)val.data).len'
 		}
 	} else {
-		data_str, size_str = if fixed_array_size > -1 {
+		data_expr, size_str = if fixed_array_size > -1 {
 			// fixed array
 			'(${styp}*)val', '${fixed_array_size}'
 		} else {
@@ -1274,7 +1274,7 @@ fn (mut g Gen) encode_array(utyp ast.Type, value_type ast.Type, fixed_array_size
 	return '
 	o = cJSON_CreateArray();
 	for (${ast.int_type_name} i = 0; i < ${size_str}; i++){
-		cJSON_AddItemToArray(o, ${fn_name}( (${data_str})[i] ));
+		cJSON_AddItemToArray(o, ${fn_name}( (${data_expr})[i] ));
 	}
 '
 }

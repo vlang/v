@@ -41,6 +41,8 @@ fn iface_to_ptr_iface(c DbConn) string {
 }
 
 fn test_iface_as_ptr_iface() {
-	c := DbConn(PgConn{ tag: 'pg' })
+	c := DbConn(PgConn{
+		tag: 'pg'
+	})
 	assert iface_to_ptr_iface(c) == 'ok'
 }

@@ -406,8 +406,7 @@ fn (cmd &Command) check_required_flags() {
 // execute_help executes the callback registered for the `-h`/`--help` flag option.
 pub fn (cmd &Command) execute_help() {
 	if cmd.commands.contains('help') {
-		sub :=
-			cmd.commands.get('help') or { return } // ignore error and handle command normally
+		sub := cmd.commands.get('help') or { return } // ignore error and handle command normally
 		if !isnil(sub.execute) {
 			sub.execute(sub) or { panic(err) }
 			return

@@ -930,12 +930,12 @@ fn (mut g Gen) gen_str_for_map(info ast.Map, styp string, str_fn_name string) {
 			g.auto_str_funcs.writeln('\t\tstrings__Builder_write_string(&sb, ${tmp_str});')
 		}
 	} else if should_use_indent_func(val_sym.kind) && fn_str.name != 'str' {
-		ptr_str := if !is_option && val_sym.is_c_struct() && str_method_expects_ptr {
+		deref := if !is_option && val_sym.is_c_struct() && str_method_expects_ptr {
 			''
 		} else {
 			'*'.repeat(val_typ.nr_muls() + 1)
 		}
-		g.auto_str_funcs.writeln('\t\tstrings__Builder_write_string(&sb, indent_${elem_str_fn_name}(${ptr_str}(${val_styp}*)builtin__DenseArray_value(&m.key_values, i), indent_count));')
+		g.auto_str_funcs.writeln('\t\tstrings__Builder_write_string(&sb, indent_${elem_str_fn_name}(${deref}(${val_styp}*)builtin__DenseArray_value(&m.key_values, i), indent_count));')
 	} else if val_sym.kind in [.f32, .f64] {
 		tmp_val := '*(${val_styp}*)builtin__DenseArray_value(&m.key_values, i)'
 		if val_typ.has_flag(.option) {
@@ -952,13 +952,13 @@ fn (mut g Gen) gen_str_for_map(info ast.Map, styp string, str_fn_name string) {
 			str_intp_rune('${elem_str_fn_name}(*(${val_styp}*)builtin__DenseArray_value(&m.key_values, i))')
 		g.auto_str_funcs.writeln('\t\tstrings__Builder_write_string(&sb, ${tmp_str});')
 	} else {
-		ptr_str := '*'.repeat(val_typ.nr_muls())
+		deref := '*'.repeat(val_typ.nr_muls())
 		if val_typ.has_flag(.option) {
-			g.auto_str_funcs.writeln('\t\tstrings__Builder_write_string(&sb, ${g.get_str_fn(val_typ)}(*${ptr_str}(${val_styp}*)builtin__DenseArray_value(&m.key_values, i)));')
+			g.auto_str_funcs.writeln('\t\tstrings__Builder_write_string(&sb, ${g.get_str_fn(val_typ)}(*${deref}(${val_styp}*)builtin__DenseArray_value(&m.key_values, i)));')
 		} else if receiver_is_ptr {
-			g.auto_str_funcs.writeln('\t\tstrings__Builder_write_string(&sb, ${elem_str_fn_name}(${ptr_str}(${val_styp}*)builtin__DenseArray_value(&m.key_values, i)));')
+			g.auto_str_funcs.writeln('\t\tstrings__Builder_write_string(&sb, ${elem_str_fn_name}(${deref}(${val_styp}*)builtin__DenseArray_value(&m.key_values, i)));')
 		} else {
-			g.auto_str_funcs.writeln('\t\tstrings__Builder_write_string(&sb, ${elem_str_fn_name}(*${ptr_str}(${val_styp}*)builtin__DenseArray_value(&m.key_values, i)));')
+			g.auto_str_funcs.writeln('\t\tstrings__Builder_write_string(&sb, ${elem_str_fn_name}(*${deref}(${val_styp}*)builtin__DenseArray_value(&m.key_values, i)));')
 		}
 	}
 	g.auto_str_funcs.writeln('\t\tis_first = false;')

@@ -552,8 +552,8 @@ fn (mut g Gen) match_expr_classic(node ast.MatchExpr, is_expr bool, cond_var str
 								g.write('_SLIT_EQ(${cond_var}.str, ${cond_var}.len, "${slit}")')
 							}
 						} else {
-							ptr_str := if node.cond_type.is_ptr() { '*' } else { '' }
-							g.write('builtin__fast_string_eq(${ptr_str}${cond_var}, ')
+							deref := if node.cond_type.is_ptr() { '*' } else { '' }
+							g.write('builtin__fast_string_eq(${deref}${cond_var}, ')
 							g.expr(expr)
 							g.write(')')
 						}

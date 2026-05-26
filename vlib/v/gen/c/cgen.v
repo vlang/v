@@ -8378,10 +8378,10 @@ fn (mut g Gen) enum_decl(node ast.EnumDecl) {
 	// @[typedef] enums are already defined in a C header — don't redefine the enum,
 	// but emit #define aliases so that V-mangled field names resolve to the correct values.
 	if node.attrs.contains('typedef') {
-		c_name := node.name.all_after_last('.')
+		header_name := node.name.all_after_last('.')
 		g.enum_typedefs.writeln('')
-		g.enum_typedefs.writeln('// @[typedef] enum ${c_name} — defined in C header')
-		g.enum_typedefs.writeln('typedef ${c_name} ${enum_name};')
+		g.enum_typedefs.writeln('// @[typedef] enum ${header_name} — defined in C header')
+		g.enum_typedefs.writeln('typedef ${header_name} ${enum_name};')
 		mut cur_value := 0
 		for field in node.fields {
 			if field.has_expr {

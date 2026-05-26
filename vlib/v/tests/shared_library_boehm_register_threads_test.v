@@ -24,7 +24,8 @@ fn test_shared_library_boehm_emits_allow_register_threads() {
 		'\treturn 1',
 		'}',
 	].join('\n')) or { panic(err) }
-	res := os.execute('${os.quoted_path(vexe)} -gc boehm -shared -o ${os.quoted_path(lib_c)} ${os.quoted_path(lib_src)}')
+	res :=
+		os.execute('${os.quoted_path(vexe)} -gc boehm -shared -o ${os.quoted_path(lib_c)} ${os.quoted_path(lib_src)}')
 	assert res.exit_code == 0, 'shared-lib codegen failed:\n${res.output}'
 	c_src := os.read_file(lib_c) or { panic(err) }
 	// The call must appear inside `_vinit`, not in a separate constructor:
