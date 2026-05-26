@@ -153,6 +153,7 @@ fn assert_transform_signatures_equal(label string, a []ast.File, b []ast.File) {
 //   - as-cast expr (sumtype as Variant)      → fixture_as_cast_expr
 //   - unsafe expr (unsafe { ... }, nil norm)  → fixture_unsafe_expr
 //   - lock expr (lock x { body } value-form)   → fixture_lock_expr
+//   - or expr (or-block nested in call args)    → fixture_or_expr
 
 // Fixtures intentionally avoid `module main`, `println`, and any builtin
 // dependency — the harness skips the .vh cache load to stay light, so the
@@ -380,6 +381,23 @@ fn use_field_init() int {
 }
 '
 
+const fixture_or_expr = '
+fn maybe(n int) ?int {
+	if n > 0 {
+		return n
+	}
+	return none
+}
+
+fn pair(a int, b int) int {
+	return a + b
+}
+
+fn use_or_expr(n int) int {
+	return pair(maybe(n) or { -1 }, 2)
+}
+'
+
 const fixture_lock_expr = '
 struct Counter {
 mut:
@@ -453,6 +471,7 @@ fn all_transformer_fixtures() []string {
 		fixture_as_cast_expr,
 		fixture_unsafe_expr,
 		fixture_lock_expr,
+		fixture_or_expr,
 	]
 }
 
@@ -550,6 +569,10 @@ fn test_transform_is_deterministic_lock_expr() {
 	run_determinism('det_lock_expr', fixture_lock_expr)
 }
 
+fn test_transform_is_deterministic_or_expr() {
+	run_determinism('det_or_expr', fixture_or_expr)
+}
+
 // --- parity: transform_files vs transform_files_from_flat ---
 //
 // The streaming-from-flat path is the seed for the upcoming
@@ -645,6 +668,10 @@ fn test_flat_parity_unsafe_expr() {
 
 fn test_flat_parity_lock_expr() {
 	run_parity('parity_lock_expr', fixture_lock_expr)
+}
+
+fn test_flat_parity_or_expr() {
+	run_parity('parity_or_expr', fixture_or_expr)
 }
 
 // --- parity: check_files vs check_flat upstream ---
@@ -775,6 +802,10 @@ fn test_check_flat_parity_lock_expr() {
 	run_check_flat_parity('check_flat_lock_expr', fixture_lock_expr)
 }
 
+fn test_check_flat_parity_or_expr() {
+	run_check_flat_parity('check_flat_or_expr', fixture_or_expr)
+}
+
 // --- parity: transform_files vs transform_files_to_flat ---
 //
 // transform_files_to_flat is the API wedge for the future
@@ -887,6 +918,10 @@ fn test_to_flat_parity_unsafe_expr() {
 
 fn test_to_flat_parity_lock_expr() {
 	run_to_flat_parity('to_flat_lock_expr', fixture_lock_expr)
+}
+
+fn test_to_flat_parity_or_expr() {
+	run_to_flat_parity('to_flat_or_expr', fixture_or_expr)
 }
 
 // --- parity: per-file flat-write API vs reference rehydrate+transform+append ---
@@ -1022,6 +1057,10 @@ fn test_per_file_parity_unsafe_expr() {
 
 fn test_per_file_parity_lock_expr() {
 	run_per_file_parity('per_file_lock_expr', fixture_lock_expr)
+}
+
+fn test_per_file_parity_or_expr() {
+	run_per_file_parity('per_file_or_expr', fixture_or_expr)
 }
 
 // test_all_fixtures_produce_nonempty_signature guards against silent harness

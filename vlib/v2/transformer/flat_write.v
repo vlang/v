@@ -294,6 +294,23 @@ import v2.token
 //     covers the arm across all 5 harness rows — 96 → 101 transformer-diff
 //     tests.
 //
+//   Session 16 (2026-05-26): OrExpr expr direct-emit + harness fixture.
+//     The OrExpr arm in `transform_expr_to_flat` direct-emits the expression-
+//     context or-block (the statement-level sites have dedicated handlers and
+//     never reach here). `expand_single_or_expr` returns the data-access
+//     expression that stands in for the or-block value and appends prefix
+//     stmts (typed temp init, optional-state branch). When `prefix_stmts` is
+//     non-empty, the legacy arm wraps everything in an `UnsafeExpr` (GCC
+//     compound expression) — direct-emit mirrors that exactly via
+//     `emit_unsafe_expr_by_ids` (same helper LockExpr session 15 uses),
+//     passing `token.Pos{}` since the legacy wrapper has no explicit pos.
+//     When empty, the result expression goes through `out.emit_expr(...)`
+//     (leaf). Skips the `ast.UnsafeExpr` wrapper allocation per occurrence
+//     in the compound-expression case. New `fixture_or_expr` (a fn
+//     returning `pair(maybe(n) or { -1 }, 2)` — or-block nested in call
+//     args) covers the arm across all 5 harness rows — 101 → 106
+//     transformer-diff tests.
+//
 // Phase 5: post-pass port.
 //   `post_pass` (runtime const init injection, helper functions, str/clone
 //   generation, ...) still mutates `[]ast.File`. Port it to either emit
@@ -612,6 +629,42 @@ pub fn (mut t Transformer) transform_expr_to_flat(expr ast.Expr, mut out ast.Fla
 			}
 			inner_id := t.transform_expr_to_flat(expr.expr, mut out)
 			return out.emit_postfix_expr_by_id(expr.op, inner_id, expr.pos)
+		}
+		ast.OrExpr {
+			// OrExpr in expression position (nested, in for-condition, in call
+			// arg, ...) — statement-level or-block sites go through dedicated
+			// statement handlers (expand_direct_or_expr_assign,
+			// try_expand_or_expr_return, ...) and never reach this arm.
+			//
+			// `expand_single_or_expr` returns the data-access expression that
+			// stands in for the or-block value, and appends any required
+			// prefix stmts (typed temp init, optional-state branch, ...) to
+			// the supplied `prefix_stmts` accumulator. When `prefix_stmts` is
+			// non-empty the legacy arm wraps everything in an `UnsafeExpr`
+			// (GCC compound expression): `[prefix_stmts..., ExprStmt(result)]`.
+			// When empty, the data-access expression is the answer.
+			//
+			// Direct-emit mirrors that exactly: emit each stmt via
+			// `out.emit_stmt(...)` and assemble via the existing
+			// `emit_unsafe_expr_by_ids` helper (the legacy UnsafeExpr wrapper
+			// is constructed with no explicit pos, so direct-emit must pass
+			// `token.Pos{}` — same as the LockExpr port). When prefix_stmts
+			// is empty, the result_expr goes through `out.emit_expr(...)`
+			// (leaf). Skips the `ast.UnsafeExpr` wrapper allocation per
+			// occurrence in the compound-expression case.
+			mut prefix_stmts := []ast.Stmt{}
+			result_expr := t.expand_single_or_expr(expr, mut prefix_stmts)
+			if prefix_stmts.len > 0 {
+				prefix_stmts << ast.ExprStmt{
+					expr: result_expr
+				}
+				mut stmt_ids := []ast.FlatNodeId{cap: prefix_stmts.len}
+				for s in prefix_stmts {
+					stmt_ids << out.emit_stmt(s)
+				}
+				return out.emit_unsafe_expr_by_ids(stmt_ids, token.Pos{})
+			}
+			return out.emit_expr(result_expr)
 		}
 		ast.LockExpr {
 			// LockExpr's `transform_expr` arm rewrites a `lock x { body }` /
