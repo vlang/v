@@ -664,6 +664,37 @@ import v2.types
 //     directly into the builder instead of materialising `[]ast.Stmt`) is
 //     the next significant target.
 //
+//   Session 34 (2026-05-26): AssocExpr port (always-lowers via helper).
+//     `transform_expr`'s AssocExpr arm is a single helper call —
+//     `t.lower_assoc_expr(expr, false)` always lowers the struct-update
+//     syntax `{base | field: val}` into a decl-assign of a typed tmp
+//     followed by per-field assignments, all hoisted into
+//     `t.pending_stmts` (which `transform_stmts` then drains as prefix
+//     stmts before the current stmt). The arm returns the tmp Ident
+//     (or `&tmp_ident` PrefixExpr in the `take_addr` form, which is
+//     only invoked by the PrefixExpr `.amp` rewrite branch — not by
+//     this arm).
+//
+//     Direct-emit calls `lower_assoc_expr` and routes the Ident result
+//     through the leaf `out.emit_expr(...)` — same as the `else`
+//     fallback minus the `transform_expr` match dispatch on AssocExpr.
+//     The win is purely the dispatch skip. Routing through
+//     `transform_expr_to_flat` for the result would add a dispatch
+//     level without benefit since Idents are leaf direct-emit already.
+//
+//     Pattern note: establishes the "always-lowers via single helper
+//     call" template — sibling of GenericArgOrIndexExpr (session 33)
+//     where cross-arm routing applies because the lowered shape has a
+//     dedicated flat helper. AssocExpr's result is a leaf Ident, so
+//     direct `out.emit_expr` is the right exit. Future siblings:
+//     MatchExpr (lowers to IfExpr via `transform_match_expr`) — same
+//     shape, route through `out.emit_expr` until an IfExpr flat helper
+//     exists; SqlExpr if it has a similar single-helper structure.
+//
+//     Reachability is moderate — struct-update syntax `{base | f: v}`
+//     is used across the compiler for AST node copying. No new fixture
+//     this session. All 141 transformer-diff tests continue to pass.
+//
 //   Session 33 (2026-05-26): GenericArgOrIndexExpr port (cross-arm routing).
 //     `transform_expr`'s GenericArgOrIndexExpr arm disambiguates the parser
 //     ambiguity for `x[y]` via the lhs type:
@@ -1391,6 +1422,33 @@ pub fn (mut t Transformer) transform_expr_to_flat(expr ast.Expr, mut out ast.Fla
 			t.smartcast_expr_counts = saved_smartcast_expr_counts.clone()
 			typ_id := out.emit_expr(expr.typ)
 			return out.emit_as_cast_expr_by_ids(inner_id, typ_id, expr.pos)
+		}
+		ast.AssocExpr {
+			// AssocExpr port: `transform_expr`'s arm is a single helper call
+			// — `t.lower_assoc_expr(expr, false)` always lowers the struct-
+			// update syntax `{base | field: val}` into a sequence of stmts
+			// (decl-assign of a typed tmp, field assignments) hoisted into
+			// `t.pending_stmts`, returning either the tmp Ident or
+			// `&tmp_ident` PrefixExpr as the value expression. The body
+			// driver `transform_stmts` drains the pending stmts as prefix
+			// stmts before the current stmt.
+			//
+			// Direct-emit calls `lower_assoc_expr` and routes the result
+			// (Ident or `&Ident`) through the leaf `out.emit_expr(...)` —
+			// same as the `else` fallback would, minus the `transform_expr`
+			// match dispatch on AssocExpr. The win is purely the dispatch
+			// skip, but the port removes one fallback path from the `else`
+			// branch and demonstrates the "always-lowers via single helper
+			// call" template that MatchExpr (lowers to IfExpr via
+			// `transform_match_expr`), GenericArgOrIndexExpr (already
+			// ported in session 33), and similar arms share. The returned
+			// Ident/`&Ident` doesn't benefit from re-routing through
+			// `transform_expr_to_flat` — Idents are leaf direct-emit via
+			// `out.emit_expr` already, and `&Ident` would hit PrefixExpr's
+			// `.amp` legacy fallback (no flat helper applies). Reachability
+			// is moderate — struct-update syntax is used across the
+			// compiler for AST node copying.
+			return out.emit_expr(t.lower_assoc_expr(expr, false))
 		}
 		ast.FieldInit {
 			// FieldInit reaches the expression dispatch when it appears as a
