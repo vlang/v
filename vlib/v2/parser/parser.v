@@ -390,10 +390,13 @@ fn comptime_if_expr_contains_fn_main(if_expr ast.IfExpr) bool {
 // in `main` module) which are wrapped into a synthesized `fn main()`.
 fn (p &Parser) is_top_stmt_start() bool {
 	return match p.tok {
-		.dollar, .hash, .key_asm, .key_const, .key_enum, .key_fn, .key_global,
-		.key_interface, .key_pub, .key_struct, .key_union, .key_type, .attribute,
-		.lsbr { true }
-		else { false }
+		.dollar, .hash, .key_asm, .key_const, .key_enum, .key_fn, .key_global, .key_interface,
+		.key_pub, .key_struct, .key_union, .key_type, .attribute, .lsbr {
+			true
+		}
+		else {
+			false
+		}
 	}
 }
 
