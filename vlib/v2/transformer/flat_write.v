@@ -42,21 +42,26 @@ import v2.ast
 //   file root is assembled via `append_file_with_stmt_ids`. The per-stmt
 //   seam is where phases 3..5 plug per-variant direct-emit logic.
 //
-// Phase 3 (NEXT): per-stmt direct-emit dispatch.
-//   `transform_stmt_to_flat` grows a `match stmt { ... }` arm per variant.
-//   Initially every arm delegates to `out.emit_stmt(t.transform_stmt(stmt))`
-//   (identical to today). Each session in phase 3 replaces one arm with
-//   direct emission that skips the legacy `ast.Stmt` round-trip. Start with
-//   the leaves that have no rewrites in `transform_stmt` (Directive,
-//   EmptyStmt, AsmStmt) so the first arm-port is bit-identity by
-//   construction.
+// Phase 3 (DONE, session 3): per-stmt direct-emit dispatch.
+//   `transform_file_index_to_flat` now bypasses `transform_stmts` at the
+//   file level (top-level stmts never trigger its multi-stmt expansions —
+//   all those paths live in function bodies). `transform_stmt_to_flat`
+//   carries an 11-variant leaf-arm match for stmt kinds that are identity
+//   in `transform_stmt`'s `else { stmt }` case (AsmStmt, Directive,
+//   EmptyStmt, EnumDecl, FlowControlStmt, ImportStmt, InterfaceDecl,
+//   ModuleStmt, StructDecl, TypeDecl, []Attribute); these direct-emit and
+//   skip `transform_stmt` entirely. Non-leaf arms take the legacy
+//   round-trip `out.emit_stmt(t.transform_stmt(stmt))`. The dispatch
+//   surface is now ready for phase 4 ports.
 //
-// Phase 4 (per-rewrite-site ports).
-//   Once `transform_stmt_to_flat` covers every Stmt variant, add
-//   `transform_expr_to_flat` with the same dispatch shape. Then port each
-//   of the 55 rewrite sites: the trigger logic moves into the new dispatch
-//   arms and the output is written directly via `out.emit(...)`. The
-//   inventory below is the checklist for this phase.
+// Phase 4 (NEXT — per-rewrite-site ports).
+//   For each non-leaf Stmt variant (AssignStmt, BlockStmt, ConstDecl,
+//   DeferStmt, ExprStmt, FnDecl, ForStmt, ForInStmt, GlobalDecl,
+//   ComptimeStmt, LabelStmt, ReturnStmt, AssertStmt) rewrite the rewrite
+//   logic inside `transform_X` to emit `FlatNode`s via `out.emit(...)`
+//   directly instead of constructing legacy `ast.Stmt` / `ast.Expr`
+//   values. Add `transform_expr_to_flat` with the same dispatch shape for
+//   expression-level rewrites. The inventory below is the checklist.
 //
 // Phase 5: post-pass port.
 //   `post_pass` (runtime const init injection, helper functions, str/clone
