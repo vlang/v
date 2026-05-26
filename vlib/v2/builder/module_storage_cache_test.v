@@ -37,6 +37,36 @@ __global mut hidden = 0
 	return sanitize_header_source(gen.output_string(), map[string]string{})
 }
 
+fn module_mut_cached_header_source_for_test() string {
+	tmp_dir := module_storage_cache_tmp_dir('module_mut_source')
+	os.rmdir_all(tmp_dir) or {}
+	os.mkdir_all(os.join_path(tmp_dir, 'state')) or { panic(err) }
+	defer {
+		os.rmdir_all(tmp_dir) or {}
+	}
+	source_file := os.join_path(tmp_dir, 'state', 'state.v')
+	os.write_file(source_file, 'module state
+
+pub struct Counter {
+pub module_mut:
+	value int
+pub mut:
+	open int
+}
+') or {
+		panic(err)
+	}
+	mut prefs := pref.new_preferences()
+	mut b := new_builder(&prefs)
+	source_files := b.parse_source_files_for_headers([source_file])
+	header_ast := b.build_module_header_ast(source_files, 'state') or {
+		panic('missing state header')
+	}
+	mut gen := gen_v.new_gen(b.pref)
+	gen.gen(header_ast)
+	return sanitize_header_source(gen.output_string(), map[string]string{})
+}
+
 fn module_storage_cached_header_global(header_source string, name string) ast.FieldDecl {
 	tmp_dir := module_storage_cache_tmp_dir('parse')
 	os.rmdir_all(tmp_dir) or {}
@@ -60,6 +90,29 @@ fn module_storage_cached_header_global(header_source string, name string) ast.Fi
 		}
 	}
 	panic('missing cached header field ${name}')
+}
+
+fn module_storage_cached_header_struct(header_source string, name string) ast.StructDecl {
+	tmp_dir := module_storage_cache_tmp_dir('parse_struct')
+	os.rmdir_all(tmp_dir) or {}
+	os.mkdir_all(tmp_dir) or { panic(err) }
+	defer {
+		os.rmdir_all(tmp_dir) or {}
+	}
+	header_path := os.join_path(tmp_dir, 'state.vh')
+	os.write_file(header_path, header_source) or { panic(err) }
+	mut prefs := pref.new_preferences()
+	mut file_set := token.FileSet.new()
+	mut par := parser.Parser.new(&prefs)
+	files := par.parse_files([header_path], mut file_set)
+	for stmt in files[0].stmts {
+		if stmt is ast.StructDecl {
+			if stmt.name == name {
+				return stmt
+			}
+		}
+	}
+	panic('missing cached header struct ${name}')
 }
 
 fn module_storage_run_cached_header_check(label string, header_source string, main_source string) (int, string) {
@@ -92,6 +145,21 @@ fn test_module_storage_cached_header_preserves_flags() {
 	assert private_field.is_mut
 }
 
+fn test_module_storage_cached_header_preserves_module_mut_struct_fields() {
+	header_source := module_mut_cached_header_source_for_test()
+	assert header_source.contains('pub module_mut:')
+	assert !header_source.contains('@[module_mut]')
+	counter := module_storage_cached_header_struct(header_source, 'Counter')
+	assert counter.fields[0].name == 'value'
+	assert counter.fields[0].is_public
+	assert counter.fields[0].is_mut
+	assert counter.fields[0].is_module_mut
+	assert counter.fields[1].name == 'open'
+	assert counter.fields[1].is_public
+	assert counter.fields[1].is_mut
+	assert !counter.fields[1].is_module_mut
+}
+
 fn test_module_storage_cached_header_visibility_matches_source_module() {
 	header_source := module_storage_cached_header_source_for_test()
 	public_code, public_output := module_storage_run_cached_header_check('public', header_source, 'module main
@@ -115,6 +183,35 @@ fn main() {
 ')
 	assert private_code != 0, 'cached private module storage should fail'
 	assert private_output.contains('module global `state.hidden` is private'), private_output
+}
+
+fn test_module_storage_cached_header_module_mut_visibility_matches_source_module() {
+	header_source := module_mut_cached_header_source_for_test()
+	public_code, public_output := module_storage_run_cached_header_check('module_mut_public',
+		header_source, 'module main
+
+import state
+
+fn main() {
+	mut c := state.Counter{}
+	println(c.value)
+	c.open++
+}
+')
+	assert public_code == 0, public_output
+
+	module_mut_code, module_mut_output := module_storage_run_cached_header_check('module_mut_private',
+		header_source, 'module main
+
+import state
+
+fn main() {
+	mut c := state.Counter{}
+	c.value++
+}
+')
+	assert module_mut_code != 0, 'cached module_mut field mutation should fail'
+	assert module_mut_output.contains('cannot mutate module-mutable field `state.Counter.value` outside module `state`'), module_mut_output
 }
 
 fn test_module_storage_c_extern_import_cache_uses_raw_symbol() {

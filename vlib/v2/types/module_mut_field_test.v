@@ -2,6 +2,7 @@ module types
 
 import os
 import v2.ast
+import v2.gen.v as gen_v
 import v2.parser
 import v2.pref
 import v2.token
@@ -68,6 +69,24 @@ fn parse_module_mut_struct_with_defines(code string, defines []string) ast.Struc
 	panic('missing struct decl')
 }
 
+fn gen_module_mut_source(code string) string {
+	tmp_dir := module_mut_tmp_dir('gen')
+	os.rmdir_all(tmp_dir) or {}
+	os.mkdir_all(tmp_dir) or { panic('cannot create ${tmp_dir}') }
+	defer {
+		os.rmdir_all(tmp_dir) or {}
+	}
+	path := os.join_path(tmp_dir, 'main.v')
+	os.write_file(path, code) or { panic(err) }
+	prefs := &pref.Preferences{}
+	mut file_set := token.FileSet.new()
+	mut par := parser.Parser.new(prefs)
+	files := par.parse_files([path], mut file_set)
+	mut gen := gen_v.new_gen(prefs)
+	gen.gen(files[0])
+	return gen.output_string()
+}
+
 fn assert_module_mut_failure(label string, main_source string, expected string) {
 	code, output := run_module_mut_v2_check(label, module_mut_sources(main_source), 'main.v')
 	assert code != 0, '${label} should fail'
@@ -88,18 +107,24 @@ pub fn (mut i Inner) inc() {
 }
 
 pub struct Counter {
-@[module_mut]
-pub:
+pub module_mut:
 	value int
 	items []int
 	inner Inner
 	ptr &Inner
 pub mut:
 	open int
+	open_items []int
 }
 
 pub fn (mut c Counter) inc() {
 	c.value++
+}
+
+pub fn (mut c Counter) bump_items() {
+	for mut value in c.items {
+		value++
+	}
 }
 
 pub fn new_counter_with_ptr() Counter {
@@ -120,10 +145,11 @@ mut:
 	hidden int
 pub:
 	visible int
-@[module_mut]
-pub:
+pub module_mut:
 	value int
 	other int
+pub:
+	readable int
 pub mut:
 	open int
 }
@@ -144,10 +170,14 @@ pub mut:
 	assert decl.fields[3].is_public
 	assert decl.fields[3].is_mut
 	assert decl.fields[3].is_module_mut
-	assert decl.fields[4].name == 'open'
+	assert decl.fields[4].name == 'readable'
 	assert decl.fields[4].is_public
-	assert decl.fields[4].is_mut
+	assert !decl.fields[4].is_mut
 	assert !decl.fields[4].is_module_mut
+	assert decl.fields[5].name == 'open'
+	assert decl.fields[5].is_public
+	assert decl.fields[5].is_mut
+	assert !decl.fields[5].is_module_mut
 }
 
 fn test_module_mut_parser_comptime_branch_access_state() {
@@ -155,8 +185,7 @@ fn test_module_mut_parser_comptime_branch_access_state() {
 
 pub struct Counter {
 $if active_access ? {
-@[module_mut]
-pub:
+pub module_mut:
 	selected int
 } $else {
 pub mut:
@@ -197,6 +226,33 @@ pub:
 	assert decl2.fields[1].is_public
 	assert !decl2.fields[1].is_mut
 	assert !decl2.fields[1].is_module_mut
+
+	decl3 := parse_module_mut_struct_with_defines('module state
+
+pub struct Counter {
+$if inactive_access ? {
+pub mut:
+	skipped int
+} $else $if active_access ? {
+pub module_mut:
+	selected int
+} $else {
+pub:
+	selected int
+}
+	after int
+}
+', [
+		'active_access',
+	])
+	assert decl3.fields[0].name == 'selected'
+	assert decl3.fields[0].is_public
+	assert decl3.fields[0].is_mut
+	assert decl3.fields[0].is_module_mut
+	assert decl3.fields[1].name == 'after'
+	assert decl3.fields[1].is_public
+	assert decl3.fields[1].is_mut
+	assert decl3.fields[1].is_module_mut
 }
 
 fn test_module_mut_comptime_branch_access_state_reaches_checker() {
@@ -205,8 +261,7 @@ fn test_module_mut_comptime_branch_access_state_reaches_checker() {
 
 pub struct Counter {
 $if active_access ? {
-@[module_mut]
-pub:
+pub module_mut:
 	selected int
 }
 	after int
@@ -228,6 +283,56 @@ fn main() {
 	assert output.contains('cannot mutate module-mutable field `state.Counter.after` outside module `state`'), output
 }
 
+fn test_module_mut_gen_v_round_trip() {
+	source := 'module state
+
+pub struct Counter {
+pub module_mut:
+	value int
+pub mut:
+	open int
+}
+'
+	generated := gen_module_mut_source(source)
+	assert generated.contains('pub module_mut:')
+	assert !generated.contains('@[module_mut]')
+	decl := parse_module_mut_struct(generated)
+	assert decl.fields[0].name == 'value'
+	assert decl.fields[0].is_public
+	assert decl.fields[0].is_mut
+	assert decl.fields[0].is_module_mut
+	assert decl.fields[1].name == 'open'
+	assert decl.fields[1].is_public
+	assert decl.fields[1].is_mut
+	assert !decl.fields[1].is_module_mut
+}
+
+fn test_module_mut_is_contextual_identifier() {
+	code, output := run_module_mut_v2_check('contextual_identifier', {
+		'main.v': 'module main
+
+fn module_mut() int {
+	return 1
+}
+
+struct Names {
+pub:
+	module_mut int
+}
+
+fn main() {
+	module_mut_value := module_mut()
+	module_mut := module_mut_value + 1
+	n := Names{
+		module_mut: module_mut
+	}
+	println(n.module_mut)
+}
+'
+	}, 'main.v')
+	assert code == 0, output
+}
+
 fn test_module_mut_allows_external_read_and_internal_mutation() {
 	code, output := run_module_mut_v2_check('external_read_internal_mutation', module_mut_sources('module main
 
@@ -237,6 +342,7 @@ fn main() {
 	mut c := state.Counter{}
 	println(c.value)
 	c.inc()
+	c.bump_items()
 	println(c.value)
 }
 '),
@@ -253,6 +359,9 @@ fn main() {
 	mut c := state.Counter{}
 	c.open++
 	c.open += 2
+	for mut value in c.open_items {
+		value++
+	}
 }
 '),
 		'main.v')
@@ -266,6 +375,17 @@ import state
 
 fn main() {
 	mut c := state.Counter{}
+	c.value = 1
+}
+',
+		'cannot mutate module-mutable field `state.Counter.value` outside module `state`')
+	assert_module_mut_failure('import_alias_assign', 'module main
+
+import state as s
+
+fn main() {
+	mut c := s.Counter{}
+	println(c.value)
 	c.value = 1
 }
 ',
@@ -435,202 +555,112 @@ fn main() {
 		'cannot mutate module-mutable field `state.Counter.ptr` outside module `state`')
 }
 
-fn test_module_mut_elides_field_before_module_mut_validation() {
-	code, output := run_module_mut_v2_check('elide_field_module_mut_validation', {
-		'main.v': 'module main
-
-struct Counter {
-mut:
-	value int @[if absent_flag ?; module_mut]
-@[module_mut]
-	other int @[if absent_flag ?]
-}
-
-fn main() {}
-'
-	}, 'main.v')
-	assert code == 0, output
-}
-
-fn test_module_mut_rejects_invalid_attribute_uses() {
+fn test_module_mut_rejects_invalid_access_blocks() {
 	invalid_cases := {
-		'file_attr':         [
-			'@[module_mut]
-module main
-',
-			'`@[module_mut]` can only be used on a struct field',
-		]
-		'bare_file_attr':    [
-			'module main
-
-@[module_mut]
-',
-			'`@[module_mut]` can only be used on a struct field',
-		]
-		'fn_attr':           [
-			'module main
-
-@[module_mut]
-fn main() {}
-',
-			'`@[module_mut]` can only be used on a struct field',
-		]
-		'struct_attr':       [
-			'module main
-
-@[module_mut]
-struct Counter {}
-',
-			'`@[module_mut]` can only be used on a struct field',
-		]
-		'enum_attr':         [
-			'module main
-
-@[module_mut]
-enum Kind {
-	a
-}
-',
-			'`@[module_mut]` can only be used on a struct field',
-		]
-		'interface_attr':    [
-			'module main
-
-@[module_mut]
-interface Reader {
-	read() int
-}
-',
-			'`@[module_mut]` can only be used on a struct field',
-		]
-		'const_attr':        [
-			'module main
-
-@[module_mut]
-const value = 1
-',
-			'`@[module_mut]` can only be used on a struct field',
-		]
-		'global_attr':       [
-			'module main
-
-@[module_mut]
-__global value = 1
-',
-			'`@[module_mut]` can only be used on a struct field',
-		]
-		'not_pub':           [
+		'bare_module_mut':              [
 			'module main
 
 struct Counter {
-@[module_mut]
-mut:
+module_mut:
 	value int
 }
 ',
-			'`@[module_mut]` requires `pub:`; use `@[module_mut] pub:`',
+			'`module_mut:` must be written as `pub module_mut:`',
 		]
-		'pub_mut':           [
+		'mut_module_mut':               [
 			'module main
 
 struct Counter {
-@[module_mut]
-pub mut:
+mut module_mut:
 	value int
 }
 ',
-			'`@[module_mut]` cannot be combined with `pub mut:`; `pub mut:` fields are publicly mutable',
+			'`mut module_mut:` is invalid; use `pub module_mut:`',
 		]
-		'block_other_attr':  [
+		'pub_mut_module_mut':           [
 			'module main
 
 struct Counter {
-@[if prod ?; module_mut]
-pub:
+pub mut module_mut:
 	value int
 }
 ',
-			'`@[module_mut] pub:` cannot be combined with other attributes',
+			'`pub mut module_mut:` is invalid; use `pub module_mut:`',
 		]
-		'embedded':          [
+		'pub_module_mut_mut':           [
 			'module main
 
-struct Base {}
-
 struct Counter {
-@[module_mut]
-	Base
+pub module_mut mut:
+	value int
 }
 ',
-			'`@[module_mut]` cannot be applied to embedded struct fields',
+			'`pub module_mut mut:` is invalid; use `pub module_mut:`',
 		]
-		'embedded_in_block': [
-			'module main
-
-struct Base {}
-
-struct Counter {
-@[module_mut]
-pub:
-	Base
-}
-',
-			'`@[module_mut]` cannot be applied to embedded struct fields',
-		]
-		'union':             [
+		'union':                        [
 			'module main
 
 union Counter {
-@[module_mut]
-pub:
+pub module_mut:
 	value int
 }
 ',
-			'`@[module_mut]` is only supported on V struct fields',
+			'`pub module_mut:` is only supported on V struct fields',
 		]
-		'c_struct':          [
+		'c_struct':                     [
 			'module main
 
 struct C.Counter {
+pub module_mut:
+	value int
+}
+',
+			'`pub module_mut:` is only supported on V struct fields',
+		]
+		'embedded':                     [
+			'module main
+
+struct Base {}
+
+struct Counter {
+pub module_mut:
+	Base
+}
+',
+			'`pub module_mut:` cannot be applied to embedded struct fields',
+		]
+		'leading_if_attribute':         [
+			'module main
+
+struct Counter {
+@[if prod ?]
+pub module_mut:
+	value int
+}
+',
+			'attributes on struct fields must be placed after the field declaration',
+		]
+		'leading_module_mut_attribute': [
+			'module main
+
+struct Counter {
+@[module_mut]
+pub module_mut:
+	value int
+}
+',
+			'attributes on struct fields must be placed after the field declaration',
+		]
+		'old_attribute_block':          [
+			'module main
+
+struct Counter {
 @[module_mut]
 pub:
 	value int
 }
 ',
-			'`@[module_mut]` is only supported on V struct fields',
-		]
-		'arguments':         [
-			'module main
-
-struct Counter {
-@[module_mut: true]
-pub:
-	value int
-}
-',
-			'`@[module_mut]` does not accept arguments',
-		]
-		'call_arguments':    [
-			'module main
-
-struct Counter {
-@[module_mut()]
-pub:
-	value int
-}
-',
-			'`@[module_mut]` does not accept arguments',
-		]
-		'duplicates':        [
-			'module main
-
-struct Counter {
-@[module_mut; module_mut]
-pub:
-	value int
-}
-',
-			'`@[module_mut]` specified more than once',
+			'attributes on struct fields must be placed after the field declaration',
 		]
 	}
 	for label, pair in invalid_cases {
@@ -640,4 +670,18 @@ pub:
 		assert code != 0, '${label} should fail'
 		assert output.contains(pair[1]), output
 	}
+}
+
+fn test_module_mut_attribute_has_no_special_field_semantics() {
+	decl := parse_module_mut_struct('module state
+
+pub struct Counter {
+pub:
+	value int @[module_mut]
+}
+')
+	assert decl.fields[0].name == 'value'
+	assert decl.fields[0].is_public
+	assert !decl.fields[0].is_mut
+	assert !decl.fields[0].is_module_mut
 }

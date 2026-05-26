@@ -1006,7 +1006,7 @@ fn (mut g Gen) struct_decl_fields(embedded []ast.Expr, fields []ast.FieldDecl) {
 	mut field_access := ''
 	for field in fields {
 		new_access := if field.is_module_mut {
-			'module_mut'
+			'pub module_mut'
 		} else if field.is_public && field.is_mut {
 			'pub mut'
 		} else if field.is_public {
@@ -1018,9 +1018,8 @@ fn (mut g Gen) struct_decl_fields(embedded []ast.Expr, fields []ast.FieldDecl) {
 		}
 		if new_access != field_access {
 			match new_access {
-				'module_mut' {
-					g.writeln('@[module_mut]')
-					g.writeln('pub:')
+				'pub module_mut' {
+					g.writeln('pub module_mut:')
 				}
 				'pub mut' {
 					g.writeln('pub mut:')
