@@ -629,6 +629,41 @@ import v2.types
 //     `transform_stmt_to_flat` for child stmts, then emit via a new
 //     `emit_*_by_ids` helper mirroring the matching `add_stmt` arm encoding.
 //
+//   Session 29 (2026-05-26): BlockStmt port (wrap-only stmt port).
+//     Third stmt-level identity-shape port after sessions 27 (ExprStmt) and
+//     28 (LabelStmt). `transform_stmt`'s BlockStmt arm always returns
+//     `BlockStmt{stmts: transform_stmts(stmt.stmts)}` — identity-shape with
+//     the body driver `transform_stmts` handling sibling-stmt smartcast
+//     state snapshot/restore, pending-stmt hoisting, and one-to-many
+//     expansion. Because the driver does extra inter-stmt work (and may
+//     expand one input stmt into several outputs), we can't recurse via
+//     `transform_stmt_to_flat` per-element without porting the driver
+//     itself — that's a separate (bigger) refactor.
+//
+//     Wrap-only port: call legacy `transform_stmts(stmt.stmts)` to
+//     materialise the transformed `[]ast.Stmt`, emit each via the legacy
+//     `out.emit_stmt(...)` (the stmts are already transformed), and
+//     assemble via the new `emit_block_stmt_by_ids` helper. Mirrors
+//     `add_stmt(BlockStmt)` encoding exactly (pos = `token.Pos{}`, edges =
+//     inner stmts in order). Skips the outer `ast.BlockStmt` wrapper struct
+//     allocation per occurrence; the inner `[]ast.Stmt` from
+//     `transform_stmts` still materialises (until the body driver is
+//     ported).
+//
+//     Reachability is good — BlockStmt appears as a free-standing `{ ... }`
+//     block in source. Most fn bodies don't directly use them (the FnDecl
+//     arm calls `transform_stmts` itself), but `unsafe { ... }` and lambda
+//     bodies in some shapes wrap their contents in BlockStmt. No new
+//     fixture this session. All 141 transformer-diff tests continue to
+//     pass.
+//
+//     Pattern note: first stmt port that takes the "wrap-only" shape
+//     (sessions 9 FnLiteral, 14 UnsafeExpr, 22 ReturnStmt established this
+//     pattern at the expr level). The body driver port (which would let
+//     BlockStmt / DeferStmt / FnLiteral.stmts / UnsafeExpr.stmts all stream
+//     directly into the builder instead of materialising `[]ast.Stmt`) is
+//     the next significant target.
+//
 // Phase 5: post-pass port.
 //   `post_pass` (runtime const init injection, helper functions, str/clone
 //   generation, ...) still mutates `[]ast.File`. Port it to either emit
@@ -800,6 +835,28 @@ pub fn (mut t Transformer) transform_stmt_to_flat(stmt ast.Stmt, mut out ast.Fla
 			}
 			fields_list_id := out.emit_aux_list_from_ids(field_ids)
 			return out.emit_global_decl_by_ids(decl_attrs_id, fields_list_id)
+		}
+		ast.BlockStmt {
+			// BlockStmt port: `transform_stmt`'s arm is identity-shape —
+			// `BlockStmt{stmts: transform_stmts(stmt.stmts)}`. The body
+			// driver `transform_stmts` does extra work between sibling stmts
+			// (smartcast state snapshot/restore, pending-stmt hoisting, and
+			// may expand one input stmt into several outputs) so we can't
+			// recurse via `transform_stmt_to_flat` without porting the
+			// driver itself — that's a separate (bigger) refactor.
+			// Wrap-only port: call legacy `transform_stmts` to materialise
+			// the transformed `[]ast.Stmt`, emit each via the legacy
+			// `out.emit_stmt(...)` (the stmts are already transformed), and
+			// assemble via the new `emit_block_stmt_by_ids` helper. Skips
+			// the outer `ast.BlockStmt` wrapper struct allocation per
+			// occurrence; the inner `[]ast.Stmt` from `transform_stmts`
+			// still materialises (until the driver is ported).
+			transformed_stmts := t.transform_stmts(stmt.stmts)
+			mut stmt_ids := []ast.FlatNodeId{cap: transformed_stmts.len}
+			for body_stmt in transformed_stmts {
+				stmt_ids << out.emit_stmt(body_stmt)
+			}
+			return out.emit_block_stmt_by_ids(stmt_ids)
 		}
 		ast.LabelStmt {
 			// LabelStmt port: `transform_stmt`'s arm is identity-shape —
