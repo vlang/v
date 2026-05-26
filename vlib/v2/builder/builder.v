@@ -271,6 +271,10 @@ pub fn (mut b Builder) build(files []string) {
 		}
 		mark_used_time := time.Duration(sw.elapsed() - mark_used_start)
 		print_time('Mark Used', mark_used_time)
+		// b.flat is unused by the codegen path; drop the arenas so a GC build
+		// can reclaim them. Under -gc none this is a no-op for peak memory,
+		// but it documents the lifetime correctly for the eventual GC switch.
+		b.flat = ast.FlatAst{}
 		print_rss('after markused')
 		print_heap('after markused')
 	}
