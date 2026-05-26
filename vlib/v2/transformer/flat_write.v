@@ -118,15 +118,17 @@ import v2.ast
 
 // transform_file_index_to_flat is the per-file entry point for the multi-
 // session port. It rehydrates a single file from `input_flat`, mirrors
-// `transform_file`'s prologue, runs `transform_stmts` for the body, and emits
-// the transformed stmts plus the file header into `out`. Returns the
-// FlatNodeId of the appended file root, or `ast.invalid_flat_node_id` for an
-// empty / missing source file.
+// `transform_file`'s prologue, and emits each top-level stmt through the
+// `transform_stmt_to_flat` seam. Returns the FlatNodeId of the appended
+// file root, or `ast.invalid_flat_node_id` for an empty / missing source
+// file.
 //
-// As of phase 2 the body emits stmts one at a time via
-// `transform_stmt_to_flat`, decoupling the file-level shape from the stmt
-// list. Each future session in phase 3 replaces one arm of
-// `transform_stmt_to_flat`'s dispatch with direct flat emission.
+// As of phase 3 the loop bypasses `transform_stmts` at the file level —
+// top-level stmt variants don't trigger any of `transform_stmts`'
+// multi-stmt expansions (AssignStmt / ExprStmt / ForStmt / AssertStmt
+// expansions all live in function bodies, not at file scope) so per-stmt
+// transform via the seam is equivalent. A defensive `t.pending_stmts`
+// drain catches any leak from constructs that have not been audited yet.
 //
 // Callers must invoke `pre_pass_from_flat(input_flat)` before the per-file
 // loop and `post_pass(mut collected_files)` after, mirroring the wedge. The
@@ -147,26 +149,54 @@ pub fn (mut t Transformer) transform_file_index_to_flat(input_flat &ast.FlatAst,
 	} else {
 		t.scope = unsafe { nil }
 	}
-	transformed_stmts := t.transform_stmts(file.stmts)
-	mut stmt_ids := []ast.FlatNodeId{cap: transformed_stmts.len}
-	for stmt in transformed_stmts {
-		stmt_ids << t.transform_stmt_to_flat(stmt, mut out)
+	mut stmt_ids := []ast.FlatNodeId{cap: file.stmts.len}
+	for stmt in file.stmts {
+		id := t.transform_stmt_to_flat(stmt, mut out)
+		// Defensive pending_stmts drain. Inner transform_stmts (called by
+		// transform_fn_decl etc.) drains its own pending_stmts before
+		// returning; this catches any leak from a top-level construct that
+		// hasn't been audited. Hoist them ahead of the just-emitted stmt so
+		// the ordering matches transform_stmts' append_transformed_stmt path.
+		if t.pending_stmts.len > 0 {
+			stmt_ids << id
+			pending := t.pending_stmts.clone()
+			t.pending_stmts.clear()
+			last := stmt_ids.pop()
+			for ps in pending {
+				stmt_ids << out.emit_stmt(ps)
+			}
+			stmt_ids << last
+		} else {
+			stmt_ids << id
+		}
 	}
 	return out.append_file_with_stmt_ids(file, stmt_ids)
 }
 
-// transform_stmt_to_flat is the per-stmt seam for phase 3 of the port. Today
-// every variant falls through to the legacy round-trip
-// (`out.emit_stmt(t.transform_stmt(stmt))`); the input `stmt` has already
-// been through `transform_stmts` (and therefore `transform_stmt`) at the
-// call site in `transform_file_index_to_flat`, so the inner call here is a
-// no-op identity transform that just routes the stmt into the builder.
+// transform_stmt_to_flat is the per-stmt dispatch for phase 3 of the port.
+// Leaf-arm variants (those that fall into `transform_stmt`'s `else { stmt }`
+// case, i.e. identity in the legacy transform) are direct-emitted into `out`,
+// skipping the `transform_stmt` dispatch and return-value construction.
+// Non-leaf variants still take the legacy round-trip:
+// `out.emit_stmt(t.transform_stmt(stmt))`. Phase 4 sessions replace one
+// non-leaf arm at a time with direct flat-emit logic that bypasses the
+// legacy ast construction at the rewrite site itself.
 //
-// Phase 3 sessions replace one arm at a time with direct `out.emit(...)`
-// logic that skips the legacy ast.Stmt construction at the rewrite site.
-// Until then this function preserves bit-equal output: the harness 5th row
-// guarantees the per-stmt path matches a reference rehydrate+transform+append
-// loop.
+// The harness 5th row pins bit-equality of this seam against a reference
+// rehydrate+transform+append loop; any per-arm divergence trips it.
 pub fn (mut t Transformer) transform_stmt_to_flat(stmt ast.Stmt, mut out ast.FlatBuilder) ast.FlatNodeId {
-	return out.emit_stmt(stmt)
+	// `[]Attribute` is a Stmt variant but cannot appear in a match arm with
+	// regular types; check it first via `is`.
+	if stmt is []ast.Attribute {
+		return out.emit_stmt(stmt)
+	}
+	match stmt {
+		ast.AsmStmt, ast.Directive, ast.EmptyStmt, ast.EnumDecl, ast.FlowControlStmt,
+		ast.ImportStmt, ast.InterfaceDecl, ast.ModuleStmt, ast.StructDecl, ast.TypeDecl {
+			return out.emit_stmt(stmt)
+		}
+		else {
+			return out.emit_stmt(t.transform_stmt(stmt))
+		}
+	}
 }
