@@ -1499,6 +1499,30 @@ fn (mut t Transformer) is_void_call_expr(expr ast.Expr) bool {
 }
 
 fn (mut t Transformer) transform_fn_decl(decl ast.FnDecl) ast.FnDecl {
+	attrs, stmts := t.transform_fn_decl_parts(decl)
+	return ast.FnDecl{
+		attributes: attrs
+		is_public:  decl.is_public
+		is_method:  decl.is_method
+		is_static:  decl.is_static
+		receiver:   decl.receiver
+		language:   decl.language
+		name:       decl.name
+		typ:        decl.typ
+		stmts:      stmts
+		pos:        decl.pos
+	}
+}
+
+// transform_fn_decl_parts is the body-work driver behind `transform_fn_decl`.
+// It returns the two variable parts of the lowered FnDecl — final attribute
+// list (possibly augmented with `noinline` for `@[live]`) and the final
+// transformed + defer-lowered stmt list — leaving the immutable
+// is_public/is_method/is_static/receiver/language/name/typ/pos fields to be
+// re-attached by the caller. The flat-write port's FnDecl arm calls this
+// helper directly so it can emit the FnDecl flat encoding without the
+// `transform_fn_decl` wrapper struct ever being allocated.
+fn (mut t Transformer) transform_fn_decl_parts(decl ast.FnDecl) ([]ast.Attribute, []ast.Stmt) {
 	// Skip uninstantiated generic functions: their bodies were never type-checked
 	// and they will never be called, so emit an empty body.
 	if has_non_lifetime_generic_params(decl.typ.generic_params) {
@@ -1516,18 +1540,7 @@ fn (mut t Transformer) transform_fn_decl(decl ast.FnDecl) ast.FnDecl {
 		// Generic function values (`handler[T]`) are specialized later by cgen, not
 		// through the normal checked call path, so keep their bodies for that pass.
 		if !has_generic_types && decl.name !in t.generic_fn_value_names {
-			return ast.FnDecl{
-				attributes: decl.attributes
-				is_public:  decl.is_public
-				is_method:  decl.is_method
-				is_static:  decl.is_static
-				receiver:   decl.receiver
-				language:   decl.language
-				name:       decl.name
-				typ:        decl.typ
-				stmts:      []
-				pos:        decl.pos
-			}
+			return decl.attributes, []ast.Stmt{}
 		}
 	}
 
@@ -1537,18 +1550,7 @@ fn (mut t Transformer) transform_fn_decl(decl ast.FnDecl) ast.FnDecl {
 		if attr.comptime_cond !is ast.EmptyExpr {
 			if !t.eval_comptime_cond(attr.comptime_cond) {
 				t.elided_fns[decl.name] = true
-				return ast.FnDecl{
-					attributes: decl.attributes
-					is_public:  decl.is_public
-					is_method:  decl.is_method
-					is_static:  decl.is_static
-					receiver:   decl.receiver
-					language:   decl.language
-					name:       decl.name
-					typ:        decl.typ
-					stmts:      []
-					pos:        decl.pos
-				}
+				return decl.attributes, []ast.Stmt{}
 			}
 		}
 	}
@@ -1790,32 +1792,10 @@ fn (mut t Transformer) transform_fn_decl(decl ast.FnDecl) ast.FnDecl {
 		for a in decl.attributes {
 			new_attrs << a
 		}
-		return ast.FnDecl{
-			attributes: new_attrs
-			is_public:  decl.is_public
-			is_method:  decl.is_method
-			is_static:  decl.is_static
-			receiver:   decl.receiver
-			language:   decl.language
-			name:       decl.name
-			typ:        decl.typ
-			stmts:      final_stmts
-			pos:        decl.pos
-		}
+		return new_attrs, final_stmts
 	}
 
-	return ast.FnDecl{
-		attributes: decl.attributes
-		is_public:  decl.is_public
-		is_method:  decl.is_method
-		is_static:  decl.is_static
-		receiver:   decl.receiver
-		language:   decl.language
-		name:       decl.name
-		typ:        decl.typ
-		stmts:      final_stmts
-		pos:        decl.pos
-	}
+	return decl.attributes, final_stmts
 }
 
 fn has_non_lifetime_generic_params(params []ast.Expr) bool {

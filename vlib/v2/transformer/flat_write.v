@@ -98,6 +98,20 @@ import v2.ast
 //     without touching this dispatch site. Every existing fixture
 //     exercises this arm — all 46 harness tests pin it.
 //
+//   Session 4 (2026-05-26): FnDecl wrapper-struct elision.
+//     Extracts `transform_fn_decl_parts(decl) (attrs, stmts)` in fn.v as
+//     the body-work driver — returns the two variable parts of the lowered
+//     FnDecl (final attribute list and final transformed + defer-lowered
+//     stmts) and leaves the immutable name / typ / receiver / language /
+//     is_public / is_method / is_static / pos fields to be re-attached by
+//     the caller. Existing `transform_fn_decl` becomes a thin wrapper that
+//     calls the helper and assembles the `ast.FnDecl` (no behavioural
+//     change for legacy callers). The FnDecl flat-write arm now calls
+//     `transform_fn_decl_parts` directly, so the `ast.FnDecl` wrapper
+//     struct that session 3 built and then decomposed is never allocated.
+//     First real (if modest) memory saving in the flat-write port: one
+//     FnDecl struct per fn under V2_MARKUSED_FLAT-style flat-output paths.
+//
 // Phase 5: post-pass port.
 //   `post_pass` (runtime const init injection, helper functions, str/clone
 //   generation, ...) still mutates `[]ast.File`. Port it to either emit
@@ -271,27 +285,27 @@ pub fn (mut t Transformer) transform_stmt_to_flat(stmt ast.Stmt, mut out ast.Fla
 			return out.emit_global_decl_by_ids(decl_attrs_id, fields_list_id)
 		}
 		ast.FnDecl {
-			// Shape port: keep `transform_fn_decl` as the body-work driver (its
-			// 300-line prologue / scope setup / defer lowering is the next port
-			// target) but decompose its result and emit the FnDecl flat encoding
-			// directly via the typed builder helpers. Bit-equal to the legacy
-			// `out.emit_stmt(t.transform_fn_decl(stmt))` round-trip; the value is
-			// that the dispatch arm now exists, so future sessions can refactor
-			// `transform_fn_decl` to emit body stmts straight into the builder
-			// (skipping the `[]ast.Stmt` materialisation in `transform_stmts`)
-			// without touching this dispatch site.
-			transformed := t.transform_fn_decl(stmt)
-			receiver_id := out.emit_parameter(transformed.receiver)
-			typ_id := out.emit_type(ast.Type(transformed.typ))
-			attrs_id := out.emit_attribute_list(transformed.attributes)
-			mut stmt_ids := []ast.FlatNodeId{cap: transformed.stmts.len}
-			for body_stmt in transformed.stmts {
+			// Direct emit: call `transform_fn_decl_parts` (the body-work driver
+			// extracted from `transform_fn_decl`) for the two variable parts —
+			// final attributes (possibly augmented for `@[live]`) and the final
+			// transformed + defer-lowered stmt list — and assemble the FnDecl
+			// flat encoding via the typed builder helpers. Skips the
+			// `ast.FnDecl` wrapper struct that `transform_fn_decl` builds in the
+			// legacy path. The immutable is_public/is_method/is_static/receiver/
+			// language/name/typ/pos fields come straight from `stmt`. Bit-equal
+			// to the legacy `out.emit_stmt(t.transform_fn_decl(stmt))` round-trip.
+			attrs, stmts := t.transform_fn_decl_parts(stmt)
+			receiver_id := out.emit_parameter(stmt.receiver)
+			typ_id := out.emit_type(ast.Type(stmt.typ))
+			attrs_id := out.emit_attribute_list(attrs)
+			mut stmt_ids := []ast.FlatNodeId{cap: stmts.len}
+			for body_stmt in stmts {
 				stmt_ids << out.emit_stmt(body_stmt)
 			}
 			stmts_list_id := out.emit_aux_list_from_ids(stmt_ids)
-			return out.emit_fn_decl_by_ids(transformed.name, transformed.is_public,
-				transformed.is_method, transformed.is_static, transformed.language,
-				transformed.pos, receiver_id, typ_id, attrs_id, stmts_list_id)
+			return out.emit_fn_decl_by_ids(stmt.name, stmt.is_public, stmt.is_method,
+				stmt.is_static, stmt.language, stmt.pos, receiver_id, typ_id, attrs_id,
+				stmts_list_id)
 		}
 		else {
 			return out.emit_stmt(t.transform_stmt(stmt))
