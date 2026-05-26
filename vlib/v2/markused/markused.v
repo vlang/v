@@ -625,8 +625,8 @@ fn (mut w Walker) walk_expr_cursor(c ast.Cursor, mod_name string) {
 			if lhs_c.is_valid() && lhs_c.kind() == .expr_ident && w.is_cast_type_name(lhs_c.name()) {
 				iface_name := w.interface_name_from_cursor(lhs_c, mod_name)
 				if iface_name != '' && expr_c.is_valid() {
-					value_expr := c.flat.decode_expr(expr_c.id)
-					w.mark_interface_conversion_methods_for_name(iface_name, value_expr, mod_name)
+					w.mark_interface_conversion_methods_for_name_cursor(iface_name, expr_c,
+						mod_name)
 				}
 				w.walk_expr_cursor(expr_c, mod_name)
 			} else {
@@ -647,8 +647,7 @@ fn (mut w Walker) walk_expr_cursor(c ast.Cursor, mod_name string) {
 			expr_c := c.edge(1)
 			iface_name := w.interface_name_from_cursor(typ_c, mod_name)
 			if iface_name != '' && expr_c.is_valid() {
-				value_expr := c.flat.decode_expr(expr_c.id)
-				w.mark_interface_conversion_methods_for_name(iface_name, value_expr, mod_name)
+				w.mark_interface_conversion_methods_for_name_cursor(iface_name, expr_c, mod_name)
 			}
 			w.walk_expr_cursor(typ_c, mod_name)
 			w.walk_expr_cursor(expr_c, mod_name)
@@ -656,17 +655,13 @@ fn (mut w Walker) walk_expr_cursor(c ast.Cursor, mod_name string) {
 		// expr_init: edge 0 = typ, edges 1.. = aux_field_init (edge 0 = value).
 		// Legacy walker calls mark_interface_conversion_methods(typ, expr)
 		// where the value_expr is the whole InitExpr; receiver_candidates_for_
-		// expr's InitExpr branch only reads expr.pos() and expr.typ, so a
-		// shallow InitExpr with just those two fields suffices.
+		// cursor's expr_init branch reads pos + recurses into the typ cursor,
+		// so passing this cursor directly matches the legacy semantics.
 		.expr_init {
 			typ_c := c.edge(0)
 			iface_name := w.interface_name_from_cursor(typ_c, mod_name)
 			if iface_name != '' {
-				stub := ast.InitExpr{
-					typ: c.flat.decode_expr(typ_c.id)
-					pos: c.pos()
-				}
-				w.mark_interface_conversion_methods_for_name(iface_name, ast.Expr(stub), mod_name)
+				w.mark_interface_conversion_methods_for_name_cursor(iface_name, c, mod_name)
 			}
 			w.walk_expr_cursor(typ_c, mod_name)
 			for i in 1 .. c.edge_count() {
@@ -686,8 +681,7 @@ fn (mut w Walker) walk_expr_cursor(c ast.Cursor, mod_name string) {
 			op := unsafe { token.Token(int(c.aux())) }
 			if infix_operator_may_use_method(op) {
 				method_name := op.str()
-				lhs_expr := c.flat.decode_expr(c.edge(0).id)
-				receivers := w.receiver_candidates_for_expr(lhs_expr, mod_name)
+				receivers := w.receiver_candidates_for_cursor(c.edge(0), mod_name)
 				if receivers.len > 0 {
 					w.mark_method_name(method_name, receivers)
 				} else {
@@ -713,8 +707,7 @@ fn (mut w Walker) walk_expr_cursor(c ast.Cursor, mod_name string) {
 				}
 				expr_c := inter.edge(0)
 				if expr_c.is_valid() {
-					w.mark_string_interpolation_str_dependency(c.flat.decode_expr(expr_c.id),
-						mod_name)
+					w.mark_string_interpolation_str_dependency_cursor(expr_c, mod_name)
 				}
 				w.walk_expr_cursor(expr_c, mod_name)
 				w.walk_expr_cursor(inter.edge(1), mod_name)
@@ -2334,8 +2327,7 @@ fn (w &Walker) call_lhs_fn_type_cursor(c ast.Cursor, mod_name string) ?types.FnT
 				inner_lhs := c.edge(0)
 				rhs_c := c.edge(1)
 				if inner_lhs.is_valid() && rhs_c.is_valid() {
-					receivers := w.receiver_candidates_for_expr(c.flat.decode_expr(inner_lhs.id),
-						mod_name)
+					receivers := w.receiver_candidates_for_cursor(inner_lhs, mod_name)
 					for receiver in receivers {
 						if fn_type := w.env.lookup_method(receiver, rhs_c.name()) {
 							return fn_type
@@ -2416,7 +2408,7 @@ fn (w &Walker) call_lhs_decl_indices_cursor(c ast.Cursor, mod_name string) []int
 					}
 				}
 			}
-			receivers := w.receiver_candidates_for_expr(c.flat.decode_expr(lhs_c.id), mod_name)
+			receivers := w.receiver_candidates_for_cursor(lhs_c, mod_name)
 			if receivers.len > 0 {
 				w.add_method_name_indices(method_name, receivers, mut out)
 				if out.len > 0 {
@@ -2461,8 +2453,8 @@ fn (mut w Walker) mark_call_arg_interface_conversions_cursor(call_c ast.Cursor, 
 				param_type := param_types[param_idx]
 				if param_type is types.Interface {
 					arg_c := call_c.edge(1 + i)
-					w.mark_interface_conversion_methods_for_name((param_type as types.Interface).name,
-						call_c.flat.decode_expr(arg_c.id), mod_name)
+					w.mark_interface_conversion_methods_for_name_cursor((param_type as types.Interface).name,
+						arg_c, mod_name)
 					marked = true
 				}
 			}
@@ -2505,8 +2497,7 @@ fn (mut w Walker) mark_call_arg_interface_conversions_from_decls_cursor(call_c a
 				continue
 			}
 			arg_c := call_c.edge(1 + arg_idx)
-			w.mark_interface_conversion_methods_for_name(iface_name,
-				call_c.flat.decode_expr(arg_c.id), mod_name)
+			w.mark_interface_conversion_methods_for_name_cursor(iface_name, arg_c, mod_name)
 		}
 	}
 }
@@ -2530,8 +2521,8 @@ fn (mut w Walker) mark_call_or_cast_arg_interface_conversion_cursor(call_c ast.C
 			if param_offset < param_types.len {
 				param_type := param_types[param_offset]
 				if param_type is types.Interface {
-					w.mark_interface_conversion_methods_for_name((param_type as types.Interface).name,
-						call_c.flat.decode_expr(expr_c.id), mod_name)
+					w.mark_interface_conversion_methods_for_name_cursor((param_type as types.Interface).name,
+						expr_c, mod_name)
 					marked = true
 				}
 			}
@@ -2573,8 +2564,7 @@ fn (mut w Walker) mark_call_or_cast_arg_interface_from_decl_indices_cursor(decl_
 		if iface_name == '' {
 			continue
 		}
-		w.mark_interface_conversion_methods_for_name(iface_name,
-			expr_c.flat.decode_expr(expr_c.id), mod_name)
+		w.mark_interface_conversion_methods_for_name_cursor(iface_name, expr_c, mod_name)
 	}
 }
 
@@ -2677,6 +2667,122 @@ fn (w &Walker) current_fn_generic_bindings() []map[string]types.Type {
 		}
 	}
 	return out
+}
+
+// receiver_candidates_for_cursor mirrors receiver_candidates_for_expr but
+// reads inputs from a Cursor instead of a decoded ast.Expr. Same shape:
+// env-type lookup by pos.id first, then a structural match on cursor kind.
+// PrefixExpr / ParenExpr / ModifierExpr / SelectorExpr recurse through
+// edge(0); InitExpr through its typ at edge(0); CallExpr / CallOrCastExpr
+// look at edge(0)'s selector.lhs without recursion.
+fn (w &Walker) receiver_candidates_for_cursor(c ast.Cursor, mod_name string) []string {
+	mut out := []string{}
+	if !c.is_valid() {
+		return out
+	}
+	pos := c.pos()
+	if w.env != unsafe { nil } && pos.is_valid() {
+		if receiver_type := w.env.get_expr_type(pos.id) {
+			for name in type_name_candidates_from_type(mod_name, receiver_type) {
+				add_unique_string(mut out, name)
+			}
+		}
+	}
+	match c.kind() {
+		.expr_ident {
+			ident_name := c.name()
+			if w.env != unsafe { nil } && w.cur_fn_scope != unsafe { nil } {
+				if local_type := w.env.lookup_local_var(w.cur_fn_scope, ident_name) {
+					for type_name in type_name_candidates_from_type(mod_name, local_type) {
+						add_unique_string(mut out, type_name)
+					}
+				}
+			}
+			name := sanitize_receiver_name(ident_name)
+			for type_name in w.current_receiver_candidates(ident_name, mod_name) {
+				add_unique_string(mut out, type_name)
+			}
+			for type_name in w.current_param_receiver_candidates(ident_name, mod_name) {
+				add_unique_string(mut out, type_name)
+			}
+			add_unique_string(mut out, name)
+			if mod_name != '' && mod_name != 'main' {
+				add_unique_string(mut out, '${mod_name}__${name}')
+			}
+		}
+		.expr_prefix, .expr_paren, .expr_modifier {
+			for name in w.receiver_candidates_for_cursor(c.edge(0), mod_name) {
+				add_unique_string(mut out, name)
+			}
+		}
+		.expr_init {
+			for name in w.receiver_candidates_for_cursor(c.edge(0), mod_name) {
+				add_unique_string(mut out, name)
+			}
+		}
+		.expr_call, .expr_call_or_cast {
+			lhs_c := c.edge(0)
+			if lhs_c.is_valid() && lhs_c.kind() == .expr_selector {
+				inner_lhs := lhs_c.edge(0)
+				if inner_lhs.is_valid() && inner_lhs.kind() == .expr_ident {
+					type_name := inner_lhs.name()
+					if type_name in w.type_names {
+						add_receiver_name_candidates(mut out, mod_name, type_name)
+					}
+				}
+			}
+		}
+		.expr_selector {
+			lhs_c := c.edge(0)
+			rhs_c := c.edge(1)
+			if rhs_c.is_valid() {
+				rhs_name := rhs_c.name()
+				lhs_receivers := w.receiver_candidates_for_cursor(lhs_c, mod_name)
+				for lhs_receiver in lhs_receivers {
+					key := '${lhs_receiver}:${rhs_name}'
+					if field_receivers := w.struct_field_receivers[key] {
+						for field_receiver in field_receivers {
+							add_unique_string(mut out, field_receiver)
+						}
+					}
+				}
+			}
+		}
+		else {}
+	}
+
+	return out
+}
+
+// mark_interface_conversion_methods_for_name_cursor is the cursor analogue
+// of mark_interface_conversion_methods_for_name. The value_expr is replaced
+// by a value cursor, so receiver_candidates_for_cursor avoids decoding.
+fn (mut w Walker) mark_interface_conversion_methods_for_name_cursor(iface_name string, value_c ast.Cursor, mod_name string) {
+	receivers := w.receiver_candidates_for_cursor(value_c, mod_name)
+	if receivers.len == 0 {
+		return
+	}
+	if iface_name in w.interface_method_names {
+		embedded_receivers := w.embedded_receivers_for(receivers)
+		for method_name in w.interface_method_names[iface_name] {
+			w.mark_method_name(method_name, receivers)
+			w.mark_method_name(method_name, embedded_receivers)
+		}
+	}
+	w.mark_all_methods_for_receivers(receivers)
+}
+
+// mark_string_interpolation_str_dependency_cursor is the cursor analogue of
+// mark_string_interpolation_str_dependency.
+fn (mut w Walker) mark_string_interpolation_str_dependency_cursor(value_c ast.Cursor, mod_name string) {
+	receivers := w.receiver_candidates_for_cursor(value_c, mod_name)
+	if receivers.len == 0 {
+		return
+	}
+	w.mark_method_name('str', receivers)
+	for receiver in receivers {
+		w.mark_fn_name('${receiver}__str', mod_name)
+	}
 }
 
 fn (w &Walker) receiver_candidates_for_expr(expr ast.Expr, mod_name string) []string {
@@ -2903,10 +3009,8 @@ fn (mut w Walker) mark_call_lhs_cursor(c ast.Cursor, mod_name string) {
 					}
 				}
 			}
-			// Fallback: receiver_candidates_for_expr still requires a decoded
-			// Expr. The cost is bounded — only the lhs.lhs subtree is decoded,
-			// and only when no structural early-return fired.
-			receivers := w.receiver_candidates_for_expr(c.flat.decode_expr(lhs_c.id), mod_name)
+			// Fallback: cursor-native receiver candidates — no decode.
+			receivers := w.receiver_candidates_for_cursor(lhs_c, mod_name)
 			if receivers.len > 0 {
 				prev_queue_len := w.queue.len
 				w.mark_method_name(method_name, receivers)
