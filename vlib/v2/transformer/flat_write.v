@@ -363,6 +363,34 @@ import v2.types
 //     through `emit_expr` for their non-default Expr results, default-path
 //     direct-emit via new `emit_*_by_ids` builder helpers.
 //
+//   Session 19 (2026-05-26): IndexExpr deep helper port + fixture.
+//     Second deep-helper rewrite, same shape as session 18. The body of
+//     `transform_index_expr` (~140 lines in expr.v) is mirrored as
+//     `transform_index_expr_to_flat`. Two branches produce non-IndexExpr
+//     shapes and route through the legacy round-trip:
+//     (a) Slice lowering (`expr.expr is ast.RangeExpr`) →
+//         `transform_slice_index_expr` produces a CallExpr to
+//         `array_slice` / `string_substr`.
+//     (b) Map index on a non-eval backend → `map__get` lowering produces
+//         an `ast.UnsafeExpr` wrapping prefix temps + cast + deref.
+//     Map detection mirrors the legacy sequence exactly: `map_index_lhs_type`
+//     → fallback to `lookup_var_type` for Ident lhs → `unwrap_map_type`.
+//     All three lookups are immutable `&Transformer` calls so running them
+//     up-front to decide dispatch is side-effect-free. Eval-backend map
+//     case rebuilds an IndexExpr verbatim — falls through to direct-emit.
+//
+//     The gated path (`arr#[i]`), eval-backend map path, and default
+//     `arr[i]` path all rebuild an IndexExpr with `lhs` and `expr`
+//     recursively transformed and `is_gated` copied verbatim — direct-emit
+//     via the new `emit_index_expr_by_ids` builder helper (`is_gated` flag
+//     packed into the flags byte to match `add_expr(IndexExpr)` encoding
+//     exactly). Skips the `ast.IndexExpr` struct allocation on the common
+//     path.
+//
+//     New `fixture_index_expr` exercises all four paths in one fn: default
+//     `arr[0] + arr[1]`, gated `arr#[0]`, map index `m['key']`, and slice
+//     `arr[1..3].len` — 111 → 116 transformer-diff tests.
+//
 // Phase 5: post-pass port.
 //   `post_pass` (runtime const init injection, helper functions, str/clone
 //   generation, ...) still mutates `[]ast.File`. Port it to either emit
@@ -862,6 +890,23 @@ pub fn (mut t Transformer) transform_expr_to_flat(expr ast.Expr, mut out ast.Fla
 			}
 			return out.emit_fn_literal_by_ids(typ_id, captured_var_ids, stmt_ids, expr.pos)
 		}
+		ast.IndexExpr {
+			// IndexExpr deep helper port: the body of `transform_index_expr`
+			// is mirrored as `transform_index_expr_to_flat` below. Three
+			// branches produce non-IndexExpr shapes that go through the
+			// legacy round-trip (`out.emit_expr(t.transform_expr(...))`):
+			// (a) `expr.expr is ast.RangeExpr` → `transform_slice_index_expr`
+			//     produces a CallExpr to `array_slice` / `string_substr`.
+			// (b) Map index on a non-eval backend → `map__get` lowering
+			//     produces an `ast.UnsafeExpr` wrapping prefix temps + cast +
+			//     deref.
+			// The gated path, the eval-backend map path, and the default
+			// path all rebuild an IndexExpr with `lhs` and `expr` recursively
+			// transformed and `is_gated` copied verbatim — direct-emit via
+			// `emit_index_expr_by_ids`, skipping the `ast.IndexExpr` struct
+			// allocation on the common path.
+			return t.transform_index_expr_to_flat(expr, mut out)
+		}
 		ast.SelectorExpr {
 			// SelectorExpr is the first deep helper rewrite port: the full body
 			// of `transform_selector_expr` is mirrored here as
@@ -878,6 +923,44 @@ pub fn (mut t Transformer) transform_expr_to_flat(expr ast.Expr, mut out ast.Fla
 			return out.emit_expr(t.transform_expr(expr))
 		}
 	}
+}
+
+// transform_index_expr_to_flat is the direct-emit port of
+// `transform_index_expr`. The slice lowering (`expr.expr is RangeExpr`) and
+// the non-eval-backend map lowering both produce non-IndexExpr shapes
+// (CallExpr / UnsafeExpr respectively) — those route through the legacy
+// `out.emit_expr(t.transform_expr(...))` round-trip so the rewrite logic
+// stays in one place. The gated path, eval-backend map path, and default
+// path all rebuild an IndexExpr around recursively-transformed `lhs` and
+// `expr` with `is_gated` copied verbatim — direct-emit via
+// `emit_index_expr_by_ids`, skipping the `ast.IndexExpr` struct allocation
+// on the common path.
+fn (mut t Transformer) transform_index_expr_to_flat(expr ast.IndexExpr, mut out ast.FlatBuilder) ast.FlatNodeId {
+	// Slice lowering — produces non-IndexExpr.
+	if expr.expr is ast.RangeExpr {
+		return out.emit_expr(t.transform_expr(ast.Expr(expr)))
+	}
+	// Map-index lowering — produces UnsafeExpr on non-eval backends. Mirror
+	// the same lookup sequence the legacy arm uses so we never direct-emit
+	// a case the legacy code would have rewritten. The eval backend keeps
+	// the IndexExpr shape so it falls through to direct-emit.
+	if !expr.is_gated {
+		mut map_expr_type_opt := t.map_index_lhs_type(expr.lhs)
+		if map_expr_type_opt == none && expr.lhs is ast.Ident {
+			map_expr_type_opt = t.lookup_var_type((expr.lhs as ast.Ident).name)
+		}
+		if map_expr_typ := map_expr_type_opt {
+			if _ := t.unwrap_map_type(map_expr_typ) {
+				if !t.is_eval_backend() {
+					return out.emit_expr(t.transform_expr(ast.Expr(expr)))
+				}
+			}
+		}
+	}
+	// Default + gated + eval-backend-map paths all rebuild IndexExpr.
+	lhs_id := t.transform_expr_to_flat(expr.lhs, mut out)
+	index_id := t.transform_expr_to_flat(expr.expr, mut out)
+	return out.emit_index_expr_by_ids(lhs_id, index_id, expr.is_gated, expr.pos)
 }
 
 // transform_selector_expr_to_flat is the direct-emit port of

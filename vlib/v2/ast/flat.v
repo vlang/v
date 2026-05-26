@@ -612,6 +612,22 @@ pub fn (mut b FlatBuilder) emit_lambda_expr_by_ids(inner_id FlatNodeId, arg_ids 
 	return b.emit_simple(.expr_lambda, pos, edges)
 }
 
+// emit_index_expr_by_ids emits an expr_index node from already-flat lhs
+// and index expression FlatNodeIds. Mirrors the add_expr(IndexExpr) encoding
+// exactly: edge[0] is the lhs, edge[1] is the index expression, and the
+// `is_gated` flag is packed into the flags byte.
+pub fn (mut b FlatBuilder) emit_index_expr_by_ids(lhs_id FlatNodeId, expr_id FlatNodeId, is_gated bool, pos token.Pos) FlatNodeId {
+	flags := if is_gated { flag_is_gated } else { u8(0) }
+	return b.emit(.expr_index, pos, -1, -1, 0, flags, [
+		FlatEdge{
+			child_id: lhs_id
+		},
+		FlatEdge{
+			child_id: expr_id
+		},
+	])
+}
+
 // emit_selector_expr_by_ids emits an expr_selector node from an already-flat
 // lhs expression and an already-flat rhs Ident expression. Mirrors the
 // add_expr(SelectorExpr) encoding exactly: edge[0] is the lhs expr,
