@@ -3,6 +3,7 @@
 // that can be found in the LICENSE file.
 module types
 
+import sync
 import time
 import strconv
 import v2.ast
@@ -47,12 +48,20 @@ pub mut:
 	// excluded by the checker — the return moves them. Only populated when
 	// the checker runs with `-d ownership`; empty under plain V.
 	drop_at_returns map[string][][]DropEntry
+	// Shared C-language scope. Phase 1 workers register C struct decls into
+	// here under c_scope_mu; phase 2 (sequential) registers C fn signatures.
+	// All checkers point their per-checker `c_scope` field at this instance
+	// so that the `C` Module pasted into each module scope resolves uniformly.
+	c_scope    &Scope      = unsafe { nil }
+	c_scope_mu &sync.Mutex = unsafe { nil }
 }
 
 pub fn Environment.new() &Environment {
 	return &Environment{
 		expr_type_values: []Type{cap: 100_000}
 		selector_names:   map[int]string{}
+		c_scope:          new_scope(unsafe { nil })
+		c_scope_mu:       sync.new_mutex()
 	}
 }
 
@@ -647,10 +656,15 @@ mut:
 }
 
 pub fn Checker.new(prefs &pref.Preferences, file_set &token.FileSet, env &Environment) &Checker {
+	mut c_scope := env.c_scope
+	if isnil(c_scope) {
+		c_scope = new_scope(unsafe { nil })
+	}
 	return &Checker{
 		pref:          unsafe { prefs }
 		file_set:      unsafe { file_set }
 		env:           unsafe { env }
+		c_scope:       c_scope
 		expected_type: none
 	}
 }
@@ -1890,8 +1904,11 @@ fn (mut c Checker) decl(decl ast.Stmt) {
 			mut typ := Type(obj)
 			// TODO: proper
 			if decl.language == .c {
+				// c_scope is shared across parallel preregister workers; lock.
+				c.env.c_scope_mu.lock()
 				c.c_scope.insert(decl.name, object_from_type(typ))
 				c.c_scope.insert_type(decl.name, typ)
+				c.env.c_scope_mu.unlock()
 			} else {
 				c.scope.insert(decl.name, object_from_type(typ))
 				c.scope.insert_type(decl.name, typ)
