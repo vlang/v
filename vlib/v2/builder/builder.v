@@ -200,15 +200,16 @@ pub fn (mut b Builder) build(files []string) {
 		// parses into flat_builder. Without that, b.flat is empty and the
 		// shim would walk nothing.
 		//
-		// KNOWN LIMITATION: b.flat is the pre-transform parse snapshot.
-		// transform_files_from_flat mutates b.files but does not write back
-		// into b.flat, so the shim's flat.to_files() omits transformer-
-		// generated symbols (runtime const inits, noscan stubs, monomorphized
-		// generics). Self-host builds will fail with linker errors until a
-		// later PR teaches the transformer to update b.flat (or a fresh
-		// flat is rebuilt here from b.files). The gate is wired now so the
-		// differential harness can exercise mark_used_flat end-to-end.
+		// The transformer mutates b.files but does not write back into
+		// b.flat, so we rebuild b.flat from the post-transform b.files
+		// before calling the flat-input markused. This costs one extra
+		// flatten_files() pass; it will go away once mark_used_flat walks
+		// cursors directly and the transformer learns to mutate b.flat
+		// in place.
 		use_flat_markused := b.markused_flat_enabled && b.flat_check_enabled
+		if use_flat_markused {
+			b.flat = ast.flatten_files(b.files)
+		}
 		if b.uses_minimal_windows_x64_runtime() {
 			opts := markused.MarkUsedOptions{
 				minimal_runtime_roots: true
