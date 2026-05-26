@@ -292,9 +292,7 @@ fn (mut w Walker) walk_stmt_cursor(c ast.Cursor, mod_name string) {
 				if !lhs_c.is_valid() || !rhs_c.is_valid() {
 					continue
 				}
-				lhs_expr := c.flat.decode_expr(lhs_c.id)
-				rhs_expr := c.flat.decode_expr(rhs_c.id)
-				w.mark_assignment_interface_conversion(lhs_expr, rhs_expr, mod_name)
+				w.mark_assignment_interface_conversion_cursor(lhs_c, rhs_c, mod_name)
 			}
 			for i in 0 .. ec {
 				w.walk_expr_cursor_edge(c, i, mod_name)
@@ -350,10 +348,11 @@ fn (mut w Walker) walk_stmt_cursor(c ast.Cursor, mod_name string) {
 				if !ec.is_valid() {
 					continue
 				}
-				expr := c.flat.decode_expr(ec.id)
-				w.walk_expr(expr, mod_name)
-				w.mark_interface_conversion_methods(w.cur_fn_decl.typ.return_type, expr, mod_name)
-				w.mark_result_error_return_methods(w.cur_fn_decl.typ.return_type, expr, mod_name)
+				w.walk_expr_cursor(ec, mod_name)
+				w.mark_interface_conversion_methods_cursor(w.cur_fn_decl.typ.return_type, ec,
+					mod_name)
+				w.mark_result_error_return_methods_cursor(w.cur_fn_decl.typ.return_type, ec,
+					mod_name)
 			}
 		}
 		.stmt_struct_decl {
@@ -369,7 +368,7 @@ fn (mut w Walker) walk_stmt_cursor(c ast.Cursor, mod_name string) {
 				if !vc.is_valid() {
 					continue
 				}
-				w.walk_expr(c.flat.decode_expr(vc.id), mod_name)
+				w.walk_expr_cursor(vc, mod_name)
 			}
 		}
 		else {
@@ -2098,6 +2097,76 @@ fn (mut w Walker) mark_assignment_interface_conversion(lhs ast.Expr, rhs ast.Exp
 		return
 	}
 	w.mark_interface_conversion_methods_for_name(iface_name, rhs, mod_name)
+}
+
+// interface_name_from_expr_type_cursor mirrors interface_name_from_expr_type
+// but reads from a Cursor without decoding the underlying Expr. Most lhs
+// nodes are Idents, so the global_interface_names lookup short-circuits
+// before any env call.
+fn (w &Walker) interface_name_from_expr_type_cursor(c ast.Cursor, mod_name string) string {
+	if !c.is_valid() {
+		return ''
+	}
+	if c.kind() == .expr_ident {
+		name := c.name()
+		if iface_name := w.global_interface_names[name] {
+			return iface_name
+		}
+		if mod_name != '' && mod_name != 'main' && mod_name != 'builtin' {
+			qualified := '${mod_name}__${name}'
+			if iface_name := w.global_interface_names[qualified] {
+				return iface_name
+			}
+		}
+	}
+	if w.env != unsafe { nil } {
+		pos := c.pos()
+		if pos.is_valid() {
+			if typ := w.env.get_expr_type(pos.id) {
+				return w.interface_name_from_type(typ)
+			}
+		}
+	}
+	return ''
+}
+
+// mark_assignment_interface_conversion_cursor is the cursor analogue of
+// mark_assignment_interface_conversion. The lhs cursor is inspected for
+// the interface-type fast path; only when iface_name is non-empty does
+// the rhs cursor get handed to the by-cursor receiver lookup.
+fn (mut w Walker) mark_assignment_interface_conversion_cursor(lhs_c ast.Cursor, rhs_c ast.Cursor, mod_name string) {
+	iface_name := w.interface_name_from_expr_type_cursor(lhs_c, mod_name)
+	if iface_name == '' {
+		return
+	}
+	w.mark_interface_conversion_methods_for_name_cursor(iface_name, rhs_c, mod_name)
+}
+
+// mark_interface_conversion_methods_cursor mirrors mark_interface_conversion_methods
+// but accepts the value as a Cursor. target_expr stays a legacy Expr because
+// callers (e.g. stmt_return) already hold one — cur_fn_decl.typ.return_type.
+fn (mut w Walker) mark_interface_conversion_methods_cursor(target_expr ast.Expr, value_c ast.Cursor, mod_name string) {
+	iface_name := w.interface_name_from_expr(target_expr, mod_name)
+	if iface_name == '' {
+		return
+	}
+	w.mark_interface_conversion_methods_for_name_cursor(iface_name, value_c, mod_name)
+}
+
+// mark_result_error_return_methods_cursor is the cursor analogue of
+// mark_result_error_return_methods. Only fires when the function's return
+// type is ResultType — in that case the receiver candidates for the
+// returned value are pulled from the cursor, and 'msg' / 'code' are marked
+// on each.
+fn (mut w Walker) mark_result_error_return_methods_cursor(return_type ast.Expr, value_c ast.Cursor, mod_name string) {
+	if return_type is ast.Type && return_type is ast.ResultType {
+		receivers := w.receiver_candidates_for_cursor(value_c, mod_name)
+		if receivers.len == 0 {
+			return
+		}
+		w.mark_method_name('msg', receivers)
+		w.mark_method_name('code', receivers)
+	}
 }
 
 fn (mut w Walker) mark_interface_conversion_methods_for_name(iface_name string, value_expr ast.Expr, mod_name string) {
