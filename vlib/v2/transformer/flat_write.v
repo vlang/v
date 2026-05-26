@@ -664,6 +664,31 @@ import v2.types
 //     directly into the builder instead of materialising `[]ast.Stmt`) is
 //     the next significant target.
 //
+//   Session 30 (2026-05-26): DeferStmt port (wrap-only stmt port).
+//     Sibling of session 29 (BlockStmt) — same wrap-only shape with a
+//     `mode` field. `transform_stmt`'s DeferStmt arm always returns
+//     `DeferStmt{mode: stmt.mode, stmts: transform_stmts(stmt.stmts)}` —
+//     identity-shape with the body driver `transform_stmts` doing the
+//     same inter-stmt work (smartcast snapshot/restore, pending-stmt
+//     hoisting, one-to-many expansion). Same driver constraint as the
+//     BlockStmt arm.
+//
+//     Wrap-only port: call legacy `transform_stmts(stmt.stmts)` to
+//     materialise the transformed `[]ast.Stmt`, emit each via the legacy
+//     `out.emit_stmt(...)` (already transformed), and assemble via the
+//     new `emit_defer_stmt_by_ids(mode, stmt_ids)` helper. Mirrors
+//     `add_stmt(DeferStmt)` encoding exactly: `pos = token.Pos{}`,
+//     `flags |= flag_defer_func` when mode is `.function`, edges = inner
+//     stmts in order. Skips the outer `ast.DeferStmt` wrapper struct
+//     allocation per occurrence; the inner `[]ast.Stmt` still
+//     materialises until the body driver is ported.
+//
+//     Reachability is limited but clean — `defer { ... }` appears in
+//     resource-cleanup paths (file close, mutex unlock, ...) and
+//     `defer (func) { ... }` (function-scope variant) in fewer places.
+//     No new fixture this session. All 141 transformer-diff tests
+//     continue to pass.
+//
 // Phase 5: post-pass port.
 //   `post_pass` (runtime const init injection, helper functions, str/clone
 //   generation, ...) still mutates `[]ast.File`. Port it to either emit
@@ -857,6 +882,28 @@ pub fn (mut t Transformer) transform_stmt_to_flat(stmt ast.Stmt, mut out ast.Fla
 				stmt_ids << out.emit_stmt(body_stmt)
 			}
 			return out.emit_block_stmt_by_ids(stmt_ids)
+		}
+		ast.DeferStmt {
+			// DeferStmt port: `transform_stmt`'s arm is identity-shape —
+			// `DeferStmt{mode: stmt.mode, stmts: transform_stmts(stmt.stmts)}`.
+			// `mode` (`.scoped` or `.function`) is copied verbatim; the body
+			// stmts go through the `transform_stmts` driver (smartcast state
+			// snapshot/restore, pending-stmt hoisting, one-to-many expansion)
+			// so we can't recurse via `transform_stmt_to_flat` without porting
+			// the driver itself — same constraint as the BlockStmt arm.
+			// Wrap-only port: call legacy `transform_stmts` to materialise the
+			// transformed `[]ast.Stmt`, emit each via legacy `out.emit_stmt(...)`
+			// (already transformed), and assemble via the new
+			// `emit_defer_stmt_by_ids` helper (mode → flag_defer_func).
+			// Skips the outer `ast.DeferStmt` wrapper struct allocation per
+			// occurrence; the inner `[]ast.Stmt` still materialises until the
+			// driver is ported.
+			transformed_stmts := t.transform_stmts(stmt.stmts)
+			mut stmt_ids := []ast.FlatNodeId{cap: transformed_stmts.len}
+			for body_stmt in transformed_stmts {
+				stmt_ids << out.emit_stmt(body_stmt)
+			}
+			return out.emit_defer_stmt_by_ids(stmt.mode, stmt_ids)
 		}
 		ast.LabelStmt {
 			// LabelStmt port: `transform_stmt`'s arm is identity-shape —
