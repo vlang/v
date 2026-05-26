@@ -159,3 +159,18 @@ fn (mut b Builder) transform_files_parallel(mut trans transformer.Transformer) [
 	trans.post_pass(mut result)
 	return result
 }
+
+// transform_files_parallel_to_flat is the parallel counterpart of
+// Transformer.transform_files_to_flat. Today it composes the existing
+// parallel transform with a boundary flatten_files() — same total work
+// as before, just shifted from builder.v into the parallel path. The
+// API shape mirrors the sequential wedge so the builder can route
+// V2_MARKUSED_FLAT through a single uniform call site.
+//
+// The eventual perf win comes when each worker writes into a per-worker
+// FlatBuilder instead of materialising legacy []ast.File chunks; this
+// wedge is the right place to plug that in.
+fn (mut b Builder) transform_files_parallel_to_flat(mut trans transformer.Transformer) (ast.FlatAst, []ast.File) {
+	result := b.transform_files_parallel(mut trans)
+	return ast.flatten_files(result), result
+}

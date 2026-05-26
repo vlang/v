@@ -217,9 +217,9 @@ pub fn (mut b Builder) build(files []string) {
 	// transform_files_from_flat, parallel streams per-worker via
 	// to_files_range. No up-front full rehydration needed in either case.
 	//
-	// When V2_MARKUSED_FLAT is also enabled, the sequential path routes
-	// through transform_files_to_flat so the post-transform flatten lives
-	// inside the transformer (one round-trip), avoiding a separate
+	// When V2_MARKUSED_FLAT is also enabled, both transform paths route
+	// through their *_to_flat wedge so the post-transform flatten lives
+	// inside the transformer call (one round-trip), avoiding a separate
 	// flatten_files() pass before mark_used_flat.
 	mut flat_populated_by_transform := false
 	if sequential_transform {
@@ -234,7 +234,14 @@ pub fn (mut b Builder) build(files []string) {
 			b.files = trans.transform_files(b.files)
 		}
 	} else {
-		b.files = b.transform_files_parallel(mut trans)
+		if use_flat_markused {
+			new_flat, files_out := b.transform_files_parallel_to_flat(mut trans)
+			b.flat = new_flat
+			b.files = files_out
+			flat_populated_by_transform = true
+		} else {
+			b.files = b.transform_files_parallel(mut trans)
+		}
 	}
 	transform_time := time.Duration(sw.elapsed() - transform_start)
 	print_time('Transform', transform_time)
@@ -252,10 +259,11 @@ pub fn (mut b Builder) build(files []string) {
 		// shim would walk nothing.
 		//
 		// The transformer mutates b.files but does not write back into
-		// b.flat. For the sequential path, transform_files_to_flat already
-		// populated b.flat as part of the transform step. For the parallel
-		// path, we still need a separate flatten_files() pass — the
-		// parallel-transform-writes-flat wiring is a follow-up.
+		// b.flat. Both sequential and parallel paths now populate b.flat
+		// as part of their *_to_flat wedge when V2_MARKUSED_FLAT is on,
+		// so the separate flatten_files() pass is gone. The branch below
+		// remains as a defensive fallback for any future code path that
+		// reaches markused without having set flat_populated_by_transform.
 		if use_flat_markused && !flat_populated_by_transform {
 			b.flat = ast.flatten_files(b.files)
 		}
