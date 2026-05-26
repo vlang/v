@@ -213,10 +213,11 @@ pub fn (mut p Preferences) fill_with_defaults() {
 	}
 	npath := rpath.replace('\\', '/')
 	p.building_v = !p.is_repl && is_v_compiler_target(npath)
-	if !p.is_repl && is_v2_compiler_target(npath) {
-		// v2 must always be compiled with `-gc none`: the v2 compiler manages
-		// its own arenas/move semantics and the boehm collector slows it down
+	if !p.is_repl && !p.gc_set_by_flag && is_v2_compiler_target(npath) {
+		// v2 defaults to `-gc none`: the v2 compiler manages its own
+		// arenas/move semantics and the boehm collector slows it down
 		// and inflates peak memory (multi-GB for non-trivial builds).
+		// An explicit `-gc <mode>` from the user wins.
 		p.gc_mode = .no_gc
 		p.clear_gc_options()
 	}
