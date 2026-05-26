@@ -142,15 +142,13 @@ pub fn (mut b Builder) build(files []string) {
 	print_time('Scan & Parse', parse_time)
 	print_rss('after parse')
 	if b.flat_check_enabled {
-		if b.flat_builder_inited {
-			// parse_batch streamed every file into flat_builder; flat is
-			// already built, no second pass needed.
-			b.flat = b.flat_builder.flat
-		} else {
-			// Parallel parsing bypasses parse_batch, so the streaming
-			// builder never saw the files. Fall back to a one-shot flatten.
-			b.flat = ast.flatten_files(b.files)
-		}
+		// FlatBuilder is the canonical parse output; both parse paths stream
+		// into it. parse_files / parse_files_parallel return [] in flat
+		// mode, so derive b.files from b.flat here — this is the single
+		// rehydration bridge that lets legacy []ast.File consumers
+		// (transform/markused/codegen) keep working while we migrate them.
+		b.flat = b.flat_builder.flat
+		b.files = b.flat.to_files()
 	}
 	b.update_parse_summary_counts()
 	print_parse_summary(b.parsed_full_files_n, b.parsed_vh_files_n, b.entry_v_lines_n,

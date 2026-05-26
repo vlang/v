@@ -363,7 +363,9 @@ fn (mut b Builder) parse_files(files []string) []ast.File {
 	skip_imports := b.pref.skip_imports
 	if skip_imports {
 		if b.flat_check_enabled {
-			return b.flat_builder.flat.to_files()
+			// Flat path: b.flat_builder is the canonical store; build()
+			// derives b.files from it after parse completes.
+			return []ast.File{}
 		}
 		return ast_files
 	}
@@ -401,7 +403,7 @@ fn (mut b Builder) parse_files(files []string) []ast.File {
 				parsed_imports << mod.name
 			}
 		}
-		return b.flat_builder.flat.to_files()
+		return []ast.File{}
 	}
 	for afi := 0; afi < ast_files.len; afi++ {
 		ast_file := ast_files[afi]

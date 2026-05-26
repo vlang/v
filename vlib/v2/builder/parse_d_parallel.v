@@ -62,9 +62,15 @@ fn worker(mut wp util.WorkerPool[string, ast.File], mut pstate ParsingSharedStat
 			}
 		}
 		if pstate.flat_enabled {
+			// In flat mode the FlatBuilder is the canonical store; push a
+			// throwaway empty File over the result channel just so the pool
+			// can detect job completion. parse_files_parallel discards the
+			// accumulated results and derives b.files from b.flat in build().
 			pstate.append_to_flat(ast_file)
+			wp.push_result(ast.File{})
+		} else {
+			wp.push_result(ast_file)
 		}
-		wp.push_result(ast_file)
 	}
 }
 
@@ -130,7 +136,11 @@ fn (mut b Builder) parse_files_parallel(files []string) []ast.File {
 	if b.flat_check_enabled {
 		// Stream-into-builder is done; downstream code reads from b.flat,
 		// so flip the inited flag to skip the fallback flatten_files() pass.
+		// `results` is a slice of empty File{} sentinels — drop it; build()
+		// derives b.files from b.flat once the FlatAst is finalized.
+		_ = results
 		b.flat_builder_inited = true
+		return []ast.File{}
 	}
 	return results
 }
