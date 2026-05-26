@@ -664,6 +664,34 @@ import v2.types
 //     directly into the builder instead of materialising `[]ast.Stmt`) is
 //     the next significant target.
 //
+//   Session 35 (2026-05-26): MatchExpr port (always-lowers via helper).
+//     `transform_expr`'s MatchExpr arm is a single helper call —
+//     `t.transform_match_expr(expr)` always lowers a `match` expression
+//     into a nested `IfExpr` chain via `lower_match_expr_to_if`. The
+//     helper transforms the match subject and every branch body
+//     (`transform_match_branch_stmts` → `transform_stmts`, with the
+//     sum-type smartcast context pushed/popped per branch) itself, so the
+//     returned `IfExpr` (or `ast.empty_expr` when there are no branches)
+//     is already fully transformed.
+//
+//     Direct-emit calls `transform_match_expr` and routes the resulting
+//     `IfExpr` through the leaf `out.emit_expr(...)` — identical to the
+//     `else` fallback `out.emit_expr(t.transform_expr(expr))` minus the
+//     `transform_expr` match dispatch on MatchExpr. The win is purely the
+//     dispatch skip. Re-routing the lowered tree through
+//     `transform_expr_to_flat` would re-transform it (double work, and the
+//     branch bodies already carry smartcast context), so the leaf
+//     `emit_expr` materialise is the correct exit. No IfExpr flat helper
+//     exists yet — when one lands this arm becomes a cross-arm route
+//     (session 33 template) to it.
+//
+//     Pattern note: the "always-lowers via single helper call" sibling of
+//     AssocExpr (session 34) — AssocExpr's result is a leaf Ident,
+//     MatchExpr's is an IfExpr, both bottom out at `out.emit_expr`. The
+//     pattern foreseen at the end of the session-34 note. Reachability is
+//     high — `match` is pervasive across the compiler and stdlib. No new
+//     fixture this session; all transformer-diff tests continue to pass.
+//
 //   Session 34 (2026-05-26): AssocExpr port (always-lowers via helper).
 //     `transform_expr`'s AssocExpr arm is a single helper call —
 //     `t.lower_assoc_expr(expr, false)` always lowers the struct-update
@@ -1449,6 +1477,35 @@ pub fn (mut t Transformer) transform_expr_to_flat(expr ast.Expr, mut out ast.Fla
 			// is moderate — struct-update syntax is used across the
 			// compiler for AST node copying.
 			return out.emit_expr(t.lower_assoc_expr(expr, false))
+		}
+		ast.MatchExpr {
+			// MatchExpr port: `transform_expr`'s arm is a single helper call
+			// — `t.transform_match_expr(expr)` always lowers a `match`
+			// expression into a nested `IfExpr` chain (via
+			// `lower_match_expr_to_if`). The helper transforms the match
+			// subject and every branch body (`transform_match_branch_stmts`
+			// → `transform_stmts`) itself, so the returned `IfExpr` (or
+			// `ast.empty_expr` when there are no branches) is already fully
+			// transformed.
+			//
+			// Direct-emit calls `transform_match_expr` and routes the
+			// resulting `IfExpr` through the leaf `out.emit_expr(...)` —
+			// identical to the `else` fallback `out.emit_expr(t.transform_expr(expr))`
+			// minus the `transform_expr` match dispatch on MatchExpr. The win
+			// is purely the dispatch skip. Re-routing the result through
+			// `transform_expr_to_flat` would re-transform an already-lowered
+			// tree (double work, and the branch bodies have smartcast context
+			// baked in by `transform_match_expr`), so the leaf `emit_expr`
+			// materialise is the correct exit. There is no IfExpr flat helper
+			// yet — when one lands, this arm becomes a cross-arm route
+			// (session 33 GenericArgOrIndexExpr template) to it.
+			//
+			// Pattern note: the "always-lowers via single helper call"
+			// sibling of AssocExpr (session 34). AssocExpr's result is a leaf
+			// Ident; MatchExpr's is an IfExpr — both bottom out at
+			// `out.emit_expr`. Reachability is high — `match` is pervasive
+			// across the compiler and stdlib.
+			return out.emit_expr(t.transform_match_expr(expr))
 		}
 		ast.FieldInit {
 			// FieldInit reaches the expression dispatch when it appears as a
