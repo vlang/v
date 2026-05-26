@@ -597,6 +597,47 @@ fn (mut w Walker) walk_expr_cursor(c ast.Cursor, mod_name string) {
 				w.walk_expr_cursor(c.edge(i), mod_name)
 			}
 		}
+		// expr_cast: edge 0 = typ, edge 1 = value. Legacy walker calls
+		// mark_interface_conversion_methods(typ, value) which is a no-op unless
+		// typ resolves to a known interface. We peek typ via
+		// interface_name_from_cursor (only matches Ident / SelectorExpr,
+		// both cheap), and only when it fires do we decode the value subtree
+		// to feed receiver_candidates_for_expr.
+		.expr_cast {
+			typ_c := c.edge(0)
+			expr_c := c.edge(1)
+			iface_name := w.interface_name_from_cursor(typ_c, mod_name)
+			if iface_name != '' && expr_c.is_valid() {
+				value_expr := c.flat.decode_expr(expr_c.id)
+				w.mark_interface_conversion_methods_for_name(iface_name, value_expr, mod_name)
+			}
+			w.walk_expr_cursor(typ_c, mod_name)
+			w.walk_expr_cursor(expr_c, mod_name)
+		}
+		// expr_init: edge 0 = typ, edges 1.. = aux_field_init (edge 0 = value).
+		// Legacy walker calls mark_interface_conversion_methods(typ, expr)
+		// where the value_expr is the whole InitExpr; receiver_candidates_for_
+		// expr's InitExpr branch only reads expr.pos() and expr.typ, so a
+		// shallow InitExpr with just those two fields suffices.
+		.expr_init {
+			typ_c := c.edge(0)
+			iface_name := w.interface_name_from_cursor(typ_c, mod_name)
+			if iface_name != '' {
+				stub := ast.InitExpr{
+					typ: c.flat.decode_expr(typ_c.id)
+					pos: c.pos()
+				}
+				w.mark_interface_conversion_methods_for_name(iface_name, ast.Expr(stub), mod_name)
+			}
+			w.walk_expr_cursor(typ_c, mod_name)
+			for i in 1 .. c.edge_count() {
+				field := c.edge(i)
+				if !field.is_valid() {
+					continue
+				}
+				w.walk_expr_cursor(field.edge(0), mod_name)
+			}
+		}
 		// expr_infix: aux = op (Token int), edge 0 = lhs, edge 1 = rhs.
 		// mark_infix_operator_method is a no-op for ops outside the method-
 		// dispatching set, so we gate the decode on the op kind. When the op
@@ -1844,6 +1885,52 @@ fn (w &Walker) interface_name_from_expr(expr ast.Expr, mod_name string) string {
 				add_unique_string(mut candidates, '${expr.lhs.name}__${expr.rhs.name}')
 				if mod_name != '' && mod_name != 'main' {
 					add_unique_string(mut candidates, '${mod_name}__${expr.rhs.name}')
+				}
+				for candidate in candidates {
+					if candidate in w.interface_type_names {
+						return candidate
+					}
+				}
+			}
+		}
+		else {}
+	}
+
+	return ''
+}
+
+// interface_name_from_cursor mirrors interface_name_from_expr but reads its
+// inputs from a Cursor instead of a decoded ast.Expr. interface_name_from_expr
+// only ever inspects Ident and SelectorExpr variants, so the cursor version
+// only needs to dispatch on .expr_ident / .expr_selector.
+fn (w &Walker) interface_name_from_cursor(c ast.Cursor, mod_name string) string {
+	if !c.is_valid() {
+		return ''
+	}
+	match c.kind() {
+		.expr_ident {
+			name := sanitize_receiver_name(c.name())
+			if name in w.interface_type_names {
+				return name
+			}
+			if mod_name != '' && mod_name != 'main' {
+				qualified := '${mod_name}__${name}'
+				if qualified in w.interface_type_names {
+					return qualified
+				}
+			}
+		}
+		.expr_selector {
+			lhs_c := c.edge(0)
+			rhs_c := c.edge(1)
+			if lhs_c.is_valid() && lhs_c.kind() == .expr_ident && rhs_c.is_valid() {
+				lhs_name := lhs_c.name()
+				rhs_name := rhs_c.name()
+				mut candidates := []string{}
+				add_unique_string(mut candidates, rhs_name)
+				add_unique_string(mut candidates, '${lhs_name}__${rhs_name}')
+				if mod_name != '' && mod_name != 'main' {
+					add_unique_string(mut candidates, '${mod_name}__${rhs_name}')
 				}
 				for candidate in candidates {
 					if candidate in w.interface_type_names {
