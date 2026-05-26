@@ -44,10 +44,9 @@ fn (mut b Builder) transform_files_parallel(mut trans transformer.Transformer) [
 		trans.pre_pass(b.files)
 	}
 
-	// When flat is enabled, materialize per-file input from FlatAst so the
-	// parallel worker chunks no longer alias `b.files` between parse and
-	// transform.
-	input_files := if b.flat_check_enabled { b.flat.to_files() } else { b.files }
+	// b.files is the canonical legacy-AST input — in flat mode it was
+	// rehydrated once from b.flat at the end of parse, so just reuse it.
+	input_files := b.files
 
 	// Per-file transformation: parallel
 	n_jobs := runtime.nr_jobs()
