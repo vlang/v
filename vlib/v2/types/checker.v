@@ -548,6 +548,11 @@ struct PendingStructDecl {
 	decl        ast.StructDecl
 }
 
+struct FieldAccessInfo {
+	field        Field
+	owner_struct string
+}
+
 struct PendingTypeDecl {
 	scope &Scope
 	decl  ast.TypeDecl
@@ -894,18 +899,179 @@ fn (mut c Checker) check_module_storage_assignment(lhs ast.Expr, op token.Token,
 	}
 }
 
+fn field_owner_module(field Field, owner_struct string) string {
+	if field.owner_module != '' {
+		return field.owner_module
+	}
+	if owner_struct.contains('__') {
+		return owner_struct.all_before_last('__')
+	}
+	return ''
+}
+
+fn field_access_display(info FieldAccessInfo) string {
+	owner_module := field_owner_module(info.field, info.owner_struct)
+	struct_name := if info.owner_struct.contains('__') {
+		info.owner_struct.all_after_last('__')
+	} else {
+		info.owner_struct
+	}
+	if owner_module != '' && struct_name != '' {
+		return '${owner_module}.${struct_name}.${info.field.name}'
+	}
+	if struct_name != '' {
+		return '${struct_name}.${info.field.name}'
+	}
+	return info.field.name
+}
+
+fn (mut c Checker) find_field_info(t Type, raw_name string) ?FieldAccessInfo {
+	name := if raw_name.len > 0 && raw_name[0] == `@` { raw_name[1..] } else { raw_name }
+	match t {
+		Alias {
+			al := t as Alias
+			mut base_type := al.base_type
+			if base_type.name() == '' {
+				live_base_type := c.resolve_stale_alias(al.name)
+				if live_base_type.name() != '' {
+					base_type = live_base_type
+				}
+			}
+			if base_type.name() != '' && base_type.name() != al.name {
+				return c.find_field_info(base_type, name)
+			}
+		}
+		Pointer {
+			pt := t as Pointer
+			return c.find_field_info(pt.base_type, name)
+		}
+		OptionType {
+			ot := t as OptionType
+			return c.find_field_info(ot.base_type, name)
+		}
+		ResultType {
+			rt := t as ResultType
+			return c.find_field_info(rt.base_type, name)
+		}
+		Struct {
+			st := t as Struct
+			if st.fields.len == 0 && st.embedded.len == 0 && st.name != '' {
+				if obj := c.lookup_type_by_name(st.name) {
+					if obj is Struct {
+						if info := c.find_field_info(obj, name) {
+							return info
+						}
+					}
+				}
+			}
+			for field in st.fields {
+				if field.name == name {
+					return FieldAccessInfo{
+						field:        field
+						owner_struct: st.name
+					}
+				}
+			}
+			for embedded_type in st.embedded {
+				mut live_type := Type(embedded_type)
+				if obj := c.lookup_type_by_name(embedded_type.name) {
+					live_type = obj
+				}
+				if info := c.find_field_info(live_type, name) {
+					return info
+				}
+			}
+		}
+		else {}
+	}
+
+	return none
+}
+
+fn (mut c Checker) module_mut_field_access_in_expr(expr ast.Expr) ?FieldAccessInfo {
+	match expr {
+		ast.PrefixExpr {
+			if expr.op == .mul {
+				return c.module_mut_field_access_in_expr(expr.expr)
+			}
+		}
+		else {}
+	}
+
+	unwrapped := c.unwrap_expr(expr)
+	match unwrapped {
+		ast.IndexExpr {
+			return c.module_mut_field_access_in_expr(unwrapped.lhs)
+		}
+		ast.SelectorExpr {
+			if info := c.module_mut_field_access_in_expr(unwrapped.lhs) {
+				return info
+			}
+			lhs_type := c.expr_type_without_field_smartcast(unwrapped.lhs) or {
+				c.expr(unwrapped.lhs)
+			}
+			rhs_name := c.selector_rhs_name(unwrapped)
+			if info := c.find_field_info(lhs_type, rhs_name) {
+				if info.field.is_module_mut {
+					return info
+				}
+			}
+		}
+		else {}
+	}
+
+	return none
+}
+
+fn (mut c Checker) check_module_mut_field_mutation(expr ast.Expr, pos token.Pos) {
+	if info := c.module_mut_field_access_in_expr(expr) {
+		owner_module := field_owner_module(info.field, info.owner_struct)
+		if owner_module != '' && owner_module != c.cur_file_module {
+			c.error_with_pos('cannot mutate module-mutable field `${field_access_display(info)}` outside module `${owner_module}`',
+				pos)
+		}
+	}
+}
+
+fn (mut c Checker) check_module_mut_field_mut_arg(expr ast.Expr, pos token.Pos) {
+	if info := c.module_mut_field_access_in_expr(expr) {
+		owner_module := field_owner_module(info.field, info.owner_struct)
+		if owner_module != '' && owner_module != c.cur_file_module {
+			c.error_with_pos('cannot pass module-mutable field `${field_access_display(info)}` as mut outside module `${owner_module}`',
+				pos)
+		}
+	}
+}
+
+fn (mut c Checker) check_module_mut_field_mut_ref(expr ast.Expr, pos token.Pos) {
+	if info := c.module_mut_field_access_in_expr(expr) {
+		owner_module := field_owner_module(info.field, info.owner_struct)
+		if owner_module != '' && owner_module != c.cur_file_module {
+			c.error_with_pos('cannot take mutable reference to module-mutable field `${field_access_display(info)}` outside module `${owner_module}`',
+				pos)
+		}
+	}
+}
+
+fn (mut c Checker) check_module_mut_call_arg(arg ast.Expr) {
+	if arg is ast.ModifierExpr && arg.kind == .key_mut {
+		c.check_module_mut_field_mut_arg(arg.expr, arg.pos)
+	}
+}
+
 fn is_empty_expr(e ast.Expr) bool {
 	return e is ast.EmptyExpr
 }
 
 fn with_generic_params(fn_type FnType, params []string) FnType {
 	return FnType{
-		generic_params: params
-		params:         fn_type.params
-		return_type:    fn_type.return_type
-		is_variadic:    fn_type.is_variadic
-		attributes:     fn_type.attributes
-		generic_types:  fn_type.generic_types
+		generic_params:  params
+		params:          fn_type.params
+		return_type:     fn_type.return_type
+		is_variadic:     fn_type.is_variadic
+		is_mut_receiver: fn_type.is_mut_receiver
+		attributes:      fn_type.attributes
+		generic_types:   fn_type.generic_types
 	}
 }
 
@@ -1169,12 +1335,13 @@ fn (c &Checker) is_comptime_type_selector_lhs_ident(name string) bool {
 
 fn fn_with_return_type(fn_type FnType, return_type Type) FnType {
 	return FnType{
-		generic_params: fn_type.generic_params
-		params:         fn_type.params
-		return_type:    to_optional_type(return_type)
-		is_variadic:    fn_type.is_variadic
-		attributes:     fn_type.attributes
-		generic_types:  fn_type.generic_types
+		generic_params:  fn_type.generic_params
+		params:          fn_type.params
+		return_type:     to_optional_type(return_type)
+		is_variadic:     fn_type.is_variadic
+		is_mut_receiver: fn_type.is_mut_receiver
+		attributes:      fn_type.attributes
+		generic_types:   fn_type.generic_types
 	}
 }
 
@@ -2010,11 +2177,12 @@ fn (mut c Checker) generic_args_expr(expr ast.GenericArgs) Type {
 		// but return a fresh copy so call_expr doesn't mutate the shared module scope object.
 		if fn_type.generic_params.len > 0 {
 			return Type(FnType{
-				generic_params: fn_type.generic_params
-				params:         fn_type.params
-				return_type:    fn_type.return_type
-				is_variadic:    fn_type.is_variadic
-				attributes:     fn_type.attributes
+				generic_params:  fn_type.generic_params
+				params:          fn_type.params
+				return_type:     fn_type.return_type
+				is_variadic:     fn_type.is_variadic
+				is_mut_receiver: fn_type.is_mut_receiver
+				attributes:      fn_type.attributes
 			})
 		}
 		mut args := []string{}
@@ -2320,6 +2488,10 @@ fn (mut c Checker) infix_expr(expr ast.InfixExpr) Type {
 			c.ownership_consume_expr(expr.rhs, expr.rhs.pos(), 'array append')
 		}
 	}
+	lhs_base_for_mut := lhs_type.base_type()
+	if expr.op == .left_shift && (lhs_type is Array || lhs_base_for_mut is Array) {
+		c.check_module_mut_field_mutation(expr.lhs, expr.pos)
+	}
 	c.expected_type = expected_type
 	if expr.op.is_comparison() {
 		return bool_
@@ -2369,6 +2541,17 @@ fn (mut c Checker) init_expr(expr ast.InitExpr) Type {
 				expected_type_prev := c.expected_type
 				for sf in resolved_imm_st.fields {
 					if sf.name == field.name {
+						if sf.is_module_mut {
+							owner_module := field_owner_module(sf, resolved_imm_st.name)
+							if owner_module != '' && owner_module != c.cur_file_module {
+								info := FieldAccessInfo{
+									field:        sf
+									owner_struct: resolved_imm_st.name
+								}
+								c.error_with_pos('cannot initialize module-mutable field `${field_access_display(info)}` outside module `${owner_module}`',
+									expr.pos)
+							}
+						}
 						c.expected_type = to_optional_type(sf.typ)
 						break
 					}
@@ -2576,6 +2759,7 @@ fn (mut c Checker) or_expr(expr ast.OrExpr) Type {
 fn (mut c Checker) prefix_expr(expr ast.PrefixExpr) Type {
 	expr_type := c.expr(expr.expr)
 	if expr.op == .amp {
+		c.check_module_mut_field_mut_ref(expr.expr, expr.pos)
 		return Pointer{
 			base_type: expr_type
 		}
@@ -2870,6 +3054,17 @@ fn (mut c Checker) expr_impl(expr ast.Expr) Type {
 					mut found := false
 					for sf in resolved_imm_st2.fields {
 						if sf.name == field.name {
+							if sf.is_module_mut {
+								owner_module := field_owner_module(sf, resolved_imm_st2.name)
+								if owner_module != '' && owner_module != c.cur_file_module {
+									info := FieldAccessInfo{
+										field:        sf
+										owner_struct: resolved_imm_st2.name
+									}
+									c.error_with_pos('cannot initialize module-mutable field `${field_access_display(info)}` outside module `${owner_module}`',
+										expr.pos)
+								}
+							}
 							field_type = sf.typ
 							found = true
 							break
@@ -3078,6 +3273,7 @@ fn (mut c Checker) expr_impl(expr ast.Expr) Type {
 		ast.PostfixExpr {
 			if expr.op in [.inc, .dec] {
 				c.check_module_storage_assignment(expr.expr, expr.op, expr.pos)
+				c.check_module_mut_field_mutation(expr.expr, expr.pos)
 			}
 			typ := c.expr(expr.expr)
 			// The `!` and `?` propagation operators unwrap result/option types.
@@ -3481,10 +3677,14 @@ fn (mut c Checker) type_node_expr(type_expr ast.Type) Type {
 		for field in anon.fields {
 			field_typ := c.type_expr(field.typ)
 			fields << Field{
-				name:         field.name
-				typ:          field_typ
-				default_expr: field.value
-				attributes:   field.attributes
+				name:          field.name
+				typ:           field_typ
+				default_expr:  field.value
+				attributes:    field.attributes
+				is_public:     field.is_public
+				is_mut:        field.is_mut
+				is_module_mut: field.is_module_mut
+				owner_module:  c.cur_file_module
 			}
 		}
 		return Struct{
@@ -3890,10 +4090,14 @@ fn (mut c Checker) process_pending_struct_decls() {
 		for field in pending.decl.fields {
 			field_typ := c.decl_field_type(field.typ)
 			fields << Field{
-				name:         field.name
-				typ:          field_typ
-				default_expr: field.value
-				attributes:   field.attributes
+				name:          field.name
+				typ:           field_typ
+				default_expr:  field.value
+				attributes:    field.attributes
+				is_public:     field.is_public
+				is_mut:        field.is_mut
+				is_module_mut: field.is_module_mut
+				owner_module:  pending.module_name
 			}
 		}
 		mut embedded := []Struct{}
@@ -4291,6 +4495,9 @@ fn (mut c Checker) assign_stmt(stmt ast.AssignStmt, unwrap_optional bool) {
 			c.expr(rx)
 		}
 		c.check_module_storage_assignment(lx, stmt.op, stmt.pos)
+		if stmt.op != .decl_assign {
+			c.check_module_mut_field_mutation(lx, stmt.pos)
+		}
 		// if t := expected_type {
 		// 	c.log('AssignStmt: setting expected_type to: ${t.name()}')
 		// } else {
@@ -4767,7 +4974,7 @@ fn (mut c Checker) fn_decl(decl ast.FnDecl) {
 	if decl_generic_params.len > 0 {
 		c.generic_params = decl_generic_params.clone()
 	}
-	fn_typ := c.fn_type_with_insert_params(decl.typ,
+	mut fn_typ := c.fn_type_with_insert_params(decl.typ,
 		FnTypeAttribute.from_ast_attributes(decl.attributes), true)
 	c.generic_params = prev_generic_params
 	mut typ := Type(fn_typ)
@@ -4781,6 +4988,9 @@ fn (mut c Checker) fn_decl(decl ast.FnDecl) {
 	if decl.is_method {
 		mut receiver_type := c.type_expr(decl.receiver.typ)
 		if decl.receiver.is_mut {
+			fn_typ.is_mut_receiver = true
+			typ = Type(fn_typ)
+			obj.typ = typ
 			if mut receiver_type is Pointer {
 				c.error_with_pos('use `mut Type` not `mut &Type`. TODO: proper error message',
 					decl.receiver.pos)
@@ -5232,11 +5442,15 @@ fn (mut c Checker) instantiate_generic_struct(base Struct, args []ast.Expr) Type
 	mut fields := []Field{cap: actual_base.fields.len}
 	for field in actual_base.fields {
 		fields << Field{
-			name:         field.name
-			typ:          c.substitute_generic_type_with_stack(field.typ, generic_type_map,
+			name:          field.name
+			typ:           c.substitute_generic_type_with_stack(field.typ, generic_type_map,
 				substitution_stack)
-			default_expr: field.default_expr
-			attributes:   field.attributes
+			default_expr:  field.default_expr
+			attributes:    field.attributes
+			is_public:     field.is_public
+			is_mut:        field.is_mut
+			is_module_mut: field.is_module_mut
+			owner_module:  field.owner_module
 		}
 	}
 	mut embedded := []Struct{cap: actual_base.embedded.len}
@@ -5250,10 +5464,14 @@ fn (mut c Checker) instantiate_generic_struct(base Struct, args []ast.Expr) Type
 	for i, field in fields {
 		if fixed := fix_self_ref_type(field.typ, actual_base.name, fields, embedded) {
 			fields[i] = Field{
-				name:         field.name
-				typ:          fixed
-				default_expr: field.default_expr
-				attributes:   field.attributes
+				name:          field.name
+				typ:           fixed
+				default_expr:  field.default_expr
+				attributes:    field.attributes
+				is_public:     field.is_public
+				is_mut:        field.is_mut
+				is_module_mut: field.is_module_mut
+				owner_module:  field.owner_module
 			}
 		}
 	}
@@ -5287,11 +5505,15 @@ fn (mut c Checker) substitute_struct_generic_type_with_stack(st Struct, generic_
 	mut fields := []Field{cap: st.fields.len}
 	for field in st.fields {
 		fields << Field{
-			name:         field.name
-			typ:          c.substitute_generic_type_with_stack(field.typ, generic_type_map,
+			name:          field.name
+			typ:           c.substitute_generic_type_with_stack(field.typ, generic_type_map,
 				next_stack)
-			default_expr: field.default_expr
-			attributes:   field.attributes
+			default_expr:  field.default_expr
+			attributes:    field.attributes
+			is_public:     field.is_public
+			is_mut:        field.is_mut
+			is_module_mut: field.is_module_mut
+			owner_module:  field.owner_module
 		}
 	}
 	mut embedded := []Struct{cap: st.embedded.len}
@@ -5393,11 +5615,12 @@ fn (mut c Checker) substitute_generic_type_with_stack(t Type, generic_type_map m
 					generic_type_map, stack))
 			}
 			return Type(FnType{
-				params:        params
-				return_type:   return_type
-				is_variadic:   t.is_variadic
-				attributes:    t.attributes
-				generic_types: t.generic_types
+				params:          params
+				return_type:     return_type
+				is_variadic:     t.is_variadic
+				is_mut_receiver: t.is_mut_receiver
+				attributes:      t.attributes
+				generic_types:   t.generic_types
 			})
 		}
 		Map {
@@ -5787,6 +6010,9 @@ fn (mut c Checker) array_map_result_type(callback ast.Expr) Type {
 
 fn (mut c Checker) call_expr(expr &ast.CallExpr) Type {
 	lhs_expr := c.resolve_expr(expr.lhs)
+	for arg in expr.args {
+		c.check_module_mut_call_arg(arg)
+	}
 	if lhs_expr is ast.SelectorExpr {
 		if lhs_expr.lhs is ast.Ident {
 			lhs_ident := lhs_expr.lhs as ast.Ident
@@ -5919,6 +6145,9 @@ fn (mut c Checker) call_expr(expr &ast.CallExpr) Type {
 		}
 	}
 	if mut fn_ is FnType {
+		if lhs_expr is ast.SelectorExpr && fn_.is_mut_receiver {
+			c.check_module_mut_field_mutation(lhs_expr.lhs, lhs_expr.pos)
+		}
 		mut checked_array_magic_arg := false
 		mut generic_type_map := map[string]Type{}
 		if lhs_expr is ast.SelectorExpr {

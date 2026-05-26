@@ -1486,10 +1486,13 @@ fn (b &Builder) build_header_ast_for_files(source_files []ast.File, module_name 
 							}
 						}
 						sfields << ast.FieldDecl{
-							name:       field.name
-							typ:        field_typ
-							value:      field.value
-							attributes: field.attributes
+							name:          field.name
+							typ:           field_typ
+							value:         field.value
+							attributes:    field.attributes
+							is_public:     field.is_public
+							is_mut:        field.is_mut
+							is_module_mut: field.is_module_mut
 						}
 					}
 					decl_stmts << ast.Stmt(ast.StructDecl{
@@ -1547,11 +1550,12 @@ fn (b &Builder) build_header_ast_for_files(source_files []ast.File, module_name 
 							continue
 						}
 						gfields << ast.FieldDecl{
-							name:       field.name
-							typ:        global_typ
-							attributes: field.attributes
-							is_public:  field.is_public
-							is_mut:     field.is_mut
+							name:          field.name
+							typ:           global_typ
+							attributes:    field.attributes
+							is_public:     field.is_public
+							is_mut:        field.is_mut
+							is_module_mut: field.is_module_mut
 						}
 					}
 					if gfields.len > 0 {
@@ -2635,7 +2639,7 @@ fn header_type_block_line_is_malformed(trimmed string) bool {
 	if trimmed.len == 0 {
 		return false
 	}
-	if trimmed.starts_with('[') || trimmed.starts_with('//') {
+	if trimmed.starts_with('[') || trimmed.starts_with('@[') || trimmed.starts_with('//') {
 		return false
 	}
 	if (trimmed.starts_with('fn ') || trimmed.starts_with('pub fn '))

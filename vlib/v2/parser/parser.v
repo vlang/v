@@ -390,10 +390,13 @@ fn comptime_if_expr_contains_fn_main(if_expr ast.IfExpr) bool {
 // in `main` module) which are wrapped into a synthesized `fn main()`.
 fn (p &Parser) is_top_stmt_start() bool {
 	return match p.tok {
-		.dollar, .hash, .key_asm, .key_const, .key_enum, .key_fn, .key_global,
-		.key_interface, .key_pub, .key_struct, .key_union, .key_type, .attribute,
-		.lsbr { true }
-		else { false }
+		.dollar, .hash, .key_asm, .key_const, .key_enum, .key_fn, .key_global, .key_interface,
+		.key_pub, .key_struct, .key_union, .key_type, .attribute, .lsbr {
+			true
+		}
+		else {
+			false
+		}
 	}
 }
 
@@ -628,6 +631,18 @@ fn (mut p Parser) stmt() ast.Stmt {
 fn (mut p Parser) attribute_stmt() ast.Stmt {
 	// NOTE: could also return AttributeStmt{attributes: attributes, stmt: stmt}
 	attributes := p.attributes()
+	if attributes_has_module_mut(attributes) {
+		if attributes_module_mut_has_args(attributes) {
+			p.error_with_pos('`@[module_mut]` does not accept arguments',
+				attributes_module_mut_pos(attributes))
+		}
+		if attributes_module_mut_count(attributes) > 1 {
+			p.error_with_pos('`@[module_mut]` specified more than once',
+				attributes_module_mut_pos(attributes))
+		}
+		p.error_with_pos('`@[module_mut]` can only be used on a struct field',
+			attributes_module_mut_pos(attributes))
+	}
 	mut is_pub := false
 	if p.tok == .key_pub {
 		p.next()
@@ -2157,6 +2172,7 @@ fn (mut p Parser) attributes() []ast.Attribute {
 		mut name := ''
 		mut value := ast.empty_expr
 		mut comptime_cond := ast.empty_expr
+		attr_pos := p.pos
 		// since unsafe is a keyword
 		if p.tok == .key_unsafe {
 			p.next()
@@ -2200,6 +2216,7 @@ fn (mut p Parser) attributes() []ast.Attribute {
 			name:          name
 			value:         value
 			comptime_cond: comptime_cond
+			pos:           attr_pos
 		}
 		if p.tok == .semicolon {
 			p.next()
@@ -2217,6 +2234,105 @@ fn (mut p Parser) attributes() []ast.Attribute {
 	}
 	// p.log('ast.Attribute: ${name}')
 	return attributes
+}
+
+fn attribute_is_module_mut(attribute ast.Attribute) bool {
+	if attribute.name == 'module_mut' {
+		return true
+	}
+	if attribute.name != '' {
+		return false
+	}
+	if attribute.value is ast.Ident {
+		return attribute.value.name == 'module_mut'
+	}
+	if attribute.value is ast.CallExpr {
+		if attribute.value.lhs is ast.Ident {
+			return attribute.value.lhs.name == 'module_mut'
+		}
+	}
+	return false
+}
+
+fn attribute_module_mut_has_args(attribute ast.Attribute) bool {
+	if !attribute_is_module_mut(attribute) {
+		return false
+	}
+	if attribute.name == 'module_mut' {
+		return true
+	}
+	if attribute.value is ast.CallExpr {
+		return true
+	}
+	return false
+}
+
+fn attributes_module_mut_count(attributes []ast.Attribute) int {
+	mut count := 0
+	for attribute in attributes {
+		if attribute_is_module_mut(attribute) {
+			count++
+		}
+	}
+	return count
+}
+
+fn attributes_has_module_mut(attributes []ast.Attribute) bool {
+	return attributes_module_mut_count(attributes) > 0
+}
+
+fn attributes_non_module_mut_pos(attributes []ast.Attribute) token.Pos {
+	for attribute in attributes {
+		if !attribute_is_module_mut(attribute) {
+			return attribute.pos
+		}
+	}
+	if attributes.len > 0 {
+		return attributes[0].pos
+	}
+	return token.Pos{}
+}
+
+fn attributes_module_mut_has_args(attributes []ast.Attribute) bool {
+	for attribute in attributes {
+		if attribute_module_mut_has_args(attribute) {
+			return true
+		}
+	}
+	return false
+}
+
+fn attributes_module_mut_pos(attributes []ast.Attribute) token.Pos {
+	for attribute in attributes {
+		if attribute_is_module_mut(attribute) {
+			return attribute.pos
+		}
+	}
+	if attributes.len > 0 {
+		return attributes[0].pos
+	}
+	return token.Pos{}
+}
+
+fn attributes_without_module_mut(attributes []ast.Attribute) []ast.Attribute {
+	mut filtered := []ast.Attribute{cap: attributes.len}
+	for attribute in attributes {
+		if !attribute_is_module_mut(attribute) {
+			filtered << attribute
+		}
+	}
+	return filtered
+}
+
+fn (mut p Parser) validate_module_mut_attributes(attributes []ast.Attribute) {
+	if attributes_module_mut_has_args(attributes) {
+		p.error_with_pos('`@[module_mut]` does not accept arguments',
+			attributes_module_mut_pos(attributes))
+	}
+	if attributes_module_mut_count(attributes) > 1 {
+		p.error_with_pos('`@[module_mut]` specified more than once',
+			attributes_module_mut_pos(attributes))
+	}
 }
 
 // TODO:
@@ -3139,7 +3255,7 @@ fn (mut p Parser) struct_decl(is_public bool, attributes []ast.Attribute) ast.St
 			pos:            pos
 		}
 	}
-	embedded, fields := p.struct_decl_fields(language, true)
+	embedded, fields := p.struct_decl_fields(language, is_union, true)
 	return ast.StructDecl{
 		attributes:     attributes
 		is_public:      is_public
@@ -3155,11 +3271,12 @@ fn (mut p Parser) struct_decl(is_public bool, attributes []ast.Attribute) ast.St
 }
 
 // returns (embedded_types, fields)
-fn (mut p Parser) struct_decl_fields(language ast.Language, expect_semi bool) ([]ast.Expr, []ast.FieldDecl) {
+fn (mut p Parser) struct_decl_fields(language ast.Language, is_union bool, expect_semi bool) ([]ast.Expr, []ast.FieldDecl) {
 	p.expect(.lcbr)
 	mut embedded := []ast.Expr{}
 	mut fields := []ast.FieldDecl{}
-	p.parse_struct_field_list(language, mut embedded, mut fields)
+	p.parse_struct_field_list(language, is_union, StructFieldAccessState{}, mut embedded, mut
+		fields)
 	p.next() // rcbr
 	if expect_semi {
 		p.expect(.semicolon)
@@ -3167,15 +3284,32 @@ fn (mut p Parser) struct_decl_fields(language ast.Language, expect_semi bool) ([
 	return embedded, fields
 }
 
+struct StructFieldAccessState {
+	is_public     bool
+	is_mut        bool
+	is_module_mut bool
+}
+
 // parse_struct_field_list parses fields until it hits `}`. Handles `$if` blocks
 // and `@[if cond ?]` field attributes by evaluating the condition at parse time
 // and omitting non-selected fields from the AST.
-fn (mut p Parser) parse_struct_field_list(language ast.Language, mut embedded []ast.Expr, mut fields []ast.FieldDecl) {
+fn (mut p Parser) parse_struct_field_list(language ast.Language, is_union bool, start_access StructFieldAccessState, mut embedded []ast.Expr, mut fields []ast.FieldDecl) {
+	mut access := start_access
 	for p.tok != .rcbr {
 		// `$if cond { ... } $else { ... }` block grouping a set of fields.
 		if p.tok == .dollar && p.peek() == .key_if {
-			p.parse_comptime_struct_field_branch(language, false, mut embedded, mut fields)
+			p.parse_comptime_struct_field_branch(language, is_union, access, false, mut embedded, mut
+				fields)
 			continue
+		}
+		leading_attributes := if p.tok in [.attribute, .lsbr] {
+			p.attributes()
+		} else {
+			[]ast.Attribute{}
+		}
+		if !attributes_has_module_mut(leading_attributes) && leading_attributes.len > 0 {
+			p.error_with_pos('attributes on struct fields must be placed after the field declaration',
+				leading_attributes[0].pos)
 		}
 		is_pub := p.tok == .key_pub
 		if is_pub {
@@ -3186,7 +3320,38 @@ fn (mut p Parser) parse_struct_field_list(language ast.Language, mut embedded []
 			p.next()
 		}
 		if is_pub || is_mut {
+			module_mut_access := attributes_has_module_mut(leading_attributes)
+			if module_mut_access {
+				p.validate_module_mut_attributes(leading_attributes)
+				if attributes_module_mut_count(leading_attributes) != leading_attributes.len {
+					p.error_with_pos('`@[module_mut] pub:` cannot be combined with other attributes',
+						attributes_non_module_mut_pos(leading_attributes))
+				}
+				if language != .v || is_union {
+					p.error_with_pos('`@[module_mut]` is only supported on V struct fields',
+						attributes_module_mut_pos(leading_attributes))
+				}
+				if !is_pub {
+					p.error_with_pos('`@[module_mut]` requires `pub:`; use `@[module_mut] pub:`',
+						attributes_module_mut_pos(leading_attributes))
+				}
+				if is_mut {
+					p.error_with_pos('`@[module_mut]` cannot be combined with `pub mut:`; `pub mut:` fields are publicly mutable',
+						attributes_module_mut_pos(leading_attributes))
+				}
+			}
 			p.expect(.colon)
+			access = StructFieldAccessState{
+				is_public:     is_pub
+				is_mut:        is_mut || module_mut_access
+				is_module_mut: module_mut_access
+			}
+			continue
+		} else if attributes_has_module_mut(leading_attributes) {
+			if language != .v || is_union {
+				p.error_with_pos('`@[module_mut]` is only supported on V struct fields',
+					attributes_module_mut_pos(leading_attributes))
+			}
 		}
 		// C interop structs can use keywords as field names (e.g. `type int`).
 		if p.tok.is_keyword() {
@@ -3206,12 +3371,50 @@ fn (mut p Parser) parse_struct_field_list(language ast.Language, mut embedded []
 			if p.tok == .semicolon {
 				p.next()
 			}
-			if !attributes_elide_field(field_attributes, mut p) {
+			field_elided := attributes_elide_field(field_attributes, mut p)
+			if !field_elided && (attributes_has_module_mut(leading_attributes)
+				|| attributes_has_module_mut(field_attributes)) {
+				attrs := if attributes_has_module_mut(leading_attributes) {
+					leading_attributes
+				} else {
+					field_attributes
+				}
+				p.validate_module_mut_attributes(attrs)
+				if language != .v || is_union {
+					p.error_with_pos('`@[module_mut]` is only supported on V struct fields',
+						attributes_module_mut_pos(attrs))
+				}
+				if !access.is_public {
+					p.error_with_pos('`@[module_mut]` requires `pub:`; use `@[module_mut] pub:`',
+						attributes_module_mut_pos(attrs))
+				}
+				if access.is_mut && !access.is_module_mut {
+					p.error_with_pos('`@[module_mut]` cannot be combined with `pub mut:`; `pub mut:` fields are publicly mutable',
+						attributes_module_mut_pos(attrs))
+				}
+				if access.is_module_mut && (attributes_has_module_mut(leading_attributes)
+					|| attributes_has_module_mut(field_attributes)) {
+					p.error_with_pos('`@[module_mut]` specified more than once',
+						attributes_module_mut_pos(attrs))
+				}
+				if attributes_has_module_mut(leading_attributes)
+					&& attributes_has_module_mut(field_attributes) {
+					p.error_with_pos('`@[module_mut]` specified more than once',
+						attributes_module_mut_pos(attrs))
+				}
+			}
+			field_is_module_mut := access.is_module_mut || (!field_elided
+				&& (attributes_has_module_mut(leading_attributes)
+				|| attributes_has_module_mut(field_attributes)))
+			if !field_elided {
 				fields << ast.FieldDecl{
-					name:       field_name
-					typ:        field_type
-					value:      field_value
-					attributes: field_attributes
+					name:          field_name
+					typ:           field_type
+					value:         field_value
+					attributes:    attributes_without_module_mut(field_attributes)
+					is_public:     access.is_public
+					is_mut:        access.is_mut || field_is_module_mut
+					is_module_mut: field_is_module_mut
 				}
 			}
 			continue
@@ -3222,6 +3425,18 @@ fn (mut p Parser) parse_struct_field_list(language ast.Language, mut embedded []
 		if p.tok == .semicolon {
 			if language != .v {
 				p.error('${language} structs do not support embedding')
+			}
+			if access.is_module_mut || attributes_has_module_mut(leading_attributes) {
+				if attributes_has_module_mut(leading_attributes) {
+					p.validate_module_mut_attributes(leading_attributes)
+				}
+				attr_pos := if attributes_has_module_mut(leading_attributes) {
+					attributes_module_mut_pos(leading_attributes)
+				} else {
+					embed_or_name.pos()
+				}
+				p.error_with_pos('`@[module_mut]` cannot be applied to embedded struct fields',
+					attr_pos)
 			}
 			p.next()
 			embedded << embed_or_name
@@ -3250,12 +3465,50 @@ fn (mut p Parser) parse_struct_field_list(language ast.Language, mut embedded []
 		if p.tok == .semicolon {
 			p.next()
 		}
-		if !attributes_elide_field(field_attributes, mut p) {
+		field_elided := attributes_elide_field(field_attributes, mut p)
+		if !field_elided && (attributes_has_module_mut(leading_attributes)
+			|| attributes_has_module_mut(field_attributes)) {
+			attrs := if attributes_has_module_mut(leading_attributes) {
+				leading_attributes
+			} else {
+				field_attributes
+			}
+			p.validate_module_mut_attributes(attrs)
+			if language != .v || is_union {
+				p.error_with_pos('`@[module_mut]` is only supported on V struct fields',
+					attributes_module_mut_pos(attrs))
+			}
+			if !access.is_public {
+				p.error_with_pos('`@[module_mut]` requires `pub:`; use `@[module_mut] pub:`',
+					attributes_module_mut_pos(attrs))
+			}
+			if access.is_mut && !access.is_module_mut {
+				p.error_with_pos('`@[module_mut]` cannot be combined with `pub mut:`; `pub mut:` fields are publicly mutable',
+					attributes_module_mut_pos(attrs))
+			}
+			if access.is_module_mut && (attributes_has_module_mut(leading_attributes)
+				|| attributes_has_module_mut(field_attributes)) {
+				p.error_with_pos('`@[module_mut]` specified more than once',
+					attributes_module_mut_pos(attrs))
+			}
+			if attributes_has_module_mut(leading_attributes)
+				&& attributes_has_module_mut(field_attributes) {
+				p.error_with_pos('`@[module_mut]` specified more than once',
+					attributes_module_mut_pos(attrs))
+			}
+		}
+		field_is_module_mut := access.is_module_mut || (!field_elided
+			&& (attributes_has_module_mut(leading_attributes)
+			|| attributes_has_module_mut(field_attributes)))
+		if !field_elided {
 			fields << ast.FieldDecl{
-				name:       field_name
-				typ:        field_type
-				value:      field_value
-				attributes: field_attributes
+				name:          field_name
+				typ:           field_type
+				value:         field_value
+				attributes:    attributes_without_module_mut(field_attributes)
+				is_public:     access.is_public
+				is_mut:        access.is_mut || field_is_module_mut
+				is_module_mut: field_is_module_mut
 			}
 		}
 	}
@@ -3285,7 +3538,7 @@ fn attributes_elide_field(attributes []ast.Attribute, mut p Parser) bool {
 // to `embedded`/`fields`; other branches are parsed and discarded so token
 // positions stay correct. `force_skip` propagates "already matched" through
 // `$else $if` chains so at most one branch contributes fields.
-fn (mut p Parser) parse_comptime_struct_field_branch(language ast.Language, force_skip bool, mut embedded []ast.Expr, mut fields []ast.FieldDecl) {
+fn (mut p Parser) parse_comptime_struct_field_branch(language ast.Language, is_union bool, access StructFieldAccessState, force_skip bool, mut embedded []ast.Expr, mut fields []ast.FieldDecl) {
 	p.next() // $
 	p.next() // if
 	// `p.expr` would otherwise greedily parse `linux { ... }` as a struct init.
@@ -3307,11 +3560,11 @@ fn (mut p Parser) parse_comptime_struct_field_branch(language ast.Language, forc
 	}
 	p.expect(.lcbr)
 	if cond_matches {
-		p.parse_struct_field_list(language, mut embedded, mut fields)
+		p.parse_struct_field_list(language, is_union, access, mut embedded, mut fields)
 	} else {
 		mut tmp_emb := []ast.Expr{}
 		mut tmp_flds := []ast.FieldDecl{}
-		p.parse_struct_field_list(language, mut tmp_emb, mut tmp_flds)
+		p.parse_struct_field_list(language, is_union, access, mut tmp_emb, mut tmp_flds)
 	}
 	p.next() // rcbr
 	// `};\n$else` — auto-inserted `;` sits between `}` and `$`. Consume it so
@@ -3335,7 +3588,8 @@ fn (mut p Parser) parse_comptime_struct_field_branch(language ast.Language, forc
 	if p.tok == .dollar && p.peek() == .key_if {
 		// `$else $if` — propagate match status so at most one branch fires.
 		new_force_skip := force_skip || cond_matches
-		p.parse_comptime_struct_field_branch(language, new_force_skip, mut embedded, mut fields)
+		p.parse_comptime_struct_field_branch(language, is_union, access, new_force_skip, mut
+			embedded, mut fields)
 		return
 	}
 	if p.tok == .semicolon && p.peek() == .lcbr {
@@ -3344,11 +3598,11 @@ fn (mut p Parser) parse_comptime_struct_field_branch(language ast.Language, forc
 	p.expect(.lcbr)
 	else_matches := !force_skip && !cond_matches
 	if else_matches {
-		p.parse_struct_field_list(language, mut embedded, mut fields)
+		p.parse_struct_field_list(language, is_union, access, mut embedded, mut fields)
 	} else {
 		mut tmp_emb := []ast.Expr{}
 		mut tmp_flds := []ast.FieldDecl{}
-		p.parse_struct_field_list(language, mut tmp_emb, mut tmp_flds)
+		p.parse_struct_field_list(language, is_union, access, mut tmp_emb, mut tmp_flds)
 	}
 	p.next() // rcbr
 	if p.tok == .semicolon {

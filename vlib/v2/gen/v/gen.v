@@ -1003,7 +1003,39 @@ fn (mut g Gen) struct_decl_fields(embedded []ast.Expr, fields []ast.FieldDecl) {
 		g.expr(embed)
 		g.writeln('')
 	}
+	mut field_access := ''
 	for field in fields {
+		new_access := if field.is_module_mut {
+			'module_mut'
+		} else if field.is_public && field.is_mut {
+			'pub mut'
+		} else if field.is_public {
+			'pub'
+		} else if field.is_mut {
+			'mut'
+		} else {
+			''
+		}
+		if new_access != field_access {
+			match new_access {
+				'module_mut' {
+					g.writeln('@[module_mut]')
+					g.writeln('pub:')
+				}
+				'pub mut' {
+					g.writeln('pub mut:')
+				}
+				'pub' {
+					g.writeln('pub:')
+				}
+				'mut' {
+					g.writeln('mut:')
+				}
+				else {}
+			}
+
+			field_access = new_access
+		}
 		g.write(field.name)
 		g.write(' ')
 		g.expr(field.typ)
