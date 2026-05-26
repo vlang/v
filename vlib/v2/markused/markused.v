@@ -76,6 +76,12 @@ struct FnInfo {
 	mod  string
 	file string
 	decl ast.FnDecl
+	// decl_id is the FlatNodeId of the FnDecl in the source FlatAst, or
+	// -1 when the FnInfo was produced by the legacy []ast.File path that
+	// has no flat backing. When >= 0, walk_collected_from_flat iterates
+	// the body via Cursor instead of info.decl.stmts so future PRs can
+	// port walk_stmt arms to cursor input one at a time.
+	decl_id ast.FlatNodeId = -1
 }
 
 struct Walker {
@@ -183,13 +189,67 @@ fn (mut w Walker) walk_collected() map[string]bool {
 	return w.used_keys
 }
 
+// walk_collected_from_flat mirrors walk_collected but, for FnInfos that
+// originated from flat input (decl_id >= 0), iterates the body via Cursor
+// instead of the pre-rehydrated info.decl.stmts slice. For now each body
+// stmt is decoded back to ast.Stmt before being dispatched to walk_stmt —
+// later PRs port walk_stmt arms to accept cursor input directly so the
+// per-stmt rehydration can drop out. FnInfos without a flat backing
+// (decl_id < 0) fall back to the legacy slice walk.
+fn (mut w Walker) walk_collected_from_flat(flat &ast.FlatAst) map[string]bool {
+	if w.fns.len == 0 {
+		return map[string]bool{}
+	}
+	if !w.seed_roots() {
+		mut all := map[string]bool{}
+		for info in w.fns {
+			all[info.key] = true
+		}
+		return all
+	}
+	mut qi := 0
+	for qi < w.queue.len {
+		idx := w.queue[qi]
+		qi++
+		info := w.fns[idx]
+		w.cur_fn_scope = w.lookup_fn_scope(info)
+		w.cur_fn_decl = info.decl
+		if info.decl_id >= 0 {
+			w.walk_fn_body_cursor(flat, info.decl_id, info.mod)
+		} else {
+			w.walk_stmts(info.decl.stmts, info.mod)
+		}
+		w.cur_fn_scope = unsafe { nil }
+	}
+	return w.used_keys
+}
+
+// walk_fn_body_cursor iterates an FnDecl body (edge 3 of stmt_fn_decl) via
+// CursorList, decoding each child to ast.Stmt and dispatching to walk_stmt.
+// This is the seam where cursor-input dispatch will be threaded through
+// walk_stmt's arms in subsequent PRs.
+fn (mut w Walker) walk_fn_body_cursor(flat &ast.FlatAst, decl_id ast.FlatNodeId, mod_name string) {
+	body := ast.Cursor{
+		flat: unsafe { flat }
+		id:   decl_id
+	}.list_at(3)
+	for i in 0 .. body.len() {
+		c := body.at(i)
+		if !c.is_valid() {
+			continue
+		}
+		stmt := flat.decode_stmt(c.id)
+		w.walk_stmt(stmt, mod_name)
+	}
+}
+
 fn (mut w Walker) collect_defs() {
 	for file in w.files {
 		mod_name := normalize_module_name(file.mod)
 		w.add_module_name(mod_name)
 		w.collect_imports(file.imports)
 		for stmt in file.stmts {
-			w.collect_def_stmt(stmt, mod_name, file.name)
+			w.collect_def_stmt(stmt, mod_name, file.name, ast.FlatNodeId(-1))
 		}
 	}
 }
@@ -232,7 +292,7 @@ fn (mut w Walker) collect_defs_from_flat(flat &ast.FlatAst) {
 				.stmt_struct_decl, .stmt_enum_decl, .stmt_interface_decl, .stmt_type_decl,
 				.stmt_global_decl, .stmt_fn_decl {
 					stmt := flat.decode_stmt(c.id)
-					w.collect_def_stmt(stmt, mod_name, file_name)
+					w.collect_def_stmt(stmt, mod_name, file_name, c.id)
 				}
 				else {}
 			}
@@ -257,7 +317,7 @@ fn (mut w Walker) collect_imports(imports []ast.ImportStmt) {
 	}
 }
 
-fn (mut w Walker) collect_def_stmt(stmt ast.Stmt, mod_name string, file_name string) {
+fn (mut w Walker) collect_def_stmt(stmt ast.Stmt, mod_name string, file_name string, decl_id ast.FlatNodeId) {
 	if !stmt_ok(stmt) {
 		return
 	}
@@ -285,10 +345,11 @@ fn (mut w Walker) collect_def_stmt(stmt ast.Stmt, mod_name string, file_name str
 				return
 			}
 			info := FnInfo{
-				key:  decl_key(mod_name, stmt, w.env)
-				mod:  mod_name
-				file: file_name
-				decl: stmt
+				key:     decl_key(mod_name, stmt, w.env)
+				mod:     mod_name
+				file:    file_name
+				decl:    stmt
+				decl_id: decl_id
 			}
 			w.fns << info
 			idx := w.fns.len - 1

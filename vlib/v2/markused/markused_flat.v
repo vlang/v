@@ -24,5 +24,5 @@ pub fn mark_used_flat(flat &ast.FlatAst, env &types.Environment) map[string]bool
 pub fn mark_used_flat_with_options(flat &ast.FlatAst, env &types.Environment, opts MarkUsedOptions) map[string]bool {
 	mut w := new_walker([]ast.File{}, env, opts)
 	w.collect_defs_from_flat(flat)
-	return w.walk_collected()
+	return w.walk_collected_from_flat(flat)
 }
