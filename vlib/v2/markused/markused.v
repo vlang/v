@@ -153,6 +153,13 @@ fn new_walker(files []ast.File, env &types.Environment, opts MarkUsedOptions) Wa
 
 fn (mut w Walker) walk() map[string]bool {
 	w.collect_defs()
+	return w.walk_collected()
+}
+
+// walk_collected runs the body-walking phase after collect_defs (or
+// collect_defs_from_flat) has populated w.fns. Split out so flat-input
+// entry points can substitute their own collect step.
+fn (mut w Walker) walk_collected() map[string]bool {
 	if w.fns.len == 0 {
 		return map[string]bool{}
 	}
@@ -180,60 +187,85 @@ fn (mut w Walker) collect_defs() {
 	for file in w.files {
 		mod_name := normalize_module_name(file.mod)
 		w.add_module_name(mod_name)
-		for imp in file.imports {
-			w.add_module_name(imp.name)
-			if imp.alias != '' {
-				w.add_module_name(imp.alias)
-				// Map alias to real module name for correct symbol resolution.
-				// e.g., 'import v2.ssa.optimize as ssa_optimize' → 'ssa_optimize' → 'optimize'
-				real_name := if imp.name.contains('.') {
-					imp.name.all_after_last('.')
-				} else {
-					imp.name
-				}
-				w.module_alias_to_real[imp.alias] = real_name
-			}
-		}
+		w.collect_imports(file.imports)
 		for stmt in file.stmts {
-			if !stmt_ok(stmt) {
-				continue
-			}
-			match stmt {
-				ast.StructDecl {
-					w.add_type_name(mod_name, stmt.name)
-					w.add_struct_field_receivers(mod_name, stmt)
-					w.add_struct_embedded_receivers(mod_name, stmt)
-				}
-				ast.EnumDecl {
-					w.add_type_name(mod_name, stmt.name)
-				}
-				ast.InterfaceDecl {
-					w.add_type_name(mod_name, stmt.name)
-					w.add_interface_decl(mod_name, stmt)
-				}
-				ast.TypeDecl {
-					w.add_type_name(mod_name, stmt.name)
-				}
-				ast.GlobalDecl {
-					w.add_global_interface_names(mod_name, stmt)
-				}
-				ast.FnDecl {
-					if stmt.name == '' {
-						continue
-					}
-					info := FnInfo{
-						key:  decl_key(mod_name, stmt, w.env)
-						mod:  mod_name
-						file: file.name
-						decl: stmt
-					}
-					w.fns << info
-					idx := w.fns.len - 1
-					w.index_fn(idx, info)
-				}
-				else {}
-			}
+			w.collect_def_stmt(stmt, mod_name, file.name)
 		}
+	}
+}
+
+// collect_defs_from_flat is the flat-input analogue of collect_defs. It
+// reads each file's top-level stmts/imports directly from FlatAst via
+// read_file_stmts / read_file_imports — no File struct is materialized.
+// The per-stmt dispatch (collect_def_stmt) is shared with the legacy
+// path so both produce bit-identical Walker state on the same input.
+fn (mut w Walker) collect_defs_from_flat(flat &ast.FlatAst) {
+	for ff in flat.files {
+		mod_name := normalize_module_name(flat.file_mod(ff))
+		w.add_module_name(mod_name)
+		w.collect_imports(flat.read_file_imports(ff))
+		file_name := flat.file_name(ff)
+		for stmt in flat.read_file_stmts(ff) {
+			w.collect_def_stmt(stmt, mod_name, file_name)
+		}
+	}
+}
+
+fn (mut w Walker) collect_imports(imports []ast.ImportStmt) {
+	for imp in imports {
+		w.add_module_name(imp.name)
+		if imp.alias != '' {
+			w.add_module_name(imp.alias)
+			// Map alias to real module name for correct symbol resolution.
+			// e.g., 'import v2.ssa.optimize as ssa_optimize' → 'ssa_optimize' → 'optimize'
+			real_name := if imp.name.contains('.') {
+				imp.name.all_after_last('.')
+			} else {
+				imp.name
+			}
+			w.module_alias_to_real[imp.alias] = real_name
+		}
+	}
+}
+
+fn (mut w Walker) collect_def_stmt(stmt ast.Stmt, mod_name string, file_name string) {
+	if !stmt_ok(stmt) {
+		return
+	}
+	match stmt {
+		ast.StructDecl {
+			w.add_type_name(mod_name, stmt.name)
+			w.add_struct_field_receivers(mod_name, stmt)
+			w.add_struct_embedded_receivers(mod_name, stmt)
+		}
+		ast.EnumDecl {
+			w.add_type_name(mod_name, stmt.name)
+		}
+		ast.InterfaceDecl {
+			w.add_type_name(mod_name, stmt.name)
+			w.add_interface_decl(mod_name, stmt)
+		}
+		ast.TypeDecl {
+			w.add_type_name(mod_name, stmt.name)
+		}
+		ast.GlobalDecl {
+			w.add_global_interface_names(mod_name, stmt)
+		}
+		ast.FnDecl {
+			if stmt.name == '' {
+				return
+			}
+			info := FnInfo{
+				key:  decl_key(mod_name, stmt, w.env)
+				mod:  mod_name
+				file: file_name
+				decl: stmt
+			}
+			w.fns << info
+			idx := w.fns.len - 1
+			w.index_fn(idx, info)
+		}
+		else {}
 	}
 }
 
