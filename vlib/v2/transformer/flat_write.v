@@ -233,6 +233,26 @@ import v2.ast
 //     `fixture_field_init` (struct + a `make(name: 'a', n: 1)` call) covers
 //     the arm across all 5 harness rows — 81 → 86 transformer-diff tests.
 //
+//   Session 13 (2026-05-26): AsCastExpr expr direct-emit + harness fixture.
+//     The AsCastExpr arm in `transform_expr_to_flat` direct-emits via the
+//     leaf `out.emit_expr(expr.typ)` (type is NOT transformed by
+//     `transform_expr` — copied verbatim) plus a recursive
+//     `transform_expr_to_flat` for the inner expression, then assembles via
+//     the new `emit_as_cast_expr_by_ids` builder helper. First port that
+//     mutates Transformer state: to keep the `as` cast intact (a same-
+//     expression smartcast would rewrite the operand into a direct sum
+//     payload access and hide the original storage type from the backend),
+//     the arm clones `smartcast_stack` + `smartcast_expr_counts`, drains
+//     matching smartcast entries via a bounded `remove_smartcast_for_expr`
+//     loop, transforms the inner expression with the drained state, then
+//     restores the snapshot. Direct-emit mirrors the legacy prologue/restore
+//     exactly so the snapshot semantics stay identical — the only thing
+//     that changes is the inner recursion target (flat vs legacy). Skips
+//     the `ast.AsCastExpr` struct allocation per occurrence. New
+//     `fixture_as_cast_expr` (sum type Shape + `(s as Circle).r` / `(s as
+//     Square).side` arms in a `pick(s Shape, k int) f64` fn) covers the
+//     arm across all 5 harness rows — 86 → 91 transformer-diff tests.
+//
 // Phase 5: post-pass port.
 //   `post_pass` (runtime const init injection, helper functions, str/clone
 //   generation, ...) still mutates `[]ast.File`. Port it to either emit
@@ -551,6 +571,37 @@ pub fn (mut t Transformer) transform_expr_to_flat(expr ast.Expr, mut out ast.Fla
 			}
 			inner_id := t.transform_expr_to_flat(expr.expr, mut out)
 			return out.emit_postfix_expr_by_id(expr.op, inner_id, expr.pos)
+		}
+		ast.AsCastExpr {
+			// AsCastExpr's `transform_expr` arm mutates Transformer state
+			// (smartcast stack snapshot) — the only port so far that does.
+			// To keep the `as` cast intact (a same-expression smartcast would
+			// otherwise rewrite the operand into a direct sum payload access
+			// and hide the original storage type from the backend), the arm
+			// snapshots `smartcast_stack` + `smartcast_expr_counts`, drains
+			// matching smartcast entries via a bounded `remove_smartcast_for_expr`
+			// loop, transforms the inner expression with the drained state, then
+			// restores the snapshot. Direct-emit mirrors that exactly — same
+			// drain prologue, recursive `transform_expr_to_flat` for the inner,
+			// same restore epilogue — then assembles the flat node via the new
+			// `emit_as_cast_expr_by_ids` helper. `typ` is copied verbatim (NOT
+			// transformed by `transform_expr`) so it goes through the leaf
+			// `out.emit_expr(...)`. Skips the `ast.AsCastExpr` struct allocation
+			// per occurrence.
+			expr_key := t.expr_to_string(expr.expr)
+			saved_smartcast_stack := t.smartcast_stack.clone()
+			saved_smartcast_expr_counts := t.smartcast_expr_counts.clone()
+			for _ in 0 .. smartcast_search_limit {
+				if _ := t.remove_smartcast_for_expr(expr_key) {
+					continue
+				}
+				break
+			}
+			inner_id := t.transform_expr_to_flat(expr.expr, mut out)
+			t.smartcast_stack = saved_smartcast_stack.clone()
+			t.smartcast_expr_counts = saved_smartcast_expr_counts.clone()
+			typ_id := out.emit_expr(expr.typ)
+			return out.emit_as_cast_expr_by_ids(inner_id, typ_id, expr.pos)
 		}
 		ast.FieldInit {
 			// FieldInit reaches the expression dispatch when it appears as a
