@@ -195,18 +195,47 @@ fn (mut w Walker) collect_defs() {
 }
 
 // collect_defs_from_flat is the flat-input analogue of collect_defs. It
-// reads each file's top-level stmts/imports directly from FlatAst via
-// read_file_stmts / read_file_imports — no File struct is materialized.
-// The per-stmt dispatch (collect_def_stmt) is shared with the legacy
-// path so both produce bit-identical Walker state on the same input.
+// walks each file's top-level statements through Cursor and only decodes
+// the decls collect_def_stmt actually consumes (struct/enum/interface/
+// type/global/fn). Imports are read directly from cursor fields
+// (name / extra_str alias) so the []ImportStmt slice is never allocated.
+// The shared collect_def_stmt dispatch keeps the flat path bit-identical
+// to the legacy path on the same input.
 fn (mut w Walker) collect_defs_from_flat(flat &ast.FlatAst) {
-	for ff in flat.files {
-		mod_name := normalize_module_name(flat.file_mod(ff))
+	for fi in 0 .. flat.files.len {
+		fc := flat.file_cursor(fi)
+		mod_name := normalize_module_name(fc.mod())
 		w.add_module_name(mod_name)
-		w.collect_imports(flat.read_file_imports(ff))
-		file_name := flat.file_name(ff)
-		for stmt in flat.read_file_stmts(ff) {
-			w.collect_def_stmt(stmt, mod_name, file_name)
+		imports_list := fc.imports()
+		for i in 0 .. imports_list.len() {
+			imp_cur := imports_list.at(i)
+			name := imp_cur.name()
+			w.add_module_name(name)
+			alias := imp_cur.extra_str()
+			if alias != '' {
+				w.add_module_name(alias)
+				// Map alias to real module name for correct symbol resolution.
+				// e.g., 'import v2.ssa.optimize as ssa_optimize' → 'ssa_optimize' → 'optimize'
+				real_name := if name.contains('.') {
+					name.all_after_last('.')
+				} else {
+					name
+				}
+				w.module_alias_to_real[alias] = real_name
+			}
+		}
+		file_name := fc.name()
+		stmts_list := fc.stmts()
+		for i in 0 .. stmts_list.len() {
+			c := stmts_list.at(i)
+			match c.kind() {
+				.stmt_struct_decl, .stmt_enum_decl, .stmt_interface_decl, .stmt_type_decl,
+				.stmt_global_decl, .stmt_fn_decl {
+					stmt := flat.decode_stmt(c.id)
+					w.collect_def_stmt(stmt, mod_name, file_name)
+				}
+				else {}
+			}
 		}
 	}
 }

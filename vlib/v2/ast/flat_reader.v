@@ -147,6 +147,25 @@ pub fn (flat &FlatAst) read_file_stmts(ff FlatFile) []Stmt {
 	return stmts
 }
 
+// decode_stmt rehydrates a single legacy ast.Stmt from a FlatNodeId. Useful
+// for cursor-driven consumers that walk the flat graph via Cursor and only
+// need to materialize a typed Stmt for the specific decls they hand to
+// helpers still keyed on legacy ADTs. Returns empty_stmt for invalid ids.
+pub fn (flat &FlatAst) decode_stmt(id FlatNodeId) Stmt {
+	r := FlatReader{
+		flat: unsafe { flat }
+	}
+	return r.read_stmt(id)
+}
+
+// decode_expr is the Expr analogue of decode_stmt.
+pub fn (flat &FlatAst) decode_expr(id FlatNodeId) Expr {
+	r := FlatReader{
+		flat: unsafe { flat }
+	}
+	return r.read_expr(id)
+}
+
 // file_mod returns the module name for a FlatFile via the interned strings.
 @[inline]
 pub fn (flat &FlatAst) file_mod(ff FlatFile) string {
