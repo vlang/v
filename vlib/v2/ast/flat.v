@@ -553,6 +553,20 @@ pub fn (mut b FlatBuilder) emit_block_stmt_by_ids(stmt_ids []FlatNodeId) FlatNod
 	return b.emit_simple(.stmt_block, token.Pos{}, edges)
 }
 
+// emit_comptime_stmt_by_id emits a stmt_comptime node wrapping an
+// already-flat child stmt FlatNodeId. Mirrors the add_stmt(ComptimeStmt)
+// encoding exactly: pos is the zero `token.Pos{}` the legacy add_stmt arm
+// uses, single edge to the inner stmt. Used by the flat-write port to
+// direct-emit the `ast.ComptimeStmt` wrapper (the `$for` branch — the
+// non-`$for` branch drops the wrapper entirely and recurses).
+pub fn (mut b FlatBuilder) emit_comptime_stmt_by_id(stmt_id FlatNodeId) FlatNodeId {
+	return b.emit_simple(.stmt_comptime, token.Pos{}, [
+		FlatEdge{
+			child_id: stmt_id
+		},
+	])
+}
+
 // emit_defer_stmt_by_ids emits a stmt_defer node from a slice of already-flat
 // child stmt FlatNodeIds. Mirrors the add_stmt(DeferStmt) encoding exactly:
 // pos is the zero `token.Pos{}` the legacy add_stmt arm uses, flags carry

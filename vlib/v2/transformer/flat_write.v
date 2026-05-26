@@ -664,6 +664,40 @@ import v2.types
 //     directly into the builder instead of materialising `[]ast.Stmt`) is
 //     the next significant target.
 //
+//   Session 31 (2026-05-26): ComptimeStmt port (two-branch stmt port).
+//     `transform_stmt`'s ComptimeStmt arm has two branches:
+//       (a) `stmt.stmt is ast.ForStmt` (the `$for field in Type.fields { ... }`
+//           form): rebuild ComptimeStmt(ForStmt{init, cond, post, stmts:
+//           transform_stmts(for_stmt.stmts)}) — `init`/`cond`/`post` are
+//           copied verbatim (NOT transformed by the legacy arm), only the
+//           body stmts go through the body driver.
+//       (b) otherwise (`$if` as stmt, etc.): legacy returns
+//           `transform_stmt(stmt.stmt)` — the ComptimeStmt wrapper is
+//           DROPPED entirely; the result is whatever the inner stmt
+//           transforms into.
+//
+//     Direct-emit: branch (a) synthesises a `ForStmt{init, cond, post,
+//     transformed_stmts}` and routes it through legacy `out.emit_stmt(...)`
+//     for the encoding (ForStmt itself isn't ported yet), then wraps via
+//     the new `emit_comptime_stmt_by_id` helper. Branch (b) recurses via
+//     `transform_stmt_to_flat(stmt.stmt, ...)` so any ported inner stmt
+//     (ExprStmt, ReturnStmt, ...) also stays on the flat path.
+//     Mirrors `add_stmt(ComptimeStmt)` encoding exactly (pos =
+//     `token.Pos{}`, single edge to inner stmt). Skips the outer
+//     `ast.ComptimeStmt` wrapper struct allocation per `$for` occurrence
+//     AND the wrapper entirely on the non-`$for` recursive path.
+//
+//     Reachability is reasonable — compile-time reflection via `$for`
+//     shows up in the compiler/runtime helpers. No new fixture this
+//     session. All 141 transformer-diff tests continue to pass.
+//
+//     Pattern note: first stmt port with TWO branches that diverge at
+//     emit time (wrap-and-build vs. drop-and-recurse). Establishes the
+//     "branch-dispatch" template for future stmt ports where the legacy
+//     arm has conditional shape changes (e.g. AssertStmt expand-in-driver
+//     vs. fallback, PostfixExpr op-based lowering at the expr level
+//     already used this shape on the expr side).
+//
 //   Session 30 (2026-05-26): DeferStmt port (wrap-only stmt port).
 //     Sibling of session 29 (BlockStmt) — same wrap-only shape with a
 //     `mode` field. `transform_stmt`'s DeferStmt arm always returns
@@ -882,6 +916,41 @@ pub fn (mut t Transformer) transform_stmt_to_flat(stmt ast.Stmt, mut out ast.Fla
 				stmt_ids << out.emit_stmt(body_stmt)
 			}
 			return out.emit_block_stmt_by_ids(stmt_ids)
+		}
+		ast.ComptimeStmt {
+			// ComptimeStmt port: `transform_stmt`'s arm has two branches.
+			//   1. `stmt.stmt is ast.ForStmt` ($for branch): rebuild a fresh
+			//      ComptimeStmt wrapping a fresh ForStmt with verbatim
+			//      `init`/`cond`/`post` and body stmts run through the
+			//      `transform_stmts` driver. The init/cond/post are NOT
+			//      transformed by the legacy arm (just copied), so direct-emit
+			//      synthesises a `ForStmt{init, cond, post, transformed_stmts}`
+			//      and routes it through legacy `out.emit_stmt(...)` (the
+			//      ForStmt encoding is still on the legacy round-trip), then
+			//      wraps via the new `emit_comptime_stmt_by_id` helper. Skips
+			//      the outer `ast.ComptimeStmt` wrapper struct allocation per
+			//      `$for` occurrence; the inner ForStmt still allocates.
+			//   2. otherwise (`$if` as stmt, etc.): legacy returns
+			//      `transform_stmt(stmt.stmt)` — the ComptimeStmt wrapper is
+			//      DROPPED entirely; the result is whatever the inner stmt
+			//      transforms into. Direct-emit recurses via
+			//      `transform_stmt_to_flat(stmt.stmt, ...)` so any ported
+			//      inner stmt also stays on the flat path.
+			// Reachability is reasonable — `$for field in Type.fields { ... }`
+			// shows up in compile-time reflection across the compiler.
+			if stmt.stmt is ast.ForStmt {
+				for_stmt := stmt.stmt as ast.ForStmt
+				transformed_stmts := t.transform_stmts(for_stmt.stmts)
+				new_for_stmt := ast.ForStmt{
+					init:  for_stmt.init
+					cond:  for_stmt.cond
+					post:  for_stmt.post
+					stmts: transformed_stmts
+				}
+				for_id := out.emit_stmt(ast.Stmt(new_for_stmt))
+				return out.emit_comptime_stmt_by_id(for_id)
+			}
+			return t.transform_stmt_to_flat(stmt.stmt, mut out)
 		}
 		ast.DeferStmt {
 			// DeferStmt port: `transform_stmt`'s arm is identity-shape —
