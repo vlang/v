@@ -244,11 +244,10 @@ fn (mut w Walker) walk_fn_body_cursor(flat &ast.FlatAst, decl_id ast.FlatNodeId,
 // stays bit-identical with the legacy walker.
 //
 // Ported arms: stmt_assert, stmt_assign, stmt_block, stmt_comptime,
-// stmt_defer, stmt_expr, stmt_for, stmt_for_in, stmt_label, stmt_return.
-// Nested expressions are still routed through walk_expr (decoded per edge)
-// until walk_expr itself gets a cursor-input port. Decl arms (const, enum,
-// global, struct, type) stay in the fallback path because their field
-// sub-graphs (aux_field_decl / aux_field_init) need their own cursor port.
+// stmt_const_decl, stmt_defer, stmt_enum_decl, stmt_expr, stmt_for,
+// stmt_for_in, stmt_global_decl, stmt_label, stmt_return, stmt_struct_decl,
+// stmt_type_decl. Nested expressions are still routed through walk_expr
+// (decoded per edge) until walk_expr itself gets a cursor-input port.
 fn (mut w Walker) walk_stmt_cursor(c ast.Cursor, mod_name string) {
 	if !c.is_valid() {
 		return
@@ -287,10 +286,18 @@ fn (mut w Walker) walk_stmt_cursor(c ast.Cursor, mod_name string) {
 		.stmt_comptime {
 			w.walk_stmt_cursor(c.edge(0), mod_name)
 		}
+		.stmt_const_decl {
+			// edge 0 = fields (aux_field_init list); each field edge 0 = value expr.
+			w.walk_field_value_list(c, 0, mod_name)
+		}
 		.stmt_defer {
 			for i in 0 .. c.edge_count() {
 				w.walk_stmt_cursor(c.edge(i), mod_name)
 			}
+		}
+		.stmt_enum_decl {
+			// edge 2 = fields (aux_field_decl list); each field edge 1 = value expr.
+			w.walk_field_decl_list(c, 2, mod_name, false)
 		}
 		.stmt_expr {
 			w.walk_expr_cursor_edge(c, 0, mod_name)
@@ -308,6 +315,10 @@ fn (mut w Walker) walk_stmt_cursor(c ast.Cursor, mod_name string) {
 			w.walk_expr_cursor_edge(c, 1, mod_name)
 			w.walk_expr_cursor_edge(c, 2, mod_name)
 		}
+		.stmt_global_decl {
+			// edge 1 = fields (aux_field_decl list); each field walks typ+value.
+			w.walk_field_decl_list(c, 1, mod_name, true)
+		}
 		.stmt_label {
 			w.walk_stmt_cursor(c.edge(0), mod_name)
 		}
@@ -321,6 +332,22 @@ fn (mut w Walker) walk_stmt_cursor(c ast.Cursor, mod_name string) {
 				w.walk_expr(expr, mod_name)
 				w.mark_interface_conversion_methods(w.cur_fn_decl.typ.return_type, expr, mod_name)
 				w.mark_result_error_return_methods(w.cur_fn_decl.typ.return_type, expr, mod_name)
+			}
+		}
+		.stmt_struct_decl {
+			// edge 4 = fields (aux_field_decl list); each field walks typ+value.
+			w.walk_field_decl_list(c, 4, mod_name, true)
+		}
+		.stmt_type_decl {
+			// edge 0 = base_type (expr); edge 3 = variants (aux expr list).
+			w.walk_expr_cursor_edge(c, 0, mod_name)
+			variants := c.list_at(3)
+			for i in 0 .. variants.len() {
+				vc := variants.at(i)
+				if !vc.is_valid() {
+					continue
+				}
+				w.walk_expr(c.flat.decode_expr(vc.id), mod_name)
 			}
 		}
 		else {
@@ -339,6 +366,38 @@ fn (mut w Walker) walk_expr_cursor_edge(parent ast.Cursor, edge_i int, mod_name 
 		return
 	}
 	w.walk_expr(parent.flat.decode_expr(ec.id), mod_name)
+}
+
+// walk_field_value_list iterates the aux_field_init list at `parent.edge(list_edge)`
+// and walks each field's value expr (aux_field_init edge 0). Used by
+// stmt_const_decl, whose only walk-relevant per-field datum is the value.
+fn (mut w Walker) walk_field_value_list(parent ast.Cursor, list_edge int, mod_name string) {
+	fields := parent.list_at(list_edge)
+	for i in 0 .. fields.len() {
+		field := fields.at(i)
+		if !field.is_valid() {
+			continue
+		}
+		w.walk_expr_cursor_edge(field, 0, mod_name)
+	}
+}
+
+// walk_field_decl_list iterates the aux_field_decl list at `parent.edge(list_edge)`.
+// Each aux_field_decl has edge 0 = typ, edge 1 = value, edge 2 = attrs. When
+// `walk_typ` is true the typ edge is also walked (struct/global decls);
+// otherwise only the value edge is walked (enum decls).
+fn (mut w Walker) walk_field_decl_list(parent ast.Cursor, list_edge int, mod_name string, walk_typ bool) {
+	fields := parent.list_at(list_edge)
+	for i in 0 .. fields.len() {
+		field := fields.at(i)
+		if !field.is_valid() {
+			continue
+		}
+		if walk_typ {
+			w.walk_expr_cursor_edge(field, 0, mod_name)
+		}
+		w.walk_expr_cursor_edge(field, 1, mod_name)
+	}
 }
 
 fn (mut w Walker) collect_defs() {
