@@ -311,6 +311,21 @@ import v2.token
 //     args) covers the arm across all 5 harness rows — 101 → 106
 //     transformer-diff tests.
 //
+//   Session 17 (2026-05-26): IfGuardExpr expr direct-emit (degenerate arm).
+//     IfGuardExpr only appears in normal usage as an IfExpr condition, where
+//     `transform_if_expr` handles it (statement form via
+//     `try_expand_if_guard_stmt`, expression form via the expr.v ~line 1371
+//     site). The arm in `transform_expr_to_flat` is the degenerate standalone-
+//     reach case: legacy `transform_expr` returns
+//     `t.transform_expr(expr.stmt.rhs[0])` when `rhs` is non-empty, otherwise
+//     returns `expr` unchanged. Direct-emit mirrors that — recursive
+//     `transform_expr_to_flat` for the rhs[0] case, leaf `out.emit_expr(...)`
+//     for the fallback. No new fixture: IfGuardExpr is unreachable in
+//     standalone position in practice, so no diff-harness fixture exercises
+//     it; the port is a completeness sweep that keeps the dispatch surface
+//     coherent with the legacy `transform_expr` shape. All 106 existing
+//     transformer-diff tests continue to pass.
+//
 // Phase 5: post-pass port.
 //   `post_pass` (runtime const init injection, helper functions, str/clone
 //   generation, ...) still mutates `[]ast.File`. Port it to either emit
@@ -629,6 +644,18 @@ pub fn (mut t Transformer) transform_expr_to_flat(expr ast.Expr, mut out ast.Fla
 			}
 			inner_id := t.transform_expr_to_flat(expr.expr, mut out)
 			return out.emit_postfix_expr_by_id(expr.op, inner_id, expr.pos)
+		}
+		ast.IfGuardExpr {
+			// IfGuardExpr should only appear as IfExpr condition, handled by
+			// `transform_if_expr`. The arm here is the degenerate standalone-
+			// reach case: legacy returns `t.transform_expr(expr.stmt.rhs[0])`
+			// when rhs is non-empty, otherwise returns `expr` unchanged.
+			// Direct-emit mirrors that — recursive `transform_expr_to_flat`
+			// for the rhs[0] case, leaf `out.emit_expr(...)` for the fallback.
+			if expr.stmt.rhs.len > 0 {
+				return t.transform_expr_to_flat(expr.stmt.rhs[0], mut out)
+			}
+			return out.emit_expr(expr)
 		}
 		ast.OrExpr {
 			// OrExpr in expression position (nested, in for-condition, in call
