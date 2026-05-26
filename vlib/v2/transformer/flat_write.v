@@ -570,6 +570,36 @@ import v2.types
 //     `'hi ${name}'` inside a ParenExpr / SelectorExpr / ConstDecl value).
 //     All 141 transformer-diff tests continue to pass.
 //
+//   Session 27 (2026-05-26): ExprStmt port (stmt-level dispatch-skip).
+//     First stmt-level identity-shape port. `transform_stmt`'s `ast.ExprStmt`
+//     arm is identity-shape: it wraps the transformed inner expression in a
+//     new `ast.ExprStmt`, with one state mutation — when `stmt.expr is
+//     ast.IfExpr`, the arm flips `t.skip_if_value_lowering = true` around the
+//     recursive `transform_expr` call so `transform_if_expr` knows the IfExpr
+//     is in statement position (not value position) and skips temp-variable
+//     lowering, then restores the prior flag.
+//
+//     The flat-write port mirrors the flag flip around a recursive
+//     `transform_expr_to_flat` call (so any deep-helper-ported expr arm
+//     reached inside also benefits from the flat path — Ident, SelectorExpr,
+//     IndexExpr, InitExpr, ComptimeExpr, StringInterLiteral, ...), then
+//     assembles the stmt_expr node via the new `emit_expr_stmt_by_id` helper.
+//     Skips the `ast.ExprStmt` wrapper struct allocation and the legacy
+//     `out.emit_stmt(t.transform_stmt(stmt))` round-trip's match dispatch
+//     (both on `transform_stmt` and on `add_stmt`) on every expression
+//     statement.
+//
+//     Reachability is excellent: ExprStmt is the most common statement form
+//     after AssignStmt — every function body has them, every block has them,
+//     every call as a top-level statement is an ExprStmt. No new fixture
+//     this session — every existing fixture exercises ExprStmt via fn bodies
+//     and asserts. All 141 transformer-diff tests continue to pass.
+//
+//     Pattern note: first port that recursively enters `transform_expr_to_flat`
+//     from the stmt-level dispatch, propagating the flat-port savings into
+//     all statement-position expressions (not just nested expressions inside
+//     already-ported ConstDecl/GlobalDecl/ReturnStmt values).
+//
 // Phase 5: post-pass port.
 //   `post_pass` (runtime const init injection, helper functions, str/clone
 //   generation, ...) still mutates `[]ast.File`. Port it to either emit
@@ -741,6 +771,29 @@ pub fn (mut t Transformer) transform_stmt_to_flat(stmt ast.Stmt, mut out ast.Fla
 			}
 			fields_list_id := out.emit_aux_list_from_ids(field_ids)
 			return out.emit_global_decl_by_ids(decl_attrs_id, fields_list_id)
+		}
+		ast.ExprStmt {
+			// ExprStmt port: `transform_stmt`'s arm is identity-shape — it
+			// always returns an `ast.ExprStmt` wrapping the transformed inner
+			// expression. The arm flips the `skip_if_value_lowering` flag
+			// when the expr is a direct IfExpr (so `transform_if_expr` knows
+			// it's in stmt position and doesn't introduce a temp variable),
+			// then restores it after the recursive `transform_expr` call.
+			// Direct-emit mirrors the flag flip around the recursive
+			// `transform_expr_to_flat` call (so any deep-helper-ported expr
+			// arm reached inside also benefits from the flat path), then
+			// assembles via the new `emit_expr_stmt_by_id` helper. Skips the
+			// `ast.ExprStmt` wrapper allocation + the legacy
+			// `out.emit_stmt(...)` round-trip's match dispatch on every
+			// expression statement.
+			is_direct_if := stmt.expr is ast.IfExpr
+			saved_skip := t.skip_if_value_lowering
+			if is_direct_if {
+				t.skip_if_value_lowering = true
+			}
+			expr_id := t.transform_expr_to_flat(stmt.expr, mut out)
+			t.skip_if_value_lowering = saved_skip
+			return out.emit_expr_stmt_by_id(expr_id)
 		}
 		ast.ReturnStmt {
 			// ReturnStmt port: `transform_return_stmt` always returns an

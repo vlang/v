@@ -512,6 +512,19 @@ pub fn (mut b FlatBuilder) emit_return_stmt_by_ids(expr_ids []FlatNodeId) FlatNo
 	return b.emit_simple(.stmt_return, token.Pos{}, edges)
 }
 
+// emit_expr_stmt_by_id emits a stmt_expr node from an already-flat
+// FlatNodeId child. Mirrors the add_stmt(ExprStmt) encoding exactly: pos is
+// the zero `token.Pos{}` the legacy add_stmt arm uses, single edge to the
+// expression. Used by the flat-write port to direct-emit the
+// `ast.ExprStmt` wrapper at every expression-statement site.
+pub fn (mut b FlatBuilder) emit_expr_stmt_by_id(expr_id FlatNodeId) FlatNodeId {
+	return b.emit_simple(.stmt_expr, token.Pos{}, [
+		FlatEdge{
+			child_id: expr_id
+		},
+	])
+}
+
 // emit_parameter is the pub wrapper over the private add_parameter, used by
 // the flat-write port when an FnDecl's receiver is emitted directly.
 pub fn (mut b FlatBuilder) emit_parameter(param Parameter) FlatNodeId {
