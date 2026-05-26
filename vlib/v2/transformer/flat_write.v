@@ -112,6 +112,18 @@ import v2.ast
 //     First real (if modest) memory saving in the flat-write port: one
 //     FnDecl struct per fn under V2_MARKUSED_FLAT-style flat-output paths.
 //
+//   Session 5 (2026-05-26): ParenExpr expr direct-emit + harness fixture.
+//     The ParenExpr arm in `transform_expr_to_flat` direct-emits via a
+//     recursive `transform_expr_to_flat` for the inner expression plus the
+//     new `emit_paren_expr_by_id` builder helper, skipping the
+//     `ast.ParenExpr` struct allocation per occurrence (the `transform_expr`
+//     ParenExpr arm just recurses + rebuilds the wrapper — identity in
+//     shape). First non-leaf *expression* port — paves the way for porting
+//     larger expression rewrites (PrefixExpr, CastExpr, InfixExpr ...) into
+//     the dispatch surface. New `fixture_paren_expr` (file-scope consts
+//     wrapping leaf and nested-paren values) covers the arm across all 5
+//     harness rows — 46 → 51 transformer-diff tests.
+//
 // Phase 5: post-pass port.
 //   `post_pass` (runtime const init injection, helper functions, str/clone
 //   generation, ...) still mutates `[]ast.File`. Port it to either emit
@@ -329,6 +341,17 @@ pub fn (mut t Transformer) transform_expr_to_flat(expr ast.Expr, mut out ast.Fla
 		ast.BasicLiteral, ast.EmptyExpr, ast.Keyword, ast.LifetimeExpr, ast.RangeExpr,
 		ast.SelectExpr, ast.StringLiteral, ast.Tuple, ast.Type {
 			return out.emit_expr(expr)
+		}
+		ast.ParenExpr {
+			// ParenExpr is a pure wrapper: its `transform_expr` arm just
+			// recurses into `expr.expr` and rebuilds the wrapper. Direct-emit
+			// skips the `ast.ParenExpr` struct allocation per occurrence by
+			// transforming the inner expression via `transform_expr_to_flat`
+			// (so nested leaves also bypass the legacy round-trip) and
+			// assembling the flat node via the new `emit_paren_expr_by_id`
+			// builder helper. Mirrors `add_expr(ParenExpr)` encoding exactly.
+			inner_id := t.transform_expr_to_flat(expr.expr, mut out)
+			return out.emit_paren_expr_by_id(inner_id, expr.pos)
 		}
 		else {
 			return out.emit_expr(t.transform_expr(expr))

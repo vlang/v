@@ -510,6 +510,17 @@ pub fn (mut b FlatBuilder) emit_type(typ Type) FlatNodeId {
 	return b.add_type(typ)
 }
 
+// emit_paren_expr_by_id emits an expr_paren node from an already-flat
+// inner expression FlatNodeId. Mirrors the add_expr(ParenExpr) encoding
+// exactly.
+pub fn (mut b FlatBuilder) emit_paren_expr_by_id(inner_id FlatNodeId, pos token.Pos) FlatNodeId {
+	return b.emit_simple(.expr_paren, pos, [
+		FlatEdge{
+			child_id: inner_id
+		},
+	])
+}
+
 // emit_fn_decl_by_ids emits a stmt_fn_decl node from already-flat child
 // FlatNodeIds (receiver parameter, FnType, attribute list, stmt list).
 // Mirrors the add_stmt(FnDecl) encoding exactly, including the
