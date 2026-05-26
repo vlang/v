@@ -543,6 +543,23 @@ pub fn (mut b FlatBuilder) emit_modifier_expr_by_id(kind token.Token, inner_id F
 	])
 }
 
+// emit_lambda_expr_by_ids emits an expr_lambda node from an already-flat
+// inner expression FlatNodeId and a slice of already-flat arg FlatNodeIds
+// (each arg is an Ident). Mirrors the add_expr(LambdaExpr) encoding exactly:
+// edge[0] is the inner expression, edge[1..] are the args.
+pub fn (mut b FlatBuilder) emit_lambda_expr_by_ids(inner_id FlatNodeId, arg_ids []FlatNodeId, pos token.Pos) FlatNodeId {
+	mut edges := []FlatEdge{cap: 1 + arg_ids.len}
+	edges << FlatEdge{
+		child_id: inner_id
+	}
+	for aid in arg_ids {
+		edges << FlatEdge{
+			child_id: aid
+		}
+	}
+	return b.emit_simple(.expr_lambda, pos, edges)
+}
+
 // emit_fn_decl_by_ids emits a stmt_fn_decl node from already-flat child
 // FlatNodeIds (receiver parameter, FnType, attribute list, stmt list).
 // Mirrors the add_stmt(FnDecl) encoding exactly, including the

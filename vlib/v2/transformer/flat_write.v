@@ -152,6 +152,21 @@ import v2.ast
 //     (a `mut`-parameter fn + a caller that passes `mut a`) covers the arm
 //     across all 5 harness rows — 56 → 61 transformer-diff tests.
 //
+//   Session 8 (2026-05-26): LambdaExpr expr direct-emit + harness fixture.
+//     The LambdaExpr arm in `transform_expr_to_flat` direct-emits via a
+//     recursive `transform_expr_to_flat` for the body expression plus a
+//     leaf `out.emit_expr(ast.Expr(arg))` per arg Ident and the new
+//     `emit_lambda_expr_by_ids` builder helper. The `transform_expr` arm
+//     for LambdaExpr is a pure wrapper — args are an `[]Ident` copied
+//     verbatim, only the body `expr.expr` is transformed — so direct-emit
+//     mirrors that exactly: leaf args go through the legacy `emit_expr`
+//     leaf path (Idents are identity), body goes through the recursive
+//     direct-emit. Mirrors `add_expr(LambdaExpr)` encoding exactly:
+//     edge[0] = body expr, edge[1..] = args. New `fixture_lambda_expr`
+//     (an `apply(f fn (int) int, x int)` higher-order fn + a caller that
+//     passes `|y| y + 1`) covers the arm across all 5 harness rows —
+//     61 → 66 transformer-diff tests.
+//
 // Phase 5: post-pass port.
 //   `post_pass` (runtime const init injection, helper functions, str/clone
 //   generation, ...) still mutates `[]ast.File`. Port it to either emit
@@ -411,6 +426,24 @@ pub fn (mut t Transformer) transform_expr_to_flat(expr ast.Expr, mut out ast.Fla
 			// `add_expr(ModifierExpr)` encoding exactly (kind in meta u16).
 			inner_id := t.transform_expr_to_flat(expr.expr, mut out)
 			return out.emit_modifier_expr_by_id(expr.kind, inner_id, expr.pos)
+		}
+		ast.LambdaExpr {
+			// LambdaExpr is a pure wrapper: the `transform_expr` arm recurses
+			// into `expr.expr` and copies `args` (a `[]Ident`) and `pos`
+			// verbatim. Direct-emit skips the `ast.LambdaExpr` struct
+			// allocation: the inner expression goes through
+			// `transform_expr_to_flat` (so nested non-leaf exprs also bypass the
+			// legacy round-trip), each arg Ident is emitted via the leaf
+			// `out.emit_expr(...)` path (Idents are identity in `transform_expr`
+			// already), and the flat node is assembled via the new
+			// `emit_lambda_expr_by_ids` helper. Mirrors `add_expr(LambdaExpr)`
+			// encoding exactly (edge[0] = inner expr, edge[1..] = args).
+			inner_id := t.transform_expr_to_flat(expr.expr, mut out)
+			mut arg_ids := []ast.FlatNodeId{cap: expr.args.len}
+			for arg in expr.args {
+				arg_ids << out.emit_expr(ast.Expr(arg))
+			}
+			return out.emit_lambda_expr_by_ids(inner_id, arg_ids, expr.pos)
 		}
 		else {
 			return out.emit_expr(t.transform_expr(expr))
