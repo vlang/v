@@ -414,6 +414,62 @@ pub fn (mut b FlatBuilder) emit_stmt(stmt Stmt) FlatNodeId {
 	return b.add_stmt(stmt)
 }
 
+// emit_expr is the public wrapper around the legacy expr-to-flat conversion.
+// The flat-write port reaches for this when an expr variant still falls back
+// to legacy emission. Phase 4 sessions replace non-leaf arms in
+// transform_expr_to_flat one at a time with direct-emit logic that no longer
+// reaches for this helper.
+pub fn (mut b FlatBuilder) emit_expr(expr Expr) FlatNodeId {
+	return b.add_expr(expr)
+}
+
+// emit_attribute_list emits an aux_list of attribute flat nodes, bit-equal
+// to the encoding produced by add_stmt for stmts that carry attributes.
+// Empty inputs return the shared empty-list sentinel.
+pub fn (mut b FlatBuilder) emit_attribute_list(attrs []Attribute) FlatNodeId {
+	return b.make_list_attribute(attrs)
+}
+
+// emit_aux_list_from_ids builds an aux_list whose children are FlatNodeIds
+// already present in this builder. Empty inputs return the shared empty-list
+// sentinel.
+pub fn (mut b FlatBuilder) emit_aux_list_from_ids(ids []FlatNodeId) FlatNodeId {
+	if ids.len == 0 {
+		return b.get_empty_list()
+	}
+	mut edges := []FlatEdge{cap: ids.len}
+	for id in ids {
+		b.push_edge(mut edges, id)
+	}
+	return b.emit_simple(.aux_list, token.Pos{}, edges)
+}
+
+// emit_field_decl_by_ids emits an aux_field_decl node from already-flat
+// child FlatNodeIds. Used by the flat-write port for stmts that carry
+// FieldDecls (GlobalDecl, StructDecl, ...) once their typ/value expressions
+// have been emitted directly. Mirrors the add_field_decl encoding exactly.
+pub fn (mut b FlatBuilder) emit_field_decl_by_ids(name string, typ_id FlatNodeId, value_id FlatNodeId, attrs_id FlatNodeId) FlatNodeId {
+	mut edges := []FlatEdge{cap: 3}
+	b.push_edge(mut edges, typ_id)
+	b.push_edge(mut edges, value_id)
+	b.push_edge(mut edges, attrs_id)
+	return b.emit(.aux_field_decl, token.Pos{}, b.intern(name), -1, 0, 0, edges)
+}
+
+// emit_global_decl_by_ids emits a stmt_global_decl node from already-flat
+// child FlatNodeIds (the attribute list and field-decl list). Mirrors the
+// add_stmt(GlobalDecl) encoding exactly.
+pub fn (mut b FlatBuilder) emit_global_decl_by_ids(attrs_id FlatNodeId, fields_id FlatNodeId) FlatNodeId {
+	return b.emit_simple(.stmt_global_decl, token.Pos{}, [
+		FlatEdge{
+			child_id: attrs_id
+		},
+		FlatEdge{
+			child_id: fields_id
+		},
+	])
+}
+
 fn (mut b FlatBuilder) make_list_from_stmt_ids(stmt_ids []FlatNodeId) FlatNodeId {
 	if stmt_ids.len == 0 {
 		return b.get_empty_list()

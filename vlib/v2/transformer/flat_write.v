@@ -54,14 +54,25 @@ import v2.ast
 //   round-trip `out.emit_stmt(t.transform_stmt(stmt))`. The dispatch
 //   surface is now ready for phase 4 ports.
 //
-// Phase 4 (NEXT — per-rewrite-site ports).
+// Phase 4 (IN PROGRESS — per-rewrite-site ports).
 //   For each non-leaf Stmt variant (AssignStmt, BlockStmt, ConstDecl,
 //   DeferStmt, ExprStmt, FnDecl, ForStmt, ForInStmt, GlobalDecl,
 //   ComptimeStmt, LabelStmt, ReturnStmt, AssertStmt) rewrite the rewrite
 //   logic inside `transform_X` to emit `FlatNode`s via `out.emit(...)`
 //   directly instead of constructing legacy `ast.Stmt` / `ast.Expr`
-//   values. Add `transform_expr_to_flat` with the same dispatch shape for
-//   expression-level rewrites. The inventory below is the checklist.
+//   values. The inventory below is the checklist.
+//
+//   Session 1 (2026-05-26): expression dispatch surface + GlobalDecl port.
+//     `transform_expr_to_flat` mirrors `transform_stmt_to_flat`'s shape with
+//     9 leaf-arm direct-emit variants (BasicLiteral, EmptyExpr, Keyword,
+//     LifetimeExpr, RangeExpr, SelectExpr, StringLiteral, Tuple, Type — all
+//     identity in `transform_expr`'s `else { expr }` case); non-leaf arms
+//     take the legacy round-trip `out.emit_expr(t.transform_expr(expr))`.
+//     The GlobalDecl arm in `transform_stmt_to_flat` direct-emits via
+//     `transform_expr_to_flat` for each field's typ/value plus the new
+//     `emit_field_decl_by_ids` / `emit_global_decl_by_ids` builder helpers,
+//     skipping the `transform_global_decl` round-trip entirely. The
+//     `__global init` fixture in the 5th harness row pins it.
 //
 // Phase 5: post-pass port.
 //   `post_pass` (runtime const init injection, helper functions, str/clone
@@ -200,8 +211,51 @@ pub fn (mut t Transformer) transform_stmt_to_flat(stmt ast.Stmt, mut out ast.Fla
 		ast.ImportStmt, ast.InterfaceDecl, ast.ModuleStmt, ast.StructDecl, ast.TypeDecl {
 			return out.emit_stmt(stmt)
 		}
+		ast.GlobalDecl {
+			// Mirror transform_global_decl: transform each field's typ and value
+			// via transform_expr_to_flat, copy attributes/name/is_public/is_mut
+			// unchanged, and emit the flat encoding directly. The intermediate
+			// `ast.GlobalDecl` / `[]ast.FieldDecl` allocations from the legacy
+			// round-trip drop out. Emit order matches add_stmt(GlobalDecl):
+			// decl attributes list first, then per-field (typ, value, field
+			// attrs, field_decl), then the fields aux_list, then the stmt.
+			decl_attrs_id := out.emit_attribute_list(stmt.attributes)
+			mut field_ids := []ast.FlatNodeId{cap: stmt.fields.len}
+			for field in stmt.fields {
+				typ_id := t.transform_expr_to_flat(field.typ, mut out)
+				value_id := t.transform_expr_to_flat(field.value, mut out)
+				field_attrs_id := out.emit_attribute_list(field.attributes)
+				field_ids << out.emit_field_decl_by_ids(field.name, typ_id, value_id,
+					field_attrs_id)
+			}
+			fields_list_id := out.emit_aux_list_from_ids(field_ids)
+			return out.emit_global_decl_by_ids(decl_attrs_id, fields_list_id)
+		}
 		else {
 			return out.emit_stmt(t.transform_stmt(stmt))
+		}
+	}
+}
+
+// transform_expr_to_flat is the per-expr dispatch for phase 4 of the port.
+// Leaf-arm expr variants (BasicLiteral, EmptyExpr, Keyword, LifetimeExpr,
+// RangeExpr, SelectExpr, StringLiteral, Tuple, Type — all identity in
+// `transform_expr`'s `else { expr }` case) are direct-emitted into `out`,
+// skipping the legacy transform_expr dispatch. Non-leaf variants take the
+// legacy round-trip `out.emit_expr(t.transform_expr(expr))`. Phase 4
+// sessions replace one non-leaf arm at a time with direct-emit logic that
+// bypasses the legacy ast construction at the rewrite site itself.
+//
+// The 5th harness row pins bit-equality against the reference rehydrate+
+// transform+append loop; any per-arm divergence trips it.
+pub fn (mut t Transformer) transform_expr_to_flat(expr ast.Expr, mut out ast.FlatBuilder) ast.FlatNodeId {
+	match expr {
+		ast.BasicLiteral, ast.EmptyExpr, ast.Keyword, ast.LifetimeExpr, ast.RangeExpr,
+		ast.SelectExpr, ast.StringLiteral, ast.Tuple, ast.Type {
+			return out.emit_expr(expr)
+		}
+		else {
+			return out.emit_expr(t.transform_expr(expr))
 		}
 	}
 }
