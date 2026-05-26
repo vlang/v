@@ -10,6 +10,9 @@ import runtime
 struct TransformChunkArgs {
 	t          voidptr // &transformer.Transformer
 	files      []ast.File
+	flat       &ast.FlatAst = unsafe { nil }
+	flat_start int
+	flat_end   int
 	result_ptr voidptr
 	worker_ptr voidptr
 	worker_idx int
@@ -25,6 +28,25 @@ fn transform_chunk_thread(arg voidptr) voidptr {
 	a := unsafe { &TransformChunkArgs(arg) }
 	t := unsafe { &transformer.Transformer(a.t) }
 	mut w := t.new_worker_clone(a.worker_idx)
+	if unsafe { a.flat != nil } {
+		// Streaming rehydration: rehydrate one file at a time, transform it,
+		// then drop the legacy form. Under GC, peak per worker is one file's
+		// legacy AST instead of the whole chunk.
+		n := a.flat_end - a.flat_start
+		mut result := []ast.File{cap: n}
+		for fi := a.flat_start; fi < a.flat_end; fi++ {
+			one := a.flat.to_files_range(fi, fi + 1)
+			if one.len == 0 {
+				continue
+			}
+			result << w.transform_file_pub(one[0])
+		}
+		unsafe {
+			*(&[]ast.File(a.result_ptr)) = result
+			*(&voidptr(a.worker_ptr)) = voidptr(w)
+		}
+		return unsafe { nil }
+	}
 	mut result := []ast.File{cap: a.files.len}
 	for i := 0; i < a.files.len; i++ {
 		result << w.transform_file_pub(a.files[i])
@@ -44,17 +66,26 @@ fn (mut b Builder) transform_files_parallel(mut trans transformer.Transformer) [
 		trans.pre_pass(b.files)
 	}
 
-	// b.files is the canonical legacy-AST input — in flat mode it was
-	// rehydrated once from b.flat at the end of parse, so just reuse it.
-	input_files := b.files
-
-	// Per-file transformation: parallel
+	// In flat mode, workers stream the rehydration per file (one legacy
+	// ast.File in flight per worker at a time). Otherwise b.files is the
+	// canonical legacy-AST input — slice it across workers as before.
+	stream_from_flat := b.flat_check_enabled && b.files.len == 0
 	n_jobs := runtime.nr_jobs()
-	n_files := input_files.len
+	n_files := if stream_from_flat { b.flat.files.len } else { b.files.len }
 	if n_files <= 1 || n_jobs <= 1 {
 		mut result := []ast.File{cap: n_files}
-		for i := 0; i < n_files; i++ {
-			result << trans.transform_file_pub(input_files[i])
+		if stream_from_flat {
+			for fi in 0 .. n_files {
+				one := b.flat.to_files_range(fi, fi + 1)
+				if one.len == 0 {
+					continue
+				}
+				result << trans.transform_file_pub(one[0])
+			}
+		} else {
+			for i := 0; i < n_files; i++ {
+				result << trans.transform_file_pub(b.files[i])
+			}
 		}
 		trans.post_pass(mut result)
 		return result
@@ -79,13 +110,25 @@ fn (mut b Builder) transform_files_parallel(mut trans transformer.Transformer) [
 	mut i := 0
 	for i < n_files {
 		end := if i + chunk_size < n_files { i + chunk_size } else { n_files }
-		chunk := input_files[i..end]
-		args << TransformChunkArgs{
-			t:          unsafe { voidptr(trans) }
-			files:      chunk
-			result_ptr: unsafe { voidptr(&chunk_results[chunk_idx]) }
-			worker_ptr: unsafe { voidptr(&worker_ptrs[chunk_idx]) }
-			worker_idx: chunk_idx
+		if stream_from_flat {
+			args << TransformChunkArgs{
+				t:          unsafe { voidptr(trans) }
+				flat:       unsafe { &b.flat }
+				flat_start: i
+				flat_end:   end
+				result_ptr: unsafe { voidptr(&chunk_results[chunk_idx]) }
+				worker_ptr: unsafe { voidptr(&worker_ptrs[chunk_idx]) }
+				worker_idx: chunk_idx
+			}
+		} else {
+			chunk := b.files[i..end]
+			args << TransformChunkArgs{
+				t:          unsafe { voidptr(trans) }
+				files:      chunk
+				result_ptr: unsafe { voidptr(&chunk_results[chunk_idx]) }
+				worker_ptr: unsafe { voidptr(&worker_ptrs[chunk_idx]) }
+				worker_idx: chunk_idx
+			}
 		}
 		C.pthread_create(unsafe { &thread_ids[chunk_idx] }, attr, transform_chunk_thread,
 			unsafe { voidptr(&args[chunk_idx]) })

@@ -212,13 +212,9 @@ pub fn (mut b Builder) build(files []string) {
 	mut trans := transformer.Transformer.new_with_pref(b.env, b.pref)
 	trans.set_file_set(b.file_set)
 	sequential_transform := b.pref.no_parallel_transform || b.pref.ownership
-	if b.flat_check_enabled && b.files.len == 0 && !sequential_transform {
-		// Parallel transform splits a single []ast.File across worker chunks,
-		// so the full legacy array needs to exist up front. Sequential path
-		// (below) streams the rehydration inside the transformer, one file
-		// at a time — that's the common path for --no-parallel builds.
-		b.files = b.flat.to_files()
-	}
+	// Both paths can now consume flat directly: sequential streams via
+	// transform_files_from_flat, parallel streams per-worker via
+	// to_files_range. No up-front full rehydration needed in either case.
 	b.files = if sequential_transform {
 		if b.flat_check_enabled {
 			trans.transform_files_from_flat(&b.flat, b.files)
