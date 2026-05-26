@@ -597,6 +597,29 @@ fn (mut w Walker) walk_expr_cursor(c ast.Cursor, mod_name string) {
 				w.walk_expr_cursor(c.edge(i), mod_name)
 			}
 		}
+		// expr_string_inter: edge 0 = aux_list of value strings (not walked),
+		// edge 1 = aux_list of inter nodes. Each inter has edge 0 = expr,
+		// edge 1 = format_expr. Legacy walker calls
+		// mark_string_interpolation_str_dependency(inter.expr) which needs a
+		// decoded ast.Expr to feed receiver_candidates_for_expr. We decode
+		// just that subtree per inter and walk both children via cursor —
+		// format_expr's subtree never gets decoded.
+		.expr_string_inter {
+			inters := c.list_at(1)
+			for i in 0 .. inters.len() {
+				inter := inters.at(i)
+				if !inter.is_valid() {
+					continue
+				}
+				expr_c := inter.edge(0)
+				if expr_c.is_valid() {
+					w.mark_string_interpolation_str_dependency(c.flat.decode_expr(expr_c.id),
+						mod_name)
+				}
+				w.walk_expr_cursor(expr_c, mod_name)
+				w.walk_expr_cursor(inter.edge(1), mod_name)
+			}
+		}
 		// expr_selector: edge 0 = lhs, edge 1 = rhs (Ident). Legacy walker calls
 		// mark_selector_fn_value(expr) — a no-op unless expr.lhs is Ident. When
 		// it is, it uses expr.lhs.name and expr.rhs.name to mark either
