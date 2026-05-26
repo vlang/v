@@ -114,11 +114,24 @@ fn assert_module_mut_failure(label string, main_source string, expected string) 
 	assert output.contains(expected), output
 }
 
+fn assert_module_mut_failure_once(label string, main_source string, expected string) {
+	code, output := run_module_mut_v2_check(label, module_mut_sources(main_source), 'main.v')
+	assert code != 0, '${label} should fail'
+	assert output.count(expected) == 1, output
+}
+
 fn assert_module_mut_interface_failure(label string, main_source string, expected string) {
 	code, output := run_module_mut_v2_check(label, module_mut_interface_sources(main_source),
 		'main.v')
 	assert code != 0, '${label} should fail'
 	assert output.contains(expected), output
+}
+
+fn assert_module_mut_interface_failure_once(label string, main_source string, expected string) {
+	code, output := run_module_mut_v2_check(label, module_mut_interface_sources(main_source),
+		'main.v')
+	assert code != 0, '${label} should fail'
+	assert output.count(expected) == 1, output
 }
 
 fn module_mut_sources(main_source string) map[string]string {
@@ -134,6 +147,15 @@ pub fn (mut i Inner) inc() {
 	i.value++
 }
 
+pub struct OtherInner {
+pub mut:
+	value int
+}
+
+pub fn (mut i OtherInner) inc() {
+	i.value++
+}
+
 pub struct Counter {
 pub module_mut:
 	value int
@@ -143,6 +165,7 @@ pub module_mut:
 pub mut:
 	open int
 	open_items []int
+	open_inner Inner
 }
 
 pub fn (mut c Counter) inc() {
@@ -155,10 +178,55 @@ pub fn (mut c Counter) bump_items() {
 	}
 }
 
+pub fn (mut c Counter) call_inner_inc_method_value() {
+	f := c.inner.inc
+	f()
+}
+
 pub fn new_counter_with_ptr() Counter {
 	return Counter{
 		ptr: &Inner{}
 	}
+}
+'
+		'main.v':        main_source
+	}
+}
+
+fn module_mut_sumtype_mixed_sources(main_source string) map[string]string {
+	return {
+		'restricted/restricted.v': 'module restricted
+
+pub struct Restricted {
+pub module_mut:
+	value int
+}
+'
+		'open/open.v':             'module open
+
+pub struct Open {
+pub mut:
+	value int
+}
+'
+		'main.v':                  main_source
+	}
+}
+
+fn module_mut_sumtype_pub_mut_sources(main_source string) map[string]string {
+	return {
+		'open/open.v':   'module open
+
+pub struct Open {
+pub mut:
+	value int
+}
+'
+		'freely/free.v': 'module freely
+
+pub struct Free {
+pub mut:
+	value int
 }
 '
 		'main.v':        main_source
@@ -170,6 +238,7 @@ fn module_mut_interface_sources(main_source string) map[string]string {
 		'state/state.v': 'module state
 
 pub interface Mutator {
+	read() int
 mut:
 	bump()
 	reset()
@@ -178,6 +247,10 @@ mut:
 pub struct LocalMutator {
 mut:
 	value int
+}
+
+pub fn (m LocalMutator) read() int {
+	return m.value
 }
 
 pub fn (mut m LocalMutator) bump() {
@@ -191,17 +264,25 @@ pub fn (mut m LocalMutator) reset() {
 pub struct InterfaceCounter {
 pub module_mut:
 	iface Mutator
+pub mut:
+	open_iface Mutator
 }
 
 pub fn new_interface_counter() InterfaceCounter {
 	return InterfaceCounter{
-		iface: LocalMutator{}
+		iface:      LocalMutator{}
+		open_iface: LocalMutator{}
 	}
 }
 
 pub fn (mut c InterfaceCounter) bump_iface() {
 	c.iface.bump()
 	c.iface.reset()
+}
+
+pub fn (mut c InterfaceCounter) call_iface_bump_method_value() {
+	f := c.iface.bump
+	f()
 }
 '
 		'main.v':        main_source
@@ -269,6 +350,40 @@ mut:
 	assert decl.fields[2].is_mut
 }
 
+fn test_module_mut_parser_interface_method_metadata_distinguishes_fn_fields() {
+	decl := parse_module_mut_interface('module state
+
+type Handler = fn (int) bool
+
+interface HandlerBox {
+	type() string
+	handle(int) bool
+	convert[T](value T) T
+	handler fn (int) bool
+	callback Handler
+mut:
+	bump()
+	mut_handler fn () bool
+}
+')
+	assert decl.fields[0].name == 'type'
+	assert decl.fields[0].is_interface_method
+	assert decl.fields[1].name == 'handle'
+	assert decl.fields[1].is_interface_method
+	assert decl.fields[2].name == 'convert'
+	assert decl.fields[2].is_interface_method
+	assert decl.fields[3].name == 'handler'
+	assert !decl.fields[3].is_interface_method
+	assert decl.fields[4].name == 'callback'
+	assert !decl.fields[4].is_interface_method
+	assert decl.fields[5].name == 'bump'
+	assert decl.fields[5].is_mut
+	assert decl.fields[5].is_interface_method
+	assert decl.fields[6].name == 'mut_handler'
+	assert decl.fields[6].is_mut
+	assert !decl.fields[6].is_interface_method
+}
+
 fn test_module_mut_gen_v_interface_mut_block_round_trip() {
 	source := 'module state
 
@@ -289,8 +404,40 @@ mut:
 	assert !decl.fields[0].is_mut
 	assert decl.fields[1].name == 'bump'
 	assert decl.fields[1].is_mut
+	assert decl.fields[1].is_interface_method
 	assert decl.fields[2].name == 'reset'
 	assert decl.fields[2].is_mut
+	assert decl.fields[2].is_interface_method
+}
+
+fn test_module_mut_gen_v_interface_fn_field_round_trip() {
+	source := 'module state
+
+type Handler = fn (int) bool
+
+interface HandlerBox {
+	handle(int) bool
+	handler fn (int) bool
+	callback Handler
+mut:
+	bump()
+}
+'
+	generated := gen_module_mut_source(source)
+	assert generated.contains('handle(int) bool')
+	assert generated.contains('handler fn(int) bool')
+	assert generated.contains('callback Handler')
+	assert generated.contains('bump()')
+	assert !generated.contains('handler(int) bool')
+	decl := parse_module_mut_interface(generated)
+	assert decl.fields[0].name == 'handle'
+	assert decl.fields[0].is_interface_method
+	assert decl.fields[1].name == 'handler'
+	assert !decl.fields[1].is_interface_method
+	assert decl.fields[2].name == 'callback'
+	assert !decl.fields[2].is_interface_method
+	assert decl.fields[3].name == 'bump'
+	assert decl.fields[3].is_interface_method
 }
 
 fn test_module_mut_parser_comptime_branch_access_state() {
@@ -396,6 +543,25 @@ fn main() {
 	assert output.contains('cannot mutate module-mutable field `state.Counter.after` outside module `state`'), output
 }
 
+fn test_module_mut_find_field_info_empty_struct_placeholder_does_not_recurse() {
+	empty_struct := Type(Struct{
+		name: 'Loop'
+	})
+	mut scope := new_scope(unsafe { nil })
+	scope.insert_type('Loop', empty_struct)
+	mut prefs := pref.new_preferences()
+	mut file_set := token.FileSet.new()
+	mut c := Checker{
+		pref:     &prefs
+		file_set: &file_set
+		env:      Environment.new()
+		scope:    scope
+	}
+	if _ := c.find_field_info(empty_struct, 'missing') {
+		assert false, 'empty placeholder should not resolve a missing field'
+	}
+}
+
 fn test_module_mut_gen_v_round_trip() {
 	source := 'module state
 
@@ -477,6 +643,128 @@ fn main() {
 	assert code == 0, output
 }
 
+fn test_module_mut_allows_external_non_mut_interface_method_call_on_field() {
+	code, output := run_module_mut_v2_check('external_non_mut_interface_method_call', module_mut_interface_sources('module main
+
+import state
+
+fn main() {
+	mut c := state.new_interface_counter()
+	println(c.iface.read())
+}
+'),
+		'main.v')
+	assert code == 0, output
+}
+
+fn test_module_mut_allows_internal_mut_interface_method_value_on_field() {
+	code, output := run_module_mut_v2_check('internal_mut_interface_method_value', module_mut_interface_sources('module main
+
+import state
+
+fn main() {
+	mut c := state.new_interface_counter()
+	c.call_iface_bump_method_value()
+}
+'),
+		'main.v')
+	assert code == 0, output
+}
+
+fn test_module_mut_allows_pub_mut_interface_method_value_on_field() {
+	code, output := run_module_mut_v2_check('pub_mut_interface_method_value', module_mut_interface_sources('module main
+
+import state
+
+fn main() {
+	mut c := state.new_interface_counter()
+	f := c.open_iface.bump
+	f()
+}
+'),
+		'main.v')
+	assert code == 0, output
+}
+
+fn test_module_mut_interface_fn_field_requires_field_not_method() {
+	handler_fn_type := FnType{
+		params:      [
+			Parameter{
+				name: 'value'
+				typ:  Type(int_)
+			},
+		]
+		return_type: to_optional_type(Type(bool_))
+	}
+	handler_type := Type(handler_fn_type)
+	field_iface := Interface{
+		name:   'HasHandler'
+		fields: [
+			Field{
+				name: 'handler'
+				typ:  handler_type
+			},
+		]
+	}
+	method_iface := Interface{
+		name:   'Handles'
+		fields: [
+			Field{
+				name:                'handler'
+				typ:                 handler_type
+				is_interface_method: true
+			},
+		]
+	}
+	method_only := Type(Struct{
+		name: 'MethodOnly'
+	})
+	field_backed := Type(Struct{
+		name:   'FieldBacked'
+		fields: [
+			Field{
+				name: 'handler'
+				typ:  handler_type
+			},
+		]
+	})
+	method_only_iface := Type(Interface{
+		name:   'MethodOnlyIface'
+		fields: [
+			Field{
+				name:                'handler'
+				typ:                 handler_type
+				is_interface_method: true
+			},
+		]
+	})
+	field_backed_iface := Type(Interface{
+		name:   'FieldBackedIface'
+		fields: [
+			Field{
+				name: 'handler'
+				typ:  handler_type
+			},
+		]
+	})
+	mut prefs := pref.new_preferences()
+	mut file_set := token.FileSet.new()
+	mut c := Checker{
+		pref:     &prefs
+		file_set: &file_set
+		env:      Environment.new()
+		scope:    new_scope(unsafe { nil })
+	}
+	c.register_method_type('MethodOnly', 'handler', handler_fn_type)
+	assert c.type_satisfies_interface(field_backed, field_iface)
+	assert !c.type_satisfies_interface(method_only, field_iface)
+	assert c.type_satisfies_interface(method_only, method_iface)
+	assert c.type_satisfies_interface(field_backed_iface, field_iface)
+	assert !c.type_satisfies_interface(method_only_iface, field_iface)
+	assert c.type_satisfies_interface(method_only_iface, method_iface)
+	assert !c.type_satisfies_interface(field_backed_iface, method_iface)
+}
+
 fn test_module_mut_keeps_pub_mut_publicly_mutable() {
 	code, output := run_module_mut_v2_check('pub_mut_unchanged', module_mut_sources('module main
 
@@ -489,6 +777,8 @@ fn main() {
 	for mut value in c.open_items {
 		value++
 	}
+	f := c.open_inner.inc
+	f()
 }
 '),
 		'main.v')
@@ -599,6 +889,42 @@ fn main() {
 		'cannot mutate module-mutable field `state.Counter.items` outside module `state`')
 }
 
+fn test_module_mut_rejects_nested_inner_owner_from_outer_owner_module() {
+	code, output := run_module_mut_v2_check('nested_inner_owner', {
+		'state/inner/inner.v': 'module inner
+
+pub struct Inner {
+pub module_mut:
+	value int
+}
+'
+		'state/state.v':       'module state
+
+import inner
+
+pub struct Counter {
+pub module_mut:
+	inner inner.Inner
+}
+
+pub fn touch_inner() {
+	mut c := Counter{}
+	c.inner.value++
+}
+'
+		'main.v':              'module main
+
+import state
+
+fn main() {
+	state.touch_inner()
+}
+'
+	}, 'main.v')
+	assert code != 0, 'nested inner owner mutation should fail'
+	assert output.contains('cannot mutate module-mutable field `inner.Inner.value` outside module `inner`'), output
+}
+
 fn test_module_mut_rejects_mut_arg_ref_and_init() {
 	assert_module_mut_failure('mut_arg', 'module main
 
@@ -646,8 +972,309 @@ fn main() {
 		'cannot initialize module-mutable field `state.Counter.value` outside module `state`')
 }
 
+fn test_module_mut_rejects_generic_field_mutation() {
+	assert_module_mut_failure('generic_field_mutation', 'module main
+
+import state
+
+fn poke[T](mut x T) {
+	x.value++
+}
+
+fn main() {
+	mut c := state.Counter{}
+	poke(mut c)
+}
+	',
+		'cannot mutate module-mutable field `state.Counter.value` outside module `state`')
+}
+
+fn test_module_mut_rejects_generic_field_mutation_after_open_instantiation() {
+	assert_module_mut_failure('generic_field_mutation_after_open_instantiation', 'module main
+
+import state
+
+struct OpenCounter {
+pub mut:
+	value int
+}
+
+fn poke[T](mut x T) {
+	x.value++
+}
+
+fn main() {
+	mut open := OpenCounter{}
+	poke(mut open)
+	mut c := state.Counter{}
+	poke(mut c)
+}
+',
+		'cannot mutate module-mutable field `state.Counter.value` outside module `state`')
+}
+
+fn test_module_mut_rejects_generic_mut_arg_after_open_instantiation() {
+	assert_module_mut_failure('generic_mut_arg_after_open_instantiation', 'module main
+
+import state
+
+struct OpenCounter {
+pub mut:
+	value int
+}
+
+fn take(mut value int) {}
+
+fn poke[T](mut x T) {
+	take(mut x.value)
+}
+
+fn main() {
+	mut open := OpenCounter{}
+	poke(mut open)
+	mut c := state.Counter{}
+	poke(mut c)
+}
+',
+		'cannot pass module-mutable field `state.Counter.value` as mut outside module `state`')
+}
+
+fn test_module_mut_rejects_generic_mut_arg_after_open_instantiation_with_different_field_type() {
+	assert_module_mut_failure('generic_mut_arg_after_open_instantiation_different_field_type', 'module main
+
+import state
+
+struct OpenCounter {
+pub mut:
+	value i64
+	inner state.OtherInner
+}
+
+fn take(mut value i64) {}
+
+fn poke_take[T](mut x T) {
+	take(mut x.value)
+}
+
+fn poke_inc[T](mut x T) {
+	x.inner.inc()
+}
+
+fn main() {
+	mut open := OpenCounter{}
+	poke_take(mut open)
+	poke_inc(mut open)
+	mut c := state.Counter{}
+	poke_take(mut c)
+	poke_inc(mut c)
+}
+',
+		'cannot pass module-mutable field `state.Counter.value` as mut outside module `state`')
+}
+
+fn test_module_mut_rejects_generic_nested_field_mutation() {
+	assert_module_mut_failure('generic_nested_field_mutation', 'module main
+
+import state
+
+fn poke_inner[T](mut x T) {
+	x.inner.value++
+}
+
+fn main() {
+	mut c := state.Counter{}
+	poke_inner(mut c)
+}
+	',
+		'cannot mutate module-mutable field `state.Counter.inner` outside module `state`')
+}
+
+fn test_module_mut_rejects_generic_nested_method_call_after_open_instantiation() {
+	assert_module_mut_failure_once('generic_nested_method_call_after_open_instantiation', 'module main
+
+import state
+
+struct OpenCounter {
+pub mut:
+	inner state.Inner
+}
+
+fn poke_inner[T](mut x T) {
+	x.inner.inc()
+}
+
+fn main() {
+	mut open := OpenCounter{}
+	poke_inner(mut open)
+	mut c := state.Counter{}
+	poke_inner(mut c)
+}
+',
+		'cannot mutate module-mutable field `state.Counter.inner` outside module `state`')
+}
+
+fn test_module_mut_rejects_generic_nested_method_call_after_open_instantiation_with_different_field_type() {
+	assert_module_mut_failure_once('generic_nested_method_call_after_open_instantiation_different_field_type', 'module main
+
+import state
+
+struct OpenCounter {
+pub mut:
+	inner state.OtherInner
+}
+
+fn poke_inner[T](mut x T) {
+	x.inner.inc()
+}
+
+fn main() {
+	mut open := OpenCounter{}
+	poke_inner(mut open)
+	mut c := state.Counter{}
+	poke_inner(mut c)
+}
+',
+		'cannot mutate module-mutable field `state.Counter.inner` outside module `state`')
+}
+
+fn test_module_mut_rejects_generic_postfix_after_open_instantiation_with_different_field_type() {
+	assert_module_mut_failure('generic_postfix_after_open_instantiation_different_field_type', 'module main
+
+import state
+
+struct OpenCounter {
+pub mut:
+	value i64
+}
+
+fn poke[T](mut x T) {
+	x.value++
+}
+
+fn main() {
+	mut open := OpenCounter{}
+	poke(mut open)
+	mut c := state.Counter{}
+	poke(mut c)
+}
+',
+		'cannot mutate module-mutable field `state.Counter.value` outside module `state`')
+}
+
+fn test_module_mut_rejects_generic_postfix_before_open_instantiation_with_different_field_type() {
+	assert_module_mut_failure('generic_postfix_before_open_instantiation_different_field_type', 'module main
+
+import state
+
+struct OpenCounter {
+pub mut:
+	value i64
+}
+
+fn poke[T](mut x T) {
+	x.value++
+}
+
+fn main() {
+	mut c := state.Counter{}
+	poke(mut c)
+	mut open := OpenCounter{}
+	poke(mut open)
+}
+',
+		'cannot mutate module-mutable field `state.Counter.value` outside module `state`')
+}
+
+fn test_module_mut_rejects_sumtype_smartcast_lvalue_mutation() {
+	assert_module_mut_failure('sumtype_smartcast_lvalue_mutation', 'module main
+
+import state
+
+struct Other {}
+
+type Item = state.Counter | Other
+
+fn touch(mut x Item) {
+	if x is state.Counter {
+		x.value = 1
+	}
+}
+
+fn main() {
+	mut item := Item(state.Counter{})
+	touch(mut item)
+}
+',
+		'cannot mutate module-mutable field `state.Counter.value` outside module `state`')
+}
+
+fn test_module_mut_rejects_sumtype_common_field_mixed_access_restricted_first() {
+	code, output := run_module_mut_v2_check('sumtype_common_field_mixed_restricted_first', module_mut_sumtype_mixed_sources('module main
+
+import open
+import restricted
+
+type Item = restricted.Restricted | open.Open
+
+fn touch(mut x Item) {
+	x.value = 1
+}
+
+fn main() {
+	mut item := Item(restricted.Restricted{})
+	touch(mut item)
+}
+'),
+		'main.v')
+	assert code != 0, 'sumtype_common_field_mixed_restricted_first should fail'
+	assert output.contains('cannot mutate module-mutable field `restricted.Restricted.value` outside module `restricted`'), output
+}
+
+fn test_module_mut_rejects_sumtype_common_field_mixed_access_open_first() {
+	code, output := run_module_mut_v2_check('sumtype_common_field_mixed_open_first', module_mut_sumtype_mixed_sources('module main
+
+import open
+import restricted
+
+type Item = open.Open | restricted.Restricted
+
+fn touch(mut x Item) {
+	x.value = 1
+}
+
+fn main() {
+	mut item := Item(open.Open{})
+	touch(mut item)
+}
+'),
+		'main.v')
+	assert code != 0, 'sumtype_common_field_mixed_open_first should fail'
+	assert output.contains('cannot mutate module-mutable field `restricted.Restricted.value` outside module `restricted`'), output
+}
+
+fn test_module_mut_allows_sumtype_common_field_when_all_variants_are_pub_mut() {
+	code, output := run_module_mut_v2_check('sumtype_common_field_all_pub_mut', module_mut_sumtype_pub_mut_sources('module main
+
+import freely
+import open
+
+type Item = open.Open | freely.Free
+
+fn touch(mut x Item) {
+	x.value = 1
+}
+
+fn main() {
+	mut item := Item(open.Open{})
+	touch(mut item)
+}
+'),
+		'main.v')
+	assert code == 0, output
+}
+
 fn test_module_mut_rejects_mut_receiver_method_call_on_field() {
-	assert_module_mut_failure('mut_receiver_method_call', 'module main
+	assert_module_mut_failure_once('mut_receiver_method_call', 'module main
 
 import state
 
@@ -659,14 +1286,141 @@ fn main() {
 		'cannot mutate module-mutable field `state.Counter.inner` outside module `state`')
 }
 
+fn test_module_mut_rejects_external_mut_receiver_method_value_on_field() {
+	assert_module_mut_failure('mut_receiver_method_value', 'module main
+
+import state
+
+fn main() {
+	mut c := state.Counter{}
+	f := c.inner.inc
+	f()
+}
+',
+		'cannot mutate module-mutable field `state.Counter.inner` outside module `state`')
+}
+
+fn test_module_mut_allows_internal_mut_receiver_method_value_on_field() {
+	code, output := run_module_mut_v2_check('internal_mut_receiver_method_value', module_mut_sources('module main
+
+import state
+
+fn main() {
+	mut c := state.Counter{}
+	c.call_inner_inc_method_value()
+}
+'),
+		'main.v')
+	assert code == 0, output
+}
+
 fn test_module_mut_rejects_mut_interface_method_call_on_field() {
-	assert_module_mut_interface_failure('mut_interface_method_call', 'module main
+	assert_module_mut_interface_failure_once('mut_interface_method_call', 'module main
 
 import state
 
 fn main() {
 	mut c := state.new_interface_counter()
 	c.iface.bump()
+}
+',
+		'cannot mutate module-mutable field `state.InterfaceCounter.iface` outside module `state`')
+}
+
+fn test_module_mut_rejects_external_mut_interface_method_value_on_field() {
+	assert_module_mut_interface_failure('mut_interface_method_value', 'module main
+
+import state
+
+fn main() {
+	mut c := state.new_interface_counter()
+	f := c.iface.bump
+	f()
+}
+',
+		'cannot mutate module-mutable field `state.InterfaceCounter.iface` outside module `state`')
+}
+
+fn test_module_mut_rejects_smartcast_mut_interface_method_call_on_field() {
+	assert_module_mut_interface_failure_once('smartcast_mut_interface_method_call', 'module main
+
+import state
+
+fn main() {
+	mut c := state.new_interface_counter()
+	if c.iface is state.LocalMutator {
+		c.iface.bump()
+	}
+}
+',
+		'cannot mutate module-mutable field `state.InterfaceCounter.iface` outside module `state`')
+}
+
+fn test_module_mut_rejects_smartcast_mut_interface_method_value_on_field() {
+	assert_module_mut_interface_failure('smartcast_mut_interface_method_value', 'module main
+
+import state
+
+fn main() {
+	mut c := state.new_interface_counter()
+	if c.iface is state.LocalMutator {
+		f := c.iface.bump
+		f()
+	}
+}
+',
+		'cannot mutate module-mutable field `state.InterfaceCounter.iface` outside module `state`')
+}
+
+fn test_module_mut_rejects_cast_mut_interface_method_call_on_field() {
+	assert_module_mut_interface_failure_once('as_cast_mut_interface_method_call', 'module main
+
+import state
+
+fn main() {
+	mut c := state.new_interface_counter()
+	(c.iface as state.LocalMutator).bump()
+}
+',
+		'cannot mutate module-mutable field `state.InterfaceCounter.iface` outside module `state`')
+}
+
+fn test_module_mut_rejects_cast_mut_interface_method_value_on_field() {
+	assert_module_mut_interface_failure('as_cast_mut_interface_method_value', 'module main
+
+import state
+
+fn main() {
+	mut c := state.new_interface_counter()
+	f := (c.iface as state.LocalMutator).bump
+	f()
+}
+',
+		'cannot mutate module-mutable field `state.InterfaceCounter.iface` outside module `state`')
+}
+
+fn test_module_mut_rejects_call_cast_mut_interface_method_call_on_field() {
+	assert_module_mut_interface_failure_once('call_cast_mut_interface_method_call', 'module main
+
+import state
+
+fn main() {
+	mut c := state.new_interface_counter()
+	state.LocalMutator(c.iface).bump()
+}
+	',
+		'cannot mutate module-mutable field `state.InterfaceCounter.iface` outside module `state`')
+}
+
+fn test_module_mut_rejects_call_cast_mut_interface_method_value_on_field() {
+	assert_module_mut_interface_failure('call_cast_mut_interface_method_value', 'module main
+
+import state
+
+fn main() {
+	mut c := state.new_interface_counter()
+	f := state.LocalMutator(c.iface).bump
+	f()
 }
 ',
 		'cannot mutate module-mutable field `state.InterfaceCounter.iface` outside module `state`')

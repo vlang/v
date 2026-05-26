@@ -220,14 +220,15 @@ type NamedType = string
 
 pub struct Field {
 pub:
-	name          string
-	typ           Type
-	default_expr  ast.Expr = ast.empty_expr
-	attributes    []ast.Attribute
-	is_public     bool
-	is_mut        bool
-	is_module_mut bool
-	owner_module  string
+	name                string
+	typ                 Type
+	default_expr        ast.Expr = ast.empty_expr
+	attributes          []ast.Attribute
+	is_public           bool
+	is_mut              bool
+	is_module_mut       bool
+	is_interface_method bool
+	owner_module        string
 }
 
 // struct Method {

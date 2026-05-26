@@ -549,8 +549,10 @@ struct PendingStructDecl {
 }
 
 struct FieldAccessInfo {
-	field        Field
-	owner_struct string
+	field                    Field
+	owner_struct             string
+	module_mut_fields        []Field
+	module_mut_owner_structs []string
 }
 
 struct PendingTypeDecl {
@@ -953,13 +955,66 @@ fn (mut c Checker) find_field_info(t Type, raw_name string) ?FieldAccessInfo {
 			rt := t as ResultType
 			return c.find_field_info(rt.base_type, name)
 		}
+		NamedType {
+			nt := t as NamedType
+			concrete_types := c.resolve_active_generic_named_types(nt)
+			if concrete_types.len == 1 {
+				return c.find_field_info(concrete_types[0], name)
+			}
+			if concrete_types.len > 1 {
+				mut prev_info := FieldAccessInfo{}
+				mut found_info := false
+				mut has_missing_field := false
+				mut has_mismatched_field_type := false
+				mut module_mut_fields := []Field{}
+				mut module_mut_owner_structs := []string{}
+				for concrete_type in concrete_types {
+					info := c.find_field_info(concrete_type, name) or {
+						has_missing_field = true
+						continue
+					}
+					if found_info && info.field.typ.name() != prev_info.field.typ.name() {
+						has_mismatched_field_type = true
+					}
+					if info.module_mut_fields.len > 0 {
+						for i, module_mut_field in info.module_mut_fields {
+							module_mut_fields << module_mut_field
+							if i < info.module_mut_owner_structs.len {
+								module_mut_owner_structs << info.module_mut_owner_structs[i]
+							} else {
+								module_mut_owner_structs << info.owner_struct
+							}
+						}
+					} else if info.field.is_module_mut {
+						module_mut_fields << info.field
+						module_mut_owner_structs << info.owner_struct
+					}
+					prev_info = info
+					found_info = true
+				}
+				if found_info {
+					if (has_missing_field || has_mismatched_field_type)
+						&& module_mut_fields.len == 0 {
+						return none
+					}
+					return FieldAccessInfo{
+						field:                    prev_info.field
+						owner_struct:             prev_info.owner_struct
+						module_mut_fields:        module_mut_fields
+						module_mut_owner_structs: module_mut_owner_structs
+					}
+				}
+			}
+		}
 		Struct {
 			st := t as Struct
 			if st.fields.len == 0 && st.embedded.len == 0 && st.name != '' {
 				if obj := c.lookup_type_by_name(st.name) {
 					if obj is Struct {
-						if info := c.find_field_info(obj, name) {
-							return info
+						if obj.fields.len > 0 || obj.embedded.len > 0 || obj.name != st.name {
+							if info := c.find_field_info(obj, name) {
+								return info
+							}
 						}
 					}
 				}
@@ -982,14 +1037,106 @@ fn (mut c Checker) find_field_info(t Type, raw_name string) ?FieldAccessInfo {
 				}
 			}
 		}
+		SumType {
+			smt := c.live_sumtype(t as SumType)
+			mut prev_info := FieldAccessInfo{}
+			mut found_info := false
+			mut module_mut_fields := []Field{}
+			mut module_mut_owner_structs := []string{}
+			for variant in smt.variants {
+				mut variant_type := resolve_alias(variant)
+				if live_variant := c.lookup_type_by_name(variant_type.name()) {
+					variant_type = resolve_alias(live_variant)
+				}
+				info := c.find_field_info(variant_type, name) or { return none }
+				if found_info && info.field.typ.name() != prev_info.field.typ.name() {
+					return none
+				}
+				if info.module_mut_fields.len > 0 {
+					for i, module_mut_field in info.module_mut_fields {
+						module_mut_fields << module_mut_field
+						if i < info.module_mut_owner_structs.len {
+							module_mut_owner_structs << info.module_mut_owner_structs[i]
+						} else {
+							module_mut_owner_structs << info.owner_struct
+						}
+					}
+				} else if info.field.is_module_mut {
+					module_mut_fields << info.field
+					module_mut_owner_structs << info.owner_struct
+				}
+				prev_info = info
+				found_info = true
+			}
+			if found_info {
+				return FieldAccessInfo{
+					field:                    prev_info.field
+					owner_struct:             prev_info.owner_struct
+					module_mut_fields:        module_mut_fields
+					module_mut_owner_structs: module_mut_owner_structs
+				}
+			}
+		}
 		else {}
 	}
 
 	return none
 }
 
+fn module_mut_field_access_is_external(info FieldAccessInfo, cur_file_module string) bool {
+	if _ := module_mut_field_access_external_info(info, cur_file_module) {
+		return true
+	}
+	return false
+}
+
+fn module_mut_field_access_has_module_mut(info FieldAccessInfo) bool {
+	return info.field.is_module_mut || info.module_mut_fields.len > 0
+}
+
+fn module_mut_field_access_external_info(info FieldAccessInfo, cur_file_module string) ?FieldAccessInfo {
+	if info.module_mut_fields.len > 0 {
+		for i, module_mut_field in info.module_mut_fields {
+			owner_struct := if i < info.module_mut_owner_structs.len {
+				info.module_mut_owner_structs[i]
+			} else {
+				info.owner_struct
+			}
+			variant_info := FieldAccessInfo{
+				field:        module_mut_field
+				owner_struct: owner_struct
+			}
+			owner_module := field_owner_module(variant_info.field, variant_info.owner_struct)
+			if owner_module != '' && owner_module != cur_file_module {
+				return variant_info
+			}
+		}
+		return none
+	}
+	owner_module := field_owner_module(info.field, info.owner_struct)
+	if info.field.is_module_mut && owner_module != '' && owner_module != cur_file_module {
+		return info
+	}
+	return none
+}
+
+fn (mut c Checker) check_module_mut_method_value_extraction(lhs ast.Expr, method_type Type, pos token.Pos) {
+	if c.expecting_method {
+		return
+	}
+	if method_type is FnType && method_type.is_mut_receiver {
+		c.check_module_mut_field_mutation(lhs, pos)
+	}
+}
+
 fn (mut c Checker) module_mut_field_access_in_expr(expr ast.Expr) ?FieldAccessInfo {
 	match expr {
+		ast.AsCastExpr {
+			return c.module_mut_field_access_in_expr(expr.expr)
+		}
+		ast.CastExpr {
+			return c.module_mut_field_access_in_expr(expr.expr)
+		}
 		ast.PrefixExpr {
 			if expr.op == .mul {
 				return c.module_mut_field_access_in_expr(expr.expr)
@@ -1000,21 +1147,41 @@ fn (mut c Checker) module_mut_field_access_in_expr(expr ast.Expr) ?FieldAccessIn
 
 	unwrapped := c.unwrap_expr(expr)
 	match unwrapped {
+		ast.AsCastExpr {
+			return c.module_mut_field_access_in_expr(unwrapped.expr)
+		}
+		ast.CastExpr {
+			return c.module_mut_field_access_in_expr(unwrapped.expr)
+		}
 		ast.IndexExpr {
 			return c.module_mut_field_access_in_expr(unwrapped.lhs)
 		}
 		ast.SelectorExpr {
+			mut lhs_module_mut_info := FieldAccessInfo{}
+			mut has_lhs_module_mut_info := false
 			if info := c.module_mut_field_access_in_expr(unwrapped.lhs) {
-				return info
-			}
-			lhs_type := c.expr_type_without_field_smartcast(unwrapped.lhs) or {
-				c.expr(unwrapped.lhs)
-			}
-			rhs_name := c.selector_rhs_name(unwrapped)
-			if info := c.find_field_info(lhs_type, rhs_name) {
-				if info.field.is_module_mut {
+				if module_mut_field_access_is_external(info, c.cur_file_module) {
 					return info
 				}
+				lhs_module_mut_info = info
+				has_lhs_module_mut_info = true
+			}
+			rhs_name := c.selector_rhs_name(unwrapped)
+			if lhs_type := c.expr_type_without_field_smartcast(unwrapped.lhs) {
+				if info := c.find_field_info(lhs_type, rhs_name) {
+					if module_mut_field_access_has_module_mut(info) {
+						return info
+					}
+				}
+			}
+			smartcast_lhs_type := c.expr(unwrapped.lhs)
+			if info := c.find_field_info(smartcast_lhs_type, rhs_name) {
+				if module_mut_field_access_has_module_mut(info) {
+					return info
+				}
+			}
+			if has_lhs_module_mut_info {
+				return lhs_module_mut_info
 			}
 		}
 		else {}
@@ -1025,9 +1192,9 @@ fn (mut c Checker) module_mut_field_access_in_expr(expr ast.Expr) ?FieldAccessIn
 
 fn (mut c Checker) check_module_mut_field_mutation(expr ast.Expr, pos token.Pos) {
 	if info := c.module_mut_field_access_in_expr(expr) {
-		owner_module := field_owner_module(info.field, info.owner_struct)
-		if owner_module != '' && owner_module != c.cur_file_module {
-			c.error_with_pos('cannot mutate module-mutable field `${field_access_display(info)}` outside module `${owner_module}`',
+		if external_info := module_mut_field_access_external_info(info, c.cur_file_module) {
+			owner_module := field_owner_module(external_info.field, external_info.owner_struct)
+			c.error_with_pos('cannot mutate module-mutable field `${field_access_display(external_info)}` outside module `${owner_module}`',
 				pos)
 		}
 	}
@@ -1035,9 +1202,9 @@ fn (mut c Checker) check_module_mut_field_mutation(expr ast.Expr, pos token.Pos)
 
 fn (mut c Checker) check_module_mut_field_mut_arg(expr ast.Expr, pos token.Pos) {
 	if info := c.module_mut_field_access_in_expr(expr) {
-		owner_module := field_owner_module(info.field, info.owner_struct)
-		if owner_module != '' && owner_module != c.cur_file_module {
-			c.error_with_pos('cannot pass module-mutable field `${field_access_display(info)}` as mut outside module `${owner_module}`',
+		if external_info := module_mut_field_access_external_info(info, c.cur_file_module) {
+			owner_module := field_owner_module(external_info.field, external_info.owner_struct)
+			c.error_with_pos('cannot pass module-mutable field `${field_access_display(external_info)}` as mut outside module `${owner_module}`',
 				pos)
 		}
 	}
@@ -1045,9 +1212,9 @@ fn (mut c Checker) check_module_mut_field_mut_arg(expr ast.Expr, pos token.Pos) 
 
 fn (mut c Checker) check_module_mut_field_mut_ref(expr ast.Expr, pos token.Pos) {
 	if info := c.module_mut_field_access_in_expr(expr) {
-		owner_module := field_owner_module(info.field, info.owner_struct)
-		if owner_module != '' && owner_module != c.cur_file_module {
-			c.error_with_pos('cannot take mutable reference to module-mutable field `${field_access_display(info)}` outside module `${owner_module}`',
+		if external_info := module_mut_field_access_external_info(info, c.cur_file_module) {
+			owner_module := field_owner_module(external_info.field, external_info.owner_struct)
+			c.error_with_pos('cannot take mutable reference to module-mutable field `${field_access_display(external_info)}` outside module `${owner_module}`',
 				pos)
 		}
 	}
@@ -1973,8 +2140,15 @@ fn (mut c Checker) type_satisfies_interface(got_type Type, iface Interface) bool
 			continue
 		}
 		field_type := resolve_alias(field.typ)
-		if field_type is FnType {
-			method_type := c.lookup_method_direct(actual_type, field.name) or { return false }
+		if field.is_interface_method && field_type is FnType {
+			method_type := if actual_type is Interface {
+				actual_field := c.find_interface_field(actual_type, field.name, true) or {
+					return false
+				}
+				actual_field.typ
+			} else {
+				c.lookup_method_direct(actual_type, field.name) or { return false }
+			}
 			if method_type !is FnType {
 				return false
 			}
@@ -1983,7 +2157,16 @@ fn (mut c Checker) type_satisfies_interface(got_type Type, iface Interface) bool
 			}
 			continue
 		}
-		member_type := c.find_field_or_method(actual_type, field.name) or { return false }
+		member_type := if info := c.find_field_info(actual_type, field.name) {
+			info.field.typ
+		} else if actual_type is Interface {
+			actual_field := c.find_interface_field(actual_type, field.name, false) or {
+				return false
+			}
+			actual_field.typ
+		} else {
+			return false
+		}
 		if !c.check_types(field_type, member_type) {
 			return false
 		}
@@ -3677,14 +3860,15 @@ fn (mut c Checker) type_node_expr(type_expr ast.Type) Type {
 		for field in anon.fields {
 			field_typ := c.type_expr(field.typ)
 			fields << Field{
-				name:          field.name
-				typ:           field_typ
-				default_expr:  field.value
-				attributes:    field.attributes
-				is_public:     field.is_public
-				is_mut:        field.is_mut
-				is_module_mut: field.is_module_mut
-				owner_module:  c.cur_file_module
+				name:                field.name
+				typ:                 field_typ
+				default_expr:        field.value
+				attributes:          field.attributes
+				is_public:           field.is_public
+				is_mut:              field.is_mut
+				is_module_mut:       field.is_module_mut
+				is_interface_method: field.is_interface_method
+				owner_module:        c.cur_file_module
 			}
 		}
 		return Struct{
@@ -3983,22 +4167,25 @@ fn (mut c Checker) interface_decl_fields(decl ast.InterfaceDecl) []Field {
 			has_type_name = true
 		}
 		mut field_type := c.type_expr(field.typ)
-		if field.is_mut {
+		if field.is_interface_method && field.is_mut {
 			if mut field_type is FnType {
 				field_type.is_mut_receiver = true
 			}
 		}
 		fields << Field{
-			name:         field.name
-			typ:          field_type
-			default_expr: field.value
-			is_mut:       field.is_mut
+			name:                field.name
+			typ:                 field_type
+			default_expr:        field.value
+			attributes:          field.attributes
+			is_mut:              field.is_mut
+			is_interface_method: field.is_interface_method
 		}
 	}
 	if !has_type_name {
 		fields << Field{
-			name: 'type_name'
-			typ:  Type(fn_with_return_type(empty_fn_type(), String(0)))
+			name:                'type_name'
+			typ:                 Type(fn_with_return_type(empty_fn_type(), String(0)))
+			is_interface_method: true
 		}
 	}
 	return fields
@@ -4098,14 +4285,15 @@ fn (mut c Checker) process_pending_struct_decls() {
 		for field in pending.decl.fields {
 			field_typ := c.decl_field_type(field.typ)
 			fields << Field{
-				name:          field.name
-				typ:           field_typ
-				default_expr:  field.value
-				attributes:    field.attributes
-				is_public:     field.is_public
-				is_mut:        field.is_mut
-				is_module_mut: field.is_module_mut
-				owner_module:  pending.module_name
+				name:                field.name
+				typ:                 field_typ
+				default_expr:        field.value
+				attributes:          field.attributes
+				is_public:           field.is_public
+				is_mut:              field.is_mut
+				is_module_mut:       field.is_module_mut
+				is_interface_method: field.is_interface_method
+				owner_module:        pending.module_name
 			}
 		}
 		mut embedded := []Struct{}
@@ -4215,15 +4403,25 @@ fn (mut c Checker) process_pending_type_decls() {
 
 fn (mut c Checker) process_pending_fn_bodies() {
 	// Use index-based loop to handle nested FnDecls that get added during processing.
-	mut i := 0
-	for i < c.pending_fn_bodies.len {
-		c.check_pending_fn_body(c.pending_fn_bodies[i])
-		i++
+	for c.pending_fn_bodies.len > 0 {
+		mut progressed := false
+		mut i := 0
+		for i < c.pending_fn_bodies.len {
+			if c.check_pending_fn_body(c.pending_fn_bodies[i]) {
+				c.pending_fn_bodies.delete(i)
+				progressed = true
+				continue
+			}
+			i++
+		}
+		if !progressed {
+			break
+		}
 	}
 	c.pending_fn_bodies.clear()
 }
 
-fn (mut c Checker) check_pending_fn_body(pending PendingFnBody) {
+fn (mut c Checker) check_pending_fn_body(pending PendingFnBody) bool {
 	decl_generic_params := collect_fn_generic_params(pending.decl)
 	has_decl_generic_params := pending.decl.typ.generic_params.len > 0
 	has_generic_params := decl_generic_params.len > 0
@@ -4252,7 +4450,7 @@ fn (mut c Checker) check_pending_fn_body(pending PendingFnBody) {
 		}
 		if !has_generic_types {
 			// Skip checking generic functions that are never instantiated.
-			return
+			return false
 		}
 		c.env.cur_generic_types << generic_types
 	}
@@ -4319,6 +4517,7 @@ fn (mut c Checker) check_pending_fn_body(pending PendingFnBody) {
 		c.cur_file_module = prev_module
 	}
 	c.env.cur_generic_types = []
+	return true
 }
 
 fn collect_fn_generic_params(decl ast.FnDecl) []string {
@@ -5450,15 +5649,16 @@ fn (mut c Checker) instantiate_generic_struct(base Struct, args []ast.Expr) Type
 	mut fields := []Field{cap: actual_base.fields.len}
 	for field in actual_base.fields {
 		fields << Field{
-			name:          field.name
-			typ:           c.substitute_generic_type_with_stack(field.typ, generic_type_map,
+			name:                field.name
+			typ:                 c.substitute_generic_type_with_stack(field.typ, generic_type_map,
 				substitution_stack)
-			default_expr:  field.default_expr
-			attributes:    field.attributes
-			is_public:     field.is_public
-			is_mut:        field.is_mut
-			is_module_mut: field.is_module_mut
-			owner_module:  field.owner_module
+			default_expr:        field.default_expr
+			attributes:          field.attributes
+			is_public:           field.is_public
+			is_mut:              field.is_mut
+			is_module_mut:       field.is_module_mut
+			is_interface_method: field.is_interface_method
+			owner_module:        field.owner_module
 		}
 	}
 	mut embedded := []Struct{cap: actual_base.embedded.len}
@@ -5472,14 +5672,15 @@ fn (mut c Checker) instantiate_generic_struct(base Struct, args []ast.Expr) Type
 	for i, field in fields {
 		if fixed := fix_self_ref_type(field.typ, actual_base.name, fields, embedded) {
 			fields[i] = Field{
-				name:          field.name
-				typ:           fixed
-				default_expr:  field.default_expr
-				attributes:    field.attributes
-				is_public:     field.is_public
-				is_mut:        field.is_mut
-				is_module_mut: field.is_module_mut
-				owner_module:  field.owner_module
+				name:                field.name
+				typ:                 fixed
+				default_expr:        field.default_expr
+				attributes:          field.attributes
+				is_public:           field.is_public
+				is_mut:              field.is_mut
+				is_module_mut:       field.is_module_mut
+				is_interface_method: field.is_interface_method
+				owner_module:        field.owner_module
 			}
 		}
 	}
@@ -5513,15 +5714,16 @@ fn (mut c Checker) substitute_struct_generic_type_with_stack(st Struct, generic_
 	mut fields := []Field{cap: st.fields.len}
 	for field in st.fields {
 		fields << Field{
-			name:          field.name
-			typ:           c.substitute_generic_type_with_stack(field.typ, generic_type_map,
+			name:                field.name
+			typ:                 c.substitute_generic_type_with_stack(field.typ, generic_type_map,
 				next_stack)
-			default_expr:  field.default_expr
-			attributes:    field.attributes
-			is_public:     field.is_public
-			is_mut:        field.is_mut
-			is_module_mut: field.is_module_mut
-			owner_module:  field.owner_module
+			default_expr:        field.default_expr
+			attributes:          field.attributes
+			is_public:           field.is_public
+			is_mut:              field.is_mut
+			is_module_mut:       field.is_module_mut
+			is_interface_method: field.is_interface_method
+			owner_module:        field.owner_module
 		}
 	}
 	mut embedded := []Struct{cap: st.embedded.len}
@@ -6702,10 +6904,12 @@ fn (mut c Checker) selector_expr(expr ast.SelectorExpr) Type {
 	if cast_type := c.scope.lookup_field_smartcast(lhs_name) {
 		// println('## 2 found smartcast for ${lhs_name} - ${cast_type.type_name()} - ${cast_type.name()} - ${expr.rhs.name}')
 		if field_or_method_type := c.find_field_or_method(cast_type, expr.rhs.name) {
+			c.check_module_mut_method_value_extraction(expr.lhs, field_or_method_type, expr.pos)
 			return field_or_method_type
 		}
 	}
 	if smartcast_type := c.smartcasted_selector_type(expr) {
+		c.check_module_mut_method_value_extraction(expr.lhs, smartcast_type, expr.pos)
 		return smartcast_type
 	}
 
@@ -6896,11 +7100,13 @@ fn (mut c Checker) selector_expr(expr ast.SelectorExpr) Type {
 	if string_data_type := c.selector_string_data_type(expr, lhs_type) {
 		return string_data_type
 	}
-	return c.find_field_or_method(lhs_type, rhs_name) or {
+	field_or_method_type := c.find_field_or_method(lhs_type, rhs_name) or {
 		if expecting_method {
 			if receiver_type := c.expr_type_without_field_smartcast(expr.lhs) {
 				if receiver_type.name() != lhs_type.name() {
 					if field_or_method_type := c.find_field_or_method(receiver_type, rhs_name) {
+						c.check_module_mut_method_value_extraction(expr.lhs, field_or_method_type,
+							expr.pos)
 						return field_or_method_type
 					}
 				}
@@ -6914,6 +7120,8 @@ fn (mut c Checker) selector_expr(expr ast.SelectorExpr) Type {
 		c.error_with_pos(err.msg(), expr.pos)
 		return Type(void_)
 	}
+	c.check_module_mut_method_value_extraction(expr.lhs, field_or_method_type, expr.pos)
+	return field_or_method_type
 }
 
 fn (c &Checker) selector_rhs_name(expr ast.SelectorExpr) string {
@@ -7135,6 +7343,20 @@ fn (mut c Checker) resolve_interface_fields(iface Interface) []Field {
 		}
 	}
 	return iface.fields
+}
+
+fn (mut c Checker) find_interface_field(iface Interface, name string, is_method bool) ?Field {
+	iface_fields := if iface.fields.len == 0 && iface.name != '' {
+		c.resolve_interface_fields(iface)
+	} else {
+		iface.fields
+	}
+	for field in iface_fields {
+		if field.name == name && field.is_interface_method == is_method {
+			return field
+		}
+	}
+	return none
 }
 
 fn (c &Checker) struct_implements_name(st Struct, target string) bool {
@@ -7420,6 +7642,16 @@ fn (c &Checker) resolve_active_generic_named_type(t NamedType) ?Type {
 		}
 	}
 	return none
+}
+
+fn (c &Checker) resolve_active_generic_named_types(t NamedType) []Type {
+	mut concrete_types := []Type{}
+	for generic_types in c.env.cur_generic_types {
+		if concrete := generic_types[string(t)] {
+			concrete_types << concrete
+		}
+	}
+	return concrete_types
 }
 
 fn (mut c Checker) lookup_builtin_type(name string) ?Type {

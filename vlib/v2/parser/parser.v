@@ -3049,9 +3049,10 @@ fn (mut p Parser) interface_decl(is_public bool, attributes []ast.Attribute) ast
 		if p.tok.is_keyword() && p.peek() == .lpar {
 			field_name := p.expect_name_or_keyword()
 			fields << ast.FieldDecl{
-				name:   field_name
-				typ:    ast.Expr(ast.Type(p.fn_type()))
-				is_mut: block_is_mut
+				name:                field_name
+				typ:                 ast.Expr(ast.Type(p.fn_type()))
+				is_mut:              block_is_mut
+				is_interface_method: true
 			}
 			p.expect(.semicolon)
 			continue
@@ -3074,7 +3075,9 @@ fn (mut p Parser) interface_decl(is_public bool, attributes []ast.Attribute) ast
 			} else {
 				p.error('expecting field name')
 			}
+			mut is_interface_method := false
 			field_typ := if p.tok == .lpar {
+				is_interface_method = true
 				mut typ := p.fn_type()
 				if method_generic_params.len > 0 {
 					typ = ast.FnType{
@@ -3087,9 +3090,10 @@ fn (mut p Parser) interface_decl(is_public bool, attributes []ast.Attribute) ast
 				p.expect_type()
 			}
 			fields << ast.FieldDecl{
-				name:   field_name
-				typ:    field_typ
-				is_mut: block_is_mut
+				name:                field_name
+				typ:                 field_typ
+				is_mut:              block_is_mut
+				is_interface_method: is_interface_method
 			}
 		}
 		// embedded interface
