@@ -146,11 +146,12 @@ pub fn (mut b Builder) build(files []string) {
 	if b.flat_check_enabled {
 		// FlatBuilder is the canonical parse output; both parse paths stream
 		// into it. parse_files / parse_files_parallel return [] in flat
-		// mode, so derive b.files from b.flat here — this is the single
-		// rehydration bridge that lets legacy []ast.File consumers
-		// (transform/markused/codegen) keep working while we migrate them.
+		// mode, so b.flat is the live source of truth from here on. The
+		// rehydration to legacy []ast.File is deferred until the transformer
+		// (the first consumer that still needs it) actually starts —
+		// keeping ~120MB of legacy AST out of memory during the type check
+		// phase, which is the current memory peak.
 		b.flat = b.flat_builder.flat
-		b.files = b.flat.to_files()
 	}
 	b.update_parse_summary_counts()
 	print_parse_summary(b.parsed_full_files_n, b.parsed_vh_files_n, b.entry_v_lines_n,
@@ -177,7 +178,15 @@ pub fn (mut b Builder) build(files []string) {
 	transform_start := sw.elapsed()
 	mut trans := transformer.Transformer.new_with_pref(b.env, b.pref)
 	trans.set_file_set(b.file_set)
-	b.files = if b.pref.no_parallel_transform || b.pref.ownership {
+	sequential_transform := b.pref.no_parallel_transform || b.pref.ownership
+	if b.flat_check_enabled && b.files.len == 0 && !sequential_transform {
+		// Parallel transform splits a single []ast.File across worker chunks,
+		// so the full legacy array needs to exist up front. Sequential path
+		// (below) streams the rehydration inside the transformer, one file
+		// at a time — that's the common path for --no-parallel builds.
+		b.files = b.flat.to_files()
+	}
+	b.files = if sequential_transform {
 		if b.flat_check_enabled {
 			trans.transform_files_from_flat(&b.flat, b.files)
 		} else {

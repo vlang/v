@@ -1793,19 +1793,45 @@ pub fn (mut t Transformer) transform_files(files []ast.File) []ast.File {
 
 // transform_files_from_flat drives the same per-file transform pipeline
 // but seeds the pre-pass accumulators from FlatAst rather than from the
-// legacy ast.File list. The per-file transform still operates on the
-// supplied legacy files, which the builder has already rehydrated from
-// b.flat — wiring a flat-native transform_file is a later step.
+// legacy ast.File list.
+//
+// When `files` is empty and monomorphization is disabled, the per-file
+// transform streams: each file is rehydrated from `flat` one at a time
+// just before transform_file consumes it, so the 120 MB bulk legacy
+// array never exists. Peak memory during transform drops to
+// (cumulative result + 1 in-flight source file) instead of
+// (full source array + full result array).
+//
+// Monomorphization needs the full file set up front (it builds a
+// cross-file generic-decl index), so that path falls back to the
+// non-streaming behavior — rehydrating internally when `files` is empty.
 pub fn (mut t Transformer) transform_files_from_flat(flat &ast.FlatAst, files []ast.File) []ast.File {
 	t.pre_pass_from_flat(flat)
-	files_to_transform := if t.monomorphize_enabled {
-		t.monomorphize_pass(files)
-	} else {
-		files
+	if t.monomorphize_enabled {
+		src_files := if files.len == 0 { flat.to_files() } else { files }
+		files_to_transform := t.monomorphize_pass(src_files)
+		mut result := []ast.File{cap: files_to_transform.len}
+		for file in files_to_transform {
+			result << t.transform_file(file)
+		}
+		t.post_pass(mut result)
+		return result
 	}
-	mut result := []ast.File{cap: files_to_transform.len}
-	for file in files_to_transform {
-		result << t.transform_file(file)
+	if files.len > 0 {
+		mut result := []ast.File{cap: files.len}
+		for file in files {
+			result << t.transform_file(file)
+		}
+		t.post_pass(mut result)
+		return result
+	}
+	mut result := []ast.File{cap: flat.files.len}
+	for i in 0 .. flat.files.len {
+		src_arr := flat.to_files_range(i, i + 1)
+		if src_arr.len == 0 {
+			continue
+		}
+		result << t.transform_file(src_arr[0])
 	}
 	t.post_pass(mut result)
 	return result
