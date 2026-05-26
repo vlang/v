@@ -124,6 +124,21 @@ import v2.ast
 //     wrapping leaf and nested-paren values) covers the arm across all 5
 //     harness rows — 46 → 51 transformer-diff tests.
 //
+//   Session 6 (2026-05-26): PrefixExpr expr direct-emit + harness fixture.
+//     The PrefixExpr arm in `transform_expr_to_flat` direct-emits via a
+//     recursive `transform_expr_to_flat` for the inner expression plus the
+//     new `emit_prefix_expr_by_id` builder helper, skipping the
+//     `ast.PrefixExpr` struct allocation for the common case (unary `-`,
+//     `~`, `!`). Two legacy fallback guards keep semantics intact:
+//     `expr.op == .amp` (transform_prefix_expr removes `&` redundancy with
+//     attribute-aware lowering — not bit-equal to a structural rebuild) and
+//     `expr.op == .arrow && expr.expr is ast.OrExpr` (channel-recv with
+//     or-block is lowered by `expand_chan_recv_or_expr` — full
+//     statement-list synthesis). Both stay on the round-trip
+//     `out.emit_expr(t.transform_expr(expr))` path. New
+//     `fixture_prefix_expr` (file-scope consts with `-`, `~`, `!`) covers
+//     the arm across all 5 harness rows — 51 → 56 transformer-diff tests.
+//
 // Phase 5: post-pass port.
 //   `post_pass` (runtime const init injection, helper functions, str/clone
 //   generation, ...) still mutates `[]ast.File`. Port it to either emit
@@ -352,6 +367,25 @@ pub fn (mut t Transformer) transform_expr_to_flat(expr ast.Expr, mut out ast.Fla
 			// builder helper. Mirrors `add_expr(ParenExpr)` encoding exactly.
 			inner_id := t.transform_expr_to_flat(expr.expr, mut out)
 			return out.emit_paren_expr_by_id(inner_id, expr.pos)
+		}
+		ast.PrefixExpr {
+			// PrefixExpr's `transform_expr` arm has three lowering side cases:
+			// `&` operand that is a type cast (amp_type_cast_expr), `&` operand
+			// that is an `AssocExpr` (`&{base | field: val}`), and `^` operand
+			// that is an `OrExpr` (rewrites to `OrExpr` wrapping a deref).
+			// These produce *different* expression shapes — fall back to the
+			// legacy round-trip so the rewrite logic runs in one place. For all
+			// other operators (`-`, `!`, `~`, `++`, `--`, ...) the legacy arm
+			// is a pure wrapper around `transform_expr(expr.expr)`; direct-emit
+			// recurses into `transform_expr_to_flat` and assembles the flat
+			// node via the new `emit_prefix_expr_by_id` helper, skipping the
+			// `ast.PrefixExpr` struct allocation per occurrence.
+			needs_legacy := expr.op == .amp || (expr.op == .arrow && expr.expr is ast.OrExpr)
+			if needs_legacy {
+				return out.emit_expr(t.transform_expr(expr))
+			}
+			inner_id := t.transform_expr_to_flat(expr.expr, mut out)
+			return out.emit_prefix_expr_by_id(expr.op, inner_id, expr.pos)
 		}
 		else {
 			return out.emit_expr(t.transform_expr(expr))

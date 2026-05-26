@@ -143,6 +143,7 @@ fn assert_transform_signatures_equal(label string, a []ast.File, b []ast.File) {
 //   - global init                          → fixture_global_init
 //   - file-scope const decl                → fixture_const_decl
 //   - paren-wrapped const value            → fixture_paren_expr
+//   - prefix-op const value                 → fixture_prefix_expr
 
 // Fixtures intentionally avoid `module main`, `println`, and any builtin
 // dependency — the harness skips the .vh cache load to stay light, so the
@@ -284,6 +285,20 @@ fn use_paren() int {
 }
 '
 
+const fixture_prefix_expr = '
+const five = 5
+const neg_five = -five
+const inv_bits = ~0xFF
+const not_flag = !true
+
+fn use_prefix() int {
+	if not_flag {
+		return inv_bits
+	}
+	return neg_five
+}
+'
+
 fn all_transformer_fixtures() []string {
 	return [
 		fixture_plain_fn,
@@ -296,6 +311,7 @@ fn all_transformer_fixtures() []string {
 		fixture_global_init,
 		fixture_const_decl,
 		fixture_paren_expr,
+		fixture_prefix_expr,
 	]
 }
 
@@ -353,6 +369,10 @@ fn test_transform_is_deterministic_paren_expr() {
 	run_determinism('det_paren_expr', fixture_paren_expr)
 }
 
+fn test_transform_is_deterministic_prefix_expr() {
+	run_determinism('det_prefix_expr', fixture_prefix_expr)
+}
+
 // --- parity: transform_files vs transform_files_from_flat ---
 //
 // The streaming-from-flat path is the seed for the upcoming
@@ -408,6 +428,10 @@ fn test_flat_parity_const_decl() {
 
 fn test_flat_parity_paren_expr() {
 	run_parity('parity_paren_expr', fixture_paren_expr)
+}
+
+fn test_flat_parity_prefix_expr() {
+	run_parity('parity_prefix_expr', fixture_prefix_expr)
 }
 
 // --- parity: check_files vs check_flat upstream ---
@@ -498,6 +522,10 @@ fn test_check_flat_parity_paren_expr() {
 	run_check_flat_parity('check_flat_paren_expr', fixture_paren_expr)
 }
 
+fn test_check_flat_parity_prefix_expr() {
+	run_check_flat_parity('check_flat_prefix_expr', fixture_prefix_expr)
+}
+
 // --- parity: transform_files vs transform_files_to_flat ---
 //
 // transform_files_to_flat is the API wedge for the future
@@ -570,6 +598,10 @@ fn test_to_flat_parity_const_decl() {
 
 fn test_to_flat_parity_paren_expr() {
 	run_to_flat_parity('to_flat_paren_expr', fixture_paren_expr)
+}
+
+fn test_to_flat_parity_prefix_expr() {
+	run_to_flat_parity('to_flat_prefix_expr', fixture_prefix_expr)
 }
 
 // --- parity: per-file flat-write API vs reference rehydrate+transform+append ---
@@ -665,6 +697,10 @@ fn test_per_file_parity_const_decl() {
 
 fn test_per_file_parity_paren_expr() {
 	run_per_file_parity('per_file_paren_expr', fixture_paren_expr)
+}
+
+fn test_per_file_parity_prefix_expr() {
+	run_per_file_parity('per_file_prefix_expr', fixture_prefix_expr)
 }
 
 // test_all_fixtures_produce_nonempty_signature guards against silent harness
