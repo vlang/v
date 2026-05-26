@@ -3275,7 +3275,7 @@ fn (mut p Parser) struct_decl_fields(language ast.Language, is_union bool, expec
 	p.expect(.lcbr)
 	mut embedded := []ast.Expr{}
 	mut fields := []ast.FieldDecl{}
-	p.parse_struct_field_list(language, is_union, StructFieldAccessState{}, mut embedded, mut
+	_ = p.parse_struct_field_list(language, is_union, StructFieldAccessState{}, mut embedded, mut
 		fields)
 	p.next() // rcbr
 	if expect_semi {
@@ -3293,13 +3293,13 @@ struct StructFieldAccessState {
 // parse_struct_field_list parses fields until it hits `}`. Handles `$if` blocks
 // and `@[if cond ?]` field attributes by evaluating the condition at parse time
 // and omitting non-selected fields from the AST.
-fn (mut p Parser) parse_struct_field_list(language ast.Language, is_union bool, start_access StructFieldAccessState, mut embedded []ast.Expr, mut fields []ast.FieldDecl) {
+fn (mut p Parser) parse_struct_field_list(language ast.Language, is_union bool, start_access StructFieldAccessState, mut embedded []ast.Expr, mut fields []ast.FieldDecl) StructFieldAccessState {
 	mut access := start_access
 	for p.tok != .rcbr {
 		// `$if cond { ... } $else { ... }` block grouping a set of fields.
 		if p.tok == .dollar && p.peek() == .key_if {
-			p.parse_comptime_struct_field_branch(language, is_union, access, false, mut embedded, mut
-				fields)
+			access = p.parse_comptime_struct_field_branch(language, is_union, access, false, mut
+				embedded, mut fields)
 			continue
 		}
 		leading_attributes := if p.tok in [.attribute, .lsbr] {
@@ -3512,6 +3512,7 @@ fn (mut p Parser) parse_struct_field_list(language ast.Language, is_union bool, 
 			}
 		}
 	}
+	return access
 }
 
 // attributes_elide_field returns true if any `@[if cond ?]` attribute evaluates
@@ -3538,7 +3539,7 @@ fn attributes_elide_field(attributes []ast.Attribute, mut p Parser) bool {
 // to `embedded`/`fields`; other branches are parsed and discarded so token
 // positions stay correct. `force_skip` propagates "already matched" through
 // `$else $if` chains so at most one branch contributes fields.
-fn (mut p Parser) parse_comptime_struct_field_branch(language ast.Language, is_union bool, access StructFieldAccessState, force_skip bool, mut embedded []ast.Expr, mut fields []ast.FieldDecl) {
+fn (mut p Parser) parse_comptime_struct_field_branch(language ast.Language, is_union bool, access StructFieldAccessState, force_skip bool, mut embedded []ast.Expr, mut fields []ast.FieldDecl) StructFieldAccessState {
 	p.next() // $
 	p.next() // if
 	// `p.expr` would otherwise greedily parse `linux { ... }` as a struct init.
@@ -3559,12 +3560,14 @@ fn (mut p Parser) parse_comptime_struct_field_branch(language ast.Language, is_u
 		p.next()
 	}
 	p.expect(.lcbr)
+	mut selected_access := access
 	if cond_matches {
-		p.parse_struct_field_list(language, is_union, access, mut embedded, mut fields)
+		selected_access = p.parse_struct_field_list(language, is_union, access, mut embedded, mut
+			fields)
 	} else {
 		mut tmp_emb := []ast.Expr{}
 		mut tmp_flds := []ast.FieldDecl{}
-		p.parse_struct_field_list(language, is_union, access, mut tmp_emb, mut tmp_flds)
+		_ = p.parse_struct_field_list(language, is_union, access, mut tmp_emb, mut tmp_flds)
 	}
 	p.next() // rcbr
 	// `};\n$else` — auto-inserted `;` sits between `}` and `$`. Consume it so
@@ -3577,7 +3580,7 @@ fn (mut p Parser) parse_comptime_struct_field_branch(language ast.Language, is_u
 		if p.tok == .semicolon {
 			p.next()
 		}
-		return
+		return selected_access
 	}
 	p.next() // $
 	p.next() // else
@@ -3588,9 +3591,9 @@ fn (mut p Parser) parse_comptime_struct_field_branch(language ast.Language, is_u
 	if p.tok == .dollar && p.peek() == .key_if {
 		// `$else $if` — propagate match status so at most one branch fires.
 		new_force_skip := force_skip || cond_matches
-		p.parse_comptime_struct_field_branch(language, is_union, access, new_force_skip, mut
-			embedded, mut fields)
-		return
+		else_if_access := p.parse_comptime_struct_field_branch(language, is_union, access,
+			new_force_skip, mut embedded, mut fields)
+		return if cond_matches { selected_access } else { else_if_access }
 	}
 	if p.tok == .semicolon && p.peek() == .lcbr {
 		p.next()
@@ -3598,16 +3601,18 @@ fn (mut p Parser) parse_comptime_struct_field_branch(language ast.Language, is_u
 	p.expect(.lcbr)
 	else_matches := !force_skip && !cond_matches
 	if else_matches {
-		p.parse_struct_field_list(language, is_union, access, mut embedded, mut fields)
+		selected_access = p.parse_struct_field_list(language, is_union, access, mut embedded, mut
+			fields)
 	} else {
 		mut tmp_emb := []ast.Expr{}
 		mut tmp_flds := []ast.FieldDecl{}
-		p.parse_struct_field_list(language, is_union, access, mut tmp_emb, mut tmp_flds)
+		_ = p.parse_struct_field_list(language, is_union, access, mut tmp_emb, mut tmp_flds)
 	}
 	p.next() // rcbr
 	if p.tok == .semicolon {
 		p.next()
 	}
+	return selected_access
 }
 
 fn (mut p Parser) select_expr() ast.SelectExpr {

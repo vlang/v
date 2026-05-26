@@ -3786,6 +3786,7 @@ fn (mut c Checker) stmt(stmt ast.Stmt) {
 					// lowers mutable for-in loops to indexed access with value copies.
 					non_ref_value_type := value_type
 					if for_in.value.kind == .key_mut {
+						c.check_module_mut_field_mutation(for_in.expr, for_in.value.pos)
 						value_type = Type(value_type.ref())
 					}
 					if for_in.value.expr is ast.Ident {

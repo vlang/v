@@ -22,6 +22,10 @@ fn write_module_mut_files(tmp_dir string, files map[string]string) []string {
 }
 
 fn run_module_mut_v2_check(label string, files map[string]string, main_rel_path string) (int, string) {
+	return run_module_mut_v2_check_with_defines(label, files, main_rel_path, [])
+}
+
+fn run_module_mut_v2_check_with_defines(label string, files map[string]string, main_rel_path string, defines []string) (int, string) {
 	tmp_dir := module_mut_tmp_dir(label)
 	os.rmdir_all(tmp_dir) or {}
 	os.mkdir_all(tmp_dir) or { panic('cannot create ${tmp_dir}') }
@@ -31,12 +35,17 @@ fn run_module_mut_v2_check(label string, files map[string]string, main_rel_path 
 	write_module_mut_files(tmp_dir, files)
 	main_path := os.join_path(tmp_dir, main_rel_path)
 	out_path := os.join_path(tmp_dir, 'out.txt')
-	cmd := '${os.quoted_path(@VEXE)} -v2 -backend v -o ${os.quoted_path(out_path)} ${os.quoted_path(main_path)} 2>&1'
+	define_flags := defines.map('-d ${it}').join(' ')
+	cmd := '${os.quoted_path(@VEXE)} -v2 -backend v ${define_flags} -o ${os.quoted_path(out_path)} ${os.quoted_path(main_path)} 2>&1'
 	res := os.execute(cmd)
 	return res.exit_code, res.output
 }
 
 fn parse_module_mut_struct(code string) ast.StructDecl {
+	return parse_module_mut_struct_with_defines(code, [])
+}
+
+fn parse_module_mut_struct_with_defines(code string, defines []string) ast.StructDecl {
 	tmp_dir := module_mut_tmp_dir('parse')
 	os.rmdir_all(tmp_dir) or {}
 	os.mkdir_all(tmp_dir) or { panic('cannot create ${tmp_dir}') }
@@ -45,7 +54,9 @@ fn parse_module_mut_struct(code string) ast.StructDecl {
 	}
 	path := os.join_path(tmp_dir, 'main.v')
 	os.write_file(path, code) or { panic(err) }
-	prefs := &pref.Preferences{}
+	prefs := &pref.Preferences{
+		user_defines: defines
+	}
 	mut file_set := token.FileSet.new()
 	mut par := parser.Parser.new(prefs)
 	files := par.parse_files([path], mut file_set)
@@ -137,6 +148,84 @@ pub mut:
 	assert decl.fields[4].is_public
 	assert decl.fields[4].is_mut
 	assert !decl.fields[4].is_module_mut
+}
+
+fn test_module_mut_parser_comptime_branch_access_state() {
+	decl := parse_module_mut_struct_with_defines('module state
+
+pub struct Counter {
+$if active_access ? {
+@[module_mut]
+pub:
+	selected int
+} $else {
+pub mut:
+	selected int
+}
+	after int
+}
+', [
+		'active_access',
+	])
+	assert decl.fields[0].name == 'selected'
+	assert decl.fields[0].is_public
+	assert decl.fields[0].is_mut
+	assert decl.fields[0].is_module_mut
+	assert decl.fields[1].name == 'after'
+	assert decl.fields[1].is_public
+	assert decl.fields[1].is_mut
+	assert decl.fields[1].is_module_mut
+
+	decl2 := parse_module_mut_struct_with_defines('module state
+
+pub struct Counter {
+$if inactive_access ? {
+pub mut:
+	skipped int
+} $else {
+pub:
+	selected int
+}
+	after int
+}
+', [])
+	assert decl2.fields[0].name == 'selected'
+	assert decl2.fields[0].is_public
+	assert !decl2.fields[0].is_mut
+	assert !decl2.fields[0].is_module_mut
+	assert decl2.fields[1].name == 'after'
+	assert decl2.fields[1].is_public
+	assert !decl2.fields[1].is_mut
+	assert !decl2.fields[1].is_module_mut
+}
+
+fn test_module_mut_comptime_branch_access_state_reaches_checker() {
+	code, output := run_module_mut_v2_check_with_defines('comptime_branch_checker', {
+		'state/state.v': 'module state
+
+pub struct Counter {
+$if active_access ? {
+@[module_mut]
+pub:
+	selected int
+}
+	after int
+}
+'
+		'main.v':        'module main
+
+import state
+
+fn main() {
+	mut c := state.Counter{}
+	c.after++
+}
+'
+	}, 'main.v', [
+		'active_access',
+	])
+	assert code != 0, 'comptime_branch_checker should fail'
+	assert output.contains('cannot mutate module-mutable field `state.Counter.after` outside module `state`'), output
 }
 
 fn test_module_mut_allows_external_read_and_internal_mutation() {
@@ -237,6 +326,30 @@ fn main() {
 }
 ',
 		'cannot mutate module-mutable field `state.Counter.inner` outside module `state`')
+	assert_module_mut_failure('for_mut', 'module main
+
+import state
+
+fn main() {
+	mut c := state.Counter{}
+	for mut v in c.items {
+		v++
+	}
+}
+',
+		'cannot mutate module-mutable field `state.Counter.items` outside module `state`')
+	assert_module_mut_failure('for_key_mut_value', 'module main
+
+import state
+
+fn main() {
+	mut c := state.Counter{}
+	for _, mut v in c.items {
+		v++
+	}
+}
+',
+		'cannot mutate module-mutable field `state.Counter.items` outside module `state`')
 }
 
 fn test_module_mut_rejects_mut_arg_ref_and_init() {
