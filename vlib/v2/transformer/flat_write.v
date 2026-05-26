@@ -219,6 +219,20 @@ import v2.ast
 //     casts only) pins the fast path across all 5 harness rows — 76 → 81
 //     transformer-diff tests.
 //
+//   Session 12 (2026-05-26): FieldInit expr direct-emit + harness fixture.
+//     The FieldInit arm in `transform_expr_to_flat` direct-emits via a
+//     recursive `transform_expr_to_flat` for the inner `value` plus the
+//     existing `emit_field_init_by_id` builder helper (the same helper
+//     ConstDecl uses for its aux_field_init child node — `add_expr(FieldInit)`
+//     and `add_field_init(field)` produce bit-equal encodings so a single
+//     emit helper covers both call sites). Skips the `ast.FieldInit` struct
+//     allocation per occurrence — `transform_expr`'s FieldInit arm just
+//     transforms `value` and copies `name` verbatim. FieldInit reaches the
+//     expr dispatch when it appears as a standalone call arg in struct-
+//     shorthand / named-arg syntax (`foo(name: value)`). New
+//     `fixture_field_init` (struct + a `make(name: 'a', n: 1)` call) covers
+//     the arm across all 5 harness rows — 81 → 86 transformer-diff tests.
+//
 // Phase 5: post-pass port.
 //   `post_pass` (runtime const init injection, helper functions, str/clone
 //   generation, ...) still mutates `[]ast.File`. Port it to either emit
@@ -537,6 +551,20 @@ pub fn (mut t Transformer) transform_expr_to_flat(expr ast.Expr, mut out ast.Fla
 			}
 			inner_id := t.transform_expr_to_flat(expr.expr, mut out)
 			return out.emit_postfix_expr_by_id(expr.op, inner_id, expr.pos)
+		}
+		ast.FieldInit {
+			// FieldInit reaches the expression dispatch when it appears as a
+			// standalone arg in a struct-shorthand / named-arg call
+			// (`foo(name: value)`). The `transform_expr` arm is a pure wrapper:
+			// `value` is transformed, `name` is copied verbatim. Direct-emit
+			// skips the `ast.FieldInit` struct allocation per occurrence by
+			// transforming the value via `transform_expr_to_flat` and assembling
+			// via the existing `emit_field_init_by_id` helper. Both the aux
+			// (ConstDecl field) and the expression (`add_expr(FieldInit)`)
+			// encodings route through `add_field_init` so a single emit helper
+			// covers both call sites.
+			value_id := t.transform_expr_to_flat(expr.value, mut out)
+			return out.emit_field_init_by_id(expr.name, value_id)
 		}
 		ast.FnLiteral {
 			// FnLiteral has three children sets: typ (FnType, verbatim),
