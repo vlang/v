@@ -116,6 +116,19 @@ fn (mut b Builder) compile_cleanc_executable(output_name string, cc string, cc_f
 	println('[*] Compiled ${output_name}')
 }
 
+// print_rss prints process RSS in MB at the given phase boundary.
+// Gated on V2_MEM=1.
+//
+// CAVEAT: v2 is force-built with `-gc none` (see is_v2_compiler_target in
+// vlib/v/pref/default.v), so allocations are never reclaimed. RSS is
+// dominated by the OS's decision of which pages to keep resident, not by
+// what the program is actually using. Run-to-run variance is huge
+// (observed 500 MB to 4.8 GB on identical runs). Treat these numbers as
+// a coarse signal, not a precision metric.
+//
+// For reliable peak-memory comparisons between optimizations, use
+// `/usr/bin/time -l <cmd>` and read `peak memory footprint` — that
+// metric is stable to within ~0.1% across runs.
 fn print_rss(stage string) {
 	if os.getenv('V2_MEM') == '' {
 		return
@@ -124,10 +137,28 @@ fn print_rss(stage string) {
 	eprintln('  [mem] ${stage}: ${bytes / (1024 * 1024)} MB')
 }
 
+// print_heap reports retained heap size after a forced GC, in MB. Unlike
+// print_rss, this would give a stable measurement of memory the program
+// is actually holding alive — but ONLY when built with a real GC.
+//
+// CURRENTLY A NO-OP FOR v2 SELF-HOST: v2 is forced to `-gc none`, where
+// `gc_collect()` is a NOP and `gc_memory_use()` always returns 0. If
+// you build v2 with an explicit GC (bypassing is_v2_compiler_target) this
+// becomes useful. Until then, use `/usr/bin/time -l` for peak readings.
+fn print_heap(stage string) {
+	if os.getenv('V2_HEAP') == '' {
+		return
+	}
+	gc_collect()
+	bytes := gc_memory_use()
+	eprintln('  [heap] ${stage}: ${bytes / (1024 * 1024)} MB')
+}
+
 pub fn (mut b Builder) build(files []string) {
 	b.user_files = files
 	mut sw := time.new_stopwatch()
 	print_rss('start')
+	print_heap('start')
 	$if parallel ? {
 		if b.flat_roundtrip_enabled && !b.pref.no_parallel {
 			eprintln('warning: V2_FLAT_ROUNDTRIP=1 only routes through the serial parser; pass --no-parallel to exercise it')
@@ -143,6 +174,7 @@ pub fn (mut b Builder) build(files []string) {
 	parse_time := sw.elapsed()
 	print_time('Scan & Parse', parse_time)
 	print_rss('after parse')
+	print_heap('after parse')
 	if b.flat_check_enabled {
 		// FlatBuilder is the canonical parse output; both parse paths stream
 		// into it. parse_files / parse_files_parallel return [] in flat
@@ -173,6 +205,7 @@ pub fn (mut b Builder) build(files []string) {
 	type_check_time := time.Duration(sw.elapsed() - parse_time)
 	print_time('Type Check', type_check_time)
 	print_rss('after type check')
+	print_heap('after type check')
 
 	// Transform AST (flag enum desugaring, etc.)
 	transform_start := sw.elapsed()
@@ -198,6 +231,7 @@ pub fn (mut b Builder) build(files []string) {
 	transform_time := time.Duration(sw.elapsed() - transform_start)
 	print_time('Transform', transform_time)
 	print_rss('after transform')
+	print_heap('after transform')
 
 	// Mark used functions/methods for backend pruning.
 	if b.pref.no_markused {
@@ -238,6 +272,7 @@ pub fn (mut b Builder) build(files []string) {
 		mark_used_time := time.Duration(sw.elapsed() - mark_used_start)
 		print_time('Mark Used', mark_used_time)
 		print_rss('after markused')
+		print_heap('after markused')
 	}
 
 	// Generate output based on backend
@@ -270,6 +305,7 @@ pub fn (mut b Builder) build(files []string) {
 
 	print_time('Total', sw.elapsed())
 	print_rss('after codegen (peak)')
+	print_heap('after codegen')
 }
 
 fn (mut b Builder) gen_v_files() {
