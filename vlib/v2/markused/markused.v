@@ -597,6 +597,28 @@ fn (mut w Walker) walk_expr_cursor(c ast.Cursor, mod_name string) {
 				w.walk_expr_cursor(c.edge(i), mod_name)
 			}
 		}
+		// expr_selector: edge 0 = lhs, edge 1 = rhs (Ident). Legacy walker calls
+		// mark_selector_fn_value(expr) — a no-op unless expr.lhs is Ident. When
+		// it is, it uses expr.lhs.name and expr.rhs.name to mark either
+		// `C.<name>` or `<module>__<name>`. We inline that logic against the
+		// cursor instead of decoding.
+		.expr_selector {
+			lhs_c := c.edge(0)
+			if lhs_c.is_valid() && lhs_c.kind() == .expr_ident {
+				left_name := lhs_c.name()
+				rhs_c := c.edge(1)
+				if rhs_c.is_valid() {
+					rhs_name := rhs_c.name()
+					if left_name == 'C' {
+						w.mark_fn_name(rhs_name, mod_name)
+					} else if left_name in w.module_names {
+						real_mod := w.module_alias_to_real[left_name] or { left_name }
+						w.mark_fn_name('${real_mod}__${rhs_name}', mod_name)
+					}
+				}
+			}
+			w.walk_expr_cursor(lhs_c, mod_name)
+		}
 		else {
 			w.walk_expr(c.flat.decode_expr(c.id), mod_name)
 		}
