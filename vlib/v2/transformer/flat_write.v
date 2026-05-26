@@ -200,6 +200,25 @@ import v2.ast
 //     `a++` / `a--`) covers the arm across all 5 harness rows — 71 → 76
 //     transformer-diff tests.
 //
+//   Session 11 (2026-05-26): CastExpr expr direct-emit + harness fixture.
+//     The CastExpr arm in `transform_expr_to_flat` direct-emits via the
+//     leaf `out.emit_expr(expr.typ)` (type is NOT transformed by
+//     `transform_expr` — copied verbatim) plus a recursive
+//     `transform_expr_to_flat` for the inner expression, then assembles
+//     via the new `emit_cast_expr_by_ids` builder helper. Skips the
+//     `ast.CastExpr` struct allocation per occurrence in the common case
+//     (primitive casts: `int(x)`, `f64(y)`, `u8(z)`, etc.).
+//     One legacy fallback guard: `t.type_expr_name_full(expr.typ)`
+//     resolves to a name that `t.is_sum_type(name)` accepts. In that case
+//     `transform_expr` may lower the cast into an explicit sum-type
+//     initialisation (CallExpr to `<SumType>__from_<Variant>` / InitExpr),
+//     which is a *different* expression shape. Both helpers are read-only
+//     so the guard is cheap to evaluate. The existing
+//     `fixture_sumtype_is_as` already exercises the fallback (it contains
+//     `c := Shape(Circle{r: 2.0})`); new `fixture_cast_expr` (primitive
+//     casts only) pins the fast path across all 5 harness rows — 76 → 81
+//     transformer-diff tests.
+//
 // Phase 5: post-pass port.
 //   `post_pass` (runtime const init injection, helper functions, str/clone
 //   generation, ...) still mutates `[]ast.File`. Port it to either emit
@@ -477,6 +496,29 @@ pub fn (mut t Transformer) transform_expr_to_flat(expr ast.Expr, mut out ast.Fla
 				arg_ids << out.emit_expr(ast.Expr(arg))
 			}
 			return out.emit_lambda_expr_by_ids(inner_id, arg_ids, expr.pos)
+		}
+		ast.CastExpr {
+			// CastExpr's `transform_expr` arm has one rewrite side case: when
+			// `expr.typ` resolves to a known sum-type name and
+			// `wrap_sumtype_value(expr.expr, name)` succeeds, the cast is
+			// lowered into an explicit sum-type initialization (different
+			// expression shape — typically a `CallExpr` to
+			// `<SumType>__from_<Variant>` or an InitExpr). Detect that
+			// condition up front and fall back to legacy if it might trigger.
+			// For non-sumtype casts the arm is a pure wrapper: `typ` is copied
+			// verbatim (NOT transformed by `transform_expr`) while the inner
+			// `expr` IS transformed. Direct-emit mirrors that exactly — `typ`
+			// goes through the leaf `out.emit_expr(...)` (matches
+			// `add_expr(typ)` byte-for-byte) and the inner expression goes
+			// through the recursive `transform_expr_to_flat`, then assembles
+			// via the new `emit_cast_expr_by_ids` helper.
+			sumtype_name := t.type_expr_name_full(expr.typ)
+			if sumtype_name != '' && t.is_sum_type(sumtype_name) {
+				return out.emit_expr(t.transform_expr(expr))
+			}
+			typ_id := out.emit_expr(expr.typ)
+			expr_id := t.transform_expr_to_flat(expr.expr, mut out)
+			return out.emit_cast_expr_by_ids(typ_id, expr_id, expr.pos)
 		}
 		ast.PostfixExpr {
 			// PostfixExpr's `transform_expr` arm has lowering side cases when

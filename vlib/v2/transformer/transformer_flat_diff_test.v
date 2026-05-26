@@ -148,6 +148,7 @@ fn assert_transform_signatures_equal(label string, a []ast.File, b []ast.File) {
 //   - lambda expr (|y| y + 1 in call arg)   → fixture_lambda_expr
 //   - fn literal (anonymous fn body)        → fixture_fn_literal
 //   - postfix expr (a++ / a-- in stmt body) → fixture_postfix_expr
+//   - cast expr (int(x), f64(y), u8(z))     → fixture_cast_expr
 
 // Fixtures intentionally avoid `module main`, `println`, and any builtin
 // dependency — the harness skips the .vh cache load to stay light, so the
@@ -351,6 +352,15 @@ fn use_postfix() int {
 }
 '
 
+const fixture_cast_expr = '
+fn use_cast() int {
+	a := f64(3.5)
+	b := int(a)
+	c := u8(b + 1)
+	return int(c) + b
+}
+'
+
 fn all_transformer_fixtures() []string {
 	return [
 		fixture_plain_fn,
@@ -368,6 +378,7 @@ fn all_transformer_fixtures() []string {
 		fixture_lambda_expr,
 		fixture_fn_literal,
 		fixture_postfix_expr,
+		fixture_cast_expr,
 	]
 }
 
@@ -445,6 +456,10 @@ fn test_transform_is_deterministic_postfix_expr() {
 	run_determinism('det_postfix_expr', fixture_postfix_expr)
 }
 
+fn test_transform_is_deterministic_cast_expr() {
+	run_determinism('det_cast_expr', fixture_cast_expr)
+}
+
 // --- parity: transform_files vs transform_files_from_flat ---
 //
 // The streaming-from-flat path is the seed for the upcoming
@@ -520,6 +535,10 @@ fn test_flat_parity_fn_literal() {
 
 fn test_flat_parity_postfix_expr() {
 	run_parity('parity_postfix_expr', fixture_postfix_expr)
+}
+
+fn test_flat_parity_cast_expr() {
+	run_parity('parity_cast_expr', fixture_cast_expr)
 }
 
 // --- parity: check_files vs check_flat upstream ---
@@ -630,6 +649,10 @@ fn test_check_flat_parity_postfix_expr() {
 	run_check_flat_parity('check_flat_postfix_expr', fixture_postfix_expr)
 }
 
+fn test_check_flat_parity_cast_expr() {
+	run_check_flat_parity('check_flat_cast_expr', fixture_cast_expr)
+}
+
 // --- parity: transform_files vs transform_files_to_flat ---
 //
 // transform_files_to_flat is the API wedge for the future
@@ -722,6 +745,10 @@ fn test_to_flat_parity_fn_literal() {
 
 fn test_to_flat_parity_postfix_expr() {
 	run_to_flat_parity('to_flat_postfix_expr', fixture_postfix_expr)
+}
+
+fn test_to_flat_parity_cast_expr() {
+	run_to_flat_parity('to_flat_cast_expr', fixture_cast_expr)
 }
 
 // --- parity: per-file flat-write API vs reference rehydrate+transform+append ---
@@ -837,6 +864,10 @@ fn test_per_file_parity_fn_literal() {
 
 fn test_per_file_parity_postfix_expr() {
 	run_per_file_parity('per_file_postfix_expr', fixture_postfix_expr)
+}
+
+fn test_per_file_parity_cast_expr() {
+	run_per_file_parity('per_file_cast_expr', fixture_cast_expr)
 }
 
 // test_all_fixtures_produce_nonempty_signature guards against silent harness

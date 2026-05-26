@@ -554,6 +554,20 @@ pub fn (mut b FlatBuilder) emit_postfix_expr_by_id(op token.Token, inner_id Flat
 	])
 }
 
+// emit_cast_expr_by_ids emits an expr_cast node from already-flat type
+// expression and inner expression FlatNodeIds. Mirrors the
+// add_expr(CastExpr) encoding exactly: edge[0] = typ, edge[1] = expr.
+pub fn (mut b FlatBuilder) emit_cast_expr_by_ids(typ_id FlatNodeId, expr_id FlatNodeId, pos token.Pos) FlatNodeId {
+	return b.emit_simple(.expr_cast, pos, [
+		FlatEdge{
+			child_id: typ_id
+		},
+		FlatEdge{
+			child_id: expr_id
+		},
+	])
+}
+
 // emit_lambda_expr_by_ids emits an expr_lambda node from an already-flat
 // inner expression FlatNodeId and a slice of already-flat arg FlatNodeIds
 // (each arg is an Ident). Mirrors the add_expr(LambdaExpr) encoding exactly:
