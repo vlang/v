@@ -410,8 +410,11 @@ fn (mut w Walker) walk_expr_cursor(c ast.Cursor, mod_name string) {
 		return
 	}
 	match c.kind() {
-		// Leaves with no children and no walker side-effects.
-		.expr_basic_literal, .expr_empty, .typ_nil, .typ_none {}
+		// Leaves with no children and no walker side-effects. The legacy
+		// walk_expr arms for Keyword / StringLiteral / Lifetime hit its
+		// else {}, so they belong here too.
+		.expr_basic_literal, .expr_empty, .expr_keyword, .expr_lifetime, .expr_string, .typ_nil,
+		.typ_none {}
 		.expr_ident {
 			name := c.name()
 			w.mark_ierror_wrapper_dependencies(name, mod_name)
@@ -739,9 +742,10 @@ fn (mut w Walker) walk_expr_cursor(c ast.Cursor, mod_name string) {
 			}
 			w.walk_expr_cursor(lhs_c, mod_name)
 		}
-		else {
-			w.walk_expr(c.flat.decode_expr(c.id), mod_name)
-		}
+		// Every expr/type FlatNodeKind has an explicit arm above; aux_*
+		// nodes never reach walk_expr_cursor (they are addressed via list_at
+		// / edge by their parents). Anything else is a schema mismatch.
+		else {}
 	}
 }
 
