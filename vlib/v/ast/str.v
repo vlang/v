@@ -493,6 +493,11 @@ pub fn (x Expr) str() string {
 					return '${x.exprs.str()}${typ_str}{}'
 				} else if x.exprs.len == 0 && typ_str != '' {
 					return '[]${typ_str}{}'
+				} else if x.has_update_expr {
+					if x.exprs.len == 0 {
+						return '[...${x.update_expr}]'
+					}
+					return '[...${x.update_expr}, ${x.exprs.map(it.str()).join(', ')}]'
 				} else {
 					return x.exprs.str()
 				}

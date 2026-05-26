@@ -54,7 +54,8 @@ pub mut:
 	prealloc              bool                  // -prealloc: use arena allocation (bump-pointer, not thread-safe)
 	gc_mode               GarbageCollectionMode // Garbage collection mode (-gc flag)
 	backend               Backend
-	arch                  Arch = .auto
+	arch                  Arch   = .auto
+	target_os             string = os.user_os()
 	output_file           string
 	printfn_list          []string // List of function names whose generated C source should be printed
 	user_defines          []string // User-defined comptime flags via -d <name>
@@ -165,6 +166,13 @@ pub fn new_preferences() Preferences {
 	return Preferences{
 		backend: .cleanc
 	}
+}
+
+pub fn (p &Preferences) target_os_or_host() string {
+	if p == unsafe { nil } || p.target_os == '' {
+		return os.user_os()
+	}
+	return p.target_os
 }
 
 // new_preferences_from_args parses full args list including option values
@@ -431,5 +439,9 @@ pub fn (p &Preferences) get_effective_arch() Arch {
 		return p.arch
 	}
 	// Auto-detect: macOS defaults to arm64, others to x64
-	return if os.user_os() == 'macos' { Arch.arm64 } else { Arch.x64 }
+	return if normalize_current_os_name(p.target_os_or_host()) == 'macos' {
+		Arch.arm64
+	} else {
+		Arch.x64
+	}
 }

@@ -10701,14 +10701,24 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 			}
 		} else {
 			if ret_type.has_flag(.option) {
-				expr0_is_alias_fn_ret := expr0 is ast.CallExpr && type0.has_flag(.option)
+				inner_expr := unwrap_paren_call_expr(expr0)
+				expr0_is_alias_fn_ret := inner_expr is ast.CallExpr && type0.has_flag(.option)
 					&& g.table.type_kind(type0) in [.placeholder, .alias]
-				// return foo() where foo() returns different option alias than current fn
+				// return foo() (or `return (foo())`) where foo() returns a
+				// different option alias than the current fn.
 				if expr0_is_alias_fn_ret {
-					g.expr_opt_with_cast(expr0, type0, ret_type)
+					g.expr_opt_with_cast(inner_expr, type0, ret_type)
 				} else {
 					g.expr_with_opt(expr0, type0, ret_type)
 				}
+			} else if ret_type.has_flag(.result) && type0.has_flag(.result) && type0 != ret_type
+				&& unwrap_paren_call_expr(expr0) is ast.CallExpr
+				&& g.table.are_payloads_alias_compatible(type0.clear_flag(.result), ret_type.clear_flag(.result)) {
+				// return foo() (or `return (foo())`) where foo() returns a different
+				// but layout-equivalent result alias (e.g. `!Aa` vs `!Bb` with
+				// `type Aa = Bb`, or `![]Aa` vs `![]Bb`). The two C structs are
+				// distinct, so emit a memcpy-based clone.
+				g.expr_result_with_alias(unwrap_paren_call_expr(expr0), type0, ret_type)
 			} else {
 				if fn_return_is_fixed_array && !type0.has_option_or_result() {
 					if node.exprs[0] is ast.Ident {
@@ -10769,6 +10779,17 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 	if !has_semicolon {
 		g.writeln(';')
 	}
+}
+
+// unwrap_paren_call_expr strips redundant `ParExpr` wrappers from `expr` and
+// returns the inner expression. Used by the result-alias return path to
+// recognize `return (foo())` as equivalent to `return foo()`.
+fn unwrap_paren_call_expr(expr ast.Expr) ast.Expr {
+	mut e := expr
+	for e is ast.ParExpr {
+		e = e.expr
+	}
+	return e
 }
 
 // check_expr_is_const checks if the expr is eligible to be used as const initializer on C global scope
@@ -11925,6 +11946,14 @@ fn (mut g Gen) or_block_on_value(var_name string, or_block ast.OrExpr, return_ty
 				else {}
 			}
 		}
+		// `call() or { ... }` whose call returns `!void`/`?void` has already
+		// consumed the option/result via its own or-block; the effective
+		// value of the last expression is void, so do not try to write
+		// `*(T*) tmp.data = <void>` (see issue #27012).
+		if last_expr_stmt.expr is ast.CallExpr && last_expr_stmt.expr.or_block.kind != .absent
+			&& last_expr_typ.clear_option_and_result() == ast.void_type {
+			last_expr_typ = ast.void_type
+		}
 		last_expr_produces_value = last_expr_typ != ast.void_type
 	}
 	if last_expr_produces_value {
@@ -12033,6 +12062,14 @@ fn (mut g Gen) or_block(var_name string, or_block ast.OrExpr, return_type ast.Ty
 					}
 					else {}
 				}
+			}
+			// `call() or { ... }` whose call returns `!void`/`?void` has already
+			// consumed the option/result via its own or-block; the effective
+			// value of the last expression is void, so do not try to write
+			// `*(T*) tmp.data = <void>` (see issue #27012).
+			if last_expr_stmt.expr is ast.CallExpr && last_expr_stmt.expr.or_block.kind != .absent
+				&& last_expr_typ.clear_option_and_result() == ast.void_type {
+				last_expr_typ = ast.void_type
 			}
 			last_expr_produces_value = last_expr_typ != ast.void_type
 		}

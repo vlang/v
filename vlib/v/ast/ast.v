@@ -1739,20 +1739,24 @@ pub:
 	has_init           bool
 	has_index          bool // true if temp variable index is used
 pub mut:
-	exprs             []Expr // `[expr, expr]` or `[expr]Type{}` for fixed array
-	len_expr          Expr   // len: expr
-	cap_expr          Expr   // cap: expr
-	init_expr         Expr   // init: expr
-	elem_type_expr    Expr = empty_expr // `typeof(expr).idx` in `[]typeof(expr).idx{}`
-	expr_types        []Type // [Dog, Cat] // also used for interface_types
-	elem_type         Type   // element type
-	generic_elem_type Type   // original generic element type; reused for later concrete instantiations
-	init_type         Type   // init: value type
-	typ               Type   // array type
-	literal_typ       Type   // array type as written, preserved for fmt
-	generic_typ       Type   // original generic array type; reused for later concrete instantiations
-	alias_type        Type   // alias type
-	has_callexpr      bool   // has expr which needs tmp var to initialize it
+	exprs                []Expr // `[expr, expr]` or `[expr]Type{}` for fixed array
+	len_expr             Expr   // len: expr
+	cap_expr             Expr   // cap: expr
+	init_expr            Expr   // init: expr
+	elem_type_expr       Expr = empty_expr // `typeof(expr).idx` in `[]typeof(expr).idx{}`
+	expr_types           []Type // [Dog, Cat] // also used for interface_types
+	elem_type            Type   // element type
+	generic_elem_type    Type   // original generic element type; reused for later concrete instantiations
+	init_type            Type   // init: value type
+	typ                  Type   // array type
+	literal_typ          Type   // array type as written, preserved for fmt
+	generic_typ          Type   // original generic array type; reused for later concrete instantiations
+	alias_type           Type   // alias type
+	has_callexpr         bool   // has expr which needs tmp var to initialize it
+	has_update_expr      bool   // has `...a` as in `[...a, 3, 4]`
+	update_expr          Expr   // `a` in `...a`
+	update_expr_pos      token.Pos
+	update_expr_comments []Comment
 }
 
 pub struct ArrayDecompose {

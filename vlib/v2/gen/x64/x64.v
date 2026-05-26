@@ -12,7 +12,11 @@ import math.bits
 pub struct Gen {
 	mod &mir.Module
 mut:
-	elf &ElfObject
+	elf        &ElfObject
+	macho      &MachOObject
+	coff       &CoffObject
+	obj_format ObjectFormat
+	abi        X64Abi
 
 	stack_map      map[int]int
 	alloca_offsets map[int]int
@@ -41,8 +45,27 @@ mut:
 
 pub fn Gen.new(mod &mir.Module) &Gen {
 	return &Gen{
-		mod: mod
-		elf: ElfObject.new()
+		mod:        mod
+		elf:        ElfObject.new()
+		macho:      MachOObject.new()
+		coff:       CoffObject.new()
+		obj_format: .elf
+		abi:        .sysv
+	}
+}
+
+pub fn Gen.new_with_format(mod &mir.Module, obj_format ObjectFormat) &Gen {
+	return Gen.new_with_format_and_abi(mod, obj_format, .sysv)
+}
+
+pub fn Gen.new_with_format_and_abi(mod &mir.Module, obj_format ObjectFormat, abi X64Abi) &Gen {
+	return &Gen{
+		mod:        mod
+		elf:        ElfObject.new()
+		macho:      MachOObject.new()
+		coff:       CoffObject.new()
+		obj_format: obj_format
+		abi:        abi
 	}
 }
 
@@ -62,13 +85,13 @@ pub fn (mut g Gen) gen() {
 		if gvar.linkage == .external {
 			continue
 		}
-		for g.elf.data_data.len % 8 != 0 {
-			g.elf.data_data << 0
+		for g.data_len() % 8 != 0 {
+			g.add_data_byte(0)
 		}
-		addr := u64(g.elf.data_data.len)
-		g.elf.add_symbol(gvar.name, addr, false, 2)
+		addr := u64(g.data_len())
+		g.add_symbol(gvar.name, addr, false, .data)
 		if gvar.initial_data.len > 0 {
-			g.elf.data_data << gvar.initial_data
+			g.add_data(gvar.initial_data)
 		} else if gvar.is_constant {
 			size := g.type_size(gvar.typ)
 			mut bytes := []u8{len: if size > 0 { size } else { 8 }}
@@ -79,20 +102,20 @@ pub fn (mut g Gen) gen() {
 					bytes[i] = u8(u64(gvar.initial_value) >> (i * 8))
 				}
 			}
-			g.elf.data_data << bytes
+			g.add_data(bytes)
 		} else {
 			// For regular globals, initialize with zeros
 			size := g.type_size(gvar.typ)
 			data_size := if size > 0 { size } else { 8 }
 			for _ in 0 .. data_size {
-				g.elf.data_data << 0
+				g.add_data_byte(0)
 			}
 		}
 	}
 }
 
 fn (mut g Gen) gen_func(func mir.Function) {
-	g.curr_offset = g.elf.text_data.len
+	g.curr_offset = g.text_len()
 	g.stack_map = map[int]int{}
 	g.alloca_offsets = map[int]int{}
 	g.block_offsets = map[int]int{}
@@ -108,7 +131,7 @@ fn (mut g Gen) gen_func(func mir.Function) {
 	// Start after callee-saved pushes so locals do not overlap their rbp slots.
 	mut slot_offset := g.used_regs.len * 8
 
-	// Hidden sret pointer slot (SysV: incoming in RDI)
+	// Hidden sret pointer slot (SysV: incoming in RDI, Windows: incoming in RCX)
 	if func.abi_ret_indirect {
 		off, next_offset := reserve_stack_bytes(slot_offset, 8, 1)
 		g.sret_save_offset = off
@@ -182,7 +205,7 @@ fn (mut g Gen) gen_func(func mir.Function) {
 		g.stack_size += 8
 	}
 
-	g.elf.add_symbol(func.name, u64(g.curr_offset), true, 1)
+	g.add_symbol(func.name, u64(g.curr_offset), true, .text)
 
 	// Prologue
 	asm_endbr64(mut g)
@@ -203,25 +226,28 @@ fn (mut g Gen) gen_func(func mir.Function) {
 		}
 	}
 
-	// Move Params (ABI: RDI, RSI, RDX, RCX, R8, R9)
-	// For sret functions, hidden pointer consumes RDI.
-	abi_regs := [7, 6, 2, 1, 8, 9]
+	abi_regs := g.abi.int_arg_regs()
 	arg_reg_base := if func.abi_ret_indirect { 1 } else { 0 }
 	mut reg_arg_idx := arg_reg_base
 	mut sse_arg_idx := 0
+	float_arg_regs := g.abi.float_arg_regs()
 	if func.abi_ret_indirect && g.sret_save_offset != 0 {
-		asm_store_rbp_disp_reg(mut g, g.sret_save_offset, rdi)
+		asm_store_rbp_disp_reg(mut g, g.sret_save_offset, g.abi.sret_reg())
 	}
 	mut stack_param_offset := 16
 	for i, pid in func.params {
 		is_indirect_param := i < func.abi_param_class.len && func.abi_param_class[i] == .indirect
 		param_size := g.type_size(g.mod.values[pid].typ)
+		if g.abi == .windows {
+			g.move_windows_param(pid, i + arg_reg_base, is_indirect_param, param_size)
+			continue
+		}
 		if g.value_is_float_type(pid) {
 			g.ensure_float_abi_scalar(pid, 'parameter')
-			if sse_arg_idx >= 8 {
+			if sse_arg_idx >= float_arg_regs.len {
 				g.unsupported_float_abi('stack parameter', pid)
 			}
-			asm_store_xmm_rbp_disp(mut g, sse_arg_idx, g.stack_map[pid], param_size)
+			asm_store_xmm_rbp_disp(mut g, float_arg_regs[sse_arg_idx], g.stack_map[pid], param_size)
 			sse_arg_idx++
 			continue
 		}
@@ -231,7 +257,7 @@ fn (mut g Gen) gen_func(func mir.Function) {
 		} else {
 			1
 		}
-		if reg_arg_idx + param_chunks <= 6 {
+		if reg_arg_idx + param_chunks <= abi_regs.len {
 			src := abi_regs[reg_arg_idx]
 			if is_indirect_param {
 				g.copy_indirect_param_from_reg(pid, src)
@@ -280,7 +306,7 @@ fn (mut g Gen) gen_func(func mir.Function) {
 
 	for blk_id in func.blocks {
 		blk := g.mod.blocks[blk_id]
-		g.block_offsets[blk_id] = g.elf.text_data.len - g.curr_offset
+		g.block_offsets[blk_id] = g.text_len() - g.curr_offset
 
 		if offsets := g.pending_labels[blk_id] {
 			for off in offsets {
@@ -306,6 +332,50 @@ fn reserve_stack_bytes(slot_offset int, size int, align int) (int, int) {
 	alloc_size := if size > 0 { size } else { 8 }
 	next_offset += alloc_size
 	return -next_offset, next_offset
+}
+
+fn (mut g Gen) move_windows_param(pid int, position int, is_indirect_param bool, param_size int) {
+	if g.value_is_float_type(pid) {
+		g.ensure_float_abi_scalar(pid, 'parameter')
+		if position < 4 {
+			asm_store_xmm_rbp_disp(mut g, g.abi.float_arg_reg_for_position(position),
+				g.stack_map[pid], param_size)
+		} else {
+			asm_load_xmm_mem_base_disp_size(mut g, 0, rbp, g.abi.stack_arg_offset(position),
+				param_size)
+			asm_store_xmm_rbp_disp(mut g, 0, g.stack_map[pid], param_size)
+		}
+		return
+	}
+	param_is_indirect := g.windows_value_passed_indirect(pid, is_indirect_param, param_size)
+	g.ensure_windows_scalar_or_indirect_arg(pid, param_is_indirect, param_size)
+	if position < 4 {
+		src := g.abi.int_arg_reg_for_position(position)
+		if param_is_indirect {
+			g.copy_indirect_param_from_reg(pid, src)
+		} else if g.value_needs_raw_abi_reg_bytes(pid, param_size) {
+			g.store_reg_to_rbp_exact(Reg(src), g.stack_map[pid], param_size)
+		} else if reg := g.reg_map[pid] {
+			asm_mov_reg_reg(mut g, Reg(reg), Reg(src))
+		} else {
+			asm_store_rbp_disp_reg(mut g, g.stack_map[pid], Reg(src))
+		}
+		return
+	}
+	stack_param_offset := g.abi.stack_arg_offset(position)
+	if param_is_indirect {
+		asm_load_reg_rbp_disp(mut g, rax, stack_param_offset)
+		g.copy_indirect_param_from_reg(pid, int(rax))
+	} else if g.value_needs_raw_abi_reg_bytes(pid, param_size) {
+		asm_load_reg_rbp_disp(mut g, rax, stack_param_offset)
+		g.store_reg_to_rbp_exact(rax, g.stack_map[pid], param_size)
+	} else if reg := g.reg_map[pid] {
+		asm_load_reg_rbp_disp(mut g, rax, stack_param_offset)
+		asm_mov_reg_reg(mut g, Reg(reg), rax)
+	} else {
+		asm_load_reg_rbp_disp(mut g, rax, stack_param_offset)
+		asm_store_rbp_disp_reg(mut g, g.stack_map[pid], rax)
+	}
 }
 
 fn (mut g Gen) gen_instr(val_id int) {
@@ -431,13 +501,20 @@ fn (mut g Gen) gen_instr(val_id int) {
 		}
 		.heap_alloc {
 			alloc_size := g.heap_alloc_size(val_id)
-			asm_mov_reg_imm32(mut g, rdi, 1)
-			asm_mov_reg_imm64(mut g, rsi, u64(alloc_size))
-			asm_xor_eax_eax(mut g)
+			cleanup := g.emit_windows_call_frame(0)
+			if g.abi == .windows {
+				asm_mov_reg_imm32(mut g, rcx, 1)
+				asm_mov_reg_imm64(mut g, rdx, u64(alloc_size))
+			} else {
+				asm_mov_reg_imm32(mut g, rdi, 1)
+				asm_mov_reg_imm64(mut g, rsi, u64(alloc_size))
+				asm_xor_eax_eax(mut g)
+			}
 			asm_call_rel32(mut g)
-			sym_idx := g.elf.add_undefined('calloc')
-			g.elf.add_text_reloc(u64(g.elf.text_data.len), sym_idx, 4, -4)
+			sym_idx := g.add_undefined('calloc')
+			g.add_call_reloc(sym_idx)
 			g.emit_u32(0)
+			g.cleanup_windows_call_frame(cleanup)
 			g.store_reg_to_val(0, val_id)
 		}
 		.get_element_ptr {
@@ -465,12 +542,12 @@ fn (mut g Gen) gen_instr(val_id int) {
 			g.store_reg_to_val(0, val_id)
 		}
 		.call {
-			abi_regs := [7, 6, 2, 1, 8, 9]
+			abi_regs := g.abi.int_arg_regs()
 			num_args := instr.operands.len - 1
-			stack_args := g.call_stack_arg_mask(instr, abi_regs.len)
+			stack_args := g.call_stack_arg_mask(instr, abi_regs.len, 0)
 			stack_slots := g.call_stack_slots(instr, stack_args)
-
-			if stack_slots > 0 {
+			cleanup := g.prepare_call_stack_args(instr, stack_args, stack_slots, 0)
+			if g.abi == .sysv && stack_slots > 0 {
 				if stack_slots % 2 == 1 {
 					asm_push(mut g, rax)
 				}
@@ -482,7 +559,7 @@ fn (mut g Gen) gen_instr(val_id int) {
 			}
 
 			// Stack arguments were pushed above; this pass only loads register arguments.
-			sse_arg_idx := g.load_call_register_args(instr, abi_regs, stack_args)
+			sse_arg_idx := g.load_call_register_args(instr, abi_regs, stack_args, 0)
 			fn_val := g.mod.values[instr.operands[0]]
 
 			// AL carries the number of SSE argument registers for variadic calls.
@@ -490,9 +567,9 @@ fn (mut g Gen) gen_instr(val_id int) {
 
 			if fn_val.name != '' && fn_val.kind in [.unknown, .func_ref] {
 				asm_call_rel32(mut g)
-				sym_idx := g.elf.add_undefined(fn_val.name)
+				sym_idx := g.add_undefined(fn_val.name)
 				// Use R_X86_64_PLT32 (4) for function calls to support shared libraries (libc)
-				g.elf.add_text_reloc(u64(g.elf.text_data.len), sym_idx, 4, -4)
+				g.add_call_reloc(sym_idx)
 				g.emit_u32(0)
 			} else {
 				g.load_val_to_reg(int(r10), instr.operands[0])
@@ -500,12 +577,14 @@ fn (mut g Gen) gen_instr(val_id int) {
 			}
 
 			// Clean up stack arguments
-			if stack_slots > 0 {
-				cleanup := (stack_slots + (stack_slots % 2)) * 8
-				if cleanup <= 127 {
-					asm_add_rsp_imm8(mut g, u8(cleanup))
+			if g.abi == .windows {
+				g.cleanup_windows_call_frame(cleanup)
+			} else if stack_slots > 0 {
+				sysv_cleanup := (stack_slots + (stack_slots % 2)) * 8
+				if sysv_cleanup <= 127 {
+					asm_add_rsp_imm8(mut g, u8(sysv_cleanup))
 				} else {
-					asm_add_rsp_imm32(mut g, u32(cleanup))
+					asm_add_rsp_imm32(mut g, u32(sysv_cleanup))
 				}
 			}
 
@@ -514,16 +593,16 @@ fn (mut g Gen) gen_instr(val_id int) {
 			}
 		}
 		.call_sret {
-			// SysV x86_64: hidden sret pointer in RDI, then user args in RSI,RDX,RCX,R8,R9.
-			abi_regs := [6, 2, 1, 8, 9]
+			abi_regs := g.abi.sret_arg_regs()
 			num_args := instr.operands.len - 1
-			stack_args := g.call_stack_arg_mask(instr, abi_regs.len)
+			arg_position_base := if g.abi == .windows { 1 } else { 0 }
+			stack_args := g.call_stack_arg_mask(instr, abi_regs.len, arg_position_base)
 			stack_slots := g.call_stack_slots(instr, stack_args)
 
-			// Load destination pointer to RDI.
-			g.load_address_of_val_to_reg(7, val_id)
+			g.load_address_of_val_to_reg(int(g.abi.sret_reg()), val_id)
 
-			if stack_slots > 0 {
+			cleanup := g.prepare_call_stack_args(instr, stack_args, stack_slots, arg_position_base)
+			if g.abi == .sysv && stack_slots > 0 {
 				if stack_slots % 2 == 1 {
 					asm_push(mut g, rax)
 				}
@@ -535,7 +614,7 @@ fn (mut g Gen) gen_instr(val_id int) {
 			}
 
 			// Stack arguments were pushed above; this pass only loads register arguments.
-			sse_arg_idx := g.load_call_register_args(instr, abi_regs, stack_args)
+			sse_arg_idx := g.load_call_register_args(instr, abi_regs, stack_args, arg_position_base)
 
 			fn_val := g.mod.values[instr.operands[0]]
 
@@ -544,8 +623,8 @@ fn (mut g Gen) gen_instr(val_id int) {
 
 			if fn_val.name != '' && fn_val.kind in [.unknown, .func_ref] {
 				asm_call_rel32(mut g)
-				sym_idx := g.elf.add_undefined(fn_val.name)
-				g.elf.add_text_reloc(u64(g.elf.text_data.len), sym_idx, 4, -4)
+				sym_idx := g.add_undefined(fn_val.name)
+				g.add_call_reloc(sym_idx)
 				g.emit_u32(0)
 			} else {
 				g.load_val_to_reg(int(r10), instr.operands[0])
@@ -553,24 +632,26 @@ fn (mut g Gen) gen_instr(val_id int) {
 			}
 
 			// Clean up stack arguments
-			if stack_slots > 0 {
-				cleanup := (stack_slots + (stack_slots % 2)) * 8
-				if cleanup <= 127 {
-					asm_add_rsp_imm8(mut g, u8(cleanup))
+			if g.abi == .windows {
+				g.cleanup_windows_call_frame(cleanup)
+			} else if stack_slots > 0 {
+				sysv_cleanup := (stack_slots + (stack_slots % 2)) * 8
+				if sysv_cleanup <= 127 {
+					asm_add_rsp_imm8(mut g, u8(sysv_cleanup))
 				} else {
-					asm_add_rsp_imm32(mut g, u32(cleanup))
+					asm_add_rsp_imm32(mut g, u32(sysv_cleanup))
 				}
 			}
 		}
 		.call_indirect {
 			// Indirect call through function pointer
 			// operands[0] is the function pointer, rest are arguments
-			abi_regs := [7, 6, 2, 1, 8, 9]
+			abi_regs := g.abi.int_arg_regs()
 			num_args := instr.operands.len - 1
-			stack_args := g.call_stack_arg_mask(instr, abi_regs.len)
+			stack_args := g.call_stack_arg_mask(instr, abi_regs.len, 0)
 			stack_slots := g.call_stack_slots(instr, stack_args)
-
-			if stack_slots > 0 {
+			cleanup := g.prepare_call_stack_args(instr, stack_args, stack_slots, 0)
+			if g.abi == .sysv && stack_slots > 0 {
 				if stack_slots % 2 == 1 {
 					asm_push(mut g, rax)
 				}
@@ -582,7 +663,7 @@ fn (mut g Gen) gen_instr(val_id int) {
 			}
 
 			// Stack arguments were pushed above; this pass only loads register arguments.
-			sse_arg_idx := g.load_call_register_args(instr, abi_regs, stack_args)
+			sse_arg_idx := g.load_call_register_args(instr, abi_regs, stack_args, 0)
 
 			// Load function pointer to r10 (caller-saved, not used for args)
 			g.load_val_to_reg(10, instr.operands[0])
@@ -594,12 +675,14 @@ fn (mut g Gen) gen_instr(val_id int) {
 			asm_call_r10(mut g)
 
 			// Clean up stack arguments
-			if stack_slots > 0 {
-				cleanup := (stack_slots + (stack_slots % 2)) * 8
-				if cleanup <= 127 {
-					asm_add_rsp_imm8(mut g, u8(cleanup))
+			if g.abi == .windows {
+				g.cleanup_windows_call_frame(cleanup)
+			} else if stack_slots > 0 {
+				sysv_cleanup := (stack_slots + (stack_slots % 2)) * 8
+				if sysv_cleanup <= 127 {
+					asm_add_rsp_imm8(mut g, u8(sysv_cleanup))
 				} else {
-					asm_add_rsp_imm32(mut g, u32(cleanup))
+					asm_add_rsp_imm32(mut g, u32(sysv_cleanup))
 				}
 			}
 
@@ -610,18 +693,17 @@ fn (mut g Gen) gen_instr(val_id int) {
 		.ret {
 			if g.cur_func_abi_ret_indirect {
 				if g.sret_save_offset != 0 {
-					asm_load_reg_rbp_disp(mut g, rdi, g.sret_save_offset)
+					asm_load_reg_rbp_disp(mut g, g.abi.sret_reg(), g.sret_save_offset)
 				}
 				if instr.operands.len > 0 {
 					ret_val_id := instr.operands[0]
 					ret_size := g.type_size(g.cur_func_ret_type)
 					if ret_size > 0 {
 						g.load_struct_src_address_to_reg(int(r10), ret_val_id, g.cur_func_ret_type)
-						g.copy_memory(int(rdi), 0, int(r10), 0, ret_size)
+						g.copy_memory(int(g.abi.sret_reg()), 0, int(r10), 0, ret_size)
 					}
 				}
-				// SysV returns sret pointer in RAX.
-				asm_mov_reg_reg(mut g, rax, rdi)
+				asm_mov_reg_reg(mut g, rax, g.abi.sret_reg())
 			} else if instr.operands.len > 0 {
 				ret_val_id := instr.operands[0]
 				if g.value_is_float_type(ret_val_id) {
@@ -666,7 +748,7 @@ fn (mut g Gen) gen_instr(val_id int) {
 				asm_je_rel32(mut g)
 				target_idx := g.mod.values[instr.operands[i + 1]].index
 				if off := g.block_offsets[target_idx] {
-					rel := off - (g.elf.text_data.len - g.curr_offset + 4)
+					rel := off - (g.text_len() - g.curr_offset + 4)
 					g.emit_u32(u32(rel))
 				} else {
 					g.record_pending_label(target_idx)
@@ -920,7 +1002,7 @@ fn (mut g Gen) emit_unsigned_int_to_float(src_size int, result_size int, val_id 
 	}
 	asm_test_rax_rax(mut g)
 	asm_jns_rel32(mut g)
-	normal_patch := g.elf.text_data.len
+	normal_patch := g.text_len()
 	g.emit_u32(0)
 	asm_mov_reg_reg(mut g, rcx, rax)
 	asm_and_rcx_imm8(mut g, 1)
@@ -929,7 +1011,7 @@ fn (mut g Gen) emit_unsigned_int_to_float(src_size int, result_size int, val_id 
 	g.emit_signed_int_to_float(result_size, .uitofp, val_id)
 	asm_add_float_xmm0_xmm0(mut g, result_size)
 	asm_jmp_rel32(mut g)
-	end_patch := g.elf.text_data.len
+	end_patch := g.text_len()
 	g.emit_u32(0)
 	g.patch_rel32(normal_patch)
 	g.emit_signed_int_to_float(result_size, .uitofp, val_id)
@@ -955,11 +1037,11 @@ fn (mut g Gen) emit_float_to_unsigned_int(src_size int, dst_size int, val_id int
 	g.load_fp_2p63_to_xmm1(src_size, val_id)
 	asm_ucomis_xmm0_xmm1(mut g, src_size)
 	asm_jae_rel32(mut g)
-	big_patch := g.elf.text_data.len
+	big_patch := g.text_len()
 	g.emit_u32(0)
 	g.emit_float_to_signed_int(src_size, .fptoui, val_id)
 	asm_jmp_rel32(mut g)
-	end_patch := g.elf.text_data.len
+	end_patch := g.text_len()
 	g.emit_u32(0)
 	g.patch_rel32(big_patch)
 	asm_sub_float_xmm0_xmm1(mut g, src_size)
@@ -978,18 +1060,18 @@ fn (mut g Gen) load_fp_2p63_to_xmm1(size int, val_id int) {
 	} else {
 		g.unsupported_numeric_conversion(.fptoui, size, 8, val_id)
 	}
-	str_offset := g.elf.rodata.len
-	g.elf.rodata << bytes
+	str_offset := g.rodata_len()
+	g.add_rodata(bytes)
 	sym_name := 'L_fp_${g.curr_offset}_${str_offset}'
-	sym_idx := g.elf.add_symbol(sym_name, u64(str_offset), false, 3)
+	sym_idx := g.add_symbol(sym_name, u64(str_offset), false, .rodata)
 	asm_lea_reg_rip(mut g, r10)
-	g.elf.add_text_reloc(u64(g.elf.text_data.len), sym_idx, 2, -4)
+	g.add_rip_reloc(sym_idx)
 	g.emit_u32(0)
 	asm_load_xmm_mem_base_disp_size(mut g, 1, r10, 0, size)
 }
 
 fn (mut g Gen) patch_rel32(patch_pos int) {
-	target := g.elf.text_data.len
+	target := g.text_len()
 	rel := target - (patch_pos + 4)
 	g.write_u32(patch_pos, u32(rel))
 }
@@ -1335,7 +1417,7 @@ fn (g Gen) selected_opcode(instr mir.Instruction) ssa.OpCode {
 fn (mut g Gen) emit_jmp(target_idx int) {
 	asm_jmp_rel32(mut g)
 	if off := g.block_offsets[target_idx] {
-		rel := off - (g.elf.text_data.len - g.curr_offset + 4)
+		rel := off - (g.text_len() - g.curr_offset + 4)
 		g.emit_u32(u32(rel))
 	} else {
 		g.record_pending_label(target_idx)
@@ -1344,8 +1426,7 @@ fn (mut g Gen) emit_jmp(target_idx int) {
 }
 
 fn (mut g Gen) load_call_arg_to_reg(reg int, val_id int, arg_idx int, instr mir.Instruction) {
-	is_indirect := arg_idx >= 0 && arg_idx < instr.abi_arg_class.len
-		&& instr.abi_arg_class[arg_idx] == .indirect
+	is_indirect := g.call_arg_is_indirect(val_id, arg_idx, instr)
 	if is_indirect {
 		g.load_address_of_val_to_reg(reg, val_id)
 		return
@@ -1363,14 +1444,105 @@ fn (mut g Gen) load_call_arg_to_reg(reg int, val_id int, arg_idx int, instr mir.
 	g.load_val_to_reg(reg, val_id)
 }
 
-fn (mut g Gen) load_call_register_args(instr mir.Instruction, abi_regs []int, stack_args []bool) int {
+fn (mut g Gen) prepare_call_stack_args(instr mir.Instruction, stack_args []bool, stack_slots int, arg_position_base int) int {
+	if g.abi != .windows {
+		return 0
+	}
+	cleanup := g.emit_windows_call_frame(stack_slots)
+	for arg_idx, is_stack in stack_args {
+		if is_stack {
+			g.store_windows_call_stack_arg(instr.operands[arg_idx + 1], arg_idx, arg_idx +
+				arg_position_base, instr)
+		}
+	}
+	return cleanup
+}
+
+fn (mut g Gen) emit_windows_call_frame(stack_slots int) int {
+	if g.abi != .windows {
+		return 0
+	}
+	cleanup := g.abi.call_frame_size(stack_slots)
+	if cleanup <= 127 {
+		asm_sub_rsp_imm8(mut g, u8(cleanup))
+	} else {
+		asm_sub_rsp_imm32(mut g, u32(cleanup))
+	}
+	return cleanup
+}
+
+fn (mut g Gen) cleanup_windows_call_frame(cleanup int) {
+	if cleanup == 0 {
+		return
+	}
+	if cleanup <= 127 {
+		asm_add_rsp_imm8(mut g, u8(cleanup))
+	} else {
+		asm_add_rsp_imm32(mut g, u32(cleanup))
+	}
+}
+
+fn (mut g Gen) store_windows_call_stack_arg(val_id int, arg_idx int, position int, instr mir.Instruction) {
+	is_indirect := g.call_arg_is_indirect(val_id, arg_idx, instr)
+	size := g.type_size(g.mod.values[val_id].typ)
+	g.ensure_windows_scalar_or_indirect_arg(val_id, is_indirect, size)
+	disp := g.abi.call_stack_arg_offset(position)
+	if g.value_is_float_type(val_id) {
+		g.ensure_float_abi_scalar(val_id, 'stack argument')
+		g.load_float_val_to_xmm(0, val_id, size)
+		asm_store_xmm_mem_base_disp_size(mut g, 0, rsp, disp, size)
+		return
+	}
+	g.load_call_arg_to_reg(0, val_id, arg_idx, instr)
+	store_size := if is_indirect { 8 } else { size }
+	asm_store_mem_base_disp_reg_size(mut g, rsp, disp, rax, store_size)
+}
+
+fn (mut g Gen) ensure_windows_scalar_or_indirect_arg(val_id int, is_indirect bool, size int) {
+	if is_indirect {
+		return
+	}
+	if g.value_is_aggregate(val_id) && size !in [1, 2, 4, 8] {
+		g.unsupported_windows_abi_arg('aggregate arguments must be 1, 2, 4, or 8 bytes or passed indirectly',
+			val_id)
+	}
+}
+
+fn (g Gen) unsupported_windows_abi_arg(reason string, val_id int) {
+	eprintln('x64: unsupported Windows ABI argument in value ${val_id}: ${reason}')
+	exit(1)
+}
+
+fn (g Gen) windows_value_passed_indirect(val_id int, marked_indirect bool, size int) bool {
+	if marked_indirect {
+		return true
+	}
+	return g.abi == .windows && g.value_is_aggregate(val_id) && size !in [1, 2, 4, 8]
+}
+
+fn (g Gen) call_arg_is_indirect(val_id int, arg_idx int, instr mir.Instruction) bool {
+	marked_indirect := arg_idx >= 0 && arg_idx < instr.abi_arg_class.len
+		&& instr.abi_arg_class[arg_idx] == .indirect
+	return g.windows_value_passed_indirect(val_id, marked_indirect,
+		g.type_size(g.mod.values[val_id].typ))
+}
+
+fn (mut g Gen) load_call_register_args(instr mir.Instruction, abi_regs []int, stack_args []bool, arg_position_base int) int {
+	if g.abi.uses_positional_arg_regs() {
+		return g.load_windows_call_register_args(instr, stack_args, arg_position_base)
+	}
+
 	mut reg_arg_idx := 0
 	mut sse_arg_idx := 0
+	float_arg_regs := g.abi.float_arg_regs()
 	for i in 1 .. instr.operands.len {
 		arg_idx := i - 1
 		arg_id := instr.operands[i]
 		if g.value_is_float_type(arg_id) {
-			g.load_float_call_arg_to_xmm(sse_arg_idx, arg_id)
+			if sse_arg_idx >= float_arg_regs.len {
+				g.unsupported_float_abi('stack argument', arg_id)
+			}
+			g.load_float_call_arg_to_xmm(float_arg_regs[sse_arg_idx], arg_id)
 			sse_arg_idx++
 			continue
 		}
@@ -1392,11 +1564,38 @@ fn (mut g Gen) load_call_register_args(instr mir.Instruction, abi_regs []int, st
 	return sse_arg_idx
 }
 
+fn (mut g Gen) load_windows_call_register_args(instr mir.Instruction, stack_args []bool, arg_position_base int) int {
+	mut sse_arg_count := 0
+	for i in 1 .. instr.operands.len {
+		arg_idx := i - 1
+		if stack_args[arg_idx] {
+			continue
+		}
+		arg_id := instr.operands[i]
+		position := arg_idx + arg_position_base
+		if g.value_is_float_type(arg_id) {
+			xmm := g.abi.float_arg_reg_for_position(position)
+			if xmm == x64_no_arg_reg {
+				g.unsupported_float_abi('stack argument', arg_id)
+			}
+			g.load_float_call_arg_to_xmm(xmm, arg_id)
+			sse_arg_count++
+			continue
+		}
+		reg := g.abi.int_arg_reg_for_position(position)
+		if reg == x64_no_arg_reg {
+			continue
+		}
+		is_indirect := g.call_arg_is_indirect(arg_id, arg_idx, instr)
+		size := g.type_size(g.mod.values[arg_id].typ)
+		g.ensure_windows_scalar_or_indirect_arg(arg_id, is_indirect, size)
+		g.load_call_arg_to_reg(reg, arg_id, arg_idx, instr)
+	}
+	return sse_arg_count
+}
+
 fn (mut g Gen) load_float_call_arg_to_xmm(xmm int, val_id int) {
 	g.ensure_float_abi_scalar(val_id, 'argument')
-	if xmm >= 8 {
-		g.unsupported_float_abi('stack argument', val_id)
-	}
 	g.load_float_val_to_xmm(xmm, val_id, g.type_size(g.mod.values[val_id].typ))
 }
 
@@ -1410,6 +1609,9 @@ fn (mut g Gen) store_call_result(val_id int) {
 }
 
 fn (mut g Gen) emit_sse_arg_count(count int) {
+	if g.abi != .sysv {
+		return
+	}
 	if count == 0 {
 		asm_xor_eax_eax(mut g)
 	} else {
@@ -1431,8 +1633,7 @@ fn (g Gen) param_stack_slots(is_indirect bool, reg_chunks int, size int) int {
 }
 
 fn (g Gen) call_arg_reg_chunks(val_id int, arg_idx int, instr mir.Instruction) int {
-	is_indirect := arg_idx >= 0 && arg_idx < instr.abi_arg_class.len
-		&& instr.abi_arg_class[arg_idx] == .indirect
+	is_indirect := g.call_arg_is_indirect(val_id, arg_idx, instr)
 	if is_indirect || !g.value_is_aggregate(val_id) {
 		return 1
 	}
@@ -1444,8 +1645,7 @@ fn (g Gen) call_arg_reg_chunks(val_id int, arg_idx int, instr mir.Instruction) i
 }
 
 fn (g Gen) call_arg_stack_slots(val_id int, arg_idx int, instr mir.Instruction) int {
-	is_indirect := arg_idx >= 0 && arg_idx < instr.abi_arg_class.len
-		&& instr.abi_arg_class[arg_idx] == .indirect
+	is_indirect := g.call_arg_is_indirect(val_id, arg_idx, instr)
 	if is_indirect {
 		return 1
 	}
@@ -1456,16 +1656,37 @@ fn (g Gen) call_arg_stack_slots(val_id int, arg_idx int, instr mir.Instruction) 
 	return 1
 }
 
-fn (g Gen) call_stack_arg_mask(instr mir.Instruction, abi_reg_count int) []bool {
+fn (g Gen) call_stack_arg_mask(instr mir.Instruction, abi_reg_count int, arg_position_base int) []bool {
 	num_args := instr.operands.len - 1
 	mut stack_args := []bool{len: num_args}
+	if g.abi.uses_positional_arg_regs() {
+		for arg_idx := 0; arg_idx < num_args; arg_idx++ {
+			position := arg_idx + arg_position_base
+			if position >= g.abi.int_arg_regs().len {
+				stack_args[arg_idx] = true
+				continue
+			}
+			arg_id := instr.operands[arg_idx + 1]
+			if g.value_is_float_type(arg_id) {
+				g.ensure_float_abi_scalar(arg_id, 'argument')
+				continue
+			}
+			if g.call_arg_reg_chunks(arg_id, arg_idx, instr) > 1 {
+				g.unsupported_windows_abi_arg('aggregate register splitting is not supported',
+					arg_id)
+			}
+		}
+		return stack_args
+	}
+
 	mut reg_arg_idx := 0
 	mut sse_arg_idx := 0
+	float_arg_regs := g.abi.float_arg_regs()
 	for arg_idx := 0; arg_idx < num_args; arg_idx++ {
 		arg_id := instr.operands[arg_idx + 1]
 		if g.value_is_float_type(arg_id) {
 			g.ensure_float_abi_scalar(arg_id, 'argument')
-			if sse_arg_idx >= 8 {
+			if sse_arg_idx >= float_arg_regs.len {
 				g.unsupported_float_abi('stack argument', arg_id)
 			}
 			sse_arg_idx++
@@ -1492,8 +1713,7 @@ fn (g Gen) call_stack_slots(instr mir.Instruction, stack_args []bool) int {
 }
 
 fn (mut g Gen) push_call_stack_arg(val_id int, arg_idx int, instr mir.Instruction) {
-	is_indirect := arg_idx >= 0 && arg_idx < instr.abi_arg_class.len
-		&& instr.abi_arg_class[arg_idx] == .indirect
+	is_indirect := g.call_arg_is_indirect(val_id, arg_idx, instr)
 	size := g.type_size(g.mod.values[val_id].typ)
 	slots := g.call_arg_stack_slots(val_id, arg_idx, instr)
 	if !is_indirect && slots > 1 {
@@ -1575,15 +1795,15 @@ fn (mut g Gen) load_val_to_reg(reg int, val_id int) {
 				}
 			}
 
-			str_offset := g.elf.rodata.len
-			g.elf.rodata << raw_bytes
-			g.elf.rodata << 0
+			str_offset := g.rodata_len()
+			g.add_rodata(raw_bytes)
+			g.add_rodata_byte(0)
 			sym_name := 'L_str_${g.curr_offset}_${str_offset}'
-			sym_idx := g.elf.add_symbol(sym_name, u64(str_offset), false, 3)
+			sym_idx := g.add_symbol(sym_name, u64(str_offset), false, .rodata)
 
 			// lea reg, [rip + disp]
 			asm_lea_reg_rip(mut g, Reg(reg))
-			g.elf.add_text_reloc(u64(g.elf.text_data.len), sym_idx, 2, -4)
+			g.add_rip_reloc(sym_idx)
 			g.emit_u32(0)
 		} else {
 			int_val := val.name.i64()
@@ -1597,8 +1817,8 @@ fn (mut g Gen) load_val_to_reg(reg int, val_id int) {
 		}
 	} else if val.kind == .global {
 		asm_lea_reg_rip(mut g, Reg(reg))
-		sym_idx := g.elf.add_undefined(val.name)
-		g.elf.add_text_reloc(u64(g.elf.text_data.len), sym_idx, 2, -4)
+		sym_idx := g.add_undefined(val.name)
+		g.add_rip_reloc(sym_idx)
 		g.emit_u32(0)
 	} else if val.kind == .string_literal {
 		g.materialize_string_literal(reg, val_id)
@@ -1627,15 +1847,15 @@ fn (mut g Gen) store_reg_to_val(reg int, val_id int) {
 
 fn (mut g Gen) materialize_string_literal(reg int, val_id int) {
 	val := g.mod.values[val_id]
-	str_offset := g.elf.rodata.len
-	g.elf.rodata << val.name.bytes()
-	g.elf.rodata << 0
+	str_offset := g.rodata_len()
+	g.add_rodata(val.name.bytes())
+	g.add_rodata_byte(0)
 	sym_name := 'L_str_${g.curr_offset}_${str_offset}'
-	sym_idx := g.elf.add_symbol(sym_name, u64(str_offset), false, 3)
+	sym_idx := g.add_symbol(sym_name, u64(str_offset), false, .rodata)
 
 	slot_off := g.stack_map[val_id]
 	asm_lea_reg_rip(mut g, rax)
-	g.elf.add_text_reloc(u64(g.elf.text_data.len), sym_idx, 2, -4)
+	g.add_rip_reloc(sym_idx)
 	g.emit_u32(0)
 	asm_store_rbp_disp_reg_size(mut g, slot_off + g.struct_field_offset_bytes(val.typ, 0), rax, 8)
 	asm_mov_reg_imm32(mut g, rax, u32(val.index))
@@ -1757,33 +1977,9 @@ fn (g Gen) map_reg(r int) u8 {
 	return u8(r)
 }
 
-fn (mut g Gen) emit(b u8) {
-	g.elf.text_data << b
-}
-
-fn (mut g Gen) emit_u32(v u32) {
-	g.emit(u8(v))
-	g.emit(u8(v >> 8))
-	g.emit(u8(v >> 16))
-	g.emit(u8(v >> 24))
-}
-
-fn (mut g Gen) emit_u64(v u64) {
-	g.emit_u32(u32(v))
-	g.emit_u32(u32(v >> 32))
-}
-
 fn (mut g Gen) record_pending_label(blk int) {
-	off := g.elf.text_data.len - g.curr_offset
+	off := g.text_len() - g.curr_offset
 	g.pending_labels[blk] << off
-}
-
-fn (mut g Gen) write_u32(off int, v u32) {
-	binary.little_endian_put_u32(mut g.elf.text_data[off..off + 4], v)
-}
-
-pub fn (mut g Gen) write_file(path string) {
-	g.elf.write(path)
 }
 
 // Register Allocation Logic

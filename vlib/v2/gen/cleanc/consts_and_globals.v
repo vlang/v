@@ -694,18 +694,35 @@ fn (mut g Gen) gen_const_decl_extern(node ast.ConstDecl) {
 	}
 }
 
+fn module_storage_c_name(module_name string, name string) string {
+	if name == '' || name.starts_with('C.') {
+		return name
+	}
+	if module_name != '' && module_name != 'main' && module_name != 'builtin' {
+		return '${module_name}__${name}'
+	}
+	return name
+}
+
+fn module_storage_field_is_c_extern(node ast.GlobalDecl, field ast.FieldDecl) bool {
+	return field.name.starts_with('C.') || node.attributes.has('c_extern')
+		|| field.attributes.has('c_extern')
+}
+
+fn module_storage_field_c_name(module_name string, node ast.GlobalDecl, field ast.FieldDecl) string {
+	if module_storage_field_is_c_extern(node, field) {
+		return if field.name.starts_with('C.') { field.name.all_after('C.') } else { field.name }
+	}
+	return module_storage_c_name(module_name, field.name)
+}
+
 fn (mut g Gen) gen_global_decl(node ast.GlobalDecl) {
 	for field in node.fields {
-		raw_name := if g.cur_module != '' && g.cur_module != 'main' && g.cur_module != 'builtin' {
-			'${g.cur_module}__${field.name}'
-		} else {
-			field.name
-		}
-		name := if raw_name.starts_with('C.') { raw_name.all_after('C.') } else { raw_name }
 		// Skip C globals that are already provided by C headers or cheaders.
-		if field.name.starts_with('C.') {
+		if module_storage_field_is_c_extern(node, field) {
 			continue
 		}
+		name := module_storage_field_c_name(g.cur_module, node, field)
 		key := 'global_${name}'
 		if key in g.emitted_types {
 			continue
@@ -784,16 +801,12 @@ fn (mut g Gen) gen_global_decl(node ast.GlobalDecl) {
 
 fn (mut g Gen) gen_global_decl_extern(node ast.GlobalDecl) {
 	for field in node.fields {
-		raw_name := if g.cur_module != '' && g.cur_module != 'main' && g.cur_module != 'builtin' {
-			'${g.cur_module}__${field.name}'
-		} else {
-			field.name
-		}
-		name := if raw_name.starts_with('C.') { raw_name.all_after('C.') } else { raw_name }
-		// Skip C globals that are already provided by C headers or cheaders.
+		// C.foo selectors are provided by C headers/macros; raw @[c_extern]
+		// globals below need an extern declaration, but C.foo does not.
 		if field.name.starts_with('C.') {
 			continue
 		}
+		name := module_storage_field_c_name(g.cur_module, node, field)
 		key := 'extern_global_${name}'
 		if key in g.emitted_types {
 			continue

@@ -408,6 +408,38 @@ fn (mut c Checker) array_init(mut node ast.ArrayInit) ast.Type {
 		return array_init_result_type(node)
 	}
 
+	if node.has_update_expr {
+		// `[...base, e1, e2]` — array update/spread literal
+		update_typ := c.expr(mut node.update_expr)
+		// Resolve through type aliases so `type Ints = []int; [...Ints(...)]`
+		// is accepted; use final_sym to look past aliases of arrays.
+		update_sym := c.table.final_sym(update_typ)
+		if update_sym.kind != .array {
+			c.error('invalid array update: non-array type `${c.table.type_to_str(update_typ)}`',
+				node.update_expr_pos)
+			return ast.void_type
+		}
+		array_info := update_sym.array_info()
+		node.elem_type = array_info.elem_type
+		node.typ = update_typ
+		elem_type = array_info.elem_type
+		c.expected_type = elem_type
+		for mut expr in node.exprs {
+			typ := c.check_expr_option_or_result_call(expr, c.expr(mut expr))
+			node.expr_types << typ
+			if expr is ast.CallExpr {
+				ret_sym := c.table.sym(typ)
+				if ret_sym.kind == .array_fixed {
+					node.expr_types[node.expr_types.len - 1] = c.cast_fixed_array_ret(typ, ret_sym)
+				}
+				node.has_callexpr = true
+			}
+			c.check_expected(typ, elem_type) or {
+				c.error('invalid array element: ${err.msg()}', expr.pos())
+			}
+		}
+		return array_init_result_type(node)
+	}
 	if node.is_fixed {
 		c.ensure_type_exists(node.elem_type, node.elem_type_pos)
 		if !c.is_builtin_mod {

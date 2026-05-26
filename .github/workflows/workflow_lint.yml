@@ -8,6 +8,8 @@ name: Workflow Lint
 
 on:
   push:
+    branches:
+      - master
     paths:
       - '**.yml'
   pull_request:

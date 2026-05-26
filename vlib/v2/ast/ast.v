@@ -338,12 +338,13 @@ pub enum DeferMode {
 // Expressions
 pub struct ArrayInitExpr {
 pub mut:
-	typ   Expr = empty_expr
-	exprs []Expr
-	init  Expr = empty_expr
-	cap   Expr = empty_expr
-	len   Expr = empty_expr
-	pos   token.Pos
+	typ         Expr = empty_expr
+	exprs       []Expr
+	init        Expr = empty_expr
+	cap         Expr = empty_expr
+	len         Expr = empty_expr
+	update_expr Expr = empty_expr // `a` in `[...a, 3, 4]`
+	pos         token.Pos
 }
 
 pub struct AsCastExpr {
@@ -404,6 +405,8 @@ pub:
 	typ        Expr = empty_expr // can be empty as used for const (unless we use something else)
 	value      Expr = empty_expr
 	attributes []Attribute
+	is_public  bool
+	is_mut     bool
 }
 
 pub struct FieldInit {
@@ -907,6 +910,7 @@ pub struct GlobalDecl {
 pub:
 	attributes []Attribute
 	fields     []FieldDecl
+	is_public  bool
 }
 
 pub struct ImportStmt {

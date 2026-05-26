@@ -104,7 +104,8 @@ mut:
 	needed_ierror_wrapper_bases map[string]bool
 	tmp_counter                 int
 	cur_fn_mut_params           map[string]bool   // names of mut params in current function
-	global_var_modules          map[string]string // global var name → module name
+	module_storage_vars         map[string]string // qualified storage C name -> module name
+	c_extern_module_storage     map[string]string // qualified storage C name -> raw C extern name
 	global_var_types            map[string]string // global var name → C type string
 	primitive_type_aliases      map[string]bool   // type names that are aliases for primitive types
 	emit_modules                map[string]bool   // when set, emit consts/globals/fns only for these modules
@@ -416,6 +417,8 @@ fn new_gen_with_env_and_pref_impl(env &types.Environment, p &pref.Preferences) &
 		emitted_option_structs:      map[string]bool{}
 		embedded_field_owner:        map[string]string{}
 		fixed_array_ret_wrappers:    map[string]string{}
+		module_storage_vars:         map[string]string{}
+		c_extern_module_storage:     map[string]string{}
 		emit_modules:                map[string]bool{}
 		type_modules:                map[string]bool{}
 		exported_const_seen:         map[string]bool{}
@@ -850,7 +853,7 @@ pub fn (mut g Gen) gen_passes_1_to_4() {
 	g.register_builder_methods()
 	stage_start = g.mark_cgen_step(stats_enabled, stats_scope, mut stats_sw, stage_start, 'setup')
 
-	// Pre-collect all global variable names so they can be module-qualified
+	// Pre-collect module storage names by qualified C name.
 	for file in g.files {
 		g.set_file_module(file)
 		for stmt in file.stmts {
@@ -859,9 +862,16 @@ pub fn (mut g Gen) gen_passes_1_to_4() {
 			}
 			if stmt is ast.GlobalDecl {
 				for field in stmt.fields {
-					if g.cur_module != '' && g.cur_module != 'main' && g.cur_module != 'builtin' {
-						g.global_var_modules[field.name] = g.cur_module
+					if module_storage_field_is_c_extern(stmt, field) {
+						if !field.name.starts_with('C.') {
+							qualified_name := module_storage_c_name(g.cur_module, field.name)
+							g.c_extern_module_storage[qualified_name] = module_storage_field_c_name(g.cur_module,
+								stmt, field)
+						}
+						continue
 					}
+					name := module_storage_c_name(g.cur_module, field.name)
+					g.module_storage_vars[name] = g.cur_module
 				}
 			}
 		}
@@ -1603,12 +1613,10 @@ pub fn (mut g Gen) gen_pass5_pre() []int {
 			for stmt in file.stmts {
 				if stmt is ast.GlobalDecl {
 					for field in stmt.fields {
-						gname := if g.cur_module != '' && g.cur_module != 'main'
-							&& g.cur_module != 'builtin' {
-							'${g.cur_module}__${field.name}'
-						} else {
-							field.name
+						if module_storage_field_is_c_extern(stmt, field) {
+							continue
 						}
+						gname := module_storage_c_name(g.cur_module, field.name)
 						if gname !in g.global_owner_file {
 							g.global_owner_file[gname] = fi
 						}
@@ -1722,16 +1730,16 @@ fn (mut g Gen) emit_weak_generic_specializations_from_non_emit_files() {
 		}
 		late_before := g.late_weak_generic_name_set()
 		$if trace_weak ? {
-			eprintln('[weak] emit-iter ${j} late_before=${late_before.len}')
+			eprintln('[weak] emit-iter ${j} late_before=${late_before.len} after_late_set rss_mb=${g.process_rss_mb()}')
 		}
 		mut emitted_decls := map[string]bool{}
 		g.emit_weak_generic_specialization_decls(needed_names, mut emitted_decls)
 		$if trace_weak ? {
-			eprintln('[weak] emit-iter ${j} after decls emitted=${emitted_decls.len} sb=${g.sb.len}')
+			eprintln('[weak] emit-iter ${j} after decls emitted=${emitted_decls.len} sb=${g.sb.len} rss_mb=${g.process_rss_mb()}')
 		}
 		g.emit_weak_generic_specialization_bodies(needed_names, mut emitted_bodies)
 		$if trace_weak ? {
-			eprintln('[weak] emit-iter ${j} after bodies emitted=${emitted_bodies.len} sb=${g.sb.len} late_total=${g.late_generic_spec_count()}')
+			eprintln('[weak] emit-iter ${j} after bodies emitted=${emitted_bodies.len} sb=${g.sb.len} late_total=${g.late_generic_spec_count()} rss_mb=${g.process_rss_mb()}')
 		}
 		before_needed := needed_names.len
 		g.add_late_weak_generic_names_since(late_before, mut needed_names)
@@ -1739,7 +1747,7 @@ fn (mut g Gen) emit_weak_generic_specializations_from_non_emit_files() {
 			before_scan := needed_names.len
 			g.scan_weak_generic_specializations_from_non_emit_files(mut needed_names, mut scanned)
 			$if trace_weak ? {
-				eprintln('[weak]   inner scan ${i} needed=${needed_names.len} scanned=${scanned.len} sb=${g.sb.len} late_total=${g.late_generic_spec_count()}')
+				eprintln('[weak]   inner scan ${i} needed=${needed_names.len} scanned=${scanned.len} sb=${g.sb.len} late_total=${g.late_generic_spec_count()} rss_mb=${g.process_rss_mb()}')
 			}
 			if needed_names.len == before_scan {
 				break
@@ -1781,13 +1789,32 @@ fn (mut g Gen) scan_weak_generic_specializations_from_non_emit_files(mut needed_
 }
 
 fn (mut g Gen) scan_weak_generic_fn_specializations(node &ast.FnDecl, mut needed_names map[string]bool, mut scanned map[string]bool) {
-	for spec in g.weak_generic_fn_specializations_for_names(node, needed_names) {
-		scan_key := '${g.cur_module}.${node.name}:${spec.name}'
-		if scan_key in scanned {
-			continue
+	$if trace_weak ? {
+		t_before := g.process_rss_mb()
+		specs_before_len := needed_names.len
+		mut scan_count := 0
+		for spec in g.weak_generic_fn_specializations_for_names(node, needed_names) {
+			scan_key := '${g.cur_module}.${node.name}:${spec.name}'
+			if scan_key in scanned {
+				continue
+			}
+			scanned[scan_key] = true
+			scan_count++
+			g.scan_weak_specialization_body(node, spec.name, spec.generic_types, mut needed_names)
 		}
-		scanned[scan_key] = true
-		g.scan_weak_specialization_body(node, spec.name, spec.generic_types, mut needed_names)
+		t_after := g.process_rss_mb()
+		if t_after - t_before > 50 || scan_count > 5 {
+			eprintln('[weak]   scan_fn ${g.cur_module}.${node.name} new_scans=${scan_count} rss_mb=${t_before}->${t_after} needed=${specs_before_len}->${needed_names.len}')
+		}
+	} $else {
+		for spec in g.weak_generic_fn_specializations_for_names(node, needed_names) {
+			scan_key := '${g.cur_module}.${node.name}:${spec.name}'
+			if scan_key in scanned {
+				continue
+			}
+			scanned[scan_key] = true
+			g.scan_weak_specialization_body(node, spec.name, spec.generic_types, mut needed_names)
+		}
 	}
 }
 
@@ -2085,6 +2112,32 @@ fn (mut g Gen) generic_types_from_specialized_fn_name(node ast.FnDecl, fn_name s
 	return generic_types
 }
 
+// process_rss_mb returns the current process's resident set size in
+// megabytes, or 0 if it can't be determined. Used by the `trace_weak`
+// diagnostics to track peak memory across codegen passes. Linux reads
+// `/proc/self/statm`; macOS shells out to `ps`; other platforms return 0.
+fn (g &Gen) process_rss_mb() i64 {
+	$if linux {
+		data := os.read_file('/proc/self/statm') or { return 0 }
+		parts := data.split(' ')
+		if parts.len < 2 {
+			return 0
+		}
+		pages := parts[1].i64()
+		raw_page_size := i64(C.sysconf(C._SC_PAGESIZE))
+		page_size := if raw_page_size > 0 { raw_page_size } else { i64(4096) }
+		return (pages * page_size) / (1024 * 1024)
+	}
+	$if macos {
+		out := os.execute('ps -o rss= -p ${os.getpid()}')
+		if out.exit_code != 0 {
+			return 0
+		}
+		return out.output.trim_space().i64() / 1024
+	}
+	return 0
+}
+
 fn (mut g Gen) split_specialization_suffix(suffix string, parts int) ?[]string {
 	if parts <= 0 || suffix == '' {
 		return none
@@ -2133,6 +2186,7 @@ fn (mut g Gen) emit_weak_generic_fn_specializations(node &ast.FnDecl, emit_body 
 		$if trace_weak ? {
 			before := g.sb.len
 			if emit_body {
+				eprintln('[weak]       SPEC begin ${spec.name} sb=${g.sb.len}')
 				g.gen_weak_fn_decl_with_name_ptr(node, spec.name)
 				emitted[spec.name] = true
 				delta := g.sb.len - before
@@ -2454,7 +2508,9 @@ pub fn (g &Gen) new_pass5_worker(file_indices []int, worker_id int) &Gen {
 		collected_fixed_array_types: g.collected_fixed_array_types.clone()
 		collected_map_types:         g.collected_map_types.clone()
 		c_file_fn_keys:              g.c_file_fn_keys.clone()
-		global_var_modules:          g.global_var_modules.clone()
+		module_storage_vars:         g.module_storage_vars.clone()
+		c_extern_module_storage:     g.c_extern_module_storage.clone()
+		global_var_types:            g.global_var_types.clone()
 		const_exprs:                 g.const_exprs.clone()
 		const_types:                 g.const_types.clone()
 		const_c_names:               g.const_c_names.clone()

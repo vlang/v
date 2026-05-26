@@ -27,6 +27,35 @@ fn enum_field_symbol_name(name string) string {
 	return escaped
 }
 
+fn normalize_target_os_name(target_os string) string {
+	return match target_os.to_lower() {
+		'macos', 'darwin' { 'macos' }
+		else { target_os.to_lower() }
+	}
+}
+
+fn (b &Builder) is_macos_target() bool {
+	return normalize_target_os_name(b.target_os) == 'macos'
+}
+
+fn ssa_module_storage_name(module_name string, name string) string {
+	if name == '' || name.starts_with('C.') {
+		return name
+	}
+	if module_name == 'C' {
+		return 'C.${name}'
+	}
+	if module_name != '' && module_name != 'main' {
+		return '${module_name}__${name}'
+	}
+	return name
+}
+
+fn ssa_module_storage_field_is_c_extern(node ast.GlobalDecl, field ast.FieldDecl) bool {
+	return field.name.starts_with('C.') || node.attributes.has('c_extern')
+		|| field.attributes.has('c_extern')
+}
+
 struct DynConstArray {
 	arr_global_name  string // V array struct global name
 	data_global_name string // raw data global name
@@ -54,6 +83,11 @@ pub mut:
 	// Native self-hosted builds use the SSA sumtype layout directly; guard
 	// against null large-variant payloads before matching types.Type.
 	guard_invalid_type_payloads bool
+	// Target OS for lowering target-specific C globals.
+	target_os string
+	// When set, native Windows PE builds rely on markused instead of retaining
+	// broad builtin runtime modules before linking.
+	minimal_runtime_roots bool
 mut:
 	env       &types.Environment = unsafe { nil }
 	cur_func  int                = -1
@@ -149,6 +183,8 @@ pub fn (mut b Builder) new_worker_clone(worker_mod &Module, worker_idx int) &Bui
 	return &Builder{
 		mod:                    worker_mod
 		env:                    b.env
+		target_os:              b.target_os
+		minimal_runtime_roots:  b.minimal_runtime_roots
 		struct_types:           b.struct_types.clone()
 		enum_values:            b.enum_values.clone()
 		fn_index:               b.fn_index.clone()
@@ -181,6 +217,14 @@ pub fn (mut b Builder) build_all(files []ast.File) {
 	ptr_ptr_t := b.mod.type_store.get_ptr(ptr_t)
 	b.mod.add_global('g_main_argc', i32_t, false)
 	b.mod.add_global('g_main_argv', ptr_ptr_t, false)
+
+	// Pre-register libSystem stdio externs on the main module so that worker
+	// modules inherit them and the arm64 backend emits GOT-indirect loads when
+	// `C.stdout` / `C.stdin` / `C.stderr` are referenced.
+	for stdio_sym in ['__stdoutp', '__stdinp', '__stderrp'] {
+		glob := b.mod.add_external_global(stdio_sym, ptr_t)
+		b.global_refs[stdio_sym] = glob
+	}
 
 	// Phase 1a: Register core builtin types first (string, array) since other structs depend on them.
 	// First, register builtin enums (e.g., ArrayFlags) so their types resolve correctly
@@ -245,7 +289,7 @@ pub fn (mut b Builder) build_all(files []ast.File) {
 	}
 
 	// Phase 3.5: Generate synthetic stubs for transformer-generated functions
-	if b.hot_fn.len == 0 {
+	if b.hot_fn.len == 0 && !b.minimal_runtime_roots {
 		b.generate_array_eq_stub()
 		b.generate_wymix_stub()
 		b.generate_wyhash64_stub()
@@ -1475,12 +1519,18 @@ fn (mut b Builder) register_consts_and_globals(file ast.File) {
 			}
 			ast.GlobalDecl {
 				for field in stmt.fields {
-					glob_name := if b.cur_module != '' && b.cur_module != 'main' {
-						'${b.cur_module}__${field.name}'
-					} else {
-						field.name
-					}
 					glob_type := b.global_field_type(field)
+					if ssa_module_storage_field_is_c_extern(stmt, field)
+						&& !field.name.starts_with('C.') {
+						glob_id := b.mod.add_external_global(field.name, glob_type)
+						b.global_refs[field.name] = glob_id
+						qualified_name := ssa_module_storage_name(b.cur_module, field.name)
+						if qualified_name != field.name {
+							b.global_refs[qualified_name] = glob_id
+						}
+						continue
+					}
+					glob_name := ssa_module_storage_name(b.cur_module, field.name)
 					initial_value := if field.value != ast.empty_expr {
 						b.try_eval_const_int(field.value)
 					} else {
@@ -2593,18 +2643,21 @@ pub fn (mut b Builder) should_build_fn(file_name string, decl ast.FnDecl) bool {
 	if b.used_fn_keys.len == 0 {
 		return true // No markused data — build everything
 	}
-	// Always build init_consts, init, deinit, main
-	if decl.name.starts_with('__v_init_consts_') {
-		return true
-	}
-	if decl.name == 'init' || decl.name == 'deinit' {
-		return true
-	}
 	if decl.name == 'main' {
 		return true
 	}
+	// Always build init_consts, init, deinit unless a minimal native runtime path
+	// relies on markused to keep only roots that are actually reached.
+	if decl.name.starts_with('__v_init_consts_') || decl.name == 'init' || decl.name == 'deinit' {
+		if b.minimal_runtime_roots {
+			key := markused.decl_key(b.cur_module, decl, b.env)
+			return key in b.used_fn_keys
+		}
+		return true
+	}
 	// Always build functions from core modules that the runtime needs
-	if b.cur_module in ['builtin', 'strings', 'strconv', 'bits', 'sha256', 'binary'] {
+	if !b.minimal_runtime_roots
+		&& b.cur_module in ['builtin', 'strings', 'strconv', 'bits', 'sha256', 'binary'] {
 		return true
 	}
 	// Always build .vh header declarations
@@ -2614,7 +2667,7 @@ pub fn (mut b Builder) should_build_fn(file_name string, decl ast.FnDecl) bool {
 	// Keep transformer-generated array/map method specializations
 	if decl.is_method {
 		mangled := b.mangle_fn_name(decl)
-		if mangled.contains('__Array_') || mangled.contains('__Map_') {
+		if !b.minimal_runtime_roots && (mangled.contains('__Array_') || mangled.contains('__Map_')) {
 			return true
 		}
 	}
@@ -2942,11 +2995,7 @@ fn (mut b Builder) build_assign(stmt ast.AssignStmt) {
 					mut ptr := ValueID(0)
 					if p := b.vars[ident.name] {
 						ptr = p
-					} else if glob_id := b.find_global(ident.name) {
-						ptr = glob_id
-					} else if glob_id := b.find_global('${b.cur_module}__${ident.name}') {
-						ptr = glob_id
-					} else if glob_id := b.find_global('builtin__${ident.name}') {
+					} else if glob_id := b.find_global_ident(ident.name) {
 						ptr = glob_id
 					}
 					if ptr != 0 {
@@ -2976,11 +3025,7 @@ fn (mut b Builder) build_assign(stmt ast.AssignStmt) {
 				mut ptr := ValueID(0)
 				if p := b.vars[ident.name] {
 					ptr = p
-				} else if glob_id := b.find_global(ident.name) {
-					ptr = glob_id
-				} else if glob_id := b.find_global('${b.cur_module}__${ident.name}') {
-					ptr = glob_id
-				} else if glob_id := b.find_global('builtin__${ident.name}') {
+				} else if glob_id := b.find_global_ident(ident.name) {
 					ptr = glob_id
 				}
 				if ptr != 0 {
@@ -3029,8 +3074,9 @@ fn (mut b Builder) build_assign(stmt ast.AssignStmt) {
 				// Do NOT skip if RHS is a function call (e.g. new_array_from_c_array
 				// for dynamic arrays — those need their _vinit assignment).
 				if rhs is ast.ArrayInitExpr {
+					module_const_name := ssa_module_storage_name(b.cur_module, ident.name)
 					if ident.name in b.const_array_globals
-						|| '${b.cur_module}__${ident.name}' in b.const_array_globals
+						|| module_const_name in b.const_array_globals
 						|| 'builtin__${ident.name}' in b.const_array_globals {
 						continue
 					}
@@ -3038,11 +3084,7 @@ fn (mut b Builder) build_assign(stmt ast.AssignStmt) {
 				mut ptr := ValueID(0)
 				if p := b.vars[ident.name] {
 					ptr = p
-				} else if glob_id := b.find_global(ident.name) {
-					ptr = glob_id
-				} else if glob_id := b.find_global('${b.cur_module}__${ident.name}') {
-					ptr = glob_id
-				} else if glob_id := b.find_global('builtin__${ident.name}') {
+				} else if glob_id := b.find_global_ident(ident.name) {
 					ptr = glob_id
 				}
 				if ptr != 0 {
@@ -4254,18 +4296,7 @@ fn (mut b Builder) build_ident(ident ast.Ident) ValueID {
 		}
 	}
 	// Try as global variable
-	if glob_id := b.find_global(ident.name) {
-		glob_typ := b.mod.values[glob_id].typ
-		elem_typ := b.mod.type_store.types[glob_typ].elem_type
-		return b.mod.add_instr(.load, b.cur_block, elem_typ, [glob_id])
-	}
-	// Try with prefixes for globals too
-	if glob_id := b.find_global(builtin_const) {
-		glob_typ := b.mod.values[glob_id].typ
-		elem_typ := b.mod.type_store.types[glob_typ].elem_type
-		return b.mod.add_instr(.load, b.cur_block, elem_typ, [glob_id])
-	}
-	if glob_id := b.find_global(qualified_name) {
+	if glob_id := b.find_global_ident(ident.name) {
 		glob_typ := b.mod.values[glob_id].typ
 		elem_typ := b.mod.type_store.types[glob_typ].elem_type
 		return b.mod.add_instr(.load, b.cur_block, elem_typ, [glob_id])
@@ -4291,16 +4322,23 @@ fn (mut b Builder) find_global(name string) ?ValueID {
 }
 
 fn (mut b Builder) find_global_ident(name string) ?ValueID {
+	if name.starts_with('C.') {
+		return b.find_global(name)
+	}
+	qualified_name := ssa_module_storage_name(b.cur_module, name)
+	if qualified_name != name {
+		if glob_id := b.find_global(qualified_name) {
+			return glob_id
+		}
+	}
 	if glob_id := b.find_global(name) {
 		return glob_id
 	}
-	qualified_name := '${b.cur_module}__${name}'
-	if glob_id := b.find_global(qualified_name) {
-		return glob_id
-	}
-	builtin_name := 'builtin__${name}'
-	if glob_id := b.find_global(builtin_name) {
-		return glob_id
+	builtin_name := ssa_module_storage_name('builtin', name)
+	if builtin_name != name && builtin_name != qualified_name {
+		if glob_id := b.find_global(builtin_name) {
+			return glob_id
+		}
 	}
 	return none
 }
@@ -6412,64 +6450,87 @@ fn (mut b Builder) build_selector(expr ast.SelectorExpr) ValueID {
 		}
 		// macOS errno: (*__error()) — call __error() which returns int*
 		if c_name == 'errno' {
-			i32_t := b.mod.type_store.get_int(32)
-			ptr_i32 := b.mod.type_store.get_ptr(i32_t)
-			err_fn := b.get_or_create_fn_ref('__error', ptr_i32)
-			call_val := b.mod.add_instr(.call, b.cur_block, ptr_i32, [err_fn])
-			return b.mod.add_instr(.load, b.cur_block, i32_t, [call_val])
+			if b.is_macos_target() {
+				i32_t := b.mod.type_store.get_int(32)
+				ptr_i32 := b.mod.type_store.get_ptr(i32_t)
+				err_fn := b.get_or_create_fn_ref('__error', ptr_i32)
+				call_val := b.mod.add_instr(.call, b.cur_block, ptr_i32, [err_fn])
+				return b.mod.add_instr(.load, b.cur_block, i32_t, [call_val])
+			}
 		}
-		// Map C standard I/O streams to macOS-specific symbol names
-		macos_name := match c_name {
-			'stdout' { '__stdoutp' }
-			'stderr' { '__stderrp' }
-			'stdin' { '__stdinp' }
-			else { c_name }
+		// Map C standard I/O streams to macOS-specific symbol names only for macOS.
+		target_name := if b.is_macos_target() {
+			match c_name {
+				'stdout' { '__stdoutp' }
+				'stderr' { '__stderrp' }
+				'stdin' { '__stdinp' }
+				else { c_name }
+			}
+		} else {
+			c_name
+		}
+
+		i8_t := b.mod.type_store.get_int(8)
+		ptr_t := b.mod.type_store.get_ptr(i8_t)
+		if b.is_macos_target() && c_name in ['stdout', 'stderr', 'stdin'] {
+			// `__stdoutp` / `__stdinp` / `__stderrp` are libSystem `FILE*` variables.
+			// Reading the V expression `C.stdout` must yield the FILE* value, not the
+			// address of the variable. The external global is pre-registered on the
+			// main module (build_all) so worker modules see it via seeded values.
+			glob := b.mod.add_external_global(target_name, ptr_t)
+			b.global_refs[target_name] = glob
+			return b.mod.add_instr(.load, b.cur_block, ptr_t, [glob])
 		}
 
 		// Not a known constant — emit as a global reference (e.g. C.stdout, C.stderr)
-		i8_t := b.mod.type_store.get_int(8)
-		ptr_t := b.mod.type_store.get_ptr(i8_t)
-		glob := b.mod.add_value_node(.global, ptr_t, macos_name, 0)
-		b.global_refs[macos_name] = glob
+		glob := b.mod.add_value_node(.global, ptr_t, target_name, 0)
+		b.global_refs[target_name] = glob
 		return glob
 	}
 
 	// Module-qualified constant/global access: os.args, pref.Backend, etc.
 	// When LHS is a module name, resolve module__field as a constant or global.
 	if expr.lhs is ast.Ident {
-		mod_name := expr.lhs.name.replace('.', '_')
-		qualified := '${mod_name}__${expr.rhs.name}'
-		// Try as float constant (inline as f64)
-		if fval := b.float_const_values[qualified] {
-			return b.mod.get_or_add_const(b.mod.type_store.get_float(64), fval)
+		mut mod_name := ''
+		if resolved_mod := b.selector_module_name(expr) {
+			mod_name = resolved_mod
+		} else if b.env == unsafe { nil } {
+			mod_name = expr.lhs.name.replace('.', '_')
 		}
-		// Try as compile-time constant
-		if qualified in b.const_values {
-			ct := if qualified in b.const_value_types {
-				b.const_value_types[qualified]
-			} else {
-				b.mod.type_store.get_int(64)
+		if mod_name != '' {
+			qualified := ssa_module_storage_name(mod_name, expr.rhs.name)
+			// Try as float constant (inline as f64)
+			if fval := b.float_const_values[qualified] {
+				return b.mod.get_or_add_const(b.mod.type_store.get_float(64), fval)
 			}
-			return b.mod.get_or_add_const(ct, b.const_values[qualified].str())
-		}
-		// Try as string constant
-		if qualified in b.string_const_values {
-			return b.build_string_literal(ast.StringLiteral{
-				kind:  .v
-				value: b.string_const_values[qualified]
-			})
-		}
-		// Try as constant array global (return pointer directly for indexing)
-		if qualified in b.const_array_globals {
+			// Try as compile-time constant
+			if qualified in b.const_values {
+				ct := if qualified in b.const_value_types {
+					b.const_value_types[qualified]
+				} else {
+					b.mod.type_store.get_int(64)
+				}
+				return b.mod.get_or_add_const(ct, b.const_values[qualified].str())
+			}
+			// Try as string constant
+			if qualified in b.string_const_values {
+				return b.build_string_literal(ast.StringLiteral{
+					kind:  .v
+					value: b.string_const_values[qualified]
+				})
+			}
+			// Try as constant array global (return pointer directly for indexing)
+			if qualified in b.const_array_globals {
+				if glob_id := b.find_global(qualified) {
+					return glob_id
+				}
+			}
+			// Try as global variable (runtime-initialized constants like os.args)
 			if glob_id := b.find_global(qualified) {
-				return glob_id
+				glob_typ := b.mod.values[glob_id].typ
+				elem_typ := b.mod.type_store.types[glob_typ].elem_type
+				return b.mod.add_instr(.load, b.cur_block, elem_typ, [glob_id])
 			}
-		}
-		// Try as global variable (runtime-initialized constants like os.args)
-		if glob_id := b.find_global(qualified) {
-			glob_typ := b.mod.values[glob_id].typ
-			elem_typ := b.mod.type_store.types[glob_typ].elem_type
-			return b.mod.add_instr(.load, b.cur_block, elem_typ, [glob_id])
 		}
 	}
 
@@ -8632,6 +8693,14 @@ fn (mut b Builder) build_addr(expr ast.Expr) ValueID {
 			return 0
 		}
 		ast.SelectorExpr {
+			if expr.lhs is ast.Ident {
+				if mod_name := b.selector_module_name(expr) {
+					qualified := ssa_module_storage_name(mod_name, expr.rhs.name)
+					if glob_id := b.find_global(qualified) {
+						return glob_id
+					}
+				}
+			}
 			// Get address of base (not the loaded value)
 			mut base := b.build_addr(expr.lhs)
 			if base == 0 {

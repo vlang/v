@@ -989,7 +989,7 @@ pub type Type = u32
 
 pub struct Table {}
 
-__global global_table = &Table(unsafe { nil })
+pub __global global_table = &Table(unsafe { nil })
 
 pub fn (t &Table) type_to_str(typ Type) string {
 	_ = t
@@ -1013,7 +1013,7 @@ struct FnDecl {
 }
 
 fn call(node &FnDecl) string {
-	return global_table.type_to_str(node.receiver.typ)
+	return ast.global_table.type_to_str(node.receiver.typ)
 }
 '
 		},
@@ -6492,4 +6492,229 @@ fn uses_smartcasted_field_method(init Expr) bool {
 		}
 	}
 	assert 'Ident__is_mut' in call_names, 'expected smartcasted method call, got ${call_names}'
+}
+
+fn struct_field_names(file ast.File, struct_name string) []string {
+	for stmt in file.stmts {
+		if stmt is ast.StructDecl && stmt.name == struct_name {
+			mut names := []string{cap: stmt.fields.len}
+			for field in stmt.fields {
+				names << field.name
+			}
+			return names
+		}
+	}
+	return []string{}
+}
+
+fn parse_code_with_defines_for_test(code string, defines []string) []ast.File {
+	return parse_code_with_prefs_for_test(code, .cleanc, defines)
+}
+
+fn parse_code_with_prefs_for_test(code string, backend vpref.Backend, defines []string) []ast.File {
+	tmp_file := '/tmp/v2_parser_cond_field_test_${os.getpid()}.v'
+	os.write_file(tmp_file, code) or { panic('failed to write temp file') }
+	defer {
+		os.rm(tmp_file) or {}
+	}
+	prefs := &vpref.Preferences{
+		backend:      backend
+		no_parallel:  true
+		user_defines: defines
+	}
+	mut file_set := token.FileSet.new()
+	mut par := parser.Parser.new(prefs)
+	return par.parse_files([tmp_file], mut file_set)
+}
+
+fn test_struct_comptime_if_field_block_default_branch() {
+	files := parse_code_with_defines_for_test('
+module main
+
+struct Container {
+$if my_feature ? {
+	feature_val string = "on"
+} $else {
+	feature_val string = "off"
+}
+	always_present int
+}
+', [])
+	assert files.len == 1
+	assert struct_field_names(files[0], 'Container') == ['feature_val', 'always_present']
+}
+
+fn test_struct_comptime_if_field_block_selected_branch() {
+	files := parse_code_with_defines_for_test('
+module main
+
+struct Container {
+$if my_feature ? {
+	feature_val string = "on"
+} $else {
+	feature_val string = "off"
+}
+	always_present int
+}
+', [
+		'my_feature',
+	])
+	assert files.len == 1
+	assert struct_field_names(files[0], 'Container') == ['feature_val', 'always_present']
+}
+
+fn test_struct_comptime_if_field_block_omits_when_unset() {
+	files := parse_code_with_defines_for_test('
+module main
+
+struct Container {
+$if optional ? {
+	opt_field int
+}
+	always int
+}
+', [])
+	assert files.len == 1
+	assert struct_field_names(files[0], 'Container') == ['always']
+}
+
+fn test_struct_comptime_else_if_chain_picks_first_match() {
+	files := parse_code_with_defines_for_test('
+module main
+
+struct Container {
+$if feat_a ? {
+	tag string = "A"
+} $else $if feat_b ? {
+	tag string = "B"
+} $else {
+	tag string = "default"
+}
+}
+', [
+		'feat_b',
+	])
+	assert files.len == 1
+	names := struct_field_names(files[0], 'Container')
+	assert names == ['tag']
+}
+
+fn test_struct_field_if_attribute_elides_when_false() {
+	files := parse_code_with_defines_for_test('
+module main
+
+struct Container {
+	name   string
+	debug_only int @[if absent_flag ?]
+}
+', [])
+	assert files.len == 1
+	assert struct_field_names(files[0], 'Container') == ['name']
+}
+
+fn test_struct_field_if_attribute_keeps_when_true() {
+	files := parse_code_with_defines_for_test('
+module main
+
+struct Container {
+	name   string
+	debug_only int @[if present_flag ?]
+}
+', [
+		'present_flag',
+	])
+	assert files.len == 1
+	assert struct_field_names(files[0], 'Container') == ['name', 'debug_only']
+}
+
+// Regression: `$else` starts on the line after `}`. The auto-inserted `;`
+// between `}` and `$` must not hide the `$else` branch.
+fn test_struct_comptime_else_on_next_line() {
+	files := parse_code_with_defines_for_test('
+module main
+
+struct Container {
+$if my_feature ? {
+	val string = "on"
+}
+$else {
+	val string = "off"
+}
+	always int
+}
+', [])
+	assert files.len == 1
+	assert struct_field_names(files[0], 'Container') == ['val', 'always']
+}
+
+// Regression: `{` starts on the line after `$if cond ?`. The scanner inserts
+// a `;` after `?`, which must not block the opening brace.
+fn test_struct_comptime_if_lcbr_on_next_line() {
+	files := parse_code_with_defines_for_test('
+module main
+
+struct Container {
+$if my_feature ?
+{
+	val string = "on"
+}
+$else
+{
+	val string = "off"
+}
+	always int
+}
+', [
+		'my_feature',
+	])
+	assert files.len == 1
+	assert struct_field_names(files[0], 'Container') == ['val', 'always']
+}
+
+// Regression: `$else $if` chain where each `$else` starts on a new line.
+fn test_struct_comptime_else_if_on_next_line() {
+	files := parse_code_with_defines_for_test('
+module main
+
+struct Container {
+$if feat_a ? {
+	tag string = "A"
+}
+$else $if feat_b ? {
+	tag string = "B"
+}
+$else {
+	tag string = "default"
+}
+}
+', [
+		'feat_b',
+	])
+	assert files.len == 1
+	assert struct_field_names(files[0], 'Container') == ['tag']
+}
+
+// `tinyc` and `builtin_write_buf_to_fd_should_use_c_write` are recognized by
+// the shared `pref.comptime_flag_value` and evaluate true on the native
+// backends. Confirms the parser sees the same flag set the transformer does.
+fn test_struct_comptime_native_backend_flags() {
+	files := parse_code_with_prefs_for_test('
+module main
+
+struct Container {
+$if tinyc ? {
+	tinyc_field string
+}
+$if builtin_write_buf_to_fd_should_use_c_write ? {
+	write_field string
+}
+$if new_int ? {
+	never_field string
+}
+	always int
+}
+',
+		.x64, [])
+	assert files.len == 1
+	assert struct_field_names(files[0], 'Container') == ['tinyc_field', 'write_field', 'always']
 }

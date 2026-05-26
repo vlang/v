@@ -181,28 +181,6 @@ pub fn (mut s Scope) insert_or_update(name string, obj Object) {
 }
 
 fn trace_scope_fixed_array_object(label string, name string, obj Object) {
-	if name !in ['g_autostr_type_stack', 'g_autostr_addr_stack', 'g_v_os_execute_mutex_storage'] {
-		return
-	}
-	match obj {
-		Global {
-			trace_scope_fixed_array_type(label, name, obj.typ)
-		}
-		TypeObject {
-			trace_scope_fixed_array_type(label, name, obj.typ)
-		}
-		Type {
-			trace_scope_fixed_array_type(label, name, obj)
-		}
-		else {}
-	}
-}
-
-fn trace_scope_fixed_array_type(label string, name string, typ Type) {
-	if typ is ArrayFixed {
-		arr := typ as ArrayFixed
-		eprintln('SCOPE_TRACE ${label} name=${name} len=${arr.len} elem=${arr.elem_type.name()}')
-	}
 }
 
 pub fn (mut s Scope) insert_type(name string, typ Type) {

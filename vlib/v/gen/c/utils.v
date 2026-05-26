@@ -1760,11 +1760,11 @@ fn (mut g Gen) unwrap(typ ast.Type) Type {
 // generate function variable definition, e.g. `void (*var_name) (int, string)`
 fn (mut g Gen) fn_var_signature(var_type ast.Type, return_type ast.Type, arg_types []ast.Type, var_name string) string {
 	if var_type.has_flag(.option) || var_type.has_flag(.result) {
-		return '${g.styp(var_type)} ${c_name(var_name)}'
+		return '${g.styp(var_type)} ${c_fn_name(var_name)}'
 	}
 	ret_styp := g.styp(return_type)
 	nr_muls := var_type.nr_muls()
-	mut sig := '${ret_styp} (${'*'.repeat(nr_muls + 1)}${c_name(var_name)}) ('
+	mut sig := '${ret_styp} (${'*'.repeat(nr_muls + 1)}${c_fn_name(var_name)}) ('
 	for j, arg_typ in arg_types {
 		arg_sym := g.table.sym(arg_typ)
 		if arg_sym.info is ast.FnType {

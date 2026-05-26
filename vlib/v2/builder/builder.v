@@ -150,7 +150,13 @@ pub fn (mut b Builder) build(files []string) {
 		b.used_fn_keys = map[string]bool{}
 	} else {
 		mark_used_start := sw.elapsed()
-		b.used_fn_keys = markused.mark_used(b.files, b.env)
+		if b.uses_minimal_windows_x64_runtime() {
+			b.used_fn_keys = markused.mark_used_with_options(b.files, b.env, markused.MarkUsedOptions{
+				minimal_runtime_roots: true
+			})
+		} else {
+			b.used_fn_keys = markused.mark_used(b.files, b.env)
+		}
 		mark_used_time := time.Duration(sw.elapsed() - mark_used_start)
 		print_time('Mark Used', mark_used_time)
 	}
@@ -409,6 +415,7 @@ fn (mut b Builder) gen_ssa_c() {
 		return
 	}
 	mut ssa_builder := ssa.Builder.new_with_env(mod, b.env)
+	ssa_builder.target_os = b.pref.target_os_or_host()
 
 	mut stage_start := sw.elapsed()
 	ssa_builder.build_all(b.files)
@@ -1299,6 +1306,41 @@ fn normalize_target_os_name(target_os string) string {
 	}
 }
 
+fn is_windows_x64_native_target(arch pref.Arch, target_os string) bool {
+	return arch == .x64 && normalize_target_os_name(target_os) == 'windows'
+}
+
+fn (b &Builder) uses_minimal_windows_x64_runtime() bool {
+	arch := b.pref.get_effective_arch()
+	return b.pref.backend == .x64 && is_windows_x64_native_target(arch, b.pref.target_os_or_host())
+}
+
+fn is_macos_native_target(target_os string) bool {
+	return normalize_target_os_name(target_os) == 'macos'
+}
+
+fn native_x64_object_format_for_os(target_os string) x64.ObjectFormat {
+	return match normalize_target_os_name(target_os) {
+		'macos' { x64.ObjectFormat.macho }
+		'windows' { x64.ObjectFormat.coff }
+		else { x64.ObjectFormat.elf }
+	}
+}
+
+fn native_x64_codegen_abi_for_os(target_os string) x64.X64Abi {
+	return match normalize_target_os_name(target_os) {
+		'windows' { x64.X64Abi.windows }
+		else { x64.X64Abi.sysv }
+	}
+}
+
+fn native_x64_lowering_abi_for_os(target_os string) abi.X64Abi {
+	return match normalize_target_os_name(target_os) {
+		'windows' { abi.X64Abi.windows }
+		else { abi.X64Abi.sysv }
+	}
+}
+
 fn flag_os_matches(cond string, target_os string) bool {
 	current := normalize_target_os_name(target_os)
 	return match cond.to_lower() {
@@ -1504,9 +1546,10 @@ fn (b &Builder) collect_cflags_from_sources() string {
 		}
 	}
 	if !b.pref.skip_builtin {
+		target_os := b.pref.target_os_or_host()
 		for module_path in core_cached_module_paths {
 			vlib_path := b.pref.get_vlib_module_path(module_path)
-			module_files := get_v_files_from_dir(vlib_path, b.pref.user_defines, os.user_os())
+			module_files := get_v_files_from_dir(vlib_path, b.pref.user_defines, target_os)
 			for mf in module_files {
 				if mf !in scanned_files {
 					scan_paths << mf
@@ -1515,6 +1558,7 @@ fn (b &Builder) collect_cflags_from_sources() string {
 		}
 	}
 	scan_paths.sort()
+	target_os := b.pref.target_os_or_host()
 	for scan_path in scan_paths {
 		if scan_path == '' || scan_path in scanned_files {
 			continue
@@ -1547,7 +1591,7 @@ fn (b &Builder) collect_cflags_from_sources() string {
 				}
 				if chain_matched[cur] {
 					skip_depth = 1
-				} else if comptime_cond_matches(new_cond, os.user_os()) {
+				} else if comptime_cond_matches(new_cond, target_os) {
 					chain_matched[cur] = true
 					skip_depth = 0
 				} else {
@@ -1575,7 +1619,7 @@ fn (b &Builder) collect_cflags_from_sources() string {
 			// $if cond { (chain opener)
 			if rest.starts_with(r'$if ') {
 				cond := rest[4..].trim_right('?{ ').trim_space()
-				matched := comptime_cond_matches(cond, os.user_os())
+				matched := comptime_cond_matches(cond, target_os)
 				chain_matched << matched
 				if skip_depth > 0 {
 					skip_depth++
@@ -1611,7 +1655,7 @@ fn (b &Builder) collect_cflags_from_sources() string {
 			// Replace @VEXEROOT before parsing so path normalization sees absolute paths
 			resolved_line := line.replace('@VEXEROOT', b.pref.vroot).replace('VEXEROOT',
 				b.pref.vroot)
-			mut flag := parse_flag_directive_line(resolved_line, scan_path, os.user_os()) or {
+			mut flag := parse_flag_directive_line(resolved_line, scan_path, target_os) or {
 				continue
 			}
 			// Build include flags from already-collected flags for compiling missing .o files
@@ -1897,6 +1941,7 @@ fn run_cc_cmd_or_exit(cmd string, stage string, show_cc bool) bool {
 
 fn (mut b Builder) gen_native(backend_arch pref.Arch) {
 	arch := if backend_arch == .auto { b.pref.get_effective_arch() } else { backend_arch }
+	target_os := b.pref.target_os_or_host()
 
 	// Build all files into a single SSA module
 	mut mod := ssa.Module.new('main')
@@ -1907,6 +1952,8 @@ fn (mut b Builder) gen_native(backend_arch pref.Arch) {
 	}
 	mut ssa_builder := ssa.Builder.new_with_env(mod, b.env)
 	ssa_builder.guard_invalid_type_payloads = true
+	ssa_builder.target_os = target_os
+	ssa_builder.minimal_runtime_roots = b.uses_minimal_windows_x64_runtime()
 	mut native_sw := time.new_stopwatch()
 
 	// Pass markused data for dead code elimination. The ARM64 backend has its own
@@ -2011,7 +2058,11 @@ fn (mut b Builder) gen_native(backend_arch pref.Arch) {
 	print_time('MIR Lower', time.Duration(native_sw.elapsed() - stage_start))
 
 	stage_start = native_sw.elapsed()
-	abi.lower(mut mir_mod, arch)
+	if is_windows_x64_native_target(arch, target_os) {
+		abi.lower_with_x64_abi(mut mir_mod, arch, native_x64_lowering_abi_for_os(target_os))
+	} else {
+		abi.lower(mut mir_mod, arch)
+	}
 	print_time('ABI Lower', time.Duration(native_sw.elapsed() - stage_start))
 
 	stage_start = native_sw.elapsed()
@@ -2027,7 +2078,7 @@ fn (mut b Builder) gen_native(backend_arch pref.Arch) {
 		'out'
 	}
 
-	if arch == .arm64 && os.user_os() == 'macos' {
+	if arch == .arm64 && is_macos_native_target(target_os) {
 		// Use built-in linker for ARM64 macOS
 		stage_start = native_sw.elapsed()
 		mut gen := arm64.Gen.new(&mir_mod)
@@ -2066,8 +2117,21 @@ fn (mut b Builder) gen_native(backend_arch pref.Arch) {
 			}
 			gen.write_file(obj_file)
 		} else {
-			mut gen := x64.Gen.new(&mir_mod)
+			obj_format := native_x64_object_format_for_os(target_os)
+			codegen_abi := native_x64_codegen_abi_for_os(target_os)
+			mut gen := x64.Gen.new_with_format_and_abi(&mir_mod, obj_format, codegen_abi)
 			gen.gen()
+			if is_windows_x64_native_target(arch, target_os) {
+				gen.link_executable(output_binary) or {
+					eprintln('Link failed:')
+					eprintln(err.msg())
+					exit(1)
+				}
+				if b.pref.verbose {
+					println('[*] Linked ${output_binary} (built-in PE linker)')
+				}
+				return
+			}
 			gen.write_file(obj_file)
 		}
 
@@ -2076,7 +2140,7 @@ fn (mut b Builder) gen_native(backend_arch pref.Arch) {
 		}
 
 		// Link the object file into an executable
-		if os.user_os() == 'macos' {
+		if is_macos_native_target(target_os) {
 			sdk_res := os.execute('xcrun -sdk macosx --show-sdk-path')
 			sdk_path := sdk_res.output.trim_space()
 			arch_flag := if arch == .arm64 { 'arm64' } else { 'x86_64' }

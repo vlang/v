@@ -81,6 +81,7 @@ struct FnInfo {
 struct Walker {
 	files []ast.File
 	env   &types.Environment = unsafe { nil }
+	opts  MarkUsedOptions
 mut:
 	fns               []FnInfo
 	queue             []int
@@ -104,10 +105,20 @@ mut:
 	cur_fn_decl  ast.FnDecl
 }
 
+pub struct MarkUsedOptions {
+pub:
+	minimal_runtime_roots bool
+}
+
 // mark_used walks reachable function/method bodies and returns declaration keys
 // for the functions that are used at least once.
 pub fn mark_used(files []ast.File, env &types.Environment) map[string]bool {
-	mut w := new_walker(files, env)
+	mut w := new_walker(files, env, MarkUsedOptions{})
+	return w.walk()
+}
+
+pub fn mark_used_with_options(files []ast.File, env &types.Environment, opts MarkUsedOptions) map[string]bool {
+	mut w := new_walker(files, env, opts)
 	return w.walk()
 }
 
@@ -121,10 +132,11 @@ pub fn decl_key(module_name string, decl ast.FnDecl, env &types.Environment) str
 	return '${mod_name}|f|${decl.name}'
 }
 
-fn new_walker(files []ast.File, env &types.Environment) Walker {
+fn new_walker(files []ast.File, env &types.Environment, opts MarkUsedOptions) Walker {
 	return Walker{
 		files:                     files
 		env:                       unsafe { env }
+		opts:                      opts
 		used_keys:                 map[string]bool{}
 		queued_fn_indices:         map[int]bool{}
 		module_names:              map[string]bool{}
@@ -234,16 +246,18 @@ fn (mut w Walker) seed_roots() bool {
 		}
 	}
 	if has_root {
-		w.seed_generic_specialization_roots()
-		w.seed_codegen_required_roots()
-		// Also seed module init() functions (called from synthesized main)
-		for i, info in w.fns {
-			if is_module_init(info) {
-				w.mark_fn(i)
+		if !w.opts.minimal_runtime_roots {
+			w.seed_generic_specialization_roots()
+			w.seed_codegen_required_roots()
+			// Also seed module init() functions (called from synthesized main)
+			for i, info in w.fns {
+				if is_module_init(info) {
+					w.mark_fn(i)
+				}
 			}
+			w.seed_top_level_initializer_roots()
+			w.seed_drop_method_roots()
 		}
-		w.seed_top_level_initializer_roots()
-		w.seed_drop_method_roots()
 		return true
 	}
 	for i, info in w.fns {
@@ -253,17 +267,19 @@ fn (mut w Walker) seed_roots() bool {
 		}
 	}
 	if has_root {
-		w.seed_generic_specialization_roots()
-		w.seed_codegen_required_roots()
-		w.seed_top_level_initializer_roots()
-		w.seed_drop_method_roots()
+		if !w.opts.minimal_runtime_roots {
+			w.seed_generic_specialization_roots()
+			w.seed_codegen_required_roots()
+			w.seed_top_level_initializer_roots()
+			w.seed_drop_method_roots()
+		}
 	}
 	return has_root
 }
 
 fn (mut w Walker) seed_codegen_required_roots() {
 	for i, info in w.fns {
-		if is_codegen_required_root(info) {
+		if w.is_codegen_required_root(info) {
 			w.mark_fn(i)
 		}
 	}
@@ -290,12 +306,12 @@ fn (mut w Walker) seed_drop_method_roots() {
 	}
 }
 
-fn is_codegen_required_root(info FnInfo) bool {
+fn (w &Walker) is_codegen_required_root(info FnInfo) bool {
 	decl := info.decl
-	if should_always_emit_for_markused(info.file) {
+	if !w.opts.minimal_runtime_roots && should_always_emit_for_markused(info.file) {
 		return true
 	}
-	if info.mod == 'builtin' && decl.name == 'print_backtrace' {
+	if !w.opts.minimal_runtime_roots && info.mod == 'builtin' && decl.name == 'print_backtrace' {
 		return true
 	}
 	if info.mod == 'json2' && decl.name == 'enum_uses_json_as_number' {
@@ -410,6 +426,7 @@ pub fn should_keep_builtin_array_decl(decl ast.FnDecl) bool {
 		'__new_array_with_map_default',
 		'new_array_from_c_array',
 		'new_array_from_c_array_no_alloc',
+		'new_array_from_array_and_c_array',
 		'ensure_cap',
 		'repeat',
 		'repeat_to_depth',
@@ -1035,6 +1052,10 @@ fn called_fn_name_candidates(name string) []string {
 	}
 	if name == 'builtin__new_array_from_c_array_noscan' {
 		add_unique_string(mut out, 'new_array_from_c_array')
+		return out
+	}
+	if name == 'builtin__new_array_from_array_and_c_array' {
+		add_unique_string(mut out, 'new_array_from_array_and_c_array')
 		return out
 	}
 	if name == 'builtin__array_push_noscan' {
@@ -1981,6 +2002,7 @@ fn (mut w Walker) walk_expr(expr ast.Expr, mod_name string) {
 			w.walk_expr(expr.init, mod_name)
 			w.walk_expr(expr.cap, mod_name)
 			w.walk_expr(expr.len, mod_name)
+			w.walk_expr(expr.update_expr, mod_name)
 		}
 		ast.AsCastExpr {
 			w.walk_expr(expr.expr, mod_name)

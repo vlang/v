@@ -188,6 +188,51 @@ fn (mut g Gen) array_init(node ast.ArrayInit, var_name string) {
 				g.write(')')
 			}
 		}
+	} else if node.has_update_expr {
+		// `[...base, e1, e2]`
+		// Clone `base` with the proper depth so that nested arrays / strings are
+		// deep-copied (matches `a := b` clone semantics). The runtime helper then
+		// just appends the trailing elements onto the already-owned clone.
+		elem_styp := g.styp(resolved_elem_type.typ)
+		array_depth := g.get_array_depth(resolved_elem_type.typ)
+		is_iface_or_sumtype := elem_sym.kind in [.sum_type, .interface]
+		g.write('builtin__new_array_from_array_and_c_array(builtin__array_clone_static_to_depth(')
+		g.expr(node.update_expr)
+		g.write(', ${array_depth}), ${len}, sizeof(${elem_styp}), ')
+		if len == 0 {
+			g.write('((${elem_styp}*)0))')
+		} else {
+			prepared_exprs := g.prepare_array_init_exprs(node.exprs, expr_types,
+				resolved_elem_type.typ)
+			g.write('_MOV((${elem_styp}[${len}]){')
+			for i, expr in prepared_exprs {
+				actual_expr := array_init_orig_expr(expr)
+				expr_type := if expr_types.len > i { expr_types[i] } else { resolved_elem_type.typ }
+				if resolved_elem_type.typ.has_flag(.option) {
+					g.expr_with_opt(expr, expr_type, resolved_elem_type.typ)
+				} else if expr_type == ast.string_type
+					&& actual_expr !in [ast.IndexExpr, ast.CallExpr, ast.StringLiteral, ast.StringInterLiteral, ast.InfixExpr] {
+					if is_iface_or_sumtype {
+						g.expr_with_cast(expr, expr_type, resolved_elem_type.typ)
+					} else {
+						g.write('builtin__string_clone(')
+						g.expr(expr)
+						g.write(')')
+					}
+				} else {
+					g.expr_with_cast(expr, expr_type, resolved_elem_type.typ)
+				}
+				if i != len - 1 {
+					g.write(', ')
+				}
+			}
+			g.write('}))')
+		}
+		if g.is_shared {
+			g.write('}, sizeof(${shared_styp}))')
+		} else if is_amp {
+			g.write(')')
+		}
 	} else if len == 0 {
 		// `[]int{len: 6, cap:10, init:22}`
 		g.array_init_with_fields(node, elem_type, is_amp, shared_styp, var_name)

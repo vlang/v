@@ -1,5 +1,18 @@
 module mssql
 
+type C.SQLCHAR = u8
+type C.SQLHDBC = voidptr
+type C.SQLHENV = voidptr
+type C.SQLHANDLE = voidptr
+type C.SQLHSTMT = voidptr
+type C.SQLHWND = voidptr
+type C.SQLINTEGER = int
+type C.SQLLEN = isize
+type C.SQLPOINTER = voidptr
+type C.SQLRETURN = i16
+type C.SQLSMALLINT = i16
+type C.SQLUSMALLINT = u16
+
 fn C.SQLAllocHandle(handle_type C.SQLSMALLINT, input_handle C.SQLHANDLE, output_handle &C.SQLHANDLE) C.SQLRETURN
 
 fn C.SQLSetEnvAttr(environment_handle C.SQLHENV, attribute C.SQLINTEGER, value C.SQLPOINTER, string_length C.SQLINTEGER) C.SQLRETURN

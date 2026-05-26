@@ -7,10 +7,19 @@ module abi
 import v2.mir
 import v2.pref
 
+pub enum X64Abi {
+	sysv
+	windows
+}
+
 // lower annotates MIR with ABI classification metadata.
 // Current scope is intentionally conservative: it classifies which arguments
 // and return values must be passed indirectly for each function.
 pub fn lower(mut m mir.Module, arch pref.Arch) {
+	lower_with_x64_abi(mut m, arch, .sysv)
+}
+
+pub fn lower_with_x64_abi(mut m mir.Module, arch pref.Arch, x64_abi X64Abi) {
 	mut fn_by_name := map[string]int{}
 	for i := 0; i < m.funcs.len; i++ {
 		mut f := &m.funcs[i]
@@ -21,17 +30,17 @@ pub fn lower(mut m mir.Module, arch pref.Arch) {
 				continue
 			}
 			param_typ := m.values[param_id].typ
-			if needs_indirect(m, param_typ, arch) {
+			if needs_indirect(m, param_typ, arch, x64_abi) {
 				f.abi_param_class[pi] = .indirect
 			}
 		}
-		f.abi_ret_indirect = needs_indirect(m, f.typ, arch)
+		f.abi_ret_indirect = needs_indirect(m, f.typ, arch, x64_abi)
 	}
 
-	lower_calls(mut m, arch, fn_by_name)
+	lower_calls(mut m, arch, x64_abi, fn_by_name)
 }
 
-fn needs_indirect(m mir.Module, typ_id int, arch pref.Arch) bool {
+fn needs_indirect(m mir.Module, typ_id int, arch pref.Arch, x64_abi X64Abi) bool {
 	ssa_mod := m.ssa()
 	if ssa_mod == unsafe { nil } || typ_id <= 0 || typ_id >= ssa_mod.type_store.types.len {
 		return false
@@ -42,9 +51,18 @@ fn needs_indirect(m mir.Module, typ_id int, arch pref.Arch) bool {
 	}
 	size := m.type_size(typ_id)
 	return match arch {
-		.arm64 { size > 16 }
-		.x64 { size > 16 }
-		else { size > 16 }
+		.arm64 {
+			size > 16
+		}
+		.x64 {
+			match x64_abi {
+				.sysv { size > 16 }
+				.windows { size !in [1, 2, 4, 8] }
+			}
+		}
+		else {
+			size > 16
+		}
 	}
 }
 
@@ -97,7 +115,7 @@ fn logical_arg_type_from_value(m mir.Module, val_id int, depth int) ?int {
 	return none
 }
 
-fn lower_calls(mut m mir.Module, arch pref.Arch, fn_by_name map[string]int) {
+fn lower_calls(mut m mir.Module, arch pref.Arch, x64_abi X64Abi, fn_by_name map[string]int) {
 	if arch !in [.arm64, .x64] {
 		return
 	}
@@ -118,12 +136,12 @@ fn lower_calls(mut m mir.Module, arch pref.Arch, fn_by_name map[string]int) {
 				arg_id := instr.operands[arg_idx + 1]
 				arg_typ = fallback_arg_type(m, arg_id)
 			}
-			if needs_indirect(m, arg_typ, arch) {
+			if needs_indirect(m, arg_typ, arch, x64_abi) {
 				instr.abi_arg_class[arg_idx] = .indirect
 			}
 		}
 
-		instr.abi_ret_indirect = needs_indirect(m, ret_typ, arch)
+		instr.abi_ret_indirect = needs_indirect(m, ret_typ, arch, x64_abi)
 		// Lower ABI-indirect returns to call_sret for backend consumption.
 		if instr.abi_ret_indirect {
 			instr.op = .call_sret

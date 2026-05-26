@@ -829,7 +829,7 @@ fn (b &Builder) module_path_has_v_files(path string) bool {
 // nearest enclosing `v.mod`) keeps vendored dependencies like
 // `<project>/modules/<name>/` — which carry their own `v.mod` — resolvable
 // from `<project>`'s own code.
-fn (b &Builder) candidate_belongs_to_foreign_project(candidate_path string, importer_vmod_folder string) bool {
+fn (b &Builder) candidate_belongs_to_foreign_project(candidate_path string, importer_vmod_folder string, mod string) bool {
 	if importer_vmod_folder == '' {
 		return false
 	}
@@ -839,6 +839,9 @@ fn (b &Builder) candidate_belongs_to_foreign_project(candidate_path string, impo
 		|| abs_candidate.starts_with(abs_importer_vmod + os.path_separator) {
 		return false
 	}
+	if candidate_vmod_matches_import(abs_candidate, mod) {
+		return false
+	}
 	for lookup in b.pref.lookup_path {
 		abs_lookup := os.real_path(lookup)
 		if abs_candidate == abs_lookup || abs_candidate.starts_with(abs_lookup + os.path_separator) {
@@ -846,6 +849,16 @@ fn (b &Builder) candidate_belongs_to_foreign_project(candidate_path string, impo
 		}
 	}
 	return true
+}
+
+fn candidate_vmod_matches_import(candidate_path string, mod string) bool {
+	mut mcache := vmod.get_cache()
+	vmod_file_location := mcache.get_by_folder(candidate_path)
+	if vmod_file_location.vmod_file == '' {
+		return false
+	}
+	manifest := vmod.from_file(vmod_file_location.vmod_file) or { return false }
+	return manifest.name == mod || mod.starts_with(manifest.name + '.')
 }
 
 // TODO: try to merge this & util.module functions to create a
@@ -900,7 +913,7 @@ pub fn (b &Builder) find_module_path(mod string, fpath string) !string {
 			println('  >> trying to find ${mod} in ${try_path} ..')
 		}
 		if found_path := find_module_path_from_search_root(search_path, mod) {
-			if b.candidate_belongs_to_foreign_project(found_path, importer_vmod_folder) {
+			if b.candidate_belongs_to_foreign_project(found_path, importer_vmod_folder, mod) {
 				if b.pref.is_verbose {
 					println('  << skipped ${found_path} (belongs to a different v.mod project) .')
 				}
@@ -928,7 +941,7 @@ pub fn (b &Builder) find_module_path(mod string, fpath string) !string {
 			println('  >> trying to find ${mod} in ${try_path} ..')
 		}
 		if found_path := find_module_path_from_search_root(current_dir, mod) {
-			if b.candidate_belongs_to_foreign_project(found_path, importer_vmod_folder) {
+			if b.candidate_belongs_to_foreign_project(found_path, importer_vmod_folder, mod) {
 				if b.pref.is_verbose {
 					println('  << skipped ${found_path} (belongs to a different v.mod project) .')
 				}

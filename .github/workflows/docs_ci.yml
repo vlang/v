@@ -6,6 +6,8 @@ name: Docs CI
 
 on:
   push:
+    branches:
+      - master
     paths-ignore:
       - '**.yml'
       - '!**/docs_ci.yml'

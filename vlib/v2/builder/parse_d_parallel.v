@@ -3,7 +3,6 @@
 // that can be found in the LICENSE file.
 module builder
 
-import os
 import v2.ast
 import v2.pref
 import v2.parser
@@ -34,19 +33,20 @@ fn (mut pstate ParsingSharedState) already_parsed_module(name string) bool {
 
 fn worker(mut wp util.WorkerPool[string, ast.File], mut pstate ParsingSharedState, prefs &pref.Preferences) {
 	mut p := parser.Parser.new(prefs)
+	target_os := prefs.target_os_or_host()
 	for {
 		filename := wp.get_job() or { break }
 		ast_file := p.parse_file(filename, mut pstate.file_set)
 		// Queue new jobs for imports before pushing result
 		skip_imports := prefs.skip_imports
 		if !skip_imports {
-			for mod in ast_file.imports {
+			for mod in active_file_imports(ast_file, prefs.user_defines, target_os) {
 				if pstate.already_parsed_module(mod.name) {
 					continue
 				}
 				pstate.mark_module_as_parsed(mod.name)
 				mod_path := prefs.get_module_path(mod.name, ast_file.name)
-				wp.queue_jobs(get_v_files_from_dir(mod_path, prefs.user_defines, os.user_os()))
+				wp.queue_jobs(get_v_files_from_dir(mod_path, prefs.user_defines, target_os))
 			}
 		}
 		wp.push_result(ast_file)
@@ -77,9 +77,10 @@ fn (mut b Builder) parse_files_parallel(files []string) []ast.File {
 		if use_core_headers2 {
 			worker_pool.queue_jobs(b.core_cached_parse_paths())
 		} else {
+			target_os := b.pref.target_os_or_host()
 			for module_path in core_cached_module_paths {
 				worker_pool.queue_jobs(get_v_files_from_dir(b.pref.get_vlib_module_path(module_path),
-					b.pref.user_defines, os.user_os()))
+					b.pref.user_defines, target_os))
 			}
 		}
 	}

@@ -2,6 +2,8 @@ name: wasm backend CI
 
 on:
   push:
+    branches:
+      - master
     paths:
       - 'cmd/tools/builders/**.v'
       - 'vlib/builtin/**.v'

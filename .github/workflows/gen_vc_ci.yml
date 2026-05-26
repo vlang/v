@@ -12,6 +12,8 @@ on:
       - 'cmd/tools/**'
       - '!cmd/tools/builders/**.v'
   push:
+    branches:
+      - master
     paths-ignore:
       - '**.vv'
       - '**.out'

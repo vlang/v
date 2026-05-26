@@ -2,6 +2,8 @@ name: VSL and VTL
 
 on:
   push:
+    branches:
+      - master
     paths-ignore:
       - '**.md'
       - '**.yml'

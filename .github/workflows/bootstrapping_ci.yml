@@ -3,6 +3,8 @@ name: Bootstrapping CI
 on:
   workflow_dispatch:
   push:
+    branches:
+      - master
     paths-ignore:
       - '**.yml'
       - '**.md'

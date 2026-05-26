@@ -3,6 +3,8 @@ name: Shy and PV CI
 on:
   workflow_dispatch:
   push:
+    branches:
+      - master
     paths:
       - 'vlib/v/checker/**.v'
       - 'vlib/v/gen/c/**.v'

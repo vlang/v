@@ -784,6 +784,18 @@ fn (mut g Gen) known_module_runtime_symbol(module_name string, symbol_name strin
 	return none
 }
 
+fn (mut g Gen) module_selector_storage_c_name(module_name string, symbol_name string) string {
+	c_name := if symbol_name.starts_with('${module_name}__') {
+		symbol_name
+	} else {
+		'${module_name}__${symbol_name}'
+	}
+	if raw_c_name := g.c_extern_module_storage[c_name] {
+		return raw_c_name
+	}
+	return c_name
+}
+
 // expr_to_int_str_with_env resolves fixed-array size expressions, handling
 // both literal numbers and named constants (looked up via type environment).
 fn (g &Gen) expr_to_int_str_with_env(e ast.Expr) string {
@@ -2078,34 +2090,32 @@ fn (mut g Gen) expr(node ast.Expr) {
 				if handled_ident {
 					return
 				}
-				// Check global_var_modules first - globals may appear as types.Type in scope
-				// instead of types.Global, so is_local_var check would incorrectly block them
-				if !is_local_var && !node.name.contains('__') && node.name in g.global_var_modules
-					&& g.is_current_or_imported_module(g.global_var_modules[node.name]) {
-					g.sb.write_string('${g.global_var_modules[node.name]}__${node.name}')
+				const_key := 'const_${g.cur_module}__${node.name}'
+				global_key := 'global_${g.cur_module}__${node.name}'
+				module_storage_name := module_storage_c_name(g.cur_module, node.name)
+				if !is_local_var && node.name in g.global_var_types
+					&& module_storage_name !in g.global_var_types {
+					g.sb.write_string(node.name)
+				} else if !is_local_var && module_storage_name in g.module_storage_vars {
+					g.sb.write_string(module_storage_name)
+				} else if g.cur_module != '' && g.cur_module != 'main' && g.cur_module != 'builtin'
+					&& !node.name.contains('__') && !is_local_var
+					&& ((const_key in g.emitted_types || global_key in g.emitted_types)
+					|| g.is_module_local_const_or_global(node.name)) {
+					g.sb.write_string('${g.cur_module}__${node.name}')
+				} else if g.cur_module != '' && g.cur_module != 'main' && g.cur_module != 'builtin'
+					&& !node.name.contains('__') && !is_local_var && !g.is_module_ident(node.name)
+					&& g.is_module_local_fn(node.name) && !g.is_type_name(node.name) {
+					g.sb.write_string('${g.cur_module}__${sanitize_fn_ident(node.name)}')
 				} else {
-					const_key := 'const_${g.cur_module}__${node.name}'
-					global_key := 'global_${g.cur_module}__${node.name}'
-					if g.cur_module != '' && g.cur_module != 'main' && g.cur_module != 'builtin'
-						&& !node.name.contains('__') && !is_local_var
-						&& ((const_key in g.emitted_types || global_key in g.emitted_types)
-						|| g.is_module_local_const_or_global(node.name)) {
-						g.sb.write_string('${g.cur_module}__${node.name}')
-					} else if g.cur_module != '' && g.cur_module != 'main'
-						&& g.cur_module != 'builtin' && !node.name.contains('__') && !is_local_var
-						&& !g.is_module_ident(node.name) && g.is_module_local_fn(node.name)
-						&& !g.is_type_name(node.name) {
-						g.sb.write_string('${g.cur_module}__${sanitize_fn_ident(node.name)}')
-					} else {
-						mut ident_name := node.name
-						if g.cur_module != '' {
-							double_prefix := '${g.cur_module}__${g.cur_module}__'
-							if ident_name.starts_with(double_prefix) {
-								ident_name = ident_name[g.cur_module.len + 2..]
-							}
+					mut ident_name := node.name
+					if g.cur_module != '' {
+						double_prefix := '${g.cur_module}__${g.cur_module}__'
+						if ident_name.starts_with(double_prefix) {
+							ident_name = ident_name[g.cur_module.len + 2..]
 						}
-						g.sb.write_string(c_local_name(ident_name))
 					}
+					g.sb.write_string(c_local_name(ident_name))
 				}
 			}
 		}
@@ -2929,20 +2939,12 @@ fn (mut g Gen) expr(node ast.Expr) {
 				is_local := g.local_var_c_type_for_expr(lhs_expr) != none
 				if g.is_module_ident(lhs_ident.name) && !is_local {
 					mod_name := g.resolve_module_name(lhs_ident.name)
-					if rhs_name.starts_with('${mod_name}__') {
-						g.sb.write_string(rhs_name)
-					} else {
-						g.sb.write_string('${mod_name}__${rhs_name}')
-					}
+					g.sb.write_string(g.module_selector_storage_c_name(mod_name, rhs_name))
 					return
 				}
 				if !is_local {
 					if mod_name := g.known_module_runtime_symbol(lhs_ident.name, rhs_name) {
-						if rhs_name.starts_with('${mod_name}__') {
-							g.sb.write_string(rhs_name)
-						} else {
-							g.sb.write_string('${mod_name}__${rhs_name}')
-						}
+						g.sb.write_string(g.module_selector_storage_c_name(mod_name, rhs_name))
 						return
 					}
 				}
@@ -3728,6 +3730,36 @@ fn (mut g Gen) expr_is_voidptr_cast(expr ast.Expr) bool {
 		}
 		ast.ParenExpr {
 			return g.expr_is_voidptr_cast(expr.expr)
+		}
+		else {
+			return false
+		}
+	}
+}
+
+// expr_yields_struct_value detects expressions that evaluate to a struct VALUE
+// (not a pointer), e.g. struct literals or already-emitted sum type wraps.
+// Used to decide if `memdup(expr, sizeof)` is unsafe (memdup expects a pointer).
+fn (mut g Gen) expr_yields_struct_value(expr ast.Expr) bool {
+	match expr {
+		ast.InitExpr {
+			return true
+		}
+		ast.ParenExpr {
+			return g.expr_yields_struct_value(expr.expr)
+		}
+		ast.ModifierExpr {
+			return g.expr_yields_struct_value(expr.expr)
+		}
+		ast.CastExpr {
+			cast_type := g.expr_type_to_c(expr.typ)
+			if cast_type in ['void*', 'voidptr'] {
+				return false
+			}
+			if cast_type.ends_with('*') {
+				return false
+			}
+			return g.expr_yields_struct_value(expr.expr)
 		}
 		else {
 			return false

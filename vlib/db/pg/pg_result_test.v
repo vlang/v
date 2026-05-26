@@ -34,7 +34,7 @@ fn test_large_exec() {
 		return
 	}
 
-	db := pg.connect(pg.Config{ user: 'postgres', password: '12345678', dbname: 'postgres' })!
+	mut db := pg.connect(pg.Config{ user: 'postgres', password: '12345678', dbname: 'postgres' })!
 	defer {
 		db.close() or {}
 	}

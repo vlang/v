@@ -2077,6 +2077,14 @@ fn (mut g Gen) gen_sum_type_wrap(type_name string, field_name string, tag int, i
 			g.sb.write_string('((void*)({ ${resolved_type} ${tmp_name} = ')
 			g.expr(inner_expr)
 			g.sb.write_string('; memdup(&${tmp_name}, sizeof(${resolved_type})); }))')
+		} else if g.expr_yields_struct_value(expr) {
+			// Inner expr is a struct value (e.g. another sum type wrap or InitExpr).
+			// memdup expects a pointer, so route through a temporary.
+			g.tmp_counter++
+			tmp_name := '_st${g.tmp_counter}'
+			g.sb.write_string('((void*)({ ${resolved_type} ${tmp_name} = ')
+			g.expr(expr)
+			g.sb.write_string('; memdup(&${tmp_name}, sizeof(${resolved_type})); }))')
 		} else {
 			g.sb.write_string('((void*)memdup(')
 			g.expr(expr)
@@ -3513,6 +3521,12 @@ fn (mut g Gen) gen_init_expr(node ast.InitExpr) {
 					tmp_name := '_st${g.tmp_counter}'
 					g.sb.write_string('((void*)({ ${resolved_type} ${tmp_name} = ')
 					g.expr(inner_expr)
+					g.sb.write_string('; memdup(&${tmp_name}, sizeof(${resolved_type})); }))')
+				} else if g.expr_yields_struct_value(field.value) {
+					g.tmp_counter++
+					tmp_name := '_st${g.tmp_counter}'
+					g.sb.write_string('((void*)({ ${resolved_type} ${tmp_name} = ')
+					g.expr(field.value)
 					g.sb.write_string('; memdup(&${tmp_name}, sizeof(${resolved_type})); }))')
 				} else {
 					g.sb.write_string('((void*)memdup(')

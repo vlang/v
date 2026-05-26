@@ -2,6 +2,8 @@ name: toml CI
 
 on:
   push:
+    branches:
+      - master
     paths:
       - 'vlib/**'
       - '**/toml_ci.yml'

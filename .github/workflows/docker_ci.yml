@@ -2,6 +2,8 @@ name: Docker CI
 
 on:
   push:
+    branches:
+      - master
     paths-ignore:
       - '**.md'
       - '**.yml'

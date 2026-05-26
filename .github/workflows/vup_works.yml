@@ -2,6 +2,8 @@ name: Upgrading from a previous release with v up works
 
 on:
   push:
+    branches:
+      - master
     paths-ignore:
       - '**.md'
       - '**.yml'

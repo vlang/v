@@ -23,7 +23,10 @@ pub:
 }
 
 struct Global {
-	name string
+	name      string
+	mod       string
+	is_public bool
+	is_mut    bool
 mut:
 	typ Type
 }

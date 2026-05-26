@@ -1811,6 +1811,14 @@ fn (mut g Gen) gen_anon_fn(mut node ast.AnonFn) {
 		mut has_inherited := false
 		mut is_ptr := false
 		var_name := c_name(var.name)
+		// `ref_name` is how the captured variable is referenced in the enclosing
+		// scope. For fn-typed local variables `fn_var_signature` emits `c_fn_name`,
+		// so the RHS reference must match. The struct field name (LHS) stays as
+		// `c_name(var.name)` to match `closure_field_cname` reads inside the body.
+		mut ref_name := var_name
+		if parent_obj := node.decl.scope.parent.find_var(var.name) {
+			ref_name = g.var_cname(parent_obj)
+		}
 		if g.is_mut_closure_fixed_array(var) {
 			if obj := node.decl.scope.find_var(var.name) {
 				if obj.has_inherited {
@@ -1819,7 +1827,7 @@ fn (mut g Gen) gen_anon_fn(mut node ast.AnonFn) {
 				}
 			}
 			if !has_inherited {
-				g.writeln('.${var_name} = ${var_name},')
+				g.writeln('.${var_name} = ${ref_name},')
 			}
 			continue
 		}
@@ -1852,13 +1860,13 @@ fn (mut g Gen) gen_anon_fn(mut node ast.AnonFn) {
 			if var_sym.info is ast.ArrayFixed {
 				g.write('.${var_name} = {')
 				for i in 0 .. var_sym.info.size {
-					g.write('${var_name}[${i}],')
+					g.write('${ref_name}[${i}],')
 				}
 				g.writeln('},')
 			} else if g.is_autofree && !var.is_mut && var_sym.info is ast.Array {
-				g.writeln('.${var_name} = builtin__array_clone(&${var_name}),')
+				g.writeln('.${var_name} = builtin__array_clone(&${ref_name}),')
 			} else if g.is_autofree && !var.is_mut && var_sym.kind == .string {
-				g.writeln('.${var_name} = builtin__string_clone(${var_name}),')
+				g.writeln('.${var_name} = builtin__string_clone(${ref_name}),')
 			} else {
 				mut is_auto_heap := false
 				mut is_auto_deref_capture := false
@@ -1877,9 +1885,9 @@ fn (mut g Gen) gen_anon_fn(mut node ast.AnonFn) {
 					}
 				}
 				if (is_auto_heap && !is_ptr) || is_auto_deref_capture || field_name != '' {
-					g.writeln('.${var_name} = *${var_name}${field_name},')
+					g.writeln('.${var_name} = *${ref_name}${field_name},')
 				} else {
-					g.writeln('.${var_name} = ${var_name},')
+					g.writeln('.${var_name} = ${ref_name},')
 				}
 			}
 		}
