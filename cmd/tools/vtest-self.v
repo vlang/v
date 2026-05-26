@@ -190,6 +190,7 @@ const skip_with_fsanitize_address = [
 	'vlib/v/tests/orm_create_several_tables_test.v',
 	'vlib/v/tests/orm_update_test.v',
 	'vlib/v/tests/orm_or_test.v',
+	'vlib/v/tests/shared_library_system_link_test.v', // ASan keeps Boehm GC symbols visible, breaking the export-symbol assertion
 	'vlib/veb/sse/sse_test.v', // long-lived event stream + sockets, ASan flake
 	'vlib/v2/gen/cleanc/flag_enum_codegen_test.v', // v2 self-host, ASan-incompatible
 	'vlib/v2/gen/x64/x64_issue_27039_test.v', // v2 x64 backend emits FnType__hash_fn refs under ASan/GCC, see issue #27039
@@ -209,6 +210,7 @@ const skip_with_fsanitize_undefined = [
 	'vlib/v/tests/orm_update_test.v',
 	'vlib/v/tests/orm_or_test.v',
 	'vlib/v/tests/project_with_cpp_code/compiling_cpp_files_with_a_cplusplus_compiler_test.c.v', // fails compilation with: undefined reference to vtable for __cxxabiv1::__function_type_info'
+	'vlib/v/tests/shared_library_system_link_test.v', // UBSan keeps Boehm GC symbols visible, breaking the export-symbol assertion
 	'vlib/v2/gen/cleanc/flag_enum_codegen_test.v', // v2 self-host, UBSan-incompatible
 	'vlib/v2/gen/x64/x64_issue_27039_test.v', // v2 x64 backend exercises raw bit manipulation flagged by UBSan
 	'vlib/v2/transformer/transformer_test.v', // v2 transformer, UBSan-incompatible
