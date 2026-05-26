@@ -20,6 +20,25 @@ fn test_comptime_flag_value_allows_nil_preferences() {
 	assert !comptime_flag_value(prefs, 'definitely_missing_flag')
 }
 
+fn test_comptime_flag_value_native_backend_backtrace_guards() {
+	mut prefs := new_preferences()
+	prefs.backend = .x64
+	assert comptime_flag_value(&prefs, 'no_backtrace')
+	assert comptime_flag_value(&prefs, 'tinyc')
+
+	prefs.backend = .arm64
+	assert comptime_flag_value(&prefs, 'no_backtrace')
+	assert comptime_flag_value(&prefs, 'tinyc')
+
+	prefs.backend = .cleanc
+	assert !comptime_flag_value(&prefs, 'no_backtrace')
+	assert !comptime_flag_value(&prefs, 'tinyc')
+
+	prefs.user_defines = ['no_backtrace']
+	assert comptime_flag_value(&prefs, 'no_backtrace')
+	assert !comptime_flag_value(&prefs, 'tinyc')
+}
+
 fn test_effective_arch_uses_target_os_preference() {
 	mut prefs := new_preferences()
 	prefs.arch = .auto
