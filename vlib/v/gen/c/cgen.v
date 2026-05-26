@@ -12627,12 +12627,19 @@ fn (mut g Gen) as_cast(node ast.AsCast) {
 			g.as_cast_type_names[idx] = variant_sym.name
 		}
 	} else if expr_type_sym.kind == .interface && sym.kind == .interface {
+		is_ptr_target := node.typ.is_ptr()
+		if is_ptr_target {
+			g.write('HEAP(${sym.cname}, ')
+		}
 		g.write('I_${expr_type_sym.cname}_as_I_${sym.cname}(')
 		if node.expr_type.is_ptr() {
 			g.write('*')
 		}
 		g.expr(node.expr)
 		g.write(')')
+		if is_ptr_target {
+			g.write(')')
+		}
 
 		mut info := expr_type_sym.info as ast.Interface
 		right_info := sym.info as ast.Interface
