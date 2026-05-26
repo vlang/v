@@ -458,6 +458,40 @@ import v2.types
 //     return (`if s is Circle2 { return s }` — Ident re-wrap path).
 //     126 → 131 transformer-diff tests.
 //
+//   Session 23 (2026-05-26): Ident expr direct-emit + fixture.
+//     The Ident arm in `transform_expr_to_flat` direct-emits via the leaf
+//     `out.emit_expr(ast.Expr(expr))` for the default path (Ident is
+//     identity in `transform_expr`'s arm — same shape returned). Two
+//     state-dependent rewrite branches fall back to legacy:
+//       1. `@VMODROOT` → `vmodroot_string_literal(expr.pos)` produces a
+//          StringLiteral (different shape).
+//       2. `find_smartcast_for_expr(expr.name)` hit → smartcast lowering
+//          via `apply_smartcast_direct_ctx` produces a direct sum payload
+//          access (different shape).
+//     Both gate checks use the immutable `&Transformer` receiver, safe to
+//     probe upfront. Skips the `transform_expr` dispatch call per Ident
+//     occurrence reached through a ported ancestor (ParenExpr, PrefixExpr,
+//     ModifierExpr, CastExpr, AsCastExpr, FieldInit, LambdaExpr, IndexExpr,
+//     SelectorExpr, ComptimeExpr, InitExpr default fields, etc.). No
+//     struct allocation savings since the legacy default-path arm also
+//     returns the input Ident verbatim — the win is dispatch-skip on the
+//     hottest expression variant.
+//
+//     New `fixture_ident` covers file-scope Ident references nested inside
+//     already-ported expr arms: `const neg_base = -base` (Ident inside
+//     PrefixExpr arm), `const wrapped_base = (base)` (Ident inside
+//     ParenExpr arm), `const inv_base = ~base` (Ident inside PrefixExpr
+//     `~` arm), plus mut-param + multiple Ident references in a fn body
+//     (Idents in InfixExpr operands — covered by the legacy InfixExpr
+//     fallback path). 131 → 136 transformer-diff tests.
+//
+//     Pattern note: first port where the saving is dispatch-skip rather
+//     than struct-allocation skip (since Ident's default `transform_expr`
+//     arm is pure identity, no allocation). Future leaf-identity arms
+//     (KeywordOperator default, etc.) follow the same pattern: gate
+//     state-dependent special branches via immutable lookups, direct-emit
+//     the identity path.
+//
 // Phase 5: post-pass port.
 //   `post_pass` (runtime const init injection, helper functions, str/clone
 //   generation, ...) still mutates `[]ast.File`. Port it to either emit
@@ -1032,6 +1066,29 @@ pub fn (mut t Transformer) transform_expr_to_flat(expr ast.Expr, mut out ast.Fla
 			// module-qualified enum, same-module enum) go through
 			// `out.emit_expr(...)` since their results aren't selectors.
 			return t.transform_selector_expr_to_flat(expr, mut out)
+		}
+		ast.Ident {
+			// Ident has two state-dependent rewrite branches in
+			// `transform_expr`:
+			//   1. `@VMODROOT` → resolves to a StringLiteral via
+			//      `vmodroot_string_literal(expr.pos)` (different shape).
+			//   2. smartcast match → `find_smartcast_for_expr(expr.name)` hit
+			//      lowers to a direct sum payload access via
+			//      `apply_smartcast_direct_ctx` (different shape).
+			// Both produce non-Ident shapes and fall back to the legacy
+			// `out.emit_expr(t.transform_expr(expr))` round-trip. The default
+			// path is pure identity (`ast.Expr(expr)`), so direct-emit just
+			// leaves the Ident node unchanged via `out.emit_expr(expr)` —
+			// skipping the `transform_expr` dispatch call per occurrence.
+			// `find_smartcast_for_expr` is an immutable lookup (`&Transformer`
+			// receiver), safe to probe up front.
+			if expr.name == '@VMODROOT' {
+				return out.emit_expr(t.transform_expr(expr))
+			}
+			if _ := t.find_smartcast_for_expr(expr.name) {
+				return out.emit_expr(t.transform_expr(expr))
+			}
+			return out.emit_expr(ast.Expr(expr))
 		}
 		else {
 			return out.emit_expr(t.transform_expr(expr))
