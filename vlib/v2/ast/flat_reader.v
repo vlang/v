@@ -166,6 +166,40 @@ pub fn (flat &FlatAst) decode_expr(id FlatNodeId) Expr {
 	return r.read_expr(id)
 }
 
+// decode_fn_decl_signature rehydrates a FnDecl with `stmts = []` — the body
+// is left empty. Callers that walk the body via Cursor (e.g. markused) can
+// use this to avoid the per-fn body decode, which dominates collect_defs
+// time in flat mode. Returns an empty FnDecl for ids that don't point at a
+// stmt_fn_decl node.
+pub fn (flat &FlatAst) decode_fn_decl_signature(id FlatNodeId) FnDecl {
+	if id < 0 || id >= flat.nodes.len {
+		return FnDecl{}
+	}
+	n := flat.nodes[id]
+	if n.kind != .stmt_fn_decl {
+		return FnDecl{}
+	}
+	r := FlatReader{
+		flat: unsafe { flat }
+	}
+	recv_id := r.edge(n, 0)
+	typ_id := r.edge(n, 1)
+	attrs_id := r.edge(n, 2)
+	typ_node := r.read_type(typ_id)
+	fn_typ := if typ_node is FnType { typ_node } else { FnType{} }
+	return FnDecl{
+		attributes: r.read_attr_list(attrs_id)
+		is_public:  (n.flags & flag_is_public) != 0
+		is_method:  (n.flags & flag_is_method) != 0
+		is_static:  (n.flags & flag_is_static) != 0
+		receiver:   r.read_parameter(recv_id)
+		language:   unsafe { Language(int(n.aux)) }
+		name:       r.get_str(n.name_id)
+		typ:        fn_typ
+		pos:        n.pos
+	}
+}
+
 // file_mod returns the module name for a FlatFile via the interned strings.
 @[inline]
 pub fn (flat &FlatAst) file_mod(ff FlatFile) string {

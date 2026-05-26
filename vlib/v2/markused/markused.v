@@ -82,6 +82,11 @@ struct FnInfo {
 	// the body via Cursor instead of info.decl.stmts so future PRs can
 	// port walk_stmt arms to cursor input one at a time.
 	decl_id ast.FlatNodeId = -1
+	// has_body is true when the FnDecl has a non-empty body. In flat mode
+	// the body is not decoded into info.decl.stmts (signature-only
+	// decode), so we precompute the bit at collect time from the body
+	// edge's child count. In legacy mode it mirrors info.decl.stmts.len > 0.
+	has_body bool
 }
 
 struct Walker {
@@ -820,8 +825,29 @@ fn (mut w Walker) collect_defs_from_flat(flat &ast.FlatAst) {
 		for i in 0 .. stmts_list.len() {
 			c := stmts_list.at(i)
 			match c.kind() {
+				.stmt_fn_decl {
+					// Signature-only decode skips read_stmt_list(body_id),
+					// which dominates collect_defs time when the body is
+					// large. The cursor walk reads the body directly later.
+					fn_decl := flat.decode_fn_decl_signature(c.id)
+					if fn_decl.name == '' {
+						continue
+					}
+					has_body := c.list_at(3).len() > 0
+					info := FnInfo{
+						key:      decl_key(mod_name, fn_decl, w.env)
+						mod:      mod_name
+						file:     file_name
+						decl:     fn_decl
+						decl_id:  c.id
+						has_body: has_body
+					}
+					w.fns << info
+					idx := w.fns.len - 1
+					w.index_fn(idx, info)
+				}
 				.stmt_struct_decl, .stmt_enum_decl, .stmt_interface_decl, .stmt_type_decl,
-				.stmt_global_decl, .stmt_fn_decl {
+				.stmt_global_decl {
 					stmt := flat.decode_stmt(c.id)
 					w.collect_def_stmt(stmt, mod_name, file_name, c.id)
 				}
@@ -876,11 +902,12 @@ fn (mut w Walker) collect_def_stmt(stmt ast.Stmt, mod_name string, file_name str
 				return
 			}
 			info := FnInfo{
-				key:     decl_key(mod_name, stmt, w.env)
-				mod:     mod_name
-				file:    file_name
-				decl:    stmt
-				decl_id: decl_id
+				key:      decl_key(mod_name, stmt, w.env)
+				mod:      mod_name
+				file:     file_name
+				decl:     stmt
+				decl_id:  decl_id
+				has_body: stmt.stmts.len > 0
 			}
 			w.fns << info
 			idx := w.fns.len - 1
@@ -1659,7 +1686,7 @@ fn (mut w Walker) mark_fn(idx int) {
 		return
 	}
 	w.queued_fn_indices[idx] = true
-	if info.decl.stmts.len > 0 {
+	if info.has_body {
 		w.queue << idx
 	}
 }
