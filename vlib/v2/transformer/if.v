@@ -207,6 +207,15 @@ fn (mut t Transformer) try_expand_if_guard_stmt(stmt ast.ExprStmt) ?[]ast.Stmt {
 	}
 	guard := if_expr.cond as ast.IfGuardExpr
 
+	// The entire if-guard expansion is at statement position. Suppress value-
+	// position IfExpr hoisting (`_if_t<N> := if ...`) for nested else-if chains
+	// so they don't generate mistyped temps for what is really a statement.
+	saved_skip := t.skip_if_value_lowering
+	t.skip_if_value_lowering = true
+	defer {
+		t.skip_if_value_lowering = saved_skip
+	}
+
 	if guard.stmt.rhs.len == 0 {
 		return none
 	}
