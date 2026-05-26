@@ -597,6 +597,42 @@ fn (mut w Walker) walk_expr_cursor(c ast.Cursor, mod_name string) {
 				w.walk_expr_cursor(c.edge(i), mod_name)
 			}
 		}
+		// expr_call: edge 0 = lhs, edges 1.. = args. Cursor port uses
+		// mark_call_lhs_cursor + mark_call_arg_interface_conversions_cursor —
+		// both decode lhs.lhs (selector receiver fallback) and args (only
+		// when the matching param is an interface) on demand. Everything
+		// else is structural.
+		.expr_call {
+			lhs_c := c.edge(0)
+			w.mark_call_lhs_cursor(lhs_c, mod_name)
+			w.mark_call_arg_interface_conversions_cursor(c, mod_name)
+			w.walk_expr_cursor(lhs_c, mod_name)
+			for i in 1 .. c.edge_count() {
+				w.walk_expr_cursor(c.edge(i), mod_name)
+			}
+		}
+		// expr_call_or_cast: edge 0 = lhs, edge 1 = inner. When lhs is an
+		// Ident naming a cast type, behaves like a cast — call
+		// mark_interface_conversion_methods and walk only the inner expr.
+		// Otherwise behaves like a call (mark_call_lhs + the single-arg
+		// interface conversion check).
+		.expr_call_or_cast {
+			lhs_c := c.edge(0)
+			expr_c := c.edge(1)
+			if lhs_c.is_valid() && lhs_c.kind() == .expr_ident && w.is_cast_type_name(lhs_c.name()) {
+				iface_name := w.interface_name_from_cursor(lhs_c, mod_name)
+				if iface_name != '' && expr_c.is_valid() {
+					value_expr := c.flat.decode_expr(expr_c.id)
+					w.mark_interface_conversion_methods_for_name(iface_name, value_expr, mod_name)
+				}
+				w.walk_expr_cursor(expr_c, mod_name)
+			} else {
+				w.mark_call_lhs_cursor(lhs_c, mod_name)
+				w.mark_call_or_cast_arg_interface_conversion_cursor(c, mod_name)
+				w.walk_expr_cursor(lhs_c, mod_name)
+				w.walk_expr_cursor(expr_c, mod_name)
+			}
+		}
 		// expr_cast: edge 0 = typ, edge 1 = value. Legacy walker calls
 		// mark_interface_conversion_methods(typ, value) which is a no-op unless
 		// typ resolves to a known interface. We peek typ via
@@ -2270,6 +2306,274 @@ fn (mut w Walker) mark_result_error_return_methods(return_type ast.Expr, expr as
 	}
 }
 
+// call_lhs_fn_type_cursor mirrors call_lhs_fn_type but reads from a Cursor.
+// receiver_candidates_for_expr still needs a decoded Expr for the
+// SelectorExpr branch — only that subtree is decoded, and only when env
+// lookup falls through to it.
+fn (w &Walker) call_lhs_fn_type_cursor(c ast.Cursor, mod_name string) ?types.FnType {
+	if !c.is_valid() {
+		return none
+	}
+	if w.env != unsafe { nil } {
+		if lhs_type := w.env.get_expr_type(c.pos().id) {
+			if lhs_type is types.FnType {
+				return lhs_type as types.FnType
+			}
+		}
+		match c.kind() {
+			.expr_ident {
+				if fn_type := w.env.lookup_fn(mod_name, c.name()) {
+					return fn_type
+				}
+			}
+			.expr_selector {
+				inner_lhs := c.edge(0)
+				rhs_c := c.edge(1)
+				if inner_lhs.is_valid() && rhs_c.is_valid() {
+					receivers := w.receiver_candidates_for_expr(c.flat.decode_expr(inner_lhs.id),
+						mod_name)
+					for receiver in receivers {
+						if fn_type := w.env.lookup_method(receiver, rhs_c.name()) {
+							return fn_type
+						}
+					}
+				}
+			}
+			else {}
+		}
+	}
+	if c.kind() == .expr_ident && w.cur_fn_scope != unsafe { nil } {
+		if obj := w.cur_fn_scope.lookup_parent(c.name(), 0) {
+			typ := obj.typ()
+			if typ is types.FnType {
+				return typ as types.FnType
+			}
+		}
+	}
+	return none
+}
+
+// call_lhs_decl_indices_cursor mirrors call_lhs_decl_indices with cursor
+// input. Same shape: Ident / GenericArgs / GenericArgOrIndexExpr / Selector
+// — the only ast-decoded subtree is lhs.lhs for SelectorExpr's
+// receiver_candidates_for_expr fallback.
+fn (w &Walker) call_lhs_decl_indices_cursor(c ast.Cursor, mod_name string) []int {
+	mut out := []int{}
+	if !c.is_valid() {
+		return out
+	}
+	match c.kind() {
+		.expr_ident {
+			w.add_fn_name_indices(c.name(), mod_name, mut out)
+		}
+		.expr_generic_args {
+			return w.call_lhs_decl_indices_cursor(c.edge(0), mod_name)
+		}
+		.expr_generic_arg_or_index {
+			return w.call_lhs_decl_indices_cursor(c.edge(0), mod_name)
+		}
+		.expr_selector {
+			rhs_c := c.edge(1)
+			if !rhs_c.is_valid() {
+				return out
+			}
+			method_name := rhs_c.name()
+			lhs_c := c.edge(0)
+			if lhs_c.is_valid() && lhs_c.kind() == .expr_ident {
+				left_name := lhs_c.name()
+				if left_name == 'C' {
+					w.add_fn_name_indices(method_name, mod_name, mut out)
+					return out
+				}
+				if left_name in w.module_names {
+					real_mod := w.module_alias_to_real[left_name] or { left_name }
+					w.add_fn_name_indices('${real_mod}__${method_name}', mod_name, mut out)
+					return out
+				}
+				if left_name in w.type_names {
+					w.add_method_name_indices(method_name,
+						[left_name, '${mod_name}__${left_name}'], mut out)
+					return out
+				}
+			}
+			if lhs_c.is_valid() && lhs_c.kind() == .expr_selector {
+				inner_lhs := lhs_c.edge(0)
+				inner_rhs := lhs_c.edge(1)
+				if inner_lhs.is_valid() && inner_lhs.kind() == .expr_ident && inner_rhs.is_valid() {
+					mod_ident := inner_lhs.name()
+					type_name := inner_rhs.name()
+					if mod_ident in w.module_names || mod_ident in w.type_names {
+						mut candidates := []string{cap: 3}
+						candidates << type_name
+						candidates << '${mod_name}__${type_name}'
+						candidates << '${mod_ident}__${type_name}'
+						w.add_method_name_indices(method_name, candidates, mut out)
+						return out
+					}
+				}
+			}
+			receivers := w.receiver_candidates_for_expr(c.flat.decode_expr(lhs_c.id), mod_name)
+			if receivers.len > 0 {
+				w.add_method_name_indices(method_name, receivers, mut out)
+				if out.len > 0 {
+					return out
+				}
+			}
+			normalized := normalize_method_name(method_name)
+			w.add_lookup_indices('mname:${method_name}', mut out)
+			if normalized != method_name {
+				w.add_lookup_indices('mname:${normalized}', mut out)
+			}
+		}
+		else {}
+	}
+
+	return out
+}
+
+// mark_call_arg_interface_conversions_cursor / _from_decls_cursor are the
+// cursor analogues of mark_call_arg_interface_conversions /
+// mark_call_arg_interface_conversions_from_decls. Args are only decoded on
+// demand (when the param type is an interface), so non-interface params do
+// not pay any decode cost.
+fn (mut w Walker) mark_call_arg_interface_conversions_cursor(call_c ast.Cursor, mod_name string) {
+	lhs_c := call_c.edge(0)
+	ec := call_c.edge_count()
+	args_len := ec - 1
+	mut marked := false
+	if w.env != unsafe { nil } {
+		if lhs_type := w.call_lhs_fn_type_cursor(lhs_c, mod_name) {
+			param_types := lhs_type.get_param_types()
+			param_offset := if lhs_c.is_valid() && lhs_c.kind() == .expr_selector {
+				1
+			} else {
+				0
+			}
+			for i in 0 .. args_len {
+				param_idx := i + param_offset
+				if param_idx >= param_types.len {
+					break
+				}
+				param_type := param_types[param_idx]
+				if param_type is types.Interface {
+					arg_c := call_c.edge(1 + i)
+					w.mark_interface_conversion_methods_for_name((param_type as types.Interface).name,
+						call_c.flat.decode_expr(arg_c.id), mod_name)
+					marked = true
+				}
+			}
+		}
+	} else {
+		w.mark_call_arg_interface_conversions_from_decls_cursor(call_c, mod_name)
+		return
+	}
+	if !marked {
+		w.mark_call_arg_interface_conversions_from_decls_cursor(call_c, mod_name)
+	}
+}
+
+fn (mut w Walker) mark_call_arg_interface_conversions_from_decls_cursor(call_c ast.Cursor, mod_name string) {
+	lhs_c := call_c.edge(0)
+	decl_indices := w.call_lhs_decl_indices_cursor(lhs_c, mod_name)
+	if decl_indices.len == 0 {
+		return
+	}
+	args_len := call_c.edge_count() - 1
+	lhs_is_ident := lhs_c.is_valid() && lhs_c.kind() == .expr_ident
+	for idx in decl_indices {
+		if idx < 0 || idx >= w.fns.len {
+			continue
+		}
+		info := w.fns[idx]
+		params := info.decl.typ.params
+		arg_offset := if lhs_is_ident && info.decl.is_method && !info.decl.is_static {
+			1
+		} else {
+			0
+		}
+		for i, param in params {
+			arg_idx := i + arg_offset
+			if arg_idx >= args_len {
+				break
+			}
+			iface_name := w.interface_name_from_expr(param.typ, info.mod)
+			if iface_name == '' {
+				continue
+			}
+			arg_c := call_c.edge(1 + arg_idx)
+			w.mark_interface_conversion_methods_for_name(iface_name,
+				call_c.flat.decode_expr(arg_c.id), mod_name)
+		}
+	}
+}
+
+// mark_call_or_cast_arg_interface_conversion_cursor is the cursor analogue
+// of mark_call_or_cast_arg_interface_conversion. The "expr" edge (call_c.edge(1))
+// is treated as a single-arg list; it is decoded only when the param type
+// is an interface.
+fn (mut w Walker) mark_call_or_cast_arg_interface_conversion_cursor(call_c ast.Cursor, mod_name string) {
+	lhs_c := call_c.edge(0)
+	expr_c := call_c.edge(1)
+	mut marked := false
+	if w.env != unsafe { nil } {
+		if lhs_type := w.call_lhs_fn_type_cursor(lhs_c, mod_name) {
+			param_types := lhs_type.get_param_types()
+			param_offset := if lhs_c.is_valid() && lhs_c.kind() == .expr_selector {
+				1
+			} else {
+				0
+			}
+			if param_offset < param_types.len {
+				param_type := param_types[param_offset]
+				if param_type is types.Interface {
+					w.mark_interface_conversion_methods_for_name((param_type as types.Interface).name,
+						call_c.flat.decode_expr(expr_c.id), mod_name)
+					marked = true
+				}
+			}
+		}
+	} else {
+		decl_indices := w.call_lhs_decl_indices_cursor(lhs_c, mod_name)
+		w.mark_call_or_cast_arg_interface_from_decl_indices_cursor(decl_indices, lhs_c, expr_c,
+			mod_name)
+		return
+	}
+	if !marked {
+		decl_indices := w.call_lhs_decl_indices_cursor(lhs_c, mod_name)
+		w.mark_call_or_cast_arg_interface_from_decl_indices_cursor(decl_indices, lhs_c, expr_c,
+			mod_name)
+	}
+}
+
+fn (mut w Walker) mark_call_or_cast_arg_interface_from_decl_indices_cursor(decl_indices []int, lhs_c ast.Cursor, expr_c ast.Cursor, mod_name string) {
+	if decl_indices.len == 0 || !expr_c.is_valid() {
+		return
+	}
+	lhs_is_ident := lhs_c.is_valid() && lhs_c.kind() == .expr_ident
+	for idx in decl_indices {
+		if idx < 0 || idx >= w.fns.len {
+			continue
+		}
+		info := w.fns[idx]
+		params := info.decl.typ.params
+		arg_offset := if lhs_is_ident && info.decl.is_method && !info.decl.is_static {
+			1
+		} else {
+			0
+		}
+		if arg_offset >= params.len {
+			continue
+		}
+		param := params[arg_offset]
+		iface_name := w.interface_name_from_expr(param.typ, info.mod)
+		if iface_name == '' {
+			continue
+		}
+		w.mark_interface_conversion_methods_for_name(iface_name,
+			expr_c.flat.decode_expr(expr_c.id), mod_name)
+	}
+}
+
 fn (w &Walker) call_lhs_fn_type(lhs ast.Expr, mod_name string) ?types.FnType {
 	if !expr_ok(lhs) {
 		return none
@@ -2523,6 +2827,82 @@ fn (mut w Walker) mark_call_lhs(lhs ast.Expr, mod_name string) {
 				}
 			}
 			receivers := w.receiver_candidates_for_expr(lhs.lhs, mod_name)
+			if receivers.len > 0 {
+				prev_queue_len := w.queue.len
+				w.mark_method_name(method_name, receivers)
+				if w.queue.len > prev_queue_len {
+					return
+				}
+			}
+			w.mark_method_name_fallback(method_name)
+		}
+		else {}
+	}
+}
+
+// mark_call_lhs_cursor is the cursor-input analogue of mark_call_lhs. It
+// handles every case structurally via cursor accesses, and only falls back
+// to decoding `lhs.lhs` for the SelectorExpr receiver_candidates_for_expr
+// branch — which is itself only reached when the early-return cases (C.fn,
+// module.fn, Type.method, mod.Type.method) all fail.
+fn (mut w Walker) mark_call_lhs_cursor(c ast.Cursor, mod_name string) {
+	if !c.is_valid() {
+		return
+	}
+	match c.kind() {
+		.expr_ident {
+			w.mark_fn_name(c.name(), mod_name)
+		}
+		.expr_generic_args {
+			w.mark_call_lhs_cursor(c.edge(0), mod_name)
+		}
+		.expr_generic_arg_or_index {
+			w.mark_call_lhs_cursor(c.edge(0), mod_name)
+		}
+		.expr_selector {
+			rhs_c := c.edge(1)
+			if !rhs_c.is_valid() {
+				return
+			}
+			method_name := rhs_c.name()
+			lhs_c := c.edge(0)
+			if lhs_c.is_valid() && lhs_c.kind() == .expr_ident {
+				left_name := lhs_c.name()
+				if left_name == 'C' {
+					w.mark_fn_name(method_name, mod_name)
+					return
+				}
+				if left_name in w.module_names {
+					real_mod := w.module_alias_to_real[left_name] or { left_name }
+					w.mark_fn_name('${real_mod}__${method_name}', mod_name)
+					return
+				}
+				if left_name in w.type_names {
+					w.mark_method_name(method_name, [left_name, '${mod_name}__${left_name}'])
+					return
+				}
+			}
+			if lhs_c.is_valid() && lhs_c.kind() == .expr_selector {
+				inner_lhs := lhs_c.edge(0)
+				inner_rhs := lhs_c.edge(1)
+				if inner_lhs.is_valid() && inner_lhs.kind() == .expr_ident && inner_rhs.is_valid() {
+					mod_ident := inner_lhs.name()
+					type_name := inner_rhs.name()
+					if mod_ident in w.module_names || mod_ident in w.type_names {
+						candidates := [
+							type_name,
+							'${mod_name}__${type_name}',
+							'${mod_ident}__${type_name}',
+						]
+						w.mark_method_name(method_name, candidates)
+						return
+					}
+				}
+			}
+			// Fallback: receiver_candidates_for_expr still requires a decoded
+			// Expr. The cost is bounded — only the lhs.lhs subtree is decoded,
+			// and only when no structural early-return fired.
+			receivers := w.receiver_candidates_for_expr(c.flat.decode_expr(lhs_c.id), mod_name)
 			if receivers.len > 0 {
 				prev_queue_len := w.queue.len
 				w.mark_method_name(method_name, receivers)
