@@ -517,6 +517,93 @@ fn test_to_flat_parity_global_init() {
 	run_to_flat_parity('to_flat_global_init', fixture_global_init)
 }
 
+// --- parity: per-file flat-write API vs reference rehydrate+transform+append ---
+//
+// `transform_file_index_to_flat` (flat_write.v) is the per-file entry point
+// for the multi-session port that progressively rewrites the transformer to
+// emit flat nodes directly into a FlatBuilder. Today the body is a behaviour-
+// preserving decomposition of the loop inside `transform_files_from_flat`;
+// sessions 2..N replace one rewrite site at a time inside the body.
+//
+// This row pins the per-file invariant: driving the new API in a loop must
+// produce a FlatBuilder bit-equal to manually doing rehydrate + transform +
+// append_file for each file index. Each future session must keep this
+// invariant green after porting its rewrite site.
+//
+// The 4th row (to_flat_*) covers the wedge-level invariant against legacy.
+// This row is one layer below: it isolates the per-file API so a regression
+// inside the new body fails here independently of any post_pass change.
+
+fn run_per_file_parity(label string, src string) {
+	p := parse_transformer_fixture(src)
+
+	// Reference: manual rehydrate + transform + append per file index.
+	mut t_ref := Transformer.new_with_pref(p.env, p.prefs)
+	t_ref.pre_pass_from_flat(&p.flat)
+	mut ref_builder := ast.new_flat_builder()
+	for fi in 0 .. p.flat.files.len {
+		src_arr := p.flat.to_files_range(fi, fi + 1)
+		if src_arr.len == 0 {
+			continue
+		}
+		transformed := t_ref.transform_file_pub(src_arr[0])
+		ref_builder.append_file(transformed)
+	}
+	ref_sig := ref_builder.flat.signature()
+
+	// New per-file API driven in the same loop, fresh Transformer instance so
+	// no internal counter state leaks between the two paths.
+	mut t_api := Transformer.new_with_pref(p.env, p.prefs)
+	t_api.pre_pass_from_flat(&p.flat)
+	mut api_builder := ast.new_flat_builder()
+	for fi in 0 .. p.flat.files.len {
+		t_api.transform_file_index_to_flat(&p.flat, fi, mut api_builder)
+	}
+	api_sig := api_builder.flat.signature()
+
+	if ref_sig == api_sig {
+		return
+	}
+	pa, pb := dump_signature_pair(label, ref_sig, api_sig)
+	eprintln('[${label}] per-file API signature diverged from reference loop.')
+	eprintln('  ref: ${pa}')
+	eprintln('  api: ${pb}')
+	eprintln('  diff with: diff -u ${pa} ${pb}')
+	assert false, '${label}: transform_file_index_to_flat output diverged (see /tmp dumps above)'
+}
+
+fn test_per_file_parity_plain_fn() {
+	run_per_file_parity('per_file_plain_fn', fixture_plain_fn)
+}
+
+fn test_per_file_parity_infix_operator() {
+	run_per_file_parity('per_file_infix_operator', fixture_infix_operator)
+}
+
+fn test_per_file_parity_array_contains() {
+	run_per_file_parity('per_file_array_contains', fixture_array_contains)
+}
+
+fn test_per_file_parity_if_guard() {
+	run_per_file_parity('per_file_if_guard', fixture_if_guard)
+}
+
+fn test_per_file_parity_or_block() {
+	run_per_file_parity('per_file_or_block', fixture_or_block)
+}
+
+fn test_per_file_parity_sumtype_is_as() {
+	run_per_file_parity('per_file_sumtype_is_as', fixture_sumtype_is_as)
+}
+
+fn test_per_file_parity_string_interp() {
+	run_per_file_parity('per_file_string_interp', fixture_string_interp)
+}
+
+fn test_per_file_parity_global_init() {
+	run_per_file_parity('per_file_global_init', fixture_global_init)
+}
+
 // test_all_fixtures_produce_nonempty_signature guards against silent harness
 // breakage: every fixture has at least main() so the signature must contain
 // at least one FILE / fn body. A zero-length signature means parse / check /
