@@ -597,6 +597,26 @@ fn (mut w Walker) walk_expr_cursor(c ast.Cursor, mod_name string) {
 				w.walk_expr_cursor(c.edge(i), mod_name)
 			}
 		}
+		// expr_infix: aux = op (Token int), edge 0 = lhs, edge 1 = rhs.
+		// mark_infix_operator_method is a no-op for ops outside the method-
+		// dispatching set, so we gate the decode on the op kind. When the op
+		// does qualify, we decode just the lhs subtree to feed
+		// receiver_candidates_for_expr, then walk both children via cursor.
+		.expr_infix {
+			op := unsafe { token.Token(int(c.aux())) }
+			if infix_operator_may_use_method(op) {
+				method_name := op.str()
+				lhs_expr := c.flat.decode_expr(c.edge(0).id)
+				receivers := w.receiver_candidates_for_expr(lhs_expr, mod_name)
+				if receivers.len > 0 {
+					w.mark_method_name(method_name, receivers)
+				} else {
+					w.mark_method_name_fallback(method_name)
+				}
+			}
+			w.walk_expr_cursor(c.edge(0), mod_name)
+			w.walk_expr_cursor(c.edge(1), mod_name)
+		}
 		// expr_string_inter: edge 0 = aux_list of value strings (not walked),
 		// edge 1 = aux_list of inter nodes. Each inter has edge 0 = expr,
 		// edge 1 = format_expr. Legacy walker calls
