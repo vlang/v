@@ -48,6 +48,7 @@ mut:
 	used_virtual_vh_for_parse bool
 	flat_roundtrip_enabled    bool // V2_FLAT_ROUNDTRIP=1: route parses through streaming + to_files()
 	flat_check_enabled        bool // V2_CHECK_FLAT=1: route type-check through Checker.check_flat
+	markused_flat_enabled     bool // V2_MARKUSED_FLAT=1: route markused through mark_used_flat shim
 	// flat caches the FlatAst representation of b.files. When
 	// flat_check_enabled is set, parse_batch streams directly into
 	// flat_builder so b.flat is built incrementally during parsing rather
@@ -68,6 +69,7 @@ pub fn new_builder(prefs &pref.Preferences) &Builder {
 			cached_called_fn_names: map[string]bool{}
 			flat_roundtrip_enabled: os.getenv('V2_FLAT_ROUNDTRIP') != ''
 			flat_check_enabled:     os.getenv('V2_CHECK_FLAT') != ''
+			markused_flat_enabled:  os.getenv('V2_MARKUSED_FLAT') != ''
 		}
 	}
 }
@@ -193,12 +195,35 @@ pub fn (mut b Builder) build(files []string) {
 		b.used_fn_keys = map[string]bool{}
 	} else {
 		mark_used_start := sw.elapsed()
+		// V2_MARKUSED_FLAT only takes effect when V2_CHECK_FLAT is also on,
+		// since b.flat is only populated when flat_check_enabled streams
+		// parses into flat_builder. Without that, b.flat is empty and the
+		// shim would walk nothing.
+		//
+		// KNOWN LIMITATION: b.flat is the pre-transform parse snapshot.
+		// transform_files_from_flat mutates b.files but does not write back
+		// into b.flat, so the shim's flat.to_files() omits transformer-
+		// generated symbols (runtime const inits, noscan stubs, monomorphized
+		// generics). Self-host builds will fail with linker errors until a
+		// later PR teaches the transformer to update b.flat (or a fresh
+		// flat is rebuilt here from b.files). The gate is wired now so the
+		// differential harness can exercise mark_used_flat end-to-end.
+		use_flat_markused := b.markused_flat_enabled && b.flat_check_enabled
 		if b.uses_minimal_windows_x64_runtime() {
-			b.used_fn_keys = markused.mark_used_with_options(b.files, b.env, markused.MarkUsedOptions{
+			opts := markused.MarkUsedOptions{
 				minimal_runtime_roots: true
-			})
+			}
+			b.used_fn_keys = if use_flat_markused {
+				markused.mark_used_flat_with_options(&b.flat, b.env, opts)
+			} else {
+				markused.mark_used_with_options(b.files, b.env, opts)
+			}
 		} else {
-			b.used_fn_keys = markused.mark_used(b.files, b.env)
+			b.used_fn_keys = if use_flat_markused {
+				markused.mark_used_flat(&b.flat, b.env)
+			} else {
+				markused.mark_used(b.files, b.env)
+			}
 		}
 		mark_used_time := time.Duration(sw.elapsed() - mark_used_start)
 		print_time('Mark Used', mark_used_time)
