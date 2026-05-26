@@ -180,7 +180,7 @@ pub fn (mut s Scope) insert_or_update(name string, obj Object) {
 	}
 }
 
-fn trace_scope_fixed_array_object(label string, name string, obj Object) {
+fn trace_scope_fixed_array_object(_label string, _name string, _obj Object) {
 }
 
 pub fn (mut s Scope) insert_type(name string, typ Type) {
