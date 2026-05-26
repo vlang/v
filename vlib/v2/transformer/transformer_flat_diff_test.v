@@ -146,6 +146,7 @@ fn assert_transform_signatures_equal(label string, a []ast.File, b []ast.File) {
 //   - prefix-op const value                 → fixture_prefix_expr
 //   - modifier expr (mut arg)               → fixture_modifier_expr
 //   - lambda expr (|y| y + 1 in call arg)   → fixture_lambda_expr
+//   - fn literal (anonymous fn body)        → fixture_fn_literal
 
 // Fixtures intentionally avoid `module main`, `println`, and any builtin
 // dependency — the harness skips the .vh cache load to stay light, so the
@@ -324,6 +325,21 @@ fn use_lambda() int {
 }
 '
 
+const fixture_fn_literal = '
+fn make_doubler() fn (int) int {
+	return fn (x int) int {
+		return x * 2
+	}
+}
+
+fn use_fn_literal() int {
+	doubler := fn (n int) int {
+		return n + n
+	}
+	return doubler(21)
+}
+'
+
 fn all_transformer_fixtures() []string {
 	return [
 		fixture_plain_fn,
@@ -339,6 +355,7 @@ fn all_transformer_fixtures() []string {
 		fixture_prefix_expr,
 		fixture_modifier_expr,
 		fixture_lambda_expr,
+		fixture_fn_literal,
 	]
 }
 
@@ -408,6 +425,10 @@ fn test_transform_is_deterministic_lambda_expr() {
 	run_determinism('det_lambda_expr', fixture_lambda_expr)
 }
 
+fn test_transform_is_deterministic_fn_literal() {
+	run_determinism('det_fn_literal', fixture_fn_literal)
+}
+
 // --- parity: transform_files vs transform_files_from_flat ---
 //
 // The streaming-from-flat path is the seed for the upcoming
@@ -475,6 +496,10 @@ fn test_flat_parity_modifier_expr() {
 
 fn test_flat_parity_lambda_expr() {
 	run_parity('parity_lambda_expr', fixture_lambda_expr)
+}
+
+fn test_flat_parity_fn_literal() {
+	run_parity('parity_fn_literal', fixture_fn_literal)
 }
 
 // --- parity: check_files vs check_flat upstream ---
@@ -577,6 +602,10 @@ fn test_check_flat_parity_lambda_expr() {
 	run_check_flat_parity('check_flat_lambda_expr', fixture_lambda_expr)
 }
 
+fn test_check_flat_parity_fn_literal() {
+	run_check_flat_parity('check_flat_fn_literal', fixture_fn_literal)
+}
+
 // --- parity: transform_files vs transform_files_to_flat ---
 //
 // transform_files_to_flat is the API wedge for the future
@@ -661,6 +690,10 @@ fn test_to_flat_parity_modifier_expr() {
 
 fn test_to_flat_parity_lambda_expr() {
 	run_to_flat_parity('to_flat_lambda_expr', fixture_lambda_expr)
+}
+
+fn test_to_flat_parity_fn_literal() {
+	run_to_flat_parity('to_flat_fn_literal', fixture_fn_literal)
 }
 
 // --- parity: per-file flat-write API vs reference rehydrate+transform+append ---
@@ -768,6 +801,10 @@ fn test_per_file_parity_modifier_expr() {
 
 fn test_per_file_parity_lambda_expr() {
 	run_per_file_parity('per_file_lambda_expr', fixture_lambda_expr)
+}
+
+fn test_per_file_parity_fn_literal() {
+	run_per_file_parity('per_file_fn_literal', fixture_fn_literal)
 }
 
 // test_all_fixtures_produce_nonempty_signature guards against silent harness

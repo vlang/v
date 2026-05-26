@@ -167,6 +167,23 @@ import v2.ast
 //     passes `|y| y + 1`) covers the arm across all 5 harness rows —
 //     61 → 66 transformer-diff tests.
 //
+//   Session 9 (2026-05-26): FnLiteral expr direct-emit + harness fixture.
+//     The FnLiteral arm in `transform_expr_to_flat` direct-emits via:
+//     `out.emit_type(ast.Type(expr.typ))` for the FnType (verbatim, leaf),
+//     `out.emit_expr(cv)` per captured_var (verbatim, leaf), and
+//     `transform_stmts(expr.stmts)` + `out.emit_stmt(...)` per result for
+//     the body stmts (still allocates a `[]Stmt` — the stmt-list expansion
+//     seam is the next big port target), then the new
+//     `emit_fn_literal_by_ids` builder helper. Skips the
+//     `ast.FnLiteral` wrapper struct allocation per occurrence. Mirrors
+//     `add_expr(FnLiteral)` encoding exactly: edge[0] = type,
+//     edge[1..1+captured.len] = captured_vars, edge[1+captured.len..] =
+//     stmts; `captured_vars.len` is packed into `extra`. New
+//     `fixture_fn_literal` (a `make_doubler()` returning `fn (x int) int`
+//     + a `use_fn_literal()` that binds a `fn (n int) int` to a local and
+//     calls it) covers the arm across all 5 harness rows — 66 → 71
+//     transformer-diff tests.
+//
 // Phase 5: post-pass port.
 //   `post_pass` (runtime const init injection, helper functions, str/clone
 //   generation, ...) still mutates `[]ast.File`. Port it to either emit
@@ -444,6 +461,35 @@ pub fn (mut t Transformer) transform_expr_to_flat(expr ast.Expr, mut out ast.Fla
 				arg_ids << out.emit_expr(ast.Expr(arg))
 			}
 			return out.emit_lambda_expr_by_ids(inner_id, arg_ids, expr.pos)
+		}
+		ast.FnLiteral {
+			// FnLiteral has three children sets: typ (FnType, verbatim),
+			// captured_vars ([]Expr, verbatim), and stmts ([]Stmt, transformed
+			// via `transform_stmts` — the body driver that may multi-expand a
+			// single stmt into several). Direct-emit:
+			//   1. emit typ via the leaf `emit_type` (Type is identity)
+			//   2. emit each captured_var via the leaf `emit_expr` (Idents/Expr
+			//      are identity in `transform_expr` already)
+			//   3. run `transform_stmts(expr.stmts)` (still allocates a `[]Stmt`
+			//      — the seam refactor that lets stmt-list expansion emit
+			//      directly into the builder is the next big port target) and
+			//      emit each result via `out.emit_stmt(...)`
+			//   4. assemble via the new `emit_fn_literal_by_ids` helper
+			// Skips the `ast.FnLiteral` wrapper struct allocation per
+			// occurrence. Mirrors `add_expr(FnLiteral)` encoding exactly
+			// (edge[0] = type, edge[1..1+captured.len] = captured_vars,
+			// edge[1+captured.len..] = stmts; captured_vars.len in extra).
+			typ_id := out.emit_type(ast.Type(expr.typ))
+			mut captured_var_ids := []ast.FlatNodeId{cap: expr.captured_vars.len}
+			for cv in expr.captured_vars {
+				captured_var_ids << out.emit_expr(cv)
+			}
+			transformed_stmts := t.transform_stmts(expr.stmts)
+			mut stmt_ids := []ast.FlatNodeId{cap: transformed_stmts.len}
+			for body_stmt in transformed_stmts {
+				stmt_ids << out.emit_stmt(body_stmt)
+			}
+			return out.emit_fn_literal_by_ids(typ_id, captured_var_ids, stmt_ids, expr.pos)
 		}
 		else {
 			return out.emit_expr(t.transform_expr(expr))

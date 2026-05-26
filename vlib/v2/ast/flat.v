@@ -560,6 +560,30 @@ pub fn (mut b FlatBuilder) emit_lambda_expr_by_ids(inner_id FlatNodeId, arg_ids 
 	return b.emit_simple(.expr_lambda, pos, edges)
 }
 
+// emit_fn_literal_by_ids emits an expr_fn_literal node from an already-flat
+// FnType FlatNodeId, slice of already-flat captured_var FlatNodeIds, and
+// slice of already-flat stmt FlatNodeIds. Mirrors the add_expr(FnLiteral)
+// encoding exactly: edge[0] is the type, edge[1..1+captured.len] are the
+// captured vars, edge[1+captured.len..] are the stmts; `captured_vars.len`
+// is packed into `extra` so the boundary is recoverable.
+pub fn (mut b FlatBuilder) emit_fn_literal_by_ids(typ_id FlatNodeId, captured_var_ids []FlatNodeId, stmt_ids []FlatNodeId, pos token.Pos) FlatNodeId {
+	mut edges := []FlatEdge{cap: 1 + captured_var_ids.len + stmt_ids.len}
+	edges << FlatEdge{
+		child_id: typ_id
+	}
+	for cv_id in captured_var_ids {
+		edges << FlatEdge{
+			child_id: cv_id
+		}
+	}
+	for sid in stmt_ids {
+		edges << FlatEdge{
+			child_id: sid
+		}
+	}
+	return b.emit(.expr_fn_literal, pos, -1, captured_var_ids.len, 0, 0, edges)
+}
+
 // emit_fn_decl_by_ids emits a stmt_fn_decl node from already-flat child
 // FlatNodeIds (receiver parameter, FnType, attribute list, stmt list).
 // Mirrors the add_stmt(FnDecl) encoding exactly, including the
