@@ -243,9 +243,12 @@ fn (mut w Walker) walk_fn_body_cursor(flat &ast.FlatAst, decl_id ast.FlatNodeId,
 // fallback decodes the stmt and delegates to walk_stmt so partial coverage
 // stays bit-identical with the legacy walker.
 //
-// Ported arms: stmt_assert, stmt_block, stmt_comptime, stmt_defer, stmt_expr.
+// Ported arms: stmt_assert, stmt_assign, stmt_block, stmt_comptime,
+// stmt_defer, stmt_expr, stmt_for, stmt_for_in, stmt_label, stmt_return.
 // Nested expressions are still routed through walk_expr (decoded per edge)
-// until walk_expr itself gets a cursor-input port.
+// until walk_expr itself gets a cursor-input port. Decl arms (const, enum,
+// global, struct, type) stay in the fallback path because their field
+// sub-graphs (aux_field_decl / aux_field_init) need their own cursor port.
 fn (mut w Walker) walk_stmt_cursor(c ast.Cursor, mod_name string) {
 	if !c.is_valid() {
 		return
@@ -254,6 +257,27 @@ fn (mut w Walker) walk_stmt_cursor(c ast.Cursor, mod_name string) {
 		.stmt_assert {
 			w.walk_expr_cursor_edge(c, 0, mod_name)
 			w.walk_expr_cursor_edge(c, 1, mod_name)
+		}
+		.stmt_assign {
+			ec := c.edge_count()
+			lhs_len := c.extra_int()
+			// Mirror the legacy ordering: first the interface-conversion
+			// checks across paired (lhs[i], rhs[i]) edges, then walk all
+			// lhs exprs, then all rhs exprs.
+			pair_len := if lhs_len < ec - lhs_len { lhs_len } else { ec - lhs_len }
+			for i in 0 .. pair_len {
+				lhs_c := c.edge(i)
+				rhs_c := c.edge(lhs_len + i)
+				if !lhs_c.is_valid() || !rhs_c.is_valid() {
+					continue
+				}
+				lhs_expr := c.flat.decode_expr(lhs_c.id)
+				rhs_expr := c.flat.decode_expr(rhs_c.id)
+				w.mark_assignment_interface_conversion(lhs_expr, rhs_expr, mod_name)
+			}
+			for i in 0 .. ec {
+				w.walk_expr_cursor_edge(c, i, mod_name)
+			}
 		}
 		.stmt_block {
 			for i in 0 .. c.edge_count() {
@@ -270,6 +294,34 @@ fn (mut w Walker) walk_stmt_cursor(c ast.Cursor, mod_name string) {
 		}
 		.stmt_expr {
 			w.walk_expr_cursor_edge(c, 0, mod_name)
+		}
+		.stmt_for {
+			w.walk_stmt_cursor(c.edge(0), mod_name)
+			w.walk_expr_cursor_edge(c, 1, mod_name)
+			w.walk_stmt_cursor(c.edge(2), mod_name)
+			for i in 3 .. c.edge_count() {
+				w.walk_stmt_cursor(c.edge(i), mod_name)
+			}
+		}
+		.stmt_for_in {
+			w.walk_expr_cursor_edge(c, 0, mod_name)
+			w.walk_expr_cursor_edge(c, 1, mod_name)
+			w.walk_expr_cursor_edge(c, 2, mod_name)
+		}
+		.stmt_label {
+			w.walk_stmt_cursor(c.edge(0), mod_name)
+		}
+		.stmt_return {
+			for i in 0 .. c.edge_count() {
+				ec := c.edge(i)
+				if !ec.is_valid() {
+					continue
+				}
+				expr := c.flat.decode_expr(ec.id)
+				w.walk_expr(expr, mod_name)
+				w.mark_interface_conversion_methods(w.cur_fn_decl.typ.return_type, expr, mod_name)
+				w.mark_result_error_return_methods(w.cur_fn_decl.typ.return_type, expr, mod_name)
+			}
 		}
 		else {
 			stmt := c.flat.decode_stmt(c.id)
