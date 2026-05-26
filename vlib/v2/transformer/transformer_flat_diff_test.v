@@ -451,6 +451,72 @@ fn test_check_flat_parity_global_init() {
 	run_check_flat_parity('check_flat_global_init', fixture_global_init)
 }
 
+// --- parity: transform_files vs transform_files_to_flat ---
+//
+// transform_files_to_flat is the API wedge for the future
+// "transformer writes directly into a FlatBuilder" port. Today it
+// composes transform_files_from_flat with a boundary flatten_files();
+// callers that only need flat output (the V2_MARKUSED_FLAT path in the
+// builder) route through here and will get the eventual peak-memory win
+// without further changes.
+//
+// This row pins the contract: the FlatAst returned by
+// transform_files_to_flat must have the same signature as
+// flatten_files(transform_files(files)). When the internals are rewritten
+// to skip the boundary flatten, this is the regression net.
+
+fn run_to_flat_parity(label string, src string) {
+	p := parse_transformer_fixture(src)
+	leg := run_legacy_transform(p)
+	leg_sig := transform_signature(leg)
+
+	mut t := Transformer.new_with_pref(p.env, p.prefs)
+	new_flat, _ := t.transform_files_to_flat(&p.flat, [])
+	flt_sig := new_flat.signature()
+
+	if leg_sig == flt_sig {
+		return
+	}
+	pa, pb := dump_signature_pair(label, leg_sig, flt_sig)
+	eprintln('[${label}] transform_files_to_flat signature diverged from legacy.')
+	eprintln('  legacy: ${pa}')
+	eprintln('  to_flat: ${pb}')
+	eprintln('  diff with: diff -u ${pa} ${pb}')
+	assert false, '${label}: transform_files_to_flat output diverged (see /tmp dumps above)'
+}
+
+fn test_to_flat_parity_plain_fn() {
+	run_to_flat_parity('to_flat_plain_fn', fixture_plain_fn)
+}
+
+fn test_to_flat_parity_infix_operator() {
+	run_to_flat_parity('to_flat_infix_operator', fixture_infix_operator)
+}
+
+fn test_to_flat_parity_array_contains() {
+	run_to_flat_parity('to_flat_array_contains', fixture_array_contains)
+}
+
+fn test_to_flat_parity_if_guard() {
+	run_to_flat_parity('to_flat_if_guard', fixture_if_guard)
+}
+
+fn test_to_flat_parity_or_block() {
+	run_to_flat_parity('to_flat_or_block', fixture_or_block)
+}
+
+fn test_to_flat_parity_sumtype_is_as() {
+	run_to_flat_parity('to_flat_sumtype_is_as', fixture_sumtype_is_as)
+}
+
+fn test_to_flat_parity_string_interp() {
+	run_to_flat_parity('to_flat_string_interp', fixture_string_interp)
+}
+
+fn test_to_flat_parity_global_init() {
+	run_to_flat_parity('to_flat_global_init', fixture_global_init)
+}
+
 // test_all_fixtures_produce_nonempty_signature guards against silent harness
 // breakage: every fixture has at least main() so the signature must contain
 // at least one FILE / fn body. A zero-length signature means parse / check /

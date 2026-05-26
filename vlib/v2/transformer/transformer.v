@@ -1837,6 +1837,26 @@ pub fn (mut t Transformer) transform_files_from_flat(flat &ast.FlatAst, files []
 	return result
 }
 
+// transform_files_to_flat is the transformer's flat-output entry point.
+//
+// Today it wraps transform_files_from_flat + ast.flatten_files: the
+// internal pipeline still produces []ast.File and the conversion happens
+// at the boundary. Externally this exposes the API shape the future
+// "transformer writes directly into a FlatBuilder" port will keep — so
+// callers can switch to this entry now and get the eventual peak-memory
+// win without further changes.
+//
+// Callers that only need flat output (currently: the V2_MARKUSED_FLAT
+// path in the builder, which re-flattens b.files itself today) should
+// route through here. The returned []ast.File is kept alive only for the
+// downstream consumers that still need legacy (SSA builder). Once the
+// SSA builder consumes flat as well, this entry point will drop the
+// legacy []ast.File entirely and the peak-memory win materializes.
+pub fn (mut t Transformer) transform_files_to_flat(flat &ast.FlatAst, files []ast.File) (ast.FlatAst, []ast.File) {
+	result := t.transform_files_from_flat(flat, files)
+	return ast.flatten_files(result), result
+}
+
 fn runtime_const_init_base_name(mod string) string {
 	mut suffix := if mod == '' { 'main' } else { mod }
 	suffix = suffix.replace('.', '_').replace('-', '_')

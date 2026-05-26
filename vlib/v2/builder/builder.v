@@ -212,17 +212,29 @@ pub fn (mut b Builder) build(files []string) {
 	mut trans := transformer.Transformer.new_with_pref(b.env, b.pref)
 	trans.set_file_set(b.file_set)
 	sequential_transform := b.pref.no_parallel_transform || b.pref.ownership
+	use_flat_markused := b.markused_flat_enabled && b.flat_check_enabled
 	// Both paths can now consume flat directly: sequential streams via
 	// transform_files_from_flat, parallel streams per-worker via
 	// to_files_range. No up-front full rehydration needed in either case.
-	b.files = if sequential_transform {
-		if b.flat_check_enabled {
-			trans.transform_files_from_flat(&b.flat, b.files)
+	//
+	// When V2_MARKUSED_FLAT is also enabled, the sequential path routes
+	// through transform_files_to_flat so the post-transform flatten lives
+	// inside the transformer (one round-trip), avoiding a separate
+	// flatten_files() pass before mark_used_flat.
+	mut flat_populated_by_transform := false
+	if sequential_transform {
+		if use_flat_markused {
+			new_flat, files_out := trans.transform_files_to_flat(&b.flat, b.files)
+			b.flat = new_flat
+			b.files = files_out
+			flat_populated_by_transform = true
+		} else if b.flat_check_enabled {
+			b.files = trans.transform_files_from_flat(&b.flat, b.files)
 		} else {
-			trans.transform_files(b.files)
+			b.files = trans.transform_files(b.files)
 		}
 	} else {
-		b.transform_files_parallel(mut trans)
+		b.files = b.transform_files_parallel(mut trans)
 	}
 	transform_time := time.Duration(sw.elapsed() - transform_start)
 	print_time('Transform', transform_time)
@@ -240,13 +252,11 @@ pub fn (mut b Builder) build(files []string) {
 		// shim would walk nothing.
 		//
 		// The transformer mutates b.files but does not write back into
-		// b.flat, so we rebuild b.flat from the post-transform b.files
-		// before calling the flat-input markused. This costs one extra
-		// flatten_files() pass; it will go away once mark_used_flat walks
-		// cursors directly and the transformer learns to mutate b.flat
-		// in place.
-		use_flat_markused := b.markused_flat_enabled && b.flat_check_enabled
-		if use_flat_markused {
+		// b.flat. For the sequential path, transform_files_to_flat already
+		// populated b.flat as part of the transform step. For the parallel
+		// path, we still need a separate flatten_files() pass — the
+		// parallel-transform-writes-flat wiring is a follow-up.
+		if use_flat_markused && !flat_populated_by_transform {
 			b.flat = ast.flatten_files(b.files)
 		}
 		if b.uses_minimal_windows_x64_runtime() {
