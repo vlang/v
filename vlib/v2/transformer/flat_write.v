@@ -412,6 +412,31 @@ import v2.types
 //     stmt body (the IfExpr branch — legacy fallback) — 116 → 121
 //     transformer-diff tests.
 //
+//   Session 21 (2026-05-26): InitExpr deep helper port + fixture.
+//     Fourth deep-helper rewrite, same shape as sessions 18-20. The body of
+//     `transform_init_expr` (~220 lines in struct.v) is large and complex —
+//     the per-field transformation involves sumtype wrapping,
+//     ArrayInitExpr special-casing, expected-type resolution, and
+//     missing-default fill-in via `add_missing_struct_field_defaults`. Only
+//     one branch produces a non-InitExpr shape: the typed empty map
+//     `map[K]V{}` lowers to a CallExpr to `new_map` (or `MapInitExpr` on the
+//     eval backend) — that branch routes through `out.emit_expr(...)`. The
+//     default path delegates the field work to legacy
+//     `transform_init_expr` (its result is an `ast.InitExpr` with the same
+//     `typ` and a fully-transformed fields list) and then direct-emits via
+//     the new `emit_init_expr_by_ids` builder helper together with
+//     `emit_field_init_by_id` per field. This skips the outer
+//     `ast.InitExpr` wrapper allocation per occurrence; the per-field
+//     `ast.FieldInit` wrappers still materialise on the default path (the
+//     legacy function builds them). A later session can inline the
+//     per-field loop directly to also skip those — that's a much bigger
+//     port and not required to close this dispatch arm.
+//
+//     New `fixture_init_expr` exercises two struct types and a nested
+//     struct literal with both fully-specified fields and a field with a
+//     declared default (`tag string = "default"`) — the missing-default
+//     fill-in path. 121 → 126 transformer-diff tests.
+//
 // Phase 5: post-pass port.
 //   `post_pass` (runtime const init injection, helper functions, str/clone
 //   generation, ...) still mutates `[]ast.File`. Port it to either emit
@@ -911,6 +936,21 @@ pub fn (mut t Transformer) transform_expr_to_flat(expr ast.Expr, mut out ast.Fla
 			}
 			return out.emit_fn_literal_by_ids(typ_id, captured_var_ids, stmt_ids, expr.pos)
 		}
+		ast.InitExpr {
+			// InitExpr deep helper port: the body of `transform_init_expr`
+			// (struct.v ~line 1240) lowers one branch into a non-InitExpr
+			// shape — the typed empty map `map[K]V{}` lowers to a CallExpr
+			// to `new_map` (or a `MapInitExpr` on the eval backend). That
+			// branch routes through `out.emit_expr(t.transform_init_expr(...))`
+			// since the result is not an InitExpr. Every other path returns
+			// an `ast.InitExpr` with the same `typ` and a per-field
+			// transformation that handles sumtype wrapping, ArrayInitExpr
+			// special-casing, expected-type resolution, and missing-default
+			// fill-in. The default path direct-emits via
+			// `emit_init_expr_by_ids` + `emit_field_init_by_id`, skipping the
+			// `ast.InitExpr` wrapper allocation on each occurrence.
+			return t.transform_init_expr_to_flat(expr, mut out)
+		}
 		ast.ComptimeExpr {
 			// ComptimeExpr deep helper port: `transform_comptime_expr` is
 			// mirrored as `transform_comptime_expr_to_flat` below. Most
@@ -1014,6 +1054,45 @@ fn (mut t Transformer) transform_comptime_expr_to_flat(expr ast.ComptimeExpr, mu
 	// Default: rebuild ComptimeExpr with recursively-transformed inner.
 	inner_id := t.transform_expr_to_flat(inner, mut out)
 	return out.emit_comptime_expr_by_id(inner_id, expr.pos)
+}
+
+// transform_init_expr_to_flat is the direct-emit port of
+// `transform_init_expr`. The typed empty map InitExpr branch
+// (`expr.fields.len == 0` with a `MapType`) lowers into a CallExpr to
+// `new_map` (or `MapInitExpr` on the eval backend) — that shape is not an
+// InitExpr so it routes through the legacy `out.emit_expr(t.transform_expr(...))`
+// round-trip. The default path runs the legacy per-field transform (sumtype
+// wrapping, ArrayInitExpr special-casing, expected-type resolution, missing
+// default fill-in — too much logic to inline here) and then direct-emits the
+// resulting InitExpr via `emit_init_expr_by_ids` + `emit_field_init_by_id`,
+// skipping the `ast.InitExpr` outer wrapper allocation on the common path.
+fn (mut t Transformer) transform_init_expr_to_flat(expr ast.InitExpr, mut out ast.FlatBuilder) ast.FlatNodeId {
+	// Typed empty map InitExpr lowers to CallExpr / MapInitExpr — different
+	// shape, must go through legacy.
+	if expr.fields.len == 0 {
+		if expr.typ is ast.Type {
+			typ_payload := expr.typ as ast.Type
+			if typ_payload is ast.MapType {
+				return out.emit_expr(t.transform_expr(ast.Expr(expr)))
+			}
+		}
+	}
+	// Default path: run legacy field transform, then direct-emit the
+	// resulting InitExpr. Defensive guard: if `transform_init_expr` ever
+	// produces a non-InitExpr shape for the default path (it currently
+	// doesn't), fall back to the round-trip rather than mis-emit.
+	transformed := t.transform_init_expr(expr)
+	if transformed !is ast.InitExpr {
+		return out.emit_expr(transformed)
+	}
+	init := transformed as ast.InitExpr
+	typ_id := out.emit_expr(init.typ)
+	mut field_ids := []ast.FlatNodeId{cap: init.fields.len}
+	for f in init.fields {
+		value_id := out.emit_expr(f.value)
+		field_ids << out.emit_field_init_by_id(f.name, value_id)
+	}
+	return out.emit_init_expr_by_ids(typ_id, field_ids, expr.pos)
 }
 
 // transform_index_expr_to_flat is the direct-emit port of

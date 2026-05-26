@@ -654,6 +654,25 @@ pub fn (mut b FlatBuilder) emit_selector_expr_by_ids(lhs_id FlatNodeId, rhs_id F
 	])
 }
 
+// emit_init_expr_by_ids emits an expr_init node from an already-flat type
+// FlatNodeId and a slice of already-flat aux_field_init FlatNodeIds. Mirrors
+// the add_expr(InitExpr) encoding exactly: edge[0] is the type, edge[1..]
+// are the field-init aux nodes. The flat-write port for struct literals uses
+// this together with `emit_field_init_by_id` to avoid materialising an
+// `ast.InitExpr` wrapper on the default path.
+pub fn (mut b FlatBuilder) emit_init_expr_by_ids(typ_id FlatNodeId, field_ids []FlatNodeId, pos token.Pos) FlatNodeId {
+	mut edges := []FlatEdge{cap: 1 + field_ids.len}
+	edges << FlatEdge{
+		child_id: typ_id
+	}
+	for fid in field_ids {
+		edges << FlatEdge{
+			child_id: fid
+		}
+	}
+	return b.emit_simple(.expr_init, pos, edges)
+}
+
 // emit_fn_literal_by_ids emits an expr_fn_literal node from an already-flat
 // FnType FlatNodeId, slice of already-flat captured_var FlatNodeIds, and
 // slice of already-flat stmt FlatNodeIds. Mirrors the add_expr(FnLiteral)
