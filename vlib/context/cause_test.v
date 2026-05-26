@@ -75,8 +75,12 @@ fn test_with_timeout_cause_fires_cause() {
 	// not done yet
 	assert ctx.err() is none
 
-	// wait for timeout
-	time.sleep(60 * time.millisecond)
+	// poll for the deadline goroutine to record the cancellation; busy CI
+	// runners can take well over 60ms to schedule it.
+	deadline := time.now().add(2 * time.second)
+	for ctx.err() is none && time.now() < deadline {
+		time.sleep(5 * time.millisecond)
+	}
 
 	assert ctx.err().str() == 'context deadline exceeded'
 	assert cause(ctx).str() == 'timed out for testing'
