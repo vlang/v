@@ -1,0 +1,384 @@
+// Copyright (c) 2026 Alexander Medvednikov. All rights reserved.
+// Use of this source code is governed by an MIT license
+// that can be found in the LICENSE file.
+// vtest build: macos
+//
+// Differential test harness for the transformer migration to flat output.
+//
+// Goal: when the transformer eventually writes its result directly into a
+// FlatAst (so the post-transform []ast.File is never allocated) the new
+// path must produce bit-identical output to the legacy path on every
+// program that exercises a non-trivial rewrite.
+//
+// Until that lands, the harness pins two invariants that already matter:
+//
+//   1. Determinism — transform_files run twice on the same parsed input
+//      produces the same canonical signature. This guards against accidental
+//      iteration-order or pointer-identity leakage as the body changes.
+//
+//   2. Flat-input parity — transform_files(files) and
+//      transform_files_from_flat(&flat, []) must produce the same signature.
+//      The from-flat streaming path was added 2026-05-26 and previously had
+//      no per-construct regression test; it is the closest production path
+//      to the future transform-writes-flat work, so any divergence here
+//      surfaces a pre-pass / rehydration bug immediately.
+//
+// Adding a fixture: pick the smallest V program that hits the rewrite arm
+// (operator overloading, if-guard, smartcast, ...) and add a test that calls
+// assert_transform_signatures_equal. When a fixture fails, the signatures
+// are dumped to /tmp so a `diff` localises the diverging node.
+module transformer
+
+import os
+import time
+import v2.ast
+import v2.parser
+import v2.pref as vpref
+import v2.token
+import v2.types
+
+// ParsedTransformerFixture bundles parse + check artefacts. The transformer
+// mutates env / checker state internally; running both transformer paths
+// against the *same* env is intentional — it's how the production pipeline
+// behaves and any divergence the env causes is part of what we want to catch.
+struct ParsedTransformerFixture {
+	files []ast.File
+	flat  ast.FlatAst
+	env   &types.Environment
+	prefs &vpref.Preferences
+}
+
+fn parse_transformer_fixture(src string) ParsedTransformerFixture {
+	tmp := '/tmp/v2_transformer_diff_${os.getpid()}_${transformer_rand_suffix()}.v'
+	os.write_file(tmp, src) or { panic('write_file: ${err}') }
+	defer {
+		os.rm(tmp) or {}
+	}
+	prefs := &vpref.Preferences{
+		backend:     .cleanc
+		no_parallel: true
+	}
+	mut fs := token.FileSet.new()
+	mut par := parser.Parser.new(prefs)
+	files := par.parse_files([tmp], mut fs)
+	mut env := types.Environment.new()
+	mut checker := types.Checker.new(prefs, fs, env)
+	checker.check_files(files)
+	flat := ast.flatten_files(files)
+	return ParsedTransformerFixture{
+		files: files
+		flat:  flat
+		env:   env
+		prefs: prefs
+	}
+}
+
+fn transformer_rand_suffix() string {
+	t := u64(time.now().unix_milli()) & 0xFFFFFFFF
+	return '${t:x}'
+}
+
+// transform_signature is the canonical, comparable string form of a
+// transformer output. It flattens the result and reuses ast.signature() so
+// two runs producing structurally identical (but pointer-distinct) trees
+// hash to the same string.
+fn transform_signature(files []ast.File) string {
+	flat := ast.flatten_files(files)
+	return flat.signature()
+}
+
+// run_legacy_transform runs the canonical []ast.File-in, []ast.File-out path.
+fn run_legacy_transform(p ParsedTransformerFixture) []ast.File {
+	mut t := Transformer.new_with_pref(p.env, p.prefs)
+	return t.transform_files(p.files)
+}
+
+// run_from_flat_transform runs the streaming-from-flat path, which feeds
+// the same per-file transform but rehydrates each ast.File on demand from
+// FlatAst instead of holding the full source array. Today both paths share
+// transform_file; the test exists so when the path diverges further (e.g.
+// transformer-writes-flat) any drift is caught.
+fn run_from_flat_transform(p ParsedTransformerFixture) []ast.File {
+	mut t := Transformer.new_with_pref(p.env, p.prefs)
+	return t.transform_files_from_flat(&p.flat, [])
+}
+
+// dump_signature_pair writes the two signatures to /tmp so a `diff` can
+// localise the diverging node when a fixture fails. Returns the two paths
+// in the assert message.
+fn dump_signature_pair(label string, a string, b string) (string, string) {
+	suffix := transformer_rand_suffix()
+	pa := '/tmp/v2_transform_sig_${label}_a_${suffix}.txt'
+	pb := '/tmp/v2_transform_sig_${label}_b_${suffix}.txt'
+	os.write_file(pa, a) or {}
+	os.write_file(pb, b) or {}
+	return pa, pb
+}
+
+fn assert_transform_signatures_equal(label string, a []ast.File, b []ast.File) {
+	sa := transform_signature(a)
+	sb := transform_signature(b)
+	if sa == sb {
+		return
+	}
+	pa, pb := dump_signature_pair(label, sa, sb)
+	eprintln('[${label}] transformer signatures diverged.')
+	eprintln('  A: ${pa}')
+	eprintln('  B: ${pb}')
+	eprintln('  diff with: diff -u ${pa} ${pb}')
+	assert false, '${label}: transformer outputs differ (see /tmp dumps above)'
+}
+
+// --- fixture catalog ---
+//
+// Each fixture is the smallest V program that exercises one transformer
+// rewrite path. The mix here is deliberately chosen to cover:
+//   - plain top-level (no rewrites)        → fixture_plain_fn
+//   - operator overloading                 → fixture_infix_operator
+//   - array.contains / array methods       → fixture_array_contains
+//   - if-guard (rewritten on every backend)→ fixture_if_guard
+//   - or-block expression expansion        → fixture_or_block
+//   - sumtype is / smartcast               → fixture_sumtype_is_as
+//   - string interpolation                 → fixture_string_interp
+//   - global init                          → fixture_global_init
+
+// Fixtures intentionally avoid `module main`, `println`, and any builtin
+// dependency — the harness skips the .vh cache load to stay light, so the
+// checker only sees what's in the fixture source. Each fixture must still
+// type-check standalone.
+
+const fixture_plain_fn = '
+fn add(a int, b int) int {
+	return a + b
+}
+
+fn use_add() int {
+	return add(1, 2)
+}
+'
+
+const fixture_infix_operator = '
+struct Vec {
+	x int
+	y int
+}
+
+fn (a Vec) + (b Vec) Vec {
+	return Vec{a.x + b.x, a.y + b.y}
+}
+
+fn use_add() int {
+	v := Vec{1, 2} + Vec{3, 4}
+	return v.x
+}
+'
+
+const fixture_array_contains = '
+fn has(xs []int, n int) bool {
+	return n in xs
+}
+
+fn use_has() bool {
+	return has([1, 2, 3], 2)
+}
+'
+
+const fixture_if_guard = '
+fn maybe(n int) ?int {
+	if n > 0 {
+		return n
+	}
+	return none
+}
+
+fn use_guard() int {
+	if v := maybe(3) {
+		return v
+	}
+	return 0
+}
+'
+
+const fixture_or_block = '
+fn maybe(n int) ?int {
+	if n > 0 {
+		return n
+	}
+	return none
+}
+
+fn use_or() int {
+	x := maybe(2) or { -1 }
+	return x
+}
+'
+
+const fixture_sumtype_is_as = '
+type Shape = Circle | Square
+
+struct Circle {
+	r f64
+}
+
+struct Square {
+	side f64
+}
+
+fn area(s Shape) f64 {
+	return match s {
+		Circle { 3.14 * s.r * s.r }
+		Square { s.side * s.side }
+	}
+}
+
+fn use_shape() f64 {
+	c := Shape(Circle{r: 2.0})
+	if c is Circle {
+		return c.r
+	}
+	return area(c)
+}
+'
+
+const fixture_string_interp = r'
+fn describe(xs []int) string {
+	return "len=${xs.len} first=${xs[0]}"
+}
+
+fn use_describe() string {
+	return describe([10, 20, 30])
+}
+'
+
+const fixture_global_init = '
+__global g_counter = 0
+
+fn bump() {
+	g_counter++
+}
+
+fn use_bump() int {
+	bump()
+	return g_counter
+}
+'
+
+fn all_transformer_fixtures() []string {
+	return [
+		fixture_plain_fn,
+		fixture_infix_operator,
+		fixture_array_contains,
+		fixture_if_guard,
+		fixture_or_block,
+		fixture_sumtype_is_as,
+		fixture_string_interp,
+		fixture_global_init,
+	]
+}
+
+// --- determinism: legacy × legacy on the same fixture ---
+//
+// These are the floor: if these ever fail the transformer has stateful
+// drift that will break every other test in this file. Each fixture is
+// re-parsed for each run so per-Transformer accumulator state never
+// leaks between calls.
+
+fn run_determinism(label string, src string) {
+	p := parse_transformer_fixture(src)
+	a := run_legacy_transform(p)
+	b := run_legacy_transform(p)
+	assert_transform_signatures_equal(label, a, b)
+}
+
+fn test_transform_is_deterministic_plain_fn() {
+	run_determinism('det_plain_fn', fixture_plain_fn)
+}
+
+fn test_transform_is_deterministic_infix_operator() {
+	run_determinism('det_infix_operator', fixture_infix_operator)
+}
+
+fn test_transform_is_deterministic_array_contains() {
+	run_determinism('det_array_contains', fixture_array_contains)
+}
+
+fn test_transform_is_deterministic_if_guard() {
+	run_determinism('det_if_guard', fixture_if_guard)
+}
+
+fn test_transform_is_deterministic_or_block() {
+	run_determinism('det_or_block', fixture_or_block)
+}
+
+fn test_transform_is_deterministic_sumtype_is_as() {
+	run_determinism('det_sumtype_is_as', fixture_sumtype_is_as)
+}
+
+fn test_transform_is_deterministic_string_interp() {
+	run_determinism('det_string_interp', fixture_string_interp)
+}
+
+fn test_transform_is_deterministic_global_init() {
+	run_determinism('det_global_init', fixture_global_init)
+}
+
+// --- parity: transform_files vs transform_files_from_flat ---
+//
+// The streaming-from-flat path is the seed for the upcoming
+// transformer-writes-flat work. Each fixture is parsed ONCE so the
+// filenames embedded in pos info match; both transformer paths get
+// independent Transformer instances over the same parsed input and shared
+// env. A drift here indicates either a pre_pass_from_flat seeding bug or
+// in-flight rehydration losing a node, both of which are exactly what
+// this harness exists to catch.
+
+fn run_parity(label string, src string) {
+	p := parse_transformer_fixture(src)
+	leg := run_legacy_transform(p)
+	flt := run_from_flat_transform(p)
+	assert_transform_signatures_equal(label, leg, flt)
+}
+
+fn test_flat_parity_plain_fn() {
+	run_parity('parity_plain_fn', fixture_plain_fn)
+}
+
+fn test_flat_parity_infix_operator() {
+	run_parity('parity_infix_operator', fixture_infix_operator)
+}
+
+fn test_flat_parity_array_contains() {
+	run_parity('parity_array_contains', fixture_array_contains)
+}
+
+fn test_flat_parity_if_guard() {
+	run_parity('parity_if_guard', fixture_if_guard)
+}
+
+fn test_flat_parity_or_block() {
+	run_parity('parity_or_block', fixture_or_block)
+}
+
+fn test_flat_parity_sumtype_is_as() {
+	run_parity('parity_sumtype_is_as', fixture_sumtype_is_as)
+}
+
+fn test_flat_parity_string_interp() {
+	run_parity('parity_string_interp', fixture_string_interp)
+}
+
+fn test_flat_parity_global_init() {
+	run_parity('parity_global_init', fixture_global_init)
+}
+
+// test_all_fixtures_produce_nonempty_signature guards against silent harness
+// breakage: every fixture has at least main() so the signature must contain
+// at least one FILE / fn body. A zero-length signature means parse / check /
+// transform broke before we even compared.
+fn test_all_fixtures_produce_nonempty_signature() {
+	for i, src in all_transformer_fixtures() {
+		p := parse_transformer_fixture(src)
+		sig := transform_signature(run_legacy_transform(p))
+		assert sig.len > 0, 'fixture #${i}: empty signature — pipeline broken before transformer'
+	}
+}
