@@ -612,6 +612,21 @@ pub fn (mut b FlatBuilder) emit_lambda_expr_by_ids(inner_id FlatNodeId, arg_ids 
 	return b.emit_simple(.expr_lambda, pos, edges)
 }
 
+// emit_selector_expr_by_ids emits an expr_selector node from an already-flat
+// lhs expression and an already-flat rhs Ident expression. Mirrors the
+// add_expr(SelectorExpr) encoding exactly: edge[0] is the lhs expr,
+// edge[1] is the rhs (an Ident emitted as expr_ident).
+pub fn (mut b FlatBuilder) emit_selector_expr_by_ids(lhs_id FlatNodeId, rhs_id FlatNodeId, pos token.Pos) FlatNodeId {
+	return b.emit_simple(.expr_selector, pos, [
+		FlatEdge{
+			child_id: lhs_id
+		},
+		FlatEdge{
+			child_id: rhs_id
+		},
+	])
+}
+
 // emit_fn_literal_by_ids emits an expr_fn_literal node from an already-flat
 // FnType FlatNodeId, slice of already-flat captured_var FlatNodeIds, and
 // slice of already-flat stmt FlatNodeIds. Mirrors the add_expr(FnLiteral)

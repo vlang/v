@@ -154,6 +154,7 @@ fn assert_transform_signatures_equal(label string, a []ast.File, b []ast.File) {
 //   - unsafe expr (unsafe { ... }, nil norm)  → fixture_unsafe_expr
 //   - lock expr (lock x { body } value-form)   → fixture_lock_expr
 //   - or expr (or-block nested in call args)    → fixture_or_expr
+//   - selector expr (chained + non-Ident lhs)    → fixture_selector_expr
 
 // Fixtures intentionally avoid `module main`, `println`, and any builtin
 // dependency — the harness skips the .vh cache load to stay light, so the
@@ -449,6 +450,27 @@ fn pick(s Shape, k int) f64 {
 }
 '
 
+const fixture_selector_expr = '
+struct Point {
+	x int
+	y int
+}
+
+struct Box {
+mut:
+	p    Point
+	size int
+}
+
+fn use_selector(mut b Box, arr []Point) int {
+	a := b.p.x
+	c := b.size
+	d := arr[0].y
+	b.p.y = 42
+	return a + c + d + b.p.y
+}
+'
+
 fn all_transformer_fixtures() []string {
 	return [
 		fixture_plain_fn,
@@ -472,6 +494,7 @@ fn all_transformer_fixtures() []string {
 		fixture_unsafe_expr,
 		fixture_lock_expr,
 		fixture_or_expr,
+		fixture_selector_expr,
 	]
 }
 
@@ -573,6 +596,10 @@ fn test_transform_is_deterministic_or_expr() {
 	run_determinism('det_or_expr', fixture_or_expr)
 }
 
+fn test_transform_is_deterministic_selector_expr() {
+	run_determinism('det_selector_expr', fixture_selector_expr)
+}
+
 // --- parity: transform_files vs transform_files_from_flat ---
 //
 // The streaming-from-flat path is the seed for the upcoming
@@ -672,6 +699,10 @@ fn test_flat_parity_lock_expr() {
 
 fn test_flat_parity_or_expr() {
 	run_parity('parity_or_expr', fixture_or_expr)
+}
+
+fn test_flat_parity_selector_expr() {
+	run_parity('parity_selector_expr', fixture_selector_expr)
 }
 
 // --- parity: check_files vs check_flat upstream ---
@@ -806,6 +837,10 @@ fn test_check_flat_parity_or_expr() {
 	run_check_flat_parity('check_flat_or_expr', fixture_or_expr)
 }
 
+fn test_check_flat_parity_selector_expr() {
+	run_check_flat_parity('check_flat_selector_expr', fixture_selector_expr)
+}
+
 // --- parity: transform_files vs transform_files_to_flat ---
 //
 // transform_files_to_flat is the API wedge for the future
@@ -922,6 +957,10 @@ fn test_to_flat_parity_lock_expr() {
 
 fn test_to_flat_parity_or_expr() {
 	run_to_flat_parity('to_flat_or_expr', fixture_or_expr)
+}
+
+fn test_to_flat_parity_selector_expr() {
+	run_to_flat_parity('to_flat_selector_expr', fixture_selector_expr)
 }
 
 // --- parity: per-file flat-write API vs reference rehydrate+transform+append ---
@@ -1061,6 +1100,10 @@ fn test_per_file_parity_lock_expr() {
 
 fn test_per_file_parity_or_expr() {
 	run_per_file_parity('per_file_or_expr', fixture_or_expr)
+}
+
+fn test_per_file_parity_selector_expr() {
+	run_per_file_parity('per_file_selector_expr', fixture_selector_expr)
 }
 
 // test_all_fixtures_produce_nonempty_signature guards against silent harness

@@ -5,6 +5,7 @@ module transformer
 
 import v2.ast
 import v2.token
+import v2.types
 
 // flat_write.v scaffolds the "transformer writes flat directly" multi-session
 // port. The wedge `transform_files_to_flat` (transformer.v ~line 1855) today
@@ -325,6 +326,42 @@ import v2.token
 //     it; the port is a completeness sweep that keeps the dispatch surface
 //     coherent with the legacy `transform_expr` shape. All 106 existing
 //     transformer-diff tests continue to pass.
+//
+//   Session 18 (2026-05-26): SelectorExpr deep helper port + fixture.
+//     First "deep helper rewrite" port (per the planning conversation that
+//     followed session 17). The full body of `transform_selector_expr`
+//     (~130 lines in expr.v) is mirrored as `transform_selector_expr_to_flat`
+//     in this file. Special-case branches that rewrite the selector into a
+//     non-selector shape — typeof.name/idx (3 sub-branches: KeywordOperator,
+//     CallExpr, CallOrCastExpr lhs), sumtype representation fields
+//     (`_tag` / `_data` / `_*` chained under `_data`), smartcast match
+//     (direct + field-access), `os.args` → `arguments()`, module-qualified
+//     enum (`mod.Type.value` → `mod__Type__value` Ident or nested module
+//     refs), and same-module enum (`Op.value` → `mod__Op__value` Ident) —
+//     all build the legacy `ast.Expr` and emit via `out.emit_expr(...)`
+//     (their results are Idents, BasicLiterals, or CallExprs that route
+//     through `add_expr`'s normal encoding). Only the default `x.field`
+//     path is direct-emit: recurse on lhs via `transform_expr_to_flat`,
+//     emit rhs Ident via the leaf `out.emit_expr(...)`, and assemble via
+//     the new `emit_selector_expr_by_ids` builder helper, skipping the
+//     `ast.SelectorExpr` struct allocation per default-path occurrence.
+//
+//     Adds `import v2.types` to this file (needed for the `typ is types.Enum`
+//     checks in the module-qualified / same-module enum branches). New
+//     `fixture_selector_expr` exercises the default path with chained
+//     selectors (`b.p.x`, `b.p.y`), non-Ident lhs (`arr[0].y` — IndexExpr),
+//     and a selector-LHS assignment (`b.p.y = 42`) — 106 → 111 transformer-
+//     diff tests.
+//
+//     Pattern note: this is the first port where the dispatch arm delegates
+//     to a dedicated `transform_*_to_flat` helper instead of inlining the
+//     logic in the match arm itself. Established because the legacy helper
+//     has too many branches to inline (~130 lines of special-case
+//     dispatch + lookup). Subsequent deep-helper ports (CallExpr, IfExpr,
+//     InfixExpr, ...) will follow the same shape: one helper per legacy
+//     `transform_*` with the same structure, special-case branches routed
+//     through `emit_expr` for their non-default Expr results, default-path
+//     direct-emit via new `emit_*_by_ids` builder helpers.
 //
 // Phase 5: post-pass port.
 //   `post_pass` (runtime const init injection, helper functions, str/clone
@@ -825,8 +862,143 @@ pub fn (mut t Transformer) transform_expr_to_flat(expr ast.Expr, mut out ast.Fla
 			}
 			return out.emit_fn_literal_by_ids(typ_id, captured_var_ids, stmt_ids, expr.pos)
 		}
+		ast.SelectorExpr {
+			// SelectorExpr is the first deep helper rewrite port: the full body
+			// of `transform_selector_expr` is mirrored here as
+			// `transform_selector_expr_to_flat`, which direct-emits only the
+			// default path (`SelectorExpr{lhs: transform(lhs), rhs, pos}`) via
+			// `emit_selector_expr_by_ids`. All special-case branches that
+			// rewrite the selector into an Ident / BasicLiteral / CallExpr
+			// (typeof.name, sumtype rep fields, smartcast match, os.args,
+			// module-qualified enum, same-module enum) go through
+			// `out.emit_expr(...)` since their results aren't selectors.
+			return t.transform_selector_expr_to_flat(expr, mut out)
+		}
 		else {
 			return out.emit_expr(t.transform_expr(expr))
 		}
 	}
+}
+
+// transform_selector_expr_to_flat is the direct-emit port of
+// `transform_selector_expr`. Special-case branches that rewrite into
+// non-selector shapes (typeof.name, sumtype rep fields, smartcast, os.args,
+// module-qualified enum, same-module enum) build the legacy ast.Expr and route
+// through `out.emit_expr(...)`. Only the default `x.field` path is direct-emit:
+// recurse on lhs via `transform_expr_to_flat`, emit rhs Ident as a leaf, and
+// assemble via `emit_selector_expr_by_ids` — skipping the `ast.SelectorExpr`
+// struct allocation on the common path.
+fn (mut t Transformer) transform_selector_expr_to_flat(expr ast.SelectorExpr, mut out ast.FlatBuilder) ast.FlatNodeId {
+	// typeof(x).name -> string literal with V type name
+	if expr.lhs is ast.KeywordOperator && expr.lhs.op == .key_typeof
+		&& expr.rhs.name in ['name', 'idx'] {
+		if expr.lhs.exprs.len > 0 {
+			type_name := t.resolve_typeof_expr(expr.lhs.exprs[0])
+			if result := typeof_selector_result(type_name, expr.rhs.name, expr.pos) {
+				return out.emit_expr(result)
+			}
+		}
+	}
+	// typeof[T]().name -> string literal with V type name
+	if expr.rhs.name in ['name', 'idx'] && expr.lhs is ast.CallExpr {
+		call := expr.lhs as ast.CallExpr
+		type_name := t.resolve_typeof_call_lhs_type_name(call.lhs)
+		if result := typeof_selector_result(type_name, expr.rhs.name, expr.pos) {
+			return out.emit_expr(result)
+		}
+	}
+	if expr.rhs.name in ['name', 'idx'] && expr.lhs is ast.CallOrCastExpr {
+		call := expr.lhs as ast.CallOrCastExpr
+		if call.expr is ast.EmptyExpr {
+			type_name := t.resolve_typeof_call_lhs_type_name(call.lhs)
+			if result := typeof_selector_result(type_name, expr.rhs.name, expr.pos) {
+				return out.emit_expr(result)
+			}
+		}
+	}
+	// Generated sumtype representation fields already have their base
+	// expression lowered. Do not apply smartcasts to them again on a later
+	// transform pass.
+	if expr.rhs.name in ['_tag', '_data'] || (expr.rhs.name.starts_with('_')
+		&& expr.lhs is ast.SelectorExpr && (expr.lhs as ast.SelectorExpr).rhs.name == '_data') {
+		return out.emit_expr(ast.Expr(expr))
+	}
+	// Check for smart cast field access: check ALL contexts in the stack
+	if t.has_active_smartcast() {
+		full_str := t.expr_to_string(expr)
+		if direct_ctx := t.find_smartcast_for_expr(full_str) {
+			return out.emit_expr(t.apply_smartcast_direct_ctx(expr, direct_ctx))
+		}
+		lhs_str := t.expr_to_string(expr.lhs)
+		if ctx := t.find_smartcast_for_expr(lhs_str) {
+			return out.emit_expr(t.apply_smartcast_field_access_ctx(expr.lhs, expr.rhs.name, ctx))
+		}
+	}
+	if expr.lhs is ast.Ident && expr.lhs.name == 'os' && expr.rhs.name == 'args' {
+		return out.emit_expr(ast.CallExpr{
+			lhs: ast.Ident{
+				name: 'arguments'
+				pos:  expr.pos
+			}
+			pos: expr.pos
+		})
+	}
+	// Handle module-qualified enum value access and nested module references.
+	if expr.lhs is ast.SelectorExpr {
+		lhs_sel := expr.lhs as ast.SelectorExpr
+		if lhs_sel.lhs is ast.Ident {
+			module_name := lhs_sel.lhs.name
+			type_name := lhs_sel.rhs.name
+			qualified := '${module_name}__${type_name}'
+			if typ := t.lookup_type(qualified) {
+				if typ is types.Enum {
+					t.register_synth_type(expr.pos, typ)
+					return out.emit_expr(ast.Ident{
+						name: t.enum_member_ident_for_lookup(qualified, typ, expr.rhs.name)
+						pos:  expr.pos
+					})
+				}
+			}
+			if t.is_module_ident(module_name) {
+				sub_mod := lhs_sel.rhs.name
+				fn_name := expr.rhs.name
+				if t.get_module_scope(sub_mod) != none {
+					return out.emit_expr(ast.Ident{
+						name: '${sub_mod}__${fn_name}'
+						pos:  expr.pos
+					})
+				}
+				full_mod := '${module_name}__${sub_mod}'
+				if t.get_module_scope(full_mod) != none {
+					return out.emit_expr(ast.Ident{
+						name: '${full_mod}__${fn_name}'
+						pos:  expr.pos
+					})
+				}
+			}
+		}
+	}
+	// Handle same-module enum access.
+	if expr.lhs is ast.Ident {
+		lhs_name := expr.lhs.name
+		qualified := if t.cur_module != '' && t.cur_module != 'main' && t.cur_module != 'builtin'
+			&& !lhs_name.contains('__') {
+			'${t.cur_module}__${lhs_name}'
+		} else {
+			lhs_name
+		}
+		if typ := t.lookup_type(qualified) {
+			if typ is types.Enum {
+				t.register_synth_type(expr.pos, typ)
+				return out.emit_expr(ast.Ident{
+					name: t.enum_member_ident_for_lookup(qualified, typ, expr.rhs.name)
+					pos:  expr.pos
+				})
+			}
+		}
+	}
+	// Default transformation — direct-emit.
+	lhs_id := t.transform_expr_to_flat(expr.lhs, mut out)
+	rhs_id := out.emit_expr(ast.Expr(expr.rhs))
+	return out.emit_selector_expr_by_ids(lhs_id, rhs_id, expr.pos)
 }
