@@ -207,18 +207,27 @@ fn active_file_imports(file ast.File, user_defines []string, target_os string) [
 	return imports
 }
 
+// active_file_imports_from_flat mirrors active_file_imports but reads the
+// import list and top-level stmts straight from the FlatAst, so import
+// discovery can run without rehydrating an ast.File.
+fn active_file_imports_from_flat(flat &ast.FlatAst, ff ast.FlatFile, user_defines []string, target_os string) []ast.ImportStmt {
+	mut imports := flat.read_file_imports(ff)
+	stmts := flat.read_file_stmts(ff)
+	collect_active_imports_from_stmts(stmts, user_defines, target_os, mut imports)
+	return imports
+}
+
 // parse_batch routes a parser.parse_files() call through either the direct
 // path, the roundtrip path (V2_FLAT_ROUNDTRIP=1), or — when V2_CHECK_FLAT=1
 // is also set — the streaming-into-shared-FlatBuilder path. The latter
-// accumulates a single FlatAst across all batches so the checker can read
-// it without a separate flatten_files() pass.
+// accumulates a single FlatAst across all batches and no longer rehydrates
+// per-batch ast.Files: parse_files reads imports straight from the flat
+// store and does a single rehydration pass at the end.
 fn (mut b Builder) parse_batch(mut parser_reused parser.Parser, files []string) []ast.File {
 	if b.flat_check_enabled {
 		b.ensure_flat_builder_inited()
-		pre := b.flat_builder.flat.files.len
 		parser_reused.parse_files_into_flat(files, mut b.file_set, mut b.flat_builder)
-		post := b.flat_builder.flat.files.len
-		return b.flat_builder.flat.to_files_range(pre, post)
+		return []ast.File{}
 	}
 	if b.flat_roundtrip_enabled {
 		flat := parser_reused.parse_files_to_flat(files, mut b.file_set)
@@ -280,8 +289,7 @@ fn (mut b Builder) parse_files(files []string) []ast.File {
 		} else {
 			for module_path in core_cached_module_paths {
 				vlib_path := b.pref.get_vlib_module_path(module_path)
-				core_module_files << get_v_files_from_dir(vlib_path, b.pref.user_defines,
-					target_os)
+				core_module_files << get_v_files_from_dir(vlib_path, b.pref.user_defines, target_os)
 			}
 		}
 	}
@@ -354,6 +362,9 @@ fn (mut b Builder) parse_files(files []string) []ast.File {
 	ast_files << parsed_user_files
 	skip_imports := b.pref.skip_imports
 	if skip_imports {
+		if b.flat_check_enabled {
+			return b.flat_builder.flat.to_files()
+		}
 		return ast_files
 	}
 	// parse imports
@@ -362,6 +373,35 @@ fn (mut b Builder) parse_files(files []string) []ast.File {
 	mut parsed_imports := []string{}
 	if !skip_builtin {
 		parsed_imports << core_cached_module_paths
+	}
+	if b.flat_check_enabled {
+		// Walk the flat store directly. parse_batch may append new files to
+		// b.flat_builder, so re-read the length each iteration.
+		for afi := 0; afi < b.flat_builder.flat.files.len; afi++ {
+			ff := b.flat_builder.flat.files[afi]
+			ast_file_name := b.flat_builder.flat.file_name(ff)
+			for mod in active_file_imports_from_flat(&b.flat_builder.flat, ff, b.pref.user_defines,
+				target_os) {
+				if mod.name in parsed_imports {
+					continue
+				}
+				if use_core_headers || use_import_headers {
+					if cached_path := b.cached_import_parse_path(mod.name) {
+						b.parse_batch(mut parser_reused, [cached_path])
+						parsed_imports << mod.name
+						continue
+					}
+				}
+				mod_path := b.pref.get_module_path(mod.name, ast_file_name)
+				module_files := get_v_files_from_dir(mod_path, b.pref.user_defines, target_os)
+				if module_files.len == 0 {
+					continue
+				}
+				b.parse_batch(mut parser_reused, module_files)
+				parsed_imports << mod.name
+			}
+		}
+		return b.flat_builder.flat.to_files()
 	}
 	for afi := 0; afi < ast_files.len; afi++ {
 		ast_file := ast_files[afi]
