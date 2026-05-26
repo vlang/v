@@ -384,6 +384,47 @@ pub fn (mut b FlatBuilder) append_file(file File) FlatNodeId {
 	return file_id
 }
 
+// append_file_with_stmt_ids registers a file root whose stmt list is built
+// from FlatNodeIds that were already emitted into this builder by a previous
+// per-stmt pass (e.g. the transformer's flat-write path). Attributes and
+// imports are still consumed from the legacy `file` because they are not
+// subject to transformer rewrites; emitting them here keeps the file shape
+// bit-equal to `add_file`'s output.
+pub fn (mut b FlatBuilder) append_file_with_stmt_ids(file File, stmt_ids []FlatNodeId) FlatNodeId {
+	mut edges := []FlatEdge{}
+	b.push_edge(mut edges, b.make_list_attribute(file.attributes))
+	b.push_edge(mut edges, b.make_list_imports(file.imports))
+	b.push_edge(mut edges, b.make_list_from_stmt_ids(stmt_ids))
+	file_id := b.emit(.file, token.Pos{}, b.intern(file.name), b.intern(file.mod), 0, 0, edges)
+	b.flat.files << FlatFile{
+		file_id:        file_id
+		name_idx:       b.intern(file.name)
+		mod_idx:        b.intern(file.mod)
+		selector_names: file.selector_names
+	}
+	return file_id
+}
+
+// emit_stmt is the public wrapper around the legacy stmt-to-flat conversion.
+// Future sessions of the transformer-writes-flat port reach for this when a
+// stmt variant still falls back to legacy emission; the long-term goal is for
+// transform_stmt_to_flat (in v2.transformer) to stop calling it as each stmt
+// arm gets a direct-emit replacement.
+pub fn (mut b FlatBuilder) emit_stmt(stmt Stmt) FlatNodeId {
+	return b.add_stmt(stmt)
+}
+
+fn (mut b FlatBuilder) make_list_from_stmt_ids(stmt_ids []FlatNodeId) FlatNodeId {
+	if stmt_ids.len == 0 {
+		return b.get_empty_list()
+	}
+	mut edges := []FlatEdge{cap: stmt_ids.len}
+	for id in stmt_ids {
+		b.push_edge(mut edges, id)
+	}
+	return b.emit_simple(.aux_list, token.Pos{}, edges)
+}
+
 fn (mut b FlatBuilder) intern(s string) int {
 	if s.len == 0 {
 		return -1
