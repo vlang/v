@@ -525,6 +525,19 @@ pub fn (mut b FlatBuilder) emit_expr_stmt_by_id(expr_id FlatNodeId) FlatNodeId {
 	])
 }
 
+// emit_label_stmt_by_id emits a stmt_label node from an already-flat
+// FlatNodeId child stmt. Mirrors the add_stmt(LabelStmt) encoding exactly:
+// pos is the zero `token.Pos{}` the legacy add_stmt arm uses, name is
+// interned, single edge to the labelled stmt. Used by the flat-write port
+// to direct-emit the `ast.LabelStmt` wrapper.
+pub fn (mut b FlatBuilder) emit_label_stmt_by_id(name string, stmt_id FlatNodeId) FlatNodeId {
+	return b.emit(.stmt_label, token.Pos{}, b.intern(name), -1, 0, 0, [
+		FlatEdge{
+			child_id: stmt_id
+		},
+	])
+}
+
 // emit_parameter is the pub wrapper over the private add_parameter, used by
 // the flat-write port when an FnDecl's receiver is emitted directly.
 pub fn (mut b FlatBuilder) emit_parameter(param Parameter) FlatNodeId {

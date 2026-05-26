@@ -600,6 +600,35 @@ import v2.types
 //     all statement-position expressions (not just nested expressions inside
 //     already-ported ConstDecl/GlobalDecl/ReturnStmt values).
 //
+//   Session 28 (2026-05-26): LabelStmt port (stmt-level recursive descent).
+//     Second stmt-level identity-shape port after session 27 (ExprStmt).
+//     `transform_stmt`'s LabelStmt arm always returns `LabelStmt{name:
+//     stmt.name, stmt: transform_stmt(stmt.stmt)}` — `name` is verbatim,
+//     single inner stmt recursively transformed. Direct-emit recurses via
+//     `transform_stmt_to_flat` for the inner stmt (so any ported stmt arm
+//     reached inside the label — ExprStmt, ReturnStmt, ForStmt, etc. — also
+//     stays on the flat path) and assembles via the new
+//     `emit_label_stmt_by_id(name, stmt_id)` helper. Mirrors
+//     `add_stmt(LabelStmt)` encoding exactly (pos = `token.Pos{}`, interned
+//     name, single edge to inner stmt). Skips the `ast.LabelStmt` wrapper
+//     struct allocation and the `transform_stmt`/`add_stmt` match-dispatch
+//     round-trip per occurrence.
+//
+//     Reachability is limited to source-level `label: stmt` syntax
+//     (typically `outer:` before loops for labelled break/continue), but the
+//     port is clean — single child stmt and a verbatim name. No new fixture
+//     this session — existing fixtures don't exercise LabelStmt directly,
+//     but the port keeps the stmt-dispatch surface coherent. All 141
+//     transformer-diff tests continue to pass.
+//
+//     Pattern note: first stmt port that recursively enters
+//     `transform_stmt_to_flat` itself (sibling of session 27's recursion into
+//     `transform_expr_to_flat`), establishing the stmt-level recursive descent
+//     pattern. Future stmt-level identity-shape ports (BlockStmt, DeferStmt,
+//     ComptimeStmt $for branch) follow the same template — recurse via
+//     `transform_stmt_to_flat` for child stmts, then emit via a new
+//     `emit_*_by_ids` helper mirroring the matching `add_stmt` arm encoding.
+//
 // Phase 5: post-pass port.
 //   `post_pass` (runtime const init injection, helper functions, str/clone
 //   generation, ...) still mutates `[]ast.File`. Port it to either emit
@@ -771,6 +800,23 @@ pub fn (mut t Transformer) transform_stmt_to_flat(stmt ast.Stmt, mut out ast.Fla
 			}
 			fields_list_id := out.emit_aux_list_from_ids(field_ids)
 			return out.emit_global_decl_by_ids(decl_attrs_id, fields_list_id)
+		}
+		ast.LabelStmt {
+			// LabelStmt port: `transform_stmt`'s arm is identity-shape —
+			// `LabelStmt{name: stmt.name, stmt: transform_stmt(stmt.stmt)}`.
+			// `name` is copied verbatim; the inner stmt is recursively
+			// transformed. Direct-emit recurses into
+			// `transform_stmt_to_flat` for the inner stmt (so any ported
+			// stmt arm reached inside the label — ExprStmt, ReturnStmt,
+			// ForStmt, ... — also stays on the flat path) and assembles
+			// via the new `emit_label_stmt_by_id` helper. Skips the
+			// `ast.LabelStmt` wrapper struct allocation and the
+			// `transform_stmt`/`add_stmt` match-dispatch round-trip per
+			// occurrence. Reachability is limited to source-level `label:
+			// stmt` syntax (typically `outer:` before loops), but the port
+			// is clean — single child stmt and a verbatim name.
+			inner_id := t.transform_stmt_to_flat(stmt.stmt, mut out)
+			return out.emit_label_stmt_by_id(stmt.name, inner_id)
 		}
 		ast.ExprStmt {
 			// ExprStmt port: `transform_stmt`'s arm is identity-shape — it
