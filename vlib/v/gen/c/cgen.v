@@ -10955,6 +10955,17 @@ fn (mut g Gen) write_init_function() {
 		g.writeln('\tGC_set_markers_count(1);')
 	}
 
+	// Fix for vlang/v#27178: host runtimes (Rust, C#, JNI, ...) spawn their
+	// own OS threads, which must be registered with libgc before they enter
+	// V code. The per-thread step is caller-side, but the process-level
+	// enable can be done here, once GC_INIT() has already run (in main() via
+	// gen_boehm_gc_init, or in _vinit_caller via gen_shared_library_boehm_init).
+	if g.pref.gc_mode in [.boehm_full, .boehm_incr, .boehm_full_opt, .boehm_incr_opt, .boehm_leak] {
+		g.writeln('#if defined(_VGCBOEHM) && defined(GC_THREADS)')
+		g.writeln('\tGC_allow_register_threads();')
+		g.writeln('#endif')
+	}
+
 	if g.use_segfault_handler && !g.pref.is_shared {
 		if _ := g.table.fns['v_segmentation_fault_handler'] {
 			// 11 is SIGSEGV. It is hardcoded here, to avoid FreeBSD compilation errors for trivial examples.
