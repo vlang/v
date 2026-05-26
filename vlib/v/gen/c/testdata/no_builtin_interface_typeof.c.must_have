@@ -1,0 +1,3 @@
+static char * v_typeof_interface_main__Thing(u32 sidx) {
+if (sidx == _main__Thing_main__Item_index) return "Item";
+return "unknown Thing";
