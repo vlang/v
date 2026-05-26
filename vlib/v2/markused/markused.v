@@ -374,15 +374,61 @@ fn (mut w Walker) walk_stmt_cursor(c ast.Cursor, mod_name string) {
 	}
 }
 
-// walk_expr_cursor_edge decodes child edge `edge_i` of `parent` as an Expr
-// and routes it through walk_expr. A temporary bridge until walk_expr is
-// ported to cursor input.
+// walk_expr_cursor_edge dispatches child edge `edge_i` of `parent` through
+// walk_expr_cursor. Kept as a tiny helper so callers don't have to do the
+// edge-+-validity dance inline.
 fn (mut w Walker) walk_expr_cursor_edge(parent ast.Cursor, edge_i int, mod_name string) {
-	ec := parent.edge(edge_i)
-	if !ec.is_valid() {
+	w.walk_expr_cursor(parent.edge(edge_i), mod_name)
+}
+
+// walk_expr_cursor is the cursor-input analogue of walk_expr. Ported arms
+// operate directly on the FlatNode; un-ported arms decode the expr and
+// delegate to walk_expr so partial coverage stays bit-identical with the
+// legacy walker.
+//
+// Ported arms (no per-node decoding):
+//   * leaves: expr_basic_literal, expr_empty, expr_ident, typ_nil, typ_none
+//   * single-edge recursers: expr_comptime, expr_lambda, expr_modifier,
+//     expr_paren, expr_postfix, expr_prefix, expr_sql, typ_array,
+//     typ_option, typ_pointer, typ_result, typ_thread
+//   * two-edge recursers: expr_as_cast, expr_generic_arg_or_index,
+//     expr_index, expr_range, typ_array_fixed, typ_channel, typ_map
+//   * N-edge recursers: expr_keyword_operator, expr_tuple, typ_tuple
+fn (mut w Walker) walk_expr_cursor(c ast.Cursor, mod_name string) {
+	if !c.is_valid() {
 		return
 	}
-	w.walk_expr(parent.flat.decode_expr(ec.id), mod_name)
+	match c.kind() {
+		// Leaves with no children and no walker side-effects.
+		.expr_basic_literal, .expr_empty, .typ_nil, .typ_none {}
+		.expr_ident {
+			name := c.name()
+			w.mark_ierror_wrapper_dependencies(name, mod_name)
+			if !w.is_cast_type_name(name) {
+				w.mark_fn_name(name, mod_name)
+			}
+		}
+		// Single-edge recursers — child at edge 0.
+		.expr_comptime, .expr_lambda, .expr_modifier, .expr_paren, .expr_postfix, .expr_prefix,
+		.expr_sql, .typ_array, .typ_option, .typ_pointer, .typ_result, .typ_thread {
+			w.walk_expr_cursor(c.edge(0), mod_name)
+		}
+		// Two-edge recursers.
+		.expr_as_cast, .expr_generic_arg_or_index, .expr_index, .expr_range, .typ_array_fixed,
+		.typ_channel, .typ_map {
+			w.walk_expr_cursor(c.edge(0), mod_name)
+			w.walk_expr_cursor(c.edge(1), mod_name)
+		}
+		// N-edge recursers — every direct edge is an Expr to walk.
+		.expr_keyword_operator, .expr_tuple, .typ_tuple {
+			for i in 0 .. c.edge_count() {
+				w.walk_expr_cursor(c.edge(i), mod_name)
+			}
+		}
+		else {
+			w.walk_expr(c.flat.decode_expr(c.id), mod_name)
+		}
+	}
 }
 
 // walk_field_value_list iterates the aux_field_init list at `parent.edge(list_edge)`
