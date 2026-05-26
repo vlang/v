@@ -371,10 +371,13 @@ fn (mut w Walker) walk_stmt_cursor(c ast.Cursor, mod_name string) {
 				w.walk_expr_cursor(vc, mod_name)
 			}
 		}
-		else {
-			stmt := c.flat.decode_stmt(c.id)
-			w.walk_stmt(stmt, mod_name)
-		}
+		// Kinds intentionally ignored by the walker (mirror of legacy
+		// walk_stmt's `else {}`): stmt_asm, stmt_directive, stmt_empty,
+		// stmt_flow_control (break/continue/goto — common in fn bodies,
+		// hence worth avoiding a decode_stmt), stmt_fn_decl,
+		// stmt_import, stmt_interface_decl, stmt_module. The legacy
+		// walker walks none of these so neither do we.
+		else {}
 	}
 }
 
