@@ -160,6 +160,7 @@ fn assert_transform_signatures_equal(label string, a []ast.File, b []ast.File) {
 //   - init expr (struct literal w/ defaults)      → fixture_init_expr
 //   - return stmt (multi-value + sumtype wrap)     → fixture_return_stmt
 //   - ident expr (Ident in ported expr ancestors)    → fixture_ident
+//   - keyword operator (sizeof/isreftype default)     → fixture_keyword_operator
 
 // Fixtures intentionally avoid `module main`, `println`, and any builtin
 // dependency — the harness skips the .vh cache load to stay light, so the
@@ -495,6 +496,16 @@ fn use_comptime() int {
 }
 '
 
+const fixture_keyword_operator = '
+const sz_int = sizeof(int)
+const sz_bool = sizeof(bool)
+const ref_int = isreftype(int)
+
+fn use_keyword_operator() int {
+	return int(sz_int) + int(sz_bool) + int(ref_int)
+}
+'
+
 const fixture_ident = '
 const base = 7
 const neg_base = -base
@@ -601,6 +612,7 @@ fn all_transformer_fixtures() []string {
 		fixture_init_expr,
 		fixture_return_stmt,
 		fixture_ident,
+		fixture_keyword_operator,
 	]
 }
 
@@ -726,6 +738,10 @@ fn test_transform_is_deterministic_ident() {
 	run_determinism('det_ident', fixture_ident)
 }
 
+fn test_transform_is_deterministic_keyword_operator() {
+	run_determinism('det_keyword_operator', fixture_keyword_operator)
+}
+
 // --- parity: transform_files vs transform_files_from_flat ---
 //
 // The streaming-from-flat path is the seed for the upcoming
@@ -849,6 +865,10 @@ fn test_flat_parity_return_stmt() {
 
 fn test_flat_parity_ident() {
 	run_parity('parity_ident', fixture_ident)
+}
+
+fn test_flat_parity_keyword_operator() {
+	run_parity('parity_keyword_operator', fixture_keyword_operator)
 }
 
 // --- parity: check_files vs check_flat upstream ---
@@ -1007,6 +1027,10 @@ fn test_check_flat_parity_ident() {
 	run_check_flat_parity('check_flat_ident', fixture_ident)
 }
 
+fn test_check_flat_parity_keyword_operator() {
+	run_check_flat_parity('check_flat_keyword_operator', fixture_keyword_operator)
+}
+
 // --- parity: transform_files vs transform_files_to_flat ---
 //
 // transform_files_to_flat is the API wedge for the future
@@ -1147,6 +1171,10 @@ fn test_to_flat_parity_return_stmt() {
 
 fn test_to_flat_parity_ident() {
 	run_to_flat_parity('to_flat_ident', fixture_ident)
+}
+
+fn test_to_flat_parity_keyword_operator() {
+	run_to_flat_parity('to_flat_keyword_operator', fixture_keyword_operator)
 }
 
 // --- parity: per-file flat-write API vs reference rehydrate+transform+append ---
@@ -1310,6 +1338,10 @@ fn test_per_file_parity_return_stmt() {
 
 fn test_per_file_parity_ident() {
 	run_per_file_parity('per_file_ident', fixture_ident)
+}
+
+fn test_per_file_parity_keyword_operator() {
+	run_per_file_parity('per_file_keyword_operator', fixture_keyword_operator)
 }
 
 // test_all_fixtures_produce_nonempty_signature guards against silent harness

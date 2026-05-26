@@ -492,6 +492,34 @@ import v2.types
 //     state-dependent special branches via immutable lookups, direct-emit
 //     the identity path.
 //
+//   Session 24 (2026-05-26): KeywordOperator expr direct-emit + fixture.
+//     KeywordOperator covers the comptime/macro-style call shapes
+//     (`typeof(x)`, `sizeof(T)`, `isreftype(T)`, `dump(x)`, `likely(x)` /
+//     `unlikely(x)`, `offsetof(T, f)`, `go ...` / `spawn ...`). The arm
+//     in `transform_expr_to_flat` follows the session 23 (Ident) pattern:
+//     a leaf-identity default path direct-emits via
+//     `out.emit_expr(ast.Expr(expr))` and two gated state-dependent
+//     special branches fall back to the legacy round-trip:
+//       1. `key_typeof` with `exprs.len > 0` → `resolve_typeof_expr`
+//          produces a StringLiteral when the name is non-empty.
+//       2. `key_go` with `exprs.len > 0` → `lower_go_call(expr)` lowers
+//          the spawn into a CallExpr to the generated goroutine wrapper.
+//     All other ops (`sizeof`, `isreftype`, `dump`, `likely`, `unlikely`,
+//     `offsetof`, `spawn`, also `typeof` when `resolve_typeof_expr`
+//     returns empty) fall through to identity. Gate is the cheap
+//     immutable `expr.op == ...` check — no side effects, no Transformer
+//     state access. Same dispatch-skip win as session 23: skip the
+//     `transform_expr` function call + match dispatch per occurrence
+//     reached through a ported ancestor or a file-scope const value
+//     (e.g. `const sz = sizeof(int)`).
+//
+//     New `fixture_keyword_operator` covers file-scope KeywordOperators
+//     in ConstDecl values: `const sz_int = sizeof(int)`,
+//     `const sz_bool = sizeof(bool)`, `const ref_int = isreftype(int)`
+//     — all hit the default identity branch since the legacy arm only
+//     specially handles `key_typeof` and `key_go`. 136 → 141
+//     transformer-diff tests.
+//
 // Phase 5: post-pass port.
 //   `post_pass` (runtime const init injection, helper functions, str/clone
 //   generation, ...) still mutates `[]ast.File`. Port it to either emit
@@ -1066,6 +1094,33 @@ pub fn (mut t Transformer) transform_expr_to_flat(expr ast.Expr, mut out ast.Fla
 			// module-qualified enum, same-module enum) go through
 			// `out.emit_expr(...)` since their results aren't selectors.
 			return t.transform_selector_expr_to_flat(expr, mut out)
+		}
+		ast.KeywordOperator {
+			// KeywordOperator covers comptime/macro-style call shapes:
+			// `typeof(x)`, `sizeof(T)`, `isreftype(T)`, `dump(x)`,
+			// `likely(x)` / `unlikely(x)`, `offsetof(T, f)`, and `go ...` /
+			// `spawn ...`. The `transform_expr` arm has two rewrite
+			// branches:
+			//   1. `key_typeof` with `exprs.len > 0` → resolves the type
+			//      name via `resolve_typeof_expr` and produces a
+			//      StringLiteral when the name is non-empty (different
+			//      shape).
+			//   2. `key_go` with `exprs.len > 0` → `lower_go_call(expr)`
+			//      lowers the spawn into a CallExpr to the generated
+			//      goroutine wrapper (different shape).
+			// Both fall back to the legacy round-trip. All other ops
+			// (`sizeof`, `isreftype`, `dump`, `likely`, `unlikely`,
+			// `offsetof`, `spawn`, also `typeof` when `resolve_typeof_expr`
+			// returns empty) fall through to the default
+			// `ast.Expr(expr)` identity path — direct-emit via the leaf
+			// `out.emit_expr(ast.Expr(expr))`, skipping the
+			// `transform_expr` dispatch call. Matches the Ident-port
+			// pattern (session 23): leaf-identity default, gated
+			// state-dependent special branches.
+			if (expr.op == .key_typeof || expr.op == .key_go) && expr.exprs.len > 0 {
+				return out.emit_expr(t.transform_expr(expr))
+			}
+			return out.emit_expr(ast.Expr(expr))
 		}
 		ast.Ident {
 			// Ident has two state-dependent rewrite branches in
