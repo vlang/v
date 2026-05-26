@@ -45,6 +45,7 @@ mut:
 	v_fn_return_types         map[string]string
 	runtime_local_types       map[string]string
 	runtime_decl_types        map[string]string
+	runtime_fn_pointer_types  map[string]types.Type
 	cur_fn_returned_idents    map[string]bool
 	active_generic_types      map[string]types.Type
 	cur_fn_generic_params     map[string]string
@@ -147,6 +148,7 @@ mut:
 	should_emit_fn_decl_cache  map[string]bool
 	generic_body_scan_cache    map[string]bool
 	collect_generic_scan_calls bool
+	generic_call_spec_scan_only bool
 	generic_scan_called_names  map[string]bool
 	generic_spec_index         map[string][]string                // fn_name → matching keys in env.generic_types
 	generic_fn_decl_index      map[string]GenericFnDeclInfo       // generic fn C/base name → source location
@@ -327,6 +329,9 @@ fn (mut g Gen) get_v_hash() string {
 }
 
 fn stmt_has_valid_data(stmt ast.Stmt) bool {
+	if stmt is ast.ReturnStmt {
+		return true
+	}
 	return unsafe { (&u64(&stmt))[1] } != 0
 }
 
@@ -385,6 +390,7 @@ fn new_gen_with_env_and_pref_impl(env &types.Environment, p &pref.Preferences) &
 		v_fn_return_types:         map[string]string{}
 		runtime_local_types:       map[string]string{}
 		runtime_decl_types:        map[string]string{}
+		runtime_fn_pointer_types:  map[string]types.Type{}
 		cur_fn_returned_idents:    map[string]bool{}
 		active_generic_types:      map[string]types.Type{}
 		cur_fn_generic_params:     map[string]string{}
@@ -1662,6 +1668,7 @@ pub fn (mut g Gen) gen_pass5_pre() []int {
 
 // gen_pass5_post runs post-Pass-5 finalization (interface wrappers, live reload, map helpers).
 pub fn (mut g Gen) gen_pass5_post() {
+	g.emit_late_called_generic_specializations()
 	g.emit_forced_helpers_from_non_emit_files()
 	g.emit_weak_generic_specializations_from_non_emit_files()
 	g.emit_needed_ierror_wrappers()
@@ -1674,6 +1681,66 @@ pub fn (mut g Gen) gen_pass5_post() {
 		g.emit_map_str_functions()
 		g.emit_map_eq_functions()
 	}
+}
+
+fn (mut g Gen) emit_late_called_generic_specializations() {
+	if g.called_fn_names.len == 0 || g.late_generic_spec_count() == 0 {
+		return
+	}
+	old_file := g.cur_file_name
+	old_module := g.cur_module
+	old_import_modules := g.cur_import_modules.clone()
+	old_active_generic_types := g.active_generic_types.clone()
+	old_sb := g.sb
+	mut emitted_any := true
+	for emitted_any {
+		emitted_any = false
+		for file in g.files {
+			g.set_file_module(file)
+			if !g.should_emit_current_file() {
+				continue
+			}
+			for i := 0; i < file.stmts.len; i++ {
+				stmt_ptr := unsafe { &file.stmts[i] }
+				if !stmt_has_valid_data(*stmt_ptr) || (*stmt_ptr) !is ast.FnDecl {
+					continue
+				}
+				fn_decl_ptr := &((*stmt_ptr) as ast.FnDecl)
+				if g.generic_fn_param_names(*fn_decl_ptr).len == 0 {
+					continue
+				}
+				if receiver_generic_param_names(*fn_decl_ptr).len > 0 {
+					continue
+				}
+				for spec in g.late_generic_fn_specializations(*fn_decl_ptr) {
+					if spec.name !in g.called_fn_names {
+						continue
+					}
+					fn_key := 'fn_${spec.name}'
+					if fn_key in g.emitted_types {
+						continue
+					}
+					g.active_generic_types = spec.generic_types.clone()
+					mut tmp_sb := strings.new_builder(1024)
+					g.sb = tmp_sb
+					g.gen_fn_decl_with_name_ptr(fn_decl_ptr, spec.name)
+					tmp_sb = g.sb
+					g.sb = old_sb
+					g.active_generic_types = old_active_generic_types.clone()
+					def := tmp_sb.str()
+					if def != '' {
+						g.late_struct_defs << def
+						emitted_any = true
+					}
+				}
+			}
+		}
+	}
+	g.sb = old_sb
+	g.cur_file_name = old_file
+	g.cur_module = old_module
+	g.cur_import_modules = old_import_modules.clone()
+	g.active_generic_types = old_active_generic_types.clone()
 }
 
 fn (mut g Gen) emit_forced_helpers_from_non_emit_files() {
@@ -1989,6 +2056,7 @@ fn (mut g Gen) late_generic_fn_specializations(node ast.FnDecl) []GenericFnSpeci
 		}
 		for generic_types in g.late_generic_specs[key] {
 			mut skip_spec := false
+			mut runtime_specializable := true
 			mut normalized_generic_types := generic_types.clone()
 			for param_name in generic_params {
 				concrete0 := generic_types[param_name] or {
@@ -1999,9 +2067,12 @@ fn (mut g Gen) late_generic_fn_specializations(node ast.FnDecl) []GenericFnSpeci
 				normalized_generic_types[param_name] = concrete
 				if concrete.name() == 'void' || concrete.name() == param_name
 					|| type_contains_generic_placeholder(concrete)
-					|| !g.generic_concrete_type_is_runtime_specializable(concrete) {
+					|| !generic_concrete_type_is_runtime_specializable(concrete) {
 					skip_spec = true
 					break
+				}
+				if !g.generic_concrete_type_is_runtime_specializable(concrete) {
+					runtime_specializable = false
 				}
 			}
 			if skip_spec
@@ -2010,6 +2081,9 @@ fn (mut g Gen) late_generic_fn_specializations(node ast.FnDecl) []GenericFnSpeci
 			}
 			spec_name := g.specialized_fn_name(node, normalized_generic_types)
 			if spec_name == '' || spec_name in seen {
+				continue
+			}
+			if !runtime_specializable && spec_name !in g.called_fn_names {
 				continue
 			}
 			seen[spec_name] = true
@@ -2576,6 +2650,7 @@ pub fn (g &Gen) new_pass5_worker(file_indices []int, worker_id int) &Gen {
 		blocked_fn_keys:             blocked_fn_keys
 		runtime_local_types:         map[string]string{}
 		runtime_decl_types:          map[string]string{}
+		runtime_fn_pointer_types:    map[string]types.Type{}
 		cur_fn_returned_idents:      map[string]bool{}
 		active_generic_types:        map[string]types.Type{}
 		cur_fn_generic_params:       map[string]string{}

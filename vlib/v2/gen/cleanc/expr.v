@@ -432,8 +432,25 @@ fn (mut g Gen) raw_concrete_type_for_interface_value(type_name string, value_exp
 		return g.raw_concrete_type_for_interface_value(type_name, value_expr.expr)
 	}
 	mut concrete_type := g.get_expr_type(value_expr)
-	if (concrete_type == '' || concrete_type == 'int') && value_expr is ast.Ident {
-		concrete_type = g.get_local_var_c_type(value_expr.name) or { concrete_type }
+	if value_expr is ast.PrefixExpr && value_expr.op == .amp && value_expr.expr is ast.Ident {
+		inner := value_expr.expr as ast.Ident
+		if local_type := g.get_local_var_c_type(inner.name) {
+			local_base := local_type.trim_right('*')
+			if local_type != '' && local_type != 'int' && !g.is_interface_type(local_base) {
+				concrete_type = '${local_type}*'
+			}
+		}
+	}
+	if value_expr is ast.Ident {
+		if local_type := g.get_local_var_c_type(value_expr.name) {
+			local_base := local_type.trim_right('*')
+			current_base := concrete_type.trim_right('*')
+			if local_type != '' && local_type != 'int' && !g.is_interface_type(local_base)
+				&& (concrete_type == '' || concrete_type == 'int' || current_base == type_name
+				|| local_type.contains('_T_')) {
+				concrete_type = local_type
+			}
+		}
 	}
 	mut raw_concrete := ''
 	if raw := g.get_raw_type(value_expr) {
@@ -1526,22 +1543,12 @@ fn (mut g Gen) gen_infix_expr(node &ast.InfixExpr) {
 				g.sb.write_string('({ ${arr_rhs_type} ${rhs_tmp} = ')
 				g.expr(node.rhs)
 				g.sb.write_string('; array__push_many((array*)')
-				if g.expr_is_pointer(node.lhs) {
-					g.expr(node.lhs)
-				} else {
-					g.sb.write_string('&')
-					g.expr(node.lhs)
-				}
+				g.gen_array_append_target(node.lhs)
 				g.sb.write_string(', ${rhs_tmp}.data, ${rhs_tmp}.len); })')
 				return
 			}
 			g.sb.write_string('array__push((array*)')
-			if g.expr_is_pointer(node.lhs) {
-				g.expr(node.lhs)
-			} else {
-				g.sb.write_string('&')
-				g.expr(node.lhs)
-			}
+			g.gen_array_append_target(node.lhs)
 			g.sb.write_string(', ')
 			if elem_type == 'string' {
 				g.sb.write_string('&(string[1]){ string__clone(')
@@ -3040,13 +3047,22 @@ fn (mut g Gen) expr(node ast.Expr) {
 			g.gen_if_expr_value(&node)
 		}
 		ast.PostfixExpr {
-			g.expr(node.expr)
 			op := match node.op {
 				.inc { '++' }
 				.dec { '--' }
 				else { '' }
 			}
-
+			if node.expr is ast.Ident && node.expr.name in g.cur_fn_mut_params {
+				local_type := (g.get_local_var_c_type(node.expr.name) or { '' }).trim_space()
+				if local_type.ends_with('*') {
+					g.sb.write_string('(*')
+					g.expr(node.expr)
+					g.sb.write_string(')')
+					g.sb.write_string(op)
+					return
+				}
+			}
+			g.expr(node.expr)
 			g.sb.write_string(op)
 		}
 		ast.ModifierExpr {
@@ -3414,8 +3430,21 @@ fn (mut g Gen) gen_index_expr_value(expr ast.Expr) {
 }
 
 fn (mut g Gen) gen_stmts_from_expr(e ast.Expr) {
-	if e is ast.IfExpr {
-		g.gen_stmts(e.stmts)
+	match e {
+		ast.IfExpr {
+			g.gen_if_expr_stmt(&e)
+		}
+		ast.UnsafeExpr {
+			for stmt in e.stmts {
+				g.gen_stmt(stmt)
+			}
+		}
+		ast.EmptyExpr {}
+		else {
+			g.write_indent()
+			g.expr(e)
+			g.sb.writeln(';')
+		}
 	}
 }
 
@@ -4328,7 +4357,14 @@ fn (mut g Gen) gen_index_expr(node ast.IndexExpr) {
 		}
 		if raw_type is types.Array {
 			// Dynamic arrays: ((elem_type*)arr.data)[idx]
-			elem_type := g.types_type_to_c(raw_type.elem_type)
+			mut elem_type := g.types_type_to_c(raw_type.elem_type)
+			if node.lhs is ast.ArrayInitExpr {
+				value_elem := g.infer_array_init_value_elem_type(node.lhs)
+				specialized := specialized_generic_elem_type_from_value(elem_type, value_elem)
+				if specialized != '' {
+					elem_type = specialized
+				}
+			}
 			g.sb.write_string('((${elem_type}*)')
 			g.expr(node.lhs)
 			g.sb.write_string('.data)[')
@@ -4339,7 +4375,15 @@ fn (mut g Gen) gen_index_expr(node ast.IndexExpr) {
 		if raw_type is types.Alias {
 			match raw_type.base_type {
 				types.Array {
-					elem_type := g.types_type_to_c(raw_type.base_type.elem_type)
+					mut elem_type := g.types_type_to_c(raw_type.base_type.elem_type)
+					if node.lhs is ast.ArrayInitExpr {
+						value_elem := g.infer_array_init_value_elem_type(node.lhs)
+						specialized := specialized_generic_elem_type_from_value(elem_type,
+							value_elem)
+						if specialized != '' {
+							elem_type = specialized
+						}
+					}
 					g.sb.write_string('((${elem_type}*)')
 					g.expr(node.lhs)
 					g.sb.write_string('.data)[')
@@ -5091,6 +5135,91 @@ fn (g &Gen) comptime_matches_type_name(typ types.Type, name string) bool {
 	c_name := g.types_type_to_c(typ)
 	if c_name == name {
 		return true
+	}
+	if g.comptime_type_implements_interface(typ, name) {
+		return true
+	}
+	return false
+}
+
+fn comptime_type_name_short(name string) string {
+	dot_short := name.all_after_last('.')
+	return dot_short.all_after_last('__')
+}
+
+fn comptime_type_name_matches(candidate string, target string) bool {
+	if candidate == target {
+		return true
+	}
+	if candidate.replace('.', '__') == target.replace('.', '__') {
+		return true
+	}
+	return comptime_type_name_short(candidate) == comptime_type_name_short(target)
+}
+
+fn (g &Gen) comptime_struct_for_type(typ types.Type) ?types.Struct {
+	if typ is types.Struct {
+		if typ.implements.len > 0 || typ.fields.len > 0 {
+			return typ
+		}
+	}
+	type_name := typ.name()
+	mut candidates := []string{}
+	if type_name != '' {
+		candidates << type_name
+		candidates << type_name.replace('__', '.')
+		candidates << type_name.all_after_last('__')
+		candidates << type_name.all_after_last('.')
+	}
+	c_name := g.types_type_to_c(typ).trim_space().trim_right('*')
+	if c_name != '' {
+		candidates << c_name
+		candidates << c_name.replace('__', '.')
+		candidates << c_name.all_after_last('__')
+	}
+	for candidate in candidates {
+		mut mod_name := ''
+		mut short_name := candidate
+		if candidate.contains('.') {
+			mod_name = candidate.all_before_last('.')
+			short_name = candidate.all_after_last('.')
+		} else if candidate.contains('__') {
+			mod_name = candidate.all_before_last('__').replace('__', '.')
+			short_name = candidate.all_after_last('__')
+		}
+		if mod_name != '' {
+			if scope := g.env_scope(mod_name) {
+				if resolved := scope.lookup_type_parent(short_name, 0) {
+					if resolved is types.Struct {
+						return resolved
+					}
+				}
+			}
+		}
+		if scope := g.env_scope(g.cur_module) {
+			if resolved := scope.lookup_type_parent(short_name, 0) {
+				if resolved is types.Struct {
+					return resolved
+				}
+			}
+		}
+	}
+	return none
+}
+
+fn (g &Gen) comptime_type_implements_interface(typ types.Type, interface_name string) bool {
+	st := g.comptime_struct_for_type(typ) or { return false }
+	for impl_name in st.implements {
+		if comptime_type_name_matches(impl_name, interface_name) {
+			return true
+		}
+		if interface_name.contains('__') || interface_name.contains('.') {
+			continue
+		}
+		if g.cur_module != '' && g.cur_module != 'main'
+			&& comptime_type_name_matches(impl_name, '${g.cur_module}.${interface_name}') {
+			return true
+		}
 	}
 	return false
 }

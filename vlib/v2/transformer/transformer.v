@@ -1454,7 +1454,7 @@ pub fn (mut t Transformer) post_pass(mut result []ast.File) {
 	//    program reuses the same cache.
 	mut generated_fns := []ast.Stmt{}
 	if t.needed_str_fns.len > 0 {
-		generated_fns << t.generate_str_functions()
+		generated_fns << t.generate_str_functions(result)
 	}
 	if t.needed_clone_fns.len > 0 {
 		generated_fns << t.generate_clone_functions()
@@ -4330,9 +4330,17 @@ fn (mut t Transformer) try_expand_or_expr_assign_stmts(stmt &ast.AssignStmt) ?[]
 	// Check if RHS contains an OrExpr (nested case like cast(OrExpr))
 	if t.expr_has_or_expr(rhs_expr) {
 		mut prefix_stmts := []ast.Stmt{}
-		new_rhs := t.extract_or_expr(rhs_expr, mut prefix_stmts)
+		mut new_rhs := t.extract_or_expr(rhs_expr, mut prefix_stmts)
 		if prefix_stmts.len == 0 {
 			return none
+		}
+		if new_rhs is ast.EmptyExpr {
+			payload_type := t.or_assign_expected_payload_type(stmt, rhs_expr) or {
+				types.Type(types.voidptr_)
+			}
+			if payload_expr := t.or_payload_expr_from_prefix_stmts(prefix_stmts, payload_type) {
+				new_rhs = payload_expr
+			}
 		}
 		// Add the final assignment with the extracted expression.
 		// Run through transform_stmt to handle map index assignment lowering (map__set),
@@ -4381,6 +4389,42 @@ fn (mut t Transformer) try_expand_or_expr_assign_stmts(stmt &ast.AssignStmt) ?[]
 		}
 		prefix_stmts << t.transform_stmt(final_assign)
 		return prefix_stmts
+	}
+	return none
+}
+
+fn transformer_or_payload_type_is_value(typ types.Type) bool {
+	if typ.name() == 'void' {
+		return false
+	}
+	return typ !is types.ResultType && typ !is types.OptionType
+}
+
+fn (t &Transformer) or_assign_expected_payload_type(stmt &ast.AssignStmt, rhs_expr ast.Expr) ?types.Type {
+	if typ := t.get_expr_type(rhs_expr) {
+		if transformer_or_payload_type_is_value(typ) {
+			return typ
+		}
+	}
+	if stmt.lhs.len == 1 {
+		if typ := t.get_expr_type(stmt.lhs[0]) {
+			if transformer_or_payload_type_is_value(typ) {
+				return typ
+			}
+		}
+	}
+	return none
+}
+
+fn (mut t Transformer) or_payload_expr_from_prefix_stmts(prefix_stmts []ast.Stmt, payload_type types.Type) ?ast.Expr {
+	for offset in 0 .. prefix_stmts.len {
+		stmt := prefix_stmts[prefix_stmts.len - 1 - offset]
+		if stmt is ast.AssignStmt && stmt.op == .decl_assign && stmt.lhs.len == 1 {
+			lhs := stmt.lhs[0]
+			if lhs is ast.Ident && lhs.name.starts_with('_or_t') {
+				return t.synth_selector(ast.Expr(lhs), 'data', payload_type)
+			}
+		}
 	}
 	return none
 }
@@ -6897,7 +6941,7 @@ fn (mut t Transformer) expand_single_or_expr(or_expr ast.OrExpr, mut prefix_stmt
 			is_result = true
 			is_option = false
 		}
-		if base_type == '' {
+		if base_type == '' || base_type == 'void' {
 			if wrapper_type is types.ResultType {
 				base_type = wrapper_type.base_type.name()
 			} else if wrapper_type is types.OptionType {
@@ -6915,7 +6959,7 @@ fn (mut t Transformer) expand_single_or_expr(or_expr ast.OrExpr, mut prefix_stmt
 				is_result = true
 				is_option = false
 			}
-			if base_type == '' {
+			if base_type == '' || base_type == 'void' {
 				if call_type is types.ResultType {
 					base_type = call_type.base_type.name()
 				} else if call_type is types.OptionType {
@@ -6932,7 +6976,7 @@ fn (mut t Transformer) expand_single_or_expr(or_expr ast.OrExpr, mut prefix_stmt
 					is_result = true
 					is_option = false
 				}
-				if base_type == '' {
+				if base_type == '' || base_type == 'void' {
 					if ret_type is types.ResultType {
 						base_type = ret_type.base_type.name()
 					} else if ret_type is types.OptionType {
@@ -6951,7 +6995,7 @@ fn (mut t Transformer) expand_single_or_expr(or_expr ast.OrExpr, mut prefix_stmt
 						is_result = true
 						is_option = false
 					}
-					if base_type == '' {
+					if base_type == '' || base_type == 'void' {
 						if fn_ret is types.ResultType {
 							base_type = fn_ret.base_type.name()
 						} else if fn_ret is types.OptionType {
@@ -6976,7 +7020,7 @@ fn (mut t Transformer) expand_single_or_expr(or_expr ast.OrExpr, mut prefix_stmt
 				is_result = true
 				is_option = false
 			}
-			if base_type == '' {
+			if base_type == '' || base_type == 'void' {
 				if ret_type is types.ResultType {
 					base_type = ret_type.base_type.name()
 				} else if ret_type is types.OptionType {
@@ -12377,10 +12421,13 @@ fn (mut t Transformer) generate_clone_functions() []ast.Stmt {
 	mut generated := map[string]bool{}
 	for {
 		mut found_new := false
-		for fn_name, struct_name in t.needed_clone_fns {
+		mut fn_names := t.needed_clone_fns.keys()
+		fn_names.sort()
+		for fn_name in fn_names {
 			if fn_name in generated {
 				continue
 			}
+			struct_name := t.needed_clone_fns[fn_name] or { continue }
 			generated[fn_name] = true
 			found_new = true
 			if typ := t.lookup_struct_type_any_module(struct_name) {
@@ -12420,8 +12467,29 @@ fn (mut t Transformer) generate_clone_functions() []ast.Stmt {
 	return result
 }
 
-fn (mut t Transformer) generate_str_functions() []ast.Stmt {
+fn (t &Transformer) explicit_str_method_fn_names(files []ast.File) map[string]bool {
+	mut names := map[string]bool{}
+	for file in files {
+		for stmt in file.stmts {
+			if stmt is ast.FnDecl && stmt.is_method && stmt.name == 'str' {
+				mut recv_name := t.get_receiver_type_name(stmt.receiver.typ)
+				if recv_name == '' {
+					continue
+				}
+				if file.mod != '' && file.mod != 'main' && file.mod != 'builtin'
+					&& !recv_name.contains('__') {
+					recv_name = '${file.mod.replace('.', '__')}__${recv_name}'
+				}
+				names['${recv_name}__str'] = true
+			}
+		}
+	}
+	return names
+}
+
+fn (mut t Transformer) generate_str_functions(files []ast.File) []ast.Stmt {
 	mut result := []ast.Stmt{cap: t.needed_str_fns.len}
+	explicit_str_fns := t.explicit_str_method_fn_names(files)
 	// Use worklist to handle recursive str function registration
 	// (e.g., Array_Array_int_str adds Array_int_str during generation)
 	mut generated := map[string]bool{}
@@ -12449,6 +12517,10 @@ fn (mut t Transformer) generate_str_functions() []ast.Stmt {
 			} else if fn_name.ends_with('__str') {
 				// Generate str function for struct or enum
 				struct_name := fn_name[..fn_name.len - '__str'.len]
+				if fn_name in explicit_str_fns {
+					generated[fn_name] = true
+					continue
+				}
 				// Skip primitive/builtin types that already have real str implementations
 				if struct_name in ['int', 'i8', 'i16', 'i32', 'i64', 'u8', 'u16', 'u32', 'u64',
 					'f32', 'f64', 'bool', 'string', 'rune', 'voidptr', 'byteptr', 'charptr', 'byte',

@@ -1380,6 +1380,24 @@ fn main() {
 	assert !csrc.contains('_capture_0 = &dst;')
 }
 
+fn test_generate_c_fn_literal_capture_preserves_fn_pointer_return_type() {
+	csrc := generate_c_for_test('
+fn visit(cb fn (int) bool) bool {
+	return cb(1)
+}
+
+fn outer(matched fn (int) bool) bool {
+	return visit(fn [matched] (n int) bool {
+		return matched(n)
+	})
+}
+')
+	assert csrc.contains('static bool (*_anon_fn_')
+	assert csrc.contains('bool (*matched)(int) = _anon_fn_')
+	assert csrc.contains('return matched(n);')
+	assert !csrc.contains('((void (*)(int))matched)(n)')
+}
+
 fn test_generate_c_rewrites_continue_in_generic_comptime_field_loop() {
 	code := [
 		'struct Schema {',
@@ -2844,6 +2862,38 @@ fn test_generate_c_uses_specialized_receiver_for_generic_method_body_call() {
 		}),
 	])
 	assert gen.sb.str() == 'Box_T_f64__get_value(b)'
+}
+
+fn test_generate_c_uses_specialized_receiver_for_lowered_address_method_call() {
+	mut gen := Gen{
+		sb:                  strings.new_builder(64)
+		fn_return_types:     {
+			'Box__get_value':       'f64'
+			'Box_T_f64__get_value': 'f64'
+		}
+		fn_param_is_ptr:     {
+			'Box__get_value':       [true]
+			'Box_T_f64__get_value': [true]
+		}
+		fn_param_types:      {
+			'Box__get_value':       ['Box*']
+			'Box_T_f64__get_value': ['Box_T_f64*']
+		}
+		runtime_local_types: {
+			'b': 'Box_T_f64'
+		}
+	}
+	gen.call_expr(ast.Ident{
+		name: 'Box__get_value'
+	}, [
+		ast.Expr(ast.PrefixExpr{
+			op:   token.Token.amp
+			expr: ast.Ident{
+				name: 'b'
+			}
+		}),
+	])
+	assert gen.sb.str() == 'Box_T_f64__get_value(&b)'
 }
 
 fn test_generate_c_emits_nested_generic_result_struct_specialization() {

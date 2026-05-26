@@ -28,6 +28,19 @@ fn c_type_is_array_value(typ string) bool {
 	return base == 'array' || base.starts_with('Array_')
 }
 
+fn specialized_generic_elem_type_from_value(declared_elem string, value_elem string) string {
+	declared := unmangle_c_ptr_type(declared_elem.trim_space())
+	inferred := unmangle_c_ptr_type(value_elem.trim_space())
+	if declared == '' || inferred == '' || !inferred.contains('_T_') {
+		return ''
+	}
+	base := inferred.all_before('_T_')
+	if declared == base || short_type_name(declared) == short_type_name(base) {
+		return inferred
+	}
+	return ''
+}
+
 fn (mut g Gen) selector_array_value_type(sel ast.SelectorExpr) string {
 	mut field_type := g.selector_declared_field_type(sel)
 	if !c_type_is_array_value(field_type) {
@@ -374,6 +387,40 @@ fn (mut g Gen) array_append_elem_type(lhs ast.Expr, rhs ast.Expr) (bool, string)
 	return true, unmangle_c_ptr_type(elem_type)
 }
 
+fn (mut g Gen) array_append_lhs_is_pointer(lhs ast.Expr) bool {
+	unwrapped := strip_expr_wrappers(lhs)
+	if unwrapped is ast.Ident {
+		if unwrapped.name in g.cur_fn_mut_params {
+			return true
+		}
+		if local_type := g.get_local_var_c_type(unwrapped.name) {
+			local_type_clean := local_type.trim_space()
+			return local_type_clean.ends_with('*')
+				|| local_type_clean in ['voidptr', 'charptr', 'byteptr', 'chan']
+		}
+	}
+	return g.expr_is_pointer(lhs)
+}
+
+fn (mut g Gen) gen_array_append_target(lhs ast.Expr) {
+	unwrapped := strip_expr_wrappers(lhs)
+	if unwrapped is ast.PrefixExpr && unwrapped.op == .amp {
+		inner := strip_expr_wrappers(unwrapped.expr)
+		if g.array_append_lhs_is_pointer(inner) {
+			g.expr(inner)
+			return
+		}
+		g.expr(lhs)
+		return
+	}
+	if g.array_append_lhs_is_pointer(lhs) {
+		g.expr(lhs)
+	} else {
+		g.sb.write_string('&')
+		g.expr(lhs)
+	}
+}
+
 fn (mut g Gen) map_index_key_value_types(node ast.IndexExpr) (bool, string, string, bool) {
 	mut key_type := ''
 	mut value_type := ''
@@ -645,6 +692,10 @@ fn (mut g Gen) infer_array_elem_type_from_expr(arr_expr ast.Expr) string {
 	if arr_expr is ast.ArrayInitExpr {
 		elem_type := g.extract_array_elem_type(arr_expr.typ)
 		value_elem_type := g.infer_array_init_value_elem_type(arr_expr)
+		specialized := specialized_generic_elem_type_from_value(elem_type, value_elem_type)
+		if specialized != '' {
+			return specialized
+		}
 		if (elem_type == '' || elem_type == 'int') && value_elem_type != ''
 			&& value_elem_type != 'int' {
 			return value_elem_type
@@ -669,6 +720,13 @@ fn (mut g Gen) infer_array_elem_type_from_expr(arr_expr ast.Expr) string {
 				if sizeof_arg is ast.KeywordOperator && sizeof_arg.op == .key_sizeof
 					&& sizeof_arg.exprs.len > 0 {
 					t := g.expr_type_to_c(sizeof_arg.exprs[0])
+					if arr_expr.args.len > 3 {
+						data_elem := g.infer_array_elem_type_from_expr(arr_expr.args[3])
+						specialized := specialized_generic_elem_type_from_value(t, data_elem)
+						if specialized != '' {
+							return specialized
+						}
+					}
 					if t != '' && t != 'int' {
 						return t
 					}
@@ -693,6 +751,13 @@ fn (mut g Gen) infer_array_elem_type_from_expr(arr_expr ast.Expr) string {
 			if fn_name in ['array__slice', 'array__slice_ni']
 				|| (fn_name.starts_with('Array_') && (fn_name.ends_with('__slice')
 				|| fn_name.ends_with('__slice_ni'))) {
+				if arr_expr.args.len > 0 {
+					return g.infer_array_elem_type_from_expr(arr_expr.args[0])
+				}
+			}
+			if fn_name in ['array__clone', 'array__clone_to_depth']
+				|| (fn_name.starts_with('Array_') && (fn_name.ends_with('__clone')
+				|| fn_name.ends_with('__clone_to_depth'))) {
 				if arr_expr.args.len > 0 {
 					return g.infer_array_elem_type_from_expr(arr_expr.args[0])
 				}
@@ -892,6 +957,13 @@ fn (mut g Gen) gen_array_init_expr(node ast.ArrayInitExpr) {
 	// Fallback: if dynamic array but elem type couldn't be extracted from type annotation,
 	// infer from the first expression (e.g., for [][2]int where inner [2]int has type info)
 	mut final_elem := elem_type
+	if is_dyn && node.exprs.len > 0 {
+		inferred := g.infer_array_init_value_elem_type(node)
+		specialized := specialized_generic_elem_type_from_value(final_elem, inferred)
+		if specialized != '' {
+			final_elem = specialized
+		}
+	}
 	if (final_elem == '' || final_elem == 'int') && is_dyn && node.exprs.len > 0 {
 		inferred := g.infer_array_init_value_elem_type(node)
 		if inferred != '' && inferred != 'array' && inferred != 'int' {

@@ -421,6 +421,9 @@ fn unmangle_c_ptr_type(name string) string {
 	if name == 'byteptr' {
 		return 'u8*'
 	}
+	if name.contains('_T_') {
+		return name
+	}
 	if name.len > 3 && name.ends_with('ptr') {
 		// Don't unmangle composite type names - they are typedef'd aliases
 		if name.starts_with('Array_') || name.starts_with('Map_') || name.starts_with('Tuple_')
@@ -842,13 +845,37 @@ fn is_generic_placeholder_type_name(name string) bool {
 }
 
 fn (g &Gen) qualify_module_local_type_name(type_name string) string {
-	if type_name == '' || type_name.contains('__') || g.cur_module == '' || g.cur_module == 'main'
-		|| g.cur_module == 'builtin' {
+	mut mod_name := g.cur_module
+	if (mod_name == '' || mod_name == 'main') && g.cur_fn_c_name.contains('__') {
+		mod_name = g.cur_fn_c_name.all_before('__')
+	}
+	if type_name == '' || type_name.contains('__') || type_name.starts_with('Array_')
+		|| type_name.starts_with('Map_') || type_name.starts_with('_option_')
+		|| type_name.starts_with('_result_') || type_name in g.c_struct_types
+		|| type_name in g.typedef_c_types || is_known_external_c_type_name(type_name)
+		|| mod_name == '' || mod_name == 'main' || mod_name == 'builtin' {
 		return type_name
 	}
-	qualified := '${g.cur_module}__${type_name}'
+	qualified := '${mod_name}__${type_name}'
 	if 'body_${qualified}' in g.emitted_types || 'enum_${qualified}' in g.emitted_types
 		|| 'alias_${qualified}' in g.emitted_types || '${qualified}__msg' in g.fn_return_types {
+		return qualified
+	}
+	if 'body_${qualified}' in g.pending_late_body_keys {
+		return qualified
+	}
+	if mut module_scope := g.env_scope(mod_name) {
+		if _ := module_scope.lookup_type(type_name) {
+			return qualified
+		}
+	}
+	if obj := g.lookup_module_scope_object(type_name) {
+		if obj is types.Type {
+			return qualified
+		}
+	}
+	if g.cur_fn_c_name.contains('__') && !type_name.contains(' ')
+		&& !type_name.starts_with('struct ') {
 		return qualified
 	}
 	return type_name
@@ -911,6 +938,12 @@ fn (g &Gen) option_result_payload_ready(val_type string) bool {
 	if payload_type.starts_with('struct ') {
 		return true
 	}
+	if val_type.starts_with('_option_') {
+		return val_type in g.emitted_option_structs
+	}
+	if val_type.starts_with('_result_') {
+		return val_type in g.emitted_result_structs
+	}
 	if val_type in primitive_types || val_type in ['bool', 'char', 'void*', 'u8*', 'char*'] {
 		return true
 	}
@@ -969,6 +1002,9 @@ fn (mut g Gen) register_alias_type(name string) {
 		if g.option_result_payload_invalid(val_type) {
 			return
 		}
+		if val_type.starts_with('_option_') || val_type.starts_with('_result_') {
+			g.register_alias_type(val_type)
+		}
 		g.result_aliases[name] = true
 		// Also register the payload type as an array/map alias if applicable.
 		if val_type.starts_with('Array_') {
@@ -982,6 +1018,9 @@ fn (mut g Gen) register_alias_type(name string) {
 		val_type := option_value_type(name)
 		if g.option_result_payload_invalid(val_type) {
 			return
+		}
+		if val_type.starts_with('_option_') || val_type.starts_with('_result_') {
+			g.register_alias_type(val_type)
 		}
 		g.option_aliases[name] = true
 		if val_type.starts_with('Array_') {
@@ -1694,7 +1733,7 @@ fn (g &Gen) struct_has_ref_fields(s types.Struct) bool {
 
 fn (g &Gen) type_has_ref_fields(t types.Type, mut seen map[string]bool) bool {
 	match t {
-		types.String, types.Array, types.Map {
+		types.String, types.Array, types.Map, types.OptionType {
 			return true
 		}
 		types.Struct {
@@ -1741,6 +1780,20 @@ fn (mut g Gen) gen_type_field_eq_expr(t types.Type, c_type string, lhs string, r
 				return '${map_type}_map_eq(${lhs}, ${rhs})'
 			}
 			return 'map_map_eq(${lhs}, ${rhs})'
+		}
+		types.OptionType {
+			option_c_type := if c_type != '' { c_type } else { g.types_type_to_c(t) }
+			mut value_c_type := option_value_type(option_c_type)
+			if value_c_type == '' {
+				value_c_type = g.types_type_to_c(t.base_type)
+			}
+			if value_c_type == '' || value_c_type == 'void' {
+				return '${lhs}.state == ${rhs}.state'
+			}
+			lpayload := '(*(${value_c_type}*)(((u8*)(&${lhs}.err)) + sizeof(IError)))'
+			rpayload := '(*(${value_c_type}*)(((u8*)(&${rhs}.err)) + sizeof(IError)))'
+			payload_eq := g.gen_type_field_eq_expr(t.base_type, value_c_type, lpayload, rpayload)
+			return '(${lhs}.state == ${rhs}.state && (${lhs}.state != 0 || ${payload_eq}))'
 		}
 		types.Struct {
 			field_c_type := if c_type != '' { c_type } else { g.types_type_to_c(t) }
@@ -1794,6 +1847,10 @@ fn (mut g Gen) gen_struct_field_eq_expr(s types.Struct, va string, vb string) st
 }
 
 fn (mut g Gen) method_receiver_base_type(expr ast.Expr) string {
+	unwrapped_expr := strip_expr_wrappers(expr)
+	if unwrapped_expr is ast.PrefixExpr && unwrapped_expr.op in [.amp, .mul] {
+		return g.method_receiver_base_type(unwrapped_expr.expr)
+	}
 	// For InitExpr (struct literal), use the explicit type from the AST
 	// rather than pos.id lookup (which may return a different pre-transformer type).
 	if expr is ast.InitExpr {
@@ -3316,9 +3373,19 @@ fn (mut g Gen) get_expr_type(node ast.Expr) string {
 			}
 			// Try to get element type from LHS type
 			if raw_type := g.get_raw_type(node.lhs) {
+				raw_lhs_expr := strip_expr_wrappers(node.lhs)
 				match raw_type {
 					types.Array {
-						return g.types_type_to_c(raw_type.elem_type)
+						elem_type := g.types_type_to_c(raw_type.elem_type)
+						if raw_lhs_expr is ast.ArrayInitExpr {
+							value_elem := g.infer_array_init_value_elem_type(raw_lhs_expr)
+							specialized := specialized_generic_elem_type_from_value(elem_type,
+								value_elem)
+							if specialized != '' {
+								return specialized
+							}
+						}
+						return elem_type
 					}
 					types.ArrayFixed {
 						return g.types_type_to_c(raw_type.elem_type)
@@ -3335,7 +3402,16 @@ fn (mut g Gen) get_expr_type(node ast.Expr) string {
 								return g.types_type_to_c(raw_type.base_type)
 							}
 							types.Array {
-								return g.types_type_to_c(raw_type.base_type.elem_type)
+								elem_type := g.types_type_to_c(raw_type.base_type.elem_type)
+								if raw_lhs_expr is ast.ArrayInitExpr {
+									value_elem := g.infer_array_init_value_elem_type(raw_lhs_expr)
+									specialized := specialized_generic_elem_type_from_value(elem_type,
+										value_elem)
+									if specialized != '' {
+										return specialized
+									}
+								}
+								return elem_type
 							}
 							types.ArrayFixed {
 								return g.types_type_to_c(raw_type.base_type.elem_type)
@@ -3406,6 +3482,10 @@ fn (mut g Gen) get_expr_type(node ast.Expr) string {
 			is_fixed_marker := array_init_has_fixed_len_marker(node)
 			mut elem := g.extract_array_elem_type(node.typ)
 			value_elem := g.infer_array_init_value_elem_type(node)
+			specialized := specialized_generic_elem_type_from_value(elem, value_elem)
+			if specialized != '' {
+				elem = specialized
+			}
 			if (elem == '' || elem == 'int') && value_elem != '' && value_elem != 'int' {
 				elem = value_elem
 			}
@@ -4012,6 +4092,12 @@ fn (mut g Gen) expr_type_to_c(e ast.Expr) string {
 				return result_type
 			}
 			if e is ast.FnType {
+				if e.return_type !is ast.EmptyExpr {
+					_ = g.expr_type_to_c(e.return_type)
+				}
+				for param in e.params {
+					_ = g.expr_type_to_c(param.typ)
+				}
 				return 'void*'
 			}
 			if e is ast.NilType {
@@ -4112,7 +4198,7 @@ fn (mut g Gen) record_generic_struct_bindings(struct_base_name string, struct_c_
 		}
 		concrete_c_name := g.expr_type_to_c(concrete_expr)
 		param_c_names << mangle_alias_component(concrete_c_name)
-		if concrete_type := g.concrete_type_from_c_name(concrete_c_name) {
+		if concrete_type := g.concrete_type_from_call_arg_c_name(concrete_c_name) {
 			bindings[param_name] = concrete_type
 		}
 	}
@@ -4194,7 +4280,7 @@ fn (mut g Gen) record_generic_struct_bindings_with_parent(struct_base_name strin
 		resolved_expr := g.substitute_generic_expr_with_parent(concrete_expr, parent_bindings)
 		concrete_c_name := g.expr_type_to_c(resolved_expr)
 		param_c_names << mangle_alias_component(concrete_c_name)
-		if concrete_type := g.concrete_type_from_c_name(concrete_c_name) {
+		if concrete_type := g.concrete_type_from_call_arg_c_name(concrete_c_name) {
 			bindings[param_name] = concrete_type
 		}
 	}
@@ -4303,7 +4389,15 @@ fn (mut g Gen) substitute_generic_expr_with_parent(expr ast.Expr, parent_binding
 // a non-primary instance, returns the suffixed name.
 fn (mut g Gen) resolve_generic_struct_c_name(base_name string, concrete_params []ast.Expr) string {
 	instances := g.generic_struct_instances[base_name]
-	if instances.len <= 1 {
+	if instances.len == 1 {
+		inst := instances[0]
+		body_key := 'body_${inst.c_name}'
+		if body_key !in g.emitted_types && body_key !in g.pending_late_body_keys {
+			g.emit_late_generic_struct(base_name, inst)
+		}
+		return inst.c_name
+	}
+	if instances.len == 0 {
 		return base_name
 	}
 	runtime_params := runtime_generic_args(concrete_params)
@@ -4314,12 +4408,9 @@ fn (mut g Gen) resolve_generic_struct_c_name(base_name string, concrete_params [
 	params_key := param_c_names.join('_')
 	for inst in instances {
 		if inst.params_key == params_key {
-			// If this is a non-primary instance and hasn't been emitted, emit it late
-			if inst.c_name != base_name {
-				body_key := 'body_${inst.c_name}'
-				if body_key !in g.emitted_types {
-					g.emit_late_generic_struct(base_name, inst)
-				}
+			body_key := 'body_${inst.c_name}'
+			if body_key !in g.emitted_types && body_key !in g.pending_late_body_keys {
+				g.emit_late_generic_struct(base_name, inst)
 			}
 			return inst.c_name
 		}
@@ -4354,7 +4445,7 @@ fn (mut g Gen) emit_late_generic_struct(base_name string, inst GenericStructInst
 	def.writeln('typedef ${keyword} ${inst.c_name} ${inst.c_name};')
 	mut seen_field_typedef := map[string]bool{}
 	for field in struct_node.fields {
-		ft := g.expr_type_to_c(field.typ)
+		ft := g.qualify_owner_local_field_type(inst.c_name, g.expr_type_to_c(field.typ))
 		fbase := ft.trim_right('*')
 		if fbase != inst.c_name && fbase.contains('_T_') && !fbase.starts_with('Array_')
 			&& !fbase.starts_with('Map_') && fbase !in seen_field_typedef {
@@ -4364,7 +4455,7 @@ fn (mut g Gen) emit_late_generic_struct(base_name string, inst GenericStructInst
 	}
 	def.writeln('${keyword} ${inst.c_name} {')
 	for field in struct_node.fields {
-		field_type := g.expr_type_to_c(field.typ)
+		field_type := g.qualify_owner_local_field_type(inst.c_name, g.expr_type_to_c(field.typ))
 		field_name := if field.name.len > 0 { field.name } else { 'value' }
 		def.writeln('\t${field_type} ${field_name};')
 		g.struct_field_types['${inst.c_name}.${field_name}'] = field_type
@@ -4518,6 +4609,16 @@ fn (mut g Gen) concrete_type_from_c_name(c_name string) ?types.Type {
 		return types.Type(types.Struct{
 			name: clean_name
 		})
+	}
+	if clean_name.contains('_T_') {
+		base_name := clean_name.all_before('_T_')
+		if base_name != '' && (base_name in g.generic_struct_instances
+			|| base_name in g.generic_struct_bindings
+			|| g.lookup_struct_type_by_c_name(base_name).generic_params.len > 0) {
+			return normalize_generic_concrete_type(types.Type(types.Struct{
+				name: clean_name
+			}))
+		}
 	}
 	if concrete := g.lookup_type_by_c_name(clean_name) {
 		if type_contains_generic_placeholder(concrete) {
@@ -5369,7 +5470,8 @@ fn (mut g Gen) selector_declared_field_type(sel ast.SelectorExpr) string {
 	}
 	lhs_struct_name := g.selector_struct_name(sel.lhs)
 	if lhs_struct_name != '' {
-		if g.active_generic_types.len > 0 {
+		if g.active_generic_types.len > 0 || lhs_struct_name in g.generic_struct_bindings
+			|| lhs_struct_name in g.generic_struct_instances || lhs_struct_name.contains('_T_') {
 			if field_type := g.lookup_struct_field_type_by_name(lhs_struct_name, rhs) {
 				return field_type
 			}
@@ -5619,23 +5721,18 @@ fn (mut g Gen) selector_field_type(sel ast.SelectorExpr) string {
 				// field type (e.g. ValueInfo). Cross-check against struct_field_types.
 				if g.active_generic_types.len > 0 {
 					mut lhs_struct := g.selector_struct_name(sel.lhs)
-					mut checked_declared_lhs := false
 					if lhs_struct != '' {
 						if field_t := g.lookup_struct_field_type_by_name(lhs_struct, rhs) {
-							checked_declared_lhs = true
 							if field_t != t {
 								return g.cache_selector_field_type(cache_key, field_t)
 							}
 						}
 					}
-					if !checked_declared_lhs {
-						generic_lhs_struct := g.resolve_generic_struct_field_name(sel.lhs)
-						lhs_struct = generic_lhs_struct
-						if lhs_struct != '' {
-							if field_t := g.lookup_struct_field_type_by_name(lhs_struct, rhs) {
-								if field_t != t {
-									return g.cache_selector_field_type(cache_key, field_t)
-								}
+					generic_lhs_struct := g.resolve_generic_struct_field_name(sel.lhs)
+					if generic_lhs_struct != '' && generic_lhs_struct != lhs_struct {
+						if field_t := g.lookup_struct_field_type_by_name(generic_lhs_struct, rhs) {
+							if field_t != t {
+								return g.cache_selector_field_type(cache_key, field_t)
 							}
 						}
 					}

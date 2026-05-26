@@ -223,6 +223,13 @@ fn (mut g Gen) decl_selector_rhs_type(rhs ast.SelectorExpr) string {
 		}
 	}
 	field_name := rhs.rhs.name
+	if field_name == 'err' {
+		lhs_type := g.get_expr_type(rhs.lhs)
+		is_or_tmp := rhs.lhs is ast.Ident && rhs.lhs.name.starts_with('_or_t')
+		if lhs_type.starts_with('_result_') || lhs_type.starts_with('_option_') || is_or_tmp {
+			return 'IError'
+		}
+	}
 	if field_name.starts_with('arg') {
 		lhs_type := g.get_expr_type(rhs.lhs)
 		if lhs_type.starts_with('Tuple_') {
@@ -794,6 +801,7 @@ fn (mut g Gen) gen_assign_stmt(node ast.AssignStmt) {
 				}
 			}
 		}
+		mut elem_type_from_array := false
 		mut typ_from_active_generic_init := false
 		if rhs is ast.InitExpr && g.active_generic_types.len > 0 {
 			init_type_name := rhs.typ.name()
@@ -822,6 +830,17 @@ fn (mut g Gen) gen_assign_stmt(node ast.AssignStmt) {
 			cast_type := g.expr_type_to_c(rhs.typ)
 			if cast_type != '' {
 				typ = cast_type
+			}
+		}
+		if rhs is ast.IndexExpr {
+			index_elem_type := g.infer_array_elem_type_from_expr(rhs.lhs)
+			if index_elem_type != '' && index_elem_type !in ['array', 'int', 'void'] {
+				specialized := specialized_generic_elem_type_from_value(typ, index_elem_type)
+				if typ == '' || typ == 'int' || typ == 'void*' || typ == 'voidptr'
+					|| specialized != '' {
+					typ = if specialized != '' { specialized } else { index_elem_type }
+					elem_type_from_array = true
+				}
 			}
 		}
 		// For temp variables registered by the transformer with a specific type,
@@ -910,7 +929,6 @@ fn (mut g Gen) gen_assign_stmt(node ast.AssignStmt) {
 				typ = target_type + '*'
 			}
 		}
-		mut elem_type_from_array := false
 		if rhs is ast.CallExpr {
 			if rhs.lhs is ast.Ident
 				&& rhs.lhs.name in ['array__pop', 'array__pop_left', 'array__first', 'array__last'] {
@@ -1105,6 +1123,7 @@ fn (mut g Gen) gen_assign_stmt(node ast.AssignStmt) {
 			if container_type.starts_with('_result_') || container_type.starts_with('_option_')
 				|| is_or_tmp {
 				rhs_type = 'IError'
+				typ = 'IError'
 			}
 		}
 		if name != '' && rhs is ast.SelectorExpr && rhs.rhs.name == 'data' {
@@ -1504,23 +1523,13 @@ fn (mut g Gen) gen_assign_stmt(node ast.AssignStmt) {
 					g.sb.writeln(';')
 					g.write_indent()
 					g.sb.write_string('array__push_many((array*)')
-					if g.expr_is_pointer(lhs) {
-						g.expr(lhs)
-					} else {
-						g.sb.write_string('&')
-						g.expr(lhs)
-					}
+					g.gen_array_append_target(lhs)
 					g.sb.writeln(', ${rhs_tmp}.data, ${rhs_tmp}.len);')
 					return
 				}
 				g.write_indent()
 				g.sb.write_string('array__push((array*)')
-				if g.expr_is_pointer(lhs) {
-					g.expr(lhs)
-				} else {
-					g.sb.write_string('&')
-					g.expr(lhs)
-				}
+				g.gen_array_append_target(lhs)
 				g.sb.write_string(', ')
 				// When pushing a concrete type into an interface array, wrap it
 				if g.is_interface_type(elem_type) {

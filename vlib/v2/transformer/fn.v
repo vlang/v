@@ -1502,11 +1502,12 @@ fn (mut t Transformer) transform_fn_decl(decl ast.FnDecl) ast.FnDecl {
 	// Skip uninstantiated generic functions: their bodies were never type-checked
 	// and they will never be called, so emit an empty body.
 	if has_non_lifetime_generic_params(decl.typ.generic_params) {
-		mut has_generic_types := decl.name in t.env.generic_types
+		mut has_generic_types := decl.is_static || decl.name in t.env.generic_types
 		if !has_generic_types {
 			for key, _ in t.env.generic_types {
 				if key.starts_with('${decl.name}[') || key.contains('.${decl.name}[')
-					|| key.ends_with('.${decl.name}') {
+					|| key.ends_with('.${decl.name}') || key.contains('__${decl.name}[')
+					|| key.ends_with('__${decl.name}') {
 					has_generic_types = true
 					break
 				}
@@ -2111,7 +2112,22 @@ fn (mut t Transformer) transform_call_expr(expr ast.CallExpr) ast.Expr {
 		if method_name == 'str' && expr.args.len == 0 {
 			// Keep explicit user-defined/declared str() methods (e.g. strings.Builder).
 			// Only lower to helper calls when there is no real method on the receiver type.
-			if !t.receiver_has_cached_method(sel.lhs, method_name) {
+			mut should_lower_str := !t.receiver_has_cached_method(sel.lhs, method_name)
+			if !should_lower_str {
+				if recv_type := t.get_expr_type(sel.lhs) {
+					base_type := t.unwrap_alias_and_pointer_type(recv_type)
+					if base_type is types.Array || base_type is types.ArrayFixed
+						|| base_type is types.Map {
+						has_alias_str := if recv_type is types.Alias {
+							t.resolve_alias_receiver_method_name(recv_type, method_name) != none
+						} else {
+							false
+						}
+						should_lower_str = !has_alias_str
+					}
+				}
+			}
+			if should_lower_str {
 				str_fn_info := t.get_str_fn_info_for_expr(sel.lhs)
 				// Skip Array_u8_str: []u8 = strings.Builder which has its own .str() method
 				// with different semantics (finalizes builder vs formatting array contents).
@@ -2919,10 +2935,33 @@ fn (t &Transformer) is_static_method_call(receiver ast.Expr) bool {
 			// Check if scope lookup resolves to a Type definition object (not a
 			// Const/Fn/Global variable). Type objects represent type definitions
 			// like enum/struct that are referenced, not value expressions.
+			if t.scope != unsafe { nil } {
+				if obj := unsafe { t.scope }.lookup_parent(receiver.name, 0) {
+					if obj is types.Module {
+						return false
+					}
+					if obj is types.Type || obj is types.TypeObject {
+						return true
+					}
+					return false
+				}
+			}
 			if mut scope := t.get_current_scope() {
 				if obj := scope.lookup_parent(receiver.name, 0) {
-					return obj is types.Type
+					if obj is types.Module {
+						return false
+					}
+					if obj is types.Type || obj is types.TypeObject {
+						return true
+					}
+					return false
 				}
+			}
+			if _ := t.lookup_type(receiver.name) {
+				return true
+			}
+			if _ := t.lookup_var_type(receiver.name) {
+				return false
 			}
 			// Not found in scope — assume type reference
 			return true
@@ -3177,6 +3216,9 @@ fn (t &Transformer) resolve_alias_receiver_method_name_inner(recv_type types.Typ
 }
 
 fn (t &Transformer) resolve_method_call_name(receiver ast.Expr, method_name string) ?string {
+	if t.is_static_method_call(receiver) {
+		return t.resolve_static_type_method_call(receiver, method_name)
+	}
 	if cast_type_name := t.explicit_cast_receiver_type_name(receiver) {
 		if resolved := t.resolve_explicit_cast_method_name(cast_type_name, method_name) {
 			return resolved
