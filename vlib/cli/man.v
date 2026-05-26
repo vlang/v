@@ -24,8 +24,8 @@ pub fn print_manpage_for_command(cmd Command) ! {
 	if cmd.args.len > 0 {
 		for sub_cmd in cmd.commands {
 			if sub_cmd.matches(cmd.args[0]) {
-				man_cmd := unsafe { &sub_cmd }
-				print(man_cmd.manpage())
+				target := unsafe { &sub_cmd }
+				print(target.manpage())
 				return
 			}
 		}

@@ -34,7 +34,7 @@ fn log_factorial_asymptotic_expansion(n int) f64 {
 	mut term := []f64{}
 	xx := f64((n + 1) * (n + 1))
 	mut xj := f64(n + 1)
-	log_factorial := log_sqrt_2pi - xj + (xj - 0.5) * log(xj)
+	log_fact := log_sqrt_2pi - xj + (xj - 0.5) * log(xj)
 	mut i := 0
 	for i = 0; i < m; i++ {
 		term << bernoulli[i] / xj
@@ -51,7 +51,7 @@ fn log_factorial_asymptotic_expansion(n int) f64 {
 		sum += term[i]
 		i--
 	}
-	return log_factorial + sum
+	return log_fact + sum
 }
 
 // factoriali returns 1 for n <= 0 and -1 if the result is too large for a 64 bit integer

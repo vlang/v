@@ -144,15 +144,15 @@ pub fn log_gamma(x f64) f64 {
 // log_gamma_sign returns the natural logarithm and sign (-1 or +1) of Gamma(x)
 pub fn log_gamma_sign(a f64) (f64, int) {
 	mut x := a
-	mut sign := 1
+	mut sgn := 1
 	if is_nan(x) {
-		return x, sign
+		return x, sgn
 	}
 	if is_inf(x, 1) {
-		return x, sign
+		return x, sgn
 	}
 	if x == 0.0 {
-		return inf(1), sign
+		return inf(1), sgn
 	}
 	mut neg := false
 	if x < 0 {
@@ -161,28 +161,28 @@ pub fn log_gamma_sign(a f64) (f64, int) {
 	}
 	if x < exp2(-70) { // if |x| < 2**-70, return -log(|x|)
 		if neg {
-			sign = -1
+			sgn = -1
 		}
-		return -log(x), sign
+		return -log(x), sgn
 	}
 	mut nadj := 0.0
 	if neg {
 		if x >= exp2(52) { // the constant is 0x4330000000000000 ~4.5036e+15
 			// x| >= 2**52, must be -integer
-			return inf(1), sign
+			return inf(1), sgn
 		}
 		t := sin_pi(x)
 		if t == 0 {
-			return inf(1), sign
+			return inf(1), sgn
 		}
 		nadj = log(pi / abs(t * x))
 		if t < 0 {
-			sign = -1
+			sgn = -1
 		}
 	}
 	mut lgamma := 0.0
 	if x == 1 || x == 2 { // purge off 1 and 2
-		return 0.0, sign
+		return 0.0, sgn
 	} else if x < 2 { // use lgamma(x) = lgamma(x+1) - log(x)
 		ymin := 1.461632144968362245
 		tc := 1.46163214496836224576e+00 // 0x3FF762D86356BE3F
@@ -292,7 +292,7 @@ pub fn log_gamma_sign(a f64) (f64, int) {
 	if neg {
 		lgamma = nadj - lgamma
 	}
-	return lgamma, sign
+	return lgamma, sgn
 }
 
 // sin_pi(x) is a helper function for negative x

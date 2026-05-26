@@ -75,13 +75,13 @@ fn main() {
 	if result {
 		pdata := &char(unsafe { nil })
 		ppdata := &pdata
-		size := C.wkhtmltopdf_get_output(converter, voidptr(ppdata))
-		println('wkhtmltopdf_get_output: ${size} bytes')
+		nbytes := C.wkhtmltopdf_get_output(converter, voidptr(ppdata))
+		println('wkhtmltopdf_get_output: ${nbytes} bytes')
 		mut file := os.open_file('./google.pdf', 'w+', 0o666) or {
 			println('ERR: ${err}')
 			return
 		}
-		wrote := unsafe { file.write_ptr(pdata, size) }
+		wrote := unsafe { file.write_ptr(pdata, nbytes) }
 		println('write_bytes: ${wrote} [./google.pdf]')
 		file.flush()
 		file.close()

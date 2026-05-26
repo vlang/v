@@ -671,6 +671,12 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 							c.error('duplicate of an import symbol `${left.name}`', left.pos)
 						}
 						c.check_module_name_conflict(left.name, left.pos)
+						// Warn when a local variable shadows a function declaration (issue #22685)
+						mod_qualified := '${left.mod}.${left.name}'
+						if c.table.known_fn(mod_qualified) || c.table.known_fn(left.name) {
+							c.warn('variable `${left.name}` shadows a function declaration',
+								left.pos)
+						}
 					}
 					if node.op == .assign && left_type.has_flag(.option) && right is ast.UnsafeExpr
 						&& right.expr.is_nil() {

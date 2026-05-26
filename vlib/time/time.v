@@ -381,8 +381,8 @@ pub fn (t Time) week_of_year() int {
 	// 2. The ISO year is the calendar year of this Thursday.
 	// 3. Compute the week number as:
 	//    week_number = (thursday's day_of_year - 1) / 7 + 1
-	day_of_week := t.day_of_week()
-	days_to_thursday := 4 - day_of_week
+	dow := t.day_of_week()
+	days_to_thursday := 4 - dow
 	thursday_date := t.add_days(days_to_thursday)
 	thursday_day_of_year := thursday_date.year_day()
 	week_number := (thursday_day_of_year - 1) / 7 + 1
