@@ -470,6 +470,33 @@ pub fn (mut b FlatBuilder) emit_global_decl_by_ids(attrs_id FlatNodeId, fields_i
 	])
 }
 
+// emit_field_init_by_id emits an aux_field_init node from an already-flat
+// value FlatNodeId. Used by the flat-write port for ConstDecl when the
+// field's value expression has been emitted directly. Mirrors the
+// add_field_init encoding exactly.
+pub fn (mut b FlatBuilder) emit_field_init_by_id(name string, value_id FlatNodeId) FlatNodeId {
+	return b.emit(.aux_field_init, token.Pos{}, b.intern(name), -1, 0, 0, [
+		FlatEdge{
+			child_id: value_id
+		},
+	])
+}
+
+// emit_const_decl_by_ids emits a stmt_const_decl node from an already-flat
+// fields list FlatNodeId. Mirrors the add_stmt(ConstDecl) encoding exactly,
+// including the flag_is_public bit when `is_public` is true.
+pub fn (mut b FlatBuilder) emit_const_decl_by_ids(is_public bool, fields_id FlatNodeId) FlatNodeId {
+	mut flags := u8(0)
+	if is_public {
+		flags |= flag_is_public
+	}
+	return b.emit_simple_with_flags(.stmt_const_decl, token.Pos{}, flags, [
+		FlatEdge{
+			child_id: fields_id
+		},
+	])
+}
+
 fn (mut b FlatBuilder) make_list_from_stmt_ids(stmt_ids []FlatNodeId) FlatNodeId {
 	if stmt_ids.len == 0 {
 		return b.get_empty_list()

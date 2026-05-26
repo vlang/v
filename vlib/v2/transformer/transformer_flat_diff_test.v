@@ -141,6 +141,7 @@ fn assert_transform_signatures_equal(label string, a []ast.File, b []ast.File) {
 //   - sumtype is / smartcast               → fixture_sumtype_is_as
 //   - string interpolation                 → fixture_string_interp
 //   - global init                          → fixture_global_init
+//   - file-scope const decl                → fixture_const_decl
 
 // Fixtures intentionally avoid `module main`, `println`, and any builtin
 // dependency — the harness skips the .vh cache load to stay light, so the
@@ -263,6 +264,16 @@ fn use_bump() int {
 }
 '
 
+const fixture_const_decl = '
+const x = 42
+const greeting = "hello"
+const sum = 1 + 2
+
+fn use_const() int {
+	return x + sum
+}
+'
+
 fn all_transformer_fixtures() []string {
 	return [
 		fixture_plain_fn,
@@ -273,6 +284,7 @@ fn all_transformer_fixtures() []string {
 		fixture_sumtype_is_as,
 		fixture_string_interp,
 		fixture_global_init,
+		fixture_const_decl,
 	]
 }
 
@@ -322,6 +334,10 @@ fn test_transform_is_deterministic_global_init() {
 	run_determinism('det_global_init', fixture_global_init)
 }
 
+fn test_transform_is_deterministic_const_decl() {
+	run_determinism('det_const_decl', fixture_const_decl)
+}
+
 // --- parity: transform_files vs transform_files_from_flat ---
 //
 // The streaming-from-flat path is the seed for the upcoming
@@ -369,6 +385,10 @@ fn test_flat_parity_string_interp() {
 
 fn test_flat_parity_global_init() {
 	run_parity('parity_global_init', fixture_global_init)
+}
+
+fn test_flat_parity_const_decl() {
+	run_parity('parity_const_decl', fixture_const_decl)
 }
 
 // --- parity: check_files vs check_flat upstream ---
@@ -451,6 +471,10 @@ fn test_check_flat_parity_global_init() {
 	run_check_flat_parity('check_flat_global_init', fixture_global_init)
 }
 
+fn test_check_flat_parity_const_decl() {
+	run_check_flat_parity('check_flat_const_decl', fixture_const_decl)
+}
+
 // --- parity: transform_files vs transform_files_to_flat ---
 //
 // transform_files_to_flat is the API wedge for the future
@@ -515,6 +539,10 @@ fn test_to_flat_parity_string_interp() {
 
 fn test_to_flat_parity_global_init() {
 	run_to_flat_parity('to_flat_global_init', fixture_global_init)
+}
+
+fn test_to_flat_parity_const_decl() {
+	run_to_flat_parity('to_flat_const_decl', fixture_const_decl)
 }
 
 // --- parity: per-file flat-write API vs reference rehydrate+transform+append ---
@@ -602,6 +630,10 @@ fn test_per_file_parity_string_interp() {
 
 fn test_per_file_parity_global_init() {
 	run_per_file_parity('per_file_global_init', fixture_global_init)
+}
+
+fn test_per_file_parity_const_decl() {
+	run_per_file_parity('per_file_const_decl', fixture_const_decl)
 }
 
 // test_all_fixtures_produce_nonempty_signature guards against silent harness

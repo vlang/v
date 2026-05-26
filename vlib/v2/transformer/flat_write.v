@@ -74,6 +74,16 @@ import v2.ast
 //     skipping the `transform_global_decl` round-trip entirely. The
 //     `__global init` fixture in the 5th harness row pins it.
 //
+//   Session 2 (2026-05-26): ConstDecl port + harness fixture.
+//     The ConstDecl arm in `transform_stmt_to_flat` direct-emits via
+//     `transform_expr_to_flat` for each field's value plus the new
+//     `emit_field_init_by_id` / `emit_const_decl_by_ids` builder helpers,
+//     skipping the `transform_const_decl` round-trip entirely. Mirrors the
+//     GlobalDecl shape but uses FieldInit (name + value only, no typ/attrs)
+//     and carries the `is_public` flag. A new `fixture_const_decl` covers
+//     leaf (BasicLiteral, StringLiteral) and non-leaf (InfixExpr) const
+//     values across all 5 harness rows.
+//
 // Phase 5: post-pass port.
 //   `post_pass` (runtime const init injection, helper functions, str/clone
 //   generation, ...) still mutates `[]ast.File`. Port it to either emit
@@ -210,6 +220,21 @@ pub fn (mut t Transformer) transform_stmt_to_flat(stmt ast.Stmt, mut out ast.Fla
 		ast.AsmStmt, ast.Directive, ast.EmptyStmt, ast.EnumDecl, ast.FlowControlStmt,
 		ast.ImportStmt, ast.InterfaceDecl, ast.ModuleStmt, ast.StructDecl, ast.TypeDecl {
 			return out.emit_stmt(stmt)
+		}
+		ast.ConstDecl {
+			// Mirror transform_const_decl: transform each field's value via
+			// transform_expr_to_flat, keep name + is_public unchanged, and emit
+			// the flat encoding directly. The intermediate `ast.ConstDecl` /
+			// `[]ast.FieldInit` allocations from the legacy round-trip drop
+			// out. Emit order matches add_stmt(ConstDecl): per-field (value,
+			// field_init), then the fields aux_list, then the stmt.
+			mut field_ids := []ast.FlatNodeId{cap: stmt.fields.len}
+			for field in stmt.fields {
+				value_id := t.transform_expr_to_flat(field.value, mut out)
+				field_ids << out.emit_field_init_by_id(field.name, value_id)
+			}
+			fields_list_id := out.emit_aux_list_from_ids(field_ids)
+			return out.emit_const_decl_by_ids(stmt.is_public, fields_list_id)
 		}
 		ast.GlobalDecl {
 			// Mirror transform_global_decl: transform each field's typ and value
