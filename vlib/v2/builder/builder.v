@@ -2081,6 +2081,12 @@ fn (mut b Builder) gen_native(backend_arch pref.Arch) {
 	}
 	print_time('SSA Build', time.Duration(native_sw.elapsed() - stage_start))
 
+	// SSA build has consumed b.files into `mod`; the rest of the native
+	// pipeline (optimize, MIR lower, ABI lower, insel, codegen, link)
+	// operates on `mod`/`mir_mod` only. Drop the ~120MB legacy AST so it
+	// can be reclaimed before codegen's working-set grows.
+	b.files = []ast.File{}
+
 	stage_start = native_sw.elapsed()
 	if b.pref.no_optimize {
 		eprintln('  opt: skipped (-O0)')
