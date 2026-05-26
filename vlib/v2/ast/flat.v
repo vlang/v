@@ -553,6 +553,27 @@ pub fn (mut b FlatBuilder) emit_block_stmt_by_ids(stmt_ids []FlatNodeId) FlatNod
 	return b.emit_simple(.stmt_block, token.Pos{}, edges)
 }
 
+// emit_assert_stmt_by_id emits a stmt_assert node from an already-flat child
+// expr FlatNodeId. Mirrors the add_stmt(AssertStmt) encoding exactly: pos is
+// the zero `token.Pos{}` the legacy add_stmt arm uses, edges are
+// [expr_id, empty_expr_id]. The legacy fallback path in `transform_stmt`
+// rebuilds `AssertStmt{expr: transformed}` without setting `extra`, so the
+// extra slot is always the default `empty_expr` — emit that via the cached
+// `add_expr(empty_expr)`. Used by the flat-write port to direct-emit the
+// `ast.AssertStmt` fallback wrapper (most assert stmts are expanded in
+// `transform_stmts` and never reach the dispatch arm).
+pub fn (mut b FlatBuilder) emit_assert_stmt_by_id(expr_id FlatNodeId) FlatNodeId {
+	extra_id := b.add_expr(empty_expr)
+	return b.emit_simple(.stmt_assert, token.Pos{}, [
+		FlatEdge{
+			child_id: expr_id
+		},
+		FlatEdge{
+			child_id: extra_id
+		},
+	])
+}
+
 // emit_comptime_stmt_by_id emits a stmt_comptime node wrapping an
 // already-flat child stmt FlatNodeId. Mirrors the add_stmt(ComptimeStmt)
 // encoding exactly: pos is the zero `token.Pos{}` the legacy add_stmt arm

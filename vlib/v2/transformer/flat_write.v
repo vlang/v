@@ -664,6 +664,31 @@ import v2.types
 //     directly into the builder instead of materialising `[]ast.Stmt`) is
 //     the next significant target.
 //
+//   Session 32 (2026-05-26): AssertStmt port (fallback stmt-level identity).
+//     `transform_stmt`'s AssertStmt arm is the rare fallback path — most
+//     assert stmts get expanded into `if !cond { panic(...) }` by
+//     `transform_stmts` before they reach the per-stmt dispatch. The
+//     fallback rebuilds `AssertStmt{expr: t.transform_expr(stmt.expr)}`
+//     without setting `extra`, so the result always has `extra =
+//     empty_expr` (struct default) and any original `stmt.extra` (the
+//     `"assert cond, msg"` text) is DROPPED.
+//
+//     Direct-emit mirrors that exactly: transform `stmt.expr` via the
+//     recursive `transform_expr_to_flat` (so any ported deep-helper expr
+//     arm reached inside benefits too) and route through the new
+//     `emit_assert_stmt_by_id` helper, which encodes the second edge as
+//     `add_expr(empty_expr)` — hits the shared cached `empty_expr_id` so
+//     repeat AssertStmts don't duplicate the node. Mirrors
+//     `add_stmt(AssertStmt)` encoding exactly (pos = `token.Pos{}`, two
+//     edges: expr + empty_expr). Skips the `ast.AssertStmt` wrapper
+//     struct allocation per fallback occurrence.
+//
+//     Reachability is low but the port completes the stmt-level
+//     identity-shape coverage planned in session 28's pattern note
+//     (BlockStmt → session 29, DeferStmt → session 30, ComptimeStmt →
+//     session 31, AssertStmt → this session). No new fixture this
+//     session. All 141 transformer-diff tests continue to pass.
+//
 //   Session 31 (2026-05-26): ComptimeStmt port (two-branch stmt port).
 //     `transform_stmt`'s ComptimeStmt arm has two branches:
 //       (a) `stmt.stmt is ast.ForStmt` (the `$for field in Type.fields { ... }`
@@ -894,6 +919,25 @@ pub fn (mut t Transformer) transform_stmt_to_flat(stmt ast.Stmt, mut out ast.Fla
 			}
 			fields_list_id := out.emit_aux_list_from_ids(field_ids)
 			return out.emit_global_decl_by_ids(decl_attrs_id, fields_list_id)
+		}
+		ast.AssertStmt {
+			// AssertStmt port: `transform_stmt`'s arm is the rare fallback path
+			// — most assert stmts are expanded into `if !cond { panic(...) }` by
+			// `transform_stmts` before they reach the per-stmt dispatch. The
+			// fallback rebuilds `AssertStmt{expr: t.transform_expr(stmt.expr)}`
+			// without setting `extra`, so the result always has
+			// `extra = empty_expr` (the struct default) and `stmt.extra` (any
+			// optional `"assert cond, message"` text) is DROPPED. Direct-emit
+			// mirrors that exactly: transform `stmt.expr` via
+			// `transform_expr_to_flat` and route through
+			// `emit_assert_stmt_by_id` which encodes the second edge as
+			// `add_expr(empty_expr)` (hits the shared cached `empty_expr_id`).
+			// Skips the `ast.AssertStmt` wrapper struct allocation per fallback
+			// occurrence; reachability is low but the port completes the
+			// stmt-level identity-shape coverage (sessions 27 ExprStmt, 28
+			// LabelStmt, 29 BlockStmt, 30 DeferStmt, 31 ComptimeStmt).
+			expr_id := t.transform_expr_to_flat(stmt.expr, mut out)
+			return out.emit_assert_stmt_by_id(expr_id)
 		}
 		ast.BlockStmt {
 			// BlockStmt port: `transform_stmt`'s arm is identity-shape —
