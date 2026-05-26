@@ -532,6 +532,17 @@ pub fn (mut b FlatBuilder) emit_prefix_expr_by_id(op token.Token, inner_id FlatN
 	])
 }
 
+// emit_modifier_expr_by_id emits an expr_modifier node from an already-flat
+// inner expression FlatNodeId. Mirrors the add_expr(ModifierExpr) encoding
+// exactly: the modifier kind token is packed into the meta u16.
+pub fn (mut b FlatBuilder) emit_modifier_expr_by_id(kind token.Token, inner_id FlatNodeId, pos token.Pos) FlatNodeId {
+	return b.emit(.expr_modifier, pos, -1, -1, u16(int(kind)), 0, [
+		FlatEdge{
+			child_id: inner_id
+		},
+	])
+}
+
 // emit_fn_decl_by_ids emits a stmt_fn_decl node from already-flat child
 // FlatNodeIds (receiver parameter, FnType, attribute list, stmt list).
 // Mirrors the add_stmt(FnDecl) encoding exactly, including the

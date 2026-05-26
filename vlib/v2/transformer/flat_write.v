@@ -139,6 +139,19 @@ import v2.ast
 //     `fixture_prefix_expr` (file-scope consts with `-`, `~`, `!`) covers
 //     the arm across all 5 harness rows — 51 → 56 transformer-diff tests.
 //
+//   Session 7 (2026-05-26): ModifierExpr expr direct-emit + harness fixture.
+//     The ModifierExpr arm in `transform_expr_to_flat` direct-emits via a
+//     recursive `transform_expr_to_flat` for the inner expression plus the
+//     new `emit_modifier_expr_by_id` builder helper, skipping the
+//     `ast.ModifierExpr` struct allocation per occurrence (`mut x`,
+//     `shared x`, `atomic x`, `static x`, `volatile x` — all pure wrappers
+//     around the inner expression in `transform_expr`'s arm; kind + pos
+//     copied verbatim). Structurally identical to the ParenExpr session
+//     except the kind token packs into the meta u16 (mirror of
+//     `add_expr(ModifierExpr)`'s encoding). New `fixture_modifier_expr`
+//     (a `mut`-parameter fn + a caller that passes `mut a`) covers the arm
+//     across all 5 harness rows — 56 → 61 transformer-diff tests.
+//
 // Phase 5: post-pass port.
 //   `post_pass` (runtime const init injection, helper functions, str/clone
 //   generation, ...) still mutates `[]ast.File`. Port it to either emit
@@ -386,6 +399,18 @@ pub fn (mut t Transformer) transform_expr_to_flat(expr ast.Expr, mut out ast.Fla
 			}
 			inner_id := t.transform_expr_to_flat(expr.expr, mut out)
 			return out.emit_prefix_expr_by_id(expr.op, inner_id, expr.pos)
+		}
+		ast.ModifierExpr {
+			// ModifierExpr (`mut x`, `shared x`, `atomic x`, `static x`,
+			// `volatile x`) is a pure wrapper around its inner expression — the
+			// `transform_expr` arm just recurses into `expr.expr` and rebuilds
+			// the wrapper with `kind` and `pos` copied verbatim. Direct-emit
+			// skips the `ast.ModifierExpr` struct allocation by transforming the
+			// inner expression via `transform_expr_to_flat` and assembling the
+			// flat node via the new `emit_modifier_expr_by_id` helper. Mirrors
+			// `add_expr(ModifierExpr)` encoding exactly (kind in meta u16).
+			inner_id := t.transform_expr_to_flat(expr.expr, mut out)
+			return out.emit_modifier_expr_by_id(expr.kind, inner_id, expr.pos)
 		}
 		else {
 			return out.emit_expr(t.transform_expr(expr))
