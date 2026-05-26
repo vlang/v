@@ -61,10 +61,10 @@ fn parse_transformer_fixture(src string) ParsedTransformerFixture {
 	mut fs := token.FileSet.new()
 	mut par := parser.Parser.new(prefs)
 	files := par.parse_files([tmp], mut fs)
+	flat := ast.flatten_files(files)
 	mut env := types.Environment.new()
 	mut checker := types.Checker.new(prefs, fs, env)
 	checker.check_files(files)
-	flat := ast.flatten_files(files)
 	return ParsedTransformerFixture{
 		files: files
 		flat:  flat
@@ -369,6 +369,86 @@ fn test_flat_parity_string_interp() {
 
 fn test_flat_parity_global_init() {
 	run_parity('parity_global_init', fixture_global_init)
+}
+
+// --- parity: check_files vs check_flat upstream ---
+//
+// The flat-input checker (Checker.check_flat) is the next migration row in
+// the parse → check → transform → markused → SSA chain. Today it's
+// opt-in via V2_CHECK_FLAT=1. This family asserts that the env produced
+// by check_flat is shape-compatible with the env from check_files — by
+// running an identical transform over each and comparing signatures of
+// the result.
+//
+// The transformer reads from env (type lookups, method tables) for many
+// rewrites; any divergence in env state surfaces as a transformer-output
+// drift here, with the diff narrowing the culprit to one fixture. This
+// is the same pattern as the markused harness, but at the layer above.
+
+fn run_check_flat_parity(label string, src string) {
+	// Parse ONCE: same filename embedded in pos info, then run two
+	// independent checkers (legacy / flat) against shared parser output
+	// but separate env instances. Each env then feeds an independent
+	// Transformer; outputs must produce identical signatures.
+	tmp := '/tmp/v2_transformer_diff_${os.getpid()}_${transformer_rand_suffix()}.v'
+	os.write_file(tmp, src) or { panic('write_file: ${err}') }
+	defer {
+		os.rm(tmp) or {}
+	}
+	prefs := &vpref.Preferences{
+		backend:     .cleanc
+		no_parallel: true
+	}
+	mut fs := token.FileSet.new()
+	mut par := parser.Parser.new(prefs)
+	files := par.parse_files([tmp], mut fs)
+	flat := ast.flatten_files(files)
+
+	mut env_legacy := types.Environment.new()
+	mut ck_legacy := types.Checker.new(prefs, fs, env_legacy)
+	ck_legacy.check_files(files)
+
+	mut env_flat := types.Environment.new()
+	mut ck_flat := types.Checker.new(prefs, fs, env_flat)
+	ck_flat.check_flat(&flat)
+
+	mut t_a := Transformer.new_with_pref(env_legacy, prefs)
+	leg := t_a.transform_files(files)
+	mut t_b := Transformer.new_with_pref(env_flat, prefs)
+	flt := t_b.transform_files(files)
+	assert_transform_signatures_equal(label, leg, flt)
+}
+
+fn test_check_flat_parity_plain_fn() {
+	run_check_flat_parity('check_flat_plain_fn', fixture_plain_fn)
+}
+
+fn test_check_flat_parity_infix_operator() {
+	run_check_flat_parity('check_flat_infix_operator', fixture_infix_operator)
+}
+
+fn test_check_flat_parity_array_contains() {
+	run_check_flat_parity('check_flat_array_contains', fixture_array_contains)
+}
+
+fn test_check_flat_parity_if_guard() {
+	run_check_flat_parity('check_flat_if_guard', fixture_if_guard)
+}
+
+fn test_check_flat_parity_or_block() {
+	run_check_flat_parity('check_flat_or_block', fixture_or_block)
+}
+
+fn test_check_flat_parity_sumtype_is_as() {
+	run_check_flat_parity('check_flat_sumtype_is_as', fixture_sumtype_is_as)
+}
+
+fn test_check_flat_parity_string_interp() {
+	run_check_flat_parity('check_flat_string_interp', fixture_string_interp)
+}
+
+fn test_check_flat_parity_global_init() {
+	run_check_flat_parity('check_flat_global_init', fixture_global_init)
 }
 
 // test_all_fixtures_produce_nonempty_signature guards against silent harness
