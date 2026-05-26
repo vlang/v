@@ -225,22 +225,68 @@ fn (mut w Walker) walk_collected_from_flat(flat &ast.FlatAst) map[string]bool {
 }
 
 // walk_fn_body_cursor iterates an FnDecl body (edge 3 of stmt_fn_decl) via
-// CursorList, decoding each child to ast.Stmt and dispatching to walk_stmt.
-// This is the seam where cursor-input dispatch will be threaded through
-// walk_stmt's arms in subsequent PRs.
+// CursorList and dispatches each child through walk_stmt_cursor. Arms that
+// have been ported to cursor input avoid per-stmt rehydration; un-ported
+// arms decode back to ast.Stmt and call walk_stmt.
 fn (mut w Walker) walk_fn_body_cursor(flat &ast.FlatAst, decl_id ast.FlatNodeId, mod_name string) {
 	body := ast.Cursor{
 		flat: unsafe { flat }
 		id:   decl_id
 	}.list_at(3)
 	for i in 0 .. body.len() {
-		c := body.at(i)
-		if !c.is_valid() {
-			continue
-		}
-		stmt := flat.decode_stmt(c.id)
-		w.walk_stmt(stmt, mod_name)
+		w.walk_stmt_cursor(body.at(i), mod_name)
 	}
+}
+
+// walk_stmt_cursor is the cursor-input analogue of walk_stmt. Arms that have
+// been ported operate directly on the FlatNode (no Stmt rehydration); the
+// fallback decodes the stmt and delegates to walk_stmt so partial coverage
+// stays bit-identical with the legacy walker.
+//
+// Ported arms: stmt_assert, stmt_block, stmt_comptime, stmt_defer, stmt_expr.
+// Nested expressions are still routed through walk_expr (decoded per edge)
+// until walk_expr itself gets a cursor-input port.
+fn (mut w Walker) walk_stmt_cursor(c ast.Cursor, mod_name string) {
+	if !c.is_valid() {
+		return
+	}
+	match c.kind() {
+		.stmt_assert {
+			w.walk_expr_cursor_edge(c, 0, mod_name)
+			w.walk_expr_cursor_edge(c, 1, mod_name)
+		}
+		.stmt_block {
+			for i in 0 .. c.edge_count() {
+				w.walk_stmt_cursor(c.edge(i), mod_name)
+			}
+		}
+		.stmt_comptime {
+			w.walk_stmt_cursor(c.edge(0), mod_name)
+		}
+		.stmt_defer {
+			for i in 0 .. c.edge_count() {
+				w.walk_stmt_cursor(c.edge(i), mod_name)
+			}
+		}
+		.stmt_expr {
+			w.walk_expr_cursor_edge(c, 0, mod_name)
+		}
+		else {
+			stmt := c.flat.decode_stmt(c.id)
+			w.walk_stmt(stmt, mod_name)
+		}
+	}
+}
+
+// walk_expr_cursor_edge decodes child edge `edge_i` of `parent` as an Expr
+// and routes it through walk_expr. A temporary bridge until walk_expr is
+// ported to cursor input.
+fn (mut w Walker) walk_expr_cursor_edge(parent ast.Cursor, edge_i int, mod_name string) {
+	ec := parent.edge(edge_i)
+	if !ec.is_valid() {
+		return
+	}
+	w.walk_expr(parent.flat.decode_expr(ec.id), mod_name)
 }
 
 fn (mut w Walker) collect_defs() {
