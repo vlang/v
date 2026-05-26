@@ -248,6 +248,115 @@ fn main() {
 }
 '
 
+// fixture_generic_fn exercises walker dispatch on generic function calls.
+// The walker must mark both the generic base and any concrete bindings
+// reachable through env.generic_types — the closest analogue of a real
+// codebase\'s "[]T → []int" specialization path.
+const fixture_generic_fn = 'module main
+
+fn identity[T](x T) T {
+	return x
+}
+
+fn main() {
+	a := identity[int](42)
+	b := identity[string]("hi")
+	println(a)
+	println(b)
+}
+'
+
+// fixture_closure exercises closure capture: the walker must not lose
+// reachability when the called fn is the value of a local variable that
+// itself was assigned a fn literal closing over outer state.
+const fixture_closure = 'module main
+
+fn make_counter() fn () int {
+	mut n := 0
+	return fn [mut n] () int {
+		n++
+		return n
+	}
+}
+
+fn main() {
+	c := make_counter()
+	println(c())
+	println(c())
+}
+'
+
+// fixture_sumtype_is_as covers the .is / as / smart-cast dispatch arms
+// in walk_expr that resolve variant-specific method calls.
+const fixture_sumtype_is_as = 'module main
+
+type Shape = Circle | Square
+
+struct Circle {
+	r f64
+}
+
+struct Square {
+	side f64
+}
+
+fn area(s Shape) f64 {
+	return match s {
+		Circle { 3.14 * s.r * s.r }
+		Square { s.side * s.side }
+	}
+}
+
+fn main() {
+	c := Shape(Circle{r: 2.0})
+	if c is Circle {
+		println(c.r)
+	}
+	println(area(c))
+}
+'
+
+// fixture_defer_and_map exercises defer statement walking plus map literal
+// init / index / "in" lookup — three distinct walk_stmt / walk_expr arms
+// that share no helpers with the simpler fixtures.
+const fixture_defer_and_map = 'module main
+
+fn lookup() int {
+	mut m := {"a": 1, "b": 2}
+	defer {
+		m["a"] = 9
+	}
+	if "b" in m {
+		return m["b"]
+	}
+	return 0
+}
+
+fn main() {
+	println(lookup())
+}
+'
+
+// fixture_string_interp_and_array_slice covers string-interpolation
+// expressions and array slicing — both have their own walk_expr arms
+// with their own sub-expression edges. Uses a raw string (r'...') so
+// the outer V parser does not try to interpolate the inner ${...}.
+const fixture_string_interp_and_array_slice = r'module main
+
+fn slice_sum(xs []int) string {
+	tail := xs[1..]
+	mut s := 0
+	for x in tail {
+		s += x
+	}
+	return "sum=${s} count=${tail.len}"
+}
+
+fn main() {
+	println(slice_sum([10, 20, 30, 40]))
+}
+'
+
 fn all_fixtures() []string {
 	return [
 		fixture_plain_fn,
@@ -257,6 +366,11 @@ fn all_fixtures() []string {
 		fixture_match_expr,
 		fixture_if_guard,
 		fixture_global_init,
+		fixture_generic_fn,
+		fixture_closure,
+		fixture_sumtype_is_as,
+		fixture_defer_and_map,
+		fixture_string_interp_and_array_slice,
 	]
 }
 
@@ -301,6 +415,31 @@ fn test_flat_matches_legacy_if_guard() {
 fn test_flat_matches_legacy_global_init() {
 	p := parse_fixture(fixture_global_init)
 	assert_used_keys_equal('global_init', run_legacy(p), run_flat(p))
+}
+
+fn test_flat_matches_legacy_generic_fn() {
+	p := parse_fixture(fixture_generic_fn)
+	assert_used_keys_equal('generic_fn', run_legacy(p), run_flat(p))
+}
+
+fn test_flat_matches_legacy_closure() {
+	p := parse_fixture(fixture_closure)
+	assert_used_keys_equal('closure', run_legacy(p), run_flat(p))
+}
+
+fn test_flat_matches_legacy_sumtype_is_as() {
+	p := parse_fixture(fixture_sumtype_is_as)
+	assert_used_keys_equal('sumtype_is_as', run_legacy(p), run_flat(p))
+}
+
+fn test_flat_matches_legacy_defer_and_map() {
+	p := parse_fixture(fixture_defer_and_map)
+	assert_used_keys_equal('defer_and_map', run_legacy(p), run_flat(p))
+}
+
+fn test_flat_matches_legacy_string_interp_and_array_slice() {
+	p := parse_fixture(fixture_string_interp_and_array_slice)
+	assert_used_keys_equal('string_interp_and_array_slice', run_legacy(p), run_flat(p))
 }
 
 // test_flat_is_deterministic — two runs of mark_used_flat on the same fixture
