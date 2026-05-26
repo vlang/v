@@ -4,6 +4,7 @@
 module transformer
 
 import v2.ast
+import v2.token
 
 // flat_write.v scaffolds the "transformer writes flat directly" multi-session
 // port. The wedge `transform_files_to_flat` (transformer.v ~line 1855) today
@@ -271,6 +272,27 @@ import v2.ast
 //     with a non-trivial body + plain `unsafe { nil }` for the
 //     normalisation arm) covers both paths across all 5 harness rows —
 //     91 → 96 transformer-diff tests.
+//
+//   Session 15 (2026-05-26): LockExpr expr direct-emit + harness fixture.
+//     The LockExpr arm in `transform_expr_to_flat` rewrites
+//     `lock x { body }` / `rlock x { body }` into a sequence of mutex
+//     lock/unlock calls wrapped in an UnsafeExpr (compound expression).
+//     `expand_lock_expr` produces `[lock_calls..., body..., unlock_calls...]`;
+//     the legacy arm duplicates the last body stmt after the unlock calls so
+//     that GCC compound-expression value semantics return the body's tail
+//     value instead of `void`. Direct-emit mirrors the rewrite exactly —
+//     same `expand_lock_expr` call, same duplicate-last fix-up, then emits
+//     each stmt via `out.emit_stmt(...)` and assembles via the existing
+//     `emit_unsafe_expr_by_ids` builder helper (the same helper UnsafeExpr
+//     session 14 uses, since the legacy LockExpr arm produces an UnsafeExpr).
+//     Crucial encoding detail: the legacy `ast.UnsafeExpr{stmts: stmts}` is
+//     constructed with no `pos` field (defaults to zero), so direct-emit must
+//     pass `token.Pos{}` (not `expr.pos`). First port to import `v2.token`
+//     in `flat_write.v` — needed for the zero-pos literal. New
+//     `fixture_lock_expr` (a `Counter` struct with `mut value int` + a
+//     `bump(mut c Counter) int` that uses `lock c { c.value += 1; c.value }`)
+//     covers the arm across all 5 harness rows — 96 → 101 transformer-diff
+//     tests.
 //
 // Phase 5: post-pass port.
 //   `post_pass` (runtime const init injection, helper functions, str/clone
@@ -590,6 +612,37 @@ pub fn (mut t Transformer) transform_expr_to_flat(expr ast.Expr, mut out ast.Fla
 			}
 			inner_id := t.transform_expr_to_flat(expr.expr, mut out)
 			return out.emit_postfix_expr_by_id(expr.op, inner_id, expr.pos)
+		}
+		ast.LockExpr {
+			// LockExpr's `transform_expr` arm rewrites a `lock x { body }` /
+			// `rlock x { body }` into a sequence of mutex lock/unlock calls
+			// wrapped in an UnsafeExpr (compound expression). The wrapper
+			// `ast.UnsafeExpr` is constructed with the default zero pos in
+			// legacy code, so direct-emit must also pass `token.Pos{}` to the
+			// `emit_unsafe_expr_by_ids` helper (not `expr.pos` — that would
+			// diverge from the legacy encoding).
+			//
+			// `expand_lock_expr` returns [lock_calls..., body_stmts...,
+			// unlock_calls...]. When used as a value expression (GCC compound
+			// expr), the last stmt's value is returned — but the unlock calls
+			// come after the body, so the compound returns void. The duplicate-
+			// last-body-stmt fix (same as legacy) re-inserts the body's tail
+			// stmt after the unlock calls. Direct-emit mirrors that exactly,
+			// then emits each stmt via `out.emit_stmt(...)` and assembles via
+			// `emit_unsafe_expr_by_ids` — the same helper UnsafeExpr session
+			// uses, since the legacy code produces an UnsafeExpr here. Skips
+			// the `ast.UnsafeExpr` wrapper struct allocation per occurrence.
+			mut stmts := t.expand_lock_expr(expr)
+			n_unlocks := expr.lock_exprs.len + expr.rlock_exprs.len
+			if n_unlocks > 0 && stmts.len > n_unlocks {
+				body_end := stmts.len - n_unlocks
+				stmts << stmts[body_end - 1]
+			}
+			mut stmt_ids := []ast.FlatNodeId{cap: stmts.len}
+			for s in stmts {
+				stmt_ids << out.emit_stmt(s)
+			}
+			return out.emit_unsafe_expr_by_ids(stmt_ids, token.Pos{})
 		}
 		ast.UnsafeExpr {
 			// UnsafeExpr's `transform_expr` arm has two paths:
