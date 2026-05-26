@@ -497,6 +497,51 @@ pub fn (mut b FlatBuilder) emit_const_decl_by_ids(is_public bool, fields_id Flat
 	])
 }
 
+// emit_parameter is the pub wrapper over the private add_parameter, used by
+// the flat-write port when an FnDecl's receiver is emitted directly.
+pub fn (mut b FlatBuilder) emit_parameter(param Parameter) FlatNodeId {
+	return b.add_parameter(param)
+}
+
+// emit_type is the pub wrapper over the private add_type, used by the
+// flat-write port when an FnDecl's signature is emitted directly. The
+// FnDecl encoding wraps `FnType` as `Type(stmt.typ)` so callers convert.
+pub fn (mut b FlatBuilder) emit_type(typ Type) FlatNodeId {
+	return b.add_type(typ)
+}
+
+// emit_fn_decl_by_ids emits a stmt_fn_decl node from already-flat child
+// FlatNodeIds (receiver parameter, FnType, attribute list, stmt list).
+// Mirrors the add_stmt(FnDecl) encoding exactly, including the
+// flag_is_public / flag_is_method / flag_is_static bits and the language
+// enum carried in the meta u16.
+pub fn (mut b FlatBuilder) emit_fn_decl_by_ids(name string, is_public bool, is_method bool, is_static bool, language Language, pos token.Pos, receiver_id FlatNodeId, typ_id FlatNodeId, attrs_id FlatNodeId, stmts_id FlatNodeId) FlatNodeId {
+	mut flags := u8(0)
+	if is_public {
+		flags |= flag_is_public
+	}
+	if is_method {
+		flags |= flag_is_method
+	}
+	if is_static {
+		flags |= flag_is_static
+	}
+	return b.emit(.stmt_fn_decl, pos, b.intern(name), -1, u16(int(language)), flags, [
+		FlatEdge{
+			child_id: receiver_id
+		},
+		FlatEdge{
+			child_id: typ_id
+		},
+		FlatEdge{
+			child_id: attrs_id
+		},
+		FlatEdge{
+			child_id: stmts_id
+		},
+	])
+}
+
 fn (mut b FlatBuilder) make_list_from_stmt_ids(stmt_ids []FlatNodeId) FlatNodeId {
 	if stmt_ids.len == 0 {
 		return b.get_empty_list()
