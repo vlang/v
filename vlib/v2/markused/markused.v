@@ -394,6 +394,10 @@ fn (mut w Walker) walk_expr_cursor_edge(parent ast.Cursor, edge_i int, mod_name 
 //   * two-edge recursers: expr_as_cast, expr_generic_arg_or_index,
 //     expr_index, expr_range, typ_array_fixed, typ_channel, typ_map
 //   * N-edge recursers: expr_keyword_operator, expr_tuple, typ_tuple
+//   * nested-stmt / packed-shape arms: expr_array_init, expr_fn_literal,
+//     expr_if, expr_if_guard, expr_lock, expr_map_init, expr_match,
+//     expr_or, expr_select, expr_unsafe, typ_anon_struct, typ_fn,
+//     typ_generic
 fn (mut w Walker) walk_expr_cursor(c ast.Cursor, mod_name string) {
 	if !c.is_valid() {
 		return
@@ -424,6 +428,146 @@ fn (mut w Walker) walk_expr_cursor(c ast.Cursor, mod_name string) {
 			for i in 0 .. c.edge_count() {
 				w.walk_expr_cursor(c.edge(i), mod_name)
 			}
+		}
+		// typ_generic packs name as edge 0 and generic params at edges 1..N;
+		// the legacy walker calls walk_expr on each of them in order.
+		.typ_generic {
+			for i in 0 .. c.edge_count() {
+				w.walk_expr_cursor(c.edge(i), mod_name)
+			}
+		}
+		// expr_array_init: edge 0 = typ, 1 = init, 2 = cap, 3 = len,
+		// 4.. = exprs. Legacy walk order is typ, exprs, init, cap, len —
+		// followed by update_expr, which the flat schema does not carry.
+		.expr_array_init {
+			ec := c.edge_count()
+			w.walk_expr_cursor(c.edge(0), mod_name)
+			for i in 4 .. ec {
+				w.walk_expr_cursor(c.edge(i), mod_name)
+			}
+			w.walk_expr_cursor(c.edge(1), mod_name)
+			w.walk_expr_cursor(c.edge(2), mod_name)
+			w.walk_expr_cursor(c.edge(3), mod_name)
+		}
+		// expr_map_init: edge 0 = typ, 1..1+keys_len = keys,
+		// 1+keys_len.. = vals. keys_len is packed in `extra`.
+		.expr_map_init {
+			keys_len := c.extra_int()
+			ec := c.edge_count()
+			w.walk_expr_cursor(c.edge(0), mod_name)
+			for i in 1 .. (1 + keys_len) {
+				w.walk_expr_cursor(c.edge(i), mod_name)
+			}
+			for i in (1 + keys_len) .. ec {
+				w.walk_expr_cursor(c.edge(i), mod_name)
+			}
+		}
+		// expr_lock: lock_len + rlock_len are packed in `extra` (low/high u16).
+		// Layout is lock_exprs, rlock_exprs, stmts.
+		.expr_lock {
+			packed := c.extra_int()
+			lock_len := packed & 0xFFFF
+			rlock_len := (packed >> 16) & 0xFFFF
+			ec := c.edge_count()
+			for i in 0 .. lock_len {
+				w.walk_expr_cursor(c.edge(i), mod_name)
+			}
+			for i in lock_len .. (lock_len + rlock_len) {
+				w.walk_expr_cursor(c.edge(i), mod_name)
+			}
+			for i in (lock_len + rlock_len) .. ec {
+				w.walk_stmt_cursor(c.edge(i), mod_name)
+			}
+		}
+		// expr_if: edge 0 = cond, edge 1 = else_expr, edges 2.. = stmts.
+		// Legacy walks cond → stmts → else_expr.
+		.expr_if {
+			ec := c.edge_count()
+			w.walk_expr_cursor(c.edge(0), mod_name)
+			for i in 2 .. ec {
+				w.walk_stmt_cursor(c.edge(i), mod_name)
+			}
+			w.walk_expr_cursor(c.edge(1), mod_name)
+		}
+		// expr_if_guard: edge 0 = the embedded AssignStmt.
+		.expr_if_guard {
+			w.walk_stmt_cursor(c.edge(0), mod_name)
+		}
+		// expr_or: edge 0 = expr, edges 1.. = stmts.
+		.expr_or {
+			w.walk_expr_cursor(c.edge(0), mod_name)
+			for i in 1 .. c.edge_count() {
+				w.walk_stmt_cursor(c.edge(i), mod_name)
+			}
+		}
+		// expr_unsafe: all edges are stmts.
+		.expr_unsafe {
+			for i in 0 .. c.edge_count() {
+				w.walk_stmt_cursor(c.edge(i), mod_name)
+			}
+		}
+		// expr_fn_literal: edge 0 = fn_typ, edges 1..1+cap_len = captured
+		// (not walked by the legacy walker), edges 1+cap_len.. = stmts.
+		// cap_len is packed in `extra`.
+		.expr_fn_literal {
+			cap_len := c.extra_int()
+			for i in (1 + cap_len) .. c.edge_count() {
+				w.walk_stmt_cursor(c.edge(i), mod_name)
+			}
+		}
+		// expr_select: edge 0 = stmt, edge 1 = next (expr), edges 2.. = stmts.
+		// Legacy walks stmt → stmts → next.
+		.expr_select {
+			ec := c.edge_count()
+			w.walk_stmt_cursor(c.edge(0), mod_name)
+			for i in 2 .. ec {
+				w.walk_stmt_cursor(c.edge(i), mod_name)
+			}
+			w.walk_expr_cursor(c.edge(1), mod_name)
+		}
+		// expr_match: edge 0 = scrutinee expr, edges 1.. = aux_match_branch.
+		// Each match_branch has edge 0 = aux_list of cond exprs, edge 1 =
+		// aux_list of stmts.
+		.expr_match {
+			w.walk_expr_cursor(c.edge(0), mod_name)
+			for i in 1 .. c.edge_count() {
+				branch := c.edge(i)
+				if !branch.is_valid() {
+					continue
+				}
+				conds := branch.list_at(0)
+				for j in 0 .. conds.len() {
+					w.walk_expr_cursor(conds.at(j), mod_name)
+				}
+				stmts := branch.list_at(1)
+				for j in 0 .. stmts.len() {
+					w.walk_stmt_cursor(stmts.at(j), mod_name)
+				}
+			}
+		}
+		// typ_fn: edge 0 = generic_params (not walked by legacy), edge 1 =
+		// aux_list of aux_parameter, edge 2 = return_type. Each parameter
+		// node has edge 0 = its type.
+		.typ_fn {
+			params_list := c.list_at(1)
+			for i in 0 .. params_list.len() {
+				param := params_list.at(i)
+				if !param.is_valid() {
+					continue
+				}
+				w.walk_expr_cursor(param.edge(0), mod_name)
+			}
+			w.walk_expr_cursor(c.edge(2), mod_name)
+		}
+		// typ_anon_struct: edge 0 = generic_params (not walked by legacy),
+		// edge 1 = embedded (aux_list of exprs), edge 2 = fields
+		// (aux_list of aux_field_decl).
+		.typ_anon_struct {
+			embedded := c.list_at(1)
+			for i in 0 .. embedded.len() {
+				w.walk_expr_cursor(embedded.at(i), mod_name)
+			}
+			w.walk_field_decl_list(c, 2, mod_name, true)
 		}
 		else {
 			w.walk_expr(c.flat.decode_expr(c.id), mod_name)
