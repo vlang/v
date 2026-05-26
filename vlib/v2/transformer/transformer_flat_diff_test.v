@@ -156,6 +156,7 @@ fn assert_transform_signatures_equal(label string, a []ast.File, b []ast.File) {
 //   - or expr (or-block nested in call args)    → fixture_or_expr
 //   - selector expr (chained + non-Ident lhs)    → fixture_selector_expr
 //   - index expr (default + gated + map + slice) → fixture_index_expr
+//   - comptime expr ($if guarded body)           → fixture_comptime_expr
 
 // Fixtures intentionally avoid `module main`, `println`, and any builtin
 // dependency — the harness skips the .vh cache load to stay light, so the
@@ -482,6 +483,15 @@ fn use_index(arr []int, m map[string]int) int {
 }
 "
 
+const fixture_comptime_expr = '
+fn use_comptime() int {
+	\$if linux {
+		return 1
+	}
+	return 2
+}
+'
+
 fn all_transformer_fixtures() []string {
 	return [
 		fixture_plain_fn,
@@ -507,6 +517,7 @@ fn all_transformer_fixtures() []string {
 		fixture_or_expr,
 		fixture_selector_expr,
 		fixture_index_expr,
+		fixture_comptime_expr,
 	]
 }
 
@@ -616,6 +627,10 @@ fn test_transform_is_deterministic_index_expr() {
 	run_determinism('det_index_expr', fixture_index_expr)
 }
 
+fn test_transform_is_deterministic_comptime_expr() {
+	run_determinism('det_comptime_expr', fixture_comptime_expr)
+}
+
 // --- parity: transform_files vs transform_files_from_flat ---
 //
 // The streaming-from-flat path is the seed for the upcoming
@@ -723,6 +738,10 @@ fn test_flat_parity_selector_expr() {
 
 fn test_flat_parity_index_expr() {
 	run_parity('parity_index_expr', fixture_index_expr)
+}
+
+fn test_flat_parity_comptime_expr() {
+	run_parity('parity_comptime_expr', fixture_comptime_expr)
 }
 
 // --- parity: check_files vs check_flat upstream ---
@@ -865,6 +884,10 @@ fn test_check_flat_parity_index_expr() {
 	run_check_flat_parity('check_flat_index_expr', fixture_index_expr)
 }
 
+fn test_check_flat_parity_comptime_expr() {
+	run_check_flat_parity('check_flat_comptime_expr', fixture_comptime_expr)
+}
+
 // --- parity: transform_files vs transform_files_to_flat ---
 //
 // transform_files_to_flat is the API wedge for the future
@@ -989,6 +1012,10 @@ fn test_to_flat_parity_selector_expr() {
 
 fn test_to_flat_parity_index_expr() {
 	run_to_flat_parity('to_flat_index_expr', fixture_index_expr)
+}
+
+fn test_to_flat_parity_comptime_expr() {
+	run_to_flat_parity('to_flat_comptime_expr', fixture_comptime_expr)
 }
 
 // --- parity: per-file flat-write API vs reference rehydrate+transform+append ---
@@ -1136,6 +1163,10 @@ fn test_per_file_parity_selector_expr() {
 
 fn test_per_file_parity_index_expr() {
 	run_per_file_parity('per_file_index_expr', fixture_index_expr)
+}
+
+fn test_per_file_parity_comptime_expr() {
+	run_per_file_parity('per_file_comptime_expr', fixture_comptime_expr)
 }
 
 // test_all_fixtures_produce_nonempty_signature guards against silent harness

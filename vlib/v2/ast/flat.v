@@ -612,6 +612,17 @@ pub fn (mut b FlatBuilder) emit_lambda_expr_by_ids(inner_id FlatNodeId, arg_ids 
 	return b.emit_simple(.expr_lambda, pos, edges)
 }
 
+// emit_comptime_expr_by_id emits an expr_comptime node from an already-flat
+// inner expression FlatNodeId. Mirrors the add_expr(ComptimeExpr) encoding
+// exactly: a single edge to the inner expression.
+pub fn (mut b FlatBuilder) emit_comptime_expr_by_id(inner_id FlatNodeId, pos token.Pos) FlatNodeId {
+	return b.emit_simple(.expr_comptime, pos, [
+		FlatEdge{
+			child_id: inner_id
+		},
+	])
+}
+
 // emit_index_expr_by_ids emits an expr_index node from already-flat lhs
 // and index expression FlatNodeIds. Mirrors the add_expr(IndexExpr) encoding
 // exactly: edge[0] is the lhs, edge[1] is the index expression, and the

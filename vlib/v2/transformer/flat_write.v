@@ -391,6 +391,27 @@ import v2.types
 //     `arr[0] + arr[1]`, gated `arr#[0]`, map index `m['key']`, and slice
 //     `arr[1..3].len` — 111 → 116 transformer-diff tests.
 //
+//   Session 20 (2026-05-26): ComptimeExpr deep helper port + fixture.
+//     Third deep-helper rewrite, same shape as sessions 18/19. The body of
+//     `transform_comptime_expr` (~50 lines in expr.v) is mirrored as
+//     `transform_comptime_expr_to_flat`. Most branches lower the comptime
+//     form into a non-ComptimeExpr shape — eval_comptime_if produces an
+//     IfExpr result; `$res(...)` (both CallExpr and CallOrCastExpr lhs)
+//     becomes a BasicLiteral `false`; `$embed_file(...)` (both forms)
+//     becomes an InitExpr or chained CallExpr via
+//     `transform_embed_file_comptime_expr`; `@VMODROOT`/`VMODROOT` Ident
+//     becomes a StringLiteral via `vmodroot_string_literal`; the
+//     `transform_embed_file_comptime_chain` rescue produces a non-comptime
+//     shape — all six branches route through `out.emit_expr(...)`. Only
+//     the default `ast.ComptimeExpr{expr: transform(inner), pos}` path is
+//     direct-emit via the new `emit_comptime_expr_by_id` builder helper.
+//     Skips the `ast.ComptimeExpr` struct allocation on the rare
+//     default-path occurrence.
+//
+//     New `fixture_comptime_expr` exercises a `$if linux { return 1 }`
+//     stmt body (the IfExpr branch — legacy fallback) — 116 → 121
+//     transformer-diff tests.
+//
 // Phase 5: post-pass port.
 //   `post_pass` (runtime const init injection, helper functions, str/clone
 //   generation, ...) still mutates `[]ast.File`. Port it to either emit
@@ -890,6 +911,19 @@ pub fn (mut t Transformer) transform_expr_to_flat(expr ast.Expr, mut out ast.Fla
 			}
 			return out.emit_fn_literal_by_ids(typ_id, captured_var_ids, stmt_ids, expr.pos)
 		}
+		ast.ComptimeExpr {
+			// ComptimeExpr deep helper port: `transform_comptime_expr` is
+			// mirrored as `transform_comptime_expr_to_flat` below. Most
+			// branches lower the comptime form into a non-ComptimeExpr shape
+			// (eval_comptime_if produces an IfExpr result, `$res` becomes a
+			// BasicLiteral `false`, `$embed_file(...)` becomes an InitExpr or
+			// method-chained CallExpr, `@VMODROOT` / `VMODROOT` becomes a
+			// StringLiteral, embed_file chains may also produce non-comptime
+			// shapes) — those route through `out.emit_expr(...)`. Only the
+			// default `ast.ComptimeExpr{expr: transform(inner), pos}` path
+			// is direct-emit via `emit_comptime_expr_by_id`.
+			return t.transform_comptime_expr_to_flat(expr, mut out)
+		}
 		ast.IndexExpr {
 			// IndexExpr deep helper port: the body of `transform_index_expr`
 			// is mirrored as `transform_index_expr_to_flat` below. Three
@@ -923,6 +957,63 @@ pub fn (mut t Transformer) transform_expr_to_flat(expr ast.Expr, mut out ast.Fla
 			return out.emit_expr(t.transform_expr(expr))
 		}
 	}
+}
+
+// transform_comptime_expr_to_flat is the direct-emit port of
+// `transform_comptime_expr`. The branches that lower comptime constructs
+// into non-ComptimeExpr shapes (eval_comptime_if → IfExpr result;
+// `$res(...)` → BasicLiteral false; `$embed_file(...)` → InitExpr or
+// chained CallExpr; `@VMODROOT`/`VMODROOT` → StringLiteral; embed-file
+// chain lowering) all build the legacy `ast.Expr` and route through
+// `out.emit_expr(...)`. Only the default `ComptimeExpr{expr: transform(inner), pos}`
+// path is direct-emit via `emit_comptime_expr_by_id` — skipping the
+// `ast.ComptimeExpr` struct allocation on the rare default-path occurrence.
+fn (mut t Transformer) transform_comptime_expr_to_flat(expr ast.ComptimeExpr, mut out ast.FlatBuilder) ast.FlatNodeId {
+	inner := expr.expr
+	if inner is ast.IfExpr {
+		return out.emit_expr(t.eval_comptime_if(inner))
+	}
+	if inner is ast.CallExpr {
+		if inner.lhs is ast.Ident && inner.lhs.name == 'res' {
+			return out.emit_expr(ast.Expr(ast.BasicLiteral{
+				kind:  .key_false
+				value: 'false'
+				pos:   expr.pos
+			}))
+		}
+	}
+	if inner is ast.CallOrCastExpr {
+		if inner.lhs is ast.Ident && inner.lhs.name == 'res' {
+			return out.emit_expr(ast.Expr(ast.BasicLiteral{
+				kind:  .key_false
+				value: 'false'
+				pos:   expr.pos
+			}))
+		}
+	}
+	if inner is ast.CallExpr {
+		if inner.lhs is ast.Ident && inner.lhs.name == 'embed_file' {
+			return out.emit_expr(t.transform_embed_file_comptime_expr(expr, inner.args))
+		}
+	}
+	if inner is ast.CallOrCastExpr {
+		if inner.lhs is ast.Ident && inner.lhs.name == 'embed_file' {
+			return out.emit_expr(t.transform_embed_file_comptime_expr(expr, [
+				inner.expr,
+			]))
+		}
+	}
+	if inner is ast.Ident {
+		if inner.name in ['VMODROOT', '@VMODROOT'] {
+			return out.emit_expr(ast.Expr(t.vmodroot_string_literal(expr.pos)))
+		}
+	}
+	if transformed := t.transform_embed_file_comptime_chain(inner, expr.pos) {
+		return out.emit_expr(transformed)
+	}
+	// Default: rebuild ComptimeExpr with recursively-transformed inner.
+	inner_id := t.transform_expr_to_flat(inner, mut out)
+	return out.emit_comptime_expr_by_id(inner_id, expr.pos)
 }
 
 // transform_index_expr_to_flat is the direct-emit port of
