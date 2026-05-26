@@ -253,6 +253,25 @@ import v2.ast
 //     Square).side` arms in a `pick(s Shape, k int) f64` fn) covers the
 //     arm across all 5 harness rows — 86 → 91 transformer-diff tests.
 //
+//   Session 14 (2026-05-26): UnsafeExpr expr direct-emit + harness fixture.
+//     The UnsafeExpr arm in `transform_expr_to_flat` has two paths matching
+//     `transform_expr`'s arm:
+//       1. `unsafe { nil }` normalises to a plain `nil` Ident (detected via
+//          `t.is_unsafe_nil_expr(expr)`) — emitted as a leaf Ident through
+//          `out.emit_expr(...)`. Identity in `transform_expr`'s else case.
+//       2. otherwise transform `expr.stmts` via `transform_stmts` and emit
+//          each result via `out.emit_stmt(...)`, then assemble the flat node
+//          via the new `emit_unsafe_expr_by_ids` builder helper. Mirrors
+//          `add_expr(UnsafeExpr)` encoding exactly (edges are body stmts in
+//          order). Skips the `ast.UnsafeExpr` struct allocation per non-nil
+//          occurrence.
+//     The body stmt-list is still materialised because `transform_stmts`
+//     returns one (the stmt-list expansion seam is the next big port
+//     target). New `fixture_unsafe_expr` (a `mut p := unsafe { &int(0) }`
+//     with a non-trivial body + plain `unsafe { nil }` for the
+//     normalisation arm) covers both paths across all 5 harness rows —
+//     91 → 96 transformer-diff tests.
+//
 // Phase 5: post-pass port.
 //   `post_pass` (runtime const init injection, helper functions, str/clone
 //   generation, ...) still mutates `[]ast.File`. Port it to either emit
@@ -571,6 +590,33 @@ pub fn (mut t Transformer) transform_expr_to_flat(expr ast.Expr, mut out ast.Fla
 			}
 			inner_id := t.transform_expr_to_flat(expr.expr, mut out)
 			return out.emit_postfix_expr_by_id(expr.op, inner_id, expr.pos)
+		}
+		ast.UnsafeExpr {
+			// UnsafeExpr's `transform_expr` arm has two paths:
+			//   1. `unsafe { nil }` is normalised to a plain `nil` Ident — the
+			//      backend then handles it as a pointer-null literal. Detect
+			//      that via `t.is_unsafe_nil_expr(expr)` and emit a leaf Ident
+			//      (identity in `transform_expr`'s `else { expr }` case).
+			//   2. otherwise transform `expr.stmts` via `transform_stmts` (the
+			//      body driver — still allocates a `[]Stmt`) and rebuild the
+			//      wrapper. Direct-emit recurses through `transform_stmts` +
+			//      `out.emit_stmt(...)` per result and assembles via the new
+			//      `emit_unsafe_expr_by_ids` helper. Mirrors
+			//      `add_expr(UnsafeExpr)` encoding exactly: edges are the body
+			//      stmts in order. Skips the `ast.UnsafeExpr` struct allocation
+			//      per non-nil occurrence.
+			if t.is_unsafe_nil_expr(expr) {
+				return out.emit_expr(ast.Expr(ast.Ident{
+					name: 'nil'
+					pos:  expr.pos
+				}))
+			}
+			transformed_stmts := t.transform_stmts(expr.stmts)
+			mut stmt_ids := []ast.FlatNodeId{cap: transformed_stmts.len}
+			for body_stmt in transformed_stmts {
+				stmt_ids << out.emit_stmt(body_stmt)
+			}
+			return out.emit_unsafe_expr_by_ids(stmt_ids, expr.pos)
 		}
 		ast.AsCastExpr {
 			// AsCastExpr's `transform_expr` arm mutates Transformer state

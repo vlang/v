@@ -582,6 +582,19 @@ pub fn (mut b FlatBuilder) emit_as_cast_expr_by_ids(expr_id FlatNodeId, typ_id F
 	])
 }
 
+// emit_unsafe_expr_by_ids emits an expr_unsafe node from already-flat
+// stmt FlatNodeIds. Mirrors the add_expr(UnsafeExpr) encoding exactly:
+// edges are the body stmts in order.
+pub fn (mut b FlatBuilder) emit_unsafe_expr_by_ids(stmt_ids []FlatNodeId, pos token.Pos) FlatNodeId {
+	mut edges := []FlatEdge{cap: stmt_ids.len}
+	for sid in stmt_ids {
+		edges << FlatEdge{
+			child_id: sid
+		}
+	}
+	return b.emit_simple(.expr_unsafe, pos, edges)
+}
+
 // emit_lambda_expr_by_ids emits an expr_lambda node from an already-flat
 // inner expression FlatNodeId and a slice of already-flat arg FlatNodeIds
 // (each arg is an Ident). Mirrors the add_expr(LambdaExpr) encoding exactly:
