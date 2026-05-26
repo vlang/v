@@ -712,6 +712,32 @@ pub fn (mut b FlatBuilder) emit_fn_literal_by_ids(typ_id FlatNodeId, captured_va
 	return b.emit(.expr_fn_literal, pos, -1, captured_var_ids.len, 0, 0, edges)
 }
 
+// emit_string_inter_by_ids emits an aux_string_inter node from already-flat
+// inter expression and format_expr FlatNodeIds. Mirrors add_string_inter
+// exactly: edge[0] = expr, edge[1] = format_expr; the format token packs into
+// the meta u16; width (high u16) and precision (low u16) pack into extra;
+// resolved_fmt interns into name.
+pub fn (mut b FlatBuilder) emit_string_inter_by_ids(format StringInterFormat, width int, precision int, expr_id FlatNodeId, format_expr_id FlatNodeId, resolved_fmt string) FlatNodeId {
+	mut edges := []FlatEdge{cap: 2}
+	b.push_edge(mut edges, expr_id)
+	b.push_edge(mut edges, format_expr_id)
+	packed := (width & 0xFFFF) << 16 | (precision & 0xFFFF)
+	return b.emit(.aux_string_inter, token.Pos{}, b.intern(resolved_fmt), packed, u16(int(format)),
+		0, edges)
+}
+
+// emit_string_inter_literal_by_ids emits an expr_string_inter node from a
+// verbatim values []string and a slice of already-flat StringInter FlatNodeIds.
+// Mirrors the add_expr(StringInterLiteral) encoding exactly: edge[0] = values
+// list (built via make_list_strings), edge[1] = inters list (built from the
+// supplied FlatNodeIds via the standard aux_list shape).
+pub fn (mut b FlatBuilder) emit_string_inter_literal_by_ids(kind StringLiteralKind, values []string, inter_ids []FlatNodeId, pos token.Pos) FlatNodeId {
+	mut edges := []FlatEdge{cap: 2}
+	b.push_edge(mut edges, b.make_list_strings(values))
+	b.push_edge(mut edges, b.emit_aux_list_from_ids(inter_ids))
+	return b.emit(.expr_string_inter, pos, -1, -1, u16(int(kind)), 0, edges)
+}
+
 // emit_fn_decl_by_ids emits a stmt_fn_decl node from already-flat child
 // FlatNodeIds (receiver parameter, FnType, attribute list, stmt list).
 // Mirrors the add_stmt(FnDecl) encoding exactly, including the

@@ -542,6 +542,34 @@ import v2.types
 //     dispatch surface coherent with the legacy `transform_expr` shape.
 //     All 141 existing transformer-diff tests continue to pass.
 //
+//   Session 26 (2026-05-26): StringInterLiteral deep helper port + fixture.
+//     StringInterLiteral covers V's `'... ${x:d} ...'` interpolation syntax.
+//     The legacy `transform_string_inter_literal` always returns a
+//     StringInterLiteral (no branch produces a different shape) — it walks
+//     each `ast.StringInter`, (a) optionally hoists a smartcasted payload via
+//     `transform_expr` + `hoist_expr_to_temp` (mutates `t.pending_stmts`),
+//     (b) wraps the inter expression via `transform_sprintf_arg` (type-aware
+//     pointer-with-str / string-keeping logic), then (c) fills in the
+//     resolved sprintf format via `resolve_sprintf_format`. The legacy body
+//     allocates: one `ast.StringInterLiteral` wrapper, one `[]ast.StringInter`
+//     list, and one `ast.StringInter` struct per inter.
+//
+//     `transform_string_inter_literal_to_flat` mirrors the per-inter loop
+//     and emits each StringInter via `emit_string_inter_by_ids(format, width,
+//     precision, expr_id, format_expr_id, resolved_fmt)` and the outer
+//     literal via `emit_string_inter_literal_by_ids(kind, values, inter_ids,
+//     token.Pos{})`. The smartcast/hoist mutations still happen identically
+//     (we call the same legacy helpers); only the post-build allocations are
+//     skipped. Note: legacy omits `pos` on the rebuilt literal (defaults to
+//     `token.Pos{}`) — the port passes `token.Pos{}` explicitly for parity.
+//     Same deep-port pattern as sessions 18 (SelectorExpr), 19 (IndexExpr),
+//     20 (ComptimeExpr), 21 (InitExpr).
+//
+//     No new fixture in this session — existing fixtures already cover
+//     StringInterLiteral nodes reached via ported ancestors (e.g.,
+//     `'hi ${name}'` inside a ParenExpr / SelectorExpr / ConstDecl value).
+//     All 141 transformer-diff tests continue to pass.
+//
 // Phase 5: post-pass port.
 //   `post_pass` (runtime const init injection, helper functions, str/clone
 //   generation, ...) still mutates `[]ast.File`. Port it to either emit
@@ -1195,6 +1223,19 @@ pub fn (mut t Transformer) transform_expr_to_flat(expr ast.Expr, mut out ast.Fla
 			}
 			return out.emit_expr(ast.Expr(expr))
 		}
+		ast.StringInterLiteral {
+			// StringInterLiteral deep helper port: legacy
+			// `transform_string_inter_literal` always returns a
+			// StringInterLiteral (per-inter smartcast hoist via
+			// `hoist_expr_to_temp`, then `transform_sprintf_arg` wrap, then
+			// `resolve_sprintf_format` fill-in). `transform_string_inter_literal_to_flat`
+			// mirrors the body and emits each inter via
+			// `emit_string_inter_by_ids` and the outer literal via
+			// `emit_string_inter_literal_by_ids`, skipping the
+			// `ast.StringInterLiteral` wrapper, the `[]ast.StringInter` list,
+			// and each `ast.StringInter` struct allocation per occurrence.
+			return t.transform_string_inter_literal_to_flat(expr, mut out)
+		}
 		else {
 			return out.emit_expr(t.transform_expr(expr))
 		}
@@ -1456,4 +1497,52 @@ fn (mut t Transformer) transform_selector_expr_to_flat(expr ast.SelectorExpr, mu
 	lhs_id := t.transform_expr_to_flat(expr.lhs, mut out)
 	rhs_id := out.emit_expr(ast.Expr(expr.rhs))
 	return out.emit_selector_expr_by_ids(lhs_id, rhs_id, expr.pos)
+}
+
+// transform_string_inter_literal_to_flat is the direct-emit port of
+// `transform_string_inter_literal`. Always returns a StringInterLiteral (legacy
+// rebuilds the wrapper; this port emits the flat node directly). Mirrors the
+// legacy body's per-inter loop:
+//   1. Smartcast hoist: if the inter expression matches an active smartcast,
+//      transform it (legacy `transform_expr` — `transform_expr_to_flat` would
+//      detach the inter expr from `pending_stmts` ordering), then
+//      `hoist_expr_to_temp` (which mutates `t.pending_stmts` — preserve order
+//      vs legacy).
+//   2. `transform_sprintf_arg(actual_inter)` produces the final inter
+//      expression (type-aware: keeps strings, wraps pointer-with-str, etc.).
+//   3. `resolve_sprintf_format(inter)` returns the resolved sprintf format
+//      string.
+// The per-inter result is emitted via `emit_string_inter_by_ids` and the
+// outer StringInterLiteral via `emit_string_inter_literal_by_ids`, skipping
+// both the outer `ast.StringInterLiteral` and the inner `[]ast.StringInter`
+// allocations per occurrence. The `values []string` slice is passed verbatim
+// (legacy copies it by reference into the new struct as well).
+fn (mut t Transformer) transform_string_inter_literal_to_flat(expr ast.StringInterLiteral, mut out ast.FlatBuilder) ast.FlatNodeId {
+	mut inter_ids := []ast.FlatNodeId{cap: expr.inters.len}
+	for inter in expr.inters {
+		mut actual_inter := inter
+		if t.interpolation_expr_uses_smartcast(inter.expr) {
+			if expr_typ := t.get_expr_type(inter.expr) {
+				transformed := t.transform_expr(inter.expr)
+				hoist_typ := t.get_expr_type(transformed) or {
+					t.smartcast_variant_type_for_expr(inter.expr) or { expr_typ }
+				}
+				hoisted := t.hoist_expr_to_temp(transformed, hoist_typ)
+				actual_inter = ast.StringInter{
+					...inter
+					expr: hoisted
+				}
+			}
+		}
+		inter_expr := t.transform_sprintf_arg(actual_inter)
+		expr_id := out.emit_expr(inter_expr)
+		format_expr_id := out.emit_expr(inter.format_expr)
+		resolved_fmt := t.resolve_sprintf_format(inter)
+		inter_ids << out.emit_string_inter_by_ids(inter.format, inter.width, inter.precision,
+			expr_id, format_expr_id, resolved_fmt)
+	}
+	// Legacy `transform_string_inter_literal` does not propagate `expr.pos` to
+	// the rebuilt literal (the struct literal omits `pos`, defaulting to
+	// `token.Pos{}`). Pass the zero pos here for det/parity.
+	return out.emit_string_inter_literal_by_ids(expr.kind, expr.values, inter_ids, token.Pos{})
 }
