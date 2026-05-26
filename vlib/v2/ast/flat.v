@@ -497,6 +497,21 @@ pub fn (mut b FlatBuilder) emit_const_decl_by_ids(is_public bool, fields_id Flat
 	])
 }
 
+// emit_return_stmt_by_ids emits a stmt_return node from a slice of
+// already-flat returned-expression FlatNodeIds. Mirrors the
+// add_stmt(ReturnStmt) encoding exactly: pos is the zero `token.Pos{}` the
+// legacy add_stmt arm uses, edges are the returned exprs in order. Used by
+// the flat-write port to direct-emit the outer `ast.ReturnStmt` wrapper.
+pub fn (mut b FlatBuilder) emit_return_stmt_by_ids(expr_ids []FlatNodeId) FlatNodeId {
+	mut edges := []FlatEdge{cap: expr_ids.len}
+	for eid in expr_ids {
+		edges << FlatEdge{
+			child_id: eid
+		}
+	}
+	return b.emit_simple(.stmt_return, token.Pos{}, edges)
+}
+
 // emit_parameter is the pub wrapper over the private add_parameter, used by
 // the flat-write port when an FnDecl's receiver is emitted directly.
 pub fn (mut b FlatBuilder) emit_parameter(param Parameter) FlatNodeId {

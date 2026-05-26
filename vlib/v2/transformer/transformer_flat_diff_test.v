@@ -158,6 +158,7 @@ fn assert_transform_signatures_equal(label string, a []ast.File, b []ast.File) {
 //   - index expr (default + gated + map + slice) → fixture_index_expr
 //   - comptime expr ($if guarded body)           → fixture_comptime_expr
 //   - init expr (struct literal w/ defaults)      → fixture_init_expr
+//   - return stmt (multi-value + sumtype wrap)     → fixture_return_stmt
 
 // Fixtures intentionally avoid `module main`, `println`, and any builtin
 // dependency — the harness skips the .vh cache load to stay light, so the
@@ -493,6 +494,33 @@ fn use_comptime() int {
 }
 '
 
+const fixture_return_stmt = '
+type Shape2 = Circle2 | Square2
+
+struct Circle2 {
+	r f64
+}
+
+struct Square2 {
+	side f64
+}
+
+fn pair() (int, int) {
+	return 1, 2
+}
+
+fn make_circle(r f64) Shape2 {
+	return Circle2{r: r}
+}
+
+fn use_shape(s Shape2) Shape2 {
+	if s is Circle2 {
+		return s
+	}
+	return s
+}
+'
+
 const fixture_init_expr = '
 struct Item {
 	name string
@@ -555,6 +583,7 @@ fn all_transformer_fixtures() []string {
 		fixture_index_expr,
 		fixture_comptime_expr,
 		fixture_init_expr,
+		fixture_return_stmt,
 	]
 }
 
@@ -672,6 +701,10 @@ fn test_transform_is_deterministic_init_expr() {
 	run_determinism('det_init_expr', fixture_init_expr)
 }
 
+fn test_transform_is_deterministic_return_stmt() {
+	run_determinism('det_return_stmt', fixture_return_stmt)
+}
+
 // --- parity: transform_files vs transform_files_from_flat ---
 //
 // The streaming-from-flat path is the seed for the upcoming
@@ -787,6 +820,10 @@ fn test_flat_parity_comptime_expr() {
 
 fn test_flat_parity_init_expr() {
 	run_parity('parity_init_expr', fixture_init_expr)
+}
+
+fn test_flat_parity_return_stmt() {
+	run_parity('parity_return_stmt', fixture_return_stmt)
 }
 
 // --- parity: check_files vs check_flat upstream ---
@@ -937,6 +974,10 @@ fn test_check_flat_parity_init_expr() {
 	run_check_flat_parity('check_flat_init_expr', fixture_init_expr)
 }
 
+fn test_check_flat_parity_return_stmt() {
+	run_check_flat_parity('check_flat_return_stmt', fixture_return_stmt)
+}
+
 // --- parity: transform_files vs transform_files_to_flat ---
 //
 // transform_files_to_flat is the API wedge for the future
@@ -1069,6 +1110,10 @@ fn test_to_flat_parity_comptime_expr() {
 
 fn test_to_flat_parity_init_expr() {
 	run_to_flat_parity('to_flat_init_expr', fixture_init_expr)
+}
+
+fn test_to_flat_parity_return_stmt() {
+	run_to_flat_parity('to_flat_return_stmt', fixture_return_stmt)
 }
 
 // --- parity: per-file flat-write API vs reference rehydrate+transform+append ---
@@ -1224,6 +1269,10 @@ fn test_per_file_parity_comptime_expr() {
 
 fn test_per_file_parity_init_expr() {
 	run_per_file_parity('per_file_init_expr', fixture_init_expr)
+}
+
+fn test_per_file_parity_return_stmt() {
+	run_per_file_parity('per_file_return_stmt', fixture_return_stmt)
 }
 
 // test_all_fixtures_produce_nonempty_signature guards against silent harness

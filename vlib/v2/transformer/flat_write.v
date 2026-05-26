@@ -437,6 +437,27 @@ import v2.types
 //     declared default (`tag string = "default"`) — the missing-default
 //     fill-in path. 121 → 126 transformer-diff tests.
 //
+//   Session 22 (2026-05-26): ReturnStmt port + fixture.
+//     First stmt-level port since session 3 (FnDecl). `transform_return_stmt`
+//     (~110 lines in transformer.v) always returns an `ast.ReturnStmt`
+//     (never lowers to a different shape). Its body does per-expression
+//     sumtype wrapping (`should_wrap_return_sumtype`), enum-shorthand
+//     resolution (`resolve_enum_shorthand`), smartcast handling (Ident
+//     re-wrap, var-type sumtype shortcut), and native-backend pre-wrap
+//     (`wrap_sumtype_value` for sumtype-returning fns). Too much logic to
+//     inline for a single session. Wrap-only port: call legacy
+//     `transform_return_stmt`, decompose the resulting ReturnStmt, emit
+//     each transformed expr via `out.emit_expr(...)` (already transformed)
+//     and assemble via the new `emit_return_stmt_by_ids` helper. Skips the
+//     outer `ast.ReturnStmt` wrapper allocation per occurrence; the
+//     `[]ast.Expr` list still materialises (legacy builds it).
+//
+//     New `fixture_return_stmt` covers three return shapes: multi-value
+//     return (`return 1, 2`), sumtype-wrapping return
+//     (`return Circle2{r: r}` in a `Shape2`-returning fn), and smartcast
+//     return (`if s is Circle2 { return s }` — Ident re-wrap path).
+//     126 → 131 transformer-diff tests.
+//
 // Phase 5: post-pass port.
 //   `post_pass` (runtime const init injection, helper functions, str/clone
 //   generation, ...) still mutates `[]ast.File`. Port it to either emit
@@ -608,6 +629,25 @@ pub fn (mut t Transformer) transform_stmt_to_flat(stmt ast.Stmt, mut out ast.Fla
 			}
 			fields_list_id := out.emit_aux_list_from_ids(field_ids)
 			return out.emit_global_decl_by_ids(decl_attrs_id, fields_list_id)
+		}
+		ast.ReturnStmt {
+			// ReturnStmt port: `transform_return_stmt` always returns an
+			// `ast.ReturnStmt` (never lowers to a different shape). Its body
+			// (~110 lines in transformer.v) does per-expression sumtype
+			// wrapping, enum-shorthand resolution, smartcast handling, and
+			// native-backend pre-wrapping — too much to inline. Wrap-only
+			// port: delegate the per-expression transform to legacy, then
+			// decompose the resulting ReturnStmt and direct-emit via the new
+			// `emit_return_stmt_by_ids` helper. Each transformed expr goes
+			// through `out.emit_expr(...)` (it's already transformed). Skips
+			// the outer `ast.ReturnStmt` wrapper allocation per occurrence;
+			// the `[]ast.Expr` list still materialises (legacy builds it).
+			transformed := t.transform_return_stmt(stmt)
+			mut expr_ids := []ast.FlatNodeId{cap: transformed.exprs.len}
+			for e in transformed.exprs {
+				expr_ids << out.emit_expr(e)
+			}
+			return out.emit_return_stmt_by_ids(expr_ids)
 		}
 		ast.FnDecl {
 			// Direct emit: call `transform_fn_decl_parts` (the body-work driver
