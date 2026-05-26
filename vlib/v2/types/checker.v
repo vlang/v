@@ -3982,10 +3982,17 @@ fn (mut c Checker) interface_decl_fields(decl ast.InterfaceDecl) []Field {
 		if field.name == 'type_name' {
 			has_type_name = true
 		}
+		mut field_type := c.type_expr(field.typ)
+		if field.is_mut {
+			if mut field_type is FnType {
+				field_type.is_mut_receiver = true
+			}
+		}
 		fields << Field{
 			name:         field.name
-			typ:          c.type_expr(field.typ)
+			typ:          field_type
 			default_expr: field.value
+			is_mut:       field.is_mut
 		}
 	}
 	if !has_type_name {

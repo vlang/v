@@ -69,6 +69,27 @@ fn parse_module_mut_struct_with_defines(code string, defines []string) ast.Struc
 	panic('missing struct decl')
 }
 
+fn parse_module_mut_interface(code string) ast.InterfaceDecl {
+	tmp_dir := module_mut_tmp_dir('parse_interface')
+	os.rmdir_all(tmp_dir) or {}
+	os.mkdir_all(tmp_dir) or { panic('cannot create ${tmp_dir}') }
+	defer {
+		os.rmdir_all(tmp_dir) or {}
+	}
+	path := os.join_path(tmp_dir, 'main.v')
+	os.write_file(path, code) or { panic(err) }
+	prefs := &pref.Preferences{}
+	mut file_set := token.FileSet.new()
+	mut par := parser.Parser.new(prefs)
+	files := par.parse_files([path], mut file_set)
+	for stmt in files[0].stmts {
+		if stmt is ast.InterfaceDecl {
+			return stmt
+		}
+	}
+	panic('missing interface decl')
+}
+
 fn gen_module_mut_source(code string) string {
 	tmp_dir := module_mut_tmp_dir('gen')
 	os.rmdir_all(tmp_dir) or {}
@@ -89,6 +110,13 @@ fn gen_module_mut_source(code string) string {
 
 fn assert_module_mut_failure(label string, main_source string, expected string) {
 	code, output := run_module_mut_v2_check(label, module_mut_sources(main_source), 'main.v')
+	assert code != 0, '${label} should fail'
+	assert output.contains(expected), output
+}
+
+fn assert_module_mut_interface_failure(label string, main_source string, expected string) {
+	code, output := run_module_mut_v2_check(label, module_mut_interface_sources(main_source),
+		'main.v')
 	assert code != 0, '${label} should fail'
 	assert output.contains(expected), output
 }
@@ -137,6 +165,49 @@ pub fn new_counter_with_ptr() Counter {
 	}
 }
 
+fn module_mut_interface_sources(main_source string) map[string]string {
+	return {
+		'state/state.v': 'module state
+
+pub interface Mutator {
+mut:
+	bump()
+	reset()
+}
+
+pub struct LocalMutator {
+mut:
+	value int
+}
+
+pub fn (mut m LocalMutator) bump() {
+	m.value++
+}
+
+pub fn (mut m LocalMutator) reset() {
+	m.value = 0
+}
+
+pub struct InterfaceCounter {
+pub module_mut:
+	iface Mutator
+}
+
+pub fn new_interface_counter() InterfaceCounter {
+	return InterfaceCounter{
+		iface: LocalMutator{}
+	}
+}
+
+pub fn (mut c InterfaceCounter) bump_iface() {
+	c.iface.bump()
+	c.iface.reset()
+}
+'
+		'main.v':        main_source
+	}
+}
+
 fn test_module_mut_parser_field_metadata() {
 	decl := parse_module_mut_struct('module state
 
@@ -178,6 +249,48 @@ pub mut:
 	assert decl.fields[5].is_public
 	assert decl.fields[5].is_mut
 	assert !decl.fields[5].is_module_mut
+}
+
+fn test_module_mut_parser_interface_mut_block_metadata() {
+	decl := parse_module_mut_interface('module state
+
+interface Mutator {
+	name string
+mut:
+	bump()
+	reset()
+}
+')
+	assert decl.fields[0].name == 'name'
+	assert !decl.fields[0].is_mut
+	assert decl.fields[1].name == 'bump'
+	assert decl.fields[1].is_mut
+	assert decl.fields[2].name == 'reset'
+	assert decl.fields[2].is_mut
+}
+
+fn test_module_mut_gen_v_interface_mut_block_round_trip() {
+	source := 'module state
+
+interface Mutator {
+	name string
+mut:
+	bump()
+	reset()
+}
+'
+	generated := gen_module_mut_source(source)
+	assert generated.contains('mut:')
+	assert generated.contains('bump()')
+	assert generated.contains('reset()')
+	assert !generated.contains('bump fn(')
+	decl := parse_module_mut_interface(generated)
+	assert decl.fields[0].name == 'name'
+	assert !decl.fields[0].is_mut
+	assert decl.fields[1].name == 'bump'
+	assert decl.fields[1].is_mut
+	assert decl.fields[2].name == 'reset'
+	assert decl.fields[2].is_mut
 }
 
 fn test_module_mut_parser_comptime_branch_access_state() {
@@ -344,6 +457,20 @@ fn main() {
 	c.inc()
 	c.bump_items()
 	println(c.value)
+}
+'),
+		'main.v')
+	assert code == 0, output
+}
+
+fn test_module_mut_allows_internal_mut_interface_method_call_on_field() {
+	code, output := run_module_mut_v2_check('internal_mut_interface_method_call', module_mut_interface_sources('module main
+
+import state
+
+fn main() {
+	mut c := state.new_interface_counter()
+	c.bump_iface()
 }
 '),
 		'main.v')
@@ -530,6 +657,19 @@ fn main() {
 }
 ',
 		'cannot mutate module-mutable field `state.Counter.inner` outside module `state`')
+}
+
+fn test_module_mut_rejects_mut_interface_method_call_on_field() {
+	assert_module_mut_interface_failure('mut_interface_method_call', 'module main
+
+import state
+
+fn main() {
+	mut c := state.new_interface_counter()
+	c.iface.bump()
+}
+',
+		'cannot mutate module-mutable field `state.InterfaceCounter.iface` outside module `state`')
 }
 
 fn test_module_mut_rejects_pointer_deref_mutation() {

@@ -67,6 +67,40 @@ pub mut:
 	return sanitize_header_source(gen.output_string(), map[string]string{})
 }
 
+fn module_mut_interface_cached_header_source_for_test() string {
+	tmp_dir := module_storage_cache_tmp_dir('module_mut_interface_source')
+	os.rmdir_all(tmp_dir) or {}
+	os.mkdir_all(os.join_path(tmp_dir, 'state')) or { panic(err) }
+	defer {
+		os.rmdir_all(tmp_dir) or {}
+	}
+	source_file := os.join_path(tmp_dir, 'state', 'state.v')
+	os.write_file(source_file, 'module state
+
+pub interface Mutator {
+mut:
+	bump()
+	reset()
+}
+
+pub struct Counter {
+pub module_mut:
+	iface Mutator
+}
+') or {
+		panic(err)
+	}
+	mut prefs := pref.new_preferences()
+	mut b := new_builder(&prefs)
+	source_files := b.parse_source_files_for_headers([source_file])
+	header_ast := b.build_module_header_ast(source_files, 'state') or {
+		panic('missing state header')
+	}
+	mut gen := gen_v.new_gen(b.pref)
+	gen.gen(header_ast)
+	return sanitize_header_source(gen.output_string(), map[string]string{})
+}
+
 fn module_storage_cached_header_global(header_source string, name string) ast.FieldDecl {
 	tmp_dir := module_storage_cache_tmp_dir('parse')
 	os.rmdir_all(tmp_dir) or {}
@@ -115,6 +149,29 @@ fn module_storage_cached_header_struct(header_source string, name string) ast.St
 	panic('missing cached header struct ${name}')
 }
 
+fn module_storage_cached_header_interface(header_source string, name string) ast.InterfaceDecl {
+	tmp_dir := module_storage_cache_tmp_dir('parse_interface')
+	os.rmdir_all(tmp_dir) or {}
+	os.mkdir_all(tmp_dir) or { panic(err) }
+	defer {
+		os.rmdir_all(tmp_dir) or {}
+	}
+	header_path := os.join_path(tmp_dir, 'state.vh')
+	os.write_file(header_path, header_source) or { panic(err) }
+	mut prefs := pref.new_preferences()
+	mut file_set := token.FileSet.new()
+	mut par := parser.Parser.new(&prefs)
+	files := par.parse_files([header_path], mut file_set)
+	for stmt in files[0].stmts {
+		if stmt is ast.InterfaceDecl {
+			if stmt.name == name {
+				return stmt
+			}
+		}
+	}
+	panic('missing cached header interface ${name}')
+}
+
 fn module_storage_run_cached_header_check(label string, header_source string, main_source string) (int, string) {
 	tmp_dir := module_storage_cache_tmp_dir(label)
 	os.rmdir_all(tmp_dir) or {}
@@ -158,6 +215,32 @@ fn test_module_storage_cached_header_preserves_module_mut_struct_fields() {
 	assert counter.fields[1].is_public
 	assert counter.fields[1].is_mut
 	assert !counter.fields[1].is_module_mut
+}
+
+fn test_module_storage_cached_header_preserves_mut_interface_methods_for_module_mut_field() {
+	header_source := module_mut_interface_cached_header_source_for_test()
+	assert header_source.contains('pub interface Mutator {')
+	assert header_source.contains('mut:')
+	assert header_source.contains('bump()')
+	assert !header_source.contains('bump fn(')
+	mutator := module_storage_cached_header_interface(header_source, 'Mutator')
+	assert mutator.fields[0].name == 'bump'
+	assert mutator.fields[0].is_mut
+	assert mutator.fields[1].name == 'reset'
+	assert mutator.fields[1].is_mut
+
+	module_mut_code, module_mut_output := module_storage_run_cached_header_check('module_mut_interface_method',
+		header_source, 'module main
+
+import state
+
+fn main() {
+	mut c := state.Counter{}
+	c.iface.bump()
+}
+')
+	assert module_mut_code != 0, 'cached module_mut interface method mutation should fail'
+	assert module_mut_output.contains('cannot mutate module-mutable field `state.Counter.iface` outside module `state`'), module_mut_output
 }
 
 fn test_module_storage_cached_header_visibility_matches_source_module() {

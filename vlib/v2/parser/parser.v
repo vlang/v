@@ -3039,17 +3039,19 @@ fn (mut p Parser) interface_decl(is_public bool, attributes []ast.Attribute) ast
 	p.expect(.lcbr)
 	mut fields := []ast.FieldDecl{}
 	mut embedded := []ast.Expr{}
+	mut block_is_mut := false
 	for p.tok != .rcbr {
-		is_mut := p.tok == .key_mut
-		if is_mut {
+		if p.tok == .key_mut {
 			p.next()
 			p.expect(.colon)
+			block_is_mut = true
 		}
 		if p.tok.is_keyword() && p.peek() == .lpar {
 			field_name := p.expect_name_or_keyword()
 			fields << ast.FieldDecl{
-				name: field_name
-				typ:  ast.Expr(ast.Type(p.fn_type()))
+				name:   field_name
+				typ:    ast.Expr(ast.Type(p.fn_type()))
+				is_mut: block_is_mut
 			}
 			p.expect(.semicolon)
 			continue
@@ -3085,8 +3087,9 @@ fn (mut p Parser) interface_decl(is_public bool, attributes []ast.Attribute) ast
 				p.expect_type()
 			}
 			fields << ast.FieldDecl{
-				name: field_name
-				typ:  field_typ
+				name:   field_name
+				typ:    field_typ
+				is_mut: block_is_mut
 			}
 		}
 		// embedded interface

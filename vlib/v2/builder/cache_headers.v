@@ -2499,6 +2499,7 @@ fn sanitize_header_source(source string, source_fn_returns map[string]string) st
 	mut global_body_lines := []string{}
 	mut in_type_block := false
 	mut in_enum_block := false
+	mut in_interface_block := false
 	for source_line in lines {
 		mut line := source_line
 		line = restore_fn_return_type_from_source(line, source_fn_returns)
@@ -2507,6 +2508,8 @@ fn sanitize_header_source(source string, source_fn_returns map[string]string) st
 			if header_starts_type_block(trimmed) {
 				in_type_block = true
 				in_enum_block = trimmed.starts_with('enum ') || trimmed.starts_with('pub enum ')
+				in_interface_block = trimmed.starts_with('interface ')
+					|| trimmed.starts_with('pub interface ')
 				out << line
 				continue
 			}
@@ -2514,10 +2517,12 @@ fn sanitize_header_source(source string, source_fn_returns map[string]string) st
 				if trimmed == '}' {
 					in_type_block = false
 					in_enum_block = false
+					in_interface_block = false
 					out << line
 					continue
 				}
-				if !in_enum_block && header_type_block_line_is_malformed(trimmed) {
+				if !in_enum_block
+					&& header_type_block_line_is_malformed(trimmed, in_interface_block) {
 					continue
 				}
 			}
@@ -2635,11 +2640,18 @@ fn header_is_c_fn_decl_line(trimmed string) bool {
 	return trimmed.starts_with('fn C.') || trimmed.starts_with('pub fn C.')
 }
 
-fn header_type_block_line_is_malformed(trimmed string) bool {
+fn header_type_block_line_is_malformed(trimmed string, in_interface_block bool) bool {
 	if trimmed.len == 0 {
 		return false
 	}
 	if trimmed.starts_with('[') || trimmed.starts_with('@[') || trimmed.starts_with('//') {
+		return false
+	}
+	if trimmed == 'mut:' || trimmed == 'pub:' || trimmed == 'pub mut:'
+		|| trimmed == 'pub module_mut:' {
+		return false
+	}
+	if in_interface_block && header_interface_method_line_is_valid(trimmed) {
 		return false
 	}
 	if (trimmed.starts_with('fn ') || trimmed.starts_with('pub fn '))
@@ -2656,6 +2668,20 @@ fn header_type_block_line_is_malformed(trimmed string) bool {
 	}
 	first := token[0]
 	return first >= `a` && first <= `z`
+}
+
+fn header_interface_method_line_is_valid(trimmed string) bool {
+	open_idx := trimmed.index('(') or { return false }
+	if open_idx <= 0 {
+		return false
+	}
+	close_idx := header_find_matching_paren(trimmed, open_idx) or { return false }
+	method_name := trimmed[..open_idx].trim_space()
+	if method_name.len == 0 || method_name.contains(' ') {
+		return false
+	}
+	after := trimmed[close_idx + 1..].trim_space()
+	return after.len == 0 || !after.contains('{')
 }
 
 fn header_fn_decl_line_is_malformed(line string) bool {
