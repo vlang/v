@@ -543,6 +543,17 @@ pub fn (mut b FlatBuilder) emit_modifier_expr_by_id(kind token.Token, inner_id F
 	])
 }
 
+// emit_postfix_expr_by_id emits an expr_postfix node from an already-flat
+// inner expression FlatNodeId. Mirrors the add_expr(PostfixExpr) encoding
+// exactly: the operator token is packed into the meta u16.
+pub fn (mut b FlatBuilder) emit_postfix_expr_by_id(op token.Token, inner_id FlatNodeId, pos token.Pos) FlatNodeId {
+	return b.emit(.expr_postfix, pos, -1, -1, u16(int(op)), 0, [
+		FlatEdge{
+			child_id: inner_id
+		},
+	])
+}
+
 // emit_lambda_expr_by_ids emits an expr_lambda node from an already-flat
 // inner expression FlatNodeId and a slice of already-flat arg FlatNodeIds
 // (each arg is an Ident). Mirrors the add_expr(LambdaExpr) encoding exactly:

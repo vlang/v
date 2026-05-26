@@ -184,6 +184,22 @@ import v2.ast
 //     calls it) covers the arm across all 5 harness rows — 66 → 71
 //     transformer-diff tests.
 //
+//   Session 10 (2026-05-26): PostfixExpr expr direct-emit + harness fixture.
+//     The PostfixExpr arm in `transform_expr_to_flat` direct-emits via a
+//     recursive `transform_expr_to_flat` for the inner expression plus the
+//     new `emit_postfix_expr_by_id` builder helper. Skips the
+//     `ast.PostfixExpr` struct allocation for the plain postfix ops (`++`
+//     / `--`, i.e. `.inc` / `.dec`). One legacy fallback guard:
+//     `expr.op == .not || expr.op == .question` — these ops trigger
+//     non-trivial lowering in `transform_expr` (native backends keep
+//     postfix; non-native rewrite `expr!` / `expr?` into a CastExpr over
+//     the inner Result/Option base type plus string-range rename
+//     `substr` → `substr_checked` plus unwrap fallback). These produce
+//     different expression shapes, so they stay on the legacy round-trip.
+//     New `fixture_postfix_expr` (a fn that mut-binds a local then runs
+//     `a++` / `a--`) covers the arm across all 5 harness rows — 71 → 76
+//     transformer-diff tests.
+//
 // Phase 5: post-pass port.
 //   `post_pass` (runtime const init injection, helper functions, str/clone
 //   generation, ...) still mutates `[]ast.File`. Port it to either emit
@@ -461,6 +477,24 @@ pub fn (mut t Transformer) transform_expr_to_flat(expr ast.Expr, mut out ast.Fla
 				arg_ids << out.emit_expr(ast.Expr(arg))
 			}
 			return out.emit_lambda_expr_by_ids(inner_id, arg_ids, expr.pos)
+		}
+		ast.PostfixExpr {
+			// PostfixExpr's `transform_expr` arm has lowering side cases when
+			// `op in [.not, .question]`: native backends keep the postfix node,
+			// other backends rewrite `expr!` / `expr?` into a `CastExpr` over
+			// the inner Result/Option base type, plus a string-range check that
+			// renames `substr` to `substr_checked`. These produce *different*
+			// expression shapes (CastExpr, Ident, or even an unwrapped inner)
+			// — fall back to legacy so all the rewrite logic stays in one
+			// place. For the plain postfix ops (`++` / `--`, i.e. `.inc` and
+			// `.dec`), the arm is a pure wrapper around `transform_expr(expr.expr)`;
+			// direct-emit recurses into `transform_expr_to_flat` and assembles
+			// the flat node via the new `emit_postfix_expr_by_id` helper.
+			if expr.op == .not || expr.op == .question {
+				return out.emit_expr(t.transform_expr(expr))
+			}
+			inner_id := t.transform_expr_to_flat(expr.expr, mut out)
+			return out.emit_postfix_expr_by_id(expr.op, inner_id, expr.pos)
 		}
 		ast.FnLiteral {
 			// FnLiteral has three children sets: typ (FnType, verbatim),
