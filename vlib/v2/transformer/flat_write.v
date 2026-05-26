@@ -664,6 +664,37 @@ import v2.types
 //     directly into the builder instead of materialising `[]ast.Stmt`) is
 //     the next significant target.
 //
+//   Session 33 (2026-05-26): GenericArgOrIndexExpr port (cross-arm routing).
+//     `transform_expr`'s GenericArgOrIndexExpr arm disambiguates the parser
+//     ambiguity for `x[y]` via the lhs type:
+//       (a) callable lhs → `specialize_generic_callable_expr(lhs, [expr],
+//           pos)` lowers to the generic arg specialization token (Ident or
+//           CallExpr) — different shape, route through leaf
+//           `out.emit_expr(...)`.
+//       (b) otherwise → constructs an `ast.IndexExpr{lhs, expr,
+//           is_gated: false, pos}` and runs it through
+//           `transform_index_expr`. Direct-emit routes through the
+//           existing `transform_index_expr_to_flat` helper so the IndexExpr
+//           arm's default-path direct-emit (lhs + expr via
+//           `transform_expr_to_flat`, assembled via
+//           `emit_index_expr_by_ids`) also applies here.
+//
+//     Pattern note: first port where one ported `transform_*_to_flat`
+//     helper calls another (`GenericArgOrIndexExpr` → `transform_index_
+//     expr_to_flat`). Establishes the cross-arm routing template — when
+//     an arm always lowers into a shape that already has a flat helper,
+//     forward to that helper directly instead of going through legacy
+//     `transform_expr` dispatch.
+//
+//     `is_callable_type` is an immutable lookup (`&Transformer` receiver);
+//     `specialize_generic_callable_expr` is `mut`. Gate the mut-call
+//     branch via an upfront immutable probe — same shape as the Ident /
+//     KeywordOperator / GenericArgs ports (sessions 23-25). Reachability
+//     is limited (the parser typically unifies into CallExpr/IndexExpr at
+//     parse time), but the port removes one fallback path from the `else`
+//     branch. No new fixture this session. All 141 transformer-diff tests
+//     continue to pass.
+//
 //   Session 32 (2026-05-26): AssertStmt port (fallback stmt-level identity).
 //     `transform_stmt`'s AssertStmt arm is the rare fallback path — most
 //     assert stmts get expanded into `if !cond { panic(...) }` by
@@ -1515,6 +1546,46 @@ pub fn (mut t Transformer) transform_expr_to_flat(expr ast.Expr, mut out ast.Fla
 				return out.emit_expr(ast.Expr(expr))
 			}
 			return out.emit_expr(t.transform_expr(expr))
+		}
+		ast.GenericArgOrIndexExpr {
+			// GenericArgOrIndexExpr is the parser ambiguity node for `x[y]` —
+			// the legacy arm disambiguates via the lhs type:
+			//   1. callable lhs → `specialize_generic_callable_expr(lhs, [expr],
+			//      pos)` lowers to an Ident or CallExpr (the generic arg
+			//      specialization token, e.g. `myfn_T`) — different shape, route
+			//      through the leaf `out.emit_expr(...)`.
+			//   2. otherwise → constructs an `ast.IndexExpr{lhs, expr,
+			//      is_gated: false, pos}` and runs it through
+			//      `transform_index_expr`. Route through the existing
+			//      `transform_index_expr_to_flat` helper so the IndexExpr arm's
+			//      default-path direct-emit (lhs + expr via
+			//      `transform_expr_to_flat`, assembled via
+			//      `emit_index_expr_by_ids`) also applies here — skipping the
+			//      `transform_expr` dispatch + the IndexExpr arm's
+			//      `transform_index_expr` legacy call per occurrence.
+			//
+			// `is_callable_type` is an immutable lookup (`&Transformer`
+			// receiver); `specialize_generic_callable_expr` is `mut`. Same
+			// shape as the Ident / KeywordOperator / GenericArgs ports
+			// (sessions 23-25): gate the mut-call branch via an upfront
+			// immutable probe, direct-emit the default path. Reachability is
+			// limited (the parser typically unifies into CallExpr/IndexExpr at
+			// parse time), but the port removes one fallback path from the
+			// `else` branch and establishes the cross-arm routing pattern
+			// (one ported helper calling another).
+			if lhs_type := t.get_expr_type(expr.lhs) {
+				if t.is_callable_type(lhs_type) {
+					return out.emit_expr(t.specialize_generic_callable_expr(expr.lhs, [
+						expr.expr,
+					], expr.pos))
+				}
+			}
+			return t.transform_index_expr_to_flat(ast.IndexExpr{
+				lhs:      expr.lhs
+				expr:     expr.expr
+				is_gated: false
+				pos:      expr.pos
+			}, mut out)
 		}
 		ast.Ident {
 			// Ident has two state-dependent rewrite branches in
