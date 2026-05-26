@@ -398,6 +398,13 @@ fn (mut w Walker) walk_expr_cursor_edge(parent ast.Cursor, edge_i int, mod_name 
 //     expr_if, expr_if_guard, expr_lock, expr_map_init, expr_match,
 //     expr_or, expr_select, expr_unsafe, typ_anon_struct, typ_fn,
 //     typ_generic
+//   * no-mark structural arms: expr_assoc, expr_generic_args
+//
+// The remaining un-ported arms (expr_call, expr_call_or_cast, expr_cast,
+// expr_infix, expr_init, expr_selector, expr_string_inter) all invoke
+// mark_* helpers that take decoded ast.Expr / ast.CallExpr / ast.InfixExpr
+// today. Porting them buys little until those helpers grow cursor-input
+// variants; the else fallback decodes + delegates and stays bit-identical.
 fn (mut w Walker) walk_expr_cursor(c ast.Cursor, mod_name string) {
 	if !c.is_valid() {
 		return
@@ -568,6 +575,27 @@ fn (mut w Walker) walk_expr_cursor(c ast.Cursor, mod_name string) {
 				w.walk_expr_cursor(embedded.at(i), mod_name)
 			}
 			w.walk_field_decl_list(c, 2, mod_name, true)
+		}
+		// expr_assoc: edge 0 = typ, edge 1 = expr, edges 2.. = aux_field_init
+		// nodes (each with edge 0 = value expr). No mark side-effects, so the
+		// arm is purely structural.
+		.expr_assoc {
+			w.walk_expr_cursor(c.edge(0), mod_name)
+			w.walk_expr_cursor(c.edge(1), mod_name)
+			for i in 2 .. c.edge_count() {
+				field := c.edge(i)
+				if !field.is_valid() {
+					continue
+				}
+				w.walk_expr_cursor(field.edge(0), mod_name)
+			}
+		}
+		// expr_generic_args: edge 0 = lhs, edges 1.. = args. No mark
+		// side-effects — every edge is a walked expr.
+		.expr_generic_args {
+			for i in 0 .. c.edge_count() {
+				w.walk_expr_cursor(c.edge(i), mod_name)
+			}
 		}
 		else {
 			w.walk_expr(c.flat.decode_expr(c.id), mod_name)
