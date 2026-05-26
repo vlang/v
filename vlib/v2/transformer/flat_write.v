@@ -520,6 +520,28 @@ import v2.types
 //     specially handles `key_typeof` and `key_go`. 136 → 141
 //     transformer-diff tests.
 //
+//   Session 25 (2026-05-26): GenericArgs expr direct-emit (completeness sweep).
+//     GenericArgs covers the type-parameter shape `lhs[T]` (`typeof[int]`,
+//     `MyGenericFn[string]`, ...). The `transform_expr` arm has three
+//     branches: (1) `is_typeof_generic_args(expr)` → identity; (2)
+//     `args.len == 1` + non-callable lhs type → `transform_index_expr`
+//     lowers into an IndexExpr (different shape); (3) default →
+//     `specialize_generic_callable_expr` lowers into an Ident or CallExpr
+//     (different shape). The arm in `transform_expr_to_flat` follows the
+//     session 23/24 pattern — gate the identity branch via the immutable
+//     `is_typeof_generic_args` lookup (a `&Transformer` name check, no
+//     state mutation) and direct-emit via leaf
+//     `out.emit_expr(ast.Expr(expr))`; all other paths fall back to the
+//     legacy round-trip.
+//
+//     Reachability is limited in practice: GenericArgs typically appears
+//     as a CallExpr lhs (`typeof[int]()`, `myfn[T](x)`), and CallExpr is
+//     unported — so the arm fires only through ported-ancestor recursion
+//     (ParenExpr / SelectorExpr deep helper, etc.). Same shape as the
+//     session 17 IfGuardExpr completeness sweep: no new fixture, keeps the
+//     dispatch surface coherent with the legacy `transform_expr` shape.
+//     All 141 existing transformer-diff tests continue to pass.
+//
 // Phase 5: post-pass port.
 //   `post_pass` (runtime const init injection, helper functions, str/clone
 //   generation, ...) still mutates `[]ast.File`. Port it to either emit
@@ -1121,6 +1143,34 @@ pub fn (mut t Transformer) transform_expr_to_flat(expr ast.Expr, mut out ast.Fla
 				return out.emit_expr(t.transform_expr(expr))
 			}
 			return out.emit_expr(ast.Expr(expr))
+		}
+		ast.GenericArgs {
+			// GenericArgs covers the type-parameter shape `lhs[T]` (e.g.
+			// `typeof[int]`, `MyGenericFn[string]`, ...). The `transform_expr`
+			// arm has three branches:
+			//   1. `is_typeof_generic_args(expr)` (the `typeof[T]` shape) →
+			//      identity (`return expr`).
+			//   2. `args.len == 1` + non-callable lhs type → disambiguates as
+			//      an IndexExpr via `transform_index_expr` (different shape).
+			//   3. default → `specialize_generic_callable_expr` lowers to an
+			//      Ident or CallExpr (different shape).
+			// Direct-emit follows sessions 23 (Ident) and 24 (KeywordOperator)
+			// — gate the identity branch via the immutable lookup
+			// `is_typeof_generic_args` (a `&Transformer` name check, no
+			// mutation) and direct-emit via leaf `out.emit_expr(ast.Expr(expr))`.
+			// All other paths fall back to the legacy round-trip.
+			//
+			// Reachability is limited in practice: GenericArgs typically
+			// appears as a CallExpr lhs (`typeof[int]()`, `myfn[T](x)`), and
+			// CallExpr is unported — so the arm fires only through ported-
+			// ancestor recursion (ParenExpr / SelectorExpr deep helper, ...).
+			// Same shape as the session 17 IfGuardExpr completeness sweep:
+			// keeps the dispatch surface coherent with the legacy
+			// `transform_expr` shape without adding a speculative fixture.
+			if t.is_typeof_generic_args(expr) {
+				return out.emit_expr(ast.Expr(expr))
+			}
+			return out.emit_expr(t.transform_expr(expr))
 		}
 		ast.Ident {
 			// Ident has two state-dependent rewrite branches in
