@@ -668,7 +668,7 @@ pub mut:
 }
 
 pub fn (f &FnDecl) new_method_with_receiver_type(new_type_ Type) FnDecl {
-	new_type := if f.params[0].typ.is_ptr() && !new_type_.is_ptr() {
+	recv_type := if f.params[0].typ.is_ptr() && !new_type_.is_ptr() {
 		new_type_.ref()
 	} else {
 		new_type_
@@ -678,10 +678,10 @@ pub fn (f &FnDecl) new_method_with_receiver_type(new_type_ Type) FnDecl {
 		new_method.params = f.params.clone()
 		for i in 1 .. new_method.params.len {
 			if new_method.params[i].typ == new_method.params[0].typ {
-				new_method.params[i].typ = new_type
+				new_method.params[i].typ = recv_type
 			}
 		}
-		new_method.params[0].typ = new_type
+		new_method.params[0].typ = recv_type
 		return *new_method
 	}
 }
@@ -776,7 +776,7 @@ pub fn (p &Param) specifier() string {
 }
 
 pub fn (f &Fn) new_method_with_receiver_type(new_type_ Type) Fn {
-	new_type := if f.params[0].typ.is_ptr() && !new_type_.is_ptr() {
+	recv_type := if f.params[0].typ.is_ptr() && !new_type_.is_ptr() {
 		new_type_.ref()
 	} else {
 		new_type_
@@ -786,7 +786,7 @@ pub fn (f &Fn) new_method_with_receiver_type(new_type_ Type) Fn {
 		new_method.params = f.params.clone()
 		for i in 1 .. new_method.params.len {
 			if new_method.params[i].typ == new_method.params[0].typ {
-				new_method.params[i].typ = new_type
+				new_method.params[i].typ = recv_type
 			}
 		}
 		new_method.from_embedded_type = if f.from_embedded_type != 0 {
@@ -794,7 +794,7 @@ pub fn (f &Fn) new_method_with_receiver_type(new_type_ Type) Fn {
 		} else {
 			f.params[0].typ
 		}
-		new_method.params[0].typ = new_type
+		new_method.params[0].typ = recv_type
 
 		return *new_method
 	}

@@ -26,10 +26,10 @@ pub fn tan(a f64) f64 {
 	if is_inf(x, 0) {
 		return nan()
 	}
-	mut sign := 1 // make argument positive but save the sign
+	mut sgn := 1 // make argument positive but save the sign
 	if x < 0 {
 		x = -x
-		sign = -1
+		sgn = -1
 	}
 	if x > tan_lossth {
 		return 0.0
@@ -55,7 +55,7 @@ pub fn tan(a f64) f64 {
 	if (octant & 2) == 2 {
 		y = -1.0 / y
 	}
-	if sign < 0 {
+	if sgn < 0 {
 		y = -y
 	}
 	return y
@@ -73,10 +73,10 @@ pub fn cot(a f64) f64 {
 	if x == 0.0 {
 		return inf(1)
 	}
-	mut sign := 1 // make argument positive but save the sign
+	mut sgn := 1 // make argument positive but save the sign
 	if x < 0 {
 		x = -x
-		sign = -1
+		sgn = -1
 	}
 	if x > tan_lossth {
 		return 0.0
@@ -104,7 +104,7 @@ pub fn cot(a f64) f64 {
 	} else {
 		y = 1.0 / y
 	}
-	if sign < 0 {
+	if sgn < 0 {
 		y = -y
 	}
 	return y
