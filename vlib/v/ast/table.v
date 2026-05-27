@@ -1090,6 +1090,12 @@ pub fn (t &Table) are_payloads_alias_compatible(a Type, b Type) bool {
 	if a_unaliased == b_unaliased {
 		return true
 	}
+	// `sym()` looks up by idx and drops `nr_muls()`, so without this guard a
+	// pointer like `&[]Token` would be reported as payload-compatible with
+	// `Tokens` (#27278 review).
+	if a_unaliased.nr_muls() != b_unaliased.nr_muls() {
+		return false
+	}
 	a_sym := t.sym(a_unaliased)
 	b_sym := t.sym(b_unaliased)
 	if a_sym.kind != b_sym.kind {
