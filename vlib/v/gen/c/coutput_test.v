@@ -342,6 +342,34 @@ fn main() {
 	assert !compilation.output.contains('__atomic_fetch_add')
 }
 
+fn test_windows_tcc_boehm_prod_does_not_emit_gc_remove_roots() {
+	os.chdir(vroot) or {}
+	cc := windows_tcc_ccompiler_for_coutput_test()
+	if cc == '' {
+		eprintln('> skipping ${@FN} since tcc is not available on windows')
+		return
+	}
+	test_source := os.join_path(os.vtmp_dir(), 'coutput_windows_tcc_boehm_scope_pin.vv')
+	os.write_file(test_source, "module main
+
+fn use_value(value string) {
+	println(value)
+}
+
+fn main() {
+	values := ['alpha', 'beta']
+	use_value(values[0])
+}
+")!
+	defer {
+		os.rm(test_source) or {}
+	}
+	cmd := '${os.quoted_path(vexe)} -o - -os windows -cc ${cc} -prod ${os.quoted_path(test_source)}'
+	compilation := os.execute(cmd)
+	ensure_compilation_succeeded(compilation, cmd)
+	assert !compilation.output.contains('GC_remove_roots(')
+}
+
 fn windows_tcc_ccompiler_for_coutput_test() string {
 	if user_os != 'windows' {
 		return 'x86_64-w64-mingw32-tcc'

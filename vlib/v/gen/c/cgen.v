@@ -7960,6 +7960,10 @@ fn (mut g Gen) scope_gc_pin_pregen(node_pos int) []ScopeGcPin {
 		|| g.pref.gc_mode !in [.boehm_full, .boehm_incr, .boehm_full_opt, .boehm_incr_opt] {
 		return []ScopeGcPin{}
 	}
+	if g.is_windows_tcc() {
+		// The bundled Windows tcc libgc archive lacks GC_remove_roots().
+		return []ScopeGcPin{}
+	}
 	if g.inside_veb_tmpl {
 		// Veb template statements are inlined into the route body; their AST scopes
 		// do not always match the generated C block scopes for template locals.
