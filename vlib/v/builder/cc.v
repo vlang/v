@@ -286,7 +286,35 @@ fn (mut v Builder) show_c_compiler_output(ccompiler string, res os.Result) {
 	println('='.repeat(header.len))
 }
 
+struct CCompilerFailureOutput {
+	display_ccompiler string
+	display_res       os.Result
+	report_ccompiler  string
+	report_res        os.Result
+}
+
+fn c_compiler_failure_output(ccompiler string, res os.Result, tcc_output os.Result) CCompilerFailureOutput {
+	if res.exit_code != 0 && tcc_output.output != '' {
+		return CCompilerFailureOutput{
+			display_ccompiler: 'tcc'
+			display_res:       tcc_output
+			report_ccompiler:  ccompiler
+			report_res:        res
+		}
+	}
+	return CCompilerFailureOutput{
+		display_ccompiler: ccompiler
+		display_res:       res
+		report_ccompiler:  ccompiler
+		report_res:        res
+	}
+}
+
 fn (mut v Builder) post_process_c_compiler_output(ccompiler string, res os.Result) {
+	v.post_process_c_compiler_output_with_report(ccompiler, res, ccompiler, res)
+}
+
+fn (mut v Builder) post_process_c_compiler_output_with_report(ccompiler string, res os.Result, report_ccompiler string, report_res os.Result) {
 	if res.exit_code == 0 {
 		if v.pref.reuse_tmpc {
 			return
@@ -360,6 +388,7 @@ fn (mut v Builder) post_process_c_compiler_output(ccompiler string, res os.Resul
 			}
 		}
 	}
+	v.submit_c_error_bug_report(report_ccompiler, report_res.output)
 	if v.pref.is_quiet {
 		exit(1)
 	}
@@ -1602,16 +1631,13 @@ pub fn (mut v Builder) cc() {
 					missing_compiler_info())
 			}
 		}
-		if !v.pref.show_c_output {
-			// if tcc failed once, and the system C compiler has failed as well,
-			// print the tcc error instead since it may contain more useful information
-			// see https://discord.com/channels/592103645835821068/592115457029308427/811956304314761228
-			if res.exit_code != 0 && tcc_output.output != '' {
-				v.post_process_c_compiler_output('tcc', tcc_output)
-			} else {
-				v.post_process_c_compiler_output(ccompiler, res)
-			}
-		}
+		// If tcc failed once, and the system C compiler has failed as well,
+		// print the tcc error instead since it may contain more useful information.
+		// Keep the uploaded bug report tied to the final compiler result.
+		// See https://discord.com/channels/592103645835821068/592115457029308427/811956304314761228
+		failure_output := c_compiler_failure_output(ccompiler, res, tcc_output)
+		v.post_process_c_compiler_output_with_report(failure_output.display_ccompiler,
+			failure_output.display_res, failure_output.report_ccompiler, failure_output.report_res)
 		// Print the C command
 		if v.pref.is_verbose {
 			println('${ccompiler}')

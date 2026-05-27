@@ -321,6 +321,10 @@ see also `v help build`.
    -show-c-output
       Prints the output, that your C compiler produced, while compiling your program.
 
+   -bug-report-url url
+      Override where automatic C compiler bug reports are submitted.
+      Useful with `v bug-report --host localhost --port 8080` for local testing.
+
    -dump-c-flags file.txt
       Write all C flags into `file.txt`, one flag per line.
       If `file.txt` is `-`, write to stdout instead.

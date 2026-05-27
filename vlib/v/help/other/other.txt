@@ -5,6 +5,8 @@ Other less frequently used commands supported by V include:
   bug              Post an issue on the V's issue tracker, including the failing program,
                    and some diagnostic information.
 
+  bug-report       Run the local receiver for automatic C compiler bug reports.
+
   bin2v            Convert a binary file to a v source file,
                    that can be later embedded in a module or program.
 
