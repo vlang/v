@@ -111,6 +111,9 @@ jobs:
                   gdb --batch --ex bt --ex "info registers" ./v2 "$c" || true
                 fi
               done
+              # If make exited 0 but ./v is missing, force a nonzero exit so
+              # the diagnostic job does not go green without a usable compiler.
+              if [ "$rc" -eq 0 ]; then rc=1; fi
               exit "$rc"
             fi
             echo "===== bootstrap succeeded ====="
