@@ -53,3 +53,72 @@ jobs:
             v run examples/primes.v
             v -e "import os; dump( os.user_os() )"
           '
+
+  termux-build-arm64-tcc:
+    # Diagnostic job for vlang/v#27207: reproduces the Termux/AArch64 tcc
+    # bootstrap failure on a real arm64 runner so we can collect logs without
+    # local hardware. Allowed to fail until the upstream tcc AArch64 bug is
+    # resolved.
+    runs-on: ubuntu-24.04-arm
+    continue-on-error: true
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v6
+      - name: Build in Termux (arm64, default tcc)
+        run: |
+          set -o xtrace
+          uname -a
+          docker run --rm --mount type=bind,source=/home/runner/work/v/v,destination=/src -w /src termux/termux-docker:latest bash -c '
+            set -o xtrace
+            uname -a
+            cp -r /src ~/vproject; cd ~/vproject
+            export TERMUX_VERSION=0.118.3
+            bash .github/workflows/retry.sh pkg update -y
+            bash .github/workflows/retry.sh pkg install -y clang libexecinfo libgc libgc-static make git gdb file
+            git log -n4
+            ulimit -c unlimited || true
+            # Default tcc path (no VFLAGS=-cc cc) reproduces the failing path
+            # from #27207. Capture every tcc invocation via -showcc and the
+            # full build output to build.log for forensic analysis.
+            set +e
+            VFLAGS="-showcc -stats" make 2>&1 | tee build.log
+            rc=${PIPESTATUS[0]}
+            set -e
+            echo "make exit code: $rc"
+            # Always copy the log back to the bind-mounted dir so the runner
+            # step that uploads the artifact can find it.
+            cp build.log /src/build.log || true
+            if [ "$rc" -ne 0 ] || [ ! -x ./v ]; then
+              echo "===== bootstrap failed; collecting diagnostics ====="
+              echo "--- tcc binary ---"
+              ls -la thirdparty/tcc/ 2>/dev/null || true
+              for t in thirdparty/tcc/tcc.exe thirdparty/tcc/tcc; do
+                if [ -x "$t" ]; then "$t" -v || true; fi
+              done
+              echo "--- last 120 lines of build.log ---"
+              tail -n 120 build.log || true
+              echo "--- v1/v2/v file info ---"
+              file v1 v2 v 2>/dev/null || true
+              echo "--- last tcc invocations from build.log ---"
+              grep -E "tcc(\.exe)? " build.log | tail -n10 || true
+              echo "--- core files (if any) ---"
+              ls -la core* 2>/dev/null || true
+              for c in core core.*; do
+                if [ -f "$c" ] && [ -x ./v2 ]; then
+                  echo "--- gdb backtrace from $c against v2 ---"
+                  gdb --batch --ex bt --ex "info registers" ./v2 "$c" || true
+                fi
+              done
+              exit "$rc"
+            fi
+            echo "===== bootstrap succeeded ====="
+            ./v -version
+            ./v run examples/hello_world.v
+          '
+      - name: Upload build log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: termux-arm64-build-log
+          path: build.log
+          if-no-files-found: ignore
