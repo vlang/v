@@ -2284,6 +2284,30 @@ fn (v &Builder) should_compile_bundled_thirdparty_object_from_source(obj_path st
 	return v.ccoptions.cc == .tcc && v.pref.os == .macos
 }
 
+// latest_thirdparty_header_mtime returns the most recent mtime among `.h` and
+// `.hpp` files in the directory of `source_file`. It is used as an extra cache
+// key for third-party object compilation, so that header-only patches (for
+// example to mbedtls/library/alignment.h) reliably invalidate stale `.o`
+// files that were produced before the header change.
+fn latest_thirdparty_header_mtime(source_file string) i64 {
+	if source_file == '' {
+		return 0
+	}
+	dir := os.dir(source_file)
+	entries := os.ls(dir) or { return 0 }
+	mut latest := i64(0)
+	for f in entries {
+		if !(f.ends_with('.h') || f.ends_with('.hpp')) {
+			continue
+		}
+		m := os.file_last_mod_unix(os.join_path(dir, f))
+		if m > latest {
+			latest = m
+		}
+	}
+	return latest
+}
+
 fn (mut v Builder) build_thirdparty_obj_file(mod string, path string, moduleflags []cflag.CFlag) {
 	trace_thirdparty_obj_files := 'trace_thirdparty_obj_files' in v.pref.compile_defines
 	obj_path := os.real_path(path)
@@ -2331,10 +2355,19 @@ fn (mut v Builder) build_thirdparty_obj_file(mod string, path string, moduleflag
 		'${os.quoted_path(obj_path)} not found, building it in ${os.quoted_path(opath)} ...'
 	}
 	if os.exists(opath) {
+		opath_mtime := os.file_last_mod_unix(opath)
+		src_mtime := os.file_last_mod_unix(source_file)
+		// Header-only edits in the source directory (e.g. mbedtls's
+		// alignment.h) leave every sibling `.c` untouched, so a pure
+		// `opath_mtime < src_mtime` test would silently reuse stale objects
+		// that still reference the old headers. Treat the newest sibling
+		// header as part of the cache key as well.
+		hdr_mtime := latest_thirdparty_header_mtime(source_file)
+		deps_mtime := if hdr_mtime > src_mtime { hdr_mtime } else { src_mtime }
 		if compile_bundled_source && !cached_object_was_built_from_source {
 			rebuild_reason_message = '${os.quoted_path(opath)} was copied from a bundled object, rebuilding it from ${os.quoted_path(source_file)} ...'
-		} else if os.file_last_mod_unix(opath) < os.file_last_mod_unix(source_file) {
-			rebuild_reason_message = '${os.quoted_path(opath)} is older than ${os.quoted_path(source_file)}, rebuilding ...'
+		} else if opath_mtime < deps_mtime {
+			rebuild_reason_message = '${os.quoted_path(opath)} is older than ${os.quoted_path(source_file)} or its sibling headers, rebuilding ...'
 		} else {
 			return
 		}

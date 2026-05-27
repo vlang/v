@@ -1192,6 +1192,28 @@ pub fn (mut g Gen) init() {
 			g.preincludes.writeln(tcc_undef_has_include)
 			g.cheaders.writeln(tcc_undef_has_include)
 			g.includes.writeln(tcc_undef_has_include)
+			// Android/Termux bionic <math.h> expands NAN/INFINITY/HUGE_VAL* via
+			// __builtin_nanf/__builtin_inf*/__builtin_huge_val*. The AArch64 tcc
+			// port does not lower these intrinsics, so binaries fail at runtime
+			// with unresolved __builtin_nanf etc. symbols (vlang/v#27207).
+			// Emit the macro shim into preincludes/cheaders/includes so it is
+			// in scope before *any* bionic header is reached, including those
+			// pulled in via `#preinclude <math.h>`.
+			tcc_bionic_math_shim := '
+#if defined(__TINYC__) && defined(__BIONIC__)
+	#define __builtin_nanf(ignored_string) (0.0F / 0.0F)
+	#define __builtin_nan(ignored_string) (0.0 / 0.0)
+	#define __builtin_nanl(ignored_string) (0.0L / 0.0L)
+	#define __builtin_inff() (1.0F / 0.0F)
+	#define __builtin_inf() (1.0 / 0.0)
+	#define __builtin_infl() (1.0L / 0.0L)
+	#define __builtin_huge_valf() (1.0F / 0.0F)
+	#define __builtin_huge_val() (1.0 / 0.0)
+	#define __builtin_huge_vall() (1.0L / 0.0L)
+#endif'
+			g.preincludes.writeln(tcc_bionic_math_shim)
+			g.cheaders.writeln(tcc_bionic_math_shim)
+			g.includes.writeln(tcc_bionic_math_shim)
 			if g.pref.os == .freebsd {
 				g.cheaders.writeln('#include <inttypes.h>')
 				g.cheaders.writeln('#include <stddef.h>')
