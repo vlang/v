@@ -540,6 +540,15 @@ fn (mut c Checker) check_basic(got ast.Type, expected ast.Type) bool {
 	if c.table.fully_unaliased_type(got) == c.table.fully_unaliased_type(expected) {
 		return true
 	}
+	// `[]Alias` ↔ `Tokens` where `type Alias = Parent` and `type Tokens = []Parent`
+	// (and the same for fixed arrays/maps): one side wraps the container in a
+	// top-level alias, the other doesn't, so `fully_unaliased_type` above only
+	// peels the alias side. The helper recurses through the container payload
+	// and rejects option/result wrappers itself (they lower to distinct
+	// `_option_*`/`_result_*` C structs per element type).
+	if c.table.are_payloads_alias_compatible(got, expected) {
+		return true
+	}
 	unalias_got, unalias_expected := c.table.unalias_num_type(got), c.table.unalias_num_type(expected)
 	if unalias_got.idx() == unalias_expected.idx() {
 		// this is returning true even if one type is a ptr
