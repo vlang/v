@@ -77,11 +77,13 @@ jobs:
             bash .github/workflows/retry.sh pkg install -y clang libexecinfo libgc libgc-static make git gdb file
             git log -n4
             ulimit -c unlimited || true
-            # Default tcc path (no VFLAGS=-cc cc) reproduces the failing path
-            # from #27207. Capture every tcc invocation via -showcc and the
-            # full build output to build.log for forensic analysis.
+            # Explicit `-cc tcc` is required: on Linux arm64 the Makefile
+            # otherwise injects `-cc "$(CC)"` (see GNUmakefile:149-155) and
+            # the bundled tcc path would never run — defeating the purpose
+            # of this diagnostic job for #27207. Capture every invocation
+            # via -showcc and the full build output to build.log.
             set +e
-            VFLAGS="-showcc -stats" make 2>&1 | tee build.log
+            VFLAGS="-cc tcc -showcc -stats" make 2>&1 | tee build.log
             rc=${PIPESTATUS[0]}
             set -e
             echo "make exit code: $rc"
