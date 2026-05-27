@@ -1104,7 +1104,6 @@ fn (mut b Builder) ensure_core_module_headers() {
 		mut gen := v.new_gen(b.pref)
 		gen.gen(header_ast)
 		mut header_source := sanitize_header_source(gen.output_string(), source_fn_returns)
-		header_source = repair_interface_method_fn_syntax(header_source)
 		source_fn_decls := b.source_fn_decls_for_module(module_name)
 		header_source = merge_missing_source_fn_decls(header_source, source_fn_decls)
 		source_struct_fields := b.source_struct_field_types_for_module(module_name)
@@ -1160,7 +1159,6 @@ fn (mut b Builder) ensure_import_module_headers(module_names []string) {
 		mut gen := v.new_gen(b.pref)
 		gen.gen(header_ast)
 		mut header_source := sanitize_header_source(gen.output_string(), source_fn_returns)
-		header_source = repair_interface_method_fn_syntax(header_source)
 		source_fn_decls := b.source_fn_decls_for_module(module_name)
 		header_source = merge_missing_source_fn_decls(header_source, source_fn_decls)
 		source_struct_fields := b.source_struct_field_types_for_module(module_name)
@@ -1216,7 +1214,6 @@ fn (mut b Builder) ensure_virtual_module_headers(groups []CachedVirtualModule) {
 		mut gen := v.new_gen(b.pref)
 		gen.gen(header_ast)
 		mut header_source := sanitize_header_source(gen.output_string(), source_fn_returns)
-		header_source = repair_interface_method_fn_syntax(header_source)
 		source_fn_decls := b.source_fn_decls_for_files(group.source_files)
 		header_source = merge_missing_source_fn_decls(header_source, source_fn_decls)
 		source_struct_fields := b.source_struct_field_types_for_files(group.source_files)
@@ -1304,6 +1301,7 @@ fn (b &Builder) source_fn_decls_for_files(files []string) map[string]string {
 		mut in_interface := false
 		mut interface_name := ''
 		mut interface_is_public := false
+		mut interface_method_is_mut := false
 		for raw_line in lines {
 			line := raw_line.trim_space()
 			if in_interface {
@@ -1311,9 +1309,17 @@ fn (b &Builder) source_fn_decls_for_files(files []string) map[string]string {
 					in_interface = false
 					interface_name = ''
 					interface_is_public = false
+					interface_method_is_mut = false
 					continue
 				}
 				if line.len == 0 || line.starts_with('//') {
+					continue
+				}
+				if line == 'mut:' {
+					interface_method_is_mut = true
+					continue
+				}
+				if !header_interface_method_line_is_valid(line) {
 					continue
 				}
 				open_idx := line.index('(') or { continue }
@@ -1331,6 +1337,12 @@ fn (b &Builder) source_fn_decls_for_files(files []string) map[string]string {
 				mut decl_line := '${vis} (it ${interface_name}) ${method_name}${params}'
 				if ret.len > 0 {
 					decl_line += ' ${ret}'
+				}
+				if interface_method_is_mut {
+					decl_line = '${vis} (mut it ${interface_name}) ${method_name}${params}'
+					if ret.len > 0 {
+						decl_line += ' ${ret}'
+					}
 				}
 				info := parse_fn_signature_and_return(decl_line) or { continue }
 				decls[info.signature] = decl_line
@@ -1354,6 +1366,7 @@ fn (b &Builder) source_fn_decls_for_files(files []string) map[string]string {
 					continue
 				}
 				in_interface = true
+				interface_method_is_mut = false
 				continue
 			}
 			if !line.starts_with('fn ') && !line.starts_with('pub fn ') {
@@ -1486,10 +1499,14 @@ fn (b &Builder) build_header_ast_for_files(source_files []ast.File, module_name 
 							}
 						}
 						sfields << ast.FieldDecl{
-							name:       field.name
-							typ:        field_typ
-							value:      field.value
-							attributes: field.attributes
+							name:                field.name
+							typ:                 field_typ
+							value:               field.value
+							attributes:          field.attributes
+							is_public:           field.is_public
+							is_mut:              field.is_mut
+							is_module_mut:       field.is_module_mut
+							is_interface_method: field.is_interface_method
 						}
 					}
 					decl_stmts << ast.Stmt(ast.StructDecl{
@@ -1547,11 +1564,13 @@ fn (b &Builder) build_header_ast_for_files(source_files []ast.File, module_name 
 							continue
 						}
 						gfields << ast.FieldDecl{
-							name:       field.name
-							typ:        global_typ
-							attributes: field.attributes
-							is_public:  field.is_public
-							is_mut:     field.is_mut
+							name:                field.name
+							typ:                 global_typ
+							attributes:          field.attributes
+							is_public:           field.is_public
+							is_mut:              field.is_mut
+							is_module_mut:       field.is_module_mut
+							is_interface_method: field.is_interface_method
 						}
 					}
 					if gfields.len > 0 {
@@ -1632,12 +1651,14 @@ fn (b &Builder) resolved_header_interface_decl(module_name string, stmt ast.Inte
 			embedded:       stmt.embedded
 			fields:         [
 				ast.FieldDecl{
-					name: 'msg'
-					typ:  msg_type
+					name:                'msg'
+					typ:                 msg_type
+					is_interface_method: true
 				},
 				ast.FieldDecl{
-					name: 'code'
-					typ:  code_type
+					name:                'code'
+					typ:                 code_type
+					is_interface_method: true
 				},
 			]
 		}
@@ -2495,6 +2516,7 @@ fn sanitize_header_source(source string, source_fn_returns map[string]string) st
 	mut global_body_lines := []string{}
 	mut in_type_block := false
 	mut in_enum_block := false
+	mut in_interface_block := false
 	for source_line in lines {
 		mut line := source_line
 		line = restore_fn_return_type_from_source(line, source_fn_returns)
@@ -2503,6 +2525,8 @@ fn sanitize_header_source(source string, source_fn_returns map[string]string) st
 			if header_starts_type_block(trimmed) {
 				in_type_block = true
 				in_enum_block = trimmed.starts_with('enum ') || trimmed.starts_with('pub enum ')
+				in_interface_block = trimmed.starts_with('interface ')
+					|| trimmed.starts_with('pub interface ')
 				out << line
 				continue
 			}
@@ -2510,10 +2534,12 @@ fn sanitize_header_source(source string, source_fn_returns map[string]string) st
 				if trimmed == '}' {
 					in_type_block = false
 					in_enum_block = false
+					in_interface_block = false
 					out << line
 					continue
 				}
-				if !in_enum_block && header_type_block_line_is_malformed(trimmed) {
+				if !in_enum_block
+					&& header_type_block_line_is_malformed(trimmed, in_interface_block) {
 					continue
 				}
 			}
@@ -2567,34 +2593,6 @@ fn header_starts_global_block(trimmed string) bool {
 	return trimmed == '__global (' || trimmed == 'pub __global ('
 }
 
-fn repair_interface_method_fn_syntax(source string) string {
-	lines := source.split_into_lines()
-	mut out := []string{cap: lines.len}
-	mut in_interface := false
-	for line in lines {
-		trimmed := line.trim_space()
-		if !in_interface && (trimmed.starts_with('interface ')
-			|| trimmed.starts_with('pub interface ')) && trimmed.ends_with('{') {
-			in_interface = true
-			out << line
-			continue
-		}
-		if in_interface && trimmed == '}' {
-			in_interface = false
-			out << line
-			continue
-		}
-		if in_interface {
-			if fn_idx := line.index(' fn(') {
-				out << line[..fn_idx] + line[fn_idx + ' fn'.len..]
-				continue
-			}
-		}
-		out << line
-	}
-	return out.join('\n')
-}
-
 fn header_is_module_level_line(trimmed string) bool {
 	if trimmed.len == 0 {
 		return true
@@ -2631,11 +2629,18 @@ fn header_is_c_fn_decl_line(trimmed string) bool {
 	return trimmed.starts_with('fn C.') || trimmed.starts_with('pub fn C.')
 }
 
-fn header_type_block_line_is_malformed(trimmed string) bool {
+fn header_type_block_line_is_malformed(trimmed string, in_interface_block bool) bool {
 	if trimmed.len == 0 {
 		return false
 	}
-	if trimmed.starts_with('[') || trimmed.starts_with('//') {
+	if trimmed.starts_with('[') || trimmed.starts_with('@[') || trimmed.starts_with('//') {
+		return false
+	}
+	if trimmed == 'mut:' || trimmed == 'pub:' || trimmed == 'pub mut:'
+		|| trimmed == 'pub module_mut:' {
+		return false
+	}
+	if in_interface_block && header_interface_method_line_is_valid(trimmed) {
 		return false
 	}
 	if (trimmed.starts_with('fn ') || trimmed.starts_with('pub fn '))
@@ -2652,6 +2657,20 @@ fn header_type_block_line_is_malformed(trimmed string) bool {
 	}
 	first := token[0]
 	return first >= `a` && first <= `z`
+}
+
+fn header_interface_method_line_is_valid(trimmed string) bool {
+	open_idx := trimmed.index('(') or { return false }
+	if open_idx <= 0 {
+		return false
+	}
+	close_idx := header_find_matching_paren(trimmed, open_idx) or { return false }
+	method_name := trimmed[..open_idx].trim_space()
+	if method_name.len == 0 || method_name.contains(' ') {
+		return false
+	}
+	after := trimmed[close_idx + 1..].trim_space()
+	return after.len == 0 || !after.contains('{')
 }
 
 fn header_fn_decl_line_is_malformed(line string) bool {

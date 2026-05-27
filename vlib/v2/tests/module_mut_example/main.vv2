@@ -1,0 +1,17 @@
+module main
+
+import state
+
+fn main() {
+	mut counter := state.new_counter('jobs')
+	assert counter.value == 0
+	assert counter.inc() == 1
+	assert counter.inc() == 2
+	assert counter.value == 2
+
+	counter.label = 'builds'
+	assert counter.label == 'builds'
+
+	// This must stay rejected outside module `state`:
+	// counter.value++
+}

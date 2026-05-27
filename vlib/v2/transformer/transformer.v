@@ -3274,12 +3274,14 @@ fn (mut t Transformer) transform_global_decl(decl ast.GlobalDecl) ast.GlobalDecl
 	mut fields := []ast.FieldDecl{cap: decl.fields.len}
 	for field in decl.fields {
 		fields << ast.FieldDecl{
-			name:       field.name
-			typ:        t.transform_expr(field.typ)
-			value:      t.transform_expr(field.value)
-			attributes: field.attributes
-			is_public:  field.is_public
-			is_mut:     field.is_mut
+			name:                field.name
+			typ:                 t.transform_expr(field.typ)
+			value:               t.transform_expr(field.value)
+			attributes:          field.attributes
+			is_public:           field.is_public
+			is_mut:              field.is_mut
+			is_module_mut:       field.is_module_mut
+			is_interface_method: field.is_interface_method
 		}
 	}
 	return ast.GlobalDecl{

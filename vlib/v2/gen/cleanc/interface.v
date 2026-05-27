@@ -94,6 +94,9 @@ fn (mut g Gen) interface_method_info_from_raw(name string, raw types.Type) ?Inte
 }
 
 fn (mut g Gen) interface_method_info(field ast.FieldDecl) ?InterfaceMethodInfo {
+	if !field.is_interface_method {
+		return none
+	}
 	if fn_type := g.get_fn_type_from_expr(field.typ) {
 		return g.interface_method_info_from_ast(field.name, fn_type)
 	}
