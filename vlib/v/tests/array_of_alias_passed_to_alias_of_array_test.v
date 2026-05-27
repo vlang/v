@@ -121,3 +121,4 @@ fn test_map_with_alias_values() {
 	m := map[string]Token{}
 	assert take_strmap(m) == 0
 }
+
