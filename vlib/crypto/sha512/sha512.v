@@ -283,9 +283,9 @@ pub fn sum384(data []u8) []u8 {
 	mut d := new_digest(.sha384)
 	d.write(data) or { panic(err) }
 	sum := d.checksum()
-	mut sum384 := []u8{len: size384}
-	copy(mut sum384, sum[..size384])
-	return sum384
+	mut digest := []u8{len: size384}
+	copy(mut digest, sum[..size384])
+	return digest
 }
 
 // sum512_224 returns the Sum512/224 checksum of the data.

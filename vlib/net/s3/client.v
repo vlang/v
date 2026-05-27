@@ -278,12 +278,12 @@ fn (c &Client) creds_for(bucket string) Credentials {
 	if bucket == '' {
 		return c.credentials
 	}
-	mut copy := c.credentials
-	copy = Credentials{
-		...copy
+	mut dup := c.credentials
+	dup = Credentials{
+		...dup
 		bucket: bucket
 	}
-	return copy
+	return dup
 }
 
 // build_object_path produces the canonical URI path for a key.

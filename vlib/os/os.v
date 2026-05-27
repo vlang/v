@@ -996,9 +996,9 @@ pub fn data_dir() string {
 		}
 		home := home_dir()
 		if home != '' {
-			dir := join_path(home, 'AppData', 'Local')
-			create_folder_when_it_does_not_exist(dir)
-			return dir
+			path := join_path(home, 'AppData', 'Local')
+			create_folder_when_it_does_not_exist(path)
+			return path
 		}
 	}
 	return xdg_home_folder('XDG_DATA_HOME', '.local/share')

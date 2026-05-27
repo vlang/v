@@ -927,14 +927,14 @@ fn x11_init_keytable() {
 	C.XkbFreeKeyboard(desc, 0, x_true)
 
 	// Fall back using traditional keysym lookup
-	mut width := 0
+	mut syms_per_code := 0
 	keysyms := C.XGetKeyboardMapping(g_sapp_state.x11.display, u8(scancode_min), scancode_max -
-		scancode_min + 1, &width)
+		scancode_min + 1, &syms_per_code)
 	for scancode in scancode_min .. scancode_max + 1 {
 		if g_sapp_state.keycodes[scancode] == .invalid {
-			base := usize((scancode - scancode_min) * width)
+			base := usize((scancode - scancode_min) * syms_per_code)
 			g_sapp_state.keycodes[scancode] = x11_translate_keysyms(unsafe { keysyms + base },
-				width)
+				syms_per_code)
 		}
 	}
 	C.XFree(keysyms)
