@@ -1085,16 +1085,17 @@ pub fn (t &Table) are_payloads_alias_compatible(a Type, b Type) bool {
 	if a == b {
 		return true
 	}
+	a_unaliased := t.fully_unaliased_type(a)
+	b_unaliased := t.fully_unaliased_type(b)
 	// `?T`/`!T` lower to a distinct `_option_T`/`_result_T` C struct per
 	// element type, so `?Alias` and `?T` (or container elements wrapping the
 	// same) are not layout-equivalent even if `Alias = T`. The top-level
 	// conversion in return.v / cgen.v (#27264) clears these flags before
-	// recursing — if they remain at this depth, reject (#27278 review).
-	if a.has_option_or_result() || b.has_option_or_result() {
+	// recursing — if they remain after unaliasing (including the case where
+	// the alias's parent carries the flag), reject (#27278 review).
+	if a_unaliased.has_option_or_result() || b_unaliased.has_option_or_result() {
 		return false
 	}
-	a_unaliased := t.fully_unaliased_type(a)
-	b_unaliased := t.fully_unaliased_type(b)
 	if a_unaliased == b_unaliased {
 		return true
 	}

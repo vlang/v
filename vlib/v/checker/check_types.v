@@ -543,13 +543,10 @@ fn (mut c Checker) check_basic(got ast.Type, expected ast.Type) bool {
 	// `[]Alias` ↔ `Tokens` where `type Alias = Parent` and `type Tokens = []Parent`
 	// (and the same for fixed arrays/maps): one side wraps the container in a
 	// top-level alias, the other doesn't, so `fully_unaliased_type` above only
-	// peels the alias side. Recurse through the container payload.
-	// Gated away from option/result-flagged types: `!Tokens` and `![]Token` lower
-	// to *distinct* `_result_*` C structs, and the conversion path for those
-	// (#27264) only handles bare `return some_call()`, not function-pointer
-	// assignment / fn-signature compatibility (#27278 review).
-	if !got.has_option_or_result() && !expected.has_option_or_result()
-		&& c.table.are_payloads_alias_compatible(got, expected) {
+	// peels the alias side. The helper recurses through the container payload
+	// and rejects option/result wrappers itself (they lower to distinct
+	// `_option_*`/`_result_*` C structs per element type).
+	if c.table.are_payloads_alias_compatible(got, expected) {
 		return true
 	}
 	unalias_got, unalias_expected := c.table.unalias_num_type(got), c.table.unalias_num_type(expected)
