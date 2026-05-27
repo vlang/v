@@ -144,6 +144,10 @@ endif
 BOOTSTRAP_TCC_REQUESTED := $(or $(findstring -cc tcc,$(strip $(VFLAGS))),$(findstring -cc=tcc,$(strip $(VFLAGS))))
 BOOTSTRAP_CCOMPILER_VFLAG :=
 BOOTSTRAP_VC_CCOMPILER_VFLAG :=
+BOOTSTRAP_GC_VFLAG :=
+ifeq ($(filter -gc -gc=%,$(VFLAGS)),)
+	BOOTSTRAP_GC_VFLAG := -gc none
+endif
 ifeq ($(LINUX),1)
 ifneq ($(filter $(TCCARCH),arm64 aarch64),)
 ifeq ($(filter -cc,$(VFLAGS)),)
@@ -170,8 +174,8 @@ BOOTSTRAP_VFLAGS := $(BOOTSTRAP_CCOMPILER_VFLAG) $(if $(strip $(BOOTSTRAP_CFLAGS
 all: latest_vc latest_tcc latest_legacy
 ifdef WIN32
 	$(CC) $(CPPFLAGS) $(BOOTSTRAP_VC_CC_CFLAGS) -std=c99 -municode -w -o v1$(EXE_EXT) $(VC)/$(VCFILE) $(LDFLAGS) -lws2_32 || cmd/tools/cc_compilation_failed_windows.sh
-	./v1$(EXE_EXT) -no-parallel -o v2$(EXE_EXT) $(VFLAGS) $(BOOTSTRAP_VC_VFLAGS) cmd/v
-	./v2$(EXE_EXT) -o $(VEXE)$(EXE_EXT) $(VFLAGS) $(BOOTSTRAP_VFLAGS) cmd/v
+	./v1$(EXE_EXT) -no-parallel -o v2$(EXE_EXT) $(BOOTSTRAP_GC_VFLAG) $(VFLAGS) $(BOOTSTRAP_VC_VFLAGS) cmd/v
+	./v2$(EXE_EXT) -o $(VEXE)$(EXE_EXT) $(BOOTSTRAP_GC_VFLAG) $(VFLAGS) $(BOOTSTRAP_VFLAGS) cmd/v
 	$(RM) v1$(EXE_EXT)
 	$(RM) v2$(EXE_EXT)
 else
@@ -185,11 +189,11 @@ endif
 ifdef NETBSD
 	paxctl +m v1$(EXE_EXT)
 endif
-	./v1$(EXE_EXT) -no-parallel -o v2$(EXE_EXT) $(VFLAGS) $(BOOTSTRAP_VC_VFLAGS) cmd/v
+	./v1$(EXE_EXT) -no-parallel -o v2$(EXE_EXT) $(BOOTSTRAP_GC_VFLAG) $(VFLAGS) $(BOOTSTRAP_VC_VFLAGS) cmd/v
 ifdef NETBSD
 	paxctl +m v2$(EXE_EXT)
 endif
-	./v2$(EXE_EXT) -nocache -o $(VEXE)$(EXE_EXT) $(VFLAGS) $(BOOTSTRAP_VFLAGS) cmd/v
+	./v2$(EXE_EXT) -nocache -o $(VEXE)$(EXE_EXT) $(BOOTSTRAP_GC_VFLAG) $(VFLAGS) $(BOOTSTRAP_VFLAGS) cmd/v
 ifdef NETBSD
 	paxctl +m $(VEXE)$(EXE_EXT)
 endif
