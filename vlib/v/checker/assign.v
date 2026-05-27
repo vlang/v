@@ -671,7 +671,7 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 							c.error('duplicate of an import symbol `${left.name}`', left.pos)
 						}
 						c.check_module_name_conflict(left.name, left.pos)
-						// Warn when a local variable shadows a function declaration (issue #22685).
+						// Notice when a local variable shadows a function declaration (issue #22685).
 						// Skip when building tests: test files (and preludes loaded for them)
 						// commonly use short fixture fns like `fn a() {}` and shadow them
 						// freely in test bodies.
@@ -687,7 +687,7 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 							}
 							if fn_decl := c.table.find_fn(qualified) {
 								if fn_decl.mod == left.mod {
-									c.warn('variable `${left.name}` shadows a function declaration',
+									c.note('variable `${left.name}` shadows a function declaration',
 										left.pos)
 								}
 							}

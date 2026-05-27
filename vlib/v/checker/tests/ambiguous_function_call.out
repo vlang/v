@@ -1,4 +1,4 @@
-vlib/v/checker/tests/ambiguous_function_call.vv:6:2: warning: variable `foo2` shadows a function declaration
+vlib/v/checker/tests/ambiguous_function_call.vv:6:2: notice: variable `foo2` shadows a function declaration
     4 | 
     5 | fn foo2() {
     6 |     foo2 := 1

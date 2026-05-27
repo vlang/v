@@ -1,4 +1,4 @@
-vlib/v/checker/tests/var_decl_shadows_fn.vv:6:2: warning: variable `shadowed` shadows a function declaration
+vlib/v/checker/tests/var_decl_shadows_fn.vv:6:2: notice: variable `shadowed` shadows a function declaration
     4 |
     5 | fn main() {
     6 |     shadowed := 5
