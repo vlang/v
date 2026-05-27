@@ -175,22 +175,6 @@ const c_common_macros = '
 	#define __IRQHANDLER
 	// #include <byteswap.h>
 	int tcc_backtrace(const char *fmt, ...);
-	#if defined(__BIONIC__)
-		// Android/Termux bionic <math.h> defines NAN/INFINITY/HUGE_VAL* using
-		// __builtin_nanf/__builtin_inf*/__builtin_huge_val*. The AArch64 tcc
-		// port does not lower these intrinsics, so binaries fail at runtime
-		// with unresolved __builtin_nanf etc. symbols. Provide macro forms
-		// that expand to constant expressions (see vlang/v#27207).
-		#define __builtin_nanf(ignored_string) (0.0F / 0.0F)
-		#define __builtin_nan(ignored_string) (0.0 / 0.0)
-		#define __builtin_nanl(ignored_string) (0.0L / 0.0L)
-		#define __builtin_inff() (1.0F / 0.0F)
-		#define __builtin_inf() (1.0 / 0.0)
-		#define __builtin_infl() (1.0L / 0.0L)
-		#define __builtin_huge_valf() (1.0F / 0.0F)
-		#define __builtin_huge_val() (1.0 / 0.0)
-		#define __builtin_huge_vall() (1.0L / 0.0L)
-	#endif
 #endif
 // Use __offsetof_ptr instead of __offset_of, when you *do* have a valid pointer, to avoid UB:
 #ifndef __offsetof_ptr
