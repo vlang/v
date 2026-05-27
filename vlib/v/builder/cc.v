@@ -793,6 +793,12 @@ fn (mut v Builder) setup_ccompiler_options(ccompiler string) {
 			// This avoids cross-DSO symbol interposition between multiple V binaries
 			// in one process (for example, host executable + loaded V plugin).
 			ccoptions.linker_flags << '-Wl,-Bsymbolic'
+			if ccoptions.cc != .tcc {
+				// Do not leak symbols from the statically linked libgc archive into
+				// the shared library ABI. Only functions explicitly tagged with
+				// @[export] should be visible.
+				ccoptions.linker_flags << '-Wl,--exclude-libs,ALL'
+			}
 		}
 	}
 	if v.pref.is_bare && v.pref.os != .wasm32 {

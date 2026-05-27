@@ -55,9 +55,9 @@ fn test_shared_library_only_exports_tagged_symbols() {
 	if uos !in ['linux', 'macos'] {
 		return
 	}
-	// tcc on macOS does not honor `-fvisibility=hidden`, so the symbol-set check
-	// would be noisy there; rely on Linux + a `-cc clang` path on macOS.
-	cc_flag := if uos == 'macos' { '-cc clang' } else { '' }
+	// tcc does not honor `-fvisibility=hidden`, so the symbol-set check would be
+	// noisy there; use a system compiler for Linux and clang on macOS.
+	cc_flag := if uos == 'macos' { '-cc clang' } else { '-cc cc' }
 	workdir := os.join_path(os.vtmp_dir(), 'v_shared_visibility_${rand.ulid()}')
 	os.mkdir_all(workdir) or { panic(err) }
 	defer {
