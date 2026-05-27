@@ -1,3 +1,10 @@
+vlib/v/checker/tests/clash_ident_module_name_prefix.vv:17:2: warning: variable `builtin__string_str` shadows a function declaration
+   15 | 
+   16 | fn main() {
+   17 |     builtin__string_str := 'Hello V!'.str()
+      |     ~~~~~~~~~~~~~~~~~~~
+   18 |     time__now := time.now()
+   19 |     os__log := 'Hello V!'
 vlib/v/checker/tests/clash_ident_module_name_prefix.vv:7:1: error: identifier cannot use prefix `builtin__` of imported module `builtin`
     5 | // os is not imported so the os__ prefix should not produce an error
     6 | 

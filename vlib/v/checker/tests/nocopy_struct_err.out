@@ -5,16 +5,16 @@ vlib/v/checker/tests/nocopy_struct_err.vv:11:19: error: cannot copy @[nocopy] st
       |                      ~~~~~~~~~~~~~
    12 | }
    13 |
-vlib/v/checker/tests/nocopy_struct_err.vv:22:10: error: cannot copy @[nocopy] struct: use a reference instead
+vlib/v/checker/tests/nocopy_struct_err.vv:22:9: error: cannot copy @[nocopy] struct: use a reference instead
    20 |         handle: 2
    21 |     }
-   22 |     copy := resource
-      |             ~~~~~~~~
+   22 |     dup := resource
+      |            ~~~~~~~~
    23 |     takes_value(resource)
    24 |     _ = Holder{
 vlib/v/checker/tests/nocopy_struct_err.vv:23:14: error: cannot pass @[nocopy] struct by value: use a reference instead
    21 |     }
-   22 |     copy := resource
+   22 |     dup := resource
    23 |     takes_value(resource)
       |                 ~~~~~~~~
    24 |     _ = Holder{
