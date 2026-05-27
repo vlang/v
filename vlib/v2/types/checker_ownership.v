@@ -35,8 +35,8 @@ fn (mut c Checker) ownership_check_ident(name string, pos token.Pos) {
 		move_position := move_file.position(info.move_pos)
 		errors.error('use of moved value: `${name}`', errors.details(file, file.position(pos), 2),
 			.error, file.position(pos))
-		type_name := if info.type_name.len > 0 { info.type_name } else { 'string' }
-		eprintln('  --> move occurs because `${name}` has type `${type_name}`, which does not implement the `Copy` interface')
+		tname := if info.type_name.len > 0 { info.type_name } else { 'string' }
+		eprintln('  --> move occurs because `${name}` has type `${tname}`, which does not implement the `Copy` interface')
 		if info.is_fn_call {
 			eprintln('  --> value moved into function `${info.fn_name}` at ${move_position}')
 			eprintln('help: consider cloning the value if the performance cost is acceptable')
@@ -122,12 +122,12 @@ fn (mut c Checker) ownership_consume_expr(expr ast.Expr, pos token.Pos, target s
 			exit(1)
 		}
 	}
-	type_name := c.owned_var_types[name] or { 'string' }
+	tname := c.owned_var_types[name] or { 'string' }
 	c.moved_vars[name] = MovedVar{
 		moved_to:      target
 		move_pos:      pos
 		suggest_clone: false
-		type_name:     type_name
+		type_name:     tname
 	}
 }
 
@@ -201,13 +201,13 @@ fn (mut c Checker) ownership_check_call_args(expr ast.CallExpr) {
 					exit(1)
 				}
 			}
-			type_name := c.owned_var_types[arg_name] or { 'string' }
+			tname := c.owned_var_types[arg_name] or { 'string' }
 			c.moved_vars[arg_name] = MovedVar{
 				moved_to:   fn_name
 				move_pos:   expr.pos
 				is_fn_call: true
 				fn_name:    fn_name
-				type_name:  type_name
+				type_name:  tname
 			}
 			// Track that parameter i of this function receives an owned value
 			key := '${fn_name}__param_${i}'
@@ -237,13 +237,13 @@ fn (mut c Checker) ownership_check_return(stmt ast.ReturnStmt) {
 			// This function returns an owned value — mark the function
 			c.ownership_fns[c.ownership_cur_fn] = true
 			// The returned variable is moved out of this scope
-			type_name := c.owned_var_types[name] or { 'string' }
+			tname := c.owned_var_types[name] or { 'string' }
 			c.moved_vars[name] = MovedVar{
 				moved_to:   c.ownership_cur_fn
 				move_pos:   c.owned_vars[name] // use the owned position as fallback
 				is_fn_call: true
 				fn_name:    c.ownership_cur_fn
-				type_name:  type_name
+				type_name:  tname
 			}
 		} else if ownership_is_to_owned_call(expr) {
 			// Direct return of .to_owned() call, e.g. `return 'x'.to_owned()`
@@ -326,21 +326,21 @@ fn (mut c Checker) ownership_mark_from_call_expr(lhs_name string, call ast.CallE
 			arg_name := ownership_expr_ident_name(call.args[param_idx])
 			if arg_name.len > 0 {
 				if arg_name in c.owned_vars {
-					type_name := c.owned_var_types[arg_name] or { 'string' }
+					tname := c.owned_var_types[arg_name] or { 'string' }
 					c.owned_vars[lhs_name] = pos
-					c.owned_var_types[lhs_name] = type_name
+					c.owned_var_types[lhs_name] = tname
 					return true
 				}
 				if arg_name in c.moved_vars {
 					info := c.moved_vars[arg_name]
 					if info.is_fn_call && info.fn_name == fn_name {
-						type_name := if info.type_name.len > 0 {
+						tname := if info.type_name.len > 0 {
 							info.type_name
 						} else {
 							'string'
 						}
 						c.owned_vars[lhs_name] = pos
-						c.owned_var_types[lhs_name] = type_name
+						c.owned_var_types[lhs_name] = tname
 						return true
 					}
 				}
@@ -1289,13 +1289,13 @@ fn (mut c Checker) ownership_check_method_call(expr ast.CallExpr) {
 			exit(1)
 		}
 	}
-	type_name := c.owned_var_types[recv_name] or { 'string' }
+	tname := c.owned_var_types[recv_name] or { 'string' }
 	c.moved_vars[recv_name] = MovedVar{
 		moved_to:   method_name
 		move_pos:   expr.pos
 		is_fn_call: true
 		fn_name:    method_name
-		type_name:  type_name
+		type_name:  tname
 	}
 }
 
@@ -1327,7 +1327,7 @@ fn (mut c Checker) ownership_reject_global_move(name string, pos token.Pos, targ
 	if name !in c.ownership_owned_globals {
 		return
 	}
-	type_name := c.ownership_owned_globals[name]
+	tname := c.ownership_owned_globals[name]
 	if pos.id > 0 {
 		file := c.file_set.file(pos)
 		errors.error('cannot move out of global `${name}`', errors.details(file,
@@ -1335,7 +1335,7 @@ fn (mut c Checker) ownership_reject_global_move(name string, pos token.Pos, targ
 	} else {
 		eprintln('error: cannot move out of global `${name}`')
 	}
-	eprintln('  --> global `${name}` has type `${type_name}`, which does not implement the `Copy` interface')
+	eprintln('  --> global `${name}` has type `${tname}`, which does not implement the `Copy` interface')
 	if is_call {
 		eprintln('  --> moving a global into `${target}` would leave the global in an undefined state')
 		eprintln('help: pass a borrow (`&${name}`) or clone (`${name}.clone()`) instead')
@@ -1390,12 +1390,12 @@ fn (mut c Checker) ownership_check_closure_captures(expr ast.FnLiteral) {
 				exit(1)
 			}
 		}
-		type_name := c.owned_var_types[name] or { 'string' }
+		tname := c.owned_var_types[name] or { 'string' }
 		c.moved_vars[name] = MovedVar{
 			moved_to:      'closure'
 			move_pos:      expr.pos
 			suggest_clone: false
-			type_name:     type_name
+			type_name:     tname
 		}
 	}
 }

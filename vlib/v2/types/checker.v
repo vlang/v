@@ -3256,8 +3256,8 @@ fn (mut c Checker) type_expr(expr ast.Expr) Type {
 			parts := selector_expr_parts(resolved)
 			if parts.len >= 2 {
 				module_alias := parts[parts.len - 2]
-				type_name := parts[parts.len - 1]
-				if typ := c.lookup_type_in_module(module_alias, type_name) {
+				tname := parts[parts.len - 1]
+				if typ := c.lookup_type_in_module(module_alias, tname) {
 					return typ
 				}
 			}
@@ -6614,8 +6614,8 @@ fn (mut c Checker) selector_expr(expr ast.SelectorExpr) Type {
 		parts := selector_expr_parts(expr.lhs)
 		if parts.len >= 2 {
 			module_alias := parts[parts.len - 2]
-			type_name := parts[parts.len - 1]
-			if lhs_type := c.lookup_type_in_module(module_alias, type_name) {
+			tname := parts[parts.len - 1]
+			if lhs_type := c.lookup_type_in_module(module_alias, tname) {
 				if selector_type := comptime_type_metadata_selector_type(expr.rhs.name) {
 					return selector_type
 				}
@@ -7200,15 +7200,15 @@ fn (c &Checker) lookup_type_by_name(name string) ?Type {
 	if name.contains('__') {
 		dunder_idx := name.last_index('__') or { -1 }
 		mod_name := name[..dunder_idx].replace('__', '.')
-		type_name := name[dunder_idx + 2..]
+		tname := name[dunder_idx + 2..]
 		if mod_obj := c.scope.lookup_parent(mod_name, 0) {
 			if mod_obj is Module {
-				if typ := mod_obj.scope.lookup_type_parent(type_name, 0) {
+				if typ := mod_obj.scope.lookup_type_parent(tname, 0) {
 					return typ
 				}
 			}
 		}
-		if typ := c.lookup_type_in_env_module(mod_name, type_name) {
+		if typ := c.lookup_type_in_env_module(mod_name, tname) {
 			return typ
 		}
 		short_name := name.all_after('__')
@@ -7220,8 +7220,8 @@ fn (c &Checker) lookup_type_by_name(name string) ?Type {
 	}
 	if name.contains('.') {
 		mod_name := name.all_before_last('.')
-		type_name := name.all_after_last('.')
-		if typ := c.lookup_type_in_env_module(mod_name, type_name) {
+		tname := name.all_after_last('.')
+		if typ := c.lookup_type_in_env_module(mod_name, tname) {
 			return typ
 		}
 	}
