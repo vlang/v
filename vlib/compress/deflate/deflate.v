@@ -72,8 +72,8 @@ pub fn decompress(data []u8) ![]u8 {
 	return inflate(data)
 }
 
-// decompress_zlib decompresses a zlib stream (RFC 1950) and returns the
-// decompressed bytes in a new array.
+// decompress_zlib decompresses a zlib stream (RFC 1950).
+// It returns the decompressed bytes in a new array.
 pub fn decompress_zlib(data []u8) ![]u8 {
 	if data.len < 6 {
 		return error('invalid zlib stream: too short')
@@ -98,8 +98,8 @@ pub fn decompress_zlib(data []u8) ![]u8 {
 	return decoded
 }
 
-// decompress_gzip decompresses a gzip stream (RFC 1952) and returns the
-// decompressed bytes in a new array.
+// decompress_gzip decompresses a gzip stream (RFC 1952).
+// It returns the decompressed bytes in a new array.
 pub fn decompress_gzip(data []u8) ![]u8 {
 	if data.len < 18 {
 		return error('invalid gzip stream: too short')
