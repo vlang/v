@@ -672,9 +672,10 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 						}
 						c.check_module_name_conflict(left.name, left.pos)
 						// Warn when a local variable shadows a function declaration (issue #22685).
-						// Skip in _test.v files: tests often use short fixtures like `fn a() {}`
-						// to verify function references in arrays/maps.
-						if !c.file.path.ends_with('_test.v') {
+						// Skip when building tests: test files (and preludes loaded for them)
+						// commonly use short fixture fns like `fn a() {}` and shadow them
+						// freely in test bodies.
+						if !c.pref.is_test {
 							mod_qualified := '${left.mod}.${left.name}'
 							if c.table.known_fn(mod_qualified) || c.table.known_fn(left.name) {
 								c.warn('variable `${left.name}` shadows a function declaration',
