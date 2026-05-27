@@ -833,22 +833,39 @@ fn (b &Builder) candidate_belongs_to_foreign_project(candidate_path string, impo
 	if importer_vmod_folder == '' {
 		return false
 	}
-	abs_candidate := os.real_path(candidate_path)
-	abs_importer_vmod := os.real_path(importer_vmod_folder)
-	if abs_candidate == abs_importer_vmod
-		|| abs_candidate.starts_with(abs_importer_vmod + os.path_separator) {
+	abs_candidate := comparable_real_path(candidate_path)
+	abs_importer_vmod := comparable_real_path(importer_vmod_folder)
+	if path_is_at_or_inside(abs_candidate, abs_importer_vmod) {
 		return false
 	}
 	if candidate_vmod_matches_import(abs_candidate, mod) {
 		return false
 	}
 	for lookup in b.pref.lookup_path {
-		abs_lookup := os.real_path(lookup)
-		if abs_candidate == abs_lookup || abs_candidate.starts_with(abs_lookup + os.path_separator) {
+		abs_lookup := comparable_real_path(lookup)
+		if path_is_at_or_inside(abs_candidate, abs_lookup) {
 			return false
 		}
 	}
 	return true
+}
+
+fn comparable_real_path(path string) string {
+	mut normalized := os.real_path(path).replace('\\', '/')
+	for normalized.contains('//') {
+		normalized = normalized.replace('//', '/')
+	}
+	if normalized.len > 1 {
+		normalized = normalized.trim_right('/')
+	}
+	return normalized
+}
+
+fn path_is_at_or_inside(candidate string, root string) bool {
+	if root == '' {
+		return false
+	}
+	return candidate == root || candidate.starts_with(root + '/')
 }
 
 fn candidate_vmod_matches_import(candidate_path string, mod string) bool {
