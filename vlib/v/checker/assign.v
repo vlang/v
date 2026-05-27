@@ -675,11 +675,21 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 						// Skip when building tests: test files (and preludes loaded for them)
 						// commonly use short fixture fns like `fn a() {}` and shadow them
 						// freely in test bodies.
+						// Only consider functions declared in the same module as the
+						// variable; otherwise unrelated fns (esp. private builtin ones
+						// like `fn new_node()` in `builtin/sorted_map.v`) cause noisy
+						// false positives in user code and external modules.
 						if !c.pref.is_test {
-							mod_qualified := '${left.mod}.${left.name}'
-							if c.table.known_fn(mod_qualified) || c.table.known_fn(left.name) {
-								c.warn('variable `${left.name}` shadows a function declaration',
-									left.pos)
+							qualified := if left.mod == 'builtin' {
+								left.name
+							} else {
+								'${left.mod}.${left.name}'
+							}
+							if fn_decl := c.table.find_fn(qualified) {
+								if fn_decl.mod == left.mod {
+									c.warn('variable `${left.name}` shadows a function declaration',
+										left.pos)
+								}
 							}
 						}
 					}
