@@ -117,6 +117,8 @@ fn (mut p Parser) is_following_concrete_types() bool {
 	return true
 }
 
+// is_anon_struct_generic_arg_at scans a generic argument list that starts at `offset`
+// and returns true when its closing `]` is followed by `next_kind`.
 @[direct_array_access]
 fn (p &Parser) is_anon_struct_generic_arg_at(offset int, next_kind token.Kind) bool {
 	mut i := offset + 2
@@ -229,6 +231,8 @@ fn (p &Parser) is_generic_call_at(offset int) bool {
 		tok5 = p.peek_token(offset + 6)
 		kind5 = tok5.kind
 	}
+	// `?fn`, `shared fn`, and `atomic fn` are still function type arguments,
+	// so skip the qualifier and handle them like plain `fn` below.
 	if (kind2 == .question || kind2 in [.key_shared, .key_atomic]) && kind3 == .key_fn {
 		tok2 = tok3
 		kind2 = kind3
