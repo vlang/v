@@ -1,7 +1,5 @@
 module builder
 
-import json
-
 fn test_c_error_location_for_generated_c_parses_gcc_output() {
 	loc := c_error_location_for_generated_c('/tmp/program.tmp.c:42:7: error: unknown type name',
 		'/tmp/program.tmp.c') or {
@@ -116,13 +114,29 @@ fn test_bounded_c_error_bug_report_keeps_encoded_body_under_limit() {
 		]
 	}
 	bounded := bounded_c_error_bug_report(report, 4096)
-	encoded := json.encode(bounded)
+	encoded := c_error_bug_report_json(bounded)
 	assert encoded.len <= 4096
 	assert bounded.c_error.len < report.c_error.len
 	assert bounded.c_context[0].line == 12
 	assert bounded.c_context[0].text.len < report.c_context[0].text.len
 	assert bounded.v_context[0].line == 4
 	assert bounded.v_context[0].text.len < report.v_context[0].text.len
+}
+
+fn test_c_error_bug_report_json_escapes_strings() {
+	report := CErrorBugReport{
+		kind:      'v-c-compiler-error'
+		v_version: 'V "test"\n'
+		c_context: [
+			CErrorReportLine{
+				line: 1
+				text: 'tab\tslash\\'
+			},
+		]
+	}
+	encoded := c_error_bug_report_json(report)
+	assert encoded.contains('"v_version":"V \\"test\\"\\n"')
+	assert encoded.contains('"text":"tab\\tslash\\\\"')
 }
 
 fn test_truncated_report_text_preserves_start_and_end_when_space_allows() {

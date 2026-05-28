@@ -1,9 +1,8 @@
 module builder
 
-import json
-import net.http
 import os
-import time
+import strings
+import v.pref
 import v.util.version
 
 const default_c_error_bug_report_url = 'https://vlang.io/bug-report'
@@ -39,39 +38,19 @@ pub:
 	v_context      []CErrorReportLine
 }
 
-struct CErrorBugReportResponse {
-pub:
-	id           string
-	delete_url   string
-	delete_token string
-	message      string
-}
-
 fn (mut v Builder) submit_c_error_bug_report(ccompiler string, c_output string) {
 	raw_report := v.new_c_error_bug_report(ccompiler, c_output)
 	report := bounded_c_error_bug_report(raw_report, c_error_bug_report_max_body_bytes)
 	report_url := c_error_bug_report_url(v.pref.c_error_bug_report_url)
-	response := send_c_error_bug_report(report, report_url) or {
+	tool_output := send_c_error_bug_report(report, report_url) or {
 		eprintln('C compiler bug report was not sent to ${report_url}: ${err}')
 		return
 	}
 	println('================== C compiler bug report ==============')
-	println('Sent C compiler bug report to ${report_url}.')
-	if response.id != '' {
-		println('Report id: ${response.id}')
+	if tool_output != '' {
+		println(tool_output)
 	}
 	print_c_error_bug_report_context(report)
-	delete_url := if response.delete_url != '' {
-		response.delete_url
-	} else if response.id != '' && response.delete_token != '' {
-		'${report_url}/${response.id}?token=${response.delete_token}'
-	} else {
-		''
-	}
-	if delete_url != '' {
-		println('Delete this report from the server with:')
-		println('  curl -X DELETE ${os.quoted_path(delete_url)}')
-	}
 	println('='.repeat('================== C compiler bug report =============='.len))
 }
 
@@ -126,26 +105,118 @@ fn c_error_bug_report_url(flag_url string) string {
 	return default_c_error_bug_report_url
 }
 
-fn send_c_error_bug_report(report CErrorBugReport, report_url string) !CErrorBugReportResponse {
-	mut header := http.new_header(key: .content_type, value: 'application/json')
-	header.set(.accept, 'application/json')
-	response := http.fetch(
-		method:        .post
-		url:           report_url
-		data:          json.encode(report)
-		header:        header
-		max_retries:   1
-		read_timeout:  3 * time.second
-		write_timeout: 3 * time.second
-	)!
-	if response.status_code < 200 || response.status_code >= 300 {
-		return error('server responded with HTTP ${response.status_code}')
+fn send_c_error_bug_report(report CErrorBugReport, report_url string) !string {
+	report_path := os.join_path(os.vtmp_dir(), 'v-c-error-report-${os.getpid()}.json')
+	os.write_file(report_path, c_error_bug_report_json(report))!
+	defer {
+		os.rm(report_path) or {}
 	}
-	return json.decode(CErrorBugReportResponse, response.body)!
+	cmd := '${os.quoted_path(pref.vexe_path())} bug-report-send --url ${os.quoted_path(report_url)} --file ${os.quoted_path(report_path)}'
+	res := os.execute(cmd)
+	if res.exit_code != 0 {
+		return error(res.output.trim_space())
+	}
+	return res.output.trim_right('\r\n')
+}
+
+fn c_error_bug_report_json(report CErrorBugReport) string {
+	mut b := strings.new_builder(1024 + report.c_error.len)
+	b.write_u8(`{`)
+	write_json_string_field(mut b, 'kind', report.kind, false)
+	write_json_string_field(mut b, 'v_version', report.v_version, true)
+	write_json_string_field(mut b, 'target_os', report.target_os, true)
+	write_json_string_field(mut b, 'target_backend', report.target_backend, true)
+	write_json_string_field(mut b, 'ccompiler', report.ccompiler, true)
+	write_json_string_field(mut b, 'c_error', report.c_error, true)
+	write_json_string_field(mut b, 'c_file', report.c_file, true)
+	write_json_int_field(mut b, 'c_line', report.c_line, true)
+	write_json_report_lines_field(mut b, 'c_context', report.c_context, true)
+	write_json_string_field(mut b, 'v_file', report.v_file, true)
+	write_json_int_field(mut b, 'v_line', report.v_line, true)
+	write_json_report_lines_field(mut b, 'v_context', report.v_context, true)
+	b.write_u8(`}`)
+	return b.str()
+}
+
+fn write_json_string_field(mut b strings.Builder, name string, value string, needs_comma bool) {
+	write_json_field_name(mut b, name, needs_comma)
+	write_json_string(mut b, value)
+}
+
+fn write_json_int_field(mut b strings.Builder, name string, value int, needs_comma bool) {
+	write_json_field_name(mut b, name, needs_comma)
+	b.write_string(value.str())
+}
+
+fn write_json_report_lines_field(mut b strings.Builder, name string, lines []CErrorReportLine, needs_comma bool) {
+	write_json_field_name(mut b, name, needs_comma)
+	b.write_u8(`[`)
+	for idx, line in lines {
+		if idx > 0 {
+			b.write_u8(`,`)
+		}
+		b.write_u8(`{`)
+		write_json_int_field(mut b, 'line', line.line, false)
+		write_json_string_field(mut b, 'text', line.text, true)
+		b.write_u8(`}`)
+	}
+	b.write_u8(`]`)
+}
+
+fn write_json_field_name(mut b strings.Builder, name string, needs_comma bool) {
+	if needs_comma {
+		b.write_u8(`,`)
+	}
+	write_json_string(mut b, name)
+	b.write_u8(`:`)
+}
+
+fn write_json_string(mut b strings.Builder, value string) {
+	b.write_u8(`"`)
+	for ch in value.bytes() {
+		match ch {
+			`"` {
+				b.write_string('\\"')
+			}
+			`\\` {
+				b.write_string('\\\\')
+			}
+			`\b` {
+				b.write_string('\\b')
+			}
+			`\f` {
+				b.write_string('\\f')
+			}
+			`\n` {
+				b.write_string('\\n')
+			}
+			`\r` {
+				b.write_string('\\r')
+			}
+			`\t` {
+				b.write_string('\\t')
+			}
+			else {
+				if ch < 0x20 {
+					write_json_control_escape(mut b, ch)
+				} else {
+					b.write_u8(ch)
+				}
+			}
+		}
+	}
+	b.write_u8(`"`)
+}
+
+fn write_json_control_escape(mut b strings.Builder, ch u8) {
+	hex := '0123456789abcdef'
+	b.write_string('\\u00')
+	b.write_u8(hex[ch >> 4])
+	b.write_u8(hex[ch & 0x0f])
 }
 
 fn bounded_c_error_bug_report(report CErrorBugReport, max_body_bytes int) CErrorBugReport {
-	if max_body_bytes <= 0 || json.encode(report).len <= max_body_bytes {
+	if max_body_bytes <= 0 || c_error_bug_report_json(report).len <= max_body_bytes {
 		return report
 	}
 	if bounded := report_with_bounded_c_error(report, max_body_bytes, report.c_context,
@@ -175,7 +246,7 @@ fn report_with_bounded_c_error(report CErrorBugReport, max_body_bytes int, c_con
 		c_context: c_context
 		v_context: v_context
 	}
-	if json.encode(min_report).len > max_body_bytes {
+	if c_error_bug_report_json(min_report).len > max_body_bytes {
 		return none
 	}
 	mut low := 0
@@ -189,7 +260,7 @@ fn report_with_bounded_c_error(report CErrorBugReport, max_body_bytes int, c_con
 			c_context: c_context
 			v_context: v_context
 		}
-		if json.encode(candidate).len <= max_body_bytes {
+		if c_error_bug_report_json(candidate).len <= max_body_bytes {
 			best = candidate
 			low = mid + 1
 		} else {

@@ -19,6 +19,7 @@ const external_tools = [
 	'bin2v',
 	'bug',
 	'bug-report',
+	'bug-report-send',
 	'build-examples',
 	'build-tools',
 	'build-vbinaries',
