@@ -17,3 +17,12 @@ fn test_generic_static_ref_call() {
 	queue := Queue.new[&Item](item)
 	assert queue.item == item
 }
+
+fn inc(x int) int {
+	return x + 1
+}
+
+fn test_generic_static_fn_type_call() {
+	queue := Queue.new[fn (int) int](inc)
+	assert queue.item(1) == 2
+}
