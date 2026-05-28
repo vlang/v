@@ -1452,11 +1452,11 @@ fn (mut g Gen) gen_enum_static_from_string(fn_name string, mod_enum_name string,
 	fn_builder.writeln('\t${option_enum_styp} t1;')
 	fn_builder.writeln('\tbool exists = false;')
 	fn_builder.writeln('\tint inx = 0;')
-	fn_builder.writeln('\tarray field_names = builtin____new_array_with_default(0, 0, sizeof(string), 0);')
+	fn_builder.writeln('\tarray field_names = ((array){.data = 0, .offset = 0, .len = 0, .cap = 0, .flags = 0, .element_size = sizeof(string)});')
 	for field_name in enum_field_names {
 		fn_builder.writeln('\tbuiltin__array_push((array*)&field_names, _MOV((string[]){ _S("${field_name}") }));')
 	}
-	fn_builder.writeln('\tarray field_vals = builtin____new_array_with_default(0, 0, sizeof(i64), 0);')
+	fn_builder.writeln('\tarray field_vals = ((array){.data = 0, .offset = 0, .len = 0, .cap = 0, .flags = 0, .element_size = sizeof(i64)});')
 	for field_val in enum_field_vals {
 		fn_builder.writeln('\tbuiltin__array_push((array*)&field_vals, _MOV((i64[]){ ${field_val} }));')
 	}

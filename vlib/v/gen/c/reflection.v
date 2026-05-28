@@ -26,7 +26,7 @@ fn (mut g Gen) gen_reflection_strings() {
 // gen_empty_array generates code for empty array
 @[inline]
 fn (g &Gen) gen_empty_array(type_name string) string {
-	return 'builtin____new_array_with_default(0, 0, sizeof(${type_name}), 0)'
+	return '((array){.data = 0, .offset = 0, .len = 0, .cap = 0, .flags = 0, .element_size = sizeof(${type_name})})'
 }
 
 // gen_functionarg_array generates the code for functionarg argument
