@@ -68,7 +68,7 @@ jobs:
         run: |
           set -o xtrace
           uname -a
-          docker run --rm --mount type=bind,source=/home/runner/work/v/v,destination=/src -w /src termux/termux-docker:latest bash -c '
+          docker run --rm --platform=linux/arm64 --mount type=bind,source=/home/runner/work/v/v,destination=/src -w /src termux/termux-docker:aarch64 bash -c '
             set -o xtrace
             uname -a
             cp -r /src ~/vproject; cd ~/vproject
