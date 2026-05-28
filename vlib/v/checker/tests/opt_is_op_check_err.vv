@@ -6,7 +6,7 @@ struct Struct {
 
 fn r(a string) {}
 
-fn t(s ?Foo) {
+fn process(s ?Foo) {
 	mut t := Struct{
 		a: s
 	}
@@ -17,5 +17,5 @@ fn t(s ?Foo) {
 
 fn main() {
 	s := ?Foo('hello')
-	t(s)
+	process(s)
 }

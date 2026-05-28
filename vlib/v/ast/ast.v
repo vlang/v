@@ -19,8 +19,8 @@ pub const result_name = '_result'
 pub const option_name = '_option'
 
 // V builtin types defined on .v files
-pub const builtins = ['string', 'array', 'DenseArray', 'map', 'Error', 'IError', option_name,
-	result_name]
+pub const builtins = ['string', 'array', 'DenseArray', 'map', 'Error', 'IError', 'SliceIndex',
+	option_name, result_name]
 
 pub type TypeDecl = AliasTypeDecl | FnTypeDecl | SumTypeDecl
 
@@ -668,7 +668,7 @@ pub mut:
 }
 
 pub fn (f &FnDecl) new_method_with_receiver_type(new_type_ Type) FnDecl {
-	new_type := if f.params[0].typ.is_ptr() && !new_type_.is_ptr() {
+	recv_type := if f.params[0].typ.is_ptr() && !new_type_.is_ptr() {
 		new_type_.ref()
 	} else {
 		new_type_
@@ -678,10 +678,10 @@ pub fn (f &FnDecl) new_method_with_receiver_type(new_type_ Type) FnDecl {
 		new_method.params = f.params.clone()
 		for i in 1 .. new_method.params.len {
 			if new_method.params[i].typ == new_method.params[0].typ {
-				new_method.params[i].typ = new_type
+				new_method.params[i].typ = recv_type
 			}
 		}
-		new_method.params[0].typ = new_type
+		new_method.params[0].typ = recv_type
 		return *new_method
 	}
 }
@@ -745,9 +745,9 @@ pub mut:
 
 fn (f &Fn) method_equals(o &Fn) bool {
 	return f.params[1..].equals(o.params[1..]) && f.return_type == o.return_type
-		&& f.is_variadic == o.is_variadic && f.language == o.language
-		&& f.generic_names == o.generic_names && f.is_pub == o.is_pub && f.mod == o.mod
-		&& f.name == o.name
+		&& f.is_variadic == o.is_variadic && f.is_c_variadic == o.is_c_variadic
+		&& f.language == o.language && f.generic_names == o.generic_names && f.is_pub == o.is_pub
+		&& f.mod == o.mod && f.name == o.name
 }
 
 @[minify]
@@ -776,7 +776,7 @@ pub fn (p &Param) specifier() string {
 }
 
 pub fn (f &Fn) new_method_with_receiver_type(new_type_ Type) Fn {
-	new_type := if f.params[0].typ.is_ptr() && !new_type_.is_ptr() {
+	recv_type := if f.params[0].typ.is_ptr() && !new_type_.is_ptr() {
 		new_type_.ref()
 	} else {
 		new_type_
@@ -786,7 +786,7 @@ pub fn (f &Fn) new_method_with_receiver_type(new_type_ Type) Fn {
 		new_method.params = f.params.clone()
 		for i in 1 .. new_method.params.len {
 			if new_method.params[i].typ == new_method.params[0].typ {
-				new_method.params[i].typ = new_type
+				new_method.params[i].typ = recv_type
 			}
 		}
 		new_method.from_embedded_type = if f.from_embedded_type != 0 {
@@ -794,7 +794,7 @@ pub fn (f &Fn) new_method_with_receiver_type(new_type_ Type) Fn {
 		} else {
 			f.params[0].typ
 		}
-		new_method.params[0].typ = new_type
+		new_method.params[0].typ = recv_type
 
 		return *new_method
 	}
@@ -1057,6 +1057,7 @@ pub:
 	typ_pos     token.Pos
 	is_markused bool // an explicit `@[markused]` tag; the global will NOT be removed by `-skip-unused`
 	is_volatile bool
+	is_const    bool
 	is_exported bool // an explicit `@[export]` tag; the global will NOT be removed by `-skip-unused`
 	is_weak     bool
 	is_hidden   bool
@@ -1251,7 +1252,8 @@ pub fn (i &Ident) is_mut() bool {
 	match i.obj {
 		Var { return i.obj.is_mut }
 		ConstField, EmptyScopeObject { return false }
-		AsmRegister, GlobalField { return true }
+		AsmRegister { return true }
+		GlobalField { return !i.obj.is_const }
 	}
 }
 
@@ -1320,7 +1322,8 @@ pub struct IndexExpr {
 pub:
 	pos token.Pos
 pub mut:
-	index             Expr // [0], RangeExpr [start..end] or map[key]
+	index             Expr   // [0], RangeExpr [start..end] or map[key]
+	indices           []Expr // parsed index parts, e.g. [i], [i, j], [1..3, ..]
 	or_expr           OrExpr
 	left              Expr
 	left_type         Type // array, map, fixed array, or overloaded index receiver
@@ -1736,20 +1739,24 @@ pub:
 	has_init           bool
 	has_index          bool // true if temp variable index is used
 pub mut:
-	exprs             []Expr // `[expr, expr]` or `[expr]Type{}` for fixed array
-	len_expr          Expr   // len: expr
-	cap_expr          Expr   // cap: expr
-	init_expr         Expr   // init: expr
-	elem_type_expr    Expr = empty_expr // `typeof(expr).idx` in `[]typeof(expr).idx{}`
-	expr_types        []Type // [Dog, Cat] // also used for interface_types
-	elem_type         Type   // element type
-	generic_elem_type Type   // original generic element type; reused for later concrete instantiations
-	init_type         Type   // init: value type
-	typ               Type   // array type
-	literal_typ       Type   // array type as written, preserved for fmt
-	generic_typ       Type   // original generic array type; reused for later concrete instantiations
-	alias_type        Type   // alias type
-	has_callexpr      bool   // has expr which needs tmp var to initialize it
+	exprs                []Expr // `[expr, expr]` or `[expr]Type{}` for fixed array
+	len_expr             Expr   // len: expr
+	cap_expr             Expr   // cap: expr
+	init_expr            Expr   // init: expr
+	elem_type_expr       Expr = empty_expr // `typeof(expr).idx` in `[]typeof(expr).idx{}`
+	expr_types           []Type // [Dog, Cat] // also used for interface_types
+	elem_type            Type   // element type
+	generic_elem_type    Type   // original generic element type; reused for later concrete instantiations
+	init_type            Type   // init: value type
+	typ                  Type   // array type
+	literal_typ          Type   // array type as written, preserved for fmt
+	generic_typ          Type   // original generic array type; reused for later concrete instantiations
+	alias_type           Type   // alias type
+	has_callexpr         bool   // has expr which needs tmp var to initialize it
+	has_update_expr      bool   // has `...a` as in `[...a, 3, 4]`
+	update_expr          Expr   // `a` in `...a`
+	update_expr_pos      token.Pos
+	update_expr_comments []Comment
 }
 
 pub struct ArrayDecompose {
@@ -2214,6 +2221,8 @@ pub enum ComptimeCallKind {
 	method
 	pkgconfig
 	embed_file
+	zero
+	new
 	compile_warn
 	compile_error
 }
@@ -2281,6 +2290,9 @@ pub fn (cc ComptimeCall) expr_str() string {
 		}
 	} else if cc.kind == .pkgconfig {
 		str = "\$${cc.method_name}('${cc.args_var}')"
+	} else if cc.kind in [.zero, .new] {
+		arg := cc.args[0] or { return str }
+		str = '\$${cc.method_name}(${arg})'
 	}
 	return str
 }
@@ -2310,31 +2322,37 @@ pub struct SqlQueryDataLeaf {
 pub:
 	pos token.Pos
 pub mut:
-	expr Expr
+	expr         Expr
+	pre_comments []Comment
+	end_comments []Comment
 }
 
 pub struct SqlQueryDataBranch {
 pub:
 	pos token.Pos
 pub mut:
-	cond  Expr
-	items []SqlQueryDataItem
+	cond         Expr
+	items        []SqlQueryDataItem
+	end_comments []Comment
 }
 
 pub struct SqlQueryDataIf {
 pub:
 	pos token.Pos
 pub mut:
-	branches []SqlQueryDataBranch
-	has_else bool
+	branches     []SqlQueryDataBranch
+	has_else     bool
+	pre_comments []Comment
+	end_comments []Comment
 }
 
 pub struct SqlQueryDataExpr {
 pub:
 	pos token.Pos
 pub mut:
-	items []SqlQueryDataItem
-	typ   Type
+	items        []SqlQueryDataItem
+	typ          Type
+	end_comments []Comment
 }
 
 pub struct SqlStmt {
@@ -2358,6 +2376,10 @@ pub:
 pub mut:
 	object_var       string   // `user`
 	updated_columns  []string // for `update set x=y`
+	is_array_insert  bool
+	is_array_update  bool
+	array_update_var string
+	array_update_key string
 	table_expr       TypeNode
 	fields           []StructField
 	sub_structs      map[string]SqlStmtLine
@@ -2395,6 +2417,12 @@ pub enum SqlAggregateKind {
 	max
 }
 
+pub struct SqlSelectField {
+pub:
+	name string
+	pos  token.Pos
+}
+
 pub struct SqlExpr {
 pub:
 	aggregate_kind  SqlAggregateKind
@@ -2422,6 +2450,7 @@ pub mut:
 	limit_expr           Expr
 	offset_expr          Expr
 	table_expr           TypeNode
+	requested_fields     []SqlSelectField
 	fields               []StructField
 	sub_structs          map[string]SqlExpr
 	or_expr              OrExpr
@@ -2904,7 +2933,11 @@ pub fn (node Node) children() []Node {
 			IndexExpr {
 				index_expr := node
 				children << index_expr.left
-				children << index_expr.index
+				if index_expr.indices.len > 0 {
+					children << index_expr.indices.map(Node(it))
+				} else {
+					children << index_expr.index
+				}
 			}
 			IfExpr {
 				if_expr := node

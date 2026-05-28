@@ -5,4 +5,6 @@ fn sleep_ms(dur i64) {
 	#let now = new Date().getTime()
 	#let toWait = BigInt(dur)
 	#while (new Date().getTime() < now + Number(toWait)) {}
+
+	_ = dur // unused
 }

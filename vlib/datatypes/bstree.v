@@ -249,13 +249,7 @@ fn (bst &BSTree[T]) get_node(node &BSTreeNode[T], value T) &BSTreeNode[T] {
 	return bst.get_node(node.left, value)
 }
 
-// to_left returns the value of the node to the left of the node with `value` specified if it exists,
-// otherwise the a false value is returned.
-//
-// An example of usage can be the following one
-//```v
-// left_value, exist := bst.to_left(10)
-//```
+// to_left returns the value of the node to the left of the node with `value` specified if it exists
 pub fn (bst &BSTree[T]) to_left(value T) !T {
 	if bst.is_empty() {
 		return error('BSTree is empty')
@@ -265,16 +259,13 @@ pub fn (bst &BSTree[T]) to_left(value T) !T {
 		return error('BSTree is not initialized')
 	}
 	left_node := node.left
+	if unsafe { left_node == 0 } || !left_node.is_init {
+		return error('No left node exists for the given value')
+	}
 	return left_node.value
 }
 
-// to_right return the value of the element to the right of the node with `value` specified, if exist
-// otherwise, the boolean value is false
-// An example of usage can be the following one
-//
-//```v
-// left_value, exist := bst.to_right(10)
-//```
+// to_right returns the value of the node to the right of the node with `value` specified if it exists
 pub fn (bst &BSTree[T]) to_right(value T) !T {
 	if bst.is_empty() {
 		return error('BSTree is empty')
@@ -284,6 +275,9 @@ pub fn (bst &BSTree[T]) to_right(value T) !T {
 		return error('BSTree is not initialized')
 	}
 	right_node := node.right
+	if unsafe { right_node == 0 } || !right_node.is_init {
+		return error('No right node exists for the given value')
+	}
 	return right_node.value
 }
 

@@ -41,3 +41,23 @@ fn test_main() {
 	mut foo := Foo.new()
 	foo.bar()
 }
+
+fn test_arrays_of_threads_with_multi_returns() {
+	mut threads := []thread (int, int){}
+	for _ in 0 .. 2 {
+		threads << spawn get_multi_returns()
+	}
+	for thr in threads {
+		a, b := thr.wait()
+		assert a == 1 && b == 2
+	}
+
+	mut fixed_threads := [2]thread (int, int){}
+	for i in 0 .. fixed_threads.len {
+		fixed_threads[i] = spawn get_multi_returns()
+	}
+	for thr in fixed_threads {
+		a, b := thr.wait()
+		assert a == 1 && b == 2
+	}
+}

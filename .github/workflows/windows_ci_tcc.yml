@@ -2,6 +2,8 @@ name: CI Windows TCC
 
 on:
   push:
+    branches:
+      - master
     paths-ignore:
       - '**.md'
       - '**.yml'
@@ -43,7 +45,9 @@ jobs:
       - name: Test new v.c
         run: |
           v -o v.c cmd/v
-          .\thirdparty\tcc\tcc.exe -Werror -w -ladvapi32 -lws2_32 -bt10 v.c
+          # Match makev.bat's Windows stack reserve; the direct TCC-built
+          # compiler can otherwise crash while compiling net.http-heavy scripts.
+          .\thirdparty\tcc\tcc.exe -Werror -w -ladvapi32 -lws2_32 -bt10 '-Wl,-stack=33554432' v.c
       - name: Install dependencies
         run: |
           v retry -- v setup-freetype

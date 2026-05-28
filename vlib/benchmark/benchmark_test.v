@@ -1,5 +1,6 @@
 import time
 import benchmark
+import term
 
 fn test_measure() {
 	mut b := benchmark.start()
@@ -61,4 +62,14 @@ fn test_total_message() {
 	assert !res2.contains(' Min: ')
 	assert !res2.contains(' Max: ')
 	assert !res2.contains(' Avg: ')
+}
+
+fn test_step_message_handles_ansi_label_longer_than_label_width() {
+	mut b := benchmark.start()
+	ansi_fail_label := '\x1b[41m\x1b[1m\x1b[37m FAIL \x1b[39m\x1b[22m\x1b[49m'
+	long_cmd := 'command: /nix/store/' + 'x'.repeat(90) + '-vlang/build/source/v -o v_g -g cmd/v'
+	message := b.step_message_with_label(ansi_fail_label, long_cmd)
+
+	assert term.strip_ansi(message).contains('FAIL')
+	assert message.contains(long_cmd)
 }

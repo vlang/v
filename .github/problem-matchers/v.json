@@ -5,7 +5,7 @@
             "owner": "v-problem-matcher",
             "pattern": [
                 {
-                    "regexp": "^(.*):(\\d+):(\\d+):\\s+(?:fatal\\s+)?(warning|error|notice):\\s+(.*)$",
+                    "regexp": "^(.*):(\\d+):(\\d+):\\s+(?:fatal\\s+)?(error):\\s+(.*)$",
                     "file": 1,
                     "line": 2,
                     "column": 3,

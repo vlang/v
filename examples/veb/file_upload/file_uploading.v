@@ -1,5 +1,6 @@
 module main
 
+import net.http
 import veb
 
 const port = 8082
@@ -9,6 +10,14 @@ struct App {
 
 struct Context {
 	veb.Context
+}
+
+fn uploaded_file_contents(fdata []http.FileData) []veb.RawHtml {
+	mut files := []veb.RawHtml{}
+	for data in fdata {
+		files << data.data.replace_each(['\n', '<br>', '\n\r', '<br>', '\t', '	', ' ', '&nbsp;'])
+	}
+	return files
 }
 
 fn main() {
@@ -25,10 +34,7 @@ pub fn (mut app App) upload() veb.Result {
 	dump(ctx.form)
 	dump(ctx.files)
 	fdata := ctx.files['upfile']
-	mut files := []veb.RawHtml{}
-	for d in fdata {
-		files << d.data.replace_each(['\n', '<br>', '\n\r', '<br>', '\t', '	', ' ', '&nbsp;'])
-	}
+	files := uploaded_file_contents(fdata)
 	return $veb.html()
 }
 

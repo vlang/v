@@ -2,10 +2,11 @@ module builder
 
 import os
 import v.cflag
+import v.pref
 
 fn test_msvc_string_flags_uses_cached_thirdparty_obj_path() {
 	obj_file := os.join_path(@VEXEROOT, 'thirdparty', 'mbedtls', 'library', 'bignum.o')
-	mut builder := new_builder_for_args(['-cc', 'msvc', '-m32', hello_world_example()])
+	mut builder := msvc_new_builder_for_args(['-cc', 'msvc', '-m32', msvc_hello_world_example()])
 	cached_obj := builder.pref.cache_manager.mod_postfix_with_key2cpath('mbedtls', '.o',
 		os.real_path(obj_file))
 	expected_obj := builder.msvc_thirdparty_obj_path('mbedtls', obj_file, cached_obj)
@@ -27,7 +28,7 @@ fn test_msvc_string_flags_rewrites_obj_flags_through_cached_path() {
 	defer {
 		os.rmdir_all(test_dir) or {}
 	}
-	mut builder := new_builder_for_args(['-cc', 'msvc', '-m64', hello_world_example()])
+	mut builder := msvc_new_builder_for_args(['-cc', 'msvc', '-m64', msvc_hello_world_example()])
 	builder.table.cflags = [
 		cflag.CFlag{
 			mod:   'builtin'
@@ -42,4 +43,15 @@ fn test_msvc_string_flags_rewrites_obj_flags_through_cached_path() {
 	expected_obj := builder.msvc_thirdparty_obj_path('builtin', obj_file, expected_cached)
 	sflags := builder.msvc_string_flags(flags)
 	assert sflags.other_flags == ['"${expected_obj}"']
+}
+
+fn msvc_new_builder_for_args(args []string) Builder {
+	mut full_args := ['']
+	full_args << args
+	prefs, _ := pref.parse_args_and_show_errors([], full_args, false)
+	return new_builder(prefs)
+}
+
+fn msvc_hello_world_example() string {
+	return os.join_path(@VEXEROOT, 'examples', 'hello_world.v')
 }

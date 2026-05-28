@@ -401,24 +401,24 @@ pub fn split_path(path string) (string, string, string) {
 	if path.ends_with(detected_path_separator) {
 		return path[..path.len - 1], '', ''
 	}
-	mut dir := '.'
+	mut dir_path := '.'
 	/*
 		TODO: JS backend does not support IfGuard yet.
 	*/
 	pos := path.last_index(detected_path_separator) or { -1 }
 	if pos == -1 {
-		dir = '.'
+		dir_path = '.'
 	} else if pos == 0 {
-		dir = detected_path_separator
+		dir_path = detected_path_separator
 	} else {
-		dir = path[..pos]
+		dir_path = path[..pos]
 	}
-	file_name := path.all_after_last(detected_path_separator)
-	pos_ext := file_name.last_index_u8(`.`)
-	if pos_ext == -1 || pos_ext == 0 || pos_ext + 1 >= file_name.len {
-		return dir, file_name, ''
+	fname := path.all_after_last(detected_path_separator)
+	pos_ext := fname.last_index_u8(`.`)
+	if pos_ext == -1 || pos_ext == 0 || pos_ext + 1 >= fname.len {
+		return dir_path, fname, ''
 	}
-	return dir, file_name[..pos_ext], file_name[pos_ext..]
+	return dir_path, fname[..pos_ext], fname[pos_ext..]
 }
 
 // input_opt returns a one-line string from stdin, after printing a prompt.
@@ -835,11 +835,11 @@ pub fn walk(path string, f fn (string)) {
 		return
 	}
 	mut remaining := []string{cap: 1000}
-	clean_path := path.trim_right(path_separator)
+	cleaned := path.trim_right(path_separator)
 	$if windows {
-		remaining << clean_path.replace('/', '\\')
+		remaining << cleaned.replace('/', '\\')
 	} $else {
-		remaining << clean_path
+		remaining << cleaned
 	}
 	for remaining.len > 0 {
 		cpath := remaining.pop()
@@ -873,11 +873,11 @@ pub fn walk_with_context(path string, context voidptr, fcb FnWalkContextCB) {
 		return
 	}
 	mut remaining := []string{cap: 1000}
-	clean_path := path.trim_right(path_separator)
+	cleaned := path.trim_right(path_separator)
 	$if windows {
-		remaining << clean_path.replace('/', '\\')
+		remaining << cleaned.replace('/', '\\')
 	} $else {
-		remaining << clean_path
+		remaining << cleaned
 	}
 	mut loops := 0
 	for remaining.len > 0 {
@@ -959,13 +959,13 @@ fn create_folder_when_it_does_not_exist(path string) {
 
 fn xdg_home_folder(ename string, lpath string) string {
 	xdg_folder := getenv(ename)
-	dir := if xdg_folder != '' {
+	xdg_dir := if xdg_folder != '' {
 		xdg_folder
 	} else {
 		join_path_single(home_dir(), lpath)
 	}
-	create_folder_when_it_does_not_exist(dir)
-	return dir
+	create_folder_when_it_does_not_exist(xdg_dir)
+	return xdg_dir
 }
 
 // cache_dir returns the path to a *writable* user-specific folder, suitable for writing non-essential data.
@@ -996,9 +996,9 @@ pub fn data_dir() string {
 		}
 		home := home_dir()
 		if home != '' {
-			dir := join_path(home, 'AppData', 'Local')
-			create_folder_when_it_does_not_exist(dir)
-			return dir
+			path := join_path(home, 'AppData', 'Local')
+			create_folder_when_it_does_not_exist(path)
+			return path
 		}
 	}
 	return xdg_home_folder('XDG_DATA_HOME', '.local/share')

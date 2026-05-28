@@ -1,4 +1,4 @@
-import arrays { flat_map, flat_map_indexed, fold, map_indexed, max }
+import arrays { filter_indexed, flat_map, flat_map_indexed, fold, map_indexed, max }
 
 fn test_decl_assignment() {
 	my_var := 12
@@ -209,6 +209,26 @@ fn test_closure_in_for_in_loop() {
 		assert res == 'hello: ${v}'
 		// dump(res)
 	}
+}
+
+struct ClosureFilterProduct {
+mut:
+	cross_sell_skus []string
+}
+
+fn test_filter_indexed_closure_capture_of_for_mut_value() {
+	mut products := [ClosureFilterProduct{
+		cross_sell_skus: ['sku-a', 'sku-b']
+	}]
+	for mut product in products {
+		product.cross_sell_skus = filter_indexed[string](product.cross_sell_skus, fn [products, product] (idx int, css string) bool {
+			product_snapshot := '${product}'
+			products_snapshot := '${products}'
+			return idx == 0 && css == 'sku-a' && product_snapshot.len > 0
+				&& products_snapshot.len > 0
+		})
+	}
+	assert products[0].cross_sell_skus == ['sku-a']
 }
 
 fn ret_two() (int, int) {

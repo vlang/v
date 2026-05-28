@@ -14,13 +14,17 @@ fn test_translate_legacy_wrapper_flag_uses_wrapper_mode() {
 	sample_path := os.join_path(test_dir, 'usersapi.c')
 	args_out := os.join_path(test_dir, 'c2v_args.txt')
 	os.write_file(sample_path, 'int usersapi_get_number_of_users(void) { return 1; }\n')!
+	original_c2v_args_out := os.getenv('C2V_ARGS_OUT')
+	original_vmodules := os.getenv('VMODULES')
+	os.setenv('C2V_ARGS_OUT', args_out, true)
+	os.setenv('VMODULES', vmodules_dir, true)
+	defer {
+		restore_env('C2V_ARGS_OUT', original_c2v_args_out)
+		restore_env('VMODULES', original_vmodules)
+	}
 	mut process := os.new_process(@VEXE)
 	process.set_work_folder(@VEXEROOT)
 	process.set_args(['translate', '-wrapper', sample_path])
-	process.set_environment({
-		'C2V_ARGS_OUT': args_out
-		'VMODULES':     vmodules_dir
-	})
 	process.set_redirect_stdio()
 	process.wait()
 	stdout := process.stdout_slurp()
@@ -47,4 +51,12 @@ fn compile_fake_c2v(vmodules_dir string) ! {
 
 fn exe_suffix() string {
 	return if os.user_os() == 'windows' { '.exe' } else { '' }
+}
+
+fn restore_env(name string, value string) {
+	if value == '' {
+		os.unsetenv(name)
+	} else {
+		os.setenv(name, value, true)
+	}
 }

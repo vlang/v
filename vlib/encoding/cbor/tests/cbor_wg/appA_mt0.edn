@@ -1,0 +1,61 @@
+{
+  "title": "mt0",
+  "description": "Plain CBOR integers storable as major type 0 (mt0), from RFC 8949 appendix A",
+  "tests": [
+    {
+      "description": "mt0 zero",
+      "encoded": h'00',
+      "decoded": 0,
+    },
+    {
+      "description": "mt0 one",
+      "encoded": h'01',
+      "decoded": 1,
+    },
+    {
+      "description": "mt0 ten, not newline",
+      "encoded": h'0a',
+      "decoded": 10,
+    },
+    {
+      "description": "mt0 largest 0-byte",
+      "encoded": h'17',
+      "decoded": 23,
+    },
+    {
+      "description": "mt0 smallest 1-byte",
+      "encoded": h'1818',
+      "decoded": 24,
+    },
+    {
+      "description": "mt0 second 1-byte",
+      "encoded": h'1819',
+      "decoded": 25,
+    },
+    {
+      "description": "mt0 100",
+      "encoded": h'1864',
+      "decoded": 100,
+    },
+    {
+      "description": "mt0 1000",
+      "encoded": h'1903e8',
+      "decoded": 1000,
+    },
+    {
+      "description": "mt0 1000000",
+      "encoded": h'1a000f4240',
+      "decoded": 1000000,
+    },
+    {
+      "description": "mt0 1000000000000",
+      "encoded": h'1b000000e8d4a51000',
+      "decoded": 1000000000000,
+    },
+    {
+      "description": "mt0 largest",
+      "encoded": h'1bffffffffffffffff',
+      "decoded": 18446744073709551615,
+    },
+  ]
+}

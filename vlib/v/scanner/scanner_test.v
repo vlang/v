@@ -358,3 +358,34 @@ fn test_comment_string() {
 	// result = scan_tokens('/* block comment will be stripped of whitespace */')
 	// result = scan_tokens('a := 0 // line end comment also gets \\x01 prepended')
 }
+
+// Strings without proper 00B at the end keep scanner from failing, hence scanner
+// will read beyond end of string into unknown memory unless there are proper bound checks
+fn test_truncated_escape_at_eof_does_not_read_past_end() {
+	prefs := &pref.Preferences{
+		output_mode: .silent
+	}
+	// buf_x = ['"', '\\', 'x', 'a', 'b', '"']; 3-byte view ends after 'x'.
+	// Buggy scanner reads [3]='a', [4]='b' — valid hex — and reports NO \x error.
+	buf_x := r'"\xab"'.bytes()
+	text_x := unsafe { tos(buf_x.data, 3) }
+	mut s := new_plain_scanner(text_x, .skip_comments, prefs)
+	_ = s.text_scan()
+	assert s.errors.any(it.message.contains('used without two following hex digits')), r'scanner must report \x error for "\xab" truncated after "\x"'
+
+	// buf_u = ['"', '\\', 'u', '1', '2', '3', '4', '"']; 3-byte view ends after 'u'.
+	// Buggy scanner reads [3]...[6] — all valid hex — and reports NO \u error.
+	buf_u := r'"\u1234"'.bytes()
+	text_u := unsafe { tos(buf_u.data, 3) }
+	mut s2 := new_plain_scanner(text_u, .skip_comments, prefs)
+	_ = s2.text_scan()
+	assert s2.errors.any(it.message.contains('incomplete 16 bit unicode')), r'scanner must report \u error for "\u1234" truncated after "\u"'
+
+	// buf_uu = ['"', '\\', 'U', '1'...'8', '"']; 3-byte view ends after 'U'.
+	// Buggy scanner reads [3]...[10] — all valid hex — and reports NO \U error.
+	buf_uu := r'"\U12345678"'.bytes()
+	text_uu := unsafe { tos(buf_uu.data, 3) }
+	mut s3 := new_plain_scanner(text_uu, .skip_comments, prefs)
+	_ = s3.text_scan()
+	assert s3.errors.any(it.message.contains('incomplete 32 bit unicode')), r'scanner must report \U error for "\U12345678" truncated after "\U"'
+}

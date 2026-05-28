@@ -4,6 +4,13 @@ import v.ast
 import v.util
 import strings
 
+fn (mut g Gen) dump_arg_needs_gc_pin(typ ast.Type) bool {
+	if g.pref.gc_mode !in [.boehm_full, .boehm_incr, .boehm_full_opt, .boehm_incr_opt] {
+		return false
+	}
+	return typ.is_any_kind_of_pointer() || g.contains_ptr(typ)
+}
+
 fn (mut g Gen) dump_expr(node ast.DumpExpr) {
 	sexpr := ctoslit(node.expr.str())
 	fpath := cestring(g.file.path)
@@ -282,14 +289,19 @@ fn (mut g Gen) dump_expr_definitions() {
 	mut dump_fns := strings.new_builder(100)
 	mut dump_fn_defs := strings.new_builder(100)
 	for dump_type, cname in g.table.dumps {
-		dump_sym := g.table.sym(ast.idx_to_type(dump_type))
+		raw_typ := ast.idx_to_type(dump_type)
+		typ := if raw_typ.has_flag(.option_mut_param_t) && raw_typ.is_ptr() {
+			raw_typ.deref().clear_flag(.option_mut_param_t)
+		} else {
+			raw_typ
+		}
+		dump_sym := g.table.sym(typ)
 		// eprintln('>>> dump_type: ${dump_type} | cname: ${cname} | dump_sym: ${dump_sym.name}')
 		mut name := cname
 		if dump_sym.language == .c {
 			name = name[3..]
 		}
 		_, str_method_expects_ptr, _ := dump_sym.str_method_info()
-		typ := ast.idx_to_type(dump_type)
 		if g.pref.skip_unused
 			&& (!g.table.used_features.dump || typ.idx() !in g.table.used_features.used_syms) {
 			continue
@@ -413,6 +425,13 @@ fn (mut g Gen) dump_expr_definitions() {
 		}
 		dump_fns.writeln('\tbuiltin___writeln_to_fd(2, value);')
 		dump_fns.writeln('\tbuiltin__flush_stderr();')
+		if g.dump_arg_needs_gc_pin(typ) {
+			if is_ptr && !typ.has_flag(.option) {
+				dump_fns.writeln('\tGC_reachable_here(dump_arg);')
+			} else {
+				dump_fns.writeln('\tGC_reachable_here(&dump_arg);')
+			}
+		}
 		surrounder.builder_write_afters(mut dump_fns)
 		if is_fixed_arr_ret && !is_ptr {
 			tmp_var := g.new_tmp_var()

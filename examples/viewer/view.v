@@ -40,7 +40,7 @@ const win_width = 800
 const win_height = 800
 const bg_color = gg.black
 const pi_2 = 3.14159265359 / 2.0
-const uv = [f32(0), 0, 1, 0, 1, 1, 0, 1]! // used for zoom icon during rotations
+// const uv = [f32(0), 0, 1, 0, 1, 1, 0, 1]! // used for zoom icon during rotations
 
 const text_drop_files = 'Drop here some images/folder/zip to navigate in the pics'
 const text_scanning = 'Scanning...'
@@ -60,8 +60,8 @@ mut:
 	texture    gfx.Image
 	sampler    gfx.Sampler
 	init_flag  bool
-	mouse_x    int = -1
-	mouse_y    int = -1
+	mouse_x    f32 = -1.0
+	mouse_y    f32 = -1.0
 	scroll_y   int
 
 	state Viewer_state = .scanning
@@ -142,17 +142,6 @@ fn create_texture(w int, h int, buf &u8) (gfx.Image, gfx.Sampler) {
 
 fn destroy_texture(sg_img gfx.Image) {
 	gfx.destroy_image(sg_img)
-}
-
-// Use only if: .dynamic is enabled
-fn update_text_texture(sg_img gfx.Image, w int, h int, buf &u8) {
-	sz := w * h * 4
-	mut tmp_sbc := gfx.ImageData{}
-	tmp_sbc.subimage[0][0] = gfx.Range{
-		ptr:  buf
-		size: usize(sz)
-	}
-	gfx.update_image(sg_img, &tmp_sbc)
 }
 
 /******************************************************************************
@@ -624,14 +613,14 @@ fn my_event_manager(mut ev gg.Event, mut app App) {
 	}
 
 	if ev.typ == .mouse_move {
-		app.mouse_x = int(ev.mouse_x)
-		app.mouse_y = int(ev.mouse_y)
+		app.mouse_x = ev.mouse_x
+		app.mouse_y = ev.mouse_y
 	}
 	if ev.typ == .touches_began || ev.typ == .touches_moved {
 		if ev.num_touches > 0 {
 			touch_point := ev.touches[0]
-			app.mouse_x = int(touch_point.pos_x)
-			app.mouse_y = int(touch_point.pos_y)
+			app.mouse_x = touch_point.pos_x
+			app.mouse_y = touch_point.pos_y
 		}
 	}
 

@@ -1,0 +1,5 @@
+struct PostKeys {
+	PostKeysType
+}
+
+type PostKeysType = PostKeys

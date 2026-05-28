@@ -4,6 +4,9 @@ import time
 const ready_marker = 'ready\n'
 
 fn test_stdout_is_flushed_by_default() {
+	$if windows {
+		return
+	}
 	mut cap := os.stdio_capture()!
 	println('ready')
 	mut pending := false

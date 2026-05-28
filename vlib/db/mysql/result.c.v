@@ -35,25 +35,41 @@ pub struct Field {
 
 // fetch_row fetches the next row from a result.
 pub fn (r Result) fetch_row() &charptr {
+	mut thread_guard := mysql_thread_guard() or { return unsafe { nil } }
+	defer {
+		thread_guard.release()
+	}
 	return C.mysql_fetch_row(r.result)
 }
 
 // n_rows returns the number of rows from a result.
 pub fn (r Result) n_rows() u64 {
+	mut thread_guard := mysql_thread_guard() or { return 0 }
+	defer {
+		thread_guard.release()
+	}
 	return C.mysql_num_rows(r.result)
 }
 
 // n_fields returns the number of columns from a result.
 pub fn (r Result) n_fields() int {
+	mut thread_guard := mysql_thread_guard() or { return 0 }
+	defer {
+		thread_guard.release()
+	}
 	return C.mysql_num_fields(r.result)
 }
 
 // rows returns array of rows, each containing an array of values,
 // one for each column.
 pub fn (r Result) rows() []Row {
+	mut thread_guard := mysql_thread_guard() or { return []Row{} }
+	defer {
+		thread_guard.release()
+	}
 	mut rows := []Row{}
-	nr_cols := r.n_fields()
-	for rr := r.fetch_row(); rr; rr = r.fetch_row() {
+	nr_cols := C.mysql_num_fields(r.result)
+	for rr := C.mysql_fetch_row(r.result); rr; rr = C.mysql_fetch_row(r.result) {
 		mut row := Row{}
 		for i in 0 .. nr_cols {
 			if unsafe { rr[i] == 0 } {
@@ -87,8 +103,12 @@ pub fn (r Result) maps() []map[string]string {
 // The definitions apply primarily for columns of results,
 // such as those produced by `SELECT` statements.
 pub fn (r Result) fields() []Field {
+	mut thread_guard := mysql_thread_guard() or { return []Field{} }
+	defer {
+		thread_guard.release()
+	}
 	mut fields := []Field{}
-	nr_cols := r.n_fields()
+	nr_cols := C.mysql_num_fields(r.result)
 	orig_fields := C.mysql_fetch_fields(r.result)
 	for i in 0 .. nr_cols {
 		unsafe {
@@ -150,5 +170,9 @@ pub fn (f Field) str() string {
 // free frees the memory used by a result.
 @[unsafe]
 pub fn (r &Result) free() {
+	mut thread_guard := mysql_thread_guard() or { return }
+	defer {
+		thread_guard.release()
+	}
 	C.mysql_free_result(r.result)
 }

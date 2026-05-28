@@ -91,6 +91,29 @@ fn test_install_from_local_git_repository_variants() {
 	}
 }
 
+// Regression test for https://github.com/vlang/v/issues/27192.
+// VPM-registered installs lowercase the on-disk path via `normalize_mod_path`,
+// so `v update <Ident>` and `v remove <Ident>` must apply the same
+// normalization when looking up existing modules — otherwise users with
+// capitalized publisher names (e.g. `Frothy7650.chalk`) cannot update or
+// remove the modules they just installed.
+fn test_update_and_remove_with_capitalized_ident() {
+	vmodules_path := os.join_path(test_path, 'vmodules_capitalized')
+	test_utils.set_test_env(vmodules_path)
+	// Simulate the post-install state of `v install Frothy7650.chalk`:
+	// a real VPM install places the module under the lowercased publisher dir.
+	publisher_dir := os.join_path(vmodules_path, 'frothy7650')
+	installed_path := os.join_path(publisher_dir, 'chalk')
+	os.mkdir_all(installed_path) or { panic(err) }
+	os.write_file(os.join_path(installed_path, 'v.mod'),
+		"Module{\n\tname: 'Frothy7650.chalk'\n\tversion: '0.0.1'\n}\n") or { panic(err) }
+	// Remove with the original (capitalized) ident must succeed and clean up the author dir.
+	res := cmd_ok(@LOCATION, '${vexe} remove Frothy7650.chalk')
+	assert !res.output.contains('failed to find'), res.output
+	assert !os.exists(installed_path)
+	assert !os.exists(publisher_dir)
+}
+
 fn create_local_git_module(repo_path string, module_name string) {
 	os.mkdir_all(repo_path) or { panic(err) }
 	os.write_file(os.join_path(repo_path, 'v.mod'),

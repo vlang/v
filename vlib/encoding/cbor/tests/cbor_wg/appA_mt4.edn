@@ -1,0 +1,26 @@
+{
+  "title": "mt4",
+  "description": "Arrays, from RFC 8949 appendix A",
+  "tests": [
+    {
+      "description": "Empty Array",
+      "encoded": h'80',
+      "decoded": [],
+    },
+    {
+      "description": "Short Array",
+      "encoded": h'83010203',
+      "decoded": [1, 2, 3],
+    },
+    {
+      "description": "Nested Arrays",
+      "encoded": h'8301820203820405',
+      "decoded": [1, [2, 3], [4, 5]],
+    },
+    {
+      "description": "Longer array",
+      "encoded": h'98190102030405060708090a0b0c0d0e0f101112131415161718181819',
+      "decoded": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25],
+    },
+  ]
+}

@@ -1276,32 +1276,34 @@ pub fn (mut s Scanner) ident_string() string {
 		if backslash_count & 1 == 1 && !is_raw && !is_cstr {
 			// Escape `\x`
 			if c == `x` {
-				if s.text[s.pos + 1] == s.quote || !(s.text[s.pos + 1].is_hex_digit()
-					&& s.text[s.pos + 2].is_hex_digit()) {
+				if s.pos + 2 >= s.text.len || s.text[s.pos + 1] == s.quote
+					|| !(s.text[s.pos + 1].is_hex_digit() && s.text[s.pos + 2].is_hex_digit()) {
 					s.error(r'`\x` used without two following hex digits')
 				}
 				s.h_escapes_pos << s.pos - 1
 			}
 			// Escape `\u`
 			if c == `u` {
-				if s.text[s.pos + 1] == s.quote || s.text[s.pos + 2] == s.quote
-					|| s.text[s.pos + 3] == s.quote || s.text[s.pos + 4] == s.quote
-					|| !s.text[s.pos + 1].is_hex_digit() || !s.text[s.pos + 2].is_hex_digit()
-					|| !s.text[s.pos + 3].is_hex_digit() || !s.text[s.pos + 4].is_hex_digit() {
+				if s.pos + 4 >= s.text.len || s.text[s.pos + 1] == s.quote
+					|| s.text[s.pos + 2] == s.quote || s.text[s.pos + 3] == s.quote
+					|| s.text[s.pos + 4] == s.quote || !s.text[s.pos + 1].is_hex_digit()
+					|| !s.text[s.pos + 2].is_hex_digit() || !s.text[s.pos + 3].is_hex_digit()
+					|| !s.text[s.pos + 4].is_hex_digit() {
 					s.error(r'`\u` incomplete 16 bit unicode character value')
 				}
 				s.u16_escapes_pos << s.pos - 1
 			}
 			// Escape `\U`
 			if c == `U` {
-				if s.text[s.pos + 1] == s.quote || s.text[s.pos + 2] == s.quote
-					|| s.text[s.pos + 3] == s.quote || s.text[s.pos + 4] == s.quote
-					|| s.text[s.pos + 5] == s.quote || s.text[s.pos + 6] == s.quote
-					|| s.text[s.pos + 7] == s.quote || s.text[s.pos + 8] == s.quote
-					|| !s.text[s.pos + 1].is_hex_digit() || !s.text[s.pos + 2].is_hex_digit()
-					|| !s.text[s.pos + 3].is_hex_digit() || !s.text[s.pos + 4].is_hex_digit()
-					|| !s.text[s.pos + 5].is_hex_digit() || !s.text[s.pos + 6].is_hex_digit()
-					|| !s.text[s.pos + 7].is_hex_digit() || !s.text[s.pos + 8].is_hex_digit() {
+				if s.pos + 8 >= s.text.len || s.text[s.pos + 1] == s.quote
+					|| s.text[s.pos + 2] == s.quote || s.text[s.pos + 3] == s.quote
+					|| s.text[s.pos + 4] == s.quote || s.text[s.pos + 5] == s.quote
+					|| s.text[s.pos + 6] == s.quote || s.text[s.pos + 7] == s.quote
+					|| s.text[s.pos + 8] == s.quote || !s.text[s.pos + 1].is_hex_digit()
+					|| !s.text[s.pos + 2].is_hex_digit() || !s.text[s.pos + 3].is_hex_digit()
+					|| !s.text[s.pos + 4].is_hex_digit() || !s.text[s.pos + 5].is_hex_digit()
+					|| !s.text[s.pos + 6].is_hex_digit() || !s.text[s.pos + 7].is_hex_digit()
+					|| !s.text[s.pos + 8].is_hex_digit() {
 					s.error(r'`\U` incomplete 32 bit unicode character value')
 				}
 				s.u32_escapes_pos << s.pos - 1

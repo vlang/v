@@ -114,9 +114,6 @@ fn (mut g Gen) write_sprintf_arg(inter ast.StringInter) {
 }
 
 fn (mut g Gen) get_sprintf_format(inter ast.StringInter) string {
-	if inter.resolved_fmt != '' {
-		return inter.resolved_fmt
-	}
 	mut fmt := '%'
 	mut width := inter.width
 	mut precision := inter.precision
@@ -157,6 +154,7 @@ fn (mut g Gen) get_sprintf_format(inter ast.StringInter) string {
 		fmt += '.${precision}'
 	}
 	// Format specifier
+	expr_type := g.get_expr_type(inter.expr)
 	if inter.format != .unformatted {
 		match inter.format {
 			.decimal { fmt += 'd' }
@@ -174,8 +172,13 @@ fn (mut g Gen) get_sprintf_format(inter ast.StringInter) string {
 
 		return fmt
 	}
+	if inter.resolved_fmt != '' {
+		if expr_type == 'string' {
+			return '%s'
+		}
+		return inter.resolved_fmt
+	}
 	// Infer from expression type
-	expr_type := g.get_expr_type(inter.expr)
 	match expr_type {
 		'string' {
 			return '%s'

@@ -1,7 +1,7 @@
 // vtest build: windows
 type C.WCHAR = u16
 type C.PWSTR = &C.WCHAR
-type C.FILE_SHARE_MODE = u32
+type C.DWORD = u32
 
 struct WideAliasHolder {
 mut:
@@ -10,14 +10,14 @@ mut:
 
 struct ShareModeHolder {
 mut:
-	mode C.FILE_SHARE_MODE
+	mode C.DWORD
 }
 
 fn accept_wide_ptr(ptr C.PWSTR) string {
 	return unsafe { string_from_wide(&u16(ptr)) }
 }
 
-fn accept_share_mode(mode C.FILE_SHARE_MODE) u32 {
+fn accept_share_mode(mode C.DWORD) u32 {
 	return u32(mode)
 }
 

@@ -1,3 +1,4 @@
+// vtest build: !windows // fasthttp.Server.run is not implemented on windows yet
 import log
 import veb
 import time

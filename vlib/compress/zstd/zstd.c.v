@@ -28,10 +28,10 @@ fn C.ZSTD_getErrorName(usize) charptr
 fn C.ZSTD_minCLevel() i32
 fn C.ZSTD_maxCLevel() i32
 fn C.ZSTD_defaultCLevel() i32
-fn C.ZSTD_createCCtx() &C.ZSTD_CCtx
+fn C.ZSTD_createCCtx() &C.ZSTD_CCtx_s
 fn C.ZSTD_freeCCtx(voidptr) usize
 fn C.ZSTD_compressCCtx(voidptr, voidptr, usize, voidptr, usize, i32) usize
-fn C.ZSTD_createDCtx() &C.ZSTD_DCtx
+fn C.ZSTD_createDCtx() &C.ZSTD_DCtx_s
 fn C.ZSTD_freeDCtx(voidptr) usize
 fn C.ZSTD_decompressDCtx(voidptr, voidptr, usize, voidptr, usize) usize
 
@@ -426,7 +426,7 @@ pub fn compress(data []u8, params CompressParams) ![]u8 {
 	}
 	size := C.ZSTD_compress2(cctx.ctx, dst.data, dst.len, data.data, data.len)
 	check_error(size)!
-	return dst[..size]
+	return dst[..int(size)]
 }
 
 @[params]
@@ -450,12 +450,12 @@ pub fn decompress(data []u8, params DecompressParams) ![]u8 {
 	mut dst := []u8{len: int(dst_capacity)}
 	decompressed_size := C.ZSTD_decompress(dst.data, dst.len, data.data, data.len)
 	check_error(decompressed_size)!
-	return dst[..decompressed_size]
+	return dst[..int(decompressed_size)]
 }
 
 pub struct CCtx {
 mut:
-	ctx &C.ZSTD_CCtx
+	ctx &C.ZSTD_CCtx_s
 }
 
 // new_cctx create a compression context.
@@ -497,13 +497,13 @@ pub fn (mut c CCtx) free_cctx() usize {
 	return C.ZSTD_freeCCtx(c.ctx)
 }
 
-struct C.ZSTD_CCtx {}
+struct C.ZSTD_CCtx_s {}
 
-struct C.ZSTD_DCtx {}
+struct C.ZSTD_DCtx_s {}
 
 pub struct DCtx {
 mut:
-	ctx &C.ZSTD_DCtx
+	ctx &C.ZSTD_DCtx_s
 }
 
 // new_dctx creates a decompression context.
@@ -574,7 +574,7 @@ pub fn store_array[T](fname string, array []T, params CompressParams) ! {
 	output.size = buf_out_size
 	output.pos = 0
 	mut remaining := cctx.compress_stream2(output, input, .flush)!
-	fout.write(buf_out[..output.pos])!
+	fout.write(buf_out[..int(output.pos)])!
 	// then, write the array.data to file
 	input.src = array.data
 	input.size = usize(array.len * int(sizeof(T)))
@@ -587,7 +587,7 @@ pub fn store_array[T](fname string, array []T, params CompressParams) ! {
 		output.size = buf_out_size
 		output.pos = 0
 		remaining = cctx.compress_stream2(output, input, .end)!
-		fout.write(buf_out[..output.pos])!
+		fout.write(buf_out[..int(output.pos)])!
 		if remaining == 0 {
 			break
 		}

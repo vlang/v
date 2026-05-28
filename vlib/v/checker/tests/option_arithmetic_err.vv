@@ -1,0 +1,14 @@
+struct Foo {
+	value ?f64
+}
+
+fn (f Foo) bar(m map[rune]f64) f64 {
+	return m[`x`] or { 0.0 } * f.value
+}
+
+fn main() {
+	f := Foo{
+		value: 1.0
+	}
+	println(f.bar(map[rune]f64{}))
+}

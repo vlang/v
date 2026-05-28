@@ -2,6 +2,8 @@ name: VPM CI
 
 on:
   push:
+    branches:
+      - master
     paths:
       - '**/vpm_ci.yml'
       - '**/cmd/tools/vpm/**'

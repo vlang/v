@@ -105,11 +105,20 @@ pub fn (mut ts TypeStore) get_ptr(elem TypeID) TypeID {
 }
 
 pub fn (mut ts TypeStore) get_array(elem TypeID, length int) TypeID {
+	if length > 100000 {
+		eprintln('TYPESTORE_GET_ARRAY_HUGE elem=${elem} length=${length}')
+	}
 	key := 'a${elem}_${length}'
 	if id := map_get_type_id(ts.cache, key) {
+		if length > 100000 {
+			eprintln('TYPESTORE_GET_ARRAY_HUGE_CACHED id=${id}')
+		}
 		return id
 	}
 	id := ts.register(Type{ kind: .array_t, elem_type: elem, len: length })
+	if length > 100000 {
+		eprintln('TYPESTORE_GET_ARRAY_HUGE_REGISTERED id=${id} stored=${ts.types[id].len}')
+	}
 	ts.cache[key] = id
 	return id
 }

@@ -25,6 +25,7 @@ struct TlsContext {
 	CtxtHandle             h_context;
 	PCCERT_CONTEXT         p_pemote_cert_context;
 	INT                    last_error_code;
+	BOOL                   validate_server_certificate;
 	BOOL                   creds_initialized;
 	BOOL                   context_initialized;
 };
@@ -34,6 +35,7 @@ TlsContext new_tls_context() {
 		.cert_store            = NULL,
 		.last_error_code       = 0,
 		.socket                = INVALID_SOCKET,
+		.validate_server_certificate = TRUE,
 		.creds_initialized     = FALSE,
 		.context_initialized   = FALSE,
 		.p_pemote_cert_context = NULL
@@ -84,8 +86,9 @@ void vschannel_cleanup(TlsContext *tls_ctx) {
 	}
 }
 
-void vschannel_init(TlsContext *tls_ctx) {
+void vschannel_init(TlsContext *tls_ctx, BOOL validate_server_certificate) {
 	tls_ctx->sspi = InitSecurityInterface();
+	tls_ctx->validate_server_certificate = validate_server_certificate;
 
 	if(tls_ctx->sspi == NULL) {
 		wprintf(L"Error 0x%x reading security interface.\n",
@@ -133,38 +136,40 @@ INT request(TlsContext *tls_ctx, INT iport, LPWSTR host, CHAR *req, DWORD req_le
 	}
 	tls_ctx->context_initialized = TRUE;
 
-	// Authenticate server's credentials.
+	if(tls_ctx->validate_server_certificate) {
+		// Authenticate server's credentials.
 
-	// Get server's certificate.
-	Status = tls_ctx->sspi->QueryContextAttributes(&tls_ctx->h_context,
-											 SECPKG_ATTR_REMOTE_CERT_CONTEXT,
-											 (PVOID)&tls_ctx->p_pemote_cert_context);
-	if(Status != SEC_E_OK) {
-		vschannel_set_last_error(tls_ctx, Status);
-		wprintf(L"Error 0x%x querying remote certificate\n", Status);
-		vschannel_cleanup(tls_ctx);
-		return resp_length;
+		// Get server's certificate.
+		Status = tls_ctx->sspi->QueryContextAttributes(&tls_ctx->h_context,
+												 SECPKG_ATTR_REMOTE_CERT_CONTEXT,
+												 (PVOID)&tls_ctx->p_pemote_cert_context);
+		if(Status != SEC_E_OK) {
+			vschannel_set_last_error(tls_ctx, Status);
+			wprintf(L"Error 0x%x querying remote certificate\n", Status);
+			vschannel_cleanup(tls_ctx);
+			return resp_length;
+		}
+
+		// Attempt to validate server certificate.
+		Status = verify_server_certificate(tls_ctx->p_pemote_cert_context, host,0);
+		if(Status) {
+			vschannel_set_last_error(tls_ctx, Status);
+			// The server certificate did not validate correctly. At this
+			// point, we cannot tell if we are connecting to the correct
+			// server, or if we are connecting to a "man in the middle"
+			// attack server.
+
+			// It is therefore best if we abort the connection.
+
+			wprintf(L"Error 0x%x authenticating server credentials!\n", Status);
+			vschannel_cleanup(tls_ctx);
+			return resp_length;
+		}
+
+		// Free the server certificate context.
+		CertFreeCertificateContext(tls_ctx->p_pemote_cert_context);
+		tls_ctx->p_pemote_cert_context = NULL;
 	}
-
-	// Attempt to validate server certificate.
-	Status = verify_server_certificate(tls_ctx->p_pemote_cert_context, host,0);
-	if(Status) {
-		vschannel_set_last_error(tls_ctx, Status);
-		// The server certificate did not validate correctly. At this
-		// point, we cannot tell if we are connecting to the correct 
-		// server, or if we are connecting to a "man in the middle" 
-		// attack server.
-
-		// It is therefore best if we abort the connection.
-
-		wprintf(L"Error 0x%x authenticating server credentials!\n", Status);
-		vschannel_cleanup(tls_ctx);
-		return resp_length;
-	}
-
-	// Free the server certificate context.
-	CertFreeCertificateContext(tls_ctx->p_pemote_cert_context);
-	tls_ctx->p_pemote_cert_context = NULL;
 
 	// Request from server
 	Status = https_make_request(tls_ctx, req, req_len, out, &resp_length, afn);
@@ -239,15 +244,10 @@ static SECURITY_STATUS create_credentials(TlsContext *tls_ctx) {
 	}
 
 	tls_ctx->schannel_cred.dwFlags |= SCH_CRED_NO_DEFAULT_CREDS;
+	tls_ctx->schannel_cred.dwFlags |= SCH_CRED_MANUAL_CRED_VALIDATION;
 
-	// The SCH_CRED_MANUAL_CRED_VALIDATION flag is specified because
-	// this sample verifies the server certificate manually. 
-	// Applications that expect to run on WinNT, Win9x, or WinME 
-	// should specify this flag and also manually verify the server
-	// certificate. Applications running on newer versions of Windows can
-	// leave off this flag, in which case the InitializeSecurityContext
-	// function will validate the server certificate automatically.
-	// tls_ctx->schannel_cred.dwFlags |= SCH_CRED_MANUAL_CRED_VALIDATION;
+	// Keep certificate validation under the caller's control. The validated
+	// path runs explicit hostname/chain validation after the handshake.
 
 	// Create an SSPI credential.
 
@@ -986,7 +986,13 @@ static DWORD verify_server_certificate( PCCERT_CONTEXT  pServerCert, LPWSTR host
 	ChainPara.RequestedUsage.Usage.cUsageIdentifier     = cUsages;
 	ChainPara.RequestedUsage.Usage.rgpszUsageIdentifier = rgszUsages;
 
-	if(!CertGetCertificateChain(NULL, pServerCert, NULL, pServerCert->hCertStore, &ChainPara, 0, NULL, &pChainContext)) {
+	// Best-effort TLS revocation check: detect a positively revoked leaf
+	// certificate, but let policy evaluation ignore unknown/offline status.
+	if(!CertGetCertificateChain(NULL, pServerCert, NULL, pServerCert->hCertStore, &ChainPara,
+		CERT_CHAIN_CACHE_END_CERT |
+		CERT_CHAIN_REVOCATION_CHECK_END_CERT |
+		CERT_CHAIN_REVOCATION_ACCUMULATIVE_TIMEOUT,
+		NULL, &pChainContext)) {
 		Status = GetLastError();
 		wprintf(L"Error 0x%x returned by CertGetCertificateChain!\n", Status);
 		goto cleanup;
@@ -1001,6 +1007,7 @@ static DWORD verify_server_certificate( PCCERT_CONTEXT  pServerCert, LPWSTR host
 
 	memset(&PolicyPara, 0, sizeof(PolicyPara));
 	PolicyPara.cbSize            = sizeof(PolicyPara);
+	PolicyPara.dwFlags           = CERT_CHAIN_POLICY_IGNORE_ALL_REV_UNKNOWN_FLAGS;
 	PolicyPara.pvExtraPolicyPara = &polHttps;
 
 	memset(&PolicyStatus, 0, sizeof(PolicyStatus));

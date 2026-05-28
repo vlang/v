@@ -1,0 +1,10 @@
+module main
+
+fn pair() (f64, string) {
+	return 3.14, 'hello'
+}
+
+fn main() {
+	xs := [pair(), pair()]
+	dump(xs)
+}

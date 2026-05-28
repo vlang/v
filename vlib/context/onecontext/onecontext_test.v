@@ -1,4 +1,3 @@
-// vtest build: false // backtrace_symbols is missing
 module onecontext
 
 import context

@@ -14,13 +14,47 @@ fn array_init_result_type(node ast.ArrayInit) ast.Type {
 	}
 }
 
+fn (mut c Checker) set_expected_array_literal_type(mut expr ast.Expr, expected_type ast.Type) {
+	if mut expr is ast.ArrayInit {
+		if expr.typ != ast.void_type || expr.elem_type != ast.void_type {
+			return
+		}
+		expected_array_type := expected_type.clear_option_and_result()
+		if expected_array_type.has_flag(.generic)
+			|| c.type_has_unresolved_generic_parts(expected_array_type) {
+			return
+		}
+		mut concrete_array_type := expected_array_type
+		expected_sym := c.table.sym(expected_array_type)
+		if expected_sym.info is ast.Alias {
+			concrete_array_type = expected_sym.info.parent_type.clear_option_and_result()
+			if c.table.final_sym(concrete_array_type).kind !in [.array, .array_fixed] {
+				return
+			}
+			expr.alias_type = expected_array_type
+		} else if c.table.final_sym(expected_array_type).kind !in [.array, .array_fixed] {
+			return
+		}
+		expected_elem_type := c.table.value_type(concrete_array_type)
+		if expected_elem_type == ast.void_type {
+			return
+		}
+		expected_elem_sym := c.table.final_sym(expected_elem_type)
+		if expected_elem_sym.kind in [.interface, .sum_type] {
+			return
+		}
+		expr.typ = concrete_array_type
+		expr.elem_type = expected_elem_type
+	}
+}
+
 fn is_inferred_fixed_array_size_expr(expr ast.Expr) bool {
 	return expr is ast.RangeExpr && !expr.has_low && !expr.has_high
 }
 
 fn is_array_init_type_expr_field(name string) bool {
 	return name in ['idx', 'typ', 'unaliased_typ', 'key_type', 'value_type', 'element_type',
-		'indirections']
+		'pointee_type', 'payload_type', 'variant_types', 'indirections']
 }
 
 fn (mut c Checker) fixed_array_contains_inferred_size(typ ast.Type) bool {
@@ -374,6 +408,38 @@ fn (mut c Checker) array_init(mut node ast.ArrayInit) ast.Type {
 		return array_init_result_type(node)
 	}
 
+	if node.has_update_expr {
+		// `[...base, e1, e2]` — array update/spread literal
+		update_typ := c.expr(mut node.update_expr)
+		// Resolve through type aliases so `type Ints = []int; [...Ints(...)]`
+		// is accepted; use final_sym to look past aliases of arrays.
+		update_sym := c.table.final_sym(update_typ)
+		if update_sym.kind != .array {
+			c.error('invalid array update: non-array type `${c.table.type_to_str(update_typ)}`',
+				node.update_expr_pos)
+			return ast.void_type
+		}
+		array_info := update_sym.array_info()
+		node.elem_type = array_info.elem_type
+		node.typ = update_typ
+		elem_type = array_info.elem_type
+		c.expected_type = elem_type
+		for mut expr in node.exprs {
+			typ := c.check_expr_option_or_result_call(expr, c.expr(mut expr))
+			node.expr_types << typ
+			if expr is ast.CallExpr {
+				ret_sym := c.table.sym(typ)
+				if ret_sym.kind == .array_fixed {
+					node.expr_types[node.expr_types.len - 1] = c.cast_fixed_array_ret(typ, ret_sym)
+				}
+				node.has_callexpr = true
+			}
+			c.check_expected(typ, elem_type) or {
+				c.error('invalid array element: ${err.msg()}', expr.pos())
+			}
+		}
+		return array_init_result_type(node)
+	}
 	if node.is_fixed {
 		c.ensure_type_exists(node.elem_type, node.elem_type_pos)
 		if !c.is_builtin_mod {
@@ -906,6 +972,7 @@ fn (mut c Checker) map_init(mut node ast.MapInit) ast.Type {
 			c.expected_type = map_key_type
 			key_type := c.expr(mut key)
 			c.expected_type = map_val_type
+			c.set_expected_array_literal_type(mut val, map_val_type)
 			val_type := c.expr(mut val)
 			node.val_types << val_type
 			val_type_sym := c.table.sym(val_type)

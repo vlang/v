@@ -2,6 +2,8 @@ name: Time CI
 
 on:
   push:
+    branches:
+      - master
     paths:
       - 'vlib/**'
       - 'cmd/tools/builders/**.v'

@@ -257,6 +257,19 @@ fn is_local_repository(query string) bool {
 			return true
 		}
 		if os.exists(path) {
+			// A bare relative name like `vsl` is ambiguous: it might be a
+			// registered VPM module, or a like-named local directory in the
+			// caller's cwd. If the candidate resolves to a path inside
+			// `settings.vmodules_path`, it is just a previously installed
+			// module shadowing the registered name — don't treat it as a
+			// local repository. This keeps `v install vsl@<tag>` working when
+			// cwd happens to be the vmodules directory (the test setup for
+			// versioned installs does exactly this).
+			abs := os.real_path(path)
+			vmodules_real := os.real_path(settings.vmodules_path)
+			if abs.starts_with(vmodules_real + os.path_separator) || abs == vmodules_real {
+				continue
+			}
 			return true
 		}
 	}

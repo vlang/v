@@ -19,7 +19,7 @@ pub fn kmain() {
 	for {}
 }
 ")!
-	cmd := '${test_vexe} -gc none -no-skip-unused -freestanding -no-std -is_o -m32 -o ${os.quoted_path(out_c)} ${os.quoted_path(main_v)}'
+	cmd := '${test_vexe} -cc gcc -gc none -no-skip-unused -freestanding -no-std -is_o -m32 -o ${os.quoted_path(out_c)} ${os.quoted_path(main_v)}'
 	res := os.execute(cmd)
 	assert res.exit_code == 0, '${cmd}\n${res.output}'
 	generated := os.read_file(out_c)!

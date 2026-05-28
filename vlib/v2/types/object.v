@@ -23,13 +23,18 @@ pub:
 }
 
 struct Global {
-	name string
-	typ  Type
+	name      string
+	mod       string
+	is_public bool
+	is_mut    bool
+mut:
+	typ Type
 }
 
 pub struct Fn {
 	name string
 	// typ  FnType // signature
+mut:
 	typ Type // signature
 }
 

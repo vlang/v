@@ -214,6 +214,8 @@ pub mut:
 	kinds       []OperationKind
 	auto_fields []int
 	is_and      []bool
+	batch_rows  int
+	batch_key   string
 }
 
 pub struct InfixType {
@@ -626,6 +628,8 @@ fn clone_query_data(data QueryData) QueryData {
 		kinds:       data.kinds.clone()
 		auto_fields: data.auto_fields.clone()
 		is_and:      data.is_and.clone()
+		batch_rows:  data.batch_rows
+		batch_key:   data.batch_key
 	}
 }
 
@@ -642,64 +646,99 @@ pub fn orm_stmt_gen(sql_dialect SQLDialect, table Table, q string, kind StmtKind
 
 	match kind {
 		.insert {
+			row_count := if insert_data.batch_rows > 0 { insert_data.batch_rows } else { 1 }
 			mut values := []string{}
 			mut select_fields := []string{}
+			are_values_empty := insert_data.fields.len == 0
 
 			for column_name in insert_data.fields {
 				select_fields << '${q}${column_name}${q}'
-				values << factory_insert_qm_value(num, qm, c)
-				c++
+			}
+			if !are_values_empty {
+				for _ in 0 .. row_count {
+					mut row_values := []string{}
+					for _ in insert_data.fields {
+						row_values << factory_insert_qm_value(num, qm, c)
+						c++
+					}
+					values << '(${row_values.join(', ')})'
+				}
 			}
 
 			str += 'INSERT INTO ${q}${table.name}${q} '
 
-			are_values_empty := values.len == 0
-
-			if sql_dialect in [.sqlite, .pg, .h2] && are_values_empty {
-				str += 'DEFAULT VALUES'
+			if are_values_empty {
+				if row_count == 1 && sql_dialect in [.sqlite, .pg, .h2] {
+					str += 'DEFAULT VALUES'
+				} else {
+					str += '() VALUES '
+					str += []string{len: row_count, init: '()'}.join(', ')
+				}
 			} else {
 				str += '('
 				str += select_fields.join(', ')
-				str += ') VALUES ('
+				str += ') VALUES '
 				str += values.join(', ')
-				str += ')'
 			}
 		}
 		.update {
 			str += 'UPDATE ${q}${table.name}${q} SET '
-			for i, field in data.fields {
-				str += '${q}${field}${q} = '
-				if data.data.len > i {
-					d := data.data[i]
-					if d is InfixType {
-						op := match d.operator {
-							.add {
-								'+'
-							}
-							.sub {
-								'-'
-							}
-							.mul {
-								'*'
-							}
-							.div {
-								'/'
-							}
+			if data.batch_rows > 0 {
+				for i, field in data.fields {
+					str += '${q}${field}${q} = CASE ${q}${data.batch_key}${q} '
+					for _ in 0 .. data.batch_rows {
+						str += 'WHEN ${qm}'
+						if num {
+							str += '${c}'
+							c++
 						}
+						str += ' THEN ${qm}'
+						if num {
+							str += '${c}'
+							c++
+						}
+						str += ' '
+					}
+					str += 'ELSE ${q}${field}${q} END'
+					if i < data.fields.len - 1 {
+						str += ', '
+					}
+				}
+			} else {
+				for i, field in data.fields {
+					str += '${q}${field}${q} = '
+					if data.data.len > i {
+						d := data.data[i]
+						if d is InfixType {
+							op := match d.operator {
+								.add {
+									'+'
+								}
+								.sub {
+									'-'
+								}
+								.mul {
+									'*'
+								}
+								.div {
+									'/'
+								}
+							}
 
-						str += '${d.name} ${op} ${qm}'
+							str += '${d.name} ${op} ${qm}'
+						} else {
+							str += '${qm}'
+						}
 					} else {
 						str += '${qm}'
 					}
-				} else {
-					str += '${qm}'
-				}
-				if num {
-					str += '${c}'
-					c++
-				}
-				if i < data.fields.len - 1 {
-					str += ', '
+					if num {
+						str += '${c}'
+						c++
+					}
+					if i < data.fields.len - 1 {
+						str += ', '
+					}
 				}
 			}
 			str += ' WHERE '
@@ -727,14 +766,62 @@ pub fn orm_stmt_gen(sql_dialect SQLDialect, table Table, q string, kind StmtKind
 
 fn prepare_insert_query_data(data QueryData) QueryData {
 	mut prepared := QueryData{
-		types:       data.types.clone()
-		kinds:       data.kinds.clone()
-		auto_fields: data.auto_fields.clone()
+		batch_rows:  data.batch_rows
+		batch_key:   data.batch_key
+		parentheses: data.parentheses.clone()
 		is_and:      data.is_and.clone()
+	}
+	mut included_indexes := []int{}
+	if data.batch_rows > 0 && data.fields.len > 0 {
+		for i, column_name in data.fields {
+			mut skip_auto_field := i in data.auto_fields
+			if skip_auto_field {
+				for row in 0 .. data.batch_rows {
+					data_idx := row * data.fields.len + i
+					if data_idx >= data.data.len
+						|| !should_skip_insert_auto_field(data.data[data_idx]) {
+						skip_auto_field = false
+						break
+					}
+				}
+			}
+			if skip_auto_field {
+				continue
+			}
+			prepared.fields << column_name
+			if i < data.types.len {
+				prepared.types << data.types[i]
+			}
+			if i < data.kinds.len {
+				prepared.kinds << data.kinds[i]
+			}
+			if i in data.auto_fields {
+				prepared.auto_fields << prepared.fields.len - 1
+			}
+			included_indexes << i
+		}
+		for row in 0 .. data.batch_rows {
+			for i in included_indexes {
+				data_idx := row * data.fields.len + i
+				if data_idx < data.data.len {
+					prepared.data << data.data[data_idx]
+				}
+			}
+		}
+		return prepared
 	}
 	for i, column_name in data.fields {
 		if i >= data.data.len {
 			prepared.fields << column_name
+			if i < data.types.len {
+				prepared.types << data.types[i]
+			}
+			if i < data.kinds.len {
+				prepared.kinds << data.kinds[i]
+			}
+			if i in data.auto_fields {
+				prepared.auto_fields << prepared.fields.len - 1
+			}
 			continue
 		}
 		if i in data.auto_fields && should_skip_insert_auto_field(data.data[i]) {
@@ -742,6 +829,15 @@ fn prepare_insert_query_data(data QueryData) QueryData {
 		}
 		prepared.fields << column_name
 		prepared.data << data.data[i]
+		if i < data.types.len {
+			prepared.types << data.types[i]
+		}
+		if i < data.kinds.len {
+			prepared.kinds << data.kinds[i]
+		}
+		if i in data.auto_fields {
+			prepared.auto_fields << prepared.fields.len - 1
+		}
 	}
 	return prepared
 }

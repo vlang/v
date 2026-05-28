@@ -157,9 +157,9 @@ fn json_file(file string) string {
 	ast_json := json(file)
 	// support .v and .vsh file
 	file_name := file[0..(file.len - os.file_ext(file).len)]
-	json_file := file_name + '.json'
-	os.write_file(json_file, ast_json) or { panic(err) }
-	return json_file
+	out_file := file_name + '.json'
+	os.write_file(out_file, ast_json) or { panic(err) }
+	return out_file
 }
 
 // generate json string

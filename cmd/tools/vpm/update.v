@@ -36,12 +36,19 @@ fn vpm_update(query []string) {
 
 fn update_module(mut pp pool.PoolProcessor, idx int, _wid int) &UpdateResult {
 	ident := pp.get_item[string](idx)
-	// Usually, the module `ident`ifier. `get_name_from_url` is only relevant for `v update <module_url>`.
-	name := get_name_from_url(ident) or { ident }
 	install_path := get_path_of_existing_module(ident) or {
-		vpm_error('failed to find path for `${name}`.', verbose: true)
+		fallback_name := get_name_from_url(ident) or { ident }
+		vpm_error('failed to find path for `${fallback_name}`.', verbose: true)
 		return &UpdateResult{}
 	}
+	// Derive the canonical module name from the install path so URL-based
+	// updates report the registered name (e.g. `spytheman.vtray` for
+	// `<vmodules>/spytheman/vtray`) instead of the bare URL-derived `vtray`.
+	// Normalize both sides via real_path so macOS's `/tmp` -> `/private/tmp`
+	// resolution doesn't leave the prefix unstripped.
+	vmodules_real := os.real_path(settings.vmodules_path)
+	rel_install_path := install_path.trim_string_left(vmodules_real).trim_left(os.path_separator)
+	name := rel_install_path.replace(os.path_separator, '.')
 	vcs := vcs_used_in_dir(install_path) or {
 		vpm_error('failed to find version control system for `${name}`.', verbose: true)
 		return &UpdateResult{}

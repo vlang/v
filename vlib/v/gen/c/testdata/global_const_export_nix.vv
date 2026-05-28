@@ -1,0 +1,23 @@
+// vtest vflags: -enable-globals
+@[has_globals]
+module main
+
+struct Entry {
+	value int
+}
+
+@[export]
+__global const exported_const = int(123)
+
+__global const entry = Entry{
+	value: 123
+}
+
+@[c_extern]
+__global const C.external_symbol int
+
+fn main() {
+	println(C.external_symbol)
+	println(exported_const)
+	println(entry.value)
+}

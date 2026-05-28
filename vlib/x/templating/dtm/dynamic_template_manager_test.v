@@ -160,7 +160,7 @@ fn test_check_tmpl_and_placeholders_size() {
 }
 
 fn test_chandler_prevent_cache_duplicate_request() {
-	dtmi := init_dtm(false, 0)
+	mut dtmi := init_dtm(false, 0)
 	temp_html_file := os.join_path(dtmi.template_folder, temp_html_fp)
 
 	lock dtmi.template_caches {

@@ -129,15 +129,36 @@ pub fn join_path_single(base string, elem string) string {
 
 pub fn execute(cmd string) Result {
 	mut exit_code := 0
-	mut stdout := ''
+	mut out := ''
 	#let commands = cmd.str.split(' ');
 	#let output = $child_process.spawnSync(commands[0],commands.slice(1,commands.length));
 	#exit_code = new int(output.status)
-	#stdout = new string(output.stdout + '')
+	#out = new string(output.stdout + '')
 
 	return Result{
 		exit_code: exit_code
-		output:    stdout
+		output:    out
+	}
+}
+
+// exec starts the specified command with arguments, waits for it to complete, and returns its output.
+pub fn exec(args []string) Result {
+	if args.len == 0 {
+		return Result{
+			exit_code: -1
+			output:    'exec requires at least one argument'
+		}
+	}
+	mut exit_code := 0
+	mut out := ''
+	#let commands = args.arr.map((x) => x.valueOf() + '');
+	#let output = $child_process.spawnSync(commands[0], commands.slice(1, commands.length));
+	#exit_code = new int(output.status === null ? -1 : output.status)
+	#out = new string((output.stdout ? output.stdout + '' : '') + (output.stderr ? output.stderr + '' : ''))
+
+	return Result{
+		exit_code: exit_code
+		output:    out
 	}
 }
 

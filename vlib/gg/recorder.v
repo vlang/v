@@ -1,6 +1,5 @@
 module gg
 
-import encoding.base64
 import os
 
 enum ScreenshotOutput {
@@ -45,10 +44,6 @@ fn recorder_env_value(env map[string]string, key string, fallback string) string
 		return fallback
 	}
 	return value
-}
-
-fn screenshot_stdout_payload(frame u64, png []u8) string {
-	return '${gg_record_stdout_prefix} frame=${frame} format=png encoding=base64 data=${base64.encode(png)}'
 }
 
 fn new_gg_recorder_settings_from_env(env map[string]string, executable string) &SSRecorderSettings {

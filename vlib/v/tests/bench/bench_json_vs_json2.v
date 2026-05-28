@@ -202,8 +202,8 @@ fn benchmark_measure_decode_by_type() ! {
 	b.measure('json2.decode StructType[time.Time]')
 	for _ in 0 .. max_iterations {
 		d := json.decode(StructType[time.Time], vt)!
-		if d.val.year != 1970 { // note json.decode here is buggy
-			return error('json2.decode ${d}')
+		if d.val.year != 2015 {
+			return error('json.decode ${d}')
 		}
 	}
 	b.measure(' json.decode StructType[time.Time]\n')

@@ -186,6 +186,15 @@ fn (mut c Checker) markused_method_call(mut node ast.CallExpr, mut left_expr ast
 				c.table.used_features.comptime_calls['${int(left_type.ref())}.${node.name}'] = true
 			}
 		}
+	} else if !left_type.has_flag(.generic) && left_expr is ast.ComptimeSelector {
+		// `x.$(field.name).method()` — the concrete receiver type varies per
+		// outer `$for f in T.fields` iteration, and skip-unused has no way to
+		// see the runtime dispatch. Mark the per-iteration receiver type so
+		// the method survives -skip-unused.
+		c.table.used_features.comptime_calls['${int(left_type)}.${node.name}'] = true
+		if !left_type.is_ptr() {
+			c.table.used_features.comptime_calls['${int(left_type.ref())}.${node.name}'] = true
+		}
 	} else if left_type.has_flag(.generic) {
 		unwrapped_left := c.unwrap_generic(left_type)
 		c.table.used_features.comptime_calls['${int(unwrapped_left)}.${node.name}'] = true

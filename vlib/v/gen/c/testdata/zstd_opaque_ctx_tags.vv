@@ -1,0 +1,12 @@
+import compress.zstd
+
+fn main() {
+	mut cctx := zstd.new_cctx() or { panic(err) }
+	defer {
+		cctx.free_cctx()
+	}
+	mut dctx := zstd.new_dctx() or { panic(err) }
+	defer {
+		dctx.free_dctx()
+	}
+}

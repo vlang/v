@@ -21,6 +21,50 @@ Do not store Contexts inside a struct type; instead, pass a Context explicitly
 to each function that needs it. The Context should be the first parameter,
 typically named ctx, just to make it more consistent.
 
+## Cancellation with Causes
+
+When a context is canceled, you can optionally attach a **cause** — an error
+describing why the cancellation happened. Use `with_cancel_cause` instead of
+`with_cancel` to attach a cause:
+
+```v
+import context
+
+fn main() {
+	mut bg := context.background()
+	mut ctx, cancel := context.with_cancel_cause(mut bg)
+	defer { cancel(none) }
+
+	// Cancel with a specific error cause
+	cancel(error('request timed out'))
+}
+```
+
+Retrieve the cause from any context using `cause(ctx)`:
+
+```v
+import context
+
+fn main() {
+	mut bg := context.background()
+	mut ctx, cancel := context.with_cancel_cause(mut bg)
+	cancel(none)
+	c := context.cause(ctx)
+	if c !is none {
+		println('canceled: ${c}')
+	}
+}
+```
+
+The cause is propagated through the context tree. If a parent context is
+canceled with a cause, all derived contexts inherit the same cause.
+If multiple ancestors are canceled, the first cause encountered is returned.
+
+### Convenience variants
+
+- `with_timeout_cause(ctx, dur, err)` — timeout with a custom cause
+- `with_deadline_cause(ctx, deadline, err)` — deadline with a custom cause
+
 ## Examples
 
 In this section you can see some usage examples for this module
@@ -186,5 +230,40 @@ fn main() {
 
 	assert value == dump(f(ctx, key))
 	assert not_found_value == dump(f(ctx, 'color'))
+}
+```
+
+### Context With Cancellation Cause
+
+```v
+import context
+
+struct AppError {
+	msg string
+}
+
+fn (e AppError) msg() string {
+	return e.msg
+}
+
+fn (e AppError) code() int {
+	return 0
+}
+
+fn main() {
+	mut bg := context.background()
+	mut ctx, cancel := context.with_cancel_cause(mut bg)
+	defer { cancel(none) }
+
+	// Simulate an error condition and cancel with a cause
+	cancel(AppError{
+		msg: 'operation failed'
+	})
+
+	// Retrieve the cause
+	c := context.cause(ctx)
+	if c !is none {
+		eprintln('context canceled: ${c}')
+	}
 }
 ```

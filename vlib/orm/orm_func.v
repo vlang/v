@@ -1016,6 +1016,7 @@ pub fn (qb_ &QueryBuilder[T]) insert[T](value T) !&QueryBuilder[T] {
 }
 
 // insert_many insert records into the database
+// Uses batch INSERT for efficiency when inserting multiple records.
 pub fn (qb_ &QueryBuilder[T]) insert_many[T](values []T) !&QueryBuilder[T] {
 	mut qb := unsafe { qb_ }
 	defer {
@@ -1025,10 +1026,15 @@ pub fn (qb_ &QueryBuilder[T]) insert_many[T](values []T) !&QueryBuilder[T] {
 	if values.len == 0 {
 		return error('${@FN}(): `insert` need at least one record')
 	}
-	for value in values {
-		new_qb := fill_data_with_struct[T](value, qb.meta)
-		qb.conn.insert(qb.config.table, new_qb)!
+	mut batch := fill_data_with_struct[T](values[0], qb.meta)
+	batch.batch_rows = values.len
+	for i in 1 .. values.len {
+		next := fill_data_with_struct[T](values[i], qb.meta)
+		for d in next.data {
+			batch.data << d
+		}
 	}
+	qb.conn.insert(qb.config.table, batch)!
 	return qb
 }
 
@@ -1197,6 +1203,75 @@ pub fn (qb_ &QueryBuilder[T]) update() !&QueryBuilder[T] {
 	}
 	qb.conn.update(qb.config.table, qb.data, qb.where)!
 	return qb
+}
+
+// update_many updates multiple records by a key field, using batch CASE WHEN for efficiency.
+// key_field is the column used to match rows (e.g. 'id').
+// field_names selects which columns to update; if empty, all struct fields except key_field are updated.
+pub fn update_many[T](mut conn Connection, values []T, key_field string, field_names ...string) ! {
+	if values.len == 0 {
+		return error('${@FN}(): need at least one record')
+	}
+	mut qb := new_query[T](conn)
+
+	// Build the field list from the first value
+	first := fill_data_with_struct[T](values[0], qb.meta)
+	mut key_index := -1
+	mut value_fields := []string{}
+	mut value_indexes := []int{}
+
+	for i, field in first.fields {
+		if field == key_field {
+			key_index = i
+		} else if field_names.len == 0 || field in field_names {
+			value_fields << field
+			value_indexes << i
+		}
+	}
+
+	if key_index < 0 {
+		return error('${@FN}(): key field `${key_field}` not found in table `${qb.config.table.name}`')
+	}
+
+	if value_fields.len == 0 {
+		return error('${@FN}(): no updatable fields found for table `${qb.config.table.name}`')
+	}
+
+	mut update_data := QueryData{
+		fields:     value_fields
+		batch_rows: values.len
+		batch_key:  key_field
+	}
+
+	// Build data: per value_field, per row: [key_value, value_field_value]
+	rows := values.map(fill_data_with_struct[T](it, qb.meta))
+
+	for fj in value_indexes {
+		for row in rows {
+			if key_index < row.data.len {
+				update_data.data << row.data[key_index]
+			}
+			if fj < row.data.len {
+				update_data.data << row.data[fj]
+			}
+		}
+	}
+
+	// Build WHERE clause using IN
+	mut key_values := []Primitive{}
+	for row in rows {
+		if key_index < row.data.len {
+			key_values << row.data[key_index]
+		}
+	}
+
+	mut where_data := QueryData{
+		fields: [key_field]
+		data:   [Primitive(key_values)]
+		kinds:  [.in]
+	}
+
+	conn.update(qb.config.table, update_data, where_data)!
 }
 
 // delete delete record(s) in the database

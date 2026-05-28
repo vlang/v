@@ -7,6 +7,7 @@ mut:
 	static_files                  map[string]string
 	static_mime_types             map[string]string
 	static_hosts                  map[string]string
+	static_prefixes               []string
 	enable_static_gzip            bool
 	enable_static_zstd            bool
 	enable_static_compression     bool
@@ -21,6 +22,7 @@ pub mut:
 	static_files      map[string]string
 	static_mime_types map[string]string
 	static_hosts      map[string]string
+	static_prefixes   []string
 	// enable_static_gzip enables gzip compression for static files.
 	// Use this for gzip-only compression. For automatic zstd/gzip selection, use enable_static_compression.
 	// Default: false
@@ -144,6 +146,30 @@ pub fn (mut sh StaticHandler) host_serve_static(host string, url string, file_pa
 	}
 	sh.static_files[url] = file_path
 	sh.static_hosts[url] = host
+	sh.register_static_prefix(url)
+}
+
+fn static_prefix_for_url(url string) string {
+	if url.len == 0 || url[0] != `/` {
+		return url
+	}
+	mut slash_count := 0
+	for i in 0 .. url.len {
+		if url[i] == `/` {
+			slash_count++
+			if slash_count == 2 {
+				return url[..i + 1]
+			}
+		}
+	}
+	return url
+}
+
+fn (mut sh StaticHandler) register_static_prefix(url string) {
+	prefix := static_prefix_for_url(url)
+	if prefix !in sh.static_prefixes {
+		sh.static_prefixes << prefix
+	}
 }
 
 fn app_static_handler[A](app &A) StaticHandler {
@@ -162,5 +188,6 @@ fn app_static_handler[A](app &A) StaticHandler {
 		static_files:      map[string]string{}
 		static_mime_types: map[string]string{}
 		static_hosts:      map[string]string{}
+		static_prefixes:   []string{}
 	}
 }

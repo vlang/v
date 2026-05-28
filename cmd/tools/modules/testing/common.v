@@ -302,6 +302,8 @@ pub fn (mut ts TestSession) system(cmd string, mtc MessageThreadContext) int {
 
 pub fn new_test_session(_vargs string, will_compile bool) TestSession {
 	mut skip_files := []string{}
+	vexe := pref.vexe_path()
+	vroot := os.dir(vexe)
 	if will_compile {
 		if runner_os != 'Linux' || !github_job.starts_with('tcc-') {
 			if !os.exists('/usr/local/include/wkhtmltox/pdf.h') {
@@ -309,10 +311,11 @@ pub fn new_test_session(_vargs string, will_compile bool) TestSession {
 			}
 		}
 	}
+	if os.user_os() == 'windows' {
+		skip_files << windows_disabled_fasthttp_veb_tests(vroot)
+	}
 	skip_files = skip_files.map(os.abs_path)
 	vargs := _vargs.replace('-progress', '')
-	vexe := pref.vexe_path()
-	vroot := os.dir(vexe)
 	hash := '${sync.thread_id().hex()}_${rand.ulid()}'
 	new_vtmp_dir := setup_new_vtmp_folder(hash)
 	if term.can_show_color_on_stderr() {
@@ -338,6 +341,29 @@ pub fn new_test_session(_vargs string, will_compile bool) TestSession {
 
 	ts.handle_test_runner_option()
 	return ts
+}
+
+fn windows_disabled_fasthttp_veb_tests(vroot string) []string {
+	mut files := []string{}
+	for dir in [
+		os.join_path(vroot, 'vlib', 'fasthttp'),
+		os.join_path(vroot, 'vlib', 'veb'),
+	] {
+		if !os.is_dir(dir) {
+			continue
+		}
+		os.walk(dir, fn [mut files] (path string) {
+			if path.ends_with('_test.v') || path.ends_with('_test.c.v')
+				|| path.ends_with('_test.js.v') {
+				files << path
+			}
+		})
+	}
+	session_app_test := os.join_path(vroot, 'vlib', 'x', 'sessions', 'tests', 'session_app_test.v')
+	if os.exists(session_app_test) {
+		files << session_app_test
+	}
+	return files
 }
 
 fn (mut ts TestSession) handle_test_runner_option() {
@@ -553,9 +579,39 @@ fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 	if ts.show_stats {
 		skip_running = ''
 	}
-	reproduce_cmd := '${os.quoted_path(ts.vexe)} ${reproduce_options.join(' ')} ${os.quoted_path(file)}'
 	compile_options := cmd_options.filter(it != '-silent')
-	cmd := '${os.quoted_path(ts.vexe)} ${skip_running} ${compile_options.join(' ')} ${os.quoted_path(file)}'
+	mut compile_vexe := ts.vexe
+	mut compile_args := '${skip_running} ${compile_options.join(' ')}'
+	mut reproduce_vexe := ts.vexe
+	mut reproduce_args := reproduce_options.join(' ')
+	// `_test.vv2` files are v2-only integration tests: full V programs that
+	// exercise v2-specific syntax. Compile them with the v2 binary instead of
+	// v1, forwarding only flags that v2 recognizes — v2 errors on unknown
+	// flags, so v1-specific options must be stripped. Preserving `-d <name>`,
+	// `-b`/`-backend`, `-cc`, `-stats`, etc. keeps `v test -d feature ...`
+	// and per-file `// vtest vflags` working for conditional code paths.
+	is_vv2 := relative_file.ends_with('_test.vv2')
+	if is_vv2 {
+		mut v2_bin := os.join_path(ts.vroot, 'cmd', 'v2', 'v2')
+		$if windows {
+			v2_bin += '.exe'
+		}
+		if !os.is_executable(v2_bin) {
+			ts.append_message(.info, 'SKIP ${relative_file}: v2 binary not built. Run: ${os.quoted_path(ts.vexe)} -o ${os.quoted_path(v2_bin)} ${os.quoted_path(os.join_path(ts.vroot,
+				'cmd', 'v2', 'v2.v'))}', mtc)
+			ts.benchmark.skip()
+			tls_bench.skip()
+			return pool.no_result
+		}
+		compile_vexe = v2_bin
+		compile_args = filter_args_for_v2(compile_options)
+		// Reproduction command must invoke v2 too, otherwise the suggested
+		// rerun fails immediately on v2-only syntax.
+		reproduce_vexe = v2_bin
+		reproduce_args = filter_args_for_v2(reproduce_options)
+	}
+	reproduce_cmd := '${os.quoted_path(reproduce_vexe)} ${reproduce_args} ${os.quoted_path(file)}'
+	cmd := '${os.quoted_path(compile_vexe)} ${compile_args} ${os.quoted_path(file)}'
 	run_cmd := if run_js {
 		'node ${os.quoted_path(generated_binary_fpath)}'
 	} else {
@@ -885,6 +941,39 @@ pub fn building_any_v_binaries_failed() bool {
 
 pub fn h_divider() {
 	eprintln(term.h_divider('-')#[..max_header_len])
+}
+
+// filter_args_for_v2 returns a command-line string containing only the flags
+// the v2 compiler accepts (`vlib/v2/pref/pref.v`). v2 errors on any unknown
+// flag, so this is used when forwarding `v test` options to v2 for
+// `_test.vv2` files. Keep these lists in sync with v2's pref validator.
+fn filter_args_for_v2(compile_options []string) string {
+	v2_value_flags := ['-backend', '-b', '-o', '-output', '-arch', '-printfn', '-gc', '-d', '-hot-fn',
+		'-cc']
+	v2_bool_flags := ['--debug', '--verbose', '-v', '--skip-genv', '--skip-builtin', '--skip-imports',
+		'--skip-type-check', '--no-parallel', '-nocache', '--nocache', '-nomarkused', '--nomarkused',
+		'-showcc', '--showcc', '-stats', '--stats', '-print-parsed-files', '--print-parsed-files',
+		'-keepc', '--profile-alloc', '-profile-alloc', '-enable-globals', '--enable-globals',
+		'-shared', '--shared', '-O0', '--single-backend', '-single-backend', '-prod', '-prealloc',
+		'-ownership']
+	tokens := vflags.tokenize_to_args(compile_options.join(' '))
+	mut out := []string{}
+	mut i := 0
+	for i < tokens.len {
+		t := tokens[i]
+		if t in v2_value_flags {
+			if i + 1 < tokens.len {
+				out << t
+				out << os.quoted_path(tokens[i + 1])
+				i += 2
+				continue
+			}
+		} else if t in v2_bool_flags {
+			out << t
+		}
+		i++
+	}
+	return out.join(' ')
 }
 
 // setup_new_vtmp_folder creates a new nested folder inside VTMP, then resets VTMP to it,

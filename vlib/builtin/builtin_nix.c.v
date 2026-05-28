@@ -10,7 +10,9 @@ fn builtin_init() {
 			gc_set_warn_proc(internal_gc_warn_proc_none)
 		}
 	}
-	unbuffer_stdout()
+	$if !vinix {
+		unbuffer_stdout()
+	}
 }
 
 fn break_if_debugger_attached() {
@@ -30,5 +32,12 @@ pub fn panic_lasterr(base string) {
 // it is a no-op stub so that callers guarded by `$if windows { ... }` still
 // type-check on other targets.
 fn write_buf_to_console(fd int, buf &u8, buf_len int) bool {
+	return false
+}
+
+// write_buf_to_fd_kernel32 is a Windows-only helper for the minimal V2 PE path.
+// Keep a non-Windows stub so optional compile-time branches type-check while
+// bootstrapping V on other hosts.
+fn write_buf_to_fd_kernel32(fd int, buf &u8, buf_len int) bool {
 	return false
 }

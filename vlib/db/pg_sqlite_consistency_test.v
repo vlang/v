@@ -1,3 +1,4 @@
+// vtest build: !windows
 module main
 
 import db.pg

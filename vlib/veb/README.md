@@ -126,9 +126,42 @@ It only affects the default non-SSL picoev backend and currently requires Linux
 or Termux. When running with `-d new_veb`, the fasthttp backend is already
 multi-threaded and ignores `nr_workers`.
 
+## Request-scoped allocation with `-prealloc`
+
+When a `veb` app runs on the `fasthttp` backend and is compiled with
+`-prealloc`, each request is handled inside a scoped prealloc arena created by
+`fasthttp`. V allocations made while decoding the request, creating the
+`veb.Context`, matching routes, running middleware, rendering templates, and
+serializing the response all use that request arena.
+
+The arena is freed after the response has been sent, not merely when the route
+handler returns. On macOS and BSD, the response buffer can be retained by the
+connection while `kqueue` finishes writing it; the arena is detached from the
+request thread and freed after the write completes. This keeps request-local
+allocations cheap while preserving response-buffer lifetime.
+
+When a handler starts V `spawn` work while the request scope is active, the
+generated thread wrapper retains the request arena until the spawned function
+returns, so veb app code does not need to manually copy request strings just to
+pass them to a background task. Void spawned functions also run inside their own
+scoped arena, which is freed at thread exit. Do not store request-scoped strings,
+arrays, maps, `Context` values, or template output in app fields, globals, or
+caches unless you deliberately copy them into longer-lived storage. Process
+startup data, route tables, static file maps, database pools, and allocations
+made directly by C libraries are not part of the per-request arena.
+
+To trace request arena allocation and free points while developing, build with:
+
+```sh
+v -prealloc -d trace_prealloc -d new_veb run .
+```
+
 ## HTTPS
 
 To serve HTTPS directly from `veb`, pass an `mbedtls.SSLConnectConfig` in `RunParams`:
+This built-in HTTPS listener is mbedtls-backed. When compiling with
+`-d use_openssl`, `veb` HTTP apps avoid `net.mbedtls`, but direct `veb`
+HTTPS startup is unavailable.
 
 ```v
 module main
@@ -381,6 +414,10 @@ pub fn (app &App) normal(mut ctx Context) veb.Result {
 In this example we defined an endpoint with a parameter first. If we access our app
 on the url http://localhost:port/normal we will not see `from normal`, but
 `from with_parameter, path: "normal"`.
+
+Routes with a variadic parameter such as `/:path...` are an exception. veb keeps
+them as fallbacks, so a later exact or non-variadic parameter route can still match
+before the variadic route handles the request.
 
 ### Custom not found page
 

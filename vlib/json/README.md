@@ -7,6 +7,9 @@ For more details, see also the
 Large `i64` and `u64` values are encoded as exact decimal JSON numbers, and
 `json.decode` preserves those integer values when reading decimal integer input.
 
+Struct fields of type `time.Time` can be decoded from either a JSON number or
+from a JSON string in ISO 8601, RFC 3339, or Unix-timestamp form.
+
 ## Examples
 
 Here is an example of encoding and decoding a V struct with several fields.

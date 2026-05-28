@@ -428,7 +428,17 @@ fn (mut g Gen) infix_expr_eq_op(node ast.InfixExpr) {
 			.struct {
 				ptr_typ := g.equality_fn(left.unaliased)
 				if left.typ.is_ptr() || right.typ.is_ptr() {
-					g.gen_struct_pointer_eq_op(node, left_type, right_type, ptr_typ)
+					// `&lvalue` on either side means the user is comparing addresses; skip the deep `_struct_eq` (`&StructInit{}` still does deep eq).
+					left_is_addr_of_lvalue := node.left is ast.PrefixExpr && node.left.op == .amp
+						&& node.left.right.is_lvalue()
+					right_is_addr_of_lvalue := node.right is ast.PrefixExpr && node.right.op == .amp
+						&& node.right.right.is_lvalue()
+					if left.typ.is_ptr() && right.typ.is_ptr()
+						&& (left_is_addr_of_lvalue || right_is_addr_of_lvalue) {
+						g.gen_plain_infix_expr(node)
+					} else {
+						g.gen_struct_pointer_eq_op(node, left_type, right_type, ptr_typ)
+					}
 				} else {
 					if node.op == .ne {
 						g.write('!')
@@ -1232,13 +1242,22 @@ fn (mut g Gen) is_string_type(typ ast.Type) bool {
 	return g.unwrap(typ).unaliased_sym.kind == .string
 }
 
+fn (mut g Gen) is_char_or_rune_string_concat_type(typ ast.Type) bool {
+	return g.table.unaliased_type(g.unwrap_generic(typ)).clear_flags() in [ast.char_type, ast.rune_type]
+}
+
+fn (mut g Gen) is_string_concat_type(typ ast.Type) bool {
+	return g.is_string_type(typ) || g.is_char_or_rune_string_concat_type(typ)
+}
+
 fn (mut g Gen) is_string_concat_infix(node ast.InfixExpr) bool {
 	if node.op != .plus {
 		return false
 	}
 	left_type := g.type_resolver.get_type_or_default(node.left, node.left_type)
 	right_type := g.type_resolver.get_type_or_default(node.right, node.right_type)
-	return g.is_string_type(left_type) && g.is_string_type(right_type)
+	return g.is_string_concat_type(left_type) && g.is_string_concat_type(right_type)
+		&& (g.is_string_type(left_type) || g.is_string_type(right_type))
 }
 
 fn (mut g Gen) collect_string_concat_parts(expr ast.Expr, mut parts []ast.Expr) {
@@ -1266,7 +1285,15 @@ fn (mut g Gen) gen_string_concat_many(node ast.InfixExpr) bool {
 	}
 	mut parts := []ast.Expr{}
 	g.collect_string_concat_parts(ast.Expr(node), mut parts)
-	if parts.len < 3 {
+	mut needs_plus_many := parts.len >= 3
+	for part in parts {
+		part_type := g.type_resolver.get_type_or_default(part, part.type())
+		if !g.is_string_type(part_type) {
+			needs_plus_many = true
+			break
+		}
+	}
+	if !needs_plus_many {
 		return false
 	}
 	g.write('builtin__string_plus_many(${parts.len}, _MOV((string[${parts.len}]){')
@@ -1737,7 +1764,7 @@ fn (mut g Gen) infix_expr_and_or_op(node ast.InfixExpr) {
 }
 
 fn (mut g Gen) gen_is_none_check(node ast.InfixExpr) {
-	if node.left in [ast.Ident, ast.SelectorExpr, ast.IndexExpr, ast.CallExpr, ast.CTempVar] {
+	if node.left in [ast.Ident, ast.SelectorExpr, ast.IndexExpr, ast.CallExpr, ast.CTempVar, ast.CastExpr] {
 		// When a sumtype variable has been comptime-smartcast to an option variant
 		// (e.g. `$if t is ?string { if t == none { ... } }`), we need to access the
 		// sumtype's variant field directly rather than using .data on the sumtype.

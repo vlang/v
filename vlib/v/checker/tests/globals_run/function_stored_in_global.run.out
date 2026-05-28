@@ -1,4 +1,4 @@
-vlib/v/checker/tests/globals_run/function_stored_in_global.vv:4:4: warning: unused function: `current`
+vlib/v/checker/tests/globals_run/function_stored_in_global.vv:4:4: notice: unused function: `current`
     2 |     cpu_get_id fn () u64
     3 | )
     4 | fn current() u64 {

@@ -668,23 +668,23 @@ $if sokol_wayland ? {
 
 	fn wl_xdg_toplevel_configure(data voidptr, xdg_toplevel &C.xdg_toplevel, width int, height int, states &C.wl_array) {
 		// Iterate wl_array of uint32_t states
-		mut is_fullscreen := false
-		mut is_maximized := false
+		mut fullscreen := false
+		mut maximized := false
 		if states.size > 0 {
 			state_ptr := &u32(states.data)
 			num_states := int(states.size / sizeof(u32))
 			for i in 0 .. num_states {
 				s := unsafe { state_ptr[i] }
 				if s == xdg_toplevel_state_fullscreen {
-					is_fullscreen = true
+					fullscreen = true
 				}
 				if s == xdg_toplevel_state_maximized {
-					is_maximized = true
+					maximized = true
 				}
 			}
 		}
-		g_sapp_state.fullscreen = is_fullscreen
-		_ = is_maximized
+		g_sapp_state.fullscreen = fullscreen
+		_ = maximized
 
 		if width > 0 && height > 0 {
 			size_changed := g_sapp_state.wl.width != width || g_sapp_state.wl.height != height
@@ -965,22 +965,22 @@ $if sokol_wayland ? {
 			C.xdg_toplevel_set_min_size(g_sapp_state.wl.xdg_toplevel, 0, 0)
 			C.xdg_toplevel_set_max_size(g_sapp_state.wl.xdg_toplevel, 0, 0)
 		} else {
-			width := if g_sapp_state.window_width > 0 {
+			w := if g_sapp_state.window_width > 0 {
 				g_sapp_state.window_width
 			} else if g_sapp_state.wl.width > 0 {
 				g_sapp_state.wl.width
 			} else {
 				fallback_default_window_width
 			}
-			height := if g_sapp_state.window_height > 0 {
+			h := if g_sapp_state.window_height > 0 {
 				g_sapp_state.window_height
 			} else if g_sapp_state.wl.height > 0 {
 				g_sapp_state.wl.height
 			} else {
 				fallback_default_window_height
 			}
-			C.xdg_toplevel_set_min_size(g_sapp_state.wl.xdg_toplevel, i32(width), i32(height))
-			C.xdg_toplevel_set_max_size(g_sapp_state.wl.xdg_toplevel, i32(width), i32(height))
+			C.xdg_toplevel_set_min_size(g_sapp_state.wl.xdg_toplevel, i32(w), i32(h))
+			C.xdg_toplevel_set_max_size(g_sapp_state.wl.xdg_toplevel, i32(w), i32(h))
 		}
 		C.wl_surface_commit(g_sapp_state.wl.surface)
 		if g_sapp_state.wl.display != unsafe { nil } {

@@ -1,4 +1,4 @@
-// vtest build: false // TODO: ownership checker is still in development, re-enable when stable
+// Re-enabled for Copy/Owned trait test extension
 module types
 
 import os
@@ -350,8 +350,8 @@ fn main() {
 	s := 'hello'.to_owned()
 	r1 := &s
 	r2 := &s
-	println(r1)
-	println(r2)
+	println(*r1)
+	println(*r2)
 }
 "
 	exit_code, _ := run_ownership_check(code)
@@ -515,4 +515,1040 @@ fn main() {
 	exit_code, output := run_ownership_check(code)
 	assert exit_code != 0, 'should fail: s moved into map literal'
 	assert output.contains('use of moved value: `s`'), 'got: ${output}'
+}
+
+// === Rc / Arc — shared-ownership wrappers for Rust source translation ===
+//
+// Any struct named `Rc` or `Arc` (under any module) is treated as `Owned` by
+// the ownership checker — matching Rust's semantics where Rc/Arc are *not*
+// Copy and require an explicit `.clone()` to share. The wrapper itself
+// doesn't need `implements Owned`, so a Rust-to-V translator can emit the
+// types verbatim without extra annotations.
+
+fn test_rc_moves_on_assign() {
+	code := '
+struct Rc[T] {
+	value T
+}
+
+fn main() {
+	r1 := Rc[int]{value: 42}
+	r2 := r1
+	println(r1.value)
+	_ = r2
+}
+'
+	exit_code, output := run_ownership_check(code)
+	assert exit_code != 0, 'Rc[T] should move on assign'
+	assert output.contains('use of moved value: `r1`'), 'got: ${output}'
+	assert output.contains('value moved to `r2`'), 'got: ${output}'
+}
+
+fn test_arc_moves_on_assign() {
+	code := '
+struct Arc[T] {
+	value T
+}
+
+fn main() {
+	a1 := Arc[int]{value: 42}
+	a2 := a1
+	println(a1.value)
+	_ = a2
+}
+'
+	exit_code, output := run_ownership_check(code)
+	assert exit_code != 0, 'Arc[T] should move on assign'
+	assert output.contains('use of moved value: `a1`'), 'got: ${output}'
+}
+
+fn test_rc_clone_prevents_move() {
+	// `.clone()` is the Rust escape hatch — calling it on an Rc returns
+	// a fresh handle, leaving the source still usable. The check passes
+	// even if downstream C codegen fails (we don't gate on exit_code).
+	code := '
+struct Rc[T] {
+	value T
+}
+
+fn (r &Rc[int]) clone() Rc[int] {
+	return Rc[int]{value: r.value}
+}
+
+fn main() {
+	r1 := Rc[int]{value: 42}
+	r2 := r1.clone()
+	println(r1.value)
+	println(r2.value)
+}
+'
+	_, output := run_ownership_check(code)
+	assert !output.contains('use of moved value'), 'clone should prevent move, got: ${output}'
+}
+
+fn test_rc_borrow_does_not_move() {
+	// `&r1` is a borrow, not a move — source remains usable.
+	code := '
+struct Rc[T] {
+	value T
+}
+
+fn takes_ref(r &Rc[int]) int {
+	return r.value
+}
+
+fn main() {
+	r1 := Rc[int]{value: 42}
+	x := takes_ref(&r1)
+	println(r1.value)
+	println(x)
+}
+'
+	_, output := run_ownership_check(code)
+	assert !output.contains('use of moved value'), 'borrow should not move, got: ${output}'
+}
+
+fn test_rc_recognised_under_module_prefix() {
+	// The detector strips module prefixes — a struct emitted by the
+	// translator as `sync.Rc` (mangled to `sync__Rc`) is recognised too.
+	// We can't easily express a fully-qualified struct in a single-file
+	// test, so we use a name that contains the canonical short name as
+	// the last segment.
+	code := '
+struct my__Rc[T] {
+	value T
+}
+
+fn main() {
+	r1 := my__Rc[int]{value: 1}
+	r2 := r1
+	println(r1.value)
+	_ = r2
+}
+'
+	exit_code, output := run_ownership_check(code)
+	assert exit_code != 0, 'module-prefixed Rc should still be tracked'
+	assert output.contains('use of moved value: `r1`'), 'got: ${output}'
+}
+
+// === Owned marker interface (non-string types) ===
+
+fn test_owned_struct_move_on_assign() {
+	code := '
+struct Resource implements Owned {
+	handle int
+}
+
+fn main() {
+	r := Resource{handle: 42}
+	r2 := r
+	println(r.handle)
+	_ = r2
+}
+'
+	exit_code, output := run_ownership_check(code)
+	assert exit_code != 0, 'should fail: Owned struct moved on assign'
+	assert output.contains('use of moved value: `r`'), 'got: ${output}'
+	assert output.contains('has type `Resource`'), 'got: ${output}'
+}
+
+fn test_owned_struct_no_move_when_unmarked() {
+	// A struct that does NOT `implements Owned` keeps existing V semantics:
+	// no ownership tracking, no move-on-assign.
+	code := '
+struct Foo {
+	x int
+}
+
+fn main() {
+	f := Foo{x: 1}
+	f2 := f
+	println(f.x)
+	println(f2.x)
+}
+'
+	exit_code, _ := run_ownership_check(code)
+	assert exit_code == 0, 'unmarked struct should not be tracked'
+}
+
+fn test_copy_struct_can_be_reused() {
+	// A struct that `implements Copy` is always copyable.
+	code := '
+struct Point implements Copy {
+	x int
+	y int
+}
+
+fn main() {
+	p := Point{x: 1, y: 2}
+	p2 := p
+	println(p.x + p2.y)
+}
+'
+	exit_code, _ := run_ownership_check(code)
+	assert exit_code == 0, 'Copy struct should be reusable after assign'
+}
+
+fn test_owned_struct_move_into_fn() {
+	code := '
+struct Resource implements Owned {
+	handle int
+}
+
+fn take(r Resource) {
+	println(r.handle)
+}
+
+fn main() {
+	r := Resource{handle: 1}
+	take(r)
+	println(r.handle)
+}
+'
+	exit_code, output := run_ownership_check(code)
+	assert exit_code != 0, 'should fail: Owned struct moved into fn'
+	assert output.contains('use of moved value: `r`'), 'got: ${output}'
+	assert output.contains('moved into function `take`'), 'got: ${output}'
+}
+
+fn test_owned_struct_borrow_ok() {
+	code := '
+struct Resource implements Owned {
+	handle int
+}
+
+fn borrow(r &Resource) int {
+	return r.handle
+}
+
+fn main() {
+	r := Resource{handle: 7}
+	h := borrow(&r)
+	println(r.handle)
+	println(h)
+}
+'
+	exit_code, _ := run_ownership_check(code)
+	assert exit_code == 0, '&r should borrow, not move'
+}
+
+fn test_owned_struct_returned_from_fn_is_owned() {
+	// A function returning an Owned-marked struct produces an owned value
+	// at the call site, regardless of any pre-scan: the type alone is
+	// enough to trigger ownership tracking.
+	code := '
+struct Resource implements Owned {
+	handle int
+}
+
+fn make_res() Resource {
+	return Resource{handle: 9}
+}
+
+fn main() {
+	r := make_res()
+	r2 := r
+	println(r.handle)
+	_ = r2
+}
+'
+	exit_code, output := run_ownership_check(code)
+	assert exit_code != 0, 'should fail: r owned via return type'
+	assert output.contains('use of moved value: `r`'), 'got: ${output}'
+	assert output.contains('has type `Resource`'), 'got: ${output}'
+}
+
+fn test_owned_struct_move_into_struct_field() {
+	code := '
+struct Resource implements Owned {
+	handle int
+}
+
+struct Holder {
+	res Resource
+}
+
+fn main() {
+	r := Resource{handle: 4}
+	_ := Holder{res: r}
+	println(r.handle)
+}
+'
+	exit_code, output := run_ownership_check(code)
+	assert exit_code != 0, 'should fail: r moved into Holder.res field'
+	assert output.contains('use of moved value: `r`'), 'got: ${output}'
+}
+
+fn test_owned_struct_borrow_blocks_move() {
+	code := '
+struct Resource implements Owned {
+	handle int
+}
+
+fn main() {
+	r := Resource{handle: 3}
+	rr := &r
+	r2 := r
+	println(rr.handle)
+	_ = r2
+}
+'
+	exit_code, output := run_ownership_check(code)
+	assert exit_code != 0, 'should fail: cannot move r while borrowed'
+	assert output.contains('cannot move `r` because it is borrowed'), 'got: ${output}'
+}
+
+fn test_owned_struct_diagnostic_uses_type_name() {
+	// Verify the diagnostic message references the actual user-defined
+	// type, not the placeholder "string".
+	code := '
+struct Widget implements Owned {
+	id int
+}
+
+fn main() {
+	w := Widget{id: 1}
+	w2 := w
+	println(w.id)
+	_ = w2
+}
+'
+	exit_code, output := run_ownership_check(code)
+	assert exit_code != 0, 'should fail'
+	assert output.contains('has type `Widget`'), 'diagnostic should name Widget, got: ${output}'
+	assert !output.contains('has type `string`'), 'diagnostic should not say string, got: ${output}'
+}
+
+// === Drop interface tests ===
+
+fn test_drop_struct_with_method_ok() {
+	// A struct that implements Drop and provides a `drop()` method compiles.
+	code := '
+struct Resource implements Owned, Drop {
+mut:
+	handle int
+}
+
+fn (mut r Resource) drop() {
+	r.handle = 0
+}
+
+fn main() {
+	r := Resource{handle: 42}
+	println(r.handle)
+}
+'
+	exit_code, output := run_ownership_check(code)
+	assert exit_code == 0, 'Drop with drop() method should compile: ${output}'
+}
+
+fn test_drop_struct_missing_method_errors() {
+	// `implements Drop` without a `drop()` method must fail with a clear
+	// diagnostic pointing at the contract.
+	code := '
+struct Leaky implements Owned, Drop {
+	handle int
+}
+
+fn main() {
+	l := Leaky{handle: 1}
+	println(l.handle)
+}
+'
+	exit_code, output := run_ownership_check(code)
+	assert exit_code != 0, 'missing drop() should fail'
+	assert output.contains('struct `Leaky` implements `Drop`'), 'got: ${output}'
+	assert output.contains('drop(mut self)'), 'diagnostic should reference required signature, got: ${output}'
+}
+
+fn test_drop_only_marker_still_requires_method() {
+	// Drop without Owned still requires drop(); both marker interfaces are
+	// independent and the Drop contract stands on its own.
+	code := '
+struct Handle implements Drop {
+	fd int
+}
+
+fn main() {
+	h := Handle{fd: 3}
+	println(h.fd)
+}
+'
+	exit_code, output := run_ownership_check(code)
+	assert exit_code != 0, 'Drop without method should fail even without Owned'
+	assert output.contains('struct `Handle` implements `Drop`'), 'got: ${output}'
+}
+
+fn test_drop_unrelated_struct_unaffected() {
+	// A struct with neither Owned nor Drop should keep compiling as before;
+	// the new validator must not affect unmarked types.
+	code := '
+struct Plain {
+	x int
+}
+
+fn main() {
+	p := Plain{x: 1}
+	println(p.x)
+}
+'
+	exit_code, output := run_ownership_check(code)
+	assert exit_code == 0, 'unmarked struct must not be affected: ${output}'
+}
+
+fn test_drop_with_move_still_diagnoses_use() {
+	// A Drop+Owned struct that gets moved still produces the standard
+	// "use of moved value" diagnostic. Drop scheduling and move tracking
+	// must coexist on the same binding.
+	code := '
+struct Conn implements Owned, Drop {
+mut:
+	socket int
+}
+
+fn (mut c Conn) drop() {
+	c.socket = -1
+}
+
+fn main() {
+	c := Conn{socket: 7}
+	c2 := c
+	println(c.socket)
+	_ = c2
+}
+'
+	exit_code, output := run_ownership_check(code)
+	assert exit_code != 0, 'should fail: c moved into c2'
+	assert output.contains('use of moved value: `c`'), 'got: ${output}'
+	assert output.contains('has type `Conn`'), 'got: ${output}'
+}
+
+// === Consuming-self method tests ===
+// A by-value receiver (`fn (s Foo)`) on an Owned type CONSUMES the receiver,
+// matching Rust\'s `fn(self)` vs `fn(&self)`. A `&` or `mut` receiver borrows
+// and never moves. Only fires when the receiver\'s static type opts into the
+// `Owned` marker — plain V types keep their auto-clone semantics.
+
+fn test_consume_self_method_moves_receiver() {
+	code := '
+struct Conn implements Owned {
+mut:
+	socket int
+}
+
+fn (c Conn) close() {
+	println(c.socket)
+}
+
+fn main() {
+	c := Conn{socket: 7}
+	c.close()
+	c.close()
+}
+'
+	exit_code, output := run_ownership_check(code)
+	assert exit_code != 0, 'second call should fail: receiver moved'
+	assert output.contains('use of moved value: `c`'), 'got: ${output}'
+	assert output.contains('moved into function `close`'), 'should name the consuming method, got: ${output}'
+	assert output.contains('has type `Conn`'), 'should show the Owned type, got: ${output}'
+}
+
+fn test_consume_self_borrow_receiver_does_not_move() {
+	// `(c &Conn)` is a borrow — calling it any number of times must not
+	// consume the receiver.
+	code := '
+struct Conn implements Owned {
+mut:
+	socket int
+}
+
+fn (c &Conn) peek() int {
+	return c.socket
+}
+
+fn main() {
+	c := Conn{socket: 7}
+	_ := c.peek()
+	_ := c.peek()
+	_ := c.peek()
+}
+'
+	exit_code, output := run_ownership_check(code)
+	assert exit_code == 0, 'borrow-receiver methods must not move: ${output}'
+}
+
+fn test_consume_self_mut_receiver_does_not_move() {
+	// `(mut c Conn)` is a mutable borrow — also not a move.
+	code := '
+struct Conn implements Owned {
+mut:
+	socket int
+}
+
+fn (mut c Conn) bump() {
+	c.socket = c.socket + 1
+}
+
+fn main() {
+	mut c := Conn{socket: 7}
+	c.bump()
+	c.bump()
+	c.bump()
+}
+'
+	exit_code, output := run_ownership_check(code)
+	assert exit_code == 0, 'mut-receiver methods must not move: ${output}'
+}
+
+fn test_consume_self_use_after_consume_fails() {
+	// After a consuming call, any subsequent use of the receiver — even
+	// reading a field — must produce a use-after-move diagnostic.
+	code := '
+struct Conn implements Owned {
+mut:
+	socket int
+}
+
+fn (c Conn) close() {
+}
+
+fn main() {
+	c := Conn{socket: 7}
+	c.close()
+	println(c.socket)
+}
+'
+	exit_code, output := run_ownership_check(code)
+	assert exit_code != 0, 'field read after consume should fail'
+	assert output.contains('use of moved value: `c`'), 'got: ${output}'
+}
+
+fn test_consume_self_plain_struct_unaffected() {
+	// CRITICAL: a struct WITHOUT `implements Owned` is plain V — its
+	// value-receiver methods continue to auto-clone and never trigger the
+	// consuming-self rule. This preserves stdlib compatibility.
+	code := '
+struct Plain {
+mut:
+	x int
+}
+
+fn (p Plain) describe() string {
+	return "x"
+}
+
+fn main() {
+	p := Plain{x: 1}
+	println(p.describe())
+	println(p.describe())
+	println(p.describe())
+}
+'
+	exit_code, output := run_ownership_check(code)
+	assert exit_code == 0, 'plain (un-marked) struct must not be affected: ${output}'
+}
+
+fn test_consume_self_string_methods_unaffected() {
+	// `string` is only owned-tracked when explicitly upgraded via `.to_owned()`.
+	// A plain string literal stays auto-clone, and its many built-in
+	// value-receiver methods (`split`, `trim`, ...) must keep working.
+	code := "
+fn main() {
+	s := 'hello world'
+	parts := s.split(' ')
+	println(parts.len)
+	println(s.len)
+}
+"
+	exit_code, output := run_ownership_check(code)
+	assert exit_code == 0, 'plain string methods must not be affected: ${output}'
+}
+
+// === Match-arm ownership transfer tests ===
+// Each match arm gets independent ownership tracking (a move in arm 0 must
+// not be visible to arm 1\'s body). After the match, a var moved in ANY
+// non-terminating arm is moved. Arms that end in `return` don\'t contribute
+// to the post-match state. Mirrors the if/else merge already in place.
+
+fn test_match_arms_are_independent() {
+	// Every arm consumes `c` — that\'s fine because each arm starts from
+	// the pre-match snapshot. Without per-arm restore, arm 1 would see arm
+	// 0\'s move and the compile would fail spuriously.
+	code := '
+struct Conn implements Owned {
+mut:
+	socket int
+}
+
+fn take(c Conn) {
+	_ = c
+}
+
+fn main() {
+	c := Conn{socket: 7}
+	choice := 1
+	match choice {
+		0 { take(c) }
+		1 { take(c) }
+		else { take(c) }
+	}
+}
+'
+	exit_code, output := run_ownership_check(code)
+	assert exit_code == 0, 'each arm should start from pre-match state: ${output}'
+}
+
+fn test_match_consume_then_use_after_fails() {
+	// Consuming in an arm should poison the var after the match — any
+	// subsequent use is use-after-move.
+	code := '
+struct Conn implements Owned {
+mut:
+	socket int
+}
+
+fn take(c Conn) {
+	_ = c
+}
+
+fn main() {
+	c := Conn{socket: 7}
+	choice := 1
+	match choice {
+		0 { take(c) }
+		1 { take(c) }
+		else {}
+	}
+	println(c.socket)
+}
+'
+	exit_code, output := run_ownership_check(code)
+	assert exit_code != 0, 'use after consume-in-arm should fail'
+	assert output.contains('use of moved value: `c`'), 'got: ${output}'
+}
+
+fn test_match_terminating_arm_does_not_propagate_move() {
+	// An arm that ends in `return` exits the function — its moves should
+	// not appear in the after-match state, so code after the match can
+	// still use the var.
+	code := '
+struct Conn implements Owned {
+mut:
+	socket int
+}
+
+fn take(c Conn) {
+	_ = c
+}
+
+fn check(choice int) {
+	c := Conn{socket: 7}
+	match choice {
+		0 {
+			take(c)
+			return
+		}
+		else {}
+	}
+	println(c.socket)
+}
+
+fn main() {
+	check(1)
+}
+'
+	exit_code, output := run_ownership_check(code)
+	assert exit_code == 0, 'terminating arm move must not poison post-match state: ${output}'
+}
+
+fn test_match_all_arms_terminate_restores_before_state() {
+	// If every arm ends in return, the after-match block is unreachable.
+	// The before-state should be restored so any (unreachable) code below
+	// type-checks cleanly without spurious move errors.
+	code := '
+struct Conn implements Owned {
+mut:
+	socket int
+}
+
+fn take(c Conn) {
+	_ = c
+}
+
+fn check(choice int) int {
+	c := Conn{socket: 7}
+	match choice {
+		0 {
+			take(c)
+			return 0
+		}
+		1 {
+			take(c)
+			return 1
+		}
+		else {
+			take(c)
+			return 2
+		}
+	}
+	return -1
+}
+
+fn main() {
+	check(0)
+}
+'
+	exit_code, output := run_ownership_check(code)
+	assert exit_code == 0, 'all-arms-return match should not poison state: ${output}'
+}
+
+fn test_match_non_terminating_arm_propagates_move() {
+	// At least one arm consumes and falls through — the var IS moved after
+	// the match and subsequent use must be diagnosed.
+	code := '
+struct Conn implements Owned {
+mut:
+	socket int
+}
+
+fn take(c Conn) {
+	_ = c
+}
+
+fn check(choice int) {
+	c := Conn{socket: 7}
+	match choice {
+		0 { take(c) }
+		else {}
+	}
+	println(c.socket)
+}
+
+fn main() {
+	check(0)
+}
+'
+	exit_code, output := run_ownership_check(code)
+	assert exit_code != 0, 'fall-through consuming arm should poison post-match use'
+	assert output.contains('use of moved value: `c`'), 'got: ${output}'
+}
+
+fn test_match_no_moves_unaffected() {
+	// Plain match on a non-owned var should be entirely untouched — this
+	// is the legacy V codepath that must keep working.
+	code := '
+fn main() {
+	x := 3
+	match x {
+		0 { println("zero") }
+		1 { println("one") }
+		else { println("other") }
+	}
+	println(x)
+}
+'
+	exit_code, output := run_ownership_check(code)
+	assert exit_code == 0, 'plain match should not be affected: ${output}'
+}
+
+// === Closure capture ownership tests ===
+// `fn [x] () { ... }` is V\'s explicit Go-style capture list. Under -d
+// ownership, a plain `[x]` capture of an owned var MOVES the var into the
+// closure (Rust\'s `move ||` semantics). `[mut x]` and `[&x]` are borrows.
+// Non-owned vars stay on V\'s copy-into-closure path.
+
+fn test_closure_capture_by_value_moves_owned() {
+	code := '
+struct Conn implements Owned {
+mut:
+	socket int
+}
+
+fn main() {
+	c := Conn{socket: 7}
+	cb := fn [c] () {
+		println(c.socket)
+	}
+	cb()
+	println(c.socket)
+}
+'
+	exit_code, output := run_ownership_check(code)
+	assert exit_code != 0, 'use after capture should fail'
+	assert output.contains('use of moved value: `c`'), 'got: ${output}'
+	assert output.contains('moved to `closure`'), 'should name the closure as the move target, got: ${output}'
+	assert output.contains('has type `Conn`'), 'got: ${output}'
+}
+
+fn test_closure_capture_no_outer_use_ok() {
+	// If the captured var is never used after the closure is constructed,
+	// the move is fine — no diagnostic should fire.
+	code := '
+struct Conn implements Owned {
+mut:
+	socket int
+}
+
+fn main() {
+	c := Conn{socket: 7}
+	cb := fn [c] () {
+		println(c.socket)
+	}
+	cb()
+}
+'
+	exit_code, output := run_ownership_check(code)
+	assert exit_code == 0, 'capture without outer reuse should compile: ${output}'
+}
+
+fn test_closure_capture_plain_struct_unaffected() {
+	// A non-Owned struct goes through V\'s normal copy-into-closure path —
+	// the outer var stays usable after the closure is constructed.
+	code := '
+struct Plain {
+mut:
+	x int
+}
+
+fn main() {
+	p := Plain{x: 1}
+	cb := fn [p] () {
+		println(p.x)
+	}
+	cb()
+	println(p.x)
+}
+'
+	exit_code, output := run_ownership_check(code)
+	assert exit_code == 0, 'non-Owned capture must not be affected: ${output}'
+}
+
+fn test_closure_capture_string_unaffected() {
+	// Plain strings aren\'t owned-tracked, so capturing them stays
+	// copy-in. Only `.to_owned()`-upgraded strings opt in.
+	code := "
+fn main() {
+	s := 'hello'
+	cb := fn [s] () {
+		println(s)
+	}
+	cb()
+	println(s)
+}
+"
+	exit_code, output := run_ownership_check(code)
+	assert exit_code == 0, 'plain string capture must not be affected: ${output}'
+}
+
+fn test_closure_capture_owned_then_consume_outside_fails() {
+	// Once captured by value, even simple consumption (passing to a
+	// consuming fn) outside the closure must fail.
+	code := '
+struct Conn implements Owned {
+mut:
+	socket int
+}
+
+fn take(c Conn) {
+	_ = c
+}
+
+fn main() {
+	c := Conn{socket: 7}
+	cb := fn [c] () {
+		println(c.socket)
+	}
+	cb()
+	take(c)
+}
+'
+	exit_code, output := run_ownership_check(code)
+	assert exit_code != 0, 'consume after capture should fail'
+	assert output.contains('use of moved value: `c`'), 'got: ${output}'
+}
+
+// === Owned globals: moves out of `__global` of an Owned type are rejected ===
+//
+// `__global` declarations of types implementing `Owned` cannot be moved out of
+// because the compiler can't see across function boundaries to know who else
+// might still observe the binding. The escape hatches are `&g_x` (borrow) or
+// `g_x.clone()` (copy). Plain V values keep their auto-copy semantics.
+
+fn test_owned_global_assign_to_local_fails() {
+	code := '
+struct Conn implements Owned {
+mut:
+	socket int
+}
+
+__global g_conn = Conn{socket: 7}
+
+fn main() {
+	local := g_conn
+	println(local.socket)
+}
+'
+	exit_code, output := run_ownership_check(code)
+	assert exit_code != 0, 'should reject move out of owned global'
+	assert output.contains('cannot move out of global `g_conn`'), 'got: ${output}'
+	assert output.contains('has type `Conn`'), 'should name the type, got: ${output}'
+}
+
+fn test_owned_global_fn_call_arg_fails() {
+	code := '
+struct Conn implements Owned {
+mut:
+	socket int
+}
+
+__global g_conn = Conn{socket: 7}
+
+fn take(c Conn) {
+	_ = c
+}
+
+fn main() {
+	take(g_conn)
+}
+'
+	exit_code, output := run_ownership_check(code)
+	assert exit_code != 0, 'should reject moving global into fn call'
+	assert output.contains('cannot move out of global `g_conn`'), 'got: ${output}'
+	assert output.contains('into `take`'), 'should name the target fn, got: ${output}'
+}
+
+fn test_owned_global_borrow_arg_ok() {
+	// Passing `&g_conn` is the explicit escape hatch — must compile.
+	code := '
+struct Conn implements Owned {
+mut:
+	socket int
+}
+
+__global g_conn = Conn{socket: 7}
+
+fn inspect(c &Conn) {
+	println(c.socket)
+}
+
+fn main() {
+	inspect(&g_conn)
+}
+'
+	exit_code, output := run_ownership_check(code)
+	assert exit_code == 0, 'borrowing a global must succeed, got: ${output}'
+}
+
+fn test_owned_global_consuming_method_fails() {
+	code := '
+struct Conn implements Owned {
+mut:
+	socket int
+}
+
+fn (c Conn) close() {
+	_ = c.socket
+}
+
+__global g_conn = Conn{socket: 7}
+
+fn main() {
+	g_conn.close()
+}
+'
+	exit_code, output := run_ownership_check(code)
+	assert exit_code != 0, 'should reject consuming-self call on global'
+	assert output.contains('cannot move out of global `g_conn`'), 'got: ${output}'
+}
+
+fn test_owned_global_borrow_method_ok() {
+	// `&self` receiver is a borrow — calling it on a global is fine.
+	code := '
+struct Conn implements Owned {
+mut:
+	socket int
+}
+
+fn (c &Conn) port() int {
+	return c.socket
+}
+
+__global g_conn = Conn{socket: 7}
+
+fn main() {
+	println(g_conn.port())
+}
+'
+	exit_code, output := run_ownership_check(code)
+	assert exit_code == 0, 'borrow-receiver method on global must succeed, got: ${output}'
+}
+
+fn test_owned_global_closure_capture_fails() {
+	code := '
+struct Conn implements Owned {
+mut:
+	socket int
+}
+
+__global g_conn = Conn{socket: 7}
+
+fn main() {
+	cb := fn [g_conn] () {
+		println(g_conn.socket)
+	}
+	cb()
+}
+'
+	exit_code, output := run_ownership_check(code)
+	assert exit_code != 0, 'should reject by-value closure capture of global'
+	assert output.contains('cannot move out of global `g_conn`'), 'got: ${output}'
+	assert output.contains('into `closure`'), 'should mention closure as the target, got: ${output}'
+}
+
+fn test_owned_global_return_fails() {
+	code := '
+struct Conn implements Owned {
+mut:
+	socket int
+}
+
+__global g_conn = Conn{socket: 7}
+
+fn give() Conn {
+	return g_conn
+}
+
+fn main() {
+	c := give()
+	println(c.socket)
+}
+'
+	exit_code, output := run_ownership_check(code)
+	assert exit_code != 0, 'should reject returning an owned global'
+	assert output.contains('cannot move out of global `g_conn`'), 'got: ${output}'
+}
+
+fn test_plain_global_unaffected() {
+	// Non-Owned globals keep V auto-copy semantics — moving them must not
+	// trip the ownership checker.
+	code := '
+struct Plain {
+mut:
+	x int
+}
+
+__global g_plain = Plain{x: 1}
+
+fn take(p Plain) {
+	_ = p.x
+}
+
+fn main() {
+	local := g_plain
+	take(local)
+	take(g_plain)
+}
+'
+	exit_code, output := run_ownership_check(code)
+	assert exit_code == 0, 'non-Owned global must keep current semantics, got: ${output}'
 }

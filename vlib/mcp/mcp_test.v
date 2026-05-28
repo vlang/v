@@ -113,20 +113,38 @@ fn test_parse_sse_messages_reads_json_rpc_events() {
 	assert decode_response(messages[1])!.result == 'true'
 }
 
-fn test_framed_messages_handle_partial_reads() {
+fn test_stdio_messages_handle_partial_reads() {
 	payload := new_notification('notifications/initialized', empty).encode()
-	frame := encode_framed_message(payload)
-	mut buffer := frame[..12]
+	frame := encode_stdio_message(payload)
+	assert frame.ends_with('\n')
+	mut buffer := frame[..frame.len - 1]
 
-	try_extract_framed_message(buffer) or { assert err.msg() == NoFrameError{}.msg() }
+	try_extract_stdio_message(buffer) or { assert err.msg() == NoFrameError{}.msg() }
 
-	buffer += frame[12..]
-	extracted := try_extract_framed_message(buffer)!
+	buffer += frame[frame.len - 1..]
+	extracted := try_extract_stdio_message(buffer)!
 	buffer = extracted.remaining
 	message := extracted.message
 
 	assert buffer == ''
 	assert decode_notification(message)!.method == 'notifications/initialized'
+}
+
+fn test_stdio_messages_strip_embedded_newlines() {
+	payload := '{"jsonrpc":"2.0",\n"method":"ping"}'
+	frame := encode_stdio_message(payload)
+	assert frame == '{"jsonrpc":"2.0","method":"ping"}\n'
+}
+
+fn test_stdio_messages_skip_blank_lines() {
+	first := encode_stdio_message(new_notification('a', empty).encode())
+	second := encode_stdio_message(new_notification('b', empty).encode())
+	buffer := first + '\n\n' + second
+
+	frame_a := try_extract_stdio_message(buffer)!
+	assert decode_notification(frame_a.message)!.method == 'a'
+	frame_b := try_extract_stdio_message(frame_a.remaining)!
+	assert decode_notification(frame_b.message)!.method == 'b'
 }
 
 fn test_close_delegates_to_the_transport() {

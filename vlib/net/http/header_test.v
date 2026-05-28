@@ -83,7 +83,7 @@ fn test_delete_header() {
 	mut r := new_request(.get, '', '')
 	r.header.set(.authorization, 'foo')
 	r.header.delete(.authorization)
-	assert r.header.get(.authorization)! == ''
+	assert r.header.get(.authorization)? == ''
 }
 
 fn test_custom_header() {
@@ -123,9 +123,9 @@ fn test_contains_custom() {
 fn test_get_custom() {
 	mut h := new_header()
 	h.add_custom('Hello', 'world')!
-	assert h.get_custom('hello')! == 'world'
-	assert h.get_custom('HELLO')! == 'world'
-	assert h.get_custom('Hello', exact: true)! == 'world'
+	assert h.get_custom('hello')? == 'world'
+	assert h.get_custom('HELLO')? == 'world'
+	assert h.get_custom('Hello', exact: true)? == 'world'
 	if _ := h.get_custom('hello', exact: true) {
 		// should be none
 		assert false

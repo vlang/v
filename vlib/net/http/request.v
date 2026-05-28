@@ -551,6 +551,18 @@ fn parse_received_response(response_text string, info ReceivedResponseInfo) !Res
 	return parse_response(response_text)
 }
 
+// response_has_no_body returns true when the HTTP method or status code
+// guarantees that no response body is sent (HEAD requests, 1xx informational,
+// 204 No Content, 304 Not Modified). For these, a `Content-Length` header
+// describes the body that *would* have been sent for a GET, so it must not
+// drive read termination or completion validation. (RFC 7230 §3.3.3)
+fn response_has_no_body(method Method, status_code int) bool {
+	if method == .head {
+		return true
+	}
+	return status_code in [101, 102, 103, 204, 304]
+}
+
 fn validate_received_response_completion(has_content_length bool, expected_size u64, body_so_far u64, is_chunked_transfer bool, chunked_complete bool) ! {
 	if has_content_length && body_so_far < expected_size {
 		return error('http.request: response body ended early: received ${body_so_far} of ${expected_size} bytes')
@@ -584,8 +596,10 @@ fn (req &Request) receive_all_data_from_cb_in_builder(mut content strings.Builde
 				} else {
 					u64(0)
 				}
-				validate_received_response_completion(has_content_length, expected_size,
-					body_so_far, is_chunked_transfer, chunked_body_tracker.complete)!
+				if !response_has_no_body(req.method, status_code) {
+					validate_received_response_completion(has_content_length, expected_size,
+						body_so_far, is_chunked_transfer, chunked_body_tracker.complete)!
+				}
 				break
 			}
 			return err
@@ -602,8 +616,10 @@ fn (req &Request) receive_all_data_from_cb_in_builder(mut content strings.Builde
 			} else {
 				u64(0)
 			}
-			validate_received_response_completion(has_content_length, expected_size, body_so_far,
-				is_chunked_transfer, chunked_body_tracker.complete)!
+			if !response_has_no_body(req.method, status_code) {
+				validate_received_response_completion(has_content_length, expected_size,
+					body_so_far, is_chunked_transfer, chunked_body_tracker.complete)!
+			}
 			break
 		}
 		new_len = old_len + u64(len)
@@ -687,14 +703,14 @@ fn (req &Request) receive_all_data_from_cb_in_builder(mut content strings.Builde
 		if is_chunked_transfer && chunked_complete {
 			break
 		}
+		if headers_end >= 0 && response_has_no_body(req.method, status_code) {
+			// HEAD / 1xx / 204 / 304: response body is forbidden by the spec, so
+			// stop as soon as the headers terminator is in. Any `Content-Length`
+			// describes a body that will never be sent.
+			break
+		}
 		if has_content_length {
 			if expected_size > 0 && body_so_far >= expected_size {
-				break
-			}
-			// Some streaming responses may incorrectly send `Content-Length: 0` and then stream data.
-			// Only short-circuit zero-length bodies for statuses/methods that must not have a body.
-			if expected_size == 0
-				&& (req.method == .head || status_code in [101, 102, 103, 204, 304]) {
 				break
 			}
 		}
@@ -806,27 +822,29 @@ pub fn parse_request_head_str(s string) !Request {
 		return error('malformed request: no request line found')
 	}
 	line0 := s[..pos0].trim_space()
-	method, target, version := parse_request_line(line0)!
+	method, target, version := parse_request_line_fast(line0)!
 
 	// headers
 	mut header := new_header()
-	// split by newline and skip the first line (request line)
-	lines := s[pos0 + 1..].split('\n')
-
-	for line_raw in lines {
-		line := line_raw.trim_right('\r')
-
+	mut line_start := pos0 + 1
+	for line_start < s.len {
+		mut line_end := s.index_after_('\n', line_start)
+		if line_end == -1 {
+			line_end = s.len
+		}
+		mut line := s[line_start..line_end]
+		if line.len > 0 && line[line.len - 1] == `\r` {
+			line = line[..line.len - 1]
+		}
 		// IMPORTANT: HTTP headers end at the first empty line.
 		// If we hit this, we are now at the body, so we stop parsing headers.
 		if line == '' {
 			break
 		}
-
-		if !line.contains(':') {
+		mut pos := parse_header_fast(line) or {
+			line_start = line_end + 1
 			continue
 		}
-
-		mut pos := parse_header_fast(line)!
 		key := line[..pos]
 
 		// Skip space or tab after the colon
@@ -839,6 +857,7 @@ pub fn parse_request_head_str(s string) !Request {
 			value := line[val_start..]
 			header.add_custom(key, value)!
 		}
+		line_start = line_end + 1
 	}
 
 	mut request_cookies := map[string]string{}
@@ -848,12 +867,29 @@ pub fn parse_request_head_str(s string) !Request {
 
 	return Request{
 		method:  method
-		url:     target.str()
+		url:     target
 		header:  header
 		host:    (header.get(.host) or { '' }).clone()
 		version: version
 		cookies: request_cookies
 	}
+}
+
+fn parse_request_line_fast(line string) !(Method, string, Version) {
+	space1 := line.index_u8(` `)
+	if space1 <= 0 {
+		return error('bad request header')
+	}
+	space2_rel := line.index_after_(' ', space1 + 1)
+	if space2_rel == -1 || space2_rel == space1 + 1 || space2_rel >= line.len - 1 {
+		return error('bad request header')
+	}
+	method := method_from_str(line[..space1])
+	version := version_from_str(line[space2_rel + 1..])
+	if version == .unknown {
+		return error('unsupported version')
+	}
+	return method, line[space1 + 1..space2_rel], version
 }
 
 const headers_body_boundary = '\r\n\r\n'
@@ -1009,33 +1045,46 @@ pub fn parse_multipart_form(body string, boundary string) (map[string]string, ma
 	// dump(boundary)
 	mut form := map[string]string{}
 	mut files := map[string][]FileData{}
-	// TODO: do not use split, but only indexes, to reduce copying of potentially large data
-	sections := body.split(boundary)
-	fields := sections#[1..sections.len - 1]
+	if body.len == 0 || boundary.len == 0 || boundary.len > body.len {
+		return form, files
+	}
+	mut field_start := body.index_after_(boundary, 0)
+	if field_start == -1 {
+		return form, files
+	}
+	field_start += boundary.len
 	mut line_segments := []LineSegmentIndexes{cap: 100}
-	for field in fields {
+	for {
+		if field_start > body.len - boundary.len {
+			break
+		}
+		field_end := body.index_after_(boundary, field_start)
+		if field_end == -1 {
+			break
+		}
 		line_segments.clear()
-		mut line_idx, mut line_start := 0, 0
-		for cidx, c in field {
+		mut line_idx, mut line_start := 0, field_start
+		for cidx := field_start; cidx < field_end; cidx++ {
 			if line_idx >= 6 {
 				// no need to scan further
 				break
 			}
-			if c == `\n` {
+			if body[cidx] == `\n` {
 				line_segments << LineSegmentIndexes{line_start, cidx}
 				line_start = cidx + 1
 				line_idx++
 			}
 		}
-		line_segments << LineSegmentIndexes{line_start, field.len}
+		line_segments << LineSegmentIndexes{line_start, field_end}
+		field_start = field_end + boundary.len
 		if line_segments.len < 2 {
 			continue
 		}
-		line1 := field#[line_segments[1].start..line_segments[1].end]
+		line1 := body#[line_segments[1].start..line_segments[1].end]
 		line2 := if line_segments.len == 2 {
 			''
 		} else {
-			field#[line_segments[2].start..line_segments[2].end]
+			body#[line_segments[2].start..line_segments[2].end]
 		}
 		disposition := parse_disposition(line1.trim_space())
 		// Grab everything between the double quotes
@@ -1058,7 +1107,11 @@ pub fn parse_multipart_form(body string, boundary string) (map[string]string, ma
 			// line4: DATA
 			// ...
 			// lineX: --
-			data := field[line_segments[4].start..field.len - 4] // each multipart field ends with \r\n--
+			data_end := field_end - 4 // each multipart field ends with \r\n--
+			if data_end < line_segments[4].start {
+				continue
+			}
+			data := body[line_segments[4].start..data_end]
 			// dump(data.limit(20).bytes())
 			// dump(data.len)
 			if name !in files {
@@ -1074,7 +1127,11 @@ pub fn parse_multipart_form(body string, boundary string) (map[string]string, ma
 		if line_segments.len < 4 {
 			continue
 		}
-		form[name] = field[line_segments[3].start..field.len - 4]
+		data_end := field_end - 4
+		if data_end < line_segments[3].start {
+			continue
+		}
+		form[name] = body[line_segments[3].start..data_end]
 	}
 	// dump(form)
 	return form, files

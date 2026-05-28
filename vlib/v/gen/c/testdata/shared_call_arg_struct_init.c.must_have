@@ -1,0 +1,1 @@
+main__make_obj(((main__Options){.a = 1,}))}, sizeof(__shared__main__Obj))

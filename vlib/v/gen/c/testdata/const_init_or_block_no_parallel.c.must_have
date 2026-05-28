@@ -1,11 +1,12 @@
 {
-_option_bool _t2 = main__t1();
-if (_t2.state != 0) {
-IError err = _t2.err;
+_option_bool _t3 = main__t1();
+if (_t3.state != 0) {
+IError _t4 = _t3.err;
+IError err = _t4;
 builtin___v_panic(builtin__IError_str(err));
 VUNREACHABLE();
 ;
 }
 
-_const_main__barz = (((*(bool*)_t2.data)));
+_const_main__barz = (((*(bool*)_t3.data)));
 }

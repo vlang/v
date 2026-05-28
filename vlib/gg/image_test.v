@@ -79,7 +79,7 @@ fn test_create_image_from_byte_array_uses_context_texture_filter() {
 fn test_create_image_from_byte_array_with_filter_overrides_context_default() {
 	mut ctx := gg.new_context(width: 100)
 	background_bytes := os.read_bytes(background_path)!
-	img := ctx.create_image_from_byte_array_with_filter(background_bytes, .nearest)!
+	img := ctx.create_image_from_byte_array(background_bytes, texture_filter: .nearest)!
 	assert img.texture_filter == .nearest
 	assert ctx.get_cached_image_by_idx(img.id).texture_filter == .nearest
 }

@@ -141,6 +141,9 @@ pub fn stdio_capture() !IOCapture {
 	mut pipe_stdout := pipe()!
 	mut pipe_stderr := pipe()!
 
+	flush_stdout()
+	flush_stderr()
+
 	// Save original file descriptors
 	c.original_stdout_fd = fd_dup(fd_stdout)
 	c.original_stderr_fd = fd_dup(fd_stderr)
@@ -176,6 +179,9 @@ pub fn stdio_capture() !IOCapture {
 // stop restores the original stdout and stderr streams
 // This should be called to resume normal console output
 pub fn (mut c IOCapture) stop() {
+	flush_stdout()
+	flush_stderr()
+
 	// Restore original stdout
 	if c.original_stdout_fd != -1 {
 		fd_dup2(c.original_stdout_fd, fd_stdout)

@@ -374,7 +374,7 @@ fn sign_digest(key &C.EVP_PKEY, digest []u8) ![]u8 {
 		return error('EVP_PKEY_sign fails to sign message')
 	}
 	// siglen now contains actual length of the signature buffer.
-	signed := sig[..siglen].clone()
+	signed := sig[..int(siglen)].clone()
 
 	// Cleans up
 	unsafe { sig.free() }

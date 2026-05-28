@@ -196,9 +196,10 @@ fn (sp Savepoint) ensure_active(action string) ! {
 	if isnil(sp.inner) {
 		return error('savepoint is not initialized')
 	}
-	if !sp.inner.active || isnil(sp.inner.owner) || !Tx{
+	owner_tx := Tx{
 		inner: sp.inner.owner
-	}.is_active() {
+	}
+	if !sp.inner.active || isnil(sp.inner.owner) || !owner_tx.is_active() {
 		return error('savepoint is inactive; cannot ${action}')
 	}
 }

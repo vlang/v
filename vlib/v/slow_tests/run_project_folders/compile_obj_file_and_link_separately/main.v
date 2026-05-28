@@ -20,7 +20,8 @@ fn main() {
 	os.chdir(@DIR)!
 	os.rmdir_all(tfolder) or {}
 	os.mkdir_all(tfolder)!
-	lexec('${vexe} -is_o -o "${tfolder}/abc.o"        -gc none -cc ${gcc} abc/')
+	os.cp_all('abc', os.join_path(tfolder, 'abc'), true)!
+	lexec('${vexe} -is_o -o "${tfolder}/abc.o"        -gc none -cc ${gcc} "${tfolder}/abc/"')
 	lexec('${gcc}        -o "${tfolder}/main_in_c.o"  -c main_in_c.c')
 	lexec('${gcc}        -o "${tfolder}/program.exe"  "${tfolder}/abc.o"   "${tfolder}/main_in_c.o"')
 	res := lexec('${tfolder}/program.exe')

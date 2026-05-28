@@ -1,0 +1,9 @@
+module main
+
+fn pair() (f64, string) {
+	return 3.14, 'hello'
+}
+
+fn main() {
+	dump(pair())
+}

@@ -113,3 +113,15 @@ fn test_has_complete_body_with_complete_chunked_body() {
 		'POST /upload HTTP/1.1\r\nHost: example.com\r\nTransfer-Encoding: chunked\r\n\r\n5\r\nhello\r\n0\r\n\r\n'.bytes()
 	assert has_complete_body(buffer.data, buffer.len)
 }
+
+fn test_has_complete_body_with_incomplete_chunk_data_containing_terminator_bytes() {
+	buffer :=
+		'POST /upload HTTP/1.1\r\nHost: example.com\r\nTransfer-Encoding: chunked\r\n\r\n20\r\nabc\r\n0\r\n\r\n'.bytes()
+	assert !has_complete_body(buffer.data, buffer.len)
+}
+
+fn test_has_complete_body_with_complete_chunk_data_containing_terminator_bytes() {
+	buffer :=
+		'POST /upload HTTP/1.1\r\nHost: example.com\r\nTransfer-Encoding: chunked\r\n\r\nd\r\nabc\r\n0\r\n\r\ndef\r\n0\r\n\r\n'.bytes()
+	assert has_complete_body(buffer.data, buffer.len)
+}

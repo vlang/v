@@ -277,10 +277,23 @@ fn (mut g Gen) stmt(stmt ast.Stmt) {
 			g.expr(stmt.expr)
 		}
 		ast.GlobalDecl {
+			if stmt.attributes.len > 0 {
+				g.attributes(stmt.attributes)
+				g.writeln('')
+			}
+			if stmt.is_public {
+				g.write('pub ')
+			}
 			g.writeln('__global (')
 			g.indent++
 			for field in stmt.fields {
 				// TODO
+				if field.is_public && !stmt.is_public {
+					g.write('pub ')
+				}
+				if field.is_mut {
+					g.write('mut ')
+				}
 				g.write(field.name)
 				// if field.value != none {
 				if field.value !is ast.EmptyExpr {
@@ -310,23 +323,22 @@ fn (mut g Gen) stmt(stmt ast.Stmt) {
 				g.expr(embed)
 				g.writeln('')
 			}
+			mut field_is_mut := false
 			for field in stmt.fields {
+				if field.is_mut != field_is_mut {
+					if field.is_mut {
+						g.writeln('mut:')
+					}
+					field_is_mut = field.is_mut
+				}
 				g.write(field.name)
-				g.write(' ')
-				g.expr(field.typ)
-				// if field.typ is ast.Type {
-				// 	if field.typ is ast.FnType {
-				// 		g.fn_type(field.typ)
-				// 	} else {
-				// 		g.write(' ')
-				// 		g.expr(field.typ)
-				// 	}
-				// }
-				// // TODO/FIXME: because p.typ() is returning ident & selector currently
-				// else {
-				// 	g.write(' ')
-				// 	g.expr(field.typ)
-				// }
+				if field.is_interface_method && field.typ is ast.Type
+					&& (field.typ as ast.Type) is ast.FnType {
+					g.fn_type((field.typ as ast.Type) as ast.FnType)
+				} else {
+					g.write(' ')
+					g.expr(field.typ)
+				}
 				g.writeln('')
 			}
 			g.indent--
@@ -395,7 +407,15 @@ fn (mut g Gen) stmt(stmt ast.Stmt) {
 fn (mut g Gen) expr(expr ast.Expr) {
 	match expr {
 		ast.ArrayInitExpr {
-			if expr.exprs.len > 0 {
+			if expr.update_expr !is ast.EmptyExpr {
+				g.write('[...')
+				g.expr(expr.update_expr)
+				if expr.exprs.len > 0 {
+					g.write(', ')
+					g.expr_list(expr.exprs, ', ')
+				}
+				g.write(']')
+			} else if expr.exprs.len > 0 {
 				g.write('[')
 				g.expr_list(expr.exprs, ', ')
 				g.write(']')
@@ -583,6 +603,10 @@ fn (mut g Gen) expr(expr ast.Expr) {
 				g.expr_list(expr.exprs, ', ')
 				g.write(')')
 			}
+		}
+		ast.LifetimeExpr {
+			g.write('^')
+			g.write(expr.name)
 		}
 		ast.LambdaExpr {
 			g.write('|')
@@ -821,6 +845,15 @@ fn (mut g Gen) expr(expr ast.Expr) {
 						g.expr(expr.base_type)
 					}
 				}
+				ast.PointerType {
+					g.write('&')
+					if expr.lifetime != '' {
+						g.write('^')
+						g.write(expr.lifetime)
+						g.write(' ')
+					}
+					g.expr(expr.base_type)
+				}
 				ast.ResultType {
 					g.write('!')
 					if expr.base_type !is ast.EmptyExpr {
@@ -969,7 +1002,38 @@ fn (mut g Gen) struct_decl_fields(embedded []ast.Expr, fields []ast.FieldDecl) {
 		g.expr(embed)
 		g.writeln('')
 	}
+	mut field_access := ''
 	for field in fields {
+		new_access := if field.is_module_mut {
+			'pub module_mut'
+		} else if field.is_public && field.is_mut {
+			'pub mut'
+		} else if field.is_public {
+			'pub'
+		} else if field.is_mut {
+			'mut'
+		} else {
+			''
+		}
+		if new_access != field_access {
+			match new_access {
+				'pub module_mut' {
+					g.writeln('pub module_mut:')
+				}
+				'pub mut' {
+					g.writeln('pub mut:')
+				}
+				'pub' {
+					g.writeln('pub:')
+				}
+				'mut' {
+					g.writeln('mut:')
+				}
+				else {}
+			}
+
+			field_access = new_access
+		}
 		g.write(field.name)
 		g.write(' ')
 		g.expr(field.typ)
@@ -1041,6 +1105,7 @@ fn is_header_const_type_expr(expr ast.Expr) bool {
 				name in ['bool', 'byte', 'char', 'f32', 'f64', 'i8', 'i16', 'i32', 'int', 'i64', 'isize', 'rune', 'string', 'u8', 'u16', 'u32', 'u64', 'usize', 'void', 'voidptr', 'byteptr', 'charptr']
 				|| name.starts_with('&') || name.starts_with('[]') || name.starts_with('?')
 				|| name.starts_with('!') || name.contains('[') || name.contains('__')
+				|| name.contains('.')
 		}
 		else {
 			false

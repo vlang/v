@@ -8,7 +8,7 @@ struct User {
 fn main() {
 	db := sqlite.connect(':memory:') or { panic(err) }
 	where_expr := {
-		if true { zzz == 'Alice' },
+		if true { zzz == 'Alice' }
 	}
 	_ := sql db {
 		dynamic select from User where where_expr

@@ -15,6 +15,8 @@ const skip_files = [
 const skip_on_cstrict = [
 	'vlib/v/checker/tests/missing_c_lib_header_1.vv',
 	'vlib/v/checker/tests/missing_c_lib_header_with_explanation_2.vv',
+	'vlib/v/checker/tests/comptime_value_d_in_include_errors.vv',
+	'vlib/v/checker/tests/missing_shader_header_1.vv',
 ]
 
 const skip_on_ubuntu_musl = [
@@ -94,7 +96,8 @@ fn test_all() {
 	run_dir := '${checker_dir}/run'
 	su_dir := 'vlib/v/tests/skip_unused'
 	no_closures_dir := 'vlib/v/tests/no_closures'
-	js_checker_tests := ['js_number_requires_explicit_cast.vv']
+	js_checker_tests := ['index_expr_implicit_int_downcast_err.vv',
+		'js_number_requires_explicit_cast.vv']
 	disable_explicit_mutability_tests := ['disable_explicit_mutability.vv']
 
 	checker_tests := get_tests_in_dir(checker_dir, false).filter(!it.contains('with_check_option')
@@ -250,6 +253,7 @@ fn (mut tasks Tasks) run() {
 		m_skip_files << 'vlib/v/checker/tests/missing_c_lib_header_1.vv'
 		m_skip_files << 'vlib/v/checker/tests/missing_c_lib_header_with_explanation_2.vv'
 		m_skip_files << 'vlib/v/checker/tests/comptime_value_d_in_include_errors.vv'
+		m_skip_files << 'vlib/v/checker/tests/missing_shader_header_1.vv'
 	}
 	$if msvc {
 		m_skip_files << 'vlib/v/checker/tests/asm_alias_does_not_exist.vv'
@@ -258,6 +262,7 @@ fn (mut tasks Tasks) run() {
 		m_skip_files << 'vlib/v/checker/tests/missing_c_lib_header_1.vv'
 		m_skip_files << 'vlib/v/checker/tests/missing_c_lib_header_with_explanation_2.vv'
 		m_skip_files << 'vlib/v/checker/tests/comptime_value_d_in_include_errors.vv'
+		m_skip_files << 'vlib/v/checker/tests/missing_shader_header_1.vv'
 	}
 	$if windows {
 		m_skip_files << 'vlib/v/checker/tests/invalid_utf8_string.vv'

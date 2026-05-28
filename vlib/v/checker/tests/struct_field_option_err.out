@@ -5,11 +5,11 @@ vlib/v/checker/tests/struct_field_option_err.vv:3:6: error: struct field does no
       |         ^
     4 |     bar ?int = 1
     5 |     baz int  = 1
-vlib/v/checker/tests/struct_field_option_err.vv:12:12: error: `+` cannot be used with `?int`
+vlib/v/checker/tests/struct_field_option_err.vv:12:8: error: `?int` cannot be used as `int literal`, unwrap the option first
    10 | 
    11 |     _ = f.bar
    12 |     _ = f.bar + 1
-      |               ^
+      |           ~~~
    13 | 
    14 |     _ = f.bar!
 vlib/v/checker/tests/struct_field_option_err.vv:14:11: error: to propagate a Result, the call must also return a Result type

@@ -1,0 +1,6 @@
+// vtest vflags: -gc boehm_full_opt
+
+fn main() {
+	arr := [1, 2, 3]
+	dump(arr)
+}

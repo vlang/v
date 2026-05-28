@@ -159,6 +159,27 @@ foo_id := sql db {
 }!
 ```
 
+You can insert a flat array of records in one statement. Bulk inserts currently
+support primitive, enum, and `time.Time` fields. Rows with `serial` or `default`
+fields fall back to per-row inserts so each row keeps normal default handling.
+
+```v ignore
+users := [
+    User{
+        id:   1
+        name: 'Alice'
+    },
+    User{
+        id:   2
+        name: 'Bob'
+    },
+]
+
+sql db {
+    insert users into User
+}!
+```
+
 If the `id` field is marked as `sql: serial` and `primary`, the insert expression
 returns the database ID of the newly added object. Getting an ID of a newly
 added DB row is often useful.
@@ -199,6 +220,17 @@ result := sql db {
 }!
 
 foo := result.first()
+```
+
+You can also select a subset of struct fields. The result type stays `[]Foo`;
+the selected fields are populated and the rest keep their zero values. Use the
+V struct field names here; `@[sql: 'column_name']` and `@[sql_select: 'expr']`
+are still applied automatically.
+
+```v ignore
+partial := sql db {
+    select id, name from Foo where id > 1
+}!
 ```
 
 ```v ignore
@@ -294,6 +326,26 @@ as the table.
 ```v ignore
 sql db {
     update Foo set updated_at = time.now() where name == 'abc' && updated_at is none
+}!
+```
+
+You can update multiple rows from an array in one statement by using the array
+variable in each assigned value and in the key comparison.
+
+```v ignore
+updates := [
+    User{
+        id:   1
+        name: 'Alicia'
+    },
+    User{
+        id:   2
+        name: 'Robert'
+    },
+]
+
+sql db {
+    update User set name = updates.name where id == updates.id
 }!
 ```
 

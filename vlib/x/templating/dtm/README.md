@@ -3,6 +3,15 @@
 A simple template manager integrated into the V project, designed to combine the power of V
 templates with Veb, without the need to recompile the application with every change.
 
+> **Status:** `x.templating.dtm` is the legacy version of Dynamic Template
+> Manager. New projects should use `x.templating.dtm2`, which provides the
+> modern runtime renderer and parsed-template cache.
+>
+> Existing `dtm` users can keep their current API while migrating progressively:
+> the v1 facade now delegates rendering to the DTM2 engine internally, preserving
+> source compatibility while removing the old rendered-cache server from the
+> main rendering path.
+
 ## Quick Start
 
 Using the dynamic template manager (named `dtm` in this readme) is relatively straightforward.

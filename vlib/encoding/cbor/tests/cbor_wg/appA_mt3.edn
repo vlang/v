@@ -1,0 +1,41 @@
+{
+  "title": "mt3",
+  "description": "UTF8 strings, from RFC 8949 appendix A",
+  "tests": [
+    {
+      "description": "Empty string",
+      "encoded": h'60',
+      "decoded": "",
+    },
+    {
+      "description": "Short string",
+      "encoded": h'6161',
+      "decoded": "a",
+    },
+    {
+      "description": "Important string",
+      "encoded": h'6449455446',
+      "decoded": "IETF",
+    },
+    {
+      "description": "Escaped string",
+      "encoded": h'62225c',
+      "decoded": "\"\\",
+    },
+    {
+      "description": "String with short Unicode escape",
+      "encoded": h'62c3bc',
+      "decoded": "\u00fc",
+    },
+    {
+      "description": "String with long Unicode escape",
+      "encoded": h'63e6b0b4',
+      "decoded": "\u6c34",
+    },
+    {
+      "description": "String with UTF-16 Unicode escapes",
+      "encoded": h'64f0908591',
+      "decoded": "\ud800\udd51",
+    },
+  ],
+}

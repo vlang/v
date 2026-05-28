@@ -1,0 +1,16 @@
+module main
+
+enum TestEnum {
+	one
+	two
+	_max
+}
+
+struct Test1 {
+	list [int(TestEnum._max)]int
+}
+
+fn main() {
+	t := Test1{}
+	assert t.list.len == int(TestEnum._max)
+}

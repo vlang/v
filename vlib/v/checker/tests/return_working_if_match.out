@@ -19,7 +19,7 @@ vlib/v/checker/tests/return_working_if_match.vv:7:4: notice: match is always fal
       |             ^
     8 |             else { return '' }
     9 |         }
-vlib/v/checker/tests/return_working_if_match.vv:3:4: warning: unused function: `foo`
+vlib/v/checker/tests/return_working_if_match.vv:3:4: notice: unused function: `foo`
     1 | fn main() {}
     2 | 
     3 | fn foo() string {

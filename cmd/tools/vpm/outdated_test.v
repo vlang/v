@@ -53,7 +53,7 @@ fn test_outdated() {
 		cmd_ok(@LOCATION, '${vexe} install ${m}')
 	}
 	// "Outdate" previously installed. Leave out `libsodium`.
-	for m in ['pcre', 'vtray', os.join_path('nedpals', 'args')] {
+	for m in ['pcre', os.join_path('spytheman', 'vtray'), os.join_path('nedpals', 'args')] {
 		cmd_ok(@LOCATION, 'git -C ${m} fetch --all')
 		cmd_ok(@LOCATION, 'git -C ${m} reset --hard HEAD~')
 		assert is_outdated(m)
@@ -62,7 +62,7 @@ fn test_outdated() {
 	output := res.output.all_after('Outdated modules:')
 	assert output.len > 0, output
 	assert output.contains('pcre'), output
-	assert output.contains('vtray'), output
+	assert output.contains('spytheman.vtray'), output
 	assert output.contains('nedpals.args'), output
 	assert !output.contains('libsodium'), output
 }

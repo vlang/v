@@ -1,0 +1,11 @@
+enum EE {
+	a
+	b
+	c
+}
+
+const xs = [
+	EE.a, // first
+	.b // missing comma
+	.c, // third
+]

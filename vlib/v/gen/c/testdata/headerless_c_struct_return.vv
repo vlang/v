@@ -1,0 +1,35 @@
+module main
+
+#flag @VMODROOT/vlib/v/gen/c/testdata/headerless_c_struct_return_impl.c
+
+type Keycode = u8
+
+struct Setup {
+	status      u8
+	min_keycode Keycode
+	max_keycode Keycode
+	pad1        [4]u8
+}
+
+struct Screen {
+	width u16
+}
+
+struct ScreenIter {
+	data  &Screen
+	rem   int
+	index int
+}
+
+fn C.setup_roots_iterator(r &Setup) ScreenIter
+
+fn main() {
+	setup := Setup{
+		status:      3
+		min_keycode: 4
+		max_keycode: 9
+		pad1:        [u8(1), 2, 3, 4]!
+	}
+	iter := C.setup_roots_iterator(&setup)
+	println('${iter.rem}|${iter.index}|${iter.data.width}')
+}

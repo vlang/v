@@ -93,21 +93,21 @@ pub fn new_dep_graph() &DepGraph {
 }
 
 pub fn (mut graph DepGraph) add(mod string, deps []string) {
-	new_node := DepGraphNode{
+	node := DepGraphNode{
 		name: mod
 		deps: deps.clone()
 	}
-	graph.nodes << new_node
+	graph.nodes << node
 	graph.values[mod] = 0
 }
 
 pub fn (mut graph DepGraph) add_with_value(mod string, deps []string, value i64) {
-	new_node := DepGraphNode{
+	node := DepGraphNode{
 		name:  mod
 		value: value
 		deps:  deps.clone()
 	}
-	graph.nodes << new_node
+	graph.nodes << node
 	graph.values[mod] = value
 }
 

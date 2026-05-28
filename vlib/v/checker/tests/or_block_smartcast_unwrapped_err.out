@@ -1,0 +1,19 @@
+vlib/v/checker/tests/or_block_smartcast_unwrapped_err.vv:13:2: warning: unwrapping option is redundant as the function returns option
+   11 |         return none
+   12 |     }
+   13 |     return name?
+      |     ~~~~~~~~~~~
+   14 | }
+vlib/v/checker/tests/or_block_smartcast_unwrapped_err.vv:5:11: error: cannot use `or {}` block on non-option variable `name` (it was already unwrapped to `string` by an earlier none check; use `name` directly)
+    3 |         return
+    4 |     }
+    5 |     name_ := name or { '' }.trim_space()
+      |              ~~~~
+    6 |     println(name_)
+    7 | }
+vlib/v/checker/tests/or_block_smartcast_unwrapped_err.vv:13:9: error: cannot use `?` on non-option variable `name` (it was already unwrapped to `string` by an earlier none check; use `name` directly)
+   11 |         return none
+   12 |     }
+   13 |     return name?
+      |            ~~~~
+   14 | }

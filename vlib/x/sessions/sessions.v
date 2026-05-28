@@ -93,7 +93,7 @@ pub fn (mut s Sessions[T]) set_session_id[X](mut ctx X) string {
 
 	ctx.set_cookie(http.Cookie{
 		value:     signed
-		max_age:   s.max_age
+		max_age:   int(s.max_age / time.second)
 		domain:    s.cookie_options.domain
 		http_only: s.cookie_options.http_only
 		name:      s.cookie_options.cookie_name

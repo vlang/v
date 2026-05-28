@@ -1,6 +1,6 @@
 module fasthttp
 
-struct Server {
+pub struct Server {
 pub:
 	port                    int = 3000
 	max_request_buffer_size int = 8192

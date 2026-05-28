@@ -72,3 +72,9 @@ fn test_embed_named_fn_type_promotes_methods() {
 	assert one == 'one'
 	assert more == 'more'
 }
+
+fn test_embed_named_fn_type_zero_init() {
+	mut cmd := CommandSet{}
+	cmd.CommandFn = run_command
+	assert cmd.one() == 'one'
+}

@@ -336,9 +336,6 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 				c.error('cannot dereference a function call on the left side of an assignment, use a temporary variable',
 					left.pos)
 			}
-		} else if mut left is ast.IndexExpr && left.index is ast.RangeExpr {
-			c.error('cannot reassign using range expression on the left side of an assignment',
-				left.pos)
 		} else if mut left is ast.Ident && node.op == .decl_assign {
 			if left.name in c.global_names {
 				c.note('the global variable named `${left.name}` already exists', left.pos)
@@ -356,6 +353,10 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 				c.is_index_assign = true
 			}
 			left_type = c.expr(mut left)
+			if left is ast.IndexExpr && left.index is ast.RangeExpr && !left.is_index_operator {
+				c.error('cannot reassign using range expression on the left side of an assignment',
+					left.pos)
+			}
 			left_type = c.smartcasted_assign_lhs_type(left, left_type)
 			c.is_index_assign = false
 			c.expected_type = c.unwrap_generic(left_type)
@@ -670,6 +671,27 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 							c.error('duplicate of an import symbol `${left.name}`', left.pos)
 						}
 						c.check_module_name_conflict(left.name, left.pos)
+						// Notice when a local variable shadows a function declaration (issue #22685).
+						// Skip when building tests: test files (and preludes loaded for them)
+						// commonly use short fixture fns like `fn a() {}` and shadow them
+						// freely in test bodies.
+						// Only consider functions declared in the same module as the
+						// variable; otherwise unrelated fns (esp. private builtin ones
+						// like `fn new_node()` in `builtin/sorted_map.v`) cause noisy
+						// false positives in user code and external modules.
+						if !c.pref.is_test {
+							qualified := if left.mod == 'builtin' {
+								left.name
+							} else {
+								'${left.mod}.${left.name}'
+							}
+							if fn_decl := c.table.find_fn(qualified) {
+								if fn_decl.mod == left.mod {
+									c.note('variable `${left.name}` shadows a function declaration',
+										left.pos)
+								}
+							}
+						}
 					}
 					if node.op == .assign && left_type.has_flag(.option) && right is ast.UnsafeExpr
 						&& right.expr.is_nil() {
@@ -947,12 +969,15 @@ or use an explicit `unsafe{ a[..] }`, if you do not want a copy of the slice.',
 				} else {
 					left_type
 				}
-				if left_deref == ast.string_type {
+				if c.is_string_like_type(left_deref) {
 					if node.op != .plus_assign {
 						c.error('operator `${node.op}` not defined on left operand type `${left_sym.name}`',
 							left.pos())
 					}
-					if right_type != ast.string_type {
+					if node.op == .plus_assign && !c.is_string_concat_type(right_type) {
+						c.error('invalid right operand: ${left_sym.name} ${node.op} ${right_sym.name}',
+							right.pos())
+					} else if node.op != .plus_assign && !c.is_string_like_type(right_type) {
 						c.error('invalid right operand: ${left_sym.name} ${node.op} ${right_sym.name}',
 							right.pos())
 					}
@@ -1136,8 +1161,12 @@ or use an explicit `unsafe{ a[..] }`, if you do not want a copy of the slice.',
 					right.pos())
 			}
 			// Dual sides check (compatibility check)
-			assign_right_type := if original_op in [.left_shift_assign, .right_shift_assign,
-				.unsigned_right_shift_assign] {
+			is_string_plus_assign := original_op == .plus_assign
+				&& c.is_string_like_type(left_type_unwrapped)
+				&& c.is_string_concat_type(right_type_unwrapped)
+			assign_right_type := if
+				original_op in [.left_shift_assign, .right_shift_assign, .unsigned_right_shift_assign]
+				|| is_string_plus_assign {
 				left_type_unwrapped
 			} else {
 				right_type_unwrapped

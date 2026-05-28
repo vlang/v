@@ -84,10 +84,10 @@ fn (mut p Parser) check_expr(precedence int) !ast.Expr {
 			} else if p.tok.kind == .question && p.peek_tok.kind == .amp {
 				node = p.prefix_expr()
 			} else if p.inside_for_expr && p.tok.kind == .name && ((p.tok.lit[0].is_capital()
-				&& p.peek_tok.kind == .lcbr && p.peek_token(2).kind in [.rcbr, .name])
-				|| (p.inside_array_lit && p.peek_tok.kind == .dot && p.peek_token(2).kind == .name
-				&& p.peek_token(2).lit[0].is_capital() && p.peek_token(3).kind == .lcbr
-				&& p.peek_token(4).kind in [.rcbr, .name])) {
+				&& p.peek_tok.kind == .lcbr && (p.peek_token(2).kind in [.rcbr, .name]
+				|| p.inside_array_lit)) || (p.inside_array_lit && p.peek_tok.kind == .dot
+				&& p.peek_token(2).kind == .name && p.peek_token(2).lit[0].is_capital()
+				&& p.peek_token(3).kind == .lcbr)) {
 				node = p.struct_init(p.mod + '.' + p.tok.lit, .normal, false)
 			} else if p.is_generic_name() && p.peek_tok.kind == .lcbr
 				&& p.peek_token(2).kind == .rcbr && p.peek_token(2).line_nr == p.tok.line_nr {
@@ -330,8 +330,10 @@ fn (mut p Parser) check_expr(precedence int) !ast.Expr {
 				}
 				mut is_cast_expr := peek_n_tok.kind == .lpar && sbr_level == 0
 					&& peek_n_tok.line_nr == line_nr
-				// `[](?Type){}` (and `[N](?Type){}`) is an array init, not a cast.
-				if is_cast_expr && prev_n_tok.kind == .rsbr {
+				// If the matching `)` is followed by `{`, this can still be an array init when
+				// the element type itself contains parentheses, e.g. `[](?Type){}` or
+				// `[]thread (T1, T2){}`.
+				if is_cast_expr && (prev_n_tok.kind == .rsbr || prev_n_tok.lit == 'thread') {
 					mut par_level := 0
 					for i := n; true; i++ {
 						tk := p.peek_token(i)
@@ -498,7 +500,8 @@ fn (mut p Parser) check_expr(precedence int) !ast.Expr {
 		p.if_cond_comments << p.eat_comments()
 	}
 	if p.pref.is_fmt && p.tok.kind == .comment && p.peek_tok.kind.is_infix() && !p.inside_map_init
-		&& !(p.peek_tok.kind == .mul && p.peek_tok.pos().line_nr != p.tok.pos().line_nr) {
+		&& !(p.peek_tok.kind == .mul && p.peek_tok.pos().line_nr != p.tok.pos().line_nr)
+		&& !(p.peek_tok.kind == .dot && p.inside_array_lit) {
 		p.left_comments = p.eat_comments()
 	}
 	return p.expr_with_left(node, precedence, is_stmt_ident)
@@ -674,7 +677,7 @@ fn (p &Parser) can_use_expr_as_struct_init_type(expr ast.Expr) bool {
 		}
 		ast.SelectorExpr {
 			expr.expr is ast.TypeOf
-				&& expr.field_name in ['idx', 'typ', 'unaliased_typ', 'key_type', 'value_type', 'element_type']
+				&& expr.field_name in ['idx', 'typ', 'unaliased_typ', 'key_type', 'value_type', 'element_type', 'pointee_type', 'payload_type']
 		}
 		else {
 			false

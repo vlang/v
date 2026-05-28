@@ -46,3 +46,87 @@ fn test_interface_runtime_conversions() {
 	draw(WidgetA{})
 	draw(WidgetB{})
 }
+
+enum CompositeNodeType {
+	int
+	str
+	list
+	block
+}
+
+interface CompositeValue {
+	type_of() CompositeNodeType
+}
+
+interface CompositeNode {
+	values []CompositeValue
+}
+
+type CompositeInt = int
+
+fn (x CompositeInt) type_of() CompositeNodeType {
+	return .int
+}
+
+type CompositeStr = string
+
+fn (x CompositeStr) type_of() CompositeNodeType {
+	return .str
+}
+
+struct CompositeList {
+	values []CompositeValue
+}
+
+fn (x CompositeList) type_of() CompositeNodeType {
+	return .list
+}
+
+struct CompositeBlock {
+	values []CompositeValue
+}
+
+fn (x CompositeBlock) type_of() CompositeNodeType {
+	return .block
+}
+
+fn composite_values_identical(v1 CompositeValue, v2 CompositeValue) bool {
+	if v1.type_of() != v2.type_of() {
+		return false
+	}
+	return match v1 {
+		CompositeInt { v1 == (v2 as CompositeInt) }
+		CompositeStr { v1 == (v2 as CompositeStr) }
+		CompositeList, CompositeBlock { composite_nodes_identical(v1, v2 as CompositeNode) }
+		else { false }
+	}
+}
+
+fn composite_nodes_identical(s1 CompositeNode, s2 CompositeNode) bool {
+	if s1.values.len != s2.values.len {
+		return false
+	}
+	for i := 0; i < s1.values.len; i++ {
+		if !composite_values_identical(s1.values[i], s2.values[i]) {
+			return false
+		}
+	}
+	return true
+}
+
+fn test_interface_runtime_conversions_from_aggregate_smartcast_to_interface() {
+	list1 := CompositeList{
+		values: [CompositeValue(CompositeInt(34)), CompositeStr('foo')]
+	}
+	list2 := CompositeList{
+		values: [CompositeValue(CompositeInt(34)), CompositeStr('bar')]
+	}
+	block1 := CompositeBlock{
+		values: [CompositeValue(CompositeInt(34)), CompositeStr('foo')]
+	}
+	block2 := CompositeBlock{
+		values: [CompositeValue(CompositeInt(34)), CompositeStr('foo')]
+	}
+	assert !composite_values_identical(list1, list2)
+	assert composite_values_identical(block1, block2)
+}

@@ -50,6 +50,23 @@ pub fn (d Duration) days() f64 {
 	return f64(d) / f64(hour * 24)
 }
 
+fn duration_pad2(n i64) string {
+	if n < 10 {
+		return '0' + n.str()
+	}
+	return n.str()
+}
+
+fn duration_pad3(n i64) string {
+	if n < 10 {
+		return '00' + n.str()
+	}
+	if n < 100 {
+		return '0' + n.str()
+	}
+	return n.str()
+}
+
 // str pretty prints the duration
 //
 // ```
@@ -82,14 +99,22 @@ pub fn (d Duration) str() string {
 	t -= us * microsecond
 	ns := t
 
-	return match true {
-		hr > 0 { '${sign}${hr}:${min:02}:${sec:02}' }
-		min > 0 { '${sign}${min}:${sec:02}.${ms:03}' }
-		sec > 0 { '${sign}${sec}.${ms:03}s' }
-		ms > 0 { '${sign}${ms}.${us:03}ms' }
-		us > 0 { '${sign}${us}.${ns:03}us' }
-		else { '${sign}${ns}ns' }
+	if hr > 0 {
+		return sign + hr.str() + ':' + duration_pad2(min) + ':' + duration_pad2(sec)
 	}
+	if min > 0 {
+		return sign + min.str() + ':' + duration_pad2(sec) + '.' + duration_pad3(ms)
+	}
+	if sec > 0 {
+		return sign + sec.str() + '.' + duration_pad3(ms) + 's'
+	}
+	if ms > 0 {
+		return sign + ms.str() + '.' + duration_pad3(us) + 'ms'
+	}
+	if us > 0 {
+		return sign + us.str() + '.' + duration_pad3(ns) + 'us'
+	}
+	return sign + ns.str() + 'ns'
 }
 
 // debug returns a detailed breakdown of the Duration, as: 'Duration: - 50days, 4h, 3m, 7s, 541ms, 78us, 9ns'.
@@ -116,9 +141,9 @@ pub fn (d Duration) debug() string {
 		}
 	}
 	if x > 0 {
-		res << '${x}ns'
+		res << x.str() + 'ns'
 	}
-	return 'Duration: ${sign}${res.join(', ')}'
+	return 'Duration: ' + sign + res.join(', ')
 }
 
 // times allows you to return fractional unit durations, based on an existing duration.

@@ -39,17 +39,23 @@ mut:
 
 // Must be aligned to at least the maximum fundamental type alignment (pointer size)
 // so that the array data following the header is properly aligned.
-const array_data_header_size = int(sizeof(voidptr))
+//
+// Keep this as a function, not a const. When V bootstraps from generated C, a const
+// would bake in the snapshot generator's pointer size instead of the target C ABI.
+@[inline]
+fn array_data_header_size() int {
+	return int(sizeof(voidptr))
+}
 
 @[inline]
 fn array_data_allocation_size(total_size u64) u64 {
-	return u64(array_data_header_size) + __at_least_one(total_size)
+	return u64(array_data_header_size()) + __at_least_one(total_size)
 }
 
 @[inline]
 fn alloc_array_data(total_size u64) voidptr {
 	raw := vcalloc(array_data_allocation_size(total_size))
-	return unsafe { &u8(raw) + array_data_header_size }
+	return unsafe { &u8(raw) + array_data_header_size() }
 }
 
 @[inline]
@@ -57,7 +63,7 @@ fn alloc_array_data_uninit(total_size u64) voidptr {
 	raw := unsafe { malloc_uninit(array_data_allocation_size(total_size)) }
 	unsafe {
 		(&ArrayDataHeader(raw)).has_slices = false
-		return &u8(raw) + array_data_header_size
+		return &u8(raw) + array_data_header_size()
 	}
 }
 
@@ -92,7 +98,7 @@ fn (a array) data_header() &ArrayDataHeader {
 		return unsafe { nil }
 	}
 	base_data := unsafe { &u8(a.data) - u64(a.offset) }
-	return unsafe { &ArrayDataHeader(base_data - array_data_header_size) }
+	return unsafe { &ArrayDataHeader(base_data - array_data_header_size()) }
 }
 
 @[inline]
@@ -327,6 +333,19 @@ fn new_array_from_c_array(len int, cap int, elm_size int, c_array voidptr) array
 	return arr
 }
 
+// Private function, used by V (`merged := [...base, 4, 5]`).
+// `base` is already an independent (typed/deep) clone produced by the caller
+// (cgen emits `array_clone_static_to_depth(base, depth)`), so this helper just
+// appends `new_count` additional elements stored contiguously at `c_array`.
+fn new_array_from_array_and_c_array(base array, new_count int, elm_size int, c_array voidptr) array {
+	panic_on_negative_len(new_count)
+	mut arr := base
+	if new_count > 0 && c_array != unsafe { nil } {
+		unsafe { arr.push_many(c_array, new_count) }
+	}
+	return arr
+}
+
 // Private function, used by V (`nums := [1, 2, 3] !`)
 fn new_array_from_c_array_no_alloc(len int, cap int, elm_size int, c_array voidptr) array {
 	panic_on_negative_len(len)
@@ -372,7 +391,7 @@ pub fn (mut a array) ensure_cap(required int) {
 		if a.flags.has(.noslices) && !a.flags.has(.is_slice) && !a.buffer_has_slices() {
 			unsafe {
 				if a.flags.has(.managed) {
-					free(&u8(a.data) - u64(array_data_header_size))
+					free(&u8(a.data) - u64(array_data_header_size()))
 				} else {
 					free(a.data)
 				}
@@ -726,6 +745,31 @@ fn (a array) get(i int) voidptr {
 }
 
 @[markused]
+fn (a array) get_i64(i i64) voidptr {
+	$if !no_bounds_checking {
+		if i < 0 || i >= i64(a.len) {
+			panic_n2('array.get: index out of range (i,a.len):', i, a.len)
+		}
+	}
+	unsafe {
+		return &u8(a.data) + u64(i) * u64(a.element_size)
+	}
+}
+
+@[markused]
+fn (a array) get_u64(i u64) voidptr {
+	$if !no_bounds_checking {
+		if i >= u64(a.len) {
+			panic('array.get: index out of range (i,a.len): ' + i.str() + ', ' +
+				impl_i64_to_string(a.len))
+		}
+	}
+	unsafe {
+		return &u8(a.data) + i * u64(a.element_size)
+	}
+}
+
+@[markused]
 fn (a array) get_ni(i int) voidptr {
 	return a.get(v_ni_index(i, a.len))
 }
@@ -737,6 +781,26 @@ fn (a array) get_with_check(i int) voidptr {
 	}
 	unsafe {
 		return &u8(a.data) + u64(i) * u64(a.element_size)
+	}
+}
+
+@[markused]
+fn (a array) get_with_check_i64(i i64) voidptr {
+	if i < 0 || i >= i64(a.len) {
+		return 0
+	}
+	unsafe {
+		return &u8(a.data) + u64(i) * u64(a.element_size)
+	}
+}
+
+@[markused]
+fn (a array) get_with_check_u64(i u64) voidptr {
+	if i >= u64(a.len) {
+		return 0
+	}
+	unsafe {
+		return &u8(a.data) + i * u64(a.element_size)
 	}
 }
 
@@ -1039,6 +1103,27 @@ fn (mut a array) set(i int, val voidptr) {
 }
 
 @[markused]
+fn (mut a array) set_i64(i i64, val voidptr) {
+	$if !no_bounds_checking {
+		if i < 0 || i >= i64(a.len) {
+			panic_n2('array.set: index out of range (i,a.len):', i, a.len)
+		}
+	}
+	unsafe { vmemcpy(&u8(a.data) + u64(a.element_size) * u64(i), val, a.element_size) }
+}
+
+@[markused]
+fn (mut a array) set_u64(i u64, val voidptr) {
+	$if !no_bounds_checking {
+		if i >= u64(a.len) {
+			panic('array.set: index out of range (i,a.len): ' + i.str() + ', ' +
+				impl_i64_to_string(a.len))
+		}
+	}
+	unsafe { vmemcpy(&u8(a.data) + u64(a.element_size) * i, val, a.element_size) }
+}
+
+@[markused]
 fn (mut a array) set_ni(i int, val voidptr) {
 	a.set(v_ni_index(i, a.len), val)
 }
@@ -1081,9 +1166,9 @@ pub fn (mut a array) push_many(val voidptr, size int) {
 	}
 	if is_self_append {
 		// handle `arr << arr`
-		copy := a.clone()
+		cloned := a.clone()
 		unsafe {
-			vmemcpy(&u8(a.data) + u64(a.element_size) * u64(a.len), copy.data,
+			vmemcpy(&u8(a.data) + u64(a.element_size) * u64(a.len), cloned.data,
 				u64(a.element_size) * u64(size))
 		}
 	} else {
@@ -1150,7 +1235,7 @@ pub fn (a &array) free() {
 	if mblock_ptr != unsafe { nil } {
 		unsafe {
 			if a.flags.has(.managed) {
-				free(mblock_ptr - array_data_header_size)
+				free(mblock_ptr - array_data_header_size())
 			} else {
 				free(mblock_ptr)
 			}

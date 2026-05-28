@@ -1,0 +1,11 @@
+// vtest vflags: -prod -gc boehm_full_opt -cc gcc
+
+fn split_iso8601(s string) []string {
+	t_i := s.index_('T')
+	return if t_i != -1 { [s[..t_i], s[t_i + 1..]] } else { s.split(' ') }
+}
+
+fn main() {
+	parts := split_iso8601('2026-04-22T19:42')
+	println('${parts[0]}|${parts[1]}')
+}

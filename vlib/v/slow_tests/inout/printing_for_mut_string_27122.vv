@@ -1,0 +1,11 @@
+fn main() {
+	mut items := ['alpha', 'beta', 'gamma']
+	for mut item in items {
+		println('item value: ${item}')
+		item = 'CHANGED_${item}'
+		println('item after: ${item}')
+	}
+	for item in items {
+		println(item)
+	}
+}

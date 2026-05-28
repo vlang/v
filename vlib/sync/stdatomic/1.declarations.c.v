@@ -63,7 +63,6 @@ $if linux {
 				// Alpine:
 				#flag $when_first_existing('/usr/lib/libatomic.so','/usr/lib/gcc/aarch64-pc-linux-musl/6/libatomic.so','/usr/lib/gcc/aarch64-pc-linux-musl/7/libatomic.so','/usr/lib/gcc/aarch64-pc-linux-musl/8/libatomic.so','/usr/lib/gcc/aarch64-pc-linux-musl/9/libatomic.so','/usr/lib/gcc/aarch64-pc-linux-musl/10/libatomic.so','/usr/lib/gcc/aarch64-pc-linux-musl/11/libatomic.so','/usr/lib/gcc/aarch64-pc-linux-musl/12/libatomic.so','/usr/lib/gcc/aarch64-pc-linux-musl/13/libatomic.so','/usr/lib/gcc/aarch64-pc-linux-musl/14/libatomic.so')
 			}
-			#flag @VEXEROOT/thirdparty/stdatomic/nix/atomic.S
 		}
 	}
 }

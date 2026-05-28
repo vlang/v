@@ -4441,6 +4441,16 @@
 #undef MBEDTLS_HAVE_ASM
 #undef MBEDTLS_AESNI_C
 #undef MBEDTLS_PADLOCK_C
+/*
+ * Force 32-bit bignum limbs under tcc.
+ * On 64-bit hosts, bignum.h would otherwise typedef the double-width type as
+ * `unsigned int __attribute__((mode(TI)))` (or `__uint128_t`). tcc accepts the
+ * declaration but miscompiles the resulting 64x64->128 multiplications, which
+ * makes the modular reduction loop in ecp_modp() spin forever during the
+ * TLS 1.3 X25519 client_hello key share generation. Falling back to 32-bit
+ * limbs keeps the double-width type at uint64_t, which tcc handles correctly.
+ */
+#define MBEDTLS_HAVE_INT32
 #else // __TINYC__
 #define MBEDTLS_HAVE_ASM
 #define MBEDTLS_AESNI_C

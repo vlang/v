@@ -116,12 +116,11 @@ pub fn (mut t TypeResolver) typeof_type(node ast.Expr, default_type ast.Type) as
 			return f.typ
 		}
 	} else if node is ast.SelectorExpr && node.name_type != 0 {
-		if node.field_name in ['value_type', 'element_type'] {
-			return t.table.value_type(t.resolver.unwrap_generic(node.name_type))
-		} else if node.field_name == 'key_type' {
-			sym := t.table.sym(t.resolver.unwrap_generic(node.name_type))
-			if sym.info is ast.Map {
-				return t.resolver.unwrap_generic(sym.info.key_type)
+		if node.field_name in ['key_type', 'value_type', 'element_type', 'pointee_type',
+			'payload_type', 'variant_types'] {
+			resolved := t.typeof_field_type(node.name_type, node.field_name)
+			if resolved != ast.no_type {
+				return resolved
 			}
 		}
 	}
@@ -130,28 +129,73 @@ pub fn (mut t TypeResolver) typeof_type(node ast.Expr, default_type ast.Type) as
 
 // typeof_field_type resolves the T.<field_name> and typeof[T]().<field_name> type
 pub fn (mut t TypeResolver) typeof_field_type(typ ast.Type, field_name string) ast.Type {
+	unwrapped := t.resolver.unwrap_generic(typ)
 	match field_name {
 		'name' {
 			return ast.string_type
 		}
 		'idx', 'typ' {
-			return t.resolver.unwrap_generic(typ)
+			return unwrapped
 		}
 		'unaliased_typ' {
-			return t.table.unaliased_type(t.resolver.unwrap_generic(typ))
+			return t.table.unaliased_type(unwrapped)
 		}
 		'indirections' {
 			return ast.int_type
 		}
 		'key_type' {
-			sym := t.table.final_sym(t.resolver.unwrap_generic(typ))
+			sym := t.table.final_sym(unwrapped)
 			if sym.info is ast.Map {
 				return t.resolver.unwrap_generic(sym.info.key_type)
+			}
+			if unwrapped.has_flag(.generic) || t.table.generic_type_names(unwrapped).len > 0 {
+				return unwrapped
 			}
 			return ast.no_type
 		}
 		'value_type', 'element_type' {
-			return t.table.value_type(t.resolver.unwrap_generic(typ))
+			value_type := t.table.value_type(unwrapped)
+			if value_type != ast.void_type {
+				return t.resolver.unwrap_generic(value_type)
+			}
+			if unwrapped.has_flag(.generic) || t.table.generic_type_names(unwrapped).len > 0 {
+				return unwrapped
+			}
+			return ast.no_type
+		}
+		'pointee_type' {
+			if unwrapped.has_flag(.option) || unwrapped.has_flag(.result) {
+				inner := unwrapped.clear_option_and_result()
+				if inner.is_ptr() {
+					return inner.deref()
+				}
+			}
+			if unwrapped.is_ptr() {
+				return unwrapped.deref()
+			}
+			if unwrapped.has_flag(.generic) || t.table.generic_type_names(unwrapped).len > 0 {
+				return unwrapped
+			}
+			return ast.no_type
+		}
+		'payload_type' {
+			if unwrapped.has_flag(.option) || unwrapped.has_flag(.result) {
+				return unwrapped.clear_option_and_result()
+			}
+			if unwrapped.has_flag(.generic) || t.table.generic_type_names(unwrapped).len > 0 {
+				return unwrapped
+			}
+			return ast.no_type
+		}
+		'variant_types' {
+			sym := t.table.final_sym(unwrapped)
+			if sym.info is ast.SumType {
+				return ast.new_type(t.table.find_or_register_array(ast.int_type))
+			}
+			if unwrapped.has_flag(.generic) || t.table.generic_type_names(unwrapped).len > 0 {
+				return ast.new_type(t.table.find_or_register_array(ast.int_type))
+			}
+			return ast.no_type
 		}
 		else {
 			return typ

@@ -57,7 +57,11 @@ fn v_segmentation_fault_handler(signal_number i32) {
 		C.fprintf(C.stderr, c'signal %d: segmentation fault\n', signal_number)
 	}
 	$if use_libbacktrace ? {
-		eprint_libbacktrace(1)
+		$if openbsd {
+			print_backtrace()
+		} $else {
+			eprint_libbacktrace(1)
+		}
 	} $else {
 		print_backtrace()
 	}
@@ -76,8 +80,46 @@ fn v_fixed_index(i int, len int) int {
 }
 
 @[inline; markused]
+fn v_fixed_index_i64(i i64, len int) int {
+	$if !no_bounds_checking {
+		if i < 0 || i >= i64(len) {
+			panic('fixed array index out of range (index: ' + i.str() + ', len: ' + i64(len).str() +
+				')')
+		}
+	}
+	return int(i)
+}
+
+@[inline; markused]
+fn v_fixed_index_u64(i u64, len int) int {
+	$if !no_bounds_checking {
+		if i >= u64(len) {
+			panic('fixed array index out of range (index: ' + i.str() + ', len: ' + i64(len).str() +
+				')')
+		}
+	}
+	return int(i)
+}
+
+@[inline; markused]
 fn v_fixed_index_ni(i int, len int) int {
 	return v_fixed_index(v_ni_index(i, len), len)
+}
+
+@[inline; markused]
+fn v_slice_index_i64(i i64) int {
+	if i < i64(min_int) || i > i64(max_int) {
+		panic('slice index out of range for int: ' + i.str())
+	}
+	return int(i)
+}
+
+@[inline; markused]
+fn v_slice_index_u64(i u64) int {
+	if i > u64(max_int) {
+		panic('slice index out of range for int: ' + i.str())
+	}
+	return int(i)
 }
 
 // arguments returns the command line arguments, used for starting the current program as a V array of strings.

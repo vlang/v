@@ -218,11 +218,10 @@ see also `v help build`.
       more performant without autofree.
 
    -gc <mode>
-      On most supported C targets, V uses a garbage collector by default. Musl keeps the
-      historical default of `-gc none`. Only the Boehm–Demers–Weiser garbage collector is
-      supported currently with the following sub-options:
+      V uses a garbage collector by default. Only the Boehm–Demers–Weiser garbage collector
+      is supported currently with the following sub-options:
 
-      `-gc boehm` ........... use the default Boehm garbage collector mode
+      `-gc boehm` ........... use default garbage collector (same as not specifying option)
       `-gc boehm_full` ...... full garbage collection mode
       `-gc boehm_incr` ...... incremental/generational garbage collection mode
       `-gc boehm_full_opt` .. optimized full garbage collection mode
@@ -321,6 +320,10 @@ see also `v help build`.
 
    -show-c-output
       Prints the output, that your C compiler produced, while compiling your program.
+
+   -bug-report-url url
+      Override where automatic C compiler bug reports are submitted.
+      Useful with `v bug-report --host localhost --port 8080` for local testing.
 
    -dump-c-flags file.txt
       Write all C flags into `file.txt`, one flag per line.

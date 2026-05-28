@@ -4,7 +4,7 @@ module sapp
 // Shared between Wayland and X11 backends.
 
 fn sapp_egl_choose_config() EGLConfig {
-	sample_count := if g_sapp_state.desc.sample_count > 1 {
+	samples := if g_sapp_state.desc.sample_count > 1 {
 		EGLint(g_sapp_state.desc.sample_count)
 	} else {
 		EGLint(0)
@@ -32,7 +32,7 @@ fn sapp_egl_choose_config() EGLConfig {
 		egl_sample_buffers,
 		sample_buffers,
 		egl_samples,
-		sample_count,
+		samples,
 		egl_none,
 	]!
 
@@ -61,7 +61,7 @@ fn sapp_egl_choose_config() EGLConfig {
 			&& C.eglGetConfigAttrib(g_sapp_state.egl.display, c, egl_depth_size, &d) != 0
 			&& C.eglGetConfigAttrib(g_sapp_state.egl.display, c, egl_stencil_size, &s) != 0
 			&& C.eglGetConfigAttrib(g_sapp_state.egl.display, c, egl_samples, &n) != 0 && r == 8
-			&& g == 8 && b == 8 && a == alpha_size && d == 24 && s == 8 && n == sample_count {
+			&& g == 8 && b == 8 && a == alpha_size && d == 24 && s == 8 && n == samples {
 			config = c
 			break
 		}

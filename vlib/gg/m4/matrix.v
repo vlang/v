@@ -455,7 +455,7 @@ pub fn det(x Mat4) f32 {
 pub fn (x Mat4) inverse() Mat4 {
 	unsafe {
 		mut t := [6]f32{}
-		mut det := f32(0)
+		mut inv_det := f32(0)
 
 		// vfmt off
 		a := x.f[0][0]
@@ -520,9 +520,9 @@ pub fn (x Mat4) inverse() Mat4 {
 
 		tmp := (a * dest.f[0][0] + b * dest.f[0][1] + c * dest.f[0][2] + d * dest.f[0][3])
 		if tmp != 0 {
-			det = f32(1.0) / tmp
+			inv_det = f32(1.0) / tmp
 		}
-		return dest.mul_scalar(det)
+		return dest.mul_scalar(inv_det)
 	}
 	return zero_m4()
 }

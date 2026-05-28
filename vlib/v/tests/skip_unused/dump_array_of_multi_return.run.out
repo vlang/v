@@ -1,0 +1,1 @@
+[vlib/v/tests/skip_unused/dump_array_of_multi_return.vv:9] xs: [(3.14, 'hello'), (3.14, 'hello')]

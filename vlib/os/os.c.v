@@ -107,8 +107,14 @@ fn find_cfile_size(fp &C.FILE) !int {
 	if raw_fsize != 0 && cseek != 0 {
 		return error('fseek failed')
 	}
-	if cseek != 0 && raw_fsize < 0 {
-		return error('ftell failed')
+	if raw_fsize < 0 {
+		if cseek != 0 {
+			return error('ftell failed')
+		}
+		// fseek succeeded but ftell returned -1 (e.g. device files like NUL on Windows).
+		// Rewind before returning so the caller can read from the beginning.
+		C.rewind(fp)
+		return 0
 	}
 	len := int(raw_fsize)
 	// For files > 2GB, C.ftell can return values that, when cast to `int`, can result in values below 0.
@@ -130,14 +136,14 @@ fn slurp_file_in_builder(fp &C.FILE) !strings.Builder {
 	buf := [buf_size]u8{}
 	mut sb := strings.new_builder(buf_size)
 	for {
-		mut read_bytes := fread(&buf[0], 1, buf_size, fp) or {
+		mut nbytes := fread(&buf[0], 1, buf_size, fp) or {
 			if err is Eof {
 				break
 			}
 			unsafe { sb.free() }
 			return err
 		}
-		unsafe { sb.write_ptr(&buf[0], read_bytes) }
+		unsafe { sb.write_ptr(&buf[0], nbytes) }
 	}
 	return sb
 }

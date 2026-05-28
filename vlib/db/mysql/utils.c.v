@@ -30,15 +30,10 @@ fn clone_mysql_cstring(ptr &u8) string {
 
 // resolve_nil_str returns an empty string if passed value is a nil pointer.
 fn resolve_nil_str(ptr &u8) string {
-	if isnil(ptr) {
-		return ''
-	}
-	return unsafe { ptr.vstring() }
+	return clone_mysql_cstring(ptr)
 }
 
 @[inline]
 fn mystring(b &u8) string {
-	unsafe {
-		return b.vstring()
-	}
+	return clone_mysql_cstring(b)
 }

@@ -1,5 +1,17 @@
 module mysql
 
+// SslMode mirrors the values of the C `enum mysql_ssl_mode`, used with
+// `MYSQL_OPT_SSL_MODE`. Use `.unset` to leave the option untouched, in which
+// case the underlying libmysqlclient default applies (typically `.preferred`).
+pub enum SslMode {
+	unset           = 0
+	disabled        = 1
+	preferred       = 2
+	required        = 3
+	verify_ca       = 4
+	verify_identity = 5
+}
+
 // FieldType is a list of all supported MYSQL field types.
 pub enum FieldType {
 	type_decimal

@@ -1,28 +1,9 @@
-# ignore sub-level untracked files and the v binary
+# ignore sub-level extensionless build outputs
 */**/*
-
-# unignore checker test files
-!vlib/v/checker/tests/*.vv
-!vlib/v/checker/tests/*.out
-!vlib/v/gen/c/testdata/nested_unary_minus_regression.vv
-!vlib/v/gen/c/testdata/nested_unary_minus_regression.out
-!vlib/v/tests/interfaces/interface_pointer_method_value_issue_22237_test.v
-!vlib/v/checker/tests/modules/c_type_cast_imported_from_module/**
-!vlib/v/checker/tests/modules/c_type_cast_imported_from_module.out
-
-# unignore c codegen testdata files
-!vlib/v/gen/c/testdata/*.vv
-!vlib/v/gen/c/testdata/*.out
-!vlib/v/gen/c/testdata/*.c.must_have
-
-# unignore vlib/x/markdown
-!vlib/x/markdown/**
-!vlib/mcp/server.v
-!vlib/mcp/server_test.v
-
-!.github/show_manual_release_cmd_test.v
 !*/
-# Do not add !*.* here; it overrides local excludes from .git/info/exclude.
+!*.*
+
+# ignore generated binaries and object files
 *.exe
 *.o
 *.so
@@ -58,10 +39,14 @@ a.out
 fns.txt
 .noprefix.vrepl_temp.v
 
+# Prefix local scratch/repro files with tmp. when they should stay untracked.
+tmp.*
+
 # ignore temp and cache directories
 temp/
 tmp/
 cache/
+.cache/
 
 # unignore special files without extension
 !.github/PULL_REQUEST_TEMPLATE
@@ -89,7 +74,6 @@ cache/
 *~
 ~*
 .sesskey
-/tmp*
 *.db
 *.swp
 *.swo
@@ -145,7 +129,7 @@ vls.log
 # ignore v2go tmperror files
 *.tmperr
 
-*/**/tmp.*
+.vtmp_cov_*/
 
 # ignore Intellij files
 .idea/
@@ -185,3 +169,6 @@ issue*
 cmd/v2/*.txt
 cmd/v2/*.json
 .claude/
+.copilot/
+.agents/
+.codex/

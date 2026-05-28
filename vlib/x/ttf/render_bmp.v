@@ -526,8 +526,8 @@ pub fn (mut bmp BitMap) get_chars_bbox(in_string string) []int {
 		bmp.ch_matrix[1] = bmp.tr_matrix[1] * bmp.scale * bmp.scale_x
 		bmp.ch_matrix[3] = bmp.tr_matrix[3] * -bmp.scale * bmp.scale_y
 		bmp.ch_matrix[4] = bmp.tr_matrix[4] * -bmp.scale * bmp.scale_y
-		bmp.ch_matrix[6] = int(x1)
-		bmp.ch_matrix[7] = int(y1)
+		bmp.ch_matrix[6] = f32(x1)
+		bmp.ch_matrix[7] = f32(y1)
 
 		// x_min, x_max, y_min, y_max := bmp.tf.read_glyph_dim(c_index)
 		x_min, x_max, _, _ := bmp.tf.read_glyph_dim(c_index)
@@ -597,8 +597,8 @@ pub fn (mut bmp BitMap) get_bbox(in_string string) (int, int) {
 		bmp.ch_matrix[1] = bmp.tr_matrix[1] * bmp.scale * bmp.scale_x
 		bmp.ch_matrix[3] = bmp.tr_matrix[3] * -bmp.scale * bmp.scale_y
 		bmp.ch_matrix[4] = bmp.tr_matrix[4] * -bmp.scale * bmp.scale_y
-		bmp.ch_matrix[6] = int(x1)
-		bmp.ch_matrix[7] = int(y1)
+		bmp.ch_matrix[6] = f32(x1)
+		bmp.ch_matrix[7] = f32(y1)
 
 		x_min, x_max, _, _ := bmp.tf.read_glyph_dim(c_index)
 		// x_min := 1
@@ -630,8 +630,8 @@ fn (mut bmp BitMap) draw_notdef_glyph(in_x int, in_w int) {
 	bmp.ch_matrix[1] = bmp.tr_matrix[1] * bmp.scale * bmp.scale_x
 	bmp.ch_matrix[3] = bmp.tr_matrix[3] * -bmp.scale * bmp.scale_y
 	bmp.ch_matrix[4] = bmp.tr_matrix[4] * -bmp.scale * bmp.scale_y
-	bmp.ch_matrix[6] = int(x1)
-	bmp.ch_matrix[7] = int(y1)
+	bmp.ch_matrix[6] = f32(x1)
+	bmp.ch_matrix[7] = f32(y1)
 	x, y := bmp.trf_ch(p)
 
 	y_h := math.abs(bmp.tf.y_max - bmp.tf.y_min) * bmp.scale * 0.5
@@ -697,8 +697,8 @@ pub fn (mut bmp BitMap) draw_text(in_string string) (int, int) {
 		bmp.ch_matrix[1] = bmp.tr_matrix[1] * bmp.scale * bmp.scale_x
 		bmp.ch_matrix[3] = bmp.tr_matrix[3] * -bmp.scale * bmp.scale_y
 		bmp.ch_matrix[4] = bmp.tr_matrix[4] * -bmp.scale * bmp.scale_y
-		bmp.ch_matrix[6] = int(x1)
-		bmp.ch_matrix[7] = int(y1)
+		bmp.ch_matrix[6] = f32(x1)
+		bmp.ch_matrix[7] = f32(y1)
 
 		x_min, x_max := bmp.draw_glyph(c_index)
 		// x_min := 1

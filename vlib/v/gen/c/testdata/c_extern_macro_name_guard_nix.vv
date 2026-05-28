@@ -1,0 +1,26 @@
+// vtest vflags: -no-parallel
+// Regression test for https://github.com/vlang/v/issues/27098 .
+// When a C function name (e.g. `WIFSTOPPED` from <sys/wait.h>) is actually
+// a preprocessor macro, V should still be able to emit an `extern` forward
+// declaration without breaking C compilation. The declaration is guarded by
+// `#ifndef`, so the C preprocessor skips it whenever the symbol is a macro.
+
+@[c_extern]
+fn C.WIFSTOPPED(i32) bool
+
+@[c_extern]
+fn C.WCOREDUMP(i32) bool
+
+@[c_extern]
+fn C.WIFCONTINUED(i32) bool
+
+@[c_extern]
+fn C.WSTOPSIG(i32) int
+
+fn main() {
+	x := i32(0)
+	_ = C.WIFSTOPPED(x)
+	_ = C.WCOREDUMP(x)
+	_ = C.WIFCONTINUED(x)
+	_ = C.WSTOPSIG(x)
+}

@@ -31,5 +31,6 @@ fn main() {
 		}
 		u8 {}
 	}
+
 	println('${counter.value} ${arr.len} ${nums.len} ${inc_copy(1)} ${i}')
 }

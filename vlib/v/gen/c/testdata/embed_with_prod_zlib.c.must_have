@@ -1,13 +1,13 @@
 #define _VPROD (1)
 
 // V embedded data:
-static const unsigned char _v_embed_blob_0[142] = {
-0x78,0x01,0x05,0x00,0x41,0x0a,0x84,0x20,0xf0,0xac,0xaf,0x98,0xc3,0xc2,0xea,0x21,
+static const v__embed_file__EmbedFileIndexEntry _v_embed_file_index[2];
+static const unsigned char _v_embed_blob_0[139] = {
+0x78,0x9c,0xd3,0xd7,0x57,0x28,0x2b,0x49,0x2d,0x2e,0x51,0x28,0x4b,0xcb,0x49,0x4c,
 
-const v__embed_file__EmbedFileIndexEntry _v_embed_file_index[] = {
+static const v__embed_file__EmbedFileIndexEntry _v_embed_file_index[2] = {
 	{0, { .str=(byteptr)("embed.vv"), .len=8, .is_lit=1 }, { .str=(byteptr)("zlib"), .len=4, .is_lit=1 }, (byteptr)_v_embed_blob_0},
 	{-1, { .str=(byteptr)(""), .len=0, .is_lit=1 }, { .str=(byteptr)(""), .len=0, .is_lit=1 }, NULL}
-};
 
 typedef struct v__embed_file__EmbedFileData v__embed_file__EmbedFileData;
 typedef struct v__embed_file__EmbedFileIndexEntry v__embed_file__EmbedFileIndexEntry;

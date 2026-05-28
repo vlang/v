@@ -2,6 +2,8 @@ name: C2V apps
 
 on:
   push:
+    branches:
+      - master
     paths-ignore:
       - '**.md'
       - '**.yml'
@@ -32,6 +34,7 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v6
+      - uses: ./.github/actions/cache-apt-packages-action
       - name: Build V
         run: make && ./v symlink
 
@@ -77,6 +80,7 @@ jobs:
       VTMP: /tmp
     steps:
       - uses: actions/checkout@v6
+      - uses: ./.github/actions/cache-apt-packages-action
       - name: Build V
         run: make && ./v symlink
 

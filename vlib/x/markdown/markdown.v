@@ -93,9 +93,9 @@ pub mut:
 	ref_map map[string]LinkRef
 }
 
-// new creates a Markdown processor with the given options.
+// Markdown.new creates a Markdown processor with the given options.
 // All extensions in opts.extensions are applied immediately.
-pub fn new(opts Options) Markdown {
+pub fn Markdown.new(opts Options) Markdown {
 	mut m := Markdown{
 		opts:    opts
 		ref_map: map[string]LinkRef{}
@@ -106,17 +106,16 @@ pub fn new(opts Options) Markdown {
 	return m
 }
 
-// to_html converts the markdown source to HTML using default settings
-// (CommonMark only, no extensions, raw HTML stripped).
-pub fn to_html(src string) string {
-	mut md := new(Options{})
+// to_html converts the markdown source to HTML with the given options.
+pub fn to_html(src string, opts Options) string {
+	mut md := Markdown.new(opts)
 	return md.convert(src)
 }
 
-// to_html_opts converts the markdown source to HTML with the given options.
-pub fn to_html_opts(src string, opts Options) string {
-	mut md := new(opts)
-	return md.convert(src)
+// to_plaintext converts the markdown source to UTF-8 plain text with the given options.
+pub fn to_plaintext(src string, opts Options) string {
+	mut md := Markdown.new(opts)
+	return md.convert_plaintext(src)
 }
 
 // convert parses the markdown source and renders it to an HTML string.
@@ -129,11 +128,21 @@ pub fn (mut m Markdown) convert(src string) string {
 	return r.render(doc)
 }
 
+// convert_plaintext parses the markdown source and renders it to UTF-8 plain text.
+pub fn (mut m Markdown) convert_plaintext(src string) string {
+	doc := m.parse(src)
+	mut r := PlainTextRenderer{
+		opts:    m.opts
+		ref_map: m.ref_map
+	}
+	return r.render(doc)
+}
+
 // parse parses the markdown source into an AST and returns the document root.
 // Link reference definitions collected during parsing are cached so that
 // subsequent parse/convert calls on the same Markdown instance share them.
 pub fn (mut m Markdown) parse(src string) &Node {
-	mut p := new_block_parser(src, m.opts, m.ref_map)
+	mut p := BlockParser.new(src, m.opts, m.ref_map)
 	doc := p.parse()
 	for k, v in p.ref_map {
 		m.ref_map[k] = v

@@ -3,6 +3,8 @@ name: CI Linux
 on:
   workflow_dispatch:
   push:
+    branches:
+      - master
     paths-ignore:
       - '**.md'
       - '**.yml'
@@ -32,6 +34,7 @@ jobs:
       VTEST_SHOW_LONGEST_BY_TOTALTIME: 3
     steps:
       - uses: actions/checkout@v6
+      - uses: ./.github/actions/cache-apt-packages-action
       - name: Build v
         run: make -j4 && ./v symlink
       - name: Build v with -prealloc
@@ -90,6 +93,7 @@ jobs:
       VTEST_SHOW_LONGEST_BY_TOTALTIME: 3
     steps:
       - uses: actions/checkout@v6
+      - uses: ./.github/actions/cache-apt-packages-action
       - name: Build V
         run: make -j4 && ./v symlink
       - name: All code is formatted
@@ -143,6 +147,7 @@ jobs:
       VTEST_SHOW_LONGEST_BY_TOTALTIME: 3
     steps:
       - uses: actions/checkout@v6
+      - uses: ./.github/actions/cache-apt-packages-action
       - name: Build V
         run: make -j4 && ./v symlink
       - name: All code is formatted

@@ -244,7 +244,6 @@ const auto_complete_flags = [
 	'-no-parallel',
 	'-parallel-cc',
 	'-native',
-	'-interpret',
 	'-W',
 	'-w',
 	'-N',

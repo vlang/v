@@ -2,6 +2,8 @@ name: Graphics CI
 
 on:
   push:
+    branches:
+      - master
     paths:
       - 'vlib/**'
       - 'thirdparty/**'
@@ -32,6 +34,7 @@ jobs:
     steps:
       - name: Checkout V
         uses: actions/checkout@v6
+      - uses: ./.github/actions/cache-apt-packages-action
 
       - name: Build local v
         run: make -j4 && ./v symlink

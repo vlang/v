@@ -183,6 +183,43 @@ fn test_module_resolution_is_independent_of_working_directory() {
 	assert res_app.trim_space() == 'Hello 16!'
 }
 
+fn test_importing_submodule_through_nested_vmod_works_issue_27138() {
+	root := os.join_path(os.vtmp_dir(), 'v_issue_27138_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	os.mkdir_all(os.join_path(root, 'dep', 'mymod'))!
+	os.write_file(os.join_path(root, 'v.mod'), "Module {\n\tname: 'bug_project'\n}\n")!
+	os.write_file(os.join_path(root, 'dep', 'v.mod'), "Module {\n\tname: 'dep'\n}\n")!
+	os.write_file(os.join_path(root, 'dep', 'mymod', 'types.v'),
+		"module mymod\n\npub enum Color {\n\tred\n\tgreen\n}\n\npub fn color_name(c Color) string {\n\treturn match c {\n\t\t.red { 'red' }\n\t\t.green { 'green' }\n\t}\n}\n")!
+	os.write_file(os.join_path(root, 'main.v'),
+		'module main\n\nimport dep.mymod\n\nfn main() {\n\tprintln(mymod.color_name(mymod.Color.red))\n}\n')!
+	res := vrun_ok_in_dir(root, 'run', '.')
+	assert res.trim_space() == 'red'
+}
+
+fn test_running_project_from_its_own_vmod_with_parent_vmod_works_issue_26828() {
+	root := os.join_path(os.vtmp_dir(), 'v_issue_26828_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	project_root := os.join_path(root, 'outer')
+	module_root := os.join_path(project_root, 'cli004')
+	os.mkdir_all(os.join_path(module_root, 'sub'))!
+	os.write_file(os.join_path(project_root, 'v.mod'), "Module {\n\tname: 'outer'\n}\n")!
+	os.write_file(os.join_path(module_root, 'v.mod'), "Module {\n\tname: 'cli004'\n}\n")!
+	os.write_file(os.join_path(module_root, 'cli004.v'),
+		'module main\n\nimport sub\n\nfn main() {\n\tsub.greetings()\n}\n')!
+	os.write_file(os.join_path(module_root, 'sub', 'hey.v'),
+		"module sub\n\npub fn greetings() {\n\tprintln('greetings from sub')\n}\n")!
+
+	res := vrun_ok_in_dir(module_root, 'crun', '.')
+	assert res.trim_space() == 'greetings from sub'
+}
+
 fn test_custom_print_should_compile_with_no_builtin() {
 	source_path := os.join_path(os.vtmp_dir(), 'custom_print_no_builtin_${os.getpid()}.v')
 	output_path := os.join_path(os.vtmp_dir(), 'custom_print_no_builtin_${os.getpid()}.c')
@@ -263,6 +300,78 @@ fn test_sync_waitgroup_should_check_for_windows() {
 		'\twg.add(1)',
 		'\twg.done()',
 		'\twg.wait()',
+		'}',
+	].join_lines()
+	write_file(source_path, source)
+	defer {
+		os.rm(source_path) or {}
+	}
+	_ = vrun_ok('-os windows -check', source_path)
+}
+
+fn test_usecache_build_module_sumtype_uses_canonical_type_id_helper() {
+	root := os.join_path(os.vtmp_dir(), 'usecache_sumtype_cross_module_${os.getpid()}')
+	cache_dir := os.join_path(root, '.cache')
+	vtmp_dir := os.join_path(root, '.vtmp')
+	os.rmdir_all(root) or {}
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	os.mkdir_all(os.join_path(root, 'payload'))!
+	os.mkdir_all(os.join_path(root, 'maker'))!
+	os.mkdir_all(vtmp_dir)!
+	write_file(os.join_path(root, 'v.mod'), "Module {\n\tname: 'ucsmt'\n}\n")
+	write_file(os.join_path(root, 'payload', 'payload.v'),
+		'module payload\n\npub struct Foo {\n\tpub:\n\t\tn int\n}\n\npub struct Bar {\n\tpub:\n\t\ts string\n}\n\npub type Value = Foo | Bar\n')
+	write_file(os.join_path(root, 'maker', 'maker.v'),
+		'module maker\n\nimport payload\n\npub fn make() payload.Value {\n\treturn payload.Value(payload.Foo{n: 42})\n}\n')
+	old_vcache := os.getenv_opt('VCACHE') or { '' }
+	old_vtmp := os.getenv_opt('VTMP') or { '' }
+	os.setenv('VCACHE', cache_dir, true)
+	os.setenv('VTMP', vtmp_dir, true)
+	defer {
+		if old_vcache.len == 0 {
+			os.unsetenv('VCACHE')
+		} else {
+			os.setenv('VCACHE', old_vcache, true)
+		}
+		if old_vtmp.len == 0 {
+			os.unsetenv('VTMP')
+		} else {
+			os.setenv('VTMP', old_vtmp, true)
+		}
+	}
+	mut p := os.new_process(@VEXE)
+	p.set_work_folder(root)
+	p.set_args(['-keepc', 'build-module', 'maker'])
+	p.set_redirect_stdio()
+	p.wait()
+	stdout := p.stdout_slurp()
+	stderr := p.stderr_slurp()
+	exit_code := p.code
+	p.close()
+	assert exit_code == 0, '${stdout}${stderr}'
+	generated_c_path := os.join_path(vtmp_dir, 'maker.tmp.c')
+	assert os.exists(generated_c_path)
+	generated_c := os.read_file(generated_c_path)!
+	assert generated_c.contains('payload__Foo_to_sumtype_payload__Value(payload__Foo* x, bool is_mut)')
+	assert generated_c.contains('._typ = _v_type_idx_payload__Foo()')
+}
+
+fn test_readline_raw_mode_methods_should_check_for_windows() {
+	source_path := os.join_path(os.vtmp_dir(), 'readline_raw_mode_issue_24686_${os.getpid()}.v')
+	source := [
+		'module main',
+		'',
+		'import readline',
+		'',
+		'fn main() {',
+		'\tmut r := readline.Readline{}',
+		'\tr.enable_raw_mode()',
+		'\tr.disable_raw_mode()',
+		'\tr.enable_raw_mode_nosig()',
+		'\tprintln(r.read_char()!)',
+		'\tr.disable_raw_mode()',
 		'}',
 	].join_lines()
 	write_file(source_path, source)

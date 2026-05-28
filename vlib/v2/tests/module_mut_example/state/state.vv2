@@ -1,0 +1,19 @@
+module state
+
+pub struct Counter {
+pub module_mut:
+	value int
+pub mut:
+	label string
+}
+
+pub fn new_counter(label string) Counter {
+	return Counter{
+		label: label
+	}
+}
+
+pub fn (mut c Counter) inc() int {
+	c.value++
+	return c.value
+}

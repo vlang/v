@@ -89,7 +89,12 @@ fn (mut g Gen) spawn_and_go_expr(node ast.SpawnExpr, mode SpawnGoMode) {
 	wrapper_fn_name := name + '_thread_wrapper'
 	arg_tmp_var := 'arg_' + tmp
 	if is_spawn {
-		g.writeln('${wrapper_struct_name} *${arg_tmp_var} = (${wrapper_struct_name} *) builtin___v_malloc(sizeof(thread_arg_${name}));')
+		if g.pref.prealloc {
+			g.writeln('${wrapper_struct_name} *${arg_tmp_var} = (${wrapper_struct_name} *) malloc(sizeof(thread_arg_${name}));')
+			g.writeln('if (${arg_tmp_var} == NULL) builtin___v_panic(_S("thread argument allocation failed"));')
+		} else {
+			g.writeln('${wrapper_struct_name} *${arg_tmp_var} = (${wrapper_struct_name} *) builtin___v_malloc(sizeof(thread_arg_${name}));')
+		}
 	} else if is_go {
 		g.writeln('${wrapper_struct_name} ${arg_tmp_var};')
 	}
@@ -127,6 +132,9 @@ fn (mut g Gen) spawn_and_go_expr(node ast.SpawnExpr, mode SpawnGoMode) {
 		g.expr(arg.expr)
 		g.writeln(';')
 	}
+	if is_spawn && g.pref.prealloc {
+		g.writeln('${arg_tmp_var}->prealloc_scope = builtin__prealloc_scope_retain_current();')
+	}
 	call_ret_type := if expr.is_fn_var && g.cur_fn != unsafe { nil } && g.cur_concrete_types.len > 0
 		&& g.cur_fn.generic_names.len > 0 {
 		// In generic contexts, node.call_expr.return_type may be stale from
@@ -157,7 +165,12 @@ fn (mut g Gen) spawn_and_go_expr(node ast.SpawnExpr, mode SpawnGoMode) {
 	}
 	s_ret_typ := g.styp(g.unwrap_generic(call_ret_type))
 	if g.pref.os == .windows && call_ret_type != ast.void_type {
-		g.writeln('${arg_tmp_var}->ret_ptr = (void *) builtin___v_malloc(sizeof(${s_ret_typ}));')
+		if g.pref.prealloc {
+			g.writeln('${arg_tmp_var}->ret_ptr = (void *) malloc(sizeof(${s_ret_typ}));')
+			g.writeln('if (${arg_tmp_var}->ret_ptr == NULL) builtin___v_panic(_S("thread return allocation failed"));')
+		} else {
+			g.writeln('${arg_tmp_var}->ret_ptr = (void *) builtin___v_malloc(sizeof(${s_ret_typ}));')
+		}
 	}
 	gohandle_name := g.gen_gohandle_name(call_ret_type)
 	if is_spawn {
@@ -336,6 +349,9 @@ fn (mut g Gen) spawn_and_go_expr(node ast.SpawnExpr, mode SpawnGoMode) {
 				g.type_definitions.writeln('\t${styp} arg${i + 1};')
 			}
 		}
+		if is_spawn && g.pref.prealloc {
+			g.type_definitions.writeln('\tvoid* prealloc_scope;')
+		}
 		if need_return_ptr {
 			g.type_definitions.writeln('\tvoid* ret_ptr;')
 		}
@@ -343,11 +359,19 @@ fn (mut g Gen) spawn_and_go_expr(node ast.SpawnExpr, mode SpawnGoMode) {
 		thread_ret_type := if g.pref.os == .windows { 'u32' } else { 'void*' }
 		g.waiter_fn_definitions.writeln('${g.static_non_parallel}${thread_ret_type} ${wrapper_fn_name}(${wrapper_struct_name} *arg);')
 		g.gowrappers.writeln('${thread_ret_type} ${wrapper_fn_name}(${wrapper_struct_name} *arg) {')
+		if is_spawn && g.pref.prealloc && wrapper_return_type == ast.void_type {
+			g.gowrappers.writeln('\tvoid* thread_prealloc_scope = builtin__prealloc_scope_begin();')
+		}
 		if wrapper_return_type != ast.void_type {
 			if g.pref.os == .windows {
 				g.gowrappers.write_string('\t*((${wrapper_s_ret_typ}*)(arg->ret_ptr)) = ')
 			} else {
-				g.gowrappers.writeln('\t${wrapper_s_ret_typ}* ret_ptr = (${wrapper_s_ret_typ}*) builtin___v_malloc(sizeof(${wrapper_s_ret_typ}));')
+				if g.pref.prealloc {
+					g.gowrappers.writeln('\t${wrapper_s_ret_typ}* ret_ptr = (${wrapper_s_ret_typ}*) malloc(sizeof(${wrapper_s_ret_typ}));')
+					g.gowrappers.writeln('\tif (ret_ptr == NULL) builtin___v_panic(_S("thread return allocation failed"));')
+				} else {
+					g.gowrappers.writeln('\t${wrapper_s_ret_typ}* ret_ptr = (${wrapper_s_ret_typ}*) builtin___v_malloc(sizeof(${wrapper_s_ret_typ}));')
+				}
 				$if tinyc && arm64 {
 					g.gowrappers.write_string('\t${wrapper_s_ret_typ} tcc_bug_tmp_var = ')
 				} $else {
@@ -445,8 +469,18 @@ fn (mut g Gen) spawn_and_go_expr(node ast.SpawnExpr, mode SpawnGoMode) {
 				g.gowrappers.writeln('\t*ret_ptr = tcc_bug_tmp_var;')
 			}
 		}
+		if is_spawn && g.pref.prealloc {
+			if wrapper_return_type == ast.void_type {
+				g.gowrappers.writeln('\tbuiltin__prealloc_scope_end(thread_prealloc_scope);')
+			}
+			g.gowrappers.writeln('\tbuiltin__prealloc_scope_release(arg->prealloc_scope);')
+		}
 		if is_spawn {
-			g.gowrappers.writeln('\tbuiltin___v_free(arg);')
+			if g.pref.prealloc {
+				g.gowrappers.writeln('\tfree(arg);')
+			} else {
+				g.gowrappers.writeln('\tbuiltin___v_free(arg);')
+			}
 		}
 		if g.pref.os != .windows && wrapper_return_type != ast.void_type {
 			g.gowrappers.writeln('\treturn ret_ptr;')
@@ -535,7 +569,11 @@ fn (mut g Gen) create_waiter_handler(call_ret_type ast.Type, s_ret_typ string, g
 	}
 	if call_ret_type != ast.void_type {
 		g.gowrappers.writeln('\t${s_ret_typ} ret = *ret_ptr;')
-		g.gowrappers.writeln('\tbuiltin___v_free(ret_ptr);')
+		if g.pref.prealloc {
+			g.gowrappers.writeln('\tfree(ret_ptr);')
+		} else {
+			g.gowrappers.writeln('\tbuiltin___v_free(ret_ptr);')
+		}
 		g.gowrappers.writeln('\treturn ret;')
 	}
 	g.gowrappers.writeln('}')

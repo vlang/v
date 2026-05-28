@@ -657,12 +657,12 @@ fn channel_select_priv(mut channels []&Channel, dir []Direction, mut objrefs []v
 				num_closed++
 			}
 		}
-		if num_closed == channels.len {
-			event_idx = -2
-			break outer
-		}
 		if ready_closed_idx >= 0 {
 			event_idx = ready_closed_idx
+			break outer
+		}
+		if num_closed == channels.len {
+			event_idx = -2
 			break outer
 		}
 		if timeout <= 0 {

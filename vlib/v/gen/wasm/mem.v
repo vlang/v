@@ -900,7 +900,7 @@ pub fn (mut g Gen) housekeeping() {
 		g.mod.assign_global_init(hp, wasm.constexpr_value(heap_base))
 	}
 
-	if g.pref.os == .wasi {
+	if g.pref.os == .wasi && !g.pref.is_shared {
 		mut fn_start := g.mod.new_function('_start', [], [])
 		{
 			fn_start.call('_vinit')

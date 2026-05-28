@@ -69,12 +69,12 @@ pub fn (app &App) early(mut ctx Context) veb.Result {
 	return ctx.html(base)
 }
 
-fn other_func1(mut ctx Context) bool {
+fn other_func1(mut _ Context) bool {
 	println('1')
 	return true
 }
 
-fn other_func2(mut ctx Context) bool {
+fn other_func2(mut _ Context) bool {
 	println('2')
 	return true
 }

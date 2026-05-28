@@ -410,8 +410,8 @@ fn split_by_scheme(rawurl string) ![]string {
 }
 
 fn get_scheme(rawurl string) !string {
-	split := split_by_scheme(rawurl) or { return err.msg() }
-	return split[0]
+	parts := split_by_scheme(rawurl) or { return err.msg() }
+	return parts[0]
 }
 
 // split slices s into two substrings separated by the first occurrence of
@@ -713,13 +713,13 @@ pub fn (u URL) str() string {
 	if u.opaque != '' {
 		buf.write_string(u.opaque)
 	} else {
-		user := u.user or { Userinfo{} }
-		if u.scheme != '' || u.host != '' || !user.empty() {
-			if u.host != '' || u.path != '' || !user.empty() {
+		userinfo := u.user or { Userinfo{} }
+		if u.scheme != '' || u.host != '' || !userinfo.empty() {
+			if u.host != '' || u.path != '' || !userinfo.empty() {
 				buf.write_string('//')
 			}
-			if !user.empty() {
-				buf.write_string(user.str())
+			if !userinfo.empty() {
+				buf.write_string(userinfo.str())
 				buf.write_string('@')
 			}
 			if u.host != '' {

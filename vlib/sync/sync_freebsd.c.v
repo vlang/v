@@ -12,6 +12,10 @@ $if !android {
 }
 
 #include <semaphore.h>
+#include <pthread_np.h>
+#include <errno.h>
+
+fn C.pthread_getthreadid_np() i32
 
 @[trusted]
 fn C.pthread_mutex_init(voidptr, voidptr) i32
@@ -56,6 +60,7 @@ pub struct Mutex {
 pub struct RwMutex {
 	mutex  &C.pthread_rwlock = unsafe { nil }
 	inited u32
+	writer u32 // tid of current write-lock holder, 0 when none; used for self-deadlock detection
 }
 
 struct RwMutexAttr {
@@ -149,6 +154,12 @@ pub fn (mut m Mutex) destroy() {
 @[inline]
 pub fn (mut m RwMutex) rlock() {
 	m.lazy_init()
+	// FreeBSD libthr does not return EDEADLK on self-deadlock, it hangs forever.
+	// Match the Linux glibc nonrecursive-writer behavior by failing fast.
+	tid := u32(C.pthread_getthreadid_np())
+	if C.atomic_load_u32(&m.writer) == tid {
+		cpanic(C.EDEADLK)
+	}
 	should_be_zero(C.pthread_rwlock_rdlock(&m.mutex))
 }
 
@@ -161,7 +172,12 @@ pub fn (mut m RwMutex) rlock() {
 @[inline]
 pub fn (mut m RwMutex) lock() {
 	m.lazy_init()
+	tid := u32(C.pthread_getthreadid_np())
+	if C.atomic_load_u32(&m.writer) == tid {
+		cpanic(C.EDEADLK)
+	}
 	should_be_zero(C.pthread_rwlock_wrlock(&m.mutex))
+	C.atomic_store_u32(&m.writer, tid)
 }
 
 // try_rlock try to lock the given RwMutex instance for reading and return immediately.
@@ -175,7 +191,11 @@ pub fn (mut m RwMutex) try_rlock() bool {
 // If the mutex was already locked, it will return false.
 @[inline]
 pub fn (mut m RwMutex) try_wlock() bool {
-	return C.pthread_rwlock_trywrlock(&m.mutex) == 0
+	if C.pthread_rwlock_trywrlock(&m.mutex) == 0 {
+		C.atomic_store_u32(&m.writer, u32(C.pthread_getthreadid_np()))
+		return true
+	}
+	return false
 }
 
 // destroy frees the resources associated with the rwmutex instance.
@@ -201,6 +221,7 @@ pub fn (mut m RwMutex) runlock() {
 // on !windows platforms.
 @[inline]
 pub fn (mut m RwMutex) unlock() {
+	C.atomic_store_u32(&m.writer, 0)
 	C.pthread_rwlock_unlock(&m.mutex)
 }
 

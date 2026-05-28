@@ -27,6 +27,8 @@ const missing_libatomic_markers = [
 	'library not found for -latomic',
 	'cannot find libatomic',
 ]!
+const max_cross_sysroot_git_symlink_depth = 32
+const max_cross_sysroot_git_symlink_placeholder_size = 256
 
 fn live_windows_import_lib_path(source_path string) string {
 	cache_dir := os.join_path(os.cache_dir(), 'v', 'live')
@@ -80,6 +82,15 @@ fn c_output_suggests_missing_header_for_typedef_c_struct(c_output string, known_
 				|| lower_line.contains('does not name a type')) {
 				return known_typedef_c_struct_aliases[name]
 			}
+			if name.contains('__')
+				&& (lower_line.contains('expected (got') || lower_line.contains('unknown type name')
+				|| lower_line.contains('undeclared identifier')
+				|| lower_line.contains('does not name a type')) {
+				suffix := name.all_after_last('__')
+				if suffix in known_typedef_c_structs {
+					return suffix
+				}
+			}
 		}
 	}
 	return ''
@@ -97,6 +108,11 @@ fn c_output_suggests_missing_typedef_for_c_struct(c_output string, known_non_typ
 			continue
 		}
 		lower_line := line.to_lower()
+		if lower_line.contains('has no member named') && (lower_line.contains("aka 'struct ")
+			|| lower_line.contains('aka `struct ')
+			|| lower_line.contains('aka "struct ')) {
+			return name
+		}
 		if lower_line.contains('forward declaration of') {
 			if name in incomplete {
 				return name
@@ -254,7 +270,7 @@ fn c_error_missing_library_name(c_output string) string {
 		] {
 			if line.contains(marker) {
 				lib_name := line.all_after(marker).trim_space()
-				return lib_name.all_before('`').all_before("'").all_before('"').all_before(' ')
+				return lib_name.all_before('`').all_before("'").all_before('"').all_before(' ').all_before(':')
 			}
 		}
 	}
@@ -270,7 +286,35 @@ fn (mut v Builder) show_c_compiler_output(ccompiler string, res os.Result) {
 	println('='.repeat(header.len))
 }
 
+struct CCompilerFailureOutput {
+	display_ccompiler string
+	display_res       os.Result
+	report_ccompiler  string
+	report_res        os.Result
+}
+
+fn c_compiler_failure_output(ccompiler string, res os.Result, tcc_output os.Result) CCompilerFailureOutput {
+	if res.exit_code != 0 && tcc_output.output != '' {
+		return CCompilerFailureOutput{
+			display_ccompiler: 'tcc'
+			display_res:       tcc_output
+			report_ccompiler:  ccompiler
+			report_res:        res
+		}
+	}
+	return CCompilerFailureOutput{
+		display_ccompiler: ccompiler
+		display_res:       res
+		report_ccompiler:  ccompiler
+		report_res:        res
+	}
+}
+
 fn (mut v Builder) post_process_c_compiler_output(ccompiler string, res os.Result) {
+	v.post_process_c_compiler_output_with_report(ccompiler, res, ccompiler, res)
+}
+
+fn (mut v Builder) post_process_c_compiler_output_with_report(ccompiler string, res os.Result, report_ccompiler string, report_res os.Result) {
 	if res.exit_code == 0 {
 		if v.pref.reuse_tmpc {
 			return
@@ -344,6 +388,7 @@ fn (mut v Builder) post_process_c_compiler_output(ccompiler string, res os.Resul
 			}
 		}
 	}
+	v.submit_c_error_bug_report(report_ccompiler, report_res.output)
 	if v.pref.is_quiet {
 		exit(1)
 	}
@@ -470,6 +515,21 @@ fn ccompiler_type_from_name(ccompiler string) ?pref.CompilerType {
 	return if ok { resolved } else { none }
 }
 
+fn ccompiler_type_from_resolved_path(ccompiler string) ?pref.CompilerType {
+	ccompiler_path := if os.exists(ccompiler) {
+		ccompiler
+	} else {
+		os.find_abs_path_of_executable(ccompiler) or { return none }
+	}
+	$if macos {
+		if ccompiler_path == '/usr/bin/cc' {
+			return pref.CompilerType.clang
+		}
+	}
+	resolved, ok := ccompiler_type_from_name_with_ok(os.real_path(ccompiler_path))
+	return if ok { resolved } else { none }
+}
+
 fn ccompiler_type_from_version_output_with_ok(output string) (pref.CompilerType, bool) {
 	if output == '' {
 		return pref.CompilerType.tinyc, false
@@ -505,6 +565,9 @@ fn resolve_ccompiler_type(ccompiler string, fallback pref.CompilerType) pref.Com
 	if name_ok {
 		return resolved_by_name
 	}
+	if resolved_by_path := ccompiler_type_from_resolved_path(ccompiler) {
+		return resolved_by_path
+	}
 	quoted_ccompiler := os.quoted_path(ccompiler)
 	for version_flag in ['--version', '-v'] {
 		res := os.execute('${quoted_ccompiler} ${version_flag} 2>&1')
@@ -514,6 +577,17 @@ fn resolve_ccompiler_type(ccompiler string, fallback pref.CompilerType) pref.Com
 		}
 	}
 	return fallback
+}
+
+fn darwin_target_arch_name(arch pref.Arch) string {
+	return match arch {
+		.amd64 { 'x86_64' }
+		.arm64 { 'arm64' }
+		.i386 { 'i386' }
+		.ppc { 'ppc' }
+		.ppc64 { 'ppc64' }
+		else { '' }
+	}
 }
 
 fn cc_from_pref_ccompiler_type(cc_type pref.CompilerType) CC {
@@ -574,6 +648,12 @@ fn (mut v Builder) setup_ccompiler_options(ccompiler string) {
 		if os.uname().machine == 'Power Macintosh' {
 			user_darwin_ppc = true
 		}
+
+		// Mac OS 10.4 and older requires Macports legacy software to build programs
+		if user_darwin_version <= 8 {
+			ccoptions.args << '-I' + @VEXEROOT + '/thirdparty/legacy/include/LegacySupport/'
+			ccoptions.args << @VEXEROOT + '/thirdparty/legacy/lib/libMacportsLegacySupport.a'
+		}
 	}
 	ccoptions.debug_mode = v.pref.is_debug
 	ccoptions.guessed_compiler = v.pref.ccompiler
@@ -586,6 +666,13 @@ fn (mut v Builder) setup_ccompiler_options(ccompiler string) {
 	}
 	if ccoptions.cc == .unknown {
 		eprintln('Compilation with unknown C compiler `${cc_file_name}`')
+	}
+	if v.pref.os == .macos && ccoptions.cc != .tcc {
+		// tcc does not understand -arch; it only targets the host arch.
+		darwin_target_arch := darwin_target_arch_name(v.pref.arch)
+		if darwin_target_arch != '' {
+			ccoptions.args << ['-arch', darwin_target_arch]
+		}
 	}
 
 	// Add -fwrapv to handle UB overflows
@@ -718,11 +805,29 @@ fn (mut v Builder) setup_ccompiler_options(ccompiler string) {
 		$if !windows {
 			ccoptions.args << '-fPIC' // -Wl,-z,defs'
 		}
+		// Default to hidden symbol visibility for shared libraries, so only
+		// functions/globals tagged with `@[export: '…']` (which emit `VV_EXP`
+		// = `__attribute__((visibility("default")))`) end up in the ABI.
+		// Without this, every C symbol from the V runtime + stdlib is exported.
+		// Windows uses `__declspec(dllexport)` and the linker only exports
+		// tagged symbols, so the flag is unnecessary there.
+		// `-sharedlive` is skipped: live reload resolves `impl_live_*` symbols
+		// via `dlsym` from the host process, and those are emitted without
+		// `VV_EXP` on non-Windows (see vlib/v/gen/c/fn.v).
+		if !v.pref.is_liveshared && v.pref.os !in [.windows, .wasm32] && ccoptions.cc != .msvc {
+			ccoptions.args << '-fvisibility=hidden'
+		}
 		if v.pref.os == .linux && 'gcboehm' in v.pref.compile_defines_all {
 			// Keep shared-library GC symbols bound to the shared object itself.
 			// This avoids cross-DSO symbol interposition between multiple V binaries
 			// in one process (for example, host executable + loaded V plugin).
 			ccoptions.linker_flags << '-Wl,-Bsymbolic'
+			if ccoptions.cc != .tcc {
+				// Do not leak symbols from the statically linked libgc archive into
+				// the shared library ABI. Only functions explicitly tagged with
+				// @[export] should be visible.
+				ccoptions.linker_flags << '-Wl,--exclude-libs,ALL'
+			}
 		}
 	}
 	if v.pref.is_bare && v.pref.os != .wasm32 {
@@ -788,7 +893,9 @@ fn (mut v Builder) setup_ccompiler_options(ccompiler string) {
 				ccoptions.args << 'dynamic_lookup'
 			}
 		}
-		if v.pref.os == .windows && ccoptions.cc != .msvc {
+		if v.pref.os == .windows && ccoptions.cc !in [.msvc, .tcc] {
+			// tcc on Windows lacks `--out-implib` and `--export-all-symbols` support, so
+			// hot-reload examples skip the host-symbol export plumbing under tcc.
 			host_import_lib := v.tcc_quoted_path(live_windows_import_lib_path(v.pref.path))
 			if v.pref.is_livemain {
 				// Re-export host graphics/backend symbols so the live-reload DLL can reuse them.
@@ -807,6 +914,13 @@ fn (mut v Builder) setup_ccompiler_options(ccompiler string) {
 		if ccoptions.cc != .tcc && !user_darwin_ppc && !v.pref.is_bare && ccompiler != 'musl-gcc' {
 			ccoptions.source_args << '-x objective-c'
 		}
+	}
+	// Newer Windows runner images can surface short paths with an uppercase `.C` suffix,
+	// which makes GCC/Clang compile the generated V C file as C++ unless we force C mode.
+	force_generated_c_language := v.pref.os == .windows && !v.pref.parallel_cc
+		&& ccoptions.cc in [.gcc, .clang, .emcc]
+	if force_generated_c_language {
+		ccoptions.source_args << '-x c'
 	}
 	// The C file we are compiling
 	if !v.pref.parallel_cc { // parallel_cc uses its own split up c files
@@ -840,7 +954,7 @@ fn (mut v Builder) setup_ccompiler_options(ccompiler string) {
 	], false))
 	cflags := v.get_os_cflags()
 
-	if v.pref.build_mode != .build_module {
+	if v.pref.build_mode != .build_module && !v.pref.is_o {
 		only_o_files := cflags.c_options_only_object_files()
 		ccoptions.o_args << only_o_files
 	}
@@ -849,6 +963,7 @@ fn (mut v Builder) setup_ccompiler_options(ccompiler string) {
 	ccoptions.pre_args << defines
 	ccoptions.pre_args << others
 	ccoptions.linker_flags << libs
+	v.fixup_tcc_macos_comma_path_flags(mut ccoptions)
 	if v.pref.use_cache && v.pref.build_mode != .build_module {
 		if ccoptions.cc != .tcc {
 			$if linux {
@@ -1522,16 +1637,13 @@ pub fn (mut v Builder) cc() {
 					missing_compiler_info())
 			}
 		}
-		if !v.pref.show_c_output {
-			// if tcc failed once, and the system C compiler has failed as well,
-			// print the tcc error instead since it may contain more useful information
-			// see https://discord.com/channels/592103645835821068/592115457029308427/811956304314761228
-			if res.exit_code != 0 && tcc_output.output != '' {
-				v.post_process_c_compiler_output('tcc', tcc_output)
-			} else {
-				v.post_process_c_compiler_output(ccompiler, res)
-			}
-		}
+		// If tcc failed once, and the system C compiler has failed as well,
+		// print the tcc error instead since it may contain more useful information.
+		// Keep the uploaded bug report tied to the final compiler result.
+		// See https://discord.com/channels/592103645835821068/592115457029308427/811956304314761228
+		failure_output := c_compiler_failure_output(ccompiler, res, tcc_output)
+		v.post_process_c_compiler_output_with_report(failure_output.display_ccompiler,
+			failure_output.display_res, failure_output.report_ccompiler, failure_output.report_res)
 		// Print the C command
 		if v.pref.is_verbose {
 			println('${ccompiler}')
@@ -1588,6 +1700,13 @@ fn (mut b Builder) ensure_linuxroot_exists(sysroot string) {
 		}
 		os.chmod(os.join_path(sysroot, 'ld.lld'), 0o755) or { panic(err) }
 	}
+	repaired := repair_cross_sysroot_git_symlink_placeholders(sysroot) or {
+		verror('Failed to repair `${sysroot}` symlink placeholders: ${err}')
+		return
+	}
+	if repaired > 0 {
+		println('Materialized ${repaired} Git symlink placeholder files in ${os.quoted_path(sysroot)}.')
+	}
 }
 
 fn (mut b Builder) ensure_freebsdroot_exists(sysroot string) {
@@ -1603,6 +1722,135 @@ fn (mut b Builder) ensure_freebsdroot_exists(sysroot string) {
 		if !os.exists(sysroot_git_config_path) {
 			verror('Failed to clone `${crossrepo_url}` to `${sysroot}`')
 		}
+	}
+	repaired := repair_cross_sysroot_git_symlink_placeholders(sysroot) or {
+		verror('Failed to repair `${sysroot}` symlink placeholders: ${err}')
+		return
+	}
+	if repaired > 0 {
+		println('Materialized ${repaired} Git symlink placeholder files in ${os.quoted_path(sysroot)}.')
+	}
+}
+
+fn git_repo_tracked_symlink_paths(repo string) ![]string {
+	git_cmd := 'git -C ${os.quoted_path(repo)} ls-files -s'
+	res := os.execute(git_cmd)
+	if res.exit_code != 0 {
+		return error('`${git_cmd}` failed: ${res.output.trim_space()}')
+	}
+	mut paths := []string{}
+	for line in res.output.split_into_lines() {
+		if !line.starts_with('120000 ') || line.index_u8(`\t`) == -1 {
+			continue
+		}
+		paths << line.all_after('\t')
+	}
+	return paths
+}
+
+fn normalize_git_symlink_target_path(path string, raw_target string) ?string {
+	target := raw_target.trim_space()
+	if target == '' || target.index_u8(`\n`) != -1 || target.index_u8(`\r`) != -1
+		|| target.index_u8(`\t`) != -1 {
+		return none
+	}
+	resolved := if os.is_abs_path(target) {
+		os.norm_path(target)
+	} else {
+		os.norm_path(os.join_path(os.dir(path), target))
+	}
+	if !os.exists(resolved) || os.is_dir(resolved) {
+		return none
+	}
+	return resolved
+}
+
+fn git_symlink_target_path(path string) ?string {
+	if os.is_link(path) {
+		raw_target := os.readlink(path) or { return none }
+		return normalize_git_symlink_target_path(path, raw_target)
+	}
+	if !os.is_file(path) || os.file_size(path) > max_cross_sysroot_git_symlink_placeholder_size {
+		return none
+	}
+	raw_target := os.read_file(path) or { return none }
+	if raw_target.index_u8(0) != -1 {
+		return none
+	}
+	return normalize_git_symlink_target_path(path, raw_target)
+}
+
+fn git_symlink_materialization_source(path string) ?string {
+	mut current := path
+	mut seen := map[string]bool{}
+	for _ in 0 .. max_cross_sysroot_git_symlink_depth {
+		if current in seen {
+			return none
+		}
+		seen[current] = true
+		next := git_symlink_target_path(current) or {
+			if current != path && os.is_file(current) {
+				return current
+			}
+			return none
+		}
+		current = next
+	}
+	return none
+}
+
+fn materialize_git_symlink_placeholder(path string, source string) ! {
+	tmp_path := '${path}.v_symlink_fix_tmp'
+	os.rm(tmp_path) or {}
+	os.cp(source, tmp_path)!
+	os.rm(path)!
+	os.mv(tmp_path, path)!
+}
+
+fn repair_cross_sysroot_git_symlink_placeholders_in_paths(paths []string, strict bool) !int {
+	mut repaired := 0
+	for path in paths {
+		if os.is_link(path) || !os.is_file(path) {
+			continue
+		}
+		source := git_symlink_materialization_source(path) or {
+			if strict {
+				return error('`${path}` is tracked as a symlink in the cross-compilation sysroot, but its target could not be resolved')
+			}
+			continue
+		}
+		if source == path {
+			continue
+		}
+		materialize_git_symlink_placeholder(path, source)!
+		repaired++
+	}
+	return repaired
+}
+
+// Git on Windows can check symlinks out as tiny text files instead of real links.
+fn repair_cross_sysroot_git_symlink_placeholders(sysroot string) !int {
+	if !os.is_dir(sysroot) {
+		return 0
+	}
+	if tracked_paths := git_repo_tracked_symlink_paths(sysroot) {
+		mut candidates := []string{cap: tracked_paths.len}
+		for rel_path in tracked_paths {
+			candidates << os.join_path(sysroot, rel_path)
+		}
+		return repair_cross_sysroot_git_symlink_placeholders_in_paths(candidates, true)
+	} else {
+		mut fallback_candidates := []string{}
+		for path in os.walk_ext(sysroot, '', hidden: false) {
+			if !os.is_file(path) || os.is_link(path) {
+				continue
+			}
+			if os.file_size(path) > max_cross_sysroot_git_symlink_placeholder_size {
+				continue
+			}
+			fallback_candidates << path
+		}
+		return repair_cross_sysroot_git_symlink_placeholders_in_paths(fallback_candidates, false)
 	}
 }
 
@@ -1657,22 +1905,66 @@ fn (mut b Builder) cc_linux_cross() {
 	}
 	cflags := b.get_os_cflags()
 	defines, others, libs := cflags.defines_others_libs()
+	// Some modules pass a raw `#flag /path/to/file.c` to add an additional
+	// source file to the compile step (e.g. gitly's markdown module uses this
+	// for md4c-lib.c). The native build line just appends them to the main
+	// `clang ... main.c` invocation, but the cross-compile path uses
+	// `clang -c <main.c> -o <main.o>`, and clang refuses to combine `-c` with
+	// multiple inputs ("cannot specify -o when generating multiple output
+	// files"). Pull those out, compile each separately into its own .o, and
+	// hand the resulting objects to the linker step.
+	mut other_flags := []string{cap: others.len}
+	mut extra_sources := []string{}
+	for opt in others {
+		unq := opt.trim('"').trim("'")
+		ext := os.file_ext(unq).to_lower()
+		if ext in ['.c', '.cpp', '.cc', '.cxx', '.s'] && os.is_file(unq) {
+			extra_sources << unq
+		} else {
+			other_flags << opt
+		}
+	}
+	mut cc_name := b.pref.ccompiler
+	mut out_name := b.pref.out_name
+	$if windows {
+		out_name = out_name.trim_string_right('.exe')
+	}
+	mut extra_objs := []string{cap: extra_sources.len}
+	for src in extra_sources {
+		src_obj := os.join_path(os.vtmp_dir(), os.file_name(src) + '.' +
+			linux_cross_target.lib_dir + '.o')
+		mut src_args := []string{cap: 16}
+		src_args << '-w'
+		src_args << '-fPIC'
+		src_args << '-target ${linux_cross_target.triple}'
+		src_args << defines
+		src_args << '-I ${os.quoted_path('${sysroot}/include')}'
+		src_args << other_flags
+		src_args << '-o ${os.quoted_path(src_obj)}'
+		src_args << '-c ${os.quoted_path(src)}'
+		src_cmd := '${b.quote_compiler_name(cc_name)} ' + src_args.join(' ')
+		if b.pref.show_cc {
+			println(src_cmd)
+		}
+		src_res := os.execute(src_cmd)
+		if src_res.exit_code != 0 {
+			println('Cross compilation for Linux failed (extra source ${src}).')
+			verror(src_res.output)
+			return
+		}
+		extra_objs << src_obj
+	}
 	mut cc_args := []string{cap: 20}
 	cc_args << '-w'
 	cc_args << '-fPIC'
 	cc_args << '-target ${linux_cross_target.triple}'
 	cc_args << defines
 	cc_args << '-I ${os.quoted_path('${sysroot}/include')} '
-	cc_args << others
+	cc_args << other_flags
 	cc_args << '-o ${os.quoted_path(obj_file)}'
 	cc_args << '-c ${os.quoted_path(b.out_name_c)}'
 	cc_args << libs
 	b.dump_c_options(cc_args)
-	mut cc_name := b.pref.ccompiler
-	mut out_name := b.pref.out_name
-	$if windows {
-		out_name = out_name.trim_string_right('.exe')
-	}
 	cc_cmd := '${b.quote_compiler_name(cc_name)} ' + cc_args.join(' ')
 	if b.pref.show_cc {
 		println(cc_cmd)
@@ -1713,6 +2005,16 @@ fn (mut b Builder) cc_linux_cross() {
 		os.quoted_path('${sysroot}/crt1.o'),
 		os.quoted_path('${sysroot}/crti.o'),
 		os.quoted_path(obj_file),
+	]
+	for eobj in extra_objs {
+		linker_args << os.quoted_path(eobj)
+	}
+	// User-defined libraries (e.g. `-lpq` from db.pg) and extra object files
+	// must come before the system libraries they depend on. ld.lld resolves
+	// references left-to-right, so libpq.a needs to be encountered before
+	// -lssl/-lcrypto, otherwise its references to SSL_*/EVP_* stay unresolved.
+	linker_args << cflags.c_options_only_object_files()
+	linker_args << [
 		'-lc',
 		'-lcrypto',
 		'-lssl',
@@ -1721,7 +2023,6 @@ fn (mut b Builder) cc_linux_cross() {
 		'-lm',
 		'-ldl',
 	]
-	linker_args << cflags.c_options_only_object_files()
 	if os.exists(builtins_obj) {
 		linker_args << os.quoted_path(builtins_obj)
 	}
@@ -1844,93 +2145,15 @@ fn (mut c Builder) cc_windows_cross() {
 	c.build_thirdparty_obj_files()
 	c.setup_output_name()
 	icon_object := c.prepare_cross_windows_icon_resource() or { verror(err.msg()) }
-	mut args := []string{}
-	args << '${c.pref.cflags}'
-	args << '-o ${os.quoted_path(c.pref.out_name)}'
-	args << '-w -L.'
-
-	cflags := c.get_os_cflags()
-	// -I flags
-	if c.pref.ccompiler == 'msvc' {
-		args << cflags.c_options_before_target_msvc()
-	} else {
-		args << cflags.c_options_before_target()
-	}
-	mut optimization_options := []string{}
-	mut debug_options := []string{}
-	if c.pref.is_prod {
-		if c.pref.ccompiler != 'msvc' {
-			optimization_options = ['-O3']
-			mut have_flto := true
-			if c.pref.parallel_cc {
-				have_flto = false
-			}
-			if c.pref.is_shared {
-				// Keep shared libraries away from LTO to avoid runtime loader regressions.
-				have_flto = false
-			}
-			if have_flto {
-				optimization_options << '-flto'
-			}
-		}
-	}
-	if c.pref.is_debug {
-		if c.pref.ccompiler != 'msvc' {
-			debug_options = ['-O0', '-g', '-gdwarf-2']
-		}
-	}
-	mut libs := []string{}
-	if false && c.pref.build_mode == .default_mode {
-		builtin_o := '${pref.default_module_path}/vlib/builtin.o'
-		libs << os.quoted_path(builtin_o)
-		if !os.exists(builtin_o) {
-			verror('${builtin_o} not found')
-		}
-		for imp in c.table.imports {
-			libs << os.quoted_path('${pref.default_module_path}/vlib/${imp}.o')
-		}
-	}
-	// add the thirdparty .o files, produced by all the #flag directives:
-	args << cflags.c_options_only_object_files()
-	args << os.quoted_path(c.out_name_c)
-	if icon_object != '' {
-		args << os.quoted_path(icon_object)
-	}
-
-	mut c_options_after_target := []string{}
-	if c.pref.ccompiler == 'msvc' {
-		c_options_after_target << cflags.c_options_after_target_msvc()
-	} else {
-		c_options_after_target << cflags.c_options_after_target()
-	}
-	for lf in c.ccoptions.linker_flags {
-		if lf in c_options_after_target {
-			continue
-		}
-		c_options_after_target << lf
-	}
-	args << c_options_after_target
 
 	if current_os !in ['macos', 'linux', 'termux'] {
 		println(current_os)
 		panic('your platform is not supported yet')
 	}
 
-	mut all_args := []string{}
-	all_args << '-std=gnu11'
-	if !c.pref.no_prod_options {
-		all_args << optimization_options
-	}
-	all_args << debug_options
-
-	all_args << args
-	subsystem_flag := c.get_subsystem_flag()
-	if subsystem_flag != '' {
-		all_args << subsystem_flag
-	}
-	all_args << c.pref.ldflags
+	all_args := c.windows_cross_compile_args(icon_object)
 	c.dump_c_options(all_args)
-	mut cmd := cross_compiler_name_path + ' ' + all_args.join(' ')
+	mut cmd := '${c.quote_compiler_name(cross_compiler_name_path)} ${all_args.join(' ')}'
 	// cmd := 'clang -o ${obj_name} -w ${include} -m32 -c -target x86_64-win32 ${pref.default_module_path}/${c.out_name_c}'
 	if c.pref.is_verbose || c.pref.show_cc {
 		println(cmd)
@@ -1946,6 +2169,16 @@ fn (mut c Builder) cc_windows_cross() {
 		exit(1)
 	}
 	println(c.pref.out_name + ' has been successfully cross compiled for windows.')
+}
+
+fn (c &Builder) windows_cross_compile_args(icon_object string) []string {
+	mut ccoptions := c.ccoptions
+	if icon_object != '' {
+		mut o_args := ccoptions.o_args.clone()
+		o_args << os.quoted_path(icon_object)
+		ccoptions.o_args = o_args
+	}
+	return c.all_args(ccoptions)
 }
 
 fn (mut b Builder) build_thirdparty_obj_files() {
@@ -2002,6 +2235,71 @@ fn sqlite_thirdparty_validation_error(mod string, obj_path string, source_file s
 	return ''
 }
 
+// fixup_tcc_macos_comma_path_flags works around the fact that both tcc and
+// clang split `-Wl,foo,bar` on every comma without an escape mechanism. When
+// V's install path contains a literal comma (used in CI to stress
+// space-paths), the `-Wl,-rpath,"@VEXEROOT/thirdparty/tcc/lib"` flag emitted
+// by builtin_d_gcboehm.c.v under `$if tinyc` expands into a path with a comma
+// and the linker rejects it. The bundled libgc.dylib also gets passed by
+// absolute path; that itself is fine, but the dylib's `LC_ID_DYLIB` is
+// `@rpath/libgc.dylib`, so the linked binary cannot find the library at
+// runtime once we strip the rpath flag.
+//
+// This helper copies the bundled dylib into a non-comma cache directory,
+// updates the copy's install_name to its own absolute path (so the linked
+// binary records that path in `LC_LOAD_DYLIB`), then rewrites the dylib flag
+// in the linker arguments to point at the copy and drops the now-broken rpath
+// flag. The bundled libgc.dylib itself is left untouched, so binaries built
+// before/elsewhere that rely on `@rpath/libgc.dylib` still work. The fixup is
+// applied for any cc, since V may fall back from tcc to clang and reuse the
+// already-emitted flags.
+fn (v &Builder) fixup_tcc_macos_comma_path_flags(mut ccoptions CcompilerOptions) {
+	$if !macos {
+		return
+	}
+	if v.pref.os != .macos {
+		return
+	}
+	tcc_lib_dir := os.real_path(os.join_path(v.pref.vroot, 'thirdparty', 'tcc', 'lib'))
+	if !tcc_lib_dir.contains(',') {
+		return
+	}
+	src_dylib := os.join_path(tcc_lib_dir, 'libgc.dylib')
+	if !os.exists(src_dylib) {
+		return
+	}
+	cache_dir := os.join_path(os.temp_dir(), 'v_tcc_libgc')
+	if cache_dir.contains(',') {
+		return
+	}
+	if !os.exists(cache_dir) {
+		os.mkdir_all(cache_dir) or { return }
+	}
+	cache_dylib := os.join_path(cache_dir, 'libgc.dylib')
+	src_mtime := os.file_last_mod_unix(src_dylib)
+	if !os.exists(cache_dylib) || os.file_last_mod_unix(cache_dylib) < src_mtime {
+		os.cp(src_dylib, cache_dylib) or { return }
+		idres :=
+			os.execute('install_name_tool -id ${os.quoted_path(cache_dylib)} ${os.quoted_path(cache_dylib)}')
+		if idres.exit_code != 0 {
+			if v.pref.is_verbose {
+				eprintln('install_name_tool -id for ${cache_dylib} failed: ${idres.output.trim_space()}')
+			}
+			return
+		}
+	}
+	cache_dylib_quoted := '"${cache_dylib}"'
+	suffix := os.path_separator + 'tcc' + os.path_separator + 'lib' + os.path_separator +
+		'libgc.dylib'
+	ccoptions.linker_flags = ccoptions.linker_flags.map(if it.ends_with(suffix + '"')
+		&& it.starts_with('"') {
+		cache_dylib_quoted
+	} else {
+		it
+	})
+	ccoptions.pre_args = ccoptions.pre_args.filter(!it.starts_with('-Wl,-rpath,'))
+}
+
 fn (v &Builder) should_compile_bundled_thirdparty_object_from_source(obj_path string, source_file string, source_kind SourceKind) bool {
 	if source_kind == .unknown {
 		return false
@@ -2010,6 +2308,30 @@ fn (v &Builder) should_compile_bundled_thirdparty_object_from_source(obj_path st
 		return true
 	}
 	return v.ccoptions.cc == .tcc && v.pref.os == .macos
+}
+
+// latest_thirdparty_header_mtime returns the most recent mtime among `.h` and
+// `.hpp` files in the directory of `source_file`. It is used as an extra cache
+// key for third-party object compilation, so that header-only patches (for
+// example to mbedtls/library/alignment.h) reliably invalidate stale `.o`
+// files that were produced before the header change.
+fn latest_thirdparty_header_mtime(source_file string) i64 {
+	if source_file == '' {
+		return 0
+	}
+	dir := os.dir(source_file)
+	entries := os.ls(dir) or { return 0 }
+	mut latest := i64(0)
+	for f in entries {
+		if !(f.ends_with('.h') || f.ends_with('.hpp')) {
+			continue
+		}
+		m := os.file_last_mod_unix(os.join_path(dir, f))
+		if m > latest {
+			latest = m
+		}
+	}
+	return latest
 }
 
 fn (mut v Builder) build_thirdparty_obj_file(mod string, path string, moduleflags []cflag.CFlag) {
@@ -2059,10 +2381,19 @@ fn (mut v Builder) build_thirdparty_obj_file(mod string, path string, moduleflag
 		'${os.quoted_path(obj_path)} not found, building it in ${os.quoted_path(opath)} ...'
 	}
 	if os.exists(opath) {
+		opath_mtime := os.file_last_mod_unix(opath)
+		src_mtime := os.file_last_mod_unix(source_file)
+		// Header-only edits in the source directory (e.g. mbedtls's
+		// alignment.h) leave every sibling `.c` untouched, so a pure
+		// `opath_mtime < src_mtime` test would silently reuse stale objects
+		// that still reference the old headers. Treat the newest sibling
+		// header as part of the cache key as well.
+		hdr_mtime := latest_thirdparty_header_mtime(source_file)
+		deps_mtime := if hdr_mtime > src_mtime { hdr_mtime } else { src_mtime }
 		if compile_bundled_source && !cached_object_was_built_from_source {
 			rebuild_reason_message = '${os.quoted_path(opath)} was copied from a bundled object, rebuilding it from ${os.quoted_path(source_file)} ...'
-		} else if os.file_last_mod_unix(opath) < os.file_last_mod_unix(source_file) {
-			rebuild_reason_message = '${os.quoted_path(opath)} is older than ${os.quoted_path(source_file)}, rebuilding ...'
+		} else if opath_mtime < deps_mtime {
+			rebuild_reason_message = '${os.quoted_path(opath)} is older than ${os.quoted_path(source_file)} or its sibling headers, rebuilding ...'
 		} else {
 			return
 		}

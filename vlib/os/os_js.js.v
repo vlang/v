@@ -35,15 +35,17 @@ struct PathKind {
 }
 
 fn kind_of_existing_path(path string) PathKind {
-	is_link := false
-	is_dir := false
+	link := false
+	directory := false
 	$if js_node {
-		#is_link.val = $fs.existsSync(path.str) && $fs.lstatSync(path.str).isSymbolicLink()
-		#is_dir.val = $fs.existsSync(path,str) && $fs.lstatSync(path.str).isDirectory()
+		#link.val = $fs.existsSync(path.str) && $fs.lstatSync(path.str).isSymbolicLink()
+		#directory.val = $fs.existsSync(path,str) && $fs.lstatSync(path.str).isDirectory()
+	} $else {
+		_ = path
 	}
 	return PathKind{
-		is_dir:  is_dir
-		is_link: is_link
+		is_dir:  directory
+		is_link: link
 	}
 }
 

@@ -6,7 +6,7 @@ fn man_flag() Flag {
 	return Flag{
 		flag:        .bool
 		name:        'man'
-		description: 'Prints the auto-generated manpage.'
+		description: 'Print the auto-generated manpage'
 	}
 }
 
@@ -14,7 +14,7 @@ fn man_cmd() Command {
 	return Command{
 		name:        'man'
 		usage:       '<subcommand>'
-		description: 'Prints the auto-generated manpage.'
+		description: 'Print the auto-generated manpage'
 		execute:     print_manpage_for_command
 	}
 }
@@ -24,8 +24,8 @@ pub fn print_manpage_for_command(cmd Command) ! {
 	if cmd.args.len > 0 {
 		for sub_cmd in cmd.commands {
 			if sub_cmd.matches(cmd.args[0]) {
-				man_cmd := unsafe { &sub_cmd }
-				print(man_cmd.manpage())
+				target := unsafe { &sub_cmd }
+				print(target.manpage())
 				return
 			}
 		}

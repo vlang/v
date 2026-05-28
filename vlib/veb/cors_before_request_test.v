@@ -74,7 +74,7 @@ fn test_before_request_still_runs_with_cors_middleware() {
 
 	assert ctx.res.status_code == int(http.Status.bad_request)
 	assert ctx.res.body == 'Authorization failed'
-	assert ctx.res.header.get_custom('X-BEFORE-REQUEST')! == 'true'
+	assert ctx.res.header.get_custom('X-BEFORE-REQUEST')? == 'true'
 }
 
 fn test_before_request_can_allow_cors_request() {
@@ -87,6 +87,6 @@ fn test_before_request_can_allow_cors_request() {
 
 	assert ctx.res.status_code == int(http.Status.ok)
 	assert ctx.res.body == 'authorized'
-	assert ctx.res.header.get_custom('X-BEFORE-REQUEST')! == 'true'
-	assert ctx.res.header.get(.access_control_allow_origin)! == issue_20757_allowed_origin
+	assert ctx.res.header.get_custom('X-BEFORE-REQUEST')? == 'true'
+	assert ctx.res.header.get(.access_control_allow_origin)? == issue_20757_allowed_origin
 }

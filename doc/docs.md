@@ -109,6 +109,7 @@ The `v new --web` template uses `veb`, V's web framework.
     * [Runes](#runes)
     * [Numbers](#numbers)
     * [Arrays](#arrays)
+        * [Array update syntax](#array-update-syntax)
         * [Multidimensional arrays](#multidimensional-arrays)
         * [Array methods](#array-methods)
         * [Array slices](#array-slices)
@@ -234,6 +235,7 @@ The `v new --web` template uses `veb`, V's web framework.
     * [Global Variables](#global-variables)
     * [Static Variables](#static-variables)
     * [Cross compilation](#cross-compilation)
+    * [Compiling for iOS](#compiling-for-ios)
     * [Debugging](#debugging)
         * [C Backend binaries Default](#c-backend-binaries-default)
         * [Native Backend binaries](#native-backend-binaries)
@@ -517,8 +519,8 @@ In development mode the compiler will warn you that you haven't used the variabl
 (you'll get an "unused variable" warning).
 In production mode (enabled by passing the `-prod` flag to v – `v -prod foo.v`)
 it will not compile at all (like in Go).
-The same warning or error also applies to private top-level functions and constants
-in the `main` module when they are never referenced.
+The compiler also emits an informational notice for private top-level functions
+and constants in the `main` module when they are never referenced.
 ```v
 fn main() {
 	a := 10
@@ -1101,6 +1103,27 @@ assert count == [0, 1, 2, 3]
 mut square := []int{len: 6, init: index * index}
 // square == [0, 1, 4, 9, 16, 25]
 ```
+
+#### Array update syntax
+
+V lets you initialise an array by spreading an existing array, optionally
+followed by additional elements:
+
+```v
+base := [1, 2]
+a := [...base, 3, 4]
+assert a == [1, 2, 3, 4]
+
+// Append to a copy of `base`, leaving `base` itself unchanged:
+mut b := [...base]
+b << 99
+assert base == [1, 2]
+assert b == [1, 2, 99]
+```
+
+This is functionally equivalent to cloning the array and appending to it,
+except that you don't have to declare a mutable variable for the intermediate
+value, and the additional elements may be inlined at the call site.
 
 #### Array Types
 
@@ -2023,6 +2046,7 @@ match true {
 	2 == 2 { println('else if2') }
 	else { println('else') }
 }
+
 // 'else if2' should be printed
 ```
 
@@ -2035,6 +2059,7 @@ match false {
 	2 == 2 { println('else if2') }
 	else { println('else') }
 }
+
 // 'if' should be printed
 ```
 
@@ -2067,6 +2092,7 @@ typ := match c {
 	`a`...`z` { 'lowercase' }
 	else { 'other' }
 }
+
 println(typ)
 // 'lowercase'
 ```
@@ -2109,6 +2135,7 @@ num := match c {
 		0
 	}
 }
+
 println(num)
 // 1000
 ```
@@ -3758,6 +3785,7 @@ match color {
 	.green { println('the color was green') }
 	.blue { println('the color was blue') }
 }
+
 println(int(color)) // prints 1
 ```
 
@@ -3799,7 +3827,7 @@ Output: `Grocery IDs: 0, 5, 6`.
 
 Compile-time `$if` blocks can also be used inside enum bodies to include fields conditionally.
 
-```v
+```v nofmt
 enum Feature {
 	base
 	$if beta ? {
@@ -4710,6 +4738,84 @@ println(compare(1.1, 1.0)) // Outputs: 1
 println(compare(1.1, 1.1)) //          0
 println(compare(1.1, 1.2)) //         -1
 ```
+
+#### Structured generic receiver patterns
+
+Generic methods can constrain their receiver to a *structured* shape of the
+wrapped type, and the checker will bind the inner type parameters from the
+concrete receiver.
+
+The most common case is requiring the wrapped type to be a dynamic array:
+
+```v
+struct Expect[T] {
+	value T
+}
+
+fn (e Expect[[]T]) first_or(value T) T {
+	if e.value.len == 0 {
+		return value
+	}
+	return e.value[0]
+}
+
+fn main() {
+	a := Expect[[]int]{
+		value: [1, 2, 3]
+	}
+	println(a.first_or(0)) // 1, T is bound to int
+
+	b := Expect[[]string]{
+		value: []string{}
+	}
+	println(b.first_or('none')) // none, T is bound to string
+}
+```
+
+Nested array patterns are matched recursively, so `Expect[[][]int]` binds
+`T = []int`, and `Expect[[]map[string]int]` binds `T = map[string]int`.
+
+Maps work the same way and can bind two parameters at once:
+
+```v
+struct Expect[T] {
+	value T
+}
+
+fn (e Expect[map[K]V]) get_or(key K, value V) V {
+	if key in e.value {
+		return e.value[key]
+	}
+	return value
+}
+
+fn main() {
+	m := Expect[map[string]int]{
+		value: {
+			'a': 1
+		}
+	}
+	println(m.get_or('a', 0)) // 1   (K = string, V = int)
+	println(m.get_or('b', -1)) // -1
+}
+```
+
+`Expect[map[string]map[string]int]` binds `K = string` and
+`V = map[string]int`.
+
+Rules:
+
+- `Expect[[]T]` matches dynamic arrays; fixed-size arrays are not matched.
+- `Expect[map[K]V]` matches maps.
+- Nested patterns are matched recursively.
+- Plain generic receivers like `Expect[T]` continue to work, and an exact
+  concrete receiver method (for example `fn (e Expect[[]int]) ...`) keeps
+  precedence over a structured pattern.
+- A repeated placeholder must bind consistently: `Expect[map[K]K]` on
+  `Expect[map[string]int]` is rejected because `K` cannot be both `string`
+  and `int`.
+- Raw `voidptr` is not allowed to bind into these patterns; cast through an
+  explicit V type instead.
 
 ## Concurrency
 
@@ -5836,6 +5942,13 @@ for c in uk_customers {
 	println('customer: ${c.id}, ${c.name}, ${c.country}, ${c.nr_orders}')
 }
 
+// You can select just the fields you need. The result still has type `[]Customer`,
+// and non-selected fields keep their zero values.
+partial_customers := sql db {
+	select id, name from Customer where nr_orders > 0
+}!
+println(partial_customers)
+
 none_country_customers := sql db {
 	select from Customer where country is none
 }!
@@ -6637,6 +6750,28 @@ println('This program, was compiled at ${time.unix(@BUILD_TIMESTAMP.i64()).forma
 Having built-in JSON support is nice, but V also allows you to create efficient
 serializers for any data format. V has compile time `if` and `for` constructs:
 
+#### <h4 id="comptime-type-metadata">Type metadata</h4>
+
+Comptime type expressions expose metadata through fields like `.idx`, `.typ`,
+`.unaliased_typ`, `.indirections`, `.key_type`, `.value_type`, `.element_type`,
+`.pointee_type`, `.payload_type`, and `.variant_types`.
+
+```v
+fn zero_payload[T](x ?T) T {
+	return $zero(typeof(x).payload_type)
+}
+
+fn main() {
+	value := ?int(123)
+	assert zero_payload(value) == 0
+	assert typeof[map[string]int]().key_type == typeof[string]().idx
+	assert typeof[?&int]().payload_type == typeof[&int]().idx
+}
+```
+
+`$zero(Type)` returns the zero value for a comptime type expression.
+`$new(Type)` returns a pointer to a new zero value.
+
 #### <h4 id="comptime-fields">.fields</h4>
 
 You can iterate over struct fields using `.fields`, it also works with generic types
@@ -7095,12 +7230,15 @@ If a file has an environment-specific suffix, it will only be compiled for that 
 - `.c.v` => will be used only by the C backend. These files can contain C. code.
 - `.native.v` => will be used only by V's native backend.
 - `_nix.c.v` => will be used only on Unix systems (non Windows).
+- `_bsd.c.v` => will be used only on macOS, FreeBSD, OpenBSD, NetBSD, and DragonFly.
 - `_${os}.c.v` => will be used only on the specific `os` system.
   For example, `_windows.c.v` will be used only when compiling on Windows, or with `-os windows`.
 - `_default.c.v` => will be used only if there is NOT a more specific platform file.
   For example, if you have both `file_linux.c.v` and `file_default.c.v`,
   and you are compiling for linux, then only `file_linux.c.v` will be used,
   and `file_default.c.v` will be ignored.
+  BSD-specific files are ordered from most to least specific as
+  `_${os}.c.v`, `_bsd.c.v`, `_nix.c.v`, then `_default.c.v`.
 
 Here is a more complete example:
 
@@ -7500,7 +7638,7 @@ Operator overloading is possible for the following binary operators:
 
 Indexing can be overloaded too:
 
-```v
+```v oksyntax
 struct Buffer {
 mut:
 	data []int
@@ -7512,6 +7650,23 @@ fn (b Buffer) [] (index int) int {
 
 fn (mut b Buffer) []= (index int, value int) {
 	b.data[index] = value
+}
+```
+
+Custom types can also opt into multidimensional and slice syntax by taking
+`SliceIndex` or `[]SliceIndex`:
+
+```v
+struct Tensor {}
+
+fn (t Tensor) [] (parts []SliceIndex) Tensor {
+	return t
+}
+
+fn main() {
+	t := Tensor{}
+	_ = t[1..3, ..]
+	_ = t[2, 4..8]
 }
 ```
 
@@ -7536,8 +7691,10 @@ To improve safety and maintainability, operator overloading is limited.
 - Overloaded operators have to return the same type as the argument
   (the exceptions are `<` and `==`).
 - `[]` and `[]=` overloads are only allowed on structs and type aliases.
-- `[]` must take exactly one index argument and return a value.
-- `[]=` must take exactly an index and a value, use a `mut` receiver, and return nothing.
+- `[]` must take exactly one parameter and return a value.
+- `[]=` must take exactly a parameter and a value, use a `mut` receiver, and return nothing.
+- Use `SliceIndex` or `[]SliceIndex` for slice syntax like `tensor[1..3]`
+  or multidimensional syntax like `tensor[1, ..]`.
 
 #### Other restrictions
 
@@ -7913,6 +8070,9 @@ specification &ndash; as in the example [above](#atomics).
 
 An initializer for global variables must be explicitly converted to the
 desired target type. If no initializer is given a default initialization is done.
+Use `const` after `__global` (or inside the `__global ( ... )` block) when the symbol
+must stay a true C-level constant. Non-extern const globals currently require an explicit
+initializer that can be emitted directly in C global scope.
 Some objects like semaphores and mutexes require an explicit initialization *in place*, i.e.
 not with a value returned from a function call but with a method call by reference.
 A separate `init()` function can be used for this purpose &ndash; it will be called before `main()`:
@@ -8037,6 +8197,81 @@ v -os linux -cc cosmocc .
 
 You will need to install Clang, LLD linker, and download a zip file with
 libraries and include files for Windows and Linux. V will provide you with a link.
+
+## Compiling for iOS
+
+V can target iOS when run on macOS. The Xcode command line tools must be
+installed (`xcode-select --install`); V uses `xcrun` to locate the iOS SDK
+and configures the C compiler automatically.
+
+To build for a real device (arm64):
+
+```shell
+v -os ios hello.v
+```
+
+To build for the iOS Simulator (x86_64 / arm64):
+
+```shell
+v -os ios -simulator hello.v
+```
+
+Under the hood, V invokes `xcrun --sdk iphoneos --show-sdk-path` (or
+`iphonesimulator` with `-simulator`), passes `-isysroot` and the appropriate
+`-arch` flags to clang, and adds `-miphoneos-version-min` /
+`-miphonesimulator-version-min` plus `-fobjc-arc` so that the generated C is
+compiled as Objective-C.
+
+The output is a Mach-O executable — enough to run from a jailbroken device or
+via a debugger, but to deploy to a stock iPhone you also need to bundle the
+binary into an `.app`, code-sign it, and install it through Apple's tooling.
+A typical workflow:
+
+```shell
+# 1. Generate iOS-targeted C from V. The `-os ios` flag is required so
+#    `$if ios { ... }` branches and iOS-specific files are included.
+v -os ios -gc none -o build/main.c .
+
+# 2. Compile for the device with Xcode's clang and link the frameworks
+#    your app uses (UIKit, Foundation, AVFoundation, ...)
+sdk="$(xcrun --sdk iphoneos --show-sdk-path)"
+xcrun --sdk iphoneos clang \
+    -x objective-c \
+    -fobjc-arc \
+    -arch arm64 \
+    -isysroot "$sdk" \
+    -miphoneos-version-min=15.0 \
+    -framework Foundation \
+    -framework UIKit \
+    -lobjc \
+    build/main.c \
+    -o build/MyApp.app/MyApp
+
+# 3. Drop an Info.plist next to the binary, then code-sign with your
+#    development identity (see `security find-identity -v -p codesigning`)
+codesign --force --sign "Apple Development: you@example.com (TEAMID)" \
+    --entitlements entitlements.plist \
+    build/MyApp.app
+
+# 4. Install and launch on a connected device
+udid="$(xcrun devicectl list devices | awk '/connected/ {print $NF; exit}')"
+xcrun devicectl device install app    --device "$udid" build/MyApp.app
+xcrun devicectl device process launch --device "$udid" com.example.myapp
+```
+
+The device must be unlocked, trusted, and have Developer Mode enabled
+(`Settings → Privacy & Security → Developer Mode` on iOS 16+). A free
+Apple ID added in Xcode → Settings → Accounts is sufficient for signing
+development builds.
+
+Inside V code you can guard iOS-specific paths with `$if ios { ... }`, and
+add framework dependencies the same way you would with any Objective-C
+library, e.g.:
+
+```v ignore
+#flag -framework UIKit
+#flag -framework Foundation
+```
 
 ## Debugging
 
@@ -8175,9 +8410,10 @@ dump(f)
 ```
 
 C globals can be exposed on the V side too. Use `@[c_extern] __global name C.Type`
-when you want to redeclare an external symbol explicitly. When the type already comes
-from the V context, direct references like `buffer = C.buffer` and `[4]u8(C.buffer)`
-can be used as well.
+when you want to redeclare an external symbol explicitly, or
+`@[c_extern] __global const name C.Type` for an external `extern const` symbol.
+When the type already comes from the V context, direct references like
+`buffer = C.buffer` and `[4]u8(C.buffer)` can be used as well.
 
 **Example of using a C function from stdio, by redeclaring it on the V side**
 ```v
@@ -8504,6 +8740,37 @@ To use a custom export name, use the `@[export]` attribute:
 fn foo() {
 }
 ```
+
+When compiling a Windows DLL with `-shared`, V generates a default `DllMain`
+that calls `_vinit_caller()` on `DLL_PROCESS_ATTACH` and `_vcleanup_caller()`
+on `DLL_PROCESS_DETACH`.
+
+If you export your own `DllMain`, V will not generate the default one. Call
+`C._vinit_caller()` and `C._vcleanup_caller()` from your entry point to keep
+the standard V runtime setup and teardown:
+
+```v oksyntax
+pub type C.DWORD = u32
+pub type C.LPVOID = voidptr
+
+fn C._vinit_caller()
+fn C._vcleanup_caller()
+
+@[export: 'DllMain']
+pub fn dll_main(hinst C.HINSTANCE, reason C.DWORD, reserved C.LPVOID) C.BOOL {
+	_ = hinst
+	_ = reserved
+	if reason == C.DWORD(1) {
+		C._vinit_caller()
+	} else if reason == C.DWORD(0) {
+		C._vcleanup_caller()
+	}
+	return C.BOOL(1)
+}
+```
+
+In the example above, `C.DWORD(1)` is `DLL_PROCESS_ATTACH` and `C.DWORD(0)`
+is `DLL_PROCESS_DETACH`.
 
 ### Translating C to V
 

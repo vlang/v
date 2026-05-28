@@ -1,0 +1,51 @@
+{
+  "title": "mt6",
+  "description": "Tags, from RFC 8949 appendix A",
+  "tests": [
+    {
+      "description": "Bigint"
+      "encoded": h'c249010000000000000000',
+      "decoded": 18446744073709551616,
+    },
+    {
+      "description": "Negative Bigint"
+      "encoded": h'c349010000000000000000',
+      "decoded": -18446744073709551617,
+    },
+    {
+      "description": "RFC3339 Date/Time String"
+      "encoded": h'c074323031332d30332d32315432303a30343a30305a',
+      "decoded": 0("2013-03-21T20:04:00Z"),
+      "encodeOptions": {
+        "dateTag": 0,
+      },
+    },
+    {
+      "description": "Date/time as integer offset from epoch",
+      "encoded": h'c11a514b67b0',
+      "decoded": 1(1363896240),
+    },
+    {
+      "description": "Date/time as float offset from epoch",
+      "encoded": h'c1fb41d452d9ec200000',
+      "decoded": 1(1363896240.5),
+    },
+    {
+      "description": "Expected conversion to base16",
+      "encoded": h'd74401020304',
+      "decoded": 23(h'01020304')
+    },
+    {
+      "description": "Expected conversion to base16 encoding",
+      "encoded": h'd818456449455446',
+      "decoded": 24(h'6449455446'),
+    },
+    {
+      # Note: RFC 8949 doesn't include trailing slash, which should probably
+      # be there.
+      "description": "URL",
+      "encoded": h'd82077687474703a2f2f7777772e6578616d706c652e636f6d2f'
+      "decoded": 32("http://www.example.com/"),
+    },
+  ],
+}

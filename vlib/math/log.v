@@ -56,13 +56,13 @@ pub fn log10(x f64) f64 {
 // log2 returns the binary logarithm of x.
 // The special cases are the same as for log.
 pub fn log2(x f64) f64 {
-	frac, exp := frexp(x)
+	frac, expn := frexp(x)
 	// Make sure exact powers of two give an exact answer.
-	// Don't depend on log(0.5)*(1/ln2)+exp being exactly exp-1.
+	// Don't depend on log(0.5)*(1/ln2)+expn being exactly expn-1.
 	if frac == 0.5 {
-		return f64(exp - 1)
+		return f64(expn - 1)
 	}
-	return log(frac) * (1.0 / ln2) + f64(exp)
+	return log(frac) * (1.0 / ln2) + f64(expn)
 }
 
 // log1p returns log(1+x)
@@ -113,8 +113,8 @@ pub fn ilog_b(x f64) int {
 // ilog_b returns the binary exponent of x. It assumes x is finite and
 // non-zero.
 fn ilog_b_(x_ f64) int {
-	x, exp := normalize(x_)
-	return int((f64_bits(x) >> shift) & mask) - bias + exp
+	x, expn := normalize(x_)
+	return int((f64_bits(x) >> shift) & mask) - bias + expn
 }
 
 // log returns the natural logarithm of x

@@ -36,7 +36,11 @@ pub fn encode[T](val T, config EncoderOptions) string {
 }
 
 fn (mut encoder Encoder) encode_value[T](val T) {
-	$if T.unaliased_typ is string {
+	$if T is $interface {
+		encoder.encode_null()
+	} $else $if T.unaliased_typ is voidptr {
+		encoder.encode_null()
+	} $else $if T.unaliased_typ is string {
 		encoder.encode_string(string(val))
 	} $else $if T.unaliased_typ is bool {
 		encoder.encode_boolean(bool(val))
@@ -140,6 +144,12 @@ fn (mut encoder Encoder) encode_value[T](val T) {
 		unsafe { encoder.output.push_many(integer_val.str, integer_val.len) }
 	} $else $if T.unaliased_typ is $struct {
 		unsafe {
+			$for field in T.fields {
+				$if field.is_embed {
+					encoder.encode_struct_with_embeds(val)
+					return
+				}
+			}
 			encoder.output << `{`
 			is_first := encoder.encode_struct_fields[T](val, true, [], '')
 			if encoder.prettify && !is_first {
@@ -372,7 +382,7 @@ fn (mut encoder Encoder) encode_array[T](val T) {
 
 @[unsafe]
 fn (mut encoder Encoder) encode_pointer_array_item[T](item T) {
-	encoder.encode_struct(item)
+	encoder.encode_value(*item)
 }
 
 fn (mut encoder Encoder) encode_map[K, T](val map[K]T) {
@@ -437,21 +447,33 @@ fn (mut encoder Encoder) encode_sumtype[T](val T) {
 		$for variant in T.variants {
 			if val is variant {
 				variant_name := sumtype_variant_name(typeof(variant.typ).name)
-				if T.name in ['x.json2.Any', 'json2.Any', 'Any'] {
-					$if variant.typ is $map {
-						encoder.encode_value(val)
-					} $else {
+				$if variant.typ is time.Time {
+					if T.name in ['x.json2.Any', 'json2.Any', 'Any'] {
 						variant_value := val
 						encoder.encode_value(variant_value)
-					}
-				} else {
-					$if variant.typ is time.Time {
+					} else {
 						encoder.encode_sumtype_time_variant(val, variant_name)
-					} $else $if variant.typ is $struct {
-						encoder.encode_sumtype_struct_variant(val, variant_name)
-					} $else {
-						encoder.encode_value(val)
 					}
+				} $else $if variant.typ is $struct {
+					if T.name in ['x.json2.Any', 'json2.Any', 'Any'] {
+						variant_value := val
+						encoder.encode_value(variant_value)
+					} else {
+						encoder.encode_sumtype_struct_variant(val, variant_name)
+					}
+				} $else $if variant.typ is $map {
+					encoder.encode_value(val)
+				} $else $if variant.typ is $array_dynamic {
+					if T.name in ['x.json2.Any', 'json2.Any', 'Any'] {
+						variant_value := val
+						encoder.encode_value(variant_value)
+					} else {
+						variant_value := val
+						encoder.encode_array_of_sumtype_variants(variant_value)
+					}
+				} $else {
+					variant_value := val
+					encoder.encode_value(variant_value)
 				}
 			}
 		}
@@ -478,6 +500,12 @@ fn (mut encoder Encoder) encode_object_key(is_first bool, key string) bool {
 }
 
 fn (mut encoder Encoder) encode_sumtype_struct_variant[T](val T, variant_name string) {
+	$for field in T.fields {
+		$if field.is_embed {
+			unsafe { encoder.encode_sumtype_struct_variant_with_embeds(val, variant_name) }
+			return
+		}
+	}
 	encoder.output << `{`
 	mut is_first := unsafe { encoder.encode_struct_fields[T](val, true, [], '') }
 	is_first = encoder.encode_object_key(is_first, '_type')
@@ -487,6 +515,40 @@ fn (mut encoder Encoder) encode_sumtype_struct_variant[T](val T, variant_name st
 		encoder.add_indent()
 	}
 	encoder.output << `}`
+}
+
+fn (mut encoder Encoder) encode_array_of_sumtype_variants[T](val []T) {
+	encoder.output << `[`
+	if encoder.prettify {
+		encoder.increment_level()
+		encoder.add_indent()
+	}
+	for i, item in val {
+		$if T is time.Time {
+			encoder.encode_value(item)
+		} $else $if T is JsonEncoder {
+			encoder.encode_value(item)
+		} $else $if T is Encodable {
+			encoder.encode_value(item)
+		} $else $if T is $struct {
+			elem_name := sumtype_variant_name(T.name)
+			encoder.encode_sumtype_struct_variant(item, elem_name)
+		} $else {
+			encoder.encode_value(item)
+		}
+		if i < val.len - 1 {
+			encoder.output << `,`
+			if encoder.prettify {
+				encoder.add_indent()
+			}
+		} else {
+			if encoder.prettify {
+				encoder.decrement_level()
+				encoder.add_indent()
+			}
+		}
+	}
+	encoder.output << `]`
 }
 
 @[markused]
@@ -518,19 +580,7 @@ fn get_value_from_optional[T](val ?T) T {
 }
 
 fn check_not_empty[T](val T) ?bool {
-	$if T.indirections != 0 {
-		return val != unsafe { nil }
-	} $else $if T.unaliased_typ is string {
-		if val == '' {
-			return false
-		}
-	} $else $if T.unaliased_typ is $int || T.unaliased_typ is $float {
-		if val == 0 {
-			return false
-		}
-	} $else $if T.unaliased_typ is $array || T.unaliased_typ is $map {
-		return val.len != 0
-	} $else $if val is ?string {
+	$if val is ?string {
 		opt := ?string(val)
 		if sval := opt {
 			return sval != ''
@@ -554,6 +604,20 @@ fn check_not_empty[T](val T) ?bool {
 			return fval != 0.0
 		}
 		return false
+	} $else $if T is $option {
+		return !struct_field_is_none(val)
+	} $else $if T.indirections != 0 {
+		return val != unsafe { nil }
+	} $else $if T.unaliased_typ is string {
+		if val == '' {
+			return false
+		}
+	} $else $if T.unaliased_typ is $int || T.unaliased_typ is $float {
+		if val == 0 {
+			return false
+		}
+	} $else $if T.unaliased_typ is $array || T.unaliased_typ is $map {
+		return val.len != 0
 	}
 	return true
 }
@@ -610,7 +674,13 @@ fn (mut encoder Encoder) cached_field_infos[T]() []EncoderFieldInfo {
 }
 
 fn (mut encoder Encoder) encode_struct_field_value[T](val T) {
-	$if T is $option {
+	$if T is $interface {
+		encoder.encode_null()
+	} $else $if T.unaliased_typ is voidptr {
+		encoder.encode_null()
+	} $else $if T.pointee_type is $interface {
+		encoder.encode_null()
+	} $else $if T is $option {
 		if val == none {
 			unsafe { encoder.output.push_many(null_string.str, null_string.len) }
 		} else {
@@ -660,30 +730,39 @@ fn struct_field_should_encode[T](field_info EncoderFieldInfo, val T) bool {
 }
 
 @[unsafe]
-fn (mut encoder Encoder) encode_struct[T](val T) {
+fn (mut encoder Encoder) encode_struct_with_embeds[T](val T) {
 	encoder.output << `{`
-
-	is_first := encoder.encode_struct_fields[T](val, true, [], '')
-
+	is_first := encoder.encode_embedded_struct_fields[T](val, true, [], [], '')
 	if encoder.prettify && !is_first {
 		encoder.decrement_level()
 		encoder.add_indent()
 	}
+	encoder.output << `}`
+}
 
+@[unsafe]
+fn (mut encoder Encoder) encode_sumtype_struct_variant_with_embeds[T](val T, variant_name string) {
+	encoder.output << `{`
+	mut is_first := encoder.encode_embedded_struct_fields[T](val, true, [], [], '')
+	is_first = encoder.encode_object_key(is_first, '_type')
+	encoder.encode_string(variant_name)
+	if encoder.prettify && !is_first {
+		encoder.decrement_level()
+		encoder.add_indent()
+	}
 	encoder.output << `}`
 }
 
 @[unsafe]
 fn (mut encoder Encoder) encode_struct_fields[T](val T, was_first bool, old_used_keys []string, prefix string) bool {
 	field_infos := encoder.cached_field_infos[T]()
-	mut i := 0
 	mut is_first := was_first
 	mut used_keys := old_used_keys
+	mut i := 0
 
 	$for field in T.fields {
 		$if !field.is_embed {
 			field_info := field_infos[i]
-
 			mut write_field := true
 
 			$if field.typ is $shared {
@@ -692,30 +771,13 @@ fn (mut encoder Encoder) encode_struct_fields[T](val T, was_first bool, old_used
 					write_field = struct_field_should_encode(field_info, field_value)
 
 					if write_field {
-						if is_first {
-							if encoder.prettify {
-								encoder.increment_level()
-							}
-							is_first = false
-						} else {
-							encoder.output << `,`
-						}
-						if encoder.prettify {
-							encoder.add_indent()
-						}
-
 						if field_info.key_name in old_used_keys {
-							encoder.encode_string(prefix + field_info.key_name)
+							is_first = encoder.encode_object_key(is_first, prefix +
+								field_info.key_name)
 						} else {
-							encoder.encode_string(field_info.key_name)
+							is_first = encoder.encode_object_key(is_first, field_info.key_name)
 							used_keys << field_info.key_name
 						}
-
-						encoder.output << `:`
-						if encoder.prettify {
-							encoder.output << ` `
-						}
-
 						encoder.encode_struct_field_value(field_value)
 					}
 				}
@@ -723,30 +785,12 @@ fn (mut encoder Encoder) encode_struct_fields[T](val T, was_first bool, old_used
 				write_field = struct_field_should_encode(field_info, val.$(field.name))
 
 				if write_field {
-					if is_first {
-						if encoder.prettify {
-							encoder.increment_level()
-						}
-						is_first = false
-					} else {
-						encoder.output << `,`
-					}
-					if encoder.prettify {
-						encoder.add_indent()
-					}
-
 					if field_info.key_name in old_used_keys {
-						encoder.encode_string(prefix + field_info.key_name)
+						is_first = encoder.encode_object_key(is_first, prefix + field_info.key_name)
 					} else {
-						encoder.encode_string(field_info.key_name)
+						is_first = encoder.encode_object_key(is_first, field_info.key_name)
 						used_keys << field_info.key_name
 					}
-
-					encoder.output << `:`
-					if encoder.prettify {
-						encoder.output << ` `
-					}
-
 					encoder.encode_struct_field_value(val.$(field.name))
 				}
 			}
@@ -767,6 +811,82 @@ fn (mut encoder Encoder) encode_struct_fields[T](val T, was_first bool, old_used
 					new_prefix)
 			}
 		}
+	}
+	return is_first
+}
+
+@[unsafe]
+fn (mut encoder Encoder) encode_embedded_struct_fields[T](val T, was_first bool, old_used_keys []string, reserved_keys []string, prefix string) bool {
+	field_infos := encoder.cached_field_infos[T]()
+	mut is_first := was_first
+	mut used_keys := old_used_keys.clone()
+	mut i := 0
+
+	$for field in T.fields {
+		$if field.is_embed {
+			mut child_reserved_keys := reserved_keys.clone()
+			mut reserved_i := 0
+			$for reserved_field in T.fields {
+				reserved_field_info := field_infos[reserved_i]
+				$if !reserved_field.is_embed {
+					if !reserved_field_info.is_skip {
+						child_reserved_keys << reserved_field_info.key_name
+					}
+				}
+				reserved_i++
+			}
+			new_prefix := prefix + field.name + '.'
+			$if field.typ is $shared {
+				shared field_value := unsafe { val.$(field.name) }
+				rlock field_value {
+					is_first = encoder.encode_embedded_struct_fields(field_value, is_first,
+						used_keys, child_reserved_keys, new_prefix)
+				}
+			} $else {
+				is_first = encoder.encode_embedded_struct_fields(val.$(field.name), is_first,
+					used_keys, child_reserved_keys, new_prefix)
+			}
+		} $else {
+			field_info := field_infos[i]
+			mut write_field := true
+			$if field.typ is $shared {
+				shared field_value := unsafe { val.$(field.name) }
+				rlock field_value {
+					write_field = struct_field_should_encode(field_info, field_value)
+					if write_field {
+						should_prefix := field_info.key_name in used_keys
+							|| field_info.key_name in reserved_keys
+						json_key := if should_prefix {
+							prefix + field_info.key_name
+						} else {
+							field_info.key_name
+						}
+						is_first = encoder.encode_object_key(is_first, json_key)
+						if !should_prefix {
+							used_keys << field_info.key_name
+						}
+						encoder.encode_struct_field_value(field_value)
+					}
+				}
+			} $else {
+				write_field = struct_field_should_encode(field_info, val.$(field.name))
+				if write_field {
+					should_prefix := field_info.key_name in used_keys
+						|| field_info.key_name in reserved_keys
+					json_key := if should_prefix {
+						prefix + field_info.key_name
+					} else {
+						field_info.key_name
+					}
+					is_first = encoder.encode_object_key(is_first, json_key)
+					if !should_prefix {
+						used_keys << field_info.key_name
+					}
+					encoder.encode_struct_field_value(val.$(field.name))
+				}
+			}
+		}
+		i++
 	}
 	return is_first
 }

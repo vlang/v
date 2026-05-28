@@ -9,6 +9,11 @@ import v.ast
 import v.token
 import v.util
 
+union U64F64 {
+	u u64
+	f f64
+}
+
 pub struct Transformer {
 	pref &pref.Preferences
 pub mut:
@@ -66,7 +71,7 @@ fn folded_float_literal(value f64, pos token.Pos) ast.FloatLiteral {
 	// ast.FloatLiteral stores source text, so the folded value needs a
 	// decimal/scientific form that reparses to the same bits.
 	short := value.str()
-	if math.f64_bits(short.f64()) == math.f64_bits(value) {
+	if transformer_f64_bits(short.f64()) == transformer_f64_bits(value) {
 		return ast.FloatLiteral{
 			val: short
 			pos: pos
@@ -77,6 +82,48 @@ fn folded_float_literal(value f64, pos token.Pos) ast.FloatLiteral {
 		val: exact
 		pos: pos
 	}
+}
+
+@[inline]
+fn transformer_f64_bits(value f64) u64 {
+	return unsafe {
+		U64F64{
+			f: value
+		}.u
+	}
+}
+
+@[ignore_overflow]
+fn folded_power_i64(base i64, exponent i64) i64 {
+	mut exp := exponent
+	mut power := base
+	mut value := i64(1)
+	if exp < 0 {
+		if base == 0 {
+			return -1
+		}
+		return if base * base != 1 {
+			0
+		} else {
+			if exp & 1 > 0 {
+				base
+			} else {
+				1
+			}
+		}
+	}
+	for exp > 0 {
+		if exp & 1 > 0 {
+			value *= power
+		}
+		power *= power
+		exp >>= 1
+	}
+	return value
+}
+
+fn folded_power_f64(base f64, exponent f64) f64 {
+	return math.pow(base, exponent)
 }
 
 pub fn (mut t Transformer) find_new_range(node ast.AssignStmt) {
@@ -614,6 +661,11 @@ pub fn (mut t Transformer) expr(mut node ast.Expr) ast.Expr {
 			t.check_safe_array(mut node)
 			node.left = t.expr(mut node.left)
 			node.index = t.expr(mut node.index)
+			mut indices := []ast.Expr{cap: node.indices.len}
+			for mut index in node.indices {
+				indices << t.expr(mut index)
+			}
+			node.indices = indices
 			node.or_expr = t.expr(mut node.or_expr) as ast.OrExpr
 		}
 		ast.InfixExpr {
@@ -756,7 +808,12 @@ fn (mut t Transformer) sql_query_data_items(items []ast.SqlQueryDataItem) []ast.
 fn (mut t Transformer) sql_query_data_item(mut item ast.SqlQueryDataItem) ast.SqlQueryDataItem {
 	match mut item {
 		ast.SqlQueryDataLeaf {
+			// The left side is an ORM field, but the right side can be a V variable
+			// with the same name, so `field == field` must not fold to `true`.
+			old_inside_sql := t.inside_sql
+			t.inside_sql = true
 			item.expr = t.expr(mut item.expr)
+			t.inside_sql = old_inside_sql
 		}
 		ast.SqlQueryDataIf {
 			for mut branch in item.branches {
@@ -938,7 +995,7 @@ pub fn (mut t Transformer) infix_expr(mut node ast.InfixExpr) ast.Expr {
 							}
 							.power {
 								return ast.IntegerLiteral{
-									val: math.powi(left_val, right_val).str()
+									val: folded_power_i64(left_val, right_val).str()
 									pos: pos
 								}
 							}
@@ -1051,7 +1108,7 @@ pub fn (mut t Transformer) infix_expr(mut node ast.InfixExpr) ast.Expr {
 							}
 							.power {
 								return ast.FloatLiteral{
-									val: math.pow(left_val, right_val).str()
+									val: folded_power_f64(left_val, right_val).str()
 									pos: pos
 								}
 							}

@@ -441,6 +441,18 @@ fn register_used_import(mut file ast.File, alias string) {
 	}
 }
 
+fn file_needs_c_function_call_import_scan(file &ast.File) bool {
+	for import_m in file.imports {
+		alias := import_m.alias
+		if (alias.len == 1 && alias[0] == `_`) || alias in file.used_imports
+			|| alias in file.auto_imports {
+			continue
+		}
+		return true
+	}
+	return false
+}
+
 fn (mut b Builder) collect_used_c_function_calls(file &ast.File) map[string]bool {
 	mut collector := CFunctionCallCollector{
 		names: map[string]bool{}
@@ -451,6 +463,9 @@ fn (mut b Builder) collect_used_c_function_calls(file &ast.File) map[string]bool
 
 fn (mut b Builder) mark_imports_used_by_c_function_calls() {
 	for mut file in b.parsed_files {
+		if !file_needs_c_function_call_import_scan(file) {
+			continue
+		}
 		used_c_calls := b.collect_used_c_function_calls(file)
 		if used_c_calls.len == 0 {
 			continue
@@ -801,6 +816,68 @@ fn mod_tail_after_vmod_name(mod string, vmod_name string) !string {
 	return error('module not found')
 }
 
+fn (b &Builder) module_path_has_v_files(path string) bool {
+	return b.v_files_from_dir(path).len > 0
+}
+
+// candidate_belongs_to_foreign_project returns true when `candidate_path` is
+// neither inside the importer's `v.mod` tree nor inside a configured
+// `lookup_path` entry (vlib / vmodules). Such candidates are someone else's
+// source tree: e.g. when a `vlib/*` file imports `sync`, a sibling
+// `coreutils/src/sync` directory is not a real `sync` module and should be
+// skipped (see #27151). Comparing by path containment (rather than by the
+// nearest enclosing `v.mod`) keeps vendored dependencies like
+// `<project>/modules/<name>/` — which carry their own `v.mod` — resolvable
+// from `<project>`'s own code.
+fn (b &Builder) candidate_belongs_to_foreign_project(candidate_path string, importer_vmod_folder string, mod string) bool {
+	if importer_vmod_folder == '' {
+		return false
+	}
+	abs_candidate := comparable_real_path(candidate_path)
+	abs_importer_vmod := comparable_real_path(importer_vmod_folder)
+	if path_is_at_or_inside(abs_candidate, abs_importer_vmod) {
+		return false
+	}
+	if candidate_vmod_matches_import(abs_candidate, mod) {
+		return false
+	}
+	for lookup in b.pref.lookup_path {
+		abs_lookup := comparable_real_path(lookup)
+		if path_is_at_or_inside(abs_candidate, abs_lookup) {
+			return false
+		}
+	}
+	return true
+}
+
+fn comparable_real_path(path string) string {
+	mut normalized := os.real_path(path).replace('\\', '/')
+	for normalized.contains('//') {
+		normalized = normalized.replace('//', '/')
+	}
+	if normalized.len > 1 {
+		normalized = normalized.trim_right('/')
+	}
+	return normalized
+}
+
+fn path_is_at_or_inside(candidate string, root string) bool {
+	if root == '' {
+		return false
+	}
+	return candidate == root || candidate.starts_with(root + '/')
+}
+
+fn candidate_vmod_matches_import(candidate_path string, mod string) bool {
+	mut mcache := vmod.get_cache()
+	vmod_file_location := mcache.get_by_folder(candidate_path)
+	if vmod_file_location.vmod_file == '' {
+		return false
+	}
+	manifest := vmod.from_file(vmod_file_location.vmod_file) or { return false }
+	return manifest.name == mod || mod.starts_with(manifest.name + '.')
+}
+
 // TODO: try to merge this & util.module functions to create a
 // reliable multi use function. see comments in util/module.v
 pub fn (b &Builder) find_module_path(mod string, fpath string) !string {
@@ -808,6 +885,26 @@ pub fn (b &Builder) find_module_path(mod string, fpath string) !string {
 	mut mcache := vmod.get_cache()
 	resolved_fpath := os.real_path(fpath)
 	vmod_file_location := mcache.get_by_file(resolved_fpath)
+	// Anchor the importer to the OUTERMOST enclosing `v.mod`, not the nearest
+	// one. A file at `<project>/modules/<name>/file.v` carries the vendored
+	// package's `v.mod` as its nearest root, but logically belongs to
+	// `<project>` — and must be able to see sibling vendored deps under
+	// `<project>/modules/`.
+	mut importer_vmod_folder := ''
+	if vmod_file_location.vmod_file.len != 0 {
+		importer_vmod_folder = vmod_file_location.vmod_folder
+		for {
+			parent := os.dir(importer_vmod_folder)
+			if parent == importer_vmod_folder {
+				break
+			}
+			parent_loc := mcache.get_by_folder(parent)
+			if parent_loc.vmod_file == '' {
+				break
+			}
+			importer_vmod_folder = parent_loc.vmod_folder
+		}
+	}
 	mod_path := module_path(mod)
 	mut module_lookup_paths := []string{}
 	if vmod_file_location.vmod_file.len != 0
@@ -826,16 +923,31 @@ pub fn (b &Builder) find_module_path(mod string, fpath string) !string {
 			}
 		}
 	}
+	mut empty_module_path := ''
 	for search_path in module_lookup_paths {
 		try_path := os.join_path(search_path, mod_path)
 		if b.pref.is_verbose {
 			println('  >> trying to find ${mod} in ${try_path} ..')
 		}
 		if found_path := find_module_path_from_search_root(search_path, mod) {
-			if b.pref.is_verbose {
-				println('  << found ${found_path} .')
+			if b.candidate_belongs_to_foreign_project(found_path, importer_vmod_folder, mod) {
+				if b.pref.is_verbose {
+					println('  << skipped ${found_path} (belongs to a different v.mod project) .')
+				}
+				continue
 			}
-			return found_path
+			if b.module_path_has_v_files(found_path) {
+				if b.pref.is_verbose {
+					println('  << found ${found_path} .')
+				}
+				return found_path
+			}
+			if empty_module_path == '' {
+				empty_module_path = found_path
+			}
+			if b.pref.is_verbose {
+				println('  << skipped ${found_path} (no .v files) .')
+			}
 		}
 	}
 	// look up through parents
@@ -846,13 +958,32 @@ pub fn (b &Builder) find_module_path(mod string, fpath string) !string {
 			println('  >> trying to find ${mod} in ${try_path} ..')
 		}
 		if found_path := find_module_path_from_search_root(current_dir, mod) {
-			return found_path
+			if b.candidate_belongs_to_foreign_project(found_path, importer_vmod_folder, mod) {
+				if b.pref.is_verbose {
+					println('  << skipped ${found_path} (belongs to a different v.mod project) .')
+				}
+			} else if b.module_path_has_v_files(found_path) {
+				if b.pref.is_verbose {
+					println('  << found ${found_path} .')
+				}
+				return found_path
+			} else {
+				if empty_module_path == '' {
+					empty_module_path = found_path
+				}
+				if b.pref.is_verbose {
+					println('  << skipped ${found_path} (no .v files) .')
+				}
+			}
 		}
 		parent_dir := os.dir(current_dir)
 		if parent_dir == current_dir {
 			break
 		}
 		current_dir = parent_dir
+	}
+	if empty_module_path != '' {
+		return empty_module_path
 	}
 	smodule_lookup_paths := module_lookup_paths.join(', ')
 	return error('module "${mod}" not found in:\n${smodule_lookup_paths}')
@@ -863,9 +994,9 @@ pub fn (b &Builder) show_total_warns_and_errors_stats() {
 		return
 	}
 	if b.pref.is_stats {
-		mut nr_errors := b.checker.errors.len
-		mut nr_warnings := b.checker.warnings.len
-		mut nr_notices := b.checker.notices.len
+		mut nr_errors := b.checker.nr_errors
+		mut nr_warnings := b.checker.nr_warnings
+		mut nr_notices := b.checker.nr_notices
 
 		if b.pref.check_only {
 			nr_errors = b.nr_errors

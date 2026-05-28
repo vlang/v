@@ -79,6 +79,37 @@ fn parallel_cc(mut b builder.Builder, result c.GenOutput) ! {
 	cc := b.quote_compiler_name(parallel_cc_compiler_path(b))
 	mut compile_args := b.get_compile_args()
 	mut linker_args := b.get_linker_args()
+	if b.ccoptions.cc == .tcc {
+		// vlang/tcc can have its runtime objects under `${vroot}/thirdparty/tcc/lib/tcc/`
+		// or directly under `${vroot}/thirdparty/tcc/lib/`, while its system headers
+		// can be under that install dir or `${vroot}/thirdparty/tcc/include/`.
+		// `-B` controls tcc's include search (`${B}/include`) and `-L` adds a library search path,
+		// so pass absolute paths for both. This lets tcc find them regardless of the cwd from
+		// which v was invoked, without affecting how user-supplied relative flags are resolved.
+		tcc_root_dir := os.join_path(@VEXEROOT, 'thirdparty', 'tcc')
+		tcc_lib_dir := os.join_path(tcc_root_dir, 'lib')
+		tcc_nested_dir := os.join_path(tcc_lib_dir, 'tcc')
+		tcc_install_dir := if os.is_dir(tcc_nested_dir) { tcc_nested_dir } else { tcc_lib_dir }
+		if os.is_dir(tcc_install_dir) {
+			tcc_b_arg := '-B${b.tcc_quoted_path(tcc_install_dir)}'
+			tcc_l_arg := '-L${b.tcc_quoted_path(tcc_install_dir)}'
+			compile_args << tcc_b_arg
+			mut tcc_include_dirs := [
+				os.join_path(tcc_install_dir, 'include'),
+				os.join_path(tcc_root_dir, 'include'),
+			]
+			for tcc_include_dir in tcc_include_dirs {
+				if os.is_dir(tcc_include_dir) {
+					tcc_include_arg := '-I${b.tcc_quoted_path(tcc_include_dir)}'
+					if tcc_include_arg !in compile_args {
+						compile_args << tcc_include_arg
+					}
+				}
+			}
+			linker_args << tcc_b_arg
+			linker_args << tcc_l_arg
+		}
+	}
 	scompile_args := compile_args.join(' ')
 	slinker_args := linker_args.join(' ')
 	scompile_args_for_linker := compile_args.filter(it != '-x objective-c').join(' ')
@@ -130,7 +161,10 @@ fn parallel_cc(mut b builder.Builder, result c.GenOutput) ! {
 	sw_link := time.new_stopwatch()
 	link_res := os.execute(link_cmd)
 	eprint_result_time(sw_link, 'link_cmd', link_cmd, link_res)
-	if link_res.exit_code != 0 {
+	// tcc reports duplicate symbol errors via stderr and an executable still gets emitted with exit code 0,
+	// so detect that pattern and treat it as a link failure too.
+	link_failed_with_tcc_dup := b.ccoptions.cc == .tcc && link_res.output.contains('defined twice')
+	if link_res.exit_code != 0 || link_failed_with_tcc_dup {
 		return error_with_code('failed to link after parallel C compilation', 1)
 	}
 }

@@ -152,6 +152,13 @@ pub fn (t Time) local_unix() i64 {
 	return time_with_unix(t).unix
 }
 
+// is_zero returns true when `t` is the zero value of `time.Time`.
+@[inline]
+pub fn (t Time) is_zero() bool {
+	return t.unix == 0 && t.year == 0 && t.month == 0 && t.day == 0 && t.hour == 0 && t.minute == 0
+		&& t.second == 0 && t.nanosecond == 0 && !t.is_local
+}
+
 // unix_milli returns the UNIX time with millisecond resolution.
 @[inline]
 pub fn (t Time) unix_milli() i64 {
@@ -374,8 +381,8 @@ pub fn (t Time) week_of_year() int {
 	// 2. The ISO year is the calendar year of this Thursday.
 	// 3. Compute the week number as:
 	//    week_number = (thursday's day_of_year - 1) / 7 + 1
-	day_of_week := t.day_of_week()
-	days_to_thursday := 4 - day_of_week
+	dow := t.day_of_week()
+	days_to_thursday := 4 - dow
 	thursday_date := t.add_days(days_to_thursday)
 	thursday_day_of_year := thursday_date.year_day()
 	week_number := (thursday_day_of_year - 1) / 7 + 1

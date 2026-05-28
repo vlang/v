@@ -8,7 +8,7 @@ module builtin
 @[inline]
 fn alloc_array_data_noscan(total_size u64) voidptr {
 	raw := vcalloc_noscan(array_data_allocation_size(total_size))
-	return unsafe { &u8(raw) + array_data_header_size }
+	return unsafe { &u8(raw) + array_data_header_size() }
 }
 
 @[inline]
@@ -16,7 +16,7 @@ fn alloc_array_data_noscan_uninit(total_size u64) voidptr {
 	raw := unsafe { malloc_noscan_uninit(array_data_allocation_size(total_size)) }
 	unsafe {
 		(&ArrayDataHeader(raw)).has_slices = false
-		return &u8(raw) + array_data_header_size
+		return &u8(raw) + array_data_header_size()
 	}
 }
 
@@ -305,9 +305,9 @@ fn (mut a array) pop_noscan() voidptr {
 	new_len := a.len - 1
 	last_elem := unsafe { &u8(a.data) + u64(new_len) * u64(a.element_size) }
 	if a.needs_unique_shrink() {
-		copy := unsafe { memdup_noscan(last_elem, a.element_size) }
+		cloned := unsafe { memdup_noscan(last_elem, a.element_size) }
 		a.delete_many(new_len, 1)
-		return copy
+		return cloned
 	}
 	a.len = new_len
 	// Note: a.cap is not changed here *on purpose*, so that
@@ -393,12 +393,12 @@ fn (mut a array) push_many_noscan(val voidptr, size int) {
 	}
 	if a.data == val && a.data != 0 {
 		// handle `arr << arr`
-		copy := a.clone()
+		cloned := a.clone()
 		if int(new_len) > a.cap {
 			a.ensure_cap_noscan(int(new_len))
 		}
 		unsafe {
-			vmemcpy(a.get_unsafe(a.len), copy.data, u64(a.element_size) * u64(size))
+			vmemcpy(a.get_unsafe(a.len), cloned.data, u64(a.element_size) * u64(size))
 		}
 	} else {
 		if int(new_len) > a.cap {

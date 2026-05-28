@@ -72,7 +72,7 @@ fn (mut app App) move_food() {
 }
 
 // events
-fn on_keydown(key gg.KeyCode, mod gg.Modifier, mut app App) {
+fn on_keydown(key gg.KeyCode, _ gg.Modifier, mut app App) {
 	match key {
 		.w, .up {
 			if app.last_dir != .down {

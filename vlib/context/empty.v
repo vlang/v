@@ -7,18 +7,24 @@ module context
 import time
 
 // An EmptyContext is never canceled, has no values.
-pub struct EmptyContext {}
+// The done_ch field is an open channel that is never closed, returned by done()
+// on every call. This mirrors Go's context.Background().Done() == nil behavior:
+// selecting on this channel blocks forever, meaning the context is never done.
+pub struct EmptyContext {
+mut:
+	done_ch chan int
+}
 
 // deadline returns none, since an EmptyContext has no deadline.
 pub fn (ctx &EmptyContext) deadline() ?time.Time {
 	return none
 }
 
-// done returns a closed channel, since an EmptyContext can never be canceled.
-pub fn (ctx &EmptyContext) done() chan int {
-	ch := chan int{}
-	ch.close()
-	return ch
+// done returns an open channel that is never closed, since an EmptyContext can
+// never be canceled. Selecting on the returned channel blocks forever.
+// The same channel instance is returned on every call for a given EmptyContext.
+pub fn (mut ctx EmptyContext) done() chan int {
+	return ctx.done_ch
 }
 
 // err returns none, since an EmptyContext is never canceled.

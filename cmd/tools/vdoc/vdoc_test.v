@@ -219,6 +219,32 @@ pub fn greet() string {
 fn greet() string'
 }
 
+fn test_html_keeps_enum_comment_after_top_level_comptime_if() {
+	mod_dir := 'issue_23338'
+	os.mkdir(mod_dir)!
+	os.write_file(os.join_path(mod_dir, 'issue_23338.v'), 'module issue_23338
+
+\$if macos {
+}
+
+// Foo lorem ipsum foo.
+pub enum Foo {
+	foo
+}
+
+// Bar ipsum lorem bar.
+pub enum Bar {
+	bar
+}
+')!
+	res := os.execute_opt('${vexe_} doc -no-timestamp -m -f html -o - -html-only-contents ${os.quoted_path(
+		'./' + mod_dir)}') or { panic(err) }
+	assert res.exit_code == 0
+	output := res.output.replace('\r\n', '\n')
+	assert output.contains('Foo lorem ipsum foo.')
+	assert output.contains('Bar ipsum lorem bar.')
+}
+
 fn test_doc_generates_for_modules_without_public_symbols() {
 	mod_dir := 'module_without_public_symbols'
 	os.mkdir(mod_dir)!

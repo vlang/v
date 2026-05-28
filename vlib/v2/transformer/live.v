@@ -529,8 +529,9 @@ fn mk_global_decl(name string, typ_name string) ast.Stmt {
 	return ast.Stmt(ast.GlobalDecl{
 		fields: [
 			ast.FieldDecl{
-				name: name
-				typ:  mk_ident(typ_name)
+				name:   name
+				typ:    mk_ident(typ_name)
+				is_mut: true
 			},
 		]
 	})

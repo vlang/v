@@ -99,6 +99,50 @@ fn test_run_only_reports_filtered_failures() {
 	assert !res.output.contains('fn test_ok'), res.output
 }
 
+fn test_before_each_and_after_each_run_around_each_test() {
+	test_path := os.join_path(os.vtmp_dir(), 'issue_19699_${os.getpid()}_test.v')
+	log_path := os.join_path(os.vtmp_dir(), 'issue_19699_${os.getpid()}.log')
+	defer {
+		os.rm(test_path) or {}
+		os.rm(log_path) or {}
+		os.unsetenv('V_ISSUE_19699_LOG_PATH')
+	}
+	test_source := [
+		'import os',
+		'',
+		"const issue_19699_log_path = os.getenv('V_ISSUE_19699_LOG_PATH')",
+		'',
+		'fn append_log(line string) {',
+		'	mut entries := os.read_lines(issue_19699_log_path) or { []string{} }',
+		'	entries << line',
+		"	os.write_file(issue_19699_log_path, entries.join_lines() + '\\n') or { panic(err) }",
+		'}',
+		'',
+		"fn testsuite_begin() { append_log('testsuite_begin') }",
+		"fn before_each() { append_log('before_each') }",
+		"fn after_each() { append_log('after_each') }",
+		"fn test_one() { append_log('test_one') }",
+		"fn test_two() { append_log('test_two') }",
+		"fn testsuite_end() { append_log('testsuite_end') }",
+	].join_lines()
+	os.write_file(test_path, test_source)!
+	os.rm(log_path) or {}
+	os.setenv('V_ISSUE_19699_LOG_PATH', log_path, true)
+	res := os.execute('${os.quoted_path(@VEXE)} -test-runner normal ${os.quoted_path(test_path)}')
+	assert res.exit_code == 0, res.output
+	log_lines := os.read_lines(log_path)!
+	assert log_lines == [
+		'testsuite_begin',
+		'before_each',
+		'test_one',
+		'after_each',
+		'before_each',
+		'test_two',
+		'after_each',
+		'testsuite_end',
+	]
+}
+
 fn test_windows_c_system_info_is_undefined_on_non_windows() {
 	$if windows {
 		return

@@ -1,0 +1,3 @@
+const int VV_EXP exported_const = ((int)(123));
+const main__Entry entry = ((main__Entry){.value = 123,});
+extern const int external_symbol;

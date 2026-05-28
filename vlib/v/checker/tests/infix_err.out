@@ -26,13 +26,6 @@ vlib/v/checker/tests/infix_err.vv:14:5: error: `?string` cannot be used as `stri
       |     ~~~
    15 | _ = f() + f()
    16 |
-vlib/v/checker/tests/infix_err.vv:15:9: error: `+` cannot be used with `?string`
-   13 | _ = '' + f()
-   14 | _ = f() + ''
-   15 | _ = f() + f()
-      |         ^
-   16 | 
-   17 | _ = 4 + g()
 vlib/v/checker/tests/infix_err.vv:15:5: error: `?string` cannot be used as `string`, unwrap the option first
    13 | _ = '' + f()
    14 | _ = f() + ''
@@ -40,13 +33,6 @@ vlib/v/checker/tests/infix_err.vv:15:5: error: `?string` cannot be used as `stri
       |     ~~~
    16 | 
    17 | _ = 4 + g()
-vlib/v/checker/tests/infix_err.vv:17:7: error: `+` cannot be used with `?int`
-   15 | _ = f() + f()
-   16 | 
-   17 | _ = 4 + g()
-      |       ^
-   18 | _ = int(0) + g()
-   19 | _ = g() + int(3)
 vlib/v/checker/tests/infix_err.vv:17:9: error: `?int` cannot be used as `int literal`, unwrap the option first
    15 | _ = f() + f()
    16 | 
@@ -61,13 +47,6 @@ vlib/v/checker/tests/infix_err.vv:18:14: error: `?int` cannot be used as `int`, 
       |              ~~~
    19 | _ = g() + int(3)
    20 | _ = g() + 3
-vlib/v/checker/tests/infix_err.vv:19:9: error: `+` cannot be used with `?int`
-   17 | _ = 4 + g()
-   18 | _ = int(0) + g()
-   19 | _ = g() + int(3)
-      |         ^
-   20 | _ = g() + 3
-   21 |
 vlib/v/checker/tests/infix_err.vv:19:5: error: `?int` cannot be used as `int`, unwrap the option first
    17 | _ = 4 + g()
    18 | _ = int(0) + g()
@@ -75,13 +54,6 @@ vlib/v/checker/tests/infix_err.vv:19:5: error: `?int` cannot be used as `int`, u
       |     ~~~
    20 | _ = g() + 3
    21 |
-vlib/v/checker/tests/infix_err.vv:20:9: error: `+` cannot be used with `?int`
-   18 | _ = int(0) + g()
-   19 | _ = g() + int(3)
-   20 | _ = g() + 3
-      |         ^
-   21 | 
-   22 | // binary operands
 vlib/v/checker/tests/infix_err.vv:20:5: error: `?int` cannot be used as `int literal`, unwrap the option first
    18 | _ = int(0) + g()
    19 | _ = g() + int(3)

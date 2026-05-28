@@ -22,6 +22,9 @@ pub fn file_has_incompatible_os_suffix(file string, current_os string) bool {
 	if os_name != 'macos' && (file.contains('_macos.') || file.contains('_darwin.')) {
 		return true
 	}
+	if os_name !in ['macos', 'freebsd', 'openbsd', 'netbsd', 'dragonfly'] && file.contains('_bsd.') {
+		return true
+	}
 	if os_name != 'android' && file.contains('_android') {
 		return true
 	}

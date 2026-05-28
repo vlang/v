@@ -385,9 +385,9 @@ mut:
 
 fn new_stream_socket(socket_path string) !StreamSocket {
 	handle := $if is_coroutine ? {
-		net.socket_error(C.photon_socket(.unix, .tcp, 0))!
+		net.socket_error(C.photon_socket(i32(net.AddrFamily.unix), i32(net.SocketType.tcp), 0))!
 	} $else {
-		net.socket_error(C.socket(.unix, .tcp, 0))!
+		net.socket_error(C.socket(i32(net.AddrFamily.unix), i32(net.SocketType.tcp), 0))!
 	}
 	mut s := StreamSocket{
 		handle:      handle

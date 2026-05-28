@@ -68,12 +68,12 @@ fn test_install_from_git_url_uses_registered_package_name() {
 	assert res.output.contains('Installing `nedpals.args`'), res.output
 	assert res.output.contains('Installed `nedpals.args`'), res.output
 	mut manifest := get_vmod(os.join_path('nedpals', 'args'))
-	assert manifest.name == 'args'
+	assert manifest.name == 'nedpals.args'
 
 	res = cmd_ok(@LOCATION, '${vexe} install https://github.com/nedpals/v-args')
 	assert res.output.contains('Updating module `nedpals.args`'), res.output
 	manifest = get_vmod(os.join_path('nedpals', 'args'))
-	assert manifest.name == 'args'
+	assert manifest.name == 'nedpals.args'
 }
 
 fn test_install_already_existent() {
@@ -134,14 +134,20 @@ fn test_install_potentially_conflicting() {
 	mut manifest := get_vmod('ui')
 	assert manifest.name == 'ui'
 	res = os.execute('${vexe} install https://github.com/isaiahpatton/ui')
-	assert res.output.contains('Installed `iui`')
-	manifest = get_vmod('iui')
+	// The VPM registry maps `github.com/isaiahPatton/ui` (whose manifest is
+	// named `iui`) to the registered name `IsaiahPatton.iui`, so the install
+	// now uses the registered name and the publisher-prefixed path.
+	assert res.output.contains('Installed `IsaiahPatton.iui`'), res.output
+	manifest = get_vmod(os.join_path('isaiahpatton', 'iui'))
 	assert manifest.name == 'iui'
 }
 
 fn test_get_installed_version() {
 	test_project_path := os.join_path(test_path, 'test_project')
-	mut res := cmd_ok(@LOCATION, 'git init ${test_project_path}')
+	// Force the initial branch name; CI ships with git's traditional `master`
+	// default, but newer git installs (and many dev machines) default to
+	// `main`, which makes the `git branch -D master` step below fail.
+	mut res := cmd_ok(@LOCATION, 'git init -b master ${test_project_path}')
 	os.chdir(test_project_path)!
 	if os.execute('git config user.name').exit_code == 1 {
 		os.execute_or_exit('git config user.email "ci@vlang.io"')

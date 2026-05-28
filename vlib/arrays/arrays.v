@@ -190,21 +190,20 @@ pub fn chunk_while[T](a []T, predicate fn (before T, after T) bool) [][]T {
 		return []
 	}
 	mut chunks := [][]T{}
-	mut chunk := [a[0]]
+	mut current := [a[0]]
 	mut i := 0
 	for i = 1; i < a.len; i++ {
-		// eprintln('> i: ${i} | a[i]: ${a[i]} | predicate: ${predicate(a[i-1], a[i]):10} | chunk: ${chunk}')
 		if predicate(a[i - 1], a[i]) {
-			chunk << a[i]
+			current << a[i]
 			continue
 		}
-		if chunk.len > 0 {
-			chunks << chunk
+		if current.len > 0 {
+			chunks << current
 		}
-		chunk = [a[i]]
+		current = [a[i]]
 	}
-	if chunk.len > 0 {
-		chunks << chunk
+	if current.len > 0 {
+		chunks << current
 	}
 	return chunks
 }
@@ -667,19 +666,19 @@ fn swap_nonoverlapping[T](x_ &T, y_ &T, count int) {
 // The number of the elements copied is the minimum of the length of both arrays.
 // Returns the number of elements copied.
 pub fn copy[T](mut dst []T, src []T) int {
-	min := if dst.len < src.len { dst.len } else { src.len }
-	if min <= 0 {
+	min_len := if dst.len < src.len { dst.len } else { src.len }
+	if min_len <= 0 {
 		return 0
 	}
 	if can_copy_bits[T]() {
-		blen := min * isize(sizeof(T))
+		blen := min_len * isize(sizeof(T))
 		unsafe { vmemmove(&T(dst.data), src.data, blen) }
 	} else {
-		for i in 0 .. min {
+		for i in 0 .. min_len {
 			dst[i] = src[i]
 		}
 	}
-	return min
+	return min_len
 }
 
 // can_copy_bits determines if T can be copied using `memcpy`.

@@ -14,13 +14,41 @@ fn test_config_get_conn_str() {
 		uid:    'sa'
 		pwd:    'secret'
 		dbname: 'master'
-	}.get_conn_str() == 'Driver=ODBC Driver 18 for SQL Server;Server=tcp:localhost;UID=sa;PWD=secret;Database=master'
+	}.get_conn_str() == 'Driver={ODBC Driver 18 for SQL Server};Server=tcp:localhost;UID=sa;PWD=secret;Database=master'
 	assert mssql.Config{
-		driver: 'FreeTDS'
-		server: '127.0.0.1'
-		uid:    'sa'
-		pwd:    'secret'
-	}.get_conn_str() == 'Driver=FreeTDS;Server=127.0.0.1;UID=sa;PWD=secret'
+		driver:   'FreeTDS'
+		server:   '127.0.0.1'
+		port:     1433
+		user:     'sa'
+		password: 'secret'
+		options:  {
+			'ClientCharset': 'UTF-8'
+			'TDS_Version':   '7.4'
+		}
+	}.get_conn_str() == 'Driver=FreeTDS;Server=127.0.0.1;Port=1433;UID=sa;PWD=secret;ClientCharset=UTF-8;TDS_Version=7.4'
+	assert mssql.Config{
+		dsn:      'Reporting DB'
+		user:     'sa'
+		password: 'secret'
+		dbname:   'master'
+		options:  {
+			'Encrypt':                'yes'
+			'TrustServerCertificate': 'yes'
+		}
+	}.get_conn_str() == 'DSN={Reporting DB};UID=sa;PWD=secret;Database=master;Encrypt=yes;TrustServerCertificate=yes'
+	assert mssql.Config{
+		conn_str: 'DSN=Accounting;Trusted_Connection=Yes'
+		driver:   'ignored'
+	}.get_conn_str() == 'DSN=Accounting;Trusted_Connection=Yes'
+}
+
+fn test_row_helpers() {
+	row := mssql.Row{
+		vals: ['1', 'alice']
+	}
+	assert row.val(0) == '1'
+	assert row.val(1) == 'alice'
+	assert row.values() == ['1', 'alice']
 }
 
 fn test_connection_and_query() {

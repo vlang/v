@@ -56,7 +56,7 @@ pub enum Subsystem {
 
 pub enum Backend {
 	c               // The (default) C backend
-	interpret       // Interpret the ast
+	interpret       // Removed V1 interpreter backend; kept for compatibility diagnostics.
 	js_node         // The JavaScript NodeJS backend
 	js_browser      // The JavaScript browser backend
 	js_freestanding // The JavaScript freestanding backend
@@ -153,6 +153,7 @@ pub mut:
 	show_callgraph         bool // -show-callgraph, print the program callgraph, in a Graphviz DOT format to stdout
 	show_depgraph          bool // -show-depgraph, print the program module dependency graph, in a Graphviz DOT format to stdout
 	show_unused_params     bool = true // regular function params should report as unused by default.
+	c_error_bug_report_url string // `-bug-report-url url` - override the automatic C compiler bug report endpoint.
 	dump_c_flags           string // `-dump-c-flags file.txt` - let V store all C flags, passed to the backend C compiler in `file.txt`, one C flag/value per line.
 	dump_modules           string // `-dump-modules modules.txt` - let V store all V modules, that were used by the compiled program in `modules.txt`, one module per line.
 	dump_files             string // `-dump-files files.txt` - let V store all V or .template file paths, that were used by the compiled program in `files.txt`, one path per line.
@@ -386,7 +387,6 @@ const internal_v_commands = [
 	'update',
 	'upgrade',
 	'vlib-docs',
-	'interpret',
 	'translate',
 ]
 
@@ -529,6 +529,11 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 			'-v2' {
 				res.use_v2 = true
 			}
+			'-eval', '--eval' {
+				if !use_v2_requested {
+					eprintln_exit('use v -v2 -eval file.v')
+				}
+			}
 			'-ownership' {
 				// Passed through to v2 compiler for ownership checking
 			}
@@ -628,7 +633,7 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 					}
 					else {
 						eprintln('unknown garbage collection mode `-gc ${gc_mode}`, supported modes are:`')
-						eprintln('  `-gc boehm` ............ select default Boehm mode (currently `boehm_full_opt`)')
+						eprintln('  `-gc boehm` ............ default GC-mode (currently `boehm_full_opt`)')
 						eprintln('  `-gc boehm_full` ....... classic full collection')
 						eprintln('  `-gc boehm_incr` ....... incremental collection')
 						eprintln('  `-gc boehm_full_opt` ... optimized classic full collection')
@@ -874,6 +879,10 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 			'-show-depgraph' {
 				res.show_depgraph = true
 			}
+			'-bug-report-url' {
+				res.c_error_bug_report_url = cmdline.option(args[i..], arg, '')
+				i++
+			}
 			'-run-only' {
 				res.run_only =
 					cmdline.option(args[i..], arg, os.getenv('VTEST_ONLY_FN')).split_any(',')
@@ -939,6 +948,9 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 			}
 			'-prealloc' {
 				res.prealloc = true
+				if !res.gc_set_by_flag {
+					res.gc_mode = .no_gc
+				}
 				res.build_options << arg
 			}
 			'-no-parallel' {
@@ -954,7 +966,7 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 				eprintln_exit('The native backend has been removed. Use `v -v2 -b arm64` or `v -v2 -b x64` instead.')
 			}
 			'-interpret' {
-				res.backend = .interpret
+				eprintln_exit('use v -v2 -eval file.v')
 			}
 			'-W' {
 				res.warns_are_errors = true
@@ -1091,7 +1103,7 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 					continue
 				}
 				b := backend_from_string(sbackend) or {
-					eprintln_exit('Unknown V backend: ${sbackend}\nValid -backend choices are: c, interpret, js, js_node, js_browser, js_freestanding, wasm')
+					eprintln_exit('Unknown V backend: ${sbackend}\nValid -backend choices are: c, js, js_node, js_browser, js_freestanding, wasm, arm64, x64')
 				}
 				if b == .wasm {
 					res.compile_defines << 'wasm'
@@ -1303,18 +1315,7 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 		res.path = command
 		res.run_args = command_args
 	} else if command == 'interpret' {
-		res.backend = .interpret
-		res.path = command_args[0] or { eprintln_exit('v interpret: no v files listed') }
-		if res.path != '' {
-			must_exist(res.path)
-			if !res.path.ends_with('.v') && os.is_executable(res.path) && os.is_file(res.path)
-				&& os.is_file(res.path + '.v') {
-				eprintln_cond(show_output && !res.is_quiet,
-					'It looks like you wanted to run "${res.path}.v", so we went ahead and did that since "${res.path}" is an executable.')
-				res.path += '.v'
-			}
-		}
-		res.run_args = command_args[1..]
+		eprintln_exit('use v -v2 -eval file.v')
 	}
 	if command == 'build-module' {
 		res.build_mode = .build_module
@@ -1407,7 +1408,7 @@ pub fn backend_from_string(s string) !Backend {
 	// + a separate option, to choose the wanted JS output.
 	return match s {
 		'c' { .c }
-		'interpret' { .interpret }
+		'eval', 'interpret' { eprintln_exit('use v -v2 -eval file.v') }
 		'js', 'js_node' { .js_node }
 		'js_browser' { .js_browser }
 		'js_freestanding' { .js_freestanding }

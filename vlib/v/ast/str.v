@@ -493,6 +493,11 @@ pub fn (x Expr) str() string {
 					return '${x.exprs.str()}${typ_str}{}'
 				} else if x.exprs.len == 0 && typ_str != '' {
 					return '[]${typ_str}{}'
+				} else if x.has_update_expr {
+					if x.exprs.len == 0 {
+						return '[...${x.update_expr}]'
+					}
+					return '[...${x.update_expr}, ${x.exprs.map(it.str()).join(', ')}]'
 				} else {
 					return x.exprs.str()
 				}
@@ -603,7 +608,8 @@ pub fn (x Expr) str() string {
 			return parts.join('')
 		}
 		IndexExpr {
-			return '${x.left.str()}[${x.index.str()}]'
+			parts := if x.indices.len > 0 { x.indices } else { [x.index] }
+			return '${x.left.str()}[${parts.map(it.str()).join(', ')}]'
 		}
 		InfixExpr {
 			return '${x.left.str()} ${x.op.str()} ${x.right.str()}'

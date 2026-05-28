@@ -23,6 +23,14 @@ type Value = ArrayValue
 	| i64
 	| string
 
+fn value_f64_payload(value Value) f64 {
+	data := unsafe { (&u64(&value))[1] }
+	if data == 0 {
+		return 0.0
+	}
+	return unsafe { *(&f64(voidptr(data))) }
+}
+
 struct ArrayValue {
 mut:
 	elem_type_name string
@@ -3410,6 +3418,23 @@ fn (mut e Eval) eval_expr(expr ast.Expr) !Value {
 				}
 			}
 			mut values := []Value{cap: expr.exprs.len}
+			// Spread syntax `[...base, e1, e2]` — prepend the base array's
+			// values before any explicit elements. Deep-clone each item so
+			// the new array does not alias the base's nested storage (mirrors
+			// the runtime `array__clone_to_depth` semantics used by lowered
+			// codegen paths).
+			if expr.update_expr !is ast.EmptyExpr {
+				base_value := e.eval_expr(expr.update_expr)!
+				if base_value is ArrayValue {
+					cloned_base := e.clone_array_to_depth(base_value, 100)
+					for v in cloned_base.values {
+						values << v
+					}
+					if elem_type_name == '' {
+						elem_type_name = base_value.elem_type_name
+					}
+				}
+			}
 			for item in expr.exprs {
 				values << e.eval_expr(item)!
 			}
@@ -4487,16 +4512,17 @@ fn (e &Eval) value_eq(left Value, right Value) bool {
 				return left == right
 			}
 			if right is f64 {
-				return f64(left) == right
+				return f64(left) == value_f64_payload(right)
 			}
 			return false
 		}
 		f64 {
+			left_f := value_f64_payload(left)
 			if right is f64 {
-				return left == right
+				return left_f == value_f64_payload(right)
 			}
 			if right is i64 {
-				return left == f64(right)
+				return left_f == f64(right)
 			}
 			return false
 		}
@@ -4647,7 +4673,7 @@ fn (mut e Eval) eval_prefix_expr(expr ast.PrefixExpr) !Value {
 		}
 		.minus {
 			if value is f64 {
-				f := -value
+				f := -value_f64_payload(value)
 				return f
 			}
 			return -e.value_as_int(value)!
@@ -5796,6 +5822,13 @@ fn (e &Eval) type_node_name(typ ast.Type) string {
 		ast.OptionType {
 			'?${e.type_expr_name(typ.base_type)}'
 		}
+		ast.PointerType {
+			if typ.lifetime != '' {
+				'&^${typ.lifetime} ${e.type_expr_name(typ.base_type)}'
+			} else {
+				'&${e.type_expr_name(typ.base_type)}'
+			}
+		}
 		ast.ResultType {
 			'!${e.type_expr_name(typ.base_type)}'
 		}
@@ -6058,7 +6091,7 @@ fn (e &Eval) value_as_bool(value Value) !bool {
 	return match value {
 		bool { value }
 		i64 { value != 0 }
-		f64 { value != 0.0 }
+		f64 { value_f64_payload(value) != 0.0 }
 		string { value.len > 0 }
 		ArrayValue { value.values.len > 0 }
 		FlagsValue { false }
@@ -6075,7 +6108,7 @@ fn (e &Eval) value_as_int(value Value) !i64 {
 			value
 		}
 		f64 {
-			i64(value)
+			i64(value_f64_payload(value))
 		}
 		bool {
 			if value {
@@ -6099,7 +6132,7 @@ fn (e &Eval) value_as_int(value Value) !i64 {
 fn (e &Eval) value_as_f64(value Value) !f64 {
 	return match value {
 		f64 {
-			value
+			value_f64_payload(value)
 		}
 		i64 {
 			f64(value)
@@ -6167,8 +6200,11 @@ fn (e &Eval) value_string(value Value) string {
 		VoidValue {
 			''
 		}
-		bool, f64, i64, string {
+		bool, i64, string {
 			value.str()
+		}
+		f64 {
+			value_f64_payload(value).str()
 		}
 	}
 }
