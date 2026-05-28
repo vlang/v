@@ -810,8 +810,8 @@ fn (mut g JsGen) gen_anon_fn(mut fun ast.AnonFn) {
 	mut inherited2copy := map[string]string{}
 	for inherited in fun.inherited_vars {
 		if !inherited.is_mut {
-			copy := g.copy_val(inherited.typ, inherited.name)
-			inherited2copy[inherited.name] = copy
+			copied := g.copy_val(inherited.typ, inherited.name)
+			inherited2copy[inherited.name] = copied
 		}
 	}
 

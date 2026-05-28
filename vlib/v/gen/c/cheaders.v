@@ -586,6 +586,7 @@ V_CRT_LINKAGE void * V_CRT_CALL malloc(size_t size);
 V_CRT_LINKAGE void * V_CRT_CALL calloc(size_t nitems, size_t size);
 V_CRT_LINKAGE void * V_CRT_CALL realloc(void *ptr, size_t size);
 V_CRT_LINKAGE void * V_CRT_CALL aligned_alloc(size_t alignment, size_t size);
+V_CRT_LINKAGE int V_CRT_CALL posix_memalign(void **memptr, size_t alignment, size_t size);
 V_CRT_LINKAGE void V_CRT_CALL free(void *ptr);
 V_CRT_LINKAGE int V_CRT_CALL rand(void);
 V_CRT_LINKAGE void V_CRT_CALL srand(unsigned int seed);

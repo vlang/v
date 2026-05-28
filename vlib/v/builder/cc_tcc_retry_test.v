@@ -19,6 +19,34 @@ fn test_is_tcc_compilation_failure_detects_tcc_output() {
 	assert !is_tcc_compilation_failure('cc', .unknown, 'clang: error: unsupported option')
 }
 
+fn test_c_compiler_failure_output_reports_final_compiler_after_tcc_retry_fails() {
+	tcc_res := os.Result{
+		exit_code: 1
+		output:    'tcc: stale retry failure'
+	}
+	clang_res := os.Result{
+		exit_code: 1
+		output:    'clang: final generated C failure'
+	}
+	failure_output := c_compiler_failure_output('clang', clang_res, tcc_res)
+	assert failure_output.display_ccompiler == 'tcc'
+	assert failure_output.display_res.output == tcc_res.output
+	assert failure_output.report_ccompiler == 'clang'
+	assert failure_output.report_res.output == clang_res.output
+}
+
+fn test_c_compiler_failure_output_reports_displayed_compiler_without_tcc_retry() {
+	clang_res := os.Result{
+		exit_code: 1
+		output:    'clang: final generated C failure'
+	}
+	failure_output := c_compiler_failure_output('clang', clang_res, os.Result{})
+	assert failure_output.display_ccompiler == 'clang'
+	assert failure_output.display_res.output == clang_res.output
+	assert failure_output.report_ccompiler == 'clang'
+	assert failure_output.report_res.output == clang_res.output
+}
+
 fn test_is_tcc_compilation_failure_detects_tcc_alias_compiler() {
 	if os.user_os() == 'windows' {
 		return

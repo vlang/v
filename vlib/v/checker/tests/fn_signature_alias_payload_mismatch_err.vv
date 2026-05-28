@@ -1,0 +1,20 @@
+// Function-pointer signatures should NOT match across alias-equivalent
+// result/option payloads, because the `_result_*` / `_option_*` C wrapper
+// structs are distinct types — the conversion path used for `return some_call()`
+// (#27264) doesn't run at the fn-signature boundary, so accepting these would
+// pass V checking and then emit incompatible C function-pointer ABI.
+
+type Token = string
+type Tokens = []string
+
+type ReturnsTokens = fn () !Tokens
+
+fn returns_array_of_token() ![]Token {
+	return [Token('hi')]
+}
+
+fn main() {
+	// Without `unsafe`, this must error: `fn () ![]Token` is *not* assignable
+	// to `fn () !Tokens` even though the payloads have the same layout.
+	_ := ReturnsTokens(returns_array_of_token)
+}

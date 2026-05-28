@@ -91,8 +91,12 @@ v:
 				;; \
 		esac; \
 	fi; \
+	bootstrap_gcflags="-gc none"; \
+	case " $(VFLAGS) " in \
+		*" -gc "*|*" -gc="*) bootstrap_gcflags="";; \
+	esac; \
 	$(CC) $$bootstrap_ccflags -std=gnu11 -w -o v1 vc/v.c -lm -lpthread $$ldflags || cmd/tools/cc_compilation_failed_non_windows.sh; \
-	set -- ./v1 -no-parallel -o v2 $(VFLAGS); \
+	set -- ./v1 -no-parallel -o v2 $$bootstrap_gcflags $(VFLAGS); \
 	if [ -n "$$bootstrap_ccflags" ]; then \
 		set -- "$$@" -cflags "$$bootstrap_ccflags"; \
 	fi; \
@@ -101,7 +105,7 @@ v:
 	fi; \
 	set -- "$$@" cmd/v; \
 	"$$@"; \
-	set -- ./v2 -o v $(VFLAGS); \
+	set -- ./v2 -o v $$bootstrap_gcflags $(VFLAGS); \
 	if [ -n "$$ccflags" ]; then \
 		set -- "$$@" -cflags "$$ccflags"; \
 	fi; \

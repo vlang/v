@@ -57,6 +57,7 @@ $if macos {
 }
 
 $if windows {
+	@[typedef]
 	struct C.RECT {
 		left   i32
 		top    i32

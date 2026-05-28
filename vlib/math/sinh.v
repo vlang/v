@@ -11,10 +11,10 @@ pub fn sinh(x_ f64) f64 {
 	q0 := -0.6307673640497716991212077277e+6
 	q1 := 0.1521517378790019070696485176e+5
 	q2 := -0.173678953558233699533450911e+3
-	mut sign := false
+	mut neg := false
 	if x < 0 {
 		x = -x
-		sign = true
+		neg = true
 	}
 	mut temp := 0.0
 	if x > 21 {
@@ -27,7 +27,7 @@ pub fn sinh(x_ f64) f64 {
 		temp = (((p3 * sq + p2) * sq + p1) * sq + p0) * x
 		temp = temp / (((sq + q2) * sq + q1) * sq + q0)
 	}
-	if sign {
+	if neg {
 		temp = -temp
 	}
 	return temp

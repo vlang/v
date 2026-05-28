@@ -80,16 +80,32 @@ fn parallel_cc(mut b builder.Builder, result c.GenOutput) ! {
 	mut compile_args := b.get_compile_args()
 	mut linker_args := b.get_linker_args()
 	if b.ccoptions.cc == .tcc {
-		// vlang/tcc has its system headers under `${vroot}/thirdparty/tcc/lib/tcc/include/`
-		// and its runtime objects (libtcc1.a, bt-*.o) under `${vroot}/thirdparty/tcc/lib/tcc/`.
+		// vlang/tcc can have its runtime objects under `${vroot}/thirdparty/tcc/lib/tcc/`
+		// or directly under `${vroot}/thirdparty/tcc/lib/`, while its system headers
+		// can be under that install dir or `${vroot}/thirdparty/tcc/include/`.
 		// `-B` controls tcc's include search (`${B}/include`) and `-L` adds a library search path,
 		// so pass absolute paths for both. This lets tcc find them regardless of the cwd from
 		// which v was invoked, without affecting how user-supplied relative flags are resolved.
-		tcc_install_dir := os.join_path(@VEXEROOT, 'thirdparty', 'tcc', 'lib', 'tcc')
+		tcc_root_dir := os.join_path(@VEXEROOT, 'thirdparty', 'tcc')
+		tcc_lib_dir := os.join_path(tcc_root_dir, 'lib')
+		tcc_nested_dir := os.join_path(tcc_lib_dir, 'tcc')
+		tcc_install_dir := if os.is_dir(tcc_nested_dir) { tcc_nested_dir } else { tcc_lib_dir }
 		if os.is_dir(tcc_install_dir) {
 			tcc_b_arg := '-B${b.tcc_quoted_path(tcc_install_dir)}'
 			tcc_l_arg := '-L${b.tcc_quoted_path(tcc_install_dir)}'
 			compile_args << tcc_b_arg
+			mut tcc_include_dirs := [
+				os.join_path(tcc_install_dir, 'include'),
+				os.join_path(tcc_root_dir, 'include'),
+			]
+			for tcc_include_dir in tcc_include_dirs {
+				if os.is_dir(tcc_include_dir) {
+					tcc_include_arg := '-I${b.tcc_quoted_path(tcc_include_dir)}'
+					if tcc_include_arg !in compile_args {
+						compile_args << tcc_include_arg
+					}
+				}
+			}
 			linker_args << tcc_b_arg
 			linker_args << tcc_l_arg
 		}

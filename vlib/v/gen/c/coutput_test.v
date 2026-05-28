@@ -247,6 +247,18 @@ fn test_imported_empty_interface_concat_does_not_emit_noop_array_cast_helper() {
 	assert !compilation.output.contains(symbol)
 }
 
+fn test_comptime_for_empty_attrs_does_not_emit_new_array_calls() {
+	os.chdir(vroot) or {}
+	path := os.join_path(testdata_folder, 'comptime_for_empty_attrs_inline_init.vv')
+	cmd := '${os.quoted_path(vexe)} -o - ${os.quoted_path(path)}'
+	compilation := os.execute(cmd)
+	ensure_compilation_succeeded(compilation, cmd)
+	// regression for https://github.com/vlang/v/issues/27274
+	assert !compilation.output.contains('builtin____new_array_with_default(0, 0, sizeof(string), 0)')
+	assert !compilation.output.contains('builtin____new_array_with_default(0, 0, sizeof(VAttribute), 0)')
+	assert !compilation.output.contains('builtin____new_array_with_default(0, 0, sizeof(FunctionParam), 0)')
+}
+
 fn test_windows_sharedlive_string_interpolation_in_ternary_does_not_emit_inline_tmp_decl() {
 	os.chdir(vroot) or {}
 	test_source := os.join_path(os.vtmp_dir(), 'coutput_live_windows_ternary_str_intp.vv')
@@ -328,6 +340,34 @@ fn main() {
 	assert compilation.output.contains('thirdparty/stdatomic/win/atomic.h')
 	assert compilation.output.contains('InterlockedExchangeAdd')
 	assert !compilation.output.contains('__atomic_fetch_add')
+}
+
+fn test_windows_tcc_boehm_prod_does_not_emit_gc_remove_roots() {
+	os.chdir(vroot) or {}
+	cc := windows_tcc_ccompiler_for_coutput_test()
+	if cc == '' {
+		eprintln('> skipping ${@FN} since tcc is not available on windows')
+		return
+	}
+	test_source := os.join_path(os.vtmp_dir(), 'coutput_windows_tcc_boehm_scope_pin.vv')
+	os.write_file(test_source, "module main
+
+fn use_value(value string) {
+	println(value)
+}
+
+fn main() {
+	values := ['alpha', 'beta']
+	use_value(values[0])
+}
+")!
+	defer {
+		os.rm(test_source) or {}
+	}
+	cmd := '${os.quoted_path(vexe)} -o - -os windows -cc ${cc} -prod ${os.quoted_path(test_source)}'
+	compilation := os.execute(cmd)
+	ensure_compilation_succeeded(compilation, cmd)
+	assert !compilation.output.contains('GC_remove_roots(')
 }
 
 fn windows_tcc_ccompiler_for_coutput_test() string {

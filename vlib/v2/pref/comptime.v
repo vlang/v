@@ -90,6 +90,10 @@ pub fn comptime_flag_value(pref &Preferences, name string) bool {
 			// guards select the software fallback path instead of inline asm.
 			return pref != unsafe { nil } && (pref.backend == .arm64 || pref.backend == .x64)
 		}
+		'no_backtrace' {
+			return pref != unsafe { nil } && ((pref.backend == .arm64 || pref.backend == .x64)
+				|| name in pref.user_defines)
+		}
 		'prealloc' {
 			return pref != unsafe { nil } && pref.prealloc
 		}

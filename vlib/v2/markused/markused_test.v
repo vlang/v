@@ -14,7 +14,7 @@ fn pos(id int) token.Pos {
 
 fn test_interface_name_from_type_handles_unresolved_alias_base_type() {
 	mut env := types.Environment.new()
-	w := new_walker([], env)
+	w := new_walker([]ast.File{}, env, MarkUsedOptions{})
 	assert w.interface_name_from_type(types.Type(types.Alias{
 		name: 'UnresolvedAlias'
 	})) == ''
@@ -511,8 +511,9 @@ fn test_mark_used_tracks_embedded_methods_for_interface_conversions() {
 					name:   'Logger'
 					fields: [
 						ast.FieldDecl{
-							name: 'get_level'
-							typ:  ast.Type(ast.FnType{})
+							name:                'get_level'
+							typ:                 ast.Type(ast.FnType{})
+							is_interface_method: true
 						},
 					]
 				}),
@@ -603,6 +604,326 @@ fn test_mark_used_tracks_embedded_methods_for_interface_conversions() {
 	assert used[main_key]
 	assert used[get_level_key]
 	assert !used[unused_key]
+}
+
+fn test_mark_used_tracks_embedded_interface_methods_for_interface_conversions() {
+	mut env := types.Environment.new()
+	files := [
+		ast.File{
+			mod:   'main'
+			name:  'main.v'
+			stmts: [
+				ast.Stmt(ast.InterfaceDecl{
+					name:   'Base'
+					fields: [
+						ast.FieldDecl{
+							name:                'base_required'
+							typ:                 ast.Type(ast.FnType{})
+							is_interface_method: true
+						},
+					]
+				}),
+				ast.Stmt(ast.InterfaceDecl{
+					name:     'Child'
+					embedded: [
+						ast.Expr(ast.Ident{
+							name: 'Base'
+							pos:  pos(90)
+						}),
+					]
+				}),
+				ast.Stmt(ast.GlobalDecl{
+					fields: [
+						ast.FieldDecl{
+							name: 'child'
+							typ:  ast.Ident{
+								name: 'Child'
+								pos:  pos(91)
+							}
+						},
+					]
+				}),
+				ast.Stmt(ast.StructDecl{
+					name: 'ConcreteChild'
+				}),
+				ast.Stmt(ast.FnDecl{
+					is_method: true
+					receiver:  ast.Parameter{
+						name: 'c'
+						typ:  ast.Ident{
+							name: 'ConcreteChild'
+							pos:  pos(92)
+						}
+						pos:  pos(92)
+					}
+					name:      'base_required'
+					typ:       ast.FnType{}
+					pos:       pos(93)
+				}),
+				ast.Stmt(ast.FnDecl{
+					is_method: true
+					receiver:  ast.Parameter{
+						name: 'c'
+						typ:  ast.Ident{
+							name: 'ConcreteChild'
+							pos:  pos(94)
+						}
+						pos:  pos(94)
+					}
+					name:      'unused'
+					typ:       ast.FnType{}
+					pos:       pos(95)
+				}),
+				ast.Stmt(ast.FnDecl{
+					name:  'main'
+					typ:   ast.FnType{}
+					pos:   pos(96)
+					stmts: [
+						ast.Stmt(ast.AssignStmt{
+							lhs: [
+								ast.Expr(ast.Ident{
+									name: 'child'
+									pos:  pos(97)
+								}),
+							]
+							rhs: [
+								ast.Expr(ast.InitExpr{
+									typ: ast.Ident{
+										name: 'ConcreteChild'
+										pos:  pos(98)
+									}
+									pos: pos(98)
+								}),
+							]
+						}),
+					]
+				}),
+			]
+		},
+	]
+	used := mark_used(files, env)
+	main_key := decl_key('main', files[0].stmts[6] as ast.FnDecl, env)
+	base_required_key := decl_key('main', files[0].stmts[4] as ast.FnDecl, env)
+	unused_key := decl_key('main', files[0].stmts[5] as ast.FnDecl, env)
+	assert used[main_key]
+	assert used[base_required_key]
+	assert !used[unused_key]
+}
+
+fn test_mark_used_tracks_direct_and_embedded_interface_methods_for_interface_conversions() {
+	mut env := types.Environment.new()
+	files := [
+		ast.File{
+			mod:   'main'
+			name:  'main.v'
+			stmts: [
+				ast.Stmt(ast.InterfaceDecl{
+					name:   'Base'
+					fields: [
+						ast.FieldDecl{
+							name:                'base_required'
+							typ:                 ast.Type(ast.FnType{})
+							is_interface_method: true
+						},
+					]
+				}),
+				ast.Stmt(ast.InterfaceDecl{
+					name:     'Child'
+					embedded: [
+						ast.Expr(ast.Ident{
+							name: 'Base'
+							pos:  pos(100)
+						}),
+					]
+					fields:   [
+						ast.FieldDecl{
+							name:                'child_required'
+							typ:                 ast.Type(ast.FnType{})
+							is_interface_method: true
+						},
+					]
+				}),
+				ast.Stmt(ast.GlobalDecl{
+					fields: [
+						ast.FieldDecl{
+							name: 'child'
+							typ:  ast.Ident{
+								name: 'Child'
+								pos:  pos(101)
+							}
+						},
+					]
+				}),
+				ast.Stmt(ast.StructDecl{
+					name: 'ConcreteUnion'
+				}),
+				ast.Stmt(ast.FnDecl{
+					is_method: true
+					receiver:  ast.Parameter{
+						name: 'c'
+						typ:  ast.Ident{
+							name: 'ConcreteUnion'
+							pos:  pos(102)
+						}
+						pos:  pos(102)
+					}
+					name:      'base_required'
+					typ:       ast.FnType{}
+					pos:       pos(103)
+				}),
+				ast.Stmt(ast.FnDecl{
+					is_method: true
+					receiver:  ast.Parameter{
+						name: 'c'
+						typ:  ast.Ident{
+							name: 'ConcreteUnion'
+							pos:  pos(104)
+						}
+						pos:  pos(104)
+					}
+					name:      'child_required'
+					typ:       ast.FnType{}
+					pos:       pos(105)
+				}),
+				ast.Stmt(ast.FnDecl{
+					is_method: true
+					receiver:  ast.Parameter{
+						name: 'c'
+						typ:  ast.Ident{
+							name: 'ConcreteUnion'
+							pos:  pos(106)
+						}
+						pos:  pos(106)
+					}
+					name:      'unused'
+					typ:       ast.FnType{}
+					pos:       pos(107)
+				}),
+				ast.Stmt(ast.FnDecl{
+					name:  'main'
+					typ:   ast.FnType{}
+					pos:   pos(108)
+					stmts: [
+						ast.Stmt(ast.AssignStmt{
+							lhs: [
+								ast.Expr(ast.Ident{
+									name: 'child'
+									pos:  pos(109)
+								}),
+							]
+							rhs: [
+								ast.Expr(ast.InitExpr{
+									typ: ast.Ident{
+										name: 'ConcreteUnion'
+										pos:  pos(110)
+									}
+									pos: pos(110)
+								}),
+							]
+						}),
+					]
+				}),
+			]
+		},
+	]
+	used := mark_used(files, env)
+	main_key := decl_key('main', files[0].stmts[7] as ast.FnDecl, env)
+	base_required_key := decl_key('main', files[0].stmts[4] as ast.FnDecl, env)
+	child_required_key := decl_key('main', files[0].stmts[5] as ast.FnDecl, env)
+	unused_key := decl_key('main', files[0].stmts[6] as ast.FnDecl, env)
+	assert used[main_key]
+	assert used[base_required_key]
+	assert used[child_required_key]
+	assert !used[unused_key]
+}
+
+fn test_mark_used_does_not_treat_interface_fn_field_as_method() {
+	mut env := types.Environment.new()
+	files := [
+		ast.File{
+			mod:   'main'
+			name:  'main.v'
+			stmts: [
+				ast.Stmt(ast.InterfaceDecl{
+					name:   'HandlerBox'
+					fields: [
+						ast.FieldDecl{
+							name: 'handler'
+							typ:  ast.Type(ast.FnType{
+								params: [
+									ast.Parameter{
+										name: 'value'
+										typ:  ast.Ident{
+											name: 'int'
+											pos:  pos(70)
+										}
+										pos:  pos(70)
+									},
+								]
+							})
+						},
+					]
+				}),
+				ast.Stmt(ast.GlobalDecl{
+					fields: [
+						ast.FieldDecl{
+							name: 'box'
+							typ:  ast.Ident{
+								name: 'HandlerBox'
+								pos:  pos(71)
+							}
+						},
+					]
+				}),
+				ast.Stmt(ast.StructDecl{
+					name: 'ConcreteHandler'
+				}),
+				ast.Stmt(ast.FnDecl{
+					is_method: true
+					receiver:  ast.Parameter{
+						name: 'h'
+						typ:  ast.Ident{
+							name: 'ConcreteHandler'
+							pos:  pos(72)
+						}
+						pos:  pos(72)
+					}
+					name:      'handler'
+					typ:       ast.FnType{}
+					pos:       pos(73)
+				}),
+				ast.Stmt(ast.FnDecl{
+					name:  'main'
+					typ:   ast.FnType{}
+					pos:   pos(74)
+					stmts: [
+						ast.Stmt(ast.AssignStmt{
+							lhs: [
+								ast.Expr(ast.Ident{
+									name: 'box'
+									pos:  pos(75)
+								}),
+							]
+							rhs: [
+								ast.Expr(ast.InitExpr{
+									typ: ast.Ident{
+										name: 'ConcreteHandler'
+										pos:  pos(76)
+									}
+									pos: pos(76)
+								}),
+							]
+						}),
+					]
+				}),
+			]
+		},
+	]
+	used := mark_used(files, env)
+	handler_key := decl_key('main', files[0].stmts[3] as ast.FnDecl, env)
+	main_key := decl_key('main', files[0].stmts[4] as ast.FnDecl, env)
+	assert used[main_key]
+	assert !used[handler_key]
 }
 
 fn test_mark_used_tracks_function_pointers_in_top_level_const_arrays() {

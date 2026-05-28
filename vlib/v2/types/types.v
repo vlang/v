@@ -141,7 +141,8 @@ pub struct FnType {
 	is_variadic bool
 	attributes  FnTypeAttribute
 mut:
-	generic_types []map[string]Type
+	is_mut_receiver bool
+	generic_types   []map[string]Type
 	// scope was originally used for deferred type checking
 	// but its better if we dont need it here, although it may
 	// be meeded for soething later im not thinking of??
@@ -219,10 +220,15 @@ type NamedType = string
 
 pub struct Field {
 pub:
-	name         string
-	typ          Type
-	default_expr ast.Expr = ast.empty_expr
-	attributes   []ast.Attribute
+	name                string
+	typ                 Type
+	default_expr        ast.Expr = ast.empty_expr
+	attributes          []ast.Attribute
+	is_public           bool
+	is_mut              bool
+	is_module_mut       bool
+	is_interface_method bool
+	owner_module        string
 }
 
 // struct Method {

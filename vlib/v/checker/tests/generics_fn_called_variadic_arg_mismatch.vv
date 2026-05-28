@@ -1,11 +1,11 @@
 fn max[T](a ...T) T {
-	mut max := a[0]
+	mut result := a[0]
 	for item in a[1..] {
-		if max < item {
-			max = item
+		if result < item {
+			result = item
 		}
 	}
-	return max
+	return result
 }
 
 fn main() {

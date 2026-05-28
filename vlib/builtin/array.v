@@ -1166,9 +1166,9 @@ pub fn (mut a array) push_many(val voidptr, size int) {
 	}
 	if is_self_append {
 		// handle `arr << arr`
-		copy := a.clone()
+		cloned := a.clone()
 		unsafe {
-			vmemcpy(&u8(a.data) + u64(a.element_size) * u64(a.len), copy.data,
+			vmemcpy(&u8(a.data) + u64(a.element_size) * u64(a.len), cloned.data,
 				u64(a.element_size) * u64(size))
 		}
 	} else {

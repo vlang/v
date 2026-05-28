@@ -6442,6 +6442,14 @@ fn (mut b Builder) build_selector(expr ast.SelectorExpr) ValueID {
 		if c_const_val.len > 0 {
 			return b.mod.get_or_add_const(b.mod.type_store.get_int(32), c_const_val)
 		}
+		// float.h exposes these as preprocessor macros, not linkable data symbols.
+		// Lower them directly so native backends do not emit _FLT_EPSILON/_DBL_EPSILON.
+		if c_name == 'FLT_EPSILON' {
+			return b.mod.get_or_add_const(b.mod.type_store.get_float(32), '1.19209290e-07')
+		}
+		if c_name == 'DBL_EPSILON' {
+			return b.mod.get_or_add_const(b.mod.type_store.get_float(64), '2.2204460492503131e-16')
+		}
 		// _wyp: wyhash secret array from wyhash.h. Our wyhash stub uses
 		// hardcoded constants, so this just needs to be a valid pointer.
 		if c_name == '_wyp' {
@@ -6472,11 +6480,11 @@ fn (mut b Builder) build_selector(expr ast.SelectorExpr) ValueID {
 
 		i8_t := b.mod.type_store.get_int(8)
 		ptr_t := b.mod.type_store.get_ptr(i8_t)
-		if b.is_macos_target() && c_name in ['stdout', 'stderr', 'stdin'] {
-			// `__stdoutp` / `__stdinp` / `__stderrp` are libSystem `FILE*` variables.
-			// Reading the V expression `C.stdout` must yield the FILE* value, not the
-			// address of the variable. The external global is pre-registered on the
-			// main module (build_all) so worker modules see it via seeded values.
+		if c_name in ['stdout', 'stderr', 'stdin'] {
+			// These are C `FILE*` variables. macOS exposes them as libSystem
+			// `__stdoutp` / `__stdinp` / `__stderrp`; other targets use the
+			// standard names. Reading the V expression `C.stdout` must yield the
+			// FILE* value, not the address of the variable.
 			glob := b.mod.add_external_global(target_name, ptr_t)
 			b.global_refs[target_name] = glob
 			return b.mod.add_instr(.load, b.cur_block, ptr_t, [glob])

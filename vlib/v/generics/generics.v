@@ -236,7 +236,7 @@ pub fn (mut g Generics) stmt(mut node ast.Stmt) ast.Stmt {
 						g.forin_types.delete(node.val_var)
 					}
 				}
-				mut new_node := ast.ForInStmt{
+				mut for_in := ast.ForInStmt{
 					...node
 					cond:      g.expr(mut node.cond)
 					high:      g.expr(mut node.high)
@@ -246,7 +246,7 @@ pub fn (mut g Generics) stmt(mut node ast.Stmt) ast.Stmt {
 					high_type: g.unwrap_generic(node.high_type)
 					stmts:     g.stmts(mut stmts)
 				}
-				return ast.Stmt(new_node)
+				return ast.Stmt(for_in)
 			}
 			node.stmts = g.stmts(mut node.stmts)
 		}
@@ -521,54 +521,54 @@ pub fn (mut g Generics) generic_fn_decl(mut node ast.FnDecl) []ast.Stmt {
 		}
 		g.cur_concrete_types = concrete_types
 
-		mut new_node := ast.FnDecl{
+		mut fn_decl := ast.FnDecl{
 			...node
 		}
-		new_node = g.stmt(mut new_node) as ast.FnDecl
-		new_node = ast.FnDecl{
-			...new_node
+		fn_decl = g.stmt(mut fn_decl) as ast.FnDecl
+		fn_decl = ast.FnDecl{
+			...fn_decl
 			name:          if node.is_method {
-				g.method_concrete_name(new_node.name, concrete_types, new_node.receiver.typ)
+				g.method_concrete_name(fn_decl.name, concrete_types, fn_decl.receiver.typ)
 			} else {
-				g.concrete_name(new_node.name, concrete_types)
+				g.concrete_name(fn_decl.name, concrete_types)
 			}
 			ninstances:    0
 			generic_names: []
 		}
-		if new_node.is_method {
-			mut sym := g.table.sym(new_node.receiver.typ)
+		if fn_decl.is_method {
+			mut sym := g.table.sym(fn_decl.receiver.typ)
 			func := ast.Fn{
-				is_variadic:                    new_node.is_variadic
-				is_c_variadic:                  new_node.is_c_variadic
+				is_variadic:                    fn_decl.is_variadic
+				is_c_variadic:                  fn_decl.is_c_variadic
 				language:                       .v
-				is_pub:                         new_node.is_pub
-				is_deprecated:                  new_node.is_deprecated
-				is_noreturn:                    new_node.is_noreturn
-				is_unsafe:                      new_node.is_unsafe
-				is_must_use:                    new_node.is_must_use
-				is_keep_alive:                  new_node.is_keep_alive
-				is_method:                      new_node.is_method
-				is_static_type_method:          new_node.is_static_type_method
-				no_body:                        new_node.no_body
-				is_file_translated:             new_node.is_file_translated
-				mod:                            new_node.mod
-				file:                           new_node.file
-				file_mode:                      new_node.file_mode
-				pos:                            new_node.pos
-				return_type_pos:                new_node.return_type_pos
-				return_type:                    new_node.return_type
-				receiver_type:                  new_node.receiver.typ
-				name:                           new_node.name
-				params:                         new_node.params
+				is_pub:                         fn_decl.is_pub
+				is_deprecated:                  fn_decl.is_deprecated
+				is_noreturn:                    fn_decl.is_noreturn
+				is_unsafe:                      fn_decl.is_unsafe
+				is_must_use:                    fn_decl.is_must_use
+				is_keep_alive:                  fn_decl.is_keep_alive
+				is_method:                      fn_decl.is_method
+				is_static_type_method:          fn_decl.is_static_type_method
+				no_body:                        fn_decl.no_body
+				is_file_translated:             fn_decl.is_file_translated
+				mod:                            fn_decl.mod
+				file:                           fn_decl.file
+				file_mode:                      fn_decl.file_mode
+				pos:                            fn_decl.pos
+				return_type_pos:                fn_decl.return_type_pos
+				return_type:                    fn_decl.return_type
+				receiver_type:                  fn_decl.receiver.typ
+				name:                           fn_decl.name
+				params:                         fn_decl.params
 				generic_names:                  []
-				is_conditional:                 new_node.is_conditional
-				ctdefine_idx:                   new_node.ctdefine_idx
-				is_expand_simple_interpolation: new_node.is_expand_simple_interpolation
+				is_conditional:                 fn_decl.is_conditional
+				ctdefine_idx:                   fn_decl.ctdefine_idx
+				is_expand_simple_interpolation: fn_decl.is_expand_simple_interpolation
 			}
 			g.table.find_or_register_fn_type(func, false, true)
 			sym.register_method(func)
 		}
-		solved_fns << new_node
+		solved_fns << fn_decl
 	}
 	g.cur_concrete_types = []
 	return solved_fns

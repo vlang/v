@@ -1087,8 +1087,23 @@ pub fn (t &Table) are_payloads_alias_compatible(a Type, b Type) bool {
 	}
 	a_unaliased := t.fully_unaliased_type(a)
 	b_unaliased := t.fully_unaliased_type(b)
+	// `?T`/`!T` lower to a distinct `_option_T`/`_result_T` C struct per
+	// element type, so `?Alias` and `?T` (or container elements wrapping the
+	// same) are not layout-equivalent even if `Alias = T`. The top-level
+	// conversion in return.v / cgen.v (#27264) clears these flags before
+	// recursing — if they remain after unaliasing (including the case where
+	// the alias's parent carries the flag), reject (#27278 review).
+	if a_unaliased.has_option_or_result() || b_unaliased.has_option_or_result() {
+		return false
+	}
 	if a_unaliased == b_unaliased {
 		return true
+	}
+	// `sym()` looks up by idx and drops `nr_muls()`, so without this guard a
+	// pointer like `&[]Token` would be reported as payload-compatible with
+	// `Tokens` (#27278 review).
+	if a_unaliased.nr_muls() != b_unaliased.nr_muls() {
+		return false
 	}
 	a_sym := t.sym(a_unaliased)
 	b_sym := t.sym(b_unaliased)

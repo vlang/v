@@ -175,10 +175,10 @@ pub fn asin(x_ f64) f64 {
 	if x == 0.0 {
 		return x // special case
 	}
-	mut sign := false
+	mut neg := false
 	if x < 0.0 {
 		x = -x
-		sign = true
+		neg = true
 	}
 	if x > 1.0 {
 		return nan() // special case
@@ -189,7 +189,7 @@ pub fn asin(x_ f64) f64 {
 	} else {
 		temp = satan(x / temp)
 	}
-	if sign {
+	if neg {
 		temp = -temp
 	}
 	return temp

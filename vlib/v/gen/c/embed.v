@@ -107,6 +107,7 @@ fn (mut g Gen) gen_embedded_metadata() {
 			if emfile.is_compressed {
 				g.embedded_data.writeln('\t\t\tres.compression_type = ${ctoslit(emfile.compression_type)};')
 				g.embedded_data.writeln('\t\t\tres.compressed = v__embed_file__find_index_entry_by_path((voidptr)_v_embed_file_index, ${ctoslit(emfile.rpath)}, ${ctoslit(emfile.compression_type)})->data;')
+				g.embedded_data.writeln('\t\t\tres.compressed_len = ${emfile.bytes.len};')
 				g.embedded_data.writeln('\t\t\tres.uncompressed = NULL;')
 			} else {
 				g.embedded_data.writeln('\t\t\tres.uncompressed = v__embed_file__find_index_entry_by_path((voidptr)_v_embed_file_index, ${ctoslit(emfile.rpath)}, ${ctoslit(emfile.compression_type)})->data;')

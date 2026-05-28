@@ -81,9 +81,9 @@ pub fn digits(num i64, params DigitParams) []int {
 		panic_n('digits: Cannot find digits of n with base:', b)
 	}
 	mut n := num
-	mut sign := 1
+	mut sgn := 1
 	if n < 0 {
-		sign = -1
+		sgn = -1
 		n = -n
 	}
 
@@ -99,8 +99,8 @@ pub fn digits(num i64, params DigitParams) []int {
 		n = next_n
 	}
 
-	if sign == -1 {
-		res[res.len - 1] *= sign
+	if sgn == -1 {
+		res[res.len - 1] *= sgn
 	}
 
 	if params.reverse {

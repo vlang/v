@@ -176,6 +176,12 @@ pub fn connect(config Config) !DB {
 // query executes the SQL statement pointed to by the string `q`.
 // It cannot be used for statements that contain binary data;
 // Use `real_query()` instead.
+//
+// When the connection was opened with `ConnectionFlag.client_multi_statements`
+// and `q` contains more than one statement, only the first result set is
+// returned; the server queues the remaining statements and they will only
+// finish executing as the client drains them with `next_result()`. Use
+// `exec_multi()` to run multi-statement queries to completion.
 pub fn (db &DB) query(q string) !Result {
 	mut guard := db.acquire_connection_guard()!
 	defer {
@@ -210,6 +216,12 @@ pub fn (db &DB) use_result() {
 // (Binary data may contain the `\0` character, which `query()`
 // interprets as the end of the statement string). In addition,
 // `real_query()` is faster than `query()`.
+//
+// When the connection was opened with `ConnectionFlag.client_multi_statements`
+// and `q` contains more than one statement, only the first result set is
+// returned; the server queues the remaining statements and they will only
+// finish executing as the client drains them with `next_result()`. Use
+// `exec_multi()` to run multi-statement queries to completion.
 pub fn (mut db DB) real_query(q string) !Result {
 	mut guard := db.acquire_connection_guard()!
 	defer {
@@ -221,6 +233,102 @@ pub fn (mut db DB) real_query(q string) !Result {
 
 	result := C.mysql_store_result(guard.conn)
 	return Result{result}
+}
+
+// more_results reports whether more result sets are available from the most
+// recently executed multi-statement query (issued with
+// `ConnectionFlag.client_multi_statements`). Pair it with `next_result()` to
+// drain pending result sets; otherwise the connection is left in a
+// "Commands out of sync" state and cannot run further statements.
+pub fn (db &DB) more_results() bool {
+	mut guard := db.acquire_connection_guard() or { return false }
+	defer {
+		guard.release()
+	}
+	return C.mysql_more_results(guard.conn)
+}
+
+// next_result advances the connection to the next result set of a
+// multi-statement query. It returns `true` if another result set is now
+// available (and can be read with `store_result()`/`Result.rows()`), `false`
+// if there are no more result sets, and an error if the server reported one.
+//
+// Any previous result set must be freed (via `Result.free()` or by consuming
+// it with `Result.rows()` and then `Result.free()`) before calling
+// `next_result()`. The high-level `exec_multi()` handles this automatically.
+pub fn (mut db DB) next_result() !bool {
+	mut guard := db.acquire_connection_guard()!
+	defer {
+		guard.release()
+	}
+	code := C.mysql_next_result(guard.conn)
+	if code == 0 {
+		return true
+	}
+	if code == -1 {
+		return false
+	}
+	throw_mysql_error_for_conn(guard.conn)!
+	return false
+}
+
+// store_result reads the result of the current statement into a `Result`,
+// which the caller is responsible for freeing (via `Result.free()`). This is
+// useful in combination with `next_result()` for iterating over result sets
+// of a multi-statement query started by `query()` or `real_query()`.
+// If the current statement did not produce a result set (e.g. an `INSERT`),
+// the returned `Result` has a `nil` inner pointer.
+// Returns an error if the server reported one.
+pub fn (db &DB) store_result() !Result {
+	mut guard := db.acquire_connection_guard()!
+	defer {
+		guard.release()
+	}
+	c_result := C.mysql_store_result(guard.conn)
+	if isnil(c_result) && get_errno(guard.conn) != 0 {
+		throw_mysql_error_for_conn(guard.conn)!
+	}
+	return Result{c_result}
+}
+
+// exec_multi executes a multi-statement `query` against the server and
+// returns one entry per executed statement, in execution order. Statements
+// that produce a result set (e.g. `SELECT`) contribute their rows; statements
+// that do not (e.g. `INSERT`, `UPDATE`) contribute an empty `[]Row`.
+//
+// Use this with connections opened using `ConnectionFlag.client_multi_statements`
+// so that the connection is fully drained and remains usable for subsequent
+// queries. All intermediate result sets are freed automatically.
+pub fn (mut db DB) exec_multi(query string) ![][]Row {
+	mut guard := db.acquire_connection_guard()!
+	defer {
+		guard.release()
+	}
+	if C.mysql_real_query(guard.conn, query.str, query.len) != 0 {
+		throw_mysql_error_for_conn(guard.conn)!
+	}
+	mut results := [][]Row{}
+	for {
+		c_result := C.mysql_store_result(guard.conn)
+		if !isnil(c_result) {
+			rows := Result{c_result}.rows()
+			C.mysql_free_result(c_result)
+			results << rows
+		} else {
+			if get_errno(guard.conn) != 0 {
+				throw_mysql_error_for_conn(guard.conn)!
+			}
+			results << []Row{}
+		}
+		code := C.mysql_next_result(guard.conn)
+		if code == -1 {
+			break
+		}
+		if code > 0 {
+			throw_mysql_error_for_conn(guard.conn)!
+		}
+	}
+	return results
 }
 
 // select_db causes the database specified by `db` to become

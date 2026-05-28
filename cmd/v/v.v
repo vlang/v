@@ -18,6 +18,7 @@ const external_tools = [
 	'ast',
 	'bin2v',
 	'bug',
+	'bug-report',
 	'build-examples',
 	'build-tools',
 	'build-vbinaries',

@@ -363,9 +363,9 @@ fn (mut cmd Command) handle_cb(cb FnCommandCallback, label string) {
 
 fn (cmd &Command) check_help_flag() {
 	if cmd.defaults.parsed.help.flag && cmd.flags.contains('help') {
-		help_flag :=
+		help_enabled :=
 			cmd.flags.get_bool('help') or { return } // ignore error and handle command normally
-		if help_flag {
+		if help_enabled {
 			cmd.execute_help()
 			exit(0)
 		}
@@ -374,9 +374,9 @@ fn (cmd &Command) check_help_flag() {
 
 fn (cmd &Command) check_man_flag() {
 	if cmd.defaults.parsed.man.flag && cmd.flags.contains('man') {
-		man_flag :=
+		man_enabled :=
 			cmd.flags.get_bool('man') or { return } // ignore error and handle command normally
-		if man_flag {
+		if man_enabled {
 			cmd.execute_man()
 			exit(0)
 		}
@@ -385,9 +385,9 @@ fn (cmd &Command) check_man_flag() {
 
 fn (cmd &Command) check_version_flag() {
 	if cmd.defaults.parsed.version.flag && cmd.version != '' && cmd.flags.contains('version') {
-		version_flag :=
+		version_enabled :=
 			cmd.flags.get_bool('version') or { return } // ignore error and handle command normally
-		if version_flag {
+		if version_enabled {
 			print_version_for_command(cmd) or { panic(err) }
 			exit(0)
 		}
@@ -406,10 +406,9 @@ fn (cmd &Command) check_required_flags() {
 // execute_help executes the callback registered for the `-h`/`--help` flag option.
 pub fn (cmd &Command) execute_help() {
 	if cmd.commands.contains('help') {
-		help_cmd :=
-			cmd.commands.get('help') or { return } // ignore error and handle command normally
-		if !isnil(help_cmd.execute) {
-			help_cmd.execute(help_cmd) or { panic(err) }
+		sub := cmd.commands.get('help') or { return } // ignore error and handle command normally
+		if !isnil(sub.execute) {
+			sub.execute(sub) or { panic(err) }
 			return
 		}
 	}
@@ -419,8 +418,8 @@ pub fn (cmd &Command) execute_help() {
 // execute_man executes the callback registered for the `-man` flag option.
 pub fn (cmd &Command) execute_man() {
 	if cmd.commands.contains('man') {
-		man_cmd := cmd.commands.get('man') or { return }
-		man_cmd.execute(man_cmd) or { panic(err) }
+		sub := cmd.commands.get('man') or { return }
+		sub.execute(sub) or { panic(err) }
 	} else {
 		print(cmd.manpage())
 	}

@@ -424,7 +424,7 @@ fn (t &Transformer) interface_method_return_type(receiver_type types.Type, metho
 	}
 	fields := t.resolved_interface_fields(base_type as types.Interface)
 	for field in fields {
-		if field.name != method_name {
+		if field.name != method_name || !field.is_interface_method {
 			continue
 		}
 		field_type := t.unwrap_alias_type(field.typ)

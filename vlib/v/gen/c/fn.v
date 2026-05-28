@@ -1376,11 +1376,11 @@ fn (mut g Gen) gen_fn_decl(node &ast.FnDecl, skip bool) {
 			}
 		}
 	} else if g.inside_c_extern {
-		c_name := name.all_after_first('C__')
+		extern_name := name.all_after_first('C__')
 		// Guard with #ifndef so the declaration is skipped when the C symbol
 		// is actually a preprocessor macro (e.g. WIFSTOPPED from <sys/wait.h>).
-		g.definitions.writeln('#ifndef ${c_name}')
-		c_extern_fn_header := 'extern ${type_name} ${fn_attrs}${c_name}('
+		g.definitions.writeln('#ifndef ${extern_name}')
+		c_extern_fn_header := 'extern ${type_name} ${fn_attrs}${extern_name}('
 		g.definitions.write_string(c_extern_fn_header)
 	} else {
 		if !(node.is_pub || g.pref.is_debug) {
@@ -4650,7 +4650,8 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 						')', node)
 					return
 				} else if left_sym.kind == .interface {
-					g.conversion_function_call('v_typeof_interface_${typ_sym.cname}', '', node)
+					g.conversion_function_call('builtin__charptr_vstring_literal(v_typeof_interface_${typ_sym.cname}',
+						')', node)
 					return
 				}
 			}

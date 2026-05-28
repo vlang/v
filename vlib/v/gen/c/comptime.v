@@ -1293,8 +1293,8 @@ fn (mut g Gen) comptime_for(node ast.ComptimeFor) {
 			mlocation := util.cescaped_path(util.path_styled_for_error_messages(method.file))
 			g.writeln('\t${node.val_var}.location = _S("${mlocation}:${method.name_pos.line_nr + 1}:${method.name_pos.col}");')
 			if method.attrs.len == 0 {
-				g.writeln('\t${node.val_var}.attrs = builtin____new_array_with_default(0, 0, sizeof(string), 0);')
-				g.writeln('\t${node.val_var}.attributes = builtin____new_array_with_default(0, 0, sizeof(VAttribute), 0);')
+				g.writeln('\t${node.val_var}.attrs = ((array){.data = 0, .offset = 0, .len = 0, .cap = 0, .flags = 0, .element_size = sizeof(string)});')
+				g.writeln('\t${node.val_var}.attributes = ((array){.data = 0, .offset = 0, .len = 0, .cap = 0, .flags = 0, .element_size = sizeof(VAttribute)});')
 			} else {
 				attrs := cgen_attrs(method.attrs)
 				vattrs := cgen_vattrs(method.attrs)
@@ -1307,7 +1307,7 @@ fn (mut g Gen) comptime_for(node ast.ComptimeFor) {
 			}
 			if method.params.len < 2 {
 				// 0 or 1 (the receiver) args
-				g.writeln('\t${node.val_var}.args = builtin____new_array_with_default(0, 0, sizeof(FunctionParam), 0);')
+				g.writeln('\t${node.val_var}.args = ((array){.data = 0, .offset = 0, .len = 0, .cap = 0, .flags = 0, .element_size = sizeof(FunctionParam)});')
 			} else {
 				len := method.params.len - 1
 				g.write('\t${node.val_var}.args = builtin__new_array_from_c_array(${len}, ${len}, sizeof(FunctionParam), _MOV((FunctionParam[${len}]){')
@@ -1382,7 +1382,7 @@ fn (mut g Gen) comptime_for(node ast.ComptimeFor) {
 				g.writeln('/* field ${i} : ${field.name} */ {')
 				g.writeln('\t${node.val_var}.name = _S("${field.name}");')
 				if field.attrs.len == 0 {
-					g.writeln('\t${node.val_var}.attrs = builtin____new_array_with_default(0, 0, sizeof(string), 0);')
+					g.writeln('\t${node.val_var}.attrs = ((array){.data = 0, .offset = 0, .len = 0, .cap = 0, .flags = 0, .element_size = sizeof(string)});')
 				} else {
 					attrs := cgen_attrs(field.attrs)
 					g.writeln(
@@ -1449,7 +1449,7 @@ fn (mut g Gen) comptime_for(node ast.ComptimeFor) {
 					}
 					enum_attrs := sym.info.attrs[val]
 					if enum_attrs.len == 0 {
-						g.writeln('\t${node.val_var}.attrs = builtin____new_array_with_default(0, 0, sizeof(string), 0);')
+						g.writeln('\t${node.val_var}.attrs = ((array){.data = 0, .offset = 0, .len = 0, .cap = 0, .flags = 0, .element_size = sizeof(string)});')
 					} else {
 						attrs := cgen_attrs(enum_attrs)
 						g.writeln(

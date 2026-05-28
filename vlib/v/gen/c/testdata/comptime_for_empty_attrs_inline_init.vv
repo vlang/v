@@ -1,0 +1,36 @@
+// Regression for https://github.com/vlang/v/issues/27274 — empty
+// `.attrs`/`.attributes`/`.args` in `$for field/method/val` must
+// be initialised inline (no `__new_array_with_default` call).
+struct Foo {
+	a string
+}
+
+fn (f Foo) m() {}
+
+enum Color {
+	red
+}
+
+fn exercise_fields[T]() {
+	$for field in T.fields {
+		_ := field.name
+	}
+}
+
+fn exercise_methods[T]() {
+	$for method in T.methods {
+		_ := method.name
+	}
+}
+
+fn exercise_values[T]() {
+	$for val in T.values {
+		_ := val.name
+	}
+}
+
+fn main() {
+	exercise_fields[Foo]()
+	exercise_methods[Foo]()
+	exercise_values[Color]()
+}

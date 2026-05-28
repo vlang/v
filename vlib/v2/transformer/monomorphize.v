@@ -311,14 +311,14 @@ pub fn (mut t Transformer) type_to_ast_expr(typ types.Type, pos token.Pos) ast.E
 // generic FnDecl plus a concrete type bindings map, e.g. foo + {T:int} -> foo_T_int.
 // Mirrors cleanc's specialized_fn_name so a future swap is name-compatible.
 pub fn (t &Transformer) specialized_fn_name(decl ast.FnDecl, bindings map[string]types.Type) string {
-	generic_param_names := decl_generic_param_names(decl)
-	if generic_param_names.len == 0 {
+	gp_names := decl_generic_param_names(decl)
+	if gp_names.len == 0 {
 		return decl.name
 	}
 	mut all_placeholders := true
-	mut placeholder_parts := []string{cap: generic_param_names.len}
-	mut concrete_parts := []string{cap: generic_param_names.len}
-	for gp_name in generic_param_names {
+	mut placeholder_parts := []string{cap: gp_names.len}
+	mut concrete_parts := []string{cap: gp_names.len}
+	for gp_name in gp_names {
 		concrete := bindings[gp_name] or {
 			// Missing binding: fall back to the placeholder itself so we still
 			// generate a parseable name (caller is expected to skip incomplete specs).

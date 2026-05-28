@@ -110,6 +110,15 @@ fn C.mysql_ping(mysql &C.MYSQL) i32
 // It is a synchronous function.
 fn C.mysql_store_result(mysql &C.MYSQL) &C.MYSQL_RES
 
+// C.mysql_more_results returns `true` if more result sets are available from the
+// previously executed multi-statement query.
+fn C.mysql_more_results(mysql &C.MYSQL) bool
+
+// C.mysql_next_result advances to the next result set of a multi-statement query.
+// Returns `0` on success when another result set is available, `-1` when there
+// are no more result sets, and a positive value if an error occurred.
+fn C.mysql_next_result(mysql &C.MYSQL) i32
+
 // C.mysql_fetch_row retrieves the next row of a result set.
 fn C.mysql_fetch_row(res &C.MYSQL_RES) &charptr
 

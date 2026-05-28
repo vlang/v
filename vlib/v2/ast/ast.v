@@ -401,12 +401,14 @@ pub:
 
 pub struct FieldDecl {
 pub:
-	name       string
-	typ        Expr = empty_expr // can be empty as used for const (unless we use something else)
-	value      Expr = empty_expr
-	attributes []Attribute
-	is_public  bool
-	is_mut     bool
+	name                string
+	typ                 Expr = empty_expr // can be empty as used for const (unless we use something else)
+	value               Expr = empty_expr
+	attributes          []Attribute
+	is_public           bool
+	is_mut              bool
+	is_module_mut       bool
+	is_interface_method bool
 }
 
 pub struct FieldInit {
@@ -814,6 +816,7 @@ pub:
 	name          string
 	value         Expr
 	comptime_cond Expr
+	pos           token.Pos
 }
 
 pub struct BlockStmt {

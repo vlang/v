@@ -1192,6 +1192,28 @@ pub fn (mut g Gen) init() {
 			g.preincludes.writeln(tcc_undef_has_include)
 			g.cheaders.writeln(tcc_undef_has_include)
 			g.includes.writeln(tcc_undef_has_include)
+			// Android/Termux bionic <math.h> expands NAN/INFINITY/HUGE_VAL* via
+			// __builtin_nanf/__builtin_inf*/__builtin_huge_val*. The AArch64 tcc
+			// port does not lower these intrinsics, so binaries fail at runtime
+			// with unresolved __builtin_nanf etc. symbols (vlang/v#27207).
+			// Emit the macro shim into preincludes/cheaders/includes so it is
+			// in scope before *any* bionic header is reached, including those
+			// pulled in via `#preinclude <math.h>`.
+			tcc_bionic_math_shim := '
+#if defined(__TINYC__) && defined(__BIONIC__)
+	#define __builtin_nanf(ignored_string) (0.0F / 0.0F)
+	#define __builtin_nan(ignored_string) (0.0 / 0.0)
+	#define __builtin_nanl(ignored_string) (0.0L / 0.0L)
+	#define __builtin_inff() (1.0F / 0.0F)
+	#define __builtin_inf() (1.0 / 0.0)
+	#define __builtin_infl() (1.0L / 0.0L)
+	#define __builtin_huge_valf() (1.0F / 0.0F)
+	#define __builtin_huge_val() (1.0 / 0.0)
+	#define __builtin_huge_vall() (1.0L / 0.0L)
+#endif'
+			g.preincludes.writeln(tcc_bionic_math_shim)
+			g.cheaders.writeln(tcc_bionic_math_shim)
+			g.includes.writeln(tcc_bionic_math_shim)
 			if g.pref.os == .freebsd {
 				g.cheaders.writeln('#include <inttypes.h>')
 				g.cheaders.writeln('#include <stddef.h>')
@@ -1464,11 +1486,11 @@ pub fn (mut g Gen) write_typeof_functions() {
 			}
 			already_generated_ifaces[sym.cname] = true
 			impl_types := g.runtime_interface_variants(inter_info)
-			g.definitions.writeln('${g.static_non_parallel}string v_typeof_interface_${sym.cname}(u32 sidx);')
+			g.definitions.writeln('${g.static_non_parallel}char * v_typeof_interface_${sym.cname}(u32 sidx);')
 			if g.pref.parallel_cc {
-				g.extern_out.writeln('extern string v_typeof_interface_${sym.cname}(u32 sidx);')
+				g.extern_out.writeln('extern char * v_typeof_interface_${sym.cname}(u32 sidx);')
 			}
-			g.writeln('${g.static_non_parallel}string v_typeof_interface_${sym.cname}(u32 sidx) {')
+			g.writeln('${g.static_non_parallel}char * v_typeof_interface_${sym.cname}(u32 sidx) {')
 			for t in impl_types {
 				sub_sym := g.table.sym(ast.mktyp(t))
 				if sub_sym.kind == .interface {
@@ -1481,9 +1503,9 @@ pub fn (mut g Gen) write_typeof_functions() {
 					&& sub_sym.idx !in g.table.used_features.used_syms {
 					continue
 				}
-				g.writeln('\tif (sidx == _${sym.cname}_${sub_sym.cname}_index) return _S("${util.strip_main_name(sub_sym.name)}");')
+				g.writeln('\tif (sidx == _${sym.cname}_${sub_sym.cname}_index) return "${util.strip_main_name(sub_sym.name)}";')
 			}
-			g.writeln2('\treturn _S("unknown ${util.strip_main_name(sym.name)}");', '}')
+			g.writeln2('\treturn "unknown ${util.strip_main_name(sym.name)}";', '}')
 			// Avoid duplicate symbol '_v_typeof_interface_idx_IError' when using -usecache
 			if g.pref.build_mode != .build_module {
 				interface_idx_static_prefix := if g.pref.is_o { 'static ' } else { '' }
@@ -7941,6 +7963,10 @@ fn (mut g Gen) scope_gc_pin_pregen(node_pos int) []ScopeGcPin {
 		|| g.pref.gc_mode !in [.boehm_full, .boehm_incr, .boehm_full_opt, .boehm_incr_opt] {
 		return []ScopeGcPin{}
 	}
+	if g.is_windows_tcc() {
+		// The bundled Windows tcc libgc archive lacks GC_remove_roots().
+		return []ScopeGcPin{}
+	}
 	if g.inside_veb_tmpl {
 		// Veb template statements are inlined into the route body; their AST scopes
 		// do not always match the generated C block scopes for template locals.
@@ -8381,10 +8407,10 @@ fn (mut g Gen) enum_decl(node ast.EnumDecl) {
 	// @[typedef] enums are already defined in a C header — don't redefine the enum,
 	// but emit #define aliases so that V-mangled field names resolve to the correct values.
 	if node.attrs.contains('typedef') {
-		c_name := node.name.all_after_last('.')
+		header_name := node.name.all_after_last('.')
 		g.enum_typedefs.writeln('')
-		g.enum_typedefs.writeln('// @[typedef] enum ${c_name} — defined in C header')
-		g.enum_typedefs.writeln('typedef ${c_name} ${enum_name};')
+		g.enum_typedefs.writeln('// @[typedef] enum ${header_name} — defined in C header')
+		g.enum_typedefs.writeln('typedef ${header_name} ${enum_name};')
 		mut cur_value := 0
 		for field in node.fields {
 			if field.has_expr {
@@ -10958,6 +10984,17 @@ fn (mut g Gen) write_init_function() {
 		g.writeln('\tGC_set_markers_count(1);')
 	}
 
+	// Fix for vlang/v#27178: host runtimes (Rust, C#, JNI, ...) spawn their
+	// own OS threads, which must be registered with libgc before they enter
+	// V code. The per-thread step is caller-side, but the process-level
+	// enable can be done here, once GC_INIT() has already run (in main() via
+	// gen_boehm_gc_init, or in _vinit_caller via gen_shared_library_boehm_init).
+	if g.pref.gc_mode in [.boehm_full, .boehm_incr, .boehm_full_opt, .boehm_incr_opt, .boehm_leak] {
+		g.writeln('#if defined(_VGCBOEHM) && defined(GC_THREADS)')
+		g.writeln('\tGC_allow_register_threads();')
+		g.writeln('#endif')
+	}
+
 	if g.use_segfault_handler && !g.pref.is_shared {
 		if _ := g.table.fns['v_segmentation_fault_handler'] {
 			// 11 is SIGSEGV. It is hardcoded here, to avoid FreeBSD compilation errors for trivial examples.
@@ -12619,12 +12656,19 @@ fn (mut g Gen) as_cast(node ast.AsCast) {
 			g.as_cast_type_names[idx] = variant_sym.name
 		}
 	} else if expr_type_sym.kind == .interface && sym.kind == .interface {
+		is_ptr_target := node.typ.is_ptr()
+		if is_ptr_target {
+			g.write('HEAP(${sym.cname}, ')
+		}
 		g.write('I_${expr_type_sym.cname}_as_I_${sym.cname}(')
 		if node.expr_type.is_ptr() {
 			g.write('*')
 		}
 		g.expr(node.expr)
 		g.write(')')
+		if is_ptr_target {
+			g.write(')')
+		}
 
 		mut info := expr_type_sym.info as ast.Interface
 		right_info := sym.info as ast.Interface
@@ -13349,7 +13393,7 @@ return ${cast_shared_struct_str};
 					conversion_functions.writeln('\tif (x._typ == _${interface_name}_${variant_sym.cname}_index) return I_${variant_sym.cname}_to_Interface_${vsym.cname}(x._${variant_sym.cname});')
 				}
 			}
-			pmessage := 'builtin__string__plus(builtin__string__plus(_S("`as_cast`: cannot convert "), v_typeof_interface_${interface_name}(x._typ)), _S(" to ${util.strip_main_name(vsym.name)}"))'
+			pmessage := 'builtin__string__plus(builtin__string__plus(_S("`as_cast`: cannot convert "), builtin__tos3(v_typeof_interface_${interface_name}(x._typ))), _S(" to ${util.strip_main_name(vsym.name)}"))'
 			if g.pref.is_debug {
 				// TODO: actually return a valid position here
 				conversion_functions.write_string2('\tbuiltin__panic_debug(1, builtin__tos3("builtin.v"), builtin__tos3("builtin"), builtin__tos3("__as_cast"), ',

@@ -19,7 +19,7 @@ fn main() {
 	mut resource := Resource{
 		handle: 2
 	}
-	copy := resource
+	dup := resource
 	takes_value(resource)
 	_ = Holder{
 		field: resource
@@ -30,5 +30,5 @@ fn main() {
 	_ = fn [mut resource] () {
 		_ = resource.handle
 	}
-	_ = copy
+	_ = dup
 }

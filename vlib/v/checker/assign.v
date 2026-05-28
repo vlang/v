@@ -671,6 +671,27 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 							c.error('duplicate of an import symbol `${left.name}`', left.pos)
 						}
 						c.check_module_name_conflict(left.name, left.pos)
+						// Notice when a local variable shadows a function declaration (issue #22685).
+						// Skip when building tests: test files (and preludes loaded for them)
+						// commonly use short fixture fns like `fn a() {}` and shadow them
+						// freely in test bodies.
+						// Only consider functions declared in the same module as the
+						// variable; otherwise unrelated fns (esp. private builtin ones
+						// like `fn new_node()` in `builtin/sorted_map.v`) cause noisy
+						// false positives in user code and external modules.
+						if !c.pref.is_test {
+							qualified := if left.mod == 'builtin' {
+								left.name
+							} else {
+								'${left.mod}.${left.name}'
+							}
+							if fn_decl := c.table.find_fn(qualified) {
+								if fn_decl.mod == left.mod {
+									c.note('variable `${left.name}` shadows a function declaration',
+										left.pos)
+								}
+							}
+						}
 					}
 					if node.op == .assign && left_type.has_flag(.option) && right is ast.UnsafeExpr
 						&& right.expr.is_nil() {

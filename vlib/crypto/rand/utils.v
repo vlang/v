@@ -21,9 +21,9 @@ pub fn int_u64(max u64) !u64 {
 	}
 	mut n := u64(0)
 	for {
-		mut bytes := read(k)!
-		bytes[0] &= u8(int(u64(1) << b) - 1)
-		x := bytes_to_u64(bytes)
+		mut buf := read(k)!
+		buf[0] &= u8(int(u64(1) << b) - 1)
+		x := bytes_to_u64(buf)
 		n = x[0]
 		// NOTE: maybe until we have bigint could do it another way?
 		// if x.len > 1 {
@@ -81,12 +81,12 @@ pub fn int_big(n big.Integer) !big.Integer {
 
 	mut result := big.Integer{}
 	for {
-		mut bytes := read(k)!
+		mut buf := read(k)!
 
 		// Clear bits in the first byte to increase the probability that the result is < max
-		bytes[0] &= u8(int(1 << b) - 1)
+		buf[0] &= u8(int(1 << b) - 1)
 
-		result = big.integer_from_bytes(bytes)
+		result = big.integer_from_bytes(buf)
 		if result < max {
 			break
 		}

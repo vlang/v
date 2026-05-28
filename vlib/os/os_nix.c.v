@@ -293,13 +293,13 @@ pub fn ls(path string) ![]string {
 		return error('ls() expects a folder, not an empty string')
 	}
 	mut res := []string{cap: 50}
-	dir := unsafe { C.opendir(&char(path.str)) }
-	if isnil(dir) {
+	dir_ptr := unsafe { C.opendir(&char(path.str)) }
+	if isnil(dir_ptr) {
 		return error_posix(msg: 'ls() couldnt open dir "${path}"')
 	}
 	mut ent := &C.dirent(unsafe { nil })
 	for {
-		ent = C.readdir(dir)
+		ent = C.readdir(dir_ptr)
 		if isnil(ent) {
 			break
 		}
@@ -313,7 +313,7 @@ pub fn ls(path string) ![]string {
 			// vfmt on
 		}
 	}
-	C.closedir(dir)
+	C.closedir(dir_ptr)
 	return res
 }
 

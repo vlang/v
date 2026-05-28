@@ -84,15 +84,15 @@ mut:
 
 // push adds a new element to the linked list.
 fn (mut list LinkedList[T]) push(value T) {
-	new_node := &Node[T]{
+	node := &Node[T]{
 		value: value
 	}
 	if list.head == unsafe { nil } {
-		list.head = new_node
-		list.tail = new_node
+		list.head = node
+		list.tail = node
 	} else {
-		list.tail.next = new_node
-		list.tail = new_node
+		list.tail.next = node
+		list.tail = node
 	}
 	list.len++
 }

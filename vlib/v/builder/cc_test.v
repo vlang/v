@@ -481,6 +481,32 @@ fn test_shared_tcc_compile_args_skip_bt25_after_late_compiler_resolution() {
 	assert !builder.get_compile_args().contains('-bt25')
 }
 
+fn test_linux_shared_boehm_linker_args_hide_static_gc_archive_symbols() {
+	linker_args := builder_linker_args_with_cc([
+		'-os',
+		'linux',
+		'-shared',
+		'-gc',
+		'boehm',
+		hello_world_example(),
+	], .gcc)
+	assert linker_args.contains('-Wl,-Bsymbolic')
+	assert linker_args.contains('-Wl,--exclude-libs,ALL')
+}
+
+fn test_linux_shared_boehm_tcc_linker_args_skip_gnu_exclude_libs() {
+	linker_args := builder_linker_args_with_cc([
+		'-os',
+		'linux',
+		'-shared',
+		'-gc',
+		'boehm',
+		hello_world_example(),
+	], .tcc)
+	assert linker_args.contains('-Wl,-Bsymbolic')
+	assert !linker_args.contains('-Wl,--exclude-libs,ALL')
+}
+
 fn test_should_use_rsp_for_linux_by_default() {
 	builder := new_test_builder([hello_world_example()])
 	assert builder.should_use_rsp(['-o', builder.out_name_c])

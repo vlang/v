@@ -175,9 +175,9 @@ fn utf16_captured_output_to_string(raw string, little_endian bool) string {
 	pairs := (raw.len - start) / 2
 	mut wide := []u16{len: pairs + 1, init: u16(0)}
 	for idx := 0; idx < pairs; idx++ {
-		base := start + idx * 2
-		b0 := u16(raw[base])
-		b1 := u16(raw[base + 1])
+		offset := start + idx * 2
+		b0 := u16(raw[offset])
+		b1 := u16(raw[offset + 1])
 		wide[idx] = if little_endian { b0 | (b1 << 8) } else { (b0 << 8) | b1 }
 	}
 	res := unsafe { string_from_wide2(wide.data, pairs) }
@@ -734,23 +734,23 @@ pub fn uname() Uname {
 }
 
 pub fn hostname() !string {
-	hostname := [255]u16{}
+	buf := [255]u16{}
 	size := u32(255)
-	res := C.GetComputerNameW(&hostname[0], voidptr(&size))
+	res := C.GetComputerNameW(&buf[0], voidptr(&size))
 	if !res {
 		return error(get_error_msg(int(C.GetLastError())))
 	}
-	return unsafe { string_from_wide(&hostname[0]) }
+	return unsafe { string_from_wide(&buf[0]) }
 }
 
 pub fn loginname() !string {
-	loginname := [255]u16{}
+	buf := [255]u16{}
 	size := u32(255)
-	res := C.GetUserNameW(&loginname[0], voidptr(&size))
+	res := C.GetUserNameW(&buf[0], voidptr(&size))
 	if !res {
 		return error(get_error_msg(int(C.GetLastError())))
 	}
-	return unsafe { string_from_wide(&loginname[0]) }
+	return unsafe { string_from_wide(&buf[0]) }
 }
 
 // ensure_folder_is_writable checks that `folder` exists, and is writable to the process, by creating an empty file in it, then deleting it.

@@ -22,8 +22,8 @@ fn print_version_for_command(cmd Command) ! {
 	if cmd.args.len > 0 {
 		for sub_cmd in cmd.commands {
 			if sub_cmd.name == cmd.args[0] {
-				version_cmd := unsafe { &sub_cmd }
-				print(version_cmd.version())
+				target := unsafe { &sub_cmd }
+				print(target.version())
 				return
 			}
 		}

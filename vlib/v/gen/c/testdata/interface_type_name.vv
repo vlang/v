@@ -1,0 +1,8 @@
+interface Thing {}
+
+struct Item {}
+
+fn main() {
+	t := Thing(Item{})
+	println(t.type_name())
+}

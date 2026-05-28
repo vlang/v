@@ -214,10 +214,10 @@ pub fn sum256(data []u8) []u8 {
 pub fn sum224(data []u8) []u8 {
 	mut d := new224()
 	d.write(data) or { panic(err) }
-	sum := d.checksum()
-	mut sum224 := []u8{len: size224}
-	copy(mut sum224, sum[..size224])
-	return sum224
+	checksum := d.checksum()
+	mut result := []u8{len: size224}
+	copy(mut result, checksum[..size224])
+	return result
 }
 
 fn block(mut dig Digest, p []u8) {
