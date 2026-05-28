@@ -604,6 +604,26 @@ fn test_tcc_shared_builds_disable_backtraces() {
 	assert 'no_backtrace' !in regular_prefs.compile_defines_all
 }
 
+fn test_bsd_tinyc_defaults_to_openssl() {
+	mut bsd_tinyc_prefs := &pref.Preferences{
+		path:                  'main.v'
+		os:                    .freebsd
+		ccompiler:             'tinyc'
+		ccompiler_set_by_flag: true
+	}
+	bsd_tinyc_prefs.fill_with_defaults()
+	assert 'use_openssl' in bsd_tinyc_prefs.compile_defines
+	assert 'use_openssl' in bsd_tinyc_prefs.compile_defines_all
+
+	mut bsd_clang_prefs := &pref.Preferences{
+		path:      'main.v'
+		os:        .freebsd
+		ccompiler: 'clang'
+	}
+	bsd_clang_prefs.fill_with_defaults()
+	assert 'use_openssl' !in bsd_clang_prefs.compile_defines_all
+}
+
 fn test_late_resolved_tcc_shared_builds_disable_backtraces() {
 	mut shared_prefs := &pref.Preferences{
 		path:      'libfoo.v'
