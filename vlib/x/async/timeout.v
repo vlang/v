@@ -4,7 +4,8 @@ import context
 import time
 
 struct TimeoutResult {
-	err IError = none
+	err         IError = none
+	finished_at time.Time
 }
 
 // with_timeout runs f with a background context and returns an error if timeout expires first.
@@ -40,29 +41,49 @@ pub fn with_timeout_context(parent context.Context, timeout time.Duration, f Job
 	done_ch := ctx.done()
 	select {
 		result := <-result_ch {
-			if result.err !is none {
-				ctx_err := ctx.err()
-				if ctx_err !is none && ctx_err.msg() == context_deadline_exceeded
-					&& result.err.msg() == context_deadline_exceeded {
-					if async_ctx.was_canceled_by_timeout() {
-						return error(err_timeout)
-					}
-				}
-				return result.err
-			}
+			handle_timeout_result(mut ctx, async_ctx, result)!
 			return
 		}
 		_ := <-done_ch {
-			err := ctx.err()
-			if err !is none {
-				if err.msg() == context_deadline_exceeded && async_ctx.was_canceled_by_timeout() {
-					return error(err_timeout)
-				}
-				return err
-			}
-			return error(err_timeout)
+			handle_timeout_done(mut ctx, async_ctx)!
+			return
 		}
 	}
+}
+
+fn handle_timeout_result(mut ctx context.Context, async_ctx &AsyncContext, result TimeoutResult) ! {
+	ctx_err := ctx.err()
+	if result.finished_after_owned_timeout(async_ctx) {
+		if ctx_err !is none && !async_ctx.was_canceled_by_timeout() {
+			return ctx_err
+		}
+		return error(err_timeout)
+	}
+	if result.err !is none {
+		if ctx_err !is none && ctx_err.msg() == context_deadline_exceeded
+			&& result.err.msg() == context_deadline_exceeded {
+			if async_ctx.was_canceled_by_timeout() {
+				return error(err_timeout)
+			}
+		}
+		return result.err
+	}
+}
+
+fn handle_timeout_done(mut ctx context.Context, async_ctx &AsyncContext) ! {
+	err := ctx.err()
+	if err !is none {
+		if err.msg() == context_deadline_exceeded && async_ctx.was_canceled_by_timeout() {
+			return error(err_timeout)
+		}
+		return err
+	}
+	return error(err_timeout)
+}
+
+fn (result TimeoutResult) finished_after_owned_timeout(async_ctx &AsyncContext) bool {
+	return async_ctx.deadline_src == .timeout && (async_ctx.deadline_at < result.finished_at
+		|| async_ctx.deadline_at == result.finished_at)
 }
 
 fn run_timeout_job(ctx context.Context, f JobFn, result_ch chan TimeoutResult) {
@@ -71,9 +92,12 @@ fn run_timeout_job(ctx context.Context, f JobFn, result_ch chan TimeoutResult) {
 	mut job_ctx := ctx
 	f(mut job_ctx) or {
 		result_ch <- TimeoutResult{
-			err: err
+			err:         err
+			finished_at: time.now()
 		}
 		return
 	}
-	result_ch <- TimeoutResult{}
+	result_ch <- TimeoutResult{
+		finished_at: time.now()
+	}
 }

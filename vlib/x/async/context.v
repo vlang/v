@@ -29,6 +29,7 @@ mut:
 	cancel_src   CancelSource
 	has_deadline bool
 	deadline_at  time.Time
+	deadline_src CancelSource
 }
 
 fn new_cancel_context(parent context.Context) (&AsyncContext, context.CancelFn) {
@@ -61,6 +62,7 @@ fn new_timeout_context(parent context.Context, timeout time.Duration) (&AsyncCon
 		mutex:        sync.new_mutex()
 		has_deadline: true
 		deadline_at:  deadline_at
+		deadline_src: deadline_src
 	}
 	if !ctx.propagate_existing_parent_error() {
 		spawn watch_parent_context(mut ctx)

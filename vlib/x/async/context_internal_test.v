@@ -35,6 +35,32 @@ fn test_async_context_timeout_closes_done_and_sets_deadline_error() {
 	}
 }
 
+fn test_timeout_result_detects_only_owned_deadline_miss() {
+	mut ctx, cancel := new_timeout_context(context.background(), 1 * time.second)
+	defer {
+		cancel()
+	}
+	assert !TimeoutResult{
+		finished_at: ctx.deadline_at.add(-1 * time.nanosecond)
+	}.finished_after_owned_timeout(ctx)
+	assert TimeoutResult{
+		finished_at: ctx.deadline_at.add(1 * time.nanosecond)
+	}.finished_after_owned_timeout(ctx)
+
+	mut background := context.background()
+	parent, parent_cancel := context.with_timeout(mut background, 1 * time.second)
+	defer {
+		parent_cancel()
+	}
+	mut child, child_cancel := new_timeout_context(parent, 2 * time.second)
+	defer {
+		child_cancel()
+	}
+	assert !TimeoutResult{
+		finished_at: child.deadline_at.add(1 * time.nanosecond)
+	}.finished_after_owned_timeout(child)
+}
+
 fn test_async_context_parent_cancel_propagates_to_child() {
 	parent, parent_cancel := new_cancel_context(context.background())
 	mut child, child_cancel := new_cancel_context(context.Context(parent))
