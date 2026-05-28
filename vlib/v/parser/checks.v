@@ -248,6 +248,8 @@ fn (p &Parser) is_generic_call_at(offset int) bool {
 		// case 1 (array or fixed array type)
 		return tok3.kind == .rsbr || (tok4.kind == .rsbr && p.is_typename(tok5))
 	}
+	// Anonymous struct and function type arguments can contain nested `[]`,
+	// so scan forward to the matching closing `]` before checking for a call.
 	if kind2 == .key_struct {
 		return p.is_anon_struct_generic_arg_at(offset, .lpar)
 	}
