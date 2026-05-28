@@ -22,3 +22,15 @@ fn test_macos_tcc_boehm_uses_bundled_libgc() {
 	assert res.output.contains('thirdparty/tcc/lib/libgc.a')
 	assert !res.output.contains(' -lgc')
 }
+
+fn test_linux_musl_tcc_boehm_uses_system_libgc() {
+	$if !linux {
+		return
+	}
+	source_path := os.join_path(@VEXEROOT, 'examples', 'hello_world.v')
+	cmd := '${os.quoted_path(@VEXE)} -dump-c-flags - -cc tcc -musl ${os.quoted_path(source_path)}'
+	res := os.execute(cmd)
+	assert res.exit_code == 0, res.output
+	assert res.output.contains('-lgc')
+	assert !res.output.contains('thirdparty/tcc/lib/libgc.a')
+}

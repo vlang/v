@@ -70,7 +70,14 @@ $if dynamic_boehm ? {
 						#flag -Xlinker -rpath -Xlinker "@VEXEROOT/thirdparty/tcc/lib"
 					}
 				} $else {
-					#flag @VEXEROOT/thirdparty/tcc/lib/libgc.a
+					$if musl ? {
+						// The bundled tcc libgc archive is built for glibc and
+						// references __data_start/data_start, which musl does
+						// not provide. Alpine installs musl-compatible libgc.
+						#flag -lgc
+					} $else {
+						#flag @VEXEROOT/thirdparty/tcc/lib/libgc.a
+					}
 				}
 			}
 		}
