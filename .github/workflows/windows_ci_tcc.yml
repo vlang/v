@@ -45,9 +45,19 @@ jobs:
       - name: Test new v.c
         run: |
           v -o v.c cmd/v
+          $direct_c_flags = @(
+            '-Ithirdparty/zip'
+            '-Ithirdparty/cJSON'
+            '-Ithirdparty/mbedtls/library'
+            '-Ithirdparty/mbedtls/include'
+            '-Ithirdparty/mbedtls/3rdparty/everest/include'
+            '-Ithirdparty/mbedtls/3rdparty/everest/include/everest'
+            '-Ithirdparty/mbedtls/3rdparty/everest/include/everest/kremlib'
+            '-Ithirdparty/vschannel'
+          )
           # Match makev.bat's Windows stack reserve; the direct TCC-built
           # compiler can otherwise crash while compiling net.http-heavy scripts.
-          .\thirdparty\tcc\tcc.exe -Werror -w -ladvapi32 -lws2_32 -bt10 '-Wl,-stack=33554432' v.c
+          .\thirdparty\tcc\tcc.exe -Werror -w @direct_c_flags -ladvapi32 -lws2_32 -bt10 '-Wl,-stack=33554432' v.c
       - name: Install dependencies
         run: |
           v retry -- v setup-freetype
