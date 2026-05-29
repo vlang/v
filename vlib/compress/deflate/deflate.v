@@ -4,6 +4,8 @@ import encoding.binary
 import hash.adler32
 import hash.crc32
 
+pub type ChunkCallback = fn (chunk []u8, userdata voidptr) int
+
 // CompressFormat selects the output container around the RFC 1951 payload.
 pub enum CompressFormat {
 	zlib
@@ -15,6 +17,12 @@ pub enum CompressFormat {
 pub struct CompressParams {
 pub:
 	format CompressFormat = .zlib
+}
+
+pub struct RawInflateResult {
+pub:
+	decoded  []u8
+	consumed int
 }
 
 // compress compresses data as zlib, gzip, or raw DEFLATE.
@@ -111,6 +119,9 @@ pub fn decompress_gzip(data []u8) ![]u8 {
 		return error('invalid gzip stream: unsupported compression method')
 	}
 	flg := data[3]
+	if flg & 0xe0 != 0 {
+		return error('invalid gzip stream: reserved flags set')
+	}
 	mut pos := 10 // fixed header size
 	if flg & 0x04 != 0 { // FEXTRA
 		if pos + 2 > data.len {
@@ -131,7 +142,15 @@ pub fn decompress_gzip(data []u8) ![]u8 {
 		}
 		pos++
 	}
-	if flg & 0x02 != 0 { // FHCRC
+	if flg & 0x02 != 0 { // FHCRC: 2-byte CRC-16 (low 16 bits of CRC32), little-endian
+		if pos + 2 > data.len {
+			return error('invalid gzip stream: truncated fhcrc')
+		}
+		expected_crc16 := u16(data[pos]) | (u16(data[pos + 1]) << 8)
+		actual_crc16 := u16(crc32.sum(data[..pos]) & 0xffff)
+		if actual_crc16 != expected_crc16 {
+			return error('invalid gzip stream: header crc16 mismatch')
+		}
 		pos += 2
 	}
 	if pos + 8 > data.len {
@@ -152,6 +171,32 @@ pub fn decompress_gzip(data []u8) ![]u8 {
 		return error('invalid gzip stream: size mismatch')
 	}
 	return decoded
+}
+
+// decompress_raw_with_consumed decompresses raw RFC 1951 DEFLATE data and tracks consumed bytes.
+pub fn decompress_raw_with_consumed(data []u8) !RawInflateResult {
+	res := inflate_with_consumed(data)!
+	return RawInflateResult{
+		decoded:  res.decoded
+		consumed: res.consumed
+	}
+}
+
+// decompress_with_callback decompresses a zlib/gzip/raw stream (RFC 1950, RFC 1952) using a callback for chunked
+// delivery. The callback receives chunks of decompressed data and should return the chunk length to continue, or
+// 0 to abort. Returns the total decompressed length.
+pub fn decompress_with_callback(data []u8, cb ChunkCallback, userdata voidptr) !int {
+	decoded := decompress(data)!
+	mut offset := 0
+	for offset < decoded.len {
+		end := if offset + 32768 < decoded.len { offset + 32768 } else { decoded.len }
+		chunk := decoded[offset..end]
+		if cb(chunk, userdata) != chunk.len {
+			return offset
+		}
+		offset = end
+	}
+	return decoded.len
 }
 
 fn bit_reverse(v u32, n int) u32 {
