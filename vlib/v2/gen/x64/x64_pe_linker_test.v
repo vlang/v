@@ -748,22 +748,79 @@ fn test_pe_linker_resolves_wgetenv_with_kernel32_runtime_thunk() {
 
 	wgetenv_off := pe_test_rva_to_file_off(image, wgetenv_target)
 	assert wgetenv_off > 0
-	assert image[wgetenv_off..wgetenv_off + 4] == [u8(0x48), 0x83, 0xec, 0x48] // sub rsp, 72
-	assert image[wgetenv_off + 4..wgetenv_off + 9] == [
-		u8(0x48),
-		0x89,
-		0x4c,
-		0x24,
-		0x20,
-	] // mov [rsp+32], rcx
-	assert image[wgetenv_off + 14..wgetenv_off + 19] == [
-		u8(0x31),
-		0xd2,
-		0x45,
-		0x31,
-		0xc0,
-	] // xor edx, edx; xor r8d, r8d
-	assert image[wgetenv_off + 19] == u8(0xe8) // call GetEnvironmentVariableW thunk
+	assert image[wgetenv_off..wgetenv_off + 4] == [u8(0x48), 0x83, 0xec, 0x28] // sub rsp, 40
+	data_off := pe_test_section_header(image, '.data')
+	assert data_off > 0
+	data_rva := pe_test_u32(image, data_off + 12)
+	data_size := pe_test_u32(image, data_off + 8)
+	assert data_size >= u32(pe_wgetenv_buffer_bytes)
+
+	runtime_text_size := first_import_thunk_file_off - (text_raw + entry_stub_len +
+		obj.text_data.len)
+	import_offsets := linker.import_thunk_offsets(runtime_text_size)
+	getenv_thunk := import_offsets['GetEnvironmentVariableW'] or {
+		panic('missing GetEnvironmentVariableW import thunk')
+	}
+	get_process_heap_thunk := import_offsets['GetProcessHeap'] or {
+		panic('missing GetProcessHeap import thunk')
+	}
+	heap_alloc_thunk := import_offsets['HeapAlloc'] or { panic('missing HeapAlloc import thunk') }
+	heap_free_thunk := import_offsets['HeapFree'] or { panic('missing HeapFree import thunk') }
+	getenv_thunk_rva := text_rva + getenv_thunk
+	get_process_heap_thunk_rva := text_rva + get_process_heap_thunk
+	heap_alloc_thunk_rva := text_rva + heap_alloc_thunk
+	heap_free_thunk_rva := text_rva + heap_free_thunk
+
+	mut has_buffer_arg_lea := false
+	mut has_buffer_return_lea := false
+	mut has_wgetenv_buffer_size := false
+	mut calls_getenv := false
+	mut calls_get_process_heap := false
+	mut calls_heap_alloc := false
+	mut calls_heap_free := false
+	runtime_scan_end := first_import_thunk_file_off - 8
+	for off in wgetenv_off .. runtime_scan_end {
+		if image[off..off + 3] == [u8(0x48), 0x8d, 0x15] {
+			field_rva := text_rva + u32(off - text_raw + 3)
+			target := u32(i32(field_rva + 4) + pe_test_i32(image, off + 3))
+			if target >= data_rva && target < data_rva + data_size {
+				has_buffer_arg_lea = true
+			}
+		}
+		if image[off..off + 3] == [u8(0x48), 0x8d, 0x05] {
+			field_rva := text_rva + u32(off - text_raw + 3)
+			target := u32(i32(field_rva + 4) + pe_test_i32(image, off + 3))
+			if target >= data_rva && target < data_rva + data_size {
+				has_buffer_return_lea = true
+			}
+		}
+		if image[off..off + 6] == [u8(0x41), 0xb8, 0x00, 0x80, 0x00, 0x00] {
+			has_wgetenv_buffer_size = true
+		}
+		if image[off] == u8(0xe8) {
+			field_rva := text_rva + u32(off - text_raw + 1)
+			target := u32(i32(field_rva + 4) + pe_test_i32(image, off + 1))
+			if target == getenv_thunk_rva {
+				calls_getenv = true
+			}
+			if target == get_process_heap_thunk_rva {
+				calls_get_process_heap = true
+			}
+			if target == heap_alloc_thunk_rva {
+				calls_heap_alloc = true
+			}
+			if target == heap_free_thunk_rva {
+				calls_heap_free = true
+			}
+		}
+	}
+	assert has_buffer_arg_lea
+	assert has_buffer_return_lea
+	assert has_wgetenv_buffer_size
+	assert calls_getenv
+	assert !calls_get_process_heap
+	assert !calls_heap_alloc
+	assert !calls_heap_free
 }
 
 fn test_pe_linker_resolves_aligned_realloc_with_internal_heap_thunk() {
@@ -974,7 +1031,12 @@ fn test_pe_linker_resolves_new_array_from_c_array_noscan_with_internal_heap_thun
 	assert image[new_array_off..new_array_off + 4] == [u8(0x48), 0x83, 0xec, 0x58] // sub rsp, 88
 	mut has_stack_c_array_arg_load := false
 	mut has_heap_zero_memory_flag := false
-	mut has_data_header_skip := false
+	mut has_allocation_header_size := false
+	mut has_header_align_rounding := false
+	mut has_header_align_mask := false
+	mut has_aligned_cookie_store := false
+	mut has_payload_after_header_skip := false
+	mut has_naive_heap_plus_header_data := false
 	mut has_noscan_flags_store := false
 	mut has_element_size_store := false
 	mut has_byte_copy_loop := false
@@ -986,8 +1048,23 @@ fn test_pe_linker_resolves_new_array_from_c_array_noscan_with_internal_heap_thun
 		if image[off..off + 5] == [u8(0xba), 0x08, 0, 0, 0] {
 			has_heap_zero_memory_flag = true
 		}
+		if image[off..off + 4] == [u8(0x49), 0x83, 0xc0, 0x20] {
+			has_allocation_header_size = true
+		}
+		if image[off..off + 4] == [u8(0x49), 0x83, 0xc3, 0x17] {
+			has_header_align_rounding = true
+		}
+		if image[off..off + 4] == [u8(0x49), 0x83, 0xe3, 0xf0] {
+			has_header_align_mask = true
+		}
+		if image[off..off + 4] == [u8(0x49), 0x89, 0x43, 0xf8] {
+			has_aligned_cookie_store = true
+		}
+		if image[off..off + 4] == [u8(0x49), 0x83, 0xc3, 0x08] {
+			has_payload_after_header_skip = true
+		}
 		if image[off..off + 4] == [u8(0x4c), 0x8d, 0x58, 0x08] {
-			has_data_header_skip = true
+			has_naive_heap_plus_header_data = true
 		}
 		if image[off..off + 7] == [u8(0xc7), 0x41, 0x14, 0x30, 0, 0, 0] {
 			has_noscan_flags_store = true
@@ -1001,7 +1078,12 @@ fn test_pe_linker_resolves_new_array_from_c_array_noscan_with_internal_heap_thun
 	}
 	assert has_stack_c_array_arg_load
 	assert has_heap_zero_memory_flag
-	assert has_data_header_skip
+	assert has_allocation_header_size
+	assert has_header_align_rounding
+	assert has_header_align_mask
+	assert has_aligned_cookie_store
+	assert has_payload_after_header_skip
+	assert !has_naive_heap_plus_header_data
 	assert has_noscan_flags_store
 	assert has_element_size_store
 	assert has_byte_copy_loop

@@ -507,6 +507,7 @@ fn (mut g Gen) gen_instr(val_id int) {
 		}
 		.alloca {
 			off := g.alloca_offsets[val_id]
+			g.zero_large_fixed_array_alloca(val_id, off)
 			asm_lea_reg_rbp_disp(mut g, rax, off)
 			g.store_reg_to_val(0, val_id)
 		}
@@ -1299,6 +1300,31 @@ fn (mut g Gen) zero_value_bytes(val_id int, size int) {
 	g.store_repeated_zero(int(rbp), dst_off, size)
 }
 
+fn (mut g Gen) zero_large_fixed_array_alloca(val_id int, off int) {
+	if val_id <= 0 || val_id >= g.mod.values.len {
+		return
+	}
+	alloca_val := g.mod.values[val_id]
+	if alloca_val.typ <= 0 || alloca_val.typ >= g.mod.type_store.types.len {
+		return
+	}
+	alloca_ptr_type := g.mod.type_store.types[alloca_val.typ]
+	if alloca_ptr_type.kind != .ptr_t || alloca_ptr_type.elem_type <= 0
+		|| alloca_ptr_type.elem_type >= g.mod.type_store.types.len {
+		return
+	}
+	elem_typ := g.mod.type_store.types[alloca_ptr_type.elem_type]
+	if elem_typ.kind != .array_t || elem_typ.len <= 16 {
+		return
+	}
+	arr_size := g.type_size(alloca_ptr_type.elem_type)
+	if arr_size <= 0 {
+		return
+	}
+	asm_xor_reg_reg(mut g, rax)
+	g.store_repeated_zero(int(rbp), off, arr_size)
+}
+
 fn (mut g Gen) store_repeated_zero(base int, off int, size int) {
 	mut done := 0
 	for done + 8 <= size {
@@ -1575,6 +1601,18 @@ fn (g Gen) unsupported_windows_abi_arg(reason string, val_id int) {
 	x64_unsupported('backend feature: Windows argument lowering for value ${val_id}: ${reason}; check ABI lowering')
 }
 
+fn (g Gen) ensure_sysv_direct_aggregate_integer_only(val_id int, value_class mir.AbiValueClass, context string) {
+	if g.abi != .sysv || value_class.mode != .direct || !g.value_is_aggregate(val_id)
+		|| value_class.classes.len == 0 {
+		return
+	}
+	for class in value_class.classes {
+		if class != .integer {
+			x64_unsupported('backend feature: SysV direct aggregate ${context} with non-INTEGER eightbyte classes is not implemented yet')
+		}
+	}
+}
+
 fn (g Gen) ensure_windows_direct_return_supported(val_id int, ret_class mir.AbiValueClass, context string) {
 	if g.abi != .windows {
 		return
@@ -1630,6 +1668,10 @@ fn (mut g Gen) load_call_register_args(instr mir.Instruction, abi_regs []int, st
 			g.load_float_call_arg_to_xmm(float_arg_regs[sse_arg_idx], arg_id)
 			sse_arg_idx++
 			continue
+		}
+		if arg_idx < instr.abi_arg_classes.len {
+			g.ensure_sysv_direct_aggregate_integer_only(arg_id, instr.abi_arg_classes[arg_idx],
+				'argument')
 		}
 		if stack_args[arg_idx] {
 			continue
@@ -1693,6 +1735,7 @@ fn (mut g Gen) store_call_result(val_id int, ret_class mir.AbiValueClass) {
 		asm_store_xmm0_rbp_disp(mut g, g.stack_map[val_id], g.type_size(g.mod.values[val_id].typ))
 		return
 	}
+	g.ensure_sysv_direct_aggregate_integer_only(val_id, ret_class, 'call result')
 	if g.store_sysv_integer_pair_call_result(val_id, ret_class) {
 		return
 	}
@@ -1855,6 +1898,10 @@ fn (g Gen) call_stack_arg_mask(instr mir.Instruction, abi_reg_count int, arg_pos
 			}
 			sse_arg_idx++
 			continue
+		}
+		if arg_idx < instr.abi_arg_classes.len {
+			g.ensure_sysv_direct_aggregate_integer_only(arg_id, instr.abi_arg_classes[arg_idx],
+				'argument')
 		}
 		arg_chunks := g.call_arg_reg_chunks(arg_id, arg_idx, instr)
 		if reg_arg_idx + arg_chunks <= abi_reg_count {

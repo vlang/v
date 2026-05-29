@@ -44,6 +44,9 @@ const pe_import_directory_index = 1
 const pe_exception_directory_index = 3
 const pe_base_reloc_directory_index = 5
 const pe_iat_directory_index = 12
+const pe_runtime_data_alignment = 16
+const pe_wgetenv_buffer_wchars = 32768
+const pe_wgetenv_buffer_bytes = pe_wgetenv_buffer_wchars * 2
 
 const pe_kernel32_imports = ['ExitProcess', 'GetStdHandle', 'GetConsoleMode', 'MultiByteToWideChar',
 	'WideCharToMultiByte', 'GetCurrentDirectoryW', 'GetEnvironmentVariableW', 'WriteConsoleW',
@@ -59,11 +62,18 @@ struct PeRuntimeCallPatch {
 	import_name string
 }
 
+struct PeRuntimeDataPatch {
+	field_off int
+	data_off  u32
+}
+
 struct PeRuntimeText {
 mut:
 	bytes          []u8
+	data           []u8
 	symbols        map[string]u32
 	import_patches []PeRuntimeCallPatch
+	data_patches   []PeRuntimeDataPatch
 }
 
 struct PeSection {
@@ -115,8 +125,19 @@ pub fn (mut l PeLinker) write(path string) ! {
 pub fn (mut l PeLinker) image() ![]u8 {
 	runtime_text := l.build_runtime_text()
 	mut text := l.build_text_section(runtime_text)!
+	mut data_data := l.coff.data_data.clone()
+	runtime_data_base := if runtime_text.data.len > 0 {
+		base := align_int(data_data.len, pe_runtime_data_alignment)
+		for data_data.len < base {
+			data_data << u8(0)
+		}
+		data_data << runtime_text.data
+		base
+	} else {
+		data_data.len
+	}
 	section_count := 2 + if l.coff.rodata.len > 0 { 1 } else { 0 } +
-		if l.coff.data_data.len > 0 { 1 } else { 0 }
+		if data_data.len > 0 { 1 } else { 0 }
 	header_size := pe_headers_size(section_count)
 	mut raw_pointer := header_size
 	mut next_rva := u32(pe_section_alignment)
@@ -140,9 +161,8 @@ pub fn (mut l PeLinker) image() ![]u8 {
 	}
 
 	mut data_rva := u32(0)
-	if l.coff.data_data.len > 0 {
-		data_section, next_data_raw := pe_make_section('.data', l.coff.data_data, next_rva,
-			raw_pointer,
+	if data_data.len > 0 {
+		data_section, next_data_raw := pe_make_section('.data', data_data, next_rva, raw_pointer,
 			pe_image_scn_cnt_initialized_data | pe_image_scn_mem_read | pe_image_scn_mem_write)
 		raw_pointer = next_data_raw
 		next_rva = pe_next_section_rva(data_section.virtual_address, int(data_section.virtual_size))
@@ -161,6 +181,8 @@ pub fn (mut l PeLinker) image() ![]u8 {
 	runtime_thunks := runtime_text.symbol_rvas(text_section.virtual_address)
 	l.apply_text_relocations(mut text, text_section.virtual_address, rdata_rva, data_rva,
 		runtime_text.bytes.len, runtime_thunks, import_thunks, import_iats)!
+	l.apply_runtime_data_patches(mut text, text_section.virtual_address, data_rva, runtime_text,
+		runtime_data_base)!
 	sections[0].data = text
 
 	size_of_image := pe_size_of_image(sections)
@@ -410,7 +432,7 @@ fn (l PeLinker) apply_text_relocations(mut text []u8,
 				rdata_rva + sym.value
 			}
 			3 {
-				if data_rva == 0 {
+				if data_rva == 0 || l.coff.data_data.len == 0 {
 					return error('PE linker relocation references .data, but no .data section was emitted')
 				}
 				data_rva + sym.value
@@ -445,6 +467,25 @@ fn (l PeLinker) apply_text_relocations(mut text []u8,
 		thunk_rva := text_rva + u32(thunk_off)
 		disp := i32(int(iat_entry_rva) - (int(thunk_rva) + 6))
 		pe_put_u32_le(mut text, thunk_off + 2, u32(disp))
+	}
+}
+
+fn (l PeLinker) apply_runtime_data_patches(mut text []u8,
+	text_rva u32,
+	data_rva u32,
+	runtime_text PeRuntimeText,
+	runtime_data_base int) ! {
+	if runtime_text.data_patches.len == 0 {
+		return
+	}
+	if data_rva == 0 {
+		return error('PE linker runtime data patch requires a .data section')
+	}
+	runtime_base := l.entry_stub_size() + l.coff.text_data.len
+	for patch in runtime_text.data_patches {
+		field_off := runtime_base + patch.field_off
+		target_rva := data_rva + u32(runtime_data_base) + patch.data_off
+		pe_patch_rel32(mut text, field_off, target_rva, text_rva)
 	}
 }
 
@@ -660,6 +701,36 @@ fn pe_emit_runtime_call_import(mut rt PeRuntimeText, import_name string) {
 	rt.import_patches << PeRuntimeCallPatch{
 		field_off:   rt.bytes.len
 		import_name: import_name
+	}
+	rt.bytes << [u8(0), 0, 0, 0]
+}
+
+fn pe_runtime_data_alloc(mut rt PeRuntimeText, size int, align int) u32 {
+	aligned := align_int(rt.data.len, align)
+	for rt.data.len < aligned {
+		rt.data << u8(0)
+	}
+	off := rt.data.len
+	for _ in 0 .. size {
+		rt.data << u8(0)
+	}
+	return u32(off)
+}
+
+fn pe_emit_runtime_lea_rax_data(mut rt PeRuntimeText, data_off u32) {
+	rt.bytes << [u8(0x48), 0x8d, 0x05] // lea rax, [rip + disp32]
+	rt.data_patches << PeRuntimeDataPatch{
+		field_off: rt.bytes.len
+		data_off:  data_off
+	}
+	rt.bytes << [u8(0), 0, 0, 0]
+}
+
+fn pe_emit_runtime_lea_rdx_data(mut rt PeRuntimeText, data_off u32) {
+	rt.bytes << [u8(0x48), 0x8d, 0x15] // lea rdx, [rip + disp32]
+	rt.data_patches << PeRuntimeDataPatch{
+		field_off: rt.bytes.len
+		data_off:  data_off
 	}
 	rt.bytes << [u8(0), 0, 0, 0]
 }
@@ -944,55 +1015,29 @@ fn pe_emit_runtime_wgetcwd(mut rt PeRuntimeText) {
 }
 
 fn pe_emit_runtime_wgetenv(mut rt PeRuntimeText) {
-	rt.bytes << [u8(0x48), 0x83, 0xec, 0x48] // sub rsp, 72
-	rt.bytes << [u8(0x48), 0x89, 0x4c, 0x24, 0x20] // mov [rsp+32], rcx
+	buffer_off := pe_runtime_data_alloc(mut rt, pe_wgetenv_buffer_bytes, pe_runtime_data_alignment)
+	rt.bytes << [u8(0x48), 0x83, 0xec, 0x28] // sub rsp, 40
 	rt.bytes << [u8(0x48), 0x85, 0xc9] // test rcx, rcx
 	null_name := pe_emit_jcc8(mut rt.bytes, 0x74) // je
-	rt.bytes << [u8(0x31), 0xd2] // xor edx, edx
-	rt.bytes << [u8(0x45), 0x31, 0xc0] // xor r8d, r8d
+	pe_emit_runtime_lea_rdx_data(mut rt, buffer_off)
+	rt.bytes << [u8(0x41), 0xb8] // mov r8d, pe_wgetenv_buffer_wchars
+	write_u32_le(mut rt.bytes, u32(pe_wgetenv_buffer_wchars))
 	pe_emit_runtime_call_import(mut rt, 'GetEnvironmentVariableW')
 	rt.bytes << [u8(0x85), 0xc0] // test eax, eax
 	missing := pe_emit_jcc8(mut rt.bytes, 0x74) // je
-	rt.bytes << [u8(0x89), 0x44, 0x24, 0x28] // mov [rsp+40], eax
-	pe_emit_runtime_call_import(mut rt, 'GetProcessHeap')
-	rt.bytes << [u8(0x48), 0x85, 0xc0] // test rax, rax
-	no_heap := pe_emit_jcc8(mut rt.bytes, 0x74) // je
-	rt.bytes << [u8(0x48), 0x89, 0x44, 0x24, 0x30] // mov [rsp+48], rax
-	rt.bytes << [u8(0x48), 0x89, 0xc1] // mov rcx, rax
-	rt.bytes << [u8(0x31), 0xd2] // xor edx, edx
-	rt.bytes << [u8(0x8b), 0x44, 0x24, 0x28] // mov eax, [rsp+40]
-	rt.bytes << [u8(0x49), 0x89, 0xc0] // mov r8, rax
-	rt.bytes << [u8(0x49), 0xd1, 0xe0] // shl r8, 1
-	pe_emit_runtime_call_import(mut rt, 'HeapAlloc')
-	rt.bytes << [u8(0x48), 0x85, 0xc0] // test rax, rax
-	alloc_failed := pe_emit_jcc8(mut rt.bytes, 0x74) // je
-	rt.bytes << [u8(0x48), 0x89, 0x44, 0x24, 0x38] // mov [rsp+56], rax
-	rt.bytes << [u8(0x48), 0x8b, 0x4c, 0x24, 0x20] // mov rcx, [rsp+32]
-	rt.bytes << [u8(0x48), 0x89, 0xc2] // mov rdx, rax
-	rt.bytes << [u8(0x44), 0x8b, 0x44, 0x24, 0x28] // mov r8d, [rsp+40]
-	pe_emit_runtime_call_import(mut rt, 'GetEnvironmentVariableW')
-	rt.bytes << [u8(0x85), 0xc0] // test eax, eax
-	read_failed := pe_emit_jcc8(mut rt.bytes, 0x74) // je
-	rt.bytes << [u8(0x3b), 0x44, 0x24, 0x28] // cmp eax, [rsp+40]
+	rt.bytes << u8(0x3d) // cmp eax, pe_wgetenv_buffer_wchars
+	write_u32_le(mut rt.bytes, u32(pe_wgetenv_buffer_wchars))
 	too_small := pe_emit_jcc8(mut rt.bytes, 0x73) // jae
-	rt.bytes << [u8(0x48), 0x8b, 0x44, 0x24, 0x38] // mov rax, [rsp+56]
-	rt.bytes << [u8(0x48), 0x83, 0xc4, 0x48] // add rsp, 72
+	pe_emit_runtime_lea_rax_data(mut rt, buffer_off)
+	rt.bytes << [u8(0x48), 0x83, 0xc4, 0x28] // add rsp, 40
 	rt.bytes << u8(0xc3) // ret
-	free_target := rt.bytes.len
-	rt.bytes << [u8(0x48), 0x8b, 0x4c, 0x24, 0x30] // mov rcx, [rsp+48]
-	rt.bytes << [u8(0x31), 0xd2] // xor edx, edx
-	rt.bytes << [u8(0x4c), 0x8b, 0x44, 0x24, 0x38] // mov r8, [rsp+56]
-	pe_emit_runtime_call_import(mut rt, 'HeapFree')
 	fail_target := rt.bytes.len
 	rt.bytes << [u8(0x31), 0xc0] // xor eax, eax
-	rt.bytes << [u8(0x48), 0x83, 0xc4, 0x48] // add rsp, 72
+	rt.bytes << [u8(0x48), 0x83, 0xc4, 0x28] // add rsp, 40
 	rt.bytes << u8(0xc3) // ret
 	pe_patch_rel8(mut rt.bytes, null_name, fail_target)
 	pe_patch_rel8(mut rt.bytes, missing, fail_target)
-	pe_patch_rel8(mut rt.bytes, no_heap, fail_target)
-	pe_patch_rel8(mut rt.bytes, alloc_failed, fail_target)
-	pe_patch_rel8(mut rt.bytes, read_failed, free_target)
-	pe_patch_rel8(mut rt.bytes, too_small, free_target)
+	pe_patch_rel8(mut rt.bytes, too_small, fail_target)
 }
 
 fn pe_emit_runtime_calloc(mut rt PeRuntimeText) {
@@ -1105,7 +1150,8 @@ fn pe_emit_runtime_new_array_from_c_array_noscan(mut rt PeRuntimeText) {
 	payload_nonzero := pe_emit_jcc8(mut rt.bytes, 0x75) // jne
 	rt.bytes << [u8(0x41), 0xb8, 0x01, 0, 0, 0] // mov r8d, 1
 	payload_nonzero_target := rt.bytes.len
-	rt.bytes << [u8(0x49), 0x83, 0xc0, 0x08] // add r8, 8
+	rt.bytes << [u8(0x49), 0x83, 0xc0, 0x20] // add r8, 32
+	allocation_overflow := pe_emit_jcc32(mut rt.bytes, 0x82) // jc
 	rt.bytes << [u8(0x4c), 0x89, 0x44, 0x24, 0x50] // mov [rsp+80], r8
 	pe_emit_runtime_call_import(mut rt, 'GetProcessHeap')
 	rt.bytes << [u8(0x48), 0x85, 0xc0] // test rax, rax
@@ -1116,7 +1162,11 @@ fn pe_emit_runtime_new_array_from_c_array_noscan(mut rt PeRuntimeText) {
 	pe_emit_runtime_call_import(mut rt, 'HeapAlloc')
 	rt.bytes << [u8(0x48), 0x85, 0xc0] // test rax, rax
 	alloc_failed := pe_emit_jcc32(mut rt.bytes, 0x84) // je
-	rt.bytes << [u8(0x4c), 0x8d, 0x58, 0x08] // lea r11, [rax+8]
+	rt.bytes << [u8(0x49), 0x89, 0xc3] // mov r11, rax
+	rt.bytes << [u8(0x49), 0x83, 0xc3, 0x17] // add r11, 23
+	rt.bytes << [u8(0x49), 0x83, 0xe3, 0xf0] // and r11, -16
+	rt.bytes << [u8(0x49), 0x89, 0x43, 0xf8] // mov [r11-8], rax
+	rt.bytes << [u8(0x49), 0x83, 0xc3, 0x08] // add r11, 8
 	rt.bytes << [u8(0x48), 0x8b, 0x4c, 0x24, 0x20] // mov rcx, [rsp+32]
 	rt.bytes << [u8(0x4c), 0x89, 0x19] // mov [rcx], r11
 	rt.bytes << [u8(0xc7), 0x41, 0x08, 0, 0, 0, 0] // mov dword ptr [rcx+8], 0
@@ -1156,6 +1206,7 @@ fn pe_emit_runtime_new_array_from_c_array_noscan(mut rt PeRuntimeText) {
 	pe_patch_rel32_local(mut rt.bytes, negative_elem_size, fail)
 	pe_patch_rel8(mut rt.bytes, cap_ready, cap_ready_target)
 	pe_patch_rel8(mut rt.bytes, payload_nonzero, payload_nonzero_target)
+	pe_patch_rel32_local(mut rt.bytes, allocation_overflow, fail)
 	pe_patch_rel32_local(mut rt.bytes, no_heap, fail)
 	pe_patch_rel32_local(mut rt.bytes, alloc_failed, fail)
 	pe_patch_rel32_local(mut rt.bytes, no_copy, done)

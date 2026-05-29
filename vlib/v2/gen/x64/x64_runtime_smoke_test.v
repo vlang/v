@@ -1285,6 +1285,79 @@ fn x64_fixed_int_array_variable_index_stdout() []u8 {
 '.bytes()
 }
 
+fn x64_large_empty_fixed_u8_array_zero_source() string {
+	return "module main
+
+fn poison17() [17]u8 {
+	mut a := [17]u8{}
+	mut i := 0
+	for i < 17 {
+		a[i] = u8(i + 10)
+		i += 1
+	}
+	return a
+}
+
+fn poison64() [64]u8 {
+	mut a := [64]u8{}
+	mut i := 0
+	for i < 64 {
+		a[i] = u8(i + 30)
+		i += 1
+	}
+	return a
+}
+
+fn zero17() [17]u8 {
+	return [17]u8{}
+}
+
+fn zero64() [64]u8 {
+	z := [64]u8{}
+	return z
+}
+
+fn main() {
+	p17 := poison17()
+	p64 := poison64()
+	if p17[0] == 10 && p17[16] == 26 && p64[0] == 30 && p64[63] == 93 {
+		print('P')
+	} else {
+		print('p')
+	}
+	a := zero17()
+	b := zero64()
+	mut i := 0
+	mut sum17 := 0
+	for i < 17 {
+		sum17 += int(a[i])
+		i += 1
+	}
+	mut j := 0
+	mut sum64 := 0
+	for j < 64 {
+		sum64 += int(b[j])
+		j += 1
+	}
+	if a[0] == 0 && a[16] == 0 && sum17 == 0 {
+		print('Z')
+	} else {
+		print('z')
+	}
+	if b[0] == 0 && b[17] == 0 && b[63] == 0 && sum64 == 0 {
+		println('B')
+	} else {
+		println('b')
+	}
+}
+"
+}
+
+fn x64_large_empty_fixed_u8_array_zero_stdout() []u8 {
+	return 'PZB
+'.bytes()
+}
+
 fn x64_fixed_array_slice_copy_source() string {
 	return "module main
 
@@ -2046,6 +2119,11 @@ fn test_x64_macos_windows_fixed_int_array_variable_index_stdout_exact_bytes() {
 		x64_fixed_int_array_variable_index_source(), x64_fixed_int_array_variable_index_stdout())
 }
 
+fn test_x64_macos_windows_large_empty_fixed_u8_array_zero_stdout_exact_bytes() {
+	assert_x64_macos_windows_stdout_bytes('large_empty_fixed_u8_array_zero_exact',
+		x64_large_empty_fixed_u8_array_zero_source(), x64_large_empty_fixed_u8_array_zero_stdout())
+}
+
 fn test_x64_macos_windows_fixed_array_slice_copy_stdout_exact_bytes() {
 	assert_x64_macos_windows_stdout_bytes('fixed_array_slice_copy_exact',
 		x64_fixed_array_slice_copy_source(), x64_fixed_array_slice_copy_stdout())
@@ -2344,6 +2422,11 @@ fn test_x64_linux_structs_and_fixed_arrays_stdout_exact_bytes() {
 fn test_x64_linux_fixed_int_array_variable_index_stdout_exact_bytes() {
 	assert_x64_linux_stdout_bytes('fixed_int_array_variable_index_exact',
 		x64_fixed_int_array_variable_index_source(), x64_fixed_int_array_variable_index_stdout())
+}
+
+fn test_x64_linux_large_empty_fixed_u8_array_zero_stdout_exact_bytes() {
+	assert_x64_linux_stdout_bytes('large_empty_fixed_u8_array_zero_exact',
+		x64_large_empty_fixed_u8_array_zero_source(), x64_large_empty_fixed_u8_array_zero_stdout())
 }
 
 fn test_x64_linux_fixed_array_slice_copy_stdout_exact_bytes() {

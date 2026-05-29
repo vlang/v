@@ -66,6 +66,24 @@ fn assert_x64_user_visible_compile_failure(failure X64BackendCompileFailure, exp
 	assert_x64_message_avoids_old_wording(failure.stderr)
 }
 
+fn assert_x64_sysv_direct_aggregate_compile_failure(failure X64BackendCompileFailure) {
+	assert failure.exit_code != 0, failure.stdout + failure.stderr
+	assert failure.stdout == '', failure.stdout
+	assert failure.stderr.contains('x64: unsupported backend feature:'), failure.stderr
+	assert failure.stderr.contains('SysV direct aggregate'), failure.stderr
+	assert failure.stderr.contains('non-INTEGER eightbyte classes'), failure.stderr
+	assert failure.stderr.contains(x64_backend_limitation_hint), failure.stderr
+	assert !failure.stderr.contains('Link failed:'), failure.stderr
+	assert !failure.stderr.contains('V panic:'), failure.stderr
+	assert !failure.stderr.contains('Backtrace'), failure.stderr
+	assert_x64_message_avoids_old_wording(failure.stderr)
+}
+
+fn assert_x64_sysv_direct_aggregate_context_compile_failure(failure X64BackendCompileFailure, context string) {
+	assert_x64_sysv_direct_aggregate_compile_failure(failure)
+	assert failure.stderr.contains('SysV direct aggregate ${context}'), failure.stderr
+}
+
 fn assert_x64_clean_user_diagnostic_message(msg string) {
 	assert msg.starts_with('x64: unsupported backend feature: '), msg
 	assert !msg.contains('Link failed:'), msg
@@ -112,23 +130,112 @@ fn assert_x64_message_mentions_only_target_linker(format ObjectFormat, msg strin
 	}
 }
 
-fn test_x64_user_visible_stderr_reports_codegen_abi_unsupported_without_link_noise() {
+fn test_x64_user_visible_stderr_reports_clean_codegen_abi_unsupported_without_link_noise() {
 	$if windows {
-		println('skipping ${@FN}: SysV stack-passed float diagnostic is not available without target-os selection')
+		println('skipping ${@FN}: SysV aggregate diagnostic is not available on Windows')
 	} $else $if x64 {
-		failure := run_x64_backend_compile_failure('float_stack_arg_unsupported', 'module main
+		failure := run_x64_backend_compile_failure('clean_codegen_abi_unsupported', 'module main
 
-fn many(a f64, b f64, c f64, d f64, e f64, f f64, g f64, h f64, i f64) f64 {
-	return a + b + c + d + e + f + g + h + i
+struct Mixed {
+	a i64
+	b f64
+}
+
+fn accept_mixed(p Mixed) {
+	_ = p.a
 }
 
 fn main() {
-	_ = many(1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0)
+	accept_mixed(Mixed{
+		a: 1
+		b: 2.0
+	})
 }
 ')
-		assert_x64_user_visible_compile_failure(failure,
-			'x64: unsupported backend feature: stack-passed float parameter')
-		assert failure.stderr.contains('is not implemented for this ABI yet'), failure.stderr
+		assert_x64_sysv_direct_aggregate_context_compile_failure(failure, 'argument')
+		assert !failure.stderr.contains('Windows'), failure.stderr
+		assert !failure.stderr.contains('Kernel32'), failure.stderr
+		assert !failure.stderr.contains('Mach-O'), failure.stderr
+		assert !failure.stderr.contains('PE linker'), failure.stderr
+	}
+}
+
+fn test_x64_user_visible_stderr_reports_sysv_mixed_aggregate_call_unsupported() {
+	$if windows {
+		println('skipping ${@FN}: SysV aggregate diagnostic is not available on Windows')
+	} $else $if x64 {
+		failure := run_x64_backend_compile_failure('sysv_mixed_aggregate_argument_unsupported', 'module main
+
+struct Mixed {
+	a i64
+	b f64
+}
+
+fn C.accept_mixed(p Mixed)
+
+fn main() {
+	C.accept_mixed(Mixed{
+		a: 1
+		b: 2.0
+	})
+}
+')
+		assert_x64_sysv_direct_aggregate_context_compile_failure(failure, 'argument')
+		assert !failure.stderr.contains('Windows'), failure.stderr
+		assert !failure.stderr.contains('Kernel32'), failure.stderr
+		assert !failure.stderr.contains('Mach-O'), failure.stderr
+		assert !failure.stderr.contains('PE linker'), failure.stderr
+	}
+}
+
+fn test_x64_user_visible_stderr_reports_sysv_mixed_aggregate_extern_return_unsupported() {
+	$if windows {
+		println('skipping ${@FN}: SysV aggregate diagnostic is not available on Windows')
+	} $else $if x64 {
+		failure := run_x64_backend_compile_failure('sysv_mixed_aggregate_return_unsupported', 'module main
+
+struct Mixed {
+	a i64
+	b f64
+}
+
+fn C.make_mixed() Mixed
+
+fn main() {
+	_ = C.make_mixed()
+}
+')
+		assert_x64_sysv_direct_aggregate_context_compile_failure(failure, 'call result')
+		assert !failure.stderr.contains('Windows'), failure.stderr
+		assert !failure.stderr.contains('Kernel32'), failure.stderr
+		assert !failure.stderr.contains('Mach-O'), failure.stderr
+		assert !failure.stderr.contains('PE linker'), failure.stderr
+	}
+}
+
+fn test_x64_user_visible_stderr_reports_sysv_mixed_aggregate_local_return_call_result_unsupported() {
+	$if windows {
+		println('skipping ${@FN}: SysV aggregate diagnostic is not available on Windows')
+	} $else $if x64 {
+		failure := run_x64_backend_compile_failure('sysv_mixed_aggregate_direct_return_unsupported', 'module main
+
+struct Mixed {
+	a i64
+	b f64
+}
+
+fn make_mixed() Mixed {
+	return Mixed{
+		a: 1
+		b: 2.0
+	}
+}
+
+fn main() {
+	_ = make_mixed()
+}
+')
+		assert_x64_sysv_direct_aggregate_context_compile_failure(failure, 'call result')
 		assert !failure.stderr.contains('Windows'), failure.stderr
 		assert !failure.stderr.contains('Kernel32'), failure.stderr
 		assert !failure.stderr.contains('Mach-O'), failure.stderr
@@ -139,6 +246,7 @@ fn main() {
 fn test_x64_unsupported_backend_feature_message_is_normalized() {
 	assert x64_unsupported_backend_feature_message('stack-passed float parameter') == 'x64: unsupported backend feature: stack-passed float parameter'
 	assert x64_unsupported_backend_feature_message('backend feature: Windows argument lowering') == 'x64: unsupported backend feature: Windows argument lowering'
+	assert x64_unsupported_backend_feature_message('backend feature: SysV direct aggregate call result with non-INTEGER eightbyte classes is not implemented yet') == 'x64: unsupported backend feature: SysV direct aggregate call result with non-INTEGER eightbyte classes is not implemented yet'
 }
 
 fn test_x64_user_visible_linker_diagnostic_message_for_generic_external_by_format() {

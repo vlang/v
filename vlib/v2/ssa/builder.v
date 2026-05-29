@@ -14,6 +14,8 @@ const enum_field_c_keywords = ['auto', 'break', 'case', 'char', 'const', 'contin
 	'typedef', 'union', 'unsigned', 'void', 'volatile', 'while', '_Bool', '_Complex', '_Imaginary',
 	'unix', 'linux']
 
+const fixed_array_empty_literal_element_store_threshold = 16
+
 fn enum_field_symbol_name(name string) string {
 	n := if name.len > 0 && name[0] == `@` { 'at_${name[1..]}' } else { name }
 	mut escaped := n.replace('*', 'ptr')
@@ -7532,16 +7534,18 @@ fn (mut b Builder) build_array_init_expr(expr ast.ArrayInitExpr) ValueID {
 					arr_fixed_type := b.mod.type_store.get_array(elem_type, arr_len)
 					ptr_type := b.mod.type_store.get_ptr(arr_fixed_type)
 					alloca := b.mod.add_instr(.alloca, b.cur_block, ptr_type, []ValueID{})
-					zero := b.mod.get_or_add_const(elem_type, '0')
-					elem_ptr_type := b.mod.type_store.get_ptr(elem_type)
-					i32_t := b.mod.type_store.get_int(32)
-					for i in 0 .. arr_len {
-						idx := b.mod.get_or_add_const(i32_t, i.str())
-						gep := b.mod.add_instr(.get_element_ptr, b.cur_block, elem_ptr_type, [
-							alloca,
-							idx,
-						])
-						b.mod.add_instr(.store, b.cur_block, 0, [zero, gep])
+					if arr_len <= fixed_array_empty_literal_element_store_threshold {
+						zero := b.mod.get_or_add_const(elem_type, '0')
+						elem_ptr_type := b.mod.type_store.get_ptr(elem_type)
+						i32_t := b.mod.type_store.get_int(32)
+						for i in 0 .. arr_len {
+							idx := b.mod.get_or_add_const(i32_t, i.str())
+							gep := b.mod.add_instr(.get_element_ptr, b.cur_block, elem_ptr_type, [
+								alloca,
+								idx,
+							])
+							b.mod.add_instr(.store, b.cur_block, 0, [zero, gep])
+						}
 					}
 					return b.mod.add_instr(.load, b.cur_block, arr_fixed_type, [
 						alloca,
