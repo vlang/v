@@ -12,6 +12,14 @@ fn panic_debug(line_no int, file string, mod string, fn_name string, s string) {
 	// so it is last
 	$if freestanding {
 		bare_panic(s)
+	} $else $if v2_native_windows_pe_minimal ? {
+		flush_stdout()
+		eprintln('================ V panic ================')
+		eprint('  message: ')
+		eprintln(s)
+		eprintln('=========================================')
+		flush_stdout()
+		exit(1)
 	} $else {
 		// vfmt off
 		// Note: be carefull to not allocate here, avoid string interpolation
@@ -83,6 +91,12 @@ pub fn panic(s string) {
 	// Note: be careful to not use string interpolation here:
 	$if freestanding {
 		bare_panic(s)
+	} $else $if v2_native_windows_pe_minimal ? {
+		flush_stdout()
+		eprint('V panic: ')
+		eprintln(s)
+		flush_stdout()
+		exit(1)
 	} $else {
 		// vfmt off
 		flush_stdout()

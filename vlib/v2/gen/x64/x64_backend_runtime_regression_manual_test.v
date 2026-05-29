@@ -4,8 +4,8 @@ module x64
 
 import os
 
-fn run_issue_27039_x64_program(name string, source string) string {
-	tmp_dir := os.join_path(os.vtmp_dir(), 'v_issue_27039_x64_${name}_${os.getpid()}')
+fn run_x64_backend_runtime_program(name string, source string) string {
+	tmp_dir := os.join_path(os.vtmp_dir(), 'v_x64_backend_runtime_${name}_${os.getpid()}')
 	os.mkdir_all(tmp_dir) or { panic(err) }
 	defer {
 		os.rmdir_all(tmp_dir) or {}
@@ -26,8 +26,8 @@ fn run_issue_27039_x64_program(name string, source string) string {
 	return lines[1..].join('\n')
 }
 
-fn run_issue_27039_x64_compile_error(name string, source string) string {
-	tmp_dir := os.join_path(os.vtmp_dir(), 'v_issue_27039_x64_fail_${name}_${os.getpid()}')
+fn run_x64_backend_runtime_compile_error(name string, source string) string {
+	tmp_dir := os.join_path(os.vtmp_dir(), 'v_x64_backend_runtime_fail_${name}_${os.getpid()}')
 	os.mkdir_all(tmp_dir) or { panic(err) }
 	defer {
 		os.rmdir_all(tmp_dir) or {}
@@ -42,8 +42,8 @@ fn run_issue_27039_x64_compile_error(name string, source string) string {
 	return build.output
 }
 
-fn run_issue_27039_x64_program_redirected(name string, source string) (string, string) {
-	tmp_dir := os.join_path(os.vtmp_dir(), 'v_issue_27039_x64_redir_${name}_${os.getpid()}')
+fn run_x64_backend_runtime_program_redirected(name string, source string) (string, string) {
+	tmp_dir := os.join_path(os.vtmp_dir(), 'v_x64_backend_runtime_redir_${name}_${os.getpid()}')
 	os.mkdir_all(tmp_dir) or { panic(err) }
 	defer {
 		os.rmdir_all(tmp_dir) or {}
@@ -65,8 +65,8 @@ fn run_issue_27039_x64_program_redirected(name string, source string) (string, s
 	return stdout, stderr
 }
 
-fn test_issue_27039_x64_hello_world_runs() {
-	output := run_issue_27039_x64_program('hello_world', "module main
+fn test_x64_backend_runtime_hello_world_runs() {
+	output := run_x64_backend_runtime_program('hello_world', "module main
 
 fn main() {
 	println('Hello World!')
@@ -75,8 +75,8 @@ fn main() {
 	assert output == 'Hello World!'
 }
 
-fn test_issue_27039_x64_hello_world_runs_with_stdout_redirected() {
-	stdout, stderr := run_issue_27039_x64_program_redirected('hello_world_redir', "module main
+fn test_x64_backend_runtime_hello_world_runs_with_stdout_redirected() {
+	stdout, stderr := run_x64_backend_runtime_program_redirected('hello_world_redir', "module main
 
 fn main() {
 	println('Hello World!')
@@ -86,8 +86,8 @@ fn main() {
 	assert stderr == ''
 }
 
-fn test_issue_27039_x64_const_init_is_not_skipped() {
-	output := run_issue_27039_x64_program('const_string', "module main
+fn test_x64_backend_runtime_const_init_is_not_skipped() {
+	output := run_x64_backend_runtime_program('const_string', "module main
 
 const greeting = 'Const hello'
 
@@ -98,8 +98,38 @@ fn main() {
 	assert output == 'Const hello'
 }
 
-fn test_issue_27039_x64_trunc_and_zext_mask_integer_values() {
-	output := run_issue_27039_x64_program('int_cast_masks', "module main
+fn test_x64_backend_runtime_branch_and_local_mutation_pipeline_correctness() {
+	output := run_x64_backend_runtime_program('branch_local_mutation', "module main
+
+fn adjustment(flag bool) int {
+	if flag {
+		return 7
+	}
+	return -3
+}
+
+fn score(a int, b int, flag bool) int {
+	mut total := a * 10
+	total += adjustment(flag)
+	if total > b {
+		return total - b
+	}
+	return b - total
+}
+
+fn main() {
+	if score(4, 35, true) == 12 && score(4, 35, false) == 2 {
+		println('ok')
+	} else {
+		println('bad')
+	}
+}
+")
+	assert output == 'ok'
+}
+
+fn test_x64_backend_runtime_trunc_and_zext_mask_integer_values() {
+	output := run_x64_backend_runtime_program('int_cast_masks', "module main
 
 fn narrow_and_widen(x u16) u64 {
 	y := u8(x)
@@ -139,8 +169,8 @@ fn main() {
 	assert output == 'ok'
 }
 
-fn test_issue_27039_x64_signed_memory_loads_extend_values() {
-	output := run_issue_27039_x64_program('signed_memory_loads', "module main
+fn test_x64_backend_runtime_signed_memory_loads_extend_values() {
+	output := run_x64_backend_runtime_program('signed_memory_loads', "module main
 
 fn load_i8_from_ptr(p &i8) i64 {
 	return i64(*p)
@@ -163,8 +193,8 @@ fn main() {
 	assert output == 'ok'
 }
 
-fn test_issue_27039_x64_raw_copy_tails_do_not_overwrite_sentinel() {
-	output := run_issue_27039_x64_program('raw_copy_tails', "module main
+fn test_x64_backend_runtime_raw_copy_tails_do_not_overwrite_sentinel() {
+	output := run_x64_backend_runtime_program('raw_copy_tails', "module main
 
 struct Tiny3 {
 mut:
@@ -302,8 +332,8 @@ fn main() {
 	assert output == 'ok'
 }
 
-fn test_issue_27039_x64_small_aggregates_pass_by_value_in_registers() {
-	output := run_issue_27039_x64_program('small_aggregate_reg_args', "module main
+fn test_x64_backend_runtime_small_aggregates_pass_by_value_in_registers() {
+	output := run_x64_backend_runtime_program('small_aggregate_reg_args', "module main
 
 struct Tiny3 {
 	a u8
@@ -394,8 +424,8 @@ fn main() {
 	assert output == 'ok'
 }
 
-fn test_issue_27039_x64_raw_aggregate_arg_does_not_clobber_rcx_arg() {
-	output := run_issue_27039_x64_program('small_aggregate_after_rcx_arg', "module main
+fn test_x64_backend_runtime_raw_aggregate_arg_does_not_clobber_rcx_arg() {
+	output := run_x64_backend_runtime_program('small_aggregate_after_rcx_arg', "module main
 
 struct Tiny3 {
 	a u8
@@ -423,8 +453,8 @@ fn main() {
 	assert output == 'ok'
 }
 
-fn test_issue_27039_x64_big17_sret_and_indirect_param_copy_exact_bytes() {
-	output := run_issue_27039_x64_program('big17_exact_copies', "module main
+fn test_x64_backend_runtime_big17_sret_and_indirect_param_copy_exact_bytes() {
+	output := run_x64_backend_runtime_program('big17_exact_copies', "module main
 
 struct Big17 {
 mut:
@@ -492,8 +522,8 @@ fn main() {
 	assert output == 'ok'
 }
 
-fn test_issue_27039_x64_fixed_array_store_uses_raw_copy() {
-	output := run_issue_27039_x64_program('fixed_array_store', "module main
+fn test_x64_backend_runtime_fixed_array_store_uses_raw_copy() {
+	output := run_x64_backend_runtime_program('fixed_array_store', "module main
 
 fn main() {
 	mut src := [3]u8{}
@@ -512,8 +542,8 @@ fn main() {
 	assert output == 'ok'
 }
 
-fn test_issue_27039_x64_heap_sizing_allows_struct_access_past_eight_bytes() {
-	output := run_issue_27039_x64_program('heap_struct_size', "module main
+fn test_x64_backend_runtime_heap_sizing_allows_struct_access_past_eight_bytes() {
+	output := run_x64_backend_runtime_program('heap_struct_size', "module main
 
 struct Heap17 {
 mut:
@@ -549,8 +579,8 @@ fn main() {
 	assert output == 'ok'
 }
 
-fn test_issue_27039_x64_float_width_casts_convert_values() {
-	output := run_issue_27039_x64_program('float_width_casts', "module main
+fn test_x64_backend_runtime_float_width_casts_convert_values() {
+	output := run_x64_backend_runtime_program('float_width_casts', "module main
 
 fn widen(x f32) f64 {
 	return f64(x)
@@ -573,8 +603,8 @@ fn main() {
 	assert output == 'ok'
 }
 
-fn test_issue_27039_x64_scalar_float_abi_uses_xmm_registers() {
-	output := run_issue_27039_x64_program('scalar_float_abi', "module main
+fn test_x64_backend_runtime_scalar_float_abi_uses_xmm_registers() {
+	output := run_x64_backend_runtime_program('scalar_float_abi', "module main
 
 fn from_f64_u32(x f64) u32 {
 	return u32(x)
@@ -613,22 +643,22 @@ fn main() {
 	assert output == 'ok'
 }
 
-fn test_issue_27039_x64_scalar_float_stack_args_fail_explicitly() {
-	output := run_issue_27039_x64_compile_error('float_stack_arg_unsupported', 'module main
+fn test_x64_backend_runtime_scalar_float_stack_args_fail_explicitly() {
+	output := run_x64_backend_runtime_compile_error('float_stack_arg_unsupported', 'module main
 
 fn many(a f64, b f64, c f64, d f64, e f64, f f64, g f64, h f64, i f64) f64 {
 	return a + b + c + d + e + f + g + h + i
 }
 
 fn main() {
-	println(many(1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0))
+	_ = many(1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0)
 }
 ')
-	assert output.contains('x64: unsupported float ABI stack parameter')
+	assert output.contains('x64: unsupported backend feature: stack-passed float parameter')
 }
 
-fn test_issue_27039_x64_float_comparisons_use_numeric_semantics() {
-	output := run_issue_27039_x64_program('float_comparisons', "module main
+fn test_x64_backend_runtime_float_comparisons_use_numeric_semantics() {
+	output := run_x64_backend_runtime_program('float_comparisons', "module main
 
 import os
 
@@ -706,8 +736,8 @@ fn main() {
 	assert output == 'ok'
 }
 
-fn test_issue_27039_x64_unsigned_64_to_float_handles_high_bit() {
-	output := run_issue_27039_x64_program('u64_to_float_high_bit', "module main
+fn test_x64_backend_runtime_unsigned_64_to_float_handles_high_bit() {
+	output := run_x64_backend_runtime_program('u64_to_float_high_bit', "module main
 
 fn to_f64(x u64) f64 {
 	return f64(x)
@@ -731,8 +761,8 @@ fn main() {
 	assert output == 'ok'
 }
 
-fn test_issue_27039_x64_float_to_unsigned_64_handles_high_bit() {
-	output := run_issue_27039_x64_program('float_to_u64_high_bit', "module main
+fn test_x64_backend_runtime_float_to_unsigned_64_handles_high_bit() {
+	output := run_x64_backend_runtime_program('float_to_u64_high_bit', "module main
 
 fn from_f64(x f64) u64 {
 	return u64(x)
@@ -757,8 +787,8 @@ fn main() {
 	assert output == 'ok'
 }
 
-fn test_issue_27039_x64_aggregate_arg_spills_to_stack() {
-	output := run_issue_27039_x64_program('aggregate_arg_spill', "module main
+fn test_x64_backend_runtime_aggregate_arg_spills_to_stack() {
+	output := run_x64_backend_runtime_program('aggregate_arg_spill', "module main
 
 struct Pair {
 	a i64
@@ -780,8 +810,8 @@ fn main() {
 	assert output == 'ok'
 }
 
-fn test_issue_27039_x64_stack_arg_after_two_chunk_aggregate() {
-	output := run_issue_27039_x64_program('stack_arg_after_pair', "module main
+fn test_x64_backend_runtime_stack_arg_after_two_chunk_aggregate() {
+	output := run_x64_backend_runtime_program('stack_arg_after_pair', "module main
 
 struct Pair {
 	a i64
@@ -803,8 +833,8 @@ fn main() {
 	assert output == 'ok'
 }
 
-fn test_issue_27039_x64_spilled_aggregate_does_not_consume_remaining_register() {
-	output := run_issue_27039_x64_program('aggregate_spill_then_reg', "module main
+fn test_x64_backend_runtime_spilled_aggregate_does_not_consume_remaining_register() {
+	output := run_x64_backend_runtime_program('aggregate_spill_then_reg', "module main
 
 struct Pair {
 	a i64

@@ -12,6 +12,16 @@ pub enum X64Abi {
 	windows
 }
 
+const sysv_int_arg_reg_count = 6
+const sysv_sse_arg_reg_count = 8
+
+struct SysVLocationState {
+mut:
+	int_regs    int
+	sse_regs    int
+	stack_slots int
+}
+
 // lower annotates MIR with ABI classification metadata.
 // Current scope is intentionally conservative: it classifies which arguments
 // and return values must be passed indirectly for each function.
@@ -25,15 +35,24 @@ pub fn lower_with_x64_abi(mut m mir.Module, arch pref.Arch, x64_abi X64Abi) {
 		mut f := &m.funcs[i]
 		fn_by_name[f.name] = i
 		f.abi_param_class = []mir.AbiArgClass{len: f.params.len, init: .in_reg}
+		f.abi_param_classes = []mir.AbiValueClass{len: f.params.len}
+		f.abi_param_layouts = []mir.AbiValueLayout{len: f.params.len}
+		mut param_loc_state := SysVLocationState{}
 		for pi, param_id in f.params {
 			if param_id < 0 || param_id >= m.values.len {
 				continue
 			}
 			param_typ := m.values[param_id].typ
+			param_class := abi_value_class(m, param_typ, arch, x64_abi)
+			f.abi_param_classes[pi] = param_class
+			if arch == .x64 && x64_abi == .sysv {
+				f.abi_param_layouts[pi] = sysv_assign_value_layout(param_class, mut param_loc_state)
+			}
 			if needs_indirect(m, param_typ, arch, x64_abi) {
 				f.abi_param_class[pi] = .indirect
 			}
 		}
+		f.abi_ret_class = abi_value_class(m, f.typ, arch, x64_abi)
 		f.abi_ret_indirect = needs_indirect(m, f.typ, arch, x64_abi)
 	}
 
@@ -63,6 +82,327 @@ fn needs_indirect(m mir.Module, typ_id int, arch pref.Arch, x64_abi X64Abi) bool
 		else {
 			size > 16
 		}
+	}
+}
+
+fn abi_value_class(m mir.Module, typ_id int, arch pref.Arch, x64_abi X64Abi) mir.AbiValueClass {
+	ssa_mod := m.ssa()
+	size := m.type_size(typ_id)
+	if ssa_mod == unsafe { nil } || typ_id <= 0 || typ_id >= ssa_mod.type_store.types.len {
+		return mir.AbiValueClass{
+			mode: .direct
+			size: size
+		}
+	}
+	typ := ssa_mod.type_store.types[typ_id]
+	if arch == .x64 && x64_abi == .sysv {
+		if typ.kind !in [.struct_t, .array_t] {
+			return sysv_scalar_abi_value_class(m, typ_id)
+		}
+		return sysv_abi_value_class(m, typ_id)
+	}
+	indirect := needs_indirect(m, typ_id, arch, x64_abi)
+	return mir.AbiValueClass{
+		mode: if indirect { .indirect } else { .direct }
+		size: size
+	}
+}
+
+fn sysv_scalar_abi_value_class(m mir.Module, typ_id int) mir.AbiValueClass {
+	ssa_mod := m.ssa()
+	size := m.type_size(typ_id)
+	if ssa_mod == unsafe { nil } || typ_id <= 0 || typ_id >= ssa_mod.type_store.types.len {
+		return mir.AbiValueClass{
+			mode: .direct
+			size: size
+		}
+	}
+	typ := ssa_mod.type_store.types[typ_id]
+	classes := match typ.kind {
+		.int_t, .ptr_t, .func_t {
+			[mir.AbiEightbyteClass.integer]
+		}
+		.float_t {
+			match typ.width {
+				32, 64 { [mir.AbiEightbyteClass.sse] }
+				128 { [mir.AbiEightbyteClass.sse, .sseup] }
+				else { []mir.AbiEightbyteClass{} }
+			}
+		}
+		else {
+			[]mir.AbiEightbyteClass{}
+		}
+	}
+
+	return mir.AbiValueClass{
+		mode:    .direct
+		size:    size
+		classes: classes
+	}
+}
+
+fn sysv_abi_value_class(m mir.Module, typ_id int) mir.AbiValueClass {
+	size := m.type_size(typ_id)
+	if size <= 0 {
+		return mir.AbiValueClass{
+			mode: .direct
+			size: size
+		}
+	}
+	mut classes := []mir.AbiEightbyteClass{len: (size + 7) / 8, init: .no_class}
+	mut visiting := map[int]bool{}
+	if !sysv_classify_type_into(m, typ_id, 0, mut classes, mut visiting) {
+		return sysv_memory_value_class(size)
+	}
+	classes = sysv_post_merge_classes(size, classes)
+	if classes.len == 1 && classes[0] == .memory {
+		return sysv_memory_value_class(size)
+	}
+	return mir.AbiValueClass{
+		mode:    .direct
+		size:    size
+		classes: classes
+	}
+}
+
+fn sysv_memory_value_class(size int) mir.AbiValueClass {
+	return mir.AbiValueClass{
+		mode:    .indirect
+		size:    size
+		classes: [.memory]
+	}
+}
+
+fn sysv_classify_type_into(m mir.Module, typ_id int, byte_offset int, mut classes []mir.AbiEightbyteClass, mut visiting map[int]bool) bool {
+	ssa_mod := m.ssa()
+	if ssa_mod == unsafe { nil } || typ_id <= 0 || typ_id >= ssa_mod.type_store.types.len {
+		return true
+	}
+	if visiting[typ_id] {
+		return sysv_merge_class_range(mut classes, byte_offset, 8, .integer)
+	}
+	visiting[typ_id] = true
+	typ := ssa_mod.type_store.types[typ_id]
+	ok := match typ.kind {
+		.int_t, .ptr_t, .func_t {
+			sysv_merge_class_range(mut classes, byte_offset, m.type_size(typ_id), .integer)
+		}
+		.float_t {
+			match typ.width {
+				32, 64 {
+					sysv_merge_class_range(mut classes, byte_offset, m.type_size(typ_id), .sse)
+				}
+				80 {
+					false
+				}
+				128 {
+					sysv_merge_class_range(mut classes, byte_offset, 8, .sse)
+						&& sysv_merge_class_range(mut classes, byte_offset + 8, 8, .sseup)
+				}
+				else {
+					false
+				}
+			}
+		}
+		.array_t {
+			sysv_classify_array_into(m, typ.elem_type, typ.len, byte_offset, mut classes, mut
+				visiting)
+		}
+		.struct_t {
+			sysv_classify_struct_into(m, typ.fields, byte_offset, mut classes, mut visiting)
+		}
+		.void_t, .label_t, .metadata_t {
+			true
+		}
+	}
+
+	visiting.delete(typ_id)
+	return ok
+}
+
+fn sysv_classify_array_into(m mir.Module, elem_type int, len int, byte_offset int, mut classes []mir.AbiEightbyteClass, mut visiting map[int]bool) bool {
+	elem_size := m.type_size(elem_type)
+	for i := 0; i < len; i++ {
+		if !sysv_classify_type_into(m, elem_type, byte_offset + i * elem_size, mut classes, mut
+			visiting) {
+			return false
+		}
+	}
+	return true
+}
+
+fn sysv_classify_struct_into(m mir.Module, fields []int, byte_offset int, mut classes []mir.AbiEightbyteClass, mut visiting map[int]bool) bool {
+	mut field_offset := 0
+	for field_typ in fields {
+		align := m.type_align(field_typ)
+		if align > 1 && field_offset % align != 0 {
+			field_offset = (field_offset + align - 1) & ~(align - 1)
+		}
+		if !sysv_classify_type_into(m, field_typ, byte_offset + field_offset, mut classes, mut
+			visiting) {
+			return false
+		}
+		field_offset += m.type_size(field_typ)
+	}
+	return true
+}
+
+fn sysv_merge_class_range(mut classes []mir.AbiEightbyteClass, byte_offset int, size int, class mir.AbiEightbyteClass) bool {
+	if size <= 0 {
+		return true
+	}
+	start := byte_offset / 8
+	end := (byte_offset + size + 7) / 8
+	if start < 0 || end > classes.len {
+		return false
+	}
+	for i := start; i < end; i++ {
+		classes[i] = sysv_merge_eightbyte_class(classes[i], class)
+		if classes[i] == .memory {
+			return false
+		}
+	}
+	return true
+}
+
+fn sysv_merge_eightbyte_class(a mir.AbiEightbyteClass, b mir.AbiEightbyteClass) mir.AbiEightbyteClass {
+	if a == b {
+		return a
+	}
+	if a == .no_class {
+		return b
+	}
+	if b == .no_class {
+		return a
+	}
+	if a == .memory || b == .memory {
+		return .memory
+	}
+	if a == .integer || b == .integer {
+		return .integer
+	}
+	return .sse
+}
+
+fn sysv_post_merge_classes(size int, input []mir.AbiEightbyteClass) []mir.AbiEightbyteClass {
+	mut classes := input.clone()
+	for class in classes {
+		if class == .memory {
+			return [.memory]
+		}
+	}
+	if size > 16 {
+		mut vector_like := classes.len > 0 && classes[0] == .sse
+		for i := 1; i < classes.len; i++ {
+			if classes[i] != .sseup {
+				vector_like = false
+				break
+			}
+		}
+		if !vector_like {
+			return [.memory]
+		}
+	}
+	for i, class in classes {
+		if class == .sseup && (i == 0 || classes[i - 1] !in [.sse, .sseup]) {
+			classes[i] = .sse
+		}
+	}
+	return classes
+}
+
+fn sysv_assign_value_layout(value_class mir.AbiValueClass, mut state SysVLocationState) mir.AbiValueLayout {
+	if value_class.classes.len == 0 {
+		return mir.AbiValueLayout{
+			value_class: value_class
+		}
+	}
+	if value_class.mode == .indirect || value_class.classes == [mir.AbiEightbyteClass.memory] {
+		return sysv_stack_value_layout(value_class, mut state)
+	}
+
+	mut needed_int := 0
+	mut needed_sse := 0
+	for class in value_class.classes {
+		match class {
+			.integer { needed_int++ }
+			.sse { needed_sse++ }
+			else {}
+		}
+	}
+	if state.int_regs + needed_int > sysv_int_arg_reg_count
+		|| state.sse_regs + needed_sse > sysv_sse_arg_reg_count {
+		return sysv_stack_value_layout(value_class, mut state)
+	}
+
+	mut locs := []mir.AbiLocation{cap: value_class.classes.len}
+	mut last_sse := -1
+	for i, class in value_class.classes {
+		offset := i * 8
+		match class {
+			.integer {
+				locs << mir.AbiLocation{
+					kind:   .int_reg
+					index:  state.int_regs
+					offset: offset
+					class:  class
+				}
+				state.int_regs++
+			}
+			.sse {
+				last_sse = state.sse_regs
+				locs << mir.AbiLocation{
+					kind:   .sse_reg
+					index:  state.sse_regs
+					offset: offset
+					class:  class
+				}
+				state.sse_regs++
+			}
+			.sseup {
+				locs << mir.AbiLocation{
+					kind:   .sse_reg
+					index:  if last_sse >= 0 { last_sse } else { state.sse_regs }
+					offset: offset
+					class:  class
+				}
+			}
+			else {
+				locs << mir.AbiLocation{
+					kind:   .none
+					index:  -1
+					offset: offset
+					class:  class
+				}
+			}
+		}
+	}
+	return mir.AbiValueLayout{
+		value_class: value_class
+		locs:        locs
+	}
+}
+
+fn sysv_stack_value_layout(value_class mir.AbiValueClass, mut state SysVLocationState) mir.AbiValueLayout {
+	slots := if value_class.size > 0 { (value_class.size + 7) / 8 } else { value_class.classes.len }
+	mut locs := []mir.AbiLocation{cap: slots}
+	for i := 0; i < slots; i++ {
+		class := if i < value_class.classes.len {
+			value_class.classes[i]
+		} else {
+			mir.AbiEightbyteClass.memory
+		}
+		locs << mir.AbiLocation{
+			kind:   .stack
+			index:  state.stack_slots
+			offset: i * 8
+			class:  class
+		}
+		state.stack_slots++
+	}
+	return mir.AbiValueLayout{
+		value_class: value_class
+		locs:        locs
 	}
 }
 
@@ -128,6 +468,9 @@ fn lower_calls(mut m mir.Module, arch pref.Arch, x64_abi X64Abi, fn_by_name map[
 		ret_typ, sig_param_types := call_signature(m, instr, fn_by_name)
 		num_args := instr.operands.len - 1
 		instr.abi_arg_class = []mir.AbiArgClass{len: num_args, init: .in_reg}
+		instr.abi_arg_classes = []mir.AbiValueClass{len: num_args}
+		instr.abi_arg_layouts = []mir.AbiValueLayout{len: num_args}
+		mut arg_loc_state := SysVLocationState{}
 		for arg_idx := 0; arg_idx < num_args; arg_idx++ {
 			mut arg_typ := 0
 			if arg_idx < sig_param_types.len && sig_param_types[arg_idx] > 0 {
@@ -136,11 +479,18 @@ fn lower_calls(mut m mir.Module, arch pref.Arch, x64_abi X64Abi, fn_by_name map[
 				arg_id := instr.operands[arg_idx + 1]
 				arg_typ = fallback_arg_type(m, arg_id)
 			}
+			arg_class := abi_value_class(m, arg_typ, arch, x64_abi)
+			instr.abi_arg_classes[arg_idx] = arg_class
+			if arch == .x64 && x64_abi == .sysv {
+				instr.abi_arg_layouts[arg_idx] = sysv_assign_value_layout(arg_class, mut
+					arg_loc_state)
+			}
 			if needs_indirect(m, arg_typ, arch, x64_abi) {
 				instr.abi_arg_class[arg_idx] = .indirect
 			}
 		}
 
+		instr.abi_ret_class = abi_value_class(m, ret_typ, arch, x64_abi)
 		instr.abi_ret_indirect = needs_indirect(m, ret_typ, arch, x64_abi)
 		// Lower ABI-indirect returns to call_sret for backend consumption.
 		if instr.abi_ret_indirect {

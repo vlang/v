@@ -46,8 +46,9 @@ pub type C.LPTSTR = &C.TCHAR
 
 pub type C.LPCTSTR = &C.TCHAR
 
-fn C.WriteConsoleW(voidptr, &u16, u32, voidptr, voidptr) bool
-fn C.WriteFile(voidptr, voidptr, u32, voidptr, voidptr) bool
+fn C.WriteConsoleW(voidptr, &u16, u32, &u32, voidptr) bool
+fn C.WriteFile(voidptr, &u8, u32, &u32, voidptr) bool
+fn C.ExitProcess(u32)
 fn C.GetProcessHeap() voidptr
 fn C.HeapAlloc(voidptr, u32, usize) voidptr
 fn C.HeapFree(voidptr, u32, voidptr) bool
@@ -69,8 +70,10 @@ fn is_terminal(fd int) int {
 	return int(mode)
 }
 
-const std_output_handle = -11
-const std_error_handle = -12
+// GetStdHandle takes DWORD values. Microsoft defines these as ((DWORD)-N),
+// so spell the rollover values explicitly for native backends.
+const std_output_handle = u32(0xfffffff5)
+const std_error_handle = u32(0xfffffff4)
 const enable_processed_output = 1
 const enable_wrap_at_eol_output = 2
 const evable_virtual_terminal_processing = 4
@@ -85,7 +88,7 @@ fn write_buf_to_console(fd int, buf &u8, buf_len int) bool {
 	if fd == 2 {
 		console_handle = C.GetStdHandle(std_error_handle)
 	}
-	if isnil(console_handle) {
+	if isnil(console_handle) || console_handle == voidptr(-1) {
 		return false
 	}
 	unsafe {
@@ -109,7 +112,7 @@ fn write_buf_to_console(fd int, buf &u8, buf_len int) bool {
 		mut wide_ptr := wide_buf
 		for remaining_chars > 0 {
 			mut chars_written := u32(0)
-			if !C.WriteConsoleW(console_handle, wide_ptr, u32(remaining_chars), voidptr(&chars_written), nil)
+			if !C.WriteConsoleW(console_handle, wide_ptr, u32(remaining_chars), &chars_written, nil)
 				|| chars_written == 0 {
 				return false
 			}
@@ -126,7 +129,7 @@ fn write_buf_to_console_kernel32(fd int, buf &u8, buf_len int) bool {
 		return false
 	}
 	console_handle := C.GetStdHandle(if fd == 2 { std_error_handle } else { std_output_handle })
-	if isnil(console_handle) {
+	if isnil(console_handle) || console_handle == voidptr(-1) {
 		return false
 	}
 	mut mode := u32(0)
@@ -159,7 +162,7 @@ fn write_buf_to_console_kernel32(fd int, buf &u8, buf_len int) bool {
 		mut wide_ptr := wide_buf
 		for remaining_chars > 0 {
 			mut chars_written := u32(0)
-			if !C.WriteConsoleW(console_handle, wide_ptr, u32(remaining_chars), voidptr(&chars_written), nil)
+			if !C.WriteConsoleW(console_handle, wide_ptr, u32(remaining_chars), &chars_written, nil)
 				|| chars_written == 0 {
 				return false
 			}
@@ -171,19 +174,23 @@ fn write_buf_to_console_kernel32(fd int, buf &u8, buf_len int) bool {
 }
 
 fn write_buf_to_fd_kernel32(fd int, buf &u8, buf_len int) bool {
+	return write_buf_to_fd_kernel32_status(fd, buf, buf_len) == 0
+}
+
+fn write_buf_to_fd_kernel32_status(fd int, buf &u8, buf_len int) int {
 	if buf_len <= 0 {
-		return true
+		return 0
 	}
 	if fd != 1 && fd != 2 {
-		return false
+		return 1
 	}
 	if write_buf_to_console_kernel32(fd, buf, buf_len) {
-		return true
+		return 0
 	}
 	handle_id := if fd == 2 { std_error_handle } else { std_output_handle }
 	handle := C.GetStdHandle(handle_id)
-	if isnil(handle) {
-		return false
+	if isnil(handle) || handle == voidptr(-1) {
+		return 2
 	}
 	mut ptr := unsafe { buf }
 	mut remaining_bytes := buf_len
@@ -195,41 +202,48 @@ fn write_buf_to_fd_kernel32(fd int, buf &u8, buf_len int) bool {
 				remaining_bytes
 			}
 			mut written := u32(0)
-			if !C.WriteFile(handle, ptr, u32(chunk), voidptr(&written), nil) || written == 0 {
-				return false
+			if !C.WriteFile(handle, ptr, u32(chunk), &written, nil) {
+				return 3
+			}
+			if written == 0 {
+				return 4
 			}
 			ptr += int(written)
 			remaining_bytes -= int(written)
 		}
 	}
-	return true
+	return 0
 }
 
 @[markused]
 fn builtin_init() {
-	$if gcboehm ? {
-		$if !gc_warn_on_stderr ? {
-			gc_set_warn_proc(internal_gc_warn_proc_none)
+	$if v2_native_windows_pe_minimal ? {
+		return
+	} $else {
+		$if gcboehm ? {
+			$if !gc_warn_on_stderr ? {
+				gc_set_warn_proc(internal_gc_warn_proc_none)
+			}
 		}
-	}
-	set_stream_binary_mode(C.stdout)
-	set_stream_binary_mode(C.stderr)
-	if is_terminal(1) > 0 {
-		C.SetConsoleMode(C.GetStdHandle(std_output_handle),
-			enable_processed_output | enable_wrap_at_eol_output | evable_virtual_terminal_processing)
-		C.SetConsoleMode(C.GetStdHandle(std_error_handle),
-			enable_processed_output | enable_wrap_at_eol_output | evable_virtual_terminal_processing)
-		unsafe {
-			set_stream_unbuffered(C.stdout)
-			set_stream_unbuffered(C.stderr)
+		set_stream_binary_mode(C.stdout)
+		set_stream_binary_mode(C.stderr)
+		if is_terminal(1) > 0 {
+			C.SetConsoleMode(C.GetStdHandle(std_output_handle),
+				enable_processed_output | enable_wrap_at_eol_output | evable_virtual_terminal_processing)
+			C.SetConsoleMode(C.GetStdHandle(std_error_handle),
+				enable_processed_output | enable_wrap_at_eol_output | evable_virtual_terminal_processing)
+			unsafe {
+				set_stream_unbuffered(C.stdout)
+				set_stream_unbuffered(C.stderr)
+			}
 		}
+		$if !no_backtrace ? {
+			add_unhandled_exception_handler()
+		}
+		// On windows, the default buffering is block based (~4096bytes), which interferes badly with non cmd shells
+		// It is much better to have it off by default instead.
+		unbuffer_stdout()
 	}
-	$if !no_backtrace ? {
-		add_unhandled_exception_handler()
-	}
-	// On windows, the default buffering is block based (~4096bytes), which interferes badly with non cmd shells
-	// It is much better to have it off by default instead.
-	unbuffer_stdout()
 }
 
 // TODO: copypaste from os

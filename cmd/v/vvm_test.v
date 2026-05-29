@@ -7,6 +7,8 @@ const current_vexe = @VEXE
 
 const delegated_marker = 'VVM-DELEGATED'
 
+const delegated_v2_marker = 'V2-DELEGATED-WAITED'
+
 const requested_vvm_test_version = '99.99.99'
 
 struct CmdResult {
@@ -74,6 +76,46 @@ fn test_vvmrc_delegates_to_matching_compiler_executable() {
 	res := run_v_command(project_dir, ['run', 'main.v'], envs)
 	assert res.exit_code == 0, res.output
 	assert res.output.contains('${delegated_marker} run main.v'), res.output
+}
+
+fn test_v2_delegation_waits_for_compiler_process_and_propagates_exit_code() {
+	tmp_root := os.join_path(os.vtmp_dir(), 'v2_delegate_wait_test_${rand.ulid()}')
+	os.mkdir_all(tmp_root) or { panic(err) }
+	defer {
+		os.rmdir_all(tmp_root) or {}
+	}
+	fake_compiler_source := os.join_path(tmp_root, 'fake_v2_compiler.v')
+	marker_file := os.join_path(tmp_root, 'v2_marker.txt')
+	os.write_file(fake_compiler_source,
+		"import os\nimport time\nfn main() {\n\ttime.sleep(700 * time.millisecond)\n\tmarker := os.getenv('V_V2_TEST_MARKER')\n\tos.write_file(marker, os.args[1..].join(' ')) or { panic(err) }\n\tprintln('${delegated_v2_marker}')\n\texit(7)\n}\n") or {
+		panic(err)
+	}
+	fake_compiler_exe := os.join_path(tmp_root, if os.user_os() == 'windows' {
+		'fake_v2_compiler.exe'
+	} else {
+		'fake_v2_compiler'
+	})
+	compile_res :=
+		os.execute('${os.quoted_path(current_vexe)} -o ${os.quoted_path(fake_compiler_exe)} ${os.quoted_path(fake_compiler_source)}')
+	assert compile_res.exit_code == 0, compile_res.output
+	project_dir := os.join_path(tmp_root, 'project')
+	os.mkdir_all(project_dir) or { panic(err) }
+	os.write_file(os.join_path(project_dir, 'main.v'), "fn main() {\n\tprintln('unused')\n}\n") or {
+		panic(err)
+	}
+	mut envs := os.environ()
+	envs[delegated_v2_exe_env] = fake_compiler_exe
+	envs['V_V2_TEST_MARKER'] = marker_file
+	envs[vvmrc_skip_env] = '1'
+	envs['VFLAGS'] = ''
+
+	res := run_v_command(project_dir, ['-v2', 'main.v'], envs)
+	assert res.exit_code == 7, res.output
+	assert res.output.contains(delegated_v2_marker), res.output
+	assert os.is_file(marker_file)
+	marker := os.read_file(marker_file) or { panic(err) }
+	assert marker.contains('main.v'), marker
+	assert !marker.contains('-v2'), marker
 }
 
 fn run_v_command(work_dir string, args []string, envs map[string]string) CmdResult {

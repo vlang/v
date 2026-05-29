@@ -51,21 +51,26 @@ pub fn at_exit(cb FnExitCb) ! {
 }
 
 fn v_segmentation_fault_handler(signal_number i32) {
-	$if freestanding {
+	$if v2_native_windows_pe_minimal ? {
 		eprintln('signal 11: segmentation fault')
+		exit(128 + signal_number)
 	} $else {
-		C.fprintf(C.stderr, c'signal %d: segmentation fault\n', signal_number)
-	}
-	$if use_libbacktrace ? {
-		$if openbsd {
-			print_backtrace()
+		$if freestanding {
+			eprintln('signal 11: segmentation fault')
 		} $else {
-			eprint_libbacktrace(1)
+			C.fprintf(C.stderr, c'signal %d: segmentation fault\n', signal_number)
 		}
-	} $else {
-		print_backtrace()
+		$if use_libbacktrace ? {
+			$if openbsd {
+				print_backtrace()
+			} $else {
+				eprint_libbacktrace(1)
+			}
+		} $else {
+			print_backtrace()
+		}
+		exit(128 + signal_number)
 	}
-	exit(128 + signal_number)
 }
 
 @[inline]

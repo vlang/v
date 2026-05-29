@@ -658,13 +658,18 @@ fn (mut t Transformer) transform_slice_index_expr(lhs ast.Expr, orig_lhs ast.Exp
 			}
 			types.ArrayFixed {
 				elem_c_name := lhs_type.elem_type.name()
+				len_expr := ast.Expr(ast.InfixExpr{
+					op:  .minus
+					lhs: end_expr
+					rhs: start_expr
+				})
 				return ast.CallExpr{
 					lhs:  ast.Ident{
 						name: 'new_array_from_c_array'
 					}
 					args: [
-						end_expr,
-						end_expr,
+						len_expr,
+						len_expr,
 						ast.Expr(ast.KeywordOperator{
 							op:    .key_sizeof
 							exprs: [
@@ -673,7 +678,13 @@ fn (mut t Transformer) transform_slice_index_expr(lhs ast.Expr, orig_lhs ast.Exp
 								}),
 							]
 						}),
-						lhs,
+						ast.Expr(ast.PrefixExpr{
+							op:   .amp
+							expr: ast.IndexExpr{
+								lhs:  lhs
+								expr: start_expr
+							}
+						}),
 					]
 				}
 			}

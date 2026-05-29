@@ -3616,6 +3616,56 @@ fn test_transform_index_expr_open_ended_array_slice_uses_slice_ni() {
 	assert call.args[2] is ast.SelectorExpr
 }
 
+fn test_transform_index_expr_fixed_array_slice_uses_start_address_and_length() {
+	mut t := create_transformer_with_vars({
+		'f': types.Type(types.ArrayFixed{
+			len:       5
+			elem_type: types.int_
+		})
+	})
+
+	expr := ast.IndexExpr{
+		lhs:  ast.Ident{
+			name: 'f'
+		}
+		expr: ast.RangeExpr{
+			op:    .dotdot
+			start: ast.BasicLiteral{
+				kind:  .number
+				value: '1'
+			}
+			end:   ast.BasicLiteral{
+				kind:  .number
+				value: '4'
+			}
+		}
+	}
+
+	result := t.transform_expr(expr)
+	assert result is ast.CallExpr, 'expected CallExpr, got ${result.type_name()}'
+	call := result as ast.CallExpr
+	assert call.lhs is ast.Ident
+	assert (call.lhs as ast.Ident).name == 'new_array_from_c_array'
+	assert call.args.len == 4
+	assert call.args[0] is ast.InfixExpr
+	len_expr := call.args[0] as ast.InfixExpr
+	assert len_expr.op == .minus
+	assert len_expr.lhs is ast.BasicLiteral
+	assert (len_expr.lhs as ast.BasicLiteral).value == '4'
+	assert len_expr.rhs is ast.BasicLiteral
+	assert (len_expr.rhs as ast.BasicLiteral).value == '1'
+	assert call.args[1] is ast.InfixExpr
+	assert call.args[3] is ast.PrefixExpr
+	ptr_expr := call.args[3] as ast.PrefixExpr
+	assert ptr_expr.op == .amp
+	assert ptr_expr.expr is ast.IndexExpr
+	index_expr := ptr_expr.expr as ast.IndexExpr
+	assert index_expr.lhs is ast.Ident
+	assert (index_expr.lhs as ast.Ident).name == 'f'
+	assert index_expr.expr is ast.BasicLiteral
+	assert (index_expr.expr as ast.BasicLiteral).value == '1'
+}
+
 fn test_transform_call_or_cast_expr_array_contains_fixed_array() {
 	mut t := create_transformer_with_vars({
 		'a': types.Type(types.ArrayFixed{

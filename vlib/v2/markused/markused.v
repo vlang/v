@@ -248,7 +248,9 @@ fn (mut w Walker) seed_roots() bool {
 		}
 	}
 	if has_root {
-		if !w.opts.minimal_runtime_roots {
+		if w.opts.minimal_runtime_roots {
+			w.seed_minimal_runtime_roots()
+		} else {
 			w.seed_generic_specialization_roots()
 			w.seed_codegen_required_roots()
 			// Also seed module init() functions (called from synthesized main)
@@ -269,7 +271,9 @@ fn (mut w Walker) seed_roots() bool {
 		}
 	}
 	if has_root {
-		if !w.opts.minimal_runtime_roots {
+		if w.opts.minimal_runtime_roots {
+			w.seed_minimal_runtime_roots()
+		} else {
 			w.seed_generic_specialization_roots()
 			w.seed_codegen_required_roots()
 			w.seed_top_level_initializer_roots()
@@ -277,6 +281,9 @@ fn (mut w Walker) seed_roots() bool {
 		}
 	}
 	return has_root
+}
+
+fn (mut w Walker) seed_minimal_runtime_roots() {
 }
 
 fn (mut w Walker) seed_codegen_required_roots() {
@@ -667,6 +674,19 @@ fn receiver_type_expr_name(expr ast.Expr) string {
 				ast.PointerType {
 					return receiver_type_expr_name(expr.base_type)
 				}
+				ast.ArrayType {
+					elem_name := receiver_type_expr_name(expr.elem_type)
+					if elem_name != '' {
+						return 'Array_${elem_name}'
+					}
+				}
+				ast.ArrayFixedType {
+					elem_name := receiver_type_expr_name(expr.elem_type)
+					len_name := receiver_fixed_array_len_name(expr.len)
+					if elem_name != '' && len_name != '' {
+						return 'Array_fixed_${elem_name}_${len_name}'
+					}
+				}
 				ast.GenericType {
 					return receiver_type_expr_name(expr.name)
 				}
@@ -677,6 +697,20 @@ fn receiver_type_expr_name(expr ast.Expr) string {
 	}
 
 	return ''
+}
+
+fn receiver_fixed_array_len_name(expr ast.Expr) string {
+	match expr {
+		ast.BasicLiteral {
+			return expr.value
+		}
+		ast.Ident {
+			return expr.name
+		}
+		else {
+			return expr.name()
+		}
+	}
 }
 
 fn type_expr_receiver_candidates(mod_name string, expr ast.Expr) []string {
@@ -1072,8 +1106,8 @@ fn called_fn_name_candidates(name string) []string {
 		add_unique_string(mut out, 'new_array_from_array_and_c_array')
 		return out
 	}
-	if name == 'builtin__array_push_noscan' {
-		add_unique_string(mut out, 'array__push')
+	if name == 'builtin__array_push_noscan' || name == 'builtin__array__push_noscan' {
+		add_unique_string(mut out, 'array__push_noscan')
 		return out
 	}
 	if name.starts_with('builtin__') {
@@ -1904,7 +1938,6 @@ fn (mut w Walker) mark_selector_fn_value(expr ast.SelectorExpr, mod_name string)
 	left := expr.lhs as ast.Ident
 	left_name := left.name
 	if left_name == 'C' {
-		w.mark_fn_name(expr.rhs.name, mod_name)
 		return
 	}
 	if left_name in w.module_names {
@@ -2084,7 +2117,8 @@ fn (mut w Walker) walk_expr(expr ast.Expr, mod_name string) {
 		}
 		ast.Ident {
 			w.mark_ierror_wrapper_dependencies(expr.name, mod_name)
-			if !w.is_cast_type_name(expr.name) {
+			if (!w.opts.minimal_runtime_roots || should_mark_ident_as_fn(expr.name))
+				&& !w.is_cast_type_name(expr.name) {
 				w.mark_fn_name(expr.name, mod_name)
 			}
 		}

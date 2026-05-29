@@ -184,14 +184,14 @@ fn test_header_cache_stamp_uses_target_os_preference() {
 	assert linux_stamp != windows_stamp
 }
 
-struct WindowsX64ProbeResult {
+struct WindowsX64BuildResult {
 	undefined_symbols []string
 	built_functions   []string
 	image             []u8
 }
 
 fn test_windows_x64_empty_main_links_without_crt_or_darwin_symbols() {
-	res := build_windows_x64_probe('module main\nfn main() {}\n', false, true)
+	res := build_windows_x64_sample('module main\nfn main() {}\n', false, true)
 
 	assert 'calloc' !in res.undefined_symbols, res.undefined_symbols.str()
 	assert '__stdoutp' !in res.undefined_symbols, res.undefined_symbols.str()
@@ -199,7 +199,7 @@ fn test_windows_x64_empty_main_links_without_crt_or_darwin_symbols() {
 	assert '__stdinp' !in res.undefined_symbols, res.undefined_symbols.str()
 	assert '__error' !in res.undefined_symbols, res.undefined_symbols.str()
 
-	linked := build_windows_x64_probe('module main\nfn main() {}\n', true, true)
+	linked := build_windows_x64_sample('module main\nfn main() {}\n', true, true)
 	assert linked.image.len > 0
 	assert linked.image[0] == `M`
 	assert linked.image[1] == `Z`
@@ -217,7 +217,7 @@ fn main() {
 	C.sink_int(C.errno)
 }
 '
-	res := build_windows_x64_probe(source, false, false)
+	res := build_windows_x64_sample(source, false, false)
 
 	assert '__stdoutp' !in res.undefined_symbols
 	assert '__stderrp' !in res.undefined_symbols
@@ -230,15 +230,142 @@ fn main() {
 }
 
 fn test_windows_x64_minimal_runtime_builds_markused_core_functions() {
-	res := build_windows_x64_probe("module main\nfn main() { println('x') }\n", false, false)
+	res := build_windows_x64_sample("module main\nfn main() { println('x') }\n", false, false)
 
 	assert 'builtin__println' in res.built_functions, res.built_functions.str()
 	assert 'stderr' !in res.undefined_symbols, res.undefined_symbols.str()
 	assert_no_windows_minimal_runtime_retention(res.built_functions)
 }
 
+fn test_windows_x64_minimal_runtime_os_getwd_markused_does_not_retain_stdio_file_helpers() {
+	used := build_windows_x64_markused_sample('module main
+import os
+
+fn main() {
+	wd := os.getwd()
+	_ = wd.len
+}
+')
+
+	assert used['main|f|main'], used.str()
+	assert used['os|f|getwd'], used.str()
+	assert_no_windows_minimal_targeted_stdio_markused_leaks(used)
+	assert !used['os|f|get_raw_line'], used.str()
+	assert !used['os|f|get_raw_stdin'], used.str()
+	assert !used['os|f|is_atty'], used.str()
+	assert !used['os|f|input_password'], used.str()
+}
+
+fn test_windows_x64_minimal_runtime_os_getwd_build_does_not_retain_stdin_helpers() {
+	res := build_windows_x64_sample('module main
+import os
+
+fn main() {
+	wd := os.getwd()
+	if wd.len == 0 {
+		return
+	}
+}
+',
+		false, false)
+
+	assert 'os__getwd' in res.built_functions, res.built_functions.str()
+	assert 'os__get_raw_line' !in res.built_functions, res.built_functions.str()
+	assert 'os__get_raw_stdin' !in res.built_functions, res.built_functions.str()
+	assert 'os__is_atty' !in res.built_functions, res.built_functions.str()
+	assert 'os__input_password' !in res.built_functions, res.built_functions.str()
+	assert 'STD_INPUT_HANDLE' !in res.undefined_symbols, res.undefined_symbols.str()
+	assert '_get_osfhandle' !in res.undefined_symbols, res.undefined_symbols.str()
+}
+
+fn test_windows_x64_minimal_runtime_prunes_crt_stdio_else_branch_before_markused() {
+	used := build_windows_x64_markused_sample('module main
+import os
+
+fn C.sink_ptr(voidptr)
+fn C.setvbuf(voidptr, voidptr, int, usize) int
+
+fn minimal_marker() {}
+
+fn guarded_stdio_branch() {
+	$if v2_native_windows_pe_minimal ? {
+		minimal_marker()
+	} $else {
+		C.sink_ptr(C.stdout)
+		C.sink_ptr(C.stderr)
+		C.setvbuf(C.stdout, 0, 0, usize(0))
+		unbuffer_stdout()
+		os.stdout()
+		os.stderr()
+	}
+}
+
+fn main() {
+	guarded_stdio_branch()
+}
+')
+
+	assert used['main|f|main'], used.str()
+	assert used['main|f|guarded_stdio_branch'], used.str()
+	assert used['main|f|minimal_marker'], used.str()
+	assert !used['builtin|f|unbuffer_stdout'], used.str()
+	assert !used['os|f|stdout'], used.str()
+	assert !used['os|f|stderr'], used.str()
+	assert !windows_x64_markused_key_contains(used, 'setvbuf'), used.str()
+	assert !windows_x64_markused_key_contains(used, '|f|stdout'), used.str()
+	assert !windows_x64_markused_key_contains(used, '|f|stderr'), used.str()
+}
+
+fn test_windows_x64_minimal_runtime_dynamic_array_markused_does_not_retain_crt_stdio() {
+	used := build_windows_x64_markused_sample("module main
+
+fn main() {
+	mut a := [1, 2, 3]
+	a[1] = 7
+	a << 11
+	mut i := 0
+	mut sum := 0
+	for i < a.len {
+		sum += a[i]
+		i += 1
+	}
+	if sum == 22 {
+		println('ok')
+	}
+}
+")
+
+	assert used['main|f|main'], used.str()
+	assert used['builtin|f|println'], used.str()
+	assert_no_windows_minimal_targeted_stdio_markused_leaks(used)
+}
+
+fn test_windows_x64_minimal_runtime_fixed_array_slice_copy_markused_does_not_retain_crt_stdio() {
+	used := build_windows_x64_markused_sample("module main
+
+fn main() {
+	mut f := [5]int{}
+	f[0] = 2
+	f[1] = 4
+	f[2] = 6
+	f[3] = 8
+	f[4] = 10
+	mut a := f[1..4]
+	a[1] = 9
+	a << 12
+	if a.len == 4 && f[2] == 6 {
+		println('ok')
+	}
+}
+")
+
+	assert used['main|f|main'], used.str()
+	assert used['builtin|f|println'], used.str()
+	assert_no_windows_minimal_targeted_stdio_markused_leaks(used)
+}
+
 fn test_windows_x64_println_links_pe_image() {
-	linked := build_windows_x64_probe("module main\nfn main() { println('x') }\n", true, true)
+	linked := build_windows_x64_sample("module main\nfn main() { println('x') }\n", true, true)
 
 	assert linked.image.len > 0
 	assert linked.image[0] == `M`
@@ -254,7 +381,7 @@ fn test_windows_x64_println_links_pe_image() {
 }
 
 fn test_windows_x64_minimal_runtime_preserves_imported_module_init() {
-	linked := build_windows_x64_probe_with_files({
+	linked := build_windows_x64_sample_with_files({
 		'main.v':    'module main
 import dep
 
@@ -277,8 +404,31 @@ fn touch() {}
 	assert linked.image[1] == `Z`
 }
 
+fn test_windows_x64_minimal_runtime_preserves_imported_module_init_without_optimize() {
+	res := build_windows_x64_sample_with_files({
+		'main.v':    'module main
+import dep
+
+fn main() {}
+'
+		'dep/dep.v': 'module dep
+
+fn init() {
+	touch()
+}
+
+fn touch() {}
+'
+	}, false, false)
+
+	assert 'dep__init' in res.built_functions, res.built_functions.str()
+	assert 'dep__touch' in res.built_functions, res.built_functions.str()
+	assert_no_windows_minimal_crt_symbols(res.undefined_symbols)
+	assert_no_windows_minimal_runtime_retention(res.built_functions)
+}
+
 fn test_windows_x64_minimal_runtime_preserves_conditional_imported_module_init() {
-	linked := build_windows_x64_probe_with_files({
+	linked := build_windows_x64_sample_with_files({
 		'main.v':    'module main
 $if windows {
 	import dep
@@ -304,7 +454,7 @@ fn touch() {}
 }
 
 fn test_windows_x64_minimal_runtime_preserves_dotted_import_module_init() {
-	linked := build_windows_x64_probe_with_files({
+	linked := build_windows_x64_sample_with_files({
 		'main.v':                'module main
 import fixture.inner
 
@@ -335,11 +485,60 @@ fn make_value() int {
 	assert linked.image[1] == `Z`
 }
 
+fn test_windows_x64_minimal_runtime_preserves_dotted_import_const_init_matrix() {
+	for optimize in [false, true] {
+		res := build_windows_x64_sample_with_files({
+			'main.v':                'module main
+import fixture.inner
+
+fn main() {}
+'
+			'fixture/inner/inner.v': 'module inner
+
+const dotted_runtime_value = make_value()
+
+fn init() {
+	touch()
+}
+
+fn touch() {}
+
+fn make_value() int {
+	return 7
+}
+'
+		}, false, optimize)
+
+		assert 'inner__init' in res.built_functions, res.built_functions.str()
+		assert 'inner__touch' in res.built_functions, res.built_functions.str()
+		assert 'inner____v_init_consts_inner' in res.built_functions, res.built_functions.str()
+		assert 'inner__make_value' in res.built_functions, res.built_functions.str()
+		assert_no_windows_minimal_crt_symbols(res.undefined_symbols)
+		assert_no_windows_large_runtime_module_retention(res.built_functions)
+	}
+}
+
 fn assert_no_windows_minimal_crt_symbols(undefined_symbols []string) {
-	for name in ['calloc', 'malloc', 'free', 'fwrite', 'fflush', 'write', 'stdout', 'stderr',
-		'_get_osfhandle'] {
+	assert_no_windows_minimal_crt_stdio_symbols(undefined_symbols)
+	for name in ['calloc', 'malloc', 'free', 'write', '_get_osfhandle'] {
 		assert name !in undefined_symbols, undefined_symbols.str()
 	}
+}
+
+fn assert_no_windows_minimal_crt_stdio_symbols(undefined_symbols []string) {
+	for name in ['stdin', 'stdout', 'stderr', 'printf', 'fprintf', 'dprintf', 'sprintf', 'snprintf',
+		'wprintf', 'puts', 'fputs', 'setvbuf', 'fflush', 'fopen', '_wfopen', 'fdopen', 'freopen',
+		'_wfreopen', 'fclose', 'pclose', '_pclose', 'fread', 'fwrite', 'fgets', 'getc', 'feof',
+		'ferror', 'fseek', 'ftell', 'rewind', 'fileno', '_fileno', 'fgetpos'] {
+		assert name !in undefined_symbols, undefined_symbols.str()
+	}
+}
+
+fn assert_no_windows_minimal_targeted_stdio_markused_leaks(used map[string]bool) {
+	assert !used['os|f|stdout'], used.str()
+	assert !used['os|f|stderr'], used.str()
+	assert !used['builtin|f|unbuffer_stdout'], used.str()
+	assert !windows_x64_markused_key_contains(used, 'setvbuf'), used.str()
 }
 
 fn assert_no_windows_minimal_runtime_retention(built_functions []string) {
@@ -357,15 +556,70 @@ fn assert_no_windows_minimal_runtime_retention(built_functions []string) {
 	}
 }
 
-fn build_windows_x64_probe(source string, link bool, optimize bool) WindowsX64ProbeResult {
-	return build_windows_x64_probe_with_files({
+fn assert_no_windows_large_runtime_module_retention(built_functions []string) {
+	for name in built_functions {
+		assert !name.starts_with('os__'), built_functions.str()
+		assert !name.starts_with('time__'), built_functions.str()
+		assert !name.starts_with('io__'), built_functions.str()
+		assert !name.starts_with('dl__'), built_functions.str()
+		assert !name.starts_with('sha256__'), built_functions.str()
+		assert !name.starts_with('binary__'), built_functions.str()
+	}
+}
+
+fn build_windows_x64_sample(source string, link bool, optimize bool) WindowsX64BuildResult {
+	return build_windows_x64_sample_with_files({
 		'main.v': source
 	}, link, optimize)
 }
 
-fn build_windows_x64_probe_with_files(sources map[string]string, link bool, optimize bool) WindowsX64ProbeResult {
+fn build_windows_x64_markused_sample(source string) map[string]bool {
+	tmp_dir := os.join_path(os.temp_dir(), 'v2_builder_windows_x64_markused_sample_${os.getpid()}')
+	os.rmdir_all(tmp_dir) or {}
+	os.mkdir_all(tmp_dir) or { panic(err) }
+	defer {
+		os.rmdir_all(tmp_dir) or {}
+	}
+
+	main_path := os.join_path(tmp_dir, 'main.v')
+	os.write_file(main_path, source) or { panic(err) }
+
+	mut prefs := pref.new_preferences()
+	prefs.backend = .x64
+	prefs.arch = .x64
+	prefs.target_os = 'windows'
+	prefs.skip_type_check = true
+	prefs.no_parallel = true
+	prefs.no_parallel_transform = true
+	prefs.no_cache = true
+
+	mut b := new_builder(&prefs)
+	b.user_files = [main_path]
+	b.files = b.parse_files([main_path])
+	b.env = types.Environment.new()
+
+	mut trans := transformer.Transformer.new_with_pref(b.files, b.env, b.pref)
+	trans.set_file_set(b.file_set)
+	b.files = trans.transform_files(b.files)
+	used := markused.mark_used_with_options(b.files, b.env, markused.MarkUsedOptions{
+		minimal_runtime_roots: true
+	})
+	assert used.len > 0
+	return used
+}
+
+fn windows_x64_markused_key_contains(used map[string]bool, needle string) bool {
+	for key, is_used in used {
+		if is_used && key.contains(needle) {
+			return true
+		}
+	}
+	return false
+}
+
+fn build_windows_x64_sample_with_files(sources map[string]string, link bool, optimize bool) WindowsX64BuildResult {
 	tmp_dir := os.join_path(os.temp_dir(),
-		'v2_builder_windows_x64_probe_${os.getpid()}_${sources.len}_${link}_${optimize}')
+		'v2_builder_windows_x64_sample_${os.getpid()}_${sources.len}_${link}_${optimize}')
 	os.rmdir_all(tmp_dir) or {}
 	os.mkdir_all(tmp_dir) or { panic(err) }
 	defer {
@@ -427,7 +681,7 @@ fn build_windows_x64_probe_with_files(sources map[string]string, link bool, opti
 		gen.link_executable(exe_path) or { panic(err) }
 		image = os.read_bytes(exe_path) or { panic(err) }
 	}
-	return WindowsX64ProbeResult{
+	return WindowsX64BuildResult{
 		undefined_symbols: coff_undefined_symbols(os.read_bytes(obj_path) or { panic(err) })
 		built_functions:   built_functions
 		image:             image

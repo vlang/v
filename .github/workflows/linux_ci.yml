@@ -96,6 +96,68 @@ jobs:
       - uses: ./.github/actions/cache-apt-packages-action
       - name: Build V
         run: make -j4 && ./v symlink
+      - name: V2 x64 native checks
+        run: |
+          set -e
+
+          ./v test vlib/v2/abi vlib/v2/gen/x64
+          ./v test vlib/v2/ssa/optimize
+          V2_VERIFY_STRICT=1 ./v test vlib/v2/ssa/optimize
+
+          tmp="$(mktemp -d)"
+          trap 'rm -rf "$tmp"' EXIT
+
+          check_empty_stderr() {
+            label="$1"
+            stderr="$2"
+            if [ -s "$stderr" ]; then
+              echo "::error::$label wrote to stderr"
+              cat "$stderr"
+              return 1
+            fi
+          }
+
+          check_stdout() {
+            label="$1"
+            expected="$2"
+            actual="$3"
+            if ! cmp -s "$expected" "$actual"; then
+              echo "::error::$label stdout mismatch"
+              echo "expected:"
+              cat "$expected"
+              echo "actual:"
+              cat "$actual"
+              return 1
+            fi
+          }
+
+          write_fizz_buzz_expected() {
+            i=1
+            while [ "$i" -le 100 ]; do
+              if [ $((i % 15)) -eq 0 ]; then
+                echo FizzBuzz
+              elif [ $((i % 3)) -eq 0 ]; then
+                echo Fizz
+              elif [ $((i % 5)) -eq 0 ]; then
+                echo Buzz
+              else
+                echo "$i"
+              fi
+              i=$((i + 1))
+            done
+          }
+
+          ./v -v2 -b x64 examples/hello_world.v -o "$tmp/hello_world"
+          "$tmp/hello_world" > "$tmp/hello_world.out" 2> "$tmp/hello_world.err"
+          printf 'Hello, World!\n' > "$tmp/hello_world.expected"
+          check_empty_stderr hello_world "$tmp/hello_world.err"
+          check_stdout hello_world "$tmp/hello_world.expected" "$tmp/hello_world.out"
+
+          ./v -v2 -b x64 examples/fizz_buzz.v -o "$tmp/fizz_buzz"
+          "$tmp/fizz_buzz" > "$tmp/fizz_buzz.out" 2> "$tmp/fizz_buzz.err"
+          write_fizz_buzz_expected > "$tmp/fizz_buzz.expected"
+          check_empty_stderr fizz_buzz "$tmp/fizz_buzz.err"
+          check_stdout fizz_buzz "$tmp/fizz_buzz.expected" "$tmp/fizz_buzz.out"
       - name: All code is formatted
         run: v run ci/linux_ci.vsh all_code_is_formatted_gcc
       - name: Install dependencies for examples and tools

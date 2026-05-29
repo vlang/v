@@ -32,6 +32,7 @@ mut:
 
 	cur_func_ret_type         int
 	cur_func_abi_ret_indirect bool
+	cur_func_abi_ret_class    mir.AbiValueClass
 	sret_save_offset          int
 }
 
@@ -92,7 +93,7 @@ pub fn (mut g Gen) gen() {
 		g.add_symbol(gvar.name, addr, false, .data)
 		if gvar.initial_data.len > 0 {
 			g.add_data(gvar.initial_data)
-		} else if gvar.is_constant {
+		} else if gvar.is_constant || g.scalar_global_initial_value_supported(gvar.typ) {
 			size := g.type_size(gvar.typ)
 			mut bytes := []u8{len: if size > 0 { size } else { 8 }}
 			if bytes.len >= 8 {
@@ -104,7 +105,6 @@ pub fn (mut g Gen) gen() {
 			}
 			g.add_data(bytes)
 		} else {
-			// For regular globals, initialize with zeros
 			size := g.type_size(gvar.typ)
 			data_size := if size > 0 { size } else { 8 }
 			for _ in 0 .. data_size {
@@ -112,6 +112,14 @@ pub fn (mut g Gen) gen() {
 			}
 		}
 	}
+}
+
+fn (g Gen) scalar_global_initial_value_supported(typ_id ssa.TypeID) bool {
+	if typ_id <= 0 || typ_id >= g.mod.type_store.types.len {
+		return false
+	}
+	typ := g.mod.type_store.types[typ_id]
+	return typ.kind in [.int_t, .ptr_t]
 }
 
 fn (mut g Gen) gen_func(func mir.Function) {
@@ -124,6 +132,7 @@ fn (mut g Gen) gen_func(func mir.Function) {
 	g.used_regs = []int{}
 	g.cur_func_ret_type = func.typ
 	g.cur_func_abi_ret_indirect = func.abi_ret_indirect
+	g.cur_func_abi_ret_class = func.abi_ret_class
 	g.sret_save_offset = 0
 
 	g.allocate_registers(func)
@@ -173,12 +182,13 @@ fn (mut g Gen) gen_func(func mir.Function) {
 				slot_offset = next_offset
 			}
 
+			mut val_has_stack_storage := false
 			if g.value_needs_stack_storage(val_id) {
 				result_size := g.stack_storage_size(val_id)
 				off, next_offset := reserve_stack_bytes(slot_offset, result_size, 16)
 				g.stack_map[val_id] = off
 				slot_offset = next_offset
-				continue
+				val_has_stack_storage = true
 			}
 
 			for operand in instr.operands {
@@ -189,6 +199,10 @@ fn (mut g Gen) gen_func(func mir.Function) {
 					g.stack_map[operand] = off
 					slot_offset = next_offset
 				}
+			}
+
+			if val_has_stack_storage {
+				continue
 			}
 
 			if val_id in g.reg_map {
@@ -465,17 +479,19 @@ fn (mut g Gen) gen_instr(val_id int) {
 		}
 		.store {
 			src_id := instr.operands[0]
+			dst_id := instr.operands[1]
 			src_typ := g.mod.values[src_id].typ
 			src_type_info := g.mod.type_store.types[src_typ]
 			src_size := g.type_size(src_typ)
 			if src_type_info.kind in [.struct_t, .array_t] || src_size > 8 {
 				g.load_struct_src_address_to_reg(int(r10), src_id, src_typ)
-				g.load_val_to_reg(int(r11), instr.operands[1])
+				g.load_val_to_reg(int(r11), dst_id)
 				g.copy_memory(int(r11), 0, int(r10), 0, src_size)
 			} else {
+				store_size := g.scalar_store_size_for_pointer_destination(dst_id, src_size)
 				g.load_val_to_reg(0, src_id) // Val -> RAX
-				g.load_val_to_reg(1, instr.operands[1]) // Ptr -> RCX
-				asm_store_mem_base_disp_reg_size(mut g, rcx, 0, rax, src_size)
+				g.load_val_to_reg(1, dst_id) // Ptr -> RCX
+				asm_store_mem_base_disp_reg_size(mut g, rcx, 0, rax, store_size)
 			}
 		}
 		.load {
@@ -491,12 +507,7 @@ fn (mut g Gen) gen_instr(val_id int) {
 		}
 		.alloca {
 			off := g.alloca_offsets[val_id]
-			// lea rax, [rbp + off]
-			if off >= -128 && off <= 127 {
-				asm_lea_rax_rbp_disp8(mut g, i8(off))
-			} else {
-				asm_lea_rax_rbp_disp32(mut g, off)
-			}
+			asm_lea_reg_rbp_disp(mut g, rax, off)
 			g.store_reg_to_val(0, val_id)
 		}
 		.heap_alloc {
@@ -589,7 +600,7 @@ fn (mut g Gen) gen_instr(val_id int) {
 			}
 
 			if g.mod.type_store.types[g.mod.values[val_id].typ].kind != .void_t {
-				g.store_call_result(val_id)
+				g.store_call_result(val_id, instr.abi_ret_class)
 			}
 		}
 		.call_sret {
@@ -599,7 +610,9 @@ fn (mut g Gen) gen_instr(val_id int) {
 			stack_args := g.call_stack_arg_mask(instr, abi_regs.len, arg_position_base)
 			stack_slots := g.call_stack_slots(instr, stack_args)
 
-			g.load_address_of_val_to_reg(int(g.abi.sret_reg()), val_id)
+			if g.abi != .windows {
+				g.load_address_of_val_to_reg(int(g.abi.sret_reg()), val_id)
+			}
 
 			cleanup := g.prepare_call_stack_args(instr, stack_args, stack_slots, arg_position_base)
 			if g.abi == .sysv && stack_slots > 0 {
@@ -615,6 +628,9 @@ fn (mut g Gen) gen_instr(val_id int) {
 
 			// Stack arguments were pushed above; this pass only loads register arguments.
 			sse_arg_idx := g.load_call_register_args(instr, abi_regs, stack_args, arg_position_base)
+			if g.abi == .windows {
+				g.load_address_of_val_to_reg(int(g.abi.sret_reg()), val_id)
+			}
 
 			fn_val := g.mod.values[instr.operands[0]]
 
@@ -687,7 +703,7 @@ fn (mut g Gen) gen_instr(val_id int) {
 			}
 
 			if g.mod.type_store.types[g.mod.values[val_id].typ].kind != .void_t {
-				g.store_call_result(val_id)
+				g.store_call_result(val_id, instr.abi_ret_class)
 			}
 		}
 		.ret {
@@ -706,10 +722,13 @@ fn (mut g Gen) gen_instr(val_id int) {
 				asm_mov_reg_reg(mut g, rax, g.abi.sret_reg())
 			} else if instr.operands.len > 0 {
 				ret_val_id := instr.operands[0]
+				g.ensure_windows_direct_return_supported(ret_val_id, g.cur_func_abi_ret_class,
+					'direct return')
 				if g.value_is_float_type(ret_val_id) {
 					g.ensure_float_abi_scalar(ret_val_id, 'return')
 					g.load_float_val_to_xmm(0, ret_val_id,
 						g.type_size(g.mod.values[ret_val_id].typ))
+				} else if g.load_sysv_integer_pair_return(ret_val_id, g.cur_func_abi_ret_class) {
 				} else {
 					g.load_val_to_reg(0, ret_val_id)
 				}
@@ -735,8 +754,7 @@ fn (mut g Gen) gen_instr(val_id int) {
 
 			// Emit je false_blk (jump if zero/false)
 			asm_je_rel32(mut g)
-			g.record_pending_label(false_blk)
-			g.emit_u32(0)
+			g.emit_rel32_to_block(false_blk)
 			// Jump to true block (can't assume it's the next block)
 			g.emit_jmp(true_blk)
 		}
@@ -747,13 +765,7 @@ fn (mut g Gen) gen_instr(val_id int) {
 				asm_cmp_rax_rcx(mut g)
 				asm_je_rel32(mut g)
 				target_idx := g.mod.values[instr.operands[i + 1]].index
-				if off := g.block_offsets[target_idx] {
-					rel := off - (g.text_len() - g.curr_offset + 4)
-					g.emit_u32(u32(rel))
-				} else {
-					g.record_pending_label(target_idx)
-					g.emit_u32(0)
-				}
+				g.emit_rel32_to_block(target_idx)
 			}
 			def_idx := g.mod.values[instr.operands[1]].index
 			g.emit_jmp(def_idx)
@@ -791,7 +803,7 @@ fn (mut g Gen) gen_instr(val_id int) {
 					&& dst_info.kind == .int_t {
 					g.load_val_to_reg(0, instr.operands[0])
 					if op == .trunc {
-						g.mask_rax_to_size(dst_size, op, val_id)
+						g.normalize_integer_rax_for_type(dst_typ, op, val_id)
 					} else if op == .zext {
 						g.mask_rax_to_size(src_size, op, val_id)
 					} else if op == .sext {
@@ -903,8 +915,7 @@ fn (mut g Gen) gen_instr(val_id int) {
 			asm_ud2(mut g)
 		}
 		else {
-			eprintln('x64: unsupported op ${op} (${instr.selected_op}) in value ${val_id}')
-			exit(1)
+			x64_unsupported('op ${op} (${instr.selected_op}) in value ${val_id}')
 		}
 	}
 }
@@ -1077,8 +1088,7 @@ fn (mut g Gen) patch_rel32(patch_pos int) {
 }
 
 fn (g Gen) unsupported_numeric_conversion(op ssa.OpCode, src_size int, dst_size int, val_id int) {
-	eprintln('x64: unsupported numeric conversion ${op} from ${src_size * 8}-bit to ${dst_size * 8}-bit in value ${val_id}')
-	exit(1)
+	x64_unsupported('numeric conversion ${op} from ${src_size * 8}-bit to ${dst_size * 8}-bit in value ${val_id}')
 }
 
 fn (g Gen) const_int_operand(val_id int) int {
@@ -1101,6 +1111,43 @@ fn (g Gen) heap_alloc_size(val_id int) int {
 	return g.alloc_size_from_uses(val_id, min_size)
 }
 
+fn valid_x64_scalar_memory_size(size int) bool {
+	return size in [1, 2, 4, 8]
+}
+
+fn x64_scalar_memory_size_or_default(size int) int {
+	return if valid_x64_scalar_memory_size(size) { size } else { 8 }
+}
+
+fn (g Gen) scalar_store_size_for_pointer_destination(ptr_id int, fallback_size int) int {
+	if ptr_id <= 0 || ptr_id >= g.mod.values.len {
+		return x64_scalar_memory_size_or_default(fallback_size)
+	}
+	ptr_typ_id := g.mod.values[ptr_id].typ
+	if ptr_typ_id <= 0 || ptr_typ_id >= g.mod.type_store.types.len {
+		return x64_scalar_memory_size_or_default(fallback_size)
+	}
+	ptr_typ := g.mod.type_store.types[ptr_typ_id]
+	if ptr_typ.kind != .ptr_t || ptr_typ.elem_type <= 0 {
+		return x64_scalar_memory_size_or_default(fallback_size)
+	}
+	elem_size := g.type_size(ptr_typ.elem_type)
+	if valid_x64_scalar_memory_size(elem_size) {
+		return elem_size
+	}
+	return x64_scalar_memory_size_or_default(fallback_size)
+}
+
+fn (g Gen) store_access_size(src_id int, dst_id int) int {
+	src_typ := g.mod.values[src_id].typ
+	src_type_info := g.mod.type_store.types[src_typ]
+	src_size := g.type_size(src_typ)
+	if src_type_info.kind in [.struct_t, .array_t] || src_size > 8 {
+		return src_size
+	}
+	return g.scalar_store_size_for_pointer_destination(dst_id, src_size)
+}
+
 fn (g Gen) alloc_size_from_uses(ptr_id int, min_size int) int {
 	mut size := if min_size > 0 { min_size } else { 8 }
 	if ptr_id <= 0 || ptr_id >= g.mod.values.len {
@@ -1112,9 +1159,9 @@ fn (g Gen) alloc_size_from_uses(ptr_id int, min_size int) int {
 		}
 		use_instr := g.mod.instrs[g.mod.values[use_id].index]
 		if use_instr.op == .store && use_instr.operands.len >= 2 && use_instr.operands[1] == ptr_id {
-			src_size := g.type_size(g.mod.values[use_instr.operands[0]].typ)
-			if src_size > size {
-				size = src_size
+			store_size := g.store_access_size(use_instr.operands[0], use_instr.operands[1])
+			if store_size > size {
+				size = store_size
 			}
 		}
 		if use_instr.op != .get_element_ptr || use_instr.operands.len < 2
@@ -1145,9 +1192,9 @@ fn (g Gen) pointer_access_size(ptr_id int) int {
 		}
 		use_instr := g.mod.instrs[g.mod.values[use_id].index]
 		if use_instr.op == .store && use_instr.operands.len >= 2 && use_instr.operands[1] == ptr_id {
-			src_size := g.type_size(g.mod.values[use_instr.operands[0]].typ)
-			if src_size > size {
-				size = src_size
+			store_size := g.store_access_size(use_instr.operands[0], use_instr.operands[1])
+			if store_size > size {
+				size = store_size
 			}
 		} else if use_instr.op == .load && use_instr.operands.len >= 1
 			&& use_instr.operands[0] == ptr_id {
@@ -1218,6 +1265,9 @@ fn (g Gen) gep_const_offset(base_id int, idx_id int) int {
 	if elem_typ.kind == .struct_t {
 		return g.struct_field_offset_bytes(base_typ.elem_type, idx)
 	}
+	if elem_typ.kind == .array_t {
+		return idx * g.type_size(elem_typ.elem_type)
+	}
 	return idx * g.type_size(base_typ.elem_type)
 }
 
@@ -1227,6 +1277,11 @@ fn (g Gen) gep_elem_size(base_id int) int {
 		if base_typ_id > 0 && base_typ_id < g.mod.type_store.types.len {
 			base_typ := g.mod.type_store.types[base_typ_id]
 			if base_typ.kind == .ptr_t {
+				elem_typ := g.mod.type_store.types[base_typ.elem_type]
+				if elem_typ.kind == .array_t {
+					size := g.type_size(elem_typ.elem_type)
+					return if size > 0 { size } else { 8 }
+				}
 				size := g.type_size(base_typ.elem_type)
 				return if size > 0 { size } else { 8 }
 			}
@@ -1309,8 +1364,7 @@ fn (mut g Gen) load_raw_mem_to_reg(reg Reg, base Reg, disp int, size int) {
 		return
 	}
 	if size <= 0 || size > 8 {
-		eprintln('x64: unsupported raw memory size ${size}')
-		exit(1)
+		x64_unsupported('raw memory size ${size}')
 	}
 	asm_xor_reg_reg(mut g, rax)
 	mut done := 0
@@ -1334,8 +1388,7 @@ fn (mut g Gen) store_reg_to_rbp_exact(reg Reg, off int, size int) {
 		return
 	}
 	if size <= 0 || size > 8 {
-		eprintln('x64: unsupported raw register spill size ${size}')
-		exit(1)
+		x64_unsupported('raw register spill size ${size}')
 	}
 	if reg != rax {
 		asm_mov_reg_reg(mut g, rax, reg)
@@ -1416,13 +1469,18 @@ fn (g Gen) selected_opcode(instr mir.Instruction) ssa.OpCode {
 
 fn (mut g Gen) emit_jmp(target_idx int) {
 	asm_jmp_rel32(mut g)
-	if off := g.block_offsets[target_idx] {
+	g.emit_rel32_to_block(target_idx)
+}
+
+fn (mut g Gen) emit_rel32_to_block(target_idx int) {
+	if target_idx in g.block_offsets {
+		off := g.block_offsets[target_idx]
 		rel := off - (g.text_len() - g.curr_offset + 4)
 		g.emit_u32(u32(rel))
-	} else {
-		g.record_pending_label(target_idx)
-		g.emit_u32(0)
+		return
 	}
+	g.record_pending_label(target_idx)
+	g.emit_u32(0)
 }
 
 fn (mut g Gen) load_call_arg_to_reg(reg int, val_id int, arg_idx int, instr mir.Instruction) {
@@ -1494,8 +1552,7 @@ fn (mut g Gen) store_windows_call_stack_arg(val_id int, arg_idx int, position in
 		return
 	}
 	g.load_call_arg_to_reg(0, val_id, arg_idx, instr)
-	store_size := if is_indirect { 8 } else { size }
-	asm_store_mem_base_disp_reg_size(mut g, rsp, disp, rax, store_size)
+	asm_store_mem_base_disp_reg_size(mut g, rsp, disp, rax, 8)
 }
 
 fn (mut g Gen) ensure_windows_scalar_or_indirect_arg(val_id int, is_indirect bool, size int) {
@@ -1503,14 +1560,42 @@ fn (mut g Gen) ensure_windows_scalar_or_indirect_arg(val_id int, is_indirect boo
 		return
 	}
 	if g.value_is_aggregate(val_id) && size !in [1, 2, 4, 8] {
-		g.unsupported_windows_abi_arg('aggregate arguments must be 1, 2, 4, or 8 bytes or passed indirectly',
-			val_id)
+		g.unsupported_windows_abi_arg(
+			'direct aggregate argument larger than 8 bytes reached codegen; ' +
+			'expected ABI lowering before codegen to pass it indirectly', val_id)
+	}
+	if !g.value_is_aggregate(val_id) && size !in [1, 2, 4, 8] {
+		g.unsupported_windows_abi_arg(
+			'scalar argument with unsupported storage width ${size} bytes reached codegen; ' +
+			'expected ABI lowering before codegen', val_id)
 	}
 }
 
 fn (g Gen) unsupported_windows_abi_arg(reason string, val_id int) {
-	eprintln('x64: unsupported Windows ABI argument in value ${val_id}: ${reason}')
-	exit(1)
+	x64_unsupported('backend feature: Windows argument lowering for value ${val_id}: ${reason}; check ABI lowering')
+}
+
+fn (g Gen) ensure_windows_direct_return_supported(val_id int, ret_class mir.AbiValueClass, context string) {
+	if g.abi != .windows {
+		return
+	}
+	if ret_class.mode == .indirect {
+		return
+	}
+	if ret_class.size == 0 && ret_class.classes.len == 0 {
+		return
+	}
+	size := g.type_size(g.mod.values[val_id].typ)
+	if g.value_is_aggregate(val_id) && size !in [1, 2, 4, 8] {
+		x64_unsupported('backend feature: Windows ${context} lowering for value ${val_id}: ' +
+			'aggregate return larger than 8 bytes reached direct return codegen; ' +
+			'expected ABI lowering before codegen to use hidden sret pointer; check ABI lowering')
+	}
+	if !g.value_is_aggregate(val_id) && !g.value_is_float_type(val_id) && size !in [1, 2, 4, 8] {
+		x64_unsupported('backend feature: Windows ${context} lowering for value ${val_id}: ' +
+			'scalar return with unsupported storage width ${size} bytes reached codegen; ' +
+			'expected ABI lowering before codegen; check ABI lowering')
+	}
 }
 
 fn (g Gen) windows_value_passed_indirect(val_id int, marked_indirect bool, size int) bool {
@@ -1566,7 +1651,9 @@ fn (mut g Gen) load_call_register_args(instr mir.Instruction, abi_regs []int, st
 
 fn (mut g Gen) load_windows_call_register_args(instr mir.Instruction, stack_args []bool, arg_position_base int) int {
 	mut sse_arg_count := 0
-	for i in 1 .. instr.operands.len {
+	// Load positional Windows arguments from right to left. Some value loaders use
+	// RCX as scratch, so loading arg0 first can corrupt it before the call.
+	for i := instr.operands.len - 1; i >= 1; i-- {
 		arg_idx := i - 1
 		if stack_args[arg_idx] {
 			continue
@@ -1599,13 +1686,89 @@ fn (mut g Gen) load_float_call_arg_to_xmm(xmm int, val_id int) {
 	g.load_float_val_to_xmm(xmm, val_id, g.type_size(g.mod.values[val_id].typ))
 }
 
-fn (mut g Gen) store_call_result(val_id int) {
+fn (mut g Gen) store_call_result(val_id int, ret_class mir.AbiValueClass) {
+	g.ensure_windows_direct_return_supported(val_id, ret_class, 'call result')
 	if g.value_is_float_type(val_id) {
 		g.ensure_float_abi_scalar(val_id, 'call result')
 		asm_store_xmm0_rbp_disp(mut g, g.stack_map[val_id], g.type_size(g.mod.values[val_id].typ))
 		return
 	}
+	if g.store_sysv_integer_pair_call_result(val_id, ret_class) {
+		return
+	}
+	g.normalize_integer_call_result(val_id)
 	g.store_reg_to_val(0, val_id)
+}
+
+fn (mut g Gen) normalize_integer_call_result(val_id int) {
+	typ_id := g.mod.values[val_id].typ
+	g.normalize_integer_rax_for_type(typ_id, .sext, val_id)
+}
+
+fn (mut g Gen) normalize_integer_rax_for_type(typ_id int, op ssa.OpCode, val_id int) {
+	if typ_id <= 0 || typ_id >= g.mod.type_store.types.len {
+		return
+	}
+	typ := g.mod.type_store.types[typ_id]
+	if typ.kind != .int_t {
+		return
+	}
+	size := g.type_size(typ_id)
+	if size == 8 {
+		return
+	}
+	if typ.width == 1 {
+		asm_mov_reg_imm32(mut g, rcx, 1)
+		asm_and_rax_rcx(mut g)
+		return
+	}
+	if typ.is_unsigned {
+		g.mask_rax_to_size(size, .zext, val_id)
+		return
+	}
+	match size {
+		1 { asm_movsx_rax_al(mut g) }
+		2 { asm_movsx_rax_ax(mut g) }
+		4 { asm_movsxd_rax_eax(mut g) }
+		else { g.unsupported_numeric_conversion(op, size, 8, val_id) }
+	}
+}
+
+fn (g Gen) is_sysv_integer_pair_return(ret_class mir.AbiValueClass) bool {
+	return g.abi == .sysv && ret_class.mode == .direct && ret_class.size > 8 && ret_class.size <= 16
+		&& ret_class.classes.len == 2 && ret_class.classes[0] == .integer
+		&& ret_class.classes[1] == .integer
+}
+
+fn (mut g Gen) store_sysv_integer_pair_call_result(val_id int, ret_class mir.AbiValueClass) bool {
+	if !g.is_sysv_integer_pair_return(ret_class) {
+		return false
+	}
+	off := g.stack_map[val_id]
+	g.store_reg_to_rbp_exact(rax, off, 8)
+	second_size := ret_class.size - 8
+	if second_size > 0 {
+		g.store_reg_to_rbp_exact(rdx, off + 8, second_size)
+	}
+	return true
+}
+
+fn (mut g Gen) load_sysv_integer_pair_return(ret_val_id int, ret_class mir.AbiValueClass) bool {
+	if !g.is_sysv_integer_pair_return(ret_class) {
+		return false
+	}
+	g.load_struct_src_address_to_reg(int(r10), ret_val_id, g.cur_func_ret_type)
+	second_size := ret_class.size - 8
+	if second_size == 8 {
+		g.load_raw_mem_to_reg(rax, r10, 0, 8)
+		g.load_raw_mem_to_reg(rdx, r10, 8, second_size)
+	} else if second_size > 0 {
+		g.load_raw_mem_to_reg(rdx, r10, 8, second_size)
+		g.load_raw_mem_to_reg(rax, r10, 0, 8)
+	} else {
+		g.load_raw_mem_to_reg(rax, r10, 0, 8)
+	}
+	return true
 }
 
 fn (mut g Gen) emit_sse_arg_count(count int) {
@@ -1672,7 +1835,8 @@ fn (g Gen) call_stack_arg_mask(instr mir.Instruction, abi_reg_count int, arg_pos
 				continue
 			}
 			if g.call_arg_reg_chunks(arg_id, arg_idx, instr) > 1 {
-				g.unsupported_windows_abi_arg('aggregate register splitting is not supported',
+				g.unsupported_windows_abi_arg('aggregate register splitting reached codegen; ' +
+					'expected ABI lowering before codegen to pass it indirectly or as one legal slot',
 					arg_id)
 			}
 		}
@@ -1816,13 +1980,28 @@ fn (mut g Gen) load_val_to_reg(reg int, val_id int) {
 			}
 		}
 	} else if val.kind == .global {
-		asm_lea_reg_rip(mut g, Reg(reg))
 		sym_idx := g.add_undefined(val.name)
-		g.add_rip_reloc(sym_idx)
+		if g.obj_format == .macho && val.index >= 0 && val.index < g.mod.globals.len
+			&& g.mod.globals[val.index].linkage == .external {
+			asm_mov_reg_got_rip(mut g, Reg(reg))
+			g.add_macho_got_load_reloc(sym_idx)
+		} else {
+			asm_lea_reg_rip(mut g, Reg(reg))
+			g.add_rip_reloc(sym_idx)
+		}
 		g.emit_u32(0)
 	} else if val.kind == .string_literal {
 		g.materialize_string_literal(reg, val_id)
 	} else {
+		if val.kind == .instruction {
+			instr := g.mod.instrs[val.index]
+			if instr.op == .alloca {
+				if off := g.alloca_offsets[val_id] {
+					asm_lea_reg_rbp_disp(mut g, Reg(reg), off)
+					return
+				}
+			}
+		}
 		if reg_idx := g.reg_map[val_id] {
 			if reg_idx != reg {
 				asm_mov_reg_reg(mut g, Reg(reg), Reg(reg_idx))
@@ -1957,6 +2136,10 @@ fn (g Gen) type_align(typ_id ssa.TypeID) int {
 }
 
 fn (mut g Gen) load_address_of_val_to_reg(reg int, val_id int) {
+	if val_id > 0 && val_id < g.mod.values.len && g.mod.values[val_id].kind == .string_literal {
+		g.materialize_string_literal(reg, val_id)
+		return
+	}
 	offset := g.stack_map[val_id]
 	if offset != 0 {
 		if offset >= -128 && offset <= 127 {
@@ -1985,6 +2168,9 @@ fn (mut g Gen) record_pending_label(blk int) {
 // Register Allocation Logic
 
 fn (mut g Gen) allocate_registers(func mir.Function) {
+	if g.abi == .windows {
+		return
+	}
 	mut intervals := map[int]&Interval{}
 	mut instr_idx := 0
 	mut total_instrs := 0
@@ -1993,16 +2179,48 @@ fn (mut g Gen) allocate_registers(func mir.Function) {
 		total_instrs += g.mod.blocks[blk_id].instrs.len
 	}
 
+	// Phi elimination lowers edge copies as `.assign dest, src` and leaves
+	// placeholder `.bitcast` values for former phis. Keep these CFG-carried
+	// values on the stack so branch order does not decide register lifetime.
+	mut phi_related_vals := map[int]bool{}
+	for blk_id in func.blocks {
+		blk := g.mod.blocks[blk_id]
+		for val_id in blk.instrs {
+			val := g.mod.values[val_id]
+			if val.kind != .instruction {
+				continue
+			}
+			instr := g.mod.instrs[val.index]
+			if instr.op == .assign {
+				phi_related_vals[val_id] = true
+				if instr.operands.len > 0 {
+					phi_related_vals[instr.operands[0]] = true
+				}
+				if instr.operands.len > 1 {
+					phi_related_vals[instr.operands[1]] = true
+				}
+			} else if instr.op == .bitcast && instr.operands.len == 0 {
+				phi_related_vals[val_id] = true
+			}
+		}
+	}
+
 	// Track which values are alloca results - don't register allocate these
 	// as they hold addresses that may be needed across the function
 	mut alloca_vals := map[int]bool{}
 
 	for i, pid in func.params {
+		param_size := g.type_size(g.mod.values[pid].typ)
 		if i < func.abi_param_class.len && func.abi_param_class[i] == .indirect {
 			alloca_vals[pid] = true
 			continue
 		}
 		if g.value_is_float_type(pid) {
+			alloca_vals[pid] = true
+			continue
+		}
+		if g.value_is_aggregate(pid) || param_size > 8
+			|| g.value_needs_raw_abi_reg_bytes(pid, param_size) {
 			alloca_vals[pid] = true
 			continue
 		}
@@ -2021,10 +2239,8 @@ fn (mut g Gen) allocate_registers(func mir.Function) {
 		for val_id in blk.instrs {
 			val := g.mod.values[val_id]
 			if val.kind == .instruction || val.kind == .argument {
-				if unsafe { intervals[val_id] == nil } {
-					if val.kind == .instruction && g.value_needs_stack_storage(val_id) {
-						continue
-					}
+				if unsafe { intervals[val_id] == nil } && !(val.kind == .instruction
+					&& g.value_needs_stack_storage(val_id)) && val_id !in phi_related_vals {
 					intervals[val_id] = &Interval{
 						val_id: val_id
 						start:  instr_idx
@@ -2038,6 +2254,9 @@ fn (mut g Gen) allocate_registers(func mir.Function) {
 				alloca_vals[val_id] = true
 			}
 			for op in instr.operands {
+				if op in phi_related_vals {
+					continue
+				}
 				if g.mod.values[op].kind in [.instruction, .argument] {
 					if mut interval := intervals[op] {
 						if instr_idx > interval.end {
@@ -2047,6 +2266,38 @@ fn (mut g Gen) allocate_registers(func mir.Function) {
 				}
 			}
 			instr_idx++
+		}
+	}
+
+	mut block_of_def := map[int]int{}
+	for blk_id in func.blocks {
+		blk := g.mod.blocks[blk_id]
+		for val_id in blk.instrs {
+			block_of_def[val_id] = blk_id
+		}
+	}
+	for blk_id in func.blocks {
+		blk := g.mod.blocks[blk_id]
+		for val_id in blk.instrs {
+			val := g.mod.values[val_id]
+			if val.kind != .instruction {
+				continue
+			}
+			instr := g.mod.instrs[val.index]
+			for op in instr.operands {
+				if op in phi_related_vals {
+					continue
+				}
+				if g.mod.values[op].kind in [.instruction, .argument] {
+					if def_blk := block_of_def[op] {
+						if def_blk != blk_id {
+							if mut interval := intervals[op] {
+								interval.end = total_instrs
+							}
+						}
+					}
+				}
+			}
 		}
 	}
 
@@ -2124,8 +2375,15 @@ fn (g Gen) ensure_float_abi_scalar(val_id int, context string) {
 
 fn (g Gen) unsupported_float_abi(context string, val_id int) {
 	size := g.type_size(g.mod.values[val_id].typ)
-	eprintln('x64: unsupported float ABI ${context} with ${size * 8}-bit type in value ${val_id}')
-	exit(1)
+	subject := if context == 'stack parameter' {
+		'stack-passed float parameter'
+	} else if context == 'stack argument' {
+		'stack-passed float argument'
+	} else {
+		'float ${context}'
+	}
+	x64_unsupported('backend feature: ${subject} (${size * 8}-bit type in value ${val_id}) ' +
+		'is not implemented for this ABI yet')
 }
 
 fn (g Gen) value_is_zero_constant(val_id int) bool {
@@ -2149,7 +2407,10 @@ fn (g Gen) stack_storage_size(val_id int) int {
 	if val.kind == .string_literal && size < 16 {
 		return 16
 	}
-	return if size > 0 { size } else { 8 }
+	if g.value_is_aggregate(val_id) {
+		return if size > 0 { size } else { 8 }
+	}
+	return if size > 8 { size } else { 8 }
 }
 
 fn (g Gen) value_needs_stack_storage(val_id int) bool {
@@ -2160,8 +2421,18 @@ fn (g Gen) value_needs_stack_storage(val_id int) bool {
 	if val.kind == .string_literal {
 		return true
 	}
+	if g.value_is_eliminated_phi_placeholder(val_id) {
+		return true
+	}
 	if val.typ <= 0 || val.typ >= g.mod.type_store.types.len {
 		return false
+	}
+	if val.kind == .instruction {
+		instr := g.mod.instrs[val.index]
+		if instr.op == .bitcast && instr.operands.len > 0
+			&& g.bitcast_touches_pointer(instr.operands[0], val.typ) {
+			return false
+		}
 	}
 	typ := g.mod.type_store.types[val.typ]
 	if typ.kind == .float_t {
@@ -2175,4 +2446,32 @@ fn (g Gen) value_needs_stack_storage(val_id int) bool {
 	}
 	instr := g.mod.instrs[val.index]
 	return instr.op in [.call_sret, .inline_string_init, .struct_init, .insertvalue, .extractvalue]
+}
+
+fn (g Gen) value_is_eliminated_phi_placeholder(val_id int) bool {
+	if val_id <= 0 || val_id >= g.mod.values.len {
+		return false
+	}
+	val := g.mod.values[val_id]
+	if val.kind != .instruction || val.uses.len == 0 {
+		return false
+	}
+	if val.index < 0 || val.index >= g.mod.instrs.len {
+		return false
+	}
+	instr := g.mod.instrs[val.index]
+	return instr.op == .bitcast && instr.operands.len == 0
+}
+
+fn (g Gen) bitcast_touches_pointer(src_id int, dst_typ int) bool {
+	if dst_typ > 0 && dst_typ < g.mod.type_store.types.len
+		&& g.mod.type_store.types[dst_typ].kind == .ptr_t {
+		return true
+	}
+	if src_id <= 0 || src_id >= g.mod.values.len {
+		return false
+	}
+	src_typ := g.mod.values[src_id].typ
+	return src_typ > 0 && src_typ < g.mod.type_store.types.len
+		&& g.mod.type_store.types[src_typ].kind == .ptr_t
 }

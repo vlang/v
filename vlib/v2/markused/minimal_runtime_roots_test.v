@@ -1,0 +1,801 @@
+module markused
+
+import v2.ast
+import v2.token
+import v2.types
+
+fn minimal_pos(id int) token.Pos {
+	return token.Pos{
+		offset: id
+		id:     id
+	}
+}
+
+fn minimal_ident(name string, id int) ast.Ident {
+	return ast.Ident{
+		name: name
+		pos:  minimal_pos(id)
+	}
+}
+
+fn minimal_c_selector(name string, id int) ast.SelectorExpr {
+	return ast.SelectorExpr{
+		lhs: minimal_ident('C', id)
+		rhs: minimal_ident(name, id + 1)
+		pos: minimal_pos(id)
+	}
+}
+
+fn minimal_c_call(name string, id int, args []ast.Expr) ast.CallExpr {
+	return ast.CallExpr{
+		lhs:  minimal_c_selector(name, id)
+		args: args
+		pos:  minimal_pos(id)
+	}
+}
+
+fn test_minimal_runtime_roots_keep_explicit_calls_only() {
+	mut env := types.Environment.new()
+	files := [
+		ast.File{
+			mod:   'main'
+			name:  'main.v'
+			stmts: [
+				ast.Stmt(ast.FnDecl{
+					name:  'main'
+					typ:   ast.FnType{}
+					pos:   minimal_pos(120)
+					stmts: [
+						ast.Stmt(ast.ExprStmt{
+							expr: ast.CallExpr{
+								lhs: ast.Ident{
+									name: 'println'
+									pos:  minimal_pos(121)
+								}
+								pos: minimal_pos(121)
+							}
+						}),
+					]
+				}),
+			]
+		},
+		ast.File{
+			mod:   'builtin'
+			name:  'vlib/builtin/builtin.v'
+			stmts: [
+				ast.Stmt(ast.FnDecl{
+					name:  'println'
+					typ:   ast.FnType{}
+					pos:   minimal_pos(122)
+					stmts: [
+						ast.Stmt(ast.ExprStmt{
+							expr: ast.CallExpr{
+								lhs: ast.Ident{
+									name: 'write_stdout'
+									pos:  minimal_pos(123)
+								}
+								pos: minimal_pos(123)
+							}
+						}),
+					]
+				}),
+				ast.Stmt(ast.FnDecl{
+					name: 'write_stdout'
+					typ:  ast.FnType{}
+					pos:  minimal_pos(124)
+				}),
+				ast.Stmt(ast.FnDecl{
+					name: 'print_backtrace'
+					typ:  ast.FnType{}
+					pos:  minimal_pos(125)
+				}),
+				ast.Stmt(ast.FnDecl{
+					name: 'builtin_keep_helper'
+					typ:  ast.FnType{}
+					pos:  minimal_pos(126)
+				}),
+			]
+		},
+		ast.File{
+			mod:   'time'
+			name:  'time.v'
+			stmts: [
+				ast.Stmt(ast.StructDecl{
+					name: 'Time'
+				}),
+				ast.Stmt(ast.FnDecl{
+					is_method: true
+					receiver:  ast.Parameter{
+						name: 't'
+						typ:  ast.Ident{
+							name: 'Time'
+							pos:  minimal_pos(127)
+						}
+						pos:  minimal_pos(127)
+					}
+					name:      'str'
+					typ:       ast.FnType{}
+					pos:       minimal_pos(128)
+				}),
+			]
+		},
+		ast.File{
+			mod:   'dep'
+			name:  'dep.v'
+			stmts: [
+				ast.Stmt(ast.FnDecl{
+					name: 'init'
+					typ:  ast.FnType{}
+					pos:  minimal_pos(129)
+				}),
+			]
+		},
+	]
+	used := mark_used_with_options(files, env, MarkUsedOptions{
+		minimal_runtime_roots: true
+	})
+	main_key := decl_key('main', files[0].stmts[0] as ast.FnDecl, env)
+	println_key := decl_key('builtin', files[1].stmts[0] as ast.FnDecl, env)
+	write_stdout_key := decl_key('builtin', files[1].stmts[1] as ast.FnDecl, env)
+	print_backtrace_key := decl_key('builtin', files[1].stmts[2] as ast.FnDecl, env)
+	builtin_keep_key := decl_key('builtin', files[1].stmts[3] as ast.FnDecl, env)
+	time_str_key := decl_key('time', files[2].stmts[1] as ast.FnDecl, env)
+	dep_init_key := decl_key('dep', files[3].stmts[0] as ast.FnDecl, env)
+
+	assert used[main_key]
+	assert used[println_key]
+	assert used[write_stdout_key]
+	assert !used[print_backtrace_key]
+	assert !used[builtin_keep_key]
+	assert !used[time_str_key]
+	assert !used[dep_init_key]
+}
+
+fn test_minimal_runtime_roots_do_not_treat_c_globals_as_v_functions() {
+	mut env := types.Environment.new()
+	files := [
+		ast.File{
+			mod:   'main'
+			name:  'main.v'
+			stmts: [
+				ast.Stmt(ast.FnDecl{
+					name:  'main'
+					typ:   ast.FnType{}
+					pos:   minimal_pos(140)
+					stmts: [
+						ast.Stmt(ast.ExprStmt{
+							expr: ast.CallExpr{
+								lhs: ast.Ident{
+									name: 'touch_c_stdio_globals'
+									pos:  minimal_pos(141)
+								}
+								pos: minimal_pos(141)
+							}
+						}),
+					]
+				}),
+			]
+		},
+		ast.File{
+			mod:   'builtin'
+			name:  'vlib/builtin/stdio_globals.v'
+			stmts: [
+				ast.Stmt(ast.FnDecl{
+					name:  'touch_c_stdio_globals'
+					typ:   ast.FnType{}
+					pos:   minimal_pos(142)
+					stmts: [
+						ast.Stmt(ast.ExprStmt{
+							expr: ast.SelectorExpr{
+								lhs: ast.Ident{
+									name: 'C'
+									pos:  minimal_pos(143)
+								}
+								rhs: ast.Ident{
+									name: 'stdout'
+									pos:  minimal_pos(144)
+								}
+								pos: minimal_pos(144)
+							}
+						}),
+						ast.Stmt(ast.ExprStmt{
+							expr: ast.SelectorExpr{
+								lhs: ast.Ident{
+									name: 'C'
+									pos:  minimal_pos(145)
+								}
+								rhs: ast.Ident{
+									name: 'stderr'
+									pos:  minimal_pos(146)
+								}
+								pos: minimal_pos(146)
+							}
+						}),
+					]
+				}),
+			]
+		},
+		ast.File{
+			mod:   'os'
+			name:  'vlib/os/file.c.v'
+			stmts: [
+				ast.Stmt(ast.FnDecl{
+					name: 'stdout'
+					typ:  ast.FnType{}
+					pos:  minimal_pos(147)
+				}),
+				ast.Stmt(ast.FnDecl{
+					name: 'stderr'
+					typ:  ast.FnType{}
+					pos:  minimal_pos(148)
+				}),
+			]
+		},
+	]
+	used := mark_used_with_options(files, env, MarkUsedOptions{
+		minimal_runtime_roots: true
+	})
+	main_key := decl_key('main', files[0].stmts[0] as ast.FnDecl, env)
+	touch_key := decl_key('builtin', files[1].stmts[0] as ast.FnDecl, env)
+	os_stdout_key := decl_key('os', files[2].stmts[0] as ast.FnDecl, env)
+	os_stderr_key := decl_key('os', files[2].stmts[1] as ast.FnDecl, env)
+
+	assert used[main_key]
+	assert used[touch_key]
+	assert !used[os_stdout_key]
+	assert !used[os_stderr_key]
+}
+
+fn test_minimal_runtime_roots_do_not_keep_unreached_windows_stdin_crt_helpers() {
+	mut env := types.Environment.new()
+	files := [
+		ast.File{
+			mod:   'main'
+			name:  'main.v'
+			stmts: [
+				ast.Stmt(ast.FnDecl{
+					name:  'main'
+					typ:   ast.FnType{}
+					pos:   minimal_pos(160)
+					stmts: [
+						ast.Stmt(ast.ExprStmt{
+							expr: ast.CallExpr{
+								lhs: minimal_ident('println', 161)
+								pos: minimal_pos(161)
+							}
+						}),
+					]
+				}),
+			]
+		},
+		ast.File{
+			mod:   'builtin'
+			name:  'vlib/builtin/builtin_windows.c.v'
+			stmts: [
+				ast.Stmt(ast.FnDecl{
+					name:  'println'
+					typ:   ast.FnType{}
+					pos:   minimal_pos(162)
+					stmts: [
+						ast.Stmt(ast.ExprStmt{
+							expr: ast.CallExpr{
+								lhs: minimal_ident('write_stdout', 163)
+								pos: minimal_pos(163)
+							}
+						}),
+					]
+				}),
+				ast.Stmt(ast.FnDecl{
+					name: 'write_stdout'
+					typ:  ast.FnType{}
+					pos:  minimal_pos(164)
+				}),
+				ast.Stmt(ast.FnDecl{
+					name:  'read_from_std_input_handle'
+					typ:   ast.FnType{}
+					pos:   minimal_pos(165)
+					stmts: [
+						ast.Stmt(ast.ExprStmt{
+							expr: minimal_c_call('GetStdHandle', 166, [
+								ast.Expr(minimal_c_selector('STD_INPUT_HANDLE', 167)),
+							])
+						}),
+					]
+				}),
+				ast.Stmt(ast.FnDecl{
+					name:  'fd_from_crt_handle'
+					typ:   ast.FnType{}
+					pos:   minimal_pos(168)
+					stmts: [
+						ast.Stmt(ast.ExprStmt{
+							expr: minimal_c_call('_get_osfhandle', 169, [])
+						}),
+					]
+				}),
+				ast.Stmt(ast.FnDecl{
+					name:  'touch_c_stdin_global'
+					typ:   ast.FnType{}
+					pos:   minimal_pos(170)
+					stmts: [
+						ast.Stmt(ast.ExprStmt{
+							expr: minimal_c_selector('stdin', 171)
+						}),
+					]
+				}),
+			]
+		},
+		ast.File{
+			mod:   'os'
+			name:  'vlib/os/file.c.v'
+			stmts: [
+				ast.Stmt(ast.FnDecl{
+					name:  'fread'
+					typ:   ast.FnType{}
+					pos:   minimal_pos(172)
+					stmts: [
+						ast.Stmt(ast.ExprStmt{
+							expr: minimal_c_call('fread', 173, [])
+						}),
+					]
+				}),
+				ast.Stmt(ast.FnDecl{
+					name:  'read_file_chunk'
+					typ:   ast.FnType{}
+					pos:   minimal_pos(174)
+					stmts: [
+						ast.Stmt(ast.ExprStmt{
+							expr: ast.CallExpr{
+								lhs: minimal_ident('fread', 175)
+								pos: minimal_pos(175)
+							}
+						}),
+					]
+				}),
+				ast.Stmt(ast.FnDecl{
+					name: 'stdin'
+					typ:  ast.FnType{}
+					pos:  minimal_pos(176)
+				}),
+			]
+		},
+	]
+	used := mark_used_with_options(files, env, MarkUsedOptions{
+		minimal_runtime_roots: true
+	})
+	main_key := decl_key('main', files[0].stmts[0] as ast.FnDecl, env)
+	println_key := decl_key('builtin', files[1].stmts[0] as ast.FnDecl, env)
+	write_stdout_key := decl_key('builtin', files[1].stmts[1] as ast.FnDecl, env)
+	std_input_handle_key := decl_key('builtin', files[1].stmts[2] as ast.FnDecl, env)
+	crt_handle_key := decl_key('builtin', files[1].stmts[3] as ast.FnDecl, env)
+	stdin_global_key := decl_key('builtin', files[1].stmts[4] as ast.FnDecl, env)
+	fread_key := decl_key('os', files[2].stmts[0] as ast.FnDecl, env)
+	read_file_chunk_key := decl_key('os', files[2].stmts[1] as ast.FnDecl, env)
+	os_stdin_key := decl_key('os', files[2].stmts[2] as ast.FnDecl, env)
+
+	assert used[main_key]
+	assert used[println_key]
+	assert used[write_stdout_key]
+	assert !used[std_input_handle_key]
+	assert !used[crt_handle_key]
+	assert !used[stdin_global_key]
+	assert !used[fread_key]
+	assert !used[read_file_chunk_key]
+	assert !used[os_stdin_key]
+}
+
+fn test_minimal_runtime_roots_keep_array_push_noscan_wrapper() {
+	mut env := types.Environment.new()
+	files := [
+		ast.File{
+			mod:   'main'
+			name:  'main.v'
+			stmts: [
+				ast.Stmt(ast.FnDecl{
+					name:  'main'
+					typ:   ast.FnType{}
+					pos:   minimal_pos(320)
+					stmts: [
+						ast.Stmt(ast.ExprStmt{
+							expr: ast.CallExpr{
+								lhs: ast.Ident{
+									name: 'builtin__array_push_noscan'
+									pos:  minimal_pos(321)
+								}
+								pos: minimal_pos(321)
+							}
+						}),
+					]
+				}),
+			]
+		},
+		ast.File{
+			mod:   'builtin'
+			name:  'vlib/builtin/array_notd_gcboehm_opt.v'
+			stmts: [
+				ast.Stmt(ast.FnDecl{
+					is_method: true
+					receiver:  ast.Parameter{
+						name: 'a'
+						typ:  ast.Ident{
+							name: 'array'
+							pos:  minimal_pos(322)
+						}
+						pos:  minimal_pos(322)
+					}
+					name:      'push_noscan'
+					typ:       ast.FnType{}
+					pos:       minimal_pos(323)
+					stmts:     [
+						ast.Stmt(ast.ExprStmt{
+							expr: ast.CallExpr{
+								lhs: ast.SelectorExpr{
+									lhs: ast.Ident{
+										name: 'a'
+										pos:  minimal_pos(324)
+									}
+									rhs: ast.Ident{
+										name: 'push'
+										pos:  minimal_pos(327)
+									}
+									pos: minimal_pos(327)
+								}
+								pos: minimal_pos(327)
+							}
+						}),
+					]
+				}),
+				ast.Stmt(ast.FnDecl{
+					is_method: true
+					receiver:  ast.Parameter{
+						name: 'a'
+						typ:  ast.Ident{
+							name: 'array'
+							pos:  minimal_pos(325)
+						}
+						pos:  minimal_pos(325)
+					}
+					name:      'push'
+					typ:       ast.FnType{}
+					pos:       minimal_pos(326)
+				}),
+			]
+		},
+	]
+	used := mark_used_with_options(files, env, MarkUsedOptions{
+		minimal_runtime_roots: true
+	})
+	push_noscan_key := decl_key('builtin', files[1].stmts[0] as ast.FnDecl, env)
+	push_key := decl_key('builtin', files[1].stmts[1] as ast.FnDecl, env)
+	assert used[push_noscan_key]
+	assert used[push_key]
+}
+
+fn test_minimal_runtime_roots_do_not_seed_array_rune_string_helper_or_generic_array_methods() {
+	mut env := types.Environment.new()
+	array_rune_type := ast.Expr(ast.Type(ast.ArrayType{
+		elem_type: ast.Expr(ast.Ident{
+			name: 'rune'
+			pos:  minimal_pos(430)
+		})
+	}))
+	files := [
+		ast.File{
+			mod:   'main'
+			name:  'main.v'
+			stmts: [
+				ast.Stmt(ast.FnDecl{
+					name: 'main'
+					typ:  ast.FnType{}
+					pos:  minimal_pos(431)
+				}),
+			]
+		},
+		ast.File{
+			mod:   'builtin'
+			name:  'vlib/builtin/rune.v'
+			stmts: [
+				ast.Stmt(ast.FnDecl{
+					is_method: true
+					receiver:  ast.Parameter{
+						name: 'arr'
+						typ:  ast.Expr(ast.Ident{
+							name: 'array'
+							pos:  minimal_pos(440)
+						})
+						pos:  minimal_pos(441)
+					}
+					name:      'string'
+					typ:       ast.FnType{}
+					pos:       minimal_pos(442)
+				}),
+				ast.Stmt(ast.FnDecl{
+					is_method: true
+					receiver:  ast.Parameter{
+						name: 'ra'
+						typ:  array_rune_type
+						pos:  minimal_pos(432)
+					}
+					name:      'string'
+					typ:       ast.FnType{}
+					pos:       minimal_pos(433)
+					stmts:     [
+						ast.Stmt(ast.ExprStmt{
+							expr: ast.CallExpr{
+								lhs: ast.Ident{
+									name: 'strings__new_builder'
+									pos:  minimal_pos(434)
+								}
+								pos: minimal_pos(434)
+							}
+						}),
+					]
+				}),
+				ast.Stmt(ast.FnDecl{
+					is_method: true
+					receiver:  ast.Parameter{
+						name: 'sa'
+						typ:  ast.Expr(ast.Type(ast.ArrayType{
+							elem_type: ast.Expr(ast.Ident{
+								name: 'string'
+								pos:  minimal_pos(443)
+							})
+						}))
+						pos:  minimal_pos(444)
+					}
+					name:      'string'
+					typ:       ast.FnType{}
+					pos:       minimal_pos(445)
+				}),
+				ast.Stmt(ast.FnDecl{
+					is_method: true
+					receiver:  ast.Parameter{
+						name: 'sa'
+						typ:  ast.Expr(ast.Type(ast.ArrayType{
+							elem_type: ast.Expr(ast.Ident{
+								name: 'string'
+								pos:  minimal_pos(446)
+							})
+						}))
+						pos:  minimal_pos(447)
+					}
+					name:      'str'
+					typ:       ast.FnType{}
+					pos:       minimal_pos(448)
+				}),
+				ast.Stmt(ast.FnDecl{
+					name: 'unused_rune_helper'
+					typ:  ast.FnType{}
+					pos:  minimal_pos(435)
+				}),
+			]
+		},
+		ast.File{
+			mod:   'strings'
+			name:  'vlib/strings/builder.c.v'
+			stmts: [
+				ast.Stmt(ast.FnDecl{
+					name:  'new_builder'
+					typ:   ast.FnType{}
+					pos:   minimal_pos(436)
+					stmts: [
+						ast.Stmt(ast.ExprStmt{
+							expr: ast.CallExpr{
+								lhs: ast.Ident{
+									name: 'prepare_builder'
+									pos:  minimal_pos(437)
+								}
+								pos: minimal_pos(437)
+							}
+						}),
+					]
+				}),
+				ast.Stmt(ast.FnDecl{
+					name: 'prepare_builder'
+					typ:  ast.FnType{}
+					pos:  minimal_pos(438)
+				}),
+				ast.Stmt(ast.FnDecl{
+					name: 'unused_builder'
+					typ:  ast.FnType{}
+					pos:  minimal_pos(439)
+				}),
+			]
+		},
+	]
+	used := mark_used_with_options(files, env, MarkUsedOptions{
+		minimal_runtime_roots: true
+	})
+	main_key := decl_key('main', files[0].stmts[0] as ast.FnDecl, env)
+	generic_array_string_key := decl_key('builtin', files[1].stmts[0] as ast.FnDecl, env)
+	array_rune_string_key := decl_key('builtin', files[1].stmts[1] as ast.FnDecl, env)
+	array_string_string_key := decl_key('builtin', files[1].stmts[2] as ast.FnDecl, env)
+	array_string_str_key := decl_key('builtin', files[1].stmts[3] as ast.FnDecl, env)
+	unused_rune_helper_key := decl_key('builtin', files[1].stmts[4] as ast.FnDecl, env)
+	new_builder_key := decl_key('strings', files[2].stmts[0] as ast.FnDecl, env)
+	prepare_builder_key := decl_key('strings', files[2].stmts[1] as ast.FnDecl, env)
+	unused_builder_key := decl_key('strings', files[2].stmts[2] as ast.FnDecl, env)
+
+	assert used[main_key]
+	assert !used[generic_array_string_key]
+	assert !used[array_rune_string_key]
+	assert !used[array_string_string_key]
+	assert !used[array_string_str_key]
+	assert !used[new_builder_key]
+	assert !used[prepare_builder_key]
+	assert !used[unused_rune_helper_key]
+	assert !used[unused_builder_key]
+}
+
+fn test_minimal_runtime_roots_keep_synthesized_import_init_calls() {
+	mut env := types.Environment.new()
+	files := [
+		ast.File{
+			mod:     'main'
+			name:    'main.v'
+			imports: [
+				ast.ImportStmt{
+					name: 'dep'
+				},
+			]
+			stmts:   [
+				ast.Stmt(ast.FnDecl{
+					name:  'main'
+					typ:   ast.FnType{}
+					pos:   minimal_pos(220)
+					stmts: [
+						ast.Stmt(ast.ExprStmt{
+							expr: ast.CallExpr{
+								lhs: ast.Ident{
+									name: 'dep__init'
+									pos:  minimal_pos(221)
+								}
+								pos: minimal_pos(221)
+							}
+						}),
+						ast.Stmt(ast.ExprStmt{
+							expr: ast.CallExpr{
+								lhs: ast.Ident{
+									name: 'dep____v_init_consts_dep'
+									pos:  minimal_pos(222)
+								}
+								pos: minimal_pos(222)
+							}
+						}),
+					]
+				}),
+			]
+		},
+		ast.File{
+			mod:   'dep'
+			name:  'dep.v'
+			stmts: [
+				ast.Stmt(ast.FnDecl{
+					name:  'init'
+					typ:   ast.FnType{}
+					pos:   minimal_pos(223)
+					stmts: [
+						ast.Stmt(ast.ExprStmt{
+							expr: ast.CallExpr{
+								lhs: ast.Ident{
+									name: 'touch'
+									pos:  minimal_pos(224)
+								}
+								pos: minimal_pos(224)
+							}
+						}),
+					]
+				}),
+				ast.Stmt(ast.FnDecl{
+					name:  '__v_init_consts_dep'
+					typ:   ast.FnType{}
+					pos:   minimal_pos(225)
+					stmts: [
+						ast.Stmt(ast.ExprStmt{
+							expr: ast.CallExpr{
+								lhs: ast.Ident{
+									name: 'make_value'
+									pos:  minimal_pos(226)
+								}
+								pos: minimal_pos(226)
+							}
+						}),
+					]
+				}),
+				ast.Stmt(ast.FnDecl{
+					name: 'touch'
+					typ:  ast.FnType{}
+					pos:  minimal_pos(227)
+				}),
+				ast.Stmt(ast.FnDecl{
+					name: 'make_value'
+					typ:  ast.FnType{}
+					pos:  minimal_pos(228)
+				}),
+				ast.Stmt(ast.FnDecl{
+					name: 'unused'
+					typ:  ast.FnType{}
+					pos:  minimal_pos(229)
+				}),
+			]
+		},
+	]
+	used := mark_used_with_options(files, env, MarkUsedOptions{
+		minimal_runtime_roots: true
+	})
+	main_key := decl_key('main', files[0].stmts[0] as ast.FnDecl, env)
+	dep_init_key := decl_key('dep', files[1].stmts[0] as ast.FnDecl, env)
+	dep_const_init_key := decl_key('dep', files[1].stmts[1] as ast.FnDecl, env)
+	touch_key := decl_key('dep', files[1].stmts[2] as ast.FnDecl, env)
+	make_value_key := decl_key('dep', files[1].stmts[3] as ast.FnDecl, env)
+	unused_key := decl_key('dep', files[1].stmts[4] as ast.FnDecl, env)
+
+	assert used[main_key]
+	assert used[dep_init_key]
+	assert used[dep_const_init_key]
+	assert used[touch_key]
+	assert used[make_value_key]
+	assert !used[unused_key]
+}
+
+fn test_minimal_runtime_roots_do_not_seed_forbidden_imports() {
+	mut env := types.Environment.new()
+	forbidden_modules := ['os', 'time', 'io', 'dl', 'sha256', 'binary']
+	mut imports := []ast.ImportStmt{cap: forbidden_modules.len}
+	for mod_name in forbidden_modules {
+		imports << ast.ImportStmt{
+			name: mod_name
+		}
+	}
+	mut files := [
+		ast.File{
+			mod:     'main'
+			name:    'main.v'
+			imports: imports
+			stmts:   [
+				ast.Stmt(ast.FnDecl{
+					name: 'main'
+					typ:  ast.FnType{}
+					pos:  minimal_pos(320)
+				}),
+			]
+		},
+	]
+	for i, mod_name in forbidden_modules {
+		files << ast.File{
+			mod:   mod_name
+			name:  '${mod_name}.v'
+			stmts: [
+				ast.Stmt(ast.FnDecl{
+					name: 'init'
+					typ:  ast.FnType{}
+					pos:  minimal_pos(330 + i * 10)
+				}),
+				ast.Stmt(ast.FnDecl{
+					name: '__v_init_consts_${mod_name}'
+					typ:  ast.FnType{}
+					pos:  minimal_pos(331 + i * 10)
+				}),
+				ast.Stmt(ast.FnDecl{
+					name: 'runtime_entry'
+					typ:  ast.FnType{}
+					pos:  minimal_pos(332 + i * 10)
+				}),
+			]
+		}
+	}
+	used := mark_used_with_options(files, env, MarkUsedOptions{
+		minimal_runtime_roots: true
+	})
+
+	main_key := decl_key('main', files[0].stmts[0] as ast.FnDecl, env)
+	assert used[main_key]
+	for file_idx in 1 .. files.len {
+		mod_name := files[file_idx].mod
+		init_key := decl_key(mod_name, files[file_idx].stmts[0] as ast.FnDecl, env)
+		const_init_key := decl_key(mod_name, files[file_idx].stmts[1] as ast.FnDecl, env)
+		runtime_entry_key := decl_key(mod_name, files[file_idx].stmts[2] as ast.FnDecl, env)
+		assert !used[init_key], '${mod_name}.init must not be a minimal root'
+		assert !used[const_init_key], '${mod_name} const init must not be a minimal root'
+		assert !used[runtime_entry_key], '${mod_name}.runtime_entry must not be a minimal root'
+	}
+}

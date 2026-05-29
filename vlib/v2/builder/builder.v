@@ -1310,6 +1310,15 @@ fn is_windows_x64_native_target(arch pref.Arch, target_os string) bool {
 	return arch == .x64 && normalize_target_os_name(target_os) == 'windows'
 }
 
+fn eprint_native_x64_link_error(message string) {
+	if message.starts_with('x64: unsupported backend feature: ') {
+		eprintln(message)
+		return
+	}
+	eprintln('Link failed:')
+	eprintln(message)
+}
+
 fn (b &Builder) uses_minimal_windows_x64_runtime() bool {
 	arch := b.pref.get_effective_arch()
 	return b.pref.backend == .x64 && is_windows_x64_native_target(arch, b.pref.target_os_or_host())
@@ -2123,8 +2132,7 @@ fn (mut b Builder) gen_native(backend_arch pref.Arch) {
 			gen.gen()
 			if is_windows_x64_native_target(arch, target_os) {
 				gen.link_executable(output_binary) or {
-					eprintln('Link failed:')
-					eprintln(err.msg())
+					eprint_native_x64_link_error(err.msg())
 					exit(1)
 				}
 				if b.pref.verbose {

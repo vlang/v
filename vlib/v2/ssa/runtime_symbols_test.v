@@ -65,6 +65,88 @@ fn stdio_loaded_external_symbol_names(m &Module) []string {
 	return names
 }
 
+fn called_function_names(m &Module) []string {
+	mut names := []string{}
+	for val in m.values {
+		if val.kind != .instruction {
+			continue
+		}
+		instr := m.instrs[val.index]
+		if instr.op != .call || instr.operands.len == 0 {
+			continue
+		}
+		callee := instr.operands[0]
+		if callee <= 0 || callee >= m.values.len {
+			continue
+		}
+		callee_val := m.values[callee]
+		if callee_val.kind == .func_ref {
+			names << callee_val.name
+		}
+	}
+	return names
+}
+
+fn global_value_names(m &Module) []string {
+	return m.values.filter(it.kind == .global).map(it.name)
+}
+
+fn store_destination_call_names(m &Module) []string {
+	mut names := []string{}
+	for val in m.values {
+		if val.kind != .instruction {
+			continue
+		}
+		instr := m.instrs[val.index]
+		if instr.op != .store || instr.operands.len < 2 {
+			continue
+		}
+		dest := instr.operands[1]
+		if dest <= 0 || dest >= m.values.len {
+			continue
+		}
+		dest_val := m.values[dest]
+		if dest_val.kind != .instruction {
+			continue
+		}
+		dest_instr := m.instrs[dest_val.index]
+		if dest_instr.op != .call || dest_instr.operands.len == 0 {
+			continue
+		}
+		callee := dest_instr.operands[0]
+		if callee <= 0 || callee >= m.values.len {
+			continue
+		}
+		callee_val := m.values[callee]
+		if callee_val.kind == .func_ref {
+			names << callee_val.name
+		}
+	}
+	return names
+}
+
+fn store_destination_global_names(m &Module) []string {
+	mut names := []string{}
+	for val in m.values {
+		if val.kind != .instruction {
+			continue
+		}
+		instr := m.instrs[val.index]
+		if instr.op != .store || instr.operands.len < 2 {
+			continue
+		}
+		dest := instr.operands[1]
+		if dest <= 0 || dest >= m.values.len {
+			continue
+		}
+		dest_val := m.values[dest]
+		if dest_val.kind == .global {
+			names << dest_val.name
+		}
+	}
+	return names
+}
+
 fn test_c_float_epsilon_macros_are_ssa_constants_not_external_globals() {
 	m := build_ssa_for_runtime_symbol_test('
 module main
@@ -123,6 +205,55 @@ fn main() {
 	assert has_dbl_epsilon_const
 }
 
+fn test_windows_std_handle_macros_are_ssa_constants_not_external_globals() {
+	m := build_ssa_for_runtime_symbol_target_test('
+module main
+
+fn input_handle() u32 {
+	return C.STD_INPUT_HANDLE
+}
+
+fn output_handle() u32 {
+	return C.STD_OUTPUT_HANDLE
+}
+
+fn error_handle() u32 {
+	return C.STD_ERROR_HANDLE
+}
+
+fn main() {
+	_ := input_handle()
+	_ := output_handle()
+	_ := error_handle()
+}
+',
+		'windows')
+	global_names := global_value_names(m)
+	expected_consts := {
+		'STD_INPUT_HANDLE':  '4294967286'
+		'STD_OUTPUT_HANDLE': '4294967285'
+		'STD_ERROR_HANDLE':  '4294967284'
+	}
+	mut seen_consts := map[string]bool{}
+	for name, const_name in expected_consts {
+		assert name !in global_names
+		seen_consts[const_name] = false
+	}
+	for val in m.values {
+		if val.kind != .constant || val.name !in seen_consts {
+			continue
+		}
+		typ := m.type_store.types[val.typ]
+		assert typ.kind == .int_t
+		assert typ.width == 32
+		assert typ.is_unsigned
+		seen_consts[val.name] = true
+	}
+	for _, const_name in expected_consts {
+		assert seen_consts[const_name]
+	}
+}
+
 fn test_c_stdio_globals_are_loaded_on_non_macos_targets() {
 	m := build_ssa_for_runtime_symbol_target_test('
 module main
@@ -135,6 +266,7 @@ fn main() {
 ',
 		'linux')
 	load_names := stdio_loaded_external_symbol_names(m)
+	global_names := global_value_names(m)
 
 	assert 'stdout' in load_names
 	assert 'stderr' in load_names
@@ -142,6 +274,162 @@ fn main() {
 	assert '__stdoutp' !in load_names
 	assert '__stderrp' !in load_names
 	assert '__stdinp' !in load_names
+	assert 'C.stdout' !in global_names
+	assert 'C.stderr' !in global_names
+	assert 'C.stdin' !in global_names
+}
+
+fn test_c_errno_uses_errno_location_on_linux_targets() {
+	m := build_ssa_for_runtime_symbol_target_test('
+module main
+
+fn read_errno() int {
+	return C.errno
+}
+
+fn main() {
+	_ := read_errno()
+}
+',
+		'linux')
+	call_names := called_function_names(m)
+	global_names := global_value_names(m)
+
+	assert '__errno_location' in call_names
+	assert '__error' !in call_names
+	assert 'errno' !in global_names
+}
+
+fn test_c_errno_writes_use_errno_location_on_linux_targets() {
+	m := build_ssa_for_runtime_symbol_target_test('
+module main
+
+fn reset_errno() {
+	C.errno = 0
+}
+
+fn bump_errno() {
+	C.errno += 1
+}
+
+fn main() {
+	reset_errno()
+	bump_errno()
+}
+',
+		'linux')
+	call_names := called_function_names(m)
+	store_call_names := store_destination_call_names(m)
+	global_names := global_value_names(m)
+
+	assert call_names.filter(it == '__errno_location').len == 2
+	assert store_call_names.filter(it == '__errno_location').len == 2
+	assert '__error' !in call_names
+	assert 'errno' !in global_names
+	assert 'C.errno' !in global_names
+}
+
+fn test_c_errno_uses_error_on_macos_targets() {
+	m := build_ssa_for_runtime_symbol_target_test('
+module main
+
+fn read_errno() int {
+	return C.errno
+}
+
+fn main() {
+	_ := read_errno()
+}
+',
+		'macos')
+	call_names := called_function_names(m)
+	global_names := global_value_names(m)
+
+	assert '__error' in call_names
+	assert '__errno_location' !in call_names
+	assert 'errno' !in global_names
+}
+
+fn test_c_errno_writes_use_error_on_macos_targets() {
+	m := build_ssa_for_runtime_symbol_target_test('
+module main
+
+fn reset_errno() {
+	C.errno = 0
+}
+
+fn bump_errno() {
+	C.errno += 1
+}
+
+fn main() {
+	reset_errno()
+	bump_errno()
+}
+',
+		'macos')
+	call_names := called_function_names(m)
+	store_call_names := store_destination_call_names(m)
+	global_names := global_value_names(m)
+
+	assert call_names.filter(it == '__error').len == 2
+	assert store_call_names.filter(it == '__error').len == 2
+	assert '__errno_location' !in call_names
+	assert 'errno' !in global_names
+	assert 'C.errno' !in global_names
+}
+
+fn test_c_errno_stays_global_on_windows_targets() {
+	m := build_ssa_for_runtime_symbol_target_test('
+module main
+
+fn read_errno() int {
+	return C.errno
+}
+
+fn main() {
+	_ := read_errno()
+}
+',
+		'windows')
+	call_names := called_function_names(m)
+	global_names := global_value_names(m)
+
+	assert '__errno_location' !in call_names
+	assert '__error' !in call_names
+	assert 'errno' in global_names
+	assert 'C.errno' !in global_names
+}
+
+fn test_c_errno_writes_stay_raw_global_on_windows_targets() {
+	m := build_ssa_for_runtime_symbol_target_test('
+module main
+
+fn reset_errno() {
+	C.errno = 0
+}
+
+fn bump_errno() {
+	C.errno += 1
+}
+
+fn main() {
+	reset_errno()
+	bump_errno()
+}
+',
+		'windows')
+	call_names := called_function_names(m)
+	store_call_names := store_destination_call_names(m)
+	store_global_names := store_destination_global_names(m)
+	global_names := global_value_names(m)
+
+	assert '__errno_location' !in call_names
+	assert '__error' !in call_names
+	assert store_call_names.len == 0
+	assert store_global_names.filter(it == 'errno').len == 2
+	assert 'errno' in global_names
+	assert 'C.errno' !in global_names
 }
 
 fn test_c_stdio_globals_are_loaded_on_windows_targets() {
@@ -156,6 +444,7 @@ fn main() {
 ',
 		'windows')
 	load_names := stdio_loaded_external_symbol_names(m)
+	global_names := global_value_names(m)
 
 	assert 'stdout' in load_names
 	assert 'stderr' in load_names
@@ -163,6 +452,9 @@ fn main() {
 	assert '__stdoutp' !in load_names
 	assert '__stderrp' !in load_names
 	assert '__stdinp' !in load_names
+	assert 'C.stdout' !in global_names
+	assert 'C.stderr' !in global_names
+	assert 'C.stdin' !in global_names
 }
 
 fn test_c_stdio_globals_are_loaded_from_macos_symbols_on_macos_targets() {
@@ -177,6 +469,7 @@ fn main() {
 ',
 		'macos')
 	load_names := stdio_loaded_external_symbol_names(m)
+	global_names := global_value_names(m)
 
 	assert '__stdoutp' in load_names
 	assert '__stderrp' in load_names
@@ -184,4 +477,7 @@ fn main() {
 	assert 'stdout' !in load_names
 	assert 'stderr' !in load_names
 	assert 'stdin' !in load_names
+	assert 'C.stdout' !in global_names
+	assert 'C.stderr' !in global_names
+	assert 'C.stdin' !in global_names
 }

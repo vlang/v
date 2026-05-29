@@ -590,8 +590,7 @@ fn asm_store_mem_base_disp_reg_size(mut g Gen, base Reg, disp int, reg Reg, size
 }
 
 fn asm_unsupported_memory_size(op string, size int) {
-	eprintln('x64: unsupported ${op} memory size ${size}')
-	exit(1)
+	x64_unsupported('${op} memory size ${size}')
 }
 
 // lea rax, [rbp + disp8]
@@ -610,6 +609,22 @@ fn asm_lea_rax_rbp_disp32(mut g Gen, disp i32) {
 	g.emit_u32(u32(disp))
 }
 
+// lea reg, [rbp + disp]
+fn asm_lea_reg_rbp_disp(mut g Gen, reg Reg, disp int) {
+	reg_hw := g.map_reg(int(reg))
+	base_hw := g.map_reg(int(rbp))
+	mut rex := u8(0x48)
+	if reg_hw >= 8 {
+		rex |= 4 // REX.R
+	}
+	if base_hw >= 8 {
+		rex |= 1 // REX.B
+	}
+	g.emit(rex)
+	g.emit(0x8D)
+	asm_emit_modrm_base_disp(mut g, reg_hw & 7, base_hw, disp)
+}
+
 // lea reg, [rip + disp32] (for globals/strings)
 fn asm_lea_reg_rip(mut g Gen, reg Reg) {
 	hw_reg := g.map_reg(int(reg))
@@ -619,6 +634,18 @@ fn asm_lea_reg_rip(mut g Gen, reg Reg) {
 	}
 	g.emit(rex)
 	g.emit(0x8D)
+	g.emit(0x05 | ((hw_reg & 7) << 3))
+}
+
+// mov reg, qword ptr [rip + disp32] (for Mach-O GOTPCREL loads)
+fn asm_mov_reg_got_rip(mut g Gen, reg Reg) {
+	hw_reg := g.map_reg(int(reg))
+	mut rex := u8(0x48)
+	if hw_reg >= 8 {
+		rex |= 4
+	}
+	g.emit(rex)
+	g.emit(0x8B)
 	g.emit(0x05 | ((hw_reg & 7) << 3))
 }
 
