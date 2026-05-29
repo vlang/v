@@ -151,6 +151,104 @@ fn test_minimal_runtime_roots_keep_explicit_calls_only() {
 	assert !used[dep_init_key]
 }
 
+fn test_minimal_runtime_roots_keep_functions_used_as_values() {
+	mut env := types.Environment.new()
+	files := [
+		ast.File{
+			mod:   'main'
+			name:  'main.v'
+			stmts: [
+				ast.Stmt(ast.FnDecl{
+					name:  'main'
+					typ:   ast.FnType{}
+					pos:   minimal_pos(180)
+					stmts: [
+						ast.Stmt(ast.AssignStmt{
+							op:  .decl_assign
+							lhs: [ast.Expr(minimal_ident('f', 181))]
+							rhs: [ast.Expr(minimal_ident('assigned_cleanup', 182))]
+							pos: minimal_pos(181)
+						}),
+						ast.Stmt(ast.ExprStmt{
+							expr: ast.CallExpr{
+								lhs:  minimal_ident('run', 183)
+								args: [ast.Expr(minimal_ident('argument_cleanup', 184))]
+								pos:  minimal_pos(183)
+							}
+						}),
+						ast.Stmt(ast.AssignStmt{
+							op:  .decl_assign
+							lhs: [ast.Expr(minimal_ident('g', 185))]
+							rhs: [
+								ast.Expr(ast.CallExpr{
+									lhs: minimal_ident('choose_cleanup', 186)
+									pos: minimal_pos(186)
+								}),
+							]
+							pos: minimal_pos(185)
+						}),
+					]
+				}),
+				ast.Stmt(ast.FnDecl{
+					name: 'run'
+					typ:  ast.FnType{}
+					pos:  minimal_pos(187)
+				}),
+				ast.Stmt(ast.FnDecl{
+					name:  'choose_cleanup'
+					typ:   ast.FnType{}
+					pos:   minimal_pos(188)
+					stmts: [
+						ast.Stmt(ast.ReturnStmt{
+							exprs: [
+								ast.Expr(minimal_ident('returned_cleanup', 189)),
+							]
+						}),
+					]
+				}),
+				ast.Stmt(ast.FnDecl{
+					name: 'assigned_cleanup'
+					typ:  ast.FnType{}
+					pos:  minimal_pos(190)
+				}),
+				ast.Stmt(ast.FnDecl{
+					name: 'argument_cleanup'
+					typ:  ast.FnType{}
+					pos:  minimal_pos(191)
+				}),
+				ast.Stmt(ast.FnDecl{
+					name: 'returned_cleanup'
+					typ:  ast.FnType{}
+					pos:  minimal_pos(192)
+				}),
+				ast.Stmt(ast.FnDecl{
+					name: 'unused_cleanup'
+					typ:  ast.FnType{}
+					pos:  minimal_pos(193)
+				}),
+			]
+		},
+	]
+	used := mark_used_with_options(files, env, MarkUsedOptions{
+		minimal_runtime_roots: true
+	})
+	main_key := decl_key('main', files[0].stmts[0] as ast.FnDecl, env)
+	run_key := decl_key('main', files[0].stmts[1] as ast.FnDecl, env)
+	choose_key := decl_key('main', files[0].stmts[2] as ast.FnDecl, env)
+	assigned_key := decl_key('main', files[0].stmts[3] as ast.FnDecl, env)
+	argument_key := decl_key('main', files[0].stmts[4] as ast.FnDecl, env)
+	returned_key := decl_key('main', files[0].stmts[5] as ast.FnDecl, env)
+	unused_key := decl_key('main', files[0].stmts[6] as ast.FnDecl, env)
+
+	assert used[main_key]
+	assert used[run_key]
+	assert used[choose_key]
+	assert used[assigned_key]
+	assert used[argument_key]
+	assert used[returned_key]
+	assert !used[unused_key]
+}
+
 fn test_minimal_runtime_roots_do_not_treat_c_globals_as_v_functions() {
 	mut env := types.Environment.new()
 	files := [

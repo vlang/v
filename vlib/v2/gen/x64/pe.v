@@ -909,6 +909,13 @@ fn pe_emit_runtime_aligned_realloc(mut rt PeRuntimeText) {
 	pe_patch_rel8(mut rt.bytes, alloc_failed, fail_with_null_frame)
 }
 
+fn pe_emit_runtime_align_heap_allocated_data(mut rt PeRuntimeText) {
+	rt.bytes << [u8(0x49), 0x89, 0xc3] // mov r11, rax
+	rt.bytes << [u8(0x49), 0x83, 0xc3, 0x17] // add r11, 23
+	rt.bytes << [u8(0x49), 0x83, 0xe3, 0xf0] // and r11, -16
+	rt.bytes << [u8(0x49), 0x89, 0x43, 0xf8] // mov [r11-8], rax
+}
+
 fn pe_emit_runtime_memmove(mut rt PeRuntimeText) {
 	rt.bytes << [u8(0x48), 0x89, 0xc8] // mov rax, rcx
 	rt.bytes << [u8(0x4d), 0x85, 0xc0] // test r8, r8
@@ -1150,7 +1157,7 @@ fn pe_emit_runtime_new_array_from_c_array_noscan(mut rt PeRuntimeText) {
 	payload_nonzero := pe_emit_jcc8(mut rt.bytes, 0x75) // jne
 	rt.bytes << [u8(0x41), 0xb8, 0x01, 0, 0, 0] // mov r8d, 1
 	payload_nonzero_target := rt.bytes.len
-	rt.bytes << [u8(0x49), 0x83, 0xc0, 0x20] // add r8, 32
+	rt.bytes << [u8(0x49), 0x83, 0xc0, 0x18] // add r8, 24
 	allocation_overflow := pe_emit_jcc32(mut rt.bytes, 0x82) // jc
 	rt.bytes << [u8(0x4c), 0x89, 0x44, 0x24, 0x50] // mov [rsp+80], r8
 	pe_emit_runtime_call_import(mut rt, 'GetProcessHeap')
@@ -1162,11 +1169,7 @@ fn pe_emit_runtime_new_array_from_c_array_noscan(mut rt PeRuntimeText) {
 	pe_emit_runtime_call_import(mut rt, 'HeapAlloc')
 	rt.bytes << [u8(0x48), 0x85, 0xc0] // test rax, rax
 	alloc_failed := pe_emit_jcc32(mut rt.bytes, 0x84) // je
-	rt.bytes << [u8(0x49), 0x89, 0xc3] // mov r11, rax
-	rt.bytes << [u8(0x49), 0x83, 0xc3, 0x17] // add r11, 23
-	rt.bytes << [u8(0x49), 0x83, 0xe3, 0xf0] // and r11, -16
-	rt.bytes << [u8(0x49), 0x89, 0x43, 0xf8] // mov [r11-8], rax
-	rt.bytes << [u8(0x49), 0x83, 0xc3, 0x08] // add r11, 8
+	pe_emit_runtime_align_heap_allocated_data(mut rt)
 	rt.bytes << [u8(0x48), 0x8b, 0x4c, 0x24, 0x20] // mov rcx, [rsp+32]
 	rt.bytes << [u8(0x4c), 0x89, 0x19] // mov [rcx], r11
 	rt.bytes << [u8(0xc7), 0x41, 0x08, 0, 0, 0, 0] // mov dword ptr [rcx+8], 0
@@ -1237,6 +1240,8 @@ fn pe_emit_runtime_array_rune_string(mut rt PeRuntimeText) {
 	rt.bytes << [u8(0x49), 0xc1, 0xe0, 0x02] // shl r8, 2
 	rt.bytes << [u8(0x49), 0x83, 0xc0, 0x01] // add r8, 1
 	size_ready := rt.bytes.len
+	rt.bytes << [u8(0x49), 0x83, 0xc0, 0x18] // add r8, 24
+	allocation_overflow := pe_emit_jcc32(mut rt.bytes, 0x82) // jc
 	rt.bytes << [u8(0x4c), 0x89, 0x44, 0x24, 0x50] // mov [rsp+80], r8
 	pe_emit_runtime_call_import(mut rt, 'GetProcessHeap')
 	rt.bytes << [u8(0x48), 0x85, 0xc0] // test rax, rax
@@ -1247,8 +1252,8 @@ fn pe_emit_runtime_array_rune_string(mut rt PeRuntimeText) {
 	pe_emit_runtime_call_import(mut rt, 'HeapAlloc')
 	rt.bytes << [u8(0x48), 0x85, 0xc0] // test rax, rax
 	alloc_failed := pe_emit_jcc32(mut rt.bytes, 0x84) // je
-	rt.bytes << [u8(0x48), 0x89, 0x44, 0x24, 0x40] // mov [rsp+64], rax
-	rt.bytes << [u8(0x49), 0x89, 0xc3] // mov r11, rax
+	pe_emit_runtime_align_heap_allocated_data(mut rt)
+	rt.bytes << [u8(0x4c), 0x89, 0x5c, 0x24, 0x40] // mov [rsp+64], r11
 	rt.bytes << [u8(0x48), 0x8b, 0x4c, 0x24, 0x30] // mov rcx, [rsp+48]
 	rt.bytes << [u8(0x48), 0x85, 0xc9] // test rcx, rcx
 	no_input := pe_emit_jcc32(mut rt.bytes, 0x8e) // jle
@@ -1313,6 +1318,7 @@ fn pe_emit_runtime_array_rune_string(mut rt PeRuntimeText) {
 	pe_patch_rel32_local(mut rt.bytes, null_array, fail)
 	pe_patch_rel32_local(mut rt.bytes, positive_size, positive_size_target)
 	pe_patch_rel32_local(mut rt.bytes, size_ready_jump, size_ready)
+	pe_patch_rel32_local(mut rt.bytes, allocation_overflow, fail)
 	pe_patch_rel32_local(mut rt.bytes, no_heap, fail)
 	pe_patch_rel32_local(mut rt.bytes, alloc_failed, fail)
 	pe_patch_rel32_local(mut rt.bytes, no_input, finish)

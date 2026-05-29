@@ -308,8 +308,8 @@ pub fn new_preferences_from_args(args []string) Preferences {
 	known_flags_with_values := ['-backend', '-b', '-o', '-output', '-arch', '-printfn', '-gc',
 		'-d', '-hot-fn', '-cc']
 	mut known_boolean_flags := ['--debug', '--verbose', '-v', '--skip-genv', '--skip-builtin',
-		'--skip-imports', '--skip-type-check', '--no-parallel', '-nocache', '--nocache',
-		'-nomarkused', '--nomarkused', '-showcc', '--showcc', '-stats', '--stats',
+		'--skip-imports', '--skip-type-check', '-no-parallel', '--no-parallel', '-nocache',
+		'--nocache', '-nomarkused', '--nomarkused', '-showcc', '--showcc', '-stats', '--stats',
 		'-print-parsed-files', '--print-parsed-files', '-keepc', '--profile-alloc', '-profile-alloc',
 		'-enable-globals', '--enable-globals', '-shared', '--shared', '-O0', '--single-backend',
 		'-single-backend', '-prod', '-prealloc']
@@ -343,7 +343,8 @@ pub fn new_preferences_from_args(args []string) Preferences {
 			eprintln('  -cc <compiler>         C compiler to use (default: tcc, fallback: cc)')
 			eprintln('  -showcc, --showcc      Print C compiler command')
 			eprintln('  -keepc                 Keep generated C file')
-			eprintln('  --no-parallel          Disable parallel type check and transform')
+			eprintln('  -no-parallel, --no-parallel')
+			eprintln('                         Disable parallel type check and transform')
 			exit(1)
 		}
 	}
@@ -355,8 +356,8 @@ pub fn new_preferences_from_args(args []string) Preferences {
 		skip_builtin:          '--skip-builtin' in options
 		skip_imports:          '--skip-imports' in options
 		skip_type_check:       '--skip-type-check' in options
-		no_parallel:           '--no-parallel' in options
-		no_parallel_transform: '--no-parallel' in options
+		no_parallel:           '-no-parallel' in options || '--no-parallel' in options
+		no_parallel_transform: '-no-parallel' in options || '--no-parallel' in options
 		no_cache:              '-nocache' in options || '--nocache' in options
 		no_markused:           '-nomarkused' in options || '--nomarkused' in options
 		show_cc:               '-showcc' in options || '--showcc' in options
@@ -415,8 +416,8 @@ pub fn new_preferences_using_options(options []string) Preferences {
 		skip_builtin:          '--skip-builtin' in options
 		skip_imports:          '--skip-imports' in options
 		skip_type_check:       '--skip-type-check' in options
-		no_parallel:           '--no-parallel' in options
-		no_parallel_transform: '--no-parallel' in options
+		no_parallel:           '-no-parallel' in options || '--no-parallel' in options
+		no_parallel_transform: '-no-parallel' in options || '--no-parallel' in options
 		no_cache:              '-nocache' in options || '--nocache' in options
 		no_markused:           '-nomarkused' in options || '--nomarkused' in options
 		show_cc:               '-showcc' in options || '--showcc' in options

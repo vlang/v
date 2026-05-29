@@ -1143,6 +1143,28 @@ fn should_mark_ident_as_fn(name string) bool {
 		|| name.starts_with('_result_')
 }
 
+fn (w &Walker) ident_resolves_to_fn_value(name string, mod_name string) bool {
+	if name == '' || name == 'C' || name in w.module_names || w.is_cast_type_name(name) {
+		return false
+	}
+	if w.cur_fn_scope != unsafe { nil } {
+		if obj := w.cur_fn_scope.lookup_parent(name, 0) {
+			return obj is types.Fn
+		}
+	}
+	for candidate in called_fn_name_candidates(name) {
+		if w.lookup_count('mod:${mod_name}:${candidate}') > 0
+			|| w.lookup_count('fn:${candidate}') > 0 {
+			return true
+		}
+		if !candidate.contains('__') && mod_name != '' && mod_name != 'main'
+			&& mod_name != 'builtin' && w.lookup_count('fn:${mod_name}__${candidate}') > 0 {
+			return true
+		}
+	}
+	return false
+}
+
 fn (mut w Walker) mark_fn_name(name string, mod_name string) {
 	if name == '' {
 		return
@@ -1946,6 +1968,35 @@ fn (mut w Walker) mark_selector_fn_value(expr ast.SelectorExpr, mod_name string)
 	}
 }
 
+fn (mut w Walker) mark_fn_value_expr(expr ast.Expr, mod_name string) {
+	if !w.opts.minimal_runtime_roots || !expr_ok(expr) {
+		return
+	}
+	match expr {
+		ast.Ident {
+			if w.ident_resolves_to_fn_value(expr.name, mod_name) {
+				w.mark_fn_name(expr.name, mod_name)
+			}
+		}
+		ast.SelectorExpr {
+			w.mark_selector_fn_value(expr, mod_name)
+		}
+		ast.GenericArgs {
+			w.mark_fn_value_expr(expr.lhs, mod_name)
+		}
+		ast.GenericArgOrIndexExpr {
+			w.mark_fn_value_expr(expr.lhs, mod_name)
+		}
+		ast.ModifierExpr {
+			w.mark_fn_value_expr(expr.expr, mod_name)
+		}
+		ast.ParenExpr {
+			w.mark_fn_value_expr(expr.expr, mod_name)
+		}
+		else {}
+	}
+}
+
 fn (mut w Walker) walk_stmts(stmts []ast.Stmt, mod_name string) {
 	for stmt in stmts {
 		w.walk_stmt(stmt, mod_name)
@@ -1971,6 +2022,7 @@ fn (mut w Walker) walk_stmt(stmt ast.Stmt, mod_name string) {
 				w.walk_expr(expr, mod_name)
 			}
 			for expr in stmt.rhs {
+				w.mark_fn_value_expr(expr, mod_name)
 				w.walk_expr(expr, mod_name)
 			}
 		}
@@ -2018,6 +2070,7 @@ fn (mut w Walker) walk_stmt(stmt ast.Stmt, mod_name string) {
 		}
 		ast.ReturnStmt {
 			for expr in stmt.exprs {
+				w.mark_fn_value_expr(expr, mod_name)
 				w.walk_expr(expr, mod_name)
 				// If the function returns an interface type and the return expr
 				// is a concrete struct InitExpr, mark the concrete type's
@@ -2080,6 +2133,7 @@ fn (mut w Walker) walk_expr(expr ast.Expr, mod_name string) {
 			w.mark_call_arg_interface_conversions(expr, mod_name)
 			w.walk_expr(expr.lhs, mod_name)
 			for arg in expr.args {
+				w.mark_fn_value_expr(arg, mod_name)
 				w.walk_expr(arg, mod_name)
 			}
 		}
@@ -2092,6 +2146,7 @@ fn (mut w Walker) walk_expr(expr ast.Expr, mod_name string) {
 			w.mark_call_lhs(expr.lhs, mod_name)
 			w.mark_call_or_cast_arg_interface_conversion(expr, mod_name)
 			w.walk_expr(expr.lhs, mod_name)
+			w.mark_fn_value_expr(expr.expr, mod_name)
 			w.walk_expr(expr.expr, mod_name)
 		}
 		ast.CastExpr {

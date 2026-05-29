@@ -49,7 +49,7 @@ fn run_x64_linux_program_redirected(name string, source string) X64LinuxRunResul
 	os.write_file(source_path, source) or { panic(err) }
 	vexe := os.getenv_opt('VEXE') or { @VEXE }
 	build :=
-		os.execute('${os.quoted_path(vexe)} -v2 -b x64 ${os.quoted_path(source_path)} -o ${os.quoted_path(bin_path)}')
+		os.execute('${os.quoted_path(vexe)} -v2 -no-parallel -b x64 ${os.quoted_path(source_path)} -o ${os.quoted_path(bin_path)}')
 	assert build.exit_code == 0, '${name} build failed:\n${build.output}'
 	run :=
 		os.execute('${os.quoted_path(bin_path)} > ${os.quoted_path(stdout_path)} 2> ${os.quoted_path(stderr_path)}')
@@ -75,7 +75,7 @@ fn run_x64_linux_program_redirected_with_exit(name string, source string) X64Lin
 	os.write_file(source_path, source) or { panic(err) }
 	vexe := os.getenv_opt('VEXE') or { @VEXE }
 	build :=
-		os.execute('${os.quoted_path(vexe)} -v2 -b x64 ${os.quoted_path(source_path)} -o ${os.quoted_path(bin_path)}')
+		os.execute('${os.quoted_path(vexe)} -v2 -no-parallel -b x64 ${os.quoted_path(source_path)} -o ${os.quoted_path(bin_path)}')
 	assert build.exit_code == 0, '${name} build failed:\n${build.output}'
 	run :=
 		os.execute('${os.quoted_path(bin_path)} > ${os.quoted_path(stdout_path)} 2> ${os.quoted_path(stderr_path)}')
@@ -104,7 +104,7 @@ fn run_x64_linux_project_redirected(name string, sources map[string]string) X64L
 	}
 	vexe := os.getenv_opt('VEXE') or { @VEXE }
 	build :=
-		os.execute('${os.quoted_path(vexe)} -v2 -b x64 ${os.quoted_path(tmp_dir)} -o ${os.quoted_path(bin_path)}')
+		os.execute('${os.quoted_path(vexe)} -v2 -no-parallel -b x64 ${os.quoted_path(tmp_dir)} -o ${os.quoted_path(bin_path)}')
 	assert build.exit_code == 0, '${name} build failed:\n${build.output}'
 	run :=
 		os.execute('${os.quoted_path(bin_path)} > ${os.quoted_path(stdout_path)} 2> ${os.quoted_path(stderr_path)}')
@@ -131,7 +131,7 @@ fn x64_build_file_from_dir(vexe string, source_dir string, source_file string, b
 		build.close()
 	}
 	build.set_work_folder(source_dir)
-	build.set_args(['-v2', '-b', 'x64', source_file, '-o', bin_path])
+	build.set_args(['-v2', '-no-parallel', '-b', 'x64', source_file, '-o', bin_path])
 	build.set_redirect_stdio()
 	build.run()
 	build.wait()
@@ -255,7 +255,7 @@ fn run_x64_host_program_redirected(name string, source string) X64HostRunResult 
 	os.write_file(source_path, source) or { panic(err) }
 	vexe := os.getenv_opt('VEXE') or { @VEXE }
 	build :=
-		os.execute('${os.quoted_path(vexe)} -v2 -b x64 ${os.quoted_path(source_path)} -o ${os.quoted_path(bin_path)}')
+		os.execute('${os.quoted_path(vexe)} -v2 -no-parallel -b x64 ${os.quoted_path(source_path)} -o ${os.quoted_path(bin_path)}')
 	if build.exit_code != 0 {
 		assert false, x64_host_build_failure_message(name, tmp_dir, source_path, source, bin_path,
 			build.exit_code, build.output)
@@ -293,7 +293,7 @@ fn run_x64_host_program_redirected_with_exit(name string, source string) X64Host
 	os.write_file(source_path, source) or { panic(err) }
 	vexe := os.getenv_opt('VEXE') or { @VEXE }
 	build :=
-		os.execute('${os.quoted_path(vexe)} -v2 -b x64 ${os.quoted_path(source_path)} -o ${os.quoted_path(bin_path)}')
+		os.execute('${os.quoted_path(vexe)} -v2 -no-parallel -b x64 ${os.quoted_path(source_path)} -o ${os.quoted_path(bin_path)}')
 	if build.exit_code != 0 {
 		assert false, x64_host_build_failure_message(name, tmp_dir, source_path, source, bin_path,
 			build.exit_code, build.output)
@@ -334,7 +334,7 @@ fn run_x64_host_project_redirected(name string, sources map[string]string) X64Ho
 	}
 	vexe := os.getenv_opt('VEXE') or { @VEXE }
 	build :=
-		os.execute('${os.quoted_path(vexe)} -v2 -b x64 ${os.quoted_path(tmp_dir)} -o ${os.quoted_path(bin_path)}')
+		os.execute('${os.quoted_path(vexe)} -v2 -no-parallel -b x64 ${os.quoted_path(tmp_dir)} -o ${os.quoted_path(bin_path)}')
 	if build.exit_code != 0 {
 		assert false, x64_host_build_failure_message(name, tmp_dir, source_root, source_text,
 			bin_path, build.exit_code, build.output)
@@ -1887,7 +1887,7 @@ fn main() {
 		}
 		vexe := os.getenv_opt('VEXE') or { @VEXE }
 		build :=
-			os.execute('${os.quoted_path(vexe)} -v2 -b x64 ${os.quoted_path(source_path)} -o ${os.quoted_path(bin_path)}')
+			os.execute('${os.quoted_path(vexe)} -v2 -no-parallel -b x64 ${os.quoted_path(source_path)} -o ${os.quoted_path(bin_path)}')
 		assert build.exit_code == 0, build.output
 		run := os.execute(os.quoted_path(bin_path))
 		assert run.exit_code == 0, run.output
