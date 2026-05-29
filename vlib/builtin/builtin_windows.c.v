@@ -65,13 +65,35 @@ fn set_stream_binary_mode(stream &C.FILE) {
 
 fn is_terminal(fd int) int {
 	mut mode := u32(0)
-	osfh := voidptr(C._get_osfhandle(fd))
-	C.GetConsoleMode(osfh, voidptr(&mode))
-	return int(mode)
+	$if v2_native_windows_pe_minimal ? {
+		if fd != 0 && fd != 1 && fd != 2 {
+			return 0
+		}
+		handle_id := if fd == 0 {
+			std_input_handle
+		} else if fd == 2 {
+			std_error_handle
+		} else {
+			std_output_handle
+		}
+		handle := C.GetStdHandle(handle_id)
+		if isnil(handle) || handle == voidptr(-1) {
+			return 0
+		}
+		if !C.GetConsoleMode(handle, &mode) {
+			return 0
+		}
+		return int(mode)
+	} $else {
+		osfh := voidptr(C._get_osfhandle(fd))
+		C.GetConsoleMode(osfh, voidptr(&mode))
+		return int(mode)
+	}
 }
 
 // GetStdHandle takes DWORD values. Microsoft defines these as ((DWORD)-N),
 // so spell the rollover values explicitly for native backends.
+const std_input_handle = u32(0xfffffff6)
 const std_output_handle = u32(0xfffffff5)
 const std_error_handle = u32(0xfffffff4)
 const enable_processed_output = 1
@@ -213,6 +235,13 @@ fn write_buf_to_fd_kernel32_status(fd int, buf &u8, buf_len int) int {
 		}
 	}
 	return 0
+}
+
+fn write_buf_to_fd_kernel32_or_exit(fd int, buf &u8, buf_len int) {
+	write_status := write_buf_to_fd_kernel32_status(fd, buf, buf_len)
+	if write_status != 0 {
+		C.ExitProcess(u32(220 + write_status))
+	}
 }
 
 @[markused]

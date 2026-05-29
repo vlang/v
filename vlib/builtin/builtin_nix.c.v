@@ -41,3 +41,5 @@ fn write_buf_to_console(fd int, buf &u8, buf_len int) bool {
 fn write_buf_to_fd_kernel32(fd int, buf &u8, buf_len int) bool {
 	return false
 }
+
+fn write_buf_to_fd_kernel32_or_exit(fd int, buf &u8, buf_len int) {}

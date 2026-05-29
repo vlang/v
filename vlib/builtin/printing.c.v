@@ -186,13 +186,17 @@ fn _write_buf_to_fd(fd int, buf &u8, buf_len int) {
 	}
 	$if windows {
 		$if v2_native_windows_pe_minimal ? {
-			write_status := write_buf_to_fd_kernel32_status(fd, buf, buf_len)
-			if write_status != 0 {
-				C.ExitProcess(u32(220 + write_status))
-			}
-			return
+			write_buf_to_fd_kernel32_or_exit(fd, buf, buf_len)
+		} $else {
+			_write_buf_to_fd_non_minimal(fd, buf, buf_len)
 		}
+	} $else {
+		_write_buf_to_fd_non_minimal(fd, buf, buf_len)
 	}
+}
+
+@[manualfree]
+fn _write_buf_to_fd_non_minimal(fd int, buf &u8, buf_len int) {
 	mut ptr := unsafe { buf }
 	mut remaining_bytes := isize(buf_len)
 	mut x := isize(0)
