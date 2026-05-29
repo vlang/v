@@ -237,6 +237,34 @@ fn write_buf_to_fd_kernel32_status(fd int, buf &u8, buf_len int) int {
 	return 0
 }
 
+@[manualfree]
+fn write_buf_to_fd_windows_non_minimal(fd int, buf &u8, buf_len int) {
+	if buf_len <= 0 {
+		return
+	}
+	mut ptr := unsafe { buf }
+	mut remaining_bytes := isize(buf_len)
+	if write_buf_to_console(fd, ptr, int(remaining_bytes)) {
+		return
+	}
+	mut stream := voidptr(C.stdout)
+	if fd == 2 {
+		stream = voidptr(C.stderr)
+	}
+	mut x := isize(0)
+	unsafe {
+		for remaining_bytes > 0 {
+			x = isize(C.fwrite(ptr, 1, remaining_bytes, stream))
+			if x <= 0 {
+				// GUI programs on Windows may not have a writable stdout/stderr stream.
+				break
+			}
+			ptr += x
+			remaining_bytes -= x
+		}
+	}
+}
+
 fn write_buf_to_fd_kernel32_or_exit(fd int, buf &u8, buf_len int) {
 	write_status := write_buf_to_fd_kernel32_status(fd, buf, buf_len)
 	if write_status != 0 {

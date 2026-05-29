@@ -188,52 +188,42 @@ fn _write_buf_to_fd(fd int, buf &u8, buf_len int) {
 		$if v2_native_windows_pe_minimal ? {
 			write_buf_to_fd_kernel32_or_exit(fd, buf, buf_len)
 		} $else {
-			_write_buf_to_fd_non_minimal(fd, buf, buf_len)
+			write_buf_to_fd_windows_non_minimal(fd, buf, buf_len)
 		}
 	} $else {
-		_write_buf_to_fd_non_minimal(fd, buf, buf_len)
-	}
-}
-
-@[manualfree]
-fn _write_buf_to_fd_non_minimal(fd int, buf &u8, buf_len int) {
-	mut ptr := unsafe { buf }
-	mut remaining_bytes := isize(buf_len)
-	mut x := isize(0)
-	$if windows {
-		if write_buf_to_console(fd, ptr, int(remaining_bytes)) {
-			return
-		}
-	}
-	$if freestanding || vinix || builtin_write_buf_to_fd_should_use_c_write ? {
-		// Flush any pending libc stdio output (from C.puts, C.putchar, etc.)
-		// before writing directly via write() syscall to prevent output reordering.
-		C.fflush(unsafe { nil })
-		unsafe {
-			for remaining_bytes > 0 {
-				x = C.write(fd, ptr, remaining_bytes)
-				if x <= 0 {
-					// Detached/invalid stdio must not trap the process in an infinite loop.
-					break
+		mut ptr := unsafe { buf }
+		mut remaining_bytes := isize(buf_len)
+		mut x := isize(0)
+		$if freestanding || vinix || builtin_write_buf_to_fd_should_use_c_write ? {
+			// Flush any pending libc stdio output (from C.puts, C.putchar, etc.)
+			// before writing directly via write() syscall to prevent output reordering.
+			C.fflush(unsafe { nil })
+			unsafe {
+				for remaining_bytes > 0 {
+					x = C.write(fd, ptr, remaining_bytes)
+					if x <= 0 {
+						// Detached/invalid stdio must not trap the process in an infinite loop.
+						break
+					}
+					ptr += x
+					remaining_bytes -= x
 				}
-				ptr += x
-				remaining_bytes -= x
 			}
-		}
-	} $else {
-		mut stream := voidptr(C.stdout)
-		if fd == 2 {
-			stream = voidptr(C.stderr)
-		}
-		unsafe {
-			for remaining_bytes > 0 {
-				x = isize(C.fwrite(ptr, 1, remaining_bytes, stream))
-				if x <= 0 {
-					// GUI programs on Windows may not have a writable stdout/stderr stream.
-					break
+		} $else {
+			mut stream := voidptr(C.stdout)
+			if fd == 2 {
+				stream = voidptr(C.stderr)
+			}
+			unsafe {
+				for remaining_bytes > 0 {
+					x = isize(C.fwrite(ptr, 1, remaining_bytes, stream))
+					if x <= 0 {
+						// GUI programs on Windows may not have a writable stdout/stderr stream.
+						break
+					}
+					ptr += x
+					remaining_bytes -= x
 				}
-				ptr += x
-				remaining_bytes -= x
 			}
 		}
 	}

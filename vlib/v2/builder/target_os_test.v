@@ -540,7 +540,7 @@ fn assert_no_windows_minimal_targeted_stdio_markused_leaks(used map[string]bool)
 	assert !used['builtin|f|is_terminal'], used.str()
 	assert !used['builtin|f|write_buf_to_console'], used.str()
 	assert !used['builtin|f|unbuffer_stdout'], used.str()
-	assert !windows_x64_markused_key_contains(used, 'write_buf_to_fd_non_minimal'), used.str()
+	assert !windows_x64_markused_key_contains(used, 'write_buf_to_fd_windows_non_minimal'), used.str()
 	assert !windows_x64_markused_key_contains(used, 'setvbuf'), used.str()
 }
 
@@ -554,7 +554,7 @@ fn assert_no_windows_minimal_runtime_retention(built_functions []string) {
 		assert !name.starts_with('binary__'), built_functions.str()
 		assert name != 'builtin__is_terminal', built_functions.str()
 		assert name != 'builtin__write_buf_to_console', built_functions.str()
-		assert !name.contains('write_buf_to_fd_non_minimal'), built_functions.str()
+		assert !name.contains('write_buf_to_fd_windows_non_minimal'), built_functions.str()
 		if name.starts_with('__v_init_consts_') {
 			assert name == '__v_init_consts_main', built_functions.str()
 		}
