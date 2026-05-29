@@ -1060,7 +1060,13 @@ fn pe_emit_runtime_calloc(mut rt PeRuntimeText) {
 	rt.bytes << [u8(0x48), 0x89, 0xc1] // mov rcx, rax
 	rt.bytes << [u8(0xba), 0x08, 0, 0, 0] // mov edx, HEAP_ZERO_MEMORY
 	rt.bytes << [u8(0x4c), 0x8b, 0x44, 0x24, 0x20] // mov r8, [rsp+32]
+	rt.bytes << [u8(0x49), 0x83, 0xc0, 0x18] // add r8, 24
+	size_overflow := pe_emit_jcc8(mut rt.bytes, 0x72) // jc
 	pe_emit_runtime_call_import(mut rt, 'HeapAlloc')
+	rt.bytes << [u8(0x48), 0x85, 0xc0] // test rax, rax
+	alloc_failed := pe_emit_jcc8(mut rt.bytes, 0x74) // je
+	pe_emit_runtime_align_heap_allocated_data(mut rt)
+	rt.bytes << [u8(0x4c), 0x89, 0xd8] // mov rax, r11
 	rt.bytes << [u8(0x48), 0x83, 0xc4, 0x28] // add rsp, 40
 	rt.bytes << u8(0xc3) // ret
 	fail_with_frame := rt.bytes.len
@@ -1072,26 +1078,12 @@ fn pe_emit_runtime_calloc(mut rt PeRuntimeText) {
 	rt.bytes << u8(0xc3) // ret
 	pe_patch_rel8(mut rt.bytes, overflow, fail_without_frame)
 	pe_patch_rel8(mut rt.bytes, no_heap, fail_with_frame)
+	pe_patch_rel8(mut rt.bytes, size_overflow, fail_with_frame)
+	pe_patch_rel8(mut rt.bytes, alloc_failed, fail_with_frame)
 }
 
 fn pe_emit_runtime_free(mut rt PeRuntimeText) {
-	rt.bytes << [u8(0x48), 0x85, 0xc9] // test rcx, rcx
-	null_ptr := pe_emit_jcc8(mut rt.bytes, 0x74) // je
-	rt.bytes << [u8(0x48), 0x83, 0xec, 0x28] // sub rsp, 40
-	rt.bytes << [u8(0x48), 0x89, 0x4c, 0x24, 0x20] // mov [rsp+32], rcx
-	pe_emit_runtime_call_import(mut rt, 'GetProcessHeap')
-	rt.bytes << [u8(0x48), 0x85, 0xc0] // test rax, rax
-	no_heap := pe_emit_jcc8(mut rt.bytes, 0x74) // je
-	rt.bytes << [u8(0x48), 0x89, 0xc1] // mov rcx, rax
-	rt.bytes << [u8(0x31), 0xd2] // xor edx, edx
-	rt.bytes << [u8(0x4c), 0x8b, 0x44, 0x24, 0x20] // mov r8, [rsp+32]
-	pe_emit_runtime_call_import(mut rt, 'HeapFree')
-	cleanup := rt.bytes.len
-	rt.bytes << [u8(0x48), 0x83, 0xc4, 0x28] // add rsp, 40
-	done := rt.bytes.len
-	rt.bytes << u8(0xc3) // ret
-	pe_patch_rel8(mut rt.bytes, null_ptr, done)
-	pe_patch_rel8(mut rt.bytes, no_heap, cleanup)
+	pe_emit_runtime_aligned_free(mut rt)
 }
 
 fn pe_emit_runtime_memcmp(mut rt PeRuntimeText) {

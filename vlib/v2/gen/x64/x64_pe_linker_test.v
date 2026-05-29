@@ -582,13 +582,45 @@ fn test_pe_linker_resolves_calloc_with_internal_zeroed_heap_thunk() {
 	assert calloc_off > 0
 	assert image[calloc_off..calloc_off + 3] == [u8(0x48), 0x89, 0xc8] // mov rax, rcx
 	assert image[calloc_off + 3..calloc_off + 6] == [u8(0x48), 0xf7, 0xe2] // mul rdx
-	assert image[calloc_off + 33..calloc_off + 38] == [
-		u8(0xba),
-		0x08,
-		0,
-		0,
-		0,
-	] // mov edx, HEAP_ZERO_MEMORY
+	mut has_heap_zero_memory_flag := false
+	mut has_aligned_allocation_padding := false
+	mut has_aligned_cookie_store := false
+	mut has_aligned_return_pointer := false
+	runtime_scan_end := first_import_thunk_file_off - 16
+	for off in calloc_off .. runtime_scan_end {
+		if image[off..off + 5] == [u8(0xba), 0x08, 0, 0, 0] {
+			has_heap_zero_memory_flag = true
+		}
+		if image[off..off + 4] == [u8(0x49), 0x83, 0xc0, 0x18] {
+			has_aligned_allocation_padding = true
+		}
+		if image[off..off + 15] == [
+			u8(0x49),
+			0x89,
+			0xc3,
+			0x49,
+			0x83,
+			0xc3,
+			0x17,
+			0x49,
+			0x83,
+			0xe3,
+			0xf0,
+			0x49,
+			0x89,
+			0x43,
+			0xf8,
+		] {
+			has_aligned_cookie_store = true
+		}
+		if image[off..off + 3] == [u8(0x4c), 0x89, 0xd8] {
+			has_aligned_return_pointer = true
+		}
+	}
+	assert has_heap_zero_memory_flag
+	assert has_aligned_allocation_padding
+	assert has_aligned_cookie_store
+	assert has_aligned_return_pointer
 }
 
 fn test_pe_linker_resolves_strlen_with_internal_runtime_thunk() {
@@ -899,11 +931,11 @@ fn test_pe_linker_resolves_free_with_internal_heap_thunk() {
 	assert image[free_off + 5..free_off + 9] == [u8(0x48), 0x83, 0xec, 0x28] // sub rsp, 40
 	assert image[free_off + 9..free_off + 14] == [
 		u8(0x48),
-		0x89,
-		0x4c,
-		0x24,
-		0x20,
-	] // mov [rsp+32], rcx
+		0x8b,
+		0x41,
+		0xf8,
+		0x48,
+	] // mov rax, [rcx-8]; ...
 }
 
 fn test_pe_linker_resolves_array_rune_string_with_internal_runtime_thunk() {

@@ -5383,6 +5383,10 @@ fn (mut b Builder) build_call(expr ast.CallExpr) ValueID {
 		return b.mod.add_instr(.call_indirect, b.cur_block, ret_type, indirect_operands)
 	}
 
+	if fn_name in ['array__slice', 'array__slice_ni', 'builtin__array__slice',
+		'builtin__array__slice_ni'] {
+		ret_type = b.get_array_type()
+	}
 	fn_ref := b.get_or_create_fn_ref(fn_name, ret_type)
 	mut operands := []ValueID{cap: args.len + 1}
 	operands << fn_ref

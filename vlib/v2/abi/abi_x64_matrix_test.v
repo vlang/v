@@ -4,8 +4,14 @@
 
 module abi
 
+import os
 import v2.mir
+import v2.parser
+import v2.pref
 import v2.ssa
+import v2.token
+import v2.transformer
+import v2.types as vtypes
 
 fn register_x64_matrix_struct_bytes(mut ssa_mod ssa.Module, size int) ssa.TypeID {
 	i8_t := ssa_mod.type_store.get_int(8)
@@ -21,6 +27,32 @@ fn register_x64_matrix_struct_fields(mut ssa_mod ssa.Module, fields []ssa.TypeID
 		kind:   .struct_t
 		fields: fields
 	})
+}
+
+fn build_x64_matrix_ssa_for_source_test(code string, target_os string) &ssa.Module {
+	tmp_file := os.join_path(os.vtmp_dir(), 'v2_abi_x64_matrix_source_${os.getpid()}.v')
+	os.write_file(tmp_file, code) or { panic(err) }
+	defer {
+		os.rm(tmp_file) or {}
+	}
+	mut prefs := &pref.Preferences{
+		backend:     .x64
+		no_parallel: true
+	}
+	prefs.target_os = target_os
+	mut file_set := token.FileSet.new()
+	mut par := parser.Parser.new(prefs)
+	files := par.parse_files([tmp_file], mut file_set)
+	mut env := vtypes.Environment.new()
+	mut checker := vtypes.Checker.new(prefs, file_set, env)
+	checker.check_files(files)
+	mut trans := transformer.Transformer.new_with_pref(files, env, prefs)
+	transformed := trans.transform_files(files)
+	mut ssa_mod := ssa.Module.new('abi_x64_matrix_source')
+	mut b := ssa.Builder.new_with_env(ssa_mod, env)
+	b.target_os = target_os
+	b.build_all(transformed)
+	return ssa_mod
 }
 
 fn assert_abi_value_class(class mir.AbiValueClass, mode mir.AbiPassMode, classes []mir.AbiEightbyteClass) {
@@ -211,6 +243,61 @@ fn test_x64_windows_callsite_return_size_matrix_classification() {
 		assert call_instr.abi_ret_indirect == should_be_indirect
 		assert (call_instr.op == .call_sret) == should_be_indirect
 	}
+}
+
+fn test_x64_windows_array_slice_call_return_lowers_to_sret() {
+	ssa_mod := build_x64_matrix_ssa_for_source_test('
+module main
+
+struct array {
+	data         voidptr
+	len          int
+	cap          int
+	element_size int
+}
+
+fn make_array() []int {
+	return [1, 2, 3]
+}
+
+fn main() {
+	mut a := make_array()
+	a << 4
+	b := a[1..3]
+	_ = b
+}
+',
+		'windows')
+	mut slice_value_id := ssa.ValueID(-1)
+	mut slice_instr := ssa.Instruction{}
+	for val in ssa_mod.values {
+		if val.kind != .instruction {
+			continue
+		}
+		instr := ssa_mod.instrs[val.index]
+		if instr.op != .call || instr.operands.len == 0 {
+			continue
+		}
+		callee := instr.operands[0]
+		if callee <= 0 || callee >= ssa_mod.values.len {
+			continue
+		}
+		if ssa_mod.values[callee].name in ['array__slice', 'builtin__array__slice'] {
+			slice_value_id = val.id
+			slice_instr = instr
+			break
+		}
+	}
+	assert slice_value_id >= 0
+	assert ssa_mod.type_store.types[slice_instr.typ].kind == .struct_t
+
+	mut mir_mod := mir.lower_from_ssa(ssa_mod)
+	lower_with_x64_abi(mut mir_mod, .x64, .windows)
+	lowered := mir_mod.instrs[mir_mod.values[slice_value_id].index]
+	assert lowered.op == .call_sret
+	assert lowered.abi_ret_indirect
+	assert lowered.abi_arg_class.len >= 3
+	assert lowered.abi_arg_class[0] == .indirect
 }
 
 fn test_x64_windows_direct_callsite_struct_size_matrix_classification() {

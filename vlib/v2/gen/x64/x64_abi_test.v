@@ -269,6 +269,40 @@ fn test_x64_windows_codegen_call_sret_shifts_user_arg_registers() {
 	assert contains_bytes(code, [u8(0xf2), 0x0f, 0x10, 0x55]) // second user float -> XMM2
 }
 
+fn test_x64_windows_codegen_call_sret_with_indirect_receiver_shifts_user_args() {
+	mut mod := new_x64_abi_sret_indirect_receiver_call_module()
+	mut gen := Gen.new_with_format_and_abi(&mod, .coff, .windows)
+	gen.gen()
+	code := gen.coff.text_data
+
+	end_arg := index_bytes(code, [u8(0x41), 0xb9, 0x03, 0, 0, 0]) // end -> R9
+	start_arg := index_bytes(code, [u8(0x41), 0xb8, 0x01, 0, 0, 0]) // start -> R8
+	receiver_arg := index_bytes(code, [u8(0x48), 0x89, 0xc2]) // receiver pointer -> RDX
+	hidden_sret := index_bytes(code, [u8(0x48), 0x89, 0xc1]) // hidden sret pointer -> RCX
+
+	assert end_arg >= 0
+	assert start_arg > end_arg
+	assert receiver_arg > start_arg
+	assert hidden_sret > receiver_arg
+}
+
+fn test_x64_windows_codegen_sret_callee_prologue_shifts_indirect_receiver_and_scalars() {
+	mut mod := new_x64_abi_sret_indirect_receiver_callee_module()
+	mut gen := Gen.new_with_format_and_abi(&mod, .coff, .windows)
+	gen.gen()
+	code := gen.coff.text_data
+
+	receiver_from_rdx := index_bytes(code, [u8(0x49), 0x89, 0xd2]) // mov r10, rdx
+	receiver_from_rcx := index_bytes(code, [u8(0x49), 0x89, 0xca]) // mov r10, rcx
+	start_from_r8 := index_bytes(code, [u8(0x4c), 0x89, 0x45]) // mov [rbp+disp8], r8
+	end_from_r9 := index_bytes(code, [u8(0x4c), 0x89, 0x4d]) // mov [rbp+disp8], r9
+
+	assert receiver_from_rdx >= 0
+	assert receiver_from_rcx < 0
+	assert start_from_r8 > receiver_from_rdx
+	assert end_from_r9 > start_from_r8
+}
+
 fn test_x64_sysv_codegen_direct_integer_pair_call_result_stores_rax_and_rdx() {
 	mut mod := new_x64_abi_pair_return_call_module()
 	mut gen := Gen.new_with_format_and_abi(&mod, .elf, .sysv)
@@ -798,6 +832,189 @@ fn new_x64_abi_call_module(sret bool) mir.Module {
 		name:   'caller'
 		typ:    0
 		blocks: [ssa.BlockID(0)]
+	}
+	return m
+}
+
+fn new_x64_abi_sret_indirect_receiver_call_module() mir.Module {
+	mut ts := ssa.TypeStore.new()
+	int_t := ts.get_int(64)
+	array_t := ts.register(ssa.Type{
+		kind:   .struct_t
+		fields: [int_t, int_t, int_t, int_t]
+	})
+	mut m := mir.Module{
+		type_store: unsafe { *ts }
+		values:     []mir.Value{len: 8}
+		instrs:     []mir.Instruction{len: 2}
+		blocks:     []mir.BasicBlock{len: 1}
+		funcs:      []mir.Function{len: 1}
+	}
+	m.values[0] = mir.Value{
+		id:    0
+		typ:   array_t
+		kind:  .func_ref
+		name:  'array__slice'
+		index: 0
+	}
+	m.values[1] = mir.Value{
+		id:    1
+		typ:   array_t
+		kind:  .argument
+		name:  'receiver'
+		index: 1
+	}
+	m.values[2] = mir.Value{
+		id:    2
+		typ:   int_t
+		kind:  .constant
+		name:  '1'
+		index: 2
+	}
+	m.values[3] = mir.Value{
+		id:    3
+		typ:   int_t
+		kind:  .constant
+		name:  '3'
+		index: 3
+	}
+	m.values[4] = mir.Value{
+		id:    4
+		typ:   array_t
+		kind:  .instruction
+		name:  'slice'
+		index: 0
+	}
+	m.values[5] = mir.Value{
+		id:    5
+		typ:   int_t
+		kind:  .instruction
+		name:  'ret'
+		index: 1
+	}
+	m.values[6] = mir.Value{
+		id:    6
+		typ:   int_t
+		kind:  .basic_block
+		name:  'entry'
+		index: 0
+	}
+	m.values[7] = mir.Value{
+		id:    7
+		typ:   int_t
+		kind:  .constant
+		name:  '0'
+		index: 7
+	}
+	m.instrs[0] = mir.Instruction{
+		op:               .call_sret
+		operands:         [ssa.ValueID(0), 1, 2, 3]
+		typ:              array_t
+		block:            0
+		abi_ret_indirect: true
+		abi_arg_class:    [.indirect, .in_reg, .in_reg]
+	}
+	m.instrs[1] = mir.Instruction{
+		op:       .ret
+		operands: [ssa.ValueID(7)]
+		typ:      0
+		block:    0
+	}
+	m.blocks[0] = mir.BasicBlock{
+		id:     0
+		val_id: 6
+		name:   'entry'
+		parent: 0
+		instrs: [ssa.ValueID(4), 5]
+	}
+	m.funcs[0] = mir.Function{
+		id:              0
+		name:            'caller'
+		typ:             int_t
+		blocks:          [ssa.BlockID(0)]
+		params:          [ssa.ValueID(1)]
+		abi_param_class: [.indirect]
+	}
+	return m
+}
+
+fn new_x64_abi_sret_indirect_receiver_callee_module() mir.Module {
+	mut ts := ssa.TypeStore.new()
+	int_t := ts.get_int(64)
+	array_t := ts.register(ssa.Type{
+		kind:   .struct_t
+		fields: [int_t, int_t, int_t, int_t]
+	})
+	mut m := mir.Module{
+		type_store: unsafe { *ts }
+		values:     []mir.Value{len: 6}
+		instrs:     []mir.Instruction{len: 1}
+		blocks:     []mir.BasicBlock{len: 1}
+		funcs:      []mir.Function{len: 1}
+	}
+	m.values[0] = mir.Value{
+		id:    0
+		typ:   array_t
+		kind:  .argument
+		name:  'receiver'
+		index: 0
+	}
+	m.values[1] = mir.Value{
+		id:    1
+		typ:   int_t
+		kind:  .argument
+		name:  'start'
+		index: 1
+	}
+	m.values[2] = mir.Value{
+		id:    2
+		typ:   int_t
+		kind:  .argument
+		name:  'end'
+		index: 2
+	}
+	m.values[3] = mir.Value{
+		id:    3
+		typ:   array_t
+		kind:  .instruction
+		name:  'ret'
+		index: 0
+	}
+	m.values[4] = mir.Value{
+		id:    4
+		typ:   int_t
+		kind:  .basic_block
+		name:  'entry'
+		index: 0
+	}
+	m.values[5] = mir.Value{
+		id:    5
+		typ:   int_t
+		kind:  .constant
+		name:  '0'
+		index: 5
+	}
+	m.instrs[0] = mir.Instruction{
+		op:       .ret
+		operands: [ssa.ValueID(0)]
+		typ:      0
+		block:    0
+	}
+	m.blocks[0] = mir.BasicBlock{
+		id:     0
+		val_id: 4
+		name:   'entry'
+		parent: 0
+		instrs: [ssa.ValueID(3)]
+	}
+	m.funcs[0] = mir.Function{
+		id:               0
+		name:             'array__slice'
+		typ:              array_t
+		blocks:           [ssa.BlockID(0)]
+		params:           [ssa.ValueID(0), 1, 2]
+		abi_ret_indirect: true
+		abi_param_class:  [.indirect, .in_reg, .in_reg]
 	}
 	return m
 }
