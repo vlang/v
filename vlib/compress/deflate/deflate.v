@@ -224,9 +224,9 @@ pub fn decompress_raw_with_consumed(data []u8) !RawInflateResult {
 	}
 }
 
-// decompress_with_callback decompresses a zlib/gzip/raw stream (RFC 1950, RFC 1952) using a callback for chunked
-// delivery. The callback receives chunks of decompressed data and should return the chunk length to continue, or
-// 0 to abort. Returns the total decompressed length.
+// decompress_with_callback decompresses a zlib/gzip/raw stream (RFC 1950, RFC 1952) using a callback for chunked delivery.
+// The callback receives chunks of decompressed data and should return the chunk length to continue, or 0 to abort.
+// Returns the total decompressed length.
 pub fn decompress_with_callback(data []u8, cb ChunkCallback, userdata voidptr) !int {
 	if data.len >= 2 {
 		// gzip magic: 0x1f 0x8b
