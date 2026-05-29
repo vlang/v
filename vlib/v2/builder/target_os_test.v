@@ -364,6 +364,76 @@ fn main() {
 	assert_no_windows_minimal_targeted_stdio_markused_leaks(used)
 }
 
+fn test_windows_x64_array_slice_call_uses_sret_and_integer_bounds() {
+	mir_mod := build_checked_windows_x64_mir_sample("module main
+
+fn make_array() []int {
+	return [1, 2, 3]
+}
+
+fn main() {
+	mut a := make_array()
+	if a.len == 3 && a.cap >= 3 && a[0] == 1 && a[2] == 3 {
+		print('N')
+	} else {
+		print('n')
+	}
+	a << 4
+	if a.len == 4 && a[1] == 2 && a[3] == 4 {
+		print('G')
+	} else {
+		print('g')
+	}
+	b := a[1..3]
+	if b.len == 2 && b[0] == 2 && b[1] == 3 {
+		print('S')
+	} else {
+		print('s')
+	}
+	unsafe {
+		a.free()
+	}
+	println('F')
+}
+", true)
+	mut found_callee := false
+	for f in mir_mod.funcs {
+		if f.name != 'builtin__array__slice' {
+			continue
+		}
+		found_callee = true
+		assert f.abi_ret_indirect
+		assert f.abi_param_class == [.indirect, .in_reg, .in_reg]
+	}
+	assert found_callee
+
+	mut found_call := false
+	for val in mir_mod.values {
+		if val.kind != .instruction {
+			continue
+		}
+		instr := mir_mod.instrs[val.index]
+		if instr.operands.len == 0 {
+			continue
+		}
+		callee := instr.operands[0]
+		if callee <= 0 || callee >= mir_mod.values.len
+			|| mir_mod.values[callee].name != 'builtin__array__slice' {
+			continue
+		}
+		found_call = true
+		assert instr.op == .call_sret
+		assert instr.abi_ret_indirect
+		assert instr.abi_arg_class == [.indirect, .in_reg, .in_reg]
+		assert instr.operands.len >= 4
+		start_arg := instr.operands[2]
+		end_arg := instr.operands[3]
+		assert mir_mod.type_store.types[mir_mod.values[start_arg].typ].kind == .int_t
+		assert mir_mod.type_store.types[mir_mod.values[end_arg].typ].kind == .int_t
+	}
+	assert found_call
+}
+
 fn test_windows_x64_println_links_pe_image() {
 	linked := build_windows_x64_sample("module main\nfn main() { println('x') }\n", true, true)
 
@@ -612,6 +682,56 @@ fn build_windows_x64_markused_sample(source string) map[string]bool {
 	})
 	assert used.len > 0
 	return used
+}
+
+fn build_checked_windows_x64_mir_sample(source string, optimize bool) mir.Module {
+	tmp_dir := os.join_path(os.temp_dir(),
+		'v2_builder_windows_x64_checked_mir_${os.getpid()}_${optimize}')
+	os.rmdir_all(tmp_dir) or {}
+	os.mkdir_all(tmp_dir) or { panic(err) }
+	defer {
+		os.rmdir_all(tmp_dir) or {}
+	}
+
+	main_path := os.join_path(tmp_dir, 'main.v')
+	os.write_file(main_path, source) or { panic(err) }
+
+	mut prefs := pref.new_preferences()
+	prefs.backend = .x64
+	prefs.arch = .x64
+	prefs.target_os = 'windows'
+	prefs.no_parallel = true
+	prefs.no_parallel_transform = true
+	prefs.no_cache = true
+
+	mut b := new_builder(&prefs)
+	b.user_files = [main_path]
+	b.files = b.parse_files([main_path])
+	b.env = b.type_check_files()
+
+	mut trans := transformer.Transformer.new_with_pref(b.files, b.env, b.pref)
+	trans.set_file_set(b.file_set)
+	b.files = trans.transform_files(b.files)
+	b.used_fn_keys = markused.mark_used_with_options(b.files, b.env, markused.MarkUsedOptions{
+		minimal_runtime_roots: true
+	})
+	assert b.used_fn_keys.len > 0
+
+	mut ssa_mod := ssa.Module.new('main')
+	mut ssa_builder := ssa.Builder.new_with_env(ssa_mod, b.env)
+	ssa_builder.guard_invalid_type_payloads = true
+	ssa_builder.target_os = 'windows'
+	ssa_builder.minimal_runtime_roots = true
+	ssa_builder.used_fn_keys = b.used_fn_keys.clone()
+	ssa_builder.build_all(b.files)
+	if optimize {
+		ssa_optimize.optimize(mut ssa_mod)
+	}
+
+	mut mir_mod := mir.lower_from_ssa(ssa_mod)
+	abi.lower_with_x64_abi(mut mir_mod, .x64, .windows)
+	insel.select(mut mir_mod, .x64)
+	return mir_mod
 }
 
 fn windows_x64_markused_key_contains(used map[string]bool, needle string) bool {

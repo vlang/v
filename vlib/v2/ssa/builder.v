@@ -3784,12 +3784,14 @@ fn (mut b Builder) build_basic_literal(lit ast.BasicLiteral) ValueID {
 				return b.mod.get_or_add_const(typ, lit.value)
 			}
 			mut typ := b.expr_type(ast.Expr(lit))
-			// Number literals should never have bool (i1) type. This can happen when
-			// expr_type resolves a literal like "1" in "-1" to bool in && contexts.
-			// Override to i32 to prevent 1-bit arithmetic overflow in negation.
+			// Number literals should never inherit non-numeric checked types. This can
+			// happen when expression positions map a literal to an enclosing expression.
+			// Also keep the older i1 guard for negation/boolean contexts.
 			if typ != 0 && int(typ) < b.mod.type_store.types.len {
 				t0 := b.mod.type_store.types[typ]
-				if t0.kind == .int_t && t0.width == 1 {
+				if t0.kind !in [.int_t, .float_t] {
+					typ = b.mod.type_store.get_int(64)
+				} else if t0.kind == .int_t && t0.width == 1 {
 					typ = b.mod.type_store.get_int(32)
 				}
 			}
