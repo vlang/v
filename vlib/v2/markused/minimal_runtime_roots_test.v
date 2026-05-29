@@ -249,6 +249,189 @@ fn test_minimal_runtime_roots_keep_functions_used_as_values() {
 	assert !used[unused_key]
 }
 
+fn test_minimal_runtime_roots_keep_functions_used_in_composite_literals() {
+	mut env := types.Environment.new()
+	files := [
+		ast.File{
+			mod:   'main'
+			name:  'main.v'
+			stmts: [
+				ast.Stmt(ast.StructDecl{
+					name:   'Hooks'
+					fields: [
+						ast.FieldDecl{
+							name: 'cb'
+						},
+					]
+				}),
+				ast.Stmt(ast.FnDecl{
+					name:  'main'
+					typ:   ast.FnType{}
+					pos:   minimal_pos(220)
+					stmts: [
+						ast.Stmt(ast.AssignStmt{
+							op:  .decl_assign
+							lhs: [ast.Expr(minimal_ident('hook', 221))]
+							rhs: [
+								ast.Expr(ast.InitExpr{
+									typ:    ast.Expr(minimal_ident('Hooks', 222))
+									fields: [
+										ast.FieldInit{
+											name:  'cb'
+											value: ast.Expr(minimal_ident('struct_cleanup', 223))
+										},
+									]
+									pos:    minimal_pos(222)
+								}),
+							]
+							pos: minimal_pos(221)
+						}),
+						ast.Stmt(ast.AssignStmt{
+							op:  .decl_assign
+							lhs: [
+								ast.Expr(minimal_ident('items', 224)),
+							]
+							rhs: [
+								ast.Expr(ast.ArrayInitExpr{
+									exprs: [
+										ast.Expr(minimal_ident('array_cleanup', 225)),
+									]
+									pos:   minimal_pos(224)
+								}),
+							]
+							pos: minimal_pos(224)
+						}),
+						ast.Stmt(ast.AssignStmt{
+							op:  .decl_assign
+							lhs: [
+								ast.Expr(minimal_ident('init_items', 226)),
+							]
+							rhs: [
+								ast.Expr(ast.ArrayInitExpr{
+									init: ast.Expr(minimal_ident('init_cleanup', 227))
+									pos:  minimal_pos(226)
+								}),
+							]
+							pos: minimal_pos(226)
+						}),
+						ast.Stmt(ast.AssignStmt{
+							op:  .decl_assign
+							lhs: [
+								ast.Expr(minimal_ident('tuple', 228)),
+							]
+							rhs: [
+								ast.Expr(ast.Tuple{
+									exprs: [
+										ast.Expr(minimal_ident('tuple_cleanup', 229)),
+									]
+									pos:   minimal_pos(228)
+								}),
+							]
+							pos: minimal_pos(228)
+						}),
+						ast.Stmt(ast.AssignStmt{
+							op:  .decl_assign
+							lhs: [
+								ast.Expr(minimal_ident('assoc_hook', 230)),
+							]
+							rhs: [
+								ast.Expr(ast.AssocExpr{
+									typ:    ast.Expr(minimal_ident('Hooks', 231))
+									expr:   ast.Expr(minimal_ident('hook', 232))
+									fields: [
+										ast.FieldInit{
+											name:  'cb'
+											value: ast.Expr(minimal_ident('assoc_cleanup', 233))
+										},
+									]
+									pos:    minimal_pos(230)
+								}),
+							]
+							pos: minimal_pos(230)
+						}),
+						ast.Stmt(ast.AssignStmt{
+							op:  .decl_assign
+							lhs: [
+								ast.Expr(minimal_ident('lookup', 234)),
+							]
+							rhs: [
+								ast.Expr(ast.MapInitExpr{
+									keys: [
+										ast.Expr(ast.StringLiteral{
+											value: 'cleanup'
+											pos:   minimal_pos(235)
+										}),
+									]
+									vals: [
+										ast.Expr(minimal_ident('map_cleanup', 236)),
+									]
+									pos:  minimal_pos(234)
+								}),
+							]
+							pos: minimal_pos(234)
+						}),
+					]
+				}),
+				ast.Stmt(ast.FnDecl{
+					name: 'struct_cleanup'
+					typ:  ast.FnType{}
+					pos:  minimal_pos(237)
+				}),
+				ast.Stmt(ast.FnDecl{
+					name: 'array_cleanup'
+					typ:  ast.FnType{}
+					pos:  minimal_pos(238)
+				}),
+				ast.Stmt(ast.FnDecl{
+					name: 'init_cleanup'
+					typ:  ast.FnType{}
+					pos:  minimal_pos(239)
+				}),
+				ast.Stmt(ast.FnDecl{
+					name: 'tuple_cleanup'
+					typ:  ast.FnType{}
+					pos:  minimal_pos(240)
+				}),
+				ast.Stmt(ast.FnDecl{
+					name: 'assoc_cleanup'
+					typ:  ast.FnType{}
+					pos:  minimal_pos(241)
+				}),
+				ast.Stmt(ast.FnDecl{
+					name: 'map_cleanup'
+					typ:  ast.FnType{}
+					pos:  minimal_pos(242)
+				}),
+				ast.Stmt(ast.FnDecl{
+					name: 'unused_cleanup'
+					typ:  ast.FnType{}
+					pos:  minimal_pos(243)
+				}),
+			]
+		},
+	]
+	used := mark_used_with_options(files, env, MarkUsedOptions{
+		minimal_runtime_roots: true
+	})
+	main_key := decl_key('main', files[0].stmts[1] as ast.FnDecl, env)
+	struct_key := decl_key('main', files[0].stmts[2] as ast.FnDecl, env)
+	array_key := decl_key('main', files[0].stmts[3] as ast.FnDecl, env)
+	init_key := decl_key('main', files[0].stmts[4] as ast.FnDecl, env)
+	tuple_key := decl_key('main', files[0].stmts[5] as ast.FnDecl, env)
+	assoc_key := decl_key('main', files[0].stmts[6] as ast.FnDecl, env)
+	map_key := decl_key('main', files[0].stmts[7] as ast.FnDecl, env)
+	unused_key := decl_key('main', files[0].stmts[8] as ast.FnDecl, env)
+
+	assert used[main_key]
+	assert used[struct_key]
+	assert used[array_key]
+	assert used[init_key]
+	assert used[tuple_key]
+	assert used[assoc_key]
+	assert used[map_key]
+	assert !used[unused_key]
+}
+
 fn test_minimal_runtime_roots_do_not_treat_c_globals_as_v_functions() {
 	mut env := types.Environment.new()
 	files := [

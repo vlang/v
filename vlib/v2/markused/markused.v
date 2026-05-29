@@ -2110,8 +2110,10 @@ fn (mut w Walker) walk_expr(expr ast.Expr, mod_name string) {
 		ast.ArrayInitExpr {
 			w.walk_expr(expr.typ, mod_name)
 			for item in expr.exprs {
+				w.mark_fn_value_expr(item, mod_name)
 				w.walk_expr(item, mod_name)
 			}
+			w.mark_fn_value_expr(expr.init, mod_name)
 			w.walk_expr(expr.init, mod_name)
 			w.walk_expr(expr.cap, mod_name)
 			w.walk_expr(expr.len, mod_name)
@@ -2125,6 +2127,7 @@ fn (mut w Walker) walk_expr(expr ast.Expr, mod_name string) {
 			w.walk_expr(expr.typ, mod_name)
 			w.walk_expr(expr.expr, mod_name)
 			for field in expr.fields {
+				w.mark_fn_value_expr(field.value, mod_name)
 				w.walk_expr(field.value, mod_name)
 			}
 		}
@@ -2198,6 +2201,7 @@ fn (mut w Walker) walk_expr(expr ast.Expr, mod_name string) {
 			w.mark_interface_conversion_methods(expr.typ, expr, mod_name)
 			w.walk_expr(expr.typ, mod_name)
 			for field in expr.fields {
+				w.mark_fn_value_expr(field.value, mod_name)
 				w.walk_expr(field.value, mod_name)
 			}
 		}
@@ -2221,9 +2225,11 @@ fn (mut w Walker) walk_expr(expr ast.Expr, mod_name string) {
 		ast.MapInitExpr {
 			w.walk_expr(expr.typ, mod_name)
 			for key in expr.keys {
+				w.mark_fn_value_expr(key, mod_name)
 				w.walk_expr(key, mod_name)
 			}
 			for value in expr.vals {
+				w.mark_fn_value_expr(value, mod_name)
 				w.walk_expr(value, mod_name)
 			}
 		}
@@ -2277,6 +2283,7 @@ fn (mut w Walker) walk_expr(expr ast.Expr, mod_name string) {
 		}
 		ast.Tuple {
 			for value in expr.exprs {
+				w.mark_fn_value_expr(value, mod_name)
 				w.walk_expr(value, mod_name)
 			}
 		}

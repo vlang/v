@@ -658,12 +658,14 @@ fn (mut t Transformer) transform_slice_index_expr(lhs ast.Expr, orig_lhs ast.Exp
 			}
 			types.ArrayFixed {
 				elem_c_name := lhs_type.elem_type.name()
+				start_ident := t.gen_typed_temp_ident(types.Type(types.int_))
+				end_ident := t.gen_typed_temp_ident(types.Type(types.int_))
 				len_expr := ast.Expr(ast.InfixExpr{
 					op:  .minus
-					lhs: end_expr
-					rhs: start_expr
+					lhs: ast.Expr(end_ident)
+					rhs: ast.Expr(start_ident)
 				})
-				return ast.CallExpr{
+				slice_call := ast.Expr(ast.CallExpr{
 					lhs:  ast.Ident{
 						name: 'new_array_from_c_array'
 					}
@@ -682,8 +684,27 @@ fn (mut t Transformer) transform_slice_index_expr(lhs ast.Expr, orig_lhs ast.Exp
 							op:   .amp
 							expr: ast.IndexExpr{
 								lhs:  lhs
-								expr: start_expr
+								expr: ast.Expr(start_ident)
 							}
+						}),
+					]
+				})
+				return ast.UnsafeExpr{
+					stmts: [
+						ast.Stmt(ast.AssignStmt{
+							op:  .decl_assign
+							lhs: [ast.Expr(start_ident)]
+							rhs: [start_expr]
+							pos: start_ident.pos
+						}),
+						ast.Stmt(ast.AssignStmt{
+							op:  .decl_assign
+							lhs: [ast.Expr(end_ident)]
+							rhs: [end_expr]
+							pos: end_ident.pos
+						}),
+						ast.Stmt(ast.ExprStmt{
+							expr: slice_call
 						}),
 					]
 				}

@@ -35,7 +35,7 @@ pub fn lower_with_x64_abi(mut m mir.Module, arch pref.Arch, x64_abi X64Abi) {
 		mut f := &m.funcs[i]
 		fn_by_name[f.name] = i
 		f.abi_ret_class = abi_value_class(m, f.typ, arch, x64_abi)
-		f.abi_ret_indirect = needs_indirect(m, f.typ, arch, x64_abi)
+		f.abi_ret_indirect = abi_class_is_indirect(f.abi_ret_class, m, f.typ, arch, x64_abi)
 		f.abi_param_class = []mir.AbiArgClass{len: f.params.len, init: .in_reg}
 		f.abi_param_classes = []mir.AbiValueClass{len: f.params.len}
 		f.abi_param_layouts = []mir.AbiValueLayout{len: f.params.len}
@@ -53,7 +53,7 @@ pub fn lower_with_x64_abi(mut m mir.Module, arch pref.Arch, x64_abi X64Abi) {
 			if arch == .x64 && x64_abi == .sysv {
 				f.abi_param_layouts[pi] = sysv_assign_value_layout(param_class, mut param_loc_state)
 			}
-			if needs_indirect(m, param_typ, arch, x64_abi) {
+			if abi_class_is_indirect(param_class, m, param_typ, arch, x64_abi) {
 				f.abi_param_class[pi] = .indirect
 			}
 		}
@@ -86,6 +86,13 @@ fn needs_indirect(m mir.Module, typ_id int, arch pref.Arch, x64_abi X64Abi) bool
 			size > 16
 		}
 	}
+}
+
+fn abi_class_is_indirect(value_class mir.AbiValueClass, m mir.Module, typ_id int, arch pref.Arch, x64_abi X64Abi) bool {
+	if value_class.mode == .indirect {
+		return true
+	}
+	return needs_indirect(m, typ_id, arch, x64_abi)
 }
 
 fn abi_value_class(m mir.Module, typ_id int, arch pref.Arch, x64_abi X64Abi) mir.AbiValueClass {
@@ -321,7 +328,7 @@ fn sysv_assign_value_layout(value_class mir.AbiValueClass, mut state SysVLocatio
 		}
 	}
 	if value_class.mode == .indirect || value_class.classes == [mir.AbiEightbyteClass.memory] {
-		return sysv_stack_value_layout(value_class, mut state)
+		return sysv_indirect_pointer_layout(value_class, mut state)
 	}
 
 	mut needed_int := 0
@@ -379,6 +386,31 @@ fn sysv_assign_value_layout(value_class mir.AbiValueClass, mut state SysVLocatio
 				}
 			}
 		}
+	}
+	return mir.AbiValueLayout{
+		value_class: value_class
+		locs:        locs
+	}
+}
+
+fn sysv_indirect_pointer_layout(value_class mir.AbiValueClass, mut state SysVLocationState) mir.AbiValueLayout {
+	mut locs := []mir.AbiLocation{cap: 1}
+	if state.int_regs < sysv_int_arg_reg_count {
+		locs << mir.AbiLocation{
+			kind:   .int_reg
+			index:  state.int_regs
+			offset: 0
+			class:  .integer
+		}
+		state.int_regs++
+	} else {
+		locs << mir.AbiLocation{
+			kind:   .stack
+			index:  state.stack_slots
+			offset: 0
+			class:  .integer
+		}
+		state.stack_slots++
 	}
 	return mir.AbiValueLayout{
 		value_class: value_class
@@ -470,7 +502,7 @@ fn lower_calls(mut m mir.Module, arch pref.Arch, x64_abi X64Abi, fn_by_name map[
 		}
 		ret_typ, sig_param_types := call_signature(m, instr, fn_by_name)
 		ret_class := abi_value_class(m, ret_typ, arch, x64_abi)
-		ret_indirect := needs_indirect(m, ret_typ, arch, x64_abi)
+		ret_indirect := abi_class_is_indirect(ret_class, m, ret_typ, arch, x64_abi)
 		num_args := instr.operands.len - 1
 		instr.abi_arg_class = []mir.AbiArgClass{len: num_args, init: .in_reg}
 		instr.abi_arg_classes = []mir.AbiValueClass{len: num_args}
@@ -493,7 +525,7 @@ fn lower_calls(mut m mir.Module, arch pref.Arch, x64_abi X64Abi, fn_by_name map[
 				instr.abi_arg_layouts[arg_idx] = sysv_assign_value_layout(arg_class, mut
 					arg_loc_state)
 			}
-			if needs_indirect(m, arg_typ, arch, x64_abi) {
+			if abi_class_is_indirect(arg_class, m, arg_typ, arch, x64_abi) {
 				instr.abi_arg_class[arg_idx] = .indirect
 			}
 		}

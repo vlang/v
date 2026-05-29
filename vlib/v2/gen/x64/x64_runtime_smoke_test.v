@@ -1584,6 +1584,31 @@ fn x64_windows_noscan_array_grow_free_slice_stdout() []u8 {
 '.bytes()
 }
 
+fn x64_windows_rune_array_string_free_source() string {
+	return "module main
+
+fn main() {
+	runes := [rune(79), 75]
+	mut s := runes.string()
+	if s.len == 2 && s == 'OK' {
+		print('R')
+	} else {
+		print('r')
+	}
+	print(s)
+	unsafe {
+		s.free()
+	}
+	println('F')
+}
+"
+}
+
+fn x64_windows_rune_array_string_free_stdout() []u8 {
+	return 'ROKF
+'.bytes()
+}
+
 fn x64_fizz_buzz_core_source() string {
 	return "module main
 
@@ -2293,6 +2318,11 @@ fn test_x64_windows_noscan_array_grow_free_slice_stdout_exact_bytes() {
 	assert_x64_windows_stdout_bytes('noscan_array_grow_free_slice_exact',
 		x64_windows_noscan_array_grow_free_slice_source(),
 		x64_windows_noscan_array_grow_free_slice_stdout())
+}
+
+fn test_x64_windows_rune_array_string_free_stdout_exact_bytes() {
+	assert_x64_windows_stdout_bytes('rune_array_string_free_exact',
+		x64_windows_rune_array_string_free_source(), x64_windows_rune_array_string_free_stdout())
 }
 
 fn test_x64_macos_windows_exit_code_stdout_stderr_exact() {
