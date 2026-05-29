@@ -1067,10 +1067,14 @@ fn test_pe_linker_resolves_new_array_from_c_array_noscan_with_internal_heap_thun
 	assert image[new_array_off..new_array_off + 4] == [u8(0x48), 0x83, 0xec, 0x58] // sub rsp, 88
 	mut has_stack_c_array_arg_load := false
 	mut has_heap_zero_memory_flag := false
-	mut has_allocation_cookie_padding_size := false
+	mut has_managed_array_allocation_padding_size := false
 	mut has_header_align_rounding := false
 	mut has_header_align_mask := false
-	mut has_cookie_at_data_minus_8 := false
+	mut has_cookie_before_array_header := false
+	mut has_array_header_false_store := false
+	mut has_data_after_array_header_store := false
+	mut has_copy_to_data_after_array_header := false
+	mut has_cookie_over_array_header := false
 	mut has_extra_header_skip_after_cookie := false
 	mut has_naive_heap_plus_header_data := false
 	mut has_noscan_flags_store := false
@@ -1084,8 +1088,8 @@ fn test_pe_linker_resolves_new_array_from_c_array_noscan_with_internal_heap_thun
 		if image[off..off + 5] == [u8(0xba), 0x08, 0, 0, 0] {
 			has_heap_zero_memory_flag = true
 		}
-		if image[off..off + 4] == [u8(0x49), 0x83, 0xc0, 0x18] {
-			has_allocation_cookie_padding_size = true
+		if image[off..off + 4] == [u8(0x49), 0x83, 0xc0, 0x20] {
+			has_managed_array_allocation_padding_size = true
 		}
 		if image[off..off + 4] == [u8(0x49), 0x83, 0xc3, 0x17] {
 			has_header_align_rounding = true
@@ -1093,21 +1097,37 @@ fn test_pe_linker_resolves_new_array_from_c_array_noscan_with_internal_heap_thun
 		if image[off..off + 4] == [u8(0x49), 0x83, 0xe3, 0xf0] {
 			has_header_align_mask = true
 		}
-		if image[off..off + 12] == [
+		if image[off..off + 20] == [
 			u8(0x49),
 			0x89,
 			0x43,
 			0xf8,
+			0x41,
+			0xc6,
+			0x03,
+			0x00,
 			0x48,
 			0x8b,
 			0x4c,
 			0x24,
 			0x20,
-			0x4c,
+			0x49,
+			0x8d,
+			0x43,
+			0x08,
+			0x48,
 			0x89,
-			0x19,
+			0x01,
 		] {
-			has_cookie_at_data_minus_8 = true
+			has_cookie_before_array_header = true
+			has_array_header_false_store = true
+			has_data_after_array_header_store = true
+		}
+		if image[off..off + 3] == [u8(0x49), 0x89, 0x03] {
+			has_cookie_over_array_header = true
+		}
+		if image[off..off + 4] == [u8(0x4d), 0x8d, 0x43, 0x08] {
+			has_copy_to_data_after_array_header = true
 		}
 		if image[off..off + 4] == [u8(0x49), 0x83, 0xc3, 0x08] {
 			has_extra_header_skip_after_cookie = true
@@ -1127,10 +1147,14 @@ fn test_pe_linker_resolves_new_array_from_c_array_noscan_with_internal_heap_thun
 	}
 	assert has_stack_c_array_arg_load
 	assert has_heap_zero_memory_flag
-	assert has_allocation_cookie_padding_size
+	assert has_managed_array_allocation_padding_size
 	assert has_header_align_rounding
 	assert has_header_align_mask
-	assert has_cookie_at_data_minus_8
+	assert has_cookie_before_array_header
+	assert has_array_header_false_store
+	assert has_data_after_array_header_store
+	assert has_copy_to_data_after_array_header
+	assert !has_cookie_over_array_header
 	assert !has_extra_header_skip_after_cookie
 	assert !has_naive_heap_plus_header_data
 	assert has_noscan_flags_store

@@ -34,10 +34,15 @@ pub fn lower_with_x64_abi(mut m mir.Module, arch pref.Arch, x64_abi X64Abi) {
 	for i := 0; i < m.funcs.len; i++ {
 		mut f := &m.funcs[i]
 		fn_by_name[f.name] = i
+		f.abi_ret_class = abi_value_class(m, f.typ, arch, x64_abi)
+		f.abi_ret_indirect = needs_indirect(m, f.typ, arch, x64_abi)
 		f.abi_param_class = []mir.AbiArgClass{len: f.params.len, init: .in_reg}
 		f.abi_param_classes = []mir.AbiValueClass{len: f.params.len}
 		f.abi_param_layouts = []mir.AbiValueLayout{len: f.params.len}
 		mut param_loc_state := SysVLocationState{}
+		if arch == .x64 && x64_abi == .sysv && f.abi_ret_indirect {
+			param_loc_state.int_regs = 1
+		}
 		for pi, param_id in f.params {
 			if param_id < 0 || param_id >= m.values.len {
 				continue
@@ -52,8 +57,6 @@ pub fn lower_with_x64_abi(mut m mir.Module, arch pref.Arch, x64_abi X64Abi) {
 				f.abi_param_class[pi] = .indirect
 			}
 		}
-		f.abi_ret_class = abi_value_class(m, f.typ, arch, x64_abi)
-		f.abi_ret_indirect = needs_indirect(m, f.typ, arch, x64_abi)
 	}
 
 	lower_calls(mut m, arch, x64_abi, fn_by_name)
@@ -466,11 +469,16 @@ fn lower_calls(mut m mir.Module, arch pref.Arch, x64_abi X64Abi, fn_by_name map[
 			continue
 		}
 		ret_typ, sig_param_types := call_signature(m, instr, fn_by_name)
+		ret_class := abi_value_class(m, ret_typ, arch, x64_abi)
+		ret_indirect := needs_indirect(m, ret_typ, arch, x64_abi)
 		num_args := instr.operands.len - 1
 		instr.abi_arg_class = []mir.AbiArgClass{len: num_args, init: .in_reg}
 		instr.abi_arg_classes = []mir.AbiValueClass{len: num_args}
 		instr.abi_arg_layouts = []mir.AbiValueLayout{len: num_args}
 		mut arg_loc_state := SysVLocationState{}
+		if arch == .x64 && x64_abi == .sysv && ret_indirect {
+			arg_loc_state.int_regs = 1
+		}
 		for arg_idx := 0; arg_idx < num_args; arg_idx++ {
 			mut arg_typ := 0
 			if arg_idx < sig_param_types.len && sig_param_types[arg_idx] > 0 {
@@ -490,8 +498,8 @@ fn lower_calls(mut m mir.Module, arch pref.Arch, x64_abi X64Abi, fn_by_name map[
 			}
 		}
 
-		instr.abi_ret_class = abi_value_class(m, ret_typ, arch, x64_abi)
-		instr.abi_ret_indirect = needs_indirect(m, ret_typ, arch, x64_abi)
+		instr.abi_ret_class = ret_class
+		instr.abi_ret_indirect = ret_indirect
 		// Lower ABI-indirect returns to call_sret for backend consumption.
 		if instr.abi_ret_indirect {
 			instr.op = .call_sret

@@ -265,6 +265,23 @@ fn (mut g Gen) gen_func(func mir.Function) {
 			sse_arg_idx++
 			continue
 		}
+		if !is_indirect_param && g.value_is_aggregate(pid) && i < func.abi_param_layouts.len
+			&& func.abi_param_layouts[i].locs.len > 0 {
+			layout := func.abi_param_layouts[i]
+			g.store_sysv_direct_aggregate_param(pid, layout)
+			int_limit, sse_limit := sysv_layout_register_limits(layout)
+			if int_limit > reg_arg_idx {
+				reg_arg_idx = int_limit
+			}
+			if sse_limit > sse_arg_idx {
+				sse_arg_idx = sse_limit
+			}
+			stack_limit := sysv_layout_stack_slot_limit(layout)
+			if stack_limit > 0 {
+				stack_param_offset = 16 + stack_limit * 8
+			}
+			continue
+		}
 		param_chunks := if !is_indirect_param && g.value_is_aggregate(pid) && param_size > 8
 			&& param_size <= 16 {
 			(param_size + 7) / 8
@@ -605,9 +622,9 @@ fn (mut g Gen) gen_instr(val_id int) {
 			}
 		}
 		.call_sret {
-			abi_regs := g.abi.sret_arg_regs()
+			abi_regs := if g.abi == .sysv { g.abi.int_arg_regs() } else { g.abi.sret_arg_regs() }
 			num_args := instr.operands.len - 1
-			arg_position_base := if g.abi == .windows { 1 } else { 0 }
+			arg_position_base := 1
 			stack_args := g.call_stack_arg_mask(instr, abi_regs.len, arg_position_base)
 			stack_slots := g.call_stack_slots(instr, stack_args)
 
@@ -729,6 +746,7 @@ fn (mut g Gen) gen_instr(val_id int) {
 					g.ensure_float_abi_scalar(ret_val_id, 'return')
 					g.load_float_val_to_xmm(0, ret_val_id,
 						g.type_size(g.mod.values[ret_val_id].typ))
+				} else if g.load_sysv_direct_aggregate_return(ret_val_id, g.cur_func_abi_ret_class) {
 				} else if g.load_sysv_integer_pair_return(ret_val_id, g.cur_func_abi_ret_class) {
 				} else {
 					g.load_val_to_reg(0, ret_val_id)
@@ -1528,6 +1546,51 @@ fn (mut g Gen) load_call_arg_to_reg(reg int, val_id int, arg_idx int, instr mir.
 	g.load_val_to_reg(reg, val_id)
 }
 
+fn (mut g Gen) load_sysv_direct_aggregate_arg_to_regs(val_id int, layout mir.AbiValueLayout, abi_regs []int) {
+	g.ensure_sysv_direct_aggregate_supported(val_id, layout.value_class, 'argument')
+	size := g.type_size(g.mod.values[val_id].typ)
+	g.load_struct_src_address_to_reg(int(r10), val_id, g.mod.values[val_id].typ)
+	sse_regs := g.abi.float_arg_regs()
+	mut loc_idx := 0
+	for loc_idx < layout.locs.len {
+		loc := layout.locs[loc_idx]
+		if loc.kind in [.none, .stack] {
+			loc_idx++
+			continue
+		}
+		chunk_size := sysv_abi_chunk_size(size, loc.offset)
+		if chunk_size <= 0 {
+			loc_idx++
+			continue
+		}
+		match loc.kind {
+			.int_reg {
+				reg := sysv_checked_int_reg(abi_regs, loc.index, 'argument')
+				g.load_raw_mem_to_reg(reg, r10, loc.offset, chunk_size)
+				loc_idx++
+			}
+			.sse_reg {
+				if sysv_layout_has_sseup_pair(layout, loc_idx, size) {
+					xmm := sysv_checked_sse_reg(sse_regs, loc.index, 'argument')
+					asm_load_xmm_mem_base_disp_128(mut g, xmm, r10, loc.offset)
+					loc_idx += 2
+					continue
+				}
+				if loc.class == .sseup {
+					x64_unsupported('backend feature: SysV direct aggregate argument with unpaired SSEUP ABI location is not implemented yet')
+				}
+				sysv_checked_sse_chunk_size(chunk_size, 'argument')
+				xmm := sysv_checked_sse_reg(sse_regs, loc.index, 'argument')
+				asm_load_xmm_mem_base_disp_size(mut g, xmm, r10, loc.offset, chunk_size)
+				loc_idx++
+			}
+			else {
+				x64_unsupported('backend feature: SysV direct aggregate argument with unsupported ABI location is not implemented yet')
+			}
+		}
+	}
+}
+
 fn (mut g Gen) prepare_call_stack_args(instr mir.Instruction, stack_args []bool, stack_slots int, arg_position_base int) int {
 	if g.abi != .windows {
 		return 0
@@ -1601,14 +1664,178 @@ fn (g Gen) unsupported_windows_abi_arg(reason string, val_id int) {
 	x64_unsupported('backend feature: Windows argument lowering for value ${val_id}: ${reason}; check ABI lowering')
 }
 
-fn (g Gen) ensure_sysv_direct_aggregate_integer_only(val_id int, value_class mir.AbiValueClass, context string) {
+fn (g Gen) ensure_sysv_direct_aggregate_supported(val_id int, value_class mir.AbiValueClass, context string) {
 	if g.abi != .sysv || value_class.mode != .direct || !g.value_is_aggregate(val_id)
 		|| value_class.classes.len == 0 {
 		return
 	}
-	for class in value_class.classes {
-		if class != .integer {
-			x64_unsupported('backend feature: SysV direct aggregate ${context} with non-INTEGER eightbyte classes is not implemented yet')
+	for i, class in value_class.classes {
+		match class {
+			.no_class, .integer, .sse {}
+			.sseup {
+				if i == 0 || value_class.classes[i - 1] !in [.sse, .sseup] {
+					x64_unsupported('backend feature: SysV direct aggregate ${context} with unpaired SSEUP eightbyte class is not implemented yet')
+				}
+			}
+			else {
+				x64_unsupported('backend feature: SysV direct aggregate ${context} with MEMORY eightbyte classes is not implemented yet')
+			}
+		}
+	}
+}
+
+fn sysv_abi_chunk_size(total_size int, offset int) int {
+	if total_size <= offset {
+		return 0
+	}
+	remaining := total_size - offset
+	if remaining < 8 {
+		return remaining
+	}
+	return 8
+}
+
+fn sysv_layout_register_limits(layout mir.AbiValueLayout) (int, int) {
+	mut int_limit := 0
+	mut sse_limit := 0
+	for loc in layout.locs {
+		if loc.kind == .int_reg && loc.index + 1 > int_limit {
+			int_limit = loc.index + 1
+		}
+		if loc.kind == .sse_reg && loc.class == .sse && loc.index + 1 > sse_limit {
+			sse_limit = loc.index + 1
+		}
+	}
+	return int_limit, sse_limit
+}
+
+fn sysv_layout_stack_slot_limit(layout mir.AbiValueLayout) int {
+	mut limit := 0
+	for loc in layout.locs {
+		if loc.kind == .stack && loc.index + 1 > limit {
+			limit = loc.index + 1
+		}
+	}
+	return limit
+}
+
+fn sysv_layout_uses_stack(layout mir.AbiValueLayout) bool {
+	for loc in layout.locs {
+		if loc.kind == .stack {
+			return true
+		}
+	}
+	return false
+}
+
+fn sysv_checked_int_reg(regs []int, index int, context string) Reg {
+	if index < 0 || index >= regs.len {
+		x64_unsupported('backend feature: SysV direct aggregate ${context} needs INTEGER register ${index} outside available ABI registers')
+	}
+	return Reg(regs[index])
+}
+
+fn sysv_checked_sse_reg(regs []int, index int, context string) int {
+	if index < 0 || index >= regs.len {
+		x64_unsupported('backend feature: SysV direct aggregate ${context} needs SSE register ${index} outside available ABI registers')
+	}
+	return regs[index]
+}
+
+fn sysv_checked_sse_chunk_size(size int, context string) {
+	if size !in [4, 8] {
+		x64_unsupported('backend feature: SysV direct aggregate ${context} with ${size}-byte SSE eightbyte chunk is not implemented yet')
+	}
+}
+
+fn sysv_layout_has_sseup_pair(layout mir.AbiValueLayout, loc_idx int, total_size int) bool {
+	if loc_idx + 1 >= layout.locs.len {
+		return false
+	}
+	loc := layout.locs[loc_idx]
+	next := layout.locs[loc_idx + 1]
+	return loc.kind == .sse_reg && loc.class == .sse && next.kind == .sse_reg
+		&& next.class == .sseup && next.index == loc.index && next.offset == loc.offset + 8
+		&& total_size >= loc.offset + 16
+}
+
+fn sysv_class_has_sseup_pair(classes []mir.AbiEightbyteClass, class_idx int, total_size int) bool {
+	return class_idx + 1 < classes.len && classes[class_idx] == .sse
+		&& classes[class_idx + 1] == .sseup && total_size >= class_idx * 8 + 16
+}
+
+fn sysv_int_return_reg(index int, context string) Reg {
+	return match index {
+		0 {
+			rax
+		}
+		1 {
+			rdx
+		}
+		else {
+			x64_unsupported('backend feature: SysV direct aggregate ${context} needs INTEGER return register ${index} outside available ABI registers')
+			rax
+		}
+	}
+}
+
+fn sysv_sse_return_reg(index int, context string) int {
+	if index < 0 || index >= 2 {
+		x64_unsupported('backend feature: SysV direct aggregate ${context} needs SSE return register ${index} outside available ABI registers')
+	}
+	return index
+}
+
+fn (mut g Gen) store_sysv_direct_aggregate_param(pid int, layout mir.AbiValueLayout) {
+	if g.abi != .sysv {
+		return
+	}
+	g.ensure_sysv_direct_aggregate_supported(pid, layout.value_class, 'parameter')
+	param_size := g.type_size(g.mod.values[pid].typ)
+	dst_off := g.stack_map[pid]
+	int_regs := g.abi.int_arg_regs()
+	sse_regs := g.abi.float_arg_regs()
+	mut loc_idx := 0
+	for loc_idx < layout.locs.len {
+		loc := layout.locs[loc_idx]
+		if loc.kind == .none {
+			loc_idx++
+			continue
+		}
+		chunk_size := sysv_abi_chunk_size(param_size, loc.offset)
+		if chunk_size <= 0 {
+			loc_idx++
+			continue
+		}
+		match loc.kind {
+			.int_reg {
+				reg := sysv_checked_int_reg(int_regs, loc.index, 'parameter')
+				g.store_reg_to_rbp_exact(reg, dst_off + loc.offset, chunk_size)
+				loc_idx++
+			}
+			.sse_reg {
+				if sysv_layout_has_sseup_pair(layout, loc_idx, param_size) {
+					xmm := sysv_checked_sse_reg(sse_regs, loc.index, 'parameter')
+					asm_store_xmm_mem_base_disp_128(mut g, xmm, rbp, dst_off + loc.offset)
+					loc_idx += 2
+					continue
+				}
+				if loc.class == .sseup {
+					x64_unsupported('backend feature: SysV direct aggregate parameter with unpaired SSEUP ABI location is not implemented yet')
+				}
+				sysv_checked_sse_chunk_size(chunk_size, 'parameter')
+				xmm := sysv_checked_sse_reg(sse_regs, loc.index, 'parameter')
+				asm_store_xmm_rbp_disp(mut g, xmm, dst_off + loc.offset, chunk_size)
+				loc_idx++
+			}
+			.stack {
+				g.copy_memory(int(rbp), dst_off + loc.offset, int(rbp), 16 + loc.index * 8,
+					chunk_size)
+				loc_idx++
+			}
+			else {
+				x64_unsupported('backend feature: SysV direct aggregate parameter with unsupported ABI location is not implemented yet')
+			}
 		}
 	}
 }
@@ -1655,7 +1882,7 @@ fn (mut g Gen) load_call_register_args(instr mir.Instruction, abi_regs []int, st
 		return g.load_windows_call_register_args(instr, stack_args, arg_position_base)
 	}
 
-	mut reg_arg_idx := 0
+	mut reg_arg_idx := arg_position_base
 	mut sse_arg_idx := 0
 	float_arg_regs := g.abi.float_arg_regs()
 	for i in 1 .. instr.operands.len {
@@ -1670,10 +1897,23 @@ fn (mut g Gen) load_call_register_args(instr mir.Instruction, abi_regs []int, st
 			continue
 		}
 		if arg_idx < instr.abi_arg_classes.len {
-			g.ensure_sysv_direct_aggregate_integer_only(arg_id, instr.abi_arg_classes[arg_idx],
+			g.ensure_sysv_direct_aggregate_supported(arg_id, instr.abi_arg_classes[arg_idx],
 				'argument')
 		}
 		if stack_args[arg_idx] {
+			continue
+		}
+		if !g.call_arg_is_indirect(arg_id, arg_idx, instr) && g.value_is_aggregate(arg_id)
+			&& arg_idx < instr.abi_arg_layouts.len && instr.abi_arg_layouts[arg_idx].locs.len > 0 {
+			layout := instr.abi_arg_layouts[arg_idx]
+			g.load_sysv_direct_aggregate_arg_to_regs(arg_id, layout, abi_regs)
+			int_limit, sse_limit := sysv_layout_register_limits(layout)
+			if int_limit > reg_arg_idx {
+				reg_arg_idx = int_limit
+			}
+			if sse_limit > sse_arg_idx {
+				sse_arg_idx = sse_limit
+			}
 			continue
 		}
 		arg_chunks := g.call_arg_reg_chunks(arg_id, arg_idx, instr)
@@ -1735,7 +1975,10 @@ fn (mut g Gen) store_call_result(val_id int, ret_class mir.AbiValueClass) {
 		asm_store_xmm0_rbp_disp(mut g, g.stack_map[val_id], g.type_size(g.mod.values[val_id].typ))
 		return
 	}
-	g.ensure_sysv_direct_aggregate_integer_only(val_id, ret_class, 'call result')
+	if g.store_sysv_direct_aggregate_call_result(val_id, ret_class) {
+		return
+	}
+	g.ensure_sysv_direct_aggregate_supported(val_id, ret_class, 'call result')
 	if g.store_sysv_integer_pair_call_result(val_id, ret_class) {
 		return
 	}
@@ -1781,6 +2024,119 @@ fn (g Gen) is_sysv_integer_pair_return(ret_class mir.AbiValueClass) bool {
 	return g.abi == .sysv && ret_class.mode == .direct && ret_class.size > 8 && ret_class.size <= 16
 		&& ret_class.classes.len == 2 && ret_class.classes[0] == .integer
 		&& ret_class.classes[1] == .integer
+}
+
+fn (g Gen) is_sysv_direct_aggregate_return(val_id int, ret_class mir.AbiValueClass) bool {
+	return g.abi == .sysv && ret_class.mode == .direct && g.value_is_aggregate(val_id)
+		&& ret_class.classes.len > 0
+}
+
+fn (mut g Gen) store_sysv_direct_aggregate_call_result(val_id int, ret_class mir.AbiValueClass) bool {
+	if !g.is_sysv_direct_aggregate_return(val_id, ret_class)
+		|| g.is_sysv_integer_pair_return(ret_class) {
+		return false
+	}
+	g.ensure_sysv_direct_aggregate_supported(val_id, ret_class, 'call result')
+	off := g.stack_map[val_id]
+	mut int_idx := 0
+	mut sse_idx := 0
+	mut i := 0
+	for i < ret_class.classes.len {
+		class := ret_class.classes[i]
+		loc_off := i * 8
+		chunk_size := sysv_abi_chunk_size(ret_class.size, loc_off)
+		if chunk_size <= 0 {
+			i++
+			continue
+		}
+		match class {
+			.no_class {
+				i++
+			}
+			.integer {
+				reg := sysv_int_return_reg(int_idx, 'call result')
+				g.store_reg_to_rbp_exact(reg, off + loc_off, chunk_size)
+				int_idx++
+				i++
+			}
+			.sse {
+				if sysv_class_has_sseup_pair(ret_class.classes, i, ret_class.size) {
+					xmm := sysv_sse_return_reg(sse_idx, 'call result')
+					asm_store_xmm_mem_base_disp_128(mut g, xmm, rbp, off + loc_off)
+					sse_idx++
+					i += 2
+					continue
+				}
+				sysv_checked_sse_chunk_size(chunk_size, 'call result')
+				xmm := sysv_sse_return_reg(sse_idx, 'call result')
+				asm_store_xmm_rbp_disp(mut g, xmm, off + loc_off, chunk_size)
+				sse_idx++
+				i++
+			}
+			.sseup {
+				x64_unsupported('backend feature: SysV direct aggregate call result with unpaired SSEUP eightbyte class is not implemented yet')
+			}
+			else {
+				g.ensure_sysv_direct_aggregate_supported(val_id, ret_class, 'call result')
+				i++
+			}
+		}
+	}
+	return true
+}
+
+fn (mut g Gen) load_sysv_direct_aggregate_return(ret_val_id int, ret_class mir.AbiValueClass) bool {
+	if !g.is_sysv_direct_aggregate_return(ret_val_id, ret_class)
+		|| g.is_sysv_integer_pair_return(ret_class) {
+		return false
+	}
+	g.ensure_sysv_direct_aggregate_supported(ret_val_id, ret_class, 'return')
+	g.load_struct_src_address_to_reg(int(r10), ret_val_id, g.cur_func_ret_type)
+	mut int_idx := 0
+	mut sse_idx := 0
+	mut i := 0
+	for i < ret_class.classes.len {
+		class := ret_class.classes[i]
+		loc_off := i * 8
+		chunk_size := sysv_abi_chunk_size(ret_class.size, loc_off)
+		if chunk_size <= 0 {
+			i++
+			continue
+		}
+		match class {
+			.no_class {
+				i++
+			}
+			.integer {
+				reg := sysv_int_return_reg(int_idx, 'return')
+				g.load_raw_mem_to_reg(reg, r10, loc_off, chunk_size)
+				int_idx++
+				i++
+			}
+			.sse {
+				if sysv_class_has_sseup_pair(ret_class.classes, i, ret_class.size) {
+					xmm := sysv_sse_return_reg(sse_idx, 'return')
+					asm_load_xmm_mem_base_disp_128(mut g, xmm, r10, loc_off)
+					sse_idx++
+					i += 2
+					continue
+				}
+				sysv_checked_sse_chunk_size(chunk_size, 'return')
+				xmm := sysv_sse_return_reg(sse_idx, 'return')
+				asm_load_xmm_mem_base_disp_size(mut g, xmm, r10, loc_off, chunk_size)
+				sse_idx++
+				i++
+			}
+			.sseup {
+				x64_unsupported('backend feature: SysV direct aggregate return with unpaired SSEUP eightbyte class is not implemented yet')
+			}
+			else {
+				g.ensure_sysv_direct_aggregate_supported(ret_val_id, ret_class, 'return')
+				i++
+			}
+		}
+	}
+	return true
 }
 
 fn (mut g Gen) store_sysv_integer_pair_call_result(val_id int, ret_class mir.AbiValueClass) bool {
@@ -1886,7 +2242,7 @@ fn (g Gen) call_stack_arg_mask(instr mir.Instruction, abi_reg_count int, arg_pos
 		return stack_args
 	}
 
-	mut reg_arg_idx := 0
+	mut reg_arg_idx := arg_position_base
 	mut sse_arg_idx := 0
 	float_arg_regs := g.abi.float_arg_regs()
 	for arg_idx := 0; arg_idx < num_args; arg_idx++ {
@@ -1899,8 +2255,22 @@ fn (g Gen) call_stack_arg_mask(instr mir.Instruction, abi_reg_count int, arg_pos
 			sse_arg_idx++
 			continue
 		}
+		if !g.call_arg_is_indirect(arg_id, arg_idx, instr) && g.value_is_aggregate(arg_id)
+			&& arg_idx < instr.abi_arg_layouts.len && instr.abi_arg_layouts[arg_idx].locs.len > 0 {
+			layout := instr.abi_arg_layouts[arg_idx]
+			g.ensure_sysv_direct_aggregate_supported(arg_id, layout.value_class, 'argument')
+			stack_args[arg_idx] = sysv_layout_uses_stack(layout)
+			int_limit, sse_limit := sysv_layout_register_limits(layout)
+			if int_limit > reg_arg_idx {
+				reg_arg_idx = int_limit
+			}
+			if sse_limit > sse_arg_idx {
+				sse_arg_idx = sse_limit
+			}
+			continue
+		}
 		if arg_idx < instr.abi_arg_classes.len {
-			g.ensure_sysv_direct_aggregate_integer_only(arg_id, instr.abi_arg_classes[arg_idx],
+			g.ensure_sysv_direct_aggregate_supported(arg_id, instr.abi_arg_classes[arg_idx],
 				'argument')
 		}
 		arg_chunks := g.call_arg_reg_chunks(arg_id, arg_idx, instr)

@@ -1157,7 +1157,7 @@ fn pe_emit_runtime_new_array_from_c_array_noscan(mut rt PeRuntimeText) {
 	payload_nonzero := pe_emit_jcc8(mut rt.bytes, 0x75) // jne
 	rt.bytes << [u8(0x41), 0xb8, 0x01, 0, 0, 0] // mov r8d, 1
 	payload_nonzero_target := rt.bytes.len
-	rt.bytes << [u8(0x49), 0x83, 0xc0, 0x18] // add r8, 24
+	rt.bytes << [u8(0x49), 0x83, 0xc0, 0x20] // add r8, 32
 	allocation_overflow := pe_emit_jcc32(mut rt.bytes, 0x82) // jc
 	rt.bytes << [u8(0x4c), 0x89, 0x44, 0x24, 0x50] // mov [rsp+80], r8
 	pe_emit_runtime_call_import(mut rt, 'GetProcessHeap')
@@ -1170,8 +1170,10 @@ fn pe_emit_runtime_new_array_from_c_array_noscan(mut rt PeRuntimeText) {
 	rt.bytes << [u8(0x48), 0x85, 0xc0] // test rax, rax
 	alloc_failed := pe_emit_jcc32(mut rt.bytes, 0x84) // je
 	pe_emit_runtime_align_heap_allocated_data(mut rt)
+	rt.bytes << [u8(0x41), 0xc6, 0x03, 0] // mov byte ptr [r11], 0 ; ArrayDataHeader.has_slices = false
 	rt.bytes << [u8(0x48), 0x8b, 0x4c, 0x24, 0x20] // mov rcx, [rsp+32]
-	rt.bytes << [u8(0x4c), 0x89, 0x19] // mov [rcx], r11
+	rt.bytes << [u8(0x49), 0x8d, 0x43, 0x08] // lea rax, [r11+8]
+	rt.bytes << [u8(0x48), 0x89, 0x01] // mov [rcx], rax
 	rt.bytes << [u8(0xc7), 0x41, 0x08, 0, 0, 0, 0] // mov dword ptr [rcx+8], 0
 	rt.bytes << [u8(0x8b), 0x44, 0x24, 0x28] // mov eax, [rsp+40]
 	rt.bytes << [u8(0x89), 0x41, 0x0c] // mov [rcx+12], eax
@@ -1188,7 +1190,7 @@ fn pe_emit_runtime_new_array_from_c_array_noscan(mut rt PeRuntimeText) {
 	rt.bytes << [u8(0x4c), 0x8b, 0x54, 0x24, 0x40] // mov r10, [rsp+64]
 	rt.bytes << [u8(0x4d), 0x85, 0xd2] // test r10, r10
 	null_source := pe_emit_jcc32(mut rt.bytes, 0x84) // je
-	rt.bytes << [u8(0x4d), 0x89, 0xd8] // mov r8, r11
+	rt.bytes << [u8(0x4d), 0x8d, 0x43, 0x08] // lea r8, [r11+8]
 	copy_loop := rt.bytes.len
 	rt.bytes << [u8(0x41), 0x8a, 0x12] // mov dl, [r10]
 	rt.bytes << [u8(0x41), 0x88, 0x10] // mov [r8], dl

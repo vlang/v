@@ -295,6 +295,150 @@ fn test_x64_sysv_codegen_direct_integer_pair_return_loads_rax_and_rdx() {
 	assert rdx_load > rax_load
 }
 
+fn test_x64_sysv_codegen_mixed_aggregate_param_stores_gpr_and_xmm() {
+	mut mod := new_x64_abi_mixed_aggregate_call_module()
+	mut gen := Gen.new_with_format_and_abi(&mod, .elf, .sysv)
+	gen.gen()
+	code := gen.elf.text_data
+
+	assert contains_bytes(code, [u8(0x48), 0x89, 0x7d]) // RDI -> integer eightbyte
+	assert contains_bytes(code, [u8(0xf2), 0x0f, 0x11, 0x45]) // XMM0 -> SSE eightbyte
+}
+
+fn test_x64_sysv_codegen_mixed_aggregate_call_arg_loads_gpr_and_xmm() {
+	mut mod := new_x64_abi_mixed_aggregate_call_module()
+	mut gen := Gen.new_with_format_and_abi(&mod, .elf, .sysv)
+	gen.gen()
+	code := gen.elf.text_data
+
+	rdi_load := index_bytes(code, [u8(0x49), 0x8b, 0x3a]) // mov rdi, [r10]
+	xmm0_load := index_bytes(code, [u8(0xf2), 0x41, 0x0f, 0x10, 0x42, 0x08]) // movsd xmm0, [r10+8]
+
+	assert rdi_load >= 0
+	assert xmm0_load > rdi_load
+}
+
+fn test_x64_sysv_codegen_mixed_aggregate_call_sets_sse_arg_count_to_one() {
+	mut mod := new_x64_abi_mixed_aggregate_call_module()
+	mut gen := Gen.new_with_format_and_abi(&mod, .elf, .sysv)
+	gen.gen()
+	code := gen.elf.text_data
+
+	xmm0_load := index_bytes(code, [u8(0xf2), 0x41, 0x0f, 0x10, 0x42, 0x08]) // movsd xmm0, [r10+8]
+	al_count := index_bytes(code, [u8(0xb8), 0x01, 0, 0, 0]) // mov eax, 1
+	call := last_index_bytes(code, [u8(0xe8)])
+
+	assert xmm0_load >= 0
+	assert al_count > xmm0_load
+	assert call > al_count
+}
+
+fn test_x64_sysv_codegen_call_sret_shifts_mixed_user_arg_to_rsi_and_xmm0() {
+	mut mod := new_x64_abi_sret_mixed_aggregate_call_module()
+	mut gen := Gen.new_with_format_and_abi(&mod, .elf, .sysv)
+	gen.gen()
+	code := gen.elf.text_data
+
+	sret := index_bytes(code, [u8(0x48), 0x89, 0xc7]) // hidden sret pointer -> RDI
+	rsi_load := index_bytes(code, [u8(0x49), 0x8b, 0x32]) // mov rsi, [r10]
+	xmm0_load := index_bytes(code, [u8(0xf2), 0x41, 0x0f, 0x10, 0x42, 0x08]) // movsd xmm0, [r10+8]
+	al_count := index_bytes(code, [u8(0xb8), 0x01, 0, 0, 0]) // mov eax, 1
+	call := last_index_bytes(code, [u8(0xe8)])
+
+	assert sret >= 0
+	assert rsi_load > sret
+	assert xmm0_load > rsi_load
+	assert al_count > xmm0_load
+	assert call > al_count
+}
+
+fn test_x64_sysv_codegen_sse_pair_aggregate_param_stores_xmm0_and_xmm1() {
+	mut mod := new_x64_abi_sse_pair_aggregate_call_module()
+	mut gen := Gen.new_with_format_and_abi(&mod, .elf, .sysv)
+	gen.gen()
+	code := gen.elf.text_data
+
+	xmm0_store := index_bytes(code, [u8(0xf2), 0x0f, 0x11, 0x45]) // XMM0 -> first f64
+	xmm1_store := index_bytes(code, [u8(0xf2), 0x0f, 0x11, 0x4d]) // XMM1 -> second f64
+
+	assert xmm0_store >= 0
+	assert xmm1_store > xmm0_store
+}
+
+fn test_x64_sysv_codegen_sse_pair_aggregate_call_arg_loads_xmm0_and_xmm1() {
+	mut mod := new_x64_abi_sse_pair_aggregate_call_module()
+	mut gen := Gen.new_with_format_and_abi(&mod, .elf, .sysv)
+	gen.gen()
+	code := gen.elf.text_data
+
+	xmm0_load := index_bytes(code, [u8(0xf2), 0x41, 0x0f, 0x10, 0x02]) // movsd xmm0, [r10]
+	xmm1_load := index_bytes(code, [u8(0xf2), 0x41, 0x0f, 0x10, 0x4a, 0x08]) // movsd xmm1, [r10+8]
+	al_count := index_bytes(code, [u8(0xb8), 0x02, 0, 0, 0]) // mov eax, 2
+	call := last_index_bytes(code, [u8(0xe8)])
+
+	assert xmm0_load >= 0
+	assert xmm1_load > xmm0_load
+	assert al_count > xmm1_load
+	assert call > al_count
+}
+
+fn test_x64_sysv_codegen_sse_aggregate_call_result_stores_xmms() {
+	mut mod := new_x64_abi_sse_pair_return_call_module()
+	mut gen := Gen.new_with_format_and_abi(&mod, .elf, .sysv)
+	gen.gen()
+	code := gen.elf.text_data
+
+	xmm0_store := index_bytes(code, [u8(0xf2), 0x0f, 0x11, 0x45]) // movsd [rbp+disp], xmm0
+	xmm1_store := index_bytes(code, [u8(0xf2), 0x0f, 0x11, 0x4d]) // movsd [rbp+disp], xmm1
+
+	assert xmm0_store >= 0
+	assert xmm1_store > xmm0_store
+}
+
+fn test_x64_sysv_codegen_mixed_aggregate_direct_return_loads_gpr_and_xmm() {
+	mut mod := new_x64_abi_mixed_return_callee_module()
+	mut gen := Gen.new_with_format_and_abi(&mod, .elf, .sysv)
+	gen.gen()
+	code := gen.elf.text_data
+
+	rax_load := index_bytes(code, [u8(0x49), 0x8b, 0x02]) // mov rax, [r10]
+	xmm0_load := index_bytes(code, [u8(0xf2), 0x41, 0x0f, 0x10, 0x42, 0x08]) // movsd xmm0, [r10+8]
+
+	assert rax_load >= 0
+	assert xmm0_load > rax_load
+}
+
+fn test_x64_sysv_codegen_sseup_aggregate_param_and_call_arg_use_one_xmm_register() {
+	mut mod := new_x64_abi_sseup_aggregate_call_module()
+	mut gen := Gen.new_with_format_and_abi(&mod, .elf, .sysv)
+	gen.gen()
+	code := gen.elf.text_data
+
+	xmm0_store := index_bytes(code, [u8(0xf3), 0x0f, 0x7f, 0x45]) // movdqu [rbp+disp], xmm0
+	xmm0_load := index_bytes(code, [u8(0xf3), 0x41, 0x0f, 0x6f, 0x02]) // movdqu xmm0, [r10]
+
+	assert xmm0_store >= 0
+	assert xmm0_load > xmm0_store
+}
+
+fn test_x64_sysv_codegen_sseup_aggregate_call_result_stores_one_xmm_register() {
+	mut mod := new_x64_abi_sseup_return_call_module()
+	mut gen := Gen.new_with_format_and_abi(&mod, .elf, .sysv)
+	gen.gen()
+	code := gen.elf.text_data
+
+	assert contains_bytes(code, [u8(0xf3), 0x0f, 0x7f, 0x45]) // movdqu [rbp+disp], xmm0
+}
+
+fn test_x64_sysv_codegen_sseup_aggregate_direct_return_loads_one_xmm_register() {
+	mut mod := new_x64_abi_sseup_return_callee_module()
+	mut gen := Gen.new_with_format_and_abi(&mod, .elf, .sysv)
+	gen.gen()
+	code := gen.elf.text_data
+
+	assert contains_bytes(code, [u8(0xf3), 0x41, 0x0f, 0x6f, 0x02]) // movdqu xmm0, [r10]
+}
+
 fn test_x64_windows_does_not_take_sysv_integer_pair_return_path() {
 	mut mod := new_x64_abi_pair_return_call_module()
 	gen := Gen.new_with_format_and_abi(&mod, .coff, .windows)
@@ -1222,6 +1366,114 @@ fn x64_abi_integer_pair_return_class() mir.AbiValueClass {
 	}
 }
 
+fn x64_abi_mixed_aggregate_class() mir.AbiValueClass {
+	return mir.AbiValueClass{
+		mode:    .direct
+		size:    16
+		classes: [.integer, .sse]
+	}
+}
+
+fn x64_abi_sse_pair_class() mir.AbiValueClass {
+	return mir.AbiValueClass{
+		mode:    .direct
+		size:    16
+		classes: [.sse, .sse]
+	}
+}
+
+fn x64_abi_sseup_aggregate_class() mir.AbiValueClass {
+	return mir.AbiValueClass{
+		mode:    .direct
+		size:    16
+		classes: [.sse, .sseup]
+	}
+}
+
+fn x64_abi_mixed_aggregate_layout() mir.AbiValueLayout {
+	value_class := x64_abi_mixed_aggregate_class()
+	return mir.AbiValueLayout{
+		value_class: value_class
+		locs:        [
+			mir.AbiLocation{
+				kind:   .int_reg
+				index:  0
+				offset: 0
+				class:  .integer
+			},
+			mir.AbiLocation{
+				kind:   .sse_reg
+				index:  0
+				offset: 8
+				class:  .sse
+			},
+		]
+	}
+}
+
+fn x64_abi_sret_mixed_aggregate_arg_layout() mir.AbiValueLayout {
+	value_class := x64_abi_mixed_aggregate_class()
+	return mir.AbiValueLayout{
+		value_class: value_class
+		locs:        [
+			mir.AbiLocation{
+				kind:   .int_reg
+				index:  1
+				offset: 0
+				class:  .integer
+			},
+			mir.AbiLocation{
+				kind:   .sse_reg
+				index:  0
+				offset: 8
+				class:  .sse
+			},
+		]
+	}
+}
+
+fn x64_abi_sse_pair_layout() mir.AbiValueLayout {
+	value_class := x64_abi_sse_pair_class()
+	return mir.AbiValueLayout{
+		value_class: value_class
+		locs:        [
+			mir.AbiLocation{
+				kind:   .sse_reg
+				index:  0
+				offset: 0
+				class:  .sse
+			},
+			mir.AbiLocation{
+				kind:   .sse_reg
+				index:  1
+				offset: 8
+				class:  .sse
+			},
+		]
+	}
+}
+
+fn x64_abi_sseup_aggregate_layout() mir.AbiValueLayout {
+	value_class := x64_abi_sseup_aggregate_class()
+	return mir.AbiValueLayout{
+		value_class: value_class
+		locs:        [
+			mir.AbiLocation{
+				kind:   .sse_reg
+				index:  0
+				offset: 0
+				class:  .sse
+			},
+			mir.AbiLocation{
+				kind:   .sse_reg
+				index:  0
+				offset: 8
+				class:  .sseup
+			},
+		]
+	}
+}
+
 fn new_x64_abi_pair_return_call_module() mir.Module {
 	mut ts := ssa.TypeStore.new()
 	int_t := ts.get_int(64)
@@ -1348,6 +1600,630 @@ fn new_x64_abi_pair_return_callee_module() mir.Module {
 		blocks:        [ssa.BlockID(0)]
 		params:        [ssa.ValueID(0)]
 		abi_ret_class: x64_abi_integer_pair_return_class()
+	}
+	return m
+}
+
+fn new_x64_abi_mixed_aggregate_call_module() mir.Module {
+	mut ts := ssa.TypeStore.new()
+	i64_t := ts.get_int(64)
+	f64_t := ts.get_float(64)
+	mixed_t := ts.register(ssa.Type{
+		kind:   .struct_t
+		fields: [i64_t, f64_t]
+	})
+	layout := x64_abi_mixed_aggregate_layout()
+	mut m := mir.Module{
+		type_store: unsafe { *ts }
+		values:     []mir.Value{len: 5}
+		instrs:     []mir.Instruction{len: 2}
+		blocks:     []mir.BasicBlock{len: 1}
+		funcs:      []mir.Function{len: 1}
+	}
+	m.values[0] = mir.Value{
+		id:    0
+		typ:   i64_t
+		kind:  .func_ref
+		name:  'callee'
+		index: 0
+	}
+	m.values[1] = mir.Value{
+		id:    1
+		typ:   mixed_t
+		kind:  .argument
+		name:  'mixed'
+		index: 0
+	}
+	m.values[2] = mir.Value{
+		id:    2
+		typ:   i64_t
+		kind:  .instruction
+		name:  'call'
+		index: 0
+	}
+	m.values[3] = mir.Value{
+		id:    3
+		typ:   0
+		kind:  .instruction
+		name:  'ret'
+		index: 1
+	}
+	m.values[4] = mir.Value{
+		id:    4
+		typ:   0
+		kind:  .basic_block
+		name:  'entry'
+		index: 0
+	}
+	m.instrs[0] = mir.Instruction{
+		op:              .call
+		operands:        [ssa.ValueID(0), 1]
+		typ:             i64_t
+		block:           0
+		abi_arg_class:   [.in_reg]
+		abi_arg_classes: [layout.value_class]
+		abi_arg_layouts: [layout]
+	}
+	m.instrs[1] = mir.Instruction{
+		op:       .ret
+		operands: []ssa.ValueID{}
+		typ:      0
+		block:    0
+	}
+	m.blocks[0] = mir.BasicBlock{
+		id:     0
+		val_id: 4
+		name:   'entry'
+		parent: 0
+		instrs: [ssa.ValueID(2), 3]
+	}
+	m.funcs[0] = mir.Function{
+		id:                0
+		name:              'caller'
+		typ:               0
+		blocks:            [ssa.BlockID(0)]
+		params:            [ssa.ValueID(1)]
+		abi_param_classes: [layout.value_class]
+		abi_param_layouts: [layout]
+	}
+	return m
+}
+
+fn new_x64_abi_sret_mixed_aggregate_call_module() mir.Module {
+	mut ts := ssa.TypeStore.new()
+	i64_t := ts.get_int(64)
+	f64_t := ts.get_float(64)
+	ret_t := ts.register(ssa.Type{
+		kind:   .struct_t
+		fields: [i64_t, i64_t, i64_t]
+	})
+	mixed_t := ts.register(ssa.Type{
+		kind:   .struct_t
+		fields: [i64_t, f64_t]
+	})
+	layout := x64_abi_sret_mixed_aggregate_arg_layout()
+	mut m := mir.Module{
+		type_store: unsafe { *ts }
+		values:     []mir.Value{len: 5}
+		instrs:     []mir.Instruction{len: 2}
+		blocks:     []mir.BasicBlock{len: 1}
+		funcs:      []mir.Function{len: 1}
+	}
+	m.values[0] = mir.Value{
+		id:    0
+		typ:   ret_t
+		kind:  .func_ref
+		name:  'callee'
+		index: 0
+	}
+	m.values[1] = mir.Value{
+		id:    1
+		typ:   mixed_t
+		kind:  .argument
+		name:  'mixed'
+		index: 0
+	}
+	m.values[2] = mir.Value{
+		id:    2
+		typ:   ret_t
+		kind:  .instruction
+		name:  'call'
+		index: 0
+	}
+	m.values[3] = mir.Value{
+		id:    3
+		typ:   0
+		kind:  .instruction
+		name:  'ret'
+		index: 1
+	}
+	m.values[4] = mir.Value{
+		id:    4
+		typ:   0
+		kind:  .basic_block
+		name:  'entry'
+		index: 0
+	}
+	m.instrs[0] = mir.Instruction{
+		op:               .call_sret
+		operands:         [ssa.ValueID(0), 1]
+		typ:              ret_t
+		block:            0
+		abi_ret_indirect: true
+		abi_arg_class:    [.in_reg]
+		abi_arg_classes:  [layout.value_class]
+		abi_arg_layouts:  [layout]
+	}
+	m.instrs[1] = mir.Instruction{
+		op:       .ret
+		operands: []ssa.ValueID{}
+		typ:      0
+		block:    0
+	}
+	m.blocks[0] = mir.BasicBlock{
+		id:     0
+		val_id: 4
+		name:   'entry'
+		parent: 0
+		instrs: [ssa.ValueID(2), 3]
+	}
+	m.funcs[0] = mir.Function{
+		id:     0
+		name:   'caller'
+		typ:    0
+		blocks: [ssa.BlockID(0)]
+	}
+	return m
+}
+
+fn new_x64_abi_sse_pair_aggregate_call_module() mir.Module {
+	mut ts := ssa.TypeStore.new()
+	i64_t := ts.get_int(64)
+	f64_t := ts.get_float(64)
+	pair_t := ts.register(ssa.Type{
+		kind:   .struct_t
+		fields: [f64_t, f64_t]
+	})
+	layout := x64_abi_sse_pair_layout()
+	mut m := mir.Module{
+		type_store: unsafe { *ts }
+		values:     []mir.Value{len: 5}
+		instrs:     []mir.Instruction{len: 2}
+		blocks:     []mir.BasicBlock{len: 1}
+		funcs:      []mir.Function{len: 1}
+	}
+	m.values[0] = mir.Value{
+		id:    0
+		typ:   i64_t
+		kind:  .func_ref
+		name:  'callee'
+		index: 0
+	}
+	m.values[1] = mir.Value{
+		id:    1
+		typ:   pair_t
+		kind:  .argument
+		name:  'pair'
+		index: 0
+	}
+	m.values[2] = mir.Value{
+		id:    2
+		typ:   i64_t
+		kind:  .instruction
+		name:  'call'
+		index: 0
+	}
+	m.values[3] = mir.Value{
+		id:    3
+		typ:   0
+		kind:  .instruction
+		name:  'ret'
+		index: 1
+	}
+	m.values[4] = mir.Value{
+		id:    4
+		typ:   0
+		kind:  .basic_block
+		name:  'entry'
+		index: 0
+	}
+	m.instrs[0] = mir.Instruction{
+		op:              .call
+		operands:        [ssa.ValueID(0), 1]
+		typ:             i64_t
+		block:           0
+		abi_arg_class:   [.in_reg]
+		abi_arg_classes: [layout.value_class]
+		abi_arg_layouts: [layout]
+	}
+	m.instrs[1] = mir.Instruction{
+		op:       .ret
+		operands: []ssa.ValueID{}
+		typ:      0
+		block:    0
+	}
+	m.blocks[0] = mir.BasicBlock{
+		id:     0
+		val_id: 4
+		name:   'entry'
+		parent: 0
+		instrs: [ssa.ValueID(2), 3]
+	}
+	m.funcs[0] = mir.Function{
+		id:                0
+		name:              'caller'
+		typ:               0
+		blocks:            [ssa.BlockID(0)]
+		params:            [ssa.ValueID(1)]
+		abi_param_classes: [layout.value_class]
+		abi_param_layouts: [layout]
+	}
+	return m
+}
+
+fn new_x64_abi_sseup_aggregate_call_module() mir.Module {
+	mut ts := ssa.TypeStore.new()
+	i64_t := ts.get_int(64)
+	f128_t := ts.get_float(128)
+	sseup_t := ts.register(ssa.Type{
+		kind:   .struct_t
+		fields: [f128_t]
+	})
+	layout := x64_abi_sseup_aggregate_layout()
+	mut m := mir.Module{
+		type_store: unsafe { *ts }
+		values:     []mir.Value{len: 5}
+		instrs:     []mir.Instruction{len: 2}
+		blocks:     []mir.BasicBlock{len: 1}
+		funcs:      []mir.Function{len: 1}
+	}
+	m.values[0] = mir.Value{
+		id:    0
+		typ:   i64_t
+		kind:  .func_ref
+		name:  'callee'
+		index: 0
+	}
+	m.values[1] = mir.Value{
+		id:    1
+		typ:   sseup_t
+		kind:  .argument
+		name:  'vector'
+		index: 0
+	}
+	m.values[2] = mir.Value{
+		id:    2
+		typ:   i64_t
+		kind:  .instruction
+		name:  'call'
+		index: 0
+	}
+	m.values[3] = mir.Value{
+		id:    3
+		typ:   0
+		kind:  .instruction
+		name:  'ret'
+		index: 1
+	}
+	m.values[4] = mir.Value{
+		id:    4
+		typ:   0
+		kind:  .basic_block
+		name:  'entry'
+		index: 0
+	}
+	m.instrs[0] = mir.Instruction{
+		op:              .call
+		operands:        [ssa.ValueID(0), 1]
+		typ:             i64_t
+		block:           0
+		abi_arg_class:   [.in_reg]
+		abi_arg_classes: [layout.value_class]
+		abi_arg_layouts: [layout]
+	}
+	m.instrs[1] = mir.Instruction{
+		op:       .ret
+		operands: []ssa.ValueID{}
+		typ:      0
+		block:    0
+	}
+	m.blocks[0] = mir.BasicBlock{
+		id:     0
+		val_id: 4
+		name:   'entry'
+		parent: 0
+		instrs: [ssa.ValueID(2), 3]
+	}
+	m.funcs[0] = mir.Function{
+		id:                0
+		name:              'caller'
+		typ:               0
+		blocks:            [ssa.BlockID(0)]
+		params:            [ssa.ValueID(1)]
+		abi_param_classes: [layout.value_class]
+		abi_param_layouts: [layout]
+	}
+	return m
+}
+
+fn new_x64_abi_sse_pair_return_call_module() mir.Module {
+	mut ts := ssa.TypeStore.new()
+	f64_t := ts.get_float(64)
+	pair_t := ts.register(ssa.Type{
+		kind:   .struct_t
+		fields: [f64_t, f64_t]
+	})
+	mut m := mir.Module{
+		type_store: unsafe { *ts }
+		values:     []mir.Value{len: 4}
+		instrs:     []mir.Instruction{len: 2}
+		blocks:     []mir.BasicBlock{len: 1}
+		funcs:      []mir.Function{len: 1}
+	}
+	m.values[0] = mir.Value{
+		id:    0
+		typ:   pair_t
+		kind:  .func_ref
+		name:  'callee'
+		index: 0
+	}
+	m.values[1] = mir.Value{
+		id:    1
+		typ:   pair_t
+		kind:  .instruction
+		name:  'pair'
+		index: 0
+	}
+	m.values[2] = mir.Value{
+		id:    2
+		typ:   0
+		kind:  .instruction
+		name:  'ret'
+		index: 1
+	}
+	m.values[3] = mir.Value{
+		id:    3
+		typ:   0
+		kind:  .basic_block
+		name:  'entry'
+		index: 0
+	}
+	m.instrs[0] = mir.Instruction{
+		op:            .call
+		operands:      [ssa.ValueID(0)]
+		typ:           pair_t
+		block:         0
+		abi_ret_class: x64_abi_sse_pair_class()
+	}
+	m.instrs[1] = mir.Instruction{
+		op:       .ret
+		operands: []ssa.ValueID{}
+		typ:      0
+		block:    0
+	}
+	m.blocks[0] = mir.BasicBlock{
+		id:     0
+		val_id: 3
+		name:   'entry'
+		parent: 0
+		instrs: [ssa.ValueID(1), 2]
+	}
+	m.funcs[0] = mir.Function{
+		id:     0
+		name:   'caller'
+		typ:    0
+		blocks: [ssa.BlockID(0)]
+	}
+	return m
+}
+
+fn new_x64_abi_sseup_return_call_module() mir.Module {
+	mut ts := ssa.TypeStore.new()
+	f128_t := ts.get_float(128)
+	sseup_t := ts.register(ssa.Type{
+		kind:   .struct_t
+		fields: [f128_t]
+	})
+	mut m := mir.Module{
+		type_store: unsafe { *ts }
+		values:     []mir.Value{len: 4}
+		instrs:     []mir.Instruction{len: 2}
+		blocks:     []mir.BasicBlock{len: 1}
+		funcs:      []mir.Function{len: 1}
+	}
+	m.values[0] = mir.Value{
+		id:    0
+		typ:   sseup_t
+		kind:  .func_ref
+		name:  'callee'
+		index: 0
+	}
+	m.values[1] = mir.Value{
+		id:    1
+		typ:   sseup_t
+		kind:  .instruction
+		name:  'vector'
+		index: 0
+	}
+	m.values[2] = mir.Value{
+		id:    2
+		typ:   0
+		kind:  .instruction
+		name:  'ret'
+		index: 1
+	}
+	m.values[3] = mir.Value{
+		id:    3
+		typ:   0
+		kind:  .basic_block
+		name:  'entry'
+		index: 0
+	}
+	m.instrs[0] = mir.Instruction{
+		op:            .call
+		operands:      [ssa.ValueID(0)]
+		typ:           sseup_t
+		block:         0
+		abi_ret_class: x64_abi_sseup_aggregate_class()
+	}
+	m.instrs[1] = mir.Instruction{
+		op:       .ret
+		operands: []ssa.ValueID{}
+		typ:      0
+		block:    0
+	}
+	m.blocks[0] = mir.BasicBlock{
+		id:     0
+		val_id: 3
+		name:   'entry'
+		parent: 0
+		instrs: [ssa.ValueID(1), 2]
+	}
+	m.funcs[0] = mir.Function{
+		id:     0
+		name:   'caller'
+		typ:    0
+		blocks: [ssa.BlockID(0)]
+	}
+	return m
+}
+
+fn new_x64_abi_mixed_return_callee_module() mir.Module {
+	mut ts := ssa.TypeStore.new()
+	i64_t := ts.get_int(64)
+	f64_t := ts.get_float(64)
+	mixed_t := ts.register(ssa.Type{
+		kind:   .struct_t
+		fields: [i64_t, f64_t]
+	})
+	layout := x64_abi_mixed_aggregate_layout()
+	mut m := mir.Module{
+		type_store: unsafe { *ts }
+		values:     []mir.Value{len: 4}
+		instrs:     []mir.Instruction{len: 1}
+		blocks:     []mir.BasicBlock{len: 1}
+		funcs:      []mir.Function{len: 1}
+	}
+	m.values[0] = mir.Value{
+		id:    0
+		typ:   i64_t
+		kind:  .constant
+		name:  '0'
+		index: 0
+	}
+	m.values[1] = mir.Value{
+		id:    1
+		typ:   mixed_t
+		kind:  .argument
+		name:  'mixed'
+		index: 0
+	}
+	m.values[2] = mir.Value{
+		id:    2
+		typ:   0
+		kind:  .instruction
+		name:  'ret'
+		index: 0
+	}
+	m.values[3] = mir.Value{
+		id:    3
+		typ:   0
+		kind:  .basic_block
+		name:  'entry'
+		index: 0
+	}
+	m.instrs[0] = mir.Instruction{
+		op:       .ret
+		operands: [ssa.ValueID(1)]
+		typ:      0
+		block:    0
+	}
+	m.blocks[0] = mir.BasicBlock{
+		id:     0
+		val_id: 3
+		name:   'entry'
+		parent: 0
+		instrs: [ssa.ValueID(2)]
+	}
+	m.funcs[0] = mir.Function{
+		id:                0
+		name:              'callee'
+		typ:               mixed_t
+		blocks:            [ssa.BlockID(0)]
+		params:            [ssa.ValueID(1)]
+		abi_ret_class:     layout.value_class
+		abi_param_classes: [layout.value_class]
+		abi_param_layouts: [layout]
+	}
+	return m
+}
+
+fn new_x64_abi_sseup_return_callee_module() mir.Module {
+	mut ts := ssa.TypeStore.new()
+	i64_t := ts.get_int(64)
+	f128_t := ts.get_float(128)
+	sseup_t := ts.register(ssa.Type{
+		kind:   .struct_t
+		fields: [f128_t]
+	})
+	layout := x64_abi_sseup_aggregate_layout()
+	mut m := mir.Module{
+		type_store: unsafe { *ts }
+		values:     []mir.Value{len: 4}
+		instrs:     []mir.Instruction{len: 1}
+		blocks:     []mir.BasicBlock{len: 1}
+		funcs:      []mir.Function{len: 1}
+	}
+	m.values[0] = mir.Value{
+		id:    0
+		typ:   i64_t
+		kind:  .constant
+		name:  '0'
+		index: 0
+	}
+	m.values[1] = mir.Value{
+		id:    1
+		typ:   sseup_t
+		kind:  .argument
+		name:  'vector'
+		index: 0
+	}
+	m.values[2] = mir.Value{
+		id:    2
+		typ:   0
+		kind:  .instruction
+		name:  'ret'
+		index: 0
+	}
+	m.values[3] = mir.Value{
+		id:    3
+		typ:   0
+		kind:  .basic_block
+		name:  'entry'
+		index: 0
+	}
+	m.instrs[0] = mir.Instruction{
+		op:       .ret
+		operands: [ssa.ValueID(1)]
+		typ:      0
+		block:    0
+	}
+	m.blocks[0] = mir.BasicBlock{
+		id:     0
+		val_id: 3
+		name:   'entry'
+		parent: 0
+		instrs: [ssa.ValueID(2)]
+	}
+	m.funcs[0] = mir.Function{
+		id:                0
+		name:              'callee'
+		typ:               sseup_t
+		blocks:            [ssa.BlockID(0)]
+		params:            [ssa.ValueID(1)]
+		abi_ret_class:     layout.value_class
+		abi_param_classes: [layout.value_class]
+		abi_param_layouts: [layout]
 	}
 	return m
 }

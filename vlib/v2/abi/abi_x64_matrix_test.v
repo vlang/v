@@ -334,6 +334,43 @@ fn test_x64_sysv_location_metadata_assigns_mixed_integer_sse_aggregate() {
 	])
 }
 
+fn test_x64_sysv_location_metadata_reserves_rdi_for_hidden_sret_pointer() {
+	mut ssa_mod := ssa.Module.new('abi_test_x64_sysv_sret_location_metadata')
+	i64_t := ssa_mod.type_store.get_int(64)
+	f64_t := ssa_mod.type_store.get_float(64)
+	ret_t := register_x64_matrix_struct_fields(mut ssa_mod, [i64_t, i64_t, i64_t])
+	aggregate_t := register_x64_matrix_struct_fields(mut ssa_mod, [i64_t, f64_t])
+
+	callee_id := ssa_mod.new_function('callee', ret_t, [])
+	callee_param := ssa_mod.add_value_node(.argument, aggregate_t, 'p', 0)
+	ssa_mod.funcs[callee_id].params << callee_param
+
+	caller_id := ssa_mod.new_function('caller', i64_t, [])
+	caller_arg := ssa_mod.add_value_node(.argument, aggregate_t, 'a', 0)
+	ssa_mod.funcs[caller_id].params << caller_arg
+	caller_entry := ssa_mod.add_block(caller_id, 'entry')
+	fn_val := ssa_mod.add_value_node(.unknown, 0, 'callee', 0)
+	call_val := ssa_mod.add_instr(.call, caller_entry, ret_t, [fn_val, caller_arg])
+	zero := ssa_mod.get_or_add_const(i64_t, '0')
+	ssa_mod.add_instr(.ret, caller_entry, 0, [zero])
+
+	mut mir_mod := mir.lower_from_ssa(ssa_mod)
+	lower_with_x64_abi(mut mir_mod, .x64, .sysv)
+	call_instr := mir_mod.instrs[mir_mod.values[call_val].index]
+
+	assert mir_mod.funcs[callee_id].abi_ret_indirect
+	assert call_instr.abi_ret_indirect
+	assert call_instr.op == .call_sret
+	assert_abi_layout(mir_mod.funcs[callee_id].abi_param_layouts[0], [
+		.int_reg,
+		.sse_reg,
+	], [1, 0], [0, 8], [.integer, .sse])
+	assert_abi_layout(call_instr.abi_arg_layouts[0], [.int_reg, .sse_reg], [
+		1,
+		0,
+	], [0, 8], [.integer, .sse])
+}
+
 fn test_x64_sysv_location_metadata_places_seventh_integer_scalar_on_stack() {
 	mut ssa_mod := ssa.Module.new('abi_test_x64_sysv_integer_scalar_boundary')
 	i64_t := ssa_mod.type_store.get_int(64)

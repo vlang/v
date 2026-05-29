@@ -1206,6 +1206,117 @@ fn x64_structs_fixed_arrays_stdout() []u8 {
 '.bytes()
 }
 
+fn x64_sysv_sse_mixed_aggregates_source() string {
+	return "module main
+
+struct I64F64 {
+	a i64
+	b f64
+}
+
+struct F64I64 {
+	a f64
+	b i64
+}
+
+struct F64F64 {
+	a f64
+	b f64
+}
+
+struct Big {
+	a i64
+	b i64
+	c i64
+}
+
+fn make_i64_f64(a i64, b f64) I64F64 {
+	return I64F64{
+		a: a
+		b: b
+	}
+}
+
+fn make_f64_i64(a f64, b i64) F64I64 {
+	return F64I64{
+		a: a
+		b: b
+	}
+}
+
+fn make_f64_f64(a f64, b f64) F64F64 {
+	return F64F64{
+		a: a
+		b: b
+	}
+}
+
+fn take_i64_f64(v I64F64) bool {
+	return v.a == 7 && v.b == 2.5
+}
+
+fn take_f64_i64(v F64I64) bool {
+	return v.a == 3.5 && v.b == 11
+}
+
+fn take_f64_f64(v F64F64) bool {
+	return v.a == 1.25 && v.b == 6.75
+}
+
+fn take_int_then_f64_f64(n i64, v F64F64) bool {
+	return n == 5 && v.a == 1.25 && v.b == 6.75
+}
+
+fn make_big_from_mixed(v I64F64) Big {
+	if v.a == 9 && v.b == 4.5 {
+		return Big{
+			a: 12
+			b: 13
+			c: 14
+		}
+	}
+	return Big{
+		a: 1
+		b: 2
+		c: 3
+	}
+}
+
+fn main() {
+	mixed := make_i64_f64(7, 2.5)
+	swapped := make_f64_i64(3.5, 11)
+	pair := make_f64_f64(1.25, 6.75)
+	if mixed.a == 7 && mixed.b == 2.5 && swapped.a == 3.5 && swapped.b == 11
+		&& pair.a == 1.25 && pair.b == 6.75 {
+		print('R')
+	} else {
+		print('r')
+	}
+	if take_i64_f64(mixed) && take_f64_i64(swapped) && take_f64_f64(pair) {
+		print('A')
+	} else {
+		print('a')
+	}
+	big := make_big_from_mixed(make_i64_f64(9, 4.5))
+	if big.a == 12 && big.b == 13 && big.c == 14 {
+		print('S')
+	} else {
+		print('s')
+	}
+	if take_int_then_f64_f64(5, pair) {
+		println('P')
+	} else {
+		println('p')
+	}
+}
+"
+}
+
+fn x64_sysv_sse_mixed_aggregates_stdout() []u8 {
+	return 'RASP
+'.bytes()
+}
+
 fn x64_fixed_int_array_variable_index_source() string {
 	return "module main
 
@@ -1431,6 +1542,45 @@ fn main() {
 
 fn x64_dynamic_int_array_stdout() []u8 {
 	return 'LPS
+'.bytes()
+}
+
+fn x64_windows_noscan_array_grow_free_slice_source() string {
+	return "module main
+
+fn make_array() []int {
+	return [1, 2, 3]
+}
+
+fn main() {
+	mut a := make_array()
+	if a.len == 3 && a.cap >= 3 && a[0] == 1 && a[2] == 3 {
+		print('N')
+	} else {
+		print('n')
+	}
+	a << 4
+	if a.len == 4 && a[1] == 2 && a[3] == 4 {
+		print('G')
+	} else {
+		print('g')
+	}
+	b := a[1..3]
+	if b.len == 2 && b[0] == 2 && b[1] == 3 {
+		print('S')
+	} else {
+		print('s')
+	}
+	unsafe {
+		a.free()
+	}
+	println('F')
+}
+"
+}
+
+fn x64_windows_noscan_array_grow_free_slice_stdout() []u8 {
+	return 'NGSF
 '.bytes()
 }
 
@@ -2114,6 +2264,11 @@ fn test_x64_macos_windows_structs_and_fixed_arrays_stdout_exact_bytes() {
 		x64_structs_fixed_arrays_source(), x64_structs_fixed_arrays_stdout())
 }
 
+fn test_x64_macos_sysv_sse_mixed_aggregates_stdout_exact_bytes() {
+	assert_x64_macos_stdout_bytes('sysv_sse_mixed_aggregates_exact',
+		x64_sysv_sse_mixed_aggregates_source(), x64_sysv_sse_mixed_aggregates_stdout())
+}
+
 fn test_x64_macos_windows_fixed_int_array_variable_index_stdout_exact_bytes() {
 	assert_x64_macos_windows_stdout_bytes('fixed_int_array_variable_index_exact',
 		x64_fixed_int_array_variable_index_source(), x64_fixed_int_array_variable_index_stdout())
@@ -2132,6 +2287,12 @@ fn test_x64_macos_windows_fixed_array_slice_copy_stdout_exact_bytes() {
 fn test_x64_macos_windows_dynamic_int_array_stdout_exact_bytes() {
 	assert_x64_macos_windows_stdout_bytes('dynamic_int_array_exact',
 		x64_dynamic_int_array_source(), x64_dynamic_int_array_stdout())
+}
+
+fn test_x64_windows_noscan_array_grow_free_slice_stdout_exact_bytes() {
+	assert_x64_windows_stdout_bytes('noscan_array_grow_free_slice_exact',
+		x64_windows_noscan_array_grow_free_slice_source(),
+		x64_windows_noscan_array_grow_free_slice_stdout())
 }
 
 fn test_x64_macos_windows_exit_code_stdout_stderr_exact() {
@@ -2417,6 +2578,11 @@ fn main() {
 fn test_x64_linux_structs_and_fixed_arrays_stdout_exact_bytes() {
 	assert_x64_linux_stdout_bytes('structs_fixed_arrays_exact', x64_structs_fixed_arrays_source(),
 		x64_structs_fixed_arrays_stdout())
+}
+
+fn test_x64_linux_sysv_sse_mixed_aggregates_stdout_exact_bytes() {
+	assert_x64_linux_stdout_bytes('sysv_sse_mixed_aggregates_exact',
+		x64_sysv_sse_mixed_aggregates_source(), x64_sysv_sse_mixed_aggregates_stdout())
 }
 
 fn test_x64_linux_fixed_int_array_variable_index_stdout_exact_bytes() {
