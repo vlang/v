@@ -1518,7 +1518,9 @@ fn (mut w Walker) expr(node_ ast.Expr) {
 			w.uses_lock = true
 			w.stmts(node.stmts)
 		}
-		ast.OffsetOf {}
+		ast.OffsetOf {
+			w.mark_by_type(w.resolve_current_specialized_type(node.struct_type))
+		}
 		ast.OrExpr {
 			w.or_block(node)
 		}

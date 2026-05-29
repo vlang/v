@@ -36,6 +36,39 @@ fn test_skip_unused_prunes_unused_generic_fn_instantiations() {
 	assert !res.output.contains('VV_LOC Map_u8_int main__new_T_int(void)')
 }
 
+fn test_skip_unused_keeps_generic_offsetof_struct_instantiations() {
+	tmp_dir := os.join_path(os.vtmp_dir(), 'v_issue_27283_generic_offsetof')
+	os.mkdir_all(tmp_dir) or { panic(err) }
+	defer {
+		os.rmdir_all(tmp_dir) or {}
+	}
+	source_path := os.join_path(tmp_dir, 'issue_27283_generic_offsetof.v')
+	binary_path := os.join_path(tmp_dir, 'issue_27283_generic_offsetof')
+	source := [
+		'module main',
+		'',
+		'struct Box[T] {',
+		'\ta int',
+		'\tb T',
+		'}',
+		'',
+		'fn off[T]() u32 {',
+		'\treturn __offsetof(Box[T], b)',
+		'}',
+		'',
+		'fn main() {',
+		'\tprintln(off[int]())',
+		'\tprintln(off[string]())',
+		'}',
+	].join('\n')
+	os.write_file(source_path, source) or { panic(err) }
+	res :=
+		os.execute('${os.quoted_path(vexe)} -skip-unused -o ${os.quoted_path(binary_path)} ${os.quoted_path(source_path)}')
+	if res.exit_code != 0 {
+		panic(res.output)
+	}
+}
+
 fn test_skip_unused_does_not_emit_impl_methods_for_interface_extensions() {
 	tmp_dir := os.join_path(os.vtmp_dir(), 'v_skip_unused_interface_extension_collision')
 	os.mkdir_all(tmp_dir) or { panic(err) }
