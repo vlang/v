@@ -25,6 +25,105 @@ pub:
 	consumed int
 }
 
+pub struct ZlibHeader {
+pub:
+	payload_start int = 2
+}
+
+pub struct GzipHeader {
+pub mut:
+	flags             u8
+	payload_start     int
+	extra             []u8
+	filename          []u8
+	comment           []u8
+	modification_time u32
+	operating_system  u8
+}
+
+// validate_zlib_header validates a RFC 1950 zlib header.
+@[direct_array_access]
+pub fn validate_zlib_header(data []u8) !ZlibHeader {
+	if data.len < 6 {
+		return error('invalid zlib stream: too short')
+	}
+	if data[0] & 0x0f != 8 {
+		return error('invalid zlib stream: unsupported compression method')
+	}
+	if (u32(data[0]) * 256 + u32(data[1])) % 31 != 0 {
+		return error('invalid zlib stream: bad header checksum')
+	}
+	if data[1] & 0x20 != 0 {
+		return error('invalid zlib stream: preset dictionary not supported')
+	}
+	return ZlibHeader{}
+}
+
+// validate_gzip_header validates a RFC 1952 gzip header and returns parsed fields.
+@[direct_array_access]
+pub fn validate_gzip_header(data []u8) !GzipHeader {
+	if data.len < 18 {
+		return error('invalid gzip stream: too short')
+	}
+	if data[0] != 0x1f || data[1] != 0x8b {
+		return error('invalid gzip stream: bad magic')
+	}
+	if data[2] != 8 {
+		return error('invalid gzip stream: unsupported compression method')
+	}
+	flg := data[3]
+	if flg & 0xe0 != 0 {
+		return error('invalid gzip stream: reserved flags set')
+	}
+	mut header := GzipHeader{
+		flags:             flg
+		payload_start:     10
+		modification_time: binary.little_endian_u32_at(data, 4)
+		operating_system:  data[9]
+	}
+	if flg & 0x04 != 0 {
+		if header.payload_start + 2 > data.len {
+			return error('invalid gzip stream: truncated extra')
+		}
+		xlen := int(u32(data[header.payload_start]) | u32(data[header.payload_start + 1]) << 8)
+		header.payload_start += 2
+		if header.payload_start + xlen > data.len {
+			return error('invalid gzip stream: truncated extra')
+		}
+		header.extra = data[header.payload_start..header.payload_start + xlen]
+		header.payload_start += xlen
+	}
+	if flg & 0x08 != 0 {
+		for header.payload_start < data.len && data[header.payload_start] != 0 {
+			header.filename << data[header.payload_start]
+			header.payload_start++
+		}
+		header.payload_start++
+	}
+	if flg & 0x10 != 0 {
+		for header.payload_start < data.len && data[header.payload_start] != 0 {
+			header.comment << data[header.payload_start]
+			header.payload_start++
+		}
+		header.payload_start++
+	}
+	if flg & 0x02 != 0 {
+		if header.payload_start + 2 > data.len {
+			return error('invalid gzip stream: truncated fhcrc')
+		}
+		expected_crc16 := u16(data[header.payload_start]) | (u16(data[header.payload_start + 1]) << 8)
+		actual_crc16 := u16(crc32.sum(data[..header.payload_start]) & 0xffff)
+		if actual_crc16 != expected_crc16 {
+			return error('invalid gzip stream: header crc16 mismatch')
+		}
+		header.payload_start += 2
+	}
+	if header.payload_start + 8 > data.len {
+		return error('invalid gzip stream: truncated payload')
+	}
+	return header
+}
+
 // compress compresses data as zlib, gzip, or raw DEFLATE.
 pub fn compress(data []u8, format CompressParams) ![]u8 {
 	payload := deflate_compress_fixed(data)
@@ -83,19 +182,8 @@ pub fn decompress(data []u8) ![]u8 {
 // decompress_zlib decompresses a zlib stream (RFC 1950).
 // It returns the decompressed bytes in a new array.
 pub fn decompress_zlib(data []u8) ![]u8 {
-	if data.len < 6 {
-		return error('invalid zlib stream: too short')
-	}
-	if data[0] & 0x0f != 8 {
-		return error('invalid zlib stream: unsupported compression method')
-	}
-	if (u32(data[0]) * 256 + u32(data[1])) % 31 != 0 {
-		return error('invalid zlib stream: bad header checksum')
-	}
-	if data[1] & 0x20 != 0 {
-		return error('invalid zlib stream: preset dictionary not supported')
-	}
-	payload := data[2..data.len - 4]
+	header := validate_zlib_header(data)!
+	payload := data[header.payload_start..data.len - 4]
 	expected := binary.big_endian_u32_at(data, data.len - 4)
 	res := inflate_with_consumed(payload)!
 	if res.consumed != payload.len {
@@ -109,54 +197,8 @@ pub fn decompress_zlib(data []u8) ![]u8 {
 // decompress_gzip decompresses a gzip stream (RFC 1952).
 // It returns the decompressed bytes in a new array.
 pub fn decompress_gzip(data []u8) ![]u8 {
-	if data.len < 18 {
-		return error('invalid gzip stream: too short')
-	}
-	if data[0] != 0x1f || data[1] != 0x8b {
-		return error('invalid gzip stream: bad magic')
-	}
-	if data[2] != 8 {
-		return error('invalid gzip stream: unsupported compression method')
-	}
-	flg := data[3]
-	if flg & 0xe0 != 0 {
-		return error('invalid gzip stream: reserved flags set')
-	}
-	mut pos := 10 // fixed header size
-	if flg & 0x04 != 0 { // FEXTRA
-		if pos + 2 > data.len {
-			return error('invalid gzip stream: truncated extra')
-		}
-		xlen := int(u32(data[pos]) | u32(data[pos + 1]) << 8)
-		pos += 2 + xlen
-	}
-	if flg & 0x08 != 0 { // FNAME
-		for pos < data.len && data[pos] != 0 {
-			pos++
-		}
-		pos++
-	}
-	if flg & 0x10 != 0 { // FCOMMENT
-		for pos < data.len && data[pos] != 0 {
-			pos++
-		}
-		pos++
-	}
-	if flg & 0x02 != 0 { // FHCRC: 2-byte CRC-16 (low 16 bits of CRC32), little-endian
-		if pos + 2 > data.len {
-			return error('invalid gzip stream: truncated fhcrc')
-		}
-		expected_crc16 := u16(data[pos]) | (u16(data[pos + 1]) << 8)
-		actual_crc16 := u16(crc32.sum(data[..pos]) & 0xffff)
-		if actual_crc16 != expected_crc16 {
-			return error('invalid gzip stream: header crc16 mismatch')
-		}
-		pos += 2
-	}
-	if pos + 8 > data.len {
-		return error('invalid gzip stream: truncated payload')
-	}
-	payload := data[pos..data.len - 8]
+	header := validate_gzip_header(data)!
+	payload := data[header.payload_start..data.len - 8]
 	expected_crc := binary.little_endian_u32_at(data, data.len - 8)
 	expected_size := binary.little_endian_u32_at(data, data.len - 4)
 	res := inflate_with_consumed(payload)!
@@ -186,17 +228,57 @@ pub fn decompress_raw_with_consumed(data []u8) !RawInflateResult {
 // delivery. The callback receives chunks of decompressed data and should return the chunk length to continue, or
 // 0 to abort. Returns the total decompressed length.
 pub fn decompress_with_callback(data []u8, cb ChunkCallback, userdata voidptr) !int {
-	decoded := decompress(data)!
-	mut offset := 0
-	for offset < decoded.len {
-		end := if offset + 32768 < decoded.len { offset + 32768 } else { decoded.len }
-		chunk := decoded[offset..end]
-		if cb(chunk, userdata) != chunk.len {
-			return offset
+	if data.len >= 2 {
+		// gzip magic: 0x1f 0x8b
+		if data[0] == 0x1f && data[1] == 0x8b {
+			return decompress_gzip_with_callback(data, cb, userdata)
 		}
-		offset = end
+		// zlib: CM=8 and header checksum passes
+		if data[0] & 0x0f == 8 && (u32(data[0]) * 256 + u32(data[1])) % 31 == 0 {
+			return decompress_zlib_with_callback(data, cb, userdata)
+		}
 	}
-	return decoded.len
+	// raw DEFLATE
+	res := inflate_with_callback(data, cb, userdata)!
+	return res.delivered
+}
+
+fn decompress_zlib_with_callback(data []u8, cb ChunkCallback, userdata voidptr) !int {
+	header := validate_zlib_header(data)!
+	payload := data[header.payload_start..data.len - 4]
+	expected := binary.big_endian_u32_at(data, data.len - 4)
+	res := inflate_with_callback(payload, cb, userdata)!
+	if res.aborted {
+		return res.delivered
+	}
+	if res.consumed != payload.len {
+		return error('invalid zlib stream: trailing data before adler32')
+	}
+	if adler32.sum(res.decoded) != expected {
+		return error('invalid zlib stream: adler32 mismatch')
+	}
+	return res.delivered
+}
+
+fn decompress_gzip_with_callback(data []u8, cb ChunkCallback, userdata voidptr) !int {
+	header := validate_gzip_header(data)!
+	payload := data[header.payload_start..data.len - 8]
+	expected_crc := binary.little_endian_u32_at(data, data.len - 8)
+	expected_size := binary.little_endian_u32_at(data, data.len - 4)
+	res := inflate_with_callback(payload, cb, userdata)!
+	if res.aborted {
+		return res.delivered
+	}
+	if res.consumed != payload.len {
+		return error('invalid gzip stream: trailing data before trailer')
+	}
+	if crc32.sum(res.decoded) != expected_crc {
+		return error('invalid gzip stream: crc32 mismatch')
+	}
+	if u32(res.decoded.len) != expected_size {
+		return error('invalid gzip stream: size mismatch')
+	}
+	return res.delivered
 }
 
 fn bit_reverse(v u32, n int) u32 {

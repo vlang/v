@@ -2,6 +2,12 @@ module gzip
 
 import hash.crc32
 
+const test_ftext = u8(0b0000_0001)
+const test_fhcrc = u8(0b0000_0010)
+const test_fextra = u8(0b0000_0100)
+const test_fname = u8(0b0000_1000)
+const test_fcomment = u8(0b0001_0000)
+
 fn test_gzip() {
 	uncompressed := 'Hello world!'
 	compressed := compress(uncompressed.bytes())!
@@ -35,7 +41,7 @@ fn test_gzip_invalid_compression() {
 fn test_gzip_with_ftext() {
 	uncompressed := 'Hello world!'
 	mut compressed := compress(uncompressed.bytes())!
-	compressed[3] |= ftext
+	compressed[3] |= test_ftext
 	decompressed := decompress(compressed)!
 	assert decompressed == uncompressed.bytes()
 }
@@ -43,7 +49,7 @@ fn test_gzip_with_ftext() {
 fn test_gzip_with_fname() {
 	uncompressed := 'Hello world!'
 	mut compressed := compress(uncompressed.bytes())!
-	compressed[3] |= fname
+	compressed[3] |= test_fname
 	compressed.insert(10, `h`)
 	compressed.insert(11, `i`)
 	compressed.insert(12, 0x00)
@@ -54,7 +60,7 @@ fn test_gzip_with_fname() {
 fn test_gzip_with_fcomment() {
 	uncompressed := 'Hello world!'
 	mut compressed := compress(uncompressed.bytes())!
-	compressed[3] |= fcomment
+	compressed[3] |= test_fcomment
 	compressed.insert(10, `h`)
 	compressed.insert(11, `i`)
 	compressed.insert(12, 0x00)
@@ -65,7 +71,7 @@ fn test_gzip_with_fcomment() {
 fn test_gzip_with_fname_fcomment() {
 	uncompressed := 'Hello world!'
 	mut compressed := compress(uncompressed.bytes())!
-	compressed[3] |= (fname | fcomment)
+	compressed[3] |= (test_fname | test_fcomment)
 	compressed.insert(10, `h`)
 	compressed.insert(11, `i`)
 	compressed.insert(12, 0x00)
@@ -79,7 +85,7 @@ fn test_gzip_with_fname_fcomment() {
 fn test_gzip_with_fextra() {
 	uncompressed := 'Hello world!'
 	mut compressed := compress(uncompressed.bytes())!
-	compressed[3] |= fextra
+	compressed[3] |= test_fextra
 	// XLEN is 2-byte little-endian value
 	xlen := u16(2)
 	compressed.insert(10, u8(xlen))
@@ -93,7 +99,7 @@ fn test_gzip_with_fextra() {
 fn test_gzip_with_hcrc() {
 	uncompressed := 'Hello world!'
 	mut compressed := compress(uncompressed.bytes())!
-	compressed[3] |= fhcrc
+	compressed[3] |= test_fhcrc
 	// FHCRC is 2-byte CRC-16 (low 16 bits of CRC32) in little-endian format
 	checksum := crc32.sum(compressed[..10])
 	crc16 := u16(checksum & 0xffff)
@@ -106,7 +112,7 @@ fn test_gzip_with_hcrc() {
 fn test_gzip_with_invalid_hcrc() {
 	uncompressed := 'Hello world!'
 	mut compressed := compress(uncompressed.bytes())!
-	compressed[3] |= fhcrc
+	compressed[3] |= test_fhcrc
 	// FHCRC is 2-byte CRC-16 (low 16 bits of CRC32) in little-endian format
 	checksum := crc32.sum(compressed[..10])
 	crc16 := u16(checksum & 0xffff)
@@ -149,4 +155,15 @@ fn test_gzip_decompress_callback() {
 	}, ref)!
 	assert decoded == size
 	assert decoded == uncompressed.len
+}
+
+fn test_gzip_decompress_callback_rejects_non_gzip() {
+	z := [u8(0x78), 0x9c, 0x03, 0x00, 0x00, 0x00, 0x01]
+	decompress_with_callback(z, fn (chunk []u8, _ voidptr) int {
+		return chunk.len
+	}, unsafe { nil }) or {
+		assert err.msg() == 'invalid gzip stream: too short'
+		return
+	}
+	assert false
 }
