@@ -102,6 +102,14 @@ fn asm_sub_rsp_imm32(mut g Gen, imm u32) {
 	g.emit_u32(imm)
 }
 
+// test byte ptr [rsp], 0
+fn asm_test_byte_ptr_rsp_zero(mut g Gen) {
+	g.emit(0xF6)
+	g.emit(0x04)
+	g.emit(0x24)
+	g.emit(0x00)
+}
+
 // add rsp, imm8
 fn asm_add_rsp_imm8(mut g Gen, imm u8) {
 	g.emit(0x48)

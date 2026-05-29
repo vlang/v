@@ -9,6 +9,8 @@ import v2.ssa
 import encoding.binary
 import math.bits
 
+const x64_windows_stack_probe_page_size = 4096
+
 pub struct Gen {
 	mod &mir.Module
 mut:
@@ -231,14 +233,7 @@ fn (mut g Gen) gen_func(func mir.Function) {
 		asm_push(mut g, Reg(r))
 	}
 
-	// sub rsp, stack_size
-	if g.stack_size > 0 {
-		if g.stack_size <= 127 {
-			asm_sub_rsp_imm8(mut g, u8(g.stack_size))
-		} else {
-			asm_sub_rsp_imm32(mut g, u32(g.stack_size))
-		}
-	}
+	g.emit_stack_allocation()
 
 	abi_regs := g.abi.int_arg_regs()
 	arg_reg_base := if func.abi_ret_indirect { 1 } else { 0 }
@@ -363,6 +358,39 @@ fn reserve_stack_bytes(slot_offset int, size int, align int) (int, int) {
 	alloc_size := if size > 0 { size } else { 8 }
 	next_offset += alloc_size
 	return -next_offset, next_offset
+}
+
+fn (mut g Gen) emit_stack_allocation() {
+	if g.stack_size <= 0 {
+		return
+	}
+	if g.abi == .windows && g.stack_size >= x64_windows_stack_probe_page_size {
+		g.emit_windows_stack_probe_allocation(g.stack_size)
+		return
+	}
+	g.emit_stack_sub(g.stack_size)
+}
+
+fn (mut g Gen) emit_stack_sub(size int) {
+	if size <= 0 {
+		return
+	}
+	if size <= 127 {
+		asm_sub_rsp_imm8(mut g, u8(size))
+	} else {
+		asm_sub_rsp_imm32(mut g, u32(size))
+	}
+}
+
+fn (mut g Gen) emit_windows_stack_probe_allocation(size int) {
+	mut remaining := size
+	for remaining > x64_windows_stack_probe_page_size {
+		g.emit_stack_sub(x64_windows_stack_probe_page_size)
+		asm_test_byte_ptr_rsp_zero(mut g)
+		remaining -= x64_windows_stack_probe_page_size
+	}
+	g.emit_stack_sub(remaining)
+	asm_test_byte_ptr_rsp_zero(mut g)
 }
 
 fn (mut g Gen) move_windows_param(pid int, position int, is_indirect_param bool, param_size int) {

@@ -1219,7 +1219,7 @@ fn pe_emit_runtime_array_rune_string(mut rt PeRuntimeText) {
 	rt.bytes << [u8(0x48), 0xc7, 0x41, 0x08, 0, 0, 0, 0] // mov qword ptr [rcx+8], 0
 	rt.bytes << [u8(0x48), 0x85, 0xd2] // test rdx, rdx
 	null_array := pe_emit_jcc32(mut rt.bytes, 0x84) // je
-	rt.bytes << [u8(0x48), 0x63, 0x42, 0x10] // movsxd rax, dword ptr [rdx+16]
+	rt.bytes << [u8(0x48), 0x63, 0x42, 0x0c] // movsxd rax, dword ptr [rdx+12]
 	rt.bytes << [u8(0x48), 0x89, 0x44, 0x24, 0x30] // mov [rsp+48], rax
 	rt.bytes << [u8(0x48), 0x8b, 0x02] // mov rax, [rdx]
 	rt.bytes << [u8(0x4c), 0x63, 0x52, 0x08] // movsxd r10, dword ptr [rdx+8]

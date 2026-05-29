@@ -249,6 +249,59 @@ fn test_minimal_runtime_roots_keep_functions_used_as_values() {
 	assert !used[unused_key]
 }
 
+fn test_minimal_runtime_roots_keep_functions_used_as_const_values() {
+	mut env := types.Environment.new()
+	files := [
+		ast.File{
+			mod:   'main'
+			name:  'main.v'
+			stmts: [
+				ast.Stmt(ast.ConstDecl{
+					fields: [
+						ast.FieldInit{
+							name:  'cb'
+							value: ast.Expr(minimal_ident('abc', 200))
+						},
+					]
+				}),
+				ast.Stmt(ast.FnDecl{
+					name:  'main'
+					typ:   ast.FnType{}
+					pos:   minimal_pos(201)
+					stmts: [
+						ast.Stmt(ast.ExprStmt{
+							expr: ast.CallExpr{
+								lhs: minimal_ident('cb', 202)
+								pos: minimal_pos(202)
+							}
+						}),
+					]
+				}),
+				ast.Stmt(ast.FnDecl{
+					name: 'abc'
+					typ:  ast.FnType{}
+					pos:  minimal_pos(203)
+				}),
+				ast.Stmt(ast.FnDecl{
+					name: 'unused'
+					typ:  ast.FnType{}
+					pos:  minimal_pos(204)
+				}),
+			]
+		},
+	]
+	used := mark_used_with_options(files, env, MarkUsedOptions{
+		minimal_runtime_roots: true
+	})
+	main_key := decl_key('main', files[0].stmts[1] as ast.FnDecl, env)
+	abc_key := decl_key('main', files[0].stmts[2] as ast.FnDecl, env)
+	unused_key := decl_key('main', files[0].stmts[3] as ast.FnDecl, env)
+
+	assert used[main_key]
+	assert used[abc_key]
+	assert !used[unused_key]
+}
+
 fn test_minimal_runtime_roots_keep_functions_used_in_composite_literals() {
 	mut env := types.Environment.new()
 	files := [

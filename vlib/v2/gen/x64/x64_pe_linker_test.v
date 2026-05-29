@@ -990,6 +990,7 @@ fn test_pe_linker_resolves_array_rune_string_with_internal_runtime_thunk() {
 	mut has_array_data_load := false
 	mut has_array_offset_load := false
 	mut has_array_data_offset_add := false
+	mut has_array_cap_load_as_len := false
 	mut has_aligned_allocation_padding := false
 	mut has_aligned_string_cookie_store := false
 	mut has_raw_heap_pointer_saved_as_string := false
@@ -998,8 +999,11 @@ fn test_pe_linker_resolves_array_rune_string_with_internal_runtime_thunk() {
 	mut has_out_of_bounds_string_store := false
 	runtime_scan_end := first_import_thunk_file_off - 24
 	for off in array_rune_string_off .. runtime_scan_end {
-		if image[off..off + 4] == [u8(0x48), 0x63, 0x42, 0x10] {
+		if image[off..off + 4] == [u8(0x48), 0x63, 0x42, 0x0c] {
 			has_array_len_load = true
+		}
+		if image[off..off + 4] == [u8(0x48), 0x63, 0x42, 0x10] {
+			has_array_cap_load_as_len = true
 		}
 		if image[off..off + 3] == [u8(0x48), 0x8b, 0x02] {
 			has_array_data_load = true
@@ -1051,6 +1055,7 @@ fn test_pe_linker_resolves_array_rune_string_with_internal_runtime_thunk() {
 		}
 	}
 	assert has_array_len_load
+	assert !has_array_cap_load_as_len
 	assert has_array_data_load
 	assert has_array_offset_load
 	assert has_array_data_offset_add

@@ -210,6 +210,31 @@ fn test_x64_windows_call_frame_reserves_shadow_space() {
 	assert gen.coff.text_data == [u8(0x48), 0x83, 0xec, 0x30, 0x48, 0x83, 0xc4, 0x30]
 }
 
+fn test_x64_windows_large_stack_allocation_probes_each_page() {
+	mut mod := new_x64_abi_test_module()
+	mut gen := Gen.new_with_format_and_abi(&mod, .coff, .windows)
+	gen.stack_size = x64_windows_stack_probe_page_size * 2 + 8
+
+	gen.emit_stack_allocation()
+
+	page_probe := [u8(0x48), 0x81, 0xec, 0x00, 0x10, 0x00, 0x00, 0xf6, 0x04, 0x24, 0x00]
+	mut expected := []u8{}
+	expected << page_probe
+	expected << page_probe
+	expected << [u8(0x48), 0x83, 0xec, 0x08, 0xf6, 0x04, 0x24, 0x00]
+	assert gen.coff.text_data == expected
+}
+
+fn test_x64_sysv_large_stack_allocation_uses_single_sub() {
+	mut mod := new_x64_abi_test_module()
+	mut gen := Gen.new_with_format_and_abi(&mod, .elf, .sysv)
+	gen.stack_size = x64_windows_stack_probe_page_size * 2 + 8
+
+	gen.emit_stack_allocation()
+
+	assert gen.elf.text_data == [u8(0x48), 0x81, 0xec, 0x08, 0x20, 0x00, 0x00]
+}
+
 fn test_x64_windows_stack_arg_store_starts_after_shadow_space() {
 	mut mod := new_x64_abi_test_module()
 	mut gen := Gen.new_with_format_and_abi(&mod, .coff, .windows)

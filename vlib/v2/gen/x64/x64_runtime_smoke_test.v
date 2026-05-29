@@ -1588,7 +1588,9 @@ fn x64_windows_rune_array_string_free_source() string {
 	return "module main
 
 fn main() {
-	runes := [rune(79), 75]
+	mut runes := []rune{cap: 5}
+	runes << rune(79)
+	runes << 75
 	mut s := runes.string()
 	if s.len == 2 && s == 'OK' {
 		print('R')

@@ -99,6 +99,7 @@ mut:
 	struct_field_receivers    map[string][]string
 	struct_embedded_receivers map[string][]string
 	global_interface_names    map[string]string
+	const_fn_value_aliases    map[string]string
 
 	lookup map[string][]int
 
@@ -149,6 +150,7 @@ fn new_walker(files []ast.File, env &types.Environment, opts MarkUsedOptions) Wa
 		struct_field_receivers:    map[string][]string{}
 		struct_embedded_receivers: map[string][]string{}
 		global_interface_names:    map[string]string{}
+		const_fn_value_aliases:    map[string]string{}
 		lookup:                    map[string][]int{}
 	}
 }
@@ -234,6 +236,33 @@ fn (mut w Walker) collect_defs() {
 					w.index_fn(idx, info)
 				}
 				else {}
+			}
+		}
+	}
+	w.collect_const_fn_value_aliases()
+}
+
+fn const_fn_value_alias_key(mod_name string, name string) string {
+	return '${normalize_module_name(mod_name)}:${name}'
+}
+
+fn (mut w Walker) collect_const_fn_value_aliases() {
+	for file in w.files {
+		mod_name := normalize_module_name(file.mod)
+		for stmt in file.stmts {
+			if !stmt_ok(stmt) {
+				continue
+			}
+			if stmt is ast.ConstDecl {
+				for field in stmt.fields {
+					if field.name == '' {
+						continue
+					}
+					if field.value is ast.Ident
+						&& w.ident_resolves_to_fn_value(field.value.name, mod_name) {
+						w.const_fn_value_aliases[const_fn_value_alias_key(mod_name, field.name)] = field.value.name
+					}
+				}
 			}
 		}
 	}
@@ -1896,6 +1925,7 @@ fn (mut w Walker) mark_call_lhs(lhs ast.Expr, mod_name string) {
 	match lhs {
 		ast.Ident {
 			w.mark_fn_name(lhs.name, mod_name)
+			w.mark_const_fn_value_alias(lhs.name, mod_name)
 		}
 		ast.GenericArgs {
 			w.mark_call_lhs(lhs.lhs, mod_name)
@@ -1953,6 +1983,27 @@ fn (mut w Walker) mark_call_lhs(lhs ast.Expr, mod_name string) {
 	}
 }
 
+fn (w &Walker) const_fn_value_alias_is_shadowed(name string) bool {
+	if w.cur_fn_scope == unsafe { nil } {
+		return false
+	}
+	if obj := w.cur_fn_scope.lookup_parent(name, 0) {
+		return obj !is types.Const
+	}
+	return false
+}
+
+fn (mut w Walker) mark_const_fn_value_alias(name string, mod_name string) bool {
+	if name == '' || w.const_fn_value_alias_is_shadowed(name) {
+		return false
+	}
+	if target := w.const_fn_value_aliases[const_fn_value_alias_key(mod_name, name)] {
+		w.mark_fn_name(target, mod_name)
+		return true
+	}
+	return false
+}
+
 fn (mut w Walker) mark_selector_fn_value(expr ast.SelectorExpr, mod_name string) {
 	if expr.lhs !is ast.Ident {
 		return
@@ -1974,6 +2025,9 @@ fn (mut w Walker) mark_fn_value_expr(expr ast.Expr, mod_name string) {
 	}
 	match expr {
 		ast.Ident {
+			if w.mark_const_fn_value_alias(expr.name, mod_name) {
+				return
+			}
 			if w.ident_resolves_to_fn_value(expr.name, mod_name) {
 				w.mark_fn_name(expr.name, mod_name)
 			}
@@ -2034,6 +2088,7 @@ fn (mut w Walker) walk_stmt(stmt ast.Stmt, mod_name string) {
 		}
 		ast.ConstDecl {
 			for field in stmt.fields {
+				w.mark_fn_value_expr(field.value, mod_name)
 				w.walk_expr(field.value, mod_name)
 			}
 		}
