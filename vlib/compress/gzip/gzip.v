@@ -130,11 +130,19 @@ pub fn decompress(data []u8, params DecompressParams) ![]u8 {
 	return deflate.decompress_gzip(data)
 }
 
-// decompress_with_callback decompresses the given gzip `data` and calls `cb` with each chunk of
-// decompressed bytes. A chunk is usually 32 KB or less. The chunk data received by `cb` should be
-// cloned if it needs to be stored for later use.
-// The callback should return the chunk length to continue, or 0 to abort early.
-// Returns the total number of decompressed bytes delivered to the callback.
-pub fn decompress_with_callback(data []u8, cb deflate.ChunkCallback, userdata voidptr, params DecompressParams) !int {
-	return deflate.decompress_with_callback(data, cb, userdata)
+// decompress_with_callback decompresses a gzip stream (RFC 1952) using a callback for chunked delivery. The callback
+// receives chunks of decompressed data and should return the chunk length to continue, or 0 to abort.
+// Returns the total decompressed length.
+pub fn decompress_with_callback(data []u8, cb deflate.ChunkCallback, userdata voidptr) !int {
+	decoded := deflate.decompress_gzip(data)!
+	mut offset := 0
+	for offset < decoded.len {
+		end := if offset + 32768 < decoded.len { offset + 32768 } else { decoded.len }
+		chunk := decoded[offset..end]
+		if cb(chunk, userdata) != chunk.len {
+			return offset
+		}
+		offset = end
+	}
+	return decoded.len
 }
