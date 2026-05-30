@@ -2840,12 +2840,16 @@ pub fn (mut g Gen) write_typedef_types() {
 			}
 		}
 	}
+	// Emit aliases parent-first so that chained aliases (`type B = A` where
+	// `A` is itself an alias, #27055) typedef in dependency order; otherwise C
+	// hits the unknown parent typedef and silently falls back to implicit int.
+	mut emitted_alias := map[int]bool{}
 	for sym in g.table.type_symbols {
 		if sym.kind == .alias && !sym.is_builtin && sym.name !in ['byte', 'i32'] {
 			if g.pref.skip_unused && sym.idx !in g.table.used_features.used_syms {
 				continue
 			}
-			g.write_alias_typesymbol_declaration(sym)
+			g.emit_alias_typedef_chain(sym, mut emitted_alias)
 		}
 	}
 	g.write_sorted_fn_typesymbol_declaration()
@@ -2872,6 +2876,29 @@ pub fn (mut g Gen) write_typedef_types() {
 	}
 }
 
+// emit_alias_typedef_chain emits parent alias typedefs before child ones so a
+// chain like `type Main = A; type A = B; type B = string` ends up as
+// `typedef string B; typedef B A; typedef A Main;` in declaration order.
+fn (mut g Gen) emit_alias_typedef_chain(sym ast.TypeSymbol, mut emitted map[int]bool) {
+	if emitted[sym.idx] {
+		return
+	}
+	emitted[sym.idx] = true
+	if sym.info is ast.Alias {
+		parent_idx := sym.info.parent_type.idx()
+		if parent_idx > 0 && parent_idx < g.table.type_symbols.len {
+			parent_sym := g.table.type_symbols[parent_idx]
+			if parent_sym.kind == .alias && !parent_sym.is_builtin
+				&& parent_sym.name !in ['byte', 'i32'] {
+				if !(g.pref.skip_unused && parent_sym.idx !in g.table.used_features.used_syms) {
+					g.emit_alias_typedef_chain(parent_sym, mut emitted)
+				}
+			}
+		}
+	}
+	g.write_alias_typesymbol_declaration(sym)
+}
+
 pub fn (mut g Gen) write_alias_typesymbol_declaration(sym ast.TypeSymbol) {
 	mut levels := 0
 	parent := g.table.type_symbols[sym.parent_idx]
@@ -2885,6 +2912,26 @@ pub fn (mut g Gen) write_alias_typesymbol_declaration(sym ast.TypeSymbol) {
 	} else {
 		if sym.info is ast.Alias {
 			parent_styp = g.styp(sym.info.parent_type)
+			// Chained aliases (#27055): if the parent is itself an alias whose
+			// ultimate base is a fixed array of non-builtin elements, the parent
+			// typedef has been deferred to `alias_definitions` so this child
+			// must also be deferred — otherwise `typedef Parent Child;` lands
+			// in `type_definitions` before `Parent` exists.
+			mut walk_typ := sym.info.parent_type
+			for {
+				walk_sym := g.table.sym(walk_typ)
+				if walk_sym.info is ast.Alias {
+					walk_typ = walk_sym.info.parent_type
+					continue
+				}
+				if walk_sym.info is ast.ArrayFixed {
+					base_elem_sym := g.fixed_array_base_elem_sym(walk_sym.info.elem_type)
+					if !base_elem_sym.is_builtin() {
+						is_fixed_array_of_non_builtin = true
+					}
+				}
+				break
+			}
 			parent_sym := g.table.sym(sym.info.parent_type)
 			if parent_sym.info is ast.ArrayFixed {
 				mut elem_sym := g.table.sym(parent_sym.info.elem_type)

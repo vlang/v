@@ -1,8 +1,3 @@
-vlib/v/checker/tests/use_byte_instead_of_u8_err.vv:1:13: error: type `byte` is an alias, use the original alias type `u8` instead
-    1 | type Byte = byte
-      |             ~~~~
-    2 | 
-    3 | fn foo(_ byte) {}
 vlib/v/checker/tests/use_byte_instead_of_u8_err.vv:3:10: error: byte is deprecated, use u8 instead
     1 | type Byte = byte
     2 | 
