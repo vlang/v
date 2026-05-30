@@ -5,7 +5,7 @@ import strings
 import v.pref
 import v.util.version
 
-const default_c_error_bug_report_url = 'https://vlang.io/bug-report'
+const default_c_error_bug_report_url = 'https://bugs.vlang.io/bug-report'
 const c_error_context_radius = 5
 const c_error_bug_report_max_body_bytes = 256 * 1024
 const c_error_bug_report_truncation_notice = '\n... report truncated before upload ...\n'

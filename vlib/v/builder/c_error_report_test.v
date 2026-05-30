@@ -1,5 +1,15 @@
 module builder
 
+import os
+
+fn restore_c_error_bug_report_url_env(old_url ?string) {
+	if url := old_url {
+		os.setenv('V_C_ERROR_BUG_REPORT_URL', url, true)
+	} else {
+		os.unsetenv('V_C_ERROR_BUG_REPORT_URL')
+	}
+}
+
 fn test_c_error_location_for_generated_c_parses_gcc_output() {
 	loc := c_error_location_for_generated_c('/tmp/program.tmp.c:42:7: error: unknown type name',
 		'/tmp/program.tmp.c') or {
@@ -83,6 +93,15 @@ fn test_generated_c_line_for_source_location_prefers_non_empty_line() {
 
 fn test_c_error_bug_report_url_uses_override_without_trailing_slash() {
 	assert c_error_bug_report_url(' http://127.0.0.1:19090/bug-report/ ') == 'http://127.0.0.1:19090/bug-report'
+}
+
+fn test_c_error_bug_report_url_uses_bugs_domain_by_default() {
+	old_url := os.getenv_opt('V_C_ERROR_BUG_REPORT_URL')
+	os.unsetenv('V_C_ERROR_BUG_REPORT_URL')
+	defer {
+		restore_c_error_bug_report_url_env(old_url)
+	}
+	assert c_error_bug_report_url('') == 'https://bugs.vlang.io/bug-report'
 }
 
 fn test_bounded_c_error_bug_report_keeps_encoded_body_under_limit() {
