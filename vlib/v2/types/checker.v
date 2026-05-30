@@ -5316,7 +5316,7 @@ fn (c &Checker) eval_comptime_cond(cond ast.Expr) bool {
 		ast.PostfixExpr {
 			if cond.op == .question {
 				if cond.expr is ast.Ident {
-					return c.eval_comptime_flag(cond.expr.name)
+					return pref.comptime_optional_flag_value(c.pref, cond.expr.name)
 				}
 			}
 		}

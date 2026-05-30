@@ -1308,7 +1308,7 @@ fn (t &Transformer) eval_comptime_cond(cond ast.Expr) bool {
 			if cond.op == .question {
 				inner := cond.expr
 				if inner is ast.Ident {
-					return t.eval_comptime_flag(inner.name)
+					return pref.comptime_optional_flag_value(t.pref, inner.name)
 				}
 			}
 		}

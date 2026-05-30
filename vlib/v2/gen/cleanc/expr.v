@@ -4788,7 +4788,7 @@ fn cleanc_pref_comptime_flag_name(name string) bool {
 	match name {
 		'macos', 'darwin', 'mac', 'linux', 'windows', 'bsd', 'freebsd', 'openbsd', 'netbsd',
 		'dragonfly', 'android', 'termux', 'ios', 'solaris', 'qnx', 'serenity', 'plan9', 'vinix',
-		'cross', 'freestanding' {
+		'cross', 'none', 'freestanding' {
 			return true
 		}
 		else {
@@ -4897,7 +4897,7 @@ fn (g &Gen) eval_comptime_cond(cond ast.Expr) bool {
 		}
 		ast.PostfixExpr {
 			if cond.op == .question && cond.expr is ast.Ident {
-				return g.eval_comptime_flag(cond.expr.name)
+				return vpref.comptime_optional_flag_value(g.pref, cond.expr.name)
 			}
 		}
 		ast.ParenExpr {

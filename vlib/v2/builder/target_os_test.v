@@ -281,23 +281,56 @@ fn test_active_file_imports_filters_conditional_imports_by_target_os() {
 					}
 				}
 			}),
+			ast.Stmt(ast.ExprStmt{
+				expr: ast.ComptimeExpr{
+					expr: ast.IfExpr{
+						cond:  ast.Ident{
+							name: 'none'
+						}
+						stmts: [
+							ast.Stmt(ast.ImportStmt{
+								name: 'nonemod'
+							}),
+						]
+					}
+				}
+			}),
 		]
 	}
 	windows_names := active_file_imports(file, [], 'windows').map(it.name)
 	linux_names := active_file_imports(file, [], 'linux').map(it.name)
 	macos_names := active_file_imports(file, [], 'macos').map(it.name)
+	none_names := active_file_imports(file, [], 'none').map(it.name)
+	windows_with_linux_define_names := active_file_imports_with_explicit(file, [
+		'linux',
+	], [
+		'linux',
+	], 'windows').map(it.name)
 
 	assert 'winmod' in windows_names
 	assert 'linmod' !in windows_names
 	assert 'macmod' !in windows_names
+	assert 'nonemod' !in windows_names
 
 	assert 'linmod' in linux_names
 	assert 'winmod' !in linux_names
 	assert 'macmod' !in linux_names
+	assert 'nonemod' !in linux_names
 
 	assert 'macmod' in macos_names
 	assert 'winmod' !in macos_names
 	assert 'linmod' !in macos_names
+	assert 'nonemod' !in macos_names
+
+	assert 'nonemod' in none_names
+	assert 'linmod' !in none_names
+	assert 'winmod' !in none_names
+	assert 'macmod' !in none_names
+
+	assert 'winmod' in windows_with_linux_define_names
+	assert 'linmod' !in windows_with_linux_define_names
+	assert 'macmod' !in windows_with_linux_define_names
+	assert 'nonemod' !in windows_with_linux_define_names
 }
 
 fn test_header_cache_stamp_uses_target_os_preference() {

@@ -25,6 +25,60 @@ fn test_comptime_flag_value_allows_nil_preferences() {
 	assert !comptime_flag_value(prefs, 'definitely_missing_flag')
 }
 
+fn test_comptime_optional_flag_value_uses_user_defines_only() {
+	mut prefs := new_preferences()
+	prefs.target_os = 'linux'
+	assert comptime_flag_value(&prefs, 'linux')
+	assert !comptime_optional_flag_value(&prefs, 'linux')
+
+	prefs.user_defines = ['linux']
+	prefs.explicit_user_defines = ['linux']
+	assert comptime_optional_flag_value(&prefs, 'linux')
+
+	prefs.target_os = 'windows'
+	assert !comptime_flag_value(&prefs, 'linux')
+	assert comptime_optional_flag_value(&prefs, 'linux')
+}
+
+fn test_comptime_optional_target_modes_ignore_synthesized_defines() {
+	mut cross_prefs := new_preferences()
+	cross_prefs.target_os = 'cross'
+	cross_prefs.output_cross_c = true
+	cross_prefs.user_defines = ['cross']
+	assert comptime_flag_value(&cross_prefs, 'cross')
+	assert !comptime_optional_flag_value(&cross_prefs, 'cross')
+	cross_prefs.explicit_user_defines = ['cross']
+	assert comptime_optional_flag_value(&cross_prefs, 'cross')
+
+	mut free_prefs := new_preferences()
+	free_prefs.freestanding = true
+	free_prefs.user_defines = ['freestanding']
+	assert comptime_flag_value(&free_prefs, 'freestanding')
+	assert !comptime_optional_flag_value(&free_prefs, 'freestanding')
+	free_prefs.explicit_user_defines = ['freestanding']
+	assert comptime_optional_flag_value(&free_prefs, 'freestanding')
+
+	mut none_prefs := new_preferences()
+	none_prefs.freestanding = true
+	none_prefs.target_os = 'none'
+	none_prefs.user_defines = ['freestanding']
+	assert comptime_flag_value(&none_prefs, 'none')
+	assert !comptime_optional_flag_value(&none_prefs, 'none')
+	none_prefs.explicit_user_defines = ['none']
+	assert comptime_optional_flag_value(&none_prefs, 'none')
+}
+
+fn test_comptime_optional_flag_value_keeps_internal_capability_flags() {
+	mut prefs := new_preferences()
+	prefs.backend = .x64
+	prefs.arch = .x64
+	prefs.target_os = 'windows'
+	assert comptime_flag_value(&prefs, 'v2_native_windows_pe_minimal')
+	assert comptime_optional_flag_value(&prefs, 'v2_native_windows_pe_minimal')
+	assert comptime_flag_value(&prefs, 'builtin_write_buf_to_fd_should_use_c_write')
+	assert comptime_optional_flag_value(&prefs, 'builtin_write_buf_to_fd_should_use_c_write')
+}
+
 fn test_comptime_flag_value_native_backend_backtrace_guards() {
 	mut prefs := new_preferences()
 	prefs.backend = .x64

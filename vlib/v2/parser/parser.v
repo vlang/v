@@ -3910,10 +3910,10 @@ fn (p &Parser) eval_comptime_cond(cond ast.Expr) bool {
 			}
 		}
 		ast.PostfixExpr {
-			// `feature?` form — the `?` is syntactic sugar for the inner flag
-			// expression, so just delegate to it.
 			if cond.op == .question {
-				return p.eval_comptime_cond(cond.expr)
+				if cond.expr is ast.Ident {
+					return pref.comptime_optional_flag_value(p.pref, cond.expr.name)
+				}
 			}
 		}
 		ast.ParenExpr {

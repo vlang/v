@@ -21,6 +21,7 @@ fn test_new_preferences_from_args_defaults_to_host_target() {
 	assert !prefs.is_freestanding()
 	assert 'cross' !in prefs.user_defines
 	assert 'freestanding' !in prefs.user_defines
+	assert prefs.explicit_user_defines.len == 0
 }
 
 fn test_new_preferences_from_args_parses_target_os() {
@@ -59,7 +60,9 @@ fn test_new_preferences_from_args_cross_is_not_concrete_os() {
 	assert prefs.normalized_target_os() == 'cross'
 	assert prefs.is_cross_target()
 	assert 'cross' in prefs.user_defines
+	assert 'cross' !in prefs.explicit_user_defines
 	assert comptime_flag_value(&prefs, 'cross')
+	assert !comptime_optional_flag_value(&prefs, 'cross')
 	assert !comptime_flag_value(&prefs, 'linux')
 	assert !comptime_flag_value(&prefs, 'macos')
 	assert !comptime_flag_value(&prefs, 'darwin')
@@ -75,6 +78,8 @@ fn test_new_preferences_from_args_freestanding_is_distinct_from_cross() {
 	assert comptime_flag_value(&prefs, 'linux')
 	assert !comptime_flag_value(&prefs, 'cross')
 	assert 'freestanding' in prefs.user_defines
+	assert 'freestanding' !in prefs.explicit_user_defines
+	assert !comptime_optional_flag_value(&prefs, 'freestanding')
 }
 
 fn test_new_preferences_from_args_accepts_freestanding_none_target() {
@@ -86,6 +91,8 @@ fn test_new_preferences_from_args_accepts_freestanding_none_target() {
 	assert prefs.source_filter_target_os() == 'none'
 	assert !prefs.can_compile_cleanc_locally()
 	assert comptime_flag_value(&prefs, 'freestanding')
+	assert comptime_flag_value(&prefs, 'none')
+	assert !comptime_optional_flag_value(&prefs, 'none')
 	assert !comptime_flag_value(&prefs, 'cross')
 	assert !comptime_flag_value(&prefs, 'linux')
 	assert !comptime_flag_value(&prefs, 'macos')
@@ -156,6 +163,7 @@ fn test_new_preferences_from_args_parses_freestanding_hooks() {
 	assert 'freestanding_hooks_panic' in prefs.user_defines
 	assert 'freestanding_alloc' !in prefs.user_defines
 	assert 'freestanding_hooks_alloc' !in prefs.user_defines
+	assert prefs.explicit_user_defines.len == 0
 	assert comptime_flag_value(&prefs, 'freestanding_hooks')
 	assert comptime_flag_value(&prefs, 'freestanding_output')
 	assert comptime_flag_value(&prefs, 'freestanding_panic')
@@ -173,6 +181,8 @@ fn test_freestanding_hook_defines_do_not_grant_hook_capabilities() {
 	assert 'freestanding_output' in prefs.user_defines
 	assert 'freestanding_panic' in prefs.user_defines
 	assert 'freestanding_alloc' in prefs.user_defines
+	assert prefs.explicit_user_defines == ['freestanding_output', 'freestanding_panic',
+		'freestanding_alloc']
 	assert comptime_flag_value(&prefs, 'freestanding_output')
 	assert comptime_flag_value(&prefs, 'freestanding_panic')
 	assert comptime_flag_value(&prefs, 'freestanding_alloc')
@@ -199,6 +209,7 @@ fn test_new_preferences_using_options_accepts_target_os_and_freestanding() {
 	assert comptime_flag_value(&prefs, 'windows')
 	assert comptime_flag_value(&prefs, 'freestanding')
 	assert 'freestanding' in prefs.user_defines
+	assert 'freestanding' !in prefs.explicit_user_defines
 
 	termux_prefs := new_preferences_using_options(['--cleanc', '--os-termux'])
 	assert termux_prefs.backend == .cleanc
@@ -235,7 +246,9 @@ fn test_new_preferences_using_options_accepts_cross_target() {
 	assert prefs.target_os == 'cross'
 	assert prefs.is_cross_target()
 	assert 'cross' in prefs.user_defines
+	assert 'cross' !in prefs.explicit_user_defines
 	assert comptime_flag_value(&prefs, 'cross')
+	assert !comptime_optional_flag_value(&prefs, 'cross')
 	assert !comptime_flag_value(&prefs, 'linux')
 	assert !comptime_flag_value(&prefs, 'macos')
 	assert !comptime_flag_value(&prefs, 'windows')
@@ -257,8 +270,29 @@ fn test_new_preferences_from_args_accepted_targets_match_comptime_flags() {
 fn test_cross_and_freestanding_still_allow_user_defines() {
 	mut prefs := new_preferences()
 	prefs.user_defines = ['cross', 'freestanding']
+	prefs.explicit_user_defines = ['cross', 'freestanding']
 	assert comptime_flag_value(&prefs, 'cross')
 	assert comptime_flag_value(&prefs, 'freestanding')
+	assert comptime_optional_flag_value(&prefs, 'cross')
+	assert comptime_optional_flag_value(&prefs, 'freestanding')
+}
+
+fn test_explicit_user_defines_are_separate_from_synthesized_defines() {
+	cross_prefs := new_preferences_from_args(['-os', 'cross', '-d', 'cross', 'main.v'])
+	assert 'cross' in cross_prefs.user_defines
+	assert 'cross' in cross_prefs.explicit_user_defines
+	assert comptime_optional_flag_value(&cross_prefs, 'cross')
+
+	free_prefs := new_preferences_from_args(['-freestanding', '-d', 'freestanding', 'main.v'])
+	assert 'freestanding' in free_prefs.user_defines
+	assert 'freestanding' in free_prefs.explicit_user_defines
+	assert comptime_optional_flag_value(&free_prefs, 'freestanding')
+
+	none_prefs :=
+		new_preferences_from_args(['-freestanding', '-os', 'none', '-d', 'none', 'main.v'])
+	assert none_prefs.target_os == 'none'
+	assert 'none' in none_prefs.explicit_user_defines
+	assert comptime_optional_flag_value(&none_prefs, 'none')
 }
 
 fn test_file_suffix_filter_cross_target_contract() {

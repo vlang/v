@@ -258,8 +258,8 @@ fn (g &Gen) has_target_define(name string) bool {
 	if g.pref == unsafe { nil } {
 		return false
 	}
-	lower_name := name.to_lower()
-	return name in g.pref.user_defines || lower_name in g.pref.user_defines
+	return vpref.comptime_optional_define_value(name, g.pref.user_defines,
+		g.pref.explicit_user_defines)
 }
 
 fn (g &Gen) is_freestanding_target() bool {
@@ -925,7 +925,7 @@ fn (g &Gen) ast_comptime_simple_cond_matches(expr ast.Expr) bool {
 	}
 	if expr is ast.PostfixExpr {
 		if expr.op == .question && expr.expr is ast.Ident {
-			return g.pref != unsafe { nil } && expr.expr.name in g.pref.user_defines
+			return g.has_target_define(expr.expr.name)
 		}
 		return false
 	}
@@ -940,31 +940,20 @@ fn (g &Gen) ast_comptime_flag_matches(name string) bool {
 	if g.pref == unsafe { nil } {
 		return false
 	}
-	if lower_name in g.pref.user_defines {
-		return true
+	match lower_name {
+		'macos', 'darwin', 'mac', 'linux', 'windows', 'bsd', 'freebsd', 'openbsd', 'netbsd',
+		'dragonfly', 'android', 'termux', 'ios', 'solaris', 'qnx', 'serenity', 'plan9', 'vinix',
+		'none' {
+			return vpref.comptime_flag_value(g.pref, lower_name)
+		}
+		'cross', 'freestanding', 'bare' {
+			return vpref.comptime_flag_value(g.pref, lower_name)
+				|| vpref.define_list_contains(g.pref.user_defines, lower_name)
+		}
+		else {}
 	}
-	target_os := g.target_os_name()
-	return match lower_name {
-		'macos', 'darwin', 'mac' { target_os == 'macos' }
-		'linux' { target_os == 'linux' }
-		'windows' { target_os == 'windows' }
-		'bsd' { target_os in ['macos', 'freebsd', 'openbsd', 'netbsd', 'dragonfly'] }
-		'freebsd' { target_os == 'freebsd' }
-		'openbsd' { target_os == 'openbsd' }
-		'netbsd' { target_os == 'netbsd' }
-		'dragonfly' { target_os == 'dragonfly' }
-		'android' { target_os == 'android' }
-		'termux' { target_os == 'termux' }
-		'ios' { target_os == 'ios' }
-		'solaris' { target_os == 'solaris' }
-		'qnx' { target_os == 'qnx' }
-		'serenity' { target_os == 'serenity' }
-		'plan9' { target_os == 'plan9' }
-		'vinix' { target_os == 'vinix' }
-		'cross' { target_os == 'cross' }
-		'freestanding', 'bare' { g.is_freestanding_target() }
-		else { false }
-	}
+
+	return vpref.define_list_contains(g.pref.user_defines, lower_name)
 }
 
 fn c_directive_emits_linked_symbols(value string) bool {

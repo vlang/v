@@ -40,7 +40,8 @@ fn worker(mut wp util.WorkerPool[string, ast.File], mut pstate ParsingSharedStat
 		// Queue new jobs for imports before pushing result
 		skip_imports := prefs.skip_imports
 		if !skip_imports {
-			for mod in active_file_imports(ast_file, prefs.user_defines, target_os) {
+			for mod in active_file_imports_with_explicit(ast_file, prefs.user_defines,
+				prefs.explicit_user_defines, target_os) {
 				if pstate.already_parsed_module(mod.name) {
 					continue
 				}

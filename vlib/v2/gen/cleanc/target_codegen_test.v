@@ -23,13 +23,14 @@ fn new_target_test_gen_with_options(target_os string, user_defines []string, fre
 
 fn new_target_test_gen_with_options_and_hooks(target_os string, user_defines []string, freestanding bool, prealloc bool, freestanding_hooks []string) &Gen {
 	prefs := &vpref.Preferences{
-		backend:            .cleanc
-		target_os:          target_os
-		freestanding:       freestanding
-		prealloc:           prealloc
-		user_defines:       user_defines
-		freestanding_hooks: freestanding_hooks
-		no_parallel:        true
+		backend:               .cleanc
+		target_os:             target_os
+		freestanding:          freestanding
+		prealloc:              prealloc
+		user_defines:          user_defines
+		explicit_user_defines: user_defines.clone()
+		freestanding_hooks:    freestanding_hooks
+		no_parallel:           true
 	}
 	env := types.Environment.new()
 	return Gen.new_with_env_and_pref([]ast.File{}, env, prefs)
@@ -45,7 +46,21 @@ fn freestanding_hook_defines(hooks []string) []string {
 }
 
 fn c_directive_output_for_target(cond string, target_os string, user_defines []string) string {
-	mut g := new_target_test_gen(target_os, user_defines)
+	return c_directive_output_for_target_with_explicit(cond, target_os, user_defines,
+		user_defines.clone(), false)
+}
+
+fn c_directive_output_for_target_with_explicit(cond string, target_os string, user_defines []string, explicit_user_defines []string, freestanding bool) string {
+	prefs := &vpref.Preferences{
+		backend:               .cleanc
+		target_os:             target_os
+		freestanding:          freestanding
+		user_defines:          user_defines
+		explicit_user_defines: explicit_user_defines
+		no_parallel:           true
+	}
+	env := types.Environment.new()
+	mut g := Gen.new_with_env_and_pref([]ast.File{}, env, prefs)
 	mut seen := map[string]bool{}
 	g.emit_directive(ast.Directive{
 		name:    'include'
@@ -56,14 +71,9 @@ fn c_directive_output_for_target(cond string, target_os string, user_defines []s
 }
 
 fn c_directive_output_for_freestanding_target(cond string, target_os string) string {
-	mut g := new_target_test_gen_with_freestanding(target_os, [], true)
-	mut seen := map[string]bool{}
-	g.emit_directive(ast.Directive{
-		name:    'include'
-		value:   '<target_marker.h>'
-		ct_cond: cond
-	}, 'target_test.v', true, mut seen)
-	return g.sb.str()
+	return c_directive_output_for_target_with_explicit(cond, target_os, [
+		'freestanding',
+	], [], true)
 }
 
 fn preamble_for_target(target_os string, user_defines []string) string {
@@ -243,13 +253,14 @@ fn generated_c_for_target_program_with_defines_and_hooks(name string, source str
 		os.rm(tmp_file) or {}
 	}
 	prefs := &vpref.Preferences{
-		backend:            .cleanc
-		target_os:          target_os
-		freestanding:       freestanding
-		skip_builtin:       skip_builtin
-		user_defines:       user_defines
-		freestanding_hooks: freestanding_hooks
-		no_parallel:        true
+		backend:               .cleanc
+		target_os:             target_os
+		freestanding:          freestanding
+		skip_builtin:          skip_builtin
+		user_defines:          user_defines
+		explicit_user_defines: user_defines.clone()
+		freestanding_hooks:    freestanding_hooks
+		no_parallel:           true
 	}
 	mut file_set := token.FileSet.new()
 	mut par := parser.Parser.new(prefs)
@@ -403,11 +414,15 @@ fn test_eval_comptime_flag_uses_target_os_preference_for_extended_targets() {
 fn test_freestanding_none_comptime_selects_no_concrete_os() {
 	gen := new_target_test_gen_with_freestanding('none', [], true)
 	assert gen.eval_comptime_flag('freestanding')
+	assert gen.eval_comptime_flag('none')
 	assert !gen.eval_comptime_flag('linux')
 	assert !gen.eval_comptime_flag('windows')
 	assert !gen.eval_comptime_flag('macos')
 	assert !gen.eval_comptime_flag('darwin')
 	assert !gen.eval_comptime_flag('cross')
+
+	hosted_with_define := new_target_test_gen('linux', ['none'])
+	assert !hosted_with_define.eval_comptime_flag('none')
 }
 
 fn test_c_directives_use_target_os_preference() {
@@ -568,6 +583,25 @@ fn test_cross_optional_termux_flag_named_like_os_is_not_os_guarded() {
 	assert !optional_directive_src.contains('defined(__TERMUX__)')
 }
 
+fn test_optional_target_mode_directives_ignore_synthesized_defines() {
+	assert !c_directive_output_for_target_with_explicit('cross ?', 'cross', ['cross'], [], false).contains('#include <target_marker.h>')
+	assert c_directive_output_for_target_with_explicit('cross ?', 'cross', ['cross'], [
+		'cross',
+	], false).contains('#include <target_marker.h>')
+
+	assert !c_directive_output_for_freestanding_target('freestanding ?', 'linux').contains('#include <target_marker.h>')
+	assert c_directive_output_for_target_with_explicit('freestanding ?', 'linux', [
+		'freestanding',
+	], ['freestanding'], true).contains('#include <target_marker.h>')
+
+	assert !c_directive_output_for_target_with_explicit('none ?', 'none', [
+		'freestanding',
+	], [], true).contains('#include <target_marker.h>')
+	assert c_directive_output_for_target_with_explicit('none ?', 'none', [
+		'freestanding',
+	], ['none'], true).contains('#include <target_marker.h>')
+}
+
 fn test_comptime_if_directives_support_infix_os_conditions() {
 	source := 'module main
 
@@ -709,6 +743,42 @@ fn main() {}
 		source, 'cross', ['linux'], false, false)
 	assert defined_src.contains('#include <optional_linux_marker.h>')
 	assert !defined_src.contains('#if defined(__linux__)\n#include <optional_linux_marker.h>')
+}
+
+fn test_optional_user_flag_named_like_os_is_not_target_os_flag() {
+	source := 'module main
+
+\$if linux {
+	#include <linux_marker.h>
+}
+
+\$if linux ? {
+	#include <optional_linux_marker.h>
+}
+
+\$if linux ? || windows {
+	#include <optional_linux_or_windows_marker.h>
+}
+
+fn main() {}
+'
+	linux_src := generated_c_for_target_program_with_options('optional_linux_plain_linux', source,
+		'linux', false, false)
+	assert linux_src.contains('#include <linux_marker.h>')
+	assert !linux_src.contains('#include <optional_linux_marker.h>')
+	assert !linux_src.contains('#include <optional_linux_or_windows_marker.h>')
+
+	linux_defined_src := generated_c_for_target_program_with_defines('optional_linux_defined_linux',
+		source, 'linux', ['linux'], false, false)
+	assert linux_defined_src.contains('#include <linux_marker.h>')
+	assert linux_defined_src.contains('#include <optional_linux_marker.h>')
+	assert linux_defined_src.contains('#include <optional_linux_or_windows_marker.h>')
+
+	windows_src := generated_c_for_target_program_with_options('optional_linux_windows', source,
+		'windows', false, false)
+	assert !windows_src.contains('#include <linux_marker.h>')
+	assert !windows_src.contains('#include <optional_linux_marker.h>')
+	assert windows_src.contains('#include <optional_linux_or_windows_marker.h>')
 }
 
 fn test_c_directives_keep_freestanding_user_os_directives_for_concrete_target() {

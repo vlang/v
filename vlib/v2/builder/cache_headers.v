@@ -1250,8 +1250,8 @@ fn (b &Builder) import_modules_for_cached_modules(module_names []string) []Cache
 	mut import_set := map[string]bool{}
 	mut imports := []CachedImportModule{}
 	for file in b.files {
-		for import_stmt in active_file_imports(file, b.pref.user_defines,
-			b.pref.source_filter_target_os()) {
+		for import_stmt in active_file_imports_with_explicit(file, b.pref.user_defines,
+			b.pref.explicit_user_defines, b.pref.source_filter_target_os()) {
 			module_name := import_stmt.name.all_after_last('.')
 			if module_name !in module_set {
 				continue

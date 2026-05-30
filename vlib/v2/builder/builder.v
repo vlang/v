@@ -263,7 +263,8 @@ fn (b &Builder) validate_freestanding_cleanc_contract() bool {
 	base_scan_ctx :=
 		freestanding_scan_context(b.pref, target_os).with_file_symbols(diagnostic_files)
 	for file in diagnostic_files {
-		for imported in active_file_imports(file, b.pref.user_defines, target_os) {
+		for imported in active_file_imports_with_explicit(file, b.pref.user_defines,
+			b.pref.explicit_user_defines, target_os) {
 			if msg := freestanding_restricted_import_diagnostic(imported.name) {
 				if !seen[msg] {
 					diagnostics << msg
@@ -377,6 +378,7 @@ fn freestanding_restricted_call_diagnostic(call_name string) string {
 
 struct FreestandingScanContext {
 	user_defines       []string
+	explicit_defines   []string
 	target_os          string
 	freestanding_hooks []string
 	skip_builtin       bool
@@ -390,6 +392,7 @@ struct FreestandingScanContext {
 fn freestanding_scan_context(p &pref.Preferences, target_os string) FreestandingScanContext {
 	return FreestandingScanContext{
 		user_defines:       p.user_defines
+		explicit_defines:   p.explicit_user_defines
 		target_os:          target_os
 		freestanding_hooks: p.freestanding_hook_list()
 		skip_builtin:       p.skip_builtin
@@ -410,6 +413,7 @@ fn (ctx FreestandingScanContext) with_fn_type(fn_type ast.FnType) FreestandingSc
 	}
 	return FreestandingScanContext{
 		user_defines:       ctx.user_defines
+		explicit_defines:   ctx.explicit_defines
 		target_os:          ctx.target_os
 		freestanding_hooks: ctx.freestanding_hooks
 		skip_builtin:       ctx.skip_builtin
@@ -430,6 +434,7 @@ fn (ctx FreestandingScanContext) with_fn_decl_type(fn_type ast.FnType, receiver 
 	}
 	return FreestandingScanContext{
 		user_defines:       fn_ctx.user_defines
+		explicit_defines:   fn_ctx.explicit_defines
 		target_os:          fn_ctx.target_os
 		freestanding_hooks: fn_ctx.freestanding_hooks
 		skip_builtin:       fn_ctx.skip_builtin
@@ -568,7 +573,7 @@ fn freestanding_print_arg_is_obvious_non_string(expr ast.Expr) bool {
 fn freestanding_attributes_are_inactive(attributes []ast.Attribute, ctx FreestandingScanContext) bool {
 	for attr in attributes {
 		if attr.comptime_cond !is ast.EmptyExpr
-			&& !ast_comptime_cond_matches(attr.comptime_cond, ctx.user_defines, ctx.target_os) {
+			&& !ast_comptime_cond_matches_with_explicit(attr.comptime_cond, ctx.user_defines, ctx.explicit_defines, ctx.target_os) {
 			return true
 		}
 	}
@@ -853,6 +858,7 @@ fn (ctx FreestandingScanContext) with_file_symbols(files []ast.File) Freestandin
 	}
 	symbol_ctx := FreestandingScanContext{
 		user_defines:       ctx.user_defines
+		explicit_defines:   ctx.explicit_defines
 		target_os:          ctx.target_os
 		freestanding_hooks: ctx.freestanding_hooks
 		skip_builtin:       ctx.skip_builtin
@@ -868,6 +874,7 @@ fn (ctx FreestandingScanContext) with_file_symbols(files []ast.File) Freestandin
 	}
 	return FreestandingScanContext{
 		user_defines:       symbol_ctx.user_defines
+		explicit_defines:   symbol_ctx.explicit_defines
 		target_os:          symbol_ctx.target_os
 		freestanding_hooks: symbol_ctx.freestanding_hooks
 		skip_builtin:       symbol_ctx.skip_builtin
@@ -945,6 +952,7 @@ fn freestanding_scan_context_after_stmt(stmt ast.Stmt, ctx FreestandingScanConte
 	}
 	return FreestandingScanContext{
 		user_defines:       ctx.user_defines
+		explicit_defines:   ctx.explicit_defines
 		target_os:          ctx.target_os
 		freestanding_hooks: ctx.freestanding_hooks
 		skip_builtin:       ctx.skip_builtin
@@ -1376,7 +1384,9 @@ fn freestanding_restricted_call_in_comptime_expr(expr ast.ComptimeExpr, ctx Free
 }
 
 fn freestanding_restricted_call_in_active_comptime_if(node ast.IfExpr, ctx FreestandingScanContext) string {
-	if ast_comptime_cond_matches(node.cond, ctx.user_defines, ctx.target_os) {
+	if ast_comptime_cond_matches_with_explicit(node.cond, ctx.user_defines, ctx.explicit_defines,
+		ctx.target_os)
+	{
 		return freestanding_restricted_call_in_stmts(node.stmts, ctx)
 	}
 	if node.else_expr is ast.IfExpr {
@@ -2652,6 +2662,7 @@ fn flag_os_matches(cond string, target_os string) bool {
 		'plan9' { current == 'plan9' }
 		'vinix' { current == 'vinix' }
 		'cross' { current == 'cross' }
+		'none' { current == 'none' }
 		else { false }
 	}
 }
@@ -3080,7 +3091,7 @@ fn comptime_cond_matches_with_context(cond string, target_os string, prefs &pref
 		if prefs == unsafe { nil } {
 			return false
 		}
-		return optional_name in prefs.user_defines
+		return pref.comptime_optional_flag_value(prefs, optional_name)
 	}
 	if prefs != unsafe { nil } {
 		return flag_os_matches(trimmed, target_os) || flag_pref_matches(trimmed, prefs)

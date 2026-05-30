@@ -61,7 +61,8 @@ pub mut:
 	freestanding_hooks    []string // -fhooks: explicit freestanding platform capabilities
 	output_file           string
 	printfn_list          []string // List of function names whose generated C source should be printed
-	user_defines          []string // User-defined comptime flags via -d <name>
+	user_defines          []string // All active comptime flags, including compiler-synthesized flags.
+	explicit_user_defines []string // User-defined comptime flags from explicit -d <name> only.
 	hot_fn                string   // Extract raw machine code for this function only (hot reload)
 	single_backend        bool     // Only include the selected backend (strip other backends from binary)
 	eval_runtime_args     []string // Program argv exposed to the eval backend
@@ -586,6 +587,7 @@ pub fn new_preferences_from_args(args []string) Preferences {
 		output_file:           output_file
 		printfn_list:          printfn_list
 		user_defines:          all_defines
+		explicit_user_defines: user_defines.clone()
 		hot_fn:                hot_fn_str
 		ccompiler:             ccompiler
 		vroot:                 detect_vroot()
@@ -691,6 +693,7 @@ pub fn new_preferences_using_options(options []string) Preferences {
 		freestanding:          freestanding
 		freestanding_hooks:    freestanding_hooks
 		user_defines:          user_defines
+		explicit_user_defines: []string{}
 	}
 }
 

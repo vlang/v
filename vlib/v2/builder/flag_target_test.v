@@ -72,7 +72,18 @@ fn test_comptime_flag_blocks_match_cross_and_freestanding_preferences() {
 	mut optional_linux_prefs := pref.new_preferences()
 	optional_linux_prefs.target_os = 'cross'
 	optional_linux_prefs.user_defines = ['cross', 'linux']
+	optional_linux_prefs.explicit_user_defines = ['linux']
 	assert comptime_cond_matches_with_pref('linux ?', &optional_linux_prefs)
+
+	mut linux_prefs := pref.new_preferences()
+	linux_prefs.target_os = 'linux'
+	assert comptime_cond_matches_with_pref('linux', &linux_prefs)
+	assert !comptime_cond_matches_with_pref('linux ?', &linux_prefs)
+	assert !comptime_cond_matches_with_pref('linux ? || windows', &linux_prefs)
+	linux_prefs.user_defines = ['linux']
+	linux_prefs.explicit_user_defines = ['linux']
+	assert comptime_cond_matches_with_pref('linux ?', &linux_prefs)
+	assert comptime_cond_matches_with_pref('linux ? || windows', &linux_prefs)
 
 	mut termux_prefs := pref.new_preferences()
 	termux_prefs.target_os = 'termux'
@@ -85,8 +96,35 @@ fn test_comptime_flag_blocks_match_cross_and_freestanding_preferences() {
 	free_prefs.target_os = 'linux'
 	free_prefs.user_defines = ['freestanding']
 	assert comptime_cond_matches_with_pref('freestanding', &free_prefs)
+	assert !comptime_cond_matches_with_pref('freestanding ?', &free_prefs)
 	assert comptime_cond_matches_with_pref('linux', &free_prefs)
 	assert comptime_cond_matches_with_pref('freestanding && linux', &free_prefs)
+}
+
+fn test_comptime_optional_target_mode_flags_require_explicit_define() {
+	mut cross_prefs := pref.new_preferences()
+	cross_prefs.target_os = 'cross'
+	cross_prefs.user_defines = ['cross']
+	assert comptime_cond_matches_with_pref('cross', &cross_prefs)
+	assert !comptime_cond_matches_with_pref('cross ?', &cross_prefs)
+	cross_prefs.explicit_user_defines = ['cross']
+	assert comptime_cond_matches_with_pref('cross ?', &cross_prefs)
+
+	mut free_prefs := pref.new_preferences()
+	free_prefs.target_os = 'linux'
+	free_prefs.user_defines = ['freestanding']
+	assert comptime_cond_matches_with_pref('freestanding', &free_prefs)
+	assert !comptime_cond_matches_with_pref('freestanding ?', &free_prefs)
+	free_prefs.explicit_user_defines = ['freestanding']
+	assert comptime_cond_matches_with_pref('freestanding ?', &free_prefs)
+
+	mut none_prefs := pref.new_preferences()
+	none_prefs.target_os = 'none'
+	none_prefs.user_defines = ['freestanding']
+	assert comptime_cond_matches_with_pref('none', &none_prefs)
+	assert !comptime_cond_matches_with_pref('none ?', &none_prefs)
+	none_prefs.explicit_user_defines = ['none']
+	assert comptime_cond_matches_with_pref('none ?', &none_prefs)
 }
 
 fn test_comptime_flag_blocks_use_or_and_not_precedence() {
@@ -115,7 +153,10 @@ fn test_parser_level_comptime_flags_match_cross_and_accepted_targets() {
 	assert ast_comptime_flag_matches('vinix', [], 'vinix')
 	assert ast_comptime_flag_matches('ios', [], 'ios')
 	assert ast_comptime_flag_matches('termux', [], 'termux')
+	assert ast_comptime_flag_matches('none', [], 'none')
 	assert !ast_comptime_flag_matches('linux', [], 'cross')
+	assert !ast_comptime_flag_matches('linux', ['linux'], 'windows')
+	assert !ast_comptime_flag_matches('none', ['none'], 'linux')
 }
 
 fn test_flag_directives_match_all_accepted_target_os_names() {
@@ -132,6 +173,9 @@ fn test_collect_cflags_from_sources_matches_cross_and_freestanding_blocks() {
 
 $if cross {
 #flag -DCROSS_BLOCK
+}
+$if cross ? {
+#flag -DOPTIONAL_CROSS_BLOCK
 }
 $if linux {
 #flag -DLINUX_BLOCK
@@ -156,6 +200,7 @@ $if windows {
 	cross_flags := collect_cflags_for_test_source(cross_source, mut cross_prefs)
 	assert cross_flags.contains('-DCROSS_BLOCK')
 	assert cross_flags.contains('-DCROSS_DIRECT')
+	assert !cross_flags.contains('-DOPTIONAL_CROSS_BLOCK')
 	assert !cross_flags.contains('-DOPTIONAL_LINUX_BLOCK')
 	host_os := normalize_target_os_name(os.user_os())
 	if host_os in ['linux', 'macos', 'windows'] {
@@ -185,14 +230,26 @@ $if windows {
 	mut cross_with_optional_linux_prefs := pref.new_preferences()
 	cross_with_optional_linux_prefs.target_os = 'cross'
 	cross_with_optional_linux_prefs.user_defines = ['cross', 'linux']
+	cross_with_optional_linux_prefs.explicit_user_defines = ['linux']
 	cross_with_optional_linux_flags := collect_cflags_for_test_source(cross_source, mut
 		cross_with_optional_linux_prefs)
 	assert cross_with_optional_linux_flags.contains('-DOPTIONAL_LINUX_BLOCK')
+	assert !cross_with_optional_linux_flags.contains('-DOPTIONAL_CROSS_BLOCK')
+
+	mut cross_explicit_prefs := pref.new_preferences()
+	cross_explicit_prefs.target_os = 'cross'
+	cross_explicit_prefs.user_defines = ['cross']
+	cross_explicit_prefs.explicit_user_defines = ['cross']
+	cross_explicit_flags := collect_cflags_for_test_source(cross_source, mut cross_explicit_prefs)
+	assert cross_explicit_flags.contains('-DOPTIONAL_CROSS_BLOCK')
 
 	free_source := 'module main
 
 $if freestanding {
 #flag -DFREE_BLOCK
+}
+$if freestanding ? {
+#flag -DOPTIONAL_FREE_BLOCK
 }
 $if linux {
 #flag -DLINUX_BLOCK
@@ -205,9 +262,79 @@ $if linux {
 	free_prefs.user_defines = ['freestanding']
 	free_flags := collect_cflags_for_test_source(free_source, mut free_prefs)
 	assert free_flags.contains('-DFREE_BLOCK')
+	assert !free_flags.contains('-DOPTIONAL_FREE_BLOCK')
 	assert free_flags.contains('-DFREE_DIRECT')
 	assert free_flags.contains('-DLINUX_BLOCK')
 	assert free_flags.contains('-DLINUX_DIRECT')
+
+	mut free_explicit_prefs := pref.new_preferences()
+	free_explicit_prefs.target_os = 'linux'
+	free_explicit_prefs.user_defines = ['freestanding']
+	free_explicit_prefs.explicit_user_defines = ['freestanding']
+	free_explicit_flags := collect_cflags_for_test_source(free_source, mut free_explicit_prefs)
+	assert free_explicit_flags.contains('-DOPTIONAL_FREE_BLOCK')
+}
+
+fn test_collect_cflags_from_sources_keeps_optional_os_flags_custom_only() {
+	source := 'module main
+
+$if linux {
+#flag -DLINUX_BLOCK
+}
+$if linux ? {
+#flag -DOPTIONAL_LINUX_BLOCK
+}
+$if linux ? || windows {
+#flag -DOPTIONAL_LINUX_OR_WINDOWS_BLOCK
+}
+'
+	mut linux_prefs := pref.new_preferences()
+	linux_prefs.target_os = 'linux'
+	linux_flags := collect_cflags_for_test_source(source, mut linux_prefs)
+	assert linux_flags.contains('-DLINUX_BLOCK')
+	assert !linux_flags.contains('-DOPTIONAL_LINUX_BLOCK')
+	assert !linux_flags.contains('-DOPTIONAL_LINUX_OR_WINDOWS_BLOCK')
+
+	mut linux_defined_prefs := pref.new_preferences()
+	linux_defined_prefs.target_os = 'linux'
+	linux_defined_prefs.user_defines = ['linux']
+	linux_defined_prefs.explicit_user_defines = ['linux']
+	linux_defined_flags := collect_cflags_for_test_source(source, mut linux_defined_prefs)
+	assert linux_defined_flags.contains('-DLINUX_BLOCK')
+	assert linux_defined_flags.contains('-DOPTIONAL_LINUX_BLOCK')
+	assert linux_defined_flags.contains('-DOPTIONAL_LINUX_OR_WINDOWS_BLOCK')
+
+	mut windows_prefs := pref.new_preferences()
+	windows_prefs.target_os = 'windows'
+	windows_flags := collect_cflags_for_test_source(source, mut windows_prefs)
+	assert !windows_flags.contains('-DLINUX_BLOCK')
+	assert !windows_flags.contains('-DOPTIONAL_LINUX_BLOCK')
+	assert windows_flags.contains('-DOPTIONAL_LINUX_OR_WINDOWS_BLOCK')
+}
+
+fn test_collect_cflags_from_sources_keeps_optional_none_custom_only() {
+	source := 'module main
+
+$if none {
+#flag -DNONE_BLOCK
+}
+$if none ? {
+#flag -DOPTIONAL_NONE_BLOCK
+}
+'
+	mut none_prefs := pref.new_preferences()
+	none_prefs.target_os = 'none'
+	none_prefs.user_defines = ['freestanding']
+	none_flags := collect_cflags_for_test_source(source, mut none_prefs)
+	assert none_flags.contains('-DNONE_BLOCK')
+	assert !none_flags.contains('-DOPTIONAL_NONE_BLOCK')
+
+	mut none_explicit_prefs := pref.new_preferences()
+	none_explicit_prefs.target_os = 'none'
+	none_explicit_prefs.user_defines = ['freestanding']
+	none_explicit_prefs.explicit_user_defines = ['none']
+	none_explicit_flags := collect_cflags_for_test_source(source, mut none_explicit_prefs)
+	assert none_explicit_flags.contains('-DOPTIONAL_NONE_BLOCK')
 }
 
 fn test_collect_cflags_from_sources_matches_termux_blocks_and_directives() {

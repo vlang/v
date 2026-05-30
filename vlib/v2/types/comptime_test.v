@@ -3,6 +3,7 @@
 // that can be found in the LICENSE file.
 module types
 
+import v2.ast
 import v2.pref
 import v2.token
 
@@ -72,4 +73,37 @@ fn test_checker_comptime_flags_follow_pref_target_os_and_native_windows_pe() {
 	prefs.backend = .arm64
 	assert checker.eval_comptime_flag('windows')
 	assert !checker.eval_comptime_flag('v2_native_windows_pe_minimal')
+}
+
+fn test_checker_optional_os_flag_uses_user_define_not_target_os() {
+	mut prefs := pref.new_preferences()
+	prefs.target_os = 'linux'
+	mut file_set := token.FileSet.new()
+	env := Environment.new()
+	checker := Checker.new(&prefs, file_set, env)
+	plain_linux := ast.Expr(ast.Ident{
+		name: 'linux'
+	})
+	optional_linux := ast.Expr(ast.PostfixExpr{
+		op:   .question
+		expr: ast.Expr(ast.Ident{
+			name: 'linux'
+		})
+	})
+	optional_linux_or_windows := ast.Expr(ast.InfixExpr{
+		op:  .logical_or
+		lhs: optional_linux
+		rhs: ast.Expr(ast.Ident{
+			name: 'windows'
+		})
+	})
+
+	assert checker.eval_comptime_cond(plain_linux)
+	assert !checker.eval_comptime_cond(optional_linux)
+	assert !checker.eval_comptime_cond(optional_linux_or_windows)
+
+	prefs.user_defines = ['linux']
+	prefs.explicit_user_defines = ['linux']
+	assert checker.eval_comptime_cond(optional_linux)
+	assert checker.eval_comptime_cond(optional_linux_or_windows)
 }

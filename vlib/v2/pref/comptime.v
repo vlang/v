@@ -3,9 +3,42 @@
 // that can be found in the LICENSE file.
 module pref
 
-// comptime_flag_value evaluates a single comptime flag identifier (as it would
-// appear in `$if name {` or `@[if name ?]`). Shared between the parser (struct
-// field conditionals) and the transformer (statement / expression $if).
+fn is_target_or_mode_comptime_flag(name string) bool {
+	return name in [
+		'macos',
+		'darwin',
+		'mac',
+		'linux',
+		'windows',
+		'bsd',
+		'freebsd',
+		'openbsd',
+		'netbsd',
+		'dragonfly',
+		'android',
+		'termux',
+		'ios',
+		'solaris',
+		'qnx',
+		'serenity',
+		'plan9',
+		'vinix',
+		'cross',
+		'none',
+		'freestanding',
+		'bare',
+	]
+}
+
+pub fn define_list_contains(defines []string, name string) bool {
+	lower_name := name.to_lower()
+	return name in defines || lower_name in defines
+}
+
+// comptime_flag_value evaluates a plain comptime flag identifier, as it would
+// appear in `$if name {` or `@[if name]`. Use comptime_optional_flag_value for
+// the optional `name ?` form. Shared between the parser (struct field
+// conditionals) and the transformer (statement / expression $if).
 //
 // `pref` may be `nil` for early uses (some tests construct partial state);
 // flags that depend on backend / user_defines then evaluate to `false`.
@@ -123,6 +156,9 @@ pub fn comptime_flag_value(pref &Preferences, name string) bool {
 		'cross' {
 			return pref != unsafe { nil } && (pref.is_cross_target() || name in pref.user_defines)
 		}
+		'none' {
+			return pref != unsafe { nil } && pref.normalized_target_os() == 'none'
+		}
 		'freestanding' {
 			return pref != unsafe { nil } && (pref.is_freestanding() || name in pref.user_defines)
 		}
@@ -146,10 +182,37 @@ pub fn comptime_flag_value(pref &Preferences, name string) bool {
 			return false
 		}
 		else {
-			if pref != unsafe { nil } && name in pref.user_defines {
+			if pref != unsafe { nil } && define_list_contains(pref.user_defines, name) {
 				return true
 			}
 			return false
 		}
 	}
+}
+
+pub fn comptime_optional_define_value(name string, user_defines []string, explicit_user_defines []string) bool {
+	if define_list_contains(explicit_user_defines, name) {
+		return true
+	}
+	if is_target_or_mode_comptime_flag(name.to_lower()) {
+		return false
+	}
+	return define_list_contains(user_defines, name)
+}
+
+// comptime_optional_flag_value evaluates the `name ?` form. Unlike a plain
+// `$if name`, target OS and target-mode flags must not become true implicitly.
+// Non-target compiler capability flags keep their normal value, because V's
+// builtin/runtime code uses the optional form for guarded internal fallbacks.
+pub fn comptime_optional_flag_value(pref &Preferences, name string) bool {
+	if pref == unsafe { nil } {
+		return false
+	}
+	if comptime_optional_define_value(name, pref.user_defines, pref.explicit_user_defines) {
+		return true
+	}
+	if is_target_or_mode_comptime_flag(name.to_lower()) {
+		return false
+	}
+	return comptime_flag_value(pref, name)
 }
