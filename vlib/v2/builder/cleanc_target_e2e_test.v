@@ -525,6 +525,45 @@ fn main() {
 			'freestanding target cannot print non-string values with output hook only')
 	}
 
+	output_hook_string_literal_res := run_v2_to_c(v2_binary, tmp_dir,
+		'freestanding_output_hook_string_literal', [
+		'-freestanding',
+		'-fhooks',
+		'output',
+		'-os',
+		'linux',
+		'--skip-builtin',
+		'--skip-type-check',
+	], "module main
+
+fn main() {
+	println('ok')
+}
+	")
+	assert_cli_success(output_hook_string_literal_res)
+	assert output_hook_string_literal_res.c_source.contains('v_platform_write')
+
+	output_hook_unknown_print_res := run_v2_to_c(v2_binary, tmp_dir,
+		'freestanding_output_hook_unknown_print_arg', [
+		'-freestanding',
+		'-fhooks',
+		'output',
+		'-os',
+		'linux',
+		'--skip-builtin',
+		'--skip-type-check',
+	], 'module main
+
+fn C.platform_value() int
+
+fn main() {
+	x := C.platform_value()
+	println(x)
+}
+	')
+	assert_cli_failure_contains(output_hook_unknown_print_res,
+		'freestanding target cannot print non-string values with output hook only')
+
 	panic_hook_res := run_v2_to_c(v2_binary, tmp_dir, 'freestanding_panic_hook', [
 		'-freestanding',
 		'-fhooks',

@@ -255,14 +255,15 @@ fn normalize_c_target_os_name(target_os string) string {
 }
 
 fn (g &Gen) has_target_define(name string) bool {
-	return g.pref != unsafe { nil } && name in g.pref.user_defines
+	if g.pref == unsafe { nil } {
+		return false
+	}
+	lower_name := name.to_lower()
+	return name in g.pref.user_defines || lower_name in g.pref.user_defines
 }
 
 fn (g &Gen) is_freestanding_target() bool {
-	target_os := g.target_os_name()
-	return (g.pref != unsafe { nil } && g.pref.is_freestanding())
-		|| target_os in ['freestanding', 'bare']
-		|| g.has_target_define('freestanding')
+	return g.pref != unsafe { nil } && g.pref.is_freestanding()
 }
 
 fn (g &Gen) has_freestanding_hook_capability(capability string) bool {
@@ -395,6 +396,18 @@ fn c_preprocessor_flag_expr_for_ct_flag(name string) ?string {
 	}
 }
 
+fn optional_user_ct_flag_name(cond string) ?string {
+	trimmed := cond.trim_space()
+	if !trimmed.ends_with('?') {
+		return none
+	}
+	name := trimmed[..trimmed.len - 1].trim_space()
+	if name == '' {
+		return none
+	}
+	return name
+}
+
 fn (g &Gen) c_preprocessor_expr_for_ct_cond(cond string) ?string {
 	trimmed := cond.trim_space()
 	if trimmed == '' {
@@ -422,6 +435,9 @@ fn (g &Gen) c_preprocessor_expr_for_ct_cond(cond string) ?string {
 	}
 	if stripped := strip_outer_bool_parens(trimmed) {
 		return g.c_preprocessor_expr_for_ct_cond(stripped)
+	}
+	if optional_name := optional_user_ct_flag_name(trimmed) {
+		return if g.has_target_define(optional_name) { '' } else { '0' }
 	}
 	lower_trimmed := trimmed.to_lower()
 	if os_guard := c_preprocessor_flag_expr_for_ct_flag(lower_trimmed) {
@@ -552,6 +568,9 @@ fn (g &Gen) directive_ct_cond_matches(cond string) bool {
 	if stripped := strip_outer_bool_parens(trimmed) {
 		return g.directive_ct_cond_matches(stripped)
 	}
+	if optional_name := optional_user_ct_flag_name(trimmed) {
+		return g.has_target_define(optional_name)
+	}
 	return g.directive_ct_flag_matches(trimmed)
 }
 
@@ -631,7 +650,7 @@ fn ast_ct_cond_string(expr ast.Expr) ?string {
 		}
 		ast.PostfixExpr {
 			if expr.op == .question && expr.expr is ast.Ident {
-				expr.expr.name
+				'${expr.expr.name}?'
 			} else {
 				none
 			}

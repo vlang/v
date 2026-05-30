@@ -368,6 +368,7 @@ struct FreestandingScanContext {
 	user_defines       []string
 	target_os          string
 	freestanding_hooks []string
+	skip_type_check    bool
 }
 
 fn freestanding_scan_context(p &pref.Preferences, target_os string) FreestandingScanContext {
@@ -375,6 +376,7 @@ fn freestanding_scan_context(p &pref.Preferences, target_os string) Freestanding
 		user_defines:       p.user_defines
 		target_os:          target_os
 		freestanding_hooks: p.freestanding_hook_list()
+		skip_type_check:    p.skip_type_check
 	}
 }
 
@@ -394,6 +396,23 @@ fn freestanding_output_builtin_call_name(name string, ctx FreestandingScanContex
 		return name
 	}
 	return ''
+}
+
+fn freestanding_print_arg_is_manifest_string_safe(expr ast.Expr) bool {
+	return match expr {
+		ast.BasicLiteral {
+			expr.kind == .string
+		}
+		ast.ParenExpr {
+			freestanding_print_arg_is_manifest_string_safe(expr.expr)
+		}
+		ast.StringLiteral {
+			true
+		}
+		else {
+			false
+		}
+	}
 }
 
 fn freestanding_print_arg_is_obvious_non_string(expr ast.Expr) bool {
@@ -852,6 +871,11 @@ fn freestanding_restricted_builtin_call_name(lhs ast.Expr, args []ast.Expr, ctx 
 		builtin_call := freestanding_output_builtin_call_name(name, ctx)
 		if builtin_call != '' {
 			return builtin_call
+		}
+		if name in ['print', 'println', 'eprint', 'eprintln'] && ctx.has_hook('output')
+			&& ctx.skip_type_check
+			&& (args.len != 1 || !freestanding_print_arg_is_manifest_string_safe(args[0])) {
+			return 'print_conversion'
 		}
 		if name in ['print', 'println', 'eprint', 'eprintln'] && ctx.has_hook('output')
 			&& args.len == 1 && freestanding_print_arg_is_obvious_non_string(args[0]) {

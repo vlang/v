@@ -73,6 +73,13 @@ fn preamble_for_target(target_os string, user_defines []string) string {
 	return g.sb.str()
 }
 
+fn preamble_for_freestanding_field(target_os string) string {
+	mut g := new_target_test_gen_with_freestanding(target_os, [], true)
+	g.set_emit_modules(['main'])
+	g.write_preamble()
+	return g.sb.str()
+}
+
 fn full_preamble_for_target(target_os string, user_defines []string) string {
 	mut g := new_target_test_gen(target_os, user_defines)
 	g.write_preamble()
@@ -650,6 +657,32 @@ fn main() {}
 	assert !feature_src.contains('feature && linux')
 }
 
+fn test_cross_optional_user_flag_named_like_os_is_not_os_guarded() {
+	assert !c_directive_output_for_target('linux ?', 'cross', []).contains('#include <target_marker.h>')
+	optional_directive_src := c_directive_output_for_target('linux ?', 'cross', [
+		'linux',
+	])
+	assert optional_directive_src.contains('#include <target_marker.h>')
+	assert !optional_directive_src.contains('defined(__linux__)')
+
+	source := 'module main
+
+\$if linux ? {
+	#include <optional_linux_marker.h>
+}
+
+fn main() {}
+'
+	missing_src := generated_c_for_target_program_with_options('optional_linux_missing_cross',
+		source, 'cross', false, false)
+	assert !missing_src.contains('#include <optional_linux_marker.h>')
+
+	defined_src := generated_c_for_target_program_with_defines('optional_linux_defined_cross',
+		source, 'cross', ['linux'], false, false)
+	assert defined_src.contains('#include <optional_linux_marker.h>')
+	assert !defined_src.contains('#if defined(__linux__)\n#include <optional_linux_marker.h>')
+}
+
 fn test_c_directives_keep_freestanding_user_os_directives_for_concrete_target() {
 	assert c_directive_output_for_target('', 'linux', ['freestanding']).contains('#include <target_marker.h>')
 	assert c_directive_output_for_target('freestanding', 'linux', ['freestanding']).contains('#include <target_marker.h>')
@@ -729,7 +762,7 @@ fn test_preamble_specializes_apple_includes_by_target() {
 }
 
 fn test_freestanding_minimal_preamble_avoids_implicit_os_runtime_headers() {
-	src := preamble_for_target('linux', ['freestanding'])
+	src := preamble_for_freestanding_field('linux')
 	assert src.contains('#include <stdbool.h>')
 	assert src.contains('#include <stdint.h>')
 	assert src.contains('#include <stddef.h>')
@@ -745,7 +778,7 @@ fn test_freestanding_minimal_preamble_avoids_implicit_os_runtime_headers() {
 }
 
 fn test_freestanding_full_preamble_avoids_implicit_os_runtime_headers() {
-	src := full_preamble_for_target('linux', ['freestanding'])
+	src := full_preamble_for_freestanding_field('linux')
 	assert src.contains('#include <stdbool.h>')
 	assert src.contains('#include <stdint.h>')
 	assert src.contains('#include <stddef.h>')
@@ -774,6 +807,16 @@ fn test_freestanding_field_full_preamble_avoids_implicit_os_runtime_headers() {
 	assert !src.contains('#include <sys/wait.h>')
 	assert src.contains('typedef struct sync__RwMutex { u32 inited; } sync__RwMutex;')
 	assert !src.contains('pthread_rwlock_t')
+}
+
+fn test_user_define_freestanding_does_not_enable_freestanding_codegen() {
+	src := full_preamble_for_target('linux', ['freestanding'])
+	assert src.contains('#include <unistd.h>')
+	assert src.contains('#include <pthread.h>')
+	assert src.contains('#include <stdio.h>')
+	assert src.contains('#include <stdlib.h>')
+	assert src.contains('pthread_rwlock_t')
+	assert !src.contains('typedef struct sync__RwMutex { u32 inited; } sync__RwMutex;')
 }
 
 fn test_freestanding_none_preamble_avoids_implicit_os_runtime_headers() {
@@ -891,6 +934,33 @@ fn main() {}
 		'linux', true, true)
 	assert csrc.contains('int main(')
 	assert_no_hosted_runtime_fallbacks(csrc)
+	assert !csrc.contains('__v_live_init')
+}
+
+fn test_live_reload_detects_live_functions_in_active_comptime_blocks() {
+	csrc := generated_c_for_target_program('active_live_comptime', 'module main
+
+\$if linux {
+	@[live]
+	fn hot_reload() {}
+}
+
+fn main() {}
+')
+	assert csrc.contains('void __v_live_init(void);')
+	assert csrc.contains('__v_live_init();')
+}
+
+fn test_live_reload_ignores_live_functions_in_inactive_comptime_blocks() {
+	csrc := generated_c_for_target_program('inactive_live_comptime', 'module main
+
+\$if windows {
+	@[live]
+	fn hot_reload() {}
+}
+
+fn main() {}
+')
 	assert !csrc.contains('__v_live_init')
 }
 

@@ -2634,14 +2634,52 @@ fn (g &Gen) has_live_reload_functions() bool {
 		return false
 	}
 	for file in g.files {
-		for stmt in file.stmts {
-			if stmt is ast.FnDecl {
-				decl := stmt as ast.FnDecl
-				if decl.attributes.has('live') && decl.name != 'main' {
-					return true
-				}
-			}
+		if g.stmts_have_live_reload_function(file.stmts) {
+			return true
 		}
+	}
+	return false
+}
+
+fn (g &Gen) stmts_have_live_reload_function(stmts []ast.Stmt) bool {
+	for stmt in stmts {
+		if g.stmt_has_live_reload_function(stmt) {
+			return true
+		}
+	}
+	return false
+}
+
+fn (g &Gen) stmt_has_live_reload_function(stmt ast.Stmt) bool {
+	if stmt is ast.FnDecl {
+		return stmt.attributes.has('live') && stmt.name != 'main'
+	}
+	if stmt is ast.ExprStmt {
+		return g.expr_has_live_reload_function(stmt.expr)
+	}
+	return false
+}
+
+fn (g &Gen) expr_has_live_reload_function(expr ast.Expr) bool {
+	if expr is ast.ComptimeExpr {
+		if expr.expr is ast.IfExpr {
+			return g.active_comptime_if_has_live_reload_function(expr.expr)
+		}
+		return g.expr_has_live_reload_function(expr.expr)
+	}
+	return false
+}
+
+fn (g &Gen) active_comptime_if_has_live_reload_function(node ast.IfExpr) bool {
+	if g.eval_comptime_cond(node.cond) {
+		return g.stmts_have_live_reload_function(node.stmts)
+	}
+	if node.else_expr is ast.IfExpr {
+		else_if := node.else_expr as ast.IfExpr
+		if else_if.cond is ast.EmptyExpr {
+			return g.stmts_have_live_reload_function(else_if.stmts)
+		}
+		return g.active_comptime_if_has_live_reload_function(else_if)
 	}
 	return false
 }
