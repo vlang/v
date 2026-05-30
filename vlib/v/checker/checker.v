@@ -995,7 +995,22 @@ fn (mut c Checker) alias_type_decl(mut node ast.AliasTypeDecl) {
 			// chained aliases (`type B = A` where `A` is itself an alias) are
 			// allowed; matches Go's alias semantics and lets modules re-export
 			// types from their dependencies without leaking the original module
-			// name to callers (#27055).
+			// name to callers (#27055). Walk the parent chain to reject cycles
+			// such as `type A = B; type B = A`, which would otherwise hang
+			// downstream consumers that follow aliases unconditionally.
+			mut visited := []int{cap: 8}
+			visited << int(node.parent_type.idx())
+			mut cur := parent_typ_sym
+			for cur.info is ast.Alias {
+				parent_idx := int(cur.info.parent_type.idx())
+				if parent_idx in visited {
+					c.error('alias `${node.name}` forms a cycle through `${parent_typ_sym.name}`',
+						node.type_pos)
+					break
+				}
+				visited << parent_idx
+				cur = c.table.sym(cur.info.parent_type)
+			}
 		}
 		.chan {
 			c.error('aliases of `chan` types are not allowed', node.type_pos)

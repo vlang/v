@@ -1007,17 +1007,25 @@ pub fn (t &Table) sym(typ Type) &TypeSymbol {
 	return invalid_type_symbol
 }
 
+// max_alias_chain_depth caps the recursive walk through chained aliases
+// (#27055) so a malformed input — e.g. mutual aliases formed via placeholder
+// rewriting — can't hang the compiler in the type-resolution helpers below.
+const max_alias_chain_depth = 64
+
 // final_sym follows aliases until it gets to a "real" Type. Chained aliases
 // (`type B = A` where `A` is itself an alias, #27055) are walked recursively;
-// cycles are impossible because V rejects forward and circular type references
-// at declaration time.
+// a depth cap guards against pathological inputs where mutual aliases slip
+// past the checker's cycle rejection.
 @[direct_array_access]
 pub fn (t &Table) final_sym(typ Type) &TypeSymbol {
 	mut idx := typ.idx()
 	if idx > 0 && idx < t.type_symbols.len {
 		mut cur_sym := t.type_symbols[idx]
-		for cur_sym.info is Alias {
-			idx = cur_sym.info.parent_type.idx()
+		for _ in 0 .. max_alias_chain_depth {
+			if cur_sym.info !is Alias {
+				break
+			}
+			idx = (cur_sym.info as Alias).parent_type.idx()
 			if idx <= 0 || idx >= t.type_symbols.len {
 				break
 			}
@@ -1039,8 +1047,11 @@ pub fn (t &Table) final_type(typ Type) Type {
 	if idx > 0 && idx < t.type_symbols.len {
 		mut cur_sym := t.type_symbols[idx]
 		mut last_alias_parent := Type(0)
-		for cur_sym.info is Alias {
-			last_alias_parent = cur_sym.info.parent_type
+		for _ in 0 .. max_alias_chain_depth {
+			if cur_sym.info !is Alias {
+				break
+			}
+			last_alias_parent = (cur_sym.info as Alias).parent_type
 			idx = last_alias_parent.idx()
 			if idx <= 0 || idx >= t.type_symbols.len {
 				break
