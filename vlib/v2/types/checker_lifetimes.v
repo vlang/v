@@ -78,6 +78,14 @@ fn (mut c Checker) lifetime_validate_files(files []ast.File) {
 	}
 }
 
+fn (mut c Checker) lifetime_validate_files_from_flat(flat &ast.FlatAst) {
+	for ff in flat.files {
+		for stmt in flat.read_file_stmts(ff) {
+			c.lifetime_validate_stmt(stmt)
+		}
+	}
+}
+
 fn (mut c Checker) lifetime_validate_stmt(stmt ast.Stmt) {
 	match stmt {
 		ast.FnDecl {
@@ -135,6 +143,9 @@ fn (mut c Checker) lifetime_validate_fn_decl(decl ast.FnDecl) {
 		used := lifetime_collect_used_in_type(decl.typ.return_type)
 		for name in used {
 			c.lifetime_assert_declared(name, declared, decl.pos, 'fn `${decl.name}`')
+		}
+		return_ref_used := lifetime_collect_reference_lifetimes_in_type(decl.typ.return_type)
+		for name in return_ref_used {
 			if name !in input_lifetimes {
 				c.lifetime_error_return_unbound(name, decl.name, decl.pos)
 			}
@@ -299,6 +310,16 @@ fn lifetime_collect_used_in_type(expr ast.Expr) []string {
 	return names
 }
 
+fn lifetime_collect_reference_lifetimes_in_type(expr ast.Expr) []string {
+	mut out := map[string]bool{}
+	lifetime_walk_reference_type(expr, mut out, 0)
+	mut names := []string{}
+	for name, _ in out {
+		names << name
+	}
+	return names
+}
+
 fn lifetime_walk_type(expr ast.Expr, mut out map[string]bool, depth int) {
 	if depth > 32 {
 		// Defensive: pathological / self-referential generics. The parser
@@ -319,6 +340,23 @@ fn lifetime_walk_type(expr ast.Expr, mut out map[string]bool, depth int) {
 		ast.GenericArgOrIndexExpr {
 			lifetime_walk_type(expr.lhs, mut out, depth + 1)
 			lifetime_walk_type(expr.expr, mut out, depth + 1)
+		}
+		else {}
+	}
+}
+
+fn lifetime_walk_reference_type(expr ast.Expr, mut out map[string]bool, depth int) {
+	if depth > 32 {
+		return
+	}
+	if expr is ast.Type {
+		lifetime_walk_reference_type_inner(expr, mut out, depth)
+		return
+	}
+	match expr {
+		ast.GenericArgOrIndexExpr {
+			lifetime_walk_reference_type(expr.lhs, mut out, depth + 1)
+			lifetime_walk_reference_type(expr.expr, mut out, depth + 1)
 		}
 		else {}
 	}
@@ -380,6 +418,50 @@ fn lifetime_walk_count_inner(t ast.Type, mut counter []int, depth int) {
 		ast.FnType {
 			// Nested fn types are their own scope; their refs don't bubble
 			// up as elision slots of the outer signature.
+		}
+		else {}
+	}
+}
+
+fn lifetime_walk_reference_type_inner(t ast.Type, mut out map[string]bool, depth int) {
+	match t {
+		ast.PointerType {
+			if t.lifetime.len > 0 && t.lifetime != '_' {
+				out[t.lifetime] = true
+			}
+			lifetime_walk_reference_type(t.base_type, mut out, depth + 1)
+		}
+		ast.ArrayType {
+			lifetime_walk_reference_type(t.elem_type, mut out, depth + 1)
+		}
+		ast.ArrayFixedType {
+			lifetime_walk_reference_type(t.elem_type, mut out, depth + 1)
+		}
+		ast.MapType {
+			lifetime_walk_reference_type(t.key_type, mut out, depth + 1)
+			lifetime_walk_reference_type(t.value_type, mut out, depth + 1)
+		}
+		ast.OptionType {
+			lifetime_walk_reference_type(t.base_type, mut out, depth + 1)
+		}
+		ast.ResultType {
+			lifetime_walk_reference_type(t.base_type, mut out, depth + 1)
+		}
+		ast.TupleType {
+			for inner in t.types {
+				lifetime_walk_reference_type(inner, mut out, depth + 1)
+			}
+		}
+		ast.GenericType {
+			for p in t.params {
+				lifetime_walk_reference_type(p, mut out, depth + 1)
+			}
+		}
+		ast.FnType {
+			for p in t.params {
+				lifetime_walk_reference_type(p.typ, mut out, depth + 1)
+			}
+			lifetime_walk_reference_type(t.return_type, mut out, depth + 1)
 		}
 		else {}
 	}

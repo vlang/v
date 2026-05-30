@@ -5014,8 +5014,19 @@ fn (mut g Gen) gen_instr(val_id int) {
 				}
 			}
 		}
+		.spawn_call, .go_call {
+			// ARM64 native backend does not implement OS thread spawn or goroutine
+			// launch. Emit a no-op so functions that contain `spawn`/`go` (e.g.
+			// sync.WaitGroup.go pulled in transitively) can still be lowered for
+			// reachability without crashing the backend. These functions are never
+			// invoked from v2-self-host paths.
+			if val_id > 0 && val_id < g.mod.values.len {
+				g.emit_mov_imm64(8, 0)
+				g.store_reg_to_val(8, val_id)
+			}
+		}
 		else {
-			eprintln('arm64: unknown instruction ${int(op)} (${instr.selected_op})')
+			eprintln('arm64: unknown instruction ${int(op)} (${instr.selected_op}) in fn ${g.cur_func_name}')
 			exit(1)
 		}
 	}
@@ -7425,6 +7436,13 @@ fn (mut g Gen) emit(code u32) {
 }
 
 fn (mut g Gen) record_pending_label(blk int) {
+	// Guard against unresolved or out-of-range block IDs (e.g. -1 from
+	// val_to_block misses). The old O(N^2) scan tolerated these by simply
+	// never matching them later; preserve that behavior here instead of
+	// indexing pending_head[blk] out-of-bounds.
+	if blk < 0 || blk >= g.pending_head.len {
+		return
+	}
 	off := g.macho.text_data.len - g.curr_offset
 	new_idx := g.pending_label_offs.len
 	prev_head := g.pending_head[blk]

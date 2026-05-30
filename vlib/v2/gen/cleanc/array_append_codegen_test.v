@@ -35,7 +35,7 @@ fn generate_array_append_c_for_test_files(sources []string) string {
 	env := types.Environment.new()
 	mut checker := types.Checker.new(prefs, file_set, env)
 	checker.check_files(files)
-	mut trans := transformer.Transformer.new_with_pref(files, env, prefs)
+	mut trans := transformer.Transformer.new_with_pref(env, prefs)
 	mut gen := Gen.new_with_env_and_pref(trans.transform_files(files), env, prefs)
 	return gen.gen()
 }
@@ -79,6 +79,36 @@ fn main() {
 	assert !csrc.contains('&(u8[1]){src}')
 }
 
+fn test_generate_c_push_many_to_mut_array_param_uses_param_pointer() {
+	csrc := generate_array_append_c_for_test('
+fn extend(mut dst []usize, src []usize) {
+	dst << src
+}
+')
+	assert csrc.contains('array__push_many(')
+	assert csrc.contains('array__push_many(((array*)(dst)),')
+	assert !csrc.contains('array__push_many((array*)&dst,')
+	assert !csrc.contains('array__push_many(((array*)(&dst)),')
+}
+
+fn test_generate_c_lowered_push_many_to_mut_array_param_uses_param_pointer() {
+	csrc := generate_array_append_c_for_test('
+struct Index {
+	entries map[string][]usize
+}
+
+fn (idx Index) matches_into(candidate string, mut matches []usize) {
+	if hits := idx.entries[candidate] {
+		matches << hits
+	}
+}
+')
+	assert csrc.contains('array__push_many(')
+	assert csrc.contains('array__push_many(((array*)(matches)),')
+	assert !csrc.contains('array__push_many((array*)&matches,')
+	assert !csrc.contains('array__push_many(((array*)(&matches)),')
+}
+
 fn test_generate_c_uses_push_many_for_fn_pointer_array_return_append() {
 	csrc := generate_array_append_c_for_test('
 fn source(data []u8) []u8 {
@@ -110,6 +140,8 @@ fn main() {
 ')
 	assert csrc.contains('array__push(')
 	assert csrc.contains('| n0')
+	assert !csrc.contains('array__push_many(')
+	assert !csrc.contains('_arr_push_many_tmp_')
 	assert !csrc.contains('}) | n0')
 }
 
@@ -184,6 +216,73 @@ fn main() {
 	assert csrc.contains('(Foo*[1]){((Foo*)')
 	assert !csrc.contains('(T*[1])')
 	assert !csrc.contains('stdatomic__T')
+}
+
+fn test_generate_c_uses_captured_mut_array_pointer_for_closure_push() {
+	csrc := generate_array_append_c_for_test('
+fn consume(cb fn (int) bool) {
+	_ = cb(1)
+}
+
+fn main() {
+	mut values := []int{}
+	consume(fn [mut values] (value int) bool {
+		values << value
+		return true
+	})
+}
+	')
+	assert csrc.contains('Array_int* values = _anon_fn_')
+	assert csrc.contains('array__push(((array*)(values)),')
+	assert !csrc.contains('array__push(((array*)(&values)),')
+}
+
+fn test_generate_c_updates_captured_mut_scalar_for_closure_postfix() {
+	csrc := generate_array_append_c_for_test('
+fn consume(cb fn () bool) {
+	_ = cb()
+}
+
+fn main() {
+	mut count := u64(0)
+	consume(fn [mut count] () bool {
+		count++
+		return true
+	})
+}
+	')
+	assert csrc.contains('u64* count = _anon_fn_')
+	assert csrc.contains('(*count)++')
+	assert !csrc.contains('count++;')
+}
+
+fn test_generate_c_evaluates_generic_comptime_is_against_implements() {
+	csrc := generate_array_append_c_for_test('
+interface Writer {
+	write([]u8) !int
+}
+
+struct Buffer implements Writer {}
+
+fn (mut b Buffer) write(buf []u8) !int {
+	_ = b
+	return buf.len
+}
+
+fn choose[T]() int {
+	$if T is Writer {
+		return 1
+	} $else {
+		return 2
+	}
+}
+
+fn main() {
+	_ = choose[Buffer]()
+}
+	')
+	assert csrc.contains('return 1;')
+	assert !csrc.contains('return 2;')
 }
 
 fn test_generate_c_specializes_comptime_pointer_field_generic_call_by_field_type() {

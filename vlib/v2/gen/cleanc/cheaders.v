@@ -493,7 +493,7 @@ fn (mut g Gen) emit_runtime_aliases() {
 		if name.starts_with('Array_fixed_') {
 			continue
 		}
-		g.sb.writeln('typedef array ${name};')
+		g.emit_array_alias_decl(name)
 	}
 	// Pointer element typedefs (e.g. 'typedef Coord* Coordptr;') are deferred
 	// to emit_pointer_typedefs() which runs after pass 2 (enum/alias definitions).
@@ -532,14 +532,7 @@ fn (mut g Gen) emit_runtime_aliases() {
 	option_names.sort()
 	for name in option_names {
 		val_type := option_value_type(name)
-		if g.option_result_payload_invalid(val_type) {
-			continue
-		}
-		if val_type != '' && val_type != 'void' {
-			g.sb.writeln('typedef struct ${name} ${name};')
-		} else {
-			g.sb.writeln('typedef _option ${name};')
-		}
+		g.emit_option_result_forward_decl(name, val_type)
 	}
 	if '_option_string' in g.option_aliases {
 		g.sb.writeln('static _option_string builtin__Option_string__clone(_option_string s);')
@@ -548,14 +541,25 @@ fn (mut g Gen) emit_runtime_aliases() {
 	result_names.sort()
 	for name in result_names {
 		val_type := g.result_value_type(name)
-		if g.option_result_payload_invalid(val_type) {
-			continue
-		}
-		if val_type != '' && val_type != 'void' {
-			g.sb.writeln('typedef struct ${name} ${name};')
-		} else {
-			g.sb.writeln('typedef _result ${name};')
-		}
+		g.emit_option_result_forward_decl(name, val_type)
+	}
+}
+
+fn (mut g Gen) emit_option_result_forward_decl(name string, val_type string) {
+	if g.option_result_payload_invalid(val_type) {
+		return
+	}
+	key := 'option_result_forward_${name}'
+	if key in g.emitted_types {
+		return
+	}
+	g.emitted_types[key] = true
+	if val_type != '' && val_type != 'void' {
+		g.sb.writeln('typedef struct ${name} ${name};')
+	} else if name.starts_with('_option_') {
+		g.sb.writeln('typedef _option ${name};')
+	} else {
+		g.sb.writeln('typedef _result ${name};')
 	}
 }
 
@@ -585,6 +589,20 @@ fn (mut g Gen) get_enum_name(node ast.EnumDecl) string {
 		return '${g.cur_module}__${node.name}'
 	}
 	return node.name
+}
+
+fn (mut g Gen) emit_array_alias_decl(name string) {
+	array_name := name.trim_right('*')
+	if !array_name.starts_with('Array_') || array_name.starts_with('Array_fixed_') {
+		return
+	}
+	alias_key := 'alias_${array_name}'
+	if alias_key in g.emitted_types {
+		return
+	}
+	g.emitted_types[alias_key] = true
+	g.array_aliases[array_name] = true
+	g.sb.writeln('typedef array ${array_name};')
 }
 
 fn (mut g Gen) emit_map_alias_decl(name string) {
@@ -1171,10 +1189,23 @@ fn (mut g Gen) lookup_struct_type_by_c_name(c_name string) types.Struct {
 			}
 		}
 	}
-	// Try current module, main, and builtin scopes
+	// Bare C type names belong to main/builtin. Non-main module types are
+	// emitted with a module prefix, so do not let the current module shadow them.
 	mut tried := map[string]bool{}
 	cur_mod := if g.cur_module != '' { g.cur_module } else { 'main' }
-	for try_mod in [cur_mod, 'main', 'builtin'] {
+	mut modules_to_try := []string{}
+	if mod_name == '' && cur_mod != 'main' && cur_mod != 'builtin' {
+		modules_to_try << 'main'
+		modules_to_try << 'builtin'
+	}
+	modules_to_try << cur_mod
+	if 'main' !in modules_to_try {
+		modules_to_try << 'main'
+	}
+	if 'builtin' !in modules_to_try {
+		modules_to_try << 'builtin'
+	}
+	for try_mod in modules_to_try {
 		if tried[try_mod] {
 			continue
 		}

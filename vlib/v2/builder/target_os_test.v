@@ -395,7 +395,7 @@ fn build_windows_x64_probe_with_files(sources map[string]string, link bool, opti
 	b.files = b.parse_files([main_path])
 	b.env = types.Environment.new()
 
-	mut trans := transformer.Transformer.new_with_pref(b.files, b.env, b.pref)
+	mut trans := transformer.Transformer.new_with_pref(b.env, b.pref)
 	trans.set_file_set(b.file_set)
 	b.files = trans.transform_files(b.files)
 	b.used_fn_keys = markused.mark_used_with_options(b.files, b.env, markused.MarkUsedOptions{

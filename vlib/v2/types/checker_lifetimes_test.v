@@ -141,6 +141,27 @@ fn main() {}
 	assert output.contains('references lifetime `^a` that does not appear in any parameter'), 'got: ${output}'
 }
 
+fn test_lifetime_value_type_return_lifetime_without_reference_slot_ok() {
+	// Returning a lifetime-parameterized value is not the same as returning
+	// an actual reference. Empty/none constructors can produce these values
+	// for any caller-chosen lifetime.
+	code := '
+struct Slot[^a] {
+	item ?&^a int
+}
+
+fn Slot.empty[^a]() Slot[^a] {
+	return Slot[^a]{}
+}
+
+fn main() {
+	_ = Slot.empty()
+}
+'
+	exit_code, output := run_lifetime_check(code)
+	assert exit_code == 0, 'lifetime-param value constructor should compile: ${output}'
+}
+
 fn test_lifetime_method_receiver_counts_as_input() {
 	// Methods: the receiver IS an input, so a method returning `&^a T`
 	// is valid as long as the receiver is `&^a Self`.

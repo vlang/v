@@ -1354,6 +1354,7 @@ fn (t &Transformer) expr_is_casted_to_type(expr ast.Expr, target string) bool {
 }
 
 fn (mut t Transformer) resolve_expr_with_expected_type(expr ast.Expr, expected types.Type) ast.Expr {
+	expr_pos := expr.pos()
 	base := t.unwrap_alias_and_pointer_type(expected)
 	match expr {
 		ast.ArrayInitExpr {
@@ -1396,17 +1397,29 @@ fn (mut t Transformer) resolve_expr_with_expected_type(expr ast.Expr, expected t
 			match expr {
 				ast.Keyword {
 					if expr.tok == .key_none {
-						return expr
+						return ast.Expr(ast.CastExpr{
+							typ:  t.type_to_ast_type_expr(expected)
+							expr: expr
+							pos:  expr_pos
+						})
 					}
 				}
 				ast.Ident {
 					if expr.name == 'none' {
-						return expr
+						return ast.Expr(ast.CastExpr{
+							typ:  t.type_to_ast_type_expr(expected)
+							expr: expr
+							pos:  expr_pos
+						})
 					}
 				}
 				ast.Type {
 					if expr is ast.NoneType {
-						return ast.Expr(ast.Type(expr))
+						return ast.Expr(ast.CastExpr{
+							typ:  t.type_to_ast_type_expr(expected)
+							expr: ast.Expr(ast.Type(expr))
+							pos:  expr_pos
+						})
 					}
 				}
 				else {}
@@ -2699,6 +2712,36 @@ fn (t &Transformer) get_expr_type(expr ast.Expr) ?types.Type {
 		}
 		return none
 	}
+	if expr is ast.CastExpr {
+		if typ := t.type_from_param_type_expr(expr.typ, []) {
+			return t.normalize_type(typ)
+		}
+		pos := expr.pos
+		if typ := t.get_synth_type(pos) {
+			return typ
+		}
+		if pos.is_valid() {
+			if typ := t.env.get_expr_type(pos.id) {
+				return t.normalize_type(typ)
+			}
+		}
+		return none
+	}
+	if expr is ast.AsCastExpr {
+		if typ := t.type_from_param_type_expr(expr.typ, []) {
+			return t.normalize_type(typ)
+		}
+		pos := expr.pos
+		if typ := t.get_synth_type(pos) {
+			return typ
+		}
+		if pos.is_valid() {
+			if typ := t.env.get_expr_type(pos.id) {
+				return t.normalize_type(typ)
+			}
+		}
+		return none
+	}
 	if expr is ast.ArrayInitExpr {
 		pos := expr.pos
 		if typ := t.get_synth_type(pos) {
@@ -2712,6 +2755,11 @@ fn (t &Transformer) get_expr_type(expr ast.Expr) ?types.Type {
 		return t.get_array_init_expr_type(expr)
 	}
 	if expr is ast.SelectorExpr {
+		if expr.rhs.name == 'name' && expr.lhs is ast.Ident
+			&& (expr.lhs.name in t.cur_fn_generic_params
+			|| expr.lhs.name in t.generic_var_type_params) {
+			return types.Type(types.string_)
+		}
 		if lhs_type := t.get_expr_type(expr.lhs) {
 			if field_typ := t.field_type_from_receiver_type(lhs_type, expr.rhs.name) {
 				return t.normalize_type(field_typ)
