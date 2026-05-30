@@ -2794,6 +2794,24 @@ fn (mut g Gen) emit_missing_runtime_fallbacks() {
 		g.sb.writeln('\twhile (remaining_bytes > 0) {')
 		if g.has_freestanding_hook_capability('output') {
 			g.sb.writeln('\t\tisize written = v_platform_write(fd, ptr, remaining_bytes);')
+		} else if g.target_os_name() == 'windows' {
+			g.sb.writeln('\t\tHANDLE handle = GetStdHandle(fd == 2 ? STD_ERROR_HANDLE : STD_OUTPUT_HANDLE);')
+			g.sb.writeln('\t\tDWORD win_written = 0;')
+			g.sb.writeln('\t\tisize written = 0;')
+			g.sb.writeln('\t\tif (handle != NULL && handle != INVALID_HANDLE_VALUE && WriteFile(handle, ptr, (DWORD)remaining_bytes, &win_written, NULL)) {')
+			g.sb.writeln('\t\t\twritten = (isize)win_written;')
+			g.sb.writeln('\t\t}')
+		} else if g.target_os_name() == 'cross' {
+			g.sb.writeln('#if defined(_WIN32)')
+			g.sb.writeln('\t\tHANDLE handle = GetStdHandle(fd == 2 ? STD_ERROR_HANDLE : STD_OUTPUT_HANDLE);')
+			g.sb.writeln('\t\tDWORD win_written = 0;')
+			g.sb.writeln('\t\tisize written = 0;')
+			g.sb.writeln('\t\tif (handle != NULL && handle != INVALID_HANDLE_VALUE && WriteFile(handle, ptr, (DWORD)remaining_bytes, &win_written, NULL)) {')
+			g.sb.writeln('\t\t\twritten = (isize)win_written;')
+			g.sb.writeln('\t\t}')
+			g.sb.writeln('#else')
+			g.sb.writeln('\t\tisize written = write(fd, ptr, remaining_bytes);')
+			g.sb.writeln('#endif')
 		} else {
 			g.sb.writeln('\t\tisize written = write(fd, ptr, remaining_bytes);')
 		}

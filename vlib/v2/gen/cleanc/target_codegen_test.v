@@ -112,6 +112,13 @@ fn runtime_fallbacks_for_called_functions(names []string) string {
 	return g.sb.str()
 }
 
+fn runtime_fallbacks_for_called_functions_for_target(target_os string, names []string) string {
+	mut g := new_target_test_gen(target_os, [])
+	g.add_called_fn_names(names)
+	g.emit_missing_runtime_fallbacks()
+	return g.sb.str()
+}
+
 fn runtime_fallbacks_for_called_functions_with_options(names []string, user_defines []string, freestanding bool) string {
 	mut g := new_target_test_gen_with_freestanding('linux', user_defines, freestanding)
 	g.add_called_fn_names(names)
@@ -986,10 +993,29 @@ fn test_runtime_fallbacks_emit_stdout_helpers_only_when_printing_is_referenced()
 	print_src := runtime_fallbacks_for_called_functions(['println'])
 	assert print_src.contains('__attribute__((weak)) void _write_buf_to_fd')
 	assert print_src.contains('__attribute__((weak)) void _writeln_to_fd')
+	assert print_src.contains('isize written = write(fd, ptr, remaining_bytes)')
+	assert !print_src.contains('WriteFile(')
 	assert !print_src.contains('__attribute__((weak)) Array_string arguments()')
 	assert !print_src.contains('__attribute__((weak)) void eprint')
 	assert !print_src.contains('__attribute__((weak)) void flush_stdout')
 	assert !print_src.contains('__attribute__((weak)) void flush_stderr')
+}
+
+fn test_windows_runtime_fallbacks_use_writefile_for_stdout_helpers() {
+	src := runtime_fallbacks_for_called_functions_for_target('windows', ['println'])
+	assert src.contains('__attribute__((weak)) void _write_buf_to_fd')
+	assert !src.contains('write(fd, ptr, remaining_bytes)')
+	assert src.contains('GetStdHandle(fd == 2 ? STD_ERROR_HANDLE : STD_OUTPUT_HANDLE)')
+	assert src.contains('WriteFile(handle, ptr, (DWORD)remaining_bytes, &win_written, NULL)')
+}
+
+fn test_cross_runtime_fallbacks_guard_windows_stdout_helpers() {
+	src := runtime_fallbacks_for_called_functions_for_target('cross', ['println'])
+	assert src.contains('__attribute__((weak)) void _write_buf_to_fd')
+	assert src.contains('#if defined(_WIN32)')
+	assert src.contains('GetStdHandle(fd == 2 ? STD_ERROR_HANDLE : STD_OUTPUT_HANDLE)')
+	assert src.contains('WriteFile(handle, ptr, (DWORD)remaining_bytes, &win_written, NULL)')
+	assert src.contains('#else\n\t\tisize written = write(fd, ptr, remaining_bytes);\n#endif')
 }
 
 fn test_runtime_fallbacks_emit_eprint_and_flush_only_when_referenced() {

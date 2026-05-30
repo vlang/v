@@ -423,6 +423,20 @@ fn main() {}
 	assert !output_hook_res.c_source.contains('v_platform_realloc'), output_hook_res.c_source
 	assert !output_hook_res.c_source.contains('v_platform_free'), output_hook_res.c_source
 
+	define_prealloc_res := run_v2_to_c(v2_binary, tmp_dir, 'freestanding_define_prealloc', [
+		'-freestanding',
+		'-d',
+		'prealloc',
+		'-fhooks',
+		'output',
+		'-os',
+		'linux',
+		'--skip-builtin',
+		'--skip-type-check',
+	], fixture_output)
+	assert_cli_success(define_prealloc_res)
+	assert !define_prealloc_res.output.contains('freestanding target cannot use -prealloc')
+
 	output_hook_builtin_res := run_v2_to_c(v2_binary, tmp_dir,
 		'freestanding_output_hook_builtin_runtime', [
 		'-freestanding',
@@ -657,6 +671,105 @@ fn main() {
 	assert_cli_failure_contains(alloc_hook_string_interpolation_res,
 		'freestanding target cannot use string interpolation because cleanc currently needs hosted formatting support')
 
+	string_concat_missing_alloc_res := run_v2_to_c(v2_binary, tmp_dir,
+		'freestanding_string_concat_missing_alloc', [
+		'-freestanding',
+		'-fhooks',
+		'output,panic',
+		'-os',
+		'linux',
+		'--skip-builtin',
+		'--skip-type-check',
+	], "module main
+
+fn main() {
+	_ := 'left' + 'right'
+}
+	")
+	assert_cli_failure_contains(string_concat_missing_alloc_res,
+		'freestanding target cannot use heap allocation without alloc platform hook')
+
+	ambiguous_string_concat_missing_alloc_res := run_v2_to_c(v2_binary, tmp_dir,
+		'freestanding_ambiguous_string_concat_missing_alloc', [
+		'-freestanding',
+		'-fhooks',
+		'output,panic',
+		'-os',
+		'linux',
+		'--skip-builtin',
+		'--skip-type-check',
+	], 'module main
+
+fn C.platform_string() string
+
+fn main() {
+	a := C.platform_string()
+	b := C.platform_string()
+	_ := a + b
+}
+	')
+	assert_cli_failure_contains(ambiguous_string_concat_missing_alloc_res,
+		'freestanding target cannot use heap allocation without alloc platform hook')
+
+	string_plus_assign_missing_alloc_res := run_v2_to_c(v2_binary, tmp_dir,
+		'freestanding_string_plus_assign_missing_alloc', [
+		'-freestanding',
+		'-fhooks',
+		'output,panic',
+		'-os',
+		'linux',
+		'--skip-builtin',
+		'--skip-type-check',
+	], "module main
+
+fn main() {
+	mut s := 'left'
+	s += 'right'
+}
+	")
+	assert_cli_failure_contains(string_plus_assign_missing_alloc_res,
+		'freestanding target cannot use heap allocation without alloc platform hook')
+
+	ambiguous_string_plus_assign_missing_alloc_res := run_v2_to_c(v2_binary, tmp_dir,
+		'freestanding_ambiguous_string_plus_assign_missing_alloc', [
+		'-freestanding',
+		'-fhooks',
+		'output,panic',
+		'-os',
+		'linux',
+		'--skip-builtin',
+		'--skip-type-check',
+	], 'module main
+
+fn C.platform_string() string
+
+fn main() {
+	mut s := C.platform_string()
+	s += C.platform_string()
+}
+	')
+	assert_cli_failure_contains(ambiguous_string_plus_assign_missing_alloc_res,
+		'freestanding target cannot use heap allocation without alloc platform hook')
+
+	numeric_plus_without_alloc_res := run_v2_to_c(v2_binary, tmp_dir,
+		'freestanding_numeric_plus_without_alloc', [
+		'-freestanding',
+		'-fhooks',
+		'output,panic',
+		'-os',
+		'linux',
+		'--skip-builtin',
+		'--skip-type-check',
+	], 'module main
+
+fn main() {
+	_ := 1 + 2
+	mut n := 1
+	n += 2
+}
+	')
+	assert_cli_success(numeric_plus_without_alloc_res)
+
 	alloc_hook_res := run_v2_to_c(v2_binary, tmp_dir, 'freestanding_alloc_hook', [
 		'-freestanding',
 		'-fhooks',
@@ -672,6 +785,45 @@ fn main() {
 	assert alloc_hook_res.c_source.contains('void v_platform_free(void* ptr);')
 	assert !alloc_hook_res.c_source.contains('v_platform_write'), alloc_hook_res.c_source
 	assert !alloc_hook_res.c_source.contains('v_platform_panic'), alloc_hook_res.c_source
+
+	string_concat_alloc_hook_res := run_v2_to_c(v2_binary, tmp_dir,
+		'freestanding_string_concat_alloc_hook', [
+		'-freestanding',
+		'-fhooks',
+		'alloc',
+		'-os',
+		'linux',
+		'--skip-builtin',
+		'--skip-type-check',
+	], "module main
+
+fn main() {
+	_ := 'left' + 'right'
+}
+	")
+	assert_cli_success(string_concat_alloc_hook_res)
+	assert string_concat_alloc_hook_res.c_source.contains('v_platform_malloc'), string_concat_alloc_hook_res.c_source
+
+	ambiguous_string_concat_alloc_hook_res := run_v2_to_c(v2_binary, tmp_dir,
+		'freestanding_ambiguous_string_concat_alloc_hook', [
+		'-freestanding',
+		'-fhooks',
+		'alloc',
+		'-os',
+		'linux',
+		'--skip-builtin',
+		'--skip-type-check',
+	], 'module main
+
+fn C.platform_string() string
+
+fn main() {
+	a := C.platform_string()
+	b := C.platform_string()
+	_ := a + b
+}
+	')
+	assert_cli_success(ambiguous_string_concat_alloc_hook_res)
 
 	prealloc_res := run_v2_to_c(v2_binary, tmp_dir, 'freestanding_prealloc', [
 		'-freestanding',

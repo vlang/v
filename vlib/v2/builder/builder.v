@@ -227,7 +227,7 @@ fn (b &Builder) validate_freestanding_cleanc_contract() bool {
 	mut diagnostics := []string{}
 	mut seen := map[string]bool{}
 	target_os := b.pref.target_os_or_host()
-	if 'prealloc' in b.pref.user_defines {
+	if b.pref.prealloc {
 		msg := 'error: freestanding target cannot use -prealloc because it requires hosted allocation support'
 		diagnostics << msg
 		seen[msg] = true
@@ -415,6 +415,57 @@ fn freestanding_print_arg_is_manifest_string_safe(expr ast.Expr) bool {
 	}
 }
 
+fn freestanding_expr_is_manifest_string(expr ast.Expr) bool {
+	return freestanding_print_arg_is_manifest_string_safe(expr)
+}
+
+fn freestanding_expr_is_provably_numeric_no_alloc(expr ast.Expr) bool {
+	return match expr {
+		ast.BasicLiteral {
+			expr.kind == .number
+		}
+		ast.ParenExpr {
+			freestanding_expr_is_provably_numeric_no_alloc(expr.expr)
+		}
+		ast.PrefixExpr {
+			expr.op in [.plus, .minus] && freestanding_expr_is_provably_numeric_no_alloc(expr.expr)
+		}
+		ast.InfixExpr {
+			expr.op in [.plus, .minus, .mul, .div, .mod]
+				&& freestanding_expr_is_provably_numeric_no_alloc(expr.lhs)
+				&& freestanding_expr_is_provably_numeric_no_alloc(expr.rhs)
+		}
+		else {
+			false
+		}
+	}
+}
+
+fn freestanding_infix_expr_needs_alloc(expr ast.InfixExpr, ctx FreestandingScanContext) bool {
+	if expr.op != .plus {
+		return false
+	}
+	if ctx.skip_type_check && !ctx.has_hook('alloc') {
+		return !(freestanding_expr_is_provably_numeric_no_alloc(expr.lhs)
+			&& freestanding_expr_is_provably_numeric_no_alloc(expr.rhs))
+	}
+	return freestanding_expr_is_manifest_string(expr.lhs)
+		|| freestanding_expr_is_manifest_string(expr.rhs)
+}
+
+fn freestanding_plus_assign_needs_alloc(exprs []ast.Expr, ctx FreestandingScanContext) bool {
+	for expr in exprs {
+		if ctx.skip_type_check && !ctx.has_hook('alloc')
+			&& !freestanding_expr_is_provably_numeric_no_alloc(expr) {
+			return true
+		}
+		if freestanding_expr_is_manifest_string(expr) {
+			return true
+		}
+	}
+	return false
+}
+
 fn freestanding_print_arg_is_obvious_non_string(expr ast.Expr) bool {
 	return match expr {
 		ast.BasicLiteral {
@@ -466,7 +517,15 @@ fn freestanding_restricted_call_in_stmt(stmt ast.Stmt, ctx FreestandingScanConte
 			if lhs_call != '' {
 				lhs_call
 			} else {
-				freestanding_restricted_call_in_exprs(stmt.rhs, ctx)
+				rhs_call := freestanding_restricted_call_in_exprs(stmt.rhs, ctx)
+				if rhs_call != '' {
+					rhs_call
+				} else if stmt.op == .plus_assign
+					&& freestanding_plus_assign_needs_alloc(stmt.rhs, ctx) {
+					freestanding_needs_alloc_hook(ctx)
+				} else {
+					''
+				}
 			}
 		}
 		ast.BlockStmt {
@@ -701,7 +760,14 @@ fn freestanding_restricted_call_in_expr(expr ast.Expr, ctx FreestandingScanConte
 			if lhs_call != '' {
 				lhs_call
 			} else {
-				freestanding_restricted_call_in_expr(expr.rhs, ctx)
+				rhs_call := freestanding_restricted_call_in_expr(expr.rhs, ctx)
+				if rhs_call != '' {
+					rhs_call
+				} else if freestanding_infix_expr_needs_alloc(expr, ctx) {
+					freestanding_needs_alloc_hook(ctx)
+				} else {
+					''
+				}
 			}
 		}
 		ast.InitExpr {
@@ -890,6 +956,9 @@ fn freestanding_restricted_builtin_call_name(lhs ast.Expr, args []ast.Expr, ctx 
 		}
 		if name in ['malloc_noscan', 'memdup', 'new_array_from_c_array',
 			'new_array_from_c_array_noscan', '__new_array_with_default_noscan'] {
+			return freestanding_needs_alloc_hook(ctx)
+		}
+		if name in ['string__plus', 'string__plus_many'] {
 			return freestanding_needs_alloc_hook(ctx)
 		}
 	}
