@@ -430,6 +430,10 @@ pub fn (bf BitField) slice(_start int, _end int) BitField {
 		start = end // or panic?
 	}
 	mut output := new(end - start)
+	if end == start {
+		// zero-length slice: nothing to copy; field is empty
+		return output
+	}
 	start_offset := start % slot_size
 	end_offset := (end - 1) % slot_size
 	start_slot := start / slot_size

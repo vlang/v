@@ -380,3 +380,22 @@ fn test_bf_shift() {
 	assert bf_large_left.str() == '0000000000000000'
 	assert bf_large_right.str() == '0000000000000000'
 }
+
+// Regression test: zero-length slice must not panic (reported via slice(i,i) and pos(new(0))).
+fn test_zero_length_slice_and_pos() {
+	// slice(i, i) on a non-empty bitfield must return an empty bitfield
+	bf := bitfield.from_str('101')
+	empty := bf.slice(1, 1)
+	assert empty.get_size() == 0
+	assert empty.str() == ''
+
+	// pos with a zero-length needle on a non-empty bitfield must not panic
+	needle := bitfield.new(0)
+	pos := bf.pos(needle)
+	// empty needle matches at position 0 by convention
+	assert pos == 0
+
+	// pos on a zero-length bitfield with a zero-length needle must not panic
+	empty_bf := bitfield.new(0)
+	assert empty_bf.pos(needle) == 0
+}
