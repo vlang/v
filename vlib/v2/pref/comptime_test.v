@@ -68,6 +68,15 @@ fn test_comptime_optional_target_modes_ignore_synthesized_defines() {
 	assert comptime_optional_flag_value(&none_prefs, 'none')
 }
 
+fn test_comptime_optional_bare_preserves_explicit_user_define() {
+	mut prefs := new_preferences()
+	prefs.user_defines = ['bare']
+	assert !comptime_optional_flag_value(&prefs, 'bare')
+
+	prefs.explicit_user_defines = ['bare']
+	assert comptime_optional_flag_value(&prefs, 'bare')
+}
+
 fn test_comptime_optional_flag_value_keeps_internal_capability_flags() {
 	mut prefs := new_preferences()
 	prefs.backend = .x64

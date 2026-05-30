@@ -293,6 +293,10 @@ fn test_explicit_user_defines_are_separate_from_synthesized_defines() {
 	assert none_prefs.target_os == 'none'
 	assert 'none' in none_prefs.explicit_user_defines
 	assert comptime_optional_flag_value(&none_prefs, 'none')
+
+	bare_prefs := new_preferences_from_args(['-d', 'bare', 'main.v'])
+	assert 'bare' in bare_prefs.explicit_user_defines
+	assert comptime_optional_flag_value(&bare_prefs, 'bare')
 }
 
 fn test_file_suffix_filter_cross_target_contract() {
