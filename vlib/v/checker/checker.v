@@ -2642,11 +2642,9 @@ fn (mut c Checker) check_expr_option_or_result_call(expr ast.Expr, ret_type ast.
 				// since it was already validated. This prevents the duplicate call
 				// from assign.v from rejecting valid `none` in option map or blocks.
 				if expr.typ != 0 {
-					if ret_type.has_flag(.option) && expr.or_expr.stmts.len > 0 {
-						last := expr.or_expr.stmts.last()
-						if last is ast.ExprStmt && last.expr is ast.None {
-							return ret_type
-						}
+					if ret_type.has_flag(.option)
+						&& index_or_block_returns_option_value(expr.or_expr) {
+						return ret_type
 					}
 					return ret_type.clear_option_and_result()
 				}
@@ -2667,13 +2665,10 @@ fn (mut c Checker) check_expr_option_or_result_call(expr ast.Expr, ret_type ast.
 					c.check_or_expr(expr.or_expr, ret_type, ret_type.set_flag(.result), expr)
 					c.cur_or_expr = last_cur_or_expr
 				}
-				// When the map value type is itself optional and the or block
-				// returns none, preserve the option type so the result is ?T.
-				if ret_type.has_flag(.option) && expr.or_expr.stmts.len > 0 {
-					last := expr.or_expr.stmts.last()
-					if last is ast.ExprStmt && last.expr is ast.None {
-						return ret_type
-					}
+				// When the index expression is expected to produce an option and the
+				// or block returns `none`/`?T`, preserve the option type.
+				if ret_type.has_flag(.option) && index_or_block_returns_option_value(expr.or_expr) {
+					return ret_type
 				}
 				return ret_type.clear_option_and_result()
 			} else if expr.left is ast.SelectorExpr && expr.left_type.has_option_or_result() {
@@ -2706,6 +2701,30 @@ fn (mut c Checker) check_expr_option_or_result_call(expr ast.Expr, ret_type ast.
 	}
 
 	return ret_type
+}
+
+fn index_or_block_returns_option_value(or_expr ast.OrExpr) bool {
+	if or_expr.stmts.len == 0 {
+		return false
+	}
+	last := or_expr.stmts.last()
+	if last is ast.ExprStmt {
+		return last.expr is ast.None || last.typ.has_flag(.option)
+	}
+	return false
+}
+
+fn (mut c Checker) index_or_expr_expected_type(value_type ast.Type, expected_type ast.Type) ast.Type {
+	expected_unwrapped_type := c.unwrap_generic(expected_type)
+	if expected_unwrapped_type.has_flag(.option) {
+		expected_value_type :=
+			c.table.fully_unaliased_type(expected_unwrapped_type).clear_option_and_result()
+		unwrapped_value_type := c.table.fully_unaliased_type(value_type).clear_option_and_result()
+		if expected_value_type == unwrapped_value_type {
+			return expected_type
+		}
+	}
+	return value_type
 }
 
 fn (mut c Checker) expr_unhandled_option_type(expr ast.Expr) ast.Type {
@@ -2831,8 +2850,10 @@ fn (mut c Checker) check_or_last_stmt(mut stmt ast.Stmt, ret_type ast.Type, defa
 				if last_stmt_typ.has_flag(.option) || last_stmt_typ == ast.none_type {
 					if stmt.expr in [ast.Ident, ast.SelectorExpr, ast.CallExpr, ast.None, ast.CastExpr]
 						&& !(last_stmt_typ == ast.none_type && allow_none_as_option_value
-						&& default_or_type.has_flag(.option)) && !(last_stmt_typ == ast.none_type
-						&& c.inside_return && ret_type.has_flag(.option)) {
+						&& default_or_type.has_flag(.option)) && !(last_stmt_typ.has_flag(.option)
+						&& allow_none_as_option_value && default_or_type.has_flag(.option))
+						&& !(last_stmt_typ == ast.none_type && c.inside_return
+						&& ret_type.has_flag(.option)) {
 						expected_type_name := c.table.type_to_str(default_or_type)
 						got_type_name := c.table.type_to_str(last_stmt_typ)
 						c.error('`or` block must provide a value of type `${expected_type_name}`, not `${got_type_name}`',
@@ -5379,6 +5400,8 @@ fn (mut c Checker) cast_expr(mut node ast.CastExpr) ast.Type {
 		c.expected_type = ast.void_type
 	} else if node.expr is ast.Ident && node.expr.language == .c {
 		c.expected_type = base_to_type
+	} else if node.expr is ast.IndexExpr && to_type.has_flag(.option) {
+		c.expected_type = to_type
 	}
 	expr_is_ident_or_cast := node.expr is ast.Ident || node.expr is ast.CastExpr
 	node.expr_type = c.expr(mut node.expr) // type to be casted
@@ -8071,6 +8094,7 @@ fn (c &Checker) map_key_expected_msg(got ast.Type, expected ast.Type, key_expr a
 }
 
 fn (mut c Checker) index_expr(mut node ast.IndexExpr) ast.Type {
+	expected_type := c.expected_type
 	mut typ := c.expr(mut node.left)
 	if typ == 0 {
 		c.error('unknown type for expression `${node.left}`', node.pos)
@@ -8303,11 +8327,15 @@ fn (mut c Checker) index_expr(mut node ast.IndexExpr) ast.Type {
 			typ = c.unwrap_generic(value_type)
 		}
 	}
+	mut or_expr_type := typ
 	if node.or_expr.stmts.len > 0 && node.or_expr.stmts.last() is ast.ExprStmt {
-		c.expected_or_type = typ
+		if !c.inside_return {
+			or_expr_type = c.index_or_expr_expected_type(typ, expected_type)
+		}
+		c.expected_or_type = or_expr_type
 	}
 	c.stmts_ending_with_expression(mut node.or_expr.stmts, c.expected_or_type)
-	typ = c.check_expr_option_or_result_call(node, typ)
+	typ = c.check_expr_option_or_result_call(node, or_expr_type)
 	node.typ = typ
 	return typ
 }

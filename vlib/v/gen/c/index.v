@@ -221,6 +221,14 @@ fn (mut g Gen) index_expr(node ast.IndexExpr) {
 	}
 }
 
+fn (mut g Gen) index_or_expr_keeps_option(node ast.IndexExpr) bool {
+	if !node.typ.has_flag(.option) || node.or_expr.kind != .block {
+		return false
+	}
+	or_value_type := g.resolved_or_block_value_type(node.or_expr)
+	return or_value_type in [ast.none_type, ast.none_type_idx] || or_value_type.has_flag(.option)
+}
+
 fn (mut g Gen) index_range_expr(node ast.IndexExpr, range ast.RangeExpr) {
 	mut resolved_left_type := ast.Type(0)
 	if node.left is ast.Ident {
@@ -363,7 +371,7 @@ fn (mut g Gen) index_of_array(node ast.IndexExpr, sym ast.TypeSymbol) {
 	} else {
 		resolved_elem_type_
 	}
-	elem_type := if resolved_elem_type != 0 && resolved_elem_type != ast.void_type {
+	mut elem_type := if resolved_elem_type != 0 && resolved_elem_type != ast.void_type {
 		resolved_elem_type
 	} else if info.elem_type == ast.int_literal_type {
 		ast.int_type
@@ -371,6 +379,9 @@ fn (mut g Gen) index_of_array(node ast.IndexExpr, sym ast.TypeSymbol) {
 		ast.f64_type
 	} else {
 		info.elem_type
+	}
+	if gen_or && node.typ.has_flag(.option) && !info.elem_type.has_flag(.option) {
+		elem_type = elem_type.clear_option_and_result()
 	}
 	elem_sym := g.table.final_sym(elem_type)
 	mut left_is_ptr := array_left_type.is_ptr() || node.left.is_auto_deref_var()
@@ -582,6 +593,7 @@ fn (mut g Gen) index_of_array(node ast.IndexExpr, sym ast.TypeSymbol) {
 		}
 		if gen_or {
 			g.writeln(';')
+			keep_option_result := g.index_or_expr_keeps_option(node)
 			opt_elem_type := g.styp(elem_type.set_flag(.option))
 			g.writeln('${opt_elem_type} ${tmp_opt} = {0};')
 			g.writeln('if (${tmp_opt_ptr}) {')
@@ -599,13 +611,19 @@ fn (mut g Gen) index_of_array(node ast.IndexExpr, sym ast.TypeSymbol) {
 			g.writeln('\t${tmp_opt}.state = 2; ${tmp_opt}.err = builtin___v_error(_S("array index out of range"));')
 			g.writeln('}')
 			if !node.is_option {
-				g.or_block(tmp_opt, node.or_expr, elem_type)
+				if keep_option_result {
+					g.or_block_on_value(tmp_opt, node.or_expr, elem_type.set_flag(.option))
+				} else {
+					g.or_block(tmp_opt, node.or_expr, elem_type)
+				}
 			}
 			if is_gen_or_and_assign_rhs {
 				g.set_current_pos_as_last_stmt_pos()
 			}
 			if !g.is_amp {
-				if g.inside_opt_or_res && elem_type.has_flag(.option) && g.inside_assign {
+				if keep_option_result {
+					g.write('\n${cur_line}${tmp_opt}')
+				} else if g.inside_opt_or_res && elem_type.has_flag(.option) && g.inside_assign {
 					g.write('\n${cur_line}(*(${elem_type_str}*)&${tmp_opt})')
 				} else if elem_type.has_flag(.option) && !g.inside_opt_or_res {
 					g.write('\n${cur_line}(*(${result_type_str}*)${tmp_opt}.data)')
@@ -914,6 +932,7 @@ fn (mut g Gen) index_of_map(node ast.IndexExpr, sym ast.TypeSymbol) {
 					g.write('\n${cur_line}(*(${plain_val_type_str}*)${tmp_opt}.data)')
 				}
 			} else {
+				keep_option_result := g.index_or_expr_keeps_option(node)
 				opt_val_type := g.styp(val_type.set_flag(.option))
 				g.writeln('${opt_val_type} ${tmp_opt} = {0};')
 				g.writeln('if (${tmp_opt_ptr}) {')
@@ -926,12 +945,20 @@ fn (mut g Gen) index_of_map(node ast.IndexExpr, sym ast.TypeSymbol) {
 				g.writeln('\t${tmp_opt}.state = 2; ${tmp_opt}.err = builtin___v_error(_S("map key does not exist"));')
 				g.writeln('}')
 				if !node.is_option {
-					g.or_block(tmp_opt, node.or_expr, val_type)
+					if keep_option_result {
+						g.or_block_on_value(tmp_opt, node.or_expr, val_type.set_flag(.option))
+					} else {
+						g.or_block(tmp_opt, node.or_expr, val_type)
+					}
 				}
 				if is_gen_or_and_assign_rhs {
 					g.set_current_pos_as_last_stmt_pos()
 				}
-				g.write('\n${cur_line}(*(${val_type_str}*)${tmp_opt}.data)')
+				if keep_option_result {
+					g.write('\n${cur_line}${tmp_opt}')
+				} else {
+					g.write('\n${cur_line}(*(${val_type_str}*)${tmp_opt}.data)')
+				}
 			}
 		}
 	}
