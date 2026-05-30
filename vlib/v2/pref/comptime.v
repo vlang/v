@@ -11,17 +11,17 @@ module pref
 // flags that depend on backend / user_defines then evaluate to `false`.
 pub fn comptime_flag_value(pref &Preferences, name string) bool {
 	match name {
-		'macos', 'darwin' {
-			return normalize_current_os_name(pref.target_os_or_host()) == 'macos'
+		'macos', 'darwin', 'mac' {
+			return pref.normalized_target_os() == 'macos'
 		}
 		'linux' {
-			return normalize_current_os_name(pref.target_os_or_host()) == 'linux'
+			return pref.normalized_target_os() == 'linux'
 		}
 		'windows' {
-			return normalize_current_os_name(pref.target_os_or_host()) == 'windows'
+			return pref.normalized_target_os() == 'windows'
 		}
 		'bsd' {
-			return normalize_current_os_name(pref.target_os_or_host()) in [
+			return pref.normalized_target_os() in [
 				'macos',
 				'freebsd',
 				'openbsd',
@@ -30,16 +30,37 @@ pub fn comptime_flag_value(pref &Preferences, name string) bool {
 			]
 		}
 		'freebsd' {
-			return normalize_current_os_name(pref.target_os_or_host()) == 'freebsd'
+			return pref.normalized_target_os() == 'freebsd'
 		}
 		'openbsd' {
-			return normalize_current_os_name(pref.target_os_or_host()) == 'openbsd'
+			return pref.normalized_target_os() == 'openbsd'
 		}
 		'netbsd' {
-			return normalize_current_os_name(pref.target_os_or_host()) == 'netbsd'
+			return pref.normalized_target_os() == 'netbsd'
 		}
 		'dragonfly' {
-			return normalize_current_os_name(pref.target_os_or_host()) == 'dragonfly'
+			return pref.normalized_target_os() == 'dragonfly'
+		}
+		'android' {
+			return pref.normalized_target_os() == 'android'
+		}
+		'ios' {
+			return pref.normalized_target_os() == 'ios'
+		}
+		'solaris' {
+			return pref.normalized_target_os() == 'solaris'
+		}
+		'qnx' {
+			return pref.normalized_target_os() == 'qnx'
+		}
+		'serenity' {
+			return pref.normalized_target_os() == 'serenity'
+		}
+		'plan9' {
+			return pref.normalized_target_os() == 'plan9'
+		}
+		'vinix' {
+			return pref.normalized_target_os() == 'vinix'
 		}
 		'x64', 'amd64' {
 			$if amd64 {
@@ -76,8 +97,7 @@ pub fn comptime_flag_value(pref &Preferences, name string) bool {
 		}
 		'v2_native_windows_pe_minimal' {
 			return pref != unsafe { nil } && pref.backend == .x64
-				&& pref.get_effective_arch() == .x64
-				&& normalize_current_os_name(pref.target_os_or_host()) == 'windows'
+				&& pref.get_effective_arch() == .x64 && pref.normalized_target_os() == 'windows'
 		}
 		// Native backend cannot resolve C.stdout/C.stderr data symbols through GOT,
 		// so use C.write() instead of fwrite() for I/O operations.
@@ -96,6 +116,28 @@ pub fn comptime_flag_value(pref &Preferences, name string) bool {
 		}
 		'prealloc' {
 			return pref != unsafe { nil } && pref.prealloc
+		}
+		'cross' {
+			return pref != unsafe { nil } && (pref.is_cross_target() || name in pref.user_defines)
+		}
+		'freestanding' {
+			return pref != unsafe { nil } && (pref.is_freestanding() || name in pref.user_defines)
+		}
+		'freestanding_hooks' {
+			return pref != unsafe { nil }
+				&& (pref.has_freestanding_hooks() || name in pref.user_defines)
+		}
+		'freestanding_output' {
+			return pref != unsafe { nil }
+				&& (pref.has_freestanding_hook('output') || name in pref.user_defines)
+		}
+		'freestanding_panic' {
+			return pref != unsafe { nil }
+				&& (pref.has_freestanding_hook('panic') || name in pref.user_defines)
+		}
+		'freestanding_alloc' {
+			return pref != unsafe { nil }
+				&& (pref.has_freestanding_hook('alloc') || name in pref.user_defines)
 		}
 		'new_int', 'gcboehm', 'autofree', 'ppc64' {
 			return false

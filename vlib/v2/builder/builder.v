@@ -67,6 +67,30 @@ fn (b &Builder) exec_build_c_file(output_name string) string {
 	return staged_c_file
 }
 
+fn (b &Builder) can_compile_cleanc_locally() bool {
+	if b.pref == unsafe { nil } {
+		return true
+	}
+	return b.pref.can_compile_cleanc_locally()
+}
+
+fn (b &Builder) cflags_target_os_for_local_compile() string {
+	if b.pref == unsafe { nil } {
+		return normalize_target_os_name(os.user_os())
+	}
+	if b.pref.is_cross_target() && b.can_compile_cleanc_locally() {
+		return b.pref.source_filter_target_os()
+	}
+	return b.pref.target_os_or_host()
+}
+
+fn cleanc_c_output_name(output_name string) string {
+	if output_name.ends_with('.c') {
+		return output_name
+	}
+	return output_name + '.c'
+}
+
 fn (mut b Builder) compile_cleanc_executable(output_name string, cc string, cc_flags string, cc_link_flags string, error_limit_flag string, mut sw time.StopWatch) {
 	cc_start := sw.elapsed()
 	if b.pref.is_shared_lib {
@@ -119,6 +143,10 @@ pub fn (mut b Builder) build(files []string) {
 		b.parsed_vh_files)
 	if b.pref.stats {
 		// b.print_flat_ast_summary()
+	}
+
+	if b.pref.backend == .cleanc && !b.validate_freestanding_cleanc_contract() {
+		exit(1)
 	}
 
 	if b.pref.skip_type_check {
@@ -190,6 +218,658 @@ pub fn (mut b Builder) build(files []string) {
 	}
 
 	print_time('Total', sw.elapsed())
+}
+
+fn (b &Builder) validate_freestanding_cleanc_contract() bool {
+	if b.pref == unsafe { nil } || !b.pref.is_freestanding() {
+		return true
+	}
+	mut diagnostics := []string{}
+	mut seen := map[string]bool{}
+	target_os := b.pref.target_os_or_host()
+	if 'prealloc' in b.pref.user_defines {
+		msg := 'error: freestanding target cannot use -prealloc because it requires hosted allocation support'
+		diagnostics << msg
+		seen[msg] = true
+	}
+	if b.pref.is_shared_lib {
+		msg := 'error: freestanding target cannot use -shared because dynamic library output requires hosted loader support'
+		if !seen[msg] {
+			diagnostics << msg
+			seen[msg] = true
+		}
+	}
+	if b.pref.hot_fn.len > 0 {
+		msg := 'error: freestanding target cannot use -hot-fn because live code reload needs hosted OS services'
+		if !seen[msg] {
+			diagnostics << msg
+			seen[msg] = true
+		}
+	}
+	if b.pref.has_freestanding_hooks() && (!b.pref.skip_builtin || !b.pref.skip_type_check) {
+		msg := 'error: freestanding target platform hooks currently require --skip-builtin and --skip-type-check until cleanc builtin hook signatures are implemented'
+		if !seen[msg] {
+			diagnostics << msg
+			seen[msg] = true
+		}
+	}
+	for file in b.files {
+		if !b.should_scan_freestanding_diagnostic_file(file.name) {
+			continue
+		}
+		for imported in active_file_imports(file, b.pref.user_defines, target_os) {
+			if msg := freestanding_restricted_import_diagnostic(imported.name) {
+				if !seen[msg] {
+					diagnostics << msg
+					seen[msg] = true
+				}
+			}
+		}
+		call_name := freestanding_restricted_call_in_stmts(file.stmts, freestanding_scan_context(b.pref,
+			target_os))
+		if call_name != '' {
+			msg := freestanding_restricted_call_diagnostic(call_name)
+			if !seen[msg] {
+				diagnostics << msg
+				seen[msg] = true
+			}
+		}
+	}
+	if !b.pref.skip_builtin && !b.pref.has_freestanding_hooks() && diagnostics.len == 0 {
+		msg := 'error: freestanding target currently needs explicit platform runtime hooks before builtin runtime can be emitted'
+		diagnostics << msg
+		seen[msg] = true
+	}
+	for msg in diagnostics {
+		eprintln(msg)
+	}
+	if diagnostics.len > 0 {
+		eprintln('hint: provide platform bindings or build without -freestanding')
+		return false
+	}
+	return true
+}
+
+fn (b &Builder) should_scan_freestanding_diagnostic_file(file_name string) bool {
+	if file_name == '' || b.pref == unsafe { nil } || b.pref.vroot == '' {
+		return true
+	}
+	path := file_name.replace('\\', '/')
+	vroot := b.pref.vroot.replace('\\', '/').trim_right('/')
+	return !path.starts_with('${vroot}/vlib/')
+}
+
+fn freestanding_restricted_import_diagnostic(import_name string) ?string {
+	root := import_name.all_before('.')
+	return match root {
+		'os' {
+			'error: freestanding target cannot use module os without a platform implementation'
+		}
+		'time' {
+			'error: freestanding target cannot use module time without a platform time source'
+		}
+		'term' {
+			'error: freestanding target cannot use module term without terminal support'
+		}
+		'net' {
+			'error: freestanding target cannot use module net without platform networking support'
+		}
+		'sync' {
+			'error: freestanding target cannot use module sync without threading/locking support'
+		}
+		else {
+			none
+		}
+	}
+}
+
+fn freestanding_restricted_call_diagnostic(call_name string) string {
+	return match call_name {
+		'alloc' {
+			'error: freestanding target cannot use heap allocation without alloc platform hook'
+		}
+		'panic' {
+			'error: freestanding target cannot use builtin panic without panic platform hook'
+		}
+		'spawn' {
+			'error: freestanding target cannot use spawn because threading support is not provided'
+		}
+		'go' {
+			'error: freestanding target cannot use go because threading support is not provided'
+		}
+		'lock' {
+			'error: freestanding target cannot use lock/rlock because locking support is not provided'
+		}
+		'shared' {
+			'error: freestanding target cannot use shared data because locking support is not provided'
+		}
+		'live' {
+			'error: freestanding target cannot use @[live] because live reload needs hosted OS services'
+		}
+		'string_interpolation' {
+			'error: freestanding target cannot use string interpolation because cleanc currently needs hosted formatting support'
+		}
+		'print_conversion' {
+			'error: freestanding target cannot print non-string values with output hook only'
+		}
+		'output_runtime' {
+			'error: freestanding target cannot use output runtime helpers without output platform hook'
+		}
+		'arguments' {
+			'error: freestanding target cannot use arguments() because command-line arguments need hosted runtime support'
+		}
+		else {
+			'error: freestanding target cannot use builtin ${call_name} without output platform hook'
+		}
+	}
+}
+
+struct FreestandingScanContext {
+	user_defines       []string
+	target_os          string
+	freestanding_hooks []string
+}
+
+fn freestanding_scan_context(p &pref.Preferences, target_os string) FreestandingScanContext {
+	return FreestandingScanContext{
+		user_defines:       p.user_defines
+		target_os:          target_os
+		freestanding_hooks: p.freestanding_hook_list()
+	}
+}
+
+fn (ctx FreestandingScanContext) has_hook(hook string) bool {
+	return hook in ctx.freestanding_hooks
+}
+
+fn freestanding_needs_alloc_hook(ctx FreestandingScanContext) string {
+	return if ctx.has_hook('alloc') { '' } else { 'alloc' }
+}
+
+fn freestanding_output_builtin_call_name(name string, ctx FreestandingScanContext) string {
+	if name in ['print', 'println', 'eprint', 'eprintln'] && !ctx.has_hook('output') {
+		return name
+	}
+	if name == 'panic' && !ctx.has_hook('panic') {
+		return name
+	}
+	return ''
+}
+
+fn freestanding_print_arg_is_obvious_non_string(expr ast.Expr) bool {
+	return match expr {
+		ast.BasicLiteral {
+			expr.kind in [.number, .char, .key_true, .key_false]
+		}
+		else {
+			false
+		}
+	}
+}
+
+fn freestanding_attributes_are_inactive(attributes []ast.Attribute, ctx FreestandingScanContext) bool {
+	for attr in attributes {
+		if attr.comptime_cond !is ast.EmptyExpr
+			&& !ast_comptime_cond_matches(attr.comptime_cond, ctx.user_defines, ctx.target_os) {
+			return true
+		}
+	}
+	return false
+}
+
+fn freestanding_array_init_needs_alloc(expr ast.ArrayInitExpr) bool {
+	if expr.len is ast.PostfixExpr {
+		postfix := expr.len as ast.PostfixExpr
+		if postfix.op == .not && postfix.expr is ast.EmptyExpr {
+			return false
+		}
+	}
+	return !(expr.typ is ast.Type && expr.typ is ast.ArrayFixedType)
+}
+
+fn freestanding_restricted_call_in_stmts(stmts []ast.Stmt, ctx FreestandingScanContext) string {
+	for stmt in stmts {
+		call_name := freestanding_restricted_call_in_stmt(stmt, ctx)
+		if call_name != '' {
+			return call_name
+		}
+	}
+	return ''
+}
+
+fn freestanding_restricted_call_in_stmt(stmt ast.Stmt, ctx FreestandingScanContext) string {
+	return match stmt {
+		ast.AssertStmt {
+			freestanding_restricted_call_in_exprs([stmt.expr, stmt.extra], ctx)
+		}
+		ast.AssignStmt {
+			lhs_call := freestanding_restricted_call_in_exprs(stmt.lhs, ctx)
+			if lhs_call != '' {
+				lhs_call
+			} else {
+				freestanding_restricted_call_in_exprs(stmt.rhs, ctx)
+			}
+		}
+		ast.BlockStmt {
+			freestanding_restricted_call_in_stmts(stmt.stmts, ctx)
+		}
+		ast.ComptimeStmt {
+			freestanding_restricted_call_in_stmt(stmt.stmt, ctx)
+		}
+		ast.ConstDecl {
+			freestanding_restricted_call_in_field_inits(stmt.fields, ctx)
+		}
+		ast.DeferStmt {
+			freestanding_restricted_call_in_stmts(stmt.stmts, ctx)
+		}
+		ast.ExprStmt {
+			freestanding_restricted_call_in_expr(stmt.expr, ctx)
+		}
+		ast.FnDecl {
+			if freestanding_attributes_are_inactive(stmt.attributes, ctx) {
+				''
+			} else if stmt.attributes.has('live') {
+				'live'
+			} else {
+				freestanding_restricted_call_in_stmts(stmt.stmts, ctx)
+			}
+		}
+		ast.ForInStmt {
+			freestanding_restricted_call_in_exprs([stmt.key, stmt.value, stmt.expr], ctx)
+		}
+		ast.ForStmt {
+			init_call := freestanding_restricted_call_in_stmt(stmt.init, ctx)
+			if init_call != '' {
+				init_call
+			} else {
+				cond_call := freestanding_restricted_call_in_expr(stmt.cond, ctx)
+				if cond_call != '' {
+					cond_call
+				} else {
+					post_call := freestanding_restricted_call_in_stmt(stmt.post, ctx)
+					if post_call != '' {
+						post_call
+					} else {
+						freestanding_restricted_call_in_stmts(stmt.stmts, ctx)
+					}
+				}
+			}
+		}
+		ast.GlobalDecl {
+			freestanding_restricted_call_in_field_decls(stmt.fields, ctx)
+		}
+		ast.InterfaceDecl {
+			freestanding_restricted_call_in_field_decls(stmt.fields, ctx)
+		}
+		ast.LabelStmt {
+			freestanding_restricted_call_in_stmt(stmt.stmt, ctx)
+		}
+		ast.ReturnStmt {
+			freestanding_restricted_call_in_exprs(stmt.exprs, ctx)
+		}
+		ast.StructDecl {
+			freestanding_restricted_call_in_field_decls(stmt.fields, ctx)
+		}
+		else {
+			''
+		}
+	}
+}
+
+fn freestanding_restricted_call_in_exprs(exprs []ast.Expr, ctx FreestandingScanContext) string {
+	for expr in exprs {
+		call_name := freestanding_restricted_call_in_expr(expr, ctx)
+		if call_name != '' {
+			return call_name
+		}
+	}
+	return ''
+}
+
+fn freestanding_restricted_call_in_field_inits(fields []ast.FieldInit, ctx FreestandingScanContext) string {
+	for field in fields {
+		call_name := freestanding_restricted_call_in_expr(field.value, ctx)
+		if call_name != '' {
+			return call_name
+		}
+	}
+	return ''
+}
+
+fn freestanding_restricted_call_in_field_decls(fields []ast.FieldDecl, ctx FreestandingScanContext) string {
+	for field in fields {
+		typ_call := freestanding_restricted_call_in_expr(field.typ, ctx)
+		if typ_call != '' {
+			return typ_call
+		}
+		value_call := freestanding_restricted_call_in_expr(field.value, ctx)
+		if value_call != '' {
+			return value_call
+		}
+	}
+	return ''
+}
+
+fn freestanding_restricted_call_in_expr(expr ast.Expr, ctx FreestandingScanContext) string {
+	return match expr {
+		ast.ArrayInitExpr {
+			typ_call := freestanding_restricted_call_in_expr(expr.typ, ctx)
+			if typ_call != '' {
+				typ_call
+			} else {
+				exprs_call := freestanding_restricted_call_in_exprs(expr.exprs, ctx)
+				if exprs_call != '' {
+					exprs_call
+				} else {
+					init_call := freestanding_restricted_call_in_expr(expr.init, ctx)
+					if init_call != '' {
+						init_call
+					} else {
+						cap_call := freestanding_restricted_call_in_expr(expr.cap, ctx)
+						if cap_call != '' {
+							cap_call
+						} else {
+							len_call := freestanding_restricted_call_in_expr(expr.len, ctx)
+							if len_call != '' {
+								len_call
+							} else {
+								update_call :=
+									freestanding_restricted_call_in_expr(expr.update_expr, ctx)
+								if update_call != '' {
+									update_call
+								} else if !freestanding_array_init_needs_alloc(expr) {
+									''
+								} else {
+									freestanding_needs_alloc_hook(ctx)
+								}
+							}
+						}
+					}
+				}
+			}
+		}
+		ast.AsCastExpr {
+			freestanding_restricted_call_in_expr(expr.expr, ctx)
+		}
+		ast.AssocExpr {
+			base_call := freestanding_restricted_call_in_expr(expr.expr, ctx)
+			if base_call != '' {
+				base_call
+			} else {
+				freestanding_restricted_call_in_field_inits(expr.fields, ctx)
+			}
+		}
+		ast.CallExpr {
+			call_name := freestanding_restricted_builtin_call_name(expr.lhs, expr.args, ctx)
+			if call_name != '' {
+				call_name
+			} else {
+				lhs_call := freestanding_restricted_call_in_expr(expr.lhs, ctx)
+				if lhs_call != '' {
+					lhs_call
+				} else {
+					freestanding_restricted_call_in_exprs(expr.args, ctx)
+				}
+			}
+		}
+		ast.CallOrCastExpr {
+			call_name := freestanding_restricted_builtin_call_name(expr.lhs, [expr.expr], ctx)
+			if call_name != '' {
+				call_name
+			} else {
+				lhs_call := freestanding_restricted_call_in_expr(expr.lhs, ctx)
+				if lhs_call != '' {
+					lhs_call
+				} else {
+					freestanding_restricted_call_in_expr(expr.expr, ctx)
+				}
+			}
+		}
+		ast.CastExpr {
+			freestanding_restricted_call_in_expr(expr.expr, ctx)
+		}
+		ast.ComptimeExpr {
+			freestanding_restricted_call_in_comptime_expr(expr, ctx)
+		}
+		ast.FieldInit {
+			freestanding_restricted_call_in_expr(expr.value, ctx)
+		}
+		ast.FnLiteral {
+			freestanding_restricted_call_in_stmts(expr.stmts, ctx)
+		}
+		ast.GenericArgOrIndexExpr {
+			lhs_call := freestanding_restricted_call_in_expr(expr.lhs, ctx)
+			if lhs_call != '' {
+				lhs_call
+			} else {
+				freestanding_restricted_call_in_expr(expr.expr, ctx)
+			}
+		}
+		ast.GenericArgs {
+			lhs_call := freestanding_restricted_call_in_expr(expr.lhs, ctx)
+			if lhs_call != '' {
+				lhs_call
+			} else {
+				freestanding_restricted_call_in_exprs(expr.args, ctx)
+			}
+		}
+		ast.IfExpr {
+			cond_call := freestanding_restricted_call_in_expr(expr.cond, ctx)
+			if cond_call != '' {
+				cond_call
+			} else {
+				stmts_call := freestanding_restricted_call_in_stmts(expr.stmts, ctx)
+				if stmts_call != '' {
+					stmts_call
+				} else {
+					freestanding_restricted_call_in_expr(expr.else_expr, ctx)
+				}
+			}
+		}
+		ast.IfGuardExpr {
+			freestanding_restricted_call_in_stmt(ast.Stmt(expr.stmt), ctx)
+		}
+		ast.IndexExpr {
+			lhs_call := freestanding_restricted_call_in_expr(expr.lhs, ctx)
+			if lhs_call != '' {
+				lhs_call
+			} else {
+				freestanding_restricted_call_in_expr(expr.expr, ctx)
+			}
+		}
+		ast.InfixExpr {
+			lhs_call := freestanding_restricted_call_in_expr(expr.lhs, ctx)
+			if lhs_call != '' {
+				lhs_call
+			} else {
+				freestanding_restricted_call_in_expr(expr.rhs, ctx)
+			}
+		}
+		ast.InitExpr {
+			typ_call := freestanding_restricted_call_in_expr(expr.typ, ctx)
+			if typ_call != '' {
+				typ_call
+			} else {
+				freestanding_restricted_call_in_field_inits(expr.fields, ctx)
+			}
+		}
+		ast.KeywordOperator {
+			if expr.op in [.key_go, .key_spawn] {
+				expr.op.str()
+			} else {
+				freestanding_restricted_call_in_exprs(expr.exprs, ctx)
+			}
+		}
+		ast.LambdaExpr {
+			freestanding_restricted_call_in_expr(expr.expr, ctx)
+		}
+		ast.LockExpr {
+			'lock'
+		}
+		ast.MapInitExpr {
+			key_call := freestanding_restricted_call_in_exprs(expr.keys, ctx)
+			if key_call != '' {
+				key_call
+			} else {
+				val_call := freestanding_restricted_call_in_exprs(expr.vals, ctx)
+				if val_call != '' {
+					val_call
+				} else {
+					freestanding_needs_alloc_hook(ctx)
+				}
+			}
+		}
+		ast.MatchExpr {
+			expr_call := freestanding_restricted_call_in_expr(expr.expr, ctx)
+			if expr_call != '' {
+				expr_call
+			} else {
+				freestanding_restricted_call_in_match_branches(expr.branches, ctx)
+			}
+		}
+		ast.ModifierExpr {
+			if expr.kind == .key_shared {
+				'shared'
+			} else {
+				freestanding_restricted_call_in_expr(expr.expr, ctx)
+			}
+		}
+		ast.OrExpr {
+			expr_call := freestanding_restricted_call_in_expr(expr.expr, ctx)
+			if expr_call != '' {
+				expr_call
+			} else {
+				freestanding_restricted_call_in_stmts(expr.stmts, ctx)
+			}
+		}
+		ast.ParenExpr {
+			freestanding_restricted_call_in_expr(expr.expr, ctx)
+		}
+		ast.PostfixExpr {
+			freestanding_restricted_call_in_expr(expr.expr, ctx)
+		}
+		ast.PrefixExpr {
+			expr_call := freestanding_restricted_call_in_expr(expr.expr, ctx)
+			if expr_call != '' {
+				expr_call
+			} else if expr.op == .amp
+				&& (expr.expr is ast.ArrayInitExpr || expr.expr is ast.InitExpr) {
+				freestanding_needs_alloc_hook(ctx)
+			} else {
+				''
+			}
+		}
+		ast.RangeExpr {
+			start_call := freestanding_restricted_call_in_expr(expr.start, ctx)
+			if start_call != '' {
+				start_call
+			} else {
+				freestanding_restricted_call_in_expr(expr.end, ctx)
+			}
+		}
+		ast.SelectExpr {
+			stmt_call := freestanding_restricted_call_in_stmt(expr.stmt, ctx)
+			if stmt_call != '' {
+				stmt_call
+			} else {
+				freestanding_restricted_call_in_stmts(expr.stmts, ctx)
+			}
+		}
+		ast.SelectorExpr {
+			freestanding_restricted_call_in_expr(expr.lhs, ctx)
+		}
+		ast.StringInterLiteral {
+			inter_call := freestanding_restricted_call_in_string_inters(expr.inters, ctx)
+			if inter_call != '' {
+				inter_call
+			} else {
+				'string_interpolation'
+			}
+		}
+		ast.Tuple {
+			freestanding_restricted_call_in_exprs(expr.exprs, ctx)
+		}
+		ast.UnsafeExpr {
+			freestanding_restricted_call_in_stmts(expr.stmts, ctx)
+		}
+		else {
+			''
+		}
+	}
+}
+
+fn freestanding_restricted_call_in_comptime_expr(expr ast.ComptimeExpr, ctx FreestandingScanContext) string {
+	if expr.expr is ast.IfExpr {
+		return freestanding_restricted_call_in_active_comptime_if(expr.expr, ctx)
+	}
+	return freestanding_restricted_call_in_expr(expr.expr, ctx)
+}
+
+fn freestanding_restricted_call_in_active_comptime_if(node ast.IfExpr, ctx FreestandingScanContext) string {
+	if ast_comptime_cond_matches(node.cond, ctx.user_defines, ctx.target_os) {
+		return freestanding_restricted_call_in_stmts(node.stmts, ctx)
+	}
+	if node.else_expr is ast.IfExpr {
+		if node.else_expr.cond is ast.EmptyExpr {
+			return freestanding_restricted_call_in_stmts(node.else_expr.stmts, ctx)
+		}
+		return freestanding_restricted_call_in_active_comptime_if(node.else_expr, ctx)
+	}
+	return ''
+}
+
+fn freestanding_restricted_call_in_match_branches(branches []ast.MatchBranch, ctx FreestandingScanContext) string {
+	for branch in branches {
+		cond_call := freestanding_restricted_call_in_exprs(branch.cond, ctx)
+		if cond_call != '' {
+			return cond_call
+		}
+		stmts_call := freestanding_restricted_call_in_stmts(branch.stmts, ctx)
+		if stmts_call != '' {
+			return stmts_call
+		}
+	}
+	return ''
+}
+
+fn freestanding_restricted_call_in_string_inters(inters []ast.StringInter, ctx FreestandingScanContext) string {
+	for inter in inters {
+		expr_call := freestanding_restricted_call_in_expr(inter.expr, ctx)
+		if expr_call != '' {
+			return expr_call
+		}
+		format_call := freestanding_restricted_call_in_expr(inter.format_expr, ctx)
+		if format_call != '' {
+			return format_call
+		}
+	}
+	return ''
+}
+
+fn freestanding_restricted_builtin_call_name(lhs ast.Expr, args []ast.Expr, ctx FreestandingScanContext) string {
+	if lhs is ast.Ident {
+		name := lhs.name
+		builtin_call := freestanding_output_builtin_call_name(name, ctx)
+		if builtin_call != '' {
+			return builtin_call
+		}
+		if name in ['print', 'println', 'eprint', 'eprintln'] && ctx.has_hook('output')
+			&& args.len == 1 && freestanding_print_arg_is_obvious_non_string(args[0]) {
+			return 'print_conversion'
+		}
+		if name in ['_write_buf_to_fd', '_writeln_to_fd', 'flush_stdout', 'flush_stderr']
+			&& !ctx.has_hook('output') {
+			return 'output_runtime'
+		}
+		if name == 'arguments' {
+			return 'arguments'
+		}
+		if name in ['malloc_noscan', 'memdup', 'new_array_from_c_array',
+			'new_array_from_c_array_noscan', '__new_array_with_default_noscan'] {
+			return freestanding_needs_alloc_hook(ctx)
+		}
+	}
+	return ''
 }
 
 fn (mut b Builder) gen_v_files() {
@@ -306,12 +986,16 @@ fn (mut b Builder) gen_cleanc() {
 		error_limit_flag = ' -ferror-limit=0'
 	}
 
-	// If output ends with .c, just write the C file
-	if output_name.ends_with('.c') {
+	// If output ends with .c, or the selected target cannot be linked by
+	// the host compiler, just write the C file.
+	if output_name.ends_with('.c') || !b.can_compile_cleanc_locally() {
+		c_output_name := cleanc_c_output_name(output_name)
 		mut c_source := ''
 		// For .c output, prefer the same cached-core split used by normal
-		// build+link flow, when the cache is valid.
-		if use_cache && !b.pref.skip_builtin && b.has_module('builtin') && b.has_module('strconv')
+		// build+link flow, when the cache is valid. For C-only output forced
+		// by disabled local compilation, emit a complete translation unit.
+		if output_name.ends_with('.c') && b.can_compile_cleanc_locally() && use_cache
+			&& !b.pref.skip_builtin && b.has_module('builtin') && b.has_module('strconv')
 			&& b.can_use_cached_core_headers() {
 			main_modules := b.collect_modules_excluding(core_cached_module_names)
 			if main_modules.len > 0 {
@@ -328,8 +1012,12 @@ fn (mut b Builder) gen_cleanc() {
 			eprintln('hint: use v2 compiled with v1 for proper C code generation')
 			return
 		}
-		os.write_file(output_name, c_source) or { panic(err) }
-		println('[*] Wrote ${output_name}')
+		os.write_file(c_output_name, c_source) or { panic(err) }
+		if output_name.ends_with('.c') {
+			println('[*] Wrote ${c_output_name}')
+		} else {
+			println('[*] Wrote ${c_output_name} (local C compilation disabled for this target)')
+		}
 		return
 	}
 
@@ -1353,8 +2041,26 @@ fn flag_os_matches(cond string, target_os string) bool {
 		'netbsd' { current == 'netbsd' }
 		'dragonfly' { current == 'dragonfly' }
 		'android' { current == 'android' }
+		'ios' { current == 'ios' }
+		'solaris' { current == 'solaris' }
+		'qnx' { current == 'qnx' }
+		'serenity' { current == 'serenity' }
+		'plan9' { current == 'plan9' }
+		'vinix' { current == 'vinix' }
+		'cross' { current == 'cross' }
 		else { false }
 	}
+}
+
+fn flag_pref_matches(cond string, prefs &pref.Preferences) bool {
+	if prefs == unsafe { nil } {
+		return false
+	}
+	lower := cond.to_lower()
+	if pref.comptime_flag_value(prefs, lower) {
+		return true
+	}
+	return flag_os_matches(lower, prefs.target_os_or_host())
 }
 
 fn find_vmod_root_for_file(file_path string) string {
@@ -1471,6 +2177,17 @@ fn normalize_flag_value_for_file(flag_value string, file_path string) string {
 }
 
 fn parse_flag_directive_line(line string, file_path string, target_os string) ?string {
+	return parse_flag_directive_line_with_context(line, file_path, target_os, unsafe {
+		&pref.Preferences(nil)
+	})
+}
+
+fn parse_flag_directive_line_with_pref(line string, file_path string, prefs &pref.Preferences) ?string {
+	target_os := if prefs == unsafe { nil } { '' } else { prefs.target_os_or_host() }
+	return parse_flag_directive_line_with_context(line, file_path, target_os, prefs)
+}
+
+fn parse_flag_directive_line_with_context(line string, file_path string, target_os string, prefs &pref.Preferences) ?string {
 	trimmed := line.trim_space()
 	if !trimmed.starts_with('#flag') {
 		return none
@@ -1490,7 +2207,12 @@ fn parse_flag_directive_line(line string, file_path string, target_os string) ?s
 		return none
 	}
 	if !parts[0].starts_with('-') && !parts[0].starts_with('@') && parts.len > 1 {
-		if !flag_os_matches(parts[0], target_os) {
+		matches := if prefs == unsafe { nil } {
+			flag_os_matches(parts[0], target_os)
+		} else {
+			flag_os_matches(parts[0], target_os) || flag_pref_matches(parts[0], prefs)
+		}
+		if !matches {
 			return none
 		}
 		rest = rest[parts[0].len..].trim_space()
@@ -1545,8 +2267,9 @@ fn (b &Builder) collect_cflags_from_sources() string {
 			scan_paths << file.name
 		}
 	}
+	cflags_target_os := b.cflags_target_os_for_local_compile()
 	if !b.pref.skip_builtin {
-		target_os := b.pref.target_os_or_host()
+		target_os := cflags_target_os
 		for module_path in core_cached_module_paths {
 			vlib_path := b.pref.get_vlib_module_path(module_path)
 			module_files := get_v_files_from_dir(vlib_path, b.pref.user_defines, target_os)
@@ -1558,7 +2281,6 @@ fn (b &Builder) collect_cflags_from_sources() string {
 		}
 	}
 	scan_paths.sort()
-	target_os := b.pref.target_os_or_host()
 	for scan_path in scan_paths {
 		if scan_path == '' || scan_path in scanned_files {
 			continue
@@ -1591,7 +2313,7 @@ fn (b &Builder) collect_cflags_from_sources() string {
 				}
 				if chain_matched[cur] {
 					skip_depth = 1
-				} else if comptime_cond_matches(new_cond, target_os) {
+				} else if comptime_cond_matches_with_context(new_cond, cflags_target_os, b.pref) {
 					chain_matched[cur] = true
 					skip_depth = 0
 				} else {
@@ -1619,7 +2341,7 @@ fn (b &Builder) collect_cflags_from_sources() string {
 			// $if cond { (chain opener)
 			if rest.starts_with(r'$if ') {
 				cond := rest[4..].trim_right('?{ ').trim_space()
-				matched := comptime_cond_matches(cond, target_os)
+				matched := comptime_cond_matches_with_context(cond, cflags_target_os, b.pref)
 				chain_matched << matched
 				if skip_depth > 0 {
 					skip_depth++
@@ -1655,9 +2377,8 @@ fn (b &Builder) collect_cflags_from_sources() string {
 			// Replace @VEXEROOT before parsing so path normalization sees absolute paths
 			resolved_line := line.replace('@VEXEROOT', b.pref.vroot).replace('VEXEROOT',
 				b.pref.vroot)
-			mut flag := parse_flag_directive_line(resolved_line, scan_path, target_os) or {
-				continue
-			}
+			mut flag := parse_flag_directive_line_with_context(resolved_line, scan_path,
+				cflags_target_os, b.pref) or { continue }
 			// Build include flags from already-collected flags for compiling missing .o files
 			mut inc_flags := []string{}
 			for f in flags {
@@ -1723,23 +2444,39 @@ fn split_compile_and_link_flags(flags string) (string, string) {
 }
 
 fn comptime_cond_matches(cond string, target_os string) bool {
-	// Handle negation: $if !platform
-	if cond.starts_with('!') {
-		return !comptime_cond_matches(cond[1..], target_os)
+	return comptime_cond_matches_with_context(cond, target_os, unsafe { &pref.Preferences(nil) })
+}
+
+fn comptime_cond_matches_with_pref(cond string, prefs &pref.Preferences) bool {
+	target_os := if prefs == unsafe { nil } { '' } else { prefs.target_os_or_host() }
+	return comptime_cond_matches_with_context(cond, target_os, prefs)
+}
+
+fn comptime_cond_matches_with_context(cond string, target_os string, prefs &pref.Preferences) bool {
+	trimmed := cond.trim_space()
+	if or_idx := top_level_bool_op_index(trimmed, '||') {
+		left := trimmed[..or_idx].trim_space()
+		right := trimmed[or_idx + 2..].trim_space()
+		return comptime_cond_matches_with_context(left, target_os, prefs)
+			|| comptime_cond_matches_with_context(right, target_os, prefs)
 	}
-	// Handle && conjunction
-	if and_idx := cond.index('&&') {
-		left := cond[..and_idx].trim_space()
-		right := cond[and_idx + 2..].trim_space()
-		return comptime_cond_matches(left, target_os) && comptime_cond_matches(right, target_os)
+	if and_idx := top_level_bool_op_index(trimmed, '&&') {
+		left := trimmed[..and_idx].trim_space()
+		right := trimmed[and_idx + 2..].trim_space()
+		return comptime_cond_matches_with_context(left, target_os, prefs)
+			&& comptime_cond_matches_with_context(right, target_os, prefs)
 	}
-	if or_idx := cond.index('||') {
-		left := cond[..or_idx].trim_space()
-		right := cond[or_idx + 2..].trim_space()
-		return comptime_cond_matches(left, target_os) || comptime_cond_matches(right, target_os)
+	if trimmed.starts_with('!') {
+		return !comptime_cond_matches_with_context(trimmed[1..], target_os, prefs)
+	}
+	if stripped := strip_outer_bool_parens(trimmed) {
+		return comptime_cond_matches_with_context(stripped, target_os, prefs)
+	}
+	if prefs != unsafe { nil } {
+		return flag_os_matches(trimmed, target_os) || flag_pref_matches(trimmed, prefs)
 	}
 	current := normalize_target_os_name(target_os)
-	return match cond.to_lower() {
+	return match trimmed.to_lower() {
 		'macos', 'darwin', 'mac' { current == 'macos' || current == 'darwin' }
 		'linux' { current == 'linux' }
 		'windows' { current == 'windows' }
@@ -1749,11 +2486,57 @@ fn comptime_cond_matches(cond string, target_os string) bool {
 		'netbsd' { current == 'netbsd' }
 		'dragonfly' { current == 'dragonfly' }
 		'android' { current == 'android' }
+		'ios' { current == 'ios' }
+		'solaris' { current == 'solaris' }
+		'qnx' { current == 'qnx' }
+		'serenity' { current == 'serenity' }
+		'plan9' { current == 'plan9' }
+		'vinix' { current == 'vinix' }
+		'cross' { current == 'cross' }
 		'native' { false }
 		'emscripten' { false }
-		'ios' { false }
 		else { false } // unknown user-defined flags default to false
 	}
+}
+
+fn top_level_bool_op_index(expr string, op string) ?int {
+	mut depth := 0
+	mut i := 0
+	for i < expr.len {
+		ch := expr[i]
+		if ch == `(` {
+			depth++
+		} else if ch == `)` {
+			if depth > 0 {
+				depth--
+			}
+		} else if depth == 0 && i + op.len <= expr.len && expr[i..i + op.len] == op {
+			return i
+		}
+		i++
+	}
+	return none
+}
+
+fn strip_outer_bool_parens(expr string) ?string {
+	if expr.len < 2 || expr[0] != `(` || expr[expr.len - 1] != `)` {
+		return none
+	}
+	mut depth := 0
+	for i, ch in expr {
+		if ch == `(` {
+			depth++
+		} else if ch == `)` {
+			depth--
+			if depth == 0 && i < expr.len - 1 {
+				return none
+			}
+		}
+	}
+	if depth == 0 {
+		return expr[1..expr.len - 1].trim_space()
+	}
+	return none
 }
 
 fn default_cc(vroot string) string {

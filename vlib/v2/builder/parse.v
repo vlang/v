@@ -122,7 +122,7 @@ fn ast_comptime_flag_matches(name string, user_defines []string, target_os strin
 	}
 	return match lower_name {
 		'macos', 'darwin', 'mac', 'linux', 'windows', 'bsd', 'freebsd', 'openbsd', 'netbsd',
-		'dragonfly', 'android' {
+		'dragonfly', 'android', 'ios', 'solaris', 'qnx', 'serenity', 'plan9', 'vinix', 'cross' {
 			flag_os_matches(lower_name, target_os)
 		}
 		else {
@@ -211,7 +211,7 @@ fn (mut b Builder) parse_files(files []string) []ast.File {
 	mut parser_reused := parser.Parser.new(b.pref)
 	mut ast_files := []ast.File{}
 	skip_builtin := b.pref.skip_builtin
-	target_os := b.pref.target_os_or_host()
+	target_os := b.pref.source_filter_target_os()
 	mut use_core_headers := false
 	if !skip_builtin {
 		use_core_headers = b.can_use_cached_core_headers_for_parse()

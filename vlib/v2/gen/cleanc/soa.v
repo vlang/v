@@ -66,7 +66,15 @@ fn (mut g Gen) gen_soa_companion(name string, s types.Struct) {
 	for field in s.fields {
 		c_type := g.types_type_to_c(field.typ)
 		fname := escape_c_keyword(field.name)
-		g.sb.writeln('\tsoa.${fname} = (${c_type}*)calloc(cap, sizeof(${c_type}));')
+		if g.has_freestanding_hook_capability('alloc') {
+			g.sb.writeln('\tsoa.${fname} = (${c_type}*)v_platform_malloc(cap * sizeof(${c_type}));')
+			g.sb.writeln('\tmemset(soa.${fname}, 0, cap * sizeof(${c_type}));')
+		} else if g.is_freestanding_target() {
+			g.sb.writeln('\tsoa.${fname} = (${c_type}*)${g.c_heap_malloc_call('cap * sizeof(${c_type})')};')
+			g.sb.writeln('\tmemset(soa.${fname}, 0, cap * sizeof(${c_type}));')
+		} else {
+			g.sb.writeln('\tsoa.${fname} = (${c_type}*)calloc(cap, sizeof(${c_type}));')
+		}
 	}
 	g.sb.writeln('\treturn soa;')
 	g.sb.writeln('}')
@@ -100,7 +108,8 @@ fn (mut g Gen) gen_soa_companion(name string, s types.Struct) {
 	for field in s.fields {
 		c_type := g.types_type_to_c(field.typ)
 		fname := escape_c_keyword(field.name)
-		g.sb.writeln('\t\tsoa->${fname} = (${c_type}*)realloc(soa->${fname}, new_cap * sizeof(${c_type}));')
+		g.sb.writeln('\t\tsoa->${fname} = (${c_type}*)${g.c_heap_realloc_call('soa->${fname}',
+			'new_cap * sizeof(${c_type})')};')
 	}
 	g.sb.writeln('\t\tsoa->cap = new_cap;')
 	g.sb.writeln('\t}')
@@ -130,7 +139,7 @@ fn (mut g Gen) gen_soa_companion(name string, s types.Struct) {
 	g.sb.writeln('static inline void ${soa_name}_free(${soa_name}* soa) {')
 	for field in s.fields {
 		fname := escape_c_keyword(field.name)
-		g.sb.writeln('\tfree(soa->${fname});')
+		g.sb.writeln('\t${g.c_heap_free_call('soa->${fname}')};')
 	}
 	g.sb.writeln('\tsoa->len = 0;')
 	g.sb.writeln('\tsoa->cap = 0;')

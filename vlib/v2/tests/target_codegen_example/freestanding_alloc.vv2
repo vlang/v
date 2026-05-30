@@ -1,0 +1,5 @@
+module main
+
+fn main() {
+	_ := [1, 2, 3]
+}

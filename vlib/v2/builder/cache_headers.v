@@ -369,7 +369,7 @@ fn (b &Builder) source_files_for_module_name(module_name string) []string {
 		module_path := b.module_name_to_path(module_name)
 		module_dir := b.pref.get_vlib_module_path(module_path)
 		for file in get_v_files_from_dir(module_dir, b.pref.user_defines,
-			b.pref.target_os_or_host()) {
+			b.pref.source_filter_target_os()) {
 			files_set[file] = true
 		}
 	}
@@ -386,7 +386,7 @@ fn (b &Builder) core_cache_compiler_dependency_files() []string {
 		if !os.is_dir(dir) {
 			continue
 		}
-		for file in get_v_files_from_dir(dir, b.pref.user_defines, b.pref.target_os_or_host()) {
+		for file in get_v_files_from_dir(dir, b.pref.user_defines, b.pref.source_filter_target_os()) {
 			files_set[os.norm_path(file)] = true
 		}
 	}
@@ -419,7 +419,7 @@ fn (b &Builder) user_entry_stamp_files() []string {
 				continue
 			}
 			for source_file in get_user_v_files_from_dir(file, user_defines,
-				b.pref.target_os_or_host()) {
+				b.pref.source_filter_target_os()) {
 				if source_file == '' || source_file.ends_with('.vh') {
 					continue
 				}
@@ -1251,7 +1251,7 @@ fn (b &Builder) import_modules_for_cached_modules(module_names []string) []Cache
 	mut imports := []CachedImportModule{}
 	for file in b.files {
 		for import_stmt in active_file_imports(file, b.pref.user_defines,
-			b.pref.target_os_or_host()) {
+			b.pref.source_filter_target_os()) {
 			module_name := import_stmt.name.all_after_last('.')
 			if module_name !in module_set {
 				continue

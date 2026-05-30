@@ -5,6 +5,7 @@
 module cleanc
 
 import v2.ast
+import v2.pref as vpref
 import v2.types
 import strings
 import os
@@ -515,8 +516,9 @@ fn (mut g Gen) gen_heap_interface_cast(type_name string, value_expr ast.Expr) bo
 	if !g.is_interface_type(type_name) {
 		return false
 	}
+	iface_malloc_call := g.c_heap_malloc_call('sizeof(${type_name})')
 	if is_nil_like_expr(value_expr) || is_none_like_expr(value_expr) {
-		g.sb.write_string('({ ${type_name}* _iface_t = (${type_name}*)malloc(sizeof(${type_name})); *_iface_t = ((${type_name}){0}); _iface_t; })')
+		g.sb.write_string('({ ${type_name}* _iface_t = (${type_name}*)${iface_malloc_call}; *_iface_t = ((${type_name}){0}); _iface_t; })')
 		return true
 	}
 	mut concrete_type := g.concrete_type_for_interface_value(type_name, value_expr)
@@ -534,7 +536,7 @@ fn (mut g Gen) gen_heap_interface_cast(type_name string, value_expr ast.Expr) bo
 	}
 	if type_name in ['IError', 'builtin__IError'] && base_concrete != type_name
 		&& g.concrete_ierror_base_for_c_type(concrete_type) != '' {
-		g.sb.write_string('({ ${type_name}* _iface_t = (${type_name}*)malloc(sizeof(${type_name})); *_iface_t = ')
+		g.sb.write_string('({ ${type_name}* _iface_t = (${type_name}*)${iface_malloc_call}; *_iface_t = ')
 		g.gen_ierror_from_concrete_expr(value_expr, concrete_type)
 		g.sb.write_string('; _iface_t; })')
 		return true
@@ -545,7 +547,7 @@ fn (mut g Gen) gen_heap_interface_cast(type_name string, value_expr ast.Expr) bo
 	if type_name in ['IError', 'builtin__IError'] && base_concrete != type_name {
 		base := g.qualify_ierror_concrete_base(base_concrete)
 		if base != '' && base != 'int' {
-			g.sb.write_string('({ ${type_name}* _iface_t = (${type_name}*)malloc(sizeof(${type_name})); *_iface_t = ')
+			g.sb.write_string('({ ${type_name}* _iface_t = (${type_name}*)${iface_malloc_call}; *_iface_t = ')
 			g.gen_ierror_from_base_expr(base, value_expr, concrete_type)
 			g.sb.write_string('; _iface_t; })')
 			return true
@@ -553,7 +555,7 @@ fn (mut g Gen) gen_heap_interface_cast(type_name string, value_expr ast.Expr) bo
 	}
 	// Generate: ({ InterfaceType* _iface = malloc(sizeof(InterfaceType));
 	//             *_iface = (InterfaceType){._object = (void*)value, ...}; _iface; })
-	g.sb.write_string('({ ${type_name}* _iface_t = (${type_name}*)malloc(sizeof(${type_name})); *_iface_t = ((${type_name}){._object = ')
+	g.sb.write_string('({ ${type_name}* _iface_t = (${type_name}*)${iface_malloc_call}; *_iface_t = ((${type_name}){._object = ')
 	if concrete_type.ends_with('*') {
 		g.sb.write_string('(void*)(')
 		g.expr(value_expr)
@@ -2472,7 +2474,8 @@ fn (mut g Gen) expr(node ast.Expr) {
 				type_name := g.expr_type_to_c(node.expr.typ)
 				tmp_name := '_heap_t${g.tmp_counter}'
 				g.tmp_counter++
-				g.sb.write_string('({ ${type_name}* ${tmp_name} = (${type_name}*)malloc(sizeof(${type_name})); *${tmp_name} = ')
+				malloc_call := g.c_heap_malloc_call('sizeof(${type_name})')
+				g.sb.write_string('({ ${type_name}* ${tmp_name} = (${type_name}*)${malloc_call}; *${tmp_name} = ')
 				g.expr(node.expr)
 				g.sb.write_string('; ${tmp_name}; })')
 				return
@@ -4781,32 +4784,24 @@ fn (mut g Gen) gen_map_index_expr_from_c_types(node ast.IndexExpr, key_type stri
 	g.sb.write_string(', (void*)&${key_tmp}, (void*)&${zero_tmp})); })')
 }
 
-fn (g &Gen) eval_comptime_flag(name string) bool {
+fn cleanc_pref_comptime_flag_name(name string) bool {
 	match name {
-		'macos', 'darwin' {
-			return os.user_os() == 'macos'
+		'macos', 'darwin', 'mac', 'linux', 'windows', 'bsd', 'freebsd', 'openbsd', 'netbsd',
+		'dragonfly', 'android', 'ios', 'solaris', 'qnx', 'serenity', 'plan9', 'vinix', 'cross',
+		'freestanding' {
+			return true
 		}
-		'linux' {
-			return os.user_os() == 'linux'
+		else {
+			return false
 		}
-		'windows' {
-			return os.user_os() == 'windows'
-		}
-		'bsd' {
-			return os.user_os() in ['macos', 'freebsd', 'openbsd', 'netbsd', 'dragonfly']
-		}
-		'freebsd' {
-			return os.user_os() == 'freebsd'
-		}
-		'openbsd' {
-			return os.user_os() == 'openbsd'
-		}
-		'netbsd' {
-			return os.user_os() == 'netbsd'
-		}
-		'dragonfly' {
-			return os.user_os() == 'dragonfly'
-		}
+	}
+}
+
+fn (g &Gen) eval_comptime_flag(name string) bool {
+	if cleanc_pref_comptime_flag_name(name) {
+		return vpref.comptime_flag_value(g.pref, name)
+	}
+	match name {
 		'x64', 'amd64' {
 			return g.pref != unsafe { nil } && g.pref.arch == .x64
 		}
@@ -5622,7 +5617,8 @@ fn (mut g Gen) gen_heap_address_of_cast_expr(node ast.CastExpr, target_type stri
 	}
 	tmp_name := '_heap_t${g.tmp_counter}'
 	g.tmp_counter++
-	g.sb.write_string('({ ${target_type}* ${tmp_name} = (${target_type}*)malloc(sizeof(${target_type})); *${tmp_name} = ')
+	malloc_call := g.c_heap_malloc_call('sizeof(${target_type})')
+	g.sb.write_string('({ ${target_type}* ${tmp_name} = (${target_type}*)${malloc_call}; *${tmp_name} = ')
 	g.expr(ast.Expr(node))
 	g.sb.write_string('; ${tmp_name}; })')
 	return true

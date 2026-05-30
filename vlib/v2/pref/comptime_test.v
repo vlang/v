@@ -62,3 +62,27 @@ fn test_v2_native_windows_pe_minimal_flag() {
 	prefs.backend = .arm64
 	assert !comptime_flag_value(&prefs, 'v2_native_windows_pe_minimal')
 }
+
+fn test_freestanding_hook_comptime_flags() {
+	mut prefs := new_preferences()
+	prefs.freestanding = true
+	prefs.freestanding_hooks = ['output', 'alloc']
+	assert comptime_flag_value(&prefs, 'freestanding')
+	assert comptime_flag_value(&prefs, 'freestanding_hooks')
+	assert comptime_flag_value(&prefs, 'freestanding_output')
+	assert comptime_flag_value(&prefs, 'freestanding_alloc')
+	assert !comptime_flag_value(&prefs, 'freestanding_panic')
+}
+
+fn test_freestanding_none_has_no_concrete_os_comptime_flags() {
+	mut prefs := new_preferences()
+	prefs.freestanding = true
+	prefs.target_os = 'none'
+	assert comptime_flag_value(&prefs, 'freestanding')
+	assert !comptime_flag_value(&prefs, 'cross')
+	assert !comptime_flag_value(&prefs, 'linux')
+	assert !comptime_flag_value(&prefs, 'macos')
+	assert !comptime_flag_value(&prefs, 'darwin')
+	assert !comptime_flag_value(&prefs, 'windows')
+	assert !comptime_flag_value(&prefs, 'bsd')
+}

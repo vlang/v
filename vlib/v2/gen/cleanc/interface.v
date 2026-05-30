@@ -465,7 +465,8 @@ fn (mut g Gen) gen_ierror_from_base_expr(base string, expr ast.Expr, expr_type s
 	}
 	tmp_name := '_ierr_obj${g.tmp_counter}'
 	g.tmp_counter++
-	g.sb.write_string('({ ${base}* ${tmp_name} = (${base}*)malloc(sizeof(${base})); *${tmp_name} = ')
+	malloc_call := g.c_heap_malloc_call('sizeof(${base})')
+	g.sb.write_string('({ ${base}* ${tmp_name} = (${base}*)${malloc_call}; *${tmp_name} = ')
 	g.expr(expr)
 	g.sb.write_string('; ((IError){._object = (void*)${tmp_name}, ._type_id = ${type_id}, .type_name = IError_${base}_type_name_wrapper, .msg = IError_${base}_msg_wrapper, .code = IError_${base}_code_wrapper}); })')
 	return true

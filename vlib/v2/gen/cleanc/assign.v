@@ -85,7 +85,8 @@ fn (mut g Gen) gen_array_push_elem_arg(rhs ast.Expr, elem_type string) {
 				value_expr := g.unwrap_addr_of_value_expr(rhs) or { rhs }
 				heap_name := '_heap_t${g.tmp_counter}'
 				g.tmp_counter++
-				g.sb.write_string('({ ${base_elem_type}* ${heap_name} = (${base_elem_type}*)malloc(sizeof(${base_elem_type})); *${heap_name} = ')
+				malloc_call := g.c_heap_malloc_call('sizeof(${base_elem_type})')
+				g.sb.write_string('({ ${base_elem_type}* ${heap_name} = (${base_elem_type}*)${malloc_call}; *${heap_name} = ')
 				g.gen_type_cast_expr(base_elem_type, value_expr)
 				g.sb.write_string('; ${heap_name}; })')
 			}
@@ -1201,7 +1202,8 @@ fn (mut g Gen) gen_assign_stmt(node ast.AssignStmt) {
 			if base_type != '' && base_type != 'void' {
 				heap_name := '_heap_t${g.tmp_counter}'
 				g.tmp_counter++
-				g.sb.write_string('${typ} ${name} = ({ ${base_type}* ${heap_name} = (${base_type}*)malloc(sizeof(${base_type})); *${heap_name} = ')
+				malloc_call := g.c_heap_malloc_call('sizeof(${base_type})')
+				g.sb.write_string('${typ} ${name} = ({ ${base_type}* ${heap_name} = (${base_type}*)${malloc_call}; *${heap_name} = ')
 				g.expr(prefix_rhs.expr)
 				g.sb.writeln('; ${heap_name}; });')
 				g.remember_runtime_local_type(name, typ)
@@ -1453,7 +1455,8 @@ fn (mut g Gen) gen_assign_stmt(node ast.AssignStmt) {
 			if lhs_fixed_type.ends_with('*') && base_type != '' && base_type != 'void' {
 				heap_name := '_heap_t${g.tmp_counter}'
 				g.tmp_counter++
-				g.sb.write_string('${lhs.name} = ({ ${base_type}* ${heap_name} = (${base_type}*)malloc(sizeof(${base_type})); *${heap_name} = ')
+				malloc_call := g.c_heap_malloc_call('sizeof(${base_type})')
+				g.sb.write_string('${lhs.name} = ({ ${base_type}* ${heap_name} = (${base_type}*)${malloc_call}; *${heap_name} = ')
 				g.expr(prefix_rhs.expr)
 				g.sb.writeln('; ${heap_name}; });')
 				return

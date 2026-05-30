@@ -5032,8 +5032,8 @@ fn (mut g Gen) gen_fn_decl_with_name_ptr(node &ast.FnDecl, fn_name string) {
 		g.write_indent()
 		g.sb.writeln('g_main_argv = (void*)___argv;')
 	}
-	// Live reload: emit init call placeholder in main (will be defined by emit_live_reload_infrastructure)
-	if is_program_main {
+	// Live reload is only present when the program actually declares @[live] functions.
+	if is_program_main && g.has_live_reload_functions() {
 		g.write_indent()
 		g.sb.writeln('__v_live_init();')
 	}
@@ -9812,14 +9812,23 @@ fn (mut g Gen) call_expr(lhs ast.Expr, args []ast.Expr) {
 				arg_type = 'string'
 			}
 
-			// If argument is already a str-function call, treat as string to avoid double wrapping
+			// If argument is already a str-function call, treat as string to avoid double wrapping.
+			// In freestanding mode, these calls are generated formatting paths and are not
+			// supported by the raw output hook contract.
+			mut arg_is_str_conversion_call := false
 			if arg_type != 'string' {
 				if arg is ast.CallExpr && arg.lhs is ast.Ident {
 					called_fn := (arg.lhs as ast.Ident).name
 					if called_fn.ends_with('_str') || called_fn.ends_with('__str') {
+						arg_is_str_conversion_call = true
 						arg_type = 'string'
 					}
 				}
+			}
+
+			if g.is_freestanding_target() && (arg_type != 'string' || arg_is_str_conversion_call) {
+				g.sb.write_string('${c_name}(${g.c_freestanding_missing_format_string_expr()})')
+				return
 			}
 
 			if arg_type == 'string' {
@@ -10667,20 +10676,7 @@ fn (mut g Gen) emit_generic_fn_macro(fn_name string, node ast.FnDecl) {
 				|| stub_ret.starts_with('Array_fixed_') {
 				stub_ret = 'array'
 			}
-			// Emit a stub that surfaces missing generic specializations both
-			// at compile time (#warning) and at runtime (abort).
-			g.sb.writeln('/* unresolved generic */ ${stub_ret} ${fn_name}() {')
-			g.sb.writeln('#if !defined(__TINYC__)')
-			g.sb.writeln('#warning "v2: unresolved generic stub: ${fn_name}"')
-			g.sb.writeln('#endif')
-			g.sb.writeln('\tfputs("v2: unresolved generic call: ${fn_name}\\n", stderr);')
-			g.sb.writeln('\tabort();')
-			if stub_ret != 'void' {
-				// Unreachable, but keeps compilers that warn about missing
-				// return values happy.
-				g.sb.writeln('\treturn ${zero_value_for_type(stub_ret)};')
-			}
-			g.sb.writeln('}')
+			g.emit_unresolved_generic_stub(fn_name, stub_ret)
 			if fn_name.ends_with('extract_attr') {
 				g.emit_extract_attr_specialization(fn_name, 'f32', 'f32')
 				g.emit_extract_attr_specialization(fn_name, 'u16', 'u16')
@@ -10702,6 +10698,32 @@ fn (mut g Gen) emit_generic_fn_macro(fn_name string, node ast.FnDecl) {
 			}
 		}
 	}
+}
+
+fn (mut g Gen) emit_unresolved_generic_stub(fn_name string, stub_ret string) {
+	g.sb.writeln('/* unresolved generic */ ${stub_ret} ${fn_name}() {')
+	g.sb.writeln('#if !defined(__TINYC__)')
+	g.sb.writeln('#warning "v2: unresolved generic stub: ${fn_name}"')
+	g.sb.writeln('#endif')
+	if g.is_freestanding_target() {
+		if g.has_freestanding_hook_capability('panic') {
+			msg := 'v2: unresolved generic call: ${fn_name}\n'
+			msg_lit := c_string_literal_content_to_c(msg)
+			g.sb.writeln('\tv_platform_panic((const u8*)${msg_lit}, ${msg.len});')
+			g.sb.writeln('\tfor (;;) {}')
+		} else {
+			g.sb.writeln('#error "v2: unresolved generic stub requires freestanding panic platform hook"')
+			g.sb.writeln('\tfor (;;) {}')
+		}
+	} else {
+		g.sb.writeln('\tfputs("v2: unresolved generic call: ${fn_name}\\n", stderr);')
+		g.sb.writeln('\tabort();')
+	}
+	if stub_ret != 'void' {
+		// Unreachable, but keeps compilers that warn about missing return values happy.
+		g.sb.writeln('\treturn ${zero_value_for_type(stub_ret)};')
+	}
+	g.sb.writeln('}')
 }
 
 // gen_comptime_method_call emits a call to the current iteration's method:

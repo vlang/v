@@ -1,0 +1,8 @@
+module main
+
+#include linux <target_marker_linux.h>
+#include macos <target_marker_macos.h>
+#include windows <target_marker_windows.h>
+#include cross <target_marker_cross.h>
+
+fn main() {}

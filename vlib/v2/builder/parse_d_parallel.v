@@ -33,7 +33,7 @@ fn (mut pstate ParsingSharedState) already_parsed_module(name string) bool {
 
 fn worker(mut wp util.WorkerPool[string, ast.File], mut pstate ParsingSharedState, prefs &pref.Preferences) {
 	mut p := parser.Parser.new(prefs)
-	target_os := prefs.target_os_or_host()
+	target_os := prefs.source_filter_target_os()
 	for {
 		filename := wp.get_job() or { break }
 		ast_file := p.parse_file(filename, mut pstate.file_set)
@@ -77,7 +77,7 @@ fn (mut b Builder) parse_files_parallel(files []string) []ast.File {
 		if use_core_headers2 {
 			worker_pool.queue_jobs(b.core_cached_parse_paths())
 		} else {
-			target_os := b.pref.target_os_or_host()
+			target_os := b.pref.source_filter_target_os()
 			for module_path in core_cached_module_paths {
 				worker_pool.queue_jobs(get_v_files_from_dir(b.pref.get_vlib_module_path(module_path),
 					b.pref.user_defines, target_os))
