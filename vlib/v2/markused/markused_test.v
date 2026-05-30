@@ -14,7 +14,7 @@ fn pos(id int) token.Pos {
 
 fn test_interface_name_from_type_handles_unresolved_alias_base_type() {
 	mut env := types.Environment.new()
-	w := new_walker([], env)
+	w := new_walker([], env, MarkUsedOptions{})
 	assert w.interface_name_from_type(types.Type(types.Alias{
 		name: 'UnresolvedAlias'
 	})) == ''

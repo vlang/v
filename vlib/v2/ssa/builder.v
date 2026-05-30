@@ -6,6 +6,7 @@ module ssa
 
 import v2.ast
 import v2.markused
+import v2.token
 import v2.types
 
 const enum_field_c_keywords = ['auto', 'break', 'case', 'char', 'const', 'continue', 'default',
@@ -305,6 +306,140 @@ pub fn (mut b Builder) build_all(files []ast.File) {
 
 	// Phase 5: Generate _vinit for dynamic array constant initialization
 	// Always generate _vinit (even if empty) so the symbol is always resolvable
+	if b.hot_fn.len == 0 && !b.skip_fn_bodies {
+		b.generate_vinit()
+	}
+}
+
+// build_all_from_flat is the flat-input counterpart of `build_all`. Phases
+// 1a–3.5 (everything before fn-body building) now walk FileCursors directly
+// and only rehydrate the decls each phase actually consumes — non-decl stmts
+// (ModuleStmt, ImportStmt, attributes, etc.) are never decoded.
+//
+// Phase 4 (`build_fn_bodies`) is still a rehydrate-then-call per-file wrapper:
+// once a flat-native variant of that phase exists, the per-file rehydration
+// below disappears and the post-transform `[]ast.File` allocation in the
+// `_via_driver` wedges can be dropped.
+pub fn (mut b Builder) build_all_from_flat(flat &ast.FlatAst) {
+	// Register builtin globals needed by all backends
+	i32_t := b.mod.type_store.get_int(32)
+	i8_t := b.mod.type_store.get_int(8)
+	ptr_t := b.mod.type_store.get_ptr(i8_t)
+	ptr_ptr_t := b.mod.type_store.get_ptr(ptr_t)
+	b.mod.add_global('g_main_argc', i32_t, false)
+	b.mod.add_global('g_main_argv', ptr_ptr_t, false)
+
+	// Pre-register libSystem stdio externs on the main module so that worker
+	// modules inherit them and the arm64 backend emits GOT-indirect loads when
+	// `C.stdout` / `C.stdin` / `C.stderr` are referenced.
+	for stdio_sym in ['__stdoutp', '__stdinp', '__stderrp'] {
+		glob := b.mod.add_external_global(stdio_sym, ptr_t)
+		b.global_refs[stdio_sym] = glob
+	}
+
+	// Phase 1a: Register core builtin types first (string, array) since other
+	// structs depend on them. First, register builtin enums (e.g., ArrayFlags)
+	// so their types resolve correctly when registering struct fields for
+	// array/string.
+	for fi in 0 .. flat.files.len {
+		fc := flat.file_cursor(fi)
+		b.cur_module = fc.mod().replace('.', '_')
+		if b.cur_module != 'builtin' {
+			continue
+		}
+		stmts := fc.stmts()
+		for si in 0 .. stmts.len() {
+			c := stmts.at(si)
+			if c.kind() != .stmt_enum_decl {
+				continue
+			}
+			decoded := c.flat.decode_stmt(c.id)
+			if decoded is ast.EnumDecl {
+				b.register_enum(decoded)
+			}
+		}
+	}
+	for fi in 0 .. flat.files.len {
+		fc := flat.file_cursor(fi)
+		b.cur_module = fc.mod().replace('.', '_')
+		if b.cur_module != 'builtin' {
+			continue
+		}
+		stmts := fc.stmts()
+		for si in 0 .. stmts.len() {
+			c := stmts.at(si)
+			if c.kind() != .stmt_struct_decl {
+				continue
+			}
+			decoded := c.flat.decode_stmt(c.id)
+			if decoded is ast.StructDecl {
+				if decoded.name in ['string', 'array'] {
+					b.register_struct(decoded)
+				}
+			}
+		}
+	}
+	// Phase 1b: Register all struct type names (forward declarations) and enums
+	for fi in 0 .. flat.files.len {
+		fc := flat.file_cursor(fi)
+		b.cur_module = fc.mod().replace('.', '_')
+		b.register_types_pass1_from_flat(fc)
+	}
+	// Phase 1c: Fill in struct field types (now all struct names are known)
+	for fi in 0 .. flat.files.len {
+		fc := flat.file_cursor(fi)
+		b.cur_module = fc.mod().replace('.', '_')
+		b.register_types_pass2_from_flat(fc)
+	}
+	// Phase 2: Register consts and globals
+	for fi in 0 .. flat.files.len {
+		fc := flat.file_cursor(fi)
+		b.cur_module = fc.mod().replace('.', '_')
+		b.register_consts_and_globals_from_flat(fc)
+	}
+	// Phase 2b: Re-evaluate constants with forward references
+	b.resolve_forward_const_refs_from_flat(flat)
+	// Build global lookup cache once before expression lowering.
+	b.index_global_values()
+	// Phase 3: Register function signatures
+	for fi in 0 .. flat.files.len {
+		fc := flat.file_cursor(fi)
+		b.cur_module = fc.mod().replace('.', '_')
+		b.register_fn_signatures_from_flat(fc)
+	}
+	// Phase 3.1: Remove globals that collide with function names.
+	for mut gvar in b.mod.globals {
+		if gvar.name in b.fn_index {
+			gvar.linkage = .external
+			b.global_refs.delete(gvar.name)
+		}
+	}
+
+	// Phase 3.5: Generate synthetic stubs for transformer-generated functions
+	if b.hot_fn.len == 0 && !b.minimal_runtime_roots {
+		b.generate_array_eq_stub()
+		b.generate_wymix_stub()
+		b.generate_wyhash64_stub()
+		b.generate_wyhash_stub()
+		b.generate_ierror_stubs()
+		b.generate_fd_macro_stubs()
+	}
+
+	// Phase 4: Build function bodies. Per-FileCursor walk that rehydrates
+	// only `.stmt_fn_decl` nodes via `flat.decode_stmt`. Non-FnDecl stmts are
+	// never decoded. The fn body itself is still rehydrated per-decl —
+	// future sessions port individual statement classes inside `build_fn` to
+	// consume flat cursors directly. This is the only remaining per-decl
+	// rehydration in the SSA builder.
+	if !b.skip_fn_bodies {
+		for fi in 0 .. flat.files.len {
+			fc := flat.file_cursor(fi)
+			b.cur_module = fc.mod().replace('.', '_')
+			b.build_fn_bodies_from_flat(fc)
+		}
+	}
+
+	// Phase 5: Generate _vinit for dynamic array constant initialization
 	if b.hot_fn.len == 0 && !b.skip_fn_bodies {
 		b.generate_vinit()
 	}
@@ -1138,6 +1273,40 @@ fn (mut b Builder) register_types_pass1(file ast.File) {
 	}
 }
 
+// register_types_pass1_from_flat is the flat-cursor counterpart of
+// `register_types_pass1`. It walks one file's top-level stmts via FileCursor
+// without rehydrating the file, and rehydrates only the StructDecl /
+// EnumDecl / TypeDecl nodes via `flat.decode_stmt`. ModuleStmt, FnDecl,
+// ConstDecl, GlobalDecl, ImportStmt, etc. are skipped entirely — never
+// decoded — which is the actual allocation reduction over the legacy walker.
+fn (mut b Builder) register_types_pass1_from_flat(file_cursor ast.FileCursor) {
+	stmts := file_cursor.stmts()
+	for si in 0 .. stmts.len() {
+		c := stmts.at(si)
+		match c.kind() {
+			.stmt_struct_decl {
+				decoded := c.flat.decode_stmt(c.id)
+				if decoded is ast.StructDecl {
+					b.register_struct_name(decoded)
+				}
+			}
+			.stmt_enum_decl {
+				decoded := c.flat.decode_stmt(c.id)
+				if decoded is ast.EnumDecl {
+					b.register_enum(decoded)
+				}
+			}
+			.stmt_type_decl {
+				decoded := c.flat.decode_stmt(c.id)
+				if decoded is ast.TypeDecl {
+					b.register_sumtype(decoded)
+				}
+			}
+			else {}
+		}
+	}
+}
+
 // Pass 2: Fill in struct field types. All struct names are now registered,
 // so cross-module struct references (e.g., &scanner.Scanner in Parser)
 // resolve correctly to the struct type instead of falling back to i64.
@@ -1147,6 +1316,24 @@ fn (mut b Builder) register_types_pass2(file ast.File) {
 		stmt := file.stmts[si]
 		if stmt is ast.StructDecl {
 			b.register_struct_fields(stmt)
+		}
+	}
+}
+
+// register_types_pass2_from_flat is the flat-cursor counterpart of
+// `register_types_pass2`. Same shape as `register_types_pass1_from_flat`
+// (s169) but filtered to `.stmt_struct_decl` only — pass2 only fills in
+// struct field types. Non-StructDecl stmts (ModuleStmt, FnDecl, ConstDecl,
+// EnumDecl, TypeDecl, etc.) are never decoded.
+fn (mut b Builder) register_types_pass2_from_flat(file_cursor ast.FileCursor) {
+	stmts := file_cursor.stmts()
+	for si in 0 .. stmts.len() {
+		c := stmts.at(si)
+		if c.kind() == .stmt_struct_decl {
+			decoded := c.flat.decode_stmt(c.id)
+			if decoded is ast.StructDecl {
+				b.register_struct_fields(decoded)
+			}
 		}
 	}
 }
@@ -1355,192 +1542,231 @@ fn (mut b Builder) register_consts_and_globals(file ast.File) {
 	for stmt in file.stmts {
 		match stmt {
 			ast.ConstDecl {
-				for field in stmt.fields {
-					const_name := if b.cur_module != '' && b.cur_module != 'main' {
-						'${b.cur_module}__${field.name}'
-					} else {
-						field.name
-					}
-					mut const_type := b.const_field_type(field.name, field.value)
-					// Check if this is a string constant - store for inline resolution
-					str_val := b.try_eval_const_string(field.value)
-					if str_val.len > 0 {
-						b.string_const_values[const_name] = str_val
-						b.string_const_values[field.name] = str_val
-					}
-					// Check if this is a float constant - store for inline resolution
-					if field.value is ast.BasicLiteral && field.value.kind == .number
-						&& (field.value.value.contains('.')
-						|| (!field.value.value.starts_with('0x')
-						&& !field.value.value.starts_with('0X')
-						&& (field.value.value.contains('e') || field.value.value.contains('E')))) {
-						b.float_const_values[const_name] = field.value.value
-						b.float_const_values[field.name] = field.value.value
-					} else if b.is_float_cast_expr(field.value) {
-						if fval := b.try_eval_computed_float(field.value) {
-							fval_str := fval.str()
-							b.float_const_values[const_name] = fval_str
-							b.float_const_values[field.name] = fval_str
-						}
-					}
-					initial_value := b.try_eval_const_int(field.value)
-					// Detect sum type constants: these are multi-word values that
-					// cannot be inlined as a single i64.
-					// Case 1: Transformer succeeded → InitExpr{_tag: N, _data: ...}
-					// Case 2: Transformer failed → CastExpr{typ: SumType, expr: ...}
-					mut is_sumtype_const := false
-					if field.value is ast.InitExpr {
-						for init_field in field.value.fields {
-							if init_field.name == '_tag' {
-								is_sumtype_const = true
-								break
-							}
-						}
-					}
-					if !is_sumtype_const {
-						mut cast_type_name := ''
-						if field.value is ast.CastExpr {
-							if field.value.typ is ast.Ident {
-								cast_type_name = field.value.typ.name
-							}
-						} else if field.value is ast.CallOrCastExpr {
-							if field.value.lhs is ast.Ident {
-								cast_type_name = field.value.lhs.name
-							}
-						}
-						if cast_type_name != '' {
-							qualified_cast := if b.cur_module != '' && b.cur_module != 'main' {
-								'${b.cur_module}__${cast_type_name}'
-							} else {
-								cast_type_name
-							}
-							for _, check_name in [cast_type_name, qualified_cast] {
-								if st_type := b.struct_types[check_name] {
-									if int(st_type) < b.mod.type_store.types.len {
-										st := b.mod.type_store.types[st_type]
-										if st.kind == .struct_t && st.field_names.len >= 2
-											&& st.field_names[0] == '_tag' {
-											is_sumtype_const = true
-											// Fix the global type: use the sum type struct
-											// instead of the i64 fallback from expr_type()
-											const_type = st_type
-											break
-										}
-									}
-								}
-							}
-						}
-					}
-					// For sum type constants detected via InitExpr, also fix const_type
-					if is_sumtype_const && field.value is ast.InitExpr {
-						if field.value.typ is ast.Ident {
-							type_name := field.value.typ.name
-							if st_type := b.struct_types[type_name] {
-								const_type = st_type
-							} else {
-								// Try with module prefix
-								qualified_st := '${b.cur_module}__${type_name}'
-								if st_type2 := b.struct_types[qualified_st] {
-									const_type = st_type2
-								}
-							}
-						}
-					}
-					// Detect constant FIXED arrays with all-literal elements.
-					if field.value is ast.ArrayInitExpr && field.value.exprs.len > 0 {
-						mut is_fixed_array := true
-						// Check type environment to see if this is a dynamic array
-						if b.env != unsafe { nil } {
-							fpos := field.value.pos
-							if fpos.id != 0 {
-								if ct := b.env.get_expr_type(fpos.id) {
-									if ct is types.Array {
-										is_fixed_array = false
-									}
-								}
-							}
-						}
-						arr_data := b.try_serialize_const_array(field.value)
-						if arr_data.len > 0 {
-							elem_size := arr_data.len / field.value.exprs.len
-							is_float_arr := b.is_float_array(field.value)
-							elem_type := if is_float_arr {
-								b.mod.type_store.get_float(elem_size * 8)
-							} else if elem_size == 8 {
-								b.mod.type_store.get_int(64)
-							} else if elem_size == 4 {
-								b.mod.type_store.get_int(32)
-							} else if elem_size == 2 {
-								b.mod.type_store.get_int(16)
-							} else {
-								b.mod.type_store.get_int(8)
-							}
-							if is_fixed_array {
-								b.mod.add_global_with_data(const_name, elem_type, true, arr_data)
-								b.const_array_globals[const_name] = true
-								b.const_array_globals[field.name] = true
-								b.const_array_elem_count[const_name] = field.value.exprs.len
-								b.const_array_elem_count[field.name] = field.value.exprs.len
-								continue
-							} else {
-								// Dynamic array constant: serialize data, create array struct global
-								data_name := '${const_name}__data'
-								b.mod.add_global_with_data(data_name, elem_type, true, arr_data)
-								b.const_array_globals[data_name] = true
-								// Add array struct global (initialized in _vinit)
-								arr_struct_type := b.get_array_type()
-								b.mod.add_global(const_name, arr_struct_type, false)
-								b.dyn_const_arrays << DynConstArray{
-									arr_global_name:  const_name
-									data_global_name: data_name
-									elem_count:       field.value.exprs.len
-									elem_size:        elem_size
-								}
-								continue
-							}
-						}
-					}
-					// For float constants, store bit pattern as initial_value
-					mut actual_init := initial_value
-					if const_name in b.float_const_values {
-						f_val := b.float_const_values[const_name].f64()
-						actual_init = i64(unsafe { *(&i64(&f_val)) })
-						const_type = b.mod.type_store.get_float(64)
-					}
-					b.mod.add_global_with_value(const_name, const_type, true, actual_init)
-					if !is_sumtype_const && (initial_value != 0 || b.is_zero_literal(field.value)) {
-						b.const_values[const_name] = initial_value
-						b.const_value_types[const_name] = const_type
-						// Also store without module prefix for transformer-generated references
-						b.const_values[field.name] = initial_value
-						b.const_value_types[field.name] = const_type
-					}
-				}
+				b.register_const_decl(stmt)
 			}
 			ast.GlobalDecl {
-				for field in stmt.fields {
-					glob_type := b.global_field_type(field)
-					if ssa_module_storage_field_is_c_extern(stmt, field)
-						&& !field.name.starts_with('C.') {
-						glob_id := b.mod.add_external_global(field.name, glob_type)
-						b.global_refs[field.name] = glob_id
-						qualified_name := ssa_module_storage_name(b.cur_module, field.name)
-						if qualified_name != field.name {
-							b.global_refs[qualified_name] = glob_id
-						}
-						continue
-					}
-					glob_name := ssa_module_storage_name(b.cur_module, field.name)
-					initial_value := if field.value != ast.empty_expr {
-						b.try_eval_const_int(field.value)
-					} else {
-						i64(0)
-					}
-					b.mod.add_global_with_value(glob_name, glob_type, false, initial_value)
+				b.register_global_decl(stmt)
+			}
+			else {}
+		}
+	}
+}
+
+// register_consts_and_globals_from_flat is the flat-cursor counterpart of
+// `register_consts_and_globals`. Walks one file's top-level stmts via
+// FileCursor and only rehydrates `.stmt_const_decl` / `.stmt_global_decl`
+// nodes via `flat.decode_stmt`. ModuleStmt, FnDecl, StructDecl, EnumDecl,
+// TypeDecl, ImportStmt etc. are never decoded.
+fn (mut b Builder) register_consts_and_globals_from_flat(file_cursor ast.FileCursor) {
+	stmts := file_cursor.stmts()
+	for si in 0 .. stmts.len() {
+		c := stmts.at(si)
+		match c.kind() {
+			.stmt_const_decl {
+				decoded := c.flat.decode_stmt(c.id)
+				if decoded is ast.ConstDecl {
+					b.register_const_decl(decoded)
+				}
+			}
+			.stmt_global_decl {
+				decoded := c.flat.decode_stmt(c.id)
+				if decoded is ast.GlobalDecl {
+					b.register_global_decl(decoded)
 				}
 			}
 			else {}
 		}
+	}
+}
+
+// register_const_decl extracts the per-ConstDecl body from
+// `register_consts_and_globals` so both the legacy walker and the
+// flat-cursor port can dispatch through a single implementation.
+fn (mut b Builder) register_const_decl(stmt ast.ConstDecl) {
+	for field in stmt.fields {
+		const_name := if b.cur_module != '' && b.cur_module != 'main' {
+			'${b.cur_module}__${field.name}'
+		} else {
+			field.name
+		}
+		mut const_type := b.const_field_type(field.name, field.value)
+		// Check if this is a string constant - store for inline resolution
+		str_val := b.try_eval_const_string(field.value)
+		if str_val.len > 0 {
+			b.string_const_values[const_name] = str_val
+			b.string_const_values[field.name] = str_val
+		}
+		// Check if this is a float constant - store for inline resolution
+		if field.value is ast.BasicLiteral && field.value.kind == .number
+			&& (field.value.value.contains('.')
+			|| (!field.value.value.starts_with('0x') && !field.value.value.starts_with('0X')
+			&& (field.value.value.contains('e') || field.value.value.contains('E')))) {
+			b.float_const_values[const_name] = field.value.value
+			b.float_const_values[field.name] = field.value.value
+		} else if b.is_float_cast_expr(field.value) {
+			if fval := b.try_eval_computed_float(field.value) {
+				fval_str := fval.str()
+				b.float_const_values[const_name] = fval_str
+				b.float_const_values[field.name] = fval_str
+			}
+		}
+		initial_value := b.try_eval_const_int(field.value)
+		// Detect sum type constants: these are multi-word values that
+		// cannot be inlined as a single i64.
+		// Case 1: Transformer succeeded → InitExpr{_tag: N, _data: ...}
+		// Case 2: Transformer failed → CastExpr{typ: SumType, expr: ...}
+		mut is_sumtype_const := false
+		if field.value is ast.InitExpr {
+			for init_field in field.value.fields {
+				if init_field.name == '_tag' {
+					is_sumtype_const = true
+					break
+				}
+			}
+		}
+		if !is_sumtype_const {
+			mut cast_type_name := ''
+			if field.value is ast.CastExpr {
+				if field.value.typ is ast.Ident {
+					cast_type_name = field.value.typ.name
+				}
+			} else if field.value is ast.CallOrCastExpr {
+				if field.value.lhs is ast.Ident {
+					cast_type_name = field.value.lhs.name
+				}
+			}
+			if cast_type_name != '' {
+				qualified_cast := if b.cur_module != '' && b.cur_module != 'main' {
+					'${b.cur_module}__${cast_type_name}'
+				} else {
+					cast_type_name
+				}
+				for _, check_name in [cast_type_name, qualified_cast] {
+					if st_type := b.struct_types[check_name] {
+						if int(st_type) < b.mod.type_store.types.len {
+							st := b.mod.type_store.types[st_type]
+							if st.kind == .struct_t && st.field_names.len >= 2
+								&& st.field_names[0] == '_tag' {
+								is_sumtype_const = true
+								// Fix the global type: use the sum type struct
+								// instead of the i64 fallback from expr_type()
+								const_type = st_type
+								break
+							}
+						}
+					}
+				}
+			}
+		}
+		// For sum type constants detected via InitExpr, also fix const_type
+		if is_sumtype_const && field.value is ast.InitExpr {
+			if field.value.typ is ast.Ident {
+				type_name := field.value.typ.name
+				if st_type := b.struct_types[type_name] {
+					const_type = st_type
+				} else {
+					// Try with module prefix
+					qualified_st := '${b.cur_module}__${type_name}'
+					if st_type2 := b.struct_types[qualified_st] {
+						const_type = st_type2
+					}
+				}
+			}
+		}
+		// Detect constant FIXED arrays with all-literal elements.
+		if field.value is ast.ArrayInitExpr && field.value.exprs.len > 0 {
+			mut is_fixed_array := true
+			// Check type environment to see if this is a dynamic array
+			if b.env != unsafe { nil } {
+				fpos := field.value.pos
+				if fpos.id != 0 {
+					if ct := b.env.get_expr_type(fpos.id) {
+						if ct is types.Array {
+							is_fixed_array = false
+						}
+					}
+				}
+			}
+			arr_data := b.try_serialize_const_array(field.value)
+			if arr_data.len > 0 {
+				elem_size := arr_data.len / field.value.exprs.len
+				is_float_arr := b.is_float_array(field.value)
+				elem_type := if is_float_arr {
+					b.mod.type_store.get_float(elem_size * 8)
+				} else if elem_size == 8 {
+					b.mod.type_store.get_int(64)
+				} else if elem_size == 4 {
+					b.mod.type_store.get_int(32)
+				} else if elem_size == 2 {
+					b.mod.type_store.get_int(16)
+				} else {
+					b.mod.type_store.get_int(8)
+				}
+				if is_fixed_array {
+					b.mod.add_global_with_data(const_name, elem_type, true, arr_data)
+					b.const_array_globals[const_name] = true
+					b.const_array_globals[field.name] = true
+					b.const_array_elem_count[const_name] = field.value.exprs.len
+					b.const_array_elem_count[field.name] = field.value.exprs.len
+					continue
+				} else {
+					// Dynamic array constant: serialize data, create array struct global
+					data_name := '${const_name}__data'
+					b.mod.add_global_with_data(data_name, elem_type, true, arr_data)
+					b.const_array_globals[data_name] = true
+					// Add array struct global (initialized in _vinit)
+					arr_struct_type := b.get_array_type()
+					b.mod.add_global(const_name, arr_struct_type, false)
+					b.dyn_const_arrays << DynConstArray{
+						arr_global_name:  const_name
+						data_global_name: data_name
+						elem_count:       field.value.exprs.len
+						elem_size:        elem_size
+					}
+					continue
+				}
+			}
+		}
+		// For float constants, store bit pattern as initial_value
+		mut actual_init := initial_value
+		if const_name in b.float_const_values {
+			f_val := b.float_const_values[const_name].f64()
+			actual_init = i64(unsafe { *(&i64(&f_val)) })
+			const_type = b.mod.type_store.get_float(64)
+		}
+		b.mod.add_global_with_value(const_name, const_type, true, actual_init)
+		if !is_sumtype_const && (initial_value != 0 || b.is_zero_literal(field.value)) {
+			b.const_values[const_name] = initial_value
+			b.const_value_types[const_name] = const_type
+			// Also store without module prefix for transformer-generated references
+			b.const_values[field.name] = initial_value
+			b.const_value_types[field.name] = const_type
+		}
+	}
+}
+
+// register_global_decl extracts the per-GlobalDecl body from
+// `register_consts_and_globals` so both the legacy walker and the
+// flat-cursor port can dispatch through a single implementation.
+fn (mut b Builder) register_global_decl(stmt ast.GlobalDecl) {
+	for field in stmt.fields {
+		glob_type := b.global_field_type(field)
+		if ssa_module_storage_field_is_c_extern(stmt, field) && !field.name.starts_with('C.') {
+			glob_id := b.mod.add_external_global(field.name, glob_type)
+			b.global_refs[field.name] = glob_id
+			qualified_name := ssa_module_storage_name(b.cur_module, field.name)
+			if qualified_name != field.name {
+				b.global_refs[qualified_name] = glob_id
+			}
+			continue
+		}
+		glob_name := ssa_module_storage_name(b.cur_module, field.name)
+		initial_value := if field.value != ast.empty_expr {
+			b.try_eval_const_int(field.value)
+		} else {
+			i64(0)
+		}
+		b.mod.add_global_with_value(glob_name, glob_type, false, initial_value)
 	}
 }
 
@@ -1595,6 +1821,71 @@ fn (mut b Builder) resolve_forward_const_refs(files []ast.File) {
 								}
 								break
 							}
+						}
+					}
+				}
+			}
+		}
+	}
+}
+
+// resolve_forward_const_refs_from_flat is the flat-cursor counterpart of
+// `resolve_forward_const_refs`. Walks each file's top-level stmts via
+// FileCursor and only rehydrates `.stmt_const_decl` nodes via
+// `flat.decode_stmt`. Non-ConstDecl stmts are never decoded.
+fn (mut b Builder) resolve_forward_const_refs_from_flat(flat &ast.FlatAst) {
+	for fi in 0 .. flat.files.len {
+		fc := flat.file_cursor(fi)
+		b.cur_module = fc.mod().replace('.', '_')
+		stmts := fc.stmts()
+		for si in 0 .. stmts.len() {
+			c := stmts.at(si)
+			if c.kind() != .stmt_const_decl {
+				continue
+			}
+			decoded := c.flat.decode_stmt(c.id)
+			if decoded !is ast.ConstDecl {
+				continue
+			}
+			stmt := decoded as ast.ConstDecl
+			for field in stmt.fields {
+				const_name := if b.cur_module != '' && b.cur_module != 'main' {
+					'${b.cur_module}__${field.name}'
+				} else {
+					field.name
+				}
+				if const_name in b.const_values {
+					continue
+				}
+				if b.is_zero_literal(field.value) {
+					continue
+				}
+				if field.value is ast.InitExpr {
+					mut has_tag := false
+					for init_field in field.value.fields {
+						if init_field.name == '_tag' {
+							has_tag = true
+							break
+						}
+					}
+					if has_tag {
+						continue
+					}
+				}
+				new_value := b.try_eval_const_int(field.value)
+				if new_value != 0 {
+					b.const_values[const_name] = new_value
+					b.const_values[field.name] = new_value
+					ct := b.const_field_type(field.name, field.value)
+					b.const_value_types[const_name] = ct
+					b.const_value_types[field.name] = ct
+					for i, g in b.mod.globals {
+						if g.name == const_name {
+							b.mod.globals[i] = GlobalVar{
+								...g
+								initial_value: new_value
+							}
+							break
 						}
 					}
 				}
@@ -2478,6 +2769,32 @@ fn (mut b Builder) register_fn_signatures(file ast.File) {
 	}
 }
 
+// register_fn_signatures_from_flat is the flat-cursor counterpart of
+// `register_fn_signatures`. Walks one file's top-level stmts via FileCursor
+// and rehydrates only `.stmt_fn_decl` nodes — and only via
+// `decode_fn_decl_signature` which returns an FnDecl with `stmts = []`.
+//
+// The body skip is the major saving over the legacy walker: `register_fn_sig`
+// only reads decl.name, decl.typ, decl.is_method, decl.is_static,
+// decl.receiver, decl.language, decl.attributes — NEVER decl.stmts. So the
+// per-fn decode in this phase costs the signature (params + return type) and
+// nothing more. Fn bodies dominate file decode time so this is the largest
+// per-stmt savings of any SSA phase port. Same `decode_fn_decl_signature`
+// trick that s165's `explicit_str_method_fn_names_from_flat` already validated.
+fn (mut b Builder) register_fn_signatures_from_flat(file_cursor ast.FileCursor) {
+	stmts := file_cursor.stmts()
+	for si in 0 .. stmts.len() {
+		c := stmts.at(si)
+		if c.kind() == .stmt_fn_decl {
+			decl := c.flat.decode_fn_decl_signature(c.id)
+			if decl.typ.generic_params.len > 0 {
+				continue
+			}
+			b.register_fn_sig(decl)
+		}
+	}
+}
+
 fn (mut b Builder) register_fn_sig(decl ast.FnDecl) {
 	fn_name := b.mangle_fn_name(decl)
 	if fn_name in b.fn_index {
@@ -2630,6 +2947,41 @@ pub fn (mut b Builder) build_fn_bodies(file ast.File) {
 			}
 			b.build_fn(decl)
 		}
+	}
+}
+
+// build_fn_bodies_from_flat is the flat-cursor counterpart of `build_fn_bodies`.
+// Walks one file's top-level stmts via FileCursor; only `.stmt_fn_decl` nodes
+// are touched. Each fn body is built via `build_fn_from_flat(c)`, which uses
+// `decode_fn_decl_signature` (no body decode) and walks body stmts directly
+// via cursors. No `flat.decode_stmt` rehydration of the FnDecl body remains —
+// this is the s185 wiring step that drops the last per-decl body decode.
+pub fn (mut b Builder) build_fn_bodies_from_flat(file_cursor ast.FileCursor) {
+	file_name := file_cursor.name()
+	stmts := file_cursor.stmts()
+	for si in 0 .. stmts.len() {
+		c := stmts.at(si)
+		if c.kind() != .stmt_fn_decl {
+			continue
+		}
+		decl := c.flat.decode_fn_decl_signature(c.id)
+		body := c.list_at(3)
+		if decl.language == .c && body.len() == 0 {
+			continue
+		}
+		if decl.typ.generic_params.len > 0 {
+			continue
+		}
+		if b.hot_fn.len > 0 {
+			mangled := b.mangle_fn_name(decl)
+			if mangled != b.hot_fn {
+				continue
+			}
+		}
+		if !b.should_build_fn(file_name, decl) {
+			continue
+		}
+		b.build_fn_from_flat(c)
 	}
 }
 
@@ -2813,6 +3165,130 @@ pub fn (mut b Builder) build_fn(decl ast.FnDecl) {
 	}
 }
 
+// build_fn_from_flat is the flat-cursor counterpart of `build_fn`. Takes a
+// `.stmt_fn_decl` cursor directly: signature comes from
+// `decode_fn_decl_signature(c.id)` (no body decode), and the body stmts are
+// walked via `c.list_at(3)` + `build_stmts_from_flat`. No `[]ast.Stmt`
+// rehydration of the body. Mirrors `build_fn` line-for-line for the
+// signature/params setup; the only divergence is the body source.
+pub fn (mut b Builder) build_fn_from_flat(c ast.Cursor) {
+	decl := c.flat.decode_fn_decl_signature(c.id)
+	fn_name := b.mangle_fn_name(decl)
+	// Skip C-language extern functions without bodies
+	if decl.language == .c {
+		return
+	}
+	func_idx := b.fn_index[fn_name] or { return }
+	body := c.list_at(3)
+	body_len := body.len()
+	// Skip if already built (can happen with .c.v and .v files).
+	// Exception: user-defined methods always override auto-generated non-method functions.
+	if b.mod.funcs[func_idx].blocks.len > 0 {
+		if decl.is_method && body_len > 0 {
+			b.mod.func_clear_blocks(func_idx)
+		} else {
+			return
+		}
+	}
+
+	// Skip functions without a body (e.g., extern declarations).
+	if body_len == 0 {
+		b.cur_func = func_idx
+		entry := b.mod.add_block(func_idx, 'entry')
+		b.cur_block = entry
+		ret_type := b.mod.funcs[func_idx].typ
+		if ret_type != 0 {
+			ret_type_info := b.mod.type_store.types[ret_type]
+			if ret_type_info.kind == .struct_t {
+				ptr_type := b.mod.type_store.get_ptr(ret_type)
+				alloca := b.mod.add_instr(.alloca, b.cur_block, ptr_type, []ValueID{})
+				ret_val := b.mod.add_instr(.load, b.cur_block, ret_type, [alloca])
+				b.mod.add_instr(.ret, b.cur_block, 0, [ret_val])
+			} else {
+				zero := b.mod.get_or_add_const(ret_type, '0')
+				b.mod.add_instr(.ret, b.cur_block, 0, [zero])
+			}
+		} else {
+			b.mod.add_instr(.ret, b.cur_block, 0, []ValueID{})
+		}
+		return
+	}
+
+	b.cur_func = func_idx
+
+	// Reset per-fn state
+	b.vars = map[string]ValueID{}
+	b.mut_ptr_params = map[string]bool{}
+	b.label_blocks = map[string]BlockID{}
+	b.array_elem_types = map[string]TypeID{}
+
+	b.mod.func_set_params(func_idx, []ValueID{})
+
+	entry := b.mod.add_block(func_idx, 'entry')
+	b.cur_block = entry
+
+	// Add receiver param (skip for static methods)
+	if decl.is_method && !decl.is_static {
+		receiver_name := if decl.receiver.name != '' {
+			decl.receiver.name
+		} else {
+			'self'
+		}
+		recv_type := b.ast_type_to_ssa(decl.receiver.typ)
+		actual_type := if decl.receiver.is_mut {
+			b.mod.type_store.get_ptr(recv_type)
+		} else {
+			recv_type
+		}
+		param_val := b.mod.add_value_node(.argument, actual_type, receiver_name, 0)
+		b.mod.func_add_param(func_idx, param_val)
+		alloca := b.mod.add_instr(.alloca, entry, b.mod.type_store.get_ptr(actual_type),
+			[]ValueID{})
+		b.mod.add_instr(.store, entry, 0, [param_val, alloca])
+		b.vars[receiver_name] = alloca
+	}
+
+	for param in decl.typ.params {
+		param_type := b.ast_type_to_ssa(param.typ)
+		is_already_ptr := param_type < b.mod.type_store.types.len
+			&& b.mod.type_store.types[param_type].kind == .ptr_t
+		actual_type := if param.is_mut && !is_already_ptr {
+			b.mod.type_store.get_ptr(param_type)
+		} else {
+			param_type
+		}
+		param_val := b.mod.add_value_node(.argument, actual_type, param.name, 0)
+		b.mod.func_add_param(func_idx, param_val)
+		alloca := b.mod.add_instr(.alloca, entry, b.mod.type_store.get_ptr(actual_type),
+			[]ValueID{})
+		b.mod.add_instr(.store, entry, 0, [param_val, alloca])
+		b.vars[param.name] = alloca
+
+		if param.typ is ast.Ident {
+			param_type_name := param.typ.name
+			if param_type_name.starts_with('Array_') {
+				elem_name := param_type_name['Array_'.len..]
+				elem_ssa := b.ident_type_to_ssa(elem_name)
+				if elem_ssa != 0 {
+					b.array_elem_types[param.name] = elem_ssa
+				}
+			}
+		}
+	}
+
+	// Build body via flat cursors — no []ast.Stmt rehydration
+	b.build_stmts_from_flat(body)
+
+	if !b.block_has_terminator(b.cur_block) {
+		if fn_name == 'main' {
+			zero := b.mod.get_or_add_const(b.mod.type_store.get_int(32), '0')
+			b.mod.add_instr(.ret, b.cur_block, 0, [zero])
+		} else {
+			b.mod.add_instr(.ret, b.cur_block, 0, []ValueID{})
+		}
+	}
+}
+
 fn (mut b Builder) is_mut_receiver(typ ast.Expr) bool {
 	if typ is ast.ModifierExpr {
 		return typ.kind == .key_mut || typ.kind == .key_shared
@@ -2869,6 +3345,180 @@ fn (mut b Builder) build_stmts(stmts []ast.Stmt) {
 	for stmt in stmts {
 		b.build_stmt(stmt)
 	}
+}
+
+// build_stmts_from_flat is the cursor-list counterpart of `build_stmts`.
+// First step of the s175+ port arc: today every cursor decodes back to a
+// legacy `ast.Stmt` and dispatches through `build_stmt`. Future sessions
+// port individual statement classes (ReturnStmt, AssignStmt, IfStmt, ForStmt,
+// etc.) so each kind drops its `decode_stmt` call in favour of direct
+// cursor + sub-cursor walking inside the SSA builder.
+fn (mut b Builder) build_stmts_from_flat(stmts ast.CursorList) {
+	for si in 0 .. stmts.len() {
+		b.build_stmt_from_flat(stmts.at(si))
+	}
+}
+
+// build_stmt_from_flat is the cursor counterpart of `build_stmt`. Each
+// per-kind port replaces one `else` fallthrough below with a `build_<kind>_from_flat`
+// helper that consumes the cursor's flat edges directly (no `decode_stmt`
+// for that kind). Kinds not yet ported fall through to the legacy walker
+// via a single decode at the bottom.
+fn (mut b Builder) build_stmt_from_flat(c ast.Cursor) {
+	match c.kind() {
+		.stmt_return {
+			b.build_return_from_flat(c)
+		}
+		.stmt_flow_control {
+			b.build_flow_control_from_flat(c)
+		}
+		.stmt_label {
+			b.build_label_from_flat(c)
+		}
+		.stmt_block {
+			b.build_block_from_flat(c)
+		}
+		.stmt_module {
+			b.build_module_from_flat(c)
+		}
+		.stmt_assert {
+			b.build_assert_from_flat(c)
+		}
+		.stmt_expr {
+			b.build_expr_stmt_from_flat(c)
+		}
+		.stmt_for {
+			b.build_for_from_flat(c)
+		}
+		.stmt_assign {
+			b.build_assign_from_flat(c)
+		}
+		else {
+			stmt := c.flat.decode_stmt(c.id)
+			b.build_stmt(stmt)
+		}
+	}
+}
+
+// build_return_from_flat is the cursor counterpart of `build_return`. The
+// flat schema stores ReturnStmt's `exprs` as direct child edges of the
+// `.stmt_return` node (see `flat.v`'s ReturnStmt arm in `add_stmt`), so the
+// expr count is `c.edge_count()` and each `c.edge(i)` is an expr cursor.
+// Expressions are lowered through `build_expr_from_flat` so ReturnStmt no
+// longer rehydrates rhs expressions before dispatch.
+fn (mut b Builder) build_return_from_flat(c ast.Cursor) {
+	fn_ret_type := if b.cur_func >= 0 && b.cur_func < b.mod.funcs.len {
+		b.mod.funcs[b.cur_func].typ
+	} else {
+		TypeID(0)
+	}
+	is_option_ret := b.is_option_wrapper_type(fn_ret_type)
+	is_result_ret := b.is_result_wrapper_type(fn_ret_type)
+	nexprs := c.edge_count()
+	if nexprs == 0 {
+		if is_option_ret || is_result_ret {
+			b.mod.add_instr(.ret, b.cur_block, 0, [
+				b.build_wrapper_value(fn_ret_type, true, 0, false),
+			])
+		} else {
+			b.mod.add_instr(.ret, b.cur_block, 0, []ValueID{})
+		}
+	} else if nexprs == 1 {
+		ret_expr_c := c.edge(0)
+		mut val := b.build_expr_from_flat(ret_expr_c)
+		if (is_option_ret || is_result_ret) && b.mod.values[val].typ != fn_ret_type {
+			val = b.coerce_wrapper_value_from_flat(ret_expr_c, val, fn_ret_type)
+		} else if fn_ret_type > 0 && int(fn_ret_type) < b.mod.type_store.types.len
+			&& b.mod.type_store.types[fn_ret_type].kind == .float_t {
+			val_type := b.mod.values[val].typ
+			if val_type > 0 && int(val_type) < b.mod.type_store.types.len
+				&& b.mod.type_store.types[val_type].kind != .float_t {
+				val = b.mod.add_instr(.sitofp, b.cur_block, fn_ret_type, [val])
+			}
+		}
+		b.mod.add_instr(.ret, b.cur_block, 0, [val])
+	} else {
+		mut elem_types := []TypeID{cap: nexprs}
+		mut vals := []ValueID{cap: nexprs}
+		for i in 0 .. nexprs {
+			ec := c.edge(i)
+			v := b.build_expr_from_flat(ec)
+			vals << v
+			elem_types << b.mod.values[v].typ
+		}
+		tuple_type := b.mod.type_store.get_tuple(elem_types)
+		mut tuple_val := b.mod.get_or_add_const(tuple_type, 'undef')
+		for i, v in vals {
+			idx := b.mod.get_or_add_const(b.mod.type_store.get_int(32), i.str())
+			tuple_val = b.mod.add_instr(.insertvalue, b.cur_block, tuple_type, [
+				tuple_val,
+				v,
+				idx,
+			])
+		}
+		if (is_option_ret || is_result_ret) && tuple_type != fn_ret_type {
+			tuple_val = b.build_wrapper_value(fn_ret_type, true, tuple_val, true)
+		}
+		b.mod.add_instr(.ret, b.cur_block, 0, [tuple_val])
+	}
+}
+
+fn (b &Builder) is_none_expr_from_flat(c ast.Cursor) bool {
+	match c.kind() {
+		.expr_ident {
+			return c.name() == 'none'
+		}
+		.expr_keyword {
+			tok := unsafe { token.Token(int(c.aux())) }
+			return tok == .key_none
+		}
+		.typ_none {
+			return true
+		}
+		else {
+			return false
+		}
+	}
+}
+
+fn (b &Builder) is_error_expr_from_flat(c ast.Cursor) bool {
+	error_fn_names := ['error', 'error_posix', 'error_with_code', 'error_win32']
+	match c.kind() {
+		.expr_ident {
+			return c.name() == 'err'
+		}
+		.expr_call, .expr_call_or_cast {
+			lhs := c.edge(0)
+			return lhs.kind() == .expr_ident && lhs.name() in error_fn_names
+		}
+		else {
+			return false
+		}
+	}
+}
+
+fn (mut b Builder) coerce_wrapper_value_from_flat(c ast.Cursor, val ValueID, wrapper_type TypeID) ValueID {
+	if !b.is_wrapper_type(wrapper_type) {
+		return val
+	}
+	if b.is_none_expr_from_flat(c) {
+		return b.build_wrapper_value(wrapper_type, false, 0, false)
+	}
+	if b.is_error_expr_from_flat(c) {
+		return b.build_wrapper_value(wrapper_type, false, val, false)
+	}
+	if val > 0 && val < b.mod.values.len && b.mod.values[val].typ == wrapper_type {
+		if payload := b.wrapper_payload_bitcast_source(val, wrapper_type) {
+			return b.build_wrapper_value(wrapper_type, true, payload, true)
+		}
+		match b.mod.values[val].kind {
+			.argument, .global, .instruction {
+				return val
+			}
+			else {}
+		}
+	}
+	return b.build_wrapper_value(wrapper_type, true, val, true)
 }
 
 fn (mut b Builder) build_stmt(stmt ast.Stmt) {
@@ -3385,6 +4035,484 @@ fn (mut b Builder) track_array_elem_type_for_local_expr(name string, expr ast.Ex
 	}
 }
 
+fn (b &Builder) unwrap_ident_name_from_flat(c ast.Cursor) ?string {
+	match c.kind() {
+		.expr_ident {
+			return c.name()
+		}
+		.expr_modifier {
+			return b.unwrap_ident_name_from_flat(c.edge(0))
+		}
+		else {
+			return none
+		}
+	}
+}
+
+fn (mut b Builder) get_checked_expr_type_from_flat(c ast.Cursor) ?types.Type {
+	if b.env != unsafe { nil } {
+		pos := c.pos()
+		if pos.id != 0 {
+			if typ := b.env.get_expr_type(pos.id) {
+				return typ
+			}
+		}
+	}
+	return none
+}
+
+fn (mut b Builder) expr_type_from_flat(c ast.Cursor) TypeID {
+	if typ := b.get_checked_expr_type_from_flat(c) {
+		return b.type_to_ssa(typ)
+	}
+	match c.kind() {
+		.expr_basic_literal {
+			kind := unsafe { token.Token(int(c.aux())) }
+			if kind == .key_true || kind == .key_false {
+				return b.mod.type_store.get_int(1)
+			}
+			value := c.name()
+			if kind == .number
+				&& (value.contains('.') || (!value.starts_with('0x') && !value.starts_with('0X')
+				&& (value.contains('e') || value.contains('E')))) {
+				return b.mod.type_store.get_float(64)
+			}
+			return b.mod.type_store.get_int(64)
+		}
+		.expr_string, .expr_string_inter {
+			return b.get_string_type()
+		}
+		else {
+			return b.mod.type_store.get_int(64)
+		}
+	}
+}
+
+fn (mut b Builder) const_int_from_flat(c ast.Cursor) int {
+	match c.kind() {
+		.expr_basic_literal {
+			return int(parse_const_int_literal(c.name()))
+		}
+		.expr_ident {
+			return b.resolve_const_int(c.name())
+		}
+		else {
+			return 0
+		}
+	}
+}
+
+fn (mut b Builder) ast_type_to_ssa_from_flat(c ast.Cursor) TypeID {
+	match c.kind() {
+		.expr_ident {
+			return b.ident_type_to_ssa(c.name())
+		}
+		.expr_prefix {
+			op := unsafe { token.Token(int(c.aux())) }
+			if op == .amp {
+				base := b.ast_type_to_ssa_from_flat(c.edge(0))
+				return b.mod.type_store.get_ptr(base)
+			}
+			if op == .ellipsis {
+				return b.get_array_type()
+			}
+			return b.mod.type_store.get_int(64)
+		}
+		.expr_modifier {
+			return b.ast_type_to_ssa_from_flat(c.edge(0))
+		}
+		.expr_selector {
+			lhs_c := c.edge(0)
+			rhs_c := c.edge(1)
+			if lhs_c.kind() == .expr_ident {
+				mod_name := lhs_c.name()
+				rhs_name := rhs_c.name()
+				full_name := '${mod_name}.${rhs_name}'
+				qualified := '${b.cur_module}__${full_name}'
+				if qualified in b.struct_types {
+					return b.struct_types[qualified]
+				}
+				if full_name in b.struct_types {
+					return b.struct_types[full_name]
+				}
+				mod_qualified := '${mod_name}__${rhs_name}'
+				if mod_qualified in b.struct_types {
+					return b.struct_types[mod_qualified]
+				}
+				if mod_name == 'C' {
+					cur_qualified := '${b.cur_module}__${rhs_name}'
+					if cur_qualified in b.struct_types {
+						return b.struct_types[cur_qualified]
+					}
+					for sname, sid in b.struct_types {
+						if sname.ends_with('__${rhs_name}') {
+							return sid
+						}
+					}
+				}
+				if b.env != unsafe { nil } {
+					mod_name_v := mod_name.replace('.', '_')
+					if scope := b.env.get_scope(mod_name_v) {
+						if obj := scope.lookup_parent(rhs_name, 0) {
+							return b.type_to_ssa(obj.typ())
+						}
+					}
+				}
+			}
+			return b.ident_type_to_ssa(rhs_c.name())
+		}
+		.expr_empty, .typ_nil {
+			return 0
+		}
+		.expr_tuple, .typ_tuple {
+			mut elem_types := []TypeID{cap: c.edge_count()}
+			for i in 0 .. c.edge_count() {
+				elem_types << b.ast_type_to_ssa_from_flat(c.edge(i))
+			}
+			return b.mod.type_store.get_tuple(elem_types)
+		}
+		.typ_array {
+			return b.get_array_type()
+		}
+		.typ_array_fixed {
+			elem_type := b.ast_type_to_ssa_from_flat(c.edge(1))
+			arr_len := b.const_int_from_flat(c.edge(0))
+			if arr_len > 0 {
+				return b.mod.type_store.get_array(elem_type, arr_len)
+			}
+			return b.mod.type_store.get_int(64)
+		}
+		.typ_map {
+			return b.struct_types['map'] or { b.mod.type_store.get_int(64) }
+		}
+		.typ_fn {
+			i8_t := b.mod.type_store.get_int(8)
+			return b.mod.type_store.get_ptr(i8_t)
+		}
+		.typ_option {
+			return b.get_option_wrapper_type(b.ast_type_to_ssa_from_flat(c.edge(0)))
+		}
+		.typ_result {
+			return b.get_result_wrapper_type(b.ast_type_to_ssa_from_flat(c.edge(0)))
+		}
+		.typ_pointer {
+			return b.mod.type_store.get_ptr(b.ast_type_to_ssa_from_flat(c.edge(0)))
+		}
+		else {
+			return b.mod.type_store.get_int(64)
+		}
+	}
+}
+
+fn (mut b Builder) array_init_elem_type_from_flat(c ast.Cursor) TypeID {
+	if c.kind() != .expr_array_init || c.edge_count() == 0 {
+		return 0
+	}
+	typ_c := c.edge(0)
+	match typ_c.kind() {
+		.typ_array {
+			return b.ast_type_to_ssa_from_flat(typ_c.edge(0))
+		}
+		.typ_array_fixed {
+			return b.ast_type_to_ssa_from_flat(typ_c.edge(1))
+		}
+		else {}
+	}
+
+	if checked_type := b.get_checked_expr_type_from_flat(c) {
+		checked_base := b.unwrap_alias_type(checked_type)
+		match checked_base {
+			types.Array {
+				return b.type_to_ssa(checked_base.elem_type)
+			}
+			types.ArrayFixed {
+				return b.type_to_ssa(checked_base.elem_type)
+			}
+			else {}
+		}
+	}
+	return 0
+}
+
+fn (mut b Builder) track_array_elem_type_for_local_from_flat(name string, c ast.Cursor, val ValueID) {
+	if b.track_array_elem_type_for_local_value(name, val) {
+		return
+	}
+	if c.kind() == .expr_array_init {
+		elem_t := b.array_init_elem_type_from_flat(c)
+		if elem_t != 0 {
+			b.array_elem_types[name] = elem_t
+			return
+		}
+	}
+	if typ := b.get_checked_expr_type_from_flat(c) {
+		elem_t := b.unwrap_to_array_elem_ssa(typ)
+		if elem_t != 0 {
+			b.array_elem_types[name] = elem_t
+		}
+	}
+	if c.kind() == .expr_selector {
+		elem_t := b.array_elem_type_from_selector_cursor(c)
+		if elem_t != 0 {
+			b.array_elem_types[name] = elem_t
+		}
+	}
+}
+
+fn (mut b Builder) array_elem_type_from_selector_cursor(c ast.Cursor) TypeID {
+	if c.kind() != .expr_selector {
+		return 0
+	}
+	lhs_c := c.edge(0)
+	rhs_name := c.edge(1).name()
+	if lhs_type := b.get_checked_expr_type_from_flat(lhs_c) {
+		st := b.unwrap_to_struct(lhs_type)
+		if st.name != '' {
+			for field in st.fields {
+				if field.name == rhs_name {
+					return b.unwrap_to_array_elem_ssa(field.typ)
+				}
+			}
+		}
+	}
+	return 0
+}
+
+fn (mut b Builder) selector_module_name_from_flat(c ast.Cursor) ?string {
+	if c.kind() != .expr_selector {
+		return none
+	}
+	lhs_c := c.edge(0)
+	if lhs_c.kind() != .expr_ident {
+		return none
+	}
+	mod_name := lhs_c.name()
+	if mod_name == 'C' {
+		return 'C'
+	}
+	if b.env != unsafe { nil } {
+		if scope := b.env.get_scope(b.cur_module) {
+			if obj := scope.lookup_parent(mod_name, 0) {
+				if obj is types.Module {
+					return obj.name.replace('.', '_')
+				}
+				return none
+			}
+		}
+	}
+	return none
+}
+
+fn (mut b Builder) field_index_from_flat(c ast.Cursor, base ValueID) int {
+	rhs_name := c.edge(1).name()
+	base_type_id := b.mod.values[base].typ
+	if base_type_id < b.mod.type_store.types.len {
+		mut ssa_typ := b.mod.type_store.types[base_type_id]
+		for ssa_typ.kind == .ptr_t && ssa_typ.elem_type < b.mod.type_store.types.len {
+			ssa_typ = b.mod.type_store.types[ssa_typ.elem_type]
+		}
+		if ssa_typ.kind == .struct_t {
+			for i, name in ssa_typ.field_names {
+				if name == rhs_name {
+					return i
+				}
+			}
+		}
+	}
+	if typ := b.get_checked_expr_type_from_flat(c.edge(0)) {
+		st := b.unwrap_to_struct(typ)
+		if st.name != '' {
+			for i, f in st.fields {
+				if f.name == rhs_name {
+					return i
+				}
+			}
+		}
+	}
+	if rhs_name.starts_with('arg') {
+		idx_str := rhs_name[3..]
+		if idx_str.len > 0 && idx_str[0] >= `0` && idx_str[0] <= `9` {
+			return int(parse_const_int_literal(idx_str))
+		}
+	}
+	return 0
+}
+
+fn (mut b Builder) infer_dynamic_array_index_type_from_flat(c ast.Cursor, base_val ValueID, current_type TypeID) TypeID {
+	i64_t := b.mod.type_store.get_int(64)
+	mut result_type := current_type
+	if result_type == i64_t {
+		if idx_typ := b.get_checked_expr_type_from_flat(c) {
+			inferred := b.type_to_ssa(idx_typ)
+			if inferred != 0 && inferred != i64_t {
+				result_type = inferred
+			}
+		}
+	}
+	lhs_c := c.edge(0)
+	if result_type == i64_t {
+		if arr_typ := b.get_checked_expr_type_from_flat(lhs_c) {
+			inferred := b.unwrap_to_array_elem_ssa(arr_typ)
+			if inferred != 0 {
+				result_type = inferred
+			}
+		}
+	}
+	if result_type == i64_t && lhs_c.kind() == .expr_call && lhs_c.edge_count() >= 2 {
+		call_lhs := lhs_c.edge(0)
+		if call_lhs.kind() == .expr_ident {
+			call_name := call_lhs.name()
+			if call_name in ['array__slice', 'array__slice_ni'] {
+				if arr_typ := b.get_checked_expr_type_from_flat(lhs_c.edge(1)) {
+					inferred := b.unwrap_to_array_elem_ssa(arr_typ)
+					if inferred != 0 {
+						result_type = inferred
+					}
+				}
+			}
+		}
+	}
+	if result_type == i64_t && lhs_c.kind() == .expr_ident {
+		if elem_t := b.array_elem_types[lhs_c.name()] {
+			result_type = elem_t
+		}
+	}
+	if result_type == i64_t {
+		if elem_t := b.array_value_elem_types[base_val] {
+			result_type = elem_t
+		}
+	}
+	return result_type
+}
+
+fn (mut b Builder) compound_assign_opcode(op token.Token, is_float bool, full_ops bool) OpCode {
+	if is_float {
+		return match op {
+			.plus_assign {
+				OpCode.fadd
+			}
+			.minus_assign {
+				OpCode.fsub
+			}
+			.mul_assign {
+				OpCode.fmul
+			}
+			.div_assign {
+				OpCode.fdiv
+			}
+			.mod_assign {
+				if full_ops {
+					OpCode.frem
+				} else {
+					OpCode.fadd
+				}
+			}
+			else {
+				OpCode.fadd
+			}
+		}
+	}
+	return match op {
+		.plus_assign {
+			OpCode.add
+		}
+		.minus_assign {
+			OpCode.sub
+		}
+		.mul_assign {
+			OpCode.mul
+		}
+		.div_assign {
+			OpCode.sdiv
+		}
+		.mod_assign {
+			if full_ops {
+				OpCode.srem
+			} else {
+				OpCode.add
+			}
+		}
+		.left_shift_assign {
+			if full_ops {
+				OpCode.shl
+			} else {
+				OpCode.add
+			}
+		}
+		.right_shift_assign {
+			if full_ops {
+				OpCode.ashr
+			} else {
+				OpCode.add
+			}
+		}
+		.and_assign {
+			if full_ops {
+				OpCode.and_
+			} else {
+				OpCode.add
+			}
+		}
+		.or_assign {
+			if full_ops {
+				OpCode.or_
+			} else {
+				OpCode.add
+			}
+		}
+		.xor_assign {
+			if full_ops {
+				OpCode.xor
+			} else {
+				OpCode.add
+			}
+		}
+		else {
+			OpCode.add
+		}
+	}
+}
+
+fn (mut b Builder) store_assign_to_ptr(ptr ValueID, rhs_val ValueID, op token.Token, full_ops bool) {
+	if op == .assign {
+		b.mod.add_instr(.store, b.cur_block, 0, [rhs_val, ptr])
+		return
+	}
+	ptr_typ := b.mod.values[ptr].typ
+	mut elem_typ := b.mod.values[rhs_val].typ
+	if ptr_typ > 0 && int(ptr_typ) < b.mod.type_store.types.len {
+		ptr_info := b.mod.type_store.types[ptr_typ]
+		if ptr_info.elem_type != 0 {
+			elem_typ = ptr_info.elem_type
+		}
+	}
+	loaded := b.mod.add_instr(.load, b.cur_block, elem_typ, [ptr])
+	is_float := elem_typ > 0 && int(elem_typ) < b.mod.type_store.types.len
+		&& b.mod.type_store.types[elem_typ].kind == .float_t
+	op_code := b.compound_assign_opcode(op, is_float, full_ops)
+	mut actual_rhs := rhs_val
+	if is_float {
+		rhs_typ := b.mod.values[rhs_val].typ
+		rhs_is_float := rhs_typ > 0 && int(rhs_typ) < b.mod.type_store.types.len
+			&& b.mod.type_store.types[rhs_typ].kind == .float_t
+		if !rhs_is_float {
+			rhs_unsigned := rhs_typ > 0 && int(rhs_typ) < b.mod.type_store.types.len
+				&& b.mod.type_store.types[rhs_typ].is_unsigned
+			conv_op := if rhs_unsigned {
+				OpCode.uitofp
+			} else {
+				OpCode.sitofp
+			}
+			actual_rhs = b.mod.add_instr(conv_op, b.cur_block, elem_typ, [rhs_val])
+		}
+	}
+	result := b.mod.add_instr(op_code, b.cur_block, b.mod.values[loaded].typ, [
+		loaded,
+		actual_rhs,
+	])
+	b.mod.add_instr(.store, b.cur_block, 0, [result, ptr])
+}
+
 fn (mut b Builder) build_return(stmt ast.ReturnStmt) {
 	fn_ret_type := if b.cur_func >= 0 && b.cur_func < b.mod.funcs.len {
 		b.mod.funcs[b.cur_func].typ
@@ -3573,6 +4701,100 @@ fn (mut b Builder) build_if_stmt(node ast.IfExpr) {
 	}
 }
 
+fn (mut b Builder) build_if_stmt_from_flat(c ast.Cursor) {
+	cond_c := c.edge(0)
+	if cond_c.kind() == .expr_empty {
+		for i in 2 .. c.edge_count() {
+			b.build_stmt_from_flat(c.edge(i))
+		}
+		return
+	}
+
+	then_block := b.mod.add_block(b.cur_func, 'if_then')
+	merge_block := b.mod.add_block(b.cur_func, 'if_merge')
+
+	else_c := c.edge(1)
+	has_else := else_c.kind() != .expr_empty
+	else_block := if has_else {
+		b.mod.add_block(b.cur_func, 'if_else')
+	} else {
+		merge_block
+	}
+
+	cond_val := b.build_expr_from_flat(cond_c)
+	b.mod.add_instr(.br, b.cur_block, 0,
+		[cond_val, b.mod.blocks[then_block].val_id, b.mod.blocks[else_block].val_id])
+	b.add_edge(b.cur_block, then_block)
+	b.add_edge(b.cur_block, else_block)
+
+	b.cur_block = then_block
+	for i in 2 .. c.edge_count() {
+		b.build_stmt_from_flat(c.edge(i))
+	}
+	if !b.block_has_terminator(b.cur_block) {
+		b.mod.add_instr(.jmp, b.cur_block, 0, [b.mod.blocks[merge_block].val_id])
+		b.add_edge(b.cur_block, merge_block)
+	}
+
+	if has_else {
+		b.cur_block = else_block
+		if else_c.kind() == .expr_if {
+			else_cond := else_c.edge(0)
+			if else_cond.kind() == .expr_empty {
+				for i in 2 .. else_c.edge_count() {
+					b.build_stmt_from_flat(else_c.edge(i))
+				}
+			} else {
+				b.build_if_stmt_from_flat(else_c)
+			}
+		} else if else_c.kind() == .expr_unsafe {
+			for i in 0 .. else_c.edge_count() {
+				b.build_stmt_from_flat(else_c.edge(i))
+			}
+		}
+		if !b.block_has_terminator(b.cur_block) {
+			b.mod.add_instr(.jmp, b.cur_block, 0, [b.mod.blocks[merge_block].val_id])
+			b.add_edge(b.cur_block, merge_block)
+		}
+	}
+
+	b.cur_block = merge_block
+	if b.mod.blocks[merge_block].preds.len == 0 {
+		b.mod.add_instr(.unreachable, b.cur_block, 0, []ValueID{})
+	}
+}
+
+// build_flow_control_from_flat is the cursor counterpart of
+// `build_flow_control`. The flat schema (`flat.v:1685`) stores
+// FlowControlStmt's `op` as `n.aux` (u16 → token.Token) and `label` as
+// `n.name_id` — no child edges. The cursor port reads both directly,
+// skipping both the FlowControlStmt struct allocation and the
+// `Stmt(FlowControlStmt{...})` sum-type boxing that `decode_stmt`
+// would perform.
+fn (mut b Builder) build_flow_control_from_flat(c ast.Cursor) {
+	op := unsafe { token.Token(int(c.aux())) }
+	if op == .key_goto {
+		label := c.name()
+		target := b.get_or_create_label_block(label)
+		b.mod.add_instr(.jmp, b.cur_block, 0, [b.mod.blocks[target].val_id])
+		b.add_edge(b.cur_block, target)
+		dead_block := b.mod.add_block(b.cur_func, 'after_goto')
+		b.cur_block = dead_block
+		return
+	}
+	if b.loop_stack.len == 0 {
+		return
+	}
+	loop_info := b.loop_stack[b.loop_stack.len - 1]
+	if op == .key_break {
+		b.mod.add_instr(.jmp, b.cur_block, 0, [b.mod.blocks[loop_info.exit_block].val_id])
+		b.add_edge(b.cur_block, loop_info.exit_block)
+	} else if op == .key_continue {
+		b.mod.add_instr(.jmp, b.cur_block, 0, [b.mod.blocks[loop_info.cond_block].val_id])
+		b.add_edge(b.cur_block, loop_info.cond_block)
+	}
+}
+
 fn (mut b Builder) build_flow_control(stmt ast.FlowControlStmt) {
 	if stmt.op == .key_goto {
 		// goto label — jump to the label's block (create if not yet seen)
@@ -3604,6 +4826,315 @@ fn (mut b Builder) get_or_create_label_block(name string) BlockID {
 	block := b.mod.add_block(b.cur_func, 'label_${name}')
 	b.label_blocks[name] = block
 	return block
+}
+
+fn (mut b Builder) build_label_from_flat(c ast.Cursor) {
+	label_block := b.get_or_create_label_block(c.name())
+	b.mod.add_instr(.jmp, b.cur_block, 0, [b.mod.blocks[label_block].val_id])
+	b.add_edge(b.cur_block, label_block)
+	b.cur_block = label_block
+}
+
+// build_block_from_flat is the cursor counterpart of the `ast.BlockStmt`
+// arm in `build_stmt`, which simply forwards `stmt.stmts` to `build_stmts`.
+// The flat schema (`flat.v:1610`) emits BlockStmt via `emit_simple` so its
+// inner stmts are direct child edges of the `.stmt_block` node — we walk
+// them with `c.edge(i)` instead of materialising a `[]ast.Stmt`.
+fn (mut b Builder) build_block_from_flat(c ast.Cursor) {
+	n := c.edge_count()
+	for i in 0 .. n {
+		b.build_stmt_from_flat(c.edge(i))
+	}
+}
+
+// build_module_from_flat is the cursor counterpart of the `ast.ModuleStmt`
+// arm in `build_stmt`, which sets `b.cur_module = stmt.name.replace('.', '_')`.
+// The flat schema (`flat.v:1764`) emits ModuleStmt with the module name
+// interned into `name_id` and no child edges, so `c.name()` is the only
+// state we need.
+fn (mut b Builder) build_module_from_flat(c ast.Cursor) {
+	b.cur_module = c.name().replace('.', '_')
+}
+
+// build_assign_from_flat is the cursor counterpart of `build_assign`. The
+// flat schema (`flat.v:1600`) stores AssignStmt's lhs exprs at edges
+// 0..extra_int(), rhs exprs at edges extra_int()..edge_count(), and the
+// assignment operator in `aux` (u16 → token.Token). This helper mirrors the
+// legacy assign branches without rehydrating lhs/rhs `ast.Expr` arrays.
+fn (mut b Builder) build_assign_from_flat(c ast.Cursor) {
+	nlhs := c.extra_int()
+	n := c.edge_count()
+	nrhs := n - nlhs
+	op := unsafe { token.Token(int(c.aux())) }
+
+	if nlhs > 1 && nrhs == 1 {
+		rhs_c := c.edge(nlhs)
+		mut rhs_val := b.build_expr_from_flat(rhs_c)
+		mut rhs_typ_id := b.mod.values[rhs_val].typ
+		mut rhs_typ := b.mod.type_store.types[rhs_typ_id]
+		if b.is_option_wrapper_type(rhs_typ_id) || b.is_result_wrapper_type(rhs_typ_id) {
+			if b.wrapper_has_data(rhs_typ_id) && rhs_typ.kind == .struct_t
+				&& rhs_typ.fields.len >= 3 {
+				data_type := rhs_typ.fields[2]
+				data_idx := b.mod.get_or_add_const(b.mod.type_store.get_int(32), '2')
+				rhs_val = b.mod.add_instr(.extractvalue, b.cur_block, data_type, [
+					rhs_val,
+					data_idx,
+				])
+				rhs_typ_id = data_type
+				rhs_typ = b.mod.type_store.types[rhs_typ_id]
+			}
+		}
+		for i in 0 .. nlhs {
+			lhs_c := c.edge(i)
+			mut elem_val := rhs_val
+			if rhs_typ.kind == .struct_t && i < rhs_typ.fields.len {
+				elem_type := rhs_typ.fields[i]
+				idx_val := b.mod.get_or_add_const(b.mod.type_store.get_int(32), i.str())
+				elem_val = b.mod.add_instr(.extractvalue, b.cur_block, elem_type, [
+					rhs_val,
+					idx_val,
+				])
+			}
+			if ident_name := b.unwrap_ident_name_from_flat(lhs_c) {
+				if op == .decl_assign {
+					elem_type := b.mod.values[elem_val].typ
+					alloca := b.mod.add_instr(.alloca, b.cur_block,
+						b.mod.type_store.get_ptr(elem_type), []ValueID{})
+					b.mod.add_instr(.store, b.cur_block, 0, [elem_val, alloca])
+					b.vars[ident_name] = alloca
+					b.track_array_elem_type_for_local_value(ident_name, elem_val)
+				} else if ident_name == '_' {
+					continue
+				} else {
+					mut ptr := ValueID(0)
+					if p := b.vars[ident_name] {
+						ptr = p
+					} else if glob_id := b.find_global_ident(ident_name) {
+						ptr = glob_id
+					}
+					if ptr != 0 {
+						b.mod.add_instr(.store, b.cur_block, 0, [elem_val, ptr])
+					}
+				}
+			}
+		}
+		return
+	}
+
+	if nlhs > 1 && nrhs > 1 && op == .assign {
+		mut rhs_vals := []ValueID{cap: nrhs}
+		for i in 0 .. nrhs {
+			rhs_vals << b.build_expr_from_flat(c.edge(nlhs + i))
+		}
+		for i in 0 .. nlhs {
+			if i >= rhs_vals.len {
+				break
+			}
+			lhs_c := c.edge(i)
+			rhs_val := rhs_vals[i]
+			if ident_name := b.unwrap_ident_name_from_flat(lhs_c) {
+				if ident_name == '_' {
+					continue
+				}
+				mut ptr := ValueID(0)
+				if p := b.vars[ident_name] {
+					ptr = p
+				} else if glob_id := b.find_global_ident(ident_name) {
+					ptr = glob_id
+				}
+				if ptr != 0 {
+					b.mod.add_instr(.store, b.cur_block, 0, [rhs_val, ptr])
+				}
+			} else if lhs_c.kind() == .expr_selector || lhs_c.kind() == .expr_index {
+				base := b.build_addr_from_flat(lhs_c)
+				if base != 0 {
+					b.mod.add_instr(.store, b.cur_block, 0, [rhs_val, base])
+				}
+			}
+		}
+		return
+	}
+
+	for i in 0 .. nlhs {
+		if i >= nrhs {
+			break
+		}
+		lhs_c := c.edge(i)
+		rhs_c := c.edge(nlhs + i)
+		rhs_val := b.build_expr_from_flat(rhs_c)
+
+		if ident_name := b.unwrap_ident_name_from_flat(lhs_c) {
+			if op == .decl_assign {
+				rhs_type := b.mod.values[rhs_val].typ
+				alloca := b.mod.add_instr(.alloca, b.cur_block, b.mod.type_store.get_ptr(rhs_type),
+					[]ValueID{})
+				b.mod.add_instr(.store, b.cur_block, 0, [rhs_val, alloca])
+				b.vars[ident_name] = alloca
+				b.track_array_elem_type_for_local_from_flat(ident_name, rhs_c, rhs_val)
+			} else if ident_name == '_' && op == .assign {
+				continue
+			} else {
+				if rhs_c.kind() == .expr_array_init {
+					module_const_name := ssa_module_storage_name(b.cur_module, ident_name)
+					if ident_name in b.const_array_globals
+						|| module_const_name in b.const_array_globals
+						|| 'builtin__${ident_name}' in b.const_array_globals {
+						continue
+					}
+				}
+				mut ptr := ValueID(0)
+				if p := b.vars[ident_name] {
+					ptr = p
+				} else if glob_id := b.find_global_ident(ident_name) {
+					ptr = glob_id
+				}
+				if ptr != 0 {
+					b.store_assign_to_ptr(ptr, rhs_val, op, true)
+				}
+			}
+		} else if lhs_c.kind() == .expr_selector {
+			base := b.build_addr_from_flat(lhs_c)
+			if base != 0 {
+				b.store_assign_to_ptr(base, rhs_val, op, true)
+			}
+		} else if lhs_c.kind() == .expr_prefix {
+			lhs_op := unsafe { token.Token(int(lhs_c.aux())) }
+			if lhs_op == .mul {
+				ptr := b.build_expr_from_flat(lhs_c.edge(0))
+				b.store_assign_to_ptr(ptr, rhs_val, op, false)
+			}
+		} else if lhs_c.kind() == .expr_index {
+			base := b.build_addr_from_flat(lhs_c)
+			if base != 0 {
+				b.store_assign_to_ptr(base, rhs_val, op, true)
+			}
+		}
+	}
+}
+
+// build_for_from_flat is the cursor counterpart of `build_for`. The flat
+// schema (`flat.v:1715`) stores ForStmt's init at edge 0, cond at edge 1,
+// post at edge 2, and the body stmts at edges 3..edge_count(). Empty
+// init/post are sentinel `.stmt_empty` cursors; empty cond is a sentinel
+// `.expr_empty` cursor (matching the legacy `EmptyStmt` / `EmptyExpr`
+// checks). Body stmts are walked directly through `build_stmt_from_flat`
+// without materialising a `[]ast.Stmt`. Init/post are dispatched through
+// `build_stmt_from_flat` so they pick up flat-native arms; cond goes through
+// `build_expr_from_flat`.
+fn (mut b Builder) build_for_from_flat(c ast.Cursor) {
+	init_c := c.edge(0)
+	cond_c := c.edge(1)
+	post_c := c.edge(2)
+	has_init := init_c.kind() != .stmt_empty
+	has_cond := cond_c.kind() != .expr_empty
+	has_post := post_c.kind() != .stmt_empty
+
+	if has_init {
+		b.build_stmt_from_flat(init_c)
+	}
+
+	cond_block := b.mod.add_block(b.cur_func, 'for_cond')
+	body_block := b.mod.add_block(b.cur_func, 'for_body')
+	post_block := if has_post {
+		b.mod.add_block(b.cur_func, 'for_post')
+	} else {
+		cond_block
+	}
+	exit_block := b.mod.add_block(b.cur_func, 'for_exit')
+
+	b.mod.add_instr(.jmp, b.cur_block, 0, [b.mod.blocks[cond_block].val_id])
+	b.add_edge(b.cur_block, cond_block)
+
+	b.cur_block = cond_block
+	if has_cond {
+		cond_val := b.build_expr_from_flat(cond_c)
+		b.mod.add_instr(.br, b.cur_block, 0,
+			[cond_val, b.mod.blocks[body_block].val_id, b.mod.blocks[exit_block].val_id])
+		b.add_edge(cond_block, body_block)
+		b.add_edge(cond_block, exit_block)
+	} else {
+		b.mod.add_instr(.jmp, b.cur_block, 0, [b.mod.blocks[body_block].val_id])
+		b.add_edge(cond_block, body_block)
+	}
+
+	b.cur_block = body_block
+	b.loop_stack << LoopInfo{
+		cond_block: post_block
+		exit_block: exit_block
+	}
+	n := c.edge_count()
+	for i in 3 .. n {
+		b.build_stmt_from_flat(c.edge(i))
+	}
+	b.loop_stack.delete_last()
+
+	if !b.block_has_terminator(b.cur_block) {
+		target := if has_post { post_block } else { cond_block }
+		b.mod.add_instr(.jmp, b.cur_block, 0, [b.mod.blocks[target].val_id])
+		b.add_edge(b.cur_block, target)
+	}
+
+	if has_post {
+		b.cur_block = post_block
+		b.build_stmt_from_flat(post_c)
+		if !b.block_has_terminator(b.cur_block) {
+			b.mod.add_instr(.jmp, b.cur_block, 0, [b.mod.blocks[cond_block].val_id])
+			b.add_edge(post_block, cond_block)
+		}
+	}
+
+	b.cur_block = exit_block
+}
+
+// build_expr_stmt_from_flat is the cursor counterpart of `build_expr_stmt`.
+// The flat schema (`flat.v:1678`) stores ExprStmt's inner expr as edge 0.
+// Legacy `build_expr_stmt` dispatches on the wrapped expr kind: UnsafeExpr
+// walks the inner stmts via `build_stmt`; IfExpr goes through
+// `build_if_stmt`; everything else goes through `build_expr`. The flat
+// port mirrors that shape but walks UnsafeExpr's inner stmts directly via
+// cursors (no `ast.Stmt` rehydration for that branch); the IfExpr +
+// IfExpr is handled by a cursor-native statement helper because statement
+// semantics differ from if-as-expression; all other expressions are routed
+// through `build_expr_from_flat`.
+fn (mut b Builder) build_expr_stmt_from_flat(c ast.Cursor) {
+	inner := c.edge(0)
+	if inner.kind() == .expr_unsafe {
+		for i in 0 .. inner.edge_count() {
+			b.build_stmt_from_flat(inner.edge(i))
+		}
+		return
+	}
+	if inner.kind() == .expr_if {
+		b.build_if_stmt_from_flat(inner)
+		return
+	}
+	b.build_expr_from_flat(inner)
+}
+
+// build_assert_from_flat is the cursor counterpart of `build_assert`. The
+// flat schema (`flat.v:1594`) stores AssertStmt's `expr` as edge 0 and the
+// optional `extra` message as edge 1 — legacy `build_assert` only reads
+// `expr` (extra is informational and not lowered), so we lower edge 0 via
+// `build_expr_from_flat` and drop the AssertStmt struct decode entirely.
+fn (mut b Builder) build_assert_from_flat(c ast.Cursor) {
+	ec := c.edge(0)
+	cond := b.build_expr_from_flat(ec)
+	pass_block := b.mod.add_block(b.cur_func, 'assert_pass')
+	fail_block := b.mod.add_block(b.cur_func, 'assert_fail')
+
+	b.mod.add_instr(.br, b.cur_block, 0,
+		[cond, b.mod.blocks[pass_block].val_id, b.mod.blocks[fail_block].val_id])
+	b.add_edge(b.cur_block, pass_block)
+	b.add_edge(b.cur_block, fail_block)
+
+	b.cur_block = fail_block
+	one := b.mod.get_or_add_const(b.mod.type_store.get_int(32), '1')
+	exit_ref := b.get_or_create_fn_ref('exit', b.mod.type_store.get_int(32))
+	b.mod.add_instr(.call, b.cur_block, 0, [exit_ref, one])
+	b.mod.add_instr(.unreachable, b.cur_block, 0, []ValueID{})
+
+	b.cur_block = pass_block
 }
 
 fn (mut b Builder) build_label(stmt ast.LabelStmt) {
@@ -3745,6 +5276,486 @@ fn (mut b Builder) build_expr(expr ast.Expr) ValueID {
 			return b.mod.get_or_add_const(b.mod.type_store.get_int(32), '0')
 		}
 	}
+}
+
+// build_expr_from_flat is the cursor counterpart of `build_expr`. Each
+// per-kind arm consumes the cursor's flat fields directly for the outer node
+// and only decodes child expressions where the existing legacy helper still
+// pattern-matches on those child AST shapes.
+fn (mut b Builder) build_expr_from_flat(c ast.Cursor) ValueID {
+	match c.kind() {
+		.expr_basic_literal {
+			return b.build_basic_literal_from_flat(c)
+		}
+		.expr_ident {
+			return b.build_ident_from_flat(c)
+		}
+		.expr_string {
+			return b.build_string_literal_from_flat(c)
+		}
+		.expr_paren, .expr_modifier {
+			return b.build_expr_from_flat(c.edge(0))
+		}
+		.expr_prefix {
+			return b.build_prefix_from_flat(c)
+		}
+		.expr_selector {
+			return b.build_selector_from_flat(c)
+		}
+		.expr_cast {
+			return b.build_cast_from_flat(c)
+		}
+		.expr_infix {
+			return b.build_infix_from_flat(c)
+		}
+		.expr_index {
+			return b.build_index_from_flat(c)
+		}
+		.expr_if {
+			return b.build_if_from_flat(c)
+		}
+		.expr_call {
+			return b.build_call_from_flat(c)
+		}
+		.expr_init {
+			return b.build_init_from_flat(c)
+		}
+		.expr_unsafe {
+			return b.build_unsafe_from_flat(c)
+		}
+		.expr_keyword {
+			return b.build_keyword_from_flat(c)
+		}
+		.expr_keyword_operator {
+			return b.build_keyword_operator_from_flat(c)
+		}
+		.expr_postfix {
+			return b.build_postfix_from_flat(c)
+		}
+		.expr_array_init {
+			return b.build_array_init_from_flat(c)
+		}
+		.expr_string_inter {
+			return b.build_string_inter_from_flat(c)
+		}
+		.expr_or {
+			return b.build_or_from_flat(c)
+		}
+		.expr_fn_literal {
+			return b.build_fn_literal_from_flat(c)
+		}
+		.expr_call_or_cast {
+			return b.build_call_or_cast_from_flat(c)
+		}
+		.expr_as_cast {
+			return b.build_as_cast_from_flat(c)
+		}
+		.expr_tuple {
+			return b.build_tuple_from_flat(c)
+		}
+		.expr_map_init, .expr_range, .expr_assoc {
+			return b.mod.get_or_add_const(b.mod.type_store.get_int(64), '0')
+		}
+		.expr_match, .expr_empty, .expr_if_guard, .expr_comptime, .expr_generic_arg_or_index,
+		.expr_generic_args, .expr_lambda, .expr_lifetime, .expr_lock, .expr_select, .expr_sql {
+			return b.mod.get_or_add_const(b.mod.type_store.get_int(32), '0')
+		}
+		else {
+			return b.mod.get_or_add_const(b.mod.type_store.get_int(32), '0')
+		}
+	}
+}
+
+// build_ident_from_flat (s187) decodes only what `build_ident` needs from
+// an `.expr_ident` cursor: `name` from `c.name()` (interned string) and
+// `pos` from `c.pos()`. Ident has no aux/extra/edges. Dispatches to the
+// existing `build_ident`. Pos is preserved so any `get_checked_expr_type`
+// lookup downstream stays hot (Ident type can be checker-resolved when
+// the var was declared in scope). Saves the `Expr(Ident{...})` sum-type box.
+fn (mut b Builder) build_ident_from_flat(c ast.Cursor) ValueID {
+	return b.build_ident(ast.Ident{
+		name: c.name()
+		pos:  c.pos()
+	})
+}
+
+// build_string_literal_from_flat (s188) decodes only what `build_string_literal`
+// needs from an `.expr_string` cursor: `kind` from `c.aux()`
+// (u16 → StringLiteralKind), `value` from `c.name()` (interned string),
+// `pos` from `c.pos()`. No edges. Dispatches to existing build_string_literal.
+// Saves the `Expr(StringLiteral{...})` sum-type box.
+fn (mut b Builder) build_string_literal_from_flat(c ast.Cursor) ValueID {
+	kind := unsafe { ast.StringLiteralKind(int(c.aux())) }
+	return b.build_string_literal(ast.StringLiteral{
+		kind:  kind
+		value: c.name()
+		pos:   c.pos()
+	})
+}
+
+// build_prefix_from_flat (s190) reads `op` from `c.aux()` (u16 → token.Token)
+// and decodes the operand from edge 0 via `decode_expr` (the inner expr
+// must be a fully-rehydrated `ast.Expr` because build_prefix pattern-matches
+// on it via `is ast.CastExpr` / `is ast.CallOrCastExpr` / `is ast.PrefixExpr`
+// / `is ast.InitExpr`). Saves only the outer `Expr(PrefixExpr{...})`
+// sum-type box; the inner expr decode is still required by build_prefix's
+// type-check pattern matches.
+fn (mut b Builder) build_prefix_from_flat(c ast.Cursor) ValueID {
+	op := unsafe { token.Token(int(c.aux())) }
+	inner_c := c.edge(0)
+	inner_expr := inner_c.flat.decode_expr(inner_c.id)
+	return b.build_prefix(ast.PrefixExpr{
+		op:   op
+		expr: inner_expr
+		pos:  c.pos()
+	})
+}
+
+// build_selector_from_flat (s191) reads `lhs` from edge 0 and `rhs` (Ident)
+// from edge 1. The lhs must be fully decoded via `decode_expr` because
+// build_selector pattern-matches on it heavily (`is ast.EmptyExpr` for enum
+// shorthand, `is ast.Ident` for `C.X` and module-qualified access, and
+// recursive `build_expr(expr.lhs)` / `build_selector_addr(expr.lhs)` for
+// chained selectors). The rhs Ident is reconstructed from `edge(1).name()` +
+// `edge(1).pos()` — Ident is just (pos, name), no other fields. Saves only
+// the outer `Expr(SelectorExpr{...})` sum-type box.
+fn (mut b Builder) build_selector_from_flat(c ast.Cursor) ValueID {
+	lhs_c := c.edge(0)
+	lhs := lhs_c.flat.decode_expr(lhs_c.id)
+	rhs_c := c.edge(1)
+	return b.build_selector(ast.SelectorExpr{
+		lhs: lhs
+		rhs: ast.Ident{
+			name: rhs_c.name()
+			pos:  rhs_c.pos()
+		}
+		pos: c.pos()
+	})
+}
+
+// build_cast_from_flat (s192) decodes both edges via `decode_expr`. CastExpr
+// flat encoding (`flat.v:1876`) is `(.expr_cast, pos, -1, -1, 0, 0,
+// [edge0=typ, edge1=expr])`. Both edges need full decode: `build_cast` calls
+// `b.ast_type_to_ssa(expr.typ)` (which pattern-matches on type expr kinds —
+// Ident, ArrayType, MapType, FnType, PointerType, ParenExpr, etc.) and
+// `b.build_addr(expr.expr)` / `b.build_expr(expr.expr)` on the value side.
+// Saves only the outer `Expr(CastExpr{...})` sum-type box.
+fn (mut b Builder) build_cast_from_flat(c ast.Cursor) ValueID {
+	typ_c := c.edge(0)
+	typ_expr := typ_c.flat.decode_expr(typ_c.id)
+	val_c := c.edge(1)
+	val_expr := val_c.flat.decode_expr(val_c.id)
+	return b.build_cast(ast.CastExpr{
+		typ:  typ_expr
+		expr: val_expr
+		pos:  c.pos()
+	})
+}
+
+// build_infix_from_flat (s193) reads `op` from `c.aux()` (u16 → token.Token)
+// and decodes both edges via `decode_expr`. InfixExpr flat encoding
+// (`flat.v:1956`) is `(.expr_infix, pos, -1, -1, u16(op), 0, [edge0=lhs,
+// edge1=rhs])`. Both inner decodes are unavoidable: `build_infix` calls
+// `b.is_none_expr(expr.lhs)` / `b.is_none_expr(expr.rhs)` (which match on
+// `ast.Ident` / `ast.Keyword` / `ast.Type` variants), plus the recursive
+// `b.build_expr(expr.lhs)` / `b.build_expr(expr.rhs)` (no
+// `build_expr_from_flat`-only entry yet for those operands), and
+// `b.expr_type(ast.Expr(expr))` for the outer pos.id type-check lookup —
+// pos must be preserved on the synthesised InfixExpr. Saves only the outer
+// `Expr(InfixExpr{...})` sum-type box.
+fn (mut b Builder) build_infix_from_flat(c ast.Cursor) ValueID {
+	op := unsafe { token.Token(int(c.aux())) }
+	lhs_c := c.edge(0)
+	lhs_expr := lhs_c.flat.decode_expr(lhs_c.id)
+	rhs_c := c.edge(1)
+	rhs_expr := rhs_c.flat.decode_expr(rhs_c.id)
+	return b.build_infix(ast.InfixExpr{
+		op:  op
+		lhs: lhs_expr
+		rhs: rhs_expr
+		pos: c.pos()
+	})
+}
+
+// build_index_from_flat (s194) decodes both edges via `decode_expr`. IndexExpr
+// flat encoding (`flat.v:1946`) is `(.expr_index, pos, -1, -1, 0, flags,
+// [edge0=lhs, edge1=expr])` where `flags` carries `is_gated`. The cursor port
+// decodes lhs and index from the two edges and constructs `ast.IndexExpr{lhs,
+// expr, pos}` — `is_gated` is intentionally ignored because `build_index`
+// never reads it (the SSA pipeline doesn't differentiate gated lookups; the
+// transformer lowers them earlier). Both inner decodes are unavoidable:
+// `build_index` calls recursive `b.build_expr(expr.lhs)` and
+// `b.build_expr(expr.expr)`, plus `b.expr_type(ast.Expr(expr))` for the
+// pos.id type-check lookup — so pos must be preserved on the synthesised
+// IndexExpr. Saves only the outer `Expr(IndexExpr{...})` sum-type box.
+fn (mut b Builder) build_index_from_flat(c ast.Cursor) ValueID {
+	lhs_c := c.edge(0)
+	lhs_expr := lhs_c.flat.decode_expr(lhs_c.id)
+	idx_c := c.edge(1)
+	idx_expr := idx_c.flat.decode_expr(idx_c.id)
+	return b.build_index(ast.IndexExpr{
+		lhs:  lhs_expr
+		expr: idx_expr
+		pos:  c.pos()
+	})
+}
+
+// build_if_from_flat (s195) decodes the full IfExpr subtree via `decode_expr`
+// and dispatches to `build_if_expr`. IfExpr flat encoding (`flat.v:1930`) is
+// `(.expr_if, pos, -1, -1, 0, 0, [edge0=cond, edge1=else_expr,
+// edge2..n=stmts])`. The full decode is necessary today because
+// `build_if_expr` walks the entire AST: it `is`-checks `node.else_expr`
+// against `ast.EmptyExpr` / `ast.IfExpr` (recursive else-if chain),
+// `is`-checks each `node.stmts[i]` for `ast.ExprStmt` to extract the trailing
+// expression value, and calls `b.infer_if_expr_type(node, i64_t)` which
+// recurses through the else chain and pattern-matches on the last expression
+// of each branch (StringLiteral / StringInterLiteral / PrefixExpr unwrap /
+// other variants). Saves only the outer `Expr(IfExpr{...})` sum-type box and
+// one match-dispatch in `build_expr` — the inner stmt/else walk is unchanged
+// pending future per-stmt cursor ports.
+fn (mut b Builder) build_if_from_flat(c ast.Cursor) ValueID {
+	expr := c.flat.decode_expr(c.id)
+	return b.build_if_expr(expr as ast.IfExpr)
+}
+
+// build_call_from_flat (s196) decodes the CallExpr subtree from the cursor.
+// CallExpr flat encoding (`flat.v:1862`) is `(.expr_call, pos, -1, -1, 0, 0,
+// [edge0=lhs, edge1..n=args])`. Both lhs and every arg are decoded via
+// `decode_expr` because `build_call` pattern-matches heavily on operands:
+// `expr.lhs is ast.SelectorExpr` (method/static/module resolution), `expr.lhs
+// is ast.Ident` (struct-cast fallback, builtin lookup), and `arg is
+// ast.ModifierExpr` for `mut` args. The pos must be preserved: `build_call`
+// calls `b.expr_type(ast.Expr(expr))` for the return-type lookup, which goes
+// through `b.env.get_expr_type(pos.id)`. Saves only the outer
+// `Expr(CallExpr{...})` sum-type box and one match-dispatch in `build_expr`;
+// the inner lhs/args walks are unchanged pending future cursor ports.
+fn (mut b Builder) build_call_from_flat(c ast.Cursor) ValueID {
+	lhs_c := c.edge(0)
+	lhs := lhs_c.flat.decode_expr(lhs_c.id)
+	mut args := []ast.Expr{cap: c.edge_count() - 1}
+	for i in 1 .. c.edge_count() {
+		arg_c := c.edge(i)
+		args << arg_c.flat.decode_expr(arg_c.id)
+	}
+	return b.build_call(ast.CallExpr{
+		lhs:  lhs
+		args: args
+		pos:  c.pos()
+	})
+}
+
+// build_init_from_flat (s197) decodes the InitExpr type from edge 0 and each
+// aux_field_init value from edges 1..n. InitExpr flat encoding (`flat.v:1962`)
+// is `(.expr_init, pos, -1, -1, 0, 0, [edge0=typ, edge1..n=field_init])`;
+// each field-init edge stores the field name in `name_id` and its value at
+// edge 0. The type and field values still need full decode because
+// `build_init_expr` calls `ast_type_to_ssa(expr.typ)` and recursively builds
+// each `FieldInit.value`. Saves only the outer `Expr(InitExpr{...})` sum-type
+// box and preserves pos for the fallback `expr_type(ast.Expr(expr))` lookup.
+fn (mut b Builder) build_init_from_flat(c ast.Cursor) ValueID {
+	typ_c := c.edge(0)
+	typ := typ_c.flat.decode_expr(typ_c.id)
+	nfields := if c.edge_count() > 1 { c.edge_count() - 1 } else { 0 }
+	mut fields := []ast.FieldInit{cap: nfields}
+	for i in 1 .. c.edge_count() {
+		field_c := c.edge(i)
+		value_c := field_c.edge(0)
+		fields << ast.FieldInit{
+			name:  field_c.name()
+			value: value_c.flat.decode_expr(value_c.id)
+		}
+	}
+	return b.build_init_expr(ast.InitExpr{
+		typ:    typ
+		fields: fields
+		pos:    c.pos()
+	})
+}
+
+fn (mut b Builder) build_unsafe_from_flat(c ast.Cursor) ValueID {
+	n := c.edge_count()
+	if n > 0 {
+		for i := 0; i < n - 1; i++ {
+			b.build_stmt_from_flat(c.edge(i))
+		}
+		last := c.edge(n - 1)
+		if last.kind() == .stmt_expr {
+			return b.build_expr_from_flat(last.edge(0))
+		}
+		b.build_stmt_from_flat(last)
+	}
+	return b.mod.get_or_add_const(b.mod.type_store.get_int(32), '0')
+}
+
+fn (mut b Builder) build_keyword_from_flat(c ast.Cursor) ValueID {
+	tok := unsafe { token.Token(int(c.aux())) }
+	return b.build_keyword(ast.Keyword{
+		tok: tok
+	})
+}
+
+fn (mut b Builder) build_keyword_operator_from_flat(c ast.Cursor) ValueID {
+	op := unsafe { token.Token(int(c.aux())) }
+	mut exprs := []ast.Expr{cap: c.edge_count()}
+	for i in 0 .. c.edge_count() {
+		ec := c.edge(i)
+		exprs << ec.flat.decode_expr(ec.id)
+	}
+	return b.build_keyword_operator(ast.KeywordOperator{
+		op:    op
+		exprs: exprs
+		pos:   c.pos()
+	})
+}
+
+fn (mut b Builder) build_postfix_from_flat(c ast.Cursor) ValueID {
+	op := unsafe { token.Token(int(c.aux())) }
+	inner := c.edge(0)
+	expr := inner.flat.decode_expr(inner.id)
+	return b.build_postfix(ast.PostfixExpr{
+		op:   op
+		expr: expr
+		pos:  c.pos()
+	})
+}
+
+fn (mut b Builder) build_array_init_from_flat(c ast.Cursor) ValueID {
+	typ_c := c.edge(0)
+	init_c := c.edge(1)
+	cap_c := c.edge(2)
+	len_c := c.edge(3)
+	mut exprs := []ast.Expr{cap: c.edge_count() - 4}
+	for i in 4 .. c.edge_count() {
+		ec := c.edge(i)
+		exprs << ec.flat.decode_expr(ec.id)
+	}
+	return b.build_array_init_expr(ast.ArrayInitExpr{
+		typ:   typ_c.flat.decode_expr(typ_c.id)
+		init:  init_c.flat.decode_expr(init_c.id)
+		cap:   cap_c.flat.decode_expr(cap_c.id)
+		len:   len_c.flat.decode_expr(len_c.id)
+		exprs: exprs
+		pos:   c.pos()
+	})
+}
+
+fn (mut b Builder) build_string_inter_from_flat(c ast.Cursor) ValueID {
+	kind := unsafe { ast.StringLiteralKind(int(c.aux())) }
+	values_l := c.list_at(0)
+	mut values := []string{cap: values_l.len()}
+	for i in 0 .. values_l.len() {
+		values << values_l.at(i).name()
+	}
+	inters_l := c.list_at(1)
+	mut inters := []ast.StringInter{cap: inters_l.len()}
+	for i in 0 .. inters_l.len() {
+		inter_c := inters_l.at(i)
+		packed := inter_c.extra_int()
+		mut width := (packed >> 16) & 0xFFFF
+		if width & 0x8000 != 0 {
+			width |= ~0xFFFF
+		}
+		mut precision := packed & 0xFFFF
+		if precision & 0x8000 != 0 {
+			precision |= ~0xFFFF
+		}
+		expr_c := inter_c.edge(0)
+		format_expr_c := inter_c.edge(1)
+		inters << ast.StringInter{
+			format:       unsafe { ast.StringInterFormat(int(inter_c.aux())) }
+			width:        width
+			precision:    precision
+			expr:         expr_c.flat.decode_expr(expr_c.id)
+			format_expr:  format_expr_c.flat.decode_expr(format_expr_c.id)
+			resolved_fmt: inter_c.name()
+		}
+	}
+	return b.build_string_inter_literal(ast.StringInterLiteral{
+		kind:   kind
+		values: values
+		inters: inters
+		pos:    c.pos()
+	})
+}
+
+fn (mut b Builder) build_or_from_flat(c ast.Cursor) ValueID {
+	if c.edge_count() == 0 {
+		return b.mod.get_or_add_const(b.mod.type_store.get_int(32), '0')
+	}
+	return b.build_expr_from_flat(c.edge(0))
+}
+
+fn (mut b Builder) build_fn_literal_from_flat(c ast.Cursor) ValueID {
+	typ_c := c.edge(0)
+	typ_expr := typ_c.flat.decode_expr(typ_c.id)
+	mut fn_typ := ast.FnType{}
+	if typ_expr is ast.Type {
+		typ_node := typ_expr as ast.Type
+		if typ_node is ast.FnType {
+			fn_typ = typ_node
+		}
+	}
+	ncaptured := c.extra_int()
+	mut captured := []ast.Expr{cap: ncaptured}
+	for i in 0 .. ncaptured {
+		ec := c.edge(1 + i)
+		captured << ec.flat.decode_expr(ec.id)
+	}
+	mut stmts := []ast.Stmt{cap: c.edge_count() - 1 - ncaptured}
+	for i in (1 + ncaptured) .. c.edge_count() {
+		sc := c.edge(i)
+		stmts << sc.flat.decode_stmt(sc.id)
+	}
+	return b.build_fn_literal(ast.FnLiteral{
+		typ:           fn_typ
+		captured_vars: captured
+		stmts:         stmts
+		pos:           c.pos()
+	})
+}
+
+fn (mut b Builder) build_call_or_cast_from_flat(c ast.Cursor) ValueID {
+	lhs_c := c.edge(0)
+	expr_c := c.edge(1)
+	return b.build_call_or_cast(ast.CallOrCastExpr{
+		lhs:  lhs_c.flat.decode_expr(lhs_c.id)
+		expr: expr_c.flat.decode_expr(expr_c.id)
+		pos:  c.pos()
+	})
+}
+
+fn (mut b Builder) build_as_cast_from_flat(c ast.Cursor) ValueID {
+	expr_c := c.edge(0)
+	typ_c := c.edge(1)
+	return b.build_as_cast(ast.AsCastExpr{
+		expr: expr_c.flat.decode_expr(expr_c.id)
+		typ:  typ_c.flat.decode_expr(typ_c.id)
+		pos:  c.pos()
+	})
+}
+
+fn (mut b Builder) build_tuple_from_flat(c ast.Cursor) ValueID {
+	if c.edge_count() > 0 {
+		return b.build_expr_from_flat(c.edge(0))
+	}
+	return b.mod.get_or_add_const(b.mod.type_store.get_int(32), '0')
+}
+
+// build_basic_literal_from_flat (s186) decodes only what BasicLiteral needs
+// — `kind` from `c.aux()` (u16 → token.Token), `value` from `c.name()`
+// (interned string), `pos` from `c.pos()` — and dispatches to
+// `build_basic_literal`. Preserving `pos` keeps the type-checker lookup
+// (`get_checked_expr_type(pos.id)`) hot so the resolved SSA type matches
+// the legacy path exactly. Saves only the `Expr(BasicLiteral{...})`
+// sum-type box; a future refactor could split build_basic_literal into a
+// `build_basic_literal_inner(kind, value, pos)` if needed.
+fn (mut b Builder) build_basic_literal_from_flat(c ast.Cursor) ValueID {
+	kind := unsafe { token.Token(int(c.aux())) }
+	return b.build_basic_literal(ast.BasicLiteral{
+		kind:  kind
+		value: c.name()
+		pos:   c.pos()
+	})
 }
 
 fn (mut b Builder) build_basic_literal(lit ast.BasicLiteral) ValueID {
@@ -8820,6 +10831,165 @@ fn (mut b Builder) build_addr(expr ast.Expr) ValueID {
 				])
 			}
 			// For pointers (fixed-size arrays), GEP directly
+			if base_type_id < b.mod.type_store.types.len {
+				base_typ := b.mod.type_store.types[base_type_id]
+				if base_typ.kind == .ptr_t && base_typ.elem_type != 0 {
+					mut elem_type := base_typ.elem_type
+					if elem_type < b.mod.type_store.types.len {
+						inner_typ := b.mod.type_store.types[elem_type]
+						if inner_typ.kind == .array_t && inner_typ.elem_type != 0 {
+							elem_type = inner_typ.elem_type
+						}
+					}
+					elem_ptr_type := b.mod.type_store.get_ptr(elem_type)
+					return b.mod.add_instr(.get_element_ptr, b.cur_block, elem_ptr_type, [
+						base2,
+						index,
+					])
+				}
+			}
+			return b.mod.add_instr(.get_element_ptr, b.cur_block,
+				b.mod.type_store.get_ptr(result_type), [base2, index])
+		}
+		else {
+			return 0
+		}
+	}
+}
+
+fn (mut b Builder) build_addr_from_flat(c ast.Cursor) ValueID {
+	match c.kind() {
+		.expr_ident {
+			name := c.name()
+			if name in b.vars {
+				ptr := b.vars[name]
+				if name in b.mut_ptr_params {
+					ptr_typ := b.mod.values[ptr].typ
+					elem_typ := b.mod.type_store.types[ptr_typ].elem_type
+					return b.mod.add_instr(.load, b.cur_block, elem_typ, [ptr])
+				}
+				return ptr
+			}
+			if glob_id := b.find_global_ident(name) {
+				return glob_id
+			}
+			return 0
+		}
+		.expr_selector {
+			lhs_c := c.edge(0)
+			rhs_c := c.edge(1)
+			if lhs_c.kind() == .expr_ident {
+				if mod_name := b.selector_module_name_from_flat(c) {
+					qualified := ssa_module_storage_name(mod_name, rhs_c.name())
+					if glob_id := b.find_global(qualified) {
+						return glob_id
+					}
+				}
+			}
+			mut base := b.build_addr_from_flat(lhs_c)
+			if base == 0 {
+				return 0
+			}
+			base_typ := b.mod.values[base].typ
+			if base_typ < b.mod.type_store.types.len
+				&& b.mod.type_store.types[base_typ].kind == .ptr_t {
+				inner := b.mod.type_store.types[base_typ].elem_type
+				if inner < b.mod.type_store.types.len
+					&& b.mod.type_store.types[inner].kind == .ptr_t {
+					pointee := b.mod.type_store.types[inner].elem_type
+					if pointee < b.mod.type_store.types.len
+						&& b.mod.type_store.types[pointee].kind == .struct_t {
+						base = b.mod.add_instr(.load, b.cur_block, inner, [base])
+					}
+				}
+			}
+			fi := b.field_index_from_flat(c, base)
+			idx_val := b.mod.get_or_add_const(b.mod.type_store.get_int(32), fi.str())
+			mut result_type := TypeID(0)
+			base_typ2 := b.mod.values[base].typ
+			if base_typ2 < b.mod.type_store.types.len {
+				bt2 := b.mod.type_store.types[base_typ2]
+				if bt2.kind == .ptr_t && bt2.elem_type < b.mod.type_store.types.len {
+					struct_typ := b.mod.type_store.types[bt2.elem_type]
+					if struct_typ.kind == .struct_t && fi < struct_typ.fields.len {
+						result_type = struct_typ.fields[fi]
+					}
+				}
+			}
+			if result_type == 0 {
+				result_type = b.expr_type_from_flat(c)
+			}
+			return b.mod.add_instr(.get_element_ptr, b.cur_block,
+				b.mod.type_store.get_ptr(result_type), [base, idx_val])
+		}
+		.expr_paren {
+			return b.build_addr_from_flat(c.edge(0))
+		}
+		.expr_prefix {
+			op := unsafe { token.Token(int(c.aux())) }
+			if op == .mul {
+				return b.build_expr_from_flat(c.edge(0))
+			}
+			if op == .amp {
+				return b.build_addr_from_flat(c.edge(0))
+			}
+			return 0
+		}
+		.expr_cast {
+			return b.build_expr_from_flat(c)
+		}
+		.expr_index {
+			lhs_c := c.edge(0)
+			index_c := c.edge(1)
+			base_addr := b.build_addr_from_flat(lhs_c)
+			if base_addr != 0 {
+				addr_typ_id := b.mod.values[base_addr].typ
+				if addr_typ_id < b.mod.type_store.types.len {
+					addr_typ := b.mod.type_store.types[addr_typ_id]
+					if addr_typ.kind == .ptr_t {
+						pointee := addr_typ.elem_type
+						if pointee < b.mod.type_store.types.len {
+							pointee_typ := b.mod.type_store.types[pointee]
+							if pointee_typ.kind == .array_t && pointee_typ.elem_type != 0 {
+								index := b.build_expr_from_flat(index_c)
+								elem_ptr_type := b.mod.type_store.get_ptr(pointee_typ.elem_type)
+								return b.mod.add_instr(.get_element_ptr, b.cur_block,
+									elem_ptr_type, [base_addr, index])
+							}
+						}
+					}
+				}
+			}
+			mut base2 := b.build_expr_from_flat(lhs_c)
+			index := b.build_expr_from_flat(index_c)
+			mut result_type := b.expr_type_from_flat(c)
+			base_type_id := b.mod.values[base2].typ
+			array_type := b.get_array_type()
+			if array_type != 0 && base_type_id != array_type
+				&& base_type_id < b.mod.type_store.types.len {
+				btyp := b.mod.type_store.types[base_type_id]
+				if btyp.kind == .ptr_t && btyp.elem_type == array_type {
+					base2 = b.mod.add_instr(.load, b.cur_block, array_type, [base2])
+				}
+			}
+			base_type_id2 := b.mod.values[base2].typ
+			if array_type != 0 && base_type_id2 == array_type {
+				result_type = b.infer_dynamic_array_index_type_from_flat(c, base2, result_type)
+				i8_t := b.mod.type_store.get_int(8)
+				void_ptr := b.mod.type_store.get_ptr(i8_t)
+				data_ptr := b.mod.add_instr(.extractvalue, b.cur_block, void_ptr, [
+					base2,
+					b.mod.get_or_add_const(b.mod.type_store.get_int(32), '0'),
+				])
+				elem_ptr_type := b.mod.type_store.get_ptr(result_type)
+				typed_ptr := b.mod.add_instr(.bitcast, b.cur_block, elem_ptr_type, [
+					data_ptr,
+				])
+				return b.mod.add_instr(.get_element_ptr, b.cur_block, elem_ptr_type, [
+					typed_ptr,
+					index,
+				])
+			}
 			if base_type_id < b.mod.type_store.types.len {
 				base_typ := b.mod.type_store.types[base_type_id]
 				if base_typ.kind == .ptr_t && base_typ.elem_type != 0 {

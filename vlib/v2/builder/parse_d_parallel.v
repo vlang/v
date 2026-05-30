@@ -3,6 +3,7 @@
 // that can be found in the LICENSE file.
 module builder
 
+import sync
 import v2.ast
 import v2.pref
 import v2.parser
@@ -14,6 +15,11 @@ struct ParsingSharedState {
 mut:
 	file_set       &token.FileSet
 	parsed_modules shared []string
+	// flat_enabled drives the under-lock append into flat_builder. When
+	// false (V2_CHECK_FLAT unset), workers skip the lock entirely.
+	flat_enabled bool
+	flat_mu      &sync.Mutex      = unsafe { nil }
+	flat_builder &ast.FlatBuilder = unsafe { nil }
 }
 
 fn (mut pstate ParsingSharedState) mark_module_as_parsed(name string) {
@@ -29,6 +35,12 @@ fn (mut pstate ParsingSharedState) already_parsed_module(name string) bool {
 		}
 	}
 	return false
+}
+
+fn (mut pstate ParsingSharedState) append_to_flat(file ast.File) {
+	pstate.flat_mu.lock()
+	pstate.flat_builder.append_file(file)
+	pstate.flat_mu.unlock()
 }
 
 fn worker(mut wp util.WorkerPool[string, ast.File], mut pstate ParsingSharedState, prefs &pref.Preferences) {
@@ -49,13 +61,46 @@ fn worker(mut wp util.WorkerPool[string, ast.File], mut pstate ParsingSharedStat
 				wp.queue_jobs(get_v_files_from_dir(mod_path, prefs.user_defines, target_os))
 			}
 		}
-		wp.push_result(ast_file)
+		if pstate.flat_enabled {
+			// In flat mode the FlatBuilder is the canonical store; push a
+			// throwaway empty File over the result channel just so the pool
+			// can detect job completion. parse_files_parallel discards the
+			// accumulated results and derives b.files from b.flat in build().
+			pstate.append_to_flat(ast_file)
+			wp.push_result(ast.File{})
+		} else {
+			wp.push_result(ast_file)
+		}
 	}
 }
 
 fn (mut b Builder) parse_files_parallel(files []string) []ast.File {
+	if b.flat_check_enabled {
+		// Pre-size the streaming builder from total source bytes (user +
+		// core source dirs) so workers don't trip the geometric realloc
+		// path inside the mutex.
+		mut pre_size_paths := []string{}
+		pre_size_paths << files
+		if !b.pref.skip_builtin {
+			if b.can_use_cached_core_headers_for_parse() {
+				pre_size_paths << b.core_cached_parse_paths()
+			} else {
+				target_os := b.pref.target_os_or_host()
+				for module_path in core_cached_module_paths {
+					pre_size_paths << get_v_files_from_dir(b.pref.get_vlib_module_path(module_path),
+						b.pref.user_defines, target_os)
+				}
+			}
+		}
+		b.init_flat_builder_for_paths(pre_size_paths)
+	}
 	mut pstate := &ParsingSharedState{
 		file_set: b.file_set
+	}
+	if b.flat_check_enabled {
+		pstate.flat_enabled = true
+		pstate.flat_mu = sync.new_mutex()
+		pstate.flat_builder = unsafe { &b.flat_builder }
 	}
 
 	// mut worker_pool := util.WorkerPool.new[string, ast.File](mut ch_in, mut ch_out)
@@ -87,5 +132,15 @@ fn (mut b Builder) parse_files_parallel(files []string) []ast.File {
 	// parse user files
 	worker_pool.queue_jobs(files)
 
-	return worker_pool.wait_for_results()
+	results := worker_pool.wait_for_results()
+	if b.flat_check_enabled {
+		// Stream-into-builder is done; downstream code reads from b.flat,
+		// so flip the inited flag to skip the fallback flatten_files() pass.
+		// `results` is a slice of empty File{} sentinels — drop it; build()
+		// derives b.files from b.flat once the FlatAst is finalized.
+		_ = results
+		b.flat_builder_inited = true
+		return []ast.File{}
+	}
+	return results
 }

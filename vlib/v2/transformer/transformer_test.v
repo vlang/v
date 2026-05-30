@@ -66,7 +66,7 @@ fn transform_code_for_test(code string) []ast.File {
 	mut env := types.Environment.new()
 	mut checker := types.Checker.new(prefs, file_set, env)
 	checker.check_files(files)
-	mut transformer := Transformer.new_with_pref(files, env, prefs)
+	mut transformer := Transformer.new_with_pref(env, prefs)
 	return transformer.transform_files(files)
 }
 
@@ -86,7 +86,7 @@ fn transform_code_with_env_for_test(code string) (&types.Environment, []ast.File
 	mut env := types.Environment.new()
 	mut checker := types.Checker.new(prefs, file_set, env)
 	checker.check_files(files)
-	mut transformer := Transformer.new_with_pref(files, env, prefs)
+	mut transformer := Transformer.new_with_pref(env, prefs)
 	transformed := transformer.transform_files(files)
 	return env, transformed
 }
@@ -120,7 +120,7 @@ fn transform_sources_for_test(sources []TestSource) []ast.File {
 	mut env := types.Environment.new()
 	mut checker := types.Checker.new(prefs, file_set, env)
 	checker.check_files(files)
-	mut transformer := Transformer.new_with_pref(files, env, prefs)
+	mut transformer := Transformer.new_with_pref(env, prefs)
 	return transformer.transform_files(files)
 }
 
@@ -375,6 +375,36 @@ fn call_names_for_fn(files []ast.File, fn_name string) []string {
 		}
 	}
 	return names
+}
+
+fn test_runtime_const_init_main_calls_run_main_consts_after_module_inits() {
+	mut t := create_test_transformer()
+	t.runtime_const_modules << 'main'
+	t.runtime_const_init_fn_name['main'] = '__v_init_consts_main'
+	files := [
+		ast.File{
+			mod:   'main'
+			stmts: [
+				ast.Stmt(ast.FnDecl{
+					name: 'main'
+				}),
+			]
+		},
+		ast.File{
+			mod:   'rand'
+			stmts: [
+				ast.Stmt(ast.FnDecl{
+					name: 'init'
+				}),
+			]
+		},
+	]
+	calls := t.runtime_const_init_main_calls_parts(files)
+	mut names := []string{}
+	for call_stmt in calls {
+		collect_call_names_from_stmt(call_stmt, mut names)
+	}
+	assert names == ['rand__init', '__v_init_consts_main']
 }
 
 fn stmt_has_assign_op(stmt ast.Stmt, op token.Token) bool {
@@ -938,6 +968,79 @@ fn builder_str() string {
 	call_names := call_names_for_fn(files, 'builder_str')
 	assert 'Builder__str' in call_names
 	assert 'array__str' !in call_names
+}
+
+fn test_string_interpolation_does_not_generate_default_over_explicit_str_method() {
+	files := transform_code_for_test('
+module globset
+
+pub struct ErrorKind {}
+
+pub fn (kind ErrorKind) str() string {
+	_ = kind
+	return "custom"
+}
+
+pub fn message(kind ErrorKind) string {
+	return "\${kind}"
+}
+')
+	mut explicit_methods := 0
+	mut generated_defaults := 0
+	for file in files {
+		for stmt in file.stmts {
+			if stmt is ast.FnDecl {
+				if stmt.is_method && stmt.name == 'str' {
+					explicit_methods++
+				}
+				if !stmt.is_method && stmt.name == 'globset__ErrorKind__str' {
+					generated_defaults++
+				}
+			}
+		}
+	}
+	call_names := call_names_for_fn(files, 'message')
+	assert explicit_methods == 1
+	assert generated_defaults == 0
+	assert 'globset__ErrorKind__str' in call_names
+}
+
+fn test_array_str_call_uses_element_specific_helper() {
+	files := transform_code_for_test('
+module globset
+
+pub struct Token {}
+
+pub fn (tok Token) str() string {
+	_ = tok
+	return "Token"
+}
+
+pub fn show(tokens []Token) string {
+	return tokens.str()
+}
+')
+	call_names := call_names_for_fn(files, 'show')
+	assert 'Array_globset__Token_str' in call_names
+	assert 'array__str' !in call_names
+}
+
+fn test_string_array_str_call_keeps_builtin_method() {
+	files := transform_code_for_test('
+module builtin
+
+fn (a []string) str() string {
+	_ = a
+	return ""
+}
+
+fn show(values []string) string {
+	return values.str()
+}
+')
+	call_names := call_names_for_fn(files, 'show')
+	assert 'Array_string__str' in call_names
+	assert 'Array_string_str' !in call_names
 }
 
 fn test_qualified_alias_receiver_uses_concrete_base_method_with_same_short_name() {
@@ -3142,6 +3245,39 @@ fn use_clone(value Outer) Outer {
 	assert saw_outer_clone
 }
 
+fn test_transform_autogenerates_chained_clone_helpers_from_snapshot() {
+	files := transform_code_for_test('
+interface IClone {}
+
+struct Leaf implements IClone {
+	name string
+}
+
+struct Branch implements IClone {
+	leaf Leaf
+}
+
+struct Root implements IClone {
+	branch Branch
+}
+
+fn use_clone(value Root) Root {
+	return value.clone()
+}
+')
+	assert files.len == 1
+	file := files[0]
+	mut clone_names := map[string]bool{}
+	for stmt in file.stmts {
+		if stmt is ast.FnDecl {
+			clone_names[stmt.name] = true
+		}
+	}
+	assert clone_names['Root__clone']
+	assert clone_names['Branch__clone']
+	assert clone_names['Leaf__clone']
+}
+
 fn test_array_comparison_eq() {
 	// Set up variable types so get_array_type_str can detect them
 	mut t := create_transformer_with_vars({
@@ -3747,6 +3883,52 @@ fn test_resolve_expr_with_expected_type_resolves_enum_shorthand() {
 	}))
 	assert resolved is ast.Ident
 	assert (resolved as ast.Ident).name == 'ast__StringLiteralKind__v'
+}
+
+fn test_resolve_expr_with_expected_type_casts_none_to_option() {
+	mut t := create_test_transformer()
+	expected := types.Type(types.OptionType{
+		base_type: types.Type(types.Array{
+			elem_type: types.Type(types.u8_)
+		})
+	})
+	resolved := t.resolve_expr_with_expected_type(ast.Expr(ast.Type(ast.NoneType{})), expected)
+	assert resolved is ast.CastExpr
+	cast := resolved as ast.CastExpr
+	assert cast.expr is ast.Type
+	assert cast.typ is ast.Type
+	assert cast.typ as ast.Type is ast.OptionType
+}
+
+fn test_transform_return_match_branch_resolves_enum_shorthand_to_return_type() {
+	enum_typ := types.Type(types.Enum{
+		name: 'CompletionType'
+	})
+	mut scope := types.new_scope(unsafe { nil })
+	scope.insert('CompletionType', enum_typ)
+	mut t := create_test_transformer()
+	t.cur_module = 'main'
+	t.cur_fn_ret_type_name = 'CompletionType'
+	t.preserve_match_branch_value = true
+	t.cached_scopes = {
+		'main': scope
+	}
+	stmts := [
+		ast.Stmt(ast.ExprStmt{
+			expr: ast.Expr(ast.SelectorExpr{
+				lhs: ast.empty_expr
+				rhs: ast.Ident{
+					name: 'encoding'
+				}
+			})
+		}),
+	]
+	transformed := t.transform_match_branch_stmts(stmts)
+	assert transformed.len == 1
+	assert transformed[0] is ast.ExprStmt
+	expr := (transformed[0] as ast.ExprStmt).expr
+	assert expr is ast.Ident
+	assert (expr as ast.Ident).name == 'CompletionType__encoding'
 }
 
 fn test_transform_selector_enum_uses_declared_parent_owner() {
@@ -5420,6 +5602,20 @@ fn test_transform_for_in_stmt_lowers_to_for_stmt() {
 	assert result.init is ast.AssignStmt, 'expected lowered init AssignStmt, got ${result.init.type_name()}'
 }
 
+fn test_static_method_call_treats_type_object_receiver_as_static() {
+	mut scope := types.new_scope(unsafe { nil })
+	scope.insert('LineBufferReader', types.TypeObject{
+		typ: types.Type(types.Struct{
+			name: 'LineBufferReader'
+		})
+	})
+	mut t := create_test_transformer()
+	t.scope = scope
+	assert t.is_static_method_call(ast.Expr(ast.Ident{
+		name: 'LineBufferReader'
+	}))
+}
+
 // --- Inline array `in` optimization tests ---
 
 fn test_transform_in_inline_array_expands_to_eq_chain() {
@@ -6338,6 +6534,70 @@ fn use_filtered_imports(imports []Import, owner string) int {
 		}
 	}
 	assert found_fn
+}
+
+fn test_filter_map_receiver_pending_stmts_precede_receiver_cache() {
+	files := transform_code_for_test('
+fn mapped_positive(xs []int) []string {
+	parts := xs.filter(it > 0).map(it.str())
+	return parts
+}
+')
+	assert files.len == 1
+	mut filter_pos := -1
+	mut recv_pos := -1
+	for stmt in files[0].stmts {
+		if stmt is ast.FnDecl && stmt.name == 'mapped_positive' {
+			for i, inner in stmt.stmts {
+				if inner is ast.AssignStmt && inner.op == .decl_assign && inner.lhs.len > 0 {
+					if lhs := ident_name_from_expr_for_test(inner.lhs[0]) {
+						if lhs.starts_with('_filter_t') && filter_pos == -1 {
+							filter_pos = i
+						}
+						if lhs.starts_with('_filter_recv') && recv_pos == -1 {
+							recv_pos = i
+						}
+					}
+				}
+			}
+		}
+	}
+	assert filter_pos >= 0
+	assert recv_pos >= 0
+	assert filter_pos < recv_pos
+}
+
+fn test_direct_or_assign_fn_pointer_result_declares_final_lhs() {
+	files := transform_code_for_test('
+fn use_sql(sql_from_v fn (int) !string) !string {
+	mut col_typ := sql_from_v(1) or {
+		sql_from_v(2)!
+	}
+	if col_typ == "" {
+		return ""
+	}
+	return col_typ
+}
+')
+	assert files.len == 1
+	mut saw_fn := false
+	mut col_decl_count := 0
+	for stmt in files[0].stmts {
+		if stmt is ast.FnDecl && stmt.name == 'use_sql' {
+			saw_fn = true
+			for inner in stmt.stmts {
+				if inner is ast.AssignStmt && inner.op == .decl_assign && inner.lhs.len > 0 {
+					if lhs := ident_name_from_expr_for_test(inner.lhs[0]) {
+						if lhs == 'col_typ' {
+							col_decl_count++
+						}
+					}
+				}
+			}
+		}
+	}
+	assert saw_fn
+	assert col_decl_count == 1
 }
 
 fn test_replace_it_ident_keeps_nested_any_body_scope() {

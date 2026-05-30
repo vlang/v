@@ -54,8 +54,28 @@ fn (mut g Gen) gen_string_inter_literal(node ast.StringInterLiteral) {
 	g.sb.write_string('${c_v_string_expr_from_ptr_len('_sip', '_sil', false)}; })')
 }
 
+fn string_inter_needs_selector_type_fallback(expr_type string) bool {
+	return expr_type == '' || expr_type == 'int' || expr_type == 'int_literal'
+		|| expr_type == 'void' || expr_type == 'void*' || expr_type == 'voidptr'
+}
+
+fn (mut g Gen) string_inter_expr_type(expr ast.Expr) string {
+	expr_type := g.get_expr_type(expr)
+	if expr is ast.SelectorExpr && string_inter_needs_selector_type_fallback(expr_type) {
+		declared_type := g.selector_declared_field_type(expr)
+		if !string_inter_needs_selector_type_fallback(declared_type) {
+			return declared_type
+		}
+		field_type := g.selector_field_type(expr)
+		if !string_inter_needs_selector_type_fallback(field_type) {
+			return field_type
+		}
+	}
+	return expr_type
+}
+
 fn (mut g Gen) write_sprintf_arg(inter ast.StringInter) {
-	expr_type := g.get_expr_type(inter.expr)
+	expr_type := g.string_inter_expr_type(inter.expr)
 	expr_src := g.expr_to_string(inter.expr)
 	fmt := g.get_sprintf_format(inter)
 	// Keep vararg C types aligned with the emitted format string.
@@ -154,7 +174,7 @@ fn (mut g Gen) get_sprintf_format(inter ast.StringInter) string {
 		fmt += '.${precision}'
 	}
 	// Format specifier
-	expr_type := g.get_expr_type(inter.expr)
+	expr_type := g.string_inter_expr_type(inter.expr)
 	if inter.format != .unformatted {
 		match inter.format {
 			.decimal { fmt += 'd' }

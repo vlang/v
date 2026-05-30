@@ -848,6 +848,20 @@ fn (mut t Transformer) transform_selector_expr(expr ast.SelectorExpr) ast.Expr {
 
 // transform_string_inter_literal transforms string interpolations, applying smart cast where needed
 fn (mut t Transformer) transform_match_expr(expr ast.MatchExpr) ast.Expr {
+	match_expr, branches := t.transform_match_expr_parts(expr)
+	return t.lower_match_expr_to_if(match_expr, branches)
+}
+
+// transform_match_expr_parts returns the two inputs to `lower_match_expr_to_if`
+// — the transformed match expression (either `_tag` access for sumtype matches
+// or the plain transformed `expr.expr` for non-sumtype matches) and the
+// transformed branch list. The flat-write arm calls this directly + then
+// invokes `lower_match_expr_to_if_flat` to skip every nested IfExpr wrapper-
+// struct allocation in the lowered chain. The legacy `transform_match_expr`
+// above wraps it for non-flat callers via `lower_match_expr_to_if`. Same
+// `_parts` extraction template as `transform_return_stmt_parts` (session 59)
+// and `transform_assign_stmt_parts` (session 60).
+fn (mut t Transformer) transform_match_expr_parts(expr ast.MatchExpr) (ast.Expr, []ast.MatchBranch) {
 	// Check if matching on a sum type
 	mut sumtype_name := t.get_sumtype_name_for_expr(expr.expr)
 	smartcast_expr := t.expr_to_string(expr.expr)
@@ -1080,7 +1094,7 @@ fn (mut t Transformer) transform_match_expr(expr ast.MatchExpr) ast.Expr {
 		}
 		tag_access := t.synth_selector(transformed_match_expr, '_tag', types.Type(types.int_))
 
-		return t.lower_match_expr_to_if(tag_access, branches)
+		return tag_access, branches
 	}
 
 	// Non-sum type match - simple transformation
@@ -1111,7 +1125,7 @@ fn (mut t Transformer) transform_match_expr(expr ast.MatchExpr) ast.Expr {
 			pos:   branch.pos
 		}
 	}
-	return t.lower_match_expr_to_if(t.transform_expr(expr.expr), branches)
+	return t.transform_expr(expr.expr), branches
 }
 
 fn (mut t Transformer) transform_match_branch_stmts(stmts []ast.Stmt) []ast.Stmt {
@@ -1133,7 +1147,15 @@ fn (mut t Transformer) transform_match_branch_stmts(stmts []ast.Stmt) []ast.Stmt
 		if last.expr is ast.IfExpr {
 			t.skip_if_value_lowering = true
 		}
-		transformed_expr := t.transform_expr(last.expr)
+		mut branch_expr := last.expr
+		if t.cur_fn_ret_type_name != '' {
+			if ret_type := t.lookup_type(t.cur_fn_ret_type_name) {
+				if ret_type is types.Enum {
+					branch_expr = t.resolve_expr_with_expected_type(branch_expr, ret_type)
+				}
+			}
+		}
+		transformed_expr := t.transform_expr(branch_expr)
 		t.skip_if_value_lowering = saved_skip_if_value_lowering
 		final_pending := t.pending_stmts
 		t.pending_stmts = saved_pending
@@ -1173,6 +1195,39 @@ fn (mut t Transformer) lower_match_expr_to_if(match_expr ast.Expr, branches []as
 			stmts:     branch.stmts
 			else_expr: current
 		})
+	}
+	return current
+}
+
+// lower_match_expr_to_if_flat is the direct-emit mirror of
+// `lower_match_expr_to_if`. Emits the nested IfExpr chain straight into the
+// flat builder via `emit_if_expr_by_ids`, skipping the `ast.IfExpr` wrapper-
+// struct allocation per branch (the legacy helper allocates one IfExpr struct
+// per branch — N-branch matches allocate N structs that the leaf `emit_expr`
+// walk would still have to traverse). Children are already-transformed by
+// `transform_match_expr_parts`, so leaf-encode via `out.emit_expr` /
+// `out.emit_stmt` (mirrors `add_expr(IfExpr)`'s `push_expr`/`push_stmt`
+// walk). The flat MatchExpr arm calls this after `_parts`.
+fn (mut t Transformer) lower_match_expr_to_if_flat(match_expr ast.Expr, branches []ast.MatchBranch, mut out ast.FlatBuilder) ast.FlatNodeId {
+	is_match_true := match_expr is ast.BasicLiteral && match_expr.kind == .key_true
+	is_match_false := match_expr is ast.BasicLiteral && match_expr.kind == .key_false
+
+	mut current := out.emit_expr(ast.empty_expr)
+	for i := branches.len - 1; i >= 0; i-- {
+		branch := branches[i]
+		mut stmt_ids := []ast.FlatNodeId{cap: branch.stmts.len}
+		for s in branch.stmts {
+			stmt_ids << out.emit_stmt(s)
+		}
+		if branch.cond.len == 0 {
+			cond_id := out.emit_expr(ast.empty_expr)
+			current = out.emit_if_expr_by_ids(cond_id, current, stmt_ids, token.Pos{})
+			continue
+		}
+		branch_cond := t.build_match_branch_cond(match_expr, branch.cond, is_match_true,
+			is_match_false)
+		cond_id := out.emit_expr(branch_cond)
+		current = out.emit_if_expr_by_ids(cond_id, current, stmt_ids, token.Pos{})
 	}
 	return current
 }
@@ -1776,6 +1831,12 @@ fn (mut t Transformer) transform_if_expr(expr ast.IfExpr) ast.Expr {
 				is_result = fn_name != '' && t.fn_returns_result(fn_name)
 				is_option = fn_name != '' && t.fn_returns_option(fn_name)
 			}
+			if !is_result && !is_option {
+				if ret_type := t.fn_pointer_call_return_type(rhs) {
+					is_result = ret_type is types.ResultType || ret_type.name().starts_with('!')
+					is_option = ret_type is types.OptionType || ret_type.name().starts_with('?')
+				}
+			}
 			if is_result {
 				// Handle Result if-guard using temp variable pattern
 				// Transform: if var := result_call() { body } else { else_body }
@@ -1805,6 +1866,12 @@ fn (mut t Transformer) transform_if_expr(expr ast.IfExpr) ast.Expr {
 						data_type = wrapper_type.base_type
 					}
 				} else if wrapper_type := t.get_expr_type(rhs) {
+					t.register_temp_var(temp_name, wrapper_type)
+					t.register_synth_type(temp_pos, wrapper_type)
+					if wrapper_type is types.ResultType {
+						data_type = wrapper_type.base_type
+					}
+				} else if wrapper_type := t.fn_pointer_call_return_type(rhs) {
 					t.register_temp_var(temp_name, wrapper_type)
 					t.register_synth_type(temp_pos, wrapper_type)
 					if wrapper_type is types.ResultType {
@@ -1881,6 +1948,12 @@ fn (mut t Transformer) transform_if_expr(expr ast.IfExpr) ast.Expr {
 						data_type = wrapper_type.base_type
 					}
 				} else if wrapper_type := t.get_expr_type(rhs) {
+					t.register_temp_var(temp_name, wrapper_type)
+					t.register_synth_type(temp_pos, wrapper_type)
+					if wrapper_type is types.OptionType {
+						data_type = wrapper_type.base_type
+					}
+				} else if wrapper_type := t.fn_pointer_call_return_type(rhs) {
 					t.register_temp_var(temp_name, wrapper_type)
 					t.register_synth_type(temp_pos, wrapper_type)
 					if wrapper_type is types.OptionType {
@@ -3240,6 +3313,9 @@ fn (mut t Transformer) transform_comptime_expr(expr ast.ComptimeExpr) ast.Expr {
 }
 
 fn (mut t Transformer) transform_embed_file_comptime_chain(expr ast.Expr, comptime_pos token.Pos) ?ast.Expr {
+	if transformed := t.transform_embed_file_chain_lhs(expr, comptime_pos) {
+		return transformed
+	}
 	match expr {
 		ast.SelectorExpr {
 			if transformed_lhs := t.transform_embed_file_chain_lhs(expr.lhs, comptime_pos) {
@@ -3288,6 +3364,24 @@ fn (mut t Transformer) transform_embed_file_chain_lhs(expr ast.Expr, comptime_po
 					pos:  comptime_pos
 				}, expr.args)
 			}
+			if expr.lhs is ast.SelectorExpr {
+				sel := expr.lhs as ast.SelectorExpr
+				if transformed_base := t.transform_embed_file_chain_lhs(sel.lhs, comptime_pos) {
+					mut args := []ast.Expr{cap: expr.args.len}
+					for arg in expr.args {
+						args << t.transform_expr(arg)
+					}
+					return ast.Expr(ast.CallExpr{
+						lhs:  ast.Expr(ast.SelectorExpr{
+							lhs: transformed_base
+							rhs: sel.rhs
+							pos: sel.pos
+						})
+						args: args
+						pos:  expr.pos
+					})
+				}
+			}
 		}
 		ast.CallOrCastExpr {
 			if expr.lhs is ast.Ident && expr.lhs.name == 'embed_file' {
@@ -3295,6 +3389,20 @@ fn (mut t Transformer) transform_embed_file_chain_lhs(expr ast.Expr, comptime_po
 					expr: ast.Expr(expr)
 					pos:  comptime_pos
 				}, [expr.expr])
+			}
+		}
+		ast.SelectorExpr {
+			if transformed_lhs := t.transform_embed_file_chain_lhs(expr.lhs, comptime_pos) {
+				return ast.Expr(ast.SelectorExpr{
+					lhs: transformed_lhs
+					rhs: expr.rhs
+					pos: expr.pos
+				})
+			}
+		}
+		ast.ComptimeExpr {
+			if transformed_inner := t.transform_embed_file_comptime_chain(expr.expr, expr.pos) {
+				return transformed_inner
 			}
 		}
 		else {}

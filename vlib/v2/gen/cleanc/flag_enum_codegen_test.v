@@ -37,7 +37,7 @@ fn generate_c_for_test_files(sources []string) string {
 	env := types.Environment.new()
 	mut checker := types.Checker.new(prefs, file_set, env)
 	checker.check_files(files)
-	mut trans := transformer.Transformer.new_with_pref(files, env, prefs)
+	mut trans := transformer.Transformer.new_with_pref(env, prefs)
 	mut gen := Gen.new_with_env_and_pref(trans.transform_files(files), env, prefs)
 	return gen.gen()
 }
@@ -75,7 +75,7 @@ fn generate_c_for_test_sources_with_emit(sources []CgenTestSource, emit_rel_path
 	env := types.Environment.new()
 	mut checker := types.Checker.new(prefs, file_set, env)
 	checker.check_files(files)
-	mut trans := transformer.Transformer.new_with_pref(files, env, prefs)
+	mut trans := transformer.Transformer.new_with_pref(env, prefs)
 	mut gen := Gen.new_with_env_and_pref(trans.transform_files(files), env, prefs)
 	gen.set_emit_modules(['main'])
 	gen.set_emit_files(emit_files)
@@ -86,6 +86,25 @@ fn test_result_value_type_preserves_generic_specialization_ptr_suffix() {
 	g := Gen{}
 	assert g.result_value_type('_result_sync__ThreadLocalStorage_T_Array_markdown__Nodeptr') == 'sync__ThreadLocalStorage_T_Array_markdown__Nodeptr'
 	assert g.result_value_type('_result_sqlite__Sqlite3_vfsptr') == 'sqlite__Sqlite3_vfs*'
+
+	mut g2 := Gen{
+		generic_struct_instances: {
+			'orm__QueryBuilder':        [
+				GenericStructInstance{
+					params_key: 'array'
+					c_name:     'orm__QueryBuilder_T_array'
+				},
+			]
+			'sync__ThreadLocalStorage': [
+				GenericStructInstance{
+					params_key: 'Array_markdown__Nodeptr'
+					c_name:     'sync__ThreadLocalStorage_T_Array_markdown__Nodeptr'
+				},
+			]
+		}
+	}
+	assert g2.result_value_type('_result_orm__QueryBuilder_T_arrayptr') == 'orm__QueryBuilder_T_array*'
+	assert g2.result_value_type('_result_sync__ThreadLocalStorage_T_Array_markdown__Nodeptr') == 'sync__ThreadLocalStorage_T_Array_markdown__Nodeptr'
 }
 
 fn test_generate_c_rewrites_flag_enum_zero_static_call() {
@@ -1380,6 +1399,24 @@ fn main() {
 	assert !csrc.contains('_capture_0 = &dst;')
 }
 
+fn test_generate_c_fn_literal_capture_preserves_fn_pointer_return_type() {
+	csrc := generate_c_for_test('
+fn visit(cb fn (int) bool) bool {
+	return cb(1)
+}
+
+fn outer(matched fn (int) bool) bool {
+	return visit(fn [matched] (n int) bool {
+		return matched(n)
+	})
+}
+')
+	assert csrc.contains('static bool (*_anon_fn_')
+	assert csrc.contains('bool (*matched)(int) = _anon_fn_')
+	assert csrc.contains('return matched(n);')
+	assert !csrc.contains('((void (*)(int))matched)(n)')
+}
+
 fn test_generate_c_rewrites_continue_in_generic_comptime_field_loop() {
 	code := [
 		'struct Schema {',
@@ -2410,6 +2447,109 @@ fn main() {
 	assert !csrc.contains('app.before_request')
 }
 
+fn test_generate_c_infers_generic_type_name_selector_as_string() {
+	csrc := generate_c_for_test('
+struct Table {
+	name string
+}
+
+struct GitHubRepoInfo {}
+struct GitHubContributor {}
+struct GitHubIssue {}
+
+enum Lang {
+	en
+}
+
+fn table_from_struct[T]() Table {
+	mut table_name := T.name
+	if bracket_pos := table_name.index("[") {
+		table_name = table_name[..bracket_pos]
+	}
+	table_name = table_name.to_lower()
+	return Table{
+		name: table_name
+	}
+}
+
+fn boot() {
+	_ = table_from_struct[GitHubRepoInfo]()
+	_ = table_from_struct[[]GitHubContributor]()
+	_ = table_from_struct[[]GitHubIssue]()
+	_ = table_from_struct[map[string]string]()
+	_ = table_from_struct[Lang]()
+}
+')
+	assert csrc.contains('string table_name = (string){.str = "GitHubRepoInfo"')
+	assert csrc.contains('string table_name = (string){.str = "[]GitHubContributor"')
+	assert csrc.contains('string table_name = (string){.str = "[]GitHubIssue"')
+	assert csrc.contains('string table_name = (string){.str = "map[string]string"')
+	assert csrc.contains('string table_name = (string){.str = "Lang"')
+	assert csrc.contains('string__index(table_name')
+	assert csrc.contains('_option_int _or_t')
+	assert csrc.contains('.state == 0')
+	assert csrc.contains('int bracket_pos =')
+	assert csrc.contains('string__to_lower(table_name)')
+	assert !csrc.contains('if (string__index(table_name')
+	assert !csrc.contains('_option_int bracket_pos = string__index(table_name')
+	assert !csrc.contains('GitHubRepoInfo table_name = (string)')
+	assert !csrc.contains('Array_GitHubContributor table_name = (string)')
+	assert !csrc.contains('Array_GitHubIssue table_name = (string)')
+	assert !csrc.contains('Map_string_string table_name = (string)')
+	assert !csrc.contains('Lang__str(T)')
+}
+
+fn test_generate_c_lowers_comptime_field_metadata_values() {
+	csrc := generate_c_for_test('
+struct TableField {
+	typ int
+}
+
+const time_ = -2
+const enum_ = -3
+const type_idx = {
+	"int": 7
+}
+
+struct Item {
+	name string
+	count int
+}
+
+fn struct_meta[T]() []TableField {
+	mut meta := []TableField{}
+	$for field in T.fields {
+		if !field.is_embed {
+			mut field_type := field.typ
+			if typeof(field).name.contains("time.Time") {
+				field_type = time_
+			} else if field.is_struct {
+				field_type = type_idx["int"]
+			} else if field.is_enum {
+				field_type = enum_
+			}
+			meta << TableField{
+				typ: field_type
+			}
+		}
+	}
+	return meta
+}
+
+fn boot() {
+	_ = struct_meta[Item]()
+}
+')
+	assert csrc.contains('int field_type = 20')
+	assert csrc.contains('int field_type = 7')
+	assert csrc.contains('if (!false)')
+	assert !csrc.contains('string__contains((string){.str = "field"')
+	assert !csrc.contains('field.is_embed')
+	assert !csrc.contains('field.is_struct')
+	assert !csrc.contains('field.is_enum')
+	assert !csrc.contains('string field_type =')
+}
+
 fn test_generate_c_mangles_unimported_module_const_in_embedded_struct_default() {
 	csrc := generate_c_for_test_files([
 		'
@@ -2844,6 +2984,38 @@ fn test_generate_c_uses_specialized_receiver_for_generic_method_body_call() {
 		}),
 	])
 	assert gen.sb.str() == 'Box_T_f64__get_value(b)'
+}
+
+fn test_generate_c_uses_specialized_receiver_for_lowered_address_method_call() {
+	mut gen := Gen{
+		sb:                  strings.new_builder(64)
+		fn_return_types:     {
+			'Box__get_value':       'f64'
+			'Box_T_f64__get_value': 'f64'
+		}
+		fn_param_is_ptr:     {
+			'Box__get_value':       [true]
+			'Box_T_f64__get_value': [true]
+		}
+		fn_param_types:      {
+			'Box__get_value':       ['Box*']
+			'Box_T_f64__get_value': ['Box_T_f64*']
+		}
+		runtime_local_types: {
+			'b': 'Box_T_f64'
+		}
+	}
+	gen.call_expr(ast.Ident{
+		name: 'Box__get_value'
+	}, [
+		ast.Expr(ast.PrefixExpr{
+			op:   token.Token.amp
+			expr: ast.Ident{
+				name: 'b'
+			}
+		}),
+	])
+	assert gen.sb.str() == 'Box_T_f64__get_value(&b)'
 }
 
 fn test_generate_c_emits_nested_generic_result_struct_specialization() {
@@ -4290,6 +4462,55 @@ fn boot(mut ctx Context) {
 	assert !csrc.contains('http__Header__get(user_context->req.header')
 }
 
+fn test_generate_c_keeps_bare_main_context_specialization_for_generic_init() {
+	csrc := generate_c_for_test_files([
+		'
+module veb
+
+pub struct Context {
+pub:
+	content_type string
+}
+
+pub fn new_user_context[X](ctx &Context) X {
+	return X{
+		Context: ctx
+	}
+}
+
+pub fn new_user_context_decl[X](ctx &Context) X {
+	mut user_context := X{
+		Context: ctx
+	}
+	return user_context
+}
+',
+		'
+module main
+
+import veb
+
+pub struct Context {
+	veb.Context
+pub:
+	path string
+}
+
+fn boot() {
+	base := veb.Context{}
+	_ = veb.new_user_context[Context](&base)
+	_ = veb.new_user_context_decl[Context](&base)
+}
+',
+	])
+	assert csrc.contains('\nContext veb__new_user_context_T_Context(veb__Context* ctx) {')
+	assert csrc.contains('return ((Context){.Context = (*(ctx))')
+	assert !csrc.contains('return ((veb__Context){.Context = (*(ctx))')
+	assert csrc.contains('\nContext veb__new_user_context_decl_T_Context(veb__Context* ctx) {')
+	assert csrc.contains('Context user_context = ((Context){.Context = (*(ctx))')
+	assert !csrc.contains('Context user_context = ((veb__Context){.Context = (*(ctx))')
+}
+
 fn test_generate_c_dereferences_pointer_for_embedded_struct_init_field() {
 	csrc := generate_c_for_test('
 struct Base {
@@ -4567,6 +4788,61 @@ fn main() {
 		return
 	}
 	decl_pos := csrc.index('_result_Array_voidptr values_T_voidptr(void* x);') or {
+		assert false
+		return
+	}
+	assert alias_pos < decl_pos
+}
+
+fn test_generate_c_emits_late_generic_struct_result_alias_before_forward_decl() {
+	csrc := generate_c_for_test('
+module json2
+
+struct Label {
+	name string
+}
+
+struct ValueInfo {}
+
+struct StructKeyDecodeResult[T] {
+	matched bool
+	value T
+}
+
+struct Decoder {}
+
+fn decode_struct_key[T](mut decoder Decoder, val T, key_info ValueInfo, prefix string, mut seen_required []string) !StructKeyDecodeResult[T] {
+	_ = decoder
+	_ = key_info
+	_ = prefix
+	_ = seen_required
+	return StructKeyDecodeResult[T]{
+		matched: true
+		value: val
+	}
+}
+
+fn (mut decoder Decoder) decode_array[T](mut val []T) ! {
+	mut seen_required := []string{}
+	decode_result := decode_struct_key(mut decoder, val, ValueInfo{}, "", mut seen_required)!
+	if decode_result.matched {
+		val = decode_result.value
+	}
+}
+
+fn seed_f64(mut decoder Decoder, mut seen_required []string) ! {
+	_ = decode_struct_key(mut decoder, 1.25, ValueInfo{}, "", mut seen_required)!
+}
+
+fn use_decode(mut decoder Decoder, mut labels []Label) ! {
+	decoder.decode_array(mut labels)!
+}
+')
+	alias_pos := csrc.index('typedef struct _result_json2__StructKeyDecodeResult_T_Array') or {
+		assert false
+		return
+	}
+	decl_pos := csrc.index(' json2__decode_struct_key_T_Array') or {
 		assert false
 		return
 	}
