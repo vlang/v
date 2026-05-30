@@ -285,6 +285,7 @@ fn assert_no_hosted_runtime_fallbacks(csrc string) {
 		'__attribute__((weak)) u8* malloc_noscan',
 		'__attribute__((weak)) void* memdup',
 		'__attribute__((weak)) f64 f64_abs',
+		'__attribute__((weak)) string f64__str',
 		'__attribute__((weak)) string f64__strg',
 		'__attribute__((weak)) string f32__str',
 		'__attribute__((weak)) string f32__strg',
@@ -1051,7 +1052,61 @@ fn test_runtime_fallbacks_emit_structural_helpers_only_when_referenced() {
 	assert bits_src.contains('__attribute__((weak)) u64 __at_least_one')
 	assert bits_src.contains('__attribute__((weak)) int bits__leading_zeros_64')
 	assert bits_src.contains('__attribute__((weak)) u32 bits__rotate_left_32')
+	assert bits_src.contains('__attribute__((weak)) string f64__str')
 	assert bits_src.contains('__attribute__((weak)) string f32__str')
+}
+
+fn test_runtime_fallbacks_emit_float_strg_dependency_closure() {
+	f32_strg_src := runtime_fallbacks_for_called_functions(['f32__strg'])
+	f64_str_idx := f32_strg_src.index('__attribute__((weak)) string f64__str(f64 x)') or {
+		panic('missing f64__str fallback')
+	}
+	f64_strg_idx := f32_strg_src.index('__attribute__((weak)) string f64__strg') or {
+		panic('missing f64__strg fallback')
+	}
+	f32_strg_idx := f32_strg_src.index('__attribute__((weak)) string f32__strg') or {
+		panic('missing f32__strg fallback')
+	}
+	assert f32_strg_src.contains('__attribute__((weak)) u8* malloc_noscan')
+	assert f64_str_idx < f64_strg_idx
+	assert f64_strg_idx < f32_strg_idx
+	assert f32_strg_src.contains('\treturn f64__str(x);')
+	assert f32_strg_src.contains('\treturn f64__strg((f64)x);')
+
+	f64_strg_src := runtime_fallbacks_for_called_functions(['f64__strg'])
+	f64_str_direct_idx := f64_strg_src.index('__attribute__((weak)) string f64__str(f64 x)') or {
+		panic('missing f64__str fallback for f64__strg')
+	}
+	f64_strg_direct_idx := f64_strg_src.index('__attribute__((weak)) string f64__strg') or {
+		panic('missing f64__strg fallback for direct reference')
+	}
+	assert f64_strg_src.contains('__attribute__((weak)) u8* malloc_noscan')
+	assert f64_str_direct_idx < f64_strg_direct_idx
+
+	existing_c_src :=
+		runtime_fallbacks_for_existing_c_source('void keep_generated_code(void) { f32__strg((f32)0); }')
+	existing_f64_str_idx := existing_c_src.index('__attribute__((weak)) string f64__str(f64 x)') or {
+		panic('missing f64__str fallback for existing C reference')
+	}
+	existing_f64_strg_idx := existing_c_src.index('__attribute__((weak)) string f64__strg') or {
+		panic('missing f64__strg fallback for existing C reference')
+	}
+	existing_f32_strg_idx := existing_c_src.index('__attribute__((weak)) string f32__strg') or {
+		panic('missing f32__strg fallback for existing C reference')
+	}
+	assert existing_f64_str_idx < existing_f64_strg_idx
+	assert existing_f64_strg_idx < existing_f32_strg_idx
+}
+
+fn test_float_str_fallbacks_rely_on_kept_builtin_float_runtime() {
+	for path in [
+		'vlib/builtin/float.c.v',
+		'vlib/strconv/ftoa.c.v',
+		'vlib/strconv/f32_str.c.v',
+		'vlib/strconv/f64_str.c.v',
+	] {
+		assert is_builtin_runtime_keep_file(path), path
+	}
 }
 
 fn test_runtime_fallbacks_emit_structural_helpers_for_existing_c_references() {

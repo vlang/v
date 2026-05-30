@@ -253,10 +253,16 @@ fn (b &Builder) validate_freestanding_cleanc_contract() bool {
 			seen[msg] = true
 		}
 	}
+	mut diagnostic_files := []ast.File{}
 	for file in b.files {
 		if !b.should_scan_freestanding_diagnostic_file(file.name) {
 			continue
 		}
+		diagnostic_files << file
+	}
+	base_scan_ctx :=
+		freestanding_scan_context(b.pref, target_os).with_file_symbols(diagnostic_files)
+	for file in diagnostic_files {
 		for imported in active_file_imports(file, b.pref.user_defines, target_os) {
 			if msg := freestanding_restricted_import_diagnostic(imported.name) {
 				if !seen[msg] {
@@ -265,8 +271,7 @@ fn (b &Builder) validate_freestanding_cleanc_contract() bool {
 				}
 			}
 		}
-		call_name := freestanding_restricted_call_in_stmts(file.stmts, freestanding_scan_context(b.pref,
-			target_os))
+		call_name := freestanding_restricted_call_in_stmts(file.stmts, base_scan_ctx)
 		if call_name != '' {
 			msg := freestanding_restricted_call_diagnostic(call_name)
 			if !seen[msg] {
@@ -328,6 +333,9 @@ fn freestanding_restricted_call_diagnostic(call_name string) string {
 		'alloc' {
 			'error: freestanding target cannot use heap allocation without alloc platform hook'
 		}
+		'heap_runtime' {
+			'error: freestanding target cannot use heap runtime helpers with --skip-builtin'
+		}
 		'panic' {
 			'error: freestanding target cannot use builtin panic without panic platform hook'
 		}
@@ -345,6 +353,9 @@ fn freestanding_restricted_call_diagnostic(call_name string) string {
 		}
 		'live' {
 			'error: freestanding target cannot use @[live] because live reload needs hosted OS services'
+		}
+		'assert' {
+			'error: freestanding target cannot use assert because failed assertions need hosted output/exit support'
 		}
 		'string_interpolation' {
 			'error: freestanding target cannot use string interpolation because cleanc currently needs hosted formatting support'
@@ -368,7 +379,12 @@ struct FreestandingScanContext {
 	user_defines       []string
 	target_os          string
 	freestanding_hooks []string
+	skip_builtin       bool
 	skip_type_check    bool
+	fn_returns_result  bool
+	var_kinds          map[string]string
+	fn_return_kinds    map[string]string
+	struct_field_kinds map[string]map[string]string
 }
 
 fn freestanding_scan_context(p &pref.Preferences, target_os string) FreestandingScanContext {
@@ -376,7 +392,52 @@ fn freestanding_scan_context(p &pref.Preferences, target_os string) Freestanding
 		user_defines:       p.user_defines
 		target_os:          target_os
 		freestanding_hooks: p.freestanding_hook_list()
+		skip_builtin:       p.skip_builtin
 		skip_type_check:    p.skip_type_check
+		var_kinds:          map[string]string{}
+		fn_return_kinds:    map[string]string{}
+		struct_field_kinds: map[string]map[string]string{}
+	}
+}
+
+fn (ctx FreestandingScanContext) with_fn_type(fn_type ast.FnType) FreestandingScanContext {
+	mut var_kinds := ctx.var_kinds.clone()
+	for param in fn_type.params {
+		kind := freestanding_type_expr_kind_in_context(param.typ, ctx)
+		if kind != '' {
+			var_kinds[param.name] = kind
+		}
+	}
+	return FreestandingScanContext{
+		user_defines:       ctx.user_defines
+		target_os:          ctx.target_os
+		freestanding_hooks: ctx.freestanding_hooks
+		skip_builtin:       ctx.skip_builtin
+		skip_type_check:    ctx.skip_type_check
+		fn_returns_result:  fn_type.return_type is ast.Type && fn_type.return_type is ast.ResultType
+		var_kinds:          var_kinds
+		fn_return_kinds:    ctx.fn_return_kinds.clone()
+		struct_field_kinds: ctx.struct_field_kinds.clone()
+	}
+}
+
+fn (ctx FreestandingScanContext) with_fn_decl_type(fn_type ast.FnType, receiver ast.Parameter) FreestandingScanContext {
+	fn_ctx := ctx.with_fn_type(fn_type)
+	mut var_kinds := fn_ctx.var_kinds.clone()
+	receiver_kind := freestanding_type_expr_kind_in_context(receiver.typ, fn_ctx)
+	if receiver.name != '' && receiver_kind != '' {
+		var_kinds[receiver.name] = receiver_kind
+	}
+	return FreestandingScanContext{
+		user_defines:       fn_ctx.user_defines
+		target_os:          fn_ctx.target_os
+		freestanding_hooks: fn_ctx.freestanding_hooks
+		skip_builtin:       fn_ctx.skip_builtin
+		skip_type_check:    fn_ctx.skip_type_check
+		fn_returns_result:  fn_ctx.fn_returns_result
+		var_kinds:          var_kinds
+		fn_return_kinds:    fn_ctx.fn_return_kinds.clone()
+		struct_field_kinds: fn_ctx.struct_field_kinds.clone()
 	}
 }
 
@@ -386,6 +447,13 @@ fn (ctx FreestandingScanContext) has_hook(hook string) bool {
 
 fn freestanding_needs_alloc_hook(ctx FreestandingScanContext) string {
 	return if ctx.has_hook('alloc') { '' } else { 'alloc' }
+}
+
+fn freestanding_needs_heap_runtime(ctx FreestandingScanContext) string {
+	if ctx.skip_builtin {
+		return 'heap_runtime'
+	}
+	return freestanding_needs_alloc_hook(ctx)
 }
 
 fn freestanding_output_builtin_call_name(name string, ctx FreestandingScanContext) string {
@@ -441,29 +509,49 @@ fn freestanding_expr_is_provably_numeric_no_alloc(expr ast.Expr) bool {
 	}
 }
 
-fn freestanding_infix_expr_needs_alloc(expr ast.InfixExpr, ctx FreestandingScanContext) bool {
+fn freestanding_infix_expr_restricted_call(expr ast.InfixExpr, ctx FreestandingScanContext) string {
+	if expr.op == .left_shift {
+		return if freestanding_expr_kind(expr.lhs, ctx) == 'array' {
+			freestanding_needs_heap_runtime(ctx)
+		} else {
+			''
+		}
+	}
 	if expr.op != .plus {
-		return false
+		return ''
 	}
-	if ctx.skip_type_check && !ctx.has_hook('alloc') {
-		return !(freestanding_expr_is_provably_numeric_no_alloc(expr.lhs)
-			&& freestanding_expr_is_provably_numeric_no_alloc(expr.rhs))
+	if ctx.skip_type_check && !(freestanding_expr_is_provably_numeric_no_alloc(expr.lhs)
+		&& freestanding_expr_is_provably_numeric_no_alloc(expr.rhs)) {
+		return freestanding_needs_heap_runtime(ctx)
 	}
-	return freestanding_expr_is_manifest_string(expr.lhs)
-		|| freestanding_expr_is_manifest_string(expr.rhs)
+	if freestanding_expr_is_manifest_string(expr.lhs)
+		|| freestanding_expr_is_manifest_string(expr.rhs) {
+		return freestanding_needs_heap_runtime(ctx)
+	}
+	return ''
 }
 
-fn freestanding_plus_assign_needs_alloc(exprs []ast.Expr, ctx FreestandingScanContext) bool {
+fn freestanding_plus_assign_restricted_call(exprs []ast.Expr, ctx FreestandingScanContext) string {
 	for expr in exprs {
-		if ctx.skip_type_check && !ctx.has_hook('alloc')
-			&& !freestanding_expr_is_provably_numeric_no_alloc(expr) {
-			return true
+		if ctx.skip_type_check && !freestanding_expr_is_provably_numeric_no_alloc(expr) {
+			return freestanding_needs_heap_runtime(ctx)
 		}
 		if freestanding_expr_is_manifest_string(expr) {
-			return true
+			return freestanding_needs_heap_runtime(ctx)
 		}
 	}
-	return false
+	return ''
+}
+
+fn freestanding_assign_restricted_call(stmt ast.AssignStmt, ctx FreestandingScanContext) string {
+	if stmt.op == .assign {
+		for lhs in stmt.lhs {
+			if lhs is ast.IndexExpr && freestanding_expr_kind(lhs.lhs, ctx) == 'map' {
+				return freestanding_needs_heap_runtime(ctx)
+			}
+		}
+	}
+	return ''
 }
 
 fn freestanding_print_arg_is_obvious_non_string(expr ast.Expr) bool {
@@ -497,12 +585,385 @@ fn freestanding_array_init_needs_alloc(expr ast.ArrayInitExpr) bool {
 	return !(expr.typ is ast.Type && expr.typ is ast.ArrayFixedType)
 }
 
-fn freestanding_restricted_call_in_stmts(stmts []ast.Stmt, ctx FreestandingScanContext) string {
+fn freestanding_type_expr_kind(expr ast.Expr) string {
+	if expr is ast.Ident {
+		return if expr.name == 'string' { 'string' } else { '' }
+	}
+	if expr is ast.Type {
+		typ := expr as ast.Type
+		return match typ {
+			ast.ArrayType {
+				'array'
+			}
+			ast.ArrayFixedType {
+				'fixed_array'
+			}
+			ast.MapType {
+				'map'
+			}
+			ast.OptionType {
+				freestanding_type_expr_kind(typ.base_type)
+			}
+			ast.PointerType {
+				'pointer'
+			}
+			ast.ResultType {
+				freestanding_type_expr_kind(typ.base_type)
+			}
+			else {
+				''
+			}
+		}
+	}
+	return ''
+}
+
+fn freestanding_type_expr_kind_in_context(expr ast.Expr, ctx FreestandingScanContext) string {
+	if expr is ast.Ident {
+		if expr.name == 'string' {
+			return 'string'
+		}
+		if expr.name in ctx.struct_field_kinds {
+			return 'struct:${expr.name}'
+		}
+		return ''
+	}
+	if expr is ast.SelectorExpr {
+		name := freestanding_selector_type_name(expr)
+		if name in ctx.struct_field_kinds {
+			return 'struct:${name}'
+		}
+		short_name := name.all_after_last('.')
+		if short_name in ctx.struct_field_kinds {
+			return 'struct:${short_name}'
+		}
+		return ''
+	}
+	if expr is ast.Type {
+		typ := expr as ast.Type
+		return match typ {
+			ast.OptionType {
+				freestanding_type_expr_kind_in_context(typ.base_type, ctx)
+			}
+			ast.PointerType {
+				base_kind := freestanding_type_expr_kind_in_context(typ.base_type, ctx)
+				if base_kind.starts_with('struct:') {
+					'ptr_${base_kind}'
+				} else {
+					'pointer'
+				}
+			}
+			ast.ResultType {
+				freestanding_type_expr_kind_in_context(typ.base_type, ctx)
+			}
+			else {
+				freestanding_type_expr_kind(expr)
+			}
+		}
+	}
+	return freestanding_type_expr_kind(expr)
+}
+
+fn freestanding_type_expr_kind_with_struct_names(expr ast.Expr, struct_names map[string]bool) string {
+	if expr is ast.Ident {
+		if expr.name == 'string' {
+			return 'string'
+		}
+		if expr.name in struct_names {
+			return 'struct:${expr.name}'
+		}
+		return ''
+	}
+	if expr is ast.SelectorExpr {
+		name := freestanding_selector_type_name(expr)
+		if name in struct_names {
+			return 'struct:${name}'
+		}
+		short_name := name.all_after_last('.')
+		if short_name in struct_names {
+			return 'struct:${short_name}'
+		}
+		return ''
+	}
+	if expr is ast.Type {
+		typ := expr as ast.Type
+		return match typ {
+			ast.OptionType {
+				freestanding_type_expr_kind_with_struct_names(typ.base_type, struct_names)
+			}
+			ast.PointerType {
+				base_kind := freestanding_type_expr_kind_with_struct_names(typ.base_type,
+					struct_names)
+				if base_kind.starts_with('struct:') {
+					'ptr_${base_kind}'
+				} else {
+					'pointer'
+				}
+			}
+			ast.ResultType {
+				freestanding_type_expr_kind_with_struct_names(typ.base_type, struct_names)
+			}
+			else {
+				freestanding_type_expr_kind(expr)
+			}
+		}
+	}
+	return freestanding_type_expr_kind(expr)
+}
+
+fn freestanding_selector_type_name(expr ast.SelectorExpr) string {
+	lhs_name := match expr.lhs {
+		ast.Ident {
+			expr.lhs.name
+		}
+		ast.SelectorExpr {
+			freestanding_selector_type_name(expr.lhs)
+		}
+		else {
+			''
+		}
+	}
+
+	return if lhs_name == '' { expr.rhs.name } else { '${lhs_name}.${expr.rhs.name}' }
+}
+
+fn freestanding_call_name(lhs ast.Expr) string {
+	return match lhs {
+		ast.Ident {
+			lhs.name
+		}
+		ast.SelectorExpr {
+			if lhs.lhs is ast.Ident && (lhs.lhs as ast.Ident).name == 'C' {
+				'C.${lhs.rhs.name}'
+			} else {
+				lhs.rhs.name
+			}
+		}
+		else {
+			''
+		}
+	}
+}
+
+fn freestanding_expr_kind(expr ast.Expr, ctx FreestandingScanContext) string {
+	return match expr {
+		ast.ArrayInitExpr {
+			if freestanding_array_init_needs_alloc(expr) {
+				'array'
+			} else {
+				'fixed_array'
+			}
+		}
+		ast.AsCastExpr {
+			freestanding_expr_kind(expr.expr, ctx)
+		}
+		ast.CallExpr {
+			ctx.fn_return_kinds[freestanding_call_name(expr.lhs)] or { '' }
+		}
+		ast.CallOrCastExpr {
+			ctx.fn_return_kinds[freestanding_call_name(expr.lhs)] or { '' }
+		}
+		ast.BasicLiteral {
+			if expr.kind == .string {
+				'string'
+			} else {
+				''
+			}
+		}
+		ast.CastExpr {
+			freestanding_type_expr_kind_in_context(expr.typ, ctx)
+		}
+		ast.Ident {
+			ctx.var_kinds[expr.name] or { '' }
+		}
+		ast.InitExpr {
+			freestanding_type_expr_kind_in_context(expr.typ, ctx)
+		}
+		ast.MapInitExpr {
+			'map'
+		}
+		ast.ModifierExpr {
+			freestanding_expr_kind(expr.expr, ctx)
+		}
+		ast.ParenExpr {
+			freestanding_expr_kind(expr.expr, ctx)
+		}
+		ast.PrefixExpr {
+			if expr.op == .amp {
+				kind := freestanding_expr_kind(expr.expr, ctx)
+				if kind.starts_with('struct:') {
+					'ptr_${kind}'
+				} else {
+					'pointer'
+				}
+			} else {
+				freestanding_expr_kind(expr.expr, ctx)
+			}
+		}
+		ast.StringLiteral {
+			'string'
+		}
+		ast.SelectorExpr {
+			receiver_kind := freestanding_expr_kind(expr.lhs, ctx)
+			struct_name := if receiver_kind.starts_with('struct:') {
+				receiver_kind.all_after('struct:')
+			} else if receiver_kind.starts_with('ptr_struct:') {
+				receiver_kind.all_after('ptr_struct:')
+			} else {
+				''
+			}
+			if struct_name != '' {
+				fields := (ctx.struct_field_kinds[struct_name] or { return '' }).clone()
+				fields[expr.rhs.name] or { '' }
+			} else {
+				''
+			}
+		}
+		else {
+			''
+		}
+	}
+}
+
+fn freestanding_lhs_ident_name(expr ast.Expr) ?string {
+	return match expr {
+		ast.Ident {
+			expr.name
+		}
+		ast.ModifierExpr {
+			freestanding_lhs_ident_name(expr.expr)
+		}
+		ast.ParenExpr {
+			freestanding_lhs_ident_name(expr.expr)
+		}
+		else {
+			none
+		}
+	}
+}
+
+fn (ctx FreestandingScanContext) with_file_symbols(files []ast.File) FreestandingScanContext {
+	mut struct_names := map[string]bool{}
+	for file in files {
+		freestanding_collect_struct_names(file.stmts, mut struct_names)
+	}
+	mut struct_field_kinds := ctx.struct_field_kinds.clone()
+	for file in files {
+		freestanding_collect_struct_field_kinds(file.stmts, struct_names, mut struct_field_kinds)
+	}
+	symbol_ctx := FreestandingScanContext{
+		user_defines:       ctx.user_defines
+		target_os:          ctx.target_os
+		freestanding_hooks: ctx.freestanding_hooks
+		skip_builtin:       ctx.skip_builtin
+		skip_type_check:    ctx.skip_type_check
+		fn_returns_result:  ctx.fn_returns_result
+		var_kinds:          ctx.var_kinds.clone()
+		fn_return_kinds:    ctx.fn_return_kinds.clone()
+		struct_field_kinds: struct_field_kinds
+	}
+	mut fn_return_kinds := symbol_ctx.fn_return_kinds.clone()
+	for file in files {
+		freestanding_collect_fn_return_kinds(file.stmts, symbol_ctx, mut fn_return_kinds)
+	}
+	return FreestandingScanContext{
+		user_defines:       symbol_ctx.user_defines
+		target_os:          symbol_ctx.target_os
+		freestanding_hooks: symbol_ctx.freestanding_hooks
+		skip_builtin:       symbol_ctx.skip_builtin
+		skip_type_check:    symbol_ctx.skip_type_check
+		fn_returns_result:  symbol_ctx.fn_returns_result
+		var_kinds:          symbol_ctx.var_kinds.clone()
+		fn_return_kinds:    fn_return_kinds
+		struct_field_kinds: symbol_ctx.struct_field_kinds.clone()
+	}
+}
+
+fn freestanding_collect_struct_names(stmts []ast.Stmt, mut struct_names map[string]bool) {
 	for stmt in stmts {
-		call_name := freestanding_restricted_call_in_stmt(stmt, ctx)
+		if stmt is ast.StructDecl {
+			struct_names[stmt.name] = true
+			if stmt.name.contains('.') {
+				struct_names[stmt.name.all_after_last('.')] = true
+			}
+		}
+	}
+}
+
+fn freestanding_collect_struct_field_kinds(stmts []ast.Stmt, struct_names map[string]bool, mut struct_field_kinds map[string]map[string]string) {
+	for stmt in stmts {
+		if stmt is ast.StructDecl {
+			mut field_kinds := map[string]string{}
+			for field in stmt.fields {
+				kind := freestanding_type_expr_kind_with_struct_names(field.typ, struct_names)
+				if kind != '' {
+					field_kinds[field.name] = kind
+				}
+			}
+			if field_kinds.len > 0 {
+				struct_field_kinds[stmt.name] = field_kinds.clone()
+				if stmt.name.contains('.') {
+					struct_field_kinds[stmt.name.all_after_last('.')] = field_kinds.clone()
+				}
+			}
+		}
+	}
+}
+
+fn freestanding_collect_fn_return_kinds(stmts []ast.Stmt, ctx FreestandingScanContext, mut fn_return_kinds map[string]string) {
+	for stmt in stmts {
+		if stmt is ast.FnDecl {
+			kind := freestanding_type_expr_kind_in_context(stmt.typ.return_type, ctx)
+			if kind != '' {
+				fn_return_kinds[stmt.name] = kind
+				if stmt.language == .c && !stmt.name.starts_with('C.') {
+					fn_return_kinds['C.${stmt.name}'] = kind
+				}
+			}
+		}
+	}
+}
+
+fn freestanding_scan_context_after_stmt(stmt ast.Stmt, ctx FreestandingScanContext) FreestandingScanContext {
+	if stmt !is ast.AssignStmt {
+		return ctx
+	}
+	assign_stmt := stmt as ast.AssignStmt
+	if assign_stmt.op != .decl_assign && assign_stmt.op != .assign {
+		return ctx
+	}
+	mut var_kinds := ctx.var_kinds.clone()
+	for i, lhs in assign_stmt.lhs {
+		if i >= assign_stmt.rhs.len {
+			continue
+		}
+		name := freestanding_lhs_ident_name(lhs) or { continue }
+		kind := freestanding_expr_kind(assign_stmt.rhs[i], ctx)
+		if kind != '' {
+			var_kinds[name] = kind
+		}
+	}
+	return FreestandingScanContext{
+		user_defines:       ctx.user_defines
+		target_os:          ctx.target_os
+		freestanding_hooks: ctx.freestanding_hooks
+		skip_builtin:       ctx.skip_builtin
+		skip_type_check:    ctx.skip_type_check
+		fn_returns_result:  ctx.fn_returns_result
+		var_kinds:          var_kinds
+		fn_return_kinds:    ctx.fn_return_kinds.clone()
+		struct_field_kinds: ctx.struct_field_kinds.clone()
+	}
+}
+
+fn freestanding_restricted_call_in_stmts(stmts []ast.Stmt, ctx FreestandingScanContext) string {
+	mut stmt_ctx := ctx
+	for stmt in stmts {
+		call_name := freestanding_restricted_call_in_stmt(stmt, stmt_ctx)
 		if call_name != '' {
 			return call_name
 		}
+		stmt_ctx = freestanding_scan_context_after_stmt(stmt, stmt_ctx)
 	}
 	return ''
 }
@@ -510,7 +971,12 @@ fn freestanding_restricted_call_in_stmts(stmts []ast.Stmt, ctx FreestandingScanC
 fn freestanding_restricted_call_in_stmt(stmt ast.Stmt, ctx FreestandingScanContext) string {
 	return match stmt {
 		ast.AssertStmt {
-			freestanding_restricted_call_in_exprs([stmt.expr, stmt.extra], ctx)
+			expr_call := freestanding_restricted_call_in_exprs([stmt.expr, stmt.extra], ctx)
+			if expr_call != '' {
+				expr_call
+			} else {
+				'assert'
+			}
 		}
 		ast.AssignStmt {
 			lhs_call := freestanding_restricted_call_in_exprs(stmt.lhs, ctx)
@@ -520,11 +986,10 @@ fn freestanding_restricted_call_in_stmt(stmt ast.Stmt, ctx FreestandingScanConte
 				rhs_call := freestanding_restricted_call_in_exprs(stmt.rhs, ctx)
 				if rhs_call != '' {
 					rhs_call
-				} else if stmt.op == .plus_assign
-					&& freestanding_plus_assign_needs_alloc(stmt.rhs, ctx) {
-					freestanding_needs_alloc_hook(ctx)
+				} else if stmt.op == .plus_assign {
+					freestanding_plus_assign_restricted_call(stmt.rhs, ctx)
 				} else {
-					''
+					freestanding_assign_restricted_call(stmt, ctx)
 				}
 			}
 		}
@@ -549,7 +1014,8 @@ fn freestanding_restricted_call_in_stmt(stmt ast.Stmt, ctx FreestandingScanConte
 			} else if stmt.attributes.has('live') {
 				'live'
 			} else {
-				freestanding_restricted_call_in_stmts(stmt.stmts, ctx)
+				freestanding_restricted_call_in_stmts(stmt.stmts, ctx.with_fn_decl_type(stmt.typ,
+					stmt.receiver))
 			}
 		}
 		ast.ForInStmt {
@@ -560,15 +1026,16 @@ fn freestanding_restricted_call_in_stmt(stmt ast.Stmt, ctx FreestandingScanConte
 			if init_call != '' {
 				init_call
 			} else {
-				cond_call := freestanding_restricted_call_in_expr(stmt.cond, ctx)
+				loop_ctx := freestanding_scan_context_after_stmt(stmt.init, ctx)
+				cond_call := freestanding_restricted_call_in_expr(stmt.cond, loop_ctx)
 				if cond_call != '' {
 					cond_call
 				} else {
-					post_call := freestanding_restricted_call_in_stmt(stmt.post, ctx)
+					post_call := freestanding_restricted_call_in_stmt(stmt.post, loop_ctx)
 					if post_call != '' {
 						post_call
 					} else {
-						freestanding_restricted_call_in_stmts(stmt.stmts, ctx)
+						freestanding_restricted_call_in_stmts(stmt.stmts, loop_ctx)
 					}
 				}
 			}
@@ -658,7 +1125,7 @@ fn freestanding_restricted_call_in_expr(expr ast.Expr, ctx FreestandingScanConte
 								} else if !freestanding_array_init_needs_alloc(expr) {
 									''
 								} else {
-									freestanding_needs_alloc_hook(ctx)
+									freestanding_needs_heap_runtime(ctx)
 								}
 							}
 						}
@@ -713,7 +1180,12 @@ fn freestanding_restricted_call_in_expr(expr ast.Expr, ctx FreestandingScanConte
 			freestanding_restricted_call_in_expr(expr.value, ctx)
 		}
 		ast.FnLiteral {
-			freestanding_restricted_call_in_stmts(expr.stmts, ctx)
+			capture_call := freestanding_restricted_call_in_exprs(expr.captured_vars, ctx)
+			if capture_call != '' {
+				capture_call
+			} else {
+				freestanding_restricted_call_in_stmts(expr.stmts, ctx.with_fn_type(expr.typ))
+			}
 		}
 		ast.GenericArgOrIndexExpr {
 			lhs_call := freestanding_restricted_call_in_expr(expr.lhs, ctx)
@@ -752,7 +1224,14 @@ fn freestanding_restricted_call_in_expr(expr ast.Expr, ctx FreestandingScanConte
 			if lhs_call != '' {
 				lhs_call
 			} else {
-				freestanding_restricted_call_in_expr(expr.expr, ctx)
+				index_call := freestanding_restricted_call_in_expr(expr.expr, ctx)
+				if index_call != '' {
+					index_call
+				} else if expr.expr is ast.RangeExpr {
+					freestanding_needs_heap_runtime(ctx)
+				} else {
+					''
+				}
 			}
 		}
 		ast.InfixExpr {
@@ -763,10 +1242,8 @@ fn freestanding_restricted_call_in_expr(expr ast.Expr, ctx FreestandingScanConte
 				rhs_call := freestanding_restricted_call_in_expr(expr.rhs, ctx)
 				if rhs_call != '' {
 					rhs_call
-				} else if freestanding_infix_expr_needs_alloc(expr, ctx) {
-					freestanding_needs_alloc_hook(ctx)
 				} else {
-					''
+					freestanding_infix_expr_restricted_call(expr, ctx)
 				}
 			}
 		}
@@ -800,7 +1277,7 @@ fn freestanding_restricted_call_in_expr(expr ast.Expr, ctx FreestandingScanConte
 				if val_call != '' {
 					val_call
 				} else {
-					freestanding_needs_alloc_hook(ctx)
+					freestanding_needs_heap_runtime(ctx)
 				}
 			}
 		}
@@ -831,7 +1308,15 @@ fn freestanding_restricted_call_in_expr(expr ast.Expr, ctx FreestandingScanConte
 			freestanding_restricted_call_in_expr(expr.expr, ctx)
 		}
 		ast.PostfixExpr {
-			freestanding_restricted_call_in_expr(expr.expr, ctx)
+			expr_call := freestanding_restricted_call_in_expr(expr.expr, ctx)
+			if expr_call != '' {
+				expr_call
+			} else if expr.op == .not && expr.expr !is ast.EmptyExpr && !ctx.fn_returns_result
+				&& !ctx.has_hook('panic') {
+				'panic'
+			} else {
+				''
+			}
 		}
 		ast.PrefixExpr {
 			expr_call := freestanding_restricted_call_in_expr(expr.expr, ctx)
@@ -932,6 +1417,22 @@ fn freestanding_restricted_call_in_string_inters(inters []ast.StringInter, ctx F
 }
 
 fn freestanding_restricted_builtin_call_name(lhs ast.Expr, args []ast.Expr, ctx FreestandingScanContext) string {
+	if lhs is ast.SelectorExpr && lhs.rhs.name in ['filter', 'map', 'clone', 'repeat', 'substr'] {
+		lhs_call := freestanding_restricted_call_in_expr(lhs.lhs, ctx)
+		if lhs_call != '' {
+			return lhs_call
+		}
+		receiver_kind := freestanding_expr_kind(lhs.lhs, ctx)
+		if lhs.rhs.name in ['filter', 'map', 'repeat'] && receiver_kind == 'array' {
+			return freestanding_needs_heap_runtime(ctx)
+		}
+		if lhs.rhs.name == 'clone' && receiver_kind in ['array', 'map', 'string'] {
+			return freestanding_needs_heap_runtime(ctx)
+		}
+		if lhs.rhs.name == 'substr' && receiver_kind == 'string' {
+			return freestanding_needs_heap_runtime(ctx)
+		}
+	}
 	if lhs is ast.Ident {
 		name := lhs.name
 		builtin_call := freestanding_output_builtin_call_name(name, ctx)
@@ -954,12 +1455,21 @@ fn freestanding_restricted_builtin_call_name(lhs ast.Expr, args []ast.Expr, ctx 
 		if name == 'arguments' {
 			return 'arguments'
 		}
-		if name in ['malloc_noscan', 'memdup', 'new_array_from_c_array',
-			'new_array_from_c_array_noscan', '__new_array_with_default_noscan'] {
+		if name in ['malloc_noscan', 'memdup'] {
 			return freestanding_needs_alloc_hook(ctx)
 		}
-		if name in ['string__plus', 'string__plus_many'] {
-			return freestanding_needs_alloc_hook(ctx)
+		if name in ['new_array_from_c_array', 'new_array_from_c_array_no_alloc',
+			'new_array_from_c_array_noscan', 'new_array_from_array_and_c_array',
+			'builtin__new_array_from_array_and_c_array', '__new_array_with_default_noscan', 'new_map',
+			'new_map_init', 'new_map_init_noscan_key', 'new_map_init_noscan_value',
+			'new_map_init_noscan_key_value'] {
+			return freestanding_needs_heap_runtime(ctx)
+		}
+		if name in ['array__push', 'array__push_many', 'array__push_noscan', 'array__slice',
+			'array__slice_ni', 'array__repeat', 'array__repeat_to_depth', 'map__clone', 'map__set',
+			'string__clone', 'string__plus', 'string__plus_many', 'string__substr',
+			'string__substr_unsafe'] {
+			return freestanding_needs_heap_runtime(ctx)
 		}
 	}
 	return ''
@@ -2395,7 +2905,7 @@ fn (b &Builder) collect_cflags_from_sources() string {
 			leading_close := rest != trimmed
 			// $else $if cond { (a chain continuation)
 			if rest.starts_with(r'$else $if ') {
-				new_cond := rest[10..].trim_right('?{ ').trim_space()
+				new_cond := rest[10..].trim_right('{ ').trim_space()
 				if skip_depth > 1 {
 					// nested skipping; just continue without touching outer state
 					continue
@@ -2433,7 +2943,7 @@ fn (b &Builder) collect_cflags_from_sources() string {
 			}
 			// $if cond { (chain opener)
 			if rest.starts_with(r'$if ') {
-				cond := rest[4..].trim_right('?{ ').trim_space()
+				cond := rest[4..].trim_right('{ ').trim_space()
 				matched := comptime_cond_matches_with_context(cond, cflags_target_os, b.pref)
 				chain_matched << matched
 				if skip_depth > 0 {
@@ -2565,6 +3075,12 @@ fn comptime_cond_matches_with_context(cond string, target_os string, prefs &pref
 	if stripped := strip_outer_bool_parens(trimmed) {
 		return comptime_cond_matches_with_context(stripped, target_os, prefs)
 	}
+	if optional_name := optional_user_ct_flag_name(trimmed) {
+		if prefs == unsafe { nil } {
+			return false
+		}
+		return optional_name in prefs.user_defines
+	}
 	if prefs != unsafe { nil } {
 		return flag_os_matches(trimmed, target_os) || flag_pref_matches(trimmed, prefs)
 	}
@@ -2590,6 +3106,18 @@ fn comptime_cond_matches_with_context(cond string, target_os string, prefs &pref
 		'emscripten' { false }
 		else { false } // unknown user-defined flags default to false
 	}
+}
+
+fn optional_user_ct_flag_name(cond string) ?string {
+	trimmed := cond.trim_space()
+	if !trimmed.ends_with('?') {
+		return none
+	}
+	name := trimmed[..trimmed.len - 1].trim_space()
+	if name == '' {
+		return none
+	}
+	return name
 }
 
 fn top_level_bool_op_index(expr string, op string) ?int {

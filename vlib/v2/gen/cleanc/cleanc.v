@@ -2752,12 +2752,17 @@ fn (mut g Gen) emit_missing_runtime_fallbacks() {
 	need_bits_rotate_left_32_fallback := g.runtime_fallback_needed_in_source('bits__rotate_left_32',
 		generated_csrc)
 	need_memdup_fallback := g.runtime_fallback_needed_in_source('memdup', generated_csrc)
-	need_malloc_noscan_fallback :=
-		g.runtime_fallback_needed_in_source('malloc_noscan', generated_csrc) || need_memdup_fallback
 	need_f64_abs_fallback := g.runtime_fallback_needed_in_source('f64_abs', generated_csrc)
-	need_f64_strg_fallback := g.runtime_fallback_needed_in_source('f64__strg', generated_csrc)
 	need_f32_str_fallback := g.runtime_fallback_needed_in_source('f32__str', generated_csrc)
 	need_f32_strg_fallback := g.runtime_fallback_needed_in_source('f32__strg', generated_csrc)
+	need_f64_strg_fallback := g.runtime_fallback_needed_in_source('f64__strg', generated_csrc)
+		|| ('fn_f64__strg' !in g.emitted_types && need_f32_strg_fallback)
+	need_f64_str_fallback := g.runtime_fallback_needed_in_source('f64__str', generated_csrc)
+		|| ('fn_f64__str' !in g.emitted_types && (need_f32_str_fallback || need_f64_strg_fallback))
+	need_malloc_noscan_fallback :=
+		g.runtime_fallback_needed_in_source('malloc_noscan', generated_csrc)
+		|| need_memdup_fallback
+		|| (need_f64_str_fallback && !g.is_freestanding_target())
 	if need_at_least_one_fallback {
 		g.emitted_types['fn___at_least_one'] = true
 		g.sb.writeln('')
@@ -3045,6 +3050,28 @@ fn (mut g Gen) emit_missing_runtime_fallbacks() {
 		g.sb.writeln('')
 		g.sb.writeln('__attribute__((weak)) f64 f64_abs(f64 a) {')
 		g.sb.writeln('\treturn a < 0 ? -a : a;')
+		g.sb.writeln('}')
+	}
+	if need_f64_str_fallback {
+		g.emitted_types['fn_f64__str'] = true
+		g.sb.writeln('')
+		g.sb.writeln('__attribute__((weak)) string f64__str(f64 x) {')
+		if g.is_freestanding_target() {
+			g.sb.writeln('\treturn ${g.c_freestanding_missing_format_string_expr()};')
+		} else {
+			g.sb.writeln('\tchar buf[64];')
+			g.sb.writeln('\tint len = snprintf(buf, sizeof(buf), "%.15g", x);')
+			g.sb.writeln('\tif (len < 0) {')
+			g.sb.writeln('\t\treturn (string){.str = (u8*)"", .len = 0, .is_lit = 1};')
+			g.sb.writeln('\t}')
+			g.sb.writeln('\tif (len >= (int)sizeof(buf)) {')
+			g.sb.writeln('\t\tlen = (int)sizeof(buf) - 1;')
+			g.sb.writeln('\t}')
+			g.sb.writeln('\tu8* out = (u8*)malloc_noscan(len + 1);')
+			g.sb.writeln('\tmemcpy(out, buf, len);')
+			g.sb.writeln('\tout[len] = 0;')
+			g.sb.writeln('\treturn (string){.str = out, .len = len, .is_lit = 0};')
+		}
 		g.sb.writeln('}')
 	}
 	if need_f64_strg_fallback {

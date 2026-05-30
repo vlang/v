@@ -66,7 +66,13 @@ fn test_comptime_flag_blocks_match_cross_and_freestanding_preferences() {
 	cross_prefs.user_defines = ['cross']
 	assert comptime_cond_matches_with_pref('cross', &cross_prefs)
 	assert !comptime_cond_matches_with_pref('linux', &cross_prefs)
+	assert !comptime_cond_matches_with_pref('linux ?', &cross_prefs)
 	assert comptime_cond_matches_with_pref('cross && !linux', &cross_prefs)
+
+	mut optional_linux_prefs := pref.new_preferences()
+	optional_linux_prefs.target_os = 'cross'
+	optional_linux_prefs.user_defines = ['cross', 'linux']
+	assert comptime_cond_matches_with_pref('linux ?', &optional_linux_prefs)
 
 	mut free_prefs := pref.new_preferences()
 	free_prefs.target_os = 'linux'
@@ -122,6 +128,9 @@ $if cross {
 $if linux {
 #flag -DLINUX_BLOCK
 }
+$if linux ? {
+#flag -DOPTIONAL_LINUX_BLOCK
+}
 $if macos {
 #flag -DMACOS_BLOCK
 }
@@ -139,6 +148,7 @@ $if windows {
 	cross_flags := collect_cflags_for_test_source(cross_source, mut cross_prefs)
 	assert cross_flags.contains('-DCROSS_BLOCK')
 	assert cross_flags.contains('-DCROSS_DIRECT')
+	assert !cross_flags.contains('-DOPTIONAL_LINUX_BLOCK')
 	host_os := normalize_target_os_name(os.user_os())
 	if host_os in ['linux', 'macos', 'windows'] {
 		assert cross_flags.contains(match host_os {
@@ -164,6 +174,12 @@ $if windows {
 		assert !cross_flags.contains('-DWINDOWS_BLOCK')
 		assert !cross_flags.contains('-DWINDOWS_DIRECT')
 	}
+	mut cross_with_optional_linux_prefs := pref.new_preferences()
+	cross_with_optional_linux_prefs.target_os = 'cross'
+	cross_with_optional_linux_prefs.user_defines = ['cross', 'linux']
+	cross_with_optional_linux_flags := collect_cflags_for_test_source(cross_source, mut
+		cross_with_optional_linux_prefs)
+	assert cross_with_optional_linux_flags.contains('-DOPTIONAL_LINUX_BLOCK')
 
 	free_source := 'module main
 
