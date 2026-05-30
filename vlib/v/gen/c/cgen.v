@@ -5569,7 +5569,7 @@ fn (mut g Gen) get_ternary_name(name string) string {
 }
 
 fn (mut g Gen) gen_clone_assignment(var_type ast.Type, val ast.Expr, typ ast.Type, add_eq bool) bool {
-	if val !in [ast.Ident, ast.SelectorExpr] {
+	if val !in [ast.Ident, ast.SelectorExpr, ast.ComptimeSelector] {
 		return false
 	}
 	right_sym := g.table.sym(typ)

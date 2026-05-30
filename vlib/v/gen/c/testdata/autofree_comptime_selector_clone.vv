@@ -1,0 +1,32 @@
+// vtest vflags: -autofree
+struct Item {
+	name string
+	tags []string
+}
+
+fn process[T](val T) string {
+	mut result := ''
+	$for field in T.fields {
+		$if field.unaliased_typ is string {
+			name := val.$(field.name)
+			result += name
+		} $else $if field.unaliased_typ is []string {
+			arr := val.$(field.name)
+			for tag in arr {
+				result += tag
+			}
+		}
+	}
+	return result
+}
+
+fn main() {
+	item := Item{
+		name: 'test'
+		tags: ['a', 'b', 'c']
+	}
+	assert process(item) == 'testabc'
+	assert item.name == 'test'
+	assert item.tags == ['a', 'b', 'c']
+	println('ok')
+}
