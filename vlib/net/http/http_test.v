@@ -1,3 +1,4 @@
+import net
 import net.http
 
 fn test_https_get() {
@@ -78,11 +79,58 @@ fn test_relative_redirects() {
 	assert res.body.contains('"abc": "xyz"')
 }
 
+fn user_agent_response_body(request string) string {
+	for line in request.split('\r\n') {
+		if line.to_lower().starts_with('user-agent:') {
+			user_agent := line.all_after(':').trim_space()
+			return '{"user-agent": "${user_agent}"}'
+		}
+	}
+	return '{"user-agent": ""}'
+}
+
+fn serve_user_agent_once(mut listener net.TcpListener) {
+	mut conn := listener.accept() or {
+		listener.close() or {}
+		return
+	}
+	defer {
+		conn.close() or {}
+		listener.close() or {}
+	}
+	mut request := ''
+	mut buf := []u8{len: 4096}
+	for {
+		n := conn.read(mut buf) or { return }
+		if n <= 0 {
+			return
+		}
+		request += buf[..n].bytestr()
+		if request.contains('\r\n\r\n') {
+			break
+		}
+	}
+	body := user_agent_response_body(request)
+	response := 'HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: ${body.len}\r\nConnection: close\r\n\r\n${body}'
+	conn.write(response.bytes()) or {}
+}
+
+fn start_user_agent_server() !(int, thread) {
+	mut listener := net.listen_tcp(.ip, '127.0.0.1:0')!
+	port := listener.addr()!.port()!
+	return port, spawn serve_user_agent_once(mut listener)
+}
+
 fn test_default_user_agent() {
 	$if !network ? {
 		return
 	}
-	res := http.get('https://httpbin.org/user-agent') or { panic(err) }
+	port, server := start_user_agent_server()!
+	res := http.get('http://127.0.0.1:${port}/user-agent') or {
+		server.wait()
+		panic(err)
+	}
+	server.wait()
 	assert res.status() == .ok
 	assert res.body != ''
 	assert res.body.contains('"user-agent": "v.http"')
@@ -93,9 +141,14 @@ fn test_custom_user_agent() {
 		return
 	}
 	ua := 'V http test for UA'
-	mut req := http.new_request(.get, 'https://httpbin.org/user-agent', '')
+	port, server := start_user_agent_server()!
+	mut req := http.new_request(.get, 'http://127.0.0.1:${port}/user-agent', '')
 	req.user_agent = ua
-	res := req.do() or { panic(err) }
+	res := req.do() or {
+		server.wait()
+		panic(err)
+	}
+	server.wait()
 	assert res.status() == .ok
 	assert res.body != ''
 	assert res.body.contains('"user-agent": "${ua}"')
