@@ -7675,6 +7675,11 @@ fn (mut g Gen) gen_closure_fn(expr_styp string, m ast.Fn, name string) {
 	if rec_sym.info is ast.Interface && rec_sym.info.get_methods().contains(method_name) {
 		methods_struct_name := g.interface_methods_struct_name(receiver.typ)
 		sb.write_string('((${methods_struct_name}*)a0->_methods)->_method_${method_name}(')
+		sb.write_string('a0->_object')
+		for i in 1 .. m.params.len {
+			sb.write_string(', ')
+			sb.write_string('a${i}')
+		}
 	} else {
 		mut full_method_name := '${expr_styp}_${method_name}'
 		if !expr_styp.starts_with('builtin__') {
@@ -7690,12 +7695,12 @@ fn (mut g Gen) gen_closure_fn(expr_styp string, m ast.Fn, name string) {
 		if !receiver.typ.is_ptr() {
 			sb.write_string('*')
 		}
-	}
-	for i in 0 .. m.params.len {
-		if i != 0 {
-			sb.write_string(', ')
+		for i in 0 .. m.params.len {
+			if i != 0 {
+				sb.write_string(', ')
+			}
+			sb.write_string('a${i}')
 		}
-		sb.write_string('a${i}')
 	}
 	sb.writeln(');')
 	sb.writeln('}')
