@@ -261,6 +261,11 @@ fn (mut w Walker) collect_const_fn_value_aliases() {
 					if field.value is ast.Ident
 						&& w.ident_resolves_to_fn_value(field.value.name, mod_name) {
 						w.const_fn_value_aliases[const_fn_value_alias_key(mod_name, field.name)] = field.value.name
+					} else if field.value is ast.SelectorExpr {
+						target := w.selector_fn_value_target(field.value)
+						if target != '' {
+							w.const_fn_value_aliases[const_fn_value_alias_key(mod_name, field.name)] = target
+						}
 					}
 				}
 			}
@@ -2005,18 +2010,27 @@ fn (mut w Walker) mark_const_fn_value_alias(name string, mod_name string) bool {
 }
 
 fn (mut w Walker) mark_selector_fn_value(expr ast.SelectorExpr, mod_name string) {
+	target := w.selector_fn_value_target(expr)
+	if target != '' {
+		w.mark_fn_name(target, mod_name)
+	}
+}
+
+fn (w &Walker) selector_fn_value_target(expr ast.SelectorExpr) string {
 	if expr.lhs !is ast.Ident {
-		return
+		return ''
 	}
 	left := expr.lhs as ast.Ident
 	left_name := left.name
-	if left_name == 'C' {
-		return
+	if left_name == 'C' || left_name !in w.module_names {
+		return ''
 	}
-	if left_name in w.module_names {
-		real_mod := w.module_alias_to_real[left_name] or { left_name }
-		w.mark_fn_name('${real_mod}__${expr.rhs.name}', mod_name)
+	real_mod := w.module_alias_to_real[left_name] or { left_name }
+	target := '${real_mod}__${expr.rhs.name}'
+	if w.lookup_count('fn:${target}') > 0 {
+		return target
 	}
+	return ''
 }
 
 fn (mut w Walker) mark_fn_value_expr(expr ast.Expr, mod_name string) {

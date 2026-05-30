@@ -18,12 +18,16 @@ fn minimal_ident(name string, id int) ast.Ident {
 	}
 }
 
-fn minimal_c_selector(name string, id int) ast.SelectorExpr {
+fn minimal_selector(lhs string, rhs string, id int) ast.SelectorExpr {
 	return ast.SelectorExpr{
-		lhs: minimal_ident('C', id)
-		rhs: minimal_ident(name, id + 1)
+		lhs: minimal_ident(lhs, id)
+		rhs: minimal_ident(rhs, id + 1)
 		pos: minimal_pos(id)
 	}
+}
+
+fn minimal_c_selector(name string, id int) ast.SelectorExpr {
+	return minimal_selector('C', name, id)
 }
 
 fn minimal_c_call(name string, id int, args []ast.Expr) ast.CallExpr {
@@ -300,6 +304,132 @@ fn test_minimal_runtime_roots_keep_functions_used_as_const_values() {
 	assert used[main_key]
 	assert used[abc_key]
 	assert !used[unused_key]
+}
+
+fn test_minimal_runtime_roots_keep_qualified_const_function_aliases() {
+	mut env := types.Environment.new()
+	files := [
+		ast.File{
+			mod:     'main'
+			name:    'main.v'
+			imports: [
+				ast.ImportStmt{
+					name:       'dep'
+					alias:      'd'
+					is_aliased: true
+				},
+				ast.ImportStmt{
+					name: 'tools'
+				},
+			]
+			stmts:   [
+				ast.Stmt(ast.ConstDecl{
+					fields: [
+						ast.FieldInit{
+							name:  'dep_cb'
+							value: ast.Expr(minimal_selector('d', 'cleanup', 210))
+						},
+						ast.FieldInit{
+							name:  'tools_cb'
+							value: ast.Expr(minimal_selector('tools', 'teardown', 213))
+						},
+						ast.FieldInit{
+							name:  'c_cb'
+							value: ast.Expr(minimal_c_selector('cleanup', 216))
+						},
+						ast.FieldInit{
+							name:  'field_cb'
+							value: ast.Expr(minimal_selector('hooks', 'cleanup', 219))
+						},
+					]
+				}),
+				ast.Stmt(ast.FnDecl{
+					name:  'main'
+					typ:   ast.FnType{}
+					pos:   minimal_pos(220)
+					stmts: [
+						ast.Stmt(ast.ExprStmt{
+							expr: ast.CallExpr{
+								lhs: minimal_ident('dep_cb', 221)
+								pos: minimal_pos(221)
+							}
+						}),
+						ast.Stmt(ast.ExprStmt{
+							expr: ast.CallExpr{
+								lhs: minimal_ident('tools_cb', 222)
+								pos: minimal_pos(222)
+							}
+						}),
+						ast.Stmt(ast.ExprStmt{
+							expr: ast.CallExpr{
+								lhs: minimal_ident('c_cb', 223)
+								pos: minimal_pos(223)
+							}
+						}),
+						ast.Stmt(ast.ExprStmt{
+							expr: ast.CallExpr{
+								lhs: minimal_ident('field_cb', 224)
+								pos: minimal_pos(224)
+							}
+						}),
+					]
+				}),
+				ast.Stmt(ast.FnDecl{
+					name: 'cleanup'
+					typ:  ast.FnType{}
+					pos:  minimal_pos(225)
+				}),
+			]
+		},
+		ast.File{
+			mod:   'dep'
+			name:  'dep.v'
+			stmts: [
+				ast.Stmt(ast.FnDecl{
+					name: 'cleanup'
+					typ:  ast.FnType{}
+					pos:  minimal_pos(226)
+				}),
+				ast.Stmt(ast.FnDecl{
+					name: 'unused'
+					typ:  ast.FnType{}
+					pos:  minimal_pos(227)
+				}),
+			]
+		},
+		ast.File{
+			mod:   'tools'
+			name:  'tools.v'
+			stmts: [
+				ast.Stmt(ast.FnDecl{
+					name: 'teardown'
+					typ:  ast.FnType{}
+					pos:  minimal_pos(228)
+				}),
+				ast.Stmt(ast.FnDecl{
+					name: 'unused'
+					typ:  ast.FnType{}
+					pos:  minimal_pos(229)
+				}),
+			]
+		},
+	]
+	used := mark_used_with_options(files, env, MarkUsedOptions{
+		minimal_runtime_roots: true
+	})
+	main_key := decl_key('main', files[0].stmts[1] as ast.FnDecl, env)
+	main_cleanup_key := decl_key('main', files[0].stmts[2] as ast.FnDecl, env)
+	dep_cleanup_key := decl_key('dep', files[1].stmts[0] as ast.FnDecl, env)
+	dep_unused_key := decl_key('dep', files[1].stmts[1] as ast.FnDecl, env)
+	tools_teardown_key := decl_key('tools', files[2].stmts[0] as ast.FnDecl, env)
+	tools_unused_key := decl_key('tools', files[2].stmts[1] as ast.FnDecl, env)
+
+	assert used[main_key]
+	assert used[dep_cleanup_key]
+	assert used[tools_teardown_key]
+	assert !used[main_cleanup_key]
+	assert !used[dep_unused_key]
+	assert !used[tools_unused_key]
 }
 
 fn test_minimal_runtime_roots_keep_functions_used_in_composite_literals() {
