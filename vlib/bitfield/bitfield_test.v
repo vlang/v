@@ -77,10 +77,12 @@ fn test_bf_and_not_or_xor() {
 	bf_not := bitfield.bf_not(bf_and)
 	output2 := bitfield.bf_and(bf_or, bf_not)
 	mut result := 1
+	i = 0
 	for i < len {
 		if output1.get_bit(i) != output2.get_bit(i) {
 			result = 0
 		}
+		i++
 	}
 	assert result == 1
 }
