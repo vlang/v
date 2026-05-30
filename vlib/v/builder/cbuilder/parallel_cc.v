@@ -19,6 +19,15 @@ fn parallel_cc_compiler_path(b &builder.Builder) string {
 	return cc_compiler
 }
 
+fn parallel_cc_uses_tcc(cc_kind builder.CC, ccompiler string) bool {
+	if cc_kind == .tcc {
+		return true
+	}
+	normalized := ccompiler.replace('\\', '/').to_lower()
+	return normalized == 'tcc' || normalized.ends_with('/tcc') || normalized.ends_with('/tcc.exe')
+		|| normalized.contains('/thirdparty/tcc/')
+}
+
 fn parallel_cc(mut b builder.Builder, result c.GenOutput) ! {
 	tmp_dir := os.vtmp_dir()
 	sw_total := time.new_stopwatch()
@@ -79,7 +88,7 @@ fn parallel_cc(mut b builder.Builder, result c.GenOutput) ! {
 	cc := b.quote_compiler_name(parallel_cc_compiler_path(b))
 	mut compile_args := b.get_compile_args()
 	mut linker_args := b.get_linker_args()
-	if b.ccoptions.cc == .tcc {
+	if parallel_cc_uses_tcc(b.ccoptions.cc, parallel_cc_compiler_path(b)) {
 		// vlang/tcc can have its runtime objects under `${vroot}/thirdparty/tcc/lib/tcc/`
 		// or directly under `${vroot}/thirdparty/tcc/lib/`, while its system headers
 		// can be under that install dir or `${vroot}/thirdparty/tcc/include/`.
