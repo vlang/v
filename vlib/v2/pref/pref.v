@@ -252,11 +252,11 @@ fn normalize_cli_target_os(target_os string) string {
 	normalized := normalize_target_os_name(target_os)
 	match normalized {
 		'linux', 'macos', 'windows', 'cross', 'none', 'freebsd', 'openbsd', 'netbsd', 'dragonfly',
-		'android', 'ios', 'solaris', 'qnx', 'serenity', 'plan9', 'vinix' {
+		'android', 'termux', 'ios', 'solaris', 'qnx', 'serenity', 'plan9', 'vinix' {
 			return normalized
 		}
 		else {
-			eprintln('error: unknown target OS `${target_os}`. Valid targets include: linux, macos, windows, cross, none, freebsd, openbsd, netbsd, dragonfly, android, ios, solaris, qnx, serenity, plan9, vinix')
+			eprintln('error: unknown target OS `${target_os}`. Valid targets include: linux, macos, windows, cross, none, freebsd, openbsd, netbsd, dragonfly, android, termux, ios, solaris, qnx, serenity, plan9, vinix')
 			exit(1)
 		}
 	}
@@ -529,7 +529,7 @@ pub fn new_preferences_from_args(args []string) Preferences {
 			eprintln('  -b <name>              Backend: eval, cleanc, c, v, arm64, x64 (default: cleanc; omit for cleanc)')
 			eprintln('                         -backend <name> is accepted as a compatibility alias')
 			eprintln('  -arch <name>           Architecture: auto, x64, arm64 (default: auto)')
-			eprintln('  -os <target>           Override target OS (default: host OS): linux, macos, windows, cross, none')
+			eprintln('  -os <target>           Override target OS (default: host OS): linux, macos, windows, termux, cross, none')
 			eprintln('  -printfn <names>       Print generated C for functions (comma-separated)')
 			eprintln('  -stats, --stats        Print compilation statistics')
 			eprintln('  -nocache, --nocache    Disable build cache')

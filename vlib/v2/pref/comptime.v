@@ -44,6 +44,9 @@ pub fn comptime_flag_value(pref &Preferences, name string) bool {
 		'android' {
 			return pref.normalized_target_os() == 'android'
 		}
+		'termux' {
+			return pref.normalized_target_os() == 'termux'
+		}
 		'ios' {
 			return pref.normalized_target_os() == 'ios'
 		}

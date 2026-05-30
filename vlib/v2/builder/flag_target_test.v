@@ -74,6 +74,13 @@ fn test_comptime_flag_blocks_match_cross_and_freestanding_preferences() {
 	optional_linux_prefs.user_defines = ['cross', 'linux']
 	assert comptime_cond_matches_with_pref('linux ?', &optional_linux_prefs)
 
+	mut termux_prefs := pref.new_preferences()
+	termux_prefs.target_os = 'termux'
+	assert comptime_cond_matches_with_pref('termux', &termux_prefs)
+	assert comptime_cond_matches_with_pref('linux || termux', &termux_prefs)
+	assert !comptime_cond_matches_with_pref('android', &termux_prefs)
+	assert !comptime_cond_matches_with_pref('android && !termux', &termux_prefs)
+
 	mut free_prefs := pref.new_preferences()
 	free_prefs.target_os = 'linux'
 	free_prefs.user_defines = ['freestanding']
@@ -107,11 +114,12 @@ fn test_parser_level_comptime_flags_match_cross_and_accepted_targets() {
 	assert ast_comptime_flag_matches('plan9', [], 'plan9')
 	assert ast_comptime_flag_matches('vinix', [], 'vinix')
 	assert ast_comptime_flag_matches('ios', [], 'ios')
+	assert ast_comptime_flag_matches('termux', [], 'termux')
 	assert !ast_comptime_flag_matches('linux', [], 'cross')
 }
 
 fn test_flag_directives_match_all_accepted_target_os_names() {
-	for target in ['android', 'ios', 'solaris', 'qnx', 'serenity', 'plan9', 'vinix'] {
+	for target in ['android', 'termux', 'ios', 'solaris', 'qnx', 'serenity', 'plan9', 'vinix'] {
 		flag := parse_flag_directive_line('#flag ${target} -D${target.to_upper()}',
 			'/tmp/source.v', target) or { '' }
 		assert flag == '-D${target.to_upper()}'
@@ -200,6 +208,31 @@ $if linux {
 	assert free_flags.contains('-DFREE_DIRECT')
 	assert free_flags.contains('-DLINUX_BLOCK')
 	assert free_flags.contains('-DLINUX_DIRECT')
+}
+
+fn test_collect_cflags_from_sources_matches_termux_blocks_and_directives() {
+	source := 'module main
+
+$if termux {
+#flag -DTERMUX_BLOCK
+}
+$if linux || termux {
+#flag -DTERMUX_OR_LINUX_BLOCK
+}
+$if android && !termux {
+#flag -DANDROID_OUTSIDE_TERMUX_BLOCK
+}
+#flag termux -DTERMUX_DIRECT
+#flag android -DANDROID_DIRECT
+'
+	mut termux_prefs := pref.new_preferences()
+	termux_prefs.target_os = 'termux'
+	flags := collect_cflags_for_test_source(source, mut termux_prefs)
+	assert flags.contains('-DTERMUX_BLOCK')
+	assert flags.contains('-DTERMUX_OR_LINUX_BLOCK')
+	assert flags.contains('-DTERMUX_DIRECT')
+	assert !flags.contains('-DANDROID_OUTSIDE_TERMUX_BLOCK')
+	assert !flags.contains('-DANDROID_DIRECT')
 }
 
 fn test_freestanding_diagnostics_gate_direct_runtime_helpers_by_capability() {

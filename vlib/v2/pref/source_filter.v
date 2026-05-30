@@ -45,7 +45,10 @@ pub fn file_has_incompatible_os_suffix(file string, current_os string) bool {
 	if os_name !in ['macos', 'freebsd', 'openbsd', 'netbsd', 'dragonfly'] && file.contains('_bsd.') {
 		return true
 	}
-	if os_name != 'android' && file.contains('_android') {
+	if file.contains('_android_outside_termux.') {
+		return os_name != 'android'
+	}
+	if os_name !in ['android', 'termux'] && file.contains('_android') {
 		return true
 	}
 	if os_name != 'termux' && file_has_termux_os_suffix(file) {

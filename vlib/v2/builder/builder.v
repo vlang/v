@@ -2644,6 +2644,7 @@ fn flag_os_matches(cond string, target_os string) bool {
 		'netbsd' { current == 'netbsd' }
 		'dragonfly' { current == 'dragonfly' }
 		'android' { current == 'android' }
+		'termux' { current == 'termux' }
 		'ios' { current == 'ios' }
 		'solaris' { current == 'solaris' }
 		'qnx' { current == 'qnx' }
@@ -3095,6 +3096,7 @@ fn comptime_cond_matches_with_context(cond string, target_os string, prefs &pref
 		'netbsd' { current == 'netbsd' }
 		'dragonfly' { current == 'dragonfly' }
 		'android' { current == 'android' }
+		'termux' { current == 'termux' }
 		'ios' { current == 'ios' }
 		'solaris' { current == 'solaris' }
 		'qnx' { current == 'qnx' }

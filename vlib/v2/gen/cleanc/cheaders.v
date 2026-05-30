@@ -334,6 +334,7 @@ fn is_target_os_ct_flag(name string) bool {
 		'netbsd',
 		'dragonfly',
 		'android',
+		'termux',
 		'ios',
 		'solaris',
 		'qnx',
@@ -371,6 +372,9 @@ fn c_preprocessor_flag_expr_for_ct_flag(name string) ?string {
 		}
 		'android' {
 			'defined(__ANDROID__)'
+		}
+		'termux' {
+			'defined(__TERMUX__)'
 		}
 		'ios' {
 			apple_ios_cross_guard
@@ -950,6 +954,7 @@ fn (g &Gen) ast_comptime_flag_matches(name string) bool {
 		'netbsd' { target_os == 'netbsd' }
 		'dragonfly' { target_os == 'dragonfly' }
 		'android' { target_os == 'android' }
+		'termux' { target_os == 'termux' }
 		'ios' { target_os == 'ios' }
 		'solaris' { target_os == 'solaris' }
 		'qnx' { target_os == 'qnx' }

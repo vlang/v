@@ -379,6 +379,7 @@ fn test_eval_comptime_flag_uses_target_os_preference_for_extended_targets() {
 		'netbsd',
 		'dragonfly',
 		'android',
+		'termux',
 		'ios',
 		'solaris',
 		'qnx',
@@ -426,6 +427,7 @@ fn test_c_directives_use_extended_target_os_preference() {
 		'netbsd',
 		'dragonfly',
 		'android',
+		'termux',
 		'ios',
 		'solaris',
 		'qnx',
@@ -474,6 +476,7 @@ fn test_c_directives_keep_cross_extended_targets_portable() {
 		CrossGuardCase{'netbsd', 'defined(__NetBSD__)'},
 		CrossGuardCase{'dragonfly', 'defined(__DragonFly__)'},
 		CrossGuardCase{'android', 'defined(__ANDROID__)'},
+		CrossGuardCase{'termux', 'defined(__TERMUX__)'},
 		CrossGuardCase{'ios', apple_ios_cross_guard},
 		CrossGuardCase{'solaris', 'defined(__sun)'},
 		CrossGuardCase{'qnx', 'defined(__QNX__)'},
@@ -546,6 +549,23 @@ fn test_c_directives_keep_cross_complex_os_conditions_portable() {
 	assert !c_directive_output_for_target('linux || windows && macos', 'macos', []).contains('#include <target_marker.h>')
 	assert c_directive_output_for_target('!(linux || windows) && macos', 'macos', []).contains('#include <target_marker.h>')
 	assert !c_directive_output_for_target('!(linux || windows) && macos', 'windows', []).contains('#include <target_marker.h>')
+}
+
+fn test_c_directives_keep_termux_distinct_from_android() {
+	assert c_directive_output_for_target('termux', 'termux', []).contains('#include <target_marker.h>')
+	assert c_directive_output_for_target('linux || termux', 'termux', []).contains('#include <target_marker.h>')
+	assert !c_directive_output_for_target('android', 'termux', []).contains('#include <target_marker.h>')
+	assert !c_directive_output_for_target('android && !termux', 'termux', []).contains('#include <target_marker.h>')
+	assert c_directive_output_for_target('android && !termux', 'android', []).contains('#include <target_marker.h>')
+}
+
+fn test_cross_optional_termux_flag_named_like_os_is_not_os_guarded() {
+	assert !c_directive_output_for_target('termux ?', 'cross', []).contains('#include <target_marker.h>')
+	optional_directive_src := c_directive_output_for_target('termux ?', 'cross', [
+		'termux',
+	])
+	assert optional_directive_src.contains('#include <target_marker.h>')
+	assert !optional_directive_src.contains('defined(__TERMUX__)')
 }
 
 fn test_comptime_if_directives_support_infix_os_conditions() {

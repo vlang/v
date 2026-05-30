@@ -12,6 +12,11 @@ fn test_comptime_flag_value_uses_target_os_preference() {
 	assert comptime_flag_value(&prefs, 'darwin')
 	assert comptime_flag_value(&prefs, 'bsd')
 	assert !comptime_flag_value(&prefs, 'windows')
+
+	prefs.target_os = 'termux'
+	assert comptime_flag_value(&prefs, 'termux')
+	assert !comptime_flag_value(&prefs, 'android')
+	assert !comptime_flag_value(&prefs, 'linux')
 }
 
 fn test_comptime_flag_value_allows_nil_preferences() {

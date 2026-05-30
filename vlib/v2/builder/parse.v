@@ -122,7 +122,8 @@ fn ast_comptime_flag_matches(name string, user_defines []string, target_os strin
 	}
 	return match lower_name {
 		'macos', 'darwin', 'mac', 'linux', 'windows', 'bsd', 'freebsd', 'openbsd', 'netbsd',
-		'dragonfly', 'android', 'ios', 'solaris', 'qnx', 'serenity', 'plan9', 'vinix', 'cross' {
+		'dragonfly', 'android', 'termux', 'ios', 'solaris', 'qnx', 'serenity', 'plan9', 'vinix',
+		'cross' {
 			flag_os_matches(lower_name, target_os)
 		}
 		else {

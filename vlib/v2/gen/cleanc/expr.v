@@ -4787,8 +4787,8 @@ fn (mut g Gen) gen_map_index_expr_from_c_types(node ast.IndexExpr, key_type stri
 fn cleanc_pref_comptime_flag_name(name string) bool {
 	match name {
 		'macos', 'darwin', 'mac', 'linux', 'windows', 'bsd', 'freebsd', 'openbsd', 'netbsd',
-		'dragonfly', 'android', 'ios', 'solaris', 'qnx', 'serenity', 'plan9', 'vinix', 'cross',
-		'freestanding' {
+		'dragonfly', 'android', 'termux', 'ios', 'solaris', 'qnx', 'serenity', 'plan9', 'vinix',
+		'cross', 'freestanding' {
 			return true
 		}
 		else {

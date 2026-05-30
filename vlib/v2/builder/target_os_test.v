@@ -76,6 +76,36 @@ fn test_get_v_files_from_dir_uses_linux_and_macos_target_os() {
 	assert 'platform_linux.v' !in macos_names
 }
 
+fn test_get_v_files_from_dir_uses_termux_target_os() {
+	tmp_dir := os.join_path(os.temp_dir(), 'v2_builder_filter_termux_${os.getpid()}')
+	os.rmdir_all(tmp_dir) or {}
+	os.mkdir_all(tmp_dir) or { panic(err) }
+	defer {
+		os.rmdir_all(tmp_dir) or {}
+	}
+
+	write_test_file(os.join_path(tmp_dir, 'common.v'))
+	write_test_file(os.join_path(tmp_dir, 'platform_nix.v'))
+	write_test_file(os.join_path(tmp_dir, 'platform_termux.c.v'))
+	write_test_file(os.join_path(tmp_dir, 'platform_android_outside_termux.c.v'))
+	write_test_file(os.join_path(tmp_dir, 'platform_android.c.v'))
+	write_test_file(os.join_path(tmp_dir, 'platform_linux.v'))
+	write_test_file(os.join_path(tmp_dir, 'platform_windows.v'))
+	write_test_file(os.join_path(tmp_dir, 'platform_macos.v'))
+	write_test_file(os.join_path(tmp_dir, 'platform_darwin.v'))
+
+	termux_names := get_v_files_from_dir(tmp_dir, []string{}, 'termux').map(os.file_name(it))
+	assert 'common.v' in termux_names
+	assert 'platform_nix.v' in termux_names
+	assert 'platform_termux.c.v' in termux_names
+	assert 'platform_android.c.v' in termux_names
+	assert 'platform_android_outside_termux.c.v' !in termux_names
+	assert 'platform_linux.v' !in termux_names
+	assert 'platform_windows.v' !in termux_names
+	assert 'platform_macos.v' !in termux_names
+	assert 'platform_darwin.v' !in termux_names
+}
+
 fn test_parse_files_uses_host_source_filter_for_cross_target() {
 	tmp_dir := os.join_path(os.temp_dir(), 'v2_builder_filter_cross_${os.getpid()}')
 	os.rmdir_all(tmp_dir) or {}

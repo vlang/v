@@ -32,6 +32,11 @@ fn test_new_preferences_from_args_parses_target_os() {
 	windows_prefs := new_preferences_from_args(['-os', 'windows', 'main.v'])
 	assert windows_prefs.target_os == 'windows'
 	assert windows_prefs.normalized_target_os() == 'windows'
+
+	termux_prefs := new_preferences_from_args(['-os', 'termux', 'main.v'])
+	assert termux_prefs.target_os == 'termux'
+	assert termux_prefs.normalized_target_os() == 'termux'
+	assert comptime_flag_value(&termux_prefs, 'termux')
 }
 
 fn test_new_preferences_from_args_normalizes_macos_target_aliases() {
@@ -194,6 +199,13 @@ fn test_new_preferences_using_options_accepts_target_os_and_freestanding() {
 	assert comptime_flag_value(&prefs, 'windows')
 	assert comptime_flag_value(&prefs, 'freestanding')
 	assert 'freestanding' in prefs.user_defines
+
+	termux_prefs := new_preferences_using_options(['--cleanc', '--os-termux'])
+	assert termux_prefs.backend == .cleanc
+	assert termux_prefs.target_os == 'termux'
+	assert termux_prefs.normalized_target_os() == 'termux'
+	assert comptime_flag_value(&termux_prefs, 'termux')
+	assert !comptime_flag_value(&termux_prefs, 'android')
 }
 
 fn test_new_preferences_using_options_accepts_freestanding_hooks() {
@@ -231,7 +243,7 @@ fn test_new_preferences_using_options_accepts_cross_target() {
 
 fn test_new_preferences_from_args_accepted_targets_match_comptime_flags() {
 	for target in ['linux', 'macos', 'darwin', 'mac', 'windows', 'freebsd', 'openbsd', 'netbsd',
-		'dragonfly', 'android', 'ios', 'solaris', 'qnx', 'serenity', 'plan9', 'vinix'] {
+		'dragonfly', 'android', 'termux', 'ios', 'solaris', 'qnx', 'serenity', 'plan9', 'vinix'] {
 		prefs := new_preferences_from_args(['-os', target, 'main.v'])
 		flag_name := match target {
 			'darwin', 'mac' { 'macos' }
@@ -259,12 +271,15 @@ fn test_file_suffix_filter_cross_target_contract() {
 	assert !file_has_incompatible_os_suffix('platform_nix.v', 'cross')
 }
 
-fn test_file_suffix_filter_termux_is_excluded_for_current_targets() {
+fn test_file_suffix_filter_termux_is_selected_only_for_termux_target() {
 	for target in ['linux', 'macos', 'windows', 'android', 'ios', 'freebsd', 'openbsd', 'netbsd',
 		'dragonfly', 'solaris', 'qnx', 'serenity', 'plan9', 'vinix'] {
 		assert file_has_incompatible_os_suffix('platform_termux.c.v', target)
 	}
+	assert !file_has_incompatible_os_suffix('platform_termux.c.v', 'termux')
+	assert !file_has_incompatible_os_suffix('platform_android.c.v', 'termux')
 	assert !file_has_incompatible_os_suffix('platform_android_outside_termux.c.v', 'android')
+	assert file_has_incompatible_os_suffix('platform_android_outside_termux.c.v', 'termux')
 }
 
 fn test_file_suffix_filter_none_target_excludes_all_os_variants() {
