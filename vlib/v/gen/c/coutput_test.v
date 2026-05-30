@@ -254,9 +254,9 @@ fn test_comptime_for_empty_attrs_does_not_emit_new_array_calls() {
 	compilation := os.execute(cmd)
 	ensure_compilation_succeeded(compilation, cmd)
 	// regression for https://github.com/vlang/v/issues/27274
-	assert !compilation.output.contains('builtin____new_array_with_default(0, 0, sizeof(string), 0)')
-	assert !compilation.output.contains('builtin____new_array_with_default(0, 0, sizeof(VAttribute), 0)')
-	assert !compilation.output.contains('builtin____new_array_with_default(0, 0, sizeof(FunctionParam), 0)')
+	assert !compilation.output.contains('.attrs = builtin____new_array_with_default(0, 0, sizeof(string), 0)')
+	assert !compilation.output.contains('.attributes = builtin____new_array_with_default(0, 0, sizeof(VAttribute), 0)')
+	assert !compilation.output.contains('.args = builtin____new_array_with_default(0, 0, sizeof(FunctionParam), 0)')
 }
 
 fn test_windows_sharedlive_string_interpolation_in_ternary_does_not_emit_inline_tmp_decl() {

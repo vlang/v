@@ -105,7 +105,9 @@ fn parallel_cc(mut b builder.Builder, result c.GenOutput) ! {
 			compile_args << tcc_b_arg
 			mut tcc_include_dirs := [
 				os.join_path(tcc_install_dir, 'include'),
+				os.join_path(tcc_install_dir, 'include', 'winapi'),
 				os.join_path(tcc_root_dir, 'include'),
+				os.join_path(tcc_root_dir, 'include', 'winapi'),
 			]
 			for tcc_include_dir in tcc_include_dirs {
 				if os.is_dir(tcc_include_dir) {
