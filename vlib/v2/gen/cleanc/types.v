@@ -14,12 +14,40 @@ fn (g &Gen) result_value_type(result_type string) string {
 	}
 	payload := result_type['_result_'.len..]
 	if payload.contains('_T_') {
+		if ptr_base := g.result_payload_generic_struct_pointer_base(payload) {
+			return '${ptr_base}*'
+		}
 		// Generic specialization names can end in `ptr` because a generic
 		// argument is a pointer, while the payload itself is still the
 		// specialized typedef (for example Foo_T_Barptr).
 		return payload
 	}
 	return unmangle_c_ptr_type(payload)
+}
+
+fn (g &Gen) result_payload_generic_struct_pointer_base(payload string) ?string {
+	if !payload.ends_with('ptr') {
+		return none
+	}
+	if g.generic_struct_instance_c_name_exists(payload) {
+		return none
+	}
+	base := payload[..payload.len - 3]
+	if g.generic_struct_instance_c_name_exists(base) {
+		return base
+	}
+	return none
+}
+
+fn (g &Gen) generic_struct_instance_c_name_exists(c_name string) bool {
+	for _, instances in g.generic_struct_instances {
+		for inst in instances {
+			if inst.c_name == c_name {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 fn (g &Gen) result_value_c_type(result_type string) string {
@@ -255,6 +283,13 @@ fn type_contains_generic_placeholder_inner(typ types.Type, mut seen map[string]b
 				}
 				seen[key] = true
 			}
+			if typ.generic_params.len > 0 && !typ.name.contains('_T_') {
+				for param_name in typ.generic_params {
+					if !param_name.starts_with('^') && is_generic_placeholder_type_name(param_name) {
+						return true
+					}
+				}
+			}
 			for field in typ.fields {
 				if type_contains_generic_placeholder_inner(field.typ, mut seen) {
 					return true
@@ -414,6 +449,9 @@ fn unmangle_c_ptr_type(name string) string {
 	if name == 'byteptr' {
 		return 'u8*'
 	}
+	if name.contains('_T_') {
+		return name
+	}
 	if name.len > 3 && name.ends_with('ptr') {
 		// Don't unmangle composite type names - they are typedef'd aliases
 		if name.starts_with('Array_') || name.starts_with('Map_') || name.starts_with('Tuple_')
@@ -434,6 +472,32 @@ fn unmangle_alias_component_to_c(name string) string {
 		return name
 	}
 	return unmangle_c_ptr_type(name)
+}
+
+fn is_builtin_specialization_base(name string) bool {
+	return name in primitive_types || name in ['string', 'chan', 'Error', 'IError']
+}
+
+fn (g &Gen) normalize_builtin_qualified_c_type(type_name string) string {
+	mut base := type_name.trim_space()
+	if base == '' {
+		return type_name
+	}
+	mut suffix := ''
+	for base.ends_with('*') {
+		suffix += '*'
+		base = base[..base.len - 1].trim_space()
+	}
+	if !base.contains('__') {
+		return type_name
+	}
+	mod_name := base.all_before_last('__')
+	short_name := base.all_after_last('__')
+	if is_builtin_specialization_base(short_name)
+		&& !g.c_type_name_declared_in_module(mod_name, short_name) {
+		return short_name + suffix
+	}
+	return type_name
 }
 
 fn (g &Gen) c_type_from_possible_specialization_token(name string) string {
@@ -564,12 +628,14 @@ fn (mut g Gen) collect_typedef_c_types() {
 fn (mut g Gen) collect_module_type_names() {
 	for file in g.files {
 		g.set_file_module(file)
+		module_name := file_module_name(file)
 		for stmt in file.stmts {
 			if !stmt_has_valid_data(stmt) {
 				continue
 			}
 			match stmt {
 				ast.StructDecl {
+					g.record_declared_type_name(stmt.name, module_name)
 					if stmt.language != .v {
 						continue
 					}
@@ -611,6 +677,7 @@ fn (mut g Gen) collect_module_type_names() {
 					}
 				}
 				ast.EnumDecl {
+					g.record_declared_type_name(stmt.name, module_name)
 					enum_name := g.get_enum_name(stmt)
 					if is_generic_placeholder_c_type_name(enum_name) {
 						continue
@@ -634,14 +701,31 @@ fn (mut g Gen) collect_module_type_names() {
 					}
 				}
 				ast.TypeDecl {
+					g.record_declared_type_name(stmt.name, module_name)
 					if stmt.language == .c {
 						continue
 					}
 				}
-				ast.InterfaceDecl {}
+				ast.InterfaceDecl {
+					g.record_declared_type_name(stmt.name, module_name)
+				}
 				else {}
 			}
 		}
+	}
+}
+
+fn (mut g Gen) record_declared_type_name(decl_name string, module_name string) {
+	if decl_name == '' {
+		return
+	}
+	alias_name := type_decl_name_in_module(decl_name, module_name)
+	g.declared_type_names_all[alias_name] = true
+	g.declared_type_names_by_mod[type_decl_module_key(module_name, alias_name)] = true
+	if (module_name == '' || module_name == 'main' || module_name == 'builtin')
+		&& decl_name != alias_name {
+		g.declared_type_names_all[decl_name] = true
+		g.declared_type_names_by_mod[type_decl_module_key(module_name, decl_name)] = true
 	}
 }
 
@@ -835,13 +919,41 @@ fn is_generic_placeholder_type_name(name string) bool {
 }
 
 fn (g &Gen) qualify_module_local_type_name(type_name string) string {
-	if type_name == '' || type_name.contains('__') || g.cur_module == '' || g.cur_module == 'main'
-		|| g.cur_module == 'builtin' {
+	mut mod_name := g.cur_module
+	if (mod_name == '' || mod_name == 'main') && g.cur_fn_c_name.contains('__') {
+		fn_prefix := g.cur_fn_c_name.all_before('__')
+		if !('body_${fn_prefix}' in g.emitted_types || 'enum_${fn_prefix}' in g.emitted_types
+			|| 'alias_${fn_prefix}' in g.emitted_types) {
+			mod_name = fn_prefix
+		}
+	}
+	if type_name == '' || type_name.contains('__') || type_name.starts_with('Array_')
+		|| type_name.starts_with('Map_') || type_name.starts_with('_option_')
+		|| type_name.starts_with('_result_') || type_name in g.c_struct_types
+		|| type_name in g.typedef_c_types || is_known_external_c_type_name(type_name)
+		|| mod_name == '' || mod_name == 'main' || mod_name == 'builtin' {
 		return type_name
 	}
-	qualified := '${g.cur_module}__${type_name}'
+	qualified := '${mod_name}__${type_name}'
 	if 'body_${qualified}' in g.emitted_types || 'enum_${qualified}' in g.emitted_types
 		|| 'alias_${qualified}' in g.emitted_types || '${qualified}__msg' in g.fn_return_types {
+		return qualified
+	}
+	if 'body_${qualified}' in g.pending_late_body_keys {
+		return qualified
+	}
+	if mut module_scope := g.env_scope(mod_name) {
+		if _ := module_scope.lookup_type(type_name) {
+			return qualified
+		}
+	}
+	if obj := g.lookup_module_scope_object(type_name) {
+		if obj is types.Type {
+			return qualified
+		}
+	}
+	if g.cur_fn_c_name.contains('__') && !type_name.contains(' ')
+		&& !type_name.starts_with('struct ') {
 		return qualified
 	}
 	return type_name
@@ -904,6 +1016,12 @@ fn (g &Gen) option_result_payload_ready(val_type string) bool {
 	if payload_type.starts_with('struct ') {
 		return true
 	}
+	if val_type.starts_with('_option_') {
+		return val_type in g.emitted_option_structs
+	}
+	if val_type.starts_with('_result_') {
+		return val_type in g.emitted_result_structs
+	}
 	if val_type in primitive_types || val_type in ['bool', 'char', 'void*', 'u8*', 'char*'] {
 		return true
 	}
@@ -962,6 +1080,9 @@ fn (mut g Gen) register_alias_type(name string) {
 		if g.option_result_payload_invalid(val_type) {
 			return
 		}
+		if val_type.starts_with('_option_') || val_type.starts_with('_result_') {
+			g.register_alias_type(val_type)
+		}
 		g.result_aliases[name] = true
 		// Also register the payload type as an array/map alias if applicable.
 		if val_type.starts_with('Array_') {
@@ -975,6 +1096,9 @@ fn (mut g Gen) register_alias_type(name string) {
 		val_type := option_value_type(name)
 		if g.option_result_payload_invalid(val_type) {
 			return
+		}
+		if val_type.starts_with('_option_') || val_type.starts_with('_result_') {
+			g.register_alias_type(val_type)
 		}
 		g.option_aliases[name] = true
 		if val_type.starts_with('Array_') {
@@ -1139,6 +1263,44 @@ fn is_known_external_c_type_name(name string) bool {
 }
 
 fn (g &Gen) unqualified_type_name_declared_in_files(name string) bool {
+	if g.declared_type_names_all.len > 0 || g.declared_type_names_by_mod.len > 0 {
+		if g.declared_type_name_belongs_to_lookup_files(name) {
+			return true
+		}
+	} else if g.scan_unqualified_type_name_declared_in_files(name) {
+		return true
+	}
+	if g.unqualified_type_name_declared_in_type_modules(name) {
+		return true
+	}
+	return false
+}
+
+fn (g &Gen) declared_type_name_belongs_to_lookup_files(name string) bool {
+	if g.cache_bundle_name.len == 0 || (g.type_modules.len == 0 && g.emit_modules.len == 0) {
+		return name in g.declared_type_names_all
+	}
+	if type_decl_module_key('builtin', name) in g.declared_type_names_by_mod {
+		return true
+	}
+	if g.type_modules.len > 0 {
+		for module_name, _ in g.type_modules {
+			if type_decl_module_key(module_name, name) in g.declared_type_names_by_mod {
+				return true
+			}
+		}
+	}
+	if g.emit_modules.len > 0 {
+		for module_name, _ in g.emit_modules {
+			if type_decl_module_key(module_name, name) in g.declared_type_names_by_mod {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+fn (g &Gen) scan_unqualified_type_name_declared_in_files(name string) bool {
 	for file in g.files {
 		module_name := file_module_name(file)
 		if !g.type_lookup_file_belongs_to_cache(module_name) {
@@ -1220,6 +1382,10 @@ fn type_decl_name_matches_cache_alias(decl_name string, module_name string, alia
 	}
 	return (module_name == '' || module_name == 'main' || module_name == 'builtin')
 		&& decl_name == alias_name
+}
+
+fn type_decl_module_key(module_name string, alias_name string) string {
+	return '${module_name}::${alias_name}'
 }
 
 fn file_module_name(file ast.File) string {
@@ -1687,7 +1853,7 @@ fn (g &Gen) struct_has_ref_fields(s types.Struct) bool {
 
 fn (g &Gen) type_has_ref_fields(t types.Type, mut seen map[string]bool) bool {
 	match t {
-		types.String, types.Array, types.Map {
+		types.String, types.Array, types.Map, types.OptionType {
 			return true
 		}
 		types.Struct {
@@ -1734,6 +1900,20 @@ fn (mut g Gen) gen_type_field_eq_expr(t types.Type, c_type string, lhs string, r
 				return '${map_type}_map_eq(${lhs}, ${rhs})'
 			}
 			return 'map_map_eq(${lhs}, ${rhs})'
+		}
+		types.OptionType {
+			option_c_type := if c_type != '' { c_type } else { g.types_type_to_c(t) }
+			mut value_c_type := option_value_type(option_c_type)
+			if value_c_type == '' {
+				value_c_type = g.types_type_to_c(t.base_type)
+			}
+			if value_c_type == '' || value_c_type == 'void' {
+				return '${lhs}.state == ${rhs}.state'
+			}
+			lpayload := '(*(${value_c_type}*)(((u8*)(&${lhs}.err)) + sizeof(IError)))'
+			rpayload := '(*(${value_c_type}*)(((u8*)(&${rhs}.err)) + sizeof(IError)))'
+			payload_eq := g.gen_type_field_eq_expr(t.base_type, value_c_type, lpayload, rpayload)
+			return '(${lhs}.state == ${rhs}.state && (${lhs}.state != 0 || ${payload_eq}))'
 		}
 		types.Struct {
 			field_c_type := if c_type != '' { c_type } else { g.types_type_to_c(t) }
@@ -1787,6 +1967,10 @@ fn (mut g Gen) gen_struct_field_eq_expr(s types.Struct, va string, vb string) st
 }
 
 fn (mut g Gen) method_receiver_base_type(expr ast.Expr) string {
+	unwrapped_expr := strip_expr_wrappers(expr)
+	if unwrapped_expr is ast.PrefixExpr && unwrapped_expr.op in [.amp, .mul] {
+		return g.method_receiver_base_type(unwrapped_expr.expr)
+	}
 	// For InitExpr (struct literal), use the explicit type from the AST
 	// rather than pos.id lookup (which may return a different pre-transformer type).
 	if expr is ast.InitExpr {
@@ -2175,7 +2359,7 @@ fn (g &Gen) types_type_to_c(t types.Type) string {
 		types.NamedType {
 			name := string(t)
 			if name in ['int', 'i64', 'i32', 'i16', 'i8', 'u64', 'u32', 'u16', 'u8', 'byte', 'rune',
-				'f32', 'f64', 'usize', 'isize', 'bool', 'string'] {
+				'f32', 'f64', 'usize', 'isize', 'bool', 'string', 'chan', 'Error', 'IError'] {
 				return name
 			}
 			if name == 'voidptr' {
@@ -2928,6 +3112,13 @@ fn (mut g Gen) get_expr_type(node ast.Expr) string {
 			return ct_type
 		}
 	}
+	// Generic type parameter access: T.name is emitted as a static V string.
+	if node is ast.SelectorExpr && node.rhs.name == 'name' && node.lhs is ast.Ident {
+		lhs_name := node.lhs.name
+		if is_generic_placeholder_type_name(lhs_name) {
+			return 'string'
+		}
+	}
 	// SelectorExpr .argN on a tuple-typed LHS: extract the N-th field type
 	// from the tuple alias. Transformer expands `a, b := call()` to
 	// `_tuple_tN := call(); a := _tuple_tN.arg0; b := _tuple_tN.arg1`,
@@ -3309,9 +3500,19 @@ fn (mut g Gen) get_expr_type(node ast.Expr) string {
 			}
 			// Try to get element type from LHS type
 			if raw_type := g.get_raw_type(node.lhs) {
+				raw_lhs_expr := strip_expr_wrappers(node.lhs)
 				match raw_type {
 					types.Array {
-						return g.types_type_to_c(raw_type.elem_type)
+						elem_type := g.types_type_to_c(raw_type.elem_type)
+						if raw_lhs_expr is ast.ArrayInitExpr {
+							value_elem := g.infer_array_init_value_elem_type(raw_lhs_expr)
+							specialized := specialized_generic_elem_type_from_value(elem_type,
+								value_elem)
+							if specialized != '' {
+								return specialized
+							}
+						}
+						return elem_type
 					}
 					types.ArrayFixed {
 						return g.types_type_to_c(raw_type.elem_type)
@@ -3328,7 +3529,16 @@ fn (mut g Gen) get_expr_type(node ast.Expr) string {
 								return g.types_type_to_c(raw_type.base_type)
 							}
 							types.Array {
-								return g.types_type_to_c(raw_type.base_type.elem_type)
+								elem_type := g.types_type_to_c(raw_type.base_type.elem_type)
+								if raw_lhs_expr is ast.ArrayInitExpr {
+									value_elem := g.infer_array_init_value_elem_type(raw_lhs_expr)
+									specialized := specialized_generic_elem_type_from_value(elem_type,
+										value_elem)
+									if specialized != '' {
+										return specialized
+									}
+								}
+								return elem_type
 							}
 							types.ArrayFixed {
 								return g.types_type_to_c(raw_type.base_type.elem_type)
@@ -3399,6 +3609,10 @@ fn (mut g Gen) get_expr_type(node ast.Expr) string {
 			is_fixed_marker := array_init_has_fixed_len_marker(node)
 			mut elem := g.extract_array_elem_type(node.typ)
 			value_elem := g.infer_array_init_value_elem_type(node)
+			specialized := specialized_generic_elem_type_from_value(elem, value_elem)
+			if specialized != '' {
+				elem = specialized
+			}
 			if (elem == '' || elem == 'int') && value_elem != '' && value_elem != 'int' {
 				elem = value_elem
 			}
@@ -3780,6 +3994,15 @@ fn (mut g Gen) expr_type_to_c(e ast.Expr) string {
 			if name == 'string' {
 				return 'string'
 			}
+			if name == 'chan' {
+				return 'chan'
+			}
+			if name == 'Error' && !g.c_type_name_declared_in_module(g.cur_module, name) {
+				return 'Error'
+			}
+			if name == 'IError' {
+				return 'IError'
+			}
 			if name == 'voidptr' {
 				return 'void*'
 			}
@@ -4005,6 +4228,12 @@ fn (mut g Gen) expr_type_to_c(e ast.Expr) string {
 				return result_type
 			}
 			if e is ast.FnType {
+				if e.return_type !is ast.EmptyExpr {
+					_ = g.expr_type_to_c(e.return_type)
+				}
+				for param in e.params {
+					_ = g.expr_type_to_c(param.typ)
+				}
 				return 'void*'
 			}
 			if e is ast.NilType {
@@ -4069,6 +4298,34 @@ fn (mut g Gen) expr_type_to_c(e ast.Expr) string {
 	}
 }
 
+fn (g &Gen) current_fn_module_local_type_name(type_name string) ?string {
+	if type_name == '' || type_name.contains('__') || g.cur_fn_c_name == '' {
+		return none
+	}
+	fn_module := module_prefix_from_fn_name(g.cur_fn_c_name)
+	if fn_module == '' || fn_module == g.cur_module || fn_module == 'main' || fn_module == 'builtin' {
+		return none
+	}
+	if fn_module[0] < `a` || fn_module[0] > `z` || !g.source_module_exists(fn_module) {
+		return none
+	}
+	qualified := '${fn_module}__${type_name}'
+	if 'body_${qualified}' in g.emitted_types || 'enum_${qualified}' in g.emitted_types
+		|| 'alias_${qualified}' in g.emitted_types
+		|| 'body_${qualified}' in g.pending_late_body_keys {
+		return qualified
+	}
+	if g.c_type_name_declared_in_module(fn_module, type_name) {
+		return qualified
+	}
+	if mut module_scope := g.env_scope(fn_module) {
+		if _ := module_scope.lookup_type(type_name) {
+			return qualified
+		}
+	}
+	return none
+}
+
 // is_c_type_name checks if a name refers to a C type (struct, typedef) vs a C function.
 fn (g &Gen) is_c_type_name(name string) bool {
 	if name in g.typedef_c_types {
@@ -4105,7 +4362,7 @@ fn (mut g Gen) record_generic_struct_bindings(struct_base_name string, struct_c_
 		}
 		concrete_c_name := g.expr_type_to_c(concrete_expr)
 		param_c_names << mangle_alias_component(concrete_c_name)
-		if concrete_type := g.concrete_type_from_c_name(concrete_c_name) {
+		if concrete_type := g.concrete_type_from_call_arg_c_name(concrete_c_name) {
 			bindings[param_name] = concrete_type
 		}
 	}
@@ -4187,7 +4444,7 @@ fn (mut g Gen) record_generic_struct_bindings_with_parent(struct_base_name strin
 		resolved_expr := g.substitute_generic_expr_with_parent(concrete_expr, parent_bindings)
 		concrete_c_name := g.expr_type_to_c(resolved_expr)
 		param_c_names << mangle_alias_component(concrete_c_name)
-		if concrete_type := g.concrete_type_from_c_name(concrete_c_name) {
+		if concrete_type := g.concrete_type_from_call_arg_c_name(concrete_c_name) {
 			bindings[param_name] = concrete_type
 		}
 	}
@@ -4296,7 +4553,16 @@ fn (mut g Gen) substitute_generic_expr_with_parent(expr ast.Expr, parent_binding
 // a non-primary instance, returns the suffixed name.
 fn (mut g Gen) resolve_generic_struct_c_name(base_name string, concrete_params []ast.Expr) string {
 	instances := g.generic_struct_instances[base_name]
-	if instances.len <= 1 {
+	if instances.len == 1 {
+		inst := instances[0]
+		body_key := 'body_${inst.c_name}'
+		if g.pass5_start_pos > 0 && body_key !in g.emitted_types
+			&& body_key !in g.pending_late_body_keys {
+			g.emit_late_generic_struct(base_name, inst)
+		}
+		return inst.c_name
+	}
+	if instances.len == 0 {
 		return base_name
 	}
 	runtime_params := runtime_generic_args(concrete_params)
@@ -4307,12 +4573,10 @@ fn (mut g Gen) resolve_generic_struct_c_name(base_name string, concrete_params [
 	params_key := param_c_names.join('_')
 	for inst in instances {
 		if inst.params_key == params_key {
-			// If this is a non-primary instance and hasn't been emitted, emit it late
-			if inst.c_name != base_name {
-				body_key := 'body_${inst.c_name}'
-				if body_key !in g.emitted_types {
-					g.emit_late_generic_struct(base_name, inst)
-				}
+			body_key := 'body_${inst.c_name}'
+			if g.pass5_start_pos > 0 && body_key !in g.emitted_types
+				&& body_key !in g.pending_late_body_keys {
+				g.emit_late_generic_struct(base_name, inst)
 			}
 			return inst.c_name
 		}
@@ -4347,7 +4611,7 @@ fn (mut g Gen) emit_late_generic_struct(base_name string, inst GenericStructInst
 	def.writeln('typedef ${keyword} ${inst.c_name} ${inst.c_name};')
 	mut seen_field_typedef := map[string]bool{}
 	for field in struct_node.fields {
-		ft := g.expr_type_to_c(field.typ)
+		ft := g.qualify_owner_local_field_type(inst.c_name, g.expr_type_to_c(field.typ))
 		fbase := ft.trim_right('*')
 		if fbase != inst.c_name && fbase.contains('_T_') && !fbase.starts_with('Array_')
 			&& !fbase.starts_with('Map_') && fbase !in seen_field_typedef {
@@ -4357,7 +4621,7 @@ fn (mut g Gen) emit_late_generic_struct(base_name string, inst GenericStructInst
 	}
 	def.writeln('${keyword} ${inst.c_name} {')
 	for field in struct_node.fields {
-		field_type := g.expr_type_to_c(field.typ)
+		field_type := g.qualify_owner_local_field_type(inst.c_name, g.expr_type_to_c(field.typ))
 		field_name := if field.name.len > 0 { field.name } else { 'value' }
 		def.writeln('\t${field_type} ${field_name};')
 		g.struct_field_types['${inst.c_name}.${field_name}'] = field_type
@@ -4409,10 +4673,22 @@ fn (mut g Gen) get_comptime_selector_type(node ast.SelectorExpr) string {
 	// field.name → string
 	if node.lhs is ast.Ident && node.lhs.name == g.comptime_field_var {
 		match rhs_name {
-			'name' { return 'string' }
-			'typ' { return 'string' }
-			'attrs' { return 'Array_string' }
-			'is_mut', 'is_shared', 'is_array', 'is_map', 'is_option' { return 'bool' }
+			'name' {
+				return 'string'
+			}
+			'typ' {
+				return 'int'
+			}
+			'unaliased_typ' {
+				return 'int'
+			}
+			'attrs' {
+				return 'Array_string'
+			}
+			'is_pub', 'is_mut', 'is_embed', 'is_shared', 'is_atomic', 'is_option', 'is_array',
+			'is_map', 'is_chan', 'is_enum', 'is_struct', 'is_alias' {
+				return 'bool'
+			}
 			else {}
 		}
 	}
@@ -4475,12 +4751,30 @@ fn (mut g Gen) lookup_type_by_c_name(c_name string) ?types.Type {
 			}
 		}
 	}
-	// Try current module scope
 	mod_name := if g.cur_module != '' { g.cur_module } else { 'main' }
-	if scope := g.env_scope(mod_name) {
-		short_name := if c_name.contains('__') { c_name.all_after_last('__') } else { c_name }
-		if typ := scope.lookup_type(short_name) {
-			return typ
+	short_name := if c_name.contains('__') { c_name.all_after_last('__') } else { c_name }
+	mut modules_to_try := []string{}
+	if !c_name.contains('__') && mod_name != 'main' && mod_name != 'builtin' {
+		modules_to_try << 'main'
+		modules_to_try << 'builtin'
+	}
+	modules_to_try << mod_name
+	if 'main' !in modules_to_try {
+		modules_to_try << 'main'
+	}
+	if 'builtin' !in modules_to_try {
+		modules_to_try << 'builtin'
+	}
+	mut tried := map[string]bool{}
+	for try_mod in modules_to_try {
+		if tried[try_mod] {
+			continue
+		}
+		tried[try_mod] = true
+		if scope := g.env_scope(try_mod) {
+			if typ := scope.lookup_type(short_name) {
+				return typ
+			}
 		}
 	}
 	return none
@@ -4511,6 +4805,16 @@ fn (mut g Gen) concrete_type_from_c_name(c_name string) ?types.Type {
 		return types.Type(types.Struct{
 			name: clean_name
 		})
+	}
+	if clean_name.contains('_T_') {
+		base_name := clean_name.all_before('_T_')
+		if base_name != '' && (base_name in g.generic_struct_instances
+			|| base_name in g.generic_struct_bindings
+			|| g.lookup_struct_type_by_c_name(base_name).generic_params.len > 0) {
+			return normalize_generic_concrete_type(types.Type(types.Struct{
+				name: clean_name
+			}))
+		}
 	}
 	if concrete := g.lookup_type_by_c_name(clean_name) {
 		if type_contains_generic_placeholder(concrete) {
@@ -5033,6 +5337,23 @@ fn (mut g Gen) resolve_c_type_to_raw(c_type string) ?types.Type {
 	}
 	mut type_name := c_type.trim_right('*')
 	is_ptr := c_type.ends_with('*')
+	if type_name.starts_with('Array_fixed_') {
+		payload := type_name['Array_fixed_'.len..]
+		last_underscore := payload.last_index('_') or { return none }
+		elem_c := unmangle_c_ptr_type(payload[..last_underscore])
+		len := payload[last_underscore + 1..].int()
+		elem_type := g.resolve_c_type_to_raw(elem_c) or { return none }
+		raw := types.Type(types.ArrayFixed{
+			len:       len
+			elem_type: elem_type
+		})
+		if is_ptr {
+			return types.Pointer{
+				base_type: raw
+			}
+		}
+		return raw
+	}
 	// Handle Array_* → types.Array{elem_type: ...}
 	if type_name.starts_with('Array_') {
 		elem_c := unmangle_c_ptr_type(type_name['Array_'.len..])
@@ -5362,7 +5683,8 @@ fn (mut g Gen) selector_declared_field_type(sel ast.SelectorExpr) string {
 	}
 	lhs_struct_name := g.selector_struct_name(sel.lhs)
 	if lhs_struct_name != '' {
-		if g.active_generic_types.len > 0 {
+		if g.active_generic_types.len > 0 || lhs_struct_name in g.generic_struct_bindings
+			|| lhs_struct_name in g.generic_struct_instances || lhs_struct_name.contains('_T_') {
 			if field_type := g.lookup_struct_field_type_by_name(lhs_struct_name, rhs) {
 				return field_type
 			}
@@ -5612,23 +5934,18 @@ fn (mut g Gen) selector_field_type(sel ast.SelectorExpr) string {
 				// field type (e.g. ValueInfo). Cross-check against struct_field_types.
 				if g.active_generic_types.len > 0 {
 					mut lhs_struct := g.selector_struct_name(sel.lhs)
-					mut checked_declared_lhs := false
 					if lhs_struct != '' {
 						if field_t := g.lookup_struct_field_type_by_name(lhs_struct, rhs) {
-							checked_declared_lhs = true
 							if field_t != t {
 								return g.cache_selector_field_type(cache_key, field_t)
 							}
 						}
 					}
-					if !checked_declared_lhs {
-						generic_lhs_struct := g.resolve_generic_struct_field_name(sel.lhs)
-						lhs_struct = generic_lhs_struct
-						if lhs_struct != '' {
-							if field_t := g.lookup_struct_field_type_by_name(lhs_struct, rhs) {
-								if field_t != t {
-									return g.cache_selector_field_type(cache_key, field_t)
-								}
+					generic_lhs_struct := g.resolve_generic_struct_field_name(sel.lhs)
+					if generic_lhs_struct != '' && generic_lhs_struct != lhs_struct {
+						if field_t := g.lookup_struct_field_type_by_name(generic_lhs_struct, rhs) {
+							if field_t != t {
+								return g.cache_selector_field_type(cache_key, field_t)
 							}
 						}
 					}

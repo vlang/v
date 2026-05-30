@@ -159,6 +159,39 @@ pub fn (mut p Parser) parse_files(files []string, mut file_set token.FileSet) []
 	return ast_files
 }
 
+// parse_files_to_flat parses each input file, immediately appends it to a
+// FlatBuilder, and drops the legacy File. This is the Phase 2 entry point:
+// it produces the same FlatAst that `ast.flatten_files(p.parse_files(...))`
+// would produce, but never holds more than one file's legacy AST resident.
+// The result is signature-equivalent to the two-step path (regression-tested).
+pub fn (mut p Parser) parse_files_to_flat(files []string, mut file_set token.FileSet) ast.FlatAst {
+	mut total_bytes := i64(0)
+	for file in files {
+		if file == '' {
+			continue
+		}
+		total_bytes += os.file_size(file)
+	}
+	nodes_cap, edges_cap, strings_cap := ast.arena_caps_for_bytes(total_bytes)
+	mut builder := ast.new_flat_builder_with_capacity(nodes_cap, edges_cap, strings_cap)
+	p.parse_files_into_flat(files, mut file_set, mut builder)
+	return builder.flat
+}
+
+// parse_files_into_flat streams files into a caller-owned FlatBuilder.
+// Used by the builder to accumulate a single FlatAst across multiple
+// parse batches (core, user, imports) without throwing away the builder
+// between calls.
+pub fn (mut p Parser) parse_files_into_flat(files []string, mut file_set token.FileSet, mut builder ast.FlatBuilder) {
+	for file in files {
+		if file == '' {
+			continue
+		}
+		legacy := p.parse_file(file, mut file_set)
+		builder.append_file(legacy)
+	}
+}
+
 pub fn (mut p Parser) parse_file(filename string, mut file_set token.FileSet) ast.File {
 	if filename == '' {
 		panic('parser.parse_file empty filename')
@@ -764,7 +797,12 @@ fn (mut p Parser) expr(min_bp token.BindingPower) ast.Expr {
 	// p.log('EXPR: ${p.tok} - ${p.line}')
 	// Self-hosted ARM64 builds can conflate `&` with backtick char tokens,
 	// so disambiguate the two from the source byte before token matching.
-	start_char := if p.scanner.pos < p.scanner.src.len { p.scanner.src[p.scanner.pos] } else { `\0` }
+	start_offset := p.pos.offset - p.file.base
+	start_char := if start_offset >= 0 && start_offset < p.scanner.src.len {
+		p.scanner.src[start_offset]
+	} else {
+		`\0`
+	}
 	if start_char == `\`` {
 		char_pos := p.pos
 		char_value := p.lit()
@@ -825,6 +863,13 @@ fn (mut p Parser) expr(min_bp token.BindingPower) ast.Expr {
 		.key_false, .key_true, .number {
 			lhs = ast.Expr(ast.BasicLiteral{
 				kind:  p.tok
+				value: p.lit()
+				pos:   p.pos
+			})
+		}
+		.char {
+			lhs = ast.Expr(ast.BasicLiteral{
+				kind:  .char
 				value: p.lit()
 				pos:   p.pos
 			})

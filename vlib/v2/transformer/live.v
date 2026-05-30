@@ -6,6 +6,182 @@ module transformer
 import os
 import v2.ast
 
+// LiveReloadParts is the pure-computation bundle produced by `live_reload_parts`.
+pub struct LiveReloadParts {
+pub:
+	source_file  string
+	c_decls      []ast.Stmt
+	global_decls []ast.Stmt
+	preamble     []ast.Stmt
+	check_stmts  []ast.Stmt
+}
+
+// live_reload_parts is the pure-computation extraction of the pre-splice
+// state previously inline in `inject_live_reload`. Returns the resolved
+// source-file path plus the four stmt slices (C extern decls, GlobalDecls,
+// main() preamble, and per-for-body reload-check stmts) that the caller
+// splices into the file containing `main()`. Returns `none` when there are
+// no @[live] functions (the legacy early-return).
+//
+// Does NOT mutate `files` or any caller state. Caller decides whether to
+// splice the result into a legacy `[]ast.File` (via `inject_live_reload`)
+// or into a `FlatBuilder` (future `post_pass_to_flat`).
+//
+// Third Phase 5 (post_pass port) `_parts` extraction (follows s144's
+// `runtime_const_init_fn_stmts_parts` and s145's
+// `runtime_const_init_main_calls_parts`). Bit-equal: identical
+// `os.real_path` resolution + identical builder-helper outputs.
+pub fn (mut t Transformer) live_reload_parts() ?LiveReloadParts {
+	if t.live_fns.len == 0 {
+		return none
+	}
+	source_file := os.real_path(t.live_source_file)
+	return LiveReloadParts{
+		source_file:  source_file
+		c_decls:      build_live_c_decls()
+		global_decls: t.build_live_globals()
+		preamble:     t.build_live_preamble(source_file)
+		check_stmts:  t.build_live_check(source_file)
+	}
+}
+
+// LiveReloadFlatParts couples the locator output (file_idx of the main fn's
+// file) with the pure-computation LiveReloadParts payload, so the splice
+// step can run without re-locating.
+pub struct LiveReloadFlatParts {
+pub:
+	file_idx int
+	parts    LiveReloadParts
+}
+
+// inject_live_reload_parts_from_flat locates the FIRST file in the flat AST
+// that contains a top-level non-method `fn main()` AND computes the
+// LiveReloadParts payload. Returns `none` when no @[live] functions exist
+// (live_reload_parts is empty) OR no main function is present in any file.
+//
+// The "first match wins" semantics of the legacy loop are preserved:
+// `inject_live_reload` breaks out of its file loop on the first file it
+// changes (the one containing main).
+pub fn (mut t Transformer) inject_live_reload_parts_from_flat(flat &ast.FlatAst) ?LiveReloadFlatParts {
+	parts := t.live_reload_parts() or { return none }
+	for i in 0 .. flat.files.len {
+		fc := flat.file_cursor(i)
+		stmts := fc.stmts()
+		for j in 0 .. stmts.len() {
+			c := stmts.at(j)
+			if c.kind() == .stmt_fn_decl && !c.flag(ast.flag_is_method) && c.name() == 'main' {
+				return LiveReloadFlatParts{
+					file_idx: i
+					parts:    parts
+				}
+			}
+		}
+	}
+	return none
+}
+
+// inject_live_reload_to_flat is the FlatBuilder-side splice counterpart to
+// the legacy `inject_live_reload(mut []ast.File)`. Locates the main file
+// via `inject_live_reload_parts_from_flat`, rehydrates that single file's
+// FnDecl bodies to legacy `ast.Stmt` (via `to_files_range`) so the legacy
+// `inject_live_into_stmts` helper can do the per-stmt call rewriting, then
+// uses the FlatBuilder primitives to splice the result back:
+//   - `replace_fn_body_stmts(old_fn_id, new_body_ids)` for each rewritten FnDecl
+//   - `replace_file_stmt(file_idx, stmt_idx, new_fn_id)` to rewire the file
+//   - `prepend_file_stmts(file_idx, c_decl_ids + global_decl_ids)` for the
+//     file-level C-extern + GlobalDecl prepend
+//
+// Hybrid hydrate approach: the per-stmt call-rewriting logic
+// (`rewrite_live_call_in_stmt_b`) stays legacy — porting the recursive
+// CallExpr/Ident/SelectorExpr walk to cursors is a much bigger lift and
+// outside the scope of `inject_live_reload`'s purpose (the rewriting is a
+// stable, well-tested helper). Only the FILE-LEVEL and FN-LEVEL splice
+// (which is what the new primitives address) runs through the flat path.
+//
+// Bit-equal w.r.t. `signature()` to running legacy
+// `inject_live_reload(mut files)` followed by `ast.flatten_files(files)`.
+pub fn (mut t Transformer) inject_live_reload_to_flat(mut out ast.FlatBuilder) {
+	flat_parts := t.inject_live_reload_parts_from_flat(&out.flat) or { return }
+	file_idx := flat_parts.file_idx
+	parts := flat_parts.parts
+
+	// Rehydrate the target file's FnDecls to legacy ast.Stmt so we can run
+	// legacy inject_live_into_stmts (which handles call rewriting) on each.
+	files_range := out.flat.to_files_range(file_idx, file_idx + 1)
+	if files_range.len == 0 {
+		return
+	}
+	legacy_file := files_range[0]
+
+	// Per-FnDecl rewrite: capture (stmt_idx, new_fn_id) replacements; apply
+	// them AFTER the loop while stmt indices are still stable (prepend
+	// happens after all replaces). file_stmts is built from the OLD file
+	// root and references OLD fn ids — those nodes stay reachable from the
+	// builder even when the file's stmts list gets rewired.
+	fc := out.flat.file_cursor(file_idx)
+	file_stmts := fc.stmts()
+
+	mut replacement_idxs := []int{}
+	mut replacement_ids := []ast.FlatNodeId{}
+
+	for j in 0 .. file_stmts.len() {
+		if j >= legacy_file.stmts.len {
+			break
+		}
+		legacy_stmt := legacy_file.stmts[j]
+		if legacy_stmt !is ast.FnDecl {
+			continue
+		}
+		decl := legacy_stmt as ast.FnDecl
+		is_main := !decl.is_method && decl.name == 'main'
+		mut new_body := []ast.Stmt{}
+		mut had_change := false
+		if is_main {
+			for ps in parts.preamble {
+				new_body << ps
+			}
+			live_stmts, _ := t.inject_live_into_stmts(decl.stmts, parts.check_stmts)
+			for fs in live_stmts {
+				new_body << fs
+			}
+			had_change = true
+		} else {
+			live_stmts, fn_changed := t.inject_live_into_stmts(decl.stmts, parts.check_stmts)
+			if !fn_changed {
+				continue
+			}
+			for fs in live_stmts {
+				new_body << fs
+			}
+			had_change = true
+		}
+		if !had_change {
+			continue
+		}
+		mut new_body_ids := []ast.FlatNodeId{cap: new_body.len}
+		for ns in new_body {
+			new_body_ids << out.emit_stmt(ns)
+		}
+		old_fn_id := file_stmts.at(j).id
+		new_fn_id := out.replace_fn_body_stmts(old_fn_id, new_body_ids)
+		replacement_idxs << j
+		replacement_ids << new_fn_id
+	}
+
+	for k in 0 .. replacement_idxs.len {
+		out.replace_file_stmt(file_idx, replacement_idxs[k], replacement_ids[k])
+	}
+
+	mut prepended_ids := []ast.FlatNodeId{cap: parts.c_decls.len + parts.global_decls.len}
+	for cd in parts.c_decls {
+		prepended_ids << out.emit_stmt(cd)
+	}
+	for gd in parts.global_decls {
+		prepended_ids << out.emit_stmt(gd)
+	}
+	out.prepend_file_stmts(file_idx, prepended_ids)
+}
+
 // inject_live_reload generates hot code reloading infrastructure for @[live] functions.
 //
 // Approach: function pointer indirection with direct memory patching.
@@ -20,25 +196,11 @@ import v2.ast
 // 3. Replaces calls to @[live] functions with indirect calls through global pointers
 // 4. Injects reload checks at the top of for-loop bodies in ALL functions
 fn (mut t Transformer) inject_live_reload(mut files []ast.File) {
-	if t.live_fns.len == 0 {
-		return
-	}
-
-	// Resolve source file to absolute path so the reload command works
-	// regardless of the binary's working directory.
-	source_file := os.real_path(t.live_source_file)
-
-	// Build C extern function declarations
-	c_decls := build_live_c_decls()
-
-	// Build GlobalDecl for live reload state
-	global_decls := t.build_live_globals()
-
-	// Build preamble statements for main()
-	preamble := t.build_live_preamble(source_file)
-
-	// Build reload-check statements for for-loop bodies
-	check_stmts := t.build_live_check(source_file)
+	parts := t.live_reload_parts() or { return }
+	c_decls := parts.c_decls
+	global_decls := parts.global_decls
+	preamble := parts.preamble
+	check_stmts := parts.check_stmts
 
 	// Find the user file that contains main()
 	for i, file in files {

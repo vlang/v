@@ -58,7 +58,11 @@ fn (mut b Builder) gen_cleanc_parallel(mut gen cleanc.Gen) {
 	stage_start = mark_cleanc_parallel_step(stats_enabled, mut stats_sw, stage_start, 'pass 5 pre')
 
 	n_files := emit_indices.len
-	n_jobs := runtime.nr_jobs()
+	// Pass 5 workers clone sizeable lookup maps and accumulate C output before
+	// merging. Keep the default fan-out conservative until those maps can be
+	// shared without data races; otherwise large projects can hit multi-GB RSS.
+	n_runtime_jobs := runtime.nr_jobs()
+	n_jobs := if n_runtime_jobs > 2 { 2 } else { n_runtime_jobs }
 
 	if n_files <= 1 || n_jobs <= 1 {
 		// Fallback to sequential

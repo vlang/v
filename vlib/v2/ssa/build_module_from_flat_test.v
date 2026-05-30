@@ -1,0 +1,53 @@
+// Copyright (c) 2026 Alexander Medvednikov. All rights reserved.
+// Use of this source code is governed by an MIT license
+// that can be found in the LICENSE file.
+// vtest build: macos
+//
+// Bit-equality pin for s180: `build_module_from_flat` (fifth per-kind port
+// inside the s175 seam) must set `b.cur_module` to the same dotted-to-
+// underscore form as the legacy `ast.ModuleStmt` arm in `build_stmt`. The
+// flat path drops the ModuleStmt struct decode entirely and reads the
+// module name straight from `c.name()`.
+module ssa
+
+import v2.ast
+import v2.types
+
+// Fixture: a file with `module foo.bar` (dotted name to exercise the
+// `.replace('.', '_')`). No fns — we test the seam by directly driving
+// `build_stmt`/`build_stmt_from_flat` on the file's top-level stmts list.
+fn make_module_fixture() []ast.File {
+	return [
+		ast.File{
+			name:  'main.v'
+			mod:   'foo.bar'
+			stmts: [
+				ast.Stmt(ast.ModuleStmt{
+					name: 'foo.bar'
+				}),
+			]
+		},
+	]
+}
+
+fn test_build_module_from_flat_matches_legacy() {
+	files := make_module_fixture()
+	flat := ast.flatten_files(files)
+	env := types.Environment.new()
+
+	mut mod_legacy := Module.new('mod_legacy')
+	mut b_legacy := Builder.new_with_env(mod_legacy, env)
+	b_legacy.build_stmts(files[0].stmts)
+
+	mut mod_flat := Module.new('mod_flat')
+	mut b_flat := Builder.new_with_env(mod_flat, env)
+	b_flat.build_stmts_from_flat(flat.file_cursor(0).stmts())
+
+	// Both paths must transform 'foo.bar' → 'foo_bar' on b.cur_module.
+	assert b_legacy.cur_module == 'foo_bar'
+	assert b_flat.cur_module == b_legacy.cur_module
+	// And neither path emits any SSA for a ModuleStmt.
+	assert mod_legacy.instrs.len == mod_flat.instrs.len
+	assert mod_legacy.blocks.len == mod_flat.blocks.len
+	assert mod_legacy.values.len == mod_flat.values.len
+}
