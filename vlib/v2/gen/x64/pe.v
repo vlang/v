@@ -793,7 +793,9 @@ fn pe_emit_runtime_aligned_malloc(mut rt PeRuntimeText) {
 	rt.bytes << [u8(0x4c), 0x8b, 0x44, 0x24, 0x20] // mov r8, [rsp+32]
 	rt.bytes << [u8(0x4c), 0x8b, 0x4c, 0x24, 0x28] // mov r9, [rsp+40]
 	rt.bytes << [u8(0x4d), 0x01, 0xc8] // add r8, r9
+	size_overflow := pe_emit_jcc8(mut rt.bytes, 0x72) // jc
 	rt.bytes << [u8(0x49), 0x83, 0xc0, 0x08] // add r8, 8
+	padding_overflow := pe_emit_jcc8(mut rt.bytes, 0x72) // jc
 	pe_emit_runtime_call_import(mut rt, 'HeapAlloc')
 	rt.bytes << [u8(0x48), 0x85, 0xc0] // test rax, rax
 	alloc_failed := pe_emit_jcc8(mut rt.bytes, 0x74) // je
@@ -817,6 +819,8 @@ fn pe_emit_runtime_aligned_malloc(mut rt PeRuntimeText) {
 	pe_patch_rel8(mut rt.bytes, align_ready_jump, align_ready)
 	pe_patch_rel8(mut rt.bytes, invalid_align, fail)
 	pe_patch_rel8(mut rt.bytes, no_heap, fail)
+	pe_patch_rel8(mut rt.bytes, size_overflow, fail)
+	pe_patch_rel8(mut rt.bytes, padding_overflow, fail)
 	pe_patch_rel8(mut rt.bytes, alloc_failed, fail)
 }
 

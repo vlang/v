@@ -14,6 +14,7 @@ pub enum X64Abi {
 
 const sysv_int_arg_reg_count = 6
 const sysv_sse_arg_reg_count = 8
+const sysv_max_direct_aggregate_size = 16
 
 struct SysVLocationState {
 mut:
@@ -78,7 +79,7 @@ fn needs_indirect(m mir.Module, typ_id int, arch pref.Arch, x64_abi X64Abi) bool
 		}
 		.x64 {
 			match x64_abi {
-				.sysv { size > 16 }
+				.sysv { size > sysv_max_direct_aggregate_size }
 				.windows { size !in [1, 2, 4, 8] }
 			}
 		}
@@ -159,6 +160,9 @@ fn sysv_abi_value_class(m mir.Module, typ_id int) mir.AbiValueClass {
 			size: size
 		}
 	}
+	if sysv_aggregate_must_be_memory_before_classification(size) {
+		return sysv_memory_value_class(size)
+	}
 	mut classes := []mir.AbiEightbyteClass{len: (size + 7) / 8, init: .no_class}
 	mut visiting := map[int]bool{}
 	if !sysv_classify_type_into(m, typ_id, 0, mut classes, mut visiting) {
@@ -173,6 +177,13 @@ fn sysv_abi_value_class(m mir.Module, typ_id int) mir.AbiValueClass {
 		size:    size
 		classes: classes
 	}
+}
+
+fn sysv_aggregate_must_be_memory_before_classification(size int) bool {
+	// Current SSA aggregate types do not model a SysV vector aggregate larger
+	// than two eightbytes, so larger struct/array aggregates cannot be passed
+	// in registers and should not be classified element by element.
+	return size > sysv_max_direct_aggregate_size
 }
 
 fn sysv_memory_value_class(size int) mir.AbiValueClass {
@@ -301,7 +312,7 @@ fn sysv_post_merge_classes(size int, input []mir.AbiEightbyteClass) []mir.AbiEig
 			return [.memory]
 		}
 	}
-	if size > 16 {
+	if size > sysv_max_direct_aggregate_size {
 		mut vector_like := classes.len > 0 && classes[0] == .sse
 		for i := 1; i < classes.len; i++ {
 			if classes[i] != .sseup {

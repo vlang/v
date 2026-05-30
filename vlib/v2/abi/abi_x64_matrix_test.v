@@ -798,6 +798,69 @@ fn test_x64_sysv_memory_class_projects_to_legacy_indirect_flags() {
 	assert_abi_layout(call_instr.abi_arg_layouts[0], [.int_reg], [1], [0], [.integer])
 }
 
+fn test_x64_sysv_direct_aggregate_size_guard_boundary() {
+	assert !sysv_aggregate_must_be_memory_before_classification(16)
+	assert sysv_aggregate_must_be_memory_before_classification(17)
+}
+
+fn test_x64_sysv_huge_fixed_array_uses_early_memory_guard_and_bounded_metadata() {
+	mut ssa_mod := ssa.Module.new('abi_test_x64_sysv_huge_fixed_array_memory')
+	i64_t := ssa_mod.type_store.get_int(64)
+	u8_t := ssa_mod.type_store.get_uint(8)
+	huge_array_t := ssa_mod.type_store.register(ssa.Type{
+		kind:      .array_t
+		elem_type: u8_t
+		len:       1_000_000
+	})
+
+	callee_id := ssa_mod.new_function('callee', huge_array_t, [])
+	param := ssa_mod.add_value_node(.argument, huge_array_t, 'p', 0)
+	ssa_mod.funcs[callee_id].params << param
+	caller_id := ssa_mod.new_function('caller', i64_t, [])
+	arg := ssa_mod.add_value_node(.argument, huge_array_t, 'a', 0)
+	ssa_mod.funcs[caller_id].params << arg
+	caller_entry := ssa_mod.add_block(caller_id, 'entry')
+	fn_val := ssa_mod.add_value_node(.unknown, 0, 'callee', 0)
+	call_val := ssa_mod.add_instr(.call, caller_entry, huge_array_t, [fn_val, arg])
+	zero := ssa_mod.get_or_add_const(i64_t, '0')
+	ssa_mod.add_instr(.ret, caller_entry, 0, [zero])
+
+	mut mir_mod := mir.lower_from_ssa(ssa_mod)
+	lower_with_x64_abi(mut mir_mod, .x64, .sysv)
+	call_instr := mir_mod.instrs[mir_mod.values[call_val].index]
+
+	huge_size := mir_mod.type_size(huge_array_t)
+	assert huge_size == 1_000_000
+	assert sysv_aggregate_must_be_memory_before_classification(huge_size)
+	direct_class := sysv_abi_value_class(mir_mod, huge_array_t)
+	assert_abi_value_class(direct_class, .indirect, [.memory])
+	assert direct_class.classes.len == 1
+	assert direct_class.classes.len < (huge_size + 7) / 8
+
+	param_class := mir_mod.funcs[callee_id].abi_param_classes[0]
+	ret_class := mir_mod.funcs[callee_id].abi_ret_class
+	assert_abi_value_class(param_class, .indirect, [.memory])
+	assert_abi_value_class(ret_class, .indirect, [.memory])
+	assert param_class.classes.len == 1
+	assert ret_class.classes.len == 1
+	assert mir_mod.funcs[callee_id].abi_param_class == [.indirect]
+	assert mir_mod.funcs[callee_id].abi_ret_indirect
+	assert mir_mod.funcs[callee_id].abi_param_layouts[0].locs.len == 1
+	assert_abi_layout(mir_mod.funcs[callee_id].abi_param_layouts[0], [.int_reg], [1], [
+		0,
+	], [.integer])
+
+	assert_abi_value_class(call_instr.abi_arg_classes[0], .indirect, [.memory])
+	assert_abi_value_class(call_instr.abi_ret_class, .indirect, [.memory])
+	assert call_instr.abi_arg_classes[0].classes.len == 1
+	assert call_instr.abi_ret_class.classes.len == 1
+	assert call_instr.abi_arg_class == [.indirect]
+	assert call_instr.abi_ret_indirect
+	assert call_instr.op == .call_sret
+	assert call_instr.abi_arg_layouts[0].locs.len == 1
+	assert_abi_layout(call_instr.abi_arg_layouts[0], [.int_reg], [1], [0], [.integer])
+}
+
 fn test_x64_sysv_indirect_argument_consumes_gpr_before_direct_aggregate_layout() {
 	mut ssa_mod := ssa.Module.new('abi_test_x64_sysv_indirect_arg_gpr_consumption')
 	i64_t := ssa_mod.type_store.get_int(64)

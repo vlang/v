@@ -21,6 +21,11 @@ fn pe_test_i32(data []u8, off int) i32 {
 	return i32(pe_test_u32(data, off))
 }
 
+fn pe_test_rel8_target(instruction_off int, disp u8) int {
+	signed_disp := if int(disp) < 0x80 { int(disp) } else { int(disp) - 0x100 }
+	return instruction_off + 2 + signed_disp
+}
+
 fn pe_test_string(data []u8, off int) string {
 	mut end := off
 	for end < data.len && data[end] != 0 {
@@ -621,6 +626,77 @@ fn test_pe_linker_resolves_calloc_with_internal_zeroed_heap_thunk() {
 	assert has_aligned_allocation_padding
 	assert has_aligned_cookie_store
 	assert has_aligned_return_pointer
+}
+
+fn test_pe_linker_resolves_aligned_malloc_checks_size_overflow_before_heap_alloc() {
+	mut obj := CoffObject.new()
+	obj.text_data << [u8(0xe8), 0, 0, 0, 0, 0xc3]
+	obj.add_symbol('main', 5, true, 1)
+	malloc_sym := obj.add_undefined('_aligned_malloc')
+	obj.add_text_reloc(1, malloc_sym, coff_image_rel_amd64_rel32)
+
+	mut linker := PeLinker.new(obj)
+	image := linker.image() or { panic(err) }
+	text_off := pe_test_section_header(image, '.text')
+	text_rva := pe_test_u32(image, text_off + 12)
+	text_raw := int(pe_test_u32(image, text_off + 20))
+	text_raw_size := int(pe_test_u32(image, text_off + 16))
+	entry_stub_len := linker.entry_stub_size()
+	runtime_start_rva := text_rva + u32(entry_stub_len + obj.text_data.len)
+
+	mut first_import_thunk_file_off := -1
+	for off in text_raw + entry_stub_len + obj.text_data.len .. text_raw + text_raw_size - 1 {
+		if image[off] == 0xff && image[off + 1] == 0x25 {
+			first_import_thunk_file_off = off
+			break
+		}
+	}
+	assert first_import_thunk_file_off > 0
+	first_import_thunk_rva := text_rva + u32(first_import_thunk_file_off - text_raw)
+
+	malloc_field_off := text_raw + entry_stub_len + 1
+	malloc_field_rva := text_rva + u32(entry_stub_len + 1)
+	malloc_target := u32(i32(malloc_field_rva + 4) + pe_test_i32(image, malloc_field_off))
+	assert malloc_target >= runtime_start_rva
+	assert malloc_target < first_import_thunk_rva
+
+	malloc_off := pe_test_rva_to_file_off(image, malloc_target)
+	assert malloc_off > 0
+	mut size_overflow_check_off := -1
+	mut padding_overflow_check_off := -1
+	mut heap_alloc_call_off := -1
+	mut alloc_failed_check_off := -1
+	runtime_scan_end := first_import_thunk_file_off - 16
+	for off in malloc_off .. runtime_scan_end {
+		if image[off..off + 4] == [u8(0x4d), 0x01, 0xc8, 0x72] {
+			size_overflow_check_off = off + 3
+		}
+		if image[off..off + 5] == [u8(0x49), 0x83, 0xc0, 0x08, 0x72] {
+			padding_overflow_check_off = off + 4
+			heap_alloc_call_off = off + 6
+		}
+		if image[off..off + 4] == [u8(0x48), 0x85, 0xc0, 0x74] {
+			alloc_failed_check_off = off + 3
+		}
+	}
+	assert size_overflow_check_off >= 0
+	assert padding_overflow_check_off >= 0
+	assert heap_alloc_call_off >= 0
+	assert alloc_failed_check_off >= 0
+	assert image[heap_alloc_call_off] == 0xe8
+	assert size_overflow_check_off < padding_overflow_check_off
+	assert padding_overflow_check_off < heap_alloc_call_off
+	assert heap_alloc_call_off < alloc_failed_check_off
+	size_overflow_target := pe_test_rel8_target(size_overflow_check_off, image[
+		size_overflow_check_off + 1])
+	padding_overflow_target := pe_test_rel8_target(padding_overflow_check_off, image[
+		padding_overflow_check_off + 1])
+	alloc_failed_target := pe_test_rel8_target(alloc_failed_check_off, image[
+		alloc_failed_check_off + 1])
+	assert size_overflow_target == padding_overflow_target
+	assert size_overflow_target == alloc_failed_target
+	assert alloc_failed_check_off < alloc_failed_target
+	assert alloc_failed_target < first_import_thunk_file_off
 }
 
 fn test_pe_linker_resolves_strlen_with_internal_runtime_thunk() {
