@@ -1007,16 +1007,23 @@ pub fn (t &Table) sym(typ Type) &TypeSymbol {
 	return invalid_type_symbol
 }
 
-// final_sym follows aliases until it gets to a "real" Type
+// final_sym follows aliases until it gets to a "real" Type. Chained aliases
+// (`type B = A` where `A` is itself an alias, #27055) are walked recursively;
+// cycles are impossible because V rejects forward and circular type references
+// at declaration time.
 @[direct_array_access]
 pub fn (t &Table) final_sym(typ Type) &TypeSymbol {
 	mut idx := typ.idx()
 	if idx > 0 && idx < t.type_symbols.len {
-		cur_sym := t.type_symbols[idx]
-		if cur_sym.info is Alias {
+		mut cur_sym := t.type_symbols[idx]
+		for cur_sym.info is Alias {
 			idx = cur_sym.info.parent_type.idx()
+			if idx <= 0 || idx >= t.type_symbols.len {
+				break
+			}
+			cur_sym = t.type_symbols[idx]
 		}
-		return t.type_symbols[idx]
+		return cur_sym
 	}
 	if idx == 0 {
 		return invalid_type_symbol
@@ -1030,15 +1037,23 @@ pub fn (t &Table) final_sym(typ Type) &TypeSymbol {
 pub fn (t &Table) final_type(typ Type) Type {
 	mut idx := typ.idx()
 	if idx > 0 && idx < t.type_symbols.len {
-		cur_sym := t.type_symbols[idx]
-		if cur_sym.info is Alias {
-			idx = cur_sym.info.parent_type.idx()
-			aliased_sym := t.type_symbols[idx]
-			if aliased_sym.info is Enum {
-				return aliased_sym.info.typ
+		mut cur_sym := t.type_symbols[idx]
+		mut last_alias_parent := Type(0)
+		for cur_sym.info is Alias {
+			last_alias_parent = cur_sym.info.parent_type
+			idx = last_alias_parent.idx()
+			if idx <= 0 || idx >= t.type_symbols.len {
+				break
 			}
-			return cur_sym.info.parent_type
-		} else if cur_sym.info is Enum {
+			cur_sym = t.type_symbols[idx]
+		}
+		if last_alias_parent != 0 {
+			if cur_sym.info is Enum {
+				return cur_sym.info.typ
+			}
+			return last_alias_parent
+		}
+		if cur_sym.info is Enum {
 			return cur_sym.info.typ
 		}
 	}

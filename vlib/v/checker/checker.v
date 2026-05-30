@@ -992,14 +992,10 @@ fn (mut c Checker) alias_type_decl(mut node ast.AliasTypeDecl) {
 			c.error('unknown aliased type `${parent_typ_sym.name}`', node.type_pos)
 		}
 		.alias {
-			orig_sym := c.table.sym((parent_typ_sym.info as ast.Alias).parent_type)
-			if !node.name.starts_with('C.')
-				&& parent_typ_sym.name !in ['strings.Builder', 'StringBuilder', 'builtin.StringBuilder'] {
-				// TODO: remove the whole check, or at least the need for special casing `strings.Builder` and `StringBuilder` here
-				// after more testing and bootstrapping of the strings.Builder -> builtin.StringBuilder change
-				c.error('type `${parent_typ_sym.str()}` is an alias, use the original alias type `${orig_sym.name}` instead',
-					node.type_pos)
-			}
+			// chained aliases (`type B = A` where `A` is itself an alias) are
+			// allowed; matches Go's alias semantics and lets modules re-export
+			// types from their dependencies without leaking the original module
+			// name to callers (#27055).
 		}
 		.chan {
 			c.error('aliases of `chan` types are not allowed', node.type_pos)
