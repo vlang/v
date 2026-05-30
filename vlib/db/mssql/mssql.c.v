@@ -20,7 +20,7 @@ pub fn (mut conn Connection) connect(conn_str string) !bool {
 
 	// Set the ODBC version environment attribute
 	retcode = C.SQLSetEnvAttr(conn.henv, C.SQLINTEGER(C.SQL_ATTR_ODBC_VERSION),
-		&C.SQLPOINTER(C.SQL_OV_ODBC3), C.SQLINTEGER(0))
+		C.SQLPOINTER(C.SQL_OV_ODBC3), C.SQLINTEGER(0))
 	check_error(retcode, 'SQLSetEnvAttr(SQL_ATTR_ODBC_VERSION)', C.SQLHANDLE(conn.henv),
 		C.SQLSMALLINT(C.SQL_HANDLE_ENV))!
 
