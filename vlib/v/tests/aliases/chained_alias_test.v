@@ -37,3 +37,17 @@ fn test_chain_assignment_compat() {
 	y = Id(x)
 	assert int(y) == 1
 }
+
+struct Item {
+	v int
+}
+
+type ItemPair = [2]Item
+type ItemPairAlias = ItemPair
+
+fn test_chain_through_fixed_array_of_non_builtin() {
+	a := ItemPair([Item{v: 1}, Item{v: 2}]!)
+	b := ItemPairAlias(a)
+	assert b[0].v == 1
+	assert b[1].v == 2
+}

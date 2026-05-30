@@ -2912,6 +2912,26 @@ pub fn (mut g Gen) write_alias_typesymbol_declaration(sym ast.TypeSymbol) {
 	} else {
 		if sym.info is ast.Alias {
 			parent_styp = g.styp(sym.info.parent_type)
+			// Chained aliases (#27055): if the parent is itself an alias whose
+			// ultimate base is a fixed array of non-builtin elements, the parent
+			// typedef has been deferred to `alias_definitions` so this child
+			// must also be deferred — otherwise `typedef Parent Child;` lands
+			// in `type_definitions` before `Parent` exists.
+			mut walk_typ := sym.info.parent_type
+			for {
+				walk_sym := g.table.sym(walk_typ)
+				if walk_sym.info is ast.Alias {
+					walk_typ = walk_sym.info.parent_type
+					continue
+				}
+				if walk_sym.info is ast.ArrayFixed {
+					base_elem_sym := g.fixed_array_base_elem_sym(walk_sym.info.elem_type)
+					if !base_elem_sym.is_builtin() {
+						is_fixed_array_of_non_builtin = true
+					}
+				}
+				break
+			}
 			parent_sym := g.table.sym(sym.info.parent_type)
 			if parent_sym.info is ast.ArrayFixed {
 				mut elem_sym := g.table.sym(parent_sym.info.elem_type)
