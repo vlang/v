@@ -573,6 +573,19 @@ fn (mut t Transformer) transform_index_expr(expr ast.IndexExpr) ast.Expr {
 	}
 }
 
+// is_simple_slice_bound reports whether a slice bound expression is free of
+// side effects and cheap enough to reference more than once (so a fixed-array
+// slice can inline it instead of binding it to a temp).
+fn is_simple_slice_bound(e ast.Expr) bool {
+	return match e {
+		ast.BasicLiteral { true }
+		ast.Ident { true }
+		ast.SelectorExpr { is_simple_slice_bound(e.lhs) }
+		ast.ParenExpr { is_simple_slice_bound(e.expr) }
+		else { false }
+	}
+}
+
 fn (mut t Transformer) transform_slice_index_expr(lhs ast.Expr, orig_lhs ast.Expr, range ast.RangeExpr, _is_gated bool) ast.Expr {
 	start_expr := if range.start is ast.EmptyExpr {
 		ast.Expr(ast.BasicLiteral{
@@ -657,6 +670,58 @@ fn (mut t Transformer) transform_slice_index_expr(lhs ast.Expr, orig_lhs ast.Exp
 			}
 			types.ArrayFixed {
 				elem_c_name := lhs_type.elem_type.name()
+				// For a fixed array the default high bound (`a[..]`) is the
+				// compile-time length, not a runtime `.len` selector. Emitting
+				// the selector (`u.b.len`) leaves cleanc unable to type the
+				// bound temp and it falls back to the fixed-array type, which
+				// then breaks the `new_array_from_c_array` pointer arithmetic.
+				fixed_end_expr := if range.end is ast.EmptyExpr {
+					ast.Expr(ast.BasicLiteral{
+						kind:  .number
+						value: lhs_type.len.str()
+					})
+				} else {
+					end_expr
+				}
+				sizeof_expr := ast.Expr(ast.KeywordOperator{
+					op:    .key_sizeof
+					exprs: [
+						ast.Expr(ast.Ident{
+							name: elem_c_name
+						}),
+					]
+				})
+				// When both bounds are side-effect free we can reference them
+				// directly: `new_array_from_c_array(end - start, end - start,
+				// sizeof(T), &a[start])`. This avoids emitting bound temps,
+				// which the cleanc backend can mis-type as the fixed-array type
+				// (turning `end - start` into pointer arithmetic on a struct).
+				if is_simple_slice_bound(start_expr) && is_simple_slice_bound(fixed_end_expr) {
+					len_expr := ast.Expr(ast.InfixExpr{
+						op:  .minus
+						lhs: fixed_end_expr
+						rhs: start_expr
+					})
+					return ast.CallExpr{
+						lhs:  ast.Ident{
+							name: 'new_array_from_c_array'
+						}
+						args: [
+							len_expr,
+							len_expr,
+							sizeof_expr,
+							ast.Expr(ast.PrefixExpr{
+								op:   .amp
+								expr: ast.IndexExpr{
+									lhs:  lhs
+									expr: start_expr
+								}
+							}),
+						]
+					}
+				}
+				// Complex bounds (calls, arithmetic, ...) must be evaluated once,
+				// so bind them to typed temps before the slice call.
 				start_ident := t.gen_typed_temp_ident(types.Type(types.int_))
 				end_ident := t.gen_typed_temp_ident(types.Type(types.int_))
 				len_expr := ast.Expr(ast.InfixExpr{
@@ -671,14 +736,7 @@ fn (mut t Transformer) transform_slice_index_expr(lhs ast.Expr, orig_lhs ast.Exp
 					args: [
 						len_expr,
 						len_expr,
-						ast.Expr(ast.KeywordOperator{
-							op:    .key_sizeof
-							exprs: [
-								ast.Expr(ast.Ident{
-									name: elem_c_name
-								}),
-							]
-						}),
+						sizeof_expr,
 						ast.Expr(ast.PrefixExpr{
 							op:   .amp
 							expr: ast.IndexExpr{
@@ -699,7 +757,7 @@ fn (mut t Transformer) transform_slice_index_expr(lhs ast.Expr, orig_lhs ast.Exp
 						ast.Stmt(ast.AssignStmt{
 							op:  .decl_assign
 							lhs: [ast.Expr(end_ident)]
-							rhs: [end_expr]
+							rhs: [fixed_end_expr]
 							pos: end_ident.pos
 						}),
 						ast.Stmt(ast.ExprStmt{
