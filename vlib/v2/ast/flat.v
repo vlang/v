@@ -2021,7 +2021,7 @@ fn (mut b FlatBuilder) add_expr(expr Expr) FlatNodeId {
 				b.push_stmt(mut edges, s)
 			}
 			// Pack (lock.len, rlock.len) into extra; stmts.len = edge_count - lock - rlock.
-			packed := (expr.lock_exprs.len & 0xFFFF) | ((expr.rlock_exprs.len & 0xFFFF) << 16)
+			packed := int(u32(expr.lock_exprs.len & 0xFFFF) | (u32(expr.rlock_exprs.len & 0xFFFF) << 16))
 			return b.emit(.expr_lock, expr.pos, -1, packed, 0, 0, edges)
 		}
 		MapInitExpr {
