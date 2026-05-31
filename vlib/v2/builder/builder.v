@@ -1446,6 +1446,15 @@ fn is_windows_x64_native_target(arch pref.Arch, target_os string) bool {
 	return arch == .x64 && normalize_target_os_name(target_os) == 'windows'
 }
 
+fn eprint_native_x64_link_error(message string) {
+	if message.starts_with('x64: unsupported backend feature: ') {
+		eprintln(message)
+		return
+	}
+	eprintln('Link failed:')
+	eprintln(message)
+}
+
 fn (b &Builder) uses_minimal_windows_x64_runtime() bool {
 	arch := b.pref.get_effective_arch()
 	return b.pref.backend == .x64 && is_windows_x64_native_target(arch, b.pref.target_os_or_host())
@@ -1475,6 +1484,10 @@ fn native_x64_lowering_abi_for_os(target_os string) abi.X64Abi {
 		'windows' { abi.X64Abi.windows }
 		else { abi.X64Abi.sysv }
 	}
+}
+
+fn (b &Builder) native_backend_requires_ssa_optimization(arch pref.Arch) bool {
+	return arch == .x64
 }
 
 fn flag_os_matches(cond string, target_os string) bool {
@@ -2090,6 +2103,7 @@ fn (mut b Builder) gen_native(backend_arch pref.Arch) {
 	ssa_builder.guard_invalid_type_payloads = true
 	ssa_builder.target_os = target_os
 	ssa_builder.minimal_runtime_roots = b.uses_minimal_windows_x64_runtime()
+	ssa_builder.native_backend_bulk_zero_alloca = arch == .x64
 	mut native_sw := time.new_stopwatch()
 
 	// Pass markused data for dead code elimination. The ARM64 backend has its own
@@ -2144,7 +2158,14 @@ fn (mut b Builder) gen_native(backend_arch pref.Arch) {
 	b.files = []ast.File{}
 
 	stage_start = native_sw.elapsed()
-	if b.pref.no_optimize {
+	ssa_optimization_required := b.native_backend_requires_ssa_optimization(arch)
+	ssa_optimization_ran := !b.pref.no_optimize || ssa_optimization_required
+	if ssa_optimization_required {
+		if b.pref.no_optimize {
+			eprintln('  opt: required for x64 backend (-O0 SSA is not supported yet)')
+		}
+		ssa_optimize.optimize(mut mod)
+	} else if b.pref.no_optimize {
 		eprintln('  opt: skipped (-O0)')
 	} else {
 		ssa_optimize.optimize(mut mod)
@@ -2154,7 +2175,7 @@ fn (mut b Builder) gen_native(backend_arch pref.Arch) {
 		// Post-opt SSA verification is useful while debugging the optimizer, but it
 		// is currently noisy enough to block normal self-host builds. Keep it
 		// opt-in so `test_all.sh` and manual self-hosting can still complete.
-		if !b.pref.no_optimize && os.getenv('V2_VERIFY') != '' {
+		if ssa_optimization_ran && os.getenv('V2_VERIFY') != '' {
 			ssa_optimize.verify_and_panic(mod, 'full optimization')
 		}
 	}
@@ -2265,8 +2286,7 @@ fn (mut b Builder) gen_native(backend_arch pref.Arch) {
 			gen.gen()
 			if is_windows_x64_native_target(arch, target_os) {
 				gen.link_executable(output_binary) or {
-					eprintln('Link failed:')
-					eprintln(err.msg())
+					eprint_native_x64_link_error(err.msg())
 					exit(1)
 				}
 				if b.pref.verbose {

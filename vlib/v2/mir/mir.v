@@ -39,6 +39,50 @@ pub enum AbiArgClass {
 	indirect
 }
 
+// Classification metadata for future ABI-aware codegen.  The active x64
+// lowering path still consumes the legacy abi_*_class and abi_ret_indirect
+// projection fields in this palier.
+pub enum AbiPassMode {
+	direct
+	indirect
+}
+
+pub enum AbiEightbyteClass {
+	no_class
+	integer
+	sse
+	sseup
+	memory
+}
+
+pub struct AbiValueClass {
+pub mut:
+	mode    AbiPassMode
+	size    int
+	classes []AbiEightbyteClass
+}
+
+pub enum AbiLocationKind {
+	none
+	int_reg
+	sse_reg
+	stack
+}
+
+pub struct AbiLocation {
+pub mut:
+	kind   AbiLocationKind
+	index  int
+	offset int
+	class  AbiEightbyteClass
+}
+
+pub struct AbiValueLayout {
+pub mut:
+	value_class AbiValueClass
+	locs        []AbiLocation
+}
+
 pub struct Value {
 pub:
 	id    int
@@ -57,6 +101,9 @@ pub mut:
 	selected_op      string
 	abi_ret_indirect bool
 	abi_arg_class    []AbiArgClass
+	abi_ret_class    AbiValueClass
+	abi_arg_classes  []AbiValueClass
+	abi_arg_layouts  []AbiValueLayout
 pub:
 	typ       ssa.TypeID
 	block     int
@@ -84,10 +131,13 @@ pub:
 	call_conv   ssa.CallConv
 	is_c_extern bool // C-language extern function (provided by libc/system libraries)
 pub mut:
-	blocks           []ssa.BlockID
-	params           []ssa.ValueID
-	abi_ret_indirect bool
-	abi_param_class  []AbiArgClass
+	blocks            []ssa.BlockID
+	params            []ssa.ValueID
+	abi_ret_indirect  bool
+	abi_param_class   []AbiArgClass
+	abi_ret_class     AbiValueClass
+	abi_param_classes []AbiValueClass
+	abi_param_layouts []AbiValueLayout
 }
 
 @[heap]
@@ -150,6 +200,9 @@ pub fn lower_from_ssa(ssa_mod &ssa.Module) Module {
 			selected_op:      opcode_label(instr.op)
 			abi_ret_indirect: false
 			abi_arg_class:    []AbiArgClass{}
+			abi_ret_class:    AbiValueClass{}
+			abi_arg_classes:  []AbiValueClass{}
+			abi_arg_layouts:  []AbiValueLayout{}
 			typ:              instr.typ
 			block:            instr.block
 			src_index:        i
@@ -170,16 +223,19 @@ pub fn lower_from_ssa(ssa_mod &ssa.Module) Module {
 
 	for i, f in ssa_mod.funcs {
 		mod.funcs[i] = Function{
-			id:               f.id
-			name:             f.name
-			typ:              f.typ
-			linkage:          f.linkage
-			call_conv:        f.call_conv
-			is_c_extern:      f.is_c_extern
-			blocks:           clone_block_ids(f.blocks)
-			params:           clone_value_ids(f.params)
-			abi_ret_indirect: false
-			abi_param_class:  []AbiArgClass{len: f.params.len, init: .in_reg}
+			id:                f.id
+			name:              f.name
+			typ:               f.typ
+			linkage:           f.linkage
+			call_conv:         f.call_conv
+			is_c_extern:       f.is_c_extern
+			blocks:            clone_block_ids(f.blocks)
+			params:            clone_value_ids(f.params)
+			abi_ret_indirect:  false
+			abi_param_class:   []AbiArgClass{len: f.params.len, init: .in_reg}
+			abi_ret_class:     AbiValueClass{}
+			abi_param_classes: []AbiValueClass{len: f.params.len}
+			abi_param_layouts: []AbiValueLayout{len: f.params.len}
 		}
 	}
 

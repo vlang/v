@@ -144,6 +144,15 @@ fn (mut g Gen) add_rip_reloc(sym_idx int) {
 	}
 }
 
+fn (mut g Gen) add_macho_got_load_reloc(sym_idx int) {
+	offset := g.text_len()
+	if g.obj_format == .macho {
+		g.macho.add_reloc(offset, sym_idx, x86_64_reloc_got_load, true, 2)
+		return
+	}
+	x64_unsupported('Mach-O GOT_LOAD relocation requested for ${g.obj_format}')
+}
+
 fn (mut g Gen) emit(b u8) {
 	match g.obj_format {
 		.elf { g.elf.text_data << b }
@@ -173,11 +182,55 @@ fn (mut g Gen) write_u32(off int, v u32) {
 }
 
 pub fn (mut g Gen) write_file(path string) {
+	if msg := g.unsupported_external_symbol_message() {
+		x64_abort_with_diagnostic(msg)
+	}
 	match g.obj_format {
 		.elf { g.elf.write(path) }
 		.macho { g.macho.write(path) }
 		.coff { g.coff.write(path) }
 	}
+}
+
+fn (g Gen) unsupported_external_symbol_message() ?string {
+	for raw_name in g.undefined_external_symbol_names() {
+		name := x64_normalize_external_symbol_name(g.obj_format, raw_name)
+		if x64_symbol_needs_backend_runtime_support(name) {
+			return x64_unresolved_external_symbol_message(g.obj_format, name,
+				'needed while preparing native x64 output')
+		}
+	}
+	return none
+}
+
+fn (g Gen) undefined_external_symbol_names() []string {
+	mut names := []string{}
+	match g.obj_format {
+		.elf {
+			for sym in g.elf.symbols {
+				if sym.name != '' && sym.shndx == 0 {
+					names << sym.name
+				}
+			}
+		}
+		.macho {
+			for sym in g.macho.symbols {
+				if sym.name != '' && sym.sect == 0 && sym.type_ == 0x01 {
+					names << sym.name
+				}
+			}
+		}
+		.coff {
+			for sym in g.coff.symbols {
+				if sym.name != '' && sym.section == 0
+					&& sym.storage_class == coff_image_sym_class_external {
+					names << sym.name
+				}
+			}
+		}
+	}
+
+	return names
 }
 
 pub fn (mut g Gen) link_executable(path string) ! {

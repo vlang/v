@@ -15,6 +15,8 @@ const enum_field_c_keywords = ['auto', 'break', 'case', 'char', 'const', 'contin
 	'typedef', 'union', 'unsigned', 'void', 'volatile', 'while', '_Bool', '_Complex', '_Imaginary',
 	'unix', 'linux']
 
+const fixed_array_empty_literal_element_store_threshold = 16
+
 fn enum_field_symbol_name(name string) string {
 	n := if name.len > 0 && name[0] == `@` { 'at_${name[1..]}' } else { name }
 	mut escaped := n.replace('*', 'ptr')
@@ -37,6 +39,48 @@ fn normalize_target_os_name(target_os string) string {
 
 fn (b &Builder) is_macos_target() bool {
 	return normalize_target_os_name(b.target_os) == 'macos'
+}
+
+fn (b &Builder) is_linux_target() bool {
+	return normalize_target_os_name(b.target_os) == 'linux'
+}
+
+fn (b &Builder) is_windows_target() bool {
+	return normalize_target_os_name(b.target_os) == 'windows'
+}
+
+fn (mut b Builder) build_c_errno_addr() ?ValueID {
+	if !b.is_macos_target() && !b.is_linux_target() && !b.is_windows_target() {
+		return none
+	}
+	i32_t := b.mod.type_store.get_int(32)
+	ptr_i32 := b.mod.type_store.get_ptr(i32_t)
+	err_fn_name := if b.is_macos_target() {
+		'__error'
+	} else if b.is_windows_target() {
+		'_errno'
+	} else {
+		'__errno_location'
+	}
+	err_fn := b.get_or_create_fn_ref(err_fn_name, ptr_i32)
+	return b.mod.add_instr(.call, b.cur_block, ptr_i32, [err_fn])
+}
+
+fn (mut b Builder) build_raw_c_global_addr(name string, typ TypeID) ValueID {
+	if glob_id := b.find_global(name) {
+		return glob_id
+	}
+	glob := b.mod.add_external_global(name, typ)
+	b.global_refs[name] = glob
+	return glob
+}
+
+fn (mut b Builder) build_c_errno_storage_addr() ValueID {
+	if errno_addr := b.build_c_errno_addr() {
+		return errno_addr
+	}
+	i32_t := b.mod.type_store.get_int(32)
+	return b.build_raw_c_global_addr('errno', i32_t)
 }
 
 fn ssa_module_storage_name(module_name string, name string) string {
@@ -89,6 +133,9 @@ pub mut:
 	// When set, native Windows PE builds rely on markused instead of retaining
 	// broad builtin runtime modules before linking.
 	minimal_runtime_roots bool
+	// When set, the backend zeroes large fixed-array allocas as a bulk operation,
+	// so SSA can keep IR size bounded by skipping per-element zero stores.
+	native_backend_bulk_zero_alloca bool
 mut:
 	env       &types.Environment = unsafe { nil }
 	cur_func  int                = -1
@@ -182,22 +229,23 @@ pub fn (mut b Builder) new_worker_clone(worker_mod &Module, worker_idx int) &Bui
 	// Maps that are written in Phase 4 (fn_index, option_wrapper_types, etc.)
 	// obviously need per-worker copies.
 	return &Builder{
-		mod:                    worker_mod
-		env:                    b.env
-		target_os:              b.target_os
-		minimal_runtime_roots:  b.minimal_runtime_roots
-		struct_types:           b.struct_types.clone()
-		enum_values:            b.enum_values.clone()
-		fn_index:               b.fn_index.clone()
-		global_refs:            b.global_refs.clone()
-		const_values:           b.const_values.clone()
-		const_value_types:      b.const_value_types.clone()
-		string_const_values:    b.string_const_values.clone()
-		float_const_values:     b.float_const_values.clone()
-		const_array_globals:    b.const_array_globals.clone()
-		const_array_elem_count: b.const_array_elem_count.clone()
-		option_wrapper_types:   b.option_wrapper_types.clone()
-		result_wrapper_types:   b.result_wrapper_types.clone()
+		mod:                             worker_mod
+		env:                             b.env
+		target_os:                       b.target_os
+		minimal_runtime_roots:           b.minimal_runtime_roots
+		native_backend_bulk_zero_alloca: b.native_backend_bulk_zero_alloca
+		struct_types:                    b.struct_types.clone()
+		enum_values:                     b.enum_values.clone()
+		fn_index:                        b.fn_index.clone()
+		global_refs:                     b.global_refs.clone()
+		const_values:                    b.const_values.clone()
+		const_value_types:               b.const_value_types.clone()
+		string_const_values:             b.string_const_values.clone()
+		float_const_values:              b.float_const_values.clone()
+		const_array_globals:             b.const_array_globals.clone()
+		const_array_elem_count:          b.const_array_elem_count.clone()
+		option_wrapper_types:            b.option_wrapper_types.clone()
+		result_wrapper_types:            b.result_wrapper_types.clone()
 		// Offset anon_fn_counter so each worker generates unique names.
 		// Stride of 100_000 per worker avoids collisions.
 		anon_fn_counter: (worker_idx + 1) * 100_000
@@ -534,9 +582,6 @@ fn (mut b Builder) type_to_ssa(t types.Type) TypeID {
 		}
 		types.ArrayFixed {
 			// Fixed-size arrays: [N]T → SSA array type
-			if t.len > 100000 {
-				eprintln('TYPE_TO_SSA_ARRAYFIXED_HUGE len=${t.len} elem=${t.elem_type.name()}')
-			}
 			elem_type := b.type_to_ssa(t.elem_type)
 			if t.len > 0 && elem_type != 0 {
 				return b.mod.type_store.get_array(elem_type, t.len)
@@ -1097,12 +1142,6 @@ fn (mut b Builder) const_field_type(field_name string, value ast.Expr) TypeID {
 		if scope := b.env.get_scope(b.cur_module) {
 			if obj := scope.lookup_parent(field_name, 0) {
 				obj_typ := obj.typ()
-				if obj_typ is types.ArrayFixed {
-					arr := obj_typ as types.ArrayFixed
-					if arr.len > 100000 {
-						eprintln('CONST_FIELD_TYPE_HUGE field=${field_name} module=${b.cur_module} len=${arr.len} elem=${arr.elem_type.name()}')
-					}
-				}
 				obj_type := b.type_to_ssa(obj_typ)
 				if obj_type != 0 {
 					return obj_type
@@ -1118,12 +1157,6 @@ fn (mut b Builder) scope_field_type(field_name string) TypeID {
 		if scope := b.env.get_scope(b.cur_module) {
 			if obj := scope.lookup_parent(field_name, 0) {
 				obj_typ := obj.typ()
-				if obj_typ is types.ArrayFixed {
-					arr := obj_typ as types.ArrayFixed
-					if arr.len > 100000 {
-						eprintln('SCOPE_FIELD_TYPE_HUGE field=${field_name} module=${b.cur_module} len=${arr.len} elem=${arr.elem_type.name()}')
-					}
-				}
 				obj_type := b.type_to_ssa(obj_typ)
 				if obj_type != 0 {
 					return obj_type
@@ -1751,7 +1784,10 @@ fn (mut b Builder) register_const_decl(stmt ast.ConstDecl) {
 fn (mut b Builder) register_global_decl(stmt ast.GlobalDecl) {
 	for field in stmt.fields {
 		glob_type := b.global_field_type(field)
-		if ssa_module_storage_field_is_c_extern(stmt, field) && !field.name.starts_with('C.') {
+		if field.name.starts_with('C.') {
+			continue
+		}
+		if ssa_module_storage_field_is_c_extern(stmt, field) {
 			glob_id := b.mod.add_external_global(field.name, glob_type)
 			b.global_refs[field.name] = glob_id
 			qualified_name := ssa_module_storage_name(b.cur_module, field.name)
@@ -1898,27 +1934,15 @@ fn (mut b Builder) resolve_forward_const_refs_from_flat(flat &ast.FlatAst) {
 // and builtin-qualified names. Returns 0 if not found.
 fn (b &Builder) resolve_const_int(name string) int {
 	if name in b.const_values {
-		value := int(b.const_values[name])
-		if value > 100000 {
-			eprintln('RESOLVE_CONST_HUGE name=${name} cur_module=${b.cur_module} key=${name} value=${value}')
-		}
-		return value
+		return int(b.const_values[name])
 	}
 	qualified := '${b.cur_module}__${name}'
 	if qualified in b.const_values {
-		value := int(b.const_values[qualified])
-		if value > 100000 {
-			eprintln('RESOLVE_CONST_HUGE name=${name} cur_module=${b.cur_module} key=${qualified} value=${value}')
-		}
-		return value
+		return int(b.const_values[qualified])
 	}
 	builtin_q := 'builtin__${name}'
 	if builtin_q in b.const_values {
-		value := int(b.const_values[builtin_q])
-		if value > 100000 {
-			eprintln('RESOLVE_CONST_HUGE name=${name} cur_module=${b.cur_module} key=${builtin_q} value=${value}')
-		}
-		return value
+		return int(b.const_values[builtin_q])
 	}
 	return 0
 }
@@ -2804,6 +2828,7 @@ fn (mut b Builder) register_fn_sig(decl ast.FnDecl) {
 	ret_type := b.ast_type_to_ssa(decl.typ.return_type)
 	idx := b.mod.new_function(fn_name, ret_type, []TypeID{})
 	b.fn_index[fn_name] = idx
+	b.mod.func_set_prototype(idx, true)
 	if decl.language == .c {
 		b.mod.func_set_c_extern(idx, true)
 	}
@@ -6257,12 +6282,14 @@ fn (mut b Builder) build_basic_literal(lit ast.BasicLiteral) ValueID {
 				return b.mod.get_or_add_const(typ, lit.value)
 			}
 			mut typ := b.expr_type(ast.Expr(lit))
-			// Number literals should never have bool (i1) type. This can happen when
-			// expr_type resolves a literal like "1" in "-1" to bool in && contexts.
-			// Override to i32 to prevent 1-bit arithmetic overflow in negation.
+			// Number literals should never inherit non-numeric checked types. This can
+			// happen when expression positions map a literal to an enclosing expression.
+			// Also keep the older i1 guard for negation/boolean contexts.
 			if typ != 0 && int(typ) < b.mod.type_store.types.len {
 				t0 := b.mod.type_store.types[typ]
-				if t0.kind == .int_t && t0.width == 1 {
+				if t0.kind !in [.int_t, .float_t] {
+					typ = b.mod.type_store.get_int(64)
+				} else if t0.kind == .int_t && t0.width == 1 {
 					typ = b.mod.type_store.get_int(32)
 				}
 			}
@@ -7856,6 +7883,10 @@ fn (mut b Builder) build_call(expr ast.CallExpr) ValueID {
 		return b.mod.add_instr(.call_indirect, b.cur_block, ret_type, indirect_operands)
 	}
 
+	if fn_name in ['array__slice', 'array__slice_ni', 'builtin__array__slice',
+		'builtin__array__slice_ni'] {
+		ret_type = b.get_array_type()
+	}
 	fn_ref := b.get_or_create_fn_ref(fn_name, ret_type)
 	mut operands := []ValueID{cap: args.len + 1}
 	operands << fn_ref
@@ -8827,6 +8858,19 @@ fn (mut b Builder) build_selector(expr ast.SelectorExpr) ValueID {
 	// C constant/global access: C.SEEK_END, C.stdout, C.stderr, etc.
 	if expr.lhs is ast.Ident && expr.lhs.name == 'C' {
 		c_name := expr.rhs.name
+		if b.is_windows_target() {
+			// WinAPI GetStdHandle constants are DWORD macros, not linkable symbols.
+			win_const_val := match c_name {
+				'STD_INPUT_HANDLE' { '4294967286' }
+				'STD_OUTPUT_HANDLE' { '4294967285' }
+				'STD_ERROR_HANDLE' { '4294967284' }
+				else { '' }
+			}
+
+			if win_const_val.len > 0 {
+				return b.mod.get_or_add_const(b.mod.type_store.get_uint(32), win_const_val)
+			}
+		}
 		// Well-known C preprocessor constants — emit inline integer values
 		// since the native backend cannot resolve C macros.
 		c_const_val := match c_name {
@@ -8943,15 +8987,13 @@ fn (mut b Builder) build_selector(expr ast.SelectorExpr) ValueID {
 			i64_t := b.mod.type_store.get_int(64)
 			return b.mod.get_or_add_const(i64_t, '0')
 		}
-		// macOS errno: (*__error()) — call __error() which returns int*
+		// errno is not portable linkable data on targets with TLS errno.
+		// Darwin exposes __error(); glibc/LSB expose __errno_location();
+		// Windows CRT exposes _errno().
 		if c_name == 'errno' {
-			if b.is_macos_target() {
-				i32_t := b.mod.type_store.get_int(32)
-				ptr_i32 := b.mod.type_store.get_ptr(i32_t)
-				err_fn := b.get_or_create_fn_ref('__error', ptr_i32)
-				call_val := b.mod.add_instr(.call, b.cur_block, ptr_i32, [err_fn])
-				return b.mod.add_instr(.load, b.cur_block, i32_t, [call_val])
-			}
+			i32_t := b.mod.type_store.get_int(32)
+			errno_addr := b.build_c_errno_storage_addr()
+			return b.mod.add_instr(.load, b.cur_block, i32_t, [errno_addr])
 		}
 		// Map C standard I/O streams to macOS-specific symbol names only for macOS.
 		target_name := if b.is_macos_target() {
@@ -9997,9 +10039,8 @@ fn (mut b Builder) build_array_init_expr(expr ast.ArrayInitExpr) ValueID {
 					arr_fixed_type := b.mod.type_store.get_array(elem_type, arr_len)
 					ptr_type := b.mod.type_store.get_ptr(arr_fixed_type)
 					alloca := b.mod.add_instr(.alloca, b.cur_block, ptr_type, []ValueID{})
-					// For small arrays (<=16 elements), zero-initialize element by element.
-					// For larger arrays, the codegen will bulk-zero the alloca slot.
-					if arr_len <= 16 {
+					if !b.native_backend_bulk_zero_alloca
+						|| arr_len <= fixed_array_empty_literal_element_store_threshold {
 						zero := b.mod.get_or_add_const(elem_type, '0')
 						elem_ptr_type := b.mod.type_store.get_ptr(elem_type)
 						i32_t := b.mod.type_store.get_int(32)
@@ -10012,7 +10053,9 @@ fn (mut b Builder) build_array_init_expr(expr ast.ArrayInitExpr) ValueID {
 							b.mod.add_instr(.store, b.cur_block, 0, [zero, gep])
 						}
 					}
-					return alloca
+					return b.mod.add_instr(.load, b.cur_block, arr_fixed_type, [
+						alloca,
+					])
 				}
 			}
 			else {}
@@ -11273,6 +11316,9 @@ fn (mut b Builder) build_addr(expr ast.Expr) ValueID {
 			return 0
 		}
 		ast.SelectorExpr {
+			if expr.lhs is ast.Ident && expr.lhs.name == 'C' && expr.rhs.name == 'errno' {
+				return b.build_c_errno_storage_addr()
+			}
 			if expr.lhs is ast.Ident {
 				if mod_name := b.selector_module_name(expr) {
 					qualified := ssa_module_storage_name(mod_name, expr.rhs.name)
@@ -11447,6 +11493,9 @@ fn (mut b Builder) build_addr_from_flat(c ast.Cursor) ValueID {
 		.expr_selector {
 			lhs_c := c.edge(0)
 			rhs_c := c.edge(1)
+			if lhs_c.kind() == .expr_ident && lhs_c.name() == 'C' && rhs_c.name() == 'errno' {
+				return b.build_c_errno_storage_addr()
+			}
 			if lhs_c.kind() == .expr_ident {
 				if mod_name := b.selector_module_name_from_flat(c) {
 					qualified := ssa_module_storage_name(mod_name, rhs_c.name())

@@ -585,10 +585,22 @@ pub fn (mut p Preferences) default_cpp_compiler() {
 	p.cppcompiler = 'c++'
 }
 
+fn resolve_vexe_path(vexe string) string {
+	if os.is_abs_path(vexe) {
+		return os.real_path(vexe)
+	}
+	if found_vexe := os.find_abs_path_of_executable(vexe) {
+		return os.real_path(found_vexe)
+	}
+	return os.real_path(os.abs_path(vexe))
+}
+
 pub fn vexe_path() string {
 	vexe := os.getenv('VEXE')
 	if vexe != '' {
-		return vexe
+		real_vexe_path := resolve_vexe_path(vexe)
+		os.setenv('VEXE', real_vexe_path, true)
+		return real_vexe_path
 	}
 	myexe := os.executable()
 	mut real_vexe_path := myexe

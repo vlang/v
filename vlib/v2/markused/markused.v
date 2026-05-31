@@ -110,6 +110,7 @@ mut:
 	struct_field_receivers    map[string][]string
 	struct_embedded_receivers map[string][]string
 	global_interface_names    map[string]string
+	const_fn_value_aliases    map[string]string
 
 	lookup map[string][]int
 
@@ -160,6 +161,7 @@ fn new_walker(files []ast.File, env &types.Environment, opts MarkUsedOptions) Wa
 		struct_field_receivers:    map[string][]string{}
 		struct_embedded_receivers: map[string][]string{}
 		global_interface_names:    map[string]string{}
+		const_fn_value_aliases:    map[string]string{}
 		lookup:                    map[string][]int{}
 	}
 }
@@ -296,6 +298,9 @@ fn (mut w Walker) walk_stmt_cursor(c ast.Cursor, mod_name string) {
 				}
 				w.mark_assignment_interface_conversion_cursor(lhs_c, rhs_c, mod_name)
 			}
+			for i in lhs_len .. ec {
+				w.mark_fn_value_expr_cursor(c.edge(i), mod_name)
+			}
 			for i in 0 .. ec {
 				w.walk_expr_cursor_edge(c, i, mod_name)
 			}
@@ -350,6 +355,7 @@ fn (mut w Walker) walk_stmt_cursor(c ast.Cursor, mod_name string) {
 				if !ec.is_valid() {
 					continue
 				}
+				w.mark_fn_value_expr_cursor(ec, mod_name)
 				w.walk_expr_cursor(ec, mod_name)
 				w.mark_interface_conversion_methods_cursor(w.cur_fn_decl.typ.return_type, ec,
 					mod_name)
@@ -427,7 +433,8 @@ fn (mut w Walker) walk_expr_cursor(c ast.Cursor, mod_name string) {
 		.expr_ident {
 			name := c.name()
 			w.mark_ierror_wrapper_dependencies(name, mod_name)
-			if !w.is_cast_type_name(name) {
+			if (!w.opts.minimal_runtime_roots || should_mark_ident_as_fn(name))
+				&& !w.is_cast_type_name(name) {
 				w.mark_fn_name(name, mod_name)
 			}
 		}
@@ -443,9 +450,16 @@ fn (mut w Walker) walk_expr_cursor(c ast.Cursor, mod_name string) {
 			w.walk_expr_cursor(c.edge(1), mod_name)
 		}
 		// N-edge recursers — every direct edge is an Expr to walk.
-		.expr_keyword_operator, .expr_tuple, .typ_tuple {
+		.expr_keyword_operator, .typ_tuple {
 			for i in 0 .. c.edge_count() {
 				w.walk_expr_cursor(c.edge(i), mod_name)
+			}
+		}
+		.expr_tuple {
+			for i in 0 .. c.edge_count() {
+				value_c := c.edge(i)
+				w.mark_fn_value_expr_cursor(value_c, mod_name)
+				w.walk_expr_cursor(value_c, mod_name)
 			}
 		}
 		// typ_generic packs name as edge 0 and generic params at edges 1..N;
@@ -462,8 +476,11 @@ fn (mut w Walker) walk_expr_cursor(c ast.Cursor, mod_name string) {
 			ec := c.edge_count()
 			w.walk_expr_cursor(c.edge(0), mod_name)
 			for i in 5 .. ec {
-				w.walk_expr_cursor(c.edge(i), mod_name)
+				item_c := c.edge(i)
+				w.mark_fn_value_expr_cursor(item_c, mod_name)
+				w.walk_expr_cursor(item_c, mod_name)
 			}
+			w.mark_fn_value_expr_cursor(c.edge(1), mod_name)
 			w.walk_expr_cursor(c.edge(1), mod_name)
 			w.walk_expr_cursor(c.edge(2), mod_name)
 			w.walk_expr_cursor(c.edge(3), mod_name)
@@ -476,10 +493,14 @@ fn (mut w Walker) walk_expr_cursor(c ast.Cursor, mod_name string) {
 			ec := c.edge_count()
 			w.walk_expr_cursor(c.edge(0), mod_name)
 			for i in 1 .. (1 + keys_len) {
-				w.walk_expr_cursor(c.edge(i), mod_name)
+				key_c := c.edge(i)
+				w.mark_fn_value_expr_cursor(key_c, mod_name)
+				w.walk_expr_cursor(key_c, mod_name)
 			}
 			for i in (1 + keys_len) .. ec {
-				w.walk_expr_cursor(c.edge(i), mod_name)
+				value_c := c.edge(i)
+				w.mark_fn_value_expr_cursor(value_c, mod_name)
+				w.walk_expr_cursor(value_c, mod_name)
 			}
 		}
 		// expr_lock: lock_len + rlock_len are packed in `extra` (low/high u16).
@@ -600,7 +621,9 @@ fn (mut w Walker) walk_expr_cursor(c ast.Cursor, mod_name string) {
 				if !field.is_valid() {
 					continue
 				}
-				w.walk_expr_cursor(field.edge(0), mod_name)
+				value_c := field.edge(0)
+				w.mark_fn_value_expr_cursor(value_c, mod_name)
+				w.walk_expr_cursor(value_c, mod_name)
 			}
 		}
 		// expr_generic_args: edge 0 = lhs, edges 1.. = args. No mark
@@ -621,7 +644,9 @@ fn (mut w Walker) walk_expr_cursor(c ast.Cursor, mod_name string) {
 			w.mark_call_arg_interface_conversions_cursor(c, mod_name)
 			w.walk_expr_cursor(lhs_c, mod_name)
 			for i in 1 .. c.edge_count() {
-				w.walk_expr_cursor(c.edge(i), mod_name)
+				arg_c := c.edge(i)
+				w.mark_fn_value_expr_cursor(arg_c, mod_name)
+				w.walk_expr_cursor(arg_c, mod_name)
 			}
 		}
 		// expr_call_or_cast: edge 0 = lhs, edge 1 = inner. When lhs is an
@@ -643,6 +668,7 @@ fn (mut w Walker) walk_expr_cursor(c ast.Cursor, mod_name string) {
 				w.mark_call_lhs_cursor(lhs_c, mod_name)
 				w.mark_call_or_cast_arg_interface_conversion_cursor(c, mod_name)
 				w.walk_expr_cursor(lhs_c, mod_name)
+				w.mark_fn_value_expr_cursor(expr_c, mod_name)
 				w.walk_expr_cursor(expr_c, mod_name)
 			}
 		}
@@ -679,7 +705,9 @@ fn (mut w Walker) walk_expr_cursor(c ast.Cursor, mod_name string) {
 				if !field.is_valid() {
 					continue
 				}
-				w.walk_expr_cursor(field.edge(0), mod_name)
+				value_c := field.edge(0)
+				w.mark_fn_value_expr_cursor(value_c, mod_name)
+				w.walk_expr_cursor(value_c, mod_name)
 			}
 		}
 		// expr_infix: aux = op (Token int), edge 0 = lhs, edge 1 = rhs.
@@ -724,24 +752,13 @@ fn (mut w Walker) walk_expr_cursor(c ast.Cursor, mod_name string) {
 			}
 		}
 		// expr_selector: edge 0 = lhs, edge 1 = rhs (Ident). Legacy walker calls
-		// mark_selector_fn_value(expr) — a no-op unless expr.lhs is Ident. When
-		// it is, it uses expr.lhs.name and expr.rhs.name to mark either
-		// `C.<name>` or `<module>__<name>`. We inline that logic against the
-		// cursor instead of decoding.
+		// mark_selector_fn_value(expr), which only marks module function values
+		// that resolve to an indexed function.
 		.expr_selector {
 			lhs_c := c.edge(0)
-			if lhs_c.is_valid() && lhs_c.kind() == .expr_ident {
-				left_name := lhs_c.name()
-				rhs_c := c.edge(1)
-				if rhs_c.is_valid() {
-					rhs_name := rhs_c.name()
-					if left_name == 'C' {
-						w.mark_fn_name(rhs_name, mod_name)
-					} else if left_name in w.module_names {
-						real_mod := w.module_alias_to_real[left_name] or { left_name }
-						w.mark_fn_name('${real_mod}__${rhs_name}', mod_name)
-					}
-				}
+			target := w.selector_fn_value_target_cursor(c)
+			if target != '' {
+				w.mark_fn_name(target, mod_name)
 			}
 			w.walk_expr_cursor(lhs_c, mod_name)
 		}
@@ -753,7 +770,7 @@ fn (mut w Walker) walk_expr_cursor(c ast.Cursor, mod_name string) {
 }
 
 // walk_field_value_list iterates the aux_field_init list at `parent.edge(list_edge)`
-// and walks each field's value expr (aux_field_init edge 0). Used by
+// and handles each field's value expr (aux_field_init edge 0). Used by
 // stmt_const_decl, whose only walk-relevant per-field datum is the value.
 fn (mut w Walker) walk_field_value_list(parent ast.Cursor, list_edge int, mod_name string) {
 	fields := parent.list_at(list_edge)
@@ -762,6 +779,7 @@ fn (mut w Walker) walk_field_value_list(parent ast.Cursor, list_edge int, mod_na
 		if !field.is_valid() {
 			continue
 		}
+		w.mark_fn_value_expr_cursor(field.edge(0), mod_name)
 		w.walk_expr_cursor_edge(field, 0, mod_name)
 	}
 }
@@ -793,6 +811,7 @@ fn (mut w Walker) collect_defs() {
 			w.collect_def_stmt(stmt, mod_name, file.name, ast.FlatNodeId(-1))
 		}
 	}
+	w.collect_const_fn_value_aliases()
 }
 
 // collect_defs_from_flat is the flat-input analogue of collect_defs. It
@@ -857,6 +876,74 @@ fn (mut w Walker) collect_defs_from_flat(flat &ast.FlatAst) {
 					w.collect_def_stmt(stmt, mod_name, file_name, c.id)
 				}
 				else {}
+			}
+		}
+	}
+	w.collect_const_fn_value_aliases_from_flat(flat)
+}
+
+fn const_fn_value_alias_key(mod_name string, name string) string {
+	return '${normalize_module_name(mod_name)}:${name}'
+}
+
+fn (mut w Walker) collect_const_fn_value_aliases() {
+	for file in w.files {
+		mod_name := normalize_module_name(file.mod)
+		for stmt in file.stmts {
+			if !stmt_ok(stmt) {
+				continue
+			}
+			if stmt is ast.ConstDecl {
+				for field in stmt.fields {
+					if field.name == '' {
+						continue
+					}
+					if field.value is ast.Ident
+						&& w.ident_resolves_to_fn_value(field.value.name, mod_name) {
+						w.const_fn_value_aliases[const_fn_value_alias_key(mod_name, field.name)] = field.value.name
+					} else if field.value is ast.SelectorExpr {
+						target := w.selector_fn_value_target(field.value)
+						if target != '' {
+							w.const_fn_value_aliases[const_fn_value_alias_key(mod_name, field.name)] = target
+						}
+					}
+				}
+			}
+		}
+	}
+}
+
+fn (mut w Walker) collect_const_fn_value_aliases_from_flat(flat &ast.FlatAst) {
+	for fi in 0 .. flat.files.len {
+		fc := flat.file_cursor(fi)
+		mod_name := normalize_module_name(fc.mod())
+		stmts_list := fc.stmts()
+		for i in 0 .. stmts_list.len() {
+			c := stmts_list.at(i)
+			if c.kind() != .stmt_const_decl {
+				continue
+			}
+			fields := c.list_at(0)
+			for j in 0 .. fields.len() {
+				field := fields.at(j)
+				name := field.name()
+				if name == '' {
+					continue
+				}
+				value_c := field.edge(0)
+				if !value_c.is_valid() {
+					continue
+				}
+				if value_c.kind() == .expr_ident
+					&& w.ident_resolves_to_fn_value(value_c.name(), mod_name) {
+					w.const_fn_value_aliases[const_fn_value_alias_key(mod_name, name)] =
+						value_c.name()
+				} else if value_c.kind() == .expr_selector {
+					target := w.selector_fn_value_target_cursor(value_c)
+					if target != '' {
+						w.const_fn_value_aliases[const_fn_value_alias_key(mod_name, name)] = target
+					}
+				}
 			}
 		}
 	}
@@ -931,7 +1018,9 @@ fn (mut w Walker) seed_roots() bool {
 		}
 	}
 	if has_root {
-		if !w.opts.minimal_runtime_roots {
+		if w.opts.minimal_runtime_roots {
+			w.seed_minimal_runtime_roots()
+		} else {
 			w.seed_generic_specialization_roots()
 			w.seed_codegen_required_roots()
 			// Also seed module init() functions (called from synthesized main)
@@ -952,7 +1041,9 @@ fn (mut w Walker) seed_roots() bool {
 		}
 	}
 	if has_root {
-		if !w.opts.minimal_runtime_roots {
+		if w.opts.minimal_runtime_roots {
+			w.seed_minimal_runtime_roots()
+		} else {
 			w.seed_generic_specialization_roots()
 			w.seed_codegen_required_roots()
 			w.seed_top_level_initializer_roots()
@@ -960,6 +1051,9 @@ fn (mut w Walker) seed_roots() bool {
 		}
 	}
 	return has_root
+}
+
+fn (mut w Walker) seed_minimal_runtime_roots() {
 }
 
 fn (mut w Walker) seed_codegen_required_roots() {
@@ -1350,6 +1444,19 @@ fn receiver_type_expr_name(expr ast.Expr) string {
 				ast.PointerType {
 					return receiver_type_expr_name(expr.base_type)
 				}
+				ast.ArrayType {
+					elem_name := receiver_type_expr_name(expr.elem_type)
+					if elem_name != '' {
+						return 'Array_${elem_name}'
+					}
+				}
+				ast.ArrayFixedType {
+					elem_name := receiver_type_expr_name(expr.elem_type)
+					len_name := receiver_fixed_array_len_name(expr.len)
+					if elem_name != '' && len_name != '' {
+						return 'Array_fixed_${elem_name}_${len_name}'
+					}
+				}
 				ast.GenericType {
 					return receiver_type_expr_name(expr.name)
 				}
@@ -1360,6 +1467,20 @@ fn receiver_type_expr_name(expr ast.Expr) string {
 	}
 
 	return ''
+}
+
+fn receiver_fixed_array_len_name(expr ast.Expr) string {
+	match expr {
+		ast.BasicLiteral {
+			return expr.value
+		}
+		ast.Ident {
+			return expr.name
+		}
+		else {
+			return expr.name()
+		}
+	}
 }
 
 fn type_expr_receiver_candidates(mod_name string, expr ast.Expr) []string {
@@ -1755,8 +1876,8 @@ fn called_fn_name_candidates(name string) []string {
 		add_unique_string(mut out, 'new_array_from_array_and_c_array')
 		return out
 	}
-	if name == 'builtin__array_push_noscan' {
-		add_unique_string(mut out, 'array__push')
+	if name == 'builtin__array_push_noscan' || name == 'builtin__array__push_noscan' {
+		add_unique_string(mut out, 'array__push_noscan')
 		return out
 	}
 	if name.starts_with('builtin__') {
@@ -1790,6 +1911,28 @@ fn should_mark_ident_as_fn(name string) bool {
 		|| name.starts_with('array__') || name.starts_with('IError_') || name.starts_with('Error__')
 		|| name.starts_with('MessageError__') || name.starts_with('_option_')
 		|| name.starts_with('_result_')
+}
+
+fn (w &Walker) ident_resolves_to_fn_value(name string, mod_name string) bool {
+	if name == '' || name == 'C' || name in w.module_names || w.is_cast_type_name(name) {
+		return false
+	}
+	if w.cur_fn_scope != unsafe { nil } {
+		if obj := w.cur_fn_scope.lookup_parent(name, 0) {
+			return obj is types.Fn
+		}
+	}
+	for candidate in called_fn_name_candidates(name) {
+		if w.lookup_count('mod:${mod_name}:${candidate}') > 0
+			|| w.lookup_count('fn:${candidate}') > 0 {
+			return true
+		}
+		if !candidate.contains('__') && mod_name != '' && mod_name != 'main'
+			&& mod_name != 'builtin' && w.lookup_count('fn:${mod_name}__${candidate}') > 0 {
+			return true
+		}
+	}
+	return false
 }
 
 fn (mut w Walker) mark_fn_name(name string, mod_name string) {
@@ -3022,6 +3165,7 @@ fn (mut w Walker) mark_call_lhs(lhs ast.Expr, mod_name string) {
 	match lhs {
 		ast.Ident {
 			w.mark_fn_name(lhs.name, mod_name)
+			w.mark_const_fn_value_alias(lhs.name, mod_name)
 		}
 		ast.GenericArgs {
 			w.mark_call_lhs(lhs.lhs, mod_name)
@@ -3079,6 +3223,27 @@ fn (mut w Walker) mark_call_lhs(lhs ast.Expr, mod_name string) {
 	}
 }
 
+fn (w &Walker) const_fn_value_alias_is_shadowed(name string) bool {
+	if w.cur_fn_scope == unsafe { nil } {
+		return false
+	}
+	if obj := w.cur_fn_scope.lookup_parent(name, 0) {
+		return obj !is types.Const
+	}
+	return false
+}
+
+fn (mut w Walker) mark_const_fn_value_alias(name string, mod_name string) bool {
+	if name == '' || w.const_fn_value_alias_is_shadowed(name) {
+		return false
+	}
+	if target := w.const_fn_value_aliases[const_fn_value_alias_key(mod_name, name)] {
+		w.mark_fn_name(target, mod_name)
+		return true
+	}
+	return false
+}
+
 // mark_call_lhs_cursor is the cursor-input analogue of mark_call_lhs. It
 // handles every case structurally via cursor accesses, and only falls back
 // to decoding `lhs.lhs` for the SelectorExpr receiver_candidates_for_expr
@@ -3091,6 +3256,7 @@ fn (mut w Walker) mark_call_lhs_cursor(c ast.Cursor, mod_name string) {
 	match c.kind() {
 		.expr_ident {
 			w.mark_fn_name(c.name(), mod_name)
+			w.mark_const_fn_value_alias(c.name(), mod_name)
 		}
 		.expr_generic_args {
 			w.mark_call_lhs_cursor(c.edge(0), mod_name)
@@ -3154,18 +3320,115 @@ fn (mut w Walker) mark_call_lhs_cursor(c ast.Cursor, mod_name string) {
 }
 
 fn (mut w Walker) mark_selector_fn_value(expr ast.SelectorExpr, mod_name string) {
+	target := w.selector_fn_value_target(expr)
+	if target != '' {
+		w.mark_fn_name(target, mod_name)
+	}
+}
+
+fn (w &Walker) selector_fn_value_target(expr ast.SelectorExpr) string {
 	if expr.lhs !is ast.Ident {
-		return
+		return ''
 	}
 	left := expr.lhs as ast.Ident
 	left_name := left.name
-	if left_name == 'C' {
-		w.mark_fn_name(expr.rhs.name, mod_name)
+	if left_name == 'C' || left_name !in w.module_names {
+		return ''
+	}
+	real_mod := w.module_alias_to_real[left_name] or { left_name }
+	target := '${real_mod}__${expr.rhs.name}'
+	if w.lookup_count('fn:${target}') > 0 {
+		return target
+	}
+	return ''
+}
+
+fn (w &Walker) selector_fn_value_target_cursor(c ast.Cursor) string {
+	if !c.is_valid() || c.kind() != .expr_selector {
+		return ''
+	}
+	lhs_c := c.edge(0)
+	rhs_c := c.edge(1)
+	if !lhs_c.is_valid() || lhs_c.kind() != .expr_ident || !rhs_c.is_valid() {
+		return ''
+	}
+	left_name := lhs_c.name()
+	if left_name == 'C' || left_name !in w.module_names {
+		return ''
+	}
+	real_mod := w.module_alias_to_real[left_name] or { left_name }
+	target := '${real_mod}__${rhs_c.name()}'
+	if w.lookup_count('fn:${target}') > 0 {
+		return target
+	}
+	return ''
+}
+
+fn (mut w Walker) mark_fn_value_expr(expr ast.Expr, mod_name string) {
+	if !w.opts.minimal_runtime_roots || !expr_ok(expr) {
 		return
 	}
-	if left_name in w.module_names {
-		real_mod := w.module_alias_to_real[left_name] or { left_name }
-		w.mark_fn_name('${real_mod}__${expr.rhs.name}', mod_name)
+	match expr {
+		ast.Ident {
+			if w.mark_const_fn_value_alias(expr.name, mod_name) {
+				return
+			}
+			if w.ident_resolves_to_fn_value(expr.name, mod_name) {
+				w.mark_fn_name(expr.name, mod_name)
+			}
+		}
+		ast.SelectorExpr {
+			w.mark_selector_fn_value(expr, mod_name)
+		}
+		ast.GenericArgs {
+			w.mark_fn_value_expr(expr.lhs, mod_name)
+		}
+		ast.GenericArgOrIndexExpr {
+			w.mark_fn_value_expr(expr.lhs, mod_name)
+		}
+		ast.ModifierExpr {
+			w.mark_fn_value_expr(expr.expr, mod_name)
+		}
+		ast.ParenExpr {
+			w.mark_fn_value_expr(expr.expr, mod_name)
+		}
+		else {}
+	}
+}
+
+fn (mut w Walker) mark_fn_value_expr_cursor(c ast.Cursor, mod_name string) {
+	if !w.opts.minimal_runtime_roots || !c.is_valid() {
+		return
+	}
+	match c.kind() {
+		.expr_ident {
+			name := c.name()
+			if w.mark_const_fn_value_alias(name, mod_name) {
+				return
+			}
+			if w.ident_resolves_to_fn_value(name, mod_name) {
+				w.mark_fn_name(name, mod_name)
+			}
+		}
+		.expr_selector {
+			target := w.selector_fn_value_target_cursor(c)
+			if target != '' {
+				w.mark_fn_name(target, mod_name)
+			}
+		}
+		.expr_generic_args {
+			w.mark_fn_value_expr_cursor(c.edge(0), mod_name)
+		}
+		.expr_generic_arg_or_index {
+			w.mark_fn_value_expr_cursor(c.edge(0), mod_name)
+		}
+		.expr_modifier {
+			w.mark_fn_value_expr_cursor(c.edge(0), mod_name)
+		}
+		.expr_paren {
+			w.mark_fn_value_expr_cursor(c.edge(0), mod_name)
+		}
+		else {}
 	}
 }
 
@@ -3194,6 +3457,7 @@ fn (mut w Walker) walk_stmt(stmt ast.Stmt, mod_name string) {
 				w.walk_expr(expr, mod_name)
 			}
 			for expr in stmt.rhs {
+				w.mark_fn_value_expr(expr, mod_name)
 				w.walk_expr(expr, mod_name)
 			}
 		}
@@ -3205,6 +3469,7 @@ fn (mut w Walker) walk_stmt(stmt ast.Stmt, mod_name string) {
 		}
 		ast.ConstDecl {
 			for field in stmt.fields {
+				w.mark_fn_value_expr(field.value, mod_name)
 				w.walk_expr(field.value, mod_name)
 			}
 		}
@@ -3241,6 +3506,7 @@ fn (mut w Walker) walk_stmt(stmt ast.Stmt, mod_name string) {
 		}
 		ast.ReturnStmt {
 			for expr in stmt.exprs {
+				w.mark_fn_value_expr(expr, mod_name)
 				w.walk_expr(expr, mod_name)
 				// If the function returns an interface type and the return expr
 				// is a concrete struct InitExpr, mark the concrete type's
@@ -3280,8 +3546,10 @@ fn (mut w Walker) walk_expr(expr ast.Expr, mod_name string) {
 		ast.ArrayInitExpr {
 			w.walk_expr(expr.typ, mod_name)
 			for item in expr.exprs {
+				w.mark_fn_value_expr(item, mod_name)
 				w.walk_expr(item, mod_name)
 			}
+			w.mark_fn_value_expr(expr.init, mod_name)
 			w.walk_expr(expr.init, mod_name)
 			w.walk_expr(expr.cap, mod_name)
 			w.walk_expr(expr.len, mod_name)
@@ -3295,6 +3563,7 @@ fn (mut w Walker) walk_expr(expr ast.Expr, mod_name string) {
 			w.walk_expr(expr.typ, mod_name)
 			w.walk_expr(expr.expr, mod_name)
 			for field in expr.fields {
+				w.mark_fn_value_expr(field.value, mod_name)
 				w.walk_expr(field.value, mod_name)
 			}
 		}
@@ -3303,6 +3572,7 @@ fn (mut w Walker) walk_expr(expr ast.Expr, mod_name string) {
 			w.mark_call_arg_interface_conversions(expr, mod_name)
 			w.walk_expr(expr.lhs, mod_name)
 			for arg in expr.args {
+				w.mark_fn_value_expr(arg, mod_name)
 				w.walk_expr(arg, mod_name)
 			}
 		}
@@ -3315,6 +3585,7 @@ fn (mut w Walker) walk_expr(expr ast.Expr, mod_name string) {
 			w.mark_call_lhs(expr.lhs, mod_name)
 			w.mark_call_or_cast_arg_interface_conversion(expr, mod_name)
 			w.walk_expr(expr.lhs, mod_name)
+			w.mark_fn_value_expr(expr.expr, mod_name)
 			w.walk_expr(expr.expr, mod_name)
 		}
 		ast.CastExpr {
@@ -3340,7 +3611,8 @@ fn (mut w Walker) walk_expr(expr ast.Expr, mod_name string) {
 		}
 		ast.Ident {
 			w.mark_ierror_wrapper_dependencies(expr.name, mod_name)
-			if !w.is_cast_type_name(expr.name) {
+			if (!w.opts.minimal_runtime_roots || should_mark_ident_as_fn(expr.name))
+				&& !w.is_cast_type_name(expr.name) {
 				w.mark_fn_name(expr.name, mod_name)
 			}
 		}
@@ -3365,6 +3637,7 @@ fn (mut w Walker) walk_expr(expr ast.Expr, mod_name string) {
 			w.mark_interface_conversion_methods(expr.typ, expr, mod_name)
 			w.walk_expr(expr.typ, mod_name)
 			for field in expr.fields {
+				w.mark_fn_value_expr(field.value, mod_name)
 				w.walk_expr(field.value, mod_name)
 			}
 		}
@@ -3388,9 +3661,11 @@ fn (mut w Walker) walk_expr(expr ast.Expr, mod_name string) {
 		ast.MapInitExpr {
 			w.walk_expr(expr.typ, mod_name)
 			for key in expr.keys {
+				w.mark_fn_value_expr(key, mod_name)
 				w.walk_expr(key, mod_name)
 			}
 			for value in expr.vals {
+				w.mark_fn_value_expr(value, mod_name)
 				w.walk_expr(value, mod_name)
 			}
 		}
@@ -3444,6 +3719,7 @@ fn (mut w Walker) walk_expr(expr ast.Expr, mod_name string) {
 		}
 		ast.Tuple {
 			for value in expr.exprs {
+				w.mark_fn_value_expr(value, mod_name)
 				w.walk_expr(value, mod_name)
 			}
 		}
