@@ -276,6 +276,7 @@ fn test_windows_x64_empty_main_links_without_crt_or_darwin_symbols() {
 	res := build_windows_x64_sample('module main\nfn main() {}\n', false, true)
 
 	assert 'calloc' !in res.undefined_symbols, res.undefined_symbols.str()
+	assert '_errno' !in res.undefined_symbols, res.undefined_symbols.str()
 	assert '__stdoutp' !in res.undefined_symbols, res.undefined_symbols.str()
 	assert '__stderrp' !in res.undefined_symbols, res.undefined_symbols.str()
 	assert '__stdinp' !in res.undefined_symbols, res.undefined_symbols.str()
@@ -308,7 +309,23 @@ fn main() {
 	assert 'stdout' in res.undefined_symbols
 	assert 'stderr' in res.undefined_symbols
 	assert 'stdin' in res.undefined_symbols
-	assert 'errno' in res.undefined_symbols
+	assert '_errno' in res.undefined_symbols
+	assert 'errno' !in res.undefined_symbols
+}
+
+fn test_windows_x64_c_errno_links_with_minimal_runtime() {
+	linked := build_windows_x64_sample('module main
+
+fn main() {
+	C.errno = 0
+	C.errno += 1
+}
+',
+		true, true)
+
+	assert linked.image.len > 0
+	assert linked.image[0] == `M`
+	assert linked.image[1] == `Z`
 }
 
 fn test_windows_x64_minimal_runtime_builds_markused_core_functions() {
@@ -800,6 +817,7 @@ fn build_checked_windows_x64_mir_sample(source string, optimize bool) mir.Module
 	ssa_builder.guard_invalid_type_payloads = true
 	ssa_builder.target_os = 'windows'
 	ssa_builder.minimal_runtime_roots = true
+	ssa_builder.native_backend_bulk_zero_alloca = true
 	ssa_builder.used_fn_keys = b.used_fn_keys.clone()
 	build_test_ssa(mut b, mut ssa_builder)
 	if optimize {
@@ -864,6 +882,7 @@ fn build_windows_x64_sample_with_files(sources map[string]string, link bool, opt
 	ssa_builder.guard_invalid_type_payloads = true
 	ssa_builder.target_os = 'windows'
 	ssa_builder.minimal_runtime_roots = true
+	ssa_builder.native_backend_bulk_zero_alloca = true
 	ssa_builder.used_fn_keys = b.used_fn_keys.clone()
 	build_test_ssa(mut b, mut ssa_builder)
 	if optimize {

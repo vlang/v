@@ -50,12 +50,18 @@ fn (b &Builder) is_windows_target() bool {
 }
 
 fn (mut b Builder) build_c_errno_addr() ?ValueID {
-	if !b.is_macos_target() && !b.is_linux_target() {
+	if !b.is_macos_target() && !b.is_linux_target() && !b.is_windows_target() {
 		return none
 	}
 	i32_t := b.mod.type_store.get_int(32)
 	ptr_i32 := b.mod.type_store.get_ptr(i32_t)
-	err_fn_name := if b.is_macos_target() { '__error' } else { '__errno_location' }
+	err_fn_name := if b.is_macos_target() {
+		'__error'
+	} else if b.is_windows_target() {
+		'_errno'
+	} else {
+		'__errno_location'
+	}
 	err_fn := b.get_or_create_fn_ref(err_fn_name, ptr_i32)
 	return b.mod.add_instr(.call, b.cur_block, ptr_i32, [err_fn])
 }
@@ -127,6 +133,9 @@ pub mut:
 	// When set, native Windows PE builds rely on markused instead of retaining
 	// broad builtin runtime modules before linking.
 	minimal_runtime_roots bool
+	// When set, the backend zeroes large fixed-array allocas as a bulk operation,
+	// so SSA can keep IR size bounded by skipping per-element zero stores.
+	native_backend_bulk_zero_alloca bool
 mut:
 	env       &types.Environment = unsafe { nil }
 	cur_func  int                = -1
@@ -220,22 +229,23 @@ pub fn (mut b Builder) new_worker_clone(worker_mod &Module, worker_idx int) &Bui
 	// Maps that are written in Phase 4 (fn_index, option_wrapper_types, etc.)
 	// obviously need per-worker copies.
 	return &Builder{
-		mod:                    worker_mod
-		env:                    b.env
-		target_os:              b.target_os
-		minimal_runtime_roots:  b.minimal_runtime_roots
-		struct_types:           b.struct_types.clone()
-		enum_values:            b.enum_values.clone()
-		fn_index:               b.fn_index.clone()
-		global_refs:            b.global_refs.clone()
-		const_values:           b.const_values.clone()
-		const_value_types:      b.const_value_types.clone()
-		string_const_values:    b.string_const_values.clone()
-		float_const_values:     b.float_const_values.clone()
-		const_array_globals:    b.const_array_globals.clone()
-		const_array_elem_count: b.const_array_elem_count.clone()
-		option_wrapper_types:   b.option_wrapper_types.clone()
-		result_wrapper_types:   b.result_wrapper_types.clone()
+		mod:                             worker_mod
+		env:                             b.env
+		target_os:                       b.target_os
+		minimal_runtime_roots:           b.minimal_runtime_roots
+		native_backend_bulk_zero_alloca: b.native_backend_bulk_zero_alloca
+		struct_types:                    b.struct_types.clone()
+		enum_values:                     b.enum_values.clone()
+		fn_index:                        b.fn_index.clone()
+		global_refs:                     b.global_refs.clone()
+		const_values:                    b.const_values.clone()
+		const_value_types:               b.const_value_types.clone()
+		string_const_values:             b.string_const_values.clone()
+		float_const_values:              b.float_const_values.clone()
+		const_array_globals:             b.const_array_globals.clone()
+		const_array_elem_count:          b.const_array_elem_count.clone()
+		option_wrapper_types:            b.option_wrapper_types.clone()
+		result_wrapper_types:            b.result_wrapper_types.clone()
 		// Offset anon_fn_counter so each worker generates unique names.
 		// Stride of 100_000 per worker avoids collisions.
 		anon_fn_counter: (worker_idx + 1) * 100_000
@@ -8503,8 +8513,9 @@ fn (mut b Builder) build_selector(expr ast.SelectorExpr) ValueID {
 			i64_t := b.mod.type_store.get_int(64)
 			return b.mod.get_or_add_const(i64_t, '0')
 		}
-		// errno is not portable linkable data on libc targets with TLS errno.
-		// Darwin exposes __error(); glibc/LSB expose __errno_location().
+		// errno is not portable linkable data on targets with TLS errno.
+		// Darwin exposes __error(); glibc/LSB expose __errno_location();
+		// Windows CRT exposes _errno().
 		if c_name == 'errno' {
 			i32_t := b.mod.type_store.get_int(32)
 			errno_addr := b.build_c_errno_storage_addr()
@@ -9554,7 +9565,8 @@ fn (mut b Builder) build_array_init_expr(expr ast.ArrayInitExpr) ValueID {
 					arr_fixed_type := b.mod.type_store.get_array(elem_type, arr_len)
 					ptr_type := b.mod.type_store.get_ptr(arr_fixed_type)
 					alloca := b.mod.add_instr(.alloca, b.cur_block, ptr_type, []ValueID{})
-					if arr_len <= fixed_array_empty_literal_element_store_threshold {
+					if !b.native_backend_bulk_zero_alloca
+						|| arr_len <= fixed_array_empty_literal_element_store_threshold {
 						zero := b.mod.get_or_add_const(elem_type, '0')
 						elem_ptr_type := b.mod.type_store.get_ptr(elem_type)
 						i32_t := b.mod.type_store.get_int(32)

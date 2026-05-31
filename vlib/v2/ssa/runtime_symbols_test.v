@@ -420,7 +420,7 @@ fn test_c_errno_flat_writes_use_error_on_macos_targets() {
 	assert 'C.errno' !in global_names
 }
 
-fn test_c_errno_stays_global_on_windows_targets() {
+fn test_c_errno_uses_errno_on_windows_targets() {
 	m := build_ssa_for_runtime_symbol_target_test('
 module main
 
@@ -436,39 +436,42 @@ fn main() {
 	call_names := called_function_names(m)
 	global_names := global_value_names(m)
 
+	assert '_errno' in call_names
 	assert '__errno_location' !in call_names
 	assert '__error' !in call_names
-	assert 'errno' in global_names
+	assert 'errno' !in global_names
 	assert 'C.errno' !in global_names
 }
 
-fn test_c_errno_writes_stay_raw_global_on_windows_targets() {
+fn test_c_errno_writes_use_errno_on_windows_targets() {
 	m := build_ssa_for_runtime_symbol_target_test(c_errno_write_test_code(), 'windows')
 	call_names := called_function_names(m)
 	store_call_names := store_destination_call_names(m)
 	store_global_names := store_destination_global_names(m)
 	global_names := global_value_names(m)
 
+	assert call_names.filter(it == '_errno').len == 2
+	assert store_call_names.filter(it == '_errno').len == 2
 	assert '__errno_location' !in call_names
 	assert '__error' !in call_names
-	assert store_call_names.len == 0
-	assert store_global_names.filter(it == 'errno').len == 2
-	assert 'errno' in global_names
+	assert store_global_names.filter(it == 'errno').len == 0
+	assert 'errno' !in global_names
 	assert 'C.errno' !in global_names
 }
 
-fn test_c_errno_flat_writes_stay_raw_global_on_windows_targets() {
+fn test_c_errno_flat_writes_use_errno_on_windows_targets() {
 	m := build_ssa_for_runtime_symbol_target_flat_test(c_errno_write_test_code(), 'windows')
 	call_names := called_function_names(m)
 	store_call_names := store_destination_call_names(m)
 	store_global_names := store_destination_global_names(m)
 	global_names := global_value_names(m)
 
+	assert call_names.filter(it == '_errno').len == 2
+	assert store_call_names.filter(it == '_errno').len == 2
 	assert '__errno_location' !in call_names
 	assert '__error' !in call_names
-	assert store_call_names.len == 0
-	assert store_global_names.filter(it == 'errno').len == 2
-	assert 'errno' in global_names
+	assert store_global_names.filter(it == 'errno').len == 0
+	assert 'errno' !in global_names
 	assert 'C.errno' !in global_names
 }
 

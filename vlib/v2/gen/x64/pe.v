@@ -321,6 +321,10 @@ fn (l PeLinker) build_runtime_text() PeRuntimeText {
 		rt.symbols['_wgetenv'] = runtime_base + u32(rt.bytes.len)
 		pe_emit_runtime_wgetenv(mut rt)
 	}
+	if l.uses_undefined_symbol('_errno') {
+		rt.symbols['_errno'] = runtime_base + u32(rt.bytes.len)
+		pe_emit_runtime_errno(mut rt)
+	}
 	if l.uses_undefined_symbol('calloc') {
 		rt.symbols['calloc'] = runtime_base + u32(rt.bytes.len)
 		pe_emit_runtime_calloc(mut rt)
@@ -1119,6 +1123,12 @@ fn pe_emit_runtime_exit(mut rt PeRuntimeText) {
 	rt.bytes << [u8(0x48), 0x83, 0xec, 0x28] // sub rsp, 40
 	pe_emit_runtime_call_import(mut rt, 'ExitProcess')
 	rt.bytes << u8(0xcc) // int3
+}
+
+fn pe_emit_runtime_errno(mut rt PeRuntimeText) {
+	errno_off := pe_runtime_data_alloc(mut rt, 4, 4)
+	pe_emit_runtime_lea_rax_data(mut rt, errno_off)
+	rt.bytes << u8(0xc3) // ret
 }
 
 fn pe_emit_runtime_new_array_from_c_array_noscan(mut rt PeRuntimeText) {

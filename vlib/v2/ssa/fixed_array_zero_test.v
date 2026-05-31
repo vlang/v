@@ -13,7 +13,7 @@ struct FixedArrayZeroStats {
 	stores int
 }
 
-fn build_ssa_for_fixed_array_zero_test(code string) &Module {
+fn build_ssa_for_fixed_array_zero_test(code string, native_bulk_zero bool) &Module {
 	tmp_file := os.join_path(os.vtmp_dir(), 'v2_ssa_fixed_array_zero_${os.getpid()}.v')
 	os.write_file(tmp_file, code) or { panic('failed to write temp file') }
 	defer {
@@ -33,11 +33,12 @@ fn build_ssa_for_fixed_array_zero_test(code string) &Module {
 	transformed := trans.transform_files(files)
 	mut ssa_mod := Module.new('fixed_array_zero')
 	mut b := Builder.new_with_env(ssa_mod, env)
+	b.native_backend_bulk_zero_alloca = native_bulk_zero
 	b.build_all(transformed)
 	return ssa_mod
 }
 
-fn fixed_array_zero_stats(len int) FixedArrayZeroStats {
+fn fixed_array_zero_stats(len int, native_bulk_zero bool) FixedArrayZeroStats {
 	m := build_ssa_for_fixed_array_zero_test('
 module main
 
@@ -45,7 +46,8 @@ fn main() {
 	a := [${len}]u8{}
 	_ = a
 }
-')
+',
+		native_bulk_zero)
 	mut geps := 0
 	mut stores := 0
 	for instr in m.instrs {
@@ -62,10 +64,24 @@ fn main() {
 	}
 }
 
-fn test_large_empty_fixed_array_literal_uses_bounded_ssa_zero_fill() {
-	small := fixed_array_zero_stats(16)
-	large17 := fixed_array_zero_stats(17)
-	large64 := fixed_array_zero_stats(64)
+fn test_empty_fixed_array_literal_emits_explicit_ssa_zero_stores() {
+	small := fixed_array_zero_stats(16, false)
+	large17 := fixed_array_zero_stats(17, false)
+	large64 := fixed_array_zero_stats(64, false)
+
+	assert small.geps >= 16
+	assert small.stores >= 16
+	assert large17.geps >= 17
+	assert large17.stores >= 17
+	assert large64.geps >= 64
+	assert large64.stores >= 64
+	assert large64.instrs > large17.instrs
+}
+
+fn test_native_bulk_zero_capable_backend_keeps_bounded_ssa_zero_stores() {
+	small := fixed_array_zero_stats(16, true)
+	large17 := fixed_array_zero_stats(17, true)
+	large64 := fixed_array_zero_stats(64, true)
 
 	assert small.geps >= 16
 	assert small.stores >= 16

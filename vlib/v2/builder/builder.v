@@ -2103,6 +2103,7 @@ fn (mut b Builder) gen_native(backend_arch pref.Arch) {
 	ssa_builder.guard_invalid_type_payloads = true
 	ssa_builder.target_os = target_os
 	ssa_builder.minimal_runtime_roots = b.uses_minimal_windows_x64_runtime()
+	ssa_builder.native_backend_bulk_zero_alloca = arch == .x64
 	mut native_sw := time.new_stopwatch()
 
 	// Pass markused data for dead code elimination. The ARM64 backend has its own

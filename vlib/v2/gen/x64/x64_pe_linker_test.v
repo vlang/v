@@ -551,6 +551,53 @@ fn test_pe_linker_resolves_memcmp_and_exit_with_internal_runtime_thunks() {
 	assert image[memcmp_off + 22..memcmp_off + 25] == [u8(0x49), 0xff, 0xc8] // dec r8
 }
 
+fn test_pe_linker_resolves_errno_with_internal_runtime_data_slot() {
+	mut obj := CoffObject.new()
+	obj.text_data << [u8(0xe8), 0, 0, 0, 0, 0xc3]
+	obj.add_symbol('main', 5, true, 1)
+	errno_sym := obj.add_undefined('_errno')
+	obj.add_text_reloc(1, errno_sym, coff_image_rel_amd64_rel32)
+
+	mut linker := PeLinker.new(obj)
+	image := linker.image() or { panic(err) }
+	text_off := pe_test_section_header(image, '.text')
+	text_rva := pe_test_u32(image, text_off + 12)
+	text_raw := int(pe_test_u32(image, text_off + 20))
+	text_raw_size := int(pe_test_u32(image, text_off + 16))
+	entry_stub_len := linker.entry_stub_size()
+	runtime_start_rva := text_rva + u32(entry_stub_len + obj.text_data.len)
+
+	mut first_import_thunk_file_off := -1
+	for off in text_raw + entry_stub_len + obj.text_data.len .. text_raw + text_raw_size - 1 {
+		if image[off] == 0xff && image[off + 1] == 0x25 {
+			first_import_thunk_file_off = off
+			break
+		}
+	}
+	assert first_import_thunk_file_off > 0
+	first_import_thunk_rva := text_rva + u32(first_import_thunk_file_off - text_raw)
+
+	errno_field_off := text_raw + entry_stub_len + 1
+	errno_field_rva := text_rva + u32(entry_stub_len + 1)
+	errno_target := u32(i32(errno_field_rva + 4) + pe_test_i32(image, errno_field_off))
+	assert errno_target >= runtime_start_rva
+	assert errno_target < first_import_thunk_rva
+
+	errno_off := pe_test_rva_to_file_off(image, errno_target)
+	assert errno_off > 0
+	assert image[errno_off..errno_off + 3] == [u8(0x48), 0x8d, 0x05] // lea rax, [rip + disp32]
+	assert image[errno_off + 7] == u8(0xc3) // ret
+	slot_target := u32(i32(errno_target + 7) + pe_test_i32(image, errno_off + 3))
+	data_off := pe_test_section_header(image, '.data')
+	assert data_off > 0
+	data_rva := pe_test_u32(image, data_off + 12)
+	data_raw_size := pe_test_u32(image, data_off + 16)
+	assert slot_target >= data_rva
+	assert slot_target < data_rva + data_raw_size
+	slot_off := pe_test_rva_to_file_off(image, slot_target)
+	assert pe_test_u32(image, slot_off) == 0
+}
+
 fn test_pe_linker_resolves_calloc_with_internal_zeroed_heap_thunk() {
 	mut obj := CoffObject.new()
 	obj.text_data << [u8(0xe8), 0, 0, 0, 0, 0xc3]
