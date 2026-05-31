@@ -61,11 +61,14 @@ pub fn leading_zeros_8(x u8) int {
 		return 8
 	}
 	mut n := u32(x)
-	asm arm64 {
-		clz n, n
-		; +r (n)
+	$if arm64 && !tinyc {
+		asm arm64 {
+			clz n, n
+			; +r (n)
+		}
+		return int(n) - 24
 	}
-	return int(n) - 24
+	return int(leading_zeros_8_default(x))
 }
 
 // leading_zeros_16 returns the number of leading zero bits in x; the result is 16 for x == 0.
@@ -75,11 +78,14 @@ pub fn leading_zeros_16(x u16) int {
 		return 16
 	}
 	mut n := u32(x)
-	asm arm64 {
-		clz n, n
-		; +r (n)
+	$if arm64 && !tinyc {
+		asm arm64 {
+			clz n, n
+			; +r (n)
+		}
+		return int(n) - 16
 	}
-	return int(n) - 16
+	return int(leading_zeros_16_default(x))
 }
 
 // leading_zeros_32 returns the number of leading zero bits in x; the result is 32 for x == 0.
@@ -89,11 +95,14 @@ pub fn leading_zeros_32(x u32) int {
 		return 32
 	}
 	mut n := x
-	asm arm64 {
-		clz n, n
-		; +r (n)
+	$if arm64 && !tinyc {
+		asm arm64 {
+			clz n, n
+			; +r (n)
+		}
+		return int(n)
 	}
-	return int(n)
+	return int(leading_zeros_32_default(x))
 }
 
 // leading_zeros_64 returns the number of leading zero bits in x; the result is 64 for x == 0.
@@ -103,11 +112,14 @@ pub fn leading_zeros_64(x u64) int {
 		return 64
 	}
 	mut n := x
-	asm arm64 {
-		clz n, n
-		; +r (n)
+	$if arm64 && !tinyc {
+		asm arm64 {
+			clz n, n
+			; +r (n)
+		}
+		return int(n)
 	}
-	return int(n)
+	return int(leading_zeros_64_default(x))
 }
 
 // trailing_zeros_8 returns the number of trailing zero bits in x; the result is 8 for x == 0.
@@ -117,12 +129,15 @@ pub fn trailing_zeros_8(x u8) int {
 		return 8
 	}
 	mut n := u32(x)
-	asm arm64 {
-		rbit n, n
-		clz n, n
-		; +r (n)
+	$if arm64 && !tinyc {
+		asm arm64 {
+			rbit n, n
+			clz n, n
+			; +r (n)
+		}
+		return int(n)
 	}
-	return int(n)
+	return int(trailing_zeros_8_default(x))
 }
 
 // trailing_zeros_16 returns the number of trailing zero bits in x; the result is 16 for x == 0.
@@ -132,12 +147,15 @@ pub fn trailing_zeros_16(x u16) int {
 		return 16
 	}
 	mut n := u32(x)
-	asm arm64 {
-		rbit n, n
-		clz n, n
-		; +r (n)
+	$if arm64 && !tinyc {
+		asm arm64 {
+			rbit n, n
+			clz n, n
+			; +r (n)
+		}
+		return int(n)
 	}
-	return int(n)
+	return int(trailing_zeros_16_default(x))
 }
 
 // trailing_zeros_32 returns the number of trailing zero bits in x; the result is 32 for x == 0.
@@ -147,12 +165,15 @@ pub fn trailing_zeros_32(x u32) int {
 		return 32
 	}
 	mut n := x
-	asm arm64 {
-		rbit n, n
-		clz n, n
-		; +r (n)
+	$if arm64 && !tinyc {
+		asm arm64 {
+			rbit n, n
+			clz n, n
+			; +r (n)
+		}
+		return int(n)
 	}
-	return int(n)
+	return int(trailing_zeros_32_default(x))
 }
 
 // trailing_zeros_64 returns the number of trailing zero bits in x; the result is 64 for x == 0.
@@ -162,12 +183,15 @@ pub fn trailing_zeros_64(x u64) int {
 		return 64
 	}
 	mut n := x
-	asm arm64 {
-		rbit n, n
-		clz n, n
-		; +r (n)
+	$if arm64 && !tinyc {
+		asm arm64 {
+			rbit n, n
+			clz n, n
+			; +r (n)
+		}
+		return int(n)
 	}
-	return int(n)
+	return int(trailing_zeros_64_default(x))
 }
 
 // reverse_bytes_16 returns the value of x with its bytes in reversed order.
@@ -176,11 +200,14 @@ pub fn trailing_zeros_64(x u64) int {
 @[inline]
 pub fn reverse_bytes_16(x u16) u16 {
 	mut n := u32(x)
-	asm arm64 {
-		rev16 n, n
-		; +r (n)
+	$if arm64 && !tinyc {
+		asm arm64 {
+			rev16 n, n
+			; +r (n)
+		}
+		return u16(n)
 	}
-	return u16(n)
+	return reverse_bytes_16_default(x)
 }
 
 // reverse_bytes_32 returns the value of x with its bytes in reversed order.
@@ -189,11 +216,14 @@ pub fn reverse_bytes_16(x u16) u16 {
 @[inline]
 pub fn reverse_bytes_32(x u32) u32 {
 	mut n := x
-	asm arm64 {
-		rev n, n
-		; +r (n)
+	$if arm64 && !tinyc {
+		asm arm64 {
+			rev n, n
+			; +r (n)
+		}
+		return n
 	}
-	return n
+	return reverse_bytes_32_default(x)
 }
 
 // reverse_bytes_64 returns the value of x with its bytes in reversed order.
@@ -202,9 +232,12 @@ pub fn reverse_bytes_32(x u32) u32 {
 @[inline]
 pub fn reverse_bytes_64(x u64) u64 {
 	mut n := x
-	asm arm64 {
-		rev n, n
-		; +r (n)
+	$if arm64 && !tinyc {
+		asm arm64 {
+			rev n, n
+			; +r (n)
+		}
+		return n
 	}
-	return n
+	return reverse_bytes_64_default(x)
 }
