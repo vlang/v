@@ -9748,10 +9748,15 @@ fn (mut g Gen) cast_expr(node ast.CastExpr) {
 			*/
 		}
 		mut cast_label := ''
+		alias_parent_type := if sym.info is ast.Alias {
+			g.table.fully_unaliased_type(sym.info.parent_type)
+		} else {
+			ast.void_type
+		}
 		// `ast.string_type` is done for MSVC's bug
 		if sym.kind != .alias
 			|| (sym.info is ast.Alias && !sym.info.parent_type.has_flag(.option)
-			&& sym.info.parent_type !in [expr_type, ast.string_type]) {
+			&& alias_parent_type !in [expr_type, ast.string_type]) {
 			if sym.kind == .string && !node_typ.is_ptr() {
 				cast_label = '*(string*)&'
 			} else if !((g.is_cc_msvc && (g.styp(node_typ) == g.styp(expr_type)

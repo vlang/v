@@ -589,6 +589,9 @@ fn resolve_vexe_path(vexe string) string {
 	if os.is_abs_path(vexe) {
 		return os.real_path(vexe)
 	}
+	if vexe.contains('/') || vexe.contains('\\') {
+		return os.real_path(os.abs_path(vexe))
+	}
 	if found_vexe := os.find_abs_path_of_executable(vexe) {
 		return os.real_path(found_vexe)
 	}
