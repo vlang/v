@@ -8,6 +8,10 @@ import v2.ast
 import strings
 
 fn (mut g Gen) gen_string_inter_literal(node ast.StringInterLiteral) {
+	if g.is_freestanding_target() {
+		g.sb.write_string(g.c_freestanding_missing_format_string_expr())
+		return
+	}
 	// Two-pass snprintf: first into a 256-byte stack buffer to measure,
 	// then use it directly or heap-allocate only when it doesn't fit.
 	// This avoids the unconditional heap allocation of asprintf.

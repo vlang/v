@@ -5962,6 +5962,18 @@ fn (mut g Gen) gen_fn_decl_with_name_ptr(node &ast.FnDecl, fn_name string) {
 	g.sb.writeln(' {')
 	g.indent++
 
+	if fn_name.starts_with('Array_') && fn_name.ends_with('_contains') && g.is_freestanding_target()
+		&& g.pref != unsafe { nil } && g.pref.skip_builtin {
+		g.write_indent()
+		g.sb.writeln('_Static_assert(0, "${freestanding_missing_heap_runtime_message}: ${fn_name}");')
+		g.write_indent()
+		g.sb.writeln('return false;')
+		g.indent--
+		g.sb.writeln('}')
+		g.sb.writeln('')
+		return
+	}
+
 	if g.gen_json2_decode_string_body(node) {
 		g.indent--
 		g.sb.writeln('}')

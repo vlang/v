@@ -362,27 +362,32 @@ $if android && !termux {
 	assert !flags.contains('-DANDROID_DIRECT')
 }
 
-fn test_freestanding_diagnostics_gate_direct_runtime_helpers_by_capability() {
-	for name in ['_write_buf_to_fd', '_writeln_to_fd', 'flush_stdout', 'flush_stderr'] {
-		assert freestanding_test_call_name(name, ['freestanding_hooks']) == 'output_runtime'
-		assert freestanding_test_call_name(name, ['freestanding_hooks', 'freestanding_output']) == 'output_runtime'
+fn test_freestanding_diagnostics_gate_direct_builtins_by_capability() {
+	for name in ['print', 'println', 'eprint', 'eprintln'] {
+		assert freestanding_test_call_name(name, ['freestanding_hooks']) == name
 		assert freestanding_test_call_name_with_hooks(name, ['freestanding_hooks',
 			'freestanding_output'], ['output']) == ''
 	}
+	assert freestanding_test_call_name('panic', ['freestanding_hooks']) == 'panic'
+	assert freestanding_test_call_name_with_hooks('panic', ['freestanding_hooks',
+		'freestanding_panic'], ['panic']) == ''
+}
+
+fn test_freestanding_diagnostics_leave_runtime_helpers_to_cleanc() {
+	for name in ['_write_buf_to_fd', '_writeln_to_fd', 'flush_stdout', 'flush_stderr'] {
+		assert freestanding_test_call_name(name, ['freestanding_hooks']) == ''
+	}
 
 	assert freestanding_test_call_name_with_hooks('arguments', ['freestanding_hooks',
-		'freestanding_output'], ['output']) == 'arguments'
+		'freestanding_output'], ['output']) == ''
 	assert freestanding_test_call_name_with_hooks('arguments', ['freestanding_hooks',
-		'freestanding_alloc'], ['alloc']) == 'arguments'
+		'freestanding_alloc'], ['alloc']) == ''
 	assert freestanding_test_call_name('malloc_noscan',
-		['freestanding_hooks', 'freestanding_alloc']) == 'alloc'
+		['freestanding_hooks', 'freestanding_alloc']) == ''
 	assert freestanding_test_call_name_with_hooks('malloc_noscan', [
 		'freestanding_hooks',
 		'freestanding_alloc',
 	], ['alloc']) == ''
-	assert freestanding_test_call_name('println', ['freestanding_hooks', 'freestanding_output']) == 'println'
-	assert freestanding_test_call_name_with_hooks('println', ['freestanding_hooks',
-		'freestanding_output'], ['output']) == ''
 	assert freestanding_restricted_call_in_expr(ast.Expr(ast.CallExpr{
 		lhs:  ast.Expr(ast.Ident{
 			name: 'println'
@@ -397,7 +402,7 @@ fn test_freestanding_diagnostics_gate_direct_runtime_helpers_by_capability() {
 		user_defines:       ['freestanding_hooks', 'freestanding_output']
 		target_os:          'linux'
 		freestanding_hooks: ['output']
-	}) == 'print_conversion'
+	}) == ''
 	assert freestanding_restricted_call_in_expr(ast.Expr(ast.CallExpr{
 		lhs:  ast.Expr(ast.Ident{
 			name: 'println'
@@ -412,7 +417,7 @@ fn test_freestanding_diagnostics_gate_direct_runtime_helpers_by_capability() {
 		user_defines:       ['freestanding_hooks', 'freestanding_output', 'freestanding_alloc']
 		target_os:          'linux'
 		freestanding_hooks: ['output', 'alloc']
-	}) == 'print_conversion'
+	}) == ''
 }
 
 fn test_freestanding_diagnostics_skip_inactive_conditional_functions() {
@@ -465,7 +470,7 @@ fn test_freestanding_diagnostics_skip_inactive_conditional_functions() {
 	assert freestanding_restricted_call_in_stmt(active_fn, ctx) == 'println'
 }
 
-fn test_freestanding_diagnostics_do_not_require_alloc_for_fixed_arrays() {
+fn test_freestanding_diagnostics_leave_array_allocation_to_cleanc() {
 	ctx := FreestandingScanContext{
 		user_defines: ['freestanding']
 		target_os:    'linux'
@@ -510,7 +515,7 @@ fn test_freestanding_diagnostics_do_not_require_alloc_for_fixed_arrays() {
 	})
 	assert freestanding_restricted_call_in_expr(fixed_array, ctx) == ''
 	assert freestanding_restricted_call_in_expr(fixed_literal_array, ctx) == ''
-	assert freestanding_restricted_call_in_expr(dynamic_array, ctx) == 'alloc'
+	assert freestanding_restricted_call_in_expr(dynamic_array, ctx) == ''
 }
 
 fn test_collect_cflags_from_sources_uses_or_and_not_precedence() {

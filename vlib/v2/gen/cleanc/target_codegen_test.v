@@ -22,11 +22,17 @@ fn new_target_test_gen_with_options(target_os string, user_defines []string, fre
 }
 
 fn new_target_test_gen_with_options_and_hooks(target_os string, user_defines []string, freestanding bool, prealloc bool, freestanding_hooks []string) &Gen {
+	return new_target_test_gen_with_options_hooks_and_skip_builtin(target_os, user_defines,
+		freestanding, prealloc, freestanding_hooks, false)
+}
+
+fn new_target_test_gen_with_options_hooks_and_skip_builtin(target_os string, user_defines []string, freestanding bool, prealloc bool, freestanding_hooks []string, skip_builtin bool) &Gen {
 	prefs := &vpref.Preferences{
 		backend:               .cleanc
 		target_os:             target_os
 		freestanding:          freestanding
 		prealloc:              prealloc
+		skip_builtin:          skip_builtin
 		user_defines:          user_defines
 		explicit_user_defines: user_defines.clone()
 		freestanding_hooks:    freestanding_hooks
@@ -161,6 +167,14 @@ fn runtime_fallbacks_for_existing_c_source_with_options(csrc string, user_define
 fn runtime_fallbacks_for_existing_c_source_with_hooks(csrc string, hooks []string) string {
 	mut g := new_target_test_gen_with_options_and_hooks('linux', freestanding_hook_defines(hooks),
 		true, false, hooks)
+	g.sb.write_string(csrc)
+	g.emit_missing_runtime_fallbacks()
+	return g.sb.str()
+}
+
+fn runtime_fallbacks_for_existing_c_source_with_hooks_skip_builtin(csrc string, hooks []string) string {
+	mut g := new_target_test_gen_with_options_hooks_and_skip_builtin('linux',
+		freestanding_hook_defines(hooks), true, false, hooks, true)
 	g.sb.write_string(csrc)
 	g.emit_missing_runtime_fallbacks()
 	return g.sb.str()
@@ -335,6 +349,21 @@ fn assert_freestanding_alloc_refusal_without_hosted_heap(csrc string) {
 fn assert_freestanding_format_refusal_without_hosted_formatting(csrc string) {
 	assert csrc.contains('_Static_assert(0, "${freestanding_missing_format_hook_message}")')
 	assert_no_hosted_formatting_or_abort_runtime(csrc)
+}
+
+fn assert_freestanding_heap_runtime_refusal(csrc string, helper string) {
+	assert csrc.contains('_Static_assert(0, "${freestanding_missing_heap_runtime_message}: ${helper}")')
+}
+
+fn assert_freestanding_output_refusal_without_hosted_io(csrc string) {
+	assert csrc.contains('_Static_assert(0, "${freestanding_missing_output_hook_message}")')
+	assert_no_hosted_output_runtime(csrc)
+}
+
+fn assert_freestanding_panic_refusal_without_hosted_exit(csrc string) {
+	assert csrc.contains('_Static_assert(0, "${freestanding_missing_panic_hook_message}")')
+	assert !csrc.contains('v_platform_panic')
+	assert !csrc.contains('exit(')
 }
 
 fn assert_no_hosted_formatting_or_abort_runtime(csrc string) {
@@ -1222,6 +1251,19 @@ fn test_freestanding_output_hooks_runtime_fallbacks_avoid_hosted_io() {
 	assert_no_hosted_output_runtime(src)
 }
 
+fn test_freestanding_without_output_hook_runtime_fallbacks_refuse_without_hosted_io() {
+	src := runtime_fallbacks_for_called_functions_with_hooks(['println', 'eprint'], [
+		'panic',
+	])
+	assert src.contains('__attribute__((weak)) void _write_buf_to_fd')
+	assert src.contains('__attribute__((weak)) void _writeln_to_fd')
+	assert src.contains('__attribute__((weak)) void eprint')
+	assert src.contains('__attribute__((weak)) void flush_stdout')
+	assert src.contains('__attribute__((weak)) void flush_stderr')
+	assert !src.contains('v_platform_write')
+	assert_freestanding_output_refusal_without_hosted_io(src)
+}
+
 fn test_freestanding_spoofed_hook_defines_do_not_call_platform_hooks() {
 	src := runtime_fallbacks_for_called_functions_with_options(['println', 'panic', 'memdup'], [
 		'freestanding_hooks',
@@ -1263,6 +1305,21 @@ fn main() {
 	])
 	assert !src.contains('int__str(')
 	assert_freestanding_format_refusal_without_hosted_formatting(src)
+}
+
+fn test_freestanding_string_interpolation_refuses_without_hosted_formatting() {
+	src := generated_c_for_target_program_with_hooks('freestanding_string_interpolation', "module main
+
+fn main() {
+	_ := '\${1}'
+}
+		", [
+		'alloc',
+	])
+	assert !src.contains('snprintf(')
+	assert !src.contains('memdup(')
+	assert_freestanding_format_refusal_without_hosted_formatting(src)
+	assert_no_raw_heap_runtime(src)
 }
 
 fn test_freestanding_alloc_hooks_runtime_fallbacks_avoid_hosted_alloc() {
@@ -1308,6 +1365,238 @@ fn test_freestanding_without_alloc_hook_runtime_heap_paths_refuse_without_hosted
 	assert_freestanding_alloc_refusal_without_hosted_heap(src)
 }
 
+fn test_freestanding_skip_builtin_runtime_heap_helpers_refuse_in_generated_c() {
+	src := runtime_fallbacks_for_existing_c_source_with_hooks_skip_builtin('void keep_generated_code(void) { array__push(0, 0); string__plus((string){0}, (string){0}); new_map(); }', [
+		'output',
+		'panic',
+		'alloc',
+	])
+	assert_freestanding_heap_runtime_refusal(src, 'array__push')
+	assert_freestanding_heap_runtime_refusal(src, 'string__plus')
+	assert_freestanding_heap_runtime_refusal(src, 'new_map')
+	assert_no_raw_heap_runtime(src)
+}
+
+fn test_freestanding_skip_builtin_runtime_heap_helper_table_refuses_each_helper() {
+	for helper in freestanding_heap_runtime_helper_names() {
+		src := runtime_fallbacks_for_existing_c_source_with_hooks_skip_builtin('void keep_generated_code(void) { ${helper}(); }', [
+			'output',
+			'panic',
+			'alloc',
+		])
+		assert_freestanding_heap_runtime_refusal(src, helper)
+		assert !src.contains('__attribute__((weak))')
+	}
+}
+
+fn test_runtime_symbol_scan_ignores_comments_and_string_literals() {
+	src := runtime_fallbacks_for_existing_c_source_with_hooks_skip_builtin('void keep_generated_code(void) {
+	const char* literal = "array__push(0, 0)";
+	/* array__push(0, 0); */
+	// &array__push
+	array__push_many(0, 0, 0);
+}', [
+		'output',
+		'panic',
+		'alloc',
+	])
+	assert !src.contains('_Static_assert(0, "${freestanding_missing_heap_runtime_message}: array__push")')
+	assert_freestanding_heap_runtime_refusal(src, 'array__push_many')
+}
+
+fn test_runtime_symbol_scan_detects_bare_callback_identifier() {
+	src := runtime_fallbacks_for_existing_c_source_with_hooks_skip_builtin('void keep_generated_code(void) {
+	array__sort_with_compare(0, compare_strings);
+}', [
+		'output',
+		'panic',
+		'alloc',
+	])
+	assert_freestanding_heap_runtime_refusal(src, 'array__sort_with_compare')
+	assert_freestanding_heap_runtime_refusal(src, 'compare_strings')
+}
+
+fn test_freestanding_skip_builtin_structural_array_fallbacks_refuse_clearly() {
+	for helper in ['Array_int_contains', 'Array_string_contains', 'Array_string_index',
+		'Array_int_str'] {
+		src := runtime_fallbacks_for_existing_c_source_with_hooks_skip_builtin('void keep_generated_code(void) { ${helper}(); }', [
+			'output',
+			'panic',
+			'alloc',
+		])
+		assert_freestanding_heap_runtime_refusal(src, helper)
+	}
+}
+
+fn test_freestanding_skip_builtin_ierror_str_refuses_with_panic_hook() {
+	src := runtime_fallbacks_for_existing_c_source_with_hooks_skip_builtin('void keep_generated_code(void) { v_panic(IError__str((IError){0})); }', [
+		'output',
+		'panic',
+		'alloc',
+	])
+	assert src.contains('v_platform_panic(s.str, s.len);')
+	assert_freestanding_heap_runtime_refusal(src, 'IError__str')
+}
+
+fn test_freestanding_skip_builtin_string_lt_from_v_code_refuses_runtime_helper() {
+	src := generated_c_for_target_program_with_hooks('freestanding_string_lt_runtime_helper', 'module main
+
+fn main() {
+	a := "a"
+	b := "b"
+	_ := a < b
+}
+		', [
+		'output',
+		'panic',
+		'alloc',
+	])
+	assert_freestanding_heap_runtime_refusal(src, 'string__lt')
+}
+
+fn test_freestanding_skip_builtin_string_concat_from_v_code_refuses_runtime_helper() {
+	src := generated_c_for_target_program_with_hooks('freestanding_string_concat_runtime_helper', 'module main
+
+fn main() {
+	a := "a"
+	b := "b"
+	c := "c"
+	_ := a + b + c
+}
+		', [
+		'output',
+		'panic',
+		'alloc',
+	])
+	assert_freestanding_heap_runtime_refusal(src, 'string__plus_two')
+}
+
+fn test_freestanding_skip_builtin_string_method_runtime_helpers_refuse_in_generated_c() {
+	src := runtime_fallbacks_for_existing_c_source_with_hooks_skip_builtin('void keep_generated_code(void) {
+	string__contains((string){0}, (string){0});
+	string__starts_with((string){0}, (string){0});
+	string__ends_with((string){0}, (string){0});
+	string__clone((string){0});
+	string__split((string){0}, (string){0});
+}', [
+		'output',
+		'panic',
+		'alloc',
+	])
+	assert_freestanding_heap_runtime_refusal(src, 'string__contains')
+	assert_freestanding_heap_runtime_refusal(src, 'string__starts_with')
+	assert_freestanding_heap_runtime_refusal(src, 'string__ends_with')
+	assert_freestanding_heap_runtime_refusal(src, 'string__clone')
+	assert_freestanding_heap_runtime_refusal(src, 'string__split')
+}
+
+fn test_freestanding_skip_builtin_array_equality_from_v_code_refuses_runtime_helper() {
+	src := generated_c_for_target_program_with_hooks('freestanding_array_eq_runtime_helper', 'module main
+
+fn main() {
+	a := [1]
+	b := [1]
+	_ := a == b
+}
+		', [
+		'output',
+		'panic',
+		'alloc',
+	])
+	assert_freestanding_heap_runtime_refusal(src, '__v2_array_eq')
+}
+
+fn test_freestanding_skip_builtin_array_sort_runtime_helper_refuses_in_generated_c() {
+	src := runtime_fallbacks_for_existing_c_source_with_hooks_skip_builtin('void keep_generated_code(void) { array__sort(0, 0); array__sort_with_compare(0, 0); }', [
+		'output',
+		'panic',
+		'alloc',
+	])
+	assert_freestanding_heap_runtime_refusal(src, 'array__sort')
+	assert_freestanding_heap_runtime_refusal(src, 'array__sort_with_compare')
+}
+
+fn test_freestanding_skip_builtin_map_equality_from_v_code_refuses_runtime_helpers() {
+	src := generated_c_for_target_program_with_hooks('freestanding_map_eq_runtime_helpers', 'module main
+
+fn main() {
+	a := {
+		"x": 1
+	}
+	b := {
+		"x": 1
+	}
+	_ := a == b
+}
+		', [
+		'output',
+		'panic',
+		'alloc',
+	])
+	assert_freestanding_heap_runtime_refusal(src, 'map__exists')
+	assert_freestanding_heap_runtime_refusal(src, 'map__get')
+	assert_freestanding_heap_runtime_refusal(src, 'DenseArray__has_index')
+	assert_freestanding_heap_runtime_refusal(src, 'DenseArray__key')
+	assert_freestanding_heap_runtime_refusal(src, 'DenseArray__value')
+}
+
+fn test_freestanding_skip_builtin_map_method_runtime_helpers_refuse_in_generated_c() {
+	src := runtime_fallbacks_for_existing_c_source_with_hooks_skip_builtin('void keep_generated_code(void) {
+	map__clear(0);
+	map__delete(0, 0);
+	map__keys(0);
+	map__reserve(0, 0);
+	map__move(0);
+	map__values(0);
+}', [
+		'output',
+		'panic',
+		'alloc',
+	])
+	assert_freestanding_heap_runtime_refusal(src, 'map__clear')
+	assert_freestanding_heap_runtime_refusal(src, 'map__delete')
+	assert_freestanding_heap_runtime_refusal(src, 'map__keys')
+	assert_freestanding_heap_runtime_refusal(src, 'map__reserve')
+	assert_freestanding_heap_runtime_refusal(src, 'map__move')
+	assert_freestanding_heap_runtime_refusal(src, 'map__values')
+}
+
+fn test_freestanding_skip_builtin_generic_array_contains_from_v_code_refuses_runtime_helper() {
+	src := generated_c_for_target_program_with_hooks('freestanding_generic_array_contains_runtime_helper', 'module main
+
+struct Point {
+	x int
+}
+
+fn main() {
+	points := [Point{
+		x: 1
+	}]
+	needle := Point{
+		x: 1
+	}
+	_ := needle in points
+}
+		', [
+		'output',
+		'panic',
+		'alloc',
+	])
+	assert src.contains('_Static_assert(0, "${freestanding_missing_heap_runtime_message}: Array_')
+	assert src.contains('_contains")')
+	assert !src.contains('__attribute__((weak)) bool Array_')
+	assert !src.contains('array__get(')
+}
+
+fn test_freestanding_skip_builtin_string_substr_or_runtime_helper_refuses_in_generated_c() {
+	src := runtime_fallbacks_for_existing_c_source_with_hooks_skip_builtin('void keep_generated_code(void) { string__substr_or((string){0}, 0, 1, (string){0}); }', [
+		'output',
+		'panic',
+		'alloc',
+	])
+	assert_freestanding_heap_runtime_refusal(src, 'string__substr_or')
+}
+
 fn test_freestanding_panic_hook_runtime_fallback_avoids_hosted_exit() {
 	src := runtime_fallbacks_for_called_functions_with_hooks(['panic'], ['panic'])
 	assert src.contains('__attribute__((weak)) void v_panic(string s)')
@@ -1315,6 +1604,13 @@ fn test_freestanding_panic_hook_runtime_fallback_avoids_hosted_exit() {
 	assert src.contains('for (;;) {}')
 	assert !src.contains('C.exit')
 	assert !src.contains('exit(')
+}
+
+fn test_freestanding_without_panic_hook_runtime_fallback_refuses_without_unresolved_symbol() {
+	src := runtime_fallbacks_for_called_functions_with_hooks(['panic'], ['output'])
+	assert src.contains('__attribute__((weak)) void v_panic(string s)')
+	assert src.contains('for (;;) {}')
+	assert_freestanding_panic_refusal_without_hosted_exit(src)
 }
 
 fn test_freestanding_hooks_for_existing_c_references_do_not_drop_generated_c() {

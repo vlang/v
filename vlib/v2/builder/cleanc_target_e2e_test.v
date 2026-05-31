@@ -10,6 +10,11 @@ const target_freestanding_marker = '<target_marker_freestanding.h>'
 const inactive_windows_marker = '<inactive_windows_marker.h>'
 const inactive_freestanding_marker = '<inactive_freestanding_marker.h>'
 const active_comptime_marker = '<active_comptime_marker.h>'
+const e2e_freestanding_missing_alloc_hook_message = 'v2: freestanding target requires freestanding_alloc hook for heap allocation'
+const e2e_freestanding_missing_format_hook_message = 'v2: freestanding target cannot print non-string values without formatting support'
+const e2e_freestanding_missing_heap_runtime_message = 'v2: freestanding target cannot use V runtime heap helpers with --skip-builtin'
+const e2e_freestanding_missing_output_hook_message = 'v2: freestanding target requires freestanding_output hook for output'
+const e2e_freestanding_missing_panic_hook_message = 'v2: freestanding target requires freestanding_panic hook for panic'
 
 struct CleancCliResult {
 	exit_code int
@@ -51,11 +56,23 @@ fn build_v2_for_target_e2e(tmp_dir string) string {
 	v2_source := os.join_path(vroot, 'cmd', 'v2', 'v2.v')
 	v2_binary := os.join_path(tmp_dir, e2e_v2_binary_name())
 	res :=
-		os.execute('"${@VEXE}" -path "${os.join_path(vroot, 'vlib')}|@vlib|@vmodules" -gc none "${v2_source}" -o "${v2_binary}"')
+		os.execute('"${@VEXE}" -path "${os.join_path(vroot, 'vlib')}|@vlib|@vmodules" -gc none -nocache "${v2_source}" -o "${v2_binary}"')
 	if res.exit_code != 0 {
 		panic('failed to build cmd/v2 for cleanc target e2e:\n${res.output}')
 	}
 	return v2_binary
+}
+
+fn build_v1_for_target_e2e(tmp_dir string) string {
+	vroot := e2e_repo_root()
+	v1_source := os.join_path(vroot, 'cmd', 'v')
+	v1_binary := os.join_path(tmp_dir, 'v1_public_wrapper')
+	res :=
+		os.execute('"${@VEXE}" -path "${os.join_path(vroot, 'vlib')}|@vlib|@vmodules" -gc none -nocache "${v1_source}" -o "${v1_binary}"')
+	if res.exit_code != 0 {
+		panic('failed to build cmd/v for cleanc target e2e:\n${res.output}')
+	}
+	return v1_binary
 }
 
 fn run_v2_to_c(v2_binary string, tmp_dir string, name string, args []string, source string) CleancCliResult {
@@ -171,6 +188,63 @@ fn run_v2_to_output(v2_binary string, tmp_dir string, name string, args []string
 	}
 }
 
+fn run_v2_without_output_in_dir(v2_binary string, tmp_dir string, name string, args []string, source string, work_dir string) CleancCliResult {
+	source_path := os.join_path(tmp_dir, '${name}.v')
+	os.write_file(source_path, source) or { panic(err) }
+	os.mkdir_all(work_dir) or { panic(err) }
+	env_prefix := if host_c_e2e_flags().len > 0 { 'V2CFLAGS="${host_c_e2e_flags()}" ' } else { '' }
+	cmd := 'cd "${work_dir}" && ${env_prefix}"${v2_binary}" -gc none -nocache --no-parallel ${args.join(' ')} "${source_path}"'
+	res := os.execute(cmd)
+	c_path := os.join_path(work_dir, '${name}.c')
+	c_source := if os.exists(c_path) { os.read_file(c_path) or { '' } } else { '' }
+	return CleancCliResult{
+		exit_code: res.exit_code
+		output:    res.output
+		c_source:  c_source
+		out_path:  e2e_binary_output_path(work_dir, name)
+		c_path:    c_path
+	}
+}
+
+fn run_v2_without_output(v2_binary string, tmp_dir string, name string, args []string, source string) CleancCliResult {
+	return run_v2_without_output_in_dir(v2_binary, tmp_dir, name, args, source, tmp_dir)
+}
+
+fn run_v1_v2_without_output_in_dir(v1_binary string, v2_binary string, tmp_dir string, name string, args []string, source string, work_dir string) CleancCliResult {
+	source_path := os.join_path(tmp_dir, '${name}.v')
+	os.write_file(source_path, source) or { panic(err) }
+	os.mkdir_all(work_dir) or { panic(err) }
+	repo_vexe := os.join_path(e2e_repo_root(), 'v')
+	env_prefix := if host_c_e2e_flags().len > 0 { 'V2CFLAGS="${host_c_e2e_flags()}" ' } else { '' }
+	cmd := 'cd "${work_dir}" && ${env_prefix}VEXE="${repo_vexe}" V_V2_EXE="${v2_binary}" "${v1_binary}" -v2 -gc none -nocache --no-parallel ${args.join(' ')} "${source_path}"'
+	res := os.execute(cmd)
+	c_path := os.join_path(work_dir, '${name}.c')
+	c_source := if os.exists(c_path) { os.read_file(c_path) or { '' } } else { '' }
+	return CleancCliResult{
+		exit_code: res.exit_code
+		output:    res.output
+		c_source:  c_source
+		out_path:  e2e_binary_output_path(work_dir, name)
+		c_path:    c_path
+	}
+}
+
+fn run_v1_v2_to_output(v1_binary string, v2_binary string, tmp_dir string, name string, args []string, source string, output_path string) CleancCliResult {
+	source_path := os.join_path(tmp_dir, '${name}.v')
+	os.write_file(source_path, source) or { panic(err) }
+	repo_vexe := os.join_path(e2e_repo_root(), 'v')
+	cmd := 'cd "${e2e_repo_root()}" && VEXE="${repo_vexe}" V_V2_EXE="${v2_binary}" "${v1_binary}" -v2 -gc none -nocache --no-parallel ${args.join(' ')} -o "${output_path}" "${source_path}"'
+	res := os.execute(cmd)
+	c_source := if os.exists(output_path) { os.read_file(output_path) or { '' } } else { '' }
+	return CleancCliResult{
+		exit_code: res.exit_code
+		output:    res.output
+		c_source:  c_source
+		out_path:  output_path
+		c_path:    output_path
+	}
+}
+
 fn run_v2_to_output_with_cache(v2_binary string, tmp_dir string, name string, args []string, source string, output_path string) CleancCliResult {
 	source_path := os.join_path(tmp_dir, '${name}.v')
 	os.write_file(source_path, source) or { panic(err) }
@@ -193,6 +267,16 @@ fn assert_cli_success(res CleancCliResult) {
 	assert res.c_source.len > 0, res.output
 }
 
+fn assert_generated_c_static_assert_contains(res CleancCliResult, expected string) {
+	assert_cli_success(res)
+	assert res.c_source.contains('_Static_assert(0, "${expected}'), res.c_source
+}
+
+fn assert_generated_c_heap_runtime_static_assert_contains(res CleancCliResult, helper string) {
+	assert_generated_c_static_assert_contains(res,
+		'${e2e_freestanding_missing_heap_runtime_message}: ${helper}')
+}
+
 fn assert_binary_success(res CleancCliResult) {
 	assert res.exit_code == 0, res.output
 	assert os.exists(res.out_path), res.output
@@ -209,6 +293,10 @@ fn assert_generated_c_only(res CleancCliResult) {
 fn assert_cli_failure_contains(res CleancCliResult, expected string) {
 	assert res.exit_code != 0, res.output
 	assert res.output.contains(expected), res.output
+	assert !os.exists(res.out_path), 'failed command wrote unexpected output ${res.out_path}\n${res.output}'
+	if res.c_path != res.out_path {
+		assert !os.exists(res.c_path), 'failed command wrote unexpected C output ${res.c_path}\n${res.output}'
+	}
 }
 
 fn host_cc_available() bool {
@@ -402,8 +490,6 @@ fn test_cleanc_cli_freestanding_diagnostics_and_user_directives() {
 	fixture_output := target_fixture_source('freestanding_output.vv2')
 	fixture_panic := target_fixture_source('freestanding_panic.vv2')
 	fixture_alloc := target_fixture_source('freestanding_alloc.vv2')
-	heap_runtime_msg := 'freestanding target cannot use heap runtime helpers with --skip-builtin'
-
 	none_without_freestanding_res := run_v2_to_c(v2_binary, tmp_dir, 'none_without_freestanding', [
 		'-os',
 		'none',
@@ -475,8 +561,8 @@ fn main() {}
 		'-os',
 		'linux',
 	], fixture_empty)
-	assert_cli_failure_contains(minimal_runtime_res,
-		'freestanding target currently needs explicit platform runtime hooks')
+	assert_cli_success(minimal_runtime_res)
+	assert_no_os_runtime_headers(minimal_runtime_res.c_source)
 
 	output_hook_res := run_v2_to_c(v2_binary, tmp_dir, 'freestanding_output_hook', [
 		'-freestanding',
@@ -587,8 +673,8 @@ fn main() {
 	${helper_call}
 }
 ')
-		assert_cli_failure_contains(helper_res,
-			'freestanding target cannot use output runtime helpers without output platform hook')
+		assert_generated_c_static_assert_contains(helper_res,
+			e2e_freestanding_missing_output_hook_message)
 	}
 
 	for print_call in ['println(123)', 'print(true)'] {
@@ -607,8 +693,8 @@ fn main() {
 	${print_call}
 }
 ')
-		assert_cli_failure_contains(print_conversion_res,
-			'freestanding target cannot print non-string values with output hook only')
+		assert_generated_c_static_assert_contains(print_conversion_res,
+			e2e_freestanding_missing_format_hook_message)
 	}
 
 	output_hook_string_literal_res := run_v2_to_c(v2_binary, tmp_dir,
@@ -628,6 +714,7 @@ fn main() {
 	")
 	assert_cli_success(output_hook_string_literal_res)
 	assert output_hook_string_literal_res.c_source.contains('v_platform_write')
+	assert !output_hook_string_literal_res.c_source.contains(e2e_freestanding_missing_format_hook_message), output_hook_string_literal_res.c_source
 
 	output_hook_unknown_print_res := run_v2_to_c(v2_binary, tmp_dir,
 		'freestanding_output_hook_unknown_print_arg', [
@@ -647,8 +734,8 @@ fn main() {
 	println(x)
 }
 	')
-	assert_cli_failure_contains(output_hook_unknown_print_res,
-		'freestanding target cannot print non-string values with output hook only')
+	assert_generated_c_static_assert_contains(output_hook_unknown_print_res,
+		e2e_freestanding_missing_format_hook_message)
 
 	panic_hook_res := run_v2_to_c(v2_binary, tmp_dir, 'freestanding_panic_hook', [
 		'-freestanding',
@@ -692,8 +779,8 @@ fn main() {
 	_ := fallible()!
 }
 	")
-	assert_cli_failure_contains(bang_missing_panic_res,
-		'freestanding target cannot use builtin panic without panic platform hook')
+	assert_generated_c_static_assert_contains(bang_missing_panic_res,
+		e2e_freestanding_missing_panic_hook_message)
 
 	bang_panic_hook_res := run_v2_to_c(v2_binary, tmp_dir, 'freestanding_bang_panic_hook', [
 		'-freestanding',
@@ -713,7 +800,24 @@ fn main() {
 	_ := fallible()!
 }
 	")
-	assert_cli_success(bang_panic_hook_res)
+	assert_generated_c_heap_runtime_static_assert_contains(bang_panic_hook_res, 'IError__str')
+
+	panic_ierror_hook_res := run_v2_to_c(v2_binary, tmp_dir, 'freestanding_panic_ierror_hook', [
+		'-freestanding',
+		'-fhooks',
+		'output,panic,alloc',
+		'-os',
+		'linux',
+		'--skip-builtin',
+		'--skip-type-check',
+	], "module main
+
+fn main() {
+	err := error('x')
+	panic(err)
+}
+	")
+	assert_generated_c_heap_runtime_static_assert_contains(panic_ierror_hook_res, 'IError__str')
 
 	bang_result_propagation_res := run_v2_to_c(v2_binary, tmp_dir,
 		'freestanding_bang_result_propagation', [
@@ -773,9 +877,11 @@ fn main() {
 		'output',
 		'-os',
 		'linux',
+		'--skip-builtin',
+		'--skip-type-check',
 	], fixture_alloc)
-	assert_cli_failure_contains(alloc_missing_res,
-		'freestanding target cannot use heap allocation without alloc platform hook')
+	assert_generated_c_static_assert_contains(alloc_missing_res,
+		e2e_freestanding_missing_alloc_hook_message)
 
 	spoofed_alloc_res := run_v2_to_c(v2_binary, tmp_dir, 'freestanding_spoofed_alloc_define', [
 		'-freestanding',
@@ -786,8 +892,8 @@ fn main() {
 		'--skip-builtin',
 		'--skip-type-check',
 	], fixture_alloc)
-	assert_cli_failure_contains(spoofed_alloc_res,
-		'freestanding target cannot use heap allocation without alloc platform hook')
+	assert_generated_c_static_assert_contains(spoofed_alloc_res,
+		e2e_freestanding_missing_alloc_hook_message)
 
 	arguments_res := run_v2_to_c(v2_binary, tmp_dir, 'freestanding_arguments', [
 		'-freestanding',
@@ -803,8 +909,8 @@ fn main() {
 	_ := arguments()
 }
 ')
-	assert_cli_failure_contains(arguments_res,
-		'freestanding target cannot use arguments() because command-line arguments need hosted runtime support')
+	assert_generated_c_static_assert_contains(arguments_res,
+		e2e_freestanding_missing_alloc_hook_message)
 
 	alloc_hook_string_interpolation_res := run_v2_to_c(v2_binary, tmp_dir,
 		'freestanding_alloc_string_interpolation', [
@@ -821,8 +927,8 @@ fn main() {
 	_ := '\${1}'
 }
 	")
-	assert_cli_failure_contains(alloc_hook_string_interpolation_res,
-		'freestanding target cannot use string interpolation because cleanc currently needs hosted formatting support')
+	assert_generated_c_static_assert_contains(alloc_hook_string_interpolation_res,
+		e2e_freestanding_missing_format_hook_message)
 
 	string_concat_missing_alloc_res := run_v2_to_c(v2_binary, tmp_dir,
 		'freestanding_string_concat_missing_alloc', [
@@ -836,10 +942,12 @@ fn main() {
 	], "module main
 
 fn main() {
-	_ := 'left' + 'right'
+	s := 'left'
+	_ := s + 'right'
 }
 	")
-	assert_cli_failure_contains(string_concat_missing_alloc_res, heap_runtime_msg)
+	assert_generated_c_heap_runtime_static_assert_contains(string_concat_missing_alloc_res,
+		'string__plus')
 
 	ambiguous_string_concat_missing_alloc_res := run_v2_to_c(v2_binary, tmp_dir,
 		'freestanding_ambiguous_string_concat_missing_alloc', [
@@ -860,7 +968,8 @@ fn main() {
 	_ := a + b
 }
 	')
-	assert_cli_failure_contains(ambiguous_string_concat_missing_alloc_res, heap_runtime_msg)
+	assert_generated_c_heap_runtime_static_assert_contains(ambiguous_string_concat_missing_alloc_res,
+		'string__plus')
 
 	string_plus_assign_missing_alloc_res := run_v2_to_c(v2_binary, tmp_dir,
 		'freestanding_string_plus_assign_missing_alloc', [
@@ -878,7 +987,8 @@ fn main() {
 	s += 'right'
 }
 	")
-	assert_cli_failure_contains(string_plus_assign_missing_alloc_res, heap_runtime_msg)
+	assert_generated_c_heap_runtime_static_assert_contains(string_plus_assign_missing_alloc_res,
+		'string__plus')
 
 	ambiguous_string_plus_assign_missing_alloc_res := run_v2_to_c(v2_binary, tmp_dir,
 		'freestanding_ambiguous_string_plus_assign_missing_alloc', [
@@ -898,7 +1008,8 @@ fn main() {
 	s += C.platform_string()
 }
 	')
-	assert_cli_failure_contains(ambiguous_string_plus_assign_missing_alloc_res, heap_runtime_msg)
+	assert_generated_c_heap_runtime_static_assert_contains(ambiguous_string_plus_assign_missing_alloc_res,
+		'string__plus')
 
 	numeric_plus_without_alloc_res := run_v2_to_c(v2_binary, tmp_dir,
 		'freestanding_numeric_plus_without_alloc', [
@@ -952,7 +1063,8 @@ fn main() {
 	_ := [1, 2, 3]
 }
 	')
-	assert_cli_failure_contains(dynamic_array_literal_alloc_hook_res, heap_runtime_msg)
+	assert_generated_c_heap_runtime_static_assert_contains(dynamic_array_literal_alloc_hook_res,
+		'new_array_from_c_array')
 
 	map_literal_alloc_hook_res := run_v2_to_c(v2_binary, tmp_dir,
 		'freestanding_map_literal_alloc_hook', [
@@ -971,7 +1083,7 @@ fn main() {
 	}
 }
 	')
-	assert_cli_failure_contains(map_literal_alloc_hook_res, heap_runtime_msg)
+	assert_generated_c_heap_runtime_static_assert_contains(map_literal_alloc_hook_res, 'new_map')
 
 	numeric_shift_without_alloc_res := run_v2_to_c(v2_binary, tmp_dir,
 		'freestanding_numeric_shift_without_alloc', [
@@ -1063,7 +1175,8 @@ fn main() {
 	nums << 2
 }
 	')
-	assert_cli_failure_contains(array_append_missing_alloc_res, heap_runtime_msg)
+	assert_generated_c_heap_runtime_static_assert_contains(array_append_missing_alloc_res,
+		'array__push')
 
 	map_assign_missing_alloc_res := run_v2_to_c(v2_binary, tmp_dir,
 		'freestanding_map_assign_missing_alloc', [
@@ -1083,53 +1196,49 @@ fn main() {
 	m[1] = 1
 }
 	')
-	assert_cli_failure_contains(map_assign_missing_alloc_res, heap_runtime_msg)
+	assert_generated_c_heap_runtime_static_assert_contains(map_assign_missing_alloc_res, 'map__set')
 
-	array_filter_missing_alloc_res := run_v2_to_c(v2_binary, tmp_dir,
-		'freestanding_array_filter_missing_alloc', [
+	nested_map_assign_missing_runtime_res := run_v2_to_c(v2_binary, tmp_dir,
+		'freestanding_nested_map_assign_missing_runtime', [
 		'-freestanding',
-		'-fhooks',
-		'output,panic',
 		'-os',
 		'linux',
 		'--skip-builtin',
-		'--skip-type-check',
-	], 'module main
-
-fn C.platform_array() []int
+	], "module main
 
 fn main() {
-	nums := C.platform_array()
-	_ := nums.filter(it > 0)
+	mut res := map[string]map[string]string{}
+	lang := 'en'
+	key := 'msg'
+	res[lang][key] = 'Hello'
 }
-	')
-	assert_cli_failure_contains(array_filter_missing_alloc_res, heap_runtime_msg)
+	")
+	assert_generated_c_heap_runtime_static_assert_contains(nested_map_assign_missing_runtime_res,
+		'map__get_and_set')
 
-	array_map_missing_alloc_res := run_v2_to_c(v2_binary, tmp_dir,
-		'freestanding_array_map_missing_alloc', [
+	map_value_array_append_missing_runtime_res := run_v2_to_c(v2_binary, tmp_dir,
+		'freestanding_map_value_array_append_missing_runtime', [
 		'-freestanding',
-		'-fhooks',
-		'output,panic',
 		'-os',
 		'linux',
 		'--skip-builtin',
-		'--skip-type-check',
 	], 'module main
 
-fn C.platform_array() []int
+fn C.platform_map() map[int][]int
 
 fn main() {
-	nums := C.platform_array()
-	_ := nums.map(it + 1)
+	mut m := C.platform_map()
+	m[1] << 2
 }
 	')
-	assert_cli_failure_contains(array_map_missing_alloc_res, heap_runtime_msg)
+	assert_generated_c_heap_runtime_static_assert_contains(map_value_array_append_missing_runtime_res,
+		'map__get_and_set')
 
-	array_clone_missing_alloc_res := run_v2_to_c(v2_binary, tmp_dir,
-		'freestanding_array_clone_missing_alloc', [
+	array_clone_missing_runtime_res := run_v2_to_c(v2_binary, tmp_dir,
+		'freestanding_array_clone_missing_runtime', [
 		'-freestanding',
 		'-fhooks',
-		'output,panic',
+		'output,panic,alloc',
 		'-os',
 		'linux',
 		'--skip-builtin',
@@ -1143,31 +1252,8 @@ fn main() {
 	_ := nums.clone()
 }
 	')
-	assert_cli_failure_contains(array_clone_missing_alloc_res, heap_runtime_msg)
-
-	split_array_clone_missing_alloc_res := run_v2_to_c_files(v2_binary, tmp_dir,
-		'freestanding_split_array_clone_missing_alloc', [
-		'-freestanding',
-		'-fhooks',
-		'output,panic',
-		'-os',
-		'linux',
-		'--skip-builtin',
-		'--skip-type-check',
-	], {
-		'main.v':     'module main
-
-fn main() {
-	nums := C.platform_array()
-	_ := nums.clone()
-}
-'
-		'platform.v': 'module main
-
-fn C.platform_array() []int
-'
-	})
-	assert_cli_failure_contains(split_array_clone_missing_alloc_res, heap_runtime_msg)
+	assert_generated_c_heap_runtime_static_assert_contains(array_clone_missing_runtime_res,
+		'array__clone_to_depth')
 
 	string_clone_missing_alloc_res := run_v2_to_c(v2_binary, tmp_dir,
 		'freestanding_string_clone_missing_alloc', [
@@ -1187,7 +1273,8 @@ fn main() {
 	_ := s.clone()
 }
 	')
-	assert_cli_failure_contains(string_clone_missing_alloc_res, heap_runtime_msg)
+	assert_generated_c_heap_runtime_static_assert_contains(string_clone_missing_alloc_res,
+		'string__clone')
 
 	map_clone_missing_alloc_res := run_v2_to_c(v2_binary, tmp_dir,
 		'freestanding_map_clone_missing_alloc', [
@@ -1207,7 +1294,8 @@ fn main() {
 	_ := m.clone()
 }
 	')
-	assert_cli_failure_contains(map_clone_missing_alloc_res, heap_runtime_msg)
+	assert_generated_c_heap_runtime_static_assert_contains(map_clone_missing_alloc_res,
+		'map__clone')
 
 	range_slice_missing_alloc_res := run_v2_to_c(v2_binary, tmp_dir,
 		'freestanding_range_slice_missing_alloc', [
@@ -1227,7 +1315,8 @@ fn main() {
 	_ := s[0..1]
 }
 	')
-	assert_cli_failure_contains(range_slice_missing_alloc_res, heap_runtime_msg)
+	assert_generated_c_heap_runtime_static_assert_contains(range_slice_missing_alloc_res,
+		'string__substr')
 
 	string_substr_missing_alloc_res := run_v2_to_c(v2_binary, tmp_dir,
 		'freestanding_string_substr_missing_alloc', [
@@ -1247,7 +1336,8 @@ fn main() {
 	_ := s.substr(0, 1)
 }
 	')
-	assert_cli_failure_contains(string_substr_missing_alloc_res, heap_runtime_msg)
+	assert_generated_c_heap_runtime_static_assert_contains(string_substr_missing_alloc_res,
+		'string__substr')
 
 	split_map_assign_missing_alloc_res := run_v2_to_c_files(v2_binary, tmp_dir,
 		'freestanding_split_map_assign_missing_alloc', [
@@ -1271,251 +1361,8 @@ fn main() {
 fn C.platform_map() map[int]int
 '
 	})
-	assert_cli_failure_contains(split_map_assign_missing_alloc_res, heap_runtime_msg)
-
-	for_init_array_append_missing_runtime_res := run_v2_to_c(v2_binary, tmp_dir,
-		'freestanding_for_init_array_append_missing_runtime', [
-		'-freestanding',
-		'-fhooks',
-		'output,panic',
-		'-os',
-		'linux',
-		'--skip-builtin',
-		'--skip-type-check',
-	], 'module main
-
-fn C.platform_array() []int
-
-fn main() {
-	for mut nums := C.platform_array(); nums.len > 0; {
-		nums << 1
-	}
-}
-	')
-	assert_cli_failure_contains(for_init_array_append_missing_runtime_res, heap_runtime_msg)
-
-	fn_literal_capture_array_clone_missing_runtime_res := run_v2_to_c(v2_binary, tmp_dir,
-		'freestanding_fn_literal_capture_array_clone_missing_runtime', [
-		'-freestanding',
-		'-fhooks',
-		'output,panic',
-		'-os',
-		'linux',
-		'--skip-builtin',
-		'--skip-type-check',
-	], 'module main
-
-fn C.platform_array() []int
-
-fn main() {
-	nums := C.platform_array()
-	cb := fn [nums] () {
-		_ := nums.clone()
-	}
-	_ := cb
-}
-	')
-	assert_cli_failure_contains(fn_literal_capture_array_clone_missing_runtime_res,
-		heap_runtime_msg)
-
-	struct_array_field_append_missing_runtime_res := run_v2_to_c(v2_binary, tmp_dir,
-		'freestanding_struct_array_field_append_missing_runtime', [
-		'-freestanding',
-		'-fhooks',
-		'output,panic',
-		'-os',
-		'linux',
-		'--skip-builtin',
-		'--skip-type-check',
-	], 'module main
-
-struct Holder {
-mut:
-	nums []int
-}
-
-fn C.platform_array() []int
-
-fn main() {
-	mut h := Holder{
-		nums: C.platform_array()
-	}
-	h.nums << 1
-}
-	')
-	assert_cli_failure_contains(struct_array_field_append_missing_runtime_res, heap_runtime_msg)
-
-	nested_struct_array_field_append_missing_runtime_res := run_v2_to_c(v2_binary, tmp_dir,
-		'freestanding_nested_struct_array_field_append_missing_runtime', [
-		'-freestanding',
-		'-fhooks',
-		'output,panic,alloc',
-		'-os',
-		'linux',
-		'--skip-builtin',
-		'--skip-type-check',
-	], 'module main
-
-struct Inner {
-mut:
-	nums []int
-}
-
-struct Outer {
-mut:
-	inner Inner
-}
-
-fn C.platform_array() []int
-
-fn main() {
-	mut o := Outer{
-		inner: Inner{
-			nums: C.platform_array()
-		}
-	}
-	o.inner.nums << 1
-}
-	')
-	assert_cli_failure_contains(nested_struct_array_field_append_missing_runtime_res,
-		heap_runtime_msg)
-
-	pointer_struct_array_field_append_missing_runtime_res := run_v2_to_c(v2_binary, tmp_dir,
-		'freestanding_pointer_struct_array_field_append_missing_runtime', [
-		'-freestanding',
-		'-fhooks',
-		'output,panic,alloc',
-		'-os',
-		'linux',
-		'--skip-builtin',
-		'--skip-type-check',
-	], 'module main
-
-struct Holder {
-mut:
-	nums []int
-}
-
-fn C.platform_array() []int
-
-fn main() {
-	mut hp := &Holder{
-		nums: C.platform_array()
-	}
-	hp.nums << 1
-}
-	')
-	assert_cli_failure_contains(pointer_struct_array_field_append_missing_runtime_res,
-		heap_runtime_msg)
-
-	pointer_param_struct_array_field_append_missing_runtime_res := run_v2_to_c(v2_binary, tmp_dir,
-		'freestanding_pointer_param_struct_array_field_append_missing_runtime', [
-		'-freestanding',
-		'-fhooks',
-		'output,panic,alloc',
-		'-os',
-		'linux',
-		'--skip-builtin',
-		'--skip-type-check',
-	], 'module main
-
-struct Holder {
-mut:
-	nums []int
-}
-
-fn use(mut h &Holder) {
-	h.nums << 1
-}
-
-fn main() {}
-	')
-	assert_cli_failure_contains(pointer_param_struct_array_field_append_missing_runtime_res,
-		heap_runtime_msg)
-
-	qualified_pointer_param_struct_array_field_append_missing_runtime_res := run_v2_to_c_project_files(v2_binary,
-		tmp_dir, 'freestanding_qualified_pointer_param_struct_array_field_append_missing_runtime', [
-		'-freestanding',
-		'-fhooks',
-		'output,panic,alloc',
-		'-os',
-		'linux',
-		'--skip-builtin',
-		'--skip-type-check',
-	], {
-		'main.v':    'module main
-
-import dep
-
-fn use(mut h &dep.Holder) {
-	h.nums << 1
-}
-
-fn main() {}
-'
-		'dep/dep.v': 'module dep
-
-pub struct Holder {
-pub mut:
-	nums []int
-}
-'
-	}, 'main.v')
-	assert_cli_failure_contains(qualified_pointer_param_struct_array_field_append_missing_runtime_res,
-		heap_runtime_msg)
-
-	struct_map_field_assign_missing_runtime_res := run_v2_to_c(v2_binary, tmp_dir,
-		'freestanding_struct_map_field_assign_missing_runtime', [
-		'-freestanding',
-		'-fhooks',
-		'output,panic',
-		'-os',
-		'linux',
-		'--skip-builtin',
-		'--skip-type-check',
-	], 'module main
-
-struct Holder {
-mut:
-	m map[int]int
-}
-
-fn C.platform_map() map[int]int
-
-fn main() {
-	mut h := Holder{
-		m: C.platform_map()
-	}
-	h.m[1] = 1
-}
-	')
-	assert_cli_failure_contains(struct_map_field_assign_missing_runtime_res, heap_runtime_msg)
-
-	struct_string_field_substr_missing_runtime_res := run_v2_to_c(v2_binary, tmp_dir,
-		'freestanding_struct_string_field_substr_missing_runtime', [
-		'-freestanding',
-		'-fhooks',
-		'output,panic',
-		'-os',
-		'linux',
-		'--skip-builtin',
-		'--skip-type-check',
-	], 'module main
-
-struct Holder {
-	s string
-}
-
-fn C.platform_string() string
-
-fn main() {
-	h := Holder{
-		s: C.platform_string()
-	}
-	_ := h.s.substr(0, 1)
-}
-	')
-	assert_cli_failure_contains(struct_string_field_substr_missing_runtime_res, heap_runtime_msg)
+	assert_generated_c_heap_runtime_static_assert_contains(split_map_assign_missing_alloc_res,
+		'map__set')
 
 	alloc_hook_res := run_v2_to_c(v2_binary, tmp_dir, 'freestanding_alloc_hook', [
 		'-freestanding',
@@ -1548,7 +1395,8 @@ fn main() {
 	_ := new_array_from_c_array(0, 0, 0, 0)
 }
 	')
-	assert_cli_failure_contains(explicit_array_runtime_res, heap_runtime_msg)
+	assert_generated_c_heap_runtime_static_assert_contains(explicit_array_runtime_res,
+		'new_array_from_c_array')
 
 	explicit_array_noscan_runtime_res := run_v2_to_c(v2_binary, tmp_dir,
 		'freestanding_explicit_array_noscan_runtime_helper', [
@@ -1565,7 +1413,8 @@ fn main() {
 	_ := new_array_from_c_array_noscan(0, 0, 0, 0)
 }
 	')
-	assert_cli_failure_contains(explicit_array_noscan_runtime_res, heap_runtime_msg)
+	assert_generated_c_heap_runtime_static_assert_contains(explicit_array_noscan_runtime_res,
+		'new_array_from_c_array_noscan')
 
 	explicit_array_no_alloc_runtime_res := run_v2_to_c(v2_binary, tmp_dir,
 		'freestanding_explicit_array_no_alloc_runtime_helper', [
@@ -1582,7 +1431,8 @@ fn main() {
 	_ := new_array_from_c_array_no_alloc(0, 0, 0, 0)
 }
 	')
-	assert_cli_failure_contains(explicit_array_no_alloc_runtime_res, heap_runtime_msg)
+	assert_generated_c_heap_runtime_static_assert_contains(explicit_array_no_alloc_runtime_res,
+		'new_array_from_c_array_no_alloc')
 
 	explicit_array_default_runtime_res := run_v2_to_c(v2_binary, tmp_dir,
 		'freestanding_explicit_array_default_runtime_helper', [
@@ -1599,27 +1449,8 @@ fn main() {
 	_ := __new_array_with_default_noscan(0, 0, 0, 0)
 }
 	')
-	assert_cli_failure_contains(explicit_array_default_runtime_res, heap_runtime_msg)
-
-	array_repeat_runtime_res := run_v2_to_c(v2_binary, tmp_dir,
-		'freestanding_array_repeat_runtime_helper', [
-		'-freestanding',
-		'-fhooks',
-		'output,panic,alloc',
-		'-os',
-		'linux',
-		'--skip-builtin',
-		'--skip-type-check',
-	], 'module main
-
-fn C.platform_array() []int
-
-fn main() {
-	nums := C.platform_array()
-	_ := nums.repeat(2)
-}
-	')
-	assert_cli_failure_contains(array_repeat_runtime_res, heap_runtime_msg)
+	assert_generated_c_heap_runtime_static_assert_contains(explicit_array_default_runtime_res,
+		'__new_array_with_default_noscan')
 
 	explicit_array_repeat_runtime_res := run_v2_to_c(v2_binary, tmp_dir,
 		'freestanding_explicit_array_repeat_runtime_helper', [
@@ -1636,7 +1467,8 @@ fn main() {
 	_ := array__repeat()
 }
 	')
-	assert_cli_failure_contains(explicit_array_repeat_runtime_res, heap_runtime_msg)
+	assert_generated_c_heap_runtime_static_assert_contains(explicit_array_repeat_runtime_res,
+		'array__repeat')
 
 	explicit_map_runtime_res := run_v2_to_c(v2_binary, tmp_dir,
 		'freestanding_explicit_map_runtime_helper', [
@@ -1653,7 +1485,7 @@ fn main() {
 	_ := new_map()
 }
 	')
-	assert_cli_failure_contains(explicit_map_runtime_res, heap_runtime_msg)
+	assert_generated_c_heap_runtime_static_assert_contains(explicit_map_runtime_res, 'new_map')
 
 	explicit_array_spread_runtime_res := run_v2_to_c(v2_binary, tmp_dir,
 		'freestanding_explicit_array_spread_runtime_helper', [
@@ -1670,7 +1502,8 @@ fn main() {
 	_ := new_array_from_array_and_c_array()
 }
 	')
-	assert_cli_failure_contains(explicit_array_spread_runtime_res, heap_runtime_msg)
+	assert_generated_c_heap_runtime_static_assert_contains(explicit_array_spread_runtime_res,
+		'new_array_from_array_and_c_array')
 
 	explicit_builtin_array_spread_runtime_res := run_v2_to_c(v2_binary, tmp_dir,
 		'freestanding_explicit_builtin_array_spread_runtime_helper', [
@@ -1687,7 +1520,8 @@ fn main() {
 	_ := builtin__new_array_from_array_and_c_array()
 }
 	')
-	assert_cli_failure_contains(explicit_builtin_array_spread_runtime_res, heap_runtime_msg)
+	assert_generated_c_heap_runtime_static_assert_contains(explicit_builtin_array_spread_runtime_res,
+		'builtin__new_array_from_array_and_c_array')
 
 	tracked_heap_ops_alloc_hook_res := run_v2_to_c(v2_binary, tmp_dir,
 		'freestanding_tracked_heap_ops_alloc_hook', [
@@ -1707,9 +1541,6 @@ fn C.platform_string() string
 fn main() {
 	mut nums := C.platform_array()
 	nums << 2
-	_ := nums.filter(it > 0)
-	_ := nums.map(it + 1)
-	_ := nums.clone()
 	mut m := C.platform_map()
 	m[1] = 1
 	_ := m.clone()
@@ -1719,7 +1550,16 @@ fn main() {
 	_ := s.substr(0, 1)
 }
 	')
-	assert_cli_failure_contains(tracked_heap_ops_alloc_hook_res, heap_runtime_msg)
+	assert_generated_c_heap_runtime_static_assert_contains(tracked_heap_ops_alloc_hook_res,
+		'array__push')
+	assert_generated_c_heap_runtime_static_assert_contains(tracked_heap_ops_alloc_hook_res,
+		'map__set')
+	assert_generated_c_heap_runtime_static_assert_contains(tracked_heap_ops_alloc_hook_res,
+		'map__clone')
+	assert_generated_c_heap_runtime_static_assert_contains(tracked_heap_ops_alloc_hook_res,
+		'string__clone')
+	assert_generated_c_heap_runtime_static_assert_contains(tracked_heap_ops_alloc_hook_res,
+		'string__substr')
 
 	string_concat_alloc_hook_res := run_v2_to_c(v2_binary, tmp_dir,
 		'freestanding_string_concat_alloc_hook', [
@@ -1733,10 +1573,12 @@ fn main() {
 	], "module main
 
 fn main() {
-	_ := 'left' + 'right'
+	s := 'left'
+	_ := s + 'right'
 }
 	")
-	assert_cli_failure_contains(string_concat_alloc_hook_res, heap_runtime_msg)
+	assert_generated_c_heap_runtime_static_assert_contains(string_concat_alloc_hook_res,
+		'string__plus')
 
 	ambiguous_string_concat_alloc_hook_res := run_v2_to_c(v2_binary, tmp_dir,
 		'freestanding_ambiguous_string_concat_alloc_hook', [
@@ -1757,7 +1599,8 @@ fn main() {
 	_ := a + b
 }
 	')
-	assert_cli_failure_contains(ambiguous_string_concat_alloc_hook_res, heap_runtime_msg)
+	assert_generated_c_heap_runtime_static_assert_contains(ambiguous_string_concat_alloc_hook_res,
+		'string__plus')
 
 	prealloc_res := run_v2_to_c(v2_binary, tmp_dir, 'freestanding_prealloc', [
 		'-freestanding',
@@ -2003,6 +1846,7 @@ fn test_cleanc_cli_compiles_generated_c_on_host_when_cc_available() {
 		os.rmdir_all(tmp_dir) or {}
 	}
 	v2_binary := build_v2_for_target_e2e(tmp_dir)
+	v1_binary := build_v1_for_target_e2e(tmp_dir)
 	minimal_source := 'module main
 
 fn main() {}
@@ -2015,9 +1859,42 @@ fn main() {}
 	assert_binary_success(minimal_res)
 	minimal_run := os.execute('"${minimal_res.out_path}"')
 	assert minimal_run.exit_code == 0, minimal_run.output
+	assert !os.exists(minimal_res.c_path), minimal_res.output
+
+	default_no_output_res := run_v2_without_output(v2_binary, tmp_dir, 'host_default_no_output', [
+		'-cc',
+		'cc',
+	], minimal_source)
+	assert_binary_success(default_no_output_res)
+	default_no_output_run := os.execute('"${default_no_output_res.out_path}"')
+	assert default_no_output_run.exit_code == 0, default_no_output_run.output
+	assert !os.exists(default_no_output_res.c_path), default_no_output_res.output
+
+	public_default_cwd := os.join_path(tmp_dir, 'public_default_cwd')
+	public_default_no_output_res := run_v1_v2_without_output_in_dir(v1_binary, v2_binary, tmp_dir,
+		'public_host_default_no_output', [
+		'-cc',
+		'cc',
+	], minimal_source, public_default_cwd)
+	assert_binary_success(public_default_no_output_res)
+	public_default_no_output_run := os.execute('"${public_default_no_output_res.out_path}"')
+	assert public_default_no_output_run.exit_code == 0, public_default_no_output_run.output
+	assert !os.exists(public_default_no_output_res.c_path), public_default_no_output_res.output
 
 	host_os := normalize_e2e_os_name(os.user_os())
 	if host_os in ['linux', 'macos', 'windows'] {
+		explicit_host_default_res := run_v2_without_output(v2_binary, tmp_dir,
+			'host_explicit_default_no_output', [
+			'-cc',
+			'cc',
+			'-os',
+			host_os,
+		], minimal_source)
+		assert_binary_success(explicit_host_default_res)
+		explicit_host_default_run := os.execute('"${explicit_host_default_res.out_path}"')
+		assert explicit_host_default_run.exit_code == 0, explicit_host_default_run.output
+		assert !os.exists(explicit_host_default_res.c_path), explicit_host_default_res.output
+
 		explicit_host_res := run_v2_to_binary(v2_binary, tmp_dir, 'host_explicit_${host_os}', [
 			'-cc',
 			'cc',
@@ -2027,6 +1904,19 @@ fn main() {}
 		assert_binary_success(explicit_host_res)
 		explicit_host_run := os.execute('"${explicit_host_res.out_path}"')
 		assert explicit_host_run.exit_code == 0, explicit_host_run.output
+		assert !os.exists(explicit_host_res.c_path), explicit_host_res.output
+
+		public_explicit_host_res := run_v1_v2_without_output_in_dir(v1_binary, v2_binary, tmp_dir,
+			'public_host_explicit_default_no_output', [
+			'-cc',
+			'cc',
+			'-os',
+			host_os,
+		], minimal_source, public_default_cwd)
+		assert_binary_success(public_explicit_host_res)
+		public_explicit_host_run := os.execute('"${public_explicit_host_res.out_path}"')
+		assert public_explicit_host_run.exit_code == 0, public_explicit_host_run.output
+		assert !os.exists(public_explicit_host_res.c_path), public_explicit_host_res.output
 	}
 
 	cross_res := run_v2_to_binary(v2_binary, tmp_dir, 'host_cross', [
@@ -2038,6 +1928,30 @@ fn main() {}
 	assert_binary_success(cross_res)
 	cross_run := os.execute('"${cross_res.out_path}"')
 	assert cross_run.exit_code == 0, cross_run.output
+	assert !os.exists(cross_res.c_path), cross_res.output
+
+	cross_default_res := run_v2_without_output(v2_binary, tmp_dir, 'host_cross_default_no_output', [
+		'-cc',
+		'cc',
+		'-os',
+		'cross',
+	], minimal_source)
+	assert_binary_success(cross_default_res)
+	cross_default_run := os.execute('"${cross_default_res.out_path}"')
+	assert cross_default_run.exit_code == 0, cross_default_run.output
+	assert !os.exists(cross_default_res.c_path), cross_default_res.output
+
+	public_cross_default_res := run_v1_v2_without_output_in_dir(v1_binary, v2_binary, tmp_dir,
+		'public_host_cross_default_no_output', [
+		'-cc',
+		'cc',
+		'-os',
+		'cross',
+	], minimal_source, public_default_cwd)
+	assert_binary_success(public_cross_default_res)
+	public_cross_default_run := os.execute('"${public_cross_default_res.out_path}"')
+	assert public_cross_default_run.exit_code == 0, public_cross_default_run.output
+	assert !os.exists(public_cross_default_res.c_path), public_cross_default_res.output
 
 	cross_impl_path := os.join_path(tmp_dir, 'cross_flag_impl.c')
 	os.write_file(cross_impl_path, '#ifndef CROSS_FLAG_FROM_V2
@@ -2072,6 +1986,7 @@ fn main() {
 	assert_binary_success(cross_flag_res)
 	cross_flag_run := os.execute('"${cross_flag_res.out_path}"')
 	assert cross_flag_run.exit_code == 0, cross_flag_run.output
+	assert !os.exists(cross_flag_res.c_path), cross_flag_res.output
 
 	c_impl_path := os.join_path(tmp_dir, 'platform_flag_impl.c')
 	os.write_file(c_impl_path, '#ifndef PLATFORM_FLAG_FROM_V2
@@ -2104,6 +2019,7 @@ fn main() {
 	assert_binary_success(flag_res)
 	flag_run := os.execute('"${flag_res.out_path}"')
 	assert flag_run.exit_code == 0, flag_run.output
+	assert !os.exists(flag_res.c_path), flag_res.output
 }
 
 fn test_cleanc_cli_writes_c_only_for_freestanding_and_concrete_non_host_targets() {
@@ -2114,11 +2030,81 @@ fn test_cleanc_cli_writes_c_only_for_freestanding_and_concrete_non_host_targets(
 		os.rmdir_all(tmp_dir) or {}
 	}
 	v2_binary := build_v2_for_target_e2e(tmp_dir)
+	v1_binary := build_v1_for_target_e2e(tmp_dir)
 	missing_cc := os.join_path(tmp_dir, 'cc_must_not_run')
 	minimal_source := 'module main
 
 fn main() {}
 '
+
+	default_cwd := os.join_path(tmp_dir, 'default_output_cwd')
+	freestanding_default_res := run_v2_without_output_in_dir(v2_binary, tmp_dir,
+		'freestanding_default_generation_only', [
+		'-cc',
+		missing_cc,
+		'-freestanding',
+		'-os',
+		'linux',
+		'--skip-builtin',
+	], minimal_source, default_cwd)
+	assert_generated_c_only(freestanding_default_res)
+	assert freestanding_default_res.c_path == os.join_path(default_cwd,
+		'freestanding_default_generation_only.c')
+	assert !os.exists(os.join_path(tmp_dir, 'freestanding_default_generation_only.c')), freestanding_default_res.output
+
+	host_target := normalize_e2e_os_name(os.user_os())
+	public_freestanding_host_res := run_v1_v2_without_output_in_dir(v1_binary, v2_binary, tmp_dir,
+		'public_freestanding_host_default_generation_only', [
+		'-cc',
+		missing_cc,
+		'-freestanding',
+		'-os',
+		host_target,
+	], minimal_source, default_cwd)
+	assert_generated_c_only(public_freestanding_host_res)
+	assert public_freestanding_host_res.c_path == os.join_path(default_cwd,
+		'public_freestanding_host_default_generation_only.c')
+	assert !os.exists(os.join_path(tmp_dir, 'public_freestanding_host_default_generation_only.c')), public_freestanding_host_res.output
+
+	freestanding_none_default_res := run_v2_without_output_in_dir(v2_binary, tmp_dir,
+		'freestanding_none_default_generation_only', [
+		'-cc',
+		missing_cc,
+		'-freestanding',
+		'-os',
+		'none',
+	], freestanding_none_source(), default_cwd)
+	assert_generated_c_only(freestanding_none_default_res)
+	assert freestanding_none_default_res.c_path == os.join_path(default_cwd,
+		'freestanding_none_default_generation_only.c')
+	assert freestanding_none_default_res.c_source.contains('#include <platform_none.h>')
+	assert_no_os_runtime_headers(freestanding_none_default_res.c_source)
+
+	public_freestanding_none_minimal_res := run_v1_v2_without_output_in_dir(v1_binary, v2_binary,
+		tmp_dir, 'app', [
+		'-cc',
+		missing_cc,
+		'-freestanding',
+		'-os',
+		'none',
+	], minimal_source, default_cwd)
+	assert_generated_c_only(public_freestanding_none_minimal_res)
+	assert public_freestanding_none_minimal_res.c_path == os.join_path(default_cwd, 'app.c')
+	assert_no_os_runtime_headers(public_freestanding_none_minimal_res.c_source)
+
+	public_freestanding_none_default_res := run_v1_v2_without_output_in_dir(v1_binary, v2_binary,
+		tmp_dir, 'public_freestanding_none_default_generation_only', [
+		'-cc',
+		missing_cc,
+		'-freestanding',
+		'-os',
+		'none',
+	], freestanding_none_source(), default_cwd)
+	assert_generated_c_only(public_freestanding_none_default_res)
+	assert public_freestanding_none_default_res.c_path == os.join_path(default_cwd,
+		'public_freestanding_none_default_generation_only.c')
+	assert public_freestanding_none_default_res.c_source.contains('#include <platform_none.h>')
+	assert_no_os_runtime_headers(public_freestanding_none_default_res.c_source)
 
 	freestanding_out := os.join_path(tmp_dir, 'freestanding_app')
 	freestanding_res := run_v2_to_output(v2_binary, tmp_dir, 'freestanding_generation_only', [
@@ -2147,6 +2133,22 @@ fn main() {}
 	assert freestanding_none_res.c_source.contains('#include <platform_none.h>')
 	assert freestanding_none_res.c_source.contains('platform_none_tick')
 	assert_no_os_runtime_headers(freestanding_none_res.c_source)
+
+	public_wrapper_out := os.join_path(tmp_dir, 'public_wrapper_freestanding_none.c')
+	public_wrapper_res := run_v1_v2_to_output(v1_binary, v2_binary, tmp_dir,
+		'public_wrapper_freestanding_none', [
+		'-cc',
+		missing_cc,
+		'-freestanding',
+		'-os',
+		'none',
+		'--skip-builtin',
+	], freestanding_none_source(), public_wrapper_out)
+	assert_cli_success(public_wrapper_res)
+	assert public_wrapper_res.c_path == public_wrapper_out
+	assert public_wrapper_res.c_source.contains('#include <platform_none.h>')
+	assert public_wrapper_res.c_source.contains('platform_none_tick')
+	assert_no_os_runtime_headers(public_wrapper_res.c_source)
 
 	freestanding_none_hooks_out := os.join_path(tmp_dir, 'freestanding_none_hooks_app')
 	freestanding_none_hooks_res := run_v2_to_output(v2_binary, tmp_dir,
@@ -2185,6 +2187,30 @@ fn main() {
 	assert_no_obvious_hosted_headers(freestanding_none_hooks_res.c_source)
 
 	non_host_target := concrete_non_host_e2e_os()
+	non_host_default_res := run_v2_without_output_in_dir(v2_binary, tmp_dir,
+		'concrete_non_host_default_generation_only', [
+		'-cc',
+		missing_cc,
+		'-os',
+		non_host_target,
+	], minimal_source, default_cwd)
+	assert_generated_c_only(non_host_default_res)
+	assert non_host_default_res.c_path == os.join_path(default_cwd,
+		'concrete_non_host_default_generation_only.c')
+	assert !os.exists(os.join_path(tmp_dir, 'concrete_non_host_default_generation_only.c')), non_host_default_res.output
+
+	public_non_host_default_res := run_v1_v2_without_output_in_dir(v1_binary, v2_binary, tmp_dir,
+		'public_concrete_non_host_default_generation_only', [
+		'-cc',
+		missing_cc,
+		'-os',
+		non_host_target,
+	], minimal_source, default_cwd)
+	assert_generated_c_only(public_non_host_default_res)
+	assert public_non_host_default_res.c_path == os.join_path(default_cwd,
+		'public_concrete_non_host_default_generation_only.c')
+	assert !os.exists(os.join_path(tmp_dir, 'public_concrete_non_host_default_generation_only.c')), public_non_host_default_res.output
+
 	non_host_out := os.join_path(tmp_dir, 'target_${non_host_target}_app')
 	non_host_res := run_v2_to_output(v2_binary, tmp_dir, 'concrete_non_host_generation_only', [
 		'-cc',
@@ -2225,6 +2251,31 @@ fn main() {}
 		explicit_c_out)
 	assert_cli_success(explicit_c_res)
 	assert !os.exists(flag_obj), 'generation-only .c output compiled unexpected object ${flag_obj}\n${explicit_c_res.output}'
+
+	rejected_none_res := run_v2_without_output_in_dir(v2_binary, tmp_dir,
+		'rejected_none_without_freestanding', [
+		'-cc',
+		missing_cc,
+		'-os',
+		'none',
+	], minimal_source, default_cwd)
+	assert_cli_failure_contains(rejected_none_res, '-os none requires -freestanding')
+	assert !os.exists(rejected_none_res.c_path), rejected_none_res.output
+	assert !os.exists(rejected_none_res.out_path), rejected_none_res.output
+
+	rejected_freestanding_cross_res := run_v2_without_output_in_dir(v2_binary, tmp_dir,
+		'rejected_freestanding_cross', [
+		'-cc',
+		missing_cc,
+		'-freestanding',
+		'-os',
+		'cross',
+		'--skip-builtin',
+	], minimal_source, default_cwd)
+	assert_cli_failure_contains(rejected_freestanding_cross_res,
+		'-freestanding -os cross is not supported')
+	assert !os.exists(rejected_freestanding_cross_res.c_path), rejected_freestanding_cross_res.output
+	assert !os.exists(rejected_freestanding_cross_res.out_path), rejected_freestanding_cross_res.output
 }
 
 fn test_cleanc_cli_does_not_auto_run_stale_test_binary_for_generation_only_target() {

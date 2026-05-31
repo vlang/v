@@ -178,7 +178,7 @@ fn test_parse_files_uses_host_source_filter_for_cross_target() {
 	prefs.output_cross_c = true
 	prefs.user_defines = ['cross']
 	mut b := new_builder(&prefs)
-	files := b.parse_files([tmp_dir])
+	files := parse_test_files(mut b, [tmp_dir])
 	cross_names := files.map(os.file_name(it.name))
 	host_os := normalize_target_os_name(os.user_os())
 	assert 'common.v' in cross_names
@@ -213,7 +213,7 @@ fn test_parse_files_excludes_os_variants_for_freestanding_none_target() {
 	prefs.target_os = 'none'
 	prefs.user_defines = ['freestanding']
 	mut b := new_builder(&prefs)
-	files := b.parse_files([tmp_dir])
+	files := parse_test_files(mut b, [tmp_dir])
 	names := files.map(os.file_name(it.name))
 	assert 'common.v' in names
 	assert 'platform_nix.v' !in names

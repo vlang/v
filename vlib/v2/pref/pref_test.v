@@ -151,6 +151,7 @@ fn test_new_preferences_from_args_parses_freestanding_hooks() {
 	prefs := new_preferences_from_args(['-freestanding', '-fhooks', 'output,panic', '-os', 'linux',
 		'main.v'])
 	assert prefs.is_freestanding()
+	assert !prefs.skip_builtin
 	assert prefs.freestanding_hook_list() == ['output', 'panic']
 	assert prefs.has_freestanding_hooks()
 	assert prefs.has_freestanding_hook('output')
@@ -168,6 +169,24 @@ fn test_new_preferences_from_args_parses_freestanding_hooks() {
 	assert comptime_flag_value(&prefs, 'freestanding_output')
 	assert comptime_flag_value(&prefs, 'freestanding_panic')
 	assert !comptime_flag_value(&prefs, 'freestanding_alloc')
+}
+
+fn test_new_preferences_from_args_uses_implicit_skip_builtin_only_without_freestanding_hooks() {
+	prefs := new_preferences_from_args(['-freestanding', '-os', 'linux', 'main.v'])
+	assert prefs.is_freestanding()
+	assert prefs.skip_builtin
+	assert !prefs.has_freestanding_hooks()
+
+	hook_prefs := new_preferences_from_args(['-freestanding', '-fhooks', 'output', '-os', 'linux',
+		'main.v'])
+	assert hook_prefs.is_freestanding()
+	assert hook_prefs.has_freestanding_hook('output')
+	assert !hook_prefs.skip_builtin
+
+	explicit_hook_prefs := new_preferences_from_args(['-freestanding', '-fhooks', 'output',
+		'--skip-builtin', '-os', 'linux', 'main.v'])
+	assert explicit_hook_prefs.has_freestanding_hook('output')
+	assert explicit_hook_prefs.skip_builtin
 }
 
 fn test_freestanding_hook_defines_do_not_grant_hook_capabilities() {

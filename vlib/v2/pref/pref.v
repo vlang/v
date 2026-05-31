@@ -556,11 +556,12 @@ pub fn new_preferences_from_args(args []string) Preferences {
 		}
 	}
 
+	implicit_skip_builtin := freestanding && freestanding_hooks.len == 0
 	return Preferences{
 		debug:                 '--debug' in options
 		verbose:               '--verbose' in options || '-v' in options
 		skip_genv:             '--skip-genv' in options
-		skip_builtin:          '--skip-builtin' in options
+		skip_builtin:          '--skip-builtin' in options || implicit_skip_builtin
 		skip_imports:          '--skip-imports' in options
 		skip_type_check:       '--skip-type-check' in options
 		no_parallel:           '-no-parallel' in options || '--no-parallel' in options
@@ -666,12 +667,13 @@ pub fn new_preferences_using_options(options []string) Preferences {
 	}
 	add_freestanding_hook_defines(mut user_defines, freestanding_hooks)
 
+	implicit_skip_builtin := freestanding && freestanding_hooks.len == 0
 	return Preferences{
 		// config flags
 		debug:                 '--debug' in options
 		verbose:               '--verbose' in options || '-v' in options
 		skip_genv:             '--skip-genv' in options
-		skip_builtin:          '--skip-builtin' in options
+		skip_builtin:          '--skip-builtin' in options || implicit_skip_builtin
 		skip_imports:          '--skip-imports' in options
 		skip_type_check:       '--skip-type-check' in options
 		no_parallel:           '-no-parallel' in options || '--no-parallel' in options

@@ -242,6 +242,9 @@ const apple_macos_cross_guard = 'defined(__APPLE__) && defined(__MACH__) && defi
 const apple_ios_cross_guard = 'defined(__APPLE__) && defined(__MACH__) && defined(__ENVIRONMENT_IPHONE_OS_VERSION_MIN_REQUIRED__)'
 const freestanding_missing_alloc_hook_message = 'v2: freestanding target requires freestanding_alloc hook for heap allocation'
 const freestanding_missing_format_hook_message = 'v2: freestanding target cannot print non-string values without formatting support'
+const freestanding_missing_heap_runtime_message = 'v2: freestanding target cannot use V runtime heap helpers with --skip-builtin'
+const freestanding_missing_output_hook_message = 'v2: freestanding target requires freestanding_output hook for output'
+const freestanding_missing_panic_hook_message = 'v2: freestanding target requires freestanding_panic hook for panic'
 
 fn (g &Gen) target_os_name() string {
 	return normalize_c_target_os_name(g.pref.target_os_or_host())
