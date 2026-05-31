@@ -267,9 +267,18 @@ fn launch_v2_compiler(is_verbose bool, args []string, is_ownership bool) {
 	}
 	os.setenv('VCHILD', 'true', true)
 	os.setenv('VEXE', os.real_path(v2_exe), true)
-	os.execvp(v2_exe, args) or {
-		eprintln('> error while executing: ${v2_exe} ${args}')
-		panic(err)
+	$if windows {
+		mut process := os.new_process(v2_exe)
+		process.set_args(args)
+		process.wait()
+		exit_code := if process.code == -1 { 1 } else { process.code }
+		process.close()
+		exit(exit_code)
+	} $else {
+		os.execvp(v2_exe, args) or {
+			eprintln('> error while executing: ${v2_exe} ${args}')
+			panic(err)
+		}
 	}
 	exit(2)
 }

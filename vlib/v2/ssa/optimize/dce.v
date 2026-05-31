@@ -27,8 +27,9 @@ fn dead_code_elimination(mut m ssa.Module) bool {
 							dead_instrs << val_id
 							continue
 						}
-						side_effects := instr.op in [.store, .call, .call_indirect, .ret, .br,
-							.jmp, .switch_, .unreachable, .assign, .fence, .atomicrmw]
+						side_effects := instr.op in [.store, .call, .call_indirect, .call_sret,
+							.ret, .br, .jmp, .switch_, .unreachable, .assign, .fence, .cmpxchg,
+							.atomicrmw, .go_call, .spawn_call]
 						if !side_effects && val.uses.len == 0 {
 							dead_instrs << val_id
 						}

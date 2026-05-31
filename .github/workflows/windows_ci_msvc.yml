@@ -42,6 +42,81 @@ jobs:
           echo $VFLAGS
           .\makev.bat -msvc
           .\v.exe symlink
+      - name: V2 x64 native checks
+        run: |
+          function Assert-LastExit([string] $label) {
+            if ($LASTEXITCODE -ne 0) {
+              throw "$label failed with exit code $LASTEXITCODE"
+            }
+          }
+
+          function Assert-ByteArrayEqual([byte[]] $actual, [byte[]] $expected, [string] $label) {
+            if ($actual.Length -ne $expected.Length) {
+              $actual_text = [System.Text.Encoding]::UTF8.GetString($actual)
+              $expected_text = [System.Text.Encoding]::UTF8.GetString($expected)
+              throw "$label mismatch. Expected length $($expected.Length), got $($actual.Length).`nExpected:`n$expected_text`nActual:`n$actual_text"
+            }
+            for ($i = 0; $i -lt $actual.Length; $i++) {
+              if ($actual[$i] -ne $expected[$i]) {
+                $actual_text = [System.Text.Encoding]::UTF8.GetString($actual)
+                $expected_text = [System.Text.Encoding]::UTF8.GetString($expected)
+                throw "$label mismatch at byte $i.`nExpected:`n$expected_text`nActual:`n$actual_text"
+              }
+            }
+          }
+
+          function Invoke-NativeX64Example([string] $source, [string] $name, [byte[]] $expected_stdout) {
+            $exe = Join-Path $tmp "$name.exe"
+            $stdout_path = Join-Path $tmp "$name.out"
+            $stderr_path = Join-Path $tmp "$name.err"
+
+            .\v.exe -v2 -b x64 $source -o $exe
+            Assert-LastExit "compile $source"
+
+            Remove-Item -LiteralPath $stdout_path, $stderr_path -Force -ErrorAction SilentlyContinue
+            $process = Start-Process -FilePath $exe -NoNewWindow -Wait -PassThru -RedirectStandardOutput $stdout_path -RedirectStandardError $stderr_path
+            if ($process.ExitCode -ne 0) {
+              if (Test-Path -LiteralPath $stderr_path) {
+                Get-Content -LiteralPath $stderr_path
+              }
+              throw "$source exited with code $($process.ExitCode)"
+            }
+
+            [byte[]] $stdout = if (Test-Path -LiteralPath $stdout_path) { [System.IO.File]::ReadAllBytes($stdout_path) } else { New-Object byte[] 0 }
+            [byte[]] $stderr = if (Test-Path -LiteralPath $stderr_path) { [System.IO.File]::ReadAllBytes($stderr_path) } else { New-Object byte[] 0 }
+            $empty = New-Object byte[] 0
+            Assert-ByteArrayEqual $stdout $expected_stdout "$source stdout"
+            Assert-ByteArrayEqual $stderr $empty "$source stderr"
+          }
+
+          .\v.exe test vlib/v2/abi vlib/v2/gen/x64
+          Assert-LastExit 'vlib/v2/abi vlib/v2/gen/x64'
+          .\v.exe test vlib/v2/ssa/optimize
+          Assert-LastExit 'vlib/v2/ssa/optimize'
+          $env:V2_VERIFY_STRICT = '1'
+          .\v.exe test vlib/v2/ssa/optimize
+          Assert-LastExit 'strict vlib/v2/ssa/optimize'
+          Remove-Item Env:\V2_VERIFY_STRICT -ErrorAction SilentlyContinue
+
+          $tmp = Join-Path $env:RUNNER_TEMP 'v2_x64_native'
+          New-Item -ItemType Directory -Force -Path $tmp | Out-Null
+
+          $hello_expected = [System.Text.Encoding]::UTF8.GetBytes("Hello, World!`n")
+          Invoke-NativeX64Example 'examples/hello_world.v' 'hello_world' $hello_expected
+
+          $fizz_lines = 1..100 | ForEach-Object {
+            if ($_ % 15 -eq 0) {
+              'FizzBuzz'
+            } elseif ($_ % 3 -eq 0) {
+              'Fizz'
+            } elseif ($_ % 5 -eq 0) {
+              'Buzz'
+            } else {
+              [string] $_
+            }
+          }
+          $fizz_expected = [System.Text.Encoding]::UTF8.GetBytes(($fizz_lines -join "`n") + "`n")
+          Invoke-NativeX64Example 'examples/fizz_buzz.v' 'fizz_buzz' $fizz_expected
       - name: Build V with WX
         run: v -cflags /WX self
       - name: All code is formatted
