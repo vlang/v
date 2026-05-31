@@ -6,6 +6,7 @@ module builder
 import os
 import v2.ast
 import v2.parser
+import v2.pref as vpref
 
 fn should_expand_single_file_input(input string) bool {
 	if os.file_name(input).ends_with('_test.v') {
@@ -117,47 +118,60 @@ fn get_user_v_files_from_dir(dir string, user_defines []string, target_os string
 
 fn ast_comptime_flag_matches(name string, user_defines []string, target_os string) bool {
 	lower_name := name.to_lower()
-	if lower_name in user_defines {
-		return true
-	}
-	return match lower_name {
+	match lower_name {
 		'macos', 'darwin', 'mac', 'linux', 'windows', 'bsd', 'freebsd', 'openbsd', 'netbsd',
-		'dragonfly', 'android' {
-			flag_os_matches(lower_name, target_os)
+		'dragonfly', 'android', 'termux', 'ios', 'solaris', 'qnx', 'serenity', 'plan9', 'vinix',
+		'none' {
+			return flag_os_matches(lower_name, target_os)
 		}
-		else {
-			false
+		'cross' {
+			return flag_os_matches(lower_name, target_os) || lower_name in user_defines
 		}
+		'freestanding', 'bare' {
+			return lower_name in user_defines
+		}
+		else {}
 	}
+
+	return lower_name in user_defines
 }
 
 fn ast_comptime_cond_matches(cond ast.Expr, user_defines []string, target_os string) bool {
+	return ast_comptime_cond_matches_with_explicit(cond, user_defines, user_defines, target_os)
+}
+
+fn ast_comptime_cond_matches_with_explicit(cond ast.Expr, user_defines []string, explicit_user_defines []string, target_os string) bool {
 	match cond {
 		ast.Ident {
 			return ast_comptime_flag_matches(cond.name, user_defines, target_os)
 		}
 		ast.PrefixExpr {
 			if cond.op == .not {
-				return !ast_comptime_cond_matches(cond.expr, user_defines, target_os)
+				return !ast_comptime_cond_matches_with_explicit(cond.expr, user_defines,
+					explicit_user_defines, target_os)
 			}
 		}
 		ast.InfixExpr {
 			if cond.op == .and {
-				return ast_comptime_cond_matches(cond.lhs, user_defines, target_os)
-					&& ast_comptime_cond_matches(cond.rhs, user_defines, target_os)
+				return
+					ast_comptime_cond_matches_with_explicit(cond.lhs, user_defines, explicit_user_defines, target_os)
+					&& ast_comptime_cond_matches_with_explicit(cond.rhs, user_defines, explicit_user_defines, target_os)
 			}
 			if cond.op == .logical_or {
-				return ast_comptime_cond_matches(cond.lhs, user_defines, target_os)
-					|| ast_comptime_cond_matches(cond.rhs, user_defines, target_os)
+				return
+					ast_comptime_cond_matches_with_explicit(cond.lhs, user_defines, explicit_user_defines, target_os)
+					|| ast_comptime_cond_matches_with_explicit(cond.rhs, user_defines, explicit_user_defines, target_os)
 			}
 		}
 		ast.PostfixExpr {
 			if cond.op == .question && cond.expr is ast.Ident {
-				return cond.expr.name in user_defines
+				return vpref.comptime_optional_define_value(cond.expr.name, user_defines,
+					explicit_user_defines)
 			}
 		}
 		ast.ParenExpr {
-			return ast_comptime_cond_matches(cond.expr, user_defines, target_os)
+			return ast_comptime_cond_matches_with_explicit(cond.expr, user_defines,
+				explicit_user_defines, target_os)
 		}
 		else {}
 	}
@@ -166,18 +180,26 @@ fn ast_comptime_cond_matches(cond ast.Expr, user_defines []string, target_os str
 }
 
 fn collect_active_imports_from_if_expr(node ast.IfExpr, user_defines []string, target_os string, mut imports []ast.ImportStmt) {
-	if ast_comptime_cond_matches(node.cond, user_defines, target_os) {
-		collect_active_imports_from_stmts(node.stmts, user_defines, target_os, mut imports)
+	collect_active_imports_from_if_expr_with_explicit(node, user_defines, user_defines, target_os, mut
+		imports)
+}
+
+fn collect_active_imports_from_if_expr_with_explicit(node ast.IfExpr, user_defines []string, explicit_user_defines []string, target_os string, mut imports []ast.ImportStmt) {
+	if ast_comptime_cond_matches_with_explicit(node.cond, user_defines, explicit_user_defines,
+		target_os)
+	{
+		collect_active_imports_from_stmts_with_explicit(node.stmts, user_defines,
+			explicit_user_defines, target_os, mut imports)
 		return
 	}
 	match node.else_expr {
 		ast.IfExpr {
 			if node.else_expr.cond is ast.EmptyExpr {
-				collect_active_imports_from_stmts(node.else_expr.stmts, user_defines, target_os, mut
-					imports)
+				collect_active_imports_from_stmts_with_explicit(node.else_expr.stmts, user_defines,
+					explicit_user_defines, target_os, mut imports)
 			} else {
-				collect_active_imports_from_if_expr(node.else_expr, user_defines, target_os, mut
-					imports)
+				collect_active_imports_from_if_expr_with_explicit(node.else_expr, user_defines,
+					explicit_user_defines, target_os, mut imports)
 			}
 		}
 		else {}
@@ -185,6 +207,11 @@ fn collect_active_imports_from_if_expr(node ast.IfExpr, user_defines []string, t
 }
 
 fn collect_active_imports_from_stmts(stmts []ast.Stmt, user_defines []string, target_os string, mut imports []ast.ImportStmt) {
+	collect_active_imports_from_stmts_with_explicit(stmts, user_defines, user_defines, target_os, mut
+		imports)
+}
+
+fn collect_active_imports_from_stmts_with_explicit(stmts []ast.Stmt, user_defines []string, explicit_user_defines []string, target_os string, mut imports []ast.ImportStmt) {
 	for stmt in stmts {
 		match stmt {
 			ast.ImportStmt {
@@ -192,8 +219,8 @@ fn collect_active_imports_from_stmts(stmts []ast.Stmt, user_defines []string, ta
 			}
 			ast.ExprStmt {
 				if stmt.expr is ast.ComptimeExpr && stmt.expr.expr is ast.IfExpr {
-					collect_active_imports_from_if_expr(stmt.expr.expr, user_defines, target_os, mut
-						imports)
+					collect_active_imports_from_if_expr_with_explicit(stmt.expr.expr, user_defines,
+						explicit_user_defines, target_os, mut imports)
 				}
 			}
 			else {}
@@ -202,18 +229,24 @@ fn collect_active_imports_from_stmts(stmts []ast.Stmt, user_defines []string, ta
 }
 
 fn active_file_imports(file ast.File, user_defines []string, target_os string) []ast.ImportStmt {
+	return active_file_imports_with_explicit(file, user_defines, user_defines, target_os)
+}
+
+fn active_file_imports_with_explicit(file ast.File, user_defines []string, explicit_user_defines []string, target_os string) []ast.ImportStmt {
 	mut imports := file.imports.clone()
-	collect_active_imports_from_stmts(file.stmts, user_defines, target_os, mut imports)
+	collect_active_imports_from_stmts_with_explicit(file.stmts, user_defines,
+		explicit_user_defines, target_os, mut imports)
 	return imports
 }
 
 // active_file_imports_from_flat mirrors active_file_imports but reads the
 // import list and top-level stmts straight from the FlatAst, so import
 // discovery can run without rehydrating an ast.File.
-fn active_file_imports_from_flat(flat &ast.FlatAst, ff ast.FlatFile, user_defines []string, target_os string) []ast.ImportStmt {
+fn active_file_imports_from_flat(flat &ast.FlatAst, ff ast.FlatFile, user_defines []string, explicit_user_defines []string, target_os string) []ast.ImportStmt {
 	mut imports := flat.read_file_imports(ff)
 	stmts := flat.read_file_stmts(ff)
-	collect_active_imports_from_stmts(stmts, user_defines, target_os, mut imports)
+	collect_active_imports_from_stmts_with_explicit(stmts, user_defines, explicit_user_defines,
+		target_os, mut imports)
 	return imports
 }
 
@@ -274,7 +307,7 @@ fn (mut b Builder) parse_files(files []string) []ast.File {
 	mut parser_reused := parser.Parser.new(b.pref)
 	mut ast_files := []ast.File{}
 	skip_builtin := b.pref.skip_builtin
-	target_os := b.pref.target_os_or_host()
+	target_os := b.pref.source_filter_target_os()
 	mut use_core_headers := false
 	// Resolve core-source paths upfront so the pre-size pass below can
 	// stat them alongside user files. We still parse in the same batch
@@ -383,7 +416,7 @@ fn (mut b Builder) parse_files(files []string) []ast.File {
 			ff := b.flat_builder.flat.files[afi]
 			ast_file_name := b.flat_builder.flat.file_name(ff)
 			for mod in active_file_imports_from_flat(&b.flat_builder.flat, ff, b.pref.user_defines,
-				target_os) {
+				b.pref.explicit_user_defines, target_os) {
 				if mod.name in parsed_imports {
 					continue
 				}
@@ -407,7 +440,8 @@ fn (mut b Builder) parse_files(files []string) []ast.File {
 	}
 	for afi := 0; afi < ast_files.len; afi++ {
 		ast_file := ast_files[afi]
-		for mod in active_file_imports(ast_file, b.pref.user_defines, target_os) {
+		for mod in active_file_imports_with_explicit(ast_file, b.pref.user_defines,
+			b.pref.explicit_user_defines, target_os) {
 			if mod.name in parsed_imports {
 				continue
 			}

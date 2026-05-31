@@ -642,9 +642,10 @@ fn (mut g Gen) emit_live_reload_infrastructure() {
 		return
 	}
 	if g.live_fns.len == 0 {
-		// No @[live] functions — emit a no-op __v_live_init
-		g.sb.writeln('')
-		g.sb.writeln('void __v_live_init(void) {}')
+		if g.has_live_reload_functions() {
+			g.sb.writeln('')
+			g.sb.writeln('void __v_live_init(void) {}')
+		}
 		return
 	}
 
@@ -1445,8 +1446,9 @@ pub fn (mut g Gen) gen_passes_1_to_4() {
 		'pass 4 fn forward declarations')
 
 	g.sb.writeln('')
-	// Forward declaration for live reload init (always emitted — no-op if no @[live] functions)
-	g.sb.writeln('void __v_live_init(void);')
+	if g.has_live_reload_functions() {
+		g.sb.writeln('void __v_live_init(void);')
+	}
 	g.emit_cached_init_call_decls()
 	g.emit_ierror_wrapper_decls()
 	g.collect_interface_wrapper_specs()
@@ -2849,46 +2851,423 @@ fn type_decl_base_is_fn_type(node ast.TypeDecl) bool {
 	return false
 }
 
+fn (g &Gen) has_live_reload_functions() bool {
+	if g.cache_bundle_name.len > 0 {
+		return false
+	}
+	if g.pref != unsafe { nil } && g.pref.is_shared_lib {
+		return false
+	}
+	for file in g.files {
+		if g.stmts_have_live_reload_function(file.stmts) {
+			return true
+		}
+	}
+	return false
+}
+
+fn (g &Gen) stmts_have_live_reload_function(stmts []ast.Stmt) bool {
+	for stmt in stmts {
+		if g.stmt_has_live_reload_function(stmt) {
+			return true
+		}
+	}
+	return false
+}
+
+fn (g &Gen) stmt_has_live_reload_function(stmt ast.Stmt) bool {
+	if stmt is ast.FnDecl {
+		return stmt.attributes.has('live') && stmt.name != 'main'
+	}
+	if stmt is ast.ExprStmt {
+		return g.expr_has_live_reload_function(stmt.expr)
+	}
+	return false
+}
+
+fn (g &Gen) expr_has_live_reload_function(expr ast.Expr) bool {
+	if expr is ast.ComptimeExpr {
+		if expr.expr is ast.IfExpr {
+			return g.active_comptime_if_has_live_reload_function(expr.expr)
+		}
+		return g.expr_has_live_reload_function(expr.expr)
+	}
+	return false
+}
+
+fn (g &Gen) active_comptime_if_has_live_reload_function(node ast.IfExpr) bool {
+	if g.eval_comptime_cond(node.cond) {
+		return g.stmts_have_live_reload_function(node.stmts)
+	}
+	if node.else_expr is ast.IfExpr {
+		else_if := node.else_expr as ast.IfExpr
+		if else_if.cond is ast.EmptyExpr {
+			return g.stmts_have_live_reload_function(else_if.stmts)
+		}
+		return g.active_comptime_if_has_live_reload_function(else_if)
+	}
+	return false
+}
+
+fn (g &Gen) runtime_fn_referenced(name string) bool {
+	return name in g.called_fn_names || 'builtin__${name}' in g.called_fn_names
+}
+
+fn (g &Gen) runtime_any_fn_referenced(names []string) bool {
+	for name in names {
+		if g.runtime_fn_referenced(name) {
+			return true
+		}
+	}
+	return false
+}
+
+fn (g &Gen) runtime_fallback_needed(name string) bool {
+	return 'fn_${name}' !in g.emitted_types && g.runtime_fn_referenced(name)
+}
+
+fn c_is_ident_char(ch u8) bool {
+	return ch.is_letter() || ch.is_digit() || ch == `_`
+}
+
+fn c_skip_spaces(csrc string, start int) int {
+	mut i := start
+	for i < csrc.len && csrc[i].is_space() {
+		i++
+	}
+	return i
+}
+
+fn c_previous_non_space(csrc string, start int) int {
+	mut i := start - 1
+	for i >= 0 && csrc[i].is_space() {
+		i--
+	}
+	return i
+}
+
+fn c_is_runtime_symbol_context(csrc string, start int, end int) bool {
+	next := c_skip_spaces(csrc, end)
+	prev := c_previous_non_space(csrc, start)
+	if next < csrc.len && csrc[next] == `(` {
+		return true
+	}
+	if prev >= 0 && csrc[prev] == `&` {
+		return true
+	}
+	if next < csrc.len && csrc[next] in [`,`, `)`, `;`] && prev >= 0
+		&& csrc[prev] in [`(`, `,`, `=`] {
+		return true
+	}
+	return false
+}
+
+fn c_source_references_runtime_symbol(csrc string, name string) bool {
+	mut i := 0
+	for i < csrc.len {
+		ch := csrc[i]
+		if ch == `/` && i + 1 < csrc.len && csrc[i + 1] == `/` {
+			i += 2
+			for i < csrc.len && csrc[i] != `\n` {
+				i++
+			}
+			continue
+		}
+		if ch == `/` && i + 1 < csrc.len && csrc[i + 1] == `*` {
+			i += 2
+			for i + 1 < csrc.len && !(csrc[i] == `*` && csrc[i + 1] == `/`) {
+				i++
+			}
+			i += 2
+			continue
+		}
+		if ch == `"` || ch == `'` {
+			quote := ch
+			i++
+			for i < csrc.len {
+				if csrc[i] == `\\` {
+					i += 2
+					continue
+				}
+				if csrc[i] == quote {
+					i++
+					break
+				}
+				i++
+			}
+			continue
+		}
+		if ch.is_letter() || ch == `_` {
+			start := i
+			for i < csrc.len && c_is_ident_char(csrc[i]) {
+				i++
+			}
+			if csrc[start..i] == name {
+				if c_is_runtime_symbol_context(csrc, start, i) {
+					return true
+				}
+			}
+			continue
+		}
+		i++
+	}
+	return false
+}
+
+fn (g &Gen) runtime_fallback_needed_in_source(name string, csrc string) bool {
+	return 'fn_${name}' !in g.emitted_types
+		&& (g.runtime_fn_referenced(name) || c_source_references_runtime_symbol(csrc, name))
+}
+
+fn freestanding_heap_runtime_helper_names() []string {
+	return [
+		'new_array_from_c_array',
+		'new_array_from_c_array_no_alloc',
+		'new_array_from_c_array_noscan',
+		'new_array_from_array_and_c_array',
+		'builtin__new_array_from_array_and_c_array',
+		'__new_array_with_default_noscan',
+		'new_map',
+		'new_map_init',
+		'new_map_init_noscan_key',
+		'new_map_init_noscan_value',
+		'new_map_init_noscan_key_value',
+		'new_dense_array',
+		'DenseArray__has_index',
+		'DenseArray__key',
+		'DenseArray__value',
+		'DenseArray__zeros_to_end',
+		'IError__str',
+		'Array_int_contains',
+		'Array_string_contains',
+		'Array_string_index',
+		'Array_int_str',
+		'__v2_array_eq',
+		'array__push',
+		'array__push_many',
+		'array__push_noscan',
+		'array__eq',
+		'array__insert',
+		'array__insert_many',
+		'array__prepend',
+		'array__prepend_many',
+		'array__delete',
+		'array__delete_many',
+		'array__clear',
+		'array__slice',
+		'array__slice_ni',
+		'array__clone',
+		'array__clone_to_depth',
+		'array__repeat',
+		'array__repeat_to_depth',
+		'array__pop',
+		'array__pop_left',
+		'array__first',
+		'array__get',
+		'array__last',
+		'array__contains',
+		'array__sort',
+		'array__sort_with_compare',
+		'array__bytestr',
+		'map__clear',
+		'map__clone',
+		'map__delete',
+		'map__exists',
+		'map__free',
+		'map__get',
+		'map__get_and_set',
+		'map__get_check',
+		'map__has_index',
+		'map__key',
+		'map__move',
+		'map__reserve',
+		'map__set',
+		'map__value',
+		'map__values',
+		'map__keys',
+		'string__clone',
+		'string__contains',
+		'string__eq',
+		'string__ends_with',
+		'string__free',
+		'string__index',
+		'string__lt',
+		'string__compare',
+		'string__plus',
+		'string__plus_two',
+		'string__plus_many',
+		'string__repeat',
+		'string__runes',
+		'string__split',
+		'string__starts_with',
+		'string__str',
+		'string__substr',
+		'string__substr_unsafe',
+		'string__substr_or',
+		'string__to_lower',
+		'string__bytes',
+		'compare_strings',
+		'compare_strings_by_len',
+		'compare_lower_strings',
+		'int__str',
+		'strings__new_builder',
+		'strings__Builder__write_string',
+		'strings__Builder__str',
+	]
+}
+
+fn (mut g Gen) emit_freestanding_missing_heap_runtime_helper(helper string) {
+	g.sb.writeln('')
+	g.sb.writeln('_Static_assert(0, "${freestanding_missing_heap_runtime_message}: ${helper}");')
+}
+
+fn (g &Gen) freestanding_missing_heap_runtime_helpers(csrc string) []string {
+	if !g.is_freestanding_target() || g.pref == unsafe { nil } || !g.pref.skip_builtin {
+		return []
+	}
+	mut missing := []string{}
+	for name in freestanding_heap_runtime_helper_names() {
+		if g.runtime_fallback_needed_in_source(name, csrc) {
+			missing << name
+		}
+	}
+	return missing
+}
+
 fn (mut g Gen) emit_missing_runtime_fallbacks() {
-	if 'fn___at_least_one' !in g.emitted_types {
+	generated_csrc := g.sb.after(0)
+	need_at_least_one_fallback := g.runtime_fallback_needed_in_source('__at_least_one',
+		generated_csrc)
+	need_arguments_fallback := g.runtime_fallback_needed('arguments')
+	need_eprint_fallback := g.runtime_fallback_needed('eprint')
+	need_writeln_to_fd_fallback := 'fn__writeln_to_fd' !in g.emitted_types
+		&& (g.runtime_fn_referenced('_writeln_to_fd')
+		|| g.runtime_any_fn_referenced(['println', 'eprintln']))
+	need_write_buf_to_fd_fallback := 'fn__write_buf_to_fd' !in g.emitted_types
+		&& (g.runtime_fn_referenced('_write_buf_to_fd')
+		|| need_writeln_to_fd_fallback || need_eprint_fallback
+		|| g.runtime_any_fn_referenced(['print', 'println', 'eprintln']))
+	need_flush_stdout_fallback := 'fn_flush_stdout' !in g.emitted_types
+		&& (g.runtime_fn_referenced('flush_stdout') || need_eprint_fallback)
+	need_flush_stderr_fallback := 'fn_flush_stderr' !in g.emitted_types
+		&& (g.runtime_fn_referenced('flush_stderr') || need_eprint_fallback)
+	need_v_panic_fallback := 'fn_v_panic' !in g.emitted_types && (g.runtime_fn_referenced('panic')
+		|| g.runtime_fallback_needed_in_source('v_panic', generated_csrc))
+	mut need_array_int_contains_fallback := g.runtime_fallback_needed_in_source('Array_int_contains',
+		generated_csrc)
+	mut need_array_string_contains_fallback := g.runtime_fallback_needed_in_source('Array_string_contains',
+		generated_csrc)
+	mut need_array_string_index_fallback := g.runtime_fallback_needed_in_source('Array_string_index',
+		generated_csrc)
+	mut need_array_int_str_fallback := g.runtime_fallback_needed_in_source('Array_int_str',
+		generated_csrc)
+	mut need_densearray_zeros_to_end_fallback := g.runtime_fallback_needed_in_source('DenseArray__zeros_to_end',
+		generated_csrc)
+	need_sort_cmp_int_fallback := g.runtime_fallback_needed_in_source('__sort_cmp_int_asc',
+		generated_csrc)
+	need_sort_cmp_repindex_fallback := g.runtime_fallback_needed_in_source('__sort_cmp_RepIndex_by_idx_asc',
+		generated_csrc)
+	need_bits_leading_zeros_64_fallback := g.runtime_fallback_needed_in_source('bits__leading_zeros_64',
+		generated_csrc)
+	need_bits_trailing_zeros_32_fallback := g.runtime_fallback_needed_in_source('bits__trailing_zeros_32',
+		generated_csrc)
+	need_bits_trailing_zeros_64_fallback := g.runtime_fallback_needed_in_source('bits__trailing_zeros_64',
+		generated_csrc)
+	need_bits_rotate_left_32_fallback := g.runtime_fallback_needed_in_source('bits__rotate_left_32',
+		generated_csrc)
+	need_memdup_fallback := g.runtime_fallback_needed_in_source('memdup', generated_csrc)
+	need_f64_abs_fallback := g.runtime_fallback_needed_in_source('f64_abs', generated_csrc)
+	need_f32_str_fallback := g.runtime_fallback_needed_in_source('f32__str', generated_csrc)
+	need_f32_strg_fallback := g.runtime_fallback_needed_in_source('f32__strg', generated_csrc)
+	need_f64_strg_fallback := g.runtime_fallback_needed_in_source('f64__strg', generated_csrc)
+		|| ('fn_f64__strg' !in g.emitted_types && need_f32_strg_fallback)
+	need_f64_str_fallback := g.runtime_fallback_needed_in_source('f64__str', generated_csrc)
+		|| ('fn_f64__str' !in g.emitted_types && (need_f32_str_fallback || need_f64_strg_fallback))
+	need_malloc_noscan_fallback :=
+		g.runtime_fallback_needed_in_source('malloc_noscan', generated_csrc)
+		|| need_memdup_fallback
+		|| (need_f64_str_fallback && !g.is_freestanding_target())
+	for helper in g.freestanding_missing_heap_runtime_helpers(generated_csrc) {
+		g.emit_freestanding_missing_heap_runtime_helper(helper)
+	}
+	if g.is_freestanding_target() && g.pref != unsafe { nil } && g.pref.skip_builtin {
+		need_array_int_contains_fallback = false
+		need_array_string_contains_fallback = false
+		need_array_string_index_fallback = false
+		need_array_int_str_fallback = false
+		need_densearray_zeros_to_end_fallback = false
+	}
+	if need_at_least_one_fallback {
 		g.emitted_types['fn___at_least_one'] = true
 		g.sb.writeln('')
 		g.sb.writeln('__attribute__((weak)) u64 __at_least_one(u64 how_many) {')
 		g.sb.writeln('\treturn how_many == 0 ? 1 : how_many;')
 		g.sb.writeln('}')
 	}
-	if 'fn_arguments' !in g.emitted_types {
+	if need_arguments_fallback {
 		g.emitted_types['fn_arguments'] = true
 		g.sb.writeln('')
 		g.sb.writeln('__attribute__((weak)) Array_string arguments() {')
-		g.sb.writeln('\tu8** argv = (u8**)g_main_argv;')
-		g.sb.writeln('\tArray_string res = __new_array_with_default_noscan(0, g_main_argc, sizeof(string), NULL);')
-		g.sb.writeln('\tfor (int i = 0; i < g_main_argc; i += 1) {')
-		g.sb.writeln('\t\tarray__push((array*)&res, &(string[1]){tos_clone(argv[i])});')
-		g.sb.writeln('\t}')
-		g.sb.writeln('\treturn res;')
+		if g.is_freestanding_target() {
+			g.sb.writeln('\t_Static_assert(0, "${freestanding_missing_alloc_hook_message}");')
+			g.sb.writeln('\treturn (Array_string){0};')
+		} else {
+			g.sb.writeln('\tu8** argv = (u8**)g_main_argv;')
+			g.sb.writeln('\tArray_string res = __new_array_with_default_noscan(0, g_main_argc, sizeof(string), NULL);')
+			g.sb.writeln('\tfor (int i = 0; i < g_main_argc; i += 1) {')
+			g.sb.writeln('\t\tarray__push((array*)&res, &(string[1]){tos_clone(argv[i])});')
+			g.sb.writeln('\t}')
+			g.sb.writeln('\treturn res;')
+		}
 		g.sb.writeln('}')
 	}
-	if 'fn__write_buf_to_fd' !in g.emitted_types {
+	if need_write_buf_to_fd_fallback {
 		g.emitted_types['fn__write_buf_to_fd'] = true
 		g.sb.writeln('')
 		g.sb.writeln('__attribute__((weak)) void _write_buf_to_fd(int fd, u8* buf, int buf_len) {')
 		g.sb.writeln('\tif (buf_len <= 0) {')
 		g.sb.writeln('\t\treturn;')
 		g.sb.writeln('\t}')
-		g.sb.writeln('\tu8* ptr = buf;')
-		g.sb.writeln('\tisize remaining_bytes = buf_len;')
-		g.sb.writeln('\twhile (remaining_bytes > 0) {')
-		g.sb.writeln('\t\tisize written = write(fd, ptr, remaining_bytes);')
-		g.sb.writeln('\t\tif (written <= 0) {')
-		g.sb.writeln('\t\t\treturn;')
-		g.sb.writeln('\t\t}')
-		g.sb.writeln('\t\tptr += written;')
-		g.sb.writeln('\t\tremaining_bytes -= written;')
-		g.sb.writeln('\t}')
+		if g.is_freestanding_target() && !g.has_freestanding_hook_capability('output') {
+			g.sb.writeln('\t_Static_assert(0, "${freestanding_missing_output_hook_message}");')
+			g.sb.writeln('\treturn;')
+		} else {
+			g.sb.writeln('\tu8* ptr = buf;')
+			g.sb.writeln('\tisize remaining_bytes = buf_len;')
+			g.sb.writeln('\twhile (remaining_bytes > 0) {')
+			if g.has_freestanding_hook_capability('output') {
+				g.sb.writeln('\t\tisize written = v_platform_write(fd, ptr, remaining_bytes);')
+			} else if g.target_os_name() == 'windows' {
+				g.sb.writeln('\t\tHANDLE handle = GetStdHandle(fd == 2 ? STD_ERROR_HANDLE : STD_OUTPUT_HANDLE);')
+				g.sb.writeln('\t\tDWORD win_written = 0;')
+				g.sb.writeln('\t\tisize written = 0;')
+				g.sb.writeln('\t\tif (handle != NULL && handle != INVALID_HANDLE_VALUE && WriteFile(handle, ptr, (DWORD)remaining_bytes, &win_written, NULL)) {')
+				g.sb.writeln('\t\t\twritten = (isize)win_written;')
+				g.sb.writeln('\t\t}')
+			} else if g.target_os_name() == 'cross' {
+				g.sb.writeln('#if defined(_WIN32)')
+				g.sb.writeln('\t\tHANDLE handle = GetStdHandle(fd == 2 ? STD_ERROR_HANDLE : STD_OUTPUT_HANDLE);')
+				g.sb.writeln('\t\tDWORD win_written = 0;')
+				g.sb.writeln('\t\tisize written = 0;')
+				g.sb.writeln('\t\tif (handle != NULL && handle != INVALID_HANDLE_VALUE && WriteFile(handle, ptr, (DWORD)remaining_bytes, &win_written, NULL)) {')
+				g.sb.writeln('\t\t\twritten = (isize)win_written;')
+				g.sb.writeln('\t\t}')
+				g.sb.writeln('#else')
+				g.sb.writeln('\t\tisize written = write(fd, ptr, remaining_bytes);')
+				g.sb.writeln('#endif')
+			} else {
+				g.sb.writeln('\t\tisize written = write(fd, ptr, remaining_bytes);')
+			}
+			g.sb.writeln('\t\tif (written <= 0) {')
+			g.sb.writeln('\t\t\treturn;')
+			g.sb.writeln('\t\t}')
+			g.sb.writeln('\t\tptr += written;')
+			g.sb.writeln('\t\tremaining_bytes -= written;')
+			g.sb.writeln('\t}')
+		}
 		g.sb.writeln('}')
 	}
-	if 'fn__writeln_to_fd' !in g.emitted_types {
+	if need_writeln_to_fd_fallback {
 		g.emitted_types['fn__writeln_to_fd'] = true
 		g.sb.writeln('')
 		g.sb.writeln('__attribute__((weak)) void _writeln_to_fd(int fd, string s) {')
@@ -2897,7 +3276,7 @@ fn (mut g Gen) emit_missing_runtime_fallbacks() {
 		g.sb.writeln('\t_write_buf_to_fd(fd, &lf, 1);')
 		g.sb.writeln('}')
 	}
-	if 'fn_Array_int_contains' !in g.emitted_types {
+	if need_array_int_contains_fallback {
 		g.emitted_types['fn_Array_int_contains'] = true
 		g.sb.writeln('')
 		g.sb.writeln('__attribute__((weak)) bool Array_int_contains(Array_int a, int v) {')
@@ -2909,7 +3288,7 @@ fn (mut g Gen) emit_missing_runtime_fallbacks() {
 		g.sb.writeln('\treturn false;')
 		g.sb.writeln('}')
 	}
-	if 'fn_Array_string_contains' !in g.emitted_types {
+	if need_array_string_contains_fallback {
 		g.emitted_types['fn_Array_string_contains'] = true
 		g.sb.writeln('')
 		g.sb.writeln('__attribute__((weak)) bool Array_string_contains(Array_string a, string v) {')
@@ -2921,7 +3300,7 @@ fn (mut g Gen) emit_missing_runtime_fallbacks() {
 		g.sb.writeln('\treturn false;')
 		g.sb.writeln('}')
 	}
-	if 'fn_Array_string_index' !in g.emitted_types {
+	if need_array_string_index_fallback {
 		g.emitted_types['fn_Array_string_index'] = true
 		g.sb.writeln('')
 		g.sb.writeln('__attribute__((weak)) int Array_string_index(Array_string a, string v) {')
@@ -2933,7 +3312,7 @@ fn (mut g Gen) emit_missing_runtime_fallbacks() {
 		g.sb.writeln('\treturn -1;')
 		g.sb.writeln('}')
 	}
-	if 'fn_Array_int_str' !in g.emitted_types {
+	if need_array_int_str_fallback {
 		g.emitted_types['fn_Array_int_str'] = true
 		g.sb.writeln('')
 		g.sb.writeln('__attribute__((weak)) string Array_int_str(Array_int a) {')
@@ -2949,12 +3328,14 @@ fn (mut g Gen) emit_missing_runtime_fallbacks() {
 		g.sb.writeln('\treturn strings__Builder__str(&sb);')
 		g.sb.writeln('}')
 	}
-	if 'fn_DenseArray__zeros_to_end' !in g.emitted_types {
+	if need_densearray_zeros_to_end_fallback {
 		g.emitted_types['fn_DenseArray__zeros_to_end'] = true
+		tmp_value_alloc := g.c_heap_malloc_call('d->value_bytes')
+		tmp_key_alloc := g.c_heap_malloc_call('d->key_bytes')
 		g.sb.writeln('')
 		g.sb.writeln('__attribute__((weak)) void DenseArray__zeros_to_end(DenseArray* d) {')
-		g.sb.writeln('\tvoid* tmp_value = malloc(d->value_bytes);')
-		g.sb.writeln('\tvoid* tmp_key = malloc(d->key_bytes);')
+		g.sb.writeln('\tvoid* tmp_value = ${tmp_value_alloc};')
+		g.sb.writeln('\tvoid* tmp_key = ${tmp_key_alloc};')
 		g.sb.writeln('\tint count = 0;')
 		g.sb.writeln('\tfor (int i = 0; i < d->len; i += 1) {')
 		g.sb.writeln('\t\tif (DenseArray__has_index(d, i)) {')
@@ -2969,18 +3350,24 @@ fn (mut g Gen) emit_missing_runtime_fallbacks() {
 		g.sb.writeln('\t\t\tcount += 1;')
 		g.sb.writeln('\t\t}')
 		g.sb.writeln('\t}')
-		g.sb.writeln('\tfree(tmp_value);')
-		g.sb.writeln('\tfree(tmp_key);')
+		g.sb.writeln('\t${g.c_heap_free_call('tmp_value')};')
+		g.sb.writeln('\t${g.c_heap_free_call('tmp_key')};')
 		g.sb.writeln('\td->deletes = 0;')
-		g.sb.writeln('\tfree(d->all_deleted);')
+		g.sb.writeln('\t${g.c_heap_free_call('d->all_deleted')};')
 		g.sb.writeln('\td->len = count;')
 		g.sb.writeln('\tint old_cap = d->cap;')
 		g.sb.writeln('\td->cap = count < 8 ? 8 : count;')
-		g.sb.writeln('\td->values = realloc_data(d->values, d->value_bytes * old_cap, d->value_bytes * d->cap);')
-		g.sb.writeln('\td->keys = realloc_data(d->keys, d->key_bytes * old_cap, d->key_bytes * d->cap);')
+		if g.has_freestanding_hook_capability('alloc') || g.is_freestanding_target() {
+			g.sb.writeln('\td->values = ${g.c_heap_realloc_call('d->values',
+				'd->value_bytes * d->cap')};')
+			g.sb.writeln('\td->keys = ${g.c_heap_realloc_call('d->keys', 'd->key_bytes * d->cap')};')
+		} else {
+			g.sb.writeln('\td->values = realloc_data(d->values, d->value_bytes * old_cap, d->value_bytes * d->cap);')
+			g.sb.writeln('\td->keys = realloc_data(d->keys, d->key_bytes * old_cap, d->key_bytes * d->cap);')
+		}
 		g.sb.writeln('}')
 	}
-	if 'fn___sort_cmp_int_asc' !in g.emitted_types {
+	if need_sort_cmp_int_fallback {
 		g.emitted_types['fn___sort_cmp_int_asc'] = true
 		g.sb.writeln('')
 		g.sb.writeln('__attribute__((weak)) int __sort_cmp_int_asc(int* a, int* b) {')
@@ -2989,7 +3376,7 @@ fn (mut g Gen) emit_missing_runtime_fallbacks() {
 		g.sb.writeln('\treturn 0;')
 		g.sb.writeln('}')
 	}
-	if 'fn___sort_cmp_RepIndex_by_idx_asc' !in g.emitted_types {
+	if need_sort_cmp_repindex_fallback {
 		g.emitted_types['fn___sort_cmp_RepIndex_by_idx_asc'] = true
 		g.sb.writeln('')
 		g.sb.writeln('__attribute__((weak)) int __sort_cmp_RepIndex_by_idx_asc(RepIndex* a, RepIndex* b) {')
@@ -2998,7 +3385,7 @@ fn (mut g Gen) emit_missing_runtime_fallbacks() {
 		g.sb.writeln('\treturn 0;')
 		g.sb.writeln('}')
 	}
-	if 'fn_bits__leading_zeros_64' !in g.emitted_types {
+	if need_bits_leading_zeros_64_fallback {
 		g.emitted_types['fn_bits__leading_zeros_64'] = true
 		g.sb.writeln('')
 		g.sb.writeln('__attribute__((weak)) int bits__leading_zeros_64(u64 x) {')
@@ -3008,7 +3395,7 @@ fn (mut g Gen) emit_missing_runtime_fallbacks() {
 		g.sb.writeln('\treturn __builtin_clzll(x);')
 		g.sb.writeln('}')
 	}
-	if 'fn_bits__trailing_zeros_32' !in g.emitted_types {
+	if need_bits_trailing_zeros_32_fallback {
 		g.emitted_types['fn_bits__trailing_zeros_32'] = true
 		g.sb.writeln('')
 		g.sb.writeln('__attribute__((weak)) int bits__trailing_zeros_32(u32 x) {')
@@ -3018,7 +3405,7 @@ fn (mut g Gen) emit_missing_runtime_fallbacks() {
 		g.sb.writeln('\treturn __builtin_ctz(x);')
 		g.sb.writeln('}')
 	}
-	if 'fn_bits__trailing_zeros_64' !in g.emitted_types {
+	if need_bits_trailing_zeros_64_fallback {
 		g.emitted_types['fn_bits__trailing_zeros_64'] = true
 		g.sb.writeln('')
 		g.sb.writeln('__attribute__((weak)) int bits__trailing_zeros_64(u64 x) {')
@@ -3028,7 +3415,7 @@ fn (mut g Gen) emit_missing_runtime_fallbacks() {
 		g.sb.writeln('\treturn __builtin_ctzll(x);')
 		g.sb.writeln('}')
 	}
-	if 'fn_bits__rotate_left_32' !in g.emitted_types {
+	if need_bits_rotate_left_32_fallback {
 		g.emitted_types['fn_bits__rotate_left_32'] = true
 		g.sb.writeln('')
 		g.sb.writeln('__attribute__((weak)) u32 bits__rotate_left_32(u32 x, int k) {')
@@ -3036,7 +3423,7 @@ fn (mut g Gen) emit_missing_runtime_fallbacks() {
 		g.sb.writeln('\treturn (x << s) | (x >> ((32 - s) & 31));')
 		g.sb.writeln('}')
 	}
-	if 'fn_eprint' !in g.emitted_types {
+	if need_eprint_fallback {
 		g.emitted_types['fn_eprint'] = true
 		g.sb.writeln('')
 		g.sb.writeln('__attribute__((weak)) void eprint(string s) {')
@@ -3046,61 +3433,112 @@ fn (mut g Gen) emit_missing_runtime_fallbacks() {
 		g.sb.writeln('\tflush_stderr();')
 		g.sb.writeln('}')
 	}
-	if 'fn_flush_stdout' !in g.emitted_types {
+	if need_flush_stdout_fallback {
 		g.emitted_types['fn_flush_stdout'] = true
 		g.sb.writeln('')
 		g.sb.writeln('__attribute__((weak)) void flush_stdout() {')
-		g.sb.writeln('\tfflush(stdout);')
+		if g.is_freestanding_target() && !g.has_freestanding_hook_capability('output') {
+			g.sb.writeln('\t_Static_assert(0, "${freestanding_missing_output_hook_message}");')
+		} else if !g.has_freestanding_hook_capability('output') {
+			g.sb.writeln('\tfflush(stdout);')
+		}
 		g.sb.writeln('}')
 	}
-	if 'fn_flush_stderr' !in g.emitted_types {
+	if need_flush_stderr_fallback {
 		g.emitted_types['fn_flush_stderr'] = true
 		g.sb.writeln('')
 		g.sb.writeln('__attribute__((weak)) void flush_stderr() {')
-		g.sb.writeln('\tfflush(stderr);')
+		if g.is_freestanding_target() && !g.has_freestanding_hook_capability('output') {
+			g.sb.writeln('\t_Static_assert(0, "${freestanding_missing_output_hook_message}");')
+		} else if !g.has_freestanding_hook_capability('output') {
+			g.sb.writeln('\tfflush(stderr);')
+		}
 		g.sb.writeln('}')
 	}
-	if 'fn_malloc_noscan' !in g.emitted_types {
+	if need_malloc_noscan_fallback {
 		g.emitted_types['fn_malloc_noscan'] = true
+		malloc_noscan_alloc := g.c_heap_malloc_call('n')
 		g.sb.writeln('')
 		g.sb.writeln('__attribute__((weak)) u8* malloc_noscan(isize n) {')
-		g.sb.writeln('\treturn malloc(n);')
+		g.sb.writeln('\treturn (u8*)${malloc_noscan_alloc};')
 		g.sb.writeln('}')
 	}
-	if 'fn_memdup' !in g.emitted_types {
+	if need_memdup_fallback {
 		g.emitted_types['fn_memdup'] = true
 		g.sb.writeln('')
 		g.sb.writeln('__attribute__((weak)) void* memdup(void* src, isize sz) {')
 		g.sb.writeln('\tif (sz <= 0) {')
 		g.sb.writeln('\t\treturn NULL;')
 		g.sb.writeln('\t}')
-		g.sb.writeln('\tvoid* res = malloc_noscan(sz);')
+		if g.has_freestanding_hook_capability('alloc') || g.is_freestanding_target() {
+			memdup_alloc := g.c_heap_malloc_call('sz')
+			g.sb.writeln('\tvoid* res = ${memdup_alloc};')
+		} else {
+			g.sb.writeln('\tvoid* res = malloc_noscan(sz);')
+		}
 		g.sb.writeln('\tmemcpy(res, src, sz);')
 		g.sb.writeln('\treturn res;')
 		g.sb.writeln('}')
 	}
-	if 'fn_f64_abs' !in g.emitted_types {
+	if need_v_panic_fallback && g.has_freestanding_hook_capability('panic') {
+		g.emitted_types['fn_v_panic'] = true
+		g.sb.writeln('')
+		g.sb.writeln('__attribute__((weak)) void v_panic(string s) {')
+		g.sb.writeln('\tv_platform_panic(s.str, s.len);')
+		g.sb.writeln('\tfor (;;) {}')
+		g.sb.writeln('}')
+	} else if need_v_panic_fallback && g.is_freestanding_target() {
+		g.emitted_types['fn_v_panic'] = true
+		g.sb.writeln('')
+		g.sb.writeln('__attribute__((weak)) void v_panic(string s) {')
+		g.sb.writeln('\t_Static_assert(0, "${freestanding_missing_panic_hook_message}");')
+		g.sb.writeln('\tfor (;;) {}')
+		g.sb.writeln('}')
+	}
+	if need_f64_abs_fallback {
 		g.emitted_types['fn_f64_abs'] = true
 		g.sb.writeln('')
 		g.sb.writeln('__attribute__((weak)) f64 f64_abs(f64 a) {')
 		g.sb.writeln('\treturn a < 0 ? -a : a;')
 		g.sb.writeln('}')
 	}
-	if 'fn_f64__strg' !in g.emitted_types {
+	if need_f64_str_fallback {
+		g.emitted_types['fn_f64__str'] = true
+		g.sb.writeln('')
+		g.sb.writeln('__attribute__((weak)) string f64__str(f64 x) {')
+		if g.is_freestanding_target() {
+			g.sb.writeln('\treturn ${g.c_freestanding_missing_format_string_expr()};')
+		} else {
+			g.sb.writeln('\tchar buf[64];')
+			g.sb.writeln('\tint len = snprintf(buf, sizeof(buf), "%.15g", x);')
+			g.sb.writeln('\tif (len < 0) {')
+			g.sb.writeln('\t\treturn (string){.str = (u8*)"", .len = 0, .is_lit = 1};')
+			g.sb.writeln('\t}')
+			g.sb.writeln('\tif (len >= (int)sizeof(buf)) {')
+			g.sb.writeln('\t\tlen = (int)sizeof(buf) - 1;')
+			g.sb.writeln('\t}')
+			g.sb.writeln('\tu8* out = (u8*)malloc_noscan(len + 1);')
+			g.sb.writeln('\tmemcpy(out, buf, len);')
+			g.sb.writeln('\tout[len] = 0;')
+			g.sb.writeln('\treturn (string){.str = out, .len = len, .is_lit = 0};')
+		}
+		g.sb.writeln('}')
+	}
+	if need_f64_strg_fallback {
 		g.emitted_types['fn_f64__strg'] = true
 		g.sb.writeln('')
 		g.sb.writeln('__attribute__((weak)) string f64__strg(f64 x) {')
 		g.sb.writeln('\treturn f64__str(x);')
 		g.sb.writeln('}')
 	}
-	if 'fn_f32__str' !in g.emitted_types {
+	if need_f32_str_fallback {
 		g.emitted_types['fn_f32__str'] = true
 		g.sb.writeln('')
 		g.sb.writeln('__attribute__((weak)) string f32__str(f32 x) {')
 		g.sb.writeln('\treturn f64__str((f64)x);')
 		g.sb.writeln('}')
 	}
-	if 'fn_f32__strg' !in g.emitted_types {
+	if need_f32_strg_fallback {
 		g.emitted_types['fn_f32__strg'] = true
 		g.sb.writeln('')
 		g.sb.writeln('__attribute__((weak)) string f32__strg(f32 x) {')
@@ -3735,7 +4173,7 @@ fn (mut g Gen) gen_spawn_expr(node ast.KeywordOperator) {
 			param_idx++
 		}
 		def.writeln(');')
-		def.writeln('\tfree(arg);')
+		def.writeln('\t${g.c_heap_free_call('arg')};')
 		def.writeln('\treturn 0;')
 		def.writeln('}')
 		g.spawn_wrapper_defs << def.str()
@@ -3744,9 +4182,10 @@ fn (mut g Gen) gen_spawn_expr(node ast.KeywordOperator) {
 	tmp := g.tmp_counter
 	g.tmp_counter++
 	arg_tmp := '_spawn_arg_${tmp}'
+	spawn_arg_alloc := g.c_heap_malloc_call('sizeof(${wrapper_struct_name})')
 	g.sb.writeln('({')
 	g.write_indent()
-	g.sb.writeln('\t${wrapper_struct_name} *${arg_tmp} = (${wrapper_struct_name}*)malloc(sizeof(${wrapper_struct_name}));')
+	g.sb.writeln('\t${wrapper_struct_name} *${arg_tmp} = (${wrapper_struct_name}*)${spawn_arg_alloc};')
 	if is_method {
 		g.write_indent()
 		g.sb.write_string('\t${arg_tmp}->arg0 = ')

@@ -84,6 +84,30 @@ fn (b &Builder) exec_build_c_file(output_name string) string {
 	return staged_c_file
 }
 
+fn (b &Builder) can_compile_cleanc_locally() bool {
+	if b.pref == unsafe { nil } {
+		return true
+	}
+	return b.pref.can_compile_cleanc_locally()
+}
+
+fn (b &Builder) cflags_target_os_for_local_compile() string {
+	if b.pref == unsafe { nil } {
+		return normalize_target_os_name(os.user_os())
+	}
+	if b.pref.is_cross_target() && b.can_compile_cleanc_locally() {
+		return b.pref.source_filter_target_os()
+	}
+	return b.pref.target_os_or_host()
+}
+
+fn cleanc_c_output_name(output_name string) string {
+	if output_name.ends_with('.c') {
+		return output_name
+	}
+	return output_name + '.c'
+}
+
 fn (mut b Builder) compile_cleanc_executable(output_name string, cc string, cc_flags string, cc_link_flags string, error_limit_flag string, mut sw time.StopWatch) {
 	cc_start := sw.elapsed()
 	if b.pref.is_shared_lib {
@@ -191,6 +215,10 @@ pub fn (mut b Builder) build(files []string) {
 		b.parsed_vh_files)
 	if b.pref.stats {
 		b.print_flat_ast_summary()
+	}
+
+	if b.pref.backend == .cleanc && !b.validate_freestanding_cleanc_contract() {
+		exit(1)
 	}
 
 	if b.pref.skip_type_check {
@@ -360,6 +388,25 @@ fn (mut b Builder) gen_cleanc() {
 		'out'
 	}
 
+	generation_only := output_name.ends_with('.c') || !b.can_compile_cleanc_locally()
+	if generation_only {
+		c_output_name := cleanc_c_output_name(output_name)
+		c_source := b.gen_cleanc_source([]string{})
+		print_time('C Gen', sw.elapsed())
+		if c_source == '' {
+			eprintln('error: cleanc backend is not fully functional (compiled with stubbed functions)')
+			eprintln('hint: use v2 compiled with v1 for proper C code generation')
+			return
+		}
+		os.write_file(c_output_name, c_source) or { panic(err) }
+		if output_name.ends_with('.c') {
+			println('[*] Wrote ${c_output_name}')
+		} else {
+			println('[*] Wrote ${c_output_name} (local C compilation disabled for this target)')
+		}
+		return
+	}
+
 	mut cc := if b.pref.ccompiler.len > 0 {
 		b.pref.ccompiler
 	} else {
@@ -440,33 +487,6 @@ fn (mut b Builder) gen_cleanc() {
 	mut error_limit_flag := ''
 	if is_clang {
 		error_limit_flag = ' -ferror-limit=0'
-	}
-
-	// If output ends with .c, just write the C file
-	if output_name.ends_with('.c') {
-		mut c_source := ''
-		// For .c output, prefer the same cached-core split used by normal
-		// build+link flow, when the cache is valid.
-		if use_cache && !b.pref.skip_builtin && b.has_module('builtin') && b.has_module('strconv')
-			&& b.can_use_cached_core_headers() {
-			main_modules := b.collect_modules_excluding(core_cached_module_names)
-			if main_modules.len > 0 {
-				b.ensure_core_module_headers()
-				c_source = b.gen_cleanc_source(main_modules)
-			}
-		}
-		if c_source == '' {
-			c_source = b.gen_cleanc_source([]string{})
-		}
-		print_time('C Gen', sw.elapsed())
-		if c_source == '' {
-			eprintln('error: cleanc backend is not fully functional (compiled with stubbed functions)')
-			eprintln('hint: use v2 compiled with v1 for proper C code generation')
-			return
-		}
-		os.write_file(output_name, c_source) or { panic(err) }
-		println('[*] Wrote ${output_name}')
-		return
 	}
 
 	// Fast path: cache one core object (builtin+strconv), compile/link only the rest.
@@ -562,6 +582,28 @@ fn (mut b Builder) gen_ssa_c() {
 	// optimize.optimize(mut mod)
 	// print_time('SSA Optimize', time.Duration(sw.elapsed() - stage_start))
 
+	output_name := if b.pref.output_file != '' {
+		b.pref.output_file
+	} else if b.user_files.len > 0 {
+		b.default_output_name()
+	} else {
+		'out'
+	}
+
+	if output_name.ends_with('.c') {
+		stage_start = sw.elapsed()
+		mut gen := c.new_gen(mod)
+		c_source := gen.gen()
+		print_time('C Gen', time.Duration(sw.elapsed() - stage_start))
+		if c_source == '' {
+			eprintln('error: ssa c backend failed to generate C source')
+			return
+		}
+		os.write_file(output_name, c_source) or { panic(err) }
+		println('[*] Wrote ${output_name}')
+		return
+	}
+
 	cc := if b.pref.ccompiler.len > 0 { b.pref.ccompiler } else { configured_cc(b.pref.vroot) }
 	directive_flags := b.collect_cflags_from_sources()
 	mut cc_flag_parts := []string{}
@@ -604,7 +646,6 @@ fn (mut b Builder) gen_ssa_c() {
 				error_limit_flag, false) or { '' }
 		}
 	}
-
 	stage_start = sw.elapsed()
 	mut gen := c.new_gen(mod)
 	gen.link_builtin = builtin_obj.len > 0
@@ -612,20 +653,6 @@ fn (mut b Builder) gen_ssa_c() {
 	print_time('C Gen', time.Duration(sw.elapsed() - stage_start))
 	if c_source == '' {
 		eprintln('error: ssa c backend failed to generate C source')
-		return
-	}
-
-	output_name := if b.pref.output_file != '' {
-		b.pref.output_file
-	} else if b.user_files.len > 0 {
-		b.default_output_name()
-	} else {
-		'out'
-	}
-
-	if output_name.ends_with('.c') {
-		os.write_file(output_name, c_source) or { panic(err) }
-		println('[*] Wrote ${output_name}')
 		return
 	}
 
@@ -1502,8 +1529,28 @@ fn flag_os_matches(cond string, target_os string) bool {
 		'netbsd' { current == 'netbsd' }
 		'dragonfly' { current == 'dragonfly' }
 		'android' { current == 'android' }
+		'termux' { current == 'termux' }
+		'ios' { current == 'ios' }
+		'solaris' { current == 'solaris' }
+		'qnx' { current == 'qnx' }
+		'serenity' { current == 'serenity' }
+		'plan9' { current == 'plan9' }
+		'vinix' { current == 'vinix' }
+		'cross' { current == 'cross' }
+		'none' { current == 'none' }
 		else { false }
 	}
+}
+
+fn flag_pref_matches(cond string, prefs &pref.Preferences) bool {
+	if prefs == unsafe { nil } {
+		return false
+	}
+	lower := cond.to_lower()
+	if pref.comptime_flag_value(prefs, lower) {
+		return true
+	}
+	return flag_os_matches(lower, prefs.target_os_or_host())
 }
 
 fn find_vmod_root_for_file(file_path string) string {
@@ -1620,6 +1667,17 @@ fn normalize_flag_value_for_file(flag_value string, file_path string) string {
 }
 
 fn parse_flag_directive_line(line string, file_path string, target_os string) ?string {
+	return parse_flag_directive_line_with_context(line, file_path, target_os, unsafe {
+		&pref.Preferences(nil)
+	})
+}
+
+fn parse_flag_directive_line_with_pref(line string, file_path string, prefs &pref.Preferences) ?string {
+	target_os := if prefs == unsafe { nil } { '' } else { prefs.target_os_or_host() }
+	return parse_flag_directive_line_with_context(line, file_path, target_os, prefs)
+}
+
+fn parse_flag_directive_line_with_context(line string, file_path string, target_os string, prefs &pref.Preferences) ?string {
 	trimmed := line.trim_space()
 	if !trimmed.starts_with('#flag') {
 		return none
@@ -1639,7 +1697,12 @@ fn parse_flag_directive_line(line string, file_path string, target_os string) ?s
 		return none
 	}
 	if !parts[0].starts_with('-') && !parts[0].starts_with('@') && parts.len > 1 {
-		if !flag_os_matches(parts[0], target_os) {
+		matches := if prefs == unsafe { nil } {
+			flag_os_matches(parts[0], target_os)
+		} else {
+			flag_os_matches(parts[0], target_os) || flag_pref_matches(parts[0], prefs)
+		}
+		if !matches {
 			return none
 		}
 		rest = rest[parts[0].len..].trim_space()
@@ -1694,8 +1757,9 @@ fn (b &Builder) collect_cflags_from_sources() string {
 			scan_paths << file.name
 		}
 	}
+	cflags_target_os := b.cflags_target_os_for_local_compile()
 	if !b.pref.skip_builtin {
-		target_os := b.pref.target_os_or_host()
+		target_os := cflags_target_os
 		for module_path in core_cached_module_paths {
 			vlib_path := b.pref.get_vlib_module_path(module_path)
 			module_files := get_v_files_from_dir(vlib_path, b.pref.user_defines, target_os)
@@ -1707,7 +1771,6 @@ fn (b &Builder) collect_cflags_from_sources() string {
 		}
 	}
 	scan_paths.sort()
-	target_os := b.pref.target_os_or_host()
 	for scan_path in scan_paths {
 		if scan_path == '' || scan_path in scanned_files {
 			continue
@@ -1729,7 +1792,7 @@ fn (b &Builder) collect_cflags_from_sources() string {
 			leading_close := rest != trimmed
 			// $else $if cond { (a chain continuation)
 			if rest.starts_with(r'$else $if ') {
-				new_cond := rest[10..].trim_right('?{ ').trim_space()
+				new_cond := rest[10..].trim_right('{ ').trim_space()
 				if skip_depth > 1 {
 					// nested skipping; just continue without touching outer state
 					continue
@@ -1740,7 +1803,7 @@ fn (b &Builder) collect_cflags_from_sources() string {
 				}
 				if chain_matched[cur] {
 					skip_depth = 1
-				} else if comptime_cond_matches(new_cond, target_os) {
+				} else if comptime_cond_matches_with_context(new_cond, cflags_target_os, b.pref) {
 					chain_matched[cur] = true
 					skip_depth = 0
 				} else {
@@ -1767,8 +1830,8 @@ fn (b &Builder) collect_cflags_from_sources() string {
 			}
 			// $if cond { (chain opener)
 			if rest.starts_with(r'$if ') {
-				cond := rest[4..].trim_right('?{ ').trim_space()
-				matched := comptime_cond_matches(cond, target_os)
+				cond := rest[4..].trim_right('{ ').trim_space()
+				matched := comptime_cond_matches_with_context(cond, cflags_target_os, b.pref)
 				chain_matched << matched
 				if skip_depth > 0 {
 					skip_depth++
@@ -1804,9 +1867,8 @@ fn (b &Builder) collect_cflags_from_sources() string {
 			// Replace @VEXEROOT before parsing so path normalization sees absolute paths
 			resolved_line := line.replace('@VEXEROOT', b.pref.vroot).replace('VEXEROOT',
 				b.pref.vroot)
-			mut flag := parse_flag_directive_line(resolved_line, scan_path, target_os) or {
-				continue
-			}
+			mut flag := parse_flag_directive_line_with_context(resolved_line, scan_path,
+				cflags_target_os, b.pref) or { continue }
 			// Build include flags from already-collected flags for compiling missing .o files
 			mut inc_flags := []string{}
 			for f in flags {
@@ -1872,23 +1934,45 @@ fn split_compile_and_link_flags(flags string) (string, string) {
 }
 
 fn comptime_cond_matches(cond string, target_os string) bool {
-	// Handle negation: $if !platform
-	if cond.starts_with('!') {
-		return !comptime_cond_matches(cond[1..], target_os)
+	return comptime_cond_matches_with_context(cond, target_os, unsafe { &pref.Preferences(nil) })
+}
+
+fn comptime_cond_matches_with_pref(cond string, prefs &pref.Preferences) bool {
+	target_os := if prefs == unsafe { nil } { '' } else { prefs.target_os_or_host() }
+	return comptime_cond_matches_with_context(cond, target_os, prefs)
+}
+
+fn comptime_cond_matches_with_context(cond string, target_os string, prefs &pref.Preferences) bool {
+	trimmed := cond.trim_space()
+	if or_idx := top_level_bool_op_index(trimmed, '||') {
+		left := trimmed[..or_idx].trim_space()
+		right := trimmed[or_idx + 2..].trim_space()
+		return comptime_cond_matches_with_context(left, target_os, prefs)
+			|| comptime_cond_matches_with_context(right, target_os, prefs)
 	}
-	// Handle && conjunction
-	if and_idx := cond.index('&&') {
-		left := cond[..and_idx].trim_space()
-		right := cond[and_idx + 2..].trim_space()
-		return comptime_cond_matches(left, target_os) && comptime_cond_matches(right, target_os)
+	if and_idx := top_level_bool_op_index(trimmed, '&&') {
+		left := trimmed[..and_idx].trim_space()
+		right := trimmed[and_idx + 2..].trim_space()
+		return comptime_cond_matches_with_context(left, target_os, prefs)
+			&& comptime_cond_matches_with_context(right, target_os, prefs)
 	}
-	if or_idx := cond.index('||') {
-		left := cond[..or_idx].trim_space()
-		right := cond[or_idx + 2..].trim_space()
-		return comptime_cond_matches(left, target_os) || comptime_cond_matches(right, target_os)
+	if trimmed.starts_with('!') {
+		return !comptime_cond_matches_with_context(trimmed[1..], target_os, prefs)
+	}
+	if stripped := strip_outer_bool_parens(trimmed) {
+		return comptime_cond_matches_with_context(stripped, target_os, prefs)
+	}
+	if optional_name := optional_user_ct_flag_name(trimmed) {
+		if prefs == unsafe { nil } {
+			return false
+		}
+		return pref.comptime_optional_flag_value(prefs, optional_name)
+	}
+	if prefs != unsafe { nil } {
+		return flag_os_matches(trimmed, target_os) || flag_pref_matches(trimmed, prefs)
 	}
 	current := normalize_target_os_name(target_os)
-	return match cond.to_lower() {
+	return match trimmed.to_lower() {
 		'macos', 'darwin', 'mac' { current == 'macos' || current == 'darwin' }
 		'linux' { current == 'linux' }
 		'windows' { current == 'windows' }
@@ -1898,11 +1982,70 @@ fn comptime_cond_matches(cond string, target_os string) bool {
 		'netbsd' { current == 'netbsd' }
 		'dragonfly' { current == 'dragonfly' }
 		'android' { current == 'android' }
+		'termux' { current == 'termux' }
+		'ios' { current == 'ios' }
+		'solaris' { current == 'solaris' }
+		'qnx' { current == 'qnx' }
+		'serenity' { current == 'serenity' }
+		'plan9' { current == 'plan9' }
+		'vinix' { current == 'vinix' }
+		'cross' { current == 'cross' }
 		'native' { false }
 		'emscripten' { false }
-		'ios' { false }
 		else { false } // unknown user-defined flags default to false
 	}
+}
+
+fn optional_user_ct_flag_name(cond string) ?string {
+	trimmed := cond.trim_space()
+	if !trimmed.ends_with('?') {
+		return none
+	}
+	name := trimmed[..trimmed.len - 1].trim_space()
+	if name == '' {
+		return none
+	}
+	return name
+}
+
+fn top_level_bool_op_index(expr string, op string) ?int {
+	mut depth := 0
+	mut i := 0
+	for i < expr.len {
+		ch := expr[i]
+		if ch == `(` {
+			depth++
+		} else if ch == `)` {
+			if depth > 0 {
+				depth--
+			}
+		} else if depth == 0 && i + op.len <= expr.len && expr[i..i + op.len] == op {
+			return i
+		}
+		i++
+	}
+	return none
+}
+
+fn strip_outer_bool_parens(expr string) ?string {
+	if expr.len < 2 || expr[0] != `(` || expr[expr.len - 1] != `)` {
+		return none
+	}
+	mut depth := 0
+	for i, ch in expr {
+		if ch == `(` {
+			depth++
+		} else if ch == `)` {
+			depth--
+			if depth == 0 && i < expr.len - 1 {
+				return none
+			}
+		}
+	}
+	if depth == 0 {
+		return expr[1..expr.len - 1].trim_space()
+	}
+	return none
 }
 
 fn default_cc(vroot string) string {

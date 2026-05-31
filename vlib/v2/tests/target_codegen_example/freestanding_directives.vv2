@@ -1,0 +1,8 @@
+module main
+
+#include linux <target_marker_linux.h>
+#include windows <target_marker_windows.h>
+#include freestanding <target_marker_freestanding.h>
+#flag freestanding -DPLATFORM_MARKER_FREESTANDING
+
+fn main() {}
