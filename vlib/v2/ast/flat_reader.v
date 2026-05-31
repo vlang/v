@@ -868,9 +868,9 @@ fn (r &FlatReader) read_expr(id FlatNodeId) Expr {
 			})
 		}
 		.expr_lock {
-			packed := n.extra
-			lock_len := packed & 0xFFFF
-			rlock_len := (packed >> 16) & 0xFFFF
+			packed := u32(n.extra)
+			lock_len := int(packed & 0xFFFF)
+			rlock_len := int((packed >> 16) & 0xFFFF)
 			mut lock_exprs := []Expr{cap: lock_len}
 			for i in 0 .. lock_len {
 				lock_exprs << r.read_expr(r.edge(n, i))

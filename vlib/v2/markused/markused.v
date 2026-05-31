@@ -209,7 +209,7 @@ fn (mut w Walker) walk_collected_from_flat(flat &ast.FlatAst) map[string]bool {
 	if w.fns.len == 0 {
 		return map[string]bool{}
 	}
-	if !w.seed_roots() {
+	if !w.seed_roots_from_flat(flat) {
 		mut all := map[string]bool{}
 		for info in w.fns {
 			all[info.key] = true
@@ -1056,6 +1056,46 @@ fn (mut w Walker) seed_roots() bool {
 fn (mut w Walker) seed_minimal_runtime_roots() {
 }
 
+fn (mut w Walker) seed_roots_from_flat(flat &ast.FlatAst) bool {
+	mut has_root := false
+	for i, info in w.fns {
+		if is_main_root(info) {
+			w.mark_fn(i)
+			has_root = true
+		}
+	}
+	if has_root {
+		if !w.opts.minimal_runtime_roots {
+			w.seed_generic_specialization_roots()
+			w.seed_codegen_required_roots()
+			// Also seed module init() functions (called from synthesized main)
+			for i, info in w.fns {
+				if is_module_init(info) {
+					w.mark_fn(i)
+				}
+			}
+			w.seed_top_level_initializer_roots_from_flat(flat)
+			w.seed_drop_method_roots()
+		}
+		return true
+	}
+	for i, info in w.fns {
+		if is_test_root(info) || is_module_init(info) {
+			w.mark_fn(i)
+			has_root = true
+		}
+	}
+	if has_root {
+		if !w.opts.minimal_runtime_roots {
+			w.seed_generic_specialization_roots()
+			w.seed_codegen_required_roots()
+			w.seed_top_level_initializer_roots_from_flat(flat)
+			w.seed_drop_method_roots()
+		}
+	}
+	return has_root
+}
+
 fn (mut w Walker) seed_codegen_required_roots() {
 	for i, info in w.fns {
 		if w.is_codegen_required_root(info) {
@@ -1266,6 +1306,23 @@ fn (mut w Walker) seed_top_level_initializer_roots() {
 			match stmt {
 				ast.ConstDecl, ast.GlobalDecl {
 					w.walk_stmt(stmt, mod_name)
+				}
+				else {}
+			}
+		}
+	}
+}
+
+fn (mut w Walker) seed_top_level_initializer_roots_from_flat(flat &ast.FlatAst) {
+	for i in 0 .. flat.files.len {
+		fc := flat.file_cursor(i)
+		mod_name := normalize_module_name(fc.mod())
+		stmts := fc.stmts()
+		for j in 0 .. stmts.len() {
+			stmt_c := stmts.at(j)
+			match stmt_c.kind() {
+				.stmt_const_decl, .stmt_global_decl {
+					w.walk_stmt_cursor(stmt_c, mod_name)
 				}
 				else {}
 			}
