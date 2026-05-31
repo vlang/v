@@ -97,6 +97,88 @@ fn test_const_shadowing_declared_fn_uses_renamed_storage() {
 	assert !extern_src.contains('static const int test_strings = 1;')
 }
 
+fn test_scalar_const_references_later_const_are_inlined() {
+	csrc := cleanc_csrc_for_test_source('scalar_const_later_dependency', 'module main
+
+const first = second
+const second = 2 * third
+const third = 5
+
+fn main() {
+	_ := first
+}
+')
+	assert !csrc.contains('static const int first = second;')
+	assert csrc.contains('static const int first = (2 * 5);')
+}
+
+fn test_scalar_const_resolution_preserves_numeric_casts() {
+	csrc := cleanc_csrc_for_test_source('scalar_const_cast_dependency', 'module main
+
+const shift = 64 - 11 - 1
+const frac_mask = u64((u64(1) << u64(shift)) - u64(1))
+
+fn main() {
+	_ := frac_mask
+}
+')
+	assert csrc.contains('frac_mask = ((u64)')
+	assert csrc.contains('((u64)(1)) << ((u64)')
+	assert csrc.contains('64 - 11')
+	assert csrc.contains('- ((u64)(1))')
+	assert !csrc.contains('#define frac_mask (((1 << ((64 - 11) - 1))) - 1)')
+}
+
+fn test_vec_module_generic_vec4_keeps_struct_initializers() {
+	csrc := cleanc_csrc_for_test_source('vec_module_generic_vec4', 'module vec
+
+pub struct Vec4[T] {
+pub mut:
+	x T
+	y T
+	z T
+	w T
+}
+
+pub fn vec4[T](x T, y T, z T, w T) Vec4[T] {
+	return Vec4[T]{
+		x: x
+		y: y
+		z: z
+		w: w
+	}
+}
+
+pub fn use_vec4() Vec4[f32] {
+	return vec4[f32](1.0, 2.0, 3.0, 4.0)
+}
+')
+	assert !csrc.contains('return ((vec__SimdFloat4){')
+	assert csrc.contains('return ((vec__Vec4){')
+}
+
+fn test_vec_generic_type_expr_prefers_local_simd_alias_for_imported_vec() {
+	mut g := Gen.new([])
+	g.cur_module = 'viper'
+	g.declared_type_names_by_mod[type_decl_module_key('viper', 'viper__SimdFloat4')] = true
+	c_type := g.expr_type_to_c(ast.Expr(ast.Type(ast.GenericType{
+		name:   ast.Expr(ast.SelectorExpr{
+			lhs: ast.Expr(ast.Ident{
+				name: 'vec'
+			})
+			rhs: ast.Ident{
+				name: 'Vec4'
+			}
+		})
+		params: [
+			ast.Expr(ast.Ident{
+				name: 'f32'
+			}),
+		]
+	})))
+	assert c_type == 'viper__SimdFloat4'
+}
+
 fn test_local_variable_uses_escaped_c_keyword_name() {
 	mut g := Gen.new([])
 	g.gen_assign_stmt(ast.AssignStmt{
@@ -1017,6 +1099,32 @@ fn test_stdatomic_compat_directive_is_guarded_during_emit() {
 	assert csrc.contains('#define extern static')
 	assert csrc.contains('#include "/tmp/vroot/thirdparty/stdatomic/nix/atomic.h"')
 	assert csrc.contains('#undef extern')
+}
+
+fn test_implementation_define_is_only_emitted_for_current_file() {
+	mut imported := Gen.new([])
+	mut imported_seen := map[string]bool{}
+	imported.emit_directive(ast.Directive{
+		name:  'define'
+		value: 'STB_IMAGE_IMPLEMENTATION'
+	}, '/tmp/imported.v', false, mut imported_seen)
+	assert imported.sb.str() == ''
+
+	mut ordinary := Gen.new([])
+	mut ordinary_seen := map[string]bool{}
+	ordinary.emit_directive(ast.Directive{
+		name:  'define'
+		value: 'APP_MAX_LIGHTS 32'
+	}, '/tmp/imported.v', false, mut ordinary_seen)
+	assert ordinary.sb.str() == '#define APP_MAX_LIGHTS 32\n'
+
+	mut current := Gen.new([])
+	mut current_seen := map[string]bool{}
+	current.emit_directive(ast.Directive{
+		name:  'define'
+		value: 'STB_IMAGE_IMPLEMENTATION'
+	}, '/tmp/current.v', true, mut current_seen)
+	assert current.sb.str() == '#define STB_IMAGE_IMPLEMENTATION\n'
 }
 
 fn test_sum_type_call_arg_wraps_pointer_variant_arg() {
@@ -3082,6 +3190,35 @@ fn test_struct_decl_emits_late_dynamic_array_alias() {
 	assert out.contains('\tArray_Foo items;')
 }
 
+fn test_struct_dependency_order_uses_fixed_array_element_type() {
+	csrc := cleanc_csrc_for_test_source('fixed_array_struct_order', 'module main
+
+struct Holder {
+	matrix Matrix
+}
+
+struct Cell {
+	x f32
+}
+
+struct Matrix {
+	cols [4]Cell
+}
+
+fn main() {}
+')
+	matrix_pos := csrc.index('struct Matrix {') or {
+		assert false, csrc
+		return
+	}
+	holder_pos := csrc.index('struct Holder {') or {
+		assert false, csrc
+		return
+	}
+	assert matrix_pos < holder_pos
+	assert csrc.contains('\tCell cols[4];')
+}
+
 fn test_selector_method_receiver_uses_sum_common_field_type() {
 	mut env := types.Environment.new()
 	env.set_expr_type(93, types.Type(types.FnType{}))
@@ -3390,7 +3527,9 @@ fn test_weak_generic_filter_uses_root_called_names() {
 	needed_names[http_name] = true
 	g.called_fn_names[http_name] = true
 	mut root_called_names := map[string]bool{}
-	specs := g.weak_generic_fn_specializations_for_names(&decl, needed_names, root_called_names)
+	mut required_names := map[string]bool{}
+	specs := g.weak_generic_fn_specializations_for_names(&decl, needed_names, root_called_names,
+		required_names)
 	mut names := map[string]bool{}
 	for spec in specs {
 		names[spec.name] = true
@@ -3398,7 +3537,8 @@ fn test_weak_generic_filter_uses_root_called_names() {
 	assert api_name in names
 	assert http_name !in names
 	root_called_names[http_name] = true
-	specs2 := g.weak_generic_fn_specializations_for_names(&decl, needed_names, root_called_names)
+	specs2 := g.weak_generic_fn_specializations_for_names(&decl, needed_names, root_called_names,
+		required_names)
 	mut names2 := map[string]bool{}
 	for spec in specs2 {
 		names2[spec.name] = true
@@ -4126,8 +4266,57 @@ fn main() {
 }
 ')
 	assert csrc.contains('bool call_cb_T_Caps(Caps* caps, bool (*cb)(Caps*))'), csrc
-	assert csrc.contains('cb)(caps);'), csrc
+	assert csrc.contains('return cb(caps);'), csrc
 	assert !csrc.contains('return cb(&caps);'), csrc
+}
+
+fn test_generic_fn_pointer_param_uses_concrete_fn_type_for_mut_arg() {
+	csrc := cleanc_csrc_for_test_source('generic_fnptr_concrete_mut_arg', '
+struct Alpha {}
+struct Beta {}
+
+fn use_alpha(mut a Alpha) {
+	_ = a
+}
+
+fn use_beta(mut b Beta) {
+	_ = b
+}
+
+fn call_cb[T, F](mut value T, cb F) {
+	cb(mut value)
+}
+
+fn main() {
+	mut a := Alpha{}
+	call_cb(mut a, use_alpha)
+	mut b := Beta{}
+	call_cb(mut b, use_beta)
+}
+')
+	assert csrc.contains('((void (*)(Alpha*))cb)(value);'), csrc
+	assert csrc.contains('((void (*)(Beta*))cb)(value);'), csrc
+	assert !csrc.contains('((void (*)(Alpha*))cb)(*value);'), csrc
+	assert !csrc.contains('((void (*)(Beta*))cb)(*value);'), csrc
+}
+
+fn test_fixed_array_return_call_arg_unwraps_wrapper_for_fixed_array_param() {
+	csrc := cleanc_csrc_for_test_source('fixed_array_return_call_arg', '
+fn rgba() [4]u8 {
+	return [u8(1), 2, 3, 4]!
+}
+
+fn draw(color [4]u8) {
+	_ = color
+}
+
+fn main() {
+	draw(rgba())
+}
+')
+	assert csrc.contains('draw(({ _v_Array_fixed_u8_4 _fixed_arg'), csrc
+	assert csrc.contains('(Array_fixed_u8_4){_fixed_arg'), csrc
+	assert !csrc.contains('draw(rgba());'), csrc
 }
 
 fn test_generic_fallback_derives_container_param_element_type() {
@@ -5542,7 +5731,7 @@ fn test_mut_receiver_operator_assignment_dereferences_receiver() {
 	g.runtime_local_types['result'] = 'Big*'
 	g.runtime_local_types['ten'] = 'Big'
 	g.cur_fn_mut_params['result'] = true
-	g.fn_return_types['Big__mul'] = 'Big'
+	g.fn_return_types['Big__op_mul'] = 'Big'
 	node := ast.AssignStmt{
 		op:  .assign
 		lhs: [ast.Expr(ast.Ident{
@@ -5562,7 +5751,7 @@ fn test_mut_receiver_operator_assignment_dereferences_receiver() {
 	}
 	g.gen_assign_stmt(node)
 	out := g.sb.str().trim_space()
-	assert out == '*result = Big__mul((*result), ten);'
+	assert out == '*result = Big__op_mul((*result), ten);'
 }
 
 fn test_decl_from_mut_receiver_operator_uses_value_type() {
@@ -5570,7 +5759,7 @@ fn test_decl_from_mut_receiver_operator_uses_value_type() {
 	g.runtime_local_types['result'] = 'Big*'
 	g.runtime_local_types['ten'] = 'Big'
 	g.cur_fn_mut_params['result'] = true
-	g.fn_return_types['Big__mul'] = 'Big'
+	g.fn_return_types['Big__op_mul'] = 'Big'
 	node := ast.AssignStmt{
 		op:  .decl_assign
 		lhs: [ast.Expr(ast.Ident{
@@ -5590,7 +5779,7 @@ fn test_decl_from_mut_receiver_operator_uses_value_type() {
 	}
 	g.gen_assign_stmt(node)
 	out := g.sb.str().trim_space()
-	assert out == 'Big next = Big__mul((*result), ten);'
+	assert out == 'Big next = Big__op_mul((*result), ten);'
 	assert !out.contains('Big* next')
 }
 
@@ -5606,13 +5795,13 @@ fn test_nested_mut_receiver_operator_does_not_deref_value_result_with_pointer_en
 	g.runtime_local_types['ten'] = 'Big'
 	g.runtime_local_types['one'] = 'Big'
 	g.cur_fn_mut_params['result'] = true
-	g.fn_return_types['Big__mul'] = 'Big'
-	g.fn_return_types['Big__plus'] = 'Big'
+	g.fn_return_types['Big__op_mul'] = 'Big'
+	g.fn_return_types['Big__op_plus'] = 'Big'
 	node := ast.InfixExpr{
 		op:  .plus
 		lhs: ast.Expr(ast.CallExpr{
 			lhs:  ast.Expr(ast.Ident{
-				name: 'Big__mul'
+				name: 'Big__op_mul'
 			})
 			args: [ast.Expr(ast.Ident{
 				name: 'result'
@@ -5630,8 +5819,44 @@ fn test_nested_mut_receiver_operator_does_not_deref_value_result_with_pointer_en
 	}
 	g.gen_infix_expr(&node)
 	out := g.sb.str()
-	assert out == 'Big__plus(Big__mul(result, ten), one)'
-	assert !out.contains('*(Big__mul')
+	assert out == 'Big__op_plus(Big__op_mul(result, ten), one)'
+	assert !out.contains('*(Big__op_mul')
+}
+
+fn test_overloaded_compound_assignment_uses_sanitized_operator_name() {
+	mut g := Gen.new([])
+	g.runtime_local_types['y'] = 'Big'
+	g.runtime_local_types['x'] = 'Big'
+	g.fn_return_types['Big__op_mul'] = 'Big'
+	node := ast.AssignStmt{
+		op:  .mul_assign
+		lhs: [ast.Expr(ast.Ident{
+			name: 'y'
+		})]
+		rhs: [ast.Expr(ast.Ident{
+			name: 'x'
+		})]
+	}
+	g.gen_assign_stmt(node)
+	assert g.sb.str().trim_space() == 'y = Big__op_mul(y, x);'
+}
+
+fn test_overloaded_comparison_uses_sanitized_lt_name() {
+	mut g := Gen.new([])
+	g.runtime_local_types['now'] = 'Time'
+	g.runtime_local_types['deadline'] = 'Time'
+	g.fn_return_types['Time__op_lt'] = 'bool'
+	node := ast.InfixExpr{
+		op:  .le
+		lhs: ast.Expr(ast.Ident{
+			name: 'now'
+		})
+		rhs: ast.Expr(ast.Ident{
+			name: 'deadline'
+		})
+	}
+	g.gen_infix_expr(&node)
+	assert g.sb.str() == '!Time__op_lt(deadline, now)'
 }
 
 fn test_preamble_overrides_cpu_relax_for_tinyc_arm() {
@@ -5942,7 +6167,8 @@ fn test_called_weak_generic_worklist_only_adds_called_specs() {
 	assert int_name in late_names, late_names.str()
 	g.called_fn_names[string_name] = true
 	mut needed_names := map[string]bool{}
-	g.add_called_weak_generic_names(mut needed_names)
+	mut required_names := map[string]bool{}
+	g.add_called_weak_generic_names(mut needed_names, mut required_names)
 	assert string_name in needed_names
 	assert int_name !in needed_names
 }

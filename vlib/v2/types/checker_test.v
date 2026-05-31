@@ -100,6 +100,49 @@ fn test_basic_literal_string() {
 	assert has_type(env, 'string'), 'string literal should have string type'
 }
 
+fn test_comptime_env_expr_has_string_type() {
+	env := check_code("const compile_time_backend = \$env('VIPER_BACKEND')
+
+fn main() {
+	_ = compile_time_backend
+}")
+	assert has_type(env, 'string'), '\$env should have string type'
+}
+
+fn test_alias_receiver_method_specialization_preserves_alias_return() {
+	prefs := &pref.Preferences{}
+	mut file_set := token.FileSet.new()
+	env := Environment.new()
+	checker := Checker.new(prefs, file_set, env)
+	base_type := Type(Struct{
+		name: 'math.vec__Vec4[f32]'
+	})
+	alias_type := Type(Alias{
+		name:      'viper__SimdFloat4'
+		base_type: base_type
+	})
+	method_type := Type(fn_with_return_type(empty_fn_type(), base_type))
+	specialized := checker.specialize_method_type_for_receiver(method_type, alias_type, '+')
+	assert specialized is FnType
+	ret_type := (specialized as FnType).return_type or { panic('missing return type') }
+	assert ret_type.name() == 'viper__SimdFloat4'
+}
+
+fn test_pointer_to_c_struct_field_re_resolves_stale_base_type() {
+	check_code('struct C.Buffer {
+	data voidptr
+}
+
+struct C.View {
+	buffer &C.Buffer
+}
+
+fn view_data(view &C.View) voidptr {
+	buffer := view.buffer
+	return buffer.data
+}')
+}
+
 fn test_inline_type_variants_are_valid_payloads() {
 	string_type := Type(string_)
 	assert !type_has_null_data(string_type)

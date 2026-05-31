@@ -23,6 +23,37 @@ fn array_alias_elem_type(arr_type string) string {
 	return ''
 }
 
+fn (mut g Gen) array_alias_base_type(arr_type string) string {
+	base := arr_type.trim_space().trim_right('*')
+	if base == '' {
+		return ''
+	}
+	if base.starts_with('Array_') || base.starts_with('Array_fixed_') {
+		return base
+	}
+	if alias_base := g.alias_base_types[base] {
+		return alias_base.trim_space().trim_right('*')
+	}
+	if raw := g.lookup_type_by_c_name(base) {
+		if raw is types.Alias {
+			return g.types_type_to_c(raw.base_type).trim_space().trim_right('*')
+		}
+	}
+	return ''
+}
+
+fn (mut g Gen) array_alias_elem_type_from_c_type(arr_type string) string {
+	elem := array_alias_elem_type(arr_type)
+	if elem != '' {
+		return elem
+	}
+	base := g.array_alias_base_type(arr_type)
+	if base != '' {
+		return array_alias_elem_type(base)
+	}
+	return ''
+}
+
 fn c_type_is_array_value(typ string) bool {
 	base := typ.trim_space().trim_right('*')
 	return base == 'array' || base.starts_with('Array_')
@@ -1057,9 +1088,7 @@ fn (mut g Gen) gen_fixed_array_initializer(node ast.ArrayInitExpr) {
 				g.sb.write_string(', ')
 			}
 			elem := node.exprs[i]
-			if elem is ast.ArrayInitExpr {
-				g.gen_fixed_array_initializer(elem)
-			} else {
+			if !g.gen_fixed_array_initializer_from_expr(elem) {
 				g.expr(elem)
 			}
 		}
@@ -1081,6 +1110,35 @@ fn (mut g Gen) gen_fixed_array_initializer(node ast.ArrayInitExpr) {
 		}
 	}
 	g.sb.write_string('{0}')
+}
+
+fn (mut g Gen) gen_fixed_array_initializer_from_expr(expr ast.Expr) bool {
+	unwrapped := strip_expr_wrappers(expr)
+	match unwrapped {
+		ast.ArrayInitExpr {
+			g.gen_fixed_array_initializer(unwrapped)
+			return true
+		}
+		ast.CallExpr {
+			if unwrapped.lhs !is ast.Ident {
+				return false
+			}
+			fn_name := (unwrapped.lhs as ast.Ident).name
+			if fn_name !in ['builtin__new_array_from_c_array_noscan',
+				'builtin__new_array_from_c_array', 'new_array_from_c_array'] {
+				return false
+			}
+			if unwrapped.args.len < 4 {
+				return false
+			}
+			array_data := extract_array_init_arg(unwrapped.args[3]) or { return false }
+			g.gen_fixed_array_initializer(array_data)
+			return true
+		}
+		else {
+			return false
+		}
+	}
 }
 
 fn (mut g Gen) fixed_array_initializer_size(node ast.ArrayInitExpr) int {

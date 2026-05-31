@@ -1463,9 +1463,17 @@ fn (mut g Gen) struct_fields_resolved(node ast.StructDecl) bool {
 				else {}
 			}
 		}
-		if field.typ is ast.Type {
-			if field.typ is ast.OptionType {
-				opt_typ := field.typ as ast.OptionType
+		field_typ := field.typ
+		if field_typ is ast.Type {
+			if field_typ is ast.ArrayFixedType {
+				fixed_typ := field_typ as ast.ArrayFixedType
+				if !g.struct_field_fixed_array_elem_resolved(fixed_typ.elem_type) {
+					return false
+				}
+				continue
+			}
+			if field_typ is ast.OptionType {
+				opt_typ := field_typ as ast.OptionType
 				base_name := if g.active_generic_types.len > 0 {
 					g.expr_type_to_c(opt_typ.base_type)
 				} else {
@@ -1478,8 +1486,8 @@ fn (mut g Gen) struct_fields_resolved(node ast.StructDecl) bool {
 						return false
 					}
 				}
-			} else if field.typ is ast.ResultType {
-				res_typ := field.typ as ast.ResultType
+			} else if field_typ is ast.ResultType {
+				res_typ := field_typ as ast.ResultType
 				base_name := if g.active_generic_types.len > 0 {
 					g.expr_type_to_c(res_typ.base_type)
 				} else {
@@ -1555,6 +1563,32 @@ fn (mut g Gen) struct_fields_resolved(node ast.StructDecl) bool {
 		}
 	}
 	return true
+}
+
+fn (mut g Gen) struct_field_fixed_array_elem_resolved(elem_type ast.Expr) bool {
+	elem_name := if g.active_generic_types.len > 0 {
+		g.expr_type_to_c(elem_type)
+	} else {
+		g.field_type_name(elem_type)
+	}
+	if elem_name == '' || elem_name in primitive_types || elem_name == 'bool' || elem_name == 'void'
+		|| elem_name == 'void*' || elem_name == 'voidptr' {
+		return true
+	}
+	if g.is_pointer_type(elem_type) || g.is_c_type_name(elem_name) {
+		return true
+	}
+	if elem_name == 'string' || elem_name == 'builtin__string' {
+		return 'body_string' in g.emitted_types || 'body_builtin__string' in g.emitted_types
+	}
+	if elem_name.starts_with('Array_') || elem_name == 'array' || elem_name in g.array_aliases {
+		return 'body_array' in g.emitted_types
+	}
+	if elem_name.starts_with('Map_') || elem_name == 'map' || elem_name in g.map_aliases {
+		return 'body_map' in g.emitted_types
+	}
+	return 'body_${elem_name}' in g.emitted_types || 'enum_${elem_name}' in g.emitted_types
+		|| 'alias_${elem_name}' in g.emitted_types
 }
 
 fn (mut g Gen) generic_bindings_for_struct_decl(node ast.StructDecl, real_generic_params []string) ?map[string]types.Type {
@@ -3104,9 +3138,14 @@ fn (mut g Gen) active_generic_concrete_struct_for_c_name(c_name string) ?types.S
 	return none
 }
 
-fn (g &Gen) is_fn_pointer_alias_type(type_name string) bool {
+fn (mut g Gen) is_fn_pointer_alias_type(type_name string) bool {
 	if type_name == '' {
 		return false
+	}
+	if raw_type := g.lookup_type_by_c_name(type_name) {
+		if raw_type is types.Alias && raw_type.base_type is types.FnType {
+			return true
+		}
 	}
 	if g.env == unsafe { nil } {
 		return type_name.ends_with('Fn')

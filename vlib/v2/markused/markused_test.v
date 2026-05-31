@@ -319,6 +319,90 @@ fn test_mark_used_tracks_current_receiver_method_calls() {
 	assert !used[unused_key]
 }
 
+fn test_mark_used_tracks_bound_method_values_in_struct_init() {
+	mut env := types.Environment.new()
+	env.set_expr_type(62, types.Pointer{
+		base_type: types.Type(types.Struct{
+			name: 'Game'
+		})
+	})
+	files := [
+		ast.File{
+			mod:   'main'
+			name:  'main.v'
+			stmts: [
+				ast.Stmt(ast.FnDecl{
+					name:  'main'
+					typ:   ast.FnType{}
+					pos:   pos(60)
+					stmts: [
+						ast.Stmt(ast.ExprStmt{
+							expr: ast.InitExpr{
+								typ:    ast.Ident{
+									name: 'Config'
+									pos:  pos(61)
+								}
+								fields: [
+									ast.FieldInit{
+										name:  'draw_fn'
+										value: ast.SelectorExpr{
+											lhs: ast.Ident{
+												name: 'game'
+												pos:  pos(62)
+											}
+											rhs: ast.Ident{
+												name: 'draw'
+												pos:  pos(63)
+											}
+											pos: pos(63)
+										}
+									},
+								]
+								pos:    pos(64)
+							}
+						}),
+					]
+				}),
+				ast.Stmt(ast.FnDecl{
+					is_method: true
+					receiver:  ast.Parameter{
+						name: 'g'
+						typ:  ast.Ident{
+							name: 'Game'
+							pos:  pos(65)
+						}
+						pos:  pos(65)
+					}
+					name:      'draw'
+					typ:       ast.FnType{}
+					pos:       pos(66)
+				}),
+				ast.Stmt(ast.FnDecl{
+					is_method: true
+					receiver:  ast.Parameter{
+						name: 'g'
+						typ:  ast.Ident{
+							name: 'Game'
+							pos:  pos(67)
+						}
+						pos:  pos(67)
+					}
+					name:      'unused'
+					typ:       ast.FnType{}
+					pos:       pos(68)
+				}),
+			]
+		},
+	]
+	used := mark_used(files, env)
+	main_key := decl_key('main', files[0].stmts[0] as ast.FnDecl, env)
+	draw_key := decl_key('main', files[0].stmts[1] as ast.FnDecl, env)
+	unused_key := decl_key('main', files[0].stmts[2] as ast.FnDecl, env)
+	assert used[main_key]
+	assert used[draw_key]
+	assert !used[unused_key]
+}
+
 fn test_mark_used_walks_codegen_required_str_methods() {
 	mut env := types.Environment.new()
 	files := [

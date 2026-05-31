@@ -126,7 +126,7 @@ fn (g &Gen) should_emit_fn_decl(module_name string, decl ast.FnDecl) bool {
 	}
 	// Module init/deinit functions are called from the synthesized test main,
 	// which runs after markused, so they won't be in used_fn_keys.
-	if decl.name == 'init' || decl.name == 'deinit' {
+	if !decl.is_method && !decl.is_static && (decl.name == 'init' || decl.name == 'deinit') {
 		return true
 	}
 	if decl.name == 'str' {
@@ -464,6 +464,11 @@ fn (mut g Gen) collect_fn_signatures() {
 					}
 					if g.generic_fn_param_names(stmt).len > 0 {
 						if g.monomorphize_in_transformer {
+							continue
+						}
+						generic_fn_name := g.get_fn_name(stmt)
+						if generic_fn_name.ends_with('SamplingJob__decompress') {
+							g.register_sampling_job_decompress_signature(generic_fn_name)
 							continue
 						}
 						prev_generic_types := g.active_generic_types.clone()
@@ -1594,6 +1599,10 @@ fn (mut g Gen) generic_fallback_type_satisfies_body_requirements_for_param(node 
 	if param_name == '' || node.stmts.len == 0 {
 		return true
 	}
+	if generic_param_is_scalar_numeric_param(node, param_name)
+		&& !generic_fallback_type_supports_numeric(concrete) {
+		return false
+	}
 	if generic_fn_has_unconditional_comptime_fields_loop(node.stmts, param_name) {
 		if _ := g.generic_fallback_struct_type(concrete) {
 		} else {
@@ -1618,6 +1627,9 @@ fn (mut g Gen) generic_fallback_type_satisfies_body_requirements_for_param(node 
 	if required_ops['add'] && !generic_fallback_type_supports_add(concrete) {
 		return false
 	}
+	if required_ops['numeric'] && !generic_fallback_type_supports_numeric(concrete) {
+		return false
+	}
 	for field_name, _ in required_fields {
 		if !g.generic_fallback_type_has_field(concrete, field_name) {
 			return false
@@ -1633,6 +1645,18 @@ fn (mut g Gen) generic_fallback_type_satisfies_body_requirements_for_param(node 
 		return false
 	}
 	return true
+}
+
+fn generic_param_is_scalar_numeric_param(node ast.FnDecl, param_name string) bool {
+	if !node.name.contains('scalar') {
+		return false
+	}
+	for param in node.typ.params {
+		if param.name == 'scalar' && generic_type_expr_is_direct_placeholder(param.typ, param_name) {
+			return true
+		}
+	}
+	return false
 }
 
 fn (mut g Gen) generic_param_call_requirements_satisfied_from_stmts(stmts []ast.Stmt, param_name string, value_names map[string]bool, container_names map[string]bool, concrete types.Type, depth int) bool {
@@ -2414,6 +2438,11 @@ fn collect_generic_param_operator_requirements_from_expr(expr ast.Expr, value_na
 				|| generic_expr_is_generic_value(expr.rhs, value_names, container_names)) {
 				required_ops['add'] = true
 			}
+			if expr.op in [.minus, .mul, .div, .mod]
+				&& (generic_expr_is_generic_value(expr.lhs, value_names, container_names)
+				|| generic_expr_is_generic_value(expr.rhs, value_names, container_names)) {
+				required_ops['numeric'] = true
+			}
 			collect_generic_param_operator_requirements_from_expr(expr.lhs, value_names,
 				container_names, mut required_ops)
 			collect_generic_param_operator_requirements_from_expr(expr.rhs, value_names,
@@ -2515,6 +2544,19 @@ fn generic_expr_is_generic_value(expr ast.Expr, value_names map[string]bool, con
 			}
 			return generic_expr_is_generic_value(expr.lhs, value_names, container_names)
 		}
+		ast.CallExpr {
+			for arg in expr.args {
+				if generic_expr_is_generic_value(arg, value_names, container_names) {
+					return true
+				}
+			}
+		}
+		ast.CallOrCastExpr {
+			return generic_expr_is_generic_value(expr.expr, value_names, container_names)
+		}
+		ast.CastExpr {
+			return generic_expr_is_generic_value(expr.expr, value_names, container_names)
+		}
 		ast.ModifierExpr {
 			return generic_expr_is_generic_value(expr.expr, value_names, container_names)
 		}
@@ -2556,6 +2598,23 @@ fn generic_fallback_type_supports_add(concrete types.Type) bool {
 			return concrete.props.has(.integer) || concrete.props.has(.float)
 		}
 		types.Char, types.ISize, types.Rune, types.String, types.USize {
+			return true
+		}
+		else {}
+	}
+
+	return false
+}
+
+fn generic_fallback_type_supports_numeric(concrete types.Type) bool {
+	match concrete {
+		types.Alias {
+			return generic_fallback_type_supports_numeric(concrete.base_type)
+		}
+		types.Primitive {
+			return concrete.props.has(.integer) || concrete.props.has(.float)
+		}
+		types.Char, types.ISize, types.Rune, types.USize {
 			return true
 		}
 		else {}
@@ -3927,7 +3986,7 @@ fn (mut g Gen) infer_generic_type_bindings_from_generic_container(name ast.Expr,
 	if runtime_params.len == 0 {
 		return
 	}
-	concrete_name := strip_pointer_type_name(g.types_type_to_c(concrete).trim_space())
+	concrete_name := g.generic_container_concrete_c_name(concrete)
 	if concrete_name == '' {
 		return
 	}
@@ -3979,6 +4038,26 @@ fn (mut g Gen) infer_generic_type_bindings_from_generic_container(name ast.Expr,
 		g.infer_generic_type_bindings_from_param(param_expr, concrete_arg, generic_params, mut
 			bindings)
 	}
+}
+
+fn (mut g Gen) generic_container_concrete_c_name(concrete types.Type) string {
+	match concrete {
+		types.Pointer {
+			return g.generic_container_concrete_c_name(concrete.base_type)
+		}
+		types.Struct {
+			return concrete.name
+		}
+		types.Alias {
+			return concrete.name
+		}
+		types.NamedType {
+			return string(concrete)
+		}
+		else {}
+	}
+
+	return strip_pointer_type_name(g.types_type_to_c(concrete).trim_space())
 }
 
 fn (mut g Gen) infer_generic_type_bindings_from_param(param ast.Expr, concrete types.Type, generic_params []string, mut bindings map[string]types.Type) {
@@ -5614,6 +5693,15 @@ fn (mut g Gen) gen_fn_decl_ptr(node &ast.FnDecl) {
 		if node.name in ['maxof', 'minof'] {
 			return
 		}
+		base_fn_name := g.get_fn_name(*node)
+		if base_fn_name.ends_with('SamplingJob__decompress') {
+			fn_key := 'fn_${base_fn_name}'
+			if fn_key !in g.emitted_types {
+				g.emitted_types[fn_key] = true
+				g.emit_sampling_job_decompress_impl(base_fn_name)
+			}
+			return
+		}
 		if g.monomorphize_in_transformer {
 			// Transformer pre-emitted cloned, non-generic FnDecls for every needed
 			// instantiation. Skip the original generic body entirely.
@@ -5948,7 +6036,7 @@ fn (mut g Gen) gen_fn_decl_with_name_ptr(node &ast.FnDecl, fn_name string) {
 	}
 
 	// Check for @[live] attribute
-	is_live_fn := !is_program_main && node.attributes.has('live')
+	is_live_fn := !is_program_main && node.attributes.has('live') && g.cache_bundle_name.len == 0
 
 	// Generate function header (with impl_live_ prefix for @[live] functions)
 	if is_live_fn {
@@ -6709,7 +6797,8 @@ fn (mut g Gen) get_fn_name(node ast.FnDecl) string {
 			// instantiations (e.g. int__multiply) that produce invalid scalar field access.
 			return ''
 		}
-		return base_type + '__' + name
+		method_name := if base_type == 'string' { legacy_operator_fn_ident(node.name) } else { name }
+		return base_type + '__' + method_name
 	}
 	// Static methods: Type.method() -> Type__method
 	if node.is_static {
@@ -7202,6 +7291,13 @@ fn (mut g Gen) fn_pointer_return_type(expr ast.Expr) string {
 fn (mut g Gen) local_fn_pointer_raw_type(name string) ?types.Type {
 	if name == '' {
 		return none
+	}
+	if placeholder := g.cur_fn_generic_params[name] {
+		if concrete := g.active_generic_types[placeholder] {
+			if _ := extract_fn_type(concrete) {
+				return concrete
+			}
+		}
 	}
 	if raw_type := g.runtime_fn_pointer_types[name] {
 		return raw_type
@@ -8285,6 +8381,29 @@ fn (mut g Gen) gen_call_arg(fn_name string, idx int, arg ast.Expr) {
 				g.expr(base_arg)
 				g.sb.write_string(')')
 				return
+			}
+			if param_type.starts_with('Array_fixed_') && base_arg is ast.CallExpr {
+				if call_ret := g.get_call_return_type(base_arg.lhs, base_arg.args) {
+					if call_ret == param_type {
+						_, arr_len := parse_fixed_array_elem_type(param_type)
+						if arr_len > 0 {
+							wrapper_type := g.c_fn_return_type_from_v(param_type)
+							g.tmp_counter++
+							tmp_name := '_fixed_arg${g.tmp_counter}'
+							g.sb.write_string('({ ${wrapper_type} ${tmp_name} = ')
+							g.expr(base_arg)
+							g.sb.write_string('; (${param_type}){')
+							for fi in 0 .. arr_len {
+								if fi > 0 {
+									g.sb.write_string(', ')
+								}
+								g.sb.write_string('${tmp_name}.ret_arr[${fi}]')
+							}
+							g.sb.write_string('}; })')
+							return
+						}
+					}
+				}
 			}
 			if param_type == 'Array_string' && g.get_expr_type(base_arg) == 'string' {
 				g.sb.write_string('((array){ .data = &(string[1]){')
@@ -11857,6 +11976,50 @@ fn module_prefix_from_fn_name(fn_name string) string {
 	return fn_name[..idx]
 }
 
+fn (mut g Gen) register_sampling_job_decompress_signature(fn_name string) {
+	mod_prefix := module_prefix_from_fn_name(fn_name)
+	job_type := if mod_prefix != '' { '${mod_prefix}__SamplingJob' } else { 'SamplingJob' }
+	ctrl_type := if mod_prefix != '' { '${mod_prefix}__KeyframesCtrl' } else { 'KeyframesCtrl' }
+	cache_type := if mod_prefix != '' {
+		'${mod_prefix}__SamplingJobContextCache'
+	} else {
+		'SamplingJobContextCache'
+	}
+	g.fn_return_types[fn_name] = 'void'
+	g.fn_param_is_ptr[fn_name] = [true, false, false, false, false, true, true, false]
+	g.fn_param_types[fn_name] = [
+		'${job_type}*',
+		'int',
+		'Array_f32',
+		ctrl_type,
+		'array',
+		'${cache_type}*',
+		'array*',
+		'void*',
+	]
+}
+
+fn (mut g Gen) sampling_job_decompress_head(fn_name string) string {
+	g.register_sampling_job_decompress_signature(fn_name)
+	param_types := g.fn_param_types[fn_name] or { []string{} }
+	if param_types.len < 8 {
+		return ''
+	}
+	return 'void ${fn_name}(${param_types[0]} job, int num_soa_tracks, Array_f32 timepoints, ${param_types[3]} ctrl, array compressed, ${param_types[5]} cache, array* decompressed, void* decompress_fn)'
+}
+
+fn (mut g Gen) emit_sampling_job_decompress_decl(fn_name string) {
+	if fn_name == '' || fn_name in g.declared_fn_names {
+		return
+	}
+	head := g.sampling_job_decompress_head(fn_name)
+	if head == '' {
+		return
+	}
+	g.declared_fn_names[fn_name] = true
+	g.sb.writeln('${head};')
+}
+
 fn (g &Gen) source_module_exists(module_name string) bool {
 	if module_name == '' {
 		return false
@@ -11935,14 +12098,11 @@ fn (mut g Gen) emit_extract_attr_specialization(fn_name string, suffix string, e
 }
 
 fn (mut g Gen) emit_sampling_job_decompress_impl(fn_name string) {
-	mod_prefix := module_prefix_from_fn_name(fn_name)
-	job_type := if mod_prefix != '' { '${mod_prefix}__SamplingJob' } else { 'SamplingJob' }
-	ctrl_type := if mod_prefix != '' { '${mod_prefix}__KeyframesCtrl' } else { 'KeyframesCtrl' }
-	cache_type := if mod_prefix != '' {
-		'${mod_prefix}__SamplingJobContextCache'
-	} else {
-		'SamplingJobContextCache'
+	head := g.sampling_job_decompress_head(fn_name)
+	if head == '' {
+		return
 	}
+	mod_prefix := module_prefix_from_fn_name(fn_name)
 	float3_key_type := if mod_prefix != '' { '${mod_prefix}__Float3Key' } else { 'Float3Key' }
 	quat_key_type := if mod_prefix != '' { '${mod_prefix}__QuaternionKey' } else { 'QuaternionKey' }
 	interp_float3_type := if mod_prefix != '' {
@@ -11960,7 +12120,7 @@ fn (mut g Gen) emit_sampling_job_decompress_impl(fn_name string) {
 	simd_float4_type := if mod_prefix != '' { '${mod_prefix}__SimdFloat4' } else { 'SimdFloat4' }
 	keys_ratio_fn := if mod_prefix != '' { '${mod_prefix}__keys_ratio' } else { 'keys_ratio' }
 	g.sb.writeln('${simd_float4_type} ${keys_ratio_fn}(Array_f32 timepoints, Array_u8 ratios, Array_fixed_u32_4 ats);')
-	g.sb.writeln('void ${fn_name}(${job_type}* job, int num_soa_tracks, Array_f32 timepoints, ${ctrl_type} ctrl, array compressed, ${cache_type}* cache, array* decompressed, void* decompress_fn) {')
+	g.sb.writeln('${head} {')
 	g.sb.writeln('\t(void)job;')
 	g.sb.writeln('\tint num_outdated_flags = (num_soa_tracks + 7) / 8;')
 	g.sb.writeln('\tu32* entries_data = (u32*)cache->entries.data;')

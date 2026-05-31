@@ -1366,6 +1366,12 @@ pub fn (mut g Gen) gen_passes_1_to_4() {
 					if g.monomorphize_in_transformer {
 						continue
 					}
+					gfn_name := g.get_fn_name(stmt)
+					if gfn_name.ends_with('SamplingJob__decompress') {
+						g.record_fn_owner_for_current_file(gfn_name, fi)
+						g.emit_sampling_job_decompress_decl(gfn_name)
+						continue
+					}
 					specs := g.generic_fn_specializations_for_emit_scope(stmt)
 					if specs.len > 0 {
 						prev_generic_types := g.active_generic_types.clone()
@@ -1377,7 +1383,6 @@ pub fn (mut g Gen) gen_passes_1_to_4() {
 						}
 						g.active_generic_types = prev_generic_types.clone()
 					} else {
-						gfn_name := g.get_fn_name(stmt)
 						if gfn_name != '' {
 							g.emit_generic_fn_macro(gfn_name, stmt)
 						}
@@ -3151,6 +3156,25 @@ fn c_local_name(name string) string {
 }
 
 fn sanitize_fn_ident(name string) string {
+	return match name {
+		'+' { 'op_plus' }
+		'-' { 'op_minus' }
+		'*' { 'op_mul' }
+		'/' { 'op_div' }
+		'%' { 'op_mod' }
+		'==' { 'op_eq' }
+		'!=' { 'op_ne' }
+		'<' { 'op_lt' }
+		'>' { 'op_gt' }
+		'<=' { 'op_le' }
+		'>=' { 'op_ge' }
+		'|' { 'op_pipe' }
+		'^' { 'op_xor' }
+		else { name }
+	}
+}
+
+fn legacy_operator_fn_ident(name string) string {
 	return match name {
 		'+' { 'plus' }
 		'-' { 'minus' }

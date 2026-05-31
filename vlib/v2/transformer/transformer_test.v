@@ -50,6 +50,43 @@ fn test_value_object_from_type_stores_value_symbol_type() {
 	assert obj.typ() is types.Primitive
 }
 
+fn test_worker_clone_owns_mutable_maps() {
+	prefs := &vpref.Preferences{}
+	env := types.Environment.new()
+	mut transformer := Transformer.new_with_pref(env, prefs)
+	scope := types.new_scope(unsafe { nil })
+	transformer.elided_fns = {
+		'main__skipped': true
+	}
+	transformer.cached_scopes = {
+		'main': scope
+	}
+	transformer.cached_fn_scopes = {
+		'main__known': scope
+	}
+	transformer.cached_method_keys = ['main__Foo']
+	transformer.generic_fn_value_names = {
+		'handler': true
+	}
+
+	mut worker := transformer.new_worker_clone(1)
+	worker.elided_fns['main__worker_skipped'] = true
+	worker.cached_scopes['worker'] = scope
+	worker.cached_fn_scopes['main__worker'] = scope
+	worker.cached_method_keys << 'main__Bar'
+	worker.generic_fn_value_names['worker_handler'] = true
+
+	assert 'main__worker_skipped' !in transformer.elided_fns
+	assert 'worker' !in transformer.cached_scopes
+	assert 'main__worker' !in transformer.cached_fn_scopes
+	assert transformer.cached_method_keys == ['main__Foo']
+	assert 'worker_handler' !in transformer.generic_fn_value_names
+
+	transformer.merge_worker(worker)
+	assert transformer.elided_fns['main__worker_skipped']
+	assert transformer.cached_fn_scopes['main__worker'] == scope
+}
+
 fn transform_code_for_test(code string) []ast.File {
 	tmp_file := '/tmp/v2_transformer_test_${os.getpid()}.v'
 	os.write_file(tmp_file, code) or { panic('failed to write temp file') }

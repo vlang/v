@@ -825,6 +825,33 @@ fn (b &Builder) cached_called_fn_name_list() []string {
 	return names
 }
 
+fn cached_called_fn_names_path(cache_dir string, cache_name string) string {
+	return cache_path_join(cache_dir, '${cache_name}.calls')
+}
+
+fn (mut b Builder) load_cached_called_fn_names(cache_dir string, cache_name string) bool {
+	data := os.read_file(cached_called_fn_names_path(cache_dir, cache_name)) or { return false }
+	for line in data.split_into_lines() {
+		name := line.trim_space()
+		if name.len > 0 {
+			b.cached_called_fn_names[name] = true
+		}
+	}
+	return true
+}
+
+fn (mut b Builder) write_cached_called_fn_names(cache_dir string, cache_name string, before map[string]bool) {
+	mut names := []string{}
+	for name, _ in b.cached_called_fn_names {
+		if name.len == 0 || name in before {
+			continue
+		}
+		names << name
+	}
+	names.sort()
+	os.write_file(cached_called_fn_names_path(cache_dir, cache_name), names.join('\n')) or {}
+}
+
 fn cache_type_module_names(cache_bundle_name string, emit_modules []string) []string {
 	if cache_bundle_name == '' {
 		return emit_modules
@@ -1256,20 +1283,24 @@ fn (mut b Builder) ensure_cached_module_object(cache_dir string, cache_name stri
 	if os.exists(obj_path) && os.exists(stamp_path) {
 		if current_stamp := os.read_file(stamp_path) {
 			if current_stamp == expected_stamp {
-				if os.getenv('V2VERBOSE') != '' {
-					println('[*] Reusing ${obj_path}')
+				if b.load_cached_called_fn_names(cache_dir, cache_name) {
+					if os.getenv('V2VERBOSE') != '' {
+						println('[*] Reusing ${obj_path}')
+					}
+					return obj_path
 				}
-				return obj_path
 			}
 		}
 	}
 	if b.used_vh_for_parse {
 		if os.exists(obj_path) && os.exists(stamp_path) {
+			b.load_cached_called_fn_names(cache_dir, cache_name)
 			return obj_path
 		}
 		return error('missing cached ${cache_name} object for .vh parse')
 	}
 
+	cached_called_before := b.cached_called_fn_names.clone()
 	module_source := b.gen_cleanc_source_for_cache(emit_modules, cache_name, use_markused)
 	if module_source == '' {
 		return error('failed to generate C source for ${cache_name}')
@@ -1278,6 +1309,7 @@ fn (mut b Builder) ensure_cached_module_object(cache_dir string, cache_name stri
 
 	compile_cmd := '${cc} ${cc_flags} -w -Wno-incompatible-function-pointer-types -c "${c_path}" -o "${obj_path}"${error_limit_flag}'
 	run_cc_cmd_or_exit(compile_cmd, 'C compilation', b.pref.show_cc)
+	b.write_cached_called_fn_names(cache_dir, cache_name, cached_called_before)
 	os.write_file(stamp_path, expected_stamp)!
 	return obj_path
 }
@@ -1291,20 +1323,24 @@ fn (mut b Builder) ensure_cached_parsed_module_object(cache_dir string, cache_na
 	if os.exists(obj_path) && os.exists(stamp_path) {
 		if current_stamp := os.read_file(stamp_path) {
 			if current_stamp == expected_stamp {
-				if os.getenv('V2VERBOSE') != '' {
-					println('[*] Reusing ${obj_path}')
+				if b.load_cached_called_fn_names(cache_dir, cache_name) {
+					if os.getenv('V2VERBOSE') != '' {
+						println('[*] Reusing ${obj_path}')
+					}
+					return obj_path
 				}
-				return obj_path
 			}
 		}
 	}
 	if b.used_import_vh_for_parse {
 		if os.exists(obj_path) && os.exists(stamp_path) {
+			b.load_cached_called_fn_names(cache_dir, cache_name)
 			return obj_path
 		}
 		return error('missing cached ${cache_name} object for .vh parse')
 	}
 
+	cached_called_before := b.cached_called_fn_names.clone()
 	mut module_source := b.gen_cleanc_source_for_cache(module_names, cache_name, use_markused)
 	if module_source == '' {
 		return error('failed to generate C source for ${cache_name}')
@@ -1313,6 +1349,7 @@ fn (mut b Builder) ensure_cached_parsed_module_object(cache_dir string, cache_na
 
 	compile_cmd := '${cc} ${cc_flags} -w -Wno-incompatible-function-pointer-types -c "${c_path}" -o "${obj_path}"${error_limit_flag}'
 	run_cc_cmd_or_exit(compile_cmd, 'C compilation', b.pref.show_cc)
+	b.write_cached_called_fn_names(cache_dir, cache_name, cached_called_before)
 	os.write_file(stamp_path, expected_stamp)!
 	return obj_path
 }
@@ -1326,21 +1363,25 @@ fn (mut b Builder) ensure_cached_virtual_module_object(cache_dir string, groups 
 	if os.exists(obj_path) && os.exists(stamp_path) {
 		if current_stamp := os.read_file(stamp_path) {
 			if current_stamp == expected_stamp {
-				if os.getenv('V2VERBOSE') != '' {
-					println('[*] Reusing ${obj_path}')
+				if b.load_cached_called_fn_names(cache_dir, virtuals_cache_name) {
+					if os.getenv('V2VERBOSE') != '' {
+						println('[*] Reusing ${obj_path}')
+					}
+					return obj_path
 				}
-				return obj_path
 			}
 		}
 	}
 	if b.used_virtual_vh_for_parse {
 		if os.exists(obj_path) && os.exists(stamp_path) {
+			b.load_cached_called_fn_names(cache_dir, virtuals_cache_name)
 			return obj_path
 		}
 		return error('missing cached ${virtuals_cache_name} object for .vh parse')
 	}
 
 	emit_files := virtual_module_source_files(groups)
+	cached_called_before := b.cached_called_fn_names.clone()
 	mut module_source := b.gen_cleanc_source_for_cache_files(['main'], emit_files,
 		virtuals_cache_name, use_markused)
 	if module_source == '' {
@@ -1350,6 +1391,7 @@ fn (mut b Builder) ensure_cached_virtual_module_object(cache_dir string, groups 
 
 	compile_cmd := '${cc} ${cc_flags} -w -Wno-incompatible-function-pointer-types -c "${c_path}" -o "${obj_path}"${error_limit_flag}'
 	run_cc_cmd_or_exit(compile_cmd, 'C compilation', b.pref.show_cc)
+	b.write_cached_called_fn_names(cache_dir, virtuals_cache_name, cached_called_before)
 	os.write_file(stamp_path, expected_stamp)!
 	return obj_path
 }

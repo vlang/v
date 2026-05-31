@@ -322,6 +322,20 @@ fn is_comptime_res_call_expr(expr ast.Expr) bool {
 	}
 }
 
+fn is_comptime_env_call_expr(expr ast.Expr) bool {
+	return match expr {
+		ast.CallExpr {
+			expr.lhs is ast.Ident && expr.lhs.name == 'env'
+		}
+		ast.CallOrCastExpr {
+			expr.lhs is ast.Ident && expr.lhs.name == 'env'
+		}
+		else {
+			false
+		}
+	}
+}
+
 fn (mut c Checker) register_method_type(type_name string, method_name string, fn_type FnType) {
 	mut methods_for_type := []&Fn{}
 	lock c.env.methods {
@@ -816,6 +830,9 @@ fn module_storage_object(module_name string, decl ast.GlobalDecl, field ast.Fiel
 
 fn (mut c Checker) module_storage_predecl_type(field ast.FieldDecl) Type {
 	if field.typ !is ast.EmptyExpr {
+		if typ := c.module_storage_predecl_type_expr(field.typ) {
+			return typ
+		}
 		return c.type_expr(field.typ)
 	}
 	match field.value {
@@ -826,6 +843,100 @@ fn (mut c Checker) module_storage_predecl_type(field ast.FieldDecl) Type {
 	}
 
 	return Type(int_)
+}
+
+fn (mut c Checker) module_storage_predecl_type_expr(expr ast.Expr) ?Type {
+	match expr {
+		ast.Ident {
+			if obj := universe.lookup_parent(expr.name, 0) {
+				if typ := object_as_type(obj) {
+					return typ
+				}
+			}
+			if typ := c.lookup_type_in_scope_chain(expr.name) {
+				return typ
+			}
+			if typ := c.lookup_type_in_imported_modules(expr.name) {
+				return typ
+			}
+			return Type(NamedType(c.qualify_type_name(expr.name)))
+		}
+		ast.SelectorExpr {
+			parts := selector_expr_parts(expr)
+			if parts.len >= 2 {
+				module_alias := parts[parts.len - 2]
+				tname := parts[parts.len - 1]
+				if typ := c.lookup_type_in_module(module_alias, tname) {
+					return typ
+				}
+			}
+			return Type(NamedType(expr.name().replace('.', '__')))
+		}
+		ast.Type {
+			if expr is ast.ArrayType {
+				if elem_type := c.module_storage_predecl_type_expr(expr.elem_type) {
+					return Type(Array{
+						elem_type: elem_type
+					})
+				}
+			}
+			if expr is ast.ArrayFixedType {
+				if elem_type := c.module_storage_predecl_type_expr(expr.elem_type) {
+					mut len := 0
+					if expr.len is ast.BasicLiteral {
+						if expr.len.kind == .number {
+							len = int(strconv.parse_int(expr.len.value, 0, 64) or { 0 })
+						}
+					} else if expr.len is ast.Ident {
+						if obj := c.scope.lookup_parent(expr.len.name, 0) {
+							if obj is Const {
+								len = obj.int_val
+							}
+						}
+					}
+					return Type(ArrayFixed{
+						len:       len
+						elem_type: elem_type
+					})
+				}
+			}
+			if expr is ast.MapType {
+				if key_type := c.module_storage_predecl_type_expr(expr.key_type) {
+					if value_type := c.module_storage_predecl_type_expr(expr.value_type) {
+						return Type(Map{
+							key_type:   key_type
+							value_type: value_type
+						})
+					}
+				}
+			}
+			if expr is ast.OptionType {
+				if base_type := c.module_storage_predecl_type_expr(expr.base_type) {
+					return Type(OptionType{
+						base_type: base_type
+					})
+				}
+			}
+			if expr is ast.PointerType {
+				if base_type := c.module_storage_predecl_type_expr(expr.base_type) {
+					return Type(Pointer{
+						base_type: base_type
+						lifetime:  expr.lifetime
+					})
+				}
+			}
+			if expr is ast.ResultType {
+				if base_type := c.module_storage_predecl_type_expr(expr.base_type) {
+					return Type(ResultType{
+						base_type: base_type
+					})
+				}
+			}
+		}
+		else {}
+	}
+
+	return none
 }
 
 fn (mut c Checker) preregister_module_storage_decl(decl ast.GlobalDecl) {
@@ -2984,13 +3095,14 @@ fn (mut c Checker) infix_expr(expr ast.InfixExpr) Type {
 		}
 		for method in methods {
 			if method.name == op_name {
-				if method.typ is FnType {
-					method_ft := method.typ as FnType
+				method_type := c.specialize_method_type_for_receiver(method.typ, lhs_type, op_name)
+				if method_type is FnType {
+					method_ft := method_type as FnType
 					if ret := method_ft.return_type {
 						return ret
 					}
 				}
-				return method.typ
+				return method_type
 			}
 		}
 	}
@@ -3597,6 +3709,9 @@ fn (mut c Checker) expr_impl(expr ast.Expr) Type {
 		ast.ComptimeExpr {
 			if is_comptime_res_call_expr(expr.expr) {
 				return Type(bool_)
+			}
+			if is_comptime_env_call_expr(expr.expr) {
+				return Type(string_)
 			}
 			cexpr := c.resolve_expr(expr.expr)
 			// TODO: move to checker, where `ast.*Or*` nodes will be resolved.
@@ -7992,6 +8107,9 @@ fn (c &Checker) lookup_type_by_name(name string) ?Type {
 			return typ
 		}
 	}
+	if typ := c.c_scope.lookup_type_parent(name, 0) {
+		return typ
+	}
 	return none
 }
 
@@ -8069,6 +8187,11 @@ fn (c &Checker) specialize_method_type_for_receiver(method Type, receiver Type, 
 	fn_type := method as FnType
 	return_type := fn_type.return_type or { return method }
 	match receiver {
+		Alias {
+			if return_type.name() == receiver.base_type.name() {
+				return Type(fn_with_return_type(fn_type, Type(receiver)))
+			}
+		}
 		Array {
 			if return_type.name() == 'array' {
 				return Type(fn_with_return_type(fn_type, type_from_array(receiver)))

@@ -71,6 +71,29 @@ fn const_bool_value(expr ast.Expr) ?bool {
 
 fn (mut g Gen) gen_if_expr_assign_value(name string, value_type string, expr ast.Expr) {
 	g.write_indent()
+	if value_type.starts_with('Array_fixed_') && !value_type.ends_with('*') {
+		if expr is ast.CallExpr {
+			if call_ret := g.get_call_return_type(expr.lhs, expr.args) {
+				if call_ret == value_type {
+					wrapper_type := g.c_fn_return_type_from_v(value_type)
+					g.sb.write_string('{ ${wrapper_type} _tmp = ')
+					g.expr(expr)
+					g.sb.writeln('; memcpy(${name}, _tmp.ret_arr, sizeof(${value_type})); }')
+					return
+				}
+			}
+		}
+		g.sb.write_string('memcpy(${name}, ')
+		if expr is ast.ArrayInitExpr {
+			g.sb.write_string('((${value_type})')
+			g.expr(expr)
+			g.sb.write_string(')')
+		} else {
+			g.expr(expr)
+		}
+		g.sb.writeln(', sizeof(${value_type}));')
+		return
+	}
 	g.sb.write_string('${name} = ')
 	if g.get_sum_type_variants_for(value_type).len > 0 {
 		g.gen_type_cast_expr(value_type, expr)
@@ -511,6 +534,20 @@ fn (mut g Gen) gen_if_expr_value(node &ast.IfExpr) {
 	g.tmp_counter++
 	g.sb.write_string('({ ${value_type} ${tmp_name} = ${zero_value_for_type(value_type)}; ')
 	g.gen_decl_if_expr(tmp_name, value_type, node)
+	if value_type.starts_with('Array_fixed_') && !value_type.ends_with('*') {
+		_, fixed_len := parse_fixed_array_elem_type(value_type)
+		if fixed_len > 0 {
+			g.sb.write_string(' (${value_type}){')
+			for i in 0 .. fixed_len {
+				if i > 0 {
+					g.sb.write_string(', ')
+				}
+				g.sb.write_string('${tmp_name}[${i}]')
+			}
+			g.sb.write_string('}; })')
+			return
+		}
+	}
 	g.sb.write_string(' ${tmp_name}; })')
 }
 

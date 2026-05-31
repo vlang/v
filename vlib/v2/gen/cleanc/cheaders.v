@@ -195,6 +195,11 @@ fn c_directive_emits_linked_symbols(value string) bool {
 		|| lower_value.contains('/miniz.h"') || lower_value.contains('/miniz.h>')
 }
 
+fn c_define_enables_linked_symbols(value string) bool {
+	upper_value := value.trim_space().to_upper()
+	return upper_value.contains('IMPLEMENTATION')
+}
+
 fn (mut g Gen) emit_directive(stmt ast.Directive, file_name string, emit_implementation_directives bool, mut seen map[string]bool) {
 	name := stmt.name.trim_space()
 	if name == '' || name == 'flag' {
@@ -221,6 +226,10 @@ fn (mut g Gen) emit_directive(stmt ast.Directive, file_name string, emit_impleme
 	value := normalize_c_directive_value(emit_name, stmt.value, file_name, vroot)
 	if !emit_implementation_directives && emit_name == 'include'
 		&& c_directive_emits_linked_symbols(value) {
+		return
+	}
+	if !emit_implementation_directives && emit_name == 'define'
+		&& c_define_enables_linked_symbols(value) {
 		return
 	}
 	line := if value == '' { '#${emit_name}' } else { '#${emit_name} ${value}' }

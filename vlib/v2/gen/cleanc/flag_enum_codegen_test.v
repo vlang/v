@@ -4673,7 +4673,7 @@ fn test_generate_c_lowers_overloaded_mod_operator() {
 			'b': 'big__Integer'
 		}
 		fn_return_types:     {
-			'big__Integer__mod': 'big__Integer'
+			'big__Integer__op_mod': 'big__Integer'
 		}
 	}
 	g.expr(ast.InfixExpr{
@@ -4685,7 +4685,7 @@ fn test_generate_c_lowers_overloaded_mod_operator() {
 			name: 'b'
 		}
 	})
-	assert g.sb.str() == 'big__Integer__mod(a, b)'
+	assert g.sb.str() == 'big__Integer__op_mod(a, b)'
 }
 
 fn test_generate_c_keeps_pointer_array_for_in_element_type() {

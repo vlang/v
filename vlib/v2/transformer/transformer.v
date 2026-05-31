@@ -269,6 +269,7 @@ fn new_transformer_base(env &types.Environment, p &pref.Preferences) &Transforme
 		needed_array_index_fns:        map[string]ArrayMethodInfo{}
 		needed_array_last_index_fns:   map[string]ArrayMethodInfo{}
 		needed_sort_fns:               map[string]SortComparatorInfo{}
+		needed_enum_str_fns:           map[string]types.Enum{}
 		needed_go_wrappers:            map[string]GoWrapperInfo{}
 		local_decl_types:              map[string]types.Type{}
 		local_fn_pointer_return_types: map[string]types.Type{}
@@ -302,13 +303,13 @@ pub fn (t &Transformer) new_worker_clone(worker_idx int) &Transformer {
 	return &Transformer{
 		pref:                          unsafe { t.pref }
 		env:                           unsafe { t.env }
-		elided_fns:                    t.elided_fns
+		elided_fns:                    t.elided_fns.clone()
 		comptime_vmodroot:             t.comptime_vmodroot
 		file_set:                      unsafe { t.file_set }
-		cached_scopes:                 t.cached_scopes
-		cached_methods:                t.cached_methods
-		cached_method_keys:            t.cached_method_keys
-		cached_fn_scopes:              t.cached_fn_scopes
+		cached_scopes:                 t.cached_scopes.clone()
+		cached_methods:                t.cached_methods.clone()
+		cached_method_keys:            t.cached_method_keys.clone()
+		cached_fn_scopes:              t.cached_fn_scopes.clone()
 		synth_pos_counter:             -(worker_idx * 100_000)
 		needed_str_fns:                map[string]string{}
 		needed_clone_fns:              map[string]string{}
@@ -316,11 +317,12 @@ pub fn (t &Transformer) new_worker_clone(worker_idx int) &Transformer {
 		needed_array_index_fns:        map[string]ArrayMethodInfo{}
 		needed_array_last_index_fns:   map[string]ArrayMethodInfo{}
 		needed_sort_fns:               map[string]SortComparatorInfo{}
+		needed_enum_str_fns:           map[string]types.Enum{}
 		needed_go_wrappers:            map[string]GoWrapperInfo{}
 		local_decl_types:              map[string]types.Type{}
 		local_fn_pointer_return_types: map[string]types.Type{}
 		generic_var_type_params:       map[string]string{}
-		generic_fn_value_names:        t.generic_fn_value_names
+		generic_fn_value_names:        t.generic_fn_value_names.clone()
 		runtime_const_inits_by_mod:    map[string][]RuntimeConstInit{}
 		runtime_const_init_fn_name:    map[string]string{}
 		runtime_const_known:           map[string]bool{}
@@ -356,6 +358,9 @@ pub fn (mut t Transformer) merge_worker(w &Transformer) {
 	}
 	for k, v in w.needed_go_wrappers {
 		t.needed_go_wrappers[k] = v
+	}
+	for k, v in w.elided_fns {
+		t.elided_fns[k] = v
 	}
 	if w.needed_embed_file_helper {
 		t.needed_embed_file_helper = true

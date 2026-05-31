@@ -1188,8 +1188,8 @@ fn test_stats_plus() {
 	assert sum.n == 3
 }
 ')
-	assert csrc.contains('Stats Stats__plus(Stats left, Stats right)')
-	assert csrc.count('Stats__plus(') >= 2
+	assert csrc.contains('Stats Stats__op_plus(Stats left, Stats right)')
+	assert csrc.count('Stats__op_plus(') >= 2
 }
 
 fn test_generate_c_lowers_struct_operator_compound_assignment() {
@@ -1215,8 +1215,8 @@ fn test_stats_mul_assign() {
 	assert y.n == 6
 }
 ')
-	assert csrc.contains('Stats Stats__mul(Stats left, Stats right)')
-	assert csrc.contains('y = Stats__mul(y, x);')
+	assert csrc.contains('Stats Stats__op_mul(Stats left, Stats right)')
+	assert csrc.contains('y = Stats__op_mul(y, x);')
 	assert !csrc.contains('y *= x;')
 }
 

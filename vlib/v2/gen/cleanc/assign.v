@@ -332,11 +332,11 @@ fn (mut g Gen) gen_overloaded_compound_assign(lhs ast.Expr, rhs ast.Expr, op tok
 	}
 	lhs_ident := lhs as ast.Ident
 	op_name := match op {
-		.plus_assign { 'plus' }
-		.minus_assign { 'minus' }
-		.mul_assign { 'mul' }
-		.div_assign { 'div' }
-		.mod_assign { 'mod' }
+		.plus_assign { 'op_plus' }
+		.minus_assign { 'op_minus' }
+		.mul_assign { 'op_mul' }
+		.div_assign { 'op_div' }
+		.mod_assign { 'op_mod' }
 		else { '' }
 	}
 
@@ -635,6 +635,13 @@ fn (mut g Gen) gen_assign_stmt(node ast.AssignStmt) {
 						continue
 					}
 					elem_type := if i < field_types.len { field_types[i] } else { 'int' }
+					if elem_type.starts_with('Array_fixed_') {
+						g.sb.writeln('${elem_type} ${c_local_name(name)};')
+						g.write_indent()
+						g.sb.writeln('memcpy(${c_local_name(name)}, ${tmp_name}.arg${i}, sizeof(${elem_type}));')
+						g.remember_runtime_local_type(name, elem_type)
+						continue
+					}
 					g.sb.writeln('${elem_type} ${c_local_name(name)} = ${tmp_name}.arg${i};')
 					g.remember_runtime_local_type(name, elem_type)
 				} else {
@@ -644,6 +651,13 @@ fn (mut g Gen) gen_assign_stmt(node ast.AssignStmt) {
 					}
 					if assign_name == '_' {
 						g.sb.writeln('(void)${tmp_name}.arg${i};')
+						continue
+					}
+					elem_type := if i < field_types.len { field_types[i] } else { '' }
+					if elem_type.starts_with('Array_fixed_') {
+						g.sb.write_string('memcpy(')
+						g.expr(lhs_expr)
+						g.sb.writeln(', ${tmp_name}.arg${i}, sizeof(${elem_type}));')
 						continue
 					}
 					g.expr(lhs_expr)
@@ -747,7 +761,10 @@ fn (mut g Gen) gen_assign_stmt(node ast.AssignStmt) {
 						if i > 0 {
 							g.sb.write_string(', ')
 						}
-						g.expr(expr)
+						if !(elem_type.starts_with('Array_fixed_')
+							&& g.gen_fixed_array_initializer_from_expr(expr)) {
+							g.expr(expr)
+						}
 					}
 					g.sb.writeln('};')
 				}
@@ -1196,6 +1213,14 @@ fn (mut g Gen) gen_assign_stmt(node ast.AssignStmt) {
 			return
 		}
 		if rhs is ast.IfExpr {
+			if typ.starts_with('Array_fixed_') && rhs.else_expr !is ast.EmptyExpr {
+				g.sb.writeln('${typ} ${decl_c_name};')
+				if name != '' {
+					g.remember_runtime_local_type(name, typ)
+				}
+				g.gen_decl_if_expr(decl_c_name, typ, &rhs)
+				return
+			}
 			if !g.if_expr_can_be_ternary(&rhs) && rhs.else_expr !is ast.EmptyExpr {
 				// If type is void/empty, infer from the branch's last expression
 				if typ == 'void' || typ == '' {

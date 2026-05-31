@@ -3270,7 +3270,7 @@ fn (mut t Transformer) transform_infix_expr(expr ast.InfixExpr) ast.Expr {
 	}
 	// Note: struct == / != is handled by cleanc's memcmp/field-by-field comparison.
 	// Check for struct operator overloading (e.g., time.Time - time.Time)
-	// This transforms t1 - t2 into time__Time__minus(t1, t2) for structs with operator overloading
+	// This transforms t1 - t2 into time__Time__op_minus(t1, t2) for structs with operator overloading
 	// Only applies to specific known struct types that define operator methods
 	if expr.op in [.plus, .minus, .mul, .div, .mod] {
 		if lhs_type := t.get_expr_type(expr.lhs) {
@@ -3282,11 +3282,11 @@ fn (mut t Transformer) transform_infix_expr(expr ast.InfixExpr) ast.Expr {
 					if type_name in known_struct_ops {
 						// Determine operator method name
 						op_name := match expr.op {
-							.plus { '__plus' }
-							.minus { '__minus' }
-							.mul { '__mul' }
-							.div { '__div' }
-							.mod { '__mod' }
+							.plus { '__op_plus' }
+							.minus { '__op_minus' }
+							.mul { '__op_mul' }
+							.div { '__op_div' }
+							.mod { '__op_mod' }
 							else { '' }
 						}
 

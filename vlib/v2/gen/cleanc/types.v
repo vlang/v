@@ -63,11 +63,11 @@ fn option_value_type(option_type string) string {
 
 fn overloaded_arithmetic_method_part(node ast.InfixExpr) string {
 	return match node.op {
-		.plus { 'plus' }
-		.minus { 'minus' }
-		.mul { 'mul' }
-		.div { 'div' }
-		.mod { 'mod' }
+		.plus { 'op_plus' }
+		.minus { 'op_minus' }
+		.mul { 'op_mul' }
+		.div { 'op_div' }
+		.mod { 'op_mod' }
 		else { '' }
 	}
 }
@@ -530,6 +530,85 @@ fn (g &Gen) c_type_from_possible_specialization_token(name string) string {
 		return resolved_base + ptr_suffix
 	}
 	return resolved_base
+}
+
+fn (g &Gen) should_map_vec_generic_to_simd(lhs_name string) bool {
+	base_name := if lhs_name.contains('__') { lhs_name.all_after_last('__') } else { lhs_name }
+	if base_name !in ['Vec2', 'Vec4'] {
+		return false
+	}
+	// The math.vec module defines Vec2/Vec4 as ordinary generic structs.
+	// SIMD aliases are emitted for explicit aliases like `type SimdFloat4 = vec.Vec4[f32]`;
+	// mapping the module's own Vec2/Vec4 definitions changes their function bodies.
+	return g.cur_module != 'vec'
+}
+
+fn (g &Gen) vec_type_suffix_alias_to_c(name string) ?string {
+	if g.cur_module == 'vec' && name in ['Vec2', 'Vec4', 'vec__Vec2', 'vec__Vec4'] {
+		return none
+	}
+	if name.ends_with('Vec4') {
+		mut mapped := name[..name.len - 'Vec4'.len] + 'SimdFloat4'
+		if !mapped.contains('__') && g.cur_module != '' && g.cur_module != 'main'
+			&& g.cur_module != 'builtin' {
+			mapped = '${g.cur_module}__${mapped}'
+		}
+		return mapped
+	}
+	if name.ends_with('Vec2') {
+		mut mapped := name[..name.len - 'Vec2'.len] + 'SimdFloat2'
+		if !mapped.contains('__') && g.cur_module != '' && g.cur_module != 'main'
+			&& g.cur_module != 'builtin' {
+			mapped = '${g.cur_module}__${mapped}'
+		}
+		return mapped
+	}
+	return none
+}
+
+fn vec_simd_alias_name(base_name string, arg_type string) string {
+	if base_name == 'Vec4' {
+		return if arg_type.starts_with('u') {
+			'SimdU32_4'
+		} else if arg_type.starts_with('f') {
+			'SimdFloat4'
+		} else {
+			'SimdInt4'
+		}
+	}
+	if base_name == 'Vec2' {
+		return if arg_type.starts_with('u') {
+			'SimdUint2'
+		} else if arg_type.starts_with('f') {
+			'SimdFloat2'
+		} else {
+			'SimdI32_2'
+		}
+	}
+	return ''
+}
+
+fn (g &Gen) module_declares_type(module_name string, type_name string) bool {
+	if module_name == '' || type_name == '' {
+		return false
+	}
+	qualified := type_decl_name_in_module(type_name, module_name)
+	if type_decl_module_key(module_name, qualified) in g.declared_type_names_by_mod {
+		return true
+	}
+	return g.c_type_name_declared_in_module(module_name, type_name)
+}
+
+fn (g &Gen) local_vec_simd_alias_to_c(base_name string, arg_type string) ?string {
+	if g.cur_module == '' || g.cur_module == 'main' || g.cur_module == 'builtin'
+		|| g.cur_module == 'vec' {
+		return none
+	}
+	alias_name := vec_simd_alias_name(base_name, arg_type)
+	if alias_name == '' || !g.module_declares_type(g.cur_module, alias_name) {
+		return none
+	}
+	return '${g.cur_module}__${alias_name}'
 }
 
 fn (mut g Gen) generic_placeholder_c_type_from_name(name string) ?string {
@@ -1971,6 +2050,13 @@ fn (mut g Gen) method_receiver_base_type(expr ast.Expr) string {
 	if unwrapped_expr is ast.PrefixExpr && unwrapped_expr.op in [.amp, .mul] {
 		return g.method_receiver_base_type(unwrapped_expr.expr)
 	}
+	direct_type := g.direct_known_c_type_for_expr(expr)
+	if direct_type != '' && direct_type != 'int' {
+		base := strip_pointer_type_name(direct_type)
+		if base != '' && base != 'int' && base !in ['void', 'void*', 'voidptr'] {
+			return base
+		}
+	}
 	// For InitExpr (struct literal), use the explicit type from the AST
 	// rather than pos.id lookup (which may return a different pre-transformer type).
 	if expr is ast.InitExpr {
@@ -2379,20 +2465,7 @@ fn (g &Gen) types_type_to_c(t types.Type) string {
 			if unmangled_name != name {
 				return unmangled_name
 			}
-			if name.ends_with('Vec4') {
-				mut mapped := name[..name.len - 'Vec4'.len] + 'SimdFloat4'
-				if !mapped.contains('__') && g.cur_module != '' && g.cur_module != 'main'
-					&& g.cur_module != 'builtin' {
-					mapped = '${g.cur_module}__${mapped}'
-				}
-				return mapped
-			}
-			if name.ends_with('Vec2') {
-				mut mapped := name[..name.len - 'Vec2'.len] + 'SimdFloat2'
-				if !mapped.contains('__') && g.cur_module != '' && g.cur_module != 'main'
-					&& g.cur_module != 'builtin' {
-					mapped = '${g.cur_module}__${mapped}'
-				}
+			if mapped := g.vec_type_suffix_alias_to_c(name) {
 				return mapped
 			}
 			if name in ['SimdFloat4', 'SimdInt4', 'SimdU32_4', 'SimdFloat2', 'SimdUint2', 'SimdI32_2']
@@ -2799,6 +2872,11 @@ fn (mut g Gen) direct_known_c_type_for_expr(expr ast.Expr) string {
 		else {}
 	}
 
+	if expr is ast.SelectorExpr {
+		if global_type := g.global_var_type_for_selector(expr) {
+			return global_type
+		}
+	}
 	unwrapped := strip_expr_wrappers(expr)
 	if unwrapped is ast.Ident {
 		name := unwrapped.name
@@ -2825,6 +2903,22 @@ fn (mut g Gen) direct_known_c_type_for_expr(expr ast.Expr) string {
 		}
 	}
 	return ''
+}
+
+fn (mut g Gen) global_var_type_for_selector(sel ast.SelectorExpr) ?string {
+	parts := cleanc_selector_expr_parts(sel)
+	if parts.len != 2 || parts[1] == '' {
+		return none
+	}
+	mod_name := g.resolve_module_name(parts[0])
+	if mod_name == '' {
+		return none
+	}
+	qualified := module_storage_c_name(mod_name, parts[1])
+	if global_type := g.global_var_types[qualified] {
+		return global_type
+	}
+	return none
 }
 
 fn (g &Gen) global_var_type_for_ident(name string) ?string {
@@ -3045,7 +3139,7 @@ fn (mut g Gen) get_expr_type(node ast.Expr) string {
 			return g.get_expr_type(node.lhs)
 		}
 		if elem_type := g.index_expr_elem_type_from_lhs(node) {
-			if elem_type == 'u8' {
+			if elem_type == 'u8' || elem_type.starts_with('Array_fixed_') {
 				return elem_type
 			}
 		}
@@ -3073,7 +3167,7 @@ fn (mut g Gen) get_expr_type(node ast.Expr) string {
 						return elem_type
 					}
 				}
-				elem_type := array_alias_elem_type(local_type)
+				elem_type := g.array_alias_elem_type_from_c_type(local_type)
 				if elem_type != '' {
 					return elem_type
 				}
@@ -3110,6 +3204,11 @@ fn (mut g Gen) get_expr_type(node ast.Expr) string {
 		ct_type := g.get_comptime_selector_type(node)
 		if ct_type != '' {
 			return ct_type
+		}
+	}
+	if node is ast.SelectorExpr {
+		if global_type := g.global_var_type_for_selector(node) {
+			return global_type
 		}
 	}
 	// Generic type parameter access: T.name is emitted as a static V string.
@@ -3877,12 +3976,21 @@ fn (mut g Gen) index_expr_elem_type_from_lhs(node ast.IndexExpr) ?string {
 			if lhs_type == 'string' {
 				return 'u8'
 			}
-			elem := array_alias_elem_type(lhs_type)
+			elem := g.array_alias_elem_type_from_c_type(lhs_type)
 			if elem != '' {
 				return elem
 			}
 			if lhs_type != '' && lhs_type != 'int' {
 				return none
+			}
+		}
+	}
+	if node.lhs is ast.SelectorExpr {
+		field_type := g.selector_field_type(node.lhs).trim_space().trim_right('*')
+		if field_type != '' {
+			elem := g.array_alias_elem_type_from_c_type(field_type)
+			if elem != '' {
+				return elem
 			}
 		}
 	}
@@ -3920,7 +4028,13 @@ fn (mut g Gen) index_expr_elem_type_from_lhs(node ast.IndexExpr) ?string {
 
 // expr_type_to_c converts an AST type expression to a C type string
 fn (mut g Gen) vec_generic_type_to_c(lhs_name string, arg_type string) string {
+	if !g.should_map_vec_generic_to_simd(lhs_name) {
+		return ''
+	}
 	base_name := if lhs_name.contains('__') { lhs_name.all_after_last('__') } else { lhs_name }
+	if local_alias := g.local_vec_simd_alias_to_c(base_name, arg_type) {
+		return local_alias
+	}
 	prefix := if lhs_name.contains('__') {
 		lhs_name.all_before_last('__') + '__'
 	} else if g.cur_module != '' && g.cur_module != 'main' && g.cur_module != 'builtin' {
@@ -3928,23 +4042,9 @@ fn (mut g Gen) vec_generic_type_to_c(lhs_name string, arg_type string) string {
 	} else {
 		''
 	}
-	if base_name == 'Vec4' {
-		return if arg_type.starts_with('u') {
-			prefix + 'SimdU32_4'
-		} else if arg_type.starts_with('f') {
-			prefix + 'SimdFloat4'
-		} else {
-			prefix + 'SimdInt4'
-		}
-	}
-	if base_name == 'Vec2' {
-		return if arg_type.starts_with('u') {
-			prefix + 'SimdUint2'
-		} else if arg_type.starts_with('f') {
-			prefix + 'SimdFloat2'
-		} else {
-			prefix + 'SimdI32_2'
-		}
+	alias_name := vec_simd_alias_name(base_name, arg_type)
+	if alias_name != '' {
+		return prefix + alias_name
 	}
 	return ''
 }
@@ -4037,21 +4137,7 @@ fn (mut g Gen) expr_type_to_c(e ast.Expr) string {
 			if unmangled_name != name {
 				return unmangled_name
 			}
-			if name.ends_with('Vec4') {
-				mut mapped := name[..name.len - 'Vec4'.len] + 'SimdFloat4'
-				if !mapped.contains('__') && g.cur_module != '' && g.cur_module != 'main'
-					&& g.cur_module != 'builtin' {
-					mapped = '${g.cur_module}__${mapped}'
-				}
-				g.register_alias_type(mapped)
-				return mapped
-			}
-			if name.ends_with('Vec2') {
-				mut mapped := name[..name.len - 'Vec2'.len] + 'SimdFloat2'
-				if !mapped.contains('__') && g.cur_module != '' && g.cur_module != 'main'
-					&& g.cur_module != 'builtin' {
-					mapped = '${g.cur_module}__${mapped}'
-				}
+			if mapped := g.vec_type_suffix_alias_to_c(name) {
 				g.register_alias_type(mapped)
 				return mapped
 			}
@@ -4100,10 +4186,10 @@ fn (mut g Gen) expr_type_to_c(e ast.Expr) string {
 				type_name := parts[parts.len - 1]
 				mod_name := g.resolve_module_name(module_name)
 				mut qualified := mod_name + '__' + type_name
-				if qualified.ends_with('Vec4') {
-					qualified = qualified[..qualified.len - 'Vec4'.len] + 'SimdFloat4'
-				} else if qualified.ends_with('Vec2') {
-					qualified = qualified[..qualified.len - 'Vec2'.len] + 'SimdFloat2'
+				if type_name !in ['Vec2', 'Vec4'] {
+					if mapped := g.vec_type_suffix_alias_to_c(qualified) {
+						qualified = mapped
+					}
 				}
 				return qualified
 			}
@@ -4247,6 +4333,12 @@ fn (mut g Gen) expr_type_to_c(e ast.Expr) string {
 				base_name := g.expr_type_to_c(e.name)
 				concrete_params := non_lifetime_generic_args(e.params)
 				if concrete_params.len > 0 {
+					arg_type := g.expr_type_to_c(concrete_params[0])
+					mapped := g.vec_generic_type_to_c(base_name, arg_type)
+					if mapped != '' {
+						g.register_alias_type(mapped)
+						return mapped
+					}
 					struct_base := if base_name.contains('__') {
 						base_name.all_after_last('__')
 					} else {

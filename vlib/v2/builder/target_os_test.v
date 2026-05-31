@@ -233,6 +233,27 @@ fn test_header_cache_stamp_uses_target_os_preference() {
 	assert linux_stamp != windows_stamp
 }
 
+fn test_cached_called_fn_names_are_persisted_for_reused_objects() {
+	tmp_dir := os.join_path(os.vtmp_dir(), 'v2_cached_called_names_${os.getpid()}')
+	os.mkdir_all(tmp_dir) or { panic(err) }
+	defer {
+		os.rmdir_all(tmp_dir) or {}
+	}
+	prefs := pref.new_preferences()
+	mut b := new_builder(&prefs)
+	b.cached_called_fn_names['local__already'] = true
+	b.cached_called_fn_names['json2__decode_T_Foo'] = true
+	b.write_cached_called_fn_names(tmp_dir, 'virtuals', {
+		'local__already': true
+	})
+
+	mut b2 := new_builder(&prefs)
+	assert b2.load_cached_called_fn_names(tmp_dir, 'virtuals')
+	assert 'json2__decode_T_Foo' in b2.cached_called_fn_names
+	assert 'local__already' !in b2.cached_called_fn_names
+	assert !b2.load_cached_called_fn_names(tmp_dir, 'missing')
+}
+
 fn test_linux_x64_builder_default_o0_forces_ssa_optimize() {
 	if os.user_os() != 'linux' || os.uname().machine !in ['x86_64', 'amd64'] {
 		return

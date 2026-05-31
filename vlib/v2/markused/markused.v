@@ -3380,6 +3380,14 @@ fn (mut w Walker) mark_selector_fn_value(expr ast.SelectorExpr, mod_name string)
 	target := w.selector_fn_value_target(expr)
 	if target != '' {
 		w.mark_fn_name(target, mod_name)
+		return
+	}
+	if expr.rhs.name == '' {
+		return
+	}
+	receivers := w.receiver_candidates_for_expr(expr.lhs, mod_name)
+	if receivers.len > 0 {
+		w.mark_method_name(expr.rhs.name, receivers)
 	}
 }
 
