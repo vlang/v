@@ -3,26 +3,8 @@
 // that can be found in the LICENSE file.
 module bits
 
-// See http://supertech.csail.mit.edu/papers/debruijn.pdf
-const de_bruijn32 = u32(0x077CB531)
-const de_bruijn32tab = [u8(0), 1, 28, 2, 29, 14, 24, 3, 30, 22, 20, 15, 25, 17, 4, 8, 31, 27, 13,
-	23, 21, 19, 16, 7, 26, 12, 18, 6, 11, 5, 10, 9]!
-const de_bruijn64 = u64(0x03f79d71b4ca8b09)
-const de_bruijn64tab = [u8(0), 1, 56, 2, 57, 49, 28, 3, 61, 58, 42, 50, 38, 29, 17, 4, 62, 47,
-	59, 36, 45, 43, 51, 22, 53, 39, 33, 30, 24, 18, 12, 5, 63, 55, 48, 27, 60, 41, 37, 16, 46,
-	35, 44, 21, 52, 32, 23, 11, 54, 26, 40, 15, 34, 20, 31, 10, 25, 14, 19, 9, 13, 8, 7, 6]!
-
-const m0 = u64(0x5555555555555555) // 01010101 ...
-
-const m1 = u64(0x3333333333333333) // 00110011 ...
-
-const m2 = u64(0x0f0f0f0f0f0f0f0f) // 00001111 ...
-
-const m3 = u64(0x00ff00ff00ff00ff) // etc.
-
-const m4 = u64(0x0000ffff0000ffff)
-
 // --- LeadingZeros ---
+
 // leading_zeros_8 returns the number of leading zero bits in x; the result is 8 for x == 0.
 @[inline]
 pub fn leading_zeros_8(x u8) int {
@@ -68,6 +50,7 @@ fn leading_zeros_64_default(x u64) int {
 }
 
 // --- TrailingZeros ---
+
 // trailing_zeros_8 returns the number of trailing zero bits in x; the result is 8 for x == 0.
 @[inline]
 pub fn trailing_zeros_8(x u8) int {
@@ -85,13 +68,15 @@ pub fn trailing_zeros_16(x u16) int {
 	return trailing_zeros_16_default(x)
 }
 
-@[direct_array_access; ignore_overflow; inline]
+@[direct_array_access; inline]
 fn trailing_zeros_16_default(x u16) int {
 	if x == 0 {
 		return 16
 	}
-	// see comment in trailing_zeros_64
-	return int(de_bruijn32tab[u32(x & -x) * de_bruijn32 >> (32 - 5)])
+	if (x & u16(0xff)) == 0 {
+		return 8 + int(ntz_8_tab[x >> 8])
+	}
+	return int(ntz_8_tab[x & u16(0xff)])
 }
 
 // trailing_zeros_32 returns the number of trailing zero bits in x; the result is 32 for x == 0.
@@ -100,13 +85,15 @@ pub fn trailing_zeros_32(x u32) int {
 	return trailing_zeros_32_default(x)
 }
 
-@[direct_array_access; ignore_overflow; inline]
+@[direct_array_access; inline]
 fn trailing_zeros_32_default(x u32) int {
 	if x == 0 {
 		return 32
 	}
-	// see comment in trailing_zeros_64
-	return int(de_bruijn32tab[(x & -x) * de_bruijn32 >> (32 - 5)])
+	if (x & u32(0xffff)) == 0 {
+		return 16 + trailing_zeros_16_default(u16(x >> 16))
+	}
+	return trailing_zeros_16_default(u16(x))
 }
 
 // trailing_zeros_64 returns the number of trailing zero bits in x; the result is 64 for x == 0.
@@ -115,26 +102,20 @@ pub fn trailing_zeros_64(x u64) int {
 	return trailing_zeros_64_default(x)
 }
 
-@[direct_array_access; ignore_overflow; inline]
+@[direct_array_access; inline]
 fn trailing_zeros_64_default(x u64) int {
 	if x == 0 {
 		return 64
 	}
-	// If popcount is fast, replace code below with return popcount(^x & (x - 1)).
-	//
-	// x & -x leaves only the right-most bit set in the word. Let k be the
-	// index of that bit. Since only a single bit is set, the value is two
-	// to the power of k. Multiplying by a power of two is equivalent to
-	// left shifting, in this case by k bits. The de Bruijn (64 bit) constant
-	// is such that all six bit, consecutive substrings are distinct.
-	// Therefore, if we have a left shifted version of this constant we can
-	// find by how many bits it was shifted by looking at which six bit
-	// substring ended up at the top of the word.
-	// (Knuth, volume 4, section 7.3.1)
-	return int(de_bruijn64tab[int((x & -x) * de_bruijn64 >> (64 - 6))])
+	low := u32(x)
+	if low == 0 {
+		return 32 + trailing_zeros_32_default(u32(x >> 32))
+	}
+	return trailing_zeros_32_default(low)
 }
 
 // --- OnesCount ---
+
 // ones_count_8 returns the number of one bits ("population count") in x.
 @[inline]
 pub fn ones_count_8(x u8) int {
@@ -176,32 +157,7 @@ pub fn ones_count_64(x u64) int {
 }
 
 fn ones_count_64_default(x u64) int {
-	// Implementation: Parallel summing of adjacent bits.
-	// See "Hacker's Delight", Chap. 5: Counting Bits.
-	// The following pattern shows the general approach:
-	//
-	// x = x>>1&(m0&m) + x&(m0&m)
-	// x = x>>2&(m1&m) + x&(m1&m)
-	// x = x>>4&(m2&m) + x&(m2&m)
-	// x = x>>8&(m3&m) + x&(m3&m)
-	// x = x>>16&(m4&m) + x&(m4&m)
-	// x = x>>32&(m5&m) + x&(m5&m)
-	// return int(x)
-	//
-	// Masking (& operations) can be left away when there's no
-	// danger that a field's sum will carry over into the next
-	// field: Since the result cannot be > 64, 8 bits is enough
-	// and we can ignore the masks for the shifts by 8 and up.
-	// Per "Hacker's Delight", the first line can be simplified
-	// more, but it saves at best one instruction, so we leave
-	// it alone for clarity.
-	mut y := ((x >> u64(1)) & (m0 & max_u64)) + (x & (m0 & max_u64))
-	y = ((y >> u64(2)) & (m1 & max_u64)) + (y & (m1 & max_u64))
-	y = ((y >> 4) + y) & (m2 & max_u64)
-	y += y >> 8
-	y += y >> 16
-	y += y >> 32
-	return int(y) & ((1 << 7) - 1)
+	return ones_count_32_default(u32(x)) + ones_count_32_default(u32(x >> 32))
 }
 
 const n8 = u8(8)
@@ -210,6 +166,7 @@ const n32 = u32(32)
 const n64 = u64(64)
 
 // --- RotateLeft ---
+
 // rotate_left_8 returns the value of x rotated left by (k mod 8) bits.
 // To rotate x right by k bits, call rotate_left_8(x, -k).
 //
@@ -251,6 +208,7 @@ pub fn rotate_left_64(x u64, k int) u64 {
 }
 
 // --- Reverse ---
+
 // reverse_8 returns the value of x with its bits in reversed order.
 @[direct_array_access; inline]
 pub fn reverse_8(x u8) u8 {
@@ -263,30 +221,43 @@ pub fn reverse_16(x u16) u16 {
 	return u16(rev_8_tab[x >> 8]) | (u16(rev_8_tab[x & u16(0xff)]) << 8)
 }
 
+// vfmt off
+
 // reverse_32 returns the value of x with its bits in reversed order.
-@[inline]
+@[direct_array_access; inline]
 pub fn reverse_32(x u32) u32 {
-	mut y := (((x >> u32(1)) & (m0 & max_u32)) | ((x & (m0 & max_u32)) << 1))
-	y = (((y >> u32(2)) & (m1 & max_u32)) | ((y & (m1 & max_u32)) << u32(2)))
-	y = (((y >> u32(4)) & (m2 & max_u32)) | ((y & (m2 & max_u32)) << u32(4)))
-	return reverse_bytes_32(u32(y))
+	return (u32(rev_8_tab[u8(x)]) << 24) |
+		   (u32(rev_8_tab[u8(x >>  8)]) << 16) |
+		   (u32(rev_8_tab[u8(x >> 16)]) <<  8) |
+		    u32(rev_8_tab[u8(x >> 24)])
 }
 
 // reverse_64 returns the value of x with its bits in reversed order.
-@[inline]
+@[direct_array_access; inline]
 pub fn reverse_64(x u64) u64 {
-	mut y := (((x >> u64(1)) & (m0 & max_u64)) | ((x & (m0 & max_u64)) << 1))
-	y = (((y >> u64(2)) & (m1 & max_u64)) | ((y & (m1 & max_u64)) << 2))
-	y = (((y >> u64(4)) & (m2 & max_u64)) | ((y & (m2 & max_u64)) << 4))
-	return reverse_bytes_64(y)
+	return (u64(rev_8_tab[u8(x)]) << 56) |
+		   (u64(rev_8_tab[u8(x >>  8)]) << 48) |
+		   (u64(rev_8_tab[u8(x >> 16)]) << 40) |
+		   (u64(rev_8_tab[u8(x >> 24)]) << 32) |
+		   (u64(rev_8_tab[u8(x >> 32)]) << 24) |
+		   (u64(rev_8_tab[u8(x >> 40)]) << 16) |
+		   (u64(rev_8_tab[u8(x >> 48)]) <<  8) |
+		    u64(rev_8_tab[u8(x >> 56)])
 }
+// vfmt on
 
 // --- ReverseBytes ---
+
 // reverse_bytes_16 returns the value of x with its bytes in reversed order.
 //
 // This function's execution time does not depend on the inputs.
 @[inline]
 pub fn reverse_bytes_16(x u16) u16 {
+	return reverse_bytes_16_default(x)
+}
+
+@[inline]
+fn reverse_bytes_16_default(x u16) u16 {
 	return (x >> 8) | (x << 8)
 }
 
@@ -295,8 +266,12 @@ pub fn reverse_bytes_16(x u16) u16 {
 // This function's execution time does not depend on the inputs.
 @[inline]
 pub fn reverse_bytes_32(x u32) u32 {
-	y := (((x >> u32(8)) & (m3 & max_u32)) | ((x & (m3 & max_u32)) << u32(8)))
-	return u32((y >> 16) | (y << 16))
+	return reverse_bytes_32_default(x)
+}
+
+@[inline]
+fn reverse_bytes_32_default(x u32) u32 {
+	return (x >> 24) | ((x >> 8) & u32(0x0000_ff00)) | ((x << 8) & u32(0x00ff_0000)) | (x << 24)
 }
 
 // reverse_bytes_64 returns the value of x with its bytes in reversed order.
@@ -304,12 +279,16 @@ pub fn reverse_bytes_32(x u32) u32 {
 // This function's execution time does not depend on the inputs.
 @[inline]
 pub fn reverse_bytes_64(x u64) u64 {
-	mut y := (((x >> u64(8)) & (m3 & max_u64)) | ((x & (m3 & max_u64)) << u64(8)))
-	y = (((y >> u64(16)) & (m4 & max_u64)) | ((y & (m4 & max_u64)) << u64(16)))
-	return (y >> 32) | (y << 32)
+	return reverse_bytes_64_default(x)
+}
+
+@[inline]
+fn reverse_bytes_64_default(x u64) u64 {
+	return (x >> 56) | ((x >> 40) & u64(0x0000_0000_0000_ff00)) | ((x >> 24) & u64(0x0000_0000_00ff_0000)) | ((x >> 8) & u64(0x0000_0000_ff00_0000)) | ((x << 8) & u64(0x0000_00ff_0000_0000)) | ((x << 24) & u64(0x0000_ff00_0000_0000)) | ((x << 40) & u64(0x00ff_0000_0000_0000)) | (x << 56)
 }
 
 // --- Len ---
+
 // len_8 returns the minimum number of bits required to represent x; the result is 0 for x == 0.
 @[direct_array_access]
 pub fn len_8(x u8) int {
@@ -365,9 +344,7 @@ pub fn len_64(x u64) int {
 }
 
 // --- Add with carry ---
-// Add returns the sum with carry of x, y and carry: sum = x + y + carry.
-// The carry input must be 0 or 1; otherwise the behavior is undefined.
-// The carryOut output is guaranteed to be 0 or 1.
+
 // add_32 returns the sum with carry of x, y and carry: sum = x + y + carry.
 // The carry input must be 0 or 1; otherwise the behavior is undefined.
 // The carryOut output is guaranteed to be 0 or 1.
@@ -395,9 +372,7 @@ pub fn add_64(x u64, y u64, carry u64) (u64, u64) {
 }
 
 // --- Subtract with borrow ---
-// Sub returns the difference of x, y and borrow: diff = x - y - borrow.
-// The borrow input must be 0 or 1; otherwise the behavior is undefined.
-// The borrowOut output is guaranteed to be 0 or 1.
+
 // sub_32 returns the difference of x, y and borrow, diff = x - y - borrow.
 // The borrow input must be 0 or 1; otherwise the behavior is undefined.
 // The borrowOut output is guaranteed to be 0 or 1.
@@ -431,7 +406,7 @@ pub fn sub_64(x u64, y u64, borrow u64) (u64, u64) {
 pub const two32 = u64(0x100000000)
 const mask32 = two32 - 1
 const overflow_error = 'Overflow Error'
-const divide_error = 'Divide Error'
+// const divide_error = 'Divide Error'
 
 // mul_32 returns the 64-bit product of x and y: (hi, lo) = x * y
 // with the product bits' upper half returned in hi and the lower
@@ -509,6 +484,7 @@ fn mul_add_64_default(x u64, y u64, z u64) (u64, u64) {
 }
 
 // --- Full-width divide ---
+
 // div_32 returns the quotient and remainder of (hi, lo) divided by y:
 // quo = (hi, lo)/y, rem = (hi, lo)%y with the dividend bits' upper
 // half in parameter hi and the lower half in parameter lo.
@@ -544,6 +520,9 @@ fn div_64_default(hi u64, lo u64, y1 u64) (u64, u64) {
 	}
 	if y <= hi {
 		panic(overflow_error)
+	}
+	if hi == 0 {
+		return lo / y, lo % y
 	}
 	s := u32(leading_zeros_64(y))
 	y <<= s

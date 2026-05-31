@@ -3,6 +3,12 @@
 //
 module bits
 
+fn C.system(s &char) int
+fn C.fopen(path &char, mode &char) voidptr
+fn C.fputs(s &char, f voidptr) int
+fn C.fclose(f voidptr) int
+fn C.remove(path &char) int
+
 fn test_bits() {
 	mut i := 0
 	mut i1 := u64(0)
@@ -196,6 +202,14 @@ fn test_bits() {
 	}
 
 	//
+	// --- reverse_bytes ---
+	//
+
+	assert reverse_bytes_16(0x1234) == 0x3412
+	assert reverse_bytes_32(0x12345678) == 0x78563412
+	assert reverse_bytes_64(0x1234567887654321) == 0x2143658778563412
+
+	//
 	// --- add ---
 	//
 
@@ -345,4 +359,34 @@ fn test_div_64_edge_cases() {
 	q, r := div_64(0, 23, 10000000000000000000)
 	assert q == 0
 	assert r == 23
+}
+
+fn test_float_bits_roundtrip() {
+	for bits in [u32(0), 0x8000_0000, 0x3f80_0000, 0x7f80_0000, 0x7fc0_0001] {
+		assert f32_bits(f32_from_bits(bits)) == bits
+	}
+	for bits in [u64(0), 0x8000_0000_0000_0000, 0x3ff0_0000_0000_0000, 0x7ff0_0000_0000_0000,
+		0x7ff8_0000_0000_0001] {
+		assert f64_bits(f64_from_bits(bits)) == bits
+	}
+}
+
+fn test_div_panics() {
+	assert_program_panics('module main\nimport math.bits\nfn main() {\n\t_, _ := bits.div_32(0, 0, 0)\n}\n')
+	assert_program_panics('module main\nimport math.bits\nfn main() {\n\t_, _ := bits.div_32(1, 0, 1)\n}\n')
+	assert_program_panics('module main\nimport math.bits\nfn main() {\n\t_, _ := bits.div_64(0, 0, 0)\n}\n')
+	assert_program_panics('module main\nimport math.bits\nfn main() {\n\t_, _ := bits.div_64(1, 0, 1)\n}\n')
+}
+
+fn assert_program_panics(src string) {
+	path := '/tmp/bits_panic_test.v'
+	f := C.fopen(path.str, c'w')
+	C.fputs(src.str, f)
+	C.fclose(f)
+	defer {
+		C.remove(path.str)
+	}
+	cmd := '${@VEXE} run ${path}'
+	res := C.system(cmd.str)
+	assert res != 0
 }
