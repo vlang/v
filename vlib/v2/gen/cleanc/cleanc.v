@@ -2262,6 +2262,7 @@ fn (mut g Gen) emit_weak_generic_specialization_bodies(needed_names map[string]b
 fn (mut g Gen) weak_generic_fn_specializations_for_names(node &ast.FnDecl, needed_names map[string]bool, root_called_names map[string]bool, required_names map[string]bool) []GenericFnSpecialization {
 	mut prev_generic_types := g.active_generic_types.clone()
 	mut specs := g.direct_generic_fn_specializations(*node)
+	needed_name_keys := needed_names.keys()
 	if needed_names.len > 0 {
 		mut seen := map[string]bool{}
 		for spec in specs {
@@ -2274,7 +2275,7 @@ fn (mut g Gen) weak_generic_fn_specializations_for_names(node &ast.FnDecl, neede
 			base_name := g.get_fn_name(*node)
 			g.active_generic_types = prev_generic_types2.move()
 			prefix := '${base_name}_T_'
-			for called_name, _ in needed_names {
+			for called_name in needed_name_keys {
 				if !called_name.starts_with(prefix) || called_name in seen {
 					continue
 				}
