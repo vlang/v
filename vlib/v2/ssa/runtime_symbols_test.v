@@ -359,6 +359,27 @@ fn main() {
 	assert 'errno' !in global_names
 }
 
+fn test_c_errno_flat_reads_use_errno_location_on_linux_targets() {
+	m := build_ssa_for_runtime_symbol_target_flat_test('
+module main
+
+fn read_errno() int {
+	return C.errno
+}
+
+fn main() {
+	_ := read_errno()
+}
+',
+		'linux')
+	call_names := called_function_names(m)
+	global_names := global_value_names(m)
+
+	assert '__errno_location' in call_names
+	assert '__error' !in call_names
+	assert 'errno' !in global_names
+}
+
 fn test_c_errno_writes_use_errno_location_on_linux_targets() {
 	m := build_ssa_for_runtime_symbol_target_test(c_errno_write_test_code(), 'linux')
 	call_names := called_function_names(m)

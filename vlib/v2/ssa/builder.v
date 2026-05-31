@@ -5891,14 +5891,14 @@ fn (mut b Builder) build_selector_from_flat(c ast.Cursor) ValueID {
 			i64_t := b.mod.type_store.get_int(64)
 			return b.mod.get_or_add_const(i64_t, '0')
 		}
+		// errno is not portable linkable data on targets with TLS errno.
+		// Darwin exposes __error(); glibc/LSB expose __errno_location();
+		// Windows CRT exposes _errno(). build_c_errno_storage_addr() maps each
+		// target to the right accessor (with a raw `errno` global fallback).
 		if c_name == 'errno' {
-			if b.is_macos_target() {
-				i32_t := b.mod.type_store.get_int(32)
-				ptr_i32 := b.mod.type_store.get_ptr(i32_t)
-				err_fn := b.get_or_create_fn_ref('__error', ptr_i32)
-				call_val := b.mod.add_instr(.call, b.cur_block, ptr_i32, [err_fn])
-				return b.mod.add_instr(.load, b.cur_block, i32_t, [call_val])
-			}
+			i32_t := b.mod.type_store.get_int(32)
+			errno_addr := b.build_c_errno_storage_addr()
+			return b.mod.add_instr(.load, b.cur_block, i32_t, [errno_addr])
 		}
 		target_name := if b.is_macos_target() {
 			match c_name {
