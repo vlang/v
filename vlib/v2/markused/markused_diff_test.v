@@ -248,6 +248,23 @@ fn main() {
 }
 '
 
+const fixture_global_init_calls_fn = 'module main
+
+struct Value {
+	n int
+}
+
+fn make_value() Value {
+	return Value{n: 1}
+}
+
+__global state = make_value()
+
+fn main() {
+	_ = state.n
+}
+'
+
 // fixture_generic_fn exercises walker dispatch on generic function calls.
 // The walker must mark both the generic base and any concrete bindings
 // reachable through env.generic_types — the closest analogue of a real
@@ -366,6 +383,7 @@ fn all_fixtures() []string {
 		fixture_match_expr,
 		fixture_if_guard,
 		fixture_global_init,
+		fixture_global_init_calls_fn,
 		fixture_generic_fn,
 		fixture_closure,
 		fixture_sumtype_is_as,
@@ -415,6 +433,11 @@ fn test_flat_matches_legacy_if_guard() {
 fn test_flat_matches_legacy_global_init() {
 	p := parse_fixture(fixture_global_init)
 	assert_used_keys_equal('global_init', run_legacy(p), run_flat(p))
+}
+
+fn test_flat_matches_legacy_global_init_calls_fn() {
+	p := parse_fixture(fixture_global_init_calls_fn)
+	assert_used_keys_equal('global_init_calls_fn', run_legacy(p), run_flat(p))
 }
 
 fn test_flat_matches_legacy_generic_fn() {
