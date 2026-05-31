@@ -207,11 +207,24 @@ fn (mut t Transformer) try_expand_if_guard_stmt(stmt ast.ExprStmt) ?[]ast.Stmt {
 	}
 	guard := if_expr.cond as ast.IfGuardExpr
 
+	// The entire if-guard expansion is at statement position. Suppress value-
+	// position IfExpr hoisting (`_if_t<N> := if ...`) for nested else-if chains
+	// so they don't generate mistyped temps for what is really a statement.
+	saved_skip := t.skip_if_value_lowering
+	t.skip_if_value_lowering = true
+	defer {
+		t.skip_if_value_lowering = saved_skip
+	}
+
 	if guard.stmt.rhs.len == 0 {
 		return none
 	}
 
-	rhs := guard.stmt.rhs[0]
+	mut rhs := guard.stmt.rhs[0]
+	mut guard_prefix_stmts := []ast.Stmt{}
+	if t.expr_has_or_expr(rhs) {
+		rhs = t.extract_or_expr(rhs, mut guard_prefix_stmts)
+	}
 	synth_pos := t.next_synth_pos()
 
 	// Check if RHS is a call that returns Result/Option
@@ -224,6 +237,12 @@ fn (mut t Transformer) try_expand_if_guard_stmt(stmt ast.ExprStmt) ?[]ast.Stmt {
 		fn_name := t.get_call_fn_name(rhs)
 		is_result = fn_name != '' && t.fn_returns_result(fn_name)
 		is_option = fn_name != '' && t.fn_returns_option(fn_name)
+	}
+	if !is_result && !is_option {
+		if ret_type := t.fn_pointer_call_return_type(rhs) {
+			is_result = ret_type is types.ResultType || ret_type.name().starts_with('!')
+			is_option = ret_type is types.OptionType || ret_type.name().starts_with('?')
+		}
 	}
 
 	if is_result || is_option {
@@ -239,6 +258,9 @@ fn (mut t Transformer) try_expand_if_guard_stmt(stmt ast.ExprStmt) ?[]ast.Stmt {
 
 		mut stmts := []ast.Stmt{}
 		mut data_type := types.Type(types.voidptr_)
+		for prefix_stmt in guard_prefix_stmts {
+			stmts << prefix_stmt
+		}
 
 		// Register temp variable type so cleanc can look up its type for .data unwrapping
 		if wrapper_type := t.expr_wrapper_type_for_or(rhs) {
@@ -254,6 +276,14 @@ fn (mut t Transformer) try_expand_if_guard_stmt(stmt ast.ExprStmt) ?[]ast.Stmt {
 				is_option = true
 			}
 		} else if wrapper_type := t.get_expr_type(rhs) {
+			t.register_temp_var(temp_name, wrapper_type)
+			t.register_synth_type(temp_pos, wrapper_type)
+			if wrapper_type is types.ResultType {
+				data_type = wrapper_type.base_type
+			} else if wrapper_type is types.OptionType {
+				data_type = wrapper_type.base_type
+			}
+		} else if wrapper_type := t.fn_pointer_call_return_type(rhs) {
 			t.register_temp_var(temp_name, wrapper_type)
 			t.register_synth_type(temp_pos, wrapper_type)
 			if wrapper_type is types.ResultType {
@@ -1324,5 +1354,10 @@ fn (t &Transformer) eval_comptime_cond(cond ast.Expr) bool {
 // eval_comptime_flag delegates to the shared `pref.comptime_flag_value` so
 // the parser and the transformer recognize exactly the same flag names.
 fn (t &Transformer) eval_comptime_flag(name string) bool {
+	// Fast path: the three native-backend gated flags hit the cached bool
+	// rather than the helper's repeated pref/backend comparisons.
+	if name == 'native' || name == 'builtin_write_buf_to_fd_should_use_c_write' || name == 'tinyc' {
+		return t.is_native_be
+	}
 	return pref.comptime_flag_value(t.pref, name)
 }

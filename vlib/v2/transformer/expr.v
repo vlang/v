@@ -72,8 +72,7 @@ fn (mut t Transformer) transform_expr(expr ast.Expr) ast.Expr {
 					&& t.is_string_expr(expr.expr.lhs) {
 					inner = t.rename_substr_to_checked(inner)
 				}
-				is_native_backend := t.pref != unsafe { nil }
-					&& (t.pref.backend == .arm64 || t.pref.backend == .x64)
+				is_native_backend := t.pref != unsafe { nil } && t.is_native_be
 				if is_native_backend {
 					return ast.Expr(ast.PostfixExpr{
 						op:   expr.op
@@ -849,6 +848,20 @@ fn (mut t Transformer) transform_selector_expr(expr ast.SelectorExpr) ast.Expr {
 
 // transform_string_inter_literal transforms string interpolations, applying smart cast where needed
 fn (mut t Transformer) transform_match_expr(expr ast.MatchExpr) ast.Expr {
+	match_expr, branches := t.transform_match_expr_parts(expr)
+	return t.lower_match_expr_to_if(match_expr, branches)
+}
+
+// transform_match_expr_parts returns the two inputs to `lower_match_expr_to_if`
+// — the transformed match expression (either `_tag` access for sumtype matches
+// or the plain transformed `expr.expr` for non-sumtype matches) and the
+// transformed branch list. The flat-write arm calls this directly + then
+// invokes `lower_match_expr_to_if_flat` to skip every nested IfExpr wrapper-
+// struct allocation in the lowered chain. The legacy `transform_match_expr`
+// above wraps it for non-flat callers via `lower_match_expr_to_if`. Same
+// `_parts` extraction template as `transform_return_stmt_parts` (session 59)
+// and `transform_assign_stmt_parts` (session 60).
+fn (mut t Transformer) transform_match_expr_parts(expr ast.MatchExpr) (ast.Expr, []ast.MatchBranch) {
 	// Check if matching on a sum type
 	mut sumtype_name := t.get_sumtype_name_for_expr(expr.expr)
 	smartcast_expr := t.expr_to_string(expr.expr)
@@ -1081,7 +1094,7 @@ fn (mut t Transformer) transform_match_expr(expr ast.MatchExpr) ast.Expr {
 		}
 		tag_access := t.synth_selector(transformed_match_expr, '_tag', types.Type(types.int_))
 
-		return t.lower_match_expr_to_if(tag_access, branches)
+		return tag_access, branches
 	}
 
 	// Non-sum type match - simple transformation
@@ -1112,7 +1125,7 @@ fn (mut t Transformer) transform_match_expr(expr ast.MatchExpr) ast.Expr {
 			pos:   branch.pos
 		}
 	}
-	return t.lower_match_expr_to_if(t.transform_expr(expr.expr), branches)
+	return t.transform_expr(expr.expr), branches
 }
 
 fn (mut t Transformer) transform_match_branch_stmts(stmts []ast.Stmt) []ast.Stmt {
@@ -1128,15 +1141,23 @@ fn (mut t Transformer) transform_match_branch_stmts(stmts []ast.Stmt) []ast.Stmt
 		if stmts.len > 1 {
 			out << t.transform_stmts(stmts[..stmts.len - 1])
 		}
-		saved_pending := t.pending_stmts.clone()
-		t.pending_stmts.clear()
+		saved_pending := t.pending_stmts
+		t.pending_stmts = []ast.Stmt{}
 		saved_skip_if_value_lowering := t.skip_if_value_lowering
 		if last.expr is ast.IfExpr {
 			t.skip_if_value_lowering = true
 		}
-		transformed_expr := t.transform_expr(last.expr)
+		mut branch_expr := last.expr
+		if t.cur_fn_ret_type_name != '' {
+			if ret_type := t.lookup_type(t.cur_fn_ret_type_name) {
+				if ret_type is types.Enum {
+					branch_expr = t.resolve_expr_with_expected_type(branch_expr, ret_type)
+				}
+			}
+		}
+		transformed_expr := t.transform_expr(branch_expr)
 		t.skip_if_value_lowering = saved_skip_if_value_lowering
-		final_pending := t.pending_stmts.clone()
+		final_pending := t.pending_stmts
 		t.pending_stmts = saved_pending
 		for stmt in final_pending {
 			out << stmt
@@ -1174,6 +1195,39 @@ fn (mut t Transformer) lower_match_expr_to_if(match_expr ast.Expr, branches []as
 			stmts:     branch.stmts
 			else_expr: current
 		})
+	}
+	return current
+}
+
+// lower_match_expr_to_if_flat is the direct-emit mirror of
+// `lower_match_expr_to_if`. Emits the nested IfExpr chain straight into the
+// flat builder via `emit_if_expr_by_ids`, skipping the `ast.IfExpr` wrapper-
+// struct allocation per branch (the legacy helper allocates one IfExpr struct
+// per branch — N-branch matches allocate N structs that the leaf `emit_expr`
+// walk would still have to traverse). Children are already-transformed by
+// `transform_match_expr_parts`, so leaf-encode via `out.emit_expr` /
+// `out.emit_stmt` (mirrors `add_expr(IfExpr)`'s `push_expr`/`push_stmt`
+// walk). The flat MatchExpr arm calls this after `_parts`.
+fn (mut t Transformer) lower_match_expr_to_if_flat(match_expr ast.Expr, branches []ast.MatchBranch, mut out ast.FlatBuilder) ast.FlatNodeId {
+	is_match_true := match_expr is ast.BasicLiteral && match_expr.kind == .key_true
+	is_match_false := match_expr is ast.BasicLiteral && match_expr.kind == .key_false
+
+	mut current := out.emit_expr(ast.empty_expr)
+	for i := branches.len - 1; i >= 0; i-- {
+		branch := branches[i]
+		mut stmt_ids := []ast.FlatNodeId{cap: branch.stmts.len}
+		for s in branch.stmts {
+			stmt_ids << out.emit_stmt(s)
+		}
+		if branch.cond.len == 0 {
+			cond_id := out.emit_expr(ast.empty_expr)
+			current = out.emit_if_expr_by_ids(cond_id, current, stmt_ids, token.Pos{})
+			continue
+		}
+		branch_cond := t.build_match_branch_cond(match_expr, branch.cond, is_match_true,
+			is_match_false)
+		cond_id := out.emit_expr(branch_cond)
+		current = out.emit_if_expr_by_ids(cond_id, current, stmt_ids, token.Pos{})
 	}
 	return current
 }
@@ -1465,14 +1519,14 @@ fn (mut t Transformer) transform_if_expr(expr ast.IfExpr) ast.Expr {
 								// Transform inner condition with smartcast (if not already lowered).
 								// Expression expansions from the condition must run before the
 								// nested if, while the outer smartcast is active.
-								saved_rest_pending := t.pending_stmts.clone()
-								t.pending_stmts.clear()
+								saved_rest_pending := t.pending_stmts
+								t.pending_stmts = []ast.Stmt{}
 								transformed_rest := if inner_cond_lowered {
 									inner_tag_check
 								} else {
 									t.transform_expr(cond.rhs)
 								}
-								rest_pending := t.pending_stmts.clone()
+								rest_pending := t.pending_stmts
 								t.pending_stmts = saved_rest_pending
 								t.smartcast_stack = active_smartcast_stack.clone()
 								t.smartcast_expr_counts = active_smartcast_counts.clone()
@@ -1541,10 +1595,10 @@ fn (mut t Transformer) transform_if_expr(expr ast.IfExpr) ast.Expr {
 						// Push interface-aware smartcast context
 						t.push_smartcast_ctx(iface_ctx)
 						// Transform inner condition and body with smartcast
-						saved_rest_pending := t.pending_stmts.clone()
-						t.pending_stmts.clear()
+						saved_rest_pending := t.pending_stmts
+						t.pending_stmts = []ast.Stmt{}
 						transformed_rest_fallback := t.transform_expr(cond.rhs)
-						rest_pending := t.pending_stmts.clone()
+						rest_pending := t.pending_stmts
 						t.pending_stmts = saved_rest_pending
 						transformed_body_fallback := t.transform_stmts(expr.stmts)
 						// Pop smartcast
@@ -1777,6 +1831,12 @@ fn (mut t Transformer) transform_if_expr(expr ast.IfExpr) ast.Expr {
 				is_result = fn_name != '' && t.fn_returns_result(fn_name)
 				is_option = fn_name != '' && t.fn_returns_option(fn_name)
 			}
+			if !is_result && !is_option {
+				if ret_type := t.fn_pointer_call_return_type(rhs) {
+					is_result = ret_type is types.ResultType || ret_type.name().starts_with('!')
+					is_option = ret_type is types.OptionType || ret_type.name().starts_with('?')
+				}
+			}
 			if is_result {
 				// Handle Result if-guard using temp variable pattern
 				// Transform: if var := result_call() { body } else { else_body }
@@ -1806,6 +1866,12 @@ fn (mut t Transformer) transform_if_expr(expr ast.IfExpr) ast.Expr {
 						data_type = wrapper_type.base_type
 					}
 				} else if wrapper_type := t.get_expr_type(rhs) {
+					t.register_temp_var(temp_name, wrapper_type)
+					t.register_synth_type(temp_pos, wrapper_type)
+					if wrapper_type is types.ResultType {
+						data_type = wrapper_type.base_type
+					}
+				} else if wrapper_type := t.fn_pointer_call_return_type(rhs) {
 					t.register_temp_var(temp_name, wrapper_type)
 					t.register_synth_type(temp_pos, wrapper_type)
 					if wrapper_type is types.ResultType {
@@ -1882,6 +1948,12 @@ fn (mut t Transformer) transform_if_expr(expr ast.IfExpr) ast.Expr {
 						data_type = wrapper_type.base_type
 					}
 				} else if wrapper_type := t.get_expr_type(rhs) {
+					t.register_temp_var(temp_name, wrapper_type)
+					t.register_synth_type(temp_pos, wrapper_type)
+					if wrapper_type is types.OptionType {
+						data_type = wrapper_type.base_type
+					}
+				} else if wrapper_type := t.fn_pointer_call_return_type(rhs) {
 					t.register_temp_var(temp_name, wrapper_type)
 					t.register_synth_type(temp_pos, wrapper_type)
 					if wrapper_type is types.OptionType {
@@ -1998,18 +2070,18 @@ fn (mut t Transformer) transform_if_expr(expr ast.IfExpr) ast.Expr {
 			for s in expr.stmts {
 				new_stmts << s
 			}
-			saved_p := t.pending_stmts.clone()
-			t.pending_stmts.clear()
+			saved_p := t.pending_stmts
+			t.pending_stmts = []ast.Stmt{}
 			t_stmts := t.transform_stmts(new_stmts)
-			inner_p := t.pending_stmts.clone()
+			inner_p := t.pending_stmts
 			t.pending_stmts = saved_p
 			for ip in inner_p {
 				t.pending_stmts << ip
 			}
-			saved_p2 := t.pending_stmts.clone()
-			t.pending_stmts.clear()
+			saved_p2 := t.pending_stmts
+			t.pending_stmts = []ast.Stmt{}
 			t_else := t.transform_expr(expr.else_expr)
-			inner_p2 := t.pending_stmts.clone()
+			inner_p2 := t.pending_stmts
 			t.pending_stmts = saved_p2
 			for ip in inner_p2 {
 				t.pending_stmts << ip
@@ -2050,22 +2122,22 @@ fn (mut t Transformer) transform_if_expr(expr ast.IfExpr) ast.Expr {
 	// Save and restore pending_stmts around branch transformation to prevent
 	// outer pending_stmts (e.g., from earlier RHS if-expr lowering) from being
 	// flushed into the inner branch's transform_stmts.
-	saved_pending := t.pending_stmts.clone()
-	t.pending_stmts.clear()
+	saved_pending := t.pending_stmts
+	t.pending_stmts = []ast.Stmt{}
 	transformed_stmts := t.transform_stmts(expr.stmts)
 	// Merge any pending_stmts generated by the then-branch transform back into the outer context.
-	inner_pending_then := t.pending_stmts.clone()
+	inner_pending_then := t.pending_stmts
 	t.pending_stmts = saved_pending
 	for ip in inner_pending_then {
 		t.pending_stmts << ip
 	}
 	t.smartcast_stack = outer_smartcast_stack.clone()
 	t.smartcast_expr_counts = outer_smartcast_counts.clone()
-	saved_pending2 := t.pending_stmts.clone()
-	t.pending_stmts.clear()
+	saved_pending2 := t.pending_stmts
+	t.pending_stmts = []ast.Stmt{}
 	transformed_else := t.transform_expr(expr.else_expr)
 	// Merge any pending_stmts generated by the else-expr transform back into the outer context.
-	inner_pending := t.pending_stmts.clone()
+	inner_pending := t.pending_stmts
 	t.pending_stmts = saved_pending2
 	for ip in inner_pending {
 		t.pending_stmts << ip
@@ -2942,7 +3014,7 @@ fn (mut t Transformer) transform_infix_expr(expr ast.InfixExpr) ast.Expr {
 		// For native backends, lower to C.memcmp(&a, &b, N * sizeof(T)) == 0
 		// Only for memcmp-safe element types (primitives, fixed arrays of primitives).
 		// Dynamic arrays, strings, maps, and structs contain heap pointers.
-		if (t.pref.backend == .arm64 || t.pref.backend == .x64) && expr.op in [.eq, .ne] {
+		if t.is_native_be && expr.op in [.eq, .ne] {
 			if lhs_type := t.get_expr_type(expr.lhs) {
 				lhs_base := t.unwrap_alias_and_pointer_type(lhs_type)
 				if lhs_base is types.ArrayFixed {
@@ -3241,6 +3313,9 @@ fn (mut t Transformer) transform_comptime_expr(expr ast.ComptimeExpr) ast.Expr {
 }
 
 fn (mut t Transformer) transform_embed_file_comptime_chain(expr ast.Expr, comptime_pos token.Pos) ?ast.Expr {
+	if transformed := t.transform_embed_file_chain_lhs(expr, comptime_pos) {
+		return transformed
+	}
 	match expr {
 		ast.SelectorExpr {
 			if transformed_lhs := t.transform_embed_file_chain_lhs(expr.lhs, comptime_pos) {
@@ -3289,6 +3364,24 @@ fn (mut t Transformer) transform_embed_file_chain_lhs(expr ast.Expr, comptime_po
 					pos:  comptime_pos
 				}, expr.args)
 			}
+			if expr.lhs is ast.SelectorExpr {
+				sel := expr.lhs as ast.SelectorExpr
+				if transformed_base := t.transform_embed_file_chain_lhs(sel.lhs, comptime_pos) {
+					mut args := []ast.Expr{cap: expr.args.len}
+					for arg in expr.args {
+						args << t.transform_expr(arg)
+					}
+					return ast.Expr(ast.CallExpr{
+						lhs:  ast.Expr(ast.SelectorExpr{
+							lhs: transformed_base
+							rhs: sel.rhs
+							pos: sel.pos
+						})
+						args: args
+						pos:  expr.pos
+					})
+				}
+			}
 		}
 		ast.CallOrCastExpr {
 			if expr.lhs is ast.Ident && expr.lhs.name == 'embed_file' {
@@ -3296,6 +3389,20 @@ fn (mut t Transformer) transform_embed_file_chain_lhs(expr ast.Expr, comptime_po
 					expr: ast.Expr(expr)
 					pos:  comptime_pos
 				}, [expr.expr])
+			}
+		}
+		ast.SelectorExpr {
+			if transformed_lhs := t.transform_embed_file_chain_lhs(expr.lhs, comptime_pos) {
+				return ast.Expr(ast.SelectorExpr{
+					lhs: transformed_lhs
+					rhs: expr.rhs
+					pos: expr.pos
+				})
+			}
+		}
+		ast.ComptimeExpr {
+			if transformed_inner := t.transform_embed_file_comptime_chain(expr.expr, expr.pos) {
+				return transformed_inner
 			}
 		}
 		else {}

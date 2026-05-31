@@ -25,7 +25,7 @@ fn cleanc_csrc_for_test_source(name string, source string) string {
 	mut env := types.Environment.new()
 	mut checker := types.Checker.new(prefs, file_set, env)
 	checker.check_files(files)
-	mut trans := transformer.Transformer.new_with_pref(files, env, prefs)
+	mut trans := transformer.Transformer.new_with_pref(env, prefs)
 	trans.set_file_set(file_set)
 	transformed_files := trans.transform_files(files)
 	mut gen := Gen.new_with_env_and_pref(transformed_files, env, prefs)
@@ -130,6 +130,53 @@ fn test_local_variable_shadowing_enum_member_is_addressable() {
 		name: 'name'
 	}))
 	assert g.sb.str() == '&name'
+}
+
+fn test_generic_struct_field_dependency_uses_concrete_bindings() {
+	csrc := cleanc_csrc_for_test_source('generic_struct_field_dependency', '
+module json2
+
+struct Node[T] {
+mut:
+	value T
+	next  &Node[T] = unsafe { nil }
+}
+
+struct ValueInfo {
+	position int
+}
+
+struct Decoder {
+	values_info  LinkedList[ValueInfo]
+	current_node &Node[ValueInfo] = unsafe { nil }
+}
+
+struct LinkedList[T] {
+mut:
+	head &Node[T] = unsafe { nil }
+	tail &Node[T] = unsafe { nil }
+	len  int
+}
+')
+	linked_list_pos := csrc.index('struct json2__LinkedList {') or {
+		panic('missing LinkedList body')
+	}
+	decoder_pos := csrc.index('struct json2__Decoder {') or { panic('missing Decoder body') }
+	assert linked_list_pos < decoder_pos
+	assert csrc.contains('json2__LinkedList values_info;')
+}
+
+fn test_generic_pointer_empty_init_uses_null_pointer() {
+	mut g := Gen.new([])
+	g.active_generic_types['V'] = types.Type(types.Pointer{
+		base_type: types.Type(types.NamedType('string'))
+	})
+	g.gen_init_expr(ast.InitExpr{
+		typ: ast.Ident{
+			name: 'V'
+		}
+	})
+	assert g.sb.str() == '0'
 }
 
 fn test_decl_assign_unwraps_nested_static_modifier_lhs() {
@@ -449,6 +496,158 @@ fn test_function_pointer_struct_field_call_uses_field_selector() {
 	assert !csrc.contains('Config__cb')
 }
 
+fn test_static_constructor_call_uses_syntactic_type_receiver_without_emitted_type() {
+	mut g := Gen.new([])
+	g.cur_module = 'searcher'
+	g.fn_return_types['searcher__ByteSliceReader__new'] = 'searcher__ByteSliceReader'
+	g.fn_param_types['searcher__ByteSliceReader__new'] = ['string']
+	g.fn_param_is_ptr['searcher__ByteSliceReader__new'] = [false]
+	g.fn_return_types['searcher__LineBufferReader__new'] = 'searcher__LineBufferReader'
+	g.fn_param_types['searcher__LineBufferReader__new'] = [
+		'searcher__ByteSliceReader*',
+		'searcher__LineBuffer*',
+	]
+	g.fn_param_is_ptr['searcher__LineBufferReader__new'] = [true, true]
+	g.remember_runtime_local_type('source', 'searcher__ByteSliceReader')
+	g.remember_runtime_local_type('linebuf', 'searcher__LineBuffer')
+	g.gen_assign_stmt(ast.AssignStmt{
+		op:  .decl_assign
+		lhs: [ast.Expr(ast.Ident{
+			name: 'rdr'
+		})]
+		rhs: [
+			ast.Expr(ast.CallExpr{
+				lhs:  ast.Expr(ast.SelectorExpr{
+					lhs: ast.Expr(ast.Ident{
+						name: 'LineBufferReader'
+					})
+					rhs: ast.Ident{
+						name: 'new'
+					}
+				})
+				args: [
+					ast.Expr(ast.PrefixExpr{
+						op:   .amp
+						expr: ast.Expr(ast.Ident{
+							name: 'source'
+						})
+					}),
+					ast.Expr(ast.PrefixExpr{
+						op:   .amp
+						expr: ast.Expr(ast.Ident{
+							name: 'linebuf'
+						})
+					}),
+				]
+			}),
+		]
+	})
+	csrc := g.sb.str()
+	assert csrc.contains('searcher__LineBufferReader rdr = searcher__LineBufferReader__new('), csrc
+
+	assert !csrc.contains('searcher__ByteSliceReader rdr = searcher__ByteSliceReader__new('), csrc
+}
+
+fn test_mangled_static_constructor_call_is_not_rewritten_from_first_arg_receiver() {
+	mut g := Gen.new([])
+	g.cur_module = 'searcher'
+	g.fn_return_types['searcher__ByteSliceReader__new'] = 'searcher__ByteSliceReader'
+	g.fn_param_types['searcher__ByteSliceReader__new'] = ['string']
+	g.fn_param_is_ptr['searcher__ByteSliceReader__new'] = [false]
+	g.fn_return_types['searcher__LineBufferReader__new'] = 'searcher__LineBufferReader'
+	g.fn_param_types['searcher__LineBufferReader__new'] = [
+		'io__Reader*',
+		'searcher__LineBuffer*',
+	]
+	g.fn_param_is_ptr['searcher__LineBufferReader__new'] = [true, true]
+	g.remember_runtime_local_type('source', 'searcher__ByteSliceReader')
+	g.remember_runtime_local_type('linebuf', 'searcher__LineBuffer')
+	g.gen_assign_stmt(ast.AssignStmt{
+		op:  .decl_assign
+		lhs: [ast.Expr(ast.Ident{
+			name: 'rdr'
+		})]
+		rhs: [
+			ast.Expr(ast.CallExpr{
+				lhs:  ast.Expr(ast.Ident{
+					name: 'searcher__LineBufferReader__new'
+				})
+				args: [
+					ast.Expr(ast.PrefixExpr{
+						op:   .amp
+						expr: ast.Expr(ast.Ident{
+							name: 'source'
+						})
+					}),
+					ast.Expr(ast.PrefixExpr{
+						op:   .amp
+						expr: ast.Expr(ast.Ident{
+							name: 'linebuf'
+						})
+					}),
+				]
+			}),
+		]
+	})
+	csrc := g.sb.str()
+	assert csrc.contains('searcher__LineBufferReader rdr = searcher__LineBufferReader__new('), csrc
+	assert !csrc.contains('searcher__ByteSliceReader rdr = searcher__ByteSliceReader__new('), csrc
+}
+
+fn test_statement_else_unsafe_expr_emits_nested_if_guard_stmts() {
+	mut g := Gen.new([])
+	outer_if := ast.IfExpr{
+		cond:      ast.Expr(ast.Ident{
+			name: 'outer_ok'
+		})
+		stmts:     [
+			ast.Stmt(ast.ExprStmt{
+				expr: ast.Expr(ast.CallExpr{
+					lhs: ast.Expr(ast.Ident{
+						name: 'outer_call'
+					})
+				})
+			}),
+		]
+		else_expr: ast.Expr(ast.UnsafeExpr{
+			stmts: [
+				ast.Stmt(ast.AssignStmt{
+					op:  .decl_assign
+					lhs: [ast.Expr(ast.Ident{
+						name: '_opt_t'
+					})]
+					rhs: [ast.Expr(ast.BasicLiteral{
+						kind:  .number
+						value: '1'
+					})]
+				}),
+				ast.Stmt(ast.ExprStmt{
+					expr: ast.Expr(ast.IfExpr{
+						cond:  ast.Expr(ast.Ident{
+							name: 'inner_ok'
+						})
+						stmts: [
+							ast.Stmt(ast.ExprStmt{
+								expr: ast.Expr(ast.CallExpr{
+									lhs: ast.Expr(ast.Ident{
+										name: 'inner_call'
+									})
+								})
+							}),
+						]
+					})
+				}),
+			]
+		})
+	}
+	g.gen_if_expr_stmt(&outer_if)
+	csrc := g.sb.str()
+	assert csrc.contains('else {'), csrc
+	assert csrc.contains('int _opt_t = 1;'), csrc
+	assert csrc.contains('if (inner_ok)'), csrc
+	assert csrc.contains('inner_call();'), csrc
+}
+
 fn test_interface_pointer_data_field_selector_uses_pointer_separator() {
 	mut gen := Gen.new([])
 	gen.interface_data_fields['IResolverType'] = [
@@ -568,6 +767,243 @@ fn test_signature_generic_struct_forward_typedefs_use_metadata() {
 	assert csrc.contains('typedef struct math__DivResult_T_ast__Fileptr math__DivResult_T_ast__Fileptr;')
 	assert !csrc.contains('math__DivResult_T_ast__File*')
 	assert csrc.count('typedef struct veb__MiddlewareOptions_T_GitHubUser veb__MiddlewareOptions_T_GitHubUser;') == 1
+}
+
+fn test_fn_head_emits_forward_typedef_for_late_generic_receiver() {
+	mut g := Gen.new([])
+	g.cur_module = 'printer'
+	g.active_generic_types['W'] = types.Type(types.string_)
+	count_method := ast.FnDecl{
+		name:      'count'
+		is_method: true
+		receiver:  ast.Parameter{
+			name: 'w'
+			typ:  ast.Expr(ast.Type(ast.GenericType{
+				name:   ast.Expr(ast.SelectorExpr{
+					lhs: ast.Expr(ast.Ident{
+						name: 'printer'
+					})
+					rhs: ast.Ident{
+						name: 'CounterWriter'
+					}
+				})
+				params: [
+					ast.Expr(ast.Ident{
+						name: 'W'
+					}),
+				]
+			}))
+		}
+		typ:       ast.FnType{
+			return_type: ast.Expr(ast.Ident{
+				name: 'u64'
+			})
+		}
+		language:  .v
+	}
+	fn_name := 'printer__CounterWriter_T_string__count'
+	g.fn_param_types[fn_name] = ['printer__CounterWriter_T_string']
+	g.gen_fn_head_with_name(count_method, fn_name)
+	g.sb.writeln(';')
+	csrc := g.sb.str()
+	assert csrc.contains('typedef struct printer__CounterWriter_T_string printer__CounterWriter_T_string;'), csrc
+	assert csrc.contains('u64 printer__CounterWriter_T_string__count(printer__CounterWriter_T_string w);'), csrc
+}
+
+fn test_register_fn_signature_preserves_pointer_receiver_on_generic_struct_instance() {
+	mut g := Gen.new([])
+	g.cur_module = 'printer'
+	g.active_generic_types['W'] = types.Type(types.string_)
+	g.generic_struct_instances['printer__Sink'] = [
+		GenericStructInstance{
+			params_key: 'string'
+			bindings:   {
+				'W': types.Type(types.string_)
+			}
+			c_name:     'printer__Sink_T_string'
+		},
+	]
+	stats_method := ast.FnDecl{
+		name:      'stats'
+		is_method: true
+		receiver:  ast.Parameter{
+			name: 'sink'
+			typ:  ast.Expr(ast.Type(ast.PointerType{
+				base_type: ast.Expr(ast.Type(ast.GenericType{
+					name:   ast.Expr(ast.SelectorExpr{
+						lhs: ast.Expr(ast.Ident{
+							name: 'printer'
+						})
+						rhs: ast.Ident{
+							name: 'Sink'
+						}
+					})
+					params: [
+						ast.Expr(ast.Ident{
+							name: 'W'
+						}),
+					]
+				}))
+			}))
+		}
+		typ:       ast.FnType{
+			return_type: ast.Expr(ast.Ident{
+				name: 'int'
+			})
+		}
+		language:  .v
+	}
+	fn_name := 'printer__Sink_T_string__stats'
+	g.register_fn_signature(stats_method, fn_name)
+	assert g.fn_param_types[fn_name][0] == 'printer__Sink_T_string*'
+	assert g.fn_param_is_ptr[fn_name][0]
+	g.gen_fn_head_with_name(stats_method, fn_name)
+	csrc := g.sb.str()
+	assert csrc.contains('int printer__Sink_T_string__stats(printer__Sink_T_string* sink)'), csrc
+}
+
+fn test_interface_fn_type_result_alias_is_forward_declared_before_interface_body() {
+	csrc := cleanc_csrc_for_test_source('interface_fn_type_result_alias', '
+module main
+
+struct NoCaptures {}
+
+interface Matcher {
+	new_captures() !NoCaptures
+}
+')
+	alias_pos := csrc.index('typedef struct _result_NoCaptures _result_NoCaptures;') or {
+		panic('missing result alias forward declaration')
+	}
+	iface_pos := csrc.index('struct Matcher {') or { panic('missing interface body') }
+	assert alias_pos < iface_pos
+	assert csrc.contains('_result_NoCaptures (*new_captures)(void*)')
+}
+
+fn test_record_generic_struct_bindings_preserves_pointer_params() {
+	mut env := types.Environment.new()
+	mut printer_scope := types.new_scope(unsafe { nil })
+	printer_scope.insert('CounterWriter', types.Type(types.Struct{
+		name:           'printer__CounterWriter'
+		generic_params: ['W']
+	}))
+	lock env.scopes {
+		env.scopes['printer'] = printer_scope
+	}
+	mut g := Gen.new_with_env([], env)
+	g.cur_module = 'printer'
+	g.record_generic_struct_bindings('CounterWriter', 'printer__CounterWriter', [
+		ast.Expr(ast.Ident{
+			name: 'stringptr'
+		}),
+	])
+	instances := g.generic_struct_instances['printer__CounterWriter']
+	assert instances.len == 1
+	assert instances[0].params_key == 'stringptr'
+	binding := instances[0].bindings['W'] or { panic('missing W binding') }
+	assert binding is types.Pointer
+	assert (binding as types.Pointer).base_type.name() == 'string'
+	g.active_generic_types = instances[0].bindings.clone()
+	assert g.expr_type_to_c(ast.Expr(ast.Ident{
+		name: 'W'
+	})) == 'string*'
+}
+
+fn test_init_expr_uses_specialized_return_type_for_unqualified_generic_literal() {
+	mut gen := Gen.new([])
+	gen.cur_fn_ret_type = 'core__SearchWorker_T_stringptr'
+	gen.emitted_types['body_core__SearchWorker_T_stringptr'] = true
+	gen.emitted_types['body_core__SearchWorker_T_int'] = true
+	gen.gen_init_expr(ast.InitExpr{
+		typ: ast.Ident{
+			name: 'SearchWorker'
+		}
+	})
+	assert gen.sb.str() == '((core__SearchWorker_T_stringptr){0})'
+}
+
+fn test_init_expr_uses_qualified_return_type_for_primary_generic_literal() {
+	mut gen := Gen.new([])
+	gen.cur_fn_ret_type = 'core__SearchWorker'
+	gen.gen_init_expr(ast.InitExpr{
+		typ: ast.Ident{
+			name: 'SearchWorker'
+		}
+	})
+	assert gen.sb.str() == '((core__SearchWorker){0})'
+}
+
+fn test_init_expr_does_not_use_array_return_type_for_element_literal() {
+	mut gen := Gen.new([])
+	gen.cur_fn_ret_type = 'Array_printer__SubMatch'
+	gen.cur_fn_c_name = 'printer__json_submatches'
+	gen.gen_init_expr(ast.InitExpr{
+		typ: ast.Ident{
+			name: 'SubMatch'
+		}
+	})
+	assert gen.sb.str() == '((printer__SubMatch){0})'
+}
+
+fn test_init_expr_qualifies_unqualified_literal_from_pending_late_struct() {
+	mut gen := Gen.new([])
+	gen.pending_late_body_keys['body_core__SearchWorker'] = true
+	gen.gen_init_expr(ast.InitExpr{
+		typ: ast.Ident{
+			name: 'SearchWorker'
+		}
+	})
+	assert gen.sb.str() == '((core__SearchWorker){0})'
+}
+
+fn test_init_expr_qualifies_unqualified_literal_from_module_scope_type() {
+	mut env := types.Environment.new()
+	mut core_scope := types.new_scope(unsafe { nil })
+	core_scope.insert('SearchWorker', types.Type(types.Struct{
+		name: 'core__SearchWorker'
+	}))
+	lock env.scopes {
+		env.scopes['core'] = core_scope
+	}
+	mut gen := Gen.new_with_env([], env)
+	gen.cur_fn_c_name = 'core__SearchWorkerBuilder__build_T_core_BufferWriter'
+	gen.gen_init_expr(ast.InitExpr{
+		typ: ast.Ident{
+			name: 'SearchWorker'
+		}
+	})
+	assert gen.sb.str() == '((core__SearchWorker){0})'
+}
+
+fn test_init_expr_keeps_builtin_option_type_unqualified_in_module_function() {
+	mut gen := Gen.new([])
+	gen.cur_fn_c_name = 'searcher__Searcher__new'
+	gen.gen_init_expr(ast.InitExpr{
+		typ:    ast.Ident{
+			name: '_option_u64'
+		}
+		fields: [
+			ast.FieldInit{
+				name:  'state'
+				value: ast.Expr(ast.BasicLiteral{
+					kind:  .number
+					value: '2'
+				})
+			},
+		]
+	})
+	assert gen.sb.str() == '((_option_u64){ .state = 2 })'
+}
+
+fn test_init_expr_keeps_external_c_type_unqualified_in_module_function() {
+	mut gen := Gen.new([])
+	gen.cur_fn_c_name = 'time__init_time_base'
+	gen.gen_init_expr(ast.InitExpr{
+		typ: ast.Ident{
+			name: 'mach_timebase_info_data_t'
+		}
+	})
+	assert gen.sb.str() == '((mach_timebase_info_data_t){0})'
 }
 
 fn test_stdatomic_compat_directive_is_guarded_during_emit() {
@@ -718,6 +1154,20 @@ fn test_cached_builtin_init_calls_plain_builtin_const_init() {
 	assert csrc.contains('void __v2_cached_init_builtin(void) {')
 	assert csrc.contains('\t__v_init_consts_builtin();')
 	assert !csrc.contains('builtin____v_init_consts_builtin();')
+}
+
+fn test_generated_test_main_runs_main_runtime_consts_after_module_init() {
+	mut g := Gen.new([])
+	g.test_fn_names << 'test_smoke'
+	g.fn_return_types['__v_init_consts_main'] = 'void'
+	g.fn_return_types['rand__init'] = 'void'
+	csrc := g.gen_finalize()
+	rand_init_idx := csrc.index('\trand__init();') or { panic('missing rand__init call') }
+	main_consts_idx := csrc.index('\t__v_init_consts_main();') or {
+		panic('missing main runtime const init call')
+	}
+	assert rand_init_idx < main_consts_idx
+	assert csrc.count('__v_init_consts_main();') == 1
 }
 
 fn test_sum_common_field_selector_uses_payload_pointer() {
@@ -1772,6 +2222,73 @@ fn gen_file(file File) {
 		|| csrc.contains('stmt_ptr->_data._GlobalDecl'), csrc
 }
 
+fn test_for_in_over_cloned_u8_array_preserves_element_type() {
+	mut g := Gen.new([])
+	g.fn_return_types['array__clone'] = 'array'
+	g.remember_runtime_local_type('src', 'Array_u8')
+	g.remember_runtime_local_type('i', 'int')
+	g.remember_runtime_local_type('sep', 'u8')
+	g.gen_assign_stmt(ast.AssignStmt{
+		op:  .decl_assign
+		lhs: [ast.Expr(ast.Ident{
+			name: 'bytes'
+		})]
+		rhs: [
+			ast.Expr(ast.CallExpr{
+				lhs:  ast.Expr(ast.Ident{
+					name: 'array__clone'
+				})
+				args: [
+					ast.Expr(ast.PrefixExpr{
+						op:   .amp
+						expr: ast.Expr(ast.Ident{
+							name: 'src'
+						})
+					}),
+				]
+			}),
+		]
+	})
+	g.gen_assign_stmt(ast.AssignStmt{
+		op:  .decl_assign
+		lhs: [ast.Expr(ast.Ident{
+			name: 'byte'
+		})]
+		rhs: [
+			ast.Expr(ast.IndexExpr{
+				lhs:  ast.Expr(ast.Ident{
+					name: 'bytes'
+				})
+				expr: ast.Expr(ast.Ident{
+					name: 'i'
+				})
+			}),
+		]
+	})
+	g.gen_assign_stmt(ast.AssignStmt{
+		op:  .assign
+		lhs: [
+			ast.Expr(ast.IndexExpr{
+				lhs:  ast.Expr(ast.Ident{
+					name: 'bytes'
+				})
+				expr: ast.Expr(ast.Ident{
+					name: 'i'
+				})
+			}),
+		]
+		rhs: [ast.Expr(ast.Ident{
+			name: 'sep'
+		})]
+	})
+	csrc := g.sb.str()
+	assert csrc.contains('Array_u8 bytes = array__clone_to_depth('), csrc
+	assert csrc.contains('u8 byte = ((u8*)'), csrc
+	assert csrc.contains('((u8*)bytes.data)[((int)(i))] = sep;'), csrc
+	assert !csrc.contains('int byte = ((int*)'), csrc
+	assert !csrc.contains('((int*)bytes.data)[((int)(i))] = sep;'), csrc
+}
+
 fn test_pipeline_sum_variant_cast_from_array_last_call_extracts_payload() {
 	csrc := cleanc_csrc_for_test_source('array_last_sum_cast', 'module main
 
@@ -2216,6 +2733,44 @@ fn test_selector_method_receiver_prefers_declared_field_type_over_env_fn_type() 
 	assert !out.contains('((bool(*)())')
 }
 
+fn test_selector_method_receiver_unwraps_address_of_local_before_env_fallback() {
+	mut env := types.Environment.new()
+	env.set_expr_type(99, types.Type(types.Pointer{
+		base_type: types.Type(types.Struct{
+			name: 'printer__JSONSink'
+		})
+	}))
+	mut gen := Gen.new_with_env([], env)
+	gen.remember_runtime_local_type('sink', 'printer__SummarySink')
+	gen.fn_return_types['printer__SummarySink__stats'] = '_option_printer__Statsptr'
+	gen.fn_param_types['printer__SummarySink__stats'] = ['printer__SummarySink*']
+	gen.fn_param_is_ptr['printer__SummarySink__stats'] = [true]
+	gen.fn_return_types['printer__JSONSink__stats'] = 'printer__Stats*'
+	gen.fn_param_types['printer__JSONSink__stats'] = ['printer__JSONSink*']
+	gen.fn_param_is_ptr['printer__JSONSink__stats'] = [true]
+	receiver := ast.Expr(ast.ParenExpr{
+		expr: ast.Expr(ast.PrefixExpr{
+			op:   token.Token.amp
+			expr: ast.Expr(ast.Ident{
+				name: 'sink'
+			})
+		})
+		pos:  token.Pos{
+			id: 99
+		}
+	})
+	assert gen.method_receiver_base_type(receiver) == 'printer__SummarySink'
+	gen.call_expr(ast.Expr(ast.SelectorExpr{
+		lhs: receiver
+		rhs: ast.Ident{
+			name: 'stats'
+		}
+	}), [])
+	out := gen.sb.str()
+	assert out.starts_with('printer__SummarySink__stats(')
+	assert !out.contains('printer__JSONSink__stats')
+}
+
 fn test_array_selector_clone_does_not_emit_fn_pointer_field_call() {
 	mut env := types.Environment.new()
 	env.set_expr_type(94, types.Type(types.FnType{}))
@@ -2275,6 +2830,38 @@ fn test_map_selector_clone_uses_builtin_map_clone() {
 	assert out.starts_with('map__clone(')
 	assert out.contains('holder.cache')
 	assert !out.contains('Map_string_ssa__TypeID__clone')
+}
+
+fn test_lowered_array_push_single_array_arg_emits_push_many() {
+	mut gen := Gen.new([])
+	gen.remember_runtime_local_type('matches', 'Array_usize')
+	gen.remember_runtime_local_type('hits', 'Array_usize')
+	gen.fn_param_types['array__push'] = ['array*', 'voidptr']
+	gen.fn_param_is_ptr['array__push'] = [true, true]
+	gen.call_expr(ast.Expr(ast.Ident{
+		name: 'array__push'
+	}), [
+		ast.Expr(ast.Ident{
+			name: 'matches'
+		}),
+		ast.Expr(ast.ArrayInitExpr{
+			typ:   ast.Expr(ast.Type(ast.ArrayType{
+				elem_type: ast.Expr(ast.Ident{
+					name: 'usize'
+				})
+			}))
+			exprs: [
+				ast.Expr(ast.Ident{
+					name: 'hits'
+				}),
+			]
+		}),
+	])
+	out := gen.sb.str()
+	assert out.contains('array__push_many(')
+	assert out.contains('_arr_push_many_tmp_')
+	assert out.contains('.data')
+	assert !out.contains('&(usize[1]){hits}')
 }
 
 fn test_array_selector_clone_on_rvalue_receiver_uses_temp() {
@@ -2465,6 +3052,34 @@ fn test_struct_fn_type_field_emits_callable_c_field() {
 	out := gen.sb.str()
 	assert out.contains('void (*on_closed)(http__Server*);')
 	assert !out.contains('void* on_closed;')
+}
+
+fn test_struct_decl_emits_late_dynamic_array_alias() {
+	mut gen := Gen.new([])
+	gen.gen_struct_decl(ast.StructDecl{
+		name:   'Holder'
+		fields: [
+			ast.FieldDecl{
+				name: 'items'
+				typ:  ast.Expr(ast.Type(ast.ArrayType{
+					elem_type: ast.Expr(ast.Ident{
+						name: 'Foo'
+					})
+				}))
+			},
+		]
+	})
+	out := gen.sb.str()
+	alias_pos := out.index('typedef array Array_Foo;') or {
+		assert false, out
+		return
+	}
+	struct_pos := out.index('struct Holder {') or {
+		assert false, out
+		return
+	}
+	assert alias_pos < struct_pos
+	assert out.contains('\tArray_Foo items;')
 }
 
 fn test_selector_method_receiver_uses_sum_common_field_type() {
@@ -2661,6 +3276,134 @@ fn test_cache_generic_concrete_origin_accepts_unqualified_declared_type() {
 			})
 		})
 	})
+}
+
+fn test_weak_generic_emit_file_filter_skips_uncalled_cached_module_types() {
+	api_file := ast.File{
+		name:  '/tmp/v2_app/api/api.v'
+		stmts: [
+			ast.Stmt(ast.ModuleStmt{
+				name: 'api'
+			}),
+			ast.Stmt(ast.StructDecl{
+				name: 'ApiSuccessResponse'
+			}),
+		]
+	}
+	http_file := ast.File{
+		name:  '/tmp/v2_cache/http/request.v'
+		stmts: [
+			ast.Stmt(ast.ModuleStmt{
+				name: 'http'
+			}),
+			ast.Stmt(ast.StructDecl{
+				name: 'Request'
+			}),
+		]
+	}
+	mut g := Gen.new([api_file, http_file])
+	g.set_emit_files([api_file.name])
+
+	assert g.weak_generic_specialization_belongs_to_emit_files({
+		'T': types.Type(types.Struct{
+			name: 'api__ApiSuccessResponse'
+		})
+	})
+	assert !g.weak_generic_specialization_belongs_to_emit_files({
+		'T': types.Type(types.Struct{
+			name: 'http__Request'
+		})
+	})
+	assert !g.weak_generic_specialization_belongs_to_emit_files({
+		'T': types.Type(types.Array{
+			elem_type: types.Type(types.Struct{
+				name: 'http__Request'
+			})
+		})
+	})
+}
+
+fn test_weak_generic_filter_uses_root_called_names() {
+	t_ident := ast.Expr(ast.Ident{
+		name: 'T'
+	})
+	decl := ast.FnDecl{
+		name: 'encode'
+		typ:  ast.FnType{
+			generic_params: [t_ident]
+		}
+	}
+	json_file := ast.File{
+		mod:   'json2'
+		name:  '/tmp/v2_cache/json2.v'
+		stmts: [ast.Stmt(decl)]
+	}
+	api_file := ast.File{
+		mod:   'api'
+		name:  '/tmp/v2_app/api/api.v'
+		stmts: [
+			ast.Stmt(ast.ModuleStmt{
+				name: 'api'
+			}),
+			ast.Stmt(ast.StructDecl{
+				name: 'ApiSuccessResponse'
+			}),
+		]
+	}
+	http_file := ast.File{
+		mod:   'http'
+		name:  '/tmp/v2_cache/http/request.v'
+		stmts: [
+			ast.Stmt(ast.ModuleStmt{
+				name: 'http'
+			}),
+			ast.Stmt(ast.StructDecl{
+				name: 'Request'
+			}),
+		]
+	}
+	api_type := types.Type(types.Struct{
+		name: 'api__ApiSuccessResponse'
+	})
+	http_type := types.Type(types.Struct{
+		name: 'http__Request'
+	})
+	mut g := Gen.new_with_env([api_file, http_file, json_file], types.Environment.new())
+	g.set_emit_files([api_file.name])
+	g.record_late_generic_call_spec('json2__encode', {
+		'T': api_type
+	})
+	g.record_late_generic_call_spec('json2__encode', {
+		'T': http_type
+	})
+	g.set_file_module(json_file)
+	api_name := g.specialized_fn_name(decl, {
+		'T': api_type
+	})
+	http_name := g.specialized_fn_name(decl, {
+		'T': http_type
+	})
+	assert api_name != ''
+	assert http_name != ''
+	mut needed_names := map[string]bool{}
+	needed_names[api_name] = true
+	needed_names[http_name] = true
+	g.called_fn_names[http_name] = true
+	mut root_called_names := map[string]bool{}
+	specs := g.weak_generic_fn_specializations_for_names(&decl, needed_names, root_called_names)
+	mut names := map[string]bool{}
+	for spec in specs {
+		names[spec.name] = true
+	}
+	assert api_name in names
+	assert http_name !in names
+	root_called_names[http_name] = true
+	specs2 := g.weak_generic_fn_specializations_for_names(&decl, needed_names, root_called_names)
+	mut names2 := map[string]bool{}
+	for spec in specs2 {
+		names2[spec.name] = true
+	}
+	assert http_name in names2
 }
 
 fn test_cache_generic_concrete_origin_rejects_unqualified_name_from_qualified_module() {
@@ -3197,6 +3940,196 @@ fn test_generic_body_requirements_treat_array_param_as_container() {
 	assert g.generic_fallback_type_satisfies_body_requirements(node, types.Type(types.string_))
 }
 
+fn test_generic_fallback_follows_nested_generic_call_requirements() {
+	m_ident := ast.Expr(ast.Ident{
+		name: 'M'
+	})
+	try_node := ast.FnDecl{
+		name:  'try_find_iter_at'
+		typ:   ast.FnType{
+			generic_params: [
+				m_ident,
+			]
+			params:         [
+				ast.Parameter{
+					name: 'matcher_'
+					typ:  m_ident
+				},
+			]
+		}
+		stmts: [
+			ast.Stmt(ast.ExprStmt{
+				expr: ast.Expr(ast.CallExpr{
+					lhs: ast.Expr(ast.SelectorExpr{
+						lhs: ast.Expr(ast.Ident{
+							name: 'matcher_'
+						})
+						rhs: ast.Ident{
+							name: 'find_at'
+						}
+					})
+				})
+			}),
+		]
+	}
+	wrapper_node := ast.FnDecl{
+		name:  'find_iter_at'
+		typ:   ast.FnType{
+			generic_params: [
+				m_ident,
+			]
+			params:         [
+				ast.Parameter{
+					name: 'matcher_'
+					typ:  m_ident
+				},
+			]
+		}
+		stmts: [
+			ast.Stmt(ast.ExprStmt{
+				expr: ast.Expr(ast.CallExpr{
+					lhs:  ast.Expr(ast.Ident{
+						name: 'try_find_iter_at'
+					})
+					args: [
+						ast.Expr(ast.Ident{
+							name: 'matcher_'
+						}),
+					]
+				})
+			}),
+		]
+	}
+	mut g := Gen.new([
+		ast.File{
+			mod:   'matcher'
+			stmts: [
+				ast.Stmt(try_node),
+				ast.Stmt(wrapper_node),
+			]
+		},
+	])
+	g.cur_module = 'matcher'
+	g.build_generic_fn_decl_index()
+	g.generic_fn_decl_index['matcher__try_find_iter_at'] = GenericFnDeclInfo{
+		file_idx: 0
+		stmt_idx: 0
+	}
+	g.generic_fn_decl_index['try_find_iter_at'] = GenericFnDeclInfo{
+		file_idx: 0
+		stmt_idx: 0
+	}
+	assert !g.generic_fallback_type_satisfies_body_requirements(wrapper_node,
+		types.Type(types.string_))
+}
+
+fn test_generic_fallback_rejects_generic_value_passed_to_interface_param() {
+	t_ident := ast.Expr(ast.Ident{
+		name: 'T'
+	})
+	node := ast.FnDecl{
+		name:  'capture_loop'
+		typ:   ast.FnType{
+			generic_params: [
+				t_ident,
+			]
+			params:         [
+				ast.Parameter{
+					name: 'caps'
+					typ:  t_ident
+				},
+			]
+		}
+		stmts: [
+			ast.Stmt(ast.ExprStmt{
+				expr: ast.Expr(ast.CallExpr{
+					lhs:  ast.Expr(ast.Ident{
+						name: 'capture_match_or_panic'
+					})
+					args: [
+						ast.Expr(ast.Ident{
+							name: 'caps'
+						}),
+						ast.Expr(ast.BasicLiteral{
+							kind:  .number
+							value: '0'
+						}),
+					]
+				})
+			}),
+		]
+	}
+	mut g := Gen.new([])
+	g.fn_param_types['capture_match_or_panic'] = ['Captures', 'usize']
+	g.interface_methods['Captures'] = [
+		InterfaceMethodInfo{
+			name: 'len'
+		},
+		InterfaceMethodInfo{
+			name: 'get'
+		},
+	]
+	assert !g.generic_fallback_type_satisfies_body_requirements(node, types.Type(types.f64_))
+}
+
+fn test_generic_receiver_method_resolution_prefers_active_binding() {
+	mut g := Gen.new([])
+	g.active_generic_types['M'] = types.Type(types.Struct{
+		name: 'matcher__TestMatcherNoCaps'
+	})
+	g.cur_fn_generic_params['matcher_'] = 'M'
+	g.fn_return_types['matcher__TestMatcher__captures_at'] = '_result_bool'
+	g.fn_param_types['matcher__TestMatcher__captures_at'] = ['matcher__TestMatcher', 'Array_u8',
+		'usize', 'matcher__TestCaptures*']
+	g.fn_return_types['matcher__TestMatcherNoCaps__captures_at'] = '_result_bool'
+	g.fn_param_types['matcher__TestMatcherNoCaps__captures_at'] = [
+		'matcher__TestMatcherNoCaps',
+		'Array_u8',
+		'usize',
+		'matcher__NoCaptures*',
+	]
+	resolved := g.resolve_call_name(ast.Expr(ast.SelectorExpr{
+		lhs: ast.Expr(ast.Ident{
+			name: 'matcher_'
+		})
+		rhs: ast.Ident{
+			name: 'captures_at'
+		}
+	}), 3)
+	assert resolved == 'matcher__TestMatcherNoCaps__captures_at'
+	direct_resolved := g.resolve_ident_receiver_method_call_name('matcher__TestMatcher__captures_at', ast.Expr(ast.Ident{
+		name: 'matcher__TestMatcher__captures_at'
+	}), [
+		ast.Expr(ast.Ident{
+			name: 'matcher_'
+		}),
+	])
+	assert direct_resolved == 'matcher__TestMatcherNoCaps__captures_at'
+}
+
+fn test_fn_pointer_call_uses_existing_mut_generic_pointer_for_reference_arg() {
+	csrc := cleanc_csrc_for_test_source('fnptr_mut_generic_pointer_arg', '
+struct Caps {}
+
+fn use_caps(caps &Caps) bool {
+	_ = caps
+	return true
+}
+
+fn call_cb[T](mut caps T, cb fn (&T) bool) bool {
+	return cb(&caps)
+}
+
+fn main() {
+	mut caps := Caps{}
+	_ = call_cb(mut caps, use_caps)
+}
+')
+	assert csrc.contains('bool call_cb_T_Caps(Caps* caps, bool (*cb)(Caps*))'), csrc
+	assert csrc.contains('cb)(caps);'), csrc
+	assert !csrc.contains('return cb(&caps);'), csrc
+}
+
 fn test_generic_fallback_derives_container_param_element_type() {
 	mut env := types.Environment.new()
 	env.generic_types['seed'] = [
@@ -3256,7 +4189,7 @@ fn test_generic_call_inference_resolves_address_of_active_generic_param() {
 	assert (concrete as types.Pointer).base_type.name() == 'i64'
 	assert g.generic_specialization_arg_type_name(arg) == 'i64*'
 	mut bindings := map[string]types.Type{}
-	infer_generic_type_bindings_from_param(ast.Expr(ast.PrefixExpr{
+	g.infer_generic_type_bindings_from_param(ast.Expr(ast.PrefixExpr{
 		op:   .amp
 		expr: ast.Expr(ast.Ident{
 			name: 'T'
@@ -3264,6 +4197,113 @@ fn test_generic_call_inference_resolves_address_of_active_generic_param() {
 	}), concrete, ['T'], mut bindings)
 	binding := bindings['T'] or { panic('missing T binding') }
 	assert binding.name() == 'i64'
+}
+
+fn test_generic_call_inference_reads_generic_struct_param_bindings() {
+	mut env := types.Environment.new()
+	mut printer_scope := types.new_scope(unsafe { nil })
+	printer_scope.insert('Standard', types.Type(types.Struct{
+		name:           'printer__Standard'
+		generic_params: ['W']
+	}))
+	lock env.scopes {
+		env.scopes['printer'] = printer_scope
+	}
+	mut g := Gen.new_with_env([], env)
+	g.cur_module = 'core'
+	mut bindings := map[string]types.Type{}
+	g.infer_generic_type_bindings_from_param(ast.Expr(ast.Type(ast.GenericType{
+		name:   ast.Expr(ast.SelectorExpr{
+			lhs: ast.Expr(ast.Ident{
+				name: 'printer'
+			})
+			rhs: ast.Ident{
+				name: 'Standard'
+			}
+		})
+		params: [
+			ast.Expr(ast.Ident{
+				name: 'W'
+			}),
+		]
+	})), types.Type(types.Struct{
+		name: 'printer__Standard_T_stringptr'
+	}), ['W'], mut bindings)
+	binding := bindings['W'] or { panic('missing W binding') }
+	assert binding is types.Pointer
+	assert (binding as types.Pointer).base_type.name() == 'string'
+	concrete_struct := g.concrete_type_from_call_arg_c_name('printer__Standard_T_stringptr') or {
+		panic('missing concrete specialized struct')
+	}
+	assert concrete_struct.name() == 'printer__Standard_T_stringptr'
+	g.remember_runtime_local_type('standard', 'printer__Standard_T_stringptr')
+	standard_param_type := ast.Expr(ast.Type(ast.GenericType{
+		name:   ast.Expr(ast.SelectorExpr{
+			lhs: ast.Expr(ast.Ident{
+				name: 'printer'
+			})
+			rhs: ast.Ident{
+				name: 'Standard'
+			}
+		})
+		params: [
+			ast.Expr(ast.Ident{
+				name: 'W'
+			}),
+		]
+	}))
+	assert g.generic_call_has_concrete_arg_bindings(ast.FnDecl{
+		typ: ast.FnType{
+			generic_params: [
+				ast.Expr(ast.Ident{
+					name: 'W'
+				}),
+			]
+			params:         [
+				ast.Parameter{
+					name: 'standard'
+					typ:  standard_param_type
+				},
+			]
+		}
+	}, [
+		ast.Expr(ast.Ident{
+			name: 'standard'
+		}),
+	], ['W'])
+	g.remember_runtime_local_type('standard_ref', 'printer__Standard_T_stringptr*')
+	assert g.generic_call_has_concrete_arg_bindings(ast.FnDecl{
+		is_method: true
+		receiver:  ast.Parameter{
+			name: 'standard'
+			typ:  standard_param_type
+		}
+		typ:       ast.FnType{
+			generic_params: [
+				ast.Expr(ast.Ident{
+					name: 'W'
+				}),
+			]
+		}
+	}, [
+		ast.Expr(ast.Ident{
+			name: 'standard_ref'
+		}),
+	], ['W'])
+}
+
+fn test_same_receiver_specialized_method_uses_current_suffix() {
+	mut g := Gen.new([])
+	g.cur_fn_c_name = 'printer__Standard_T_stringptr__sink_with_path'
+	g.specialized_fn_bases['printer__Standard'] = true
+	g.fn_return_types['printer__Standard_T_stringptr__sink'] = 'printer__StandardSink_T_stringptr'
+	g.fn_return_types['printer__Standard_T_stringptr__needs_match_granularity'] = 'bool'
+	assert g.same_receiver_specialized_method_name('printer__Standard_T_string__sink') or {
+		panic('missing sink candidate')
+	} == 'printer__Standard_T_stringptr__sink'
+	assert g.same_receiver_specialized_method_name('printer__Standard_T_string__needs_match_granularity') or {
+		panic('missing needs candidate')
+	} == 'printer__Standard_T_stringptr__needs_match_granularity'
 }
 
 fn test_generic_call_inference_uses_generic_formal_argument_index() {
@@ -4029,6 +5069,17 @@ fn test_option_result_payload_ready_accepts_external_c_typedefs() {
 	assert csrc.contains('sizeof(pthread_rwlock_t)')
 }
 
+fn test_emit_option_result_structs_accepts_nested_option_payloads() {
+	mut g := Gen.new([])
+	g.emitted_interface_bodies['IError'] = true
+	g.register_alias_type('_result__option_u64')
+	g.emit_option_result_structs()
+	csrc := g.sb.str()
+	assert csrc.contains('struct _option_u64')
+	assert csrc.contains('struct _result__option_u64')
+	assert csrc.contains('sizeof(_option_u64)')
+}
+
 fn test_json2_encode_fallbacks_include_voidptr_and_native_int_helpers() {
 	mut env := types.Environment.new()
 	usize_type := resolve_primitive_type_name('usize') or { panic('missing usize primitive') }
@@ -4663,6 +5714,35 @@ fn test_fixed_array_alias_index_uses_element_type_before_env() {
 	assert elem_type == 'u8'
 }
 
+fn test_fixed_array_local_index_uses_element_type_not_fixed_alias_name() {
+	assert array_alias_elem_type('Array_fixed_int_5') == 'int'
+
+	mut env := types.Environment.new()
+	mut fn_scope := types.new_scope(unsafe { nil })
+	fn_scope.insert('fixed_int_5', types.Type(types.Alias{
+		name:      'fixed_int_5'
+		base_type: types.Type(types.int_)
+	}))
+	fn_scope.insert('fixed_literal', types.Type(types.ArrayFixed{
+		len:       5
+		elem_type: types.Type(types.int_)
+	}))
+
+	mut g := Gen.new_with_env([], env)
+	g.cur_fn_scope = fn_scope
+	g.remember_runtime_local_type('fixed_literal', 'Array_fixed_int_5')
+	elem_type := g.get_expr_type(ast.Expr(ast.IndexExpr{
+		lhs:  ast.Expr(ast.Ident{
+			name: 'fixed_literal'
+		})
+		expr: ast.Expr(ast.BasicLiteral{
+			value: '1'
+			kind:  .number
+		})
+	}))
+	assert elem_type == 'int'
+}
+
 fn test_string_selector_index_method_uses_u8_before_env_int() {
 	mut env := types.Environment.new()
 	env.set_expr_type(41, types.int_)
@@ -4730,4 +5810,339 @@ fn test_string_pointer_index_returns_string_not_u8() {
 		})
 	}))
 	assert elem_type == 'string'
+}
+
+fn test_main_method_local_struct_init_keeps_main_type_name() {
+	csrc := cleanc_csrc_for_test_source('main_method_local_struct_init', 'module main
+
+struct App {}
+
+struct Repo {
+	name string
+}
+
+fn clone_repo(repo Repo) {
+	_ = repo
+}
+
+fn (mut app App) create() {
+	mut new_repo := &Repo{
+		name: "x"
+	}
+	clone_job_repo := *new_repo
+	clone_repo(clone_job_repo)
+}
+')
+	assert csrc.contains('Repo* new_repo =')
+	assert csrc.contains('Repo clone_job_repo = *new_repo;')
+	assert !csrc.contains('App__Repo')
+}
+
+fn test_seed_implicit_veb_ctx_keeps_route_param_value_type() {
+	mut g := Gen.new([])
+	mut fn_scope := types.new_scope(unsafe { nil })
+	fn_scope.insert('ctx', types.Type(types.Pointer{
+		base_type: types.Struct{
+			name: 'Context'
+		}
+	}))
+	g.cur_fn_scope = fn_scope
+	g.fn_return_types['App__user_repos'] = 'veb__Result'
+	g.fn_param_types['App__user_repos'] = ['App*', 'Context*', 'string']
+	g.fn_param_is_ptr['App__user_repos'] = [true, true, false]
+	node := ast.FnDecl{
+		is_method: true
+		receiver:  ast.Parameter{
+			name:   'app'
+			typ:    ast.Expr(ast.Ident{
+				name: 'App'
+			})
+			is_mut: true
+		}
+		name:      'user_repos'
+		typ:       ast.FnType{
+			params:      [
+				ast.Parameter{
+					name: 'username'
+					typ:  ast.Expr(ast.Ident{
+						name: 'string'
+					})
+				},
+			]
+			return_type: ast.Expr(ast.SelectorExpr{
+				lhs: ast.Expr(ast.Ident{
+					name: 'veb'
+				})
+				rhs: ast.Ident{
+					name: 'Result'
+				}
+			})
+		}
+	}
+	g.seed_fn_scan_runtime_types(node, 'App__user_repos')
+	username_type := g.get_local_var_c_type('username') or { '' }
+	assert username_type == 'string'
+}
+
+fn test_primary_generic_struct_binding_is_runtime_specializable() {
+	mut env := types.Environment.new()
+	mut api_scope := types.new_scope(unsafe { nil })
+	api_scope.insert('ApiSuccessResponse', types.Type(types.Struct{
+		name:           'api__ApiSuccessResponse'
+		generic_params: ['T']
+		fields:         [
+			types.Field{
+				name: 'result'
+				typ:  types.Type(types.Struct{
+					name: 'T'
+				})
+			},
+		]
+	}))
+	lock env.scopes {
+		env.scopes['api'] = api_scope
+	}
+	mut g := Gen.new_with_env([], env)
+	g.generic_struct_bindings['api__ApiSuccessResponse'] = {
+		'T': types.Type(types.string_)
+	}
+	assert g.generic_concrete_type_is_runtime_specializable(types.Type(types.Struct{
+		name: 'api__ApiSuccessResponse'
+	}))
+}
+
+fn test_called_weak_generic_worklist_only_adds_called_specs() {
+	t_ident := ast.Expr(ast.Ident{
+		name: 'T'
+	})
+	file := ast.File{
+		mod:   'json2'
+		name:  '/tmp/v2_cache/json2.v'
+		stmts: [
+			ast.Stmt(ast.FnDecl{
+				name: 'encode'
+				typ:  ast.FnType{
+					generic_params: [t_ident]
+				}
+			}),
+		]
+	}
+	mut g := Gen.new_with_env([file], types.Environment.new())
+	g.set_emit_files(['/tmp/v2_app/main.v'])
+	g.record_late_generic_call_spec('json2__encode', {
+		'T': types.Type(types.string_)
+	})
+	g.record_late_generic_call_spec('json2__encode', {
+		'T': types.Type(types.int_)
+	})
+	string_name := 'encode_T_string'
+	int_name := 'encode_T_int'
+	late_names := g.late_weak_generic_name_set()
+	assert string_name in late_names, late_names.str()
+	assert int_name in late_names, late_names.str()
+	g.called_fn_names[string_name] = true
+	mut needed_names := map[string]bool{}
+	g.add_called_weak_generic_names(mut needed_names)
+	assert string_name in needed_names
+	assert int_name !in needed_names
+}
+
+fn test_gen_stmts_restores_source_module_between_statements() {
+	mut env := types.Environment.new()
+	mut veb_scope := types.new_scope(unsafe { nil })
+	veb_scope.insert('Route', types.Type(types.Struct{
+		name: 'veb__Route'
+	}))
+	mut buffer_scope := types.new_scope(unsafe { nil })
+	buffer_scope.insert('Route', types.Type(types.Struct{
+		name: 'buffer__Route'
+	}))
+	lock env.scopes {
+		env.scopes['veb'] = veb_scope
+		env.scopes['buffer'] = buffer_scope
+	}
+	mut g := Gen.new_with_env([], env)
+	g.cur_file_name = '/tmp/veb.v'
+	g.cur_module = 'veb'
+	g.gen_stmts([
+		ast.Stmt(ast.ModuleStmt{
+			name: 'buffer'
+		}),
+		ast.Stmt(ast.AssignStmt{
+			op:  .decl_assign
+			lhs: [ast.Expr(ast.Ident{
+				name: 'route'
+			})]
+			rhs: [
+				ast.Expr(ast.InitExpr{
+					typ:    ast.Ident{
+						name: 'Route'
+					}
+					fields: [
+						ast.FieldInit{
+							name:  'path'
+							value: ast.Expr(ast.StringLiteral{
+								value: '/'
+							})
+						},
+					]
+				}),
+			]
+		}),
+	])
+	out := g.sb.str()
+	assert out.contains('veb__Route route = ((veb__Route){'), out
+	assert !out.contains('buffer__Route route'), out
+}
+
+fn test_gen_specialized_fn_body_uses_module_prefix_context() {
+	mut env := types.Environment.new()
+	mut veb_scope := types.new_scope(unsafe { nil })
+	veb_scope.insert('Route', types.Type(types.Struct{
+		name: 'veb__Route'
+	}))
+	mut buffer_scope := types.new_scope(unsafe { nil })
+	buffer_scope.insert('Route', types.Type(types.Struct{
+		name: 'buffer__Route'
+	}))
+	lock env.scopes {
+		env.scopes['veb'] = veb_scope
+		env.scopes['buffer'] = buffer_scope
+	}
+	mut g := Gen.new_with_env([], env)
+	g.cur_module = 'buffer'
+	node := ast.FnDecl{
+		name:  'make_route'
+		stmts: [
+			ast.Stmt(ast.AssignStmt{
+				op:  .decl_assign
+				lhs: [ast.Expr(ast.Ident{
+					name: 'route'
+				})]
+				rhs: [
+					ast.Expr(ast.InitExpr{
+						typ:    ast.Ident{
+							name: 'Route'
+						}
+						fields: [
+							ast.FieldInit{
+								name:  'path'
+								value: ast.Expr(ast.StringLiteral{
+									value: '/'
+								})
+							},
+						]
+					}),
+				]
+			}),
+		]
+	}
+	g.gen_fn_decl_with_name_ptr(&node, 'veb__make_route_T_App')
+	out := g.sb.str()
+	assert out.contains('veb__Route route = ((veb__Route){'), out
+	assert !out.contains('buffer__Route route'), out
+}
+
+fn test_source_module_exists_falls_back_to_env_for_cached_chunks() {
+	mut env := types.Environment.new()
+	mut veb_scope := types.new_scope(unsafe { nil })
+	veb_scope.insert('Route', types.Type(types.Struct{
+		name: 'veb__Route'
+	}))
+	lock env.scopes {
+		env.scopes['veb'] = veb_scope
+	}
+	mut g := Gen.new_with_env([
+		ast.File{
+			stmts: [
+				ast.Stmt(ast.ModuleStmt{
+					name: 'buffer'
+				}),
+			]
+		},
+	], env)
+	g.collect_source_module_names()
+	assert 'veb' !in g.source_module_names
+	assert g.source_module_exists('veb')
+	assert !g.source_module_exists('array')
+}
+
+fn test_init_expr_prefers_current_fn_module_when_nested_context_leaks() {
+	mut env := types.Environment.new()
+	mut veb_scope := types.new_scope(unsafe { nil })
+	veb_scope.insert('Route', types.Type(types.Struct{
+		name: 'veb__Route'
+	}))
+	mut buffer_scope := types.new_scope(unsafe { nil })
+	buffer_scope.insert('Route', types.Type(types.Struct{
+		name: 'buffer__Route'
+	}))
+	lock env.scopes {
+		env.scopes['veb'] = veb_scope
+		env.scopes['buffer'] = buffer_scope
+	}
+	mut g := Gen.new_with_env([], env)
+	g.source_module_names['buffer'] = true
+	g.cur_module = 'buffer'
+	g.cur_fn_c_name = 'veb__generate_routes_T_App_Context'
+	g.gen_init_expr(ast.InitExpr{
+		typ:    ast.Ident{
+			name: 'Route'
+		}
+		fields: [
+			ast.FieldInit{
+				name:  'path'
+				value: ast.Expr(ast.StringLiteral{
+					value: '/'
+				})
+			},
+		]
+	})
+	out := g.sb.str()
+	assert out.contains('((veb__Route){'), out
+	assert !out.contains('buffer__Route'), out
+}
+
+fn test_decl_assign_prefers_current_fn_module_for_init_expr_type() {
+	mut env := types.Environment.new()
+	mut veb_scope := types.new_scope(unsafe { nil })
+	veb_scope.insert('Route', types.Type(types.Struct{
+		name: 'veb__Route'
+	}))
+	mut buffer_scope := types.new_scope(unsafe { nil })
+	buffer_scope.insert('Route', types.Type(types.Struct{
+		name: 'buffer__Route'
+	}))
+	lock env.scopes {
+		env.scopes['veb'] = veb_scope
+		env.scopes['buffer'] = buffer_scope
+	}
+	mut g := Gen.new_with_env([], env)
+	g.source_module_names['buffer'] = true
+	g.cur_module = 'buffer'
+	g.cur_fn_c_name = 'veb__generate_routes_T_App_Context'
+	g.gen_assign_stmt(ast.AssignStmt{
+		op:  .decl_assign
+		lhs: [ast.Expr(ast.Ident{
+			name: 'route'
+		})]
+		rhs: [
+			ast.Expr(ast.InitExpr{
+				typ:    ast.Ident{
+					name: 'Route'
+				}
+				fields: [
+					ast.FieldInit{
+						name:  'path'
+						value: ast.Expr(ast.StringLiteral{
+							value: '/'
+						})
+					},
+				]
+			}),
+		]
+	})
+	out := g.sb.str()
+	assert out.contains('veb__Route route = ((veb__Route){'), out
+	assert !out.contains('buffer__Route'), out
 }

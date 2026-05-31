@@ -47,7 +47,7 @@ fn transform_optional_test_code(code string, target_os string, defines []string)
 	mut env := types.Environment.new()
 	mut checker := types.Checker.new(prefs, file_set, env)
 	checker.check_files(files)
-	mut trans := Transformer.new_with_pref(files, env, prefs)
+	mut trans := Transformer.new_with_pref(env, prefs)
 	return trans.transform_files(files)
 }
 

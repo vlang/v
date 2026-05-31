@@ -38,7 +38,7 @@ fn generate_result_option_c_for_test_files(sources []string) string {
 	env := types.Environment.new()
 	mut checker := types.Checker.new(prefs, file_set, env)
 	checker.check_files(files)
-	mut trans := transformer.Transformer.new_with_pref(files, env, prefs)
+	mut trans := transformer.Transformer.new_with_pref(env, prefs)
 	mut gen := Gen.new_with_env_and_pref(trans.transform_files(files), env, prefs)
 	return gen.gen()
 }
@@ -59,7 +59,7 @@ fn generate_markused_c_for_test(code string) string {
 	env := types.Environment.new()
 	mut checker := types.Checker.new(prefs, file_set, env)
 	checker.check_files(files)
-	mut trans := transformer.Transformer.new_with_pref(files, env, prefs)
+	mut trans := transformer.Transformer.new_with_pref(env, prefs)
 	gen_files := trans.transform_files(files)
 	used := markused.mark_used(gen_files, env)
 	mut gen := Gen.new_with_env_and_pref(gen_files, env, prefs)
@@ -84,7 +84,7 @@ fn generate_ownership_markused_c_for_test(code string) string {
 	env := types.Environment.new()
 	mut checker := types.Checker.new(prefs, file_set, env)
 	checker.check_files(files)
-	mut trans := transformer.Transformer.new_with_pref(files, env, prefs)
+	mut trans := transformer.Transformer.new_with_pref(env, prefs)
 	gen_files := trans.transform_files(files)
 	used := markused.mark_used(gen_files, env)
 	mut gen := Gen.new_with_env_and_pref(gen_files, env, prefs)
@@ -109,7 +109,7 @@ fn generate_parallel_worker_c_for_test(code string) string {
 	env := types.Environment.new()
 	mut checker := types.Checker.new(prefs, file_set, env)
 	checker.check_files(files)
-	mut trans := transformer.Transformer.new_with_pref(files, env, prefs)
+	mut trans := transformer.Transformer.new_with_pref(env, prefs)
 	gen_files := trans.transform_files(files)
 	used := markused.mark_used(gen_files, env)
 	mut gen := Gen.new_with_env_and_pref(gen_files, env, prefs)
@@ -425,11 +425,11 @@ fn aliases() []Alias {
 }
 
 fn render() string {
-	mut lines := []string{}
+	mut last := ""
 	for alias in aliases() {
-		lines << "    \${alias.name}:\\"\${alias.description}\\""
+		last = "    \${alias.name}:\\"\${alias.description}\\""
 	}
-	return lines.join("\\n")
+	return last
 }
 ')
 	assert csrc.contains('"    %s:\\"%s\\""')
@@ -454,6 +454,23 @@ fn copy_bag(b Bag) Bag {
 	assert !csrc.contains('string _val = builtin__Option_string__clone')
 }
 
+fn test_generate_c_does_not_wrap_builtin_option_clone_for_multiple_option_fields() {
+	csrc := generate_result_option_c_for_test('
+interface IClone {}
+
+struct Env implements IClone {
+	host ?string
+	prefix ?string
+}
+
+fn copy_env(e Env) Env {
+	return e.clone()
+}
+	')
+	assert csrc.contains('builtin__Option_string__clone')
+	assert !csrc.contains('string _val = builtin__Option_string__clone')
+}
+
 fn test_generate_c_wraps_struct_field_option_value() {
 	csrc := generate_result_option_c_for_test('
 struct Ref {
@@ -473,6 +490,30 @@ fn make(r &Ref) Holder {
 	assert csrc.contains('_option_Refptr item;')
 	assert csrc.contains('_option_Refptr _opt = (_option_Refptr){ .state = 2 }; Ref* _val = r; _option_ok(&_val, (_option*)&_opt, sizeof(_val)); _opt;')
 	assert !csrc.contains('.item = r')
+}
+
+fn test_generate_c_wraps_module_lifetime_alias_value_for_option_field() {
+	csrc := generate_result_option_c_for_test('
+module sample
+
+struct Item {}
+
+type ItemRef[^a] = &^a Item
+
+struct Holder[^a] {
+	item ?ItemRef[^a]
+}
+
+fn make[^a](item ItemRef[^a]) Holder[^a] {
+	return Holder[^a]{
+		item: item
+	}
+}
+')
+	assert csrc.contains('_option_sample__ItemRef item;')
+	assert csrc.contains('_option_sample__ItemRef _opt = (_option_sample__ItemRef){ .state = 2 }; sample__ItemRef _val = item; _option_ok(&_val, (_option*)&_opt, sizeof(_val)); _opt;')
+	assert !csrc.contains('_option_ItemRef')
+	assert !csrc.contains('.item = item')
 }
 
 fn test_generate_c_wraps_deref_value_for_option_string_field() {
@@ -766,6 +807,22 @@ fn make_config() Config {
 	assert !csrc.contains('.encoding = ((_option_sample__Encoding){.state = 2,.label =')
 }
 
+fn test_generate_c_compares_struct_option_fields_fieldwise() {
+	csrc := generate_result_option_c_for_test('
+struct Mode {
+	after ?usize
+}
+
+fn same(a Mode, b Mode) bool {
+	return a == b
+}
+')
+	assert csrc.contains('_cmp_l_')
+	assert csrc.contains('.after.state == _cmp_r_')
+	assert csrc.contains('.after.state != 0 ||')
+	assert !csrc.contains('memcmp(&_cmp_l_')
+}
+
 fn test_generate_c_initializes_fixed_array_field_from_param_array() {
 	csrc := generate_result_option_c_for_test('
 struct Holder {
@@ -828,6 +885,170 @@ fn use(m Match[Item]) bool {
 	assert csrc.contains('typedef struct _option_sample__Item _option_sample__Item;')
 	assert csrc.contains('struct _option_sample__Item')
 	assert csrc.contains('_option_sample__Item sample__Match__inner')
+}
+
+fn test_generate_c_expands_lifetime_generic_option_field_if_guard() {
+	csrc := generate_result_option_c_for_test('
+struct Searcher {}
+
+struct Core[^s] {
+	searcher &^s Searcher
+mut:
+	binary_byte_offset_ ?usize
+	line_number ?u64
+}
+
+fn (core Core[^s]) binary_byte_offset[^s]() ?u64 {
+	if offset := core.binary_byte_offset_ {
+		return u64(offset)
+	}
+	return none
+}
+
+fn (mut core Core[^s]) detect_binary[^s]() bool {
+	if _ := core.binary_byte_offset_ {
+		return true
+	}
+	return false
+}
+
+fn (mut core Core[^s]) count_lines[^s]() {
+	if line_number := core.line_number {
+		core.line_number = line_number + 1
+	}
+}
+
+fn use_it(searcher &Searcher) {
+	mut core := Core{
+		searcher: searcher
+	}
+	_ = core.binary_byte_offset()
+	_ = core.detect_binary()
+	core.count_lines()
+}
+
+fn main() {
+	s := Searcher{}
+	use_it(&s)
+}
+')
+	assert csrc.contains('_option_usize _or_t')
+	assert csrc.contains('usize offset = (*(usize*)')
+	assert csrc.contains('u64 line_number = (*(u64*)')
+	assert !csrc.contains('if (core.binary_byte_offset_)')
+	assert !csrc.contains('if (core->binary_byte_offset_)')
+	assert !csrc.contains('if (core->line_number)')
+	assert !csrc.contains('u64 _val = ({ _option_u64')
+}
+
+fn test_generate_c_expands_result_unwrap_method_receiver_if_guard() {
+	csrc := generate_result_option_c_for_test('
+struct FallibleUsize {
+	has_value bool
+	value usize
+}
+
+fn FallibleUsize.some(value usize) FallibleUsize {
+	return FallibleUsize{
+		has_value: true
+		value: value
+	}
+}
+
+fn (opt FallibleUsize) get() ?usize {
+	if !opt.has_value {
+		return none
+	}
+	return opt.value
+}
+
+struct Core[^s] {
+	marker &^s int
+}
+
+fn (mut core Core[^s]) shortest_match[^s]() !FallibleUsize {
+	_ = core
+	return FallibleUsize.some(1)
+}
+
+fn (mut core Core[^s]) use_it[^s]() !bool {
+	if _ := core.shortest_match()!.get() {
+		return true
+	}
+	return false
+}
+
+fn main() {
+	x := 1
+	mut core := Core{
+		marker: &x
+	}
+	_ = core.use_it() or { false }
+}
+')
+	assert csrc.contains('_result_FallibleUsize _or_t')
+	assert csrc.contains('_option_usize _or_t')
+	assert csrc.contains('FallibleUsize__get((*(FallibleUsize*)')
+	assert !csrc.contains('array__get(((FallibleUsize)')
+}
+
+fn test_generate_c_uses_branch_local_type_for_if_expr_result() {
+	csrc := generate_result_option_c_for_test('
+struct Match {
+	start_ usize
+	end_ usize
+}
+
+fn Match.new(start usize, end usize) Match {
+	return Match{
+		start_: start
+		end_: end
+	}
+}
+
+fn (m Match) start() usize {
+	return m.start_
+}
+
+fn (m Match) end() usize {
+	return m.end_
+}
+
+fn (m Match) is_empty() bool {
+	return m.start_ == m.end_
+}
+
+struct FallibleMatch {
+	has_value bool
+	value Match
+}
+
+fn (opt FallibleMatch) get() ?Match {
+	if !opt.has_value {
+		return none
+	}
+	return opt.value
+}
+
+fn use_it(maybe FallibleMatch) bool {
+	invert_match := if line := maybe.get() {
+		range := Match.new(0, line.start())
+		range
+	} else {
+		range := Match.new(0, 10)
+		range
+	}
+	return invert_match.is_empty()
+}
+
+fn main() {
+	_ = use_it(FallibleMatch{})
+}
+')
+	assert csrc.contains('Match invert_match = ({')
+	assert !csrc.contains('int invert_match = ({')
+	assert csrc.contains('Match__is_empty(invert_match)')
+	assert !csrc.contains('int__is_empty(invert_match)')
 }
 
 fn test_generate_c_emits_c_struct_option_and_result_payload_wrappers() {
@@ -1098,6 +1319,34 @@ fn main() {
 	assert !csrc.contains('&(MyError[1]){((IError)')
 }
 
+fn test_generate_c_decl_assign_from_option_err_uses_ierror() {
+	csrc := generate_result_option_c_for_test('
+struct MyError {}
+
+fn (err MyError) msg() string {
+	return "bad"
+}
+
+fn (err MyError) code() int {
+	return 1
+}
+
+fn maybe_value() ?int {
+	return MyError{}
+}
+
+fn main() {
+	_ := maybe_value() or {
+		err := err
+		_ = err
+		return
+	}
+}
+	')
+	assert csrc.contains('IError err = _or_t')
+	assert !csrc.contains('MyError err = _or_t')
+}
+
 fn test_generate_c_keeps_option_if_guard_err_as_concrete_error_ref() {
 	csrc := generate_result_option_c_for_test('
 struct MyError {}
@@ -1168,6 +1417,137 @@ fn read_full(mut reader Reader, mut buf []u8) ! {
 	assert csrc.contains('_result_int _or_t')
 	assert csrc.contains('int n = (*(int*)')
 	assert !csrc.contains('int n = ;')
+}
+
+fn test_generate_c_unwraps_generic_comptime_interface_method_result_payload() {
+	csrc := generate_result_option_c_for_test_files([
+		'
+module core
+
+import printer
+
+struct BufferWriter implements printer.WriteColor {}
+
+fn (mut w BufferWriter) write(buf []u8) !int {
+	_ = w
+	return buf.len
+}
+
+fn demo() !int {
+	mut standard := printer.Standard.new(BufferWriter{})
+	return standard.write([]u8{})
+}
+',
+		'
+module printer
+
+pub interface WriteColor {
+mut:
+	write([]u8) !int
+}
+
+pub struct CounterWriter[W] {
+mut:
+	wtr W
+}
+
+pub fn CounterWriter.new[W](wtr W) CounterWriter[W] {
+	return CounterWriter[W]{
+		wtr: wtr
+	}
+}
+
+pub fn (mut w CounterWriter[W]) write(buf []u8) !int {
+	$if W is WriteColor {
+		n := w.wtr.write(buf)!
+		return n
+	} $else {
+		_ = buf
+		return 0
+	}
+}
+
+pub struct Standard[W] {
+mut:
+	wtr CounterWriter[W]
+}
+
+pub fn Standard.new[W](wtr W) Standard[W] {
+	return Standard[W]{
+		wtr: CounterWriter.new(wtr)
+	}
+}
+
+pub fn (mut s Standard[W]) write(buf []u8) !int {
+	return s.wtr.write(buf)
+}
+',
+	])
+	assert csrc.contains('_result_int printer__CounterWriter__write')
+	assert csrc.contains('core__BufferWriter__write(&w->wtr, buf)')
+	assert csrc.contains('int n = (*(int*)')
+	assert !csrc.contains('int n = ;')
+}
+
+fn test_generate_c_preserves_static_lifetime_constructor_and_interface_pointer_field() {
+	csrc := generate_result_option_c_for_test('
+interface Reader {
+mut:
+	read(mut []u8) !int
+}
+
+struct ByteReader {}
+
+fn (mut rdr ByteReader) read(mut buf []u8) !int {
+	return 0
+}
+
+struct Config {}
+
+struct TranscodingReader[^r] {
+mut:
+	rdr &^r Reader
+	config Config
+}
+
+fn TranscodingReader.new[^r](rdr &^r Reader, config Config) TranscodingReader[^r] {
+	return TranscodingReader[^r]{
+		rdr: rdr
+		config: config
+	}
+}
+
+fn (mut rdr TranscodingReader[^r]) read[^r](mut buf []u8) !int {
+	return rdr.rdr.read(mut buf)
+}
+
+struct LineBuffer {}
+
+struct LineBufferReader[^r, ^b] {
+mut:
+	rdr &^r Reader
+	buf &^b LineBuffer
+}
+
+fn LineBufferReader.new[^r, ^b](rdr &^r Reader, buf &^b LineBuffer) LineBufferReader[^r, ^b] {
+	return LineBufferReader[^r, ^b]{
+		rdr: rdr
+		buf: buf
+	}
+}
+
+fn use_it(mut read_from Reader, config Config, buf &LineBuffer) ! {
+	mut decoded := TranscodingReader.new(&read_from, config)
+	mut rdr := LineBufferReader.new(&decoded, buf)
+	_ = rdr
+}
+	')
+	assert csrc.contains('return ((TranscodingReader){.rdr = rdr,.config = config})')
+	assert csrc.contains('return ((LineBufferReader){.rdr = rdr,.buf = buf})')
+	assert csrc.contains('LineBufferReader rdr = LineBufferReader__new(')
+	assert !csrc.contains('TranscodingReader rdr = TranscodingReader__new')
+	assert !csrc.contains('Config__read')
+	assert !csrc.contains('LineBuffer__read')
 }
 
 fn test_generate_c_preserves_c_pointer_cast_selector_field_access() {

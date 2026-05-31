@@ -425,10 +425,28 @@ fn (mut g Gen) concrete_ierror_base_for_c_type(c_type string) string {
 	if base == '' || base == 'int' || base in ['IError', 'builtin__IError'] {
 		return ''
 	}
-	if '${base}__msg' in g.fn_return_types || g.struct_c_type_embeds_error(base) {
+	if g.c_type_has_ierror_shape(base) || g.struct_c_type_embeds_error(base) {
 		return base
 	}
 	return ''
+}
+
+fn (mut g Gen) c_type_has_ierror_shape(base string) bool {
+	if '${base}__msg' in g.fn_return_types {
+		return true
+	}
+	mut names := [base]
+	if base.contains('__') {
+		names << base.all_after_last('__')
+	}
+	if g.env != unsafe { nil } {
+		for name in names {
+			if _ := g.env.lookup_method(name, 'msg') {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 fn is_ierror_c_type(c_type string) bool {

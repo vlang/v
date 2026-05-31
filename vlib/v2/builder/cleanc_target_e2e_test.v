@@ -59,10 +59,14 @@ fn build_v2_for_target_e2e(tmp_dir string) string {
 }
 
 fn run_v2_to_c(v2_binary string, tmp_dir string, name string, args []string, source string) CleancCliResult {
+	return run_v2_to_c_with_env(v2_binary, tmp_dir, name, args, source, '')
+}
+
+fn run_v2_to_c_with_env(v2_binary string, tmp_dir string, name string, args []string, source string, env_prefix string) CleancCliResult {
 	source_path := os.join_path(tmp_dir, '${name}.v')
 	out_path := os.join_path(tmp_dir, '${name}.c')
 	os.write_file(source_path, source) or { panic(err) }
-	cmd := 'cd "${e2e_repo_root()}" && "${v2_binary}" -gc none -nocache --no-parallel ${args.join(' ')} -o "${out_path}" "${source_path}"'
+	cmd := 'cd "${e2e_repo_root()}" && ${env_prefix}"${v2_binary}" -gc none -nocache --no-parallel ${args.join(' ')} -o "${out_path}" "${source_path}"'
 	res := os.execute(cmd)
 	c_source := if os.exists(out_path) { os.read_file(out_path) or { '' } } else { '' }
 	return CleancCliResult{
@@ -398,18 +402,6 @@ fn test_cleanc_cli_freestanding_diagnostics_and_user_directives() {
 	fixture_output := target_fixture_source('freestanding_output.vv2')
 	fixture_panic := target_fixture_source('freestanding_panic.vv2')
 	fixture_alloc := target_fixture_source('freestanding_alloc.vv2')
-	fixture_raw_alloc := 'module main
-
-struct HeapBox {
-	value int
-}
-
-fn main() {
-	_ := &HeapBox{
-		value: 1
-	}
-}
-'
 	heap_runtime_msg := 'freestanding target cannot use heap runtime helpers with --skip-builtin'
 
 	none_without_freestanding_res := run_v2_to_c(v2_binary, tmp_dir, 'none_without_freestanding', [
@@ -439,6 +431,20 @@ fn main() {
 }
 	')
 	assert_cli_failure_contains(os_import_res, 'freestanding target cannot use module os')
+
+	flat_os_import_res := run_v2_to_c_with_env(v2_binary, tmp_dir, 'freestanding_flat_os_import', [
+		'-freestanding',
+		'-os',
+		'none',
+		'--skip-builtin',
+		'--skip-type-check',
+	], 'module main
+
+import os
+
+fn main() {}
+	', 'V2_CHECK_FLAT=1 ')
+	assert_cli_failure_contains(flat_os_import_res, 'freestanding target cannot use module os')
 
 	for import_name in ['time', 'term', 'net', 'net.http', 'sync'] {
 		import_res := run_v2_to_c(v2_binary, tmp_dir,
@@ -779,7 +785,7 @@ fn main() {
 		'linux',
 		'--skip-builtin',
 		'--skip-type-check',
-	], fixture_raw_alloc)
+	], fixture_alloc)
 	assert_cli_failure_contains(spoofed_alloc_res,
 		'freestanding target cannot use heap allocation without alloc platform hook')
 
@@ -1519,7 +1525,7 @@ fn main() {
 		'linux',
 		'--skip-builtin',
 		'--skip-type-check',
-	], fixture_raw_alloc)
+	], fixture_alloc)
 	assert_cli_success(alloc_hook_res)
 	assert alloc_hook_res.c_source.contains('void* v_platform_malloc(isize n);')
 	assert alloc_hook_res.c_source.contains('void* v_platform_realloc(void* ptr, isize n);')
@@ -2205,6 +2211,20 @@ fn main() {
 	assert_generated_c_only(non_host_cached_res)
 	assert non_host_cached_res.c_path == non_host_cached_out + '.c'
 	assert non_host_cached_res.c_source.contains('void println(string s) {'), non_host_cached_res.c_source
+
+	flag_obj := os.join_path(tmp_dir, 'generation_only_probe.o')
+	flag_c := os.join_path(tmp_dir, 'generation_only_probe.c')
+	os.write_file(flag_c, 'int generation_only_probe(void) { return 0; }\n') or { panic(err) }
+	explicit_c_out := os.join_path(tmp_dir, 'explicit_generation_only.c')
+	explicit_c_res := run_v2_to_output(v2_binary, tmp_dir, 'explicit_c_generation_only', [], 'module main
+
+#flag ${flag_obj}
+
+fn main() {}
+',
+		explicit_c_out)
+	assert_cli_success(explicit_c_res)
+	assert !os.exists(flag_obj), 'generation-only .c output compiled unexpected object ${flag_obj}\n${explicit_c_res.output}'
 }
 
 fn test_cleanc_cli_does_not_auto_run_stale_test_binary_for_generation_only_target() {

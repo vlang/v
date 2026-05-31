@@ -65,7 +65,7 @@ fn main() {
 		}
 
 		// Run reference compiler (v1).
-		ref_res := os.execute('${@VEXE} -n -w -enable-globals run ${test_path}')
+		ref_res := os.execute('${@VEXE} -gc none -n -w -enable-globals run ${test_path}')
 		if ref_res.exit_code != 0 {
 			eprintln('  [FAIL] Reference compilation failed')
 			eprintln(ref_res.output)

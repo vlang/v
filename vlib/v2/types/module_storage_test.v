@@ -37,6 +37,23 @@ fn check_module_storage_files(files map[string]string) &Environment {
 	return env
 }
 
+fn check_module_storage_files_flat(files map[string]string) &Environment {
+	tmp_dir := module_storage_tmp_dir('flat')
+	os.mkdir_all(tmp_dir) or { panic('cannot create ${tmp_dir}') }
+	defer {
+		os.rmdir_all(tmp_dir) or {}
+	}
+	paths := write_module_storage_files(tmp_dir, files)
+	prefs := &pref.Preferences{}
+	mut file_set := token.FileSet.new()
+	mut par := parser.Parser.new(prefs)
+	flat := par.parse_files_to_flat(paths, mut file_set)
+	mut env := Environment.new()
+	mut checker := Checker.new(prefs, file_set, env)
+	checker.check_flat(&flat)
+	return env
+}
+
 fn module_storage_global(env &Environment, module_name string, name string) Global {
 	scope := env.get_scope(module_name) or { panic('missing module scope ${module_name}') }
 	obj := scope.lookup_parent(name, 0) or { panic('missing ${module_name}.${name}') }
@@ -168,6 +185,26 @@ fn main() {
 	}, 'main.v')
 	assert code != 0, 'selective import must not expose module storage by bare name'
 	assert output.contains('unknown ident `errors'), output
+}
+
+fn test_module_storage_flat_selective_import_does_not_make_bare_global() {
+	env := check_module_storage_files_flat({
+		'report/report.v': 'module report
+
+pub __global mut errors = 0
+'
+		'main.v':          'module main
+
+import report { errors }
+
+fn main() {}
+'
+	})
+	scope := env.get_scope('main') or { panic('missing main scope') }
+	if obj := scope.lookup_parent('errors', 0) {
+		_ = obj
+		assert false, 'flat selective import should not expose module storage by bare name'
+	}
 }
 
 fn test_module_storage_legacy_assignment_without_mut_is_allowed_for_compat() {

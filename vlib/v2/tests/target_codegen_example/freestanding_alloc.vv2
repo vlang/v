@@ -1,5 +1,12 @@
 module main
 
+struct Box {
+	value int
+}
+
 fn main() {
-	_ := [1, 2, 3]
+	b := &Box{
+		value: 7
+	}
+	_ = b.value
 }

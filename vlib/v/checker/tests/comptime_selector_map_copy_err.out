@@ -1,0 +1,7 @@
+vlib/v/checker/tests/comptime_selector_map_copy_err.vv:8:18: error: cannot copy map: call `move` or `clone` method (or use a reference)
+    6 |     $for field in T.fields {
+    7 |         $if field.unaliased_typ is map[string]string {
+    8 |             values := val.$(field.name)
+      |                           ~~~~~~~~~~~~~
+    9 |             _ = values
+   10 |         }

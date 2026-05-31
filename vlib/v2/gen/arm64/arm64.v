@@ -9,6 +9,7 @@ import v2.ssa
 import v2.types
 import encoding.binary
 import os
+import time
 
 pub struct Gen {
 pub:
@@ -24,9 +25,14 @@ pub mut:
 	block_offsets      []int // indexed by block_id, -1 = not yet visited
 	pending_label_blks []int
 	pending_label_offs []int
-	func_count         int
-	total_pending      int
-	total_resolved     int
+	// Per-block pending label index (linked list head per block id).
+	// pending_head[blk_id] = first index into pending_label_offs (-1 = none).
+	// pending_next[i] = next pending entry for same block (-1 = last).
+	pending_head   []int // indexed by block_id, -1 = no pending labels for this block
+	pending_next   []int
+	func_count     int
+	total_pending  int
+	total_resolved int
 
 	// Register allocation
 	reg_map    map[int]int
@@ -117,6 +123,12 @@ pub mut:
 	stats_total_stores   int
 	stats_skipped_stores int
 	stats_cache_hits     int
+	// Profiling timers for gen_func sub-stages.
+	t_setup_ms    f64
+	t_prepass_ms  f64
+	t_prologue_ms f64
+	t_main_ms     f64
+	t_regalloc_ms f64
 }
 
 pub fn Gen.new(mod &mir.Module) &Gen {
@@ -226,11 +238,21 @@ fn (mut g Gen) should_skip_store(val_id int) int {
 }
 
 pub fn (mut g Gen) gen() {
+	t0 := time.now()
 	g.gen_pre_pass()
+	pre_ms := f64(time.since(t0)) / f64(time.millisecond)
+	t1 := time.now()
 	for fi := 0; fi < g.mod.funcs.len; fi++ {
 		g.gen_func(g.mod.funcs[fi])
 	}
+	funcs_ms := f64(time.since(t1)) / f64(time.millisecond)
+	t2 := time.now()
 	g.gen_post_pass()
+	post_ms := f64(time.since(t2)) / f64(time.millisecond)
+	eprintln('ARM64 gen sub: pre=${pre_ms:.1}ms funcs=${funcs_ms:.1}ms post=${post_ms:.1}ms')
+	if os.getenv('V2_ARM64_TIME_DETAIL') != '' {
+		eprintln('ARM64 gen_func subs: setup=${g.t_setup_ms:.0}ms prepass=${g.t_prepass_ms:.0}ms prologue=${g.t_prologue_ms:.0}ms main=${g.t_main_ms:.0}ms regalloc=${g.t_regalloc_ms:.0}ms')
+	}
 }
 
 // gen_pre_pass registers global symbols and builds lookup caches.
@@ -290,6 +312,7 @@ fn (mut g Gen) dead_strip_functions() {
 	if g.fn_starts.len == 0 {
 		return
 	}
+	ds_t0 := time.now()
 	n_fns := g.fn_starts.len
 	// Build sym_idx → fn_idx for resolving relocation targets.
 	mut sym_to_fn := map[int]int{}
@@ -378,25 +401,23 @@ fn (mut g Gen) dead_strip_functions() {
 	}
 	eprintln('ARM64 DEADSTRIP: ${dead_count} dead functions, ${dead_bytes} bytes (${dead_bytes / 1024}KB)')
 	// Build compacted text section: copy prefix, kept functions, suffix.
-	old_text := g.macho.text_data.clone()
+	old_text := g.macho.text_data
 	mut new_text := []u8{cap: old_text.len - dead_bytes}
 	// Copy prefix bytes before first function (if any).
-	for i := 0; i < g.fn_starts[0]; i++ {
-		new_text << old_text[i]
+	if g.fn_starts[0] > 0 {
+		new_text << old_text[..g.fn_starts[0]]
 	}
 	// Copy kept functions in order.
 	for fi := 0; fi < n_fns; fi++ {
 		if !reachable[fi] {
 			continue
 		}
-		for off := g.fn_starts[fi]; off < g.fn_ends[fi]; off++ {
-			new_text << old_text[off]
-		}
+		new_text << old_text[g.fn_starts[fi]..g.fn_ends[fi]]
 	}
 	// Copy suffix bytes after last function (e.g. unresolved stub added by gen_post_pass).
 	last_end := g.fn_ends[n_fns - 1]
-	for off := last_end; off < old_text.len; off++ {
-		new_text << old_text[off]
+	if last_end < old_text.len {
+		new_text << old_text[last_end..]
 	}
 	// Fix up relocation addresses and drop relocations inside dead functions.
 	mut new_relocs := []RelocationInfo{cap: g.macho.relocs.len}
@@ -463,6 +484,8 @@ fn (mut g Gen) dead_strip_functions() {
 		}
 	}
 	g.macho.text_data = new_text
+	ds_ms := f64(time.since(ds_t0)) / f64(time.millisecond)
+	eprintln('ARM64 deadstrip ms=${ds_ms:.1}')
 }
 
 // gen_post_pass emits the unresolved stub, global data, and patches symbol addresses.
@@ -742,17 +765,20 @@ pub fn (mut g Gen) gen_func(func mir.Function) {
 		g.fn_sym_ids << sym_idx
 		return
 	}
+	tf_setup := time.now()
 	g.curr_offset = g.macho.text_data.len
 	g.stack_map.clear()
 	g.alloca_offsets.clear()
 	g.alloca_ptr_cache.clear()
-	// Reuse block_offsets array, grow if needed, only zero this function's blocks
+	// Reuse block_offsets and pending_head arrays, grow if needed, only reset this function's blocks
 	n_blks := g.mod.blocks.len
 	if g.block_offsets.len < n_blks {
 		g.block_offsets = []int{len: n_blks}
+		g.pending_head = []int{len: n_blks}
 		// Fresh allocation needs full -1 init
 		for bo_idx := 0; bo_idx < n_blks; bo_idx++ {
 			g.block_offsets[bo_idx] = -1
+			g.pending_head[bo_idx] = -1
 		}
 	} else {
 		// Only reset blocks belonging to this function
@@ -760,12 +786,14 @@ pub fn (mut g Gen) gen_func(func mir.Function) {
 			bid := func.blocks[fbi]
 			if bid >= 0 && bid < g.block_offsets.len {
 				g.block_offsets[bid] = -1
+				g.pending_head[bid] = -1
 			}
 		}
 	}
 	// val_to_block is built once in gen(), not per function
 	g.pending_label_blks.clear()
 	g.pending_label_offs.clear()
+	g.pending_next.clear()
 	g.func_count++
 	g.total_pending = 0
 	g.total_resolved = 0
@@ -778,7 +806,11 @@ pub fn (mut g Gen) gen_func(func mir.Function) {
 	g.cur_func_name = func.name
 	g.x8_save_offset = 0
 	g.mark_sumtype_data_heap_allocas(func)
+	tf_regalloc := time.now()
+	g.t_setup_ms += f64(time.since(tf_setup)) / f64(time.millisecond)
 	g.allocate_registers(func)
+	tf_prepass := time.now()
+	g.t_regalloc_ms += f64(time.since(tf_regalloc)) / f64(time.millisecond)
 	if g.env_dump_funcrefs.len > 0
 		&& (g.env_dump_funcrefs == '*' || func.name == g.env_dump_funcrefs) {
 		eprintln('ARM64 FUNCREFS fn=${func.name} begin')
@@ -1162,6 +1194,8 @@ pub fn (mut g Gen) gen_func(func mir.Function) {
 	fn_sym_idx := g.macho.add_symbol(fn_sym_name, u64(g.curr_offset), true, 1)
 	fn_start_off := g.macho.text_data.len
 
+	tf_prologue := time.now()
+	g.t_prepass_ms += f64(time.since(tf_prepass)) / f64(time.millisecond)
 	// Prologue
 	g.emit(asm_stp_fp_lr_pre())
 	g.emit(asm_mov_fp_sp())
@@ -1316,6 +1350,8 @@ pub fn (mut g Gen) gen_func(func mir.Function) {
 		g.load_val_to_reg(8, lit_id)
 	}
 
+	tf_main := time.now()
+	g.t_prologue_ms += f64(time.since(tf_prologue)) / f64(time.millisecond)
 	for i := 0; i < func.blocks.len; i++ {
 		g.invalidate_last_store()
 		blk_id := int(func.blocks[i])
@@ -1324,10 +1360,10 @@ pub fn (mut g Gen) gen_func(func mir.Function) {
 		blk := g.mod.blocks[blk_id]
 		g.block_offsets[blk_id] = g.macho.text_data.len - g.curr_offset
 
-		for pi := 0; pi < g.pending_label_blks.len; pi++ {
-			if g.pending_label_blks[pi] != blk_id {
-				continue
-			}
+		// Resolve pending forward branches that target this block via the
+		// per-block linked list (head in pending_head, next-pointers in pending_next).
+		mut pi := g.pending_head[blk_id]
+		for pi != -1 {
 			off := g.pending_label_offs[pi]
 			target := g.block_offsets[blk_id]
 			rel := (target - off) / 4
@@ -1348,6 +1384,7 @@ pub fn (mut g Gen) gen_func(func mir.Function) {
 			}
 			g.write_u32(abs_off, new_instr)
 			g.total_resolved++
+			pi = g.pending_next[pi]
 		}
 
 		g.cur_blk_instrs = blk.instrs
@@ -1356,6 +1393,7 @@ pub fn (mut g Gen) gen_func(func mir.Function) {
 			g.gen_instr(val_id)
 		}
 	}
+	g.t_main_ms += f64(time.since(tf_main)) / f64(time.millisecond)
 	unresolved := g.total_pending - g.total_resolved
 	if unresolved > 0 {
 		eprintln('BRANCH: fn=${func.name} pending=${g.total_pending} resolved=${g.total_resolved} unresolved=${unresolved} pending_blks_len=${g.pending_label_blks.len}')
@@ -4976,42 +5014,30 @@ fn (mut g Gen) gen_instr(val_id int) {
 				}
 			}
 		}
+		.spawn_call, .go_call {
+			// ARM64 native backend does not implement OS thread spawn or goroutine
+			// launch. Emit a no-op so functions that contain `spawn`/`go` (e.g.
+			// sync.WaitGroup.go pulled in transitively) can still be lowered for
+			// reachability without crashing the backend. These functions are never
+			// invoked from v2-self-host paths.
+			if val_id > 0 && val_id < g.mod.values.len {
+				g.emit_mov_imm64(8, 0)
+				g.store_reg_to_val(8, val_id)
+			}
+		}
 		else {
-			eprintln('arm64: unknown instruction ${int(op)} (${instr.selected_op})')
+			eprintln('arm64: unknown instruction ${int(op)} (${instr.selected_op}) in fn ${g.cur_func_name}')
 			exit(1)
 		}
 	}
 }
 
-fn (g Gen) selected_opcode(instr mir.Instruction) ssa.OpCode {
-	if instr.selected_op == '' {
-		return instr.op
-	}
-	suffix := if instr.selected_op.contains('.') {
-		instr.selected_op.all_after('.')
-	} else {
-		instr.selected_op
-	}
-	return match suffix {
-		'add_rr' { .add }
-		'sub_rr' { .sub }
-		'mul_rr' { .mul }
-		'sdiv_rr' { .sdiv }
-		'and_rr' { .and_ }
-		'or_rr' { .or_ }
-		'xor_rr' { .xor }
-		'load_mr' { .load }
-		'store_rm' { .store }
-		'call' { .call }
-		'call_indirect' { .call_indirect }
-		'call_sret' { .call_sret }
-		'ret' { .ret }
-		'br' { .br }
-		'jmp' { .jmp }
-		'switch' { .switch_ }
-		'copy' { .assign }
-		else { instr.op }
-	}
+@[inline]
+fn (g &Gen) selected_opcode(instr &mir.Instruction) ssa.OpCode {
+	// InsSel's textual selected_op round-trips back to instr.op via an
+	// inverse-identical mapping. Returning instr.op directly skips the
+	// per-instruction string contains/all_after/match work.
+	return instr.op
 }
 
 fn (g &Gen) has_function_named(name string) bool {
@@ -5406,8 +5432,7 @@ fn (g &Gen) scalar_value_is_pointer_payload(val_id int, depth int) bool {
 }
 
 fn (mut g Gen) get_dest_reg(val_id int) int {
-	if val_id in g.reg_map {
-		r := g.reg_map[val_id]
+	if r := g.reg_map[val_id] {
 		if r != 0xFF {
 			return r
 		}
@@ -5417,8 +5442,7 @@ fn (mut g Gen) get_dest_reg(val_id int) int {
 
 fn (mut g Gen) get_operand_reg(val_id int, fallback int) int {
 	// If value is in a callee-saved register, return it
-	if val_id in g.reg_map {
-		r := g.reg_map[val_id]
+	if r := g.reg_map[val_id] {
 		if r != 0xFF {
 			return r
 		}
@@ -6118,8 +6142,7 @@ fn (mut g Gen) get_const_int(val_id int) i64 {
 }
 
 fn (mut g Gen) load_val_to_reg(reg int, val_id int) {
-	if val_id in g.reg_map {
-		r := g.reg_map[val_id]
+	if r := g.reg_map[val_id] {
 		if r != 0xFF {
 			if r != reg {
 				g.emit_mov_reg(reg, r)
@@ -6420,8 +6443,7 @@ fn (mut g Gen) store_reg_to_val(reg int, val_id int) {
 	mut cached_store := false
 	trace_storeval := g.env_trace_storeval.len > 0
 		&& (g.env_trace_storeval == '*' || g.cur_func_name == g.env_trace_storeval)
-	if val_id in g.reg_map {
-		reg_idx := g.reg_map[val_id]
+	if reg_idx := g.reg_map[val_id] {
 		if reg_idx != 0xFF {
 			if reg_idx != reg {
 				g.emit_mov_reg(reg_idx, reg)
@@ -6433,22 +6455,22 @@ fn (mut g Gen) store_reg_to_val(reg int, val_id int) {
 		if val_id > 0 && val_id < g.mod.values.len {
 			val_typ_id := g.mod.values[val_id].typ
 			if val_typ_id > 0 && val_typ_id < g.mod.type_store.types.len {
-				val_typ := g.mod.type_store.types[val_typ_id]
-				if val_typ.kind in [.struct_t, .array_t] {
+				val_typ_kind := g.mod.type_store.types[val_typ_id].kind
+				if val_typ_kind == .struct_t || val_typ_kind == .array_t {
 					val_size := g.type_size(val_typ_id)
 					if val_size > 8 && val_size <= 16 {
 						if trace_storeval {
-							eprintln('ARM64 STOREVAL ptr-copy fn=${g.cur_func_name} val=${val_id} typ=${val_typ_id}/${val_typ.kind} size=${val_size} reg=${stored_reg} off=${offset}')
+							eprintln('ARM64 STOREVAL ptr-copy fn=${g.cur_func_name} val=${val_id} typ=${val_typ_id}/${val_typ_kind} size=${val_size} reg=${stored_reg} off=${offset}')
 						}
 						g.copy_ptr_to_fp_bytes(stored_reg, offset, val_size)
 						g.invalidate_last_store()
 						return
 					}
-				}
-				if val_typ.kind == .struct_t && g.type_size(val_typ_id) <= 8 {
-					g.emit_str_reg_offset(stored_reg, 29, offset)
-					g.invalidate_last_store()
-					return
+					if val_typ_kind == .struct_t && val_size <= 8 {
+						g.emit_str_reg_offset(stored_reg, 29, offset)
+						g.invalidate_last_store()
+						return
+					}
 				}
 			}
 		}
@@ -7402,13 +7424,32 @@ fn (mut g Gen) store_entry_arg_to_global(reg int, global_name string, size int) 
 }
 
 fn (mut g Gen) emit(code u32) {
-	write_u32_le(mut g.macho.text_data, code)
+	n := g.macho.text_data.len
+	unsafe { g.macho.text_data.grow_len(4) }
+	unsafe {
+		p := &u8(g.macho.text_data.data) + n
+		p[0] = u8(code)
+		p[1] = u8(code >> 8)
+		p[2] = u8(code >> 16)
+		p[3] = u8(code >> 24)
+	}
 }
 
 fn (mut g Gen) record_pending_label(blk int) {
+	// Guard against unresolved or out-of-range block IDs (e.g. -1 from
+	// val_to_block misses). The old O(N^2) scan tolerated these by simply
+	// never matching them later; preserve that behavior here instead of
+	// indexing pending_head[blk] out-of-bounds.
+	if blk < 0 || blk >= g.pending_head.len {
+		return
+	}
 	off := g.macho.text_data.len - g.curr_offset
+	new_idx := g.pending_label_offs.len
+	prev_head := g.pending_head[blk]
 	g.pending_label_blks << blk
 	g.pending_label_offs << off
+	g.pending_next << prev_head
+	g.pending_head[blk] = new_idx
 	g.total_pending++
 }
 

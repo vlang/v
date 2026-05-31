@@ -31,7 +31,7 @@ fn build_ssa_for_runtime_symbol_target_test(code string, target_os string) &Modu
 	mut env := types.Environment.new()
 	mut checker := types.Checker.new(prefs, file_set, env)
 	checker.check_files(files)
-	mut trans := transformer.Transformer.new_with_pref(files, env, prefs)
+	mut trans := transformer.Transformer.new_with_pref(env, prefs)
 	transformed := trans.transform_files(files)
 	mut ssa_mod := Module.new('runtime_symbols')
 	mut b := Builder.new_with_env(ssa_mod, env)
