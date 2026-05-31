@@ -4319,6 +4319,32 @@ fn main() {
 	assert !csrc.contains('draw(rgba());'), csrc
 }
 
+fn test_tuple_return_with_fixed_array_keeps_interface_wrapping() {
+	csrc := cleanc_csrc_for_test_source('tuple_fixed_array_interface_return', '
+interface Speaker {
+	speak() string
+}
+
+struct Person {}
+
+fn (p Person) speak() string {
+	return "hi"
+}
+
+fn make_pair() ([2]int, Speaker) {
+	return [1, 2]!, Person{}
+}
+
+fn main() {
+	_ := make_pair()
+}
+')
+	assert csrc.contains('.arg1 = ({ Person _iface_obj'), csrc
+	assert csrc.contains('(Speaker){._object'), csrc
+	assert csrc.contains('Person__speak'), csrc
+	assert !csrc.contains('.arg1 = ((Person)'), csrc
+}
+
 fn test_generic_fallback_derives_container_param_element_type() {
 	mut env := types.Environment.new()
 	env.generic_types['seed'] = [

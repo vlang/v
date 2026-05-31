@@ -79,6 +79,18 @@ fn tuple_field_types_need_stmt_expr(field_types []string) bool {
 	return false
 }
 
+fn (mut g Gen) gen_tuple_field_expr_value(field_type string, expr ast.Expr) {
+	if g.is_interface_type(field_type) {
+		expr_type := g.get_expr_type(expr).trim_right('*')
+		if expr_type != '' && expr_type != field_type && !g.is_interface_type(expr_type) {
+			if g.gen_interface_cast(field_type, expr) {
+				return
+			}
+		}
+	}
+	g.expr(expr)
+}
+
 fn (mut g Gen) gen_tuple_field_stmt_expr_assign(tuple_name string, idx int, field_type string, expr ast.Expr) {
 	field_name := '${tuple_name}.arg${idx}'
 	if field_type.starts_with('Array_fixed_') && !field_type.ends_with('*') {
@@ -111,7 +123,7 @@ fn (mut g Gen) gen_tuple_field_stmt_expr_assign(tuple_name string, idx int, fiel
 		return
 	}
 	g.sb.write_string('${field_name} = ')
-	g.expr(expr)
+	g.gen_tuple_field_expr_value(field_type, expr)
 	g.sb.write_string('; ')
 }
 
@@ -212,22 +224,7 @@ fn (mut g Gen) gen_stmt(node ast.Stmt) {
 					}
 					g.sb.write_string('.arg${i} = ')
 					if i < tuple_exprs.len {
-						// If the field type is an interface and the expression is a
-						// concrete type (e.g., from smartcast narrowing), wrap in interface.
-						if g.is_interface_type(field_type) {
-							expr_type := g.get_expr_type(tuple_exprs[i]).trim_right('*')
-							if expr_type != '' && expr_type != field_type
-								&& !g.is_interface_type(expr_type) {
-								if g.gen_interface_cast(field_type, tuple_exprs[i]) {
-								} else {
-									g.expr(tuple_exprs[i])
-								}
-							} else {
-								g.expr(tuple_exprs[i])
-							}
-						} else {
-							g.expr(tuple_exprs[i])
-						}
+						g.gen_tuple_field_expr_value(field_type, tuple_exprs[i])
 					} else {
 						g.sb.write_string(zero_value_for_type(field_type))
 					}
