@@ -850,6 +850,17 @@ fn (b &Builder) candidate_belongs_to_foreign_project(candidate_path string, impo
 	return true
 }
 
+fn (b &Builder) path_belongs_to_lookup_path(path string) bool {
+	abs_path := comparable_real_path(path)
+	for lookup in b.pref.lookup_path {
+		abs_lookup := comparable_real_path(lookup)
+		if path_is_at_or_inside(abs_path, abs_lookup) {
+			return true
+		}
+	}
+	return false
+}
+
 fn comparable_real_path(path string) string {
 	mut normalized := os.real_path(path).replace('\\', '/')
 	for normalized.contains('//') {
@@ -907,6 +918,9 @@ pub fn (b &Builder) find_module_path(mod string, fpath string) !string {
 	}
 	mod_path := module_path(mod)
 	mut module_lookup_paths := []string{}
+	if b.path_belongs_to_lookup_path(resolved_fpath) {
+		module_lookup_paths << b.pref.lookup_path
+	}
 	if vmod_file_location.vmod_file.len != 0
 		&& vmod_file_location.vmod_folder !in b.module_search_paths {
 		module_lookup_paths << vmod_file_location.vmod_folder

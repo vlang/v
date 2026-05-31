@@ -38,6 +38,13 @@ fn minimal_c_call(name string, id int, args []ast.Expr) ast.CallExpr {
 	}
 }
 
+fn mark_used_flat_minimal(files []ast.File, env &types.Environment) map[string]bool {
+	flat := ast.flatten_files(files)
+	return mark_used_flat_with_options(&flat, env, MarkUsedOptions{
+		minimal_runtime_roots: true
+	})
+}
+
 fn test_minimal_runtime_roots_keep_explicit_calls_only() {
 	mut env := types.Environment.new()
 	files := [
@@ -303,6 +310,99 @@ fn test_minimal_runtime_roots_keep_functions_used_as_const_values() {
 
 	assert used[main_key]
 	assert used[abc_key]
+	assert !used[unused_key]
+}
+
+fn test_minimal_runtime_roots_flat_keeps_const_alias_return_and_const_field_function_values() {
+	mut env := types.Environment.new()
+	files := [
+		ast.File{
+			mod:   'main'
+			name:  'main.v'
+			stmts: [
+				ast.Stmt(ast.ConstDecl{
+					fields: [
+						ast.FieldInit{
+							name:  'cb'
+							value: ast.Expr(minimal_ident('alias_cleanup', 300))
+						},
+					]
+				}),
+				ast.Stmt(ast.FnDecl{
+					name:  'main'
+					typ:   ast.FnType{}
+					pos:   minimal_pos(301)
+					stmts: [
+						ast.Stmt(ast.ExprStmt{
+							expr: ast.CallExpr{
+								lhs: minimal_ident('cb', 302)
+								pos: minimal_pos(302)
+							}
+						}),
+						ast.Stmt(ast.ExprStmt{
+							expr: ast.CallExpr{
+								lhs: minimal_ident('choose_cleanup', 303)
+								pos: minimal_pos(303)
+							}
+						}),
+						ast.Stmt(ast.ConstDecl{
+							fields: [
+								ast.FieldInit{
+									name:  'local_cb'
+									value: ast.Expr(minimal_ident('field_cleanup', 304))
+								},
+							]
+						}),
+					]
+				}),
+				ast.Stmt(ast.FnDecl{
+					name:  'choose_cleanup'
+					typ:   ast.FnType{}
+					pos:   minimal_pos(305)
+					stmts: [
+						ast.Stmt(ast.ReturnStmt{
+							exprs: [
+								ast.Expr(minimal_ident('returned_cleanup', 306)),
+							]
+						}),
+					]
+				}),
+				ast.Stmt(ast.FnDecl{
+					name: 'alias_cleanup'
+					typ:  ast.FnType{}
+					pos:  minimal_pos(307)
+				}),
+				ast.Stmt(ast.FnDecl{
+					name: 'returned_cleanup'
+					typ:  ast.FnType{}
+					pos:  minimal_pos(308)
+				}),
+				ast.Stmt(ast.FnDecl{
+					name: 'field_cleanup'
+					typ:  ast.FnType{}
+					pos:  minimal_pos(309)
+				}),
+				ast.Stmt(ast.FnDecl{
+					name: 'unused_cleanup'
+					typ:  ast.FnType{}
+					pos:  minimal_pos(310)
+				}),
+			]
+		},
+	]
+	used := mark_used_flat_minimal(files, env)
+	main_key := decl_key('main', files[0].stmts[1] as ast.FnDecl, env)
+	choose_key := decl_key('main', files[0].stmts[2] as ast.FnDecl, env)
+	alias_key := decl_key('main', files[0].stmts[3] as ast.FnDecl, env)
+	returned_key := decl_key('main', files[0].stmts[4] as ast.FnDecl, env)
+	field_key := decl_key('main', files[0].stmts[5] as ast.FnDecl, env)
+	unused_key := decl_key('main', files[0].stmts[6] as ast.FnDecl, env)
+
+	assert used[main_key]
+	assert used[choose_key]
+	assert used[alias_key]
+	assert used[returned_key]
+	assert used[field_key]
 	assert !used[unused_key]
 }
 

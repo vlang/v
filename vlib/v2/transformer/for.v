@@ -144,8 +144,7 @@ fn (mut t Transformer) smartcast_map_iter_value_expr(iter_expr ast.Expr, map_typ
 		return iter_expr
 	}
 	data_access := t.synth_selector(iter_expr, '_data', types.Type(types.voidptr_))
-	is_native_backend := t.pref != unsafe { nil }
-		&& (t.pref.backend == .arm64 || t.pref.backend == .x64)
+	is_native_backend := t.pref != unsafe { nil } && t.is_native_be
 	variant_access := if is_native_backend {
 		data_access
 	} else {
@@ -567,7 +566,7 @@ fn (mut t Transformer) transform_for_stmt(stmt ast.ForStmt) ast.ForStmt {
 				t.close_scope()
 				return result
 			}
-			if t.pref.backend == .arm64 || t.pref.backend == .x64 {
+			if t.is_native_be {
 				result := t.transform_untyped_for_in(stmt, for_in)
 				t.close_scope()
 				return result
@@ -695,8 +694,8 @@ fn (mut t Transformer) transform_untyped_for_in(stmt ast.ForStmt, for_in ast.For
 	if typ := iter_typ {
 		t.register_synth_type(iter_pos, typ)
 	}
-	iter_pending := t.pending_stmts.clone()
-	t.pending_stmts.clear()
+	iter_pending := t.pending_stmts
+	t.pending_stmts = []ast.Stmt{}
 
 	index_pos := t.next_synth_pos()
 	if typ := t.get_expr_type(for_in.value) {
@@ -733,8 +732,8 @@ fn (mut t Transformer) transform_untyped_for_in(stmt ast.ForStmt, for_in ast.For
 	new_stmts << value_assign
 	transformed_body := t.transform_stmts(stmt.stmts)
 	new_stmts << transformed_body
-	body_pending := t.pending_stmts.clone()
-	t.pending_stmts.clear()
+	body_pending := t.pending_stmts
+	t.pending_stmts = []ast.Stmt{}
 	t.pending_stmts << iter_pending
 	t.pending_stmts << body_pending
 
@@ -843,8 +842,8 @@ fn (mut t Transformer) transform_array_for_in_with_value_type(stmt ast.ForStmt, 
 	iter_pos := t.next_synth_pos()
 	transformed_expr := t.iter_value_expr(for_in.expr, t.transform_expr(for_in.expr), iter_pos,
 		iter_type)
-	iter_pending := t.pending_stmts.clone()
-	t.pending_stmts.clear()
+	iter_pending := t.pending_stmts
+	t.pending_stmts = []ast.Stmt{}
 
 	index_pos := t.next_synth_pos()
 	t.register_synth_type(index_pos, value_type)
@@ -894,8 +893,8 @@ fn (mut t Transformer) transform_array_for_in_with_value_type(stmt ast.ForStmt, 
 		t.generic_var_type_params.delete(value_name)
 	}
 	new_stmts << transformed_body
-	body_pending := t.pending_stmts.clone()
-	t.pending_stmts.clear()
+	body_pending := t.pending_stmts
+	t.pending_stmts = []ast.Stmt{}
 	t.pending_stmts << iter_pending
 	t.pending_stmts << body_pending
 

@@ -346,6 +346,12 @@ fn (mut g Gen) branch_result_type(stmts []ast.Stmt) string {
 				return g.get_if_expr_type(&nested)
 			}
 			mut typ := g.get_expr_type(last.expr)
+			if (typ == '' || typ == 'int' || typ == 'void*' || typ == 'voidptr')
+				&& last.expr is ast.Ident {
+				if local_typ := g.branch_declared_ident_type(stmts, last_idx, last.expr.name) {
+					typ = local_typ
+				}
+			}
 			if typ == '' || typ == 'int' || typ == 'void*' || typ == 'voidptr' {
 				if raw := g.get_raw_type(last.expr) {
 					raw_type := g.types_type_to_c(raw)
@@ -360,6 +366,38 @@ fn (mut g Gen) branch_result_type(stmts []ast.Stmt) string {
 			return ''
 		}
 	}
+}
+
+fn (mut g Gen) branch_declared_ident_type(stmts []ast.Stmt, before_idx int, name string) ?string {
+	if name == '' {
+		return none
+	}
+	mut i := before_idx - 1
+	for i >= 0 {
+		stmt := stmts[i]
+		if stmt is ast.AssignStmt {
+			if stmt.op == .decl_assign && stmt.lhs.len == stmt.rhs.len {
+				for j, lhs in stmt.lhs {
+					if lhs is ast.Ident && lhs.name == name {
+						mut typ := g.get_expr_type(stmt.rhs[j])
+						if typ == '' || typ == 'int' || typ == 'void*' || typ == 'voidptr' {
+							if raw := g.get_raw_type(stmt.rhs[j]) {
+								raw_type := g.types_type_to_c(raw)
+								if raw_type != '' && raw_type != 'void*' && raw_type != 'voidptr' {
+									typ = raw_type
+								}
+							}
+						}
+						if typ != '' && typ != 'int' && typ != 'void*' && typ != 'voidptr' {
+							return typ
+						}
+					}
+				}
+			}
+		}
+		i--
+	}
+	return none
 }
 
 fn (mut g Gen) gen_if_expr_stmt(node &ast.IfExpr) {

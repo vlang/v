@@ -4,6 +4,7 @@
 module ssa
 
 import os
+import v2.ast
 import v2.parser
 import v2.pref as vpref
 import v2.token
@@ -31,12 +32,39 @@ fn build_ssa_for_runtime_symbol_target_test(code string, target_os string) &Modu
 	mut env := types.Environment.new()
 	mut checker := types.Checker.new(prefs, file_set, env)
 	checker.check_files(files)
-	mut trans := transformer.Transformer.new_with_pref(files, env, prefs)
+	mut trans := transformer.Transformer.new_with_pref(env, prefs)
 	transformed := trans.transform_files(files)
 	mut ssa_mod := Module.new('runtime_symbols')
 	mut b := Builder.new_with_env(ssa_mod, env)
 	b.target_os = target_os
 	b.build_all(transformed)
+	return ssa_mod
+}
+
+fn build_ssa_for_runtime_symbol_target_flat_test(code string, target_os string) &Module {
+	tmp_file := os.join_path(os.vtmp_dir(), 'v2_ssa_runtime_symbols_flat_${os.getpid()}.v')
+	os.write_file(tmp_file, code) or { panic('failed to write temp file') }
+	defer {
+		os.rm(tmp_file) or {}
+	}
+	mut prefs := &vpref.Preferences{
+		backend:     .x64
+		no_parallel: true
+	}
+	prefs.target_os = target_os
+	mut file_set := token.FileSet.new()
+	mut par := parser.Parser.new(prefs)
+	files := par.parse_files([tmp_file], mut file_set)
+	mut env := types.Environment.new()
+	mut checker := types.Checker.new(prefs, file_set, env)
+	checker.check_files(files)
+	mut trans := transformer.Transformer.new_with_pref(env, prefs)
+	flat := ast.flatten_files(files)
+	transformed_flat, _ := trans.transform_files_to_flat(&flat, files)
+	mut ssa_mod := Module.new('runtime_symbols_flat')
+	mut b := Builder.new_with_env(ssa_mod, env)
+	b.target_os = target_os
+	b.build_all_from_flat(&transformed_flat)
 	return ssa_mod
 }
 
@@ -145,6 +173,25 @@ fn store_destination_global_names(m &Module) []string {
 		}
 	}
 	return names
+}
+
+fn c_errno_write_test_code() string {
+	return '
+module main
+
+fn reset_errno() {
+	C.errno = 0
+}
+
+fn bump_errno() {
+	C.errno += 1
+}
+
+fn main() {
+	reset_errno()
+	bump_errno()
+}
+'
 }
 
 fn test_c_float_epsilon_macros_are_ssa_constants_not_external_globals() {
@@ -301,23 +348,20 @@ fn main() {
 }
 
 fn test_c_errno_writes_use_errno_location_on_linux_targets() {
-	m := build_ssa_for_runtime_symbol_target_test('
-module main
+	m := build_ssa_for_runtime_symbol_target_test(c_errno_write_test_code(), 'linux')
+	call_names := called_function_names(m)
+	store_call_names := store_destination_call_names(m)
+	global_names := global_value_names(m)
 
-fn reset_errno() {
-	C.errno = 0
+	assert call_names.filter(it == '__errno_location').len == 2
+	assert store_call_names.filter(it == '__errno_location').len == 2
+	assert '__error' !in call_names
+	assert 'errno' !in global_names
+	assert 'C.errno' !in global_names
 }
 
-fn bump_errno() {
-	C.errno += 1
-}
-
-fn main() {
-	reset_errno()
-	bump_errno()
-}
-',
-		'linux')
+fn test_c_errno_flat_writes_use_errno_location_on_linux_targets() {
+	m := build_ssa_for_runtime_symbol_target_flat_test(c_errno_write_test_code(), 'linux')
 	call_names := called_function_names(m)
 	store_call_names := store_destination_call_names(m)
 	global_names := global_value_names(m)
@@ -351,23 +395,20 @@ fn main() {
 }
 
 fn test_c_errno_writes_use_error_on_macos_targets() {
-	m := build_ssa_for_runtime_symbol_target_test('
-module main
+	m := build_ssa_for_runtime_symbol_target_test(c_errno_write_test_code(), 'macos')
+	call_names := called_function_names(m)
+	store_call_names := store_destination_call_names(m)
+	global_names := global_value_names(m)
 
-fn reset_errno() {
-	C.errno = 0
+	assert call_names.filter(it == '__error').len == 2
+	assert store_call_names.filter(it == '__error').len == 2
+	assert '__errno_location' !in call_names
+	assert 'errno' !in global_names
+	assert 'C.errno' !in global_names
 }
 
-fn bump_errno() {
-	C.errno += 1
-}
-
-fn main() {
-	reset_errno()
-	bump_errno()
-}
-',
-		'macos')
+fn test_c_errno_flat_writes_use_error_on_macos_targets() {
+	m := build_ssa_for_runtime_symbol_target_flat_test(c_errno_write_test_code(), 'macos')
 	call_names := called_function_names(m)
 	store_call_names := store_destination_call_names(m)
 	global_names := global_value_names(m)
@@ -402,23 +443,22 @@ fn main() {
 }
 
 fn test_c_errno_writes_stay_raw_global_on_windows_targets() {
-	m := build_ssa_for_runtime_symbol_target_test('
-module main
+	m := build_ssa_for_runtime_symbol_target_test(c_errno_write_test_code(), 'windows')
+	call_names := called_function_names(m)
+	store_call_names := store_destination_call_names(m)
+	store_global_names := store_destination_global_names(m)
+	global_names := global_value_names(m)
 
-fn reset_errno() {
-	C.errno = 0
+	assert '__errno_location' !in call_names
+	assert '__error' !in call_names
+	assert store_call_names.len == 0
+	assert store_global_names.filter(it == 'errno').len == 2
+	assert 'errno' in global_names
+	assert 'C.errno' !in global_names
 }
 
-fn bump_errno() {
-	C.errno += 1
-}
-
-fn main() {
-	reset_errno()
-	bump_errno()
-}
-',
-		'windows')
+fn test_c_errno_flat_writes_stay_raw_global_on_windows_targets() {
+	m := build_ssa_for_runtime_symbol_target_flat_test(c_errno_write_test_code(), 'windows')
 	call_names := called_function_names(m)
 	store_call_names := store_destination_call_names(m)
 	store_global_names := store_destination_global_names(m)

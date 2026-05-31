@@ -3,6 +3,7 @@
 // that can be found in the LICENSE file.
 module types
 
+import sync
 import time
 import strconv
 import v2.ast
@@ -47,12 +48,20 @@ pub mut:
 	// excluded by the checker — the return moves them. Only populated when
 	// the checker runs with `-d ownership`; empty under plain V.
 	drop_at_returns map[string][][]DropEntry
+	// Shared C-language scope. Phase 1 workers register C struct decls into
+	// here under c_scope_mu; phase 2 (sequential) registers C fn signatures.
+	// All checkers point their per-checker `c_scope` field at this instance
+	// so that the `C` Module pasted into each module scope resolves uniformly.
+	c_scope    &Scope      = unsafe { nil }
+	c_scope_mu &sync.Mutex = unsafe { nil }
 }
 
 pub fn Environment.new() &Environment {
 	return &Environment{
 		expr_type_values: []Type{cap: 100_000}
 		selector_names:   map[int]string{}
+		c_scope:          new_scope(unsafe { nil })
+		c_scope_mu:       sync.new_mutex()
 	}
 }
 
@@ -654,10 +663,15 @@ mut:
 }
 
 pub fn Checker.new(prefs &pref.Preferences, file_set &token.FileSet, env &Environment) &Checker {
+	mut c_scope := env.c_scope
+	if isnil(c_scope) {
+		c_scope = new_scope(unsafe { nil })
+	}
 	return &Checker{
 		pref:          unsafe { prefs }
 		file_set:      unsafe { file_set }
 		env:           unsafe { env }
+		c_scope:       c_scope
 		expected_type: none
 	}
 }
@@ -1525,6 +1539,281 @@ pub fn (mut c Checker) get_module_scope(module_name string, parent &Scope) &Scop
 	return scope
 }
 
+// check_flat is the Phase 2 consumer entry point: accepts a FlatAst directly
+// rather than []ast.File. Every step reads from the FlatAst; legacy
+// []ast.File is only materialized for the ownership pass, which still
+// drives off the recursive AST.
+pub fn (mut c Checker) check_flat(flat &ast.FlatAst) {
+	c.register_selector_names_from_flat(flat)
+	c.preregister_all_scopes_from_flat(flat)
+	c.preregister_all_types_from_flat(flat)
+	c.register_imported_symbols_from_flat(flat)
+	c.collect_fn_signatures_only = true
+	c.preregister_all_fn_signatures_from_flat(flat)
+	c.collect_fn_signatures_only = false
+	c.register_imported_symbols_from_flat(flat)
+	for ff in flat.files {
+		c.check_file_from_flat(flat, ff)
+	}
+	c.process_pending_const_fields()
+	$if ownership ? {
+		c.ownership_prescan_fn_bodies()
+		c.ownership_validate_drop_impls()
+		c.lifetime_validate_files_from_flat(flat)
+		c.escape_validate_files_from_flat(flat)
+	}
+	c.process_pending_fn_bodies()
+	c.check_struct_field_defaults_from_flat(flat)
+	c.check_enum_field_values_from_flat(flat)
+}
+
+// register_selector_names_from_flat reads selector_names directly from
+// FlatFile entries without rehydrating to legacy ast.File. First example of
+// a Phase 2 consumer reading the flat representation in place.
+fn (mut c Checker) register_selector_names_from_flat(flat &ast.FlatAst) {
+	for ff in flat.files {
+		for id, name in ff.selector_names {
+			c.env.selector_names[id] = name
+		}
+	}
+}
+
+// register_imported_symbols_from_flat mirrors register_imported_symbols but
+// pulls each file's mod + imports + top stmts via the FlatAst readers.
+// Still rehydrates the top stmts so comptime-conditional imports can be
+// evaluated; that walk is contained but unavoidable without a flat
+// comptime-cond evaluator.
+fn (mut c Checker) register_imported_symbols_from_flat(flat &ast.FlatAst) {
+	builtin_scope := c.get_module_scope('builtin', universe)
+	for ff in flat.files {
+		mod := flat.file_mod(ff)
+		mut file_scope := c.get_module_scope(mod, builtin_scope)
+		for imp in c.active_file_imports_from_flat(flat, ff) {
+			if imp.symbols.len == 0 {
+				continue
+			}
+			import_mod := if imp.is_aliased {
+				imp.name.all_after_last('.')
+			} else {
+				imp.alias
+			}
+			mut import_scope := c.get_module_scope(import_mod, builtin_scope)
+			for symbol in imp.symbols {
+				if symbol is ast.Ident {
+					if sym_obj := import_scope.lookup_parent(symbol.name, 0) {
+						if sym_obj is Global && sym_obj.is_module_storage() {
+							continue
+						}
+						file_scope.insert(symbol.name, sym_obj)
+					}
+				}
+			}
+		}
+	}
+}
+
+// active_file_imports_from_flat returns the import statements declared in a
+// FlatFile, including those guarded by comptime `$if` blocks whose condition
+// currently evaluates true.
+fn (mut c Checker) active_file_imports_from_flat(flat &ast.FlatAst, ff ast.FlatFile) []ast.ImportStmt {
+	mut imports := flat.read_file_imports(ff)
+	stmts := flat.read_file_stmts(ff)
+	c.collect_active_imports_from_stmts(stmts, mut imports)
+	return imports
+}
+
+// preregister_all_scopes_from_flat mirrors preregister_all_scopes but pulls
+// each file's mod + imports through the FlatAst readers, no []ast.File hop.
+fn (mut c Checker) preregister_all_scopes_from_flat(flat &ast.FlatAst) {
+	for ff in flat.files {
+		c.preregister_scopes_from_flat(flat, ff)
+	}
+}
+
+fn (mut c Checker) preregister_scopes_from_flat(flat &ast.FlatAst, ff ast.FlatFile) {
+	builtin_scope := c.get_module_scope('builtin', universe)
+	mod := flat.file_mod(ff)
+	mod_scope := c.get_module_scope(mod, builtin_scope)
+	c.scope = mod_scope
+	// add self (own module) for constants. can use own module prefix inside module
+	c.scope.insert(mod, Module{
+		name:  mod
+		scope: c.get_module_scope(mod, builtin_scope)
+	})
+	// add imports (including comptime-conditional)
+	for imp in c.active_file_imports_from_flat(flat, ff) {
+		import_mod := if imp.is_aliased { imp.name.all_after_last('.') } else { imp.alias }
+		c.scope.insert(imp.alias, Module{
+			name:  import_mod
+			scope: c.get_module_scope(import_mod, builtin_scope)
+		})
+	}
+	// add C
+	c.scope.insert('C', Module{ name: 'C', scope: c.c_scope })
+}
+
+// preregister_all_types_from_flat mirrors preregister_all_types but reads
+// each file's mod + top-level stmts directly from the FlatAst.
+fn (mut c Checker) preregister_all_types_from_flat(flat &ast.FlatAst) {
+	for ff in flat.files {
+		c.preregister_types_from_flat(flat, ff)
+	}
+	c.register_imported_symbols_from_flat(flat)
+	c.process_pending_struct_decls()
+	c.process_pending_type_decls()
+	c.process_pending_interface_decls()
+}
+
+fn (mut c Checker) preregister_types_from_flat(flat &ast.FlatAst, ff ast.FlatFile) {
+	mod := flat.file_mod(ff)
+	c.cur_file_module = mod
+	mut mod_scope := &Scope(unsafe { nil })
+	lock c.env.scopes {
+		if mod in c.env.scopes {
+			mod_scope = unsafe { c.env.scopes[mod] }
+		} else {
+			eprintln('warning: scope not found for mod: ${mod}, skipping')
+			return
+		}
+	}
+	c.scope = mod_scope
+	for stmt in flat.read_file_stmts(ff) {
+		c.preregister_type_stmt(stmt)
+	}
+}
+
+// preregister_all_fn_signatures_from_flat mirrors preregister_all_fn_signatures
+// but reads each file's mod + top-level stmts directly from the FlatAst.
+fn (mut c Checker) preregister_all_fn_signatures_from_flat(flat &ast.FlatAst) {
+	for ff in flat.files {
+		c.preregister_fn_signatures_from_flat(flat, ff)
+	}
+}
+
+fn (mut c Checker) preregister_fn_signatures_from_flat(flat &ast.FlatAst, ff ast.FlatFile) {
+	mod := flat.file_mod(ff)
+	c.cur_file_module = mod
+	mut mod_scope := &Scope(unsafe { nil })
+	lock c.env.scopes {
+		if mod in c.env.scopes {
+			mod_scope = unsafe { c.env.scopes[mod] }
+		} else {
+			eprintln('warning: scope not found for mod: ${mod}, skipping')
+			return
+		}
+	}
+	c.scope = mod_scope
+	prev_collect := c.collect_fn_signatures_only
+	c.collect_fn_signatures_only = true
+	for stmt in flat.read_file_stmts(ff) {
+		c.preregister_fn_signature_stmt(stmt)
+	}
+	c.collect_fn_signatures_only = prev_collect
+}
+
+// check_file_from_flat mirrors check_file but pulls mod + stmts straight
+// from the FlatAst, so the heavy per-file pass no longer needs a rehydrated
+// ast.File.
+pub fn (mut c Checker) check_file_from_flat(flat &ast.FlatAst, ff ast.FlatFile) {
+	mod := flat.file_mod(ff)
+	mut sw := time.StopWatch{}
+	if c.pref.verbose {
+		sw = time.new_stopwatch()
+	}
+	c.cur_file_module = mod
+	mut mod_scope := &Scope(unsafe { nil })
+	lock c.env.scopes {
+		if mod in c.env.scopes {
+			mod_scope = unsafe { c.env.scopes[mod] }
+		} else {
+			panic('not found for mod: ${mod}')
+		}
+	}
+	c.scope = mod_scope
+	stmts := flat.read_file_stmts(ff)
+	for stmt in stmts {
+		match stmt {
+			ast.ConstDecl, ast.EnumDecl, ast.InterfaceDecl, ast.StructDecl, ast.TypeDecl {
+				continue
+			}
+			ast.FnDecl {
+				continue
+			}
+			else {
+				c.decl(stmt)
+			}
+		}
+	}
+	for stmt in stmts {
+		c.stmt(stmt)
+	}
+	if c.pref.verbose {
+		check_time := sw.elapsed()
+		println('type check ${flat.file_name(ff)}: ${check_time.milliseconds()}ms (${check_time.microseconds()}µs)')
+	}
+}
+
+// check_struct_field_defaults_from_flat visits struct field default value
+// expressions across every FlatFile without rehydrating ast.File.
+fn (mut c Checker) check_struct_field_defaults_from_flat(flat &ast.FlatAst) {
+	for ff in flat.files {
+		mod := flat.file_mod(ff)
+		mut mod_scope := &Scope(unsafe { nil })
+		lock c.env.scopes {
+			if mod in c.env.scopes {
+				mod_scope = unsafe { c.env.scopes[mod] }
+			} else {
+				continue
+			}
+		}
+		c.scope = mod_scope
+		c.cur_file_module = mod
+		for stmt in flat.read_file_stmts(ff) {
+			if stmt is ast.StructDecl {
+				for field in stmt.fields {
+					if field.value !is ast.EmptyExpr {
+						field_typ := c.type_expr(field.typ)
+						prev_expected := c.expected_type
+						c.expected_type = to_optional_type(field_typ)
+						c.expr(field.value)
+						$if ownership ? {
+							c.ownership_consume_expr(field.value, field.value.pos(), 'struct field')
+						}
+						c.expected_type = prev_expected
+					}
+				}
+			}
+		}
+	}
+}
+
+// check_enum_field_values_from_flat visits enum field value expressions
+// across every FlatFile without rehydrating ast.File.
+fn (mut c Checker) check_enum_field_values_from_flat(flat &ast.FlatAst) {
+	for ff in flat.files {
+		mod := flat.file_mod(ff)
+		mut mod_scope := &Scope(unsafe { nil })
+		lock c.env.scopes {
+			if mod in c.env.scopes {
+				mod_scope = unsafe { c.env.scopes[mod] }
+			} else {
+				continue
+			}
+		}
+		c.scope = mod_scope
+		c.cur_file_module = mod
+		for stmt in flat.read_file_stmts(ff) {
+			if stmt is ast.EnumDecl {
+				for field in stmt.fields {
+					if field.value !is ast.EmptyExpr {
+						c.expr(field.value)
+					}
+				}
+			}
+		}
+	}
+}
+
 pub fn (mut c Checker) check_files(files []ast.File) {
 	// c.file_set = unsafe { file_set }
 	for file in files {
@@ -1552,8 +1841,7 @@ pub fn (mut c Checker) check_files(files []ast.File) {
 		c.escape_validate_files(files)
 	}
 	c.process_pending_fn_bodies()
-	c.check_struct_field_defaults(files)
-	c.check_enum_field_values(files)
+	c.check_final_default_exprs(files)
 }
 
 fn (mut c Checker) register_imported_symbols(files []ast.File) {
@@ -1953,8 +2241,11 @@ fn (mut c Checker) decl(decl ast.Stmt) {
 			mut typ := Type(obj)
 			// TODO: proper
 			if decl.language == .c {
+				// c_scope is shared across parallel preregister workers; lock.
+				c.env.c_scope_mu.lock()
 				c.c_scope.insert(decl.name, object_from_type(typ))
 				c.c_scope.insert_type(decl.name, typ)
+				c.env.c_scope_mu.unlock()
 			} else {
 				c.scope.insert(decl.name, object_from_type(typ))
 				c.scope.insert_type(decl.name, typ)
@@ -4616,6 +4907,13 @@ fn (mut c Checker) check_enum_field_values(files []ast.File) {
 			}
 		}
 	}
+}
+
+// check_final_default_exprs visits struct field defaults and enum values after
+// function signatures and deferred function bodies are registered.
+pub fn (mut c Checker) check_final_default_exprs(files []ast.File) {
+	c.check_struct_field_defaults(files)
+	c.check_enum_field_values(files)
 }
 
 // take_deferred is kept for compatibility with parallel type-checking plumbing.

@@ -52,6 +52,30 @@ fn test_cross_compile_keeps_explicit_cc() {
 	assert second.ccompiler == custom_cc
 }
 
+fn test_vexe_path_normalizes_relative_env_path() {
+	old_wd := os.getwd()
+	old_vexe := os.getenv_opt('VEXE')
+	test_root := os.join_path(os.vtmp_dir(), 'pref_vexe_path_relative_env_test')
+	os.rmdir_all(test_root) or {}
+	os.mkdir_all(test_root)!
+	fake_vexe := os.join_path(test_root, 'v')
+	os.write_file(fake_vexe, '')!
+	defer {
+		os.chdir(old_wd) or {}
+		if vexe_env := old_vexe {
+			os.setenv('VEXE', vexe_env, true)
+		} else {
+			os.unsetenv('VEXE')
+		}
+		os.rmdir_all(test_root) or {}
+	}
+	os.chdir(test_root)!
+	os.setenv('VEXE', './v', true)
+	expected_vexe := os.real_path(fake_vexe)
+	assert pref.vexe_path() == expected_vexe
+	assert os.getenv('VEXE') == expected_vexe
+}
+
 fn test_mac_is_alias_for_macos() {
 	os_kind := pref.os_from_string('mac') or {
 		assert false, err.msg()

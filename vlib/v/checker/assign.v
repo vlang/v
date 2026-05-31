@@ -881,8 +881,13 @@ or use an explicit `unsafe{ a[..] }`, if you do not want a copy of the slice.',
 				}
 			}
 		}
+		right_is_lvalue := if right is ast.ComptimeSelector {
+			right.left.is_lvalue()
+		} else {
+			right.is_lvalue()
+		}
 		if left_sym.kind == .map && is_assign && right_sym.kind == .map && !c.inside_unsafe
-			&& !left.is_blank_ident() && right.is_lvalue() && right !is ast.ComptimeSelector
+			&& !left.is_blank_ident() && right_is_lvalue
 			&& (!right_type.is_ptr() || (right is ast.Ident && assign_expr_is_auto_deref(right))) {
 			// Do not allow `a = b`
 			c.error('cannot copy map: call `move` or `clone` method (or use a reference)',

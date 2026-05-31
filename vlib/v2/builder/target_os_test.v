@@ -17,6 +17,55 @@ fn write_test_file(path string) {
 	os.write_file(path, 'module main\nfn marker() {}\n') or { panic(err) }
 }
 
+fn parse_test_files(mut b Builder, paths []string) []ast.File {
+	files := b.parse_files(paths)
+	if b.flat_check_enabled {
+		b.flat = b.flat_builder.flat
+		return b.flat.to_files()
+	}
+	return files
+}
+
+fn parse_test_builder_files(mut b Builder, paths []string) {
+	b.files = b.parse_files(paths)
+	if b.flat_check_enabled {
+		b.flat = b.flat_builder.flat
+	}
+}
+
+fn transform_test_builder_files(mut b Builder, mut trans transformer.Transformer) {
+	if b.markused_flat_enabled && b.flat_check_enabled {
+		new_flat, files_out := trans.transform_files_to_flat(&b.flat, b.files)
+		b.flat = new_flat
+		b.files = files_out
+		return
+	}
+	if b.flat_check_enabled {
+		b.files = trans.transform_files_from_flat(&b.flat, b.files)
+		b.flat = ast.flatten_files(b.files)
+		return
+	}
+	b.files = trans.transform_files(b.files)
+}
+
+fn mark_used_windows_x64_test(mut b Builder) map[string]bool {
+	opts := markused.MarkUsedOptions{
+		minimal_runtime_roots: true
+	}
+	if b.markused_flat_enabled && b.flat_check_enabled {
+		return markused.mark_used_flat_with_options(&b.flat, b.env, opts)
+	}
+	return markused.mark_used_with_options(b.files, b.env, opts)
+}
+
+fn build_test_ssa(mut b Builder, mut ssa_builder ssa.Builder) {
+	if b.flat_check_enabled {
+		ssa_builder.build_all_from_flat(&b.flat)
+		return
+	}
+	ssa_builder.build_all(b.files)
+}
+
 fn test_get_v_files_from_dir_uses_windows_target_os() {
 	tmp_dir := os.join_path(os.temp_dir(), 'v2_builder_filter_windows_${os.getpid()}')
 	os.rmdir_all(tmp_dir) or {}
@@ -90,7 +139,7 @@ fn test_parse_files_uses_target_os_preference_for_windows_files() {
 	prefs.skip_imports = true
 	prefs.target_os = 'windows'
 	mut b := new_builder(&prefs)
-	files := b.parse_files([tmp_dir])
+	files := parse_test_files(mut b, [tmp_dir])
 	names := files.map(os.file_name(it.name))
 
 	assert 'main.v' in names
@@ -182,6 +231,39 @@ fn test_header_cache_stamp_uses_target_os_preference() {
 	assert linux_stamp.contains('target_os=linux')
 	assert windows_stamp.contains('target_os=windows')
 	assert linux_stamp != windows_stamp
+}
+
+fn test_linux_x64_builder_default_o0_forces_ssa_optimize() {
+	if os.user_os() != 'linux' || os.uname().machine !in ['x86_64', 'amd64'] {
+		return
+	}
+	tmp_dir := os.join_path(os.temp_dir(), 'v2_builder_linux_x64_default_o0_${os.getpid()}')
+	os.rmdir_all(tmp_dir) or {}
+	os.mkdir_all(tmp_dir) or { panic(err) }
+	defer {
+		os.rmdir_all(tmp_dir) or {}
+	}
+
+	main_path := os.join_path(tmp_dir, 'main.v')
+	out_path := os.join_path(tmp_dir, 'main')
+	os.write_file(main_path, "module main\nfn main() { println('ok') }\n") or { panic(err) }
+
+	mut prefs := pref.new_preferences_from_args(['-backend', 'x64', '-arch', 'x64', '-o', out_path,
+		'-no-parallel', '-nocache'])
+	assert prefs.no_optimize
+	prefs.target_os = 'linux'
+
+	cwd := os.getwd()
+	os.chdir(tmp_dir) or { panic(err) }
+	defer {
+		os.chdir(cwd) or {}
+	}
+	mut b := new_builder(&prefs)
+	b.build([main_path])
+
+	run := os.execute(os.quoted_path(out_path))
+	assert run.exit_code == 0, run.output
+	assert run.output.trim_space() == 'ok'
 }
 
 struct WindowsX64BuildResult {
@@ -671,15 +753,13 @@ fn build_windows_x64_markused_sample(source string) map[string]bool {
 
 	mut b := new_builder(&prefs)
 	b.user_files = [main_path]
-	b.files = b.parse_files([main_path])
+	parse_test_builder_files(mut b, [main_path])
 	b.env = types.Environment.new()
 
-	mut trans := transformer.Transformer.new_with_pref(b.files, b.env, b.pref)
+	mut trans := transformer.Transformer.new_with_pref(b.env, b.pref)
 	trans.set_file_set(b.file_set)
-	b.files = trans.transform_files(b.files)
-	used := markused.mark_used_with_options(b.files, b.env, markused.MarkUsedOptions{
-		minimal_runtime_roots: true
-	})
+	transform_test_builder_files(mut b, mut trans)
+	used := mark_used_windows_x64_test(mut b)
 	assert used.len > 0
 	return used
 }
@@ -706,15 +786,13 @@ fn build_checked_windows_x64_mir_sample(source string, optimize bool) mir.Module
 
 	mut b := new_builder(&prefs)
 	b.user_files = [main_path]
-	b.files = b.parse_files([main_path])
+	parse_test_builder_files(mut b, [main_path])
 	b.env = b.type_check_files()
 
-	mut trans := transformer.Transformer.new_with_pref(b.files, b.env, b.pref)
+	mut trans := transformer.Transformer.new_with_pref(b.env, b.pref)
 	trans.set_file_set(b.file_set)
-	b.files = trans.transform_files(b.files)
-	b.used_fn_keys = markused.mark_used_with_options(b.files, b.env, markused.MarkUsedOptions{
-		minimal_runtime_roots: true
-	})
+	transform_test_builder_files(mut b, mut trans)
+	b.used_fn_keys = mark_used_windows_x64_test(mut b)
 	assert b.used_fn_keys.len > 0
 
 	mut ssa_mod := ssa.Module.new('main')
@@ -723,7 +801,7 @@ fn build_checked_windows_x64_mir_sample(source string, optimize bool) mir.Module
 	ssa_builder.target_os = 'windows'
 	ssa_builder.minimal_runtime_roots = true
 	ssa_builder.used_fn_keys = b.used_fn_keys.clone()
-	ssa_builder.build_all(b.files)
+	build_test_ssa(mut b, mut ssa_builder)
 	if optimize {
 		ssa_optimize.optimize(mut ssa_mod)
 	}
@@ -772,15 +850,13 @@ fn build_windows_x64_sample_with_files(sources map[string]string, link bool, opt
 
 	mut b := new_builder(&prefs)
 	b.user_files = [main_path]
-	b.files = b.parse_files([main_path])
+	parse_test_builder_files(mut b, [main_path])
 	b.env = types.Environment.new()
 
-	mut trans := transformer.Transformer.new_with_pref(b.files, b.env, b.pref)
+	mut trans := transformer.Transformer.new_with_pref(b.env, b.pref)
 	trans.set_file_set(b.file_set)
-	b.files = trans.transform_files(b.files)
-	b.used_fn_keys = markused.mark_used_with_options(b.files, b.env, markused.MarkUsedOptions{
-		minimal_runtime_roots: true
-	})
+	transform_test_builder_files(mut b, mut trans)
+	b.used_fn_keys = mark_used_windows_x64_test(mut b)
 	assert b.used_fn_keys.len > 0
 
 	mut ssa_mod := ssa.Module.new('main')
@@ -789,7 +865,7 @@ fn build_windows_x64_sample_with_files(sources map[string]string, link bool, opt
 	ssa_builder.target_os = 'windows'
 	ssa_builder.minimal_runtime_roots = true
 	ssa_builder.used_fn_keys = b.used_fn_keys.clone()
-	ssa_builder.build_all(b.files)
+	build_test_ssa(mut b, mut ssa_builder)
 	if optimize {
 		ssa_optimize.optimize(mut ssa_mod)
 	}

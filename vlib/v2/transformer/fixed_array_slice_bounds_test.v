@@ -23,7 +23,7 @@ fn transform_fixed_array_slice_code_for_test(code string) []ast.File {
 	mut env := types.Environment.new()
 	mut checker := types.Checker.new(prefs, file_set, env)
 	checker.check_files(files)
-	mut transformer := Transformer.new_with_pref(files, env, prefs)
+	mut transformer := Transformer.new_with_pref(env, prefs)
 	return transformer.transform_files(files)
 }
 
