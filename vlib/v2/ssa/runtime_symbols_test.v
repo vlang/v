@@ -252,8 +252,8 @@ fn main() {
 	assert has_dbl_epsilon_const
 }
 
-fn test_windows_std_handle_macros_are_ssa_constants_not_external_globals() {
-	m := build_ssa_for_runtime_symbol_target_test('
+fn windows_std_handle_macros_code() string {
+	return '
 module main
 
 fn input_handle() u32 {
@@ -273,8 +273,10 @@ fn main() {
 	_ := output_handle()
 	_ := error_handle()
 }
-',
-		'windows')
+'
+}
+
+fn assert_windows_std_handle_macros_are_ssa_constants_not_external_globals(m &Module) {
 	global_names := global_value_names(m)
 	expected_consts := {
 		'STD_INPUT_HANDLE':  '4294967286'
@@ -299,6 +301,16 @@ fn main() {
 	for _, const_name in expected_consts {
 		assert seen_consts[const_name]
 	}
+}
+
+fn test_windows_std_handle_macros_are_ssa_constants_not_external_globals() {
+	m := build_ssa_for_runtime_symbol_target_test(windows_std_handle_macros_code(), 'windows')
+	assert_windows_std_handle_macros_are_ssa_constants_not_external_globals(m)
+}
+
+fn test_windows_std_handle_macros_are_flat_ssa_constants_not_external_globals() {
+	m := build_ssa_for_runtime_symbol_target_flat_test(windows_std_handle_macros_code(), 'windows')
+	assert_windows_std_handle_macros_are_ssa_constants_not_external_globals(m)
 }
 
 fn test_c_stdio_globals_are_loaded_on_non_macos_targets() {

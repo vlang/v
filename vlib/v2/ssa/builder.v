@@ -5779,6 +5779,19 @@ fn (mut b Builder) build_selector_from_flat(c ast.Cursor) ValueID {
 	// C.<name>
 	if lhs_kind == .expr_ident && lhs_name == 'C' {
 		c_name := rhs_name
+		if b.is_windows_target() {
+			// WinAPI GetStdHandle constants are DWORD macros, not linkable symbols.
+			win_const_val := match c_name {
+				'STD_INPUT_HANDLE' { '4294967286' }
+				'STD_OUTPUT_HANDLE' { '4294967285' }
+				'STD_ERROR_HANDLE' { '4294967284' }
+				else { '' }
+			}
+
+			if win_const_val.len > 0 {
+				return b.mod.get_or_add_const(b.mod.type_store.get_uint(32), win_const_val)
+			}
+		}
 		c_const_val := match c_name {
 			'SEEK_SET' { '0' }
 			'SEEK_CUR' { '1' }
