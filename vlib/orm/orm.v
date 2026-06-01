@@ -309,11 +309,6 @@ mut:
 	orm_release_savepoint(name string) !
 }
 
-enum ScopeMode {
-	where
-	insert
-}
-
 // QueryFilterMode describes whether a DataScope filter has a stable SQL shape or
 // needs runtime handling.
 pub enum QueryFilterMode {
@@ -409,18 +404,17 @@ fn table_field_to_column_map(table Table) map[string]string {
 
 // apply_data_scope applies DataScope filters to a WHERE QueryData and returns the scoped query data.
 pub fn apply_data_scope(scope DataScope, table Table, where QueryData, scope_skip_fields []string) QueryData {
-	return apply_scope_filters(scope, table, where, scope_skip_fields, .where)
+	return apply_scope_filters(scope, table, where, scope_skip_fields)
 }
 
 // apply_data_scope_insert applies DataScope filters to an INSERT QueryData and returns the scoped query data.
 pub fn apply_data_scope_insert(scope DataScope, table Table, data QueryData, scope_skip_fields []string) QueryData {
-	return apply_scope_filters(scope, table, data, scope_skip_fields, .insert)
+	return apply_scope_insert_filters(scope, table, data, scope_skip_fields)
 }
 
-// apply_scope_filters is the common core shared by apply_data_scope and
-// apply_data_scope_insert. In WHERE mode it also wraps original conditions
-// in parentheses and appends is_and / kinds markers.
-fn apply_scope_filters(scope DataScope, table Table, qd QueryData, scope_skip_fields []string, mode ScopeMode) QueryData {
+// apply_scope_filters applies DataScope filters to WHERE data. It wraps original
+// conditions in parentheses and appends is_and / kinds markers.
+fn apply_scope_filters(scope DataScope, table Table, qd QueryData, scope_skip_fields []string) QueryData {
 	if !scope.enabled || scope.filters.len == 0 {
 		return qd
 	}
@@ -428,17 +422,13 @@ fn apply_scope_filters(scope DataScope, table Table, qd QueryData, scope_skip_fi
 		return qd
 	}
 	mut result := clone_query_data(qd)
-	original_field_count := qd.fields.len
 	field_to_column := table_field_to_column_map(table)
 	// Wrap original WHERE clause in parentheses once, before adding scope filters
-	if mode == .where && result.fields.len > 1 {
+	if result.fields.len > 1 {
 		result.parentheses << [0, result.fields.len - 1]
 	}
 	for filter in scope.filters {
 		if filter.field == '' || filter.field in result.fields {
-			continue
-		}
-		if mode == .insert && filter.operator.is_unary() {
 			continue
 		}
 		if filter.field in scope_skip_fields {
@@ -456,23 +446,61 @@ fn apply_scope_filters(scope DataScope, table Table, qd QueryData, scope_skip_fi
 		if column_name in result.fields {
 			continue
 		}
-		if mode == .where {
-			result.is_and << true
-		}
+		result.is_and << true
 		result.fields << column_name.clone()
 		if !filter.operator.is_unary() {
 			result.data << filter.value
 			result.types << primitive_type(filter.value)
 		}
-		if mode == .where {
-			result.kinds << filter.operator
-		}
+		result.kinds << filter.operator
 	}
-	// For batch inserts, scope values must be replicated per row.
-	// QueryData stores data in row-major order: row * fields.len + col.
-	// Scope filters append only one value per field, but batch_rows
-	// expects fields.len * batch_rows values in the data array.
-	if mode == .insert && result.batch_rows > 0 {
+	return result
+}
+
+fn apply_scope_insert_filters(scope DataScope, table Table, data QueryData, scope_skip_fields []string) QueryData {
+	if !scope.enabled || scope.filters.len == 0 {
+		return data
+	}
+	if table_ignores_data_scope(table) {
+		return data
+	}
+	mut result := clone_query_data(data)
+	original_field_count := data.fields.len
+	field_to_column := table_field_to_column_map(table)
+	for filter in scope.filters {
+		if filter.field == '' || filter.operator.is_unary() {
+			continue
+		}
+		if filter.field in scope_skip_fields {
+			continue
+		}
+		if table.fields.len > 0 && filter.field !in table.fields {
+			continue
+		}
+		mut column_name := filter.field
+		if resolved := field_to_column[filter.field] {
+			column_name = resolved
+		}
+		field_index := result.fields.index(column_name)
+		if field_index >= 0 {
+			row_count := if result.batch_rows > 0 { result.batch_rows } else { 1 }
+			field_count := result.fields.len
+			for row in 0 .. row_count {
+				data_index := row * field_count + field_index
+				if data_index < result.data.len {
+					result.data[data_index] = filter.value
+				}
+				if data_index < result.types.len {
+					result.types[data_index] = primitive_type(filter.value)
+				}
+			}
+			continue
+		}
+		result.fields << column_name.clone()
+		result.data << filter.value
+		result.types << primitive_type(filter.value)
+	}
+	if result.batch_rows > 0 {
 		scope_field_count := result.fields.len - original_field_count
 		if scope_field_count > 0 {
 			mut new_data := []Primitive{cap: result.fields.len * result.batch_rows}

@@ -205,6 +205,37 @@ fn test_unscoped_skips_tenant_in_insert() {
 	assert users.len == 0
 }
 
+fn test_data_scope_insert_overrides_default_scope_field() {
+	mut raw_db := sqlite.connect(':memory:') or { panic(err) }
+
+	sql raw_db {
+		create table NoScopeUser
+	}!
+
+	mut db := orm.new_db(raw_db, orm.DataScope{
+		filters: [
+			orm.QueryFilter{
+				field: 'tenant_id'
+				value: orm.Primitive(99)
+			},
+		]
+	})
+
+	alice := NoScopeUser{
+		name: 'Alice'
+	}
+	sql db {
+		insert alice into NoScopeUser
+	}!
+
+	users := sql db {
+		select from NoScopeUser
+	}!
+	assert users.len == 1
+	assert users[0].name == 'Alice'
+	assert users[0].tenant_id == 99
+}
+
 fn test_unscoped_skip_all_in_insert() {
 	mut raw_db := sqlite.connect(':memory:') or { panic(err) }
 
@@ -740,7 +771,7 @@ fn test_apply_data_scope_insert_skips_unary_operator() {
 	assert result.data == [orm.Primitive('alice'), orm.Primitive(int(99))]
 }
 
-fn test_apply_data_scope_insert_no_override() {
+fn test_apply_data_scope_insert_overrides_existing_scope_field() {
 	scope := scope_single_tenant(99)
 	data := orm.QueryData{
 		fields: ['tenant_id', 'name']
@@ -751,7 +782,24 @@ fn test_apply_data_scope_insert_no_override() {
 	}
 	result := orm.apply_data_scope_insert(scope, table, data, [])
 	assert result.fields == ['tenant_id', 'name']
-	assert result.data == [orm.Primitive(int(7)), orm.Primitive('bob')]
+	assert result.data == [orm.Primitive(int(99)), orm.Primitive('bob')]
+}
+
+fn test_apply_data_scope_insert_overrides_existing_scope_field_in_batch() {
+	scope := scope_single_tenant(99)
+	data := orm.QueryData{
+		fields:     ['name', 'tenant_id']
+		data:       [orm.Primitive('alice'), orm.Primitive(int(0)), orm.Primitive('bob'),
+			orm.Primitive(int(7))]
+		batch_rows: 2
+	}
+	table := orm.Table{
+		name: 'users'
+	}
+	result := orm.apply_data_scope_insert(scope, table, data, [])
+	assert result.fields == ['name', 'tenant_id']
+	assert result.data == [orm.Primitive('alice'), orm.Primitive(int(99)), orm.Primitive('bob'),
+		orm.Primitive(int(99))]
 }
 
 fn test_apply_data_scope_insert_empty_or_disabled() {
