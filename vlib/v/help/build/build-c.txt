@@ -325,6 +325,7 @@ see also `v help build`.
       Override where automatic C compiler bug reports are submitted.
       Useful with `v bug-report --host localhost --port 8080` for local testing.
       Automatic reports to bugs.vlang.io are skipped when running in GitHub CI.
+      Set V_C_ERROR_BUG_REPORT_DISABLED=1 to disable automatic report submission.
 
    -dump-c-flags file.txt
       Write all C flags into `file.txt`, one flag per line.
