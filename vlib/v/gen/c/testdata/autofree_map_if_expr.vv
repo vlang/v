@@ -1,0 +1,14 @@
+// vtest vflags: -autofree
+
+fn main() {
+	suffix := 'tcc/lib/libgc.dylib'
+	flags := ['"thirdparty/tcc/lib/libgc.dylib"', 'other'].map(if it.ends_with(suffix + '"')
+		&& it.starts_with('"') {
+		'"/tmp/libgc.dylib"'
+	} else {
+		it
+	})
+	println(flags)
+	// This regression only needs the generated C to compile.
+	exit(0)
+}
