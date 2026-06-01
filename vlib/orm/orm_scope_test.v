@@ -621,6 +621,41 @@ fn test_apply_data_scope_multi_field() {
 	assert result.kinds == [.eq, .eq]
 }
 
+fn test_query_filter_mode_defaults_to_static() {
+	filter := orm.QueryFilter{
+		field: 'tenant_id'
+		value: orm.Primitive(int(5))
+	}
+	assert filter.mode == .static
+}
+
+fn test_apply_data_scope_mixed_static_and_dynamic_filters() {
+	scope := orm.DataScope{
+		filters: [
+			orm.QueryFilter{
+				field: 'tenant_id'
+				value: orm.Primitive(int(5))
+			},
+			orm.QueryFilter{
+				field: 'shop_id'
+				value: orm.Primitive(int(10))
+				mode:  .dynamic
+			},
+		]
+	}
+	where := orm.QueryData{}
+	table := orm.Table{
+		name:   'users'
+		fields: ['tenant_id', 'shop_id']
+	}
+	result := orm.apply_data_scope(scope, table, where, [])
+	assert scope.filters[0].mode == .static
+	assert scope.filters[1].mode == .dynamic
+	assert result.fields == ['tenant_id', 'shop_id']
+	assert result.data == [orm.Primitive(int(5)), orm.Primitive(int(10))]
+	assert result.kinds == [.eq, .eq]
+}
+
 fn test_apply_data_scope_wraps_parentheses() {
 	scope := scope_single_tenant(42)
 	where := orm.QueryData{

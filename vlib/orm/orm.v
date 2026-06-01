@@ -314,6 +314,13 @@ enum ScopeMode {
 	insert
 }
 
+// QueryFilterMode describes whether a DataScope filter has a stable SQL shape or
+// needs runtime handling.
+pub enum QueryFilterMode {
+	static
+	dynamic
+}
+
 fn table_ignores_data_scope(table Table) bool {
 	for attr in table.attrs {
 		if attr_name_matches(attr.name, 'unscoped') {
@@ -348,11 +355,15 @@ pub:
 // corresponding SQL column name at query time. If that metadata is unavailable,
 // the ORM may fall back to using `field` directly as the SQL column name. In
 // metadata-driven paths, unresolved fields are skipped for that table.
+// Static filters are the default: their field/operator shape is stable, while
+// the value can still be runtime data. Dynamic filters are marked explicitly for
+// request-dependent filters and future compiler/runtime specialization.
 pub struct QueryFilter {
 pub:
 	field    string
 	value    Primitive
-	operator OperationKind = .eq
+	operator OperationKind   = .eq
+	mode     QueryFilterMode = .static
 }
 
 // new_db creates a new DB with DataScope applied.
