@@ -74,3 +74,18 @@ fn test_zlib_invalid_inserted_bytes_before_adler() {
 	bad << enc[enc.len - 4..]
 	assert_decompress_error(bad, 'invalid zlib stream: trailing data before adler32')!
 }
+
+fn test_zlib_decompress_callback() {
+	uncompressed := '321323'.repeat(10_000)
+	gz := compress(uncompressed.bytes())!
+	mut size := 0
+	mut ref := &size
+	decoded := decompress_with_callback(gz, fn (chunk []u8, ref &int) int {
+		unsafe {
+			*ref += chunk.len
+		}
+		return chunk.len
+	}, ref)!
+	assert decoded == size
+	assert decoded == uncompressed.len
+}
