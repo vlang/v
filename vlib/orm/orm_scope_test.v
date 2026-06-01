@@ -666,7 +666,7 @@ fn test_apply_data_scope_single_filter() {
 	table := orm.Table{
 		name: 'users'
 	}
-	result := orm.apply_data_scope(scope, table, where, [])!
+	result := orm.apply_data_scope(scope, table, where, [], false)!
 	assert result.fields == ['tenant_id']
 	assert result.data == [orm.Primitive(int(5))]
 	assert result.kinds == [.eq]
@@ -682,7 +682,7 @@ fn test_apply_data_scope_appends_to_existing_where() {
 	table := orm.Table{
 		name: 'users'
 	}
-	result := orm.apply_data_scope(scope, table, where, [])!
+	result := orm.apply_data_scope(scope, table, where, [], false)!
 	assert result.fields == ['id', 'tenant_id']
 	assert result.data == [orm.Primitive(int(1)), orm.Primitive(int(42))]
 	assert result.kinds == [.eq, .eq]
@@ -699,7 +699,7 @@ fn test_apply_data_scope_no_duplicate_field() {
 	table := orm.Table{
 		name: 'users'
 	}
-	result := orm.apply_data_scope(scope, table, where, [])!
+	result := orm.apply_data_scope(scope, table, where, [], false)!
 	assert result.fields == ['tenant_id']
 	assert result.data == [orm.Primitive(int(10))]
 }
@@ -713,9 +713,9 @@ fn test_apply_data_scope_empty_or_disabled() {
 	table := orm.Table{
 		name: 'users'
 	}
-	empty_result := orm.apply_data_scope(empty_scope(), table, where, [])!
+	empty_result := orm.apply_data_scope(empty_scope(), table, where, [], false)!
 	assert empty_result.fields == ['id']
-	disabled_result := orm.apply_data_scope(scope_disabled(), table, where, [])!
+	disabled_result := orm.apply_data_scope(scope_disabled(), table, where, [], false)!
 	assert disabled_result.fields == ['id']
 }
 
@@ -740,7 +740,7 @@ fn test_apply_data_scope_multi_field() {
 	table := orm.Table{
 		name: 'users'
 	}
-	result := orm.apply_data_scope(scope, table, where, [])!
+	result := orm.apply_data_scope(scope, table, where, [], false)!
 	assert result.fields == ['org_id', 'deleted']
 	assert result.data == [orm.Primitive(int(1)), orm.Primitive(false)]
 	assert result.kinds == [.eq, .eq]
@@ -773,7 +773,7 @@ fn test_apply_data_scope_applies_only_dynamic_filters() {
 		name:   'users'
 		fields: ['tenant_id', 'shop_id']
 	}
-	result := orm.apply_data_scope(scope, table, where, [])!
+	result := orm.apply_data_scope(scope, table, where, [], false)!
 	assert scope.filters[0].mode == .static
 	assert scope.filters[1].mode == .dynamic
 	assert result.fields == ['shop_id']
@@ -791,7 +791,7 @@ fn test_apply_data_scope_wraps_parentheses() {
 	table := orm.Table{
 		name: 'users'
 	}
-	result := orm.apply_data_scope(scope, table, where, [])!
+	result := orm.apply_data_scope(scope, table, where, [], false)!
 	assert result.fields == ['a', 'b', 'tenant_id']
 	assert result.is_and == [false, true]
 	assert result.parentheses.len == 1
@@ -818,7 +818,7 @@ fn test_apply_data_scope_with_unary_operator() {
 		name:   'users'
 		fields: ['tenant_id', 'deleted_at']
 	}
-	result := orm.apply_data_scope(scope, table, where, [])!
+	result := orm.apply_data_scope(scope, table, where, [], false)!
 	assert result.fields == ['tenant_id', 'deleted_at']
 	assert result.kinds == [.eq, .is_null]
 	assert result.is_and == [true]
@@ -841,7 +841,7 @@ fn test_apply_data_scope_rejects_invalid_filter_values() {
 		name:   'users'
 		fields: ['tenant_id']
 	}
-	orm.apply_data_scope(scope, table, where, []) or {
+	orm.apply_data_scope(scope, table, where, [], false) or {
 		assert err.msg().contains('requires a scalar value')
 		return
 	}
@@ -864,7 +864,7 @@ fn test_apply_data_scope_rejects_scalar_value_for_in_operator() {
 		name:   'users'
 		fields: ['org_id']
 	}
-	orm.apply_data_scope(scope, table, where, []) or {
+	orm.apply_data_scope(scope, table, where, [], false) or {
 		assert err.msg().contains('requires a non-empty array value')
 		return
 	}
@@ -888,7 +888,7 @@ fn test_apply_data_scope_rejects_empty_array_for_in_operator() {
 		name:   'users'
 		fields: ['region_id']
 	}
-	orm.apply_data_scope(scope, table, where, []) or {
+	orm.apply_data_scope(scope, table, where, [], false) or {
 		assert err.msg().contains('requires a non-empty array value')
 		return
 	}
@@ -911,7 +911,7 @@ fn test_apply_data_scope_accepts_non_empty_array_for_in_operator() {
 		name:   'users'
 		fields: ['shop_id']
 	}
-	result := orm.apply_data_scope(scope, table, where, [])!
+	result := orm.apply_data_scope(scope, table, where, [], false)!
 	assert result.fields == ['shop_id']
 	assert result.kinds == [.in]
 	assert result.data == [orm.Primitive([3, 4])]
@@ -1074,7 +1074,7 @@ fn test_apply_data_scope_skip_single_field() {
 		name: 'users'
 	}
 	// Skip 'tenant_id' - it should not be applied
-	result := orm.apply_data_scope(scope, table, where, ['tenant_id'])!
+	result := orm.apply_data_scope(scope, table, where, ['tenant_id'], false)!
 	assert result.fields == []
 	assert result.data == []
 }
@@ -1101,7 +1101,7 @@ fn test_apply_data_scope_skip_field_still_applies_others() {
 		name: 'users'
 	}
 	// Skip only 'org_id', 'deleted' should still be applied
-	result := orm.apply_data_scope(scope, table, where, ['org_id'])!
+	result := orm.apply_data_scope(scope, table, where, ['org_id'], false)!
 	assert result.fields == ['deleted']
 	assert result.data == [orm.Primitive(false)]
 }
@@ -1113,7 +1113,7 @@ fn test_apply_data_scope_skip_non_existent_field() {
 		name: 'users'
 	}
 	// Skip a non-existent field - all filters should still be applied
-	result := orm.apply_data_scope(scope, table, where, ['nonexistent'])!
+	result := orm.apply_data_scope(scope, table, where, ['nonexistent'], false)!
 	assert result.fields == ['tenant_id']
 	assert result.data == [orm.Primitive(int(5))]
 }
@@ -1836,4 +1836,76 @@ fn test_data_scope_batch_insert_overwrite_after_append() {
 	assert rows[0].tenant_id == 99
 	assert rows[1].name == 'OverB'
 	assert rows[1].tenant_id == 99
+}
+
+// ---- JOIN scope tests ----
+// Verify that scope filters are table-qualified when JOINs are present,
+// avoiding ambiguity when joined tables share column names.
+
+// ScopeJoin table for testing scoped JOINs — must have distinct column
+// names from JoinedItem to avoid ambiguity in SELECT *.
+@[table: 'scope_join_main']
+struct ScopeJoinMain {
+	jid       int @[primary; sql: serial]
+	jname     string
+	tenant_id int
+	jrel_id   int
+}
+
+@[table: 'scope_join_rel']
+struct ScopeJoinRel {
+	rid   int @[primary; sql: serial]
+	rname string
+}
+
+fn test_data_scope_join_qualifies_table() {
+	mut raw_db := sqlite.connect(':memory:') or { panic(err) }
+
+	sql raw_db {
+		create table ScopeJoinMain
+		create table ScopeJoinRel
+	}!
+
+	m1 := ScopeJoinMain{
+		jname:     'main1'
+		tenant_id: 1
+		jrel_id:   1
+	}
+	m2 := ScopeJoinMain{
+		jname:     'main2'
+		tenant_id: 2
+		jrel_id:   2
+	}
+	r1 := ScopeJoinRel{
+		rname: 'rel1'
+	}
+	r2 := ScopeJoinRel{
+		rname: 'rel2'
+	}
+
+	sql raw_db {
+		insert m1 into ScopeJoinMain
+		insert m2 into ScopeJoinMain
+		insert r1 into ScopeJoinRel
+		insert r2 into ScopeJoinRel
+	}!
+
+	mut db := orm.new_db(raw_db, orm.DataScope{
+		filters: [
+			orm.QueryFilter{
+				field: 'tenant_id'
+				value: orm.Primitive(1)
+				mode:  .dynamic
+			},
+		]
+	})
+
+	// Verify scope filter is applied correctly with JOINs present.
+	rows := sql db {
+		select from ScopeJoinMain
+		join ScopeJoinRel on ScopeJoinMain.jrel_id == ScopeJoinRel.rid
+	}!
+	assert rows.len == 1
+	assert rows[0].jname == 'main1'
+	assert rows[0].tenant_id == 1
 }

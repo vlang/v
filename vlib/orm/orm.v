@@ -404,8 +404,8 @@ fn table_field_to_column_map(table Table) map[string]string {
 }
 
 // apply_data_scope applies DataScope filters to a WHERE QueryData and returns the scoped query data.
-pub fn apply_data_scope(scope DataScope, table Table, where QueryData, scope_skip_fields []string) !QueryData {
-	return apply_scope_filters(scope, table, where, scope_skip_fields)
+pub fn apply_data_scope(scope DataScope, table Table, where QueryData, scope_skip_fields []string, has_joins bool) !QueryData {
+	return apply_scope_filters(scope, table, where, scope_skip_fields, has_joins)
 }
 
 // apply_data_scope_insert applies DataScope filters to an INSERT QueryData and returns the scoped query data.
@@ -415,7 +415,9 @@ pub fn apply_data_scope_insert(scope DataScope, table Table, data QueryData, sco
 
 // apply_scope_filters applies DataScope filters to WHERE data. It wraps original
 // conditions in parentheses and appends is_and / kinds markers.
-fn apply_scope_filters(scope DataScope, table Table, qd QueryData, scope_skip_fields []string) !QueryData {
+// When has_joins is true, scope filter column names are qualified with table.name
+// to avoid ambiguity in JOIN queries where joined tables share column names.
+fn apply_scope_filters(scope DataScope, table Table, qd QueryData, scope_skip_fields []string, has_joins bool) !QueryData {
 	if !scope.enabled || scope.filters.len == 0 {
 		return qd
 	}
@@ -451,6 +453,10 @@ fn apply_scope_filters(scope DataScope, table Table, qd QueryData, scope_skip_fi
 		mut column_name := filter.field
 		if resolved := field_to_column[filter.field] {
 			column_name = resolved
+		}
+		// Qualify with table name when joins are present to avoid ambiguity
+		if has_joins && table.name != '' {
+			column_name = '${table.name}.${column_name}'
 		}
 		// Check deduplication against SQL column name
 		if column_name in result.fields {
@@ -769,7 +775,8 @@ pub fn (mut db DB) select(config SelectConfig, data QueryData, where QueryData) 
 	mut cfg := config
 	if db.scope.enabled && db.scope.filters.len > 0 && !db.skip_all_scopes
 		&& !table_ignores_data_scope(cfg.table) {
-		where_scoped := apply_data_scope(db.scope, cfg.table, where, db.skip_fields)!
+		where_scoped := apply_data_scope(db.scope, cfg.table, where, db.skip_fields,
+			cfg.joins.len > 0)!
 		if where_scoped.fields.len > where.fields.len {
 			cfg.has_where = true
 		}
@@ -793,7 +800,7 @@ pub fn (mut db DB) update(table Table, data QueryData, where QueryData) ! {
 	mut where_scoped := where
 	if db.scope.enabled && db.scope.filters.len > 0 && !db.skip_all_scopes
 		&& !table_ignores_data_scope(table) {
-		where_scoped = apply_data_scope(db.scope, table, where, db.skip_fields)!
+		where_scoped = apply_data_scope(db.scope, table, where, db.skip_fields, false)!
 	}
 	return db.conn.update(table, data, where_scoped)
 }
@@ -803,7 +810,7 @@ pub fn (mut db DB) delete(table Table, where QueryData) ! {
 	mut where_scoped := where
 	if db.scope.enabled && db.scope.filters.len > 0 && !db.skip_all_scopes
 		&& !table_ignores_data_scope(table) {
-		where_scoped = apply_data_scope(db.scope, table, where, db.skip_fields)!
+		where_scoped = apply_data_scope(db.scope, table, where, db.skip_fields, false)!
 	}
 	return db.conn.delete(table, where_scoped)
 }
@@ -1346,7 +1353,7 @@ fn gen_where_clause(where QueryData, q string, qm string, num bool, mut c &int) 
 		if current_pre_par > 0 {
 			str += ' ( '.repeat(current_pre_par)
 		}
-		str += '${q}${field}${q} ${where.kinds[i].to_str()}'
+		str += gen_qualified_field(field, q) + ' ${where.kinds[i].to_str()}'
 		if !where.kinds[i].is_unary() {
 			array_len := if where.data.len > data_idx {
 				primitive_array_len(where.data[data_idx])
@@ -1384,6 +1391,16 @@ fn gen_where_clause(where QueryData, q string, qm string, num bool, mut c &int) 
 		}
 	}
 	return str
+}
+
+// gen_qualified_field renders a field name with the given quote character q.
+// When the field contains a dot (e.g. `users.tenant_id`), each part is quoted
+// separately so that table-qualified scope filters in JOIN queries are unambiguous.
+fn gen_qualified_field(field string, q string) string {
+	if idx := field.index('.') {
+		return '${q}${field[..idx]}${q}.${q}${field[idx + 1..]}${q}'
+	}
+	return '${q}${field}${q}'
 }
 
 // Generates an sql table stmt, from universal parameter
