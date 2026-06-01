@@ -1,5 +1,6 @@
 import net
 import net.http
+import time
 
 fn test_https_get() {
 	$if !network ? {
@@ -69,11 +70,58 @@ fn test_https_public_servers() {
 	}
 }
 
+struct RelativeRedirectHandler {}
+
+fn (mut handler RelativeRedirectHandler) handle(req http.Request) http.Response {
+	mut res := http.Response{}
+	match req.url {
+		'/relative-redirect/3?abc=xyz' {
+			res.header = http.new_header(key: .location, value: '/relative-redirect/2?abc=xyz')
+			res.set_status(.found)
+		}
+		'/relative-redirect/2?abc=xyz' {
+			res.header = http.new_header(key: .location, value: '/relative-redirect/1?abc=xyz')
+			res.set_status(.found)
+		}
+		'/relative-redirect/1?abc=xyz' {
+			res.header = http.new_header(key: .location, value: '/get?abc=xyz')
+			res.set_status(.found)
+		}
+		'/get?abc=xyz' {
+			res.body = '{"args": {"abc": "xyz"}}'
+			res.set_status(.ok)
+		}
+		else {
+			res.body = req.url
+			res.set_status(.not_found)
+		}
+	}
+
+	res.set_version(req.version)
+	return res
+}
+
 fn test_relative_redirects() {
 	$if !network ? {
 		return
 	}
-	res := http.get('https://httpbin.org/relative-redirect/3?abc=xyz') or { panic(err) }
+	mut server := &http.Server{
+		accept_timeout:       100 * time.millisecond
+		handler:              RelativeRedirectHandler{}
+		addr:                 '127.0.0.1:0'
+		show_startup_message: false
+	}
+	t := spawn server.listen_and_serve()
+	server.wait_till_running() or {
+		server.stop()
+		t.wait()
+		panic(err)
+	}
+	defer {
+		server.stop()
+		t.wait()
+	}
+	res := http.get('http://${server.addr}/relative-redirect/3?abc=xyz') or { panic(err) }
 	assert res.status() == .ok
 	assert res.body != ''
 	assert res.body.contains('"abc": "xyz"')

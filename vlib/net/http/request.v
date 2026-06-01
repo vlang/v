@@ -161,8 +161,7 @@ pub fn (req &Request) cookie(name string) ?Cookie {
 
 // do will send the HTTP request and returns `http.Response` as soon as the response is received
 pub fn (req &Request) do() !Response {
-	mut url := urllib.parse(req.url) or { return error('http.Request.do: invalid url ${req.url}') }
-	mut rurl := url
+	mut rurl := urllib.parse(req.url) or { return error('http.Request.do: invalid url ${req.url}') }
 	mut resp := Response{}
 	mut method := req.method
 	mut data := req.data
@@ -184,17 +183,19 @@ pub fn (req &Request) do() !Response {
 		}
 		// follow any redirects
 		mut redirect_url := resp.header.get(.location) or { '' }
+		mut qrurl := urllib.URL{}
 		if redirect_url.len > 0 && redirect_url[0] == `/` {
-			url.set_path(redirect_url) or {
-				return error('http.request.do: invalid path in redirect: "${redirect_url}"')
+			qrurl = rurl.parse(redirect_url) or {
+				return error('http.request.do: invalid URL in redirect "${redirect_url}"')
 			}
-			redirect_url = url.str()
+			redirect_url = qrurl.str()
+		} else {
+			qrurl = urllib.parse(redirect_url) or {
+				return error('http.request.do: invalid URL in redirect "${redirect_url}"')
+			}
 		}
 		if req.on_redirect != unsafe { nil } {
 			req.on_redirect(req, nredirects, redirect_url)!
-		}
-		qrurl := urllib.parse(redirect_url) or {
-			return error('http.request.do: invalid URL in redirect "${redirect_url}"')
 		}
 		method, data, header = redirected_request_parts(method, status, data, header)
 		rurl = qrurl
