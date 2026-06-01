@@ -15,16 +15,20 @@ fn test_usage() {
 	// Recommended: hash-length random value.
 	salt := rand.read(sha256.new().size())!
 
-	// Non-secret context info, optional (can be empty).
-	info := 'hkdf example'
+	// Non-secret context info prefix, optional (can be empty).
+	info_prefix := 'hkdf example'
 
 	// Generate three derived keys.
 	mut keys := [][]u8{}
-	for _ in 0 .. 3 {
+	for i in 0 .. 3 {
+		info := '${info_prefix} key ${i + 1}'
 		keys << hkdf.key(sha256.new, secret, salt, info, key_len)!
 	}
 
 	for derived_key in keys {
-		assert derived_key != []u8{len: 16}
+		assert derived_key != []u8{len: key_len}
 	}
+	assert keys[0] != keys[1]
+	assert keys[1] != keys[2]
+	assert keys[0] != keys[2]
 }
