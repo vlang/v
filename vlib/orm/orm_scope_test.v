@@ -714,6 +714,32 @@ fn test_apply_data_scope_insert_adds_fields() {
 	assert result.data == [orm.Primitive('alice'), orm.Primitive(int(99))]
 }
 
+fn test_apply_data_scope_insert_skips_unary_operator() {
+	scope := orm.DataScope{
+		filters: [
+			orm.QueryFilter{
+				field: 'tenant_id'
+				value: orm.Primitive(int(99))
+			},
+			orm.QueryFilter{
+				field:    'deleted_at'
+				operator: .is_null
+			},
+		]
+	}
+	data := orm.QueryData{
+		fields: ['name']
+		data:   [orm.Primitive('alice')]
+	}
+	table := orm.Table{
+		name:   'users'
+		fields: ['name', 'tenant_id', 'deleted_at']
+	}
+	result := orm.apply_data_scope_insert(scope, table, data, [])
+	assert result.fields == ['name', 'tenant_id']
+	assert result.data == [orm.Primitive('alice'), orm.Primitive(int(99))]
+}
+
 fn test_apply_data_scope_insert_no_override() {
 	scope := scope_single_tenant(99)
 	data := orm.QueryData{

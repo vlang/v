@@ -438,6 +438,9 @@ fn apply_scope_filters(scope DataScope, table Table, qd QueryData, scope_skip_fi
 		if filter.field == '' || filter.field in result.fields {
 			continue
 		}
+		if mode == .insert && filter.operator.is_unary() {
+			continue
+		}
 		if filter.field in scope_skip_fields {
 			continue
 		}
