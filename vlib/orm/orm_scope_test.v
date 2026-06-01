@@ -1693,6 +1693,15 @@ struct BatchScopeRow {
 	name string
 }
 
+// Regression struct: has tenant_id but NOT shop_id, used to trigger the
+// batch insert overwrite-after-append bug scenario.
+@[table: 'batch_overwrite_rows']
+struct BatchOverwriteRow {
+	id        int @[primary; sql: serial]
+	name      string
+	tenant_id int
+}
+
 fn test_data_scope_batch_insert_replicates_scope_values() {
 	mut raw_db := sqlite.connect(':memory:') or { panic(err) }
 
@@ -1771,4 +1780,60 @@ fn test_data_scope_batch_insert_multi_field_scope() {
 		select from BatchScopeRow
 	}!
 	assert users.len == 2
+}
+
+fn test_data_scope_batch_insert_overwrite_after_append() {
+	// Regression test: when a batch insert has multiple dynamic scope filters
+	// and an earlier filter appends a new column, a later filter that overwrites
+	// an existing field must use the correct row stride.
+	// struct:       id, name, tenant_id     (table.fields may be empty)
+	// scope[0]:     shop_id=3               (appended, not in struct)
+	// scope[1]:     tenant_id=99            (overwrites existing value)
+	// Without the fix, the overwrite would index past the batch data due to
+	// using the inflated result.fields.len as row stride.
+	mut raw_db := sqlite.connect(':memory:') or { panic(err) }
+
+	sql raw_db {
+		create table BatchOverwriteRow
+	}!
+
+	mut db := orm.new_db(raw_db, orm.DataScope{
+		filters: [
+			orm.QueryFilter{
+				field: 'shop_id'
+				value: orm.Primitive(3)
+				mode:  .dynamic
+			},
+			orm.QueryFilter{
+				field: 'tenant_id'
+				value: orm.Primitive(99)
+				mode:  .dynamic
+			},
+		]
+	})
+
+	// Batch insert with tenant_id=1,2 — scope should overwrite both to 99
+	batch := [
+		BatchOverwriteRow{
+			name:      'OverA'
+			tenant_id: 1
+		},
+		BatchOverwriteRow{
+			name:      'OverB'
+			tenant_id: 2
+		},
+	]
+
+	sql db {
+		insert batch into BatchOverwriteRow
+	}!
+
+	rows := sql raw_db {
+		select from BatchOverwriteRow order by id
+	}!
+	assert rows.len == 2
+	assert rows[0].name == 'OverA'
+	assert rows[0].tenant_id == 99
+	assert rows[1].name == 'OverB'
+	assert rows[1].tenant_id == 99
 }

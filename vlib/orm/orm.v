@@ -520,15 +520,36 @@ fn apply_scope_insert_filters(scope DataScope, table Table, data QueryData, scop
 		}
 		field_index := result.fields.index(column_name)
 		if field_index >= 0 {
-			row_count := if result.batch_rows > 0 { result.batch_rows } else { 1 }
-			field_count := result.fields.len
-			for row in 0 .. row_count {
-				data_index := row * field_count + field_index
-				if data_index < result.data.len {
-					result.data[data_index] = filter.value
+			if result.batch_rows > 0 {
+				if field_index < original_field_count {
+					// Original field — data is per-row with original_field_count stride
+					for row in 0 .. result.batch_rows {
+						data_index := row * original_field_count + field_index
+						if data_index < result.data.len {
+							result.data[data_index] = filter.value
+						}
+						if data_index < result.types.len {
+							result.types[data_index] = primitive_type(filter.value)
+						}
+					}
+				} else {
+					// Scope field appended by a previous filter — single value at the end
+					data_index := original_field_count * result.batch_rows +
+						(field_index - original_field_count)
+					if data_index < result.data.len {
+						result.data[data_index] = filter.value
+					}
+					if data_index < result.types.len {
+						result.types[data_index] = primitive_type(filter.value)
+					}
 				}
-				if data_index < result.types.len {
-					result.types[data_index] = primitive_type(filter.value)
+			} else {
+				// Single row — stride is irrelevant; directly index by field position
+				if field_index < result.data.len {
+					result.data[field_index] = filter.value
+				}
+				if field_index < result.types.len {
+					result.types[field_index] = primitive_type(filter.value)
 				}
 			}
 			continue
