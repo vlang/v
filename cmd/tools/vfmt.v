@@ -81,6 +81,9 @@ fn main() {
 		eprintln('vfmt env_vflags_and_os_args: ' + args.str())
 		eprintln('vfmt possible_files: ' + possible_files.str())
 	}
+	if '-help' in args || '--help' in args {
+		help.print_and_exit('fmt')
+	}
 	files := util.find_all_v_files(possible_files) or {
 		verror(err.msg())
 		return
@@ -89,7 +92,7 @@ fn main() {
 		foptions.format_pipe()
 		exit(0)
 	}
-	if files.len == 0 || '-help' in args || '--help' in args {
+	if files.len == 0 {
 		help.print_and_exit('fmt')
 	}
 	mut cli_args_no_files := []string{}
