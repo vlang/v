@@ -352,7 +352,8 @@ pub:
 // metadata-driven paths, unresolved fields are skipped for that table.
 // Static filters are the default: their field/operator shape is stable, while
 // the value can still be runtime data. Dynamic filters are marked explicitly for
-// request-dependent filters and future compiler/runtime specialization.
+// request-dependent filters and future compiler/runtime specialization. The
+// runtime DB wrapper applies only filters explicitly marked with .dynamic.
 pub struct QueryFilter {
 pub:
 	field    string
@@ -403,18 +404,18 @@ fn table_field_to_column_map(table Table) map[string]string {
 }
 
 // apply_data_scope applies DataScope filters to a WHERE QueryData and returns the scoped query data.
-pub fn apply_data_scope(scope DataScope, table Table, where QueryData, scope_skip_fields []string) QueryData {
+pub fn apply_data_scope(scope DataScope, table Table, where QueryData, scope_skip_fields []string) !QueryData {
 	return apply_scope_filters(scope, table, where, scope_skip_fields)
 }
 
 // apply_data_scope_insert applies DataScope filters to an INSERT QueryData and returns the scoped query data.
-pub fn apply_data_scope_insert(scope DataScope, table Table, data QueryData, scope_skip_fields []string) QueryData {
+pub fn apply_data_scope_insert(scope DataScope, table Table, data QueryData, scope_skip_fields []string) !QueryData {
 	return apply_scope_insert_filters(scope, table, data, scope_skip_fields)
 }
 
 // apply_scope_filters applies DataScope filters to WHERE data. It wraps original
 // conditions in parentheses and appends is_and / kinds markers.
-fn apply_scope_filters(scope DataScope, table Table, qd QueryData, scope_skip_fields []string) QueryData {
+fn apply_scope_filters(scope DataScope, table Table, qd QueryData, scope_skip_fields []string) !QueryData {
 	if !scope.enabled || scope.filters.len == 0 {
 		return qd
 	}
@@ -428,7 +429,13 @@ fn apply_scope_filters(scope DataScope, table Table, qd QueryData, scope_skip_fi
 		result.parentheses << [0, result.fields.len - 1]
 	}
 	for filter in scope.filters {
-		if filter.field == '' || filter.field in result.fields {
+		if filter.mode != .dynamic {
+			continue
+		}
+		if filter.field == '' {
+			return error('orm.DataScope: dynamic filter field must not be empty')
+		}
+		if filter.field in result.fields {
 			continue
 		}
 		if filter.field in scope_skip_fields {
@@ -436,6 +443,9 @@ fn apply_scope_filters(scope DataScope, table Table, qd QueryData, scope_skip_fi
 		}
 		if table.fields.len > 0 && filter.field !in table.fields {
 			continue
+		}
+		if !filter_value_matches_operator(filter) {
+			return invalid_scope_filter_error(filter)
 		}
 		// Resolve SQL column name from struct field name (O(1) via lookup map)
 		mut column_name := filter.field
@@ -457,7 +467,22 @@ fn apply_scope_filters(scope DataScope, table Table, qd QueryData, scope_skip_fi
 	return result
 }
 
-fn apply_scope_insert_filters(scope DataScope, table Table, data QueryData, scope_skip_fields []string) QueryData {
+fn invalid_scope_filter_error(filter QueryFilter) IError {
+	if filter.operator in [.in, .not_in] {
+		return error('orm.DataScope: dynamic filter `${filter.field}` with `${filter.operator}` requires a non-empty array value')
+	}
+	return error('orm.DataScope: dynamic filter `${filter.field}` with `${filter.operator}` requires a scalar value')
+}
+
+fn filter_value_matches_operator(filter QueryFilter) bool {
+	array_len := primitive_array_len(filter.value)
+	if filter.operator in [.in, .not_in] {
+		return array_len > 0
+	}
+	return array_len < 0
+}
+
+fn apply_scope_insert_filters(scope DataScope, table Table, data QueryData, scope_skip_fields []string) !QueryData {
 	if !scope.enabled || scope.filters.len == 0 {
 		return data
 	}
@@ -468,14 +493,26 @@ fn apply_scope_insert_filters(scope DataScope, table Table, data QueryData, scop
 	original_field_count := data.fields.len
 	field_to_column := table_field_to_column_map(table)
 	for filter in scope.filters {
-		if filter.field == '' || filter.operator != .eq || primitive_is_array(filter.value) {
+		if filter.mode != .dynamic {
 			continue
+		}
+		if filter.field == '' {
+			return error('orm.DataScope: dynamic filter field must not be empty')
 		}
 		if filter.field in scope_skip_fields {
 			continue
 		}
 		if table.fields.len > 0 && filter.field !in table.fields {
 			continue
+		}
+		if !filter_value_matches_operator(filter) {
+			return invalid_scope_filter_error(filter)
+		}
+		if filter.operator == .is_null {
+			continue
+		}
+		if filter.operator != .eq {
+			return error('orm.DataScope: dynamic filter `${filter.field}` with `${filter.operator}` cannot be applied to INSERT')
 		}
 		mut column_name := filter.field
 		if resolved := field_to_column[filter.field] {
@@ -520,13 +557,17 @@ fn apply_scope_insert_filters(scope DataScope, table Table, data QueryData, scop
 }
 
 fn primitive_is_array(value Primitive) bool {
+	return primitive_array_len(value) >= 0
+}
+
+fn primitive_array_len(value Primitive) int {
 	return match value {
 		[]Primitive, []bool, []f32, []f64, []i16, []i64, []i8, []int, []string, []time.Time, []u16,
 		[]u32, []u64, []u8, []InfixType {
-			true
+			value.len
 		}
 		else {
-			false
+			-1
 		}
 	}
 }
@@ -707,7 +748,7 @@ pub fn (mut db DB) select(config SelectConfig, data QueryData, where QueryData) 
 	mut cfg := config
 	if db.scope.enabled && db.scope.filters.len > 0 && !db.skip_all_scopes
 		&& !table_ignores_data_scope(cfg.table) {
-		where_scoped := apply_data_scope(db.scope, cfg.table, where, db.skip_fields)
+		where_scoped := apply_data_scope(db.scope, cfg.table, where, db.skip_fields)!
 		if where_scoped.fields.len > where.fields.len {
 			cfg.has_where = true
 		}
@@ -721,7 +762,7 @@ pub fn (mut db DB) insert(table Table, data QueryData) ! {
 	mut data_scoped := data
 	if db.scope.enabled && db.scope.filters.len > 0 && !db.skip_all_scopes
 		&& !table_ignores_data_scope(table) {
-		data_scoped = apply_data_scope_insert(db.scope, table, data, db.skip_fields)
+		data_scoped = apply_data_scope_insert(db.scope, table, data, db.skip_fields)!
 	}
 	return db.conn.insert(table, data_scoped)
 }
@@ -731,7 +772,7 @@ pub fn (mut db DB) update(table Table, data QueryData, where QueryData) ! {
 	mut where_scoped := where
 	if db.scope.enabled && db.scope.filters.len > 0 && !db.skip_all_scopes
 		&& !table_ignores_data_scope(table) {
-		where_scoped = apply_data_scope(db.scope, table, where, db.skip_fields)
+		where_scoped = apply_data_scope(db.scope, table, where, db.skip_fields)!
 	}
 	return db.conn.update(table, data, where_scoped)
 }
@@ -741,7 +782,7 @@ pub fn (mut db DB) delete(table Table, where QueryData) ! {
 	mut where_scoped := where
 	if db.scope.enabled && db.scope.filters.len > 0 && !db.skip_all_scopes
 		&& !table_ignores_data_scope(table) {
-		where_scoped = apply_data_scope(db.scope, table, where, db.skip_fields)
+		where_scoped = apply_data_scope(db.scope, table, where, db.skip_fields)!
 	}
 	return db.conn.delete(table, where_scoped)
 }
@@ -1286,10 +1327,14 @@ fn gen_where_clause(where QueryData, q string, qm string, num bool, mut c &int) 
 		}
 		str += '${q}${field}${q} ${where.kinds[i].to_str()}'
 		if !where.kinds[i].is_unary() {
-			if where.data.len > data_idx && where.data[data_idx] is []Primitive {
-				len := (where.data[data_idx] as []Primitive).len
-				mut tmp := []string{len: len}
-				for j in 0 .. len {
+			array_len := if where.data.len > data_idx {
+				primitive_array_len(where.data[data_idx])
+			} else {
+				-1
+			}
+			if array_len >= 0 {
+				mut tmp := []string{len: array_len}
+				for j in 0 .. array_len {
 					tmp[j] = '${qm}'
 					if num {
 						tmp[j] += '${c}'

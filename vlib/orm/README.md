@@ -104,6 +104,7 @@ mut db := orm.new_db(raw_db, orm.DataScope{
         orm.QueryFilter{
             field: 'tenant_id'
             value: orm.Primitive(tenant_id)
+            mode:  .dynamic
         },
         orm.QueryFilter{
             field: 'shop_id'
@@ -113,6 +114,7 @@ mut db := orm.new_db(raw_db, orm.DataScope{
         orm.QueryFilter{
             field:    'deleted_at'
             operator: .is_null
+            mode:     .dynamic
         },
     ]
 })
@@ -122,9 +124,10 @@ users := sql db {
 }!
 ```
 
-`QueryFilter.mode` defaults to `.static`. Static filters have a stable field and
-operator shape; the value can still come from runtime data. Use `.dynamic` for
-filters that are request-dependent or assembled by middleware.
+`QueryFilter.mode` defaults to `.static`. Static filters are reserved for future
+compiler-generated scope clauses. The runtime `orm.DB` wrapper applies only
+filters explicitly marked with `mode: .dynamic`. Invalid dynamic filters return
+an error instead of being silently skipped.
 
 Call `db.unscoped()` to return a new `orm.DB` value that skips all scope filters.
 Call `db.unscoped('tenant_id')` to skip only selected fields.

@@ -8,6 +8,20 @@ struct NoScopeUser {
 	tenant_id int
 }
 
+@[table: 'scope_no_tenant_users']
+struct ScopeNoTenantUser {
+	id   int @[primary; sql: serial]
+	name string
+}
+
+@[table: 'unscoped_attr_users']
+@[unscoped]
+struct UnscopedAttrUser {
+	id        int @[primary; sql: serial]
+	name      string
+	tenant_id int
+}
+
 @[table: 'noscope_users2']
 struct NoScopeUserMulti {
 	id      int @[primary; sql: serial]
@@ -50,6 +64,7 @@ fn test_unscoped_skips_tenant_filter_in_select() {
 			orm.QueryFilter{
 				field: 'tenant_id'
 				value: orm.Primitive(1)
+				mode:  .dynamic
 			},
 		]
 	})
@@ -67,6 +82,67 @@ fn test_unscoped_skips_tenant_filter_in_select() {
 		select from NoScopeUser
 	}!
 	assert users_all.len == 2
+}
+
+fn test_table_unscoped_attr_skips_data_scope() {
+	mut raw_db := sqlite.connect(':memory:') or { panic(err) }
+
+	sql raw_db {
+		create table UnscopedAttrUser
+	}!
+
+	mut db := orm.new_db(raw_db, orm.DataScope{
+		filters: [
+			orm.QueryFilter{
+				field: 'tenant_id'
+				value: orm.Primitive(99)
+				mode:  .dynamic
+			},
+		]
+	})
+
+	alice := UnscopedAttrUser{
+		name:      'Alice'
+		tenant_id: 1
+	}
+	sql db {
+		insert alice into UnscopedAttrUser
+	}!
+
+	users := sql db {
+		select from UnscopedAttrUser
+	}!
+	assert users.len == 1
+	assert users[0].tenant_id == 1
+}
+
+fn test_query_builder_skips_scope_filter_for_missing_table_field() {
+	mut raw_db := sqlite.connect(':memory:') or { panic(err) }
+
+	sql raw_db {
+		create table ScopeNoTenantUser
+	}!
+
+	alice := ScopeNoTenantUser{
+		name: 'Alice'
+	}
+	sql raw_db {
+		insert alice into ScopeNoTenantUser
+	}!
+
+	scoped_db := orm.new_db(raw_db, orm.DataScope{
+		filters: [
+			orm.QueryFilter{
+				field: 'tenant_id'
+				value: orm.Primitive(99)
+				mode:  .dynamic
+			},
+		]
+	})
+	mut qb := orm.new_query[ScopeNoTenantUser](scoped_db)
+	users := qb.query()!
+	assert users.len == 1
+	assert users[0].name == 'Alice'
 }
 
 fn test_unscoped_skip_all_in_select() {
@@ -95,6 +171,7 @@ fn test_unscoped_skip_all_in_select() {
 			orm.QueryFilter{
 				field: 'tenant_id'
 				value: orm.Primitive(1)
+				mode:  .dynamic
 			},
 		]
 	})
@@ -147,10 +224,12 @@ fn test_unscoped_selective_skip_in_multi_field_scope() {
 			orm.QueryFilter{
 				field: 'org_id'
 				value: orm.Primitive(1)
+				mode:  .dynamic
 			},
 			orm.QueryFilter{
 				field: 'deleted'
 				value: orm.Primitive(false)
+				mode:  .dynamic
 			},
 		]
 	})
@@ -185,6 +264,7 @@ fn test_unscoped_skips_tenant_in_insert() {
 			orm.QueryFilter{
 				field: 'tenant_id'
 				value: orm.Primitive(99)
+				mode:  .dynamic
 			},
 		]
 	})
@@ -217,6 +297,7 @@ fn test_data_scope_insert_overrides_default_scope_field() {
 			orm.QueryFilter{
 				field: 'tenant_id'
 				value: orm.Primitive(99)
+				mode:  .dynamic
 			},
 		]
 	})
@@ -248,6 +329,7 @@ fn test_unscoped_skip_all_in_insert() {
 			orm.QueryFilter{
 				field: 'tenant_id'
 				value: orm.Primitive(99)
+				mode:  .dynamic
 			},
 		]
 	})
@@ -295,6 +377,7 @@ fn test_unscoped_skips_tenant_in_update() {
 			orm.QueryFilter{
 				field: 'tenant_id'
 				value: orm.Primitive(1)
+				mode:  .dynamic
 			},
 		]
 	})
@@ -352,10 +435,12 @@ fn test_unscoped_skip_all_in_update() {
 			orm.QueryFilter{
 				field: 'tenant_id'
 				value: orm.Primitive(1)
+				mode:  .dynamic
 			},
 			orm.QueryFilter{
 				field: 'name'
 				value: orm.Primitive('Alice')
+				mode:  .dynamic
 			},
 		]
 	})
@@ -403,6 +488,7 @@ fn test_unscoped_skips_tenant_in_delete() {
 			orm.QueryFilter{
 				field: 'tenant_id'
 				value: orm.Primitive(1)
+				mode:  .dynamic
 			},
 		]
 	})
@@ -456,10 +542,12 @@ fn test_unscoped_skip_all_in_delete() {
 			orm.QueryFilter{
 				field: 'tenant_id'
 				value: orm.Primitive(1)
+				mode:  .dynamic
 			},
 			orm.QueryFilter{
 				field: 'name'
 				value: orm.Primitive('Alice')
+				mode:  .dynamic
 			},
 		]
 	})
@@ -514,10 +602,12 @@ fn test_unscoped_skip_multi_field_select() {
 			orm.QueryFilter{
 				field: 'tenant_id'
 				value: orm.Primitive(1)
+				mode:  .dynamic
 			},
 			orm.QueryFilter{
 				field: 'shop_id'
 				value: orm.Primitive(1)
+				mode:  .dynamic
 			},
 		]
 	})
@@ -550,6 +640,7 @@ fn scope_single_tenant(tenant_id int) orm.DataScope {
 				field:    'tenant_id'
 				value:    orm.Primitive(int(tenant_id))
 				operator: .eq
+				mode:     .dynamic
 			},
 		]
 	}
@@ -563,6 +654,7 @@ fn scope_disabled() orm.DataScope {
 				field:    'tenant_id'
 				value:    orm.Primitive(int(1))
 				operator: .eq
+				mode:     .dynamic
 			},
 		]
 	}
@@ -574,7 +666,7 @@ fn test_apply_data_scope_single_filter() {
 	table := orm.Table{
 		name: 'users'
 	}
-	result := orm.apply_data_scope(scope, table, where, [])
+	result := orm.apply_data_scope(scope, table, where, [])!
 	assert result.fields == ['tenant_id']
 	assert result.data == [orm.Primitive(int(5))]
 	assert result.kinds == [.eq]
@@ -590,7 +682,7 @@ fn test_apply_data_scope_appends_to_existing_where() {
 	table := orm.Table{
 		name: 'users'
 	}
-	result := orm.apply_data_scope(scope, table, where, [])
+	result := orm.apply_data_scope(scope, table, where, [])!
 	assert result.fields == ['id', 'tenant_id']
 	assert result.data == [orm.Primitive(int(1)), orm.Primitive(int(42))]
 	assert result.kinds == [.eq, .eq]
@@ -607,7 +699,7 @@ fn test_apply_data_scope_no_duplicate_field() {
 	table := orm.Table{
 		name: 'users'
 	}
-	result := orm.apply_data_scope(scope, table, where, [])
+	result := orm.apply_data_scope(scope, table, where, [])!
 	assert result.fields == ['tenant_id']
 	assert result.data == [orm.Primitive(int(10))]
 }
@@ -621,9 +713,9 @@ fn test_apply_data_scope_empty_or_disabled() {
 	table := orm.Table{
 		name: 'users'
 	}
-	empty_result := orm.apply_data_scope(empty_scope(), table, where, [])
+	empty_result := orm.apply_data_scope(empty_scope(), table, where, [])!
 	assert empty_result.fields == ['id']
-	disabled_result := orm.apply_data_scope(scope_disabled(), table, where, [])
+	disabled_result := orm.apply_data_scope(scope_disabled(), table, where, [])!
 	assert disabled_result.fields == ['id']
 }
 
@@ -634,11 +726,13 @@ fn test_apply_data_scope_multi_field() {
 				field:    'org_id'
 				value:    orm.Primitive(int(1))
 				operator: .eq
+				mode:     .dynamic
 			},
 			orm.QueryFilter{
 				field:    'deleted'
 				value:    orm.Primitive(false)
 				operator: .eq
+				mode:     .dynamic
 			},
 		]
 	}
@@ -646,7 +740,7 @@ fn test_apply_data_scope_multi_field() {
 	table := orm.Table{
 		name: 'users'
 	}
-	result := orm.apply_data_scope(scope, table, where, [])
+	result := orm.apply_data_scope(scope, table, where, [])!
 	assert result.fields == ['org_id', 'deleted']
 	assert result.data == [orm.Primitive(int(1)), orm.Primitive(false)]
 	assert result.kinds == [.eq, .eq]
@@ -660,7 +754,7 @@ fn test_query_filter_mode_defaults_to_static() {
 	assert filter.mode == .static
 }
 
-fn test_apply_data_scope_mixed_static_and_dynamic_filters() {
+fn test_apply_data_scope_applies_only_dynamic_filters() {
 	scope := orm.DataScope{
 		filters: [
 			orm.QueryFilter{
@@ -679,12 +773,12 @@ fn test_apply_data_scope_mixed_static_and_dynamic_filters() {
 		name:   'users'
 		fields: ['tenant_id', 'shop_id']
 	}
-	result := orm.apply_data_scope(scope, table, where, [])
+	result := orm.apply_data_scope(scope, table, where, [])!
 	assert scope.filters[0].mode == .static
 	assert scope.filters[1].mode == .dynamic
-	assert result.fields == ['tenant_id', 'shop_id']
-	assert result.data == [orm.Primitive(int(5)), orm.Primitive(int(10))]
-	assert result.kinds == [.eq, .eq]
+	assert result.fields == ['shop_id']
+	assert result.data == [orm.Primitive(int(10))]
+	assert result.kinds == [.eq]
 }
 
 fn test_apply_data_scope_wraps_parentheses() {
@@ -697,7 +791,7 @@ fn test_apply_data_scope_wraps_parentheses() {
 	table := orm.Table{
 		name: 'users'
 	}
-	result := orm.apply_data_scope(scope, table, where, [])
+	result := orm.apply_data_scope(scope, table, where, [])!
 	assert result.fields == ['a', 'b', 'tenant_id']
 	assert result.is_and == [false, true]
 	assert result.parentheses.len == 1
@@ -711,6 +805,7 @@ fn test_apply_data_scope_with_unary_operator() {
 			orm.QueryFilter{
 				field:    'deleted_at'
 				operator: .is_null
+				mode:     .dynamic
 			},
 		]
 	}
@@ -723,12 +818,103 @@ fn test_apply_data_scope_with_unary_operator() {
 		name:   'users'
 		fields: ['tenant_id', 'deleted_at']
 	}
-	result := orm.apply_data_scope(scope, table, where, [])
+	result := orm.apply_data_scope(scope, table, where, [])!
 	assert result.fields == ['tenant_id', 'deleted_at']
 	assert result.kinds == [.eq, .is_null]
 	assert result.is_and == [true]
 	// Unary operators don't add data values
 	assert result.data == [orm.Primitive(int(5))]
+}
+
+fn test_apply_data_scope_rejects_invalid_filter_values() {
+	scope := orm.DataScope{
+		filters: [
+			orm.QueryFilter{
+				field: 'tenant_id'
+				value: orm.Primitive([1, 2])
+				mode:  .dynamic
+			},
+		]
+	}
+	where := orm.QueryData{}
+	table := orm.Table{
+		name:   'users'
+		fields: ['tenant_id']
+	}
+	orm.apply_data_scope(scope, table, where, []) or {
+		assert err.msg().contains('requires a scalar value')
+		return
+	}
+	assert false
+}
+
+fn test_apply_data_scope_rejects_scalar_value_for_in_operator() {
+	scope := orm.DataScope{
+		filters: [
+			orm.QueryFilter{
+				field:    'org_id'
+				value:    orm.Primitive(1)
+				operator: .in
+				mode:     .dynamic
+			},
+		]
+	}
+	where := orm.QueryData{}
+	table := orm.Table{
+		name:   'users'
+		fields: ['org_id']
+	}
+	orm.apply_data_scope(scope, table, where, []) or {
+		assert err.msg().contains('requires a non-empty array value')
+		return
+	}
+	assert false
+}
+
+fn test_apply_data_scope_rejects_empty_array_for_in_operator() {
+	empty_ids := []int{}
+	scope := orm.DataScope{
+		filters: [
+			orm.QueryFilter{
+				field:    'region_id'
+				value:    orm.Primitive(empty_ids)
+				operator: .in
+				mode:     .dynamic
+			},
+		]
+	}
+	where := orm.QueryData{}
+	table := orm.Table{
+		name:   'users'
+		fields: ['region_id']
+	}
+	orm.apply_data_scope(scope, table, where, []) or {
+		assert err.msg().contains('requires a non-empty array value')
+		return
+	}
+	assert false
+}
+
+fn test_apply_data_scope_accepts_non_empty_array_for_in_operator() {
+	scope := orm.DataScope{
+		filters: [
+			orm.QueryFilter{
+				field:    'shop_id'
+				value:    orm.Primitive([3, 4])
+				operator: .in
+				mode:     .dynamic
+			},
+		]
+	}
+	where := orm.QueryData{}
+	table := orm.Table{
+		name:   'users'
+		fields: ['shop_id']
+	}
+	result := orm.apply_data_scope(scope, table, where, [])!
+	assert result.fields == ['shop_id']
+	assert result.kinds == [.in]
+	assert result.data == [orm.Primitive([3, 4])]
 }
 
 fn test_apply_data_scope_insert_adds_fields() {
@@ -740,7 +926,7 @@ fn test_apply_data_scope_insert_adds_fields() {
 	table := orm.Table{
 		name: 'users'
 	}
-	result := orm.apply_data_scope_insert(scope, table, data, [])
+	result := orm.apply_data_scope_insert(scope, table, data, [])!
 	assert result.fields == ['name', 'tenant_id']
 	assert result.data == [orm.Primitive('alice'), orm.Primitive(int(99))]
 }
@@ -751,10 +937,12 @@ fn test_apply_data_scope_insert_skips_unary_operator() {
 			orm.QueryFilter{
 				field: 'tenant_id'
 				value: orm.Primitive(int(99))
+				mode:  .dynamic
 			},
 			orm.QueryFilter{
 				field:    'deleted_at'
 				operator: .is_null
+				mode:     .dynamic
 			},
 		]
 	}
@@ -766,22 +954,24 @@ fn test_apply_data_scope_insert_skips_unary_operator() {
 		name:   'users'
 		fields: ['name', 'tenant_id', 'deleted_at']
 	}
-	result := orm.apply_data_scope_insert(scope, table, data, [])
+	result := orm.apply_data_scope_insert(scope, table, data, [])!
 	assert result.fields == ['name', 'tenant_id']
 	assert result.data == [orm.Primitive('alice'), orm.Primitive(int(99))]
 }
 
-fn test_apply_data_scope_insert_skips_non_equality_operator() {
+fn test_apply_data_scope_insert_rejects_non_equality_operator() {
 	scope := orm.DataScope{
 		filters: [
 			orm.QueryFilter{
 				field:    'tenant_id'
 				value:    orm.Primitive([orm.Primitive(1), orm.Primitive(2)])
 				operator: .in
+				mode:     .dynamic
 			},
 			orm.QueryFilter{
 				field: 'shop_id'
 				value: orm.Primitive(int(9))
+				mode:  .dynamic
 			},
 		]
 	}
@@ -793,21 +983,25 @@ fn test_apply_data_scope_insert_skips_non_equality_operator() {
 		name:   'users'
 		fields: ['name', 'tenant_id', 'shop_id']
 	}
-	result := orm.apply_data_scope_insert(scope, table, data, [])
-	assert result.fields == ['name', 'shop_id']
-	assert result.data == [orm.Primitive('alice'), orm.Primitive(int(9))]
+	orm.apply_data_scope_insert(scope, table, data, []) or {
+		assert err.msg().contains('cannot be applied to INSERT')
+		return
+	}
+	assert false
 }
 
-fn test_apply_data_scope_insert_skips_array_equality_value() {
+fn test_apply_data_scope_insert_rejects_array_equality_value() {
 	scope := orm.DataScope{
 		filters: [
 			orm.QueryFilter{
 				field: 'tenant_id'
 				value: orm.Primitive([orm.Primitive(1), orm.Primitive(2)])
+				mode:  .dynamic
 			},
 			orm.QueryFilter{
 				field: 'shop_id'
 				value: orm.Primitive(int(9))
+				mode:  .dynamic
 			},
 		]
 	}
@@ -819,9 +1013,11 @@ fn test_apply_data_scope_insert_skips_array_equality_value() {
 		name:   'users'
 		fields: ['name', 'tenant_id', 'shop_id']
 	}
-	result := orm.apply_data_scope_insert(scope, table, data, [])
-	assert result.fields == ['name', 'shop_id']
-	assert result.data == [orm.Primitive('alice'), orm.Primitive(int(9))]
+	orm.apply_data_scope_insert(scope, table, data, []) or {
+		assert err.msg().contains('requires a scalar value')
+		return
+	}
+	assert false
 }
 
 fn test_apply_data_scope_insert_overrides_existing_scope_field() {
@@ -833,7 +1029,7 @@ fn test_apply_data_scope_insert_overrides_existing_scope_field() {
 	table := orm.Table{
 		name: 'users'
 	}
-	result := orm.apply_data_scope_insert(scope, table, data, [])
+	result := orm.apply_data_scope_insert(scope, table, data, [])!
 	assert result.fields == ['tenant_id', 'name']
 	assert result.data == [orm.Primitive(int(99)), orm.Primitive('bob')]
 }
@@ -849,7 +1045,7 @@ fn test_apply_data_scope_insert_overrides_existing_scope_field_in_batch() {
 	table := orm.Table{
 		name: 'users'
 	}
-	result := orm.apply_data_scope_insert(scope, table, data, [])
+	result := orm.apply_data_scope_insert(scope, table, data, [])!
 	assert result.fields == ['name', 'tenant_id']
 	assert result.data == [orm.Primitive('alice'), orm.Primitive(int(99)), orm.Primitive('bob'),
 		orm.Primitive(int(99))]
@@ -863,9 +1059,9 @@ fn test_apply_data_scope_insert_empty_or_disabled() {
 	table := orm.Table{
 		name: 'users'
 	}
-	empty_result := orm.apply_data_scope_insert(empty_scope(), table, data, [])
+	empty_result := orm.apply_data_scope_insert(empty_scope(), table, data, [])!
 	assert empty_result.fields == ['name']
-	disabled_result := orm.apply_data_scope_insert(scope_disabled(), table, data, [])
+	disabled_result := orm.apply_data_scope_insert(scope_disabled(), table, data, [])!
 	assert disabled_result.fields == ['name']
 }
 
@@ -878,7 +1074,7 @@ fn test_apply_data_scope_skip_single_field() {
 		name: 'users'
 	}
 	// Skip 'tenant_id' - it should not be applied
-	result := orm.apply_data_scope(scope, table, where, ['tenant_id'])
+	result := orm.apply_data_scope(scope, table, where, ['tenant_id'])!
 	assert result.fields == []
 	assert result.data == []
 }
@@ -890,11 +1086,13 @@ fn test_apply_data_scope_skip_field_still_applies_others() {
 				field:    'org_id'
 				value:    orm.Primitive(int(1))
 				operator: .eq
+				mode:     .dynamic
 			},
 			orm.QueryFilter{
 				field:    'deleted'
 				value:    orm.Primitive(false)
 				operator: .eq
+				mode:     .dynamic
 			},
 		]
 	}
@@ -903,7 +1101,7 @@ fn test_apply_data_scope_skip_field_still_applies_others() {
 		name: 'users'
 	}
 	// Skip only 'org_id', 'deleted' should still be applied
-	result := orm.apply_data_scope(scope, table, where, ['org_id'])
+	result := orm.apply_data_scope(scope, table, where, ['org_id'])!
 	assert result.fields == ['deleted']
 	assert result.data == [orm.Primitive(false)]
 }
@@ -915,7 +1113,7 @@ fn test_apply_data_scope_skip_non_existent_field() {
 		name: 'users'
 	}
 	// Skip a non-existent field - all filters should still be applied
-	result := orm.apply_data_scope(scope, table, where, ['nonexistent'])
+	result := orm.apply_data_scope(scope, table, where, ['nonexistent'])!
 	assert result.fields == ['tenant_id']
 	assert result.data == [orm.Primitive(int(5))]
 }
@@ -930,7 +1128,7 @@ fn test_apply_data_scope_insert_skip_single_field() {
 		name: 'users'
 	}
 	// Skip 'tenant_id' in insert - should not inject it
-	result := orm.apply_data_scope_insert(scope, table, data, ['tenant_id'])
+	result := orm.apply_data_scope_insert(scope, table, data, ['tenant_id'])!
 	assert result.fields == ['name']
 	assert result.data == [orm.Primitive('alice')]
 }
@@ -971,6 +1169,7 @@ fn test_middleware_admin_skips_all_scopes() {
 			orm.QueryFilter{
 				field: 'tenant_id'
 				value: orm.Primitive(1)
+				mode:  .dynamic
 			},
 		]
 	})
@@ -1023,6 +1222,7 @@ fn test_middleware_manager_skips_specific_scope() {
 			orm.QueryFilter{
 				field: 'tenant_id'
 				value: orm.Primitive(1)
+				mode:  .dynamic
 			},
 		]
 	})
@@ -1067,6 +1267,7 @@ fn test_middleware_normal_user_has_full_scopes() {
 			orm.QueryFilter{
 				field: 'tenant_id'
 				value: orm.Primitive(1)
+				mode:  .dynamic
 			},
 		]
 	})
@@ -1114,6 +1315,7 @@ fn test_middleware_mixed_roles_produce_isolated_results() {
 			orm.QueryFilter{
 				field: 'tenant_id'
 				value: orm.Primitive(1)
+				mode:  .dynamic
 			},
 		]
 	})
@@ -1176,6 +1378,7 @@ fn test_middleware_ignores_scope_affects_all_crud_operations() {
 			orm.QueryFilter{
 				field: 'tenant_id'
 				value: orm.Primitive(1)
+				mode:  .dynamic
 			},
 		]
 	})
@@ -1232,6 +1435,7 @@ fn test_db_transaction_commit_through_proxy() {
 			orm.QueryFilter{
 				field: 'tenant_id'
 				value: orm.Primitive(1)
+				mode:  .dynamic
 			},
 		]
 	})
@@ -1270,6 +1474,7 @@ fn test_db_transaction_rollback_through_proxy() {
 			orm.QueryFilter{
 				field: 'tenant_id'
 				value: orm.Primitive(1)
+				mode:  .dynamic
 			},
 		]
 	})
@@ -1306,6 +1511,7 @@ fn test_db_transaction_with_data_scope() {
 			orm.QueryFilter{
 				field: 'tenant_id'
 				value: orm.Primitive(1)
+				mode:  .dynamic
 			},
 		]
 	})
@@ -1349,6 +1555,7 @@ fn test_db_transaction_unscoped_in_transaction() {
 			orm.QueryFilter{
 				field: 'tenant_id'
 				value: orm.Primitive(1)
+				mode:  .dynamic
 			},
 		]
 	})
@@ -1498,6 +1705,7 @@ fn test_data_scope_batch_insert_replicates_scope_values() {
 			orm.QueryFilter{
 				field: 'tenant_id'
 				value: orm.Primitive(42)
+				mode:  .dynamic
 			},
 		]
 	})
@@ -1536,10 +1744,12 @@ fn test_data_scope_batch_insert_multi_field_scope() {
 			orm.QueryFilter{
 				field: 'tenant_id'
 				value: orm.Primitive(7)
+				mode:  .dynamic
 			},
 			orm.QueryFilter{
 				field: 'shop_id'
 				value: orm.Primitive(3)
+				mode:  .dynamic
 			},
 		]
 	})

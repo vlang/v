@@ -87,6 +87,7 @@ pub fn pool_acquire_scoped(mut ctx Context) !(orm.DB, &sqlite.DB) {
 			orm.QueryFilter{
 				field: 'tenant_id'
 				value: orm.Primitive(ctx.user.tenant_id)
+				mode:  .dynamic
 			},
 		]
 	})
