@@ -328,6 +328,7 @@ pub fn (mut p Parser) parse_file(filename string, mut file_set token.FileSet) as
 		}
 		top_stmts << ast.FnDecl{
 			name:  'main'
+			typ:   fn_type_with_return_type([]ast.Expr{}, []ast.Parameter{}, ast.empty_expr)
 			stmts: script_stmts
 		}
 	}

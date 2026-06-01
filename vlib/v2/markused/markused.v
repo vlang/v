@@ -17,14 +17,20 @@ fn sumtype_payload_word_is_valid(tag_word u64, data_word u64) bool {
 	// looks like a small tag, the payload must be a real pointer, not a leaked
 	// enum/default value like `3`.
 	if tag_word < 256 {
-		upper := data_word >> 32
-		lower := data_word & u64(0xffffffff)
-		if upper < 1024 && lower < 4096 {
-			return false
-		}
-		return data_word >= 4096 && data_word < 281474976710656
+		return data_word >= 0x100000000 && data_word < 0x0000800000000000
 	}
 	return true
+}
+
+fn string_ok(s string) bool {
+	if s.len == 0 {
+		return true
+	}
+	if s.len < 0 || s.len > 1024 {
+		return false
+	}
+	ptr := unsafe { u64(s.str) }
+	return ptr >= 0x100000000 && ptr < 0x0000800000000000
 }
 
 fn expr_ok(expr ast.Expr) bool {
@@ -1384,6 +1390,9 @@ fn normalize_module_name(module_name string) string {
 }
 
 fn sanitize_receiver_name(name string) string {
+	if !string_ok(name) {
+		return ''
+	}
 	mut out := name.trim_space()
 	for out.len > 0 && (out[0] == `&` || out[0] == `?` || out[0] == `!`) {
 		out = out[1..]
@@ -1643,6 +1652,9 @@ fn receiver_primary_name(mod_name string, decl ast.FnDecl, env &types.Environmen
 }
 
 fn normalize_method_name(name string) string {
+	if !string_ok(name) {
+		return ''
+	}
 	return match name {
 		'+' { 'plus' }
 		'-' { 'minus' }
@@ -1904,6 +1916,9 @@ fn (mut w Walker) mark_generic_binding_receiver_methods(info FnInfo) {
 }
 
 fn (w &Walker) lookup_count(key string) int {
+	if !string_ok(key) {
+		return 0
+	}
 	if key in w.lookup {
 		return w.lookup[key].len
 	}
@@ -1911,6 +1926,9 @@ fn (w &Walker) lookup_count(key string) int {
 }
 
 fn (mut w Walker) mark_lookup(key string) {
+	if !string_ok(key) {
+		return
+	}
 	if key in w.lookup {
 		for idx in w.lookup[key] {
 			w.mark_fn(idx)
@@ -1920,6 +1938,9 @@ fn (mut w Walker) mark_lookup(key string) {
 
 fn called_fn_name_candidates(name string) []string {
 	mut out := []string{}
+	if name == '' || !string_ok(name) {
+		return out
+	}
 	add_unique_string(mut out, name)
 	generic_base := strip_generic_specialization_suffix(name)
 	if generic_base != name {
@@ -1961,7 +1982,7 @@ fn strip_generic_specialization_suffix(name string) string {
 }
 
 fn should_mark_ident_as_fn(name string) bool {
-	if name == '' {
+	if name == '' || !string_ok(name) {
 		return false
 	}
 	return name.starts_with('map_') || name.starts_with('map__') || name.starts_with('new_map')
@@ -1971,7 +1992,8 @@ fn should_mark_ident_as_fn(name string) bool {
 }
 
 fn (w &Walker) ident_resolves_to_fn_value(name string, mod_name string) bool {
-	if name == '' || name == 'C' || name in w.module_names || w.is_cast_type_name(name) {
+	if name == '' || !string_ok(name) || name == 'C' || name in w.module_names
+		|| w.is_cast_type_name(name) {
 		return false
 	}
 	if w.cur_fn_scope != unsafe { nil } {
@@ -1993,7 +2015,7 @@ fn (w &Walker) ident_resolves_to_fn_value(name string, mod_name string) bool {
 }
 
 fn (mut w Walker) mark_fn_name(name string, mod_name string) {
-	if name == '' {
+	if name == '' || !string_ok(name) || !string_ok(mod_name) {
 		return
 	}
 	for candidate in called_fn_name_candidates(name) {
@@ -2007,8 +2029,14 @@ fn (mut w Walker) mark_fn_name(name string, mod_name string) {
 }
 
 fn (mut w Walker) mark_method_name(name string, receivers []string) {
+	if name == '' || !string_ok(name) {
+		return
+	}
 	normalized := normalize_method_name(name)
 	for receiver in receivers {
+		if !string_ok(receiver) {
+			continue
+		}
 		for candidate in receiver_lookup_candidates(receiver) {
 			w.mark_lookup('meth:${candidate}:${name}')
 			if normalized != name {
@@ -2020,6 +2048,9 @@ fn (mut w Walker) mark_method_name(name string, receivers []string) {
 
 fn receiver_lookup_candidates(receiver string) []string {
 	mut out := []string{}
+	if !string_ok(receiver) {
+		return out
+	}
 	add_unique_string(mut out, receiver)
 	if receiver.contains('__') {
 		add_unique_string(mut out, receiver.all_after_last('__'))
@@ -2040,6 +2071,9 @@ fn receiver_lookup_candidates(receiver string) []string {
 }
 
 fn (mut w Walker) mark_method_name_fallback(name string) {
+	if name == '' || !string_ok(name) {
+		return
+	}
 	normalized := normalize_method_name(name)
 	// Check count first to avoid pulling in everything for common names.
 	count := w.lookup_count('mname:${name}') +
@@ -2479,6 +2513,9 @@ fn (mut w Walker) mark_call_or_cast_arg_interface_conversion(expr ast.CallOrCast
 }
 
 fn (w &Walker) add_lookup_indices(key string, mut out []int) {
+	if !string_ok(key) {
+		return
+	}
 	if key in w.lookup {
 		for idx in w.lookup[key] {
 			add_unique_int(mut out, idx)
@@ -2487,7 +2524,7 @@ fn (w &Walker) add_lookup_indices(key string, mut out []int) {
 }
 
 fn (w &Walker) add_fn_name_indices(name string, mod_name string, mut out []int) {
-	if name == '' {
+	if name == '' || !string_ok(name) || !string_ok(mod_name) {
 		return
 	}
 	for candidate in called_fn_name_candidates(name) {
@@ -2501,8 +2538,14 @@ fn (w &Walker) add_fn_name_indices(name string, mod_name string, mut out []int) 
 }
 
 fn (w &Walker) add_method_name_indices(name string, receivers []string, mut out []int) {
+	if name == '' || !string_ok(name) {
+		return
+	}
 	normalized := normalize_method_name(name)
 	for receiver in receivers {
+		if !string_ok(receiver) {
+			continue
+		}
 		for candidate in receiver_lookup_candidates(receiver) {
 			w.add_lookup_indices('meth:${candidate}:${name}', mut out)
 			if normalized != name {
@@ -2529,8 +2572,14 @@ fn (w &Walker) call_lhs_decl_indices(lhs ast.Expr, mod_name string) []int {
 		}
 		ast.SelectorExpr {
 			method_name := lhs.rhs.name
+			if !string_ok(method_name) {
+				return out
+			}
 			if lhs.lhs is ast.Ident {
 				left_name := lhs.lhs.name
+				if !string_ok(left_name) {
+					return out
+				}
 				if left_name == 'C' {
 					w.add_fn_name_indices(method_name, mod_name, mut out)
 					return out
@@ -2551,6 +2600,9 @@ fn (w &Walker) call_lhs_decl_indices(lhs ast.Expr, mod_name string) []int {
 				if type_sel.lhs is ast.Ident {
 					mod_ident := type_sel.lhs.name
 					type_name := type_sel.rhs.name
+					if !string_ok(mod_ident) || !string_ok(type_name) {
+						return out
+					}
 					if mod_ident in w.module_names || mod_ident in w.type_names {
 						mut candidates := []string{cap: 3}
 						candidates << type_name
@@ -2703,9 +2755,15 @@ fn (w &Walker) call_lhs_decl_indices_cursor(c ast.Cursor, mod_name string) []int
 				return out
 			}
 			method_name := rhs_c.name()
+			if !string_ok(method_name) {
+				return out
+			}
 			lhs_c := c.edge(0)
 			if lhs_c.is_valid() && lhs_c.kind() == .expr_ident {
 				left_name := lhs_c.name()
+				if !string_ok(left_name) {
+					return out
+				}
 				if left_name == 'C' {
 					w.add_fn_name_indices(method_name, mod_name, mut out)
 					return out
@@ -2727,6 +2785,9 @@ fn (w &Walker) call_lhs_decl_indices_cursor(c ast.Cursor, mod_name string) []int
 				if inner_lhs.is_valid() && inner_lhs.kind() == .expr_ident && inner_rhs.is_valid() {
 					mod_ident := inner_lhs.name()
 					type_name := inner_rhs.name()
+					if !string_ok(mod_ident) || !string_ok(type_name) {
+						return out
+					}
 					if mod_ident in w.module_names || mod_ident in w.type_names {
 						mut candidates := []string{cap: 3}
 						candidates << type_name
@@ -3209,6 +3270,9 @@ fn (w &Walker) receiver_candidates_for_expr(expr ast.Expr, mod_name string) []st
 }
 
 fn (w &Walker) is_cast_type_name(name string) bool {
+	if !string_ok(name) {
+		return false
+	}
 	if name in builtin_cast_type_names {
 		return true
 	}
@@ -3232,8 +3296,14 @@ fn (mut w Walker) mark_call_lhs(lhs ast.Expr, mod_name string) {
 		}
 		ast.SelectorExpr {
 			method_name := lhs.rhs.name
+			if !string_ok(method_name) {
+				return
+			}
 			if lhs.lhs is ast.Ident {
 				left_name := lhs.lhs.name
+				if !string_ok(left_name) {
+					return
+				}
 				if left_name == 'C' {
 					w.mark_fn_name(method_name, mod_name)
 					return
@@ -3255,6 +3325,9 @@ fn (mut w Walker) mark_call_lhs(lhs ast.Expr, mod_name string) {
 				if type_sel.lhs is ast.Ident {
 					mod_ident := type_sel.lhs.name
 					type_name := type_sel.rhs.name
+					if !string_ok(mod_ident) || !string_ok(type_name) {
+						return
+					}
 					if mod_ident in w.module_names || mod_ident in w.type_names {
 						candidates := [
 							type_name,
@@ -3291,7 +3364,8 @@ fn (w &Walker) const_fn_value_alias_is_shadowed(name string) bool {
 }
 
 fn (mut w Walker) mark_const_fn_value_alias(name string, mod_name string) bool {
-	if name == '' || w.const_fn_value_alias_is_shadowed(name) {
+	if name == '' || !string_ok(name) || !string_ok(mod_name)
+		|| w.const_fn_value_alias_is_shadowed(name) {
 		return false
 	}
 	if target := w.const_fn_value_aliases[const_fn_value_alias_key(mod_name, name)] {
@@ -3327,9 +3401,15 @@ fn (mut w Walker) mark_call_lhs_cursor(c ast.Cursor, mod_name string) {
 				return
 			}
 			method_name := rhs_c.name()
+			if !string_ok(method_name) {
+				return
+			}
 			lhs_c := c.edge(0)
 			if lhs_c.is_valid() && lhs_c.kind() == .expr_ident {
 				left_name := lhs_c.name()
+				if !string_ok(left_name) {
+					return
+				}
 				if left_name == 'C' {
 					w.mark_fn_name(method_name, mod_name)
 					return
@@ -3350,6 +3430,9 @@ fn (mut w Walker) mark_call_lhs_cursor(c ast.Cursor, mod_name string) {
 				if inner_lhs.is_valid() && inner_lhs.kind() == .expr_ident && inner_rhs.is_valid() {
 					mod_ident := inner_lhs.name()
 					type_name := inner_rhs.name()
+					if !string_ok(mod_ident) || !string_ok(type_name) {
+						return
+					}
 					if mod_ident in w.module_names || mod_ident in w.type_names {
 						candidates := [
 							type_name,

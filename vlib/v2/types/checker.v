@@ -242,6 +242,17 @@ fn sumtype_slot_is_payload(slot u64) bool {
 	return slot >= 4096 && slot < 281474976710656
 }
 
+fn checker_string_has_valid_data(s string) bool {
+	if s.len == 0 {
+		return true
+	}
+	if s.len < 0 || s.len > 1024 {
+		return false
+	}
+	ptr := unsafe { u64(s.str) }
+	return ptr >= 4096 && ptr < 281474976710656
+}
+
 fn embed_file_helper_type() Type {
 	string_fn := Type(fn_with_return_type(empty_fn_type(), Type(string_)))
 	bytes_fn := Type(fn_with_return_type(empty_fn_type(), Type(Array{
@@ -727,6 +738,9 @@ fn (c &Checker) type_ref_name(expr ast.Expr) string {
 fn (mut c Checker) decl_field_type(expr ast.Expr) Type {
 	match expr {
 		ast.Ident {
+			if typ := builtin_type(expr.name) {
+				return typ
+			}
 			if obj := universe.lookup_parent(expr.name, 0) {
 				if typ := object_as_type(obj) {
 					return typ
@@ -848,6 +862,9 @@ fn (mut c Checker) module_storage_predecl_type(field ast.FieldDecl) Type {
 fn (mut c Checker) module_storage_predecl_type_expr(expr ast.Expr) ?Type {
 	match expr {
 		ast.Ident {
+			if typ := builtin_type(expr.name) {
+				return typ
+			}
 			if obj := universe.lookup_parent(expr.name, 0) {
 				if typ := object_as_type(obj) {
 					return typ
@@ -2592,7 +2609,7 @@ fn (mut c Checker) fn_types_compatible(expected FnType, got FnType) bool {
 }
 
 fn (c &Checker) live_sumtype(smt SumType) SumType {
-	if smt.name == '' {
+	if smt.name == '' || !checker_string_has_valid_data(smt.name) {
 		return smt
 	}
 	if live_type := c.lookup_type_by_name(smt.name) {
@@ -2609,12 +2626,18 @@ fn (c &Checker) live_sumtype(smt SumType) SumType {
 fn (c &Checker) sum_type_accepts_variant(smt SumType, got_type Type) bool {
 	live_smt := c.live_sumtype(smt)
 	got_name := got_type.name()
+	got_name_ok := checker_string_has_valid_data(got_name)
 	for variant in live_smt.variants {
 		mut variant_type := resolve_alias(variant)
-		if live_variant := c.lookup_type_by_name(variant_type.name()) {
-			variant_type = resolve_alias(live_variant)
+		variant_name := variant_type.name()
+		if checker_string_has_valid_data(variant_name) {
+			if live_variant := c.lookup_type_by_name(variant_name) {
+				variant_type = resolve_alias(live_variant)
+			}
 		}
-		if variant_type.name() == got_name {
+		resolved_variant_name := variant_type.name()
+		if got_name_ok && checker_string_has_valid_data(resolved_variant_name)
+			&& resolved_variant_name == got_name {
 			return true
 		}
 		if variant_type is SumType {
@@ -3772,6 +3795,9 @@ fn (mut c Checker) expr_impl(expr ast.Expr) Type {
 		}
 		ast.Ident {
 			// c.log('ident: ${expr.name}')
+			if typ := builtin_type(expr.name) {
+				return typ
+			}
 			obj := c.ident(expr)
 			typ := obj.typ()
 			// TODO:
@@ -4025,6 +4051,9 @@ fn (mut c Checker) type_expr(expr ast.Expr) Type {
 	resolved := c.resolve_expr(expr)
 	match resolved {
 		ast.Ident {
+			if typ := builtin_type(resolved.name) {
+				return typ
+			}
 			if obj := universe.lookup_parent(resolved.name, 0) {
 				if typ := object_as_type(obj) {
 					return typ
@@ -4688,17 +4717,17 @@ fn (mut c Checker) process_pending_struct_decls() {
 			}
 		}
 		mut fields := []Field{}
-		for field in pending.decl.fields {
-			field_typ := c.decl_field_type(field.typ)
+		for field_idx in 0 .. pending.decl.fields.len {
+			field_typ := c.decl_field_type(pending.decl.fields[field_idx].typ)
 			fields << Field{
-				name:                field.name
+				name:                pending.decl.fields[field_idx].name
 				typ:                 field_typ
-				default_expr:        field.value
-				attributes:          field.attributes
-				is_public:           field.is_public
-				is_mut:              field.is_mut
-				is_module_mut:       field.is_module_mut
-				is_interface_method: field.is_interface_method
+				default_expr:        pending.decl.fields[field_idx].value
+				attributes:          pending.decl.fields[field_idx].attributes
+				is_public:           pending.decl.fields[field_idx].is_public
+				is_mut:              pending.decl.fields[field_idx].is_mut
+				is_module_mut:       pending.decl.fields[field_idx].is_module_mut
+				is_interface_method: pending.decl.fields[field_idx].is_interface_method
 				owner_module:        pending.module_name
 			}
 		}
@@ -6509,6 +6538,9 @@ fn (mut c Checker) unwrap_lhs_expr(expr ast.Expr) ast.Expr {
 }
 
 fn (mut c Checker) add_inferred_generic_type(mut type_map map[string]Type, name string, typ Type) ! {
+	if name == '' || !checker_string_has_valid_data(name) {
+		return
+	}
 	// NOTE: lookup on a mut map parameter currently miscompiles in the cleanc
 	// self-host path, so keep this as a direct set for stability.
 	type_map[name] = typ
@@ -7176,7 +7208,7 @@ fn (mut c Checker) ident(ident ast.Ident) Object {
 			'@VMOD_FILE',
 			'@FILE_LINE',
 		] {
-			return Type(string_)
+			return object_from_type(Type(string_))
 		}
 
 		// TODO: proper
@@ -8073,7 +8105,7 @@ fn (mut c Checker) lookup_builtin_type(name string) ?Type {
 }
 
 fn (c &Checker) lookup_type_by_name(name string) ?Type {
-	if name == '' {
+	if name == '' || !checker_string_has_valid_data(name) {
 		return none
 	}
 	if typ := c.scope.lookup_type_parent(name, 0) {

@@ -68,6 +68,95 @@ fn test_substitute_type_replaces_placeholder_named_type() {
 	assert out.name() == 'int'
 }
 
+fn test_generic_bindings_from_method_call_args_skip_receiver_param() {
+	mut t := mono_test_transformer()
+	t.local_decl_types['file'] = types.Type(types.Struct{
+		name: 'File'
+	})
+	info := CallFnInfo{
+		param_types:                    [
+			types.Type(types.Struct{
+				name: 'Walker'
+			}),
+			types.Type(types.NamedType('T')),
+		]
+		generic_param_names_by_param:   ['', 'T']
+		generic_param_indexes_by_param: [-1, 0]
+		generic_params:                 ['T']
+	}
+	bindings := t.generic_bindings_from_call_args(info, [
+		ast.Expr(ast.Ident{
+			name: 'file'
+		}),
+	]) or { panic('expected binding') }
+	concrete := bindings['T'] or { panic('missing T binding') }
+	assert concrete.name() == 'File'
+}
+
+fn test_generic_bindings_from_call_args_use_ast_direct_generic_metadata() {
+	mut t := mono_test_transformer()
+	t.local_decl_types['file'] = types.Type(types.Struct{
+		name: 'File'
+	})
+	info := CallFnInfo{
+		param_types:                    [
+			types.Type(types.void_),
+		]
+		generic_param_names_by_param:   ['T']
+		generic_param_indexes_by_param: [0]
+		generic_params:                 ['T']
+	}
+	bindings := t.generic_bindings_from_call_args(info, [
+		ast.Expr(ast.Ident{
+			name: 'file'
+		}),
+	]) or { panic('expected binding from direct generic parameter metadata') }
+	concrete := bindings['T'] or { panic('missing T binding') }
+	assert concrete.name() == 'File'
+}
+
+fn test_generic_call_info_lookup_does_not_match_unrelated_short_name() {
+	mut t := mono_test_transformer()
+	t.generic_fn_decl_index['write'] = ast.FnDecl{
+		name: 'write'
+		typ:  ast.FnType{
+			generic_params: [
+				ast.Expr(ast.Ident{
+					name: 'T'
+				}),
+			]
+		}
+	}
+	if _ := t.generic_fn_decl_for_call_info('v__Gen__write') {
+		assert false, 'qualified non-generic methods must not resolve to unrelated generic functions'
+	}
+	if decl := t.generic_fn_decl_for_call_info('write') {
+		assert decl.name == 'write'
+	} else {
+		assert false, 'expected exact generic function lookup to work'
+	}
+}
+
+fn test_clone_generic_type_name_selector_to_string_literal() {
+	mut t := mono_test_transformer()
+	expr := ast.Expr(ast.SelectorExpr{
+		lhs: ast.Ident{
+			name: 'T'
+		}
+		rhs: ast.Ident{
+			name: 'name'
+		}
+		pos: token.Pos{
+			id: 11
+		}
+	})
+	out := t.clone_expr_with_bindings_and_fields(expr, {
+		'T': types.Type(types.i64_)
+	}, []CloneComptimeFieldCtx{})
+	assert out is ast.StringLiteral
+	assert (out as ast.StringLiteral).value == 'i64'
+}
+
 fn test_substitute_type_leaves_non_matching_named_type_alone() {
 	bindings := {
 		'T': types.Type(types.int_)

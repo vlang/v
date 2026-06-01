@@ -6835,6 +6835,11 @@ fn (mut g Gen) get_fn_name(node ast.FnDecl) string {
 		if base_type.starts_with('struct ') {
 			base_type = base_type[7..]
 		}
+		recv_scope_name := g.receiver_type_to_scope_name(node.receiver.typ)
+		if recv_scope_name != '' && base_type == recv_scope_name
+			&& g.is_module_local_type(base_type) {
+			base_type = '${g.cur_module}__${base_type}'
+		}
 		if g.cur_module != 'builtin' && base_type in primitive_types {
 			// Non-builtin primitive receiver methods are typically accidental generic
 			// instantiations (e.g. int__multiply) that produce invalid scalar field access.

@@ -70,6 +70,11 @@ fn transformer_object_type(obj types.Object) ?types.Type {
 }
 
 fn (t &Transformer) lookup_struct_field_type(struct_name string, field_name string) ?types.Type {
+	if struct_name.len == 0 || field_name.len == 0 || struct_name.len > 1024
+		|| field_name.len > 1024 || !transformer_string_has_valid_data(struct_name)
+		|| !transformer_string_has_valid_data(field_name) {
+		return none
+	}
 	mut sname := struct_name
 	mut mod := ''
 	dunder := struct_name.last_index('__') or { -1 }
@@ -179,6 +184,9 @@ fn (t &Transformer) struct_field_type_inner(struct_type types.Struct, field_name
 		seen[struct_type.name] = true
 	}
 	for field in struct_type.fields {
+		if !transformer_string_has_valid_data(field.name) {
+			continue
+		}
 		if field.name == field_name {
 			return field.typ
 		}
@@ -324,6 +332,16 @@ fn (mut t Transformer) transform_array_init_expr(expr ast.ArrayInitExpr) ast.Exp
 	}
 	// For untyped `[]` literals, use checker-inferred type from context (assign/call/return).
 	if array_typ is ast.EmptyExpr {
+		if !has_fixed_marker {
+			if literal_type := t.get_array_init_expr_type(expr) {
+				if literal_type is types.Array {
+					array_typ = t.type_to_ast_type_expr(literal_type)
+					elem_type_expr = t.type_to_ast_type_expr(literal_type.elem_type)
+				}
+			}
+		}
+	}
+	if array_typ is ast.EmptyExpr {
 		if inferred := t.get_expr_type(ast.Expr(expr)) {
 			inferred_base := t.unwrap_alias_and_pointer_type(inferred)
 			match inferred_base {
@@ -351,6 +369,9 @@ fn (mut t Transformer) transform_array_init_expr(expr ast.ArrayInitExpr) ast.Exp
 	// Also check for [x, y, z]! syntax - parser marks this with len: PostfixExpr{op: .not}
 	if has_fixed_marker {
 		is_fixed = true
+		if expr.typ is ast.EmptyExpr {
+			array_typ = ast.Expr(ast.empty_expr)
+		}
 		if array_typ is ast.Type && array_typ is ast.ArrayType {
 			array_typ = ast.Expr(ast.Type(ast.ArrayFixedType{
 				len:       ast.BasicLiteral{
@@ -1508,26 +1529,28 @@ fn (t &Transformer) deref_init_field_value_if_needed(value ast.Expr, expected ty
 }
 
 fn (t &Transformer) get_init_expr_field_type(init_typ_expr ast.Expr, field_name string) ?types.Type {
+	if !transformer_string_has_valid_data(field_name) {
+		return none
+	}
 	init_typ := t.get_expr_type(init_typ_expr) or { return none }
 	base_typ := t.unwrap_alias_and_pointer_type(init_typ)
 	if base_typ is types.Struct {
-		for field in base_typ.fields {
-			if field.name == field_name {
-				return field.typ
-			}
+		if field_typ := t.lookup_struct_field_type(base_typ.name, field_name) {
+			return field_typ
 		}
 	}
 	return none
 }
 
 fn (t &Transformer) get_init_expr_field_type_name(init_typ_expr ast.Expr, field_name string) string {
+	if !transformer_string_has_valid_data(field_name) {
+		return ''
+	}
 	init_typ := t.get_expr_type(init_typ_expr) or { return '' }
 	base_typ := t.unwrap_alias_and_pointer_type(init_typ)
 	if base_typ is types.Struct {
-		for field in base_typ.fields {
-			if field.name == field_name {
-				return t.type_to_name(field.typ)
-			}
+		if field_typ := t.lookup_struct_field_type(base_typ.name, field_name) {
+			return t.type_to_name(field_typ)
 		}
 	}
 	return ''
@@ -2099,15 +2122,19 @@ fn (t &Transformer) get_field_array_elem_c_name(struct_name string, field_name s
 fn (t &Transformer) get_struct_field_type(expr ast.SelectorExpr) ?types.Type {
 	// Try to get the struct type from scope (for local variables and receivers)
 	mut struct_type_name := ''
+	if !transformer_string_has_valid_data(expr.rhs.name) {
+		return none
+	}
 	if expr.lhs is ast.Ident {
 		lhs_name := expr.lhs.name
+		if !transformer_string_has_valid_data(lhs_name) {
+			return none
+		}
 		if lhs_type := t.lookup_var_type(lhs_name) {
 			base_type := lhs_type.base_type()
 			if base_type is types.Struct {
-				for field in base_type.fields {
-					if field.name == expr.rhs.name {
-						return field.typ
-					}
+				if field_typ := t.lookup_struct_field_type(base_type.name, expr.rhs.name) {
+					return field_typ
 				}
 			}
 			struct_type_name = t.type_to_name(base_type)
@@ -2126,10 +2153,8 @@ fn (t &Transformer) get_struct_field_type(expr ast.SelectorExpr) ?types.Type {
 		}
 		match base_type {
 			types.Struct {
-				for field in base_type.fields {
-					if field.name == expr.rhs.name {
-						return field.typ
-					}
+				if field_typ := t.lookup_struct_field_type(base_type.name, expr.rhs.name) {
+					return field_typ
 				}
 			}
 			else {}
@@ -2149,10 +2174,8 @@ fn (t &Transformer) get_struct_field_type(expr ast.SelectorExpr) ?types.Type {
 	// Look up the field in the struct
 	match base_type {
 		types.Struct {
-			for field in base_type.fields {
-				if field.name == expr.rhs.name {
-					return field.typ
-				}
+			if field_typ := t.lookup_struct_field_type(base_type.name, expr.rhs.name) {
+				return field_typ
 			}
 		}
 		else {}

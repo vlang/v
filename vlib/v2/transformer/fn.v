@@ -85,8 +85,9 @@ fn (t &Transformer) get_fn_return_type(fn_name string) ?types.Type {
 }
 
 fn (t &Transformer) type_from_param_type_expr(expr ast.Expr, generic_params []string) ?types.Type {
-	if expr is ast.Ident && expr.name in generic_params {
-		return types.Type(types.NamedType(expr.name))
+	generic_name := direct_generic_param_name_from_expr(expr, generic_params)
+	if generic_name != '' {
+		return types.Type(types.NamedType(generic_name))
 	}
 	// Resolve from the AST directly so nested type shapes like `&map[K]V`
 	// don't lose structure round-tripping through C-style name strings
@@ -359,10 +360,10 @@ fn (t &Transformer) lookup_type_from_expr(expr ast.Expr) ?types.Type {
 		return t.lookup_type(expr.rhs.name)
 	}
 	if expr is ast.GenericArgs {
-		return t.lookup_type_from_expr(expr.lhs)
+		return t.lookup_generic_type_from_expr(expr.lhs, expr.args)
 	}
 	if expr is ast.GenericArgOrIndexExpr {
-		return t.lookup_type_from_expr(expr.lhs)
+		return t.lookup_generic_type_from_expr(expr.lhs, [expr.expr])
 	}
 	if expr is ast.Type {
 		return t.lookup_type_from_ast_type(expr)
@@ -404,12 +405,60 @@ fn (t &Transformer) lookup_type_from_ast_type(typ ast.Type) ?types.Type {
 		})
 	}
 	if typ is ast.GenericType {
-		return t.lookup_type_from_expr(typ.name)
+		return t.lookup_generic_type_from_expr(typ.name, typ.params)
 	}
 	// For other ast.Type variants (ArrayFixedType, FnType, etc.), the
 	// caller's name extraction logic may not need them. Returning none lets
 	// callers fall back to other resolution paths.
 	return none
+}
+
+fn (t &Transformer) lookup_generic_type_from_expr(lhs ast.Expr, args []ast.Expr) ?types.Type {
+	base := t.lookup_type_from_expr(lhs) or { return none }
+	return t.instantiate_generic_type(base, args)
+}
+
+fn (t &Transformer) instantiate_generic_type(base types.Type, args []ast.Expr) ?types.Type {
+	if base is types.Struct {
+		bindings := t.generic_type_arg_bindings(base.generic_params, args) or { return base }
+		return substitute_type(base, bindings)
+	}
+	return base
+}
+
+fn (t &Transformer) generic_type_arg_bindings(generic_params []string, args []ast.Expr) ?map[string]types.Type {
+	if generic_params.len == 0 || args.len == 0 {
+		return none
+	}
+	mut bindings := map[string]types.Type{}
+	for i, param_name in generic_params {
+		if i >= args.len {
+			break
+		}
+		arg := args[i]
+		if arg is ast.Ident {
+			if concrete := t.cur_monomorphized_fn_bindings[arg.name] {
+				bindings[param_name] = concrete
+				continue
+			}
+		}
+		if concrete := t.get_synth_type(arg.pos()) {
+			bindings[param_name] = concrete
+			continue
+		}
+		if concrete := t.lookup_type_from_expr(arg) {
+			bindings[param_name] = concrete
+			continue
+		}
+		if concrete := t.get_expr_type(arg) {
+			bindings[param_name] = concrete
+			continue
+		}
+	}
+	if bindings.len == 0 {
+		return none
+	}
+	return bindings
 }
 
 // get_method_return_type tries to get the return type for a method call.
@@ -766,7 +815,7 @@ fn (t &Transformer) resolve_call_return_type(expr ast.Expr) ?types.Type {
 }
 
 fn (t &Transformer) append_method_lookup_type_name(mut names []string, raw_name string) {
-	if raw_name == '' {
+	if raw_name.len == 0 || !transformer_string_has_valid_data(raw_name) {
 		return
 	}
 	mut normalized := raw_name.replace('.', '__')
@@ -785,8 +834,21 @@ fn (t &Transformer) append_method_lookup_type_name(mut names []string, raw_name 
 	}
 }
 
+fn transformer_string_has_valid_data(s string) bool {
+	if s.len == 0 {
+		return true
+	}
+	if s.len < 0 || s.len > 1024 {
+		return false
+	}
+	ptr := unsafe { u64(s.str) }
+	return ptr >= 0x100000000 && ptr < 0x0000800000000000
+}
+
 fn (t &Transformer) method_key_matches_type_name(method_key string, type_name string) bool {
-	if method_key == '' || type_name == '' {
+	if method_key.len == 0 || type_name.len == 0 || method_key.len > 1024 || type_name.len > 1024
+		|| !transformer_string_has_valid_data(method_key)
+		|| !transformer_string_has_valid_data(type_name) {
 		return false
 	}
 	normalized_key := method_key.replace('.', '__')
@@ -1163,20 +1225,27 @@ fn (t &Transformer) lookup_fn_pointer_var_type(name string) ?types.FnType {
 }
 
 fn fn_type_from_transformer_type(typ types.Type) ?types.FnType {
+	if !types.type_has_valid_payload(typ) {
+		return none
+	}
 	match typ {
 		types.FnType {
 			return typ
 		}
 		types.Alias {
-			if typ.base_type is types.FnType {
+			if types.type_has_valid_payload(typ.base_type) && typ.base_type is types.FnType {
 				return typ.base_type as types.FnType
 			}
 		}
 		types.Pointer {
+			if !types.type_has_valid_payload(typ.base_type) {
+				return none
+			}
 			if typ.base_type is types.FnType {
 				return typ.base_type as types.FnType
 			}
-			if typ.base_type is types.Alias && typ.base_type.base_type is types.FnType {
+			if typ.base_type is types.Alias && types.type_has_valid_payload(typ.base_type.base_type)
+				&& typ.base_type.base_type is types.FnType {
 				return typ.base_type.base_type as types.FnType
 			}
 		}
@@ -2363,7 +2432,7 @@ fn (mut t Transformer) transform_call_expr(expr ast.CallExpr) ast.Expr {
 		sel := expr.lhs as ast.SelectorExpr
 		if resolved_static := t.resolve_static_type_method_call(sel.lhs, sel.rhs.name) {
 			call_args := t.lower_missing_call_args(expr.lhs, expr.args)
-			fn_info := t.lookup_call_fn_info(expr.lhs)
+			fn_info := t.generic_aware_call_fn_info(expr.lhs, resolved_static)
 			mut args := []ast.Expr{cap: call_args.len}
 			for i, arg in call_args {
 				args << t.transform_call_arg_with_sumtype_check(arg, fn_info, i)
@@ -2449,7 +2518,7 @@ fn (mut t Transformer) transform_call_expr(expr ast.CallExpr) ast.Expr {
 		is_module_call := resolved_module_call_name != ''
 		if is_module_call {
 			call_args := t.lower_missing_call_args(expr.lhs, expr.args)
-			fn_info := t.lookup_call_fn_info(expr.lhs)
+			fn_info := t.generic_aware_call_fn_info(expr.lhs, resolved_module_call_name)
 			mut args := []ast.Expr{cap: call_args.len}
 			for i, arg in call_args {
 				args << t.transform_call_arg_with_sumtype_check(arg, fn_info, i)
@@ -2580,7 +2649,7 @@ fn (mut t Transformer) transform_call_expr(expr ast.CallExpr) ast.Expr {
 				}
 				call_args := t.lower_missing_call_args(expr.lhs, expr.args)
 				is_static := t.is_static_method_call(sel.lhs)
-				fn_info := t.lookup_call_fn_info(expr.lhs)
+				fn_info := t.generic_aware_call_fn_info(expr.lhs, resolved)
 				mut transformed_call_args := []ast.Expr{cap: call_args.len}
 				for i, arg in call_args {
 					transformed_call_args << t.transform_call_arg_with_sumtype_check(arg, fn_info, i)
@@ -2693,7 +2762,7 @@ fn (mut t Transformer) transform_call_expr(expr ast.CallExpr) ast.Expr {
 	// e.g., stmt.name.replace() when stmt is smartcast
 	call_args := t.lower_missing_call_args(expr.lhs, expr.args)
 	// Look up function parameter types for sumtype re-wrapping
-	fn_info := t.lookup_call_fn_info(expr.lhs)
+	fn_info := t.call_fn_info_for_lhs(expr.lhs)
 	mut args := []ast.Expr{cap: call_args.len}
 	for i, arg in call_args {
 		// When an argument has an active smartcast but the function parameter
@@ -2725,7 +2794,7 @@ fn (mut t Transformer) transform_call_expr(expr ast.CallExpr) ast.Expr {
 
 fn (mut t Transformer) transform_call_args_for_lhs(lhs ast.Expr, raw_args []ast.Expr) []ast.Expr {
 	call_args := t.lower_missing_call_args(lhs, raw_args)
-	fn_info := t.lookup_call_fn_info(lhs)
+	fn_info := t.call_fn_info_for_lhs(lhs)
 	mut args := []ast.Expr{cap: call_args.len}
 	for i, arg in call_args {
 		args << t.transform_call_arg_with_sumtype_check(arg, fn_info, i)
@@ -2735,10 +2804,153 @@ fn (mut t Transformer) transform_call_args_for_lhs(lhs ast.Expr, raw_args []ast.
 
 struct CallFnInfo {
 mut:
-	param_types    []types.Type
-	param_names    []string
-	generic_params []string
-	is_variadic    bool
+	param_types                    []types.Type
+	param_names                    []string
+	generic_param_names_by_param   []string
+	generic_param_indexes_by_param []int
+	generic_params                 []string
+	is_variadic                    bool
+}
+
+fn (t &Transformer) call_fn_info_for_lhs(lhs ast.Expr) ?CallFnInfo {
+	if base_name := t.generic_call_base_name(lhs) {
+		return t.generic_aware_call_fn_info(lhs, base_name)
+	}
+	return t.lookup_call_fn_info(lhs)
+}
+
+fn (t &Transformer) generic_aware_call_fn_info(lhs ast.Expr, base_name string) ?CallFnInfo {
+	mut info := t.lookup_call_fn_info(lhs) or {
+		decl_info := t.generic_call_info_for_decl(base_name) or { return none }
+		return t.drop_method_receiver_from_call_info(lhs, decl_info)
+	}
+	if decl_info := t.generic_call_info_for_decl(base_name) {
+		decl_call_info := t.drop_method_receiver_from_call_info(lhs, decl_info)
+		if info.generic_params.len == 0 {
+			info.generic_params = decl_call_info.generic_params.clone()
+		}
+		if info.generic_param_names_by_param.len == 0 {
+			info.generic_param_names_by_param = decl_call_info.generic_param_names_by_param.clone()
+		}
+		if info.generic_param_indexes_by_param.len == 0 {
+			info.generic_param_indexes_by_param =
+				decl_call_info.generic_param_indexes_by_param.clone()
+		}
+		if info.param_names.len == 0 {
+			info.param_names = decl_call_info.param_names.clone()
+		}
+		if info.param_types.len == 0 {
+			info.param_types = decl_call_info.param_types.clone()
+		}
+		if !info.is_variadic {
+			info.is_variadic = decl_call_info.is_variadic
+		}
+	}
+	return info
+}
+
+fn (t &Transformer) generic_call_info_for_decl(base_name string) ?CallFnInfo {
+	decl := t.generic_fn_decl_for_call_info(base_name) or { return none }
+	generic_params := decl_generic_param_names(decl)
+	if generic_params.len == 0 {
+		return none
+	}
+	mut param_types := []types.Type{}
+	mut param_names := []string{}
+	mut generic_param_names_by_param := []string{}
+	mut generic_param_indexes_by_param := []int{}
+	if decl.is_method {
+		generic_param_names_by_param << direct_generic_param_name_from_expr(decl.receiver.typ,
+			generic_params)
+		generic_param_indexes_by_param << direct_generic_param_index_from_expr(decl.receiver.typ,
+			generic_params)
+		if recv_type := t.type_from_param_type_expr(decl.receiver.typ, generic_params) {
+			param_types << recv_type
+			param_names << decl.receiver.name
+		}
+	}
+	for param in decl.typ.params {
+		generic_param_names_by_param << direct_generic_param_name_from_expr(param.typ,
+			generic_params)
+		generic_param_indexes_by_param << direct_generic_param_index_from_expr(param.typ,
+			generic_params)
+		if typ := t.type_from_param_type_expr(param.typ, generic_params) {
+			param_types << typ
+			param_names << param.name
+		}
+	}
+	return CallFnInfo{
+		param_types:                    param_types
+		param_names:                    param_names
+		generic_param_names_by_param:   generic_param_names_by_param
+		generic_param_indexes_by_param: generic_param_indexes_by_param
+		generic_params:                 generic_params
+		is_variadic:                    ast_params_are_variadic(decl.typ.params)
+	}
+}
+
+fn (t &Transformer) generic_fn_decl_for_call_info(base_name string) ?ast.FnDecl {
+	mut lookup_names := []string{}
+	mut name := base_name
+	bracket_pos := name.index_u8(`[`)
+	if bracket_pos > 0 {
+		name = name[..bracket_pos]
+	}
+	if name.contains('_T_') {
+		name = name.all_before('_T_')
+	} else if name.ends_with('_T') {
+		name = name[..name.len - 2]
+	}
+	append_unique_generic_lookup_name(mut lookup_names, name)
+	if name.contains('.') {
+		append_unique_generic_lookup_name(mut lookup_names, name.replace('.', '__'))
+	}
+	for lookup_name in lookup_names {
+		if decl := t.generic_fn_decl_index[lookup_name] {
+			return decl
+		}
+	}
+	return none
+}
+
+fn ast_params_are_variadic(params []ast.Parameter) bool {
+	if params.len == 0 {
+		return false
+	}
+	last_param := params[params.len - 1]
+	if last_param.typ is ast.PrefixExpr {
+		return last_param.typ.op == .ellipsis
+	}
+	return false
+}
+
+fn direct_generic_param_name_from_expr(expr ast.Expr, generic_params []string) string {
+	match expr {
+		ast.Ident {
+			if expr.name in generic_params {
+				return expr.name
+			}
+		}
+		ast.ModifierExpr {
+			return direct_generic_param_name_from_expr(expr.expr, generic_params)
+		}
+		else {}
+	}
+
+	return ''
+}
+
+fn direct_generic_param_index_from_expr(expr ast.Expr, generic_params []string) int {
+	name := direct_generic_param_name_from_expr(expr, generic_params)
+	if name == '' {
+		return -1
+	}
+	for i, generic_name in generic_params {
+		if generic_name == name {
+			return i
+		}
+	}
+	return -1
 }
 
 fn call_fn_info_from_fn_type(fn_type types.FnType) CallFnInfo {
@@ -2766,29 +2978,37 @@ fn generic_infer_unwrap_alias(t &Transformer, typ types.Type) types.Type {
 }
 
 fn (t &Transformer) infer_generic_type_from_call_arg(param_type types.Type, arg_type types.Type, generic_params []string, mut bindings map[string]types.Type) {
+	t.infer_generic_type_from_call_arg_with_depth(param_type, arg_type, generic_params, mut
+		bindings, 0)
+}
+
+fn (t &Transformer) infer_generic_type_from_call_arg_with_depth(param_type types.Type, arg_type types.Type, generic_params []string, mut bindings map[string]types.Type, depth int) {
 	if !types.type_has_valid_payload(param_type) || !types.type_has_valid_payload(arg_type) {
+		return
+	}
+	if depth > 32 {
 		return
 	}
 	match param_type {
 		types.Alias {
-			t.infer_generic_type_from_call_arg(param_type.base_type, arg_type, generic_params, mut
-				bindings)
+			t.infer_generic_type_from_call_arg_with_depth(param_type.base_type, arg_type,
+				generic_params, mut bindings, depth + 1)
 		}
 		types.Array {
 			arg_base := generic_infer_unwrap_alias(t, arg_type)
 			if arg_base is types.Array {
-				t.infer_generic_type_from_call_arg(param_type.elem_type, arg_base.elem_type,
-					generic_params, mut bindings)
+				t.infer_generic_type_from_call_arg_with_depth(param_type.elem_type,
+					arg_base.elem_type, generic_params, mut bindings, depth + 1)
 			}
 		}
 		types.ArrayFixed {
 			arg_base := generic_infer_unwrap_alias(t, arg_type)
 			if arg_base is types.ArrayFixed {
-				t.infer_generic_type_from_call_arg(param_type.elem_type, arg_base.elem_type,
-					generic_params, mut bindings)
+				t.infer_generic_type_from_call_arg_with_depth(param_type.elem_type,
+					arg_base.elem_type, generic_params, mut bindings, depth + 1)
 			} else if arg_base is types.Array {
-				t.infer_generic_type_from_call_arg(param_type.elem_type, arg_base.elem_type,
-					generic_params, mut bindings)
+				t.infer_generic_type_from_call_arg_with_depth(param_type.elem_type,
+					arg_base.elem_type, generic_params, mut bindings, depth + 1)
 			}
 		}
 		types.FnType {
@@ -2802,13 +3022,13 @@ fn (t &Transformer) infer_generic_type_from_call_arg(param_type types.Type, arg_
 					arg_types.len
 				}
 				for i in 0 .. max_params {
-					t.infer_generic_type_from_call_arg(param_types[i], arg_types[i],
-						generic_params, mut bindings)
+					t.infer_generic_type_from_call_arg_with_depth(param_types[i], arg_types[i],
+						generic_params, mut bindings, depth + 1)
 				}
 				if param_ret := param_type.get_return_type() {
 					if arg_ret := arg_base.get_return_type() {
-						t.infer_generic_type_from_call_arg(param_ret, arg_ret, generic_params, mut
-							bindings)
+						t.infer_generic_type_from_call_arg_with_depth(param_ret, arg_ret,
+							generic_params, mut bindings, depth + 1)
 					}
 				}
 			}
@@ -2816,10 +3036,10 @@ fn (t &Transformer) infer_generic_type_from_call_arg(param_type types.Type, arg_
 		types.Map {
 			arg_base := generic_infer_unwrap_alias(t, arg_type)
 			if arg_base is types.Map {
-				t.infer_generic_type_from_call_arg(param_type.key_type, arg_base.key_type,
-					generic_params, mut bindings)
-				t.infer_generic_type_from_call_arg(param_type.value_type, arg_base.value_type,
-					generic_params, mut bindings)
+				t.infer_generic_type_from_call_arg_with_depth(param_type.key_type,
+					arg_base.key_type, generic_params, mut bindings, depth + 1)
+				t.infer_generic_type_from_call_arg_with_depth(param_type.value_type,
+					arg_base.value_type, generic_params, mut bindings, depth + 1)
 			}
 		}
 		types.NamedType {
@@ -2831,31 +3051,41 @@ fn (t &Transformer) infer_generic_type_from_call_arg(param_type types.Type, arg_
 		types.OptionType {
 			arg_base := generic_infer_unwrap_alias(t, arg_type)
 			if arg_base is types.OptionType {
-				t.infer_generic_type_from_call_arg(param_type.base_type, arg_base.base_type,
-					generic_params, mut bindings)
+				t.infer_generic_type_from_call_arg_with_depth(param_type.base_type,
+					arg_base.base_type, generic_params, mut bindings, depth + 1)
 			} else {
-				t.infer_generic_type_from_call_arg(param_type.base_type, arg_type, generic_params, mut
-					bindings)
+				t.infer_generic_type_from_call_arg_with_depth(param_type.base_type, arg_type,
+					generic_params, mut bindings, depth + 1)
 			}
 		}
 		types.Pointer {
 			arg_base := generic_infer_unwrap_alias(t, arg_type)
 			if arg_base is types.Pointer {
-				t.infer_generic_type_from_call_arg(param_type.base_type, arg_base.base_type,
-					generic_params, mut bindings)
+				t.infer_generic_type_from_call_arg_with_depth(param_type.base_type,
+					arg_base.base_type, generic_params, mut bindings, depth + 1)
 			} else {
-				t.infer_generic_type_from_call_arg(param_type.base_type, arg_type, generic_params, mut
-					bindings)
+				t.infer_generic_type_from_call_arg_with_depth(param_type.base_type, arg_type,
+					generic_params, mut bindings, depth + 1)
 			}
 		}
 		types.ResultType {
 			arg_base := generic_infer_unwrap_alias(t, arg_type)
 			if arg_base is types.ResultType {
-				t.infer_generic_type_from_call_arg(param_type.base_type, arg_base.base_type,
-					generic_params, mut bindings)
+				t.infer_generic_type_from_call_arg_with_depth(param_type.base_type,
+					arg_base.base_type, generic_params, mut bindings, depth + 1)
 			} else {
-				t.infer_generic_type_from_call_arg(param_type.base_type, arg_type, generic_params, mut
-					bindings)
+				t.infer_generic_type_from_call_arg_with_depth(param_type.base_type, arg_type,
+					generic_params, mut bindings, depth + 1)
+			}
+		}
+		types.Struct {
+			arg_base := generic_infer_unwrap_alias(t, arg_type)
+			if arg_base is types.Struct {
+				for param_field in param_type.fields {
+					arg_field := struct_field_by_name(arg_base, param_field.name) or { continue }
+					t.infer_generic_type_from_call_arg_with_depth(param_field.typ, arg_field.typ,
+						generic_params, mut bindings, depth + 1)
+				}
 			}
 		}
 		types.Tuple {
@@ -2869,8 +3099,8 @@ fn (t &Transformer) infer_generic_type_from_call_arg(param_type types.Type, arg_
 					arg_types.len
 				}
 				for i in 0 .. max_types {
-					t.infer_generic_type_from_call_arg(param_types[i], arg_types[i],
-						generic_params, mut bindings)
+					t.infer_generic_type_from_call_arg_with_depth(param_types[i], arg_types[i],
+						generic_params, mut bindings, depth + 1)
 				}
 			}
 		}
@@ -2885,6 +3115,15 @@ fn (t &Transformer) call_arg_type_for_generic_infer(arg ast.Expr) ?types.Type {
 		arg
 	}
 	if base_arg is ast.Ident {
+		if ctx := t.find_smartcast_for_expr(base_arg.name) {
+			variant_type_name := if ctx.variant_full != '' { ctx.variant_full } else { ctx.variant }
+			if typ := t.c_name_to_type(variant_type_name) {
+				return typ
+			}
+		}
+		if typ := t.lookup_local_decl_type(base_arg.name) {
+			return typ
+		}
 		if typ := t.lookup_var_type(base_arg.name) {
 			return typ
 		}
@@ -2941,12 +3180,48 @@ fn (t &Transformer) generic_bindings_from_call_args(info CallFnInfo, call_args [
 		return none
 	}
 	mut bindings := map[string]types.Type{}
-	for i, param_type in info.param_types {
-		if i >= call_args.len {
+	for i, arg in call_args {
+		param_idx := i
+		if param_idx >= info.generic_param_indexes_by_param.len {
 			break
 		}
-		arg_type := t.call_arg_type_for_generic_infer(call_args[i]) or { continue }
-		t.infer_generic_type_from_call_arg(param_type, arg_type, info.generic_params, mut bindings)
+		generic_idx := info.generic_param_indexes_by_param[param_idx]
+		if generic_idx < 0 || generic_idx >= info.generic_params.len {
+			continue
+		}
+		generic_name := info.generic_params[generic_idx]
+		if generic_name in bindings {
+			continue
+		}
+		arg_type := t.call_arg_type_for_generic_infer(arg) or { continue }
+		bindings[generic_name] = arg_type
+	}
+	t.infer_generic_bindings_from_call_args(info.param_types, call_args, info.generic_params, 0, mut
+		bindings)
+	if bindings.len != info.generic_params.len && info.param_types.len > call_args.len {
+		mut tail_bindings := map[string]types.Type{}
+		param_offset := info.param_types.len - call_args.len
+		for i, arg in call_args {
+			param_idx := i + param_offset
+			if param_idx >= info.generic_param_indexes_by_param.len {
+				break
+			}
+			generic_idx := info.generic_param_indexes_by_param[param_idx]
+			if generic_idx < 0 || generic_idx >= info.generic_params.len {
+				continue
+			}
+			generic_name := info.generic_params[generic_idx]
+			if generic_name in tail_bindings {
+				continue
+			}
+			arg_type := t.call_arg_type_for_generic_infer(arg) or { continue }
+			tail_bindings[generic_name] = arg_type
+		}
+		t.infer_generic_bindings_from_call_args(info.param_types, call_args, info.generic_params,
+			param_offset, mut tail_bindings)
+		if tail_bindings.len > bindings.len {
+			bindings = tail_bindings.move()
+		}
 	}
 	for param_name in info.generic_params {
 		if param_name in bindings {
@@ -2960,6 +3235,21 @@ fn (t &Transformer) generic_bindings_from_call_args(info CallFnInfo, call_args [
 		return none
 	}
 	return bindings
+}
+
+fn (t &Transformer) infer_generic_bindings_from_call_args(param_types []types.Type, call_args []ast.Expr, generic_params []string, param_offset int, mut bindings map[string]types.Type) {
+	if param_offset < 0 {
+		return
+	}
+	for i, arg in call_args {
+		param_idx := i + param_offset
+		if param_idx >= param_types.len {
+			break
+		}
+		arg_type := t.call_arg_type_for_generic_infer(arg) or { continue }
+		t.infer_generic_type_from_call_arg(param_types[param_idx], arg_type, generic_params, mut
+			bindings)
+	}
 }
 
 fn (t &Transformer) drop_method_receiver_from_call_info(lhs ast.Expr, info CallFnInfo) CallFnInfo {
@@ -2980,20 +3270,32 @@ fn (t &Transformer) drop_method_receiver_from_call_info(lhs ast.Expr, info CallF
 	first_base := t.unwrap_alias_and_pointer_type(trimmed.param_types[0])
 	if recv_type := t.get_expr_type(sel.lhs) {
 		recv_base := t.unwrap_alias_and_pointer_type(recv_type)
-		if recv_base.name() != first_base.name() {
+		recv_name := recv_base.name()
+		first_name := first_base.name()
+		if !transformer_string_has_valid_data(recv_name)
+			|| !transformer_string_has_valid_data(first_name) || recv_name != first_name {
 			return trimmed
 		}
 	} else {
 		resolved := t.resolve_method_call_name(sel.lhs, sel.rhs.name) or { return trimmed }
 		recv_key := resolved.all_before_last('__')
-		if !method_receiver_type_matches_resolved_name(t.type_to_c_name(first_base), recv_key)
-			&& !method_receiver_type_matches_resolved_name(first_base.name(), recv_key) {
-			return trimmed
+		first_name := first_base.name()
+		if !method_receiver_type_matches_resolved_name(t.type_to_c_name(first_base), recv_key) {
+			if !transformer_string_has_valid_data(first_name)
+				|| !method_receiver_type_matches_resolved_name(first_name, recv_key) {
+				return trimmed
+			}
 		}
 	}
 	trimmed.param_types = trimmed.param_types[1..].clone()
 	if trimmed.param_names.len > 0 {
 		trimmed.param_names = trimmed.param_names[1..].clone()
+	}
+	if trimmed.generic_param_names_by_param.len > 0 {
+		trimmed.generic_param_names_by_param = trimmed.generic_param_names_by_param[1..].clone()
+	}
+	if trimmed.generic_param_indexes_by_param.len > 0 {
+		trimmed.generic_param_indexes_by_param = trimmed.generic_param_indexes_by_param[1..].clone()
 	}
 	return trimmed
 }
@@ -3131,10 +3433,11 @@ fn (t &Transformer) lookup_call_fn_info(lhs ast.Expr) ?CallFnInfo {
 			base_type := t.unwrap_alias_and_pointer_type(recv_type)
 			type_name := base_type.name()
 			mut lookup_names := []string{cap: 3}
-			lookup_names << type_name
-			if type_name.contains('__') {
-				lookup_names << type_name.all_after_last('__')
-			} else if t.cur_module != '' && t.cur_module != 'main' {
+			t.append_method_lookup_type_name(mut lookup_names, type_name)
+			if lookup_names.len == 0 {
+				return none
+			}
+			if !type_name.contains('__') && t.cur_module != '' && t.cur_module != 'main' {
 				lookup_names << '${t.cur_module}__${type_name}'
 			}
 			for name in lookup_names {
@@ -3167,7 +3470,7 @@ fn (t &Transformer) builtin_channel_call_fn_info(method_name string) ?CallFnInfo
 }
 
 fn (t &Transformer) lookup_call_param_types(lhs ast.Expr) []types.Type {
-	if info := t.lookup_call_fn_info(lhs) {
+	if info := t.call_fn_info_for_lhs(lhs) {
 		return info.param_types
 	}
 	return []types.Type{}
@@ -3177,6 +3480,9 @@ fn (t &Transformer) lookup_call_param_types(lhs ast.Expr) []types.Type {
 // name prefix used in method name mangling. For containers (array, map, string)
 // it returns the generic prefix; for named types it returns the qualified C name.
 fn (t &Transformer) receiver_type_to_c_prefix(typ types.Type) string {
+	if !transformer_type_has_safe_payload(typ) {
+		return ''
+	}
 	match typ {
 		types.Array, types.ArrayFixed {
 			return 'array'
@@ -3188,6 +3494,9 @@ fn (t &Transformer) receiver_type_to_c_prefix(typ types.Type) string {
 			return 'string'
 		}
 		types.Alias {
+			if !transformer_type_has_safe_payload(typ.base_type) {
+				return ''
+			}
 			// Check if alias over container
 			match typ.base_type {
 				types.Array, types.ArrayFixed {
@@ -3601,10 +3910,11 @@ fn (t &Transformer) resolve_method_call_name(receiver ast.Expr, method_name stri
 	// Build lookup names for method verification (same pattern as lookup_call_param_types)
 	type_name := base_type.name()
 	mut lookup_names := []string{cap: 5}
-	lookup_names << type_name
-	if type_name.contains('__') {
-		lookup_names << type_name.all_after_last('__')
-	} else if t.cur_module != '' && t.cur_module != 'main' {
+	t.append_method_lookup_type_name(mut lookup_names, type_name)
+	if lookup_names.len == 0 {
+		return none
+	}
+	if !type_name.contains('__') && t.cur_module != '' && t.cur_module != 'main' {
 		lookup_names << '${t.cur_module}__${type_name}'
 	}
 	// For container types ([]T, map, etc.), also try 'array'/'map'/'string' since
@@ -3760,7 +4070,7 @@ fn (t &Transformer) resolves_to_embedded_method(receiver ast.Expr, method_name s
 }
 
 fn (mut t Transformer) lower_missing_call_args(lhs ast.Expr, args []ast.Expr) []ast.Expr {
-	info := t.lookup_call_fn_info(lhs) or { return args }
+	info := t.call_fn_info_for_lhs(lhs) or { return args }
 	param_types := info.param_types
 	if param_types.len == 0 {
 		return args
@@ -3804,7 +4114,7 @@ fn (t &Transformer) lower_variadic_args(lhs ast.Expr, args []ast.Expr) []ast.Exp
 			return args
 		}
 	}
-	info := t.lookup_call_fn_info(lhs) or { return args }
+	info := t.call_fn_info_for_lhs(lhs) or { return args }
 	if !info.is_variadic || info.param_types.len == 0 {
 		return args
 	}
@@ -4586,7 +4896,7 @@ fn (mut t Transformer) transform_call_or_cast_expr(expr ast.CallOrCastExpr) ast.
 				call_args << expr.expr
 			}
 			call_args = t.lower_missing_call_args(expr.lhs, call_args)
-			coce_fn_info := t.lookup_call_fn_info(expr.lhs)
+			coce_fn_info := t.generic_aware_call_fn_info(expr.lhs, expr.lhs.name)
 			mut args := []ast.Expr{cap: call_args.len}
 			for i, arg in call_args {
 				args << t.transform_call_arg_with_sumtype_check(arg, coce_fn_info, i)
@@ -4648,7 +4958,7 @@ fn (mut t Transformer) transform_call_or_cast_expr(expr ast.CallOrCastExpr) ast.
 				call_args << expr.expr
 			}
 			call_args = t.lower_missing_call_args(expr.lhs, call_args)
-			fn_info := t.lookup_call_fn_info(expr.lhs)
+			fn_info := t.generic_aware_call_fn_info(expr.lhs, resolved_module_call_name)
 			mut args := []ast.Expr{cap: call_args.len}
 			for i, arg in call_args {
 				args << t.transform_call_arg_with_sumtype_check(arg, fn_info, i)
@@ -4674,7 +4984,7 @@ fn (mut t Transformer) transform_call_or_cast_expr(expr ast.CallOrCastExpr) ast.
 				call_args << expr.expr
 			}
 			call_args = t.lower_missing_call_args(expr.lhs, call_args)
-			fn_info := t.lookup_call_fn_info(expr.lhs)
+			fn_info := t.generic_aware_call_fn_info(expr.lhs, resolved_static)
 			mut args := []ast.Expr{cap: call_args.len}
 			for i, arg in call_args {
 				args << t.transform_call_arg_with_sumtype_check(arg, fn_info, i)
@@ -4759,7 +5069,7 @@ fn (mut t Transformer) transform_call_or_cast_expr(expr ast.CallOrCastExpr) ast.
 					call_args << expr.expr
 				}
 				call_args = t.lower_missing_call_args(expr.lhs, call_args)
-				coce_method_fn_info := t.lookup_call_fn_info(expr.lhs)
+				coce_method_fn_info := t.generic_aware_call_fn_info(expr.lhs, resolved)
 				mut transformed_call_args := []ast.Expr{cap: call_args.len}
 				for i, arg in call_args {
 					transformed_call_args << t.transform_call_arg_with_sumtype_check(arg,
@@ -4934,7 +5244,7 @@ fn (mut t Transformer) transform_call_or_cast_expr(expr ast.CallOrCastExpr) ast.
 			call_args << expr.expr
 		}
 		call_args = t.lower_missing_call_args(expr.lhs, call_args)
-		default_fn_info := t.lookup_call_fn_info(expr.lhs)
+		default_fn_info := t.call_fn_info_for_lhs(expr.lhs)
 		mut args := []ast.Expr{cap: call_args.len}
 		for i, arg in call_args {
 			args << t.transform_call_arg_with_sumtype_check(arg, default_fn_info, i)
@@ -5060,8 +5370,11 @@ fn (t &Transformer) is_flag_enum_receiver(receiver ast.Expr, inferred string) bo
 	// Selector receivers (obj.field) are often more reliably typed through field
 	// lookup than position-based env types.
 	if receiver is ast.SelectorExpr {
-		field_type := t.infer_expr_type(receiver)
-		if field_type != '' && !t.is_flag_enum(field_type) {
+		if field_type := t.get_struct_field_type(receiver) {
+			base := t.unwrap_alias_and_pointer_type(field_type)
+			if base is types.Enum {
+				return base.is_flag
+			}
 			return false
 		}
 	}

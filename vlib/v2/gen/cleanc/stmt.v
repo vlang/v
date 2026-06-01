@@ -27,8 +27,7 @@ fn (mut g Gen) set_file_module(file ast.File) {
 			return
 		}
 	}
-	// Files without a module declaration are in the 'main' module
-	g.cur_module = 'main'
+	g.cur_module = if file.mod != '' { file.mod.replace('.', '_') } else { 'main' }
 }
 
 fn (mut g Gen) gen_stmts(stmts []ast.Stmt) {

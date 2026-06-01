@@ -54,6 +54,7 @@ fn test_worker_clone_owns_mutable_maps() {
 	prefs := &vpref.Preferences{}
 	env := types.Environment.new()
 	mut transformer := Transformer.new_with_pref(env, prefs)
+	transformer.synth_pos_counter = -73
 	scope := types.new_scope(unsafe { nil })
 	transformer.elided_fns = {
 		'main__skipped': true
@@ -70,6 +71,7 @@ fn test_worker_clone_owns_mutable_maps() {
 	}
 
 	mut worker := transformer.new_worker_clone(1)
+	assert worker.next_synth_pos().id == -100073
 	worker.elided_fns['main__worker_skipped'] = true
 	worker.cached_scopes['worker'] = scope
 	worker.cached_fn_scopes['main__worker'] = scope
@@ -191,6 +193,82 @@ fn test_sort_selector_path_after_root_keeps_nested_fields() {
 	assert path.len == 2
 	assert path[0] == 'path'
 	assert path[1] == 'len'
+}
+
+fn test_get_expr_type_selector_prefers_struct_field_over_stale_pos_type() {
+	mut env := types.Environment.new()
+	env.set_expr_type(91, types.string_)
+	value_kind_type := types.Type(types.Enum{
+		name: 'json2__ValueKind'
+	})
+	value_info_type := types.Type(types.Struct{
+		name:   'json2__ValueInfo'
+		fields: [
+			types.Field{
+				name: 'value_kind'
+				typ:  value_kind_type
+			},
+		]
+	})
+	mut scope := types.new_scope(unsafe { nil })
+	scope.insert('struct_info', value_object_from_type(value_info_type))
+	mut t := Transformer{
+		pref:             &vpref.Preferences{}
+		env:              unsafe { env }
+		scope:            scope
+		local_decl_types: map[string]types.Type{}
+	}
+	typ := t.get_expr_type(ast.SelectorExpr{
+		lhs: ast.Ident{
+			name: 'struct_info'
+		}
+		rhs: ast.Ident{
+			name: 'value_kind'
+		}
+		pos: token.Pos{
+			id: 91
+		}
+	}) or { panic('missing selector type') }
+	assert typ is types.Enum
+	assert (typ as types.Enum).name == 'json2__ValueKind'
+}
+
+fn test_get_expr_type_selector_prefers_struct_field_over_stale_synth_type() {
+	value_kind_type := types.Type(types.Enum{
+		name: 'json2__ValueKind'
+	})
+	value_info_type := types.Type(types.Struct{
+		name:   'json2__ValueInfo'
+		fields: [
+			types.Field{
+				name: 'value_kind'
+				typ:  value_kind_type
+			},
+		]
+	})
+	mut scope := types.new_scope(unsafe { nil })
+	scope.insert('struct_info', value_object_from_type(value_info_type))
+	mut t := Transformer{
+		pref:             &vpref.Preferences{}
+		env:              unsafe { types.Environment.new() }
+		scope:            scope
+		local_decl_types: map[string]types.Type{}
+	}
+	pos := token.Pos{
+		id: 92
+	}
+	t.register_synth_type(pos, types.Type(types.string_))
+	typ := t.get_expr_type(ast.SelectorExpr{
+		lhs: ast.Ident{
+			name: 'struct_info'
+		}
+		rhs: ast.Ident{
+			name: 'value_kind'
+		}
+		pos: pos
+	}) or { panic('missing selector type') }
+	assert typ is types.Enum
+	assert (typ as types.Enum).name == 'json2__ValueKind'
 }
 
 fn collect_call_names_from_stmt(stmt ast.Stmt, mut names []string) {
@@ -412,6 +490,153 @@ fn call_names_for_fn(files []ast.File, fn_name string) []string {
 		}
 	}
 	return names
+}
+
+fn test_transform_generic_call_uses_sumtype_match_smartcast_for_inference() {
+	files := transform_code_for_test('
+struct Point {
+	x int
+}
+
+type Primitive = []int | []string | []Point | bool | int | string | Point
+
+fn wrap_first[T](values []T) Primitive {
+	return Primitive(values[0])
+}
+
+fn check(value Primitive) {
+	match value {
+		[]int {
+			_ := wrap_first(value)
+		}
+		[]string {
+			_ := wrap_first(value)
+		}
+		[]Point {
+			_ := wrap_first(value)
+		}
+		else {}
+	}
+}
+')
+	names := call_names_for_fn(files, 'check')
+	assert 'wrap_first_T_int' in names
+	assert 'wrap_first_T_string' in names
+	assert 'wrap_first_T_Point' in names
+	assert 'wrap_first' !in names
+}
+
+fn test_transform_generic_receiver_methods_use_concrete_specializations() {
+	files := transform_code_for_test('
+struct ValueInfo {
+	x int
+}
+
+struct Node[T] {
+mut:
+	value T
+	next  &Node[T] = unsafe { nil }
+}
+
+struct LinkedList[T] {
+mut:
+	head &Node[T] = unsafe { nil }
+	tail &Node[T] = unsafe { nil }
+	len  int
+}
+
+fn (mut list LinkedList[T]) push(value T) {
+	_ = value
+}
+
+fn (list &LinkedList[T]) last() &T {
+	return &list.tail.value
+}
+
+struct Decoder {
+mut:
+	values_info LinkedList[ValueInfo]
+}
+
+fn (mut checker Decoder) check() {
+	checker.values_info.push(ValueInfo{})
+	_ = checker.values_info.last()
+}
+')
+	names := call_names_for_fn(files, 'check')
+	assert names.any(it.contains('LinkedList__push_T_') && it.contains('ValueInfo')), 'expected specialized push call, got ${names}'
+
+	assert names.any(it.contains('LinkedList__last_T_') && it.contains('ValueInfo')), 'expected specialized last call, got ${names}'
+
+	assert 'LinkedList__push' !in names
+	assert 'LinkedList__last' !in names
+}
+
+fn test_decl_assign_rune_arithmetic_keeps_rune_storage_type() {
+	mut t := create_transformer_with_vars({
+		'unicode_point':  types.builtin_type('rune') or { rune_type() }
+		'unicode_point2': types.builtin_type('rune') or { rune_type() }
+	})
+	mut env := types.Environment.new()
+	env.set_expr_type(93, types.Type(types.int_))
+	env.set_expr_type(94, types.Type(types.int_))
+	env.set_expr_type(95, types.Type(types.int_))
+	t.env = unsafe { env }
+	lhs := ast.Expr(ast.Ident{
+		name: 'final_unicode_point'
+		pos:  token.Pos{
+			id: 93
+		}
+	})
+	cast_rhs := ast.Expr(ast.CastExpr{
+		typ:  ast.Expr(ast.Ident{
+			name: 'rune'
+		})
+		expr: ast.Expr(ast.BasicLiteral{
+			kind:  .number
+			value: '0'
+		})
+	})
+	cast_typ := t.decl_assign_storage_type(lhs, cast_rhs) or { panic('missing cast type') }
+	assert cast_typ is types.Rune
+	rhs := ast.Expr(ast.InfixExpr{
+		op:  .plus
+		lhs: ast.Expr(ast.InfixExpr{
+			op:  .amp
+			lhs: ast.Expr(ast.Ident{
+				name: 'unicode_point2'
+				pos:  token.Pos{
+					id: 94
+				}
+			})
+			rhs: ast.Expr(ast.BasicLiteral{
+				kind:  .number
+				value: '0x3FF'
+			})
+		})
+		rhs: ast.Expr(ast.InfixExpr{
+			op:  .left_shift
+			lhs: ast.Expr(ast.InfixExpr{
+				op:  .amp
+				lhs: ast.Expr(ast.Ident{
+					name: 'unicode_point'
+					pos:  token.Pos{
+						id: 95
+					}
+				})
+				rhs: ast.Expr(ast.BasicLiteral{
+					kind:  .number
+					value: '0x3FF'
+				})
+			})
+			rhs: ast.Expr(ast.BasicLiteral{
+				kind:  .number
+				value: '10'
+			})
+		})
+	})
+	typ := t.decl_assign_storage_type(lhs, rhs) or { panic('missing rune arithmetic type') }
+	assert typ is types.Rune
 }
 
 fn test_runtime_const_init_main_calls_run_main_consts_after_module_inits() {
@@ -4108,6 +4333,18 @@ fn test_generate_array_method_elem_expr_registers_elem_type() {
 	assert t.type_to_c_name(elem_type) == 'string'
 }
 
+fn test_type_to_c_decl_name_preserves_float_primitives() {
+	t := create_test_transformer()
+	assert t.type_to_c_decl_name(types.Type(types.Primitive{
+		props: .float
+		size:  32
+	})) == 'f32'
+	assert t.type_to_c_decl_name(types.Type(types.f64_)) == 'f64'
+	assert t.type_to_c_decl_name(types.Type(types.Pointer{
+		base_type: types.Type(types.f64_)
+	})) == 'f64*'
+}
+
 fn test_resolve_expr_with_expected_type_resolves_enum_shorthand() {
 	mut t := create_test_transformer()
 	resolved := t.resolve_expr_with_expected_type(ast.Expr(ast.SelectorExpr{
@@ -5016,6 +5253,334 @@ fn f(groups [][]string) []int {
 				assert value_assign.rhs[0] is ast.IndexExpr
 				index_expr := value_assign.rhs[0] as ast.IndexExpr
 				assert index_expr.lhs !is ast.CastExpr
+				found = true
+			}
+		}
+	}
+	assert found
+}
+
+fn test_transform_for_in_prefers_scope_iter_type_over_position_type() {
+	mut env := types.Environment.new()
+	iter_pos := token.Pos{
+		id: 42
+	}
+	env.set_expr_type(iter_pos.id, types.Type(types.Array{
+		elem_type: types.Type(types.int_)
+	}))
+	mut scope := types.new_scope(unsafe { nil })
+	scope.insert('s', value_object_from_type(types.Type(types.string_)))
+	mut t := &Transformer{
+		pref:                        &vpref.Preferences{}
+		env:                         env
+		scope:                       scope
+		needed_clone_fns:            map[string]string{}
+		needed_array_contains_fns:   map[string]ArrayMethodInfo{}
+		needed_array_index_fns:      map[string]ArrayMethodInfo{}
+		needed_array_last_index_fns: map[string]ArrayMethodInfo{}
+		local_decl_types:            map[string]types.Type{}
+	}
+	result := t.transform_for_stmt(ast.ForStmt{
+		init: ast.Stmt(ast.ForInStmt{
+			value: ast.Expr(ast.Ident{
+				name: 'ch'
+			})
+			expr:  ast.Expr(ast.ParenExpr{
+				expr: ast.Expr(ast.Ident{
+					name: 's'
+					pos:  iter_pos
+				})
+			})
+		})
+	})
+	assert result.stmts.len > 0
+	assert result.stmts[0] is ast.AssignStmt
+	value_assign := result.stmts[0] as ast.AssignStmt
+	assert value_assign.rhs.len == 1
+	assert value_assign.rhs[0] is ast.IndexExpr
+	index_expr := value_assign.rhs[0] as ast.IndexExpr
+	mut index_lhs := index_expr.lhs
+	for _ in 0 .. 4 {
+		if index_lhs is ast.ParenExpr {
+			index_lhs = index_lhs.expr
+			continue
+		}
+		break
+	}
+	assert index_lhs is ast.Ident
+	assert (index_lhs as ast.Ident).name == 's'
+}
+
+fn test_transform_for_in_fixed_array_value_uses_array_index() {
+	files := transform_code_for_test('
+fn f(pairs [][2]int) []int {
+	mut out := []int{}
+	for pair in pairs {
+		out << pair[1]
+	}
+	return out
+}
+')
+	mut found := false
+	for file in files {
+		for stmt in file.stmts {
+			if stmt is ast.FnDecl && stmt.name == 'f' {
+				assert stmt.stmts.len >= 2
+				assert stmt.stmts[1] is ast.ForStmt
+				for_stmt := stmt.stmts[1] as ast.ForStmt
+				assert for_stmt.stmts.len > 0
+				assert for_stmt.stmts[0] is ast.AssignStmt
+				value_assign := for_stmt.stmts[0] as ast.AssignStmt
+				assert value_assign.lhs.len == 1
+				assert value_assign.lhs[0] is ast.Ident
+				assert (value_assign.lhs[0] as ast.Ident).name == 'pair'
+				assert value_assign.rhs.len == 1
+				assert value_assign.rhs[0] is ast.IndexExpr
+				index_expr := value_assign.rhs[0] as ast.IndexExpr
+				assert index_expr.lhs !is ast.CastExpr
+				found = true
+			}
+		}
+	}
+	assert found
+}
+
+fn test_transform_for_in_struct_value_uses_typed_array_index() {
+	files := transform_code_for_test('
+struct Field {
+	typ int
+}
+
+fn f(fields []Field) int {
+	mut out := 0
+	for field in fields {
+		out += field.typ
+	}
+	return out
+}
+')
+	mut found := false
+	for file in files {
+		for stmt in file.stmts {
+			if stmt is ast.FnDecl && stmt.name == 'f' {
+				assert stmt.stmts.len >= 2
+				assert stmt.stmts[1] is ast.ForStmt
+				for_stmt := stmt.stmts[1] as ast.ForStmt
+				assert for_stmt.stmts.len > 0
+				assert for_stmt.stmts[0] is ast.AssignStmt
+				value_assign := for_stmt.stmts[0] as ast.AssignStmt
+				assert value_assign.lhs.len == 1
+				assert value_assign.lhs[0] is ast.Ident
+				assert (value_assign.lhs[0] as ast.Ident).name == 'field'
+				assert value_assign.rhs.len == 1
+				assert value_assign.rhs[0] is ast.IndexExpr
+				index_expr := value_assign.rhs[0] as ast.IndexExpr
+				assert index_expr.lhs !is ast.CastExpr
+				found = true
+			}
+		}
+	}
+	assert found
+}
+
+fn test_transform_for_in_smartcast_variant_array_field_keeps_element_type() {
+	field_type := types.Type(types.Struct{
+		name:   'Field'
+		fields: [
+			types.Field{
+				name: 'name'
+				typ:  types.Type(types.string_)
+			},
+		]
+	})
+	enum_type := types.Type(types.Struct{
+		name:   'Enum'
+		fields: [
+			types.Field{
+				name: 'fields'
+				typ:  types.Type(types.Array{
+					elem_type: field_type
+				})
+			},
+		]
+	})
+	sum_type := types.Type(types.SumType{
+		name:     'Type'
+		variants: [enum_type]
+	})
+	mut local_scope := types.new_scope(unsafe { nil })
+	local_scope.insert('typ', value_object_from_type(sum_type))
+	mut module_scope := types.new_scope(unsafe { nil })
+	module_scope.insert_type('Enum', enum_type)
+	module_scope.insert_type('Type', sum_type)
+	mut t := create_test_transformer()
+	t.scope = local_scope
+	t.cur_module = 'main'
+	t.cached_scopes = {
+		'main': module_scope
+	}
+	t.push_smartcast_full('typ', 'Enum', 'Enum', 'Type')
+	result := t.transform_for_stmt(ast.ForStmt{
+		init: ast.Stmt(ast.ForInStmt{
+			value: ast.Expr(ast.Ident{
+				name: 'field'
+			})
+			expr:  ast.Expr(ast.SelectorExpr{
+				lhs: ast.Expr(ast.Ident{
+					name: 'typ'
+				})
+				rhs: ast.Ident{
+					name: 'fields'
+				}
+			})
+		})
+	})
+	assert result.stmts.len > 0
+	assert result.stmts[0] is ast.AssignStmt
+	value_assign := result.stmts[0] as ast.AssignStmt
+	assert value_assign.lhs.len == 1
+	assert value_assign.lhs[0] is ast.Ident
+	value_ident := value_assign.lhs[0] as ast.Ident
+	value_typ := t.get_synth_type(value_ident.pos) or {
+		panic('missing smartcast for-in value type')
+	}
+	assert value_typ.name() == 'Field'
+	assert value_assign.rhs.len == 1
+	assert value_assign.rhs[0] is ast.IndexExpr
+	index_expr := value_assign.rhs[0] as ast.IndexExpr
+	index_typ := t.get_synth_type(index_expr.pos) or {
+		panic('missing smartcast for-in index type')
+	}
+	assert index_typ.name() == 'Field'
+}
+
+fn test_transform_for_in_nested_fixed_array_value_registers_decl_type() {
+	elem_type := types.Type(types.ArrayFixed{
+		len:       3
+		elem_type: types.Type(types.f32_)
+	})
+	iter_type := types.Type(types.ArrayFixed{
+		len:       4
+		elem_type: elem_type
+	})
+	mut t := create_transformer_with_vars({
+		'corners': iter_type
+	})
+	result := t.transform_for_stmt(ast.ForStmt{
+		init:  ast.Stmt(ast.ForInStmt{
+			value: ast.Expr(ast.Ident{
+				name: 'c'
+			})
+			expr:  ast.Expr(ast.Ident{
+				name: 'corners'
+			})
+		})
+		stmts: [
+			ast.Stmt(ast.ExprStmt{
+				expr: ast.Expr(ast.IndexExpr{
+					lhs:  ast.Expr(ast.Ident{
+						name: 'c'
+					})
+					expr: ast.Expr(ast.BasicLiteral{
+						kind:  .number
+						value: '0'
+					})
+				})
+			}),
+		]
+	})
+	assert result.stmts.len > 0
+	assert result.stmts[0] is ast.AssignStmt
+	value_assign := result.stmts[0] as ast.AssignStmt
+	assert value_assign.lhs.len == 1
+	assert value_assign.lhs[0] is ast.Ident
+	value_ident := value_assign.lhs[0] as ast.Ident
+	assert value_ident.name == 'c'
+	assert value_ident.pos.id != 0
+	value_decl_type := t.get_synth_type(value_ident.pos) or {
+		assert false, 'missing for-in value declaration type'
+		return
+	}
+	assert value_decl_type == elem_type
+}
+
+fn test_transform_fixed_array_of_array_literals_keeps_inner_arrays_dynamic() {
+	env, files := transform_code_with_env_for_test('
+fn f() {
+	corners := [[f32(1), 2, 3], [f32(4), 5, 6]]!
+	for c in corners {
+		_ = c[0]
+	}
+}
+')
+	mut found_decl := false
+	mut found_loop := false
+	for file in files {
+		for stmt in file.stmts {
+			if stmt is ast.FnDecl && stmt.name == 'f' {
+				assert stmt.stmts.len >= 2
+				assert stmt.stmts[0] is ast.AssignStmt
+				corners_decl := stmt.stmts[0] as ast.AssignStmt
+				assert corners_decl.rhs.len == 1
+				assert corners_decl.rhs[0] is ast.ArrayInitExpr
+				corners_init := corners_decl.rhs[0] as ast.ArrayInitExpr
+				assert corners_init.typ is ast.Type
+				assert corners_init.typ as ast.Type is ast.ArrayFixedType
+				corners_type := corners_init.typ as ast.Type
+				fixed_type := corners_type as ast.ArrayFixedType
+				assert fixed_type.elem_type is ast.Type
+				assert fixed_type.elem_type as ast.Type is ast.ArrayType
+				assert corners_init.exprs.len == 2
+				assert corners_init.exprs[0] is ast.CallExpr
+				assert corners_init.exprs[1] is ast.CallExpr
+				found_decl = true
+
+				assert stmt.stmts[1] is ast.ForStmt
+				for_stmt := stmt.stmts[1] as ast.ForStmt
+				assert for_stmt.stmts.len > 0
+				assert for_stmt.stmts[0] is ast.AssignStmt
+				value_assign := for_stmt.stmts[0] as ast.AssignStmt
+				assert value_assign.lhs.len == 1
+				assert value_assign.lhs[0] is ast.Ident
+				value_ident := value_assign.lhs[0] as ast.Ident
+				value_type := env.get_expr_type(value_ident.pos.id) or {
+					assert false, 'missing loop value type'
+					return
+				}
+				assert value_type is types.Array
+				found_loop = true
+			}
+		}
+	}
+	assert found_decl
+	assert found_loop
+}
+
+fn test_transform_for_in_mixed_float_array_uses_float_data_cast() {
+	files := transform_code_for_test('
+fn f() {
+	for _, i in [8.0, 1000, 175_616] {
+		_ = i
+	}
+}
+')
+	mut found := false
+	for file in files {
+		for stmt in file.stmts {
+			if stmt is ast.FnDecl && stmt.name == 'f' {
+				assert stmt.stmts.len == 1
+				assert stmt.stmts[0] is ast.ForStmt
+				for_stmt := stmt.stmts[0] as ast.ForStmt
+				assert for_stmt.stmts.len > 0
+				assert for_stmt.stmts[0] is ast.AssignStmt
+				value_assign := for_stmt.stmts[0] as ast.AssignStmt
+				assert value_assign.rhs.len == 1
+				assert value_assign.rhs[0] is ast.IndexExpr
+				index_expr := value_assign.rhs[0] as ast.IndexExpr
+				assert index_expr.lhs is ast.CastExpr
+				cast_expr := index_expr.lhs as ast.CastExpr
+				assert cast_expr.typ is ast.Ident
+				assert (cast_expr.typ as ast.Ident).name == 'f64*'
 				found = true
 			}
 		}

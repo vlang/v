@@ -365,10 +365,13 @@ fn (mut t Transformer) collect_generic_scan_decl_assign_types(stmt ast.AssignStm
 	rhs := stmt.rhs[0]
 	if decl_type := t.decl_assign_storage_type(stmt.lhs[0], rhs) {
 		t.remember_local_decl_type(lhs_name, decl_type)
+		t.register_local_var_type(lhs_name, decl_type)
 	}
 	if rhs_type := t.fn_pointer_call_return_type(rhs) {
 		t.register_temp_var(lhs_name, rhs_type)
 	} else if rhs_type := t.smartcast_type_for_expr(rhs) {
+		t.register_local_var_type(lhs_name, rhs_type)
+	} else if rhs_type := t.rune_arithmetic_expr_type(rhs) {
 		t.register_local_var_type(lhs_name, rhs_type)
 	} else if rhs is ast.ArrayInitExpr {
 		if rhs_type := t.get_array_init_expr_type(rhs) {
@@ -479,13 +482,7 @@ fn (mut t Transformer) collect_generic_call_specs_in_expr(expr ast.Expr) {
 			}
 		}
 		ast.MatchExpr {
-			t.collect_generic_call_specs_in_expr(expr.expr)
-			for branch in expr.branches {
-				for cond in branch.cond {
-					t.collect_generic_call_specs_in_expr(cond)
-				}
-				t.collect_generic_call_specs_in_stmts(branch.stmts)
-			}
+			t.collect_generic_call_specs_in_match_expr(expr)
 		}
 		ast.ModifierExpr {
 			t.collect_generic_call_specs_in_expr(expr.expr)
@@ -534,6 +531,135 @@ fn (mut t Transformer) collect_generic_call_specs_in_expr(expr ast.Expr) {
 		}
 		else {}
 	}
+}
+
+fn (mut t Transformer) collect_generic_call_specs_in_match_expr(expr ast.MatchExpr) {
+	t.collect_generic_call_specs_in_expr(expr.expr)
+	smartcast_expr := t.expr_to_string(expr.expr)
+	mut sumtype_name := t.get_sumtype_name_for_expr(expr.expr)
+	if sumtype_name != '' && expr.branches.len > 0 {
+		first_branch := expr.branches[0]
+		if first_branch.cond.len > 0 {
+			first_cond := first_branch.cond[0]
+			if first_cond is ast.BasicLiteral || first_cond is ast.StringLiteral
+				|| first_cond is ast.StringInterLiteral {
+				sumtype_name = ''
+			}
+		}
+	}
+	for branch in expr.branches {
+		for cond in branch.cond {
+			t.collect_generic_call_specs_in_expr(cond)
+		}
+		if sumtype_name == '' || branch.cond.len == 0 {
+			t.collect_generic_call_specs_in_stmts(branch.stmts)
+			continue
+		}
+		ctxs := t.generic_match_smartcast_contexts(smartcast_expr, sumtype_name, branch.cond)
+		if ctxs.len == 0 {
+			t.collect_generic_call_specs_in_stmts(branch.stmts)
+			continue
+		}
+		stack_before := t.smartcast_stack.clone()
+		counts_before := t.smartcast_expr_counts.clone()
+		for ctx in ctxs {
+			t.smartcast_stack = stack_before.clone()
+			t.smartcast_expr_counts = counts_before.clone()
+			t.push_smartcast_ctx(ctx)
+			t.collect_generic_call_specs_in_stmts(branch.stmts)
+		}
+		t.smartcast_stack = stack_before.clone()
+		t.smartcast_expr_counts = counts_before.clone()
+	}
+}
+
+fn (t &Transformer) generic_match_smartcast_contexts(smartcast_expr string, sumtype_name string, conds []ast.Expr) []SmartcastContext {
+	if smartcast_expr == '' {
+		return []SmartcastContext{}
+	}
+	variants := t.get_sum_type_variants(sumtype_name)
+	if variants.len == 0 {
+		return []SmartcastContext{}
+	}
+	mut ctxs := []SmartcastContext{cap: conds.len}
+	for cond in conds {
+		mut c_variant_name := ''
+		mut c_variant_name_full := ''
+		mut c_variant_module := ''
+		if cond is ast.Ident {
+			c_variant_name = cond.name
+			c_variant_name_full = if t.cur_module != '' && t.cur_module != 'main'
+				&& t.cur_module != 'builtin'
+				&& cond.name !in ['int', 'i8', 'i16', 'i32', 'i64', 'u8', 'u16', 'u32', 'u64', 'byte', 'rune', 'f32', 'f64', 'usize', 'isize', 'bool', 'string', 'voidptr', 'charptr', 'byteptr'] {
+				'${t.cur_module}__${cond.name}'
+			} else {
+				cond.name
+			}
+		} else if cond is ast.SelectorExpr {
+			c_variant_name = cond.rhs.name
+			if cond.lhs is ast.Ident {
+				c_variant_module = (cond.lhs as ast.Ident).name
+				c_variant_name_full = '${c_variant_module}__${cond.rhs.name}'
+			} else {
+				c_variant_name_full = cond.rhs.name
+			}
+		} else if cond is ast.Type {
+			c_variant_name = t.type_variant_name(cond)
+			c_variant_name_full = t.type_variant_name_full(cond)
+		}
+		if c_variant_name == '' {
+			return []SmartcastContext{}
+		}
+		qualified_variant := if c_variant_module != '' && !c_variant_name.starts_with('Array_')
+			&& !c_variant_name.starts_with('Map_') {
+			'${c_variant_module}__${c_variant_name}'
+		} else {
+			c_variant_name
+		}
+		qualified_variant_full := if c_variant_name_full != ''
+			&& c_variant_name_full != c_variant_name {
+			c_variant_name_full
+		} else if c_variant_module != '' {
+			'${c_variant_module}__${c_variant_name}'
+		} else {
+			c_variant_name
+		}
+		if !match_cond_variant_matches_sumtype(sumtype_name, variants, c_variant_name,
+			qualified_variant) {
+			return []SmartcastContext{}
+		}
+		ctxs << SmartcastContext{
+			expr:         smartcast_expr
+			variant:      qualified_variant
+			variant_full: qualified_variant_full
+			sumtype:      t.qualify_type_name(sumtype_name)
+		}
+	}
+	return ctxs
+}
+
+fn match_cond_variant_matches_sumtype(sumtype_name string, variants []string, variant_name string, qualified_variant string) bool {
+	for variant in variants {
+		if sum_type_variant_matches_for_sumtype(sumtype_name, variant, qualified_variant) {
+			return true
+		}
+		if variant_name.starts_with('Array_') && variant.starts_with('[]') {
+			c_elem := variant_name[6..]
+			v_elem := variant[2..]
+			c_elem_short := if c_elem.contains('__') { c_elem.all_after_last('__') } else { c_elem }
+			v_elem_short := if v_elem.contains('__') { v_elem.all_after_last('__') } else { v_elem }
+			if c_elem == v_elem || c_elem_short == v_elem_short {
+				return true
+			}
+		}
+		if variant_name.starts_with('Array_fixed_') && variant.starts_with('[') {
+			return true
+		}
+		if variant_name.starts_with('Map_') && variant.starts_with('map[') {
+			return true
+		}
+	}
+	return false
 }
 
 fn (mut t Transformer) collect_generic_call_specs_in_type(typ ast.Type) {
@@ -588,25 +714,25 @@ fn (mut t Transformer) collect_generic_call_spec_for_call(lhs ast.Expr, raw_args
 		return
 	}
 	if lhs is ast.Ident {
-		info := t.lookup_call_fn_info(lhs) or { return }
+		info := t.generic_aware_call_fn_info(lhs, lhs.name) or { return }
 		t.register_inferred_generic_call_spec(lhs.name, info, raw_args)
 		return
 	}
 	if lhs is ast.SelectorExpr {
 		if resolved_static := t.resolve_static_type_method_call(lhs.lhs, lhs.rhs.name) {
-			info := t.lookup_call_fn_info(lhs) or { return }
+			info := t.generic_aware_call_fn_info(lhs, resolved_static) or { return }
 			t.register_inferred_generic_call_spec(resolved_static, info, raw_args)
 			return
 		}
 		if lhs.lhs is ast.Ident && t.is_module_ident(lhs.lhs.name) {
 			mod_name := lhs.lhs.name
 			base_name := '${mod_name}__${lhs.rhs.name}'
-			info := t.lookup_call_fn_info(lhs) or { return }
+			info := t.generic_aware_call_fn_info(lhs, base_name) or { return }
 			t.register_inferred_generic_call_spec(base_name, info, raw_args)
 			return
 		}
 		if resolved_method := t.resolve_method_call_name(lhs.lhs, lhs.rhs.name) {
-			info := t.lookup_call_fn_info(lhs) or { CallFnInfo{} }
+			info := t.generic_aware_call_fn_info(lhs, resolved_method) or { CallFnInfo{} }
 			t.register_inferred_generic_call_spec(resolved_method, info, raw_args)
 			t.register_receiver_generic_method_call_spec(resolved_method, lhs.lhs, info, raw_args)
 		}
@@ -614,13 +740,13 @@ fn (mut t Transformer) collect_generic_call_spec_for_call(lhs ast.Expr, raw_args
 }
 
 fn (mut t Transformer) collect_explicit_generic_call_spec(lhs ast.Expr, type_args []ast.Expr, raw_args []ast.Expr) {
-	info := t.lookup_call_fn_info(ast.Expr(ast.GenericArgs{
+	base_name := t.generic_call_base_name(lhs) or { return }
+	info := t.generic_aware_call_fn_info(ast.Expr(ast.GenericArgs{
 		lhs:  lhs
 		args: type_args
-	})) or { t.lookup_call_fn_info(lhs) or { return } }
+	}), base_name) or { t.generic_aware_call_fn_info(lhs, base_name) or { return } }
 	mut bindings := t.generic_bindings_from_type_args(info, type_args) or { return }
 	t.fill_missing_generic_bindings_from_call_args(info, raw_args, mut bindings)
-	base_name := t.generic_call_base_name(lhs) or { return }
 	t.register_generic_bindings(base_name, bindings)
 	if lhs is ast.SelectorExpr {
 		t.register_receiver_generic_method_call_spec_with_bindings(base_name, lhs.lhs, bindings,
@@ -750,7 +876,8 @@ fn (t &Transformer) generic_bindings_from_generic_call_expr(expr ast.Expr) ?map[
 		}
 	}
 
-	info := t.lookup_call_fn_info(lhs) or { return none }
+	base_name := t.generic_call_base_name(lhs) or { return none }
+	info := t.generic_aware_call_fn_info(lhs, base_name) or { return none }
 	return t.generic_bindings_from_call_args(info, args)
 }
 
@@ -760,8 +887,11 @@ fn (t &Transformer) receiver_generic_method_call_name(base_name string, receiver
 	if receiver_params.len == 0 {
 		return none
 	}
-	mut bindings := t.generic_bindings_from_method_receiver(decl, receiver, base_name) or {
-		return none
+	mut bindings := map[string]types.Type{}
+	if receiver_bindings := t.generic_bindings_from_method_receiver(decl, receiver, base_name) {
+		for name, typ in receiver_bindings {
+			bindings[name] = typ
+		}
 	}
 	if arg_bindings := t.generic_bindings_from_call_args(info, raw_args) {
 		for name, typ in arg_bindings {
@@ -941,59 +1071,168 @@ fn generic_bindings_signature(bindings map[string]types.Type) string {
 // substitute_type returns typ with any NamedType placeholder appearing in
 // bindings replaced by its concrete binding, recursively.
 pub fn substitute_type(typ types.Type, bindings map[string]types.Type) types.Type {
-	if bindings.len == 0 {
+	mut seen := map[string]bool{}
+	return substitute_type_with_seen(typ, bindings, mut seen)
+}
+
+fn substitution_safe_string(s string) string {
+	if transformer_string_has_valid_data(s) {
+		return s
+	}
+	return ''
+}
+
+fn substitute_type_with_seen(typ types.Type, bindings map[string]types.Type, mut seen map[string]bool) types.Type {
+	if bindings.len == 0 || !types.type_has_valid_payload(typ) {
 		return typ
 	}
 	match typ {
 		types.NamedType {
+			if !transformer_string_has_valid_data(typ) {
+				return typ
+			}
 			name := string(typ)
 			if concrete := bindings[name] {
 				return concrete
 			}
-			return typ
+			return types.Type(types.NamedType(name))
 		}
 		types.Pointer {
 			return types.Type(types.Pointer{
 				lifetime:  typ.lifetime
-				base_type: substitute_type(typ.base_type, bindings)
+				base_type: substitute_type_with_seen(typ.base_type, bindings, mut seen)
 			})
 		}
 		types.Array {
 			return types.Type(types.Array{
-				elem_type: substitute_type(typ.elem_type, bindings)
+				elem_type: substitute_type_with_seen(typ.elem_type, bindings, mut seen)
 			})
 		}
 		types.ArrayFixed {
 			return types.Type(types.ArrayFixed{
 				len:       typ.len
-				elem_type: substitute_type(typ.elem_type, bindings)
+				elem_type: substitute_type_with_seen(typ.elem_type, bindings, mut seen)
 			})
 		}
 		types.Map {
 			return types.Type(types.Map{
-				key_type:   substitute_type(typ.key_type, bindings)
-				value_type: substitute_type(typ.value_type, bindings)
+				key_type:   substitute_type_with_seen(typ.key_type, bindings, mut seen)
+				value_type: substitute_type_with_seen(typ.value_type, bindings, mut seen)
 			})
 		}
 		types.OptionType {
 			return types.Type(types.OptionType{
-				base_type: substitute_type(typ.base_type, bindings)
+				base_type: substitute_type_with_seen(typ.base_type, bindings, mut seen)
 			})
 		}
 		types.ResultType {
 			return types.Type(types.ResultType{
-				base_type: substitute_type(typ.base_type, bindings)
+				base_type: substitute_type_with_seen(typ.base_type, bindings, mut seen)
 			})
 		}
 		types.Alias {
 			return types.Type(types.Alias{
-				name:      typ.name
-				base_type: substitute_type(typ.base_type, bindings)
+				name:      substitution_safe_string(typ.name)
+				base_type: substitute_type_with_seen(typ.base_type, bindings, mut seen)
 			})
+		}
+		types.Channel {
+			if elem_type := typ.elem_type {
+				return types.Type(types.Channel{
+					elem_type: substitute_type_with_seen(elem_type, bindings, mut seen)
+				})
+			}
+			return types.Type(types.Channel{})
+		}
+		types.Enum {
+			mut fields := []types.Field{cap: typ.fields.len}
+			for field in typ.fields {
+				fields << substitute_field_type_with_seen(field, bindings, mut seen)
+			}
+			return types.Type(types.Enum{
+				is_flag: typ.is_flag
+				name:    substitution_safe_string(typ.name)
+				fields:  fields
+			})
+		}
+		types.Interface {
+			mut fields := []types.Field{cap: typ.fields.len}
+			for field in typ.fields {
+				fields << substitute_field_type_with_seen(field, bindings, mut seen)
+			}
+			return types.Type(types.Interface{
+				name:   substitution_safe_string(typ.name)
+				fields: fields
+			})
+		}
+		types.Struct {
+			struct_name := substitution_safe_string(typ.name)
+			if struct_name != '' {
+				if struct_name in seen {
+					return types.Type(typ)
+				}
+				seen[struct_name] = true
+			}
+			mut fields := []types.Field{cap: typ.fields.len}
+			for field in typ.fields {
+				fields << substitute_field_type_with_seen(field, bindings, mut seen)
+			}
+			mut embedded := []types.Struct{cap: typ.embedded.len}
+			for embedded_type in typ.embedded {
+				substituted :=
+					substitute_type_with_seen(types.Type(embedded_type), bindings, mut seen)
+				if substituted is types.Struct {
+					embedded << substituted
+				} else {
+					embedded << embedded_type
+				}
+			}
+			if struct_name != '' {
+				seen.delete(struct_name)
+			}
+			return types.Type(types.Struct{
+				name:           struct_name
+				generic_params: if bindings.len == 0 { typ.generic_params } else { []string{} }
+				implements:     typ.implements
+				embedded:       embedded
+				fields:         fields
+				is_soa:         typ.is_soa
+			})
+		}
+		types.SumType {
+			mut variants := []types.Type{cap: typ.variants.len}
+			for variant in typ.variants {
+				variants << substitute_type_with_seen(variant, bindings, mut seen)
+			}
+			return types.Type(types.SumType{
+				name:     substitution_safe_string(typ.name)
+				variants: variants
+			})
+		}
+		types.Primitive {
+			return types.Type(typ)
+		}
+		types.Char, types.ISize, types.Nil, types.None, types.Rune, types.String, types.USize,
+		types.Void {
+			return types.Type(typ)
 		}
 		else {
 			return typ
 		}
+	}
+}
+
+fn substitute_field_type_with_seen(field types.Field, bindings map[string]types.Type, mut seen map[string]bool) types.Field {
+	return types.Field{
+		name:                substitution_safe_string(field.name)
+		typ:                 substitute_type_with_seen(field.typ, bindings, mut seen)
+		default_expr:        field.default_expr
+		attributes:          field.attributes
+		is_public:           field.is_public
+		is_mut:              field.is_mut
+		is_module_mut:       field.is_module_mut
+		is_interface_method: field.is_interface_method
+		owner_module:        field.owner_module
 	}
 }
 
@@ -1426,7 +1665,8 @@ pub fn (mut t Transformer) clone_fn_decl_with_substitutions(decl ast.FnDecl, bin
 	}
 	mut new_stmts := []ast.Stmt{cap: decl.stmts.len}
 	for st in decl.stmts {
-		new_stmts << t.clone_stmt_with_bindings(st, bindings)
+		new_stmts << t.clone_stmt_with_bindings_and_fields(st, bindings, []CloneComptimeFieldCtx{},
+			false)
 	}
 	new_stmts = t.fold_known_bool_stmts(new_stmts)
 	new_receiver := ast.Parameter{
@@ -1682,35 +1922,38 @@ fn clone_comptime_attribute_strings(attrs []ast.Attribute) []string {
 }
 
 fn clone_type_contains_generic_placeholder(typ types.Type) bool {
+	if !types.type_has_valid_payload(typ) {
+		return false
+	}
 	match typ {
 		types.NamedType {
 			return true
 		}
 		types.Array {
-			return clone_type_contains_generic_placeholder(typ.elem_type)
+			return clone_type_child_contains_generic_placeholder(typ.elem_type)
 		}
 		types.ArrayFixed {
-			return clone_type_contains_generic_placeholder(typ.elem_type)
+			return clone_type_child_contains_generic_placeholder(typ.elem_type)
 		}
 		types.Map {
-			return clone_type_contains_generic_placeholder(typ.key_type)
-				|| clone_type_contains_generic_placeholder(typ.value_type)
+			return clone_type_child_contains_generic_placeholder(typ.key_type)
+				|| clone_type_child_contains_generic_placeholder(typ.value_type)
 		}
 		types.Pointer {
-			return clone_type_contains_generic_placeholder(typ.base_type)
+			return clone_type_child_contains_generic_placeholder(typ.base_type)
 		}
 		types.OptionType {
-			return clone_type_contains_generic_placeholder(typ.base_type)
+			return clone_type_child_contains_generic_placeholder(typ.base_type)
 		}
 		types.ResultType {
-			return clone_type_contains_generic_placeholder(typ.base_type)
+			return clone_type_child_contains_generic_placeholder(typ.base_type)
 		}
 		types.Alias {
-			return clone_type_contains_generic_placeholder(typ.base_type)
+			return clone_type_child_contains_generic_placeholder(typ.base_type)
 		}
 		types.Struct {
 			for field in typ.fields {
-				if clone_type_contains_generic_placeholder(field.typ) {
+				if clone_type_child_contains_generic_placeholder(field.typ) {
 					return true
 				}
 			}
@@ -1720,6 +1963,56 @@ fn clone_type_contains_generic_placeholder(typ types.Type) bool {
 			return false
 		}
 	}
+}
+
+fn clone_type_child_contains_generic_placeholder(typ types.Type) bool {
+	if !clone_type_has_safe_payload(typ) {
+		return false
+	}
+	return clone_type_contains_generic_placeholder(typ)
+}
+
+fn transformer_type_tag_has_inline_payload(tag u64) bool {
+	return tag == 4 || tag == 7 || tag == 11 || tag == 12 || tag == 15 || tag == 17 || tag == 18
+		|| tag == 23 || tag == 24
+}
+
+fn transformer_type_word_is_payload(word u64) bool {
+	return word >= 4096 && word < 0x0000800000000000
+}
+
+fn clone_type_word_is_payload(word u64) bool {
+	return word >= 0x100000000 && word < 0x0000800000000000
+}
+
+fn transformer_type_has_safe_payload(typ types.Type) bool {
+	if !types.type_has_valid_payload(typ) {
+		return false
+	}
+	word0 := unsafe { *(&u64(&typ)) }
+	word1 := unsafe { *(&u64(&u8(&typ) + 8)) }
+	if word0 < 256 {
+		if transformer_type_tag_has_inline_payload(word0) {
+			return true
+		}
+		return transformer_type_word_is_payload(word1)
+	}
+	return transformer_type_word_is_payload(word0) || transformer_type_word_is_payload(word1)
+}
+
+fn clone_type_has_safe_payload(typ types.Type) bool {
+	if !types.type_has_valid_payload(typ) {
+		return false
+	}
+	word0 := unsafe { *(&u64(&typ)) }
+	word1 := unsafe { *(&u64(&u8(&typ) + 8)) }
+	if word0 < 256 {
+		if transformer_type_tag_has_inline_payload(word0) {
+			return true
+		}
+		return clone_type_word_is_payload(word1)
+	}
+	return clone_type_word_is_payload(word0) || clone_type_word_is_payload(word1)
 }
 
 fn (mut t Transformer) fold_known_bool_stmts(stmts []ast.Stmt) []ast.Stmt {
@@ -2505,6 +2798,12 @@ fn (mut t Transformer) clone_expr_with_bindings_and_fields(expr ast.Expr, bindin
 			return expr
 		}
 		ast.SelectorExpr {
+			if expr.rhs.name == 'name' && expr.lhs is ast.Ident {
+				lhs_ident := expr.lhs as ast.Ident
+				if concrete := bindings[lhs_ident.name] {
+					return t.clone_comptime_v_string_expr(t.types_type_to_v(concrete), expr.pos)
+				}
+			}
 			if replacement := t.clone_comptime_field_selector_expr(expr, bindings, contexts) {
 				return replacement
 			}
@@ -2873,14 +3172,15 @@ fn (mut t Transformer) clone_comptime_field_selector_expr(sel ast.SelectorExpr, 
 			return none
 		}
 		ctx := contexts[contexts.len - 1]
-		t.register_synth_type(sel.pos, ctx.field.typ)
+		sel_pos := t.next_synth_pos()
+		t.register_synth_type(sel_pos, ctx.field.typ)
 		return ast.Expr(ast.SelectorExpr{
 			lhs: t.clone_expr_with_bindings_and_fields(sel.lhs, bindings, contexts)
 			rhs: ast.Ident{
 				name: ctx.field.name
 				pos:  sel.rhs.pos
 			}
-			pos: sel.pos
+			pos: sel_pos
 		})
 	}
 	if sel.lhs is ast.SelectorExpr {
@@ -2970,12 +3270,13 @@ fn is_clone_comptime_selector_rhs_name(name string) bool {
 	return name == '__comptime_selector__' || name == 'TODO: comptime selector'
 }
 
-fn (mut t Transformer) clone_comptime_v_string_expr(value string, pos token.Pos) ast.Expr {
-	t.register_synth_type(pos, types.Type(types.string_))
+fn (mut t Transformer) clone_comptime_v_string_expr(value string, _pos token.Pos) ast.Expr {
+	lit_pos := t.next_synth_pos()
+	t.register_synth_type(lit_pos, types.Type(types.string_))
 	return ast.Expr(ast.StringLiteral{
 		kind:  .v
 		value: value
-		pos:   pos
+		pos:   lit_pos
 	})
 }
 
@@ -2991,26 +3292,29 @@ fn (mut t Transformer) clone_comptime_c_string_expr(value string, _pos token.Pos
 	})
 }
 
-fn (mut t Transformer) clone_comptime_int_expr(value int, pos token.Pos) ast.Expr {
-	t.register_synth_type(pos, types.Type(types.int_))
+fn (mut t Transformer) clone_comptime_int_expr(value int, _pos token.Pos) ast.Expr {
+	lit_pos := t.next_synth_pos()
+	t.register_synth_type(lit_pos, types.Type(types.int_))
 	return ast.Expr(ast.BasicLiteral{
 		kind:  .number
 		value: value.str()
-		pos:   pos
+		pos:   lit_pos
 	})
 }
 
-fn (mut t Transformer) clone_comptime_bool_expr(value bool, pos token.Pos) ast.Expr {
-	t.register_synth_type(pos, types.Type(types.bool_))
+fn (mut t Transformer) clone_comptime_bool_expr(value bool, _pos token.Pos) ast.Expr {
+	lit_pos := t.next_synth_pos()
+	t.register_synth_type(lit_pos, types.Type(types.bool_))
 	return ast.Expr(ast.BasicLiteral{
 		kind:  if value { token.Token.key_true } else { token.Token.key_false }
 		value: if value { 'true' } else { 'false' }
-		pos:   pos
+		pos:   lit_pos
 	})
 }
 
-fn (mut t Transformer) clone_comptime_string_array_expr(values []string, pos token.Pos) ast.Expr {
-	t.register_synth_type(pos, types.Type(types.Array{
+fn (mut t Transformer) clone_comptime_string_array_expr(values []string, _pos token.Pos) ast.Expr {
+	array_pos := t.next_synth_pos()
+	t.register_synth_type(array_pos, types.Type(types.Array{
 		elem_type: types.Type(types.string_)
 	}))
 	mut exprs := []ast.Expr{cap: values.len}
@@ -3033,7 +3337,7 @@ fn (mut t Transformer) clone_comptime_string_array_expr(values []string, pos tok
 			})
 		}))
 		exprs: exprs
-		pos:   pos
+		pos:   array_pos
 	})
 }
 
@@ -3137,6 +3441,12 @@ pub fn (mut t Transformer) clone_expr_with_bindings(expr ast.Expr, bindings map[
 			})
 		}
 		ast.SelectorExpr {
+			if expr.rhs.name == 'name' && expr.lhs is ast.Ident {
+				lhs_ident := expr.lhs as ast.Ident
+				if concrete := bindings[lhs_ident.name] {
+					return t.clone_comptime_v_string_expr(t.types_type_to_v(concrete), expr.pos)
+				}
+			}
 			return ast.Expr(ast.SelectorExpr{
 				lhs: t.clone_expr_with_bindings(expr.lhs, bindings)
 				rhs: expr.rhs

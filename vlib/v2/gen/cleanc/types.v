@@ -1488,6 +1488,9 @@ fn file_module_name(file ast.File) string {
 			return stmt.name.replace('.', '_')
 		}
 	}
+	if file.mod != '' {
+		return file.mod.replace('.', '_')
+	}
 	return 'main'
 }
 

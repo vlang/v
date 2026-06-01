@@ -302,7 +302,8 @@ pub fn (mut t Transformer) set_file_set(fs &token.FileSet) {
 // new_worker_clone creates a lightweight Transformer that shares read-only state
 // (env, pref, elided_fns, comptime_vmodroot, file_set) but has its own
 // accumulator maps for thread-safe per-file transformation.
-// worker_idx offsets synth_pos_counter so workers don't generate conflicting IDs.
+// worker_idx offsets synth_pos_counter so workers don't generate conflicting IDs
+// or collide with synth positions already created during whole-program prepare.
 pub fn (t &Transformer) new_worker_clone(worker_idx int) &Transformer {
 	return &Transformer{
 		pref:                            unsafe { t.pref }
@@ -315,7 +316,7 @@ pub fn (t &Transformer) new_worker_clone(worker_idx int) &Transformer {
 		cached_method_keys:              t.cached_method_keys.clone()
 		cached_fn_scopes:                t.cached_fn_scopes.clone()
 		synth_types:                     t.synth_types.clone()
-		synth_pos_counter:               -(worker_idx * 100_000)
+		synth_pos_counter:               t.synth_pos_counter - (worker_idx * 100_000)
 		needed_str_fns:                  map[string]string{}
 		needed_clone_fns:                map[string]string{}
 		needed_array_contains_fns:       map[string]ArrayMethodInfo{}
@@ -4539,10 +4540,13 @@ fn (mut t Transformer) transform_assign_stmt_parts(stmt ast.AssignStmt) (token.T
 		if lhs_name != '' {
 			if decl_type := t.decl_assign_storage_type(stmt.lhs[0], rhs_src[0]) {
 				t.remember_local_decl_type(lhs_name, decl_type)
+				t.register_local_var_type(lhs_name, decl_type)
 			}
 			if rhs_type := t.fn_pointer_call_return_type(rhs_src[0]) {
 				t.register_temp_var(lhs_name, rhs_type)
 			} else if rhs_type := t.smartcast_type_for_expr(rhs_src[0]) {
+				t.register_local_var_type(lhs_name, rhs_type)
+			} else if rhs_type := t.rune_arithmetic_expr_type(rhs_src[0]) {
 				t.register_local_var_type(lhs_name, rhs_type)
 			} else if rhs_src[0] is ast.ArrayInitExpr {
 				if rhs_type := t.get_array_init_expr_type(rhs_src[0] as ast.ArrayInitExpr) {
@@ -4584,12 +4588,18 @@ fn (t &Transformer) smartcast_type_for_expr(expr ast.Expr) ?types.Type {
 	ctx := t.find_smartcast_for_expr(expr_str) or { return none }
 	if ctx.variant_full != '' {
 		if typ := t.c_name_to_type(ctx.variant_full) {
-			return typ
+			return t.normalize_type(typ)
+		}
+		if typ := t.lookup_type(ctx.variant_full) {
+			return t.normalize_type(typ)
 		}
 	}
-	if ctx.variant != '' && ctx.variant != ctx.variant_full {
+	if ctx.variant != '' {
 		if typ := t.c_name_to_type(ctx.variant) {
-			return typ
+			return t.normalize_type(typ)
+		}
+		if typ := t.lookup_type(ctx.variant) {
+			return t.normalize_type(typ)
 		}
 	}
 	return none
@@ -5744,14 +5754,6 @@ fn (t &Transformer) lookup_local_decl_type(name string) ?types.Type {
 }
 
 fn (t &Transformer) decl_assign_storage_type(lhs ast.Expr, rhs ast.Expr) ?types.Type {
-	if typ := t.get_expr_type(lhs) {
-		return typ
-	}
-	if lhs is ast.ModifierExpr {
-		if typ := t.get_expr_type(lhs.expr) {
-			return typ
-		}
-	}
 	if typ := t.fn_pointer_call_return_type(rhs) {
 		return typ
 	}
@@ -5763,13 +5765,75 @@ fn (t &Transformer) decl_assign_storage_type(lhs ast.Expr, rhs ast.Expr) ?types.
 			return typ
 		}
 	}
-	if rhs is ast.CallExpr || rhs is ast.CallOrCastExpr || rhs is ast.InitExpr || rhs is ast.Ident
+	if typ := t.rune_arithmetic_expr_type(rhs) {
+		return typ
+	}
+	if rhs is ast.CallExpr || rhs is ast.CallOrCastExpr || rhs is ast.CastExpr
+		|| rhs is ast.AsCastExpr || rhs is ast.InitExpr || rhs is ast.Ident
 		|| rhs is ast.SelectorExpr {
 		if typ := t.get_expr_type(rhs) {
 			return typ
 		}
 	}
+	if typ := t.get_expr_type(lhs) {
+		return typ
+	}
+	if lhs is ast.ModifierExpr {
+		if typ := t.get_expr_type(lhs.expr) {
+			return typ
+		}
+	}
 	return none
+}
+
+fn (t &Transformer) rune_arithmetic_expr_type(expr ast.Expr) ?types.Type {
+	match expr {
+		ast.InfixExpr {
+			if expr.op !in [.plus, .minus, .mul, .div, .mod, .amp, .pipe, .xor, .left_shift,
+				.right_shift, .right_shift_unsigned] {
+				return none
+			}
+			if t.expr_is_rune_arithmetic_operand(expr.lhs)
+				|| t.expr_is_rune_arithmetic_operand(expr.rhs) {
+				return types.builtin_type('rune')
+			}
+		}
+		ast.ParenExpr {
+			return t.rune_arithmetic_expr_type(expr.expr)
+		}
+		ast.ModifierExpr {
+			return t.rune_arithmetic_expr_type(expr.expr)
+		}
+		else {}
+	}
+
+	return none
+}
+
+fn (t &Transformer) expr_is_rune_arithmetic_operand(expr ast.Expr) bool {
+	if typ := t.get_expr_type(expr) {
+		if transformer_type_is_rune(typ) {
+			return true
+		}
+	}
+	return t.rune_arithmetic_expr_type(expr) != none
+}
+
+fn transformer_type_is_rune(typ types.Type) bool {
+	if !types.type_has_valid_payload(typ) {
+		return false
+	}
+	match typ {
+		types.Rune {
+			return true
+		}
+		types.Alias {
+			return transformer_type_is_rune(typ.base_type)
+		}
+		else {}
+	}
+
+	return false
 }
 
 // gen_filter_temp_name generates a unique temporary variable name for filter expansion
@@ -12492,10 +12556,103 @@ fn (mut t Transformer) expand_string_range_or_native_expr(idx_expr ast.IndexExpr
 	}
 }
 
+fn is_comptime_string_name(name string) bool {
+	if !transformer_string_has_valid_data(name) {
+		return false
+	}
+	return name == 'FN' || name == 'FILE' || name == 'MOD' || name == 'STRUCT' || name == 'METHOD'
+		|| name == 'LOCATION' || name == 'FUNCTION'
+}
+
+fn is_at_comptime_string_name(name string) bool {
+	if !transformer_string_has_valid_data(name) {
+		return false
+	}
+	return name == '@FN' || name == '@FILE' || name == '@MOD' || name == '@STRUCT'
+		|| name == '@METHOD' || name == '@LOCATION' || name == '@FUNCTION' || name == '@VMODROOT'
+}
+
+fn is_string_field_name_hint(name string) bool {
+	if !transformer_string_has_valid_data(name) {
+		return false
+	}
+	return name == 'name' || name == 'str' || name == 'msg'
+}
+
+fn is_string_array_element_method(method_name string) bool {
+	if !transformer_string_has_valid_data(method_name) {
+		return false
+	}
+	return method_name == 'pop' || method_name == 'first' || method_name == 'last'
+}
+
+fn is_ambiguous_string_returning_method(method_name string) bool {
+	if !transformer_string_has_valid_data(method_name) {
+		return false
+	}
+	return method_name == 'reverse' || method_name == 'clone'
+}
+
+fn is_string_receiver_method(method_name string) bool {
+	if !transformer_string_has_valid_data(method_name) {
+		return false
+	}
+	return method_name == 'str' || method_name == 'string'
+}
+
+fn is_string_receiver_or_clone_method(method_name string) bool {
+	if !transformer_string_has_valid_data(method_name) {
+		return false
+	}
+	return method_name == 'clone' || is_string_receiver_method(method_name)
+}
+
+fn is_known_string_prefix_fn(fn_name string) bool {
+	if !transformer_string_has_valid_data(fn_name) {
+		return false
+	}
+	return fn_name == 'string__plus' || fn_name == 'string__repeat' || fn_name == 'string__substr'
+		|| fn_name == 'string__substr_unsafe' || fn_name == 'string__replace'
+		|| fn_name == 'string__replace_once' || fn_name == 'string__trim'
+		|| fn_name == 'string__trim_left' || fn_name == 'string__trim_right'
+		|| fn_name == 'string__trim_space' || fn_name == 'string__to_upper'
+		|| fn_name == 'string__to_lower' || fn_name == 'string__reverse'
+		|| fn_name == 'string__clone' || fn_name == 'string__strip_margin'
+		|| fn_name == 'string__capitalize' || fn_name == 'string__uncapitalize'
+		|| fn_name == 'string__after' || fn_name == 'string__before'
+		|| fn_name == 'string__all_before' || fn_name == 'string__all_after'
+		|| fn_name == 'string__all_before_last' || fn_name == 'string__all_after_last'
+		|| fn_name == 'string__hex' || fn_name == 'string__ascii_str'
+		|| fn_name == 'string__bytestr'
+}
+
+fn is_known_string_returning_fn_name(fn_name string) bool {
+	if !transformer_string_has_valid_data(fn_name) {
+		return false
+	}
+	return fn_name == 'string__plus' || fn_name == 'string__plus_two' || fn_name == 'string__substr'
+		|| fn_name == 'string__substr_unsafe' || fn_name == 'string__repeat' || fn_name == 'tos'
+		|| fn_name == 'tos2' || fn_name == 'tos3' || fn_name == 'tos4' || fn_name == 'tos5'
+		|| fn_name == 'tos_clone' || fn_name == 'cstring_to_vstring' || fn_name == 'string_clone'
+}
+
+fn is_string_bytes_fn(fn_name string) bool {
+	if !transformer_string_has_valid_data(fn_name) {
+		return false
+	}
+	return fn_name == 'string__bytes' || fn_name == 'string__vbytes'
+}
+
 // is_string_expr returns true if the expression is known to be a string
 fn (t &Transformer) is_string_expr(expr ast.Expr) bool {
+	if !expr_has_valid_data(expr) {
+		return false
+	}
 	if expr is ast.StringLiteral {
 		// Check for c-strings which are char*, not string
+		if !transformer_string_has_valid_data(expr.value) {
+			return false
+		}
 		return !expr.value.starts_with("c'")
 	}
 	if expr is ast.StringInterLiteral {
@@ -12508,20 +12665,22 @@ fn (t &Transformer) is_string_expr(expr ast.Expr) bool {
 		// Compile-time expressions like @FN, @FILE, @MOD evaluate to strings
 		if expr.expr is ast.Ident {
 			name := (expr.expr as ast.Ident).name
-			return name in ['FN', 'FILE', 'MOD', 'STRUCT', 'METHOD', 'LOCATION', 'FUNCTION']
+			return is_comptime_string_name(name)
 		}
 	}
 	if expr is ast.CastExpr {
 		// Check if casting to string type
 		if expr.typ is ast.Ident {
-			return expr.typ.name == 'string'
+			return transformer_string_has_valid_data(expr.typ.name) && expr.typ.name == 'string'
 		}
 	}
 	if expr is ast.Ident {
+		if !transformer_string_has_valid_data(expr.name) {
+			return false
+		}
 		// Check for comptime string identifiers like @FN, @FILE, @MOD
 		if expr.name.starts_with('@') {
-			return expr.name in ['@FN', '@FILE', '@MOD', '@STRUCT', '@METHOD', '@LOCATION',
-				'@FUNCTION', '@VMODROOT']
+			return is_at_comptime_string_name(expr.name)
 		}
 		// Use type environment to look up the identifier's type
 		if mut scope := t.get_current_scope() {
@@ -12553,7 +12712,10 @@ fn (t &Transformer) is_string_expr(expr ast.Expr) bool {
 	if expr is ast.SelectorExpr {
 		if expr.lhs is ast.Ident {
 			lhs_name := expr.lhs.name
-			if lhs_name in ['C', 'JS'] {
+			if !transformer_string_has_valid_data(lhs_name) {
+				return false
+			}
+			if lhs_name == 'C' || lhs_name == 'JS' {
 				return false
 			}
 		}
@@ -12561,6 +12723,10 @@ fn (t &Transformer) is_string_expr(expr ast.Expr) bool {
 		if expr.lhs is ast.Ident {
 			mod_name := (expr.lhs as ast.Ident).name
 			const_name := expr.rhs.name
+			if !transformer_string_has_valid_data(mod_name)
+				|| !transformer_string_has_valid_data(const_name) {
+				return false
+			}
 			// Try to look up the constant in the module's scope
 			if mut mod_scope := t.get_module_scope(mod_name) {
 				if obj := mod_scope.lookup_parent(const_name, 0) {
@@ -12575,6 +12741,9 @@ fn (t &Transformer) is_string_expr(expr ast.Expr) bool {
 			}
 		}
 		// Try to look up the type of the field using the environment
+		if !transformer_string_has_valid_data(expr.rhs.name) {
+			return false
+		}
 		mut field_found := false
 		if lhs_type := t.get_expr_type(expr.lhs) {
 			base_type := if lhs_type is types.Pointer {
@@ -12610,33 +12779,25 @@ fn (t &Transformer) is_string_expr(expr ast.Expr) bool {
 						return true
 					}
 				}
-				for field in base_type.fields {
-					if field.name == expr.rhs.name {
-						field_found = true
-						if field.typ is types.String {
-							return true
-						}
-						if field.typ is types.Struct {
-							field_struct := field.typ as types.Struct
-							if field_struct.name == 'string' {
-								return true
-							}
-						}
-					}
-				}
 			}
 		}
 		// Fallback: Check field names that are typically strings
 		// Only use heuristic if the field type couldn't be determined
-		if !field_found && expr.rhs.name in ['name', 'str', 'msg'] {
+		if !field_found && is_string_field_name_hint(expr.rhs.name) {
 			return true
 		}
 	}
 	if expr is ast.UnsafeExpr {
 		// Check the last statement's expression inside unsafe blocks
 		// e.g., unsafe { s.substr_unsafe(i, j) }
+		if !stmt_array_has_valid_data(expr.stmts) {
+			return false
+		}
 		if expr.stmts.len > 0 {
 			last_stmt := expr.stmts[expr.stmts.len - 1]
+			if !stmt_has_valid_data(last_stmt) {
+				return false
+			}
 			if last_stmt is ast.ExprStmt {
 				return t.is_string_expr(last_stmt.expr)
 			}
@@ -12650,6 +12811,9 @@ fn (t &Transformer) is_string_expr(expr ast.Expr) bool {
 		// Array indexing: arr[i] where arr is []string returns string
 		if expr.lhs is ast.Ident {
 			arr_name := (expr.lhs as ast.Ident).name
+			if !transformer_string_has_valid_data(arr_name) {
+				return false
+			}
 			arr_type := t.get_var_type_name(arr_name)
 			if arr_type == 'Array_string' {
 				return true
@@ -12676,10 +12840,16 @@ fn (t &Transformer) is_string_expr(expr ast.Expr) bool {
 		if expr.lhs is ast.SelectorExpr {
 			sel := expr.lhs as ast.SelectorExpr
 			method_name := sel.rhs.name
+			if !transformer_string_has_valid_data(method_name) {
+				return false
+			}
 			// First check for module-qualified function calls (e.g., os.user_os())
 			// If LHS is an Ident, it could be a module name
 			if sel.lhs is ast.Ident {
 				mod_name := (sel.lhs as ast.Ident).name
+				if !transformer_string_has_valid_data(mod_name) {
+					return false
+				}
 				// Try looking up as a module-qualified function
 				if fn_type := t.lookup_fn_cached(mod_name, method_name) {
 					if return_type := fn_type.get_return_type() {
@@ -12710,9 +12880,12 @@ fn (t &Transformer) is_string_expr(expr ast.Expr) bool {
 			}
 			// Check for array methods that return element type (pop, first, last)
 			// If receiver is []string, these methods return string
-			if method_name in ['pop', 'first', 'last'] {
+			if is_string_array_element_method(method_name) {
 				if sel.lhs is ast.Ident {
 					receiver_name := (sel.lhs as ast.Ident).name
+					if !transformer_string_has_valid_data(receiver_name) {
+						return false
+					}
 					receiver_type_name := t.get_var_type_name(receiver_name)
 					if receiver_type_name == 'Array_string' {
 						return true
@@ -12723,7 +12896,7 @@ fn (t &Transformer) is_string_expr(expr ast.Expr) bool {
 			// the receiver type is unknown. Methods like 'reverse', 'clone'
 			// exist on both string and array — if the receiver resolved to
 			// a non-string type above, trust that instead of the heuristic.
-			if method_name in ['reverse', 'clone'] {
+			if is_ambiguous_string_returning_method(method_name) {
 				// These methods are ambiguous (exist on string AND array).
 				// Only treat as string if the receiver is known to be a string.
 				if t.is_string_expr(sel.lhs) {
@@ -12733,13 +12906,16 @@ fn (t &Transformer) is_string_expr(expr ast.Expr) bool {
 				return true
 			}
 			// Also check if receiver is string and method typically returns string
-			if t.is_string_expr(sel.lhs) && method_name in ['str', 'string'] {
+			if t.is_string_expr(sel.lhs) && is_string_receiver_method(method_name) {
 				return true
 			}
 		}
 		// Check function return type using environment
 		if expr.lhs is ast.Ident {
 			fn_name := expr.lhs.name
+			if !transformer_string_has_valid_data(fn_name) {
+				return false
+			}
 			// array__ prefix functions return array, not string
 			if fn_name.starts_with('array__') || fn_name.starts_with('new_array_from_') {
 				return false
@@ -12747,14 +12923,7 @@ fn (t &Transformer) is_string_expr(expr ast.Expr) bool {
 			// Check for already-transformed string__ prefix functions.
 			if fn_name.starts_with('string__') {
 				// Known string-returning string__ functions
-				if fn_name in ['string__plus', 'string__repeat', 'string__substr',
-					'string__substr_unsafe', 'string__replace', 'string__replace_once',
-					'string__trim', 'string__trim_left', 'string__trim_right', 'string__trim_space',
-					'string__to_upper', 'string__to_lower', 'string__reverse', 'string__clone',
-					'string__strip_margin', 'string__capitalize', 'string__uncapitalize',
-					'string__after', 'string__before', 'string__all_before', 'string__all_after',
-					'string__all_before_last', 'string__all_after_last', 'string__hex',
-					'string__ascii_str', 'string__bytestr'] {
+				if is_known_string_prefix_fn(fn_name) {
 					return true
 				}
 				return false
@@ -12812,9 +12981,15 @@ fn (t &Transformer) is_string_expr(expr ast.Expr) bool {
 		if expr.lhs is ast.SelectorExpr {
 			sel := expr.lhs as ast.SelectorExpr
 			method_name := sel.rhs.name
+			if !transformer_string_has_valid_data(method_name) {
+				return false
+			}
 			// First check for module-qualified function calls (e.g., os.user_os())
 			if sel.lhs is ast.Ident {
 				mod_name := (sel.lhs as ast.Ident).name
+				if !transformer_string_has_valid_data(mod_name) {
+					return false
+				}
 				if fn_type := t.lookup_fn_cached(mod_name, method_name) {
 					if return_type := fn_type.get_return_type() {
 						if return_type is types.String {
@@ -12847,13 +13022,16 @@ fn (t &Transformer) is_string_expr(expr ast.Expr) bool {
 				return true
 			}
 			// Also check if receiver is string and method typically returns string
-			if t.is_string_expr(sel.lhs) && method_name in ['clone', 'str', 'string'] {
+			if t.is_string_expr(sel.lhs) && is_string_receiver_or_clone_method(method_name) {
 				return true
 			}
 		}
 		// Check function return type for CallOrCastExpr (single-arg calls)
 		if expr.lhs is ast.Ident {
 			fn_name := expr.lhs.name
+			if !transformer_string_has_valid_data(fn_name) {
+				return false
+			}
 			// Check for already-transformed string functions
 			if fn_name.starts_with('string__') {
 				return true
@@ -12906,8 +13084,14 @@ fn (t &Transformer) is_string_expr(expr ast.Expr) bool {
 	if expr is ast.IfExpr {
 		// For ternary if-expressions, check if both branches are strings
 		// Check 'then' branch (stmts - last stmt should be an expression)
+		if !stmt_array_has_valid_data(expr.stmts) {
+			return false
+		}
 		if expr.stmts.len > 0 {
 			last_stmt := expr.stmts[expr.stmts.len - 1]
+			if !stmt_has_valid_data(last_stmt) {
+				return false
+			}
 			if last_stmt is ast.ExprStmt {
 				// Use context-aware check that looks at assignments within this block
 				if !t.is_string_expr_in_block(last_stmt.expr, expr.stmts) {
@@ -12943,10 +13127,16 @@ fn (t &Transformer) is_string_expr(expr ast.Expr) bool {
 
 // is_string_expr_in_block checks if an expression is a string, with context from block statements
 fn (t &Transformer) is_string_expr_in_block(expr ast.Expr, stmts []ast.Stmt) bool {
+	if !stmt_array_has_valid_data(stmts) {
+		return false
+	}
 	// Handle IndexExpr into local array variables within this block
 	if expr is ast.IndexExpr {
 		if expr.lhs is ast.Ident {
 			arr_name := (expr.lhs as ast.Ident).name
+			if !transformer_string_has_valid_data(arr_name) {
+				return false
+			}
 			arr_type := t.find_var_type_in_stmts(stmts, arr_name)
 			if arr_type == 'Array_string' {
 				return true
@@ -12959,15 +13149,16 @@ fn (t &Transformer) is_string_expr_in_block(expr ast.Expr, stmts []ast.Stmt) boo
 
 // is_string_returning_fn returns true if a function is known to return a string
 fn (t &Transformer) is_string_returning_fn(fn_name string) bool {
+	if !transformer_string_has_valid_data(fn_name) {
+		return false
+	}
 	// Known string-returning functions (hardcoded to avoid scope lookup failures
 	// in ARM64-compiled binaries where the checker's type store may be unreliable)
-	if fn_name in ['string__plus', 'string__plus_two', 'string__substr', 'string__substr_unsafe',
-		'string__repeat', 'tos', 'tos2', 'tos3', 'tos4', 'tos5', 'tos_clone', 'cstring_to_vstring',
-		'string_clone'] {
+	if is_known_string_returning_fn_name(fn_name) {
 		return true
 	}
 	// String module functions generally return strings (except bytes/vbytes which return []u8)
-	if fn_name.starts_with('string__') && fn_name !in ['string__bytes', 'string__vbytes'] {
+	if fn_name.starts_with('string__') && !is_string_bytes_fn(fn_name) {
 		return true
 	}
 	// Check function return type using scope lookup
@@ -12989,43 +13180,22 @@ fn (t &Transformer) is_string_returning_fn(fn_name string) bool {
 
 // is_string_returning_method returns true if a method is known to return a string
 fn (t &Transformer) is_string_returning_method(method_name string) bool {
+	if !transformer_string_has_valid_data(method_name) {
+		return false
+	}
 	// Common string methods that return string
-	return method_name in [
-		'str',
-		'string',
-		'to_upper',
-		'to_lower',
-		'capitalize',
-		'uncapitalize',
-		'trim',
-		'trim_left',
-		'trim_right',
-		'trim_space',
-		'strip_margin',
-		'replace',
-		'replace_once',
-		'substr',
-		'substr_unsafe',
-		'repeat',
-		'reverse',
-		'after',
-		'before',
-		'all_before',
-		'all_after',
-		'all_before_last',
-		'all_after_last',
-		'join',
-		'ascii_str',
-		'hex',
-		'clone',
-		'bytestr',
-		// Code generation methods that return string
-		'gen',
-		'name',
-		// Error message methods
-		'posix_get_error_msg',
-		'get_error_msg',
-	]
+	return method_name == 'str' || method_name == 'string' || method_name == 'to_upper'
+		|| method_name == 'to_lower' || method_name == 'capitalize' || method_name == 'uncapitalize'
+		|| method_name == 'trim' || method_name == 'trim_left' || method_name == 'trim_right'
+		|| method_name == 'trim_space' || method_name == 'strip_margin' || method_name == 'replace'
+		|| method_name == 'replace_once' || method_name == 'substr'
+		|| method_name == 'substr_unsafe' || method_name == 'repeat' || method_name == 'reverse'
+		|| method_name == 'after' || method_name == 'before' || method_name == 'all_before'
+		|| method_name == 'all_after' || method_name == 'all_before_last'
+		|| method_name == 'all_after_last' || method_name == 'join' || method_name == 'ascii_str'
+		|| method_name == 'hex' || method_name == 'clone' || method_name == 'bytestr'
+		|| method_name == 'gen' || method_name == 'name' || method_name == 'posix_get_error_msg'
+		|| method_name == 'get_error_msg'
 }
 
 // get_str_fn_name_for_expr returns the str function name for an expression's type.
