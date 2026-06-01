@@ -16,7 +16,14 @@ const elfclass64 = 2
 const elfdata2lsb = 1
 const ev_current = 1
 const et_rel = 1 // Relocatable file
+const et_exec = 2 // Executable file
 const em_x86_64 = 62
+
+const pt_load = 1
+
+const pf_x = 0x1
+const pf_w = 0x2
+const pf_r = 0x4
 
 const sht_progbits = 1
 const sht_symtab = 2

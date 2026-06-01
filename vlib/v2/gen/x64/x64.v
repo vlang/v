@@ -46,6 +46,11 @@ mut:
 	has_call bool
 }
 
+struct ReferencedWindowsCoffGlobals {
+	complete bool
+	indexes  map[int]bool
+}
+
 pub fn Gen.new(mod &mir.Module) &Gen {
 	return &Gen{
 		mod:        mod
@@ -84,8 +89,12 @@ pub fn (mut g Gen) gen() {
 	}
 
 	// Generate Globals in .data
-	for gvar in g.mod.globals {
+	referenced_windows_globals := g.referenced_windows_coff_globals()
+	for global_index, gvar in g.mod.globals {
 		if gvar.linkage == .external {
+			continue
+		}
+		if g.omit_unreferenced_windows_coff_global(global_index, referenced_windows_globals) {
 			continue
 		}
 		for g.data_len() % 8 != 0 {
@@ -114,6 +123,63 @@ pub fn (mut g Gen) gen() {
 			}
 		}
 	}
+}
+
+fn (g Gen) referenced_windows_coff_globals() ReferencedWindowsCoffGlobals {
+	mut referenced := map[int]bool{}
+	if g.obj_format != .coff || g.abi != .windows {
+		return ReferencedWindowsCoffGlobals{}
+	}
+	for func in g.mod.funcs {
+		if func.is_c_extern || func.blocks.len == 0 {
+			continue
+		}
+		for block_id in func.blocks {
+			if block_id < 0 || block_id >= g.mod.blocks.len {
+				return ReferencedWindowsCoffGlobals{}
+			}
+			block := g.mod.blocks[block_id]
+			for val_id in block.instrs {
+				if val_id < 0 || val_id >= g.mod.values.len {
+					return ReferencedWindowsCoffGlobals{}
+				}
+				val := g.mod.values[val_id]
+				if val.kind != .instruction || val.index < 0 || val.index >= g.mod.instrs.len {
+					return ReferencedWindowsCoffGlobals{}
+				}
+				instr := g.mod.instrs[val.index]
+				for operand_id in instr.operands {
+					if operand_id < 0 || operand_id >= g.mod.values.len {
+						return ReferencedWindowsCoffGlobals{}
+					}
+					operand := g.mod.values[operand_id]
+					if operand.kind != .global {
+						continue
+					}
+					if operand.index < 0 || operand.index >= g.mod.globals.len {
+						return ReferencedWindowsCoffGlobals{}
+					}
+					if g.mod.globals[operand.index].linkage != .external {
+						referenced[operand.index] = true
+					}
+				}
+			}
+		}
+	}
+	return ReferencedWindowsCoffGlobals{
+		complete: true
+		indexes:  referenced
+	}
+}
+
+fn (g Gen) omit_unreferenced_windows_coff_global(index int, referenced ReferencedWindowsCoffGlobals) bool {
+	if g.obj_format != .coff || g.abi != .windows {
+		return false
+	}
+	if !referenced.complete {
+		return false
+	}
+	return !referenced.indexes[index]
 }
 
 fn (g Gen) scalar_global_initial_value_supported(typ_id ssa.TypeID) bool {

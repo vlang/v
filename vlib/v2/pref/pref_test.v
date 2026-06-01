@@ -24,6 +24,47 @@ fn test_new_preferences_from_args_defaults_to_host_target() {
 	assert prefs.explicit_user_defines.len == 0
 }
 
+fn test_new_preferences_from_args_parses_macos_tiny_opt_out() {
+	default_prefs := new_preferences_from_args(['-b', 'x64', '-os', 'macos', 'main.v'])
+	assert default_prefs.macos_tiny
+
+	opt_out_prefs :=
+		new_preferences_from_args(['-b', 'x64', '-no-mos-tiny', '-os', 'macos', 'main.v'])
+	assert !opt_out_prefs.macos_tiny
+}
+
+fn test_macos_tiny_opt_out_requires_macos_target() {
+	validate_macos_tiny_flag_contract(['-no-mos-tiny'], 'macos')!
+
+	for target in ['linux', 'windows', 'cross', 'none'] {
+		mut got_error := false
+		validate_macos_tiny_flag_contract(['-no-mos-tiny'], target) or {
+			got_error = true
+			assert err.msg().contains('-no-mos-tiny requires a macOS target')
+		}
+		assert got_error, '-no-mos-tiny was accepted for target ${target}'
+	}
+}
+
+fn test_macos_tiny_opt_out_rejection_has_cli_error_prefix() {
+	tmp_dir := os.join_path(os.vtmp_dir(), 'v2_pref_macos_tiny_error_${os.getpid()}')
+	os.rmdir_all(tmp_dir) or {}
+	os.mkdir_all(tmp_dir) or { panic(err) }
+	defer {
+		os.rmdir_all(tmp_dir) or {}
+	}
+	source_path := os.join_path(tmp_dir, 'main.v')
+	os.write_file(source_path,
+		"import v2.pref\n\nfn main() {\n\tpref.new_preferences_from_args(['-no-mos-tiny', '-os', 'linux', 'main.v'])\n}\n") or {
+		panic(err)
+	}
+	vlib_path := os.join_path(os.dir(@VEXE), 'vlib')
+	res :=
+		os.execute('${os.quoted_path(@VEXE)} -path "${vlib_path}|@vlib|@vmodules" run ${os.quoted_path(source_path)}')
+	assert res.exit_code == 1, res.output
+	assert res.output.contains('error: -no-mos-tiny requires a macOS target'), res.output
+}
+
 fn test_new_preferences_from_args_parses_target_os() {
 	linux_prefs := new_preferences_from_args(['-os', 'linux', 'main.v'])
 	assert linux_prefs.target_os == 'linux'

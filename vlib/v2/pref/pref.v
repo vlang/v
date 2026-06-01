@@ -59,6 +59,7 @@ pub mut:
 	output_cross_c        bool     // -os cross: keep generated C portable
 	freestanding          bool     // -freestanding: target a platform contract without an OS runtime
 	freestanding_hooks    []string // -fhooks: explicit freestanding platform capabilities
+	macos_tiny            bool = true // -no-mos-tiny: disable the automatic macOS x64 tiny object path
 	output_file           string
 	printfn_list          []string // List of function names whose generated C source should be printed
 	user_defines          []string // All active comptime flags, including compiler-synthesized flags.
@@ -271,6 +272,12 @@ fn validate_target_contract(target_os string, freestanding bool) {
 	if target_os == 'cross' && freestanding {
 		eprintln('error: -freestanding -os cross is not supported; use -os none for pure freestanding targets')
 		exit(1)
+	}
+}
+
+fn validate_macos_tiny_flag_contract(options []string, target_os string) ! {
+	if '-no-mos-tiny' in options && target_os != 'macos' {
+		return error('-no-mos-tiny requires a macOS target; use -os macos or run on a macOS host')
 	}
 }
 
@@ -497,6 +504,11 @@ pub fn new_preferences_from_args(args []string) Preferences {
 	add_freestanding_hook_defines(mut all_defines, freestanding_hooks)
 
 	options := cmdline.only_options(args)
+	validate_macos_tiny_flag_contract(options, normalized_target_os) or {
+		eprintln('error: ${err.msg()}')
+		exit(1)
+	}
+	macos_tiny := '-no-mos-tiny' !in options
 
 	// Parse -ownership flag (must be after options is declared)
 	mut ownership := false
@@ -515,7 +527,7 @@ pub fn new_preferences_from_args(args []string) Preferences {
 		'--nocache', '-nomarkused', '--nomarkused', '-showcc', '--showcc', '-stats', '--stats',
 		'-print-parsed-files', '--print-parsed-files', '-keepc', '--profile-alloc', '-profile-alloc',
 		'-enable-globals', '--enable-globals', '-shared', '--shared', '-O0', '--single-backend',
-		'-single-backend', '-prod', '-prealloc', '-freestanding', '--freestanding']
+		'-single-backend', '-prod', '-prealloc', '-freestanding', '--freestanding', '-no-mos-tiny']
 	$if ownership ? {
 		known_boolean_flags << '-ownership'
 	}
@@ -541,6 +553,7 @@ pub fn new_preferences_from_args(args []string) Preferences {
 			eprintln('  -freestanding          Generate for a freestanding platform contract')
 			eprintln('  -fhooks <values>       Advanced freestanding hooks for --skip-builtin --skip-type-check stubs')
 			eprintln('                         Values: output, panic, alloc, minimal')
+			eprintln('  -no-mos-tiny           Disable macOS x64 tiny object output')
 			eprintln('  -O0                    Skip SSA optimization (default; use -prod to enable)')
 			$if ownership ? {
 				eprintln('  -ownership             Enable ownership checking for strings')
@@ -586,6 +599,7 @@ pub fn new_preferences_from_args(args []string) Preferences {
 		output_cross_c:        output_cross_c
 		freestanding:          freestanding
 		freestanding_hooks:    freestanding_hooks
+		macos_tiny:            macos_tiny
 		output_file:           output_file
 		printfn_list:          printfn_list
 		user_defines:          all_defines
