@@ -798,6 +798,32 @@ fn test_apply_data_scope_insert_skips_non_equality_operator() {
 	assert result.data == [orm.Primitive('alice'), orm.Primitive(int(9))]
 }
 
+fn test_apply_data_scope_insert_skips_array_equality_value() {
+	scope := orm.DataScope{
+		filters: [
+			orm.QueryFilter{
+				field: 'tenant_id'
+				value: orm.Primitive([orm.Primitive(1), orm.Primitive(2)])
+			},
+			orm.QueryFilter{
+				field: 'shop_id'
+				value: orm.Primitive(int(9))
+			},
+		]
+	}
+	data := orm.QueryData{
+		fields: ['name']
+		data:   [orm.Primitive('alice')]
+	}
+	table := orm.Table{
+		name:   'users'
+		fields: ['name', 'tenant_id', 'shop_id']
+	}
+	result := orm.apply_data_scope_insert(scope, table, data, [])
+	assert result.fields == ['name', 'shop_id']
+	assert result.data == [orm.Primitive('alice'), orm.Primitive(int(9))]
+}
+
 fn test_apply_data_scope_insert_overrides_existing_scope_field() {
 	scope := scope_single_tenant(99)
 	data := orm.QueryData{

@@ -300,6 +300,19 @@ fn test_string_cast_to_sumtype() {
 	}
 }
 
+struct SumtypeStringHolder {
+	value Abc
+}
+
+fn test_string_cast_to_sumtype_in_array_init() {
+	items := [
+		SumtypeStringHolder{
+			value: Abc('test')
+		},
+	]
+	assert items[0].value as string == 'test'
+}
+
 fn test_int_cast_to_sumtype() {
 	// literal
 	a := Abc(111)

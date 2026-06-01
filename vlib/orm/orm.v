@@ -468,7 +468,7 @@ fn apply_scope_insert_filters(scope DataScope, table Table, data QueryData, scop
 	original_field_count := data.fields.len
 	field_to_column := table_field_to_column_map(table)
 	for filter in scope.filters {
-		if filter.field == '' || filter.operator != .eq {
+		if filter.field == '' || filter.operator != .eq || primitive_is_array(filter.value) {
 			continue
 		}
 		if filter.field in scope_skip_fields {
@@ -517,6 +517,18 @@ fn apply_scope_insert_filters(scope DataScope, table Table, data QueryData, scop
 		}
 	}
 	return result
+}
+
+fn primitive_is_array(value Primitive) bool {
+	return match value {
+		[]Primitive, []bool, []f32, []f64, []i16, []i64, []i8, []int, []string, []time.Time, []u16,
+		[]u32, []u64, []u8, []InfixType {
+			true
+		}
+		else {
+			false
+		}
+	}
 }
 
 // primitive_type returns the type index for a Primitive value.
