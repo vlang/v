@@ -2655,6 +2655,33 @@ fn (g &Gen) unalias_type_keep_muls(typ ast.Type) ast.Type {
 	return resolved
 }
 
+fn (mut g Gen) type_resolves_to_shared(typ ast.Type) bool {
+	if typ.has_flag(.shared_f) {
+		return true
+	}
+	return g.alias_shared_parent_type(typ) != ast.void_type
+}
+
+fn (mut g Gen) alias_shared_parent_type(typ ast.Type) ast.Type {
+	mut current_type := g.unwrap_generic(typ)
+	for _ in 0 .. 64 {
+		if current_type.nr_muls() > 0 {
+			return ast.void_type
+		}
+		sym := g.table.sym(current_type)
+		if sym.info is ast.Alias {
+			parent_type := sym.info.parent_type
+			if parent_type.has_flag(.shared_f) {
+				return parent_type
+			}
+			current_type = parent_type
+			continue
+		}
+		return ast.void_type
+	}
+	return ast.void_type
+}
+
 fn (mut g Gen) exposed_smartcast_type(orig_type ast.Type, smartcast_type ast.Type, is_mut bool) ast.Type {
 	if is_mut || orig_type == 0 || smartcast_type == 0 || orig_type.is_ptr() {
 		return smartcast_type
@@ -5126,6 +5153,9 @@ fn (mut g Gen) expr_with_cast(expr ast.Expr, got_type_raw ast.Type, expected_typ
 	// Generic dereferencing logic
 	neither_void := ast.voidptr_type !in [got_type.idx_type(), expected_type.idx_type()]
 		&& ast.nil_type !in [got_type.idx_type(), expected_type.idx_type()]
+	if g.write_alias_to_shared_expr(expr, expected_type, got_type_raw) {
+		return
+	}
 	if expected_type.has_flag(.shared_f) && !got_type_raw.has_flag(.shared_f)
 		&& !expected_type.has_option_or_result() {
 		shared_styp := exp_styp[0..exp_styp.len - 1] // `shared` implies ptr, so eat one `*`
@@ -7389,12 +7419,16 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 	field_is_opt := node.expr is ast.Ident && node.expr.is_auto_heap()
 		&& node.expr.or_expr.kind != .absent && field_typ.has_flag(.option)
 		&& !expr_is_unwrapped_autoheap_option
+	alias_ptr_to_shared := unwrapped_expr_type.nr_muls() > 0
+		&& g.alias_shared_parent_type(unwrapped_expr_type.set_nr_muls(0)) != ast.void_type
 	if field_is_opt {
 		g.write('((${g.base_type(field_typ)})')
 	}
 	n_ptr := if is_interface_smartcast_selector
 		|| (is_interface_smartcast_expr && resolved_selector_expr_type.nr_muls() > 1) {
 		0
+	} else if alias_ptr_to_shared {
+		resolved_selector_expr_type.nr_muls()
 	} else {
 		resolved_selector_expr_type.nr_muls() - 1
 	}
@@ -7545,8 +7579,8 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 			|| (is_interface_smartcast_lhs && !interface_smartcast_expr_is_dereferenced
 			&& !smartcast_ident_already_dereferenced) || (((!is_dereferenced
 			&& !is_interface_smartcast_lhs && !smartcast_ident_already_dereferenced
-			&& unwrapped_expr_type.is_ptr()) || sym.kind == .chan || alias_to_ptr)
-			&& node.from_embed_types.len == 0)
+			&& unwrapped_expr_type.is_ptr()) || sym.kind == .chan || alias_to_ptr
+			|| g.type_resolves_to_shared(unwrapped_expr_type)) && node.from_embed_types.len == 0)
 			|| (node.expr.is_as_cast() && g.inside_smartcast)
 			|| (!opt_ptr_already_deref && unwrapped_expr_type.is_ptr()
 			&& !is_interface_smartcast_lhs && !smartcast_ident_already_dereferenced)
@@ -7556,7 +7590,7 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 	} else {
 		g.write('.')
 	}
-	if !has_embed && node.expr_type.has_flag(.shared_f) {
+	if !has_embed && (g.type_resolves_to_shared(node.expr_type) || alias_ptr_to_shared) {
 		g.write('val.')
 	}
 	if node.expr_type == 0 {
@@ -7757,7 +7791,7 @@ fn (mut g Gen) gen_closure_fn(expr_styp string, m ast.Fn, name string) {
 }
 
 fn (mut g Gen) write_selector_expr_embed_name(node ast.SelectorExpr, embed_types []ast.Type) {
-	is_shared := node.expr_type.has_flag(.shared_f)
+	mut is_shared := g.type_resolves_to_shared(node.expr_type)
 	mut lhs_expr_type := node.expr_type
 	if node.expr is ast.Ident && node.expr.obj is ast.Var && (node.expr.obj.typ.has_flag(.generic)
 		|| g.type_has_unresolved_generic_parts(node.expr.obj.typ))
@@ -7775,6 +7809,10 @@ fn (mut g Gen) write_selector_expr_embed_name(node ast.SelectorExpr, embed_types
 		g.unwrap_generic(lhs_expr_type)
 	} else {
 		lhs_expr_type
+	}
+	if !is_shared && resolved_selector_expr_type.nr_muls() > 0
+		&& g.alias_shared_parent_type(resolved_selector_expr_type.set_nr_muls(0)) != ast.void_type {
+		is_shared = true
 	}
 	is_auto_heap := node.expr is ast.Ident && g.resolved_ident_is_auto_heap(node.expr)
 	for i, embed in embed_types {
@@ -9590,6 +9628,37 @@ fn (mut g Gen) ident(node ast.Ident) {
 	}
 }
 
+fn (mut g Gen) write_alias_to_shared_expr(expr ast.Expr, target_type ast.Type, expr_type ast.Type) bool {
+	shared_parent_type := g.alias_shared_parent_type(target_type)
+	if shared_parent_type == ast.void_type || target_type.has_option_or_result()
+		|| g.type_resolves_to_shared(expr_type) || !expr_type.is_ptr() {
+		return false
+	}
+	if expr is ast.Nil || (expr is ast.UnsafeExpr && expr.expr is ast.Nil) {
+		return false
+	}
+	target_styp := g.styp(target_type)
+	shared_styp := g.styp(shared_parent_type.set_nr_muls(0))
+	payload_typ := shared_parent_type.clear_flag(.shared_f).clear_flag(.atomic_f).set_nr_muls(0)
+	payload_sym := g.table.final_sym(payload_typ)
+	if payload_sym.kind == .array {
+		g.writeln('(${target_styp})__dup_shared_array(&(${shared_styp}){.mtx = {0}, .val =')
+	} else if payload_sym.kind == .map {
+		g.writeln('(${target_styp})__dup_shared_map(&(${shared_styp}){.mtx = {0}, .val =')
+	} else {
+		g.writeln('(${target_styp})__dup${shared_styp}(&(${shared_styp}){.mtx = {0}, .val =')
+	}
+	old_is_shared := g.is_shared
+	g.is_shared = false
+	if expr_type.is_ptr() {
+		g.write('*'.repeat(expr_type.nr_muls()))
+	}
+	g.expr(expr)
+	g.is_shared = old_is_shared
+	g.writeln('}, sizeof(${shared_styp}))')
+	return true
+}
+
 fn (mut g Gen) cast_expr(node ast.CastExpr) {
 	tmp_inside_cast := g.inside_cast
 	g.inside_cast = true
@@ -9633,6 +9702,9 @@ fn (mut g Gen) cast_expr(node ast.CastExpr) {
 	}
 	expr_sym := g.table.sym(expr_type)
 	final_expr_sym := g.table.final_sym(expr_type)
+	if g.write_alias_to_shared_expr(node.expr, node_typ, expr_type) {
+		return
+	}
 	node_typ_is_option := node.typ.has_flag(.option)
 	is_alias_of_sumtype := sym.kind == .alias && sym.info is ast.Alias
 		&& final_sym.kind in [.sum_type, .interface]
