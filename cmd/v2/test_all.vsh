@@ -9,11 +9,17 @@ const gitly_clone_dir = '/tmp/v2_test_gitly_clone'
 const gitly_repo_url = 'https://github.com/vlang/gitly'
 
 struct Config {
-	v1_compiler string
-	script_dir  string
-	repo_root   string
-	v2_src      string
-	arm_flag    string
+	v1_compiler  string
+	script_dir   string
+	repo_root    string
+	v2_src       string
+	backend_arch string
+	backend_flag string
+}
+
+struct Args {
+	backend_arch string
+	opt_flag     string
 }
 
 fn main() {
@@ -22,24 +28,24 @@ fn main() {
 
 	rm_rf(cleanc_cache)
 
-	section(1, 'ARM64 self-host hello world')
+	section(1, '${cfg.backend_arch} self-host hello world')
 	backup_v2_src(cfg)
 	run('${q(cfg.v1_compiler)} -gc none -cc cc -o v2 v2.v')
 	restore_v2_src(cfg)
-	run('./v2 --no-parallel -backend arm64 -gc none -nocache ${cfg.arm_flag} -o v3 v2.v')
-	run('./v3 --no-parallel -backend arm64 ${cfg.arm_flag} -o hello_arm hello.v')
-	run('./hello_arm')
-	cleanup_files(['v3', 'hello_arm'])
+	run('./v2 --no-parallel -backend ${cfg.backend_arch} -gc none -nocache ${cfg.backend_flag} -o v3 v2.v')
+	run('./v3 --no-parallel -backend ${cfg.backend_arch} ${cfg.backend_flag} -o hello_backend hello.v')
+	run('./hello_backend')
+	cleanup_files(['v3', 'hello_backend'])
 
-	section(2, 'ARM64 self-host chain (v2->v3->v4->v5->v6)')
+	section(2, '${cfg.backend_arch} self-host chain (v2->v3->v4->v5->v6)')
 	println('  Building v3 from v2...')
-	run('./v2 --no-parallel -nocache -gc none -backend arm64 ${cfg.arm_flag} -o v3_chain v2.v')
+	run('./v2 --no-parallel -nocache -gc none -backend ${cfg.backend_arch} ${cfg.backend_flag} -o v3_chain v2.v')
 	println('  Building v4 from v3...')
-	run('./v3_chain --no-parallel -nocache -gc none -backend arm64 ${cfg.arm_flag} -o v4_chain v2.v')
+	run('./v3_chain --no-parallel -nocache -gc none -backend ${cfg.backend_arch} ${cfg.backend_flag} -o v4_chain v2.v')
 	println('  Building v5 from v4...')
-	run('./v4_chain --no-parallel -nocache -gc none -backend arm64 ${cfg.arm_flag} -o v5_chain v2.v')
+	run('./v4_chain --no-parallel -nocache -gc none -backend ${cfg.backend_arch} ${cfg.backend_flag} -o v5_chain v2.v')
 	println('  Building v6 from v5...')
-	run('./v5_chain --no-parallel -nocache -gc none -backend arm64 ${cfg.arm_flag} -o v6_chain v2.v')
+	run('./v5_chain --no-parallel -nocache -gc none -backend ${cfg.backend_arch} ${cfg.backend_flag} -o v6_chain v2.v')
 	v5_size := os.file_size('v5_chain')
 	v6_size := os.file_size('v6_chain')
 	if v5_size == v6_size {
@@ -58,29 +64,29 @@ fn main() {
 	run('./v2 ../../vlib/builtin/string_test.v')
 	run('./v2 ../../vlib/builtin/map_test.v')
 
-	section(5, 'Builtin test files (arm64)')
-	for arm64_test in ['array_test.v', 'string_test.v', 'map_test.v'] {
-		run('./v2 -backend arm64 ${cfg.arm_flag} "../../vlib/builtin/${arm64_test}"')
+	section(5, 'Builtin test files (${cfg.backend_arch})')
+	for backend_test in ['array_test.v', 'string_test.v', 'map_test.v'] {
+		run('./v2 -backend ${cfg.backend_arch} ${cfg.backend_flag} "../../vlib/builtin/${backend_test}"')
 	}
 
 	section(6, 'Math test')
 	run('./v2 ../../vlib/math/math_test.v')
 
-	section(7, 'Math test (arm64)')
-	run('./v2 -backend arm64 ${cfg.arm_flag} ../../vlib/math/math_test.v')
+	section(7, 'Math test (${cfg.backend_arch})')
+	run('./v2 -backend ${cfg.backend_arch} ${cfg.backend_flag} ../../vlib/math/math_test.v')
 
 	section(8, 'Sumtype tests')
 	for st in sumtype_tests() {
 		run('./v2 ${st}')
 	}
 
-	section(9, 'Sumtype tests (arm64)')
+	section(9, 'Sumtype tests (${cfg.backend_arch})')
 	for st in sumtype_tests() {
-		run('./v2 -backend arm64 ${cfg.arm_flag} ${st}')
+		run('./v2 -backend ${cfg.backend_arch} ${cfg.backend_flag} ${st}')
 	}
 
-	section(10, 'SSA backends test (arm64)')
-	run('${q(cfg.v1_compiler)} -gc none run test_ssa_backends.v arm64 ${cfg.arm_flag}')
+	section(10, 'SSA backends test (${cfg.backend_arch})')
+	run('${q(cfg.v1_compiler)} -gc none run test_ssa_backends.v ${cfg.backend_arch} ${cfg.backend_flag}')
 
 	section(11, 'SSA backends test (cleanc)')
 	run('${q(cfg.v1_compiler)} -gc none run test_ssa_backends.v cleanc')
@@ -122,46 +128,103 @@ fn resolve_gitly_dir() string {
 }
 
 fn parse_config() Config {
-	arm_flag := parse_args()
+	args := parse_args()
 	script_dir := os.real_path(@DIR)
 	repo_root := os.real_path(os.join_path(script_dir, '..', '..'))
 	v1_compiler := absolute_path(os.getenv_opt('V') or { os.join_path(repo_root, 'v') })
 	if !os.is_executable(v1_compiler) {
 		fail('FAIL: v1 compiler not found: ${v1_compiler}')
 	}
+	backend_flag := args.opt_flag
 	return Config{
-		v1_compiler: v1_compiler
-		script_dir:  script_dir
-		repo_root:   repo_root
-		v2_src:      os.join_path(repo_root, 'vlib', 'v2')
-		arm_flag:    arm_flag
+		v1_compiler:  v1_compiler
+		script_dir:   script_dir
+		repo_root:    repo_root
+		v2_src:       os.join_path(repo_root, 'vlib', 'v2')
+		backend_arch: args.backend_arch
+		backend_flag: backend_flag
 	}
 }
 
-fn parse_args() string {
-	mut arm_flag := '-O0'
-	for arg in os.args[1..] {
+fn parse_args() Args {
+	mut backend_arch := ''
+	mut opt_flag := '-O0'
+	mut i := 1
+	for i < os.args.len {
+		arg := os.args[i]
 		match arg {
+			'-arch', '--arch' {
+				i++
+				if i >= os.args.len {
+					fail('missing value after -arch/--arch')
+				}
+				backend_arch = parse_backend_arch(os.args[i])
+			}
 			'-prod' {
-				arm_flag = '-prod'
+				opt_flag = '-prod'
 			}
 			'-O0' {
-				arm_flag = '-O0'
+				opt_flag = '-O0'
 			}
 			'-h', '--help' {
-				println('Usage: v run cmd/v2/test_all.vsh [-prod|-O0]')
+				println('Usage: v run cmd/v2/test_all.vsh [-arch|--arch auto|x64|arm64] [-prod|-O0]')
 				println('')
-				println('By default, ARM64 backend builds use -O0 and skip SSA optimization.')
-				println('With -prod, ARM64 backend builds use -prod.')
-				println('With -O0, ARM64 backend builds use the default no-optimization mode.')
+				println('By default, backend tests use the native host architecture.')
+				println('With -arch/--arch auto, backend tests use the native host architecture.')
+				println('With -arch/--arch x64, backend tests use the x64 backend.')
+				println('With -arch/--arch arm64, backend tests use the ARM64 backend.')
+				println('With -prod, x64 and ARM64 backend builds use -prod.')
+				println('With -O0, x64 and ARM64 backend builds use -O0.')
+				println('With x64 backend builds, -O0 is passed through, but SSA optimize is still forced by the backend.')
 				exit(0)
 			}
 			else {
 				fail('unknown argument: ${arg}')
 			}
 		}
+
+		i++
 	}
-	return arm_flag
+	if backend_arch == '' {
+		backend_arch = native_backend_arch()
+	}
+	return Args{
+		backend_arch: backend_arch
+		opt_flag:     opt_flag
+	}
+}
+
+fn parse_backend_arch(arch string) string {
+	match arch {
+		'auto' {
+			return native_backend_arch()
+		}
+		'x64', 'arm64' {
+			return arch
+		}
+		else {
+			fail('unsupported architecture: ${arch}; expected auto, x64 or arm64')
+		}
+	}
+
+	return ''
+}
+
+fn native_backend_arch() string {
+	machine := os.uname().machine.to_lower()
+	match machine {
+		'x86_64', 'amd64' {
+			return 'x64'
+		}
+		'aarch64', 'arm64' {
+			return 'arm64'
+		}
+		else {
+			fail('unsupported native architecture: ${machine}; pass -arch/--arch x64 or -arch/--arch arm64')
+		}
+	}
+
+	return ''
 }
 
 fn absolute_path(path string) string {
