@@ -6,6 +6,7 @@ import v.pref
 import v.util.version
 
 const default_c_error_bug_report_url = 'https://bugs.vlang.io/bug-report'
+const c_error_bug_report_disabled_env = 'V_C_ERROR_BUG_REPORT_DISABLED'
 const c_error_context_radius = 5
 const c_error_bug_report_max_body_bytes = 256 * 1024
 const c_error_bug_report_truncation_notice = '\n... report truncated before upload ...\n'
@@ -109,10 +110,22 @@ fn c_error_bug_report_url(flag_url string) string {
 }
 
 fn should_submit_c_error_bug_report(flag_url string) bool {
+	if c_error_bug_reports_disabled() {
+		return false
+	}
 	if running_in_github_ci() {
 		return c_error_bug_report_url(flag_url) != default_c_error_bug_report_url
 	}
 	return true
+}
+
+fn c_error_bug_reports_disabled() bool {
+	return os.getenv(c_error_bug_report_disabled_env).trim_space().to_lower() in ['1', 'true',
+		'yes', 'on']
+}
+
+fn disable_c_error_bug_reports() {
+	os.setenv(c_error_bug_report_disabled_env, '1', true)
 }
 
 fn running_in_github_ci() bool {
