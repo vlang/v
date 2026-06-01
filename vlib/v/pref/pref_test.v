@@ -52,6 +52,58 @@ fn test_cross_compile_keeps_explicit_cc() {
 	assert second.ccompiler == custom_cc
 }
 
+fn test_v2_only_flags_are_forwarded_by_v1_wrapper() {
+	target := os.join_path(vroot, 'examples', 'hello_world.v')
+	prefs, command := pref.parse_args_and_show_errors(['help'], [
+		'',
+		'-v2',
+		'-freestanding',
+		'-os',
+		'none',
+		'--skip-builtin',
+		'--skip-type-check',
+		'--debug',
+		'--showcc',
+		'--stats',
+		'-print-parsed-files',
+		'--profile-alloc',
+		'--single-backend',
+		'-O0',
+		'-fhooks',
+		'output,panic,alloc',
+		target,
+	], false)
+	assert command == target
+	assert prefs.use_v2
+	assert prefs.is_bare
+	assert prefs.build_options.contains('-os none')
+	assert prefs.build_options.contains('-fhooks output,panic,alloc')
+}
+
+fn test_vexe_path_normalizes_relative_env_path() {
+	old_wd := os.getwd()
+	old_vexe := os.getenv_opt('VEXE')
+	test_root := os.join_path(os.vtmp_dir(), 'pref_vexe_path_relative_env_test')
+	os.rmdir_all(test_root) or {}
+	os.mkdir_all(test_root)!
+	fake_vexe := os.join_path(test_root, 'v')
+	os.write_file(fake_vexe, '')!
+	defer {
+		os.chdir(old_wd) or {}
+		if vexe_env := old_vexe {
+			os.setenv('VEXE', vexe_env, true)
+		} else {
+			os.unsetenv('VEXE')
+		}
+		os.rmdir_all(test_root) or {}
+	}
+	os.chdir(test_root)!
+	os.setenv('VEXE', './v', true)
+	expected_vexe := os.real_path(fake_vexe)
+	assert pref.vexe_path() == expected_vexe
+	assert os.getenv('VEXE') == expected_vexe
+}
+
 fn test_mac_is_alias_for_macos() {
 	os_kind := pref.os_from_string('mac') or {
 		assert false, err.msg()
@@ -412,6 +464,29 @@ fn test_v_cmds_and_flags() {
 	unknown_arg_for_cmd_res := os.execute('${vexe} build-module -xyz ${vroot}/vlib/math')
 	assert unknown_arg_for_cmd_res.output.trim_space() == 'Unknown argument `-xyz` for command `build-module`'
 
+	v2_only_flag_without_v2_res :=
+		os.execute('${vexe} --skip-builtin ${vroot}/examples/hello_world.v')
+	assert v2_only_flag_without_v2_res.exit_code == 1
+	assert v2_only_flag_without_v2_res.output.trim_space() == 'Unknown argument `--skip-builtin`'
+
+	v2_hooks_without_v2_res := os.execute('${vexe} -fhooks output ${vroot}/examples/hello_world.v')
+	assert v2_hooks_without_v2_res.exit_code == 1
+	assert v2_hooks_without_v2_res.output.trim_space() == 'Unknown argument `-fhooks`'
+
+	v2_os_none_without_v2_res := os.execute('${vexe} -os none ${vroot}/examples/hello_world.v')
+	assert v2_os_none_without_v2_res.exit_code == 1
+	assert v2_os_none_without_v2_res.output.trim_space() == 'unknown operating system target `none`'
+
+	late_v2_skip_builtin_res :=
+		os.execute('${vexe} --skip-builtin run ${vroot}/examples/hello_world.v -v2')
+	assert late_v2_skip_builtin_res.exit_code == 1
+	assert late_v2_skip_builtin_res.output.trim_space() == 'Unknown argument `--skip-builtin`'
+
+	late_v2_hooks_res :=
+		os.execute('${vexe} -fhooks output run ${vroot}/examples/hello_world.v -v2')
+	assert late_v2_hooks_res.exit_code == 1
+	assert late_v2_hooks_res.output.trim_space() == 'Unknown argument `-fhooks`'
+
 	eval_removed_message := 'use v -v2 -eval file.v'
 	eval_flag_res := os.execute('${vexe} -eval ${vroot}/examples/hello_world.v')
 	assert eval_flag_res.exit_code == 1
@@ -602,6 +677,26 @@ fn test_tcc_shared_builds_disable_backtraces() {
 	}
 	regular_prefs.fill_with_defaults()
 	assert 'no_backtrace' !in regular_prefs.compile_defines_all
+}
+
+fn test_bsd_tinyc_defaults_to_openssl() {
+	mut bsd_tinyc_prefs := &pref.Preferences{
+		path:                  'main.v'
+		os:                    .freebsd
+		ccompiler:             'tinyc'
+		ccompiler_set_by_flag: true
+	}
+	bsd_tinyc_prefs.fill_with_defaults()
+	assert 'use_openssl' in bsd_tinyc_prefs.compile_defines
+	assert 'use_openssl' in bsd_tinyc_prefs.compile_defines_all
+
+	mut bsd_clang_prefs := &pref.Preferences{
+		path:      'main.v'
+		os:        .freebsd
+		ccompiler: 'clang'
+	}
+	bsd_clang_prefs.fill_with_defaults()
+	assert 'use_openssl' !in bsd_clang_prefs.compile_defines_all
 }
 
 fn test_late_resolved_tcc_shared_builds_disable_backtraces() {

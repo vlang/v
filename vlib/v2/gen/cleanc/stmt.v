@@ -32,9 +32,22 @@ fn (mut g Gen) set_file_module(file ast.File) {
 }
 
 fn (mut g Gen) gen_stmts(stmts []ast.Stmt) {
+	saved_file_name := g.cur_file_name
+	saved_module := g.cur_module
+	saved_import_modules := g.cur_import_modules.clone()
 	for i in 0 .. stmts.len {
+		g.cur_file_name = saved_file_name
+		g.cur_module = saved_module
+		g.cur_import_modules = saved_import_modules.clone()
+		g.is_module_ident_cache.clear()
+		g.resolved_module_names.clear()
 		g.gen_stmt(stmts[i])
 	}
+	g.cur_file_name = saved_file_name
+	g.cur_module = saved_module
+	g.cur_import_modules = saved_import_modules.clone()
+	g.is_module_ident_cache.clear()
+	g.resolved_module_names.clear()
 }
 
 fn (mut g Gen) gen_scoped_stmts(stmts []ast.Stmt) {
@@ -210,7 +223,9 @@ fn (mut g Gen) gen_stmt(node ast.Stmt) {
 					expr_type = g.get_call_return_type(expr.lhs, expr.args) or { expr_type }
 				}
 				value_type := option_value_type(g.cur_fn_ret_type)
-				if expr is ast.Ident && expr.name == 'err' {
+				if expr is ast.Ident && expr.name == 'err' && (g.get_local_var_c_type(expr.name) or {
+					'IError'
+				}) in ['IError', 'builtin__IError'] {
 					g.sb.write_string('return (${g.cur_fn_ret_type}){ .is_error=true, .err=')
 					g.expr(expr)
 					g.sb.writeln(' };')
@@ -305,8 +320,11 @@ fn (mut g Gen) gen_stmt(node ast.Stmt) {
 					g.sb.writeln(' };')
 					return
 				}
-				// `return err` propagates the error from the or-block
-				if expr is ast.Ident && expr.name == 'err' {
+				// `return err` propagates the error from the or-block. A user local
+				// named `err` can still be a concrete error value and must be wrapped.
+				if expr is ast.Ident && expr.name == 'err' && (g.get_local_var_c_type(expr.name) or {
+					'IError'
+				}) in ['IError', 'builtin__IError'] {
 					g.sb.write_string('return (${g.cur_fn_ret_type}){ .is_error=true, .err=')
 					g.expr(expr)
 					g.sb.writeln(' };')
@@ -607,6 +625,7 @@ fn (mut g Gen) gen_comptime_for(node ast.ForStmt) {
 	prev_field_raw_type := g.comptime_field_raw_type
 	prev_field_attrs := g.comptime_field_attrs
 	prev_field_idx := g.comptime_field_idx
+	prev_field_is_embed := g.comptime_field_is_embed
 	prev_continue_label := g.comptime_continue_label
 	g.comptime_field_var = field_var
 	g.write_indent()
@@ -618,6 +637,7 @@ fn (mut g Gen) gen_comptime_for(node ast.ForStmt) {
 		g.comptime_field_raw_type = field.typ
 		g.comptime_field_attrs = g.comptime_field_attribute_strings(struct_type.name, field)
 		g.comptime_field_idx = i
+		g.comptime_field_is_embed = g.comptime_field_is_embedded(struct_type, field)
 		g.tmp_counter++
 		g.comptime_continue_label = '__v_ctf_continue_${g.tmp_counter}_${i}'
 		g.write_indent()
@@ -641,7 +661,18 @@ fn (mut g Gen) gen_comptime_for(node ast.ForStmt) {
 	g.comptime_field_raw_type = prev_field_raw_type
 	g.comptime_field_attrs = prev_field_attrs
 	g.comptime_field_idx = prev_field_idx
+	g.comptime_field_is_embed = prev_field_is_embed
 	g.comptime_continue_label = prev_continue_label
+}
+
+fn (g &Gen) comptime_field_is_embedded(struct_type types.Struct, field types.Field) bool {
+	for embedded in struct_type.embedded {
+		embedded_name := embedded.name.all_after_last('__')
+		if field.name == embedded.name || field.name == embedded_name {
+			return true
+		}
+	}
+	return false
 }
 
 fn (mut g Gen) comptime_for_struct_type(concrete types.Type, fallback types.Struct) types.Struct {

@@ -15,6 +15,8 @@ const macho_lc_symtab = 0x2
 
 const x86_64_reloc_signed = 1
 const x86_64_reloc_branch = 2
+const x86_64_reloc_got_load = 3
+const x86_64_reloc_got = 4
 
 pub struct MachOObject {
 pub mut:

@@ -1,0 +1,2 @@
+builtin__string_clone_static(val.name)
+builtin__array_clone_static_to_depth(val.tags, 1)

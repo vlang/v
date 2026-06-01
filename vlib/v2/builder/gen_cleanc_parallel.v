@@ -7,31 +7,33 @@ import runtime
 import time
 import v2.gen.cleanc
 
-struct GenCleancChunkArgs {
-	worker           voidptr // &cleanc.Gen — pre-cloned worker
-	file_indices_ptr voidptr // &[]int — file indices to process
-}
-
 struct GenCleancWeightedFile {
 	idx  int
 	cost int
 }
 
-@[typedef]
-struct C.pthread_t {}
+$if !windows {
+	struct GenCleancChunkArgs {
+		worker           voidptr // &cleanc.Gen — pre-cloned worker
+		file_indices_ptr voidptr // &[]int — file indices to process
+	}
 
-fn C.pthread_create(thread &C.pthread_t, attr voidptr, start_routine fn (voidptr) voidptr, arg voidptr) int
-fn C.pthread_join(thread C.pthread_t, retval voidptr) int
-fn C.pthread_attr_init(attr voidptr) int
-fn C.pthread_attr_setstacksize(attr voidptr, stacksize usize) int
-fn C.pthread_attr_destroy(attr voidptr) int
+	@[typedef]
+	struct C.pthread_t {}
 
-fn gen_cleanc_chunk_thread(arg voidptr) voidptr {
-	a := unsafe { &GenCleancChunkArgs(arg) }
-	mut w := unsafe { &cleanc.Gen(a.worker) }
-	indices := unsafe { &[]int(a.file_indices_ptr) }
-	w.gen_pass5_files(*indices)
-	return unsafe { nil }
+	fn C.pthread_create(thread &C.pthread_t, attr voidptr, start_routine fn (voidptr) voidptr, arg voidptr) int
+	fn C.pthread_join(thread C.pthread_t, retval voidptr) int
+	fn C.pthread_attr_init(attr voidptr) int
+	fn C.pthread_attr_setstacksize(attr voidptr, stacksize usize) int
+	fn C.pthread_attr_destroy(attr voidptr) int
+
+	fn gen_cleanc_chunk_thread(arg voidptr) voidptr {
+		a := unsafe { &GenCleancChunkArgs(arg) }
+		mut w := unsafe { &cleanc.Gen(a.worker) }
+		indices := unsafe { &[]int(a.file_indices_ptr) }
+		w.gen_pass5_files(*indices)
+		return unsafe { nil }
+	}
 }
 
 fn print_cleanc_parallel_step_time(stats_enabled bool, step string, elapsed time.Duration) {
@@ -58,93 +60,106 @@ fn (mut b Builder) gen_cleanc_parallel(mut gen cleanc.Gen) {
 	stage_start = mark_cleanc_parallel_step(stats_enabled, mut stats_sw, stage_start, 'pass 5 pre')
 
 	n_files := emit_indices.len
-	n_jobs := runtime.nr_jobs()
+	// Pass 5 workers clone sizeable lookup maps and accumulate C output before
+	// merging. Keep the default fan-out conservative until those maps can be
+	// shared without data races; otherwise large projects can hit multi-GB RSS.
+	n_runtime_jobs := runtime.nr_jobs()
+	n_jobs := if n_runtime_jobs > 2 { 2 } else { n_runtime_jobs }
 
-	if n_files <= 1 || n_jobs <= 1 {
-		// Fallback to sequential
+	$if windows {
 		gen.gen_pass5_files(emit_indices)
 		stage_start = mark_cleanc_parallel_step(stats_enabled, mut stats_sw, stage_start,
 			'pass 5 files')
 		gen.gen_pass5_post()
 		_ = mark_cleanc_parallel_step(stats_enabled, mut stats_sw, stage_start, 'pass 5 post')
 		return
-	}
-
-	mut thread_ids := []C.pthread_t{len: n_jobs}
-	mut args := []GenCleancChunkArgs{cap: n_jobs}
-	mut workers := []voidptr{cap: n_jobs}
-	mut chunk_indices := [][]int{cap: n_jobs}
-	mut chunk_costs := []int{cap: n_jobs}
-
-	mut chunk_idx := n_jobs
-	if chunk_idx > n_files {
-		chunk_idx = n_files
-	}
-	for ci := 0; ci < chunk_idx; ci++ {
-		chunk_indices << []int{}
-		chunk_costs << 0
-	}
-	mut weighted_files := []GenCleancWeightedFile{cap: n_files}
-	for idx in emit_indices {
-		weighted_files << GenCleancWeightedFile{
-			idx:  idx
-			cost: gen.pass5_file_cost(idx)
+	} $else {
+		if n_files <= 1 || n_jobs <= 1 {
+			// Fallback to sequential
+			gen.gen_pass5_files(emit_indices)
+			stage_start = mark_cleanc_parallel_step(stats_enabled, mut stats_sw, stage_start,
+				'pass 5 files')
+			gen.gen_pass5_post()
+			_ = mark_cleanc_parallel_step(stats_enabled, mut stats_sw, stage_start, 'pass 5 post')
+			return
 		}
-	}
-	weighted_files.sort(a.cost > b.cost)
-	for item in weighted_files {
-		mut target := 0
-		for ci := 1; ci < chunk_idx; ci++ {
-			if chunk_costs[ci] < chunk_costs[target] {
-				target = ci
+
+		mut thread_ids := []C.pthread_t{len: n_jobs}
+		mut args := []GenCleancChunkArgs{cap: n_jobs}
+		mut workers := []voidptr{cap: n_jobs}
+		mut chunk_indices := [][]int{cap: n_jobs}
+		mut chunk_costs := []int{cap: n_jobs}
+
+		mut chunk_idx := n_jobs
+		if chunk_idx > n_files {
+			chunk_idx = n_files
+		}
+		for ci := 0; ci < chunk_idx; ci++ {
+			chunk_indices << []int{}
+			chunk_costs << 0
+		}
+		mut weighted_files := []GenCleancWeightedFile{cap: n_files}
+		for idx in emit_indices {
+			weighted_files << GenCleancWeightedFile{
+				idx:  idx
+				cost: gen.pass5_file_cost(idx)
 			}
 		}
-		chunk_indices[target] << item.idx
-		chunk_costs[target] += item.cost
-	}
-	stage_start = mark_cleanc_parallel_step(stats_enabled, mut stats_sw, stage_start,
-		'pass 5 chunk split')
-	for ci := 0; ci < chunk_idx; ci++ {
-		w := gen.new_pass5_worker(chunk_indices[ci], ci)
-		workers << voidptr(w)
-	}
-	stage_start = mark_cleanc_parallel_step(stats_enabled, mut stats_sw, stage_start,
-		'pass 5 worker setup')
-
-	// Set up args after all chunk_indices are stable
-	for ci := 0; ci < chunk_idx; ci++ {
-		args << GenCleancChunkArgs{
-			worker:           workers[ci]
-			file_indices_ptr: unsafe { voidptr(&chunk_indices[ci]) }
+		weighted_files.sort(a.cost > b.cost)
+		for item in weighted_files {
+			mut target := 0
+			for ci := 1; ci < chunk_idx; ci++ {
+				if chunk_costs[ci] < chunk_costs[target] {
+					target = ci
+				}
+			}
+			chunk_indices[target] << item.idx
+			chunk_costs[target] += item.cost
 		}
+		stage_start = mark_cleanc_parallel_step(stats_enabled, mut stats_sw, stage_start,
+			'pass 5 chunk split')
+		for ci := 0; ci < chunk_idx; ci++ {
+			w := gen.new_pass5_worker(chunk_indices[ci], ci)
+			workers << voidptr(w)
+		}
+		stage_start = mark_cleanc_parallel_step(stats_enabled, mut stats_sw, stage_start,
+			'pass 5 worker setup')
+
+		// Set up args after all chunk_indices are stable
+		for ci := 0; ci < chunk_idx; ci++ {
+			args << GenCleancChunkArgs{
+				worker:           workers[ci]
+				file_indices_ptr: unsafe { voidptr(&chunk_indices[ci]) }
+			}
+		}
+
+		attr_buf := [64]u8{}
+		attr := unsafe { voidptr(&attr_buf[0]) }
+		C.pthread_attr_init(attr)
+		C.pthread_attr_setstacksize(attr, 64 * 1024 * 1024)
+
+		for ci := 0; ci < chunk_idx; ci++ {
+			C.pthread_create(unsafe { &thread_ids[ci] }, attr, gen_cleanc_chunk_thread,
+				unsafe { voidptr(&args[ci]) })
+		}
+		C.pthread_attr_destroy(attr)
+
+		// Wait for all workers
+		for ci := 0; ci < chunk_idx; ci++ {
+			C.pthread_join(thread_ids[ci], unsafe { nil })
+		}
+		stage_start = mark_cleanc_parallel_step(stats_enabled, mut stats_sw, stage_start,
+			'pass 5 worker run')
+
+		// Merge worker results in order
+		for ci := 0; ci < chunk_idx; ci++ {
+			w := unsafe { &cleanc.Gen(workers[ci]) }
+			gen.merge_pass5_worker(w)
+		}
+		stage_start = mark_cleanc_parallel_step(stats_enabled, mut stats_sw, stage_start,
+			'pass 5 merge')
+
+		gen.gen_pass5_post()
+		_ = mark_cleanc_parallel_step(stats_enabled, mut stats_sw, stage_start, 'pass 5 post')
 	}
-
-	attr_buf := [64]u8{}
-	attr := unsafe { voidptr(&attr_buf[0]) }
-	C.pthread_attr_init(attr)
-	C.pthread_attr_setstacksize(attr, 64 * 1024 * 1024)
-
-	for ci := 0; ci < chunk_idx; ci++ {
-		C.pthread_create(unsafe { &thread_ids[ci] }, attr, gen_cleanc_chunk_thread,
-			unsafe { voidptr(&args[ci]) })
-	}
-	C.pthread_attr_destroy(attr)
-
-	// Wait for all workers
-	for ci := 0; ci < chunk_idx; ci++ {
-		C.pthread_join(thread_ids[ci], unsafe { nil })
-	}
-	stage_start = mark_cleanc_parallel_step(stats_enabled, mut stats_sw, stage_start,
-		'pass 5 worker run')
-
-	// Merge worker results in order
-	for ci := 0; ci < chunk_idx; ci++ {
-		w := unsafe { &cleanc.Gen(workers[ci]) }
-		gen.merge_pass5_worker(w)
-	}
-	stage_start = mark_cleanc_parallel_step(stats_enabled, mut stats_sw, stage_start,
-		'pass 5 merge')
-
-	gen.gen_pass5_post()
-	_ = mark_cleanc_parallel_step(stats_enabled, mut stats_sw, stage_start, 'pass 5 post')
 }

@@ -6,7 +6,19 @@ struct Cat {
 	age   int
 }
 
+struct OffsetInlineOnly {
+	a int
+	b int
+}
+
+struct OffsetConstOnly {
+	a int
+	b int
+}
+
 type Feline = Cat
+
+const offset_const_only_b = __offsetof(OffsetConstOnly, b)
 
 fn test_offsetof() {
 	cat := Cat{
@@ -19,6 +31,14 @@ fn test_offsetof() {
 		assert *(&string(&u8(&cat) + __offsetof(Cat, breed))) == 'Great Old One'
 		assert *(&int(&u8(&cat) + __offsetof(Cat, age))) == 2147483647
 	}
+}
+
+fn test_offsetof_inline_only_marks_struct_as_used() {
+	assert __offsetof(OffsetInlineOnly, b) == 4
+}
+
+fn test_offsetof_const_marks_struct_as_used() {
+	assert offset_const_only_b == 4
 }
 
 fn test_offsetof_struct_from_another_module() {

@@ -32,6 +32,11 @@ fn (e VerifyError) str() string {
 	return '${s}: ${e.msg}'
 }
 
+pub struct VerifyPanicOptions {
+pub:
+	allow_noncritical bool
+}
+
 // verify performs comprehensive validation of SSA invariants.
 // Returns a list of errors found (empty if valid).
 // Call this after optimization passes to catch bugs.
@@ -49,13 +54,22 @@ pub fn verify(m &ssa.Module) []VerifyError {
 	return errors
 }
 
-// verify_and_panic runs verification and panics if any errors are found.
-// Use this during development to catch SSA corruption early.
+// verify_and_panic runs verification and panics on critical errors.
+// Historical non-critical verifier warnings remain suppressed by default.
 pub fn verify_and_panic(m &ssa.Module, pass_name string) {
+	verify_and_panic_with_options(m, pass_name, VerifyPanicOptions{
+		allow_noncritical: true
+	})
+}
+
+// verify_and_panic_with_options runs verification with explicit warning policy.
+// Set allow_noncritical to false for strict verifier checkpoints.
+pub fn verify_and_panic_with_options(m &ssa.Module, pass_name string, opts VerifyPanicOptions) {
 	errors := verify(m)
 	if errors.len > 0 {
 		mut msg := 'SSA verification failed after ${pass_name}:\n'
-		// Filter out non-critical errors:
+		// Filter out accepted declarations and optionally keep legacy warnings non-fatal:
+		// - Explicit prototypes with no blocks are declarations kept in the module
 		// - Dominance errors are often false positives in nested control flow
 		// - Use-def chain errors happen during optimization when uses aren't cleaned up
 		// - Phi errors are from mem2reg and don't affect codegen
@@ -63,8 +77,10 @@ pub fn verify_and_panic(m &ssa.Module, pass_name string) {
 		mut critical_errors := []VerifyError{}
 		mut warning_count := 0
 		for err in errors {
-			if err.msg.contains('does not dominate') || err.msg.contains('uses list')
-				|| err.msg.contains('phi') || err.msg.contains('block mismatch') {
+			if is_accepted_declaration_verify_error(m, err) {
+				continue
+			}
+			if opts.allow_noncritical && is_legacy_noncritical_verify_error(err) {
 				warning_count++
 			} else {
 				critical_errors << err
@@ -80,6 +96,22 @@ pub fn verify_and_panic(m &ssa.Module, pass_name string) {
 			panic(msg)
 		}
 	}
+}
+
+fn is_accepted_declaration_verify_error(m &ssa.Module, err VerifyError) bool {
+	if err.msg == 'function has no blocks' {
+		if err.func_id < 0 || err.func_id >= m.funcs.len {
+			return false
+		}
+		func := m.funcs[err.func_id]
+		return func.is_c_extern || func.is_prototype
+	}
+	return false
+}
+
+fn is_legacy_noncritical_verify_error(err VerifyError) bool {
+	return err.msg.contains('does not dominate') || err.msg.contains('uses list')
+		|| err.msg.contains('phi') || err.msg.contains('block mismatch')
 }
 
 fn verify_function(m &ssa.Module, func &ssa.Function) []VerifyError {
@@ -313,11 +345,11 @@ fn verify_instruction(m &ssa.Module, func_id int, blk_id int, val_id int, instr 
 				}
 			}
 		}
-		.call, .call_indirect {
+		.call, .call_indirect, .call_sret, .go_call, .spawn_call {
 			// call should have at least a target (function pointer or name)
 			if instr.operands.len == 0 {
 				errors << VerifyError{
-					msg:      'call has no operands'
+					msg:      '${instr.op} has no operands'
 					func_id:  func_id
 					block_id: blk_id
 					val_id:   val_id

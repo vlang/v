@@ -35,6 +35,8 @@ mut:
 const formatted_file_token = '\@\@\@' + 'FORMATTED_FILE: '
 const vtmp_folder = os.vtmp_dir()
 const term_colors = term.can_show_color_on_stderr()
+const vfmt_only_flags = ['-backup', '-c', '-diff', '-inprocess', '-l', '-new_int', '-noerror',
+	'-verbose', '--verbose', '-verify', '-w']
 
 fn main() {
 	// if os.getenv('VFMT_ENABLE') == '' {
@@ -102,7 +104,7 @@ fn main() {
 	}
 	mut errors := 0
 	mut has_internal_error := false
-	mut prefs := setup_preferences()
+	mut prefs := setup_preferences(args)
 	for file in files {
 		fpath := os.real_path(file)
 		if foptions.is_verify && foptions.in_process {
@@ -171,15 +173,31 @@ fn (foptions &FormatOptions) verify_file(prefs &pref.Preferences, fpath string) 
 	return fcontent == content
 }
 
-fn setup_preferences() &pref.Preferences {
-	mut prefs := pref.new_preferences()
+fn setup_preferences(args []string) &pref.Preferences {
+	mut prefs, _ := pref.parse_args_and_show_errors(['fmt'], vfmt_args_for_preferences(args), false)
 	prefs.is_fmt = true
 	prefs.skip_warnings = true
 	return prefs
 }
 
-fn setup_preferences_and_table() (&pref.Preferences, &ast.Table) {
-	return setup_preferences(), ast.new_table()
+fn vfmt_args_for_preferences(args []string) []string {
+	mut res := []string{}
+	for i := 1; i < args.len; i++ {
+		arg := args[i]
+		if arg == '-worker' {
+			i++
+			continue
+		}
+		if arg in vfmt_only_flags {
+			continue
+		}
+		res << arg
+	}
+	return res
+}
+
+fn setup_preferences_and_table(args []string) (&pref.Preferences, &ast.Table) {
+	return setup_preferences(args), ast.new_table()
 }
 
 fn (foptions &FormatOptions) vlog(msg string) {
@@ -210,7 +228,8 @@ fn (foptions &FormatOptions) format_file(file string) {
 		return
 	}
 	foptions.vlog('vfmt2 running fmt.fmt over file: ${file}')
-	prefs, mut table := setup_preferences_and_table()
+	args := util.join_env_vflags_and_os_args()
+	prefs, mut table := setup_preferences_and_table(args)
 	file_ast := parser.parse_file(file, mut table, .parse_comments, prefs)
 	if file_ast.errors.len > 0 {
 		exit(2)
@@ -225,7 +244,8 @@ fn (foptions &FormatOptions) format_file(file string) {
 
 fn (foptions &FormatOptions) format_pipe() {
 	foptions.vlog('vfmt2 running fmt.fmt over stdin')
-	prefs, mut table := setup_preferences_and_table()
+	args := util.join_env_vflags_and_os_args()
+	prefs, mut table := setup_preferences_and_table(args)
 	input_text := os.get_raw_lines_joined()
 	file_ast := parser.parse_text(input_text, '', mut table, .parse_comments, prefs)
 	if file_ast.errors.len > 0 {

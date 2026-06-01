@@ -36,7 +36,7 @@ fn main() {
 	b.build(files)
 
 	// Auto-run test binaries after compilation (matching v1 behavior)
-	if prefs.output_file == '' && is_test_file(files) {
+	if prefs.output_file == '' && is_test_file(files) && should_auto_run_test_binary(&prefs) {
 		last := os.file_name(files.last())
 		output_name := if last.ends_with('.vv2') {
 			last.all_before_last('.vv2')
@@ -105,29 +105,19 @@ fn is_test_file(files []string) bool {
 	return false
 }
 
+fn should_auto_run_test_binary(prefs &pref.Preferences) bool {
+	if prefs == unsafe { nil } {
+		return true
+	}
+	if !prefs.can_run_target_binary_locally() {
+		return false
+	}
+	return true
+}
+
 // get_files extracts source files from args, excluding options and their values
 fn get_files(args []string) []string {
-	options_with_values := ['-backend', '-b', '-o', '-output', '-arch', '-printfn', '-gc', '-d',
-		'-hot-fn', '-cc']
-	mut files := []string{}
-	mut skip_next := false
-	for arg in args {
-		if arg == '--' {
-			break
-		}
-		if skip_next {
-			skip_next = false
-			continue
-		}
-		if arg.starts_with('-') {
-			if arg in options_with_values {
-				skip_next = true
-			}
-			continue
-		}
-		files << arg
-	}
-	return files
+	return pref.source_files_from_args(args)
 }
 
 fn resolve_own_path() string {

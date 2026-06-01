@@ -89,7 +89,8 @@ mut:
 	// Declared storage types for local variables in the current function.
 	// These stay separate from checker/current expression types, which can be
 	// narrowed by smartcasts while the variable is still stored as its declared type.
-	local_decl_types map[string]types.Type
+	local_decl_types              map[string]types.Type
+	local_fn_pointer_return_types map[string]types.Type
 	// Track whether post-pass should inject the synthetic embed_file helper type.
 	needed_embed_file_helper bool
 	// Override array element types for variables whose checker-inferred type is wrong
@@ -127,6 +128,9 @@ mut:
 	// monomorphized_specs to skip duplicate weak emission of the same names.
 	monomorphize_enabled bool
 	monomorphized_specs  map[string]bool
+	// Cached at construction: avoids per-block t.pref nil/enum re-check in
+	// hot loops (transform_stmts, IfGuardExpr handling, OrExpr expansion, etc).
+	is_native_be bool
 }
 
 fn escape_c_keyword(name string) string {
@@ -242,18 +246,7 @@ struct SortComparatorInfo {
 	is_string_cmp bool
 }
 
-pub fn Transformer.new(files []ast.File, env &types.Environment) &Transformer {
-	_ = files
-	mut t := new_transformer_base(env, unsafe { nil })
-	cwd := os.getwd()
-	if root := detect_vmodroot_from_path(cwd) {
-		t.comptime_vmodroot = root
-	}
-	return t
-}
-
-pub fn Transformer.new_with_pref(files []ast.File, env &types.Environment, p &pref.Preferences) &Transformer {
-	_ = files
+pub fn Transformer.new_with_pref(env &types.Environment, p &pref.Preferences) &Transformer {
 	mut t := new_transformer_base(env, p)
 	if p != unsafe { nil } && p.vroot.len > 0 {
 		t.comptime_vmodroot = p.vroot
@@ -268,28 +261,31 @@ pub fn Transformer.new_with_pref(files []ast.File, env &types.Environment, p &pr
 
 fn new_transformer_base(env &types.Environment, p &pref.Preferences) &Transformer {
 	mut t := &Transformer{
-		pref:                        unsafe { p }
-		env:                         unsafe { env }
-		needed_str_fns:              map[string]string{}
-		needed_clone_fns:            map[string]string{}
-		needed_array_contains_fns:   map[string]ArrayMethodInfo{}
-		needed_array_index_fns:      map[string]ArrayMethodInfo{}
-		needed_array_last_index_fns: map[string]ArrayMethodInfo{}
-		needed_sort_fns:             map[string]SortComparatorInfo{}
-		needed_go_wrappers:          map[string]GoWrapperInfo{}
-		local_decl_types:            map[string]types.Type{}
-		generic_var_type_params:     map[string]string{}
-		generic_fn_decl_names:       map[string]bool{}
-		generic_fn_decl_stmts:       map[string][]ast.Stmt{}
-		generic_fn_value_names:      map[string]bool{}
-		runtime_const_inits_by_mod:  map[string][]RuntimeConstInit{}
-		runtime_const_init_fn_name:  map[string]string{}
-		runtime_const_known:         map[string]bool{}
-		runtime_const_storage_known: map[string]bool{}
-		interface_concrete_types:    map[string]string{}
-		smartcast_expr_counts:       map[string]int{}
-		monomorphize_enabled:        os.getenv('V2_TRANSFORMER_MONOMORPH') != ''
-		monomorphized_specs:         map[string]bool{}
+		pref:                          unsafe { p }
+		env:                           unsafe { env }
+		needed_str_fns:                map[string]string{}
+		needed_clone_fns:              map[string]string{}
+		needed_array_contains_fns:     map[string]ArrayMethodInfo{}
+		needed_array_index_fns:        map[string]ArrayMethodInfo{}
+		needed_array_last_index_fns:   map[string]ArrayMethodInfo{}
+		needed_sort_fns:               map[string]SortComparatorInfo{}
+		needed_go_wrappers:            map[string]GoWrapperInfo{}
+		local_decl_types:              map[string]types.Type{}
+		local_fn_pointer_return_types: map[string]types.Type{}
+		generic_var_type_params:       map[string]string{}
+		generic_fn_decl_names:         map[string]bool{}
+		generic_fn_decl_stmts:         map[string][]ast.Stmt{}
+		generic_fn_value_names:        map[string]bool{}
+		runtime_const_inits_by_mod:    map[string][]RuntimeConstInit{}
+		runtime_const_init_fn_name:    map[string]string{}
+		runtime_const_known:           map[string]bool{}
+		runtime_const_storage_known:   map[string]bool{}
+		interface_concrete_types:      map[string]string{}
+		smartcast_expr_counts:         map[string]int{}
+		monomorphize_enabled:          os.getenv('V2_TRANSFORMER_MONOMORPH') != ''
+		monomorphized_specs:           map[string]bool{}
+		is_native_be:                  p != unsafe { nil }
+			&& (p.backend == .arm64 || p.backend == .x64)
 	}
 	return t
 }
@@ -304,32 +300,34 @@ pub fn (mut t Transformer) set_file_set(fs &token.FileSet) {
 // worker_idx offsets synth_pos_counter so workers don't generate conflicting IDs.
 pub fn (t &Transformer) new_worker_clone(worker_idx int) &Transformer {
 	return &Transformer{
-		pref:                        unsafe { t.pref }
-		env:                         unsafe { t.env }
-		elided_fns:                  t.elided_fns
-		comptime_vmodroot:           t.comptime_vmodroot
-		file_set:                    unsafe { t.file_set }
-		cached_scopes:               t.cached_scopes
-		cached_methods:              t.cached_methods
-		cached_method_keys:          t.cached_method_keys
-		cached_fn_scopes:            t.cached_fn_scopes
-		synth_pos_counter:           -(worker_idx * 100_000)
-		needed_str_fns:              map[string]string{}
-		needed_clone_fns:            map[string]string{}
-		needed_array_contains_fns:   map[string]ArrayMethodInfo{}
-		needed_array_index_fns:      map[string]ArrayMethodInfo{}
-		needed_array_last_index_fns: map[string]ArrayMethodInfo{}
-		needed_sort_fns:             map[string]SortComparatorInfo{}
-		needed_go_wrappers:          map[string]GoWrapperInfo{}
-		local_decl_types:            map[string]types.Type{}
-		generic_var_type_params:     map[string]string{}
-		generic_fn_value_names:      t.generic_fn_value_names
-		runtime_const_inits_by_mod:  map[string][]RuntimeConstInit{}
-		runtime_const_init_fn_name:  map[string]string{}
-		runtime_const_known:         map[string]bool{}
-		runtime_const_storage_known: map[string]bool{}
-		interface_concrete_types:    map[string]string{}
-		smartcast_expr_counts:       map[string]int{}
+		pref:                          unsafe { t.pref }
+		env:                           unsafe { t.env }
+		elided_fns:                    t.elided_fns
+		comptime_vmodroot:             t.comptime_vmodroot
+		file_set:                      unsafe { t.file_set }
+		cached_scopes:                 t.cached_scopes
+		cached_methods:                t.cached_methods
+		cached_method_keys:            t.cached_method_keys
+		cached_fn_scopes:              t.cached_fn_scopes
+		synth_pos_counter:             -(worker_idx * 100_000)
+		needed_str_fns:                map[string]string{}
+		needed_clone_fns:              map[string]string{}
+		needed_array_contains_fns:     map[string]ArrayMethodInfo{}
+		needed_array_index_fns:        map[string]ArrayMethodInfo{}
+		needed_array_last_index_fns:   map[string]ArrayMethodInfo{}
+		needed_sort_fns:               map[string]SortComparatorInfo{}
+		needed_go_wrappers:            map[string]GoWrapperInfo{}
+		local_decl_types:              map[string]types.Type{}
+		local_fn_pointer_return_types: map[string]types.Type{}
+		generic_var_type_params:       map[string]string{}
+		generic_fn_value_names:        t.generic_fn_value_names
+		runtime_const_inits_by_mod:    map[string][]RuntimeConstInit{}
+		runtime_const_init_fn_name:    map[string]string{}
+		runtime_const_known:           map[string]bool{}
+		runtime_const_storage_known:   map[string]bool{}
+		interface_concrete_types:      map[string]string{}
+		smartcast_expr_counts:         map[string]int{}
+		is_native_be:                  t.is_native_be
 	}
 }
 
@@ -385,22 +383,6 @@ pub fn (mut t Transformer) merge_worker(w &Transformer) {
 // transform_file_standalone transforms a single file, for use in parallel workers.
 pub fn (mut t Transformer) transform_file_pub(file ast.File) ast.File {
 	return t.transform_file(file)
-}
-
-fn resolve_comptime_vmodroot(files []ast.File, p &pref.Preferences) string {
-	if p != unsafe { nil } && p.vroot.len > 0 {
-		return p.vroot
-	}
-	for file in files {
-		if root := detect_vmodroot_from_path(file.name) {
-			return root
-		}
-	}
-	cwd := os.getwd()
-	if root := detect_vmodroot_from_path(cwd) {
-		return root
-	}
-	return ''
 }
 
 fn detect_vmodroot_from_path(path string) ?string {
@@ -552,14 +534,27 @@ fn (mut t Transformer) resolve_embed_file_paths(raw_path string, pos token.Pos) 
 	return raw_path, os.real_path(os.join_path_single(base_dir, rel_path))
 }
 
-fn (mut t Transformer) transform_embed_file_comptime_expr(expr ast.ComptimeExpr, args []ast.Expr) ast.Expr {
+// embed_file_init_parts is the side-effecting prologue of
+// `transform_embed_file_comptime_expr` — resolves the raw path argument,
+// reads the file bytes from disk, and sets `needed_embed_file_helper`.
+// Returns `(rpath, apath, file_bytes)` on success, none on zero-arg /
+// non-string-literal arg (the legacy returns the unchanged ComptimeExpr in
+// that case). Extracted so the legacy helper and the flat-write direct-emit
+// port (`transform_embed_file_comptime_expr_to_flat`) share the same I/O and
+// state-mutation prologue — same template as sessions 4, 59, 60.
+fn (mut t Transformer) embed_file_init_parts(expr ast.ComptimeExpr, args []ast.Expr) ?(string, string, []u8) {
 	if args.len == 0 {
-		return expr
+		return none
 	}
-	raw_path := embed_file_string_arg(args[0]) or { return expr }
+	raw_path := embed_file_string_arg(args[0]) or { return none }
 	rpath, apath := t.resolve_embed_file_paths(raw_path, expr.pos)
 	file_bytes := os.read_bytes(apath) or { panic('embed_file: failed to read `${apath}`: ${err}') }
 	t.needed_embed_file_helper = true
+	return rpath, apath, file_bytes
+}
+
+fn (mut t Transformer) transform_embed_file_comptime_expr(expr ast.ComptimeExpr, args []ast.Expr) ast.Expr {
+	rpath, apath, file_bytes := t.embed_file_init_parts(expr, args) or { return expr }
 	return ast.InitExpr{
 		typ:    embed_file_helper_type_expr(expr.pos)
 		fields: [
@@ -1053,9 +1048,27 @@ fn (mut t Transformer) collect_generic_fn_value_refs(files []ast.File) {
 	t.collect_generic_fn_value_dependencies()
 }
 
+fn (mut t Transformer) collect_generic_fn_value_refs_from_flat(flat &ast.FlatAst) {
+	t.collect_generic_fn_decl_names_from_flat(flat)
+	for ff in flat.files {
+		for stmt in flat.read_file_stmts(ff) {
+			t.collect_generic_fn_value_refs_in_stmt(stmt, false)
+		}
+	}
+	t.collect_generic_fn_value_dependencies()
+}
+
 fn (mut t Transformer) collect_generic_fn_decl_names(files []ast.File) {
 	for file in files {
 		for stmt in file.stmts {
+			t.collect_generic_fn_decl_names_in_stmt(stmt)
+		}
+	}
+}
+
+fn (mut t Transformer) collect_generic_fn_decl_names_from_flat(flat &ast.FlatAst) {
+	for ff in flat.files {
+		for stmt in flat.read_file_stmts(ff) {
 			t.collect_generic_fn_decl_names_in_stmt(stmt)
 		}
 	}
@@ -1401,6 +1414,32 @@ pub fn (mut t Transformer) pre_pass(files []ast.File) {
 	t.cache_env_maps()
 }
 
+// pre_pass_from_flat is the FlatAst-driven equivalent of pre_pass. Reads
+// file-level stmts via flat.read_file_stmts(ff) so the transformer no
+// longer depends on a pre-rehydrated []ast.File for its accumulators.
+// The per-stmt walks reuse the existing recursive visitors, which still
+// operate on legacy ast.Stmt/Expr — flat-native walks are a later step.
+pub fn (mut t Transformer) pre_pass_from_flat(flat &ast.FlatAst) {
+	t.collect_generic_fn_value_refs_from_flat(flat)
+	for ff in flat.files {
+		for stmt in flat.read_file_stmts(ff) {
+			if stmt is ast.FnDecl {
+				for attr in stmt.attributes {
+					if attr.comptime_cond !is ast.EmptyExpr {
+						if !t.eval_comptime_cond(attr.comptime_cond) {
+							t.elided_fns[stmt.name] = true
+						}
+					}
+				}
+			}
+		}
+	}
+	if !t.is_eval_backend() {
+		t.collect_runtime_const_inits_from_flat(flat)
+	}
+	t.cache_env_maps()
+}
+
 // cache_env_maps snapshots the shared Environment maps into plain maps
 // for lock-free access during parallel file transformation.
 fn (mut t Transformer) cache_env_maps() {
@@ -1408,6 +1447,356 @@ fn (mut t Transformer) cache_env_maps() {
 	t.cached_methods = t.env.snapshot_methods()
 	t.cached_method_keys = t.cached_methods.keys()
 	t.cached_fn_scopes = t.env.snapshot_fn_scopes()
+}
+
+// GeneratedFnsParts is the pure-computation bundle produced by
+// `generated_fns_parts`. Holds the three already-routed buckets of
+// auto-generated helper FnDecls: `core_fns` for the builtin module,
+// `module_fns` keyed by source module name for module-prefixed helpers
+// (e.g. `time__FormatDate__str`), and `user_fns` for everything else
+// (typically main / user types).
+pub struct GeneratedFnsParts {
+pub:
+	core_fns   []ast.Stmt
+	module_fns map[string][]ast.Stmt
+	user_fns   []ast.Stmt
+}
+
+// generated_fns_parts is the pure-computation extraction of the
+// "collect + route" segment previously inline in `post_pass`. Runs each
+// `generate_*_functions` helper that has a non-empty needed-list (str,
+// clone, sort-comparator, array-method, go-wrapper), then routes each
+// emitted FnDecl by name: `is_core_generated_fn` → `core_fns`; otherwise
+// `generated_fn_module(name, files)` non-empty → `module_fns[mod]`;
+// otherwise → `user_fns`. Returns `none` when no generator fires.
+//
+// Does NOT mutate `files` or any caller state (beyond the generators'
+// own bookkeeping on `t`, which is part of their existing contract).
+// Caller decides whether to splice the buckets into a legacy
+// `[]ast.File` (via `post_pass`) or into a `FlatBuilder` (future
+// `post_pass_to_flat`).
+//
+// Fifth Phase 5 (post_pass port) `_parts` extraction (completes the
+// s144 punch list: runtime-const-init-fns, runtime-const-init-main-
+// calls, live-reload, test-main, generated-fns split). Bit-equal:
+// identical generator invocation order, identical per-stmt routing
+// (FnDecl name → bucket), identical bucket-append order.
+pub fn (mut t Transformer) generated_fns_parts(files []ast.File) ?GeneratedFnsParts {
+	mut generated_fns := []ast.Stmt{}
+	if t.needed_str_fns.len > 0 {
+		generated_fns << t.generate_str_functions(files)
+	}
+	if t.needed_clone_fns.len > 0 {
+		generated_fns << t.generate_clone_functions()
+	}
+	if t.needed_sort_fns.len > 0 {
+		generated_fns << t.generate_sort_comparator_functions()
+	}
+	if t.needed_array_contains_fns.len > 0 || t.needed_array_index_fns.len > 0
+		|| t.needed_array_last_index_fns.len > 0 {
+		generated_fns << t.generate_array_method_functions()
+	}
+	if t.needed_go_wrappers.len > 0 {
+		generated_fns << t.generate_go_wrapper_functions()
+	}
+	if generated_fns.len == 0 {
+		return none
+	}
+	mut core_fns := []ast.Stmt{}
+	mut user_fns := []ast.Stmt{}
+	mut module_fns := map[string][]ast.Stmt{}
+	for gf in generated_fns {
+		mut is_core := false
+		mut fn_module := ''
+		if gf is ast.FnDecl {
+			is_core = is_core_generated_fn(gf.name)
+			if !is_core {
+				// Check if function name has a module prefix (e.g., time__FormatDate__str)
+				// Extract module name and route to correct module file.
+				fn_module = generated_fn_module(gf.name, files)
+			}
+		}
+		if is_core {
+			core_fns << gf
+		} else if fn_module != '' {
+			module_fns[fn_module] << gf
+		} else {
+			user_fns << gf
+		}
+	}
+	return GeneratedFnsParts{
+		core_fns:   core_fns
+		module_fns: module_fns
+		user_fns:   user_fns
+	}
+}
+
+// generated_fns_parts_from_flat is the FlatAst-input counterpart to
+// `generated_fns_parts`. Same generators, same bucket layout, same
+// per-stmt routing — only the two `[]ast.File` consumers change:
+//   - `generate_str_functions(files)` is replaced with
+//     `generate_str_functions_with_explicit(explicit_str_fns)` where
+//     `explicit_str_fns` comes from `explicit_str_method_fn_names_from_flat`
+//     (s165).
+//   - `generated_fn_module(name, files)` is replaced with
+//     `generated_fn_module_from_flat(name, flat)` (s164).
+//
+// Lets `_via_driver` wedges compute `GeneratedFnsParts` from `&builder.flat`
+// instead of `result []ast.File`, so the parts computation no longer pins
+// the un-post_pass'd legacy file array.
+pub fn (mut t Transformer) generated_fns_parts_from_flat(flat &ast.FlatAst) ?GeneratedFnsParts {
+	explicit_str_fns := t.explicit_str_method_fn_names_from_flat(flat)
+	mut generated_fns := []ast.Stmt{}
+	if t.needed_str_fns.len > 0 {
+		generated_fns << t.generate_str_functions_with_explicit(explicit_str_fns)
+	}
+	if t.needed_clone_fns.len > 0 {
+		generated_fns << t.generate_clone_functions()
+	}
+	if t.needed_sort_fns.len > 0 {
+		generated_fns << t.generate_sort_comparator_functions()
+	}
+	if t.needed_array_contains_fns.len > 0 || t.needed_array_index_fns.len > 0
+		|| t.needed_array_last_index_fns.len > 0 {
+		generated_fns << t.generate_array_method_functions()
+	}
+	if t.needed_go_wrappers.len > 0 {
+		generated_fns << t.generate_go_wrapper_functions()
+	}
+	if generated_fns.len == 0 {
+		return none
+	}
+	mut core_fns := []ast.Stmt{}
+	mut user_fns := []ast.Stmt{}
+	mut module_fns := map[string][]ast.Stmt{}
+	for gf in generated_fns {
+		mut is_core := false
+		mut fn_module := ''
+		if gf is ast.FnDecl {
+			is_core = is_core_generated_fn(gf.name)
+			if !is_core {
+				fn_module = generated_fn_module_from_flat(gf.name, flat)
+			}
+		}
+		if is_core {
+			core_fns << gf
+		} else if fn_module != '' {
+			module_fns[fn_module] << gf
+		} else {
+			user_fns << gf
+		}
+	}
+	return GeneratedFnsParts{
+		core_fns:   core_fns
+		module_fns: module_fns
+		user_fns:   user_fns
+	}
+}
+
+// find_flat_file_idx_by_mod returns the first index into `flat.files` whose
+// mod string equals `mod_name`, or -1 if no such file is registered.
+// Mirrors the linear `for i, file in files { if file.mod == mod_name {...} }`
+// scans inline in legacy `post_pass`.
+fn find_flat_file_idx_by_mod(flat &ast.FlatAst, mod_name string) int {
+	for i in 0 .. flat.files.len {
+		if flat.string_at(flat.files[i].mod_idx) == mod_name {
+			return i
+		}
+	}
+	return -1
+}
+
+// inject_generated_fns_to_files is the legacy `[]ast.File` splice for
+// `GeneratedFnsParts`. Extracted from `post_pass` so the splice can be
+// invoked from tests as the reference for the flat-aware port (s153)
+// without re-running the full generator pipeline. Behaviour is bit-equal
+// to the previous inline routing:
+//
+//   1. `core_fns` → builtin file (fallback: append to `user_fns` if no
+//      builtin file is registered).
+//   2. `module_fns[mod]` → mod file (fallback: append to `user_fns` if no
+//      mod file is registered).
+//   3. `user_fns` → main file → builtin file → last file (3-tier
+//      fallback ordering).
+//
+// Each splice rebuilds the target `ast.File` with the existing attrs +
+// imports preserved and the new FnDecls appended after the existing
+// stmts. Map iteration over `module_fns` relies on V's insertion-ordered
+// DenseArray semantics.
+fn inject_generated_fns_to_files(mut result []ast.File, parts GeneratedFnsParts) {
+	core_fns := unsafe { parts.core_fns }
+	mut user_fns := unsafe { parts.user_fns }
+	module_fns := unsafe { parts.module_fns }
+	if core_fns.len > 0 {
+		mut builtin_idx := -1
+		for i, file in result {
+			if file.mod == 'builtin' {
+				builtin_idx = i
+				break
+			}
+		}
+		if builtin_idx >= 0 {
+			file := result[builtin_idx]
+			mut new_stmts := []ast.Stmt{cap: file.stmts.len + core_fns.len}
+			for stmt in file.stmts {
+				new_stmts << stmt
+			}
+			for fn_decl in core_fns {
+				new_stmts << fn_decl
+			}
+			result[builtin_idx] = ast.File{
+				attributes: file.attributes
+				mod:        file.mod
+				name:       file.name
+				stmts:      new_stmts
+				imports:    file.imports
+			}
+		} else {
+			user_fns << core_fns
+		}
+	}
+	for mod_name, fns in module_fns {
+		mut mod_idx := -1
+		for i, file in result {
+			if file.mod == mod_name {
+				mod_idx = i
+				break
+			}
+		}
+		if mod_idx >= 0 {
+			file := result[mod_idx]
+			mut new_stmts := []ast.Stmt{cap: file.stmts.len + fns.len}
+			for stmt in file.stmts {
+				new_stmts << stmt
+			}
+			for fn_decl in fns {
+				new_stmts << fn_decl
+			}
+			result[mod_idx] = ast.File{
+				attributes: file.attributes
+				mod:        file.mod
+				name:       file.name
+				stmts:      new_stmts
+				imports:    file.imports
+			}
+		} else {
+			for fn_decl in fns {
+				user_fns << fn_decl
+			}
+		}
+	}
+	if user_fns.len > 0 {
+		mut target_idx := -1
+		for i, file in result {
+			if file.mod == 'main' {
+				target_idx = i
+				break
+			}
+		}
+		if target_idx == -1 {
+			for i, file in result {
+				if file.mod == 'builtin' {
+					target_idx = i
+					break
+				}
+			}
+		}
+		if target_idx == -1 && result.len > 0 {
+			target_idx = result.len - 1
+		}
+		if target_idx >= 0 {
+			file := result[target_idx]
+			mut new_stmts := []ast.Stmt{cap: file.stmts.len + user_fns.len}
+			for stmt in file.stmts {
+				new_stmts << stmt
+			}
+			for fn_decl in user_fns {
+				new_stmts << fn_decl
+			}
+			result[target_idx] = ast.File{
+				attributes: file.attributes
+				mod:        file.mod
+				name:       file.name
+				stmts:      new_stmts
+				imports:    file.imports
+			}
+		}
+	}
+}
+
+// inject_generated_fns_to_flat is the FlatBuilder-side splice counterpart
+// to the 3-way `generated_fns_parts` routing previously inline in
+// `post_pass`. Takes a pre-computed `GeneratedFnsParts` (caller still
+// runs `t.generated_fns_parts(files)` against legacy `[]ast.File` because
+// the generators themselves haven't been ported to flat yet) and folds
+// each bucket into the appropriate FlatBuilder file root via
+// `out.append_file_stmts` (s150's seed primitive):
+//
+//   1. `core_fns` → builtin file (fallback: append to `user_fns` if no
+//      builtin file registered, mirroring legacy `user_fns << core_fns`).
+//   2. `module_fns[mod]` → mod file (fallback: append to `user_fns` if no
+//      mod file registered).
+//   3. `user_fns` → main file → builtin file → last file (legacy 3-tier
+//      fallback ordering preserved).
+//
+// Each splice emits its FnDecls via `out.emit_stmt`, collects the ids,
+// then a single `out.append_file_stmts(idx, ids)` call rebuilds the file
+// root. Map iteration over `module_fns` relies on V's insertion-ordered
+// DenseArray semantics so bit-equality is preserved.
+//
+// Third flat-aware port (s153, completes the 3 append-only post_pass
+// steps from s150's punch list: embed_file_helper, test_main,
+// generated_fns). Pinned by 3-case test in
+// `inject_generated_fns_to_flat_test.v`.
+pub fn (mut t Transformer) inject_generated_fns_to_flat(mut out ast.FlatBuilder, parts GeneratedFnsParts) {
+	core_fns := unsafe { parts.core_fns }
+	mut user_fns := unsafe { parts.user_fns }
+	module_fns := unsafe { parts.module_fns }
+	// Bucket 1: core_fns → builtin file (fallback: user_fns).
+	if core_fns.len > 0 {
+		builtin_idx := find_flat_file_idx_by_mod(&out.flat, 'builtin')
+		if builtin_idx >= 0 {
+			mut ids := []ast.FlatNodeId{cap: core_fns.len}
+			for fn_decl in core_fns {
+				ids << out.emit_stmt(fn_decl)
+			}
+			out.append_file_stmts(builtin_idx, ids)
+		} else {
+			user_fns << core_fns
+		}
+	}
+	// Bucket 2: module_fns[mod] → mod file (fallback: user_fns).
+	for mod_name, fns in module_fns {
+		mod_idx := find_flat_file_idx_by_mod(&out.flat, mod_name)
+		if mod_idx >= 0 {
+			mut ids := []ast.FlatNodeId{cap: fns.len}
+			for fn_decl in fns {
+				ids << out.emit_stmt(fn_decl)
+			}
+			out.append_file_stmts(mod_idx, ids)
+		} else {
+			for fn_decl in fns {
+				user_fns << fn_decl
+			}
+		}
+	}
+	// Bucket 3: user_fns → main → builtin → last file.
+	if user_fns.len > 0 {
+		mut target_idx := find_flat_file_idx_by_mod(&out.flat, 'main')
+		if target_idx == -1 {
+			target_idx = find_flat_file_idx_by_mod(&out.flat, 'builtin')
+		}
+		if target_idx == -1 && out.flat.files.len > 0 {
+			target_idx = out.flat.files.len - 1
+		}
+		if target_idx >= 0 {
+			mut ids := []ast.FlatNodeId{cap: user_fns.len}
+			for fn_decl in user_fns {
+				ids << out.emit_stmt(fn_decl)
+			}
+			out.append_file_stmts(target_idx, ids)
+		}
+	}
 }
 
 // post_pass runs the sequential post-pass: injects runtime const init fns, generated functions,
@@ -1426,150 +1815,8 @@ pub fn (mut t Transformer) post_pass(mut result []ast.File) {
 	// 2. User-type functions (e.g. Array_Test2_str) go in the main module file because
 	//    they would pollute the cache and cause undefined symbol errors when a different
 	//    program reuses the same cache.
-	mut generated_fns := []ast.Stmt{}
-	if t.needed_str_fns.len > 0 {
-		generated_fns << t.generate_str_functions()
-	}
-	if t.needed_clone_fns.len > 0 {
-		generated_fns << t.generate_clone_functions()
-	}
-	if t.needed_sort_fns.len > 0 {
-		generated_fns << t.generate_sort_comparator_functions()
-	}
-	if t.needed_array_contains_fns.len > 0 || t.needed_array_index_fns.len > 0
-		|| t.needed_array_last_index_fns.len > 0 {
-		generated_fns << t.generate_array_method_functions()
-	}
-	if t.needed_go_wrappers.len > 0 {
-		generated_fns << t.generate_go_wrapper_functions()
-	}
-	if generated_fns.len > 0 {
-		// Split into core (builtin types), module-specific, and user (main) functions
-		mut core_fns := []ast.Stmt{}
-		mut user_fns := []ast.Stmt{}
-		mut module_fns := map[string][]ast.Stmt{}
-		for gf in generated_fns {
-			mut is_core := false
-			mut fn_module := ''
-			if gf is ast.FnDecl {
-				is_core = is_core_generated_fn(gf.name)
-				if !is_core {
-					// Check if function name has a module prefix (e.g., time__FormatDate__str)
-					// Extract module name and route to correct module file.
-					fn_module = generated_fn_module(gf.name, result)
-				}
-			}
-			if is_core {
-				core_fns << gf
-			} else if fn_module != '' {
-				module_fns[fn_module] << gf
-			} else {
-				user_fns << gf
-			}
-		}
-		// Place core functions in the builtin module file
-		if core_fns.len > 0 {
-			mut builtin_idx := -1
-			for i, file in result {
-				if file.mod == 'builtin' {
-					builtin_idx = i
-					break
-				}
-			}
-			if builtin_idx >= 0 {
-				file := result[builtin_idx]
-				mut new_stmts := []ast.Stmt{cap: file.stmts.len + core_fns.len}
-				for stmt in file.stmts {
-					new_stmts << stmt
-				}
-				for fn_decl in core_fns {
-					new_stmts << fn_decl
-				}
-				result[builtin_idx] = ast.File{
-					attributes: file.attributes
-					mod:        file.mod
-					name:       file.name
-					stmts:      new_stmts
-					imports:    file.imports
-				}
-			} else {
-				// No builtin file: add to user_fns as fallback
-				user_fns << core_fns
-			}
-		}
-		// Place module-specific functions in their source module files
-		for mod_name, fns in module_fns {
-			mut mod_idx := -1
-			for i, file in result {
-				if file.mod == mod_name {
-					mod_idx = i
-					break
-				}
-			}
-			if mod_idx >= 0 {
-				file := result[mod_idx]
-				mut new_stmts := []ast.Stmt{cap: file.stmts.len + fns.len}
-				for stmt in file.stmts {
-					new_stmts << stmt
-				}
-				for fn_decl in fns {
-					new_stmts << fn_decl
-				}
-				result[mod_idx] = ast.File{
-					attributes: file.attributes
-					mod:        file.mod
-					name:       file.name
-					stmts:      new_stmts
-					imports:    file.imports
-				}
-			} else {
-				// Module file not found: fall back to user_fns
-				for fn_decl in fns {
-					user_fns << fn_decl
-				}
-			}
-		}
-		// Place user-type functions in the main module file
-		if user_fns.len > 0 {
-			mut target_idx := -1
-			for i, file in result {
-				if file.mod == 'main' {
-					target_idx = i
-					break
-				}
-			}
-			// For test files in non-main modules, use a builtin file so that
-			// get_fn_name and call_expr don't add wrong module prefixes.
-			if target_idx == -1 {
-				for i, file in result {
-					if file.mod == 'builtin' {
-						target_idx = i
-						break
-					}
-				}
-			}
-			// Last resort: last file
-			if target_idx == -1 && result.len > 0 {
-				target_idx = result.len - 1
-			}
-			if target_idx >= 0 {
-				file := result[target_idx]
-				mut new_stmts := []ast.Stmt{cap: file.stmts.len + user_fns.len}
-				for stmt in file.stmts {
-					new_stmts << stmt
-				}
-				for fn_decl in user_fns {
-					new_stmts << fn_decl
-				}
-				result[target_idx] = ast.File{
-					attributes: file.attributes
-					mod:        file.mod
-					name:       file.name
-					stmts:      new_stmts
-					imports:    file.imports
-				}
-			}
-		}
+	if parts := t.generated_fns_parts(result) {
+		inject_generated_fns_to_files(mut result, parts)
 	}
 	if t.pref == unsafe { nil } || t.pref.backend != .cleanc {
 		t.inject_test_main(mut result)
@@ -1577,7 +1824,7 @@ pub fn (mut t Transformer) post_pass(mut result []ast.File) {
 	if !t.is_eval_backend() {
 		t.inject_main_runtime_const_init_calls(mut result)
 	}
-	if t.pref != unsafe { nil } && (t.pref.backend == .arm64 || t.pref.backend == .x64) {
+	if t.is_native_be {
 		t.inject_live_reload(mut result)
 	}
 	// Apply accumulated synth types to the environment.
@@ -1595,6 +1842,106 @@ pub fn (mut t Transformer) post_pass(mut result []ast.File) {
 	}
 	if t.pref == unsafe { nil } || t.pref.backend != .arm64 {
 		t.propagate_types(result)
+	}
+}
+
+// post_pass_to_flat is the FlatBuilder-side driver counterpart to
+// `post_pass`. Runs the six file-mutating steps that legacy `post_pass`
+// performs, in identical order, on a `FlatBuilder` instead of a legacy
+// `[]ast.File`. Closes the post_pass port arc opened in s150 and
+// completed in s151/s152/s153/s155/s159/s160.
+//
+// Order mirrors legacy `post_pass`:
+//   1. `inject_runtime_const_init_fns_to_flat` (skip on eval backend)
+//   2. `inject_embed_file_helper_to_flat` (gated by `needed_embed_file_helper`)
+//   3. `inject_generated_fns_to_flat` (gated by `generated_parts != none`)
+//   4. `inject_test_main_to_flat` (skip on cleanc backend)
+//   5. `inject_main_runtime_const_init_to_flat` (skip on eval backend)
+//   6. `inject_live_reload_to_flat` (only on native backend)
+//
+// `generated_parts` is computed by the caller via `t.generated_fns_parts`
+// against whatever file source it has (legacy `[]ast.File` today). Once
+// `generated_fns_parts_from_flat` lands, callers can drop the legacy file
+// list entirely.
+//
+// The non-file post_pass tail (synth_types accumulator, fn_scopes
+// propagation, `propagate_types`) is NOT included here — it operates on
+// `t.env` and legacy `[]ast.File` respectively, not on `out`, so callers
+// keep running it after this driver returns. `propagate_types` in
+// particular still consumes `[]ast.File` and is already gated to skip on
+// the arm64 backend in legacy `post_pass`.
+pub fn (mut t Transformer) post_pass_to_flat(mut out ast.FlatBuilder, generated_parts ?GeneratedFnsParts) {
+	if !t.is_eval_backend() {
+		t.inject_runtime_const_init_fns_to_flat(mut out)
+	}
+	if t.needed_embed_file_helper {
+		t.inject_embed_file_helper_to_flat(mut out)
+	}
+	if parts := generated_parts {
+		t.inject_generated_fns_to_flat(mut out, parts)
+	}
+	if t.pref == unsafe { nil } || t.pref.backend != .cleanc {
+		t.inject_test_main_to_flat(mut out)
+	}
+	if !t.is_eval_backend() {
+		t.inject_main_runtime_const_init_to_flat(mut out)
+	}
+	if t.is_native_be {
+		t.inject_live_reload_to_flat(mut out)
+	}
+}
+
+// apply_post_pass_tail runs the trailing portion of legacy `post_pass`
+// that operates on `t.env` and `[]ast.File` rather than on a FlatBuilder:
+//
+//   1. Apply accumulated `synth_types` to the environment (via
+//      `t.env.set_expr_type`).
+//   2. Push `cached_fn_scopes` back to `t.env.fn_scopes`.
+//   3. Run `propagate_types(files)` for non-arm64 backends.
+//
+// These three steps are NOT part of `post_pass_to_flat` because they don't
+// touch the flat output. They are factored here so any caller routing
+// through `post_pass_to_flat` (s162's `transform_files_to_flat_via_driver`
+// and s163's parallel counterpart) can share a single tail implementation
+// instead of duplicating private-field access at each call site.
+pub fn (mut t Transformer) apply_post_pass_tail(files []ast.File) {
+	for id, typ in t.synth_types {
+		t.env.set_expr_type(id, typ)
+	}
+	lock t.env.fn_scopes {
+		fn_scope_keys := t.cached_fn_scopes.keys()
+		for k in fn_scope_keys {
+			v := t.cached_fn_scopes[k] or { continue }
+			t.env.fn_scopes[k] = v
+		}
+	}
+	if t.pref == unsafe { nil } || t.pref.backend != .arm64 {
+		t.propagate_types(files)
+	}
+}
+
+// apply_post_pass_tail_from_flat is the FlatAst-input counterpart to
+// `apply_post_pass_tail`. Same three steps (synth_types accumulator →
+// `t.env.set_expr_type`, `cached_fn_scopes` propagation → `t.env.fn_scopes`,
+// `propagate_types_from_flat(flat)` for non-arm64 backends), only the third
+// step's input changes from `[]ast.File` to `&FlatAst`. Steps 1+2 don't
+// touch the file/flat input at all — they only mutate `t.env` from
+// pre-accumulated state on `t`. Lets `_via_driver` wedges drop the
+// `apply_post_pass_tail(result)` call site (last `[]ast.File` consumer in
+// the post_pass tail) in favour of `apply_post_pass_tail_from_flat(&builder.flat)`.
+pub fn (mut t Transformer) apply_post_pass_tail_from_flat(flat &ast.FlatAst) {
+	for id, typ in t.synth_types {
+		t.env.set_expr_type(id, typ)
+	}
+	lock t.env.fn_scopes {
+		fn_scope_keys := t.cached_fn_scopes.keys()
+		for k in fn_scope_keys {
+			v := t.cached_fn_scopes[k] or { continue }
+			t.env.fn_scopes[k] = v
+		}
+	}
+	if t.pref == unsafe { nil } || t.pref.backend != .arm64 {
+		t.propagate_types_from_flat(flat)
 	}
 }
 
@@ -1716,37 +2063,130 @@ fn embed_file_helper_stmts() []ast.Stmt {
 	]
 }
 
-fn (mut t Transformer) inject_embed_file_helper(mut result []ast.File) {
+// EmbedFileHelperParts is the pure-computation bundle produced by
+// `inject_embed_file_helper_parts`. `builtin_idx` is the index of the
+// `builtin` module file in the caller's `[]ast.File`; `extra_stmts` is
+// the helper-decl set (StructDecl + 5 helper FnDecls) that should be
+// appended to that file's stmts.
+pub struct EmbedFileHelperParts {
+pub:
+	builtin_idx int
+	extra_stmts []ast.Stmt
+}
+
+// inject_embed_file_helper_parts is the pure-computation extraction of
+// the pre-splice state previously inline in `inject_embed_file_helper`.
+// Locates the `builtin` module file (returns `none` if not present),
+// scans its existing stmts for a `StructDecl` already named
+// `embed_file_helper_type_name` (returns `none` if the helper is
+// already injected — re-entry guard), and otherwise pairs the file
+// index with a fresh `embed_file_helper_stmts()` payload.
+//
+// Does NOT mutate `files` or any caller state. Caller decides whether
+// to splice `extra_stmts` into a legacy `[]ast.File` (via
+// `inject_embed_file_helper`) or into a `FlatBuilder` (future
+// `post_pass_to_flat`).
+//
+// Sixth Phase 5 (post_pass port) `_parts` extraction (closes the
+// "every post_pass step has a `_parts` handle" symmetry — sibling to
+// s144/s145/s146/s147/s148). Bit-equal: identical builtin-file lookup
+// + identical re-entry guard + identical `embed_file_helper_stmts()`
+// payload.
+pub fn (mut t Transformer) inject_embed_file_helper_parts(files []ast.File) ?EmbedFileHelperParts {
 	mut builtin_idx := -1
-	for i, file in result {
+	for i, file in files {
 		if file.mod == 'builtin' {
 			builtin_idx = i
 			break
 		}
 	}
 	if builtin_idx < 0 {
-		return
+		return none
 	}
-	file := result[builtin_idx]
+	file := files[builtin_idx]
 	for stmt in file.stmts {
 		if stmt is ast.StructDecl && stmt.name == embed_file_helper_type_name {
-			return
+			return none
 		}
 	}
-	mut new_stmts := []ast.Stmt{cap: file.stmts.len + 6}
+	return EmbedFileHelperParts{
+		builtin_idx: builtin_idx
+		extra_stmts: embed_file_helper_stmts()
+	}
+}
+
+fn (mut t Transformer) inject_embed_file_helper(mut result []ast.File) {
+	parts := t.inject_embed_file_helper_parts(result) or { return }
+	file := result[parts.builtin_idx]
+	mut new_stmts := []ast.Stmt{cap: file.stmts.len + parts.extra_stmts.len}
 	for stmt in file.stmts {
 		new_stmts << stmt
 	}
-	for stmt in embed_file_helper_stmts() {
+	for stmt in parts.extra_stmts {
 		new_stmts << stmt
 	}
-	result[builtin_idx] = ast.File{
+	result[parts.builtin_idx] = ast.File{
 		attributes: file.attributes
 		mod:        file.mod
 		name:       file.name
 		stmts:      new_stmts
 		imports:    file.imports
 	}
+}
+
+// inject_embed_file_helper_parts_from_flat is the flat-cursor sibling of
+// `inject_embed_file_helper_parts`. Walks `flat.files` for the `builtin`
+// module entry and scans its stmts via cursor for an existing StructDecl
+// named `embed_file_helper_type_name` (re-entry guard). Returns the same
+// `EmbedFileHelperParts` shape; the `builtin_idx` is into `flat.files`
+// (which the legacy callers' `[]ast.File` and the FlatBuilder's
+// `flat.files` share by construction).
+//
+// First flat-aware port of a post_pass `_parts` helper (s151, opens the
+// per-step flat-aware sweep). Pinned by `flat_append_file_stmts_test.v`'s
+// signature-parity invariant when wired in via `inject_embed_file_helper_to_flat`.
+pub fn (mut t Transformer) inject_embed_file_helper_parts_from_flat(flat &ast.FlatAst) ?EmbedFileHelperParts {
+	mut builtin_idx := -1
+	for i in 0 .. flat.files.len {
+		if flat.string_at(flat.files[i].mod_idx) == 'builtin' {
+			builtin_idx = i
+			break
+		}
+	}
+	if builtin_idx < 0 {
+		return none
+	}
+	stmts := flat.file_cursor(builtin_idx).stmts()
+	for i in 0 .. stmts.len() {
+		c := stmts.at(i)
+		if c.kind() == .stmt_struct_decl && c.name() == embed_file_helper_type_name {
+			return none
+		}
+	}
+	return EmbedFileHelperParts{
+		builtin_idx: builtin_idx
+		extra_stmts: embed_file_helper_stmts()
+	}
+}
+
+// inject_embed_file_helper_to_flat is the FlatBuilder-side splice
+// counterpart to `inject_embed_file_helper` (legacy `[]ast.File` mutator).
+// Emits each `parts.extra_stmts` into `out` via `out.emit_stmt`, then
+// folds the resulting stmt ids into the file root via
+// `out.append_file_stmts(builtin_idx, extra_ids)` (s150's seed primitive).
+//
+// Bit-equal w.r.t. `signature()` to running legacy
+// `inject_embed_file_helper(mut files)` followed by
+// `ast.flatten_files(files)`: same builtin-file routing, same helper
+// stmt payload, same final file root edges (attrs / imports unchanged,
+// stmts list extended by the same stmt ids).
+pub fn (mut t Transformer) inject_embed_file_helper_to_flat(mut out ast.FlatBuilder) {
+	parts := t.inject_embed_file_helper_parts_from_flat(&out.flat) or { return }
+	mut extra_ids := []ast.FlatNodeId{cap: parts.extra_stmts.len}
+	for stmt in parts.extra_stmts {
+		extra_ids << out.emit_stmt(stmt)
+	}
+	out.append_file_stmts(parts.builtin_idx, extra_ids)
 }
 
 // transform_files transforms all files and returns transformed copies
@@ -1763,6 +2203,134 @@ pub fn (mut t Transformer) transform_files(files []ast.File) []ast.File {
 	}
 	t.post_pass(mut result)
 	return result
+}
+
+// transform_files_from_flat drives the same per-file transform pipeline
+// but seeds the pre-pass accumulators from FlatAst rather than from the
+// legacy ast.File list.
+//
+// When `files` is empty and monomorphization is disabled, the per-file
+// transform streams: each file is rehydrated from `flat` one at a time
+// just before transform_file consumes it, so the 120 MB bulk legacy
+// array never exists. Peak memory during transform drops to
+// (cumulative result + 1 in-flight source file) instead of
+// (full source array + full result array).
+//
+// Monomorphization needs the full file set up front (it builds a
+// cross-file generic-decl index), so that path falls back to the
+// non-streaming behavior — rehydrating internally when `files` is empty.
+pub fn (mut t Transformer) transform_files_from_flat(flat &ast.FlatAst, files []ast.File) []ast.File {
+	mut result := t.transform_files_from_flat_no_post_pass(flat, files)
+	t.post_pass(mut result)
+	return result
+}
+
+// transform_files_from_flat_no_post_pass is the extraction of
+// `transform_files_from_flat`'s per-file transform loop, without the
+// trailing `post_pass` call. Both `transform_files_from_flat` (legacy
+// wrapper, calls `post_pass` after) and
+// `transform_files_to_flat_via_driver` (new flat-output path, calls
+// `post_pass_to_flat` on the flattened output instead) call this helper.
+fn (mut t Transformer) transform_files_from_flat_no_post_pass(flat &ast.FlatAst, files []ast.File) []ast.File {
+	t.pre_pass_from_flat(flat)
+	if t.monomorphize_enabled {
+		src_files := if files.len == 0 { flat.to_files() } else { files }
+		files_to_transform := t.monomorphize_pass(src_files)
+		mut result := []ast.File{cap: files_to_transform.len}
+		for file in files_to_transform {
+			result << t.transform_file(file)
+		}
+		return result
+	}
+	if files.len > 0 {
+		mut result := []ast.File{cap: files.len}
+		for file in files {
+			result << t.transform_file(file)
+		}
+		return result
+	}
+	mut result := []ast.File{cap: flat.files.len}
+	for i in 0 .. flat.files.len {
+		src_arr := flat.to_files_range(i, i + 1)
+		if src_arr.len == 0 {
+			continue
+		}
+		result << t.transform_file(src_arr[0])
+	}
+	return result
+}
+
+// transform_files_to_flat is the transformer's flat-output entry point.
+//
+// Today it wraps transform_files_from_flat + ast.flatten_files: the
+// internal pipeline still produces []ast.File and the conversion happens
+// at the boundary. Externally this exposes the API shape the future
+// "transformer writes directly into a FlatBuilder" port will keep — so
+// callers can switch to this entry now and get the eventual peak-memory
+// win without further changes.
+//
+// Callers that only need flat output (currently: the V2_MARKUSED_FLAT
+// path in the builder, which re-flattens b.files itself today) should
+// route through here. The returned []ast.File is kept alive only for the
+// downstream consumers that still need legacy (SSA builder). Once the
+// SSA builder consumes flat as well, this entry point will drop the
+// legacy []ast.File entirely and the peak-memory win materializes.
+pub fn (mut t Transformer) transform_files_to_flat(flat &ast.FlatAst, files []ast.File) (ast.FlatAst, []ast.File) {
+	result := t.transform_files_from_flat(flat, files)
+	return ast.flatten_files(result), result
+}
+
+// transform_files_to_flat_via_driver is the post_pass_to_flat-based
+// counterpart to `transform_files_to_flat`. Same external shape (returns
+// `(ast.FlatAst, []ast.File)`) but uses the s161 driver instead of the
+// `legacy post_pass + flatten_files` boundary:
+//
+//   1. Per-file transform via `transform_files_from_flat_no_post_pass`
+//      (skips legacy `post_pass`).
+//   2. Compute `generated_fns_parts` against the un-post_pass'd result
+//      (the parts helper walks `[]ast.File` to determine module routing
+//      for generated fns; the file set is the same as legacy at this point).
+//   3. Flatten the un-post_pass'd files into a fresh FlatBuilder.
+//   4. Run `post_pass_to_flat(mut builder, generated_parts)` — the s161
+//      driver appends/prepends/replaces stmts on the flat directly.
+//   5. Apply the non-file post_pass tail (synth_types accumulator,
+//      fn_scopes propagation, `propagate_types`) which mutates `t.env`
+//      and `result` but not the flat output.
+//
+// Bit-equivalent to legacy in TREE STRUCTURE (each file's stmts list
+// holds the same content) but NOT bit-equal in `signature()`: the
+// `.file.extra` slot stores `intern(mod)` as a raw intern index, and the
+// two paths intern strings in different orders (legacy interns
+// post-pass-added strings DURING `flatten_files` walk, leaving later
+// files' mod strings at large indices; new path interns all bare files
+// first then post-pass-added strings AFTER, leaving later files' mod
+// strings at small indices). Compare via per-file `subtree_signature` of
+// the stmts list (file root edge 2) to assert structural parity.
+//
+// Memory: zero saving over `transform_files_to_flat` while the SSA
+// builder still consumes the returned `[]ast.File` (the alloc lives until
+// SSA migration). Value: once SSA migrates to flat, this entry can drop
+// the `[]ast.File` return and the post-transform `[]ast.File` allocation
+// disappears — first measurable peak-memory win. Until then this is the
+// migration scaffolding, pinned by per-file subtree parity tests.
+pub fn (mut t Transformer) transform_files_to_flat_via_driver(flat &ast.FlatAst, files []ast.File) (ast.FlatAst, []ast.File) {
+	result := t.transform_files_from_flat_no_post_pass(flat, files)
+	mut builder := ast.new_flat_builder()
+	for file in result {
+		builder.append_file(file)
+	}
+	// Compute parts against the freshly-appended flat (s166): no longer
+	// needs `result []ast.File` for explicit_str / module routing — both
+	// `explicit_str_method_fn_names_from_flat` (s165) and
+	// `generated_fn_module_from_flat` (s164) walk `builder.flat` directly.
+	generated_parts := t.generated_fns_parts_from_flat(&builder.flat)
+	t.post_pass_to_flat(mut builder, generated_parts)
+	// Tail runs on the post_pass'd flat (s167) — matches legacy semantics
+	// where `post_pass(result)` mutates `result` BEFORE `propagate_types`
+	// sees it. Pre-s167 wedges passed un-post_pass'd `result` here so
+	// non-arm64 propagation saw stale stmts.
+	t.apply_post_pass_tail_from_flat(&builder.flat)
+	return builder.flat, result
 }
 
 fn runtime_const_init_base_name(mod string) string {
@@ -2056,8 +2624,7 @@ fn (t &Transformer) expr_depends_on_runtime_const(mod string, expr ast.Expr) boo
 }
 
 fn (mut t Transformer) collect_runtime_const_inits(files []ast.File) {
-	is_native := t.pref != unsafe { nil }
-		&& (t.pref.backend == .arm64 || t.pref.backend == .x64 || t.pref.backend == .c)
+	is_native := t.pref != unsafe { nil } && (t.is_native_be || t.pref.backend == .c)
 	t.runtime_const_inits_by_mod.clear()
 	t.runtime_const_modules.clear()
 	t.runtime_const_init_fn_name.clear()
@@ -2111,6 +2678,72 @@ fn (mut t Transformer) collect_runtime_const_inits(files []ast.File) {
 							continue
 						}
 						t.record_runtime_const_init(file.mod, field.name, field.value)
+						changed = true
+					}
+				}
+			}
+		}
+	}
+}
+
+fn (mut t Transformer) collect_runtime_const_inits_from_flat(flat &ast.FlatAst) {
+	is_native := t.pref != unsafe { nil } && (t.is_native_be || t.pref.backend == .c)
+	t.runtime_const_inits_by_mod.clear()
+	t.runtime_const_modules.clear()
+	t.runtime_const_init_fn_name.clear()
+	t.runtime_const_known = map[string]bool{}
+	t.runtime_const_storage_known = map[string]bool{}
+	for ff in flat.files {
+		mod := flat.file_mod(ff)
+		for stmt in flat.read_file_stmts(ff) {
+			if stmt is ast.ConstDecl {
+				for field in stmt.fields {
+					if t.const_initializer_emits_storage(field.value, is_native) {
+						t.runtime_const_storage_known[runtime_const_known_key(mod, field.name)] = true
+					}
+				}
+			}
+		}
+	}
+	for ff in flat.files {
+		mod := flat.file_mod(ff)
+		for stmt in flat.read_file_stmts(ff) {
+			if stmt is ast.ConstDecl {
+				for field in stmt.fields {
+					if !t.needs_runtime_const_init(field.value, is_native) {
+						continue
+					}
+					t.record_runtime_const_init(mod, field.name, field.value)
+				}
+			}
+			if stmt is ast.GlobalDecl {
+				for field in stmt.fields {
+					if is_builtin_main_arg_global(mod, field.name) {
+						continue
+					}
+					if !t.needs_runtime_global_init(field.value) {
+						continue
+					}
+					t.record_runtime_const_init(mod, field.name, field.value)
+				}
+			}
+		}
+	}
+	mut changed := true
+	for changed {
+		changed = false
+		for ff in flat.files {
+			mod := flat.file_mod(ff)
+			for stmt in flat.read_file_stmts(ff) {
+				if stmt is ast.ConstDecl {
+					for field in stmt.fields {
+						if runtime_const_known_key(mod, field.name) in t.runtime_const_known {
+							continue
+						}
+						if !t.expr_depends_on_runtime_const(mod, field.value) {
+							continue
+						}
+						t.record_runtime_const_init(mod, field.name, field.value)
 						changed = true
 					}
 				}
@@ -2342,13 +2975,13 @@ fn (mut t Transformer) transform_expr_in_module(mod string, expr ast.Expr) ast.E
 fn (mut t Transformer) runtime_const_init_fn_stmt(mod string, fn_name string, inits []RuntimeConstInit) ast.Stmt {
 	mut stmts := []ast.Stmt{cap: inits.len}
 	for item in inits {
-		saved_pending := t.pending_stmts.clone()
-		t.pending_stmts.clear()
+		saved_pending := t.pending_stmts
+		t.pending_stmts = []ast.Stmt{}
 		old_skip_if := t.skip_if_value_lowering
 		t.skip_if_value_lowering = true
 		transformed_expr := t.transform_expr_in_module(mod, item.expr)
 		t.skip_if_value_lowering = old_skip_if
-		generated_pending := t.pending_stmts.clone()
+		generated_pending := t.pending_stmts
 		t.pending_stmts = saved_pending
 		for pending_stmt in generated_pending {
 			stmts << pending_stmt
@@ -2536,20 +3169,12 @@ fn (t &Transformer) order_runtime_const_inits(inits []RuntimeConstInit) []Runtim
 }
 
 fn (mut t Transformer) inject_runtime_const_init_fns(mut files []ast.File) {
-	for mod in t.runtime_const_modules {
-		inits := t.runtime_const_inits_by_mod[mod] or { []RuntimeConstInit{} }
-		if inits.len == 0 {
-			continue
-		}
-		fn_name := runtime_const_init_base_name(mod)
-		t.runtime_const_init_fn_name[mod] = fn_name
-		ordered_inits := t.order_runtime_const_inits(inits)
-		fn_stmt := t.runtime_const_init_fn_stmt(mod, fn_name, ordered_inits)
+	for mod, fn_stmt in t.runtime_const_init_fn_stmts_parts() {
 		for i, file in files {
 			if file.mod != mod {
 				continue
 			}
-			mut new_stmts := []ast.Stmt{cap: file.stmts.len}
+			mut new_stmts := []ast.Stmt{cap: file.stmts.len + 1}
 			for stmt in file.stmts {
 				new_stmts << stmt
 			}
@@ -2566,30 +3191,115 @@ fn (mut t Transformer) inject_runtime_const_init_fns(mut files []ast.File) {
 	}
 }
 
+// runtime_const_init_fn_stmts_parts is the pure-computation extraction of
+// `inject_runtime_const_init_fns`'s per-module work. Returns a `(module
+// name, fn_stmt)` map for each module that has runtime const inits, after
+// running the per-module side effects (`runtime_const_init_fn_name[mod] = ...`
+// + `order_runtime_const_inits`). Does NOT mutate any `[]ast.File` — the
+// caller decides whether to splice each `(mod, fn_stmt)` pair into a legacy
+// `[]ast.File` (via `inject_runtime_const_init_fns`) or into a
+// `FlatBuilder` (future `post_pass_to_flat`).
+//
+// First Phase 5 (post_pass port) scaffolding — establishes the "_parts"
+// extraction pattern (precedent: `transform_fn_decl_parts` in session 4,
+// `transform_assign_stmt_parts` in session 59). Future post_pass-port
+// sessions extract `_parts` from `inject_test_main`,
+// `inject_embed_file_helper`, `inject_main_runtime_const_init_calls`,
+// `inject_live_reload`, and `generate_*_functions` to compose a
+// FlatBuilder-aware `post_pass_to_flat`.
+pub fn (mut t Transformer) runtime_const_init_fn_stmts_parts() map[string]ast.Stmt {
+	mut result := map[string]ast.Stmt{}
+	for mod in t.runtime_const_modules {
+		inits := t.runtime_const_inits_by_mod[mod] or { []RuntimeConstInit{} }
+		if inits.len == 0 {
+			continue
+		}
+		fn_name := runtime_const_init_base_name(mod)
+		t.runtime_const_init_fn_name[mod] = fn_name
+		ordered_inits := t.order_runtime_const_inits(inits)
+		result[mod] = t.runtime_const_init_fn_stmt(mod, fn_name, ordered_inits)
+	}
+	return result
+}
+
+// inject_runtime_const_init_fns_to_flat is the FlatBuilder-side splice
+// counterpart to `inject_runtime_const_init_fns` (legacy `[]ast.File`
+// mutator). For each `(mod, fn_stmt)` pair produced by
+// `runtime_const_init_fn_stmts_parts`, scans `out.flat.files` for the
+// FIRST file whose module matches `mod`, emits the `fn_stmt` via
+// `out.emit_stmt`, then folds the resulting id into the file root via
+// `out.append_file_stmts(file_idx, [stmt_id])` (s150's seed primitive).
+//
+// Map iteration order: `runtime_const_init_fn_stmts_parts` walks
+// `t.runtime_const_modules` (a slice) and inserts each entry into the
+// returned `map[string]ast.Stmt` in walk order, so V's
+// insertion-preserving map iteration produces identical (mod, fn_stmt)
+// sequences in both the legacy and flat splice paths.
+//
+// Closes the 6-step post_pass port arc: every file-mutating step in
+// legacy `post_pass` now has a flat-aware `_to_flat` variant. Sibling to
+// s151's `inject_embed_file_helper_to_flat` (same "find file by mod /
+// append fn_stmt" shape; s151 routes through `builtin_idx` instead of
+// scanning by mod string).
+pub fn (mut t Transformer) inject_runtime_const_init_fns_to_flat(mut out ast.FlatBuilder) {
+	for mod, fn_stmt in t.runtime_const_init_fn_stmts_parts() {
+		mut file_idx := -1
+		for i in 0 .. out.flat.files.len {
+			if out.flat.string_at(out.flat.files[i].mod_idx) == mod {
+				file_idx = i
+				break
+			}
+		}
+		if file_idx < 0 {
+			continue
+		}
+		stmt_id := out.emit_stmt(fn_stmt)
+		out.append_file_stmts(file_idx, [stmt_id])
+	}
+}
+
 // inject_test_main synthesizes a main() function for test files that have
 // test_ functions but no explicit main. The generated main calls each test
 // function and prints progress messages. This is needed for all backends
 // (cleanc has its own synthesis in the C emitter, but native backends rely
 // on the transformer to provide main).
-fn (mut t Transformer) inject_test_main(mut files []ast.File) {
-	// Check if there is already a main function
-	mut has_main := false
+// TestMainParts is the pure-computation bundle produced by
+// `inject_test_main_parts`. `main_fn` is the synthesised `ast.FnDecl` for
+// `main`; `test_file_idx` is the index into `files` of the first file that
+// declares a `test_*` function (where the synthesised main is spliced).
+pub struct TestMainParts {
+pub:
+	test_file_idx int
+	main_fn       ast.Stmt
+}
+
+// inject_test_main_parts is the pure-computation extraction of the
+// pre-splice state previously inline in `inject_test_main`. Walks `files`
+// to (a) detect an existing user `main` (returns `none` if found), (b)
+// collect every top-level `test_*` fn name in declaration order, and (c)
+// synthesise the test-runner `main` body — per-test (`println('Running
+// test: <name>...')`, `<name>()`, `println('  OK')`) followed by a single
+// summary `println('All N tests passed.')`. Returns `none` when no
+// `test_*` fns are found.
+//
+// Does NOT mutate `files` or any caller state. Caller decides whether to
+// splice the synthesised `main_fn` into a legacy `[]ast.File` (via
+// `inject_test_main`) or into a `FlatBuilder` (future `post_pass_to_flat`).
+//
+// Fourth Phase 5 (post_pass port) `_parts` extraction (follows s144's
+// `runtime_const_init_fn_stmts_parts`, s145's
+// `runtime_const_init_main_calls_parts`, s146's `live_reload_parts`).
+// Bit-equal: identical traversal order, identical `quote_v_string_literal`
+// payloads, identical FnDecl shape (only `name` + `stmts` populated).
+pub fn (mut t Transformer) inject_test_main_parts(files []ast.File) ?TestMainParts {
 	for file in files {
 		for stmt in file.stmts {
 			if stmt is ast.FnDecl && !stmt.is_method && stmt.name == 'main' {
-				has_main = true
-				break
+				return none
 			}
 		}
-		if has_main {
-			break
-		}
-	}
-	if has_main {
-		return
 	}
 
-	// Collect test function names
 	mut test_fn_names := []string{}
 	mut test_file_idx := -1
 	for i, file in files {
@@ -2603,13 +3313,24 @@ fn (mut t Transformer) inject_test_main(mut files []ast.File) {
 		}
 	}
 	if test_fn_names.len == 0 {
-		return
+		return none
 	}
 
-	// Build main() body: println + call for each test, then summary
+	return TestMainParts{
+		test_file_idx: test_file_idx
+		main_fn:       synthesise_test_main_fn(test_fn_names)
+	}
+}
+
+// synthesise_test_main_fn builds the synthesised `fn main()` stmt used by
+// both the legacy `inject_test_main_parts` and the flat-aware
+// `inject_test_main_parts_from_flat`. The body is per-test
+// (`println('Running test: <name>...')`, `<name>()`, `println('  OK')`)
+// followed by a single summary `println('All N tests passed.')`. Pure
+// function — no transformer / file state read.
+fn synthesise_test_main_fn(test_fn_names []string) ast.Stmt {
 	mut main_stmts := []ast.Stmt{}
 	for test_fn in test_fn_names {
-		// println('Running test: test_fn...')
 		main_stmts << ast.ExprStmt{
 			expr: ast.CallExpr{
 				lhs:  ast.Ident{
@@ -2623,7 +3344,6 @@ fn (mut t Transformer) inject_test_main(mut files []ast.File) {
 				]
 			}
 		}
-		// test_fn()
 		main_stmts << ast.ExprStmt{
 			expr: ast.CallExpr{
 				lhs: ast.Ident{
@@ -2631,7 +3351,6 @@ fn (mut t Transformer) inject_test_main(mut files []ast.File) {
 				}
 			}
 		}
-		// println('  OK')
 		main_stmts << ast.ExprStmt{
 			expr: ast.CallExpr{
 				lhs:  ast.Ident{
@@ -2646,7 +3365,6 @@ fn (mut t Transformer) inject_test_main(mut files []ast.File) {
 			}
 		}
 	}
-	// println('All N tests passed.')
 	main_stmts << ast.ExprStmt{
 		expr: ast.CallExpr{
 			lhs:  ast.Ident{
@@ -2660,20 +3378,86 @@ fn (mut t Transformer) inject_test_main(mut files []ast.File) {
 			]
 		}
 	}
-
-	main_fn := ast.FnDecl{
+	return ast.Stmt(ast.FnDecl{
 		name:  'main'
 		stmts: main_stmts
+	})
+}
+
+// inject_test_main_parts_from_flat is the flat-cursor sibling of
+// `inject_test_main_parts`. Walks `flat.files` via FileCursor for (a) an
+// existing top-level user `main` FnDecl (returns `none` if found) and
+// (b) every top-level `test_*` FnDecl name in declaration order. Both
+// scans use `.stmt_fn_decl` kind + `flag_is_method` filter + `name()` /
+// `.starts_with('test_')`. Returns the same `TestMainParts` shape as the
+// legacy `_parts`; reuses `synthesise_test_main_fn` for the body, so
+// bit-equality is by-construction (same payload, same FnDecl shape).
+//
+// Second flat-aware port (s152, follows s151's
+// `inject_embed_file_helper_parts_from_flat`). Pinned by 3-case test in
+// `inject_test_main_to_flat_test.v`.
+pub fn (mut t Transformer) inject_test_main_parts_from_flat(flat &ast.FlatAst) ?TestMainParts {
+	for i in 0 .. flat.files.len {
+		stmts := flat.file_cursor(i).stmts()
+		for j in 0 .. stmts.len() {
+			c := stmts.at(j)
+			if c.kind() == .stmt_fn_decl && !c.flag(ast.flag_is_method) && c.name() == 'main' {
+				return none
+			}
+		}
 	}
 
-	// Add to the file that contains test functions
-	file := files[test_file_idx]
+	mut test_fn_names := []string{}
+	mut test_file_idx := -1
+	for i in 0 .. flat.files.len {
+		stmts := flat.file_cursor(i).stmts()
+		for j in 0 .. stmts.len() {
+			c := stmts.at(j)
+			if c.kind() == .stmt_fn_decl && !c.flag(ast.flag_is_method)
+				&& c.name().starts_with('test_') {
+				test_fn_names << c.name()
+				if test_file_idx == -1 {
+					test_file_idx = i
+				}
+			}
+		}
+	}
+	if test_fn_names.len == 0 {
+		return none
+	}
+
+	return TestMainParts{
+		test_file_idx: test_file_idx
+		main_fn:       synthesise_test_main_fn(test_fn_names)
+	}
+}
+
+// inject_test_main_to_flat is the FlatBuilder-side splice counterpart to
+// the legacy `inject_test_main(mut []ast.File)` mutator. Emits the
+// synthesised `main` FnDecl into `out` via `out.emit_stmt`, then folds
+// the resulting stmt id into the test-file root via
+// `out.append_file_stmts(test_file_idx, [main_id])` (s150's seed primitive).
+//
+// Bit-equal w.r.t. `signature()` to running legacy
+// `inject_test_main(mut files)` followed by `ast.flatten_files(files)`:
+// same test-file routing, same synthesised main payload, same final
+// file root edges (attrs / imports unchanged, stmts list extended by
+// the same single stmt id).
+pub fn (mut t Transformer) inject_test_main_to_flat(mut out ast.FlatBuilder) {
+	parts := t.inject_test_main_parts_from_flat(&out.flat) or { return }
+	main_id := out.emit_stmt(parts.main_fn)
+	out.append_file_stmts(parts.test_file_idx, [main_id])
+}
+
+fn (mut t Transformer) inject_test_main(mut files []ast.File) {
+	parts := t.inject_test_main_parts(files) or { return }
+	file := files[parts.test_file_idx]
 	mut new_stmts := []ast.Stmt{cap: file.stmts.len + 1}
 	for stmt in file.stmts {
 		new_stmts << stmt
 	}
-	new_stmts << main_fn
-	files[test_file_idx] = ast.File{
+	new_stmts << parts.main_fn
+	files[parts.test_file_idx] = ast.File{
 		attributes: file.attributes
 		mod:        file.mod
 		name:       file.name
@@ -2682,14 +3466,54 @@ fn (mut t Transformer) inject_test_main(mut files []ast.File) {
 	}
 }
 
-fn (mut t Transformer) inject_main_runtime_const_init_calls(mut files []ast.File) {
+// runtime_const_init_main_calls_parts is the pure-computation extraction of
+// the per-main init-call list previously inline in
+// `inject_main_runtime_const_init_calls`. Returns the ordered list of
+// `__v_init_consts_<mod>()` + `<mod>__init()` call ExprStmts that should be
+// prepended to main(): first the runtime-const init calls (one per
+// `t.runtime_const_modules` entry that has a registered fn_name; gated by
+// `uses_minimal_windows_x64_runtime` + `imported_runtime_init_modules` on
+// minimal-windows-x64), then the module-level `init()` calls (one per
+// module seen in files that declares a non-method `init` fn; gated by the
+// same minimal-windows filter; de-duped per module).
+//
+// Does NOT mutate `files` or any caller state. Caller decides whether to
+// splice the result into a legacy `[]ast.File` (via
+// `inject_main_runtime_const_init_calls`) or into a `FlatBuilder` (future
+// `post_pass_to_flat`).
+//
+// Second Phase 5 (post_pass port) `_parts` extraction (follows s144's
+// `runtime_const_init_fn_stmts_parts`). Bit-equal: same iteration order
+// over `runtime_const_modules` + `files`, same de-dup map semantics.
+pub fn (mut t Transformer) runtime_const_init_main_calls_parts(files []ast.File) []ast.Stmt {
 	mut init_calls := []ast.Stmt{}
+	mut main_const_calls := []ast.Stmt{}
 	mut seen_init_mods := map[string]bool{}
 	minimal_windows_x64_runtime := t.uses_minimal_windows_x64_runtime()
 	init_modules := if minimal_windows_x64_runtime {
 		t.imported_runtime_init_modules(files)
 	} else {
 		map[string]bool{}
+	}
+	main_mod := main_module_name_from_files(files)
+	for mod in t.runtime_const_modules {
+		if minimal_windows_x64_runtime && mod !in init_modules {
+			continue
+		}
+		fn_name := t.runtime_const_init_fn_name[mod] or { continue }
+		call_name := runtime_const_init_call_name(mod, fn_name)
+		call_stmt := ast.ExprStmt{
+			expr: ast.CallExpr{
+				lhs: ast.Ident{
+					name: call_name
+				}
+			}
+		}
+		if normalized_module_name(mod) == main_mod {
+			main_const_calls << call_stmt
+		} else {
+			init_calls << call_stmt
+		}
 	}
 	for file in files {
 		if file.mod in seen_init_mods {
@@ -2712,20 +3536,27 @@ fn (mut t Transformer) inject_main_runtime_const_init_calls(mut files []ast.File
 			}
 		}
 	}
-	for mod in t.runtime_const_modules {
-		if minimal_windows_x64_runtime && mod !in init_modules {
-			continue
-		}
-		fn_name := t.runtime_const_init_fn_name[mod] or { continue }
-		call_name := runtime_const_init_call_name(mod, fn_name)
-		init_calls << ast.ExprStmt{
-			expr: ast.CallExpr{
-				lhs: ast.Ident{
-					name: call_name
-				}
+	init_calls << main_const_calls
+	return init_calls
+}
+
+fn normalized_module_name(mod string) string {
+	return if mod == '' { 'main' } else { mod }
+}
+
+fn main_module_name_from_files(files []ast.File) string {
+	for file in files {
+		for stmt in file.stmts {
+			if stmt is ast.FnDecl && !stmt.is_method && stmt.name == 'main' {
+				return normalized_module_name(file.mod)
 			}
 		}
 	}
+	return 'main'
+}
+
+fn (mut t Transformer) inject_main_runtime_const_init_calls(mut files []ast.File) {
+	init_calls := t.runtime_const_init_main_calls_parts(files)
 	if init_calls.len == 0 {
 		return
 	}
@@ -2769,6 +3600,167 @@ fn (mut t Transformer) inject_main_runtime_const_init_calls(mut files []ast.File
 			break
 		}
 	}
+}
+
+// MainRuntimeConstInitParts carries the locator (file_idx + stmt_idx of the
+// top-level `fn main()` FnDecl, plus its current FlatNodeId) and the
+// pre-built init-call ExprStmt list that will be prepended to main's body.
+// Returned by `inject_main_runtime_const_init_parts_from_flat`; consumed by
+// `inject_main_runtime_const_init_to_flat`.
+pub struct MainRuntimeConstInitParts {
+pub:
+	main_file_idx int
+	main_stmt_idx int
+	main_fn_id    ast.FlatNodeId
+	init_calls    []ast.Stmt
+}
+
+// runtime_const_init_main_calls_parts_from_flat is the flat-cursor sibling of
+// `runtime_const_init_main_calls_parts`. Builds the same ordered list of
+// `__v_init_consts_<mod>()` + `<mod>__init()` ExprStmt calls, but reads the
+// per-file `init` fn presence from `flat.files` via FileCursor (kind ==
+// `.stmt_fn_decl`, `!flag(ast.flag_is_method)`, `name() == 'init'`) instead
+// of walking `[]ast.File`. The runtime-const portion is unchanged — it
+// iterates `t.runtime_const_modules` + `t.runtime_const_init_fn_name`
+// (Transformer state, not file content).
+//
+// Pure: does not mutate the flat AST or transformer state.
+pub fn (mut t Transformer) runtime_const_init_main_calls_parts_from_flat(flat &ast.FlatAst) []ast.Stmt {
+	mut init_calls := []ast.Stmt{}
+	mut main_const_calls := []ast.Stmt{}
+	mut seen_init_mods := map[string]bool{}
+	minimal_windows_x64_runtime := t.uses_minimal_windows_x64_runtime()
+	init_modules := if minimal_windows_x64_runtime {
+		// Dormant branch (only on minimal_windows_x64 backend); route through
+		// the legacy file-walker via a one-shot rehydrate. Direct flat port
+		// would need `active_runtime_init_imports` (comptime-active import
+		// collector) lifted to cursors, which is non-trivial and not yet
+		// exercised by any test target.
+		rehydrated := flat.to_files_range(0, flat.files.len)
+		t.imported_runtime_init_modules(rehydrated)
+	} else {
+		map[string]bool{}
+	}
+	main_mod := main_module_name_from_flat(flat)
+	for mod in t.runtime_const_modules {
+		if minimal_windows_x64_runtime && mod !in init_modules {
+			continue
+		}
+		fn_name := t.runtime_const_init_fn_name[mod] or { continue }
+		call_name := runtime_const_init_call_name(mod, fn_name)
+		call_stmt := ast.ExprStmt{
+			expr: ast.CallExpr{
+				lhs: ast.Ident{
+					name: call_name
+				}
+			}
+		}
+		if normalized_module_name(mod) == main_mod {
+			main_const_calls << call_stmt
+		} else {
+			init_calls << call_stmt
+		}
+	}
+	for i in 0 .. flat.files.len {
+		fc := flat.file_cursor(i)
+		mod := fc.mod()
+		if mod in seen_init_mods {
+			continue
+		}
+		if minimal_windows_x64_runtime && mod !in init_modules {
+			continue
+		}
+		stmts := fc.stmts()
+		for j in 0 .. stmts.len() {
+			c := stmts.at(j)
+			if c.kind() == .stmt_fn_decl && !c.flag(ast.flag_is_method) && c.name() == 'init' {
+				seen_init_mods[mod] = true
+				init_calls << ast.ExprStmt{
+					expr: ast.CallExpr{
+						lhs: ast.Ident{
+							name: module_init_call_name(mod)
+						}
+					}
+				}
+				break
+			}
+		}
+	}
+	init_calls << main_const_calls
+	return init_calls
+}
+
+fn main_module_name_from_flat(flat &ast.FlatAst) string {
+	for i in 0 .. flat.files.len {
+		fc := flat.file_cursor(i)
+		stmts := fc.stmts()
+		for j in 0 .. stmts.len() {
+			c := stmts.at(j)
+			if c.kind() == .stmt_fn_decl && !c.flag(ast.flag_is_method) && c.name() == 'main' {
+				return normalized_module_name(fc.mod())
+			}
+		}
+	}
+	return 'main'
+}
+
+// inject_main_runtime_const_init_parts_from_flat is the flat-cursor sibling of
+// the implicit locator in `inject_main_runtime_const_init_calls`. Returns the
+// (file_idx, stmt_idx, main_fn_id, init_calls) tuple needed to drive the
+// flat-aware splice. Returns `none` when no init calls are needed OR no
+// top-level `fn main()` is present in any file.
+//
+// The "first match wins" semantics of the legacy loop are preserved: we
+// scan files in declaration order and stop at the first non-method
+// `fn main()` we encounter.
+//
+// Fourth flat-aware port (s155, follows s151/s152/s153). Pinned by the
+// 4-case test in `inject_main_runtime_const_init_to_flat_test.v`.
+pub fn (mut t Transformer) inject_main_runtime_const_init_parts_from_flat(flat &ast.FlatAst) ?MainRuntimeConstInitParts {
+	init_calls := t.runtime_const_init_main_calls_parts_from_flat(flat)
+	if init_calls.len == 0 {
+		return none
+	}
+	for i in 0 .. flat.files.len {
+		fc := flat.file_cursor(i)
+		stmts := fc.stmts()
+		for j in 0 .. stmts.len() {
+			c := stmts.at(j)
+			if c.kind() == .stmt_fn_decl && !c.flag(ast.flag_is_method) && c.name() == 'main' {
+				return MainRuntimeConstInitParts{
+					main_file_idx: i
+					main_stmt_idx: j
+					main_fn_id:    c.id
+					init_calls:    init_calls
+				}
+			}
+		}
+	}
+	return none
+}
+
+// inject_main_runtime_const_init_to_flat is the FlatBuilder-side splice
+// counterpart to the legacy `inject_main_runtime_const_init_calls(mut []ast.File)`.
+// Locates the `fn main()` via `inject_main_runtime_const_init_parts_from_flat`,
+// emits each init-call ExprStmt via `out.emit_stmt`, prepends them to main's
+// body via `out.prepend_to_fn_body(main_fn_id, init_call_ids)` (s154's seed
+// primitive, returns a NEW fn_decl_id), then rewires the enclosing file's
+// stmts list via `out.replace_file_stmt(file_idx, stmt_idx, new_fn_id)`.
+//
+// Bit-equal w.r.t. `signature()` to running legacy
+// `inject_main_runtime_const_init_calls(mut files)` followed by
+// `ast.flatten_files(files)`: same first-main routing, same init-call
+// payload + ordering (init_calls first, original main body after), same
+// final file root edges (attrs / imports unchanged, stmts list one entry
+// swapped from old fn_decl_id to new fn_decl_id).
+pub fn (mut t Transformer) inject_main_runtime_const_init_to_flat(mut out ast.FlatBuilder) {
+	parts := t.inject_main_runtime_const_init_parts_from_flat(&out.flat) or { return }
+	mut init_call_ids := []ast.FlatNodeId{cap: parts.init_calls.len}
+	for call_stmt in parts.init_calls {
+		init_call_ids << out.emit_stmt(call_stmt)
+	}
+	new_fn_id := out.prepend_to_fn_body(parts.main_fn_id, init_call_ids)
+	out.replace_file_stmt(parts.main_file_idx, parts.main_stmt_idx, new_fn_id)
 }
 
 fn (mut t Transformer) transform_file(file ast.File) ast.File {
@@ -2901,15 +3893,27 @@ fn (mut t Transformer) append_transformed_stmt(mut result []ast.Stmt, stmt ast.S
 
 fn (mut t Transformer) transform_stmts(stmts []ast.Stmt) []ast.Stmt {
 	mut result := []ast.Stmt{cap: stmts.len}
-	is_native_be := t.pref != unsafe { nil } && (t.pref.backend == .arm64 || t.pref.backend == .x64)
+	is_native_be := t.is_native_be
 	block_smartcast_depth := t.smartcast_stack.len
-	block_smartcast_stack := t.smartcast_stack.clone()
-	block_smartcast_counts := t.smartcast_expr_counts.clone()
+	// Lazy snapshot: most blocks enter with an empty smartcast stack. Cloning an
+	// empty stack/map is cheap but still allocates; multiply by tens of thousands
+	// of blocks and it adds up. Only snapshot when there is state to restore.
+	has_smartcast_state := block_smartcast_depth > 0
+	block_smartcast_stack := if has_smartcast_state {
+		t.smartcast_stack.clone()
+	} else {
+		[]SmartcastContext{}
+	}
+	block_smartcast_counts := if has_smartcast_state {
+		t.smartcast_expr_counts.clone()
+	} else {
+		map[string]int{}
+	}
 	for stmt in stmts {
 		if t.smartcast_stack.len < block_smartcast_depth {
 			t.smartcast_stack = block_smartcast_stack.clone()
 			t.smartcast_expr_counts = block_smartcast_counts.clone()
-		} else {
+		} else if t.smartcast_stack.len > block_smartcast_depth {
 			t.truncate_smartcasts(block_smartcast_depth)
 		}
 		// Check for OrExpr assignment that expands to multiple statements
@@ -3199,7 +4203,7 @@ fn (mut t Transformer) transform_stmts(stmts []ast.Stmt) []ast.Stmt {
 			}
 			// For native backends, transform obj.field++ / obj.field-- to compound assignment
 			// to avoid the build_postfix code path which has issues in self-hosted binaries.
-			if t.pref.backend == .arm64 || t.pref.backend == .x64 {
+			if t.is_native_be {
 				if postfix_assign := t.try_transform_selector_postfix(stmt) {
 					result << postfix_assign
 					continue
@@ -3250,7 +4254,7 @@ fn (mut t Transformer) transform_stmts(stmts []ast.Stmt) []ast.Stmt {
 	if t.smartcast_stack.len < block_smartcast_depth {
 		t.smartcast_stack = block_smartcast_stack.clone()
 		t.smartcast_expr_counts = block_smartcast_counts.clone()
-	} else {
+	} else if t.smartcast_stack.len > block_smartcast_depth {
 		t.truncate_smartcasts(block_smartcast_depth)
 	}
 	return result
@@ -3364,28 +4368,39 @@ fn (mut t Transformer) try_expand_tuple_call_assign(stmt ast.AssignStmt) ?[]ast.
 }
 
 fn (mut t Transformer) transform_assign_stmt(stmt ast.AssignStmt) ast.AssignStmt {
+	op, lhs, rhs, pos := t.transform_assign_stmt_parts(stmt)
+	return ast.AssignStmt{
+		op:  op
+		lhs: lhs
+		rhs: rhs
+		pos: pos
+	}
+}
+
+// transform_assign_stmt_parts returns the four variable parts of a lowered
+// AssignStmt — `(op, lhs, rhs, pos)`. The flat-write arm calls this directly
+// to skip the `ast.AssignStmt` wrapper allocation; the legacy
+// `transform_assign_stmt` above wraps it for non-flat callers. Mirrors the
+// `_parts` extraction template established by `transform_fn_decl_parts`
+// (session 4) and `transform_return_stmt_parts` (session 59).
+fn (mut t Transformer) transform_assign_stmt_parts(stmt ast.AssignStmt) (token.Token, []ast.Expr, []ast.Expr, token.Pos) {
 	if !expr_array_has_valid_data(stmt.lhs) || !expr_array_has_valid_data(stmt.rhs) {
-		return stmt
+		return stmt.op, stmt.lhs, stmt.rhs, stmt.pos
 	}
 	// Check for string compound assignment: p += x -> p = string__plus(p, x)
 	if stmt.op == .plus_assign && stmt.lhs.len == 1 && stmt.rhs.len == 1 {
 		lhs_expr := stmt.lhs[0]
 		if t.is_string_expr(lhs_expr) {
 			// Transform p += x to p = string__plus(p, x)
-			return ast.AssignStmt{
-				op:  .assign
-				lhs: stmt.lhs
-				rhs: [
-					ast.CallExpr{
-						lhs:  ast.Ident{
-							name: 'string__plus'
-						}
-						args: [t.transform_expr(lhs_expr), t.transform_expr(stmt.rhs[0])]
-						pos:  stmt.pos
-					},
-				]
-				pos: stmt.pos
-			}
+			return token.Token.assign, stmt.lhs, [
+				ast.Expr(ast.CallExpr{
+					lhs:  ast.Ident{
+						name: 'string__plus'
+					}
+					args: [t.transform_expr(lhs_expr), t.transform_expr(stmt.rhs[0])]
+					pos:  stmt.pos
+				}),
+			], stmt.pos
 		}
 	}
 	// Lower writes into result/option payload: res.data = v
@@ -3398,29 +4413,19 @@ fn (mut t Transformer) transform_assign_stmt(stmt ast.AssignStmt) ast.AssignStmt
 					types.ResultType {
 						base_c := t.type_to_c_name(lhs_type.base_type)
 						if base_c != '' && base_c != 'void' {
-							return ast.AssignStmt{
-								op:  .assign
-								lhs: [
-									t.lower_wrapper_payload_access(t.transform_expr(lhs_sel.lhs),
-										base_c),
-								]
-								rhs: [t.transform_expr(stmt.rhs[0])]
-								pos: stmt.pos
-							}
+							return token.Token.assign, [
+								t.lower_wrapper_payload_access(t.transform_expr(lhs_sel.lhs),
+									base_c),
+							], [t.transform_expr(stmt.rhs[0])], stmt.pos
 						}
 					}
 					types.OptionType {
 						base_c := t.type_to_c_name(lhs_type.base_type)
 						if base_c != '' && base_c != 'void' {
-							return ast.AssignStmt{
-								op:  .assign
-								lhs: [
-									t.lower_wrapper_payload_access(t.transform_expr(lhs_sel.lhs),
-										base_c),
-								]
-								rhs: [t.transform_expr(stmt.rhs[0])]
-								pos: stmt.pos
-							}
+							return token.Token.assign, [
+								t.lower_wrapper_payload_access(t.transform_expr(lhs_sel.lhs),
+									base_c),
+							], [t.transform_expr(stmt.rhs[0])], stmt.pos
 						}
 					}
 					else {}
@@ -3549,12 +4554,7 @@ fn (mut t Transformer) transform_assign_stmt(stmt ast.AssignStmt) ast.AssignStmt
 			}
 		}
 	}
-	return ast.AssignStmt{
-		op:  stmt.op
-		lhs: lhs
-		rhs: rhs
-		pos: stmt.pos
-	}
+	return stmt.op, lhs, rhs, stmt.pos
 }
 
 fn (t &Transformer) assignment_lhs_type_name(expr ast.Expr) string {
@@ -4209,14 +5209,27 @@ fn (mut t Transformer) try_expand_or_expr_assign_stmts(stmt &ast.AssignStmt) ?[]
 	// Check if RHS contains an OrExpr (nested case like cast(OrExpr))
 	if t.expr_has_or_expr(rhs_expr) {
 		mut prefix_stmts := []ast.Stmt{}
-		new_rhs := t.extract_or_expr(rhs_expr, mut prefix_stmts)
+		mut new_rhs := t.extract_or_expr(rhs_expr, mut prefix_stmts)
 		if prefix_stmts.len == 0 {
 			return none
+		}
+		if new_rhs is ast.EmptyExpr {
+			payload_type := t.or_assign_expected_payload_type(stmt, rhs_expr) or {
+				types.Type(types.voidptr_)
+			}
+			if payload_expr := t.or_payload_expr_from_prefix_stmts(prefix_stmts, payload_type) {
+				new_rhs = payload_expr
+			}
 		}
 		// Add the final assignment with the extracted expression.
 		// Run through transform_stmt to handle map index assignment lowering (map__set),
 		// string compound assignment (string__plus), and other statement-level transforms.
+		saved_pending := t.pending_stmts
+		t.pending_stmts = []ast.Stmt{}
 		transformed_rhs := t.transform_expr(new_rhs)
+		rhs_pending := t.pending_stmts.clone()
+		t.pending_stmts = saved_pending
+		prefix_stmts << rhs_pending
 		// For tuple destructuring (a, b := call()?), expand to:
 		//   _tuple_tmp := extracted_value
 		//   a := _tuple_tmp.arg0
@@ -4258,8 +5271,50 @@ fn (mut t Transformer) try_expand_or_expr_assign_stmts(stmt &ast.AssignStmt) ?[]
 			rhs: [transformed_rhs]
 			pos: stmt.pos
 		}
-		prefix_stmts << t.transform_stmt(final_assign)
+		saved_final_pending := t.pending_stmts
+		t.pending_stmts = []ast.Stmt{}
+		transformed_final := t.transform_stmt(final_assign)
+		final_pending := t.pending_stmts.clone()
+		t.pending_stmts = saved_final_pending
+		prefix_stmts << final_pending
+		prefix_stmts << transformed_final
 		return prefix_stmts
+	}
+	return none
+}
+
+fn transformer_or_payload_type_is_value(typ types.Type) bool {
+	if typ.name() == 'void' {
+		return false
+	}
+	return typ !is types.ResultType && typ !is types.OptionType
+}
+
+fn (t &Transformer) or_assign_expected_payload_type(stmt &ast.AssignStmt, rhs_expr ast.Expr) ?types.Type {
+	if typ := t.get_expr_type(rhs_expr) {
+		if transformer_or_payload_type_is_value(typ) {
+			return typ
+		}
+	}
+	if stmt.lhs.len == 1 {
+		if typ := t.get_expr_type(stmt.lhs[0]) {
+			if transformer_or_payload_type_is_value(typ) {
+				return typ
+			}
+		}
+	}
+	return none
+}
+
+fn (mut t Transformer) or_payload_expr_from_prefix_stmts(prefix_stmts []ast.Stmt, payload_type types.Type) ?ast.Expr {
+	for offset in 0 .. prefix_stmts.len {
+		stmt := prefix_stmts[prefix_stmts.len - 1 - offset]
+		if stmt is ast.AssignStmt && stmt.op == .decl_assign && stmt.lhs.len == 1 {
+			lhs := stmt.lhs[0]
+			if lhs is ast.Ident && lhs.name.starts_with('_or_t') {
+				return t.synth_selector(ast.Expr(lhs), 'data', payload_type)
+			}
+		}
 	}
 	return none
 }
@@ -4268,10 +5323,10 @@ fn (mut t Transformer) transform_or_call_expr(call_expr ast.Expr) (ast.Expr, []a
 	if t.pref == unsafe { nil } || t.pref.backend != .cleanc {
 		return t.transform_expr(call_expr), []ast.Stmt{}
 	}
-	saved_pending := t.pending_stmts.clone()
-	t.pending_stmts.clear()
+	saved_pending := t.pending_stmts
+	t.pending_stmts = []ast.Stmt{}
 	transformed_call := t.transform_expr(call_expr)
-	call_pending := t.pending_stmts.clone()
+	call_pending := t.pending_stmts
 	t.pending_stmts = saved_pending
 	return transformed_call, call_pending
 }
@@ -4376,8 +5431,7 @@ fn (mut t Transformer) expand_direct_or_expr_assign(stmt ast.AssignStmt, or_expr
 		}
 	}
 
-	if t.pref != unsafe { nil } && (t.pref.backend == .arm64 || t.pref.backend == .x64)
-		&& is_string_range_or {
+	if t.is_native_be && is_string_range_or {
 		// String ranges still need the native inline bounds-check path because the
 		// checker records them as `string` instead of `!string`.
 		idx_expr := call_expr as ast.IndexExpr
@@ -4623,10 +5677,10 @@ fn (mut t Transformer) gen_typed_temp_ident(typ types.Type) ast.Ident {
 }
 
 fn (mut t Transformer) transform_expr_with_captured_pending(expr ast.Expr) (ast.Expr, []ast.Stmt) {
-	saved_pending := t.pending_stmts.clone()
-	t.pending_stmts.clear()
+	saved_pending := t.pending_stmts
+	t.pending_stmts = []ast.Stmt{}
 	transformed := t.transform_expr(expr)
-	captured := t.pending_stmts.clone()
+	captured := t.pending_stmts
 	t.pending_stmts = saved_pending
 	return transformed, captured
 }
@@ -4947,8 +6001,13 @@ fn (mut t Transformer) try_expand_filter_or_map_expr(expr ast.Expr) ?ast.Expr {
 	mut receiver_for_loop := receiver_expr
 	mut has_cache_stmt := false
 	mut cache_stmt := ast.empty_stmt
+	mut receiver_pending_stmts := []ast.Stmt{}
 	if receiver_expr !is ast.Ident && receiver_expr !is ast.SelectorExpr {
+		pending_before_receiver := t.pending_stmts
+		t.pending_stmts = []ast.Stmt{}
 		transformed_receiver := t.transform_expr(receiver_expr)
+		receiver_pending_stmts = t.pending_stmts.clone()
+		t.pending_stmts = pending_before_receiver
 		cache_name := '_filter_recv${temp_id}'
 		cache_pos := t.next_synth_pos()
 		cache_ident := ast.Ident{
@@ -4979,23 +6038,27 @@ fn (mut t Transformer) try_expand_filter_or_map_expr(expr ast.Expr) ?ast.Expr {
 	// Transform generated statements while lowering the synthetic loop with the
 	// array type already resolved above. Nested expression expansions inside the
 	// loop body stay scoped to that loop.
-	saved_pending := t.pending_stmts.clone()
-	t.pending_stmts.clear()
+	saved_pending := t.pending_stmts
+	t.pending_stmts = []ast.Stmt{}
 	mut generated_stmts := []ast.Stmt{cap: 2}
 	if has_cache_stmt {
 		generated_stmts << cache_stmt
 	}
 	generated_stmts << init_stmt
 	transformed_generated := t.transform_stmts(generated_stmts)
+	generated_pending := t.pending_stmts.clone()
+	t.pending_stmts = []ast.Stmt{}
 	iter_type := t.c_name_to_type(array_type) or { return none }
 	t.open_scope()
 	transformed_for := ast.Stmt(t.transform_array_for_in(raw_for_stmt, for_in_stmt, iter_type))
 	t.close_scope()
-	inner_pending := t.pending_stmts.clone()
+	loop_pending := t.pending_stmts
 	t.pending_stmts = saved_pending
+	t.pending_stmts << receiver_pending_stmts
+	t.pending_stmts << generated_pending
 	t.pending_stmts << transformed_generated
 	t.pending_stmts << transformed_for
-	t.pending_stmts << inner_pending
+	t.pending_stmts << loop_pending
 
 	// Return the temp variable as the replacement expression
 	return temp_ident
@@ -5079,8 +6142,13 @@ fn (mut t Transformer) expand_any_or_all_expr(method_name string, receiver_expr 
 	mut receiver_for_loop := receiver_expr
 	mut has_cache_stmt := false
 	mut cache_stmt := ast.empty_stmt
+	mut receiver_pending_stmts := []ast.Stmt{}
 	if receiver_expr !is ast.Ident && receiver_expr !is ast.SelectorExpr {
+		pending_before_receiver := t.pending_stmts
+		t.pending_stmts = []ast.Stmt{}
 		transformed_receiver := t.transform_expr(receiver_expr)
+		receiver_pending_stmts = t.pending_stmts.clone()
+		t.pending_stmts = pending_before_receiver
 		cache_name := '_filter_recv${temp_id}'
 		cache_ident := ast.Ident{
 			name: cache_name
@@ -5103,11 +6171,12 @@ fn (mut t Transformer) expand_any_or_all_expr(method_name string, receiver_expr 
 		}
 		stmts: loop_body
 	})
-	saved_pending := t.pending_stmts.clone()
-	t.pending_stmts.clear()
+	saved_pending := t.pending_stmts
+	t.pending_stmts = []ast.Stmt{}
 	transformed_init := t.transform_stmt(init_stmt)
 	transformed_for := t.transform_stmt(for_stmt)
 	t.pending_stmts = saved_pending
+	t.pending_stmts << receiver_pending_stmts
 	if has_cache_stmt {
 		t.pending_stmts << cache_stmt
 	}
@@ -5161,8 +6230,13 @@ fn (mut t Transformer) expand_count_expr(receiver_expr ast.Expr, body_expr ast.E
 	mut receiver_for_loop := receiver_expr
 	mut has_cache_stmt := false
 	mut cache_stmt := ast.empty_stmt
+	mut receiver_pending_stmts := []ast.Stmt{}
 	if receiver_expr !is ast.Ident && receiver_expr !is ast.SelectorExpr {
+		pending_before_receiver := t.pending_stmts
+		t.pending_stmts = []ast.Stmt{}
 		transformed_receiver := t.transform_expr(receiver_expr)
+		receiver_pending_stmts = t.pending_stmts.clone()
+		t.pending_stmts = pending_before_receiver
 		cache_name := '_filter_recv${temp_id}'
 		cache_ident := ast.Ident{
 			name: cache_name
@@ -5185,11 +6259,12 @@ fn (mut t Transformer) expand_count_expr(receiver_expr ast.Expr, body_expr ast.E
 		}
 		stmts: loop_body
 	})
-	saved_pending := t.pending_stmts.clone()
-	t.pending_stmts.clear()
+	saved_pending := t.pending_stmts
+	t.pending_stmts = []ast.Stmt{}
 	transformed_init := t.transform_stmt(init_stmt)
 	transformed_for := t.transform_stmt(for_stmt)
 	t.pending_stmts = saved_pending
+	t.pending_stmts << receiver_pending_stmts
 	if has_cache_stmt {
 		t.pending_stmts << cache_stmt
 	}
@@ -6071,15 +7146,15 @@ fn (mut t Transformer) try_expand_or_expr_stmt(stmt ast.ExprStmt) ?[]ast.Stmt {
 	// pending_stmts (e.g., lower_if_expr_value creates _if_tN). These must
 	// be placed AFTER the or-expr prefix_stmts (which define _or_tN used
 	// by the if condition), not before.
-	saved_pending := t.pending_stmts.clone()
-	t.pending_stmts.clear()
+	saved_pending := t.pending_stmts
+	t.pending_stmts = []ast.Stmt{}
 	// The expression is used at statement level (ExprStmt), so skip
 	// IfExpr value lowering which would create temp variables for void results.
 	saved_skip_if := t.skip_if_value_lowering
 	t.skip_if_value_lowering = true
 	transformed_new := t.transform_expr(new_expr)
 	t.skip_if_value_lowering = saved_skip_if
-	inner_pending := t.pending_stmts.clone()
+	inner_pending := t.pending_stmts
 	t.pending_stmts = saved_pending
 	// Merge: prefix_stmts first (or-expr decls), then any inner pending
 	for ip in inner_pending {
@@ -6505,12 +7580,18 @@ fn (mut t Transformer) extract_or_expr(expr ast.Expr, mut prefix_stmts []ast.Stm
 					pos:  expr.pos
 				}
 			}
+			mut new_lhs := expr.lhs
+			if expr.lhs is ast.SelectorExpr {
+				new_lhs = t.extract_or_expr_from_method_lhs(expr.lhs, mut prefix_stmts)
+			} else if t.expr_has_or_expr(expr.lhs) {
+				new_lhs = t.extract_or_expr(expr.lhs, mut prefix_stmts)
+			}
 			mut new_args := []ast.Expr{cap: expr.args.len}
 			for arg in expr.args {
 				new_args << t.extract_or_expr(arg, mut prefix_stmts)
 			}
 			return ast.CallExpr{
-				lhs:  expr.lhs
+				lhs:  new_lhs
 				args: new_args
 				pos:  expr.pos
 			}
@@ -6522,6 +7603,12 @@ fn (mut t Transformer) extract_or_expr(expr ast.Expr, mut prefix_stmts []ast.Stm
 					expr: expr.expr
 					pos:  expr.pos
 				}
+			}
+			mut new_lhs := expr.lhs
+			if expr.lhs is ast.SelectorExpr {
+				new_lhs = t.extract_or_expr_from_method_lhs(expr.lhs, mut prefix_stmts)
+			} else if t.expr_has_or_expr(expr.lhs) {
+				new_lhs = t.extract_or_expr(expr.lhs, mut prefix_stmts)
 			}
 			// When the single argument is directly an OrExpr and the lhs is a function
 			// call (not a type cast), the `or {}` MAY belong to the call result.
@@ -6552,7 +7639,7 @@ fn (mut t Transformer) extract_or_expr(expr ast.Expr, mut prefix_stmts []ast.Stm
 			}
 			new_inner := t.extract_or_expr(expr.expr, mut prefix_stmts)
 			return ast.CallOrCastExpr{
-				lhs:  expr.lhs
+				lhs:  new_lhs
 				expr: new_inner
 				pos:  expr.pos
 			}
@@ -6739,8 +7826,7 @@ fn (mut t Transformer) expand_single_or_expr(or_expr ast.OrExpr, mut prefix_stmt
 		is_result = true
 	}
 
-	if t.pref != unsafe { nil } && (t.pref.backend == .arm64 || t.pref.backend == .x64)
-		&& is_string_range_or {
+	if t.is_native_be && is_string_range_or {
 		idx_expr := call_expr as ast.IndexExpr
 		return t.expand_string_range_or_native_expr(idx_expr, or_expr.stmts, mut prefix_stmts)
 	}
@@ -6766,7 +7852,7 @@ fn (mut t Transformer) expand_single_or_expr(or_expr ast.OrExpr, mut prefix_stmt
 			is_result = true
 			is_option = false
 		}
-		if base_type == '' {
+		if base_type == '' || base_type == 'void' {
 			if wrapper_type is types.ResultType {
 				base_type = wrapper_type.base_type.name()
 			} else if wrapper_type is types.OptionType {
@@ -6784,7 +7870,7 @@ fn (mut t Transformer) expand_single_or_expr(or_expr ast.OrExpr, mut prefix_stmt
 				is_result = true
 				is_option = false
 			}
-			if base_type == '' {
+			if base_type == '' || base_type == 'void' {
 				if call_type is types.ResultType {
 					base_type = call_type.base_type.name()
 				} else if call_type is types.OptionType {
@@ -6801,7 +7887,7 @@ fn (mut t Transformer) expand_single_or_expr(or_expr ast.OrExpr, mut prefix_stmt
 					is_result = true
 					is_option = false
 				}
-				if base_type == '' {
+				if base_type == '' || base_type == 'void' {
 					if ret_type is types.ResultType {
 						base_type = ret_type.base_type.name()
 					} else if ret_type is types.OptionType {
@@ -6820,7 +7906,7 @@ fn (mut t Transformer) expand_single_or_expr(or_expr ast.OrExpr, mut prefix_stmt
 						is_result = true
 						is_option = false
 					}
-					if base_type == '' {
+					if base_type == '' || base_type == 'void' {
 						if fn_ret is types.ResultType {
 							base_type = fn_ret.base_type.name()
 						} else if fn_ret is types.OptionType {
@@ -6845,7 +7931,7 @@ fn (mut t Transformer) expand_single_or_expr(or_expr ast.OrExpr, mut prefix_stmt
 				is_result = true
 				is_option = false
 			}
-			if base_type == '' {
+			if base_type == '' || base_type == 'void' {
 				if ret_type is types.ResultType {
 					base_type = ret_type.base_type.name()
 				} else if ret_type is types.OptionType {
@@ -7691,7 +8777,7 @@ fn (mut t Transformer) expand_lock_expr(expr ast.LockExpr) []ast.Stmt {
 	mut result := []ast.Stmt{}
 	// For native backends (arm64/x64), skip lock/unlock calls since there's
 	// no threading support and the sync module is not available.
-	is_native := t.pref != unsafe { nil } && (t.pref.backend == .arm64 || t.pref.backend == .x64)
+	is_native := t.is_native_be
 	// Emit lock calls
 	if !is_native {
 		for lock_expr in expr.lock_exprs {
@@ -9031,6 +10117,18 @@ fn (t &Transformer) return_expr_is_sumtype_variant_init(expr ast.Expr, sumtype_n
 }
 
 fn (mut t Transformer) transform_return_stmt(stmt ast.ReturnStmt) ast.ReturnStmt {
+	return ast.ReturnStmt{
+		exprs: t.transform_return_stmt_parts(stmt)
+	}
+}
+
+// transform_return_stmt_parts returns the only variable part of a lowered
+// ReturnStmt — the transformed `exprs` slice. The flat-write arm calls this
+// directly to skip the `ast.ReturnStmt` wrapper allocation; the legacy
+// `transform_return_stmt` above wraps it for non-flat callers. Mirrors the
+// `_parts` extraction template established by `transform_fn_decl_parts`
+// (session 4).
+fn (mut t Transformer) transform_return_stmt_parts(stmt ast.ReturnStmt) []ast.Expr {
 	should_wrap_return_sumtype := t.cur_fn_ret_type_name != ''
 		&& t.is_sum_type(t.cur_fn_ret_type_name)
 	mut exprs := []ast.Expr{cap: stmt.exprs.len}
@@ -9098,7 +10196,7 @@ fn (mut t Transformer) transform_return_stmt(stmt ast.ReturnStmt) ast.ReturnStmt
 			// original expression which still has valid checker position/type info.
 			// wrap_sumtype_value calls transform_expr internally, so the value
 			// is properly transformed.
-			if t.pref != unsafe { nil } && (t.pref.backend == .arm64 || t.pref.backend == .x64) {
+			if t.is_native_be {
 				if wrapped := t.wrap_sumtype_value(expr, t.cur_fn_ret_type_name) {
 					exprs << wrapped
 					continue
@@ -9136,9 +10234,7 @@ fn (mut t Transformer) transform_return_stmt(stmt ast.ReturnStmt) ast.ReturnStmt
 		}
 		exprs << transformed
 	}
-	return ast.ReturnStmt{
-		exprs: exprs
-	}
+	return exprs
 }
 
 fn (t &Transformer) unwrap_assoc_expr(expr ast.Expr) ?ast.AssocExpr {
@@ -9227,8 +10323,8 @@ fn (mut t Transformer) lower_assoc_expr(node ast.AssocExpr, take_addr bool) ast.
 	// Save pending_stmts from outer context to prevent field value transforms
 	// (which may call transform_stmts internally, e.g., for if-expression branches)
 	// from draining our accumulated stmts into the wrong scope.
-	saved_pending := t.pending_stmts.clone()
-	t.pending_stmts.clear()
+	saved_pending := t.pending_stmts
+	t.pending_stmts = []ast.Stmt{}
 	mut assoc_stmts := []ast.Stmt{cap: 1 + node.fields.len * 2}
 	assoc_stmts << ast.Stmt(ast.AssignStmt{
 		op:  .decl_assign
@@ -10133,8 +11229,7 @@ fn (mut t Transformer) apply_smartcast_direct_ctx(original_expr ast.Expr, ctx Sm
 	// For native backends (arm64/x64): _data is a plain i64 (void pointer) in the SSA struct.
 	// No union variant sub-field exists, so just use _data directly.
 	// For C backends: _data is a union, so access _data._variant for the specific member.
-	is_native_backend := t.pref != unsafe { nil }
-		&& (t.pref.backend == .arm64 || t.pref.backend == .x64)
+	is_native_backend := t.pref != unsafe { nil } && t.is_native_be
 	data_access := t.synth_selector(transformed_base, '_data', types.Type(types.voidptr_))
 	variant_access := if is_native_backend {
 		data_access
@@ -10245,8 +11340,7 @@ fn (mut t Transformer) apply_smartcast_receiver_ctx(sumtype_expr ast.Expr, ctx S
 	// Create data access.
 	// For native backends: _data is a plain i64, no union variant sub-field.
 	// For C backends: _data is a union, access _data._variant.
-	is_native_backend2 := t.pref != unsafe { nil }
-		&& (t.pref.backend == .arm64 || t.pref.backend == .x64)
+	is_native_backend2 := t.pref != unsafe { nil } && t.is_native_be
 	data_access := t.synth_selector(transformed_base, '_data', types.Type(types.voidptr_))
 	variant_access := if is_native_backend2 {
 		data_access
@@ -12107,6 +13201,53 @@ fn generated_fn_prefix_module(prefix string, files []ast.File) string {
 	return ''
 }
 
+// generated_fn_module_from_flat is the FlatAst-input counterpart to
+// `generated_fn_module`. Identical control flow + bucket logic; only the
+// `files` walk used by `generated_fn_prefix_module` is replaced with a flat
+// scan over `flat.files`. Once `_via_driver` wedges drop their legacy
+// `[]ast.File` return, callers can route generated_fns_parts through the
+// flat-input variant and the `result` post-transform array is no longer
+// needed at the parts-routing step.
+fn generated_fn_module_from_flat(fn_name string, flat &ast.FlatAst) string {
+	if fn_name.starts_with('__sort_cmp_') {
+		rest := fn_name['__sort_cmp_'.len..]
+		if rest.contains('__') {
+			prefix := rest.all_before('__')
+			return generated_fn_prefix_module_from_flat(prefix, flat)
+		}
+	}
+	if fn_name.starts_with('Array_') {
+		rest := fn_name['Array_'.len..]
+		if rest.contains('__') {
+			prefix := rest.all_before('__')
+			return generated_fn_prefix_module_from_flat(prefix, flat)
+		}
+	}
+	if !fn_name.contains('__') {
+		return ''
+	}
+	prefix := fn_name.all_before('__')
+	if prefix in ['Array', 'Map', 'Array_fixed', 'Map_K_V', 'bool', 'int', 'i8', 'i16', 'i32',
+		'i64', 'u8', 'u16', 'u32', 'u64', 'f32', 'f64', 'string', 'rune', 'voidptr', 'byteptr',
+		'charptr', 'isize', 'usize'] {
+		return ''
+	}
+	return generated_fn_prefix_module_from_flat(prefix, flat)
+}
+
+fn generated_fn_prefix_module_from_flat(prefix string, flat &ast.FlatAst) string {
+	if prefix == '' {
+		return ''
+	}
+	for i in 0 .. flat.files.len {
+		mod := flat.string_at(flat.files[i].mod_idx)
+		if mod == prefix && mod != 'main' && mod != 'builtin' {
+			return prefix
+		}
+	}
+	return ''
+}
+
 fn clone_generated_fn_scope_module(struct_name string) string {
 	if !struct_name.contains('__') {
 		return 'main'
@@ -12248,10 +13389,13 @@ fn (mut t Transformer) generate_clone_functions() []ast.Stmt {
 	mut generated := map[string]bool{}
 	for {
 		mut found_new := false
-		for fn_name, struct_name in t.needed_clone_fns {
+		mut fn_names := t.needed_clone_fns.keys()
+		fn_names.sort()
+		for fn_name in fn_names {
 			if fn_name in generated {
 				continue
 			}
+			struct_name := t.needed_clone_fns[fn_name] or { continue }
 			generated[fn_name] = true
 			found_new = true
 			if typ := t.lookup_struct_type_any_module(struct_name) {
@@ -12291,7 +13435,74 @@ fn (mut t Transformer) generate_clone_functions() []ast.Stmt {
 	return result
 }
 
-fn (mut t Transformer) generate_str_functions() []ast.Stmt {
+fn (t &Transformer) explicit_str_method_fn_names(files []ast.File) map[string]bool {
+	mut names := map[string]bool{}
+	for file in files {
+		for stmt in file.stmts {
+			if stmt is ast.FnDecl && stmt.is_method && stmt.name == 'str' {
+				mut recv_name := t.get_receiver_type_name(stmt.receiver.typ)
+				if recv_name == '' {
+					continue
+				}
+				if file.mod != '' && file.mod != 'main' && file.mod != 'builtin'
+					&& !recv_name.contains('__') {
+					recv_name = '${file.mod.replace('.', '__')}__${recv_name}'
+				}
+				names['${recv_name}__str'] = true
+			}
+		}
+	}
+	return names
+}
+
+// explicit_str_method_fn_names_from_flat is the FlatAst-input counterpart to
+// `explicit_str_method_fn_names`. Same control flow + module-prefix logic;
+// the per-file `for stmt in file.stmts` walk is replaced with a FileCursor
+// scan that decodes only `stmt_fn_decl` nodes via
+// `decode_fn_decl_signature` (no body decode).
+fn (t &Transformer) explicit_str_method_fn_names_from_flat(flat &ast.FlatAst) map[string]bool {
+	mut names := map[string]bool{}
+	for fi in 0 .. flat.files.len {
+		fc := flat.file_cursor(fi)
+		mod := fc.mod()
+		stmts := fc.stmts()
+		for si in 0 .. stmts.len() {
+			c := stmts.at(si)
+			if c.kind() != .stmt_fn_decl {
+				continue
+			}
+			if !c.flag(ast.flag_is_method) {
+				continue
+			}
+			if c.name() != 'str' {
+				continue
+			}
+			decl := flat.decode_fn_decl_signature(c.id)
+			mut recv_name := t.get_receiver_type_name(decl.receiver.typ)
+			if recv_name == '' {
+				continue
+			}
+			if mod != '' && mod != 'main' && mod != 'builtin' && !recv_name.contains('__') {
+				recv_name = '${mod.replace('.', '__')}__${recv_name}'
+			}
+			names['${recv_name}__str'] = true
+		}
+	}
+	return names
+}
+
+fn (mut t Transformer) generate_str_functions(files []ast.File) []ast.Stmt {
+	explicit_str_fns := t.explicit_str_method_fn_names(files)
+	return t.generate_str_functions_with_explicit(explicit_str_fns)
+}
+
+// generate_str_functions_with_explicit is the file-independent core of
+// `generate_str_functions`. The legacy entry computes `explicit_str_fns`
+// from `[]ast.File` via `explicit_str_method_fn_names`; flat-input callers
+// (`generated_fns_parts_from_flat`) compute it via
+// `explicit_str_method_fn_names_from_flat(&flat)` and pass the resulting
+// map directly. Body is identical.
+fn (mut t Transformer) generate_str_functions_with_explicit(explicit_str_fns map[string]bool) []ast.Stmt {
 	mut result := []ast.Stmt{cap: t.needed_str_fns.len}
 	// Use worklist to handle recursive str function registration
 	// (e.g., Array_Array_int_str adds Array_int_str during generation)
@@ -12320,6 +13531,10 @@ fn (mut t Transformer) generate_str_functions() []ast.Stmt {
 			} else if fn_name.ends_with('__str') {
 				// Generate str function for struct or enum
 				struct_name := fn_name[..fn_name.len - '__str'.len]
+				if fn_name in explicit_str_fns {
+					generated[fn_name] = true
+					continue
+				}
 				// Skip primitive/builtin types that already have real str implementations
 				if struct_name in ['int', 'i8', 'i16', 'i32', 'i64', 'u8', 'u16', 'u32', 'u64',
 					'f32', 'f64', 'bool', 'string', 'rune', 'voidptr', 'byteptr', 'charptr', 'byte',
@@ -12957,8 +14172,7 @@ fn (mut t Transformer) generate_fixed_array_str_fn(fn_name string) ast.Stmt {
 	}
 
 	// Create parameter: a Array_fixed_T_N
-	param_type := if t.pref != unsafe { nil }
-		&& (t.pref.backend == .arm64 || t.pref.backend == .x64) {
+	param_type := if t.pref != unsafe { nil } && t.is_native_be {
 		ast.Expr(ast.PrefixExpr{
 			op:   .amp
 			expr: ast.Ident{

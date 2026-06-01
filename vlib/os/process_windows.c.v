@@ -259,9 +259,9 @@ fn (mut p Process) win_write_string(idx int, _s string) {
 	if rhandle == 0 {
 		return
 	}
-	mut bytes_write := int(0)
+	mut bytes_write := u32(0)
 	unsafe {
-		C.WriteFile(rhandle, _s.str, _s.len, voidptr(&bytes_write), 0)
+		C.WriteFile(rhandle, _s.str, u32(_s.len), &bytes_write, 0)
 	}
 }
 

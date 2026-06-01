@@ -23,6 +23,7 @@ import v2.token
 import v2.transformer
 import v2.types
 import time
+import runtime
 
 const staged_c_file = '/tmp/v2_codegen.tmp.c'
 const staged_main_obj_file = '/tmp/v2_codegen.tmp.main.o'
@@ -45,6 +46,19 @@ mut:
 	used_vh_for_parse         bool
 	used_import_vh_for_parse  bool
 	used_virtual_vh_for_parse bool
+	flat_roundtrip_enabled    bool // V2_FLAT_ROUNDTRIP=1: route parses through streaming + to_files()
+	flat_check_enabled        bool // V2_CHECK_FLAT=1: route type-check through Checker.check_flat
+	markused_flat_enabled     bool // V2_MARKUSED_FLAT=1: route markused through mark_used_flat shim
+	// flat caches the FlatAst representation of b.files. When
+	// flat_check_enabled is set, parse_batch streams directly into
+	// flat_builder so b.flat is built incrementally during parsing rather
+	// than via a redundant flatten_files() pass afterwards.
+	flat         ast.FlatAst
+	flat_builder ast.FlatBuilder
+	// flat_builder_inited tracks whether flat_builder has been seeded with
+	// pre-sized arenas. We can only size after we know the input set, so
+	// the first parse_batch call lazily initializes it.
+	flat_builder_inited bool
 }
 
 pub fn new_builder(prefs &pref.Preferences) &Builder {
@@ -53,6 +67,9 @@ pub fn new_builder(prefs &pref.Preferences) &Builder {
 			pref:                   prefs
 			used_fn_keys:           map[string]bool{}
 			cached_called_fn_names: map[string]bool{}
+			flat_roundtrip_enabled: os.getenv('V2_FLAT_ROUNDTRIP') != ''
+			flat_check_enabled:     os.getenv('V2_CHECK_FLAT') != ''
+			markused_flat_enabled:  os.getenv('V2_MARKUSED_FLAT') != ''
 		}
 	}
 }
@@ -65,6 +82,30 @@ fn (b &Builder) exec_build_c_file(output_name string) string {
 		return output_name + '.c'
 	}
 	return staged_c_file
+}
+
+fn (b &Builder) can_compile_cleanc_locally() bool {
+	if b.pref == unsafe { nil } {
+		return true
+	}
+	return b.pref.can_compile_cleanc_locally()
+}
+
+fn (b &Builder) cflags_target_os_for_local_compile() string {
+	if b.pref == unsafe { nil } {
+		return normalize_target_os_name(os.user_os())
+	}
+	if b.pref.is_cross_target() && b.can_compile_cleanc_locally() {
+		return b.pref.source_filter_target_os()
+	}
+	return b.pref.target_os_or_host()
+}
+
+fn cleanc_c_output_name(output_name string) string {
+	if output_name.ends_with('.c') {
+		return output_name
+	}
+	return output_name + '.c'
 }
 
 fn (mut b Builder) compile_cleanc_executable(output_name string, cc string, cc_flags string, cc_link_flags string, error_limit_flag string, mut sw time.StopWatch) {
@@ -99,10 +140,53 @@ fn (mut b Builder) compile_cleanc_executable(output_name string, cc string, cc_f
 	println('[*] Compiled ${output_name}')
 }
 
+// print_rss prints process RSS in MB at the given phase boundary.
+// Gated on V2_MEM=1.
+//
+// CAVEAT: v2 is force-built with `-gc none` (see is_v2_compiler_target in
+// vlib/v/pref/default.v), so allocations are never reclaimed. RSS is
+// dominated by the OS's decision of which pages to keep resident, not by
+// what the program is actually using. Run-to-run variance is huge
+// (observed 500 MB to 4.8 GB on identical runs). Treat these numbers as
+// a coarse signal, not a precision metric.
+//
+// For reliable peak-memory comparisons between optimizations, use
+// `/usr/bin/time -l <cmd>` and read `peak memory footprint` — that
+// metric is stable to within ~0.1% across runs.
+fn print_rss(stage string) {
+	if os.getenv('V2_MEM') == '' {
+		return
+	}
+	bytes := runtime.used_memory() or { 0 }
+	eprintln('  [mem] ${stage}: ${bytes / (1024 * 1024)} MB')
+}
+
+// print_heap reports retained heap size after a forced GC, in MB. Unlike
+// print_rss, this would give a stable measurement of memory the program
+// is actually holding alive — but ONLY when built with a real GC.
+//
+// CURRENTLY A NO-OP FOR v2 SELF-HOST: v2 is forced to `-gc none`, where
+// `gc_collect()` is a NOP and `gc_memory_use()` always returns 0. If
+// you build v2 with an explicit GC (bypassing is_v2_compiler_target) this
+// becomes useful. Until then, use `/usr/bin/time -l` for peak readings.
+fn print_heap(stage string) {
+	if os.getenv('V2_HEAP') == '' {
+		return
+	}
+	gc_collect()
+	bytes := gc_memory_use()
+	eprintln('  [heap] ${stage}: ${bytes / (1024 * 1024)} MB')
+}
+
 pub fn (mut b Builder) build(files []string) {
 	b.user_files = files
 	mut sw := time.new_stopwatch()
+	print_rss('start')
+	print_heap('start')
 	$if parallel ? {
+		if b.flat_roundtrip_enabled && !b.pref.no_parallel {
+			eprintln('warning: V2_FLAT_ROUNDTRIP=1 only routes through the serial parser; pass --no-parallel to exercise it')
+		}
 		b.files = if b.pref.no_parallel {
 			b.parse_files(files)
 		} else {
@@ -113,12 +197,28 @@ pub fn (mut b Builder) build(files []string) {
 	}
 	parse_time := sw.elapsed()
 	print_time('Scan & Parse', parse_time)
+	print_rss('after parse')
+	print_heap('after parse')
+	if b.flat_check_enabled {
+		// FlatBuilder is the canonical parse output; both parse paths stream
+		// into it. parse_files / parse_files_parallel return [] in flat
+		// mode, so b.flat is the live source of truth from here on. The
+		// rehydration to legacy []ast.File is deferred until the transformer
+		// (the first consumer that still needs it) actually starts —
+		// keeping ~120MB of legacy AST out of memory during the type check
+		// phase, which is the current memory peak.
+		b.flat = b.flat_builder.flat
+	}
 	b.update_parse_summary_counts()
 	print_parse_summary(b.parsed_full_files_n, b.parsed_vh_files_n, b.entry_v_lines_n,
 		b.parsed_v_lines_n, b.pref.stats, b.pref.print_parsed_files, b.parsed_full_files,
 		b.parsed_vh_files)
 	if b.pref.stats {
-		// b.print_flat_ast_summary()
+		b.print_flat_ast_summary()
+	}
+
+	if b.pref.backend == .cleanc && !b.validate_freestanding_cleanc_contract() {
+		exit(1)
 	}
 
 	if b.pref.skip_type_check {
@@ -132,33 +232,95 @@ pub fn (mut b Builder) build(files []string) {
 	}
 	type_check_time := time.Duration(sw.elapsed() - parse_time)
 	print_time('Type Check', type_check_time)
+	print_rss('after type check')
+	print_heap('after type check')
 
 	// Transform AST (flag enum desugaring, etc.)
 	transform_start := sw.elapsed()
-	mut trans := transformer.Transformer.new_with_pref(b.files, b.env, b.pref)
+	mut trans := transformer.Transformer.new_with_pref(b.env, b.pref)
 	trans.set_file_set(b.file_set)
-	b.files = if b.pref.no_parallel_transform || b.pref.ownership {
-		trans.transform_files(b.files)
+	sequential_transform := b.pref.no_parallel_transform || b.pref.ownership
+	use_flat_markused := b.markused_flat_enabled && b.flat_check_enabled
+	// Both paths can now consume flat directly: sequential streams via
+	// transform_files_from_flat, parallel streams per-worker via
+	// to_files_range. No up-front full rehydration needed in either case.
+	//
+	// When V2_MARKUSED_FLAT is also enabled, both transform paths route
+	// through their *_to_flat wedge so the post-transform flatten lives
+	// inside the transformer call (one round-trip), avoiding a separate
+	// flatten_files() pass before mark_used_flat.
+	mut flat_populated_by_transform := false
+	if sequential_transform {
+		if use_flat_markused {
+			new_flat, files_out := trans.transform_files_to_flat(&b.flat, b.files)
+			b.flat = new_flat
+			b.files = files_out
+			flat_populated_by_transform = true
+		} else if b.flat_check_enabled {
+			b.files = trans.transform_files_from_flat(&b.flat, b.files)
+		} else {
+			b.files = trans.transform_files(b.files)
+		}
 	} else {
-		b.transform_files_parallel(mut trans)
+		if use_flat_markused {
+			new_flat, files_out := b.transform_files_parallel_to_flat(mut trans)
+			b.flat = new_flat
+			b.files = files_out
+			flat_populated_by_transform = true
+		} else if b.flat_check_enabled {
+			b.files = b.transform_files_parallel_from_flat(mut trans)
+		} else {
+			b.files = b.transform_files_parallel(mut trans)
+		}
 	}
 	transform_time := time.Duration(sw.elapsed() - transform_start)
 	print_time('Transform', transform_time)
+	print_rss('after transform')
+	print_heap('after transform')
 
 	// Mark used functions/methods for backend pruning.
 	if b.pref.no_markused {
 		b.used_fn_keys = map[string]bool{}
 	} else {
 		mark_used_start := sw.elapsed()
+		// V2_MARKUSED_FLAT only takes effect when V2_CHECK_FLAT is also on,
+		// since b.flat is only populated when flat_check_enabled streams
+		// parses into flat_builder. Without that, b.flat is empty and the
+		// shim would walk nothing.
+		//
+		// The transformer mutates b.files but does not write back into
+		// b.flat. Both sequential and parallel paths now populate b.flat
+		// as part of their *_to_flat wedge when V2_MARKUSED_FLAT is on,
+		// so the separate flatten_files() pass is gone. The branch below
+		// remains as a defensive fallback for any future code path that
+		// reaches markused without having set flat_populated_by_transform.
+		if use_flat_markused && !flat_populated_by_transform {
+			b.flat = ast.flatten_files(b.files)
+		}
 		if b.uses_minimal_windows_x64_runtime() {
-			b.used_fn_keys = markused.mark_used_with_options(b.files, b.env, markused.MarkUsedOptions{
+			opts := markused.MarkUsedOptions{
 				minimal_runtime_roots: true
-			})
+			}
+			b.used_fn_keys = if use_flat_markused {
+				markused.mark_used_flat_with_options(&b.flat, b.env, opts)
+			} else {
+				markused.mark_used_with_options(b.files, b.env, opts)
+			}
 		} else {
-			b.used_fn_keys = markused.mark_used(b.files, b.env)
+			b.used_fn_keys = if use_flat_markused {
+				markused.mark_used_flat(&b.flat, b.env)
+			} else {
+				markused.mark_used(b.files, b.env)
+			}
 		}
 		mark_used_time := time.Duration(sw.elapsed() - mark_used_start)
 		print_time('Mark Used', mark_used_time)
+		// b.flat is unused by the codegen path; drop the arenas so a GC build
+		// can reclaim them. Under -gc none this is a no-op for peak memory,
+		// but it documents the lifetime correctly for the eventual GC switch.
+		b.flat = ast.FlatAst{}
+		print_rss('after markused')
+		print_heap('after markused')
 	}
 
 	// Generate output based on backend
@@ -190,6 +352,8 @@ pub fn (mut b Builder) build(files []string) {
 	}
 
 	print_time('Total', sw.elapsed())
+	print_rss('after codegen (peak)')
+	print_heap('after codegen')
 }
 
 fn (mut b Builder) gen_v_files() {
@@ -222,6 +386,25 @@ fn (mut b Builder) gen_cleanc() {
 		b.default_output_name()
 	} else {
 		'out'
+	}
+
+	generation_only := output_name.ends_with('.c') || !b.can_compile_cleanc_locally()
+	if generation_only {
+		c_output_name := cleanc_c_output_name(output_name)
+		c_source := b.gen_cleanc_source([]string{})
+		print_time('C Gen', sw.elapsed())
+		if c_source == '' {
+			eprintln('error: cleanc backend is not fully functional (compiled with stubbed functions)')
+			eprintln('hint: use v2 compiled with v1 for proper C code generation')
+			return
+		}
+		os.write_file(c_output_name, c_source) or { panic(err) }
+		if output_name.ends_with('.c') {
+			println('[*] Wrote ${c_output_name}')
+		} else {
+			println('[*] Wrote ${c_output_name} (local C compilation disabled for this target)')
+		}
+		return
 	}
 
 	mut cc := if b.pref.ccompiler.len > 0 {
@@ -304,33 +487,6 @@ fn (mut b Builder) gen_cleanc() {
 	mut error_limit_flag := ''
 	if is_clang {
 		error_limit_flag = ' -ferror-limit=0'
-	}
-
-	// If output ends with .c, just write the C file
-	if output_name.ends_with('.c') {
-		mut c_source := ''
-		// For .c output, prefer the same cached-core split used by normal
-		// build+link flow, when the cache is valid.
-		if use_cache && !b.pref.skip_builtin && b.has_module('builtin') && b.has_module('strconv')
-			&& b.can_use_cached_core_headers() {
-			main_modules := b.collect_modules_excluding(core_cached_module_names)
-			if main_modules.len > 0 {
-				b.ensure_core_module_headers()
-				c_source = b.gen_cleanc_source(main_modules)
-			}
-		}
-		if c_source == '' {
-			c_source = b.gen_cleanc_source([]string{})
-		}
-		print_time('C Gen', sw.elapsed())
-		if c_source == '' {
-			eprintln('error: cleanc backend is not fully functional (compiled with stubbed functions)')
-			eprintln('hint: use v2 compiled with v1 for proper C code generation')
-			return
-		}
-		os.write_file(output_name, c_source) or { panic(err) }
-		println('[*] Wrote ${output_name}')
-		return
 	}
 
 	// Fast path: cache one core object (builtin+strconv), compile/link only the rest.
@@ -426,6 +582,28 @@ fn (mut b Builder) gen_ssa_c() {
 	// optimize.optimize(mut mod)
 	// print_time('SSA Optimize', time.Duration(sw.elapsed() - stage_start))
 
+	output_name := if b.pref.output_file != '' {
+		b.pref.output_file
+	} else if b.user_files.len > 0 {
+		b.default_output_name()
+	} else {
+		'out'
+	}
+
+	if output_name.ends_with('.c') {
+		stage_start = sw.elapsed()
+		mut gen := c.new_gen(mod)
+		c_source := gen.gen()
+		print_time('C Gen', time.Duration(sw.elapsed() - stage_start))
+		if c_source == '' {
+			eprintln('error: ssa c backend failed to generate C source')
+			return
+		}
+		os.write_file(output_name, c_source) or { panic(err) }
+		println('[*] Wrote ${output_name}')
+		return
+	}
+
 	cc := if b.pref.ccompiler.len > 0 { b.pref.ccompiler } else { configured_cc(b.pref.vroot) }
 	directive_flags := b.collect_cflags_from_sources()
 	mut cc_flag_parts := []string{}
@@ -468,7 +646,6 @@ fn (mut b Builder) gen_ssa_c() {
 				error_limit_flag, false) or { '' }
 		}
 	}
-
 	stage_start = sw.elapsed()
 	mut gen := c.new_gen(mod)
 	gen.link_builtin = builtin_obj.len > 0
@@ -476,20 +653,6 @@ fn (mut b Builder) gen_ssa_c() {
 	print_time('C Gen', time.Duration(sw.elapsed() - stage_start))
 	if c_source == '' {
 		eprintln('error: ssa c backend failed to generate C source')
-		return
-	}
-
-	output_name := if b.pref.output_file != '' {
-		b.pref.output_file
-	} else if b.user_files.len > 0 {
-		b.default_output_name()
-	} else {
-		'out'
-	}
-
-	if output_name.ends_with('.c') {
-		os.write_file(output_name, c_source) or { panic(err) }
-		println('[*] Wrote ${output_name}')
 		return
 	}
 
@@ -1310,6 +1473,15 @@ fn is_windows_x64_native_target(arch pref.Arch, target_os string) bool {
 	return arch == .x64 && normalize_target_os_name(target_os) == 'windows'
 }
 
+fn eprint_native_x64_link_error(message string) {
+	if message.starts_with('x64: unsupported backend feature: ') {
+		eprintln(message)
+		return
+	}
+	eprintln('Link failed:')
+	eprintln(message)
+}
+
 fn (b &Builder) uses_minimal_windows_x64_runtime() bool {
 	arch := b.pref.get_effective_arch()
 	return b.pref.backend == .x64 && is_windows_x64_native_target(arch, b.pref.target_os_or_host())
@@ -1341,6 +1513,10 @@ fn native_x64_lowering_abi_for_os(target_os string) abi.X64Abi {
 	}
 }
 
+fn (b &Builder) native_backend_requires_ssa_optimization(arch pref.Arch) bool {
+	return arch == .x64
+}
+
 fn flag_os_matches(cond string, target_os string) bool {
 	current := normalize_target_os_name(target_os)
 	return match cond.to_lower() {
@@ -1353,8 +1529,28 @@ fn flag_os_matches(cond string, target_os string) bool {
 		'netbsd' { current == 'netbsd' }
 		'dragonfly' { current == 'dragonfly' }
 		'android' { current == 'android' }
+		'termux' { current == 'termux' }
+		'ios' { current == 'ios' }
+		'solaris' { current == 'solaris' }
+		'qnx' { current == 'qnx' }
+		'serenity' { current == 'serenity' }
+		'plan9' { current == 'plan9' }
+		'vinix' { current == 'vinix' }
+		'cross' { current == 'cross' }
+		'none' { current == 'none' }
 		else { false }
 	}
+}
+
+fn flag_pref_matches(cond string, prefs &pref.Preferences) bool {
+	if prefs == unsafe { nil } {
+		return false
+	}
+	lower := cond.to_lower()
+	if pref.comptime_flag_value(prefs, lower) {
+		return true
+	}
+	return flag_os_matches(lower, prefs.target_os_or_host())
 }
 
 fn find_vmod_root_for_file(file_path string) string {
@@ -1471,6 +1667,17 @@ fn normalize_flag_value_for_file(flag_value string, file_path string) string {
 }
 
 fn parse_flag_directive_line(line string, file_path string, target_os string) ?string {
+	return parse_flag_directive_line_with_context(line, file_path, target_os, unsafe {
+		&pref.Preferences(nil)
+	})
+}
+
+fn parse_flag_directive_line_with_pref(line string, file_path string, prefs &pref.Preferences) ?string {
+	target_os := if prefs == unsafe { nil } { '' } else { prefs.target_os_or_host() }
+	return parse_flag_directive_line_with_context(line, file_path, target_os, prefs)
+}
+
+fn parse_flag_directive_line_with_context(line string, file_path string, target_os string, prefs &pref.Preferences) ?string {
 	trimmed := line.trim_space()
 	if !trimmed.starts_with('#flag') {
 		return none
@@ -1490,7 +1697,12 @@ fn parse_flag_directive_line(line string, file_path string, target_os string) ?s
 		return none
 	}
 	if !parts[0].starts_with('-') && !parts[0].starts_with('@') && parts.len > 1 {
-		if !flag_os_matches(parts[0], target_os) {
+		matches := if prefs == unsafe { nil } {
+			flag_os_matches(parts[0], target_os)
+		} else {
+			flag_os_matches(parts[0], target_os) || flag_pref_matches(parts[0], prefs)
+		}
+		if !matches {
 			return none
 		}
 		rest = rest[parts[0].len..].trim_space()
@@ -1545,8 +1757,9 @@ fn (b &Builder) collect_cflags_from_sources() string {
 			scan_paths << file.name
 		}
 	}
+	cflags_target_os := b.cflags_target_os_for_local_compile()
 	if !b.pref.skip_builtin {
-		target_os := b.pref.target_os_or_host()
+		target_os := cflags_target_os
 		for module_path in core_cached_module_paths {
 			vlib_path := b.pref.get_vlib_module_path(module_path)
 			module_files := get_v_files_from_dir(vlib_path, b.pref.user_defines, target_os)
@@ -1558,7 +1771,6 @@ fn (b &Builder) collect_cflags_from_sources() string {
 		}
 	}
 	scan_paths.sort()
-	target_os := b.pref.target_os_or_host()
 	for scan_path in scan_paths {
 		if scan_path == '' || scan_path in scanned_files {
 			continue
@@ -1580,7 +1792,7 @@ fn (b &Builder) collect_cflags_from_sources() string {
 			leading_close := rest != trimmed
 			// $else $if cond { (a chain continuation)
 			if rest.starts_with(r'$else $if ') {
-				new_cond := rest[10..].trim_right('?{ ').trim_space()
+				new_cond := rest[10..].trim_right('{ ').trim_space()
 				if skip_depth > 1 {
 					// nested skipping; just continue without touching outer state
 					continue
@@ -1591,7 +1803,7 @@ fn (b &Builder) collect_cflags_from_sources() string {
 				}
 				if chain_matched[cur] {
 					skip_depth = 1
-				} else if comptime_cond_matches(new_cond, target_os) {
+				} else if comptime_cond_matches_with_context(new_cond, cflags_target_os, b.pref) {
 					chain_matched[cur] = true
 					skip_depth = 0
 				} else {
@@ -1618,8 +1830,8 @@ fn (b &Builder) collect_cflags_from_sources() string {
 			}
 			// $if cond { (chain opener)
 			if rest.starts_with(r'$if ') {
-				cond := rest[4..].trim_right('?{ ').trim_space()
-				matched := comptime_cond_matches(cond, target_os)
+				cond := rest[4..].trim_right('{ ').trim_space()
+				matched := comptime_cond_matches_with_context(cond, cflags_target_os, b.pref)
 				chain_matched << matched
 				if skip_depth > 0 {
 					skip_depth++
@@ -1655,9 +1867,8 @@ fn (b &Builder) collect_cflags_from_sources() string {
 			// Replace @VEXEROOT before parsing so path normalization sees absolute paths
 			resolved_line := line.replace('@VEXEROOT', b.pref.vroot).replace('VEXEROOT',
 				b.pref.vroot)
-			mut flag := parse_flag_directive_line(resolved_line, scan_path, target_os) or {
-				continue
-			}
+			mut flag := parse_flag_directive_line_with_context(resolved_line, scan_path,
+				cflags_target_os, b.pref) or { continue }
 			// Build include flags from already-collected flags for compiling missing .o files
 			mut inc_flags := []string{}
 			for f in flags {
@@ -1723,23 +1934,45 @@ fn split_compile_and_link_flags(flags string) (string, string) {
 }
 
 fn comptime_cond_matches(cond string, target_os string) bool {
-	// Handle negation: $if !platform
-	if cond.starts_with('!') {
-		return !comptime_cond_matches(cond[1..], target_os)
+	return comptime_cond_matches_with_context(cond, target_os, unsafe { &pref.Preferences(nil) })
+}
+
+fn comptime_cond_matches_with_pref(cond string, prefs &pref.Preferences) bool {
+	target_os := if prefs == unsafe { nil } { '' } else { prefs.target_os_or_host() }
+	return comptime_cond_matches_with_context(cond, target_os, prefs)
+}
+
+fn comptime_cond_matches_with_context(cond string, target_os string, prefs &pref.Preferences) bool {
+	trimmed := cond.trim_space()
+	if or_idx := top_level_bool_op_index(trimmed, '||') {
+		left := trimmed[..or_idx].trim_space()
+		right := trimmed[or_idx + 2..].trim_space()
+		return comptime_cond_matches_with_context(left, target_os, prefs)
+			|| comptime_cond_matches_with_context(right, target_os, prefs)
 	}
-	// Handle && conjunction
-	if and_idx := cond.index('&&') {
-		left := cond[..and_idx].trim_space()
-		right := cond[and_idx + 2..].trim_space()
-		return comptime_cond_matches(left, target_os) && comptime_cond_matches(right, target_os)
+	if and_idx := top_level_bool_op_index(trimmed, '&&') {
+		left := trimmed[..and_idx].trim_space()
+		right := trimmed[and_idx + 2..].trim_space()
+		return comptime_cond_matches_with_context(left, target_os, prefs)
+			&& comptime_cond_matches_with_context(right, target_os, prefs)
 	}
-	if or_idx := cond.index('||') {
-		left := cond[..or_idx].trim_space()
-		right := cond[or_idx + 2..].trim_space()
-		return comptime_cond_matches(left, target_os) || comptime_cond_matches(right, target_os)
+	if trimmed.starts_with('!') {
+		return !comptime_cond_matches_with_context(trimmed[1..], target_os, prefs)
+	}
+	if stripped := strip_outer_bool_parens(trimmed) {
+		return comptime_cond_matches_with_context(stripped, target_os, prefs)
+	}
+	if optional_name := optional_user_ct_flag_name(trimmed) {
+		if prefs == unsafe { nil } {
+			return false
+		}
+		return pref.comptime_optional_flag_value(prefs, optional_name)
+	}
+	if prefs != unsafe { nil } {
+		return flag_os_matches(trimmed, target_os) || flag_pref_matches(trimmed, prefs)
 	}
 	current := normalize_target_os_name(target_os)
-	return match cond.to_lower() {
+	return match trimmed.to_lower() {
 		'macos', 'darwin', 'mac' { current == 'macos' || current == 'darwin' }
 		'linux' { current == 'linux' }
 		'windows' { current == 'windows' }
@@ -1749,11 +1982,70 @@ fn comptime_cond_matches(cond string, target_os string) bool {
 		'netbsd' { current == 'netbsd' }
 		'dragonfly' { current == 'dragonfly' }
 		'android' { current == 'android' }
+		'termux' { current == 'termux' }
+		'ios' { current == 'ios' }
+		'solaris' { current == 'solaris' }
+		'qnx' { current == 'qnx' }
+		'serenity' { current == 'serenity' }
+		'plan9' { current == 'plan9' }
+		'vinix' { current == 'vinix' }
+		'cross' { current == 'cross' }
 		'native' { false }
 		'emscripten' { false }
-		'ios' { false }
 		else { false } // unknown user-defined flags default to false
 	}
+}
+
+fn optional_user_ct_flag_name(cond string) ?string {
+	trimmed := cond.trim_space()
+	if !trimmed.ends_with('?') {
+		return none
+	}
+	name := trimmed[..trimmed.len - 1].trim_space()
+	if name == '' {
+		return none
+	}
+	return name
+}
+
+fn top_level_bool_op_index(expr string, op string) ?int {
+	mut depth := 0
+	mut i := 0
+	for i < expr.len {
+		ch := expr[i]
+		if ch == `(` {
+			depth++
+		} else if ch == `)` {
+			if depth > 0 {
+				depth--
+			}
+		} else if depth == 0 && i + op.len <= expr.len && expr[i..i + op.len] == op {
+			return i
+		}
+		i++
+	}
+	return none
+}
+
+fn strip_outer_bool_parens(expr string) ?string {
+	if expr.len < 2 || expr[0] != `(` || expr[expr.len - 1] != `)` {
+		return none
+	}
+	mut depth := 0
+	for i, ch in expr {
+		if ch == `(` {
+			depth++
+		} else if ch == `)` {
+			depth--
+			if depth == 0 && i < expr.len - 1 {
+				return none
+			}
+		}
+	}
+	if depth == 0 {
+		return expr[1..expr.len - 1].trim_space()
+	}
+	return none
 }
 
 fn default_cc(vroot string) string {
@@ -1954,6 +2246,7 @@ fn (mut b Builder) gen_native(backend_arch pref.Arch) {
 	ssa_builder.guard_invalid_type_payloads = true
 	ssa_builder.target_os = target_os
 	ssa_builder.minimal_runtime_roots = b.uses_minimal_windows_x64_runtime()
+	ssa_builder.native_backend_bulk_zero_alloca = arch == .x64
 	mut native_sw := time.new_stopwatch()
 
 	// Pass markused data for dead code elimination. The ARM64 backend has its own
@@ -2001,8 +2294,21 @@ fn (mut b Builder) gen_native(backend_arch pref.Arch) {
 	}
 	print_time('SSA Build', time.Duration(native_sw.elapsed() - stage_start))
 
+	// SSA build has consumed b.files into `mod`; the rest of the native
+	// pipeline (optimize, MIR lower, ABI lower, insel, codegen, link)
+	// operates on `mod`/`mir_mod` only. Drop the ~120MB legacy AST so it
+	// can be reclaimed before codegen's working-set grows.
+	b.files = []ast.File{}
+
 	stage_start = native_sw.elapsed()
-	if b.pref.no_optimize {
+	ssa_optimization_required := b.native_backend_requires_ssa_optimization(arch)
+	ssa_optimization_ran := !b.pref.no_optimize || ssa_optimization_required
+	if ssa_optimization_required {
+		if b.pref.no_optimize {
+			eprintln('  opt: required for x64 backend (-O0 SSA is not supported yet)')
+		}
+		ssa_optimize.optimize(mut mod)
+	} else if b.pref.no_optimize {
 		eprintln('  opt: skipped (-O0)')
 	} else {
 		ssa_optimize.optimize(mut mod)
@@ -2012,7 +2318,7 @@ fn (mut b Builder) gen_native(backend_arch pref.Arch) {
 		// Post-opt SSA verification is useful while debugging the optimizer, but it
 		// is currently noisy enough to block normal self-host builds. Keep it
 		// opt-in so `test_all.sh` and manual self-hosting can still complete.
-		if !b.pref.no_optimize && os.getenv('V2_VERIFY') != '' {
+		if ssa_optimization_ran && os.getenv('V2_VERIFY') != '' {
 			ssa_optimize.verify_and_panic(mod, 'full optimization')
 		}
 	}
@@ -2123,8 +2429,7 @@ fn (mut b Builder) gen_native(backend_arch pref.Arch) {
 			gen.gen()
 			if is_windows_x64_native_target(arch, target_os) {
 				gen.link_executable(output_binary) or {
-					eprintln('Link failed:')
-					eprintln(err.msg())
+					eprint_native_x64_link_error(err.msg())
 					exit(1)
 				}
 				if b.pref.verbose {
@@ -2181,13 +2486,26 @@ fn (mut b Builder) update_parse_summary_counts() {
 	mut parsed_vh_files_n := 0
 	mut parsed_full_files := []string{}
 	mut parsed_vh_files := []string{}
-	for file in b.files {
-		if file.name.ends_with('.vh') {
-			parsed_vh_files_n++
-			parsed_vh_files << file.name
-		} else {
-			parsed_full_files_n++
-			parsed_full_files << file.name
+	if b.flat_check_enabled {
+		for ff in b.flat.files {
+			name := b.flat.file_name(ff)
+			if name.ends_with('.vh') {
+				parsed_vh_files_n++
+				parsed_vh_files << name
+			} else {
+				parsed_full_files_n++
+				parsed_full_files << name
+			}
+		}
+	} else {
+		for file in b.files {
+			if file.name.ends_with('.vh') {
+				parsed_vh_files_n++
+				parsed_vh_files << file.name
+			} else {
+				parsed_full_files_n++
+				parsed_full_files << file.name
+			}
 		}
 	}
 	b.parsed_full_files_n = parsed_full_files_n
@@ -2203,20 +2521,40 @@ fn (mut b Builder) update_parse_summary_counts() {
 	}
 }
 
-/*
 fn (b &Builder) print_flat_ast_summary() {
 	legacy_stats := ast.legacy_ast_stats(b.files)
 	legacy_nodes := ast.count_legacy_nodes(b.files)
-	flat := ast.flatten_files(b.files)
+	flat := if b.flat_check_enabled { b.flat } else { ast.flatten_files(b.files) }
 	flat_stats := flat.stats()
 	mut mem_delta_pct := f64(0)
 	if legacy_stats.bytes_estimate > 0 {
 		mem_delta_pct = (f64(legacy_stats.bytes_estimate) - f64(flat_stats.bytes_estimate)) * 100.0 / f64(legacy_stats.bytes_estimate)
 	}
-	println(' * AST nodes: legacy=${legacy_nodes}, flat=${flat_stats.nodes}')
+	// Flat AST uses 4 arenas (files, nodes, edges, strings) regardless of payload
+	// count; each is one allocation amortised across millions of cells.
+	flat_allocs := u64(4)
+	mut alloc_delta_pct := f64(0)
+	if legacy_stats.allocs > 0 {
+		alloc_delta_pct = (f64(legacy_stats.allocs) - f64(flat_allocs)) * 100.0 / f64(legacy_stats.allocs)
+	}
+	println(' * AST nodes:      legacy=${legacy_nodes}, flat=${flat_stats.nodes} (edges=${flat_stats.edges}, strings=${flat_stats.strings})')
 	println(' * AST memory est: legacy=${legacy_stats.bytes_estimate}B, flat=${flat_stats.bytes_estimate}B (${mem_delta_pct:.2f}% reduction)')
+	println(' * AST allocs:     legacy=${legacy_stats.allocs}, flat=${flat_allocs} (${alloc_delta_pct:.2f}% reduction)')
+	if os.getenv('V2_FLAT_HIST') != '' {
+		hist := flat.count_nodes_by_kind()
+		mut keys := hist.keys()
+		keys.sort_with_compare(fn [hist] (a &string, b &string) int {
+			return hist[*b] - hist[*a]
+		})
+		println(' * AST per-kind histogram (top 20):')
+		for i, k in keys {
+			if i >= 20 {
+				break
+			}
+			println('     ${k:-30s} ${hist[k]}')
+		}
+	}
 }
-*/
 
 fn count_v_lines_for_paths(paths []string) int {
 	mut seen_paths := map[string]bool{}
@@ -2236,12 +2574,23 @@ fn count_v_lines_for_paths(paths []string) int {
 fn (b &Builder) count_parsed_v_lines() int {
 	mut parsed_paths := []string{}
 	mut seen_files := map[string]bool{}
-	for file in b.files {
-		if file.name in seen_files {
-			continue
+	if b.flat_check_enabled {
+		for ff in b.flat.files {
+			name := b.flat.file_name(ff)
+			if name in seen_files {
+				continue
+			}
+			seen_files[name] = true
+			parsed_paths << name
 		}
-		seen_files[file.name] = true
-		parsed_paths << file.name
+	} else {
+		for file in b.files {
+			if file.name in seen_files {
+				continue
+			}
+			seen_files[file.name] = true
+			parsed_paths << file.name
+		}
 	}
 	return count_v_lines_for_paths(parsed_paths)
 }

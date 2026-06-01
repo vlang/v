@@ -176,6 +176,14 @@ fn (mut p Preferences) disable_tcc_shared_backtraces() {
 	}
 }
 
+fn (mut p Preferences) prefer_openssl_for_bsd_tinyc() {
+	if p.os in [.freebsd, .openbsd] && p.ccompiler_type == .tinyc
+		&& 'use_openssl' !in p.compile_defines_all {
+		// TinyCC hangs in the bundled mbedtls path on FreeBSD/OpenBSD.
+		p.parse_define('use_openssl')
+	}
+}
+
 // fill_with_defaults initializes unset preferences and derives build options from them.
 pub fn (mut p Preferences) fill_with_defaults() {
 	p.setup_os_and_arch_when_not_explicitly_set()
@@ -338,9 +346,10 @@ fn is_v2_compiler_target(npath string) bool {
 	return target.ends_with('cmd/v2') || target.ends_with('cmd/v2/v2.v')
 }
 
-// normalize_gc_defaults_for_resolved_ccompiler clears stale compiler-dependent
+// normalize_gc_defaults_for_resolved_ccompiler applies compiler-dependent
 // defaults after the effective C compiler has been resolved.
 pub fn (mut p Preferences) normalize_gc_defaults_for_resolved_ccompiler() {
+	p.prefer_openssl_for_bsd_tinyc()
 	p.disable_tcc_shared_backtraces()
 	if p.prealloc {
 		p.gc_mode = .no_gc
@@ -576,10 +585,25 @@ pub fn (mut p Preferences) default_cpp_compiler() {
 	p.cppcompiler = 'c++'
 }
 
+fn resolve_vexe_path(vexe string) string {
+	if os.is_abs_path(vexe) {
+		return os.real_path(vexe)
+	}
+	if vexe.contains('/') || vexe.contains('\\') {
+		return os.real_path(os.abs_path(vexe))
+	}
+	if found_vexe := os.find_abs_path_of_executable(vexe) {
+		return os.real_path(found_vexe)
+	}
+	return os.real_path(os.abs_path(vexe))
+}
+
 pub fn vexe_path() string {
 	vexe := os.getenv('VEXE')
 	if vexe != '' {
-		return vexe
+		real_vexe_path := resolve_vexe_path(vexe)
+		os.setenv('VEXE', real_vexe_path, true)
+		return real_vexe_path
 	}
 	myexe := os.executable()
 	mut real_vexe_path := myexe

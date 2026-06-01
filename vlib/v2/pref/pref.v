@@ -38,27 +38,31 @@ pub mut:
 	skip_genv             bool
 	skip_builtin          bool
 	skip_imports          bool
-	skip_type_check       bool                  // Skip type checking phase (for backends that don't need it yet)
-	no_parallel           bool                  // when true, run type check sequentially (default: parallel)
-	no_parallel_transform bool                  // when true, run transform sequentially (default: parallel)
-	no_cache              bool                  // Disable build cache
-	no_markused           bool                  // Disable markused stage and dead-function pruning
-	show_cc               bool                  // Print C compiler command(s)
-	stats                 bool                  // Print extended statistics
-	print_parsed_files    bool                  // Print all parsed files grouped by full/.vh parse mode
-	keep_c                bool                  // Keep generated C file after compilation
-	use_context_allocator bool                  // Use context allocator for heap allocations (enables profiling)
-	is_shared_lib         bool                  // Compile to shared library (.dylib/.so) for live reload
-	no_optimize           bool                  // -O0: skip SSA optimization (mem2reg, phi elimination)
-	is_prod               bool                  // -prod: use -O3 optimization for C compiler
+	skip_type_check       bool // Skip type checking phase (for backends that don't need it yet)
+	no_parallel           bool // when true, run type check sequentially (default: parallel)
+	no_parallel_transform bool // when true, run transform sequentially (default: parallel)
+	no_cache              bool // Disable build cache
+	no_markused           bool // Disable markused stage and dead-function pruning
+	show_cc               bool // Print C compiler command(s)
+	stats                 bool // Print extended statistics
+	print_parsed_files    bool // Print all parsed files grouped by full/.vh parse mode
+	keep_c                bool // Keep generated C file after compilation
+	use_context_allocator bool // Use context allocator for heap allocations (enables profiling)
+	is_shared_lib         bool // Compile to shared library (.dylib/.so) for live reload
+	no_optimize           bool = true // skip SSA optimization (mem2reg, phi elimination); cleared by -prod
+	is_prod               bool                  // -prod: enable SSA optimization + -O3 -flto for C compiler
 	prealloc              bool                  // -prealloc: use arena allocation (bump-pointer, not thread-safe)
 	gc_mode               GarbageCollectionMode // Garbage collection mode (-gc flag)
 	backend               Backend
 	arch                  Arch   = .auto
 	target_os             string = os.user_os()
+	output_cross_c        bool     // -os cross: keep generated C portable
+	freestanding          bool     // -freestanding: target a platform contract without an OS runtime
+	freestanding_hooks    []string // -fhooks: explicit freestanding platform capabilities
 	output_file           string
 	printfn_list          []string // List of function names whose generated C source should be printed
-	user_defines          []string // User-defined comptime flags via -d <name>
+	user_defines          []string // All active comptime flags, including compiler-synthesized flags.
+	explicit_user_defines []string // User-defined comptime flags from explicit -d <name> only.
 	hot_fn                string   // Extract raw machine code for this function only (hot reload)
 	single_backend        bool     // Only include the selected backend (strip other backends from binary)
 	eval_runtime_args     []string // Program argv exposed to the eval backend
@@ -175,6 +179,181 @@ pub fn (p &Preferences) target_os_or_host() string {
 	return p.target_os
 }
 
+pub fn (p &Preferences) normalized_target_os() string {
+	return normalize_target_os_name(p.target_os_or_host())
+}
+
+pub fn (p &Preferences) is_cross_target() bool {
+	return p != unsafe { nil } && (p.output_cross_c || p.normalized_target_os() == 'cross')
+}
+
+pub fn (p &Preferences) is_freestanding() bool {
+	return p != unsafe { nil } && p.freestanding
+}
+
+pub fn (p &Preferences) can_compile_cleanc_locally() bool {
+	if p == unsafe { nil } {
+		return true
+	}
+	if p.is_freestanding() {
+		return false
+	}
+	if p.is_cross_target() {
+		return true
+	}
+	return p.normalized_target_os() == normalize_target_os_name(os.user_os())
+}
+
+pub fn (p &Preferences) can_run_target_binary_locally() bool {
+	if p == unsafe { nil } {
+		return true
+	}
+	if p.is_freestanding() {
+		return false
+	}
+	if p.backend == .cleanc && p.is_cross_target() {
+		return true
+	}
+	if p.normalized_target_os() != normalize_target_os_name(os.user_os()) {
+		return false
+	}
+	return true
+}
+
+pub fn (p &Preferences) source_filter_target_os() string {
+	if p == unsafe { nil } {
+		return normalize_target_os_name(os.user_os())
+	}
+	if p.is_cross_target() {
+		return normalize_target_os_name(os.user_os())
+	}
+	return p.target_os_or_host()
+}
+
+pub fn (p &Preferences) freestanding_hook_list() []string {
+	if p == unsafe { nil } {
+		return []string{}
+	}
+	return p.freestanding_hooks.clone()
+}
+
+pub fn (p &Preferences) has_freestanding_hooks() bool {
+	return p != unsafe { nil } && p.freestanding_hooks.len > 0
+}
+
+pub fn (p &Preferences) has_freestanding_hook(name string) bool {
+	if p == unsafe { nil } {
+		return false
+	}
+	normalized := normalize_freestanding_hook_name(name) or { return false }
+	return normalized in p.freestanding_hooks
+}
+
+fn normalize_cli_target_os(target_os string) string {
+	normalized := normalize_target_os_name(target_os)
+	match normalized {
+		'linux', 'macos', 'windows', 'cross', 'none', 'freebsd', 'openbsd', 'netbsd', 'dragonfly',
+		'android', 'termux', 'ios', 'solaris', 'qnx', 'serenity', 'plan9', 'vinix' {
+			return normalized
+		}
+		else {
+			eprintln('error: unknown target OS `${target_os}`. Valid targets include: linux, macos, windows, cross, none, freebsd, openbsd, netbsd, dragonfly, android, termux, ios, solaris, qnx, serenity, plan9, vinix')
+			exit(1)
+		}
+	}
+}
+
+fn validate_target_contract(target_os string, freestanding bool) {
+	if target_os == 'none' && !freestanding {
+		eprintln('error: -os none requires -freestanding')
+		exit(1)
+	}
+	if target_os == 'cross' && freestanding {
+		eprintln('error: -freestanding -os cross is not supported; use -os none for pure freestanding targets')
+		exit(1)
+	}
+}
+
+fn normalize_freestanding_hook_name(name string) ?string {
+	normalized := name.trim_space().to_lower()
+	return match normalized {
+		'output', 'panic', 'alloc' {
+			normalized
+		}
+		else {
+			none
+		}
+	}
+}
+
+fn append_freestanding_hook(mut hooks []string, hook string) {
+	normalized := normalize_freestanding_hook_name(hook) or {
+		eprintln('error: unknown freestanding hook `${hook}`. Valid hooks: output, panic, alloc, minimal')
+		exit(1)
+	}
+	if normalized !in hooks {
+		hooks << normalized
+	}
+}
+
+fn parse_freestanding_hooks(value string) []string {
+	mut hooks := []string{}
+	for raw_part in value.split(',') {
+		part := raw_part.trim_space()
+		if part == '' {
+			continue
+		}
+		if part == 'minimal' {
+			for hook in ['output', 'panic', 'alloc'] {
+				append_freestanding_hook(mut hooks, hook)
+			}
+			continue
+		}
+		append_freestanding_hook(mut hooks, part)
+	}
+	return hooks
+}
+
+fn add_freestanding_hook_defines(mut defines []string, hooks []string) {
+	if hooks.len == 0 {
+		return
+	}
+	if 'freestanding_hooks' !in defines {
+		defines << 'freestanding_hooks'
+	}
+	for hook in hooks {
+		for define in ['freestanding_${hook}', 'freestanding_hooks_${hook}'] {
+			if define !in defines {
+				defines << define
+			}
+		}
+	}
+}
+
+pub fn source_files_from_args(args []string) []string {
+	options_with_values := ['-backend', '-b', '-o', '-output', '-arch', '-printfn', '-gc', '-d',
+		'-hot-fn', '-cc', '-os', '-fhooks']
+	mut files := []string{}
+	mut skip_next := false
+	for arg in args {
+		if arg == '--' {
+			break
+		}
+		if skip_next {
+			skip_next = false
+			continue
+		}
+		if arg.starts_with('-') {
+			if arg in options_with_values {
+				skip_next = true
+			}
+			continue
+		}
+		files << arg
+	}
+	return files
+}
+
 // new_preferences_from_args parses full args list including option values
 pub fn new_preferences_from_args(args []string) Preferences {
 	// Default backend is cleanc
@@ -243,6 +422,16 @@ pub fn new_preferences_from_args(args []string) Preferences {
 
 	output_file := cmdline.option(args, '-o', cmdline.option(args, '-output', ''))
 	ccompiler := cmdline.option(args, '-cc', '')
+	target_os_arg := cmdline.option(args, '-os', '')
+	freestanding_hooks_arg := cmdline.option(args, '-fhooks', '')
+	// Without -os, V2 targets the host OS. -os is an explicit target override;
+	// -os cross and -freestanding express separate portable/platform contracts.
+	normalized_target_os := if target_os_arg.len > 0 {
+		normalize_cli_target_os(target_os_arg)
+	} else {
+		normalize_target_os_name(os.user_os())
+	}
+	output_cross_c := normalized_target_os == 'cross'
 
 	// Parse -printfn option (comma-separated list of function names to print)
 	mut printfn_str := cmdline.option(args, '-printfn', '')
@@ -289,9 +478,23 @@ pub fn new_preferences_from_args(args []string) Preferences {
 
 	mut all_defines := user_defines.clone()
 	all_defines << gc_defines
+	if output_cross_c && 'cross' !in all_defines {
+		all_defines << 'cross'
+	}
 	if '-prealloc' in args {
 		all_defines << 'prealloc'
 	}
+	freestanding := '-freestanding' in args || '--freestanding' in args
+	validate_target_contract(normalized_target_os, freestanding)
+	freestanding_hooks := parse_freestanding_hooks(freestanding_hooks_arg)
+	if freestanding_hooks.len > 0 && !freestanding {
+		eprintln('error: -fhooks requires -freestanding')
+		exit(1)
+	}
+	if freestanding && 'freestanding' !in all_defines {
+		all_defines << 'freestanding'
+	}
+	add_freestanding_hook_defines(mut all_defines, freestanding_hooks)
 
 	options := cmdline.only_options(args)
 
@@ -306,13 +509,13 @@ pub fn new_preferences_from_args(args []string) Preferences {
 
 	// Validate flags: error on unknown options
 	known_flags_with_values := ['-backend', '-b', '-o', '-output', '-arch', '-printfn', '-gc',
-		'-d', '-hot-fn', '-cc']
+		'-d', '-hot-fn', '-cc', '-os', '-fhooks']
 	mut known_boolean_flags := ['--debug', '--verbose', '-v', '--skip-genv', '--skip-builtin',
-		'--skip-imports', '--skip-type-check', '--no-parallel', '-nocache', '--nocache',
-		'-nomarkused', '--nomarkused', '-showcc', '--showcc', '-stats', '--stats',
+		'--skip-imports', '--skip-type-check', '-no-parallel', '--no-parallel', '-nocache',
+		'--nocache', '-nomarkused', '--nomarkused', '-showcc', '--showcc', '-stats', '--stats',
 		'-print-parsed-files', '--print-parsed-files', '-keepc', '--profile-alloc', '-profile-alloc',
 		'-enable-globals', '--enable-globals', '-shared', '--shared', '-O0', '--single-backend',
-		'-single-backend', '-prod', '-prealloc']
+		'-single-backend', '-prod', '-prealloc', '-freestanding', '--freestanding']
 	$if ownership ? {
 		known_boolean_flags << '-ownership'
 	}
@@ -324,17 +527,21 @@ pub fn new_preferences_from_args(args []string) Preferences {
 			eprintln('')
 			eprintln('Options:')
 			eprintln('  -o <file>              Output file name')
-			eprintln('  -backend <name>        Backend: eval, cleanc, c, v, arm64, x64 (default: cleanc)')
-			eprintln('  -b <name>              Short for -backend')
+			eprintln('  -b <name>              Backend: eval, cleanc, c, v, arm64, x64 (default: cleanc; omit for cleanc)')
+			eprintln('                         -backend <name> is accepted as a compatibility alias')
 			eprintln('  -arch <name>           Architecture: auto, x64, arm64 (default: auto)')
+			eprintln('  -os <target>           Override target OS (default: host OS): linux, macos, windows, termux, cross, none')
 			eprintln('  -printfn <names>       Print generated C for functions (comma-separated)')
 			eprintln('  -stats, --stats        Print compilation statistics')
 			eprintln('  -nocache, --nocache    Disable build cache')
 			eprintln('  -d <name>              Define a comptime flag')
 			eprintln('  -enable-globals        Accepted for v1 compatibility')
-			eprintln('  -prod                  Production build: optimize with -O3 -flto')
+			eprintln('  -prod                  Production build: enable SSA optimization + -O3 -flto')
 			eprintln('  -prealloc              Use arena allocation (faster, not thread-safe)')
-			eprintln('  -O0                    Skip SSA optimization (faster compile, slower code)')
+			eprintln('  -freestanding          Generate for a freestanding platform contract')
+			eprintln('  -fhooks <values>       Advanced freestanding hooks for --skip-builtin --skip-type-check stubs')
+			eprintln('                         Values: output, panic, alloc, minimal')
+			eprintln('  -O0                    Skip SSA optimization (default; use -prod to enable)')
 			$if ownership ? {
 				eprintln('  -ownership             Enable ownership checking for strings')
 			}
@@ -343,20 +550,22 @@ pub fn new_preferences_from_args(args []string) Preferences {
 			eprintln('  -cc <compiler>         C compiler to use (default: tcc, fallback: cc)')
 			eprintln('  -showcc, --showcc      Print C compiler command')
 			eprintln('  -keepc                 Keep generated C file')
-			eprintln('  --no-parallel          Disable parallel type check and transform')
+			eprintln('  -no-parallel, --no-parallel')
+			eprintln('                         Disable parallel type check and transform')
 			exit(1)
 		}
 	}
 
+	implicit_skip_builtin := freestanding && freestanding_hooks.len == 0
 	return Preferences{
 		debug:                 '--debug' in options
 		verbose:               '--verbose' in options || '-v' in options
 		skip_genv:             '--skip-genv' in options
-		skip_builtin:          '--skip-builtin' in options
+		skip_builtin:          '--skip-builtin' in options || implicit_skip_builtin
 		skip_imports:          '--skip-imports' in options
 		skip_type_check:       '--skip-type-check' in options
-		no_parallel:           '--no-parallel' in options
-		no_parallel_transform: '--no-parallel' in options
+		no_parallel:           '-no-parallel' in options || '--no-parallel' in options
+		no_parallel_transform: '-no-parallel' in options || '--no-parallel' in options
 		no_cache:              '-nocache' in options || '--nocache' in options
 		no_markused:           '-nomarkused' in options || '--nomarkused' in options
 		show_cc:               '-showcc' in options || '--showcc' in options
@@ -365,7 +574,7 @@ pub fn new_preferences_from_args(args []string) Preferences {
 		keep_c:                '-keepc' in options
 		use_context_allocator: '--profile-alloc' in options || '-profile-alloc' in options
 		is_shared_lib:         '-shared' in options || '--shared' in options
-		no_optimize:           '-O0' in options
+		no_optimize:           '-O0' in options || '-prod' !in options
 		is_prod:               '-prod' in options
 		prealloc:              '-prealloc' in options
 		single_backend:        '--single-backend' in options || '-single-backend' in options
@@ -373,14 +582,47 @@ pub fn new_preferences_from_args(args []string) Preferences {
 		gc_mode:               gc_mode
 		backend:               backend
 		arch:                  arch
+		target_os:             normalized_target_os
+		output_cross_c:        output_cross_c
+		freestanding:          freestanding
+		freestanding_hooks:    freestanding_hooks
 		output_file:           output_file
 		printfn_list:          printfn_list
 		user_defines:          all_defines
+		explicit_user_defines: user_defines.clone()
 		hot_fn:                hot_fn_str
 		ccompiler:             ccompiler
 		vroot:                 detect_vroot()
 		vmodules_path:         os.vmodules_dir()
 	}
+}
+
+fn target_os_from_option_tokens(options []string) string {
+	for opt in options {
+		if opt.starts_with('--os-') {
+			return normalize_cli_target_os(opt.all_after('--os-'))
+		}
+		if opt.starts_with('os-') {
+			return normalize_cli_target_os(opt.all_after('os-'))
+		}
+	}
+	return normalize_target_os_name(os.user_os())
+}
+
+fn freestanding_hooks_from_option_tokens(options []string) []string {
+	mut hooks := []string{}
+	for opt in options {
+		if opt.starts_with('--fhooks-') {
+			for hook in parse_freestanding_hooks(opt.all_after('--fhooks-')) {
+				append_freestanding_hook(mut hooks, hook)
+			}
+		} else if opt.starts_with('fhooks-') {
+			for hook in parse_freestanding_hooks(opt.all_after('fhooks-')) {
+				append_freestanding_hook(mut hooks, hook)
+			}
+		}
+	}
+	return hooks
 }
 
 pub fn new_preferences_using_options(options []string) Preferences {
@@ -406,17 +648,36 @@ pub fn new_preferences_using_options(options []string) Preferences {
 	} else if '--arch-arm64' in options {
 		arch = .arm64
 	}
+	target_os := target_os_from_option_tokens(options)
+	output_cross_c := target_os == 'cross'
+	freestanding := '--freestanding' in options || '-freestanding' in options
+		|| 'freestanding' in options
+	validate_target_contract(target_os, freestanding)
+	freestanding_hooks := freestanding_hooks_from_option_tokens(options)
+	if freestanding_hooks.len > 0 && !freestanding {
+		eprintln('error: freestanding hooks require freestanding target mode')
+		exit(1)
+	}
+	mut user_defines := []string{}
+	if output_cross_c {
+		user_defines << 'cross'
+	}
+	if freestanding {
+		user_defines << 'freestanding'
+	}
+	add_freestanding_hook_defines(mut user_defines, freestanding_hooks)
 
+	implicit_skip_builtin := freestanding && freestanding_hooks.len == 0
 	return Preferences{
 		// config flags
 		debug:                 '--debug' in options
 		verbose:               '--verbose' in options || '-v' in options
 		skip_genv:             '--skip-genv' in options
-		skip_builtin:          '--skip-builtin' in options
+		skip_builtin:          '--skip-builtin' in options || implicit_skip_builtin
 		skip_imports:          '--skip-imports' in options
 		skip_type_check:       '--skip-type-check' in options
-		no_parallel:           '--no-parallel' in options
-		no_parallel_transform: '--no-parallel' in options
+		no_parallel:           '-no-parallel' in options || '--no-parallel' in options
+		no_parallel_transform: '-no-parallel' in options || '--no-parallel' in options
 		no_cache:              '-nocache' in options || '--nocache' in options
 		no_markused:           '-nomarkused' in options || '--nomarkused' in options
 		show_cc:               '-showcc' in options || '--showcc' in options
@@ -424,12 +685,18 @@ pub fn new_preferences_using_options(options []string) Preferences {
 		print_parsed_files:    '-print-parsed-files' in options || '--print-parsed-files' in options
 		use_context_allocator: '--profile-alloc' in options || '-profile-alloc' in options
 		is_shared_lib:         '-shared' in options || '--shared' in options
-		no_optimize:           '-O0' in options
+		no_optimize:           '-O0' in options || '-prod' !in options
 		is_prod:               '-prod' in options
 		prealloc:              '-prealloc' in options
 		single_backend:        '--single-backend' in options || '-single-backend' in options
 		backend:               backend
 		arch:                  arch
+		target_os:             target_os
+		output_cross_c:        output_cross_c
+		freestanding:          freestanding
+		freestanding_hooks:    freestanding_hooks
+		user_defines:          user_defines
+		explicit_user_defines: []string{}
 	}
 }
 

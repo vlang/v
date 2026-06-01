@@ -49,3 +49,11 @@ fn test_minimal_windows_runtime_is_not_enabled_for_linux_or_macos() {
 	windows_builder := new_builder(&prefs)
 	assert windows_builder.uses_minimal_windows_x64_runtime()
 }
+
+fn test_native_x64_requires_ssa_optimization() {
+	mut prefs := pref.new_preferences()
+	assert prefs.no_optimize
+	builder := new_builder(&prefs)
+	assert builder.native_backend_requires_ssa_optimization(.x64)
+	assert !builder.native_backend_requires_ssa_optimization(.arm64)
+}

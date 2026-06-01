@@ -425,10 +425,28 @@ fn (mut g Gen) concrete_ierror_base_for_c_type(c_type string) string {
 	if base == '' || base == 'int' || base in ['IError', 'builtin__IError'] {
 		return ''
 	}
-	if '${base}__msg' in g.fn_return_types || g.struct_c_type_embeds_error(base) {
+	if g.c_type_has_ierror_shape(base) || g.struct_c_type_embeds_error(base) {
 		return base
 	}
 	return ''
+}
+
+fn (mut g Gen) c_type_has_ierror_shape(base string) bool {
+	if '${base}__msg' in g.fn_return_types {
+		return true
+	}
+	mut names := [base]
+	if base.contains('__') {
+		names << base.all_after_last('__')
+	}
+	if g.env != unsafe { nil } {
+		for name in names {
+			if _ := g.env.lookup_method(name, 'msg') {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 fn is_ierror_c_type(c_type string) bool {
@@ -465,7 +483,8 @@ fn (mut g Gen) gen_ierror_from_base_expr(base string, expr ast.Expr, expr_type s
 	}
 	tmp_name := '_ierr_obj${g.tmp_counter}'
 	g.tmp_counter++
-	g.sb.write_string('({ ${base}* ${tmp_name} = (${base}*)malloc(sizeof(${base})); *${tmp_name} = ')
+	malloc_call := g.c_heap_malloc_call('sizeof(${base})')
+	g.sb.write_string('({ ${base}* ${tmp_name} = (${base}*)${malloc_call}; *${tmp_name} = ')
 	g.expr(expr)
 	g.sb.write_string('; ((IError){._object = (void*)${tmp_name}, ._type_id = ${type_id}, .type_name = IError_${base}_type_name_wrapper, .msg = IError_${base}_msg_wrapper, .code = IError_${base}_code_wrapper}); })')
 	return true

@@ -64,7 +64,17 @@ jobs:
       - name: Test new v.c
         run: |
           v -o v.c cmd/v
-          gcc -Werror -municode -w v.c -lws2_32 -std=c99
+          $direct_c_flags = @(
+            '-Ithirdparty/zip'
+            '-Ithirdparty/cJSON'
+            '-Ithirdparty/mbedtls/library'
+            '-Ithirdparty/mbedtls/include'
+            '-Ithirdparty/mbedtls/3rdparty/everest/include'
+            '-Ithirdparty/mbedtls/3rdparty/everest/include/everest'
+            '-Ithirdparty/mbedtls/3rdparty/everest/include/everest/kremlib'
+            '-Ithirdparty/vschannel'
+          )
+          gcc -Werror -municode -w @direct_c_flags v.c -lws2_32 -std=c99
       - name: Install dependencies
         run: |
           v retry -- v setup-freetype

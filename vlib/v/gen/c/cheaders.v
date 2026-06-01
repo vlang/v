@@ -403,6 +403,32 @@ typedef int (*qsort_callback_func)(const void*, const void*);
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#elif defined(__TINYC__) && (defined(__FreeBSD__) || defined(__OpenBSD__))
+// TinyCC reports a hard redefinition error if system OpenSSL pulls in
+// <stdarg.h> after V has provided its own va_start macro. Include it first,
+// but keep V manual FILE declarations on these BSD libc variants.
+#include <stdarg.h>
+#if defined(__FreeBSD__)
+typedef struct __sFILE FILE;
+extern FILE* __stdinp;
+extern FILE* __stdoutp;
+extern FILE* __stderrp;
+#define stdin __stdinp
+#define stdout __stdoutp
+#define stderr __stderrp
+#else
+typedef struct __sFILE FILE;
+#ifndef _STDFILES_DECLARED
+	#define _STDFILES_DECLARED
+struct __sFstub { long _stub; };
+extern struct __sFstub __stdin[];
+extern struct __sFstub __stdout[];
+extern struct __sFstub __stderr[];
+#endif
+#define stdin ((struct __sFILE *)__stdin)
+#define stdout ((struct __sFILE *)__stdout)
+#define stderr ((struct __sFILE *)__stderr)
+#endif
 #elif defined(__MINGW32__) || defined(__MINGW64__) || (defined(__clang__) && (defined(_WIN32) || defined(_WIN64)))
 typedef struct _iobuf FILE;
 FILE* __cdecl __acrt_iob_func(unsigned index);

@@ -6942,6 +6942,10 @@ fn (mut g Gen) ref_or_deref_arg_ex(arg ast.CallArg, expected_type_ ast.Type, lan
 	if arg.expr is ast.IndexExpr && arg.expr.index is ast.RangeExpr && arg_typ.is_ptr() {
 		arg_typ = arg_typ.deref()
 	}
+	if arg.expr is ast.IndexExpr && expected_type.has_flag(.option)
+		&& arg.expr.typ.has_flag(.option) {
+		arg_typ = g.unwrap_generic(g.recheck_concrete_type(arg.expr.typ))
+	}
 	arg_sym := g.table.sym(arg_typ)
 	exp_is_ptr := expected_type.is_any_kind_of_pointer()
 	arg_is_ptr := arg_typ.is_any_kind_of_pointer()

@@ -86,10 +86,10 @@ fn main() {
 	run('${q(cfg.v1_compiler)} -gc none run test_ssa_backends.v cleanc')
 
 	section(12, 'Transformer unit tests')
-	run('${q(cfg.v1_compiler)} ../../vlib/v2/transformer/transformer_test.v')
+	run('${q(cfg.v1_compiler)} -gc none ../../vlib/v2/transformer/transformer_test.v')
 
 	section(13, 'Transformer integration test')
-	run('${q(cfg.v1_compiler)} ../../vlib/v2/transformer/transformer_v2_darwin_test.v')
+	run('${q(cfg.v1_compiler)} -gc none ../../vlib/v2/transformer/transformer_v2_darwin_test.v')
 
 	section(14, 'Cleanc runtime tests')
 	run('${q(cfg.v1_compiler)} -gc none run ../../vlib/v2/gen/cleanc/tests/run_tests.v')

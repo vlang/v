@@ -99,6 +99,7 @@ pub fn (mut m Module) add_block(func_id int, name string) BlockID {
 	// Avoid m.funcs[func_id].blocks << id -- chained broken in ARM64 self-hosted
 	mut f := m.funcs[func_id]
 	f.blocks << id
+	f.is_prototype = false
 	m.funcs[func_id] = f
 	return id
 }
@@ -127,6 +128,12 @@ pub fn (mut m Module) func_add_param(func_id int, param_val ValueID) {
 pub fn (mut m Module) func_set_c_extern(func_id int, val bool) {
 	mut f := m.funcs[func_id]
 	f.is_c_extern = val
+	m.funcs[func_id] = f
+}
+
+pub fn (mut m Module) func_set_prototype(func_id int, val bool) {
+	mut f := m.funcs[func_id]
+	f.is_prototype = val
 	m.funcs[func_id] = f
 }
 

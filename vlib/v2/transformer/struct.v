@@ -266,8 +266,7 @@ fn (mut t Transformer) apply_smartcast_field_access_ctx(sumtype_expr ast.Expr, f
 	// For native backends (arm64/x64): _data is a plain i64 (void pointer) in the SSA struct.
 	// No union variant sub-field exists, so just use _data directly.
 	// For C backends: _data is a union, so access _data._variant for the specific member.
-	is_native_backend := t.pref != unsafe { nil }
-		&& (t.pref.backend == .arm64 || t.pref.backend == .x64)
+	is_native_backend := t.pref != unsafe { nil } && t.is_native_be
 	data_access := t.synth_selector(transformed_base, '_data', types.Type(types.voidptr_))
 	variant_access := if is_native_backend {
 		data_access
@@ -292,8 +291,7 @@ fn (mut t Transformer) transform_array_init_expr(expr ast.ArrayInitExpr) ast.Exp
 	if !expr_array_has_valid_data(expr.exprs) {
 		return ast.Expr(expr)
 	}
-	is_native_backend := t.pref != unsafe { nil }
-		&& (t.pref.backend == .arm64 || t.pref.backend == .x64)
+	is_native_backend := t.pref != unsafe { nil } && t.is_native_be
 	native_interface_elem_type := if is_native_backend {
 		t.get_interface_array_init_concrete_type(&expr) or { '' }
 	} else {

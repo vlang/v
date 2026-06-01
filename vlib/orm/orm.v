@@ -709,13 +709,9 @@ pub fn (mut db DB) last_id() int {
 
 // DB implements orm.TransactionalConnection (decorator) -----------------------
 
-// unwrap_to_tx extracts a &TransactionalConnection from a Connection interface.
-// This is a workaround for V's codegen limitation: &struct_field cannot be
-// passed directly to an `as` cast because the cast function's return value
-// is not an lvalue in C. Copying to a local variable first makes &local valid.
-fn unwrap_to_tx(mut conn Connection) &TransactionalConnection {
-	mut c := conn
-	return unsafe { &c as TransactionalConnection }
+// unwrap_to_tx extracts a TransactionalConnection from a Connection interface.
+fn unwrap_to_tx(mut conn Connection) TransactionalConnection {
+	return conn as TransactionalConnection
 }
 
 // orm_begin begins a transaction on the underlying connection.

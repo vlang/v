@@ -1,6 +1,14 @@
 module builder
 
-import json
+import os
+
+fn restore_c_error_bug_report_url_env(old_url ?string) {
+	if url := old_url {
+		os.setenv('V_C_ERROR_BUG_REPORT_URL', url, true)
+	} else {
+		os.unsetenv('V_C_ERROR_BUG_REPORT_URL')
+	}
+}
 
 fn test_c_error_location_for_generated_c_parses_gcc_output() {
 	loc := c_error_location_for_generated_c('/tmp/program.tmp.c:42:7: error: unknown type name',
@@ -87,6 +95,15 @@ fn test_c_error_bug_report_url_uses_override_without_trailing_slash() {
 	assert c_error_bug_report_url(' http://127.0.0.1:19090/bug-report/ ') == 'http://127.0.0.1:19090/bug-report'
 }
 
+fn test_c_error_bug_report_url_uses_bugs_domain_by_default() {
+	old_url := os.getenv_opt('V_C_ERROR_BUG_REPORT_URL')
+	os.unsetenv('V_C_ERROR_BUG_REPORT_URL')
+	defer {
+		restore_c_error_bug_report_url_env(old_url)
+	}
+	assert c_error_bug_report_url('') == 'https://bugs.vlang.io/bug-report'
+}
+
 fn test_bounded_c_error_bug_report_keeps_encoded_body_under_limit() {
 	long_output := 'C compiler diagnostic '.repeat(12000)
 	long_c_line := 'generated C line '.repeat(1000)
@@ -116,13 +133,29 @@ fn test_bounded_c_error_bug_report_keeps_encoded_body_under_limit() {
 		]
 	}
 	bounded := bounded_c_error_bug_report(report, 4096)
-	encoded := json.encode(bounded)
+	encoded := c_error_bug_report_json(bounded)
 	assert encoded.len <= 4096
 	assert bounded.c_error.len < report.c_error.len
 	assert bounded.c_context[0].line == 12
 	assert bounded.c_context[0].text.len < report.c_context[0].text.len
 	assert bounded.v_context[0].line == 4
 	assert bounded.v_context[0].text.len < report.v_context[0].text.len
+}
+
+fn test_c_error_bug_report_json_escapes_strings() {
+	report := CErrorBugReport{
+		kind:      'v-c-compiler-error'
+		v_version: 'V "test"\n'
+		c_context: [
+			CErrorReportLine{
+				line: 1
+				text: 'tab\tslash\\'
+			},
+		]
+	}
+	encoded := c_error_bug_report_json(report)
+	assert encoded.contains('"v_version":"V \\"test\\"\\n"')
+	assert encoded.contains('"text":"tab\\tslash\\\\"')
 }
 
 fn test_truncated_report_text_preserves_start_and_end_when_space_allows() {

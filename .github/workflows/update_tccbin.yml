@@ -1,0 +1,216 @@
+name: Update tccbin
+
+on:
+  workflow_dispatch:
+    inputs:
+      tcc_commit:
+        description: 'TinyCC ref, branch, or commit to build'
+        required: false
+        default: mob
+      publish:
+        description: 'Push the rebuilt bundle to vlang/tccbin'
+        type: boolean
+        required: false
+        default: false
+      force_rebuild:
+        description: 'Rebuild even when tccbin already records the same TinyCC hash'
+        type: boolean
+        required: false
+        default: false
+  schedule:
+    - cron: '17 3 1 * *'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: update-tccbin-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  update-tccbin-hosted:
+    if: github.repository == 'vlang/v' && (github.event_name != 'schedule' || github.ref == 'refs/heads/master')
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - id: linux-amd64
+            os: ubuntu-latest
+            branch: thirdparty-linux-amd64
+            script: thirdparty/build_scripts/thirdparty-linux-amd64_tcc.sh
+          - id: macos-amd64
+            os: macos-15-intel
+            branch: thirdparty-macos-amd64
+            script: thirdparty/build_scripts/thirdparty-macos-amd64_tcc.sh
+          - id: macos-arm64
+            os: macos-latest
+            branch: thirdparty-macos-arm64
+            script: thirdparty/build_scripts/thirdparty-macos-arm64_tcc.sh
+    runs-on: ${{ matrix.os }}
+    env:
+      TCC_COMMIT: ${{ github.event.inputs.tcc_commit || 'mob' }}
+      TCCBIN_REPO: vlang/tccbin
+      PUBLISH: ${{ github.event_name == 'schedule' || github.event.inputs.publish == 'true' }}
+      FORCE_REBUILD: ${{ github.event.inputs.force_rebuild == 'true' }}
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Install macOS build dependencies
+        if: runner.os == 'macOS'
+        run: brew install make
+
+      - name: Resolve TinyCC source hash
+        id: tinycc
+        shell: bash
+        run: |
+          set -euo pipefail
+          git clone --quiet https://repo.or.cz/tinycc.git /tmp/tinycc-ref
+          git -C /tmp/tinycc-ref checkout --quiet "$TCC_COMMIT"
+          hash="$(git -C /tmp/tinycc-ref rev-parse HEAD)"
+          echo "hash=$hash" >> "$GITHUB_OUTPUT"
+          echo "TinyCC $TCC_COMMIT resolves to $hash"
+
+      - name: Clone tccbin branch
+        shell: bash
+        env:
+          TCCBIN_TOKEN: ${{ secrets.VLANG_BOT_SECRET }}
+        run: |
+          set -euo pipefail
+          git clone --branch "${{ matrix.branch }}" --depth=1 \
+            "https://github.com/${TCCBIN_REPO}.git" thirdparty/tcc
+          if [ "$PUBLISH" = 'true' ]; then
+            if [ -z "$TCCBIN_TOKEN" ]; then
+              echo "::error::VLANG_BOT_SECRET is required to publish to ${TCCBIN_REPO}"
+              exit 1
+            fi
+            git -C thirdparty/tcc remote set-url origin \
+              "https://vlang-bot:${TCCBIN_TOKEN}@github.com/${TCCBIN_REPO}.git"
+          fi
+
+      - name: Check whether rebuild is needed
+        id: rebuild
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ "$FORCE_REBUILD" != 'true' ] \
+            && [ -f thirdparty/tcc/build_source_hash.txt ] \
+            && [ "$(cat thirdparty/tcc/build_source_hash.txt)" = "${{ steps.tinycc.outputs.hash }}" ]; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            echo "tccbin/${{ matrix.branch }} already has TinyCC ${{ steps.tinycc.outputs.hash }}"
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Configure git identity
+        if: steps.rebuild.outputs.skip != 'true'
+        run: |
+          git config --global user.name vlang-bot
+          git config --global user.email vlang-bot@users.noreply.github.com
+
+      - name: Build TCC bundle
+        if: steps.rebuild.outputs.skip != 'true'
+        shell: bash
+        env:
+          BUILD_CMD: TCC_COMMIT=${{ env.TCC_COMMIT }} TCC_FOLDER=thirdparty/tcc bash ${{ matrix.script }}
+        run: |
+          set -euo pipefail
+          TCC_FOLDER=thirdparty/tcc bash "${{ matrix.script }}"
+          test "$(cat thirdparty/tcc/build_source_hash.txt)" = "${{ steps.tinycc.outputs.hash }}"
+          thirdparty/tcc/tcc.exe --version
+          thirdparty/tcc/tcc.exe -v -v
+
+      - name: Upload TCC bundle artifact
+        if: steps.rebuild.outputs.skip != 'true'
+        uses: actions/upload-artifact@v7
+        with:
+          name: tccbin-${{ matrix.id }}
+          path: thirdparty/tcc
+
+      - name: Push tccbin branch
+        if: steps.rebuild.outputs.skip != 'true' && env.PUBLISH == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          git -C thirdparty/tcc push origin HEAD:${{ matrix.branch }}
+
+  update-tccbin-bsd:
+    if: github.repository == 'vlang/v' && (github.event_name != 'schedule' || github.ref == 'refs/heads/master')
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - id: freebsd-amd64
+            operating_system: freebsd
+            version: '15.0'
+            branch: thirdparty-freebsd-amd64
+            script: thirdparty/build_scripts/thirdparty-freebsd-amd64_tcc.sh
+            install: sudo pkg install -y bash git gmake rsync
+            cc: cc
+          - id: openbsd-amd64
+            operating_system: openbsd
+            version: '7.8'
+            branch: thirdparty-openbsd-amd64
+            script: thirdparty/build_scripts/thirdparty-openbsd-amd64_tcc.sh
+            install: sudo pkg_add bash git gmake rsync
+            cc: clang
+    runs-on: ubuntu-latest
+    env:
+      TCC_COMMIT: ${{ github.event.inputs.tcc_commit || 'mob' }}
+      TCCBIN_REPO: vlang/tccbin
+      PUBLISH: ${{ github.event_name == 'schedule' || github.event.inputs.publish == 'true' }}
+      FORCE_REBUILD: ${{ github.event.inputs.force_rebuild == 'true' }}
+      TCCBIN_TOKEN: ${{ secrets.VLANG_BOT_SECRET }}
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Start ${{ matrix.id }} VM
+        uses: cross-platform-actions/action@v1.1.0
+        with:
+          operating_system: ${{ matrix.operating_system }}
+          version: ${{ matrix.version }}
+          memory: 4G
+          shell: sh
+          sync_files: runner-to-vm
+          environment_variables: TCC_COMMIT TCCBIN_REPO PUBLISH FORCE_REBUILD TCCBIN_TOKEN
+
+      - name: Build and publish ${{ matrix.id }} TCC bundle
+        shell: cpa.sh {0}
+        run: |
+          set -eu
+          ${{ matrix.install }}
+          git config --global user.name vlang-bot
+          git config --global user.email vlang-bot@users.noreply.github.com
+          git config --global --add safe.directory "$PWD"
+
+          git clone --quiet https://repo.or.cz/tinycc.git /tmp/tinycc-ref
+          git -C /tmp/tinycc-ref checkout --quiet "$TCC_COMMIT"
+          tinycc_hash="$(git -C /tmp/tinycc-ref rev-parse HEAD)"
+          echo "TinyCC $TCC_COMMIT resolves to $tinycc_hash"
+
+          git clone --branch "${{ matrix.branch }}" --depth=1 \
+            "https://github.com/${TCCBIN_REPO}.git" thirdparty/tcc
+          if [ "$PUBLISH" = 'true' ]; then
+            if [ -z "$TCCBIN_TOKEN" ]; then
+              echo "VLANG_BOT_SECRET is required to publish to ${TCCBIN_REPO}" >&2
+              exit 1
+            fi
+            git -C thirdparty/tcc remote set-url origin \
+              "https://vlang-bot:${TCCBIN_TOKEN}@github.com/${TCCBIN_REPO}.git"
+          fi
+
+          if [ "$FORCE_REBUILD" != 'true' ] \
+            && [ -f thirdparty/tcc/build_source_hash.txt ] \
+            && [ "$(cat thirdparty/tcc/build_source_hash.txt)" = "$tinycc_hash" ]; then
+            echo "tccbin/${{ matrix.branch }} already has TinyCC $tinycc_hash"
+            exit 0
+          fi
+
+          BUILD_CMD="TCC_COMMIT=$TCC_COMMIT TCC_FOLDER=thirdparty/tcc CC=${{ matrix.cc }} bash ${{ matrix.script }}" \
+            TCC_FOLDER=thirdparty/tcc CC="${{ matrix.cc }}" bash "${{ matrix.script }}"
+          test "$(cat thirdparty/tcc/build_source_hash.txt)" = "$tinycc_hash"
+          thirdparty/tcc/tcc.exe --version
+          thirdparty/tcc/tcc.exe -v -v
+
+          if [ "$PUBLISH" = 'true' ]; then
+            git -C thirdparty/tcc push origin HEAD:${{ matrix.branch }}
+          fi

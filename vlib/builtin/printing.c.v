@@ -61,7 +61,9 @@ pub fn eprint(s string) {
 // flush_stdout flushes the stdout buffer, ensuring all remaining data is written.
 // See also unbuffer_stdout() .
 pub fn flush_stdout() {
-	$if freestanding {
+	$if v2_native_windows_pe_minimal ? {
+		return
+	} $else $if freestanding {
 		not_implemented := 'flush_stdout is not implemented\n'
 		bare_eprint(not_implemented.str, u64(not_implemented.len))
 	} $else $if builtin_write_buf_to_fd_should_use_c_write ? {
@@ -75,7 +77,9 @@ pub fn flush_stdout() {
 
 // flush_stderr flushes the stderr buffer, ensuring all remaining data is written.
 pub fn flush_stderr() {
-	$if freestanding {
+	$if v2_native_windows_pe_minimal ? {
+		return
+	} $else $if freestanding {
 		not_implemented := 'flush_stderr is not implemented\n'
 		bare_eprint(not_implemented.str, u64(not_implemented.len))
 	} $else $if builtin_write_buf_to_fd_should_use_c_write ? {
@@ -180,18 +184,16 @@ fn _write_buf_to_fd(fd int, buf &u8, buf_len int) {
 	if buf_len <= 0 {
 		return
 	}
-	mut ptr := unsafe { buf }
-	mut remaining_bytes := isize(buf_len)
-	mut x := isize(0)
-	$if v2_native_windows_pe_minimal ? {
-		write_buf_to_fd_kernel32(fd, ptr, int(remaining_bytes))
-		return
-	} $else {
-		$if windows {
-			if write_buf_to_console(fd, ptr, int(remaining_bytes)) {
-				return
-			}
+	$if windows {
+		$if v2_native_windows_pe_minimal ? {
+			write_buf_to_fd_kernel32_or_exit(fd, buf, buf_len)
+		} $else {
+			write_buf_to_fd_windows_non_minimal(fd, buf, buf_len)
 		}
+	} $else {
+		mut ptr := unsafe { buf }
+		mut remaining_bytes := isize(buf_len)
+		mut x := isize(0)
 		$if freestanding || vinix || builtin_write_buf_to_fd_should_use_c_write ? {
 			// Flush any pending libc stdio output (from C.puts, C.putchar, etc.)
 			// before writing directly via write() syscall to prevent output reordering.
