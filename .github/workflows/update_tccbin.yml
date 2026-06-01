@@ -164,7 +164,7 @@ jobs:
       - uses: actions/checkout@v6
 
       - name: Start ${{ matrix.id }} VM
-        uses: cross-platform-actions/action@v1.1.0
+        uses: cross-platform-actions/action@v1.2.0
         with:
           operating_system: ${{ matrix.operating_system }}
           version: ${{ matrix.version }}
