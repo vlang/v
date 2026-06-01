@@ -2,12 +2,16 @@ module builder
 
 import os
 
-fn restore_c_error_bug_report_url_env(old_url ?string) {
-	if url := old_url {
-		os.setenv('V_C_ERROR_BUG_REPORT_URL', url, true)
+fn restore_env_var(name string, old_value ?string) {
+	if value := old_value {
+		os.setenv(name, value, true)
 	} else {
-		os.unsetenv('V_C_ERROR_BUG_REPORT_URL')
+		os.unsetenv(name)
 	}
+}
+
+fn restore_c_error_bug_report_url_env(old_url ?string) {
+	restore_env_var('V_C_ERROR_BUG_REPORT_URL', old_url)
 }
 
 fn test_c_error_location_for_generated_c_parses_gcc_output() {
@@ -102,6 +106,50 @@ fn test_c_error_bug_report_url_uses_bugs_domain_by_default() {
 		restore_c_error_bug_report_url_env(old_url)
 	}
 	assert c_error_bug_report_url('') == 'https://bugs.vlang.io/bug-report'
+}
+
+fn test_should_submit_c_error_bug_report_allows_default_outside_github_ci() {
+	old_github_actions := os.getenv_opt('GITHUB_ACTIONS')
+	old_github_job := os.getenv_opt('GITHUB_JOB')
+	os.unsetenv('GITHUB_ACTIONS')
+	os.unsetenv('GITHUB_JOB')
+	defer {
+		restore_env_var('GITHUB_ACTIONS', old_github_actions)
+		restore_env_var('GITHUB_JOB', old_github_job)
+	}
+	assert should_submit_c_error_bug_report('')
+}
+
+fn test_should_submit_c_error_bug_report_skips_bugs_domain_in_github_ci() {
+	old_github_actions := os.getenv_opt('GITHUB_ACTIONS')
+	old_github_job := os.getenv_opt('GITHUB_JOB')
+	old_url := os.getenv_opt('V_C_ERROR_BUG_REPORT_URL')
+	os.setenv('GITHUB_ACTIONS', 'true', true)
+	os.unsetenv('GITHUB_JOB')
+	os.unsetenv('V_C_ERROR_BUG_REPORT_URL')
+	defer {
+		restore_env_var('GITHUB_ACTIONS', old_github_actions)
+		restore_env_var('GITHUB_JOB', old_github_job)
+		restore_c_error_bug_report_url_env(old_url)
+	}
+	assert !should_submit_c_error_bug_report('')
+	assert !should_submit_c_error_bug_report(' https://bugs.vlang.io/bug-report/ ')
+}
+
+fn test_should_submit_c_error_bug_report_uses_custom_url_in_github_ci() {
+	old_github_actions := os.getenv_opt('GITHUB_ACTIONS')
+	old_github_job := os.getenv_opt('GITHUB_JOB')
+	old_url := os.getenv_opt('V_C_ERROR_BUG_REPORT_URL')
+	os.unsetenv('GITHUB_ACTIONS')
+	os.setenv('GITHUB_JOB', 'test', true)
+	os.setenv('V_C_ERROR_BUG_REPORT_URL', 'http://127.0.0.1:19090/bug-report', true)
+	defer {
+		restore_env_var('GITHUB_ACTIONS', old_github_actions)
+		restore_env_var('GITHUB_JOB', old_github_job)
+		restore_c_error_bug_report_url_env(old_url)
+	}
+	assert should_submit_c_error_bug_report('')
+	assert should_submit_c_error_bug_report('http://127.0.0.1:19091/bug-report')
 }
 
 fn test_bounded_c_error_bug_report_keeps_encoded_body_under_limit() {

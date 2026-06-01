@@ -39,6 +39,9 @@ pub:
 }
 
 fn (mut v Builder) submit_c_error_bug_report(ccompiler string, c_output string) {
+	if !should_submit_c_error_bug_report(v.pref.c_error_bug_report_url) {
+		return
+	}
 	raw_report := v.new_c_error_bug_report(ccompiler, c_output)
 	report := bounded_c_error_bug_report(raw_report, c_error_bug_report_max_body_bytes)
 	report_url := c_error_bug_report_url(v.pref.c_error_bug_report_url)
@@ -103,6 +106,17 @@ fn c_error_bug_report_url(flag_url string) string {
 		return env_url.trim_right('/')
 	}
 	return default_c_error_bug_report_url
+}
+
+fn should_submit_c_error_bug_report(flag_url string) bool {
+	if running_in_github_ci() {
+		return c_error_bug_report_url(flag_url) != default_c_error_bug_report_url
+	}
+	return true
+}
+
+fn running_in_github_ci() bool {
+	return os.getenv('GITHUB_ACTIONS') == 'true' || os.getenv('GITHUB_JOB') != ''
 }
 
 fn send_c_error_bug_report(report CErrorBugReport, report_url string) !string {

@@ -324,6 +324,7 @@ see also `v help build`.
    -bug-report-url url
       Override where automatic C compiler bug reports are submitted.
       Useful with `v bug-report --host localhost --port 8080` for local testing.
+      Automatic reports to bugs.vlang.io are skipped when running in GitHub CI.
 
    -dump-c-flags file.txt
       Write all C flags into `file.txt`, one flag per line.
