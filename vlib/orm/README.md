@@ -93,6 +93,42 @@ sql db {
 }!
 ```
 
+### Data Scope
+
+`orm.DB` can wrap an `orm.Connection` with automatic scope filters. Scope filters
+are useful for request-level tenancy, soft deletes, and row-level access checks.
+
+```v ignore
+mut db := orm.new_db(raw_db, orm.DataScope{
+    filters: [
+        orm.QueryFilter{
+            field: 'tenant_id'
+            value: orm.Primitive(tenant_id)
+        },
+        orm.QueryFilter{
+            field: 'shop_id'
+            value: orm.Primitive(shop_id)
+            mode:  .dynamic
+        },
+        orm.QueryFilter{
+            field:    'deleted_at'
+            operator: .is_null
+        },
+    ]
+})
+
+users := sql db {
+    select from User
+}!
+```
+
+`QueryFilter.mode` defaults to `.static`. Static filters have a stable field and
+operator shape; the value can still come from runtime data. Use `.dynamic` for
+filters that are request-dependent or assembled by middleware.
+
+Call `db.unscoped()` to return a new `orm.DB` value that skips all scope filters.
+Call `db.unscoped('tenant_id')` to skip only selected fields.
+
 > [!TIP]
 > This guide uses the built-in `db.sqlite` module. If you want SQLite without first installing
 > system-level SQLite development files, the V team also maintains the

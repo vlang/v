@@ -23,11 +23,15 @@ fn returns_b_result() !Bb {
 }
 
 fn returns_bs_option() ?[]Bb {
-	return [Bb{ s: 'b' }]
+	return [Bb{
+		s: 'b'
+	}]
 }
 
 fn returns_bs_result() ![]Bb {
-	return [Bb{ s: 'b' }]
+	return [Bb{
+		s: 'b'
+	}]
 }
 
 fn case_a() !Aa {
