@@ -172,6 +172,11 @@ pub fn (f &FnType) get_param_names() []string {
 	return names
 }
 
+// get_generic_params returns the declared generic parameter names.
+pub fn (f &FnType) get_generic_params() []string {
+	return f.generic_params.clone()
+}
+
 // is_variadic_fn reports whether this function type was declared variadic.
 pub fn (f &FnType) is_variadic_fn() bool {
 	return f.is_variadic

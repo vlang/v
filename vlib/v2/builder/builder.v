@@ -896,6 +896,43 @@ fn (b &Builder) expand_type_modules_with_imports(modules []string) []string {
 	return unique_sorted_strings(type_modules.keys())
 }
 
+fn (b &Builder) has_external_cache_module_name_collision(module_names []string) bool {
+	mut module_set := map[string]bool{}
+	for module_name in module_names {
+		if module_name != '' {
+			module_set[module_name] = true
+		}
+	}
+	mut vlib_modules := map[string]bool{}
+	mut external_modules := map[string]bool{}
+	for file in b.files {
+		if file.name == '' || file.name.ends_with('.vh') {
+			continue
+		}
+		module_name := ast_file_module_name(file)
+		if module_name !in module_set {
+			continue
+		}
+		if b.is_vlib_source_file(file.name) {
+			vlib_modules[module_name] = true
+		} else {
+			external_modules[module_name] = true
+		}
+	}
+	for module_name, _ in external_modules {
+		if module_name in vlib_modules {
+			return true
+		}
+	}
+	return false
+}
+
+fn (b &Builder) is_vlib_source_file(file_name string) bool {
+	root := if b.pref.vroot.len > 0 { b.pref.vroot } else { os.getwd() }
+	vlib_root := os.norm_path(os.join_path(root, 'vlib')) + os.path_separator
+	return os.norm_path(os.abs_path(file_name)).starts_with(vlib_root)
+}
+
 fn import_module_name(name string) string {
 	return name.all_after_last('.').replace('.', '_')
 }
@@ -951,13 +988,21 @@ fn (mut b Builder) gen_cleanc_with_cached_core(output_name string, cc string, cc
 	mut optional_cached_cache_names := []string{}
 	mut optional_cached_module_names := []string{}
 	if veb_cached_module_paths.len > 0 && b.has_module('veb') {
-		veb_obj := b.ensure_cached_module_object(cache_dir, veb_cache_name,
-			veb_cached_module_paths, veb_cached_module_names, cc, cc_flags, cc_link_flags,
-			error_limit_flag, true) or {
+		veb_cache_type_modules := b.expand_type_modules_with_imports(cache_type_module_names(veb_cache_name,
+			veb_cached_module_names))
+		veb_obj := if b.has_external_cache_module_name_collision(veb_cache_type_modules) {
 			if os.getenv('V2_TRACE_CACHE') != '' {
-				eprintln('TRACE_CACHE optional_cache=veb reason=${err}')
+				eprintln('TRACE_CACHE optional_cache=veb reason=external_module_name_collision')
 			}
 			''
+		} else {
+			b.ensure_cached_module_object(cache_dir, veb_cache_name, veb_cached_module_paths,
+				veb_cached_module_names, cc, cc_flags, cc_link_flags, error_limit_flag, true) or {
+				if os.getenv('V2_TRACE_CACHE') != '' {
+					eprintln('TRACE_CACHE optional_cache=veb reason=${err}')
+				}
+				''
+			}
 		}
 		if veb_obj.len > 0 {
 			b.print_cached_bundle_modules(veb_cache_name, veb_cached_module_names)

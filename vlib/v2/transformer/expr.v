@@ -2870,7 +2870,23 @@ fn (mut t Transformer) transform_infix_expr(expr ast.InfixExpr) ast.Expr {
 
 			// Create (T[]){ elem } expression for single element push
 			// Note: cleanc will add _MOV wrapper when generating ArrayInitExpr
-			transformed_rhs := t.transform_expr(expr.rhs)
+			mut transformed_rhs := t.transform_expr(expr.rhs)
+			if t.contains_call_expr(expr.rhs) {
+				t.temp_counter++
+				tmp_name := '_ap_t${t.temp_counter}'
+				tmp_ident := ast.Ident{
+					name: tmp_name
+				}
+				if rhs_type := t.get_expr_type(expr.rhs) {
+					t.register_temp_var(tmp_name, rhs_type)
+				}
+				t.pending_stmts << ast.Stmt(ast.AssignStmt{
+					op:  .decl_assign
+					lhs: [ast.Expr(tmp_ident)]
+					rhs: [transformed_rhs]
+				})
+				transformed_rhs = ast.Expr(tmp_ident)
+			}
 			// Clone strings when pushing to arrays to prevent use-after-free
 			// (V1 does: array_push(&arr, _MOV((string[]){ string_clone(s) })))
 			cloned_rhs := if elem_type_name == 'string' {

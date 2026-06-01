@@ -851,10 +851,9 @@ fn test_signature_generic_struct_forward_typedefs_use_metadata() {
 	assert csrc.count('typedef struct veb__MiddlewareOptions_T_GitHubUser veb__MiddlewareOptions_T_GitHubUser;') == 1
 }
 
-fn test_fn_head_emits_forward_typedef_for_late_generic_receiver() {
+fn test_fn_head_emits_forward_typedef_for_concrete_generic_receiver() {
 	mut g := Gen.new([])
 	g.cur_module = 'printer'
-	g.active_generic_types['W'] = types.Type(types.string_)
 	count_method := ast.FnDecl{
 		name:      'count'
 		is_method: true
@@ -871,7 +870,7 @@ fn test_fn_head_emits_forward_typedef_for_late_generic_receiver() {
 				})
 				params: [
 					ast.Expr(ast.Ident{
-						name: 'W'
+						name: 'string'
 					}),
 				]
 			}))
@@ -892,10 +891,9 @@ fn test_fn_head_emits_forward_typedef_for_late_generic_receiver() {
 	assert csrc.contains('u64 printer__CounterWriter_T_string__count(printer__CounterWriter_T_string w);'), csrc
 }
 
-fn test_register_fn_signature_preserves_pointer_receiver_on_generic_struct_instance() {
+fn test_register_fn_signature_preserves_pointer_receiver_on_concrete_generic_struct_instance() {
 	mut g := Gen.new([])
 	g.cur_module = 'printer'
-	g.active_generic_types['W'] = types.Type(types.string_)
 	g.generic_struct_instances['printer__Sink'] = [
 		GenericStructInstance{
 			params_key: 'string'
@@ -922,7 +920,7 @@ fn test_register_fn_signature_preserves_pointer_receiver_on_generic_struct_insta
 					})
 					params: [
 						ast.Expr(ast.Ident{
-							name: 'W'
+							name: 'string'
 						}),
 					]
 				}))
@@ -4294,8 +4292,13 @@ fn main() {
 	call_cb(mut b, use_beta)
 }
 ')
-	assert csrc.contains('((void (*)(Alpha*))cb)(value);'), csrc
-	assert csrc.contains('((void (*)(Beta*))cb)(value);'), csrc
+	assert csrc.contains('call_cb_T_Alpha_fn_a_Alpha_void(&a, use_alpha);'), csrc
+	assert csrc.contains('call_cb_T_Beta_fn_b_Beta_void(&b, use_beta);'), csrc
+	assert csrc.contains('void call_cb_T_Alpha_fn_a_Alpha_void(Alpha* value, void (*cb)(Alpha*))'), csrc
+	assert csrc.contains('void call_cb_T_Beta_fn_b_Beta_void(Beta* value, void (*cb)(Beta*))'), csrc
+	assert csrc.contains('cb(value);'), csrc
+	assert !csrc.contains('call_cb_T_Alpha_voidptr'), csrc
+	assert !csrc.contains('call_cb_T_Beta_voidptr'), csrc
 	assert !csrc.contains('((void (*)(Alpha*))cb)(*value);'), csrc
 	assert !csrc.contains('((void (*)(Beta*))cb)(*value);'), csrc
 }

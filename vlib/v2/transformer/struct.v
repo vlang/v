@@ -1739,6 +1739,9 @@ fn (mut t Transformer) transform_struct_field_default_expr(struct_name string, e
 
 fn (t &Transformer) get_init_expr_type_name(typ ast.Expr) string {
 	if typ is ast.Ident {
+		if synth_typ := t.get_synth_type(typ.pos) {
+			return t.type_to_c_name(synth_typ)
+		}
 		base_name := typ.name
 		if t.cur_module != '' && t.cur_module != 'main' && t.cur_module != 'builtin' {
 			if scope := t.cached_scopes[t.cur_module] {

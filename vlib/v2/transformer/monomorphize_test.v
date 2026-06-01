@@ -21,6 +21,37 @@ fn mono_test_transformer() &Transformer {
 	}
 }
 
+fn test_get_expr_type_prefers_cloned_init_expr_type_over_stale_position_type() {
+	mut env := types.Environment.new()
+	pos := token.Pos{
+		id: 7
+	}
+	env.set_expr_type(pos.id, types.Type(types.Struct{
+		name: 'gitly__GitHubRepoInfo'
+	}))
+	mut t := mono_test_transformer()
+	t.env = env
+	t.cur_module = 'json2'
+	mut config_scope := types.new_scope(unsafe { nil })
+	config_scope.insert_type('Config', types.Type(types.Struct{
+		name: 'config__Config'
+	}))
+	t.cached_scopes['config'] = config_scope
+	expr := ast.Expr(ast.InitExpr{
+		typ: ast.Expr(ast.SelectorExpr{
+			lhs: ast.Expr(ast.Ident{
+				name: 'config'
+			})
+			rhs: ast.Ident{
+				name: 'Config'
+			}
+		})
+		pos: pos
+	})
+	typ := t.get_expr_type(expr) or { panic('expected cloned init expression type') }
+	assert typ.name() == 'config__Config'
+}
+
 // substitute_type: primitives
 
 fn test_substitute_type_returns_same_type_when_bindings_empty() {

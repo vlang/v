@@ -425,6 +425,23 @@ fn (t &Transformer) normalize_type(typ types.Type) types.Type {
 	return typ
 }
 
+fn (t &Transformer) type_from_init_expr(expr ast.InitExpr) ?types.Type {
+	if typ := t.get_expr_type(expr.typ) {
+		return t.normalize_type(typ)
+	}
+	type_name := t.expr_to_type_name(expr.typ)
+	if type_name == '' {
+		return none
+	}
+	if typ := t.c_name_to_type(type_name) {
+		return t.normalize_type(typ)
+	}
+	if typ := t.lookup_type(type_name) {
+		return t.normalize_type(typ)
+	}
+	return none
+}
+
 // lookup_type looks up a type by name in the module scope
 fn (t &Transformer) lookup_type(name string) ?types.Type {
 	// Handle qualified names like "ast__Expr" by extracting module and type name
@@ -975,6 +992,9 @@ fn (t &Transformer) type_to_c_decl_name(typ types.Type) string {
 // expr_to_type_name extracts a type name from a type expression
 fn (t &Transformer) expr_to_type_name(expr ast.Expr) string {
 	if expr is ast.Ident {
+		if typ := t.get_synth_type(expr.pos) {
+			return t.type_to_c_name(typ)
+		}
 		name := expr.name
 		// Add module prefix for non-builtin types when inside a non-main/builtin module.
 		if name !in ['int', 'i64', 'i32', 'i16', 'i8', 'u64', 'u32', 'u16', 'u8', 'byte', 'rune', 'f32', 'f64', 'usize', 'isize', 'bool', 'string', 'voidptr', 'charptr', 'byteptr', 'void', 'nil']
@@ -2641,6 +2661,11 @@ fn expr_array_has_valid_data(exprs []ast.Expr) bool {
 
 // get_expr_type returns the types.Type for an expression by looking it up in the environment
 fn (t &Transformer) get_expr_type(expr ast.Expr) ?types.Type {
+	if expr is ast.StringLiteral && expr.kind == .c {
+		if typ := types.builtin_type('charptr') {
+			return typ
+		}
+	}
 	// Handle specific expression types that may not have pos info or need special handling
 	// These checks go BEFORE pos() to avoid dereferencing corrupt sum type data pointers
 	// in ARM64-compiled binaries.
@@ -2753,6 +2778,11 @@ fn (t &Transformer) get_expr_type(expr ast.Expr) ?types.Type {
 			}
 		}
 		return t.get_array_init_expr_type(expr)
+	}
+	if expr is ast.InitExpr {
+		if typ := t.type_from_init_expr(expr) {
+			return typ
+		}
 	}
 	if expr is ast.SelectorExpr {
 		if expr.rhs.name == 'name' && expr.lhs is ast.Ident
@@ -3052,6 +3082,11 @@ fn (t &Transformer) generic_specialization_token_from_type(typ types.Type) strin
 }
 
 fn (t &Transformer) generic_specialization_token(expr ast.Expr) string {
+	if expr is ast.Ident {
+		if concrete := t.cur_monomorphized_fn_bindings[expr.name] {
+			return t.generic_specialization_token_from_type(concrete)
+		}
+	}
 	if concrete := t.get_expr_type(expr) {
 		return t.generic_specialization_token_from_type(concrete)
 	}

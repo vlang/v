@@ -101,6 +101,18 @@ fn (t &Transformer) for_in_value_type(iter_type types.Type) types.Type {
 	return iter_type.value_type()
 }
 
+fn (t &Transformer) for_in_value_uses_array_index(value_type types.Type) bool {
+	mut cur := value_type
+	for {
+		if cur is types.Alias {
+			cur = (cur as types.Alias).base_type
+			continue
+		}
+		break
+	}
+	return cur is types.Array
+}
+
 fn (t &Transformer) generic_iter_value_placeholder(expr ast.Expr) ?string {
 	match expr {
 		ast.Ident {
@@ -136,6 +148,28 @@ fn (mut t Transformer) iter_value_expr(orig ast.Expr, transformed ast.Expr, pos 
 		})
 	}
 	return base_expr
+}
+
+fn (mut t Transformer) array_data_index_expr(array_expr ast.Expr, index_expr ast.Expr, value_type types.Type, pos token.Pos) ast.Expr {
+	t.register_synth_type(pos, value_type)
+	data_expr := t.synth_selector(array_expr, 'data', types.Type(types.voidptr_))
+	ptr_pos := t.next_synth_pos()
+	t.register_synth_type(ptr_pos, types.Type(types.Pointer{
+		base_type: value_type
+	}))
+	elem_type_name := t.type_to_c_name(value_type)
+	typed_data := ast.Expr(ast.CastExpr{
+		typ:  ast.Ident{
+			name: '${elem_type_name}*'
+		}
+		expr: data_expr
+		pos:  ptr_pos
+	})
+	return ast.Expr(ast.IndexExpr{
+		lhs:  typed_data
+		expr: index_expr
+		pos:  pos
+	})
 }
 
 fn (mut t Transformer) smartcast_map_iter_value_expr(iter_expr ast.Expr, map_type types.Map) ast.Expr {
@@ -848,12 +882,20 @@ fn (mut t Transformer) transform_array_for_in_with_value_type(stmt ast.ForStmt, 
 	index_pos := t.next_synth_pos()
 	t.register_synth_type(index_pos, value_type)
 
-	// Build: elem := arr[_idx] (or elem := &arr[_idx] for mut)
-	index_expr := ast.Expr(ast.IndexExpr{
-		lhs:  transformed_expr
-		expr: key_ident
-		pos:  index_pos
-	})
+	// Build: elem := ((T*)arr.data)[_idx] (or elem := &((T*)arr.data)[_idx] for mut).
+	// String indexing is still handled as `s[_idx]`, because the string payload field is `.str`.
+	// Array-valued elements use the normal array index path so aggregate array values
+	// are copied with the same lowering as `elem := arr[i]`.
+	index_expr := if t.is_string_iterable_type(iter_type)
+		|| t.for_in_value_uses_array_index(value_type) {
+		ast.Expr(ast.IndexExpr{
+			lhs:  transformed_expr
+			expr: key_ident
+			pos:  index_pos
+		})
+	} else {
+		t.array_data_index_expr(transformed_expr, ast.Expr(key_ident), value_type, index_pos)
+	}
 	// For mut loop variables: take address for in-place mutation.
 	// But when the element type is already a pointer (e.g., []&MenuItem),
 	// the pointer itself allows mutation — don't add another & level.

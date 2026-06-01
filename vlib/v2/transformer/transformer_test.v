@@ -2382,6 +2382,156 @@ fn test_transform_bare_generic_call_uses_specialized_name() {
 	assert call.args.len == 2
 }
 
+fn test_transform_inferred_generic_method_call_uses_specialized_name() {
+	files := transform_code_for_test('
+module main
+
+struct Job {}
+
+struct Item {
+	value int
+}
+
+struct Out {
+mut:
+	value int
+}
+
+fn fill(item Item, mut out Out) {
+	out.value = item.value
+}
+
+fn (job &Job) apply[K, D, F](items []K, mut out []D, f F) {
+	_ = job
+	if items.len > 0 && out.len > 0 {
+		f(items[0], mut out[0])
+	}
+}
+
+fn use_apply() int {
+	job := Job{}
+	items := [Item{
+		value: 7
+	}]
+	mut out := []Out{len: 1}
+	job.apply(items, mut out, fill)
+	return out[0].value
+}
+')
+	call_names := call_names_for_fn(files, 'use_apply')
+	assert 'Job__apply_T_Item_Out_fn_item_Item_out_Out_void' in call_names
+	assert 'Job__apply' !in call_names
+
+	mut found_clone := false
+	for file in files {
+		for stmt in file.stmts {
+			if stmt is ast.FnDecl && stmt.name == 'apply_T_Item_Out_fn_item_Item_out_Out_void' {
+				found_clone = true
+				assert stmt.typ.generic_params.len == 0
+				assert stmt.typ.params.len == 3
+				assert stmt.typ.params[2].typ is ast.Type
+				fn_param_type := stmt.typ.params[2].typ as ast.Type
+				assert fn_param_type is ast.FnType
+			}
+		}
+	}
+	assert found_clone
+}
+
+fn test_transform_non_generic_method_does_not_match_generic_method_short_name() {
+	files := transform_code_for_test('
+module main
+
+struct Vec3[T] {
+	x T
+	y T
+	z T
+}
+
+fn (v Vec3[T]) div(u Vec3[T]) Vec3[T] {
+	_ = u
+	return v
+}
+
+struct Float3 {
+	x f32
+	y f32
+	z f32
+}
+
+fn (a Float3) div(s f32) Float3 {
+	_ = s
+	return a
+}
+
+fn use_float(a Float3) {
+	_ = a.div(f32(2))
+}
+')
+	call_names := call_names_for_fn(files, 'use_float')
+	assert 'Float3__div' in call_names
+	assert 'Float3__div_T_f32' !in call_names
+}
+
+fn test_transform_inferred_generic_fn_call_uses_specialized_fn_arg_name() {
+	files := transform_code_for_test('
+module main
+
+struct Alpha {}
+
+fn use_alpha(mut a Alpha) {
+	_ = a
+}
+
+fn call_cb[T, F](mut value T, cb F) {
+	cb(mut value)
+}
+
+fn main() {
+	mut a := Alpha{}
+	call_cb(mut a, use_alpha)
+}
+')
+	call_names := call_names_for_fn(files, 'main')
+	assert 'call_cb_T_Alpha_fn_a_Alpha_void' in call_names
+	assert 'call_cb' !in call_names
+	assert 'call_cb_T_Alpha_voidptr' !in call_names
+}
+
+fn test_transform_records_inferred_generic_binding_before_monomorphize() {
+	files := transform_code_for_test('
+module main
+
+fn clamp[T](a T, x T, b T) T {
+	mut min := T(0)
+	if x < b {
+		min = x
+	} else {
+		min = b
+	}
+	return if min < a { a } else { min }
+}
+
+fn main() {
+	ratio := f32(0.5)
+	_ = clamp(f32(0), ratio, 1.0)
+}
+')
+	call_names := call_names_for_fn(files, 'main')
+	assert 'clamp_T_f32' in call_names
+	mut found_clone := false
+	for file in files {
+		for stmt in file.stmts {
+			if stmt is ast.FnDecl && stmt.name == 'clamp_T_f32' {
+				found_clone = true
+				assert stmt.typ.generic_params.len == 0
+				assert stmt.stmts.len > 0
+			}
+		}
+	}
+	assert found_clone
+}
+
 fn stmts_have_defer(stmts []ast.Stmt) bool {
 	for stmt in stmts {
 		match stmt {
@@ -4785,6 +4935,87 @@ fn f(column_name string) {
 				inner_array_type := inner_type as ast.ArrayType
 				assert inner_array_type.elem_type is ast.Ident
 				assert (inner_array_type.elem_type as ast.Ident).name == 'string'
+				found = true
+			}
+		}
+	}
+	assert found
+}
+
+fn test_transform_nested_array_append_call_result_uses_temp() {
+	files := transform_code_for_test('
+fn make_items() []string {
+	return ["x"]
+}
+
+fn f() {
+	mut groups := [][]string{}
+	groups << make_items()
+}
+')
+	mut found := false
+	for file in files {
+		for stmt in file.stmts {
+			if stmt is ast.FnDecl && stmt.name == 'f' {
+				assert stmt.stmts.len == 3
+				assert stmt.stmts[1] is ast.AssignStmt
+				tmp_assign := stmt.stmts[1] as ast.AssignStmt
+				assert tmp_assign.op == .decl_assign
+				assert tmp_assign.lhs.len == 1
+				assert tmp_assign.lhs[0] is ast.Ident
+				tmp_name := (tmp_assign.lhs[0] as ast.Ident).name
+				assert tmp_name.starts_with('_ap_t')
+				assert tmp_assign.rhs.len == 1
+				assert tmp_assign.rhs[0] is ast.CallExpr
+				rhs_call := tmp_assign.rhs[0] as ast.CallExpr
+				assert rhs_call.lhs is ast.Ident
+				assert (rhs_call.lhs as ast.Ident).name == 'make_items'
+				assert stmt.stmts[2] is ast.ExprStmt
+				expr_stmt := stmt.stmts[2] as ast.ExprStmt
+				assert expr_stmt.expr is ast.CallExpr
+				call := expr_stmt.expr as ast.CallExpr
+				assert call.lhs is ast.Ident
+				assert (call.lhs as ast.Ident).name == 'builtin__array_push_noscan'
+				assert call.args.len == 2
+				assert call.args[1] is ast.ArrayInitExpr
+				outer_arr := call.args[1] as ast.ArrayInitExpr
+				assert outer_arr.exprs.len == 1
+				assert outer_arr.exprs[0] is ast.Ident
+				assert (outer_arr.exprs[0] as ast.Ident).name == tmp_name
+				found = true
+			}
+		}
+	}
+	assert found
+}
+
+fn test_transform_for_in_nested_array_value_uses_array_index() {
+	files := transform_code_for_test('
+fn f(groups [][]string) []int {
+	mut counts := []int{}
+	for group in groups {
+		counts << group.len
+	}
+	return counts
+}
+')
+	mut found := false
+	for file in files {
+		for stmt in file.stmts {
+			if stmt is ast.FnDecl && stmt.name == 'f' {
+				assert stmt.stmts.len >= 2
+				assert stmt.stmts[1] is ast.ForStmt
+				for_stmt := stmt.stmts[1] as ast.ForStmt
+				assert for_stmt.stmts.len > 0
+				assert for_stmt.stmts[0] is ast.AssignStmt
+				value_assign := for_stmt.stmts[0] as ast.AssignStmt
+				assert value_assign.lhs.len == 1
+				assert value_assign.lhs[0] is ast.Ident
+				assert (value_assign.lhs[0] as ast.Ident).name == 'group'
+				assert value_assign.rhs.len == 1
+				assert value_assign.rhs[0] is ast.IndexExpr
+				index_expr := value_assign.rhs[0] as ast.IndexExpr
+				assert index_expr.lhs !is ast.CastExpr
 				found = true
 			}
 		}

@@ -133,3 +133,25 @@ fn main() {
 	assert run_res.exit_code == 0, run_res.output
 	assert run_res.output.trim_space() == 'flat parallel ok', run_res.output
 }
+
+fn test_default_parallel_transform_monomorphizes_generic_calls_for_native_backend() {
+	path := write_tmp_file('parallel_transform_generic_main', 'module main
+
+fn id[T](x T) T {
+	return x
+}
+
+fn main() {
+	_ = id(41)
+}
+')
+	out_path := '/tmp/v2_parallel_generic_transform_${os.getpid()}.out'
+	defer {
+		os.rm(path) or {}
+		os.rm(out_path) or {}
+	}
+	cmd := '${os.quoted_path(@VEXE)} -v2 -nocache -backend arm64 -gc none -o ${os.quoted_path(out_path)} ${os.quoted_path(path)} 2>&1'
+	res := os.execute(cmd)
+	assert !res.output.contains('_id_T_int'), res.output
+	assert res.exit_code == 0, res.output
+}

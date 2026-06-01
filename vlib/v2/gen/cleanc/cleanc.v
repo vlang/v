@@ -50,11 +50,6 @@ mut:
 	cur_fn_returned_idents    map[string]bool
 	active_generic_types      map[string]types.Type
 	cur_fn_generic_params     map[string]string
-	// Phase-1 generic monomorphization (V2_TRANSFORMER_MONOMORPH=1):
-	// when true, the transformer has already cloned generic FnDecls per
-	// env.generic_types binding. Cleanc skips its own spec emission paths
-	// for any FnDecl with non-empty generic_params to avoid duplicates.
-	monomorphize_in_transformer bool
 	// Comptime $for field iteration state
 	comptime_field_var      string // variable name (e.g., 'field')
 	comptime_field_name     string // current field name (e.g., 'id')
@@ -271,6 +266,9 @@ fn generic_signature_struct_type_name(raw_name string) string {
 	if name == '' || !name.contains('_T_') {
 		return ''
 	}
+	if name.contains('(*)') {
+		return ''
+	}
 	if name in primitive_types || name in ['string', 'array', 'map', 'void*', 'char*', 'u8*'] {
 		return ''
 	}
@@ -464,7 +462,6 @@ fn new_gen_with_env_and_pref_impl(env &types.Environment, p &pref.Preferences) &
 		c_struct_types:              map[string]bool{}
 		typedef_c_types:             map[string]bool{}
 		blocked_fn_keys:             map[string]bool{}
-		monomorphize_in_transformer: os.getenv('V2_TRANSFORMER_MONOMORPH') != ''
 	}
 }
 
@@ -927,15 +924,6 @@ pub fn (mut g Gen) gen_passes_1_to_4() {
 	g.generic_struct_bindings['stdatomic__AtomicVal'] = {
 		'T': types.Type(types.int_)
 	}
-	for _ in 0 .. 4 {
-		before_generic_specs := g.late_generic_spec_count()
-		g.discover_comptime_generic_specs()
-		g.discover_nested_generic_specs()
-		g.discover_direct_generic_call_specs()
-		if g.late_generic_spec_count() == before_generic_specs {
-			break
-		}
-	}
 	stage_start = g.mark_cgen_step(stats_enabled, stats_scope, mut stats_sw, stage_start,
 		'setup.discover_generic_specs')
 	g.collect_force_emit_sort_fns()
@@ -1333,6 +1321,9 @@ pub fn (mut g Gen) gen_passes_1_to_4() {
 					// C extern declarations — their prototypes come from #include/#insert headers.
 					continue
 				}
+				if g.should_skip_backend_generic_fn(stmt) {
+					continue
+				}
 				if g.cur_module == 'eventbus' && stmt.is_method
 					&& receiver_generic_param_names(stmt).len > 0 {
 					prev_generic_types := g.active_generic_types.clone()
@@ -1363,15 +1354,7 @@ pub fn (mut g Gen) gen_passes_1_to_4() {
 				}
 				// Generic functions: emit as macros for known simple functions
 				if g.generic_fn_param_names(stmt).len > 0 {
-					if g.monomorphize_in_transformer {
-						continue
-					}
 					gfn_name := g.get_fn_name(stmt)
-					if gfn_name.ends_with('SamplingJob__decompress') {
-						g.record_fn_owner_for_current_file(gfn_name, fi)
-						g.emit_sampling_job_decompress_decl(gfn_name)
-						continue
-					}
 					specs := g.generic_fn_specializations_for_emit_scope(stmt)
 					if specs.len > 0 {
 						prev_generic_types := g.active_generic_types.clone()
@@ -1747,9 +1730,7 @@ pub fn (mut g Gen) gen_pass5_pre() []int {
 
 // gen_pass5_post runs post-Pass-5 finalization (interface wrappers, live reload, map helpers).
 pub fn (mut g Gen) gen_pass5_post() {
-	g.emit_late_called_generic_specializations()
 	g.emit_forced_helpers_from_non_emit_files()
-	g.emit_weak_generic_specializations_from_non_emit_files()
 	g.emit_needed_ierror_wrappers()
 	g.emit_needed_interface_method_wrappers()
 	g.emit_interface_clone_helpers()
@@ -1763,63 +1744,6 @@ pub fn (mut g Gen) gen_pass5_post() {
 }
 
 fn (mut g Gen) emit_late_called_generic_specializations() {
-	if g.called_fn_names.len == 0 || g.late_generic_spec_count() == 0 {
-		return
-	}
-	old_file := g.cur_file_name
-	old_module := g.cur_module
-	old_import_modules := g.cur_import_modules.clone()
-	old_active_generic_types := g.active_generic_types.clone()
-	old_sb := g.sb
-	mut emitted_any := true
-	for emitted_any {
-		emitted_any = false
-		for file in g.files {
-			g.set_file_module(file)
-			if !g.should_emit_current_file() {
-				continue
-			}
-			for i := 0; i < file.stmts.len; i++ {
-				stmt_ptr := unsafe { &file.stmts[i] }
-				if !stmt_has_valid_data(*stmt_ptr) || (*stmt_ptr) !is ast.FnDecl {
-					continue
-				}
-				fn_decl_ptr := &((*stmt_ptr) as ast.FnDecl)
-				if g.generic_fn_param_names(*fn_decl_ptr).len == 0 {
-					continue
-				}
-				if receiver_generic_param_names(*fn_decl_ptr).len > 0 {
-					continue
-				}
-				for spec in g.late_generic_fn_specializations(*fn_decl_ptr) {
-					if spec.name !in g.called_fn_names {
-						continue
-					}
-					fn_key := 'fn_${spec.name}'
-					if fn_key in g.emitted_types {
-						continue
-					}
-					g.active_generic_types = spec.generic_types.clone()
-					mut tmp_sb := strings.new_builder(1024)
-					g.sb = tmp_sb
-					g.gen_fn_decl_with_name_ptr(fn_decl_ptr, spec.name)
-					tmp_sb = g.sb
-					g.sb = old_sb
-					g.active_generic_types = old_active_generic_types.clone()
-					def := tmp_sb.str()
-					if def != '' {
-						g.late_struct_defs << def
-						emitted_any = true
-					}
-				}
-			}
-		}
-	}
-	g.sb = old_sb
-	g.cur_file_name = old_file
-	g.cur_module = old_module
-	g.cur_import_modules = old_import_modules.clone()
-	g.active_generic_types = old_active_generic_types.clone()
 }
 
 fn (mut g Gen) emit_forced_helpers_from_non_emit_files() {
@@ -1879,71 +1803,6 @@ fn (mut g Gen) emit_forced_helpers_from_non_emit_files() {
 }
 
 fn (mut g Gen) emit_weak_generic_specializations_from_non_emit_files() {
-	if g.emit_files.len == 0 || g.cache_bundle_name.len > 0 || g.fn_return_types.len == 0 {
-		return
-	}
-	$if trace_weak ? {
-		eprintln('[weak] enter called_fn_names.len=${g.called_fn_names.len} late_generic_specs.len=${g.late_generic_specs.len}')
-	}
-	old_file := g.cur_file_name
-	old_module := g.cur_module
-	mut old_import_modules := g.cur_import_modules.clone()
-	mut old_active_generic_types := g.active_generic_types.clone()
-	root_called_names := g.called_fn_names.clone()
-	mut needed_names := g.called_fn_names.clone()
-	mut required_names := root_called_names.clone()
-	mut scanned := map[string]bool{}
-	for i in 0 .. 8 {
-		before_needed := needed_names.len
-		g.scan_weak_generic_specializations_from_non_emit_files(root_called_names, required_names, mut
-			needed_names, mut required_names, mut scanned)
-		$if trace_weak ? {
-			eprintln('[weak] outer scan ${i} needed=${needed_names.len} scanned=${scanned.len} sb=${g.sb.len}')
-		}
-		if needed_names.len == before_needed {
-			break
-		}
-	}
-	mut emitted_bodies := map[string]bool{}
-	for j in 0 .. 6 {
-		$if trace_weak ? {
-			eprintln('[weak] emit-iter ${j} ENTER late_generic_specs=${g.late_generic_specs.len} late_total=${g.late_generic_spec_count()} needed=${needed_names.len} sb=${g.sb.len}')
-		}
-		mut emitted_decls := map[string]bool{}
-		g.emit_weak_generic_specialization_decls(needed_names, root_called_names, required_names, mut
-			emitted_decls)
-		$if trace_weak ? {
-			eprintln('[weak] emit-iter ${j} after decls emitted=${emitted_decls.len} sb=${g.sb.len} rss_mb=${g.process_rss_mb()}')
-		}
-		g.emit_weak_generic_specialization_bodies(needed_names, root_called_names, required_names, mut
-			emitted_bodies)
-		$if trace_weak ? {
-			eprintln('[weak] emit-iter ${j} after bodies emitted=${emitted_bodies.len} sb=${g.sb.len} late_total=${g.late_generic_spec_count()} rss_mb=${g.process_rss_mb()}')
-		}
-		before_needed := needed_names.len
-		g.add_called_weak_generic_names(mut needed_names, mut required_names)
-		for i in 0 .. 8 {
-			before_scan := needed_names.len
-			g.scan_weak_generic_specializations_from_non_emit_files(root_called_names,
-				required_names, mut needed_names, mut required_names, mut scanned)
-			$if trace_weak ? {
-				eprintln('[weak]   inner scan ${i} needed=${needed_names.len} scanned=${scanned.len} sb=${g.sb.len} late_total=${g.late_generic_spec_count()} rss_mb=${g.process_rss_mb()}')
-			}
-			if needed_names.len == before_scan {
-				break
-			}
-		}
-		if needed_names.len == before_needed {
-			break
-		}
-	}
-	g.active_generic_types = old_active_generic_types.move()
-	g.cur_file_name = old_file
-	g.cur_module = old_module
-	g.cur_import_modules = old_import_modules.move()
-	$if trace_weak ? {
-		eprintln('[weak] exit needed=${needed_names.len} scanned=${scanned.len} sb=${g.sb.len}')
-	}
 }
 
 fn (mut g Gen) scan_weak_generic_specializations_from_non_emit_files(root_called_names map[string]bool, required_names map[string]bool, mut needed_names map[string]bool, mut required_names_mut map[string]bool, mut scanned map[string]bool) {

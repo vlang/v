@@ -89,8 +89,9 @@ mut:
 	// Declared storage types for local variables in the current function.
 	// These stay separate from checker/current expression types, which can be
 	// narrowed by smartcasts while the variable is still stored as its declared type.
-	local_decl_types              map[string]types.Type
-	local_fn_pointer_return_types map[string]types.Type
+	local_decl_types                map[string]types.Type
+	local_fn_pointer_return_types   map[string]types.Type
+	local_receiver_generic_bindings map[string]map[string]types.Type
 	// Track whether post-pass should inject the synthetic embed_file helper type.
 	needed_embed_file_helper bool
 	// Override array element types for variables whose checker-inferred type is wrong
@@ -99,16 +100,19 @@ mut:
 	// File set for resolving positions to line numbers (for assert messages)
 	file_set &token.FileSet = unsafe { nil }
 	// Current file and function name (for assert messages)
-	cur_file_name           string
-	cur_fn_name_str         string
-	cur_fn_recv_prefix      string // C prefix for current method's receiver type (e.g., "ui__Window")
-	cur_fn_recv_param       string // Receiver parameter name (e.g., "w")
-	cur_fn_recv_is_ptr      bool   // Receiver is passed as a C pointer in the current method
-	cur_fn_generic_params   []string
-	generic_var_type_params map[string]string
-	generic_fn_decl_names   map[string]bool
-	generic_fn_decl_stmts   map[string][]ast.Stmt
-	generic_fn_value_names  map[string]bool
+	cur_file_name                 string
+	cur_fn_name_str               string
+	cur_fn_recv_prefix            string // C prefix for current method's receiver type (e.g., "ui__Window")
+	cur_fn_recv_param             string // Receiver parameter name (e.g., "w")
+	cur_fn_recv_is_ptr            bool   // Receiver is passed as a C pointer in the current method
+	cur_fn_generic_params         []string
+	generic_var_type_params       map[string]string
+	generic_fn_decl_names         map[string]bool
+	generic_fn_decl_stmts         map[string][]ast.Stmt
+	generic_fn_decl_index         map[string]ast.FnDecl
+	generic_fn_value_names        map[string]bool
+	monomorphized_fn_bindings     map[string]map[string]types.Type
+	cur_monomorphized_fn_bindings map[string]types.Type
 	// @[live] hot code reloading: function names and source file
 	live_fns         []LiveFn
 	live_source_file string
@@ -122,12 +126,9 @@ mut:
 	// Instead of writing directly to env.set_expr_type during parallel transform,
 	// store here and apply after merge.
 	synth_types map[int]types.Type
-	// Phase-1 generic monomorphization (behind V2_TRANSFORMER_MONOMORPH=1).
-	// When enabled, the transformer clones generic FnDecls per
-	// env.generic_types binding before code generation. cleanc consults
-	// monomorphized_specs to skip duplicate weak emission of the same names.
-	monomorphize_enabled bool
-	monomorphized_specs  map[string]bool
+	// Generic monomorphization clones generic FnDecls per env.generic_types
+	// binding before code generation, so backends receive concrete functions.
+	monomorphized_specs map[string]bool
 	// Cached at construction: avoids per-block t.pref nil/enum re-check in
 	// hot loops (transform_stmts, IfGuardExpr handling, OrExpr expansion, etc).
 	is_native_be bool
@@ -261,31 +262,34 @@ pub fn Transformer.new_with_pref(env &types.Environment, p &pref.Preferences) &T
 
 fn new_transformer_base(env &types.Environment, p &pref.Preferences) &Transformer {
 	mut t := &Transformer{
-		pref:                          unsafe { p }
-		env:                           unsafe { env }
-		needed_str_fns:                map[string]string{}
-		needed_clone_fns:              map[string]string{}
-		needed_array_contains_fns:     map[string]ArrayMethodInfo{}
-		needed_array_index_fns:        map[string]ArrayMethodInfo{}
-		needed_array_last_index_fns:   map[string]ArrayMethodInfo{}
-		needed_sort_fns:               map[string]SortComparatorInfo{}
-		needed_enum_str_fns:           map[string]types.Enum{}
-		needed_go_wrappers:            map[string]GoWrapperInfo{}
-		local_decl_types:              map[string]types.Type{}
-		local_fn_pointer_return_types: map[string]types.Type{}
-		generic_var_type_params:       map[string]string{}
-		generic_fn_decl_names:         map[string]bool{}
-		generic_fn_decl_stmts:         map[string][]ast.Stmt{}
-		generic_fn_value_names:        map[string]bool{}
-		runtime_const_inits_by_mod:    map[string][]RuntimeConstInit{}
-		runtime_const_init_fn_name:    map[string]string{}
-		runtime_const_known:           map[string]bool{}
-		runtime_const_storage_known:   map[string]bool{}
-		interface_concrete_types:      map[string]string{}
-		smartcast_expr_counts:         map[string]int{}
-		monomorphize_enabled:          os.getenv('V2_TRANSFORMER_MONOMORPH') != ''
-		monomorphized_specs:           map[string]bool{}
-		is_native_be:                  p != unsafe { nil }
+		pref:                            unsafe { p }
+		env:                             unsafe { env }
+		needed_str_fns:                  map[string]string{}
+		needed_clone_fns:                map[string]string{}
+		needed_array_contains_fns:       map[string]ArrayMethodInfo{}
+		needed_array_index_fns:          map[string]ArrayMethodInfo{}
+		needed_array_last_index_fns:     map[string]ArrayMethodInfo{}
+		needed_sort_fns:                 map[string]SortComparatorInfo{}
+		needed_enum_str_fns:             map[string]types.Enum{}
+		needed_go_wrappers:              map[string]GoWrapperInfo{}
+		local_decl_types:                map[string]types.Type{}
+		local_fn_pointer_return_types:   map[string]types.Type{}
+		local_receiver_generic_bindings: map[string]map[string]types.Type{}
+		generic_var_type_params:         map[string]string{}
+		generic_fn_decl_names:           map[string]bool{}
+		generic_fn_decl_stmts:           map[string][]ast.Stmt{}
+		generic_fn_decl_index:           map[string]ast.FnDecl{}
+		generic_fn_value_names:          map[string]bool{}
+		monomorphized_fn_bindings:       map[string]map[string]types.Type{}
+		cur_monomorphized_fn_bindings:   map[string]types.Type{}
+		runtime_const_inits_by_mod:      map[string][]RuntimeConstInit{}
+		runtime_const_init_fn_name:      map[string]string{}
+		runtime_const_known:             map[string]bool{}
+		runtime_const_storage_known:     map[string]bool{}
+		interface_concrete_types:        map[string]string{}
+		smartcast_expr_counts:           map[string]int{}
+		monomorphized_specs:             map[string]bool{}
+		is_native_be:                    p != unsafe { nil }
 			&& (p.backend == .arm64 || p.backend == .x64)
 	}
 	return t
@@ -301,35 +305,40 @@ pub fn (mut t Transformer) set_file_set(fs &token.FileSet) {
 // worker_idx offsets synth_pos_counter so workers don't generate conflicting IDs.
 pub fn (t &Transformer) new_worker_clone(worker_idx int) &Transformer {
 	return &Transformer{
-		pref:                          unsafe { t.pref }
-		env:                           unsafe { t.env }
-		elided_fns:                    t.elided_fns.clone()
-		comptime_vmodroot:             t.comptime_vmodroot
-		file_set:                      unsafe { t.file_set }
-		cached_scopes:                 t.cached_scopes.clone()
-		cached_methods:                t.cached_methods.clone()
-		cached_method_keys:            t.cached_method_keys.clone()
-		cached_fn_scopes:              t.cached_fn_scopes.clone()
-		synth_pos_counter:             -(worker_idx * 100_000)
-		needed_str_fns:                map[string]string{}
-		needed_clone_fns:              map[string]string{}
-		needed_array_contains_fns:     map[string]ArrayMethodInfo{}
-		needed_array_index_fns:        map[string]ArrayMethodInfo{}
-		needed_array_last_index_fns:   map[string]ArrayMethodInfo{}
-		needed_sort_fns:               map[string]SortComparatorInfo{}
-		needed_enum_str_fns:           map[string]types.Enum{}
-		needed_go_wrappers:            map[string]GoWrapperInfo{}
-		local_decl_types:              map[string]types.Type{}
-		local_fn_pointer_return_types: map[string]types.Type{}
-		generic_var_type_params:       map[string]string{}
-		generic_fn_value_names:        t.generic_fn_value_names.clone()
-		runtime_const_inits_by_mod:    map[string][]RuntimeConstInit{}
-		runtime_const_init_fn_name:    map[string]string{}
-		runtime_const_known:           map[string]bool{}
-		runtime_const_storage_known:   map[string]bool{}
-		interface_concrete_types:      map[string]string{}
-		smartcast_expr_counts:         map[string]int{}
-		is_native_be:                  t.is_native_be
+		pref:                            unsafe { t.pref }
+		env:                             unsafe { t.env }
+		elided_fns:                      t.elided_fns.clone()
+		comptime_vmodroot:               t.comptime_vmodroot
+		file_set:                        unsafe { t.file_set }
+		cached_scopes:                   t.cached_scopes.clone()
+		cached_methods:                  t.cached_methods.clone()
+		cached_method_keys:              t.cached_method_keys.clone()
+		cached_fn_scopes:                t.cached_fn_scopes.clone()
+		synth_types:                     t.synth_types.clone()
+		synth_pos_counter:               -(worker_idx * 100_000)
+		needed_str_fns:                  map[string]string{}
+		needed_clone_fns:                map[string]string{}
+		needed_array_contains_fns:       map[string]ArrayMethodInfo{}
+		needed_array_index_fns:          map[string]ArrayMethodInfo{}
+		needed_array_last_index_fns:     map[string]ArrayMethodInfo{}
+		needed_sort_fns:                 map[string]SortComparatorInfo{}
+		needed_enum_str_fns:             map[string]types.Enum{}
+		needed_go_wrappers:              map[string]GoWrapperInfo{}
+		local_decl_types:                map[string]types.Type{}
+		local_fn_pointer_return_types:   map[string]types.Type{}
+		local_receiver_generic_bindings: map[string]map[string]types.Type{}
+		generic_var_type_params:         map[string]string{}
+		generic_fn_decl_index:           t.generic_fn_decl_index.clone()
+		generic_fn_value_names:          t.generic_fn_value_names.clone()
+		monomorphized_fn_bindings:       t.monomorphized_fn_bindings.clone()
+		cur_monomorphized_fn_bindings:   map[string]types.Type{}
+		runtime_const_inits_by_mod:      map[string][]RuntimeConstInit{}
+		runtime_const_init_fn_name:      map[string]string{}
+		runtime_const_known:             map[string]bool{}
+		runtime_const_storage_known:     map[string]bool{}
+		interface_concrete_types:        map[string]string{}
+		smartcast_expr_counts:           map[string]int{}
+		is_native_be:                    t.is_native_be
 	}
 }
 
@@ -2197,11 +2206,7 @@ pub fn (mut t Transformer) inject_embed_file_helper_to_flat(mut out ast.FlatBuil
 // transform_files transforms all files and returns transformed copies
 pub fn (mut t Transformer) transform_files(files []ast.File) []ast.File {
 	t.pre_pass(files)
-	files_to_transform := if t.monomorphize_enabled {
-		t.monomorphize_pass(files)
-	} else {
-		files
-	}
+	files_to_transform := t.prepare_files_for_transform(files)
 	mut result := []ast.File{cap: files_to_transform.len}
 	for file in files_to_transform {
 		result << t.transform_file(file)
@@ -2214,16 +2219,9 @@ pub fn (mut t Transformer) transform_files(files []ast.File) []ast.File {
 // but seeds the pre-pass accumulators from FlatAst rather than from the
 // legacy ast.File list.
 //
-// When `files` is empty and monomorphization is disabled, the per-file
-// transform streams: each file is rehydrated from `flat` one at a time
-// just before transform_file consumes it, so the 120 MB bulk legacy
-// array never exists. Peak memory during transform drops to
-// (cumulative result + 1 in-flight source file) instead of
-// (full source array + full result array).
-//
 // Monomorphization needs the full file set up front (it builds a
-// cross-file generic-decl index), so that path falls back to the
-// non-streaming behavior — rehydrating internally when `files` is empty.
+// cross-file generic-decl index), so the flat input is rehydrated internally
+// when `files` is empty.
 pub fn (mut t Transformer) transform_files_from_flat(flat &ast.FlatAst, files []ast.File) []ast.File {
 	mut result := t.transform_files_from_flat_no_post_pass(flat, files)
 	t.post_pass(mut result)
@@ -2238,9 +2236,9 @@ pub fn (mut t Transformer) transform_files_from_flat(flat &ast.FlatAst, files []
 // `post_pass_to_flat` on the flattened output instead) call this helper.
 fn (mut t Transformer) transform_files_from_flat_no_post_pass(flat &ast.FlatAst, files []ast.File) []ast.File {
 	t.pre_pass_from_flat(flat)
-	if t.monomorphize_enabled {
+	if t.needs_full_files_for_transform() {
 		src_files := if files.len == 0 { flat.to_files() } else { files }
-		files_to_transform := t.monomorphize_pass(src_files)
+		files_to_transform := t.prepare_files_for_transform(src_files)
 		mut result := []ast.File{cap: files_to_transform.len}
 		for file in files_to_transform {
 			result << t.transform_file(file)
@@ -4556,6 +4554,9 @@ fn (mut t Transformer) transform_assign_stmt_parts(stmt ast.AssignStmt) (token.T
 				if rhs_type := t.get_expr_type(rhs_src[0]) {
 					t.register_local_var_type(lhs_name, rhs_type)
 				}
+			}
+			if bindings := t.generic_bindings_from_generic_call_expr(rhs_src[0]) {
+				t.local_receiver_generic_bindings[lhs_name] = bindings.clone()
 			}
 		}
 	}

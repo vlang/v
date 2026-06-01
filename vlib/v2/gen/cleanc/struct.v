@@ -3942,7 +3942,9 @@ fn (mut g Gen) gen_init_expr(node ast.InitExpr) {
 	g.expected_init_expr_type = ''
 	mut type_name := g.expr_type_to_c(node.typ)
 	if node.typ is ast.Ident {
-		if fn_local_type := g.current_fn_module_local_type_name(node.typ.name) {
+		if g.type_expr_has_metadata(node.typ) {
+			// Position metadata is authoritative for synthesized type expressions.
+		} else if fn_local_type := g.current_fn_module_local_type_name(node.typ.name) {
 			type_name = fn_local_type
 		}
 	}

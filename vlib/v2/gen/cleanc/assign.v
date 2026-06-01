@@ -785,7 +785,9 @@ fn (mut g Gen) gen_assign_stmt(node ast.AssignStmt) {
 		}
 		mut typ := g.get_expr_type(rhs)
 		if rhs is ast.InitExpr && rhs.typ is ast.Ident {
-			if fn_local_type := g.current_fn_module_local_type_name(rhs.typ.name) {
+			if g.type_expr_has_metadata(rhs.typ) {
+				// Position metadata is authoritative for synthesized type expressions.
+			} else if fn_local_type := g.current_fn_module_local_type_name(rhs.typ.name) {
 				typ = fn_local_type
 			}
 		}

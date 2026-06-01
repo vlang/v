@@ -997,6 +997,21 @@ fn is_generic_placeholder_type_name(name string) bool {
 	return name in ['T', 'K', 'V'] || (name.len == 1 && name[0] >= `A` && name[0] <= `Z`)
 }
 
+fn (mut g Gen) type_expr_has_metadata(expr ast.Expr) bool {
+	if _ := g.get_expr_type_from_env(expr) {
+		return true
+	}
+	if g.env != unsafe { nil } && expr_has_valid_data(expr) {
+		pos := expr.pos()
+		if pos.id != 0 {
+			if typ := g.env.get_expr_type(pos.id) {
+				return type_has_valid_data(typ)
+			}
+		}
+	}
+	return false
+}
+
 fn (g &Gen) qualify_module_local_type_name(type_name string) string {
 	mut mod_name := g.cur_module
 	if (mod_name == '' || mod_name == 'main') && g.cur_fn_c_name.contains('__') {
@@ -3033,6 +3048,9 @@ fn (mut g Gen) get_expr_type(node ast.Expr) string {
 	if !expr_has_valid_data(node) {
 		return ''
 	}
+	if node is ast.StringLiteral && node.kind == .c {
+		return 'char*'
+	}
 	// For identifiers, check local/parameter types first (authoritative),
 	// then fall back to env position lookup.
 	if node is ast.Ident {
@@ -3238,6 +3256,9 @@ fn (mut g Gen) get_expr_type(node ast.Expr) string {
 	}
 	if node is ast.InitExpr {
 		typ_name := g.expr_type_to_c(node.typ)
+		if g.type_expr_has_metadata(node.typ) {
+			return typ_name
+		}
 		if node.typ is ast.Ident {
 			type_ident := node.typ as ast.Ident
 			if is_generic_placeholder_type_name(type_ident.name) {
@@ -3250,11 +3271,12 @@ fn (mut g Gen) get_expr_type(node ast.Expr) string {
 		init_expr := node.expr as ast.InitExpr
 		mut typ := g.expr_type_to_c(init_expr.typ)
 		mut is_generic_init := false
+		metadata_backed := g.type_expr_has_metadata(init_expr.typ)
 		if init_expr.typ is ast.Ident {
 			type_ident := init_expr.typ as ast.Ident
 			is_generic_init = is_generic_placeholder_type_name(type_ident.name)
 		}
-		if !is_generic_init {
+		if !is_generic_init && !metadata_backed {
 			typ = g.qualify_module_local_type_name(typ)
 		}
 		return typ + '*'
@@ -3702,7 +3724,11 @@ fn (mut g Gen) get_expr_type(node ast.Expr) string {
 			return 'int'
 		}
 		ast.InitExpr {
-			return g.qualify_module_local_type_name(g.expr_type_to_c(node.typ))
+			typ_name := g.expr_type_to_c(node.typ)
+			if g.type_expr_has_metadata(node.typ) {
+				return typ_name
+			}
+			return g.qualify_module_local_type_name(typ_name)
 		}
 		ast.ArrayInitExpr {
 			is_fixed_marker := array_init_has_fixed_len_marker(node)
@@ -4081,9 +4107,6 @@ fn (mut g Gen) expr_type_to_c(e ast.Expr) string {
 	match e {
 		ast.Ident {
 			name := e.name
-			if name.starts_with('[]') || name.starts_with('map[') || name.starts_with('&') {
-				return g.c_type_from_type_name(name)
-			}
 			if name in ['int', 'i64', 'i32', 'i16', 'i8', 'u64', 'u32', 'u16', 'u8', 'byte', 'rune',
 				'f32', 'f64', 'usize', 'isize'] {
 				return name
@@ -4097,12 +4120,6 @@ fn (mut g Gen) expr_type_to_c(e ast.Expr) string {
 			if name == 'chan' {
 				return 'chan'
 			}
-			if name == 'Error' && !g.c_type_name_declared_in_module(g.cur_module, name) {
-				return 'Error'
-			}
-			if name == 'IError' {
-				return 'IError'
-			}
 			if name == 'voidptr' {
 				return 'void*'
 			}
@@ -4111,6 +4128,27 @@ fn (mut g Gen) expr_type_to_c(e ast.Expr) string {
 			}
 			if name == 'byteptr' {
 				return 'u8*'
+			}
+			if env_type := g.get_expr_type_from_env(e) {
+				env_c := env_type.trim_space()
+				if env_c != '' && env_c != 'int' {
+					return env_c
+				}
+			}
+			if raw_type := g.get_raw_type(e) {
+				raw_c := g.types_type_to_c(raw_type).trim_space()
+				if raw_c != '' && raw_c != 'int' {
+					return raw_c
+				}
+			}
+			if name.starts_with('[]') || name.starts_with('map[') || name.starts_with('&') {
+				return g.c_type_from_type_name(name)
+			}
+			if name == 'Error' && !g.c_type_name_declared_in_module(g.cur_module, name) {
+				return 'Error'
+			}
+			if name == 'IError' {
+				return 'IError'
 			}
 			specialized_name := g.c_type_from_possible_specialization_token(name)
 			if specialized_name != name {
@@ -4992,9 +5030,6 @@ fn (g &Gen) is_module_local_type(name string) bool {
 		if _ := module_scope.lookup_type(name) {
 			return true
 		}
-	}
-	if obj := g.lookup_module_scope_object(name) {
-		return obj is types.Type
 	}
 	return false
 }

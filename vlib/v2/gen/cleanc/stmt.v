@@ -681,9 +681,12 @@ fn (mut g Gen) gen_comptime_for(node ast.ForStmt) {
 	}
 	type_name := sel.lhs.name()
 	concrete := g.active_generic_types[type_name] or {
-		g.write_indent()
-		g.sb.writeln('/* [TODO] ComptimeFor unknown type ${type_name} */')
-		return
+		c_name := g.expr_type_to_c(sel.lhs).trim_space()
+		g.concrete_type_from_c_name(c_name) or {
+			g.write_indent()
+			g.sb.writeln('/* [TODO] ComptimeFor unknown type ${type_name} */')
+			return
+		}
 	}
 	if concrete !is types.Struct {
 		g.write_indent()
