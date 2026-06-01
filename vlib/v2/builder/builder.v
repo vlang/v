@@ -59,6 +59,9 @@ mut:
 	// pre-sized arenas. We can only size after we know the input set, so
 	// the first parse_batch call lazily initializes it.
 	flat_builder_inited bool
+	// Source AST snapshot used only for an isolated macOS tiny candidate graph.
+	// The normal hosted graph is still built from b.files and remains the fallback.
+	macos_tiny_candidate_source_files []ast.File
 }
 
 pub fn new_builder(prefs &pref.Preferences) &Builder {
@@ -235,6 +238,8 @@ pub fn (mut b Builder) build(files []string) {
 	print_rss('after type check')
 	print_heap('after type check')
 
+	b.prepare_macos_tiny_candidate_source_files()
+
 	// Transform AST (flag enum desugaring, etc.)
 	transform_start := sw.elapsed()
 	mut trans := transformer.Transformer.new_with_pref(b.env, b.pref)
@@ -297,7 +302,7 @@ pub fn (mut b Builder) build(files []string) {
 		if use_flat_markused && !flat_populated_by_transform {
 			b.flat = ast.flatten_files(b.files)
 		}
-		if b.uses_minimal_windows_x64_runtime() {
+		if b.uses_minimal_x64_runtime_roots() {
 			opts := markused.MarkUsedOptions{
 				minimal_runtime_roots: true
 			}
@@ -1473,6 +1478,14 @@ fn is_windows_x64_native_target(arch pref.Arch, target_os string) bool {
 	return arch == .x64 && normalize_target_os_name(target_os) == 'windows'
 }
 
+fn is_linux_x64_native_target(arch pref.Arch, target_os string) bool {
+	return arch == .x64 && normalize_target_os_name(target_os) == 'linux'
+}
+
+fn is_macos_x64_native_target(arch pref.Arch, target_os string) bool {
+	return arch == .x64 && is_macos_native_target(target_os)
+}
+
 fn eprint_native_x64_link_error(message string) {
 	if message.starts_with('x64: unsupported backend feature: ') {
 		eprintln(message)
@@ -1485,6 +1498,52 @@ fn eprint_native_x64_link_error(message string) {
 fn (b &Builder) uses_minimal_windows_x64_runtime() bool {
 	arch := b.pref.get_effective_arch()
 	return b.pref.backend == .x64 && is_windows_x64_native_target(arch, b.pref.target_os_or_host())
+}
+
+fn (b &Builder) uses_minimal_linux_x64_runtime() bool {
+	arch := b.pref.get_effective_arch()
+	return b.pref.backend == .x64 && is_linux_x64_native_target(arch, b.pref.target_os_or_host())
+}
+
+fn (b &Builder) uses_minimal_x64_runtime() bool {
+	return b.uses_minimal_windows_x64_runtime() || b.uses_minimal_linux_x64_runtime()
+}
+
+fn linux_x64_tiny_strict_enabled() bool {
+	return os.getenv('V2_X64_LINUX_TINY') != ''
+}
+
+fn (b &Builder) uses_minimal_linux_x64_runtime_roots() bool {
+	return b.uses_minimal_linux_x64_runtime() && linux_x64_tiny_strict_enabled()
+}
+
+fn (b &Builder) uses_minimal_x64_runtime_roots() bool {
+	return b.uses_minimal_windows_x64_runtime() || b.uses_minimal_linux_x64_runtime_roots()
+}
+
+fn (b &Builder) uses_macos_x64_tiny_object(arch pref.Arch) bool {
+	return b.pref.backend == .x64 && is_macos_x64_native_target(arch, b.pref.target_os_or_host())
+		&& b.pref.macos_tiny
+}
+
+fn macos_native_link_command(output_binary string, obj_file string, sdk_path string, arch_flag string, tiny_object bool) string {
+	normal_link_cmd := 'ld -o ${output_binary} ${obj_file} -lSystem -syslibroot "${sdk_path}" -e _main -arch ${arch_flag} -platform_version macos 11.0.0 11.0.0'
+	if tiny_object {
+		return '${normal_link_cmd} -dead_strip -x -S'
+	}
+	return normal_link_cmd
+}
+
+fn (mut b Builder) prepare_macos_tiny_candidate_source_files() {
+	b.macos_tiny_candidate_source_files = []ast.File{}
+	if !b.uses_macos_x64_tiny_object(.x64) {
+		return
+	}
+	b.macos_tiny_candidate_source_files = if b.flat_check_enabled {
+		b.flat.to_files()
+	} else {
+		b.files.clone()
+	}
 }
 
 fn is_macos_native_target(target_os string) bool {
@@ -2231,29 +2290,38 @@ fn run_cc_cmd_or_exit(cmd string, stage string, show_cc bool) bool {
 	return false
 }
 
-fn (mut b Builder) gen_native(backend_arch pref.Arch) {
-	arch := if backend_arch == .auto { b.pref.get_effective_arch() } else { backend_arch }
-	target_os := b.pref.target_os_or_host()
+fn native_graph_stage_title(label string, title string) string {
+	if label == '' {
+		return title
+	}
+	return '${label} ${title}'
+}
 
-	// Build all files into a single SSA module
+const macos_tiny_candidate_graph_label = 'macOS Tiny Candidate'
+
+fn (b &Builder) native_mir_build_sequential(label string) bool {
+	return label == macos_tiny_candidate_graph_label || b.pref.no_parallel || b.pref.hot_fn.len > 0
+}
+
+fn (mut b Builder) build_native_mir_from_files(files []ast.File, arch pref.Arch, target_os string, minimal_runtime_roots bool, used_fn_keys map[string]bool, label string) mir.Module {
 	mut mod := ssa.Module.new('main')
 	if mod == unsafe { nil } {
 		eprintln('error: native backend not available (compiled with stubbed ssa module)')
 		eprintln('hint: use v2 compiled with v1 for native code generation')
-		return
+		exit(1)
 	}
 	mut ssa_builder := ssa.Builder.new_with_env(mod, b.env)
 	ssa_builder.guard_invalid_type_payloads = true
 	ssa_builder.target_os = target_os
-	ssa_builder.minimal_runtime_roots = b.uses_minimal_windows_x64_runtime()
+	ssa_builder.minimal_runtime_roots = minimal_runtime_roots
 	ssa_builder.native_backend_bulk_zero_alloca = arch == .x64
 	mut native_sw := time.new_stopwatch()
 
 	// Pass markused data for dead code elimination. The ARM64 backend has its own
 	// relocation-based dead stripping; using markused before SSA makes self-hosted
 	// compiler builds fragile when the markused set is under-collected.
-	if b.used_fn_keys.len > 0 && arch != .arm64 {
-		ssa_builder.used_fn_keys = b.used_fn_keys.clone()
+	if used_fn_keys.len > 0 && arch != .arm64 {
+		ssa_builder.used_fn_keys = used_fn_keys.clone()
 	}
 
 	// --single-backend: strip unused backend modules from the binary
@@ -2280,25 +2348,19 @@ fn (mut b Builder) gen_native(backend_arch pref.Arch) {
 		ssa_builder.hot_fn = b.pref.hot_fn
 	}
 
-	// Build all files together with proper multi-file ordering
 	mut stage_start := native_sw.elapsed()
-	if b.pref.no_parallel || b.pref.hot_fn.len > 0 {
-		ssa_builder.build_all(b.files)
+	if b.native_mir_build_sequential(label) {
+		ssa_builder.build_all(files)
 	} else {
 		// Phases 1-3 sequential, Phase 4 parallel, Phase 5 sequential
 		ssa_builder.skip_fn_bodies = true
-		ssa_builder.build_all(b.files)
+		ssa_builder.build_all(files)
 		ssa_builder.skip_fn_bodies = false
-		b.ssa_build_parallel(mut ssa_builder, b.files)
+		b.ssa_build_parallel(mut ssa_builder, files)
 		ssa_builder.generate_vinit()
 	}
-	print_time('SSA Build', time.Duration(native_sw.elapsed() - stage_start))
-
-	// SSA build has consumed b.files into `mod`; the rest of the native
-	// pipeline (optimize, MIR lower, ABI lower, insel, codegen, link)
-	// operates on `mod`/`mir_mod` only. Drop the ~120MB legacy AST so it
-	// can be reclaimed before codegen's working-set grows.
-	b.files = []ast.File{}
+	print_time(native_graph_stage_title(label, 'SSA Build'),
+		time.Duration(native_sw.elapsed() - stage_start))
 
 	stage_start = native_sw.elapsed()
 	ssa_optimization_required := b.native_backend_requires_ssa_optimization(arch)
@@ -2313,7 +2375,8 @@ fn (mut b Builder) gen_native(backend_arch pref.Arch) {
 	} else {
 		ssa_optimize.optimize(mut mod)
 	}
-	print_time('SSA Optimize', time.Duration(native_sw.elapsed() - stage_start))
+	print_time(native_graph_stage_title(label, 'SSA Optimize'),
+		time.Duration(native_sw.elapsed() - stage_start))
 	$if debug {
 		// Post-opt SSA verification is useful while debugging the optimizer, but it
 		// is currently noisy enough to block normal self-host builds. Keep it
@@ -2361,7 +2424,8 @@ fn (mut b Builder) gen_native(backend_arch pref.Arch) {
 
 	stage_start = native_sw.elapsed()
 	mut mir_mod := mir.lower_from_ssa(mod)
-	print_time('MIR Lower', time.Duration(native_sw.elapsed() - stage_start))
+	print_time(native_graph_stage_title(label, 'MIR Lower'),
+		time.Duration(native_sw.elapsed() - stage_start))
 
 	stage_start = native_sw.elapsed()
 	if is_windows_x64_native_target(arch, target_os) {
@@ -2369,11 +2433,44 @@ fn (mut b Builder) gen_native(backend_arch pref.Arch) {
 	} else {
 		abi.lower(mut mir_mod, arch)
 	}
-	print_time('ABI Lower', time.Duration(native_sw.elapsed() - stage_start))
+	print_time(native_graph_stage_title(label, 'ABI Lower'),
+		time.Duration(native_sw.elapsed() - stage_start))
 
 	stage_start = native_sw.elapsed()
 	insel.select(mut mir_mod, arch)
-	print_time('InsSel', time.Duration(native_sw.elapsed() - stage_start))
+	print_time(native_graph_stage_title(label, 'InsSel'),
+		time.Duration(native_sw.elapsed() - stage_start))
+	return mir_mod
+}
+
+fn (mut b Builder) build_macos_tiny_candidate_mir(arch pref.Arch, target_os string) mir.Module {
+	if b.macos_tiny_candidate_source_files.len == 0 {
+		eprintln('internal error: macOS tiny candidate graph was not prepared')
+		exit(1)
+	}
+	mut trans := transformer.Transformer.new_with_pref(b.env, b.pref)
+	trans.set_file_set(b.file_set)
+	trans.enable_macos_tiny_candidate_graph()
+	candidate_files := trans.transform_files(b.macos_tiny_candidate_source_files)
+	opts := markused.MarkUsedOptions{
+		minimal_runtime_roots: true
+	}
+	candidate_used_fn_keys := markused.mark_used_with_options(candidate_files, b.env, opts)
+	return b.build_native_mir_from_files(candidate_files, arch, target_os, true,
+		candidate_used_fn_keys, macos_tiny_candidate_graph_label)
+}
+
+fn (mut b Builder) gen_native(backend_arch pref.Arch) {
+	arch := if backend_arch == .auto { b.pref.get_effective_arch() } else { backend_arch }
+	target_os := b.pref.target_os_or_host()
+
+	mut mir_mod := b.build_native_mir_from_files(b.files, arch, target_os,
+		b.uses_minimal_x64_runtime_roots(), b.used_fn_keys, '')
+	// The hosted SSA build has consumed b.files into `mir_mod`; the rest of the
+	// normal native pipeline operates on MIR only. Drop the ~120MB legacy AST so
+	// it can be reclaimed before codegen's working-set grows. The macOS tiny
+	// candidate, when requested, uses its own saved source snapshot.
+	b.files = []ast.File{}
 
 	// Determine output binary name from the last user file
 	output_binary := if b.pref.output_file != '' {
@@ -2386,7 +2483,8 @@ fn (mut b Builder) gen_native(backend_arch pref.Arch) {
 
 	if arch == .arm64 && is_macos_native_target(target_os) {
 		// Use built-in linker for ARM64 macOS
-		stage_start = native_sw.elapsed()
+		mut native_sw := time.new_stopwatch()
+		stage_start := native_sw.elapsed()
 		mut gen := arm64.Gen.new(&mir_mod)
 		if b.pref.no_parallel {
 			gen.gen()
@@ -2413,6 +2511,7 @@ fn (mut b Builder) gen_native(backend_arch pref.Arch) {
 	} else {
 		// Generate object file and use external linker
 		obj_file := 'main.o'
+		mut used_macos_tiny_object := false
 
 		if arch == .arm64 {
 			mut gen := arm64.Gen.new(&mir_mod)
@@ -2425,10 +2524,11 @@ fn (mut b Builder) gen_native(backend_arch pref.Arch) {
 		} else {
 			obj_format := native_x64_object_format_for_os(target_os)
 			codegen_abi := native_x64_codegen_abi_for_os(target_os)
-			mut gen := x64.Gen.new_with_format_and_abi(&mir_mod, obj_format, codegen_abi)
-			gen.gen()
 			if is_windows_x64_native_target(arch, target_os) {
-				gen.link_executable(output_binary) or {
+				mut windows_gen := x64.Gen.new_with_format_and_abi(&mir_mod, obj_format,
+					codegen_abi)
+				windows_gen.gen()
+				windows_gen.link_executable(output_binary) or {
 					eprint_native_x64_link_error(err.msg())
 					exit(1)
 				}
@@ -2437,11 +2537,73 @@ fn (mut b Builder) gen_native(backend_arch pref.Arch) {
 				}
 				return
 			}
-			gen.write_file(obj_file)
+			if is_linux_x64_native_target(arch, target_os) {
+				mut linux_gen := x64.Gen.new_with_format_and_abi(&mir_mod, obj_format, codegen_abi)
+				linux_gen.gen()
+				if os.exists(output_binary) {
+					os.rm(output_binary) or {}
+				}
+				linux_gen.link_linux_tiny_executable(output_binary) or {
+					msg := err.msg()
+					if linux_x64_tiny_strict_enabled()
+						|| !msg.starts_with(x64.linux_tiny_not_eligible_prefix) {
+						eprint_native_x64_link_error(msg)
+						exit(1)
+					}
+				}
+				if os.exists(output_binary) {
+					if b.pref.verbose {
+						println('[*] Linked ${output_binary} (built-in Linux tiny linker)')
+					}
+					return
+				}
+				linux_gen.write_file(obj_file)
+			} else if b.uses_macos_x64_tiny_object(arch) {
+				if os.exists(obj_file) {
+					os.rm(obj_file) or {}
+				}
+				if b.pref.verbose {
+					println('[*] macOS tiny object candidate enabled')
+				}
+				mut candidate_mir := b.build_macos_tiny_candidate_mir(arch, target_os)
+				mut candidate_gen := x64.Gen.new_with_format_and_abi(&candidate_mir, obj_format,
+					codegen_abi)
+				candidate_gen.gen()
+				candidate_gen.write_macos_tiny_object(obj_file) or {
+					msg := err.msg()
+					if !msg.starts_with(x64.macos_tiny_not_eligible_prefix) {
+						eprint_native_x64_link_error(msg)
+						exit(1)
+					}
+					if b.pref.verbose {
+						println('[*] macOS tiny object not eligible; falling back to normal Mach-O object: ${msg}')
+					}
+				}
+				if os.exists(obj_file) {
+					used_macos_tiny_object = true
+				} else {
+					if b.pref.verbose {
+						println('[*] macOS tiny object fallback: writing normal Mach-O object')
+					}
+					mut macos_fallback_gen := x64.Gen.new_with_format_and_abi(&mir_mod, obj_format,
+						codegen_abi)
+					macos_fallback_gen.gen()
+					macos_fallback_gen.write_file(obj_file)
+				}
+			} else {
+				mut normal_x64_gen := x64.Gen.new_with_format_and_abi(&mir_mod, obj_format,
+					codegen_abi)
+				normal_x64_gen.gen()
+				normal_x64_gen.write_file(obj_file)
+			}
 		}
 
 		if b.pref.verbose {
-			println('[*] Wrote ${obj_file}')
+			if used_macos_tiny_object {
+				println('[*] Wrote ${obj_file} (macOS tiny candidate object)')
+			} else {
+				println('[*] Wrote ${obj_file}')
+			}
 		}
 
 		// Link the object file into an executable
@@ -2449,12 +2611,37 @@ fn (mut b Builder) gen_native(backend_arch pref.Arch) {
 			sdk_res := os.execute('xcrun -sdk macosx --show-sdk-path')
 			sdk_path := sdk_res.output.trim_space()
 			arch_flag := if arch == .arm64 { 'arm64' } else { 'x86_64' }
-			link_cmd := 'ld -o ${output_binary} ${obj_file} -lSystem -syslibroot "${sdk_path}" -e _main -arch ${arch_flag} -platform_version macos 11.0.0 11.0.0'
-			link_result := os.execute(link_cmd)
+			normal_link_cmd := macos_native_link_command(output_binary, obj_file, sdk_path,
+				arch_flag, false)
+			link_cmd := macos_native_link_command(output_binary, obj_file, sdk_path, arch_flag,
+				used_macos_tiny_object)
+			mut link_result := os.execute(link_cmd)
+			if link_result.exit_code != 0 && used_macos_tiny_object {
+				if b.pref.verbose {
+					println('[*] macOS tiny object link failed; retrying with normal Mach-O object')
+				}
+				if os.exists(output_binary) {
+					os.rm(output_binary) or {}
+				}
+				obj_format := native_x64_object_format_for_os(target_os)
+				codegen_abi := native_x64_codegen_abi_for_os(target_os)
+				mut fallback_gen := x64.Gen.new_with_format_and_abi(&mir_mod, obj_format,
+					codegen_abi)
+				fallback_gen.gen()
+				fallback_gen.write_file(obj_file)
+				used_macos_tiny_object = false
+				if b.pref.verbose {
+					println('[*] Wrote ${obj_file} (normal Mach-O fallback after macOS tiny link failure)')
+				}
+				link_result = os.execute(normal_link_cmd)
+			}
 			if link_result.exit_code != 0 {
 				eprintln('Link failed:')
 				eprintln(link_result.output)
 				exit(1)
+			}
+			if b.pref.verbose && used_macos_tiny_object {
+				println('[*] Linked ${output_binary} (built-in macOS tiny object)')
 			}
 		} else {
 			// Linux linking

@@ -199,6 +199,36 @@ fn test_v2_delegation_forwards_target_specific_flags() {
 	assert marker.contains('main.v'), marker
 	assert !marker.contains('-v2'), marker
 
+	res_macos := run_v_command_with_exe(wrapper_exe, project_dir, [
+		'-v2',
+		'-b',
+		'x64',
+		'-os',
+		'macos',
+		'-no-mos-tiny',
+		'-o',
+		'out',
+		'main.v',
+	], envs)
+	assert res_macos.exit_code == 0, res_macos.output
+	macos_marker := os.read_file(marker_file) or { panic(err) }
+	assert macos_marker.contains('-b x64'), macos_marker
+	assert macos_marker.contains('-os macos'), macos_marker
+	assert macos_marker.contains('-no-mos-tiny'), macos_marker
+	assert macos_marker.contains('-o out'), macos_marker
+	assert macos_marker.contains('main.v'), macos_marker
+	assert !macos_marker.contains('-v2'), macos_marker
+
+	os.rm(marker_file) or {}
+	legacy_macos_tiny_res := run_v_command_with_exe(wrapper_exe, project_dir, [
+		'-v2',
+		'-mos-tiny',
+		'main.v',
+	], envs)
+	assert legacy_macos_tiny_res.exit_code == 1, legacy_macos_tiny_res.output
+	assert legacy_macos_tiny_res.output.contains('Unknown argument `-mos-tiny`'), legacy_macos_tiny_res.output
+	assert !os.exists(marker_file), 'legacy -mos-tiny was forwarded to V2'
+
 	for blocked_args in [
 		['--skip-builtin', '--', '-v2', 'main.v'],
 		['--skip-builtin', 'run', 'main.v', '-v2'],

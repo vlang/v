@@ -59,6 +59,85 @@ fn new_macho_global_codegen_test_module(name string, linkage ssa.Linkage) mir.Mo
 	}
 }
 
+fn new_windows_coff_global_codegen_test_module() mir.Module {
+	mut ts := ssa.TypeStore.new()
+	i64_t := ts.get_int(64)
+	ptr_i64_t := ts.get_ptr(i64_t)
+	return mir.Module{
+		type_store: unsafe { *ts }
+		values:     [
+			mir.Value{
+				id:    0
+				typ:   ptr_i64_t
+				index: 0
+				kind:  .global
+				name:  'keep_global'
+			},
+			mir.Value{
+				id:    1
+				typ:   ptr_i64_t
+				index: 1
+				kind:  .global
+				name:  'drop_global'
+			},
+			mir.Value{
+				id:    2
+				typ:   ptr_i64_t
+				index: 0
+				kind:  .instruction
+			},
+		]
+		instrs:     [
+			mir.Instruction{
+				op:       .ret
+				operands: [0]
+				typ:      ptr_i64_t
+				block:    0
+			},
+		]
+		blocks:     [
+			mir.BasicBlock{
+				id:     0
+				val_id: 2
+				name:   'entry'
+				parent: 0
+				instrs: [2]
+			},
+		]
+		funcs:      [
+			mir.Function{
+				id:     0
+				name:   'main'
+				typ:    ptr_i64_t
+				blocks: [0]
+			},
+		]
+		globals:    [
+			ssa.GlobalVar{
+				name:         'keep_global'
+				typ:          i64_t
+				linkage:      .private
+				initial_data: [u8(1), 2, 3, 4, 5, 6, 7, 8]
+			},
+			ssa.GlobalVar{
+				name:         'drop_global'
+				typ:          i64_t
+				linkage:      .private
+				initial_data: [u8(9), 10, 11, 12, 13, 14, 15, 16]
+			},
+		]
+	}
+}
+
+fn coff_test_symbol(obj &CoffObject, name string) ?CoffSymbol {
+	for sym in obj.symbols {
+		if sym.name == name {
+			return sym
+		}
+	}
+	return none
+}
+
 struct TestByteRange {
 	label string
 	start u64
@@ -152,6 +231,23 @@ struct MachOTestSection {
 	flags    u32
 }
 
+struct MachOTestSymbol {
+	name  string
+	type_ u8
+	sect  u8
+	desc  u16
+	value u64
+}
+
+struct MachOTestRelocation {
+	addr    u32
+	sym_idx int
+	pcrel   bool
+	length  int
+	extern  bool
+	type_   int
+}
+
 fn macho_test_load_commands(data []u8) []int {
 	ncmds := int(read_u32_le(data, 16))
 	mut off := 32
@@ -194,6 +290,65 @@ fn macho_test_section_ranges(sections []MachOTestSection) []TestByteRange {
 		ranges << make_byte_range(section.sectname, u64(section.offset), section.size)
 	}
 	return ranges
+}
+
+fn macho_test_symbols(data []u8) []MachOTestSymbol {
+	load_cmds := macho_test_load_commands(data)
+	symtab_cmd_off := load_cmds[1]
+	sym_off := int(read_u32_le(data, symtab_cmd_off + 8))
+	nsyms := int(read_u32_le(data, symtab_cmd_off + 12))
+	str_off := int(read_u32_le(data, symtab_cmd_off + 16))
+	mut symbols := []MachOTestSymbol{cap: nsyms}
+	for i in 0 .. nsyms {
+		off := sym_off + i * 16
+		name_off := int(read_u32_le(data, off))
+		symbols << MachOTestSymbol{
+			name:  read_string(data, str_off + name_off)
+			type_: data[off + 4]
+			sect:  data[off + 5]
+			desc:  read_u16_le(data, off + 6)
+			value: read_u64_le(data, off + 8)
+		}
+	}
+	return symbols
+}
+
+fn macho_test_symbol_names(data []u8) []string {
+	symbols := macho_test_symbols(data)
+	mut names := []string{cap: symbols.len}
+	for symbol in symbols {
+		names << symbol.name
+	}
+	return names
+}
+
+fn macho_test_symbol_by_name(symbols []MachOTestSymbol, name string) ?MachOTestSymbol {
+	for symbol in symbols {
+		if symbol.name == name {
+			return symbol
+		}
+	}
+	return none
+}
+
+fn macho_test_text_relocations(data []u8) []MachOTestRelocation {
+	load_cmds := macho_test_load_commands(data)
+	sections := macho_test_sections(data, load_cmds[0])
+	text_section := sections[0]
+	mut relocs := []MachOTestRelocation{cap: int(text_section.nreloc)}
+	for i in 0 .. int(text_section.nreloc) {
+		off := int(text_section.reloff) + i * 8
+		info := read_u32_le(data, off + 4)
+		relocs << MachOTestRelocation{
+			addr:    read_u32_le(data, off)
+			sym_idx: int(info & 0x00ff_ffff)
+			pcrel:   ((info >> 24) & 1) == 1
+			length:  int((info >> 25) & 3)
+			extern:  ((info >> 27) & 1) == 1
+			type_:   int(info >> 28)
+		}
+	}
+	return relocs
 }
 
 struct CoffTestSection {
@@ -549,6 +704,120 @@ fn test_elf_writer_emits_x64_relocatable_object() {
 	assert read_u16_le(data, 62) == 7
 	assert_range_in_file(data, make_byte_range('ELF section headers', shoff, u64(read_u16_le(data,
 		58)) * u64(read_u16_le(data, 60))))
+}
+
+fn test_linux_tiny_elf_writer_emits_exec_program_headers_without_sections() {
+	$if linux {
+		path := os.join_path(os.vtmp_dir(), 'v2_x64_tiny_elf_${os.getpid()}')
+		defer {
+			os.rm(path) or {}
+		}
+
+		mut obj := ElfObject.new()
+		obj.text_data << [u8(0x31), 0xc0, 0xc3] // xor eax, eax; ret
+		obj.add_symbol('main', 0, true, 1)
+		mut linker := ElfTinyLinker{
+			elf: obj
+		}
+		linker.write(path) or { panic(err) }
+
+		data := os.read_bytes(path) or { panic(err) }
+		assert data.len > elf_tiny_text_file_offset(1)
+		assert data[0] == 0x7f
+		assert data[1] == `E`
+		assert data[2] == `L`
+		assert data[3] == `F`
+		assert read_u16_le(data, 16) == et_exec
+		assert read_u16_le(data, 18) == em_x86_64
+		assert read_u64_le(data, 24) == linux_tiny_base_vaddr + u64(elf_tiny_text_file_offset(1))
+		assert read_u64_le(data, 32) == 64
+		assert read_u64_le(data, 40) == 0
+		assert read_u16_le(data, 54) == 56
+		assert read_u16_le(data, 56) == 1
+		assert read_u16_le(data, 58) == 0
+		assert read_u16_le(data, 60) == 0
+		assert read_u32_le(data, 64) == pt_load
+		assert read_u32_le(data, 68) == pf_r | pf_x
+	}
+}
+
+fn test_linux_tiny_elf_writer_keeps_runtime_metadata_wx_clean() {
+	$if linux {
+		path := os.join_path(os.vtmp_dir(), 'v2_x64_tiny_elf_runtime_${os.getpid()}')
+		defer {
+			os.rm(path) or {}
+		}
+
+		mut obj := ElfObject.new()
+		obj.text_data << [u8(0xbf), 23, 0, 0, 0, 0xe8, 0, 0, 0, 0, 0xc3]
+		int_str_sym := obj.add_undefined('builtin__int__str')
+		obj.add_symbol('main', 0, true, 1)
+		obj.add_text_reloc(6, int_str_sym, r_x86_64_plt32, -4)
+		mut linker := ElfTinyLinker{
+			elf: obj
+		}
+		linker.write(path) or { panic(err) }
+
+		data := os.read_bytes(path) or { panic(err) }
+		assert data.len > elf_tiny_text_file_offset(2)
+		assert data.len < linux_tiny_page_align
+		assert read_u16_le(data, 16) == et_exec
+		assert read_u16_le(data, 56) == 2
+		assert read_u16_le(data, 58) == 0
+		assert read_u16_le(data, 60) == 0
+
+		text_ph := 64
+		assert read_u32_le(data, text_ph) == pt_load
+		assert read_u32_le(data, text_ph + 4) == pf_r | pf_x
+		assert read_u64_le(data, text_ph + 8) == 0
+		assert read_u64_le(data, text_ph + 16) == linux_tiny_base_vaddr
+		text_filesz := read_u64_le(data, text_ph + 32)
+		assert text_filesz == read_u64_le(data, text_ph + 40)
+		assert read_u64_le(data, text_ph + 48) == u64(linux_tiny_page_align)
+
+		rw_ph := text_ph + 56
+		assert read_u32_le(data, rw_ph) == pt_load
+		assert read_u32_le(data, rw_ph + 4) == pf_r | pf_w
+		rw_offset := read_u64_le(data, rw_ph + 8)
+		rw_vaddr := read_u64_le(data, rw_ph + 16)
+		rw_align := read_u64_le(data, rw_ph + 48)
+		assert read_u64_le(data, rw_ph + 32) == 0
+		assert read_u64_le(data, rw_ph + 40) == linux_tiny_int_str_arena_metadata_bytes
+		assert rw_align == u64(linux_tiny_page_align)
+		assert rw_vaddr % rw_align == rw_offset % rw_align
+		assert (read_u32_le(data, text_ph + 4) & u32(pf_w | pf_x)) != u32(pf_w | pf_x)
+		assert (read_u32_le(data, rw_ph + 4) & u32(pf_w | pf_x)) != u32(pf_w | pf_x)
+	}
+}
+
+fn test_linux_tiny_write_runtime_exits_on_non_positive_syscall_result() {
+	$if linux {
+		mut obj := ElfObject.new()
+		mut linker := ElfTinyLinker{
+			elf: obj
+		}
+		rt := linker.build_runtime({
+			'write': true
+		})
+		write_off := int(rt.symbols['write'] or { panic('missing write runtime symbol') })
+		write_bytes := rt.text[write_off..]
+		mut has_exit_group_failure := false
+		mut has_old_partial_success_return := false
+		for i in 0 .. write_bytes.len {
+			if i + 10 <= write_bytes.len && write_bytes[i] == 0xbf && write_bytes[i + 1] == 0x01
+				&& write_bytes[i + 2] == 0 && write_bytes[i + 3] == 0 && write_bytes[i + 4] == 0
+				&& write_bytes[i + 5] == 0xb8
+				&& read_u32_le(write_bytes, i + 6) == linux_sys_exit_group {
+				has_exit_group_failure = true
+			}
+			if i + 4 <= write_bytes.len && write_bytes[i] == 0x49 && write_bytes[i + 1] == 0x0f
+				&& write_bytes[i + 2] == 0x45 && write_bytes[i + 3] == 0xc2 {
+				has_old_partial_success_return = true
+			}
+		}
+		assert has_exit_group_failure
+		assert !has_old_partial_success_return
+	}
 }
 
 fn test_elf_writer_serializes_sections_symbols_and_relocations() {
@@ -975,6 +1244,87 @@ fn test_macho_codegen_keeps_private_global_references_signed() {
 	assert gen.macho.symbols[gen.macho.relocs[0].sym_idx].name == '_app_global'
 }
 
+fn test_windows_coff_codegen_omits_unused_global_data() {
+	mut mod := new_windows_coff_global_codegen_test_module()
+	mut gen := Gen.new_with_format_and_abi(&mod, .coff, .windows)
+	gen.gen()
+
+	assert gen.coff.data_data == [u8(1), 2, 3, 4, 5, 6, 7, 8]
+	keep_sym := coff_test_symbol(gen.coff, 'keep_global') or {
+		panic('missing referenced global symbol')
+	}
+	assert keep_sym.section == 3
+	assert keep_sym.value == 0
+	assert coff_test_symbol(gen.coff, 'drop_global') == none
+	assert gen.coff.text_relocs.len == 1
+	reloc := gen.coff.text_relocs[0]
+	assert gen.coff.symbols[reloc.sym_idx].name == 'keep_global'
+	assert gen.coff.symbols[reloc.sym_idx].section == 3
+}
+
+fn test_windows_coff_codegen_keeps_globals_when_reference_scan_is_ambiguous() {
+	mut mod := new_windows_coff_global_codegen_test_module()
+	ghost_id := mod.values.len
+	mod.values << mir.Value{
+		id:    ghost_id
+		typ:   mod.values[0].typ
+		index: 99
+		kind:  .global
+		name:  'ghost_global'
+	}
+	mod.instrs[0].operands = [ghost_id]
+	mut gen := Gen.new_with_format_and_abi(&mod, .coff, .windows)
+	gen.gen()
+
+	assert gen.coff.data_data == [
+		u8(1),
+		2,
+		3,
+		4,
+		5,
+		6,
+		7,
+		8,
+		9,
+		10,
+		11,
+		12,
+		13,
+		14,
+		15,
+		16,
+	]
+	assert coff_test_symbol(gen.coff, 'keep_global') != none
+	assert coff_test_symbol(gen.coff, 'drop_global') != none
+}
+
+fn test_non_windows_coff_codegen_preserves_existing_global_emission() {
+	mut mod := new_windows_coff_global_codegen_test_module()
+	mut gen := Gen.new_with_format(&mod, .coff)
+	gen.gen()
+
+	assert gen.coff.data_data == [
+		u8(1),
+		2,
+		3,
+		4,
+		5,
+		6,
+		7,
+		8,
+		9,
+		10,
+		11,
+		12,
+		13,
+		14,
+		15,
+		16,
+	]
+	assert coff_test_symbol(gen.coff, 'keep_global') != none
+	assert coff_test_symbol(gen.coff, 'drop_global') != none
+}
+
 fn test_macho_codegen_keeps_local_rodata_references_signed() {
 	mut ts := ssa.TypeStore.new()
 	i64_t := ts.get_int(64)
@@ -1146,6 +1496,403 @@ fn test_macho_writer_serializes_text_relocations_and_symbols() {
 	assert data[sym_off + 5] == 0
 	assert data[sym_off + 16 + 4] == 0x0e
 	assert data[sym_off + 16 + 5] == 2
+}
+
+fn test_macho_tiny_object_writer_prunes_unreachable_text_and_data() {
+	path := temp_object_path('macho_tiny_pruned')
+	defer {
+		os.rm(path) or {}
+	}
+
+	mut obj := MachOObject.new()
+	obj.text_data << [u8(0xe8), 0, 0, 0, 0, 0x48, 0x8d, 0x05, 0, 0, 0, 0, 0xc3]
+	main_sym := obj.add_symbol('_main', 0, true, 1)
+	helper_start := obj.text_data.len
+	obj.text_data << u8(0xc3)
+	helper_sym := obj.add_symbol('_helper', u64(helper_start), true, 1)
+	unused_start := obj.text_data.len
+	obj.text_data << u8(0xc3)
+	obj.add_symbol('_unused', u64(unused_start), true, 1)
+	keep_sym := obj.add_symbol('L_keep', 0, false, 2)
+	obj.rodata << 'ok'.bytes()
+	obj.rodata << 0
+	drop_start := obj.rodata.len
+	obj.add_symbol('L_drop', u64(drop_start), false, 2)
+	obj.rodata << 'drop'.bytes()
+	obj.rodata << 0
+	obj.add_reloc(1, helper_sym, x86_64_reloc_branch, true, 2)
+	obj.add_reloc(8, keep_sym, x86_64_reloc_signed, true, 2)
+
+	mut writer := MachOTinyObjectWriter{
+		macho: obj
+	}
+	writer.write(path) or { panic(err) }
+
+	data := os.read_bytes(path) or { panic(err) }
+	load_cmds := macho_test_load_commands(data)
+	sections := macho_test_sections(data, load_cmds[0])
+	assert sections[0].size == u64(helper_start + 1)
+	assert sections[1].size == u64(3)
+	assert data[int(sections[0].offset)..int(sections[0].offset + sections[0].size)] == obj.text_data[..
+		helper_start + 1]
+	assert data[int(sections[1].offset)..int(sections[1].offset + sections[1].size)] == 'ok\0'.bytes()
+	assert sections[0].nreloc == 2
+
+	symbols := macho_test_symbols(data)
+	names := symbols.map(it.name)
+	assert '_main' in names
+	assert '_helper' in names
+	assert 'L_keep' in names
+	assert '_unused' !in names
+	assert 'L_drop' !in names
+	main_out := macho_test_symbol_by_name(symbols, '_main') or {
+		assert false, 'missing _main in Mach-O tiny output'
+		return
+	}
+	helper_out := macho_test_symbol_by_name(symbols, '_helper') or {
+		assert false, 'missing _helper in Mach-O tiny output'
+		return
+	}
+	keep_out := macho_test_symbol_by_name(symbols, 'L_keep') or {
+		assert false, 'missing L_keep in Mach-O tiny output'
+		return
+	}
+	assert main_out.type_ == 0x0f
+	assert main_out.sect == 1
+	assert helper_out.type_ == 0x0e
+	assert helper_out.sect == 1
+	assert keep_out.type_ == 0x0e
+	assert keep_out.sect == 2
+	assert main_sym == 0
+}
+
+fn test_macho_tiny_object_writer_preserves_undefined_externals_and_remaps_relocations() {
+	path := temp_object_path('macho_tiny_undefined_remap')
+	defer {
+		os.rm(path) or {}
+	}
+
+	mut obj := MachOObject.new()
+	obj.text_data << [u8(0xe8), 0, 0, 0, 0, 0x48, 0x8b, 0x05, 0, 0, 0, 0, 0x48, 0x8d, 0x05, 0,
+		0, 0, 0, 0xc3]
+	unused_start := obj.text_data.len
+	obj.text_data << u8(0xc3)
+	obj.add_symbol('_unused', u64(unused_start), true, 1)
+	obj.add_undefined('_unused_external')
+	call_sym := obj.add_undefined('_calloc')
+	obj.add_symbol('_main', 0, true, 1)
+	got_load_sym := obj.add_undefined('___stderrp')
+	got_sym := obj.add_undefined('___error')
+	obj.add_reloc(1, call_sym, x86_64_reloc_branch, true, 2)
+	obj.add_reloc(8, got_load_sym, x86_64_reloc_got_load, true, 2)
+	obj.add_reloc(15, got_sym, x86_64_reloc_got, true, 2)
+
+	mut writer := MachOTinyObjectWriter{
+		macho: obj
+	}
+	writer.write(path) or { panic(err) }
+
+	data := os.read_bytes(path) or { panic(err) }
+	symbols := macho_test_symbols(data)
+	names := symbols.map(it.name)
+	assert '_main' in names
+	assert '_calloc' in names
+	assert '___stderrp' in names
+	assert '___error' in names
+	assert '_unused' !in names
+	assert '_unused_external' !in names
+	for name in ['_calloc', '___stderrp', '___error'] {
+		symbol := macho_test_symbol_by_name(symbols, name) or {
+			assert false, 'missing ${name} in Mach-O tiny output'
+			return
+		}
+		assert symbol.type_ == 0x01
+		assert symbol.sect == 0
+		assert symbol.value == 0
+	}
+
+	relocs := macho_test_text_relocations(data)
+	assert relocs.len == 3
+	assert relocs[0].addr == 1
+	assert relocs[0].type_ == x86_64_reloc_branch
+	assert symbols[relocs[0].sym_idx].name == '_calloc'
+	assert relocs[0].sym_idx != call_sym
+	assert relocs[1].addr == 8
+	assert relocs[1].type_ == x86_64_reloc_got_load
+	assert symbols[relocs[1].sym_idx].name == '___stderrp'
+	assert relocs[1].sym_idx != got_load_sym
+	assert relocs[2].addr == 15
+	assert relocs[2].type_ == x86_64_reloc_got
+	assert symbols[relocs[2].sym_idx].name == '___error'
+	assert relocs[2].sym_idx != got_sym
+	for reloc in relocs {
+		assert reloc.pcrel
+		assert reloc.length == 2
+		assert reloc.extern
+	}
+}
+
+fn test_macho_tiny_object_writer_keeps_referenced_rodata_and_data() {
+	path := temp_object_path('macho_tiny_rodata_data')
+	defer {
+		os.rm(path) or {}
+	}
+
+	mut obj := MachOObject.new()
+	obj.text_data << [u8(0x48), 0x8d, 0x05, 0, 0, 0, 0, 0x48, 0x8d, 0x05, 0, 0, 0, 0, 0xc3]
+	obj.add_symbol('_main', 0, true, 1)
+	ro_keep_sym := obj.add_symbol('L_ro_keep', 0, false, 2)
+	obj.rodata << 'ro'.bytes()
+	obj.rodata << 0
+	ro_drop_start := obj.rodata.len
+	obj.add_symbol('L_ro_drop', u64(ro_drop_start), false, 2)
+	obj.rodata << 'drop'.bytes()
+	obj.rodata << 0
+	data_keep_sym := obj.add_symbol('_data_keep', 0, true, 3)
+	obj.data_data << [u8(1), 2, 3, 4, 5, 6, 7, 8]
+	data_drop_start := obj.data_data.len
+	obj.add_symbol('_data_drop', u64(data_drop_start), true, 3)
+	obj.data_data << [u8(9), 10, 11, 12]
+	obj.add_reloc(3, ro_keep_sym, x86_64_reloc_signed, true, 2)
+	obj.add_reloc(10, data_keep_sym, x86_64_reloc_signed, true, 2)
+
+	mut writer := MachOTinyObjectWriter{
+		macho: obj
+	}
+	writer.write(path) or { panic(err) }
+
+	data := os.read_bytes(path) or { panic(err) }
+	load_cmds := macho_test_load_commands(data)
+	sections := macho_test_sections(data, load_cmds[0])
+	assert sections[1].size == u64(3)
+	assert sections[2].size == u64(8)
+	assert data[int(sections[1].offset)..int(sections[1].offset + sections[1].size)] == 'ro\0'.bytes()
+	assert data[int(sections[2].offset)..int(sections[2].offset + sections[2].size)] == [
+		u8(1),
+		2,
+		3,
+		4,
+		5,
+		6,
+		7,
+		8,
+	]
+
+	names := macho_test_symbol_names(data)
+	assert 'L_ro_keep' in names
+	assert '_data_keep' in names
+	assert 'L_ro_drop' !in names
+	assert '_data_drop' !in names
+	relocs := macho_test_text_relocations(data)
+	symbols := macho_test_symbols(data)
+	ro_keep_out := macho_test_symbol_by_name(symbols, 'L_ro_keep') or {
+		assert false, 'missing L_ro_keep in Mach-O tiny output'
+		return
+	}
+	data_keep_out := macho_test_symbol_by_name(symbols, '_data_keep') or {
+		assert false, 'missing _data_keep in Mach-O tiny output'
+		return
+	}
+	assert ro_keep_out.type_ == 0x0e
+	assert ro_keep_out.sect == 2
+	assert data_keep_out.type_ == 0x0e
+	assert data_keep_out.sect == 3
+	assert relocs.len == 2
+	assert symbols[relocs[0].sym_idx].name == 'L_ro_keep'
+	assert symbols[relocs[1].sym_idx].name == '_data_keep'
+}
+
+fn test_macho_tiny_object_writer_remaps_multiple_aligned_data_ranges() {
+	path := temp_object_path('macho_tiny_aligned_data_ranges')
+	defer {
+		os.rm(path) or {}
+	}
+
+	ro_a := [u8(0x01), 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08]
+	ro_b := [u8(0x11), 0x12, 0x13, 0x14, 0x15, 0x16, 0x17, 0x18]
+	data_a := [u8(0x21), 0x22, 0x23, 0x24, 0x25, 0x26, 0x27, 0x28]
+	data_b := [u8(0x31), 0x32, 0x33, 0x34, 0x35, 0x36, 0x37, 0x38]
+
+	mut obj := MachOObject.new()
+	obj.text_data << [u8(0x48), 0x8d, 0x05, 0, 0, 0, 0, 0x48, 0x8d, 0x05, 0, 0, 0, 0, 0x48, 0x8d,
+		0x05, 0, 0, 0, 0, 0x48, 0x8d, 0x05, 0, 0, 0, 0, 0xc3]
+	obj.add_symbol('_main', 0, true, 1)
+	ro_a_sym := obj.add_symbol('L_ro64_a', 0, false, 2)
+	obj.rodata << ro_a
+	ro_b_sym := obj.add_symbol('L_ro64_b', u64(obj.rodata.len), false, 2)
+	obj.rodata << ro_b
+	obj.add_symbol('L_ro64_unused', u64(obj.rodata.len), false, 2)
+	obj.rodata << [u8(0xf1), 0xf2, 0xf3, 0xf4, 0xf5, 0xf6, 0xf7, 0xf8]
+	data_a_sym := obj.add_symbol('_data64_a', 0, true, 3)
+	obj.data_data << data_a
+	data_b_sym := obj.add_symbol('_data64_b', u64(obj.data_data.len), true, 3)
+	obj.data_data << data_b
+	obj.add_symbol('_data64_unused', u64(obj.data_data.len), true, 3)
+	obj.data_data << [u8(0xe1), 0xe2, 0xe3, 0xe4, 0xe5, 0xe6, 0xe7, 0xe8]
+	obj.add_reloc(3, ro_b_sym, x86_64_reloc_signed, true, 2)
+	obj.add_reloc(10, ro_a_sym, x86_64_reloc_signed, true, 2)
+	obj.add_reloc(17, data_b_sym, x86_64_reloc_signed, true, 2)
+	obj.add_reloc(24, data_a_sym, x86_64_reloc_signed, true, 2)
+
+	mut writer := MachOTinyObjectWriter{
+		macho: obj
+	}
+	writer.write(path) or { panic(err) }
+
+	data := os.read_bytes(path) or { panic(err) }
+	load_cmds := macho_test_load_commands(data)
+	sections := macho_test_sections(data, load_cmds[0])
+	rodata_payload := data[int(sections[1].offset)..int(sections[1].offset + sections[1].size)]
+	data_payload := data[int(sections[2].offset)..int(sections[2].offset + sections[2].size)]
+	mut expected_rodata := []u8{}
+	expected_rodata << ro_b
+	expected_rodata << ro_a
+	mut expected_data := []u8{}
+	expected_data << data_b
+	expected_data << data_a
+	assert rodata_payload == expected_rodata
+	assert data_payload == expected_data
+
+	symbols := macho_test_symbols(data)
+	ro_b_out := macho_test_symbol_by_name(symbols, 'L_ro64_b') or {
+		assert false, 'missing L_ro64_b'
+		return
+	}
+	ro_a_out := macho_test_symbol_by_name(symbols, 'L_ro64_a') or {
+		assert false, 'missing L_ro64_a'
+		return
+	}
+	data_b_out := macho_test_symbol_by_name(symbols, '_data64_b') or {
+		assert false, 'missing _data64_b'
+		return
+	}
+	data_a_out := macho_test_symbol_by_name(symbols, '_data64_a') or {
+		assert false, 'missing _data64_a'
+		return
+	}
+	assert ro_b_out.value == sections[1].addr
+	assert ro_a_out.value == sections[1].addr + 8
+	assert data_b_out.value == sections[2].addr
+	assert data_a_out.value == sections[2].addr + 8
+
+	names := symbols.map(it.name)
+	assert 'L_ro64_unused' !in names
+	assert '_data64_unused' !in names
+	relocs := macho_test_text_relocations(data)
+	assert relocs.len == 4
+	assert symbols[relocs[0].sym_idx].name == 'L_ro64_b'
+	assert symbols[relocs[1].sym_idx].name == 'L_ro64_a'
+	assert symbols[relocs[2].sym_idx].name == '_data64_b'
+	assert symbols[relocs[3].sym_idx].name == '_data64_a'
+}
+
+fn test_macho_tiny_object_writer_rejects_unknown_relocation_type() {
+	path := temp_object_path('macho_tiny_bad_reloc')
+	defer {
+		os.rm(path) or {}
+	}
+
+	mut obj := MachOObject.new()
+	obj.text_data << [u8(0xe8), 0, 0, 0, 0, 0xc3]
+	call_sym := obj.add_undefined('_calloc')
+	obj.add_symbol('_main', 0, true, 1)
+	obj.add_reloc(1, call_sym, 99, true, 2)
+	mut writer := MachOTinyObjectWriter{
+		macho: obj
+	}
+	writer.write(path) or {
+		assert err.msg().starts_with(macos_tiny_not_eligible_prefix)
+		return
+	}
+	assert false, 'Mach-O tiny writer accepted an unsupported relocation type'
+}
+
+fn test_macho_tiny_object_writer_rejects_non_pcrel_relocation() {
+	path := temp_object_path('macho_tiny_non_pcrel_reloc')
+	defer {
+		os.rm(path) or {}
+	}
+
+	mut obj := MachOObject.new()
+	obj.text_data << [u8(0xe8), 0, 0, 0, 0, 0xc3]
+	call_sym := obj.add_undefined('_calloc')
+	obj.add_symbol('_main', 0, true, 1)
+	obj.add_reloc(1, call_sym, x86_64_reloc_branch, false, 2)
+	mut writer := MachOTinyObjectWriter{
+		macho: obj
+	}
+	writer.write(path) or {
+		assert err.msg().starts_with(macos_tiny_not_eligible_prefix)
+		assert err.msg().contains('non-pcrel')
+		return
+	}
+	assert false, 'Mach-O tiny writer accepted a non-pcrel relocation'
+}
+
+fn test_macho_tiny_object_writer_rejects_non_32_bit_relocation() {
+	path := temp_object_path('macho_tiny_non_32_bit_reloc')
+	defer {
+		os.rm(path) or {}
+	}
+
+	mut obj := MachOObject.new()
+	obj.text_data << [u8(0xe8), 0, 0, 0, 0, 0xc3]
+	call_sym := obj.add_undefined('_calloc')
+	obj.add_symbol('_main', 0, true, 1)
+	obj.add_reloc(1, call_sym, x86_64_reloc_branch, true, 3)
+	mut writer := MachOTinyObjectWriter{
+		macho: obj
+	}
+	writer.write(path) or {
+		assert err.msg().starts_with(macos_tiny_not_eligible_prefix)
+		assert err.msg().contains('non-32-bit')
+		return
+	}
+	assert false, 'Mach-O tiny writer accepted a non-32-bit relocation'
+}
+
+fn test_macho_tiny_object_writer_rejects_missing_main_symbol() {
+	path := temp_object_path('macho_tiny_missing_main')
+	defer {
+		os.rm(path) or {}
+	}
+
+	mut obj := MachOObject.new()
+	obj.text_data << u8(0xc3)
+	obj.add_symbol('_not_main', 0, true, 1)
+	mut writer := MachOTinyObjectWriter{
+		macho: obj
+	}
+	writer.write(path) or {
+		assert err.msg().starts_with(macos_tiny_not_eligible_prefix)
+		assert err.msg().contains('missing _main symbol')
+		return
+	}
+	assert false, 'Mach-O tiny writer accepted an object without _main'
+}
+
+fn test_macho_tiny_object_writer_rejects_module_init_symbol() {
+	path := temp_object_path('macho_tiny_module_init')
+	defer {
+		os.rm(path) or {}
+	}
+
+	mut obj := MachOObject.new()
+	obj.text_data << [u8(0xe8), 0, 0, 0, 0, 0xc3]
+	init_start := obj.text_data.len
+	obj.text_data << u8(0xc3)
+	init_sym := obj.add_symbol('_dep__init', u64(init_start), true, 1)
+	obj.add_symbol('_main', 0, true, 1)
+	obj.add_reloc(1, init_sym, x86_64_reloc_branch, true, 2)
+	mut writer := MachOTinyObjectWriter{
+		macho: obj
+	}
+	writer.write(path) or {
+		assert err.msg().starts_with(macos_tiny_not_eligible_prefix)
+		assert err.msg().contains('module init symbol')
+		return
+	}
+	assert false, 'Mach-O tiny writer accepted a module init symbol'
 }
 
 fn test_macho_object_is_accepted_by_external_tools_when_available() {
