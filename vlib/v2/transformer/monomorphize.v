@@ -2808,14 +2808,14 @@ fn (mut t Transformer) register_generic_bindings(base_name string, bindings map[
 		}
 	}
 	signature := generic_bindings_signature(normalized_bindings)
-	if t.cur_generic_call_file_idx >= 0 {
-		t.generic_spec_owner_file[generic_spec_owner_key(base_name, normalized_bindings)] = t.cur_generic_call_file_idx
-	}
 	mut existing := t.env.generic_types[base_name] or { []map[string]types.Type{} }
 	for item in existing {
 		if generic_bindings_signature(item) == signature {
 			return
 		}
+	}
+	if t.cur_generic_call_file_idx >= 0 {
+		t.generic_spec_owner_file[generic_spec_owner_key(base_name, normalized_bindings)] = t.cur_generic_call_file_idx
 	}
 	existing << normalized_bindings
 	t.env.generic_types[base_name] = existing
@@ -3653,9 +3653,29 @@ fn (mut t Transformer) remember_cloned_stmt_decl_types(stmt ast.Stmt) {
 }
 
 fn (mut t Transformer) remember_cloned_if_expr_decl_types(expr ast.IfExpr) {
+	mut body_smartcasts := []SmartcastContext{}
+	mut seen_smartcasts := map[string]bool{}
+	for term in t.flatten_and_terms_unwrapped(expr.cond) {
+		if term is ast.InfixExpr {
+			if ctx := t.smartcast_context_from_condition_term(term) {
+				key := '${ctx.expr}|${ctx.variant}|${ctx.variant_full}|${ctx.sumtype}'
+				if key !in seen_smartcasts {
+					seen_smartcasts[key] = true
+					body_smartcasts << ctx
+				}
+			}
+		}
+	}
+	stack_before := t.smartcast_stack.clone()
+	counts_before := t.smartcast_expr_counts.clone()
+	for ctx in body_smartcasts {
+		t.push_smartcast_ctx(ctx)
+	}
 	for child in expr.stmts {
 		t.remember_cloned_stmt_decl_types(child)
 	}
+	t.smartcast_stack = stack_before.clone()
+	t.smartcast_expr_counts = counts_before.clone()
 	if expr.else_expr is ast.IfExpr {
 		t.remember_cloned_if_expr_decl_types(expr.else_expr as ast.IfExpr)
 	} else if expr.else_expr is ast.UnsafeExpr {
@@ -3664,6 +3684,8 @@ fn (mut t Transformer) remember_cloned_if_expr_decl_types(expr ast.IfExpr) {
 			t.remember_cloned_stmt_decl_types(child)
 		}
 	}
+	t.smartcast_stack = stack_before.clone()
+	t.smartcast_expr_counts = counts_before.clone()
 }
 
 fn (mut t Transformer) remember_cloned_assign_decl_types(stmt ast.AssignStmt) {

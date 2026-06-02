@@ -169,14 +169,14 @@ mut:
 	float_const_values map[string]string
 	// Label name -> SSA BlockID (for goto/label support)
 	label_blocks map[string]BlockID
-		// Track mut pointer params (e.g., mut buf &u8) that need extra dereference
-		// when used in expressions (buf is ptr(ptr(i8)), but user sees buf as &u8)
-		mut_ptr_params map[string]bool
-		// Branch-local smartcasts from `if x is T` while lowering SSA.
-		local_smartcasts map[string]TypeID
-		// Set during sum type init _data field building to trigger heap allocation
-		// for &struct_local (prevents dangling stack pointers in returned sum types)
-		in_sumtype_data bool
+	// Track mut pointer params (e.g., mut buf &u8) that need extra dereference
+	// when used in expressions (buf is ptr(ptr(i8)), but user sees buf as &u8)
+	mut_ptr_params map[string]bool
+	// Branch-local smartcasts from `if x is T` while lowering SSA.
+	local_smartcasts map[string]TypeID
+	// Set during sum type init _data field building to trigger heap allocation
+	// for &struct_local (prevents dangling stack pointers in returned sum types)
+	in_sumtype_data bool
 	// Constant array globals: names of globals that store raw element data
 	// (not V array structs). build_ident returns the pointer directly.
 	const_array_globals    map[string]bool
@@ -224,10 +224,10 @@ pub fn Builder.new_with_env(mod &Module, env &types.Environment) &Builder {
 		global_refs:                   map[string]ValueID{}
 		option_wrapper_types:          map[string]TypeID{}
 		result_wrapper_types:          map[string]TypeID{}
-			array_value_elem_types:        map[int]TypeID{}
-			struct_field_array_elem_types: map[string]TypeID{}
-			local_smartcasts:              map[string]TypeID{}
-		}
+		array_value_elem_types:        map[int]TypeID{}
+		struct_field_array_elem_types: map[string]TypeID{}
+		local_smartcasts:              map[string]TypeID{}
+	}
 	unsafe {
 		b.env = env
 		mod.env = env
@@ -269,14 +269,14 @@ pub fn (mut b Builder) new_worker_clone(worker_mod &Module, worker_idx int) &Bui
 		// Stride of 100_000 per worker avoids collisions.
 		anon_fn_counter: (worker_idx + 1) * 100_000
 		// Per-function state is reset at start of each build_fn, so empty init is fine
-			fn_refs:        map[string]ValueID{}
-			vars:           map[string]ValueID{}
-			loop_stack:     []LoopInfo{}
-			label_blocks:   map[string]BlockID{}
-			mut_ptr_params: map[string]bool{}
-			local_smartcasts: map[string]TypeID{}
-		}
+		fn_refs:          map[string]ValueID{}
+		vars:             map[string]ValueID{}
+		loop_stack:       []LoopInfo{}
+		label_blocks:     map[string]BlockID{}
+		mut_ptr_params:   map[string]bool{}
+		local_smartcasts: map[string]TypeID{}
 	}
+}
 
 pub fn (mut b Builder) build_all(files []ast.File) {
 	// Register builtin globals needed by all backends
@@ -4562,6 +4562,204 @@ fn (mut b Builder) checked_local_type(name string) ?types.Type {
 	return none
 }
 
+fn (b &Builder) smartcast_expr_name(expr ast.Expr) string {
+	match expr {
+		ast.Ident {
+			return expr.name
+		}
+		ast.SelectorExpr {
+			lhs_name := b.smartcast_expr_name(expr.lhs)
+			if lhs_name == '' {
+				return expr.rhs.name
+			}
+			return '${lhs_name}.${expr.rhs.name}'
+		}
+		ast.ParenExpr {
+			return b.smartcast_expr_name(expr.expr)
+		}
+		ast.AsCastExpr {
+			return b.smartcast_expr_name(expr.expr)
+		}
+		ast.ModifierExpr {
+			return b.smartcast_expr_name(expr.expr)
+		}
+		else {
+			name := expr.name()
+			if name != 'Expr' {
+				return name
+			}
+			return ''
+		}
+	}
+}
+
+fn (b &Builder) smartcast_expr_name_from_flat(c ast.Cursor) string {
+	match c.kind() {
+		.expr_ident {
+			return c.name()
+		}
+		.expr_selector {
+			lhs_name := b.smartcast_expr_name_from_flat(c.edge(0))
+			rhs_name := c.edge(1).name()
+			if lhs_name == '' {
+				return rhs_name
+			}
+			return '${lhs_name}.${rhs_name}'
+		}
+		.expr_paren, .expr_modifier, .expr_as_cast {
+			return b.smartcast_expr_name_from_flat(c.edge(0))
+		}
+		else {
+			return ''
+		}
+	}
+}
+
+fn (mut b Builder) smartcast_variant_type_from_sumtype_tag(sumtype_expr ast.Expr, tag int) TypeID {
+	if tag < 0 {
+		return 0
+	}
+	mut sumtype_type := types.Type(types.void_)
+	if checked := b.get_checked_expr_type(sumtype_expr) {
+		sumtype_type = checked
+	} else {
+		expr_name := b.smartcast_expr_name(sumtype_expr)
+		if local_type := b.checked_local_type(expr_name) {
+			sumtype_type = local_type
+		} else {
+			return 0
+		}
+	}
+	base := b.unwrap_alias_type(sumtype_type)
+	if base !is types.SumType {
+		return 0
+	}
+	sumtype_info := base as types.SumType
+	if tag >= sumtype_info.variants.len {
+		return 0
+	}
+	return b.type_to_ssa(sumtype_info.variants[tag])
+}
+
+fn (mut b Builder) smartcast_variant_type_from_tag_check(expr ast.InfixExpr) TypeID {
+	if expr.op != .eq || expr.lhs !is ast.SelectorExpr || expr.rhs !is ast.BasicLiteral {
+		return 0
+	}
+	tag_sel := expr.lhs as ast.SelectorExpr
+	if tag_sel.rhs.name != '_tag' {
+		return 0
+	}
+	tag_lit := expr.rhs as ast.BasicLiteral
+	if tag_lit.kind != .number {
+		return 0
+	}
+	return b.smartcast_variant_type_from_sumtype_tag(tag_sel.lhs, tag_lit.value.int())
+}
+
+fn (mut b Builder) smartcast_rhs_variant_type_id(rhs ast.Expr, allow_value_style bool) TypeID {
+	if !allow_value_style {
+		match rhs {
+			ast.Ident {
+				if rhs.name.len == 0 || !u8(rhs.name[0]).is_capital() {
+					return 0
+				}
+			}
+			ast.SelectorExpr, ast.Type, ast.PrefixExpr {}
+			else {
+				return 0
+			}
+		}
+	}
+	return b.ast_type_to_ssa(rhs)
+}
+
+fn (mut b Builder) smartcast_variant_type_ids_from_condition(cond ast.Expr) map[string]TypeID {
+	mut smartcasts := map[string]TypeID{}
+	match cond {
+		ast.ParenExpr {
+			return b.smartcast_variant_type_ids_from_condition(cond.expr)
+		}
+		ast.InfixExpr {
+			if cond.op == .and {
+				left := b.smartcast_variant_type_ids_from_condition(cond.lhs)
+				right := b.smartcast_variant_type_ids_from_condition(cond.rhs)
+				for name, typ in left {
+					if typ != 0 {
+						smartcasts[name] = typ
+					}
+				}
+				for name, typ in right {
+					if typ != 0 {
+						smartcasts[name] = typ
+					}
+				}
+				return smartcasts
+			}
+			tag_typ := b.smartcast_variant_type_from_tag_check(cond)
+			if tag_typ != 0 {
+				tag_sel := cond.lhs as ast.SelectorExpr
+				expr_name := b.smartcast_expr_name(tag_sel.lhs)
+				if expr_name != '' {
+					smartcasts[expr_name] = tag_typ
+				}
+				return smartcasts
+			}
+			if cond.op in [.key_is, .eq] {
+				expr_name := b.smartcast_expr_name(cond.lhs)
+				if expr_name != '' {
+					variant_type := b.smartcast_rhs_variant_type_id(cond.rhs, cond.op == .key_is)
+					if variant_type != 0 {
+						smartcasts[expr_name] = variant_type
+					}
+				}
+			}
+		}
+		else {}
+	}
+
+	return smartcasts
+}
+
+fn (mut b Builder) apply_local_smartcasts(smartcasts map[string]TypeID) {
+	for name, typ in smartcasts {
+		if name != '' && typ != 0 {
+			b.local_smartcasts[name] = typ
+		}
+	}
+}
+
+fn (mut b Builder) selector_lhs_variant_type_id(expr ast.Expr) TypeID {
+	expr_name := b.smartcast_expr_name(expr)
+	if expr_name != '' {
+		if variant_type := b.local_smartcasts[expr_name] {
+			return variant_type
+		}
+	}
+	if checked := b.get_checked_expr_type(expr) {
+		base := b.unwrap_alias_type(checked)
+		if base !is types.SumType {
+			return b.type_to_ssa(checked)
+		}
+	}
+	return 0
+}
+
+fn (mut b Builder) selector_lhs_variant_type_id_from_flat(c ast.Cursor) TypeID {
+	expr_name := b.smartcast_expr_name_from_flat(c)
+	if expr_name != '' {
+		if variant_type := b.local_smartcasts[expr_name] {
+			return variant_type
+		}
+	}
+	if checked := b.get_checked_expr_type_from_flat(c) {
+		base := b.unwrap_alias_type(checked)
+		if base !is types.SumType {
+			return b.type_to_ssa(checked)
+		}
+	}
+	return 0
+}
+
 fn (mut b Builder) track_array_elem_type_for_local_checked_type(name string) bool {
 	if typ := b.checked_local_type(name) {
 		elem_t := b.unwrap_to_array_elem_ssa(typ)
@@ -5442,7 +5640,11 @@ fn (mut b Builder) build_if_stmt(node ast.IfExpr) {
 
 	// Then
 	b.cur_block = then_block
+	then_smartcasts := b.smartcast_variant_type_ids_from_condition(node.cond)
+	mut saved_local_smartcasts := b.local_smartcasts.clone()
+	b.apply_local_smartcasts(then_smartcasts)
 	b.build_stmts(node.stmts)
+	b.local_smartcasts = saved_local_smartcasts.clone()
 	if !b.block_has_terminator(b.cur_block) {
 		b.mod.add_instr(.jmp, b.cur_block, 0, [b.mod.blocks[merge_block].val_id])
 		b.add_edge(b.cur_block, merge_block)
@@ -5469,6 +5671,7 @@ fn (mut b Builder) build_if_stmt(node ast.IfExpr) {
 			b.add_edge(b.cur_block, merge_block)
 		}
 	}
+	b.local_smartcasts = saved_local_smartcasts.move()
 
 	b.cur_block = merge_block
 	// If the merge block has no predecessors (both branches returned/jumped elsewhere),
@@ -5505,9 +5708,14 @@ fn (mut b Builder) build_if_stmt_from_flat(c ast.Cursor) {
 	b.add_edge(b.cur_block, else_block)
 
 	b.cur_block = then_block
+	cond_expr := cond_c.flat.decode_expr(cond_c.id)
+	then_smartcasts := b.smartcast_variant_type_ids_from_condition(cond_expr)
+	mut saved_local_smartcasts := b.local_smartcasts.clone()
+	b.apply_local_smartcasts(then_smartcasts)
 	for i in 2 .. c.edge_count() {
 		b.build_stmt_from_flat(c.edge(i))
 	}
+	b.local_smartcasts = saved_local_smartcasts.clone()
 	if !b.block_has_terminator(b.cur_block) {
 		b.mod.add_instr(.jmp, b.cur_block, 0, [b.mod.blocks[merge_block].val_id])
 		b.add_edge(b.cur_block, merge_block)
@@ -5534,6 +5742,7 @@ fn (mut b Builder) build_if_stmt_from_flat(c ast.Cursor) {
 			b.add_edge(b.cur_block, merge_block)
 		}
 	}
+	b.local_smartcasts = saved_local_smartcasts.move()
 
 	b.cur_block = merge_block
 	if b.mod.blocks[merge_block].preds.len == 0 {
@@ -6690,7 +6899,7 @@ fn (mut b Builder) build_selector_from_flat(c ast.Cursor) ValueID {
 
 	mut base := b.build_expr_from_flat(lhs_c)
 	if field_val := b.build_sumtype_variant_selector_value(base,
-		b.get_checked_expr_type_from_flat(lhs_c), rhs_name)
+		b.selector_lhs_variant_type_id_from_flat(lhs_c), rhs_name)
 	{
 		if b.mod.values[field_val].typ == b.get_array_type() {
 			b.track_array_value_elem_type_from_selector_from_flat(c, field_val,
@@ -11493,8 +11702,8 @@ fn (mut b Builder) build_selector(expr ast.SelectorExpr) ValueID {
 
 	// Use extractvalue for struct field access
 	mut base := b.build_expr(expr.lhs)
-	if field_val := b.build_sumtype_variant_selector_value(base, b.get_checked_expr_type(expr.lhs),
-		expr.rhs.name)
+	if field_val := b.build_sumtype_variant_selector_value(base,
+		b.selector_lhs_variant_type_id(expr.lhs), expr.rhs.name)
 	{
 		if b.mod.values[field_val].typ == b.get_array_type() {
 			b.track_array_value_elem_type_from_selector(expr, field_val, b.mod.values[base].typ)
@@ -11642,7 +11851,7 @@ fn (mut b Builder) build_selector_addr(expr ast.SelectorExpr) ?SelectorAddr {
 	}
 }
 
-fn (mut b Builder) build_sumtype_variant_selector_value(base ValueID, checked_lhs_type ?types.Type, field_name string) ?ValueID {
+fn (mut b Builder) build_sumtype_variant_selector_value(base ValueID, variant_type TypeID, field_name string) ?ValueID {
 	if base <= 0 || base >= b.mod.values.len || field_name == '' {
 		return none
 	}
@@ -11650,12 +11859,6 @@ fn (mut b Builder) build_sumtype_variant_selector_value(base ValueID, checked_lh
 	if !b.ssa_type_is_sumtype(base_type) {
 		return none
 	}
-	checked_type := checked_lhs_type or { return none }
-	variant_struct := b.unwrap_to_struct(checked_type)
-	if variant_struct.name == '' {
-		return none
-	}
-	variant_type := b.type_to_ssa(types.Type(variant_struct))
 	if variant_type <= 0 || variant_type == base_type
 		|| int(variant_type) >= b.mod.type_store.types.len {
 		return none
@@ -12321,6 +12524,9 @@ fn (mut b Builder) build_if_expr(node ast.IfExpr) ValueID {
 
 	// Then
 	b.cur_block = then_block
+	then_smartcasts := b.smartcast_variant_type_ids_from_condition(node.cond)
+	mut saved_local_smartcasts := b.local_smartcasts.clone()
+	b.apply_local_smartcasts(then_smartcasts)
 	mut then_val := ValueID(0)
 	if node.stmts.len > 0 {
 		for i := 0; i < node.stmts.len - 1; i++ {
@@ -12333,6 +12539,7 @@ fn (mut b Builder) build_if_expr(node ast.IfExpr) ValueID {
 			b.build_stmt(last)
 		}
 	}
+	b.local_smartcasts = saved_local_smartcasts.clone()
 	then_end_block := b.cur_block
 	mut then_reaches_merge := false
 	if !b.block_has_terminator(b.cur_block) {
@@ -12375,6 +12582,7 @@ fn (mut b Builder) build_if_expr(node ast.IfExpr) ValueID {
 			else_reaches_merge = true
 		}
 	}
+	b.local_smartcasts = saved_local_smartcasts.move()
 
 	// Merge block: use phi to select result (no alloca/store/load)
 	b.cur_block = merge_block

@@ -245,6 +245,21 @@ fn test_monomorphize_pass_uses_decl_module_name_for_moved_import_clone() {
 	assert cloned.name == 'arrays__uniq_T_string'
 }
 
+fn test_register_generic_bindings_keeps_first_owner_for_duplicate_spec() {
+	mut t := mono_test_transformer()
+	t.env = types.Environment.new()
+	bindings := {
+		'T': types.Type(types.string_)
+	}
+	t.cur_generic_call_file_idx = 0
+	t.register_generic_bindings('json2__Encoder__encode_value', bindings)
+	t.cur_generic_call_file_idx = 1
+	t.register_generic_bindings('json2__Encoder__encode_value', bindings)
+	owner_key := generic_spec_owner_key('json2__Encoder__encode_value', bindings)
+	owner := t.generic_spec_owner_file[owner_key] or { -1 }
+	assert owner == 0
+}
+
 fn test_generic_call_concrete_return_type_prefers_substitution_over_stale_pos_type() {
 	mut env := types.Environment.new()
 	env.set_expr_type(77, types.Type(types.int_))

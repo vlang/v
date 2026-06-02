@@ -108,6 +108,62 @@ fn test_parse_files_expands_implicit_main_subdirectories() {
 	assert 'hero.v' in names
 }
 
+fn test_virtual_main_modules_skip_groups_with_executable_main_from_paths() {
+	tmp_dir := os.join_path(os.temp_dir(), 'v2_builder_virtual_paths_main_${os.getpid()}')
+	os.rmdir_all(tmp_dir) or {}
+	os.mkdir_all(os.join_path(tmp_dir, 'admin')) or { panic(err) }
+	os.mkdir_all(os.join_path(tmp_dir, 'tests')) or { panic(err) }
+	defer {
+		os.rmdir_all(tmp_dir) or {}
+	}
+
+	main_file := os.join_path(tmp_dir, 'main.v')
+	admin_file := os.join_path(tmp_dir, 'admin', 'admin.v')
+	test_file := os.join_path(tmp_dir, 'tests', 'first_run.v')
+	os.write_file(main_file, 'module main\nfn main() {}\n') or { panic(err) }
+	os.write_file(admin_file, 'module main\nfn admin_route() {}\n') or { panic(err) }
+	os.write_file(test_file, 'module main\nfn main() {}\n') or { panic(err) }
+
+	mut prefs := pref.new_preferences()
+	prefs.skip_builtin = true
+	prefs.skip_imports = true
+	mut b := new_builder(&prefs)
+	b.user_files = [tmp_dir]
+	groups := b.collect_virtual_main_modules_from_paths([main_file, admin_file, test_file])
+	names := groups.map(it.name)
+
+	assert names == ['admin']
+}
+
+fn test_virtual_main_modules_skip_groups_with_executable_main_from_ast() {
+	tmp_dir := os.join_path(os.temp_dir(), 'v2_builder_virtual_ast_main_${os.getpid()}')
+	os.rmdir_all(tmp_dir) or {}
+	os.mkdir_all(os.join_path(tmp_dir, 'admin')) or { panic(err) }
+	os.mkdir_all(os.join_path(tmp_dir, 'tests')) or { panic(err) }
+	defer {
+		os.rmdir_all(tmp_dir) or {}
+	}
+
+	os.write_file(os.join_path(tmp_dir, 'main.v'), 'module main\nfn main() {}\n') or { panic(err) }
+	os.write_file(os.join_path(tmp_dir, 'admin', 'admin.v'), 'module main\nfn admin_route() {}\n') or {
+		panic(err)
+	}
+	os.write_file(os.join_path(tmp_dir, 'tests', 'first_run.v'), 'module main\nfn main() {}\n') or {
+		panic(err)
+	}
+
+	mut prefs := pref.new_preferences()
+	prefs.skip_builtin = true
+	prefs.skip_imports = true
+	mut b := new_builder(&prefs)
+	b.user_files = [tmp_dir]
+	b.files = b.parse_files([tmp_dir])
+	groups := b.collect_virtual_main_modules()
+	names := groups.map(it.name)
+
+	assert names == ['admin']
+}
+
 fn test_parse_files_expands_non_main_module_files() {
 	tmp_dir := os.join_path(os.temp_dir(), 'v2_builder_parse_module_${os.getpid()}')
 	os.rmdir_all(tmp_dir) or {}

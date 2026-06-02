@@ -1227,6 +1227,9 @@ fn (t &Transformer) field_type_from_receiver_type(receiver_type types.Type, fiel
 			return field_typ
 		}
 	}
+	if cur is types.SumType {
+		return none
+	}
 	c_name := t.type_to_c_name(cur)
 	if c_name != '' {
 		if field_typ := t.lookup_struct_field_generic_decl_type(c_name, field_name) {
@@ -1235,6 +1238,9 @@ fn (t &Transformer) field_type_from_receiver_type(receiver_type types.Type, fiel
 		if field_typ := t.lookup_struct_field_type(c_name, field_name) {
 			return field_typ
 		}
+	}
+	if cur is types.Struct {
+		return none
 	}
 	type_name := t.type_to_name(cur)
 	if type_name != '' && type_name != c_name {
@@ -2567,69 +2573,72 @@ fn match_sumtype_variant_name(candidate string, variants []string) string {
 }
 
 fn (t &Transformer) type_to_name(typ types.Type) string {
-	if typ is types.Enum {
-		return typ.name
-	}
-	if typ is types.Struct {
-		return typ.name
-	}
-	if typ is types.Alias {
-		return typ.name
-	}
-	if typ is types.NamedType {
-		return string(typ)
-	}
-	if typ is types.String {
-		return 'string'
-	}
-	if typ is types.Char {
-		return 'char'
-	}
-	if typ is types.Rune {
-		return 'rune'
-	}
-	if typ is types.ISize {
-		return 'isize'
-	}
-	if typ is types.USize {
-		return 'usize'
-	}
-	if typ is types.Void {
-		return 'void'
-	}
-	if typ is types.Nil {
-		return 'nil'
-	}
-	if typ is types.None {
-		return 'none'
-	}
-	if typ is types.Map {
-		// Convert Map type to 'Map_K_V' format
-		key_type := t.type_to_name(typ.key_type)
-		value_type := t.type_to_name(typ.value_type)
-		if key_type != '' && value_type != '' {
-			return 'Map_${key_type}_${value_type}'
+	match typ {
+		types.Enum {
+			return typ.name
 		}
+		types.Struct {
+			return typ.name
+		}
+		types.Alias {
+			return typ.name
+		}
+		types.NamedType {
+			return string(typ)
+		}
+		types.String {
+			return 'string'
+		}
+		types.Char {
+			return 'char'
+		}
+		types.Rune {
+			return 'rune'
+		}
+		types.ISize {
+			return 'isize'
+		}
+		types.USize {
+			return 'usize'
+		}
+		types.Void {
+			return 'void'
+		}
+		types.Nil {
+			return 'nil'
+		}
+		types.None {
+			return 'none'
+		}
+		types.Map {
+			// Convert Map type to 'Map_K_V' format
+			key_type := t.type_to_name(typ.key_type)
+			value_type := t.type_to_name(typ.value_type)
+			if key_type != '' && value_type != '' {
+				return 'Map_${key_type}_${value_type}'
+			}
+		}
+		types.Primitive {
+			return t.type_to_c_name(typ)
+		}
+		types.SumType {
+			return types.sum_type_name(typ)
+		}
+		types.OptionType {
+			return '_option_' + t.type_to_name(typ.base_type)
+		}
+		types.ResultType {
+			return '_result_' + t.type_to_name(typ.base_type)
+		}
+		types.Pointer {
+			return t.type_to_name(typ.base_type) + '*'
+		}
+		types.FnType {
+			return 'FnType'
+		}
+		else {}
 	}
-	if typ is types.Primitive {
-		return t.type_to_c_name(typ)
-	}
-	if typ is types.SumType {
-		return types.sum_type_name(typ)
-	}
-	inner := typ.base_type()
-	if typ is types.OptionType {
-		return '_option_' + t.type_to_name(inner)
-	}
-	if typ is types.ResultType {
-		return '_result_' + t.type_to_name(inner)
-	}
-	if typ is types.Pointer {
-		return t.type_to_name(inner) + '*'
-	}
-	if typ is types.FnType {
-		return 'FnType'
-	}
+
 	return ''
 }
 
