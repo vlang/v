@@ -20,7 +20,7 @@ pub fn (db DB) select(config orm.SelectConfig, data orm.QueryData, where orm.Que
 		stmt.finalize()
 	}
 	mut c := 1
-	sqlite_stmt_binder(stmt, where, query, mut c)!
+	sqlite_stmt_binder(stmt, where_with_tenant, query, mut c)!
 	sqlite_stmt_binder(stmt, data, query, mut c)!
 
 	mut ret := [][]orm.Primitive{}
