@@ -967,6 +967,9 @@ fn (mut g Gen) gen_array_map(node ast.CallExpr) {
 		is_auto_heap)
 	g.set_current_pos_as_last_stmt_pos()
 	mut is_embed_map_filter := false
+	lambda_autofree_tmp_arg_vars_start := g.lambda_autofree_tmp_arg_vars.len
+	prev_inside_lambda_autofree_tmp := g.inside_lambda_autofree_tmp
+	g.inside_lambda_autofree_tmp = true
 	match mut expr {
 		ast.AnonFn {
 			g.write('${ret_elem_styp} ${tmp_map_expr_result_name} = ')
@@ -1069,11 +1072,16 @@ fn (mut g Gen) gen_array_map(node ast.CallExpr) {
 		}
 	}
 
+	g.inside_lambda_autofree_tmp = prev_inside_lambda_autofree_tmp
+
 	if left_is_array {
-		g.writeln2(';',
-			'builtin__array_push${noscan}((array*)&${past.tmp_var}, &${tmp_map_expr_result_name});')
+		g.writeln(';')
+		g.write_lambda_autofree_tmp_arg_vars(lambda_autofree_tmp_arg_vars_start)
+		g.writeln('builtin__array_push${noscan}((array*)&${past.tmp_var}, &${tmp_map_expr_result_name});')
 	} else {
-		g.writeln2(';', '${past.tmp_var}[${i}] = ${tmp_map_expr_result_name};')
+		g.writeln(';')
+		g.write_lambda_autofree_tmp_arg_vars(lambda_autofree_tmp_arg_vars_start)
+		g.writeln('${past.tmp_var}[${i}] = ${tmp_map_expr_result_name};')
 	}
 	g.indent--
 	g.writeln('}')
@@ -1084,6 +1092,16 @@ fn (mut g Gen) gen_array_map(node ast.CallExpr) {
 		g.indent--
 		g.writeln('}')
 	}
+}
+
+fn (mut g Gen) write_lambda_autofree_tmp_arg_vars(start int) {
+	if g.lambda_autofree_tmp_arg_vars.len <= start {
+		return
+	}
+	for var_name in g.lambda_autofree_tmp_arg_vars[start..] {
+		g.writeln('builtin__string_free(&${var_name});')
+	}
+	g.lambda_autofree_tmp_arg_vars = g.lambda_autofree_tmp_arg_vars[..start].clone()
 }
 
 @[inline]

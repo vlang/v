@@ -1,0 +1,4 @@
+string _arg_expr_ends_with_1_
+= builtin__string__plus(suffix, _S("\""));
+if (builtin__string_ends_with(it, /*autofree arg*/_arg_expr_ends_with_1_
+builtin__string_free(&_arg_expr_ends_with_1_

@@ -187,6 +187,7 @@ mut:
 	inside_global_decl                   bool
 	inside_interface_deref               bool
 	inside_assign_fn_var                 bool
+	inside_lambda_autofree_tmp           bool
 	outer_tmp_var                        string // tmp var from outer context (e.g. from stmts_with_tmp_var) to be used by nested if/match expressions
 	last_tmp_call_var                    []string
 	last_if_option_type                  ast.Type // stores the expected if type on nested if expr
@@ -253,6 +254,7 @@ mut:
 	sql_side                             SqlExprSide // left or right, to distinguish idents in `name == name`
 	sql_last_stmt_out_len                int
 	strs_to_free0                        []string // strings.Builder
+	lambda_autofree_tmp_arg_vars         []string
 	// strs_to_free          []string // strings.Builder
 	// tmp_arg_vars_to_free  []string
 	// autofree_pregen       map[string]string
@@ -6080,7 +6082,8 @@ fn (mut g Gen) expr(node_ ast.Expr) {
 			}
 			g.call_expr(node)
 			if g.is_autofree && !g.is_builtin_mod && !g.is_js_call && g.strs_to_free0.len == 0
-				&& !g.is_autofree_tmp && !g.inside_lambda && g.inside_ternary == 0 {
+				&& !g.is_autofree_tmp && (!g.inside_lambda || g.inside_lambda_autofree_tmp)
+				&& g.inside_ternary == 0 {
 				// if len != 0, that means we are handling call expr inside call expr (arg)
 				// and it'll get messed up here, since it's handled recursively in autofree_call_pregen()
 				// so just skip it

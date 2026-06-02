@@ -6129,7 +6129,11 @@ fn (mut g Gen) autofree_call_pregen(node ast.CallExpr) {
 		g.is_autofree = old_is_autofree
 		g.is_autofree_tmp = false
 		g.strs_to_free0 << tmp_arg_init
-		// This tmp arg var will be freed with the rest of the vars at the end of the scope.
+		if g.inside_lambda_autofree_tmp {
+			g.lambda_autofree_tmp_arg_vars << t
+		}
+		// This tmp arg var will be freed with the rest of the vars at the end of the scope,
+		// or explicitly after an inline lambda expression that does not run scope cleanup.
 	}
 }
 
@@ -6554,7 +6558,8 @@ fn (mut g Gen) call_args(node ast.CallExpr) {
 				// name := '_tt${g.tmp_count_af}_arg_expr_${fn_name}_${i}'
 				name := '_arg_expr_${fn_name}_${i + 1}_${node.pos.pos}'
 				scope := g.file.scope.innermost(node.pos.pos)
-				if (!g.is_autofree_tmp && !g.inside_lambda) || scope.known_var(name) {
+				if (!g.is_autofree_tmp && (!g.inside_lambda || g.inside_lambda_autofree_tmp))
+					|| scope.known_var(name) {
 					tmp_arg := ast.CallArg{
 						typ:    arg.typ
 						is_mut: effective_arg.is_mut
