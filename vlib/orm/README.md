@@ -124,10 +124,11 @@ users := sql db {
 }!
 ```
 
-`QueryFilter.mode` defaults to `.static`. Static filters are reserved for future
-compiler-generated scope clauses. The runtime `orm.DB` wrapper applies only
-filters explicitly marked with `mode: .dynamic`. Invalid dynamic filters return
-an error instead of being silently skipped.
+`QueryFilter.mode` must be explicitly set to `.static` or `.dynamic` (there is
+no default — `.unset` causes a runtime error). Static filters are reserved for
+future compiler-generated scope clauses. The runtime `orm.DB` wrapper applies
+only filters explicitly marked with `mode: .dynamic`. Invalid dynamic filters
+return an error instead of being silently skipped.
 
 Call `db.unscoped()` to return a new `orm.DB` value that skips all scope filters.
 Call `db.unscoped('tenant_id')` to skip only selected fields.

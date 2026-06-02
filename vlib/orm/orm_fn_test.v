@@ -269,6 +269,21 @@ fn test_orm_select_gen_with_where() {
 	assert query == "SELECT 'id', 'test', 'abc' FROM 'test_table' WHERE 'abc' = ?0 AND 'test' > ?1;"
 }
 
+fn test_orm_select_gen_preserves_embedded_column_dot() {
+	query := orm.orm_select_gen(orm.SelectConfig{
+		table:     orm.Table{
+			name: 'test_table'
+		}
+		fields:    get_select_fields()
+		has_where: true
+	}, "'", true, '?', 0, orm.QueryData{
+		fields: ['Coordinates.latitude']
+		kinds:  [.eq]
+	})
+
+	assert query == "SELECT 'id', 'test', 'abc' FROM 'test_table' WHERE 'Coordinates.latitude' = ?0;"
+}
+
 fn test_orm_select_gen_with_order() {
 	query := orm.orm_select_gen(orm.SelectConfig{
 		table:      orm.Table{

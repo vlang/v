@@ -39,6 +39,18 @@ struct ScopeUser {
 	shop_id   int
 }
 
+struct ScopeCoordinates {
+	latitude  f64
+	longitude f64
+}
+
+@[table: 'scope_embedded_locations']
+struct ScopeEmbeddedLocation {
+	ScopeCoordinates
+	id   int @[primary; sql: serial]
+	name string
+}
+
 fn test_unscoped_skips_tenant_filter_in_select() {
 	mut raw_db := sqlite.connect(':memory:') or { panic(err) }
 
@@ -628,6 +640,47 @@ fn test_unscoped_skip_multi_field_select() {
 	assert users_all.len == 3
 }
 
+fn test_data_scope_filter_on_embedded_field() {
+	mut raw_db := sqlite.connect(':memory:') or { panic(err) }
+
+	sql raw_db {
+		create table ScopeEmbeddedLocation
+	}!
+
+	loc1 := ScopeEmbeddedLocation{
+		name:      'North'
+		latitude:  10.5
+		longitude: 20.0
+	}
+	loc2 := ScopeEmbeddedLocation{
+		name:      'South'
+		latitude:  -3.25
+		longitude: 30.0
+	}
+
+	sql raw_db {
+		insert loc1 into ScopeEmbeddedLocation
+		insert loc2 into ScopeEmbeddedLocation
+	}!
+
+	mut db := orm.new_db(raw_db, orm.DataScope{
+		filters: [
+			orm.QueryFilter{
+				field: 'ScopeCoordinates.latitude'
+				value: orm.Primitive(f64(10.5))
+				mode:  .dynamic
+			},
+		]
+	})
+
+	locations := sql db {
+		select from ScopeEmbeddedLocation
+	}!
+	assert locations.len == 1
+	assert locations[0].name == 'North'
+	assert locations[0].latitude == 10.5
+}
+
 // ---- DataScope tests -------------------------------------------------
 
 fn empty_scope() orm.DataScope {
@@ -690,7 +743,10 @@ fn test_apply_data_scope_appends_to_existing_where() {
 	assert result.is_and == [true]
 }
 
-fn test_apply_data_scope_no_duplicate_field() {
+fn test_apply_data_scope_appends_even_when_field_exists() {
+	// Scope filter is always appended as an additional AND condition,
+	// even when the field already exists in the user's WHERE clause.
+	// This prevents bypassing tenant isolation.
 	scope := scope_single_tenant(5)
 	where := orm.QueryData{
 		fields: ['tenant_id']
@@ -701,8 +757,8 @@ fn test_apply_data_scope_no_duplicate_field() {
 		name: 'users'
 	}
 	result := orm.apply_data_scope(scope, table, where, [], false)!
-	assert result.fields == ['tenant_id']
-	assert result.data == [orm.Primitive(int(10))]
+	assert result.fields == ['tenant_id', 'tenant_id']
+	assert result.data == [orm.Primitive(int(10)), orm.Primitive(int(5))]
 }
 
 fn test_apply_data_scope_empty_or_disabled() {

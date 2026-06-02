@@ -2511,9 +2511,13 @@ fn (g &Gen) get_table_attrs_by_struct_type(typ ast.Type) []ast.Attr {
 }
 
 // orm_table_field_names recursively collects field names from a struct type,
-// including fields from embedded structs. Used to populate Table.fields for
-// scope filter validation in apply_data_scope.
+// including prefixed fields from embedded structs. Used to populate Table.fields
+// for scope filter validation in apply_data_scope.
 fn (g &Gen) orm_table_field_names(typ ast.Type) []string {
+	return g.orm_table_field_names_with_prefix(typ, '')
+}
+
+fn (g &Gen) orm_table_field_names_with_prefix(typ ast.Type, prefix string) []string {
 	sym := g.table.sym(typ)
 	info := sym.struct_info()
 	mut names := []string{}
@@ -2521,21 +2525,22 @@ fn (g &Gen) orm_table_field_names(typ ast.Type) []string {
 		if field.is_embed {
 			embed_sym := g.table.sym(field.typ)
 			if embed_sym.info is ast.Struct {
-				names << g.orm_table_field_names(field.typ)
+				embed_prefix := prefixed_orm_field_name(prefix, embed_sym.embed_name())
+				names << g.orm_table_field_names_with_prefix(field.typ, embed_prefix)
 			}
 		} else {
 			// Skip fields with @[skip] or @[sql:'-'] as they have no database column
 			if field.attrs.contains('skip') || field.attrs.contains_arg('sql', '-') {
 				continue
 			}
-			names << field.name
+			names << prefixed_orm_field_name(prefix, field.name)
 		}
 	}
 	return names
 }
 
 // orm_table_column_names recursively collects SQL column names from a struct type,
-// including fields from embedded structs. Used to populate Table.columns for
+// including columns from embedded structs. Used to populate Table.columns for
 // SQL column name resolution in apply_data_scope.
 fn (g &Gen) orm_table_column_names(typ ast.Type) []string {
 	sym := g.table.sym(typ)
@@ -2556,6 +2561,13 @@ fn (g &Gen) orm_table_column_names(typ ast.Type) []string {
 		}
 	}
 	return names
+}
+
+fn prefixed_orm_field_name(prefix string, name string) string {
+	if prefix == '' {
+		return name
+	}
+	return '${prefix}.${name}'
 }
 
 // get_table_name_by_struct_type converts the struct type to a table name.

@@ -1227,6 +1227,12 @@ pub fn orm_select_gen(cfg SelectConfig, q string, num bool, qm string, start_pos
 	return str
 }
 
+const table_qualified_field_separator = '::v_orm_table::'
+
+fn table_qualified_field(table_name string, column_name string) string {
+	return '${table_name}${table_qualified_field_separator}${column_name}'
+}
+
 fn gen_where_clause(where QueryData, q string, qm string, num bool, mut c &int) string {
 	mut str := ''
 	mut data_idx := 0
@@ -1278,11 +1284,12 @@ fn gen_where_clause(where QueryData, q string, qm string, num bool, mut c &int) 
 }
 
 // gen_qualified_field renders a field name with the given quote character q.
-// When the field contains a dot (e.g. `users.tenant_id`), each part is quoted
-// separately so that table-qualified scope filters in JOIN queries are unambiguous.
+// Table-qualified fields use an internal marker so embedded ORM column names
+// containing dots (e.g. `Coordinates.latitude`) stay single quoted identifiers.
 fn gen_qualified_field(field string, q string) string {
-	if idx := field.index('.') {
-		return '${q}${field[..idx]}${q}.${q}${field[idx + 1..]}${q}'
+	if idx := field.index(table_qualified_field_separator) {
+		column_start := idx + table_qualified_field_separator.len
+		return '${q}${field[..idx]}${q}.${q}${field[column_start..]}${q}'
 	}
 	return '${q}${field}${q}'
 }

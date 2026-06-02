@@ -51,10 +51,9 @@ pub:
 // corresponding SQL column name at query time. If that metadata is unavailable,
 // the ORM may fall back to using `field` directly as the SQL column name. In
 // metadata-driven paths, unresolved fields are skipped for that table.
-// Static filters are the default: their field/operator shape is stable, while
-// the value can still be runtime data. Dynamic filters are marked explicitly for
-// request-dependent filters and future compiler/runtime specialization. The
-// runtime DB wrapper applies only filters explicitly marked with .dynamic.
+// `mode` must be explicitly set to .static or .dynamic. Static filters are
+// reserved for future compiler-generated scope clauses. The runtime DB wrapper
+// applies only filters explicitly marked with .dynamic.
 pub struct QueryFilter {
 pub:
 	field    string
@@ -141,12 +140,14 @@ fn apply_scope_filters(scope DataScope, table Table, qd QueryData, scope_skip_fi
 		if filter.field == '' {
 			return error('orm.DataScope: dynamic filter field must not be empty')
 		}
-		if filter.field in result.fields {
-			continue
-		}
 		if filter.field in scope_skip_fields {
 			continue
 		}
+		// Note: we do NOT skip when filter.field is already in result.fields.
+		// The scope filter is always appended as an additional AND condition.
+		// This prevents a user from bypassing tenant isolation by including the
+		// scoped field in their own WHERE clause. The resolved SQL column name is
+		// also appended without deduplication for the same reason.
 		if table.fields.len > 0 && filter.field !in table.fields {
 			continue
 		}
@@ -160,12 +161,11 @@ fn apply_scope_filters(scope DataScope, table Table, qd QueryData, scope_skip_fi
 		}
 		// Qualify with table name when joins are present to avoid ambiguity
 		if has_joins && table.name != '' {
-			column_name = '${table.name}.${column_name}'
+			column_name = table_qualified_field(table.name, column_name)
 		}
-		// Check deduplication against SQL column name
-		if column_name in result.fields {
-			continue
-		}
+		// Note: we do NOT skip when column_name is already in result.fields.
+		// The scope filter is always appended as an additional AND condition
+		// to prevent bypassing tenant isolation.
 		result.is_and << true
 		result.fields << column_name.clone()
 		if !filter.operator.is_unary() {
