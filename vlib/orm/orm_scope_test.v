@@ -747,12 +747,21 @@ fn test_apply_data_scope_multi_field() {
 	assert result.kinds == [.eq, .eq]
 }
 
-fn test_query_filter_mode_defaults_to_static() {
+fn test_query_filter_mode_must_be_explicit() {
 	filter := orm.QueryFilter{
 		field: 'tenant_id'
 		value: orm.Primitive(int(5))
 	}
-	assert filter.mode == .static
+	// mode defaults to .unset (the zero value); applying it must error
+	assert filter.mode == .unset
+	scope := orm.DataScope{
+		filters: [filter]
+	}
+	orm.apply_data_scope(scope, orm.Table{ name: 't' }, orm.QueryData{}, [], false) or {
+		assert err.msg().contains('must be explicitly set')
+		return
+	}
+	assert false
 }
 
 fn test_apply_data_scope_applies_only_dynamic_filters() {
@@ -761,6 +770,7 @@ fn test_apply_data_scope_applies_only_dynamic_filters() {
 			orm.QueryFilter{
 				field: 'tenant_id'
 				value: orm.Primitive(int(5))
+				mode:  .static
 			},
 			orm.QueryFilter{
 				field: 'shop_id'
