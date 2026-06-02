@@ -2786,15 +2786,50 @@ fn clone_comptime_field_ctx(contexts []CloneComptimeFieldCtx, name string) ?Clon
 	return none
 }
 
+fn (mut t Transformer) clone_monomorphized_pos(pos token.Pos) token.Pos {
+	if pos.id == 0 {
+		return pos
+	}
+	new_pos := t.next_synth_pos()
+	return token.Pos{
+		offset: pos.offset
+		id:     new_pos.id
+	}
+}
+
 fn (mut t Transformer) clone_expr_with_bindings_and_fields(expr ast.Expr, bindings map[string]types.Type, contexts []CloneComptimeFieldCtx) ast.Expr {
 	match expr {
 		ast.Ident {
+			pos := t.clone_monomorphized_pos(expr.pos)
 			if concrete := bindings[expr.name] {
-				return t.type_to_ast_expr(concrete, expr.pos)
+				return t.type_to_ast_expr(concrete, pos)
 			}
-			return expr
+			return ast.Expr(ast.Ident{
+				name: expr.name
+				pos:  pos
+			})
 		}
-		ast.BasicLiteral, ast.EmptyExpr, ast.Keyword, ast.LifetimeExpr, ast.StringLiteral {
+		ast.BasicLiteral {
+			return ast.Expr(ast.BasicLiteral{
+				kind:  expr.kind
+				value: expr.value
+				pos:   expr.pos
+			})
+		}
+		ast.StringLiteral {
+			return ast.Expr(ast.StringLiteral{
+				kind:  expr.kind
+				value: expr.value
+				pos:   expr.pos
+			})
+		}
+		ast.LifetimeExpr {
+			return ast.Expr(ast.LifetimeExpr{
+				name: expr.name
+				pos:  expr.pos
+			})
+		}
+		ast.EmptyExpr, ast.Keyword {
 			return expr
 		}
 		ast.SelectorExpr {
@@ -2809,7 +2844,10 @@ fn (mut t Transformer) clone_expr_with_bindings_and_fields(expr ast.Expr, bindin
 			}
 			return ast.Expr(ast.SelectorExpr{
 				lhs: t.clone_expr_with_bindings_and_fields(expr.lhs, bindings, contexts)
-				rhs: expr.rhs
+				rhs: ast.Ident{
+					name: expr.rhs.name
+					pos:  expr.rhs.pos
+				}
 				pos: expr.pos
 			})
 		}

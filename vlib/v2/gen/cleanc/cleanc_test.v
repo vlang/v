@@ -1800,6 +1800,67 @@ fn main() {
 	assert !csrc.contains('"%d", ret'), csrc
 }
 
+fn test_generic_abs_int_literal_decl_stays_int() {
+	csrc := cleanc_csrc_for_test_source('generic_abs_int_literal_decl', '
+fn abs[T](a T) T {
+	return if a < 0 { -a } else { a }
+}
+
+fn main() {
+	ret1 := abs(0)
+	assert "\${ret1}" == "0"
+	ret2 := abs(0.0)
+	assert "\${ret2}" == "0.0"
+}
+')
+	assert csrc.contains('int ret1 ='), csrc
+	assert csrc.contains('f64 ret2 ='), csrc
+	assert !csrc.contains('f64 ret1 ='), csrc
+}
+
+fn test_variadic_voidptr_hex_uses_explicit_int_cast_deref_type() {
+	mut env := types.Environment.new()
+	deref_pos := token.Pos{
+		id: 5251
+	}
+	env.set_expr_type(deref_pos.id, types.Type(types.f64_))
+	mut gen := Gen.new_with_env([], env)
+	typ := gen.get_expr_type(ast.Expr(ast.PrefixExpr{
+		op:   .mul
+		expr: ast.Expr(ast.PrefixExpr{
+			op:   .amp
+			expr: ast.Expr(ast.CallOrCastExpr{
+				lhs:  ast.Expr(ast.Ident{
+					name: 'int'
+				})
+				expr: ast.Expr(ast.Ident{
+					name: 'raw'
+				})
+			})
+		})
+		pos:  deref_pos
+	}))
+	assert typ == 'int'
+}
+
+fn test_variadic_voidptr_hex_source_decl_uses_explicit_int_cast_deref_type() {
+	csrc := cleanc_csrc_for_test_source('variadic_voidptr_hex_cast_deref', '
+fn format_value(use_int bool, pt ...voidptr) int {
+	mut p_index := 0
+	if use_int {
+		x := unsafe { *(&int(pt[p_index])) }
+		return x
+	}
+	x := unsafe { *(&f64(pt[p_index])) }
+	_ = x
+	return 0
+}
+')
+	assert csrc.contains('int x ='), csrc
+	assert csrc.contains('f64 x ='), csrc
+	assert !csrc.contains('f64 x = (*((int*)'), csrc
+}
+
 fn test_decl_assign_does_not_use_position_type_for_or_temp() {
 	mut env := types.Environment.new()
 	env.set_expr_type(88, types.Type(types.Array{
@@ -3731,6 +3792,25 @@ fn test_cache_generic_concrete_origin_rejects_unqualified_name_from_qualified_mo
 	assert g.generic_concrete_c_name_belongs_to_emit_modules('veb__Context')
 }
 
+fn test_cache_generic_concrete_origin_accepts_current_module_unqualified_type() {
+	mut env := types.Environment.new()
+	mut json2_scope := types.new_scope(unsafe { nil })
+	json2_scope.insert('ValueInfo', types.Type(types.Struct{
+		name: 'json2__ValueInfo'
+	}))
+	lock env.scopes {
+		env.scopes['json2'] = json2_scope
+	}
+	mut g := Gen.new_with_env([], env)
+	g.cache_bundle_name = 'imports'
+	g.cur_module = 'json2'
+	g.emit_modules['json2'] = true
+	g.type_modules['json2'] = true
+
+	assert g.generic_concrete_c_name_belongs_to_emit_modules('ValueInfo')
+	assert g.generic_concrete_c_name_belongs_to_emit_modules('Array_ValueInfo')
+}
+
 fn test_cache_generic_struct_bindings_follow_emit_module_filter() {
 	prefs := &vpref.Preferences{
 		backend: .cleanc
@@ -3788,6 +3868,90 @@ fn test_cache_generic_struct_bindings_follow_emit_module_filter() {
 	fallback := g.fallback_generic_bindings_for_names(['T']) or { panic('expected fallback') }
 	fallback_t := fallback['T'] or { panic('expected T fallback') }
 	assert fallback_t.name() == 'arrays__Part'
+}
+
+fn test_cache_generic_struct_bindings_propagate_current_module_nested_generic() {
+	tmp_file := '/tmp/v2_cleanc_json2_nested_generic_${os.getpid()}.v'
+	os.write_file(tmp_file, 'module json2
+
+struct Node[T] {
+mut:
+	value T
+	next  &Node[T] = unsafe { nil }
+}
+
+struct ValueInfo {
+	value int
+}
+
+struct LinkedList[T] {
+mut:
+	head &Node[T] = unsafe { nil }
+	tail &Node[T] = unsafe { nil }
+}
+
+struct Decoder {
+mut:
+	values_info  LinkedList[ValueInfo]
+	current_node &Node[ValueInfo] = unsafe { nil }
+}
+') or {
+		panic('failed to write temp file')
+	}
+	defer {
+		os.rm(tmp_file) or {}
+	}
+	prefs := &vpref.Preferences{
+		backend:     .cleanc
+		no_parallel: true
+	}
+	mut file_set := token.FileSet.new()
+	mut par := parser.Parser.new(prefs)
+	files := par.parse_files([tmp_file], mut file_set)
+	mut env := types.Environment.new()
+	mut checker := types.Checker.new(prefs, file_set, env)
+	checker.check_files(files)
+	mut trans := transformer.Transformer.new_with_pref(env, prefs)
+	trans.set_file_set(file_set)
+	transformed_files := trans.transform_files(files)
+	mut g := Gen.new_with_env_and_pref(transformed_files, env, prefs)
+	g.cache_bundle_name = 'imports'
+	g.emit_modules['json2'] = true
+	g.type_modules['json2'] = true
+	g.collect_generic_struct_bindings()
+
+	assert 'json2__LinkedList' in g.generic_struct_instances
+	assert 'json2__Node' in g.generic_struct_instances
+	node_instances := g.generic_struct_instances['json2__Node']
+	assert node_instances.len > 0
+	node_binding := node_instances[0].bindings['T'] or { panic('expected T binding') }
+	assert node_binding.name() == 'json2__ValueInfo'
+	for file in transformed_files {
+		for stmt in file.stmts {
+			if stmt is ast.StructDecl && stmt.name == 'Node' {
+				g.cur_module = 'json2'
+				g.active_generic_types = node_instances[0].bindings.clone()
+				g.emitted_types['body_json2__ValueInfo'] = true
+				value_type := g.qualify_owner_local_field_type('json2__Node',
+					g.expr_type_to_c(stmt.fields[0].typ))
+				assert value_type == 'json2__ValueInfo', value_type
+				assert 'body_${value_type}' in g.emitted_types
+				next_type := g.qualify_owner_local_field_type('json2__Node',
+					g.expr_type_to_c(stmt.fields[1].typ))
+				assert next_type == 'json2__Node*', next_type
+				assert g.is_pointer_type(stmt.fields[1].typ)
+				assert g.struct_fields_resolved(stmt)
+				g.active_generic_types = map[string]types.Type{}
+			}
+		}
+	}
+	mut gen := Gen.new_with_env_and_pref(transformed_files, env, prefs)
+	gen.cache_bundle_name = 'imports'
+	gen.emit_modules['json2'] = true
+	gen.type_modules['json2'] = true
+	csrc := gen.gen()
+	assert csrc.contains('struct json2__Node {'), csrc
+	assert csrc.contains('json2__ValueInfo value;'), csrc
 }
 
 fn test_generic_fallback_requires_selected_fields_on_generic_param() {
@@ -3869,6 +4033,13 @@ fn test_generic_fallback_ignores_comptime_field_selectors() {
 	assert g.accepts_broad_generic_fallback_type(node, types.Type(types.Struct{
 		name: 'Config'
 	}))
+}
+
+fn test_option_result_payload_invalid_rejects_qualified_generic_pointer() {
+	mut g := Gen.new([])
+	assert g.option_result_payload_invalid('arrays__T*')
+	assert g.option_result_payload_invalid('arrays__Tptr')
+	assert !g.option_result_payload_invalid('arrays__Part*')
 }
 
 fn test_generic_fallback_ignores_members_inside_comptime_if() {
@@ -4459,6 +4630,29 @@ fn main() {
 	assert !csrc.contains('call_cb_T_Beta_voidptr'), csrc
 	assert !csrc.contains('((void (*)(Alpha*))cb)(*value);'), csrc
 	assert !csrc.contains('((void (*)(Beta*))cb)(*value);'), csrc
+}
+
+fn test_generic_fn_struct_field_erases_placeholder_to_voidptr() {
+	csrc := cleanc_csrc_for_test_source('generic_fn_struct_field_erased', '
+struct Context {}
+
+struct MiddlewareOptions[T] {
+	handler fn (mut ctx T) bool
+}
+
+fn pass(mut ctx Context) bool {
+	_ = ctx
+	return true
+}
+
+fn main() {
+	_ := MiddlewareOptions[Context]{
+		handler: pass
+	}
+}
+')
+	assert csrc.contains('void* handler;'), csrc
+	assert !csrc.contains('veb__T'), csrc
 }
 
 fn test_fixed_array_return_call_arg_unwraps_wrapper_for_fixed_array_param() {

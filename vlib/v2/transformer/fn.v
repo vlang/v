@@ -3191,6 +3191,38 @@ fn (t &Transformer) call_arg_type_for_generic_infer(arg ast.Expr) ?types.Type {
 	return t.get_expr_type(base_arg)
 }
 
+fn (mut t Transformer) inline_generic_math_result_pos(pos token.Pos, arg ast.Expr) token.Pos {
+	result_pos := if pos.id != 0 { pos } else { t.next_synth_pos() }
+	if typ := t.call_arg_type_for_generic_infer(arg) {
+		t.register_synth_type(result_pos, concrete_literal_array_elem_type(typ))
+	}
+	return result_pos
+}
+
+fn (mut t Transformer) make_inline_abs_expr(arg ast.Expr, pos token.Pos) ast.Expr {
+	abs_cond := t.make_infix_expr(.lt, arg, t.make_number_expr('0'))
+	return ast.Expr(ast.IfExpr{
+		cond:      abs_cond
+		stmts:     [
+			ast.Stmt(ast.ExprStmt{
+				expr: ast.PrefixExpr{
+					op:   .minus
+					expr: arg
+				}
+			}),
+		]
+		else_expr: ast.IfExpr{
+			stmts: [
+				ast.Stmt(ast.ExprStmt{
+					expr: arg
+				}),
+			]
+			pos:   pos
+		}
+		pos:       pos
+	})
+}
+
 fn (t &Transformer) inferred_generic_call_name(base_name string, info CallFnInfo, call_args []ast.Expr) ?string {
 	if base_name == '' || info.generic_params.len == 0 {
 		return none
@@ -5716,28 +5748,8 @@ fn (mut t Transformer) try_inline_generic_math_call(expr ast.CallExpr) ?ast.Expr
 		name := (expr.lhs as ast.Ident).name
 		if name == 'abs' {
 			arg := t.transform_expr(expr.args[0])
-			if typ := t.call_arg_type_for_generic_infer(expr.args[0]) {
-				t.register_synth_type(expr.pos, typ)
-			}
-			abs_cond := t.make_infix_expr(.lt, arg, t.make_number_expr('0'))
-			return ast.Expr(ast.IfExpr{
-				cond:      abs_cond
-				stmts:     [
-					ast.Stmt(ast.ExprStmt{
-						expr: ast.PrefixExpr{
-							op:   .minus
-							expr: arg
-						}
-					}),
-				]
-				else_expr: ast.IfExpr{
-					stmts: [
-						ast.Stmt(ast.ExprStmt{
-							expr: arg
-						}),
-					]
-				}
-			})
+			pos := t.inline_generic_math_result_pos(expr.pos, expr.args[0])
+			return t.make_inline_abs_expr(arg, pos)
 		}
 	}
 	// Handle math.abs(x) - module-qualified single-arg call
@@ -5745,28 +5757,8 @@ fn (mut t Transformer) try_inline_generic_math_call(expr ast.CallExpr) ?ast.Expr
 		sel := expr.lhs as ast.SelectorExpr
 		if sel.lhs is ast.Ident && (sel.lhs as ast.Ident).name == 'math' && sel.rhs.name == 'abs' {
 			arg := t.transform_expr(expr.args[0])
-			if typ := t.call_arg_type_for_generic_infer(expr.args[0]) {
-				t.register_synth_type(expr.pos, typ)
-			}
-			abs_cond := t.make_infix_expr(.lt, arg, t.make_number_expr('0'))
-			return ast.Expr(ast.IfExpr{
-				cond:      abs_cond
-				stmts:     [
-					ast.Stmt(ast.ExprStmt{
-						expr: ast.PrefixExpr{
-							op:   .minus
-							expr: arg
-						}
-					}),
-				]
-				else_expr: ast.IfExpr{
-					stmts: [
-						ast.Stmt(ast.ExprStmt{
-							expr: arg
-						}),
-					]
-				}
-			})
+			pos := t.inline_generic_math_result_pos(expr.pos, expr.args[0])
+			return t.make_inline_abs_expr(arg, pos)
 		}
 	}
 	// Handle min(a, b) and max(a, b) - bare ident calls within math module
@@ -5850,28 +5842,8 @@ fn (mut t Transformer) try_inline_generic_math_coce(expr ast.CallOrCastExpr) ?as
 		name := (expr.lhs as ast.Ident).name
 		if name == 'abs' && expr.expr !is ast.EmptyExpr {
 			arg := t.transform_expr(expr.expr)
-			if typ := t.call_arg_type_for_generic_infer(expr.expr) {
-				t.register_synth_type(expr.pos, typ)
-			}
-			abs_cond := t.make_infix_expr(.lt, arg, t.make_number_expr('0'))
-			return ast.Expr(ast.IfExpr{
-				cond:      abs_cond
-				stmts:     [
-					ast.Stmt(ast.ExprStmt{
-						expr: ast.PrefixExpr{
-							op:   .minus
-							expr: arg
-						}
-					}),
-				]
-				else_expr: ast.IfExpr{
-					stmts: [
-						ast.Stmt(ast.ExprStmt{
-							expr: arg
-						}),
-					]
-				}
-			})
+			pos := t.inline_generic_math_result_pos(expr.pos, expr.expr)
+			return t.make_inline_abs_expr(arg, pos)
 		}
 	}
 	// Handle math.abs(x)
@@ -5880,28 +5852,8 @@ fn (mut t Transformer) try_inline_generic_math_coce(expr ast.CallOrCastExpr) ?as
 		if sel.lhs is ast.Ident
 			&& (sel.lhs as ast.Ident).name == 'math' && sel.rhs.name == 'abs' && expr.expr !is ast.EmptyExpr {
 			arg := t.transform_expr(expr.expr)
-			if typ := t.call_arg_type_for_generic_infer(expr.expr) {
-				t.register_synth_type(expr.pos, typ)
-			}
-			abs_cond := t.make_infix_expr(.lt, arg, t.make_number_expr('0'))
-			return ast.Expr(ast.IfExpr{
-				cond:      abs_cond
-				stmts:     [
-					ast.Stmt(ast.ExprStmt{
-						expr: ast.PrefixExpr{
-							op:   .minus
-							expr: arg
-						}
-					}),
-				]
-				else_expr: ast.IfExpr{
-					stmts: [
-						ast.Stmt(ast.ExprStmt{
-							expr: arg
-						}),
-					]
-				}
-			})
+			pos := t.inline_generic_math_result_pos(expr.pos, expr.expr)
+			return t.make_inline_abs_expr(arg, pos)
 		}
 	}
 	return none

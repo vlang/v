@@ -212,6 +212,12 @@ fn (mut g Gen) propagate_generic_bindings(e ast.Expr, parent_bindings map[string
 					g.propagate_generic_bindings(param, parent_bindings)
 				}
 			}
+			if e is ast.PointerType {
+				g.propagate_generic_bindings(e.base_type, parent_bindings)
+			}
+		}
+		ast.ModifierExpr {
+			g.propagate_generic_bindings(e.expr, parent_bindings)
 		}
 		ast.PrefixExpr {
 			g.propagate_generic_bindings(e.expr, parent_bindings)
@@ -292,6 +298,12 @@ fn (mut g Gen) scan_expr_for_generic_types(e ast.Expr) {
 			if e is ast.ResultType {
 				g.scan_expr_for_generic_types(e.base_type)
 			}
+			if e is ast.PointerType {
+				g.scan_expr_for_generic_types(e.base_type)
+			}
+		}
+		ast.ModifierExpr {
+			g.scan_expr_for_generic_types(e.expr)
 		}
 		ast.PrefixExpr {
 			g.scan_expr_for_generic_types(e.expr)
@@ -1409,6 +1421,7 @@ fn (mut g Gen) emit_option_result_structs() {
 
 fn (mut g Gen) struct_fields_resolved(node ast.StructDecl) bool {
 	real_generic_params := generic_param_names(node.generic_params)
+	owner_name := g.get_struct_name(node)
 	prev_active_generic_types := g.active_generic_types.clone()
 	mut set_generic_context := false
 	if real_generic_params.len > 0 && g.active_generic_types.len == 0 {
@@ -1438,11 +1451,12 @@ fn (mut g Gen) struct_fields_resolved(node ast.StructDecl) bool {
 		}
 	}
 	for field in node.fields {
-		typ_name := if g.active_generic_types.len > 0 {
+		mut typ_name := if g.active_generic_types.len > 0 {
 			g.expr_type_to_c(field.typ)
 		} else {
 			g.field_type_name(field.typ)
 		}
+		typ_name = g.qualify_owner_local_field_type(owner_name, typ_name)
 		if typ_name == '' {
 			continue
 		}
@@ -1474,11 +1488,12 @@ fn (mut g Gen) struct_fields_resolved(node ast.StructDecl) bool {
 			}
 			if field_typ is ast.OptionType {
 				opt_typ := field_typ as ast.OptionType
-				base_name := if g.active_generic_types.len > 0 {
+				mut base_name := if g.active_generic_types.len > 0 {
 					g.expr_type_to_c(opt_typ.base_type)
 				} else {
 					g.field_type_name(opt_typ.base_type)
 				}
+				base_name = g.qualify_owner_local_field_type(owner_name, base_name)
 				if base_name != '' && base_name != 'void'
 					&& !g.option_result_payload_invalid(base_name) {
 					wrapper_name := '_option_' + mangle_alias_component(base_name)
@@ -1488,11 +1503,12 @@ fn (mut g Gen) struct_fields_resolved(node ast.StructDecl) bool {
 				}
 			} else if field_typ is ast.ResultType {
 				res_typ := field_typ as ast.ResultType
-				base_name := if g.active_generic_types.len > 0 {
+				mut base_name := if g.active_generic_types.len > 0 {
 					g.expr_type_to_c(res_typ.base_type)
 				} else {
 					g.field_type_name(res_typ.base_type)
 				}
+				base_name = g.qualify_owner_local_field_type(owner_name, base_name)
 				if base_name != '' && base_name != 'void'
 					&& !g.option_result_payload_invalid(base_name) {
 					wrapper_name := '_result_' + mangle_alias_component(base_name)
@@ -1841,6 +1857,10 @@ fn (mut g Gen) gen_struct_decl(node ast.StructDecl) {
 		}
 		if field.typ is ast.Type {
 			if field.typ is ast.FnType {
+				if expr_has_generic_placeholder(field.typ) {
+					g.sb.writeln('\tvoid* ${field_name};')
+					continue
+				}
 				g.sb.write_string('\t')
 				g.gen_fn_type_param_decl(field.typ as ast.FnType, field_name)
 				g.sb.writeln(';')

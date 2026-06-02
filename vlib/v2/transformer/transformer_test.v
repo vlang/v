@@ -4925,6 +4925,146 @@ fn test_for_in_var_registration_replaces_reused_loop_value_type() {
 	assert (expr as ast.Ident).name == 'v'
 }
 
+fn test_decl_assign_index_expr_records_lhs_type() {
+	mut t := create_transformer_with_vars({
+		'values': types.Type(types.Array{
+			elem_type: types.int_
+		})
+	})
+	lhs_pos := token.Pos{
+		id: 4242
+	}
+	index_pos := token.Pos{
+		id: 4243
+	}
+	t.env.set_expr_type(index_pos.id, types.Type(types.f64_))
+	transformed := t.transform_assign_stmt(ast.AssignStmt{
+		op:  .decl_assign
+		lhs: [ast.Expr(ast.Ident{
+			name: 'first'
+			pos:  lhs_pos
+		})]
+		rhs: [
+			ast.Expr(ast.IndexExpr{
+				lhs:  ast.Expr(ast.Ident{
+					name: 'values'
+				})
+				expr: ast.Expr(ast.BasicLiteral{
+					kind:  .number
+					value: '0'
+				})
+				pos:  index_pos
+			}),
+		]
+	})
+	assert transformed.op == .decl_assign
+	local_type := t.lookup_local_decl_type('first') or {
+		assert false, 'missing local declaration type for index expression'
+		return
+	}
+	assert t.type_to_c_name(local_type) == 'int'
+	synth_type := t.get_synth_type(lhs_pos) or {
+		assert false, 'missing synth type for index declaration lhs'
+		return
+	}
+	assert t.type_to_c_name(synth_type) == 'int'
+}
+
+fn test_unsafe_cast_deref_prefers_cast_target_over_stale_env_type() {
+	mut t := create_test_transformer()
+	unsafe_pos := token.Pos{
+		id: 4250
+	}
+	deref_pos := token.Pos{
+		id: 4251
+	}
+	t.env.set_expr_type(unsafe_pos.id, types.Type(types.f64_))
+	t.env.set_expr_type(deref_pos.id, types.Type(types.f64_))
+	typ := t.get_expr_type(ast.UnsafeExpr{
+		stmts: [
+			ast.Stmt(ast.ExprStmt{
+				expr: ast.Expr(ast.PrefixExpr{
+					op:   .mul
+					expr: ast.Expr(ast.PrefixExpr{
+						op:   .amp
+						expr: ast.Expr(ast.CallOrCastExpr{
+							lhs:  ast.Expr(ast.Ident{
+								name: 'int'
+							})
+							expr: ast.Expr(ast.Ident{
+								name: 'raw'
+							})
+						})
+					})
+					pos:  deref_pos
+				})
+			}),
+		]
+		pos:   unsafe_pos
+	}) or {
+		assert false, 'missing unsafe cast deref type'
+		return
+	}
+	assert t.type_to_c_name(typ) == 'int'
+}
+
+fn test_decl_assign_unsafe_cast_deref_records_lhs_type() {
+	mut t := create_test_transformer()
+	lhs_pos := token.Pos{
+		id: 4260
+	}
+	unsafe_pos := token.Pos{
+		id: 4261
+	}
+	deref_pos := token.Pos{
+		id: 4262
+	}
+	t.env.set_expr_type(unsafe_pos.id, types.Type(types.f64_))
+	t.env.set_expr_type(deref_pos.id, types.Type(types.f64_))
+	transformed := t.transform_assign_stmt(ast.AssignStmt{
+		op:  .decl_assign
+		lhs: [ast.Expr(ast.Ident{
+			name: 'x'
+			pos:  lhs_pos
+		})]
+		rhs: [
+			ast.Expr(ast.UnsafeExpr{
+				stmts: [
+					ast.Stmt(ast.ExprStmt{
+						expr: ast.Expr(ast.PrefixExpr{
+							op:   .mul
+							expr: ast.Expr(ast.PrefixExpr{
+								op:   .amp
+								expr: ast.Expr(ast.CallOrCastExpr{
+									lhs:  ast.Expr(ast.Ident{
+										name: 'int'
+									})
+									expr: ast.Expr(ast.Ident{
+										name: 'raw'
+									})
+								})
+							})
+							pos:  deref_pos
+						})
+					}),
+				]
+				pos:   unsafe_pos
+			}),
+		]
+	})
+	assert transformed.op == .decl_assign
+	local_type := t.lookup_local_decl_type('x') or {
+		assert false, 'missing local declaration type for unsafe cast deref'
+		return
+	}
+	assert t.type_to_c_name(local_type) == 'int'
+	synth_type := t.get_synth_type(lhs_pos) or {
+		assert false, 'missing synth type for unsafe cast deref declaration lhs'
+		return
+	}
+	assert t.type_to_c_name(synth_type) == 'int'
+}
+
 fn test_is_enum_rvalue_stops_on_unresolved_alias() {
 	t := create_test_transformer()
 	unresolved_alias := types.Type(types.Alias{

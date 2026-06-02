@@ -1053,6 +1053,67 @@ fn (g &Gen) qualify_module_local_type_name(type_name string) string {
 	return type_name
 }
 
+fn (g &Gen) qualify_module_local_generic_c_name(raw_name string) string {
+	mut name := raw_name.trim_space()
+	if name == '' {
+		return name
+	}
+	mut suffix := ''
+	for name.ends_with('*') {
+		name = name[..name.len - 1].trim_space()
+		suffix += '*'
+	}
+	if name.starts_with('struct ') {
+		name = name['struct '.len..].trim_space()
+	}
+	mut qualified := name
+	if name.starts_with('Array_fixed_') {
+		rest := name['Array_fixed_'.len..]
+		last_underscore := rest.last_index_u8(`_`)
+		if last_underscore >= 0 {
+			elem :=
+				g.qualify_module_local_generic_c_name(unmangle_alias_component_to_c(rest[..last_underscore]))
+			qualified = 'Array_fixed_' + mangle_alias_component(elem) + '_' + rest[last_underscore +
+				1..]
+		}
+	} else if name.starts_with('Array_') {
+		elem :=
+			g.qualify_module_local_generic_c_name(unmangle_alias_component_to_c(name['Array_'.len..]))
+		qualified = 'Array_' + mangle_alias_component(elem)
+	} else if name.starts_with('Map_') {
+		rest := name['Map_'.len..]
+		key, value := g.parse_map_kv_types(rest)
+		if key != '' && value != '' {
+			key_name := g.qualify_module_local_generic_c_name(unmangle_alias_component_to_c(key))
+			value_name :=
+				g.qualify_module_local_generic_c_name(unmangle_alias_component_to_c(value))
+			qualified = 'Map_' + mangle_alias_component(key_name) + '_' +
+				mangle_alias_component(value_name)
+		}
+	} else if name.starts_with('Tuple_') {
+		mut parts := []string{}
+		for part in name['Tuple_'.len..].split('_') {
+			if part == '' {
+				continue
+			}
+			part_name := g.qualify_module_local_generic_c_name(unmangle_alias_component_to_c(part))
+			parts << mangle_alias_component(part_name)
+		}
+		qualified = 'Tuple_' + parts.join('_')
+	} else if name.starts_with('_option_') {
+		base :=
+			g.qualify_module_local_generic_c_name(unmangle_alias_component_to_c(name['_option_'.len..]))
+		qualified = '_option_' + mangle_alias_component(base)
+	} else if name.starts_with('_result_') {
+		base :=
+			g.qualify_module_local_generic_c_name(unmangle_alias_component_to_c(name['_result_'.len..]))
+		qualified = '_result_' + mangle_alias_component(base)
+	} else {
+		qualified = g.qualify_module_local_type_name(name)
+	}
+	return qualified + suffix
+}
+
 fn non_lifetime_generic_args(args []ast.Expr) []ast.Expr {
 	mut out := []ast.Expr{cap: args.len}
 	for arg in args {
@@ -1086,7 +1147,7 @@ fn (g &Gen) option_result_payload_invalid(val_type string) bool {
 	if val_type == 'void' {
 		return false
 	}
-	return is_generic_placeholder_type_name(val_type)
+	return is_generic_placeholder_c_type_name(val_type)
 }
 
 fn (g &Gen) option_result_payload_c_type(val_type string) string {
@@ -3564,6 +3625,9 @@ fn (mut g Gen) get_expr_type(node ast.Expr) string {
 			}
 			if node.op == .mul {
 				// Dereference: *(T*)(x) -> T
+				if deref_type := g.deref_address_of_cast_result_type(node) {
+					return deref_type
+				}
 				inner_t := g.get_expr_type(node.expr)
 				if inner_t.ends_with('*') {
 					return inner_t[..inner_t.len - 1]
@@ -3928,7 +3992,7 @@ fn (mut g Gen) cast_target_value_type(expr ast.Expr) ?string {
 		ast.CallOrCastExpr {
 			if unwrapped.expr !is ast.EmptyExpr && g.call_or_cast_lhs_is_type(unwrapped.lhs) {
 				typ := g.expr_type_to_c(unwrapped.lhs)
-				if typ != '' && typ != 'int' {
+				if typ != '' {
 					return typ
 				}
 			}
@@ -3936,14 +4000,14 @@ fn (mut g Gen) cast_target_value_type(expr ast.Expr) ?string {
 		ast.CallExpr {
 			if unwrapped.args.len == 1 && g.call_or_cast_lhs_is_type(unwrapped.lhs) {
 				typ := g.expr_type_to_c(unwrapped.lhs)
-				if typ != '' && typ != 'int' {
+				if typ != '' {
 					return typ
 				}
 			}
 		}
 		ast.CastExpr {
 			typ := g.expr_type_to_c(unwrapped.typ)
-			if typ != '' && typ != 'int' {
+			if typ != '' {
 				return typ
 			}
 		}
@@ -4131,6 +4195,9 @@ fn (mut g Gen) expr_type_to_c(e ast.Expr) string {
 			}
 			if name == 'byteptr' {
 				return 'u8*'
+			}
+			if concrete := g.resolve_active_generic_type(name) {
+				return g.types_type_to_c(concrete)
 			}
 			if g.is_module_local_type(name) {
 				return g.cur_module + '__' + name

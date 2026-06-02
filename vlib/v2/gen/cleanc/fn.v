@@ -3572,7 +3572,8 @@ fn (g &Gen) unqualified_type_name_declared_in_emit_files(name string) bool {
 	return false
 }
 
-fn (g &Gen) generic_concrete_c_name_belongs_to_emit_modules(c_name string) bool {
+fn (g &Gen) generic_concrete_c_name_belongs_to_emit_modules(raw_name string) bool {
+	c_name := g.qualify_module_local_generic_c_name(raw_name)
 	if !g.alias_type_belongs_to_emit_modules(c_name) {
 		return false
 	}
@@ -12018,6 +12019,9 @@ fn expr_has_generic_placeholder(e ast.Expr) bool {
 					return expr_has_generic_placeholder(e.base_type)
 				}
 				ast.ResultType {
+					return expr_has_generic_placeholder(e.base_type)
+				}
+				ast.PointerType {
 					return expr_has_generic_placeholder(e.base_type)
 				}
 				ast.FnType {

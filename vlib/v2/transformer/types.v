@@ -2751,14 +2751,8 @@ fn (t &Transformer) get_expr_type(expr ast.Expr) ?types.Type {
 	}
 	// For UnsafeExpr, look at the type of the inner expression
 	if expr is ast.UnsafeExpr {
-		// Try pos-based lookup first
 		if typ := t.get_synth_type(expr.pos) {
 			return typ
-		}
-		if expr.pos.is_valid() {
-			if typ := t.env.get_expr_type(expr.pos.id) {
-				return t.normalize_type(typ)
-			}
 		}
 		if expr.stmts.len > 0 {
 			last := expr.stmts[expr.stmts.len - 1]
@@ -2766,6 +2760,11 @@ fn (t &Transformer) get_expr_type(expr ast.Expr) ?types.Type {
 				if typ := t.get_expr_type(last.expr) {
 					return typ
 				}
+			}
+		}
+		if expr.pos.is_valid() {
+			if typ := t.env.get_expr_type(expr.pos.id) {
+				return t.normalize_type(typ)
 			}
 		}
 		return none
@@ -2836,6 +2835,16 @@ fn (t &Transformer) get_expr_type(expr ast.Expr) ?types.Type {
 			}
 		}
 		return none
+	}
+	if expr is ast.PrefixExpr && expr.op == .mul {
+		if typ := t.deref_address_of_cast_type(expr) {
+			return t.normalize_type(typ)
+		}
+		if inner_typ := t.get_expr_type(expr.expr) {
+			if inner_typ is types.Pointer {
+				return t.normalize_type(inner_typ.base_type)
+			}
+		}
 	}
 	if expr is ast.ArrayInitExpr {
 		pos := expr.pos

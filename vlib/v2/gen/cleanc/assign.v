@@ -167,6 +167,11 @@ fn (mut g Gen) decl_rhs_has_concrete_type(rhs ast.Expr) bool {
 		ast.PrefixExpr {
 			return rhs.op in [.amp, .mul] && g.decl_rhs_has_concrete_type(rhs.expr)
 		}
+		ast.UnsafeExpr {
+			if typ := g.unsafe_expr_result_type(rhs) {
+				return typ != '' && typ !in ['void', 'void*', 'voidptr']
+			}
+		}
 		ast.CallExpr {
 			if ret := g.get_call_return_type(rhs.lhs, rhs.args) {
 				return ret != '' && ret !in ['void*', 'voidptr']

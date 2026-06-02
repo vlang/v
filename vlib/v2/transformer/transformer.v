@@ -4538,9 +4538,13 @@ fn (mut t Transformer) transform_assign_stmt_parts(stmt ast.AssignStmt) (token.T
 	if stmt.op == .decl_assign && stmt.lhs.len == 1 && rhs_src.len == 1 {
 		lhs_name := t.get_var_name(stmt.lhs[0])
 		if lhs_name != '' {
-			if decl_type := t.decl_assign_storage_type(stmt.lhs[0], rhs_src[0]) {
-				t.remember_local_decl_type(lhs_name, decl_type)
-				t.register_local_var_type(lhs_name, decl_type)
+			decl_rhs := if rhs.len == 1 && rhs[0] is ast.IfExpr {
+				rhs[0]
+			} else {
+				rhs_src[0]
+			}
+			if decl_type := t.decl_assign_storage_type(stmt.lhs[0], decl_rhs) {
+				t.remember_decl_assign_lhs_type(stmt.lhs, decl_type)
 			}
 			if rhs_type := t.fn_pointer_call_return_type(rhs_src[0]) {
 				t.register_temp_var(lhs_name, rhs_type)
@@ -5768,6 +5772,98 @@ fn (t &Transformer) lookup_local_decl_type(name string) ?types.Type {
 	return t.normalize_type(typ)
 }
 
+fn (t &Transformer) cast_target_value_type(expr ast.Expr) ?types.Type {
+	match expr {
+		ast.ParenExpr {
+			return t.cast_target_value_type(expr.expr)
+		}
+		ast.ModifierExpr {
+			return t.cast_target_value_type(expr.expr)
+		}
+		ast.CallOrCastExpr {
+			if expr.expr !is ast.EmptyExpr && t.call_or_cast_lhs_is_type(expr.lhs) {
+				return t.type_from_param_type_expr(expr.lhs, [])
+			}
+		}
+		ast.CallExpr {
+			if expr.args.len == 1 && t.call_or_cast_lhs_is_type(expr.lhs) {
+				return t.type_from_param_type_expr(expr.lhs, [])
+			}
+		}
+		ast.CastExpr {
+			return t.type_from_param_type_expr(expr.typ, [])
+		}
+		else {}
+	}
+
+	return none
+}
+
+fn (t &Transformer) deref_address_of_cast_type(expr ast.PrefixExpr) ?types.Type {
+	if expr.op != .mul {
+		return none
+	}
+	match expr.expr {
+		ast.ParenExpr {
+			return t.deref_address_of_cast_type(ast.PrefixExpr{
+				op:   .mul
+				expr: expr.expr.expr
+				pos:  expr.pos
+			})
+		}
+		ast.CastExpr {
+			target_type := t.type_from_param_type_expr(expr.expr.typ, []) or { return none }
+			if target_type is types.Pointer {
+				return target_type.base_type
+			}
+		}
+		ast.PrefixExpr {
+			if expr.expr.op == .amp {
+				return t.cast_target_value_type(expr.expr.expr)
+			}
+		}
+		else {}
+	}
+
+	return none
+}
+
+fn (t &Transformer) index_expr_storage_type(expr ast.IndexExpr) ?types.Type {
+	if expr.expr is ast.RangeExpr {
+		if lhs_type := t.get_expr_type(expr.lhs) {
+			return t.normalize_type(lhs_type)
+		}
+		return none
+	}
+	if lhs_type := t.map_index_lhs_type(expr.lhs) {
+		if map_type := t.unwrap_map_type(lhs_type) {
+			return map_type.value_type
+		}
+		mut base_type := lhs_type
+		for {
+			if base_type is types.Pointer {
+				base_type = base_type.base_type
+				continue
+			}
+			if base_type is types.Alias {
+				base_type = t.live_alias_base_type(base_type) or { break }
+				continue
+			}
+			break
+		}
+		if base_type is types.Array {
+			return t.normalize_type(base_type.elem_type)
+		}
+		if base_type is types.ArrayFixed {
+			return t.normalize_type(base_type.elem_type)
+		}
+		if t.is_string_iterable_type(base_type) {
+			return string_iter_value_type()
+		}
+	}
+	return none
+}
+
 fn (t &Transformer) decl_assign_storage_type(lhs ast.Expr, rhs ast.Expr) ?types.Type {
 	if typ := t.fn_pointer_call_return_type(rhs) {
 		return typ
@@ -5782,6 +5878,21 @@ fn (t &Transformer) decl_assign_storage_type(lhs ast.Expr, rhs ast.Expr) ?types.
 	}
 	if typ := t.rune_arithmetic_expr_type(rhs) {
 		return typ
+	}
+	if rhs is ast.IndexExpr {
+		if typ := t.index_expr_storage_type(rhs) {
+			return typ
+		}
+	}
+	if rhs is ast.UnsafeExpr {
+		if typ := t.get_expr_type(rhs) {
+			return typ
+		}
+	}
+	if rhs is ast.IfExpr {
+		if typ := t.get_expr_type(rhs) {
+			return typ
+		}
 	}
 	if rhs is ast.CallExpr || rhs is ast.CallOrCastExpr || rhs is ast.CastExpr
 		|| rhs is ast.AsCastExpr || rhs is ast.InitExpr || rhs is ast.Ident
