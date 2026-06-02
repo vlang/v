@@ -193,12 +193,13 @@ fn init_db(db sqlite.DB) ! {
 			delete_token text not null,
 			created_at text not null,
 			remote_ip text not null,
-			user_agent text not null,
-			c_file_name text not null,
-			target_os text not null,
-			ccompiler text not null,
-			error_string text not null
-		)')!
+				user_agent text not null,
+				c_file_name text not null,
+				target_os text not null,
+				ccompiler text not null,
+				error_string text not null,
+				lines text not null
+			)')!
 	db.exec('create index if not exists idx_bug_reports_created_at
 			on bug_reports(created_at)')!
 }
@@ -220,13 +221,14 @@ pub fn (mut app App) create(mut ctx Context) veb.Result {
 		return ctx.request_error('unsupported report kind')
 	}
 	stored_report := vbugreport.new_stored_c_error_report(report.c_file, report.target_os,
-		report.ccompiler, report.c_error)
+		report.ccompiler, report.c_error, report.c_context.map(it.text),
+		report.v_context.map(it.text))
 	id := new_report_id()
 	delete_token := rand.uuid_v4()
 	app.db.exec_param_many('insert into bug_reports (
 				id, delete_token, created_at, remote_ip, user_agent,
-				c_file_name, target_os, ccompiler, error_string
-			) values (?, ?, ?, ?, ?, ?, ?, ?, ?)', [
+				c_file_name, target_os, ccompiler, error_string, lines
+			) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)', [
 		id,
 		delete_token,
 		time.utc().format_rfc3339(),
@@ -236,6 +238,7 @@ pub fn (mut app App) create(mut ctx Context) veb.Result {
 		stored_report.target_os,
 		stored_report.ccompiler,
 		stored_report.error_string,
+		stored_report.lines,
 	]) or { return ctx.server_error('could not store report') }
 	return ctx.json(CreateBugReportResponse{
 		id:           id
