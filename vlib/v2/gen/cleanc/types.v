@@ -3109,11 +3109,14 @@ fn (mut g Gen) infer_numeric_expr_type(node ast.Expr) string {
 
 // get_expr_type returns the C type string for an expression
 fn (mut g Gen) get_expr_type(node ast.Expr) string {
+	if node is ast.StringLiteral || node is ast.StringInterLiteral {
+		if node is ast.StringLiteral && node.kind == .c {
+			return 'char*'
+		}
+		return 'string'
+	}
 	if !expr_has_valid_data(node) {
 		return ''
-	}
-	if node is ast.StringLiteral && node.kind == .c {
-		return 'char*'
 	}
 	// For identifiers, check local/parameter types first (authoritative),
 	// then fall back to env position lookup.
@@ -4199,9 +4202,6 @@ fn (mut g Gen) expr_type_to_c(e ast.Expr) string {
 			if concrete := g.resolve_active_generic_type(name) {
 				return g.types_type_to_c(concrete)
 			}
-			if g.is_module_local_type(name) {
-				return g.cur_module + '__' + name
-			}
 			if env_type := g.get_expr_type_from_env(e) {
 				env_c := env_type.trim_space()
 				if env_c != '' && env_c != 'int' {
@@ -4213,6 +4213,9 @@ fn (mut g Gen) expr_type_to_c(e ast.Expr) string {
 				if raw_c != '' && raw_c != 'int' {
 					return raw_c
 				}
+			}
+			if g.is_module_local_type(name) {
+				return g.cur_module + '__' + name
 			}
 			if name.starts_with('[]') || name.starts_with('map[') || name.starts_with('&') {
 				return g.c_type_from_type_name(name)
@@ -4496,6 +4499,27 @@ fn (mut g Gen) expr_type_to_c(e ast.Expr) string {
 			return 'int'
 		}
 	}
+}
+
+fn (mut g Gen) decl_expr_type_to_c(e ast.Expr) string {
+	saved_fn_scope := g.cur_fn_scope
+	saved_fn_scope_miss_key := g.cur_fn_scope_miss_key
+	saved_runtime_local_types := g.runtime_local_types.clone()
+	saved_runtime_decl_types := g.runtime_decl_types.clone()
+	saved_not_local_var_cache := g.not_local_var_cache.clone()
+	defer {
+		g.cur_fn_scope = saved_fn_scope
+		g.cur_fn_scope_miss_key = saved_fn_scope_miss_key
+		g.runtime_local_types = saved_runtime_local_types.clone()
+		g.runtime_decl_types = saved_runtime_decl_types.clone()
+		g.not_local_var_cache = saved_not_local_var_cache.clone()
+	}
+	g.cur_fn_scope = unsafe { nil }
+	g.cur_fn_scope_miss_key = ''
+	g.runtime_local_types = map[string]string{}
+	g.runtime_decl_types = map[string]string{}
+	g.not_local_var_cache = map[string]bool{}
+	return g.expr_type_to_c(e)
 }
 
 fn (g &Gen) current_fn_module_local_type_name(type_name string) ?string {

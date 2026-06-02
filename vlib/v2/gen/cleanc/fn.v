@@ -5742,7 +5742,7 @@ fn (mut g Gen) gen_fn_decl_ptr(node &ast.FnDecl) {
 			for bi in all_bindings {
 				g.active_generic_types = bi.clone()
 				fn_name := g.get_fn_name(*node)
-				recv_c_name := g.expr_type_to_c(node.receiver.typ).trim_right('*')
+				recv_c_name := g.decl_expr_type_to_c(node.receiver.typ).trim_right('*')
 				body_key := 'body_${recv_c_name}'
 				if fn_name != ''
 					&& (body_key in g.emitted_types || body_key in g.pending_late_body_keys) {
@@ -5755,7 +5755,7 @@ fn (mut g Gen) gen_fn_decl_ptr(node &ast.FnDecl) {
 			prev_generic_types := g.active_generic_types.clone()
 			g.active_generic_types = bindings.clone()
 			fn_name := g.get_fn_name(*node)
-			recv_c_name := g.expr_type_to_c(node.receiver.typ).trim_right('*')
+			recv_c_name := g.decl_expr_type_to_c(node.receiver.typ).trim_right('*')
 			body_key := 'body_${recv_c_name}'
 			if fn_name != ''
 				&& (body_key in g.emitted_types || body_key in g.pending_late_body_keys) {
@@ -5766,7 +5766,7 @@ fn (mut g Gen) gen_fn_decl_ptr(node &ast.FnDecl) {
 		}
 	}
 	if node.is_method && node.receiver.typ !is ast.EmptyExpr {
-		recv_c_name := g.expr_type_to_c(node.receiver.typ).trim_right('*')
+		recv_c_name := g.decl_expr_type_to_c(node.receiver.typ).trim_right('*')
 		recv_lookup_name := if recv_c_name.contains('__') {
 			recv_c_name.all_after_last('__')
 		} else {
@@ -6459,14 +6459,14 @@ fn (mut g Gen) gen_fn_head_with_name_ptr(node &ast.FnDecl, fn_name string) {
 		receiver_type := if sig_idx < sig_param_types.len {
 			normalize_signature_type_name(sig_param_types[sig_idx], 'void*')
 		} else if node.receiver.is_mut {
-			rt := normalize_signature_type_name(g.expr_type_to_c(node.receiver.typ), 'void*')
+			rt := normalize_signature_type_name(g.decl_expr_type_to_c(node.receiver.typ), 'void*')
 			if rt.ends_with('*') {
 				rt
 			} else {
 				rt + '*'
 			}
 		} else {
-			normalize_signature_type_name(g.expr_type_to_c(node.receiver.typ), 'void*')
+			normalize_signature_type_name(g.decl_expr_type_to_c(node.receiver.typ), 'void*')
 		}
 		g.sb.write_string(receiver_type)
 		g.sb.write_string(' ')
@@ -6537,14 +6537,14 @@ fn (mut g Gen) fn_head_signature_type_names(node &ast.FnDecl, fn_name string, re
 		receiver_type := if sig_idx < sig_param_types.len {
 			normalize_signature_type_name(sig_param_types[sig_idx], 'void*')
 		} else if node.receiver.is_mut {
-			rt := normalize_signature_type_name(g.expr_type_to_c(node.receiver.typ), 'void*')
+			rt := normalize_signature_type_name(g.decl_expr_type_to_c(node.receiver.typ), 'void*')
 			if rt.ends_with('*') {
 				rt
 			} else {
 				rt + '*'
 			}
 		} else {
-			normalize_signature_type_name(g.expr_type_to_c(node.receiver.typ), 'void*')
+			normalize_signature_type_name(g.decl_expr_type_to_c(node.receiver.typ), 'void*')
 		}
 		sig_types << receiver_type
 		sig_idx++
@@ -6726,14 +6726,14 @@ fn (mut g Gen) gen_fn_head_live_ptr(node &ast.FnDecl, fn_name string) {
 		receiver_type := if sig_idx < sig_param_types.len {
 			normalize_signature_type_name(sig_param_types[sig_idx], 'void*')
 		} else if node.receiver.is_mut {
-			rt := normalize_signature_type_name(g.expr_type_to_c(node.receiver.typ), 'void*')
+			rt := normalize_signature_type_name(g.decl_expr_type_to_c(node.receiver.typ), 'void*')
 			if rt.ends_with('*') {
 				rt
 			} else {
 				rt + '*'
 			}
 		} else {
-			normalize_signature_type_name(g.expr_type_to_c(node.receiver.typ), 'void*')
+			normalize_signature_type_name(g.decl_expr_type_to_c(node.receiver.typ), 'void*')
 		}
 		params_parts << '${receiver_type} ${node.receiver.name}'
 		args_parts << node.receiver.name
@@ -6823,7 +6823,7 @@ fn (mut g Gen) get_fn_name(node ast.FnDecl) string {
 		receiver_type := if concrete_receiver := g.receiver_generic_instance_c_name_for_active_bindings(node) {
 			concrete_receiver
 		} else {
-			g.expr_type_to_c(node.receiver.typ)
+			g.decl_expr_type_to_c(node.receiver.typ)
 		}
 		// Strip pointer suffix and 'struct ' prefix for method naming.
 		// C struct types like 'struct sg_pipeline' must become 'sg_pipeline'
@@ -6851,7 +6851,7 @@ fn (mut g Gen) get_fn_name(node ast.FnDecl) string {
 	}
 	// Static methods: Type.method() -> Type__method
 	if node.is_static {
-		receiver_type := g.expr_type_to_c(node.receiver.typ)
+		receiver_type := g.decl_expr_type_to_c(node.receiver.typ)
 		mut base_type := if receiver_type.ends_with('*') {
 			receiver_type[..receiver_type.len - 1]
 		} else {
@@ -6869,6 +6869,11 @@ fn (mut g Gen) get_fn_name(node ast.FnDecl) string {
 		// Don't add module prefix if name already starts with it (e.g., generated
 		// enum str functions placed back in their source module).
 		if name.starts_with(g.cur_module + '__') {
+			return name
+		}
+		fn_module := module_prefix_from_fn_name(name)
+		if fn_module.len > 0 && fn_module[0] >= `a` && fn_module[0] <= `z`
+			&& g.source_module_exists(fn_module) {
 			return name
 		}
 		return g.cur_module + '__' + name
@@ -8941,6 +8946,9 @@ fn (mut g Gen) get_receiver_expr_type_for_method(expr ast.Expr) ?string {
 fn (mut g Gen) resolve_ident_receiver_method_call_name(name string, lhs ast.Expr, call_args []ast.Expr) string {
 	if lhs !is ast.Ident || call_args.len == 0 || !name.contains('__')
 		|| g.ident_call_name_is_plain_module_fn(name) {
+		return name
+	}
+	if name.ends_with('__str') && name in g.fn_return_types {
 		return name
 	}
 	method_name := name.all_after_last('__')

@@ -154,7 +154,7 @@ pub fn use_vec4() Vec4[f32] {
 }
 ')
 	assert !csrc.contains('return ((vec__SimdFloat4){')
-	assert csrc.contains('return ((vec__Vec4){')
+	assert csrc.contains('return ((vec__Vec4_T_f32){')
 }
 
 fn test_vec_generic_type_expr_prefers_local_simd_alias_for_imported_vec() {
@@ -240,12 +240,12 @@ mut:
 	len  int
 }
 ')
-	linked_list_pos := csrc.index('struct json2__LinkedList {') or {
+	linked_list_pos := csrc.index('struct json2__LinkedList_T_json2_ValueInfo {') or {
 		panic('missing LinkedList body')
 	}
 	decoder_pos := csrc.index('struct json2__Decoder {') or { panic('missing Decoder body') }
 	assert linked_list_pos < decoder_pos
-	assert csrc.contains('json2__LinkedList values_info;')
+	assert csrc.contains('json2__LinkedList_T_json2_ValueInfo values_info;')
 }
 
 fn test_generic_pointer_empty_init_uses_null_pointer() {
@@ -1640,6 +1640,30 @@ fn test_decl_assign_uses_position_type_before_function_scope_name_collision() {
 	out := gen.sb.str().trim_space()
 	assert out == 'int value = 0;'
 	assert !out.contains('string value')
+}
+
+fn test_expr_type_to_c_prefers_metadata_before_module_local_type() {
+	mut env := types.Environment.new()
+	env.set_expr_type(42, types.Type(types.Struct{
+		name: 'Context'
+	}))
+	mut veb_scope := types.new_scope(unsafe { nil })
+	veb_scope.insert_type('Context', types.Type(types.Struct{
+		name: 'veb__Context'
+	}))
+	lock env.scopes {
+		env.scopes['veb'] = veb_scope
+	}
+
+	mut gen := Gen.new_with_env([], env)
+	gen.cur_module = 'veb'
+	typ := gen.expr_type_to_c(ast.Expr(ast.Ident{
+		pos:  token.Pos{
+			id: 42
+		}
+		name: 'Context'
+	}))
+	assert typ == 'Context'
 }
 
 fn test_decl_assign_uses_synthetic_lhs_alias_type_before_scope_collision() {
@@ -3920,37 +3944,15 @@ mut:
 	g.type_modules['json2'] = true
 	g.collect_generic_struct_bindings()
 
-	assert 'json2__LinkedList' in g.generic_struct_instances
-	assert 'json2__Node' in g.generic_struct_instances
-	node_instances := g.generic_struct_instances['json2__Node']
-	assert node_instances.len > 0
-	node_binding := node_instances[0].bindings['T'] or { panic('expected T binding') }
-	assert node_binding.name() == 'json2__ValueInfo'
-	for file in transformed_files {
-		for stmt in file.stmts {
-			if stmt is ast.StructDecl && stmt.name == 'Node' {
-				g.cur_module = 'json2'
-				g.active_generic_types = node_instances[0].bindings.clone()
-				g.emitted_types['body_json2__ValueInfo'] = true
-				value_type := g.qualify_owner_local_field_type('json2__Node',
-					g.expr_type_to_c(stmt.fields[0].typ))
-				assert value_type == 'json2__ValueInfo', value_type
-				assert 'body_${value_type}' in g.emitted_types
-				next_type := g.qualify_owner_local_field_type('json2__Node',
-					g.expr_type_to_c(stmt.fields[1].typ))
-				assert next_type == 'json2__Node*', next_type
-				assert g.is_pointer_type(stmt.fields[1].typ)
-				assert g.struct_fields_resolved(stmt)
-				g.active_generic_types = map[string]types.Type{}
-			}
-		}
-	}
+	assert g.generic_struct_instances.len == 0
 	mut gen := Gen.new_with_env_and_pref(transformed_files, env, prefs)
 	gen.cache_bundle_name = 'imports'
 	gen.emit_modules['json2'] = true
 	gen.type_modules['json2'] = true
 	csrc := gen.gen()
-	assert csrc.contains('struct json2__Node {'), csrc
+	assert csrc.contains('struct json2__LinkedList_T_json2_ValueInfo {'), csrc
+	assert csrc.contains('struct json2__Node_T_json2_ValueInfo {'), csrc
+	assert csrc.contains('json2__Node_T_json2_ValueInfo* next;'), csrc
 	assert csrc.contains('json2__ValueInfo value;'), csrc
 }
 
@@ -4651,7 +4653,7 @@ fn main() {
 	}
 }
 ')
-	assert csrc.contains('void* handler;'), csrc
+	assert csrc.contains('bool (*handler)(Context*);'), csrc
 	assert !csrc.contains('veb__T'), csrc
 }
 
@@ -6650,6 +6652,53 @@ fn test_gen_specialized_fn_body_uses_module_prefix_context() {
 	assert !out.contains('buffer__Route route'), out
 }
 
+fn test_get_fn_name_preserves_known_source_module_prefix() {
+	mut g := Gen.new_with_env([], types.Environment.new())
+	g.cur_module = 'http'
+	g.source_module_names['arrays'] = true
+	decl := ast.FnDecl{
+		name: 'arrays__uniq_T_string'
+	}
+	assert g.get_fn_name(decl) == 'arrays__uniq_T_string'
+
+	unresolved_decl := ast.FnDecl{
+		name: 'external__uniq_T_string'
+	}
+	assert g.get_fn_name(unresolved_decl) == 'http__external__uniq_T_string'
+}
+
+fn test_get_fn_name_resolves_receiver_from_decl_module_not_stale_fn_scope() {
+	mut env := types.Environment.new()
+	mut c_scope := types.new_scope(unsafe { nil })
+	c_scope.insert('Gen', types.Type(types.Struct{
+		name: 'c__Gen'
+	}))
+	mut cleanc_scope := types.new_scope(unsafe { nil })
+	cleanc_scope.insert('Gen', types.Type(types.Struct{
+		name: 'cleanc__Gen'
+	}))
+	lock env.scopes {
+		env.scopes['c'] = c_scope
+		env.scopes['cleanc'] = cleanc_scope
+	}
+	mut g := Gen.new_with_env([], env)
+	g.cur_module = 'cleanc'
+	g.cur_fn_scope = c_scope
+	g.runtime_local_types['Gen'] = 'c__Gen'
+	decl := ast.FnDecl{
+		name:      'interface_method_info_from_ast'
+		is_method: true
+		receiver:  ast.Parameter{
+			name:   'g'
+			typ:    ast.Expr(ast.Ident{
+				name: 'Gen'
+			})
+			is_mut: true
+		}
+	}
+	assert g.get_fn_name(decl) == 'cleanc__Gen__interface_method_info_from_ast'
+}
+
 fn test_source_module_exists_falls_back_to_env_for_cached_chunks() {
 	mut env := types.Environment.new()
 	mut veb_scope := types.new_scope(unsafe { nil })
@@ -6752,4 +6801,19 @@ fn test_decl_assign_prefers_current_fn_module_for_init_expr_type() {
 	out := g.sb.str()
 	assert out.contains('veb__Route route = ((veb__Route){'), out
 	assert !out.contains('buffer__Route'), out
+}
+
+fn test_resolve_ident_receiver_method_call_keeps_known_str_helper_direct() {
+	mut g := Gen.new_with_env([], types.Environment.new())
+	g.fn_return_types['json2__ValueKind__str'] = 'string'
+	g.fn_return_types['string__str'] = 'string'
+	g.remember_runtime_local_type('kind', 'string')
+	resolved := g.resolve_ident_receiver_method_call_name('json2__ValueKind__str', ast.Expr(ast.Ident{
+		name: 'json2__ValueKind__str'
+	}), [
+		ast.Expr(ast.Ident{
+			name: 'kind'
+		}),
+	])
+	assert resolved == 'json2__ValueKind__str'
 }

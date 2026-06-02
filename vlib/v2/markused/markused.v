@@ -319,6 +319,7 @@ fn (mut w Walker) walk_stmt_cursor(c ast.Cursor, mod_name string) {
 			}
 		}
 		.stmt_comptime {
+			w.mark_comptime_method_loop_receivers_cursor(c.edge(0), mod_name)
 			w.walk_stmt_cursor(c.edge(0), mod_name)
 		}
 		.stmt_const_decl {
@@ -2340,6 +2341,58 @@ fn (mut w Walker) mark_all_methods_for_receivers(receivers []string) {
 	}
 }
 
+fn (mut w Walker) mark_comptime_method_loop_receivers(stmt ast.Stmt, mod_name string) {
+	if stmt !is ast.ForStmt {
+		return
+	}
+	if stmt.init !is ast.ForInStmt {
+		return
+	}
+	for_in := stmt.init as ast.ForInStmt
+	if for_in.expr !is ast.SelectorExpr {
+		return
+	}
+	sel := for_in.expr as ast.SelectorExpr
+	if sel.rhs.name != 'methods' {
+		return
+	}
+	mut receivers := []string{}
+	for receiver in type_expr_receiver_candidates(mod_name, sel.lhs) {
+		add_unique_string(mut receivers, receiver)
+	}
+	for receiver in w.receiver_candidates_for_expr(sel.lhs, mod_name) {
+		add_unique_string(mut receivers, receiver)
+	}
+	w.mark_all_methods_for_receivers(receivers)
+}
+
+fn (mut w Walker) mark_comptime_method_loop_receivers_cursor(stmt ast.Cursor, mod_name string) {
+	if !stmt.is_valid() || stmt.kind() != .stmt_for {
+		return
+	}
+	init := stmt.edge(0)
+	if !init.is_valid() || init.kind() != .stmt_for_in {
+		return
+	}
+	expr := init.edge(2)
+	if !expr.is_valid() || expr.kind() != .expr_selector {
+		return
+	}
+	rhs := expr.edge(1)
+	if !rhs.is_valid() || rhs.name() != 'methods' {
+		return
+	}
+	lhs := expr.edge(0)
+	mut receivers := []string{}
+	for receiver in type_expr_receiver_candidates_cursor(lhs, mod_name) {
+		add_unique_string(mut receivers, receiver)
+	}
+	for receiver in w.receiver_candidates_for_cursor(lhs, mod_name) {
+		add_unique_string(mut receivers, receiver)
+	}
+	w.mark_all_methods_for_receivers(receivers)
+}
+
 fn (w &Walker) embedded_receivers_for(receivers []string) []string {
 	mut out := []string{}
 	mut seen := map[string]bool{}
@@ -3870,6 +3923,7 @@ fn (mut w Walker) walk_stmt(stmt ast.Stmt, mod_name string) {
 			w.walk_stmts(stmt.stmts, mod_name)
 		}
 		ast.ComptimeStmt {
+			w.mark_comptime_method_loop_receivers(stmt.stmt, mod_name)
 			w.walk_stmt(stmt.stmt, mod_name)
 		}
 		ast.ConstDecl {

@@ -1642,8 +1642,9 @@ fn (mut p Parser) finish_expr(input_lhs ast.Expr, min_bp token.BindingPower) ast
 						lhs = index_expr_with_parts(lhs, expr, false, idx_pos)
 					}
 				} else {
-					if p.exp_pt && (expr is ast.GenericArgs || expr is ast.Ident
-						|| expr is ast.SelectorExpr || expr is ast.LifetimeExpr) {
+					if exprs.len > 1 || (p.exp_pt && (expr is ast.GenericArgs
+						|| expr is ast.Ident || expr is ast.SelectorExpr
+						|| expr is ast.LifetimeExpr)) {
 						lhs = ast.Expr(ast.GenericArgs{
 							lhs:  lhs
 							args: exprs
@@ -1660,7 +1661,14 @@ fn (mut p Parser) finish_expr(input_lhs ast.Expr, min_bp token.BindingPower) ast
 			p.next()
 			if p.tok == .dollar {
 				p.next()
-				inner := p.expr(.lowest)
+				inner := if p.tok == .lpar {
+					p.next()
+					expr := p.expr(.lowest)
+					p.expect(.rpar)
+					expr
+				} else {
+					p.expr(.lowest)
+				}
 				rhs_pos := p.pos
 				rhs_name := '__comptime_selector__'
 				full_name := if lhs_name == '' { rhs_name } else { lhs_name + '.' + rhs_name }
@@ -1668,7 +1676,7 @@ fn (mut p Parser) finish_expr(input_lhs ast.Expr, min_bp token.BindingPower) ast
 					p.selector_names[dot_pos.id] = full_name
 				}
 				lhs = selector_expr_with_rhs_name(lhs, rhs_pos, rhs_name, dot_pos)
-				// `app.$method(args)` — inner parses as CallExpr or CallOrCastExpr;
+				// `app.$method(args)` - inner parses as CallExpr or CallOrCastExpr;
 				// lift its args onto our SelectorExpr so the call form is preserved.
 				if inner is ast.CallExpr {
 					lhs = ast.Expr(ast.CallExpr{
@@ -3778,7 +3786,13 @@ fn (mut p Parser) ident_or_selector_expr() ast.Expr {
 	mut is_comptime_selector := false
 	if p.tok == .dollar {
 		p.next()
-		comptime_inner = p.expr(.lowest)
+		if p.tok == .lpar {
+			p.next()
+			comptime_inner = p.expr(.lowest)
+			p.expect(.rpar)
+		} else {
+			comptime_inner = p.expr(.lowest)
+		}
 		rhs_pos = p.pos
 		rhs_name = '__comptime_selector__'
 		is_comptime_selector = true
@@ -3790,7 +3804,7 @@ fn (mut p Parser) ident_or_selector_expr() ast.Expr {
 		p.selector_names[dot_pos.id] = full_name
 	}
 	mut lhs := selector_expr_with_rhs_name(base, rhs_pos, rhs_name, dot_pos)
-	// `app.$method(args)` — inner parses as CallExpr or CallOrCastExpr;
+	// `app.$method(args)` - inner parses as CallExpr or CallOrCastExpr;
 	// lift its args onto our SelectorExpr so the call form is preserved.
 	if is_comptime_selector {
 		if comptime_inner is ast.CallExpr {
@@ -3815,7 +3829,13 @@ fn (mut p Parser) ident_or_selector_expr() ast.Expr {
 		mut inner_is_comptime := false
 		if p.tok == .dollar {
 			p.next()
-			inner_comptime = p.expr(.lowest)
+			if p.tok == .lpar {
+				p.next()
+				inner_comptime = p.expr(.lowest)
+				p.expect(.rpar)
+			} else {
+				inner_comptime = p.expr(.lowest)
+			}
 			rhs_pos = p.pos
 			rhs_name = '__comptime_selector__'
 			inner_is_comptime = true

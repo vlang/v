@@ -319,6 +319,129 @@ fn test_mark_used_tracks_current_receiver_method_calls() {
 	assert !used[unused_key]
 }
 
+fn test_mark_used_keeps_methods_for_live_comptime_method_loop() {
+	mut env := types.Environment.new()
+	app_type := ast.Expr(ast.Ident{
+		name: 'App'
+		pos:  pos(90)
+	})
+	app_receiver := ast.Parameter{
+		name: 'app'
+		typ:  app_type
+		pos:  pos(91)
+	}
+	files := [
+		ast.File{
+			mod:   'main'
+			name:  'main.v'
+			stmts: [
+				ast.Stmt(ast.FnDecl{
+					name:  'main'
+					typ:   ast.FnType{}
+					pos:   pos(92)
+					stmts: [
+						ast.Stmt(ast.ExprStmt{
+							expr: ast.CallExpr{
+								lhs: ast.Ident{
+									name: 'dispatch'
+									pos:  pos(93)
+								}
+								pos: pos(93)
+							}
+						}),
+					]
+				}),
+				ast.Stmt(ast.FnDecl{
+					name:  'dispatch'
+					typ:   ast.FnType{}
+					pos:   pos(94)
+					stmts: [
+						ast.Stmt(ast.ComptimeStmt{
+							stmt: ast.Stmt(ast.ForStmt{
+								init:  ast.Stmt(ast.ForInStmt{
+									value: ast.Expr(ast.Ident{
+										name: 'method'
+										pos:  pos(95)
+									})
+									expr:  ast.Expr(ast.SelectorExpr{
+										lhs: app_type
+										rhs: ast.Ident{
+											name: 'methods'
+											pos:  pos(96)
+										}
+										pos: pos(96)
+									})
+								})
+								stmts: [
+									ast.Stmt(ast.ExprStmt{
+										expr: ast.CallExpr{
+											lhs: ast.SelectorExpr{
+												lhs: ast.Ident{
+													name: 'app'
+													pos:  pos(97)
+												}
+												rhs: ast.Ident{
+													name: '__comptime_selector__'
+													pos:  pos(98)
+												}
+												pos: pos(98)
+											}
+											pos: pos(98)
+										}
+									}),
+								]
+							})
+						}),
+					]
+				}),
+				ast.Stmt(ast.FnDecl{
+					is_method: true
+					receiver:  app_receiver
+					name:      'index'
+					typ:       ast.FnType{}
+					pos:       pos(99)
+				}),
+				ast.Stmt(ast.FnDecl{
+					is_method: true
+					receiver:  app_receiver
+					name:      'settings'
+					typ:       ast.FnType{}
+					pos:       pos(100)
+				}),
+				ast.Stmt(ast.FnDecl{
+					is_method: true
+					receiver:  ast.Parameter{
+						name: 'other'
+						typ:  ast.Expr(ast.Ident{
+							name: 'Other'
+							pos:  pos(101)
+						})
+						pos:  pos(101)
+					}
+					name:      'unrelated'
+					typ:       ast.FnType{}
+					pos:       pos(102)
+				}),
+			]
+		},
+	]
+	used := mark_used(files, env)
+	flat := ast.flatten_files(files)
+	flat_used := mark_used_flat(&flat, env)
+	dispatch_key := decl_key('main', files[0].stmts[1] as ast.FnDecl, env)
+	index_key := decl_key('main', files[0].stmts[2] as ast.FnDecl, env)
+	settings_key := decl_key('main', files[0].stmts[3] as ast.FnDecl, env)
+	unrelated_key := decl_key('main', files[0].stmts[4] as ast.FnDecl, env)
+	assert used[dispatch_key]
+	assert used[index_key]
+	assert used[settings_key]
+	assert !used[unrelated_key]
+	assert flat_used[dispatch_key]
+	assert flat_used[index_key]
+	assert flat_used[settings_key]
+	assert !flat_used[unrelated_key]
+}
+
 fn test_mark_used_tracks_bound_method_values_in_struct_init() {
 	mut env := types.Environment.new()
 	env.set_expr_type(62, types.Pointer{

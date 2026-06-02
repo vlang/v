@@ -163,6 +163,35 @@ fn transform_sources_for_test(sources []TestSource) []ast.File {
 	return transformer.transform_files(files)
 }
 
+fn transform_sources_with_env_for_test(sources []TestSource) (&types.Environment, []ast.File) {
+	tmp_dir := os.join_path(os.temp_dir(), 'v2_transformer_sources_env_${os.getpid()}')
+	os.rmdir_all(tmp_dir) or {}
+	os.mkdir_all(tmp_dir) or { panic(err) }
+	defer {
+		os.rmdir_all(tmp_dir) or {}
+	}
+	mut paths := []string{cap: sources.len}
+	for source in sources {
+		path := os.join_path(tmp_dir, source.rel)
+		os.mkdir_all(os.dir(path)) or { panic(err) }
+		os.write_file(path, source.code) or { panic('failed to write ${path}') }
+		paths << path
+	}
+	prefs := &vpref.Preferences{
+		backend:     .cleanc
+		no_parallel: true
+	}
+	mut file_set := token.FileSet.new()
+	mut par := parser.Parser.new(prefs)
+	files := par.parse_files(paths, mut file_set)
+	mut env := types.Environment.new()
+	mut checker := types.Checker.new(prefs, file_set, env)
+	checker.check_files(files)
+	mut transformer := Transformer.new_with_pref(env, prefs)
+	transformed := transformer.transform_files(files)
+	return env, transformed
+}
+
 fn ident_name_from_expr_for_test(expr ast.Expr) ?string {
 	if expr is ast.Ident {
 		return expr.name
@@ -593,6 +622,20 @@ fn call_names_for_fn(files []ast.File, fn_name string) []string {
 	return names
 }
 
+fn call_names_for_fn_suffix(files []ast.File, fn_suffix string) []string {
+	mut names := []string{}
+	for file in files {
+		for stmt in file.stmts {
+			if stmt is ast.FnDecl && stmt.name.ends_with(fn_suffix) {
+				for nested in stmt.stmts {
+					collect_call_names_from_stmt(nested, mut names)
+				}
+			}
+		}
+	}
+	return names
+}
+
 fn test_transform_generic_call_uses_sumtype_match_smartcast_for_inference() {
 	files := transform_code_for_test('
 struct Point {
@@ -688,6 +731,89 @@ fn (mut checker Decoder) check() {
 	assert 'LinkedList__last' !in names
 	assert 'json2__LinkedList__push' !in names
 	assert 'json2__LinkedList__last' !in names
+}
+
+fn test_transform_nested_generic_receiver_method_call_in_monomorphized_clone() {
+	files := transform_sources_for_test([
+		TestSource{
+			rel:  'x/json2/encode.v'
+			code: '
+module json2
+
+pub struct EncoderOptions {}
+
+pub struct Any {}
+
+struct Encoder {}
+
+pub fn encode[T](val T, config EncoderOptions) string {
+	_ = config
+	mut encoder := Encoder{}
+	encoder.encode_value[T](val)
+	return ""
+}
+
+fn (mut encoder Encoder) encode_value[T](val T) {
+	_ = encoder
+	_ = val
+}
+'
+		},
+		TestSource{
+			rel:  'main.v'
+			code: '
+module main
+
+import json2
+
+fn use() {
+	_ = json2.encode(json2.Any{}, json2.EncoderOptions{})
+}
+'
+		},
+	])
+	mut fn_names := []string{}
+	for file in files {
+		for stmt in file.stmts {
+			if stmt is ast.FnDecl {
+				fn_names << stmt.name
+			}
+		}
+	}
+	assert 'json2__encode_T_json2_Any' in fn_names
+	assert 'encode_value_T_json2_Any' in fn_names
+	call_names := call_names_for_fn(files, 'json2__encode_T_json2_Any')
+	assert 'json2__Encoder__encode_value_T_json2_Any' in call_names
+	assert 'encode_value_T_json2_Any' !in call_names
+}
+
+fn test_transform_embedded_method_promotion_keeps_owner_method_precedence() {
+	mut t := create_test_transformer()
+	t.collect_declared_method_fns([
+		ast.File{
+			mod:   'main'
+			stmts: [
+				ast.Stmt(ast.FnDecl{
+					name:      'redirect_to_index'
+					is_method: true
+					receiver:  ast.Parameter{
+						name: 'ctx'
+						typ:  ast.Expr(ast.Ident{
+							name: 'Context'
+						})
+					}
+				}),
+			]
+		},
+	])
+	recv_type := types.Type(types.Struct{
+		name: 'Context'
+	})
+	resolved := t.resolve_cached_method_fn_name_for_type(recv_type, 'redirect_to_index', 'Context') or {
+		panic('missing declared owner method')
+	}
+	assert resolved == 'Context__redirect_to_index'
+	assert 'Context__redirect_to_index' in t.declared_method_fns
 }
 
 fn test_generic_receiver_bindings_prefer_declared_selector_over_stale_wrapper_type() {
@@ -1416,6 +1542,81 @@ fn finish(mut d TerminalStreamingDownloader, request &Request, response &Respons
 	call_names := call_names_for_fn(files, 'finish')
 	assert 'SilentStreamingDownloader__on_finish' in call_names
 	assert 'int__on_finish' !in call_names
+}
+
+fn test_promoted_embedded_generic_method_call_lowers_to_concrete_method() {
+	files := transform_code_for_test('
+struct Options[T] {
+	handler fn (mut ctx T) bool
+}
+
+struct Middleware[T] {}
+
+fn (mut m Middleware[T]) use(options Options[T]) {
+	_ = options
+}
+
+struct Context {}
+
+struct App {
+	Middleware[Context]
+}
+
+fn (mut app App) before_request(mut ctx Context) bool {
+	_ = ctx
+	return true
+}
+
+fn main() {
+	mut app := App{}
+	app.use(handler: app.before_request)
+}
+')
+	mut fn_names := []string{}
+	for file in files {
+		for stmt in file.stmts {
+			if stmt is ast.FnDecl {
+				fn_names << stmt.name
+			}
+		}
+	}
+	call_names := call_names_for_fn(files, 'main')
+	assert 'use_T_Context' in fn_names
+	assert 'Middleware__use_T_Context' in call_names
+	assert 'app.use' !in call_names
+}
+
+fn test_promoted_embedded_generic_method_uses_live_struct_metadata() {
+	files := transform_code_for_test('
+struct Result {}
+
+struct BaseContext {}
+
+fn (mut ctx BaseContext) json[T](j T) Result {
+	_ = j
+	return Result{}
+}
+
+struct Context {
+	BaseContext
+}
+
+struct App {}
+
+fn (mut app App) index(mut ctx Context) Result {
+	_ = app
+	return ctx.json("ok")
+}
+
+fn main() {
+	mut app := App{}
+	mut ctx := Context{}
+	_ = app.index(mut ctx)
+}
+')
+	call_names := call_names_for_fn(files, 'index')
+	assert 'BaseContext__json_T_string' in call_names
+	assert 'ctx.json' !in call_names
 }
 
 fn test_alias_receiver_method_is_resolved_before_base_container_method() {
@@ -2882,6 +3083,347 @@ fn test_transform_bare_generic_call_uses_specialized_name() {
 	assert call.lhs is ast.Ident
 	assert (call.lhs as ast.Ident).name == 'run_new_T_A_X'
 	assert call.args.len == 2
+}
+
+fn test_transform_transitive_generic_call_in_clone_emits_callee_clone() {
+	files := transform_sources_for_test([
+		TestSource{
+			rel:  'webx/webx.v'
+			code: 'module webx
+
+pub fn run_at[A, X]() ! {
+	run_new[A, X]()!
+}
+
+pub fn run_new[A, X]() ! {}
+'
+		},
+		TestSource{
+			rel:  'main.v'
+			code: 'module main
+
+import webx
+
+struct App {}
+struct Context {}
+
+fn boot() {
+	webx.run_at[App, Context]() or {}
+}
+'
+		},
+	])
+	mut fn_names := []string{}
+	mut main_fn_names := []string{}
+	for file in files {
+		for stmt in file.stmts {
+			if stmt is ast.FnDecl {
+				fn_names << stmt.name
+				if file.mod == 'main' {
+					main_fn_names << stmt.name
+				}
+			}
+		}
+	}
+	assert 'webx__run_at_T_App_Context' in fn_names
+	assert 'webx__run_new_T_App_Context' in fn_names
+	assert 'webx__run_at_T_App_Context' in main_fn_names
+	assert 'webx__run_new_T_App_Context' in main_fn_names
+}
+
+fn test_transform_transitive_generic_call_with_mut_arg_in_clone_emits_callee_clone() {
+	files := transform_sources_for_test([
+		TestSource{
+			rel:  'webx/webx.v'
+			code: 'module webx
+
+pub struct RunParams {}
+
+pub fn run_at[A, X](mut global_app A, params RunParams) ! {
+	run_new[A, X](mut global_app, params)!
+}
+
+pub fn run_new[A, X](mut global_app A, params RunParams) ! {}
+'
+		},
+		TestSource{
+			rel:  'main.v'
+			code: 'module main
+
+import webx
+
+struct App {}
+struct Context {}
+
+fn boot() {
+	mut app := App{}
+	webx.run_at[App, Context](mut app, webx.RunParams{}) or {}
+}
+'
+		},
+	])
+	mut fn_names := []string{}
+	mut main_fn_names := []string{}
+	for file in files {
+		for stmt in file.stmts {
+			if stmt is ast.FnDecl {
+				fn_names << stmt.name
+				if file.mod == 'main' {
+					main_fn_names << stmt.name
+				}
+			}
+		}
+	}
+	assert 'webx__run_at_T_App_Context' in fn_names
+	assert 'webx__run_new_T_App_Context' in fn_names
+	assert 'webx__run_at_T_App_Context' in main_fn_names
+	assert 'webx__run_new_T_App_Context' in main_fn_names
+}
+
+fn test_transform_transitive_generic_function_value_in_clone_emits_full_callee_clone() {
+	files := transform_sources_for_test([
+		TestSource{
+			rel:  'webx/webx.v'
+			code: 'module webx
+
+pub struct ServerConfig {
+	handler fn (req int) int
+}
+
+pub struct Context {}
+
+pub fn run_at[A, X]() {
+	run_new[A, X]()
+}
+
+pub fn run_new[A, X]() {
+	_ := ServerConfig{
+		handler: parallel_request_handler[A, X]
+	}
+}
+
+fn parallel_request_handler[A, X](req int) int {
+	return route[A, X](req)
+}
+
+fn route[A, X](req int) int {
+	return req
+}
+'
+		},
+		TestSource{
+			rel:  'main.v'
+			code: 'module main
+
+import webx
+
+struct App {}
+struct Context {}
+
+fn boot() {
+	webx.run_at[App, Context]()
+}
+'
+		},
+	])
+	mut main_fn_names := []string{}
+	mut handler_name := ''
+	for file in files {
+		if file.mod != 'main' {
+			continue
+		}
+		for stmt in file.stmts {
+			if stmt is ast.FnDecl {
+				main_fn_names << stmt.name
+				if stmt.name == 'webx__run_new_T_App_Context' {
+					assign := stmt.stmts[0] as ast.AssignStmt
+					init := assign.rhs[0] as ast.InitExpr
+					if init.fields[0].value is ast.Ident {
+						handler_name = (init.fields[0].value as ast.Ident).name
+					} else {
+						handler_name = init.fields[0].value.type_name()
+					}
+				}
+			}
+		}
+	}
+	assert 'webx__run_new_T_App_Context' in main_fn_names
+	assert handler_name == 'webx__parallel_request_handler_T_App_Context'
+	assert 'webx__parallel_request_handler_T_App_Context' in main_fn_names
+	assert 'webx__route_T_App_Context' in main_fn_names
+}
+
+fn test_transform_moved_clone_substituted_init_type_keeps_caller_context() {
+	files := transform_sources_for_test([
+		TestSource{
+			rel:  'webx/webx.v'
+			code: 'module webx
+
+pub struct Context {}
+
+pub fn make[A, X]() {
+	ctx := &Context{}
+	mut user_context := X{
+		Context: ctx
+	}
+	route[A, X](mut user_context)
+}
+
+fn route[A, X](mut user_context X) {
+	_ = user_context
+}
+'
+		},
+		TestSource{
+			rel:  'main.v'
+			code: 'module main
+
+import webx
+
+struct App {}
+
+struct Context {
+	webx.Context
+}
+
+fn boot() {
+	webx.make[App, Context]()
+}
+'
+		},
+	])
+	mut init_type_name := ''
+	mut main_fn_names := []string{}
+	for file in files {
+		if file.mod != 'main' {
+			continue
+		}
+		for stmt in file.stmts {
+			if stmt is ast.FnDecl && stmt.name == 'webx__make_T_App_Context' {
+				main_fn_names << stmt.name
+				assign := stmt.stmts[1] as ast.AssignStmt
+				init := assign.rhs[0] as ast.InitExpr
+				init_type := init.typ as ast.Ident
+				init_type_name = init_type.name
+			} else if stmt is ast.FnDecl {
+				main_fn_names << stmt.name
+			}
+		}
+	}
+	assert init_type_name == 'Context'
+	assert 'webx__route_T_App_Context' in main_fn_names
+}
+
+fn test_transform_transitive_moved_clone_substitutes_nested_generic_route_context() {
+	env, files := transform_sources_with_env_for_test([
+		TestSource{
+			rel:  'webx/webx.v'
+			code: 'module webx
+
+pub struct Request {
+	route int
+}
+
+pub struct ServerConfig {
+	handler fn (req Request) &Context
+}
+
+pub struct Context {
+	current_path string
+}
+
+pub fn run_new[A, X](mut global_app A) {
+	_ := ServerConfig{
+		handler: parallel_request_handler[A, X]
+	}
+	_ = global_app
+}
+
+fn parallel_request_handler[A, X](req Request) &Context {
+	mut app := A{}
+	return handle_request_and_route[A, X](mut app, req)
+}
+
+fn handle_request_and_route[A, X](mut app A, req Request) &Context {
+	mut ctx := &Context{}
+	mut user_context := X{
+		Context: ctx
+	}
+	handle_route[A, X](mut app, mut user_context, req.route)
+	return ctx
+}
+
+fn handle_route[A, X](mut app A, mut user_context X, route int) {
+	_ = app
+	_ = user_context
+	_ = route
+}
+'
+		},
+		TestSource{
+			rel:  'main.v'
+			code: 'module main
+
+import webx
+
+struct App {}
+
+struct Context {
+	webx.Context
+}
+
+fn boot() {
+	mut app := App{}
+	webx.run_new[App, Context](mut app)
+}
+'
+		},
+	])
+	mut main_fn_names := []string{}
+	mut init_type_name := ''
+	mut route_call_name := ''
+	for file in files {
+		if file.mod != 'main' {
+			continue
+		}
+		for stmt in file.stmts {
+			if stmt is ast.FnDecl {
+				main_fn_names << stmt.name
+				if stmt.name == 'webx__handle_request_and_route_T_App_Context' {
+					for inner in stmt.stmts {
+						if inner is ast.AssignStmt && inner.lhs.len == 1 && inner.rhs.len == 1 {
+							lhs_name := ident_name_from_expr_for_test(inner.lhs[0]) or { '' }
+							if lhs_name == 'user_context' && inner.rhs[0] is ast.InitExpr {
+								init := inner.rhs[0] as ast.InitExpr
+								init_type := init.typ as ast.Ident
+								init_type_name = init_type.name
+							}
+						}
+						if inner is ast.ExprStmt && inner.expr is ast.CallExpr {
+							call := inner.expr as ast.CallExpr
+							if call.lhs is ast.Ident {
+								route_call_name = (call.lhs as ast.Ident).name
+							} else {
+								route_call_name = call.lhs.type_name()
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+	assert 'webx__parallel_request_handler_T_App_Context' in main_fn_names
+	assert 'webx__handle_request_and_route_T_App_Context' in main_fn_names
+	assert 'webx__handle_route_T_App_Context' in main_fn_names
+	assert init_type_name == 'Context'
+	assert route_call_name == 'webx__handle_route_T_App_Context'
+	route_scope := env.get_fn_scope('main', 'webx__handle_route_T_App_Context') or {
+		panic('missing moved route clone scope')
+	}
+	user_context_type := route_scope.lookup_var_type('user_context') or {
+		panic('missing user_context type')
+	}
+	assert user_context_type.name() == 'Context'
 }
 
 fn test_transform_inferred_generic_method_call_uses_specialized_name() {
@@ -7953,6 +8495,123 @@ fn use_sql(sql_from_v fn (int) !string) !string {
 	}
 	assert saw_fn
 	assert col_decl_count == 1
+}
+
+fn test_sql_orm_vattribute_array_keeps_builtin_element_type() {
+	attribute_kind_type := types.Type(types.Enum{
+		name: 'AttributeKind'
+	})
+	vattribute_type := types.Type(types.Struct{
+		name:   'VAttribute'
+		fields: [
+			types.Field{
+				name: 'name'
+				typ:  types.string_
+			},
+			types.Field{
+				name: 'has_arg'
+				typ:  types.Type(types.bool_)
+			},
+			types.Field{
+				name: 'arg'
+				typ:  types.string_
+			},
+			types.Field{
+				name: 'kind'
+				typ:  attribute_kind_type
+			},
+		]
+	})
+	table_field_type := types.Type(types.Struct{
+		name:   'orm__TableField'
+		fields: [
+			types.Field{
+				name: 'name'
+				typ:  types.string_
+			},
+			types.Field{
+				name: 'typ'
+				typ:  types.Type(types.int_)
+			},
+			types.Field{
+				name: 'nullable'
+				typ:  types.Type(types.bool_)
+			},
+			types.Field{
+				name: 'default_val'
+				typ:  types.string_
+			},
+			types.Field{
+				name: 'attrs'
+				typ:  types.Type(types.Array{
+					elem_type: vattribute_type
+				})
+			},
+			types.Field{
+				name: 'is_arr'
+				typ:  types.Type(types.bool_)
+			},
+		]
+	})
+	mut builtin_scope := types.new_scope(unsafe { nil })
+	builtin_scope.insert('AttributeKind', attribute_kind_type)
+	builtin_scope.insert('VAttribute', vattribute_type)
+	mut orm_scope := types.new_scope(unsafe { nil })
+	orm_scope.insert('TableField', table_field_type)
+	mut t := create_test_transformer()
+	t.cur_module = 'gitly'
+	t.cached_scopes = {
+		'builtin': builtin_scope
+		'orm':     orm_scope
+	}
+	pos := token.Pos{
+		id: 8123
+	}
+	attr := ast.Attribute{
+		name:  'sql'
+		value: ast.StringLiteral{
+			kind:  .v
+			value: "'serial'"
+			pos:   pos
+		}
+	}
+	expr := t.sql_orm_table_field_expr(types.Field{
+		name:       'id'
+		typ:        types.Type(types.int_)
+		attributes: [attr]
+	}, pos) or { panic('expected orm table field expression') }
+	result := t.transform_expr(expr)
+	assert result is ast.InitExpr
+	init := result as ast.InitExpr
+	mut saw_attrs := false
+	for field in init.fields {
+		if field.name != 'attrs' {
+			continue
+		}
+		saw_attrs = true
+		assert field.value is ast.CallExpr
+		call := field.value as ast.CallExpr
+		assert call.args.len == 4
+		assert call.args[2] is ast.KeywordOperator
+		sizeof_arg := call.args[2] as ast.KeywordOperator
+		assert sizeof_arg.exprs.len == 1
+		assert sizeof_arg.exprs[0] is ast.Ident
+		assert (sizeof_arg.exprs[0] as ast.Ident).name == 'VAttribute'
+		assert call.args[3] is ast.ArrayInitExpr
+		inner := call.args[3] as ast.ArrayInitExpr
+		assert inner.typ is ast.Type
+		inner_typ := inner.typ as ast.Type
+		assert inner_typ is ast.ArrayType
+		inner_arr_typ := inner_typ as ast.ArrayType
+		assert inner_arr_typ.elem_type is ast.Ident
+		assert (inner_arr_typ.elem_type as ast.Ident).name == 'VAttribute'
+		assert inner.exprs.len == 1
+		assert inner.exprs[0] is ast.InitExpr
+		attr_init := inner.exprs[0] as ast.InitExpr
+		assert attr_init.typ is ast.Ident
+		assert (attr_init.typ as ast.Ident).name == 'VAttribute'
+	}
+	assert saw_attrs
 }
 
 fn test_replace_it_ident_keeps_nested_any_body_scope() {

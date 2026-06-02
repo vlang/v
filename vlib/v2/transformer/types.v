@@ -27,8 +27,11 @@ fn (t &Transformer) get_synth_type(pos token.Pos) ?types.Type {
 // using cached_methods (lock-free) instead of env.lookup_method.
 fn (t &Transformer) lookup_method_cached(type_name string, method_name string) ?types.FnType {
 	methods := t.cached_methods[type_name] or { return none }
+	base_method_name := generic_base_name_without_specialization(method_name)
 	for method in methods {
-		if method.get_name() == method_name {
+		cached_name := method.get_name()
+		if cached_name == method_name
+			|| generic_base_name_without_specialization(cached_name) == base_method_name {
 			typ := method.get_typ()
 			if typ is types.FnType {
 				return typ
@@ -426,6 +429,14 @@ fn (t &Transformer) normalize_type(typ types.Type) types.Type {
 }
 
 fn (t &Transformer) type_from_init_expr(expr ast.InitExpr) ?types.Type {
+	if generic_type_name := t.generic_init_type_name(expr.typ) {
+		if typ := t.lookup_type(generic_type_name) {
+			return t.normalize_type(typ)
+		}
+		return types.Type(types.Struct{
+			name: generic_type_name
+		})
+	}
 	if typ := t.get_expr_type(expr.typ) {
 		return t.normalize_type(typ)
 	}
@@ -439,6 +450,35 @@ fn (t &Transformer) type_from_init_expr(expr ast.InitExpr) ?types.Type {
 	if typ := t.lookup_type(type_name) {
 		return t.normalize_type(typ)
 	}
+	return none
+}
+
+fn (t &Transformer) generic_init_type_name(expr ast.Expr) ?string {
+	match expr {
+		ast.GenericArgs {
+			base_name := t.expr_to_type_name(expr.lhs)
+			suffix := t.generic_specialization_suffix(expr.args)
+			if base_name != '' && suffix != '' {
+				return base_name + suffix
+			}
+		}
+		ast.GenericArgOrIndexExpr {
+			base_name := t.expr_to_type_name(expr.lhs)
+			suffix := t.generic_specialization_suffix([expr.expr])
+			if base_name != '' && suffix != '' {
+				return base_name + suffix
+			}
+		}
+		ast.IndexExpr {
+			base_name := t.expr_to_type_name(expr.lhs)
+			suffix := t.generic_specialization_suffix([expr.expr])
+			if base_name != '' && suffix != '' {
+				return base_name + suffix
+			}
+		}
+		else {}
+	}
+
 	return none
 }
 
@@ -498,6 +538,20 @@ fn (t &Transformer) lookup_struct_type_any_module(name string) ?types.Struct {
 		return fallback
 	}
 	return none
+}
+
+fn (t &Transformer) live_struct_type_from_type(typ types.Type) ?types.Struct {
+	base_type := t.unwrap_alias_and_pointer_type(typ)
+	if base_type !is types.Struct {
+		return none
+	}
+	struct_type := base_type as types.Struct
+	if struct_type.name != '' {
+		if live_type := t.lookup_struct_type_any_module(struct_type.name) {
+			return live_type
+		}
+	}
+	return struct_type
 }
 
 fn (t &Transformer) struct_implements_name(st types.Struct, target string) bool {
@@ -1040,6 +1094,13 @@ fn (t &Transformer) expr_to_type_name(expr ast.Expr) string {
 		if name !in ['int', 'i64', 'i32', 'i16', 'i8', 'u64', 'u32', 'u16', 'u8', 'byte', 'rune', 'f32', 'f64', 'usize', 'isize', 'bool', 'string', 'voidptr', 'charptr', 'byteptr', 'void', 'nil']
 			&& !name.contains('__') && t.cur_module != '' && t.cur_module != 'main'
 			&& t.cur_module != 'builtin' {
+			if builtin_scope := t.cached_scopes['builtin'] {
+				if obj := builtin_scope.objects[name] {
+					if _ := transformer_object_type(obj) {
+						return name
+					}
+				}
+			}
 			return '${t.cur_module}__${name}'
 		}
 		return name
@@ -3136,6 +3197,26 @@ fn concrete_literal_array_elem_type(typ types.Type) types.Type {
 	return typ
 }
 
+fn normalize_generic_concrete_type(typ types.Type) types.Type {
+	if typ is types.Primitive && typ.props.has(.untyped) {
+		if typ.props.has(.float) {
+			return types.Type(types.f64_)
+		}
+		return types.Type(types.int_)
+	}
+	return match typ.name() {
+		'int_literal' {
+			types.Type(types.int_)
+		}
+		'float_literal' {
+			types.Type(types.f64_)
+		}
+		else {
+			typ
+		}
+	}
+}
+
 fn array_type_has_float_elem(typ types.Type) bool {
 	elem_type := if typ is types.Array {
 		typ.elem_type
@@ -3193,38 +3274,42 @@ fn sanitize_generic_token_part(name string) string {
 }
 
 fn (t &Transformer) generic_specialization_token_from_type(typ types.Type) string {
-	match typ {
+	normalized := normalize_generic_concrete_type(typ)
+	if normalized.name() != typ.name() {
+		return t.generic_specialization_token_from_type(normalized)
+	}
+	match normalized {
 		types.Array {
-			return 'Array_' + t.generic_specialization_token_from_type(typ.elem_type)
+			return 'Array_' + t.generic_specialization_token_from_type(normalized.elem_type)
 		}
 		types.ArrayFixed {
-			return 'Array_fixed_' + t.generic_specialization_token_from_type(typ.elem_type) + '_' +
-				typ.len.str()
+			return 'Array_fixed_' + t.generic_specialization_token_from_type(normalized.elem_type) +
+				'_' + normalized.len.str()
 		}
 		types.Map {
-			return 'Map_' + t.generic_specialization_token_from_type(typ.key_type) + '_' +
-				t.generic_specialization_token_from_type(typ.value_type)
+			return 'Map_' + t.generic_specialization_token_from_type(normalized.key_type) + '_' +
+				t.generic_specialization_token_from_type(normalized.value_type)
 		}
 		types.OptionType {
-			return 'Option_' + t.generic_specialization_token_from_type(typ.base_type)
+			return 'Option_' + t.generic_specialization_token_from_type(normalized.base_type)
 		}
 		types.ResultType {
-			return 'Result_' + t.generic_specialization_token_from_type(typ.base_type)
+			return 'Result_' + t.generic_specialization_token_from_type(normalized.base_type)
 		}
 		types.Pointer {
-			return t.generic_specialization_token_from_type(typ.base_type) + 'ptr'
+			return t.generic_specialization_token_from_type(normalized.base_type) + 'ptr'
 		}
 		types.Alias {
-			if typ.name != '' {
-				return sanitize_generic_token_part(typ.name)
+			if normalized.name != '' {
+				return sanitize_generic_token_part(normalized.name)
 			}
-			return t.generic_specialization_token_from_type(typ.base_type)
+			return t.generic_specialization_token_from_type(normalized.base_type)
 		}
 		else {
-			if !transformer_type_has_safe_payload(typ) {
+			if !transformer_type_has_safe_payload(normalized) {
 				return 'Type'
 			}
-			type_name := typ.name()
+			type_name := normalized.name()
 			if type_name == '' || type_name.len > 1024
 				|| !transformer_string_has_valid_data(type_name) {
 				return 'Type'

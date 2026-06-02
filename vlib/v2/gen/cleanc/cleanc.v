@@ -492,8 +492,8 @@ fn (mut g Gen) gen_file(file ast.File) {
 		// (e.g. via find_generic_fn_decl_by_base_name, resolve_method_on_embedded_decl).
 		g.set_file_module(file)
 		stmt_ptr := &file.stmts[fi]
-		fn_decl_ptr := &((*stmt_ptr) as ast.FnDecl)
-		g.gen_fn_decl_ptr(fn_decl_ptr)
+		fn_decl := (*stmt_ptr) as ast.FnDecl
+		g.gen_fn_decl_ptr(&fn_decl)
 	}
 }
 
@@ -1326,6 +1326,7 @@ pub fn (mut g Gen) gen_passes_1_to_4() {
 				}
 				if g.cur_module == 'eventbus' && stmt.is_method
 					&& receiver_generic_param_names(stmt).len > 0 {
+					stmt_ptr := &stmt
 					prev_generic_types := g.active_generic_types.clone()
 					string_types := {
 						'T': types.Type(types.string_)
@@ -1335,7 +1336,7 @@ pub fn (mut g Gen) gen_passes_1_to_4() {
 						spec_name := g.specialized_fn_name(stmt, string_types)
 						if spec_name != '' {
 							g.record_fn_owner_for_current_file(spec_name, fi)
-							g.gen_fn_head_with_name(stmt, spec_name)
+							g.gen_fn_head_with_name_ptr(stmt_ptr, spec_name)
 							g.sb.writeln(';')
 							g.active_generic_types = prev_generic_types.clone()
 							continue
@@ -1344,7 +1345,7 @@ pub fn (mut g Gen) gen_passes_1_to_4() {
 						fn_name := g.get_fn_name(stmt)
 						if fn_name != '' {
 							g.record_fn_owner_for_current_file(fn_name, fi)
-							g.gen_fn_head_with_name(stmt, fn_name)
+							g.gen_fn_head_with_name_ptr(stmt_ptr, fn_name)
 							g.sb.writeln(';')
 							g.active_generic_types = prev_generic_types.clone()
 							continue
@@ -1354,6 +1355,7 @@ pub fn (mut g Gen) gen_passes_1_to_4() {
 				}
 				// Generic functions: emit as macros for known simple functions
 				if g.generic_fn_param_names(stmt).len > 0 {
+					stmt_ptr := &stmt
 					gfn_name := g.get_fn_name(stmt)
 					specs := g.generic_fn_specializations_for_emit_scope(stmt)
 					if specs.len > 0 {
@@ -1361,7 +1363,7 @@ pub fn (mut g Gen) gen_passes_1_to_4() {
 						for spec in specs {
 							g.active_generic_types = spec.generic_types.clone()
 							g.record_fn_owner_for_current_file(spec.name, fi)
-							g.gen_fn_head_with_name(stmt, spec.name)
+							g.gen_fn_head_with_name_ptr(stmt_ptr, spec.name)
 							g.sb.writeln(';')
 						}
 						g.active_generic_types = prev_generic_types.clone()
@@ -1374,6 +1376,7 @@ pub fn (mut g Gen) gen_passes_1_to_4() {
 				}
 				recv_gp := receiver_generic_param_names(stmt)
 				if recv_gp.len > 0 {
+					stmt_ptr := &stmt
 					all_bindings := g.get_all_receiver_generic_bindings(stmt)
 					if all_bindings.len > 0 {
 						prev_generic_types := g.active_generic_types.clone()
@@ -1382,7 +1385,7 @@ pub fn (mut g Gen) gen_passes_1_to_4() {
 							gfn_name := g.get_fn_name(stmt)
 							if gfn_name != '' {
 								g.record_fn_owner_for_current_file(gfn_name, fi)
-								g.gen_fn_head_with_name(stmt, gfn_name)
+								g.gen_fn_head_with_name_ptr(stmt_ptr, gfn_name)
 								g.sb.writeln(';')
 							}
 						}
@@ -1394,7 +1397,7 @@ pub fn (mut g Gen) gen_passes_1_to_4() {
 						gfn_name := g.get_fn_name(stmt)
 						if gfn_name != '' {
 							g.record_fn_owner_for_current_file(gfn_name, fi)
-							g.gen_fn_head_with_name(stmt, gfn_name)
+							g.gen_fn_head_with_name_ptr(stmt_ptr, gfn_name)
 							g.sb.writeln(';')
 						}
 						g.active_generic_types = prev_generic_types.clone()
@@ -1424,7 +1427,8 @@ pub fn (mut g Gen) gen_passes_1_to_4() {
 						g.cur_fn_scope = fn_scope
 					}
 				}
-				g.gen_fn_head(stmt)
+				stmt_ptr := &stmt
+				g.gen_fn_head_with_name_ptr(stmt_ptr, fn_name)
 				g.sb.writeln(';')
 			}
 		}
@@ -1792,7 +1796,8 @@ fn (mut g Gen) emit_forced_helpers_from_non_emit_files() {
 				if 'fn_${fn_name}' in g.fn_owner_file {
 					continue
 				}
-				g.gen_fn_decl(stmt)
+				stmt_ptr := &stmt
+				g.gen_fn_decl_ptr(stmt_ptr)
 				emitted[fn_name] = true
 			}
 		}

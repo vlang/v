@@ -156,6 +156,20 @@ fn (t &Transformer) lookup_struct_field_generic_decl_type(struct_name string, fi
 	return none
 }
 
+fn (t &Transformer) lookup_struct_field_generic_decl_bindings(struct_name string, field_name string) ?map[string]types.Type {
+	if struct_name == '' || field_name == '' {
+		return none
+	}
+	for candidate in struct_field_lookup_candidates(struct_name) {
+		if bindings := t.struct_field_generic_decl_bindings[struct_field_generic_decl_key(candidate,
+			field_name)]
+		{
+			return bindings.clone()
+		}
+	}
+	return none
+}
+
 fn struct_field_lookup_candidates(struct_name string) []string {
 	mut candidates := []string{}
 	if struct_name != '' {
@@ -195,6 +209,9 @@ fn embedded_type_name_matches(embedded_name string, field_name string) bool {
 
 fn (t &Transformer) live_embedded_struct_type(embedded types.Struct) types.Struct {
 	if embedded.name != '' {
+		if live_type := t.lookup_struct_type_any_module(embedded.name) {
+			return live_type
+		}
 		if live_type := t.lookup_type(embedded.name) {
 			if live_type is types.Struct {
 				return live_type
@@ -202,6 +219,9 @@ fn (t &Transformer) live_embedded_struct_type(embedded types.Struct) types.Struc
 		}
 		if embedded.name.contains('__') {
 			short_name := embedded.name.all_after_last('__')
+			if live_type := t.lookup_struct_type_any_module(short_name) {
+				return live_type
+			}
 			if live_type := t.lookup_type(short_name) {
 				if live_type is types.Struct {
 					return live_type
@@ -1363,8 +1383,21 @@ fn (mut t Transformer) transform_init_expr(expr ast.InitExpr) ast.Expr {
 		}
 	}
 
+	mut init_typ_expr := expr.typ
+	if concrete_typ_expr := t.concrete_generic_struct_type_expr(expr.typ) {
+		init_typ_expr = concrete_typ_expr
+	}
+	typed_expr := ast.InitExpr{
+		typ: init_typ_expr
+		pos: expr.pos
+	}
+	if expr.pos.id != 0 {
+		if init_typ := t.type_from_init_expr(typed_expr) {
+			t.synth_types[expr.pos.id] = init_typ
+		}
+	}
 	// Get the struct type name for field type lookups
-	struct_type_name := t.get_init_expr_type_name(expr.typ)
+	struct_type_name := t.get_init_expr_type_name(init_typ_expr)
 
 	// Transform field values recursively
 	// Note: ArrayInitExpr is NOT transformed here because cleanc uses field type info
@@ -1381,7 +1414,7 @@ fn (mut t Transformer) transform_init_expr(expr ast.InitExpr) ast.Expr {
 			expected_field_type = direct_type
 			has_expected_field_type = true
 			field_type_name = t.type_to_c_name(direct_type)
-		} else if direct_type := t.get_init_expr_field_type(expr.typ, field.name) {
+		} else if direct_type := t.get_init_expr_field_type(init_typ_expr, field.name) {
 			expected_field_type = direct_type
 			has_expected_field_type = true
 			field_type_name = t.type_to_c_name(direct_type)
@@ -1508,16 +1541,18 @@ fn (mut t Transformer) transform_init_expr(expr ast.InitExpr) ast.Expr {
 		} else {
 			transformed_value
 		}
+		field_name := t.rewrite_embedded_default_field_name(struct_type_name, field.name)
 		fields << ast.FieldInit{
-			name:  field.name
+			name:  field_name
 			value: final_value
 		}
 	}
 	fields = t.add_missing_struct_field_defaults(struct_type_name, fields)
 
 	return ast.InitExpr{
-		typ:    expr.typ
+		typ:    init_typ_expr
 		fields: fields
+		pos:    expr.pos
 	}
 }
 
@@ -1573,6 +1608,9 @@ fn (t &Transformer) get_init_expr_field_type(init_typ_expr ast.Expr, field_name 
 	if !transformer_string_has_valid_data(field_name) {
 		return none
 	}
+	if field_typ := t.generic_init_expr_field_type(init_typ_expr, field_name) {
+		return field_typ
+	}
 	init_typ := t.get_expr_type(init_typ_expr) or { return none }
 	base_typ := t.unwrap_alias_and_pointer_type(init_typ)
 	if base_typ is types.Struct {
@@ -1587,6 +1625,9 @@ fn (t &Transformer) get_init_expr_field_type_name(init_typ_expr ast.Expr, field_
 	if !transformer_string_has_valid_data(field_name) {
 		return ''
 	}
+	if field_typ := t.generic_init_expr_field_type(init_typ_expr, field_name) {
+		return t.type_to_name(field_typ)
+	}
 	init_typ := t.get_expr_type(init_typ_expr) or { return '' }
 	base_typ := t.unwrap_alias_and_pointer_type(init_typ)
 	if base_typ is types.Struct {
@@ -1595,6 +1636,36 @@ fn (t &Transformer) get_init_expr_field_type_name(init_typ_expr ast.Expr, field_
 		}
 	}
 	return ''
+}
+
+fn (t &Transformer) generic_init_expr_field_type(init_typ_expr ast.Expr, field_name string) ?types.Type {
+	mut lhs := ast.empty_expr
+	mut args := []ast.Expr{}
+	match init_typ_expr {
+		ast.GenericArgs {
+			lhs = init_typ_expr.lhs
+			args = init_typ_expr.args.clone()
+		}
+		ast.GenericArgOrIndexExpr {
+			lhs = init_typ_expr.lhs
+			args = [init_typ_expr.expr]
+		}
+		ast.IndexExpr {
+			lhs = init_typ_expr.lhs
+			args = [init_typ_expr.expr]
+		}
+		else {
+			return none
+		}
+	}
+
+	base := t.lookup_type_from_expr(lhs) or { return none }
+	if base is types.Struct {
+		field := struct_field_by_name(base, field_name) or { return none }
+		bindings := t.generic_type_arg_bindings(base.generic_params, args) or { return field.typ }
+		return substitute_type(field.typ, bindings)
+	}
+	return none
 }
 
 fn (mut t Transformer) add_missing_struct_field_defaults(struct_name string, fields []ast.FieldInit) []ast.FieldInit {
@@ -1621,11 +1692,14 @@ fn (mut t Transformer) add_missing_struct_field_defaults(struct_name string, fie
 		if field.name == '' {
 			// Positional field — map it to the corresponding struct field name
 			if positional_idx < struct_info.fields.len {
-				existing[struct_info.fields[positional_idx].name] = true
+				positional_name := struct_info.fields[positional_idx].name
+				existing[positional_name] = true
+				existing[t.rewrite_embedded_default_field_name(struct_name, positional_name)] = true
 			}
 			positional_idx++
 		} else {
 			existing[field.name] = true
+			existing[t.rewrite_embedded_default_field_name(struct_name, field.name)] = true
 		}
 	}
 	mut out := []ast.FieldInit{cap: fields.len}
@@ -1633,16 +1707,16 @@ fn (mut t Transformer) add_missing_struct_field_defaults(struct_name string, fie
 		out << field
 	}
 	for struct_field in struct_info.fields {
-		if struct_field.name in existing {
+		field_name := t.rewrite_embedded_default_field_name(struct_name, struct_field.name)
+		if struct_field.name in existing || field_name in existing {
 			continue
 		}
 		if struct_field.default_expr !is ast.EmptyExpr
 			&& t.is_supported_struct_default_expr(struct_field.default_expr) {
-			resolved_default := t.resolve_expr_with_expected_type(struct_field.default_expr,
-				struct_field.typ)
 			out << ast.FieldInit{
-				name:  struct_field.name
-				value: t.transform_struct_field_default_expr(struct_name, resolved_default)
+				name:  field_name
+				value: t.transform_struct_field_default_value(struct_name,
+					struct_field.default_expr, struct_field.typ)
 			}
 			continue
 		}
@@ -1657,7 +1731,7 @@ fn (mut t Transformer) add_missing_struct_field_defaults(struct_name string, fie
 				typ: t.type_to_ast_type_expr(field_type)
 			})
 			out << ast.FieldInit{
-				name:  struct_field.name
+				name:  field_name
 				value: t.transform_expr(map_init)
 			}
 			continue
@@ -1667,7 +1741,7 @@ fn (mut t Transformer) add_missing_struct_field_defaults(struct_name string, fie
 				typ: t.type_to_ast_type_expr(field_type)
 			})
 			out << ast.FieldInit{
-				name:  struct_field.name
+				name:  field_name
 				value: t.transform_expr(array_init)
 			}
 			continue
@@ -1686,14 +1760,14 @@ fn (mut t Transformer) add_missing_struct_field_defaults(struct_name string, fie
 				]
 			})
 			out << ast.FieldInit{
-				name:  struct_field.name
+				name:  field_name
 				value: t.transform_expr(option_none)
 			}
 			continue
 		}
 		if field_type is types.String {
 			out << ast.FieldInit{
-				name:  struct_field.name
+				name:  field_name
 				value: ast.StringLiteral{
 					kind:  .v
 					value: "''"
@@ -1703,21 +1777,23 @@ fn (mut t Transformer) add_missing_struct_field_defaults(struct_name string, fie
 	}
 	// Also fill defaults for fields from embedded structs.
 	for emb in struct_info.embedded {
-		for struct_field in emb.fields {
-			if struct_field.name in existing {
+		resolved_emb := t.resolve_embedded_struct_for_default_fields(struct_name, emb)
+		for struct_field in resolved_emb.fields {
+			raw_field_name := embedded_default_field_name_with_owner(emb.name, struct_field.name)
+			field_name := t.embedded_default_field_name(struct_name, emb.name, struct_field.name)
+			if struct_field.name in existing || raw_field_name in existing || field_name in existing {
 				continue
 			}
 			if struct_field.default_expr !is ast.EmptyExpr
 				&& t.is_supported_struct_default_expr(struct_field.default_expr) {
 				mut emb_struct_name := struct_name
-				if emb.name.contains('__') {
-					emb_struct_name = emb.name
+				if resolved_emb.name != '' {
+					emb_struct_name = t.type_to_c_name(types.Type(resolved_emb))
 				}
-				resolved_default := t.resolve_expr_with_expected_type(struct_field.default_expr,
-					struct_field.typ)
 				out << ast.FieldInit{
-					name:  struct_field.name
-					value: t.transform_struct_field_default_expr(emb_struct_name, resolved_default)
+					name:  field_name
+					value: t.transform_struct_field_default_value(emb_struct_name,
+						struct_field.default_expr, struct_field.typ)
 				}
 				continue
 			}
@@ -1730,7 +1806,7 @@ fn (mut t Transformer) add_missing_struct_field_defaults(struct_name string, fie
 					typ: t.type_to_ast_type_expr(field_type)
 				})
 				out << ast.FieldInit{
-					name:  struct_field.name
+					name:  field_name
 					value: t.transform_expr(map_init)
 				}
 				continue
@@ -1740,7 +1816,7 @@ fn (mut t Transformer) add_missing_struct_field_defaults(struct_name string, fie
 					typ: t.type_to_ast_type_expr(field_type)
 				})
 				out << ast.FieldInit{
-					name:  struct_field.name
+					name:  field_name
 					value: t.transform_expr(array_init)
 				}
 				continue
@@ -1759,14 +1835,14 @@ fn (mut t Transformer) add_missing_struct_field_defaults(struct_name string, fie
 					]
 				})
 				out << ast.FieldInit{
-					name:  struct_field.name
+					name:  field_name
 					value: t.transform_expr(option_none)
 				}
 				continue
 			}
 			if field_type is types.String {
 				out << ast.FieldInit{
-					name:  struct_field.name
+					name:  field_name
 					value: ast.StringLiteral{
 						kind:  .v
 						value: "''"
@@ -1774,8 +1850,231 @@ fn (mut t Transformer) add_missing_struct_field_defaults(struct_name string, fie
 				}
 			}
 		}
+		if resolved_emb.fields.len == 0 {
+			if info := t.resolve_embedded_decl_for_default_fields(struct_name, emb) {
+				out = t.add_missing_embedded_decl_defaults(struct_name, emb, info, out, existing)
+			}
+		}
 	}
 	return out
+}
+
+fn embedded_default_field_name_with_owner(embedded_name string, field_name string) string {
+	if field_name.contains('.') {
+		return field_name
+	}
+	owner := embedded_concrete_owner_name_from_type_name(embedded_name)
+	if owner == '' {
+		return field_name
+	}
+	return '${owner}.${field_name}'
+}
+
+fn (t &Transformer) embedded_default_field_name(parent_struct_name string, embedded_name string, field_name string) string {
+	if field_name.contains('.') {
+		return t.rewrite_embedded_default_field_name(parent_struct_name, field_name)
+	}
+	mut owner := embedded_concrete_owner_name_from_type_name(embedded_name)
+	if concrete_owner := t.concrete_embedded_owner_name(parent_struct_name, owner) {
+		owner = concrete_owner
+	}
+	if owner == '' {
+		return field_name
+	}
+	return '${owner}.${field_name}'
+}
+
+fn (t &Transformer) resolve_embedded_struct_for_default_fields(parent_struct_name string, embedded types.Struct) types.Struct {
+	owner := embedded_concrete_owner_name_from_type_name(embedded.name)
+	if concrete_owner := t.concrete_embedded_owner_name(parent_struct_name, owner) {
+		if concrete_owner != owner {
+			module_name := embedded_struct_module_name(embedded.name, owner)
+			if resolved := t.lookup_struct_type_in_module(module_name, concrete_owner) {
+				return resolved
+			}
+		}
+	}
+	return t.live_embedded_struct_type(embedded)
+}
+
+fn (t &Transformer) resolve_embedded_decl_for_default_fields(parent_struct_name string, embedded types.Struct) ?StructDefaultDeclInfo {
+	owner := embedded_concrete_owner_name_from_type_name(embedded.name)
+	if concrete_owner := t.concrete_embedded_owner_name(parent_struct_name, owner) {
+		if concrete_owner != owner {
+			module_name := embedded_struct_module_name(embedded.name, owner)
+			if module_name != '' {
+				if info := t.lookup_struct_default_decl_info('${module_name}__${concrete_owner}') {
+					return info
+				}
+			}
+			if info := t.lookup_struct_default_decl_info(concrete_owner) {
+				return info
+			}
+		}
+	}
+	if info := t.lookup_struct_default_decl_info(embedded.name) {
+		return info
+	}
+	if embedded.name.contains('__') {
+		return t.lookup_struct_default_decl_info(embedded.name.all_after_last('__'))
+	}
+	return none
+}
+
+fn (t &Transformer) lookup_struct_default_decl_info(name string) ?StructDefaultDeclInfo {
+	if name == '' {
+		return none
+	}
+	return t.struct_default_decl_infos[name] or { return none }
+}
+
+fn (mut t Transformer) add_missing_embedded_decl_defaults(parent_struct_name string, embedded types.Struct, info StructDefaultDeclInfo, fields []ast.FieldInit, existing map[string]bool) []ast.FieldInit {
+	mut out := fields.clone()
+	base_owner := embedded_concrete_owner_name_from_type_name(embedded.name)
+	mut concrete_owner := base_owner
+	if rewritten_owner := t.concrete_embedded_owner_name(parent_struct_name, base_owner) {
+		concrete_owner = rewritten_owner
+	}
+	emb_struct_name := generic_struct_decl_c_name(info.decl, info.module_name)
+	for field in info.decl.fields {
+		if field.name == '' {
+			continue
+		}
+		raw_field_name := '${base_owner}.${field.name}'
+		field_name := '${concrete_owner}.${field.name}'
+		if raw_field_name in existing || field_name in existing {
+			continue
+		}
+		if field.value !is ast.EmptyExpr && t.is_supported_struct_default_expr(field.value) {
+			field_type := t.struct_decl_field_type(info, field) or { continue }
+			out << ast.FieldInit{
+				name:  field_name
+				value: t.transform_struct_field_default_value(emb_struct_name, field.value,
+					field_type)
+			}
+			continue
+		}
+		field_type := t.struct_decl_field_type(info, field) or { continue }
+		if t.is_pointer_type(field_type) {
+			continue
+		}
+		base_type := t.unwrap_alias_and_pointer_type(field_type)
+		if base_type is types.Map {
+			map_init := ast.Expr(ast.MapInitExpr{
+				typ: t.type_to_ast_type_expr(base_type)
+			})
+			out << ast.FieldInit{
+				name:  field_name
+				value: t.transform_expr(map_init)
+			}
+			continue
+		}
+		if base_type is types.Array {
+			array_init := ast.Expr(ast.ArrayInitExpr{
+				typ: t.type_to_ast_type_expr(base_type)
+			})
+			out << ast.FieldInit{
+				name:  field_name
+				value: t.transform_expr(array_init)
+			}
+			continue
+		}
+		if base_type is types.OptionType {
+			option_none := ast.Expr(ast.InitExpr{
+				typ:    t.type_to_ast_type_expr(base_type)
+				fields: [
+					ast.FieldInit{
+						name:  'state'
+						value: ast.BasicLiteral{
+							kind:  token.Token.number
+							value: '2'
+						}
+					},
+				]
+			})
+			out << ast.FieldInit{
+				name:  field_name
+				value: t.transform_expr(option_none)
+			}
+			continue
+		}
+		if base_type is types.String {
+			out << ast.FieldInit{
+				name:  field_name
+				value: ast.StringLiteral{
+					kind:  .v
+					value: "''"
+				}
+			}
+		}
+	}
+	return out
+}
+
+fn (mut t Transformer) struct_decl_field_type(info StructDefaultDeclInfo, field ast.FieldDecl) ?types.Type {
+	old_module := t.cur_module
+	old_scope := t.scope
+	t.cur_module = info.module_name
+	if scope := t.get_module_scope(info.module_name) {
+		t.scope = scope
+	} else {
+		t.scope = unsafe { nil }
+	}
+	field_type := t.lookup_type_from_expr(field.typ) or {
+		t.cur_module = old_module
+		t.scope = old_scope
+		return none
+	}
+	t.cur_module = old_module
+	t.scope = old_scope
+	return field_type
+}
+
+fn embedded_struct_module_name(type_name string, owner string) string {
+	if type_name == '' || owner == '' {
+		return ''
+	}
+	suffix := '__${owner}'
+	if type_name.ends_with(suffix) {
+		return type_name[..type_name.len - suffix.len]
+	}
+	if type_name.contains('__') {
+		return type_name.all_before_last('__')
+	}
+	return ''
+}
+
+fn (t &Transformer) lookup_struct_type_in_module(module_name string, type_name string) ?types.Struct {
+	if module_name != '' {
+		for candidate in [module_name, module_name.replace('__', '.')] {
+			if scope := t.get_module_scope(candidate) {
+				if typ := scope.lookup_type(type_name) {
+					if typ is types.Struct {
+						return typ
+					}
+				}
+			}
+		}
+	}
+	if typ := t.lookup_type(type_name) {
+		if typ is types.Struct {
+			return typ
+		}
+	}
+	return none
+}
+
+fn (mut t Transformer) transform_struct_field_default_value(struct_name string, expr ast.Expr, expected types.Type) ast.Expr {
+	resolved := t.resolve_expr_with_expected_type(expr, expected)
+	base := t.unwrap_alias_and_pointer_type(expected)
+	if base is types.Interface && !t.is_interface_cast(resolved) {
+		return t.transform_expr(ast.CallOrCastExpr{
+			lhs:  t.type_to_ast_type_expr(expected)
+			expr: resolved
+			pos:  resolved.pos()
+		})
+	}
+	return t.transform_struct_field_default_expr(struct_name, resolved)
 }
 
 fn (mut t Transformer) transform_struct_field_default_expr(struct_name string, expr ast.Expr) ast.Expr {
@@ -1784,6 +2083,9 @@ fn (mut t Transformer) transform_struct_field_default_expr(struct_name string, e
 		if module_name != '' && module_name != t.cur_module {
 			// Cross-module const defaults like `ast.empty_expr` must be qualified.
 			if expr is ast.Ident {
+				if expr.name.contains('__') {
+					return expr
+				}
 				return ast.SelectorExpr{
 					lhs: ast.Ident{
 						name: module_name
@@ -2137,24 +2439,9 @@ fn (t &Transformer) get_field_array_elem_interface_type(struct_name string, fiel
 
 // get_field_array_elem_c_name returns the C type name for the element type of an array field
 fn (t &Transformer) get_field_array_elem_c_name(struct_name string, field_name string) string {
-	scope_keys5 := t.cached_scopes.keys()
-	for sk in scope_keys5 {
-		scope := t.cached_scopes[sk] or { continue }
-		if obj := scope.objects[struct_name] {
-			if obj is types.Type {
-				if obj is types.Struct {
-					for field in obj.fields {
-						if field.name == field_name {
-							if field.typ is types.Array {
-								field_arr := field.typ as types.Array
-								return t.type_to_c_name(field_arr.elem_type)
-							}
-							return ''
-						}
-					}
-				}
-			}
-		}
+	field_typ := t.lookup_struct_field_type(struct_name, field_name) or { return '' }
+	if field_typ is types.Array {
+		return t.type_to_c_name(field_typ.elem_type)
 	}
 	return ''
 }

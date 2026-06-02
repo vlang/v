@@ -169,12 +169,14 @@ mut:
 	float_const_values map[string]string
 	// Label name -> SSA BlockID (for goto/label support)
 	label_blocks map[string]BlockID
-	// Track mut pointer params (e.g., mut buf &u8) that need extra dereference
-	// when used in expressions (buf is ptr(ptr(i8)), but user sees buf as &u8)
-	mut_ptr_params map[string]bool
-	// Set during sum type init _data field building to trigger heap allocation
-	// for &struct_local (prevents dangling stack pointers in returned sum types)
-	in_sumtype_data bool
+		// Track mut pointer params (e.g., mut buf &u8) that need extra dereference
+		// when used in expressions (buf is ptr(ptr(i8)), but user sees buf as &u8)
+		mut_ptr_params map[string]bool
+		// Branch-local smartcasts from `if x is T` while lowering SSA.
+		local_smartcasts map[string]TypeID
+		// Set during sum type init _data field building to trigger heap allocation
+		// for &struct_local (prevents dangling stack pointers in returned sum types)
+		in_sumtype_data bool
 	// Constant array globals: names of globals that store raw element data
 	// (not V array structs). build_ident returns the pointer directly.
 	const_array_globals    map[string]bool
@@ -222,9 +224,10 @@ pub fn Builder.new_with_env(mod &Module, env &types.Environment) &Builder {
 		global_refs:                   map[string]ValueID{}
 		option_wrapper_types:          map[string]TypeID{}
 		result_wrapper_types:          map[string]TypeID{}
-		array_value_elem_types:        map[int]TypeID{}
-		struct_field_array_elem_types: map[string]TypeID{}
-	}
+			array_value_elem_types:        map[int]TypeID{}
+			struct_field_array_elem_types: map[string]TypeID{}
+			local_smartcasts:              map[string]TypeID{}
+		}
 	unsafe {
 		b.env = env
 		mod.env = env
@@ -266,13 +269,14 @@ pub fn (mut b Builder) new_worker_clone(worker_mod &Module, worker_idx int) &Bui
 		// Stride of 100_000 per worker avoids collisions.
 		anon_fn_counter: (worker_idx + 1) * 100_000
 		// Per-function state is reset at start of each build_fn, so empty init is fine
-		fn_refs:        map[string]ValueID{}
-		vars:           map[string]ValueID{}
-		loop_stack:     []LoopInfo{}
-		label_blocks:   map[string]BlockID{}
-		mut_ptr_params: map[string]bool{}
+			fn_refs:        map[string]ValueID{}
+			vars:           map[string]ValueID{}
+			loop_stack:     []LoopInfo{}
+			label_blocks:   map[string]BlockID{}
+			mut_ptr_params: map[string]bool{}
+			local_smartcasts: map[string]TypeID{}
+		}
 	}
-}
 
 pub fn (mut b Builder) build_all(files []ast.File) {
 	// Register builtin globals needed by all backends
@@ -3438,6 +3442,7 @@ pub fn (mut b Builder) build_fn(decl ast.FnDecl) {
 	// Reset local variables
 	b.vars = map[string]ValueID{}
 	b.mut_ptr_params = map[string]bool{}
+	b.local_smartcasts = map[string]TypeID{}
 	b.label_blocks = map[string]BlockID{}
 	b.array_elem_types = map[string]TypeID{}
 
@@ -3579,6 +3584,7 @@ pub fn (mut b Builder) build_fn_from_flat(c ast.Cursor) {
 	// Reset per-fn state
 	b.vars = map[string]ValueID{}
 	b.mut_ptr_params = map[string]bool{}
+	b.local_smartcasts = map[string]TypeID{}
 	b.label_blocks = map[string]BlockID{}
 	b.array_elem_types = map[string]TypeID{}
 
@@ -6683,6 +6689,15 @@ fn (mut b Builder) build_selector_from_flat(c ast.Cursor) ValueID {
 	}
 
 	mut base := b.build_expr_from_flat(lhs_c)
+	if field_val := b.build_sumtype_variant_selector_value(base,
+		b.get_checked_expr_type_from_flat(lhs_c), rhs_name)
+	{
+		if b.mod.values[field_val].typ == b.get_array_type() {
+			b.track_array_value_elem_type_from_selector_from_flat(c, field_val,
+				b.mod.values[base].typ)
+		}
+		return field_val
+	}
 	// Fixed-size array `.len`
 	base_typ_raw := b.mod.values[base].typ
 	if base_typ_raw > 0 && int(base_typ_raw) < b.mod.type_store.types.len {
@@ -6736,17 +6751,30 @@ fn (mut b Builder) build_selector_from_flat(c ast.Cursor) ValueID {
 			return field_val
 		}
 	}
-	field_idx := b.field_index_from_flat(c, base)
-	if field_idx < 0 {
-		return 0
-	}
+	mut field_idx := -1
 	mut result_type := TypeID(0)
 	actual_base_type := b.mod.values[base].typ
 	if actual_base_type > 0 && int(actual_base_type) < b.mod.type_store.types.len {
 		typ := b.mod.type_store.types[actual_base_type]
-		if typ.kind == .struct_t && field_idx >= 0 && field_idx < typ.fields.len {
-			result_type = typ.fields[field_idx]
+		if typ.kind == .struct_t {
+			for i, name in typ.field_names {
+				if name == rhs_name {
+					field_idx = i
+					result_type = typ.fields[i]
+					break
+				}
+			}
+			if field_idx < 0 && b.ssa_type_is_sumtype(actual_base_type)
+				&& !rhs_name.starts_with('arg') {
+				return 0
+			}
 		}
+	}
+	if field_idx < 0 {
+		field_idx = b.field_index_from_flat(c, base)
+	}
+	if field_idx < 0 {
+		return 0
 	}
 	if result_type == 0 {
 		result_type = b.expr_type_from_flat(c)
@@ -6764,6 +6792,7 @@ fn (mut b Builder) build_selector_from_flat(c ast.Cursor) ValueID {
 // resolves field index via `field_index_from_flat`, and returns the GEP-built
 // SelectorAddr (field pointer + base struct type for downstream tracking).
 fn (mut b Builder) build_selector_addr_from_flat(c ast.Cursor) ?SelectorAddr {
+	rhs_name := c.edge(1).name()
 	base := b.build_addr_from_flat(c.edge(0))
 	if base == 0 {
 		return none
@@ -6781,7 +6810,19 @@ fn (mut b Builder) build_selector_addr_from_flat(c ast.Cursor) ?SelectorAddr {
 	if struct_type.kind != .struct_t {
 		return none
 	}
-	field_idx := b.field_index_from_flat(c, base)
+	mut field_idx := -1
+	for i, name in struct_type.field_names {
+		if name == rhs_name {
+			field_idx = i
+			break
+		}
+	}
+	if field_idx < 0 && b.ssa_type_is_sumtype(ptr_type.elem_type) {
+		return none
+	}
+	if field_idx < 0 {
+		field_idx = b.field_index_from_flat(c, base)
+	}
 	if field_idx < 0 || field_idx >= struct_type.fields.len {
 		return none
 	}
@@ -7988,11 +8029,13 @@ fn (mut b Builder) build_fn_literal_from_flat(c ast.Cursor) ValueID {
 	saved_block := b.cur_block
 	mut saved_vars := b.vars.clone()
 	mut saved_mut_ptr_params := b.mut_ptr_params.clone()
+	mut saved_local_smartcasts := b.local_smartcasts.clone()
 	saved_loop_stack := b.loop_stack.clone()
 
 	b.cur_func = func_idx
 	b.vars = map[string]ValueID{}
 	b.mut_ptr_params = map[string]bool{}
+	b.local_smartcasts = map[string]TypeID{}
 	b.loop_stack = []LoopInfo{}
 
 	entry := b.mod.add_block(func_idx, 'entry')
@@ -8029,6 +8072,7 @@ fn (mut b Builder) build_fn_literal_from_flat(c ast.Cursor) ValueID {
 	b.cur_block = saved_block
 	b.vars = saved_vars.move()
 	b.mut_ptr_params = saved_mut_ptr_params.move()
+	b.local_smartcasts = saved_local_smartcasts.move()
 	b.loop_stack = saved_loop_stack
 
 	fn_ptr_type := b.mod.type_store.get_ptr(b.mod.type_store.get_int(8))
@@ -11449,6 +11493,14 @@ fn (mut b Builder) build_selector(expr ast.SelectorExpr) ValueID {
 
 	// Use extractvalue for struct field access
 	mut base := b.build_expr(expr.lhs)
+	if field_val := b.build_sumtype_variant_selector_value(base, b.get_checked_expr_type(expr.lhs),
+		expr.rhs.name)
+	{
+		if b.mod.values[field_val].typ == b.get_array_type() {
+			b.track_array_value_elem_type_from_selector(expr, field_val, b.mod.values[base].typ)
+		}
+		return field_val
+	}
 	// Check for fixed-size array .len access — return compile-time constant
 	base_typ_raw := b.mod.values[base].typ
 	if base_typ_raw > 0 && int(base_typ_raw) < b.mod.type_store.types.len {
@@ -11506,21 +11558,34 @@ fn (mut b Builder) build_selector(expr ast.SelectorExpr) ValueID {
 			return field_val
 		}
 	}
-	field_idx := b.field_index(expr, base)
-	if field_idx < 0 {
-		return 0
-	}
 	// Determine result type: prefer SSA struct field type for struct bases,
 	// fall back to type environment.
 	// The type environment may have the smartcast variant type (e.g., int) for a
 	// sumtype field access, while the SSA struct has the correct field type.
+	mut field_idx := -1
 	mut result_type := TypeID(0)
 	actual_base_type := b.mod.values[base].typ
 	if actual_base_type > 0 && int(actual_base_type) < b.mod.type_store.types.len {
 		typ := b.mod.type_store.types[actual_base_type]
-		if typ.kind == .struct_t && field_idx >= 0 && field_idx < typ.fields.len {
-			result_type = typ.fields[field_idx]
+		if typ.kind == .struct_t {
+			for i, name in typ.field_names {
+				if name == expr.rhs.name {
+					field_idx = i
+					result_type = typ.fields[i]
+					break
+				}
+			}
+			if field_idx < 0 && b.ssa_type_is_sumtype(actual_base_type)
+				&& !expr.rhs.name.starts_with('arg') {
+				return 0
+			}
 		}
+	}
+	if field_idx < 0 {
+		field_idx = b.field_index(expr, base)
+	}
+	if field_idx < 0 {
+		return 0
 	}
 	if result_type == 0 {
 		result_type = b.expr_type(ast.Expr(expr))
@@ -11551,7 +11616,19 @@ fn (mut b Builder) build_selector_addr(expr ast.SelectorExpr) ?SelectorAddr {
 	if struct_type.kind != .struct_t {
 		return none
 	}
-	field_idx := b.field_index(expr, base)
+	mut field_idx := -1
+	for i, name in struct_type.field_names {
+		if name == expr.rhs.name {
+			field_idx = i
+			break
+		}
+	}
+	if field_idx < 0 && b.ssa_type_is_sumtype(ptr_type.elem_type) {
+		return none
+	}
+	if field_idx < 0 {
+		field_idx = b.field_index(expr, base)
+	}
 	if field_idx < 0 || field_idx >= struct_type.fields.len {
 		return none
 	}
@@ -11563,6 +11640,55 @@ fn (mut b Builder) build_selector_addr(expr ast.SelectorExpr) ?SelectorAddr {
 		addr:      addr
 		base_type: ptr_type.elem_type
 	}
+}
+
+fn (mut b Builder) build_sumtype_variant_selector_value(base ValueID, checked_lhs_type ?types.Type, field_name string) ?ValueID {
+	if base <= 0 || base >= b.mod.values.len || field_name == '' {
+		return none
+	}
+	base_type := b.mod.values[base].typ
+	if !b.ssa_type_is_sumtype(base_type) {
+		return none
+	}
+	checked_type := checked_lhs_type or { return none }
+	variant_struct := b.unwrap_to_struct(checked_type)
+	if variant_struct.name == '' {
+		return none
+	}
+	variant_type := b.type_to_ssa(types.Type(variant_struct))
+	if variant_type <= 0 || variant_type == base_type
+		|| int(variant_type) >= b.mod.type_store.types.len {
+		return none
+	}
+	variant_info := b.mod.type_store.types[variant_type]
+	if variant_info.kind != .struct_t {
+		return none
+	}
+	mut field_idx := -1
+	mut field_type := TypeID(0)
+	for i, name in variant_info.field_names {
+		if name == field_name {
+			field_idx = i
+			field_type = variant_info.fields[i]
+			break
+		}
+	}
+	if field_idx < 0 || field_type <= 0 {
+		return none
+	}
+	i32_t := b.mod.type_store.get_int(32)
+	i64_t := b.mod.type_store.get_int(64)
+	data_idx := b.mod.get_or_add_const(i32_t, '1')
+	data_word := b.mod.add_instr(.extractvalue, b.cur_block, i64_t, [base, data_idx])
+	variant_ptr_type := b.mod.type_store.get_ptr(variant_type)
+	data_ptr := b.cast_value_to_type(data_word, variant_ptr_type)
+	field_idx_val := b.mod.get_or_add_const(i32_t, field_idx.str())
+	field_ptr_type := b.mod.type_store.get_ptr(field_type)
+	field_ptr := b.mod.add_instr(.get_element_ptr, b.cur_block, field_ptr_type, [
+		data_ptr,
+		field_idx_val,
+	])
+	return b.mod.add_instr(.load, b.cur_block, field_type, [field_ptr])
 }
 
 fn (mut b Builder) track_array_value_elem_type_from_selector(expr ast.SelectorExpr, field_val ValueID, base_type TypeID) {
@@ -14299,12 +14425,14 @@ fn (mut b Builder) build_fn_literal(expr ast.FnLiteral) ValueID {
 	saved_block := b.cur_block
 	mut saved_vars := b.vars.clone()
 	mut saved_mut_ptr_params := b.mut_ptr_params.clone()
+	mut saved_local_smartcasts := b.local_smartcasts.clone()
 	saved_loop_stack := b.loop_stack.clone()
 
 	// Switch to building the anonymous function
 	b.cur_func = func_idx
 	b.vars = map[string]ValueID{}
 	b.mut_ptr_params = map[string]bool{}
+	b.local_smartcasts = map[string]TypeID{}
 	b.loop_stack = []LoopInfo{}
 
 	// Create entry block
@@ -14342,6 +14470,7 @@ fn (mut b Builder) build_fn_literal(expr ast.FnLiteral) ValueID {
 	b.cur_block = saved_block
 	b.vars = saved_vars.move()
 	b.mut_ptr_params = saved_mut_ptr_params.move()
+	b.local_smartcasts = saved_local_smartcasts.move()
 	b.loop_stack = saved_loop_stack
 
 	// Return a function reference to the anonymous function.

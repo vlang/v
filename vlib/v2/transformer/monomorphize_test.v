@@ -137,6 +137,114 @@ fn test_generic_call_info_lookup_does_not_match_unrelated_short_name() {
 	}
 }
 
+fn test_resolve_monomorphize_decl_key_prefers_module_suffix_over_short_name() {
+	t := mono_test_transformer()
+	decl := ast.FnDecl{
+		name: 'uniq'
+	}
+	decl_node := {
+		'uniq':         decl
+		'arrays__uniq': decl
+	}
+	resolved := t.resolve_monomorphize_decl_key('http__arrays__uniq', decl_node) or {
+		panic('missing resolved key')
+	}
+	assert resolved == 'arrays__uniq'
+}
+
+fn test_resolve_monomorphize_decl_key_rejects_unrelated_short_name() {
+	t := mono_test_transformer()
+	decl := ast.FnDecl{
+		name: 'encode'
+	}
+	decl_node := {
+		'encode':        decl
+		'json2__encode': decl
+	}
+	if _ := t.resolve_monomorphize_decl_key('base64__encode', decl_node) {
+		assert false, 'qualified generic lookup must not fall back to unrelated short names'
+	}
+	if _ := t.resolve_monomorphize_decl_key('base64.encode', decl_node) {
+		assert false, 'dotted generic lookup must not fall back to unrelated short names'
+	}
+}
+
+fn test_generic_call_info_bare_lookup_stays_in_current_module() {
+	mut t := mono_test_transformer()
+	t.cur_module = 'cbor'
+	json_decl := ast.FnDecl{
+		name: 'encode'
+		typ:  ast.FnType{
+			generic_params: [
+				ast.Expr(ast.Ident{
+					name: 'JsonT'
+				}),
+			]
+		}
+	}
+	cbor_decl := ast.FnDecl{
+		name: 'encode'
+		typ:  ast.FnType{
+			generic_params: [
+				ast.Expr(ast.Ident{
+					name: 'CborT'
+				}),
+			]
+		}
+	}
+	t.generic_fn_decl_index['encode'] = json_decl
+	t.generic_fn_decl_index['json2__encode'] = json_decl
+	t.generic_fn_decl_index['cbor__encode'] = cbor_decl
+	decl := t.generic_fn_decl_for_call_info('encode') or { panic('missing current module decl') }
+	gp := decl.typ.generic_params[0] as ast.Ident
+	assert gp.name == 'CborT'
+}
+
+fn test_monomorphize_pass_uses_decl_module_name_for_moved_import_clone() {
+	mut t := mono_test_transformer()
+	t.env = types.Environment.new()
+	bindings := {
+		'T': types.Type(types.string_)
+	}
+	t.env.generic_types['http__arrays__uniq'] = [bindings]
+	t.generic_spec_owner_file[generic_spec_owner_key('http__arrays__uniq', bindings)] = 1
+	decl := ast.FnDecl{
+		name: 'uniq'
+		typ:  ast.FnType{
+			generic_params: [
+				ast.Expr(ast.Ident{
+					name: 'T'
+				}),
+			]
+			params:         [
+				ast.Parameter{
+					name: 'items'
+					typ:  ast.Expr(ast.Ident{
+						name: 'T'
+					})
+				},
+			]
+			return_type:    ast.Expr(ast.Ident{
+				name: 'T'
+			})
+		}
+	}
+	files := [
+		ast.File{
+			mod:   'arrays'
+			stmts: [ast.Stmt(decl)]
+		},
+		ast.File{
+			mod: 'net.http'
+		},
+	]
+	out := t.monomorphize_pass(files)
+	assert out[1].stmts.len == 1
+	assert out[1].stmts[0] is ast.FnDecl
+	cloned := out[1].stmts[0] as ast.FnDecl
+	assert cloned.name == 'arrays__uniq_T_string'
+}
+
 fn test_generic_call_concrete_return_type_prefers_substitution_over_stale_pos_type() {
 	mut env := types.Environment.new()
 	env.set_expr_type(77, types.Type(types.int_))
@@ -409,6 +517,25 @@ fn test_substitute_type_in_expr_recurses_into_map_type() {
 	assert val.name == 'int'
 }
 
+fn test_substitute_type_in_expr_recurses_into_generic_index_type() {
+	mut t := mono_test_transformer()
+	bindings := {
+		'T': types.Type(types.int_)
+	}
+	expr := ast.Expr(ast.GenericArgOrIndexExpr{
+		lhs:  ast.Expr(ast.Ident{
+			name: 'AtomicVal'
+		})
+		expr: ast.Expr(ast.Ident{
+			name: 'T'
+		})
+	})
+	out := t.substitute_type_in_expr(expr, bindings)
+	gen := out as ast.GenericArgOrIndexExpr
+	arg := gen.expr as ast.Ident
+	assert arg.name == 'int'
+}
+
 // specialized_fn_name: matches cleanc's naming
 
 fn test_specialized_fn_name_uses_all_placeholders_suffix_when_concrete_is_self() {
@@ -469,6 +596,434 @@ fn test_specialized_fn_name_handles_multiple_params() {
 	assert t.specialized_fn_name(decl, bindings) == 'pair_T_string_int'
 }
 
+fn test_clone_fn_decl_tracks_local_decl_types_for_interpolation_repair() {
+	value_kind_type := types.Type(types.Enum{
+		name: 'json2__ValueKind'
+	})
+	value_info_type := types.Type(types.Struct{
+		name:   'json2__ValueInfo'
+		fields: [
+			types.Field{
+				name: 'value_kind'
+				typ:  value_kind_type
+			},
+		]
+	})
+	node_type := types.Type(types.Struct{
+		name:   'json2__Node'
+		fields: [
+			types.Field{
+				name: 'value'
+				typ:  value_info_type
+			},
+		]
+	})
+	decoder_type := types.Type(types.Struct{
+		name:   'json2__Decoder'
+		fields: [
+			types.Field{
+				name: 'current_node'
+				typ:  types.Type(types.Pointer{
+					base_type: node_type
+				})
+			},
+		]
+	})
+	mut t := mono_test_transformer()
+	t.env = types.Environment.new()
+	t.cur_module = 'json2'
+	mut json2_scope := types.new_scope(unsafe { nil })
+	json2_scope.insert_type('Decoder', decoder_type)
+	json2_scope.insert_type('Node', node_type)
+	json2_scope.insert_type('ValueInfo', value_info_type)
+	t.cached_scopes['json2'] = json2_scope
+	t.needed_str_fns = map[string]string{}
+	t.needed_enum_str_fns = map[string]types.Enum{}
+	value_kind_expr := ast.Expr(ast.SelectorExpr{
+		lhs: ast.Expr(ast.Ident{
+			name: 'string_info'
+		})
+		rhs: ast.Ident{
+			name: 'value_kind'
+		}
+	})
+	stale_arg := ast.Expr(ast.SelectorExpr{
+		lhs: ast.Expr(ast.CallExpr{
+			lhs:  ast.Expr(ast.Ident{
+				name: 'string__str'
+			})
+			args: [value_kind_expr]
+		})
+		rhs: ast.Ident{
+			name: 'str'
+		}
+	})
+	decl := ast.FnDecl{
+		name:      'decode_string'
+		is_method: true
+		receiver:  ast.Parameter{
+			name: 'decoder'
+			typ:  ast.Expr(ast.Ident{
+				name: 'Decoder'
+			})
+		}
+		typ:       ast.FnType{
+			generic_params: [
+				ast.Expr(ast.Ident{
+					name: 'T'
+				}),
+			]
+		}
+		stmts:     [
+			ast.Stmt(ast.AssignStmt{
+				op:  .decl_assign
+				lhs: [
+					ast.Expr(ast.Ident{
+						name: 'string_info'
+					}),
+				]
+				rhs: [
+					ast.Expr(ast.SelectorExpr{
+						lhs: ast.Expr(ast.SelectorExpr{
+							lhs: ast.Expr(ast.Ident{
+								name: 'decoder'
+							})
+							rhs: ast.Ident{
+								name: 'current_node'
+							}
+						})
+						rhs: ast.Ident{
+							name: 'value'
+						}
+					}),
+				]
+			}),
+			ast.Stmt(ast.ExprStmt{
+				expr: ast.Expr(ast.StringInterLiteral{
+					values: [
+						"'Expected string, but got ",
+						"'",
+					]
+					inters: [
+						ast.StringInter{
+							expr: stale_arg
+						},
+					]
+				})
+			}),
+		]
+	}
+	cloned := t.clone_fn_decl_with_substitutions(decl, {
+		'T': types.Type(types.string_)
+	}, 'decode_string_T_string', 'json2', 'main')
+	_ = t.env.get_fn_scope('main', 'Decoder__decode_string_T_string') or {
+		panic('missing target module cloned function scope')
+	}
+	expr_stmt := cloned.stmts[1] as ast.ExprStmt
+	lit := expr_stmt.expr as ast.StringInterLiteral
+	repaired := lit.inters[0].expr
+	assert repaired is ast.SelectorExpr
+	repaired_call := (repaired as ast.SelectorExpr).lhs
+	assert repaired_call is ast.CallExpr
+	repaired_lhs := (repaired_call as ast.CallExpr).lhs
+	assert repaired_lhs is ast.Ident
+	assert (repaired_lhs as ast.Ident).name == 'json2__ValueKind__str'
+}
+
+fn test_moved_clone_qualifies_source_module_type_positions() {
+	mut t := mono_test_transformer()
+	t.env = types.Environment.new()
+	mut json2_scope := types.new_scope(unsafe { nil })
+	json2_scope.insert_type('DecoderOptions', types.Type(types.Struct{
+		name: 'json2__DecoderOptions'
+	}))
+	json2_scope.insert_type('Decoder', types.Type(types.Struct{
+		name: 'json2__Decoder'
+	}))
+	json2_scope.insert_type('StructFieldInfo', types.Type(types.Struct{
+		name: 'json2__StructFieldInfo'
+	}))
+	t.cached_scopes['json2'] = json2_scope
+	decl := ast.FnDecl{
+		name:  'decode'
+		typ:   ast.FnType{
+			generic_params: [
+				ast.Expr(ast.Ident{
+					name: 'T'
+				}),
+			]
+			params:         [
+				ast.Parameter{
+					name: 'val'
+					typ:  ast.Expr(ast.Ident{
+						name: 'string'
+					})
+				},
+				ast.Parameter{
+					name: 'params'
+					typ:  ast.Expr(ast.Ident{
+						name: 'DecoderOptions'
+					})
+				},
+			]
+			return_type:    ast.Expr(ast.Type(ast.ResultType{
+				base_type: ast.Expr(ast.Ident{
+					name: 'T'
+				})
+			}))
+		}
+		stmts: [
+			ast.Stmt(ast.AssignStmt{
+				op:  .decl_assign
+				lhs: [
+					ast.Expr(ast.Ident{
+						name: 'decoder'
+					}),
+				]
+				rhs: [
+					ast.Expr(ast.InitExpr{
+						typ: ast.Expr(ast.Ident{
+							name: 'Decoder'
+						})
+					}),
+				]
+			}),
+			ast.Stmt(ast.ExprStmt{
+				expr: ast.Expr(ast.ArrayInitExpr{
+					typ: ast.Expr(ast.Type(ast.ArrayType{
+						elem_type: ast.Expr(ast.Ident{
+							name: 'StructFieldInfo'
+						})
+					}))
+				})
+			}),
+		]
+	}
+	mut cloned := t.clone_fn_decl_with_substitutions(decl, {
+		'T': types.Type(types.Struct{
+			name: 'api__ApiBranchCount'
+		})
+	}, 'json2__decode_T_api_ApiBranchCount', 'json2', 'main')
+	cloned = t.qualify_moved_clone_source_module_types(cloned, 'json2')
+	options_type := cloned.typ.params[1].typ as ast.Ident
+	assert options_type.name == 'json2__DecoderOptions'
+	assign := cloned.stmts[0] as ast.AssignStmt
+	init := assign.rhs[0] as ast.InitExpr
+	init_type := init.typ as ast.Ident
+	assert init_type.name == 'json2__Decoder'
+	expr_stmt := cloned.stmts[1] as ast.ExprStmt
+	array_init := expr_stmt.expr as ast.ArrayInitExpr
+	array_type := array_init.typ as ast.Type
+	array := array_type as ast.ArrayType
+	elem := array.elem_type as ast.Ident
+	assert elem.name == 'json2__StructFieldInfo'
+}
+
+fn test_moved_clone_qualifies_source_module_generic_function_value() {
+	mut t := mono_test_transformer()
+	handler_decl := ast.FnDecl{
+		name: 'parallel_request_handler'
+		typ:  ast.FnType{
+			generic_params: [
+				ast.Expr(ast.Ident{
+					name: 'A'
+				}),
+				ast.Expr(ast.Ident{
+					name: 'X'
+				}),
+			]
+		}
+	}
+	t.generic_fn_decl_index['parallel_request_handler'] = handler_decl
+	t.generic_fn_decl_index['json2__parallel_request_handler'] = handler_decl
+	decl := ast.FnDecl{
+		name:  'run_new'
+		typ:   ast.FnType{
+			generic_params: [
+				ast.Expr(ast.Ident{
+					name: 'A'
+				}),
+				ast.Expr(ast.Ident{
+					name: 'X'
+				}),
+			]
+		}
+		stmts: [
+			ast.Stmt(ast.ExprStmt{
+				expr: ast.Expr(ast.InitExpr{
+					typ:    ast.Expr(ast.Ident{
+						name: 'ServerConfig'
+					})
+					fields: [
+						ast.FieldInit{
+							name:  'handler'
+							value: ast.Expr(ast.GenericArgs{
+								lhs:  ast.Expr(ast.Ident{
+									name: 'parallel_request_handler'
+								})
+								args: [
+									ast.Expr(ast.Ident{
+										name: 'A'
+									}),
+									ast.Expr(ast.Ident{
+										name: 'X'
+									}),
+								]
+							})
+						},
+					]
+				})
+			}),
+		]
+	}
+	mut cloned := t.clone_fn_decl_with_substitutions(decl, {
+		'A': types.Type(types.Struct{
+			name: 'main__App'
+		})
+		'X': types.Type(types.Struct{
+			name: 'main__Context'
+		})
+	}, 'json2__run_new_T_App_Context', 'json2', 'main')
+	cloned = t.qualify_moved_clone_source_module_types(cloned, 'json2')
+	expr_stmt := cloned.stmts[0] as ast.ExprStmt
+	init := expr_stmt.expr as ast.InitExpr
+	handler := init.fields[0].value as ast.Ident
+	assert handler.name == 'json2__parallel_request_handler_T_main_App_main_Context'
+}
+
+fn test_moved_clone_qualifies_source_module_generic_function_value_index_expr() {
+	mut t := mono_test_transformer()
+	handler_decl := ast.FnDecl{
+		name: 'parallel_request_handler'
+		typ:  ast.FnType{
+			generic_params: [
+				ast.Expr(ast.Ident{
+					name: 'A'
+				}),
+				ast.Expr(ast.Ident{
+					name: 'X'
+				}),
+			]
+		}
+	}
+	t.generic_fn_decl_index['parallel_request_handler'] = handler_decl
+	t.generic_fn_decl_index['json2__parallel_request_handler'] = handler_decl
+	decl := ast.FnDecl{
+		name:  'run_new'
+		typ:   ast.FnType{
+			generic_params: [
+				ast.Expr(ast.Ident{
+					name: 'A'
+				}),
+				ast.Expr(ast.Ident{
+					name: 'X'
+				}),
+			]
+		}
+		stmts: [
+			ast.Stmt(ast.ExprStmt{
+				expr: ast.Expr(ast.InitExpr{
+					typ:    ast.Expr(ast.Ident{
+						name: 'ServerConfig'
+					})
+					fields: [
+						ast.FieldInit{
+							name:  'handler'
+							value: ast.Expr(ast.IndexExpr{
+								lhs:  ast.Expr(ast.GenericArgOrIndexExpr{
+									lhs:  ast.Expr(ast.Ident{
+										name: 'parallel_request_handler'
+									})
+									expr: ast.Expr(ast.Ident{
+										name: 'A'
+									})
+								})
+								expr: ast.Expr(ast.Ident{
+									name: 'X'
+								})
+							})
+						},
+					]
+				})
+			}),
+		]
+	}
+	mut cloned := t.clone_fn_decl_with_substitutions(decl, {
+		'A': types.Type(types.Struct{
+			name: 'main__App'
+		})
+		'X': types.Type(types.Struct{
+			name: 'main__Context'
+		})
+	}, 'json2__run_new_T_App_Context', 'json2', 'main')
+	cloned = t.qualify_moved_clone_source_module_types(cloned, 'json2')
+	expr_stmt := cloned.stmts[0] as ast.ExprStmt
+	init := expr_stmt.expr as ast.InitExpr
+	handler := init.fields[0].value as ast.Ident
+	assert handler.name == 'json2__parallel_request_handler_T_main_App_main_Context'
+}
+
+fn test_collect_generic_struct_field_type_resolves_prefix_pointer_generic_arg() {
+	value_kind_type := types.Type(types.Enum{
+		name: 'json2__ValueKind'
+	})
+	value_info_type := types.Type(types.Struct{
+		name:   'json2__ValueInfo'
+		fields: [
+			types.Field{
+				name: 'value_kind'
+				typ:  value_kind_type
+			},
+		]
+	})
+	node_type := types.Type(types.Struct{
+		name:           'json2__Node'
+		generic_params: ['T']
+		fields:         [
+			types.Field{
+				name: 'value'
+				typ:  types.Type(types.NamedType('T'))
+			},
+		]
+	})
+	mut t := mono_test_transformer()
+	t.env = types.Environment.new()
+	t.cur_module = 'json2'
+	mut json2_scope := types.new_scope(unsafe { nil })
+	json2_scope.insert_type('Node', node_type)
+	json2_scope.insert_type('ValueInfo', value_info_type)
+	t.cached_scopes['json2'] = json2_scope
+	t.collect_struct_decl_generic_field_types(ast.StructDecl{
+		name:   'Decoder'
+		fields: [
+			ast.FieldDecl{
+				name: 'current_node'
+				typ:  ast.Expr(ast.PrefixExpr{
+					op:   .amp
+					expr: ast.Expr(ast.GenericArgOrIndexExpr{
+						lhs:  ast.Expr(ast.Ident{
+							name: 'Node'
+						})
+						expr: ast.Expr(ast.Ident{
+							name: 'ValueInfo'
+						})
+					})
+				})
+			},
+		]
+	}, 'json2')
+	field_typ := t.lookup_struct_field_generic_decl_type('json2__Decoder', 'current_node') or {
+		panic('missing concrete current_node type')
+	}
+	assert field_typ is types.Pointer
+	node_concrete := (field_typ as types.Pointer).base_type
+	assert node_concrete is types.Struct
+	value_field := struct_field_by_name(node_concrete as types.Struct, 'value') or {
+		panic('missing Node.value field')
+	}
+	assert value_field.typ.name() == 'json2__ValueInfo'
+}
+
 // clone_fn_decl_with_substitutions: end-to-end on a trivial generic fn
 
 fn test_clone_fn_decl_renames_and_substitutes_param_and_return_types() {
@@ -510,7 +1065,7 @@ fn test_clone_fn_decl_renames_and_substitutes_param_and_return_types() {
 			}),
 		]
 	}
-	cloned := t.clone_fn_decl_with_substitutions(decl, bindings, 'identity_T_int')
+	cloned := t.clone_fn_decl_with_substitutions(decl, bindings, 'identity_T_int', '', '')
 	assert cloned.name == 'identity_T_int'
 	assert cloned.typ.generic_params.len == 0
 	assert cloned.typ.params.len == 1
@@ -557,12 +1112,163 @@ fn test_clone_fn_decl_substitutes_inside_array_param_type() {
 			})
 		}
 	}
-	cloned := t.clone_fn_decl_with_substitutions(decl, bindings, 'first_T_int')
+	cloned := t.clone_fn_decl_with_substitutions(decl, bindings, 'first_T_int', '', '')
 	assert cloned.name == 'first_T_int'
 	param_typ := cloned.typ.params[0].typ as ast.Type
 	arr_typ := param_typ as ast.ArrayType
 	elem := arr_typ.elem_type as ast.Ident
 	assert elem.name == 'int'
+}
+
+fn test_clone_fn_decl_registers_array_index_decl_type_in_clone_scope() {
+	mut t := mono_test_transformer()
+	value_pos := token.Pos{
+		id: 801
+	}
+	index_pos := token.Pos{
+		id: 802
+	}
+	first_lhs_pos := token.Pos{
+		id: 803
+	}
+	t.env.set_expr_type(value_pos.id, types.Type(types.Array{
+		elem_type: types.Type(types.f64_)
+	}))
+	t.env.set_expr_type(index_pos.id, types.Type(types.f64_))
+	decl := ast.FnDecl{
+		name:  'first'
+		typ:   ast.FnType{
+			generic_params: [
+				ast.Expr(ast.Ident{
+					name: 'T'
+				}),
+			]
+			params:         [
+				ast.Parameter{
+					name: 'value'
+					typ:  ast.Expr(ast.Type(ast.ArrayType{
+						elem_type: ast.Expr(ast.Ident{
+							name: 'T'
+						})
+					}))
+				},
+			]
+		}
+		stmts: [
+			ast.Stmt(ast.AssignStmt{
+				op:  .decl_assign
+				lhs: [
+					ast.Expr(ast.Ident{
+						name: 'first'
+						pos:  first_lhs_pos
+					}),
+				]
+				rhs: [
+					ast.Expr(ast.IndexExpr{
+						lhs:  ast.Expr(ast.Ident{
+							name: 'value'
+							pos:  value_pos
+						})
+						expr: ast.Expr(ast.BasicLiteral{
+							kind:  .number
+							value: '0'
+						})
+						pos:  index_pos
+					}),
+				]
+			}),
+		]
+	}
+	cloned := t.clone_fn_decl_with_substitutions(decl, {
+		'T': types.Type(types.string_)
+	}, 'first_T_string', 'orm', 'main')
+	scope := t.env.get_fn_scope('orm', 'first_T_string') or {
+		panic('missing cloned function scope')
+	}
+	first_type := scope.lookup_var_type('first') or { panic('missing first type') }
+	assert first_type is types.String
+	stmt := cloned.stmts[0] as ast.AssignStmt
+	lhs := stmt.lhs[0] as ast.Ident
+	lhs_type := t.synth_types[lhs.pos.id] or { panic('missing first synth type') }
+	assert lhs_type is types.String
+}
+
+fn test_clone_fn_decl_registers_nested_array_index_decl_type_in_clone_scope() {
+	mut t := mono_test_transformer()
+	value_pos := token.Pos{
+		id: 821
+	}
+	index_pos := token.Pos{
+		id: 822
+	}
+	item_lhs_pos := token.Pos{
+		id: 823
+	}
+	t.env.set_expr_type(value_pos.id, types.Type(types.Array{
+		elem_type: types.Type(types.f64_)
+	}))
+	t.env.set_expr_type(index_pos.id, types.Type(types.f64_))
+	decl := ast.FnDecl{
+		name:  'first_nested'
+		typ:   ast.FnType{
+			generic_params: [
+				ast.Expr(ast.Ident{
+					name: 'T'
+				}),
+			]
+			params:         [
+				ast.Parameter{
+					name: 'value'
+					typ:  ast.Expr(ast.Type(ast.ArrayType{
+						elem_type: ast.Expr(ast.Ident{
+							name: 'T'
+						})
+					}))
+				},
+			]
+		}
+		stmts: [
+			ast.Stmt(ast.ForStmt{
+				stmts: [
+					ast.Stmt(ast.AssignStmt{
+						op:  .decl_assign
+						lhs: [
+							ast.Expr(ast.Ident{
+								name: 'item'
+								pos:  item_lhs_pos
+							}),
+						]
+						rhs: [
+							ast.Expr(ast.IndexExpr{
+								lhs:  ast.Expr(ast.Ident{
+									name: 'value'
+									pos:  value_pos
+								})
+								expr: ast.Expr(ast.BasicLiteral{
+									kind:  .number
+									value: '0'
+								})
+								pos:  index_pos
+							}),
+						]
+					}),
+				]
+			}),
+		]
+	}
+	cloned := t.clone_fn_decl_with_substitutions(decl, {
+		'T': types.Type(types.string_)
+	}, 'first_nested_T_string', 'orm', 'main')
+	scope := t.env.get_fn_scope('orm', 'first_nested_T_string') or {
+		panic('missing cloned function scope')
+	}
+	item_type := scope.lookup_var_type('item') or { panic('missing item type') }
+	assert item_type is types.String
+	for_stmt := cloned.stmts[0] as ast.ForStmt
+	stmt := for_stmt.stmts[0] as ast.AssignStmt
+	lhs := stmt.lhs[0] as ast.Ident
+	lhs_type := t.synth_types[lhs.pos.id] or { panic('missing item synth type') }
+	assert lhs_type is types.String
 }
 
 fn test_clone_fn_decl_preserves_unrelated_stmts() {
@@ -588,7 +1294,7 @@ fn test_clone_fn_decl_preserves_unrelated_stmts() {
 			}),
 		]
 	}
-	cloned := t.clone_fn_decl_with_substitutions(decl, bindings, 'noop_T_int')
+	cloned := t.clone_fn_decl_with_substitutions(decl, bindings, 'noop_T_int', '', '')
 	assert cloned.stmts.len == 1
 	es := cloned.stmts[0] as ast.ExprStmt
 	lit := es.expr as ast.BasicLiteral

@@ -1621,6 +1621,9 @@ fn (mut g Gen) generic_bindings_for_struct_decl(node ast.StructDecl, real_generi
 }
 
 fn (mut g Gen) get_struct_name(node ast.StructDecl) string {
+	if node.name.contains('__') {
+		return node.name
+	}
 	if g.cur_module != '' && g.cur_module != 'main' && g.cur_module != 'builtin' {
 		return '${g.cur_module}__${node.name}'
 	}
@@ -4000,13 +4003,6 @@ fn (mut g Gen) gen_init_expr(node ast.InitExpr) {
 			has_struct_defaults = true
 		}
 	}
-	mut only_named_fields := true
-	for field in node.fields {
-		if field.name == '' {
-			only_named_fields = false
-			break
-		}
-	}
 	if node.fields.len == 0 {
 		if type_name.ends_with('*') {
 			g.sb.write_string('0')
@@ -4030,14 +4026,6 @@ fn (mut g Gen) gen_init_expr(node ast.InitExpr) {
 	}
 	if g.gen_specialized_sum_init_expr(type_name, node) {
 		return
-	}
-	mut initialized_fields := map[string]bool{}
-	if only_named_fields {
-		for field in node.fields {
-			if field.name != '' {
-				initialized_fields[field.name] = true
-			}
-		}
 	}
 	g.sb.write_string('((${type_name}){')
 	mut wrote_fields := 0
@@ -4196,52 +4184,6 @@ fn (mut g Gen) gen_init_expr(node ast.InitExpr) {
 			continue
 		}
 		g.expr(field.value)
-	}
-	if has_struct_defaults && only_named_fields && env_struct.fields.len > 0 {
-		for field in env_struct.fields {
-			if initialized_fields[field.name] {
-				continue
-			}
-			if !g.struct_default_field_is_direct(type_name, field.name) {
-				continue
-			}
-			if !struct_field_needs_explicit_default(field) {
-				continue
-			}
-			if wrote_fields > 0 {
-				g.sb.write_string(',')
-			}
-			g.sb.write_string('.${escape_c_keyword(field.name)} = ')
-			if !g.write_struct_field_default_value(field, type_name) {
-				g.sb.write_string('0')
-			}
-			wrote_fields++
-		}
-		// Also fill defaults for fields from embedded structs.
-		for emb in env_struct.embedded {
-			resolved_emb := g.resolve_embedded_struct(emb)
-			emb_name := embedded_struct_field_name(resolved_emb)
-			if initialized_fields[emb_name] {
-				continue
-			}
-			for field in resolved_emb.fields {
-				if initialized_fields[field.name] {
-					continue
-				}
-				if !struct_field_needs_explicit_default(field) {
-					continue
-				}
-				if wrote_fields > 0 {
-					g.sb.write_string(',')
-				}
-				g.sb.write_string('.${escape_c_keyword(emb_name)}.${escape_c_keyword(field.name)} = ')
-				emb_type_name := g.types_type_to_c(types.Type(resolved_emb))
-				if !g.write_struct_field_default_value(field, emb_type_name) {
-					g.sb.write_string('0')
-				}
-				wrote_fields++
-			}
-		}
 	}
 	g.sb.write_string('})')
 }
