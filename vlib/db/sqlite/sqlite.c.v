@@ -22,6 +22,9 @@ $if $pkgconfig('sqlite3') {
 	#include "sqlite3.h" # The SQLite header file is missing. Please run vlib/db/sqlite/install_thirdparty_sqlite.vsh to download an SQLite amalgamation.
 	#flag @VEXEROOT/thirdparty/sqlite/sqlite3.c
 }
+$if linux {
+	#flag -lm
+}
 
 // https://www.sqlite.org/rescode.html
 pub const sqlite_ok = 0
