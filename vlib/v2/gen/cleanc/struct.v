@@ -1857,7 +1857,7 @@ fn (mut g Gen) gen_struct_decl(node ast.StructDecl) {
 		}
 		if field.typ is ast.Type {
 			if field.typ is ast.FnType {
-				if expr_has_generic_placeholder(field.typ) {
+				if fn_type_has_generic_placeholder(field.typ) {
 					g.sb.writeln('\tvoid* ${field_name};')
 					continue
 				}

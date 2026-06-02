@@ -201,9 +201,289 @@ fn collect_active_imports_from_stmts(stmts []ast.Stmt, user_defines []string, ta
 	}
 }
 
+fn imports_contain(imports []ast.ImportStmt, name string) bool {
+	for imp in imports {
+		if imp.name == name {
+			return true
+		}
+	}
+	return false
+}
+
+fn add_implicit_sync_import_if_needed(mut imports []ast.ImportStmt, uses_channel bool) {
+	if !uses_channel || imports_contain(imports, 'sync') {
+		return
+	}
+	imports << ast.ImportStmt{
+		name: 'sync'
+	}
+}
+
+fn field_decl_uses_channel(field ast.FieldDecl) bool {
+	return type_expr_uses_channel(field.typ) || expr_type_slots_use_channel(field.value)
+}
+
+fn fields_use_channel(fields []ast.FieldDecl) bool {
+	for field in fields {
+		if field_decl_uses_channel(field) {
+			return true
+		}
+	}
+	return false
+}
+
+fn field_inits_use_channel(fields []ast.FieldInit) bool {
+	for field in fields {
+		if expr_type_slots_use_channel(field.value) {
+			return true
+		}
+	}
+	return false
+}
+
+fn fn_type_uses_channel(typ ast.FnType) bool {
+	for gp in typ.generic_params {
+		if type_expr_uses_channel(gp) {
+			return true
+		}
+	}
+	for param in typ.params {
+		if type_expr_uses_channel(param.typ) {
+			return true
+		}
+	}
+	return type_expr_uses_channel(typ.return_type)
+}
+
+fn stmts_use_channel(stmts []ast.Stmt) bool {
+	for stmt in stmts {
+		if stmt_uses_channel(stmt) {
+			return true
+		}
+	}
+	return false
+}
+
+fn stmt_uses_channel(stmt ast.Stmt) bool {
+	match stmt {
+		ast.AssertStmt {
+			return expr_type_slots_use_channel(stmt.extra)
+		}
+		ast.AssignStmt {
+			for expr in stmt.rhs {
+				if expr_type_slots_use_channel(expr) {
+					return true
+				}
+			}
+		}
+		ast.BlockStmt {
+			return stmts_use_channel(stmt.stmts)
+		}
+		ast.ComptimeStmt {
+			return stmt_uses_channel(stmt.stmt)
+		}
+		ast.ConstDecl {
+			return field_inits_use_channel(stmt.fields)
+		}
+		ast.DeferStmt {
+			return stmts_use_channel(stmt.stmts)
+		}
+		ast.EnumDecl {
+			for field in stmt.fields {
+				if expr_type_slots_use_channel(field.value) {
+					return true
+				}
+			}
+		}
+		ast.ExprStmt {
+			return expr_type_slots_use_channel(stmt.expr)
+		}
+		ast.FnDecl {
+			return type_expr_uses_channel(stmt.receiver.typ) || fn_type_uses_channel(stmt.typ)
+				|| stmts_use_channel(stmt.stmts)
+		}
+		ast.ForInStmt {
+			return expr_type_slots_use_channel(stmt.expr)
+		}
+		ast.ForStmt {
+			return stmt_uses_channel(stmt.init) || stmt_uses_channel(stmt.post)
+				|| stmts_use_channel(stmt.stmts)
+		}
+		ast.GlobalDecl {
+			return fields_use_channel(stmt.fields)
+		}
+		ast.InterfaceDecl {
+			return fields_use_channel(stmt.fields) || type_exprs_use_channel(stmt.embedded)
+		}
+		ast.ReturnStmt {
+			return exprs_type_slots_use_channel(stmt.exprs)
+		}
+		ast.StructDecl {
+			return type_exprs_use_channel(stmt.implements) || type_exprs_use_channel(stmt.embedded)
+				|| type_exprs_use_channel(stmt.generic_params) || fields_use_channel(stmt.fields)
+		}
+		ast.TypeDecl {
+			return type_expr_uses_channel(stmt.base_type) || type_exprs_use_channel(stmt.variants)
+				|| type_exprs_use_channel(stmt.generic_params)
+		}
+		else {}
+	}
+
+	return false
+}
+
+fn type_exprs_use_channel(exprs []ast.Expr) bool {
+	for expr in exprs {
+		if type_expr_uses_channel(expr) {
+			return true
+		}
+	}
+	return false
+}
+
+fn exprs_type_slots_use_channel(exprs []ast.Expr) bool {
+	for expr in exprs {
+		if expr_type_slots_use_channel(expr) {
+			return true
+		}
+	}
+	return false
+}
+
+fn expr_type_slots_use_channel(expr ast.Expr) bool {
+	match expr {
+		ast.ArrayInitExpr {
+			return type_expr_uses_channel(expr.typ) || expr_type_slots_use_channel(expr.init)
+				|| expr_type_slots_use_channel(expr.update_expr)
+		}
+		ast.AsCastExpr {
+			return type_expr_uses_channel(expr.typ) || expr_type_slots_use_channel(expr.expr)
+		}
+		ast.AssocExpr {
+			return type_expr_uses_channel(expr.typ) || expr_type_slots_use_channel(expr.expr)
+				|| field_inits_use_channel(expr.fields)
+		}
+		ast.CallExpr {
+			return exprs_type_slots_use_channel(expr.args)
+		}
+		ast.CallOrCastExpr {
+			return type_expr_uses_channel(expr.lhs) || expr_type_slots_use_channel(expr.expr)
+		}
+		ast.CastExpr {
+			return type_expr_uses_channel(expr.typ) || expr_type_slots_use_channel(expr.expr)
+		}
+		ast.ComptimeExpr {
+			return expr_type_slots_use_channel(expr.expr)
+		}
+		ast.FnLiteral {
+			return fn_type_uses_channel(expr.typ) || stmts_use_channel(expr.stmts)
+		}
+		ast.GenericArgOrIndexExpr {
+			return type_expr_uses_channel(expr.lhs) || type_expr_uses_channel(expr.expr)
+		}
+		ast.GenericArgs {
+			return type_expr_uses_channel(expr.lhs) || type_exprs_use_channel(expr.args)
+		}
+		ast.IfExpr {
+			return stmts_use_channel(expr.stmts) || expr_type_slots_use_channel(expr.else_expr)
+		}
+		ast.IfGuardExpr {
+			return stmt_uses_channel(ast.Stmt(expr.stmt))
+		}
+		ast.InitExpr {
+			return type_expr_uses_channel(expr.typ) || field_inits_use_channel(expr.fields)
+		}
+		ast.LockExpr {
+			return stmts_use_channel(expr.stmts)
+		}
+		ast.MapInitExpr {
+			return type_expr_uses_channel(expr.typ) || exprs_type_slots_use_channel(expr.keys)
+				|| exprs_type_slots_use_channel(expr.vals)
+		}
+		ast.MatchExpr {
+			for branch in expr.branches {
+				if stmts_use_channel(branch.stmts) {
+					return true
+				}
+			}
+		}
+		ast.OrExpr {
+			return stmts_use_channel(expr.stmts)
+		}
+		ast.SelectExpr {
+			return stmt_uses_channel(expr.stmt) || stmts_use_channel(expr.stmts)
+				|| expr_type_slots_use_channel(expr.next)
+		}
+		ast.Tuple {
+			return exprs_type_slots_use_channel(expr.exprs)
+		}
+		ast.UnsafeExpr {
+			return stmts_use_channel(expr.stmts)
+		}
+		ast.Type {
+			return type_expr_uses_channel(expr)
+		}
+		else {}
+	}
+
+	return false
+}
+
+fn type_expr_uses_channel(expr ast.Expr) bool {
+	match expr {
+		ast.Type {
+			match expr {
+				ast.ChannelType {
+					return true
+				}
+				ast.ArrayType {
+					return type_expr_uses_channel(expr.elem_type)
+				}
+				ast.ArrayFixedType {
+					return type_expr_uses_channel(expr.elem_type)
+				}
+				ast.FnType {
+					return fn_type_uses_channel(expr)
+				}
+				ast.GenericType {
+					return type_expr_uses_channel(expr.name) || type_exprs_use_channel(expr.params)
+				}
+				ast.MapType {
+					return type_expr_uses_channel(expr.key_type)
+						|| type_expr_uses_channel(expr.value_type)
+				}
+				ast.OptionType {
+					return type_expr_uses_channel(expr.base_type)
+				}
+				ast.PointerType {
+					return type_expr_uses_channel(expr.base_type)
+				}
+				ast.ResultType {
+					return type_expr_uses_channel(expr.base_type)
+				}
+				ast.ThreadType {
+					return type_expr_uses_channel(expr.elem_type)
+				}
+				ast.TupleType {
+					return type_exprs_use_channel(expr.types)
+				}
+				ast.AnonStructType {
+					return type_exprs_use_channel(expr.generic_params)
+						|| type_exprs_use_channel(expr.embedded) || fields_use_channel(expr.fields)
+				}
+				else {}
+			}
+		}
+		else {}
+	}
+
+	return false
+}
+
 fn active_file_imports(file ast.File, user_defines []string, target_os string) []ast.ImportStmt {
 	mut imports := file.imports.clone()
 	collect_active_imports_from_stmts(file.stmts, user_defines, target_os, mut imports)
+	add_implicit_sync_import_if_needed(mut imports, stmts_use_channel(file.stmts))
 	return imports
 }
 
@@ -214,6 +494,7 @@ fn active_file_imports_from_flat(flat &ast.FlatAst, ff ast.FlatFile, user_define
 	mut imports := flat.read_file_imports(ff)
 	stmts := flat.read_file_stmts(ff)
 	collect_active_imports_from_stmts(stmts, user_defines, target_os, mut imports)
+	add_implicit_sync_import_if_needed(mut imports, stmts_use_channel(stmts))
 	return imports
 }
 

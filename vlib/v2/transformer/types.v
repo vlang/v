@@ -470,17 +470,32 @@ fn (t &Transformer) lookup_type(name string) ?types.Type {
 }
 
 fn (t &Transformer) lookup_struct_type_any_module(name string) ?types.Struct {
+	mut fallback := types.Struct{}
+	mut has_fallback := false
 	if typ := t.lookup_type(name) {
 		if typ is types.Struct {
-			return typ
+			if typ.fields.len > 0 {
+				return typ
+			}
+			fallback = typ
+			has_fallback = true
 		}
 	}
 	for _, scope in t.cached_scopes {
 		if typ := scope.lookup_type(name) {
 			if typ is types.Struct {
-				return typ
+				if typ.fields.len > 0 {
+					return typ
+				}
+				if !has_fallback {
+					fallback = typ
+					has_fallback = true
+				}
 			}
 		}
+	}
+	if has_fallback {
+		return fallback
 	}
 	return none
 }
@@ -1144,18 +1159,27 @@ fn (t &Transformer) field_type_from_receiver_type(receiver_type types.Type, fiel
 		break
 	}
 	if cur is types.Struct {
+		if field_typ := t.lookup_struct_field_generic_decl_type(cur.name, field_name) {
+			return field_typ
+		}
 		if field_typ := t.struct_field_type(cur, field_name) {
 			return field_typ
 		}
 	}
 	c_name := t.type_to_c_name(cur)
 	if c_name != '' {
+		if field_typ := t.lookup_struct_field_generic_decl_type(c_name, field_name) {
+			return field_typ
+		}
 		if field_typ := t.lookup_struct_field_type(c_name, field_name) {
 			return field_typ
 		}
 	}
 	type_name := t.type_to_name(cur)
 	if type_name != '' && type_name != c_name {
+		if field_typ := t.lookup_struct_field_generic_decl_type(type_name, field_name) {
+			return field_typ
+		}
 		if field_typ := t.lookup_struct_field_type(type_name, field_name) {
 			return field_typ
 		}

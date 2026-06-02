@@ -395,12 +395,209 @@ fn test_mark_used_tracks_bound_method_values_in_struct_init() {
 		},
 	]
 	used := mark_used(files, env)
+	flat := ast.flatten_files(files)
+	flat_used := mark_used_flat(&flat, env)
 	main_key := decl_key('main', files[0].stmts[0] as ast.FnDecl, env)
 	draw_key := decl_key('main', files[0].stmts[1] as ast.FnDecl, env)
 	unused_key := decl_key('main', files[0].stmts[2] as ast.FnDecl, env)
 	assert used[main_key]
 	assert used[draw_key]
 	assert !used[unused_key]
+	assert flat_used[main_key]
+	assert flat_used[draw_key]
+	assert !flat_used[unused_key]
+}
+
+fn test_mark_used_tracks_typed_bound_method_values_without_receiver_type() {
+	mut env := types.Environment.new()
+	env.set_expr_type(73, types.Type(types.Alias{
+		name:      'DrawFn'
+		base_type: types.Type(types.FnType{})
+	}))
+	files := [
+		ast.File{
+			mod:   'main'
+			name:  'main.v'
+			stmts: [
+				ast.Stmt(ast.FnDecl{
+					name:  'main'
+					typ:   ast.FnType{}
+					pos:   pos(70)
+					stmts: [
+						ast.Stmt(ast.ExprStmt{
+							expr: ast.InitExpr{
+								typ:    ast.Ident{
+									name: 'Config'
+									pos:  pos(71)
+								}
+								fields: [
+									ast.FieldInit{
+										name:  'draw_fn'
+										value: ast.SelectorExpr{
+											lhs: ast.Ident{
+												name: 'game'
+												pos:  pos(72)
+											}
+											rhs: ast.Ident{
+												name: 'draw'
+												pos:  pos(73)
+											}
+											pos: pos(73)
+										}
+									},
+								]
+								pos:    pos(74)
+							}
+						}),
+					]
+				}),
+				ast.Stmt(ast.FnDecl{
+					is_method: true
+					receiver:  ast.Parameter{
+						name: 'g'
+						typ:  ast.Ident{
+							name: 'Game'
+							pos:  pos(75)
+						}
+						pos:  pos(75)
+					}
+					name:      'draw'
+					typ:       ast.FnType{}
+					pos:       pos(76)
+				}),
+				ast.Stmt(ast.FnDecl{
+					is_method: true
+					receiver:  ast.Parameter{
+						name: 'g'
+						typ:  ast.Ident{
+							name: 'Game'
+							pos:  pos(77)
+						}
+						pos:  pos(77)
+					}
+					name:      'unused'
+					typ:       ast.FnType{}
+					pos:       pos(78)
+				}),
+			]
+		},
+	]
+	used := mark_used(files, env)
+	flat := ast.flatten_files(files)
+	flat_used := mark_used_flat(&flat, env)
+	main_key := decl_key('main', files[0].stmts[0] as ast.FnDecl, env)
+	draw_key := decl_key('main', files[0].stmts[1] as ast.FnDecl, env)
+	unused_key := decl_key('main', files[0].stmts[2] as ast.FnDecl, env)
+	assert used[main_key]
+	assert used[draw_key]
+	assert !used[unused_key]
+	assert flat_used[main_key]
+	assert flat_used[draw_key]
+	assert !flat_used[unused_key]
+}
+
+fn test_mark_used_tracks_bound_method_values_in_function_typed_struct_fields() {
+	mut env := types.Environment.new()
+	mut main_scope := types.new_scope(unsafe { nil })
+	main_scope.insert_type('DrawFn', types.Type(types.Alias{
+		name:      'DrawFn'
+		base_type: types.Type(types.FnType{})
+	}))
+	lock env.scopes {
+		env.scopes['main'] = main_scope
+	}
+	files := [
+		ast.File{
+			mod:   'main'
+			name:  'main.v'
+			stmts: [
+				ast.Stmt(ast.StructDecl{
+					name:   'Config'
+					fields: [
+						ast.FieldDecl{
+							name: 'draw_fn'
+							typ:  ast.Ident{
+								name: 'DrawFn'
+								pos:  pos(80)
+							}
+						},
+					]
+				}),
+				ast.Stmt(ast.FnDecl{
+					name:  'main'
+					typ:   ast.FnType{}
+					pos:   pos(81)
+					stmts: [
+						ast.Stmt(ast.ExprStmt{
+							expr: ast.InitExpr{
+								typ:    ast.Ident{
+									name: 'Config'
+									pos:  pos(82)
+								}
+								fields: [
+									ast.FieldInit{
+										name:  'draw_fn'
+										value: ast.SelectorExpr{
+											lhs: ast.Ident{
+												name: 'game'
+												pos:  pos(83)
+											}
+											rhs: ast.Ident{
+												name: 'draw'
+												pos:  pos(84)
+											}
+											pos: pos(84)
+										}
+									},
+								]
+								pos:    pos(85)
+							}
+						}),
+					]
+				}),
+				ast.Stmt(ast.FnDecl{
+					is_method: true
+					receiver:  ast.Parameter{
+						name: 'g'
+						typ:  ast.Ident{
+							name: 'Game'
+							pos:  pos(86)
+						}
+						pos:  pos(86)
+					}
+					name:      'draw'
+					typ:       ast.FnType{}
+					pos:       pos(87)
+				}),
+				ast.Stmt(ast.FnDecl{
+					is_method: true
+					receiver:  ast.Parameter{
+						name: 'g'
+						typ:  ast.Ident{
+							name: 'Game'
+							pos:  pos(88)
+						}
+						pos:  pos(88)
+					}
+					name:      'unused'
+					typ:       ast.FnType{}
+					pos:       pos(89)
+				}),
+			]
+		},
+	]
+	used := mark_used(files, env)
+	flat := ast.flatten_files(files)
+	flat_used := mark_used_flat(&flat, env)
+	main_key := decl_key('main', files[0].stmts[1] as ast.FnDecl, env)
+	draw_key := decl_key('main', files[0].stmts[2] as ast.FnDecl, env)
+	unused_key := decl_key('main', files[0].stmts[3] as ast.FnDecl, env)
+	assert used[main_key]
+	assert used[draw_key]
+	assert !used[unused_key]
+	assert flat_used[main_key]
+	assert flat_used[draw_key]
+	assert !flat_used[unused_key]
 }
 
 fn test_mark_used_walks_codegen_required_str_methods() {

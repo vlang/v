@@ -12025,14 +12025,7 @@ fn expr_has_generic_placeholder(e ast.Expr) bool {
 					return expr_has_generic_placeholder(e.base_type)
 				}
 				ast.FnType {
-					for p in e.params {
-						if expr_has_generic_placeholder(p.typ) {
-							return true
-						}
-					}
-					if e.return_type !is ast.EmptyExpr {
-						return expr_has_generic_placeholder(e.return_type)
-					}
+					return fn_type_has_generic_placeholder(e)
 				}
 				else {}
 			}
@@ -12043,6 +12036,18 @@ fn expr_has_generic_placeholder(e ast.Expr) bool {
 			return false
 		}
 	}
+}
+
+fn fn_type_has_generic_placeholder(t ast.FnType) bool {
+	for p in t.params {
+		if expr_has_generic_placeholder(p.typ) {
+			return true
+		}
+	}
+	if t.return_type !is ast.EmptyExpr {
+		return expr_has_generic_placeholder(t.return_type)
+	}
+	return false
 }
 
 fn fn_decl_has_generic_placeholders(node ast.FnDecl) bool {

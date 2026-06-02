@@ -75,6 +75,9 @@ fn (t &Transformer) lookup_struct_field_type(struct_name string, field_name stri
 		|| !transformer_string_has_valid_data(field_name) {
 		return none
 	}
+	if field_type := t.lookup_struct_field_generic_decl_type(struct_name, field_name) {
+		return field_type
+	}
 	mut sname := struct_name
 	mut mod := ''
 	dunder := struct_name.last_index('__') or { -1 }
@@ -137,6 +140,44 @@ fn (t &Transformer) lookup_struct_field_type(struct_name string, field_name stri
 		}
 	}
 	return none
+}
+
+fn (t &Transformer) lookup_struct_field_generic_decl_type(struct_name string, field_name string) ?types.Type {
+	if struct_name == '' || field_name == '' {
+		return none
+	}
+	for candidate in struct_field_lookup_candidates(struct_name) {
+		if field_type := t.struct_field_generic_decl_types[struct_field_generic_decl_key(candidate,
+			field_name)]
+		{
+			return field_type
+		}
+	}
+	return none
+}
+
+fn struct_field_lookup_candidates(struct_name string) []string {
+	mut candidates := []string{}
+	if struct_name != '' {
+		candidates << struct_name
+		if struct_name.contains('__') {
+			short_name := struct_name.all_after_last('__')
+			if short_name != '' && short_name !in candidates {
+				candidates << short_name
+			}
+		}
+		if struct_name.contains('.') {
+			dot_name := struct_name.replace('.', '__')
+			if dot_name !in candidates {
+				candidates << dot_name
+			}
+			short_name := struct_name.all_after_last('.')
+			if short_name != '' && short_name !in candidates {
+				candidates << short_name
+			}
+		}
+	}
+	return candidates
 }
 
 fn embedded_type_name_matches(embedded_name string, field_name string) bool {

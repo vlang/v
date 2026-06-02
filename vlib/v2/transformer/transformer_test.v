@@ -271,6 +271,107 @@ fn test_get_expr_type_selector_prefers_struct_field_over_stale_synth_type() {
 	assert (typ as types.Enum).name == 'json2__ValueKind'
 }
 
+fn test_string_interpolation_prefers_declared_selector_type_over_stale_string_pos() {
+	value_kind_type := types.Type(types.Enum{
+		name: 'json2__ValueKind'
+	})
+	value_info_type := types.Type(types.Struct{
+		name:   'json2__ValueInfo'
+		fields: [
+			types.Field{
+				name: 'value_kind'
+				typ:  value_kind_type
+			},
+		]
+	})
+	mut env := types.Environment.new()
+	env.set_expr_type(93, types.Type(types.string_))
+	mut scope := types.new_scope(unsafe { nil })
+	scope.insert('struct_info', value_object_from_type(value_info_type))
+	mut t := Transformer{
+		pref:                &vpref.Preferences{}
+		env:                 unsafe { env }
+		scope:               scope
+		local_decl_types:    map[string]types.Type{}
+		needed_str_fns:      map[string]string{}
+		needed_enum_str_fns: map[string]types.Enum{}
+		synth_types:         map[int]types.Type{}
+	}
+	inter_expr := ast.Expr(ast.SelectorExpr{
+		lhs: ast.Ident{
+			name: 'struct_info'
+		}
+		rhs: ast.Ident{
+			name: 'value_kind'
+		}
+		pos: token.Pos{
+			id: 93
+		}
+	})
+	inter := ast.StringInter{
+		expr: inter_expr
+	}
+	assert t.resolve_sprintf_format(inter) == '%s'
+	arg := t.transform_sprintf_arg(inter)
+	assert arg is ast.SelectorExpr
+	call := (arg as ast.SelectorExpr).lhs
+	assert call is ast.CallExpr
+	lhs := (call as ast.CallExpr).lhs
+	assert lhs is ast.Ident
+	assert (lhs as ast.Ident).name == 'json2__ValueKind__str'
+
+	stale_arg := ast.Expr(ast.SelectorExpr{
+		lhs: ast.Expr(ast.CallExpr{
+			lhs:  ast.Ident{
+				name: 'string__str'
+			}
+			args: [inter_expr]
+			pos:  token.Pos{
+				id: 94
+			}
+		})
+		rhs: ast.Ident{
+			name: 'str'
+		}
+		pos: token.Pos{
+			id: 95
+		}
+	})
+	lit := t.transform_string_inter_literal(ast.StringInterLiteral{
+		values: ["'Expected object, but got ", "'"]
+		inters: [
+			ast.StringInter{
+				expr: stale_arg
+			},
+		]
+	})
+	assert lit is ast.StringInterLiteral
+	repaired := (lit as ast.StringInterLiteral).inters[0].expr
+	assert repaired is ast.SelectorExpr
+	repaired_call := (repaired as ast.SelectorExpr).lhs
+	assert repaired_call is ast.CallExpr
+	repaired_lhs := (repaired_call as ast.CallExpr).lhs
+	assert repaired_lhs is ast.Ident
+	assert (repaired_lhs as ast.Ident).name == 'json2__ValueKind__str'
+
+	cloned := t.clone_expr_with_bindings_and_fields(ast.Expr(ast.StringInterLiteral{
+		values: ["'Expected object, but got ", "'"]
+		inters: [
+			ast.StringInter{
+				expr: stale_arg
+			},
+		]
+	}), map[string]types.Type{}, []CloneComptimeFieldCtx{})
+	assert cloned is ast.StringInterLiteral
+	cloned_arg := (cloned as ast.StringInterLiteral).inters[0].expr
+	assert cloned_arg is ast.SelectorExpr
+	cloned_call := (cloned_arg as ast.SelectorExpr).lhs
+	assert cloned_call is ast.CallExpr
+	cloned_lhs := (cloned_call as ast.CallExpr).lhs
+	assert cloned_lhs is ast.Ident
+	assert (cloned_lhs as ast.Ident).name == 'json2__ValueKind__str'
+}
+
 fn collect_call_names_from_stmt(stmt ast.Stmt, mut names []string) {
 	match stmt {
 		ast.AssignStmt {
@@ -527,7 +628,12 @@ fn check(value Primitive) {
 }
 
 fn test_transform_generic_receiver_methods_use_concrete_specializations() {
-	files := transform_code_for_test('
+	files := transform_sources_for_test([
+		TestSource{
+			rel:  'x/json2/decode.v'
+			code: '
+module json2
+
 struct ValueInfo {
 	x int
 }
@@ -536,6 +642,11 @@ struct Node[T] {
 mut:
 	value T
 	next  &Node[T] = unsafe { nil }
+}
+
+struct Decoder {
+mut:
+	values_info LinkedList[ValueInfo]
 }
 
 struct LinkedList[T] {
@@ -552,24 +663,118 @@ fn (mut list LinkedList[T]) push(value T) {
 fn (list &LinkedList[T]) last() &T {
 	return &list.tail.value
 }
-
-struct Decoder {
-mut:
-	values_info LinkedList[ValueInfo]
-}
+'
+		},
+		TestSource{
+			rel:  'x/json2/check.v'
+			code: '
+module json2
 
 fn (mut checker Decoder) check() {
+	mut actual_value_info_pointer := unsafe { nil }
 	checker.values_info.push(ValueInfo{})
-	_ = checker.values_info.last()
+	actual_value_info_pointer = checker.values_info.last()
+	_ = actual_value_info_pointer
 }
-')
+'
+		},
+	])
 	names := call_names_for_fn(files, 'check')
-	assert names.any(it.contains('LinkedList__push_T_') && it.contains('ValueInfo')), 'expected specialized push call, got ${names}'
+	assert names.any(it.contains('json2__LinkedList__push_T_') && it.contains('json2_ValueInfo')), 'expected specialized push call, got ${names}'
 
-	assert names.any(it.contains('LinkedList__last_T_') && it.contains('ValueInfo')), 'expected specialized last call, got ${names}'
+	assert names.any(it.contains('json2__LinkedList__last_T_') && it.contains('json2_ValueInfo')), 'expected specialized last call, got ${names}'
 
 	assert 'LinkedList__push' !in names
 	assert 'LinkedList__last' !in names
+	assert 'json2__LinkedList__push' !in names
+	assert 'json2__LinkedList__last' !in names
+}
+
+fn test_generic_receiver_bindings_prefer_declared_selector_over_stale_wrapper_type() {
+	value_info_type := types.Type(types.Struct{
+		name: 'json2__ValueInfo'
+	})
+	template_type := types.Type(types.Struct{
+		name:           'json2__LinkedList'
+		generic_params: ['T']
+		fields:         [
+			types.Field{
+				name: 'item'
+				typ:  types.Type(types.NamedType('T'))
+			},
+		]
+	})
+	concrete_type := types.Type(types.Struct{
+		name:   'json2__LinkedList'
+		fields: [
+			types.Field{
+				name: 'item'
+				typ:  value_info_type
+			},
+		]
+	})
+	decoder_type := types.Type(types.Struct{
+		name:   'json2__Decoder'
+		fields: [
+			types.Field{
+				name: 'values_info'
+				typ:  concrete_type
+			},
+		]
+	})
+	mut env := types.Environment.new()
+	env.set_expr_type(701, template_type)
+	mut scope := types.new_scope(unsafe { nil })
+	scope.insert('checker', value_object_from_type(decoder_type))
+	scope.insert_type('LinkedList', template_type)
+	scope.insert_type('json2__LinkedList', template_type)
+	mut t := Transformer{
+		pref:             &vpref.Preferences{}
+		env:              unsafe { env }
+		scope:            scope
+		cur_module:       'json2'
+		cached_scopes:    {
+			'json2': scope
+		}
+		local_decl_types: map[string]types.Type{}
+	}
+	receiver := ast.Expr(ast.ParenExpr{
+		expr: ast.Expr(ast.SelectorExpr{
+			lhs: ast.Ident{
+				name: 'checker'
+			}
+			rhs: ast.Ident{
+				name: 'values_info'
+			}
+		})
+		pos:  token.Pos{
+			id: 701
+		}
+	})
+	decl := ast.FnDecl{
+		name:      'last'
+		is_method: true
+		receiver:  ast.Parameter{
+			name: 'list'
+			typ:  ast.Expr(ast.PrefixExpr{
+				op:   .amp
+				expr: ast.Expr(ast.GenericArgOrIndexExpr{
+					lhs:  ast.Expr(ast.Ident{
+						name: 'LinkedList'
+					})
+					expr: ast.Expr(ast.Ident{
+						name: 'T'
+					})
+				})
+			})
+		}
+	}
+	bindings := t.generic_bindings_from_method_receiver(decl, receiver, 'json2__LinkedList__last') or {
+		panic('missing receiver bindings')
+	}
+	binding := bindings['T'] or { panic('missing T binding') }
+	assert binding is types.Struct
+	assert (binding as types.Struct).name == 'json2__ValueInfo'
 }
 
 fn test_decl_assign_rune_arithmetic_keeps_rune_storage_type() {
@@ -2476,6 +2681,78 @@ fn test_transform_generic_module_call_or_cast_uses_array_specialized_name() {
 	assert call.lhs is ast.Ident
 	assert (call.lhs as ast.Ident).name == 'json2__decode_T_Array_GitHubContributor'
 	assert call.args.len == 1
+}
+
+fn test_transform_monomorphizes_imported_generic_module_call() {
+	files := transform_sources_for_test([
+		TestSource{
+			rel:  'x/json2/decode.v'
+			code: '
+module json2
+
+struct Decoder {}
+
+fn (mut decoder Decoder) decode_value[T](mut value T) ! {
+	_ = value
+}
+
+pub fn decode[T]() !T {
+	mut decoder := Decoder{}
+	mut result := T{}
+	decoder.decode_value(mut result)!
+	return result
+}
+'
+		},
+		TestSource{
+			rel:  'main.v'
+			code: '
+module main
+
+import x.json2
+
+struct Payload {
+	value int
+}
+
+fn main() {
+	_ := json2.decode[Payload]() or { Payload{} }
+}
+'
+		},
+	])
+	call_names := call_names_for_fn(files, 'main')
+	assert 'json2__decode_T_Payload' in call_names
+	assert 'decode_T_Payload' !in call_names
+
+	mut found_prefixed_clone := false
+	mut found_unprefixed_clone := false
+	mut found_method_clone := false
+	mut found_generic_decl := false
+	for file in files {
+		for stmt in file.stmts {
+			if stmt is ast.FnDecl {
+				if stmt.name == 'json2__decode_T_Payload' {
+					found_prefixed_clone = true
+					assert stmt.typ.generic_params.len == 0
+				}
+				if stmt.name == 'decode_T_Payload' {
+					found_unprefixed_clone = true
+				}
+				if stmt.name == 'decode_value_T_Payload' {
+					found_method_clone = true
+					assert stmt.typ.generic_params.len == 0
+				}
+				if stmt.name == 'decode' && decl_generic_param_names(stmt).len > 0 {
+					found_generic_decl = true
+				}
+			}
+		}
+	}
+	assert found_prefixed_clone
+	assert !found_unprefixed_clone
+	assert found_method_clone
+	assert !found_generic_decl
 }
 
 fn test_transform_nested_module_selector_respects_local_shadow() {

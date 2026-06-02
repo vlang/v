@@ -128,7 +128,11 @@ mut:
 	synth_types map[int]types.Type
 	// Generic monomorphization clones generic FnDecls per env.generic_types
 	// binding before code generation, so backends receive concrete functions.
-	monomorphized_specs map[string]bool
+	monomorphized_specs             map[string]bool
+	generic_spec_owner_file         map[string]int
+	struct_field_generic_decl_types map[string]types.Type
+	cur_generic_call_file_idx       int = -1
+	cur_import_aliases              map[string]string
 	// Cached at construction: avoids per-block t.pref nil/enum re-check in
 	// hot loops (transform_stmts, IfGuardExpr handling, OrExpr expansion, etc).
 	is_native_be bool
@@ -289,6 +293,9 @@ fn new_transformer_base(env &types.Environment, p &pref.Preferences) &Transforme
 		interface_concrete_types:        map[string]string{}
 		smartcast_expr_counts:           map[string]int{}
 		monomorphized_specs:             map[string]bool{}
+		generic_spec_owner_file:         map[string]int{}
+		struct_field_generic_decl_types: map[string]types.Type{}
+		cur_import_aliases:              map[string]string{}
 		is_native_be:                    p != unsafe { nil }
 			&& (p.backend == .arm64 || p.backend == .x64)
 	}
@@ -339,6 +346,11 @@ pub fn (t &Transformer) new_worker_clone(worker_idx int) &Transformer {
 		runtime_const_storage_known:     map[string]bool{}
 		interface_concrete_types:        map[string]string{}
 		smartcast_expr_counts:           map[string]int{}
+		monomorphized_specs:             t.monomorphized_specs.clone()
+		generic_spec_owner_file:         t.generic_spec_owner_file.clone()
+		struct_field_generic_decl_types: t.struct_field_generic_decl_types.clone()
+		cur_generic_call_file_idx:       t.cur_generic_call_file_idx
+		cur_import_aliases:              t.cur_import_aliases.clone()
 		is_native_be:                    t.is_native_be
 	}
 }
@@ -3920,6 +3932,9 @@ fn (mut t Transformer) transform_stmts(stmts []ast.Stmt) []ast.Stmt {
 		} else if t.smartcast_stack.len > block_smartcast_depth {
 			t.truncate_smartcasts(block_smartcast_depth)
 		}
+		if stmt is ast.FnDecl && t.omit_backend_generic_decl(stmt) {
+			continue
+		}
 		// Check for OrExpr assignment that expands to multiple statements
 		if stmt is ast.AssignStmt {
 			assign_stmt := stmt as ast.AssignStmt
@@ -4262,6 +4277,10 @@ fn (mut t Transformer) transform_stmts(stmts []ast.Stmt) []ast.Stmt {
 		t.truncate_smartcasts(block_smartcast_depth)
 	}
 	return result
+}
+
+fn (t &Transformer) omit_backend_generic_decl(decl ast.FnDecl) bool {
+	return decl_generic_param_names(decl).len > 0
 }
 
 fn (mut t Transformer) transform_const_decl(decl ast.ConstDecl) ast.ConstDecl {
@@ -11001,13 +11020,115 @@ fn (t &Transformer) sprintf_int_format_suffix(typ types.Type, decimal string, un
 	return decimal
 }
 
+fn (t &Transformer) declared_selector_expr_type(expr ast.Expr) ?types.Type {
+	match expr {
+		ast.Ident {
+			if typ := t.lookup_local_decl_type(expr.name) {
+				return typ
+			}
+			return t.lookup_var_type(expr.name)
+		}
+		ast.SelectorExpr {
+			lhs_type := t.declared_selector_expr_type(expr.lhs) or {
+				t.get_expr_type(expr.lhs) or { return none }
+			}
+			field_type := t.field_type_from_receiver_type(lhs_type, expr.rhs.name) or {
+				return none
+			}
+			return substitute_type(field_type, t.cur_monomorphized_fn_bindings)
+		}
+		ast.ParenExpr {
+			return t.declared_selector_expr_type(expr.expr)
+		}
+		ast.ModifierExpr {
+			return t.declared_selector_expr_type(expr.expr)
+		}
+		else {}
+	}
+
+	return none
+}
+
+fn (t &Transformer) should_prefer_declared_interpolation_type(actual types.Type, declared types.Type) bool {
+	actual_name := t.type_to_c_name(actual)
+	declared_name := t.type_to_c_name(declared)
+	if declared_name == '' || declared_name == actual_name {
+		return false
+	}
+	match actual {
+		types.String {
+			return true
+		}
+		types.Struct {
+			return actual.name == 'string'
+		}
+		types.Primitive {
+			return declared is types.Enum || declared is types.Struct || declared is types.Alias
+		}
+		else {}
+	}
+
+	return false
+}
+
+fn (t &Transformer) string_inter_arg_type(expr ast.Expr) ?types.Type {
+	if declared := t.declared_selector_expr_type(expr) {
+		declared_type := t.normalize_type(declared)
+		if actual := t.get_expr_type(expr) {
+			actual_type := t.normalize_type(actual)
+			if t.should_prefer_declared_interpolation_type(actual_type, declared_type) {
+				return declared_type
+			}
+			return actual_type
+		}
+		return declared_type
+	}
+	return t.get_expr_type(expr)
+}
+
+fn (mut t Transformer) repair_stale_string_str_interpolation_expr(expr ast.Expr) ast.Expr {
+	if expr is ast.SelectorExpr && expr.rhs.name == 'str' && expr.lhs is ast.CallExpr {
+		call := expr.lhs as ast.CallExpr
+		if call.lhs is ast.Ident && call.lhs.name == 'string__str' && call.args.len == 1 {
+			arg := call.args[0]
+			arg_type := t.string_inter_arg_type(arg) or { return expr }
+			match arg_type {
+				types.String {
+					return expr
+				}
+				types.Alias {
+					if arg_type.base_type is types.String {
+						return expr
+					}
+				}
+				else {}
+			}
+
+			str_fn_name := t.get_str_fn_name_for_type(arg_type) or { return expr }
+			t.needed_str_fns[str_fn_name] = ''
+			if arg_type is types.Enum {
+				t.needed_enum_str_fns[str_fn_name] = arg_type
+			}
+			str_call := ast.Expr(ast.CallExpr{
+				lhs:  ast.Ident{
+					name: str_fn_name
+				}
+				args: [arg]
+				pos:  call.pos
+			})
+			return t.synth_selector(str_call, 'str', types.Type(types.voidptr_))
+		}
+	}
+	return expr
+}
+
 fn (mut t Transformer) resolve_sprintf_format(inter ast.StringInter) string {
 	mut fmt := '%'
 	mut width := inter.width
 	mut precision := inter.precision
 	mut arg_typ := types.Type(types.Primitive{})
 	mut has_arg_typ := false
-	if typ := t.get_expr_type(inter.expr) {
+	if typ := t.string_inter_arg_type(inter.expr) {
 		arg_typ = typ
 		has_arg_typ = true
 	}
@@ -11102,7 +11223,7 @@ fn (mut t Transformer) resolve_sprintf_format(inter ast.StringInter) string {
 		return fmt
 	}
 	// Infer from expression type
-	if typ := t.get_expr_type(inter.expr) {
+	if typ := t.string_inter_arg_type(inter.expr) {
 		return t.get_sprintf_format_for_type(typ)
 	}
 	return '%d' // fallback
@@ -11110,7 +11231,7 @@ fn (mut t Transformer) resolve_sprintf_format(inter ast.StringInter) string {
 
 fn (mut t Transformer) transform_sprintf_arg(inter ast.StringInter) ast.Expr {
 	transformed := t.transform_expr(inter.expr)
-	typ := t.get_expr_type(inter.expr) or {
+	typ := t.string_inter_arg_type(inter.expr) or {
 		return transformed // can't resolve type, pass as-is
 	}
 	// Keep string-producing expressions unchanged so interface method calls like
@@ -11229,7 +11350,7 @@ fn (mut t Transformer) transform_sprintf_arg(inter ast.StringInter) ast.Expr {
 			str_fn_info := t.get_str_fn_info_for_expr(inter.expr)
 			if str_fn_info.str_fn_name != '' {
 				t.needed_str_fns[str_fn_info.str_fn_name] = str_fn_info.elem_type
-				if etyp := t.get_expr_type(inter.expr) {
+				if etyp := t.string_inter_arg_type(inter.expr) {
 					if etyp is types.Enum {
 						t.needed_enum_str_fns[str_fn_info.str_fn_name] = etyp
 					}
@@ -11266,6 +11387,10 @@ fn (mut t Transformer) transform_string_inter_literal(expr ast.StringInterLitera
 					expr: hoisted
 				}
 			}
+		}
+		actual_inter = ast.StringInter{
+			...actual_inter
+			expr: t.repair_stale_string_str_interpolation_expr(actual_inter.expr)
 		}
 		inter_expr := t.transform_sprintf_arg(actual_inter)
 		new_inters << ast.StringInter{

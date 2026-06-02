@@ -37,6 +37,7 @@ pub fn (mut t Transformer) prepare_files_for_transform(files []ast.File) []ast.F
 	// clones to discover transitive generic calls.
 	t.env.generic_types = map[string][]map[string]types.Type{}
 	mut prepared := files.clone()
+	t.collect_struct_field_generic_decl_types(prepared)
 	for _ in 0 .. 8 {
 		spec_count := t.monomorphized_specs.len
 		t.collect_generic_call_specs(prepared)
@@ -46,6 +47,121 @@ pub fn (mut t Transformer) prepare_files_for_transform(files []ast.File) []ast.F
 		}
 	}
 	return prepared
+}
+
+fn (mut t Transformer) collect_struct_field_generic_decl_types(files []ast.File) {
+	old_module := t.cur_module
+	old_scope := t.scope
+	t.struct_field_generic_decl_types = map[string]types.Type{}
+	for file in files {
+		t.cur_module = file.mod
+		if scope := t.get_module_scope(file.mod) {
+			t.scope = scope
+		} else {
+			t.scope = unsafe { nil }
+		}
+		for stmt in file.stmts {
+			if stmt is ast.StructDecl {
+				t.collect_struct_decl_generic_field_types(stmt, file.mod)
+			}
+		}
+	}
+	t.cur_module = old_module
+	t.scope = old_scope
+}
+
+fn (mut t Transformer) collect_struct_decl_generic_field_types(decl ast.StructDecl, module_name string) {
+	parent_names := struct_decl_field_lookup_names(decl.name, module_name)
+	if parent_names.len == 0 {
+		return
+	}
+	for field in decl.fields {
+		if field.name == '' || !field_type_expr_has_generic_args(field.typ) {
+			continue
+		}
+		field_type := t.lookup_type_from_expr(field.typ) or { continue }
+		if !types.type_has_valid_payload(field_type) {
+			continue
+		}
+		for parent_name in parent_names {
+			t.struct_field_generic_decl_types[struct_field_generic_decl_key(parent_name, field.name)] = field_type
+		}
+	}
+}
+
+fn struct_decl_field_lookup_names(name string, module_name string) []string {
+	if name == '' {
+		return []string{}
+	}
+	mut names := [name]
+	if module_name != '' && module_name != 'main' && module_name != 'builtin' {
+		names << '${module_name.replace('.', '__')}__${name}'
+	}
+	return names
+}
+
+fn field_type_expr_has_generic_args(expr ast.Expr) bool {
+	match expr {
+		ast.GenericArgOrIndexExpr, ast.GenericArgs {
+			return true
+		}
+		ast.ModifierExpr {
+			return field_type_expr_has_generic_args(expr.expr)
+		}
+		ast.PrefixExpr {
+			return field_type_expr_has_generic_args(expr.expr)
+		}
+		ast.Type {
+			match expr {
+				ast.ArrayType {
+					return field_type_expr_has_generic_args(expr.elem_type)
+				}
+				ast.ArrayFixedType {
+					return field_type_expr_has_generic_args(expr.elem_type)
+				}
+				ast.ChannelType {
+					return field_type_expr_has_generic_args(expr.elem_type)
+				}
+				ast.FnType {
+					for param in expr.params {
+						if field_type_expr_has_generic_args(param.typ) {
+							return true
+						}
+					}
+					return field_type_expr_has_generic_args(expr.return_type)
+				}
+				ast.GenericType {
+					return true
+				}
+				ast.MapType {
+					return field_type_expr_has_generic_args(expr.key_type)
+						|| field_type_expr_has_generic_args(expr.value_type)
+				}
+				ast.OptionType {
+					return field_type_expr_has_generic_args(expr.base_type)
+				}
+				ast.PointerType {
+					return field_type_expr_has_generic_args(expr.base_type)
+				}
+				ast.ResultType {
+					return field_type_expr_has_generic_args(expr.base_type)
+				}
+				ast.ThreadType {
+					return field_type_expr_has_generic_args(expr.elem_type)
+				}
+				else {
+					return false
+				}
+			}
+		}
+		else {
+			return false
+		}
+	}
+}
+
+fn struct_field_generic_decl_key(struct_name string, field_name string) string {
+	return '${struct_name}.${field_name}'
 }
 
 // monomorphize_pass walks env.generic_types, clones each generic FnDecl per
@@ -78,16 +194,23 @@ pub fn (mut t Transformer) monomorphize_pass(files []ast.File) []ast.File {
 			if spec_name == decl.name {
 				continue
 			}
-			spec_key := '${lookup_key}:${spec_name}'
+			clone_name := monomorphized_clone_name(fn_key, decl, spec_name)
+			spec_key := '${lookup_key}:${clone_name}'
 			if spec_key in t.monomorphized_specs {
 				continue
 			}
 			t.monomorphized_specs[spec_key] = true
-			t.register_monomorphized_fn_bindings(files[fi].mod, spec_name, bindings)
-			cloned := t.clone_fn_decl_with_substitutions(decl, bindings, spec_name)
-			mut bucket := per_file_clones[fi] or { []ast.Stmt{} }
+			t.register_monomorphized_fn_bindings(files[fi].mod, clone_name, bindings)
+			owner_key := generic_spec_owner_key(fn_key, bindings)
+			target_fi := t.generic_spec_owner_file[owner_key] or { fi }
+			clone_fi := if target_fi >= 0 && target_fi < files.len { target_fi } else { fi }
+			mut cloned := t.clone_fn_decl_with_substitutions(decl, bindings, clone_name)
+			if cloned.is_method && clone_fi != fi {
+				cloned = qualify_moved_method_clone_receiver(cloned, files[fi].mod)
+			}
+			mut bucket := per_file_clones[clone_fi] or { []ast.Stmt{} }
 			bucket << ast.Stmt(cloned)
-			per_file_clones[fi] = bucket
+			per_file_clones[clone_fi] = bucket
 		}
 	}
 	if per_file_clones.len == 0 {
@@ -113,6 +236,86 @@ pub fn (mut t Transformer) monomorphize_pass(files []ast.File) []ast.File {
 	return new_files
 }
 
+fn qualify_moved_method_clone_receiver(decl ast.FnDecl, source_mod string) ast.FnDecl {
+	if !decl.is_method || source_mod == '' || source_mod == 'main' {
+		return decl
+	}
+	mut receiver := decl.receiver
+	receiver.typ = qualify_moved_method_receiver_type(receiver.typ, source_mod)
+	return ast.FnDecl{
+		attributes: decl.attributes
+		is_public:  decl.is_public
+		is_method:  decl.is_method
+		is_static:  decl.is_static
+		receiver:   receiver
+		language:   decl.language
+		name:       decl.name
+		typ:        decl.typ
+		stmts:      decl.stmts
+		pos:        decl.pos
+	}
+}
+
+fn qualify_moved_method_receiver_type(expr ast.Expr, source_mod string) ast.Expr {
+	match expr {
+		ast.Ident {
+			if expr.name == '' || expr.name.contains('__') || expr.name.contains('.') {
+				return ast.Expr(expr)
+			}
+			return ast.Expr(ast.Ident{
+				name: '${source_mod}__${expr.name}'
+				pos:  expr.pos
+			})
+		}
+		ast.ModifierExpr {
+			return ast.Expr(ast.ModifierExpr{
+				kind: expr.kind
+				expr: qualify_moved_method_receiver_type(expr.expr, source_mod)
+				pos:  expr.pos
+			})
+		}
+		ast.PrefixExpr {
+			return ast.Expr(ast.PrefixExpr{
+				op:   expr.op
+				expr: qualify_moved_method_receiver_type(expr.expr, source_mod)
+				pos:  expr.pos
+			})
+		}
+		else {
+			return expr
+		}
+	}
+}
+
+fn monomorphized_clone_name(fn_key string, decl ast.FnDecl, spec_name string) string {
+	if decl.is_method {
+		return spec_name
+	}
+	base_name := generic_base_name_without_specialization(fn_key)
+	if base_name.ends_with('__${decl.name}') {
+		return '${base_name.all_before_last('__')}__${spec_name}'
+	}
+	if base_name.ends_with('.${decl.name}') {
+		return '${base_name.all_before_last('.').replace('.', '__')}__${spec_name}'
+	}
+	return spec_name
+}
+
+fn generic_base_name_without_specialization(name string) string {
+	mut base_name := name
+	bracket_pos := base_name.index_u8(`[`)
+	if bracket_pos > 0 {
+		base_name = base_name[..bracket_pos]
+	}
+	if base_name.contains('_T_') {
+		return base_name.all_before('_T_')
+	}
+	if base_name.ends_with('_T') {
+		return base_name[..base_name.len - 2]
+	}
+	return base_name
+}
+
 fn (mut t Transformer) index_generic_fn_decl_for_monomorphize(mut decl_owner map[string]int, mut decl_node map[string]ast.FnDecl, decl ast.FnDecl, file_idx int, module_name string) {
 	mut keys := []string{}
 	if !decl.is_method {
@@ -120,6 +323,10 @@ fn (mut t Transformer) index_generic_fn_decl_for_monomorphize(mut decl_owner map
 		if module_name != '' {
 			keys << '${module_name}.${decl.name}'
 			keys << '${module_name.replace('.', '__')}__${decl.name}'
+			call_prefix := module_call_c_prefix(module_name)
+			if call_prefix != '' {
+				keys << '${call_prefix}__${decl.name}'
+			}
 		}
 	} else {
 		recv_name := t.get_receiver_type_name(decl.receiver.typ)
@@ -127,6 +334,10 @@ fn (mut t Transformer) index_generic_fn_decl_for_monomorphize(mut decl_owner map
 			keys << '${recv_name}__${decl.name}'
 			if module_name != '' && !recv_name.contains('__') {
 				keys << '${module_name.replace('.', '__')}__${recv_name}__${decl.name}'
+				call_prefix := module_call_c_prefix(module_name)
+				if call_prefix != '' {
+					keys << '${call_prefix}__${recv_name}__${decl.name}'
+				}
 			}
 		}
 	}
@@ -181,6 +392,8 @@ fn (mut t Transformer) collect_generic_call_specs(files []ast.File) {
 	old_module := t.cur_module
 	old_file := t.cur_file_name
 	old_scope := t.scope
+	old_file_idx := t.cur_generic_call_file_idx
+	old_import_aliases := t.cur_import_aliases.clone()
 	t.generic_fn_decl_index = map[string]ast.FnDecl{}
 	mut dummy_owner := map[string]int{}
 	for fi, file in files {
@@ -194,9 +407,11 @@ fn (mut t Transformer) collect_generic_call_specs(files []ast.File) {
 			}
 		}
 	}
-	for file in files {
+	for fi, file in files {
 		t.cur_file_name = file.name
 		t.cur_module = file.mod
+		t.cur_generic_call_file_idx = fi
+		t.cur_import_aliases = import_aliases_for_generic_collect(file.imports)
 		if scope := t.get_module_scope(file.mod) {
 			t.scope = scope
 		} else {
@@ -209,6 +424,20 @@ fn (mut t Transformer) collect_generic_call_specs(files []ast.File) {
 	t.cur_module = old_module
 	t.cur_file_name = old_file
 	t.scope = old_scope
+	t.cur_generic_call_file_idx = old_file_idx
+	t.cur_import_aliases = old_import_aliases.clone()
+}
+
+fn import_aliases_for_generic_collect(imports []ast.ImportStmt) map[string]string {
+	mut aliases := map[string]string{}
+	for imp in imports {
+		alias := if imp.alias != '' { imp.alias } else { imp.name.all_after_last('.') }
+		if alias == '' || imp.name == '' {
+			continue
+		}
+		aliases[alias] = imp.name
+	}
+	return aliases
 }
 
 fn (mut t Transformer) collect_generic_call_specs_in_stmts(stmts []ast.Stmt) {
@@ -292,6 +521,7 @@ fn (mut t Transformer) collect_generic_call_specs_in_stmt(stmt ast.Stmt) {
 }
 
 fn (mut t Transformer) collect_generic_call_specs_in_fn_decl(decl ast.FnDecl) {
+	old_module := t.cur_module
 	old_scope := t.scope
 	old_fn_root_scope := t.fn_root_scope
 	mut old_local_decl_types := t.local_decl_types.move()
@@ -309,6 +539,7 @@ fn (mut t Transformer) collect_generic_call_specs_in_fn_decl(decl ast.FnDecl) {
 	t.cur_fn_recv_param = ''
 	t.cur_fn_recv_is_ptr = false
 	t.cur_fn_generic_params = []string{}
+	t.cur_module = t.collect_module_for_monomorphized_fn_decl(decl, old_module)
 	t.cur_monomorphized_fn_bindings = t.lookup_monomorphized_fn_bindings(t.cur_module, decl.name) or {
 		map[string]types.Type{}
 	}
@@ -342,6 +573,7 @@ fn (mut t Transformer) collect_generic_call_specs_in_fn_decl(decl ast.FnDecl) {
 	t.seed_fn_pointer_param_return_types(decl.typ.params, [])
 	t.seed_scope_with_fn_params(decl)
 	t.collect_generic_call_specs_in_stmts(decl.stmts)
+	t.cur_module = old_module
 	t.scope = old_scope
 	t.fn_root_scope = old_fn_root_scope
 	t.local_decl_types = old_local_decl_types.move()
@@ -352,6 +584,19 @@ fn (mut t Transformer) collect_generic_call_specs_in_fn_decl(decl ast.FnDecl) {
 	t.cur_fn_recv_is_ptr = old_recv_is_ptr
 	t.cur_fn_generic_params = old_generic_params.clone()
 	t.cur_monomorphized_fn_bindings = old_monomorphized_bindings.move()
+}
+
+fn (t &Transformer) collect_module_for_monomorphized_fn_decl(decl ast.FnDecl, fallback string) string {
+	if decl.name.contains('_T_') {
+		base_name := decl.name.all_before('_T_')
+		if base_name.contains('__') {
+			module_name := base_name.all_before('__')
+			if module_name != '' && t.get_module_scope(module_name) != none {
+				return module_name
+			}
+		}
+	}
+	return fallback
 }
 
 fn (mut t Transformer) collect_generic_scan_decl_assign_types(stmt ast.AssignStmt) {
@@ -724,6 +969,16 @@ fn (mut t Transformer) collect_generic_call_spec_for_call(lhs ast.Expr, raw_args
 			t.register_inferred_generic_call_spec(resolved_static, info, raw_args)
 			return
 		}
+		if lhs.lhs is ast.Ident {
+			mod_name := lhs.lhs.name
+			call_prefix := t.resolve_generic_module_call_prefix(mod_name) or { '' }
+			if call_prefix != '' {
+				base_name := '${call_prefix}__${lhs.rhs.name}'
+				info := t.generic_aware_call_fn_info(lhs, base_name) or { return }
+				t.register_inferred_generic_call_spec(base_name, info, raw_args)
+				return
+			}
+		}
 		if lhs.lhs is ast.Ident && t.is_module_ident(lhs.lhs.name) {
 			mod_name := lhs.lhs.name
 			base_name := '${mod_name}__${lhs.rhs.name}'
@@ -762,12 +1017,27 @@ fn (t &Transformer) generic_call_base_name(lhs ast.Expr) ?string {
 		if resolved_static := t.resolve_static_type_method_call(lhs.lhs, lhs.rhs.name) {
 			return resolved_static
 		}
+		if lhs.lhs is ast.Ident {
+			if call_prefix := t.resolve_generic_module_call_prefix(lhs.lhs.name) {
+				return '${call_prefix}__${lhs.rhs.name}'
+			}
+		}
 		if lhs.lhs is ast.Ident && t.is_module_ident(lhs.lhs.name) {
 			return '${lhs.lhs.name}__${lhs.rhs.name}'
 		}
 		if resolved_method := t.resolve_method_call_name(lhs.lhs, lhs.rhs.name) {
 			return resolved_method
 		}
+	}
+	return none
+}
+
+fn (t &Transformer) resolve_generic_module_call_prefix(module_ident string) ?string {
+	if call_prefix := t.resolve_module_call_prefix(module_ident) {
+		return call_prefix
+	}
+	if full_name := t.cur_import_aliases[module_ident] {
+		return module_call_c_prefix(full_name)
 	}
 	return none
 }
@@ -936,23 +1206,37 @@ fn (t &Transformer) generic_bindings_from_method_receiver(decl ast.FnDecl, recei
 			}
 		}
 	}
-	receiver_type := t.get_expr_type(receiver) or {
-		t.declared_expr_type_for_method_receiver(receiver) or { return none }
+	mut receiver_types := []types.Type{}
+	if smartcast_type := t.smartcast_type_for_expr(receiver) {
+		receiver_types << smartcast_type
 	}
-	concrete_type := t.unwrap_alias_and_pointer_type(receiver_type)
-	mut bindings := map[string]types.Type{}
-	if concrete_type is types.Struct {
-		if template := t.receiver_generic_template_struct(decl, base_name, concrete_type) {
-			t.infer_receiver_generic_bindings_from_struct(template, concrete_type, receiver_params, mut
-				bindings)
+	if declared_type := t.declared_expr_type_for_method_receiver(receiver) {
+		receiver_types << declared_type
+	}
+	if expr_type := t.get_expr_type(receiver) {
+		receiver_types << expr_type
+	}
+	for receiver_type in receiver_types {
+		concrete_type := t.unwrap_alias_and_pointer_type(receiver_type)
+		mut bindings := map[string]types.Type{}
+		if concrete_type is types.Struct {
+			if template := t.receiver_generic_template_struct(decl, base_name, concrete_type) {
+				t.infer_receiver_generic_bindings_from_struct(template, concrete_type,
+					receiver_params, mut bindings)
+			}
+		}
+		mut complete := true
+		for param_name in receiver_params {
+			if param_name !in bindings {
+				complete = false
+				break
+			}
+		}
+		if complete {
+			return bindings
 		}
 	}
-	for param_name in receiver_params {
-		if param_name !in bindings {
-			return none
-		}
-	}
-	return bindings
+	return none
 }
 
 fn (t &Transformer) receiver_generic_template_struct(decl ast.FnDecl, base_name string, concrete types.Struct) ?types.Struct {
@@ -967,6 +1251,8 @@ fn (t &Transformer) receiver_generic_template_struct(decl ast.FnDecl, base_name 
 	if concrete.name != '' {
 		append_unique_generic_lookup_name(mut candidates, concrete.name)
 	}
+	mut fallback := types.Struct{}
+	mut has_fallback := false
 	for candidate in candidates {
 		mut lookup_name := candidate
 		if lookup_name.contains('_T_') {
@@ -978,15 +1264,30 @@ fn (t &Transformer) receiver_generic_template_struct(decl ast.FnDecl, base_name 
 			}
 			if typ := t.lookup_type(name) {
 				if typ is types.Struct && typ.generic_params.len > 0 {
-					return typ
+					if typ.fields.len > 0 {
+						return typ
+					}
+					if !has_fallback {
+						fallback = typ
+						has_fallback = true
+					}
 				}
 			}
 			if st := t.lookup_struct_type_any_module(name) {
 				if st.generic_params.len > 0 {
-					return st
+					if st.fields.len > 0 {
+						return st
+					}
+					if !has_fallback {
+						fallback = st
+						has_fallback = true
+					}
 				}
 			}
 		}
+	}
+	if has_fallback {
+		return fallback
 	}
 	return none
 }
@@ -1025,6 +1326,9 @@ fn (mut t Transformer) register_generic_bindings(base_name string, bindings map[
 		}
 	}
 	signature := generic_bindings_signature(bindings)
+	if t.cur_generic_call_file_idx >= 0 {
+		t.generic_spec_owner_file[generic_spec_owner_key(base_name, bindings)] = t.cur_generic_call_file_idx
+	}
 	mut existing := t.env.generic_types[base_name] or { []map[string]types.Type{} }
 	for item in existing {
 		if generic_bindings_signature(item) == signature {
@@ -1033,6 +1337,10 @@ fn (mut t Transformer) register_generic_bindings(base_name string, bindings map[
 	}
 	existing << bindings.clone()
 	t.env.generic_types[base_name] = existing
+}
+
+fn generic_spec_owner_key(base_name string, bindings map[string]types.Type) string {
+	return '${base_name}:${generic_bindings_signature(bindings)}'
 }
 
 fn (mut t Transformer) register_monomorphized_fn_bindings(module_name string, fn_name string, bindings map[string]types.Type) {
@@ -3100,15 +3408,29 @@ fn (mut t Transformer) clone_expr_with_bindings_and_fields(expr ast.Expr, bindin
 		ast.StringInterLiteral {
 			mut inters := []ast.StringInter{cap: expr.inters.len}
 			for inter in expr.inters {
+				mut inter_expr := t.clone_expr_with_bindings_and_fields(inter.expr, bindings,
+					contexts)
+				inter_expr = t.repair_stale_string_str_interpolation_expr(inter_expr)
+				format_expr := t.clone_expr_with_bindings_and_fields(inter.format_expr, bindings,
+					contexts)
+				cloned_inter := ast.StringInter{
+					format:      inter.format
+					width:       inter.width
+					precision:   inter.precision
+					expr:        inter_expr
+					format_expr: format_expr
+				}
 				inters << ast.StringInter{
 					format:       inter.format
 					width:        inter.width
 					precision:    inter.precision
-					expr:         t.clone_expr_with_bindings_and_fields(inter.expr, bindings,
-						contexts)
-					format_expr:  t.clone_expr_with_bindings_and_fields(inter.format_expr,
-						bindings, contexts)
-					resolved_fmt: inter.resolved_fmt
+					expr:         inter_expr
+					format_expr:  format_expr
+					resolved_fmt: if inter.resolved_fmt != '' {
+						inter.resolved_fmt
+					} else {
+						t.resolve_sprintf_format(cloned_inter)
+					}
 				}
 			}
 			return ast.Expr(ast.StringInterLiteral{

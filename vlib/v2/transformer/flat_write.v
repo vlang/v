@@ -6773,6 +6773,10 @@ fn (mut t Transformer) transform_string_inter_literal_to_flat(expr ast.StringInt
 				}
 			}
 		}
+		actual_inter = ast.StringInter{
+			...actual_inter
+			expr: t.repair_stale_string_str_interpolation_expr(actual_inter.expr)
+		}
 		inter_expr := t.transform_sprintf_arg(actual_inter)
 		expr_id := out.emit_expr(inter_expr)
 		format_expr_id := out.emit_expr(inter.format_expr)
