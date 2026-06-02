@@ -7640,8 +7640,18 @@ fn (mut c Checker) mark_as_referenced(mut node ast.Expr, as_interface bool) {
 		ast.Ident {
 			if mut node.obj is ast.Var {
 				mut obj := unsafe { &node.obj }
-				if c.fn_scope != unsafe { nil } {
-					obj = c.fn_scope.find_var(node.obj.name) or { obj }
+				// Resolve the canonical declaration variable so that the
+				// `is_auto_heap` promotion below is recorded on the variable
+				// that cgen will see when emitting its declaration. Prefer the
+				// use-site scope chain, since `c.fn_scope.find_var` only locates
+				// variables declared at the function level and misses those
+				// declared in nested scopes (e.g. inside a `for` loop body).
+				obj = node.scope.find_var(node.obj.name) or {
+					if c.fn_scope != unsafe { nil } {
+						c.fn_scope.find_var(node.obj.name) or { obj }
+					} else {
+						obj
+					}
 				}
 				if obj.typ == 0 {
 					return

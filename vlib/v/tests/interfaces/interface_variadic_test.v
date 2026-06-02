@@ -36,6 +36,26 @@ fn test_variadic_interface_fn_arg() {
 	check_animals(c, d)
 }
 
+// For issue 27326: passing a local variable declared inside a loop to a
+// variadic interface parameter caused a `pointer expected` C error, because
+// the value was promoted to auto-heap at the use site but not at its
+// declaration, producing inconsistent pointer indirection in the generated C.
+interface Value {}
+
+fn collect(params ...Value) int {
+	return params.len
+}
+
+fn test_variadic_interface_arg_declared_in_loop() {
+	mut total := 0
+	for i := 0; i < 3; i++ {
+		id := [u8(1), 2, 3]
+		code := 'hello ${i}'
+		total += collect(id, code)
+	}
+	assert total == 6
+}
+
 fn check_animals(animals ...Animal) {
 	assert animals[0] is Cat
 	assert animals[1] is Dog
