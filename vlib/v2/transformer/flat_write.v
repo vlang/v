@@ -2921,7 +2921,7 @@ pub fn (mut t Transformer) try_expand_for_in_map_to_flat(stmt ast.ForStmt, mut i
 				]
 			}
 		}
-		t.scope.insert(key_name, value_object_from_type(map_type.key_type))
+		t.register_for_in_var_type(key_name, map_type.key_type)
 	}
 
 	if value_name != '' && value_name != '_' {
@@ -2954,7 +2954,7 @@ pub fn (mut t Transformer) try_expand_for_in_map_to_flat(stmt ast.ForStmt, mut i
 			})]
 			rhs: [ast.Expr(value_deref)]
 		}
-		t.scope.insert(value_name, value_object_from_type(map_type.value_type))
+		t.register_for_in_var_type(value_name, map_type.value_type)
 	}
 
 	for body_stmt in stmt.stmts {

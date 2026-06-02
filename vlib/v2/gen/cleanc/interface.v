@@ -677,6 +677,9 @@ fn (mut g Gen) emit_fn_decl_by_c_name(fn_name string) {
 	}
 	for file in g.files {
 		g.set_file_module(file)
+		if (g.emit_modules.len > 0 || g.emit_files.len > 0) && !g.should_emit_current_file() {
+			continue
+		}
 		for stmt in file.stmts {
 			if stmt is ast.FnDecl && g.get_fn_name(stmt) == fn_name {
 				g.gen_fn_decl_with_name(stmt, fn_name)

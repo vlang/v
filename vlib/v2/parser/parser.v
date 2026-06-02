@@ -3479,6 +3479,20 @@ fn (mut p Parser) parse_comptime_struct_field_branch(language ast.Language, is_u
 }
 
 fn (mut p Parser) select_expr() ast.SelectExpr {
+	if p.tok == .key_else {
+		pos := p.pos
+		p.next()
+		mut stmts := []ast.Stmt{}
+		if p.tok == .lcbr {
+			stmts = p.block()
+			p.expect_semi()
+		}
+		return ast.SelectExpr{
+			pos:   pos
+			stmt:  ast.empty_stmt
+			stmts: stmts
+		}
+	}
 	exp_lcbr := p.exp_lcbr
 	p.exp_lcbr = true
 	stmt_expr := p.expr(.lowest)

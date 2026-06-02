@@ -124,6 +124,18 @@ pub mut:
 	func_abi_ret_indirect []bool
 	func_abi_param_class  [][]mir.AbiArgClass
 	func_ref_to_func_idx  []int
+	instr_ops             []ssa.OpCode
+	instr_operands        [][]ssa.ValueID
+	instr_operand0        []ssa.ValueID
+	instr_operand1        []ssa.ValueID
+	instr_selected_ops    []string
+	instr_typs            []ssa.TypeID
+	instr_blocks          []int
+	instr_abi_arg_class   [][]mir.AbiArgClass
+	type_kinds            []ssa.TypeKind
+	type_elem_types       []ssa.TypeID
+	type_lens             []int
+	type_is_unsigned      []bool
 	// Function boundaries for dead-stripping.
 	fn_starts  []int    // text offset where each function begins
 	fn_ends    []int    // text offset where each function ends
@@ -271,18 +283,18 @@ pub fn (mut g Gen) gen_pre_pass() {
 	// Pre-register global symbols BEFORE generating functions
 	// This ensures add_undefined() finds existing symbols instead of creating undefined ones
 	mut data_offset := u64(0)
-	for gvar in g.mod.globals {
+	for gi := 0; gi < g.mod.globals.len; gi++ {
 		// Skip external globals (defined elsewhere, e.g. __stdoutp)
-		if gvar.linkage == .external {
+		if g.mod.globals[gi].linkage == .external {
 			continue
 		}
 		// Align to 8 bytes
 		data_offset = (data_offset + 7) & ~7
-		g.macho.add_symbol('_' + gvar.name, data_offset, true, 3)
-		size := if gvar.initial_data.len > 0 {
-			gvar.initial_data.len
+		g.macho.add_symbol('_' + g.mod.globals[gi].name, data_offset, true, 3)
+		size := if g.mod.globals[gi].initial_data.len > 0 {
+			g.mod.globals[gi].initial_data.len
 		} else {
-			g.type_size(gvar.typ)
+			g.type_size(g.mod.globals[gi].typ)
 		}
 		data_offset += u64(size)
 	}
@@ -305,19 +317,51 @@ pub fn (mut g Gen) gen_pre_pass() {
 		g.func_is_c_extern[fi] = g.mod.funcs[fi].is_c_extern
 		g.func_abi_ret_indirect[fi] = g.mod.funcs[fi].abi_ret_indirect
 		g.func_abi_param_class[fi] = g.mod.funcs[fi].abi_param_class
-		g.func_by_name[func_name] = fi
 	}
 	g.func_ref_to_func_idx = []int{len: g.mod.values.len, init: -1}
 	for vi := 0; vi < g.mod.values.len; vi++ {
 		if g.mod.values[vi].kind == .func_ref {
 			fn_name := g.mod.values[vi].name
-			if fi := g.func_by_name[fn_name] {
+			fi := g.find_func_idx_by_name(fn_name)
+			if fi >= 0 {
 				g.func_ref_to_func_idx[vi] = fi
 			}
 		}
 	}
-	for gi, gvar in g.mod.globals {
-		g.global_by_name[gvar.name] = gi
+
+	n_instrs := g.mod.instrs.len
+	g.instr_ops = []ssa.OpCode{len: n_instrs}
+	g.instr_operands = [][]ssa.ValueID{len: n_instrs}
+	g.instr_operand0 = []ssa.ValueID{len: n_instrs}
+	g.instr_operand1 = []ssa.ValueID{len: n_instrs}
+	g.instr_selected_ops = []string{len: n_instrs}
+	g.instr_typs = []ssa.TypeID{len: n_instrs}
+	g.instr_blocks = []int{len: n_instrs}
+	g.instr_abi_arg_class = [][]mir.AbiArgClass{len: n_instrs}
+	for ii := 0; ii < n_instrs; ii++ {
+		g.instr_ops[ii] = g.mod.instrs[ii].op
+		g.instr_operands[ii] = g.mod.instrs[ii].operands
+		if g.mod.instrs[ii].operands.len > 0 {
+			g.instr_operand0[ii] = g.mod.instrs[ii].operands[0]
+		}
+		if g.mod.instrs[ii].operands.len > 1 {
+			g.instr_operand1[ii] = g.mod.instrs[ii].operands[1]
+		}
+		g.instr_selected_ops[ii] = g.mod.instrs[ii].selected_op
+		g.instr_typs[ii] = g.mod.instrs[ii].typ
+		g.instr_blocks[ii] = g.mod.instrs[ii].block
+		g.instr_abi_arg_class[ii] = g.mod.instrs[ii].abi_arg_class
+	}
+	n_types := g.mod.type_store.types.len
+	g.type_kinds = []ssa.TypeKind{len: n_types}
+	g.type_elem_types = []ssa.TypeID{len: n_types}
+	g.type_lens = []int{len: n_types}
+	g.type_is_unsigned = []bool{len: n_types}
+	for ti := 0; ti < n_types; ti++ {
+		g.type_kinds[ti] = g.mod.type_store.types[ti].kind
+		g.type_elem_types[ti] = g.mod.type_store.types[ti].elem_type
+		g.type_lens[ti] = g.mod.type_store.types[ti].len
+		g.type_is_unsigned[ti] = g.mod.type_store.types[ti].is_unsigned
 	}
 
 	// Pre-populate type size/align caches so parallel workers can share them read-only
@@ -532,51 +576,53 @@ pub fn (mut g Gen) gen_post_pass() {
 	g.dead_strip_functions()
 
 	// Globals in __data (Section 3) - emit actual data
-	for gvar in g.mod.globals {
+	for gi := 0; gi < g.mod.globals.len; gi++ {
 		// Skip external globals (defined elsewhere)
-		if gvar.linkage == .external {
+		if g.mod.globals[gi].linkage == .external {
 			continue
 		}
 		// Skip globals that collide with function names (same as pre-registration loop)
-		if gvar.name in g.func_by_name {
+		if g.has_function_named(g.mod.globals[gi].name) {
 			continue
 		}
 		for g.macho.data_data.len % 8 != 0 {
 			g.macho.data_data << 0
 		}
 		// Constant arrays: emit raw element data directly
-		if gvar.initial_data.len > 0 {
-			g.macho.data_data << gvar.initial_data
+		if g.mod.globals[gi].initial_data.len > 0 {
+			g.macho.data_data << g.mod.globals[gi].initial_data
 			continue
 		}
 		// Calculate actual size of the global variable based on its type.
-		size := g.type_size(gvar.typ)
-		if gvar.is_constant {
+		size := g.type_size(g.mod.globals[gi].typ)
+		is_constant := g.mod.globals[gi].is_constant
+		initial_value := g.mod.globals[gi].initial_value
+		if is_constant {
 			match size {
 				1 {
-					g.macho.data_data << u8(gvar.initial_value)
+					g.macho.data_data << u8(initial_value)
 				}
 				2 {
 					mut bytes := []u8{len: 2}
-					binary.little_endian_put_u16(mut bytes, u16(gvar.initial_value))
+					binary.little_endian_put_u16(mut bytes, u16(initial_value))
 					g.macho.data_data << bytes
 				}
 				4 {
 					mut bytes := []u8{len: 4}
-					binary.little_endian_put_u32(mut bytes, u32(gvar.initial_value))
+					binary.little_endian_put_u32(mut bytes, u32(initial_value))
 					g.macho.data_data << bytes
 				}
 				8 {
 					mut bytes := []u8{len: 8}
-					binary.little_endian_put_u64(mut bytes, u64(gvar.initial_value))
+					binary.little_endian_put_u64(mut bytes, u64(initial_value))
 					g.macho.data_data << bytes
 				}
 				else {
 					// For struct constants (e.g., sum types), emit initial_value as first 8 bytes
 					// (the tag for sum types), then zeros for the rest.
-					if gvar.initial_value != 0 && size >= 8 {
+					if initial_value != 0 && size >= 8 {
 						mut bytes := []u8{len: 8}
-						binary.little_endian_put_u64(mut bytes, u64(gvar.initial_value))
+						binary.little_endian_put_u64(mut bytes, u64(initial_value))
 						g.macho.data_data << bytes
 						for _ in 0 .. size - 8 {
 							g.macho.data_data << 0
@@ -590,24 +636,24 @@ pub fn (mut g Gen) gen_post_pass() {
 			}
 		} else {
 			// For regular (mutable) globals, emit initial value if set, else zeros.
-			if gvar.initial_value != 0 {
+			if initial_value != 0 {
 				match size {
 					1 {
-						g.macho.data_data << u8(gvar.initial_value)
+						g.macho.data_data << u8(initial_value)
 					}
 					2 {
 						mut bytes := []u8{len: 2}
-						binary.little_endian_put_u16(mut bytes, u16(gvar.initial_value))
+						binary.little_endian_put_u16(mut bytes, u16(initial_value))
 						g.macho.data_data << bytes
 					}
 					4 {
 						mut bytes := []u8{len: 4}
-						binary.little_endian_put_u32(mut bytes, u32(gvar.initial_value))
+						binary.little_endian_put_u32(mut bytes, u32(initial_value))
 						g.macho.data_data << bytes
 					}
 					else {
 						mut bytes := []u8{len: 8}
-						binary.little_endian_put_u64(mut bytes, u64(gvar.initial_value))
+						binary.little_endian_put_u64(mut bytes, u64(initial_value))
 						g.macho.data_data << bytes
 						for _ in 0 .. size - 8 {
 							g.macho.data_data << 0
@@ -684,6 +730,18 @@ pub fn (g &Gen) new_worker_clone() &Gen {
 		func_abi_ret_indirect: g.func_abi_ret_indirect.clone()
 		func_abi_param_class:  g.func_abi_param_class.clone()
 		func_ref_to_func_idx:  g.func_ref_to_func_idx.clone()
+		instr_ops:             g.instr_ops.clone()
+		instr_operands:        g.instr_operands.clone()
+		instr_operand0:        g.instr_operand0.clone()
+		instr_operand1:        g.instr_operand1.clone()
+		instr_selected_ops:    g.instr_selected_ops.clone()
+		instr_typs:            g.instr_typs.clone()
+		instr_blocks:          g.instr_blocks.clone()
+		instr_abi_arg_class:   g.instr_abi_arg_class.clone()
+		type_kinds:            g.type_kinds.clone()
+		type_elem_types:       g.type_elem_types.clone()
+		type_lens:             g.type_lens.clone()
+		type_is_unsigned:      g.type_is_unsigned.clone()
 		env_dump_funcrefs:     g.env_dump_funcrefs
 		env_trace_skip_dead:   g.env_trace_skip_dead
 		env_dump_stackmap:     g.env_dump_stackmap
@@ -1472,12 +1530,24 @@ pub fn (mut g Gen) gen_func(func_idx int) {
 }
 
 fn (mut g Gen) gen_instr(val_id int) {
-	instr := g.mod.instrs[g.mod.values[val_id].index]
+	instr_idx := g.mod.values[val_id].index
+	if instr_idx < 0 || instr_idx >= g.instr_ops.len {
+		return
+	}
+	instr_operands := g.instr_operands[instr_idx]
+	instr := mir.Instruction{
+		op:            g.instr_ops[instr_idx]
+		operands:      instr_operands
+		selected_op:   g.instr_selected_ops[instr_idx]
+		abi_arg_class: g.instr_abi_arg_class[instr_idx]
+		typ:           g.instr_typs[instr_idx]
+		block:         g.instr_blocks[instr_idx]
+	}
 	op := g.selected_opcode(instr)
 	trace_val := g.env_trace_val.len > 0
 		&& (g.env_trace_val == '*' || g.cur_func_name == g.env_trace_val)
 	if trace_val {
-		eprintln('ARM64 VAL fn=${g.cur_func_name} val=${val_id} opi=${int(op)} off=${g.macho.text_data.len - g.curr_offset} sel=`${instr.selected_op}` ops=${instr.operands}')
+		eprintln('ARM64 VAL fn=${g.cur_func_name} val=${val_id} opi=${int(op)} off=${g.macho.text_data.len - g.curr_offset} sel=`${instr.selected_op}` ops=${instr_operands}')
 	}
 	trace_instr := g.env_trace_instr.len > 0
 		&& (g.env_trace_instr == '*' || g.cur_func_name == g.env_trace_instr)
@@ -1492,19 +1562,10 @@ fn (mut g Gen) gen_instr(val_id int) {
 			width = typ.width
 			is_unsigned = typ.is_unsigned
 		}
-		eprintln('ARM64 INSTR fn=${g.cur_func_name} val=${val_id} op=${op} orig=${instr.op} sel=${instr.selected_op} typ=${typ_id} kind=${kind} width=${width} unsigned=${is_unsigned} ops=${instr.operands}')
+		eprintln('ARM64 INSTR fn=${g.cur_func_name} val=${val_id} op=${op} orig=${instr.op} sel=${instr.selected_op} typ=${typ_id} kind=${kind} width=${width} unsigned=${is_unsigned} ops=${instr_operands}')
 	}
-	// Dead value elimination: skip pure operations whose results are never used.
-	if g.mod.values[val_id].uses.len == 0 {
-		match op {
-			.add, .sub, .mul, .sdiv, .udiv, .srem, .urem, .and_, .or_, .xor, .shl, .ashr, .lshr,
-			.eq, .ne, .lt, .gt, .le, .ge, .ult, .ugt, .ule, .uge, .fadd, .fsub, .fmul, .fdiv,
-			.frem, .fptosi, .sitofp, .trunc, .zext, .sext, .bitcast, .extractvalue,
-			.get_element_ptr, .insertvalue, .struct_init, .load {
-				return
-			}
-			else {}
-		}
+	if op == .store && g.try_emit_simple_scalar_store(instr_idx) {
+		return
 	}
 	match op {
 		.fadd, .fsub, .fmul, .fdiv, .frem {
@@ -1818,8 +1879,11 @@ fn (mut g Gen) gen_instr(val_id int) {
 			g.store_reg_to_val(dest_reg, val_id)
 		}
 		.store {
-			src_id := instr.operands[0]
-			ptr_id := instr.operands[1]
+			if instr_operands.len < 2 {
+				return
+			}
+			src_id := g.instr_operand0[instr_idx]
+			ptr_id := g.instr_operand1[instr_idx]
 			trace_store := g.env_trace_store.len > 0
 				&& (g.env_trace_store == '*' || g.cur_func_name == g.env_trace_store)
 			// ValueID 0 is the SSA null/invalid sentinel.
@@ -5084,6 +5148,74 @@ fn (mut g Gen) gen_instr(val_id int) {
 	}
 }
 
+fn (mut g Gen) try_emit_simple_scalar_store(instr_idx int) bool {
+	if instr_idx < 0 || instr_idx >= g.instr_operand0.len || instr_idx >= g.instr_operand1.len {
+		return false
+	}
+	src_id := g.instr_operand0[instr_idx]
+	ptr_id := g.instr_operand1[instr_idx]
+	if src_id <= 0 || src_id >= g.mod.values.len || ptr_id <= 0 || ptr_id >= g.mod.values.len {
+		return false
+	}
+	src_typ_id := g.mod.values[src_id].typ
+	if src_typ_id <= 0 || src_typ_id >= g.mod.type_store.types.len {
+		return false
+	}
+	src_kind := g.cached_type_kind(src_typ_id)
+	if src_kind in [.struct_t, .array_t] {
+		return false
+	}
+	ptr_typ_id := g.mod.values[ptr_id].typ
+	mut dst_elem_is_ptrlike := false
+	if ptr_typ_id > 0 && ptr_typ_id < g.mod.type_store.types.len {
+		ptr_kind := g.cached_type_kind(ptr_typ_id)
+		ptr_elem := g.cached_type_elem_type(ptr_typ_id)
+		if ptr_kind == .ptr_t && ptr_elem > 0 && ptr_elem < g.mod.type_store.types.len {
+			elem_kind := g.cached_type_kind(ptr_elem)
+			if elem_kind in [.struct_t, .array_t] {
+				return false
+			}
+			dst_elem_is_ptrlike = elem_kind in [.ptr_t, .func_t]
+		}
+	}
+	mut val_reg := g.get_operand_reg(src_id, 8)
+	if val_reg == 9 || val_reg == 11 || val_reg == 12 {
+		if val_reg != 8 {
+			g.emit_mov_reg(8, val_reg)
+		}
+		val_reg = 8
+	}
+	ptr_reg := g.get_operand_reg(ptr_id, 9)
+	mut store_size := g.mem_access_size_bytes(src_typ_id, ptr_id)
+	if store_size < 8 && dst_elem_is_ptrlike {
+		store_size = 8
+	}
+	if store_size < 8 && g.scalar_value_is_pointer_payload(src_id, 0) {
+		store_size = 8
+	}
+	match store_size {
+		1 { g.emit(asm_str_b(Reg(val_reg), Reg(ptr_reg))) }
+		2 { g.emit(asm_str_h(Reg(val_reg), Reg(ptr_reg))) }
+		4 { g.emit(asm_str_w(Reg(val_reg), Reg(ptr_reg))) }
+		else { g.emit(asm_str(Reg(val_reg), Reg(ptr_reg))) }
+	}
+	return true
+}
+
+fn (g &Gen) cached_type_kind(typ_id ssa.TypeID) ssa.TypeKind {
+	if typ_id > 0 && typ_id < g.type_kinds.len {
+		return g.type_kinds[typ_id]
+	}
+	return .void_t
+}
+
+fn (g &Gen) cached_type_elem_type(typ_id ssa.TypeID) ssa.TypeID {
+	if typ_id > 0 && typ_id < g.type_elem_types.len {
+		return g.type_elem_types[typ_id]
+	}
+	return ssa.TypeID(0)
+}
+
 @[inline]
 fn (g &Gen) selected_opcode(instr &mir.Instruction) ssa.OpCode {
 	// InsSel's textual selected_op round-trips back to instr.op via an
@@ -5093,14 +5225,39 @@ fn (g &Gen) selected_opcode(instr &mir.Instruction) ssa.OpCode {
 }
 
 fn (g &Gen) has_function_named(name string) bool {
-	return name in g.func_by_name
+	return g.find_func_idx_by_name(name) >= 0
 }
 
 fn (g &Gen) get_function_by_name(name string) ?&mir.Function {
-	if fi := g.func_by_name[name] {
+	fi := g.find_func_idx_by_name(name)
+	if fi >= 0 {
 		return &g.mod.funcs[fi]
 	}
 	return none
+}
+
+fn (g &Gen) find_func_idx_by_name(name string) int {
+	if name == '' {
+		return -1
+	}
+	for fi := 0; fi < g.func_names.len; fi++ {
+		if g.func_names[fi] == name {
+			return fi
+		}
+	}
+	return -1
+}
+
+fn (g &Gen) find_global_idx_by_name(name string) int {
+	if name == '' {
+		return -1
+	}
+	for gi := 0; gi < g.mod.globals.len; gi++ {
+		if g.mod.globals[gi].name == name {
+			return gi
+		}
+	}
+	return -1
 }
 
 fn (g &Gen) func_idx_from_ref_value(val_id int) int {
@@ -5110,7 +5267,7 @@ fn (g &Gen) func_idx_from_ref_value(val_id int) int {
 	return -1
 }
 
-fn (g &Gen) call_param_type(instr mir.Instruction, arg_idx int) ?ssa.TypeID {
+fn (g &Gen) call_param_type(instr &mir.Instruction, arg_idx int) ?ssa.TypeID {
 	if arg_idx < 0 || instr.operands.len == 0 {
 		return none
 	}
@@ -5147,7 +5304,7 @@ fn (g &Gen) call_param_type(instr mir.Instruction, arg_idx int) ?ssa.TypeID {
 	return none
 }
 
-fn (g &Gen) call_result_type(instr mir.Instruction) ?ssa.TypeID {
+fn (g &Gen) call_result_type(instr &mir.Instruction) ?ssa.TypeID {
 	op := g.selected_opcode(instr)
 	if op in [.call, .call_indirect] && instr.operands.len > 0 {
 		fn_id := instr.operands[0]
@@ -5514,7 +5671,7 @@ fn (mut g Gen) get_operand_reg(val_id int, fallback int) int {
 
 // Returns the number of registers a call argument occupies on ARM64.
 // Struct args 9-16 bytes use 2 consecutive registers; all others use 1.
-fn (mut g Gen) call_arg_reg_count(val_id int, arg_idx int, instr mir.Instruction) int {
+fn (mut g Gen) call_arg_reg_count(val_id int, arg_idx int, instr &mir.Instruction) int {
 	is_indirect := arg_idx >= 0 && arg_idx < instr.abi_arg_class.len
 		&& instr.abi_arg_class[arg_idx] == .indirect
 	trace_callcount := g.env_trace_callcount.len > 0
@@ -5631,7 +5788,7 @@ fn (mut g Gen) load_struct_arg_to_regs(start_reg int, val_id int, expected_struc
 	g.load_struct_arg_word_to_reg(start_reg + 1, val_id, 1, expected_struct_typ, call_callee_id)
 }
 
-fn (mut g Gen) load_call_arg_to_reg(reg int, val_id int, arg_idx int, instr mir.Instruction) {
+fn (mut g Gen) load_call_arg_to_reg(reg int, val_id int, arg_idx int, instr &mir.Instruction) {
 	is_indirect := arg_idx >= 0 && arg_idx < instr.abi_arg_class.len
 		&& instr.abi_arg_class[arg_idx] == .indirect
 	trace_callarg := g.env_trace_callarg.len > 0
@@ -5922,7 +6079,7 @@ fn (g &Gen) try_match_types_type_ischeck_rhs(rhs_id int) ?string {
 	return none
 }
 
-fn (mut g Gen) try_emit_types_type_ischeck_add(dest_reg int, lhs_reg int, val_id int, instr mir.Instruction) bool {
+fn (mut g Gen) try_emit_types_type_ischeck_add(dest_reg int, lhs_reg int, val_id int, instr &mir.Instruction) bool {
 	if instr.operands.len < 2 || !g.is_i1_type(g.mod.values[val_id].typ) {
 		return false
 	}
@@ -6308,7 +6465,8 @@ fn (mut g Gen) load_val_to_reg(reg int, val_id int) {
 	} else if val.kind == .global {
 		// Check if this is an external global (needs GOT access)
 		mut is_external := false
-		if gi := g.global_by_name[val.name] {
+		gi := g.find_global_idx_by_name(val.name)
+		if gi >= 0 {
 			is_external = g.mod.globals[gi].linkage == .external
 		}
 
@@ -7478,7 +7636,7 @@ fn (mut g Gen) store_entry_arg_to_global(reg int, global_name string, size int) 
 	if global_name == '' {
 		return
 	}
-	if global_name !in g.global_by_name {
+	if g.find_global_idx_by_name(global_name) < 0 {
 		return
 	}
 	sym_idx := g.macho.add_undefined('_' + global_name)
@@ -7661,12 +7819,12 @@ fn (mut g Gen) ptr_elem_size_bytes(ptr_val_id int) int {
 	if ptr_typ_id <= 0 || ptr_typ_id >= g.mod.type_store.types.len {
 		return 8
 	}
-	ptr_typ := g.mod.type_store.types[ptr_typ_id]
-	if ptr_typ.kind != .ptr_t || ptr_typ.elem_type <= 0
-		|| ptr_typ.elem_type >= g.mod.type_store.types.len {
+	ptr_kind := g.cached_type_kind(ptr_typ_id)
+	ptr_elem := g.cached_type_elem_type(ptr_typ_id)
+	if ptr_kind != .ptr_t || ptr_elem <= 0 || ptr_elem >= g.mod.type_store.types.len {
 		return 8
 	}
-	elem_size := g.type_size(ptr_typ.elem_type)
+	elem_size := g.type_size(ptr_elem)
 	return if elem_size in [1, 2, 4] { elem_size } else { 8 }
 }
 
@@ -7674,12 +7832,11 @@ fn (mut g Gen) mem_access_size_bytes(val_typ_id ssa.TypeID, ptr_val_id int) int 
 	if val_typ_id <= 0 || val_typ_id >= g.mod.type_store.types.len {
 		return g.ptr_elem_size_bytes(ptr_val_id)
 	}
-	val_typ := g.mod.type_store.types[val_typ_id]
 	// The pointer element type indicates the actual memory width. When the
 	// value was promoted to a wider register type (e.g., i64 for a u8 store),
 	// the pointer element size takes precedence.
 	ptr_elem_size := g.ptr_elem_size_bytes(ptr_val_id)
-	match val_typ.kind {
+	match g.cached_type_kind(val_typ_id) {
 		.ptr_t, .func_t {
 			return 8
 		}
@@ -7702,8 +7859,7 @@ fn (mut g Gen) stack_scalar_access_size_bytes(val_typ_id ssa.TypeID) int {
 	if val_typ_id <= 0 || val_typ_id >= g.mod.type_store.types.len {
 		return 8
 	}
-	val_typ := g.mod.type_store.types[val_typ_id]
-	match val_typ.kind {
+	match g.cached_type_kind(val_typ_id) {
 		.int_t, .float_t {
 			val_size := g.type_size(val_typ_id)
 			if val_size in [1, 2, 4] {

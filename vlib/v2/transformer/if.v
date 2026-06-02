@@ -14,6 +14,7 @@ fn (mut t Transformer) register_if_guard_lhs_payload_type(lhs []ast.Expr, payloa
 		match expr {
 			ast.Ident {
 				if expr.name != '_' {
+					t.remember_local_decl_type(expr.name, payload_type)
 					t.register_local_var_type(expr.name, payload_type)
 					if expr.pos.is_valid() {
 						t.register_synth_type(expr.pos, payload_type)
@@ -24,6 +25,7 @@ fn (mut t Transformer) register_if_guard_lhs_payload_type(lhs []ast.Expr, payloa
 				if expr.expr is ast.Ident {
 					ident := expr.expr as ast.Ident
 					if ident.name != '_' {
+						t.remember_local_decl_type(ident.name, payload_type)
 						t.register_local_var_type(ident.name, payload_type)
 						if ident.pos.is_valid() {
 							t.register_synth_type(ident.pos, payload_type)

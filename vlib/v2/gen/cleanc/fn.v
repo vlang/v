@@ -11343,6 +11343,11 @@ fn (mut g Gen) call_expr(lhs ast.Expr, args []ast.Expr) {
 				g.sb.write_string('${c_name}(u64__str(')
 				g.expr(arg)
 				g.sb.write_string('))')
+			} else if arg_type in ['f32', 'f64', 'float_literal'] {
+				str_fn := if arg_type == 'f32' { 'f32__str' } else { 'f64__str' }
+				g.sb.write_string('${c_name}(${str_fn}(')
+				g.expr(arg)
+				g.sb.write_string('))')
 			} else if arg_type == 'bool' {
 				g.sb.write_string('${c_name}(bool__str(')
 				g.expr(arg)

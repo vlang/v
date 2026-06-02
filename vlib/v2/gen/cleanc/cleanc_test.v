@@ -1642,6 +1642,164 @@ fn test_decl_assign_uses_position_type_before_function_scope_name_collision() {
 	assert !out.contains('string value')
 }
 
+fn test_decl_assign_uses_synthetic_lhs_alias_type_before_scope_collision() {
+	mut env := types.Environment.new()
+	env.set_expr_type(-77, types.Type(types.Alias{
+		name:      'ssa__ValueID'
+		base_type: types.int_
+	}))
+	mut fn_scope := types.new_scope(unsafe { nil })
+	fn_scope.insert('op', types.Type(types.string_))
+
+	mut gen := Gen.new_with_env([], env)
+	gen.cur_fn_scope = fn_scope
+	gen.gen_stmt(ast.Stmt(ast.AssignStmt{
+		op:  .decl_assign
+		lhs: [
+			ast.Expr(ast.Ident{
+				pos:  token.Pos{
+					id: -77
+				}
+				name: 'op'
+			}),
+		]
+		rhs: [
+			ast.Expr(ast.BasicLiteral{
+				kind:  .number
+				value: '0'
+			}),
+		]
+	}))
+	out := gen.sb.str().trim_space()
+	assert out == 'ssa__ValueID op = ((ssa__ValueID){0});'
+	assert !out.contains('string op')
+}
+
+fn test_infix_compare_uses_runtime_payload_decl_types_before_stale_env() {
+	mut env := types.Environment.new()
+	env.set_expr_type(1771, types.Type(types.string_))
+	env.set_expr_type(1772, types.Type(types.string_))
+	mut gen := Gen.new_with_env([], env)
+	gen.remember_runtime_local_type('_or_t1', '_option_int')
+	gen.remember_runtime_local_type('_or_t2', '_option_int')
+	gen.gen_stmts([
+		ast.Stmt(ast.AssignStmt{
+			op:  .decl_assign
+			lhs: [ast.Expr(ast.Ident{
+				name: 'lhs_value'
+			})]
+			rhs: [
+				ast.Expr(ast.SelectorExpr{
+					lhs: ast.Expr(ast.Ident{
+						name: '_or_t1'
+					})
+					rhs: ast.Ident{
+						name: 'data'
+					}
+				}),
+			]
+		}),
+		ast.Stmt(ast.AssignStmt{
+			op:  .decl_assign
+			lhs: [
+				ast.Expr(ast.Ident{
+					name: 'rhs_value'
+				}),
+			]
+			rhs: [
+				ast.Expr(ast.SelectorExpr{
+					lhs: ast.Expr(ast.Ident{
+						name: '_or_t2'
+					})
+					rhs: ast.Ident{
+						name: 'data'
+					}
+				}),
+			]
+		}),
+		ast.Stmt(ast.AssignStmt{
+			op:  .decl_assign
+			lhs: [
+				ast.Expr(ast.Ident{
+					name: 'matches'
+				}),
+			]
+			rhs: [
+				ast.Expr(ast.InfixExpr{
+					lhs: ast.Expr(ast.Ident{
+						name: 'lhs_value'
+						pos:  token.Pos{
+							id: 1771
+						}
+					})
+					op:  .eq
+					rhs: ast.Expr(ast.Ident{
+						name: 'rhs_value'
+						pos:  token.Pos{
+							id: 1772
+						}
+					})
+				}),
+			]
+		}),
+	])
+	out := gen.sb.str()
+	assert out.contains('int lhs_value ='), out
+	assert out.contains('int rhs_value ='), out
+	assert out.contains('lhs_value == rhs_value'), out
+	assert !out.contains('string__eq(lhs_value, rhs_value)'), out
+}
+
+fn test_if_guard_infix_compare_uses_active_payload_decl_type() {
+	csrc := cleanc_csrc_for_test_source('if_guard_payload_compare_shadowing', '
+fn maybe_int() ?int {
+	return 1
+}
+
+fn maybe_string() ?string {
+	return "x"
+}
+
+fn check_values() ?bool {
+	if lhs_value := maybe_int() {
+		rhs_value := maybe_int() or { return none }
+		matches := lhs_value == rhs_value
+		return matches
+	}
+	if lhs_value := maybe_string() {
+		rhs_value := maybe_string() or { return none }
+		matches := lhs_value == rhs_value
+		return matches
+	}
+	return none
+}
+')
+	assert csrc.contains('int lhs_value ='), csrc
+	assert csrc.contains('int rhs_value ='), csrc
+	int_branch := csrc.all_after('int rhs_value =').all_before('_option_string _or_t3')
+	assert int_branch.contains('lhs_value == rhs_value'), csrc
+	assert !int_branch.contains('string__eq(lhs_value, rhs_value)'), csrc
+	string_branch := csrc.all_after('string rhs_value =')
+	assert string_branch.contains('string__eq(lhs_value, rhs_value)'), csrc
+}
+
+fn test_generic_float_result_interpolation_uses_float_str() {
+	csrc := cleanc_csrc_for_test_source('generic_float_result_str', '
+fn identity[T](x T) T {
+	return x
+}
+
+fn main() {
+	ret := identity(0.0)
+	assert "\${ret}" == "0.0"
+}
+')
+	assert csrc.contains('f64 ret ='), csrc
+	assert csrc.contains('"%s", f64__str(ret).str'), csrc
+	assert !csrc.contains('int__str(ret)'), csrc
+	assert !csrc.contains('"%d", ret'), csrc
+}
+
 fn test_decl_assign_does_not_use_position_type_for_or_temp() {
 	mut env := types.Environment.new()
 	env.set_expr_type(88, types.Type(types.Array{
@@ -6189,8 +6347,8 @@ fn test_called_weak_generic_worklist_only_adds_called_specs() {
 	g.record_late_generic_call_spec('json2__encode', {
 		'T': types.Type(types.int_)
 	})
-	string_name := 'encode_T_string'
-	int_name := 'encode_T_int'
+	string_name := 'json2__encode_T_string'
+	int_name := 'json2__encode_T_int'
 	late_names := g.late_weak_generic_name_set()
 	assert string_name in late_names, late_names.str()
 	assert int_name in late_names, late_names.str()

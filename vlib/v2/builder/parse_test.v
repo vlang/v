@@ -83,6 +83,31 @@ fn test_parse_files_expands_same_module_subdirectories() {
 	assert 'user.v' in names
 }
 
+fn test_parse_files_expands_implicit_main_subdirectories() {
+	tmp_dir := os.join_path(os.temp_dir(), 'v2_builder_parse_dir_implicit_main_${os.getpid()}')
+	os.rmdir_all(tmp_dir) or {}
+	os.mkdir_all(os.join_path(tmp_dir, 'heroes')) or { panic(err) }
+	defer {
+		os.rmdir_all(tmp_dir) or {}
+	}
+
+	entry_file := os.join_path(tmp_dir, 'main.v')
+	hero_file := os.join_path(tmp_dir, 'heroes', 'hero.v')
+	os.write_file(entry_file, 'fn main() {}\n') or { panic(err) }
+	os.write_file(hero_file, 'struct HeroEffect {}\n') or { panic(err) }
+
+	mut prefs := pref.new_preferences()
+	prefs.skip_builtin = true
+	prefs.skip_imports = true
+	mut b := new_builder(&prefs)
+	files := b.parse_files([tmp_dir])
+	names := files.map(os.file_name(it.name))
+
+	assert files.len == 2
+	assert 'main.v' in names
+	assert 'hero.v' in names
+}
+
 fn test_parse_files_expands_non_main_module_files() {
 	tmp_dir := os.join_path(os.temp_dir(), 'v2_builder_parse_module_${os.getpid()}')
 	os.rmdir_all(tmp_dir) or {}

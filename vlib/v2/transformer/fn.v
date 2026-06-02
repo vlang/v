@@ -764,6 +764,9 @@ fn (mut t Transformer) transform_generic_selector_method_call(sel ast.SelectorEx
 }
 
 fn (t &Transformer) resolve_call_return_type(expr ast.Expr) ?types.Type {
+	if ret_type := t.generic_call_concrete_return_type(expr) {
+		return ret_type
+	}
 	mut call_lhs := ast.empty_expr
 	if expr is ast.CallExpr {
 		call_lhs = t.unwrap_call_target_lhs(expr.lhs)
@@ -812,6 +815,37 @@ fn (t &Transformer) resolve_call_return_type(expr ast.Expr) ?types.Type {
 			return none
 		}
 	}
+}
+
+fn (t &Transformer) generic_call_concrete_return_type(expr ast.Expr) ?types.Type {
+	mut lhs := ast.empty_expr
+	mut args := []ast.Expr{}
+	match expr {
+		ast.CallExpr {
+			lhs = expr.lhs
+			args = expr.args.clone()
+		}
+		ast.CallOrCastExpr {
+			lhs = expr.lhs
+			if expr.expr !is ast.EmptyExpr {
+				args << expr.expr
+			}
+		}
+		else {
+			return none
+		}
+	}
+
+	base_name := t.generic_call_base_name(lhs) or { return none }
+	decl := t.generic_fn_decl_for_call_info(base_name) or { return none }
+	generic_params := decl_generic_param_names(decl)
+	if generic_params.len == 0 || decl.typ.return_type is ast.EmptyExpr {
+		return none
+	}
+	info := t.generic_aware_call_fn_info(lhs, base_name) or { return none }
+	bindings := t.generic_bindings_from_call_args(info, args) or { return none }
+	ret_type := t.type_from_param_type_expr(decl.typ.return_type, generic_params) or { return none }
+	return substitute_type(ret_type, bindings)
 }
 
 fn (t &Transformer) append_method_lookup_type_name(mut names []string, raw_name string) {
@@ -2775,6 +2809,7 @@ fn (mut t Transformer) transform_call_expr(expr ast.CallExpr) ast.Expr {
 	if expr.lhs is ast.Ident {
 		if info := fn_info {
 			if inferred := t.inferred_generic_call_name(expr.lhs.name, info, call_args) {
+				t.register_generic_call_return_type(expr.lhs.name, info, call_args, expr.pos)
 				call_lhs = ast.Expr(ast.Ident{
 					name: inferred
 					pos:  expr.lhs.pos
@@ -2904,6 +2939,10 @@ fn (t &Transformer) generic_fn_decl_for_call_info(base_name string) ?ast.FnDecl 
 	append_unique_generic_lookup_name(mut lookup_names, name)
 	if name.contains('.') {
 		append_unique_generic_lookup_name(mut lookup_names, name.replace('.', '__'))
+	}
+	if t.cur_module != '' && t.cur_module != 'main' && !name.contains('__') && !name.contains('.') {
+		append_unique_generic_lookup_name(mut lookup_names,
+			'${t.cur_module.replace('.', '__')}__${name}')
 	}
 	for lookup_name in lookup_names {
 		if decl := t.generic_fn_decl_index[lookup_name] {
@@ -3173,6 +3212,20 @@ fn (t &Transformer) inferred_generic_call_name(base_name string, info CallFnInfo
 		base_name
 	}
 	return '${base}_T_${parts.join('_')}'
+}
+
+fn (mut t Transformer) register_generic_call_return_type(base_name string, info CallFnInfo, call_args []ast.Expr, pos token.Pos) {
+	if !pos.is_valid() || base_name == '' {
+		return
+	}
+	decl := t.generic_fn_decl_for_call_info(base_name) or { return }
+	generic_params := decl_generic_param_names(decl)
+	if generic_params.len == 0 || decl.typ.return_type is ast.EmptyExpr {
+		return
+	}
+	bindings := t.generic_bindings_from_call_args(info, call_args) or { return }
+	ret_type := t.type_from_param_type_expr(decl.typ.return_type, generic_params) or { return }
+	t.register_synth_type(pos, substitute_type(ret_type, bindings))
 }
 
 fn (t &Transformer) generic_bindings_from_call_args(info CallFnInfo, call_args []ast.Expr) ?map[string]types.Type {
@@ -4905,6 +4958,7 @@ fn (mut t Transformer) transform_call_or_cast_expr(expr ast.CallOrCastExpr) ast.
 			mut call_lhs := t.transform_call_lhs_for_smartcast(expr.lhs)
 			if info := coce_fn_info {
 				if inferred := t.inferred_generic_call_name(expr.lhs.name, info, call_args) {
+					t.register_generic_call_return_type(expr.lhs.name, info, call_args, expr.pos)
 					call_lhs = ast.Expr(ast.Ident{
 						name: inferred
 						pos:  expr.lhs.pos
@@ -5662,6 +5716,9 @@ fn (mut t Transformer) try_inline_generic_math_call(expr ast.CallExpr) ?ast.Expr
 		name := (expr.lhs as ast.Ident).name
 		if name == 'abs' {
 			arg := t.transform_expr(expr.args[0])
+			if typ := t.call_arg_type_for_generic_infer(expr.args[0]) {
+				t.register_synth_type(expr.pos, typ)
+			}
 			abs_cond := t.make_infix_expr(.lt, arg, t.make_number_expr('0'))
 			return ast.Expr(ast.IfExpr{
 				cond:      abs_cond
@@ -5688,6 +5745,9 @@ fn (mut t Transformer) try_inline_generic_math_call(expr ast.CallExpr) ?ast.Expr
 		sel := expr.lhs as ast.SelectorExpr
 		if sel.lhs is ast.Ident && (sel.lhs as ast.Ident).name == 'math' && sel.rhs.name == 'abs' {
 			arg := t.transform_expr(expr.args[0])
+			if typ := t.call_arg_type_for_generic_infer(expr.args[0]) {
+				t.register_synth_type(expr.pos, typ)
+			}
 			abs_cond := t.make_infix_expr(.lt, arg, t.make_number_expr('0'))
 			return ast.Expr(ast.IfExpr{
 				cond:      abs_cond
@@ -5790,6 +5850,9 @@ fn (mut t Transformer) try_inline_generic_math_coce(expr ast.CallOrCastExpr) ?as
 		name := (expr.lhs as ast.Ident).name
 		if name == 'abs' && expr.expr !is ast.EmptyExpr {
 			arg := t.transform_expr(expr.expr)
+			if typ := t.call_arg_type_for_generic_infer(expr.expr) {
+				t.register_synth_type(expr.pos, typ)
+			}
 			abs_cond := t.make_infix_expr(.lt, arg, t.make_number_expr('0'))
 			return ast.Expr(ast.IfExpr{
 				cond:      abs_cond
@@ -5817,6 +5880,9 @@ fn (mut t Transformer) try_inline_generic_math_coce(expr ast.CallOrCastExpr) ?as
 		if sel.lhs is ast.Ident
 			&& (sel.lhs as ast.Ident).name == 'math' && sel.rhs.name == 'abs' && expr.expr !is ast.EmptyExpr {
 			arg := t.transform_expr(expr.expr)
+			if typ := t.call_arg_type_for_generic_infer(expr.expr) {
+				t.register_synth_type(expr.pos, typ)
+			}
 			abs_cond := t.make_infix_expr(.lt, arg, t.make_number_expr('0'))
 			return ast.Expr(ast.IfExpr{
 				cond:      abs_cond

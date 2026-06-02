@@ -3913,7 +3913,13 @@ fn (mut c Checker) expr_impl(expr ast.Expr) Type {
 			})
 		}
 		ast.SelectExpr {
+			if expr.stmt !is ast.EmptyStmt {
+				c.stmt(expr.stmt)
+			}
 			c.stmt_list(expr.stmts)
+			if expr.next !is ast.EmptyExpr {
+				c.expr(expr.next)
+			}
 		}
 		ast.SqlExpr {
 			c.expr(expr.expr)

@@ -137,6 +137,105 @@ fn test_generic_call_info_lookup_does_not_match_unrelated_short_name() {
 	}
 }
 
+fn test_generic_call_concrete_return_type_prefers_substitution_over_stale_pos_type() {
+	mut env := types.Environment.new()
+	env.set_expr_type(77, types.Type(types.int_))
+	mut t := mono_test_transformer()
+	t.env = env
+	t.generic_fn_decl_index['identity'] = ast.FnDecl{
+		name: 'identity'
+		typ:  ast.FnType{
+			generic_params: [
+				ast.Expr(ast.Ident{
+					name: 'T'
+				}),
+			]
+			params:         [
+				ast.Parameter{
+					name: 'x'
+					typ:  ast.Expr(ast.Ident{
+						name: 'T'
+					})
+				},
+			]
+			return_type:    ast.Expr(ast.Ident{
+				name: 'T'
+			})
+		}
+	}
+	call := ast.Expr(ast.CallExpr{
+		lhs:  ast.Expr(ast.Ident{
+			name: 'identity'
+		})
+		args: [
+			ast.Expr(ast.BasicLiteral{
+				kind:  .number
+				value: '0.0'
+			}),
+		]
+		pos:  token.Pos{
+			id: 77
+		}
+	})
+	ret := t.get_expr_type(call) or { panic('missing generic call return type') }
+	assert ret is types.Primitive
+	assert (ret as types.Primitive).props.has(types.Properties.float)
+}
+
+fn test_generic_call_concrete_return_type_finds_current_module_bare_call() {
+	mut t := mono_test_transformer()
+	t.cur_module = 'math'
+	t.generic_fn_decl_index['math__identity'] = ast.FnDecl{
+		name: 'identity'
+		typ:  ast.FnType{
+			generic_params: [
+				ast.Expr(ast.Ident{
+					name: 'T'
+				}),
+			]
+			params:         [
+				ast.Parameter{
+					name: 'x'
+					typ:  ast.Expr(ast.Ident{
+						name: 'T'
+					})
+				},
+			]
+			return_type:    ast.Expr(ast.Ident{
+				name: 'T'
+			})
+		}
+	}
+	call := ast.Expr(ast.CallExpr{
+		lhs:  ast.Expr(ast.Ident{
+			name: 'identity'
+		})
+		args: [
+			ast.Expr(ast.BasicLiteral{
+				kind:  .number
+				value: '0.0'
+			}),
+		]
+	})
+	ret := t.generic_call_concrete_return_type(call) or {
+		panic('missing current-module generic return type')
+	}
+	assert ret is types.Primitive
+	assert (ret as types.Primitive).props.has(types.Properties.float)
+}
+
+fn test_get_expr_type_prefers_local_decl_cache_over_stale_scope_type() {
+	mut t := mono_test_transformer()
+	mut scope := types.new_scope(unsafe { nil })
+	scope.insert('ret', types.Type(types.int_))
+	t.scope = scope
+	t.local_decl_types['ret'] = types.Type(types.f64_)
+	typ := t.get_expr_type(ast.Expr(ast.Ident{
+		name: 'ret'
+	})) or { panic('missing ident type') }
+	assert typ.name() == 'f64'
+}
+
 fn test_clone_generic_type_name_selector_to_string_literal() {
 	mut t := mono_test_transformer()
 	expr := ast.Expr(ast.SelectorExpr{

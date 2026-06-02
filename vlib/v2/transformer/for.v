@@ -78,6 +78,20 @@ fn (mut t Transformer) register_for_in_lhs_type(lhs ast.Expr, typ types.Type) {
 	}
 }
 
+fn (mut t Transformer) register_for_in_var_type(name string, typ types.Type) {
+	if name == '' || name == '_' {
+		return
+	}
+	t.remember_local_decl_type(name, typ)
+	obj := value_object_from_type(typ)
+	if t.scope != unsafe { nil } {
+		t.scope.insert_or_update(name, obj)
+	}
+	if t.fn_root_scope != unsafe { nil } {
+		t.fn_root_scope.insert_or_update(name, obj)
+	}
+}
+
 fn (t &Transformer) is_string_iterable_type(iter_type types.Type) bool {
 	mut cur := iter_type
 	for _ in 0 .. 64 {
@@ -113,7 +127,7 @@ fn (t &Transformer) for_in_value_uses_array_index(value_type types.Type) bool {
 		}
 		break
 	}
-	return cur is types.Array || cur is types.ArrayFixed || cur is types.Map
+	return cur is types.Array || cur is types.ArrayFixed || cur is types.Map || cur is types.Struct
 }
 
 fn (t &Transformer) for_in_iter_expr_type(expr ast.Expr) ?types.Type {
@@ -473,7 +487,7 @@ fn (mut t Transformer) try_expand_for_in_map(stmt ast.ForStmt) ?[]ast.Stmt {
 			}
 		}
 		// Register key variable type in scope for later string detection
-		t.scope.insert(key_name, value_object_from_type(map_type.key_type))
+		t.register_for_in_var_type(key_name, map_type.key_type)
 	}
 
 	// v := *(ValueType*)DenseArray__value(&map_expr.key_values, _map_idx)
@@ -509,7 +523,7 @@ fn (mut t Transformer) try_expand_for_in_map(stmt ast.ForStmt) ?[]ast.Stmt {
 			rhs: [ast.Expr(value_deref)]
 		}
 		// Register value variable type in scope for later type detection
-		t.scope.insert(value_name, value_object_from_type(map_type.value_type))
+		t.register_for_in_var_type(value_name, map_type.value_type)
 	}
 
 	// Add the original body statements (NOT transformed here - transform_stmts will do it)
@@ -635,14 +649,14 @@ fn (mut t Transformer) transform_for_stmt(stmt ast.ForStmt) ast.ForStmt {
 			if for_in.value is ast.Ident {
 				value_name := (for_in.value as ast.Ident).name
 				if value_name != '' && value_name != '_' {
-					t.scope.insert(value_name, value_object_from_type(value_type))
+					t.register_for_in_var_type(value_name, value_type)
 				}
 			}
 			key_type := iter_type.key_type()
 			if for_in.key is ast.Ident {
 				key_name := (for_in.key as ast.Ident).name
 				if key_name != '' && key_name != '_' {
-					t.scope.insert(key_name, value_object_from_type(key_type))
+					t.register_for_in_var_type(key_name, key_type)
 				}
 			}
 			transformed_stmts := t.transform_stmts(stmt.stmts)
@@ -740,8 +754,9 @@ fn (mut t Transformer) transform_untyped_for_in(stmt ast.ForStmt, for_in ast.For
 		pos:  idx_pos
 	}
 	if int_obj := t.scope.lookup_parent('int', 0) {
-		t.scope.insert(key_name, int_obj)
-		t.register_synth_type(idx_pos, int_obj.typ())
+		int_type := int_obj.typ()
+		t.register_for_in_var_type(key_name, int_type)
+		t.register_synth_type(idx_pos, int_type)
 	}
 	iter_typ := t.get_expr_type(for_in.expr)
 	iter_pos := t.next_synth_pos()
@@ -888,8 +903,8 @@ fn (mut t Transformer) transform_array_for_in_with_value_type(stmt ast.ForStmt, 
 
 	// Register loop variables in scope
 	key_type := iter_type.key_type()
-	t.scope.insert(key_name, value_object_from_type(key_type))
-	t.scope.insert(value_name, value_object_from_type(value_type))
+	t.register_for_in_var_type(key_name, key_type)
+	t.register_for_in_var_type(value_name, value_type)
 	had_generic_value := value_name in t.generic_var_type_params
 	old_generic_value := t.generic_var_type_params[value_name] or { '' }
 	if placeholder := t.generic_iter_value_placeholder(for_in.expr) {
@@ -1006,7 +1021,7 @@ fn (mut t Transformer) transform_range_for_in(stmt ast.ForStmt, for_in ast.ForIn
 	}
 
 	if int_obj := t.scope.lookup_parent('int', 0) {
-		t.scope.insert(value_name, int_obj)
+		t.register_for_in_var_type(value_name, int_obj.typ())
 	}
 
 	cmp_op := if range.op == .ellipsis { token.Token.le } else { token.Token.lt } // `...` inclusive, `..` exclusive
@@ -1094,8 +1109,8 @@ fn (mut t Transformer) transform_fixed_array_for_in(stmt ast.ForStmt, for_in ast
 	// Register loop variables in scope
 	key_type := types.Type(arr_type).key_type()
 	value_type := types.Type(arr_type).value_type()
-	t.scope.insert(key_name, value_object_from_type(key_type))
-	t.scope.insert(value_name, value_object_from_type(value_type))
+	t.register_for_in_var_type(key_name, key_type)
+	t.register_for_in_var_type(value_name, value_type)
 	t.register_synth_type(idx_pos, key_type)
 
 	// Transform the iterable expression

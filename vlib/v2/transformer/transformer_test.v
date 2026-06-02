@@ -4880,6 +4880,61 @@ fn set_value(mut values map[string]int) {
 	assert call.args.len == 3
 }
 
+fn test_map_value_temp_expr_keeps_existing_sumtype_value() {
+	sum_type := types.Type(types.SumType{
+		name:     'types.Type'
+		variants: [types.Type(types.string_), types.Type(types.int_)]
+	})
+	mut t := create_transformer_with_vars({
+		'v': sum_type
+	})
+	expr := t.map_value_temp_expr(ast.Expr(ast.Ident{
+		name: 'v'
+	}), sum_type)
+	assert expr is ast.Ident
+	assert (expr as ast.Ident).name == 'v'
+}
+
+fn test_map_value_temp_expr_keeps_short_named_sumtype_value() {
+	sum_type := types.Type(types.SumType{
+		name:     'types.Type'
+		variants: [types.Type(types.string_), types.Type(types.int_)]
+	})
+	mut t := create_transformer_with_vars({
+		'v': types.Type(types.NamedType('Type'))
+	})
+	expr := t.map_value_temp_expr(ast.Expr(ast.Ident{
+		name: 'v'
+	}), sum_type)
+	assert expr is ast.Ident
+	assert (expr as ast.Ident).name == 'v'
+}
+
+fn test_for_in_var_registration_replaces_reused_loop_value_type() {
+	sum_type := types.Type(types.SumType{
+		name:     'types.Type'
+		variants: [types.Type(types.string_), types.Type(types.int_)]
+	})
+	mut t := create_transformer_with_vars({})
+	t.register_for_in_var_type('v', types.Type(types.string_))
+	t.register_for_in_var_type('v', sum_type)
+	expr := t.map_value_temp_expr(ast.Expr(ast.Ident{
+		name: 'v'
+	}), sum_type)
+	assert expr is ast.Ident
+	assert (expr as ast.Ident).name == 'v'
+}
+
+fn test_is_enum_rvalue_stops_on_unresolved_alias() {
+	t := create_test_transformer()
+	unresolved_alias := types.Type(types.Alias{
+		name: 'Unresolved'
+	})
+	assert !t.is_enum_rvalue(ast.Expr(ast.Ident{
+		name: 'value'
+	}), unresolved_alias)
+}
+
 fn test_transform_map_index_push_resolves_named_array_alias_value() {
 	mut t := create_transformer_with_vars({
 		'cleanups': types.Type(types.Map{

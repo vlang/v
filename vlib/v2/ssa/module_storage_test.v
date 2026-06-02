@@ -1,6 +1,7 @@
 module ssa
 
 import os
+import v2.ast
 import v2.parser
 import v2.pref
 import v2.token
@@ -40,6 +41,38 @@ fn module_storage_ssa_for_test_sources(label string, sources map[string]string) 
 	return mod
 }
 
+fn module_storage_ssa_for_test_sources_flat(label string, sources map[string]string) &Module {
+	tmp_dir := module_storage_ssa_tmp_dir(label)
+	os.mkdir_all(tmp_dir) or { panic('cannot create ${tmp_dir}') }
+	defer {
+		os.rmdir_all(tmp_dir) or {}
+	}
+	mut paths := []string{}
+	for rel_path, code in sources {
+		path := os.join_path(tmp_dir, rel_path)
+		os.mkdir_all(os.dir(path)) or { panic('cannot create ${os.dir(path)}') }
+		os.write_file(path, code) or { panic('cannot write ${path}') }
+		paths << path
+	}
+	prefs := &pref.Preferences{
+		backend: .arm64
+	}
+	mut file_set := token.FileSet.new()
+	mut par := parser.Parser.new(prefs)
+	files := par.parse_files(paths, mut file_set)
+	env := types.Environment.new()
+	mut checker := types.Checker.new(prefs, file_set, env)
+	checker.check_files(files)
+	mut trans := transformer.Transformer.new_with_pref(env, prefs)
+	trans.set_file_set(file_set)
+	flat := ast.flatten_files(files)
+	transformed_flat, _ := trans.transform_files_to_flat(&flat, files)
+	mut mod := Module.new('module_storage_flat_test')
+	mut builder := Builder.new_with_env(mod, env)
+	builder.build_all_from_flat(&transformed_flat)
+	return mod
+}
+
 fn module_storage_ssa_global_names(m &Module) []string {
 	mut names := []string{}
 	for global in m.globals {
@@ -67,6 +100,40 @@ fn module_storage_ssa_has_store_to_global(m &Module, name string) bool {
 	return false
 }
 
+fn module_storage_ssa_func(m &Module, name string) ?Function {
+	for func in m.funcs {
+		if func.name == name {
+			return func
+		}
+	}
+	return none
+}
+
+fn module_storage_ssa_return_value_id(m &Module, func Function) ?ValueID {
+	for blk_id in func.blocks {
+		for val_id in m.blocks[blk_id].instrs {
+			instr := m.instrs[m.values[val_id].index]
+			if instr.op == .ret && instr.operands.len > 0 {
+				return instr.operands[0]
+			}
+		}
+	}
+	return none
+}
+
+fn module_storage_ssa_return_value_ids(m &Module, func Function) []ValueID {
+	mut ret_vals := []ValueID{}
+	for blk_id in func.blocks {
+		for val_id in m.blocks[blk_id].instrs {
+			instr := m.instrs[m.values[val_id].index]
+			if instr.op == .ret && instr.operands.len > 0 {
+				ret_vals << instr.operands[0]
+			}
+		}
+	}
+	return ret_vals
+}
+
 fn test_module_storage_import_alias_resolves_to_declaring_module_in_ssa() {
 	m := module_storage_ssa_for_test_sources('alias', {
 		'report/report.v': 'module report
@@ -86,6 +153,140 @@ fn main() {
 	assert 'report__errors' in names
 	assert 'r__errors' !in names
 	assert module_storage_ssa_has_store_to_global(m, 'report__errors')
+}
+
+fn test_module_qualified_alias_array_field_index_has_alias_element_type() {
+	m := module_storage_ssa_for_test_sources('selector_alias_array_elem', {
+		'v2/ssa/value.v': 'module ssa
+
+pub type ValueID = int
+'
+		'main.v':         'module main
+
+import v2.ssa
+
+struct Holder {
+	items []ssa.ValueID
+}
+
+fn get_item(h Holder, i int) ssa.ValueID {
+	return h.items[i]
+}
+'
+	})
+	get_item := module_storage_ssa_func(m, 'main__get_item') or {
+		module_storage_ssa_func(m, 'get_item') or {
+			module_storage_ssa_func(m, 'main.get_item') or { panic('missing get_item') }
+		}
+	}
+	mut ret_val := ValueID(0)
+	for blk_id in get_item.blocks {
+		for val_id in m.blocks[blk_id].instrs {
+			instr := m.instrs[m.values[val_id].index]
+			if instr.op == .ret && instr.operands.len > 0 {
+				ret_val = instr.operands[0]
+			}
+		}
+	}
+	assert ret_val != 0
+	ret_typ := m.type_store.types[m.values[ret_val].typ]
+	assert ret_typ.kind == .int_t
+	assert ret_typ.width == 32
+}
+
+fn test_map_array_alias_value_index_has_alias_element_type() {
+	m := module_storage_ssa_for_test_sources('map_array_alias_value_index', {
+		'main.v': 'module main
+
+type TypeID = int
+
+fn read_elem(values map[string][]TypeID, key string, idx int) TypeID {
+	param_elem_types := values[key] or { [TypeID(0)] }
+	return param_elem_types[idx]
+}
+'
+	})
+	read_elem := module_storage_ssa_func(m, 'main__read_elem') or {
+		module_storage_ssa_func(m, 'read_elem') or { panic('missing read_elem') }
+	}
+	ret_val := module_storage_ssa_return_value_id(m, read_elem) or {
+		panic('missing read_elem return value')
+	}
+	ret_typ := m.type_store.types[m.values[ret_val].typ]
+	assert ret_typ.kind == .int_t
+	assert ret_typ.width == 32
+}
+
+fn test_method_map_array_alias_value_index_has_alias_element_type() {
+	m := module_storage_ssa_for_test_sources('method_map_array_alias_value_index', {
+		'main.v': 'module main
+
+type TypeID = int
+
+struct Builder {
+mut:
+	fn_param_array_elem_types map[string][]TypeID
+}
+
+fn (mut b Builder) call_param_array_elem_type(fn_name string, param_idx int) TypeID {
+	param_elem_types := b.fn_param_array_elem_types[fn_name] or { return TypeID(-1) }
+	if param_idx >= param_elem_types.len {
+		return TypeID(-2)
+	}
+	elem_type := param_elem_types[param_idx]
+	if elem_type == 0 {
+		return TypeID(-3)
+	}
+	return elem_type
+}
+'
+	})
+	func := module_storage_ssa_func(m, 'Builder__call_param_array_elem_type') or {
+		panic('missing method function')
+	}
+	ret_vals := module_storage_ssa_return_value_ids(m, func)
+	assert ret_vals.len > 0
+	for ret_val in ret_vals {
+		ret_typ := m.type_store.types[m.values[ret_val].typ]
+		assert ret_typ.kind == .int_t
+		assert ret_typ.width == 32
+	}
+}
+
+fn test_flat_method_map_array_alias_value_index_has_alias_element_type() {
+	m := module_storage_ssa_for_test_sources_flat('flat_method_map_array_alias_value_index', {
+		'main.v': 'module main
+
+type TypeID = int
+
+struct Builder {
+mut:
+	fn_param_array_elem_types map[string][]TypeID
+}
+
+fn (mut b Builder) call_param_array_elem_type(fn_name string, param_idx int) TypeID {
+	param_elem_types := b.fn_param_array_elem_types[fn_name] or { return TypeID(-1) }
+	if param_idx >= param_elem_types.len {
+		return TypeID(-2)
+	}
+	elem_type := param_elem_types[param_idx]
+	if elem_type == 0 {
+		return TypeID(-3)
+	}
+	return elem_type
+}
+'
+	})
+	func := module_storage_ssa_func(m, 'Builder__call_param_array_elem_type') or {
+		panic('missing method function')
+	}
+	ret_vals := module_storage_ssa_return_value_ids(m, func)
+	assert ret_vals.len > 0
+	for ret_val in ret_vals {
+		ret_typ := m.type_store.types[m.values[ret_val].typ]
+		assert ret_typ.kind == .int_t
+		assert ret_typ.width == 32
+	}
 }
 
 fn test_module_storage_same_short_names_stay_distinct_in_ssa() {

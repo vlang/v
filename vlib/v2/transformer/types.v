@@ -2732,6 +2732,9 @@ fn (t &Transformer) get_expr_type(expr ast.Expr) ?types.Type {
 		if typ := t.smartcast_type_for_expr(expr) {
 			return typ
 		}
+		if typ := t.lookup_local_decl_type(expr.name) {
+			return typ
+		}
 		if typ := t.lookup_var_type(expr.name) {
 			return typ
 		}
@@ -2773,6 +2776,9 @@ fn (t &Transformer) get_expr_type(expr ast.Expr) ?types.Type {
 		if typ := t.get_synth_type(pos) {
 			return typ
 		}
+		if typ := t.generic_call_concrete_return_type(expr) {
+			return t.normalize_type(typ)
+		}
 		if pos.is_valid() {
 			if typ := t.env.get_expr_type(pos.id) {
 				return t.normalize_type(typ)
@@ -2787,6 +2793,9 @@ fn (t &Transformer) get_expr_type(expr ast.Expr) ?types.Type {
 		pos := expr.pos
 		if typ := t.get_synth_type(pos) {
 			return typ
+		}
+		if typ := t.generic_call_concrete_return_type(expr) {
+			return t.normalize_type(typ)
 		}
 		if pos.is_valid() {
 			if typ := t.env.get_expr_type(pos.id) {

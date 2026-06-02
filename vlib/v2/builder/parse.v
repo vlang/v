@@ -92,7 +92,7 @@ fn collect_same_module_subdir_files(root string, dir string, module_name string,
 			if file in seen {
 				continue
 			}
-			if file_module_name(file) or { '' } != module_name {
+			if file_module_name(file) or { 'main' } != module_name {
 				continue
 			}
 			files << file

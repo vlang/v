@@ -207,7 +207,7 @@ fn valid_decl_env_type(typ string) bool {
 
 fn (mut g Gen) decl_lhs_synth_env_type(lhs ast.Expr) ?string {
 	if lhs is ast.Ident && lhs.pos.id < 0 {
-		typ := g.get_expr_type_from_env(lhs) or { return none }
+		typ := g.get_env_c_type(lhs) or { return none }
 		if valid_decl_env_type(typ) {
 			return typ
 		}
@@ -293,6 +293,15 @@ fn (mut g Gen) gen_map_index_assign_fallback(lhs ast.IndexExpr, rhs ast.Expr) bo
 	}
 	if key_type == '' || value_type == '' {
 		mut map_c_type := lhs_c_type
+		if lhs.lhs is ast.SelectorExpr {
+			mut selector_type := g.selector_storage_field_type(lhs.lhs).trim_space()
+			if selector_type == '' {
+				selector_type = g.selector_field_type(lhs.lhs).trim_space()
+			}
+			if selector_type != '' {
+				map_c_type = selector_type
+			}
+		}
 		if map_c_type.ends_with('*') {
 			map_c_type = map_c_type[..map_c_type.len - 1].trim_space()
 		}
@@ -793,6 +802,9 @@ fn (mut g Gen) gen_assign_stmt(node ast.AssignStmt) {
 		}
 		lhs_env_type := g.get_expr_type_from_env(lhs) or { '' }
 		lhs_synth_env_type := g.decl_lhs_synth_env_type(lhs) or { '' }
+		if lhs_synth_env_type != '' {
+			typ = lhs_synth_env_type
+		}
 		lhs_env_type_is_decl := valid_decl_env_type(lhs_env_type)
 			&& ((!name.starts_with('_or_t') && !name.starts_with('_tmp_')
 			&& !name.starts_with('_defer_t') && !name.starts_with('_assoc_t'))

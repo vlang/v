@@ -4659,6 +4659,22 @@ fn (mut t Transformer) try_expand_or_expr_assign(_stmt ast.AssignStmt) ?ast.Stmt
 // Also handles compound assignments: m[key] += val -> { tmp = map_get(m,key); tmp += val; map_set(m,key,tmp) }
 fn (mut t Transformer) map_value_temp_expr(expr ast.Expr, value_type types.Type) ast.Expr {
 	mut resolved := t.resolve_expr_with_expected_type(expr, value_type)
+	target_name := t.type_to_c_name(value_type)
+	if target_name != '' {
+		if t.expr_is_casted_to_type(resolved, target_name) {
+			return resolved
+		}
+		if resolved_type := t.get_expr_type(resolved) {
+			if t.type_names_match(t.type_to_c_name(resolved_type), target_name) {
+				return resolved
+			}
+			resolved_base_name := t.type_to_c_name(t.unwrap_alias_and_pointer_type(resolved_type))
+			value_base_name := t.type_to_c_name(t.unwrap_alias_and_pointer_type(value_type))
+			if t.type_names_match(resolved_base_name, value_base_name) {
+				return resolved
+			}
+		}
+	}
 	if value_type is types.SumType {
 		st := value_type as types.SumType
 		return ast.CastExpr{
@@ -4672,7 +4688,6 @@ fn (mut t Transformer) map_value_temp_expr(expr ast.Expr, value_type types.Type)
 	base := t.unwrap_alias_and_pointer_type(value_type)
 	match base {
 		types.Primitive, types.ISize, types.USize, types.Char, types.Rune, types.Enum {
-			target_name := t.type_to_c_name(value_type)
 			if target_name != '' && t.expr_is_casted_to_type(resolved, target_name) {
 				return resolved
 			}
@@ -10492,7 +10507,7 @@ fn (t &Transformer) is_enum_rvalue(expr ast.Expr, typ types.Type) bool {
 	}
 	// Unwrap all alias levels to find the base type
 	mut base := typ
-	for {
+	for _ in 0 .. 64 {
 		if base is types.Alias {
 			base = (base as types.Alias).base_type
 			continue
@@ -10509,7 +10524,7 @@ fn (t &Transformer) is_enum_rvalue(expr ast.Expr, typ types.Type) bool {
 	// Also check by looking up the expression's type in the environment
 	if expr_typ := t.get_expr_type(expr) {
 		mut expr_base := expr_typ
-		for {
+		for _ in 0 .. 64 {
 			if expr_base is types.Alias {
 				expr_base = (expr_base as types.Alias).base_type
 				continue

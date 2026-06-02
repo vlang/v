@@ -1256,6 +1256,12 @@ fn (mut g Gen) gen_enum_shorthand_compare(node &ast.InfixExpr, lhs_type string, 
 fn (mut g Gen) gen_infix_expr(node &ast.InfixExpr) {
 	mut lhs_type := g.get_expr_type(node.lhs)
 	mut rhs_type := g.get_expr_type(node.rhs)
+	if local_type := g.local_var_c_type_for_expr(node.lhs) {
+		lhs_type = local_type
+	}
+	if local_type := g.local_var_c_type_for_expr(node.rhs) {
+		rhs_type = local_type
+	}
 	if node.lhs is ast.IndexExpr && (lhs_type == '' || lhs_type == 'int'
 		|| lhs_type == 'array' || lhs_type == 'void*' || lhs_type == 'voidptr'
 		|| (lhs_type.starts_with('Array_') && !lhs_type.starts_with('Array_fixed_'))) {

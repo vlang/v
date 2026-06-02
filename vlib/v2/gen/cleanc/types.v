@@ -4132,6 +4132,9 @@ fn (mut g Gen) expr_type_to_c(e ast.Expr) string {
 			if name == 'byteptr' {
 				return 'u8*'
 			}
+			if g.is_module_local_type(name) {
+				return g.cur_module + '__' + name
+			}
 			if env_type := g.get_expr_type_from_env(e) {
 				env_c := env_type.trim_space()
 				if env_c != '' && env_c != 'int' {
@@ -4168,9 +4171,6 @@ fn (mut g Gen) expr_type_to_c(e ast.Expr) string {
 			}
 			if name.contains('.') {
 				return name.replace('.', '__')
-			}
-			if g.is_module_local_type(name) {
-				return g.cur_module + '__' + name
 			}
 			// Detect mangled pointer aliases from transformer/checker
 			// (e.g. FILEptr -> FILE*, viper__Appptr -> viper__App*).

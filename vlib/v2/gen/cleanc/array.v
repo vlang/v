@@ -493,6 +493,15 @@ fn (mut g Gen) map_index_key_value_types(node ast.IndexExpr) (bool, string, stri
 	}
 	if key_type == '' || value_type == '' {
 		mut map_c_type := lhs_c_type
+		if node.lhs is ast.SelectorExpr {
+			mut selector_type := g.selector_storage_field_type(node.lhs).trim_space()
+			if selector_type == '' {
+				selector_type = g.selector_field_type(node.lhs).trim_space()
+			}
+			if selector_type != '' {
+				map_c_type = selector_type
+			}
+		}
 		if map_c_type.ends_with('*') {
 			map_c_type = map_c_type[..map_c_type.len - 1].trim_space()
 		}
