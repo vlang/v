@@ -1,4 +1,5 @@
 // vtest retry: 3
+// vtest build: present_sqlite3? && !sanitize-memory-clang
 import db.sqlite
 import orm
 
