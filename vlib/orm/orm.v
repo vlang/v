@@ -227,20 +227,8 @@ pub:
 
 pub struct Table {
 pub mut:
-	name    string
-	attrs   []VAttribute
-	fields  []string // struct field names, used to skip scope filters that don't apply
-	columns []string // SQL column names (parallel to fields), used for SQL generation
-}
-
-// new_table creates a Table with the given name and attributes.
-// Prefer using this constructor over positional initialization,
-// as new fields may be added to Table in future versions.
-pub fn new_table(name string, attrs []VAttribute) Table {
-	return Table{
-		name:  name
-		attrs: attrs
-	}
+	name  string
+	attrs []VAttribute
 }
 
 pub struct TableField {
@@ -627,162 +615,6 @@ fn parse_bool_attr(raw string) ?bool {
 		}
 		else {
 			none
-		}
-	}
-}
-
-// primitive_type returns the type index for a Primitive value.
-fn primitive_type(value Primitive) int {
-	return match value {
-		bool {
-			type_idx['bool']
-		}
-		i8 {
-			type_idx['i8']
-		}
-		i16 {
-			type_idx['i16']
-		}
-		int {
-			type_idx['int']
-		}
-		i64 {
-			type_idx['i64']
-		}
-		u8 {
-			type_idx['u8']
-		}
-		u16 {
-			type_idx['u16']
-		}
-		u32 {
-			type_idx['u32']
-		}
-		u64 {
-			type_idx['u64']
-		}
-		f32 {
-			type_idx['f32']
-		}
-		f64 {
-			type_idx['f64']
-		}
-		string {
-			type_string
-		}
-		time.Time {
-			time_
-		}
-		Null {
-			type_idx['int']
-		}
-		InfixType {
-			primitive_type(value.right)
-		}
-		[]Primitive {
-			if value.len > 0 {
-				primitive_type(value[0])
-			} else {
-				type_idx['int']
-			}
-		}
-		[]bool {
-			if value.len > 0 {
-				primitive_type(Primitive(value[0]))
-			} else {
-				type_idx['int']
-			}
-		}
-		[]f32 {
-			if value.len > 0 {
-				primitive_type(Primitive(value[0]))
-			} else {
-				type_idx['int']
-			}
-		}
-		[]f64 {
-			if value.len > 0 {
-				primitive_type(Primitive(value[0]))
-			} else {
-				type_idx['int']
-			}
-		}
-		[]i16 {
-			if value.len > 0 {
-				primitive_type(Primitive(value[0]))
-			} else {
-				type_idx['int']
-			}
-		}
-		[]i64 {
-			if value.len > 0 {
-				primitive_type(Primitive(value[0]))
-			} else {
-				type_idx['int']
-			}
-		}
-		[]i8 {
-			if value.len > 0 {
-				primitive_type(Primitive(value[0]))
-			} else {
-				type_idx['int']
-			}
-		}
-		[]int {
-			if value.len > 0 {
-				primitive_type(Primitive(value[0]))
-			} else {
-				type_idx['int']
-			}
-		}
-		[]string {
-			if value.len > 0 {
-				primitive_type(Primitive(value[0]))
-			} else {
-				type_idx['int']
-			}
-		}
-		[]time.Time {
-			if value.len > 0 {
-				primitive_type(Primitive(value[0]))
-			} else {
-				type_idx['int']
-			}
-		}
-		[]u16 {
-			if value.len > 0 {
-				primitive_type(Primitive(value[0]))
-			} else {
-				type_idx['int']
-			}
-		}
-		[]u32 {
-			if value.len > 0 {
-				primitive_type(Primitive(value[0]))
-			} else {
-				type_idx['int']
-			}
-		}
-		[]u64 {
-			if value.len > 0 {
-				primitive_type(Primitive(value[0]))
-			} else {
-				type_idx['int']
-			}
-		}
-		[]u8 {
-			if value.len > 0 {
-				primitive_type(Primitive(value[0]))
-			} else {
-				type_idx['int']
-			}
-		}
-		[]InfixType {
-			if value.len > 0 {
-				primitive_type(Primitive(value[0]))
-			} else {
-				type_idx['int']
-			}
 		}
 	}
 }
@@ -1229,7 +1061,7 @@ pub fn orm_select_gen(cfg SelectConfig, q string, num bool, qm string, start_pos
 
 fn gen_where_clause(where QueryData, q string, qm string, num bool, mut c &int) string {
 	mut str := ''
-	mut data_idx := 0
+
 	for i, field in where.fields {
 		current_pre_par := where.parentheses.count(it[0] == i)
 		current_post_par := where.parentheses.count(it[1] == i)
@@ -1237,16 +1069,12 @@ fn gen_where_clause(where QueryData, q string, qm string, num bool, mut c &int) 
 		if current_pre_par > 0 {
 			str += ' ( '.repeat(current_pre_par)
 		}
-		str += gen_qualified_field(field, q) + ' ${where.kinds[i].to_str()}'
+		str += '${q}${field}${q} ${where.kinds[i].to_str()}'
 		if !where.kinds[i].is_unary() {
-			array_len := if where.data.len > data_idx {
-				primitive_array_len(where.data[data_idx])
-			} else {
-				-1
-			}
-			if array_len >= 0 {
-				mut tmp := []string{len: array_len}
-				for j in 0 .. array_len {
+			if where.data.len > i && where.data[i] is []Primitive {
+				len := (where.data[i] as []Primitive).len
+				mut tmp := []string{len: len}
+				for j in 0 .. len {
 					tmp[j] = '${qm}'
 					if num {
 						tmp[j] += '${c}'
@@ -1261,7 +1089,6 @@ fn gen_where_clause(where QueryData, q string, qm string, num bool, mut c &int) 
 					c++
 				}
 			}
-			data_idx++
 		}
 		if current_post_par > 0 {
 			str += ' ) '.repeat(current_post_par)
@@ -1275,16 +1102,6 @@ fn gen_where_clause(where QueryData, q string, qm string, num bool, mut c &int) 
 		}
 	}
 	return str
-}
-
-// gen_qualified_field renders a field name with the given quote character q.
-// When the field contains a dot (e.g. `users.tenant_id`), each part is quoted
-// separately so that table-qualified scope filters in JOIN queries are unambiguous.
-fn gen_qualified_field(field string, q string) string {
-	if idx := field.index('.') {
-		return '${q}${field[..idx]}${q}.${q}${field[idx + 1..]}${q}'
-	}
-	return '${q}${field}${q}'
 }
 
 // Generates an sql table stmt, from universal parameter
