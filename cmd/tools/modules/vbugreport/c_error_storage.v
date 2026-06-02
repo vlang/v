@@ -31,12 +31,33 @@ fn c_error_string(c_output string) string {
 		if lower.starts_with('warning:') {
 			continue
 		}
-		if lower.starts_with('error:') {
-			return trimmed
-		}
-		if idx := lower.index('error:') {
-			return trimmed[idx..]
+		if error_string := normalized_error_string(trimmed, lower) {
+			return error_string
 		}
 	}
 	return ''
+}
+
+fn normalized_error_string(trimmed string, lower string) ?string {
+	if lower.starts_with('fatal error:') || lower.starts_with('fatal error ') {
+		return 'error: ${trimmed}'
+	}
+	if lower.starts_with('error:') {
+		return trimmed
+	}
+	if lower.starts_with('error ') {
+		return 'error: ${trimmed['error '.len..]}'
+	}
+	for needle in [' fatal error:', ' fatal error '] {
+		if idx := lower.index(needle) {
+			return 'error: ${trimmed[idx + 1..]}'
+		}
+	}
+	if idx := lower.index(' error:') {
+		return trimmed[idx + 1..]
+	}
+	if idx := lower.index(' error ') {
+		return 'error: ${trimmed[idx + ' error '.len..]}'
+	}
+	return none
 }
