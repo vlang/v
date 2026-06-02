@@ -104,6 +104,21 @@ fn decode_payload(token string) !JwtPayload {
 }
 ```
 
+### HKDF
+
+```v
+import crypto.hkdf
+import crypto.sha256
+
+fn main() {
+	secret := 'shared secret'.bytes()
+	salt := 'salt'.bytes()
+	info := 'session keys'
+	key := hkdf.key(sha256.new, secret, salt, info, 32)!
+	assert key.len == 32
+}
+```
+
 ### Argon2 Password Hashing
 
 ```v

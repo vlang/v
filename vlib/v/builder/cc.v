@@ -277,6 +277,13 @@ fn c_error_missing_library_name(c_output string) string {
 	return ''
 }
 
+fn c_error_should_send_bug_report(c_output string) bool {
+	if c_error_missing_libatomic_marker(c_output) != '' {
+		return false
+	}
+	return c_error_missing_library_name(c_output) == ''
+}
+
 fn (mut v Builder) show_c_compiler_output(ccompiler string, res os.Result) {
 	header := '======== Output of the C Compiler (${ccompiler}) ========'
 	println(header)
@@ -388,7 +395,9 @@ fn (mut v Builder) post_process_c_compiler_output_with_report(ccompiler string, 
 			}
 		}
 	}
-	v.submit_c_error_bug_report(report_ccompiler, report_res.output)
+	if c_error_should_send_bug_report(report_res.output) {
+		v.submit_c_error_bug_report(report_ccompiler, report_res.output)
+	}
 	if v.pref.is_quiet {
 		exit(1)
 	}

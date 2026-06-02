@@ -188,6 +188,40 @@ fn pe_test_rva_to_file_off(image []u8, rva u32) int {
 	return -1
 }
 
+fn pe_test_import_names(image []u8) []string {
+	pe_off := int(pe_test_u32(image, 0x3c))
+	opt_off := pe_off + 4 + 20
+	import_rva := pe_test_u32(image, opt_off + 112 + pe_import_directory_index * 8)
+	if import_rva == 0 {
+		return []
+	}
+	import_off := pe_test_rva_to_file_off(image, import_rva)
+	assert import_off > 0
+	ilt_rva := pe_test_u32(image, import_off)
+	ilt_off := pe_test_rva_to_file_off(image, ilt_rva)
+	assert ilt_off > 0
+	mut names := []string{}
+	for i := 0; i < 128; i++ {
+		hint_name_rva := u32(pe_test_u64(image, ilt_off + i * 8))
+		if hint_name_rva == 0 {
+			return names
+		}
+		hint_name_off := pe_test_rva_to_file_off(image, hint_name_rva)
+		assert hint_name_off > 0
+		assert pe_test_u16(image, hint_name_off) == 0
+		assert hint_name_off % 2 == 0
+		names << pe_test_string(image, hint_name_off + 2)
+	}
+	assert false
+	return names
+}
+
+fn pe_test_iat_size(image []u8) u32 {
+	pe_off := int(pe_test_u32(image, 0x3c))
+	opt_off := pe_off + 4 + 20
+	return pe_test_u32(image, opt_off + 116 + pe_iat_directory_index * 8)
+}
+
 fn sample_pe_coff_object() &CoffObject {
 	mut obj := CoffObject.new()
 	obj.text_data << [u8(0xc3), 0xc3]
@@ -311,10 +345,11 @@ fn test_pe_linker_emits_pe32_plus_headers_and_sections() {
 	assert pe_test_u32(image, opt_off + 56) == idata_end
 }
 
-fn test_pe_linker_emits_kernel32_import_table() {
+fn test_pe_linker_emits_demand_driven_kernel32_import_table() {
 	obj := sample_pe_coff_object()
 	mut linker := PeLinker.new(obj)
 	image := linker.image() or { panic(err) }
+	expected_imports := ['ExitProcess']
 
 	pe_off := int(pe_test_u32(image, 0x3c))
 	opt_off := pe_off + 4 + 20
@@ -325,7 +360,7 @@ fn test_pe_linker_emits_kernel32_import_table() {
 	assert import_rva != 0
 	assert import_size == 40
 	assert iat_rva != 0
-	assert iat_size == u32((pe_kernel32_imports.len + 1) * 8)
+	assert iat_size == u32((expected_imports.len + 1) * 8)
 
 	import_off := pe_test_rva_to_file_off(image, import_rva)
 	assert import_off > 0
@@ -342,7 +377,7 @@ fn test_pe_linker_emits_kernel32_import_table() {
 	mut names := []string{}
 	ilt_off := pe_test_rva_to_file_off(image, ilt_rva)
 	iat_off := pe_test_rva_to_file_off(image, iat_rva)
-	for i in 0 .. pe_kernel32_imports.len {
+	for i in 0 .. expected_imports.len {
 		hint_name_rva := u32(pe_test_u64(image, ilt_off + i * 8))
 		hint_name_off := pe_test_rva_to_file_off(image, hint_name_rva)
 		assert pe_test_u16(image, hint_name_off) == 0
@@ -350,9 +385,47 @@ fn test_pe_linker_emits_kernel32_import_table() {
 		names << pe_test_string(image, hint_name_off + 2)
 		assert pe_test_u64(image, iat_off + i * 8) == pe_test_u64(image, ilt_off + i * 8)
 	}
-	assert pe_test_u64(image, ilt_off + pe_kernel32_imports.len * 8) == 0
-	assert pe_test_u64(image, iat_off + pe_kernel32_imports.len * 8) == 0
-	assert names == pe_kernel32_imports
+	assert pe_test_u64(image, ilt_off + expected_imports.len * 8) == 0
+	assert pe_test_u64(image, iat_off + expected_imports.len * 8) == 0
+	assert names == expected_imports
+	assert names == pe_test_import_names(image)
+	assert pe_test_iat_size(image) == u32((expected_imports.len + 1) * 8)
+	assert 'HeapAlloc' !in names
+	assert 'WriteFile' !in names
+}
+
+fn test_pe_linker_adds_direct_kernel32_imports_in_stable_order() {
+	mut obj := CoffObject.new()
+	obj.text_data << [u8(0xe8), 0, 0, 0, 0, 0xe8, 0, 0, 0, 0, 0xc3]
+	obj.add_symbol('main', 10, true, 1)
+	write_file_sym := obj.add_undefined('WriteFile')
+	get_std_handle_sym := obj.add_undefined('GetStdHandle')
+	obj.add_text_reloc(1, write_file_sym, coff_image_rel_amd64_rel32)
+	obj.add_text_reloc(6, get_std_handle_sym, coff_image_rel_amd64_rel32)
+
+	mut linker := PeLinker.new(obj)
+	image := linker.image() or { panic(err) }
+	names := pe_test_import_names(image)
+
+	assert names == ['ExitProcess', 'GetStdHandle', 'WriteFile']
+	assert pe_test_iat_size(image) == u32((names.len + 1) * 8)
+}
+
+fn test_pe_linker_adds_runtime_kernel32_import_patches_only_when_needed() {
+	mut obj := CoffObject.new()
+	obj.text_data << [u8(0xe8), 0, 0, 0, 0, 0xc3]
+	obj.add_symbol('main', 5, true, 1)
+	calloc_sym := obj.add_undefined('calloc')
+	obj.add_text_reloc(1, calloc_sym, coff_image_rel_amd64_rel32)
+
+	mut linker := PeLinker.new(obj)
+	image := linker.image() or { panic(err) }
+	names := pe_test_import_names(image)
+
+	assert names == ['ExitProcess', 'GetProcessHeap', 'HeapAlloc']
+	assert pe_test_iat_size(image) == u32((names.len + 1) * 8)
+	assert 'HeapFree' !in names
+	assert 'WriteFile' !in names
 }
 
 fn test_pe_linker_zeroes_unemitted_data_directories() {
@@ -913,26 +986,17 @@ fn test_pe_linker_resolves_wgetenv_with_kernel32_runtime_thunk() {
 	runtime_text_size := first_import_thunk_file_off - (text_raw + entry_stub_len +
 		obj.text_data.len)
 	import_offsets := linker.import_thunk_offsets(runtime_text_size)
+	names := pe_test_import_names(image)
+	assert names == ['ExitProcess', 'GetEnvironmentVariableW']
 	getenv_thunk := import_offsets['GetEnvironmentVariableW'] or {
 		panic('missing GetEnvironmentVariableW import thunk')
 	}
-	get_process_heap_thunk := import_offsets['GetProcessHeap'] or {
-		panic('missing GetProcessHeap import thunk')
-	}
-	heap_alloc_thunk := import_offsets['HeapAlloc'] or { panic('missing HeapAlloc import thunk') }
-	heap_free_thunk := import_offsets['HeapFree'] or { panic('missing HeapFree import thunk') }
 	getenv_thunk_rva := text_rva + getenv_thunk
-	get_process_heap_thunk_rva := text_rva + get_process_heap_thunk
-	heap_alloc_thunk_rva := text_rva + heap_alloc_thunk
-	heap_free_thunk_rva := text_rva + heap_free_thunk
 
 	mut has_buffer_arg_lea := false
 	mut has_buffer_return_lea := false
 	mut has_wgetenv_buffer_size := false
 	mut calls_getenv := false
-	mut calls_get_process_heap := false
-	mut calls_heap_alloc := false
-	mut calls_heap_free := false
 	runtime_scan_end := first_import_thunk_file_off - 8
 	for off in wgetenv_off .. runtime_scan_end {
 		if image[off..off + 3] == [u8(0x48), 0x8d, 0x15] {
@@ -958,24 +1022,15 @@ fn test_pe_linker_resolves_wgetenv_with_kernel32_runtime_thunk() {
 			if target == getenv_thunk_rva {
 				calls_getenv = true
 			}
-			if target == get_process_heap_thunk_rva {
-				calls_get_process_heap = true
-			}
-			if target == heap_alloc_thunk_rva {
-				calls_heap_alloc = true
-			}
-			if target == heap_free_thunk_rva {
-				calls_heap_free = true
-			}
 		}
 	}
 	assert has_buffer_arg_lea
 	assert has_buffer_return_lea
 	assert has_wgetenv_buffer_size
 	assert calls_getenv
-	assert !calls_get_process_heap
-	assert !calls_heap_alloc
-	assert !calls_heap_free
+	assert 'GetProcessHeap' !in names
+	assert 'HeapAlloc' !in names
+	assert 'HeapFree' !in names
 }
 
 fn test_pe_linker_resolves_aligned_realloc_with_internal_heap_thunk() {

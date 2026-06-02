@@ -44,6 +44,8 @@ NB: the build flags are shared with the run command too:
     Example: `v -v2 hello.v` or `v -v2 -b arm64 hello.v`.
     V2 defaults to the `cleanc` backend unless `-b`/`-backend` selects another one.
     Use `v -v2 -eval file.v` to run the V2 eval backend.
+    With `v -v2 -b x64` on macOS x64, eligible programs use the tiny object
+    path automatically. `-no-mos-tiny` disables it for comparison/debugging.
 
   -b <backend>, -backend <backend>
     Specifies the backend that will be used for building the executable.

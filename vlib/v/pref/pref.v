@@ -382,6 +382,7 @@ fn is_v2_passthrough_bool_flag(arg string) bool {
 		'--single-backend',
 		'-single-backend',
 		'--freestanding',
+		'-no-mos-tiny',
 	]
 }
 

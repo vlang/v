@@ -102,18 +102,11 @@ mut:
 }
 
 pub fn PeLinker.new(coff &CoffObject) &PeLinker {
-	mut linker := unsafe {
+	return unsafe {
 		&PeLinker{
 			coff: coff
 		}
 	}
-	for name in pe_kernel32_imports {
-		linker.imports << PeImport{
-			dll:  'kernel32.dll'
-			name: name
-		}
-	}
-	return linker
 }
 
 pub fn (mut l PeLinker) write(path string) ! {
@@ -123,7 +116,9 @@ pub fn (mut l PeLinker) write(path string) ! {
 }
 
 pub fn (mut l PeLinker) image() ![]u8 {
-	runtime_text := l.build_runtime_text()
+	mut runtime_text := l.build_runtime_text()
+	l.imports = l.required_kernel32_imports(runtime_text)!
+	l.patch_runtime_import_calls(mut runtime_text)!
 	mut text := l.build_text_section(runtime_text)!
 	mut data_data := l.coff.data_data.clone()
 	runtime_data_base := if runtime_text.data.len > 0 {
@@ -267,7 +262,10 @@ fn (l PeLinker) build_text_section(runtime_text PeRuntimeText) ![]u8 {
 	pe_patch_rel32(mut text, cursor + 1, u32(entry_stub_len) + main_rva, 0)
 	cursor += 5
 	cursor += 2
-	exit_thunk_off := u32(l.import_thunk_base(runtime_text.bytes.len))
+	import_offsets := l.import_thunk_offsets(runtime_text.bytes.len)
+	exit_thunk_off := import_offsets['ExitProcess'] or {
+		return error('PE linker internal error: missing ExitProcess import thunk')
+	}
 	pe_patch_rel32(mut text, cursor + 1, exit_thunk_off, 0)
 
 	return text
@@ -349,14 +347,68 @@ fn (l PeLinker) build_runtime_text() PeRuntimeText {
 		rt.symbols['builtin__new_array_from_c_array_noscan'] = runtime_base + u32(rt.bytes.len)
 		pe_emit_runtime_new_array_from_c_array_noscan(mut rt)
 	}
+	return rt
+}
+
+fn (l PeLinker) required_kernel32_imports(runtime_text PeRuntimeText) ![]PeImport {
+	mut required := map[string]bool{}
+	pe_require_kernel32_import(mut required, 'ExitProcess')!
+	for patch in runtime_text.import_patches {
+		pe_require_kernel32_import(mut required, patch.import_name)!
+	}
+	for reloc in l.coff.text_relocs {
+		if reloc.sym_idx < 0 || reloc.sym_idx >= l.coff.symbols.len {
+			continue
+		}
+		sym := l.coff.symbols[reloc.sym_idx]
+		if sym.section != 0 {
+			continue
+		}
+		if _ := runtime_text.symbols[sym.name] {
+			continue
+		}
+		if pe_kernel32_import_is_known(sym.name) {
+			required[sym.name] = true
+		}
+	}
+
+	mut imports := []PeImport{cap: required.len}
+	for name in pe_kernel32_imports {
+		if required[name] {
+			imports << PeImport{
+				dll:  'kernel32.dll'
+				name: name
+			}
+		}
+	}
+	return imports
+}
+
+fn (l PeLinker) patch_runtime_import_calls(mut rt PeRuntimeText) ! {
+	runtime_base := u32(l.entry_stub_size() + l.coff.text_data.len)
 	import_offsets := l.import_thunk_offsets(rt.bytes.len)
 	for patch in rt.import_patches {
 		target := import_offsets[patch.import_name] or {
-			panic('PE linker internal error: missing import thunk for `${patch.import_name}`')
+			return error('PE linker internal error: missing import thunk for `${patch.import_name}`')
 		}
 		pe_patch_rel32(mut rt.bytes, patch.field_off, target, runtime_base)
 	}
-	return rt
+}
+
+fn pe_require_kernel32_import(mut required map[string]bool, name string) ! {
+	if !pe_kernel32_import_is_known(name) {
+		return error('PE linker internal error: unknown Kernel32 import `${name}`')
+	}
+	required[name] = true
+}
+
+fn pe_kernel32_import_is_known(name string) bool {
+	for known in pe_kernel32_imports {
+		if known == name {
+			return true
+		}
+	}
+	return false
 }
 
 fn (rt PeRuntimeText) symbol_rvas(text_rva u32) map[string]u32 {
