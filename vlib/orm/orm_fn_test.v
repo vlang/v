@@ -201,6 +201,31 @@ fn test_orm_stmt_gen_delete() {
 	assert query_or == "DELETE FROM 'Test' WHERE 'id' >= ?0 OR 'name' = ?1;"
 }
 
+fn test_orm_stmt_gen_where_unary_before_array() {
+	table := orm.Table{
+		name: 'Test'
+	}
+	query, _ := orm.orm_stmt_gen(.default, table, "'", .delete, true, '?', 0, orm.QueryData{}, orm.QueryData{
+		fields: ['deleted_at', 'tenant_id']
+		data:   [orm.Primitive([orm.Primitive(1), orm.Primitive(2)])]
+		kinds:  [.is_null, .in]
+		is_and: [true]
+	})
+	assert query == "DELETE FROM 'Test' WHERE 'deleted_at' IS NULL AND 'tenant_id' IN (?0, ?1);"
+}
+
+fn test_orm_stmt_gen_where_typed_array() {
+	table := orm.Table{
+		name: 'Test'
+	}
+	query, _ := orm.orm_stmt_gen(.default, table, "'", .delete, true, '?', 0, orm.QueryData{}, orm.QueryData{
+		fields: ['tenant_id']
+		data:   [orm.Primitive([1, 2])]
+		kinds:  [.in]
+	})
+	assert query == "DELETE FROM 'Test' WHERE 'tenant_id' IN (?0, ?1);"
+}
+
 fn get_select_fields() []string {
 	return ['id', 'test', 'abc']
 }
