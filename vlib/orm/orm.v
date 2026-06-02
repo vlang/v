@@ -627,7 +627,7 @@ mut:
 // QueryFilterMode describes whether a DataScope filter has a stable SQL shape or
 // needs runtime handling.
 pub enum QueryFilterMode {
-	unset // must be explicitly set to .static or .dynamic
+	unset // .static is not yet implemented — use .dynamic explicitly
 	static
 	dynamic
 }
@@ -748,7 +748,7 @@ fn apply_scope_filters(scope DataScope, table Table, qd QueryData, scope_skip_fi
 	}
 	for filter in scope.filters {
 		if filter.mode == .unset {
-			return error('orm.DataScope: QueryFilter.mode must be explicitly set to .static or .dynamic, got .unset for field `${filter.field}`')
+			return error('orm.DataScope: QueryFilter.mode must be explicitly set. .static is not yet implemented — use .dynamic. Got .unset for field `${filter.field}`')
 		}
 		if filter.mode != .dynamic {
 			continue
@@ -819,7 +819,7 @@ fn apply_scope_insert_filters(scope DataScope, table Table, data QueryData, scop
 	field_to_column := table_field_to_column_map(table)
 	for filter in scope.filters {
 		if filter.mode == .unset {
-			return error('orm.DataScope: QueryFilter.mode must be explicitly set to .static or .dynamic, got .unset for field `${filter.field}`')
+			return error('orm.DataScope: QueryFilter.mode must be explicitly set. .static is not yet implemented — use .dynamic. Got .unset for field `${filter.field}`')
 		}
 		if filter.mode != .dynamic {
 			continue
