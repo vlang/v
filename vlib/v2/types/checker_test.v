@@ -100,6 +100,49 @@ fn test_basic_literal_string() {
 	assert has_type(env, 'string'), 'string literal should have string type'
 }
 
+fn test_comptime_env_expr_has_string_type() {
+	env := check_code("const compile_time_backend = \$env('VIPER_BACKEND')
+
+fn main() {
+	_ = compile_time_backend
+}")
+	assert has_type(env, 'string'), '\$env should have string type'
+}
+
+fn test_alias_receiver_method_specialization_preserves_alias_return() {
+	prefs := &pref.Preferences{}
+	mut file_set := token.FileSet.new()
+	env := Environment.new()
+	checker := Checker.new(prefs, file_set, env)
+	base_type := Type(Struct{
+		name: 'math.vec__Vec4[f32]'
+	})
+	alias_type := Type(Alias{
+		name:      'viper__SimdFloat4'
+		base_type: base_type
+	})
+	method_type := Type(fn_with_return_type(empty_fn_type(), base_type))
+	specialized := checker.specialize_method_type_for_receiver(method_type, alias_type, '+')
+	assert specialized is FnType
+	ret_type := (specialized as FnType).return_type or { panic('missing return type') }
+	assert ret_type.name() == 'viper__SimdFloat4'
+}
+
+fn test_pointer_to_c_struct_field_re_resolves_stale_base_type() {
+	check_code('struct C.Buffer {
+	data voidptr
+}
+
+struct C.View {
+	buffer &C.Buffer
+}
+
+fn view_data(view &C.View) voidptr {
+	buffer := view.buffer
+	return buffer.data
+}')
+}
+
 fn test_inline_type_variants_are_valid_payloads() {
 	string_type := Type(string_)
 	assert !type_has_null_data(string_type)
@@ -167,6 +210,68 @@ fn test_find_method_specializes_array_first_return_type() {
 	fn_type := method as FnType
 	ret := fn_type.return_type or { panic('missing array.first return type') }
 	assert ret.name() == 'string'
+}
+
+fn test_non_array_sorted_method_uses_receiver_method_return_type() {
+	prefs := &pref.Preferences{}
+	mut file_set := token.FileSet.new()
+	env := Environment.new()
+	mut checker := Checker.new(prefs, file_set, env)
+	foo_type := Type(Struct{
+		name: 'Foo'
+	})
+	checker.scope.insert('foo', object_from_type(foo_type))
+	checker.register_method_type('Foo', 'sorted', FnType{
+		params:      [
+			Parameter{
+				name: 'value'
+				typ:  Type(int_)
+			},
+		]
+		return_type: Type(string_)
+	})
+	typ := checker.call_expr(&ast.CallExpr{
+		lhs:  ast.Expr(ast.SelectorExpr{
+			lhs: ast.Expr(ast.Ident{
+				name: 'foo'
+			})
+			rhs: ast.Ident{
+				name: 'sorted'
+			}
+		})
+		args: [
+			ast.Expr(ast.BasicLiteral{
+				kind:  .number
+				value: '1'
+			}),
+		]
+	})
+	assert typ.name() == 'string'
+}
+
+fn intrinsic_string_method_param_len(name string) int {
+	prefs := &pref.Preferences{}
+	mut file_set := token.FileSet.new()
+	env := Environment.new()
+	mut checker := Checker.new(prefs, file_set, env)
+	method := checker.find_field_or_method(Type(string_), name) or {
+		panic('missing intrinsic string method `${name}`')
+	}
+	assert method is FnType
+	return (method as FnType).params.len
+}
+
+fn test_intrinsic_string_method_arities_match_builtin_methods() {
+	for name in ['clone', 'trim_space', 'to_lower', 'to_upper', 'split_into_lines', 'is_blank'] {
+		assert intrinsic_string_method_param_len(name) == 0, '${name} should have no explicit parameters'
+	}
+	for name in ['trim', 'all_after', 'all_before', 'all_after_last', 'all_before_last', 'contains',
+		'starts_with', 'ends_with', 'split', 'index', 'last_index'] {
+		assert intrinsic_string_method_param_len(name) == 1, '${name} should have one explicit parameter'
+	}
+	for name in ['replace', 'index_after'] {
+		assert intrinsic_string_method_param_len(name) == 2, '${name} should have two explicit parameters'
+	}
 }
 
 fn test_slice_clone_preserves_array_type_for_method_chain() {

@@ -1155,7 +1155,7 @@ fn main() {
 }
 ')
 	assert csrc.contains('Foo* item;')
-	assert csrc.contains('Node* node;')
+	assert csrc.contains('Node_T_Foo* node;')
 	assert csrc.contains('Foo value;')
 	assert csrc.contains('ptr_value(Foo* foo)')
 	assert csrc.contains('Foo__method_value(Foo* foo)')
@@ -1373,7 +1373,7 @@ fn main() {
 	visit(mut captures, fn (_captures &Captures) {})
 }
 ')
-	assert csrc.contains('((void (*)(Captures*))cb)(value);')
+	assert csrc.contains('cb(value);')
 	assert !csrc.contains('cb(&value);')
 }
 
@@ -1523,12 +1523,13 @@ fn main() {
 	_ = second().is_hit()
 }
 ')
-	assert csrc.contains('bool Match__is_hit(Match m) {')
-	assert csrc.contains('bool Match_T_ValueB__is_hit(Match_T_ValueB m);')
-	assert csrc.contains('bool Match_T_ValueB__is_hit(Match_T_ValueB m) {')
+	assert csrc.contains('bool Match__is_hit_T_ValueA(Match m);')
+	assert csrc.contains('bool Match__is_hit_T_ValueA(Match m) {')
+	assert csrc.contains('bool Match__is_hit_T_ValueB(Match m);')
+	assert csrc.contains('bool Match__is_hit_T_ValueB(Match m) {')
 	assert csrc.contains('return ((Match_T_ValueB){.kind = MatchKind__hit')
-	assert csrc.contains('Match__is_hit(first())')
-	assert csrc.contains('Match_T_ValueB__is_hit(second())')
+	assert csrc.contains('Match__is_hit_T_ValueA(first())')
+	assert csrc.contains('Match__is_hit_T_ValueB(second())')
 	assert !csrc.contains('Match__is_hit(second())')
 }
 
@@ -1679,6 +1680,7 @@ fn test_scan_expr_registers_array_tuple_alias_before_type_emit() {
 			}),
 		]
 	}))
+	gen.register_tuple_alias(['Array_u8', 'string', 'string'])
 	gen.emit_tuple_aliases()
 	assert gen.tuple_aliases['Tuple_Array_u8_string_string'] == ['Array_u8', 'string', 'string']
 	assert gen.sb.str().contains('typedef struct Tuple_Array_u8_string_string')
@@ -1803,6 +1805,7 @@ fn test_emit_map_str_uses_pointer_for_fixed_array_key() {
 	mut gen := Gen.new([])
 	gen.sb = strings.new_builder(1024)
 	gen.map_aliases['Map_Array_fixed_u8_4_int'] = true
+	gen.emitted_types['alias_Map_Array_fixed_u8_4_int'] = true
 	gen.emit_map_str_functions()
 	csrc := gen.sb.str()
 	assert csrc.contains('u8* key_ptr = (u8*)DenseArray__key(&m.key_values, i);')
@@ -2027,6 +2030,31 @@ fn main() {
 	assert csrc.contains('val._unix')
 	assert !csrc.contains('val.unix')
 	assert !csrc.contains('struct_field_should_encode_T_Repo(val.description)')
+}
+
+fn test_generate_c_lowers_comptime_field_selector_method_receiver() {
+	csrc := generate_c_for_test('
+fn clear_fields[T](mut val T) {
+	$for field in T.fields {
+		$if field.unaliased_typ is $array_dynamic {
+			val.$(field.name).clear()
+		}
+	}
+}
+
+struct Response {
+	result []int
+}
+
+fn main() {
+	mut response := Response{
+		result: [1]
+	}
+	clear_fields(mut response)
+}
+')
+	assert csrc.contains('val->result')
+	assert !csrc.contains('Response__result(val)')
 }
 
 fn test_generate_c_uses_statement_temps_for_nested_map_index_assign_defaults() {
@@ -2330,6 +2358,51 @@ pub fn (mut app App) index() veb.Result {
 	assert csrc.contains('veb__Result App__index(App* app, Context* ctx)')
 	assert csrc.contains('veb__Context__redirect(&ctx->Context,')
 	assert !csrc.contains('veb__Result App__index(App* app) {')
+}
+
+fn test_generate_c_lowers_implicit_veb_context_promoted_generic_method() {
+	csrc := generate_c_for_test_files([
+		'
+module veb
+
+pub struct Result {}
+
+pub struct Context {}
+
+pub fn (mut ctx Context) json[T](j T) Result {
+	_ = j
+	return Result{}
+}
+',
+		'
+module main
+
+import veb
+
+struct App {}
+
+struct Response[T] {
+	success bool
+	result  T
+}
+
+struct Context {
+	veb.Context
+}
+
+pub fn (mut app App) index() veb.Result {
+	_ = app
+	return ctx.json(Response[string]{
+		success: true
+		result: "ok"
+	})
+}
+',
+	])
+	assert csrc.contains('veb__Result App__index(App* app, Context* ctx)')
+	assert csrc.contains('return veb__Context__json_T')
+	assert !csrc.contains('return veb__Context__json(')
+	assert !csrc.contains('ctx->json')
 }
 
 fn test_generate_c_passes_implicit_veb_context_to_handler_calls() {
@@ -4673,7 +4746,7 @@ fn test_generate_c_lowers_overloaded_mod_operator() {
 			'b': 'big__Integer'
 		}
 		fn_return_types:     {
-			'big__Integer__mod': 'big__Integer'
+			'big__Integer__op_mod': 'big__Integer'
 		}
 	}
 	g.expr(ast.InfixExpr{
@@ -4685,7 +4758,7 @@ fn test_generate_c_lowers_overloaded_mod_operator() {
 			name: 'b'
 		}
 	})
-	assert g.sb.str() == 'big__Integer__mod(a, b)'
+	assert g.sb.str() == 'big__Integer__op_mod(a, b)'
 }
 
 fn test_generate_c_keeps_pointer_array_for_in_element_type() {

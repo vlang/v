@@ -15,10 +15,13 @@ fn (mut t Transformer) gen_map_iter_temp_name(suffix string) string {
 }
 
 fn (t &Transformer) iter_expr_needs_deref(expr ast.Expr) bool {
+	if t.is_pointer_type_expr(expr) {
+		return true
+	}
 	if expr is ast.Ident {
 		if obj := t.scope.lookup_parent(expr.name, 0) {
 			mut base := obj.typ()
-			for {
+			for _ in 0 .. 64 {
 				if base is types.Pointer {
 					return true
 				}
@@ -33,7 +36,7 @@ fn (t &Transformer) iter_expr_needs_deref(expr ast.Expr) bool {
 	}
 	if iter_type := t.get_expr_type(expr) {
 		mut base := iter_type
-		for {
+		for _ in 0 .. 64 {
 			if base is types.Pointer {
 				return true
 			}
@@ -75,9 +78,23 @@ fn (mut t Transformer) register_for_in_lhs_type(lhs ast.Expr, typ types.Type) {
 	}
 }
 
+fn (mut t Transformer) register_for_in_var_type(name string, typ types.Type) {
+	if name == '' || name == '_' {
+		return
+	}
+	t.remember_local_decl_type(name, typ)
+	obj := value_object_from_type(typ)
+	if t.scope != unsafe { nil } {
+		t.scope.insert_or_update(name, obj)
+	}
+	if t.fn_root_scope != unsafe { nil } {
+		t.fn_root_scope.insert_or_update(name, obj)
+	}
+}
+
 fn (t &Transformer) is_string_iterable_type(iter_type types.Type) bool {
 	mut cur := iter_type
-	for {
+	for _ in 0 .. 64 {
 		if cur is types.Pointer {
 			cur = (cur as types.Pointer).base_type
 			continue
@@ -101,6 +118,39 @@ fn (t &Transformer) for_in_value_type(iter_type types.Type) types.Type {
 	return iter_type.value_type()
 }
 
+fn (t &Transformer) for_in_value_uses_array_index(value_type types.Type) bool {
+	mut cur := value_type
+	for _ in 0 .. 64 {
+		if cur is types.Alias {
+			cur = (cur as types.Alias).base_type
+			continue
+		}
+		break
+	}
+	return cur is types.Array || cur is types.ArrayFixed || cur is types.Map || cur is types.Struct
+}
+
+fn (t &Transformer) for_in_iter_expr_type(expr ast.Expr) ?types.Type {
+	mut base_expr := expr
+	for _ in 0 .. 8 {
+		if base_expr is ast.ModifierExpr {
+			base_expr = base_expr.expr
+			continue
+		}
+		if base_expr is ast.ParenExpr {
+			base_expr = base_expr.expr
+			continue
+		}
+		break
+	}
+	if base_expr is ast.Ident {
+		if typ := t.lookup_var_type(base_expr.name) {
+			return typ
+		}
+	}
+	return t.get_expr_type(expr)
+}
+
 fn (t &Transformer) generic_iter_value_placeholder(expr ast.Expr) ?string {
 	match expr {
 		ast.Ident {
@@ -120,11 +170,11 @@ fn (t &Transformer) generic_iter_value_placeholder(expr ast.Expr) ?string {
 
 fn (mut t Transformer) iter_value_expr(orig ast.Expr, transformed ast.Expr, pos token.Pos, value_type types.Type) ast.Expr {
 	t.register_synth_type(pos, value_type)
-	base_expr := ast.Expr(ast.ParenExpr{
-		expr: transformed
-		pos:  pos
-	})
 	if t.iter_expr_needs_deref(orig) {
+		base_expr := ast.Expr(ast.ParenExpr{
+			expr: transformed
+			pos:  pos
+		})
 		deref_expr := ast.Expr(ast.PrefixExpr{
 			op:   .mul
 			expr: base_expr
@@ -135,7 +185,29 @@ fn (mut t Transformer) iter_value_expr(orig ast.Expr, transformed ast.Expr, pos 
 			pos:  pos
 		})
 	}
-	return base_expr
+	return transformed
+}
+
+fn (mut t Transformer) array_data_index_expr(array_expr ast.Expr, index_expr ast.Expr, value_type types.Type, pos token.Pos) ast.Expr {
+	t.register_synth_type(pos, value_type)
+	data_expr := t.synth_selector(array_expr, 'data', types.Type(types.voidptr_))
+	ptr_pos := t.next_synth_pos()
+	t.register_synth_type(ptr_pos, types.Type(types.Pointer{
+		base_type: value_type
+	}))
+	elem_type_name := t.type_to_c_decl_name(value_type)
+	typed_data := ast.Expr(ast.CastExpr{
+		typ:  ast.Ident{
+			name: '${elem_type_name}*'
+		}
+		expr: data_expr
+		pos:  ptr_pos
+	})
+	return ast.Expr(ast.IndexExpr{
+		lhs:  typed_data
+		expr: index_expr
+		pos:  pos
+	})
 }
 
 fn (mut t Transformer) smartcast_map_iter_value_expr(iter_expr ast.Expr, map_type types.Map) ast.Expr {
@@ -415,7 +487,7 @@ fn (mut t Transformer) try_expand_for_in_map(stmt ast.ForStmt) ?[]ast.Stmt {
 			}
 		}
 		// Register key variable type in scope for later string detection
-		t.scope.insert(key_name, value_object_from_type(map_type.key_type))
+		t.register_for_in_var_type(key_name, map_type.key_type)
 	}
 
 	// v := *(ValueType*)DenseArray__value(&map_expr.key_values, _map_idx)
@@ -451,7 +523,7 @@ fn (mut t Transformer) try_expand_for_in_map(stmt ast.ForStmt) ?[]ast.Stmt {
 			rhs: [ast.Expr(value_deref)]
 		}
 		// Register value variable type in scope for later type detection
-		t.scope.insert(value_name, value_object_from_type(map_type.value_type))
+		t.register_for_in_var_type(value_name, map_type.value_type)
 	}
 
 	// Add the original body statements (NOT transformed here - transform_stmts will do it)
@@ -500,7 +572,7 @@ fn (mut t Transformer) transform_for_stmt(stmt ast.ForStmt) ast.ForStmt {
 		}
 		// `for r in s.runes_iterator()` - lower as indexed string iteration.
 		if iter_base := t.runes_iterator_base_expr(for_in.expr) {
-			if base_type := t.get_expr_type(iter_base) {
+			if base_type := t.for_in_iter_expr_type(iter_base) {
 				result := t.transform_array_for_in_with_value_type(stmt, ast.ForInStmt{
 					key:   for_in.key
 					value: for_in.value
@@ -513,7 +585,7 @@ fn (mut t Transformer) transform_for_stmt(stmt ast.ForStmt) ast.ForStmt {
 		// Check if the for-in expression is smartcast to a specific type
 		// (e.g., `match size { []f64 { for v in size { ... } } }`)
 		if sc := t.find_smartcast_for_expr(t.expr_to_string(for_in.expr)) {
-			if orig_type := t.get_expr_type(for_in.expr) {
+			if orig_type := t.for_in_iter_expr_type(for_in.expr) {
 				if orig_type is types.SumType {
 					for variant in orig_type.variants {
 						variant_name := t.type_to_c_name(variant)
@@ -529,7 +601,7 @@ fn (mut t Transformer) transform_for_stmt(stmt ast.ForStmt) ast.ForStmt {
 				}
 			}
 		}
-		if iter_type := t.get_expr_type(for_in.expr) {
+		if iter_type := t.for_in_iter_expr_type(for_in.expr) {
 			// Normalize pointer/alias wrappers so for-in lowering works for
 			// method receivers like `mut a []T` and aliased array types.
 			mut iter_base_type := iter_type
@@ -577,14 +649,14 @@ fn (mut t Transformer) transform_for_stmt(stmt ast.ForStmt) ast.ForStmt {
 			if for_in.value is ast.Ident {
 				value_name := (for_in.value as ast.Ident).name
 				if value_name != '' && value_name != '_' {
-					t.scope.insert(value_name, value_object_from_type(value_type))
+					t.register_for_in_var_type(value_name, value_type)
 				}
 			}
 			key_type := iter_type.key_type()
 			if for_in.key is ast.Ident {
 				key_name := (for_in.key as ast.Ident).name
 				if key_name != '' && key_name != '_' {
-					t.scope.insert(key_name, value_object_from_type(key_type))
+					t.register_for_in_var_type(key_name, key_type)
 				}
 			}
 			transformed_stmts := t.transform_stmts(stmt.stmts)
@@ -682,8 +754,9 @@ fn (mut t Transformer) transform_untyped_for_in(stmt ast.ForStmt, for_in ast.For
 		pos:  idx_pos
 	}
 	if int_obj := t.scope.lookup_parent('int', 0) {
-		t.scope.insert(key_name, int_obj)
-		t.register_synth_type(idx_pos, int_obj.typ())
+		int_type := int_obj.typ()
+		t.register_for_in_var_type(key_name, int_type)
+		t.register_synth_type(idx_pos, int_type)
 	}
 	iter_typ := t.get_expr_type(for_in.expr)
 	iter_pos := t.next_synth_pos()
@@ -830,8 +903,8 @@ fn (mut t Transformer) transform_array_for_in_with_value_type(stmt ast.ForStmt, 
 
 	// Register loop variables in scope
 	key_type := iter_type.key_type()
-	t.scope.insert(key_name, value_object_from_type(key_type))
-	t.scope.insert(value_name, value_object_from_type(value_type))
+	t.register_for_in_var_type(key_name, key_type)
+	t.register_for_in_var_type(value_name, value_type)
 	had_generic_value := value_name in t.generic_var_type_params
 	old_generic_value := t.generic_var_type_params[value_name] or { '' }
 	if placeholder := t.generic_iter_value_placeholder(for_in.expr) {
@@ -848,12 +921,18 @@ fn (mut t Transformer) transform_array_for_in_with_value_type(stmt ast.ForStmt, 
 	index_pos := t.next_synth_pos()
 	t.register_synth_type(index_pos, value_type)
 
-	// Build: elem := arr[_idx] (or elem := &arr[_idx] for mut)
-	index_expr := ast.Expr(ast.IndexExpr{
-		lhs:  transformed_expr
-		expr: key_ident
-		pos:  index_pos
-	})
+	// Build: elem := ((T*)arr.data)[_idx] (or elem := &((T*)arr.data)[_idx] for mut).
+	// String indexing is still handled as `s[_idx]`, because the string payload field is `.str`.
+	index_expr := if t.is_string_iterable_type(iter_type)
+		|| t.for_in_value_uses_array_index(value_type) {
+		ast.Expr(ast.IndexExpr{
+			lhs:  transformed_expr
+			expr: key_ident
+			pos:  index_pos
+		})
+	} else {
+		t.array_data_index_expr(transformed_expr, ast.Expr(key_ident), value_type, index_pos)
+	}
 	// For mut loop variables: take address for in-place mutation.
 	// But when the element type is already a pointer (e.g., []&MenuItem),
 	// the pointer itself allows mutation — don't add another & level.
@@ -865,6 +944,12 @@ fn (mut t Transformer) transform_array_for_in_with_value_type(stmt ast.ForStmt, 
 	} else {
 		value_type
 	}
+	value_decl_pos := t.next_synth_pos()
+	value_decl_lhs := ast.Expr(ast.Ident{
+		name: value_name
+		pos:  value_decl_pos
+	})
+	t.register_synth_type(value_decl_pos, value_lhs_type)
 	t.register_for_in_lhs_type(value_lhs, value_lhs_type)
 	value_rhs := if is_mut_value && !value_is_ptr {
 		ptr_pos := t.next_synth_pos()
@@ -880,7 +965,7 @@ fn (mut t Transformer) transform_array_for_in_with_value_type(stmt ast.ForStmt, 
 	}
 	value_assign := ast.AssignStmt{
 		op:  .decl_assign
-		lhs: [value_lhs]
+		lhs: [value_decl_lhs]
 		rhs: [value_rhs]
 	}
 
@@ -936,7 +1021,7 @@ fn (mut t Transformer) transform_range_for_in(stmt ast.ForStmt, for_in ast.ForIn
 	}
 
 	if int_obj := t.scope.lookup_parent('int', 0) {
-		t.scope.insert(value_name, int_obj)
+		t.register_for_in_var_type(value_name, int_obj.typ())
 	}
 
 	cmp_op := if range.op == .ellipsis { token.Token.le } else { token.Token.lt } // `...` inclusive, `..` exclusive
@@ -1024,8 +1109,8 @@ fn (mut t Transformer) transform_fixed_array_for_in(stmt ast.ForStmt, for_in ast
 	// Register loop variables in scope
 	key_type := types.Type(arr_type).key_type()
 	value_type := types.Type(arr_type).value_type()
-	t.scope.insert(key_name, value_object_from_type(key_type))
-	t.scope.insert(value_name, value_object_from_type(value_type))
+	t.register_for_in_var_type(key_name, key_type)
+	t.register_for_in_var_type(value_name, value_type)
 	t.register_synth_type(idx_pos, key_type)
 
 	// Transform the iterable expression
@@ -1037,9 +1122,16 @@ fn (mut t Transformer) transform_fixed_array_for_in(stmt ast.ForStmt, for_in ast
 	t.register_synth_type(index_pos, value_type)
 
 	// Build: elem := fixed_arr[i]
+	value_decl_pos := t.next_synth_pos()
+	value_decl_lhs := ast.Expr(ast.Ident{
+		name: value_name
+		pos:  value_decl_pos
+	})
+	t.register_synth_type(value_decl_pos, value_type)
+	t.register_for_in_lhs_type(value_lhs, value_type)
 	value_assign := ast.AssignStmt{
 		op:  .decl_assign
-		lhs: [value_lhs]
+		lhs: [value_decl_lhs]
 		rhs: [
 			ast.Expr(ast.IndexExpr{
 				lhs:  transformed_expr

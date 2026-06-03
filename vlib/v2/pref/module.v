@@ -46,6 +46,22 @@ fn module_root_for_file(path string) string {
 	return ''
 }
 
+fn find_module_path_in_parent_dirs(mod_path string, importing_file_path string) ?string {
+	mut dir := os.dir(importing_file_path)
+	for dir.len > 0 {
+		parent_relative_path := module_path_join(dir, mod_path)
+		if dir_exists(parent_relative_path) {
+			return parent_relative_path
+		}
+		parent := os.dir(dir)
+		if parent == dir {
+			break
+		}
+		dir = parent
+	}
+	return none
+}
+
 // check for relative and then vlib
 pub fn (p &Preferences) get_module_path(mod string, importing_file_path string) string {
 	mod_path := mod.replace('.', os.path_separator)
@@ -61,6 +77,9 @@ pub fn (p &Preferences) get_module_path(mod string, importing_file_path string) 
 		if dir_exists(root_relative_path) {
 			return root_relative_path
 		}
+	}
+	if parent_relative_path := find_module_path_in_parent_dirs(mod_path, importing_file_path) {
+		return parent_relative_path
 	}
 	cwd_relative_path := module_path_join(os.getwd(), mod_path)
 	if dir_exists(cwd_relative_path) {

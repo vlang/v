@@ -77,6 +77,7 @@ const force_external_syms = ['_malloc', '_free', '_calloc', '_realloc', '_exit',
 	'_time', '_localtime_r', '_gmtime_r', '_mktime', '_gettimeofday',
 	'_clock_gettime_nsec_np', '_mach_absolute_time', '_mach_timebase_info', '_nanosleep', '_sleep',
 	'_usleep', '_strftime',
+	'_task_info', '_mach_task_self_',
 	// Other
 	'_rand', '_srand', '_isdigit', '_isspace', '_tolower', '_toupper', '_setenv',
 	'_unsetenv', '_sysconf', '_uname', '_gethostname', '_pthread_mutex_init', '_pthread_mutex_lock',

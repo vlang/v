@@ -27,8 +27,7 @@ fn (mut g Gen) set_file_module(file ast.File) {
 			return
 		}
 	}
-	// Files without a module declaration are in the 'main' module
-	g.cur_module = 'main'
+	g.cur_module = if file.mod != '' { file.mod.replace('.', '_') } else { 'main' }
 }
 
 fn (mut g Gen) gen_stmts(stmts []ast.Stmt) {
@@ -68,6 +67,79 @@ fn (mut g Gen) gen_scoped_expr_stmts(expr ast.Expr) {
 	g.runtime_local_types = saved_runtime_local_types.clone()
 	g.runtime_decl_types = saved_runtime_decl_types.clone()
 	g.not_local_var_cache = saved_not_local_var_cache.clone()
+}
+
+fn tuple_field_types_need_stmt_expr(field_types []string) bool {
+	for field_type in field_types {
+		if field_type.starts_with('Array_fixed_') && !field_type.ends_with('*') {
+			return true
+		}
+	}
+	return false
+}
+
+fn (mut g Gen) gen_tuple_field_expr_value(field_type string, expr ast.Expr) {
+	if g.is_interface_type(field_type) {
+		expr_type := g.get_expr_type(expr).trim_right('*')
+		if expr_type != '' && expr_type != field_type && !g.is_interface_type(expr_type) {
+			if g.gen_interface_cast(field_type, expr) {
+				return
+			}
+		}
+	}
+	g.expr(expr)
+}
+
+fn (mut g Gen) gen_tuple_field_stmt_expr_assign(tuple_name string, idx int, field_type string, expr ast.Expr) {
+	field_name := '${tuple_name}.arg${idx}'
+	if field_type.starts_with('Array_fixed_') && !field_type.ends_with('*') {
+		if expr is ast.CallExpr {
+			if call_ret := g.get_call_return_type(expr.lhs, expr.args) {
+				if call_ret == field_type {
+					wrapper_type := g.c_fn_return_type_from_v(field_type)
+					tmp_name := '_tuple_arr_${g.tmp_counter}'
+					g.tmp_counter++
+					g.sb.write_string('{ ${wrapper_type} ${tmp_name} = ')
+					g.expr(expr)
+					g.sb.write_string('; memcpy(${field_name}, ${tmp_name}.ret_arr, sizeof(${field_type})); } ')
+					return
+				}
+			}
+		}
+		if expr is ast.IfExpr {
+			g.gen_decl_if_expr(field_name, field_type, &expr)
+			return
+		}
+		g.sb.write_string('memcpy(${field_name}, ')
+		if expr is ast.ArrayInitExpr {
+			g.sb.write_string('((${field_type})')
+			g.expr(expr)
+			g.sb.write_string(')')
+		} else {
+			g.expr(expr)
+		}
+		g.sb.write_string(', sizeof(${field_type})); ')
+		return
+	}
+	g.sb.write_string('${field_name} = ')
+	g.gen_tuple_field_expr_value(field_type, expr)
+	g.sb.write_string('; ')
+}
+
+fn (mut g Gen) gen_tuple_value_stmt_expr(tuple_type string, tuple_exprs []ast.Expr, field_types []string) {
+	tmp_name := '_tuple_ret_${g.tmp_counter}'
+	g.tmp_counter++
+	g.sb.write_string('({ ${tuple_type} ${tmp_name} = (${tuple_type}){0}; ')
+	for i, field_type in field_types {
+		if i < tuple_exprs.len {
+			g.gen_tuple_field_stmt_expr_assign(tmp_name, i, field_type, tuple_exprs[i])
+		} else if field_type.starts_with('Array_fixed_') && !field_type.ends_with('*') {
+			g.sb.write_string('memset(${tmp_name}.arg${i}, 0, sizeof(${field_type})); ')
+		} else {
+			g.sb.write_string('${tmp_name}.arg${i} = ${zero_value_for_type(field_type)}; ')
+		}
+	}
+	g.sb.write_string('${tmp_name}; })')
 }
 
 fn (mut g Gen) gen_stmt(node ast.Stmt) {
@@ -138,6 +210,12 @@ fn (mut g Gen) gen_stmt(node ast.Stmt) {
 					tuple_exprs = shallow_copy_exprs(tuple_expr.exprs)
 				}
 				field_types := g.tuple_aliases[g.cur_fn_ret_type] or { []string{} }
+				if tuple_field_types_need_stmt_expr(field_types) {
+					g.sb.write_string('return ')
+					g.gen_tuple_value_stmt_expr(g.cur_fn_ret_type, tuple_exprs, field_types)
+					g.sb.writeln(';')
+					return
+				}
 				g.sb.write_string('return ((${g.cur_fn_ret_type}){')
 				for i, field_type in field_types {
 					if i > 0 {
@@ -145,22 +223,7 @@ fn (mut g Gen) gen_stmt(node ast.Stmt) {
 					}
 					g.sb.write_string('.arg${i} = ')
 					if i < tuple_exprs.len {
-						// If the field type is an interface and the expression is a
-						// concrete type (e.g., from smartcast narrowing), wrap in interface.
-						if g.is_interface_type(field_type) {
-							expr_type := g.get_expr_type(tuple_exprs[i]).trim_right('*')
-							if expr_type != '' && expr_type != field_type
-								&& !g.is_interface_type(expr_type) {
-								if g.gen_interface_cast(field_type, tuple_exprs[i]) {
-								} else {
-									g.expr(tuple_exprs[i])
-								}
-							} else {
-								g.expr(tuple_exprs[i])
-							}
-						} else {
-							g.expr(tuple_exprs[i])
-						}
+						g.gen_tuple_field_expr_value(field_type, tuple_exprs[i])
 					} else {
 						g.sb.write_string(zero_value_for_type(field_type))
 					}
@@ -283,6 +346,12 @@ fn (mut g Gen) gen_stmt(node ast.Stmt) {
 						tuple_expr := node.exprs[0] as ast.Tuple
 						tuple_exprs = shallow_copy_exprs(tuple_expr.exprs)
 					}
+					if tuple_field_types_need_stmt_expr(field_types) {
+						g.sb.write_string('return ({ ${g.cur_fn_ret_type} _opt = (${g.cur_fn_ret_type}){ .state = 2 }; ${value_type} _val = ')
+						g.gen_tuple_value_stmt_expr(value_type, tuple_exprs, field_types)
+						g.sb.writeln('; _option_ok(&_val, (_option*)&_opt, sizeof(_val)); _opt; });')
+						return
+					}
 					g.sb.write_string('return ({ ${g.cur_fn_ret_type} _opt = (${g.cur_fn_ret_type}){ .state = 2 }; ${value_type} _val = (${value_type}){')
 					for i, field_type in field_types {
 						if i > 0 {
@@ -333,6 +402,12 @@ fn (mut g Gen) gen_stmt(node ast.Stmt) {
 				value_type := g.result_value_c_type(g.cur_fn_ret_type)
 				if value_type in g.tuple_aliases && node.exprs.len > 1 {
 					field_types := g.tuple_aliases[value_type]
+					if tuple_field_types_need_stmt_expr(field_types) {
+						g.sb.write_string('return ({ ${g.cur_fn_ret_type} _res = (${g.cur_fn_ret_type}){0}; ${value_type} _val = ')
+						g.gen_tuple_value_stmt_expr(value_type, node.exprs, field_types)
+						g.sb.writeln('; _result_ok(&_val, (_result*)&_res, sizeof(_val)); _res; });')
+						return
+					}
 					g.sb.write_string('return ({ ${g.cur_fn_ret_type} _res = (${g.cur_fn_ret_type}){0}; ${value_type} _val = (${value_type}){')
 					for i, field_type in field_types {
 						if i > 0 {
@@ -452,6 +527,8 @@ fn (mut g Gen) gen_stmt(node ast.Stmt) {
 					// to return the pointer directly.
 					deref := expr.expr as ast.PrefixExpr
 					g.expr(deref.expr)
+				} else if vector_elem_type_for_name(g.cur_fn_ret_type) != '' && expr is ast.InitExpr
+					&& g.gen_simd_vector_init_expr(g.cur_fn_ret_type, expr.fields) {
 				} else if g.gen_auto_deref_value_param_arg(g.cur_fn_ret_type, expr) {
 				} else {
 					g.expr(expr)
@@ -603,9 +680,12 @@ fn (mut g Gen) gen_comptime_for(node ast.ForStmt) {
 	}
 	type_name := sel.lhs.name()
 	concrete := g.active_generic_types[type_name] or {
-		g.write_indent()
-		g.sb.writeln('/* [TODO] ComptimeFor unknown type ${type_name} */')
-		return
+		c_name := g.expr_type_to_c(sel.lhs).trim_space()
+		g.concrete_type_from_c_name(c_name) or {
+			g.write_indent()
+			g.sb.writeln('/* [TODO] ComptimeFor unknown type ${type_name} */')
+			return
+		}
 	}
 	if concrete !is types.Struct {
 		g.write_indent()

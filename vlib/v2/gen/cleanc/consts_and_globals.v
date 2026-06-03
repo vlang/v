@@ -406,6 +406,16 @@ fn (mut g Gen) const_expr_c_value_for_header(expr ast.Expr) ?string {
 	return g.const_expr_c_value_for_header_in_module(expr, g.cur_module, 0)
 }
 
+fn (mut g Gen) resolved_scalar_const_expr(expr ast.Expr, rendered string) string {
+	if expr_contains_ident(expr) {
+		if value := g.const_expr_c_value_for_header(expr) {
+			return value
+		}
+		return g.resolve_const_expr(rendered)
+	}
+	return rendered
+}
+
 fn (mut g Gen) const_expr_c_value_for_header_in_module(expr ast.Expr, mod string, depth int) ?string {
 	if depth > 20 {
 		return none
@@ -487,10 +497,40 @@ fn (mut g Gen) const_expr_c_value_for_header_in_module(expr ast.Expr, mod string
 			return '(${value})'
 		}
 		ast.CastExpr {
-			return g.const_expr_c_value_for_header_in_module(expr.expr, mod, depth + 1)
+			value := g.const_expr_c_value_for_header_in_module(expr.expr, mod, depth + 1) or {
+				return none
+			}
+			typ := g.expr_type_to_c(expr.typ)
+			if typ == '' || typ == 'void' {
+				return value
+			}
+			return '((${typ})(${value}))'
 		}
 		ast.CallOrCastExpr {
-			return g.const_expr_c_value_for_header_in_module(expr.expr, mod, depth + 1)
+			value := g.const_expr_c_value_for_header_in_module(expr.expr, mod, depth + 1) or {
+				return none
+			}
+			if !g.call_or_cast_lhs_is_type(expr.lhs) {
+				return none
+			}
+			typ := g.expr_type_to_c(expr.lhs)
+			if typ == '' || typ == 'void' {
+				return value
+			}
+			return '((${typ})(${value}))'
+		}
+		ast.CallExpr {
+			if !g.call_or_cast_lhs_is_type(expr.lhs) || expr.args.len != 1 {
+				return none
+			}
+			value := g.const_expr_c_value_for_header_in_module(expr.args[0], mod, depth + 1) or {
+				return none
+			}
+			typ := g.expr_type_to_c(expr.lhs)
+			if typ == '' || typ == 'void' {
+				return value
+			}
+			return '((${typ})(${value}))'
 		}
 		else {}
 	}
@@ -659,11 +699,7 @@ fn (mut g Gen) gen_const_decl_extern(node ast.ConstDecl) {
 		if !name.contains('__') && is_numeric_const_expr(field.value) {
 			typ := g.const_decl_storage_type(field.value)
 			if typ != '' && typ != 'void' {
-				resolved := if expr_contains_ident(field.value) {
-					g.resolve_const_expr(macro_expr)
-				} else {
-					macro_expr
-				}
+				resolved := g.resolved_scalar_const_expr(field.value, macro_expr)
 				g.const_exprs[name] = resolved
 				g.sb.writeln('static const ${typ} ${c_name} = ${resolved};')
 				continue
@@ -672,11 +708,7 @@ fn (mut g Gen) gen_const_decl_extern(node ast.ConstDecl) {
 		if !name.contains('__') {
 			typ := g.const_decl_storage_type(field.value)
 			if g.is_scalar_zero_init_type(typ) || typ == 'string' {
-				resolved := if expr_contains_ident(field.value) {
-					g.resolve_const_expr(macro_expr)
-				} else {
-					macro_expr
-				}
+				resolved := g.resolved_scalar_const_expr(field.value, macro_expr)
 				g.sb.writeln('static const ${typ} ${c_name} = ${resolved};')
 				continue
 			}
@@ -1031,24 +1063,20 @@ fn (mut g Gen) gen_const_decl(node ast.ConstDecl) {
 			typ in ['bool', 'char', 'rune', 'int', 'i8', 'i16', 'i32', 'i64', 'u8', 'u16', 'u32', 'u64', 'usize', 'isize', 'f32', 'f64']
 			|| g.is_enum_type(typ) {
 			value_expr := g.expr_to_string(field.value)
-			g.const_exprs[name] = value_expr
+			resolved_value_expr := g.resolved_scalar_const_expr(field.value, value_expr)
+			g.const_exprs[name] = resolved_value_expr
 			// Qualified const names are safe as macros and work in C constant-expression
 			// contexts (array sizes, static initializers).
 			if name.contains('__') {
-				g.sb.writeln('#define ${c_name} ${value_expr}')
+				g.sb.writeln('#define ${c_name} ${resolved_value_expr}')
 				if g.export_const_symbols {
-					g.queue_exported_const_symbol(c_name, typ, value_expr)
+					g.queue_exported_const_symbol(c_name, typ, resolved_value_expr)
 				}
 			} else {
 				// Unqualified names use static const to avoid macro collisions.
 				// If the expression references other constants, inline their values
 				// so that tcc (and strict C) accepts the initializer.
-				resolved := if expr_contains_ident(field.value) {
-					g.resolve_const_expr(value_expr)
-				} else {
-					value_expr
-				}
-				g.sb.writeln('static const ${typ} ${c_name} = ${resolved};')
+				g.sb.writeln('static const ${typ} ${c_name} = ${resolved_value_expr};')
 			}
 		} else {
 			// C struct zero-init consts must be real global variables, not
@@ -1109,6 +1137,9 @@ fn is_numeric_const_expr(e ast.Expr) bool {
 		return true // references to other consts are still numeric
 	}
 	if e is ast.CallExpr {
+		if e.lhs is ast.Ident && e.lhs.name in primitive_types && e.args.len == 1 {
+			return is_numeric_const_expr(e.args[0])
+		}
 		// sizeof() is a compile-time numeric expression
 		if e.lhs is ast.Ident {
 			return e.lhs.name == 'sizeof'
@@ -1126,6 +1157,22 @@ fn expr_contains_ident(e ast.Expr) bool {
 	}
 	if e is ast.CastExpr {
 		return expr_contains_ident(e.expr)
+	}
+	if e is ast.CallOrCastExpr {
+		return expr_contains_ident(e.expr)
+	}
+	if e is ast.CallExpr {
+		if expr_contains_ident(e.lhs) {
+			return true
+		}
+		for arg in e.args {
+			if expr_contains_ident(arg) {
+				return true
+			}
+		}
+	}
+	if e is ast.SelectorExpr {
+		return true
 	}
 	if e is ast.ParenExpr {
 		return expr_contains_ident(e.expr)

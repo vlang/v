@@ -495,22 +495,84 @@ fn (b &Builder) virtual_main_group_for_path(file string) ?string {
 	return group
 }
 
+fn strip_leading_source_attributes(line string) string {
+	mut rest := line.trim_space()
+	for {
+		if rest.starts_with('@[') {
+			end := rest.index(']') or { return rest }
+			rest = rest[end + 1..].trim_space()
+			continue
+		}
+		if rest.starts_with('[') {
+			end := rest.index(']') or { return rest }
+			rest = rest[end + 1..].trim_space()
+			continue
+		}
+		break
+	}
+	return rest
+}
+
+fn source_line_declares_executable_main(line string) bool {
+	mut rest := strip_leading_source_attributes(line)
+	if rest.len == 0 || rest.starts_with('//') {
+		return false
+	}
+	if rest.starts_with('pub ') {
+		rest = rest[4..].trim_space()
+	}
+	if !rest.starts_with('fn') {
+		return false
+	}
+	rest = rest[2..].trim_space()
+	return rest.starts_with('main(') || rest.starts_with('main (')
+}
+
+fn source_file_declares_executable_main(path string) bool {
+	lines := os.read_lines(path) or { return false }
+	for line in lines {
+		if source_line_declares_executable_main(line) {
+			return true
+		}
+	}
+	return false
+}
+
+fn ast_file_declares_executable_main(file ast.File) bool {
+	for stmt in file.stmts {
+		if stmt is ast.FnDecl && !stmt.is_method && !stmt.is_static && stmt.language == .v
+			&& stmt.name == 'main' {
+			return true
+		}
+	}
+	return false
+}
+
 fn (b &Builder) collect_virtual_main_modules() []CachedVirtualModule {
 	mut grouped := map[string][]string{}
+	mut groups_with_main := map[string]bool{}
 	for file in b.files {
 		if file.name == '' || file.name.ends_with('.vh') || ast_file_module_name(file) != 'main' {
 			continue
 		}
 		group := b.virtual_main_group_for_path(file.name) or { continue }
+		if ast_file_declares_executable_main(file) {
+			groups_with_main[group] = true
+			continue
+		}
 		mut files := grouped[group] or { []string{} }
 		files << file.name
 		grouped[group] = files
+	}
+	for group, _ in groups_with_main {
+		grouped.delete(group)
 	}
 	return cached_virtual_modules_from_grouped_files(grouped)
 }
 
 fn (b &Builder) collect_virtual_main_modules_from_paths(paths []string) []CachedVirtualModule {
 	mut grouped := map[string][]string{}
+	mut groups_with_main := map[string]bool{}
 	for path in paths {
 		if path == '' || path.ends_with('.vh') || !os.exists(path) {
 			continue
@@ -519,9 +581,16 @@ fn (b &Builder) collect_virtual_main_modules_from_paths(paths []string) []Cached
 			continue
 		}
 		group := b.virtual_main_group_for_path(path) or { continue }
+		if source_file_declares_executable_main(path) {
+			groups_with_main[group] = true
+			continue
+		}
 		mut files := grouped[group] or { []string{} }
 		files << path
 		grouped[group] = files
+	}
+	for group, _ in groups_with_main {
+		grouped.delete(group)
 	}
 	return cached_virtual_modules_from_grouped_files(grouped)
 }
@@ -1249,9 +1318,10 @@ fn (b &Builder) import_modules_for_cached_modules(module_names []string) []Cache
 	}
 	mut import_set := map[string]bool{}
 	mut imports := []CachedImportModule{}
+	allow_pkgconfig_imports := !b.pref.is_cross_target()
 	for file in b.files {
-		for import_stmt in active_file_imports_with_explicit(file, b.pref.user_defines,
-			b.pref.explicit_user_defines, b.pref.source_filter_target_os()) {
+		for import_stmt in active_file_imports_with_options(file, b.pref.user_defines,
+			b.pref.explicit_user_defines, b.pref.source_filter_target_os(), allow_pkgconfig_imports) {
 			module_name := import_stmt.name.all_after_last('.')
 			if module_name !in module_set {
 				continue

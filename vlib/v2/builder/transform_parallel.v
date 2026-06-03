@@ -93,15 +93,24 @@ fn (mut b Builder) transform_files_parallel_no_post_pass_impl(mut trans transfor
 	} else {
 		trans.pre_pass(b.files)
 	}
+	mut stream_files_from_flat := stream_from_flat
+	mut files_to_transform := []ast.File{}
+	if trans.needs_full_files_for_transform() {
+		src_files := if stream_from_flat { b.flat.to_files() } else { b.files }
+		files_to_transform = trans.prepare_files_for_transform(src_files)
+		stream_files_from_flat = false
+	} else if !stream_from_flat {
+		files_to_transform = b.files.clone()
+	}
 
 	// In flat mode, workers stream the rehydration per file (one legacy
 	// ast.File in flight per worker at a time). Otherwise b.files is the
 	// canonical legacy-AST input — slice it across workers as before.
 	n_jobs := runtime.nr_jobs()
-	n_files := if stream_from_flat { b.flat.files.len } else { b.files.len }
+	n_files := if stream_files_from_flat { b.flat.files.len } else { files_to_transform.len }
 	$if windows {
 		mut result := []ast.File{cap: n_files}
-		if stream_from_flat {
+		if stream_files_from_flat {
 			for fi in 0 .. n_files {
 				one := b.flat.to_files_range(fi, fi + 1)
 				if one.len == 0 {
@@ -111,14 +120,14 @@ fn (mut b Builder) transform_files_parallel_no_post_pass_impl(mut trans transfor
 			}
 		} else {
 			for i := 0; i < n_files; i++ {
-				result << trans.transform_file_pub(b.files[i])
+				result << trans.transform_file_pub(files_to_transform[i])
 			}
 		}
 		return result
 	} $else {
 		if n_files <= 1 || n_jobs <= 1 {
 			mut result := []ast.File{cap: n_files}
-			if stream_from_flat {
+			if stream_files_from_flat {
 				for fi in 0 .. n_files {
 					one := b.flat.to_files_range(fi, fi + 1)
 					if one.len == 0 {
@@ -128,7 +137,7 @@ fn (mut b Builder) transform_files_parallel_no_post_pass_impl(mut trans transfor
 				}
 			} else {
 				for i := 0; i < n_files; i++ {
-					result << trans.transform_file_pub(b.files[i])
+					result << trans.transform_file_pub(files_to_transform[i])
 				}
 			}
 			return result
@@ -153,7 +162,7 @@ fn (mut b Builder) transform_files_parallel_no_post_pass_impl(mut trans transfor
 		mut i := 0
 		for i < n_files {
 			end := if i + chunk_size < n_files { i + chunk_size } else { n_files }
-			if stream_from_flat {
+			if stream_files_from_flat {
 				args << TransformChunkArgs{
 					t:          unsafe { voidptr(trans) }
 					flat:       unsafe { &b.flat }
@@ -164,7 +173,7 @@ fn (mut b Builder) transform_files_parallel_no_post_pass_impl(mut trans transfor
 					worker_idx: chunk_idx
 				}
 			} else {
-				chunk := b.files[i..end]
+				chunk := files_to_transform[i..end].clone()
 				args << TransformChunkArgs{
 					t:          unsafe { voidptr(trans) }
 					files:      chunk

@@ -17,14 +17,20 @@ fn sumtype_payload_word_is_valid(tag_word u64, data_word u64) bool {
 	// looks like a small tag, the payload must be a real pointer, not a leaked
 	// enum/default value like `3`.
 	if tag_word < 256 {
-		upper := data_word >> 32
-		lower := data_word & u64(0xffffffff)
-		if upper < 1024 && lower < 4096 {
-			return false
-		}
-		return data_word >= 4096 && data_word < 281474976710656
+		return data_word >= 0x100000000 && data_word < 0x0000800000000000
 	}
 	return true
+}
+
+fn string_ok(s string) bool {
+	if s.len == 0 {
+		return true
+	}
+	if s.len < 0 || s.len > 1024 {
+		return false
+	}
+	ptr := unsafe { u64(s.str) }
+	return ptr >= 0x100000000 && ptr < 0x0000800000000000
 }
 
 fn expr_ok(expr ast.Expr) bool {
@@ -109,6 +115,7 @@ mut:
 	methods_by_receiver       map[string][]int
 	struct_field_receivers    map[string][]string
 	struct_embedded_receivers map[string][]string
+	struct_fn_fields          map[string]bool
 	global_interface_names    map[string]string
 	const_fn_value_aliases    map[string]string
 
@@ -160,6 +167,7 @@ fn new_walker(files []ast.File, env &types.Environment, opts MarkUsedOptions) Wa
 		methods_by_receiver:       map[string][]int{}
 		struct_field_receivers:    map[string][]string{}
 		struct_embedded_receivers: map[string][]string{}
+		struct_fn_fields:          map[string]bool{}
 		global_interface_names:    map[string]string{}
 		const_fn_value_aliases:    map[string]string{}
 		lookup:                    map[string][]int{}
@@ -311,6 +319,7 @@ fn (mut w Walker) walk_stmt_cursor(c ast.Cursor, mod_name string) {
 			}
 		}
 		.stmt_comptime {
+			w.mark_comptime_method_loop_receivers_cursor(c.edge(0), mod_name)
 			w.walk_stmt_cursor(c.edge(0), mod_name)
 		}
 		.stmt_const_decl {
@@ -706,6 +715,10 @@ fn (mut w Walker) walk_expr_cursor(c ast.Cursor, mod_name string) {
 					continue
 				}
 				value_c := field.edge(0)
+				if value_c.is_valid() && value_c.kind() == .expr_selector
+					&& w.init_field_is_fn_value_cursor(typ_c, field.name(), mod_name) {
+					w.mark_selector_fn_value_cursor_with_fallback(value_c, mod_name, true)
+				}
 				w.mark_fn_value_expr_cursor(value_c, mod_name)
 				w.walk_expr_cursor(value_c, mod_name)
 			}
@@ -756,10 +769,7 @@ fn (mut w Walker) walk_expr_cursor(c ast.Cursor, mod_name string) {
 		// that resolve to an indexed function.
 		.expr_selector {
 			lhs_c := c.edge(0)
-			target := w.selector_fn_value_target_cursor(c)
-			if target != '' {
-				w.mark_fn_name(target, mod_name)
-			}
+			w.mark_selector_fn_value_cursor(c, mod_name)
 			w.walk_expr_cursor(lhs_c, mod_name)
 		}
 		// Every expr/type FlatNodeKind has an explicit arm above; aux_*
@@ -975,6 +985,7 @@ fn (mut w Walker) collect_def_stmt(stmt ast.Stmt, mod_name string, file_name str
 			w.add_type_name(mod_name, stmt.name)
 			w.add_struct_field_receivers(mod_name, stmt)
 			w.add_struct_embedded_receivers(mod_name, stmt)
+			w.add_struct_fn_fields(mod_name, stmt)
 		}
 		ast.EnumDecl {
 			w.add_type_name(mod_name, stmt.name)
@@ -1384,6 +1395,9 @@ fn normalize_module_name(module_name string) string {
 }
 
 fn sanitize_receiver_name(name string) string {
+	if !string_ok(name) {
+		return ''
+	}
 	mut out := name.trim_space()
 	for out.len > 0 && (out[0] == `&` || out[0] == `?` || out[0] == `!`) {
 		out = out[1..]
@@ -1458,6 +1472,137 @@ fn type_name_candidates_from_type(mod_name string, typ types.Type) []string {
 		}
 	}
 	return out
+}
+
+fn type_is_fn_value(typ types.Type) bool {
+	return type_is_fn_value_with_depth(typ, 0)
+}
+
+fn type_is_fn_value_with_depth(typ types.Type, depth int) bool {
+	if depth > 16 || !type_ok(typ) {
+		return false
+	}
+	match typ {
+		types.FnType {
+			return true
+		}
+		types.Alias {
+			return type_is_fn_value_with_depth(typ.base_type, depth + 1)
+		}
+		else {
+			return false
+		}
+	}
+}
+
+fn (w &Walker) type_name_is_fn_value(name string, mod_name string) bool {
+	if w.env == unsafe { nil } || name == '' || !string_ok(name) {
+		return false
+	}
+	mut type_names := []string{}
+	add_unique_string(mut type_names, name)
+	add_unique_string(mut type_names, maybe_trim_module_prefix(mod_name, name))
+	if name.contains('__') {
+		add_unique_string(mut type_names, name.all_after_last('__'))
+	} else if mod_name != '' && mod_name != 'main' {
+		add_unique_string(mut type_names, '${mod_name}__${name}')
+	}
+	mut scope_names := []string{}
+	add_unique_string(mut scope_names, mod_name)
+	if name.contains('__') {
+		add_unique_string(mut scope_names, name.all_before('__'))
+	}
+	add_unique_string(mut scope_names, 'builtin')
+	for scope_name in scope_names {
+		if scope_name == '' {
+			continue
+		}
+		if scope := w.env.get_scope(scope_name) {
+			for type_name in type_names {
+				if typ := scope.lookup_type_parent(type_name, 0) {
+					if type_is_fn_value(typ) {
+						return true
+					}
+				}
+			}
+		}
+	}
+	return false
+}
+
+fn (w &Walker) type_expr_is_fn_value(expr ast.Expr, mod_name string) bool {
+	match expr {
+		ast.Ident {
+			return w.type_name_is_fn_value(expr.name, mod_name)
+		}
+		ast.SelectorExpr {
+			if expr.lhs is ast.Ident {
+				lhs_name := expr.lhs.name
+				real_mod := w.module_alias_to_real[lhs_name] or { lhs_name }
+				return w.type_name_is_fn_value(expr.rhs.name, real_mod)
+					|| w.type_name_is_fn_value('${real_mod}__${expr.rhs.name}', real_mod)
+			}
+		}
+		ast.PrefixExpr {
+			if expr.op == .amp {
+				return w.type_expr_is_fn_value(expr.expr, mod_name)
+			}
+		}
+		ast.ModifierExpr {
+			return w.type_expr_is_fn_value(expr.expr, mod_name)
+		}
+		ast.GenericArgs {
+			return w.type_expr_is_fn_value(expr.lhs, mod_name)
+		}
+		ast.GenericArgOrIndexExpr {
+			return w.type_expr_is_fn_value(expr.lhs, mod_name)
+		}
+		ast.Type {
+			match expr {
+				ast.FnType {
+					return true
+				}
+				ast.PointerType {
+					return w.type_expr_is_fn_value(expr.base_type, mod_name)
+				}
+				ast.GenericType {
+					return w.type_expr_is_fn_value(expr.name, mod_name)
+				}
+				else {}
+			}
+		}
+		else {}
+	}
+
+	return false
+}
+
+fn (w &Walker) expr_has_fn_value_type(expr ast.Expr) bool {
+	if w.env == unsafe { nil } || !expr_ok(expr) {
+		return false
+	}
+	pos := expr.pos()
+	if !pos.is_valid() {
+		return false
+	}
+	if typ := w.env.get_expr_type(pos.id) {
+		return type_is_fn_value(typ)
+	}
+	return false
+}
+
+fn (w &Walker) cursor_has_fn_value_type(c ast.Cursor) bool {
+	if w.env == unsafe { nil } || !c.is_valid() {
+		return false
+	}
+	pos := c.pos()
+	if !pos.is_valid() {
+		return false
+	}
+	if typ := w.env.get_expr_type(pos.id) {
+		return type_is_fn_value(typ)
+	}
+	return false
 }
 
 fn add_receiver_name_candidates(mut out []string, mod_name string, raw_name string) {
@@ -1584,6 +1729,32 @@ fn type_expr_receiver_candidates(mod_name string, expr ast.Expr) []string {
 	return out
 }
 
+fn type_expr_receiver_candidates_cursor(c ast.Cursor, mod_name string) []string {
+	mut out := []string{}
+	if !c.is_valid() {
+		return out
+	}
+	match c.kind() {
+		.expr_selector {
+			lhs_c := c.edge(0)
+			rhs_c := c.edge(1)
+			if lhs_c.is_valid() && lhs_c.kind() == .expr_ident && rhs_c.is_valid() {
+				add_receiver_name_candidates(mut out, mod_name, rhs_c.name())
+				add_unique_string(mut out, '${lhs_c.name()}__${rhs_c.name()}')
+			}
+		}
+		.expr_prefix, .expr_modifier, .typ_pointer, .typ_generic {
+			return type_expr_receiver_candidates_cursor(c.edge(0), mod_name)
+		}
+		.expr_ident {
+			add_receiver_name_candidates(mut out, mod_name, c.name())
+		}
+		else {}
+	}
+
+	return out
+}
+
 fn receiver_names_from_decl(mod_name string, decl ast.FnDecl, env &types.Environment) []string {
 	mut out := []string{}
 	add_receiver_name_candidates(mut out, mod_name, receiver_type_expr_name(decl.receiver.typ))
@@ -1643,6 +1814,9 @@ fn receiver_primary_name(mod_name string, decl ast.FnDecl, env &types.Environmen
 }
 
 fn normalize_method_name(name string) string {
+	if !string_ok(name) {
+		return ''
+	}
 	return match name {
 		'+' { 'plus' }
 		'-' { 'minus' }
@@ -1840,6 +2014,43 @@ fn (mut w Walker) add_struct_embedded_receivers(mod_name string, decl ast.Struct
 	}
 }
 
+fn (mut w Walker) add_struct_fn_fields(mod_name string, decl ast.StructDecl) {
+	mut struct_names := []string{}
+	add_receiver_name_candidates(mut struct_names, mod_name, decl.name)
+	for field in decl.fields {
+		if !w.type_expr_is_fn_value(field.typ, mod_name) {
+			continue
+		}
+		for struct_name in struct_names {
+			w.struct_fn_fields['${struct_name}:${field.name}'] = true
+		}
+	}
+}
+
+fn (w &Walker) init_field_is_fn_value(init_typ ast.Expr, field_name string, mod_name string) bool {
+	if field_name == '' {
+		return false
+	}
+	for struct_name in type_expr_receiver_candidates(mod_name, init_typ) {
+		if w.struct_fn_fields['${struct_name}:${field_name}'] {
+			return true
+		}
+	}
+	return false
+}
+
+fn (w &Walker) init_field_is_fn_value_cursor(init_typ ast.Cursor, field_name string, mod_name string) bool {
+	if field_name == '' {
+		return false
+	}
+	for struct_name in type_expr_receiver_candidates_cursor(init_typ, mod_name) {
+		if w.struct_fn_fields['${struct_name}:${field_name}'] {
+			return true
+		}
+	}
+	return false
+}
+
 fn (mut w Walker) add_global_interface_names(mod_name string, decl ast.GlobalDecl) {
 	for field in decl.fields {
 		iface_name := w.interface_name_from_type_expr(field.typ, mod_name)
@@ -1904,6 +2115,9 @@ fn (mut w Walker) mark_generic_binding_receiver_methods(info FnInfo) {
 }
 
 fn (w &Walker) lookup_count(key string) int {
+	if !string_ok(key) {
+		return 0
+	}
 	if key in w.lookup {
 		return w.lookup[key].len
 	}
@@ -1911,6 +2125,9 @@ fn (w &Walker) lookup_count(key string) int {
 }
 
 fn (mut w Walker) mark_lookup(key string) {
+	if !string_ok(key) {
+		return
+	}
 	if key in w.lookup {
 		for idx in w.lookup[key] {
 			w.mark_fn(idx)
@@ -1920,6 +2137,9 @@ fn (mut w Walker) mark_lookup(key string) {
 
 fn called_fn_name_candidates(name string) []string {
 	mut out := []string{}
+	if name == '' || !string_ok(name) {
+		return out
+	}
 	add_unique_string(mut out, name)
 	generic_base := strip_generic_specialization_suffix(name)
 	if generic_base != name {
@@ -1961,7 +2181,7 @@ fn strip_generic_specialization_suffix(name string) string {
 }
 
 fn should_mark_ident_as_fn(name string) bool {
-	if name == '' {
+	if name == '' || !string_ok(name) {
 		return false
 	}
 	return name.starts_with('map_') || name.starts_with('map__') || name.starts_with('new_map')
@@ -1971,7 +2191,8 @@ fn should_mark_ident_as_fn(name string) bool {
 }
 
 fn (w &Walker) ident_resolves_to_fn_value(name string, mod_name string) bool {
-	if name == '' || name == 'C' || name in w.module_names || w.is_cast_type_name(name) {
+	if name == '' || !string_ok(name) || name == 'C' || name in w.module_names
+		|| w.is_cast_type_name(name) {
 		return false
 	}
 	if w.cur_fn_scope != unsafe { nil } {
@@ -1993,7 +2214,7 @@ fn (w &Walker) ident_resolves_to_fn_value(name string, mod_name string) bool {
 }
 
 fn (mut w Walker) mark_fn_name(name string, mod_name string) {
-	if name == '' {
+	if name == '' || !string_ok(name) || !string_ok(mod_name) {
 		return
 	}
 	for candidate in called_fn_name_candidates(name) {
@@ -2007,8 +2228,14 @@ fn (mut w Walker) mark_fn_name(name string, mod_name string) {
 }
 
 fn (mut w Walker) mark_method_name(name string, receivers []string) {
+	if name == '' || !string_ok(name) {
+		return
+	}
 	normalized := normalize_method_name(name)
 	for receiver in receivers {
+		if !string_ok(receiver) {
+			continue
+		}
 		for candidate in receiver_lookup_candidates(receiver) {
 			w.mark_lookup('meth:${candidate}:${name}')
 			if normalized != name {
@@ -2018,8 +2245,31 @@ fn (mut w Walker) mark_method_name(name string, receivers []string) {
 	}
 }
 
+fn (w &Walker) method_lookup_count(name string, receivers []string) int {
+	if name == '' || !string_ok(name) {
+		return 0
+	}
+	normalized := normalize_method_name(name)
+	mut count := 0
+	for receiver in receivers {
+		if !string_ok(receiver) {
+			continue
+		}
+		for candidate in receiver_lookup_candidates(receiver) {
+			count += w.lookup_count('meth:${candidate}:${name}')
+			if normalized != name {
+				count += w.lookup_count('meth:${candidate}:${normalized}')
+			}
+		}
+	}
+	return count
+}
+
 fn receiver_lookup_candidates(receiver string) []string {
 	mut out := []string{}
+	if !string_ok(receiver) {
+		return out
+	}
 	add_unique_string(mut out, receiver)
 	if receiver.contains('__') {
 		add_unique_string(mut out, receiver.all_after_last('__'))
@@ -2040,6 +2290,9 @@ fn receiver_lookup_candidates(receiver string) []string {
 }
 
 fn (mut w Walker) mark_method_name_fallback(name string) {
+	if name == '' || !string_ok(name) {
+		return
+	}
 	normalized := normalize_method_name(name)
 	// Check count first to avoid pulling in everything for common names.
 	count := w.lookup_count('mname:${name}') +
@@ -2086,6 +2339,58 @@ fn (mut w Walker) mark_all_methods_for_receivers(receivers []string) {
 			}
 		}
 	}
+}
+
+fn (mut w Walker) mark_comptime_method_loop_receivers(stmt ast.Stmt, mod_name string) {
+	if stmt !is ast.ForStmt {
+		return
+	}
+	if stmt.init !is ast.ForInStmt {
+		return
+	}
+	for_in := stmt.init as ast.ForInStmt
+	if for_in.expr !is ast.SelectorExpr {
+		return
+	}
+	sel := for_in.expr as ast.SelectorExpr
+	if sel.rhs.name != 'methods' {
+		return
+	}
+	mut receivers := []string{}
+	for receiver in type_expr_receiver_candidates(mod_name, sel.lhs) {
+		add_unique_string(mut receivers, receiver)
+	}
+	for receiver in w.receiver_candidates_for_expr(sel.lhs, mod_name) {
+		add_unique_string(mut receivers, receiver)
+	}
+	w.mark_all_methods_for_receivers(receivers)
+}
+
+fn (mut w Walker) mark_comptime_method_loop_receivers_cursor(stmt ast.Cursor, mod_name string) {
+	if !stmt.is_valid() || stmt.kind() != .stmt_for {
+		return
+	}
+	init := stmt.edge(0)
+	if !init.is_valid() || init.kind() != .stmt_for_in {
+		return
+	}
+	expr := init.edge(2)
+	if !expr.is_valid() || expr.kind() != .expr_selector {
+		return
+	}
+	rhs := expr.edge(1)
+	if !rhs.is_valid() || rhs.name() != 'methods' {
+		return
+	}
+	lhs := expr.edge(0)
+	mut receivers := []string{}
+	for receiver in type_expr_receiver_candidates_cursor(lhs, mod_name) {
+		add_unique_string(mut receivers, receiver)
+	}
+	for receiver in w.receiver_candidates_for_cursor(lhs, mod_name) {
+		add_unique_string(mut receivers, receiver)
+	}
+	w.mark_all_methods_for_receivers(receivers)
 }
 
 fn (w &Walker) embedded_receivers_for(receivers []string) []string {
@@ -2479,6 +2784,9 @@ fn (mut w Walker) mark_call_or_cast_arg_interface_conversion(expr ast.CallOrCast
 }
 
 fn (w &Walker) add_lookup_indices(key string, mut out []int) {
+	if !string_ok(key) {
+		return
+	}
 	if key in w.lookup {
 		for idx in w.lookup[key] {
 			add_unique_int(mut out, idx)
@@ -2487,7 +2795,7 @@ fn (w &Walker) add_lookup_indices(key string, mut out []int) {
 }
 
 fn (w &Walker) add_fn_name_indices(name string, mod_name string, mut out []int) {
-	if name == '' {
+	if name == '' || !string_ok(name) || !string_ok(mod_name) {
 		return
 	}
 	for candidate in called_fn_name_candidates(name) {
@@ -2501,8 +2809,14 @@ fn (w &Walker) add_fn_name_indices(name string, mod_name string, mut out []int) 
 }
 
 fn (w &Walker) add_method_name_indices(name string, receivers []string, mut out []int) {
+	if name == '' || !string_ok(name) {
+		return
+	}
 	normalized := normalize_method_name(name)
 	for receiver in receivers {
+		if !string_ok(receiver) {
+			continue
+		}
 		for candidate in receiver_lookup_candidates(receiver) {
 			w.add_lookup_indices('meth:${candidate}:${name}', mut out)
 			if normalized != name {
@@ -2529,8 +2843,14 @@ fn (w &Walker) call_lhs_decl_indices(lhs ast.Expr, mod_name string) []int {
 		}
 		ast.SelectorExpr {
 			method_name := lhs.rhs.name
+			if !string_ok(method_name) {
+				return out
+			}
 			if lhs.lhs is ast.Ident {
 				left_name := lhs.lhs.name
+				if !string_ok(left_name) {
+					return out
+				}
 				if left_name == 'C' {
 					w.add_fn_name_indices(method_name, mod_name, mut out)
 					return out
@@ -2551,6 +2871,9 @@ fn (w &Walker) call_lhs_decl_indices(lhs ast.Expr, mod_name string) []int {
 				if type_sel.lhs is ast.Ident {
 					mod_ident := type_sel.lhs.name
 					type_name := type_sel.rhs.name
+					if !string_ok(mod_ident) || !string_ok(type_name) {
+						return out
+					}
 					if mod_ident in w.module_names || mod_ident in w.type_names {
 						mut candidates := []string{cap: 3}
 						candidates << type_name
@@ -2703,9 +3026,15 @@ fn (w &Walker) call_lhs_decl_indices_cursor(c ast.Cursor, mod_name string) []int
 				return out
 			}
 			method_name := rhs_c.name()
+			if !string_ok(method_name) {
+				return out
+			}
 			lhs_c := c.edge(0)
 			if lhs_c.is_valid() && lhs_c.kind() == .expr_ident {
 				left_name := lhs_c.name()
+				if !string_ok(left_name) {
+					return out
+				}
 				if left_name == 'C' {
 					w.add_fn_name_indices(method_name, mod_name, mut out)
 					return out
@@ -2727,6 +3056,9 @@ fn (w &Walker) call_lhs_decl_indices_cursor(c ast.Cursor, mod_name string) []int
 				if inner_lhs.is_valid() && inner_lhs.kind() == .expr_ident && inner_rhs.is_valid() {
 					mod_ident := inner_lhs.name()
 					type_name := inner_rhs.name()
+					if !string_ok(mod_ident) || !string_ok(type_name) {
+						return out
+					}
 					if mod_ident in w.module_names || mod_ident in w.type_names {
 						mut candidates := []string{cap: 3}
 						candidates << type_name
@@ -3209,6 +3541,9 @@ fn (w &Walker) receiver_candidates_for_expr(expr ast.Expr, mod_name string) []st
 }
 
 fn (w &Walker) is_cast_type_name(name string) bool {
+	if !string_ok(name) {
+		return false
+	}
 	if name in builtin_cast_type_names {
 		return true
 	}
@@ -3232,8 +3567,14 @@ fn (mut w Walker) mark_call_lhs(lhs ast.Expr, mod_name string) {
 		}
 		ast.SelectorExpr {
 			method_name := lhs.rhs.name
+			if !string_ok(method_name) {
+				return
+			}
 			if lhs.lhs is ast.Ident {
 				left_name := lhs.lhs.name
+				if !string_ok(left_name) {
+					return
+				}
 				if left_name == 'C' {
 					w.mark_fn_name(method_name, mod_name)
 					return
@@ -3255,6 +3596,9 @@ fn (mut w Walker) mark_call_lhs(lhs ast.Expr, mod_name string) {
 				if type_sel.lhs is ast.Ident {
 					mod_ident := type_sel.lhs.name
 					type_name := type_sel.rhs.name
+					if !string_ok(mod_ident) || !string_ok(type_name) {
+						return
+					}
 					if mod_ident in w.module_names || mod_ident in w.type_names {
 						candidates := [
 							type_name,
@@ -3291,7 +3635,8 @@ fn (w &Walker) const_fn_value_alias_is_shadowed(name string) bool {
 }
 
 fn (mut w Walker) mark_const_fn_value_alias(name string, mod_name string) bool {
-	if name == '' || w.const_fn_value_alias_is_shadowed(name) {
+	if name == '' || !string_ok(name) || !string_ok(mod_name)
+		|| w.const_fn_value_alias_is_shadowed(name) {
 		return false
 	}
 	if target := w.const_fn_value_aliases[const_fn_value_alias_key(mod_name, name)] {
@@ -3327,9 +3672,15 @@ fn (mut w Walker) mark_call_lhs_cursor(c ast.Cursor, mod_name string) {
 				return
 			}
 			method_name := rhs_c.name()
+			if !string_ok(method_name) {
+				return
+			}
 			lhs_c := c.edge(0)
 			if lhs_c.is_valid() && lhs_c.kind() == .expr_ident {
 				left_name := lhs_c.name()
+				if !string_ok(left_name) {
+					return
+				}
 				if left_name == 'C' {
 					w.mark_fn_name(method_name, mod_name)
 					return
@@ -3350,6 +3701,9 @@ fn (mut w Walker) mark_call_lhs_cursor(c ast.Cursor, mod_name string) {
 				if inner_lhs.is_valid() && inner_lhs.kind() == .expr_ident && inner_rhs.is_valid() {
 					mod_ident := inner_lhs.name()
 					type_name := inner_rhs.name()
+					if !string_ok(mod_ident) || !string_ok(type_name) {
+						return
+					}
 					if mod_ident in w.module_names || mod_ident in w.type_names {
 						candidates := [
 							type_name,
@@ -3377,9 +3731,59 @@ fn (mut w Walker) mark_call_lhs_cursor(c ast.Cursor, mod_name string) {
 }
 
 fn (mut w Walker) mark_selector_fn_value(expr ast.SelectorExpr, mod_name string) {
+	w.mark_selector_fn_value_with_fallback(expr, mod_name, false)
+}
+
+fn (mut w Walker) mark_selector_fn_value_with_fallback(expr ast.SelectorExpr, mod_name string, force_fallback bool) {
 	target := w.selector_fn_value_target(expr)
 	if target != '' {
 		w.mark_fn_name(target, mod_name)
+		return
+	}
+	if expr.rhs.name == '' {
+		return
+	}
+	receivers := w.receiver_candidates_for_expr(expr.lhs, mod_name)
+	if receivers.len > 0 {
+		matched := w.method_lookup_count(expr.rhs.name, receivers) > 0
+		w.mark_method_name(expr.rhs.name, receivers)
+		if matched {
+			return
+		}
+	}
+	if force_fallback || w.expr_has_fn_value_type(ast.Expr(expr)) {
+		w.mark_method_name_fallback(expr.rhs.name)
+	}
+}
+
+fn (mut w Walker) mark_selector_fn_value_cursor(c ast.Cursor, mod_name string) {
+	w.mark_selector_fn_value_cursor_with_fallback(c, mod_name, false)
+}
+
+fn (mut w Walker) mark_selector_fn_value_cursor_with_fallback(c ast.Cursor, mod_name string, force_fallback bool) {
+	target := w.selector_fn_value_target_cursor(c)
+	if target != '' {
+		w.mark_fn_name(target, mod_name)
+		return
+	}
+	rhs_c := c.edge(1)
+	if !rhs_c.is_valid() {
+		return
+	}
+	method_name := rhs_c.name()
+	if method_name == '' {
+		return
+	}
+	receivers := w.receiver_candidates_for_cursor(c.edge(0), mod_name)
+	if receivers.len > 0 {
+		matched := w.method_lookup_count(method_name, receivers) > 0
+		w.mark_method_name(method_name, receivers)
+		if matched {
+			return
+		}
+	}
+	if force_fallback || w.cursor_has_fn_value_type(c) {
+		w.mark_method_name_fallback(method_name)
 	}
 }
 
@@ -3468,10 +3872,7 @@ fn (mut w Walker) mark_fn_value_expr_cursor(c ast.Cursor, mod_name string) {
 			}
 		}
 		.expr_selector {
-			target := w.selector_fn_value_target_cursor(c)
-			if target != '' {
-				w.mark_fn_name(target, mod_name)
-			}
+			w.mark_selector_fn_value_cursor(c, mod_name)
 		}
 		.expr_generic_args {
 			w.mark_fn_value_expr_cursor(c.edge(0), mod_name)
@@ -3522,6 +3923,7 @@ fn (mut w Walker) walk_stmt(stmt ast.Stmt, mod_name string) {
 			w.walk_stmts(stmt.stmts, mod_name)
 		}
 		ast.ComptimeStmt {
+			w.mark_comptime_method_loop_receivers(stmt.stmt, mod_name)
 			w.walk_stmt(stmt.stmt, mod_name)
 		}
 		ast.ConstDecl {
@@ -3694,6 +4096,10 @@ fn (mut w Walker) walk_expr(expr ast.Expr, mod_name string) {
 			w.mark_interface_conversion_methods(expr.typ, expr, mod_name)
 			w.walk_expr(expr.typ, mod_name)
 			for field in expr.fields {
+				if field.value is ast.SelectorExpr
+					&& w.init_field_is_fn_value(expr.typ, field.name, mod_name) {
+					w.mark_selector_fn_value_with_fallback(field.value, mod_name, true)
+				}
 				w.mark_fn_value_expr(field.value, mod_name)
 				w.walk_expr(field.value, mod_name)
 			}

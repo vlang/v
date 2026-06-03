@@ -20,50 +20,56 @@ fn is_module_line_space(ch u8) bool {
 	return ch == ` ` || ch == `\t` || ch == `\v` || ch == `\f`
 }
 
+fn is_module_source_space(ch u8) bool {
+	return is_module_line_space(ch) || ch == `\n` || ch == `\r`
+}
+
 fn file_module_name(path string) ?string {
 	content := os.read_file(path) or { return none }
-	mut line_start := 0
-	for line_start <= content.len {
-		mut line_end := line_start
-		for line_end < content.len && content[line_end] != `\n` && content[line_end] != `\r` {
-			line_end++
-		}
-		mut start := line_start
-		for start < line_end && is_module_line_space(content[start]) {
+	mut start := 0
+	for start < content.len {
+		if is_module_source_space(content[start]) {
 			start++
-		}
-		mut end := line_end
-		for end > start && is_module_line_space(content[end - 1]) {
-			end--
-		}
-		if start == end || (end - start >= 2 && content[start] == `/` && content[start + 1] == `/`) {
-			if line_end >= content.len {
-				break
-			}
-			if content[line_end] == `\r` && line_end + 1 < content.len
-				&& content[line_end + 1] == `\n` {
-				line_end++
-			}
-			line_start = line_end + 1
 			continue
 		}
-		if end - start >= 7 && content[start] == `m` && content[start + 1] == `o`
-			&& content[start + 2] == `d` && content[start + 3] == `u` && content[start + 4] == `l`
-			&& content[start + 5] == `e` && is_module_line_space(content[start + 6]) {
-			mut name_start := start + 7
-			for name_start < end && is_module_line_space(content[name_start]) {
-				name_start++
+		if start + 1 < content.len && content[start] == `/` && content[start + 1] == `/` {
+			start += 2
+			for start < content.len && content[start] != `\n` && content[start] != `\r` {
+				start++
 			}
-			mut name_end := name_start
-			for name_end < end && !is_module_line_space(content[name_end]) {
-				name_end++
+			continue
+		}
+		if start + 1 < content.len && content[start] == `/` && content[start + 1] == `*` {
+			start += 2
+			for start + 1 < content.len {
+				if content[start] == `*` && content[start + 1] == `/` {
+					start += 2
+					break
+				}
+				start++
 			}
-			if name_start < name_end {
-				return content[name_start..name_end]
+			if start >= content.len {
+				break
 			}
-			return none
+			continue
 		}
 		break
+	}
+	if content.len - start >= 7 && content[start] == `m` && content[start + 1] == `o`
+		&& content[start + 2] == `d` && content[start + 3] == `u` && content[start + 4] == `l`
+		&& content[start + 5] == `e` && is_module_line_space(content[start + 6]) {
+		mut name_start := start + 7
+		for name_start < content.len && is_module_line_space(content[name_start]) {
+			name_start++
+		}
+		mut name_end := name_start
+		for name_end < content.len && !is_module_source_space(content[name_end]) {
+			name_end++
+		}
+		if name_start < name_end {
+			return content[name_start..name_end]
+		}
+		return none
 	}
 	return none
 }
@@ -93,7 +99,7 @@ fn collect_same_module_subdir_files(root string, dir string, module_name string,
 			if file in seen {
 				continue
 			}
-			if file_module_name(file) or { '' } != module_name {
+			if file_module_name(file) or { 'main' } != module_name {
 				continue
 			}
 			files << file
@@ -141,26 +147,51 @@ fn ast_comptime_cond_matches(cond ast.Expr, user_defines []string, target_os str
 }
 
 fn ast_comptime_cond_matches_with_explicit(cond ast.Expr, user_defines []string, explicit_user_defines []string, target_os string) bool {
+	return ast_comptime_cond_matches_with_options(cond, user_defines, explicit_user_defines,
+		target_os, true)
+}
+
+fn ast_comptime_cond_matches_with_options(cond ast.Expr, user_defines []string, explicit_user_defines []string, target_os string, allow_pkgconfig bool) bool {
 	match cond {
 		ast.Ident {
 			return ast_comptime_flag_matches(cond.name, user_defines, target_os)
 		}
+		ast.ComptimeExpr {
+			return ast_comptime_cond_matches_with_options(cond.expr, user_defines,
+				explicit_user_defines, target_os, allow_pkgconfig)
+		}
+		ast.CallExpr {
+			if pkg_name := ast_pkgconfig_call_name(cond) {
+				if !allow_pkgconfig {
+					return false
+				}
+				return vpref.comptime_pkgconfig_value(pkg_name)
+			}
+		}
+		ast.CallOrCastExpr {
+			if pkg_name := ast_pkgconfig_call_name(cond) {
+				if !allow_pkgconfig {
+					return false
+				}
+				return vpref.comptime_pkgconfig_value(pkg_name)
+			}
+		}
 		ast.PrefixExpr {
 			if cond.op == .not {
-				return !ast_comptime_cond_matches_with_explicit(cond.expr, user_defines,
-					explicit_user_defines, target_os)
+				return !ast_comptime_cond_matches_with_options(cond.expr, user_defines,
+					explicit_user_defines, target_os, allow_pkgconfig)
 			}
 		}
 		ast.InfixExpr {
 			if cond.op == .and {
 				return
-					ast_comptime_cond_matches_with_explicit(cond.lhs, user_defines, explicit_user_defines, target_os)
-					&& ast_comptime_cond_matches_with_explicit(cond.rhs, user_defines, explicit_user_defines, target_os)
+					ast_comptime_cond_matches_with_options(cond.lhs, user_defines, explicit_user_defines, target_os, allow_pkgconfig)
+					&& ast_comptime_cond_matches_with_options(cond.rhs, user_defines, explicit_user_defines, target_os, allow_pkgconfig)
 			}
 			if cond.op == .logical_or {
 				return
-					ast_comptime_cond_matches_with_explicit(cond.lhs, user_defines, explicit_user_defines, target_os)
-					|| ast_comptime_cond_matches_with_explicit(cond.rhs, user_defines, explicit_user_defines, target_os)
+					ast_comptime_cond_matches_with_options(cond.lhs, user_defines, explicit_user_defines, target_os, allow_pkgconfig)
+					|| ast_comptime_cond_matches_with_options(cond.rhs, user_defines, explicit_user_defines, target_os, allow_pkgconfig)
 			}
 		}
 		ast.PostfixExpr {
@@ -170,13 +201,46 @@ fn ast_comptime_cond_matches_with_explicit(cond ast.Expr, user_defines []string,
 			}
 		}
 		ast.ParenExpr {
-			return ast_comptime_cond_matches_with_explicit(cond.expr, user_defines,
-				explicit_user_defines, target_os)
+			return ast_comptime_cond_matches_with_options(cond.expr, user_defines,
+				explicit_user_defines, target_os, allow_pkgconfig)
 		}
 		else {}
 	}
 
 	return false
+}
+
+fn ast_pkgconfig_call_name(expr ast.Expr) ?string {
+	match expr {
+		ast.CallExpr {
+			if expr.lhs is ast.Ident && expr.lhs.name == 'pkgconfig' && expr.args.len == 1 {
+				return ast_string_literal_value(expr.args[0])
+			}
+		}
+		ast.CallOrCastExpr {
+			if expr.lhs is ast.Ident && expr.lhs.name == 'pkgconfig' {
+				return ast_string_literal_value(expr.expr)
+			}
+		}
+		else {}
+	}
+
+	return none
+}
+
+fn ast_string_literal_value(expr ast.Expr) ?string {
+	if expr is ast.StringLiteral {
+		return unquote_ast_string_literal_value(expr.value)
+	}
+	return none
+}
+
+fn unquote_ast_string_literal_value(value string) string {
+	if value.len >= 2 && ((value[0] == `"` && value[value.len - 1] == `"`)
+		|| (value[0] == `'` && value[value.len - 1] == `'`)) {
+		return value[1..value.len - 1]
+	}
+	return value
 }
 
 fn collect_active_imports_from_if_expr(node ast.IfExpr, user_defines []string, target_os string, mut imports []ast.ImportStmt) {
@@ -185,21 +249,26 @@ fn collect_active_imports_from_if_expr(node ast.IfExpr, user_defines []string, t
 }
 
 fn collect_active_imports_from_if_expr_with_explicit(node ast.IfExpr, user_defines []string, explicit_user_defines []string, target_os string, mut imports []ast.ImportStmt) {
-	if ast_comptime_cond_matches_with_explicit(node.cond, user_defines, explicit_user_defines,
-		target_os)
+	collect_active_imports_from_if_expr_with_options(node, user_defines, explicit_user_defines,
+		target_os, true, mut imports)
+}
+
+fn collect_active_imports_from_if_expr_with_options(node ast.IfExpr, user_defines []string, explicit_user_defines []string, target_os string, allow_pkgconfig bool, mut imports []ast.ImportStmt) {
+	if ast_comptime_cond_matches_with_options(node.cond, user_defines, explicit_user_defines,
+		target_os, allow_pkgconfig)
 	{
-		collect_active_imports_from_stmts_with_explicit(node.stmts, user_defines,
-			explicit_user_defines, target_os, mut imports)
+		collect_active_imports_from_stmts_with_options(node.stmts, user_defines,
+			explicit_user_defines, target_os, allow_pkgconfig, mut imports)
 		return
 	}
 	match node.else_expr {
 		ast.IfExpr {
 			if node.else_expr.cond is ast.EmptyExpr {
-				collect_active_imports_from_stmts_with_explicit(node.else_expr.stmts, user_defines,
-					explicit_user_defines, target_os, mut imports)
+				collect_active_imports_from_stmts_with_options(node.else_expr.stmts, user_defines,
+					explicit_user_defines, target_os, allow_pkgconfig, mut imports)
 			} else {
-				collect_active_imports_from_if_expr_with_explicit(node.else_expr, user_defines,
-					explicit_user_defines, target_os, mut imports)
+				collect_active_imports_from_if_expr_with_options(node.else_expr, user_defines,
+					explicit_user_defines, target_os, allow_pkgconfig, mut imports)
 			}
 		}
 		else {}
@@ -212,6 +281,11 @@ fn collect_active_imports_from_stmts(stmts []ast.Stmt, user_defines []string, ta
 }
 
 fn collect_active_imports_from_stmts_with_explicit(stmts []ast.Stmt, user_defines []string, explicit_user_defines []string, target_os string, mut imports []ast.ImportStmt) {
+	collect_active_imports_from_stmts_with_options(stmts, user_defines, explicit_user_defines,
+		target_os, true, mut imports)
+}
+
+fn collect_active_imports_from_stmts_with_options(stmts []ast.Stmt, user_defines []string, explicit_user_defines []string, target_os string, allow_pkgconfig bool, mut imports []ast.ImportStmt) {
 	for stmt in stmts {
 		match stmt {
 			ast.ImportStmt {
@@ -219,8 +293,8 @@ fn collect_active_imports_from_stmts_with_explicit(stmts []ast.Stmt, user_define
 			}
 			ast.ExprStmt {
 				if stmt.expr is ast.ComptimeExpr && stmt.expr.expr is ast.IfExpr {
-					collect_active_imports_from_if_expr_with_explicit(stmt.expr.expr, user_defines,
-						explicit_user_defines, target_os, mut imports)
+					collect_active_imports_from_if_expr_with_options(stmt.expr.expr, user_defines,
+						explicit_user_defines, target_os, allow_pkgconfig, mut imports)
 				}
 			}
 			else {}
@@ -228,14 +302,469 @@ fn collect_active_imports_from_stmts_with_explicit(stmts []ast.Stmt, user_define
 	}
 }
 
+fn imports_contain(imports []ast.ImportStmt, name string) bool {
+	for imp in imports {
+		if imp.name == name {
+			return true
+		}
+	}
+	return false
+}
+
+fn add_implicit_sync_import_if_needed(mut imports []ast.ImportStmt, current_module string, uses_channel bool) {
+	if !uses_channel || current_module == 'sync' || imports_contain(imports, 'sync') {
+		return
+	}
+	imports << ast.ImportStmt{
+		name: 'sync'
+	}
+}
+
+fn field_decl_uses_channel(field ast.FieldDecl) bool {
+	return type_expr_uses_channel(field.typ) || expr_type_slots_use_channel(field.value)
+}
+
+fn fields_use_channel(fields []ast.FieldDecl) bool {
+	for field in fields {
+		if field_decl_uses_channel(field) {
+			return true
+		}
+	}
+	return false
+}
+
+struct ChannelScanOptions {
+	user_defines          []string
+	explicit_user_defines []string
+	target_os             string
+	allow_pkgconfig       bool
+	filter_comptime       bool
+}
+
+fn field_inits_use_channel(fields []ast.FieldInit) bool {
+	return field_inits_use_channel_with_options(fields, ChannelScanOptions{
+		allow_pkgconfig: true
+	})
+}
+
+fn field_inits_use_channel_with_options(fields []ast.FieldInit, options ChannelScanOptions) bool {
+	for field in fields {
+		if expr_type_slots_use_channel_with_options(field.value, options) {
+			return true
+		}
+	}
+	return false
+}
+
+fn fn_type_uses_channel(typ ast.FnType) bool {
+	for gp in typ.generic_params {
+		if type_expr_uses_channel(gp) {
+			return true
+		}
+	}
+	for param in typ.params {
+		if type_expr_uses_channel(param.typ) {
+			return true
+		}
+	}
+	return type_expr_uses_channel(typ.return_type)
+}
+
+fn stmts_use_channel(stmts []ast.Stmt) bool {
+	return stmts_use_channel_with_options(stmts, ChannelScanOptions{
+		allow_pkgconfig: true
+	})
+}
+
+fn stmts_use_channel_with_options(stmts []ast.Stmt, options ChannelScanOptions) bool {
+	for stmt in stmts {
+		if stmt_uses_channel_with_options(stmt, options) {
+			return true
+		}
+	}
+	return false
+}
+
+fn stmt_uses_channel(stmt ast.Stmt) bool {
+	return stmt_uses_channel_with_options(stmt, ChannelScanOptions{
+		allow_pkgconfig: true
+	})
+}
+
+fn fn_decl_body_is_active_for_channel_scan(decl ast.FnDecl, options ChannelScanOptions) bool {
+	for attr in decl.attributes {
+		if attr.comptime_cond is ast.EmptyExpr {
+			continue
+		}
+		if !ast_comptime_cond_matches_with_options(attr.comptime_cond, options.user_defines,
+			options.explicit_user_defines, options.target_os, options.allow_pkgconfig) {
+			return false
+		}
+	}
+	return true
+}
+
+fn stmt_uses_channel_with_options(stmt ast.Stmt, options ChannelScanOptions) bool {
+	match stmt {
+		ast.AssertStmt {
+			return expr_type_slots_use_channel_with_options(stmt.expr, options)
+				|| expr_type_slots_use_channel_with_options(stmt.extra, options)
+		}
+		ast.AssignStmt {
+			return exprs_type_slots_use_channel_with_options(stmt.lhs, options)
+				|| exprs_type_slots_use_channel_with_options(stmt.rhs, options)
+		}
+		ast.BlockStmt {
+			return stmts_use_channel_with_options(stmt.stmts, options)
+		}
+		ast.ComptimeStmt {
+			return stmt_uses_channel_with_options(stmt.stmt, options)
+		}
+		ast.ConstDecl {
+			return field_inits_use_channel_with_options(stmt.fields, options)
+		}
+		ast.DeferStmt {
+			return stmts_use_channel_with_options(stmt.stmts, options)
+		}
+		ast.EnumDecl {
+			for field in stmt.fields {
+				if expr_type_slots_use_channel_with_options(field.value, options) {
+					return true
+				}
+			}
+		}
+		ast.ExprStmt {
+			if options.filter_comptime && stmt.expr is ast.ComptimeExpr
+				&& stmt.expr.expr is ast.IfExpr {
+				return comptime_if_expr_uses_channel_with_options(stmt.expr.expr, options)
+			}
+			return expr_type_slots_use_channel_with_options(stmt.expr, options)
+		}
+		ast.FnDecl {
+			signature_uses_channel := type_expr_uses_channel(stmt.receiver.typ)
+				|| fn_type_uses_channel(stmt.typ)
+			if !fn_decl_body_is_active_for_channel_scan(stmt, options) {
+				return signature_uses_channel
+			}
+			return signature_uses_channel || stmts_use_channel_with_options(stmt.stmts, options)
+		}
+		ast.ForInStmt {
+			return expr_type_slots_use_channel_with_options(stmt.expr, options)
+		}
+		ast.ForStmt {
+			return stmt_uses_channel_with_options(stmt.init, options)
+				|| expr_type_slots_use_channel_with_options(stmt.cond, options)
+				|| stmt_uses_channel_with_options(stmt.post, options)
+				|| stmts_use_channel_with_options(stmt.stmts, options)
+		}
+		ast.GlobalDecl {
+			return fields_use_channel(stmt.fields)
+		}
+		ast.InterfaceDecl {
+			return fields_use_channel(stmt.fields) || type_exprs_use_channel(stmt.embedded)
+		}
+		ast.LabelStmt {
+			return stmt_uses_channel_with_options(stmt.stmt, options)
+		}
+		ast.ReturnStmt {
+			return exprs_type_slots_use_channel_with_options(stmt.exprs, options)
+		}
+		ast.StructDecl {
+			return type_exprs_use_channel(stmt.implements) || type_exprs_use_channel(stmt.embedded)
+				|| type_exprs_use_channel(stmt.generic_params) || fields_use_channel(stmt.fields)
+		}
+		ast.TypeDecl {
+			return type_expr_uses_channel(stmt.base_type) || type_exprs_use_channel(stmt.variants)
+				|| type_exprs_use_channel(stmt.generic_params)
+		}
+		else {}
+	}
+
+	return false
+}
+
+fn type_exprs_use_channel(exprs []ast.Expr) bool {
+	for expr in exprs {
+		if type_expr_uses_channel(expr) {
+			return true
+		}
+	}
+	return false
+}
+
+fn exprs_type_slots_use_channel(exprs []ast.Expr) bool {
+	return exprs_type_slots_use_channel_with_options(exprs, ChannelScanOptions{
+		allow_pkgconfig: true
+	})
+}
+
+fn exprs_type_slots_use_channel_with_options(exprs []ast.Expr, options ChannelScanOptions) bool {
+	for expr in exprs {
+		if expr_type_slots_use_channel_with_options(expr, options) {
+			return true
+		}
+	}
+	return false
+}
+
+fn string_inters_use_channel(inters []ast.StringInter) bool {
+	return string_inters_use_channel_with_options(inters, ChannelScanOptions{
+		allow_pkgconfig: true
+	})
+}
+
+fn string_inters_use_channel_with_options(inters []ast.StringInter, options ChannelScanOptions) bool {
+	for inter in inters {
+		if expr_type_slots_use_channel_with_options(inter.expr, options)
+			|| expr_type_slots_use_channel_with_options(inter.format_expr, options) {
+			return true
+		}
+	}
+	return false
+}
+
+fn comptime_if_expr_uses_channel_with_options(node ast.IfExpr, options ChannelScanOptions) bool {
+	if ast_comptime_cond_matches_with_options(node.cond, options.user_defines,
+		options.explicit_user_defines, options.target_os, options.allow_pkgconfig)
+	{
+		return stmts_use_channel_with_options(node.stmts, options)
+	}
+	match node.else_expr {
+		ast.IfExpr {
+			if node.else_expr.cond is ast.EmptyExpr {
+				return stmts_use_channel_with_options(node.else_expr.stmts, options)
+			}
+			return comptime_if_expr_uses_channel_with_options(node.else_expr, options)
+		}
+		else {
+			return expr_type_slots_use_channel_with_options(node.else_expr, options)
+		}
+	}
+}
+
+fn expr_type_slots_use_channel(expr ast.Expr) bool {
+	return expr_type_slots_use_channel_with_options(expr, ChannelScanOptions{
+		allow_pkgconfig: true
+	})
+}
+
+fn expr_type_slots_use_channel_with_options(expr ast.Expr, options ChannelScanOptions) bool {
+	match expr {
+		ast.ArrayInitExpr {
+			return type_expr_uses_channel(expr.typ)
+				|| expr_type_slots_use_channel_with_options(expr.init, options)
+				|| exprs_type_slots_use_channel_with_options(expr.exprs, options)
+				|| expr_type_slots_use_channel_with_options(expr.cap, options)
+				|| expr_type_slots_use_channel_with_options(expr.len, options)
+				|| expr_type_slots_use_channel_with_options(expr.update_expr, options)
+		}
+		ast.AsCastExpr {
+			return type_expr_uses_channel(expr.typ)
+				|| expr_type_slots_use_channel_with_options(expr.expr, options)
+		}
+		ast.AssocExpr {
+			return type_expr_uses_channel(expr.typ)
+				|| expr_type_slots_use_channel_with_options(expr.expr, options)
+				|| field_inits_use_channel_with_options(expr.fields, options)
+		}
+		ast.CallExpr {
+			return expr_type_slots_use_channel_with_options(expr.lhs, options)
+				|| exprs_type_slots_use_channel_with_options(expr.args, options)
+		}
+		ast.CallOrCastExpr {
+			return type_expr_uses_channel(expr.lhs)
+				|| expr_type_slots_use_channel_with_options(expr.expr, options)
+		}
+		ast.CastExpr {
+			return type_expr_uses_channel(expr.typ)
+				|| expr_type_slots_use_channel_with_options(expr.expr, options)
+		}
+		ast.ComptimeExpr {
+			if options.filter_comptime && expr.expr is ast.IfExpr {
+				return comptime_if_expr_uses_channel_with_options(expr.expr, options)
+			}
+			return expr_type_slots_use_channel_with_options(expr.expr, options)
+		}
+		ast.FieldInit {
+			return expr_type_slots_use_channel_with_options(expr.value, options)
+		}
+		ast.FnLiteral {
+			return fn_type_uses_channel(expr.typ)
+				|| stmts_use_channel_with_options(expr.stmts, options)
+		}
+		ast.GenericArgOrIndexExpr {
+			return type_expr_uses_channel(expr.lhs) || type_expr_uses_channel(expr.expr)
+		}
+		ast.GenericArgs {
+			return type_expr_uses_channel(expr.lhs) || type_exprs_use_channel(expr.args)
+		}
+		ast.IfExpr {
+			return expr_type_slots_use_channel_with_options(expr.cond, options)
+				|| stmts_use_channel_with_options(expr.stmts, options)
+				|| expr_type_slots_use_channel_with_options(expr.else_expr, options)
+		}
+		ast.IfGuardExpr {
+			return stmt_uses_channel_with_options(ast.Stmt(expr.stmt), options)
+		}
+		ast.IndexExpr {
+			return expr_type_slots_use_channel_with_options(expr.lhs, options)
+				|| expr_type_slots_use_channel_with_options(expr.expr, options)
+		}
+		ast.InfixExpr {
+			return expr_type_slots_use_channel_with_options(expr.lhs, options)
+				|| expr_type_slots_use_channel_with_options(expr.rhs, options)
+		}
+		ast.InitExpr {
+			return type_expr_uses_channel(expr.typ)
+				|| field_inits_use_channel_with_options(expr.fields, options)
+		}
+		ast.KeywordOperator {
+			return exprs_type_slots_use_channel_with_options(expr.exprs, options)
+		}
+		ast.LambdaExpr {
+			return expr_type_slots_use_channel_with_options(expr.expr, options)
+		}
+		ast.ModifierExpr {
+			return expr_type_slots_use_channel_with_options(expr.expr, options)
+		}
+		ast.LockExpr {
+			return exprs_type_slots_use_channel_with_options(expr.lock_exprs, options)
+				|| exprs_type_slots_use_channel_with_options(expr.rlock_exprs, options)
+				|| stmts_use_channel_with_options(expr.stmts, options)
+		}
+		ast.MapInitExpr {
+			return type_expr_uses_channel(expr.typ)
+				|| exprs_type_slots_use_channel_with_options(expr.keys, options)
+				|| exprs_type_slots_use_channel_with_options(expr.vals, options)
+		}
+		ast.MatchExpr {
+			if expr_type_slots_use_channel_with_options(expr.expr, options) {
+				return true
+			}
+			for branch in expr.branches {
+				if exprs_type_slots_use_channel_with_options(branch.cond, options)
+					|| stmts_use_channel_with_options(branch.stmts, options) {
+					return true
+				}
+			}
+		}
+		ast.OrExpr {
+			return expr_type_slots_use_channel_with_options(expr.expr, options)
+				|| stmts_use_channel_with_options(expr.stmts, options)
+		}
+		ast.ParenExpr {
+			return expr_type_slots_use_channel_with_options(expr.expr, options)
+		}
+		ast.PostfixExpr {
+			return expr_type_slots_use_channel_with_options(expr.expr, options)
+		}
+		ast.PrefixExpr {
+			return expr_type_slots_use_channel_with_options(expr.expr, options)
+		}
+		ast.RangeExpr {
+			return expr_type_slots_use_channel_with_options(expr.start, options)
+				|| expr_type_slots_use_channel_with_options(expr.end, options)
+		}
+		ast.SelectExpr {
+			return stmt_uses_channel_with_options(expr.stmt, options)
+				|| stmts_use_channel_with_options(expr.stmts, options)
+				|| expr_type_slots_use_channel_with_options(expr.next, options)
+		}
+		ast.SelectorExpr {
+			return expr_type_slots_use_channel_with_options(expr.lhs, options)
+		}
+		ast.SqlExpr {
+			return expr_type_slots_use_channel_with_options(expr.expr, options)
+		}
+		ast.StringInterLiteral {
+			return string_inters_use_channel_with_options(expr.inters, options)
+		}
+		ast.Tuple {
+			return exprs_type_slots_use_channel_with_options(expr.exprs, options)
+		}
+		ast.UnsafeExpr {
+			return stmts_use_channel_with_options(expr.stmts, options)
+		}
+		ast.Type {
+			return type_expr_uses_channel(expr)
+		}
+		else {}
+	}
+
+	return false
+}
+
+fn type_expr_uses_channel(expr ast.Expr) bool {
+	match expr {
+		ast.Type {
+			match expr {
+				ast.ChannelType {
+					return true
+				}
+				ast.ArrayType {
+					return type_expr_uses_channel(expr.elem_type)
+				}
+				ast.ArrayFixedType {
+					return type_expr_uses_channel(expr.elem_type)
+				}
+				ast.FnType {
+					return fn_type_uses_channel(expr)
+				}
+				ast.GenericType {
+					return type_expr_uses_channel(expr.name) || type_exprs_use_channel(expr.params)
+				}
+				ast.MapType {
+					return type_expr_uses_channel(expr.key_type)
+						|| type_expr_uses_channel(expr.value_type)
+				}
+				ast.OptionType {
+					return type_expr_uses_channel(expr.base_type)
+				}
+				ast.PointerType {
+					return type_expr_uses_channel(expr.base_type)
+				}
+				ast.ResultType {
+					return type_expr_uses_channel(expr.base_type)
+				}
+				ast.ThreadType {
+					return type_expr_uses_channel(expr.elem_type)
+				}
+				ast.TupleType {
+					return type_exprs_use_channel(expr.types)
+				}
+				ast.AnonStructType {
+					return type_exprs_use_channel(expr.generic_params)
+						|| type_exprs_use_channel(expr.embedded) || fields_use_channel(expr.fields)
+				}
+				else {}
+			}
+		}
+		else {}
+	}
+
+	return false
+}
+
 fn active_file_imports(file ast.File, user_defines []string, target_os string) []ast.ImportStmt {
 	return active_file_imports_with_explicit(file, user_defines, user_defines, target_os)
 }
 
 fn active_file_imports_with_explicit(file ast.File, user_defines []string, explicit_user_defines []string, target_os string) []ast.ImportStmt {
+	return active_file_imports_with_options(file, user_defines, explicit_user_defines, target_os,
+		true)
+}
+
+fn active_file_imports_with_options(file ast.File, user_defines []string, explicit_user_defines []string, target_os string, allow_pkgconfig bool) []ast.ImportStmt {
 	mut imports := file.imports.clone()
-	collect_active_imports_from_stmts_with_explicit(file.stmts, user_defines,
-		explicit_user_defines, target_os, mut imports)
+	collect_active_imports_from_stmts_with_options(file.stmts, user_defines, explicit_user_defines,
+		target_os, allow_pkgconfig, mut imports)
+	add_implicit_sync_import_if_needed(mut imports, file.mod, stmts_use_channel_with_options(file.stmts, ChannelScanOptions{
+		user_defines:          user_defines
+		explicit_user_defines: explicit_user_defines
+		target_os:             target_os
+		allow_pkgconfig:       allow_pkgconfig
+		filter_comptime:       true
+	}))
 	return imports
 }
 
@@ -243,10 +772,27 @@ fn active_file_imports_with_explicit(file ast.File, user_defines []string, expli
 // import list and top-level stmts straight from the FlatAst, so import
 // discovery can run without rehydrating an ast.File.
 fn active_file_imports_from_flat(flat &ast.FlatAst, ff ast.FlatFile, user_defines []string, explicit_user_defines []string, target_os string) []ast.ImportStmt {
+	return active_file_imports_from_flat_with_options(flat, ff, user_defines,
+		explicit_user_defines, target_os, true)
+}
+
+fn active_file_imports_from_flat_with_options(flat &ast.FlatAst, ff ast.FlatFile, user_defines []string, explicit_user_defines []string, target_os string, allow_pkgconfig bool) []ast.ImportStmt {
 	mut imports := flat.read_file_imports(ff)
 	stmts := flat.read_file_stmts(ff)
-	collect_active_imports_from_stmts_with_explicit(stmts, user_defines, explicit_user_defines,
-		target_os, mut imports)
+	collect_active_imports_from_stmts_with_options(stmts, user_defines, explicit_user_defines,
+		target_os, allow_pkgconfig, mut imports)
+	module_name := if ff.mod_idx >= 0 && ff.mod_idx < flat.strings.len {
+		flat.strings[ff.mod_idx]
+	} else {
+		'main'
+	}
+	add_implicit_sync_import_if_needed(mut imports, module_name, stmts_use_channel_with_options(stmts, ChannelScanOptions{
+		user_defines:          user_defines
+		explicit_user_defines: explicit_user_defines
+		target_os:             target_os
+		allow_pkgconfig:       allow_pkgconfig
+		filter_comptime:       true
+	}))
 	return imports
 }
 
@@ -308,6 +854,7 @@ fn (mut b Builder) parse_files(files []string) []ast.File {
 	mut ast_files := []ast.File{}
 	skip_builtin := b.pref.skip_builtin
 	target_os := b.pref.source_filter_target_os()
+	allow_pkgconfig_imports := !b.pref.is_cross_target()
 	mut use_core_headers := false
 	// Resolve core-source paths upfront so the pre-size pass below can
 	// stat them alongside user files. We still parse in the same batch
@@ -415,8 +962,9 @@ fn (mut b Builder) parse_files(files []string) []ast.File {
 		for afi := 0; afi < b.flat_builder.flat.files.len; afi++ {
 			ff := b.flat_builder.flat.files[afi]
 			ast_file_name := b.flat_builder.flat.file_name(ff)
-			for mod in active_file_imports_from_flat(&b.flat_builder.flat, ff, b.pref.user_defines,
-				b.pref.explicit_user_defines, target_os) {
+			for mod in active_file_imports_from_flat_with_options(&b.flat_builder.flat, ff,
+				b.pref.user_defines, b.pref.explicit_user_defines, target_os,
+				allow_pkgconfig_imports) {
 				if mod.name in parsed_imports {
 					continue
 				}
@@ -440,8 +988,8 @@ fn (mut b Builder) parse_files(files []string) []ast.File {
 	}
 	for afi := 0; afi < ast_files.len; afi++ {
 		ast_file := ast_files[afi]
-		for mod in active_file_imports_with_explicit(ast_file, b.pref.user_defines,
-			b.pref.explicit_user_defines, target_os) {
+		for mod in active_file_imports_with_options(ast_file, b.pref.user_defines,
+			b.pref.explicit_user_defines, target_os, allow_pkgconfig_imports) {
 			if mod.name in parsed_imports {
 				continue
 			}

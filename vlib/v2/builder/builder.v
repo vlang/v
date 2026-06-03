@@ -857,6 +857,33 @@ fn (b &Builder) cached_called_fn_name_list() []string {
 	return names
 }
 
+fn cached_called_fn_names_path(cache_dir string, cache_name string) string {
+	return cache_path_join(cache_dir, '${cache_name}.calls')
+}
+
+fn (mut b Builder) load_cached_called_fn_names(cache_dir string, cache_name string) bool {
+	data := os.read_file(cached_called_fn_names_path(cache_dir, cache_name)) or { return false }
+	for line in data.split_into_lines() {
+		name := line.trim_space()
+		if name.len > 0 {
+			b.cached_called_fn_names[name] = true
+		}
+	}
+	return true
+}
+
+fn (mut b Builder) write_cached_called_fn_names(cache_dir string, cache_name string, before map[string]bool) {
+	mut names := []string{}
+	for name, _ in b.cached_called_fn_names {
+		if name.len == 0 || name in before {
+			continue
+		}
+		names << name
+	}
+	names.sort()
+	os.write_file(cached_called_fn_names_path(cache_dir, cache_name), names.join('\n')) or {}
+}
+
 fn cache_type_module_names(cache_bundle_name string, emit_modules []string) []string {
 	if cache_bundle_name == '' {
 		return emit_modules
@@ -899,6 +926,43 @@ fn (b &Builder) expand_type_modules_with_imports(modules []string) []string {
 		}
 	}
 	return unique_sorted_strings(type_modules.keys())
+}
+
+fn (b &Builder) has_external_cache_module_name_collision(module_names []string) bool {
+	mut module_set := map[string]bool{}
+	for module_name in module_names {
+		if module_name != '' {
+			module_set[module_name] = true
+		}
+	}
+	mut vlib_modules := map[string]bool{}
+	mut external_modules := map[string]bool{}
+	for file in b.files {
+		if file.name == '' || file.name.ends_with('.vh') {
+			continue
+		}
+		module_name := ast_file_module_name(file)
+		if module_name !in module_set {
+			continue
+		}
+		if b.is_vlib_source_file(file.name) {
+			vlib_modules[module_name] = true
+		} else {
+			external_modules[module_name] = true
+		}
+	}
+	for module_name, _ in external_modules {
+		if module_name in vlib_modules {
+			return true
+		}
+	}
+	return false
+}
+
+fn (b &Builder) is_vlib_source_file(file_name string) bool {
+	root := if b.pref.vroot.len > 0 { b.pref.vroot } else { os.getwd() }
+	vlib_root := os.norm_path(os.join_path(root, 'vlib')) + os.path_separator
+	return os.norm_path(os.abs_path(file_name)).starts_with(vlib_root)
 }
 
 fn import_module_name(name string) string {
@@ -956,13 +1020,21 @@ fn (mut b Builder) gen_cleanc_with_cached_core(output_name string, cc string, cc
 	mut optional_cached_cache_names := []string{}
 	mut optional_cached_module_names := []string{}
 	if veb_cached_module_paths.len > 0 && b.has_module('veb') {
-		veb_obj := b.ensure_cached_module_object(cache_dir, veb_cache_name,
-			veb_cached_module_paths, veb_cached_module_names, cc, cc_flags, cc_link_flags,
-			error_limit_flag, true) or {
+		veb_cache_type_modules := b.expand_type_modules_with_imports(cache_type_module_names(veb_cache_name,
+			veb_cached_module_names))
+		veb_obj := if b.has_external_cache_module_name_collision(veb_cache_type_modules) {
 			if os.getenv('V2_TRACE_CACHE') != '' {
-				eprintln('TRACE_CACHE optional_cache=veb reason=${err}')
+				eprintln('TRACE_CACHE optional_cache=veb reason=external_module_name_collision')
 			}
 			''
+		} else {
+			b.ensure_cached_module_object(cache_dir, veb_cache_name, veb_cached_module_paths,
+				veb_cached_module_names, cc, cc_flags, cc_link_flags, error_limit_flag, true) or {
+				if os.getenv('V2_TRACE_CACHE') != '' {
+					eprintln('TRACE_CACHE optional_cache=veb reason=${err}')
+				}
+				''
+			}
 		}
 		if veb_obj.len > 0 {
 			b.print_cached_bundle_modules(veb_cache_name, veb_cached_module_names)
@@ -1288,20 +1360,26 @@ fn (mut b Builder) ensure_cached_module_object(cache_dir string, cache_name stri
 	if os.exists(obj_path) && os.exists(stamp_path) {
 		if current_stamp := os.read_file(stamp_path) {
 			if current_stamp == expected_stamp {
-				if os.getenv('V2VERBOSE') != '' {
-					println('[*] Reusing ${obj_path}')
+				if b.load_cached_called_fn_names(cache_dir, cache_name) {
+					if os.getenv('V2VERBOSE') != '' {
+						println('[*] Reusing ${obj_path}')
+					}
+					return obj_path
 				}
-				return obj_path
 			}
 		}
 	}
 	if b.used_vh_for_parse {
 		if os.exists(obj_path) && os.exists(stamp_path) {
-			return obj_path
+			if b.load_cached_called_fn_names(cache_dir, cache_name) {
+				return obj_path
+			}
+			return error('missing cached ${cache_name} call metadata for .vh parse')
 		}
 		return error('missing cached ${cache_name} object for .vh parse')
 	}
 
+	cached_called_before := b.cached_called_fn_names.clone()
 	module_source := b.gen_cleanc_source_for_cache(emit_modules, cache_name, use_markused)
 	if module_source == '' {
 		return error('failed to generate C source for ${cache_name}')
@@ -1310,6 +1388,7 @@ fn (mut b Builder) ensure_cached_module_object(cache_dir string, cache_name stri
 
 	compile_cmd := '${cc} ${cc_flags} -w -Wno-incompatible-function-pointer-types -c "${c_path}" -o "${obj_path}"${error_limit_flag}'
 	run_cc_cmd_or_exit(compile_cmd, 'C compilation', b.pref.show_cc)
+	b.write_cached_called_fn_names(cache_dir, cache_name, cached_called_before)
 	os.write_file(stamp_path, expected_stamp)!
 	return obj_path
 }
@@ -1323,20 +1402,26 @@ fn (mut b Builder) ensure_cached_parsed_module_object(cache_dir string, cache_na
 	if os.exists(obj_path) && os.exists(stamp_path) {
 		if current_stamp := os.read_file(stamp_path) {
 			if current_stamp == expected_stamp {
-				if os.getenv('V2VERBOSE') != '' {
-					println('[*] Reusing ${obj_path}')
+				if b.load_cached_called_fn_names(cache_dir, cache_name) {
+					if os.getenv('V2VERBOSE') != '' {
+						println('[*] Reusing ${obj_path}')
+					}
+					return obj_path
 				}
-				return obj_path
 			}
 		}
 	}
 	if b.used_import_vh_for_parse {
 		if os.exists(obj_path) && os.exists(stamp_path) {
-			return obj_path
+			if b.load_cached_called_fn_names(cache_dir, cache_name) {
+				return obj_path
+			}
+			return error('missing cached ${cache_name} call metadata for .vh parse')
 		}
 		return error('missing cached ${cache_name} object for .vh parse')
 	}
 
+	cached_called_before := b.cached_called_fn_names.clone()
 	mut module_source := b.gen_cleanc_source_for_cache(module_names, cache_name, use_markused)
 	if module_source == '' {
 		return error('failed to generate C source for ${cache_name}')
@@ -1345,6 +1430,7 @@ fn (mut b Builder) ensure_cached_parsed_module_object(cache_dir string, cache_na
 
 	compile_cmd := '${cc} ${cc_flags} -w -Wno-incompatible-function-pointer-types -c "${c_path}" -o "${obj_path}"${error_limit_flag}'
 	run_cc_cmd_or_exit(compile_cmd, 'C compilation', b.pref.show_cc)
+	b.write_cached_called_fn_names(cache_dir, cache_name, cached_called_before)
 	os.write_file(stamp_path, expected_stamp)!
 	return obj_path
 }
@@ -1358,21 +1444,27 @@ fn (mut b Builder) ensure_cached_virtual_module_object(cache_dir string, groups 
 	if os.exists(obj_path) && os.exists(stamp_path) {
 		if current_stamp := os.read_file(stamp_path) {
 			if current_stamp == expected_stamp {
-				if os.getenv('V2VERBOSE') != '' {
-					println('[*] Reusing ${obj_path}')
+				if b.load_cached_called_fn_names(cache_dir, virtuals_cache_name) {
+					if os.getenv('V2VERBOSE') != '' {
+						println('[*] Reusing ${obj_path}')
+					}
+					return obj_path
 				}
-				return obj_path
 			}
 		}
 	}
 	if b.used_virtual_vh_for_parse {
 		if os.exists(obj_path) && os.exists(stamp_path) {
-			return obj_path
+			if b.load_cached_called_fn_names(cache_dir, virtuals_cache_name) {
+				return obj_path
+			}
+			return error('missing cached ${virtuals_cache_name} call metadata for .vh parse')
 		}
 		return error('missing cached ${virtuals_cache_name} object for .vh parse')
 	}
 
 	emit_files := virtual_module_source_files(groups)
+	cached_called_before := b.cached_called_fn_names.clone()
 	mut module_source := b.gen_cleanc_source_for_cache_files(['main'], emit_files,
 		virtuals_cache_name, use_markused)
 	if module_source == '' {
@@ -1382,6 +1474,7 @@ fn (mut b Builder) ensure_cached_virtual_module_object(cache_dir string, groups 
 
 	compile_cmd := '${cc} ${cc_flags} -w -Wno-incompatible-function-pointer-types -c "${c_path}" -o "${obj_path}"${error_limit_flag}'
 	run_cc_cmd_or_exit(compile_cmd, 'C compilation', b.pref.show_cc)
+	b.write_cached_called_fn_names(cache_dir, virtuals_cache_name, cached_called_before)
 	os.write_file(stamp_path, expected_stamp)!
 	return obj_path
 }
@@ -1738,6 +1831,13 @@ fn parse_flag_directive_line_with_pref(line string, file_path string, prefs &pre
 
 fn parse_flag_directive_line_with_context(line string, file_path string, target_os string, prefs &pref.Preferences) ?string {
 	trimmed := line.trim_space()
+	if trimmed.starts_with('#pkgconfig') {
+		if prefs != unsafe { nil } && prefs.is_cross_target() {
+			return none
+		}
+		rest := trimmed['#pkgconfig'.len..].trim_space()
+		return resolve_pkgconfig_directive_flags(rest)
+	}
 	if !trimmed.starts_with('#flag') {
 		return none
 	}
@@ -1770,6 +1870,22 @@ fn parse_flag_directive_line_with_context(line string, file_path string, target_
 		return none
 	}
 	return normalize_flag_value_for_file(rest, file_path)
+}
+
+fn resolve_pkgconfig_directive_flags(value string) ?string {
+	if value == '' {
+		return none
+	}
+	args := if value.contains('--') {
+		value.fields()
+	} else {
+		'--cflags --libs ${value}'.fields()
+	}
+	flags := pref.pkgconfig_result(args) or { return none }
+	if flags == '' {
+		return none
+	}
+	return flags
 }
 
 fn flag_references_missing_file(flag string, include_flags []string) bool {
@@ -2027,6 +2143,12 @@ fn comptime_cond_matches_with_context(cond string, target_os string, prefs &pref
 		}
 		return pref.comptime_optional_flag_value(prefs, optional_name)
 	}
+	if pkg_name := pkgconfig_cond_name(trimmed) {
+		if prefs != unsafe { nil } && prefs.is_cross_target() {
+			return false
+		}
+		return pref.comptime_pkgconfig_value(pkg_name)
+	}
 	if prefs != unsafe { nil } {
 		return flag_os_matches(trimmed, target_os) || flag_pref_matches(trimmed, prefs)
 	}
@@ -2053,6 +2175,22 @@ fn comptime_cond_matches_with_context(cond string, target_os string, prefs &pref
 		'emscripten' { false }
 		else { false } // unknown user-defined flags default to false
 	}
+}
+
+fn pkgconfig_cond_name(cond string) ?string {
+	trimmed := cond.trim_space()
+	if !trimmed.starts_with(r'$pkgconfig(') || !trimmed.ends_with(')') {
+		return none
+	}
+	arg := trimmed[r'$pkgconfig('.len..trimmed.len - 1].trim_space()
+	if arg.len < 2 {
+		return none
+	}
+	quote := arg[0]
+	if (quote != `'` && quote != `"`) || arg[arg.len - 1] != quote {
+		return none
+	}
+	return arg[1..arg.len - 1]
 }
 
 fn optional_user_ct_flag_name(cond string) ?string {

@@ -662,6 +662,47 @@ fn (mut g Gen) emit_ierror_wrapper_body(base string) {
 	g.sb.writeln('}')
 }
 
+fn (mut g Gen) emit_fn_decl_by_c_name(fn_name string) {
+	if fn_name == '' || 'fn_${fn_name}' in g.emitted_types {
+		return
+	}
+	saved_file_name := g.cur_file_name
+	saved_module := g.cur_module
+	saved_import_modules := g.cur_import_modules.clone()
+	defer {
+		g.cur_file_name = saved_file_name
+		g.cur_module = saved_module
+		g.cur_import_modules = saved_import_modules.clone()
+		g.is_module_ident_cache.clear()
+		g.resolved_module_names.clear()
+	}
+	for file in g.files {
+		g.set_file_module(file)
+		if (g.emit_modules.len > 0 || g.emit_files.len > 0) && !g.should_emit_current_file() {
+			continue
+		}
+		for stmt in file.stmts {
+			if stmt is ast.FnDecl && g.get_fn_name(stmt) == fn_name {
+				g.gen_fn_decl_with_name(stmt, fn_name)
+				return
+			}
+		}
+	}
+}
+
+fn (mut g Gen) emit_ierror_wrapper_dependencies(base string) {
+	for method_name in ['msg', 'code'] {
+		direct_name := '${base}__${method_name}'
+		if direct_name in g.fn_return_types || direct_name in g.v_fn_return_types {
+			g.emit_fn_decl_by_c_name(direct_name)
+			continue
+		}
+		if resolved := g.resolve_embedded_method_info(base, method_name) {
+			g.emit_fn_decl_by_c_name(resolved.fn_name)
+		}
+	}
+}
+
 fn (mut g Gen) emit_needed_ierror_wrappers() {
 	if !g.should_emit_ierror_wrappers() {
 		return
@@ -676,6 +717,7 @@ fn (mut g Gen) emit_needed_ierror_wrappers() {
 		if base !in g.ierror_wrapper_bases {
 			continue
 		}
+		g.emit_ierror_wrapper_dependencies(base)
 		g.emit_ierror_wrapper_body(base)
 		emitted_any = true
 	}

@@ -17,7 +17,7 @@ fn main() {
 
 	// Build v2 compiler (with v1).
 	println('[*] Building v2...')
-	build_res := os.execute('${@VEXE} -gc none ${v2_source} -o ${v2_binary}')
+	build_res := os.execute('${@VEXE} -gc none -cc cc ${v2_source} -o ${v2_binary}')
 	if build_res.exit_code != 0 {
 		eprintln('Error: Failed to build v2')
 		eprintln(build_res.output)
