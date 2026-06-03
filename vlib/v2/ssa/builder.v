@@ -9683,6 +9683,17 @@ fn (mut b Builder) array_elem_type_from_sizeof_arg(arg ast.Expr) TypeID {
 	return 0
 }
 
+// array_elem_type_from_sizeof_arg_from_flat (s227) is the cursor mirror of
+// array_elem_type_from_sizeof_arg. KeywordOperator flat encoding: op in aux,
+// the operand expressions are direct child edges, so exprs[0] = edge(0).
+fn (mut b Builder) array_elem_type_from_sizeof_arg_from_flat(arg_c ast.Cursor) TypeID {
+	if arg_c.kind() == .expr_keyword_operator
+		&& unsafe { token.Token(int(arg_c.aux())) } == .key_sizeof && arg_c.edge_count() > 0 {
+		return b.array_elem_type_from_sizeof_operand_from_flat(arg_c.edge(0))
+	}
+	return 0
+}
+
 fn (mut b Builder) array_elem_type_from_sizeof_operand(expr ast.Expr) TypeID {
 	match expr {
 		ast.Ident {
@@ -9703,11 +9714,46 @@ fn (mut b Builder) array_elem_type_from_sizeof_operand(expr ast.Expr) TypeID {
 	return 0
 }
 
-fn (mut b Builder) array_elem_type_from_new_array_call(fn_name string, expr ast.CallExpr) TypeID {
-	if expr.args.len < 3 {
-		return 0
+// array_elem_type_from_sizeof_operand_from_flat (s227) is the cursor mirror of
+// array_elem_type_from_sizeof_operand. The Ident arm reads name(); the
+// SelectorExpr arm reproduces `named_type_to_ssa('${lhs}__${rhs}')` (note: a
+// non-Ident selector lhs yields lhs_name=='' here, which short-circuits to 0 —
+// bit-identical because the AST's `${lhs.name()}__${rhs}` could only name a type
+// containing a '.', which never exists, so it resolves to 0 too). The ast.Type
+// arm matches the contiguous .typ_* FlatNodeKind block and delegates to
+// ast_type_to_ssa_from_flat; any other expr kind returns 0 like the AST `else`.
+fn (mut b Builder) array_elem_type_from_sizeof_operand_from_flat(expr_c ast.Cursor) TypeID {
+	kind := expr_c.kind()
+	match kind {
+		.expr_ident {
+			return b.ident_type_to_ssa(expr_c.name())
+		}
+		.expr_selector {
+			lhs_c := expr_c.edge(0)
+			rhs_c := expr_c.edge(1)
+			lhs_name := if lhs_c.kind() == .expr_ident { lhs_c.name() } else { '' }
+			rhs_name := if rhs_c.kind() == .expr_ident { rhs_c.name() } else { '' }
+			if lhs_name != '' && rhs_name != '' {
+				return b.named_type_to_ssa('${lhs_name}__${rhs_name}')
+			}
+		}
+		else {
+			if int(kind) >= int(ast.FlatNodeKind.typ_anon_struct)
+				&& int(kind) <= int(ast.FlatNodeKind.typ_tuple) {
+				return b.ast_type_to_ssa_from_flat(expr_c)
+			}
+		}
 	}
-	if fn_name in ['__new_array', 'builtin____new_array', '__new_array_noscan',
+
+	return 0
+}
+
+// is_new_array_sizeof_fn (s227) is the shared name predicate for the
+// __new_array* / new_array_from* builtins that carry an explicit `sizeof(elem)`
+// argument in slot 2. Both array_elem_type_from_new_array_call (AST) and its
+// cursor variant consult it so the name list lives in exactly one place.
+fn (b &Builder) is_new_array_sizeof_fn(fn_name string) bool {
+	return fn_name in ['__new_array', 'builtin____new_array', '__new_array_noscan',
 		'builtin____new_array_noscan', '__new_array_with_default',
 		'builtin____new_array_with_default', '__new_array_with_default_noscan',
 		'builtin____new_array_with_default_noscan', '__new_array_with_multi_default',
@@ -9717,8 +9763,29 @@ fn (mut b Builder) array_elem_type_from_new_array_call(fn_name string, expr ast.
 		'builtin____new_array_with_array_default_noscan', 'new_array_from_c_array',
 		'builtin__new_array_from_c_array', 'new_array_from_c_array_noscan',
 		'builtin__new_array_from_c_array_noscan', 'new_array_from_array_and_c_array',
-		'builtin__new_array_from_array_and_c_array'] {
+		'builtin__new_array_from_array_and_c_array']
+}
+
+fn (mut b Builder) array_elem_type_from_new_array_call(fn_name string, expr ast.CallExpr) TypeID {
+	if expr.args.len < 3 {
+		return 0
+	}
+	if b.is_new_array_sizeof_fn(fn_name) {
 		return b.array_elem_type_from_sizeof_arg(expr.args[2])
+	}
+	return 0
+}
+
+// array_elem_type_from_new_array_call_from_flat (s227) is the cursor mirror of
+// array_elem_type_from_new_array_call. `c` is the call cursor; args[2] is edge 3
+// (edge0=lhs, edge1=arg0, edge2=arg1, edge3=arg2). Returns 0 for any non-matching
+// name, so it is safe to call unconditionally on the result of every call.
+fn (mut b Builder) array_elem_type_from_new_array_call_from_flat(fn_name string, c ast.Cursor) TypeID {
+	if c.edge_count() - 1 < 3 {
+		return 0
+	}
+	if b.is_new_array_sizeof_fn(fn_name) {
+		return b.array_elem_type_from_sizeof_arg_from_flat(c.edge(3))
 	}
 	return 0
 }
@@ -10600,30 +10667,13 @@ fn (mut b Builder) build_call_resolved_from_flat(fn_name_in string, c ast.Cursor
 
 	call_val := b.mod.add_instr(.call, b.cur_block, ret_type, operands)
 
-	// Array-elem-type inference tail. The slice/clone/first/last/pop builtins
-	// resolve their element type from the receiver / args[0] cursors directly via
-	// the s226 cursor helpers — no decode. Only the `__new_array*` builtins still
-	// need the AST path (they read args[2] through the sizeof-operand name()
-	// machinery), so reconstruct the ast.CallExpr lazily and ONLY for them (a rare
-	// path). array_elem_type_from_new_array_call returns 0 for every non-new_array
-	// name, so gating the reconstruction on the new_array prefixes is bit-identical
-	// to running it unconditionally.
-	if fn_name.starts_with('__new_array') || fn_name.starts_with('builtin____new_array')
-		|| fn_name.starts_with('new_array_from') || fn_name.starts_with('builtin__new_array_from') {
-		mut infer_args := []ast.Expr{cap: n_args}
-		for i in 1 .. n_edges {
-			arg_c := c.edge(i)
-			infer_args << arg_c.flat.decode_expr(arg_c.id)
-		}
-		expr := ast.CallExpr{
-			lhs:  lhs
-			args: infer_args
-			pos:  c.pos()
-		}
-		new_array_elem_type := b.array_elem_type_from_new_array_call(fn_name, expr)
-		if new_array_elem_type != 0 {
-			b.array_value_elem_types[call_val] = new_array_elem_type
-		}
+	// Array-elem-type inference tail — fully cursor-native (s226 + s227). Every
+	// branch resolves element types straight from cursors; no argument is ever
+	// decoded. array_elem_type_from_new_array_call_from_flat returns 0 for every
+	// non-new_array name, so it runs unconditionally exactly like the AST path.
+	new_array_elem_type := b.array_elem_type_from_new_array_call_from_flat(fn_name, c)
+	if new_array_elem_type != 0 {
+		b.array_value_elem_types[call_val] = new_array_elem_type
 	}
 	if fn_name in ['array__slice', 'array__slice_ni', 'builtin__array__slice', 'builtin__array__slice_ni']
 		&& n_args > 0 {
