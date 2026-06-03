@@ -108,6 +108,33 @@ fn test_parse_files_expands_implicit_main_subdirectories() {
 	assert 'hero.v' in names
 }
 
+fn test_parse_files_skips_block_commented_non_main_subdirectories() {
+	tmp_dir := os.join_path(os.temp_dir(), 'v2_builder_parse_dir_block_comment_mod_${os.getpid()}')
+	os.rmdir_all(tmp_dir) or {}
+	os.mkdir_all(os.join_path(tmp_dir, 'api')) or { panic(err) }
+	defer {
+		os.rmdir_all(tmp_dir) or {}
+	}
+
+	entry_file := os.join_path(tmp_dir, 'main.v')
+	api_file := os.join_path(tmp_dir, 'api', 'api.v')
+	os.write_file(entry_file, 'module main\nfn main() {}\n') or { panic(err) }
+	os.write_file(api_file, '/* license header */\nmodule api\nstruct Payload {}\n') or {
+		panic(err)
+	}
+
+	mut prefs := pref.new_preferences()
+	prefs.skip_builtin = true
+	prefs.skip_imports = true
+	mut b := new_builder(&prefs)
+	files := b.parse_files([tmp_dir])
+	names := files.map(os.file_name(it.name))
+
+	assert files.len == 1
+	assert 'main.v' in names
+	assert 'api.v' !in names
+}
+
 fn test_virtual_main_modules_skip_groups_with_executable_main_from_paths() {
 	tmp_dir := os.join_path(os.temp_dir(), 'v2_builder_virtual_paths_main_${os.getpid()}')
 	os.rmdir_all(tmp_dir) or {}
