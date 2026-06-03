@@ -2256,10 +2256,8 @@ fn (mut b Builder) register_consts_and_globals_from_flat(file_cursor ast.FileCur
 		c := stmts.at(si)
 		match c.kind() {
 			.stmt_const_decl {
-				decoded := c.flat.decode_stmt(c.id)
-				if decoded is ast.ConstDecl {
-					b.register_const_decl(decoded)
-				}
+				// s242: cursor-native const registration — no decode_stmt.
+				b.register_const_decl_from_flat(c)
 			}
 			.stmt_global_decl {
 				// s237: cursor-native global registration — no decode_stmt.
@@ -2432,6 +2430,179 @@ fn (mut b Builder) register_const_decl(stmt ast.ConstDecl) {
 			// Also store without module prefix for transformer-generated references
 			b.const_values[field.name] = initial_value
 			b.const_value_types[field.name] = const_type
+		}
+	}
+}
+
+// register_const_decl_from_flat (s242) is the cursor mirror of register_const_decl
+// (the last decode_stmt in builder.v). ConstDecl flat = one edge -> aux_list of
+// `.aux_field_init` (field name in name_id, value at edge(0)). Uses the s235
+// (try_eval_const_int / const_field_type / is_zero_literal) and s241
+// (try_eval_const_string / is_float_cast_expr / try_eval_computed_float /
+// is_float_array / try_serialize_const_array) cursor helpers. Every branch
+// (string / float / int / sumtype-const / fixed+dynamic const-array) mirrors the
+// AST exactly; ArrayInitExpr exprs are edges 5..n and InitExpr fields edges 1..n.
+fn (mut b Builder) register_const_decl_from_flat(c ast.Cursor) {
+	fields := c.list_at(0)
+	for fidx in 0 .. fields.len() {
+		field_c := fields.at(fidx)
+		field_name := field_c.name()
+		value_c := field_c.edge(0)
+		value_kind := value_c.kind()
+		const_name := if b.cur_module != '' && b.cur_module != 'main' {
+			'${b.cur_module}__${field_name}'
+		} else {
+			field_name
+		}
+		mut const_type := b.const_field_type_from_flat(field_name, value_c)
+		// Check if this is a string constant - store for inline resolution
+		str_val := b.try_eval_const_string_from_flat(value_c)
+		if str_val.len > 0 {
+			b.string_const_values[const_name] = str_val
+			b.string_const_values[field_name] = str_val
+		}
+		// Check if this is a float constant - store for inline resolution
+		if value_kind == .expr_basic_literal
+			&& unsafe { token.Token(int(value_c.aux())) } == .number
+			&& (value_c.name().contains('.') || (!value_c.name().starts_with('0x')
+			&& !value_c.name().starts_with('0X')
+			&& (value_c.name().contains('e') || value_c.name().contains('E')))) {
+			b.float_const_values[const_name] = value_c.name()
+			b.float_const_values[field_name] = value_c.name()
+		} else if b.is_float_cast_expr_from_flat(value_c) {
+			if fval := b.try_eval_computed_float_from_flat(value_c) {
+				fval_str := fval.str()
+				b.float_const_values[const_name] = fval_str
+				b.float_const_values[field_name] = fval_str
+			}
+		}
+		initial_value := b.try_eval_const_int_from_flat(value_c)
+		// Detect sum type constants (Case 1: InitExpr{_tag,...}; Case 2: cast to sum type).
+		mut is_sumtype_const := false
+		if value_kind == .expr_init {
+			n_init_fields := value_c.edge_count() - 1
+			for ifi := 0; ifi < n_init_fields; ifi++ {
+				if value_c.edge(1 + ifi).name() == '_tag' {
+					is_sumtype_const = true
+					break
+				}
+			}
+		}
+		if !is_sumtype_const {
+			mut cast_type_name := ''
+			if value_kind == .expr_cast {
+				if value_c.edge(0).kind() == .expr_ident {
+					cast_type_name = value_c.edge(0).name()
+				}
+			} else if value_kind == .expr_call_or_cast {
+				if value_c.edge(0).kind() == .expr_ident {
+					cast_type_name = value_c.edge(0).name()
+				}
+			}
+			if cast_type_name != '' {
+				qualified_cast := if b.cur_module != '' && b.cur_module != 'main' {
+					'${b.cur_module}__${cast_type_name}'
+				} else {
+					cast_type_name
+				}
+				for _, check_name in [cast_type_name, qualified_cast] {
+					if st_type := b.struct_types[check_name] {
+						if int(st_type) < b.mod.type_store.types.len {
+							st := b.mod.type_store.types[st_type]
+							if st.kind == .struct_t && st.field_names.len >= 2
+								&& st.field_names[0] == '_tag' {
+								is_sumtype_const = true
+								const_type = st_type
+								break
+							}
+						}
+					}
+				}
+			}
+		}
+		// For sum type constants detected via InitExpr, also fix const_type
+		if is_sumtype_const && value_kind == .expr_init {
+			if value_c.edge(0).kind() == .expr_ident {
+				type_name := value_c.edge(0).name()
+				if st_type := b.struct_types[type_name] {
+					const_type = st_type
+				} else {
+					qualified_st := '${b.cur_module}__${type_name}'
+					if st_type2 := b.struct_types[qualified_st] {
+						const_type = st_type2
+					}
+				}
+			}
+		}
+		// Detect constant FIXED arrays with all-literal elements.
+		if value_kind == .expr_array_init && (value_c.edge_count() - 5) > 0 {
+			n_arr_exprs := value_c.edge_count() - 5
+			mut is_fixed_array := true
+			// Check type environment to see if this is a dynamic array
+			if b.env != unsafe { nil } {
+				fpos := value_c.pos()
+				if fpos.id != 0 {
+					if ct := b.env.get_expr_type(fpos.id) {
+						if ct is types.Array {
+							is_fixed_array = false
+						}
+					}
+				}
+			}
+			arr_data := b.try_serialize_const_array_from_flat(value_c)
+			if arr_data.len > 0 {
+				elem_size := arr_data.len / n_arr_exprs
+				is_float_arr := b.is_float_array_from_flat(value_c)
+				elem_type := if is_float_arr {
+					b.mod.type_store.get_float(elem_size * 8)
+				} else if elem_size == 8 {
+					b.mod.type_store.get_int(64)
+				} else if elem_size == 4 {
+					b.mod.type_store.get_int(32)
+				} else if elem_size == 2 {
+					b.mod.type_store.get_int(16)
+				} else {
+					b.mod.type_store.get_int(8)
+				}
+				if is_fixed_array {
+					b.mod.add_global_with_data(const_name, elem_type, true, arr_data)
+					b.const_array_globals[const_name] = true
+					b.const_array_globals[field_name] = true
+					b.const_array_elem_count[const_name] = n_arr_exprs
+					b.const_array_elem_count[field_name] = n_arr_exprs
+					continue
+				} else {
+					// Dynamic array constant: serialize data, create array struct global
+					data_name := '${const_name}__data'
+					b.mod.add_global_with_data(data_name, elem_type, true, arr_data)
+					b.const_array_globals[data_name] = true
+					// Add array struct global (initialized in _vinit)
+					arr_struct_type := b.get_array_type()
+					b.mod.add_global(const_name, arr_struct_type, false)
+					b.dyn_const_arrays << DynConstArray{
+						arr_global_name:  const_name
+						data_global_name: data_name
+						elem_count:       n_arr_exprs
+						elem_size:        elem_size
+					}
+					continue
+				}
+			}
+		}
+		// For float constants, store bit pattern as initial_value
+		mut actual_init := initial_value
+		if const_name in b.float_const_values {
+			f_val := b.float_const_values[const_name].f64()
+			actual_init = i64(unsafe { *(&i64(&f_val)) })
+			const_type = b.mod.type_store.get_float(64)
+		}
+		b.mod.add_global_with_value(const_name, const_type, true, actual_init)
+		if !is_sumtype_const && (initial_value != 0 || b.is_zero_literal_from_flat(value_c)) {
+			b.const_values[const_name] = initial_value
+			b.const_value_types[const_name] = const_type
+			// Also store without module prefix for transformer-generated references
+			b.const_values[field_name] = initial_value
+			b.const_value_types[field_name] = const_type
 		}
 	}
 }
