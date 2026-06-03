@@ -3114,21 +3114,21 @@ fn boot() {
 		},
 	])
 	mut fn_names := []string{}
-	mut main_fn_names := []string{}
+	mut webx_fn_names := []string{}
 	for file in files {
 		for stmt in file.stmts {
 			if stmt is ast.FnDecl {
 				fn_names << stmt.name
-				if file.mod == 'main' {
-					main_fn_names << stmt.name
+				if file.mod == 'webx' {
+					webx_fn_names << stmt.name
 				}
 			}
 		}
 	}
 	assert 'webx__run_at_T_App_Context' in fn_names
 	assert 'webx__run_new_T_App_Context' in fn_names
-	assert 'webx__run_at_T_App_Context' in main_fn_names
-	assert 'webx__run_new_T_App_Context' in main_fn_names
+	assert 'webx__run_at_T_App_Context' in webx_fn_names
+	assert 'webx__run_new_T_App_Context' in webx_fn_names
 }
 
 fn test_transform_transitive_generic_call_with_mut_arg_in_clone_emits_callee_clone() {
@@ -3163,21 +3163,21 @@ fn boot() {
 		},
 	])
 	mut fn_names := []string{}
-	mut main_fn_names := []string{}
+	mut webx_fn_names := []string{}
 	for file in files {
 		for stmt in file.stmts {
 			if stmt is ast.FnDecl {
 				fn_names << stmt.name
-				if file.mod == 'main' {
-					main_fn_names << stmt.name
+				if file.mod == 'webx' {
+					webx_fn_names << stmt.name
 				}
 			}
 		}
 	}
 	assert 'webx__run_at_T_App_Context' in fn_names
 	assert 'webx__run_new_T_App_Context' in fn_names
-	assert 'webx__run_at_T_App_Context' in main_fn_names
-	assert 'webx__run_new_T_App_Context' in main_fn_names
+	assert 'webx__run_at_T_App_Context' in webx_fn_names
+	assert 'webx__run_new_T_App_Context' in webx_fn_names
 }
 
 fn test_transform_transitive_generic_function_value_in_clone_emits_full_callee_clone() {
@@ -3226,15 +3226,15 @@ fn boot() {
 '
 		},
 	])
-	mut main_fn_names := []string{}
+	mut webx_fn_names := []string{}
 	mut handler_name := ''
 	for file in files {
-		if file.mod != 'main' {
+		if file.mod != 'webx' {
 			continue
 		}
 		for stmt in file.stmts {
 			if stmt is ast.FnDecl {
-				main_fn_names << stmt.name
+				webx_fn_names << stmt.name
 				if stmt.name == 'webx__run_new_T_App_Context' {
 					assign := stmt.stmts[0] as ast.AssignStmt
 					init := assign.rhs[0] as ast.InitExpr
@@ -3247,13 +3247,13 @@ fn boot() {
 			}
 		}
 	}
-	assert 'webx__run_new_T_App_Context' in main_fn_names
+	assert 'webx__run_new_T_App_Context' in webx_fn_names
 	assert handler_name == 'webx__parallel_request_handler_T_App_Context'
-	assert 'webx__parallel_request_handler_T_App_Context' in main_fn_names
-	assert 'webx__route_T_App_Context' in main_fn_names
+	assert 'webx__parallel_request_handler_T_App_Context' in webx_fn_names
+	assert 'webx__route_T_App_Context' in webx_fn_names
 }
 
-fn test_transform_moved_clone_substituted_init_type_keeps_caller_context() {
+fn test_transform_imported_clone_substituted_init_type_keeps_declaring_module_context() {
 	files := transform_sources_for_test([
 		TestSource{
 			rel:  'webx/webx.v'
@@ -3293,28 +3293,28 @@ fn boot() {
 		},
 	])
 	mut init_type_name := ''
-	mut main_fn_names := []string{}
+	mut webx_fn_names := []string{}
 	for file in files {
-		if file.mod != 'main' {
+		if file.mod != 'webx' {
 			continue
 		}
 		for stmt in file.stmts {
 			if stmt is ast.FnDecl && stmt.name == 'webx__make_T_App_Context' {
-				main_fn_names << stmt.name
+				webx_fn_names << stmt.name
 				assign := stmt.stmts[1] as ast.AssignStmt
 				init := assign.rhs[0] as ast.InitExpr
 				init_type := init.typ as ast.Ident
 				init_type_name = init_type.name
 			} else if stmt is ast.FnDecl {
-				main_fn_names << stmt.name
+				webx_fn_names << stmt.name
 			}
 		}
 	}
 	assert init_type_name == 'Context'
-	assert 'webx__route_T_App_Context' in main_fn_names
+	assert 'webx__route_T_App_Context' in webx_fn_names
 }
 
-fn test_transform_transitive_moved_clone_substitutes_nested_generic_route_context() {
+fn test_transform_transitive_imported_clone_substitutes_nested_generic_route_context() {
 	env, files := transform_sources_with_env_for_test([
 		TestSource{
 			rel:  'webx/webx.v'
@@ -3379,16 +3379,16 @@ fn boot() {
 '
 		},
 	])
-	mut main_fn_names := []string{}
+	mut webx_fn_names := []string{}
 	mut init_type_name := ''
 	mut route_call_name := ''
 	for file in files {
-		if file.mod != 'main' {
+		if file.mod != 'webx' {
 			continue
 		}
 		for stmt in file.stmts {
 			if stmt is ast.FnDecl {
-				main_fn_names << stmt.name
+				webx_fn_names << stmt.name
 				if stmt.name == 'webx__handle_request_and_route_T_App_Context' {
 					for inner in stmt.stmts {
 						if inner is ast.AssignStmt && inner.lhs.len == 1 && inner.rhs.len == 1 {
@@ -3412,13 +3412,13 @@ fn boot() {
 			}
 		}
 	}
-	assert 'webx__parallel_request_handler_T_App_Context' in main_fn_names
-	assert 'webx__handle_request_and_route_T_App_Context' in main_fn_names
-	assert 'webx__handle_route_T_App_Context' in main_fn_names
+	assert 'webx__parallel_request_handler_T_App_Context' in webx_fn_names
+	assert 'webx__handle_request_and_route_T_App_Context' in webx_fn_names
+	assert 'webx__handle_route_T_App_Context' in webx_fn_names
 	assert init_type_name == 'Context'
 	assert route_call_name == 'webx__handle_route_T_App_Context'
-	route_scope := env.get_fn_scope('main', 'webx__handle_route_T_App_Context') or {
-		panic('missing moved route clone scope')
+	route_scope := env.get_fn_scope('webx', 'webx__handle_route_T_App_Context') or {
+		panic('missing imported route clone scope')
 	}
 	user_context_type := route_scope.lookup_var_type('user_context') or {
 		panic('missing user_context type')

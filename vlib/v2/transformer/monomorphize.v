@@ -752,23 +752,17 @@ pub fn (mut t Transformer) monomorphize_pass(files []ast.File) []ast.File {
 			}
 			t.monomorphized_specs[spec_key] = true
 			t.register_monomorphized_fn_bindings(files[fi].mod, clone_name, bindings)
-			owner_key := generic_spec_owner_key(fn_key, bindings)
-			target_fi := t.generic_spec_owner_file[owner_key] or { fi }
-			clone_fi := if target_fi >= 0 && target_fi < files.len { target_fi } else { fi }
 			old_owner_file := t.cur_generic_call_file_idx
 			old_import_aliases := t.cur_import_aliases.clone()
-			t.cur_generic_call_file_idx = clone_fi
+			t.cur_generic_call_file_idx = fi
 			t.cur_import_aliases = import_aliases_for_generic_collect(files[fi].imports)
-			mut cloned := t.clone_fn_decl_with_substitutions(decl, bindings, clone_name,
-				files[fi].mod, files[clone_fi].mod)
+			cloned := t.clone_fn_decl_with_substitutions(decl, bindings, clone_name, files[fi].mod,
+				files[fi].mod)
 			t.cur_generic_call_file_idx = old_owner_file
 			t.cur_import_aliases = old_import_aliases.clone()
-			if clone_fi != fi {
-				cloned = t.qualify_moved_clone_source_module_types(cloned, files[fi].mod)
-			}
-			mut bucket := per_file_clones[clone_fi] or { []ast.Stmt{} }
+			mut bucket := per_file_clones[fi] or { []ast.Stmt{} }
 			bucket << ast.Stmt(cloned)
-			per_file_clones[clone_fi] = bucket
+			per_file_clones[fi] = bucket
 		}
 	}
 	deferred_specs := t.deferred_generic_call_specs.clone()

@@ -254,49 +254,65 @@ fn test_clone_fn_decl_substitutes_fn_literal_signature() {
 	assert return_typ.name == 'int'
 }
 
-fn test_monomorphize_pass_uses_decl_module_name_for_moved_import_clone() {
+fn test_monomorphize_pass_keeps_imported_clone_in_declaring_file() {
 	mut t := mono_test_transformer()
 	t.env = types.Environment.new()
 	bindings := {
 		'T': types.Type(types.string_)
 	}
-	t.env.generic_types['http__arrays__uniq'] = [bindings]
-	t.generic_spec_owner_file[generic_spec_owner_key('http__arrays__uniq', bindings)] = 1
-	decl := ast.FnDecl{
-		name: 'uniq'
+	t.env.generic_types['m__wrap'] = [bindings]
+	t.generic_spec_owner_file[generic_spec_owner_key('m__wrap', bindings)] = 1
+	helper_decl := ast.FnDecl{
+		name: 'helper'
 		typ:  ast.FnType{
+			return_type: ast.Expr(ast.Ident{
+				name: 'int'
+			})
+		}
+	}
+	decl := ast.FnDecl{
+		name:  'wrap'
+		typ:   ast.FnType{
 			generic_params: [
 				ast.Expr(ast.Ident{
 					name: 'T'
 				}),
 			]
-			params:         [
-				ast.Parameter{
-					name: 'items'
-					typ:  ast.Expr(ast.Ident{
-						name: 'T'
-					})
-				},
-			]
 			return_type:    ast.Expr(ast.Ident{
-				name: 'T'
+				name: 'int'
 			})
 		}
+		stmts: [
+			ast.Stmt(ast.ReturnStmt{
+				exprs: [
+					ast.Expr(ast.CallExpr{
+						lhs: ast.Expr(ast.Ident{
+							name: 'helper'
+						})
+					}),
+				]
+			}),
+		]
 	}
 	files := [
 		ast.File{
-			mod:   'arrays'
-			stmts: [ast.Stmt(decl)]
+			mod:   'm'
+			stmts: [ast.Stmt(helper_decl), ast.Stmt(decl)]
 		},
 		ast.File{
-			mod: 'net.http'
+			mod: 'main'
 		},
 	]
 	out := t.monomorphize_pass(files)
-	assert out[1].stmts.len == 1
-	assert out[1].stmts[0] is ast.FnDecl
-	cloned := out[1].stmts[0] as ast.FnDecl
-	assert cloned.name == 'arrays__uniq_T_string'
+	assert out[0].stmts.len == 3
+	assert out[1].stmts.len == 0
+	assert out[0].stmts[2] is ast.FnDecl
+	cloned := out[0].stmts[2] as ast.FnDecl
+	assert cloned.name == 'm__wrap_T_string'
+	ret := cloned.stmts[0] as ast.ReturnStmt
+	call := ret.exprs[0] as ast.CallExpr
+	assert call.lhs is ast.Ident
+	assert (call.lhs as ast.Ident).name == 'helper'
 }
 
 fn test_register_generic_bindings_keeps_first_owner_for_duplicate_spec() {
