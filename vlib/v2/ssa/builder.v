@@ -1832,9 +1832,11 @@ fn (mut b Builder) register_type_aliases_from_flat(file_cursor ast.FileCursor) {
 	for si in 0 .. stmts.len() {
 		c := stmts.at(si)
 		if c.kind() == .stmt_type_decl {
-			decoded := c.flat.decode_stmt(c.id)
-			if decoded is ast.TypeDecl && decoded.variants.len == 0 {
-				b.register_type_alias(decoded)
+			// s236: TypeDecl flat = (.stmt_type_decl, name in name_id,
+			// [edge0=base_type, edge1=attrs, edge2=generic_params, edge3=variants]).
+			// Aliases have no variants — dispatch cursor-natively, no decode_stmt.
+			if c.list_at(3).len() == 0 {
+				b.register_type_alias_from_flat(c)
 			}
 		}
 	}
@@ -1865,6 +1867,39 @@ fn (mut b Builder) register_type_alias(decl ast.TypeDecl) {
 	}
 	if b.cur_module == '' || b.cur_module == 'main' {
 		b.type_aliases[decl.name] = base_type
+	}
+}
+
+// register_type_alias_from_flat (s236) is the cursor mirror of register_type_alias.
+// `c` is the .stmt_type_decl cursor: name in name_id, base_type at edge(0). The
+// builder_expr_ok corruption guard is unnecessary for a valid cursor; the
+// ssa_string_ok / base_type==0 guards and the map writes are identical.
+fn (mut b Builder) register_type_alias_from_flat(c ast.Cursor) {
+	name_str := c.name()
+	if !ssa_string_ok(name_str) || name_str == '' {
+		return
+	}
+	base_type := b.ast_type_to_ssa_from_flat(c.edge(0))
+	if base_type == 0 {
+		return
+	}
+	name := if b.cur_module != '' && b.cur_module != 'main' {
+		'${b.cur_module}__${name_str}'
+	} else {
+		name_str
+	}
+	if ssa_string_ok(name) {
+		b.type_aliases[name] = base_type
+	}
+	short_mod := ssa_module_tail_name(b.cur_module)
+	if short_mod != '' && short_mod != b.cur_module && b.cur_module != 'main' {
+		short_name := '${short_mod}__${name_str}'
+		if ssa_string_ok(short_name) {
+			b.type_aliases[short_name] = base_type
+		}
+	}
+	if b.cur_module == '' || b.cur_module == 'main' {
+		b.type_aliases[name_str] = base_type
 	}
 }
 
