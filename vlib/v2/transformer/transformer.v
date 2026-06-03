@@ -133,6 +133,11 @@ mut:
 	// doesn't copy an inner map, and stored as the sum (not the FnType variant)
 	// because v2's own codegen mishandles a map valued by a bare sum-variant.
 	cached_method_base_index map[string]types.Type
+	// cached_method_keys_by_short buckets cached_method_keys by their short
+	// (final `__`-segment) name. The fuzzy method-key fallback loops only ever
+	// match a key whose short name equals the receiver's short name, so they can
+	// scan just this bucket instead of every method key (O(all_keys) per call).
+	cached_method_keys_by_short map[string][]string
 	// Accumulated synth types for deferred application (thread-safe).
 	// Instead of writing directly to env.set_expr_type during parallel transform,
 	// store here and apply after merge.
@@ -359,6 +364,7 @@ pub fn (t &Transformer) new_worker_clone(worker_idx int) &Transformer {
 		cached_scopes:                      t.cached_scopes.clone()
 		cached_methods:                     t.cached_methods.clone()
 		cached_method_base_index:           t.cached_method_base_index.clone()
+		cached_method_keys_by_short:        t.cached_method_keys_by_short.clone()
 		cached_method_keys:                 t.cached_method_keys.clone()
 		cached_fn_scopes:                   t.cached_fn_scopes.clone()
 		synth_types:                        t.synth_types.clone()
@@ -1521,6 +1527,11 @@ fn (mut t Transformer) cache_env_maps() {
 	t.cached_method_keys = t.cached_methods.keys()
 	t.cached_fn_scopes = t.env.snapshot_fn_scopes()
 	t.build_cached_method_base_index()
+	mut by_short := map[string][]string{}
+	for key in t.cached_method_keys {
+		by_short[method_short_name(key)] << key
+	}
+	t.cached_method_keys_by_short = by_short.move()
 }
 
 // build_cached_method_base_index precomputes, for each type, a base-method-name

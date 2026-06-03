@@ -1770,6 +1770,15 @@ fn generic_base_name_without_specialization(name string) string {
 	return name[..end]
 }
 
+// method_short_name returns the final `__`-separated segment of s (after a
+// `.`->`__` normalization). It matches the short form method_key_matches_type_name
+// compares, so it can be used to bucket method keys for fast candidate lookup.
+fn method_short_name(s string) string {
+	norm := if s.index_u8(`.`) >= 0 { s.replace('.', '__') } else { s }
+	d := last_double_underscore(norm)
+	return if d >= 0 { norm[d + 2..] } else { norm }
+}
+
 // last_double_underscore returns the index of the last `__` in s, or -1.
 // Hand-rolled (no allocation) replacement for s.contains('__') / .all_after_last('__'),
 // which build KMP tables / allocate; used in hot per-call-site name matching.
