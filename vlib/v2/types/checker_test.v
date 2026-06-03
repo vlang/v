@@ -212,6 +212,43 @@ fn test_find_method_specializes_array_first_return_type() {
 	assert ret.name() == 'string'
 }
 
+fn test_non_array_sorted_method_uses_receiver_method_return_type() {
+	prefs := &pref.Preferences{}
+	mut file_set := token.FileSet.new()
+	env := Environment.new()
+	mut checker := Checker.new(prefs, file_set, env)
+	foo_type := Type(Struct{
+		name: 'Foo'
+	})
+	checker.scope.insert('foo', object_from_type(foo_type))
+	checker.register_method_type('Foo', 'sorted', FnType{
+		params:      [
+			Parameter{
+				name: 'value'
+				typ:  Type(int_)
+			},
+		]
+		return_type: Type(string_)
+	})
+	typ := checker.call_expr(&ast.CallExpr{
+		lhs:  ast.Expr(ast.SelectorExpr{
+			lhs: ast.Expr(ast.Ident{
+				name: 'foo'
+			})
+			rhs: ast.Ident{
+				name: 'sorted'
+			}
+		})
+		args: [
+			ast.Expr(ast.BasicLiteral{
+				kind:  .number
+				value: '1'
+			}),
+		]
+	})
+	assert typ.name() == 'string'
+}
+
 fn test_slice_clone_preserves_array_type_for_method_chain() {
 	prefs := &pref.Preferences{}
 	mut file_set := token.FileSet.new()

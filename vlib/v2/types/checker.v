@@ -6710,11 +6710,12 @@ fn (mut c Checker) call_expr(expr &ast.CallExpr) Type {
 	}
 	if lhs_expr is ast.SelectorExpr && lhs_expr.rhs.name in ['sort', 'sorted'] && expr.args.len == 1 {
 		receiver_type := c.expr(lhs_expr.lhs)
-		c.check_sort_cmp_arg_with_receiver_type(receiver_type, expr.args[0])
-		if lhs_expr.rhs.name == 'sorted' {
-			return receiver_type
+		if c.check_sort_cmp_arg_with_receiver_type(receiver_type, expr.args[0]) {
+			if lhs_expr.rhs.name == 'sorted' {
+				return receiver_type
+			}
+			return Type(void_)
 		}
-		return Type(void_)
 	}
 	// TODO: remove, see comment at field decl
 	expecting_method := c.expecting_method
@@ -6923,7 +6924,7 @@ fn (mut c Checker) call_expr(expr &ast.CallExpr) Type {
 		// above with the correct 'it' scope. Re-typechecking here would use a stale scope
 		// (inner maps may have overwritten 'it') and corrupt position-based type info.
 		is_sort_cmp_call := lhs_expr is ast.SelectorExpr && lhs_expr.rhs.name in ['sort', 'sorted']
-			&& expr.args.len == 1
+			&& expr.args.len == 1 && checked_sort_cmp_arg
 		is_array_magic_call := lhs_expr is ast.SelectorExpr
 			&& lhs_expr.rhs.name in ['map', 'filter', 'any', 'all', 'count']
 		if fn_.generic_params.len == 0 && !is_sort_cmp_call && !(is_array_magic_call
