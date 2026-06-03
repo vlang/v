@@ -476,7 +476,7 @@ fn expr_type_slots_use_channel(expr ast.Expr) bool {
 				|| field_inits_use_channel(expr.fields)
 		}
 		ast.CallExpr {
-			return exprs_type_slots_use_channel(expr.args)
+			return expr_type_slots_use_channel(expr.lhs) || exprs_type_slots_use_channel(expr.args)
 		}
 		ast.CallOrCastExpr {
 			return type_expr_uses_channel(expr.lhs) || expr_type_slots_use_channel(expr.expr)

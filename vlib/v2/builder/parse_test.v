@@ -162,6 +162,30 @@ fn test_virtual_main_modules_skip_groups_with_executable_main_from_paths() {
 	assert names == ['admin']
 }
 
+fn test_virtual_main_modules_skip_groups_with_attributed_executable_main_from_paths() {
+	tmp_dir := os.join_path(os.temp_dir(),
+		'v2_builder_virtual_paths_attributed_main_${os.getpid()}')
+	os.rmdir_all(tmp_dir) or {}
+	os.mkdir_all(os.join_path(tmp_dir, 'admin')) or { panic(err) }
+	defer {
+		os.rmdir_all(tmp_dir) or {}
+	}
+
+	main_file := os.join_path(tmp_dir, 'main.v')
+	admin_file := os.join_path(tmp_dir, 'admin', 'admin.v')
+	os.write_file(main_file, 'module main\nfn main() {}\n') or { panic(err) }
+	os.write_file(admin_file, 'module main\n@[console] fn main() {}\n') or { panic(err) }
+
+	mut prefs := pref.new_preferences()
+	prefs.skip_builtin = true
+	prefs.skip_imports = true
+	mut b := new_builder(&prefs)
+	b.user_files = [tmp_dir]
+	groups := b.collect_virtual_main_modules_from_paths([main_file, admin_file])
+
+	assert groups.len == 0
+}
+
 fn test_virtual_main_modules_skip_groups_with_executable_main_from_ast() {
 	tmp_dir := os.join_path(os.temp_dir(), 'v2_builder_virtual_ast_main_${os.getpid()}')
 	os.rmdir_all(tmp_dir) or {}
@@ -468,6 +492,34 @@ fn test_active_file_imports_adds_sync_for_nested_channel_in_infix_expr() {
 							]
 						})
 					}
+				}
+			}),
+		]
+	}
+	imports := active_file_imports(file, [], 'mac')
+
+	assert imports.any(it.name == 'sync')
+}
+
+fn test_active_file_imports_adds_sync_for_channel_in_call_callee_generic_args() {
+	file := ast.File{
+		mod:   'main'
+		name:  'main.v'
+		stmts: [
+			ast.Stmt(ast.ExprStmt{
+				expr: ast.CallExpr{
+					lhs: ast.Expr(ast.GenericArgs{
+						lhs:  ast.Expr(ast.Ident{
+							name: 'make_value'
+						})
+						args: [
+							ast.Expr(ast.Type(ast.ChannelType{
+								elem_type: ast.Expr(ast.Ident{
+									name: 'int'
+								})
+							})),
+						]
+					})
 				}
 			}),
 		]

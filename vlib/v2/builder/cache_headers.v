@@ -495,8 +495,26 @@ fn (b &Builder) virtual_main_group_for_path(file string) ?string {
 	return group
 }
 
-fn source_line_declares_executable_main(line string) bool {
+fn strip_leading_source_attributes(line string) string {
 	mut rest := line.trim_space()
+	for {
+		if rest.starts_with('@[') {
+			end := rest.index(']') or { return rest }
+			rest = rest[end + 1..].trim_space()
+			continue
+		}
+		if rest.starts_with('[') {
+			end := rest.index(']') or { return rest }
+			rest = rest[end + 1..].trim_space()
+			continue
+		}
+		break
+	}
+	return rest
+}
+
+fn source_line_declares_executable_main(line string) bool {
+	mut rest := strip_leading_source_attributes(line)
 	if rest.len == 0 || rest.starts_with('//') {
 		return false
 	}
