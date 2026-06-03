@@ -4144,11 +4144,12 @@ fn (mut b Builder) register_fn_signatures_from_flat(file_cursor ast.FileCursor) 
 	for si in 0 .. stmts.len() {
 		c := stmts.at(si)
 		if c.kind() == .stmt_fn_decl {
-			decl := c.flat.decode_fn_decl_signature(c.id)
-			if decl.typ.generic_params.len > 0 {
+			// s243: cursor-native fn-signature registration — no decode. FnType is
+			// edge1; its generic_params list is list_at(0).
+			if c.edge(1).list_at(0).len() > 0 {
 				continue
 			}
-			b.register_fn_sig(decl)
+			b.register_fn_sig_from_flat(c)
 		}
 	}
 }
@@ -4210,6 +4211,61 @@ fn (mut b Builder) register_fn_sig(decl ast.FnDecl) {
 	}
 }
 
+// register_fn_sig_from_flat (s243) is the cursor mirror of register_fn_sig.
+// FnDecl flat: edge0=receiver (.aux_parameter: name in name_id, is_mut flag,
+// typ at edge0), edge1=typ (.typ_fn: edge0=generics list, edge1=params list,
+// edge2=return_type); language in aux; is_method/is_static in flags.
+fn (mut b Builder) register_fn_sig_from_flat(c ast.Cursor) {
+	fn_name := b.mangle_fn_name_from_flat(c)
+	param_array_elem_types := b.fn_param_array_elem_types_from_decl_from_flat(c)
+	if fn_name in b.fn_index {
+		if param_array_elem_types.len > 0 {
+			b.fn_param_array_elem_types[fn_name] = param_array_elem_types
+		}
+		return
+	}
+
+	fntyp_c := c.edge(1)
+	ret_type := b.ast_type_to_ssa_from_flat(fntyp_c.edge(2))
+	idx := b.mod.new_function(fn_name, ret_type, []TypeID{})
+	b.fn_index[fn_name] = idx
+	b.mod.func_set_prototype(idx, true)
+	language := unsafe { ast.Language(int(c.aux())) }
+	if language == .c {
+		b.mod.func_set_c_extern(idx, true)
+	}
+	// For methods, add receiver as the first parameter (skip static methods).
+	if c.flag(ast.flag_is_method) && !c.flag(ast.flag_is_static) {
+		recv_c := c.edge(0)
+		recv_type := b.ast_type_to_ssa_from_flat(recv_c.edge(0))
+		actual_type := if recv_c.flag(ast.flag_is_mut) {
+			b.mod.type_store.get_ptr(recv_type)
+		} else {
+			recv_type
+		}
+		recv_name := recv_c.name()
+		receiver_name := if recv_name != '' { recv_name } else { 'self' }
+		param_val := b.mod.add_value_node(.argument, actual_type, receiver_name, 0)
+		b.mod.func_add_param(idx, param_val)
+	}
+	params := fntyp_c.list_at(1)
+	for pi in 0 .. params.len() {
+		param_c := params.at(pi)
+		param_type := b.ast_type_to_ssa_from_flat(param_c.edge(0))
+		actual_type := if param_c.flag(ast.flag_is_mut) && !(param_type < b.mod.type_store.types.len
+			&& b.mod.type_store.types[param_type].kind == .ptr_t) {
+			b.mod.type_store.get_ptr(param_type)
+		} else {
+			param_type
+		}
+		param_val := b.mod.add_value_node(.argument, actual_type, param_c.name(), 0)
+		b.mod.func_add_param(idx, param_val)
+	}
+	if param_array_elem_types.len > 0 {
+		b.fn_param_array_elem_types[fn_name] = param_array_elem_types
+	}
+}
+
 fn (mut b Builder) fn_param_array_elem_types_from_decl(decl ast.FnDecl) []TypeID {
 	mut param_array_elem_types := []TypeID{}
 	if decl.is_method && !decl.is_static {
@@ -4217,6 +4273,21 @@ fn (mut b Builder) fn_param_array_elem_types_from_decl(decl ast.FnDecl) []TypeID
 	}
 	for param in decl.typ.params {
 		param_array_elem_types << b.array_elem_type_from_ast_type(param.typ)
+	}
+	return param_array_elem_types
+}
+
+// fn_param_array_elem_types_from_decl_from_flat (s243) is the cursor mirror.
+// receiver typ = edge(0).edge(0); params list = fntyp(edge1).list_at(1); each
+// param's typ = edge(0). Reuses array_elem_type_from_ast_type_from_flat (s233).
+fn (mut b Builder) fn_param_array_elem_types_from_decl_from_flat(c ast.Cursor) []TypeID {
+	mut param_array_elem_types := []TypeID{}
+	if c.flag(ast.flag_is_method) && !c.flag(ast.flag_is_static) {
+		param_array_elem_types << b.array_elem_type_from_ast_type_from_flat(c.edge(0).edge(0))
+	}
+	params := c.edge(1).list_at(1)
+	for pi in 0 .. params.len() {
+		param_array_elem_types << b.array_elem_type_from_ast_type_from_flat(params.at(pi).edge(0))
 	}
 	return param_array_elem_types
 }
@@ -4245,6 +4316,35 @@ fn (mut b Builder) mangle_fn_name(decl ast.FnDecl) string {
 		return '${b.cur_module}__${decl.name}'
 	}
 	return decl.name
+}
+
+// mangle_fn_name_from_flat (s243) is the cursor mirror of mangle_fn_name. FnDecl
+// flat: name in name_id, language in aux, is_method flag; receiver = edge(0)
+// (.aux_parameter), its type = edge(0).edge(0).
+fn (mut b Builder) mangle_fn_name_from_flat(c ast.Cursor) string {
+	name_str := c.name()
+	if c.flag(ast.flag_is_method) {
+		receiver_name := b.receiver_type_name_from_flat(c.edge(0).edge(0))
+		return '${receiver_name}__${name_str}'
+	}
+	if is_generated_helper_fn_name(name_str) {
+		return name_str
+	}
+	language := unsafe { ast.Language(int(c.aux())) }
+	// C functions use their bare name (no module prefix)
+	if language == .c {
+		return name_str
+	}
+	if name_str == 'main' {
+		return 'main'
+	}
+	if b.cur_module != '' && b.cur_module != 'main' {
+		if name_str.starts_with('${b.cur_module}__') {
+			return name_str
+		}
+		return '${b.cur_module}__${name_str}'
+	}
+	return name_str
 }
 
 fn (mut b Builder) checked_fn_scope_key(decl ast.FnDecl) string {
@@ -4309,6 +4409,52 @@ fn (mut b Builder) receiver_type_name(typ ast.Expr) string {
 				return '${prefix}Array_${elem_name}'
 			}
 			return 'unknown'
+		}
+		else {
+			return 'unknown'
+		}
+	}
+}
+
+// receiver_type_name_from_flat (s243) is the cursor mirror of receiver_type_name.
+// Ident/Prefix/Modifier/Selector are expr kinds; PointerType/ArrayType receivers
+// are `.typ_pointer`/`.typ_array` nodes (base/elem at edge(0)).
+fn (mut b Builder) receiver_type_name_from_flat(typ_c ast.Cursor) string {
+	match typ_c.kind() {
+		.expr_ident {
+			if b.cur_module != '' && b.cur_module != 'main' {
+				return '${b.cur_module}__${typ_c.name()}'
+			}
+			return typ_c.name()
+		}
+		.expr_prefix {
+			return b.receiver_type_name_from_flat(typ_c.edge(0))
+		}
+		.expr_modifier {
+			return b.receiver_type_name_from_flat(typ_c.edge(0))
+		}
+		.expr_selector {
+			lhs_c := typ_c.edge(0)
+			lhs_name := if lhs_c.kind() == .expr_ident { lhs_c.name() } else { '' }
+			rhs_name := typ_c.edge(1).name()
+			return '${lhs_name}__${rhs_name}'
+		}
+		.typ_pointer {
+			return b.receiver_type_name_from_flat(typ_c.edge(0))
+		}
+		.typ_array {
+			elem_c := typ_c.edge(0)
+			elem_name := if elem_c.kind() == .expr_ident {
+				elem_c.name()
+			} else {
+				b.receiver_type_name_from_flat(elem_c)
+			}
+			prefix := if b.cur_module != '' && b.cur_module != 'main' {
+				'${b.cur_module}__'
+			} else {
+				''
+			}
+			return '${prefix}Array_${elem_name}'
 		}
 		else {
 			return 'unknown'
