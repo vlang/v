@@ -4930,6 +4930,34 @@ fn (mut c Checker) array_builtin_method_call(mut node ast.CallExpr, left_type as
 		}
 		arg_type = c.check_expr_option_or_result_call(arg.expr, expr_type)
 	}
+	// `arr.map(Type.from)`, `arr.filter(Type.ok)` etc.: a static method used as a
+	// first-class value is parsed as an `ast.EnumVal` (it is syntactically identical
+	// to an enum value, e.g. `Color.red`). The parser can only emit a function
+	// `ast.Ident` for it when the static method is already registered, which fails
+	// for cross-module (and forward) references, since imported modules are parsed
+	// after the call site. Once the checker has resolved the value to a function
+	// type, rewrite it into a function `ast.Ident`, so the backends call it and
+	// markused keeps the static method, exactly like any other function value.
+	if node.kind in [.map, .filter, .any, .all, .count] && node.args.len > 0 {
+		arg_expr := node.args[0].expr
+		if arg_expr is ast.EnumVal && c.table.sym(arg_expr.typ).kind == .function {
+			enum_typ := ast.new_type(c.table.find_type_idx(arg_expr.enum_name))
+			typ_sym := c.table.sym(enum_typ)
+			fsym := c.table.final_sym(enum_typ)
+			if func := c.static_method_of_enum_val(arg_expr, typ_sym, fsym) {
+				node.args[0].expr = ast.Ident{
+					name:  func.name
+					mod:   c.mod
+					kind:  .function
+					info:  ast.IdentFn{
+						typ: ast.new_type(c.table.find_or_register_fn_type(func, false, true))
+					}
+					pos:   arg_expr.pos
+					scope: node.scope
+				}
+			}
+		}
+	}
 	if node.kind == .map {
 		// eprintln('>>>>>>> map node.args[0].expr: ${node.args[0].expr}, left_type: ${left_type} | elem_typ: ${elem_typ} | arg_type: ${arg_type}')
 		// check fn

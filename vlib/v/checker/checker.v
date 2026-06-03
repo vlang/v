@@ -8372,16 +8372,26 @@ fn (mut c Checker) static_fn_value_from_enum_val(mut node ast.EnumVal, _ string,
 	return node.typ
 }
 
-fn (mut c Checker) enum_val_as_static_fn(mut node ast.EnumVal, typ_sym ast.TypeSymbol, fsym ast.TypeSymbol) ast.Type {
-	fn_name := '${typ_sym.name}__static__${node.val}'
-	if func := c.table.find_fn(fn_name) {
-		return c.static_fn_value_from_enum_val(mut node, fn_name, func)
+// static_method_of_enum_val resolves the static method that an `ast.EnumVal`-shaped
+// expression (`Type.method`, syntactically identical to an enum value `Color.red`)
+// refers to. It also checks the final/unaliased symbol, so static methods reached
+// through a supported type alias (`type Alias = Struct; Alias.new`) are found by
+// their real fkey instead of the alias name.
+fn (c &Checker) static_method_of_enum_val(node ast.EnumVal, typ_sym ast.TypeSymbol, fsym ast.TypeSymbol) ?ast.Fn {
+	if func := c.table.find_fn('${typ_sym.name}__static__${node.val}') {
+		return func
 	}
 	if fsym.name != typ_sym.name {
-		alias_fn_name := '${fsym.name}__static__${node.val}'
-		if func := c.table.find_fn(alias_fn_name) {
-			return c.static_fn_value_from_enum_val(mut node, alias_fn_name, func)
+		if func := c.table.find_fn('${fsym.name}__static__${node.val}') {
+			return func
 		}
+	}
+	return none
+}
+
+fn (mut c Checker) enum_val_as_static_fn(mut node ast.EnumVal, typ_sym ast.TypeSymbol, fsym ast.TypeSymbol) ast.Type {
+	if func := c.static_method_of_enum_val(node, typ_sym, fsym) {
+		return c.static_fn_value_from_enum_val(mut node, func.name, func)
 	}
 	return ast.void_type
 }
