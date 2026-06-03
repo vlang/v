@@ -7783,22 +7783,14 @@ fn (mut b Builder) build_index_from_flat(c ast.Cursor) ValueID {
 	return b.finish_index_value_from_flat(c, result)
 }
 
-// build_if_from_flat (s195) decodes the full IfExpr subtree via `decode_expr`
-// and dispatches to `build_if_expr`. IfExpr flat encoding (`flat.v:1930`) is
-// `(.expr_if, pos, -1, -1, 0, 0, [edge0=cond, edge1=else_expr,
-// edge2..n=stmts])`. The full decode is necessary today because
-// `build_if_expr` walks the entire AST: it `is`-checks `node.else_expr`
-// against `ast.EmptyExpr` / `ast.IfExpr` (recursive else-if chain),
-// `is`-checks each `node.stmts[i]` for `ast.ExprStmt` to extract the trailing
-// expression value, and calls `b.infer_if_expr_type(node, i64_t)` which
-// recurses through the else chain and pattern-matches on the last expression
-// of each branch (StringLiteral / StringInterLiteral / PrefixExpr unwrap /
-// other variants). Saves only the outer `Expr(IfExpr{...})` sum-type box and
-// one match-dispatch in `build_expr` — the inner stmt/else walk is unchanged
-// pending future per-stmt cursor ports.
+// build_if_from_flat (s195, s231) dispatches the .expr_if arm of
+// build_expr_from_flat to the cursor-native build_if_expr_from_flat. IfExpr flat
+// encoding (`flat.v:1951`) is `(.expr_if, pos, [edge0=cond, edge1=else_expr,
+// edge2..n=stmts])`. As of s231 the cond, branch stmts, else-chain and phi are
+// all built from cursors; the only residual decode is the infer_if_expr_type
+// fallback inside build_if_expr_from_flat (slated for s232).
 fn (mut b Builder) build_if_from_flat(c ast.Cursor) ValueID {
-	expr := c.flat.decode_expr(c.id)
-	return b.build_if_expr(expr as ast.IfExpr)
+	return b.build_if_expr_from_flat(c)
 }
 
 // lhs_name_from_flat (s214, s217) mirrors `expr.lhs.name()` cursor-natively
@@ -13326,6 +13318,152 @@ fn (mut b Builder) build_if_expr(node ast.IfExpr) ValueID {
 			}
 		} else {
 			else_val = b.build_expr(node.else_expr)
+		}
+		else_end_block = b.cur_block
+		if !b.block_has_terminator(b.cur_block) {
+			b.mod.add_instr(.jmp, b.cur_block, 0, [b.mod.blocks[merge_block].val_id])
+			b.add_edge(b.cur_block, merge_block)
+			else_reaches_merge = true
+		}
+	}
+	b.local_smartcasts = saved_local_smartcasts.move()
+
+	// Merge block: use phi to select result (no alloca/store/load)
+	b.cur_block = merge_block
+	if b.mod.blocks[merge_block].preds.len == 0 {
+		b.mod.add_instr(.unreachable, b.cur_block, 0, []ValueID{})
+		return b.mod.get_or_add_const(result_type, '0')
+	}
+
+	mut phi_type := result_type
+	if then_reaches_merge && else_reaches_merge && then_val != 0 && else_val != 0 {
+		then_type := b.mod.values[then_val].typ
+		else_type := b.mod.values[else_val].typ
+		if then_type != 0 && then_type == else_type {
+			phi_type = then_type
+		}
+	}
+	if phi_type == 0 || phi_type == i64_t {
+		if then_reaches_merge && then_val != 0 {
+			phi_type = b.mod.values[then_val].typ
+		}
+		if (phi_type == 0 || phi_type == i64_t) && else_reaches_merge && else_val != 0 {
+			phi_type = b.mod.values[else_val].typ
+		}
+		if phi_type == 0 {
+			phi_type = i64_t
+		}
+	}
+
+	zero := b.mod.get_or_add_const(phi_type, '0')
+	mut phi_operands := []ValueID{cap: 4}
+	if then_reaches_merge {
+		then_result := if then_val != 0 { then_val } else { zero }
+		phi_operands << then_result
+		phi_operands << b.mod.blocks[then_end_block].val_id
+	}
+	if else_reaches_merge {
+		else_result := if else_val != 0 { else_val } else { zero }
+		phi_operands << else_result
+		phi_operands << b.mod.blocks[else_end_block].val_id
+	}
+	if phi_operands.len == 0 {
+		b.mod.add_instr(.unreachable, b.cur_block, 0, []ValueID{})
+		return zero
+	}
+	return b.mod.add_instr(.phi, merge_block, phi_type, phi_operands)
+}
+
+// build_if_expr_from_flat (s231) is the cursor-native structural port of
+// build_if_expr. IfExpr flat encoding: (.expr_if, [edge0=cond, edge1=else_expr,
+// edge2..n=stmts]). Cond/stmts/else-chain/phi are all built from cursors via
+// build_expr_from_flat / build_stmt_from_flat / smartcast_variant_type_ids_from_condition_from_flat
+// (s230) and recursion through this function. The ONLY remaining decode is the
+// infer_if_expr_type fallback (reached only when expr_type returns the i64
+// fallback — match-lowered IfExpr chains without pos IDs); that node decode is
+// localized and slated for removal in s232 via infer_if_expr_type_from_flat.
+fn (mut b Builder) build_if_expr_from_flat(c ast.Cursor) ValueID {
+	cond_c := c.edge(0)
+	else_c := c.edge(1)
+	n_stmts := c.edge_count() - 2
+
+	// If used as expression, returns a value
+	mut result_type := b.expr_type_from_flat(c)
+	i64_t := b.mod.type_store.get_int(64)
+	if result_type == i64_t {
+		node := c.flat.decode_expr(c.id) as ast.IfExpr
+		result_type = b.infer_if_expr_type(node, i64_t)
+	}
+
+	then_block := b.mod.add_block(b.cur_func, 'ifx_then')
+	merge_block := b.mod.add_block(b.cur_func, 'ifx_merge')
+	has_else := else_c.kind() != .expr_empty
+	else_block := if has_else {
+		b.mod.add_block(b.cur_func, 'ifx_else')
+	} else {
+		merge_block
+	}
+
+	cond_block := b.cur_block
+	cond := b.build_expr_from_flat(cond_c)
+	b.mod.add_instr(.br, b.cur_block, 0,
+		[cond, b.mod.blocks[then_block].val_id, b.mod.blocks[else_block].val_id])
+	b.add_edge(b.cur_block, then_block)
+	b.add_edge(b.cur_block, else_block)
+
+	// Then
+	b.cur_block = then_block
+	then_smartcasts := b.smartcast_variant_type_ids_from_condition_from_flat(cond_c)
+	mut saved_local_smartcasts := b.local_smartcasts.clone()
+	b.apply_local_smartcasts(then_smartcasts)
+	mut then_val := ValueID(0)
+	if n_stmts > 0 {
+		for i := 0; i < n_stmts - 1; i++ {
+			b.build_stmt_from_flat(c.edge(2 + i))
+		}
+		last_c := c.edge(2 + n_stmts - 1)
+		if last_c.kind() == .stmt_expr {
+			then_val = b.build_expr_from_flat(last_c.edge(0))
+		} else {
+			b.build_stmt_from_flat(last_c)
+		}
+	}
+	b.local_smartcasts = saved_local_smartcasts.clone()
+	then_end_block := b.cur_block
+	mut then_reaches_merge := false
+	if !b.block_has_terminator(b.cur_block) {
+		b.mod.add_instr(.jmp, b.cur_block, 0, [b.mod.blocks[merge_block].val_id])
+		b.add_edge(b.cur_block, merge_block)
+		then_reaches_merge = true
+	}
+
+	// Else
+	mut else_val := ValueID(0)
+	mut else_end_block := cond_block
+	mut else_reaches_merge := !has_else
+	if has_else {
+		b.cur_block = else_block
+		if else_c.kind() == .expr_if {
+			else_cond_c := else_c.edge(0)
+			if else_cond_c.kind() == .expr_empty {
+				// Pure else
+				else_n_stmts := else_c.edge_count() - 2
+				if else_n_stmts > 0 {
+					for i := 0; i < else_n_stmts - 1; i++ {
+						b.build_stmt_from_flat(else_c.edge(2 + i))
+					}
+					last_c := else_c.edge(2 + else_n_stmts - 1)
+					if last_c.kind() == .stmt_expr {
+						else_val = b.build_expr_from_flat(last_c.edge(0))
+					} else {
+						b.build_stmt_from_flat(last_c)
+					}
+				}
+			} else {
+				else_val = b.build_if_expr_from_flat(else_c)
+			}
+		} else {
+			else_val = b.build_expr_from_flat(else_c)
 		}
 		else_end_block = b.cur_block
 		if !b.block_has_terminator(b.cur_block) {
