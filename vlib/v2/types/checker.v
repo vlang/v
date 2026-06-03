@@ -8478,49 +8478,86 @@ fn intrinsic_string_field_type(name string) ?Type {
 
 fn intrinsic_string_method_type(name string) ?Type {
 	string_type := Type(string_)
+	string_param := Parameter{
+		name: 's'
+		typ:  string_type
+	}
 	return match name {
-		'clone', 'trim', 'trim_space', 'to_lower', 'to_upper', 'all_after', 'all_before',
-		'all_after_last', 'all_before_last', 'replace' {
+		'clone', 'trim_space', 'to_lower', 'to_upper' {
+			Type(FnType{
+				return_type: to_optional_type(string_type)
+			})
+		}
+		'trim', 'all_after', 'all_before', 'all_after_last', 'all_before_last' {
+			Type(FnType{
+				params:      [
+					string_param,
+				]
+				return_type: to_optional_type(string_type)
+			})
+		}
+		'replace' {
 			Type(FnType{
 				params:      [
 					Parameter{
-						name: 's'
+						name: 'rep'
+						typ:  string_type
+					},
+					Parameter{
+						name: 'with'
 						typ:  string_type
 					},
 				]
 				return_type: to_optional_type(string_type)
 			})
 		}
-		'contains', 'starts_with', 'ends_with', 'is_blank' {
+		'contains', 'starts_with', 'ends_with' {
 			Type(FnType{
 				params:      [
-					Parameter{
-						name: 's'
-						typ:  string_type
-					},
+					string_param,
 				]
 				return_type: to_optional_type(Type(bool_))
 			})
 		}
-		'split', 'split_into_lines' {
+		'is_blank' {
+			Type(FnType{
+				return_type: to_optional_type(Type(bool_))
+			})
+		}
+		'split' {
 			Type(FnType{
 				params:      [
-					Parameter{
-						name: 's'
-						typ:  string_type
-					},
+					string_param,
 				]
 				return_type: to_optional_type(Type(Array{
 					elem_type: string_type
 				}))
 			})
 		}
-		'index', 'last_index', 'index_after' {
+		'split_into_lines' {
+			Type(FnType{
+				return_type: to_optional_type(Type(Array{
+					elem_type: string_type
+				}))
+			})
+		}
+		'index', 'last_index' {
 			Type(FnType{
 				params:      [
+					string_param,
+				]
+				return_type: to_optional_type(Type(OptionType{
+					base_type: Type(int_)
+				}))
+			})
+		}
+		'index_after' {
+			Type(FnType{
+				params:      [
+					string_param,
 					Parameter{
-						name: 's'
-						typ:  string_type
+						name: 'start'
+						typ:  Type(int_)
 					},
 				]
 				return_type: to_optional_type(Type(OptionType{

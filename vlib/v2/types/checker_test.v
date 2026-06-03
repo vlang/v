@@ -249,6 +249,31 @@ fn test_non_array_sorted_method_uses_receiver_method_return_type() {
 	assert typ.name() == 'string'
 }
 
+fn intrinsic_string_method_param_len(name string) int {
+	prefs := &pref.Preferences{}
+	mut file_set := token.FileSet.new()
+	env := Environment.new()
+	mut checker := Checker.new(prefs, file_set, env)
+	method := checker.find_field_or_method(Type(string_), name) or {
+		panic('missing intrinsic string method `${name}`')
+	}
+	assert method is FnType
+	return (method as FnType).params.len
+}
+
+fn test_intrinsic_string_method_arities_match_builtin_methods() {
+	for name in ['clone', 'trim_space', 'to_lower', 'to_upper', 'split_into_lines', 'is_blank'] {
+		assert intrinsic_string_method_param_len(name) == 0, '${name} should have no explicit parameters'
+	}
+	for name in ['trim', 'all_after', 'all_before', 'all_after_last', 'all_before_last', 'contains',
+		'starts_with', 'ends_with', 'split', 'index', 'last_index'] {
+		assert intrinsic_string_method_param_len(name) == 1, '${name} should have one explicit parameter'
+	}
+	for name in ['replace', 'index_after'] {
+		assert intrinsic_string_method_param_len(name) == 2, '${name} should have two explicit parameters'
+	}
+}
+
 fn test_slice_clone_preserves_array_type_for_method_chain() {
 	prefs := &pref.Preferences{}
 	mut file_set := token.FileSet.new()
