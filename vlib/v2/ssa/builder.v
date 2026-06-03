@@ -438,10 +438,8 @@ pub fn (mut b Builder) build_all_from_flat(flat &ast.FlatAst) {
 			if c.kind() != .stmt_enum_decl {
 				continue
 			}
-			decoded := c.flat.decode_stmt(c.id)
-			if decoded is ast.EnumDecl {
-				b.register_enum(decoded)
-			}
+			// s238: cursor-native enum registration — no decode_stmt.
+			b.register_enum_from_flat(c)
 		}
 	}
 	for fi in 0 .. flat.files.len {
@@ -1596,10 +1594,8 @@ fn (mut b Builder) register_types_pass1_from_flat(file_cursor ast.FileCursor) {
 				}
 			}
 			.stmt_enum_decl {
-				decoded := c.flat.decode_stmt(c.id)
-				if decoded is ast.EnumDecl {
-					b.register_enum(decoded)
-				}
+				// s238: cursor-native enum registration — no decode_stmt.
+				b.register_enum_from_flat(c)
 			}
 			.stmt_type_decl {
 				decoded := c.flat.decode_stmt(c.id)
@@ -1838,6 +1834,41 @@ fn (mut b Builder) register_enum(decl ast.EnumDecl) {
 		key := '${name}__${enum_field_symbol_name(field.name)}'
 		if is_flag {
 			// @[flag] enums use power-of-2 values: 1, 2, 4, 8, ...
+			b.enum_values[key] = 1 << i
+		} else {
+			b.enum_values[key] = i
+		}
+	}
+}
+
+// register_enum_from_flat (s238) is the cursor mirror of register_enum. EnumDecl
+// flat = (.stmt_enum_decl, name in name_id, [edge0=as_type, edge1=attrs,
+// edge2=fields]). Values come from the field INDEX (matching the AST, which
+// ignores field.value), so the `flag` power-of-2 numbering and the skip-on-bad-
+// name behaviour are index-identical. `flag` attr via cursor_attrs_has (s237).
+fn (mut b Builder) register_enum_from_flat(c ast.Cursor) {
+	name_str := c.name()
+	if !ssa_string_ok(name_str) || name_str == '' {
+		return
+	}
+	name := if b.cur_module != '' && b.cur_module != 'main' {
+		'${b.cur_module}__${name_str}'
+	} else {
+		name_str
+	}
+	if !ssa_string_ok(name) {
+		return
+	}
+
+	is_flag := cursor_attrs_has(c.list_at(1), 'flag')
+	fields := c.list_at(2)
+	for i in 0 .. fields.len() {
+		field_name := fields.at(i).name()
+		if !ssa_string_ok(field_name) || field_name == '' {
+			continue
+		}
+		key := '${name}__${enum_field_symbol_name(field_name)}'
+		if is_flag {
 			b.enum_values[key] = 1 << i
 		} else {
 			b.enum_values[key] = i
