@@ -2350,7 +2350,7 @@ fn (mut g Gen) expr(node ast.Expr) {
 							tmp := '_aof${g.tmp_counter}'
 							g.sb.write_string('({ ${target_type} ${tmp} = ')
 							g.expr(node.expr.args[0])
-							g.sb.write_string('; &${tmp}; })')
+							g.sb.write_string('; memdup(&${tmp}, sizeof(${tmp})); })')
 							return
 						}
 						g.sb.write_string('((${target_type}*)(')
@@ -2399,7 +2399,7 @@ fn (mut g Gen) expr(node ast.Expr) {
 						tmp := '_aof${g.tmp_counter}'
 						g.sb.write_string('({ ${target_type} ${tmp} = ')
 						g.expr(node.expr.expr)
-						g.sb.write_string('; &${tmp}; })')
+						g.sb.write_string('; memdup(&${tmp}, sizeof(${tmp})); })')
 						return
 					}
 					g.sb.write_string('((${target_type}*)(')
@@ -2419,7 +2419,7 @@ fn (mut g Gen) expr(node ast.Expr) {
 						tmp := '_aof${g.tmp_counter}'
 						g.sb.write_string('({ ${base_target_type} ${tmp} = ')
 						g.expr(node.expr.expr)
-						g.sb.write_string('; &${tmp}; })')
+						g.sb.write_string('; memdup(&${tmp}, sizeof(${tmp})); })')
 						return
 					}
 					mut target_type := base_target_type
@@ -2469,9 +2469,16 @@ fn (mut g Gen) expr(node ast.Expr) {
 					if ret_type != '' && ret_type != 'void' && ret_type != 'int' {
 						tmp_name := '_sumtmp${g.tmp_counter}'
 						g.tmp_counter++
+						// `&fn_call()` takes the address of an rvalue. The temp must
+						// be heap-copied here: returning `&tmp` from the statement
+						// expression yields a pointer to a block-local whose scope
+						// ends at `})`, so any later read (e.g. an enclosing memdup
+						// in sum-type boxing) is a use-after-scope and corrupts the
+						// heap once the stack slot is reused. memdup keeps the value
+						// alive for the lifetime of the resulting pointer.
 						g.sb.write_string('({ ${ret_type} ${tmp_name} = ')
 						g.expr(node.expr)
-						g.sb.write_string('; &${tmp_name}; })')
+						g.sb.write_string('; memdup(&${tmp_name}, sizeof(${ret_type})); })')
 						return
 					}
 				}
@@ -2573,7 +2580,7 @@ fn (mut g Gen) expr(node ast.Expr) {
 					if inner_type != '' && inner_type != 'int' && inner_type != 'void' {
 						tmp_name := '_addr_t${g.tmp_counter}'
 						g.tmp_counter++
-						g.sb.write_string('({ ${inner_type} ${tmp_name} = ${inner_code}; &${tmp_name}; })')
+						g.sb.write_string('({ ${inner_type} ${tmp_name} = ${inner_code}; memdup(&${tmp_name}, sizeof(${tmp_name})); })')
 					} else {
 						g.sb.write_string('&${inner_code}')
 					}

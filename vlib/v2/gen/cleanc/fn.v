@@ -7016,7 +7016,8 @@ fn (mut g Gen) write_method_recv_addr(recv ast.Expr) {
 			tmp := '_recv${g.tmp_counter}'
 			g.sb.write_string('({ ${recv_type} ${tmp} = ')
 			g.expr(recv)
-			g.sb.write_string('; &${tmp}; })')
+			// heap-copy: &local escapes the statement-expression scope
+			g.sb.write_string('; memdup(&${tmp}, sizeof(${tmp})); })')
 			return
 		}
 	}
@@ -8163,7 +8164,7 @@ fn (mut g Gen) gen_call_arg(fn_name string, idx int, arg ast.Expr) {
 				if arg_type != '' && arg_type != 'int' && arg_type != 'void' {
 					tmp_name := '_addr_t${g.tmp_counter}'
 					g.tmp_counter++
-					g.sb.write_string('({ ${arg_type} ${tmp_name} = ${arg_code}; &${tmp_name}; })')
+					g.sb.write_string('({ ${arg_type} ${tmp_name} = ${arg_code}; memdup(&${tmp_name}, sizeof(${tmp_name})); })')
 				} else {
 					g.sb.write_string('&${arg_code}')
 				}
