@@ -5199,6 +5199,7 @@ fn (mut g Gen) try_emit_simple_scalar_store(instr_idx int) bool {
 		4 { g.emit(asm_str_w(Reg(val_reg), Reg(ptr_reg))) }
 		else { g.emit(asm_str(Reg(val_reg), Reg(ptr_reg))) }
 	}
+
 	return true
 }
 

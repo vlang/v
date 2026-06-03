@@ -3834,13 +3834,13 @@ pub fn (mut t Transformer) transform_stmt_to_flat(stmt ast.Stmt, mut out ast.Fla
 	}
 	match stmt {
 		ast.AsmStmt, ast.Directive, ast.EmptyStmt, ast.EnumDecl, ast.FlowControlStmt,
-			ast.ImportStmt, ast.InterfaceDecl, ast.ModuleStmt, ast.TypeDecl {
-				return out.emit_stmt(stmt)
-			}
-			ast.StructDecl {
-				return out.emit_stmt(t.transform_struct_decl(stmt))
-			}
-			ast.ConstDecl {
+		ast.ImportStmt, ast.InterfaceDecl, ast.ModuleStmt, ast.TypeDecl {
+			return out.emit_stmt(stmt)
+		}
+		ast.StructDecl {
+			return out.emit_stmt(t.transform_struct_decl(stmt))
+		}
+		ast.ConstDecl {
 			// Mirror transform_const_decl: transform each field's value via
 			// transform_expr_to_flat, keep name + is_public unchanged, and emit
 			// the flat encoding directly. The intermediate `ast.ConstDecl` /
