@@ -1608,11 +1608,10 @@ fn (mut b Builder) register_types_pass1_from_flat(file_cursor ast.FileCursor) {
 				b.register_enum_from_flat(c)
 			}
 			.stmt_type_decl {
-				decoded := c.flat.decode_stmt(c.id)
-				if decoded is ast.TypeDecl {
-					if decoded.variants.len > 0 {
-						b.register_sumtype(decoded)
-					}
+				// s240: cursor-native sumtype registration — no decode_stmt.
+				// TypeDecl variants list is edge3 (list_at(3)).
+				if c.list_at(3).len() > 0 {
+					b.register_sumtype_from_flat(c)
 				}
 			}
 			else {}
@@ -2178,6 +2177,41 @@ fn (mut b Builder) register_sumtype(decl ast.TypeDecl) {
 		'${b.cur_module}__${decl.name}'
 	} else {
 		decl.name
+	}
+	if !ssa_string_ok(name) {
+		return
+	}
+
+	if name in b.struct_types {
+		return
+	}
+
+	i64_t := b.mod.type_store.get_int(64)
+	type_id := b.mod.type_store.register(Type{
+		kind:        .struct_t
+		fields:      [i64_t, i64_t]
+		field_names: ['_tag', '_data']
+	})
+	b.struct_types[name] = type_id
+	b.mod.c_struct_names[type_id] = name
+}
+
+// register_sumtype_from_flat (s240) is the cursor mirror of register_sumtype.
+// `c` is a .stmt_type_decl with variants (variants list = edge3). The variant
+// types are not read (the AST also ignores them) — a sum type lowers to a
+// {_tag, _data} two-i64 struct. Caller already gates on variants present.
+fn (mut b Builder) register_sumtype_from_flat(c ast.Cursor) {
+	if c.list_at(3).len() == 0 {
+		return
+	}
+	name_str := c.name()
+	if !ssa_string_ok(name_str) || name_str == '' {
+		return
+	}
+	name := if b.cur_module != '' && b.cur_module != 'main' {
+		'${b.cur_module}__${name_str}'
+	} else {
+		name_str
 	}
 	if !ssa_string_ok(name) {
 		return
