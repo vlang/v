@@ -469,20 +469,20 @@ fn (t &Transformer) generic_type_arg_bindings(generic_params []string, args []as
 		arg := args[i]
 		if arg is ast.Ident {
 			if concrete := t.cur_monomorphized_fn_bindings[arg.name] {
-				bindings[param_name] = concrete
+				bindings[param_name] = t.qualify_generic_concrete_type_from_expr(concrete, arg)
 				continue
 			}
 		}
 		if concrete := t.get_synth_type(arg.pos()) {
-			bindings[param_name] = concrete
+			bindings[param_name] = t.qualify_generic_concrete_type_from_expr(concrete, arg)
 			continue
 		}
 		if concrete := t.lookup_type_from_expr(arg) {
-			bindings[param_name] = concrete
+			bindings[param_name] = t.qualify_generic_concrete_type_from_expr(concrete, arg)
 			continue
 		}
 		if concrete := t.get_expr_type(arg) {
-			bindings[param_name] = concrete
+			bindings[param_name] = t.qualify_generic_concrete_type_from_expr(concrete, arg)
 			continue
 		}
 	}
@@ -490,6 +490,262 @@ fn (t &Transformer) generic_type_arg_bindings(generic_params []string, args []as
 		return none
 	}
 	return bindings
+}
+
+fn (t &Transformer) qualify_generic_concrete_type_from_expr(concrete types.Type, arg ast.Expr) types.Type {
+	match concrete {
+		types.Struct {
+			if name := t.generic_concrete_type_arg_c_name(types.Type(concrete), arg) {
+				return types.Type(types.Struct{
+					name:           name
+					generic_params: concrete.generic_params
+					implements:     concrete.implements
+					embedded:       concrete.embedded
+					fields:         concrete.fields
+					is_soa:         concrete.is_soa
+				})
+			}
+		}
+		types.Enum {
+			if name := t.generic_concrete_type_arg_c_name(types.Type(concrete), arg) {
+				return types.Type(types.Enum{
+					is_flag: concrete.is_flag
+					name:    name
+					fields:  concrete.fields
+				})
+			}
+		}
+		types.Interface {
+			if name := t.generic_concrete_type_arg_c_name(types.Type(concrete), arg) {
+				return types.Type(types.Interface{
+					name:   name
+					fields: concrete.fields
+				})
+			}
+		}
+		types.SumType {
+			if name := t.generic_concrete_type_arg_c_name(types.Type(concrete), arg) {
+				return types.Type(types.SumType{
+					name:     name
+					variants: concrete.variants
+				})
+			}
+		}
+		types.Alias {
+			if name := t.generic_concrete_type_arg_c_name(types.Type(concrete), arg) {
+				return types.Type(types.Alias{
+					name:      name
+					base_type: concrete.base_type
+				})
+			}
+		}
+		types.NamedType {
+			if name := t.generic_concrete_type_arg_c_name(types.Type(concrete), arg) {
+				return types.Type(types.NamedType(name))
+			}
+		}
+		types.Pointer {
+			if base_arg := pointer_generic_type_arg_base(arg) {
+				return types.Type(types.Pointer{
+					lifetime:  concrete.lifetime
+					base_type: t.qualify_generic_concrete_type_from_expr(concrete.base_type,
+						base_arg)
+				})
+			}
+		}
+		types.Array {
+			if elem_arg := array_generic_type_arg_elem(arg) {
+				return types.Type(types.Array{
+					elem_type: t.qualify_generic_concrete_type_from_expr(concrete.elem_type,
+						elem_arg)
+				})
+			}
+		}
+		types.ArrayFixed {
+			if elem_arg := array_fixed_generic_type_arg_elem(arg) {
+				return types.Type(types.ArrayFixed{
+					len:       concrete.len
+					elem_type: t.qualify_generic_concrete_type_from_expr(concrete.elem_type,
+						elem_arg)
+				})
+			}
+		}
+		types.Map {
+			if parts := map_generic_type_arg_parts(arg) {
+				return types.Type(types.Map{
+					key_type:   t.qualify_generic_concrete_type_from_expr(concrete.key_type,
+						parts.key)
+					value_type: t.qualify_generic_concrete_type_from_expr(concrete.value_type,
+						parts.value)
+				})
+			}
+		}
+		types.OptionType {
+			if base_arg := option_generic_type_arg_base(arg) {
+				return types.Type(types.OptionType{
+					base_type: t.qualify_generic_concrete_type_from_expr(concrete.base_type,
+						base_arg)
+				})
+			}
+		}
+		types.ResultType {
+			if base_arg := result_generic_type_arg_base(arg) {
+				return types.Type(types.ResultType{
+					base_type: t.qualify_generic_concrete_type_from_expr(concrete.base_type,
+						base_arg)
+				})
+			}
+		}
+		else {}
+	}
+
+	return concrete
+}
+
+fn (t &Transformer) generic_concrete_type_arg_c_name(concrete types.Type, arg ast.Expr) ?string {
+	if arg is ast.Ident {
+		if bound_type := t.cur_monomorphized_fn_bindings[arg.name] {
+			name := t.type_to_c_name(bound_type)
+			if name != '' {
+				return name
+			}
+		}
+		if arg.name.contains('__') {
+			return arg.name
+		}
+		if concrete.name() == arg.name {
+			return t.generic_ident_type_arg_c_name(arg.name)
+		}
+	}
+	if arg is ast.Type {
+		match arg {
+			ast.GenericType {
+				base_name := t.expr_to_type_name(arg.name)
+				suffix := t.generic_specialization_suffix(arg.params)
+				if base_name != '' && suffix != '' {
+					return base_name + suffix
+				}
+			}
+			else {}
+		}
+	}
+	if name := t.generic_init_type_name(arg) {
+		return name
+	}
+	name := t.expr_to_type_name(arg)
+	if name == '' {
+		return none
+	}
+	return name
+}
+
+fn (t &Transformer) generic_ident_type_arg_c_name(name string) string {
+	if name == '' || name.contains('__') || t.is_builtin_type_name(name) {
+		return name
+	}
+	if t.cur_module != '' && t.cur_module != 'main' && t.cur_module != 'builtin' {
+		if builtin_scope := t.cached_scopes['builtin'] {
+			if obj := builtin_scope.objects[name] {
+				if _ := transformer_object_type(obj) {
+					return name
+				}
+			}
+		}
+		if module_scope := t.get_module_scope(t.cur_module) {
+			if obj := module_scope.objects[name] {
+				if _ := transformer_object_type(obj) {
+					return '${t.cur_module}__${name}'
+				}
+			}
+		}
+	}
+	return name
+}
+
+fn pointer_generic_type_arg_base(arg ast.Expr) ?ast.Expr {
+	match arg {
+		ast.PrefixExpr {
+			if arg.op in [.amp, .mul] {
+				return arg.expr
+			}
+		}
+		ast.Type {
+			if arg is ast.PointerType {
+				return arg.base_type
+			}
+		}
+		else {}
+	}
+
+	return none
+}
+
+fn array_generic_type_arg_elem(arg ast.Expr) ?ast.Expr {
+	if arg is ast.Type {
+		match arg {
+			ast.ArrayType {
+				return arg.elem_type
+			}
+			else {}
+		}
+	}
+	return none
+}
+
+fn array_fixed_generic_type_arg_elem(arg ast.Expr) ?ast.Expr {
+	if arg is ast.Type {
+		match arg {
+			ast.ArrayFixedType {
+				return arg.elem_type
+			}
+			else {}
+		}
+	}
+	return none
+}
+
+struct GenericMapTypeArgParts {
+	key   ast.Expr
+	value ast.Expr
+}
+
+fn map_generic_type_arg_parts(arg ast.Expr) ?GenericMapTypeArgParts {
+	if arg is ast.Type {
+		match arg {
+			ast.MapType {
+				return GenericMapTypeArgParts{
+					key:   arg.key_type
+					value: arg.value_type
+				}
+			}
+			else {}
+		}
+	}
+	return none
+}
+
+fn option_generic_type_arg_base(arg ast.Expr) ?ast.Expr {
+	if arg is ast.Type {
+		match arg {
+			ast.OptionType {
+				return arg.base_type
+			}
+			else {}
+		}
+	}
+	return none
+}
+
+fn result_generic_type_arg_base(arg ast.Expr) ?ast.Expr {
+	if arg is ast.Type {
+		match arg {
+			ast.ResultType {
+				return arg.base_type
+			}
+			else {}
+		}
+	}
+	return none
 }
 
 // get_method_return_type tries to get the return type for a method call.

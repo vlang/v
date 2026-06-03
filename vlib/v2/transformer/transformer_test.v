@@ -3115,6 +3115,7 @@ fn boot() {
 	])
 	mut fn_names := []string{}
 	mut webx_fn_names := []string{}
+	mut main_fn_names := []string{}
 	for file in files {
 		for stmt in file.stmts {
 			if stmt is ast.FnDecl {
@@ -3122,13 +3123,18 @@ fn boot() {
 				if file.mod == 'webx' {
 					webx_fn_names << stmt.name
 				}
+				if file.mod == 'main' {
+					main_fn_names << stmt.name
+				}
 			}
 		}
 	}
 	assert 'webx__run_at_T_App_Context' in fn_names
 	assert 'webx__run_new_T_App_Context' in fn_names
-	assert 'webx__run_at_T_App_Context' in webx_fn_names
-	assert 'webx__run_new_T_App_Context' in webx_fn_names
+	assert 'webx__run_at_T_App_Context' in main_fn_names
+	assert 'webx__run_new_T_App_Context' in main_fn_names
+	assert 'webx__run_at_T_App_Context' !in webx_fn_names
+	assert 'webx__run_new_T_App_Context' !in webx_fn_names
 }
 
 fn test_transform_transitive_generic_call_with_mut_arg_in_clone_emits_callee_clone() {
@@ -3164,6 +3170,7 @@ fn boot() {
 	])
 	mut fn_names := []string{}
 	mut webx_fn_names := []string{}
+	mut main_fn_names := []string{}
 	for file in files {
 		for stmt in file.stmts {
 			if stmt is ast.FnDecl {
@@ -3171,13 +3178,18 @@ fn boot() {
 				if file.mod == 'webx' {
 					webx_fn_names << stmt.name
 				}
+				if file.mod == 'main' {
+					main_fn_names << stmt.name
+				}
 			}
 		}
 	}
 	assert 'webx__run_at_T_App_Context' in fn_names
 	assert 'webx__run_new_T_App_Context' in fn_names
-	assert 'webx__run_at_T_App_Context' in webx_fn_names
-	assert 'webx__run_new_T_App_Context' in webx_fn_names
+	assert 'webx__run_at_T_App_Context' in main_fn_names
+	assert 'webx__run_new_T_App_Context' in main_fn_names
+	assert 'webx__run_at_T_App_Context' !in webx_fn_names
+	assert 'webx__run_new_T_App_Context' !in webx_fn_names
 }
 
 fn test_transform_transitive_generic_function_value_in_clone_emits_full_callee_clone() {
@@ -3226,15 +3238,15 @@ fn boot() {
 '
 		},
 	])
-	mut webx_fn_names := []string{}
+	mut main_fn_names := []string{}
 	mut handler_name := ''
 	for file in files {
-		if file.mod != 'webx' {
+		if file.mod != 'main' {
 			continue
 		}
 		for stmt in file.stmts {
 			if stmt is ast.FnDecl {
-				webx_fn_names << stmt.name
+				main_fn_names << stmt.name
 				if stmt.name == 'webx__run_new_T_App_Context' {
 					assign := stmt.stmts[0] as ast.AssignStmt
 					init := assign.rhs[0] as ast.InitExpr
@@ -3247,10 +3259,10 @@ fn boot() {
 			}
 		}
 	}
-	assert 'webx__run_new_T_App_Context' in webx_fn_names
+	assert 'webx__run_new_T_App_Context' in main_fn_names
 	assert handler_name == 'webx__parallel_request_handler_T_App_Context'
-	assert 'webx__parallel_request_handler_T_App_Context' in webx_fn_names
-	assert 'webx__route_T_App_Context' in webx_fn_names
+	assert 'webx__parallel_request_handler_T_App_Context' in main_fn_names
+	assert 'webx__route_T_App_Context' in main_fn_names
 }
 
 fn test_transform_imported_clone_substituted_init_type_keeps_declaring_module_context() {
@@ -3293,25 +3305,222 @@ fn boot() {
 		},
 	])
 	mut init_type_name := ''
-	mut webx_fn_names := []string{}
+	mut main_fn_names := []string{}
 	for file in files {
-		if file.mod != 'webx' {
+		if file.mod != 'main' {
 			continue
 		}
 		for stmt in file.stmts {
 			if stmt is ast.FnDecl && stmt.name == 'webx__make_T_App_Context' {
-				webx_fn_names << stmt.name
+				main_fn_names << stmt.name
 				assign := stmt.stmts[1] as ast.AssignStmt
 				init := assign.rhs[0] as ast.InitExpr
 				init_type := init.typ as ast.Ident
 				init_type_name = init_type.name
 			} else if stmt is ast.FnDecl {
-				webx_fn_names << stmt.name
+				main_fn_names << stmt.name
 			}
 		}
 	}
 	assert init_type_name == 'Context'
-	assert 'webx__route_T_App_Context' in webx_fn_names
+	assert 'webx__route_T_App_Context' in main_fn_names
+}
+
+fn test_transform_generic_struct_clone_qualifies_module_type_arg_in_fn_field() {
+	files := transform_sources_for_test([
+		TestSource{
+			rel:  'veb/veb.v'
+			code: 'module veb
+
+pub struct Context {}
+
+pub struct MiddlewareOptions[T] {
+	handler fn (mut ctx T) bool
+}
+
+pub fn make[T]() MiddlewareOptions[T] {
+	return MiddlewareOptions[T]{}
+}
+'
+		},
+		TestSource{
+			rel:  'main.v'
+			code: 'module main
+
+import veb
+
+struct Context {}
+
+fn boot() {
+	_ := veb.make[veb.Context]()
+}
+'
+		},
+	])
+	mut clone_name := ''
+	mut handler_param_name := ''
+	for file in files {
+		if file.mod != 'veb' {
+			continue
+		}
+		for stmt in file.stmts {
+			if stmt is ast.StructDecl && stmt.name == 'MiddlewareOptions_T_veb_Context' {
+				clone_name = stmt.name
+				field_typ := stmt.fields[0].typ as ast.Type
+				fn_typ := field_typ as ast.FnType
+				param_ident := fn_typ.params[0].typ as ast.Ident
+				handler_param_name = param_ident.name
+			}
+		}
+	}
+	assert clone_name == 'MiddlewareOptions_T_veb_Context'
+	assert handler_param_name == 'veb__Context'
+}
+
+fn test_transform_embedded_generic_method_options_do_not_emit_bare_import_context() {
+	files := transform_sources_for_test([
+		TestSource{
+			rel:  'veb/veb.v'
+			code: 'module veb
+
+pub struct Context {}
+
+pub struct Middleware[T] {}
+
+@[params]
+pub struct MiddlewareOptions[T] {
+	handler fn (mut ctx T) bool
+}
+
+pub fn (mut m Middleware[T]) use(options MiddlewareOptions[T]) {
+	_ = options
+}
+'
+		},
+		TestSource{
+			rel:  'main.v'
+			code: 'module main
+
+import veb
+
+struct App {
+	veb.Middleware[Context]
+}
+
+struct Context {
+	veb.Context
+}
+
+fn (app &App) before_request(mut ctx Context) bool {
+	return true
+}
+
+fn boot() {
+	mut app := App{}
+	app.use(handler: app.before_request)
+}
+'
+		},
+	])
+	mut import_handler_param := ''
+	mut main_handler_param := ''
+	for file in files {
+		for stmt in file.stmts {
+			match stmt {
+				ast.StructDecl {
+					if !stmt.name.contains('MiddlewareOptions_T') {
+						continue
+					}
+					field_typ := stmt.fields[0].typ as ast.Type
+					fn_typ := field_typ as ast.FnType
+					param_ident := fn_typ.params[0].typ as ast.Ident
+					if file.mod == 'veb' && stmt.name == 'MiddlewareOptions_T_veb_Context' {
+						import_handler_param = param_ident.name
+					}
+					if file.mod == 'main' && stmt.name == 'veb__MiddlewareOptions_T_Context' {
+						main_handler_param = param_ident.name
+					}
+				}
+				else {}
+			}
+		}
+	}
+	assert import_handler_param == '' || import_handler_param == 'veb__Context', 'import_handler_param=${import_handler_param}, main_handler_param=${main_handler_param}'
+
+	assert main_handler_param == '' || main_handler_param == 'Context', 'import_handler_param=${import_handler_param}, main_handler_param=${main_handler_param}'
+}
+
+fn test_transform_imported_generic_struct_with_local_type_stays_in_call_file() {
+	files := transform_sources_for_test([
+		TestSource{
+			rel:  'json2/json2.v'
+			code: 'module json2
+
+pub struct StructKeyDecodeResult[T] {
+	value T
+}
+
+pub fn decode[T]() StructKeyDecodeResult[T] {
+	return StructKeyDecodeResult[T]{}
+}
+'
+		},
+		TestSource{
+			rel:  'main.v'
+			code: 'module main
+
+import json2
+
+struct LocalResponse {}
+
+fn boot() {
+	_ := json2.decode[LocalResponse]()
+}
+'
+		},
+	])
+	mut import_struct_found := false
+	mut import_fn_found := false
+	mut main_struct_found := false
+	mut main_fn_found := false
+	mut main_field_typ := ''
+	for file in files {
+		for stmt in file.stmts {
+			match stmt {
+				ast.StructDecl {
+					if stmt.name == 'json2__StructKeyDecodeResult_T_LocalResponse'
+						|| stmt.name == 'StructKeyDecodeResult_T_LocalResponse' {
+						if file.mod == 'json2' {
+							import_struct_found = true
+						}
+						if file.mod == 'main'
+							&& stmt.name == 'json2__StructKeyDecodeResult_T_LocalResponse' {
+							main_struct_found = true
+							field_typ := stmt.fields[0].typ as ast.Ident
+							main_field_typ = field_typ.name
+						}
+					}
+				}
+				ast.FnDecl {
+					if stmt.name == 'json2__decode_T_LocalResponse'
+						|| stmt.name == 'decode_T_LocalResponse' {
+						if file.mod == 'json2' {
+							import_fn_found = true
+						}
+						if file.mod == 'main' && stmt.name == 'json2__decode_T_LocalResponse' {
+							main_fn_found = true
+						}
+					}
+				}
+				else {}
+			}
+		}
+	}
+	assert !import_struct_found
+	assert !import_fn_found
+	assert main_struct_found
+	assert main_fn_found
+	assert main_field_typ == 'LocalResponse'
 }
 
 fn test_transform_transitive_imported_clone_substitutes_nested_generic_route_context() {
@@ -3379,16 +3588,16 @@ fn boot() {
 '
 		},
 	])
-	mut webx_fn_names := []string{}
+	mut main_fn_names := []string{}
 	mut init_type_name := ''
 	mut route_call_name := ''
 	for file in files {
-		if file.mod != 'webx' {
+		if file.mod != 'main' {
 			continue
 		}
 		for stmt in file.stmts {
 			if stmt is ast.FnDecl {
-				webx_fn_names << stmt.name
+				main_fn_names << stmt.name
 				if stmt.name == 'webx__handle_request_and_route_T_App_Context' {
 					for inner in stmt.stmts {
 						if inner is ast.AssignStmt && inner.lhs.len == 1 && inner.rhs.len == 1 {
@@ -3412,12 +3621,12 @@ fn boot() {
 			}
 		}
 	}
-	assert 'webx__parallel_request_handler_T_App_Context' in webx_fn_names
-	assert 'webx__handle_request_and_route_T_App_Context' in webx_fn_names
-	assert 'webx__handle_route_T_App_Context' in webx_fn_names
+	assert 'webx__parallel_request_handler_T_App_Context' in main_fn_names
+	assert 'webx__handle_request_and_route_T_App_Context' in main_fn_names
+	assert 'webx__handle_route_T_App_Context' in main_fn_names
 	assert init_type_name == 'Context'
 	assert route_call_name == 'webx__handle_route_T_App_Context'
-	route_scope := env.get_fn_scope('webx', 'webx__handle_route_T_App_Context') or {
+	route_scope := env.get_fn_scope('main', 'webx__handle_route_T_App_Context') or {
 		panic('missing imported route clone scope')
 	}
 	user_context_type := route_scope.lookup_var_type('user_context') or {
