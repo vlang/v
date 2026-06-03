@@ -90,14 +90,18 @@ fn test_worker_clone_owns_mutable_maps() {
 }
 
 fn transform_code_for_test(code string) []ast.File {
+	prefs := &vpref.Preferences{
+		backend:     .cleanc
+		no_parallel: true
+	}
+	return transform_code_with_prefs_for_test(code, prefs)
+}
+
+fn transform_code_with_prefs_for_test(code string, prefs &vpref.Preferences) []ast.File {
 	tmp_file := '/tmp/v2_transformer_test_${os.getpid()}.v'
 	os.write_file(tmp_file, code) or { panic('failed to write temp file') }
 	defer {
 		os.rm(tmp_file) or {}
-	}
-	prefs := &vpref.Preferences{
-		backend:     .cleanc
-		no_parallel: true
 	}
 	mut file_set := token.FileSet.new()
 	mut par := parser.Parser.new(prefs)
@@ -9074,15 +9078,19 @@ fn parse_code_with_defines_for_test(code string, defines []string) []ast.File {
 }
 
 fn parse_code_with_prefs_for_test(code string, backend vpref.Backend, defines []string) []ast.File {
-	tmp_file := '/tmp/v2_parser_cond_field_test_${os.getpid()}.v'
-	os.write_file(tmp_file, code) or { panic('failed to write temp file') }
-	defer {
-		os.rm(tmp_file) or {}
-	}
 	prefs := &vpref.Preferences{
 		backend:      backend
 		no_parallel:  true
 		user_defines: defines
+	}
+	return parse_code_with_custom_prefs_for_test(code, prefs)
+}
+
+fn parse_code_with_custom_prefs_for_test(code string, prefs &vpref.Preferences) []ast.File {
+	tmp_file := '/tmp/v2_parser_cond_field_test_${os.getpid()}.v'
+	os.write_file(tmp_file, code) or { panic('failed to write temp file') }
+	defer {
+		os.rm(tmp_file) or {}
 	}
 	mut file_set := token.FileSet.new()
 	mut par := parser.Parser.new(prefs)
@@ -9187,6 +9195,72 @@ struct Container {
 	])
 	assert files.len == 1
 	assert struct_field_names(files[0], 'Container') == ['name', 'debug_only']
+}
+
+fn test_struct_pkgconfig_fields_inactive_for_cross_target() {
+	if !vpref.comptime_pkgconfig_value('sqlite3') {
+		return
+	}
+	prefs := &vpref.Preferences{
+		backend:        .cleanc
+		no_parallel:    true
+		target_os:      'cross'
+		output_cross_c: true
+	}
+	files := parse_code_with_custom_prefs_for_test('
+module main
+
+struct Container {
+$if $pkgconfig("sqlite3") {
+	host_field HostSqliteField
+} $else {
+	cross_field int
+}
+attr_field int @[if $pkgconfig("sqlite3")]
+	always int
+}
+',
+		prefs)
+	assert files.len == 1
+	assert struct_field_names(files[0], 'Container') == ['cross_field', 'always']
+}
+
+fn test_transform_pkgconfig_branch_inactive_for_cross_target() {
+	if !vpref.comptime_pkgconfig_value('sqlite3') {
+		return
+	}
+	prefs := &vpref.Preferences{
+		backend:        .cleanc
+		no_parallel:    true
+		target_os:      'cross'
+		output_cross_c: true
+	}
+	files := transform_code_with_prefs_for_test('
+module main
+
+fn pick() int {
+	$if $pkgconfig("sqlite3") {
+		return 1
+	} $else {
+		return 2
+	}
+}
+',
+		prefs)
+	assert files.len == 1
+	for stmt in files[0].stmts {
+		if stmt is ast.FnDecl && stmt.name == 'pick' {
+			assert stmt.stmts.len == 1
+			assert stmt.stmts[0] is ast.ReturnStmt
+			ret := stmt.stmts[0] as ast.ReturnStmt
+			assert ret.exprs.len == 1
+			assert ret.exprs[0] is ast.BasicLiteral
+			lit := ret.exprs[0] as ast.BasicLiteral
+			assert lit.value == '2'
+			return
+		}
+	}
+	assert false
 }
 
 // Regression: `$else` starts on the line after `}`. The auto-inserted `;`

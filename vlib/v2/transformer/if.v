@@ -1336,12 +1336,12 @@ fn (t &Transformer) eval_comptime_cond(cond ast.Expr) bool {
 		}
 		ast.CallExpr {
 			if pkg_name := transformer_pkgconfig_call_name(cond) {
-				return pref.comptime_pkgconfig_value(pkg_name)
+				return t.eval_pkgconfig_cond(pkg_name)
 			}
 		}
 		ast.CallOrCastExpr {
 			if pkg_name := transformer_pkgconfig_call_name(cond) {
-				return pref.comptime_pkgconfig_value(pkg_name)
+				return t.eval_pkgconfig_cond(pkg_name)
 			}
 		}
 		ast.PrefixExpr {
@@ -1373,6 +1373,13 @@ fn (t &Transformer) eval_comptime_cond(cond ast.Expr) bool {
 	}
 
 	return false
+}
+
+fn (t &Transformer) eval_pkgconfig_cond(pkg_name string) bool {
+	if t.pref.is_cross_target() {
+		return false
+	}
+	return pref.comptime_pkgconfig_value(pkg_name)
 }
 
 fn transformer_pkgconfig_call_name(expr ast.Expr) ?string {

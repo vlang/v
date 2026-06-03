@@ -3990,12 +3990,12 @@ fn (p &Parser) eval_comptime_cond(cond ast.Expr) bool {
 		}
 		ast.CallExpr {
 			if pkg_name := parser_pkgconfig_call_name(cond) {
-				return pref.comptime_pkgconfig_value(pkg_name)
+				return p.eval_pkgconfig_cond(pkg_name)
 			}
 		}
 		ast.CallOrCastExpr {
 			if pkg_name := parser_pkgconfig_call_name(cond) {
-				return pref.comptime_pkgconfig_value(pkg_name)
+				return p.eval_pkgconfig_cond(pkg_name)
 			}
 		}
 		ast.PrefixExpr {
@@ -4025,6 +4025,13 @@ fn (p &Parser) eval_comptime_cond(cond ast.Expr) bool {
 	}
 
 	return false
+}
+
+fn (p &Parser) eval_pkgconfig_cond(pkg_name string) bool {
+	if p.pref.is_cross_target() {
+		return false
+	}
+	return pref.comptime_pkgconfig_value(pkg_name)
 }
 
 // eval_comptime_flag delegates to the shared `pref.comptime_flag_value` so
