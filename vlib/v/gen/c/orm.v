@@ -465,7 +465,14 @@ fn (mut g Gen) emit_sql_query_data_items(query_var string, items []ast.SqlQueryD
 	for item in items {
 		match item {
 			ast.SqlQueryDataLeaf {
-				g.emit_sql_query_data_leaf(query_var, item, resolve_columns)
+				if is_sql_query_data_top_level_or(item.expr) {
+					start_var := g.new_tmp_var()
+					g.writeln('${ast.int_type_name} ${start_var} = ${query_var}.fields.len;')
+					g.emit_sql_query_data_expr(query_var, item.expr, resolve_columns, true)
+					g.emit_sql_query_data_parentheses(query_var, start_var)
+					continue
+				}
+				g.emit_sql_query_data_expr(query_var, item.expr, resolve_columns, true)
 			}
 			ast.SqlQueryDataIf {
 				mut prev_guard := SqlQueryDataGuardState{}
@@ -526,33 +533,67 @@ fn (mut g Gen) emit_sql_query_data_items(query_var string, items []ast.SqlQueryD
 	}
 }
 
-fn (mut g Gen) emit_sql_query_data_leaf(query_var string, node ast.SqlQueryDataLeaf, resolve_columns bool) {
-	mut expr := node.expr
-	expr_ := expr.remove_par()
-	if expr_ is ast.InfixExpr {
-		mut field_name := sql_query_data_field_name(expr_.left)
-		if resolve_columns {
-			field := g.get_orm_current_table_field(field_name) or {
-				verror('field "${field_name}" does not exist on "${g.sql_table_name}"')
+fn is_sql_query_data_top_level_or(expr ast.Expr) bool {
+	return match expr {
+		ast.InfixExpr { expr.op == .logical_or }
+		else { false }
+	}
+}
+
+fn (mut g Gen) emit_sql_query_data_parentheses(query_var string, start_var string) {
+	g.writeln('if (${query_var}.fields.len > ${start_var}) {')
+	g.indent++
+	g.write('builtin__array_push(&${query_var}.parentheses, _MOV((Array_${ast.int_type_name}[1]){')
+	g.write('builtin__new_array_from_c_array(2, 2, sizeof(${ast.int_type_name}),')
+	g.write(' _MOV((${ast.int_type_name}[2]){${start_var}, ${query_var}.fields.len - 1}))')
+	g.writeln('}));')
+	g.indent--
+	g.writeln('}')
+}
+
+fn (mut g Gen) emit_sql_query_data_expr(query_var string, expr ast.Expr, resolve_columns bool, is_and bool) {
+	match expr {
+		ast.ParExpr {
+			start_var := g.new_tmp_var()
+			g.writeln('${ast.int_type_name} ${start_var} = ${query_var}.fields.len;')
+			g.emit_sql_query_data_expr(query_var, expr.expr, resolve_columns, is_and)
+			g.emit_sql_query_data_parentheses(query_var, start_var)
+		}
+		ast.InfixExpr {
+			if expr.op in [.and, .logical_or] {
+				g.emit_sql_query_data_expr(query_var, expr.left, resolve_columns, is_and)
+				g.emit_sql_query_data_expr(query_var, expr.right, resolve_columns, expr.op == .and)
+			} else {
+				g.emit_sql_query_data_leaf(query_var, expr, resolve_columns, is_and)
 			}
-			field_name = g.get_orm_column_name_from_struct_field(field)
 		}
-		is_nil_comparison := expr_.right is ast.Nil && expr_.op in [.eq, .ne]
-		ignore_rhs := expr_.op in [.key_is, .not_is] || is_nil_comparison
-		g.writeln('if (${query_var}.fields.len > 0) {')
-		g.indent++
-		g.writeln('builtin__array_push(&${query_var}.is_and, _MOV((bool[1]){ true }));')
-		g.indent--
-		g.writeln('}')
-		g.writeln('builtin__array_push(&${query_var}.fields, _MOV((string[1]){ _S("${field_name}") }));')
-		g.writeln('builtin__array_push(&${query_var}.kinds, _MOV((orm__OperationKind[1]){ ${sql_query_data_op_kind(expr_)} }));')
-		if !ignore_rhs {
-			g.write('builtin__array_push(&${query_var}.data, _MOV((orm__Primitive[1]){')
-			g.write_orm_expr_to_primitive(expr_.right)
-			g.writeln('}));')
+		else {
+			verror('ORM: dynamic query-data leaf must be an infix expression')
 		}
-	} else {
-		verror('ORM: dynamic query-data leaf must be an infix expression')
+	}
+}
+
+fn (mut g Gen) emit_sql_query_data_leaf(query_var string, expr ast.InfixExpr, resolve_columns bool, is_and bool) {
+	mut field_name := sql_query_data_field_name(expr.left)
+	if resolve_columns {
+		field := g.get_orm_current_table_field(field_name) or {
+			verror('field "${field_name}" does not exist on "${g.sql_table_name}"')
+		}
+		field_name = g.get_orm_column_name_from_struct_field(field)
+	}
+	is_nil_comparison := expr.right is ast.Nil && expr.op in [.eq, .ne]
+	ignore_rhs := expr.op in [.key_is, .not_is] || is_nil_comparison
+	g.writeln('if (${query_var}.fields.len > 0) {')
+	g.indent++
+	g.writeln('builtin__array_push(&${query_var}.is_and, _MOV((bool[1]){ ${is_and} }));')
+	g.indent--
+	g.writeln('}')
+	g.writeln('builtin__array_push(&${query_var}.fields, _MOV((string[1]){ _S("${field_name}") }));')
+	g.writeln('builtin__array_push(&${query_var}.kinds, _MOV((orm__OperationKind[1]){ ${sql_query_data_op_kind(expr)} }));')
+	if !ignore_rhs {
+		g.write('builtin__array_push(&${query_var}.data, _MOV((orm__Primitive[1]){')
+		g.write_orm_expr_to_primitive(expr.right)
+		g.writeln('}));')
 	}
 }
 
@@ -1141,6 +1182,10 @@ fn (mut g Gen) write_orm_update(node &ast.SqlStmtLine, table_name string, connec
 	if node.is_dynamic {
 		dynamic_update_data_var = g.emit_dynamic_sql_query_data(node.update_data_expr)
 	}
+	mut dynamic_where_var := ''
+	if dynamic_where_expr := g.resolve_sql_query_data_expr(node.where_expr) {
+		dynamic_where_var = g.emit_sql_query_data(dynamic_where_expr, true)
+	}
 	if node.is_array_update {
 		g.write_orm_bulk_update(node, table_name, connection_var_name, result_var_name)
 		return
@@ -1204,7 +1249,11 @@ fn (mut g Gen) write_orm_update(node &ast.SqlStmtLine, table_name string, connec
 		g.indent--
 		g.writeln('},')
 	}
-	g.write_orm_where(node.where_expr)
+	if dynamic_where_var != '' {
+		g.writeln(dynamic_where_var)
+	} else {
+		g.write_orm_where(node.where_expr)
+	}
 	g.indent--
 	g.writeln(');')
 }

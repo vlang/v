@@ -46,23 +46,36 @@ fn (mut c Checker) check_sql_query_data_item(mut item ast.SqlQueryDataItem) {
 }
 
 fn (mut c Checker) check_sql_query_data_leaf(node ast.SqlQueryDataLeaf) {
-	mut expr := node.expr
-	expr_ := expr.remove_par()
-	if expr_ is ast.InfixExpr {
-		if !is_sql_query_data_op(expr_.op) {
-			c.orm_error('dynamic ORM items must use comparison operators', expr_.pos)
-			return
+	c.check_sql_query_data_expr(node.expr, node.pos)
+}
+
+fn (mut c Checker) check_sql_query_data_expr(expr ast.Expr, pos token.Pos) {
+	match expr {
+		ast.ParExpr {
+			c.check_sql_query_data_expr(expr.expr, pos)
 		}
-		if !is_sql_query_data_field_candidate(expr_.left) {
-			c.orm_error('left side of a dynamic ORM item must be a field name', expr_.left.pos())
+		ast.InfixExpr {
+			if expr.op in [.and, .logical_or] {
+				c.check_sql_query_data_expr(expr.left, pos)
+				c.check_sql_query_data_expr(expr.right, pos)
+				return
+			}
+			if !is_sql_query_data_op(expr.op) {
+				c.orm_error('dynamic ORM items must use comparison operators', expr.pos)
+				return
+			}
+			if !is_sql_query_data_field_candidate(expr.left) {
+				c.orm_error('left side of a dynamic ORM item must be a field name', expr.left.pos())
+			}
+			is_nil_comparison := expr.right is ast.Nil && expr.op in [.eq, .ne]
+			if expr.op !in [.key_is, .not_is] && !is_nil_comparison {
+				mut rhs_expr := expr.right
+				c.expr(mut rhs_expr)
+			}
 		}
-		is_nil_comparison := expr_.right is ast.Nil && expr_.op in [.eq, .ne]
-		if expr_.op !in [.key_is, .not_is] && !is_nil_comparison {
-			mut rhs_expr := expr_.right
-			c.expr(mut rhs_expr)
+		else {
+			c.orm_error('dynamic ORM items must be comparison expressions', pos)
 		}
-	} else {
-		c.orm_error('dynamic ORM items must be comparison expressions', node.pos)
 	}
 }
 
@@ -147,70 +160,36 @@ fn (mut c Checker) check_dynamic_sql_query_data_items(mut items []ast.SqlQueryDa
 	for mut item in items {
 		match item {
 			ast.SqlQueryDataLeaf {
-				mut expr := item.expr
-				expr_ := expr.remove_par()
-				if expr_ is ast.InfixExpr {
-					field_name := sql_query_data_field_name(expr_.left)
-					if field_name == '' {
-						c.orm_error('left side of a dynamic ORM item must be a field name',
-							expr_.left.pos())
-						ok = false
-						continue
-					}
-					matched_fields := fields.filter(it.name == field_name)
-					if matched_fields.len == 0 {
-						c.orm_error(util.new_suggestion(field_name, field_names).say('`${table_sym.name}` structure has no field with name `${field_name}`'),
-							expr_.left.pos())
-						ok = false
-						continue
-					}
-					field := matched_fields[0]
-					match context {
-						.where_ {
-							if expr_.op in [.and, .logical_or] {
-								c.orm_error('dynamic ORM `where` items must use a single comparison expression',
-									expr_.pos)
-								ok = false
-								continue
-							}
-							if !is_sql_query_data_op(expr_.op) {
-								c.orm_error('dynamic ORM `where` items must use comparison operators',
-									expr_.pos)
-								ok = false
-								continue
-							}
-							mut where_expr := item.expr
-							c.expr(mut where_expr)
-							c.check_expr_has_no_fn_calls_with_non_orm_return_type(&where_expr)
-							c.check_where_expr_has_no_pointless_exprs(table_sym, field_names,
-								&where_expr)
-							item.expr = where_expr
-						}
-						.set_ {
-							if expr_.op != .eq {
-								c.orm_error('dynamic ORM `set` items must use `==`', expr_.pos)
-								ok = false
-								continue
-							}
-							for attr in field.attrs {
-								if attr.name == 'fkey' {
-									c.orm_error("`${field_name}` is a foreign column of `${table_sym.name}`, it can't update here",
-										expr_.pos)
-									ok = false
-									break
-								}
-							}
-							mut set_expr := item.expr
-							old_expected_type := c.expected_type
-							c.expected_type = field.typ
-							c.expr(mut set_expr)
-							c.expected_type = old_expected_type
-							item.expr = set_expr
-						}
-					}
-				} else {
+				if !c.check_dynamic_sql_query_data_expr(item.expr, table_sym, fields, field_names,
+					context) {
 					ok = false
 					continue
+				}
+				match context {
+					.where_ {
+						mut where_expr := item.expr
+						c.expr(mut where_expr)
+						c.check_expr_has_no_fn_calls_with_non_orm_return_type(&where_expr)
+						c.check_where_expr_has_no_pointless_exprs(table_sym, field_names,
+							&where_expr)
+						item.expr = where_expr
+					}
+					.set_ {
+						expr_ := item.expr.remove_par()
+						if expr_ is ast.InfixExpr {
+							field_name := sql_query_data_field_name(expr_.left)
+							matched_fields := fields.filter(it.name == field_name)
+							if matched_fields.len > 0 {
+								field := matched_fields[0]
+								mut set_expr := item.expr
+								old_expected_type := c.expected_type
+								c.expected_type = field.typ
+								c.expr(mut set_expr)
+								c.expected_type = old_expected_type
+								item.expr = set_expr
+							}
+						}
+					}
 				}
 			}
 			ast.SqlQueryDataIf {
@@ -229,6 +208,72 @@ fn (mut c Checker) check_dynamic_sql_query_data_items(mut items []ast.SqlQueryDa
 		}
 	}
 	return ok
+}
+
+fn (mut c Checker) check_dynamic_sql_query_data_expr(expr ast.Expr, table_sym &ast.TypeSymbol,
+	fields []ast.StructField, field_names []string, context SqlQueryDataContext) bool {
+	return match expr {
+		ast.ParExpr {
+			c.check_dynamic_sql_query_data_expr(expr.expr, table_sym, fields, field_names, context)
+		}
+		ast.InfixExpr {
+			if expr.op in [.and, .logical_or] {
+				match context {
+					.where_ {
+						left_ok := c.check_dynamic_sql_query_data_expr(expr.left, table_sym,
+							fields, field_names, context)
+						right_ok := c.check_dynamic_sql_query_data_expr(expr.right, table_sym,
+							fields, field_names, context)
+						return left_ok && right_ok
+					}
+					.set_ {
+						c.orm_error('dynamic ORM `set` items must use `==`', expr.pos)
+						return false
+					}
+				}
+			}
+			field_name := sql_query_data_field_name(expr.left)
+			if field_name == '' {
+				c.orm_error('left side of a dynamic ORM item must be a field name', expr.left.pos())
+				return false
+			}
+			matched_fields := fields.filter(it.name == field_name)
+			if matched_fields.len == 0 {
+				c.orm_error(util.new_suggestion(field_name, field_names).say('`${table_sym.name}` structure has no field with name `${field_name}`'),
+					expr.left.pos())
+				return false
+			}
+			match context {
+				.where_ {
+					if !is_sql_query_data_op(expr.op) {
+						c.orm_error('dynamic ORM `where` items must use comparison operators',
+							expr.pos)
+						return false
+					}
+				}
+				.set_ {
+					if expr.op != .eq {
+						c.orm_error('dynamic ORM `set` items must use `==`', expr.pos)
+						return false
+					}
+					field := matched_fields[0]
+					for attr in field.attrs {
+						if attr.name == 'fkey' {
+							c.orm_error("`${field_name}` is a foreign column of `${table_sym.name}`, it can't update here",
+								expr.pos)
+							return false
+						}
+					}
+				}
+			}
+
+			true
+		}
+		else {
+			c.orm_error('dynamic ORM items must be comparison expressions', expr.pos())
+			false
+		}
+	}
 }
 
 fn (mut c Checker) sql_expr(mut node ast.SqlExpr) ast.Type {
@@ -722,6 +767,12 @@ fn (mut c Checker) sql_stmt_line(mut node ast.SqlStmtLine) ast.Type {
 
 	if node.where_expr !is ast.EmptyExpr && !node.is_array_update {
 		c.expr(mut node.where_expr)
+		if dynamic_where_expr := c.resolve_sql_query_data_expr(node.where_expr) {
+			_ = dynamic_where_expr
+			if !c.check_dynamic_sql_query_data(node.where_expr, table_sym, node.fields, .where_) {
+				return ast.void_type
+			}
+		}
 	}
 
 	return ast.void_type
