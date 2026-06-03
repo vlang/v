@@ -56,6 +56,30 @@ fn test_variadic_interface_arg_declared_in_loop() {
 	assert total == 6
 }
 
+type ValueSum = Cat | Dog
+
+// For issue 27326: a variable smartcast via `if x is T` / `match` resolves to a
+// synthetic smartcast scope var, not its real declaration. Promoting that
+// synthetic var to auto-heap instead of the declaration must not desync the
+// pointer indirection when the value is passed to a variadic interface param.
+fn test_variadic_interface_arg_smartcast() {
+	mut total := 0
+	s := ValueSum(Cat{})
+	if s is Cat {
+		total += collect(s)
+	}
+	v := Value(Cat{})
+	if v is Cat {
+		total += collect(v)
+	}
+	match v {
+		Cat { total += collect(v) }
+		else {}
+	}
+
+	assert total == 3
+}
+
 fn check_animals(animals ...Animal) {
 	assert animals[0] is Cat
 	assert animals[1] is Dog

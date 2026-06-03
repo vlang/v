@@ -7646,13 +7646,21 @@ fn (mut c Checker) mark_as_referenced(mut node ast.Expr, as_interface bool) {
 				// use-site scope chain, since `c.fn_scope.find_var` only locates
 				// variables declared at the function level and misses those
 				// declared in nested scopes (e.g. inside a `for` loop body).
-				obj = node.scope.find_var(node.obj.name) or {
-					if c.fn_scope != unsafe { nil } {
+				mut resolved := node.scope.find_var(node.obj.name) or { obj }
+				if resolved.smartcasts.len != 0 {
+					// `node.scope.find_var` resolved a synthetic smartcast var
+					// from an `if x is T`/`match` branch rather than the real
+					// declaration. Such vars have no declaration of their own, so
+					// promoting them would set `is_auto_heap` on the smartcast var
+					// while the actual declaration stays a plain value, desyncing
+					// the pointer indirection. Fall back to the function scope.
+					resolved = if c.fn_scope != unsafe { nil } {
 						c.fn_scope.find_var(node.obj.name) or { obj }
 					} else {
 						obj
 					}
 				}
+				obj = resolved
 				if obj.typ == 0 {
 					return
 				}
