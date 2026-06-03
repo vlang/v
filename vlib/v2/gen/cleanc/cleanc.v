@@ -907,16 +907,6 @@ pub fn (mut g Gen) gen_passes_1_to_4() {
 	g.collect_runtime_aliases()
 	stage_start = g.mark_cgen_step(stats_enabled, stats_scope, mut stats_sw, stage_start,
 		'setup.runtime_aliases')
-	// Force eventbus generic structs to use T=string binding.
-	// Without full monomorphization, eventbus methods assume T=string
-	// (see fn.v hardcoded eventbus workaround).
-	string_binding := {
-		'T': types.Type(types.string_)
-	}
-	for eb_name in ['eventbus__EventHandler', 'eventbus__EventBus', 'eventbus__Publisher',
-		'eventbus__Subscriber', 'eventbus__Registry'] {
-		g.generic_struct_bindings[eb_name] = string_binding.clone()
-	}
 	// V2 does not fully monomorphize generic structs yet, so the unsuffixed
 	// stdatomic.AtomicVal body has to use one concrete storage type. Keep it on
 	// `int`: the generated stdatomic receiver methods are also pinned to `int`,
@@ -1324,35 +1314,6 @@ pub fn (mut g Gen) gen_passes_1_to_4() {
 				}
 				if g.should_skip_backend_generic_fn(stmt) {
 					continue
-				}
-				if g.cur_module == 'eventbus' && stmt.is_method
-					&& receiver_generic_param_names(stmt).len > 0 {
-					stmt_ptr := &stmt
-					prev_generic_types := g.active_generic_types.clone()
-					string_types := {
-						'T': types.Type(types.string_)
-					}
-					g.active_generic_types = string_types.clone()
-					if stmt.name in ['subscribe_method', 'unsubscribe_method'] {
-						spec_name := g.specialized_fn_name(stmt, string_types)
-						if spec_name != '' {
-							g.record_fn_owner_for_current_file(spec_name, fi)
-							g.gen_fn_head_with_name_ptr(stmt_ptr, spec_name)
-							g.sb.writeln(';')
-							g.active_generic_types = prev_generic_types.clone()
-							continue
-						}
-					} else {
-						fn_name := g.get_fn_name(stmt)
-						if fn_name != '' {
-							g.record_fn_owner_for_current_file(fn_name, fi)
-							g.gen_fn_head_with_name_ptr(stmt_ptr, fn_name)
-							g.sb.writeln(';')
-							g.active_generic_types = prev_generic_types.clone()
-							continue
-						}
-					}
-					g.active_generic_types = prev_generic_types.clone()
 				}
 				// Generic functions: emit as macros for known simple functions
 				if g.generic_fn_param_names(stmt).len > 0 {

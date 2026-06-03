@@ -471,33 +471,6 @@ fn (mut g Gen) collect_fn_signatures() {
 					if g.should_skip_backend_generic_fn(stmt) {
 						continue
 					}
-					if g.cur_module == 'eventbus' && stmt.is_method
-						&& receiver_generic_param_names(stmt).len > 0 {
-						prev_generic_types := g.active_generic_types.clone()
-						string_types := {
-							'T': types.Type(types.string_)
-						}
-						g.active_generic_types = string_types.clone()
-						if stmt.name in ['subscribe_method', 'unsubscribe_method'] {
-							spec_name := g.specialized_fn_name(stmt, string_types)
-							g.active_generic_types = prev_generic_types.clone()
-							if spec_name != '' {
-								prev_generic_types2 := g.active_generic_types.clone()
-								g.active_generic_types = string_types.clone()
-								g.register_fn_signature(stmt, spec_name)
-								g.active_generic_types = prev_generic_types2.clone()
-								continue
-							}
-						} else {
-							eb_fn_name := g.get_fn_name(stmt)
-							if eb_fn_name != '' {
-								g.register_fn_signature(stmt, eb_fn_name)
-								g.active_generic_types = prev_generic_types.clone()
-								continue
-							}
-						}
-						g.active_generic_types = prev_generic_types.clone()
-					}
 					if g.generic_fn_param_names(stmt).len > 0 {
 						prev_generic_types := g.active_generic_types.clone()
 						prev_fn_name := g.cur_fn_name
@@ -958,16 +931,6 @@ fn (g &Gen) generic_fn_param_names(node ast.FnDecl) []string {
 	for gp in node.typ.generic_params {
 		if gp is ast.Ident && gp.name != '' {
 			names << gp.name
-		}
-	}
-	if names.len == 0 && node.is_method && g.cur_module == 'eventbus'
-		&& node.name in ['subscribe_method', 'unsubscribe_method'] {
-		mut seen := map[string]bool{}
-		if node.receiver.typ !is ast.EmptyExpr {
-			collect_generic_placeholder_names_from_expr(node.receiver.typ, mut seen, mut names)
-		}
-		for param in node.typ.params {
-			collect_generic_placeholder_names_from_expr(param.typ, mut seen, mut names)
 		}
 	}
 	return names
@@ -3239,23 +3202,6 @@ fn (mut g Gen) generic_fn_specializations_with_fallback(node ast.FnDecl, include
 		|| generic_params.len == 0 || !include_fallback {
 		return specs
 	}
-	if specs.len == 0 && g.cur_module == 'eventbus' && node.is_method
-		&& node.name in ['subscribe_method', 'unsubscribe_method'] && generic_params == ['T'] {
-		generic_types := {
-			'T': types.Type(types.string_)
-		}
-		spec_name := g.specialized_fn_name(node, generic_types)
-		if spec_name != '' && spec_name !in seen {
-			seen[spec_name] = true
-			specs << GenericFnSpecialization{
-				name:          spec_name
-				generic_types: generic_types.clone()
-			}
-		}
-	}
-	if (!use_json2_fallback && !allow_method_fallback && specs.len > 0) || generic_params.len == 0 {
-		return specs
-	}
 	// Fallback: nested generic helpers inside another specialized generic function
 	// may only record placeholder bindings like `T -> T` in env.generic_types.
 	// Reuse concrete bindings seen for the same generic parameter names elsewhere.
@@ -5110,25 +5056,6 @@ fn (mut g Gen) try_specialize_generic_call_name(name string, call_args []ast.Exp
 			}
 		}
 	}
-	if name in ['eventbus__Subscriber__subscribe_method', 'eventbus__Subscriber__unsubscribe_method']
-		&& call_args.len > 1 {
-		base_arg := if call_args[1] is ast.ModifierExpr {
-			(call_args[1] as ast.ModifierExpr).expr
-		} else {
-			call_args[1]
-		}
-		mut arg_type_name := g.get_expr_type(base_arg).trim_space().trim_right('*')
-		if (arg_type_name == '' || arg_type_name == 'int') && base_arg is ast.Ident {
-			arg_type_name =
-				(g.get_local_var_c_type(base_arg.name) or { '' }).trim_space().trim_right('*')
-		}
-		if arg_type_name == 'string' {
-			candidate := '${name}_T_string'
-			if candidate in g.fn_param_is_ptr || candidate in g.fn_return_types {
-				return candidate
-			}
-		}
-	}
 	if name in ['decode_value_T', 'json2__decode_value_T'] && call_args.len > 1 {
 		base_arg := if call_args[1] is ast.ModifierExpr {
 			(call_args[1] as ast.ModifierExpr).expr
@@ -5697,32 +5624,6 @@ fn (mut g Gen) gen_fn_decl_ptr(node &ast.FnDecl) {
 	}
 	if g.should_skip_backend_generic_fn(*node) {
 		return
-	}
-	// eventbus module: all generic struct methods use T = string.
-	// For subscribe_method/unsubscribe_method, the specialized name (_string suffix) is used.
-	// For other methods (publish, has_subscriber, etc.), keep the base name but resolve T = string.
-	if g.cur_module == 'eventbus' && node.is_method && receiver_generic_param_names(*node).len > 0 {
-		prev_generic_types := g.active_generic_types.clone()
-		string_types := {
-			'T': types.Type(types.string_)
-		}
-		g.active_generic_types = string_types.clone()
-		if node.name in ['subscribe_method', 'unsubscribe_method'] {
-			spec_name := g.specialized_fn_name(*node, string_types)
-			if spec_name != '' {
-				g.gen_fn_decl_with_name_ptr(node, spec_name)
-				g.active_generic_types = prev_generic_types.clone()
-				return
-			}
-		} else {
-			fn_name := g.get_fn_name(*node)
-			if fn_name != '' {
-				g.gen_fn_decl_with_name_ptr(node, fn_name)
-				g.active_generic_types = prev_generic_types.clone()
-				return
-			}
-		}
-		g.active_generic_types = prev_generic_types.clone()
 	}
 	if g.generic_fn_param_names(*node).len > 0 {
 		// maxof[T]/minof[T] are compile-time functions fully inlined by the transformer.

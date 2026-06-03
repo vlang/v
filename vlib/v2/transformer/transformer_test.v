@@ -791,6 +791,64 @@ fn use() {
 	assert 'encode_value_T_json2_Any' !in call_names
 }
 
+fn test_transform_eventbus_receiver_generic_method_call_is_monomorphized() {
+	files := transform_sources_for_test([
+		TestSource{
+			rel:  'eventbus/eventbus.v'
+			code: '
+module eventbus
+
+pub type EventHandlerFn = fn (receiver voidptr, args voidptr, sender voidptr)
+
+pub struct Subscriber[T] {}
+
+pub fn new_subscriber[T]() Subscriber[T] {
+	return Subscriber[T]{}
+}
+
+pub fn (mut s Subscriber[T]) subscribe_method(name T, handler EventHandlerFn, receiver voidptr) {
+	_ = s
+	_ = name
+	_ = handler
+	_ = receiver
+}
+'
+		},
+		TestSource{
+			rel:  'main.v'
+			code: "
+module main
+
+import eventbus
+
+fn handler(receiver voidptr, args voidptr, sender voidptr) {
+	_ = receiver
+	_ = args
+	_ = sender
+}
+
+fn use() {
+	mut subscriber := eventbus.new_subscriber[string]()
+	subscriber.subscribe_method('ready', handler, unsafe { nil })
+}
+"
+		},
+	])
+	mut fn_names := []string{}
+	for file in files {
+		for stmt in file.stmts {
+			if stmt is ast.FnDecl {
+				fn_names << stmt.name
+			}
+		}
+	}
+	assert 'subscribe_method_T_string' in fn_names
+
+	call_names := call_names_for_fn(files, 'use')
+	assert 'eventbus__Subscriber__subscribe_method_T_string' in call_names
+	assert 'eventbus__Subscriber__subscribe_method' !in call_names
+}
+
 fn test_transform_embedded_method_promotion_keeps_owner_method_precedence() {
 	mut t := create_test_transformer()
 	t.collect_declared_method_fns([
