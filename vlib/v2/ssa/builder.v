@@ -3763,11 +3763,15 @@ fn (mut b Builder) build_stmts_from_flat(stmts ast.CursorList) {
 	}
 }
 
-// build_stmt_from_flat is the cursor counterpart of `build_stmt`. Each
-// per-kind port replaces one `else` fallthrough below with a `build_<kind>_from_flat`
-// helper that consumes the cursor's flat edges directly (no `decode_stmt`
-// for that kind). Kinds not yet ported fall through to the legacy walker
-// via a single decode at the bottom.
+// build_stmt_from_flat is the cursor counterpart of `build_stmt`. As of s234
+// every statement kind is dispatched explicitly: the value-producing/structural
+// kinds go to their `build_<kind>_from_flat` helpers; the kinds that `build_stmt`
+// treats as no-ops (decls / imports / directives / defer / comptime / asm /
+// attributes / empty — all lowered or registered in earlier phases) are explicit
+// no-op arms; ForInStmt panics exactly as `build_stmt` does (the transformer must
+// have lowered it). No `decode_stmt` remains — build_stmt_from_flat is fully
+// cursor-native. The `else` is an unreachable defensive no-op (only stmt cursors
+// are ever passed here, and all stmt kinds are enumerated).
 fn (mut b Builder) build_stmt_from_flat(c ast.Cursor) {
 	match c.kind() {
 		.stmt_return {
@@ -3797,10 +3801,16 @@ fn (mut b Builder) build_stmt_from_flat(c ast.Cursor) {
 		.stmt_assign {
 			b.build_assign_from_flat(c)
 		}
-		else {
-			stmt := c.flat.decode_stmt(c.id)
-			b.build_stmt(stmt)
+		// No-op kinds: `build_stmt` has empty bodies for these (handled by the
+		// transformer / earlier registration passes), so decoding them only to
+		// no-op is wasteful — match and ignore them directly.
+		.stmt_import, .stmt_const_decl, .stmt_struct_decl, .stmt_enum_decl, .stmt_type_decl,
+		.stmt_interface_decl, .stmt_global_decl, .stmt_fn_decl, .stmt_directive, .stmt_comptime,
+		.stmt_defer, .stmt_attributes, .stmt_empty, .stmt_asm {}
+		.stmt_for_in {
+			panic('SSA builder: ForInStmt should have been lowered by transformer')
 		}
+		else {}
 	}
 }
 
