@@ -2665,6 +2665,27 @@ fn (b &Builder) is_float_array(arr ast.ArrayInitExpr) bool {
 	return false
 }
 
+// is_float_array_from_flat (s241) is the cursor mirror of is_float_array.
+// ArrayInitExpr flat = (.expr_array_init, [edge0=typ, edge1=init, edge2=cap,
+// edge3=len, edge4=update_expr, edge5..n=exprs]); first element = edge(5).
+fn (b &Builder) is_float_array_from_flat(c ast.Cursor) bool {
+	if c.edge_count() > 5 {
+		first := c.edge(5)
+		if first.kind() == .expr_call_or_cast {
+			lhs_c := first.edge(0)
+			if lhs_c.kind() == .expr_ident {
+				return lhs_c.name() in ['f32', 'f64']
+			}
+		} else if first.kind() == .expr_cast {
+			typ_c := first.edge(0)
+			if typ_c.kind() == .expr_ident {
+				return typ_c.name() in ['f32', 'f64']
+			}
+		}
+	}
+	return false
+}
+
 // try_serialize_const_array attempts to serialize a constant array's elements to raw bytes.
 // Returns the serialized data or empty if any element can't be evaluated at compile time.
 fn (mut b Builder) try_serialize_const_array(arr ast.ArrayInitExpr) []u8 {
@@ -2786,6 +2807,130 @@ fn (mut b Builder) try_serialize_const_array(arr ast.ArrayInitExpr) []u8 {
 	return data
 }
 
+// try_serialize_const_array_from_flat (s241) is the cursor mirror of
+// try_serialize_const_array. ArrayInitExpr exprs are edges 5..n; element size /
+// float-ness come from the first element's CallOrCast/Cast Ident type name; values
+// via try_eval_const_float_from_flat / try_eval_const_int_from_flat. Byte layout
+// (little-endian per element) is identical to the AST.
+fn (mut b Builder) try_serialize_const_array_from_flat(c ast.Cursor) []u8 {
+	n_exprs := c.edge_count() - 5
+	if n_exprs <= 0 {
+		return []u8{}
+	}
+	mut elem_size := 8
+	mut is_float := false
+	first := c.edge(5)
+	if first.kind() == .expr_call_or_cast {
+		lhs_c := first.edge(0)
+		if lhs_c.kind() == .expr_ident {
+			match lhs_c.name() {
+				'u8', 'i8', 'byte' {
+					elem_size = 1
+				}
+				'u16', 'i16' {
+					elem_size = 2
+				}
+				'u32', 'i32', 'int' {
+					elem_size = 4
+				}
+				'f32' {
+					elem_size = 4
+					is_float = true
+				}
+				'u64', 'i64' {
+					elem_size = 8
+				}
+				'f64' {
+					elem_size = 8
+					is_float = true
+				}
+				else {}
+			}
+		}
+	} else if first.kind() == .expr_cast {
+		typ_c := first.edge(0)
+		if typ_c.kind() == .expr_ident {
+			match typ_c.name() {
+				'u8', 'i8', 'byte' {
+					elem_size = 1
+				}
+				'u16', 'i16' {
+					elem_size = 2
+				}
+				'u32', 'i32', 'int' {
+					elem_size = 4
+				}
+				'f32' {
+					elem_size = 4
+					is_float = true
+				}
+				'u64', 'i64' {
+					elem_size = 8
+				}
+				'f64' {
+					elem_size = 8
+					is_float = true
+				}
+				else {}
+			}
+		}
+	}
+	mut data := []u8{cap: n_exprs * elem_size}
+	for ei in 0 .. n_exprs {
+		expr_c := c.edge(5 + ei)
+		if is_float {
+			fval := b.try_eval_const_float_from_flat(expr_c)
+			if elem_size == 4 {
+				fval32 := f32(fval)
+				bits := unsafe { *(&u32(&fval32)) }
+				data << u8(bits & 0xFF)
+				data << u8((bits >> 8) & 0xFF)
+				data << u8((bits >> 16) & 0xFF)
+				data << u8((bits >> 24) & 0xFF)
+			} else {
+				bits := unsafe { *(&u64(&fval)) }
+				data << u8(bits & 0xFF)
+				data << u8((bits >> 8) & 0xFF)
+				data << u8((bits >> 16) & 0xFF)
+				data << u8((bits >> 24) & 0xFF)
+				data << u8((bits >> 32) & 0xFF)
+				data << u8((bits >> 40) & 0xFF)
+				data << u8((bits >> 48) & 0xFF)
+				data << u8((bits >> 56) & 0xFF)
+			}
+		} else {
+			val := b.try_eval_const_int_from_flat(expr_c)
+			match elem_size {
+				1 {
+					data << u8(val)
+				}
+				2 {
+					data << u8(val & 0xFF)
+					data << u8((val >> 8) & 0xFF)
+				}
+				4 {
+					data << u8(val & 0xFF)
+					data << u8((val >> 8) & 0xFF)
+					data << u8((val >> 16) & 0xFF)
+					data << u8((val >> 24) & 0xFF)
+				}
+				else {
+					v := u64(val)
+					data << u8(v & 0xFF)
+					data << u8((v >> 8) & 0xFF)
+					data << u8((v >> 16) & 0xFF)
+					data << u8((v >> 24) & 0xFF)
+					data << u8((v >> 32) & 0xFF)
+					data << u8((v >> 40) & 0xFF)
+					data << u8((v >> 48) & 0xFF)
+					data << u8((v >> 56) & 0xFF)
+				}
+			}
+		}
+	}
+	return data
+}
+
 // try_eval_const_float evaluates a compile-time float constant expression.
 fn (b &Builder) try_eval_const_float(expr ast.Expr) f64 {
 	match expr {
@@ -2801,6 +2946,31 @@ fn (b &Builder) try_eval_const_float(expr ast.Expr) f64 {
 		ast.PrefixExpr {
 			if expr.op == .minus {
 				return -b.try_eval_const_float(expr.expr)
+			}
+		}
+		else {}
+	}
+
+	return 0.0
+}
+
+// try_eval_const_float_from_flat (s241) is the cursor mirror of try_eval_const_float.
+fn (b &Builder) try_eval_const_float_from_flat(c ast.Cursor) f64 {
+	match c.kind() {
+		.expr_basic_literal {
+			kind := unsafe { token.Token(int(c.aux())) }
+			if kind == .number {
+				return c.name().f64()
+			}
+		}
+		.expr_call_or_cast {
+			// f64(0.5), f32(1.0), etc. — inner value at edge(1).
+			return b.try_eval_const_float_from_flat(c.edge(1))
+		}
+		.expr_prefix {
+			op := unsafe { token.Token(int(c.aux())) }
+			if op == .minus {
+				return -b.try_eval_const_float_from_flat(c.edge(0))
 			}
 		}
 		else {}
@@ -2839,6 +3009,44 @@ fn (b &Builder) is_float_cast_expr(expr ast.Expr) bool {
 	if expr is ast.InfixExpr {
 		return b.is_float_cast_expr(expr.lhs) || b.is_float_cast_expr(expr.rhs)
 	}
+	return false
+}
+
+// is_float_cast_expr_from_flat (s241) is the cursor mirror of is_float_cast_expr.
+// The AST's mutually-exclusive `if expr is X` chain becomes a match on c.kind().
+fn (b &Builder) is_float_cast_expr_from_flat(c ast.Cursor) bool {
+	match c.kind() {
+		.expr_cast {
+			typ_c := c.edge(0)
+			if typ_c.kind() == .expr_ident {
+				return typ_c.name() == 'f64' || typ_c.name() == 'f32'
+			}
+		}
+		.expr_call_or_cast {
+			lhs_c := c.edge(0)
+			if lhs_c.kind() == .expr_ident {
+				return lhs_c.name() == 'f64' || lhs_c.name() == 'f32'
+			}
+		}
+		.expr_basic_literal {
+			kind := unsafe { token.Token(int(c.aux())) }
+			if kind == .number {
+				value := c.name()
+				return value.contains('.')
+					|| (!value.starts_with('0x') && !value.starts_with('0X')
+					&& (value.contains('e') || value.contains('E')))
+			}
+		}
+		.expr_prefix {
+			return b.is_float_cast_expr_from_flat(c.edge(0))
+		}
+		.expr_infix {
+			return b.is_float_cast_expr_from_flat(c.edge(0))
+				|| b.is_float_cast_expr_from_flat(c.edge(1))
+		}
+		else {}
+	}
+
 	return false
 }
 
@@ -2910,6 +3118,86 @@ fn (mut b Builder) try_eval_computed_float(expr ast.Expr) ?f64 {
 			// Only evaluate as float if casting to a float type (f64, f32)
 			if expr.lhs is ast.Ident && (expr.lhs.name == 'f64' || expr.lhs.name == 'f32') {
 				return b.try_eval_computed_float(expr.expr)
+			}
+			return none
+		}
+		else {
+			return none
+		}
+	}
+}
+
+// try_eval_computed_float_from_flat (s241) is the cursor mirror of
+// try_eval_computed_float. Infix/Prefix op in aux; Cast/CallOrCast inner at edge(1).
+fn (mut b Builder) try_eval_computed_float_from_flat(c ast.Cursor) ?f64 {
+	match c.kind() {
+		.expr_basic_literal {
+			kind := unsafe { token.Token(int(c.aux())) }
+			value := c.name()
+			if kind == .number && value.contains('.') {
+				return value.f64()
+			}
+			if kind == .number {
+				return f64(value.i64())
+			}
+			return none
+		}
+		.expr_ident {
+			name := c.name()
+			if fval := b.float_const_values[name] {
+				return fval.f64()
+			}
+			qualified := '${b.cur_module}__${name}'
+			if fval := b.float_const_values[qualified] {
+				return fval.f64()
+			}
+			return none
+		}
+		.expr_infix {
+			op := unsafe { token.Token(int(c.aux())) }
+			lhs := b.try_eval_computed_float_from_flat(c.edge(0)) or { return none }
+			rhs := b.try_eval_computed_float_from_flat(c.edge(1)) or { return none }
+			return match op {
+				.plus {
+					lhs + rhs
+				}
+				.minus {
+					lhs - rhs
+				}
+				.mul {
+					lhs * rhs
+				}
+				.div {
+					if rhs != 0.0 {
+						lhs / rhs
+					} else {
+						f64(0.0)
+					}
+				}
+				else {
+					return none
+				}
+			}
+		}
+		.expr_prefix {
+			op := unsafe { token.Token(int(c.aux())) }
+			if op == .minus {
+				val := b.try_eval_computed_float_from_flat(c.edge(0)) or { return none }
+				return -val
+			}
+			return none
+		}
+		.expr_cast {
+			typ_c := c.edge(0)
+			if typ_c.kind() == .expr_ident && (typ_c.name() == 'f64' || typ_c.name() == 'f32') {
+				return b.try_eval_computed_float_from_flat(c.edge(1))
+			}
+			return none
+		}
+		.expr_call_or_cast {
+			lhs_c := c.edge(0)
+			if lhs_c.kind() == .expr_ident && (lhs_c.name() == 'f64' || lhs_c.name() == 'f32') {
+				return b.try_eval_computed_float_from_flat(c.edge(1))
 			}
 			return none
 		}
@@ -3309,6 +3597,35 @@ fn (b &Builder) try_eval_const_string(expr ast.Expr) string {
 		ast.BasicLiteral {
 			if expr.kind == .string {
 				mut val := expr.value
+				if val.len >= 2 && ((val[0] == `'` && val[val.len - 1] == `'`)
+					|| (val[0] == `"` && val[val.len - 1] == `"`)) {
+					val = val[1..val.len - 1]
+				}
+				return val
+			}
+		}
+		else {}
+	}
+
+	return ''
+}
+
+// try_eval_const_string_from_flat (s241) is the cursor mirror of try_eval_const_string.
+// StringLiteral value is in name_id (.expr_string); a .string BasicLiteral likewise.
+fn (b &Builder) try_eval_const_string_from_flat(c ast.Cursor) string {
+	match c.kind() {
+		.expr_string {
+			mut val := c.name()
+			if val.len >= 2 && ((val[0] == `'` && val[val.len - 1] == `'`)
+				|| (val[0] == `"` && val[val.len - 1] == `"`)) {
+				val = val[1..val.len - 1]
+			}
+			return val
+		}
+		.expr_basic_literal {
+			kind := unsafe { token.Token(int(c.aux())) }
+			if kind == .string {
+				mut val := c.name()
 				if val.len >= 2 && ((val[0] == `'` && val[val.len - 1] == `'`)
 					|| (val[0] == `"` && val[val.len - 1] == `"`)) {
 					val = val[1..val.len - 1]
