@@ -259,6 +259,35 @@ fn test_comptime_for_empty_attrs_does_not_emit_new_array_calls() {
 	assert !compilation.output.contains('.args = builtin____new_array_with_default(0, 0, sizeof(FunctionParam), 0)')
 }
 
+fn test_array_push_no_bounds_checking_keeps_max_len_panics() {
+	os.chdir(vroot) or {}
+	test_source := os.join_path(os.vtmp_dir(), 'coutput_array_push_no_bounds_checking.vv')
+	source_lines := [
+		'module main',
+		'',
+		'fn main() {',
+		'\tmut names := []string{}',
+		"\tnames << 'alpha'",
+		'\tmut scores := []int{}',
+		'\tscores << 1',
+		'\tprintln(names.len + scores.len)',
+		'}',
+	]
+	os.write_file(test_source, source_lines.join('\n') + '\n')!
+	defer {
+		os.rm(test_source) or {}
+	}
+	cmd := '${os.quoted_path(vexe)} -prod -no-bounds-checking -o - ${os.quoted_path(test_source)}'
+	compilation := os.execute(cmd)
+	ensure_compilation_succeeded(compilation, cmd)
+	assert compilation.output.contains('VV_LOC void builtin__array_push(array* a, voidptr val) {')
+	assert compilation.output.contains('VV_LOC void builtin__array_push_noscan(array* a, voidptr val) {')
+	assert !compilation.output.contains('array.push: negative len')
+	assert compilation.output.contains('array.push: len bigger than max_int')
+	assert !compilation.output.contains('array.push_noscan: negative len')
+	assert compilation.output.contains('array.push_noscan: len bigger than max_int')
+}
+
 fn test_windows_sharedlive_string_interpolation_in_ternary_does_not_emit_inline_tmp_decl() {
 	os.chdir(vroot) or {}
 	test_source := os.join_path(os.vtmp_dir(), 'coutput_live_windows_ternary_str_intp.vv')
