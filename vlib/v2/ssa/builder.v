@@ -4516,8 +4516,8 @@ fn (mut b Builder) array_elem_type_from_type_cursor(c ast.Cursor) TypeID {
 			return elem_t
 		}
 	}
-	decoded := c.flat.decode_expr(c.id)
-	return b.array_elem_type_from_ast_type(decoded)
+	// s233: cursor-native fallback — no decode.
+	return b.array_elem_type_from_ast_type_from_flat(c)
 }
 
 fn (mut b Builder) array_elem_type_from_expr_cursor(c ast.Cursor) TypeID {
@@ -5071,6 +5071,47 @@ fn (mut b Builder) array_elem_type_from_ast_type(typ ast.Expr) TypeID {
 		}
 		ast.ModifierExpr {
 			return b.array_elem_type_from_ast_type(typ.expr)
+		}
+		else {}
+	}
+
+	return 0
+}
+
+// array_elem_type_from_ast_type_from_flat (s233) is the cursor-native mirror of
+// array_elem_type_from_ast_type. ast.Type variants are flat-encoded as `.typ_*`
+// (ArrayType: edge0=elem_type; ArrayFixedType: edge0=len, edge1=elem_type); the
+// Ident / PrefixExpr (ellipsis vs recurse) / ModifierExpr arms map directly to
+// the cursor kinds. Every other kind returns 0, like the AST `else`. This lets
+// array_elem_type_from_type_cursor drop its last decode_expr fallback.
+fn (mut b Builder) array_elem_type_from_ast_type_from_flat(c ast.Cursor) TypeID {
+	kind := c.kind()
+	if kind == .typ_array {
+		return b.ast_type_to_ssa_from_flat(c.edge(0))
+	}
+	if kind == .typ_array_fixed {
+		return b.ast_type_to_ssa_from_flat(c.edge(1))
+	}
+	match kind {
+		.expr_ident {
+			name := c.name()
+			if !ssa_string_ok(name) {
+				return 0
+			}
+			if name.starts_with('Array_') {
+				elem_name := name['Array_'.len..]
+				return b.ident_type_to_ssa(elem_name)
+			}
+		}
+		.expr_prefix {
+			op := unsafe { token.Token(int(c.aux())) }
+			if op == .ellipsis {
+				return b.ast_type_to_ssa_from_flat(c.edge(0))
+			}
+			return b.array_elem_type_from_ast_type_from_flat(c.edge(0))
+		}
+		.expr_modifier {
+			return b.array_elem_type_from_ast_type_from_flat(c.edge(0))
 		}
 		else {}
 	}
