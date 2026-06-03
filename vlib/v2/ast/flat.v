@@ -2334,7 +2334,11 @@ fn (mut w LegacyAstWalker) add_variant_payload(size u32) {
 }
 
 fn (mut w LegacyAstWalker) walk_file(file File) {
-	w.scan_dynamic(file)
+	w.scan_attributes(file.attributes)
+	w.add_string(file.mod)
+	w.add_string(file.name)
+	w.scan_stmts(file.stmts)
+	w.scan_imports(file.imports)
 }
 
 fn (mut w LegacyAstWalker) walk_stmt(stmt Stmt) {
@@ -2347,96 +2351,127 @@ fn (mut w LegacyAstWalker) walk_stmt(stmt Stmt) {
 	}
 	w.stats.stmt_nodes++
 	// Sumtype slot is counted by parent (array storage / field sizeof).
-	// Add only the heap-allocated variant payload.
+	// Add the heap-allocated variant payload, then walk dynamic children.
 	match stmt {
 		AssignStmt {
 			w.add_variant_payload(sizeof(AssignStmt))
-			w.scan_dynamic(stmt)
+			w.scan_exprs(stmt.lhs)
+			w.scan_exprs(stmt.rhs)
 		}
 		AssertStmt {
 			w.add_variant_payload(sizeof(AssertStmt))
-			w.scan_dynamic(stmt)
+			w.walk_expr(stmt.expr)
+			w.walk_expr(stmt.extra)
 		}
 		AsmStmt {
 			w.add_variant_payload(sizeof(AsmStmt))
-			w.scan_dynamic(stmt)
+			w.add_string(stmt.arch)
 		}
 		BlockStmt {
 			w.add_variant_payload(sizeof(BlockStmt))
-			w.scan_dynamic(stmt)
+			w.scan_stmts(stmt.stmts)
 		}
 		ComptimeStmt {
 			w.add_variant_payload(sizeof(ComptimeStmt))
-			w.scan_dynamic(stmt)
+			w.walk_stmt(stmt.stmt)
 		}
 		ConstDecl {
 			w.add_variant_payload(sizeof(ConstDecl))
-			w.scan_dynamic(stmt)
+			w.scan_field_inits(stmt.fields)
 		}
 		DeferStmt {
 			w.add_variant_payload(sizeof(DeferStmt))
-			w.scan_dynamic(stmt)
+			w.scan_stmts(stmt.stmts)
 		}
 		Directive {
 			w.add_variant_payload(sizeof(Directive))
-			w.scan_dynamic(stmt)
+			w.add_string(stmt.name)
+			w.add_string(stmt.value)
+			w.add_string(stmt.ct_cond)
 		}
 		EmptyStmt {}
 		EnumDecl {
 			w.add_variant_payload(sizeof(EnumDecl))
-			w.scan_dynamic(stmt)
+			w.scan_attributes(stmt.attributes)
+			w.add_string(stmt.name)
+			w.walk_expr(stmt.as_type)
+			w.scan_field_decls(stmt.fields)
 		}
 		ExprStmt {
 			w.add_variant_payload(sizeof(ExprStmt))
-			w.scan_dynamic(stmt)
+			w.walk_expr(stmt.expr)
 		}
 		FlowControlStmt {
 			w.add_variant_payload(sizeof(FlowControlStmt))
-			w.scan_dynamic(stmt)
+			w.add_string(stmt.label)
 		}
 		FnDecl {
 			w.add_variant_payload(sizeof(FnDecl))
-			w.scan_dynamic(stmt)
+			w.scan_attributes(stmt.attributes)
+			w.walk_parameter(stmt.receiver)
+			w.add_string(stmt.name)
+			w.scan_stmts(stmt.stmts)
 		}
 		ForInStmt {
 			w.add_variant_payload(sizeof(ForInStmt))
-			w.scan_dynamic(stmt)
+			w.walk_expr(stmt.key)
+			w.walk_expr(stmt.value)
+			w.walk_expr(stmt.expr)
 		}
 		ForStmt {
 			w.add_variant_payload(sizeof(ForStmt))
-			w.scan_dynamic(stmt)
+			w.walk_stmt(stmt.init)
+			w.walk_expr(stmt.cond)
+			w.walk_stmt(stmt.post)
+			w.scan_stmts(stmt.stmts)
 		}
 		GlobalDecl {
 			w.add_variant_payload(sizeof(GlobalDecl))
-			w.scan_dynamic(stmt)
+			w.scan_attributes(stmt.attributes)
+			w.scan_field_decls(stmt.fields)
 		}
 		ImportStmt {
 			w.add_variant_payload(sizeof(ImportStmt))
-			w.scan_dynamic(stmt)
+			w.add_string(stmt.name)
+			w.add_string(stmt.alias)
+			w.scan_exprs(stmt.symbols)
 		}
 		InterfaceDecl {
 			w.add_variant_payload(sizeof(InterfaceDecl))
-			w.scan_dynamic(stmt)
+			w.scan_attributes(stmt.attributes)
+			w.add_string(stmt.name)
+			w.scan_exprs(stmt.generic_params)
+			w.scan_exprs(stmt.embedded)
+			w.scan_field_decls(stmt.fields)
 		}
 		LabelStmt {
 			w.add_variant_payload(sizeof(LabelStmt))
-			w.scan_dynamic(stmt)
+			w.add_string(stmt.name)
+			w.walk_stmt(stmt.stmt)
 		}
 		ModuleStmt {
 			w.add_variant_payload(sizeof(ModuleStmt))
-			w.scan_dynamic(stmt)
+			w.add_string(stmt.name)
 		}
 		ReturnStmt {
 			w.add_variant_payload(sizeof(ReturnStmt))
-			w.scan_dynamic(stmt)
+			w.scan_exprs(stmt.exprs)
 		}
 		StructDecl {
 			w.add_variant_payload(sizeof(StructDecl))
-			w.scan_dynamic(stmt)
+			w.scan_attributes(stmt.attributes)
+			w.scan_exprs(stmt.implements)
+			w.scan_exprs(stmt.embedded)
+			w.add_string(stmt.name)
+			w.scan_exprs(stmt.generic_params)
+			w.scan_field_decls(stmt.fields)
 		}
 		TypeDecl {
 			w.add_variant_payload(sizeof(TypeDecl))
-			w.scan_dynamic(stmt)
+			w.add_string(stmt.name)
+			w.scan_exprs(stmt.generic_params)
+			w.walk_expr(stmt.base_type)
+			w.scan_exprs(stmt.variants)
 		}
 		[]Attribute {}
 	}
@@ -2456,153 +2491,185 @@ fn (mut w LegacyAstWalker) walk_expr(expr Expr) {
 	}
 
 	w.stats.expr_nodes++
-	// Sumtype slot is counted by parent; add only heap variant payload.
+	// Sumtype slot is counted by parent; add the heap variant payload, then
+	// walk dynamic children.
 	match expr {
 		ArrayInitExpr {
 			w.add_variant_payload(sizeof(ArrayInitExpr))
-			w.scan_dynamic(expr)
+			w.walk_expr(expr.typ)
+			w.scan_exprs(expr.exprs)
+			w.walk_expr(expr.init)
+			w.walk_expr(expr.cap)
+			w.walk_expr(expr.len)
+			w.walk_expr(expr.update_expr)
 		}
 		AsCastExpr {
 			w.add_variant_payload(sizeof(AsCastExpr))
-			w.scan_dynamic(expr)
+			w.walk_expr(expr.expr)
+			w.walk_expr(expr.typ)
 		}
 		AssocExpr {
 			w.add_variant_payload(sizeof(AssocExpr))
-			w.scan_dynamic(expr)
+			w.walk_expr(expr.typ)
+			w.walk_expr(expr.expr)
+			w.scan_field_inits(expr.fields)
 		}
 		BasicLiteral {
 			w.add_variant_payload(sizeof(BasicLiteral))
-			w.scan_dynamic(expr)
+			w.add_string(expr.value)
 		}
 		CallExpr {
 			w.add_variant_payload(sizeof(CallExpr))
-			w.scan_dynamic(expr)
+			w.walk_expr(expr.lhs)
+			w.scan_exprs(expr.args)
 		}
 		CallOrCastExpr {
 			w.add_variant_payload(sizeof(CallOrCastExpr))
-			w.scan_dynamic(expr)
+			w.walk_expr(expr.lhs)
+			w.walk_expr(expr.expr)
 		}
 		CastExpr {
 			w.add_variant_payload(sizeof(CastExpr))
-			w.scan_dynamic(expr)
+			w.walk_expr(expr.typ)
+			w.walk_expr(expr.expr)
 		}
 		ComptimeExpr {
 			w.add_variant_payload(sizeof(ComptimeExpr))
-			w.scan_dynamic(expr)
+			w.walk_expr(expr.expr)
 		}
 		EmptyExpr {}
 		FnLiteral {
 			w.add_variant_payload(sizeof(FnLiteral))
-			w.scan_dynamic(expr)
+			w.scan_exprs(expr.captured_vars)
+			w.scan_stmts(expr.stmts)
 		}
 		GenericArgOrIndexExpr {
 			w.add_variant_payload(sizeof(GenericArgOrIndexExpr))
-			w.scan_dynamic(expr)
+			w.walk_expr(expr.lhs)
+			w.walk_expr(expr.expr)
 		}
 		GenericArgs {
 			w.add_variant_payload(sizeof(GenericArgs))
-			w.scan_dynamic(expr)
+			w.walk_expr(expr.lhs)
+			w.scan_exprs(expr.args)
 		}
 		Ident {
 			w.add_variant_payload(sizeof(Ident))
-			w.scan_dynamic(expr)
+			w.add_string(expr.name)
 		}
 		IfExpr {
 			w.add_variant_payload(sizeof(IfExpr))
-			w.scan_dynamic(expr)
+			w.walk_expr(expr.cond)
+			w.walk_expr(expr.else_expr)
+			w.scan_stmts(expr.stmts)
 		}
 		IfGuardExpr {
 			w.add_variant_payload(sizeof(IfGuardExpr))
-			w.scan_dynamic(expr)
 		}
 		IndexExpr {
 			w.add_variant_payload(sizeof(IndexExpr))
-			w.scan_dynamic(expr)
+			w.walk_expr(expr.lhs)
+			w.walk_expr(expr.expr)
 		}
 		InfixExpr {
 			w.add_variant_payload(sizeof(InfixExpr))
-			w.scan_dynamic(expr)
+			w.walk_expr(expr.lhs)
+			w.walk_expr(expr.rhs)
 		}
 		InitExpr {
 			w.add_variant_payload(sizeof(InitExpr))
-			w.scan_dynamic(expr)
+			w.walk_expr(expr.typ)
+			w.scan_field_inits(expr.fields)
 		}
 		Keyword {}
 		KeywordOperator {
 			w.add_variant_payload(sizeof(KeywordOperator))
-			w.scan_dynamic(expr)
+			w.scan_exprs(expr.exprs)
 		}
 		LambdaExpr {
 			w.add_variant_payload(sizeof(LambdaExpr))
-			w.scan_dynamic(expr)
+			w.scan_idents(expr.args)
+			w.walk_expr(expr.expr)
 		}
 		LifetimeExpr {
 			w.add_variant_payload(sizeof(LifetimeExpr))
-			w.scan_dynamic(expr)
+			w.add_string(expr.name)
 		}
 		LockExpr {
 			w.add_variant_payload(sizeof(LockExpr))
-			w.scan_dynamic(expr)
+			w.scan_exprs(expr.lock_exprs)
+			w.scan_exprs(expr.rlock_exprs)
+			w.scan_stmts(expr.stmts)
 		}
 		MapInitExpr {
 			w.add_variant_payload(sizeof(MapInitExpr))
-			w.scan_dynamic(expr)
+			w.walk_expr(expr.typ)
+			w.scan_exprs(expr.keys)
+			w.scan_exprs(expr.vals)
 		}
 		MatchExpr {
 			w.add_variant_payload(sizeof(MatchExpr))
-			w.scan_dynamic(expr)
+			w.walk_expr(expr.expr)
+			w.scan_match_branches(expr.branches)
 		}
 		ModifierExpr {
 			w.add_variant_payload(sizeof(ModifierExpr))
-			w.scan_dynamic(expr)
+			w.walk_expr(expr.expr)
 		}
 		OrExpr {
 			w.add_variant_payload(sizeof(OrExpr))
-			w.scan_dynamic(expr)
+			w.walk_expr(expr.expr)
+			w.scan_stmts(expr.stmts)
 		}
 		ParenExpr {
 			w.add_variant_payload(sizeof(ParenExpr))
-			w.scan_dynamic(expr)
+			w.walk_expr(expr.expr)
 		}
 		PostfixExpr {
 			w.add_variant_payload(sizeof(PostfixExpr))
-			w.scan_dynamic(expr)
+			w.walk_expr(expr.expr)
 		}
 		PrefixExpr {
 			w.add_variant_payload(sizeof(PrefixExpr))
-			w.scan_dynamic(expr)
+			w.walk_expr(expr.expr)
 		}
 		RangeExpr {
 			w.add_variant_payload(sizeof(RangeExpr))
-			w.scan_dynamic(expr)
+			w.walk_expr(expr.start)
+			w.walk_expr(expr.end)
 		}
 		SelectExpr {
 			w.add_variant_payload(sizeof(SelectExpr))
-			w.scan_dynamic(expr)
+			w.walk_stmt(expr.stmt)
+			w.scan_stmts(expr.stmts)
+			w.walk_expr(expr.next)
 		}
 		SelectorExpr {
 			w.add_variant_payload(sizeof(SelectorExpr))
-			w.scan_dynamic(expr)
+			w.walk_expr(expr.lhs)
+			w.walk_expr(Expr(expr.rhs))
 		}
 		SqlExpr {
 			w.add_variant_payload(sizeof(SqlExpr))
-			w.scan_dynamic(expr)
+			w.walk_expr(expr.expr)
+			w.add_string(expr.table_name)
 		}
 		StringInterLiteral {
 			w.add_variant_payload(sizeof(StringInterLiteral))
-			w.scan_dynamic(expr)
+			w.scan_strings(expr.values)
+			w.scan_string_inters(expr.inters)
 		}
 		StringLiteral {
 			w.add_variant_payload(sizeof(StringLiteral))
-			w.scan_dynamic(expr)
+			w.add_string(expr.value)
 		}
 		Tuple {
 			w.add_variant_payload(sizeof(Tuple))
-			w.scan_dynamic(expr)
+			w.scan_exprs(expr.exprs)
 		}
 		UnsafeExpr {
 			w.add_variant_payload(sizeof(UnsafeExpr))
-			w.scan_dynamic(expr)
+			w.scan_stmts(expr.stmts)
 		}
 		FieldInit, Type {}
 	}
@@ -2610,57 +2677,67 @@ fn (mut w LegacyAstWalker) walk_expr(expr Expr) {
 
 fn (mut w LegacyAstWalker) walk_type(typ Type) {
 	w.stats.type_nodes++
-	// Sumtype slot is counted by parent; add only heap variant payload.
+	// Sumtype slot is counted by parent; add the heap variant payload, then
+	// walk dynamic children.
 	match typ {
 		AnonStructType {
 			w.add_variant_payload(sizeof(AnonStructType))
-			w.scan_dynamic(typ)
+			w.scan_exprs(typ.generic_params)
+			w.scan_exprs(typ.embedded)
+			w.scan_field_decls(typ.fields)
 		}
 		ArrayFixedType {
 			w.add_variant_payload(sizeof(ArrayFixedType))
-			w.scan_dynamic(typ)
+			w.walk_expr(typ.len)
+			w.walk_expr(typ.elem_type)
 		}
 		ArrayType {
 			w.add_variant_payload(sizeof(ArrayType))
-			w.scan_dynamic(typ)
+			w.walk_expr(typ.elem_type)
 		}
 		ChannelType {
 			w.add_variant_payload(sizeof(ChannelType))
-			w.scan_dynamic(typ)
+			w.walk_expr(typ.cap)
+			w.walk_expr(typ.elem_type)
 		}
 		FnType {
 			w.add_variant_payload(sizeof(FnType))
-			w.scan_dynamic(typ)
+			w.scan_exprs(typ.generic_params)
+			w.scan_parameters(typ.params)
+			w.walk_expr(typ.return_type)
 		}
 		GenericType {
 			w.add_variant_payload(sizeof(GenericType))
-			w.scan_dynamic(typ)
+			w.walk_expr(typ.name)
+			w.scan_exprs(typ.params)
 		}
 		MapType {
 			w.add_variant_payload(sizeof(MapType))
-			w.scan_dynamic(typ)
+			w.walk_expr(typ.key_type)
+			w.walk_expr(typ.value_type)
 		}
 		NilType {}
 		NoneType {}
 		OptionType {
 			w.add_variant_payload(sizeof(OptionType))
-			w.scan_dynamic(typ)
+			w.walk_expr(typ.base_type)
 		}
 		PointerType {
 			w.add_variant_payload(sizeof(PointerType))
-			w.scan_dynamic(typ)
+			w.walk_expr(typ.base_type)
+			w.add_string(typ.lifetime)
 		}
 		ResultType {
 			w.add_variant_payload(sizeof(ResultType))
-			w.scan_dynamic(typ)
+			w.walk_expr(typ.base_type)
 		}
 		ThreadType {
 			w.add_variant_payload(sizeof(ThreadType))
-			w.scan_dynamic(typ)
+			w.walk_expr(typ.elem_type)
 		}
 		TupleType {
 			w.add_variant_payload(sizeof(TupleType))
-			w.scan_dynamic(typ)
+			w.scan_exprs(typ.types)
 		}
 	}
 }
@@ -2670,132 +2747,121 @@ fn (mut w LegacyAstWalker) walk_type(typ Type) {
 
 fn (mut w LegacyAstWalker) walk_attribute(attr Attribute) {
 	w.stats.aux_nodes++
-	w.scan_dynamic(attr)
+	w.add_string(attr.name)
+	w.walk_expr(attr.value)
+	w.walk_expr(attr.comptime_cond)
 }
 
 fn (mut w LegacyAstWalker) walk_field_init(field FieldInit) {
 	w.stats.aux_nodes++
-	w.scan_dynamic(field)
+	w.add_string(field.name)
+	w.walk_expr(field.value)
 }
 
 fn (mut w LegacyAstWalker) walk_field_decl(field FieldDecl) {
 	w.stats.aux_nodes++
-	w.scan_dynamic(field)
+	w.add_string(field.name)
+	w.walk_expr(field.typ)
+	w.walk_expr(field.value)
+	w.scan_attributes(field.attributes)
 }
 
 fn (mut w LegacyAstWalker) walk_parameter(param Parameter) {
 	w.stats.aux_nodes++
-	w.scan_dynamic(param)
+	w.add_string(param.name)
+	w.walk_expr(param.typ)
 }
 
 fn (mut w LegacyAstWalker) walk_match_branch(branch MatchBranch) {
 	w.stats.aux_nodes++
-	w.scan_dynamic(branch)
+	w.scan_exprs(branch.cond)
+	w.scan_stmts(branch.stmts)
 }
 
 fn (mut w LegacyAstWalker) walk_string_inter(inter StringInter) {
 	w.stats.aux_nodes++
-	w.scan_dynamic(inter)
+	w.walk_expr(inter.expr)
+	w.walk_expr(inter.format_expr)
+	w.add_string(inter.resolved_fmt)
 }
 
-fn (mut w LegacyAstWalker) scan_dynamic[T](node T) {
-	$for field in T.fields {
-		$if field.typ is string {
-			w.add_string(node.$(field.name))
-		} $else $if field.typ is []string {
-			arr := node.$(field.name)
-			w.add_array_storage(sizeof(string), arr.len)
-			for v in arr {
-				w.add_string(v)
-			}
-		} $else $if field.typ is Expr {
-			w.walk_expr(node.$(field.name))
-		} $else $if field.typ is []Expr {
-			arr := node.$(field.name)
-			w.add_array_storage(sizeof(Expr), arr.len)
-			for v in arr {
-				w.walk_expr(v)
-			}
-		} $else $if field.typ is Stmt {
-			w.walk_stmt(node.$(field.name))
-		} $else $if field.typ is []Stmt {
-			arr := node.$(field.name)
-			w.add_array_storage(sizeof(Stmt), arr.len)
-			for v in arr {
-				w.walk_stmt(v)
-			}
-		} $else $if field.typ is Type {
-			w.walk_type(node.$(field.name))
-		} $else $if field.typ is []Type {
-			arr := node.$(field.name)
-			w.add_array_storage(sizeof(Type), arr.len)
-			for v in arr {
-				w.walk_type(v)
-			}
-		} $else $if field.typ is Attribute {
-			w.walk_attribute(node.$(field.name))
-		} $else $if field.typ is []Attribute {
-			arr := node.$(field.name)
-			w.add_array_storage(sizeof(Attribute), arr.len)
-			for v in arr {
-				w.walk_attribute(v)
-			}
-		} $else $if field.typ is FieldInit {
-			w.walk_field_init(node.$(field.name))
-		} $else $if field.typ is []FieldInit {
-			arr := node.$(field.name)
-			w.add_array_storage(sizeof(FieldInit), arr.len)
-			for v in arr {
-				w.walk_field_init(v)
-			}
-		} $else $if field.typ is FieldDecl {
-			w.walk_field_decl(node.$(field.name))
-		} $else $if field.typ is []FieldDecl {
-			arr := node.$(field.name)
-			w.add_array_storage(sizeof(FieldDecl), arr.len)
-			for v in arr {
-				w.walk_field_decl(v)
-			}
-		} $else $if field.typ is Parameter {
-			w.walk_parameter(node.$(field.name))
-		} $else $if field.typ is []Parameter {
-			arr := node.$(field.name)
-			w.add_array_storage(sizeof(Parameter), arr.len)
-			for v in arr {
-				w.walk_parameter(v)
-			}
-		} $else $if field.typ is MatchBranch {
-			w.walk_match_branch(node.$(field.name))
-		} $else $if field.typ is []MatchBranch {
-			arr := node.$(field.name)
-			w.add_array_storage(sizeof(MatchBranch), arr.len)
-			for v in arr {
-				w.walk_match_branch(v)
-			}
-		} $else $if field.typ is StringInter {
-			w.walk_string_inter(node.$(field.name))
-		} $else $if field.typ is []StringInter {
-			arr := node.$(field.name)
-			w.add_array_storage(sizeof(StringInter), arr.len)
-			for v in arr {
-				w.walk_string_inter(v)
-			}
-		} $else $if field.typ is Ident {
-			w.walk_expr(Expr(node.$(field.name)))
-		} $else $if field.typ is []Ident {
-			arr := node.$(field.name)
-			w.add_array_storage(sizeof(Ident), arr.len)
-			for v in arr {
-				w.walk_expr(Expr(v))
-			}
-		} $else $if field.typ is ImportStmt {
-			w.walk_stmt(Stmt(node.$(field.name)))
-		} $else $if field.typ is []ImportStmt {
-			arr := node.$(field.name)
-			w.add_array_storage(sizeof(ImportStmt), arr.len)
-			for v in arr {
-				w.walk_stmt(Stmt(v))
-			}
-		}
+// scan_* helpers replace the former comptime scan_dynamic[T]: each accounts for
+// one dynamic-array field (its spine storage) and walks the elements. Keeping
+// the legacy AST stats walker non-generic means the v2 compiler instantiates no
+// generics when compiling its own source (see `-no-generics`).
+fn (mut w LegacyAstWalker) scan_exprs(arr []Expr) {
+	w.add_array_storage(sizeof(Expr), arr.len)
+	for e in arr {
+		w.walk_expr(e)
+	}
+}
+
+fn (mut w LegacyAstWalker) scan_stmts(arr []Stmt) {
+	w.add_array_storage(sizeof(Stmt), arr.len)
+	for s in arr {
+		w.walk_stmt(s)
+	}
+}
+
+fn (mut w LegacyAstWalker) scan_strings(arr []string) {
+	w.add_array_storage(sizeof(string), arr.len)
+	for s in arr {
+		w.add_string(s)
+	}
+}
+
+fn (mut w LegacyAstWalker) scan_attributes(arr []Attribute) {
+	w.add_array_storage(sizeof(Attribute), arr.len)
+	for a in arr {
+		w.walk_attribute(a)
+	}
+}
+
+fn (mut w LegacyAstWalker) scan_field_inits(arr []FieldInit) {
+	w.add_array_storage(sizeof(FieldInit), arr.len)
+	for f in arr {
+		w.walk_field_init(f)
+	}
+}
+
+fn (mut w LegacyAstWalker) scan_field_decls(arr []FieldDecl) {
+	w.add_array_storage(sizeof(FieldDecl), arr.len)
+	for f in arr {
+		w.walk_field_decl(f)
+	}
+}
+
+fn (mut w LegacyAstWalker) scan_parameters(arr []Parameter) {
+	w.add_array_storage(sizeof(Parameter), arr.len)
+	for p in arr {
+		w.walk_parameter(p)
+	}
+}
+
+fn (mut w LegacyAstWalker) scan_match_branches(arr []MatchBranch) {
+	w.add_array_storage(sizeof(MatchBranch), arr.len)
+	for b in arr {
+		w.walk_match_branch(b)
+	}
+}
+
+fn (mut w LegacyAstWalker) scan_string_inters(arr []StringInter) {
+	w.add_array_storage(sizeof(StringInter), arr.len)
+	for si in arr {
+		w.walk_string_inter(si)
+	}
+}
+
+fn (mut w LegacyAstWalker) scan_idents(arr []Ident) {
+	w.add_array_storage(sizeof(Ident), arr.len)
+	for id in arr {
+		w.walk_expr(Expr(id))
+	}
+}
+
+fn (mut w LegacyAstWalker) scan_imports(arr []ImportStmt) {
+	w.add_array_storage(sizeof(ImportStmt), arr.len)
+	for im in arr {
+		w.walk_stmt(Stmt(im))
 	}
 }

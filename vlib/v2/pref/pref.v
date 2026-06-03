@@ -42,6 +42,7 @@ pub mut:
 	no_parallel           bool // when true, run type check sequentially (default: parallel)
 	no_parallel_transform bool // when true, run transform sequentially (default: parallel)
 	no_cache              bool // Disable build cache
+	no_generics           bool // -no-generics: assert the program uses no generics; skip monomorphization and abort if any generic is instantiated
 	no_markused           bool // Disable markused stage and dead-function pruning
 	show_cc               bool // Print C compiler command(s)
 	stats                 bool // Print extended statistics
@@ -527,7 +528,8 @@ pub fn new_preferences_from_args(args []string) Preferences {
 		'--nocache', '-nomarkused', '--nomarkused', '-showcc', '--showcc', '-stats', '--stats',
 		'-print-parsed-files', '--print-parsed-files', '-keepc', '--profile-alloc', '-profile-alloc',
 		'-enable-globals', '--enable-globals', '-shared', '--shared', '-O0', '--single-backend',
-		'-single-backend', '-prod', '-prealloc', '-freestanding', '--freestanding', '-no-mos-tiny']
+		'-single-backend', '-prod', '-prealloc', '-freestanding', '--freestanding', '-no-mos-tiny',
+		'-no-generics', '--no-generics']
 	$if ownership ? {
 		known_boolean_flags << '-ownership'
 	}
@@ -565,6 +567,8 @@ pub fn new_preferences_from_args(args []string) Preferences {
 			eprintln('  -keepc                 Keep generated C file')
 			eprintln('  -no-parallel, --no-parallel')
 			eprintln('                         Disable parallel type check and transform')
+			eprintln('  -no-generics           Assert no generics are used: skip monomorphization')
+			eprintln('                         and abort listing any generic that is instantiated')
 			exit(1)
 		}
 	}
@@ -580,6 +584,7 @@ pub fn new_preferences_from_args(args []string) Preferences {
 		no_parallel:           '-no-parallel' in options || '--no-parallel' in options
 		no_parallel_transform: '-no-parallel' in options || '--no-parallel' in options
 		no_cache:              '-nocache' in options || '--nocache' in options
+		no_generics:           '-no-generics' in options || '--no-generics' in options
 		no_markused:           '-nomarkused' in options || '--nomarkused' in options
 		show_cc:               '-showcc' in options || '--showcc' in options
 		stats:                 '-stats' in options || '--stats' in options
@@ -693,6 +698,7 @@ pub fn new_preferences_using_options(options []string) Preferences {
 		no_parallel:           '-no-parallel' in options || '--no-parallel' in options
 		no_parallel_transform: '-no-parallel' in options || '--no-parallel' in options
 		no_cache:              '-nocache' in options || '--nocache' in options
+		no_generics:           '-no-generics' in options || '--no-generics' in options
 		no_markused:           '-nomarkused' in options || '--nomarkused' in options
 		show_cc:               '-showcc' in options || '--showcc' in options
 		stats:                 '-stats' in options || '--stats' in options

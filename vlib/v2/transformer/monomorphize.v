@@ -51,6 +51,17 @@ pub fn (t &Transformer) needs_full_files_for_transform() bool {
 // sequential and parallel builders feed identical concrete ASTs to every
 // backend.
 pub fn (mut t Transformer) prepare_files_for_transform(files []ast.File) []ast.File {
+	// -no-generics asserts the program instantiates no generics. The checker
+	// records every generic call site it type-checks into env.generic_types (a
+	// superset that may include dead library branches), so an empty map proves
+	// there is nothing to monomorphize: skip the whole fixpoint, whose
+	// per-iteration scan dominates transform memory. A non-empty map means
+	// generics ARE used; fall through to the discovery so the exact required
+	// specializations can be listed before aborting.
+	no_generics := t.pref != unsafe { nil } && t.pref.no_generics
+	skip_type_check := t.pref != unsafe { nil } && t.pref.skip_type_check
+	provably_generic_free := no_generics && !skip_type_check && t.generic_types_spec_count() == 0
+
 	// The checker records generic bindings while checking generic bodies, which
 	// can include speculative branches from unused library code. Build the
 	// transformer worklist from concrete call sites instead, then scan concrete
@@ -58,6 +69,15 @@ pub fn (mut t Transformer) prepare_files_for_transform(files []ast.File) []ast.F
 	t.env.generic_types = map[string][]map[string]types.Type{}
 	mut prepared := files.clone()
 	t.collect_declared_method_fns(prepared)
+	if provably_generic_free {
+		// Skip monomorphization: collect_struct_field_generic_decl_types and the
+		// fixpoint only matter when a generic is instantiated, and the maps they
+		// fill stay empty here. The struct-default / embedded-owner passes are
+		// not generics-specific, so the per-file transform still needs them.
+		t.collect_struct_default_decl_infos(prepared)
+		t.collect_concrete_embedded_owner_names(prepared)
+		return prepared
+	}
 	t.collect_struct_field_generic_decl_types(prepared)
 	for _ in 0 .. 64 {
 		spec_count := t.monomorphized_specs.len
@@ -84,7 +104,33 @@ pub fn (mut t Transformer) prepare_files_for_transform(files []ast.File) []ast.F
 	}
 	t.collect_struct_default_decl_infos(prepared)
 	t.collect_concrete_embedded_owner_names(prepared)
+	if no_generics {
+		t.abort_if_generics_instantiated()
+	}
 	return prepared
+}
+
+// abort_if_generics_instantiated enforces -no-generics: if monomorphization
+// produced any specialization, the program does use generics. List each one and
+// exit so the assertion fails loudly rather than silently re-running the
+// monomorphizer it was meant to disable.
+fn (t &Transformer) abort_if_generics_instantiated() {
+	if t.monomorphized_specs.len == 0 && t.generic_struct_specs.len == 0 {
+		return
+	}
+	eprintln('error: -no-generics was set, but the program instantiates generics:')
+	mut fn_keys := t.monomorphized_specs.keys()
+	fn_keys.sort()
+	for k in fn_keys {
+		eprintln('  generic fn:     ${k}')
+	}
+	mut struct_keys := t.generic_struct_specs.keys()
+	struct_keys.sort()
+	for k in struct_keys {
+		eprintln('  generic struct: ${k}')
+	}
+	eprintln('total: ${t.monomorphized_specs.len} generic fn specialization(s), ${t.generic_struct_specs.len} generic struct specialization(s)')
+	exit(1)
 }
 
 fn (t &Transformer) generic_types_spec_count() int {
