@@ -2242,13 +2242,18 @@ pub fn (mut t Transformer) inject_embed_file_helper_to_flat(mut out ast.FlatBuil
 
 // transform_files transforms all files and returns transformed copies
 pub fn (mut t Transformer) transform_files(files []ast.File) []ast.File {
+	t_print_mem('enter')
 	t.pre_pass(files)
+	t_print_mem('after pre_pass')
 	files_to_transform := t.prepare_files_for_transform(files)
+	t_print_mem('after prepare/monomorphize')
 	mut result := []ast.File{cap: files_to_transform.len}
 	for file in files_to_transform {
 		result << t.transform_file(file)
 	}
+	t_print_mem('after per-file loop')
 	t.post_pass(mut result)
+	t_print_mem('after post_pass')
 	return result
 }
 

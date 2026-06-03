@@ -64,8 +64,18 @@ pub fn (mut t Transformer) prepare_files_for_transform(files []ast.File) []ast.F
 		generic_count := t.generic_types_spec_count()
 		struct_count := t.generic_struct_specs.len
 		t.collect_generic_call_specs(prepared)
+		before_mono := t.monomorphized_specs.len
 		prepared = t.monomorphize_pass(prepared)
-		t.collect_generic_call_specs(prepared)
+		// Skip the rescan when monomorphize_pass materialized nothing: in that
+		// case it returned `prepared` unchanged (its `per_file_clones.len == 0`
+		// path), so this second collect would re-walk byte-identical input and
+		// recompute the exact same specs. collect_generic_call_specs allocates
+		// ~700MB per full scan under -gc none and dominates transform memory,
+		// so eliding the redundant scan on the fixpoint's confirmation iteration
+		// removes one full scan with no change to iteration count or convergence.
+		if t.monomorphized_specs.len != before_mono {
+			t.collect_generic_call_specs(prepared)
+		}
 		prepared = t.inject_generic_struct_specializations(prepared)
 		if t.monomorphized_specs.len == spec_count && t.generic_types_spec_count() == generic_count
 			&& t.generic_struct_specs.len == struct_count {
