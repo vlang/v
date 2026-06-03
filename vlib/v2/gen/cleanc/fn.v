@@ -7684,10 +7684,37 @@ fn c_fn_pointer_param_is_ptr_from_type(fn_type string) []bool {
 		return []bool{}
 	}
 	mut out := []bool{}
-	for param in params.split(',') {
+	for param in split_c_fn_pointer_params(params) {
 		p := param.trim_space()
 		out << (p.ends_with('*') || p.contains('(*)'))
 	}
+	return out
+}
+
+fn split_c_fn_pointer_params(params string) []string {
+	mut out := []string{}
+	mut start := 0
+	mut paren_depth := 0
+	for i := 0; i < params.len; i++ {
+		match params[i] {
+			`(` {
+				paren_depth++
+			}
+			`)` {
+				if paren_depth > 0 {
+					paren_depth--
+				}
+			}
+			`,` {
+				if paren_depth == 0 {
+					out << params[start..i]
+					start = i + 1
+				}
+			}
+			else {}
+		}
+	}
+	out << params[start..]
 	return out
 }
 

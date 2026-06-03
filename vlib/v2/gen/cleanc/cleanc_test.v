@@ -6871,3 +6871,8 @@ fn test_resolve_ident_receiver_method_call_keeps_known_str_helper_direct() {
 	])
 	assert resolved == 'json2__ValueKind__str'
 }
+
+fn test_c_fn_pointer_param_is_ptr_from_type_keeps_nested_fn_pointer_param() {
+	param_is_ptr := c_fn_pointer_param_is_ptr_from_type('void (*)(void (*)(int, int), int*)')
+	assert param_is_ptr == [true, true]
+}
