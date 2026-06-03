@@ -10600,15 +10600,16 @@ fn (mut b Builder) build_call_resolved_from_flat(fn_name_in string, c ast.Cursor
 
 	call_val := b.mod.add_instr(.call, b.cur_block, ret_type, operands)
 
-	// Array-elem-type inference tail. These blocks read the original
-	// ast.CallExpr (args[0]/args[2] and the receiver), so reconstruct it lazily
-	// and ONLY for the precise set of array builtins that consult it. Every other
-	// call returns here without decoding a single argument.
-	needs_arr_infer :=
-		fn_name in ['array__slice', 'array__slice_ni', 'builtin__array__slice', 'builtin__array__slice_ni', 'array__clone', 'array__clone_to_depth', 'builtin__array__clone', 'builtin__array__clone_to_depth', 'array__first', 'array__last', 'array__pop', 'array__pop_left', 'builtin__array__first', 'builtin__array__last', 'builtin__array__pop', 'builtin__array__pop_left']
-		|| fn_name.starts_with('__new_array') || fn_name.starts_with('builtin____new_array')
-		|| fn_name.starts_with('new_array_from') || fn_name.starts_with('builtin__new_array_from')
-	if needs_arr_infer {
+	// Array-elem-type inference tail. The slice/clone/first/last/pop builtins
+	// resolve their element type from the receiver / args[0] cursors directly via
+	// the s226 cursor helpers — no decode. Only the `__new_array*` builtins still
+	// need the AST path (they read args[2] through the sizeof-operand name()
+	// machinery), so reconstruct the ast.CallExpr lazily and ONLY for them (a rare
+	// path). array_elem_type_from_new_array_call returns 0 for every non-new_array
+	// name, so gating the reconstruction on the new_array prefixes is bit-identical
+	// to running it unconditionally.
+	if fn_name.starts_with('__new_array') || fn_name.starts_with('builtin____new_array')
+		|| fn_name.starts_with('new_array_from') || fn_name.starts_with('builtin__new_array_from') {
 		mut infer_args := []ast.Expr{cap: n_args}
 		for i in 1 .. n_edges {
 			arg_c := c.edge(i)
@@ -10623,31 +10624,29 @@ fn (mut b Builder) build_call_resolved_from_flat(fn_name_in string, c ast.Cursor
 		if new_array_elem_type != 0 {
 			b.array_value_elem_types[call_val] = new_array_elem_type
 		}
-		if fn_name in ['array__slice', 'array__slice_ni', 'builtin__array__slice', 'builtin__array__slice_ni']
-			&& expr.args.len > 0 {
-			elem_type := b.infer_array_elem_type_from_expr(expr.args[0])
-			if elem_type != 0 {
-				b.array_value_elem_types[call_val] = elem_type
-			}
+	}
+	if fn_name in ['array__slice', 'array__slice_ni', 'builtin__array__slice', 'builtin__array__slice_ni']
+		&& n_args > 0 {
+		elem_type := b.infer_array_elem_type_from_expr_from_flat(c.edge(1))
+		if elem_type != 0 {
+			b.array_value_elem_types[call_val] = elem_type
 		}
-		if fn_name in ['array__clone', 'array__clone_to_depth', 'builtin__array__clone',
-			'builtin__array__clone_to_depth'] {
-			elem_type := b.infer_array_elem_type_from_receiver(expr)
-			if elem_type != 0 {
-				b.array_value_elem_types[call_val] = elem_type
-			}
+	}
+	if fn_name in ['array__clone', 'array__clone_to_depth', 'builtin__array__clone',
+		'builtin__array__clone_to_depth'] {
+		elem_type := b.infer_array_elem_type_from_receiver_from_flat(c)
+		if elem_type != 0 {
+			b.array_value_elem_types[call_val] = elem_type
 		}
-		if fn_name in ['array__first', 'array__last', 'array__pop', 'array__pop_left',
-			'builtin__array__first', 'builtin__array__last', 'builtin__array__pop',
-			'builtin__array__pop_left'] {
-			elem_type := b.infer_array_elem_type_from_receiver(expr)
-			if elem_type != 0 {
-				elem_ptr := b.mod.type_store.get_ptr(elem_type)
-				typed_ptr := b.mod.add_instr(.bitcast, b.cur_block, elem_ptr, [
-					call_val,
-				])
-				return b.mod.add_instr(.load, b.cur_block, elem_type, [typed_ptr])
-			}
+	}
+	if fn_name in ['array__first', 'array__last', 'array__pop', 'array__pop_left',
+		'builtin__array__first', 'builtin__array__last', 'builtin__array__pop',
+		'builtin__array__pop_left'] {
+		elem_type := b.infer_array_elem_type_from_receiver_from_flat(c)
+		if elem_type != 0 {
+			elem_ptr := b.mod.type_store.get_ptr(elem_type)
+			typed_ptr := b.mod.add_instr(.bitcast, b.cur_block, elem_ptr, [call_val])
+			return b.mod.add_instr(.load, b.cur_block, elem_type, [typed_ptr])
 		}
 	}
 
@@ -10703,6 +10702,65 @@ fn (mut b Builder) infer_array_elem_type_from_expr(receiver ast.Expr) TypeID {
 		else {}
 	}
 
+	return 0
+}
+
+// infer_array_elem_type_from_expr_from_flat (s226) is the cursor-native mirror
+// of infer_array_elem_type_from_expr. get_checked_expr_type_from_flat reads the
+// same pos.id the decoded receiver would carry, so the checked-type fast path is
+// bit-identical; the Ident/Modifier/Paren/Prefix arms read name()/edge(0) exactly
+// as the AST match reads receiver.name/receiver.expr.
+fn (mut b Builder) infer_array_elem_type_from_expr_from_flat(receiver_c ast.Cursor) TypeID {
+	if arr_typ := b.get_checked_expr_type_from_flat(receiver_c) {
+		inferred := b.unwrap_to_array_elem_ssa(arr_typ)
+		if inferred != 0 {
+			return inferred
+		}
+	}
+	match receiver_c.kind() {
+		.expr_ident {
+			if elem_type := b.array_elem_types[receiver_c.name()] {
+				return elem_type
+			}
+		}
+		.expr_modifier {
+			return b.infer_array_elem_type_from_expr_from_flat(receiver_c.edge(0))
+		}
+		.expr_paren {
+			return b.infer_array_elem_type_from_expr_from_flat(receiver_c.edge(0))
+		}
+		.expr_prefix {
+			if unsafe { token.Token(int(receiver_c.aux())) } == .amp {
+				return b.infer_array_elem_type_from_expr_from_flat(receiver_c.edge(0))
+			}
+		}
+		else {}
+	}
+
+	return 0
+}
+
+// infer_array_elem_type_from_receiver_from_flat (s226) is the cursor-native
+// mirror of infer_array_elem_type_from_receiver. `c` is the call cursor
+// (edge0 = lhs, edge1 = first arg). For a SelectorExpr lhs, the receiver is the
+// selector's own lhs = lhs_c.edge(0); the first arg is c.edge(1).
+fn (mut b Builder) infer_array_elem_type_from_receiver_from_flat(c ast.Cursor) TypeID {
+	if b.env == unsafe { nil } {
+		return 0
+	}
+	lhs_c := c.edge(0)
+	if lhs_c.kind() == .expr_selector {
+		elem_type := b.infer_array_elem_type_from_expr_from_flat(lhs_c.edge(0))
+		if elem_type != 0 {
+			return elem_type
+		}
+	}
+	if c.edge_count() > 1 {
+		elem_type := b.infer_array_elem_type_from_expr_from_flat(c.edge(1))
+		if elem_type != 0 {
+			return elem_type
+		}
+	}
 	return 0
 }
 
