@@ -1580,6 +1580,7 @@ pub fn (mut v Builder) cc() {
 		//
 		os.chdir(vdir) or {}
 		tried_compilation_commands << cmd
+		v.last_cc_cmd = cmd
 		v.show_cc(cmd, response_file, response_file_content)
 		// Run
 		ccompiler_label := 'C ${os.file_name(ccompiler):3}'
