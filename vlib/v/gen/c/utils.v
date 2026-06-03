@@ -1476,6 +1476,23 @@ fn (mut g Gen) resolved_expr_type(expr ast.Expr, default_typ ast.Type) ast.Type 
 				return g.unwrap_generic(left_type)
 			}
 		}
+		ast.IfGuardExpr {
+			// A variable bound by an `if x := opt() {` guard stores the whole
+			// `IfGuardExpr` as its init expression. Resolve from the guard's source
+			// expression so the variable's type follows the current generic
+			// instantiation, instead of a stale type baked from a different one
+			// (see issue #27205). Only single-var guards map to one value type.
+			if expr.vars.len == 1 {
+				resolved := g.resolved_expr_type(expr.expr, if expr.expr_type != 0 {
+					expr.expr_type
+				} else {
+					default_typ
+				})
+				if resolved != 0 {
+					return g.unwrap_generic(g.recheck_concrete_type(resolved)).clear_option_and_result()
+				}
+			}
+		}
 		ast.IfExpr {
 			inferred_typ := g.infer_if_expr_type(expr)
 			if inferred_typ != 0 && inferred_typ != ast.void_type {
