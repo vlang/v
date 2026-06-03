@@ -4748,6 +4748,135 @@ fn (mut b Builder) smartcast_variant_type_ids_from_condition(cond ast.Expr) map[
 	return smartcasts
 }
 
+// --- s230: cursor-native smartcast condition analysis ---
+// These mirror the AST smartcast_* helpers so build_if_stmt_from_flat can derive
+// then-branch smartcasts straight from the condition cursor, dropping the
+// full-cond decode_expr. All type lookups go through pos.id
+// (get_checked_expr_type_from_flat) or pure type logic. Expression names reuse
+// the pre-existing smartcast_expr_name_from_flat (whose `else` arm returns '',
+// already the codebase's behavior via selector_lhs_variant_type_id_from_flat —
+// it only differs from the AST helper for exotic non-Ident/Selector condition
+// lhs kinds that real smartcasts never use).
+
+fn (mut b Builder) smartcast_variant_type_from_sumtype_tag_from_flat(sumtype_expr_c ast.Cursor, tag int) TypeID {
+	if tag < 0 {
+		return 0
+	}
+	mut sumtype_type := types.Type(types.void_)
+	if checked := b.get_checked_expr_type_from_flat(sumtype_expr_c) {
+		sumtype_type = checked
+	} else {
+		expr_name := b.smartcast_expr_name_from_flat(sumtype_expr_c)
+		if local_type := b.checked_local_type(expr_name) {
+			sumtype_type = local_type
+		} else {
+			return 0
+		}
+	}
+	base := b.unwrap_alias_type(sumtype_type)
+	if base !is types.SumType {
+		return 0
+	}
+	sumtype_info := base as types.SumType
+	if tag >= sumtype_info.variants.len {
+		return 0
+	}
+	return b.type_to_ssa(sumtype_info.variants[tag])
+}
+
+fn (mut b Builder) smartcast_variant_type_from_tag_check_from_flat(infix_c ast.Cursor) TypeID {
+	op := unsafe { token.Token(int(infix_c.aux())) }
+	lhs_c := infix_c.edge(0)
+	rhs_c := infix_c.edge(1)
+	if op != .eq || lhs_c.kind() != .expr_selector || rhs_c.kind() != .expr_basic_literal {
+		return 0
+	}
+	// tag_sel.rhs is the selector's rhs Ident (edge 1); tag_sel.lhs is edge 0.
+	tag_sel_rhs := lhs_c.edge(1)
+	tag_sel_rhs_name := if tag_sel_rhs.kind() == .expr_ident { tag_sel_rhs.name() } else { '' }
+	if tag_sel_rhs_name != '_tag' {
+		return 0
+	}
+	tag_lit_kind := unsafe { token.Token(int(rhs_c.aux())) }
+	if tag_lit_kind != .number {
+		return 0
+	}
+	return b.smartcast_variant_type_from_sumtype_tag_from_flat(lhs_c.edge(0), rhs_c.name().int())
+}
+
+fn (mut b Builder) smartcast_rhs_variant_type_id_from_flat(rhs_c ast.Cursor, allow_value_style bool) TypeID {
+	if !allow_value_style {
+		match rhs_c.kind() {
+			.expr_ident {
+				name := rhs_c.name()
+				if name.len == 0 || !u8(name[0]).is_capital() {
+					return 0
+				}
+			}
+			.expr_selector, .expr_prefix {}
+			else {
+				// ast.Type variants are flat-encoded as the contiguous .typ_* block;
+				// any other expr kind returns 0 like the AST `else`.
+				if !(int(rhs_c.kind()) >= int(ast.FlatNodeKind.typ_anon_struct)
+					&& int(rhs_c.kind()) <= int(ast.FlatNodeKind.typ_tuple)) {
+					return 0
+				}
+			}
+		}
+	}
+	return b.ast_type_to_ssa_from_flat(rhs_c)
+}
+
+fn (mut b Builder) smartcast_variant_type_ids_from_condition_from_flat(cond_c ast.Cursor) map[string]TypeID {
+	mut smartcasts := map[string]TypeID{}
+	match cond_c.kind() {
+		.expr_paren {
+			return b.smartcast_variant_type_ids_from_condition_from_flat(cond_c.edge(0))
+		}
+		.expr_infix {
+			op := unsafe { token.Token(int(cond_c.aux())) }
+			lhs_c := cond_c.edge(0)
+			rhs_c := cond_c.edge(1)
+			if op == .and {
+				left := b.smartcast_variant_type_ids_from_condition_from_flat(lhs_c)
+				right := b.smartcast_variant_type_ids_from_condition_from_flat(rhs_c)
+				for name, typ in left {
+					if typ != 0 {
+						smartcasts[name] = typ
+					}
+				}
+				for name, typ in right {
+					if typ != 0 {
+						smartcasts[name] = typ
+					}
+				}
+				return smartcasts
+			}
+			tag_typ := b.smartcast_variant_type_from_tag_check_from_flat(cond_c)
+			if tag_typ != 0 {
+				// tag_sel = cond.lhs (a SelectorExpr); expr_name from tag_sel.lhs = lhs_c.edge(0).
+				expr_name := b.smartcast_expr_name_from_flat(lhs_c.edge(0))
+				if expr_name != '' {
+					smartcasts[expr_name] = tag_typ
+				}
+				return smartcasts
+			}
+			if op in [.key_is, .eq] {
+				expr_name := b.smartcast_expr_name_from_flat(lhs_c)
+				if expr_name != '' {
+					variant_type := b.smartcast_rhs_variant_type_id_from_flat(rhs_c, op == .key_is)
+					if variant_type != 0 {
+						smartcasts[expr_name] = variant_type
+					}
+				}
+			}
+		}
+		else {}
+	}
+
+	return smartcasts
+}
+
 fn (mut b Builder) apply_local_smartcasts(smartcasts map[string]TypeID) {
 	for name, typ in smartcasts {
 		if name != '' && typ != 0 {
@@ -5736,8 +5865,8 @@ fn (mut b Builder) build_if_stmt_from_flat(c ast.Cursor) {
 	b.add_edge(b.cur_block, else_block)
 
 	b.cur_block = then_block
-	cond_expr := cond_c.flat.decode_expr(cond_c.id)
-	then_smartcasts := b.smartcast_variant_type_ids_from_condition(cond_expr)
+	// s230: derive then-branch smartcasts straight from the condition cursor — no decode.
+	then_smartcasts := b.smartcast_variant_type_ids_from_condition_from_flat(cond_c)
 	mut saved_local_smartcasts := b.local_smartcasts.clone()
 	b.apply_local_smartcasts(then_smartcasts)
 	for i in 2 .. c.edge_count() {
