@@ -543,6 +543,14 @@ fn (g &Gen) should_map_vec_generic_to_simd(lhs_name string) bool {
 	return g.cur_module != 'vec'
 }
 
+fn (g &Gen) vec_suffix_alias_declared(mapped string) bool {
+	if mapped.contains('__') {
+		return g.module_declares_type(mapped.all_before_last('__'), mapped.all_after_last('__'))
+	}
+	module_name := if g.cur_module == '' { 'main' } else { g.cur_module }
+	return g.module_declares_type(module_name, mapped)
+}
+
 fn (g &Gen) vec_type_suffix_alias_to_c(name string) ?string {
 	if g.cur_module == 'vec' && name in ['Vec2', 'Vec4', 'vec__Vec2', 'vec__Vec4'] {
 		return none
@@ -553,7 +561,10 @@ fn (g &Gen) vec_type_suffix_alias_to_c(name string) ?string {
 			&& g.cur_module != 'builtin' {
 			mapped = '${g.cur_module}__${mapped}'
 		}
-		return mapped
+		if g.vec_suffix_alias_declared(mapped) {
+			return mapped
+		}
+		return none
 	}
 	if name.ends_with('Vec2') {
 		mut mapped := name[..name.len - 'Vec2'.len] + 'SimdFloat2'
@@ -561,7 +572,10 @@ fn (g &Gen) vec_type_suffix_alias_to_c(name string) ?string {
 			&& g.cur_module != 'builtin' {
 			mapped = '${g.cur_module}__${mapped}'
 		}
-		return mapped
+		if g.vec_suffix_alias_declared(mapped) {
+			return mapped
+		}
+		return none
 	}
 	return none
 }

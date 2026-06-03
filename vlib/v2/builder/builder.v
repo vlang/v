@@ -1371,8 +1371,10 @@ fn (mut b Builder) ensure_cached_module_object(cache_dir string, cache_name stri
 	}
 	if b.used_vh_for_parse {
 		if os.exists(obj_path) && os.exists(stamp_path) {
-			b.load_cached_called_fn_names(cache_dir, cache_name)
-			return obj_path
+			if b.load_cached_called_fn_names(cache_dir, cache_name) {
+				return obj_path
+			}
+			return error('missing cached ${cache_name} call metadata for .vh parse')
 		}
 		return error('missing cached ${cache_name} object for .vh parse')
 	}
@@ -1411,8 +1413,10 @@ fn (mut b Builder) ensure_cached_parsed_module_object(cache_dir string, cache_na
 	}
 	if b.used_import_vh_for_parse {
 		if os.exists(obj_path) && os.exists(stamp_path) {
-			b.load_cached_called_fn_names(cache_dir, cache_name)
-			return obj_path
+			if b.load_cached_called_fn_names(cache_dir, cache_name) {
+				return obj_path
+			}
+			return error('missing cached ${cache_name} call metadata for .vh parse')
 		}
 		return error('missing cached ${cache_name} object for .vh parse')
 	}
@@ -1451,8 +1455,10 @@ fn (mut b Builder) ensure_cached_virtual_module_object(cache_dir string, groups 
 	}
 	if b.used_virtual_vh_for_parse {
 		if os.exists(obj_path) && os.exists(stamp_path) {
-			b.load_cached_called_fn_names(cache_dir, virtuals_cache_name)
-			return obj_path
+			if b.load_cached_called_fn_names(cache_dir, virtuals_cache_name) {
+				return obj_path
+			}
+			return error('missing cached ${virtuals_cache_name} call metadata for .vh parse')
 		}
 		return error('missing cached ${virtuals_cache_name} object for .vh parse')
 	}

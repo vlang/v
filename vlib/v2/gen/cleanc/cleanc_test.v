@@ -179,6 +179,18 @@ fn test_vec_generic_type_expr_prefers_local_simd_alias_for_imported_vec() {
 	assert c_type == 'viper__SimdFloat4'
 }
 
+fn test_vec_suffix_alias_ignores_plain_local_vec_names_without_simd_alias() {
+	mut g := Gen.new([])
+	g.cur_module = 'viper'
+	g.declared_type_names_by_mod[type_decl_module_key('viper', 'viper__MyVec4')] = true
+
+	c_type := g.expr_type_to_c(ast.Expr(ast.Ident{
+		name: 'MyVec4'
+	}))
+
+	assert c_type == 'MyVec4'
+}
+
 fn test_local_variable_uses_escaped_c_keyword_name() {
 	mut g := Gen.new([])
 	g.gen_assign_stmt(ast.AssignStmt{
