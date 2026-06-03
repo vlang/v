@@ -363,6 +363,59 @@ fn test_active_file_imports_adds_sync_for_channel_in_assert_expr() {
 	assert imports.any(it.name == 'sync')
 }
 
+fn test_active_file_imports_adds_sync_for_channel_in_array_literal() {
+	file := ast.File{
+		mod:   'main'
+		name:  'main.v'
+		stmts: [
+			ast.Stmt(ast.ExprStmt{
+				expr: ast.ArrayInitExpr{
+					exprs: [
+						ast.Expr(ast.Type(ast.ChannelType{
+							elem_type: ast.Expr(ast.Ident{
+								name: 'int'
+							})
+						})),
+					]
+				}
+			}),
+		]
+	}
+	imports := active_file_imports(file, [], 'mac')
+
+	assert imports.any(it.name == 'sync')
+}
+
+fn test_active_file_imports_adds_sync_for_channel_in_match_condition() {
+	file := ast.File{
+		mod:   'main'
+		name:  'main.v'
+		stmts: [
+			ast.Stmt(ast.ExprStmt{
+				expr: ast.MatchExpr{
+					expr:     ast.Expr(ast.Ident{
+						name: 'value'
+					})
+					branches: [
+						ast.MatchBranch{
+							cond: [
+								ast.Expr(ast.Type(ast.ChannelType{
+									elem_type: ast.Expr(ast.Ident{
+										name: 'int'
+									})
+								})),
+							]
+						},
+					]
+				}
+			}),
+		]
+	}
+	imports := active_file_imports(file, [], 'mac')
+
+	assert imports.any(it.name == 'sync')
+}
+
 fn test_active_file_imports_skip_pkgconfig_branch_when_disabled() {
 	if !pref.comptime_pkgconfig_value('sqlite3') {
 		return

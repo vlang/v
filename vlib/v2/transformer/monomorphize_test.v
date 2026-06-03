@@ -200,6 +200,60 @@ fn test_generic_call_info_bare_lookup_stays_in_current_module() {
 	assert gp.name == 'CborT'
 }
 
+fn test_clone_fn_decl_substitutes_fn_literal_signature() {
+	mut t := mono_test_transformer()
+	decl := ast.FnDecl{
+		name:  'make'
+		typ:   ast.FnType{
+			generic_params: [
+				ast.Expr(ast.Ident{
+					name: 'T'
+				}),
+			]
+		}
+		stmts: [
+			ast.Stmt(ast.ReturnStmt{
+				exprs: [
+					ast.Expr(ast.FnLiteral{
+						typ:   ast.FnType{
+							params:      [
+								ast.Parameter{
+									name: 'x'
+									typ:  ast.Expr(ast.Ident{
+										name: 'T'
+									})
+								},
+							]
+							return_type: ast.Expr(ast.Ident{
+								name: 'T'
+							})
+						}
+						stmts: [
+							ast.Stmt(ast.ReturnStmt{
+								exprs: [
+									ast.Expr(ast.Ident{
+										name: 'x'
+									}),
+								]
+							}),
+						]
+					}),
+				]
+			}),
+		]
+	}
+	cloned := t.clone_fn_decl_with_substitutions(decl, {
+		'T': types.Type(types.int_)
+	}, 'make_T_int', 'main', 'main')
+	ret := cloned.stmts[0] as ast.ReturnStmt
+	lit := ret.exprs[0] as ast.FnLiteral
+	param_typ := lit.typ.params[0].typ as ast.Ident
+	return_typ := lit.typ.return_type as ast.Ident
+
+	assert param_typ.name == 'int'
+	assert return_typ.name == 'int'
+}
+
 fn test_monomorphize_pass_uses_decl_module_name_for_moved_import_clone() {
 	mut t := mono_test_transformer()
 	t.env = types.Environment.new()

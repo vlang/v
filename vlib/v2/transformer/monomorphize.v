@@ -5441,8 +5441,13 @@ fn (mut t Transformer) clone_expr_with_bindings_and_fields(expr ast.Expr, bindin
 			for st in expr.stmts {
 				stmts << t.clone_stmt_with_bindings_and_fields(st, bindings, contexts, false)
 			}
+			mut fn_typ := expr.typ
+			substituted_typ := t.substitute_type_in_type_node(ast.Type(expr.typ), bindings)
+			if substituted_typ is ast.FnType {
+				fn_typ = substituted_typ
+			}
 			return ast.Expr(ast.FnLiteral{
-				typ:           expr.typ
+				typ:           fn_typ
 				captured_vars: expr.captured_vars
 				stmts:         stmts
 				pos:           expr.pos

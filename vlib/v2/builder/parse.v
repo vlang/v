@@ -449,6 +449,8 @@ fn expr_type_slots_use_channel(expr ast.Expr) bool {
 	match expr {
 		ast.ArrayInitExpr {
 			return type_expr_uses_channel(expr.typ) || expr_type_slots_use_channel(expr.init)
+				|| exprs_type_slots_use_channel(expr.exprs) || expr_type_slots_use_channel(expr.cap)
+				|| expr_type_slots_use_channel(expr.len)
 				|| expr_type_slots_use_channel(expr.update_expr)
 		}
 		ast.AsCastExpr {
@@ -497,8 +499,11 @@ fn expr_type_slots_use_channel(expr ast.Expr) bool {
 				|| exprs_type_slots_use_channel(expr.vals)
 		}
 		ast.MatchExpr {
+			if expr_type_slots_use_channel(expr.expr) {
+				return true
+			}
 			for branch in expr.branches {
-				if stmts_use_channel(branch.stmts) {
+				if exprs_type_slots_use_channel(branch.cond) || stmts_use_channel(branch.stmts) {
 					return true
 				}
 			}
