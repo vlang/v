@@ -10299,14 +10299,22 @@ fn (mut b Builder) build_call_resolved(fn_name_in string, expr ast.CallExpr) Val
 // builtins that consult it — the common call path reconstructs nothing.
 fn (mut b Builder) build_call_resolved_from_flat(fn_name_in string, c ast.Cursor) ValueID {
 	lhs_c := c.edge(0)
-	lhs := lhs_c.flat.decode_expr(lhs_c.id)
+	lhs_kind := lhs_c.kind()
+	is_selector := lhs_kind == .expr_selector
+	// s228: decode the lhs ONLY for a SelectorExpr — the metadata + receiver path
+	// (selector_module_name / resolve_static_method_name / resolve_method_name_from_checked_type
+	// / is_struct_field / selector_receiver_is_interface / build_selector /
+	// resolve_method_name_for_value) needs the ast.SelectorExpr shape. Ident-lhs
+	// (free-function calls, the common case) and every other lhs kind resolve via
+	// cursor accessors and never decode.
+	lhs := if is_selector { lhs_c.flat.decode_expr(lhs_c.id) } else { ast.empty_expr }
 	n_edges := c.edge_count()
 	n_args := n_edges - 1
 	mut fn_name := fn_name_in
 	mut module_call_name := ''
 	mut is_static_method_call := false
 	mut checked_selector_method := ''
-	if lhs is ast.SelectorExpr {
+	if is_selector {
 		sel := lhs as ast.SelectorExpr
 		module_call_name = b.selector_module_name(sel) or { '' }
 		if static_method := b.resolve_static_method_name(sel) {
@@ -10333,7 +10341,7 @@ fn (mut b Builder) build_call_resolved_from_flat(fn_name_in string, c ast.Cursor
 		if target_type := b.struct_types[qualified] {
 			return b.build_cast_expr_to_type_id_from_flat(c.edge(1), target_type)
 		}
-		if target_type := b.call_lhs_type_to_ssa(lhs) {
+		if target_type := b.call_lhs_type_to_ssa_from_flat(lhs_c) {
 			return b.build_cast_expr_to_type_id_from_flat(c.edge(1), target_type)
 		}
 	}
@@ -10344,7 +10352,7 @@ fn (mut b Builder) build_call_resolved_from_flat(fn_name_in string, c ast.Cursor
 		ret_type = b.mod.funcs[fn_idx].typ
 	}
 	// Function-pointer field call (e.g. m.hash_fn(pkey)) rather than a method call.
-	if lhs is ast.SelectorExpr {
+	if is_selector {
 		sel := lhs as ast.SelectorExpr
 		if module_call_name == '' && fn_name !in b.fn_index {
 			field_name := sel.rhs.name
@@ -10403,7 +10411,7 @@ fn (mut b Builder) build_call_resolved_from_flat(fn_name_in string, c ast.Cursor
 	// Build arguments
 	mut args := []ValueID{}
 	// For method calls, add receiver as first arg
-	if lhs is ast.SelectorExpr {
+	if is_selector {
 		sel := lhs as ast.SelectorExpr
 		if module_call_name == '' && !is_static_method_call {
 			mut expects_ptr := false
@@ -10625,8 +10633,8 @@ fn (mut b Builder) build_call_resolved_from_flat(fn_name_in string, c ast.Cursor
 	// Check if fn_name is a local variable holding a function pointer.
 	if fn_name in b.vars {
 		mut call_ret := ret_type
-		if lhs is ast.Ident {
-			lhs_pos := lhs.pos
+		if lhs_kind == .expr_ident {
+			lhs_pos := lhs_c.pos()
 			if lhs_pos.is_valid() && b.env != unsafe { nil } {
 				if var_type := b.env.get_expr_type(lhs_pos.id) {
 					unwrapped := b.unwrap_alias_type(var_type)
