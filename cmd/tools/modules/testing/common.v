@@ -77,6 +77,8 @@ pub const separator = '-'.repeat(max_header_len) + '\n'
 
 pub const max_compilation_retries = get_max_compilation_retries()
 
+const c_error_bug_report_disabled_env = 'V_C_ERROR_BUG_REPORT_DISABLED'
+
 fn get_max_compilation_retries() int {
 	return os.getenv_opt('VTEST_MAX_COMPILATION_RETRIES') or { '3' }.int()
 }
@@ -301,6 +303,7 @@ pub fn (mut ts TestSession) system(cmd string, mtc MessageThreadContext) int {
 }
 
 pub fn new_test_session(_vargs string, will_compile bool) TestSession {
+	os.setenv(c_error_bug_report_disabled_env, '1', true)
 	mut skip_files := []string{}
 	vexe := pref.vexe_path()
 	vroot := os.dir(vexe)

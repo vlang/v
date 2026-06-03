@@ -233,6 +233,11 @@ fn (mut g Gen) emit_missing_array_contains_fallbacks() {
 		}
 		g.emitted_types[fn_key] = true
 		g.sb.writeln('')
+		if g.is_freestanding_target() && g.pref != unsafe { nil } && g.pref.skip_builtin {
+			g.sb.writeln('_Static_assert(0, "${freestanding_missing_heap_runtime_message}: ${fn_name}");')
+			emitted_any = true
+			continue
+		}
 		// Fixed arrays are C arrays (e.g., voidptr[20]), not structs — use direct indexing.
 		is_fixed := arr_type.starts_with('Array_fixed_')
 		if is_fixed {

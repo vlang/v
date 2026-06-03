@@ -63,6 +63,13 @@ jobs:
           fi
       - name: Install vsl
         run: v retry -- v install vsl
+      - name: Skip optional Vulkan examples on macOS
+        if: runner.os == 'macOS'
+        run: |
+          for file in "$HOME"/.vmodules/vsl/examples/*vulkan*/*.v; do
+            [ -e "$file" ] || continue
+            mv "$file" "${file%.v}_not_ci.v"
+          done
       - name: Test with Pure V Backend
         run: ~/.vmodules/vsl/bin/test
       - name: Test with Pure V Backend and Pure V Math
@@ -110,6 +117,13 @@ jobs:
           v retry v install vsl
       - name: Install vtl
         run: v retry v install vtl
+      - name: Skip optional Vulkan examples on macOS
+        if: runner.os == 'macOS'
+        run: |
+          for file in "$HOME"/.vmodules/vtl/examples/*vulkan*/*.v; do
+            [ -e "$file" ] || continue
+            mv "$file" "${file%.v}_not_ci.v"
+          done
       - name: Test with Pure V Backend
         run: ~/.vmodules/vtl/bin/test
       - name: Test with Pure V Backend and Pure V Math

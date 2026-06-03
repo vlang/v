@@ -1,5 +1,6 @@
 module x64
 
+import encoding.binary
 import os
 
 struct X64LinuxRunResult {
@@ -34,6 +35,15 @@ struct X64HostRunExitResult {
 	stdout       []u8
 	stderr       []u8
 	exit_code    int
+}
+
+struct X64ElfLoadSegment {
+	offset u64
+	vaddr  u64
+	flags  u32
+	filesz u64
+	memsz  u64
+	align  u64
 }
 
 fn run_x64_linux_program_redirected(name string, source string) X64LinuxRunResult {
@@ -207,6 +217,79 @@ fn x64_host_build_failure_message(name string, tmp_dir string, source_path strin
 	return '${source_context}\nbuild exit code: ${build_exit_code}\nbuild output:\n${build_output}'
 }
 
+fn x64_build_v2_delegate_for_tmp(vexe string, tmp_dir string) string {
+	v2_source := os.join_path(@VMODROOT, 'cmd', 'v2', 'v2.v')
+	v2_delegate := x64_host_bin_path(tmp_dir, 'v2_delegate')
+	build :=
+		os.execute('${os.quoted_path(vexe)} -o ${os.quoted_path(v2_delegate)} ${os.quoted_path(v2_source)}')
+	if build.exit_code != 0 {
+		assert false, 'failed to build v2 delegate for tiny x64 test:\n${build.output}'
+	}
+	return v2_delegate
+}
+
+fn x64_pinned_v2_build_environment(vexe string, tmp_dir string) map[string]string {
+	mut env := os.environ()
+	env.delete('V2_X64_LINUX_TINY')
+	env['V_V2_EXE'] = x64_build_v2_delegate_for_tmp(vexe, tmp_dir)
+	return env
+}
+
+fn x64_strict_tiny_build_environment(vexe string, tmp_dir string) map[string]string {
+	mut env := x64_pinned_v2_build_environment(vexe, tmp_dir)
+	env['V2_X64_LINUX_TINY'] = '1'
+	return env
+}
+
+fn x64_no_tiny_build_environment(vexe string, tmp_dir string) map[string]string {
+	return x64_pinned_v2_build_environment(vexe, tmp_dir)
+}
+
+fn x64_macos_auto_tiny_build_environment(vexe string, tmp_dir string) map[string]string {
+	return x64_pinned_v2_build_environment(vexe, tmp_dir)
+}
+
+fn x64_optional_tool_output(caller string, tool string, args string) ?string {
+	path := os.find_abs_path_of_executable(tool) or {
+		println('skipping ${caller} ${tool} assertions: ${tool} is not available')
+		return none
+	}
+	return os.execute('${os.quoted_path(path)} ${args}').output
+}
+
+fn x64_elf_load_segments(path string) []X64ElfLoadSegment {
+	data := os.read_bytes(path) or { panic(err) }
+	if data.len < 64 || data[0] != 0x7f || data[1] != `E` || data[2] != `L` || data[3] != `F`
+		|| data[4] != 2 || data[5] != 1 {
+		panic('${path} is not an ELF64 little-endian file')
+	}
+	phoff := int(binary.little_endian_u64_at(data, 32))
+	phentsize := int(binary.little_endian_u16_at(data, 54))
+	phnum := int(binary.little_endian_u16_at(data, 56))
+	mut segments := []X64ElfLoadSegment{}
+	for i in 0 .. phnum {
+		off := phoff + i * phentsize
+		if off + 56 > data.len {
+			panic('${path} has a truncated ELF program header table')
+		}
+		if binary.little_endian_u32_at(data, off) == u32(pt_load) {
+			segments << X64ElfLoadSegment{
+				offset: binary.little_endian_u64_at(data, off + 8)
+				vaddr:  binary.little_endian_u64_at(data, off + 16)
+				flags:  binary.little_endian_u32_at(data, off + 4)
+				filesz: binary.little_endian_u64_at(data, off + 32)
+				memsz:  binary.little_endian_u64_at(data, off + 40)
+				align:  binary.little_endian_u64_at(data, off + 48)
+			}
+		}
+	}
+	return segments
+}
+
+fn x64_elf_load_segment_count(path string) int {
+	return x64_elf_load_segments(path).len
+}
+
 fn x64_host_run_failure_message(name string, tmp_dir string, source_path string, source_text string, bin_path string, build_output string, run_exit_code int, stdout []u8, stderr []u8) string {
 	context := x64_host_context_with_source(name, tmp_dir, source_path, source_text, bin_path)
 	stdout_report := x64_runtime_bytes_report('stdout', stdout)
@@ -285,6 +368,98 @@ fn run_x64_host_program_redirected(name string, source string) X64HostRunResult 
 	}
 }
 
+fn run_x64_host_program_redirected_tiny(name string, source string) X64HostRunResult {
+	tmp_dir := os.join_path(os.vtmp_dir(), 'v2_x64_runtime_${name}_${os.getpid()}')
+	os.mkdir_all(tmp_dir) or { panic(err) }
+	source_path := os.join_path(tmp_dir, '${name}.v')
+	bin_path := x64_host_bin_path(tmp_dir, name)
+	os.write_file(source_path, source) or { panic(err) }
+	vexe := os.getenv_opt('VEXE') or { @VEXE }
+	mut build := os.new_process(vexe)
+	defer {
+		build.close()
+	}
+	build.set_environment(x64_strict_tiny_build_environment(vexe, tmp_dir))
+	build.set_args(['-v2', '-b', 'x64', source_path, '-o', bin_path])
+	build.set_redirect_stdio()
+	build.run()
+	build.wait()
+	build_output := 'stdout:\n${build.stdout_slurp()}\nstderr:\n${build.stderr_slurp()}'
+	if build.code != 0 {
+		assert false, x64_host_build_failure_message(name, tmp_dir, source_path, source, bin_path,
+			build.code, build_output)
+	}
+	mut run := os.new_process(bin_path)
+	defer {
+		run.close()
+	}
+	run.set_redirect_stdio()
+	run.run()
+	run.wait()
+	stdout := run.stdout_slurp().bytes()
+	stderr := run.stderr_slurp().bytes()
+	if run.code != 0 {
+		assert false, x64_host_run_failure_message(name, tmp_dir, source_path, source, bin_path,
+			build_output, run.code, stdout, stderr)
+	}
+	return X64HostRunResult{
+		name:         name
+		tmp_dir:      tmp_dir
+		source_path:  source_path
+		source_text:  source
+		bin_path:     bin_path
+		build_output: build_output
+		stdout:       stdout
+		stderr:       stderr
+	}
+}
+
+fn run_x64_host_program_redirected_auto(name string, source string) X64HostRunResult {
+	tmp_dir := os.join_path(os.vtmp_dir(), 'v2_x64_runtime_${name}_${os.getpid()}')
+	os.mkdir_all(tmp_dir) or { panic(err) }
+	source_path := os.join_path(tmp_dir, '${name}.v')
+	bin_path := x64_host_bin_path(tmp_dir, name)
+	os.write_file(source_path, source) or { panic(err) }
+	vexe := os.getenv_opt('VEXE') or { @VEXE }
+	mut build := os.new_process(vexe)
+	defer {
+		build.close()
+	}
+	build.set_environment(x64_pinned_v2_build_environment(vexe, tmp_dir))
+	build.set_args(['-v2', '-no-parallel', '-b', 'x64', source_path, '-o', bin_path])
+	build.set_redirect_stdio()
+	build.run()
+	build.wait()
+	build_output := 'stdout:\n${build.stdout_slurp()}\nstderr:\n${build.stderr_slurp()}'
+	if build.code != 0 {
+		assert false, x64_host_build_failure_message(name, tmp_dir, source_path, source, bin_path,
+			build.code, build_output)
+	}
+	mut run := os.new_process(bin_path)
+	defer {
+		run.close()
+	}
+	run.set_redirect_stdio()
+	run.run()
+	run.wait()
+	stdout := run.stdout_slurp().bytes()
+	stderr := run.stderr_slurp().bytes()
+	if run.code != 0 {
+		assert false, x64_host_run_failure_message(name, tmp_dir, source_path, source, bin_path,
+			build_output, run.code, stdout, stderr)
+	}
+	return X64HostRunResult{
+		name:         name
+		tmp_dir:      tmp_dir
+		source_path:  source_path
+		source_text:  source
+		bin_path:     bin_path
+		build_output: build_output
+		stdout:       stdout
+		stderr:       stderr
+	}
+}
+
 fn run_x64_host_program_redirected_with_exit(name string, source string) X64HostRunExitResult {
 	tmp_dir := os.join_path(os.vtmp_dir(), 'v2_x64_runtime_${name}_${os.getpid()}')
 	os.mkdir_all(tmp_dir) or { panic(err) }
@@ -318,6 +493,20 @@ fn run_x64_host_program_redirected_with_exit(name string, source string) X64Host
 		stderr:       stderr
 		exit_code:    run.code
 	}
+}
+
+fn x64_write_project_sources(root string, sources map[string]string) string {
+	mut source_text := ''
+	mut rel_paths := sources.keys()
+	rel_paths.sort()
+	for rel_path in rel_paths {
+		source := sources[rel_path]
+		source_path := os.join_path(root, rel_path)
+		os.mkdir_all(os.dir(source_path)) or { panic(err) }
+		os.write_file(source_path, source) or { panic(err) }
+		source_text += '--- ${rel_path} ---\n${source}\n'
+	}
+	return source_text
 }
 
 fn run_x64_host_project_redirected(name string, sources map[string]string) X64HostRunResult {
@@ -364,6 +553,98 @@ fn run_x64_host_project_redirected(name string, sources map[string]string) X64Ho
 	}
 }
 
+fn run_x64_host_project_redirected_auto(name string, sources map[string]string) X64HostRunResult {
+	tmp_dir := os.join_path(os.vtmp_dir(), 'v2_x64_runtime_${name}_${os.getpid()}')
+	os.mkdir_all(tmp_dir) or { panic(err) }
+	bin_path := x64_host_bin_path(tmp_dir, name)
+	source_root := tmp_dir
+	source_text := x64_write_project_sources(tmp_dir, sources)
+	vexe := x64_vexe_command_path()
+	mut build := os.new_process(vexe)
+	defer {
+		build.close()
+	}
+	build.set_environment(x64_pinned_v2_build_environment(vexe, tmp_dir))
+	build.set_args(['-v2', '-no-parallel', '-b', 'x64', tmp_dir, '-o', bin_path])
+	build.set_redirect_stdio()
+	build.run()
+	build.wait()
+	build_output := 'stdout:\n${build.stdout_slurp()}\nstderr:\n${build.stderr_slurp()}'
+	if build.code != 0 {
+		assert false, x64_host_build_failure_message(name, tmp_dir, source_root, source_text,
+			bin_path, build.code, build_output)
+	}
+	mut run := os.new_process(bin_path)
+	defer {
+		run.close()
+	}
+	run.set_redirect_stdio()
+	run.run()
+	run.wait()
+	stdout := run.stdout_slurp().bytes()
+	stderr := run.stderr_slurp().bytes()
+	if run.code != 0 {
+		assert false, x64_host_run_failure_message(name, tmp_dir, source_root, source_text,
+			bin_path, build_output, run.code, stdout, stderr)
+	}
+	return X64HostRunResult{
+		name:         name
+		tmp_dir:      tmp_dir
+		source_path:  source_root
+		source_text:  source_text
+		bin_path:     bin_path
+		build_output: build_output
+		stdout:       stdout
+		stderr:       stderr
+	}
+}
+
+fn run_x64_host_project_redirected_macos_auto_tiny_verbose(name string, sources map[string]string) X64HostRunResult {
+	tmp_dir := os.join_path(os.vtmp_dir(), 'v2_x64_runtime_${name}_${os.getpid()}')
+	os.mkdir_all(tmp_dir) or { panic(err) }
+	bin_path := x64_host_bin_path(tmp_dir, name)
+	source_root := tmp_dir
+	source_text := x64_write_project_sources(tmp_dir, sources)
+	vexe := x64_vexe_command_path()
+	mut build := os.new_process(vexe)
+	defer {
+		build.close()
+	}
+	build.set_environment(x64_macos_auto_tiny_build_environment(vexe, tmp_dir))
+	build.set_args(['-v2', '-v', '-no-parallel', '-b', 'x64', tmp_dir, '-o', bin_path])
+	build.set_redirect_stdio()
+	build.run()
+	build.wait()
+	build_output := 'stdout:\n${build.stdout_slurp()}\nstderr:\n${build.stderr_slurp()}'
+	if build.code != 0 {
+		assert false, x64_host_build_failure_message(name, tmp_dir, source_root, source_text,
+			bin_path, build.code, build_output)
+	}
+	mut run := os.new_process(bin_path)
+	defer {
+		run.close()
+	}
+	run.set_redirect_stdio()
+	run.run()
+	run.wait()
+	stdout := run.stdout_slurp().bytes()
+	stderr := run.stderr_slurp().bytes()
+	if run.code != 0 {
+		assert false, x64_host_run_failure_message(name, tmp_dir, source_root, source_text,
+			bin_path, build_output, run.code, stdout, stderr)
+	}
+	return X64HostRunResult{
+		name:         name
+		tmp_dir:      tmp_dir
+		source_path:  source_root
+		source_text:  source_text
+		bin_path:     bin_path
+		build_output: build_output
+		stdout:       stdout
+		stderr:       stderr
+	}
+}
+
 fn run_x64_host_file_redirected(name string, source_dir string, source_file string) X64HostRunResult {
 	tmp_dir := os.join_path(os.vtmp_dir(), 'v2_x64_runtime_${name}_${os.getpid()}')
 	os.mkdir_all(tmp_dir) or { panic(err) }
@@ -401,6 +682,147 @@ fn run_x64_host_file_redirected(name string, source_dir string, source_file stri
 	}
 }
 
+fn run_x64_host_file_redirected_auto(name string, source_dir string, source_file string) X64HostRunResult {
+	tmp_dir := os.join_path(os.vtmp_dir(), 'v2_x64_runtime_${name}_${os.getpid()}')
+	os.mkdir_all(tmp_dir) or { panic(err) }
+	source_path := os.join_path(source_dir, source_file)
+	source_text := 'source file: ${source_path}'
+	bin_path := x64_host_bin_path(tmp_dir, name)
+	vexe := x64_vexe_command_path()
+	mut build := os.new_process(vexe)
+	defer {
+		build.close()
+	}
+	build.set_environment(x64_pinned_v2_build_environment(vexe, tmp_dir))
+	build.set_work_folder(source_dir)
+	build.set_args(['-v2', '-no-parallel', '-b', 'x64', source_file, '-o', bin_path])
+	build.set_redirect_stdio()
+	build.run()
+	build.wait()
+	build_output := 'stdout:\n${build.stdout_slurp()}\nstderr:\n${build.stderr_slurp()}'
+	if build.code != 0 {
+		assert false, x64_host_build_failure_message(name, tmp_dir, source_path, source_text,
+			bin_path, build.code, build_output)
+	}
+	mut run := os.new_process(bin_path)
+	defer {
+		run.close()
+	}
+	run.set_redirect_stdio()
+	run.run()
+	run.wait()
+	stdout := run.stdout_slurp().bytes()
+	stderr := run.stderr_slurp().bytes()
+	if run.code != 0 {
+		assert false, x64_host_run_failure_message(name, tmp_dir, source_path, source_text,
+			bin_path, build_output, run.code, stdout, stderr)
+	}
+	return X64HostRunResult{
+		name:         name
+		tmp_dir:      tmp_dir
+		source_path:  source_path
+		source_text:  source_text
+		bin_path:     bin_path
+		build_output: build_output
+		stdout:       stdout
+		stderr:       stderr
+	}
+}
+
+fn run_x64_host_file_redirected_macos_auto_tiny(name string, source_dir string, source_file string) X64HostRunResult {
+	tmp_dir := os.join_path(os.vtmp_dir(), 'v2_x64_runtime_${name}_${os.getpid()}')
+	os.mkdir_all(tmp_dir) or { panic(err) }
+	source_path := os.join_path(source_dir, source_file)
+	source_text := 'source file: ${source_path}'
+	bin_path := x64_host_bin_path(tmp_dir, name)
+	vexe := x64_vexe_command_path()
+	mut build := os.new_process(vexe)
+	defer {
+		build.close()
+	}
+	build.set_environment(x64_macos_auto_tiny_build_environment(vexe, tmp_dir))
+	build.set_work_folder(source_dir)
+	build.set_args(['-v2', '-v', '-no-parallel', '-b', 'x64', source_file, '-o', bin_path])
+	build.set_redirect_stdio()
+	build.run()
+	build.wait()
+	build_output := 'stdout:\n${build.stdout_slurp()}\nstderr:\n${build.stderr_slurp()}'
+	if build.code != 0 {
+		assert false, x64_host_build_failure_message(name, tmp_dir, source_path, source_text,
+			bin_path, build.code, build_output)
+	}
+	mut run := os.new_process(bin_path)
+	defer {
+		run.close()
+	}
+	run.set_redirect_stdio()
+	run.run()
+	run.wait()
+	stdout := run.stdout_slurp().bytes()
+	stderr := run.stderr_slurp().bytes()
+	if run.code != 0 {
+		assert false, x64_host_run_failure_message(name, tmp_dir, source_path, source_text,
+			bin_path, build_output, run.code, stdout, stderr)
+	}
+	return X64HostRunResult{
+		name:         name
+		tmp_dir:      tmp_dir
+		source_path:  source_path
+		source_text:  source_text
+		bin_path:     bin_path
+		build_output: build_output
+		stdout:       stdout
+		stderr:       stderr
+	}
+}
+
+fn run_x64_host_file_redirected_no_tiny(name string, source_dir string, source_file string) X64HostRunResult {
+	tmp_dir := os.join_path(os.vtmp_dir(), 'v2_x64_runtime_${name}_${os.getpid()}')
+	os.mkdir_all(tmp_dir) or { panic(err) }
+	source_path := os.join_path(source_dir, source_file)
+	source_text := 'source file: ${source_path}'
+	bin_path := x64_host_bin_path(tmp_dir, name)
+	vexe := x64_vexe_command_path()
+	mut build := os.new_process(vexe)
+	defer {
+		build.close()
+	}
+	build.set_environment(x64_no_tiny_build_environment(vexe, tmp_dir))
+	build.set_work_folder(source_dir)
+	build.set_args(['-v2', '-no-parallel', '-b', 'x64', '-no-mos-tiny', source_file, '-o', bin_path])
+	build.set_redirect_stdio()
+	build.run()
+	build.wait()
+	build_output := 'stdout:\n${build.stdout_slurp()}\nstderr:\n${build.stderr_slurp()}'
+	if build.code != 0 {
+		assert false, x64_host_build_failure_message(name, tmp_dir, source_path, source_text,
+			bin_path, build.code, build_output)
+	}
+	mut run := os.new_process(bin_path)
+	defer {
+		run.close()
+	}
+	run.set_redirect_stdio()
+	run.run()
+	run.wait()
+	stdout := run.stdout_slurp().bytes()
+	stderr := run.stderr_slurp().bytes()
+	if run.code != 0 {
+		assert false, x64_host_run_failure_message(name, tmp_dir, source_path, source_text,
+			bin_path, build_output, run.code, stdout, stderr)
+	}
+	return X64HostRunResult{
+		name:         name
+		tmp_dir:      tmp_dir
+		source_path:  source_path
+		source_text:  source_text
+		bin_path:     bin_path
+		build_output: build_output
+		stdout:       stdout
+		stderr:       stderr
+	}
+}
+
 fn assert_x64_linux_stdout_bytes(name string, source string, expected_stdout []u8) {
 	$if linux {
 		result := run_x64_linux_program_redirected(name, source)
@@ -414,6 +836,149 @@ fn assert_x64_linux_file_stdout_bytes(name string, source_dir string, source_fil
 		result := run_x64_linux_file_redirected(name, source_dir, source_file)
 		assert result.stdout == expected_stdout, '${name} stdout mismatch: ${result.stdout}'
 		assert result.stderr == []u8{}, '${name} stderr mismatch: ${result.stderr}'
+	}
+}
+
+fn assert_x64_linux_no_libc_binary(result X64HostRunResult, expected_stdout []u8) {
+	$if linux {
+		context := x64_host_result_context(result)
+		assert result.stdout == expected_stdout, x64_stdout_mismatch_message(result.name, 'linux',
+			expected_stdout, result.stdout, context)
+
+		assert result.stderr == []u8{}, x64_stderr_mismatch_message(result.name, 'linux', []u8{},
+			result.stderr, context)
+
+		assert os.file_size(result.bin_path) < 16 * 1024, '${context}\nbinary is not tiny: ${os.file_size(result.bin_path)} bytes'
+		if readelf_dynamic := x64_optional_tool_output(@FN, 'readelf',
+			'-d ${os.quoted_path(result.bin_path)}')
+		{
+			assert readelf_dynamic.contains('There is no dynamic section in this file.'), '${context}\nreadelf -d output:\n${readelf_dynamic}'
+		}
+
+		if readelf_headers := x64_optional_tool_output(@FN, 'readelf',
+			'-h -l ${os.quoted_path(result.bin_path)}')
+		{
+			assert readelf_headers.contains('Type:                              EXEC (Executable file)'), readelf_headers
+
+			assert readelf_headers.contains('LOAD'), readelf_headers
+		}
+		if ldd := x64_optional_tool_output(@FN, 'ldd', os.quoted_path(result.bin_path)) {
+			assert ldd.contains('not a dynamic executable'), '${context}\nldd output:\n${ldd}'
+		}
+		if nm := x64_optional_tool_output(@FN, 'nm', '-u ${os.quoted_path(result.bin_path)}') {
+			assert nm.contains('no symbols') || nm.trim_space() == '', '${context}\nnm -u output:\n${nm}'
+		}
+	}
+}
+
+fn assert_x64_linux_hosted_libc_binary(result X64HostRunResult, expected_stdout []u8) {
+	$if linux {
+		context := x64_host_result_context(result)
+		assert result.stdout == expected_stdout, x64_stdout_mismatch_message(result.name, 'linux',
+			expected_stdout, result.stdout, context)
+
+		assert result.stderr == []u8{}, x64_stderr_mismatch_message(result.name, 'linux', []u8{},
+			result.stderr, context)
+
+		if readelf_dynamic := x64_optional_tool_output(@FN, 'readelf',
+			'-d ${os.quoted_path(result.bin_path)}')
+		{
+			assert readelf_dynamic.contains('Dynamic section at offset'), '${context}\nreadelf -d output:\n${readelf_dynamic}'
+		}
+		if ldd := x64_optional_tool_output(@FN, 'ldd', os.quoted_path(result.bin_path)) {
+			assert ldd.contains('libc.so'), '${context}\nldd output:\n${ldd}'
+		}
+		if nm := x64_optional_tool_output(@FN, 'nm', '-u ${os.quoted_path(result.bin_path)}') {
+			assert nm.contains('__libc_start_main') || nm.contains('calloc'), '${context}\nnm -u output:\n${nm}'
+		}
+	}
+}
+
+fn assert_x64_linux_load_segment_count(result X64HostRunResult, expected_count int) {
+	$if linux {
+		context := x64_host_result_context(result)
+		actual_count := x64_elf_load_segment_count(result.bin_path)
+		assert actual_count == expected_count, '${context}\nELF PT_LOAD count: expected ${expected_count}, got ${actual_count}'
+	}
+}
+
+fn assert_x64_linux_tiny_load_segment_layout(result X64HostRunResult, expected_rw_bss_bytes u64) {
+	$if linux {
+		context := x64_host_result_context(result)
+		segments := x64_elf_load_segments(result.bin_path)
+		for i, segment in segments {
+			wx_flags := segment.flags & u32(pf_w | pf_x)
+			assert wx_flags != u32(pf_w | pf_x), '${context}\nELF PT_LOAD ${i} is writable and executable: flags=0x${segment.flags.hex()}'
+			assert segment.memsz >= segment.filesz, '${context}\nELF PT_LOAD ${i} memsz ${segment.memsz} is smaller than filesz ${segment.filesz}'
+			if segment.align > 1 {
+				assert segment.vaddr % segment.align == segment.offset % segment.align, '${context}\nELF PT_LOAD ${i} offset/vaddr are not congruent modulo align: offset=0x${segment.offset.hex()} vaddr=0x${segment.vaddr.hex()} align=0x${segment.align.hex()}'
+			}
+		}
+		text_segment := segments[0]
+		assert text_segment.flags == u32(pf_r | pf_x), '${context}\nELF text PT_LOAD flags: expected 0x${u32(pf_r | pf_x).hex()}, got 0x${text_segment.flags.hex()}'
+		assert text_segment.memsz == text_segment.filesz, '${context}\nELF text PT_LOAD should not contain writable zero-fill: filesz=${text_segment.filesz} memsz=${text_segment.memsz}'
+		if expected_rw_bss_bytes == 0 {
+			assert segments.len == 1, '${context}\nELF PT_LOAD count: expected 1, got ${segments.len}'
+			return
+		}
+		assert segments.len == 2, '${context}\nELF PT_LOAD count: expected 2, got ${segments.len}'
+		rw_segment := segments[1]
+		assert rw_segment.flags == u32(pf_r | pf_w), '${context}\nELF RW PT_LOAD flags: expected 0x${u32(pf_r | pf_w).hex()}, got 0x${rw_segment.flags.hex()}'
+		assert rw_segment.filesz == 0, '${context}\nELF RW PT_LOAD for tiny runtime metadata should be zero-fill only: filesz=${rw_segment.filesz}'
+		assert rw_segment.memsz == expected_rw_bss_bytes, '${context}\nELF RW PT_LOAD bss bytes: expected ${expected_rw_bss_bytes}, got ${rw_segment.memsz}'
+	}
+}
+
+fn assert_x64_linux_tiny_build_rejected(name string, source string, expected_message string) {
+	$if linux {
+		tmp_dir := os.join_path(os.vtmp_dir(), 'v2_x64_runtime_${name}_${os.getpid()}')
+		os.mkdir_all(tmp_dir) or { panic(err) }
+		defer {
+			os.rmdir_all(tmp_dir) or {}
+		}
+		source_path := os.join_path(tmp_dir, '${name}.v')
+		bin_path := x64_host_bin_path(tmp_dir, name)
+		os.write_file(source_path, source) or { panic(err) }
+		vexe := x64_vexe_command_path()
+		mut build := os.new_process(vexe)
+		defer {
+			build.close()
+		}
+		build.set_environment(x64_strict_tiny_build_environment(vexe, tmp_dir))
+		build.set_args(['-v2', '-b', 'x64', source_path, '-o', bin_path])
+		build.set_redirect_stdio()
+		build.run()
+		build.wait()
+		build_output := 'stdout:\n${build.stdout_slurp()}\nstderr:\n${build.stderr_slurp()}'
+		assert build.code != 0, '${name} unexpectedly built with Linux tiny:\n${build_output}'
+		assert build_output.contains(expected_message), '${name} rejection did not contain `${expected_message}`:\n${build_output}'
+		assert !os.exists(bin_path), '${name} produced a binary despite Linux tiny rejection: ${bin_path}'
+	}
+}
+
+fn assert_x64_linux_tiny_project_build_rejected(name string, sources map[string]string, expected_message string) {
+	$if linux {
+		tmp_dir := os.join_path(os.vtmp_dir(), 'v2_x64_runtime_${name}_${os.getpid()}')
+		os.mkdir_all(tmp_dir) or { panic(err) }
+		defer {
+			os.rmdir_all(tmp_dir) or {}
+		}
+		bin_path := x64_host_bin_path(tmp_dir, name)
+		x64_write_project_sources(tmp_dir, sources)
+		vexe := x64_vexe_command_path()
+		mut build := os.new_process(vexe)
+		defer {
+			build.close()
+		}
+		build.set_environment(x64_strict_tiny_build_environment(vexe, tmp_dir))
+		build.set_args(['-v2', '-no-parallel', '-b', 'x64', tmp_dir, '-o', bin_path])
+		build.set_redirect_stdio()
+		build.run()
+		build.wait()
+		build_output := 'stdout:\n${build.stdout_slurp()}\nstderr:\n${build.stderr_slurp()}'
+		assert build.code != 0, '${name} unexpectedly built with Linux tiny:\n${build_output}'
+		assert build_output.contains(expected_message), '${name} rejection did not contain `${expected_message}`:\n${build_output}'
+		assert !os.exists(bin_path), '${name} produced a binary despite Linux tiny rejection: ${bin_path}'
 	}
 }
 
@@ -1812,6 +2377,49 @@ fn x64_module_init_once_stdout() []u8 {
 '.bytes()
 }
 
+fn x64_auto_tiny_rejected_imported_runtime_init_sources() map[string]string {
+	return {
+		'main.v':    "module main
+
+import dep
+
+fn main() {
+	marker := 'H'.clone()
+	print(marker)
+	println(dep.score())
+}
+"
+		'dep/dep.v': 'module dep
+
+const runtime_offset = make_offset()
+
+pub __global mut init_hits = 0
+pub __global runtime_state = make_state()
+
+fn make_offset() int {
+	return 7
+}
+
+fn make_state() int {
+	return 23
+}
+
+fn init() {
+	init_hits += runtime_state + runtime_offset
+}
+
+pub fn score() int {
+	return init_hits + runtime_state + runtime_offset
+}
+'
+	}
+}
+
+fn x64_auto_tiny_rejected_imported_runtime_init_stdout() []u8 {
+	return 'H60
+'.bytes()
+}
+
 fn x64_module_storage_sources() map[string]string {
 	return {
 		'main.v':          "module main
@@ -2200,6 +2808,512 @@ fn test_x64_linux_fizz_buzz_core_for_range_match_true_stdout_exact_bytes() {
 fn test_x64_linux_fizz_buzz_example_top_level_stdout_exact_bytes() {
 	assert_x64_linux_file_stdout_bytes('fizz_buzz_example_top_level_exact', x64_examples_dir(),
 		'fizz_buzz.v', x64_fizz_buzz_example_stdout())
+}
+
+fn test_x64_linux_fizz_buzz_example_auto_tiny_no_libc() {
+	$if linux {
+		result := run_x64_host_file_redirected_auto('fizz_buzz_example_auto_tiny_no_libc',
+			x64_examples_dir(), 'fizz_buzz.v')
+		assert_x64_linux_no_libc_binary(result, x64_fizz_buzz_example_stdout())
+		x64_host_cleanup_tmp(result.tmp_dir)
+	}
+}
+
+fn test_x64_linux_hello_world_example_auto_tiny_no_libc() {
+	$if linux {
+		result := run_x64_host_file_redirected_auto('hello_world_example_auto_tiny_no_libc',
+			x64_examples_dir(), 'hello_world.v')
+		assert_x64_linux_no_libc_binary(result, 'Hello, World!\n'.bytes())
+		assert_x64_linux_tiny_load_segment_layout(result, 0)
+		context := x64_host_result_context(result)
+		assert os.file_size(result.bin_path) < 512, '${context}\nbinary is not ultra tiny: ${os.file_size(result.bin_path)} bytes'
+		x64_host_cleanup_tmp(result.tmp_dir)
+	}
+}
+
+fn assert_x64_macos_tiny_object_used(result X64HostRunResult, context string) {
+	assert result.build_output.contains('macOS tiny object candidate enabled'), context
+	assert result.build_output.contains('built-in macOS tiny object'), context
+	assert !result.build_output.contains('falling back to normal Mach-O object'), context
+	assert !result.build_output.contains('retrying with normal Mach-O object'), context
+}
+
+fn test_x64_macos_hello_world_example_auto_tiny_uses_tiny_object() {
+	$if macos {
+		tiny := run_x64_host_file_redirected_macos_auto_tiny('macos_hello_world_example_auto_tiny',
+			x64_examples_dir(), 'hello_world.v')
+		normal := run_x64_host_file_redirected_no_tiny('macos_hello_world_example_normal',
+			x64_examples_dir(), 'hello_world.v')
+		context := '${x64_host_result_context(tiny)}\nnormal build:\n${x64_host_result_context(normal)}'
+		assert tiny.stdout == 'Hello, World!\n'.bytes(), context
+		assert tiny.stderr == []u8{}, context
+		assert normal.stdout == tiny.stdout, context
+		assert normal.stderr == []u8{}, context
+		assert_x64_macos_tiny_object_used(tiny, context)
+		tiny_size := os.file_size(tiny.bin_path)
+		normal_size := os.file_size(normal.bin_path)
+		assert tiny_size > 0, '${context}\ntiny size: ${tiny_size}'
+		assert normal_size > 0, '${context}\nnormal size: ${normal_size}'
+		println('macOS x64 tiny hello_world: tiny size=${tiny_size}; normal size=${normal_size}')
+		x64_host_cleanup_tmp(tiny.tmp_dir)
+		x64_host_cleanup_tmp(normal.tmp_dir)
+	}
+}
+
+fn test_x64_macos_fizz_buzz_example_auto_tiny_uses_tiny_object() {
+	$if macos {
+		tiny := run_x64_host_file_redirected_macos_auto_tiny('macos_fizz_buzz_example_auto_tiny',
+			x64_examples_dir(), 'fizz_buzz.v')
+		normal := run_x64_host_file_redirected_no_tiny('macos_fizz_buzz_example_normal',
+			x64_examples_dir(), 'fizz_buzz.v')
+		context := '${x64_host_result_context(tiny)}\nnormal build:\n${x64_host_result_context(normal)}'
+		assert tiny.stdout == x64_fizz_buzz_example_stdout(), context
+		assert tiny.stderr == []u8{}, context
+		assert normal.stdout == tiny.stdout, context
+		assert normal.stderr == []u8{}, context
+		assert_x64_macos_tiny_object_used(tiny, context)
+		tiny_size := os.file_size(tiny.bin_path)
+		normal_size := os.file_size(normal.bin_path)
+		assert tiny_size > 0, '${context}\ntiny size: ${tiny_size}'
+		assert normal_size > 0, '${context}\nnormal size: ${normal_size}'
+		println('macOS x64 tiny fizz_buzz: tiny size=${tiny_size}; normal size=${normal_size}')
+		x64_host_cleanup_tmp(tiny.tmp_dir)
+		x64_host_cleanup_tmp(normal.tmp_dir)
+	}
+}
+
+fn test_x64_macos_auto_tiny_ineligible_project_falls_back_to_normal_macho() {
+	$if macos {
+		result := run_x64_host_project_redirected_macos_auto_tiny_verbose('macos_auto_tiny_module_init_fallback',
+			x64_auto_tiny_rejected_imported_runtime_init_sources())
+		context := x64_host_result_context(result)
+		assert result.stdout == x64_auto_tiny_rejected_imported_runtime_init_stdout(), context
+		assert result.stderr == []u8{}, context
+		assert result.build_output.contains('macOS tiny object candidate enabled'), context
+
+		assert result.build_output.contains('macOS tiny object not eligible; falling back to normal Mach-O object'), context
+
+		assert result.build_output.contains('module init symbol'), context
+		assert !result.build_output.contains('built-in macOS tiny object'), context
+		x64_host_cleanup_tmp(result.tmp_dir)
+	}
+}
+
+fn test_x64_linux_non_hello_literal_falls_back_to_tiny_runtime() {
+	$if linux {
+		result := run_x64_host_program_redirected_auto('non_hello_literal_tiny_runtime', "module main
+
+fn main() {
+	println('x')
+}
+")
+		assert_x64_linux_no_libc_binary(result, 'x\n'.bytes())
+		assert_x64_linux_tiny_load_segment_layout(result, 0)
+		context := x64_host_result_context(result)
+		assert os.file_size(result.bin_path) >= 512, '${context}\nnon-hello literal unexpectedly used ultra tiny path: ${os.file_size(result.bin_path)} bytes'
+		x64_host_cleanup_tmp(result.tmp_dir)
+	}
+}
+
+fn test_x64_linux_hello_print_without_newline_does_not_use_ultra_tiny() {
+	$if linux {
+		result := run_x64_host_program_redirected_auto('hello_print_without_newline_hosted_runtime', "module main
+
+fn main() {
+	print('Hello, World!')
+}
+")
+		assert_x64_linux_hosted_libc_binary(result, 'Hello, World!'.bytes())
+		context := x64_host_result_context(result)
+		assert os.file_size(result.bin_path) >= 512, '${context}\nprint without newline unexpectedly used ultra tiny path: ${os.file_size(result.bin_path)} bytes'
+		x64_host_cleanup_tmp(result.tmp_dir)
+	}
+}
+
+fn test_x64_linux_two_hello_println_calls_do_not_use_ultra_tiny() {
+	$if linux {
+		result := run_x64_host_program_redirected_auto('two_hello_println_tiny_runtime', "module main
+
+fn main() {
+	println('Hello, World!')
+	println('Hello, World!')
+}
+")
+		assert_x64_linux_no_libc_binary(result, 'Hello, World!\nHello, World!\n'.bytes())
+		context := x64_host_result_context(result)
+		assert os.file_size(result.bin_path) >= 512, '${context}\ntwo println calls unexpectedly used ultra tiny path: ${os.file_size(result.bin_path)} bytes'
+		x64_host_cleanup_tmp(result.tmp_dir)
+	}
+}
+
+fn test_x64_linux_conditional_hello_println_does_not_use_ultra_tiny() {
+	$if linux {
+		result := run_x64_host_program_redirected_auto('conditional_hello_println_tiny_runtime', "module main
+
+fn main() {
+	if 1 == 1 {
+		println('Hello, World!')
+	}
+}
+")
+		assert_x64_linux_no_libc_binary(result, 'Hello, World!\n'.bytes())
+		context := x64_host_result_context(result)
+		assert os.file_size(result.bin_path) >= 512, '${context}\nconditional println unexpectedly used ultra tiny path: ${os.file_size(result.bin_path)} bytes'
+		x64_host_cleanup_tmp(result.tmp_dir)
+	}
+}
+
+fn test_x64_linux_tiny_casted_large_int_literal_uses_int_str_runtime() {
+	$if linux {
+		result := run_x64_host_program_redirected_tiny('tiny_casted_large_int_literal_int_str_runtime', 'module main
+
+fn main() {
+	println(int(2147483648))
+}
+')
+		assert_x64_linux_no_libc_binary(result, '-2147483648\n'.bytes())
+		assert_x64_linux_tiny_load_segment_layout(result, linux_tiny_int_str_arena_metadata_bytes)
+		x64_host_cleanup_tmp(result.tmp_dir)
+	}
+}
+
+fn test_x64_linux_tiny_int_str_negative_stdout_exact_bytes() {
+	$if linux {
+		result := run_x64_host_program_redirected_tiny('tiny_negative_int_str', 'module main
+
+fn main() {
+	n := int(-23)
+	println(n.str())
+}
+')
+		assert_x64_linux_no_libc_binary(result, '-23\n'.bytes())
+		assert_x64_linux_tiny_load_segment_layout(result, linux_tiny_int_str_arena_metadata_bytes)
+		x64_host_cleanup_tmp(result.tmp_dir)
+	}
+}
+
+fn test_x64_linux_tiny_int_str_i32_min_stdout_exact_bytes() {
+	$if linux {
+		result := run_x64_host_program_redirected_tiny('tiny_i32_min_int_str', 'module main
+
+fn main() {
+	x := int(-2147483648)
+	println(x.str())
+}
+')
+		assert_x64_linux_no_libc_binary(result, '-2147483648\n'.bytes())
+		assert_x64_linux_tiny_load_segment_layout(result, linux_tiny_int_str_arena_metadata_bytes)
+		x64_host_cleanup_tmp(result.tmp_dir)
+	}
+}
+
+fn test_x64_linux_auto_tiny_stored_int_str_values_fall_back_to_hosted_libc() {
+	$if linux {
+		result := run_x64_host_program_redirected_auto('auto_tiny_stored_int_str_values_hosted', 'module main
+
+fn main() {
+	a := 12.str()
+	b := 34.str()
+	println(a)
+	println(b)
+	println(a)
+}
+')
+		assert_x64_linux_hosted_libc_binary(result, '12\n34\n12\n'.bytes())
+		x64_host_cleanup_tmp(result.tmp_dir)
+	}
+}
+
+fn test_x64_linux_strict_tiny_stored_int_str_values_are_rejected() {
+	$if linux {
+		assert_x64_linux_tiny_build_rejected('strict_tiny_stored_int_str_values_rejected', 'module main
+
+fn main() {
+	a := 12.str()
+	b := 34.str()
+	println(a)
+	println(b)
+	println(a)
+}
+',
+			linux_tiny_not_eligible_prefix)
+	}
+}
+
+fn test_x64_linux_auto_tiny_passed_int_str_value_falls_back_to_hosted_libc() {
+	$if linux {
+		result := run_x64_host_program_redirected_auto('auto_tiny_passed_int_str_value_hosted', 'module main
+
+fn emit_twice(s string) {
+	println(s)
+	println(s)
+}
+
+fn main() {
+	emit_twice(42.str())
+}
+')
+		assert_x64_linux_hosted_libc_binary(result, '42\n42\n'.bytes())
+		x64_host_cleanup_tmp(result.tmp_dir)
+	}
+}
+
+fn test_x64_linux_strict_tiny_passed_int_str_value_is_rejected() {
+	$if linux {
+		assert_x64_linux_tiny_build_rejected('strict_tiny_passed_int_str_value_rejected', 'module main
+
+fn emit_twice(s string) {
+	println(s)
+	println(s)
+}
+
+fn main() {
+	emit_twice(42.str())
+}
+',
+			linux_tiny_not_eligible_prefix)
+	}
+}
+
+fn test_x64_linux_auto_tiny_returned_int_str_value_uses_tiny_runtime() {
+	$if linux {
+		result := run_x64_host_program_redirected_auto('auto_tiny_returned_int_str_value_runtime', 'module main
+
+fn render(n int) string {
+	return n.str()
+}
+
+fn main() {
+	s := render(43)
+	println(s)
+	println(s)
+}
+')
+		assert_x64_linux_no_libc_binary(result, '43\n43\n'.bytes())
+		assert_x64_linux_tiny_load_segment_layout(result, linux_tiny_int_str_arena_metadata_bytes)
+		x64_host_cleanup_tmp(result.tmp_dir)
+	}
+}
+
+fn test_x64_linux_strict_tiny_returned_int_str_value_uses_tiny_runtime() {
+	$if linux {
+		result := run_x64_host_program_redirected_tiny('strict_tiny_returned_int_str_value_runtime', 'module main
+
+fn render(n int) string {
+	return n.str()
+}
+
+fn main() {
+	s := render(43)
+	println(s)
+	println(s)
+}
+')
+		assert_x64_linux_no_libc_binary(result, '43\n43\n'.bytes())
+		assert_x64_linux_tiny_load_segment_layout(result, linux_tiny_int_str_arena_metadata_bytes)
+		x64_host_cleanup_tmp(result.tmp_dir)
+	}
+}
+
+fn test_x64_linux_auto_tiny_cloned_int_str_value_falls_back_to_hosted_libc() {
+	$if linux {
+		result := run_x64_host_program_redirected_auto('auto_tiny_cloned_int_str_value_hosted', 'module main
+
+fn main() {
+	s := 44.str().clone()
+	println(s)
+	println(s)
+}
+')
+		assert_x64_linux_hosted_libc_binary(result, '44\n44\n'.bytes())
+		x64_host_cleanup_tmp(result.tmp_dir)
+	}
+}
+
+fn test_x64_linux_strict_tiny_cloned_int_str_value_is_rejected() {
+	$if linux {
+		assert_x64_linux_tiny_build_rejected('strict_tiny_cloned_int_str_value_rejected', 'module main
+
+fn main() {
+	s := 44.str().clone()
+	println(s)
+	println(s)
+}
+',
+			linux_tiny_not_eligible_prefix)
+	}
+}
+
+fn test_x64_linux_tiny_int_str_runtime_many_values_stdout_exact_bytes() {
+	$if linux {
+		result := run_x64_host_program_redirected_tiny('tiny_int_str_runtime_many_values', 'module main
+
+fn main() {
+	x := int(-2147483648)
+	y := int(-23)
+	z := int(0)
+	max := int(2147483647)
+	println(x)
+	println(y.str())
+	println(z)
+	for i in 0 .. 130 {
+		println(i.str())
+	}
+	println(max)
+}
+')
+		mut expected_stdout := []u8{}
+		expected_stdout << '-2147483648\n-23\n0\n'.bytes()
+		for i in 0 .. 130 {
+			expected_stdout << '${i}\n'.bytes()
+		}
+		expected_stdout << '2147483647\n'.bytes()
+		assert_x64_linux_no_libc_binary(result, expected_stdout)
+		assert_x64_linux_tiny_load_segment_layout(result, linux_tiny_int_str_arena_metadata_bytes)
+		x64_host_cleanup_tmp(result.tmp_dir)
+	}
+}
+
+fn test_x64_linux_tiny_untyped_int_literal_uses_int_str_runtime() {
+	$if linux {
+		result := run_x64_host_program_redirected_tiny('tiny_untyped_int_literal_int_str_runtime', 'module main
+
+fn main() {
+	println(0)
+}
+')
+		assert_x64_linux_no_libc_binary(result, '0\n'.bytes())
+		assert_x64_linux_tiny_load_segment_layout(result, linux_tiny_int_str_arena_metadata_bytes)
+		x64_host_cleanup_tmp(result.tmp_dir)
+	}
+}
+
+fn test_x64_linux_strict_tiny_ineligible_string_clone_is_rejected() {
+	$if linux {
+		assert_x64_linux_tiny_build_rejected('tiny_ineligible_string_clone_rejected', "module main
+
+fn main() {
+	s := 'X'.clone()
+	println(s)
+}
+",
+			linux_tiny_not_eligible_prefix)
+	}
+}
+
+fn test_x64_linux_auto_tiny_ineligible_string_clone_falls_back_to_hosted_libc() {
+	$if linux {
+		result := run_x64_host_program_redirected_auto('auto_tiny_ineligible_string_clone_hosted_libc', "module main
+
+fn main() {
+	s := 'X'.clone()
+	println(s)
+}
+")
+		assert_x64_linux_hosted_libc_binary(result, 'X\n'.bytes())
+		x64_host_cleanup_tmp(result.tmp_dir)
+	}
+}
+
+fn test_x64_linux_auto_tiny_rejected_project_falls_back_to_hosted_with_runtime_inits() {
+	$if linux {
+		sources := x64_auto_tiny_rejected_imported_runtime_init_sources()
+		assert_x64_linux_tiny_project_build_rejected('strict_tiny_imported_runtime_init_project_rejected',
+			sources, linux_tiny_not_eligible_prefix)
+		result := run_x64_host_project_redirected_auto('auto_tiny_imported_runtime_init_project_hosted',
+			sources)
+		assert_x64_linux_hosted_libc_binary(result,
+			x64_auto_tiny_rejected_imported_runtime_init_stdout())
+		x64_host_cleanup_tmp(result.tmp_dir)
+	}
+}
+
+fn test_x64_linux_auto_tiny_rejection_replaces_existing_tiny_output_with_hosted_link() {
+	$if linux {
+		name := 'auto_tiny_stale_output_replaced_by_hosted'
+		tmp_dir := os.join_path(os.vtmp_dir(), 'v2_x64_runtime_${name}_${os.getpid()}')
+		os.mkdir_all(tmp_dir) or { panic(err) }
+		defer {
+			os.rmdir_all(tmp_dir) or {}
+		}
+		bin_path := x64_host_bin_path(tmp_dir, name)
+		vexe := x64_vexe_command_path()
+		env := x64_pinned_v2_build_environment(vexe, tmp_dir)
+
+		stale_source := "module main
+
+fn main() {
+	println('stale')
+}
+"
+		stale_source_path := os.join_path(tmp_dir, 'stale.v')
+		os.write_file(stale_source_path, stale_source) or { panic(err) }
+		mut stale_build := os.new_process(vexe)
+		defer {
+			stale_build.close()
+		}
+		stale_build.set_environment(env)
+		stale_build.set_args(['-v2', '-no-parallel', '-b', 'x64', stale_source_path, '-o', bin_path])
+		stale_build.set_redirect_stdio()
+		stale_build.run()
+		stale_build.wait()
+		stale_build_output := 'stdout:\n${stale_build.stdout_slurp()}\nstderr:\n${stale_build.stderr_slurp()}'
+		assert stale_build.code == 0, x64_host_build_failure_message(name, tmp_dir,
+			stale_source_path, stale_source, bin_path, stale_build.code, stale_build_output)
+
+		assert os.exists(bin_path), '${name} did not create the initial output binary'
+		stale_run := os.execute(os.quoted_path(bin_path))
+		assert stale_run.exit_code == 0, '${name} initial stale binary failed:\n${stale_run.output}'
+		assert stale_run.output == 'stale\n', '${name} initial stale binary output mismatch:\n${stale_run.output}'
+
+		hosted_source := "module main
+
+fn main() {
+	s := 'hosted'.clone()
+	println(s)
+}
+"
+		hosted_source_path := os.join_path(tmp_dir, 'hosted.v')
+		os.write_file(hosted_source_path, hosted_source) or { panic(err) }
+		mut hosted_build := os.new_process(vexe)
+		defer {
+			hosted_build.close()
+		}
+		hosted_build.set_environment(env)
+		hosted_build.set_args(['-v2', '-no-parallel', '-b', 'x64', hosted_source_path, '-o', bin_path])
+		hosted_build.set_redirect_stdio()
+		hosted_build.run()
+		hosted_build.wait()
+		hosted_build_output := 'stdout:\n${hosted_build.stdout_slurp()}\nstderr:\n${hosted_build.stderr_slurp()}'
+		if hosted_build.code != 0 {
+			assert false, x64_host_build_failure_message(name, tmp_dir, hosted_source_path,
+				hosted_source, bin_path, hosted_build.code, hosted_build_output)
+		}
+		mut hosted_run := os.new_process(bin_path)
+		defer {
+			hosted_run.close()
+		}
+		hosted_run.set_redirect_stdio()
+		hosted_run.run()
+		hosted_run.wait()
+		stdout := hosted_run.stdout_slurp().bytes()
+		stderr := hosted_run.stderr_slurp().bytes()
+		if hosted_run.code != 0 {
+			assert false, x64_host_run_failure_message(name, tmp_dir, hosted_source_path,
+				hosted_source, bin_path, hosted_build_output, hosted_run.code, stdout, stderr)
+		}
+		result := X64HostRunResult{
+			name:         name
+			tmp_dir:      tmp_dir
+			source_path:  hosted_source_path
+			source_text:  hosted_source
+			bin_path:     bin_path
+			build_output: hosted_build_output
+			stdout:       stdout
+			stderr:       stderr
+		}
+		assert_x64_linux_hosted_libc_binary(result, 'hosted\n'.bytes())
+	}
 }
 
 fn test_x64_macos_windows_getwd_clone_stdout_exact_bytes() {

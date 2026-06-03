@@ -6091,6 +6091,29 @@ fn test_map_equality_helper_call_is_not_module_qualified() {
 	assert g.sb.str() == 'Map_string_string_map_eq(new_hashes, old_hashes)'
 }
 
+fn test_map_keys_values_use_runtime_helpers() {
+	mut g := Gen.new([])
+	g.runtime_local_types['m'] = 'Map_string_bool'
+	keys_call := ast.SelectorExpr{
+		lhs: ast.Expr(ast.Ident{
+			name: 'm'
+		})
+		rhs: ast.Ident{
+			name: 'keys'
+		}
+	}
+	values_call := ast.SelectorExpr{
+		lhs: ast.Expr(ast.Ident{
+			name: 'm'
+		})
+		rhs: ast.Ident{
+			name: 'values'
+		}
+	}
+	assert g.resolve_call_name(ast.Expr(keys_call), 0) == 'map__keys'
+	assert g.resolve_call_name(ast.Expr(values_call), 0) == 'map__values'
+}
+
 fn test_omitted_end_array_slice_uses_non_indexing_slice_helper() {
 	mut g := Gen.new([])
 	g.remember_runtime_local_type('args', 'Array_string')

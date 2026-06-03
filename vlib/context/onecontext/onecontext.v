@@ -23,7 +23,7 @@ mut:
 // it returns the merged context
 pub fn merge(ctx context.Context, ctxs ...context.Context) (context.Context, context.CancelFn) {
 	mut background := context.background()
-	cancel_ctx, cancel := context.with_cancel(mut &background)
+	cancel_ctx, cancel := context.with_cancel(mut background)
 	mut octx := &OneContext{
 		done:       chan int{cap: 3}
 		ctx:        ctx

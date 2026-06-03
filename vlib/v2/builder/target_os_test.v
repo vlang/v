@@ -77,6 +77,7 @@ fn test_get_v_files_from_dir_uses_windows_target_os() {
 	write_test_file(os.join_path(tmp_dir, 'common.v'))
 	write_test_file(os.join_path(tmp_dir, 'platform_windows.v'))
 	write_test_file(os.join_path(tmp_dir, 'platform_nix.v'))
+	write_test_file(os.join_path(tmp_dir, 'platform_termux.c.v'))
 	write_test_file(os.join_path(tmp_dir, 'platform_linux.v'))
 	write_test_file(os.join_path(tmp_dir, 'platform_darwin.v'))
 
@@ -84,6 +85,7 @@ fn test_get_v_files_from_dir_uses_windows_target_os() {
 	assert 'common.v' in names
 	assert 'platform_windows.v' in names
 	assert 'platform_nix.v' !in names
+	assert 'platform_termux.c.v' !in names
 	assert 'platform_linux.v' !in names
 	assert 'platform_darwin.v' !in names
 }
@@ -99,6 +101,7 @@ fn test_get_v_files_from_dir_uses_linux_and_macos_target_os() {
 	write_test_file(os.join_path(tmp_dir, 'common.v'))
 	write_test_file(os.join_path(tmp_dir, 'platform_windows.v'))
 	write_test_file(os.join_path(tmp_dir, 'platform_nix.v'))
+	write_test_file(os.join_path(tmp_dir, 'platform_termux.c.v'))
 	write_test_file(os.join_path(tmp_dir, 'platform_linux.v'))
 	write_test_file(os.join_path(tmp_dir, 'platform_macos.v'))
 	write_test_file(os.join_path(tmp_dir, 'platform_darwin.v'))
@@ -108,6 +111,7 @@ fn test_get_v_files_from_dir_uses_linux_and_macos_target_os() {
 	assert 'platform_nix.v' in linux_names
 	assert 'platform_linux.v' in linux_names
 	assert 'platform_windows.v' !in linux_names
+	assert 'platform_termux.c.v' !in linux_names
 	assert 'platform_macos.v' !in linux_names
 	assert 'platform_darwin.v' !in linux_names
 
@@ -117,7 +121,107 @@ fn test_get_v_files_from_dir_uses_linux_and_macos_target_os() {
 	assert 'platform_macos.v' in macos_names
 	assert 'platform_darwin.v' in macos_names
 	assert 'platform_windows.v' !in macos_names
+	assert 'platform_termux.c.v' !in macos_names
 	assert 'platform_linux.v' !in macos_names
+}
+
+fn test_get_v_files_from_dir_uses_termux_target_os() {
+	tmp_dir := os.join_path(os.temp_dir(), 'v2_builder_filter_termux_${os.getpid()}')
+	os.rmdir_all(tmp_dir) or {}
+	os.mkdir_all(tmp_dir) or { panic(err) }
+	defer {
+		os.rmdir_all(tmp_dir) or {}
+	}
+
+	write_test_file(os.join_path(tmp_dir, 'common.v'))
+	write_test_file(os.join_path(tmp_dir, 'platform_nix.v'))
+	write_test_file(os.join_path(tmp_dir, 'platform_termux.c.v'))
+	write_test_file(os.join_path(tmp_dir, 'platform_android_outside_termux.c.v'))
+	write_test_file(os.join_path(tmp_dir, 'platform_android.c.v'))
+	write_test_file(os.join_path(tmp_dir, 'platform_linux.v'))
+	write_test_file(os.join_path(tmp_dir, 'platform_windows.v'))
+	write_test_file(os.join_path(tmp_dir, 'platform_macos.v'))
+	write_test_file(os.join_path(tmp_dir, 'platform_darwin.v'))
+
+	termux_names := get_v_files_from_dir(tmp_dir, []string{}, 'termux').map(os.file_name(it))
+	assert 'common.v' in termux_names
+	assert 'platform_nix.v' in termux_names
+	assert 'platform_termux.c.v' in termux_names
+	assert 'platform_android.c.v' in termux_names
+	assert 'platform_android_outside_termux.c.v' !in termux_names
+	assert 'platform_linux.v' !in termux_names
+	assert 'platform_windows.v' !in termux_names
+	assert 'platform_macos.v' !in termux_names
+	assert 'platform_darwin.v' !in termux_names
+}
+
+fn test_parse_files_uses_host_source_filter_for_cross_target() {
+	tmp_dir := os.join_path(os.temp_dir(), 'v2_builder_filter_cross_${os.getpid()}')
+	os.rmdir_all(tmp_dir) or {}
+	os.mkdir_all(tmp_dir) or { panic(err) }
+	defer {
+		os.rmdir_all(tmp_dir) or {}
+	}
+
+	write_test_file(os.join_path(tmp_dir, 'common.v'))
+	write_test_file(os.join_path(tmp_dir, 'platform_nix.v'))
+	write_test_file(os.join_path(tmp_dir, 'platform_linux.v'))
+	write_test_file(os.join_path(tmp_dir, 'platform_macos.v'))
+	write_test_file(os.join_path(tmp_dir, 'platform_darwin.v'))
+	write_test_file(os.join_path(tmp_dir, 'platform_windows.v'))
+	write_test_file(os.join_path(tmp_dir, 'platform_termux.c.v'))
+
+	mut prefs := pref.new_preferences()
+	prefs.skip_builtin = true
+	prefs.skip_imports = true
+	prefs.target_os = 'cross'
+	prefs.output_cross_c = true
+	prefs.user_defines = ['cross']
+	mut b := new_builder(&prefs)
+	files := parse_test_files(mut b, [tmp_dir])
+	cross_names := files.map(os.file_name(it.name))
+	host_os := normalize_target_os_name(os.user_os())
+	assert 'common.v' in cross_names
+	assert ('platform_nix.v' in cross_names) == (host_os != 'windows')
+	assert ('platform_linux.v' in cross_names) == (host_os == 'linux')
+	assert ('platform_macos.v' in cross_names) == (host_os == 'macos')
+	assert ('platform_darwin.v' in cross_names) == (host_os == 'macos')
+	assert ('platform_windows.v' in cross_names) == (host_os == 'windows')
+	assert ('platform_termux.c.v' in cross_names) == (host_os == 'termux')
+}
+
+fn test_parse_files_excludes_os_variants_for_freestanding_none_target() {
+	tmp_dir := os.join_path(os.temp_dir(), 'v2_builder_filter_none_${os.getpid()}')
+	os.rmdir_all(tmp_dir) or {}
+	os.mkdir_all(tmp_dir) or { panic(err) }
+	defer {
+		os.rmdir_all(tmp_dir) or {}
+	}
+
+	write_test_file(os.join_path(tmp_dir, 'common.v'))
+	write_test_file(os.join_path(tmp_dir, 'platform_nix.v'))
+	write_test_file(os.join_path(tmp_dir, 'platform_linux.v'))
+	write_test_file(os.join_path(tmp_dir, 'platform_macos.v'))
+	write_test_file(os.join_path(tmp_dir, 'platform_darwin.v'))
+	write_test_file(os.join_path(tmp_dir, 'platform_windows.v'))
+	write_test_file(os.join_path(tmp_dir, 'platform_termux.c.v'))
+
+	mut prefs := pref.new_preferences()
+	prefs.skip_builtin = true
+	prefs.skip_imports = true
+	prefs.freestanding = true
+	prefs.target_os = 'none'
+	prefs.user_defines = ['freestanding']
+	mut b := new_builder(&prefs)
+	files := parse_test_files(mut b, [tmp_dir])
+	names := files.map(os.file_name(it.name))
+	assert 'common.v' in names
+	assert 'platform_nix.v' !in names
+	assert 'platform_termux.c.v' !in names
+	assert 'platform_linux.v' !in names
+	assert 'platform_macos.v' !in names
+	assert 'platform_darwin.v' !in names
+	assert 'platform_windows.v' !in names
 }
 
 fn test_parse_files_uses_target_os_preference_for_windows_files() {
@@ -131,6 +235,7 @@ fn test_parse_files_uses_target_os_preference_for_windows_files() {
 	os.write_file(os.join_path(tmp_dir, 'main.v'), 'module main\nfn main() {}\n') or { panic(err) }
 	write_test_file(os.join_path(tmp_dir, 'platform_windows.v'))
 	write_test_file(os.join_path(tmp_dir, 'platform_nix.v'))
+	write_test_file(os.join_path(tmp_dir, 'platform_termux.c.v'))
 	write_test_file(os.join_path(tmp_dir, 'platform_linux.v'))
 	write_test_file(os.join_path(tmp_dir, 'platform_darwin.v'))
 
@@ -145,8 +250,37 @@ fn test_parse_files_uses_target_os_preference_for_windows_files() {
 	assert 'main.v' in names
 	assert 'platform_windows.v' in names
 	assert 'platform_nix.v' !in names
+	assert 'platform_termux.c.v' !in names
 	assert 'platform_linux.v' !in names
 	assert 'platform_darwin.v' !in names
+}
+
+fn test_default_file_key_strips_all_supported_platform_suffixes() {
+	default_key := fname_without_platform_postfix('/tmp/foo_default.c.v')
+	for suffix in ['nix', 'windows', 'linux', 'darwin', 'macos', 'bsd', 'android', 'termux',
+		'android_outside_termux', 'ios', 'freebsd', 'openbsd', 'netbsd', 'dragonfly', 'solaris',
+		'qnx', 'serenity', 'plan9', 'vinix'] {
+		assert fname_without_platform_postfix('/tmp/foo_${suffix}.c.v') == default_key
+	}
+}
+
+fn test_default_files_are_skipped_for_extended_platform_variants() {
+	tmp_dir := os.join_path(os.temp_dir(), 'v2_builder_extended_platform_defaults_${os.getpid()}')
+	os.rmdir_all(tmp_dir) or {}
+	os.mkdir_all(tmp_dir) or { panic(err) }
+	defer {
+		os.rmdir_all(tmp_dir) or {}
+	}
+
+	for target in ['ios', 'qnx', 'serenity', 'plan9', 'vinix'] {
+		write_test_file(os.join_path(tmp_dir, 'foo_default.c.v'))
+		write_test_file(os.join_path(tmp_dir, 'foo_${target}.c.v'))
+		names := get_v_files_from_dir(tmp_dir, []string{}, target).map(os.file_name(it))
+		assert 'foo_${target}.c.v' in names
+		assert 'foo_default.c.v' !in names
+		os.rm(os.join_path(tmp_dir, 'foo_default.c.v')) or {}
+		os.rm(os.join_path(tmp_dir, 'foo_${target}.c.v')) or {}
+	}
 }
 
 fn test_active_file_imports_filters_conditional_imports_by_target_os() {
@@ -196,23 +330,56 @@ fn test_active_file_imports_filters_conditional_imports_by_target_os() {
 					}
 				}
 			}),
+			ast.Stmt(ast.ExprStmt{
+				expr: ast.ComptimeExpr{
+					expr: ast.IfExpr{
+						cond:  ast.Ident{
+							name: 'none'
+						}
+						stmts: [
+							ast.Stmt(ast.ImportStmt{
+								name: 'nonemod'
+							}),
+						]
+					}
+				}
+			}),
 		]
 	}
 	windows_names := active_file_imports(file, [], 'windows').map(it.name)
 	linux_names := active_file_imports(file, [], 'linux').map(it.name)
 	macos_names := active_file_imports(file, [], 'macos').map(it.name)
+	none_names := active_file_imports(file, [], 'none').map(it.name)
+	windows_with_linux_define_names := active_file_imports_with_explicit(file, [
+		'linux',
+	], [
+		'linux',
+	], 'windows').map(it.name)
 
 	assert 'winmod' in windows_names
 	assert 'linmod' !in windows_names
 	assert 'macmod' !in windows_names
+	assert 'nonemod' !in windows_names
 
 	assert 'linmod' in linux_names
 	assert 'winmod' !in linux_names
 	assert 'macmod' !in linux_names
+	assert 'nonemod' !in linux_names
 
 	assert 'macmod' in macos_names
 	assert 'winmod' !in macos_names
 	assert 'linmod' !in macos_names
+	assert 'nonemod' !in macos_names
+
+	assert 'nonemod' in none_names
+	assert 'linmod' !in none_names
+	assert 'winmod' !in none_names
+	assert 'macmod' !in none_names
+
+	assert 'winmod' in windows_with_linux_define_names
+	assert 'linmod' !in windows_with_linux_define_names
+	assert 'macmod' !in windows_with_linux_define_names
+	assert 'nonemod' !in windows_with_linux_define_names
 }
 
 fn test_header_cache_stamp_uses_target_os_preference() {

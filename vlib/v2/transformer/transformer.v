@@ -141,7 +141,8 @@ mut:
 	cur_import_aliases                 map[string]string
 	// Cached at construction: avoids per-block t.pref nil/enum re-check in
 	// hot loops (transform_stmts, IfGuardExpr handling, OrExpr expansion, etc).
-	is_native_be bool
+	is_native_be               bool
+	macos_tiny_candidate_graph bool
 }
 
 fn escape_c_keyword(name string) string {
@@ -318,6 +319,10 @@ pub fn (mut t Transformer) set_file_set(fs &token.FileSet) {
 	t.file_set = unsafe { fs }
 }
 
+pub fn (mut t Transformer) enable_macos_tiny_candidate_graph() {
+	t.macos_tiny_candidate_graph = true
+}
+
 // new_worker_clone creates a lightweight Transformer that shares read-only state
 // (env, pref, elided_fns, comptime_vmodroot, file_set) but has its own
 // accumulator maps for thread-safe per-file transformation.
@@ -370,6 +375,7 @@ pub fn (t &Transformer) new_worker_clone(worker_idx int) &Transformer {
 		cur_generic_call_file_idx:          t.cur_generic_call_file_idx
 		cur_import_aliases:                 t.cur_import_aliases.clone()
 		is_native_be:                       t.is_native_be
+		macos_tiny_candidate_graph:         t.macos_tiny_candidate_graph
 	}
 }
 
@@ -2392,6 +2398,16 @@ fn (t &Transformer) uses_minimal_windows_x64_runtime() bool {
 		&& t.pref.target_os_or_host().to_lower() == 'windows'
 }
 
+fn (t &Transformer) uses_minimal_linux_x64_runtime() bool {
+	return t.pref != unsafe { nil } && t.pref.backend == .x64 && t.pref.get_effective_arch() == .x64
+		&& t.pref.target_os_or_host().to_lower() == 'linux'
+}
+
+fn (t &Transformer) uses_minimal_x64_runtime() bool {
+	return t.uses_minimal_windows_x64_runtime() || t.uses_minimal_linux_x64_runtime()
+		|| t.macos_tiny_candidate_graph
+}
+
 fn (t &Transformer) collect_runtime_init_imports_from_if_expr(node ast.IfExpr, mut imports []ast.ImportStmt) {
 	if t.eval_comptime_cond(node.cond) {
 		t.collect_runtime_init_imports_from_stmts(node.stmts, mut imports)
@@ -3506,10 +3522,10 @@ fn (mut t Transformer) inject_test_main(mut files []ast.File) {
 // `__v_init_consts_<mod>()` + `<mod>__init()` call ExprStmts that should be
 // prepended to main(): first the runtime-const init calls (one per
 // `t.runtime_const_modules` entry that has a registered fn_name; gated by
-// `uses_minimal_windows_x64_runtime` + `imported_runtime_init_modules` on
-// minimal-windows-x64), then the module-level `init()` calls (one per
-// module seen in files that declares a non-method `init` fn; gated by the
-// same minimal-windows filter; de-duped per module).
+// `uses_minimal_x64_runtime` + `imported_runtime_init_modules` on minimal x64
+// runtimes), then the module-level `init()` calls (one per module seen in
+// files that declares a non-method `init` fn; gated by the same minimal
+// runtime filter; de-duped per module).
 //
 // Does NOT mutate `files` or any caller state. Caller decides whether to
 // splice the result into a legacy `[]ast.File` (via
@@ -3523,15 +3539,15 @@ pub fn (mut t Transformer) runtime_const_init_main_calls_parts(files []ast.File)
 	mut init_calls := []ast.Stmt{}
 	mut main_const_calls := []ast.Stmt{}
 	mut seen_init_mods := map[string]bool{}
-	minimal_windows_x64_runtime := t.uses_minimal_windows_x64_runtime()
-	init_modules := if minimal_windows_x64_runtime {
+	minimal_x64_runtime := t.uses_minimal_x64_runtime()
+	init_modules := if minimal_x64_runtime {
 		t.imported_runtime_init_modules(files)
 	} else {
 		map[string]bool{}
 	}
 	main_mod := main_module_name_from_files(files)
 	for mod in t.runtime_const_modules {
-		if minimal_windows_x64_runtime && mod !in init_modules {
+		if minimal_x64_runtime && mod !in init_modules {
 			continue
 		}
 		fn_name := t.runtime_const_init_fn_name[mod] or { continue }
@@ -3553,7 +3569,7 @@ pub fn (mut t Transformer) runtime_const_init_main_calls_parts(files []ast.File)
 		if file.mod in seen_init_mods {
 			continue
 		}
-		if minimal_windows_x64_runtime && file.mod !in init_modules {
+		if minimal_x64_runtime && file.mod !in init_modules {
 			continue
 		}
 		for stmt in file.stmts {
@@ -3663,13 +3679,10 @@ pub fn (mut t Transformer) runtime_const_init_main_calls_parts_from_flat(flat &a
 	mut init_calls := []ast.Stmt{}
 	mut main_const_calls := []ast.Stmt{}
 	mut seen_init_mods := map[string]bool{}
-	minimal_windows_x64_runtime := t.uses_minimal_windows_x64_runtime()
-	init_modules := if minimal_windows_x64_runtime {
-		// Dormant branch (only on minimal_windows_x64 backend); route through
-		// the legacy file-walker via a one-shot rehydrate. Direct flat port
-		// would need `active_runtime_init_imports` (comptime-active import
-		// collector) lifted to cursors, which is non-trivial and not yet
-		// exercised by any test target.
+	minimal_x64_runtime := t.uses_minimal_x64_runtime()
+	init_modules := if minimal_x64_runtime {
+		// Minimal x64 paths are uncommon and reuse the legacy import collector
+		// for comptime-active imports until that logic is ported to cursors.
 		rehydrated := flat.to_files_range(0, flat.files.len)
 		t.imported_runtime_init_modules(rehydrated)
 	} else {
@@ -3677,7 +3690,7 @@ pub fn (mut t Transformer) runtime_const_init_main_calls_parts_from_flat(flat &a
 	}
 	main_mod := main_module_name_from_flat(flat)
 	for mod in t.runtime_const_modules {
-		if minimal_windows_x64_runtime && mod !in init_modules {
+		if minimal_x64_runtime && mod !in init_modules {
 			continue
 		}
 		fn_name := t.runtime_const_init_fn_name[mod] or { continue }
@@ -3701,7 +3714,7 @@ pub fn (mut t Transformer) runtime_const_init_main_calls_parts_from_flat(flat &a
 		if mod in seen_init_mods {
 			continue
 		}
-		if minimal_windows_x64_runtime && mod !in init_modules {
+		if minimal_x64_runtime && mod !in init_modules {
 			continue
 		}
 		stmts := fc.stmts()

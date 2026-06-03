@@ -3939,6 +3939,15 @@ fn (p &Parser) can_eval_comptime_cond(cond ast.Expr) bool {
 		ast.Ident {
 			return true
 		}
+		ast.ComptimeExpr {
+			return p.can_eval_comptime_cond(cond.expr)
+		}
+		ast.CallExpr {
+			return parser_pkgconfig_call_name(cond) != none
+		}
+		ast.CallOrCastExpr {
+			return parser_pkgconfig_call_name(cond) != none
+		}
 		ast.PrefixExpr {
 			if cond.op != .not {
 				return false
@@ -3976,6 +3985,19 @@ fn (p &Parser) eval_comptime_cond(cond ast.Expr) bool {
 		ast.Ident {
 			return p.eval_comptime_flag(cond.name)
 		}
+		ast.ComptimeExpr {
+			return p.eval_comptime_cond(cond.expr)
+		}
+		ast.CallExpr {
+			if pkg_name := parser_pkgconfig_call_name(cond) {
+				return pref.comptime_pkgconfig_value(pkg_name)
+			}
+		}
+		ast.CallOrCastExpr {
+			if pkg_name := parser_pkgconfig_call_name(cond) {
+				return pref.comptime_pkgconfig_value(pkg_name)
+			}
+		}
 		ast.PrefixExpr {
 			if cond.op == .not {
 				return !p.eval_comptime_cond(cond.expr)
@@ -3990,10 +4012,10 @@ fn (p &Parser) eval_comptime_cond(cond ast.Expr) bool {
 			}
 		}
 		ast.PostfixExpr {
-			// `feature?` form — the `?` is syntactic sugar for the inner flag
-			// expression, so just delegate to it.
 			if cond.op == .question {
-				return p.eval_comptime_cond(cond.expr)
+				if cond.expr is ast.Ident {
+					return pref.comptime_optional_flag_value(p.pref, cond.expr.name)
+				}
 			}
 		}
 		ast.ParenExpr {
@@ -4009,4 +4031,37 @@ fn (p &Parser) eval_comptime_cond(cond ast.Expr) bool {
 // the parser and the transformer recognize exactly the same flag names.
 fn (p &Parser) eval_comptime_flag(name string) bool {
 	return pref.comptime_flag_value(p.pref, name)
+}
+
+fn parser_pkgconfig_call_name(expr ast.Expr) ?string {
+	match expr {
+		ast.CallExpr {
+			if expr.lhs is ast.Ident && expr.lhs.name == 'pkgconfig' && expr.args.len == 1 {
+				return parser_string_literal_value(expr.args[0])
+			}
+		}
+		ast.CallOrCastExpr {
+			if expr.lhs is ast.Ident && expr.lhs.name == 'pkgconfig' {
+				return parser_string_literal_value(expr.expr)
+			}
+		}
+		else {}
+	}
+
+	return none
+}
+
+fn parser_string_literal_value(expr ast.Expr) ?string {
+	if expr is ast.StringLiteral {
+		return parser_unquote_string_literal_value(expr.value)
+	}
+	return none
+}
+
+fn parser_unquote_string_literal_value(value string) string {
+	if value.len >= 2 && ((value[0] == `"` && value[value.len - 1] == `"`)
+		|| (value[0] == `'` && value[value.len - 1] == `'`)) {
+		return value[1..value.len - 1]
+	}
+	return value
 }

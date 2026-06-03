@@ -736,6 +736,21 @@ fn test_c_error_missing_library_name_with_regular_c_error() {
 	assert c_error_missing_library_name(c_output) == ''
 }
 
+fn test_c_error_should_send_bug_report_skips_libatomic() {
+	c_output := '/usr/bin/ld: cannot find -latomic\ncollect2: error: ld returned 1 exit status\n'
+	assert !c_error_should_send_bug_report(c_output)
+}
+
+fn test_c_error_should_send_bug_report_skips_missing_library() {
+	c_output := '/usr/bin/ld: cannot find -lllvm\ncollect2: error: ld returned 1 exit status\n'
+	assert !c_error_should_send_bug_report(c_output)
+}
+
+fn test_c_error_should_send_bug_report_for_regular_c_error() {
+	c_output := "error: unknown type name 'my_missing_type'"
+	assert c_error_should_send_bug_report(c_output)
+}
+
 fn prepare_test_ccompiler_alias(test_root string, compiler_name string, version_output string) string {
 	os.rmdir_all(test_root) or {}
 	os.mkdir_all(test_root) or { panic(err) }

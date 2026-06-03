@@ -16,6 +16,9 @@ pub fn should_find_windows_host_c_compiler(pref_ &pref.Preferences) bool {
 }
 
 pub fn compile(command string, pref_ &pref.Preferences, backend_cb FnBackend) {
+	if pref_.is_test {
+		disable_c_error_bug_reports()
+	}
 	check_if_input_file_exists(pref_)
 	check_if_output_folder_is_writable(pref_)
 	$if windows {

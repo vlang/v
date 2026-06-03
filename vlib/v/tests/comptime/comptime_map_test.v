@@ -57,8 +57,14 @@ fn test_comptime_var_map_different_types() {
 	mut vals := []string{}
 
 	$for field in Data.fields {
-		$if field.typ is $map {
-			gg := data.$(field.name)
+		$if field.typ is map[string]StructType {
+			gg := data.$(field.name).clone()
+			for k, v in gg {
+				keys << k.str()
+				vals << v.str()
+			}
+		} $else $if field.typ is map[string]map[string]int {
+			gg := data.$(field.name).clone()
 			for k, v in gg {
 				keys << k.str()
 				vals << v.str()
