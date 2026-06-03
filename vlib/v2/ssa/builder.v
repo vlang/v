@@ -454,11 +454,10 @@ pub fn (mut b Builder) build_all_from_flat(flat &ast.FlatAst) {
 			if c.kind() != .stmt_struct_decl {
 				continue
 			}
-			decoded := c.flat.decode_stmt(c.id)
-			if decoded is ast.StructDecl {
-				if decoded.name in ['string', 'array'] {
-					b.register_struct(decoded)
-				}
+			// s239: cursor-native struct registration — no decode_stmt. The struct
+			// name is the cursor's name_id.
+			if c.name() in ['string', 'array'] {
+				b.register_struct_from_flat(c)
 			}
 		}
 	}
@@ -963,6 +962,19 @@ fn (mut b Builder) record_struct_field_array_elem_type(type_id TypeID, field_nam
 		return
 	}
 	elem_type := b.array_elem_type_from_ast_type(field_type)
+	if elem_type != 0 {
+		b.struct_field_array_elem_types[struct_field_array_elem_key(type_id, field_name)] = elem_type
+	}
+}
+
+// record_struct_field_array_elem_type_from_flat (s239) is the cursor mirror of
+// record_struct_field_array_elem_type. `field_type_c` is the field's typ cursor;
+// elem-type inference reuses array_elem_type_from_ast_type_from_flat (s233).
+fn (mut b Builder) record_struct_field_array_elem_type_from_flat(type_id TypeID, field_name string, field_type_c ast.Cursor, field_ssa_type TypeID) {
+	if field_name == '' || field_ssa_type != b.get_array_type() {
+		return
+	}
+	elem_type := b.array_elem_type_from_ast_type_from_flat(field_type_c)
 	if elem_type != 0 {
 		b.struct_field_array_elem_types[struct_field_array_elem_key(type_id, field_name)] = elem_type
 	}
@@ -1588,10 +1600,8 @@ fn (mut b Builder) register_types_pass1_from_flat(file_cursor ast.FileCursor) {
 		c := stmts.at(si)
 		match c.kind() {
 			.stmt_struct_decl {
-				decoded := c.flat.decode_stmt(c.id)
-				if decoded is ast.StructDecl {
-					b.register_struct_name(decoded)
-				}
+				// s239: cursor-native struct-name registration — no decode_stmt.
+				b.register_struct_name_from_flat(c)
 			}
 			.stmt_enum_decl {
 				// s238: cursor-native enum registration — no decode_stmt.
@@ -1633,10 +1643,8 @@ fn (mut b Builder) register_types_pass2_from_flat(file_cursor ast.FileCursor) {
 	for si in 0 .. stmts.len() {
 		c := stmts.at(si)
 		if c.kind() == .stmt_struct_decl {
-			decoded := c.flat.decode_stmt(c.id)
-			if decoded is ast.StructDecl {
-				b.register_struct_fields(decoded)
-			}
+			// s239: cursor-native struct-fields registration — no decode_stmt.
+			b.register_struct_fields_from_flat(c)
 		}
 	}
 }
@@ -1655,6 +1663,23 @@ fn (mut b Builder) struct_mangled_name(decl ast.StructDecl) string {
 	}
 }
 
+// struct_mangled_name_from_flat (s239) is the cursor mirror of struct_mangled_name.
+// The struct name is the cursor's name_id.
+fn (mut b Builder) struct_mangled_name_from_flat(c ast.Cursor) string {
+	name_str := c.name()
+	if !ssa_string_ok(name_str) || name_str == '' {
+		return ''
+	}
+	return if b.cur_module == 'builtin'
+		&& name_str in ['array', 'string', 'map', 'DenseArray', 'IError', 'Error', 'MessageError', 'None__', '_option', '_result', 'Option'] {
+		name_str
+	} else if b.cur_module != '' && b.cur_module != 'main' {
+		'${b.cur_module}__${name_str}'
+	} else {
+		name_str
+	}
+}
+
 // register_struct_name registers a struct name with an empty struct type.
 // The fields will be filled in by register_struct_fields in pass 2.
 fn (mut b Builder) register_struct_name(decl ast.StructDecl) {
@@ -1670,6 +1695,25 @@ fn (mut b Builder) register_struct_name(decl ast.StructDecl) {
 	type_id := b.mod.type_store.register(Type{
 		kind:     .struct_t
 		is_union: decl.is_union
+	})
+	b.struct_types[name] = type_id
+	b.mod.c_struct_names[type_id] = name
+}
+
+// register_struct_name_from_flat (s239) is the cursor mirror of register_struct_name.
+// StructDecl flat = (.stmt_struct_decl, name in name_id, is_union in flags,
+// [edge0=attrs, edge1=implements, edge2=embedded, edge3=generic_params, edge4=fields]).
+fn (mut b Builder) register_struct_name_from_flat(c ast.Cursor) {
+	name := b.struct_mangled_name_from_flat(c)
+	if name == '' || !ssa_string_ok(name) {
+		return
+	}
+	if name in b.struct_types {
+		return
+	}
+	type_id := b.mod.type_store.register(Type{
+		kind:     .struct_t
+		is_union: c.flag(ast.flag_is_union)
 	})
 	b.struct_types[name] = type_id
 	b.mod.c_struct_names[type_id] = name
@@ -1711,6 +1755,49 @@ fn (mut b Builder) register_struct_fields(decl ast.StructDecl) {
 		fields:      field_types
 		field_names: field_names
 		is_union:    decl.is_union
+	}
+}
+
+// register_struct_fields_from_flat (s239) is the cursor mirror of
+// register_struct_fields. embedded = c.list_at(2); fields = c.list_at(4)
+// (.aux_field_decl: name in name_id, typ at edge0).
+fn (mut b Builder) register_struct_fields_from_flat(c ast.Cursor) {
+	name := b.struct_mangled_name_from_flat(c)
+	if name == '' || !ssa_string_ok(name) {
+		return
+	}
+
+	type_id := b.struct_types[name] or { return }
+
+	// Skip if fields are already populated (e.g., builtin types registered in Phase 1a)
+	if b.mod.type_store.types[type_id].fields.len > 0 {
+		return
+	}
+
+	mut field_types := []TypeID{}
+	mut field_names := []string{}
+	embedded := c.list_at(2)
+	fields := c.list_at(4)
+
+	// Flatten embedded struct fields first (e.g., ObjectCommon in Const)
+	if embedded.len() > 0 {
+		b.collect_embedded_fields_from_flat(embedded, mut field_names, mut field_types)
+	}
+
+	for fi in 0 .. fields.len() {
+		field_c := fields.at(fi)
+		typ_c := field_c.edge(0)
+		ft := b.ast_type_to_ssa_from_flat(typ_c)
+		field_types << ft
+		field_name := field_c.name()
+		field_names << if ssa_string_ok(field_name) { field_name } else { '' }
+		b.record_struct_field_array_elem_type_from_flat(type_id, field_name, typ_c, ft)
+	}
+	b.mod.type_store.types[type_id] = Type{
+		kind:        .struct_t
+		fields:      field_types
+		field_names: field_names
+		is_union:    c.flag(ast.flag_is_union)
 	}
 }
 
@@ -1757,6 +1844,53 @@ fn (mut b Builder) register_struct(decl ast.StructDecl) {
 	}
 }
 
+// register_struct_from_flat (s239) is the cursor mirror of register_struct
+// (the combined name+fields path). embedded = c.list_at(2); fields = c.list_at(4).
+// The second loop's `field_types[fi]` indexing matches the AST exactly (fi indexes
+// the decl fields but field_types has the embedded fields prepended).
+fn (mut b Builder) register_struct_from_flat(c ast.Cursor) {
+	name := b.struct_mangled_name_from_flat(c)
+	if name == '' || !ssa_string_ok(name) {
+		return
+	}
+	if name in b.struct_types {
+		return
+	}
+
+	mut field_types := []TypeID{}
+	mut field_names := []string{}
+	embedded := c.list_at(2)
+	fields := c.list_at(4)
+
+	// Flatten embedded struct fields first
+	b.collect_embedded_fields_from_flat(embedded, mut field_names, mut field_types)
+
+	for fi in 0 .. fields.len() {
+		typ_c := fields.at(fi).edge(0)
+		ft := b.ast_type_to_ssa_from_flat(typ_c)
+		field_types << ft
+		field_name := fields.at(fi).name()
+		field_names << if ssa_string_ok(field_name) { field_name } else { '' }
+	}
+
+	type_id := b.mod.type_store.register(Type{
+		kind:        .struct_t
+		fields:      field_types
+		field_names: field_names
+		is_union:    c.flag(ast.flag_is_union)
+	})
+	b.struct_types[name] = type_id
+	b.mod.c_struct_names[type_id] = name
+	for fi in 0 .. fields.len() {
+		field_c := fields.at(fi)
+		field_name := field_c.name()
+		if ssa_string_ok(field_name) {
+			b.record_struct_field_array_elem_type_from_flat(type_id, field_name, field_c.edge(0),
+				field_types[fi])
+		}
+	}
+}
+
 // collect_embedded_fields resolves embedded type expressions and adds their
 // flattened fields to the field_names and field_types lists.
 // Embedded structs (e.g., `ObjectCommon` in `struct Const { ObjectCommon; int_val int }`)
@@ -1772,6 +1906,67 @@ fn (mut b Builder) collect_embedded_fields(embedded []ast.Expr, mut field_names 
 			if ssa_string_ok(lhs_name) && ssa_string_ok(emb.rhs.name) {
 				mod_name := lhs_name.replace('.', '_')
 				'${mod_name}__${emb.rhs.name}'
+			} else {
+				''
+			}
+		} else {
+			''
+		}
+		if emb_name == '' {
+			continue
+		}
+		// Look up the embedded struct type, trying module-qualified name first
+		mut emb_type_id := TypeID(0)
+		if b.cur_module != '' && b.cur_module != 'main' {
+			qualified := '${b.cur_module}__${emb_name}'
+			if qualified in b.struct_types {
+				emb_type_id = b.struct_types[qualified]
+			}
+		}
+		if emb_type_id == 0 {
+			if emb_name in b.struct_types {
+				emb_type_id = b.struct_types[emb_name]
+			}
+		}
+		if emb_type_id == 0 {
+			continue
+		}
+		if emb_type_id < b.mod.type_store.types.len {
+			emb_typ := b.mod.type_store.types[emb_type_id]
+			if emb_typ.kind == .struct_t && emb_typ.field_names.len > 0 {
+				for i, fname in emb_typ.field_names {
+					field_names << fname
+					if i < emb_typ.fields.len {
+						field_types << emb_typ.fields[i]
+					} else {
+						field_types << b.mod.type_store.get_int(64)
+					}
+				}
+			}
+		}
+	}
+}
+
+// collect_embedded_fields_from_flat (s239) is the cursor mirror of
+// collect_embedded_fields. Each embedded entry is an `.expr_ident` (`emb.name()`)
+// or an `.expr_selector` with an Ident lhs (`edge(0).name()` / rhs `edge(1).name()`).
+// The struct_types lookup + field-copy logic is identical (type-store reads only).
+fn (mut b Builder) collect_embedded_fields_from_flat(embedded ast.CursorList, mut field_names []string, mut field_types []TypeID) {
+	for ei in 0 .. embedded.len() {
+		emb := embedded.at(ei)
+		emb_name := if emb.kind() == .expr_ident {
+			n := emb.name()
+			if ssa_string_ok(n) {
+				n
+			} else {
+				''
+			}
+		} else if emb.kind() == .expr_selector && emb.edge(0).kind() == .expr_ident {
+			lhs_name := emb.edge(0).name()
+			rhs_name := emb.edge(1).name()
+			if ssa_string_ok(lhs_name) && ssa_string_ok(rhs_name) {
+				mod_name := lhs_name.replace('.', '_')
+				'${mod_name}__${rhs_name}'
 			} else {
 				''
 			}
