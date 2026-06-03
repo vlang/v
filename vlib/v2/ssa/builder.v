@@ -9502,7 +9502,13 @@ fn (mut b Builder) build_array_init_from_flat(c ast.Cursor) ValueID {
 			arr_fixed_type := b.mod.type_store.get_array(elem_type, arr_len)
 			ptr_type := b.mod.type_store.get_ptr(arr_fixed_type)
 			alloca := b.mod.add_instr(.alloca, b.cur_block, ptr_type, []ValueID{})
-			if arr_len <= 16 {
+			// Match the legacy build_array_init fixed-array zero-init exactly:
+			// per-element zero-store unless the native backend bulk-zeroes large
+			// allocas (x64). On arm64 (no bulk-zero) this runs for ALL sizes — the
+			// old `arr_len <= 16` cap left larger fixed buffers (e.g. strconv float
+			// format buffers) uninitialized, which broke the flat-SSA self-host.
+			if !b.native_backend_bulk_zero_alloca
+				|| arr_len <= fixed_array_empty_literal_element_store_threshold {
 				zero := b.mod.get_or_add_const(elem_type, '0')
 				elem_ptr_type := b.mod.type_store.get_ptr(elem_type)
 				i32_t := b.mod.type_store.get_int(32)
@@ -9515,7 +9521,7 @@ fn (mut b Builder) build_array_init_from_flat(c ast.Cursor) ValueID {
 					b.mod.add_instr(.store, b.cur_block, 0, [zero, gep])
 				}
 			}
-			return alloca
+			return b.mod.add_instr(.load, b.cur_block, arr_fixed_type, [alloca])
 		}
 	}
 
