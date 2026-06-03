@@ -4366,6 +4366,27 @@ fn (mut b Builder) checked_fn_scope_key(decl ast.FnDecl) string {
 	return '${b.cur_module}__${scope_fn_name}'
 }
 
+// checked_fn_scope_key_from_flat (s244) is the cursor mirror of checked_fn_scope_key.
+fn (mut b Builder) checked_fn_scope_key_from_flat(c ast.Cursor) string {
+	name_str := c.name()
+	scope_fn_name := if c.flag(ast.flag_is_method) {
+		mut recv_name := b.receiver_type_name_from_flat(c.edge(0).edge(0))
+		if b.cur_module != '' {
+			prefix := '${b.cur_module}__'
+			if recv_name.starts_with(prefix) {
+				recv_name = recv_name[prefix.len..]
+			}
+		}
+		'${recv_name}__${name_str}'
+	} else {
+		name_str
+	}
+	if b.cur_module == '' {
+		return scope_fn_name
+	}
+	return '${b.cur_module}__${scope_fn_name}'
+}
+
 fn is_generated_helper_fn_name(name string) bool {
 	return name.starts_with('Array_') || name.starts_with('Map_') || name.starts_with('__sort_cmp_')
 		|| name.starts_with('__go_wrap_') || name.starts_with('__go_entry_')
@@ -4715,10 +4736,13 @@ pub fn (mut b Builder) build_fn(decl ast.FnDecl) {
 // rehydration of the body. Mirrors `build_fn` line-for-line for the
 // signature/params setup; the only divergence is the body source.
 pub fn (mut b Builder) build_fn_from_flat(c ast.Cursor) {
-	decl := c.flat.decode_fn_decl_signature(c.id)
-	fn_name := b.mangle_fn_name(decl)
+	// s244: read the FnDecl signature straight from the cursor — no decode.
+	// FnDecl flat: name in name_id, language in aux, is_method/is_static flags;
+	// edge0=receiver (.aux_parameter), edge1=typ (.typ_fn), edge3=body stmts.
+	is_method := c.flag(ast.flag_is_method)
+	fn_name := b.mangle_fn_name_from_flat(c)
 	// Skip C-language extern functions without bodies
-	if decl.language == .c {
+	if unsafe { ast.Language(int(c.aux())) } == .c {
 		return
 	}
 	func_idx := b.fn_index[fn_name] or { return }
@@ -4727,7 +4751,7 @@ pub fn (mut b Builder) build_fn_from_flat(c ast.Cursor) {
 	// Skip if already built (can happen with .c.v and .v files).
 	// Exception: user-defined methods always override auto-generated non-method functions.
 	if b.mod.funcs[func_idx].blocks.len > 0 {
-		if decl.is_method && body_len > 0 {
+		if is_method && body_len > 0 {
 			b.mod.func_clear_blocks(func_idx)
 		} else {
 			return
@@ -4758,7 +4782,7 @@ pub fn (mut b Builder) build_fn_from_flat(c ast.Cursor) {
 	}
 
 	b.cur_func = func_idx
-	b.cur_fn_scope_key = b.checked_fn_scope_key(decl)
+	b.cur_fn_scope_key = b.checked_fn_scope_key_from_flat(c)
 
 	// Reset per-fn state
 	b.vars = map[string]ValueID{}
@@ -4772,15 +4796,14 @@ pub fn (mut b Builder) build_fn_from_flat(c ast.Cursor) {
 	entry := b.mod.add_block(func_idx, 'entry')
 	b.cur_block = entry
 
-	// Add receiver param (skip for static methods)
-	if decl.is_method && !decl.is_static {
-		receiver_name := if decl.receiver.name != '' {
-			decl.receiver.name
-		} else {
-			'self'
-		}
-		recv_type := b.ast_type_to_ssa(decl.receiver.typ)
-		actual_type := if decl.receiver.is_mut {
+	// Add receiver param (skip for static methods). receiver = edge0 (.aux_parameter:
+	// name in name_id, is_mut flag, typ at edge0).
+	if is_method && !c.flag(ast.flag_is_static) {
+		recv_c := c.edge(0)
+		recv_name := recv_c.name()
+		receiver_name := if recv_name != '' { recv_name } else { 'self' }
+		recv_type := b.ast_type_to_ssa_from_flat(recv_c.edge(0))
+		actual_type := if recv_c.flag(ast.flag_is_mut) {
 			b.mod.type_store.get_ptr(recv_type)
 		} else {
 			recv_type
@@ -4793,29 +4816,34 @@ pub fn (mut b Builder) build_fn_from_flat(c ast.Cursor) {
 		b.vars[receiver_name] = alloca
 	}
 
-	for param in decl.typ.params {
-		param_type := b.ast_type_to_ssa(param.typ)
+	// params = typ(.typ_fn = edge1).list_at(1); each is an .aux_parameter.
+	params := c.edge(1).list_at(1)
+	for pi in 0 .. params.len() {
+		param_c := params.at(pi)
+		param_name := param_c.name()
+		typ_c := param_c.edge(0)
+		param_type := b.ast_type_to_ssa_from_flat(typ_c)
 		is_already_ptr := param_type < b.mod.type_store.types.len
 			&& b.mod.type_store.types[param_type].kind == .ptr_t
-		actual_type := if param.is_mut && !is_already_ptr {
+		actual_type := if param_c.flag(ast.flag_is_mut) && !is_already_ptr {
 			b.mod.type_store.get_ptr(param_type)
 		} else {
 			param_type
 		}
-		param_val := b.mod.add_value_node(.argument, actual_type, param.name, 0)
+		param_val := b.mod.add_value_node(.argument, actual_type, param_name, 0)
 		b.mod.func_add_param(func_idx, param_val)
 		alloca := b.mod.add_instr(.alloca, entry, b.mod.type_store.get_ptr(actual_type),
 			[]ValueID{})
 		b.mod.add_instr(.store, entry, 0, [param_val, alloca])
-		b.vars[param.name] = alloca
+		b.vars[param_name] = alloca
 
-		if param.typ is ast.Ident {
-			param_type_name := param.typ.name
+		if typ_c.kind() == .expr_ident {
+			param_type_name := typ_c.name()
 			if param_type_name.starts_with('Array_') {
 				elem_name := param_type_name['Array_'.len..]
 				elem_ssa := b.ident_type_to_ssa(elem_name)
 				if elem_ssa != 0 {
-					b.array_elem_types[param.name] = elem_ssa
+					b.array_elem_types[param_name] = elem_ssa
 				}
 			}
 		}
