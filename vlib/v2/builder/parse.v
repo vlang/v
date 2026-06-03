@@ -380,8 +380,8 @@ fn stmt_uses_channel(stmt ast.Stmt) bool {
 			return expr_type_slots_use_channel(stmt.expr)
 		}
 		ast.ForStmt {
-			return stmt_uses_channel(stmt.init) || stmt_uses_channel(stmt.post)
-				|| stmts_use_channel(stmt.stmts)
+			return stmt_uses_channel(stmt.init) || expr_type_slots_use_channel(stmt.cond)
+				|| stmt_uses_channel(stmt.post) || stmts_use_channel(stmt.stmts)
 		}
 		ast.GlobalDecl {
 			return fields_use_channel(stmt.fields)
