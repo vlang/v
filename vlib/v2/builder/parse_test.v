@@ -366,6 +366,41 @@ fn test_active_file_imports_skips_sync_for_channel_in_inactive_comptime_branch()
 	assert 'sync' in windows_imports
 }
 
+fn test_active_file_imports_skips_sync_for_channel_in_sync_module() {
+	file := ast.File{
+		mod:   'sync'
+		name:  'cond.v'
+		stmts: [
+			ast.Stmt(ast.ModuleStmt{
+				name: 'sync'
+			}),
+			ast.Stmt(ast.StructDecl{
+				name:   'Cond'
+				fields: [
+					ast.FieldDecl{
+						name: 'waiters'
+						typ:  ast.Type(ast.ArrayType{
+							elem_type: ast.Expr(ast.Type(ast.ChannelType{
+								elem_type: ast.Expr(ast.Ident{
+									name: 'bool'
+								})
+							}))
+						})
+					},
+				]
+			}),
+		]
+	}
+	imports := active_file_imports(file, [], 'mac').map(it.name)
+	mut flat_builder := ast.new_flat_builder()
+	flat_builder.append_file(file)
+	flat_imports := active_file_imports_from_flat(&flat_builder.flat, flat_builder.flat.files[0],
+		[], [], 'mac').map(it.name)
+
+	assert 'sync' !in imports
+	assert 'sync' !in flat_imports
+}
+
 fn test_active_file_imports_adds_sync_for_channel_in_if_condition() {
 	file := ast.File{
 		mod:   'main'

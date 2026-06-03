@@ -311,8 +311,8 @@ fn imports_contain(imports []ast.ImportStmt, name string) bool {
 	return false
 }
 
-fn add_implicit_sync_import_if_needed(mut imports []ast.ImportStmt, uses_channel bool) {
-	if !uses_channel || imports_contain(imports, 'sync') {
+fn add_implicit_sync_import_if_needed(mut imports []ast.ImportStmt, current_module string, uses_channel bool) {
+	if !uses_channel || current_module == 'sync' || imports_contain(imports, 'sync') {
 		return
 	}
 	imports << ast.ImportStmt{
@@ -738,7 +738,7 @@ fn active_file_imports_with_options(file ast.File, user_defines []string, explic
 	mut imports := file.imports.clone()
 	collect_active_imports_from_stmts_with_options(file.stmts, user_defines, explicit_user_defines,
 		target_os, allow_pkgconfig, mut imports)
-	add_implicit_sync_import_if_needed(mut imports, stmts_use_channel_with_options(file.stmts, ChannelScanOptions{
+	add_implicit_sync_import_if_needed(mut imports, file.mod, stmts_use_channel_with_options(file.stmts, ChannelScanOptions{
 		user_defines:          user_defines
 		explicit_user_defines: explicit_user_defines
 		target_os:             target_os
@@ -761,7 +761,12 @@ fn active_file_imports_from_flat_with_options(flat &ast.FlatAst, ff ast.FlatFile
 	stmts := flat.read_file_stmts(ff)
 	collect_active_imports_from_stmts_with_options(stmts, user_defines, explicit_user_defines,
 		target_os, allow_pkgconfig, mut imports)
-	add_implicit_sync_import_if_needed(mut imports, stmts_use_channel_with_options(stmts, ChannelScanOptions{
+	module_name := if ff.mod_idx >= 0 && ff.mod_idx < flat.strings.len {
+		flat.strings[ff.mod_idx]
+	} else {
+		'main'
+	}
+	add_implicit_sync_import_if_needed(mut imports, module_name, stmts_use_channel_with_options(stmts, ChannelScanOptions{
 		user_defines:          user_defines
 		explicit_user_defines: explicit_user_defines
 		target_os:             target_os
