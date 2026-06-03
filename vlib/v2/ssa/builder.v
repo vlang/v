@@ -9166,9 +9166,16 @@ fn (mut b Builder) build_call_from_flat(c ast.Cursor) ValueID {
 					return b.build_cast_expr_to_type_id_from_flat(c.edge(1), target_type)
 				}
 			}
-			if target_type := b.call_lhs_type_to_ssa_from_flat(lhs_c) {
-				return b.build_cast_expr_to_type_id_from_flat(c.edge(1), target_type)
-			}
+			// s250: do NOT run the `call_lhs_type_to_ssa_from_flat` cast here. This
+			// fast-path is gated on the RAW `lhs_name !in fn_index`, but a builtin
+			// method like `string__f64` is registered as `builtin__string__f64`, so
+			// the raw name is absent from fn_index even though the call resolves to a
+			// real function. Legacy `build_call` gates its s215 `call_lhs_type_to_ssa`
+			// cast on the RESOLVED fn_name; `build_call_resolved_from_flat` does the
+			// same (line ~11712). Casting on the raw name here bitcast `string__f64(s)`
+			// to f64 → garbage floats. Let such calls fall through to the resolved
+			// path; genuine casts (`f64(x)`, resolved name still not in fn_index) cast
+			// there correctly.
 			fn_name := b.resolve_call_name_ident_from_flat(lhs_c)
 			if fn_name != lhs_name && fn_name != '' && fn_name !in b.fn_index {
 				if target_type := b.struct_types[fn_name] {
