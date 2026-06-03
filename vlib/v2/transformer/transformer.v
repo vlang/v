@@ -123,6 +123,16 @@ mut:
 	cached_methods     map[string][]&types.Fn
 	cached_method_keys []string
 	cached_fn_scopes   map[string]&types.Scope
+	// cached_method_base_index maps type_name -> generic-base method name ->
+	// FnType, precomputed once from cached_methods. lookup_method_cached used to
+	// linearly scan every method of a type and recompute its base name (via
+	// generic_base_name_without_specialization) on every call site — O(calls x
+	// methods) with a string scan inner loop, the single biggest transform cost.
+	// This makes the lookup O(1). Flat map keyed by "type_name#base_name" -> the
+	// types.Type sum (callers smartcast to FnType). Flat (not nested) so a lookup
+	// doesn't copy an inner map, and stored as the sum (not the FnType variant)
+	// because v2's own codegen mishandles a map valued by a bare sum-variant.
+	cached_method_base_index map[string]types.Type
 	// Accumulated synth types for deferred application (thread-safe).
 	// Instead of writing directly to env.set_expr_type during parallel transform,
 	// store here and apply after merge.
@@ -348,6 +358,7 @@ pub fn (t &Transformer) new_worker_clone(worker_idx int) &Transformer {
 		file_set:                           unsafe { t.file_set }
 		cached_scopes:                      t.cached_scopes.clone()
 		cached_methods:                     t.cached_methods.clone()
+		cached_method_base_index:           t.cached_method_base_index.clone()
 		cached_method_keys:                 t.cached_method_keys.clone()
 		cached_fn_scopes:                   t.cached_fn_scopes.clone()
 		synth_types:                        t.synth_types.clone()
@@ -1509,6 +1520,33 @@ fn (mut t Transformer) cache_env_maps() {
 	t.cached_methods = t.env.snapshot_methods()
 	t.cached_method_keys = t.cached_methods.keys()
 	t.cached_fn_scopes = t.env.snapshot_fn_scopes()
+	t.build_cached_method_base_index()
+}
+
+// build_cached_method_base_index precomputes, for each type, a base-method-name
+// -> FnType map so lookup_method_cached is O(1) instead of scanning every method
+// and recomputing base names per call site. For each base name it keeps the
+// first method (in snapshot order) whose type is an FnType, matching the old
+// linear scan's "first base-or-exact match that is a FnType wins" semantics.
+fn (mut t Transformer) build_cached_method_base_index() {
+	// Iterate via keys()+index, not `for k, v in t.cached_methods`: v2's own
+	// codegen mistypes the value of a `for k, v` over map[string][]&types.Fn as
+	// []types.Fn (value array), breaking self-host.
+	mut index := map[string]types.Type{}
+	for type_name in t.cached_methods.keys() {
+		methods := t.cached_methods[type_name] or { continue }
+		for method in methods {
+			typ := method.get_typ()
+			if typ is types.FnType {
+				base := generic_base_name_without_specialization(method.get_name())
+				key := '${type_name}#${base}'
+				if key !in index {
+					index[key] = typ
+				}
+			}
+		}
+	}
+	t.cached_method_base_index = index.move()
 }
 
 // GeneratedFnsParts is the pure-computation bundle produced by

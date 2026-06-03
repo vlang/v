@@ -1740,18 +1740,34 @@ fn monomorphized_clone_name(fn_key string, decl ast.FnDecl, spec_name string) st
 }
 
 fn generic_base_name_without_specialization(name string) string {
-	mut base_name := name
-	bracket_pos := base_name.index_u8(`[`)
-	if bracket_pos > 0 {
-		base_name = base_name[..bracket_pos]
+	// Hot path: called per-method per-call-site during generic collection.
+	// Hand-rolled byte scans replace string.contains/.index/.all_before, each of
+	// which builds a fresh KMP failure-table heap allocation on every call. With
+	// millions of calls (and most names having neither `[` nor `_T_`) that
+	// allocation churn dominated the whole transform stage. This is behaviour-
+	// identical to the previous index_u8(`[`)>0 / contains('_T_') / ends_with('_T')
+	// version, just without the per-call allocations.
+	mut end := name.len
+	for i in 0 .. name.len {
+		if name[i] == `[` {
+			if i > 0 {
+				end = i
+			}
+			break
+		}
 	}
-	if base_name.contains('_T_') {
-		return base_name.all_before('_T_')
+	for i := 0; i + 3 <= end; i++ {
+		if name[i] == `_` && name[i + 1] == `T` && name[i + 2] == `_` {
+			return name[..i]
+		}
 	}
-	if base_name.ends_with('_T') {
-		return base_name[..base_name.len - 2]
+	if end >= 2 && name[end - 1] == `T` && name[end - 2] == `_` {
+		return name[..end - 2]
 	}
-	return base_name
+	if end == name.len {
+		return name
+	}
+	return name[..end]
 }
 
 fn (mut t Transformer) index_generic_fn_decl_for_monomorphize(mut decl_owner map[string]int, mut decl_node map[string]ast.FnDecl, decl ast.FnDecl, file_idx int, module_name string) {
