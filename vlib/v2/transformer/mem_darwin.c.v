@@ -3,8 +3,6 @@
 // that can be found in the LICENSE file.
 module transformer
 
-import os
-
 #include <malloc/malloc.h>
 
 struct C.malloc_statistics_t {
@@ -17,14 +15,11 @@ struct C.malloc_statistics_t {
 fn C.malloc_default_zone() voidptr
 fn C.malloc_zone_statistics(zone voidptr, stats &C.malloc_statistics_t)
 
-// t_print_mem reports live malloc bytes at a transformer sub-phase boundary.
-// Gated on V2_MEM. Under -gc none the value is monotonic, so deltas between
-// stages are the exact bytes each sub-phase allocated.
-fn t_print_mem(stage string) {
-	if os.getenv('V2_MEM') == '' {
-		return
-	}
+// darwin_transform_live_mb returns the process's currently live malloc bytes
+// (in MB) on macOS. Used by t_print_mem; only referenced from its `$if macos`
+// branch, so the macOS-only C calls here never reach other platforms.
+fn darwin_transform_live_mb() u64 {
 	mut st := C.malloc_statistics_t{}
 	C.malloc_zone_statistics(C.malloc_default_zone(), &st)
-	eprintln('  [mem]   transform/${stage}: live ${u64(st.size_in_use) / (1024 * 1024)} MB')
+	return u64(st.size_in_use) / (1024 * 1024)
 }
