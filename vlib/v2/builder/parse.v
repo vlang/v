@@ -445,6 +445,15 @@ fn exprs_type_slots_use_channel(exprs []ast.Expr) bool {
 	return false
 }
 
+fn string_inters_use_channel(inters []ast.StringInter) bool {
+	for inter in inters {
+		if expr_type_slots_use_channel(inter.expr) || expr_type_slots_use_channel(inter.format_expr) {
+			return true
+		}
+	}
+	return false
+}
+
 fn expr_type_slots_use_channel(expr ast.Expr) bool {
 	match expr {
 		ast.ArrayInitExpr {
@@ -472,6 +481,9 @@ fn expr_type_slots_use_channel(expr ast.Expr) bool {
 		ast.ComptimeExpr {
 			return expr_type_slots_use_channel(expr.expr)
 		}
+		ast.FieldInit {
+			return expr_type_slots_use_channel(expr.value)
+		}
 		ast.FnLiteral {
 			return fn_type_uses_channel(expr.typ) || stmts_use_channel(expr.stmts)
 		}
@@ -488,11 +500,24 @@ fn expr_type_slots_use_channel(expr ast.Expr) bool {
 		ast.IfGuardExpr {
 			return stmt_uses_channel(ast.Stmt(expr.stmt))
 		}
+		ast.IndexExpr {
+			return expr_type_slots_use_channel(expr.lhs) || expr_type_slots_use_channel(expr.expr)
+		}
+		ast.InfixExpr {
+			return expr_type_slots_use_channel(expr.lhs) || expr_type_slots_use_channel(expr.rhs)
+		}
 		ast.InitExpr {
 			return type_expr_uses_channel(expr.typ) || field_inits_use_channel(expr.fields)
 		}
+		ast.KeywordOperator {
+			return exprs_type_slots_use_channel(expr.exprs)
+		}
+		ast.LambdaExpr {
+			return expr_type_slots_use_channel(expr.expr)
+		}
 		ast.LockExpr {
-			return stmts_use_channel(expr.stmts)
+			return exprs_type_slots_use_channel(expr.lock_exprs)
+				|| exprs_type_slots_use_channel(expr.rlock_exprs) || stmts_use_channel(expr.stmts)
 		}
 		ast.MapInitExpr {
 			return type_expr_uses_channel(expr.typ) || exprs_type_slots_use_channel(expr.keys)
@@ -509,11 +534,32 @@ fn expr_type_slots_use_channel(expr ast.Expr) bool {
 			}
 		}
 		ast.OrExpr {
-			return stmts_use_channel(expr.stmts)
+			return expr_type_slots_use_channel(expr.expr) || stmts_use_channel(expr.stmts)
+		}
+		ast.ParenExpr {
+			return expr_type_slots_use_channel(expr.expr)
+		}
+		ast.PostfixExpr {
+			return expr_type_slots_use_channel(expr.expr)
+		}
+		ast.PrefixExpr {
+			return expr_type_slots_use_channel(expr.expr)
+		}
+		ast.RangeExpr {
+			return expr_type_slots_use_channel(expr.start) || expr_type_slots_use_channel(expr.end)
 		}
 		ast.SelectExpr {
 			return stmt_uses_channel(expr.stmt) || stmts_use_channel(expr.stmts)
 				|| expr_type_slots_use_channel(expr.next)
+		}
+		ast.SelectorExpr {
+			return expr_type_slots_use_channel(expr.lhs)
+		}
+		ast.SqlExpr {
+			return expr_type_slots_use_channel(expr.expr)
+		}
+		ast.StringInterLiteral {
+			return string_inters_use_channel(expr.inters)
 		}
 		ast.Tuple {
 			return exprs_type_slots_use_channel(expr.exprs)
