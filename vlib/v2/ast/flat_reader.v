@@ -185,8 +185,7 @@ pub fn (flat &FlatAst) decode_fn_decl_signature(id FlatNodeId) FnDecl {
 	recv_id := r.edge(n, 0)
 	typ_id := r.edge(n, 1)
 	attrs_id := r.edge(n, 2)
-	typ_node := r.read_type(typ_id)
-	fn_typ := if typ_node is FnType { typ_node } else { FnType{} }
+	fn_typ := r.read_fn_type(typ_id)
 	return FnDecl{
 		attributes: r.read_attr_list(attrs_id)
 		is_public:  (n.flags & flag_is_public) != 0
@@ -365,6 +364,29 @@ fn (r &FlatReader) read_parameter_list(id FlatNodeId) []Parameter {
 	return out
 }
 
+// read_fn_type (s252) decodes a `.typ_fn` node straight into a FnType, without
+// the read_type→`Type(FnType{...})`→`is FnType` round-trip. Boxing a large
+// struct into the Type sum type and then unboxing it via smartcast corrupts the
+// FnType's slice headers (generic_params/params) on the arm64 self-host (the
+// documented chained-access/smartcast bug). This path is only ever exercised by
+// the flat decode, so the default self-host never hit it. Edge layout matches
+// the encoder's FnType arm and read_type's `.typ_fn`: 0=generics, 1=params,
+// 2=return_type.
+fn (r &FlatReader) read_fn_type(id FlatNodeId) FnType {
+	if id < 0 {
+		return FnType{}
+	}
+	n := r.node(id)
+	if n.kind != .typ_fn {
+		return FnType{}
+	}
+	return FnType{
+		generic_params: r.read_expr_list(r.edge(n, 0))
+		params:         r.read_parameter_list(r.edge(n, 1))
+		return_type:    r.read_expr(r.edge(n, 2))
+	}
+}
+
 fn (r &FlatReader) read_string_list(id FlatNodeId) []string {
 	if id < 0 {
 		return []string{}
@@ -499,8 +521,7 @@ fn (r &FlatReader) read_stmt(id FlatNodeId) Stmt {
 			typ_id := r.edge(n, 1)
 			attrs_id := r.edge(n, 2)
 			stmts_id := r.edge(n, 3)
-			typ_node := r.read_type(typ_id)
-			fn_typ := if typ_node is FnType { typ_node } else { FnType{} }
+			fn_typ := r.read_fn_type(typ_id)
 			return Stmt(FnDecl{
 				attributes: r.read_attr_list(attrs_id)
 				is_public:  (n.flags & flag_is_public) != 0
@@ -737,8 +758,7 @@ fn (r &FlatReader) read_expr(id FlatNodeId) Expr {
 		}
 		.expr_fn_literal {
 			fn_typ_id := r.edge(n, 0)
-			typ_node := r.read_type(fn_typ_id)
-			fn_typ := if typ_node is FnType { typ_node } else { FnType{} }
+			fn_typ := r.read_fn_type(fn_typ_id)
 			cap_len := n.extra
 			mut captured := []Expr{cap: cap_len}
 			for i in 0 .. cap_len {
