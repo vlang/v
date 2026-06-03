@@ -1770,6 +1770,20 @@ fn generic_base_name_without_specialization(name string) string {
 	return name[..end]
 }
 
+// last_double_underscore returns the index of the last `__` in s, or -1.
+// Hand-rolled (no allocation) replacement for s.contains('__') / .all_after_last('__'),
+// which build KMP tables / allocate; used in hot per-call-site name matching.
+fn last_double_underscore(s string) int {
+	mut i := s.len - 2
+	for i >= 0 {
+		if s[i] == `_` && s[i + 1] == `_` {
+			return i
+		}
+		i--
+	}
+	return -1
+}
+
 fn (mut t Transformer) index_generic_fn_decl_for_monomorphize(mut decl_owner map[string]int, mut decl_node map[string]ast.FnDecl, decl ast.FnDecl, file_idx int, module_name string) {
 	mut keys := []string{}
 	if !decl.is_method {

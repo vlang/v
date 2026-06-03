@@ -1172,26 +1172,31 @@ fn (t &Transformer) method_key_matches_type_name(method_key string, type_name st
 		|| !transformer_string_has_valid_data(type_name) {
 		return false
 	}
-	normalized_key := method_key.replace('.', '__')
-	normalized_type := type_name.replace('.', '__')
+	// Avoid .replace/.contains here: replace always allocates and contains builds
+	// a KMP failure table per call. This runs inside O(method_keys) fallback loops
+	// per call site, so those per-call allocations were a large transform cost.
+	// Only normalize when a '.' is actually present (index_u8 does not allocate),
+	// and locate `__` with a hand-rolled scan.
+	normalized_key := if method_key.index_u8(`.`) >= 0 {
+		method_key.replace('.', '__')
+	} else {
+		method_key
+	}
+	normalized_type := if type_name.index_u8(`.`) >= 0 {
+		type_name.replace('.', '__')
+	} else {
+		type_name
+	}
 	if normalized_key == normalized_type {
 		return true
 	}
-	key_is_qualified := normalized_key.contains('__')
-	type_is_qualified := normalized_type.contains('__')
-	if key_is_qualified && type_is_qualified {
+	key_dunder := last_double_underscore(normalized_key)
+	type_dunder := last_double_underscore(normalized_type)
+	if key_dunder >= 0 && type_dunder >= 0 {
 		return false
 	}
-	short_type := if normalized_type.contains('__') {
-		normalized_type.all_after_last('__')
-	} else {
-		normalized_type
-	}
-	short_key := if normalized_key.contains('__') {
-		normalized_key.all_after_last('__')
-	} else {
-		normalized_key
-	}
+	short_type := if type_dunder >= 0 { normalized_type[type_dunder + 2..] } else { normalized_type }
+	short_key := if key_dunder >= 0 { normalized_key[key_dunder + 2..] } else { normalized_key }
 	if short_key == short_type {
 		return true
 	}
