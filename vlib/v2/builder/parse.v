@@ -398,11 +398,8 @@ fn stmt_uses_channel_with_options(stmt ast.Stmt, options ChannelScanOptions) boo
 				|| expr_type_slots_use_channel_with_options(stmt.extra, options)
 		}
 		ast.AssignStmt {
-			for expr in stmt.rhs {
-				if expr_type_slots_use_channel_with_options(expr, options) {
-					return true
-				}
-			}
+			return exprs_type_slots_use_channel_with_options(stmt.lhs, options)
+				|| exprs_type_slots_use_channel_with_options(stmt.rhs, options)
 		}
 		ast.BlockStmt {
 			return stmts_use_channel_with_options(stmt.stmts, options)
