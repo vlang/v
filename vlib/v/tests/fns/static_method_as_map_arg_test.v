@@ -23,6 +23,16 @@ fn test_static_method_as_filter_arg() {
 	assert odds == [1, 3]
 }
 
+fn test_aliased_static_method_as_map_arg() {
+	// the static method is reached through a type alias, so it must be resolved
+	// by its real fkey (`Foo__static__from`), not the alias name
+	nums := [1, 2, 3]
+	foos := nums.map(FooAlias.from)
+	assert foos.map(it.x) == [1, 2, 3]
+}
+
+type FooAlias = Foo
+
 // Defined *after* the call sites on purpose, to exercise the forward-reference
 // path (the function is not in the table yet when the calls above are parsed).
 struct Foo {

@@ -4941,10 +4941,12 @@ fn (mut c Checker) array_builtin_method_call(mut node ast.CallExpr, left_type as
 	if node.kind in [.map, .filter, .any, .all, .count] && node.args.len > 0 {
 		arg_expr := node.args[0].expr
 		if arg_expr is ast.EnumVal && c.table.sym(arg_expr.typ).kind == .function {
-			static_fn_name := '${arg_expr.enum_name}__static__${arg_expr.val}'
-			if func := c.table.find_fn(static_fn_name) {
+			enum_typ := ast.new_type(c.table.find_type_idx(arg_expr.enum_name))
+			typ_sym := c.table.sym(enum_typ)
+			fsym := c.table.final_sym(enum_typ)
+			if func := c.static_method_of_enum_val(arg_expr, typ_sym, fsym) {
 				node.args[0].expr = ast.Ident{
-					name:  static_fn_name
+					name:  func.name
 					mod:   c.mod
 					kind:  .function
 					info:  ast.IdentFn{
