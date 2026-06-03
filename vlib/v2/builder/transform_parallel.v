@@ -6,6 +6,8 @@ module builder
 import v2.ast
 import v2.transformer
 import runtime
+import os
+import time
 
 $if !windows {
 	struct TransformChunkArgs {
@@ -61,8 +63,17 @@ $if !windows {
 }
 
 fn (mut b Builder) transform_files_parallel(mut trans transformer.Transformer) []ast.File {
+	timing := os.getenv('V2_TTIME') != ''
+	mut sw := time.new_stopwatch()
 	mut result := b.transform_files_parallel_no_post_pass(mut trans)
+	if timing {
+		eprintln('  [ttime] (parallel) prepare+fanout: ${sw.elapsed().milliseconds()}ms')
+		sw = time.new_stopwatch()
+	}
 	trans.post_pass(mut result)
+	if timing {
+		eprintln('  [ttime] (parallel) post_pass: ${sw.elapsed().milliseconds()}ms')
+	}
 	return result
 }
 
@@ -93,6 +104,8 @@ fn (mut b Builder) transform_files_parallel_no_post_pass_impl(mut trans transfor
 	} else {
 		trans.pre_pass(b.files)
 	}
+	timing_impl := os.getenv('V2_TTIME') != ''
+	mut sw_impl := time.new_stopwatch()
 	mut stream_files_from_flat := stream_from_flat
 	mut files_to_transform := []ast.File{}
 	if trans.needs_full_files_for_transform() {
@@ -101,6 +114,15 @@ fn (mut b Builder) transform_files_parallel_no_post_pass_impl(mut trans transfor
 		stream_files_from_flat = false
 	} else if !stream_from_flat {
 		files_to_transform = b.files.clone()
+	}
+	if timing_impl {
+		eprintln('  [ttime] prepare_files_for_transform total: ${sw_impl.elapsed().milliseconds()}ms')
+		sw_impl = time.new_stopwatch()
+	}
+	defer {
+		if timing_impl {
+			eprintln('  [ttime] per-file fanout: ${sw_impl.elapsed().milliseconds()}ms')
+		}
 	}
 
 	// In flat mode, workers stream the rehydration per file (one legacy

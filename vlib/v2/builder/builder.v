@@ -160,8 +160,17 @@ fn print_rss(stage string) {
 	if os.getenv('V2_MEM') == '' {
 		return
 	}
-	bytes := runtime.used_memory() or { 0 }
-	eprintln('  [mem] ${stage}: ${bytes / (1024 * 1024)} MB')
+	rss := runtime.used_memory() or { 0 }
+	$if macos {
+		// Under -gc none nothing is freed, so `live` is monotonic and its
+		// per-phase delta is the exact bytes that phase allocated. `peak` is
+		// the high-water mark. Both are stable run-to-run, unlike `rss`.
+		live, peak := darwin_live_malloc_bytes()
+		mb := u64(1024 * 1024)
+		eprintln('  [mem] ${stage}: live ${live / mb} MB  peak ${peak / mb} MB  (rss ${rss / mb} MB)')
+		return
+	}
+	eprintln('  [mem] ${stage}: ${rss / (1024 * 1024)} MB')
 }
 
 // print_heap reports retained heap size after a forced GC, in MB. Unlike

@@ -129,7 +129,18 @@ mut:
 	synth_types map[int]types.Type
 	// Generic monomorphization clones generic FnDecls per env.generic_types
 	// binding before code generation, so backends receive concrete functions.
-	monomorphized_specs                map[string]bool
+	monomorphized_specs map[string]bool
+	// inject_changed_files records whether the last
+	// inject_generic_struct_specializations call actually appended new struct
+	// specializations (i.e. returned a modified file set). The monomorphize
+	// fixpoint uses it to skip the next iteration's full-program collect scan
+	// when nothing changed.
+	inject_changed_files bool
+	// last_mono_clones maps file index -> the FnDecl clone stmts that the most
+	// recent monomorphize_pass appended to that file. The fixpoint rescans only
+	// these freshly-materialized clones (the rest of the program was already
+	// scanned) instead of re-walking all files. Empty when mono_pass added none.
+	last_mono_clones                   map[int][]ast.Stmt
 	generic_spec_owner_file            map[string]int
 	deferred_generic_call_specs        []DeferredGenericCallSpec
 	generic_struct_specs               map[string]GenericStructSpec
@@ -2242,13 +2253,18 @@ pub fn (mut t Transformer) inject_embed_file_helper_to_flat(mut out ast.FlatBuil
 
 // transform_files transforms all files and returns transformed copies
 pub fn (mut t Transformer) transform_files(files []ast.File) []ast.File {
+	t_print_mem('enter')
 	t.pre_pass(files)
+	t_print_mem('after pre_pass')
 	files_to_transform := t.prepare_files_for_transform(files)
+	t_print_mem('after prepare/monomorphize')
 	mut result := []ast.File{cap: files_to_transform.len}
 	for file in files_to_transform {
 		result << t.transform_file(file)
 	}
+	t_print_mem('after per-file loop')
 	t.post_pass(mut result)
+	t_print_mem('after post_pass')
 	return result
 }
 
