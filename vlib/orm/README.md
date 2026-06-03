@@ -245,6 +245,33 @@ result := sql db {
 }!
 ```
 
+Dynamic ORM blocks can build `WHERE` and `SET` data conditionally. Commas between
+emitted dynamic `where` items are joined with `AND`; use `&&` and `||` inside an
+item for explicit boolean conditions.
+
+```v ignore
+where_filter := {
+    if name := req.name {
+        name == name
+    },
+    id == user_id || tenant_id == tenant_id
+}
+
+rows := sql db {
+    dynamic select from Foo where where_filter
+}!
+
+update_data := {
+    name == new_name
+}
+
+sql db {
+    dynamic update Foo set update_data where {
+        id == user_id || tenant_id == tenant_id
+    }
+}!
+```
+
 ORM select expressions also support built-in aggregate functions. `count` keeps
 its legacy syntax, while the other aggregates use SQL-like function calls.
 
