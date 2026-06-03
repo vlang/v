@@ -1367,6 +1367,23 @@ fn (mut b Builder) const_field_type(field_name string, value ast.Expr) TypeID {
 	return b.expr_type(value)
 }
 
+// const_field_type_from_flat (s235) is the cursor mirror of const_field_type:
+// the scope lookup is name-only, the fallback uses expr_type_from_flat (pos-only).
+fn (mut b Builder) const_field_type_from_flat(field_name string, value_c ast.Cursor) TypeID {
+	if b.env != unsafe { nil } {
+		if scope := b.env.get_scope(b.cur_module) {
+			if obj := scope.lookup_parent(field_name, 0) {
+				obj_typ := obj.typ()
+				obj_type := b.type_to_ssa(obj_typ)
+				if obj_type != 0 {
+					return obj_type
+				}
+			}
+		}
+	}
+	return b.expr_type_from_flat(value_c)
+}
+
 fn (mut b Builder) scope_field_type(field_name string) TypeID {
 	if b.env != unsafe { nil } {
 		if scope := b.env.get_scope(b.cur_module) {
@@ -2189,27 +2206,30 @@ fn (mut b Builder) resolve_forward_const_refs_from_flat(flat &ast.FlatAst) {
 			if c.kind() != .stmt_const_decl {
 				continue
 			}
-			decoded := c.flat.decode_stmt(c.id)
-			if decoded !is ast.ConstDecl {
-				continue
-			}
-			stmt := decoded as ast.ConstDecl
-			for field in stmt.fields {
+			// s235: walk the const-decl field-inits via cursors — no decode_stmt.
+			// ConstDecl flat = one edge -> aux_list of .aux_field_init (field name in
+			// name_id, value expr at edge(0)).
+			fields := c.list_at(0)
+			for fidx in 0 .. fields.len() {
+				field_c := fields.at(fidx)
+				field_name := field_c.name()
+				value_c := field_c.edge(0)
 				const_name := if b.cur_module != '' && b.cur_module != 'main' {
-					'${b.cur_module}__${field.name}'
+					'${b.cur_module}__${field_name}'
 				} else {
-					field.name
+					field_name
 				}
 				if const_name in b.const_values {
 					continue
 				}
-				if b.is_zero_literal(field.value) {
+				if b.is_zero_literal_from_flat(value_c) {
 					continue
 				}
-				if field.value is ast.InitExpr {
+				if value_c.kind() == .expr_init {
 					mut has_tag := false
-					for init_field in field.value.fields {
-						if init_field.name == '_tag' {
+					n_init_fields := value_c.edge_count() - 1
+					for ifi := 0; ifi < n_init_fields; ifi++ {
+						if value_c.edge(1 + ifi).name() == '_tag' {
 							has_tag = true
 							break
 						}
@@ -2218,13 +2238,13 @@ fn (mut b Builder) resolve_forward_const_refs_from_flat(flat &ast.FlatAst) {
 						continue
 					}
 				}
-				new_value := b.try_eval_const_int(field.value)
+				new_value := b.try_eval_const_int_from_flat(value_c)
 				if new_value != 0 {
 					b.const_values[const_name] = new_value
-					b.const_values[field.name] = new_value
-					ct := b.const_field_type(field.name, field.value)
+					b.const_values[field_name] = new_value
+					ct := b.const_field_type_from_flat(field_name, value_c)
 					b.const_value_types[const_name] = ct
-					b.const_value_types[field.name] = ct
+					b.const_value_types[field_name] = ct
 					for i, g in b.mod.globals {
 						if g.name == const_name {
 							b.mod.globals[i] = GlobalVar{
@@ -2706,6 +2726,133 @@ fn (mut b Builder) try_eval_const_int(expr ast.Expr) i64 {
 fn (b &Builder) is_zero_literal(expr ast.Expr) bool {
 	if expr is ast.BasicLiteral {
 		return expr.kind == .number && expr.value == '0'
+	}
+	return false
+}
+
+// try_eval_const_int_from_flat (s235) is the cursor mirror of try_eval_const_int.
+// BasicLiteral kind in aux / value in name(); Infix/Prefix op in aux with operand
+// edges; Cast/CallOrCast inner value at edge(1); Paren inner at edge(0); Init walks
+// its .aux_field_init children for `_tag`. Bit-identical (same recursion, same
+// const_values lookups, same literal parsing).
+fn (mut b Builder) try_eval_const_int_from_flat(c ast.Cursor) i64 {
+	match c.kind() {
+		.expr_basic_literal {
+			kind := unsafe { token.Token(int(c.aux())) }
+			value := c.name()
+			if kind == .number {
+				if !value.starts_with('0x') && !value.starts_with('0X')
+					&& (value.contains('e') || value.contains('E')
+					|| value.contains('.')) {
+					return i64(value.f64())
+				}
+				return parse_const_int_literal(value)
+			}
+			if kind == .key_true {
+				return 1
+			}
+			if kind == .key_false {
+				return 0
+			}
+			if kind == .char {
+				return b.resolve_char_const_value(value)
+			}
+		}
+		.expr_infix {
+			op := unsafe { token.Token(int(c.aux())) }
+			lhs := b.try_eval_const_int_from_flat(c.edge(0))
+			rhs := b.try_eval_const_int_from_flat(c.edge(1))
+			result2 := match op {
+				.plus {
+					lhs + rhs
+				}
+				.minus {
+					lhs - rhs
+				}
+				.mul {
+					lhs * rhs
+				}
+				.div {
+					if rhs != 0 { lhs / rhs } else { i64(0) }
+				}
+				.mod {
+					if rhs != 0 { lhs % rhs } else { i64(0) }
+				}
+				.left_shift {
+					i64(u64(lhs) << u64(rhs))
+				}
+				.right_shift {
+					i64(u64(lhs) >> u64(rhs))
+				}
+				.amp {
+					lhs & rhs
+				}
+				.pipe {
+					lhs | rhs
+				}
+				.xor {
+					lhs ^ rhs
+				}
+				else {
+					i64(0)
+				}
+			}
+
+			return result2
+		}
+		.expr_prefix {
+			op := unsafe { token.Token(int(c.aux())) }
+			val := b.try_eval_const_int_from_flat(c.edge(0))
+			return match op {
+				.minus { -val }
+				.bit_not { ~val }
+				else { i64(0) }
+			}
+		}
+		.expr_ident {
+			name := c.name()
+			if name in b.const_values {
+				return b.const_values[name]
+			}
+			qualified := '${b.cur_module}__${name}'
+			if qualified in b.const_values {
+				return b.const_values[qualified]
+			}
+			builtin_qual := 'builtin__${name}'
+			if builtin_qual in b.const_values {
+				return b.const_values[builtin_qual]
+			}
+		}
+		.expr_cast {
+			return b.try_eval_const_int_from_flat(c.edge(1))
+		}
+		.expr_call_or_cast {
+			return b.try_eval_const_int_from_flat(c.edge(1))
+		}
+		.expr_paren {
+			return b.try_eval_const_int_from_flat(c.edge(0))
+		}
+		.expr_init {
+			// edge0=typ, edge1..n = .aux_field_init (name in name_id, value at edge0)
+			n_fields := c.edge_count() - 1
+			for fi := 0; fi < n_fields; fi++ {
+				field_c := c.edge(1 + fi)
+				if field_c.name() == '_tag' {
+					return b.try_eval_const_int_from_flat(field_c.edge(0))
+				}
+			}
+		}
+		else {}
+	}
+
+	return 0
+}
+
+// is_zero_literal_from_flat (s235) is the cursor mirror of is_zero_literal.
+fn (b &Builder) is_zero_literal_from_flat(c ast.Cursor) bool {
+	if c.kind() == .expr_basic_literal {
+		kind := unsafe { token.Token(int(c.aux())) }
+		return kind == .number && c.name() == '0'
 	}
 	return false
 }
