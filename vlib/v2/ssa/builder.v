@@ -325,7 +325,12 @@ pub fn (mut b Builder) build_all(files []ast.File) {
 		b.cur_module = file_module_name(file)
 		b.register_types_pass1(file)
 	}
-	// Phase 1c: Fill in struct field types (now all struct names are known)
+	// Phase 1c: Register type aliases after all pass-1 type names are known.
+	for file in files {
+		b.cur_module = file_module_name(file)
+		b.register_type_aliases(file)
+	}
+	// Phase 1d: Fill in struct field types (now all struct names are known)
 	for file in files {
 		b.cur_module = file_module_name(file)
 		b.register_types_pass2(file)
@@ -453,7 +458,13 @@ pub fn (mut b Builder) build_all_from_flat(flat &ast.FlatAst) {
 		b.cur_module = fc.mod().replace('.', '_')
 		b.register_types_pass1_from_flat(fc)
 	}
-	// Phase 1c: Fill in struct field types (now all struct names are known)
+	// Phase 1c: Register type aliases after all pass-1 type names are known.
+	for fi in 0 .. flat.files.len {
+		fc := flat.file_cursor(fi)
+		b.cur_module = fc.mod().replace('.', '_')
+		b.register_type_aliases_from_flat(fc)
+	}
+	// Phase 1d: Fill in struct field types (now all struct names are known)
 	for fi in 0 .. flat.files.len {
 		fc := flat.file_cursor(fi)
 		b.cur_module = fc.mod().replace('.', '_')
@@ -1503,7 +1514,9 @@ fn (mut b Builder) register_types_pass1(file ast.File) {
 				b.register_enum(stmt)
 			}
 			ast.TypeDecl {
-				b.register_type_decl(stmt)
+				if stmt.variants.len > 0 {
+					b.register_sumtype(stmt)
+				}
 			}
 			else {}
 		}
@@ -1536,7 +1549,9 @@ fn (mut b Builder) register_types_pass1_from_flat(file_cursor ast.FileCursor) {
 			.stmt_type_decl {
 				decoded := c.flat.decode_stmt(c.id)
 				if decoded is ast.TypeDecl {
-					b.register_type_decl(decoded)
+					if decoded.variants.len > 0 {
+						b.register_sumtype(decoded)
+					}
 				}
 			}
 			else {}
@@ -1787,12 +1802,25 @@ fn (b &Builder) is_enum_type(name string) bool {
 	return false
 }
 
-fn (mut b Builder) register_type_decl(decl ast.TypeDecl) {
-	if decl.variants.len == 0 {
-		b.register_type_alias(decl)
-		return
+fn (mut b Builder) register_type_aliases(file ast.File) {
+	for stmt in file.stmts {
+		if stmt is ast.TypeDecl && stmt.variants.len == 0 {
+			b.register_type_alias(stmt)
+		}
 	}
-	b.register_sumtype(decl)
+}
+
+fn (mut b Builder) register_type_aliases_from_flat(file_cursor ast.FileCursor) {
+	stmts := file_cursor.stmts()
+	for si in 0 .. stmts.len() {
+		c := stmts.at(si)
+		if c.kind() == .stmt_type_decl {
+			decoded := c.flat.decode_stmt(c.id)
+			if decoded is ast.TypeDecl && decoded.variants.len == 0 {
+				b.register_type_alias(decoded)
+			}
+		}
+	}
 }
 
 fn (mut b Builder) register_type_alias(decl ast.TypeDecl) {
