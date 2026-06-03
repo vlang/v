@@ -465,6 +465,13 @@ fn (mut g Gen) emit_sql_query_data_items(query_var string, items []ast.SqlQueryD
 	for item in items {
 		match item {
 			ast.SqlQueryDataLeaf {
+				if is_sql_query_data_top_level_or(item.expr) {
+					start_var := g.new_tmp_var()
+					g.writeln('${ast.int_type_name} ${start_var} = ${query_var}.fields.len;')
+					g.emit_sql_query_data_expr(query_var, item.expr, resolve_columns, true)
+					g.emit_sql_query_data_parentheses(query_var, start_var)
+					continue
+				}
 				g.emit_sql_query_data_expr(query_var, item.expr, resolve_columns, true)
 			}
 			ast.SqlQueryDataIf {
@@ -526,20 +533,31 @@ fn (mut g Gen) emit_sql_query_data_items(query_var string, items []ast.SqlQueryD
 	}
 }
 
+fn is_sql_query_data_top_level_or(expr ast.Expr) bool {
+	return match expr {
+		ast.InfixExpr { expr.op == .logical_or }
+		else { false }
+	}
+}
+
+fn (mut g Gen) emit_sql_query_data_parentheses(query_var string, start_var string) {
+	g.writeln('if (${query_var}.fields.len > ${start_var}) {')
+	g.indent++
+	g.write('builtin__array_push(&${query_var}.parentheses, _MOV((Array_${ast.int_type_name}[1]){')
+	g.write('builtin__new_array_from_c_array(2, 2, sizeof(${ast.int_type_name}),')
+	g.write(' _MOV((${ast.int_type_name}[2]){${start_var}, ${query_var}.fields.len - 1}))')
+	g.writeln('}));')
+	g.indent--
+	g.writeln('}')
+}
+
 fn (mut g Gen) emit_sql_query_data_expr(query_var string, expr ast.Expr, resolve_columns bool, is_and bool) {
 	match expr {
 		ast.ParExpr {
 			start_var := g.new_tmp_var()
 			g.writeln('${ast.int_type_name} ${start_var} = ${query_var}.fields.len;')
 			g.emit_sql_query_data_expr(query_var, expr.expr, resolve_columns, is_and)
-			g.writeln('if (${query_var}.fields.len > ${start_var}) {')
-			g.indent++
-			g.write('builtin__array_push(&${query_var}.parentheses, _MOV((Array_${ast.int_type_name}[1]){')
-			g.write('builtin__new_array_from_c_array(2, 2, sizeof(${ast.int_type_name}),')
-			g.write(' _MOV((${ast.int_type_name}[2]){${start_var}, ${query_var}.fields.len - 1}))')
-			g.writeln('}));')
-			g.indent--
-			g.writeln('}')
+			g.emit_sql_query_data_parentheses(query_var, start_var)
 		}
 		ast.InfixExpr {
 			if expr.op in [.and, .logical_or] {

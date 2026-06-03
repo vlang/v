@@ -379,6 +379,60 @@ fn test_dynamic_select_where_block_with_or_expression() {
 	assert rows.map(it.name) == ['Alice', 'Bob']
 }
 
+fn test_dynamic_select_where_block_with_or_expression_and_comma_filter() {
+	mut db := sqlite.connect(':memory:')!
+	defer {
+		db.close() or { panic(err) }
+	}
+
+	sql db {
+		create table DynamicOrMember
+	}!
+
+	members := [
+		DynamicOrMember{
+			id:        1
+			tenant_id: 1
+			name:      'Alice'
+			status:    'active'
+		},
+		DynamicOrMember{
+			id:        2
+			tenant_id: 2
+			name:      'Bob'
+			status:    'active'
+		},
+		DynamicOrMember{
+			id:        3
+			tenant_id: 2
+			name:      'Charlie'
+			status:    'pending'
+		},
+		DynamicOrMember{
+			id:        4
+			tenant_id: 3
+			name:      'Diana'
+			status:    'active'
+		},
+	]
+
+	for member in members {
+		sql db {
+			insert member into DynamicOrMember
+		}!
+	}
+
+	tenant_id := 2
+	rows := sql db {
+		dynamic select from DynamicOrMember where {
+		tenant_id == tenant_id,
+		name == 'Alice' || status == 'active'
+	} order by id
+	}!
+
+	assert rows.map(it.name) == ['Bob']
+}
+
 fn test_dynamic_update_where_block_with_or_expression() {
 	mut db := sqlite.connect(':memory:')!
 	defer {
