@@ -3527,6 +3527,62 @@ fn boot() {
 	assert main_field_typ == 'LocalResponse'
 }
 
+fn test_transform_generic_struct_emits_module_clone_after_file_local_clone() {
+	files := transform_sources_for_test([
+		TestSource{
+			rel:  'other/other.v'
+			code: 'module other
+
+pub struct Type {}
+'
+		},
+		TestSource{
+			rel:  'm/m.v'
+			code: 'module m
+
+import other
+
+pub struct Box[T] {
+	value T
+}
+
+pub fn use_external() Box[other.Type] {
+	return Box[other.Type]{}
+}
+
+pub fn use_int() Box[int] {
+	return Box[int]{}
+}
+'
+		},
+		TestSource{
+			rel:  'main.v'
+			code: 'module main
+
+import m
+
+fn boot() {
+	_ := m.use_external()
+	_ := m.use_int()
+}
+'
+		},
+	])
+	mut m_structs := []string{}
+	for file in files {
+		if file.mod != 'm' {
+			continue
+		}
+		for stmt in file.stmts {
+			if stmt is ast.StructDecl {
+				m_structs << stmt.name
+			}
+		}
+	}
+	assert 'Box_T_other_Type' in m_structs
+	assert 'Box_T_int' in m_structs
+}
+
 fn test_transform_moved_generic_struct_qualifies_source_module_field_types() {
 	files := transform_sources_for_test([
 		TestSource{

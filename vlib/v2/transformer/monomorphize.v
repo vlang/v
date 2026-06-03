@@ -642,18 +642,15 @@ fn (mut t Transformer) inject_generic_struct_specializations(files []ast.File) [
 			stmts << ast.Stmt(t.clone_generic_struct_decl(struct_decl, spec, file.mod))
 			existing[spec.concrete_c_name] = true
 		}
-		if stmts.len == file.stmts.len {
-			for key in sorted_keys {
-				spec := t.generic_struct_specs[key] or { continue }
-				if (spec.file_idx >= 0 && spec.file_idx < files.len)
-					|| spec.module_name != file.mod
-					|| spec.concrete_c_name in existing {
-					continue
-				}
-				struct_decl := base_decls[spec.base_c_name] or { continue }
-				stmts << ast.Stmt(t.clone_generic_struct_decl(struct_decl, spec, file.mod))
-				existing[spec.concrete_c_name] = true
+		for key in sorted_keys {
+			spec := t.generic_struct_specs[key] or { continue }
+			if (spec.file_idx >= 0 && spec.file_idx < files.len)
+				|| spec.module_name != file.mod || spec.concrete_c_name in existing {
+				continue
 			}
+			struct_decl := base_decls[spec.base_c_name] or { continue }
+			stmts << ast.Stmt(t.clone_generic_struct_decl(struct_decl, spec, file.mod))
+			existing[spec.concrete_c_name] = true
 		}
 		out << ast.File{
 			attributes:     file.attributes
