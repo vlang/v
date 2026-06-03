@@ -101,13 +101,24 @@ fn ssa_module_storage_field_is_c_extern(node ast.GlobalDecl, field ast.FieldDecl
 		|| field.attributes.has('c_extern')
 }
 
-// cursor_attrs_has (s237) reports whether an attribute list (a CursorList of
-// .aux_attribute nodes whose name is in name_id) contains an attribute named
-// `name`. Cursor mirror of `[]Attribute.has(name)`.
+// cursor_attrs_has (s237, fixed s246) reports whether an attribute list (a
+// CursorList of .aux_attribute nodes) contains an attribute named `name`.
+// Cursor mirror of `[]Attribute.has(name)`: an attribute matches when its
+// name_id equals `name`, OR (the `@[flag]`/`@[c_extern]` shape) when name_id is
+// empty and its value (edge 0) is an Ident whose name equals `name`. The earlier
+// name_id-only version silently missed `@[flag]`/`@[c_extern]`, since the parser
+// stores those as `Attribute{name:'', value: Ident{name:...}}`.
 fn cursor_attrs_has(attrs ast.CursorList, name string) bool {
 	for i in 0 .. attrs.len() {
-		if attrs.at(i).name() == name {
+		attr := attrs.at(i)
+		if attr.name() == name {
 			return true
+		}
+		if attr.name() == '' {
+			val := attr.edge(0)
+			if val.kind() == .expr_ident && val.name() == name {
+				return true
+			}
 		}
 	}
 	return false
