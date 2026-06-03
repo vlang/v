@@ -334,6 +334,38 @@ fn test_active_file_imports_follow_comptime_else_branch() {
 	assert imports[0].name == 'net.mbedtls'
 }
 
+fn test_active_file_imports_skips_sync_for_channel_in_inactive_comptime_branch() {
+	file := ast.File{
+		mod:   'main'
+		name:  'main.v'
+		stmts: [
+			ast.Stmt(ast.ExprStmt{
+				expr: ast.ComptimeExpr{
+					expr: ast.IfExpr{
+						cond:  ast.Ident{
+							name: 'windows'
+						}
+						stmts: [
+							ast.Stmt(ast.ExprStmt{
+								expr: ast.Type(ast.ChannelType{
+									elem_type: ast.Expr(ast.Ident{
+										name: 'int'
+									})
+								})
+							}),
+						]
+					}
+				}
+			}),
+		]
+	}
+	linux_imports := active_file_imports(file, [], 'linux').map(it.name)
+	windows_imports := active_file_imports(file, [], 'windows').map(it.name)
+
+	assert 'sync' !in linux_imports
+	assert 'sync' in windows_imports
+}
+
 fn test_active_file_imports_adds_sync_for_channel_in_if_condition() {
 	file := ast.File{
 		mod:   'main'

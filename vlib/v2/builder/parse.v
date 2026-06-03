@@ -333,9 +333,23 @@ fn fields_use_channel(fields []ast.FieldDecl) bool {
 	return false
 }
 
+struct ChannelScanOptions {
+	user_defines          []string
+	explicit_user_defines []string
+	target_os             string
+	allow_pkgconfig       bool
+	filter_comptime       bool
+}
+
 fn field_inits_use_channel(fields []ast.FieldInit) bool {
+	return field_inits_use_channel_with_options(fields, ChannelScanOptions{
+		allow_pkgconfig: true
+	})
+}
+
+fn field_inits_use_channel_with_options(fields []ast.FieldInit, options ChannelScanOptions) bool {
 	for field in fields {
-		if expr_type_slots_use_channel(field.value) {
+		if expr_type_slots_use_channel_with_options(field.value, options) {
 			return true
 		}
 	}
@@ -357,8 +371,14 @@ fn fn_type_uses_channel(typ ast.FnType) bool {
 }
 
 fn stmts_use_channel(stmts []ast.Stmt) bool {
+	return stmts_use_channel_with_options(stmts, ChannelScanOptions{
+		allow_pkgconfig: true
+	})
+}
+
+fn stmts_use_channel_with_options(stmts []ast.Stmt, options ChannelScanOptions) bool {
 	for stmt in stmts {
-		if stmt_uses_channel(stmt) {
+		if stmt_uses_channel_with_options(stmt, options) {
 			return true
 		}
 	}
@@ -366,49 +386,62 @@ fn stmts_use_channel(stmts []ast.Stmt) bool {
 }
 
 fn stmt_uses_channel(stmt ast.Stmt) bool {
+	return stmt_uses_channel_with_options(stmt, ChannelScanOptions{
+		allow_pkgconfig: true
+	})
+}
+
+fn stmt_uses_channel_with_options(stmt ast.Stmt, options ChannelScanOptions) bool {
 	match stmt {
 		ast.AssertStmt {
-			return expr_type_slots_use_channel(stmt.expr) || expr_type_slots_use_channel(stmt.extra)
+			return expr_type_slots_use_channel_with_options(stmt.expr, options)
+				|| expr_type_slots_use_channel_with_options(stmt.extra, options)
 		}
 		ast.AssignStmt {
 			for expr in stmt.rhs {
-				if expr_type_slots_use_channel(expr) {
+				if expr_type_slots_use_channel_with_options(expr, options) {
 					return true
 				}
 			}
 		}
 		ast.BlockStmt {
-			return stmts_use_channel(stmt.stmts)
+			return stmts_use_channel_with_options(stmt.stmts, options)
 		}
 		ast.ComptimeStmt {
-			return stmt_uses_channel(stmt.stmt)
+			return stmt_uses_channel_with_options(stmt.stmt, options)
 		}
 		ast.ConstDecl {
-			return field_inits_use_channel(stmt.fields)
+			return field_inits_use_channel_with_options(stmt.fields, options)
 		}
 		ast.DeferStmt {
-			return stmts_use_channel(stmt.stmts)
+			return stmts_use_channel_with_options(stmt.stmts, options)
 		}
 		ast.EnumDecl {
 			for field in stmt.fields {
-				if expr_type_slots_use_channel(field.value) {
+				if expr_type_slots_use_channel_with_options(field.value, options) {
 					return true
 				}
 			}
 		}
 		ast.ExprStmt {
-			return expr_type_slots_use_channel(stmt.expr)
+			if options.filter_comptime && stmt.expr is ast.ComptimeExpr
+				&& stmt.expr.expr is ast.IfExpr {
+				return comptime_if_expr_uses_channel_with_options(stmt.expr.expr, options)
+			}
+			return expr_type_slots_use_channel_with_options(stmt.expr, options)
 		}
 		ast.FnDecl {
 			return type_expr_uses_channel(stmt.receiver.typ) || fn_type_uses_channel(stmt.typ)
-				|| stmts_use_channel(stmt.stmts)
+				|| stmts_use_channel_with_options(stmt.stmts, options)
 		}
 		ast.ForInStmt {
-			return expr_type_slots_use_channel(stmt.expr)
+			return expr_type_slots_use_channel_with_options(stmt.expr, options)
 		}
 		ast.ForStmt {
-			return stmt_uses_channel(stmt.init) || expr_type_slots_use_channel(stmt.cond)
-				|| stmt_uses_channel(stmt.post) || stmts_use_channel(stmt.stmts)
+			return stmt_uses_channel_with_options(stmt.init, options)
+				|| expr_type_slots_use_channel_with_options(stmt.cond, options)
+				|| stmt_uses_channel_with_options(stmt.post, options)
+				|| stmts_use_channel_with_options(stmt.stmts, options)
 		}
 		ast.GlobalDecl {
 			return fields_use_channel(stmt.fields)
@@ -417,7 +450,7 @@ fn stmt_uses_channel(stmt ast.Stmt) bool {
 			return fields_use_channel(stmt.fields) || type_exprs_use_channel(stmt.embedded)
 		}
 		ast.ReturnStmt {
-			return exprs_type_slots_use_channel(stmt.exprs)
+			return exprs_type_slots_use_channel_with_options(stmt.exprs, options)
 		}
 		ast.StructDecl {
 			return type_exprs_use_channel(stmt.implements) || type_exprs_use_channel(stmt.embedded)
@@ -443,8 +476,14 @@ fn type_exprs_use_channel(exprs []ast.Expr) bool {
 }
 
 fn exprs_type_slots_use_channel(exprs []ast.Expr) bool {
+	return exprs_type_slots_use_channel_with_options(exprs, ChannelScanOptions{
+		allow_pkgconfig: true
+	})
+}
+
+fn exprs_type_slots_use_channel_with_options(exprs []ast.Expr, options ChannelScanOptions) bool {
 	for expr in exprs {
-		if expr_type_slots_use_channel(expr) {
+		if expr_type_slots_use_channel_with_options(expr, options) {
 			return true
 		}
 	}
@@ -452,46 +491,89 @@ fn exprs_type_slots_use_channel(exprs []ast.Expr) bool {
 }
 
 fn string_inters_use_channel(inters []ast.StringInter) bool {
+	return string_inters_use_channel_with_options(inters, ChannelScanOptions{
+		allow_pkgconfig: true
+	})
+}
+
+fn string_inters_use_channel_with_options(inters []ast.StringInter, options ChannelScanOptions) bool {
 	for inter in inters {
-		if expr_type_slots_use_channel(inter.expr) || expr_type_slots_use_channel(inter.format_expr) {
+		if expr_type_slots_use_channel_with_options(inter.expr, options)
+			|| expr_type_slots_use_channel_with_options(inter.format_expr, options) {
 			return true
 		}
 	}
 	return false
 }
 
+fn comptime_if_expr_uses_channel_with_options(node ast.IfExpr, options ChannelScanOptions) bool {
+	if ast_comptime_cond_matches_with_options(node.cond, options.user_defines,
+		options.explicit_user_defines, options.target_os, options.allow_pkgconfig)
+	{
+		return stmts_use_channel_with_options(node.stmts, options)
+	}
+	match node.else_expr {
+		ast.IfExpr {
+			if node.else_expr.cond is ast.EmptyExpr {
+				return stmts_use_channel_with_options(node.else_expr.stmts, options)
+			}
+			return comptime_if_expr_uses_channel_with_options(node.else_expr, options)
+		}
+		else {
+			return expr_type_slots_use_channel_with_options(node.else_expr, options)
+		}
+	}
+}
+
 fn expr_type_slots_use_channel(expr ast.Expr) bool {
+	return expr_type_slots_use_channel_with_options(expr, ChannelScanOptions{
+		allow_pkgconfig: true
+	})
+}
+
+fn expr_type_slots_use_channel_with_options(expr ast.Expr, options ChannelScanOptions) bool {
 	match expr {
 		ast.ArrayInitExpr {
-			return type_expr_uses_channel(expr.typ) || expr_type_slots_use_channel(expr.init)
-				|| exprs_type_slots_use_channel(expr.exprs) || expr_type_slots_use_channel(expr.cap)
-				|| expr_type_slots_use_channel(expr.len)
-				|| expr_type_slots_use_channel(expr.update_expr)
+			return type_expr_uses_channel(expr.typ)
+				|| expr_type_slots_use_channel_with_options(expr.init, options)
+				|| exprs_type_slots_use_channel_with_options(expr.exprs, options)
+				|| expr_type_slots_use_channel_with_options(expr.cap, options)
+				|| expr_type_slots_use_channel_with_options(expr.len, options)
+				|| expr_type_slots_use_channel_with_options(expr.update_expr, options)
 		}
 		ast.AsCastExpr {
-			return type_expr_uses_channel(expr.typ) || expr_type_slots_use_channel(expr.expr)
+			return type_expr_uses_channel(expr.typ)
+				|| expr_type_slots_use_channel_with_options(expr.expr, options)
 		}
 		ast.AssocExpr {
-			return type_expr_uses_channel(expr.typ) || expr_type_slots_use_channel(expr.expr)
-				|| field_inits_use_channel(expr.fields)
+			return type_expr_uses_channel(expr.typ)
+				|| expr_type_slots_use_channel_with_options(expr.expr, options)
+				|| field_inits_use_channel_with_options(expr.fields, options)
 		}
 		ast.CallExpr {
-			return expr_type_slots_use_channel(expr.lhs) || exprs_type_slots_use_channel(expr.args)
+			return expr_type_slots_use_channel_with_options(expr.lhs, options)
+				|| exprs_type_slots_use_channel_with_options(expr.args, options)
 		}
 		ast.CallOrCastExpr {
-			return type_expr_uses_channel(expr.lhs) || expr_type_slots_use_channel(expr.expr)
+			return type_expr_uses_channel(expr.lhs)
+				|| expr_type_slots_use_channel_with_options(expr.expr, options)
 		}
 		ast.CastExpr {
-			return type_expr_uses_channel(expr.typ) || expr_type_slots_use_channel(expr.expr)
+			return type_expr_uses_channel(expr.typ)
+				|| expr_type_slots_use_channel_with_options(expr.expr, options)
 		}
 		ast.ComptimeExpr {
-			return expr_type_slots_use_channel(expr.expr)
+			if options.filter_comptime && expr.expr is ast.IfExpr {
+				return comptime_if_expr_uses_channel_with_options(expr.expr, options)
+			}
+			return expr_type_slots_use_channel_with_options(expr.expr, options)
 		}
 		ast.FieldInit {
-			return expr_type_slots_use_channel(expr.value)
+			return expr_type_slots_use_channel_with_options(expr.value, options)
 		}
 		ast.FnLiteral {
-			return fn_type_uses_channel(expr.typ) || stmts_use_channel(expr.stmts)
+			return fn_type_uses_channel(expr.typ)
+				|| stmts_use_channel_with_options(expr.stmts, options)
 		}
 		ast.GenericArgOrIndexExpr {
 			return type_expr_uses_channel(expr.lhs) || type_expr_uses_channel(expr.expr)
@@ -500,78 +582,88 @@ fn expr_type_slots_use_channel(expr ast.Expr) bool {
 			return type_expr_uses_channel(expr.lhs) || type_exprs_use_channel(expr.args)
 		}
 		ast.IfExpr {
-			return expr_type_slots_use_channel(expr.cond) || stmts_use_channel(expr.stmts)
-				|| expr_type_slots_use_channel(expr.else_expr)
+			return expr_type_slots_use_channel_with_options(expr.cond, options)
+				|| stmts_use_channel_with_options(expr.stmts, options)
+				|| expr_type_slots_use_channel_with_options(expr.else_expr, options)
 		}
 		ast.IfGuardExpr {
-			return stmt_uses_channel(ast.Stmt(expr.stmt))
+			return stmt_uses_channel_with_options(ast.Stmt(expr.stmt), options)
 		}
 		ast.IndexExpr {
-			return expr_type_slots_use_channel(expr.lhs) || expr_type_slots_use_channel(expr.expr)
+			return expr_type_slots_use_channel_with_options(expr.lhs, options)
+				|| expr_type_slots_use_channel_with_options(expr.expr, options)
 		}
 		ast.InfixExpr {
-			return expr_type_slots_use_channel(expr.lhs) || expr_type_slots_use_channel(expr.rhs)
+			return expr_type_slots_use_channel_with_options(expr.lhs, options)
+				|| expr_type_slots_use_channel_with_options(expr.rhs, options)
 		}
 		ast.InitExpr {
-			return type_expr_uses_channel(expr.typ) || field_inits_use_channel(expr.fields)
+			return type_expr_uses_channel(expr.typ)
+				|| field_inits_use_channel_with_options(expr.fields, options)
 		}
 		ast.KeywordOperator {
-			return exprs_type_slots_use_channel(expr.exprs)
+			return exprs_type_slots_use_channel_with_options(expr.exprs, options)
 		}
 		ast.LambdaExpr {
-			return expr_type_slots_use_channel(expr.expr)
+			return expr_type_slots_use_channel_with_options(expr.expr, options)
 		}
 		ast.LockExpr {
-			return exprs_type_slots_use_channel(expr.lock_exprs)
-				|| exprs_type_slots_use_channel(expr.rlock_exprs) || stmts_use_channel(expr.stmts)
+			return exprs_type_slots_use_channel_with_options(expr.lock_exprs, options)
+				|| exprs_type_slots_use_channel_with_options(expr.rlock_exprs, options)
+				|| stmts_use_channel_with_options(expr.stmts, options)
 		}
 		ast.MapInitExpr {
-			return type_expr_uses_channel(expr.typ) || exprs_type_slots_use_channel(expr.keys)
-				|| exprs_type_slots_use_channel(expr.vals)
+			return type_expr_uses_channel(expr.typ)
+				|| exprs_type_slots_use_channel_with_options(expr.keys, options)
+				|| exprs_type_slots_use_channel_with_options(expr.vals, options)
 		}
 		ast.MatchExpr {
-			if expr_type_slots_use_channel(expr.expr) {
+			if expr_type_slots_use_channel_with_options(expr.expr, options) {
 				return true
 			}
 			for branch in expr.branches {
-				if exprs_type_slots_use_channel(branch.cond) || stmts_use_channel(branch.stmts) {
+				if exprs_type_slots_use_channel_with_options(branch.cond, options)
+					|| stmts_use_channel_with_options(branch.stmts, options) {
 					return true
 				}
 			}
 		}
 		ast.OrExpr {
-			return expr_type_slots_use_channel(expr.expr) || stmts_use_channel(expr.stmts)
+			return expr_type_slots_use_channel_with_options(expr.expr, options)
+				|| stmts_use_channel_with_options(expr.stmts, options)
 		}
 		ast.ParenExpr {
-			return expr_type_slots_use_channel(expr.expr)
+			return expr_type_slots_use_channel_with_options(expr.expr, options)
 		}
 		ast.PostfixExpr {
-			return expr_type_slots_use_channel(expr.expr)
+			return expr_type_slots_use_channel_with_options(expr.expr, options)
 		}
 		ast.PrefixExpr {
-			return expr_type_slots_use_channel(expr.expr)
+			return expr_type_slots_use_channel_with_options(expr.expr, options)
 		}
 		ast.RangeExpr {
-			return expr_type_slots_use_channel(expr.start) || expr_type_slots_use_channel(expr.end)
+			return expr_type_slots_use_channel_with_options(expr.start, options)
+				|| expr_type_slots_use_channel_with_options(expr.end, options)
 		}
 		ast.SelectExpr {
-			return stmt_uses_channel(expr.stmt) || stmts_use_channel(expr.stmts)
-				|| expr_type_slots_use_channel(expr.next)
+			return stmt_uses_channel_with_options(expr.stmt, options)
+				|| stmts_use_channel_with_options(expr.stmts, options)
+				|| expr_type_slots_use_channel_with_options(expr.next, options)
 		}
 		ast.SelectorExpr {
-			return expr_type_slots_use_channel(expr.lhs)
+			return expr_type_slots_use_channel_with_options(expr.lhs, options)
 		}
 		ast.SqlExpr {
-			return expr_type_slots_use_channel(expr.expr)
+			return expr_type_slots_use_channel_with_options(expr.expr, options)
 		}
 		ast.StringInterLiteral {
-			return string_inters_use_channel(expr.inters)
+			return string_inters_use_channel_with_options(expr.inters, options)
 		}
 		ast.Tuple {
-			return exprs_type_slots_use_channel(expr.exprs)
+			return exprs_type_slots_use_channel_with_options(expr.exprs, options)
 		}
 		ast.UnsafeExpr {
-			return stmts_use_channel(expr.stmts)
+			return stmts_use_channel_with_options(expr.stmts, options)
 		}
 		ast.Type {
 			return type_expr_uses_channel(expr)
@@ -646,7 +738,13 @@ fn active_file_imports_with_options(file ast.File, user_defines []string, explic
 	mut imports := file.imports.clone()
 	collect_active_imports_from_stmts_with_options(file.stmts, user_defines, explicit_user_defines,
 		target_os, allow_pkgconfig, mut imports)
-	add_implicit_sync_import_if_needed(mut imports, stmts_use_channel(file.stmts))
+	add_implicit_sync_import_if_needed(mut imports, stmts_use_channel_with_options(file.stmts, ChannelScanOptions{
+		user_defines:          user_defines
+		explicit_user_defines: explicit_user_defines
+		target_os:             target_os
+		allow_pkgconfig:       allow_pkgconfig
+		filter_comptime:       true
+	}))
 	return imports
 }
 
@@ -663,7 +761,13 @@ fn active_file_imports_from_flat_with_options(flat &ast.FlatAst, ff ast.FlatFile
 	stmts := flat.read_file_stmts(ff)
 	collect_active_imports_from_stmts_with_options(stmts, user_defines, explicit_user_defines,
 		target_os, allow_pkgconfig, mut imports)
-	add_implicit_sync_import_if_needed(mut imports, stmts_use_channel(stmts))
+	add_implicit_sync_import_if_needed(mut imports, stmts_use_channel_with_options(stmts, ChannelScanOptions{
+		user_defines:          user_defines
+		explicit_user_defines: explicit_user_defines
+		target_os:             target_os
+		allow_pkgconfig:       allow_pkgconfig
+		filter_comptime:       true
+	}))
 	return imports
 }
 
