@@ -3835,6 +3835,25 @@ fn test_cache_generic_concrete_origin_accepts_current_module_unqualified_type() 
 	assert g.generic_concrete_c_name_belongs_to_emit_modules('Array_ValueInfo')
 }
 
+fn test_cache_receiver_specialization_checks_generated_method_name() {
+	mut g := Gen.new([])
+	g.cache_bundle_name = 'printer'
+	g.emit_modules['printer'] = true
+	g.type_modules['printer'] = true
+	decl := ast.FnDecl{
+		name:      'count'
+		is_method: true
+		receiver:  ast.Parameter{
+			name: 'writer'
+			typ:  ast.Expr(ast.Ident{
+				name: 'CounterWriter_T_main__UserCounter'
+			})
+		}
+	}
+
+	assert !g.transformed_specialization_belongs_to_cache('printer', decl)
+}
+
 fn test_cache_generic_struct_bindings_follow_emit_module_filter() {
 	prefs := &vpref.Preferences{
 		backend: .cleanc

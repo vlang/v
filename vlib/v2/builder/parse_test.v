@@ -282,3 +282,31 @@ fn test_active_file_imports_follow_comptime_else_branch() {
 	assert imports.len == 1
 	assert imports[0].name == 'net.mbedtls'
 }
+
+fn test_active_file_imports_adds_sync_for_channel_in_if_condition() {
+	file := ast.File{
+		mod:   'main'
+		name:  'main.v'
+		stmts: [
+			ast.Stmt(ast.ExprStmt{
+				expr: ast.IfExpr{
+					cond: ast.CallExpr{
+						lhs:  ast.Expr(ast.Ident{
+							name: 'takes_chan'
+						})
+						args: [
+							ast.Expr(ast.Type(ast.ChannelType{
+								elem_type: ast.Expr(ast.Ident{
+									name: 'int'
+								})
+							})),
+						]
+					}
+				}
+			}),
+		]
+	}
+	imports := active_file_imports(file, [], 'mac')
+
+	assert imports.any(it.name == 'sync')
+}

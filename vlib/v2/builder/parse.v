@@ -459,7 +459,8 @@ fn expr_type_slots_use_channel(expr ast.Expr) bool {
 			return type_expr_uses_channel(expr.lhs) || type_exprs_use_channel(expr.args)
 		}
 		ast.IfExpr {
-			return stmts_use_channel(expr.stmts) || expr_type_slots_use_channel(expr.else_expr)
+			return expr_type_slots_use_channel(expr.cond) || stmts_use_channel(expr.stmts)
+				|| expr_type_slots_use_channel(expr.else_expr)
 		}
 		ast.IfGuardExpr {
 			return stmt_uses_channel(ast.Stmt(expr.stmt))

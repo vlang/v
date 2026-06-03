@@ -193,14 +193,19 @@ fn (mut g Gen) should_emit_fn_decl_cached(module_name string, decl ast.FnDecl) b
 	if cached := g.should_emit_fn_decl_cache[cache_key] {
 		return cached
 	}
-	result := g.transformed_specialization_belongs_to_cache(decl)
+	result := g.transformed_specialization_belongs_to_cache(module_name, decl)
 		&& g.should_emit_fn_decl(module_name, decl)
 	g.should_emit_fn_decl_cache[cache_key] = result
 	return result
 }
 
-fn (mut g Gen) transformed_specialization_belongs_to_cache(decl ast.FnDecl) bool {
-	if g.cache_bundle_name.len == 0 || !decl.name.contains('_T_') {
+fn (mut g Gen) transformed_specialization_belongs_to_cache(module_name string, decl ast.FnDecl) bool {
+	c_name := if decl.is_method {
+		g.method_decl_c_name_for_module(module_name, decl)
+	} else {
+		decl.name
+	}
+	if g.cache_bundle_name.len == 0 || (!decl.name.contains('_T_') && !c_name.contains('_T_')) {
 		return true
 	}
 	if decl.is_method && !g.transformed_specialization_type_expr_belongs_to_cache(decl.receiver.typ) {
