@@ -287,7 +287,18 @@ fn lpt_buckets(files []ast.File, n_jobs int) [][]int {
 	n := files.len
 	mut cost := []int{len: n}
 	for i in 0 .. n {
-		cost[i] = files[i].stmts.len + 1
+		// Cost proxy: count function bodies, not just top-level declarations, so
+		// a file of a few huge functions (transformer.v, the cleanc gen files)
+		// outranks one with many tiny ones. Deterministic; one level deep is
+		// enough to separate the heavyweight files that drove the imbalance.
+		mut c := 1
+		for stmt in files[i].stmts {
+			c++
+			if stmt is ast.FnDecl {
+				c += stmt.stmts.len
+			}
+		}
+		cost[i] = c
 	}
 	// order = file indices by cost descending. Implemented as a plain insertion
 	// sort (n is small, a few hundred) rather than sort_with_compare: this file
