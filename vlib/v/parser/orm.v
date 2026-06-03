@@ -564,9 +564,18 @@ fn (p &Parser) is_sql_query_data_expr() bool {
 	for p.peek_token(idx).kind == .comment {
 		idx++
 	}
-	first := p.peek_token(idx)
+	mut first := p.peek_token(idx)
 	if first.kind == .key_if {
 		return true
+	}
+	mut leading_parens := 0
+	for first.kind == .lpar {
+		leading_parens++
+		idx++
+		for p.peek_token(idx).kind == .comment {
+			idx++
+		}
+		first = p.peek_token(idx)
 	}
 	if first.kind != .name {
 		return false
@@ -574,6 +583,13 @@ fn (p &Parser) is_sql_query_data_expr() bool {
 	idx++
 	for p.peek_token(idx).kind == .dot && p.peek_token(idx + 1).kind == .name {
 		idx += 2
+	}
+	for leading_parens > 0 && p.peek_token(idx).kind == .rpar {
+		leading_parens--
+		idx++
+		for p.peek_token(idx).kind == .comment {
+			idx++
+		}
 	}
 	return is_sql_query_data_operator(p.peek_token(idx).kind)
 }

@@ -377,6 +377,14 @@ fn test_dynamic_select_where_block_with_or_expression() {
 	}!
 
 	assert rows.map(it.name) == ['Alice', 'Bob']
+
+	grouped_rows := sql db {
+		dynamic select from DynamicOrMember where {
+		(name == 'Alice' || status == active) && tenant_id == tenant_id
+	} order by id
+	}!
+
+	assert grouped_rows.map(it.name) == ['Bob']
 }
 
 fn test_dynamic_select_where_block_with_or_expression_and_comma_filter() {
