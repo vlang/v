@@ -624,6 +624,9 @@ fn expr_type_slots_use_channel_with_options(expr ast.Expr, options ChannelScanOp
 		ast.LambdaExpr {
 			return expr_type_slots_use_channel_with_options(expr.expr, options)
 		}
+		ast.ModifierExpr {
+			return expr_type_slots_use_channel_with_options(expr.expr, options)
+		}
 		ast.LockExpr {
 			return exprs_type_slots_use_channel_with_options(expr.lock_exprs, options)
 				|| exprs_type_slots_use_channel_with_options(expr.rlock_exprs, options)

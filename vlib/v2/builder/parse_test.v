@@ -596,6 +596,47 @@ fn test_active_file_imports_adds_sync_for_channel_in_call_callee_generic_args() 
 	assert imports.any(it.name == 'sync')
 }
 
+fn test_active_file_imports_adds_sync_for_channel_in_modifier_expr_operand() {
+	file := ast.File{
+		mod:   'main'
+		name:  'main.v'
+		stmts: [
+			ast.Stmt(ast.ExprStmt{
+				expr: ast.CallExpr{
+					lhs:  ast.Expr(ast.Ident{
+						name: 'use'
+					})
+					args: [
+						ast.Expr(ast.ModifierExpr{
+							kind: .key_mut
+							expr: ast.IndexExpr{
+								lhs:  ast.Expr(ast.Ident{
+									name: 'arr'
+								})
+								expr: ast.Expr(ast.CallExpr{
+									lhs:  ast.Expr(ast.Ident{
+										name: 'idx'
+									})
+									args: [
+										ast.Expr(ast.Type(ast.ChannelType{
+											elem_type: ast.Expr(ast.Ident{
+												name: 'int'
+											})
+										})),
+									]
+								})
+							}
+						}),
+					]
+				}
+			}),
+		]
+	}
+	imports := active_file_imports(file, [], 'mac')
+
+	assert imports.any(it.name == 'sync')
+}
+
 fn test_active_file_imports_adds_sync_for_channel_in_assign_lhs() {
 	file := ast.File{
 		mod:   'main'
