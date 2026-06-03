@@ -8,15 +8,17 @@ pub:
 	target_os    string
 	ccompiler    string
 	error_string string
+	lines        string
 }
 
 // new_stored_c_error_report builds the fields stored by the C error report receiver.
-pub fn new_stored_c_error_report(c_file string, target_os string, ccompiler string, c_error string) StoredCErrorReport {
+pub fn new_stored_c_error_report(c_file string, target_os string, ccompiler string, c_error string, c_lines []string, v_lines []string) StoredCErrorReport {
 	return StoredCErrorReport{
 		c_file_name:  normalized_file_name(c_file)
 		target_os:    target_os
 		ccompiler:    ccompiler
 		error_string: c_error_string(c_error)
+		lines:        c_error_report_lines(c_lines, v_lines)
 	}
 }
 
@@ -36,6 +38,17 @@ fn c_error_string(c_output string) string {
 		}
 	}
 	return ''
+}
+
+fn c_error_report_lines(c_lines []string, v_lines []string) string {
+	mut lines := []string{cap: c_lines.len + v_lines.len}
+	for line in c_lines {
+		lines << line
+	}
+	for line in v_lines {
+		lines << line
+	}
+	return lines.join('\n')
 }
 
 fn normalized_error_string(trimmed string, lower string) ?string {

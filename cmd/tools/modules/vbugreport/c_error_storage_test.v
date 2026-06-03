@@ -2,16 +2,22 @@ module vbugreport
 
 fn test_new_stored_c_error_report_extracts_sql_fields() {
 	report := new_stored_c_error_report('/tmp/v/program.tmp.c', 'linux', 'clang',
-		'/tmp/v/program.tmp.c:12:7: error: unknown type name "Foo"')
+		'/tmp/v/program.tmp.c:12:7: error: unknown type name "Foo"', [
+		'void main__main(void) {',
+		'\tFoo x;',
+	], [
+		'foo := Foo{}',
+	])
 	assert report.c_file_name == 'program.tmp.c'
 	assert report.target_os == 'linux'
 	assert report.ccompiler == 'clang'
 	assert report.error_string == 'error: unknown type name "Foo"'
+	assert report.lines == 'void main__main(void) {\n\tFoo x;\nfoo := Foo{}'
 }
 
 fn test_new_stored_c_error_report_handles_windows_c_file_path() {
 	report := new_stored_c_error_report('C:\\tmp\\program.tmp.c', 'windows', 'msvc',
-		'error: syntax error')
+		'error: syntax error', []string{}, []string{})
 	assert report.c_file_name == 'program.tmp.c'
 }
 
