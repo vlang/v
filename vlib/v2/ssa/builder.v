@@ -101,6 +101,18 @@ fn ssa_module_storage_field_is_c_extern(node ast.GlobalDecl, field ast.FieldDecl
 		|| field.attributes.has('c_extern')
 }
 
+// cursor_attrs_has (s237) reports whether an attribute list (a CursorList of
+// .aux_attribute nodes whose name is in name_id) contains an attribute named
+// `name`. Cursor mirror of `[]Attribute.has(name)`.
+fn cursor_attrs_has(attrs ast.CursorList, name string) bool {
+	for i in 0 .. attrs.len() {
+		if attrs.at(i).name() == name {
+			return true
+		}
+	}
+	return false
+}
+
 struct DynConstArray {
 	arr_global_name  string // V array struct global name
 	data_global_name string // raw data global name
@@ -1419,6 +1431,32 @@ fn (mut b Builder) global_field_type(field ast.FieldDecl) TypeID {
 	return b.mod.type_store.get_int(64)
 }
 
+// global_field_type_from_flat (s237) is the cursor mirror of global_field_type.
+// field_c is an .aux_field_decl: name in name_id, typ at edge(0), value at edge(1).
+// `field.typ !is ast.EmptyExpr` maps to `edge(0).kind() != .expr_empty`; the
+// ArrayInitExpr.typ check uses value_c.edge(0). scope/ssa/expr lookups identical.
+fn (mut b Builder) global_field_type_from_flat(field_c ast.Cursor) TypeID {
+	scope_type := b.scope_field_type(field_c.name())
+	if scope_type != 0 {
+		return scope_type
+	}
+	typ_c := field_c.edge(0)
+	if typ_c.kind() != .expr_empty {
+		return b.ast_type_to_ssa_from_flat(typ_c)
+	}
+	value_c := field_c.edge(1)
+	if value_c.kind() == .expr_array_init {
+		arr_typ_c := value_c.edge(0)
+		if arr_typ_c.kind() != .expr_empty {
+			return b.ast_type_to_ssa_from_flat(arr_typ_c)
+		}
+	}
+	if value_c.kind() != .expr_empty {
+		return b.expr_type_from_flat(value_c)
+	}
+	return b.mod.type_store.get_int(64)
+}
+
 fn (mut b Builder) types_type_c_name(t types.Type) string {
 	if !types.type_has_valid_payload(t) {
 		return 'unknown'
@@ -1964,10 +2002,8 @@ fn (mut b Builder) register_consts_and_globals_from_flat(file_cursor ast.FileCur
 				}
 			}
 			.stmt_global_decl {
-				decoded := c.flat.decode_stmt(c.id)
-				if decoded is ast.GlobalDecl {
-					b.register_global_decl(decoded)
-				}
+				// s237: cursor-native global registration — no decode_stmt.
+				b.register_global_decl_from_flat(c)
 			}
 			else {}
 		}
@@ -2161,6 +2197,45 @@ fn (mut b Builder) register_global_decl(stmt ast.GlobalDecl) {
 		glob_name := ssa_module_storage_name(b.cur_module, field.name)
 		initial_value := if field.value != ast.empty_expr {
 			b.try_eval_const_int(field.value)
+		} else {
+			i64(0)
+		}
+		b.mod.add_global_with_value(glob_name, glob_type, false, initial_value)
+	}
+}
+
+// register_global_decl_from_flat (s237) is the cursor mirror of
+// register_global_decl. GlobalDecl flat = (.stmt_global_decl, [edge0=attrs,
+// edge1=fields]); each field is an .aux_field_decl (name in name_id, edge0=typ,
+// edge1=value, edge2=attrs). The c_extern check mirrors
+// ssa_module_storage_field_is_c_extern via cursor_attrs_has on the decl-level
+// (edge0) and field-level (field edge2) attribute lists; the value uses
+// try_eval_const_int_from_flat (s235). Bit-identical to the AST path.
+fn (mut b Builder) register_global_decl_from_flat(c ast.Cursor) {
+	node_attrs := c.list_at(0)
+	fields := c.list_at(1)
+	for fi in 0 .. fields.len() {
+		field_c := fields.at(fi)
+		field_name := field_c.name()
+		glob_type := b.global_field_type_from_flat(field_c)
+		if field_name.starts_with('C.') {
+			continue
+		}
+		is_c_extern := field_name.starts_with('C.') || cursor_attrs_has(node_attrs, 'c_extern')
+			|| cursor_attrs_has(field_c.list_at(2), 'c_extern')
+		if is_c_extern {
+			glob_id := b.mod.add_external_global(field_name, glob_type)
+			b.global_refs[field_name] = glob_id
+			qualified_name := ssa_module_storage_name(b.cur_module, field_name)
+			if qualified_name != field_name {
+				b.global_refs[qualified_name] = glob_id
+			}
+			continue
+		}
+		glob_name := ssa_module_storage_name(b.cur_module, field_name)
+		value_c := field_c.edge(1)
+		initial_value := if value_c.kind() != .expr_empty {
+			b.try_eval_const_int_from_flat(value_c)
 		} else {
 			i64(0)
 		}
