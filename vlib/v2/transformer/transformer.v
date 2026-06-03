@@ -138,6 +138,14 @@ mut:
 	// match a key whose short name equals the receiver's short name, so they can
 	// scan just this bucket instead of every method key (O(all_keys) per call).
 	cached_method_keys_by_short map[string][]string
+	// field_type_cache memoizes lookup_struct_field_type, which is called per
+	// field-access expression and re-derives the field type (scope lookups +
+	// types.Type-by-value copies + a scan-all-scopes fallback) every time. Keyed
+	// by "cur_module\x01struct\x01field" because the unqualified-name path
+	// consults cur_module. Written through an unsafe const->mut cast (the result
+	// is pure given the key, so this is benign interior mutability); each parallel
+	// worker gets its own empty cache, so there is no cross-thread sharing.
+	field_type_cache map[string]types.Type
 	// Accumulated synth types for deferred application (thread-safe).
 	// Instead of writing directly to env.set_expr_type during parallel transform,
 	// store here and apply after merge.
@@ -365,6 +373,7 @@ pub fn (t &Transformer) new_worker_clone(worker_idx int) &Transformer {
 		cached_methods:                     t.cached_methods.clone()
 		cached_method_base_index:           t.cached_method_base_index.clone()
 		cached_method_keys_by_short:        t.cached_method_keys_by_short.clone()
+		field_type_cache:                   map[string]types.Type{}
 		cached_method_keys:                 t.cached_method_keys.clone()
 		cached_fn_scopes:                   t.cached_fn_scopes.clone()
 		synth_types:                        t.synth_types.clone()
