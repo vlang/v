@@ -688,98 +688,98 @@ fn primitive_type(value Primitive) int {
 		}
 		[]bool {
 			if value.len > 0 {
-				primitive_type(Primitive(value[0]))
+				type_idx['bool']
 			} else {
 				type_idx['int']
 			}
 		}
 		[]f32 {
 			if value.len > 0 {
-				primitive_type(Primitive(value[0]))
+				type_idx['f32']
 			} else {
 				type_idx['int']
 			}
 		}
 		[]f64 {
 			if value.len > 0 {
-				primitive_type(Primitive(value[0]))
+				type_idx['f64']
 			} else {
 				type_idx['int']
 			}
 		}
 		[]i16 {
 			if value.len > 0 {
-				primitive_type(Primitive(value[0]))
+				type_idx['i16']
 			} else {
 				type_idx['int']
 			}
 		}
 		[]i64 {
 			if value.len > 0 {
-				primitive_type(Primitive(value[0]))
+				type_idx['i64']
 			} else {
 				type_idx['int']
 			}
 		}
 		[]i8 {
 			if value.len > 0 {
-				primitive_type(Primitive(value[0]))
+				type_idx['i8']
 			} else {
 				type_idx['int']
 			}
 		}
 		[]int {
 			if value.len > 0 {
-				primitive_type(Primitive(value[0]))
+				type_idx['int']
 			} else {
 				type_idx['int']
 			}
 		}
 		[]string {
 			if value.len > 0 {
-				primitive_type(Primitive(value[0]))
+				type_string
 			} else {
 				type_idx['int']
 			}
 		}
 		[]time.Time {
 			if value.len > 0 {
-				primitive_type(Primitive(value[0]))
+				time_
 			} else {
 				type_idx['int']
 			}
 		}
 		[]u16 {
 			if value.len > 0 {
-				primitive_type(Primitive(value[0]))
+				type_idx['u16']
 			} else {
 				type_idx['int']
 			}
 		}
 		[]u32 {
 			if value.len > 0 {
-				primitive_type(Primitive(value[0]))
+				type_idx['u32']
 			} else {
 				type_idx['int']
 			}
 		}
 		[]u64 {
 			if value.len > 0 {
-				primitive_type(Primitive(value[0]))
+				type_idx['u32']
 			} else {
 				type_idx['int']
 			}
 		}
 		[]u8 {
 			if value.len > 0 {
-				primitive_type(Primitive(value[0]))
+				type_idx['u8']
 			} else {
 				type_idx['int']
 			}
 		}
 		[]InfixType {
 			if value.len > 0 {
-				primitive_type(Primitive(value[0]))
+				primitive_type(value[0].right)
 			} else {
 				type_idx['int']
 			}
