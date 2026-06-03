@@ -1300,9 +1300,10 @@ fn (b &Builder) import_modules_for_cached_modules(module_names []string) []Cache
 	}
 	mut import_set := map[string]bool{}
 	mut imports := []CachedImportModule{}
+	allow_pkgconfig_imports := !b.pref.is_cross_target()
 	for file in b.files {
-		for import_stmt in active_file_imports_with_explicit(file, b.pref.user_defines,
-			b.pref.explicit_user_defines, b.pref.source_filter_target_os()) {
+		for import_stmt in active_file_imports_with_options(file, b.pref.user_defines,
+			b.pref.explicit_user_defines, b.pref.source_filter_target_os(), allow_pkgconfig_imports) {
 			module_name := import_stmt.name.all_after_last('.')
 			if module_name !in module_set {
 				continue

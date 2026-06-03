@@ -141,40 +141,51 @@ fn ast_comptime_cond_matches(cond ast.Expr, user_defines []string, target_os str
 }
 
 fn ast_comptime_cond_matches_with_explicit(cond ast.Expr, user_defines []string, explicit_user_defines []string, target_os string) bool {
+	return ast_comptime_cond_matches_with_options(cond, user_defines, explicit_user_defines,
+		target_os, true)
+}
+
+fn ast_comptime_cond_matches_with_options(cond ast.Expr, user_defines []string, explicit_user_defines []string, target_os string, allow_pkgconfig bool) bool {
 	match cond {
 		ast.Ident {
 			return ast_comptime_flag_matches(cond.name, user_defines, target_os)
 		}
 		ast.ComptimeExpr {
-			return ast_comptime_cond_matches_with_explicit(cond.expr, user_defines,
-				explicit_user_defines, target_os)
+			return ast_comptime_cond_matches_with_options(cond.expr, user_defines,
+				explicit_user_defines, target_os, allow_pkgconfig)
 		}
 		ast.CallExpr {
 			if pkg_name := ast_pkgconfig_call_name(cond) {
+				if !allow_pkgconfig {
+					return false
+				}
 				return vpref.comptime_pkgconfig_value(pkg_name)
 			}
 		}
 		ast.CallOrCastExpr {
 			if pkg_name := ast_pkgconfig_call_name(cond) {
+				if !allow_pkgconfig {
+					return false
+				}
 				return vpref.comptime_pkgconfig_value(pkg_name)
 			}
 		}
 		ast.PrefixExpr {
 			if cond.op == .not {
-				return !ast_comptime_cond_matches_with_explicit(cond.expr, user_defines,
-					explicit_user_defines, target_os)
+				return !ast_comptime_cond_matches_with_options(cond.expr, user_defines,
+					explicit_user_defines, target_os, allow_pkgconfig)
 			}
 		}
 		ast.InfixExpr {
 			if cond.op == .and {
 				return
-					ast_comptime_cond_matches_with_explicit(cond.lhs, user_defines, explicit_user_defines, target_os)
-					&& ast_comptime_cond_matches_with_explicit(cond.rhs, user_defines, explicit_user_defines, target_os)
+					ast_comptime_cond_matches_with_options(cond.lhs, user_defines, explicit_user_defines, target_os, allow_pkgconfig)
+					&& ast_comptime_cond_matches_with_options(cond.rhs, user_defines, explicit_user_defines, target_os, allow_pkgconfig)
 			}
 			if cond.op == .logical_or {
 				return
-					ast_comptime_cond_matches_with_explicit(cond.lhs, user_defines, explicit_user_defines, target_os)
-					|| ast_comptime_cond_matches_with_explicit(cond.rhs, user_defines, explicit_user_defines, target_os)
+					ast_comptime_cond_matches_with_options(cond.lhs, user_defines, explicit_user_defines, target_os, allow_pkgconfig)
+					|| ast_comptime_cond_matches_with_options(cond.rhs, user_defines, explicit_user_defines, target_os, allow_pkgconfig)
 			}
 		}
 		ast.PostfixExpr {
@@ -184,8 +195,8 @@ fn ast_comptime_cond_matches_with_explicit(cond ast.Expr, user_defines []string,
 			}
 		}
 		ast.ParenExpr {
-			return ast_comptime_cond_matches_with_explicit(cond.expr, user_defines,
-				explicit_user_defines, target_os)
+			return ast_comptime_cond_matches_with_options(cond.expr, user_defines,
+				explicit_user_defines, target_os, allow_pkgconfig)
 		}
 		else {}
 	}
@@ -232,21 +243,26 @@ fn collect_active_imports_from_if_expr(node ast.IfExpr, user_defines []string, t
 }
 
 fn collect_active_imports_from_if_expr_with_explicit(node ast.IfExpr, user_defines []string, explicit_user_defines []string, target_os string, mut imports []ast.ImportStmt) {
-	if ast_comptime_cond_matches_with_explicit(node.cond, user_defines, explicit_user_defines,
-		target_os)
+	collect_active_imports_from_if_expr_with_options(node, user_defines, explicit_user_defines,
+		target_os, true, mut imports)
+}
+
+fn collect_active_imports_from_if_expr_with_options(node ast.IfExpr, user_defines []string, explicit_user_defines []string, target_os string, allow_pkgconfig bool, mut imports []ast.ImportStmt) {
+	if ast_comptime_cond_matches_with_options(node.cond, user_defines, explicit_user_defines,
+		target_os, allow_pkgconfig)
 	{
-		collect_active_imports_from_stmts_with_explicit(node.stmts, user_defines,
-			explicit_user_defines, target_os, mut imports)
+		collect_active_imports_from_stmts_with_options(node.stmts, user_defines,
+			explicit_user_defines, target_os, allow_pkgconfig, mut imports)
 		return
 	}
 	match node.else_expr {
 		ast.IfExpr {
 			if node.else_expr.cond is ast.EmptyExpr {
-				collect_active_imports_from_stmts_with_explicit(node.else_expr.stmts, user_defines,
-					explicit_user_defines, target_os, mut imports)
+				collect_active_imports_from_stmts_with_options(node.else_expr.stmts, user_defines,
+					explicit_user_defines, target_os, allow_pkgconfig, mut imports)
 			} else {
-				collect_active_imports_from_if_expr_with_explicit(node.else_expr, user_defines,
-					explicit_user_defines, target_os, mut imports)
+				collect_active_imports_from_if_expr_with_options(node.else_expr, user_defines,
+					explicit_user_defines, target_os, allow_pkgconfig, mut imports)
 			}
 		}
 		else {}
@@ -259,6 +275,11 @@ fn collect_active_imports_from_stmts(stmts []ast.Stmt, user_defines []string, ta
 }
 
 fn collect_active_imports_from_stmts_with_explicit(stmts []ast.Stmt, user_defines []string, explicit_user_defines []string, target_os string, mut imports []ast.ImportStmt) {
+	collect_active_imports_from_stmts_with_options(stmts, user_defines, explicit_user_defines,
+		target_os, true, mut imports)
+}
+
+fn collect_active_imports_from_stmts_with_options(stmts []ast.Stmt, user_defines []string, explicit_user_defines []string, target_os string, allow_pkgconfig bool, mut imports []ast.ImportStmt) {
 	for stmt in stmts {
 		match stmt {
 			ast.ImportStmt {
@@ -266,8 +287,8 @@ fn collect_active_imports_from_stmts_with_explicit(stmts []ast.Stmt, user_define
 			}
 			ast.ExprStmt {
 				if stmt.expr is ast.ComptimeExpr && stmt.expr.expr is ast.IfExpr {
-					collect_active_imports_from_if_expr_with_explicit(stmt.expr.expr, user_defines,
-						explicit_user_defines, target_os, mut imports)
+					collect_active_imports_from_if_expr_with_options(stmt.expr.expr, user_defines,
+						explicit_user_defines, target_os, allow_pkgconfig, mut imports)
 				}
 			}
 			else {}
@@ -560,9 +581,14 @@ fn active_file_imports(file ast.File, user_defines []string, target_os string) [
 }
 
 fn active_file_imports_with_explicit(file ast.File, user_defines []string, explicit_user_defines []string, target_os string) []ast.ImportStmt {
+	return active_file_imports_with_options(file, user_defines, explicit_user_defines, target_os,
+		true)
+}
+
+fn active_file_imports_with_options(file ast.File, user_defines []string, explicit_user_defines []string, target_os string, allow_pkgconfig bool) []ast.ImportStmt {
 	mut imports := file.imports.clone()
-	collect_active_imports_from_stmts_with_explicit(file.stmts, user_defines,
-		explicit_user_defines, target_os, mut imports)
+	collect_active_imports_from_stmts_with_options(file.stmts, user_defines, explicit_user_defines,
+		target_os, allow_pkgconfig, mut imports)
 	add_implicit_sync_import_if_needed(mut imports, stmts_use_channel(file.stmts))
 	return imports
 }
@@ -571,10 +597,15 @@ fn active_file_imports_with_explicit(file ast.File, user_defines []string, expli
 // import list and top-level stmts straight from the FlatAst, so import
 // discovery can run without rehydrating an ast.File.
 fn active_file_imports_from_flat(flat &ast.FlatAst, ff ast.FlatFile, user_defines []string, explicit_user_defines []string, target_os string) []ast.ImportStmt {
+	return active_file_imports_from_flat_with_options(flat, ff, user_defines,
+		explicit_user_defines, target_os, true)
+}
+
+fn active_file_imports_from_flat_with_options(flat &ast.FlatAst, ff ast.FlatFile, user_defines []string, explicit_user_defines []string, target_os string, allow_pkgconfig bool) []ast.ImportStmt {
 	mut imports := flat.read_file_imports(ff)
 	stmts := flat.read_file_stmts(ff)
-	collect_active_imports_from_stmts_with_explicit(stmts, user_defines, explicit_user_defines,
-		target_os, mut imports)
+	collect_active_imports_from_stmts_with_options(stmts, user_defines, explicit_user_defines,
+		target_os, allow_pkgconfig, mut imports)
 	add_implicit_sync_import_if_needed(mut imports, stmts_use_channel(stmts))
 	return imports
 }
@@ -637,6 +668,7 @@ fn (mut b Builder) parse_files(files []string) []ast.File {
 	mut ast_files := []ast.File{}
 	skip_builtin := b.pref.skip_builtin
 	target_os := b.pref.source_filter_target_os()
+	allow_pkgconfig_imports := !b.pref.is_cross_target()
 	mut use_core_headers := false
 	// Resolve core-source paths upfront so the pre-size pass below can
 	// stat them alongside user files. We still parse in the same batch
@@ -744,8 +776,9 @@ fn (mut b Builder) parse_files(files []string) []ast.File {
 		for afi := 0; afi < b.flat_builder.flat.files.len; afi++ {
 			ff := b.flat_builder.flat.files[afi]
 			ast_file_name := b.flat_builder.flat.file_name(ff)
-			for mod in active_file_imports_from_flat(&b.flat_builder.flat, ff, b.pref.user_defines,
-				b.pref.explicit_user_defines, target_os) {
+			for mod in active_file_imports_from_flat_with_options(&b.flat_builder.flat, ff,
+				b.pref.user_defines, b.pref.explicit_user_defines, target_os,
+				allow_pkgconfig_imports) {
 				if mod.name in parsed_imports {
 					continue
 				}
@@ -769,8 +802,8 @@ fn (mut b Builder) parse_files(files []string) []ast.File {
 	}
 	for afi := 0; afi < ast_files.len; afi++ {
 		ast_file := ast_files[afi]
-		for mod in active_file_imports_with_explicit(ast_file, b.pref.user_defines,
-			b.pref.explicit_user_defines, target_os) {
+		for mod in active_file_imports_with_options(ast_file, b.pref.user_defines,
+			b.pref.explicit_user_defines, target_os, allow_pkgconfig_imports) {
 			if mod.name in parsed_imports {
 				continue
 			}

@@ -336,3 +336,42 @@ fn test_active_file_imports_adds_sync_for_channel_in_for_condition() {
 
 	assert imports.any(it.name == 'sync')
 }
+
+fn test_active_file_imports_skip_pkgconfig_branch_when_disabled() {
+	if !pref.comptime_pkgconfig_value('sqlite3') {
+		return
+	}
+	file := ast.File{
+		mod:   'main'
+		name:  'main.v'
+		stmts: [
+			ast.Stmt(ast.ExprStmt{
+				expr: ast.ComptimeExpr{
+					expr: ast.IfExpr{
+						cond:  ast.CallExpr{
+							lhs:  ast.Expr(ast.Ident{
+								name: 'pkgconfig'
+							})
+							args: [
+								ast.Expr(ast.StringLiteral{
+									kind:  .v
+									value: "'sqlite3'"
+								}),
+							]
+						}
+						stmts: [
+							ast.Stmt(ast.ImportStmt{
+								name: 'db.sqlite'
+							}),
+						]
+					}
+				}
+			}),
+		]
+	}
+	native_imports := active_file_imports_with_options(file, [], [], 'mac', true).map(it.name)
+	cross_imports := active_file_imports_with_options(file, [], [], 'mac', false).map(it.name)
+
+	assert 'db.sqlite' in native_imports
+	assert 'db.sqlite' !in cross_imports
+}
