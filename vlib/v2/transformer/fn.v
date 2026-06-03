@@ -1172,26 +1172,31 @@ fn (t &Transformer) method_key_matches_type_name(method_key string, type_name st
 		|| !transformer_string_has_valid_data(type_name) {
 		return false
 	}
-	normalized_key := method_key.replace('.', '__')
-	normalized_type := type_name.replace('.', '__')
+	// Avoid .replace/.contains here: replace always allocates and contains builds
+	// a KMP failure table per call. This runs inside O(method_keys) fallback loops
+	// per call site, so those per-call allocations were a large transform cost.
+	// Only normalize when a '.' is actually present (index_u8 does not allocate),
+	// and locate `__` with a hand-rolled scan.
+	normalized_key := if method_key.index_u8(`.`) >= 0 {
+		method_key.replace('.', '__')
+	} else {
+		method_key
+	}
+	normalized_type := if type_name.index_u8(`.`) >= 0 {
+		type_name.replace('.', '__')
+	} else {
+		type_name
+	}
 	if normalized_key == normalized_type {
 		return true
 	}
-	key_is_qualified := normalized_key.contains('__')
-	type_is_qualified := normalized_type.contains('__')
-	if key_is_qualified && type_is_qualified {
+	key_dunder := last_double_underscore(normalized_key)
+	type_dunder := last_double_underscore(normalized_type)
+	if key_dunder >= 0 && type_dunder >= 0 {
 		return false
 	}
-	short_type := if normalized_type.contains('__') {
-		normalized_type.all_after_last('__')
-	} else {
-		normalized_type
-	}
-	short_key := if normalized_key.contains('__') {
-		normalized_key.all_after_last('__')
-	} else {
-		normalized_key
-	}
+	short_type := if type_dunder >= 0 { normalized_type[type_dunder + 2..] } else { normalized_type }
+	short_key := if key_dunder >= 0 { normalized_key[key_dunder + 2..] } else { normalized_key }
 	if short_key == short_type {
 		return true
 	}
@@ -1208,6 +1213,28 @@ fn (t &Transformer) method_key_matches_type_name(method_key string, type_name st
 		return true
 	}
 	return false
+}
+
+// candidate_method_keys returns the cached method keys that could fuzzy-match any
+// of `names` — i.e. those sharing a receiver short name. A method_key_matches_type_name
+// match always implies equal short names, so the fuzzy fallback loops can scan
+// these candidates instead of every method key (O(all_keys) per call site).
+fn (t &Transformer) candidate_method_keys(names []string) []string {
+	mut cand := []string{}
+	mut shorts_done := []string{}
+	for name in names {
+		if name == '' {
+			continue
+		}
+		sh := method_short_name(name)
+		if sh in shorts_done {
+			continue
+		}
+		shorts_done << sh
+		keys := t.cached_method_keys_by_short[sh] or { continue }
+		cand << keys
+	}
+	return cand
 }
 
 fn (t &Transformer) lookup_method_return_type(type_names []string, method_name string) ?types.Type {
@@ -1229,7 +1256,7 @@ fn (t &Transformer) lookup_method_return_type(type_names []string, method_name s
 			}
 		}
 	}
-	for key in t.cached_method_keys {
+	for key in t.candidate_method_keys(seen) {
 		mut matches_receiver := false
 		for type_name in seen {
 			if t.method_key_matches_type_name(key, type_name) {
@@ -1330,7 +1357,7 @@ fn (t &Transformer) lookup_method_exists(type_names []string, method_name string
 			return true
 		}
 	}
-	for key in t.cached_method_keys {
+	for key in t.candidate_method_keys(seen) {
 		mut matches_receiver := false
 		for type_name in seen {
 			if t.method_key_matches_type_name(key, type_name) {
@@ -4454,7 +4481,7 @@ fn (t &Transformer) resolve_method_call_name(receiver ast.Expr, method_name stri
 		}
 	}
 	// Fuzzy fallback: iterate method keys to find matching receiver types
-	for key in t.cached_method_keys {
+	for key in t.candidate_method_keys(lookup_names) {
 		mut matches_receiver := false
 		for name in lookup_names {
 			if t.method_key_matches_type_name(key, name) {

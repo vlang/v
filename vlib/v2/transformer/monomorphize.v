@@ -8,6 +8,8 @@ module transformer
 import v2.ast
 import v2.token
 import v2.types
+import os
+import time
 
 struct CloneComptimeFieldCtx {
 	var_name       string
@@ -59,22 +61,103 @@ pub fn (mut t Transformer) prepare_files_for_transform(files []ast.File) []ast.F
 	mut prepared := files.clone()
 	t.collect_declared_method_fns(prepared)
 	t.collect_struct_field_generic_decl_types(prepared)
-	for _ in 0 .. 64 {
+	timing := os.getenv('V2_TTIME') != ''
+	mut sw := time.new_stopwatch()
+	// prepared_dirty tracks whether `prepared` changed since it was last scanned
+	// by collect_generic_call_specs. collect is a pure (idempotent) function of
+	// the program: scanning an unchanged file set rediscovers the exact same
+	// specs. So the leading full-program scan is only needed when the program
+	// actually changed since the previous scan — i.e. when the previous
+	// iteration's inject step appended new struct specializations. The
+	// post-mono_pass scan below already covers the clones mono_pass adds, so the
+	// only unscanned source of change between iterations is inject. This removes
+	// the fixpoint's redundant confirmation scan (~6s / ~700MB for v2 self-host).
+	mut prepared_dirty := true
+	for iter in 0 .. 64 {
 		spec_count := t.monomorphized_specs.len
 		generic_count := t.generic_types_spec_count()
 		struct_count := t.generic_struct_specs.len
-		t.collect_generic_call_specs(prepared)
+		ts_start := sw.elapsed().milliseconds()
+		// collect1: full-program scan, only when the program changed since the
+		// last scan (initial pass, or inject appended structs last iteration).
+		if prepared_dirty {
+			t.collect_generic_call_specs(prepared)
+		}
+		ts_collect1 := sw.elapsed().milliseconds()
+		before_mono := t.monomorphized_specs.len
 		prepared = t.monomorphize_pass(prepared)
-		t.collect_generic_call_specs(prepared)
+		ts_mono := sw.elapsed().milliseconds()
+		// collect2: only when monomorphize_pass materialized new clones. Those
+		// clones are the only statements the previous scan has not seen — every
+		// other statement is byte-for-byte unchanged and collect is idempotent —
+		// so rescan just the new clones instead of re-walking all files. This
+		// turns the dominant ~6s/~700MB full rescan into a walk of a few dozen
+		// functions.
+		if t.monomorphized_specs.len != before_mono {
+			t.collect_generic_call_specs_in_new_clones(prepared)
+		}
+		ts_collect2 := sw.elapsed().milliseconds()
 		prepared = t.inject_generic_struct_specializations(prepared)
+		ts_inject := sw.elapsed().milliseconds()
+		// collect2 already rescanned mono_pass's clones, so `prepared` is clean
+		// for the next iteration unless inject just appended new specializations.
+		prepared_dirty = t.inject_changed_files
+		if timing {
+			eprintln('  [ttime] iter ${iter}: collect1=${ts_collect1 - ts_start}ms mono_pass=${ts_mono - ts_collect1}ms collect2=${ts_collect2 - ts_mono}ms inject=${ts_inject - ts_collect2}ms files=${prepared.len}')
+		}
+		t_print_mem('monomorphize iter ${iter}')
 		if t.monomorphized_specs.len == spec_count && t.generic_types_spec_count() == generic_count
 			&& t.generic_struct_specs.len == struct_count {
 			break
 		}
 	}
+	if dump_path := os.getenv_opt('V2_TDUMP') {
+		t.dump_monomorphize_specs(dump_path, prepared)
+	}
 	t.collect_struct_default_decl_infos(prepared)
 	t.collect_concrete_embedded_owner_names(prepared)
 	return prepared
+}
+
+// dump_monomorphize_specs writes a deterministic snapshot of the fixpoint's
+// result (all monomorphized fn spec keys, generic struct spec keys, generic
+// binding signatures, and per-file appended-stmt counts) to `path`. Used only
+// for correctness validation: the file must be byte-identical before and after
+// any optimization to the fixpoint loop. Gated on V2_TDUMP.
+fn (t &Transformer) dump_monomorphize_specs(path string, prepared []ast.File) {
+	mut lines := []string{}
+	mut mspecs := t.monomorphized_specs.keys()
+	mspecs.sort()
+	lines << '# monomorphized_specs (${mspecs.len})'
+	for k in mspecs {
+		lines << 'M ${k}'
+	}
+	mut sspecs := t.generic_struct_specs.keys()
+	sspecs.sort()
+	lines << '# generic_struct_specs (${sspecs.len})'
+	for k in sspecs {
+		lines << 'S ${k}'
+	}
+	mut gkeys := t.env.generic_types.keys()
+	gkeys.sort()
+	lines << '# generic_types'
+	for k in gkeys {
+		blist := t.env.generic_types[k] or { continue }
+		mut sigs := []string{}
+		for b in blist {
+			sigs << generic_bindings_signature(b)
+		}
+		sigs.sort()
+		for sig in sigs {
+			lines << 'G ${k} :: ${sig}'
+		}
+	}
+	// Per-file fingerprint: file name + stmt count, in input order.
+	lines << '# files (${prepared.len})'
+	for f in prepared {
+		lines << 'F ${f.mod}/${f.name} stmts=${f.stmts.len}'
+	}
+	os.write_file(path, lines.join('\n')) or {}
 }
 
 fn (t &Transformer) generic_types_spec_count() int {
@@ -607,6 +690,7 @@ fn (mut t Transformer) clone_generic_struct_decl(decl ast.StructDecl, spec Gener
 }
 
 fn (mut t Transformer) inject_generic_struct_specializations(files []ast.File) []ast.File {
+	t.inject_changed_files = false
 	if t.generic_struct_specs.len == 0 {
 		return files
 	}
@@ -626,6 +710,22 @@ fn (mut t Transformer) inject_generic_struct_specializations(files []ast.File) [
 	spec_keys := t.generic_struct_specs.keys()
 	mut sorted_keys := spec_keys.clone()
 	sorted_keys.sort()
+	// Fast path: if every struct spec is already present in `files`, nothing
+	// will be injected and the loop below would only rebuild an identical file
+	// set. Return the input unchanged to avoid duplicating every file's stmt
+	// list (~1.5GB under -gc none on the fixpoint loop's confirmation pass).
+	// Mirrors monomorphize_pass's `per_file_clones.len == 0 { return files }`.
+	mut any_pending := false
+	for key in sorted_keys {
+		spec := t.generic_struct_specs[key] or { continue }
+		if spec.concrete_c_name !in existing {
+			any_pending = true
+			break
+		}
+	}
+	if !any_pending {
+		return files
+	}
 	mut out := []ast.File{cap: files.len}
 	for file in files {
 		mut stmts := []ast.Stmt{cap: file.stmts.len}
@@ -661,6 +761,7 @@ fn (mut t Transformer) inject_generic_struct_specializations(files []ast.File) [
 			selector_names: file.selector_names
 		}
 	}
+	t.inject_changed_files = true
 	return out
 }
 
@@ -901,6 +1002,9 @@ pub fn (mut t Transformer) monomorphize_pass(files []ast.File) []ast.File {
 	deferred_specs := t.deferred_generic_call_specs.clone()
 	t.deferred_generic_call_specs = old_deferred_specs.clone()
 	t.flush_deferred_generic_call_specs(deferred_specs)
+	// Record the freshly-materialized clones so the fixpoint can rescan only
+	// them (collect_generic_call_specs_in_new_clones) instead of all files.
+	t.last_mono_clones = per_file_clones.clone()
 	if per_file_clones.len == 0 {
 		return files
 	}
@@ -1636,18 +1740,57 @@ fn monomorphized_clone_name(fn_key string, decl ast.FnDecl, spec_name string) st
 }
 
 fn generic_base_name_without_specialization(name string) string {
-	mut base_name := name
-	bracket_pos := base_name.index_u8(`[`)
-	if bracket_pos > 0 {
-		base_name = base_name[..bracket_pos]
+	// Hot path: called per-method per-call-site during generic collection.
+	// Hand-rolled byte scans replace string.contains/.index/.all_before, each of
+	// which builds a fresh KMP failure-table heap allocation on every call. With
+	// millions of calls (and most names having neither `[` nor `_T_`) that
+	// allocation churn dominated the whole transform stage. This is behaviour-
+	// identical to the previous index_u8(`[`)>0 / contains('_T_') / ends_with('_T')
+	// version, just without the per-call allocations.
+	mut end := name.len
+	for i in 0 .. name.len {
+		if name[i] == `[` {
+			if i > 0 {
+				end = i
+			}
+			break
+		}
 	}
-	if base_name.contains('_T_') {
-		return base_name.all_before('_T_')
+	for i := 0; i + 3 <= end; i++ {
+		if name[i] == `_` && name[i + 1] == `T` && name[i + 2] == `_` {
+			return name[..i]
+		}
 	}
-	if base_name.ends_with('_T') {
-		return base_name[..base_name.len - 2]
+	if end >= 2 && name[end - 1] == `T` && name[end - 2] == `_` {
+		return name[..end - 2]
 	}
-	return base_name
+	if end == name.len {
+		return name
+	}
+	return name[..end]
+}
+
+// method_short_name returns the final `__`-separated segment of s (after a
+// `.`->`__` normalization). It matches the short form method_key_matches_type_name
+// compares, so it can be used to bucket method keys for fast candidate lookup.
+fn method_short_name(s string) string {
+	norm := if s.index_u8(`.`) >= 0 { s.replace('.', '__') } else { s }
+	d := last_double_underscore(norm)
+	return if d >= 0 { norm[d + 2..] } else { norm }
+}
+
+// last_double_underscore returns the index of the last `__` in s, or -1.
+// Hand-rolled (no allocation) replacement for s.contains('__') / .all_after_last('__'),
+// which build KMP tables / allocate; used in hot per-call-site name matching.
+fn last_double_underscore(s string) int {
+	mut i := s.len - 2
+	for i >= 0 {
+		if s[i] == `_` && s[i + 1] == `_` {
+			return i
+		}
+		i--
+	}
+	return -1
 }
 
 fn (mut t Transformer) index_generic_fn_decl_for_monomorphize(mut decl_owner map[string]int, mut decl_node map[string]ast.FnDecl, decl ast.FnDecl, file_idx int, module_name string) {
@@ -1759,6 +1902,33 @@ fn (mut t Transformer) collect_generic_call_specs(files []ast.File) {
 	old_scope := t.scope
 	old_file_idx := t.cur_generic_call_file_idx
 	old_import_aliases := t.cur_import_aliases.clone()
+	t.build_generic_fn_decl_index(files)
+	for fi, file in files {
+		t.cur_file_name = file.name
+		t.cur_module = file.mod
+		t.cur_generic_call_file_idx = fi
+		t.cur_import_aliases = import_aliases_for_generic_collect(file.imports)
+		if scope := t.get_module_scope(file.mod) {
+			t.scope = scope
+		} else {
+			t.scope = unsafe { nil }
+		}
+		for stmt in file.stmts {
+			t.collect_generic_call_specs_in_stmt(stmt)
+		}
+	}
+	t.cur_module = old_module
+	t.cur_file_name = old_file
+	t.scope = old_scope
+	t.cur_generic_call_file_idx = old_file_idx
+	t.cur_import_aliases = old_import_aliases.clone()
+}
+
+// build_generic_fn_decl_index (re)builds t.generic_fn_decl_index from every
+// generic FnDecl across all files. Generic declarations never change during the
+// fixpoint (monomorphize_pass only appends concrete clones), but the index maps
+// keys to file indices, so it is rebuilt against the current file set.
+fn (mut t Transformer) build_generic_fn_decl_index(files []ast.File) {
 	t.generic_fn_decl_index = map[string]ast.FnDecl{}
 	mut dummy_owner := map[string]int{}
 	for fi, file in files {
@@ -1772,7 +1942,31 @@ fn (mut t Transformer) collect_generic_call_specs(files []ast.File) {
 			}
 		}
 	}
+}
+
+// collect_generic_call_specs_in_new_clones is the incremental counterpart of
+// collect_generic_call_specs. After monomorphize_pass appends concrete clones,
+// only those clones can introduce generic calls the previous scan did not see —
+// every other statement is byte-for-byte unchanged and was already walked. So
+// this rebuilds the generic-decl index (cheap, shallow) but deep-walks only the
+// clones recorded in t.last_mono_clones, each under its owning file's module,
+// scope and import context. For v2 self-host this replaces a full ~6s/~700MB
+// rescan with a walk of a few dozen functions.
+fn (mut t Transformer) collect_generic_call_specs_in_new_clones(files []ast.File) {
+	if t.last_mono_clones.len == 0 {
+		return
+	}
+	old_module := t.cur_module
+	old_file := t.cur_file_name
+	old_scope := t.scope
+	old_file_idx := t.cur_generic_call_file_idx
+	old_import_aliases := t.cur_import_aliases.clone()
+	t.build_generic_fn_decl_index(files)
 	for fi, file in files {
+		clones := t.last_mono_clones[fi] or { continue }
+		if clones.len == 0 {
+			continue
+		}
 		t.cur_file_name = file.name
 		t.cur_module = file.mod
 		t.cur_generic_call_file_idx = fi
@@ -1782,7 +1976,7 @@ fn (mut t Transformer) collect_generic_call_specs(files []ast.File) {
 		} else {
 			t.scope = unsafe { nil }
 		}
-		for stmt in file.stmts {
+		for stmt in clones {
 			t.collect_generic_call_specs_in_stmt(stmt)
 		}
 	}

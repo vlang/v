@@ -26,17 +26,12 @@ fn (t &Transformer) get_synth_type(pos token.Pos) ?types.Type {
 // lookup_method_cached looks up a method by receiver type name and method name
 // using cached_methods (lock-free) instead of env.lookup_method.
 fn (t &Transformer) lookup_method_cached(type_name string, method_name string) ?types.FnType {
-	methods := t.cached_methods[type_name] or { return none }
+	// O(1) via the precomputed base-name index (built in build_cached_method_base_index).
+	// Equivalent to the old linear scan: match by generic base name, first FnType wins.
 	base_method_name := generic_base_name_without_specialization(method_name)
-	for method in methods {
-		cached_name := method.get_name()
-		if cached_name == method_name
-			|| generic_base_name_without_specialization(cached_name) == base_method_name {
-			typ := method.get_typ()
-			if typ is types.FnType {
-				return typ
-			}
-		}
+	typ := t.cached_method_base_index['${type_name}#${base_method_name}'] or { return none }
+	if typ is types.FnType {
+		return typ
 	}
 	return none
 }

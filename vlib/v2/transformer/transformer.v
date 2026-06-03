@@ -123,13 +123,47 @@ mut:
 	cached_methods     map[string][]&types.Fn
 	cached_method_keys []string
 	cached_fn_scopes   map[string]&types.Scope
+	// cached_method_base_index maps type_name -> generic-base method name ->
+	// FnType, precomputed once from cached_methods. lookup_method_cached used to
+	// linearly scan every method of a type and recompute its base name (via
+	// generic_base_name_without_specialization) on every call site — O(calls x
+	// methods) with a string scan inner loop, the single biggest transform cost.
+	// This makes the lookup O(1). Flat map keyed by "type_name#base_name" -> the
+	// types.Type sum (callers smartcast to FnType). Flat (not nested) so a lookup
+	// doesn't copy an inner map, and stored as the sum (not the FnType variant)
+	// because v2's own codegen mishandles a map valued by a bare sum-variant.
+	cached_method_base_index map[string]types.Type
+	// cached_method_keys_by_short buckets cached_method_keys by their short
+	// (final `__`-segment) name. The fuzzy method-key fallback loops only ever
+	// match a key whose short name equals the receiver's short name, so they can
+	// scan just this bucket instead of every method key (O(all_keys) per call).
+	cached_method_keys_by_short map[string][]string
+	// field_type_cache memoizes lookup_struct_field_type, which is called per
+	// field-access expression and re-derives the field type (scope lookups +
+	// types.Type-by-value copies + a scan-all-scopes fallback) every time. Keyed
+	// by "cur_module\x01struct\x01field" because the unqualified-name path
+	// consults cur_module. Written through an unsafe const->mut cast (the result
+	// is pure given the key, so this is benign interior mutability); each parallel
+	// worker gets its own empty cache, so there is no cross-thread sharing.
+	field_type_cache map[string]types.Type
 	// Accumulated synth types for deferred application (thread-safe).
 	// Instead of writing directly to env.set_expr_type during parallel transform,
 	// store here and apply after merge.
 	synth_types map[int]types.Type
 	// Generic monomorphization clones generic FnDecls per env.generic_types
 	// binding before code generation, so backends receive concrete functions.
-	monomorphized_specs                map[string]bool
+	monomorphized_specs map[string]bool
+	// inject_changed_files records whether the last
+	// inject_generic_struct_specializations call actually appended new struct
+	// specializations (i.e. returned a modified file set). The monomorphize
+	// fixpoint uses it to skip the next iteration's full-program collect scan
+	// when nothing changed.
+	inject_changed_files bool
+	// last_mono_clones maps file index -> the FnDecl clone stmts that the most
+	// recent monomorphize_pass appended to that file. The fixpoint rescans only
+	// these freshly-materialized clones (the rest of the program was already
+	// scanned) instead of re-walking all files. Empty when mono_pass added none.
+	last_mono_clones                   map[int][]ast.Stmt
 	generic_spec_owner_file            map[string]int
 	deferred_generic_call_specs        []DeferredGenericCallSpec
 	generic_struct_specs               map[string]GenericStructSpec
@@ -337,6 +371,9 @@ pub fn (t &Transformer) new_worker_clone(worker_idx int) &Transformer {
 		file_set:                           unsafe { t.file_set }
 		cached_scopes:                      t.cached_scopes.clone()
 		cached_methods:                     t.cached_methods.clone()
+		cached_method_base_index:           t.cached_method_base_index.clone()
+		cached_method_keys_by_short:        t.cached_method_keys_by_short.clone()
+		field_type_cache:                   map[string]types.Type{}
 		cached_method_keys:                 t.cached_method_keys.clone()
 		cached_fn_scopes:                   t.cached_fn_scopes.clone()
 		synth_types:                        t.synth_types.clone()
@@ -1498,6 +1535,38 @@ fn (mut t Transformer) cache_env_maps() {
 	t.cached_methods = t.env.snapshot_methods()
 	t.cached_method_keys = t.cached_methods.keys()
 	t.cached_fn_scopes = t.env.snapshot_fn_scopes()
+	t.build_cached_method_base_index()
+	mut by_short := map[string][]string{}
+	for key in t.cached_method_keys {
+		by_short[method_short_name(key)] << key
+	}
+	t.cached_method_keys_by_short = by_short.move()
+}
+
+// build_cached_method_base_index precomputes, for each type, a base-method-name
+// -> FnType map so lookup_method_cached is O(1) instead of scanning every method
+// and recomputing base names per call site. For each base name it keeps the
+// first method (in snapshot order) whose type is an FnType, matching the old
+// linear scan's "first base-or-exact match that is a FnType wins" semantics.
+fn (mut t Transformer) build_cached_method_base_index() {
+	// Iterate via keys()+index, not `for k, v in t.cached_methods`: v2's own
+	// codegen mistypes the value of a `for k, v` over map[string][]&types.Fn as
+	// []types.Fn (value array), breaking self-host.
+	mut index := map[string]types.Type{}
+	for type_name in t.cached_methods.keys() {
+		methods := t.cached_methods[type_name] or { continue }
+		for method in methods {
+			typ := method.get_typ()
+			if typ is types.FnType {
+				base := generic_base_name_without_specialization(method.get_name())
+				key := '${type_name}#${base}'
+				if key !in index {
+					index[key] = typ
+				}
+			}
+		}
+	}
+	t.cached_method_base_index = index.move()
 }
 
 // GeneratedFnsParts is the pure-computation bundle produced by
@@ -2242,13 +2311,18 @@ pub fn (mut t Transformer) inject_embed_file_helper_to_flat(mut out ast.FlatBuil
 
 // transform_files transforms all files and returns transformed copies
 pub fn (mut t Transformer) transform_files(files []ast.File) []ast.File {
+	t_print_mem('enter')
 	t.pre_pass(files)
+	t_print_mem('after pre_pass')
 	files_to_transform := t.prepare_files_for_transform(files)
+	t_print_mem('after prepare/monomorphize')
 	mut result := []ast.File{cap: files_to_transform.len}
 	for file in files_to_transform {
 		result << t.transform_file(file)
 	}
+	t_print_mem('after per-file loop')
 	t.post_pass(mut result)
+	t_print_mem('after post_pass')
 	return result
 }
 
