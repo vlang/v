@@ -10301,13 +10301,20 @@ fn (mut b Builder) build_call_resolved_from_flat(fn_name_in string, c ast.Cursor
 	lhs_c := c.edge(0)
 	lhs_kind := lhs_c.kind()
 	is_selector := lhs_kind == .expr_selector
-	// s228: decode the lhs ONLY for a SelectorExpr — the metadata + receiver path
-	// (selector_module_name / resolve_static_method_name / resolve_method_name_from_checked_type
-	// / is_struct_field / selector_receiver_is_interface / build_selector /
-	// resolve_method_name_for_value) needs the ast.SelectorExpr shape. Ident-lhs
-	// (free-function calls, the common case) and every other lhs kind resolve via
-	// cursor accessors and never decode.
-	lhs := if is_selector { lhs_c.flat.decode_expr(lhs_c.id) } else { ast.empty_expr }
+	// s229: the SelectorExpr metadata, fnptr-field and receiver paths are now all
+	// cursor-native (selector_module_name_from_flat / resolve_static_method_name_from_flat
+	// / resolve_method_name_from_checked_type_from_flat / is_struct_field_from_flat /
+	// selector_receiver_is_interface_from_flat / build_selector_from_flat /
+	// build_addr_from_flat / build_expr_from_flat), so the lhs is NEVER decoded —
+	// build_call_resolved_from_flat no longer calls decode_expr at all. For a
+	// SelectorExpr lhs, `sel_lhs_c` is its receiver edge and `rhs_name` its rhs
+	// Ident name (only read under `is_selector`).
+	sel_lhs_c := lhs_c.edge(0)
+	rhs_name := if is_selector && lhs_c.edge(1).kind() == .expr_ident {
+		lhs_c.edge(1).name()
+	} else {
+		''
+	}
 	n_edges := c.edge_count()
 	n_args := n_edges - 1
 	mut fn_name := fn_name_in
@@ -10315,13 +10322,14 @@ fn (mut b Builder) build_call_resolved_from_flat(fn_name_in string, c ast.Cursor
 	mut is_static_method_call := false
 	mut checked_selector_method := ''
 	if is_selector {
-		sel := lhs as ast.SelectorExpr
-		module_call_name = b.selector_module_name(sel) or { '' }
-		if static_method := b.resolve_static_method_name(sel) {
+		module_call_name = b.selector_module_name_from_flat(lhs_c) or { '' }
+		if static_method := b.resolve_static_method_name_from_flat(lhs_c) {
 			is_static_method_call = static_method == fn_name
 		}
 		if module_call_name == '' && !is_static_method_call {
-			if typed_method := b.resolve_method_name_from_checked_type(sel.lhs, sel.rhs.name) {
+			if typed_method := b.resolve_method_name_from_checked_type_from_flat(sel_lhs_c,
+				rhs_name)
+			{
 				checked_selector_method = typed_method
 			}
 		}
@@ -10353,13 +10361,12 @@ fn (mut b Builder) build_call_resolved_from_flat(fn_name_in string, c ast.Cursor
 	}
 	// Function-pointer field call (e.g. m.hash_fn(pkey)) rather than a method call.
 	if is_selector {
-		sel := lhs as ast.SelectorExpr
 		if module_call_name == '' && fn_name !in b.fn_index {
-			field_name := sel.rhs.name
-			mut is_fnptr_field_call := b.is_struct_field(sel.lhs, field_name)
-			if !is_fnptr_field_call && b.selector_receiver_is_interface(sel.lhs)
+			field_name := rhs_name
+			mut is_fnptr_field_call := b.is_struct_field_from_flat(sel_lhs_c, field_name)
+			if !is_fnptr_field_call && b.selector_receiver_is_interface_from_flat(sel_lhs_c)
 				&& b.env != unsafe { nil } {
-				sel_pos := sel.pos
+				sel_pos := lhs_c.pos()
 				if sel_pos.is_valid() {
 					if sel_type := b.env.get_expr_type(sel_pos.id) {
 						if sel_type is types.FnType {
@@ -10369,10 +10376,10 @@ fn (mut b Builder) build_call_resolved_from_flat(fn_name_in string, c ast.Cursor
 				}
 			}
 			if is_fnptr_field_call {
-				fn_ptr := b.build_selector(sel)
+				fn_ptr := b.build_selector_from_flat(lhs_c)
 				mut call_ret := ret_type
 				if b.env != unsafe { nil } {
-					lhs_pos := sel.pos
+					lhs_pos := lhs_c.pos()
 					if lhs_pos.is_valid() {
 						if field_type := b.env.get_expr_type(lhs_pos.id) {
 							unwrapped := b.unwrap_alias_type(field_type)
@@ -10412,7 +10419,6 @@ fn (mut b Builder) build_call_resolved_from_flat(fn_name_in string, c ast.Cursor
 	mut args := []ValueID{}
 	// For method calls, add receiver as first arg
 	if is_selector {
-		sel := lhs as ast.SelectorExpr
 		if module_call_name == '' && !is_static_method_call {
 			mut expects_ptr := false
 			if fn_name in b.fn_index {
@@ -10426,7 +10432,7 @@ fn (mut b Builder) build_call_resolved_from_flat(fn_name_in string, c ast.Cursor
 				}
 			}
 			mut receiver := if expects_ptr {
-				addr := b.build_addr(sel.lhs)
+				addr := b.build_addr_from_flat(sel_lhs_c)
 				if addr != 0 {
 					addr_typ := b.mod.values[addr].typ
 					if addr_typ < b.mod.type_store.types.len
@@ -10448,10 +10454,10 @@ fn (mut b Builder) build_call_resolved_from_flat(fn_name_in string, c ast.Cursor
 						addr
 					}
 				} else {
-					b.build_expr(sel.lhs)
+					b.build_expr_from_flat(sel_lhs_c)
 				}
 			} else {
-				b.build_expr(sel.lhs)
+				b.build_expr_from_flat(sel_lhs_c)
 			}
 			if !expects_ptr {
 				recv_typ := b.mod.values[receiver].typ
@@ -10467,7 +10473,7 @@ fn (mut b Builder) build_call_resolved_from_flat(fn_name_in string, c ast.Cursor
 				}
 			}
 			if !method_resolved_from_checked_type {
-				if actual_method := b.resolve_method_name_for_value(receiver, sel.rhs.name) {
+				if actual_method := b.resolve_method_name_for_value(receiver, rhs_name) {
 					if actual_method != fn_name {
 						fn_name = actual_method
 						if fn_idx := b.fn_index[fn_name] {
@@ -12585,6 +12591,23 @@ fn (mut b Builder) is_struct_field(receiver_expr ast.Expr, field_name string) bo
 	return false
 }
 
+// is_struct_field_from_flat (s229) is the cursor mirror of is_struct_field.
+// get_checked_expr_type_from_flat reads the same pos.id as the decoded receiver,
+// so the struct-field lookup is bit-identical.
+fn (mut b Builder) is_struct_field_from_flat(receiver_c ast.Cursor, field_name string) bool {
+	if typ := b.get_checked_expr_type_from_flat(receiver_c) {
+		st := b.unwrap_to_struct(typ)
+		if st.name != '' {
+			for fi in 0 .. st.fields.len {
+				if st.fields[fi].name == field_name {
+					return b.is_fn_type(st.fields[fi].typ)
+				}
+			}
+		}
+	}
+	return false
+}
+
 fn (b &Builder) is_fn_type(t types.Type) bool {
 	unwrapped := b.unwrap_alias_type(t)
 	match unwrapped {
@@ -12599,6 +12622,15 @@ fn (b &Builder) is_fn_type(t types.Type) bool {
 
 fn (mut b Builder) selector_receiver_is_interface(receiver_expr ast.Expr) bool {
 	if typ := b.get_checked_expr_type(receiver_expr) {
+		return b.is_interface_type(typ)
+	}
+	return false
+}
+
+// selector_receiver_is_interface_from_flat (s229) is the cursor mirror of
+// selector_receiver_is_interface.
+fn (mut b Builder) selector_receiver_is_interface_from_flat(receiver_c ast.Cursor) bool {
+	if typ := b.get_checked_expr_type_from_flat(receiver_c) {
 		return b.is_interface_type(typ)
 	}
 	return false
