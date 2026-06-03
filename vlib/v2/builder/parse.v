@@ -391,6 +391,19 @@ fn stmt_uses_channel(stmt ast.Stmt) bool {
 	})
 }
 
+fn fn_decl_body_is_active_for_channel_scan(decl ast.FnDecl, options ChannelScanOptions) bool {
+	for attr in decl.attributes {
+		if attr.comptime_cond is ast.EmptyExpr {
+			continue
+		}
+		if !ast_comptime_cond_matches_with_options(attr.comptime_cond, options.user_defines,
+			options.explicit_user_defines, options.target_os, options.allow_pkgconfig) {
+			return false
+		}
+	}
+	return true
+}
+
 fn stmt_uses_channel_with_options(stmt ast.Stmt, options ChannelScanOptions) bool {
 	match stmt {
 		ast.AssertStmt {
@@ -428,8 +441,12 @@ fn stmt_uses_channel_with_options(stmt ast.Stmt, options ChannelScanOptions) boo
 			return expr_type_slots_use_channel_with_options(stmt.expr, options)
 		}
 		ast.FnDecl {
-			return type_expr_uses_channel(stmt.receiver.typ) || fn_type_uses_channel(stmt.typ)
-				|| stmts_use_channel_with_options(stmt.stmts, options)
+			signature_uses_channel := type_expr_uses_channel(stmt.receiver.typ)
+				|| fn_type_uses_channel(stmt.typ)
+			if !fn_decl_body_is_active_for_channel_scan(stmt, options) {
+				return signature_uses_channel
+			}
+			return signature_uses_channel || stmts_use_channel_with_options(stmt.stmts, options)
 		}
 		ast.ForInStmt {
 			return expr_type_slots_use_channel_with_options(stmt.expr, options)
