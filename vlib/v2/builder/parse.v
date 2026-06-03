@@ -446,6 +446,9 @@ fn stmt_uses_channel_with_options(stmt ast.Stmt, options ChannelScanOptions) boo
 		ast.InterfaceDecl {
 			return fields_use_channel(stmt.fields) || type_exprs_use_channel(stmt.embedded)
 		}
+		ast.LabelStmt {
+			return stmt_uses_channel_with_options(stmt.stmt, options)
+		}
 		ast.ReturnStmt {
 			return exprs_type_slots_use_channel_with_options(stmt.exprs, options)
 		}
