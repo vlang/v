@@ -362,7 +362,7 @@ fn stmts_use_channel(stmts []ast.Stmt) bool {
 fn stmt_uses_channel(stmt ast.Stmt) bool {
 	match stmt {
 		ast.AssertStmt {
-			return expr_type_slots_use_channel(stmt.extra)
+			return expr_type_slots_use_channel(stmt.expr) || expr_type_slots_use_channel(stmt.extra)
 		}
 		ast.AssignStmt {
 			for expr in stmt.rhs {

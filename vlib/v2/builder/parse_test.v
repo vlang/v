@@ -337,6 +337,32 @@ fn test_active_file_imports_adds_sync_for_channel_in_for_condition() {
 	assert imports.any(it.name == 'sync')
 }
 
+fn test_active_file_imports_adds_sync_for_channel_in_assert_expr() {
+	file := ast.File{
+		mod:   'main'
+		name:  'main.v'
+		stmts: [
+			ast.Stmt(ast.AssertStmt{
+				expr: ast.CallExpr{
+					lhs:  ast.Expr(ast.Ident{
+						name: 'takes_chan'
+					})
+					args: [
+						ast.Expr(ast.Type(ast.ChannelType{
+							elem_type: ast.Expr(ast.Ident{
+								name: 'int'
+							})
+						})),
+					]
+				}
+			}),
+		]
+	}
+	imports := active_file_imports(file, [], 'mac')
+
+	assert imports.any(it.name == 'sync')
+}
+
 fn test_active_file_imports_skip_pkgconfig_branch_when_disabled() {
 	if !pref.comptime_pkgconfig_value('sqlite3') {
 		return
