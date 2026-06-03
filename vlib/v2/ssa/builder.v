@@ -13239,6 +13239,125 @@ fn (mut b Builder) infer_if_expr_type(node ast.IfExpr, i64_t TypeID) TypeID {
 	return i64_t
 }
 
+// infer_if_expr_type_from_flat (s232) is the cursor-native mirror of
+// infer_if_expr_type. `c` is the IfExpr cursor. It walks the else-if chain
+// (edge1 = else_expr) collecting each branch's stmts (edge2..n), inspects the
+// last ExprStmt's value (unwrapping PrefixExpr), and infers a type per kind.
+// All lookups go through cursor accessors / pos.id, so it is bit-identical to
+// the AST helper — including the InitExpr typ-name case: a non-Ident typ
+// (SelectorExpr `mod.Type` or a `.typ_*` node) stringifies with a '.' or to
+// 'Type', neither of which matches the `__`-joined struct_types keys, so both
+// the AST `init.typ.name()` lookups and the cursor's `else -> ''` skip miss
+// identically. No decode_expr.
+fn (mut b Builder) infer_if_expr_type_from_flat(c ast.Cursor, i64_t TypeID) TypeID {
+	// Collect each branch's IfExpr cursor by walking the else-if chain.
+	mut branch_cursors := []ast.Cursor{cap: 8}
+	branch_cursors << c
+	mut cur_else := c.edge(1)
+	for cur_else.kind() == .expr_if {
+		branch_cursors << cur_else
+		cur_else = cur_else.edge(1)
+	}
+	for bc in branch_cursors {
+		n_stmts := bc.edge_count() - 2
+		if n_stmts == 0 {
+			continue
+		}
+		last_c := bc.edge(2 + n_stmts - 1)
+		if last_c.kind() != .stmt_expr {
+			continue
+		}
+		// Unwrap PrefixExpr (e.g., -f has the same type as f).
+		mut expr_c := last_c.edge(0)
+		for expr_c.kind() == .expr_prefix {
+			expr_c = expr_c.edge(0)
+		}
+		kind := expr_c.kind()
+		if kind == .expr_string || kind == .expr_string_inter {
+			str_type := b.get_string_type()
+			if str_type != 0 {
+				return str_type
+			}
+		} else if kind == .expr_ident {
+			ident_name := expr_c.name()
+			if alloca_id := b.vars[ident_name] {
+				alloca_val := b.mod.values[alloca_id]
+				if alloca_val.typ > 0 && alloca_val.typ < b.mod.type_store.types.len {
+					alloca_typ := b.mod.type_store.types[alloca_val.typ]
+					if alloca_typ.kind == .ptr_t && alloca_typ.elem_type > 0
+						&& alloca_typ.elem_type < b.mod.type_store.types.len {
+						elem := b.mod.type_store.types[alloca_typ.elem_type]
+						if elem.kind == .struct_t || elem.kind == .float_t {
+							return alloca_typ.elem_type
+						}
+					}
+				}
+			}
+		} else if kind == .expr_basic_literal {
+			lit_kind := unsafe { token.Token(int(expr_c.aux())) }
+			if lit_kind == .number && expr_c.name().contains('.') {
+				return b.mod.type_store.get_float(64)
+			}
+		} else if kind == .expr_init {
+			// Sum type init: check the struct type of the InitExpr.
+			inferred := b.expr_type_from_flat(expr_c)
+			if inferred != i64_t && inferred != 0 {
+				return inferred
+			}
+			// expr_init flat: edge0=typ, edge1..n = .aux_field_init (name in name_id).
+			n_fields := expr_c.edge_count() - 1
+			if n_fields >= 2 {
+				mut has_tag_or_data := false
+				for fi := 0; fi < n_fields; fi++ {
+					fname := expr_c.edge(1 + fi).name()
+					if fname == '_tag' || fname == '_data' {
+						has_tag_or_data = true
+						break
+					}
+				}
+				if has_tag_or_data {
+					typ_c := expr_c.edge(0)
+					type_name := if typ_c.kind() == .expr_ident { typ_c.name() } else { '' }
+					if type_name.len > 0 {
+						if tid := b.struct_types[type_name] {
+							return tid
+						}
+						qualified2 := '${b.cur_module}__${type_name}'
+						if tid := b.struct_types[qualified2] {
+							return tid
+						}
+						for sname, sid in b.struct_types {
+							if sname.ends_with('__${type_name}') {
+								return sid
+							}
+						}
+					}
+				}
+			}
+		} else if kind == .expr_call {
+			// Check call return type from registered functions.
+			fn_name := b.resolve_call_name_from_flat(expr_c.edge(0))
+			if fn_name in b.fn_index {
+				fn_idx := b.fn_index[fn_name]
+				fn_ret := b.mod.funcs[fn_idx].typ
+				if fn_ret != 0 && fn_ret != i64_t {
+					return fn_ret
+				}
+			}
+			inferred := b.expr_type_from_flat(expr_c)
+			if inferred != i64_t && inferred != 0 {
+				return inferred
+			}
+		} else {
+			inferred := b.expr_type_from_flat(expr_c)
+			if inferred != i64_t && inferred != 0 {
+				return inferred
+			}
+		}
+	}
+	return i64_t
+}
+
 fn (mut b Builder) build_if_expr(node ast.IfExpr) ValueID {
 	// If used as expression, returns a value
 	mut result_type := b.expr_type(ast.Expr(node))
@@ -13374,14 +13493,12 @@ fn (mut b Builder) build_if_expr(node ast.IfExpr) ValueID {
 	return b.mod.add_instr(.phi, merge_block, phi_type, phi_operands)
 }
 
-// build_if_expr_from_flat (s231) is the cursor-native structural port of
+// build_if_expr_from_flat (s231, s232) is the cursor-native port of
 // build_if_expr. IfExpr flat encoding: (.expr_if, [edge0=cond, edge1=else_expr,
-// edge2..n=stmts]). Cond/stmts/else-chain/phi are all built from cursors via
+// edge2..n=stmts]). Cond/stmts/else-chain/phi are built from cursors via
 // build_expr_from_flat / build_stmt_from_flat / smartcast_variant_type_ids_from_condition_from_flat
-// (s230) and recursion through this function. The ONLY remaining decode is the
-// infer_if_expr_type fallback (reached only when expr_type returns the i64
-// fallback — match-lowered IfExpr chains without pos IDs); that node decode is
-// localized and slated for removal in s232 via infer_if_expr_type_from_flat.
+// (s230) and recursion through this function; the i64-fallback type inference
+// uses infer_if_expr_type_from_flat (s232). Fully decode-free.
 fn (mut b Builder) build_if_expr_from_flat(c ast.Cursor) ValueID {
 	cond_c := c.edge(0)
 	else_c := c.edge(1)
@@ -13391,8 +13508,8 @@ fn (mut b Builder) build_if_expr_from_flat(c ast.Cursor) ValueID {
 	mut result_type := b.expr_type_from_flat(c)
 	i64_t := b.mod.type_store.get_int(64)
 	if result_type == i64_t {
-		node := c.flat.decode_expr(c.id) as ast.IfExpr
-		result_type = b.infer_if_expr_type(node, i64_t)
+		// s232: cursor-native inference — no decode.
+		result_type = b.infer_if_expr_type_from_flat(c, i64_t)
 	}
 
 	then_block := b.mod.add_block(b.cur_func, 'ifx_then')
