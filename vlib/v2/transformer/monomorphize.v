@@ -548,12 +548,20 @@ fn (mut t Transformer) clone_generic_struct_decl(decl ast.StructDecl, spec Gener
 	if scope := t.get_module_scope(spec.module_name) {
 		t.scope = scope
 	}
+	should_qualify_source_types := target_module != spec.module_name && spec.module_name != ''
+		&& spec.module_name != 'main' && spec.module_name != 'builtin'
 	mut fields := []ast.FieldDecl{cap: decl.fields.len}
 	for field in decl.fields {
+		mut field_typ := t.substitute_type_in_expr(field.typ, spec.bindings)
+		mut field_value := t.clone_expr_with_bindings(field.value, spec.bindings)
+		if should_qualify_source_types {
+			field_typ = t.qualify_moved_clone_type_expr(field_typ, spec.module_name)
+			field_value = t.qualify_moved_clone_expr_type_positions(field_value, spec.module_name)
+		}
 		fields << ast.FieldDecl{
 			name:                field.name
-			typ:                 t.substitute_type_in_expr(field.typ, spec.bindings)
-			value:               t.clone_expr_with_bindings(field.value, spec.bindings)
+			typ:                 field_typ
+			value:               field_value
 			attributes:          field.attributes
 			is_public:           field.is_public
 			is_mut:              field.is_mut
@@ -563,11 +571,19 @@ fn (mut t Transformer) clone_generic_struct_decl(decl ast.StructDecl, spec Gener
 	}
 	mut embedded := []ast.Expr{cap: decl.embedded.len}
 	for item in decl.embedded {
-		embedded << t.substitute_type_in_expr(item, spec.bindings)
+		mut embedded_type := t.substitute_type_in_expr(item, spec.bindings)
+		if should_qualify_source_types {
+			embedded_type = t.qualify_moved_clone_type_expr(embedded_type, spec.module_name)
+		}
+		embedded << embedded_type
 	}
 	mut implemented_types := []ast.Expr{cap: decl.implements.len}
 	for item in decl.implements {
-		implemented_types << t.substitute_type_in_expr(item, spec.bindings)
+		mut implemented_type := t.substitute_type_in_expr(item, spec.bindings)
+		if should_qualify_source_types {
+			implemented_type = t.qualify_moved_clone_type_expr(implemented_type, spec.module_name)
+		}
+		implemented_types << implemented_type
 	}
 	cloned := ast.StructDecl{
 		attributes:     decl.attributes

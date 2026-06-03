@@ -3523,6 +3523,85 @@ fn boot() {
 	assert main_field_typ == 'LocalResponse'
 }
 
+fn test_transform_moved_generic_struct_qualifies_source_module_field_types() {
+	files := transform_sources_for_test([
+		TestSource{
+			rel:  'boxlib/boxlib.v'
+			code: 'module boxlib
+
+pub struct Helper {}
+
+pub struct Box[T] {
+	Helper
+	helper Helper
+	values []Helper
+	value T
+}
+
+pub fn make[T]() Box[T] {
+	return Box[T]{}
+}
+'
+		},
+		TestSource{
+			rel:  'main.v'
+			code: 'module main
+
+import boxlib
+
+struct LocalResponse {}
+
+fn boot() {
+	_ := boxlib.make[LocalResponse]()
+}
+'
+		},
+	])
+	mut moved_struct_found := false
+	mut embedded_typ := ''
+	mut helper_typ := ''
+	mut values_elem_typ := ''
+	mut value_typ := ''
+	for file in files {
+		if file.mod != 'main' {
+			continue
+		}
+		for stmt in file.stmts {
+			if stmt is ast.StructDecl && stmt.name == 'boxlib__Box_T_LocalResponse' {
+				moved_struct_found = true
+				if stmt.embedded.len > 0 {
+					embedded_ident := stmt.embedded[0] as ast.Ident
+					embedded_typ = embedded_ident.name
+				}
+				for field in stmt.fields {
+					match field.name {
+						'helper' {
+							helper_ident := field.typ as ast.Ident
+							helper_typ = helper_ident.name
+						}
+						'values' {
+							array_typ := field.typ as ast.Type
+							values_array := array_typ as ast.ArrayType
+							values_elem_ident := values_array.elem_type as ast.Ident
+							values_elem_typ = values_elem_ident.name
+						}
+						'value' {
+							value_ident := field.typ as ast.Ident
+							value_typ = value_ident.name
+						}
+						else {}
+					}
+				}
+			}
+		}
+	}
+	assert moved_struct_found
+	assert embedded_typ == 'boxlib__Helper'
+	assert helper_typ == 'boxlib__Helper'
+	assert values_elem_typ == 'boxlib__Helper'
+	assert value_typ == 'LocalResponse'
+}
+
 fn test_transform_transitive_imported_clone_substitutes_nested_generic_route_context() {
 	env, files := transform_sources_with_env_for_test([
 		TestSource{
