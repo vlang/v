@@ -7844,18 +7844,12 @@ fn (mut b Builder) build_call_from_flat(c ast.Cursor) ValueID {
 		}
 	}
 
-	lhs := lhs_c.flat.decode_expr(lhs_c.id)
-	mut args := []ast.Expr{cap: n_edges - 1}
-	for i in 1 .. n_edges {
-		arg_c := c.edge(i)
-		args << arg_c.flat.decode_expr(arg_c.id)
-	}
-	expr := ast.CallExpr{
-		lhs:  lhs
-		args: args
-		pos:  c.pos()
-	}
-	return b.build_call_resolved(fn_name, expr)
+	// s225: dispatch to the cursor-native body. build_call_resolved_from_flat
+	// decodes the lhs once (for the SelectorExpr-metadata + receiver path) but
+	// builds every value argument from its cursor, so the per-arg decode_expr
+	// loop that lived here is gone. Bit-identical to the previous
+	// build_call_resolved(fn_name, ast.CallExpr{lhs, args, pos}) dispatch.
+	return b.build_call_resolved_from_flat(fn_name, c)
 }
 
 // build_init_from_flat (s213) mirrors `build_init_expr` cursor-natively.
@@ -9739,6 +9733,21 @@ fn (mut b Builder) build_call_arg(fn_name string, param_idx int, arg ast.Expr) V
 	return val
 }
 
+// build_call_arg_from_flat (s225) is the cursor-native mirror of build_call_arg:
+// it sets the array-literal elem-type hint from the param type, builds the arg
+// expression via build_expr_from_flat, then restores the hint. Bit-identical to
+// build_call_arg(fn_name, param_idx, decode_expr(arg_c)) because build_expr_from_flat
+// produces the same ValueID as build_expr(decode_expr(arg_c)) (the migration invariant).
+fn (mut b Builder) build_call_arg_from_flat(fn_name string, param_idx int, arg_c ast.Cursor) ValueID {
+	old_hint := b.array_literal_elem_type_hint
+	if elem_type := b.call_param_array_elem_type(fn_name, param_idx) {
+		b.array_literal_elem_type_hint = elem_type
+	}
+	val := b.build_expr_from_flat(arg_c)
+	b.array_literal_elem_type_hint = old_hint
+	return val
+}
+
 // build_call_resolved (s218) is the post-resolve body of `build_call`,
 // taking the already-resolved `fn_name` as a parameter. The top-of-`build_call`
 // struct-cast shortcut runs before resolve, so it stays in the public wrapper;
@@ -10201,6 +10210,444 @@ fn (mut b Builder) build_call_resolved(fn_name_in string, expr ast.CallExpr) Val
 			elem_ptr := b.mod.type_store.get_ptr(elem_type)
 			typed_ptr := b.mod.add_instr(.bitcast, b.cur_block, elem_ptr, [call_val])
 			return b.mod.add_instr(.load, b.cur_block, elem_type, [typed_ptr])
+		}
+	}
+
+	return call_val
+}
+
+// build_call_resolved_from_flat (s225) is the cursor-native body of build_call,
+// mirroring build_call_resolved line-for-line but consuming the call cursor `c`
+// (edge0 = lhs, edge1..n = args) directly. The lhs is decoded once because the
+// SelectorExpr-metadata path (selector_module_name / resolve_static_method_name /
+// resolve_method_name_from_checked_type / is_struct_field / build_selector /
+// resolve_method_name_for_value / call_lhs_type_to_ssa) and the receiver build
+// (build_addr/build_expr on sel.lhs) all pattern-match on ast.SelectorExpr — that
+// single decode is identical to the lhs build_call_resolved would have received.
+// Every value argument is built from its cursor via build_expr_from_flat /
+// build_addr_from_flat / build_call_arg_from_flat, so the per-arg decode_expr loop
+// that build_call_from_flat previously ran is gone. The array-elem-type inference
+// tail still needs the original ast.CallExpr (it reads args[0]/args[2] and the
+// receiver), so it is reconstructed lazily and ONLY for the precise set of array
+// builtins that consult it — the common call path reconstructs nothing.
+fn (mut b Builder) build_call_resolved_from_flat(fn_name_in string, c ast.Cursor) ValueID {
+	lhs_c := c.edge(0)
+	lhs := lhs_c.flat.decode_expr(lhs_c.id)
+	n_edges := c.edge_count()
+	n_args := n_edges - 1
+	mut fn_name := fn_name_in
+	mut module_call_name := ''
+	mut is_static_method_call := false
+	mut checked_selector_method := ''
+	if lhs is ast.SelectorExpr {
+		sel := lhs as ast.SelectorExpr
+		module_call_name = b.selector_module_name(sel) or { '' }
+		if static_method := b.resolve_static_method_name(sel) {
+			is_static_method_call = static_method == fn_name
+		}
+		if module_call_name == '' && !is_static_method_call {
+			if typed_method := b.resolve_method_name_from_checked_type(sel.lhs, sel.rhs.name) {
+				checked_selector_method = typed_method
+			}
+		}
+	}
+	method_resolved_from_checked_type := checked_selector_method != ''
+		&& checked_selector_method == fn_name
+
+	// Type cast disguised as a call (e.g. IError(ptr)). build_call_from_flat's
+	// fast paths already cover n_args==1 before dispatching here, but replicate
+	// the legacy shortcut so this body is correct for any caller; the conditions
+	// match build_call_resolved exactly, using the first arg cursor c.edge(1).
+	if fn_name !in b.fn_index && n_args == 1 {
+		if target_type := b.struct_types[fn_name] {
+			return b.build_cast_expr_to_type_id_from_flat(c.edge(1), target_type)
+		}
+		qualified := '${b.cur_module}__${fn_name}'
+		if target_type := b.struct_types[qualified] {
+			return b.build_cast_expr_to_type_id_from_flat(c.edge(1), target_type)
+		}
+		if target_type := b.call_lhs_type_to_ssa(lhs) {
+			return b.build_cast_expr_to_type_id_from_flat(c.edge(1), target_type)
+		}
+	}
+
+	mut ret_type := b.expr_type_from_flat(c)
+	if fn_name in b.fn_index {
+		fn_idx := b.fn_index[fn_name]
+		ret_type = b.mod.funcs[fn_idx].typ
+	}
+	// Function-pointer field call (e.g. m.hash_fn(pkey)) rather than a method call.
+	if lhs is ast.SelectorExpr {
+		sel := lhs as ast.SelectorExpr
+		if module_call_name == '' && fn_name !in b.fn_index {
+			field_name := sel.rhs.name
+			mut is_fnptr_field_call := b.is_struct_field(sel.lhs, field_name)
+			if !is_fnptr_field_call && b.selector_receiver_is_interface(sel.lhs)
+				&& b.env != unsafe { nil } {
+				sel_pos := sel.pos
+				if sel_pos.is_valid() {
+					if sel_type := b.env.get_expr_type(sel_pos.id) {
+						if sel_type is types.FnType {
+							is_fnptr_field_call = true
+						}
+					}
+				}
+			}
+			if is_fnptr_field_call {
+				fn_ptr := b.build_selector(sel)
+				mut call_ret := ret_type
+				if b.env != unsafe { nil } {
+					lhs_pos := sel.pos
+					if lhs_pos.is_valid() {
+						if field_type := b.env.get_expr_type(lhs_pos.id) {
+							unwrapped := b.unwrap_alias_type(field_type)
+							if unwrapped is types.FnType {
+								if fn_ret := unwrapped.get_return_type() {
+									call_ret = b.type_to_ssa(fn_ret)
+								}
+							}
+						}
+					}
+				}
+				// Build arguments (no receiver - this is a field access, not a method call)
+				mut fnptr_args := []ValueID{}
+				for i in 1 .. n_edges {
+					arg_c := c.edge(i)
+					if arg_c.kind() == .expr_modifier
+						&& unsafe { token.Token(int(arg_c.aux())) } == .key_mut {
+						addr := b.build_addr_from_flat(arg_c.edge(0))
+						if addr != 0 {
+							fnptr_args << addr
+						} else {
+							fnptr_args << b.build_expr_from_flat(arg_c)
+						}
+					} else {
+						fnptr_args << b.build_expr_from_flat(arg_c)
+					}
+				}
+				mut operands := []ValueID{cap: fnptr_args.len + 1}
+				operands << fn_ptr
+				operands << fnptr_args
+				return b.mod.add_instr(.call_indirect, b.cur_block, call_ret, operands)
+			}
+		}
+	}
+
+	// Build arguments
+	mut args := []ValueID{}
+	// For method calls, add receiver as first arg
+	if lhs is ast.SelectorExpr {
+		sel := lhs as ast.SelectorExpr
+		if module_call_name == '' && !is_static_method_call {
+			mut expects_ptr := false
+			if fn_name in b.fn_index {
+				fn_idx := b.fn_index[fn_name]
+				if b.mod.funcs[fn_idx].params.len > 0 {
+					param_type := b.mod.values[b.mod.funcs[fn_idx].params[0]].typ
+					if param_type < b.mod.type_store.types.len
+						&& b.mod.type_store.types[param_type].kind == .ptr_t {
+						expects_ptr = true
+					}
+				}
+			}
+			mut receiver := if expects_ptr {
+				addr := b.build_addr(sel.lhs)
+				if addr != 0 {
+					addr_typ := b.mod.values[addr].typ
+					if addr_typ < b.mod.type_store.types.len
+						&& b.mod.type_store.types[addr_typ].kind == .ptr_t {
+						inner := b.mod.type_store.types[addr_typ].elem_type
+						if inner < b.mod.type_store.types.len
+							&& b.mod.type_store.types[inner].kind == .ptr_t {
+							pointee := b.mod.type_store.types[inner].elem_type
+							if pointee < b.mod.type_store.types.len
+								&& b.mod.type_store.types[pointee].kind == .struct_t {
+								b.mod.add_instr(.load, b.cur_block, inner, [addr])
+							} else {
+								addr
+							}
+						} else {
+							addr
+						}
+					} else {
+						addr
+					}
+				} else {
+					b.build_expr(sel.lhs)
+				}
+			} else {
+				b.build_expr(sel.lhs)
+			}
+			if !expects_ptr {
+				recv_typ := b.mod.values[receiver].typ
+				if recv_typ < b.mod.type_store.types.len
+					&& b.mod.type_store.types[recv_typ].kind == .ptr_t {
+					pointee := b.mod.type_store.types[recv_typ].elem_type
+					if pointee < b.mod.type_store.types.len
+						&& b.mod.type_store.types[pointee].kind == .struct_t {
+						receiver = b.mod.add_instr(.load, b.cur_block, pointee, [
+							receiver,
+						])
+					}
+				}
+			}
+			if !method_resolved_from_checked_type {
+				if actual_method := b.resolve_method_name_for_value(receiver, sel.rhs.name) {
+					if actual_method != fn_name {
+						fn_name = actual_method
+						if fn_idx := b.fn_index[fn_name] {
+							ret_type = b.mod.funcs[fn_idx].typ
+						}
+					}
+				}
+			}
+			args << receiver
+		}
+	}
+	for i in 1 .. n_edges {
+		arg_c := c.edge(i)
+		// For mut arguments, pass the address (pointer) instead of the value.
+		if arg_c.kind() == .expr_modifier && unsafe { token.Token(int(arg_c.aux())) } == .key_mut {
+			inner_c := arg_c.edge(0)
+			param_idx := args.len
+			mut param_wants_ptr_to_struct := false
+			if param_type := b.call_param_type(fn_name, param_idx) {
+				if param_type < b.mod.type_store.types.len
+					&& b.mod.type_store.types[param_type].kind == .ptr_t {
+					pointee := b.mod.type_store.types[param_type].elem_type
+					if pointee < b.mod.type_store.types.len
+						&& b.mod.type_store.types[pointee].kind == .struct_t {
+						param_wants_ptr_to_struct = true
+					}
+				}
+			}
+			if param_wants_ptr_to_struct {
+				val := b.build_expr_from_flat(inner_c)
+				val_type := b.mod.values[val].typ
+				val_is_ptr := val_type < b.mod.type_store.types.len
+					&& b.mod.type_store.types[val_type].kind == .ptr_t
+				if val_is_ptr {
+					args << val
+				} else {
+					addr := b.build_addr_from_flat(inner_c)
+					if addr != 0 {
+						args << addr
+					} else {
+						alloca_type := b.mod.type_store.get_ptr(val_type)
+						tmp_alloca := b.mod.add_instr(.alloca, b.cur_block, alloca_type,
+							[]ValueID{})
+						b.mod.add_instr(.store, b.cur_block, 0, [val, tmp_alloca])
+						args << tmp_alloca
+					}
+				}
+			} else {
+				param_idx2 := args.len
+				mut param_is_already_ptr := false
+				if pt := b.call_param_type(fn_name, param_idx2) {
+					if pt < b.mod.type_store.types.len && b.mod.type_store.types[pt].kind == .ptr_t {
+						pointee2 := b.mod.type_store.types[pt].elem_type
+						if pointee2 < b.mod.type_store.types.len
+							&& b.mod.type_store.types[pointee2].kind != .struct_t {
+							param_is_already_ptr = true
+						}
+					}
+				}
+				if param_is_already_ptr || (inner_c.kind() == .expr_prefix
+					&& unsafe { token.Token(int(inner_c.aux())) } == .amp) {
+					args << b.build_expr_from_flat(inner_c)
+				} else {
+					addr := b.build_addr_from_flat(inner_c)
+					if addr != 0 {
+						args << addr
+					} else {
+						val := b.build_expr_from_flat(inner_c)
+						val_type := b.mod.values[val].typ
+						alloca_type := b.mod.type_store.get_ptr(val_type)
+						tmp_alloca := b.mod.add_instr(.alloca, b.cur_block, alloca_type,
+							[]ValueID{})
+						b.mod.add_instr(.store, b.cur_block, 0, [val, tmp_alloca])
+						args << tmp_alloca
+					}
+				}
+			}
+		} else {
+			param_idx := args.len
+			mut param_wants_struct_ptr := false
+			if param_type := b.call_param_type(fn_name, param_idx) {
+				if param_type < b.mod.type_store.types.len
+					&& b.mod.type_store.types[param_type].kind == .ptr_t {
+					pointee := b.mod.type_store.types[param_type].elem_type
+					if pointee < b.mod.type_store.types.len
+						&& b.mod.type_store.types[pointee].kind == .struct_t {
+						param_wants_struct_ptr = true
+					}
+				}
+			}
+			if param_wants_struct_ptr
+				&& arg_c.kind() in [.expr_ident, .expr_selector, .expr_index, .expr_paren] {
+				val := b.build_expr_from_flat(arg_c)
+				val_typ := b.mod.values[val].typ
+				val_is_ptr := val_typ < b.mod.type_store.types.len
+					&& b.mod.type_store.types[val_typ].kind == .ptr_t
+				if val_is_ptr {
+					args << val
+				} else {
+					addr := b.build_addr_from_flat(arg_c)
+					if addr != 0 {
+						args << addr
+					} else {
+						args << val
+					}
+				}
+			} else {
+				args << b.build_call_arg_from_flat(fn_name, param_idx, arg_c)
+			}
+		}
+	}
+
+	// Auto-deref/ref arguments to match function parameter types
+	if fn_name in b.fn_index {
+		for ai := 0; ai < args.len; ai++ {
+			param_type := b.call_param_type(fn_name, ai) or { continue }
+			arg_type := b.mod.values[args[ai]].typ
+			if arg_type < b.mod.type_store.types.len && param_type < b.mod.type_store.types.len {
+				arg_kind := b.mod.type_store.types[arg_type].kind
+				param_kind := b.mod.type_store.types[param_type].kind
+				if arg_kind == .ptr_t && param_kind == .struct_t {
+					pointee := b.mod.type_store.types[arg_type].elem_type
+					if pointee == param_type {
+						args[ai] = b.mod.add_instr(.load, b.cur_block, pointee, [
+							args[ai],
+						])
+					}
+				}
+				if arg_kind == .struct_t && param_kind == .ptr_t {
+					ptr_type := b.mod.type_store.get_ptr(arg_type)
+					alloca := b.mod.add_instr(.alloca, b.cur_block, ptr_type, []ValueID{})
+					b.mod.add_instr(.store, b.cur_block, 0, [args[ai], alloca])
+					args[ai] = alloca
+				}
+				if arg_kind == .array_t && param_kind == .ptr_t {
+					pointee := b.mod.type_store.types[param_type].elem_type
+					if pointee == arg_type {
+						ptr_type := b.mod.type_store.get_ptr(arg_type)
+						alloca := b.mod.add_instr(.alloca, b.cur_block, ptr_type, []ValueID{})
+						b.mod.add_instr(.store, b.cur_block, 0, [args[ai], alloca])
+						args[ai] = alloca
+					}
+				}
+				if arg_kind == .int_t && param_kind == .float_t {
+					args[ai] = b.mod.add_instr(.sitofp, b.cur_block, param_type, [
+						args[ai],
+					])
+				}
+				i8_t := b.mod.type_store.get_int(8)
+				voidptr_t := b.mod.type_store.get_ptr(i8_t)
+				if param_type == voidptr_t && arg_kind in [.int_t, .float_t]
+					&& (fn_name.contains('array__') || fn_name.contains('map__')
+					|| fn_name.contains('new_array')) {
+					ptr_type := b.mod.type_store.get_ptr(arg_type)
+					alloca := b.mod.add_instr(.alloca, b.cur_block, ptr_type, []ValueID{})
+					b.mod.add_instr(.store, b.cur_block, 0, [args[ai], alloca])
+					args[ai] = alloca
+				}
+			}
+		}
+	}
+
+	// Check if fn_name is a local variable holding a function pointer.
+	if fn_name in b.vars {
+		mut call_ret := ret_type
+		if lhs is ast.Ident {
+			lhs_pos := lhs.pos
+			if lhs_pos.is_valid() && b.env != unsafe { nil } {
+				if var_type := b.env.get_expr_type(lhs_pos.id) {
+					unwrapped := b.unwrap_alias_type(var_type)
+					if unwrapped is types.FnType {
+						if fn_ret := unwrapped.get_return_type() {
+							call_ret = b.type_to_ssa(fn_ret)
+						}
+					}
+				}
+			}
+		}
+		fn_ptr := b.build_ident(ast.Ident{ name: fn_name })
+		mut indirect_operands := []ValueID{cap: args.len + 1}
+		indirect_operands << fn_ptr
+		indirect_operands << args
+		return b.mod.add_instr(.call_indirect, b.cur_block, call_ret, indirect_operands)
+	}
+
+	// Check if fn_name is a global variable holding a function pointer.
+	if glob_id := b.find_global(fn_name) {
+		glob_typ := b.mod.values[glob_id].typ
+		elem_typ := b.mod.type_store.types[glob_typ].elem_type
+		fn_ptr := b.mod.add_instr(.load, b.cur_block, elem_typ, [glob_id])
+		mut indirect_operands := []ValueID{cap: args.len + 1}
+		indirect_operands << fn_ptr
+		indirect_operands << args
+		return b.mod.add_instr(.call_indirect, b.cur_block, ret_type, indirect_operands)
+	}
+
+	if fn_name in ['array__slice', 'array__slice_ni', 'builtin__array__slice',
+		'builtin__array__slice_ni'] {
+		ret_type = b.get_array_type()
+	}
+	fn_ref := b.get_or_create_fn_ref(fn_name, ret_type)
+	mut operands := []ValueID{cap: args.len + 1}
+	operands << fn_ref
+	operands << args
+
+	call_val := b.mod.add_instr(.call, b.cur_block, ret_type, operands)
+
+	// Array-elem-type inference tail. These blocks read the original
+	// ast.CallExpr (args[0]/args[2] and the receiver), so reconstruct it lazily
+	// and ONLY for the precise set of array builtins that consult it. Every other
+	// call returns here without decoding a single argument.
+	needs_arr_infer :=
+		fn_name in ['array__slice', 'array__slice_ni', 'builtin__array__slice', 'builtin__array__slice_ni', 'array__clone', 'array__clone_to_depth', 'builtin__array__clone', 'builtin__array__clone_to_depth', 'array__first', 'array__last', 'array__pop', 'array__pop_left', 'builtin__array__first', 'builtin__array__last', 'builtin__array__pop', 'builtin__array__pop_left']
+		|| fn_name.starts_with('__new_array') || fn_name.starts_with('builtin____new_array')
+		|| fn_name.starts_with('new_array_from') || fn_name.starts_with('builtin__new_array_from')
+	if needs_arr_infer {
+		mut infer_args := []ast.Expr{cap: n_args}
+		for i in 1 .. n_edges {
+			arg_c := c.edge(i)
+			infer_args << arg_c.flat.decode_expr(arg_c.id)
+		}
+		expr := ast.CallExpr{
+			lhs:  lhs
+			args: infer_args
+			pos:  c.pos()
+		}
+		new_array_elem_type := b.array_elem_type_from_new_array_call(fn_name, expr)
+		if new_array_elem_type != 0 {
+			b.array_value_elem_types[call_val] = new_array_elem_type
+		}
+		if fn_name in ['array__slice', 'array__slice_ni', 'builtin__array__slice', 'builtin__array__slice_ni']
+			&& expr.args.len > 0 {
+			elem_type := b.infer_array_elem_type_from_expr(expr.args[0])
+			if elem_type != 0 {
+				b.array_value_elem_types[call_val] = elem_type
+			}
+		}
+		if fn_name in ['array__clone', 'array__clone_to_depth', 'builtin__array__clone',
+			'builtin__array__clone_to_depth'] {
+			elem_type := b.infer_array_elem_type_from_receiver(expr)
+			if elem_type != 0 {
+				b.array_value_elem_types[call_val] = elem_type
+			}
+		}
+		if fn_name in ['array__first', 'array__last', 'array__pop', 'array__pop_left',
+			'builtin__array__first', 'builtin__array__last', 'builtin__array__pop',
+			'builtin__array__pop_left'] {
+			elem_type := b.infer_array_elem_type_from_receiver(expr)
+			if elem_type != 0 {
+				elem_ptr := b.mod.type_store.get_ptr(elem_type)
+				typed_ptr := b.mod.add_instr(.bitcast, b.cur_block, elem_ptr, [
+					call_val,
+				])
+				return b.mod.add_instr(.load, b.cur_block, elem_type, [typed_ptr])
+			}
 		}
 	}
 
