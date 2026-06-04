@@ -188,7 +188,7 @@ fn connect_db(db_path string) !sqlite.DB {
 }
 
 fn init_db(db sqlite.DB) ! {
-	db.exec('create table if not exists bug_reports (
+	db.exec("create table if not exists bug_reports (
 			id text primary key,
 			delete_token text not null,
 			created_at text not null,
@@ -198,10 +198,27 @@ fn init_db(db sqlite.DB) ! {
 				target_os text not null,
 				ccompiler text not null,
 				error_string text not null,
-				lines text not null
-			)')!
+				lines text not null,
+				v_lines text not null default ''
+			)")!
+	// Add columns that were introduced after the table already existed, so older
+	// databases pick them up without losing their stored reports.
+	ensure_column(db, 'bug_reports', 'v_lines', "text not null default ''")!
 	db.exec('create index if not exists idx_bug_reports_created_at
 			on bug_reports(created_at)')!
+}
+
+// ensure_column adds `column` to `table` when it is not present yet. SQLite has no
+// `add column if not exists`, so the existing columns are inspected first.
+fn ensure_column(db sqlite.DB, table string, column string, definition string) ! {
+	rows := db.exec('pragma table_info(${table})')!
+	for row in rows {
+		// pragma table_info columns are: cid, name, type, notnull, dflt_value, pk
+		if row.vals.len > 1 && row.vals[1] == column {
+			return
+		}
+	}
+	db.exec('alter table ${table} add column ${column} ${definition}')!
 }
 
 // create stores a compiler bug report and returns its deletion token.
@@ -227,8 +244,8 @@ pub fn (mut app App) create(mut ctx Context) veb.Result {
 	delete_token := rand.uuid_v4()
 	app.db.exec_param_many('insert into bug_reports (
 				id, delete_token, created_at, remote_ip, user_agent,
-				c_file_name, target_os, ccompiler, error_string, lines
-			) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)', [
+				c_file_name, target_os, ccompiler, error_string, lines, v_lines
+			) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)', [
 		id,
 		delete_token,
 		time.utc().format_rfc3339(),
@@ -239,6 +256,7 @@ pub fn (mut app App) create(mut ctx Context) veb.Result {
 		stored_report.ccompiler,
 		stored_report.error_string,
 		stored_report.lines,
+		stored_report.v_lines,
 	]) or { return ctx.server_error('could not store report') }
 	return ctx.json(CreateBugReportResponse{
 		id:           id
