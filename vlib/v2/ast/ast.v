@@ -977,19 +977,25 @@ pub:
 // Type Nodes
 pub struct ArrayType {
 pub:
-	elem_type Expr
+	elem_type Expr = empty_expr
 }
 
 pub struct ArrayFixedType {
 pub:
-	len       Expr
-	elem_type Expr
+	len       Expr = empty_expr
+	elem_type Expr = empty_expr
 }
 
 pub struct ChannelType {
 pub:
-	cap       Expr
-	elem_type Expr
+	// s255: cap defaults to empty_expr (like ThreadType/OptionType/etc.). The
+	// parser omits cap for a bare `chan T` (type.v: `ChannelType{elem_type: ...}`),
+	// which previously left it a zero-valued Expr (invalid sum-type tag, null
+	// payload). Encoding that via FlatBuilder.add_expr crashes the arm64 self-host
+	// — an exhaustive match on the unmatched tag falls into the first arm
+	// (ArrayInitExpr) and derefs the null payload (same class as s251).
+	cap       Expr = empty_expr
+	elem_type Expr = empty_expr
 }
 
 pub struct ThreadType {
@@ -1050,14 +1056,14 @@ pub:
 
 pub struct GenericType {
 pub:
-	name   Expr
+	name   Expr = empty_expr
 	params []Expr
 }
 
 pub struct MapType {
 pub:
-	key_type   Expr
-	value_type Expr
+	key_type   Expr = empty_expr
+	value_type Expr = empty_expr
 }
 
 pub struct NilType {}
