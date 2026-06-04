@@ -9603,9 +9603,25 @@ fn (mut b Builder) build_string_inter_from_flat(c ast.Cursor) ValueID {
 		return parts[0]
 	}
 
+	// s257: fold the concat with `plus_two` (s+a+b, ONE allocation) two parts at
+	// a time instead of a left-fold of pairwise `+`. The `+`-chain heap-allocates
+	// an intermediate string per step; on the native backends (no GC, `-gc none`)
+	// every intermediate is retained, which is the dominant arm64 over-allocation
+	// vs the C backend's `str_intp`. plus_two halves the intermediates and is
+	// always built (markused keep-list + the transformer emits it for `a+b+c`).
 	mut result := parts[0]
-	for i := 1; i < parts.len; i++ {
-		result = b.mod.add_instr(.call, b.cur_block, str_type, [plus_fn, result, parts[i]])
+	mut idx := 1
+	if parts.len >= 3 {
+		plus_two_fn := b.get_or_create_fn_ref('builtin__string__plus_two', str_type)
+		for idx + 1 < parts.len {
+			result = b.mod.add_instr(.call, b.cur_block, str_type, [plus_two_fn, result, parts[idx],
+				parts[idx + 1]])
+			idx += 2
+		}
+	}
+	for idx < parts.len {
+		result = b.mod.add_instr(.call, b.cur_block, str_type, [plus_fn, result, parts[idx]])
+		idx += 1
 	}
 	return result
 }
@@ -10073,10 +10089,21 @@ fn (mut b Builder) build_string_inter_literal(expr ast.StringInterLiteral) Value
 		return parts[0]
 	}
 
-	// Concatenate all parts with string__+
+	// s257: fold via `plus_two` (one allocation per 2 parts) instead of a
+	// left-fold of allocating `+` calls — see build_string_inter_from_flat.
 	mut result := parts[0]
-	for i := 1; i < parts.len; i++ {
-		result = b.mod.add_instr(.call, b.cur_block, str_type, [plus_fn, result, parts[i]])
+	mut idx := 1
+	if parts.len >= 3 {
+		plus_two_fn := b.get_or_create_fn_ref('builtin__string__plus_two', str_type)
+		for idx + 1 < parts.len {
+			result = b.mod.add_instr(.call, b.cur_block, str_type, [plus_two_fn, result, parts[idx],
+				parts[idx + 1]])
+			idx += 2
+		}
+	}
+	for idx < parts.len {
+		result = b.mod.add_instr(.call, b.cur_block, str_type, [plus_fn, result, parts[idx]])
+		idx += 1
 	}
 	return result
 }
