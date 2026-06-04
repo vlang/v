@@ -2495,10 +2495,16 @@ fn (mut b Builder) build_native_mir_from_files(files []ast.File, arch pref.Arch,
 	mut stage_start := native_sw.elapsed()
 	// V2_FLAT_SSA: route the whole SSA build through the cursor-native
 	// build_all_from_flat on the post-transform b.flat (kept alive above).
-	// Requires V2_CHECK_FLAT + V2_MARKUSED_FLAT so b.flat is post-transform.
-	// Sequential only (build_all_from_flat builds fn bodies in-phase); falls
-	// back to the legacy path when the flat isn't populated. Default off.
-	if b.flat_ssa_enabled && b.flat.files.len > 0 {
+	// Sequential only (build_all_from_flat builds fn bodies in-phase). Default off.
+	//
+	// b.flat is only POST-TRANSFORM when V2_MARKUSED_FLAT is also on: that path
+	// routes transform through transform_files_to_flat, which re-flattens the
+	// transformed files back into b.flat. With V2_CHECK_FLAT but NOT
+	// V2_MARKUSED_FLAT, b.flat stays the parse-time (pre-transform) flat while the
+	// transformer only updates b.files, so feeding it to build_all_from_flat would
+	// skip every transformer rewrite. Require both flags here; otherwise fall back
+	// to the legacy build_all(files), which uses the post-transform b.files.
+	if b.flat_ssa_enabled && b.markused_flat_enabled && b.flat_check_enabled && b.flat.files.len > 0 {
 		ssa_builder.build_all_from_flat(&b.flat)
 	} else if b.native_mir_build_sequential(label) {
 		ssa_builder.build_all(files)
