@@ -1930,13 +1930,26 @@ pub fn (mut c Checker) check_file_from_flat(flat &ast.FlatAst, ff ast.FlatFile) 
 		}
 	}
 	c.scope = mod_scope
-	stmts := flat.read_file_stmts(ff)
+	// s259: don't decode fn_decls here. Their bodies are checked via
+	// pending_fn_bodies (queued by the signature pass, run by
+	// process_pending_fn_bodies); in both loops below FnDecl is a no-op (the first
+	// `continue`s, c.stmt has no FnDecl arm). read_file_stmts decoded every fn body
+	// a SECOND time (after the sig pass already decoded+queued them) — pure churn.
+	decls := ast.Cursor{
+		flat: unsafe { flat }
+		id:   ff.file_id
+	}.list_at(2)
+	mut stmts := []ast.Stmt{cap: decls.len()}
+	for di in 0 .. decls.len() {
+		dc := decls.at(di)
+		if dc.kind() == .stmt_fn_decl {
+			continue
+		}
+		stmts << flat.decode_stmt(dc.id)
+	}
 	for stmt in stmts {
 		match stmt {
 			ast.ConstDecl, ast.EnumDecl, ast.InterfaceDecl, ast.StructDecl, ast.TypeDecl {
-				continue
-			}
-			ast.FnDecl {
 				continue
 			}
 			else {
