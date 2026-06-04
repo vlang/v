@@ -2745,7 +2745,19 @@ fn (mut t Transformer) collect_runtime_const_inits_from_flat(flat &ast.FlatAst) 
 	t.runtime_const_storage_known = map[string]bool{}
 	for ff in flat.files {
 		mod := flat.file_mod(ff)
-		for stmt in flat.read_file_stmts(ff) {
+		// s260: decode only const decls (skip fn bodies — the bulk) instead of a
+		// whole-file read_file_stmts decode. This runtime-const-init pass only acts
+		// on ConstDecl/GlobalDecl.
+		cdecls := ast.Cursor{
+			flat: unsafe { flat }
+			id:   ff.file_id
+		}.list_at(2)
+		for ci in 0 .. cdecls.len() {
+			cc := cdecls.at(ci)
+			if cc.kind() != .stmt_const_decl {
+				continue
+			}
+			stmt := flat.decode_stmt(cc.id)
 			if stmt is ast.ConstDecl {
 				for field in stmt.fields {
 					if t.const_initializer_emits_storage(field.value, is_native) {
@@ -2757,7 +2769,18 @@ fn (mut t Transformer) collect_runtime_const_inits_from_flat(flat &ast.FlatAst) 
 	}
 	for ff in flat.files {
 		mod := flat.file_mod(ff)
-		for stmt in flat.read_file_stmts(ff) {
+		// s260: decode only const/global decls (skip fn bodies).
+		cdecls := ast.Cursor{
+			flat: unsafe { flat }
+			id:   ff.file_id
+		}.list_at(2)
+		for ci in 0 .. cdecls.len() {
+			cc := cdecls.at(ci)
+			ck := cc.kind()
+			if ck != .stmt_const_decl && ck != .stmt_global_decl {
+				continue
+			}
+			stmt := flat.decode_stmt(cc.id)
 			if stmt is ast.ConstDecl {
 				for field in stmt.fields {
 					if !t.needs_runtime_const_init(field.value, is_native) {
@@ -2784,7 +2807,18 @@ fn (mut t Transformer) collect_runtime_const_inits_from_flat(flat &ast.FlatAst) 
 		changed = false
 		for ff in flat.files {
 			mod := flat.file_mod(ff)
-			for stmt in flat.read_file_stmts(ff) {
+			// s260: fixpoint loop — decode only const decls each iteration instead
+			// of re-decoding the whole file (incl. fn bodies) every pass.
+			cdecls := ast.Cursor{
+				flat: unsafe { flat }
+				id:   ff.file_id
+			}.list_at(2)
+			for ci in 0 .. cdecls.len() {
+				cc := cdecls.at(ci)
+				if cc.kind() != .stmt_const_decl {
+					continue
+				}
+				stmt := flat.decode_stmt(cc.id)
 				if stmt is ast.ConstDecl {
 					for field in stmt.fields {
 						if runtime_const_known_key(mod, field.name) in t.runtime_const_known {
