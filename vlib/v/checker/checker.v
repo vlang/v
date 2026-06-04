@@ -7640,8 +7640,22 @@ fn (mut c Checker) mark_as_referenced(mut node ast.Expr, as_interface bool) {
 		ast.Ident {
 			if mut node.obj is ast.Var {
 				mut obj := unsafe { &node.obj }
-				if c.fn_scope != unsafe { nil } {
-					obj = c.fn_scope.find_var(node.obj.name) or { obj }
+				// Resolve the canonical declaration variable so that the
+				// `is_auto_heap` promotion below is recorded on the variable
+				// that cgen will see when emitting its declaration. Walk the
+				// use-site scope chain (so variables declared in nested scopes,
+				// e.g. inside a `for` loop body, are found, unlike
+				// `c.fn_scope.find_var` which only locates function-level vars),
+				// while skipping synthetic smartcast vars from `if x is T`/`match`
+				// branches: those are copies with no declaration of their own, so
+				// promoting them would leave the real declaration emitted as a
+				// plain value and desync the pointer indirection.
+				obj = node.scope.find_var_decl(node.obj.name) or {
+					if c.fn_scope != unsafe { nil } {
+						c.fn_scope.find_var(node.obj.name) or { obj }
+					} else {
+						obj
+					}
 				}
 				if obj.typ == 0 {
 					return
@@ -7678,6 +7692,21 @@ fn (mut c Checker) mark_as_referenced(mut node ast.Expr, as_interface bool) {
 						}
 						else {
 							obj.is_auto_heap = true
+						}
+					}
+
+					if obj.is_auto_heap {
+						// `obj` is the canonical declaration, which cgen emits as a
+						// heap pointer. When the value is read through a branch-local
+						// smartcast/option-unwrap copy (`if x is T`, `if x != none`),
+						// cgen resolves that use-site copy (see
+						// `resolved_ident_is_auto_heap`) when emitting the read, so it
+						// must carry the same `is_auto_heap`. Otherwise the read (e.g.
+						// an unwrapped option's `.data`) is emitted without the pointer
+						// indirection the declaration was given, producing invalid C.
+						node.obj.is_auto_heap = true
+						if mut use_site := node.scope.find_var(node.obj.name) {
+							use_site.is_auto_heap = true
 						}
 					}
 
