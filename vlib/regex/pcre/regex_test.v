@@ -635,3 +635,75 @@ fn test_compatibility_layer() {
 		assert false, 'match_str should return none when no match is found'
 	}
 }
+
+fn test_hex_escapes() {
+	// \xHH — two hex digits
+	tst_find(r'\x41', 'ABC', 'A') // 0x41 = 'A'
+	tst_find(r'\x61', 'abc', 'a') // 0x61 = 'a'
+	tst_find(r'\x41+', 'AAAB', 'AAA')
+	tst_find(r'\x20\x41', ' A test', ' A') // space + 'A'
+
+	// \XHHHH — four hex digits (Unicode codepoint)
+	tst_find(r'\X0041', 'ABC', 'A') // U+0041 = 'A'
+	tst_find(r'\X0061', 'abc', 'a') // U+0061 = 'a'
+	tst_find(r'\X03B1', 'αβγ', 'α') // U+03B1 = 'α'
+
+	// Mix with other escapes
+	tst_find(r'\x48\x65\x6C\x6C\x6F', 'Hello World', 'Hello') // \x48\x65\x6C\x6C\x6F = "Hello"
+
+	// Invalid hex escape compile errors
+	tst_compile_error(r'\x4') // only 1 digit
+	tst_compile_error(r'\xGG') // invalid hex chars
+	tst_compile_error(r'\X004') // only 3 digits
+}
+
+fn test_duplicate_named_groups() {
+	// Compile error: same name used twice
+	tst_compile_error(r'(?P<id>\d+)-(?P<id>\w+)')
+	// Different names are fine
+	r := pcre.compile(r'(?P<a>\d+)-(?P<b>\w+)') or {
+		assert false, 'Should compile: ${err}'
+		return
+	}
+	m := r.find('12-abc') or {
+		assert false, 'Should match'
+		return
+	}
+	assert r.group_by_name(m, 'a') == '12'
+	assert r.group_by_name(m, 'b') == 'abc'
+}
+
+fn test_invalid_quantifier_ranges() {
+	// min > max is an error
+	tst_compile_error(r'a{3,1}')
+	tst_compile_error(r'a{5,2}')
+	// negative min-like patterns (parsed as 0)
+	// {0,0} should compile and match empty string
+	r := pcre.compile(r'a{0,0}b') or {
+		assert false, 'Should compile: ${err}'
+		return
+	}
+	m := r.find('b') or {
+		assert false, 'Should match'
+		return
+	}
+	assert m.text == 'b'
+}
+
+fn test_find_all_utf8_safety() {
+	// find_all with an empty-matching pattern must not get stuck inside a multi-byte rune
+	r := pcre.compile(r'x*') or { panic(err) }
+	matches := r.find_all('aé') // 'é' is 2 bytes (0xC3 0xA9)
+	// Every result start/end must align on a rune boundary
+	for m in matches {
+		text_bytes := 'aé'.bytes()
+		if m.start < text_bytes.len {
+			// byte at start must not be a UTF-8 continuation byte
+			assert (text_bytes[m.start] & 0xC0) != 0x80, 'Misaligned match start at ${m.start}'
+		}
+	}
+	// find_all should not infinite-loop on emoji
+	r2 := pcre.compile(r'y*') or { panic(err) }
+	matches2 := r2.find_all('😀!')
+	assert matches2.len > 0
+}
