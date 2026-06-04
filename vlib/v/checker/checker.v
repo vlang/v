@@ -7695,6 +7695,21 @@ fn (mut c Checker) mark_as_referenced(mut node ast.Expr, as_interface bool) {
 						}
 					}
 
+					if obj.is_auto_heap {
+						// `obj` is the canonical declaration, which cgen emits as a
+						// heap pointer. When the value is read through a branch-local
+						// smartcast/option-unwrap copy (`if x is T`, `if x != none`),
+						// cgen resolves that use-site copy (see
+						// `resolved_ident_is_auto_heap`) when emitting the read, so it
+						// must carry the same `is_auto_heap`. Otherwise the read (e.g.
+						// an unwrapped option's `.data`) is emitted without the pointer
+						// indirection the declaration was given, producing invalid C.
+						node.obj.is_auto_heap = true
+						if mut use_site := node.scope.find_var(node.obj.name) {
+							use_site.is_auto_heap = true
+						}
+					}
+
 					if as_interface {
 						for method in type_sym.methods {
 							c.mark_fn_decl_as_referenced(method.fkey())

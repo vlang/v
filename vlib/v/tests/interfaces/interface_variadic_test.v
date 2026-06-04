@@ -101,6 +101,33 @@ fn test_variadic_interface_arg_smartcast_in_loop() {
 	assert total == 5
 }
 
+fn maybe_value() ?Cat {
+	return Cat{}
+}
+
+// For issue 27326: an option value unwrapped via an if-guard or `if x != none`
+// and then passed to a variadic interface parameter is auto-heap promoted, so
+// its declaration is emitted as an option pointer. The unwrapped `.data` read
+// at the call site must use the matching pointer indirection (`->data`);
+// previously cgen emitted value-style access and failed C compilation.
+fn test_variadic_interface_arg_option_unwrap() {
+	mut total := 0
+	if x := maybe_value() {
+		total += collect(x)
+	}
+	x := maybe_value()
+	if x != none {
+		total += collect(x)
+	}
+	for _ in 0 .. 2 {
+		y := maybe_value()
+		if y != none {
+			total += collect(y)
+		}
+	}
+	assert total == 4
+}
+
 fn check_animals(animals ...Animal) {
 	assert animals[0] is Cat
 	assert animals[1] is Dog
