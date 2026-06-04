@@ -80,6 +80,27 @@ fn test_variadic_interface_arg_smartcast() {
 	assert total == 3
 }
 
+// For issue 27326: a variable that is both declared in a nested scope (a `for`
+// loop body) and smartcast via `if x is T` must still resolve to its real
+// nested declaration, not the synthetic smartcast var nor only the function
+// scope, otherwise the auto-heap promotion desyncs the pointer indirection.
+fn test_variadic_interface_arg_smartcast_in_loop() {
+	mut total := 0
+	for _ in 0 .. 3 {
+		s := ValueSum(Cat{})
+		if s is Cat {
+			total += collect(s)
+		}
+	}
+	for _ in 0 .. 2 {
+		v := Value(Cat{})
+		if v is Cat {
+			total += collect(v)
+		}
+	}
+	assert total == 5
+}
+
 fn check_animals(animals ...Animal) {
 	assert animals[0] is Cat
 	assert animals[1] is Dog
