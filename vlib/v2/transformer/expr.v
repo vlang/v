@@ -8,6 +8,26 @@ import v2.ast
 import v2.types
 import v2.token
 
+fn (t &Transformer) active_local_decl_type_for_expr(expr ast.Expr) ?types.Type {
+	match expr {
+		ast.Ident {
+			return t.lookup_local_decl_type(expr.name)
+		}
+		ast.ParenExpr {
+			return t.active_local_decl_type_for_expr(expr.expr)
+		}
+		ast.ModifierExpr {
+			return t.active_local_decl_type_for_expr(expr.expr)
+		}
+		ast.ComptimeExpr {
+			return t.active_local_decl_type_for_expr(expr.expr)
+		}
+		else {}
+	}
+
+	return none
+}
+
 fn (mut t Transformer) transform_expr(expr ast.Expr) ast.Expr {
 	// Guard against corrupt Expr with NULL data pointer (ARM64 backend issue).
 	// Default-initialized sum types have data_ptr=0, which crashes on field access.
@@ -545,6 +565,8 @@ fn (mut t Transformer) transform_index_expr(expr ast.IndexExpr) ast.Expr {
 				op:   .amp
 				expr: t.type_to_ast_type_expr(map_type.value_type)
 			})
+			deref_pos := t.next_synth_pos()
+			t.register_synth_type(deref_pos, map_type.value_type)
 			typed_ptr := ast.Expr(ast.CastExpr{
 				typ:  cast_ptr_type
 				expr: get_call
@@ -552,15 +574,18 @@ fn (mut t Transformer) transform_index_expr(expr ast.IndexExpr) ast.Expr {
 			deref_expr := ast.Expr(ast.PrefixExpr{
 				op:   .mul
 				expr: typed_ptr
+				pos:  deref_pos
 			})
 			stmts << ast.Stmt(ast.ExprStmt{
 				expr: ast.Expr(ast.ParenExpr{
 					expr: deref_expr
+					pos:  deref_pos
 				})
 			})
 
 			return ast.Expr(ast.UnsafeExpr{
 				stmts: stmts
+				pos:   deref_pos
 			})
 		}
 	}
@@ -2870,7 +2895,23 @@ fn (mut t Transformer) transform_infix_expr(expr ast.InfixExpr) ast.Expr {
 
 			// Create (T[]){ elem } expression for single element push
 			// Note: cleanc will add _MOV wrapper when generating ArrayInitExpr
-			transformed_rhs := t.transform_expr(expr.rhs)
+			mut transformed_rhs := t.transform_expr(expr.rhs)
+			if t.contains_call_expr(expr.rhs) {
+				t.temp_counter++
+				tmp_name := '_ap_t${t.temp_counter}'
+				tmp_ident := ast.Ident{
+					name: tmp_name
+				}
+				if rhs_type := t.get_expr_type(expr.rhs) {
+					t.register_temp_var(tmp_name, rhs_type)
+				}
+				t.pending_stmts << ast.Stmt(ast.AssignStmt{
+					op:  .decl_assign
+					lhs: [ast.Expr(tmp_ident)]
+					rhs: [transformed_rhs]
+				})
+				transformed_rhs = ast.Expr(tmp_ident)
+			}
 			// Clone strings when pushing to arrays to prevent use-after-free
 			// (V1 does: array_push(&arr, _MOV((string[]){ string_clone(s) })))
 			cloned_rhs := if elem_type_name == 'string' {
@@ -2937,15 +2978,30 @@ fn (mut t Transformer) transform_infix_expr(expr ast.InfixExpr) ast.Expr {
 	// Skip if either side is nil — that's a pointer comparison, not a string comparison.
 	if expr.op in [.eq, .ne, .lt, .gt, .le, .ge] && !t.is_nil_expr(expr.lhs)
 		&& !t.is_nil_expr(expr.rhs) {
-		mut lhs_is_str := t.is_string_expr(expr.lhs)
-		mut rhs_is_str := t.is_string_expr(expr.rhs)
-		// Also check type environment for expression types if is_string_expr didn't find it
-		if !lhs_is_str {
+		mut lhs_has_active_type := false
+		mut lhs_is_str := false
+		if lhs_active_type := t.active_local_decl_type_for_expr(expr.lhs) {
+			lhs_has_active_type = true
+			lhs_is_str = t.type_is_string(lhs_active_type)
+		} else {
+			lhs_is_str = t.is_string_expr(expr.lhs)
+		}
+		mut rhs_has_active_type := false
+		mut rhs_is_str := false
+		if rhs_active_type := t.active_local_decl_type_for_expr(expr.rhs) {
+			rhs_has_active_type = true
+			rhs_is_str = t.type_is_string(rhs_active_type)
+		} else {
+			rhs_is_str = t.is_string_expr(expr.rhs)
+		}
+		// Also check type environment for expression types if is_string_expr didn't find it,
+		// unless an active local declaration already resolved the operand type.
+		if !lhs_is_str && !lhs_has_active_type {
 			if expr_type := t.get_expr_type(expr.lhs) {
 				lhs_is_str = t.type_is_string(expr_type)
 			}
 		}
-		if !rhs_is_str {
+		if !rhs_is_str && !rhs_has_active_type {
 			if expr_type := t.get_expr_type(expr.rhs) {
 				rhs_is_str = t.type_is_string(expr_type)
 			}
@@ -2977,8 +3033,10 @@ fn (mut t Transformer) transform_infix_expr(expr ast.InfixExpr) ast.Expr {
 		// complex expressions like Result data access selectors.
 		uses_generic_type := t.expr_uses_current_generic_type(expr.lhs)
 			|| t.expr_uses_current_generic_type(expr.rhs)
-		should_transform := !uses_generic_type && (lhs_is_str || rhs_is_str
-			|| (lhs_is_str_literal && (expr.rhs is ast.Ident
+		active_non_string_type := (lhs_has_active_type && !lhs_is_str)
+			|| (rhs_has_active_type && !rhs_is_str)
+		should_transform := !uses_generic_type && !active_non_string_type && (lhs_is_str
+			|| rhs_is_str || (lhs_is_str_literal && (expr.rhs is ast.Ident
 			|| expr.rhs is ast.SelectorExpr))
 			|| (rhs_is_str_literal && (expr.lhs is ast.Ident || expr.lhs is ast.SelectorExpr)))
 		if should_transform {
@@ -3270,7 +3328,7 @@ fn (mut t Transformer) transform_infix_expr(expr ast.InfixExpr) ast.Expr {
 	}
 	// Note: struct == / != is handled by cleanc's memcmp/field-by-field comparison.
 	// Check for struct operator overloading (e.g., time.Time - time.Time)
-	// This transforms t1 - t2 into time__Time__minus(t1, t2) for structs with operator overloading
+	// This transforms t1 - t2 into time__Time__op_minus(t1, t2) for structs with operator overloading
 	// Only applies to specific known struct types that define operator methods
 	if expr.op in [.plus, .minus, .mul, .div, .mod] {
 		if lhs_type := t.get_expr_type(expr.lhs) {
@@ -3282,11 +3340,11 @@ fn (mut t Transformer) transform_infix_expr(expr ast.InfixExpr) ast.Expr {
 					if type_name in known_struct_ops {
 						// Determine operator method name
 						op_name := match expr.op {
-							.plus { '__plus' }
-							.minus { '__minus' }
-							.mul { '__mul' }
-							.div { '__div' }
-							.mod { '__mod' }
+							.plus { '__op_plus' }
+							.minus { '__op_minus' }
+							.mul { '__op_mul' }
+							.div { '__op_div' }
+							.mod { '__op_mod' }
 							else { '' }
 						}
 

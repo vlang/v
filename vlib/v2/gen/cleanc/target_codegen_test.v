@@ -685,6 +685,26 @@ fn main() {}
 	assert cross_src.contains('#if defined(__linux__)\n#include <cross_linux_marker.h>\n#endif')
 }
 
+fn test_comptime_if_pkgconfig_directives_select_available_branch() {
+	if !vpref.comptime_pkgconfig_value('sqlite3') {
+		return
+	}
+	source := 'module main
+
+\$if \$pkgconfig("sqlite3") {
+	#include "sqlite3.h"
+} \$else \$if darwin {
+	#include <sqlite_darwin_fallback_marker.h>
+}
+
+fn main() {}
+'
+	macos_src := generated_c_for_target_program_with_options('pkgconfig_sqlite3_directive_macos',
+		source, 'macos', false, false)
+	assert macos_src.contains('#include "sqlite3.h"')
+	assert !macos_src.contains('#include <sqlite_darwin_fallback_marker.h>')
+}
+
 fn test_cross_comptime_if_else_directives_do_not_emit_selected_else_unguarded() {
 	source := 'module main
 

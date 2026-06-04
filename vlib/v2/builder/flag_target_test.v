@@ -101,6 +101,35 @@ fn test_comptime_flag_blocks_match_cross_and_freestanding_preferences() {
 	assert comptime_cond_matches_with_pref('freestanding && linux', &free_prefs)
 }
 
+fn test_comptime_pkgconfig_condition_matches_available_package() {
+	mut prefs := pref.new_preferences()
+	prefs.target_os = os.user_os()
+	assert !comptime_cond_matches_with_pref(r"$pkgconfig('__v2_definitely_missing_pkgconfig_test_package__')",
+		&prefs)
+	if pref.comptime_pkgconfig_value('sqlite3') {
+		assert comptime_cond_matches_with_pref(r"$pkgconfig('sqlite3')", &prefs)
+	}
+}
+
+fn test_pkgconfig_directive_collects_flags_for_active_native_branch() {
+	mut prefs := pref.new_preferences()
+	prefs.target_os = os.user_os()
+	if pref.comptime_pkgconfig_value('sqlite3') {
+		flag := parse_flag_directive_line_with_pref('#pkgconfig sqlite3', '/tmp/source.v', &prefs) or {
+			''
+		}
+		assert flag.contains('sqlite3')
+	}
+
+	mut cross_prefs := pref.new_preferences()
+	cross_prefs.target_os = 'cross'
+	cross_prefs.output_cross_c = true
+	flag := parse_flag_directive_line_with_pref('#pkgconfig sqlite3', '/tmp/source.v', &cross_prefs) or {
+		''
+	}
+	assert flag == ''
+}
+
 fn test_comptime_optional_target_mode_flags_require_explicit_define() {
 	mut cross_prefs := pref.new_preferences()
 	cross_prefs.target_os = 'cross'

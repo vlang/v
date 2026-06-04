@@ -25,6 +25,10 @@ fn test_comptime_flag_value_allows_nil_preferences() {
 	assert !comptime_flag_value(prefs, 'definitely_missing_flag')
 }
 
+fn test_comptime_pkgconfig_value_reports_missing_packages_as_false() {
+	assert !comptime_pkgconfig_value('__v2_definitely_missing_pkgconfig_test_package__')
+}
+
 fn test_comptime_optional_flag_value_uses_user_defines_only() {
 	mut prefs := new_preferences()
 	prefs.target_os = 'linux'

@@ -105,6 +105,25 @@ __global hidden = 1
 	assert !hidden.is_mut
 }
 
+fn test_module_storage_decl_type_allows_forward_struct_reference() {
+	env := check_module_storage_files({
+		'main.v': 'module main
+
+__global g_game &Game
+
+struct Game {
+	visible_i int
+}
+
+fn main() {
+	_ = g_game
+}
+'
+	})
+	g_game := module_storage_global(env, 'main', 'g_game')
+	assert g_game.typ.name() == '&Game'
+}
+
 fn test_module_storage_public_qualified_access_accepts_import_alias() {
 	code, output := run_module_storage_v2_check('public_alias', {
 		'report/report.v': 'module report

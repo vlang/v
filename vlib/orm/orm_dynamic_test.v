@@ -23,6 +23,15 @@ mut:
 	is_required u8
 }
 
+@[table: 'dynamic_or_members']
+struct DynamicOrMember {
+mut:
+	id        int @[primary]
+	tenant_id int
+	name      string
+	status    string
+}
+
 fn test_dynamic_select_with_inline_where_block() {
 	mut db := sqlite.connect(':memory:')!
 	defer {
@@ -314,4 +323,183 @@ fn test_dynamic_select_with_explicit_order_by_asc() {
 	assert rows[0].age == 19
 	assert rows[1].name == 'Alice'
 	assert rows[1].age == 31
+}
+
+fn test_dynamic_select_where_block_with_or_expression() {
+	mut db := sqlite.connect(':memory:')!
+	defer {
+		db.close() or { panic(err) }
+	}
+
+	sql db {
+		create table DynamicOrMember
+	}!
+
+	members := [
+		DynamicOrMember{
+			id:        1
+			tenant_id: 1
+			name:      'Alice'
+			status:    'active'
+		},
+		DynamicOrMember{
+			id:        2
+			tenant_id: 2
+			name:      'Bob'
+			status:    'active'
+		},
+		DynamicOrMember{
+			id:        3
+			tenant_id: 2
+			name:      'Charlie'
+			status:    'pending'
+		},
+		DynamicOrMember{
+			id:        4
+			tenant_id: 3
+			name:      'Diana'
+			status:    'active'
+		},
+	]
+
+	for member in members {
+		sql db {
+			insert member into DynamicOrMember
+		}!
+	}
+
+	active := 'active'
+	tenant_id := 2
+	rows := sql db {
+		dynamic select from DynamicOrMember where {
+		status == active && (name == 'Alice' || tenant_id == tenant_id)
+	} order by id
+	}!
+
+	assert rows.map(it.name) == ['Alice', 'Bob']
+
+	grouped_rows := sql db {
+		dynamic select from DynamicOrMember where {
+		(name == 'Alice' || status == active) && tenant_id == tenant_id
+	} order by id
+	}!
+
+	assert grouped_rows.map(it.name) == ['Bob']
+}
+
+fn test_dynamic_select_where_block_with_or_expression_and_comma_filter() {
+	mut db := sqlite.connect(':memory:')!
+	defer {
+		db.close() or { panic(err) }
+	}
+
+	sql db {
+		create table DynamicOrMember
+	}!
+
+	members := [
+		DynamicOrMember{
+			id:        1
+			tenant_id: 1
+			name:      'Alice'
+			status:    'active'
+		},
+		DynamicOrMember{
+			id:        2
+			tenant_id: 2
+			name:      'Bob'
+			status:    'active'
+		},
+		DynamicOrMember{
+			id:        3
+			tenant_id: 2
+			name:      'Charlie'
+			status:    'pending'
+		},
+		DynamicOrMember{
+			id:        4
+			tenant_id: 3
+			name:      'Diana'
+			status:    'active'
+		},
+	]
+
+	for member in members {
+		sql db {
+			insert member into DynamicOrMember
+		}!
+	}
+
+	tenant_id := 2
+	rows := sql db {
+		dynamic select from DynamicOrMember where {
+		tenant_id == tenant_id,
+		name == 'Alice' || status == 'active'
+	} order by id
+	}!
+
+	assert rows.map(it.name) == ['Bob']
+}
+
+fn test_dynamic_update_where_block_with_or_expression() {
+	mut db := sqlite.connect(':memory:')!
+	defer {
+		db.close() or { panic(err) }
+	}
+
+	sql db {
+		create table DynamicOrMember
+	}!
+
+	members := [
+		DynamicOrMember{
+			id:        1
+			tenant_id: 1
+			name:      'Alice'
+			status:    'active'
+		},
+		DynamicOrMember{
+			id:        2
+			tenant_id: 2
+			name:      'Bob'
+			status:    'active'
+		},
+		DynamicOrMember{
+			id:        3
+			tenant_id: 2
+			name:      'Charlie'
+			status:    'pending'
+		},
+		DynamicOrMember{
+			id:        4
+			tenant_id: 3
+			name:      'Diana'
+			status:    'active'
+		},
+	]
+
+	for member in members {
+		sql db {
+			insert member into DynamicOrMember
+		}!
+	}
+
+	next_status := 'archived'
+	update_expr := {
+		status == next_status
+	}
+	user_id := 1
+	tenant_id := 2
+
+	sql db {
+		dynamic update DynamicOrMember set update_expr where {
+		id == user_id || tenant_id == tenant_id
+	}
+	}!
+
+	rows := sql db {
+		select from DynamicOrMember order by id
+	}!
+
+	assert rows.map(it.status) == ['archived', 'archived', 'archived', 'active']
 }

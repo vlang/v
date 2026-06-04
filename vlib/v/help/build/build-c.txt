@@ -324,6 +324,8 @@ see also `v help build`.
    -bug-report-url url
       Override where automatic C compiler bug reports are submitted.
       Useful with `v bug-report --host localhost --port 8080` for local testing.
+      The report includes both the failing generated C line and the V source line
+      that produced it (V code is regenerated with `#line` info if needed to map it).
       Automatic reports to bugs.vlang.io are skipped when running in GitHub CI.
       Set V_C_ERROR_BUG_REPORT_DISABLED=1 to disable automatic report submission.
 

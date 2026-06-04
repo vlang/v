@@ -909,6 +909,19 @@ fn (g &Gen) ast_comptime_simple_cond_matches(expr ast.Expr) bool {
 	if expr is ast.Ident {
 		return g.ast_comptime_flag_matches(expr.name)
 	}
+	if expr is ast.ComptimeExpr {
+		return g.ast_comptime_simple_cond_matches(expr.expr)
+	}
+	if expr is ast.CallExpr {
+		if pkg_name := cleanc_pkgconfig_call_name(expr) {
+			return vpref.comptime_pkgconfig_value(pkg_name)
+		}
+	}
+	if expr is ast.CallOrCastExpr {
+		if pkg_name := cleanc_pkgconfig_call_name(expr) {
+			return vpref.comptime_pkgconfig_value(pkg_name)
+		}
+	}
 	if expr is ast.PrefixExpr {
 		if expr.op == .not {
 			return !g.ast_comptime_simple_cond_matches(expr.expr)
@@ -959,6 +972,39 @@ fn (g &Gen) ast_comptime_flag_matches(name string) bool {
 	return vpref.define_list_contains(g.pref.user_defines, lower_name)
 }
 
+fn cleanc_pkgconfig_call_name(expr ast.Expr) ?string {
+	match expr {
+		ast.CallExpr {
+			if expr.lhs is ast.Ident && expr.lhs.name == 'pkgconfig' && expr.args.len == 1 {
+				return cleanc_string_literal_value(expr.args[0])
+			}
+		}
+		ast.CallOrCastExpr {
+			if expr.lhs is ast.Ident && expr.lhs.name == 'pkgconfig' {
+				return cleanc_string_literal_value(expr.expr)
+			}
+		}
+		else {}
+	}
+
+	return none
+}
+
+fn cleanc_string_literal_value(expr ast.Expr) ?string {
+	if expr is ast.StringLiteral {
+		return cleanc_unquote_string_literal_value(expr.value)
+	}
+	return none
+}
+
+fn cleanc_unquote_string_literal_value(value string) string {
+	if value.len >= 2 && ((value[0] == `"` && value[value.len - 1] == `"`)
+		|| (value[0] == `'` && value[value.len - 1] == `'`)) {
+		return value[1..value.len - 1]
+	}
+	return value
+}
+
 fn c_directive_emits_linked_symbols(value string) bool {
 	lower_value := value.trim_space().to_lower()
 	for marker in ['.c"', ".c'", '.c>', '.m"', ".m'", '.m>'] {
@@ -968,6 +1014,11 @@ fn c_directive_emits_linked_symbols(value string) bool {
 	}
 	return lower_value.contains('"miniz.h"') || lower_value.contains('<miniz.h>')
 		|| lower_value.contains('/miniz.h"') || lower_value.contains('/miniz.h>')
+}
+
+fn c_define_enables_linked_symbols(value string) bool {
+	upper_value := value.trim_space().to_upper()
+	return upper_value.contains('IMPLEMENTATION')
 }
 
 fn (mut g Gen) emit_directive(stmt ast.Directive, file_name string, emit_implementation_directives bool, mut seen map[string]bool) {
@@ -1000,6 +1051,10 @@ fn (mut g Gen) emit_directive_with_seen_guard(stmt ast.Directive, file_name stri
 	value := normalize_c_directive_value(emit_name, stmt.value, file_name, vroot)
 	if !emit_implementation_directives && emit_name == 'include'
 		&& c_directive_emits_linked_symbols(value) {
+		return
+	}
+	if !emit_implementation_directives && emit_name == 'define'
+		&& c_define_enables_linked_symbols(value) {
 		return
 	}
 	line := if value == '' { '#${emit_name}' } else { '#${emit_name} ${value}' }

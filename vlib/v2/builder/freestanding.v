@@ -40,9 +40,10 @@ fn (b &Builder) validate_freestanding_cleanc_contract() bool {
 		}
 	}
 	scan_ctx := freestanding_scan_context(b.pref, target_os)
+	allow_pkgconfig_imports := !b.pref.is_cross_target()
 	for file in b.freestanding_diagnostic_files() {
-		for imported in active_file_imports_with_explicit(file, b.pref.user_defines,
-			b.pref.explicit_user_defines, target_os) {
+		for imported in active_file_imports_with_options(file, b.pref.user_defines,
+			b.pref.explicit_user_defines, target_os, allow_pkgconfig_imports) {
 			if msg := freestanding_restricted_import_diagnostic(imported.name) {
 				if !seen[msg] {
 					diagnostics << msg

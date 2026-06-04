@@ -8873,7 +8873,14 @@ fn (mut g Gen) select_expr(node ast.SelectExpr) {
 						|| branch.stmt.right_types[0] != branch.stmt.left_types[0] {
 						tmp_obj := g.new_tmp_var()
 						tmp_objs << tmp_obj
-						el_stype := g.styp(branch.stmt.right_types[0])
+						// Re-resolve the channel element type through the current generic
+						// instantiation; `right_types[0]` may be a stale concrete type baked
+						// from a different instantiation of the same generic body (issue #27205).
+						mut elem_type := g.resolved_expr_type(rec_expr, branch.stmt.right_types[0])
+						if elem_type == 0 {
+							elem_type = branch.stmt.right_types[0]
+						}
+						el_stype := g.styp(elem_type)
 						elem_types << if branch.stmt.op == .decl_assign {
 							el_stype + ' '
 						} else {

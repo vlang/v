@@ -14,6 +14,7 @@ fn (mut t Transformer) register_if_guard_lhs_payload_type(lhs []ast.Expr, payloa
 		match expr {
 			ast.Ident {
 				if expr.name != '_' {
+					t.remember_local_decl_type(expr.name, payload_type)
 					t.register_local_var_type(expr.name, payload_type)
 					if expr.pos.is_valid() {
 						t.register_synth_type(expr.pos, payload_type)
@@ -24,6 +25,7 @@ fn (mut t Transformer) register_if_guard_lhs_payload_type(lhs []ast.Expr, payloa
 				if expr.expr is ast.Ident {
 					ident := expr.expr as ast.Ident
 					if ident.name != '_' {
+						t.remember_local_decl_type(ident.name, payload_type)
 						t.register_local_var_type(ident.name, payload_type)
 						if ident.pos.is_valid() {
 							t.register_synth_type(ident.pos, payload_type)
@@ -1275,6 +1277,15 @@ fn (t &Transformer) can_eval_comptime_cond(cond ast.Expr) bool {
 		ast.Ident {
 			return true
 		}
+		ast.ComptimeExpr {
+			return t.can_eval_comptime_cond(cond.expr)
+		}
+		ast.CallExpr {
+			return transformer_pkgconfig_call_name(cond) != none
+		}
+		ast.CallOrCastExpr {
+			return transformer_pkgconfig_call_name(cond) != none
+		}
 		ast.PrefixExpr {
 			return t.can_eval_comptime_cond(cond.expr)
 		}
@@ -1320,6 +1331,19 @@ fn (t &Transformer) eval_comptime_cond(cond ast.Expr) bool {
 		ast.Ident {
 			return t.eval_comptime_flag(cond.name)
 		}
+		ast.ComptimeExpr {
+			return t.eval_comptime_cond(cond.expr)
+		}
+		ast.CallExpr {
+			if pkg_name := transformer_pkgconfig_call_name(cond) {
+				return t.eval_pkgconfig_cond(pkg_name)
+			}
+		}
+		ast.CallOrCastExpr {
+			if pkg_name := transformer_pkgconfig_call_name(cond) {
+				return t.eval_pkgconfig_cond(pkg_name)
+			}
+		}
 		ast.PrefixExpr {
 			if cond.op == .not {
 				return !t.eval_comptime_cond(cond.expr)
@@ -1349,6 +1373,46 @@ fn (t &Transformer) eval_comptime_cond(cond ast.Expr) bool {
 	}
 
 	return false
+}
+
+fn (t &Transformer) eval_pkgconfig_cond(pkg_name string) bool {
+	if t.pref.is_cross_target() {
+		return false
+	}
+	return pref.comptime_pkgconfig_value(pkg_name)
+}
+
+fn transformer_pkgconfig_call_name(expr ast.Expr) ?string {
+	match expr {
+		ast.CallExpr {
+			if expr.lhs is ast.Ident && expr.lhs.name == 'pkgconfig' && expr.args.len == 1 {
+				return transformer_string_literal_value(expr.args[0])
+			}
+		}
+		ast.CallOrCastExpr {
+			if expr.lhs is ast.Ident && expr.lhs.name == 'pkgconfig' {
+				return transformer_string_literal_value(expr.expr)
+			}
+		}
+		else {}
+	}
+
+	return none
+}
+
+fn transformer_string_literal_value(expr ast.Expr) ?string {
+	if expr is ast.StringLiteral {
+		return transformer_unquote_string_literal_value(expr.value)
+	}
+	return none
+}
+
+fn transformer_unquote_string_literal_value(value string) string {
+	if value.len >= 2 && ((value[0] == `"` && value[value.len - 1] == `"`)
+		|| (value[0] == `'` && value[value.len - 1] == `'`)) {
+		return value[1..value.len - 1]
+	}
+	return value
 }
 
 // eval_comptime_flag delegates to the shared `pref.comptime_flag_value` so

@@ -6,6 +6,8 @@ module builder
 import v2.ast
 import v2.transformer
 import runtime
+import os
+import time
 
 $if !windows {
 	struct TransformChunkArgs {
@@ -28,6 +30,8 @@ $if !windows {
 	fn transform_chunk_thread(arg voidptr) voidptr {
 		a := unsafe { &TransformChunkArgs(arg) }
 		t := unsafe { &transformer.Transformer(a.t) }
+		wprof := os.getenv('V2_TTIME') != ''
+		mut wsw := time.new_stopwatch()
 		mut w := t.new_worker_clone(a.worker_idx)
 		if unsafe { a.flat != nil } {
 			// Streaming rehydration: rehydrate one file at a time, transform it,
@@ -52,6 +56,9 @@ $if !windows {
 		for i := 0; i < a.files.len; i++ {
 			result << w.transform_file_pub(a.files[i])
 		}
+		if wprof {
+			eprintln('  [ttime] worker ${a.worker_idx}: ${a.files.len} files in ${wsw.elapsed().milliseconds()}ms')
+		}
 		unsafe {
 			*(&[]ast.File(a.result_ptr)) = result
 			*(&voidptr(a.worker_ptr)) = voidptr(w)
@@ -61,8 +68,17 @@ $if !windows {
 }
 
 fn (mut b Builder) transform_files_parallel(mut trans transformer.Transformer) []ast.File {
+	timing := os.getenv('V2_TTIME') != ''
+	mut sw := time.new_stopwatch()
 	mut result := b.transform_files_parallel_no_post_pass(mut trans)
+	if timing {
+		eprintln('  [ttime] (parallel) prepare+fanout: ${sw.elapsed().milliseconds()}ms')
+		sw = time.new_stopwatch()
+	}
 	trans.post_pass(mut result)
+	if timing {
+		eprintln('  [ttime] (parallel) post_pass: ${sw.elapsed().milliseconds()}ms')
+	}
 	return result
 }
 
@@ -93,15 +109,35 @@ fn (mut b Builder) transform_files_parallel_no_post_pass_impl(mut trans transfor
 	} else {
 		trans.pre_pass(b.files)
 	}
+	timing_impl := os.getenv('V2_TTIME') != ''
+	mut sw_impl := time.new_stopwatch()
+	mut stream_files_from_flat := stream_from_flat
+	mut files_to_transform := []ast.File{}
+	if trans.needs_full_files_for_transform() {
+		src_files := if stream_from_flat { b.flat.to_files() } else { b.files }
+		files_to_transform = trans.prepare_files_for_transform(src_files)
+		stream_files_from_flat = false
+	} else if !stream_from_flat {
+		files_to_transform = b.files.clone()
+	}
+	if timing_impl {
+		eprintln('  [ttime] prepare_files_for_transform total: ${sw_impl.elapsed().milliseconds()}ms')
+		sw_impl = time.new_stopwatch()
+	}
+	defer {
+		if timing_impl {
+			eprintln('  [ttime] per-file fanout: ${sw_impl.elapsed().milliseconds()}ms')
+		}
+	}
 
 	// In flat mode, workers stream the rehydration per file (one legacy
 	// ast.File in flight per worker at a time). Otherwise b.files is the
 	// canonical legacy-AST input — slice it across workers as before.
 	n_jobs := runtime.nr_jobs()
-	n_files := if stream_from_flat { b.flat.files.len } else { b.files.len }
+	n_files := if stream_files_from_flat { b.flat.files.len } else { files_to_transform.len }
 	$if windows {
 		mut result := []ast.File{cap: n_files}
-		if stream_from_flat {
+		if stream_files_from_flat {
 			for fi in 0 .. n_files {
 				one := b.flat.to_files_range(fi, fi + 1)
 				if one.len == 0 {
@@ -111,14 +147,14 @@ fn (mut b Builder) transform_files_parallel_no_post_pass_impl(mut trans transfor
 			}
 		} else {
 			for i := 0; i < n_files; i++ {
-				result << trans.transform_file_pub(b.files[i])
+				result << trans.transform_file_pub(files_to_transform[i])
 			}
 		}
 		return result
 	} $else {
 		if n_files <= 1 || n_jobs <= 1 {
 			mut result := []ast.File{cap: n_files}
-			if stream_from_flat {
+			if stream_files_from_flat {
 				for fi in 0 .. n_files {
 					one := b.flat.to_files_range(fi, fi + 1)
 					if one.len == 0 {
@@ -128,14 +164,38 @@ fn (mut b Builder) transform_files_parallel_no_post_pass_impl(mut trans transfor
 				}
 			} else {
 				for i := 0; i < n_files; i++ {
-					result << trans.transform_file_pub(b.files[i])
+					result << trans.transform_file_pub(files_to_transform[i])
 				}
 			}
 			return result
 		}
 
-		// Split files into chunks and spawn workers via pthreads
-		chunk_size := (n_files + n_jobs - 1) / n_jobs // ceiling division
+		// Assign files to workers. Contiguous chunks badly unbalance the load:
+		// the few huge files (transformer.v, monomorphize.v, the cleanc gen
+		// files, ...) cluster into adjacent chunks, so 2-3 workers run ~10s
+		// while the rest finish in <0.5s and idle. For the non-flat path we
+		// instead use longest-processing-time-first (LPT) bucketing keyed on a
+		// cheap size proxy, then scatter each worker's results back to their
+		// original file index after the join (no concurrent writes — workers
+		// each fill their own chunk_results slot, the merge happens serially).
+		mut bucket_indices := [][]int{len: n_jobs}
+		if stream_files_from_flat {
+			// Flat streaming still uses contiguous [start,end) ranges.
+			chunk_size := (n_files + n_jobs - 1) / n_jobs
+			mut i := 0
+			mut w := 0
+			for i < n_files {
+				end := if i + chunk_size < n_files { i + chunk_size } else { n_files }
+				for j in i .. end {
+					bucket_indices[w] << j
+				}
+				i = end
+				w++
+			}
+		} else {
+			bucket_indices = lpt_buckets(files_to_transform, n_jobs)
+		}
+
 		mut chunk_results := [][]ast.File{len: n_jobs}
 		mut worker_ptrs := []voidptr{len: n_jobs, init: unsafe { nil }}
 		mut thread_ids := []C.pthread_t{len: n_jobs}
@@ -150,21 +210,26 @@ fn (mut b Builder) transform_files_parallel_no_post_pass_impl(mut trans transfor
 		C.pthread_attr_setstacksize(attr, 64 * 1024 * 1024)
 
 		mut chunk_idx := 0
-		mut i := 0
-		for i < n_files {
-			end := if i + chunk_size < n_files { i + chunk_size } else { n_files }
-			if stream_from_flat {
+		for w in 0 .. n_jobs {
+			idxs := bucket_indices[w]
+			if idxs.len == 0 {
+				continue
+			}
+			if stream_files_from_flat {
 				args << TransformChunkArgs{
 					t:          unsafe { voidptr(trans) }
 					flat:       unsafe { &b.flat }
-					flat_start: i
-					flat_end:   end
+					flat_start: idxs[0]
+					flat_end:   idxs[idxs.len - 1] + 1
 					result_ptr: unsafe { voidptr(&chunk_results[chunk_idx]) }
 					worker_ptr: unsafe { voidptr(&worker_ptrs[chunk_idx]) }
 					worker_idx: chunk_idx
 				}
 			} else {
-				chunk := b.files[i..end]
+				mut chunk := []ast.File{cap: idxs.len}
+				for fi in idxs {
+					chunk << files_to_transform[fi]
+				}
 				args << TransformChunkArgs{
 					t:          unsafe { voidptr(trans) }
 					files:      chunk
@@ -175,7 +240,6 @@ fn (mut b Builder) transform_files_parallel_no_post_pass_impl(mut trans transfor
 			}
 			C.pthread_create(unsafe { &thread_ids[chunk_idx] }, attr, transform_chunk_thread,
 				unsafe { voidptr(&args[chunk_idx]) })
-			i = end
 			chunk_idx++
 		}
 		C.pthread_attr_destroy(attr)
@@ -185,20 +249,86 @@ fn (mut b Builder) transform_files_parallel_no_post_pass_impl(mut trans transfor
 			C.pthread_join(thread_ids[ci], unsafe { nil })
 		}
 
-		// Collect results in chunk order and merge worker accumulated state
-		mut result := []ast.File{cap: n_files}
-		for ci := 0; ci < chunk_idx; ci++ {
-			chunk_files := chunk_results[ci]
-			for k := 0; k < chunk_files.len; k++ {
-				result << chunk_files[k]
+		// Scatter each worker's results back to original file order and merge
+		// accumulated state. bucket_indices[w] lists the original indices the
+		// w-th spawned worker processed, in the same order it produced results.
+		mut result := []ast.File{len: n_files}
+		mut ci := 0
+		for w in 0 .. n_jobs {
+			idxs := bucket_indices[w]
+			if idxs.len == 0 {
+				continue
 			}
-			w := unsafe { &transformer.Transformer(worker_ptrs[ci]) }
-			trans.merge_worker(w)
+			chunk_files := chunk_results[ci]
+			for k, fi in idxs {
+				if k < chunk_files.len {
+					result[fi] = chunk_files[k]
+				}
+			}
+			worker := unsafe { &transformer.Transformer(worker_ptrs[ci]) }
+			trans.merge_worker(worker)
+			ci++
 		}
 		// Set synth_pos_counter past all worker ranges to avoid ID collisions in post_pass.
 		trans.set_synth_pos_counter(-(chunk_idx * 100_000) - 1)
 		return result
 	}
+}
+
+// lpt_buckets distributes file indices across n_jobs workers using the
+// longest-processing-time-first heuristic: process files largest-first and
+// always append to the currently least-loaded worker. This keeps the heaviest
+// files on separate workers so the fan-out wall time approaches
+// total_work / n_jobs instead of being pinned to one overloaded contiguous
+// chunk. The cost proxy is top-level statement count (cheap, and the giant
+// files have proportionally many declarations). Deterministic: files are
+// ordered by (cost desc, index asc) and ties pick the lowest worker index.
+fn lpt_buckets(files []ast.File, n_jobs int) [][]int {
+	n := files.len
+	mut cost := []int{len: n}
+	for i in 0 .. n {
+		// Cost proxy: count function bodies, not just top-level declarations, so
+		// a file of a few huge functions (transformer.v, the cleanc gen files)
+		// outranks one with many tiny ones. Deterministic; one level deep is
+		// enough to separate the heavyweight files that drove the imbalance.
+		mut c := 1
+		for stmt in files[i].stmts {
+			c++
+			if stmt is ast.FnDecl {
+				c += stmt.stmts.len
+			}
+		}
+		cost[i] = c
+	}
+	// order = file indices by cost descending. Implemented as a plain insertion
+	// sort (n is small, a few hundred) rather than sort_with_compare: this file
+	// must self-host through every backend, and capturing closures / pointer
+	// comparators are not reliably codegen'd by the v2 cleanc and arm64 paths.
+	// Stable on index (only shifts on strictly-greater), so deterministic.
+	mut order := []int{len: n, init: index}
+	for i in 1 .. n {
+		key := order[i]
+		kc := cost[key]
+		mut j := i - 1
+		for j >= 0 && cost[order[j]] < kc {
+			order[j + 1] = order[j]
+			j--
+		}
+		order[j + 1] = key
+	}
+	mut buckets := [][]int{len: n_jobs}
+	mut load := []i64{len: n_jobs}
+	for fi in order {
+		mut mw := 0
+		for w in 1 .. n_jobs {
+			if load[w] < load[mw] {
+				mw = w
+			}
+		}
+		buckets[mw] << fi
+		load[mw] += i64(cost[fi])
+	}
+	return buckets
 }
 
 // transform_files_parallel_to_flat is the parallel counterpart of

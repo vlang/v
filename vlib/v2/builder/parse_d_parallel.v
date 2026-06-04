@@ -46,14 +46,15 @@ fn (mut pstate ParsingSharedState) append_to_flat(file ast.File) {
 fn worker(mut wp util.WorkerPool[string, ast.File], mut pstate ParsingSharedState, prefs &pref.Preferences) {
 	mut p := parser.Parser.new(prefs)
 	target_os := prefs.source_filter_target_os()
+	allow_pkgconfig_imports := !prefs.is_cross_target()
 	for {
 		filename := wp.get_job() or { break }
 		ast_file := p.parse_file(filename, mut pstate.file_set)
 		// Queue new jobs for imports before pushing result
 		skip_imports := prefs.skip_imports
 		if !skip_imports {
-			for mod in active_file_imports_with_explicit(ast_file, prefs.user_defines,
-				prefs.explicit_user_defines, target_os) {
+			for mod in active_file_imports_with_options(ast_file, prefs.user_defines,
+				prefs.explicit_user_defines, target_os, allow_pkgconfig_imports) {
 				if pstate.already_parsed_module(mod.name) {
 					continue
 				}

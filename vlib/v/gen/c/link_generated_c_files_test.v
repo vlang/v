@@ -1,7 +1,6 @@
-module c
-
 import os
 import v.builder
+import v.gen.c
 import v.pref
 
 const test_vexe = os.quoted_path(@VEXE)
@@ -84,7 +83,7 @@ fn main() {
 	files << b.get_user_files()
 	b.set_module_lookup_paths()
 	b.front_and_middle_stages(files)!
-	result := gen(b.parsed_files, mut b.table, b.pref)
+	result := c.gen(b.parsed_files, mut b.table, b.pref)
 	header := result.header.replace('\r\n', '\n')
 	assert header.contains('#define _VPARALLELCC (1)'), header
 	assert header.contains('#ifdef _VPARALLELCC\n\t\t#define VV_LOC\n\t#else\n\t\t#define VV_LOC static\n\t#endif'), header

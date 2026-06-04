@@ -172,6 +172,11 @@ pub fn (f &FnType) get_param_names() []string {
 	return names
 }
 
+// get_generic_params returns the declared generic parameter names.
+pub fn (f &FnType) get_generic_params() []string {
+	return f.generic_params.clone()
+}
+
 // is_variadic_fn reports whether this function type was declared variadic.
 pub fn (f &FnType) is_variadic_fn() bool {
 	return f.is_variadic
@@ -648,16 +653,32 @@ fn (t Primitive) name() string {
 		}
 	} else if t.props.has(.integer) {
 		if t.props.has(.unsigned) {
-			return 'u${t.size}'
+			match t.size {
+				8 { return 'u8' }
+				16 { return 'u16' }
+				32 { return 'u32' }
+				64 { return 'u64' }
+				else { return 'u${t.size}' }
+			}
 		} else {
 			// TODO:
 			if t.size == 0 {
 				return 'int'
 			}
-			return 'i${t.size}'
+			match t.size {
+				8 { return 'i8' }
+				16 { return 'i16' }
+				32 { return 'i32' }
+				64 { return 'i64' }
+				else { return 'i${t.size}' }
+			}
 		}
 	} else if t.props.has(.float) {
-		return 'f${t.size}'
+		match t.size {
+			32 { return 'f32' }
+			64 { return 'f64' }
+			else { return 'f${t.size}' }
+		}
 	}
 	// Fallback for zero-initialized Primitive (shouldn't happen after const ordering fix).
 	return 'int'

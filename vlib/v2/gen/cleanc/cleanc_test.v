@@ -97,6 +97,100 @@ fn test_const_shadowing_declared_fn_uses_renamed_storage() {
 	assert !extern_src.contains('static const int test_strings = 1;')
 }
 
+fn test_scalar_const_references_later_const_are_inlined() {
+	csrc := cleanc_csrc_for_test_source('scalar_const_later_dependency', 'module main
+
+const first = second
+const second = 2 * third
+const third = 5
+
+fn main() {
+	_ := first
+}
+')
+	assert !csrc.contains('static const int first = second;')
+	assert csrc.contains('static const int first = (2 * 5);')
+}
+
+fn test_scalar_const_resolution_preserves_numeric_casts() {
+	csrc := cleanc_csrc_for_test_source('scalar_const_cast_dependency', 'module main
+
+const shift = 64 - 11 - 1
+const frac_mask = u64((u64(1) << u64(shift)) - u64(1))
+
+fn main() {
+	_ := frac_mask
+}
+')
+	assert csrc.contains('frac_mask = ((u64)')
+	assert csrc.contains('((u64)(1)) << ((u64)')
+	assert csrc.contains('64 - 11')
+	assert csrc.contains('- ((u64)(1))')
+	assert !csrc.contains('#define frac_mask (((1 << ((64 - 11) - 1))) - 1)')
+}
+
+fn test_vec_module_generic_vec4_keeps_struct_initializers() {
+	csrc := cleanc_csrc_for_test_source('vec_module_generic_vec4', 'module vec
+
+pub struct Vec4[T] {
+pub mut:
+	x T
+	y T
+	z T
+	w T
+}
+
+pub fn vec4[T](x T, y T, z T, w T) Vec4[T] {
+	return Vec4[T]{
+		x: x
+		y: y
+		z: z
+		w: w
+	}
+}
+
+pub fn use_vec4() Vec4[f32] {
+	return vec4[f32](1.0, 2.0, 3.0, 4.0)
+}
+')
+	assert !csrc.contains('return ((vec__SimdFloat4){')
+	assert csrc.contains('return ((vec__Vec4_T_f32){')
+}
+
+fn test_vec_generic_type_expr_prefers_local_simd_alias_for_imported_vec() {
+	mut g := Gen.new([])
+	g.cur_module = 'viper'
+	g.declared_type_names_by_mod[type_decl_module_key('viper', 'viper__SimdFloat4')] = true
+	c_type := g.expr_type_to_c(ast.Expr(ast.Type(ast.GenericType{
+		name:   ast.Expr(ast.SelectorExpr{
+			lhs: ast.Expr(ast.Ident{
+				name: 'vec'
+			})
+			rhs: ast.Ident{
+				name: 'Vec4'
+			}
+		})
+		params: [
+			ast.Expr(ast.Ident{
+				name: 'f32'
+			}),
+		]
+	})))
+	assert c_type == 'viper__SimdFloat4'
+}
+
+fn test_vec_suffix_alias_ignores_plain_local_vec_names_without_simd_alias() {
+	mut g := Gen.new([])
+	g.cur_module = 'viper'
+	g.declared_type_names_by_mod[type_decl_module_key('viper', 'viper__MyVec4')] = true
+
+	c_type := g.expr_type_to_c(ast.Expr(ast.Ident{
+		name: 'MyVec4'
+	}))
+
+	assert c_type == 'MyVec4'
+}
+
 fn test_local_variable_uses_escaped_c_keyword_name() {
 	mut g := Gen.new([])
 	g.gen_assign_stmt(ast.AssignStmt{
@@ -158,12 +252,12 @@ mut:
 	len  int
 }
 ')
-	linked_list_pos := csrc.index('struct json2__LinkedList {') or {
+	linked_list_pos := csrc.index('struct json2__LinkedList_T_json2_ValueInfo {') or {
 		panic('missing LinkedList body')
 	}
 	decoder_pos := csrc.index('struct json2__Decoder {') or { panic('missing Decoder body') }
 	assert linked_list_pos < decoder_pos
-	assert csrc.contains('json2__LinkedList values_info;')
+	assert csrc.contains('json2__LinkedList_T_json2_ValueInfo values_info;')
 }
 
 fn test_generic_pointer_empty_init_uses_null_pointer() {
@@ -769,10 +863,9 @@ fn test_signature_generic_struct_forward_typedefs_use_metadata() {
 	assert csrc.count('typedef struct veb__MiddlewareOptions_T_GitHubUser veb__MiddlewareOptions_T_GitHubUser;') == 1
 }
 
-fn test_fn_head_emits_forward_typedef_for_late_generic_receiver() {
+fn test_fn_head_emits_forward_typedef_for_concrete_generic_receiver() {
 	mut g := Gen.new([])
 	g.cur_module = 'printer'
-	g.active_generic_types['W'] = types.Type(types.string_)
 	count_method := ast.FnDecl{
 		name:      'count'
 		is_method: true
@@ -789,7 +882,7 @@ fn test_fn_head_emits_forward_typedef_for_late_generic_receiver() {
 				})
 				params: [
 					ast.Expr(ast.Ident{
-						name: 'W'
+						name: 'string'
 					}),
 				]
 			}))
@@ -810,10 +903,9 @@ fn test_fn_head_emits_forward_typedef_for_late_generic_receiver() {
 	assert csrc.contains('u64 printer__CounterWriter_T_string__count(printer__CounterWriter_T_string w);'), csrc
 }
 
-fn test_register_fn_signature_preserves_pointer_receiver_on_generic_struct_instance() {
+fn test_register_fn_signature_preserves_pointer_receiver_on_concrete_generic_struct_instance() {
 	mut g := Gen.new([])
 	g.cur_module = 'printer'
-	g.active_generic_types['W'] = types.Type(types.string_)
 	g.generic_struct_instances['printer__Sink'] = [
 		GenericStructInstance{
 			params_key: 'string'
@@ -840,7 +932,7 @@ fn test_register_fn_signature_preserves_pointer_receiver_on_generic_struct_insta
 					})
 					params: [
 						ast.Expr(ast.Ident{
-							name: 'W'
+							name: 'string'
 						}),
 					]
 				}))
@@ -1017,6 +1109,32 @@ fn test_stdatomic_compat_directive_is_guarded_during_emit() {
 	assert csrc.contains('#define extern static')
 	assert csrc.contains('#include "/tmp/vroot/thirdparty/stdatomic/nix/atomic.h"')
 	assert csrc.contains('#undef extern')
+}
+
+fn test_implementation_define_is_only_emitted_for_current_file() {
+	mut imported := Gen.new([])
+	mut imported_seen := map[string]bool{}
+	imported.emit_directive(ast.Directive{
+		name:  'define'
+		value: 'STB_IMAGE_IMPLEMENTATION'
+	}, '/tmp/imported.v', false, mut imported_seen)
+	assert imported.sb.str() == ''
+
+	mut ordinary := Gen.new([])
+	mut ordinary_seen := map[string]bool{}
+	ordinary.emit_directive(ast.Directive{
+		name:  'define'
+		value: 'APP_MAX_LIGHTS 32'
+	}, '/tmp/imported.v', false, mut ordinary_seen)
+	assert ordinary.sb.str() == '#define APP_MAX_LIGHTS 32\n'
+
+	mut current := Gen.new([])
+	mut current_seen := map[string]bool{}
+	current.emit_directive(ast.Directive{
+		name:  'define'
+		value: 'STB_IMAGE_IMPLEMENTATION'
+	}, '/tmp/current.v', true, mut current_seen)
+	assert current.sb.str() == '#define STB_IMAGE_IMPLEMENTATION\n'
 }
 
 fn test_sum_type_call_arg_wraps_pointer_variant_arg() {
@@ -1534,6 +1652,249 @@ fn test_decl_assign_uses_position_type_before_function_scope_name_collision() {
 	out := gen.sb.str().trim_space()
 	assert out == 'int value = 0;'
 	assert !out.contains('string value')
+}
+
+fn test_expr_type_to_c_prefers_metadata_before_module_local_type() {
+	mut env := types.Environment.new()
+	env.set_expr_type(42, types.Type(types.Struct{
+		name: 'Context'
+	}))
+	mut veb_scope := types.new_scope(unsafe { nil })
+	veb_scope.insert_type('Context', types.Type(types.Struct{
+		name: 'veb__Context'
+	}))
+	lock env.scopes {
+		env.scopes['veb'] = veb_scope
+	}
+
+	mut gen := Gen.new_with_env([], env)
+	gen.cur_module = 'veb'
+	typ := gen.expr_type_to_c(ast.Expr(ast.Ident{
+		pos:  token.Pos{
+			id: 42
+		}
+		name: 'Context'
+	}))
+	assert typ == 'Context'
+}
+
+fn test_decl_assign_uses_synthetic_lhs_alias_type_before_scope_collision() {
+	mut env := types.Environment.new()
+	env.set_expr_type(-77, types.Type(types.Alias{
+		name:      'ssa__ValueID'
+		base_type: types.int_
+	}))
+	mut fn_scope := types.new_scope(unsafe { nil })
+	fn_scope.insert('op', types.Type(types.string_))
+
+	mut gen := Gen.new_with_env([], env)
+	gen.cur_fn_scope = fn_scope
+	gen.gen_stmt(ast.Stmt(ast.AssignStmt{
+		op:  .decl_assign
+		lhs: [
+			ast.Expr(ast.Ident{
+				pos:  token.Pos{
+					id: -77
+				}
+				name: 'op'
+			}),
+		]
+		rhs: [
+			ast.Expr(ast.BasicLiteral{
+				kind:  .number
+				value: '0'
+			}),
+		]
+	}))
+	out := gen.sb.str().trim_space()
+	assert out == 'ssa__ValueID op = ((ssa__ValueID){0});'
+	assert !out.contains('string op')
+}
+
+fn test_infix_compare_uses_runtime_payload_decl_types_before_stale_env() {
+	mut env := types.Environment.new()
+	env.set_expr_type(1771, types.Type(types.string_))
+	env.set_expr_type(1772, types.Type(types.string_))
+	mut gen := Gen.new_with_env([], env)
+	gen.remember_runtime_local_type('_or_t1', '_option_int')
+	gen.remember_runtime_local_type('_or_t2', '_option_int')
+	gen.gen_stmts([
+		ast.Stmt(ast.AssignStmt{
+			op:  .decl_assign
+			lhs: [ast.Expr(ast.Ident{
+				name: 'lhs_value'
+			})]
+			rhs: [
+				ast.Expr(ast.SelectorExpr{
+					lhs: ast.Expr(ast.Ident{
+						name: '_or_t1'
+					})
+					rhs: ast.Ident{
+						name: 'data'
+					}
+				}),
+			]
+		}),
+		ast.Stmt(ast.AssignStmt{
+			op:  .decl_assign
+			lhs: [
+				ast.Expr(ast.Ident{
+					name: 'rhs_value'
+				}),
+			]
+			rhs: [
+				ast.Expr(ast.SelectorExpr{
+					lhs: ast.Expr(ast.Ident{
+						name: '_or_t2'
+					})
+					rhs: ast.Ident{
+						name: 'data'
+					}
+				}),
+			]
+		}),
+		ast.Stmt(ast.AssignStmt{
+			op:  .decl_assign
+			lhs: [
+				ast.Expr(ast.Ident{
+					name: 'matches'
+				}),
+			]
+			rhs: [
+				ast.Expr(ast.InfixExpr{
+					lhs: ast.Expr(ast.Ident{
+						name: 'lhs_value'
+						pos:  token.Pos{
+							id: 1771
+						}
+					})
+					op:  .eq
+					rhs: ast.Expr(ast.Ident{
+						name: 'rhs_value'
+						pos:  token.Pos{
+							id: 1772
+						}
+					})
+				}),
+			]
+		}),
+	])
+	out := gen.sb.str()
+	assert out.contains('int lhs_value ='), out
+	assert out.contains('int rhs_value ='), out
+	assert out.contains('lhs_value == rhs_value'), out
+	assert !out.contains('string__eq(lhs_value, rhs_value)'), out
+}
+
+fn test_if_guard_infix_compare_uses_active_payload_decl_type() {
+	csrc := cleanc_csrc_for_test_source('if_guard_payload_compare_shadowing', '
+fn maybe_int() ?int {
+	return 1
+}
+
+fn maybe_string() ?string {
+	return "x"
+}
+
+fn check_values() ?bool {
+	if lhs_value := maybe_int() {
+		rhs_value := maybe_int() or { return none }
+		matches := lhs_value == rhs_value
+		return matches
+	}
+	if lhs_value := maybe_string() {
+		rhs_value := maybe_string() or { return none }
+		matches := lhs_value == rhs_value
+		return matches
+	}
+	return none
+}
+')
+	assert csrc.contains('int lhs_value ='), csrc
+	assert csrc.contains('int rhs_value ='), csrc
+	int_branch := csrc.all_after('int rhs_value =').all_before('_option_string _or_t3')
+	assert int_branch.contains('lhs_value == rhs_value'), csrc
+	assert !int_branch.contains('string__eq(lhs_value, rhs_value)'), csrc
+	string_branch := csrc.all_after('string rhs_value =')
+	assert string_branch.contains('string__eq(lhs_value, rhs_value)'), csrc
+}
+
+fn test_generic_float_result_interpolation_uses_float_str() {
+	csrc := cleanc_csrc_for_test_source('generic_float_result_str', '
+fn identity[T](x T) T {
+	return x
+}
+
+fn main() {
+	ret := identity(0.0)
+	assert "\${ret}" == "0.0"
+}
+')
+	assert csrc.contains('f64 ret ='), csrc
+	assert csrc.contains('"%s", f64__str(ret).str'), csrc
+	assert !csrc.contains('int__str(ret)'), csrc
+	assert !csrc.contains('"%d", ret'), csrc
+}
+
+fn test_generic_abs_int_literal_decl_stays_int() {
+	csrc := cleanc_csrc_for_test_source('generic_abs_int_literal_decl', '
+fn abs[T](a T) T {
+	return if a < 0 { -a } else { a }
+}
+
+fn main() {
+	ret1 := abs(0)
+	assert "\${ret1}" == "0"
+	ret2 := abs(0.0)
+	assert "\${ret2}" == "0.0"
+}
+')
+	assert csrc.contains('int ret1 ='), csrc
+	assert csrc.contains('f64 ret2 ='), csrc
+	assert !csrc.contains('f64 ret1 ='), csrc
+}
+
+fn test_variadic_voidptr_hex_uses_explicit_int_cast_deref_type() {
+	mut env := types.Environment.new()
+	deref_pos := token.Pos{
+		id: 5251
+	}
+	env.set_expr_type(deref_pos.id, types.Type(types.f64_))
+	mut gen := Gen.new_with_env([], env)
+	typ := gen.get_expr_type(ast.Expr(ast.PrefixExpr{
+		op:   .mul
+		expr: ast.Expr(ast.PrefixExpr{
+			op:   .amp
+			expr: ast.Expr(ast.CallOrCastExpr{
+				lhs:  ast.Expr(ast.Ident{
+					name: 'int'
+				})
+				expr: ast.Expr(ast.Ident{
+					name: 'raw'
+				})
+			})
+		})
+		pos:  deref_pos
+	}))
+	assert typ == 'int'
+}
+
+fn test_variadic_voidptr_hex_source_decl_uses_explicit_int_cast_deref_type() {
+	csrc := cleanc_csrc_for_test_source('variadic_voidptr_hex_cast_deref', '
+fn format_value(use_int bool, pt ...voidptr) int {
+	mut p_index := 0
+	if use_int {
+		x := unsafe { *(&int(pt[p_index])) }
+		return x
+	}
+	x := unsafe { *(&f64(pt[p_index])) }
+	_ = x
+	return 0
+}
+')
+	assert csrc.contains('int x ='), csrc
+	assert csrc.contains('f64 x ='), csrc
+	assert !csrc.contains('f64 x = (*((int*)'), csrc
 }
 
 fn test_decl_assign_does_not_use_position_type_for_or_temp() {
@@ -3082,6 +3443,35 @@ fn test_struct_decl_emits_late_dynamic_array_alias() {
 	assert out.contains('\tArray_Foo items;')
 }
 
+fn test_struct_dependency_order_uses_fixed_array_element_type() {
+	csrc := cleanc_csrc_for_test_source('fixed_array_struct_order', 'module main
+
+struct Holder {
+	matrix Matrix
+}
+
+struct Cell {
+	x f32
+}
+
+struct Matrix {
+	cols [4]Cell
+}
+
+fn main() {}
+')
+	matrix_pos := csrc.index('struct Matrix {') or {
+		assert false, csrc
+		return
+	}
+	holder_pos := csrc.index('struct Holder {') or {
+		assert false, csrc
+		return
+	}
+	assert matrix_pos < holder_pos
+	assert csrc.contains('\tCell cols[4];')
+}
+
 fn test_selector_method_receiver_uses_sum_common_field_type() {
 	mut env := types.Environment.new()
 	env.set_expr_type(93, types.Type(types.FnType{}))
@@ -3390,7 +3780,9 @@ fn test_weak_generic_filter_uses_root_called_names() {
 	needed_names[http_name] = true
 	g.called_fn_names[http_name] = true
 	mut root_called_names := map[string]bool{}
-	specs := g.weak_generic_fn_specializations_for_names(&decl, needed_names, root_called_names)
+	mut required_names := map[string]bool{}
+	specs := g.weak_generic_fn_specializations_for_names(&decl, needed_names, root_called_names,
+		required_names)
 	mut names := map[string]bool{}
 	for spec in specs {
 		names[spec.name] = true
@@ -3398,7 +3790,8 @@ fn test_weak_generic_filter_uses_root_called_names() {
 	assert api_name in names
 	assert http_name !in names
 	root_called_names[http_name] = true
-	specs2 := g.weak_generic_fn_specializations_for_names(&decl, needed_names, root_called_names)
+	specs2 := g.weak_generic_fn_specializations_for_names(&decl, needed_names, root_called_names,
+		required_names)
 	mut names2 := map[string]bool{}
 	for spec in specs2 {
 		names2[spec.name] = true
@@ -3433,6 +3826,44 @@ fn test_cache_generic_concrete_origin_rejects_unqualified_name_from_qualified_mo
 
 	assert !g.generic_concrete_c_name_belongs_to_emit_modules('Context')
 	assert g.generic_concrete_c_name_belongs_to_emit_modules('veb__Context')
+}
+
+fn test_cache_generic_concrete_origin_accepts_current_module_unqualified_type() {
+	mut env := types.Environment.new()
+	mut json2_scope := types.new_scope(unsafe { nil })
+	json2_scope.insert('ValueInfo', types.Type(types.Struct{
+		name: 'json2__ValueInfo'
+	}))
+	lock env.scopes {
+		env.scopes['json2'] = json2_scope
+	}
+	mut g := Gen.new_with_env([], env)
+	g.cache_bundle_name = 'imports'
+	g.cur_module = 'json2'
+	g.emit_modules['json2'] = true
+	g.type_modules['json2'] = true
+
+	assert g.generic_concrete_c_name_belongs_to_emit_modules('ValueInfo')
+	assert g.generic_concrete_c_name_belongs_to_emit_modules('Array_ValueInfo')
+}
+
+fn test_cache_receiver_specialization_checks_generated_method_name() {
+	mut g := Gen.new([])
+	g.cache_bundle_name = 'printer'
+	g.emit_modules['printer'] = true
+	g.type_modules['printer'] = true
+	decl := ast.FnDecl{
+		name:      'count'
+		is_method: true
+		receiver:  ast.Parameter{
+			name: 'writer'
+			typ:  ast.Expr(ast.Ident{
+				name: 'CounterWriter_T_main__UserCounter'
+			})
+		}
+	}
+
+	assert !g.transformed_specialization_belongs_to_cache('printer', decl)
 }
 
 fn test_cache_generic_struct_bindings_follow_emit_module_filter() {
@@ -3492,6 +3923,68 @@ fn test_cache_generic_struct_bindings_follow_emit_module_filter() {
 	fallback := g.fallback_generic_bindings_for_names(['T']) or { panic('expected fallback') }
 	fallback_t := fallback['T'] or { panic('expected T fallback') }
 	assert fallback_t.name() == 'arrays__Part'
+}
+
+fn test_cache_generic_struct_bindings_propagate_current_module_nested_generic() {
+	tmp_file := '/tmp/v2_cleanc_json2_nested_generic_${os.getpid()}.v'
+	os.write_file(tmp_file, 'module json2
+
+struct Node[T] {
+mut:
+	value T
+	next  &Node[T] = unsafe { nil }
+}
+
+struct ValueInfo {
+	value int
+}
+
+struct LinkedList[T] {
+mut:
+	head &Node[T] = unsafe { nil }
+	tail &Node[T] = unsafe { nil }
+}
+
+struct Decoder {
+mut:
+	values_info  LinkedList[ValueInfo]
+	current_node &Node[ValueInfo] = unsafe { nil }
+}
+') or {
+		panic('failed to write temp file')
+	}
+	defer {
+		os.rm(tmp_file) or {}
+	}
+	prefs := &vpref.Preferences{
+		backend:     .cleanc
+		no_parallel: true
+	}
+	mut file_set := token.FileSet.new()
+	mut par := parser.Parser.new(prefs)
+	files := par.parse_files([tmp_file], mut file_set)
+	mut env := types.Environment.new()
+	mut checker := types.Checker.new(prefs, file_set, env)
+	checker.check_files(files)
+	mut trans := transformer.Transformer.new_with_pref(env, prefs)
+	trans.set_file_set(file_set)
+	transformed_files := trans.transform_files(files)
+	mut g := Gen.new_with_env_and_pref(transformed_files, env, prefs)
+	g.cache_bundle_name = 'imports'
+	g.emit_modules['json2'] = true
+	g.type_modules['json2'] = true
+	g.collect_generic_struct_bindings()
+
+	assert g.generic_struct_instances.len == 0
+	mut gen := Gen.new_with_env_and_pref(transformed_files, env, prefs)
+	gen.cache_bundle_name = 'imports'
+	gen.emit_modules['json2'] = true
+	gen.type_modules['json2'] = true
+	csrc := gen.gen()
+	assert csrc.contains('struct json2__LinkedList_T_json2_ValueInfo {'), csrc
+	assert csrc.contains('struct json2__Node_T_json2_ValueInfo {'), csrc
+	assert csrc.contains('json2__Node_T_json2_ValueInfo* next;'), csrc
+	assert csrc.contains('json2__ValueInfo value;'), csrc
 }
 
 fn test_generic_fallback_requires_selected_fields_on_generic_param() {
@@ -3573,6 +4066,13 @@ fn test_generic_fallback_ignores_comptime_field_selectors() {
 	assert g.accepts_broad_generic_fallback_type(node, types.Type(types.Struct{
 		name: 'Config'
 	}))
+}
+
+fn test_option_result_payload_invalid_rejects_qualified_generic_pointer() {
+	mut g := Gen.new([])
+	assert g.option_result_payload_invalid('arrays__T*')
+	assert g.option_result_payload_invalid('arrays__Tptr')
+	assert !g.option_result_payload_invalid('arrays__Part*')
 }
 
 fn test_generic_fallback_ignores_members_inside_comptime_if() {
@@ -4126,8 +4626,111 @@ fn main() {
 }
 ')
 	assert csrc.contains('bool call_cb_T_Caps(Caps* caps, bool (*cb)(Caps*))'), csrc
-	assert csrc.contains('cb)(caps);'), csrc
+	assert csrc.contains('return cb(caps);'), csrc
 	assert !csrc.contains('return cb(&caps);'), csrc
+}
+
+fn test_generic_fn_pointer_param_uses_concrete_fn_type_for_mut_arg() {
+	csrc := cleanc_csrc_for_test_source('generic_fnptr_concrete_mut_arg', '
+struct Alpha {}
+struct Beta {}
+
+fn use_alpha(mut a Alpha) {
+	_ = a
+}
+
+fn use_beta(mut b Beta) {
+	_ = b
+}
+
+fn call_cb[T, F](mut value T, cb F) {
+	cb(mut value)
+}
+
+fn main() {
+	mut a := Alpha{}
+	call_cb(mut a, use_alpha)
+	mut b := Beta{}
+	call_cb(mut b, use_beta)
+}
+')
+	assert csrc.contains('call_cb_T_Alpha_fn_a_Alpha_void(&a, use_alpha);'), csrc
+	assert csrc.contains('call_cb_T_Beta_fn_b_Beta_void(&b, use_beta);'), csrc
+	assert csrc.contains('void call_cb_T_Alpha_fn_a_Alpha_void(Alpha* value, void (*cb)(Alpha*))'), csrc
+	assert csrc.contains('void call_cb_T_Beta_fn_b_Beta_void(Beta* value, void (*cb)(Beta*))'), csrc
+	assert csrc.contains('cb(value);'), csrc
+	assert !csrc.contains('call_cb_T_Alpha_voidptr'), csrc
+	assert !csrc.contains('call_cb_T_Beta_voidptr'), csrc
+	assert !csrc.contains('((void (*)(Alpha*))cb)(*value);'), csrc
+	assert !csrc.contains('((void (*)(Beta*))cb)(*value);'), csrc
+}
+
+fn test_generic_fn_struct_field_erases_placeholder_to_voidptr() {
+	csrc := cleanc_csrc_for_test_source('generic_fn_struct_field_erased', '
+struct Context {}
+
+struct MiddlewareOptions[T] {
+	handler fn (mut ctx T) bool
+}
+
+fn pass(mut ctx Context) bool {
+	_ = ctx
+	return true
+}
+
+fn main() {
+	_ := MiddlewareOptions[Context]{
+		handler: pass
+	}
+}
+')
+	assert csrc.contains('bool (*handler)(Context*);'), csrc
+	assert !csrc.contains('veb__T'), csrc
+}
+
+fn test_fixed_array_return_call_arg_unwraps_wrapper_for_fixed_array_param() {
+	csrc := cleanc_csrc_for_test_source('fixed_array_return_call_arg', '
+fn rgba() [4]u8 {
+	return [u8(1), 2, 3, 4]!
+}
+
+fn draw(color [4]u8) {
+	_ = color
+}
+
+fn main() {
+	draw(rgba())
+}
+')
+	assert csrc.contains('draw(({ _v_Array_fixed_u8_4 _fixed_arg'), csrc
+	assert csrc.contains('(Array_fixed_u8_4){_fixed_arg'), csrc
+	assert !csrc.contains('draw(rgba());'), csrc
+}
+
+fn test_tuple_return_with_fixed_array_keeps_interface_wrapping() {
+	csrc := cleanc_csrc_for_test_source('tuple_fixed_array_interface_return', '
+interface Speaker {
+	speak() string
+}
+
+struct Person {}
+
+fn (p Person) speak() string {
+	return "hi"
+}
+
+fn make_pair() ([2]int, Speaker) {
+	return [1, 2]!, Person{}
+}
+
+fn main() {
+	_ := make_pair()
+}
+')
+	assert csrc.contains('.arg1 = ({ Person _iface_obj'), csrc
+	assert csrc.contains('(Speaker){._object'), csrc
+	assert csrc.contains('Person__speak'), csrc
+	assert !csrc.contains('.arg1 = ((Person)'), csrc
 }
 
 fn test_generic_fallback_derives_container_param_element_type() {
@@ -5519,6 +6122,29 @@ fn test_map_equality_helper_call_is_not_module_qualified() {
 	assert g.sb.str() == 'Map_string_string_map_eq(new_hashes, old_hashes)'
 }
 
+fn test_map_keys_values_use_runtime_helpers() {
+	mut g := Gen.new([])
+	g.runtime_local_types['m'] = 'Map_string_bool'
+	keys_call := ast.SelectorExpr{
+		lhs: ast.Expr(ast.Ident{
+			name: 'm'
+		})
+		rhs: ast.Ident{
+			name: 'keys'
+		}
+	}
+	values_call := ast.SelectorExpr{
+		lhs: ast.Expr(ast.Ident{
+			name: 'm'
+		})
+		rhs: ast.Ident{
+			name: 'values'
+		}
+	}
+	assert g.resolve_call_name(ast.Expr(keys_call), 0) == 'map__keys'
+	assert g.resolve_call_name(ast.Expr(values_call), 0) == 'map__values'
+}
+
 fn test_omitted_end_array_slice_uses_non_indexing_slice_helper() {
 	mut g := Gen.new([])
 	g.remember_runtime_local_type('args', 'Array_string')
@@ -5542,7 +6168,7 @@ fn test_mut_receiver_operator_assignment_dereferences_receiver() {
 	g.runtime_local_types['result'] = 'Big*'
 	g.runtime_local_types['ten'] = 'Big'
 	g.cur_fn_mut_params['result'] = true
-	g.fn_return_types['Big__mul'] = 'Big'
+	g.fn_return_types['Big__op_mul'] = 'Big'
 	node := ast.AssignStmt{
 		op:  .assign
 		lhs: [ast.Expr(ast.Ident{
@@ -5562,7 +6188,7 @@ fn test_mut_receiver_operator_assignment_dereferences_receiver() {
 	}
 	g.gen_assign_stmt(node)
 	out := g.sb.str().trim_space()
-	assert out == '*result = Big__mul((*result), ten);'
+	assert out == '*result = Big__op_mul((*result), ten);'
 }
 
 fn test_decl_from_mut_receiver_operator_uses_value_type() {
@@ -5570,7 +6196,7 @@ fn test_decl_from_mut_receiver_operator_uses_value_type() {
 	g.runtime_local_types['result'] = 'Big*'
 	g.runtime_local_types['ten'] = 'Big'
 	g.cur_fn_mut_params['result'] = true
-	g.fn_return_types['Big__mul'] = 'Big'
+	g.fn_return_types['Big__op_mul'] = 'Big'
 	node := ast.AssignStmt{
 		op:  .decl_assign
 		lhs: [ast.Expr(ast.Ident{
@@ -5590,7 +6216,7 @@ fn test_decl_from_mut_receiver_operator_uses_value_type() {
 	}
 	g.gen_assign_stmt(node)
 	out := g.sb.str().trim_space()
-	assert out == 'Big next = Big__mul((*result), ten);'
+	assert out == 'Big next = Big__op_mul((*result), ten);'
 	assert !out.contains('Big* next')
 }
 
@@ -5606,13 +6232,13 @@ fn test_nested_mut_receiver_operator_does_not_deref_value_result_with_pointer_en
 	g.runtime_local_types['ten'] = 'Big'
 	g.runtime_local_types['one'] = 'Big'
 	g.cur_fn_mut_params['result'] = true
-	g.fn_return_types['Big__mul'] = 'Big'
-	g.fn_return_types['Big__plus'] = 'Big'
+	g.fn_return_types['Big__op_mul'] = 'Big'
+	g.fn_return_types['Big__op_plus'] = 'Big'
 	node := ast.InfixExpr{
 		op:  .plus
 		lhs: ast.Expr(ast.CallExpr{
 			lhs:  ast.Expr(ast.Ident{
-				name: 'Big__mul'
+				name: 'Big__op_mul'
 			})
 			args: [ast.Expr(ast.Ident{
 				name: 'result'
@@ -5630,8 +6256,44 @@ fn test_nested_mut_receiver_operator_does_not_deref_value_result_with_pointer_en
 	}
 	g.gen_infix_expr(&node)
 	out := g.sb.str()
-	assert out == 'Big__plus(Big__mul(result, ten), one)'
-	assert !out.contains('*(Big__mul')
+	assert out == 'Big__op_plus(Big__op_mul(result, ten), one)'
+	assert !out.contains('*(Big__op_mul')
+}
+
+fn test_overloaded_compound_assignment_uses_sanitized_operator_name() {
+	mut g := Gen.new([])
+	g.runtime_local_types['y'] = 'Big'
+	g.runtime_local_types['x'] = 'Big'
+	g.fn_return_types['Big__op_mul'] = 'Big'
+	node := ast.AssignStmt{
+		op:  .mul_assign
+		lhs: [ast.Expr(ast.Ident{
+			name: 'y'
+		})]
+		rhs: [ast.Expr(ast.Ident{
+			name: 'x'
+		})]
+	}
+	g.gen_assign_stmt(node)
+	assert g.sb.str().trim_space() == 'y = Big__op_mul(y, x);'
+}
+
+fn test_overloaded_comparison_uses_sanitized_lt_name() {
+	mut g := Gen.new([])
+	g.runtime_local_types['now'] = 'Time'
+	g.runtime_local_types['deadline'] = 'Time'
+	g.fn_return_types['Time__op_lt'] = 'bool'
+	node := ast.InfixExpr{
+		op:  .le
+		lhs: ast.Expr(ast.Ident{
+			name: 'now'
+		})
+		rhs: ast.Expr(ast.Ident{
+			name: 'deadline'
+		})
+	}
+	g.gen_infix_expr(&node)
+	assert g.sb.str() == '!Time__op_lt(deadline, now)'
 }
 
 fn test_preamble_overrides_cpu_relax_for_tinyc_arm() {
@@ -5935,14 +6597,15 @@ fn test_called_weak_generic_worklist_only_adds_called_specs() {
 	g.record_late_generic_call_spec('json2__encode', {
 		'T': types.Type(types.int_)
 	})
-	string_name := 'encode_T_string'
-	int_name := 'encode_T_int'
+	string_name := 'json2__encode_T_string'
+	int_name := 'json2__encode_T_int'
 	late_names := g.late_weak_generic_name_set()
 	assert string_name in late_names, late_names.str()
 	assert int_name in late_names, late_names.str()
 	g.called_fn_names[string_name] = true
 	mut needed_names := map[string]bool{}
-	g.add_called_weak_generic_names(mut needed_names)
+	mut required_names := map[string]bool{}
+	g.add_called_weak_generic_names(mut needed_names, mut required_names)
 	assert string_name in needed_names
 	assert int_name !in needed_names
 }
@@ -6041,6 +6704,53 @@ fn test_gen_specialized_fn_body_uses_module_prefix_context() {
 	out := g.sb.str()
 	assert out.contains('veb__Route route = ((veb__Route){'), out
 	assert !out.contains('buffer__Route route'), out
+}
+
+fn test_get_fn_name_preserves_known_source_module_prefix() {
+	mut g := Gen.new_with_env([], types.Environment.new())
+	g.cur_module = 'http'
+	g.source_module_names['arrays'] = true
+	decl := ast.FnDecl{
+		name: 'arrays__uniq_T_string'
+	}
+	assert g.get_fn_name(decl) == 'arrays__uniq_T_string'
+
+	unresolved_decl := ast.FnDecl{
+		name: 'external__uniq_T_string'
+	}
+	assert g.get_fn_name(unresolved_decl) == 'http__external__uniq_T_string'
+}
+
+fn test_get_fn_name_resolves_receiver_from_decl_module_not_stale_fn_scope() {
+	mut env := types.Environment.new()
+	mut c_scope := types.new_scope(unsafe { nil })
+	c_scope.insert('Gen', types.Type(types.Struct{
+		name: 'c__Gen'
+	}))
+	mut cleanc_scope := types.new_scope(unsafe { nil })
+	cleanc_scope.insert('Gen', types.Type(types.Struct{
+		name: 'cleanc__Gen'
+	}))
+	lock env.scopes {
+		env.scopes['c'] = c_scope
+		env.scopes['cleanc'] = cleanc_scope
+	}
+	mut g := Gen.new_with_env([], env)
+	g.cur_module = 'cleanc'
+	g.cur_fn_scope = c_scope
+	g.runtime_local_types['Gen'] = 'c__Gen'
+	decl := ast.FnDecl{
+		name:      'interface_method_info_from_ast'
+		is_method: true
+		receiver:  ast.Parameter{
+			name:   'g'
+			typ:    ast.Expr(ast.Ident{
+				name: 'Gen'
+			})
+			is_mut: true
+		}
+	}
+	assert g.get_fn_name(decl) == 'cleanc__Gen__interface_method_info_from_ast'
 }
 
 fn test_source_module_exists_falls_back_to_env_for_cached_chunks() {
@@ -6145,4 +6855,24 @@ fn test_decl_assign_prefers_current_fn_module_for_init_expr_type() {
 	out := g.sb.str()
 	assert out.contains('veb__Route route = ((veb__Route){'), out
 	assert !out.contains('buffer__Route'), out
+}
+
+fn test_resolve_ident_receiver_method_call_keeps_known_str_helper_direct() {
+	mut g := Gen.new_with_env([], types.Environment.new())
+	g.fn_return_types['json2__ValueKind__str'] = 'string'
+	g.fn_return_types['string__str'] = 'string'
+	g.remember_runtime_local_type('kind', 'string')
+	resolved := g.resolve_ident_receiver_method_call_name('json2__ValueKind__str', ast.Expr(ast.Ident{
+		name: 'json2__ValueKind__str'
+	}), [
+		ast.Expr(ast.Ident{
+			name: 'kind'
+		}),
+	])
+	assert resolved == 'json2__ValueKind__str'
+}
+
+fn test_c_fn_pointer_param_is_ptr_from_type_keeps_nested_fn_pointer_param() {
+	param_is_ptr := c_fn_pointer_param_is_ptr_from_type('void (*)(void (*)(int, int), int*)')
+	assert param_is_ptr == [true, true]
 }

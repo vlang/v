@@ -85,6 +85,7 @@ fn (t &Transformer) sql_unwrap_alias_pointer_type(typ types.Type) types.Type {
 }
 
 fn (mut t Transformer) sql_orm_table_expr(type_name string, pos token.Pos) ast.Expr {
+	init_pos := t.next_synth_pos()
 	return ast.Expr(ast.InitExpr{
 		typ:    t.sql_orm_type_expr('Table', pos)
 		fields: [
@@ -97,7 +98,7 @@ fn (mut t Transformer) sql_orm_table_expr(type_name string, pos token.Pos) ast.E
 				value: t.sql_vattribute_array_expr([], pos)
 			},
 		]
-		pos:    pos
+		pos:    init_pos
 	})
 }
 
@@ -108,12 +109,13 @@ fn (mut t Transformer) sql_orm_table_fields_expr(fields []types.Field, pos token
 			exprs << field_expr
 		}
 	}
+	array_pos := t.next_synth_pos()
 	return ast.Expr(ast.ArrayInitExpr{
 		typ:   ast.Expr(ast.Type(ast.ArrayType{
 			elem_type: t.sql_orm_type_expr('TableField', pos)
 		}))
 		exprs: exprs
-		pos:   pos
+		pos:   array_pos
 	})
 }
 
@@ -122,6 +124,7 @@ fn (mut t Transformer) sql_orm_table_field_expr(field types.Field, pos token.Pos
 		return none
 	}
 	field_type, nullable, is_arr := t.sql_field_storage_type(field.typ)
+	init_pos := t.next_synth_pos()
 	return ast.Expr(ast.InitExpr{
 		typ:    t.sql_orm_type_expr('TableField', pos)
 		fields: [
@@ -150,7 +153,7 @@ fn (mut t Transformer) sql_orm_table_field_expr(field types.Field, pos token.Pos
 				value: t.sql_bool_expr(is_arr, pos)
 			},
 		]
-		pos:    pos
+		pos:    init_pos
 	})
 }
 
@@ -229,15 +232,17 @@ fn (mut t Transformer) sql_vattribute_array_expr(attrs []ast.Attribute, pos toke
 			exprs << attr_expr
 		}
 	}
+	array_pos := t.next_synth_pos()
+	elem_pos := t.next_synth_pos()
 	return ast.Expr(ast.ArrayInitExpr{
 		typ:   ast.Expr(ast.Type(ast.ArrayType{
 			elem_type: ast.Expr(ast.Ident{
 				name: 'VAttribute'
-				pos:  pos
+				pos:  elem_pos
 			})
 		}))
 		exprs: exprs
-		pos:   pos
+		pos:   array_pos
 	})
 }
 
@@ -259,10 +264,13 @@ fn (mut t Transformer) sql_vattribute_expr(attr ast.Attribute, pos token.Pos) ?a
 	if name == '' {
 		return none
 	}
+	init_pos := t.next_synth_pos()
+	typ_pos := t.next_synth_pos()
+	kind_pos := t.next_synth_pos()
 	return ast.Expr(ast.InitExpr{
 		typ:    ast.Expr(ast.Ident{
 			name: 'VAttribute'
-			pos:  pos
+			pos:  typ_pos
 		})
 		fields: [
 			ast.FieldInit{
@@ -281,11 +289,11 @@ fn (mut t Transformer) sql_vattribute_expr(attr ast.Attribute, pos token.Pos) ?a
 				name:  'kind'
 				value: ast.Expr(ast.Ident{
 					name: kind
-					pos:  pos
+					pos:  kind_pos
 				})
 			},
 		]
-		pos:    pos
+		pos:    init_pos
 	})
 }
 
@@ -359,53 +367,67 @@ const sql_plain_attribute_args = ['serial', 'i8', 'i16', 'int', 'i64', 'u8', 'u1
 	'f32', 'f64', 'bool', 'string']
 
 fn (mut t Transformer) sql_orm_type_expr(name string, pos token.Pos) ast.Expr {
+	_ = pos
+	expr_pos := t.next_synth_pos()
+	lhs_pos := t.next_synth_pos()
+	rhs_pos := t.next_synth_pos()
 	return ast.Expr(ast.SelectorExpr{
 		lhs: ast.Expr(ast.Ident{
 			name: 'orm'
-			pos:  pos
+			pos:  lhs_pos
 		})
 		rhs: ast.Ident{
 			name: name
-			pos:  pos
+			pos:  rhs_pos
 		}
-		pos: pos
+		pos: expr_pos
 	})
 }
 
 fn (mut t Transformer) sql_orm_const_expr(name string, pos token.Pos) ast.Expr {
+	_ = pos
+	expr_pos := t.next_synth_pos()
+	lhs_pos := t.next_synth_pos()
+	rhs_pos := t.next_synth_pos()
 	return ast.Expr(ast.SelectorExpr{
 		lhs: ast.Expr(ast.Ident{
 			name: 'orm'
-			pos:  pos
+			pos:  lhs_pos
 		})
 		rhs: ast.Ident{
 			name: name
-			pos:  pos
+			pos:  rhs_pos
 		}
-		pos: pos
+		pos: expr_pos
 	})
 }
 
 fn (mut t Transformer) sql_string_expr(value string, pos token.Pos) ast.Expr {
+	_ = pos
+	lit_pos := t.next_synth_pos()
 	return ast.Expr(ast.StringLiteral{
 		kind:  .v
 		value: value
-		pos:   pos
+		pos:   lit_pos
 	})
 }
 
 fn (mut t Transformer) sql_int_expr(value int, pos token.Pos) ast.Expr {
+	_ = pos
+	lit_pos := t.next_synth_pos()
 	return ast.Expr(ast.BasicLiteral{
 		kind:  .number
 		value: value.str()
-		pos:   pos
+		pos:   lit_pos
 	})
 }
 
 fn (mut t Transformer) sql_bool_expr(value bool, pos token.Pos) ast.Expr {
+	_ = pos
+	lit_pos := t.next_synth_pos()
 	return ast.Expr(ast.BasicLiteral{
 		kind:  if value { token.Token.key_true } else { token.Token.key_false }
 		value: if value { 'true' } else { 'false' }
-		pos:   pos
+		pos:   lit_pos
 	})
 }
