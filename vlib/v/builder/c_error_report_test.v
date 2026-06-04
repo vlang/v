@@ -1,6 +1,7 @@
 module builder
 
 import os
+import v.pref
 
 fn restore_env_var(name string, old_value ?string) {
 	if value := old_value {
@@ -248,4 +249,29 @@ fn test_truncated_report_text_preserves_start_and_end_when_space_allows() {
 	assert truncated.starts_with('start-')
 	assert truncated.contains('report truncated before upload')
 	assert truncated.ends_with('-end')
+}
+
+fn test_new_c_error_bug_report_with_vlines_is_skipped_when_already_vlines() {
+	// When the program is already compiled with -g, the original `.tmp.c` already has
+	// `#line` directives, so there is nothing to regenerate.
+	mut b := Builder{
+		pref: &pref.Preferences{
+			is_vlines: true
+		}
+	}
+	if _ := b.new_c_error_bug_report_with_vlines('cc') {
+		assert false, 'expected none when the C source is already #line annotated'
+	}
+}
+
+fn test_new_c_error_bug_report_with_vlines_is_skipped_without_a_recorded_command() {
+	// Without a recorded C compiler command (e.g. -parallel-cc, or a Windows MSVC build),
+	// there is no command to rerun, so no V mapping can be produced this way.
+	mut b := Builder{
+		pref:        &pref.Preferences{}
+		last_cc_cmd: ''
+	}
+	if _ := b.new_c_error_bug_report_with_vlines('cc') {
+		assert false, 'expected none when no C compiler command was recorded'
+	}
 }

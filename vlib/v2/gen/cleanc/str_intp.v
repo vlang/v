@@ -197,7 +197,10 @@ fn (mut g Gen) get_sprintf_format(inter ast.StringInter) string {
 		return fmt
 	}
 	if inter.resolved_fmt != '' {
-		if expr_type == 'string' {
+		if expr_type in ['string', 'bool', 'f32', 'f64', 'float_literal'] {
+			return '%s'
+		}
+		if _ := g.get_str_fn_for_type(expr_type) {
 			return '%s'
 		}
 		return inter.resolved_fmt

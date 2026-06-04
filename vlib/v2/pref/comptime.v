@@ -3,6 +3,8 @@
 // that can be found in the LICENSE file.
 module pref
 
+import os
+
 fn is_target_or_mode_comptime_flag(name string) bool {
 	return name in [
 		'macos',
@@ -33,6 +35,31 @@ fn is_target_or_mode_comptime_flag(name string) bool {
 pub fn define_list_contains(defines []string, name string) bool {
 	lower_name := name.to_lower()
 	return name in defines || lower_name in defines
+}
+
+// pkgconfig_result runs pkg-config with `args` and returns stdout on success.
+pub fn pkgconfig_result(args []string) ?string {
+	if args.len == 0 {
+		return none
+	}
+	mut quoted_args := []string{cap: args.len}
+	for arg in args {
+		quoted_args << os.quoted_path(arg)
+	}
+	result := os.execute('pkg-config ${quoted_args.join(' ')}')
+	if result.exit_code != 0 {
+		return none
+	}
+	return result.output.trim_space()
+}
+
+// comptime_pkgconfig_value evaluates `$pkgconfig('name')` in compile-time
+// conditions. Missing pkg-config packages are false, matching v1 behavior.
+pub fn comptime_pkgconfig_value(name string) bool {
+	if _ := pkgconfig_result(['--exists', name]) {
+		return true
+	}
+	return false
 }
 
 // comptime_flag_value evaluates a plain comptime flag identifier, as it would

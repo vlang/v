@@ -360,8 +360,10 @@ fn (a &array) clone_to_depth_noscan(depth int) array {
 }
 
 fn (mut a array) push_noscan(val voidptr) {
-	if a.len < 0 {
-		panic('array.push_noscan: negative len')
+	$if !no_bounds_checking {
+		if a.len < 0 {
+			panic('array.push_noscan: negative len')
+		}
 	}
 	if a.len >= max_int {
 		panic('array.push_noscan: len bigger than max_int')

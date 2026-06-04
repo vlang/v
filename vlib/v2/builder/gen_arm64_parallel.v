@@ -7,11 +7,8 @@ import runtime
 import v2.gen.arm64
 
 $if !windows {
-	import v2.mir
-
 	struct GenARM64ChunkArgs {
 		worker    voidptr // &arm64.Gen — pre-cloned worker (created on main thread)
-		mod_ptr   voidptr // &mir.Module — shared MIR module
 		start_idx int
 		end_idx   int
 	}
@@ -25,9 +22,8 @@ $if !windows {
 	fn gen_arm64_chunk_thread(arg voidptr) voidptr {
 		a := unsafe { &GenARM64ChunkArgs(arg) }
 		mut w := unsafe { &arm64.Gen(a.worker) }
-		m := unsafe { &mir.Module(a.mod_ptr) }
 		for fi := a.start_idx; fi < a.end_idx; fi++ {
-			w.gen_func(m.funcs[fi])
+			w.gen_func(fi)
 		}
 		return unsafe { nil }
 	}
@@ -41,7 +37,7 @@ fn (mut b Builder) gen_arm64_parallel(mut gen arm64.Gen) {
 
 	$if windows {
 		for fi := 0; fi < n_funcs; fi++ {
-			gen.gen_func(gen.mod.funcs[fi])
+			gen.gen_func(fi)
 		}
 		gen.gen_post_pass()
 		return
@@ -49,7 +45,7 @@ fn (mut b Builder) gen_arm64_parallel(mut gen arm64.Gen) {
 		if n_funcs <= 1 || n_jobs <= 1 {
 			// Fallback to sequential
 			for fi := 0; fi < n_funcs; fi++ {
-				gen.gen_func(gen.mod.funcs[fi])
+				gen.gen_func(fi)
 			}
 			gen.gen_post_pass()
 			return
@@ -72,7 +68,6 @@ fn (mut b Builder) gen_arm64_parallel(mut gen arm64.Gen) {
 			workers << voidptr(w)
 			args << GenARM64ChunkArgs{
 				worker:    voidptr(w)
-				mod_ptr:   unsafe { voidptr(gen.mod) }
 				start_idx: i
 				end_idx:   end
 			}

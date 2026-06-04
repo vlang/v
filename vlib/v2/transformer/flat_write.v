@@ -2921,7 +2921,7 @@ pub fn (mut t Transformer) try_expand_for_in_map_to_flat(stmt ast.ForStmt, mut i
 				]
 			}
 		}
-		t.scope.insert(key_name, value_object_from_type(map_type.key_type))
+		t.register_for_in_var_type(key_name, map_type.key_type)
 	}
 
 	if value_name != '' && value_name != '_' {
@@ -2954,7 +2954,7 @@ pub fn (mut t Transformer) try_expand_for_in_map_to_flat(stmt ast.ForStmt, mut i
 			})]
 			rhs: [ast.Expr(value_deref)]
 		}
-		t.scope.insert(value_name, value_object_from_type(map_type.value_type))
+		t.register_for_in_var_type(value_name, map_type.value_type)
 	}
 
 	for body_stmt in stmt.stmts {
@@ -3834,8 +3834,11 @@ pub fn (mut t Transformer) transform_stmt_to_flat(stmt ast.Stmt, mut out ast.Fla
 	}
 	match stmt {
 		ast.AsmStmt, ast.Directive, ast.EmptyStmt, ast.EnumDecl, ast.FlowControlStmt,
-		ast.ImportStmt, ast.InterfaceDecl, ast.ModuleStmt, ast.StructDecl, ast.TypeDecl {
+		ast.ImportStmt, ast.InterfaceDecl, ast.ModuleStmt, ast.TypeDecl {
 			return out.emit_stmt(stmt)
+		}
+		ast.StructDecl {
+			return out.emit_stmt(t.transform_struct_decl(stmt))
 		}
 		ast.ConstDecl {
 			// Mirror transform_const_decl: transform each field's value via
@@ -4286,14 +4289,15 @@ pub fn (mut t Transformer) transform_stmt_to_flat(stmt ast.Stmt, mut out ast.Fla
 			// Each per-site port lands as its own session (s113+) inside
 			// the seam without disturbing other call sites of the legacy
 			// helper.
-			attrs, stmt_ids := t.transform_fn_decl_parts_to_flat(stmt, mut out)
-			receiver_id := out.emit_parameter(stmt.receiver)
-			typ_id := out.emit_type(ast.Type(stmt.typ))
+			lowered_stmt := t.fn_decl_with_implicit_veb_context_param(stmt)
+			attrs, stmt_ids := t.transform_fn_decl_parts_to_flat(lowered_stmt, mut out)
+			receiver_id := out.emit_parameter(lowered_stmt.receiver)
+			typ_id := out.emit_type(ast.Type(lowered_stmt.typ))
 			attrs_id := out.emit_attribute_list(attrs)
 			stmts_list_id := out.emit_aux_list_from_ids(stmt_ids)
-			return out.emit_fn_decl_by_ids(stmt.name, stmt.is_public, stmt.is_method,
-				stmt.is_static, stmt.language, stmt.pos, receiver_id, typ_id, attrs_id,
-				stmts_list_id)
+			return out.emit_fn_decl_by_ids(lowered_stmt.name, lowered_stmt.is_public,
+				lowered_stmt.is_method, lowered_stmt.is_static, lowered_stmt.language,
+				lowered_stmt.pos, receiver_id, typ_id, attrs_id, stmts_list_id)
 		}
 		else {
 			// Unreachable in practice — the `[]ast.Attribute` variant is
@@ -6772,6 +6776,10 @@ fn (mut t Transformer) transform_string_inter_literal_to_flat(expr ast.StringInt
 					expr: hoisted
 				}
 			}
+		}
+		actual_inter = ast.StringInter{
+			...actual_inter
+			expr: t.repair_stale_string_str_interpolation_expr(actual_inter.expr)
 		}
 		inter_expr := t.transform_sprintf_arg(actual_inter)
 		expr_id := out.emit_expr(inter_expr)

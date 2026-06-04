@@ -140,16 +140,22 @@ mut:
 	env       &types.Environment = unsafe { nil }
 	cur_func  int                = -1
 	cur_block BlockID            = -1
+	// Checker function-scope key for the function currently being lowered.
+	cur_fn_scope_key string
 	// Variable name -> SSA ValueID (alloca pointer)
 	vars map[string]ValueID
 	// Loop break/continue targets
 	loop_stack []LoopInfo
 	// Struct name -> SSA TypeID
 	struct_types map[string]TypeID
+	// Type alias name -> resolved SSA base TypeID
+	type_aliases map[string]TypeID
 	// Enum name -> field values
 	enum_values map[string]int
 	// Function name -> SSA function index
 	fn_index map[string]int
+	// Function name -> dynamic array element type by argument index.
+	fn_param_array_elem_types map[string][]TypeID
 	// Function name -> SSA func_ref value
 	fn_refs map[string]ValueID
 	// Global variable name -> SSA global value
@@ -166,6 +172,8 @@ mut:
 	// Track mut pointer params (e.g., mut buf &u8) that need extra dereference
 	// when used in expressions (buf is ptr(ptr(i8)), but user sees buf as &u8)
 	mut_ptr_params map[string]bool
+	// Branch-local smartcasts from `if x is T` while lowering SSA.
+	local_smartcasts map[string]TypeID
 	// Set during sum type init _data field building to trigger heap allocation
 	// for &struct_local (prevents dangling stack pointers in returned sum types)
 	in_sumtype_data bool
@@ -187,6 +195,10 @@ mut:
 	// Array element types by SSA value id for dynamic array values that came from
 	// typed fields/selectors but have the erased builtin `array` SSA layout.
 	array_value_elem_types map[int]TypeID
+	// Struct field dynamic-array element types keyed by `struct_type_id:field_name`.
+	struct_field_array_elem_types map[string]TypeID
+	// Expected element type for the array literal currently being built.
+	array_literal_elem_type_hint TypeID
 }
 
 struct LoopInfo {
@@ -200,17 +212,21 @@ pub fn Builder.new(mod &Module) &Builder {
 
 pub fn Builder.new_with_env(mod &Module, env &types.Environment) &Builder {
 	mut b := &Builder{
-		mod:                    mod
-		vars:                   map[string]ValueID{}
-		loop_stack:             []LoopInfo{}
-		struct_types:           map[string]TypeID{}
-		enum_values:            map[string]int{}
-		fn_index:               map[string]int{}
-		fn_refs:                map[string]ValueID{}
-		global_refs:            map[string]ValueID{}
-		option_wrapper_types:   map[string]TypeID{}
-		result_wrapper_types:   map[string]TypeID{}
-		array_value_elem_types: map[int]TypeID{}
+		mod:                           mod
+		vars:                          map[string]ValueID{}
+		loop_stack:                    []LoopInfo{}
+		struct_types:                  map[string]TypeID{}
+		type_aliases:                  map[string]TypeID{}
+		enum_values:                   map[string]int{}
+		fn_index:                      map[string]int{}
+		fn_param_array_elem_types:     map[string][]TypeID{}
+		fn_refs:                       map[string]ValueID{}
+		global_refs:                   map[string]ValueID{}
+		option_wrapper_types:          map[string]TypeID{}
+		result_wrapper_types:          map[string]TypeID{}
+		array_value_elem_types:        map[int]TypeID{}
+		struct_field_array_elem_types: map[string]TypeID{}
+		local_smartcasts:              map[string]TypeID{}
 	}
 	unsafe {
 		b.env = env
@@ -235,8 +251,10 @@ pub fn (mut b Builder) new_worker_clone(worker_mod &Module, worker_idx int) &Bui
 		minimal_runtime_roots:           b.minimal_runtime_roots
 		native_backend_bulk_zero_alloca: b.native_backend_bulk_zero_alloca
 		struct_types:                    b.struct_types.clone()
+		type_aliases:                    b.type_aliases.clone()
 		enum_values:                     b.enum_values.clone()
 		fn_index:                        b.fn_index.clone()
+		fn_param_array_elem_types:       b.fn_param_array_elem_types.clone()
 		global_refs:                     b.global_refs.clone()
 		const_values:                    b.const_values.clone()
 		const_value_types:               b.const_value_types.clone()
@@ -246,15 +264,17 @@ pub fn (mut b Builder) new_worker_clone(worker_mod &Module, worker_idx int) &Bui
 		const_array_elem_count:          b.const_array_elem_count.clone()
 		option_wrapper_types:            b.option_wrapper_types.clone()
 		result_wrapper_types:            b.result_wrapper_types.clone()
+		struct_field_array_elem_types:   b.struct_field_array_elem_types.clone()
 		// Offset anon_fn_counter so each worker generates unique names.
 		// Stride of 100_000 per worker avoids collisions.
 		anon_fn_counter: (worker_idx + 1) * 100_000
 		// Per-function state is reset at start of each build_fn, so empty init is fine
-		fn_refs:        map[string]ValueID{}
-		vars:           map[string]ValueID{}
-		loop_stack:     []LoopInfo{}
-		label_blocks:   map[string]BlockID{}
-		mut_ptr_params: map[string]bool{}
+		fn_refs:          map[string]ValueID{}
+		vars:             map[string]ValueID{}
+		loop_stack:       []LoopInfo{}
+		label_blocks:     map[string]BlockID{}
+		mut_ptr_params:   map[string]bool{}
+		local_smartcasts: map[string]TypeID{}
 	}
 }
 
@@ -305,7 +325,12 @@ pub fn (mut b Builder) build_all(files []ast.File) {
 		b.cur_module = file_module_name(file)
 		b.register_types_pass1(file)
 	}
-	// Phase 1c: Fill in struct field types (now all struct names are known)
+	// Phase 1c: Register type aliases after all pass-1 type names are known.
+	for file in files {
+		b.cur_module = file_module_name(file)
+		b.register_type_aliases(file)
+	}
+	// Phase 1d: Fill in struct field types (now all struct names are known)
 	for file in files {
 		b.cur_module = file_module_name(file)
 		b.register_types_pass2(file)
@@ -433,7 +458,13 @@ pub fn (mut b Builder) build_all_from_flat(flat &ast.FlatAst) {
 		b.cur_module = fc.mod().replace('.', '_')
 		b.register_types_pass1_from_flat(fc)
 	}
-	// Phase 1c: Fill in struct field types (now all struct names are known)
+	// Phase 1c: Register type aliases after all pass-1 type names are known.
+	for fi in 0 .. flat.files.len {
+		fc := flat.file_cursor(fi)
+		b.cur_module = fc.mod().replace('.', '_')
+		b.register_type_aliases_from_flat(fc)
+	}
+	// Phase 1d: Fill in struct field types (now all struct names are known)
 	for fi in 0 .. flat.files.len {
 		fc := flat.file_cursor(fi)
 		b.cur_module = fc.mod().replace('.', '_')
@@ -513,6 +544,38 @@ pub fn file_module_name(file ast.File) string {
 
 // --- Type resolution using types.Environment ---
 
+fn ssa_string_ok(s string) bool {
+	if s.len == 0 {
+		return true
+	}
+	if s.len < 0 || s.len > 1024 {
+		return false
+	}
+	ptr := unsafe { u64(s.str) }
+	return ptr >= 0x100000000 && ptr < 0x0000800000000000
+}
+
+fn ssa_module_tail_name(name string) string {
+	if name.contains('.') {
+		return name.all_after_last('.')
+	}
+	if name.contains('__') {
+		return name.all_after_last('__')
+	}
+	if name.starts_with('v2_') && name.contains('_') {
+		return name.all_after_last('_')
+	}
+	return name
+}
+
+fn (b &Builder) valid_value_id(val ValueID) bool {
+	return val > 0 && val < b.mod.values.len
+}
+
+fn (b &Builder) valid_type_id(typ TypeID) bool {
+	return typ > 0 && typ < b.mod.type_store.types.len
+}
+
 fn (mut b Builder) type_to_ssa(t types.Type) TypeID {
 	if b.guard_invalid_type_payloads && !types.type_has_valid_payload(t) {
 		return b.mod.type_store.get_int(64)
@@ -538,6 +601,9 @@ fn (mut b Builder) type_to_ssa(t types.Type) TypeID {
 		types.Pointer {
 			if t.base_type is types.Struct {
 				st := t.base_type as types.Struct
+				if !ssa_string_ok(st.name) {
+					return b.mod.type_store.get_int(64)
+				}
 				if base := b.struct_name_to_ssa(st.name) {
 					return b.mod.type_store.get_ptr(base)
 				}
@@ -549,6 +615,9 @@ fn (mut b Builder) type_to_ssa(t types.Type) TypeID {
 			return b.get_string_type()
 		}
 		types.Struct {
+			if !ssa_string_ok(t.name) {
+				return b.mod.type_store.get_int(64)
+			}
 			if id := b.struct_name_to_ssa(t.name) {
 				return id
 			}
@@ -604,6 +673,9 @@ fn (mut b Builder) type_to_ssa(t types.Type) TypeID {
 			return b.mod.type_store.get_tuple(elem_types)
 		}
 		types.SumType {
+			if !ssa_string_ok(t.name) {
+				return b.mod.type_store.get_int(32)
+			}
 			if id := b.struct_types[t.name] {
 				return id
 			}
@@ -647,6 +719,9 @@ fn (mut b Builder) type_to_ssa(t types.Type) TypeID {
 }
 
 fn (mut b Builder) struct_name_to_ssa(name string) ?TypeID {
+	if !ssa_string_ok(name) {
+		return none
+	}
 	if id := b.struct_types[name] {
 		return id
 	}
@@ -666,6 +741,9 @@ fn (mut b Builder) struct_name_to_ssa(name string) ?TypeID {
 }
 
 fn (mut b Builder) primitive_type_name_to_ssa(name string) ?TypeID {
+	if !ssa_string_ok(name) {
+		return none
+	}
 	return match name {
 		'int' {
 			b.mod.type_store.get_int(32)
@@ -729,10 +807,21 @@ fn (mut b Builder) primitive_type_name_to_ssa(name string) ?TypeID {
 }
 
 fn (mut b Builder) named_type_to_ssa(name string) TypeID {
+	if !ssa_string_ok(name) {
+		return b.mod.type_store.get_int(64)
+	}
 	if type_id := b.primitive_type_name_to_ssa(name) {
 		return type_id
 	}
 	normalized := name.replace('.', '__')
+	if type_id := b.lookup_type_alias_ssa(name) {
+		return type_id
+	}
+	if normalized != name {
+		if type_id := b.lookup_type_alias_ssa(normalized) {
+			return type_id
+		}
+	}
 	if normalized in b.struct_types {
 		return b.struct_types[normalized]
 	}
@@ -762,6 +851,132 @@ fn (mut b Builder) named_type_to_ssa(name string) TypeID {
 		}
 	}
 	return b.mod.type_store.get_int(64)
+}
+
+fn (b &Builder) selector_module_name_for_ident(mod_name string) ?string {
+	if mod_name == 'C' {
+		return 'C'
+	}
+	if b.env != unsafe { nil } {
+		if scope := b.env.get_scope(b.cur_module) {
+			if obj := scope.lookup_parent(mod_name, 0) {
+				if obj is types.Module {
+					return obj.name.replace('.', '_')
+				}
+			}
+		}
+	}
+	return none
+}
+
+fn (b &Builder) selector_type_alias_to_ssa(mod_name string, type_name string) ?TypeID {
+	if mod_name == '' || type_name == '' || !ssa_string_ok(mod_name) || !ssa_string_ok(type_name) {
+		return none
+	}
+	normalized_mod := mod_name.replace('.', '_')
+	qualified := ssa_module_storage_name(normalized_mod, type_name)
+	if type_id := b.lookup_type_alias_ssa(qualified) {
+		return type_id
+	}
+	if normalized_mod != mod_name {
+		dot_qualified := ssa_module_storage_name(mod_name, type_name)
+		if type_id := b.lookup_type_alias_ssa(dot_qualified) {
+			return type_id
+		}
+	}
+	short_mod := ssa_module_tail_name(normalized_mod)
+	if short_mod != '' && short_mod != normalized_mod {
+		short_qualified := ssa_module_storage_name(short_mod, type_name)
+		if type_id := b.lookup_type_alias_ssa(short_qualified) {
+			return type_id
+		}
+	}
+	return none
+}
+
+fn (b &Builder) lookup_type_alias_ssa(name string) ?TypeID {
+	if name == '' || !ssa_string_ok(name) {
+		return none
+	}
+	if type_id := b.type_aliases[name] {
+		return type_id
+	}
+	if b.cur_module != '' && b.cur_module != 'main' && !name.contains('__') {
+		if type_id := b.type_aliases['${b.cur_module}__${name}'] {
+			return type_id
+		}
+		short_mod := ssa_module_tail_name(b.cur_module)
+		if short_mod != '' && short_mod != b.cur_module {
+			if type_id := b.type_aliases['${short_mod}__${name}'] {
+				return type_id
+			}
+		}
+	}
+	if name.contains('__') {
+		mod_name := name.all_before_last('__')
+		type_name := name.all_after_last('__')
+		short_mod := ssa_module_tail_name(mod_name)
+		if short_mod != '' && short_mod != mod_name {
+			if type_id := b.type_aliases['${short_mod}__${type_name}'] {
+				return type_id
+			}
+		}
+		qualified_suffix := '__${name}'
+		for alias_name, type_id in b.type_aliases {
+			if alias_name.ends_with(qualified_suffix) {
+				return type_id
+			}
+		}
+	}
+	return none
+}
+
+fn (b &Builder) sizeof_type_alias_name(name string) ?int {
+	if type_id := b.lookup_type_alias_ssa(name) {
+		return b.type_byte_size(type_id)
+	}
+	normalized := name.replace('.', '__')
+	if normalized != name {
+		if type_id := b.lookup_type_alias_ssa(normalized) {
+			return b.type_byte_size(type_id)
+		}
+	}
+	return none
+}
+
+fn struct_field_array_elem_key(type_id TypeID, field_name string) string {
+	return '${int(type_id)}:${field_name}'
+}
+
+fn (mut b Builder) record_struct_field_array_elem_type(type_id TypeID, field_name string, field_type ast.Expr, field_ssa_type TypeID) {
+	if field_name == '' || field_ssa_type != b.get_array_type() {
+		return
+	}
+	elem_type := b.array_elem_type_from_ast_type(field_type)
+	if elem_type != 0 {
+		b.struct_field_array_elem_types[struct_field_array_elem_key(type_id, field_name)] = elem_type
+	}
+}
+
+fn (b &Builder) struct_field_array_elem_type(type_id TypeID, field_name string) TypeID {
+	if field_name == '' {
+		return 0
+	}
+	mut cur_type := type_id
+	for cur_type > 0 && int(cur_type) < b.mod.type_store.types.len {
+		if elem_type := b.struct_field_array_elem_types[struct_field_array_elem_key(cur_type,
+			field_name)]
+		{
+			return elem_type
+		}
+		typ := b.mod.type_store.types[cur_type]
+		if typ.kind == .ptr_t && typ.elem_type > 0 {
+			cur_type = typ.elem_type
+			continue
+		}
+		break
+	}
+	return 0
 }
 
 fn (mut b Builder) get_string_type() TypeID {
@@ -1299,7 +1514,9 @@ fn (mut b Builder) register_types_pass1(file ast.File) {
 				b.register_enum(stmt)
 			}
 			ast.TypeDecl {
-				b.register_sumtype(stmt)
+				if stmt.variants.len > 0 {
+					b.register_sumtype(stmt)
+				}
 			}
 			else {}
 		}
@@ -1332,7 +1549,9 @@ fn (mut b Builder) register_types_pass1_from_flat(file_cursor ast.FileCursor) {
 			.stmt_type_decl {
 				decoded := c.flat.decode_stmt(c.id)
 				if decoded is ast.TypeDecl {
-					b.register_sumtype(decoded)
+					if decoded.variants.len > 0 {
+						b.register_sumtype(decoded)
+					}
 				}
 			}
 			else {}
@@ -1372,6 +1591,9 @@ fn (mut b Builder) register_types_pass2_from_flat(file_cursor ast.FileCursor) {
 }
 
 fn (mut b Builder) struct_mangled_name(decl ast.StructDecl) string {
+	if !ssa_string_ok(decl.name) || decl.name == '' {
+		return ''
+	}
 	return if b.cur_module == 'builtin'
 		&& decl.name in ['array', 'string', 'map', 'DenseArray', 'IError', 'Error', 'MessageError', 'None__', '_option', '_result', 'Option'] {
 		decl.name
@@ -1386,6 +1608,9 @@ fn (mut b Builder) struct_mangled_name(decl ast.StructDecl) string {
 // The fields will be filled in by register_struct_fields in pass 2.
 fn (mut b Builder) register_struct_name(decl ast.StructDecl) {
 	name := b.struct_mangled_name(decl)
+	if name == '' || !ssa_string_ok(name) {
+		return
+	}
 
 	if name in b.struct_types {
 		return
@@ -1402,6 +1627,9 @@ fn (mut b Builder) register_struct_name(decl ast.StructDecl) {
 // register_struct_fields fills in the field types for a previously forward-declared struct.
 fn (mut b Builder) register_struct_fields(decl ast.StructDecl) {
 	name := b.struct_mangled_name(decl)
+	if name == '' || !ssa_string_ok(name) {
+		return
+	}
 
 	type_id := b.struct_types[name] or { return }
 
@@ -1421,12 +1649,12 @@ fn (mut b Builder) register_struct_fields(decl ast.StructDecl) {
 	}
 
 	for fi in 0 .. n_fields {
-		field := decl.fields[fi]
-		ft := b.ast_type_to_ssa(field.typ)
+		ft := b.ast_type_to_ssa(decl.fields[fi].typ)
 		field_types << ft
-		field_names << field.name
+		field_name := decl.fields[fi].name
+		field_names << if ssa_string_ok(field_name) { field_name } else { '' }
+		b.record_struct_field_array_elem_type(type_id, field_name, decl.fields[fi].typ, ft)
 	}
-
 	b.mod.type_store.types[type_id] = Type{
 		kind:        .struct_t
 		fields:      field_types
@@ -1438,6 +1666,9 @@ fn (mut b Builder) register_struct_fields(decl ast.StructDecl) {
 // register_struct is the legacy combined registration (used for Phase 1a core types).
 fn (mut b Builder) register_struct(decl ast.StructDecl) {
 	name := b.struct_mangled_name(decl)
+	if name == '' || !ssa_string_ok(name) {
+		return
+	}
 
 	if name in b.struct_types {
 		return
@@ -1449,10 +1680,13 @@ fn (mut b Builder) register_struct(decl ast.StructDecl) {
 	// Flatten embedded struct fields first
 	b.collect_embedded_fields(decl.embedded, mut field_names, mut field_types)
 
-	for field in decl.fields {
-		ft := b.ast_type_to_ssa(field.typ)
+	for fi in 0 .. decl.fields.len {
+		ft := b.ast_type_to_ssa(decl.fields[fi].typ)
 		field_types << ft
-		field_names << field.name
+		field_name := decl.fields[fi].name
+		field_names << if ssa_string_ok(field_name) { field_name } else { '' }
+		// This combined path registers the struct after fields are collected,
+		// so array element metadata is recorded below once type_id exists.
 	}
 
 	type_id := b.mod.type_store.register(Type{
@@ -1463,6 +1697,13 @@ fn (mut b Builder) register_struct(decl ast.StructDecl) {
 	})
 	b.struct_types[name] = type_id
 	b.mod.c_struct_names[type_id] = name
+	for fi in 0 .. decl.fields.len {
+		field_name := decl.fields[fi].name
+		if ssa_string_ok(field_name) {
+			b.record_struct_field_array_elem_type(type_id, field_name, decl.fields[fi].typ,
+				field_types[fi])
+		}
+	}
 }
 
 // collect_embedded_fields resolves embedded type expressions and adds their
@@ -1474,10 +1715,15 @@ fn (mut b Builder) collect_embedded_fields(embedded []ast.Expr, mut field_names 
 	for emb in embedded {
 		// Get the type name from the embedded expression
 		emb_name := if emb is ast.Ident {
-			emb.name
+			if ssa_string_ok(emb.name) { emb.name } else { '' }
 		} else if emb is ast.SelectorExpr && emb.lhs is ast.Ident {
-			mod_name := (emb.lhs as ast.Ident).name.replace('.', '_')
-			'${mod_name}__${emb.rhs.name}'
+			lhs_name := (emb.lhs as ast.Ident).name
+			if ssa_string_ok(lhs_name) && ssa_string_ok(emb.rhs.name) {
+				mod_name := lhs_name.replace('.', '_')
+				'${mod_name}__${emb.rhs.name}'
+			} else {
+				''
+			}
 		} else {
 			''
 		}
@@ -1517,14 +1763,23 @@ fn (mut b Builder) collect_embedded_fields(embedded []ast.Expr, mut field_names 
 }
 
 fn (mut b Builder) register_enum(decl ast.EnumDecl) {
+	if !ssa_string_ok(decl.name) || decl.name == '' {
+		return
+	}
 	name := if b.cur_module != '' && b.cur_module != 'main' {
 		'${b.cur_module}__${decl.name}'
 	} else {
 		decl.name
 	}
+	if !ssa_string_ok(name) {
+		return
+	}
 
 	is_flag := decl.attributes.has('flag')
 	for i, field in decl.fields {
+		if !ssa_string_ok(field.name) || field.name == '' {
+			continue
+		}
 		key := '${name}__${enum_field_symbol_name(field.name)}'
 		if is_flag {
 			// @[flag] enums use power-of-2 values: 1, 2, 4, 8, ...
@@ -1547,14 +1802,69 @@ fn (b &Builder) is_enum_type(name string) bool {
 	return false
 }
 
-fn (mut b Builder) register_sumtype(decl ast.TypeDecl) {
-	if decl.variants.len == 0 {
+fn (mut b Builder) register_type_aliases(file ast.File) {
+	for stmt in file.stmts {
+		if stmt is ast.TypeDecl && stmt.variants.len == 0 {
+			b.register_type_alias(stmt)
+		}
+	}
+}
+
+fn (mut b Builder) register_type_aliases_from_flat(file_cursor ast.FileCursor) {
+	stmts := file_cursor.stmts()
+	for si in 0 .. stmts.len() {
+		c := stmts.at(si)
+		if c.kind() == .stmt_type_decl {
+			decoded := c.flat.decode_stmt(c.id)
+			if decoded is ast.TypeDecl && decoded.variants.len == 0 {
+				b.register_type_alias(decoded)
+			}
+		}
+	}
+}
+
+fn (mut b Builder) register_type_alias(decl ast.TypeDecl) {
+	if !ssa_string_ok(decl.name) || decl.name == '' || !builder_expr_ok(decl.base_type) {
+		return
+	}
+	base_type := b.ast_type_to_ssa(decl.base_type)
+	if base_type == 0 {
 		return
 	}
 	name := if b.cur_module != '' && b.cur_module != 'main' {
 		'${b.cur_module}__${decl.name}'
 	} else {
 		decl.name
+	}
+	if ssa_string_ok(name) {
+		b.type_aliases[name] = base_type
+	}
+	short_mod := ssa_module_tail_name(b.cur_module)
+	if short_mod != '' && short_mod != b.cur_module && b.cur_module != 'main' {
+		short_name := '${short_mod}__${decl.name}'
+		if ssa_string_ok(short_name) {
+			b.type_aliases[short_name] = base_type
+		}
+	}
+	if b.cur_module == '' || b.cur_module == 'main' {
+		b.type_aliases[decl.name] = base_type
+	}
+}
+
+fn (mut b Builder) register_sumtype(decl ast.TypeDecl) {
+	if decl.variants.len == 0 {
+		return
+	}
+	if !ssa_string_ok(decl.name) || decl.name == '' {
+		return
+	}
+	name := if b.cur_module != '' && b.cur_module != 'main' {
+		'${b.cur_module}__${decl.name}'
+	} else {
+		decl.name
+	}
+	if !ssa_string_ok(name) {
+		return
 	}
 
 	if name in b.struct_types {
@@ -2498,6 +2808,9 @@ fn (b &Builder) try_eval_const_string(expr ast.Expr) string {
 fn (mut b Builder) ast_type_to_ssa(typ ast.Expr) TypeID {
 	match typ {
 		ast.Ident {
+			if !ssa_string_ok(typ.name) {
+				return b.mod.type_store.get_int(64)
+			}
 			return b.ident_type_to_ssa(typ.name)
 		}
 		ast.Type {
@@ -2522,6 +2835,9 @@ fn (mut b Builder) ast_type_to_ssa(typ ast.Expr) TypeID {
 			// module.Type — e.g., C.dirent, os.Stat
 			if typ.lhs is ast.Ident {
 				mod_name := typ.lhs.name
+				if !ssa_string_ok(mod_name) || !ssa_string_ok(typ.rhs.name) {
+					return b.mod.type_store.get_int(64)
+				}
 				full_name := '${mod_name}.${typ.rhs.name}'
 				// Try C.StructName → look up as module__C.StructName
 				qualified := '${b.cur_module}__${full_name}'
@@ -2536,6 +2852,14 @@ fn (mut b Builder) ast_type_to_ssa(typ ast.Expr) TypeID {
 				mod_qualified := '${mod_name}__${typ.rhs.name}'
 				if mod_qualified in b.struct_types {
 					return b.struct_types[mod_qualified]
+				}
+				if alias_type := b.selector_type_alias_to_ssa(mod_name, typ.rhs.name) {
+					return alias_type
+				}
+				if resolved_mod := b.selector_module_name_for_ident(mod_name) {
+					if alias_type := b.selector_type_alias_to_ssa(resolved_mod, typ.rhs.name) {
+						return alias_type
+					}
 				}
 				// For C.X types: C structs are registered under their declaring module
 				// (e.g., C.dirent in os module → "os__dirent")
@@ -2632,6 +2956,9 @@ fn (mut b Builder) ast_type_node_to_ssa(typ ast.Type) TypeID {
 }
 
 fn (mut b Builder) ident_type_to_ssa(name string) TypeID {
+	if !ssa_string_ok(name) {
+		return b.mod.type_store.get_int(64)
+	}
 	return match name {
 		'int' {
 			b.mod.type_store.get_int(32)
@@ -2700,6 +3027,8 @@ fn (mut b Builder) ident_type_to_ssa(name string) TypeID {
 				b.get_array_type()
 			} else if name.starts_with('Map_') {
 				b.struct_types['map'] or { b.mod.type_store.get_int(64) }
+			} else if alias_type := b.lookup_type_alias_ssa(name) {
+				alias_type
 			} else if name in b.struct_types {
 				// Check struct types
 				b.struct_types[name]
@@ -2821,7 +3150,11 @@ fn (mut b Builder) register_fn_signatures_from_flat(file_cursor ast.FileCursor) 
 
 fn (mut b Builder) register_fn_sig(decl ast.FnDecl) {
 	fn_name := b.mangle_fn_name(decl)
+	param_array_elem_types := b.fn_param_array_elem_types_from_decl(decl)
 	if fn_name in b.fn_index {
+		if param_array_elem_types.len > 0 {
+			b.fn_param_array_elem_types[fn_name] = param_array_elem_types
+		}
 		return
 	}
 
@@ -2832,7 +3165,6 @@ fn (mut b Builder) register_fn_sig(decl ast.FnDecl) {
 	if decl.language == .c {
 		b.mod.func_set_c_extern(idx, true)
 	}
-
 	// Register parameter types for correct forward declarations.
 	// For methods, add receiver as the first parameter.
 	// Skip for static methods (is_static=true) — they have no receiver in the call.
@@ -2868,6 +3200,20 @@ fn (mut b Builder) register_fn_sig(decl ast.FnDecl) {
 		param_val := b.mod.add_value_node(.argument, actual_type, param.name, 0)
 		b.mod.func_add_param(idx, param_val)
 	}
+	if param_array_elem_types.len > 0 {
+		b.fn_param_array_elem_types[fn_name] = param_array_elem_types
+	}
+}
+
+fn (mut b Builder) fn_param_array_elem_types_from_decl(decl ast.FnDecl) []TypeID {
+	mut param_array_elem_types := []TypeID{}
+	if decl.is_method && !decl.is_static {
+		param_array_elem_types << b.array_elem_type_from_ast_type(decl.receiver.typ)
+	}
+	for param in decl.typ.params {
+		param_array_elem_types << b.array_elem_type_from_ast_type(param.typ)
+	}
+	return param_array_elem_types
 }
 
 fn (mut b Builder) mangle_fn_name(decl ast.FnDecl) string {
@@ -2894,6 +3240,25 @@ fn (mut b Builder) mangle_fn_name(decl ast.FnDecl) string {
 		return '${b.cur_module}__${decl.name}'
 	}
 	return decl.name
+}
+
+fn (mut b Builder) checked_fn_scope_key(decl ast.FnDecl) string {
+	scope_fn_name := if decl.is_method {
+		mut recv_name := b.receiver_type_name(decl.receiver.typ)
+		if b.cur_module != '' {
+			prefix := '${b.cur_module}__'
+			if recv_name.starts_with(prefix) {
+				recv_name = recv_name[prefix.len..]
+			}
+		}
+		'${recv_name}__${decl.name}'
+	} else {
+		decl.name
+	}
+	if b.cur_module == '' {
+		return scope_fn_name
+	}
+	return '${b.cur_module}__${scope_fn_name}'
 }
 
 fn is_generated_helper_fn_name(name string) bool {
@@ -3100,10 +3465,12 @@ pub fn (mut b Builder) build_fn(decl ast.FnDecl) {
 	}
 
 	b.cur_func = func_idx
+	b.cur_fn_scope_key = b.checked_fn_scope_key(decl)
 
 	// Reset local variables
 	b.vars = map[string]ValueID{}
 	b.mut_ptr_params = map[string]bool{}
+	b.local_smartcasts = map[string]TypeID{}
 	b.label_blocks = map[string]BlockID{}
 	b.array_elem_types = map[string]TypeID{}
 
@@ -3240,10 +3607,12 @@ pub fn (mut b Builder) build_fn_from_flat(c ast.Cursor) {
 	}
 
 	b.cur_func = func_idx
+	b.cur_fn_scope_key = b.checked_fn_scope_key(decl)
 
 	// Reset per-fn state
 	b.vars = map[string]ValueID{}
 	b.mut_ptr_params = map[string]bool{}
+	b.local_smartcasts = map[string]TypeID{}
 	b.label_blocks = map[string]BlockID{}
 	b.array_elem_types = map[string]TypeID{}
 
@@ -3325,12 +3694,22 @@ fn (mut b Builder) is_mut_receiver(typ ast.Expr) bool {
 }
 
 fn (mut b Builder) block_has_terminator(block BlockID) bool {
+	if block < 0 || block >= b.mod.blocks.len {
+		return true
+	}
 	instrs := b.mod.blocks[block].instrs
 	if instrs.len == 0 {
 		return false
 	}
 	last := instrs[instrs.len - 1]
-	last_instr := b.mod.instrs[b.mod.values[last].index]
+	if !b.valid_value_id(last) {
+		return false
+	}
+	last_val := b.mod.values[last]
+	if last_val.kind != .instruction || last_val.index < 0 || last_val.index >= b.mod.instrs.len {
+		return false
+	}
+	last_instr := b.mod.instrs[last_val.index]
 	return last_instr.op in [.ret, .br, .jmp, .unreachable]
 }
 
@@ -3735,7 +4114,7 @@ fn (mut b Builder) build_assign(stmt ast.AssignStmt) {
 					[]ValueID{})
 				b.mod.add_instr(.store, b.cur_block, 0, [rhs_val, alloca])
 				b.vars[ident.name] = alloca
-				b.track_array_elem_type_for_local_expr(ident.name, rhs, rhs_val)
+				b.track_array_elem_type_for_local_expr(ident.name, lhs, rhs, rhs_val)
 			} else if ident.name == '_' && stmt.op == .assign {
 				// Discard for plain assignment only; compound assignments (+=, etc.)
 				// must still execute (e.g. for loop counter `_ += 1`).
@@ -4029,8 +4408,414 @@ fn (mut b Builder) track_array_elem_type_for_local_value(name string, val ValueI
 	return false
 }
 
-fn (mut b Builder) track_array_elem_type_for_local_expr(name string, expr ast.Expr, val ValueID) {
+fn (mut b Builder) track_array_value_elem_type_from_checked_expr(val ValueID, expr ast.Expr) bool {
+	if !b.valid_value_id(val) {
+		return false
+	}
+	elem_from_expr := b.array_elem_type_from_expr(expr)
+	if elem_from_expr != 0 {
+		b.array_value_elem_types[val] = elem_from_expr
+		return true
+	}
+	if typ := b.get_checked_expr_type(expr) {
+		elem_t := b.unwrap_to_array_elem_ssa(typ)
+		if elem_t != 0 {
+			b.array_value_elem_types[val] = elem_t
+			return true
+		}
+	}
+	return false
+}
+
+fn (mut b Builder) array_elem_type_from_expr(expr ast.Expr) TypeID {
+	match expr {
+		ast.ParenExpr {
+			return b.array_elem_type_from_expr(expr.expr)
+		}
+		ast.ModifierExpr {
+			return b.array_elem_type_from_expr(expr.expr)
+		}
+		ast.UnsafeExpr {
+			if expr.stmts.len == 0 {
+				return 0
+			}
+			last := expr.stmts[expr.stmts.len - 1]
+			if last is ast.ExprStmt {
+				return b.array_elem_type_from_expr(last.expr)
+			}
+		}
+		ast.PrefixExpr {
+			if expr.op == .mul && expr.expr is ast.CastExpr {
+				return b.array_elem_type_from_ast_type((expr.expr as ast.CastExpr).typ)
+			}
+		}
+		ast.CastExpr {
+			return b.array_elem_type_from_ast_type(expr.typ)
+		}
+		else {}
+	}
+
+	return 0
+}
+
+fn (mut b Builder) track_array_value_elem_type_from_checked_cursor(val ValueID, c ast.Cursor) bool {
+	if !b.valid_value_id(val) {
+		return false
+	}
+	elem_from_expr := b.array_elem_type_from_expr_cursor(c)
+	if elem_from_expr != 0 {
+		b.array_value_elem_types[val] = elem_from_expr
+		return true
+	}
+	if typ := b.get_checked_expr_type_from_flat(c) {
+		elem_t := b.unwrap_to_array_elem_ssa(typ)
+		if elem_t != 0 {
+			b.array_value_elem_types[val] = elem_t
+			return true
+		}
+	}
+	return false
+}
+
+fn (mut b Builder) array_elem_type_from_type_cursor(c ast.Cursor) TypeID {
+	match c.kind() {
+		.typ_array {
+			elem_t := b.ast_type_to_ssa_from_flat(c.edge(0))
+			if elem_t != 0 {
+				return elem_t
+			}
+		}
+		.typ_array_fixed {
+			elem_t := b.ast_type_to_ssa_from_flat(c.edge(1))
+			if elem_t != 0 {
+				return elem_t
+			}
+		}
+		.expr_prefix, .expr_modifier, .expr_paren {
+			elem_t := b.array_elem_type_from_type_cursor(c.edge(0))
+			if elem_t != 0 {
+				return elem_t
+			}
+		}
+		.expr_ident {
+			name := c.name()
+			if name.starts_with('Array_') {
+				elem_name := name['Array_'.len..]
+				elem_t := b.ident_type_to_ssa(elem_name)
+				if elem_t != 0 {
+					return elem_t
+				}
+			}
+		}
+		else {}
+	}
+
+	if typ := b.get_checked_expr_type_from_flat(c) {
+		elem_t := b.unwrap_to_array_elem_ssa(typ)
+		if elem_t != 0 {
+			return elem_t
+		}
+	}
+	decoded := c.flat.decode_expr(c.id)
+	return b.array_elem_type_from_ast_type(decoded)
+}
+
+fn (mut b Builder) array_elem_type_from_expr_cursor(c ast.Cursor) TypeID {
+	match c.kind() {
+		.expr_paren, .expr_modifier {
+			return b.array_elem_type_from_expr_cursor(c.edge(0))
+		}
+		.expr_unsafe {
+			n := c.edge_count()
+			if n == 0 {
+				return 0
+			}
+			return b.array_elem_type_from_expr_cursor(c.edge(n - 1))
+		}
+		.stmt_expr {
+			if c.edge_count() == 0 {
+				return 0
+			}
+			return b.array_elem_type_from_expr_cursor(c.edge(0))
+		}
+		.expr_prefix {
+			op := unsafe { token.Token(int(c.aux())) }
+			inner := c.edge(0)
+			if op == .mul && inner.kind() == .expr_cast {
+				return b.array_elem_type_from_type_cursor(inner.edge(0))
+			}
+		}
+		.expr_cast {
+			return b.array_elem_type_from_type_cursor(c.edge(0))
+		}
+		else {}
+	}
+
+	return 0
+}
+
+fn (mut b Builder) checked_local_type(name string) ?types.Type {
+	if name == '' || b.env == unsafe { nil } || b.cur_func < 0 || b.cur_func >= b.mod.funcs.len {
+		return none
+	}
+	if b.cur_fn_scope_key != '' {
+		if scope := b.env.get_fn_scope_by_key(b.cur_fn_scope_key) {
+			if typ := scope.lookup_var_type(name) {
+				return typ
+			}
+		}
+	}
+	fn_name := b.mod.funcs[b.cur_func].name
+	if scope := b.env.get_fn_scope_by_key(fn_name) {
+		if typ := scope.lookup_var_type(name) {
+			return typ
+		}
+	}
+	if b.cur_module != '' {
+		if scope := b.env.get_fn_scope(b.cur_module, fn_name) {
+			if typ := scope.lookup_var_type(name) {
+				return typ
+			}
+		}
+		prefix := '${b.cur_module}__'
+		if fn_name.starts_with(prefix) {
+			short_name := fn_name[prefix.len..]
+			if scope := b.env.get_fn_scope(b.cur_module, short_name) {
+				if typ := scope.lookup_var_type(name) {
+					return typ
+				}
+			}
+		}
+	}
+	return none
+}
+
+fn (b &Builder) smartcast_expr_name(expr ast.Expr) string {
+	match expr {
+		ast.Ident {
+			return expr.name
+		}
+		ast.SelectorExpr {
+			lhs_name := b.smartcast_expr_name(expr.lhs)
+			if lhs_name == '' {
+				return expr.rhs.name
+			}
+			return '${lhs_name}.${expr.rhs.name}'
+		}
+		ast.ParenExpr {
+			return b.smartcast_expr_name(expr.expr)
+		}
+		ast.AsCastExpr {
+			return b.smartcast_expr_name(expr.expr)
+		}
+		ast.ModifierExpr {
+			return b.smartcast_expr_name(expr.expr)
+		}
+		else {
+			name := expr.name()
+			if name != 'Expr' {
+				return name
+			}
+			return ''
+		}
+	}
+}
+
+fn (b &Builder) smartcast_expr_name_from_flat(c ast.Cursor) string {
+	match c.kind() {
+		.expr_ident {
+			return c.name()
+		}
+		.expr_selector {
+			lhs_name := b.smartcast_expr_name_from_flat(c.edge(0))
+			rhs_name := c.edge(1).name()
+			if lhs_name == '' {
+				return rhs_name
+			}
+			return '${lhs_name}.${rhs_name}'
+		}
+		.expr_paren, .expr_modifier, .expr_as_cast {
+			return b.smartcast_expr_name_from_flat(c.edge(0))
+		}
+		else {
+			return ''
+		}
+	}
+}
+
+fn (mut b Builder) smartcast_variant_type_from_sumtype_tag(sumtype_expr ast.Expr, tag int) TypeID {
+	if tag < 0 {
+		return 0
+	}
+	mut sumtype_type := types.Type(types.void_)
+	if checked := b.get_checked_expr_type(sumtype_expr) {
+		sumtype_type = checked
+	} else {
+		expr_name := b.smartcast_expr_name(sumtype_expr)
+		if local_type := b.checked_local_type(expr_name) {
+			sumtype_type = local_type
+		} else {
+			return 0
+		}
+	}
+	base := b.unwrap_alias_type(sumtype_type)
+	if base !is types.SumType {
+		return 0
+	}
+	sumtype_info := base as types.SumType
+	if tag >= sumtype_info.variants.len {
+		return 0
+	}
+	return b.type_to_ssa(sumtype_info.variants[tag])
+}
+
+fn (mut b Builder) smartcast_variant_type_from_tag_check(expr ast.InfixExpr) TypeID {
+	if expr.op != .eq || expr.lhs !is ast.SelectorExpr || expr.rhs !is ast.BasicLiteral {
+		return 0
+	}
+	tag_sel := expr.lhs as ast.SelectorExpr
+	if tag_sel.rhs.name != '_tag' {
+		return 0
+	}
+	tag_lit := expr.rhs as ast.BasicLiteral
+	if tag_lit.kind != .number {
+		return 0
+	}
+	return b.smartcast_variant_type_from_sumtype_tag(tag_sel.lhs, tag_lit.value.int())
+}
+
+fn (mut b Builder) smartcast_rhs_variant_type_id(rhs ast.Expr, allow_value_style bool) TypeID {
+	if !allow_value_style {
+		match rhs {
+			ast.Ident {
+				if rhs.name.len == 0 || !u8(rhs.name[0]).is_capital() {
+					return 0
+				}
+			}
+			ast.SelectorExpr, ast.Type, ast.PrefixExpr {}
+			else {
+				return 0
+			}
+		}
+	}
+	return b.ast_type_to_ssa(rhs)
+}
+
+fn (mut b Builder) smartcast_variant_type_ids_from_condition(cond ast.Expr) map[string]TypeID {
+	mut smartcasts := map[string]TypeID{}
+	match cond {
+		ast.ParenExpr {
+			return b.smartcast_variant_type_ids_from_condition(cond.expr)
+		}
+		ast.InfixExpr {
+			if cond.op == .and {
+				left := b.smartcast_variant_type_ids_from_condition(cond.lhs)
+				right := b.smartcast_variant_type_ids_from_condition(cond.rhs)
+				for name, typ in left {
+					if typ != 0 {
+						smartcasts[name] = typ
+					}
+				}
+				for name, typ in right {
+					if typ != 0 {
+						smartcasts[name] = typ
+					}
+				}
+				return smartcasts
+			}
+			tag_typ := b.smartcast_variant_type_from_tag_check(cond)
+			if tag_typ != 0 {
+				tag_sel := cond.lhs as ast.SelectorExpr
+				expr_name := b.smartcast_expr_name(tag_sel.lhs)
+				if expr_name != '' {
+					smartcasts[expr_name] = tag_typ
+				}
+				return smartcasts
+			}
+			if cond.op in [.key_is, .eq] {
+				expr_name := b.smartcast_expr_name(cond.lhs)
+				if expr_name != '' {
+					variant_type := b.smartcast_rhs_variant_type_id(cond.rhs, cond.op == .key_is)
+					if variant_type != 0 {
+						smartcasts[expr_name] = variant_type
+					}
+				}
+			}
+		}
+		else {}
+	}
+
+	return smartcasts
+}
+
+fn (mut b Builder) apply_local_smartcasts(smartcasts map[string]TypeID) {
+	for name, typ in smartcasts {
+		if name != '' && typ != 0 {
+			b.local_smartcasts[name] = typ
+		}
+	}
+}
+
+fn (mut b Builder) selector_lhs_variant_type_id(expr ast.Expr) TypeID {
+	expr_name := b.smartcast_expr_name(expr)
+	if expr_name != '' {
+		if variant_type := b.local_smartcasts[expr_name] {
+			return variant_type
+		}
+	}
+	if checked := b.get_checked_expr_type(expr) {
+		base := b.unwrap_alias_type(checked)
+		if base !is types.SumType {
+			return b.type_to_ssa(checked)
+		}
+	}
+	return 0
+}
+
+fn (mut b Builder) selector_lhs_variant_type_id_from_flat(c ast.Cursor) TypeID {
+	expr_name := b.smartcast_expr_name_from_flat(c)
+	if expr_name != '' {
+		if variant_type := b.local_smartcasts[expr_name] {
+			return variant_type
+		}
+	}
+	if checked := b.get_checked_expr_type_from_flat(c) {
+		base := b.unwrap_alias_type(checked)
+		if base !is types.SumType {
+			return b.type_to_ssa(checked)
+		}
+	}
+	return 0
+}
+
+fn (mut b Builder) track_array_elem_type_for_local_checked_type(name string) bool {
+	if typ := b.checked_local_type(name) {
+		elem_t := b.unwrap_to_array_elem_ssa(typ)
+		if elem_t != 0 {
+			b.array_elem_types[name] = elem_t
+			return true
+		}
+	}
+	return false
+}
+
+fn (mut b Builder) track_array_elem_type_for_local_expr(name string, lhs ast.Expr, expr ast.Expr, val ValueID) {
+	elem_from_expr := b.array_elem_type_from_expr(expr)
+	if elem_from_expr != 0 {
+		b.array_elem_types[name] = elem_from_expr
+		return
+	}
 	if b.track_array_elem_type_for_local_value(name, val) {
+		return
+	}
+	if lhs_typ := b.get_checked_expr_type(lhs) {
+		elem_t := b.unwrap_to_array_elem_ssa(lhs_typ)
+		if elem_t != 0 {
+			b.array_elem_types[name] = elem_t
+			return
+		}
+	}
+	if b.track_array_elem_type_for_local_checked_type(name) {
 		return
 	}
 	if expr is ast.ArrayInitExpr && builder_expr_ok(expr.typ) && expr.typ is ast.Type {
@@ -4127,9 +4912,49 @@ fn (mut b Builder) const_int_from_flat(c ast.Cursor) int {
 	}
 }
 
+fn (mut b Builder) array_elem_type_from_ast_type(typ ast.Expr) TypeID {
+	match typ {
+		ast.Type {
+			match typ {
+				ast.ArrayType {
+					return b.ast_type_to_ssa(typ.elem_type)
+				}
+				ast.ArrayFixedType {
+					return b.ast_type_to_ssa(typ.elem_type)
+				}
+				else {}
+			}
+		}
+		ast.Ident {
+			if !ssa_string_ok(typ.name) {
+				return 0
+			}
+			if typ.name.starts_with('Array_') {
+				elem_name := typ.name['Array_'.len..]
+				return b.ident_type_to_ssa(elem_name)
+			}
+		}
+		ast.PrefixExpr {
+			if typ.op == .ellipsis {
+				return b.ast_type_to_ssa(typ.expr)
+			}
+			return b.array_elem_type_from_ast_type(typ.expr)
+		}
+		ast.ModifierExpr {
+			return b.array_elem_type_from_ast_type(typ.expr)
+		}
+		else {}
+	}
+
+	return 0
+}
+
 fn (mut b Builder) ast_type_to_ssa_from_flat(c ast.Cursor) TypeID {
 	match c.kind() {
 		.expr_ident {
+			if !ssa_string_ok(c.name()) {
+				return b.mod.type_store.get_int(64)
+			}
 			return b.ident_type_to_ssa(c.name())
 		}
 		.expr_prefix {
@@ -4152,6 +4977,9 @@ fn (mut b Builder) ast_type_to_ssa_from_flat(c ast.Cursor) TypeID {
 			if lhs_c.kind() == .expr_ident {
 				mod_name := lhs_c.name()
 				rhs_name := rhs_c.name()
+				if !ssa_string_ok(mod_name) || !ssa_string_ok(rhs_name) {
+					return b.mod.type_store.get_int(64)
+				}
 				full_name := '${mod_name}.${rhs_name}'
 				qualified := '${b.cur_module}__${full_name}'
 				if qualified in b.struct_types {
@@ -4163,6 +4991,14 @@ fn (mut b Builder) ast_type_to_ssa_from_flat(c ast.Cursor) TypeID {
 				mod_qualified := '${mod_name}__${rhs_name}'
 				if mod_qualified in b.struct_types {
 					return b.struct_types[mod_qualified]
+				}
+				if alias_type := b.selector_type_alias_to_ssa(mod_name, rhs_name) {
+					return alias_type
+				}
+				if resolved_mod := b.selector_module_name_for_ident(mod_name) {
+					if alias_type := b.selector_type_alias_to_ssa(resolved_mod, rhs_name) {
+						return alias_type
+					}
 				}
 				if mod_name == 'C' {
 					cur_qualified := '${b.cur_module}__${rhs_name}'
@@ -4259,8 +5095,23 @@ fn (mut b Builder) array_init_elem_type_from_flat(c ast.Cursor) TypeID {
 	return 0
 }
 
-fn (mut b Builder) track_array_elem_type_for_local_from_flat(name string, c ast.Cursor, val ValueID) {
+fn (mut b Builder) track_array_elem_type_for_local_from_flat(name string, lhs_c ast.Cursor, c ast.Cursor, val ValueID) {
+	elem_from_expr := b.array_elem_type_from_expr_cursor(c)
+	if elem_from_expr != 0 {
+		b.array_elem_types[name] = elem_from_expr
+		return
+	}
 	if b.track_array_elem_type_for_local_value(name, val) {
+		return
+	}
+	if lhs_typ := b.get_checked_expr_type_from_flat(lhs_c) {
+		elem_t := b.unwrap_to_array_elem_ssa(lhs_typ)
+		if elem_t != 0 {
+			b.array_elem_types[name] = elem_t
+			return
+		}
+	}
+	if b.track_array_elem_type_for_local_checked_type(name) {
 		return
 	}
 	if c.kind() == .expr_array_init {
@@ -4293,9 +5144,9 @@ fn (mut b Builder) array_elem_type_from_selector_cursor(c ast.Cursor) TypeID {
 	if lhs_type := b.get_checked_expr_type_from_flat(lhs_c) {
 		st := b.unwrap_to_struct(lhs_type)
 		if st.name != '' {
-			for field in st.fields {
-				if field.name == rhs_name {
-					return b.unwrap_to_array_elem_ssa(field.typ)
+			for fi in 0 .. st.fields.len {
+				if st.fields[fi].name == rhs_name {
+					return b.unwrap_to_array_elem_ssa(st.fields[fi].typ)
 				}
 			}
 		}
@@ -4312,20 +5163,7 @@ fn (mut b Builder) selector_module_name_from_flat(c ast.Cursor) ?string {
 		return none
 	}
 	mod_name := lhs_c.name()
-	if mod_name == 'C' {
-		return 'C'
-	}
-	if b.env != unsafe { nil } {
-		if scope := b.env.get_scope(b.cur_module) {
-			if obj := scope.lookup_parent(mod_name, 0) {
-				if obj is types.Module {
-					return obj.name.replace('.', '_')
-				}
-				return none
-			}
-		}
-	}
-	return none
+	return b.selector_module_name_for_ident(mod_name)
 }
 
 // static_receiver_type_name_from_flat (s219) cursor mirror of
@@ -4423,9 +5261,10 @@ fn (mut b Builder) resolve_static_method_name_from_flat(c ast.Cursor) ?string {
 fn (mut b Builder) field_index_from_flat(c ast.Cursor, base ValueID) int {
 	rhs_name := c.edge(1).name()
 	base_type_id := b.mod.values[base].typ
-	if base_type_id < b.mod.type_store.types.len {
+	if base_type_id > 0 && int(base_type_id) < b.mod.type_store.types.len {
 		mut ssa_typ := b.mod.type_store.types[base_type_id]
-		for ssa_typ.kind == .ptr_t && ssa_typ.elem_type < b.mod.type_store.types.len {
+		for ssa_typ.kind == .ptr_t && ssa_typ.elem_type > 0
+			&& int(ssa_typ.elem_type) < b.mod.type_store.types.len {
 			ssa_typ = b.mod.type_store.types[ssa_typ.elem_type]
 		}
 		if ssa_typ.kind == .struct_t {
@@ -4439,8 +5278,8 @@ fn (mut b Builder) field_index_from_flat(c ast.Cursor, base ValueID) int {
 	if typ := b.get_checked_expr_type_from_flat(c.edge(0)) {
 		st := b.unwrap_to_struct(typ)
 		if st.name != '' {
-			for i, f in st.fields {
-				if f.name == rhs_name {
+			for i in 0 .. st.fields.len {
+				if st.fields[i].name == rhs_name {
 					return i
 				}
 			}
@@ -4466,13 +5305,28 @@ fn (mut b Builder) infer_dynamic_array_index_type_from_flat(c ast.Cursor, base_v
 			}
 		}
 	}
-	lhs_c := c.edge(0)
+	lhs_c_raw := c.edge(0)
+	lhs_c := b.unwrap_index_lhs_cursor(lhs_c_raw)
 	if result_type == i64_t {
+		if arr_typ := b.get_checked_expr_type_from_flat(lhs_c_raw) {
+			inferred := b.unwrap_to_array_elem_ssa(arr_typ)
+			if inferred != 0 {
+				result_type = inferred
+			}
+		}
+	}
+	if result_type == i64_t && lhs_c.id != lhs_c_raw.id {
 		if arr_typ := b.get_checked_expr_type_from_flat(lhs_c) {
 			inferred := b.unwrap_to_array_elem_ssa(arr_typ)
 			if inferred != 0 {
 				result_type = inferred
 			}
+		}
+	}
+	if result_type == i64_t && lhs_c.kind() == .expr_selector {
+		inferred := b.array_elem_type_from_selector_cursor(lhs_c)
+		if inferred != 0 {
+			result_type = inferred
 		}
 	}
 	if result_type == i64_t && lhs_c.kind() == .expr_call && lhs_c.edge_count() >= 2 {
@@ -4494,12 +5348,44 @@ fn (mut b Builder) infer_dynamic_array_index_type_from_flat(c ast.Cursor, base_v
 			result_type = elem_t
 		}
 	}
+	if result_type == i64_t && lhs_c.kind() == .expr_ident {
+		if typ := b.checked_local_type(lhs_c.name()) {
+			inferred := b.unwrap_to_array_elem_ssa(typ)
+			if inferred != 0 {
+				result_type = inferred
+			}
+		}
+	}
 	if result_type == i64_t {
 		if elem_t := b.array_value_elem_types[base_val] {
 			result_type = elem_t
 		}
 	}
 	return result_type
+}
+
+fn (mut b Builder) finish_index_value_from_flat(c ast.Cursor, val ValueID) ValueID {
+	b.track_array_value_elem_type_from_checked_cursor(val, c)
+	return val
+}
+
+fn (mut b Builder) unwrap_index_lhs_cursor(c ast.Cursor) ast.Cursor {
+	mut cur := c
+	for _ in 0 .. 8 {
+		match cur.kind() {
+			.expr_paren, .expr_modifier {
+				if cur.edge_count() == 0 {
+					return cur
+				}
+				cur = cur.edge(0)
+				continue
+			}
+			else {}
+		}
+
+		break
+	}
+	return cur
 }
 
 fn (mut b Builder) compound_assign_opcode(op token.Token, is_float bool, full_ops bool) OpCode {
@@ -4782,7 +5668,11 @@ fn (mut b Builder) build_if_stmt(node ast.IfExpr) {
 
 	// Then
 	b.cur_block = then_block
+	then_smartcasts := b.smartcast_variant_type_ids_from_condition(node.cond)
+	mut saved_local_smartcasts := b.local_smartcasts.clone()
+	b.apply_local_smartcasts(then_smartcasts)
 	b.build_stmts(node.stmts)
+	b.local_smartcasts = saved_local_smartcasts.clone()
 	if !b.block_has_terminator(b.cur_block) {
 		b.mod.add_instr(.jmp, b.cur_block, 0, [b.mod.blocks[merge_block].val_id])
 		b.add_edge(b.cur_block, merge_block)
@@ -4809,6 +5699,7 @@ fn (mut b Builder) build_if_stmt(node ast.IfExpr) {
 			b.add_edge(b.cur_block, merge_block)
 		}
 	}
+	b.local_smartcasts = saved_local_smartcasts.move()
 
 	b.cur_block = merge_block
 	// If the merge block has no predecessors (both branches returned/jumped elsewhere),
@@ -4845,9 +5736,14 @@ fn (mut b Builder) build_if_stmt_from_flat(c ast.Cursor) {
 	b.add_edge(b.cur_block, else_block)
 
 	b.cur_block = then_block
+	cond_expr := cond_c.flat.decode_expr(cond_c.id)
+	then_smartcasts := b.smartcast_variant_type_ids_from_condition(cond_expr)
+	mut saved_local_smartcasts := b.local_smartcasts.clone()
+	b.apply_local_smartcasts(then_smartcasts)
 	for i in 2 .. c.edge_count() {
 		b.build_stmt_from_flat(c.edge(i))
 	}
+	b.local_smartcasts = saved_local_smartcasts.clone()
 	if !b.block_has_terminator(b.cur_block) {
 		b.mod.add_instr(.jmp, b.cur_block, 0, [b.mod.blocks[merge_block].val_id])
 		b.add_edge(b.cur_block, merge_block)
@@ -4874,6 +5770,7 @@ fn (mut b Builder) build_if_stmt_from_flat(c ast.Cursor) {
 			b.add_edge(b.cur_block, merge_block)
 		}
 	}
+	b.local_smartcasts = saved_local_smartcasts.move()
 
 	b.cur_block = merge_block
 	if b.mod.blocks[merge_block].preds.len == 0 {
@@ -5088,7 +5985,7 @@ fn (mut b Builder) build_assign_from_flat(c ast.Cursor) {
 					[]ValueID{})
 				b.mod.add_instr(.store, b.cur_block, 0, [rhs_val, alloca])
 				b.vars[ident_name] = alloca
-				b.track_array_elem_type_for_local_from_flat(ident_name, rhs_c, rhs_val)
+				b.track_array_elem_type_for_local_from_flat(ident_name, lhs_c, rhs_c, rhs_val)
 			} else if ident_name == '_' && op == .assign {
 				continue
 			} else {
@@ -5540,8 +6437,11 @@ fn (mut b Builder) build_prefix_from_flat(c ast.Cursor) ValueID {
 		typ_c := inner_c.edge(0)
 		val_c := inner_c.edge(1)
 		inner_val := b.build_expr_from_flat(val_c)
+		if !b.valid_value_id(inner_val) {
+			return inner_val
+		}
 		inner_type := b.mod.values[inner_val].typ
-		if inner_type != 0 && int(inner_type) < b.mod.type_store.types.len {
+		if inner_type > 0 && int(inner_type) < b.mod.type_store.types.len {
 			inner_t := b.mod.type_store.types[inner_type]
 			if inner_t.kind == .ptr_t || inner_t.kind == .int_t {
 				target_elem := b.ast_type_to_ssa_from_flat(typ_c)
@@ -5554,8 +6454,11 @@ fn (mut b Builder) build_prefix_from_flat(c ast.Cursor) ValueID {
 		lhs_c := inner_c.edge(0)
 		expr_c := inner_c.edge(1)
 		inner_val := b.build_expr_from_flat(expr_c)
+		if !b.valid_value_id(inner_val) {
+			return inner_val
+		}
 		inner_type := b.mod.values[inner_val].typ
-		if inner_type != 0 && int(inner_type) < b.mod.type_store.types.len {
+		if inner_type > 0 && int(inner_type) < b.mod.type_store.types.len {
 			inner_t := b.mod.type_store.types[inner_type]
 			if inner_t.kind == .ptr_t || inner_t.kind == .int_t {
 				target_elem := b.ast_type_to_ssa_from_flat(lhs_c)
@@ -5575,8 +6478,11 @@ fn (mut b Builder) build_prefix_from_flat(c ast.Cursor) ValueID {
 				lhs_c := inner2_c.edge(0)
 				expr_c := inner2_c.edge(1)
 				inner_val := b.build_expr_from_flat(expr_c)
+				if !b.valid_value_id(inner_val) {
+					return inner_val
+				}
 				inner_type := b.mod.values[inner_val].typ
-				if inner_type != 0 && int(inner_type) < b.mod.type_store.types.len {
+				if inner_type > 0 && int(inner_type) < b.mod.type_store.types.len {
 					inner_t := b.mod.type_store.types[inner_type]
 					if inner_t.kind == .ptr_t || inner_t.kind == .int_t {
 						target_elem := b.ast_type_to_ssa_from_flat(lhs_c)
@@ -5591,8 +6497,11 @@ fn (mut b Builder) build_prefix_from_flat(c ast.Cursor) ValueID {
 				typ_c := inner2_c.edge(0)
 				val_c := inner2_c.edge(1)
 				inner_val := b.build_expr_from_flat(val_c)
+				if !b.valid_value_id(inner_val) {
+					return inner_val
+				}
 				inner_type := b.mod.values[inner_val].typ
-				if inner_type != 0 && int(inner_type) < b.mod.type_store.types.len {
+				if inner_type > 0 && int(inner_type) < b.mod.type_store.types.len {
 					inner_t := b.mod.type_store.types[inner_type]
 					if inner_t.kind == .ptr_t || inner_t.kind == .int_t {
 						target_elem := b.ast_type_to_ssa_from_flat(typ_c)
@@ -5631,6 +6540,9 @@ fn (mut b Builder) build_prefix_from_flat(c ast.Cursor) ValueID {
 			return addr
 		}
 		val := b.build_expr_from_flat(inner_c)
+		if !b.valid_value_id(val) {
+			return val
+		}
 		if b.mod.values[val].kind == .func_ref {
 			return val
 		}
@@ -5640,7 +6552,7 @@ fn (mut b Builder) build_prefix_from_flat(c ast.Cursor) ValueID {
 			}
 		}
 		val_type := b.mod.values[val].typ
-		if val_type != 0 {
+		if val_type > 0 && int(val_type) < b.mod.type_store.types.len {
 			ptr_type := b.mod.type_store.get_ptr(val_type)
 			typ_info := b.mod.type_store.types[val_type]
 			if typ_info.kind == .struct_t {
@@ -5656,6 +6568,9 @@ fn (mut b Builder) build_prefix_from_flat(c ast.Cursor) ValueID {
 	}
 
 	val := b.build_expr_from_flat(inner_c)
+	if !b.valid_value_id(val) {
+		return val
+	}
 
 	match op {
 		.minus {
@@ -5669,26 +6584,39 @@ fn (mut b Builder) build_prefix_from_flat(c ast.Cursor) ValueID {
 				xored := b.mod.add_instr(.xor, b.cur_block, i64_type, [int_val, sign_mask])
 				return b.mod.add_instr(.bitcast, b.cur_block, val_type, [xored])
 			}
+			if val_type <= 0 {
+				return val
+			}
 			zero := b.mod.get_or_add_const(val_type, '0')
 			return b.mod.add_instr(.sub, b.cur_block, val_type, [zero, val])
 		}
 		.not {
-			zero := b.mod.get_or_add_const(b.mod.values[val].typ, '0')
+			val_type := b.mod.values[val].typ
+			if val_type <= 0 {
+				return val
+			}
+			zero := b.mod.get_or_add_const(val_type, '0')
 			return b.mod.add_instr(.eq, b.cur_block, b.mod.type_store.get_int(1), [
 				val,
 				zero,
 			])
 		}
 		.bit_not {
-			neg_one := b.mod.get_or_add_const(b.mod.values[val].typ, '-1')
-			return b.mod.add_instr(.xor, b.cur_block, b.mod.values[val].typ, [val, neg_one])
+			val_type := b.mod.values[val].typ
+			if val_type <= 0 {
+				return val
+			}
+			neg_one := b.mod.get_or_add_const(val_type, '-1')
+			return b.mod.add_instr(.xor, b.cur_block, val_type, [val, neg_one])
 		}
 		.mul {
 			val_type := b.mod.values[val].typ
-			if val_type != 0 && int(val_type) < b.mod.type_store.types.len {
+			if val_type > 0 && int(val_type) < b.mod.type_store.types.len {
 				typ := b.mod.type_store.types[val_type]
-				if typ.kind == .ptr_t && typ.elem_type != 0 {
-					return b.mod.add_instr(.load, b.cur_block, typ.elem_type, [val])
+				if typ.kind == .ptr_t && typ.elem_type > 0 {
+					result := b.mod.add_instr(.load, b.cur_block, typ.elem_type, [val])
+					b.track_array_value_elem_type_from_checked_cursor(result, c)
+					return result
 				}
 			}
 			return val
@@ -5998,11 +6926,21 @@ fn (mut b Builder) build_selector_from_flat(c ast.Cursor) ValueID {
 	}
 
 	mut base := b.build_expr_from_flat(lhs_c)
+	if field_val := b.build_sumtype_variant_selector_value(base,
+		b.selector_lhs_variant_type_id_from_flat(lhs_c), rhs_name)
+	{
+		if b.mod.values[field_val].typ == b.get_array_type() {
+			b.track_array_value_elem_type_from_selector_from_flat(c, field_val,
+				b.mod.values[base].typ)
+		}
+		return field_val
+	}
 	// Fixed-size array `.len`
 	base_typ_raw := b.mod.values[base].typ
-	if base_typ_raw < b.mod.type_store.types.len {
+	if base_typ_raw > 0 && int(base_typ_raw) < b.mod.type_store.types.len {
 		mut check_typ := b.mod.type_store.types[base_typ_raw]
-		if check_typ.kind == .ptr_t && check_typ.elem_type < b.mod.type_store.types.len {
+		if check_typ.kind == .ptr_t && check_typ.elem_type > 0
+			&& int(check_typ.elem_type) < b.mod.type_store.types.len {
 			check_typ = b.mod.type_store.types[check_typ.elem_type]
 		}
 		if check_typ.kind == .array_t && rhs_name == 'len' {
@@ -6011,10 +6949,15 @@ fn (mut b Builder) build_selector_from_flat(c ast.Cursor) ValueID {
 	}
 	// Auto-deref pointer-to-struct → GEP+load
 	base_typ := b.mod.values[base].typ
-	if base_typ < b.mod.type_store.types.len && b.mod.type_store.types[base_typ].kind == .ptr_t {
+	if base_typ > 0 && int(base_typ) < b.mod.type_store.types.len
+		&& b.mod.type_store.types[base_typ].kind == .ptr_t {
 		pointee := b.mod.type_store.types[base_typ].elem_type
-		if pointee < b.mod.type_store.types.len && b.mod.type_store.types[pointee].kind == .struct_t {
+		if pointee > 0 && int(pointee) < b.mod.type_store.types.len
+			&& b.mod.type_store.types[pointee].kind == .struct_t {
 			field_idx := b.field_index_from_flat(c, base)
+			if field_idx < 0 {
+				return 0
+			}
 			mut result_type := TypeID(0)
 			pointee_typ := b.mod.type_store.types[pointee]
 			if field_idx >= 0 && field_idx < pointee_typ.fields.len {
@@ -6030,24 +6973,45 @@ fn (mut b Builder) build_selector_from_flat(c ast.Cursor) ValueID {
 			])
 			field_val := b.mod.add_instr(.load, b.cur_block, result_type, [field_ptr])
 			if result_type == b.get_array_type() {
-				if checked_field_type := b.checked_struct_field_type_from_ssa(pointee, rhs_name) {
-					elem_type := b.unwrap_to_array_elem_ssa(checked_field_type)
-					if elem_type != 0 {
-						b.array_value_elem_types[field_val] = elem_type
+				elem_type := b.struct_field_array_elem_type(pointee, rhs_name)
+				if elem_type != 0 {
+					b.array_value_elem_types[field_val] = elem_type
+				} else if checked_field_type := b.checked_struct_field_type_from_ssa(pointee,
+					rhs_name)
+				{
+					checked_elem_type := b.unwrap_to_array_elem_ssa(checked_field_type)
+					if checked_elem_type != 0 {
+						b.array_value_elem_types[field_val] = checked_elem_type
 					}
 				}
 			}
 			return field_val
 		}
 	}
-	field_idx := b.field_index_from_flat(c, base)
+	mut field_idx := -1
 	mut result_type := TypeID(0)
 	actual_base_type := b.mod.values[base].typ
-	if actual_base_type < b.mod.type_store.types.len {
+	if actual_base_type > 0 && int(actual_base_type) < b.mod.type_store.types.len {
 		typ := b.mod.type_store.types[actual_base_type]
-		if typ.kind == .struct_t && field_idx < typ.fields.len {
-			result_type = typ.fields[field_idx]
+		if typ.kind == .struct_t {
+			for i, name in typ.field_names {
+				if name == rhs_name {
+					field_idx = i
+					result_type = typ.fields[i]
+					break
+				}
+			}
+			if field_idx < 0 && b.ssa_type_is_sumtype(actual_base_type)
+				&& !rhs_name.starts_with('arg') {
+				return 0
+			}
 		}
+	}
+	if field_idx < 0 {
+		field_idx = b.field_index_from_flat(c, base)
+	}
+	if field_idx < 0 {
+		return 0
 	}
 	if result_type == 0 {
 		result_type = b.expr_type_from_flat(c)
@@ -6065,6 +7029,7 @@ fn (mut b Builder) build_selector_from_flat(c ast.Cursor) ValueID {
 // resolves field index via `field_index_from_flat`, and returns the GEP-built
 // SelectorAddr (field pointer + base struct type for downstream tracking).
 fn (mut b Builder) build_selector_addr_from_flat(c ast.Cursor) ?SelectorAddr {
+	rhs_name := c.edge(1).name()
 	base := b.build_addr_from_flat(c.edge(0))
 	if base == 0 {
 		return none
@@ -6082,7 +7047,19 @@ fn (mut b Builder) build_selector_addr_from_flat(c ast.Cursor) ?SelectorAddr {
 	if struct_type.kind != .struct_t {
 		return none
 	}
-	field_idx := b.field_index_from_flat(c, base)
+	mut field_idx := -1
+	for i, name in struct_type.field_names {
+		if name == rhs_name {
+			field_idx = i
+			break
+		}
+	}
+	if field_idx < 0 && b.ssa_type_is_sumtype(ptr_type.elem_type) {
+		return none
+	}
+	if field_idx < 0 {
+		field_idx = b.field_index_from_flat(c, base)
+	}
 	if field_idx < 0 || field_idx >= struct_type.fields.len {
 		return none
 	}
@@ -6101,16 +7078,21 @@ fn (mut b Builder) build_selector_addr_from_flat(c ast.Cursor) ?SelectorAddr {
 // values produced by selector loads.
 fn (mut b Builder) track_array_value_elem_type_from_selector_from_flat(c ast.Cursor, field_val ValueID, base_type TypeID) {
 	rhs_name := c.edge(1).name()
+	elem_type := b.struct_field_array_elem_type(base_type, rhs_name)
+	if elem_type != 0 {
+		b.array_value_elem_types[field_val] = elem_type
+		return
+	}
 	if checked_field_type := b.checked_struct_field_type_from_ssa(base_type, rhs_name) {
-		elem_type := b.unwrap_to_array_elem_ssa(checked_field_type)
-		if elem_type != 0 {
-			b.array_value_elem_types[field_val] = elem_type
+		checked_elem_type := b.unwrap_to_array_elem_ssa(checked_field_type)
+		if checked_elem_type != 0 {
+			b.array_value_elem_types[field_val] = checked_elem_type
 			return
 		}
 	}
-	elem_type := b.array_elem_type_from_selector_cursor(c)
-	if elem_type != 0 {
-		b.array_value_elem_types[field_val] = elem_type
+	cursor_elem_type := b.array_elem_type_from_selector_cursor(c)
+	if cursor_elem_type != 0 {
+		b.array_value_elem_types[field_val] = cursor_elem_type
 		return
 	}
 	if checked_expr_type := b.get_checked_expr_type_from_flat(c) {
@@ -6264,7 +7246,17 @@ fn (mut b Builder) build_infix_from_flat(c ast.Cursor) ValueID {
 	if str_type != 0 {
 		lhs_type := b.mod.values[lhs].typ
 		rhs_type := b.mod.values[rhs].typ
-		if b.is_string_like_ssa_type(lhs_type) || b.is_string_like_ssa_type(rhs_type) {
+		mut lhs_is_string := lhs_type == str_type
+		if !lhs_is_string && lhs_type > 0 && int(lhs_type) < b.mod.type_store.types.len {
+			lhs_typ := b.mod.type_store.types[lhs_type]
+			lhs_is_string = lhs_typ.kind == .ptr_t && lhs_typ.elem_type == str_type
+		}
+		mut rhs_is_string := rhs_type == str_type
+		if !rhs_is_string && rhs_type > 0 && int(rhs_type) < b.mod.type_store.types.len {
+			rhs_typ := b.mod.type_store.types[rhs_type]
+			rhs_is_string = rhs_typ.kind == .ptr_t && rhs_typ.elem_type == str_type
+		}
+		if lhs_is_string || rhs_is_string {
 			string_lhs := b.load_string_like_value(lhs)
 			string_rhs := b.load_string_like_value(rhs)
 			if op in [.eq, .ne] {
@@ -6575,7 +7567,8 @@ fn (mut b Builder) build_index_from_flat(c ast.Cursor) ValueID {
 			typed_ptr,
 			index,
 		])
-		return b.mod.add_instr(.load, b.cur_block, result_type, [elem_addr])
+		result := b.mod.add_instr(.load, b.cur_block, result_type, [elem_addr])
+		return b.finish_index_value_from_flat(c, result)
 	}
 
 	str_type := b.get_string_type()
@@ -6588,7 +7581,8 @@ fn (mut b Builder) build_index_from_flat(c ast.Cursor) ValueID {
 			data_ptr,
 			index,
 		])
-		return b.mod.add_instr(.load, b.cur_block, u8_t, [elem_addr])
+		result := b.mod.add_instr(.load, b.cur_block, u8_t, [elem_addr])
+		return b.finish_index_value_from_flat(c, result)
 	}
 
 	if base_type_id > 0 && base_type_id < b.mod.type_store.types.len {
@@ -6605,7 +7599,10 @@ fn (mut b Builder) build_index_from_flat(c ast.Cursor) ValueID {
 						alloca_ptr,
 						index,
 					])
-					return b.mod.add_instr(.load, b.cur_block, elem_type, [elem_addr])
+					result := b.mod.add_instr(.load, b.cur_block, elem_type, [
+						elem_addr,
+					])
+					return b.finish_index_value_from_flat(c, result)
 				}
 				if instr.op == .extractvalue && instr.operands.len >= 2 {
 					struct_val := instr.operands[0]
@@ -6622,9 +7619,10 @@ fn (mut b Builder) build_index_from_flat(c ast.Cursor) ValueID {
 							elem_ptr_type := b.mod.type_store.get_ptr(elem_type)
 							elem_addr := b.mod.add_instr(.get_element_ptr, b.cur_block,
 								elem_ptr_type, [field_addr, index])
-							return b.mod.add_instr(.load, b.cur_block, elem_type, [
+							result := b.mod.add_instr(.load, b.cur_block, elem_type, [
 								elem_addr,
 							])
+							return b.finish_index_value_from_flat(c, result)
 						}
 					}
 				}
@@ -6647,11 +7645,13 @@ fn (mut b Builder) build_index_from_flat(c ast.Cursor) ValueID {
 				base_val,
 				index,
 			])
-			return b.mod.add_instr(.load, b.cur_block, elem_type, [elem_addr])
+			result := b.mod.add_instr(.load, b.cur_block, elem_type, [elem_addr])
+			return b.finish_index_value_from_flat(c, result)
 		}
 	}
 
-	return b.mod.add_instr(.get_element_ptr, b.cur_block, result_type, [base_val, index])
+	result := b.mod.add_instr(.get_element_ptr, b.cur_block, result_type, [base_val, index])
+	return b.finish_index_value_from_flat(c, result)
 }
 
 // build_if_from_flat (s195) decodes the full IfExpr subtree via `decode_expr`
@@ -7003,6 +8003,8 @@ fn (mut b Builder) build_array_init_from_flat(c ast.Cursor) ValueID {
 	typ_c := c.edge(0)
 	len_c := c.edge(3)
 	nedges := c.edge_count()
+	array_elem_hint := b.array_literal_elem_type_hint
+	b.array_literal_elem_type_hint = 0
 
 	if nedges > 5 {
 		mut elem_vals := []ValueID{cap: nedges - 5}
@@ -7029,6 +8031,10 @@ fn (mut b Builder) build_array_init_from_flat(c ast.Cursor) ValueID {
 			else {}
 		}
 
+		if array_elem_hint != 0 {
+			elem_type = array_elem_hint
+			has_declared_type = true
+		}
 		if !has_declared_type {
 			if checked_type := b.get_checked_expr_type_from_flat(c) {
 				checked_base := b.unwrap_alias_type(checked_type)
@@ -7052,7 +8058,23 @@ fn (mut b Builder) build_array_init_from_flat(c ast.Cursor) ValueID {
 			}
 		}
 		if !has_declared_type && elem_vals.len > 0 {
-			elem_type = b.mod.values[elem_vals[0]].typ
+			for val in elem_vals {
+				if b.valid_value_id(val) {
+					elem_type = b.mod.values[val].typ
+					break
+				}
+			}
+		}
+		if !b.valid_type_id(elem_type) {
+			elem_type = b.mod.type_store.get_int(32)
+		}
+		if elem_vals.len > 0 {
+			zero := b.mod.get_or_add_const(elem_type, '0')
+			for i, val in elem_vals {
+				if !b.valid_value_id(val) {
+					elem_vals[i] = zero
+				}
+			}
 		}
 		{
 			elem_kind := b.mod.type_store.types[elem_type].kind
@@ -7244,11 +8266,13 @@ fn (mut b Builder) build_fn_literal_from_flat(c ast.Cursor) ValueID {
 	saved_block := b.cur_block
 	mut saved_vars := b.vars.clone()
 	mut saved_mut_ptr_params := b.mut_ptr_params.clone()
+	mut saved_local_smartcasts := b.local_smartcasts.clone()
 	saved_loop_stack := b.loop_stack.clone()
 
 	b.cur_func = func_idx
 	b.vars = map[string]ValueID{}
 	b.mut_ptr_params = map[string]bool{}
+	b.local_smartcasts = map[string]TypeID{}
 	b.loop_stack = []LoopInfo{}
 
 	entry := b.mod.add_block(func_idx, 'entry')
@@ -7285,6 +8309,7 @@ fn (mut b Builder) build_fn_literal_from_flat(c ast.Cursor) ValueID {
 	b.cur_block = saved_block
 	b.vars = saved_vars.move()
 	b.mut_ptr_params = saved_mut_ptr_params.move()
+	b.local_smartcasts = saved_local_smartcasts.move()
 	b.loop_stack = saved_loop_stack
 
 	fn_ptr_type := b.mod.type_store.get_ptr(b.mod.type_store.get_int(8))
@@ -7735,14 +8760,15 @@ fn (mut b Builder) convert_to_string(val ValueID, typ TypeID) ValueID {
 	if str_type != 0 && typ == str_type {
 		return val
 	}
+	if val <= 0 || val >= b.mod.values.len || typ <= 0 || int(typ) >= b.mod.type_store.types.len {
+		return b.mod.add_value_node(.string_literal, str_type, '', 0)
+	}
 	// Also check if the type is a struct named 'string' (may have different ID)
-	if typ < b.mod.type_store.types.len {
-		tinfo := b.mod.type_store.types[typ]
-		if tinfo.kind == .struct_t {
-			// Check if this is the string struct by field count (str, len, is_lit)
-			if tinfo.fields.len == 3 || typ == str_type {
-				return val
-			}
+	tinfo := b.mod.type_store.types[typ]
+	if tinfo.kind == .struct_t {
+		// Check if this is the string struct by field count (str, len, is_lit)
+		if tinfo.fields.len == 3 || typ == str_type {
+			return val
 		}
 	}
 	// Determine the conversion function based on the type
@@ -8079,7 +9105,17 @@ fn (mut b Builder) build_infix(expr ast.InfixExpr) ValueID {
 	if str_type != 0 {
 		lhs_type := b.mod.values[lhs].typ
 		rhs_type := b.mod.values[rhs].typ
-		if b.is_string_like_ssa_type(lhs_type) || b.is_string_like_ssa_type(rhs_type) {
+		mut lhs_is_string := lhs_type == str_type
+		if !lhs_is_string && lhs_type > 0 && int(lhs_type) < b.mod.type_store.types.len {
+			lhs_typ := b.mod.type_store.types[lhs_type]
+			lhs_is_string = lhs_typ.kind == .ptr_t && lhs_typ.elem_type == str_type
+		}
+		mut rhs_is_string := rhs_type == str_type
+		if !rhs_is_string && rhs_type > 0 && int(rhs_type) < b.mod.type_store.types.len {
+			rhs_typ := b.mod.type_store.types[rhs_type]
+			rhs_is_string = rhs_typ.kind == .ptr_t && rhs_typ.elem_type == str_type
+		}
+		if lhs_is_string || rhs_is_string {
 			string_lhs := b.load_string_like_value(lhs)
 			string_rhs := b.load_string_like_value(rhs)
 			if expr.op in [.eq, .ne] {
@@ -8376,8 +9412,11 @@ fn (mut b Builder) build_prefix(expr ast.PrefixExpr) ValueID {
 	if expr.op == .amp && expr.expr is ast.CastExpr {
 		cast_expr := expr.expr as ast.CastExpr
 		inner_val := b.build_expr(cast_expr.expr)
+		if !b.valid_value_id(inner_val) {
+			return inner_val
+		}
 		inner_type := b.mod.values[inner_val].typ
-		if inner_type != 0 && int(inner_type) < b.mod.type_store.types.len {
+		if inner_type > 0 && int(inner_type) < b.mod.type_store.types.len {
 			inner_t := b.mod.type_store.types[inner_type]
 			if inner_t.kind == .ptr_t || inner_t.kind == .int_t {
 				target_elem := b.ast_type_to_ssa(cast_expr.typ)
@@ -8391,8 +9430,11 @@ fn (mut b Builder) build_prefix(expr ast.PrefixExpr) ValueID {
 	if expr.op == .amp && expr.expr is ast.CallOrCastExpr {
 		coce := expr.expr as ast.CallOrCastExpr
 		inner_val := b.build_expr(coce.expr)
+		if !b.valid_value_id(inner_val) {
+			return inner_val
+		}
 		inner_type := b.mod.values[inner_val].typ
-		if inner_type != 0 && int(inner_type) < b.mod.type_store.types.len {
+		if inner_type > 0 && int(inner_type) < b.mod.type_store.types.len {
 			inner_t := b.mod.type_store.types[inner_type]
 			if inner_t.kind == .ptr_t || inner_t.kind == .int_t {
 				target_elem := b.ast_type_to_ssa(coce.lhs)
@@ -8410,8 +9452,11 @@ fn (mut b Builder) build_prefix(expr ast.PrefixExpr) ValueID {
 			if inner_prefix.expr is ast.CallOrCastExpr {
 				coce := inner_prefix.expr as ast.CallOrCastExpr
 				inner_val := b.build_expr(coce.expr)
+				if !b.valid_value_id(inner_val) {
+					return inner_val
+				}
 				inner_type := b.mod.values[inner_val].typ
-				if inner_type != 0 && int(inner_type) < b.mod.type_store.types.len {
+				if inner_type > 0 && int(inner_type) < b.mod.type_store.types.len {
 					inner_t := b.mod.type_store.types[inner_type]
 					if inner_t.kind == .ptr_t || inner_t.kind == .int_t {
 						// &&T(expr): cast to **T = ptr(ptr(T))
@@ -8426,8 +9471,11 @@ fn (mut b Builder) build_prefix(expr ast.PrefixExpr) ValueID {
 			} else if inner_prefix.expr is ast.CastExpr {
 				cast_expr := inner_prefix.expr as ast.CastExpr
 				inner_val := b.build_expr(cast_expr.expr)
+				if !b.valid_value_id(inner_val) {
+					return inner_val
+				}
 				inner_type := b.mod.values[inner_val].typ
-				if inner_type != 0 && int(inner_type) < b.mod.type_store.types.len {
+				if inner_type > 0 && int(inner_type) < b.mod.type_store.types.len {
 					inner_t := b.mod.type_store.types[inner_type]
 					if inner_t.kind == .ptr_t || inner_t.kind == .int_t {
 						target_elem := b.ast_type_to_ssa(cast_expr.typ)
@@ -8469,6 +9517,9 @@ fn (mut b Builder) build_prefix(expr ast.PrefixExpr) ValueID {
 			return addr
 		}
 		val := b.build_expr(expr.expr)
+		if !b.valid_value_id(val) {
+			return val
+		}
 		// No addressable location (e.g. function call return value) –
 		// For function references, &fn_name is just the function pointer
 		// itself — no extra indirection needed.
@@ -8486,7 +9537,7 @@ fn (mut b Builder) build_prefix(expr ast.PrefixExpr) ValueID {
 		// must outlive the wrapping function).
 		// For scalars, use stack alloca (they're typically short-lived).
 		val_type := b.mod.values[val].typ
-		if val_type != 0 {
+		if val_type > 0 && int(val_type) < b.mod.type_store.types.len {
 			ptr_type := b.mod.type_store.get_ptr(val_type)
 			typ_info := b.mod.type_store.types[val_type]
 			if typ_info.kind == .struct_t {
@@ -8503,6 +9554,9 @@ fn (mut b Builder) build_prefix(expr ast.PrefixExpr) ValueID {
 	}
 
 	val := b.build_expr(expr.expr)
+	if !b.valid_value_id(val) {
+		return val
+	}
 
 	match expr.op {
 		.minus {
@@ -8518,29 +9572,42 @@ fn (mut b Builder) build_prefix(expr ast.PrefixExpr) ValueID {
 				xored := b.mod.add_instr(.xor, b.cur_block, i64_type, [int_val, sign_mask])
 				return b.mod.add_instr(.bitcast, b.cur_block, val_type, [xored])
 			}
+			if val_type <= 0 {
+				return val
+			}
 			zero := b.mod.get_or_add_const(val_type, '0')
 			return b.mod.add_instr(.sub, b.cur_block, val_type, [zero, val])
 		}
 		.not {
 			// Logical NOT: !x → (x == 0)
 			// Returns 1 if x is 0, 0 if x is non-zero
-			zero := b.mod.get_or_add_const(b.mod.values[val].typ, '0')
+			val_type := b.mod.values[val].typ
+			if val_type <= 0 {
+				return val
+			}
+			zero := b.mod.get_or_add_const(val_type, '0')
 			return b.mod.add_instr(.eq, b.cur_block, b.mod.type_store.get_int(1), [
 				val,
 				zero,
 			])
 		}
 		.bit_not {
-			neg_one := b.mod.get_or_add_const(b.mod.values[val].typ, '-1')
-			return b.mod.add_instr(.xor, b.cur_block, b.mod.values[val].typ, [val, neg_one])
+			val_type := b.mod.values[val].typ
+			if val_type <= 0 {
+				return val
+			}
+			neg_one := b.mod.get_or_add_const(val_type, '-1')
+			return b.mod.add_instr(.xor, b.cur_block, val_type, [val, neg_one])
 		}
 		.mul {
 			// Dereference: load from pointer
 			val_type := b.mod.values[val].typ
-			if val_type != 0 && int(val_type) < b.mod.type_store.types.len {
+			if val_type > 0 && int(val_type) < b.mod.type_store.types.len {
 				typ := b.mod.type_store.types[val_type]
-				if typ.kind == .ptr_t && typ.elem_type != 0 {
-					return b.mod.add_instr(.load, b.cur_block, typ.elem_type, [val])
+				if typ.kind == .ptr_t && typ.elem_type > 0 {
+					result := b.mod.add_instr(.load, b.cur_block, typ.elem_type, [val])
+					b.track_array_value_elem_type_from_checked_expr(result, ast.Expr(expr))
+					return result
 				}
 			}
 			return val
@@ -8552,6 +9619,15 @@ fn (mut b Builder) build_prefix(expr ast.PrefixExpr) ValueID {
 }
 
 fn (mut b Builder) build_call(expr ast.CallExpr) ValueID {
+	if expr.args.len == 0 && expr.lhs is ast.SelectorExpr {
+		sel := expr.lhs as ast.SelectorExpr
+		if sel.lhs is ast.Ident && sel.lhs.name == 'C' && sel.rhs.name == 'mach_task_self' {
+			u32_t := b.mod.type_store.get_uint(32)
+			glob := b.mod.add_external_global('mach_task_self_', u32_t)
+			b.global_refs['mach_task_self_'] = glob
+			return b.mod.add_instr(.load, b.cur_block, u32_t, [glob])
+		}
+	}
 	if expr.args.len == 1 {
 		lhs_name := expr.lhs.name()
 		if lhs_name != '' && lhs_name !in b.fn_index {
@@ -8567,6 +9643,100 @@ fn (mut b Builder) build_call(expr ast.CallExpr) ValueID {
 		}
 	}
 	return b.build_call_resolved(b.resolve_call_name(expr), expr)
+}
+
+fn (mut b Builder) call_param_type(fn_name string, param_idx int) ?TypeID {
+	if param_idx < 0 {
+		return none
+	}
+	fn_idx := b.fn_index[fn_name] or { return none }
+	params := b.mod.funcs[fn_idx].params
+	if param_idx >= params.len {
+		return none
+	}
+	param_val := params[param_idx]
+	if param_val <= 0 || param_val >= b.mod.values.len {
+		return none
+	}
+	return b.mod.values[param_val].typ
+}
+
+fn (mut b Builder) call_param_array_elem_type(fn_name string, param_idx int) ?TypeID {
+	if param_idx < 0 {
+		return none
+	}
+	param_elem_types := b.fn_param_array_elem_types[fn_name] or { return none }
+	if param_idx >= param_elem_types.len {
+		return none
+	}
+	elem_type := param_elem_types[param_idx]
+	if elem_type == 0 {
+		return none
+	}
+	return elem_type
+}
+
+fn (mut b Builder) array_elem_type_from_sizeof_arg(arg ast.Expr) TypeID {
+	match arg {
+		ast.KeywordOperator {
+			if arg.op == .key_sizeof && arg.exprs.len > 0 {
+				return b.array_elem_type_from_sizeof_operand(arg.exprs[0])
+			}
+		}
+		else {}
+	}
+
+	return 0
+}
+
+fn (mut b Builder) array_elem_type_from_sizeof_operand(expr ast.Expr) TypeID {
+	match expr {
+		ast.Ident {
+			return b.ident_type_to_ssa(expr.name)
+		}
+		ast.SelectorExpr {
+			lhs_name := expr.lhs.name()
+			if lhs_name != '' && expr.rhs.name != '' {
+				return b.named_type_to_ssa('${lhs_name}__${expr.rhs.name}')
+			}
+		}
+		ast.Type {
+			return b.ast_type_to_ssa(expr)
+		}
+		else {}
+	}
+
+	return 0
+}
+
+fn (mut b Builder) array_elem_type_from_new_array_call(fn_name string, expr ast.CallExpr) TypeID {
+	if expr.args.len < 3 {
+		return 0
+	}
+	if fn_name in ['__new_array', 'builtin____new_array', '__new_array_noscan',
+		'builtin____new_array_noscan', '__new_array_with_default',
+		'builtin____new_array_with_default', '__new_array_with_default_noscan',
+		'builtin____new_array_with_default_noscan', '__new_array_with_multi_default',
+		'builtin____new_array_with_multi_default', '__new_array_with_multi_default_noscan',
+		'builtin____new_array_with_multi_default_noscan', '__new_array_with_array_default',
+		'builtin____new_array_with_array_default', '__new_array_with_array_default_noscan',
+		'builtin____new_array_with_array_default_noscan', 'new_array_from_c_array',
+		'builtin__new_array_from_c_array', 'new_array_from_c_array_noscan',
+		'builtin__new_array_from_c_array_noscan', 'new_array_from_array_and_c_array',
+		'builtin__new_array_from_array_and_c_array'] {
+		return b.array_elem_type_from_sizeof_arg(expr.args[2])
+	}
+	return 0
+}
+
+fn (mut b Builder) build_call_arg(fn_name string, param_idx int, arg ast.Expr) ValueID {
+	old_hint := b.array_literal_elem_type_hint
+	if elem_type := b.call_param_array_elem_type(fn_name, param_idx) {
+		b.array_literal_elem_type_hint = elem_type
+	}
+	val := b.build_expr(arg)
+	b.array_literal_elem_type_hint = old_hint
+	return val
 }
 
 // build_call_resolved (s218) is the post-resolve body of `build_call`,
@@ -8770,11 +9940,10 @@ fn (mut b Builder) build_call_resolved(fn_name_in string, expr ast.CallExpr) Val
 			args << receiver
 		}
 	}
-	// Determine parameter types to decide if we should pass addresses for mut receivers
-	mut fn_params := []ValueID{}
-	if fn_name in b.fn_index {
-		fn_params = b.mod.funcs[b.fn_index[fn_name]].params.clone()
-	}
+	// Determine parameter types to decide if we should pass addresses for mut receivers.
+	// Read from the function signature directly instead of cloning the params
+	// array; this path is used while compiling the compiler itself, so it must
+	// not depend on dynamic-array element inference for local bookkeeping.
 	for arg in expr.args {
 		// For mut arguments, pass the address (pointer) instead of the value.
 		// But if the value is already a pointer (e.g., &FileSet field or parameter),
@@ -8783,8 +9952,7 @@ fn (mut b Builder) build_call_resolved(fn_name_in string, expr ast.CallExpr) Val
 			// Check if the parameter expects ptr(struct)
 			param_idx := args.len
 			mut param_wants_ptr_to_struct := false
-			if param_idx < fn_params.len {
-				param_type := b.mod.values[fn_params[param_idx]].typ
+			if param_type := b.call_param_type(fn_name, param_idx) {
 				if param_type < b.mod.type_store.types.len
 					&& b.mod.type_store.types[param_type].kind == .ptr_t {
 					pointee := b.mod.type_store.types[param_type].elem_type
@@ -8821,8 +9989,7 @@ fn (mut b Builder) build_call_resolved(fn_name_in string, expr ast.CallExpr) Val
 				// so evaluate the expression directly instead of taking its address.
 				param_idx2 := args.len
 				mut param_is_already_ptr := false
-				if param_idx2 < fn_params.len {
-					pt := b.mod.values[fn_params[param_idx2]].typ
+				if pt := b.call_param_type(fn_name, param_idx2) {
 					if pt < b.mod.type_store.types.len && b.mod.type_store.types[pt].kind == .ptr_t {
 						pointee2 := b.mod.type_store.types[pt].elem_type
 						// Only skip addr-of if pointee is NOT a struct (struct mut params need addr-of)
@@ -8856,8 +10023,7 @@ fn (mut b Builder) build_call_resolved(fn_name_in string, expr ast.CallExpr) Val
 			// Use args.len as param index (accounts for receiver already in args)
 			param_idx := args.len
 			mut param_wants_struct_ptr := false
-			if param_idx < fn_params.len {
-				param_type := b.mod.values[fn_params[param_idx]].typ
+			if param_type := b.call_param_type(fn_name, param_idx) {
 				// Only use build_addr for ptr(struct_t) params (mut receivers/params),
 				// NOT for ptr(int_t), ptr(ptr_t) etc. (normal pointer params like C.puts)
 				if param_type < b.mod.type_store.types.len
@@ -8891,16 +10057,16 @@ fn (mut b Builder) build_call_resolved(fn_name_in string, expr ast.CallExpr) Val
 					}
 				}
 			} else {
-				args << b.build_expr(arg)
+				args << b.build_call_arg(fn_name, param_idx, arg)
 			}
 		}
 	}
 
 	// Auto-deref/ref arguments to match function parameter types
-	if fn_params.len > 0 {
-		for ai := 0; ai < args.len && ai < fn_params.len; ai++ {
+	if fn_name in b.fn_index {
+		for ai := 0; ai < args.len; ai++ {
+			param_type := b.call_param_type(fn_name, ai) or { continue }
 			arg_type := b.mod.values[args[ai]].typ
-			param_type := b.mod.values[fn_params[ai]].typ
 			if arg_type < b.mod.type_store.types.len && param_type < b.mod.type_store.types.len {
 				arg_kind := b.mod.type_store.types[arg_type].kind
 				param_kind := b.mod.type_store.types[param_type].kind
@@ -9006,9 +10172,20 @@ fn (mut b Builder) build_call_resolved(fn_name_in string, expr ast.CallExpr) Val
 
 	call_val := b.mod.add_instr(.call, b.cur_block, ret_type, operands)
 
+	new_array_elem_type := b.array_elem_type_from_new_array_call(fn_name, expr)
+	if new_array_elem_type != 0 {
+		b.array_value_elem_types[call_val] = new_array_elem_type
+	}
 	if fn_name in ['array__slice', 'array__slice_ni', 'builtin__array__slice', 'builtin__array__slice_ni']
 		&& expr.args.len > 0 {
 		elem_type := b.infer_array_elem_type_from_expr(expr.args[0])
+		if elem_type != 0 {
+			b.array_value_elem_types[call_val] = elem_type
+		}
+	}
+	if fn_name in ['array__clone', 'array__clone_to_depth', 'builtin__array__clone',
+		'builtin__array__clone_to_depth'] {
+		elem_type := b.infer_array_elem_type_from_receiver(expr)
 		if elem_type != 0 {
 			b.array_value_elem_types[call_val] = elem_type
 		}
@@ -9563,17 +10740,28 @@ fn (b &Builder) resolve_call_name_for_ident_name(name string) string {
 	// 'string__plus' but the SSA builder registers 'builtin__string__+'
 	// Map transformer names to operator symbols.
 	op_map := {
-		'plus':  '+'
-		'minus': '-'
-		'mult':  '*'
-		'div':   '/'
-		'mod':   '%'
-		'eq':    '=='
-		'ne':    '!='
-		'lt':    '<'
-		'gt':    '>'
-		'le':    '<='
-		'ge':    '>='
+		'plus':     '+'
+		'op_plus':  '+'
+		'minus':    '-'
+		'op_minus': '-'
+		'mult':     '*'
+		'op_mul':   '*'
+		'div':      '/'
+		'op_div':   '/'
+		'mod':      '%'
+		'op_mod':   '%'
+		'eq':       '=='
+		'op_eq':    '=='
+		'ne':       '!='
+		'op_ne':    '!='
+		'lt':       '<'
+		'op_lt':    '<'
+		'gt':       '>'
+		'op_gt':    '>'
+		'le':       '<='
+		'op_le':    '<='
+		'ge':       '>='
+		'op_ge':    '>='
 	}
 	if idx2 := name.last_index('__') {
 		method_part := name[idx2 + 2..]
@@ -10026,9 +11214,9 @@ fn (mut b Builder) get_receiver_type_name_from_flat(c ast.Cursor) string {
 				rhs := c.edge(1)
 				if rhs.kind() == .expr_ident {
 					rhs_name := rhs.name()
-					for field in lhs_typ.fields {
-						if field.name == rhs_name {
-							return b.types_type_c_name(field.typ)
+					for fi in 0 .. lhs_typ.fields.len {
+						if lhs_typ.fields[fi].name == rhs_name {
+							return b.types_type_c_name(lhs_typ.fields[fi].typ)
 						}
 					}
 				}
@@ -10151,9 +11339,9 @@ fn (mut b Builder) get_receiver_type_name(expr ast.Expr) string {
 		if lhs_typ := b.get_checked_expr_type(expr.lhs) {
 			// If the LHS is a struct, look up the field type
 			if lhs_typ is types.Struct {
-				for field in lhs_typ.fields {
-					if field.name == expr.rhs.name {
-						return b.types_type_c_name(field.typ)
+				for fi in 0 .. lhs_typ.fields.len {
+					if lhs_typ.fields[fi].name == expr.rhs.name {
+						return b.types_type_c_name(lhs_typ.fields[fi].typ)
 					}
 				}
 			}
@@ -10342,6 +11530,12 @@ fn (mut b Builder) build_selector(expr ast.SelectorExpr) ValueID {
 			// Time
 			'CLOCK_MONOTONIC' { '6' }
 			'CLOCK_REALTIME' { '0' }
+			// Mach
+			'KERN_SUCCESS' { '0' }
+			'TASK_BASIC_INFO' { '18' }
+			'MACH_TASK_BASIC_INFO_COUNT' { '12' }
+			'HOST_VM_INFO64' { '4' }
+			'HOST_VM_INFO64_COUNT' { '40' }
 			// System
 			'_SC_PAGESIZE' { '29' }
 			'_SC_NPROCESSORS_ONLN' { '58' }
@@ -10536,12 +11730,21 @@ fn (mut b Builder) build_selector(expr ast.SelectorExpr) ValueID {
 
 	// Use extractvalue for struct field access
 	mut base := b.build_expr(expr.lhs)
+	if field_val := b.build_sumtype_variant_selector_value(base,
+		b.selector_lhs_variant_type_id(expr.lhs), expr.rhs.name)
+	{
+		if b.mod.values[field_val].typ == b.get_array_type() {
+			b.track_array_value_elem_type_from_selector(expr, field_val, b.mod.values[base].typ)
+		}
+		return field_val
+	}
 	// Check for fixed-size array .len access — return compile-time constant
 	base_typ_raw := b.mod.values[base].typ
-	if base_typ_raw < b.mod.type_store.types.len {
+	if base_typ_raw > 0 && int(base_typ_raw) < b.mod.type_store.types.len {
 		mut check_typ := b.mod.type_store.types[base_typ_raw]
 		// Also handle ptr(array_t) — e.g. when fixed array is behind a pointer
-		if check_typ.kind == .ptr_t && check_typ.elem_type < b.mod.type_store.types.len {
+		if check_typ.kind == .ptr_t && check_typ.elem_type > 0
+			&& int(check_typ.elem_type) < b.mod.type_store.types.len {
 			check_typ = b.mod.type_store.types[check_typ.elem_type]
 		}
 		if check_typ.kind == .array_t && expr.rhs.name == 'len' {
@@ -10550,10 +11753,15 @@ fn (mut b Builder) build_selector(expr ast.SelectorExpr) ValueID {
 	}
 	// If base is a pointer to struct (mut param or heap alloc), auto-deref
 	base_typ := b.mod.values[base].typ
-	if base_typ < b.mod.type_store.types.len && b.mod.type_store.types[base_typ].kind == .ptr_t {
+	if base_typ > 0 && int(base_typ) < b.mod.type_store.types.len
+		&& b.mod.type_store.types[base_typ].kind == .ptr_t {
 		pointee := b.mod.type_store.types[base_typ].elem_type
-		if pointee < b.mod.type_store.types.len && b.mod.type_store.types[pointee].kind == .struct_t {
+		if pointee > 0 && int(pointee) < b.mod.type_store.types.len
+			&& b.mod.type_store.types[pointee].kind == .struct_t {
 			field_idx := b.field_index(expr, base)
+			if field_idx < 0 {
+				return 0
+			}
 			mut result_type := TypeID(0)
 			pointee_typ := b.mod.type_store.types[pointee]
 			if field_idx >= 0 && field_idx < pointee_typ.fields.len {
@@ -10562,6 +11770,9 @@ fn (mut b Builder) build_selector(expr ast.SelectorExpr) ValueID {
 			if result_type == 0 {
 				result_type = b.expr_type(ast.Expr(expr))
 			}
+			if result_type <= 0 || int(result_type) >= b.mod.type_store.types.len {
+				return 0
+			}
 			field_ptr_type := b.mod.type_store.get_ptr(result_type)
 			field_ptr := b.mod.add_instr(.get_element_ptr, b.cur_block, field_ptr_type, [
 				base,
@@ -10569,30 +11780,49 @@ fn (mut b Builder) build_selector(expr ast.SelectorExpr) ValueID {
 			])
 			field_val := b.mod.add_instr(.load, b.cur_block, result_type, [field_ptr])
 			if result_type == b.get_array_type() {
-				if checked_field_type := b.checked_struct_field_type_from_ssa(pointee,
+				elem_type := b.struct_field_array_elem_type(pointee, expr.rhs.name)
+				if elem_type != 0 {
+					b.array_value_elem_types[field_val] = elem_type
+				} else if checked_field_type := b.checked_struct_field_type_from_ssa(pointee,
 					expr.rhs.name)
 				{
-					elem_type := b.unwrap_to_array_elem_ssa(checked_field_type)
-					if elem_type != 0 {
-						b.array_value_elem_types[field_val] = elem_type
+					checked_elem_type := b.unwrap_to_array_elem_ssa(checked_field_type)
+					if checked_elem_type != 0 {
+						b.array_value_elem_types[field_val] = checked_elem_type
 					}
 				}
 			}
 			return field_val
 		}
 	}
-	field_idx := b.field_index(expr, base)
 	// Determine result type: prefer SSA struct field type for struct bases,
 	// fall back to type environment.
 	// The type environment may have the smartcast variant type (e.g., int) for a
 	// sumtype field access, while the SSA struct has the correct field type.
+	mut field_idx := -1
 	mut result_type := TypeID(0)
 	actual_base_type := b.mod.values[base].typ
-	if actual_base_type < b.mod.type_store.types.len {
+	if actual_base_type > 0 && int(actual_base_type) < b.mod.type_store.types.len {
 		typ := b.mod.type_store.types[actual_base_type]
-		if typ.kind == .struct_t && field_idx < typ.fields.len {
-			result_type = typ.fields[field_idx]
+		if typ.kind == .struct_t {
+			for i, name in typ.field_names {
+				if name == expr.rhs.name {
+					field_idx = i
+					result_type = typ.fields[i]
+					break
+				}
+			}
+			if field_idx < 0 && b.ssa_type_is_sumtype(actual_base_type)
+				&& !expr.rhs.name.starts_with('arg') {
+				return 0
+			}
 		}
+	}
+	if field_idx < 0 {
+		field_idx = b.field_index(expr, base)
+	}
+	if field_idx < 0 {
+		return 0
 	}
 	if result_type == 0 {
 		result_type = b.expr_type(ast.Expr(expr))
@@ -10623,7 +11853,19 @@ fn (mut b Builder) build_selector_addr(expr ast.SelectorExpr) ?SelectorAddr {
 	if struct_type.kind != .struct_t {
 		return none
 	}
-	field_idx := b.field_index(expr, base)
+	mut field_idx := -1
+	for i, name in struct_type.field_names {
+		if name == expr.rhs.name {
+			field_idx = i
+			break
+		}
+	}
+	if field_idx < 0 && b.ssa_type_is_sumtype(ptr_type.elem_type) {
+		return none
+	}
+	if field_idx < 0 {
+		field_idx = b.field_index(expr, base)
+	}
 	if field_idx < 0 || field_idx >= struct_type.fields.len {
 		return none
 	}
@@ -10637,17 +11879,65 @@ fn (mut b Builder) build_selector_addr(expr ast.SelectorExpr) ?SelectorAddr {
 	}
 }
 
+fn (mut b Builder) build_sumtype_variant_selector_value(base ValueID, variant_type TypeID, field_name string) ?ValueID {
+	if base <= 0 || base >= b.mod.values.len || field_name == '' {
+		return none
+	}
+	base_type := b.mod.values[base].typ
+	if !b.ssa_type_is_sumtype(base_type) {
+		return none
+	}
+	if variant_type <= 0 || variant_type == base_type
+		|| int(variant_type) >= b.mod.type_store.types.len {
+		return none
+	}
+	variant_info := b.mod.type_store.types[variant_type]
+	if variant_info.kind != .struct_t {
+		return none
+	}
+	mut field_idx := -1
+	mut field_type := TypeID(0)
+	for i, name in variant_info.field_names {
+		if name == field_name {
+			field_idx = i
+			field_type = variant_info.fields[i]
+			break
+		}
+	}
+	if field_idx < 0 || field_type <= 0 {
+		return none
+	}
+	i32_t := b.mod.type_store.get_int(32)
+	i64_t := b.mod.type_store.get_int(64)
+	data_idx := b.mod.get_or_add_const(i32_t, '1')
+	data_word := b.mod.add_instr(.extractvalue, b.cur_block, i64_t, [base, data_idx])
+	variant_ptr_type := b.mod.type_store.get_ptr(variant_type)
+	data_ptr := b.cast_value_to_type(data_word, variant_ptr_type)
+	field_idx_val := b.mod.get_or_add_const(i32_t, field_idx.str())
+	field_ptr_type := b.mod.type_store.get_ptr(field_type)
+	field_ptr := b.mod.add_instr(.get_element_ptr, b.cur_block, field_ptr_type, [
+		data_ptr,
+		field_idx_val,
+	])
+	return b.mod.add_instr(.load, b.cur_block, field_type, [field_ptr])
+}
+
 fn (mut b Builder) track_array_value_elem_type_from_selector(expr ast.SelectorExpr, field_val ValueID, base_type TypeID) {
+	elem_type := b.struct_field_array_elem_type(base_type, expr.rhs.name)
+	if elem_type != 0 {
+		b.array_value_elem_types[field_val] = elem_type
+		return
+	}
 	if checked_field_type := b.checked_struct_field_type_from_ssa(base_type, expr.rhs.name) {
-		elem_type := b.unwrap_to_array_elem_ssa(checked_field_type)
-		if elem_type != 0 {
-			b.array_value_elem_types[field_val] = elem_type
+		checked_elem_type := b.unwrap_to_array_elem_ssa(checked_field_type)
+		if checked_elem_type != 0 {
+			b.array_value_elem_types[field_val] = checked_elem_type
 			return
 		}
 	}
-	elem_type := b.array_elem_type_from_selector_expr(expr)
-	if elem_type != 0 {
-		b.array_value_elem_types[field_val] = elem_type
+	selector_elem_type := b.array_elem_type_from_selector_expr(expr)
+	if selector_elem_type != 0 {
+		b.array_value_elem_types[field_val] = selector_elem_type
 		return
 	}
 	if checked_expr_type := b.get_checked_expr_type(ast.Expr(expr)) {
@@ -10662,9 +11952,9 @@ fn (mut b Builder) array_elem_type_from_selector_expr(expr ast.SelectorExpr) Typ
 	if lhs_type := b.get_checked_expr_type(expr.lhs) {
 		st := b.unwrap_to_struct(lhs_type)
 		if st.name != '' {
-			for field in st.fields {
-				if field.name == expr.rhs.name {
-					return b.unwrap_to_array_elem_ssa(field.typ)
+			for fi in 0 .. st.fields.len {
+				if st.fields[fi].name == expr.rhs.name {
+					return b.unwrap_to_array_elem_ssa(st.fields[fi].typ)
 				}
 			}
 		}
@@ -10678,10 +11968,11 @@ fn (mut b Builder) field_index(expr ast.SelectorExpr, base ValueID) int {
 	// backend addresses. The checker type can be a stale placeholder while the
 	// SSA type already contains the concrete field order.
 	base_type_id := b.mod.values[base].typ
-	if base_type_id < b.mod.type_store.types.len {
+	if base_type_id > 0 && int(base_type_id) < b.mod.type_store.types.len {
 		mut ssa_typ := b.mod.type_store.types[base_type_id]
 		// Dereference pointer(s) to get to the struct type
-		for ssa_typ.kind == .ptr_t && ssa_typ.elem_type < b.mod.type_store.types.len {
+		for ssa_typ.kind == .ptr_t && ssa_typ.elem_type > 0
+			&& int(ssa_typ.elem_type) < b.mod.type_store.types.len {
 			ssa_typ = b.mod.type_store.types[ssa_typ.elem_type]
 		}
 		if ssa_typ.kind == .struct_t {
@@ -10695,8 +11986,8 @@ fn (mut b Builder) field_index(expr ast.SelectorExpr, base ValueID) int {
 	if typ := b.get_checked_expr_type(expr.lhs) {
 		st := b.unwrap_to_struct(typ)
 		if st.name != '' {
-			for i, f in st.fields {
-				if f.name == rhs_name {
+			for i in 0 .. st.fields.len {
+				if st.fields[i].name == rhs_name {
 					return i
 				}
 			}
@@ -10721,9 +12012,9 @@ fn (mut b Builder) is_struct_field(receiver_expr ast.Expr, field_name string) bo
 	if typ := b.get_checked_expr_type(receiver_expr) {
 		st := b.unwrap_to_struct(typ)
 		if st.name != '' {
-			for f in st.fields {
-				if f.name == field_name {
-					return b.is_fn_type(f.typ)
+			for fi in 0 .. st.fields.len {
+				if st.fields[fi].name == field_name {
+					return b.is_fn_type(st.fields[fi].typ)
 				}
 			}
 		}
@@ -10859,9 +12150,9 @@ fn (mut b Builder) checked_struct_field_type_from_ssa(base_type_id TypeID, field
 	if st.name == '' {
 		return none
 	}
-	for field in st.fields {
-		if field.name == field_name {
-			return field.typ
+	for fi in 0 .. st.fields.len {
+		if st.fields[fi].name == field_name {
+			return st.fields[fi].typ
 		}
 	}
 	return none
@@ -10889,9 +12180,24 @@ fn (mut b Builder) infer_dynamic_array_index_type(expr ast.IndexExpr, base_val V
 			}
 		}
 	}
+	lhs_expr := b.unwrap_index_lhs_expr(expr.lhs)
+	if result_type == i64_t && lhs_expr !is ast.EmptyExpr {
+		if arr_typ := b.get_checked_expr_type(lhs_expr) {
+			inferred := b.unwrap_to_array_elem_ssa(arr_typ)
+			if inferred != 0 {
+				result_type = inferred
+			}
+		}
+	}
+	if result_type == i64_t && lhs_expr is ast.SelectorExpr {
+		inferred := b.array_elem_type_from_selector_expr(lhs_expr as ast.SelectorExpr)
+		if inferred != 0 {
+			result_type = inferred
+		}
+	}
 	if result_type == i64_t {
-		if expr.lhs is ast.CallExpr {
-			call_lhs := expr.lhs as ast.CallExpr
+		if lhs_expr is ast.CallExpr {
+			call_lhs := lhs_expr as ast.CallExpr
 			if call_lhs.lhs is ast.Ident {
 				call_name := (call_lhs.lhs as ast.Ident).name
 				if call_name in ['array__slice', 'array__slice_ni'] && call_lhs.args.len >= 1 {
@@ -10906,9 +12212,19 @@ fn (mut b Builder) infer_dynamic_array_index_type(expr ast.IndexExpr, base_val V
 		}
 	}
 	if result_type == i64_t {
-		if expr.lhs is ast.Ident {
-			if elem_t := b.array_elem_types[expr.lhs.name] {
+		if lhs_expr is ast.Ident {
+			if elem_t := b.array_elem_types[lhs_expr.name] {
 				result_type = elem_t
+			}
+		}
+	}
+	if result_type == i64_t {
+		if lhs_expr is ast.Ident {
+			if typ := b.checked_local_type(lhs_expr.name) {
+				inferred := b.unwrap_to_array_elem_ssa(typ)
+				if inferred != 0 {
+					result_type = inferred
+				}
 			}
 		}
 	}
@@ -10918,6 +12234,31 @@ fn (mut b Builder) infer_dynamic_array_index_type(expr ast.IndexExpr, base_val V
 		}
 	}
 	return result_type
+}
+
+fn (mut b Builder) finish_index_value(expr ast.IndexExpr, val ValueID) ValueID {
+	b.track_array_value_elem_type_from_checked_expr(val, ast.Expr(expr))
+	return val
+}
+
+fn (mut b Builder) unwrap_index_lhs_expr(expr ast.Expr) ast.Expr {
+	mut cur := expr
+	for _ in 0 .. 8 {
+		match cur {
+			ast.ParenExpr {
+				cur = cur.expr
+				continue
+			}
+			ast.ModifierExpr {
+				cur = cur.expr
+				continue
+			}
+			else {}
+		}
+
+		break
+	}
+	return cur
 }
 
 fn (mut b Builder) build_index(expr ast.IndexExpr) ValueID {
@@ -10958,7 +12299,8 @@ fn (mut b Builder) build_index(expr ast.IndexExpr) ValueID {
 			index,
 		])
 		// Load the element
-		return b.mod.add_instr(.load, b.cur_block, result_type, [elem_addr])
+		result := b.mod.add_instr(.load, b.cur_block, result_type, [elem_addr])
+		return b.finish_index_value(expr, result)
 	}
 
 	// Check if base is a string struct — index into .str (field 0) data pointer
@@ -10976,7 +12318,8 @@ fn (mut b Builder) build_index(expr ast.IndexExpr) ValueID {
 			index,
 		])
 		// Load the byte as unsigned u8
-		return b.mod.add_instr(.load, b.cur_block, u8_t, [elem_addr])
+		result := b.mod.add_instr(.load, b.cur_block, u8_t, [elem_addr])
+		return b.finish_index_value(expr, result)
 	}
 
 	// Handle fixed-size array values (from [1,2,3]! load): base is array_t, not ptr_t.
@@ -10997,7 +12340,10 @@ fn (mut b Builder) build_index(expr ast.IndexExpr) ValueID {
 						alloca_ptr,
 						index,
 					])
-					return b.mod.add_instr(.load, b.cur_block, elem_type, [elem_addr])
+					result := b.mod.add_instr(.load, b.cur_block, elem_type, [
+						elem_addr,
+					])
+					return b.finish_index_value(expr, result)
 				}
 				if instr.op == .extractvalue && instr.operands.len >= 2 {
 					// Base is extractvalue(struct_val, field_idx) producing an array_t.
@@ -11021,9 +12367,10 @@ fn (mut b Builder) build_index(expr ast.IndexExpr) ValueID {
 							elem_ptr_type := b.mod.type_store.get_ptr(elem_type)
 							elem_addr := b.mod.add_instr(.get_element_ptr, b.cur_block,
 								elem_ptr_type, [field_addr, index])
-							return b.mod.add_instr(.load, b.cur_block, elem_type, [
+							result := b.mod.add_instr(.load, b.cur_block, elem_type, [
 								elem_addr,
 							])
+							return b.finish_index_value(expr, result)
 						}
 					}
 				}
@@ -11051,11 +12398,13 @@ fn (mut b Builder) build_index(expr ast.IndexExpr) ValueID {
 				base_val,
 				index,
 			])
-			return b.mod.add_instr(.load, b.cur_block, elem_type, [elem_addr])
+			result := b.mod.add_instr(.load, b.cur_block, elem_type, [elem_addr])
+			return b.finish_index_value(expr, result)
 		}
 	}
 
-	return b.mod.add_instr(.get_element_ptr, b.cur_block, result_type, [base_val, index])
+	result := b.mod.add_instr(.get_element_ptr, b.cur_block, result_type, [base_val, index])
+	return b.finish_index_value(expr, result)
 }
 
 // infer_if_expr_type tries to infer the result type of a transformer-generated
@@ -11203,6 +12552,9 @@ fn (mut b Builder) build_if_expr(node ast.IfExpr) ValueID {
 
 	// Then
 	b.cur_block = then_block
+	then_smartcasts := b.smartcast_variant_type_ids_from_condition(node.cond)
+	mut saved_local_smartcasts := b.local_smartcasts.clone()
+	b.apply_local_smartcasts(then_smartcasts)
 	mut then_val := ValueID(0)
 	if node.stmts.len > 0 {
 		for i := 0; i < node.stmts.len - 1; i++ {
@@ -11215,6 +12567,7 @@ fn (mut b Builder) build_if_expr(node ast.IfExpr) ValueID {
 			b.build_stmt(last)
 		}
 	}
+	b.local_smartcasts = saved_local_smartcasts.clone()
 	then_end_block := b.cur_block
 	mut then_reaches_merge := false
 	if !b.block_has_terminator(b.cur_block) {
@@ -11257,6 +12610,7 @@ fn (mut b Builder) build_if_expr(node ast.IfExpr) ValueID {
 			else_reaches_merge = true
 		}
 	}
+	b.local_smartcasts = saved_local_smartcasts.move()
 
 	// Merge block: use phi to select result (no alloca/store/load)
 	b.cur_block = merge_block
@@ -11305,11 +12659,17 @@ fn (mut b Builder) build_if_expr(node ast.IfExpr) ValueID {
 }
 
 fn (mut b Builder) build_array_init_expr(expr ast.ArrayInitExpr) ValueID {
+	array_elem_hint := b.array_literal_elem_type_hint
+	b.array_literal_elem_type_hint = 0
 	// If the array init has elements, alloca a fixed-size array on the stack,
 	// store each element, and return the pointer.
 	if expr.exprs.len > 0 {
 		mut elem_vals := []ValueID{cap: expr.exprs.len}
 		for e in expr.exprs {
+			if !builder_expr_ok(e) {
+				elem_vals << ValueID(0)
+				continue
+			}
 			elem_vals << b.build_expr(e)
 		}
 		mut elem_type := b.mod.type_store.get_int(32) // default int
@@ -11337,6 +12697,10 @@ fn (mut b Builder) build_array_init_expr(expr ast.ArrayInitExpr) ValueID {
 				else {}
 			}
 		}
+		if array_elem_hint != 0 {
+			elem_type = array_elem_hint
+			has_declared_type = true
+		}
 		if !has_declared_type {
 			if checked_type := b.get_checked_expr_type(ast.Expr(expr)) {
 				checked_base := b.unwrap_alias_type(checked_type)
@@ -11360,7 +12724,23 @@ fn (mut b Builder) build_array_init_expr(expr ast.ArrayInitExpr) ValueID {
 			}
 		}
 		if !has_declared_type && elem_vals.len > 0 {
-			elem_type = b.mod.values[elem_vals[0]].typ
+			for val in elem_vals {
+				if b.valid_value_id(val) {
+					elem_type = b.mod.values[val].typ
+					break
+				}
+			}
+		}
+		if !b.valid_type_id(elem_type) {
+			elem_type = b.mod.type_store.get_int(32)
+		}
+		if elem_vals.len > 0 {
+			zero := b.mod.get_or_add_const(elem_type, '0')
+			for i, val in elem_vals {
+				if !b.valid_value_id(val) {
+					elem_vals[i] = zero
+				}
+			}
 		}
 		// Convert element values to match the declared/inferred element type.
 		// This handles: int→wider int (zext), int→float (sitofp), f64→f32 (trunc).
@@ -12054,7 +13434,7 @@ fn (b &Builder) unwrap_alias_type(t types.Type) types.Type {
 }
 
 fn (b &Builder) resolve_alias_base_type(alias types.Alias) ?types.Type {
-	if alias.name != '' {
+	if ssa_string_ok(alias.name) && alias.name != '' {
 		if live_type := b.lookup_checked_type_by_name(alias.name) {
 			if live_type is types.Alias {
 				if types.type_has_valid_payload(live_type.base_type) {
@@ -12072,7 +13452,7 @@ fn (b &Builder) resolve_alias_base_type(alias types.Alias) ?types.Type {
 }
 
 fn (b &Builder) lookup_checked_type_by_name(name string) ?types.Type {
-	if name == '' || b.env == unsafe { nil } {
+	if name == '' || !ssa_string_ok(name) || b.env == unsafe { nil } {
 		return none
 	}
 	if scope := b.env.get_scope(b.cur_module) {
@@ -12153,10 +13533,14 @@ fn (mut b Builder) call_lhs_type_to_ssa(lhs ast.Expr) ?TypeID {
 }
 
 fn (mut b Builder) cast_value_to_type(val ValueID, target_type TypeID) ValueID {
-	if target_type == 0 {
+	if target_type <= 0 || val <= 0 || val >= b.mod.values.len
+		|| int(target_type) >= b.mod.type_store.types.len {
 		return val
 	}
 	src_type := b.mod.values[val].typ
+	if src_type <= 0 || int(src_type) >= b.mod.type_store.types.len {
+		return val
+	}
 	if src_type == target_type || src_type == 0 {
 		return val
 	}
@@ -12369,6 +13753,9 @@ fn (b &Builder) sizeof_ident_name(name string) int {
 		else {
 			// Array_* and Map_* are mangled names for []T and map[K]V
 			// which are always the builtin array/map struct types
+			if size := b.sizeof_type_alias_name(name) {
+				return size
+			}
 			if name.starts_with('Array_fixed_') {
 				return b.fixed_array_size_from_name(name)
 			}
@@ -12477,6 +13864,9 @@ fn (b &Builder) sizeof_value(expr ast.Expr) int {
 			rhs_name := expr.rhs.name
 			if lhs_name.len > 0 && rhs_name.len > 0 {
 				qualified := '${lhs_name}__${rhs_name}'
+				if size := b.sizeof_type_alias_name(qualified) {
+					return size
+				}
 				if tid := b.struct_types[qualified] {
 					return b.type_byte_size(tid)
 				}
@@ -12545,6 +13935,9 @@ fn (b &Builder) sizeof_value_from_flat(c ast.Cursor) int {
 				rhs_name := rhs_c.name()
 				if lhs_name.len > 0 && rhs_name.len > 0 {
 					qualified := '${lhs_name}__${rhs_name}'
+					if size := b.sizeof_type_alias_name(qualified) {
+						return size
+					}
 					if tid := b.struct_types[qualified] {
 						return b.type_byte_size(tid)
 					}
@@ -12597,6 +13990,9 @@ fn (b &Builder) type_name_byte_size(name string) int {
 			return 16
 		}
 		else {
+			if size := b.sizeof_type_alias_name(name) {
+				return size
+			}
 			if name.starts_with('Array_fixed_') {
 				return b.fixed_array_size_from_name(name)
 			}
@@ -12868,8 +14264,13 @@ fn (mut b Builder) build_addr(expr ast.Expr) ValueID {
 				// This forwards the same indirection level instead of adding another layer.
 				if expr.name in b.mut_ptr_params {
 					ptr_typ := b.mod.values[ptr].typ
-					elem_typ := b.mod.type_store.types[ptr_typ].elem_type
-					return b.mod.add_instr(.load, b.cur_block, elem_typ, [ptr])
+					if b.valid_type_id(ptr_typ) {
+						elem_typ := b.mod.type_store.types[ptr_typ].elem_type
+						if elem_typ > 0 {
+							return b.mod.add_instr(.load, b.cur_block, elem_typ, [ptr])
+						}
+					}
+					return ptr
 				}
 				return ptr
 			}
@@ -12897,20 +14298,20 @@ fn (mut b Builder) build_addr(expr ast.Expr) ValueID {
 			}
 			// If base is ptr-to-ptr-to-struct (mut receiver), load to get the struct pointer
 			base_typ := b.mod.values[base].typ
-			if base_typ < b.mod.type_store.types.len
-				&& b.mod.type_store.types[base_typ].kind == .ptr_t {
+			if b.valid_type_id(base_typ) && b.mod.type_store.types[base_typ].kind == .ptr_t {
 				inner := b.mod.type_store.types[base_typ].elem_type
-				if inner < b.mod.type_store.types.len
-					&& b.mod.type_store.types[inner].kind == .ptr_t {
+				if b.valid_type_id(inner) && b.mod.type_store.types[inner].kind == .ptr_t {
 					pointee := b.mod.type_store.types[inner].elem_type
-					if pointee < b.mod.type_store.types.len
-						&& b.mod.type_store.types[pointee].kind == .struct_t {
+					if b.valid_type_id(pointee) && b.mod.type_store.types[pointee].kind == .struct_t {
 						// Load from alloca to get the struct pointer
 						base = b.mod.add_instr(.load, b.cur_block, inner, [base])
 					}
 				}
 			}
 			fi := b.field_index(expr, base)
+			if fi < 0 {
+				return 0
+			}
 			idx_val := b.mod.get_or_add_const(b.mod.type_store.get_int(32), fi.str())
 			// Prefer SSA struct field type over expr_type for correct pointer sizing.
 			// Synthetic selectors (e.g. _or_t1.data) may have expr_type=voidptr from
@@ -12918,11 +14319,11 @@ fn (mut b Builder) build_addr(expr ast.Expr) ValueID {
 			// so the ARM64 store correctly identifies struct destinations.
 			mut result_type := TypeID(0)
 			base_typ2 := b.mod.values[base].typ
-			if base_typ2 < b.mod.type_store.types.len {
+			if b.valid_type_id(base_typ2) {
 				bt2 := b.mod.type_store.types[base_typ2]
-				if bt2.kind == .ptr_t && bt2.elem_type < b.mod.type_store.types.len {
+				if bt2.kind == .ptr_t && b.valid_type_id(bt2.elem_type) {
 					struct_typ := b.mod.type_store.types[bt2.elem_type]
-					if struct_typ.kind == .struct_t && fi < struct_typ.fields.len {
+					if struct_typ.kind == .struct_t && fi >= 0 && fi < struct_typ.fields.len {
 						result_type = struct_typ.fields[fi]
 					}
 				}
@@ -12958,14 +14359,14 @@ fn (mut b Builder) build_addr(expr ast.Expr) ValueID {
 			base_addr := b.build_addr(expr.lhs)
 			if base_addr != 0 {
 				addr_typ_id := b.mod.values[base_addr].typ
-				if addr_typ_id < b.mod.type_store.types.len {
+				if b.valid_type_id(addr_typ_id) {
 					addr_typ := b.mod.type_store.types[addr_typ_id]
 					if addr_typ.kind == .ptr_t {
 						pointee := addr_typ.elem_type
-						if pointee < b.mod.type_store.types.len {
+						if b.valid_type_id(pointee) {
 							pointee_typ := b.mod.type_store.types[pointee]
 							// For pointer to fixed-size array: GEP into the array elements
-							if pointee_typ.kind == .array_t && pointee_typ.elem_type != 0 {
+							if pointee_typ.kind == .array_t && pointee_typ.elem_type > 0 {
 								index := b.build_expr(expr.expr)
 								elem_ptr_type := b.mod.type_store.get_ptr(pointee_typ.elem_type)
 								return b.mod.add_instr(.get_element_ptr, b.cur_block,
@@ -12982,8 +14383,7 @@ fn (mut b Builder) build_addr(expr ast.Expr) ValueID {
 			base_type_id := b.mod.values[base2].typ
 			array_type := b.get_array_type()
 			// If base is ptr(array) (mut []T param), deref to get the array struct
-			if array_type != 0 && base_type_id != array_type
-				&& base_type_id < b.mod.type_store.types.len {
+			if array_type != 0 && base_type_id != array_type && b.valid_type_id(base_type_id) {
 				btyp := b.mod.type_store.types[base_type_id]
 				if btyp.kind == .ptr_t && btyp.elem_type == array_type {
 					base2 = b.mod.add_instr(.load, b.cur_block, array_type, [base2])
@@ -13009,13 +14409,13 @@ fn (mut b Builder) build_addr(expr ast.Expr) ValueID {
 				])
 			}
 			// For pointers (fixed-size arrays), GEP directly
-			if base_type_id < b.mod.type_store.types.len {
+			if b.valid_type_id(base_type_id) {
 				base_typ := b.mod.type_store.types[base_type_id]
-				if base_typ.kind == .ptr_t && base_typ.elem_type != 0 {
+				if base_typ.kind == .ptr_t && base_typ.elem_type > 0 {
 					mut elem_type := base_typ.elem_type
-					if elem_type < b.mod.type_store.types.len {
+					if b.valid_type_id(elem_type) {
 						inner_typ := b.mod.type_store.types[elem_type]
-						if inner_typ.kind == .array_t && inner_typ.elem_type != 0 {
+						if inner_typ.kind == .array_t && inner_typ.elem_type > 0 {
 							elem_type = inner_typ.elem_type
 						}
 					}
@@ -13043,8 +14443,13 @@ fn (mut b Builder) build_addr_from_flat(c ast.Cursor) ValueID {
 				ptr := b.vars[name]
 				if name in b.mut_ptr_params {
 					ptr_typ := b.mod.values[ptr].typ
-					elem_typ := b.mod.type_store.types[ptr_typ].elem_type
-					return b.mod.add_instr(.load, b.cur_block, elem_typ, [ptr])
+					if b.valid_type_id(ptr_typ) {
+						elem_typ := b.mod.type_store.types[ptr_typ].elem_type
+						if elem_typ > 0 {
+							return b.mod.add_instr(.load, b.cur_block, elem_typ, [ptr])
+						}
+					}
+					return ptr
 				}
 				return ptr
 			}
@@ -13072,27 +14477,27 @@ fn (mut b Builder) build_addr_from_flat(c ast.Cursor) ValueID {
 				return 0
 			}
 			base_typ := b.mod.values[base].typ
-			if base_typ < b.mod.type_store.types.len
-				&& b.mod.type_store.types[base_typ].kind == .ptr_t {
+			if b.valid_type_id(base_typ) && b.mod.type_store.types[base_typ].kind == .ptr_t {
 				inner := b.mod.type_store.types[base_typ].elem_type
-				if inner < b.mod.type_store.types.len
-					&& b.mod.type_store.types[inner].kind == .ptr_t {
+				if b.valid_type_id(inner) && b.mod.type_store.types[inner].kind == .ptr_t {
 					pointee := b.mod.type_store.types[inner].elem_type
-					if pointee < b.mod.type_store.types.len
-						&& b.mod.type_store.types[pointee].kind == .struct_t {
+					if b.valid_type_id(pointee) && b.mod.type_store.types[pointee].kind == .struct_t {
 						base = b.mod.add_instr(.load, b.cur_block, inner, [base])
 					}
 				}
 			}
 			fi := b.field_index_from_flat(c, base)
+			if fi < 0 {
+				return 0
+			}
 			idx_val := b.mod.get_or_add_const(b.mod.type_store.get_int(32), fi.str())
 			mut result_type := TypeID(0)
 			base_typ2 := b.mod.values[base].typ
-			if base_typ2 < b.mod.type_store.types.len {
+			if b.valid_type_id(base_typ2) {
 				bt2 := b.mod.type_store.types[base_typ2]
-				if bt2.kind == .ptr_t && bt2.elem_type < b.mod.type_store.types.len {
+				if bt2.kind == .ptr_t && b.valid_type_id(bt2.elem_type) {
 					struct_typ := b.mod.type_store.types[bt2.elem_type]
-					if struct_typ.kind == .struct_t && fi < struct_typ.fields.len {
+					if struct_typ.kind == .struct_t && fi >= 0 && fi < struct_typ.fields.len {
 						result_type = struct_typ.fields[fi]
 					}
 				}
@@ -13125,13 +14530,13 @@ fn (mut b Builder) build_addr_from_flat(c ast.Cursor) ValueID {
 			base_addr := b.build_addr_from_flat(lhs_c)
 			if base_addr != 0 {
 				addr_typ_id := b.mod.values[base_addr].typ
-				if addr_typ_id < b.mod.type_store.types.len {
+				if b.valid_type_id(addr_typ_id) {
 					addr_typ := b.mod.type_store.types[addr_typ_id]
 					if addr_typ.kind == .ptr_t {
 						pointee := addr_typ.elem_type
-						if pointee < b.mod.type_store.types.len {
+						if b.valid_type_id(pointee) {
 							pointee_typ := b.mod.type_store.types[pointee]
-							if pointee_typ.kind == .array_t && pointee_typ.elem_type != 0 {
+							if pointee_typ.kind == .array_t && pointee_typ.elem_type > 0 {
 								index := b.build_expr_from_flat(index_c)
 								elem_ptr_type := b.mod.type_store.get_ptr(pointee_typ.elem_type)
 								return b.mod.add_instr(.get_element_ptr, b.cur_block,
@@ -13146,8 +14551,7 @@ fn (mut b Builder) build_addr_from_flat(c ast.Cursor) ValueID {
 			mut result_type := b.expr_type_from_flat(c)
 			base_type_id := b.mod.values[base2].typ
 			array_type := b.get_array_type()
-			if array_type != 0 && base_type_id != array_type
-				&& base_type_id < b.mod.type_store.types.len {
+			if array_type != 0 && base_type_id != array_type && b.valid_type_id(base_type_id) {
 				btyp := b.mod.type_store.types[base_type_id]
 				if btyp.kind == .ptr_t && btyp.elem_type == array_type {
 					base2 = b.mod.add_instr(.load, b.cur_block, array_type, [base2])
@@ -13171,13 +14575,13 @@ fn (mut b Builder) build_addr_from_flat(c ast.Cursor) ValueID {
 					index,
 				])
 			}
-			if base_type_id < b.mod.type_store.types.len {
+			if b.valid_type_id(base_type_id) {
 				base_typ := b.mod.type_store.types[base_type_id]
-				if base_typ.kind == .ptr_t && base_typ.elem_type != 0 {
+				if base_typ.kind == .ptr_t && base_typ.elem_type > 0 {
 					mut elem_type := base_typ.elem_type
-					if elem_type < b.mod.type_store.types.len {
+					if b.valid_type_id(elem_type) {
 						inner_typ := b.mod.type_store.types[elem_type]
-						if inner_typ.kind == .array_t && inner_typ.elem_type != 0 {
+						if inner_typ.kind == .array_t && inner_typ.elem_type > 0 {
 							elem_type = inner_typ.elem_type
 						}
 					}
@@ -13257,12 +14661,14 @@ fn (mut b Builder) build_fn_literal(expr ast.FnLiteral) ValueID {
 	saved_block := b.cur_block
 	mut saved_vars := b.vars.clone()
 	mut saved_mut_ptr_params := b.mut_ptr_params.clone()
+	mut saved_local_smartcasts := b.local_smartcasts.clone()
 	saved_loop_stack := b.loop_stack.clone()
 
 	// Switch to building the anonymous function
 	b.cur_func = func_idx
 	b.vars = map[string]ValueID{}
 	b.mut_ptr_params = map[string]bool{}
+	b.local_smartcasts = map[string]TypeID{}
 	b.loop_stack = []LoopInfo{}
 
 	// Create entry block
@@ -13300,6 +14706,7 @@ fn (mut b Builder) build_fn_literal(expr ast.FnLiteral) ValueID {
 	b.cur_block = saved_block
 	b.vars = saved_vars.move()
 	b.mut_ptr_params = saved_mut_ptr_params.move()
+	b.local_smartcasts = saved_local_smartcasts.move()
 	b.loop_stack = saved_loop_stack
 
 	// Return a function reference to the anonymous function.
@@ -14007,7 +15414,7 @@ fn (mut b Builder) emit_struct_value_eq_branch(func_idx int, block BlockID, lhs 
 	}
 	i32_t := b.mod.type_store.get_int(32)
 	mut cur_block := block
-	for i, field in st.fields {
+	for i in 0 .. st.fields.len {
 		if i >= st_info.fields.len {
 			break
 		}
@@ -14016,7 +15423,7 @@ fn (mut b Builder) emit_struct_value_eq_branch(func_idx int, block BlockID, lhs 
 		field_typ := st_info.fields[i]
 		lhs_field := b.mod.add_instr(.extractvalue, cur_block, field_typ, [lhs, idx])
 		rhs_field := b.mod.add_instr(.extractvalue, cur_block, field_typ, [rhs, idx])
-		b.emit_checked_value_eq_branch(func_idx, cur_block, lhs_field, rhs_field, field.typ,
+		b.emit_checked_value_eq_branch(func_idx, cur_block, lhs_field, rhs_field, st.fields[i].typ,
 			next_block, false_block)
 		cur_block = next_block
 	}

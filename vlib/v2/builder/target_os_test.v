@@ -400,6 +400,72 @@ fn test_header_cache_stamp_uses_target_os_preference() {
 	assert linux_stamp != windows_stamp
 }
 
+fn test_cached_called_fn_names_are_persisted_for_reused_objects() {
+	tmp_dir := os.join_path(os.vtmp_dir(), 'v2_cached_called_names_${os.getpid()}')
+	os.mkdir_all(tmp_dir) or { panic(err) }
+	defer {
+		os.rmdir_all(tmp_dir) or {}
+	}
+	prefs := pref.new_preferences()
+	mut b := new_builder(&prefs)
+	b.cached_called_fn_names['local__already'] = true
+	b.cached_called_fn_names['json2__decode_T_Foo'] = true
+	b.write_cached_called_fn_names(tmp_dir, 'virtuals', {
+		'local__already': true
+	})
+
+	mut b2 := new_builder(&prefs)
+	assert b2.load_cached_called_fn_names(tmp_dir, 'virtuals')
+	assert 'json2__decode_T_Foo' in b2.cached_called_fn_names
+	assert 'local__already' !in b2.cached_called_fn_names
+	assert !b2.load_cached_called_fn_names(tmp_dir, 'missing')
+}
+
+fn test_vh_cache_reuse_requires_cached_called_fn_metadata() {
+	tmp_dir := os.join_path(os.vtmp_dir(), 'v2_cached_called_names_required_${os.getpid()}')
+	os.mkdir_all(tmp_dir) or { panic(err) }
+	defer {
+		os.rmdir_all(tmp_dir) or {}
+	}
+	for cache_name in [builtin_cache_name, imports_cache_name, virtuals_cache_name] {
+		os.write_file(cache_path_join(tmp_dir, '${cache_name}.o'), 'stale object') or { panic(err) }
+		os.write_file(cache_path_join(tmp_dir, '${cache_name}.stamp'), 'stale stamp') or {
+			panic(err)
+		}
+	}
+	prefs := pref.new_preferences()
+
+	mut module_builder := new_builder(&prefs)
+	module_builder.used_vh_for_parse = true
+	mut module_reused := true
+	_ := module_builder.ensure_cached_module_object(tmp_dir, builtin_cache_name, [], [], 'cc', '',
+		'', '', false) or {
+		module_reused = false
+		''
+	}
+	assert !module_reused
+
+	mut parsed_builder := new_builder(&prefs)
+	parsed_builder.used_import_vh_for_parse = true
+	mut parsed_reused := true
+	_ := parsed_builder.ensure_cached_parsed_module_object(tmp_dir, imports_cache_name, [], [],
+		'cc', '', '', '', false) or {
+		parsed_reused = false
+		''
+	}
+	assert !parsed_reused
+
+	mut virtual_builder := new_builder(&prefs)
+	virtual_builder.used_virtual_vh_for_parse = true
+	mut virtual_reused := true
+	_ := virtual_builder.ensure_cached_virtual_module_object(tmp_dir, [], [], 'cc', '', '', '',
+		false) or {
+		virtual_reused = false
+		''
+	}
+	assert !virtual_reused
+}
+
 fn test_linux_x64_builder_default_o0_forces_ssa_optimize() {
 	if os.user_os() != 'linux' || os.uname().machine !in ['x86_64', 'amd64'] {
 		return

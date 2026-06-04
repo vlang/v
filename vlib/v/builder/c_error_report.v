@@ -3,6 +3,7 @@ module builder
 import os
 import strings
 import v.pref
+import v.gen.c as cgen
 import v.util.version
 
 const default_c_error_bug_report_url = 'https://bugs.vlang.io/bug-report'
@@ -43,7 +44,15 @@ fn (mut v Builder) submit_c_error_bug_report(ccompiler string, c_output string) 
 	if !should_submit_c_error_bug_report(v.pref.c_error_bug_report_url) {
 		return
 	}
-	raw_report := v.new_c_error_bug_report(ccompiler, c_output)
+	mut raw_report := v.new_c_error_bug_report(ccompiler, c_output)
+	if raw_report.v_file == '' {
+		// The default `.tmp.c` has no `#line` directives, so the C error could not be
+		// traced back to a V line. Regenerate the C with `#line` info (as `-g` would),
+		// recompile, and reuse the richer report when it does map to a V source line.
+		if vlines_report := v.new_c_error_bug_report_with_vlines(ccompiler) {
+			raw_report = vlines_report
+		}
+	}
 	report := bounded_c_error_bug_report(raw_report, c_error_bug_report_max_body_bytes)
 	report_url := c_error_bug_report_url(v.pref.c_error_bug_report_url)
 	tool_output := send_c_error_bug_report(report, report_url) or {
@@ -95,6 +104,44 @@ fn (mut v Builder) new_c_error_bug_report(ccompiler string, c_output string) CEr
 		v_context:      numbered_context_lines(v_source.split_into_lines(), v_line,
 			c_error_context_radius)
 	}
+}
+
+// new_c_error_bug_report_with_vlines regenerates the program's C source with `#line`
+// directives enabled (the same information `-g` would add), recompiles it with the
+// previously used C compiler command, and builds a report from the recompiled output.
+// Because the regenerated C carries `#line` annotations, the C error can be mapped back
+// to the exact V source line that produced it. It returns none when the V mapping still
+// cannot be produced, so the caller keeps the original, C-only report.
+fn (mut v Builder) new_c_error_bug_report_with_vlines(ccompiler string) ?CErrorBugReport {
+	if v.pref.is_vlines || v.pref.parallel_cc || v.pref.generate_c_project != ''
+		|| v.last_cc_cmd == '' || v.parsed_files.len == 0 || v.out_name_c == '' {
+		return none
+	}
+	old_is_vlines := v.pref.is_vlines
+	v.pref.is_vlines = true
+	defer {
+		v.pref.is_vlines = old_is_vlines
+	}
+	// Regenerate the C source, now with `#line` directives, into the same `.tmp.c` file,
+	// so that the recorded compiler command recompiles exactly the annotated source.
+	// Keep the original `.tmp.c` so that it can be restored afterwards (e.g. for `-keepc`).
+	original_c := os.read_file(v.out_name_c) or { return none }
+	goutput := cgen.gen(v.parsed_files, mut v.table, v.pref)
+	mut c_builder := goutput.res_builder
+	c_builder = cgen.fix_reset_dbg_line(c_builder, v.out_name_c)
+	os.write_file_array(v.out_name_c, c_builder) or { return none }
+	vdir := os.dir(pref.vexe_path())
+	original_pwd := os.getwd()
+	os.chdir(vdir) or {}
+	recompiled := os.execute(v.last_cc_cmd)
+	os.chdir(original_pwd) or {}
+	report := v.new_c_error_bug_report(ccompiler, recompiled.output)
+	// Restore the C source that the user actually compiled, now that the report is built.
+	os.write_file(v.out_name_c, original_c) or {}
+	if report.v_file == '' {
+		return none
+	}
+	return report
 }
 
 fn c_error_bug_report_url(flag_url string) string {

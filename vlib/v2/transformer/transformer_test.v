@@ -50,15 +50,58 @@ fn test_value_object_from_type_stores_value_symbol_type() {
 	assert obj.typ() is types.Primitive
 }
 
+fn test_worker_clone_owns_mutable_maps() {
+	prefs := &vpref.Preferences{}
+	env := types.Environment.new()
+	mut transformer := Transformer.new_with_pref(env, prefs)
+	transformer.synth_pos_counter = -73
+	scope := types.new_scope(unsafe { nil })
+	transformer.elided_fns = {
+		'main__skipped': true
+	}
+	transformer.cached_scopes = {
+		'main': scope
+	}
+	transformer.cached_fn_scopes = {
+		'main__known': scope
+	}
+	transformer.cached_method_keys = ['main__Foo']
+	transformer.generic_fn_value_names = {
+		'handler': true
+	}
+
+	mut worker := transformer.new_worker_clone(1)
+	assert worker.next_synth_pos().id == -100073
+	worker.elided_fns['main__worker_skipped'] = true
+	worker.cached_scopes['worker'] = scope
+	worker.cached_fn_scopes['main__worker'] = scope
+	worker.cached_method_keys << 'main__Bar'
+	worker.generic_fn_value_names['worker_handler'] = true
+
+	assert 'main__worker_skipped' !in transformer.elided_fns
+	assert 'worker' !in transformer.cached_scopes
+	assert 'main__worker' !in transformer.cached_fn_scopes
+	assert transformer.cached_method_keys == ['main__Foo']
+	assert 'worker_handler' !in transformer.generic_fn_value_names
+
+	transformer.merge_worker(worker)
+	assert transformer.elided_fns['main__worker_skipped']
+	assert transformer.cached_fn_scopes['main__worker'] == scope
+}
+
 fn transform_code_for_test(code string) []ast.File {
+	prefs := &vpref.Preferences{
+		backend:     .cleanc
+		no_parallel: true
+	}
+	return transform_code_with_prefs_for_test(code, prefs)
+}
+
+fn transform_code_with_prefs_for_test(code string, prefs &vpref.Preferences) []ast.File {
 	tmp_file := '/tmp/v2_transformer_test_${os.getpid()}.v'
 	os.write_file(tmp_file, code) or { panic('failed to write temp file') }
 	defer {
 		os.rm(tmp_file) or {}
-	}
-	prefs := &vpref.Preferences{
-		backend:     .cleanc
-		no_parallel: true
 	}
 	mut file_set := token.FileSet.new()
 	mut par := parser.Parser.new(prefs)
@@ -124,6 +167,35 @@ fn transform_sources_for_test(sources []TestSource) []ast.File {
 	return transformer.transform_files(files)
 }
 
+fn transform_sources_with_env_for_test(sources []TestSource) (&types.Environment, []ast.File) {
+	tmp_dir := os.join_path(os.temp_dir(), 'v2_transformer_sources_env_${os.getpid()}')
+	os.rmdir_all(tmp_dir) or {}
+	os.mkdir_all(tmp_dir) or { panic(err) }
+	defer {
+		os.rmdir_all(tmp_dir) or {}
+	}
+	mut paths := []string{cap: sources.len}
+	for source in sources {
+		path := os.join_path(tmp_dir, source.rel)
+		os.mkdir_all(os.dir(path)) or { panic(err) }
+		os.write_file(path, source.code) or { panic('failed to write ${path}') }
+		paths << path
+	}
+	prefs := &vpref.Preferences{
+		backend:     .cleanc
+		no_parallel: true
+	}
+	mut file_set := token.FileSet.new()
+	mut par := parser.Parser.new(prefs)
+	files := par.parse_files(paths, mut file_set)
+	mut env := types.Environment.new()
+	mut checker := types.Checker.new(prefs, file_set, env)
+	checker.check_files(files)
+	mut transformer := Transformer.new_with_pref(env, prefs)
+	transformed := transformer.transform_files(files)
+	return env, transformed
+}
+
 fn ident_name_from_expr_for_test(expr ast.Expr) ?string {
 	if expr is ast.Ident {
 		return expr.name
@@ -154,6 +226,183 @@ fn test_sort_selector_path_after_root_keeps_nested_fields() {
 	assert path.len == 2
 	assert path[0] == 'path'
 	assert path[1] == 'len'
+}
+
+fn test_get_expr_type_selector_prefers_struct_field_over_stale_pos_type() {
+	mut env := types.Environment.new()
+	env.set_expr_type(91, types.string_)
+	value_kind_type := types.Type(types.Enum{
+		name: 'json2__ValueKind'
+	})
+	value_info_type := types.Type(types.Struct{
+		name:   'json2__ValueInfo'
+		fields: [
+			types.Field{
+				name: 'value_kind'
+				typ:  value_kind_type
+			},
+		]
+	})
+	mut scope := types.new_scope(unsafe { nil })
+	scope.insert('struct_info', value_object_from_type(value_info_type))
+	mut t := Transformer{
+		pref:             &vpref.Preferences{}
+		env:              unsafe { env }
+		scope:            scope
+		local_decl_types: map[string]types.Type{}
+	}
+	typ := t.get_expr_type(ast.SelectorExpr{
+		lhs: ast.Ident{
+			name: 'struct_info'
+		}
+		rhs: ast.Ident{
+			name: 'value_kind'
+		}
+		pos: token.Pos{
+			id: 91
+		}
+	}) or { panic('missing selector type') }
+	assert typ is types.Enum
+	assert (typ as types.Enum).name == 'json2__ValueKind'
+}
+
+fn test_get_expr_type_selector_prefers_struct_field_over_stale_synth_type() {
+	value_kind_type := types.Type(types.Enum{
+		name: 'json2__ValueKind'
+	})
+	value_info_type := types.Type(types.Struct{
+		name:   'json2__ValueInfo'
+		fields: [
+			types.Field{
+				name: 'value_kind'
+				typ:  value_kind_type
+			},
+		]
+	})
+	mut scope := types.new_scope(unsafe { nil })
+	scope.insert('struct_info', value_object_from_type(value_info_type))
+	mut t := Transformer{
+		pref:             &vpref.Preferences{}
+		env:              unsafe { types.Environment.new() }
+		scope:            scope
+		local_decl_types: map[string]types.Type{}
+	}
+	pos := token.Pos{
+		id: 92
+	}
+	t.register_synth_type(pos, types.Type(types.string_))
+	typ := t.get_expr_type(ast.SelectorExpr{
+		lhs: ast.Ident{
+			name: 'struct_info'
+		}
+		rhs: ast.Ident{
+			name: 'value_kind'
+		}
+		pos: pos
+	}) or { panic('missing selector type') }
+	assert typ is types.Enum
+	assert (typ as types.Enum).name == 'json2__ValueKind'
+}
+
+fn test_string_interpolation_prefers_declared_selector_type_over_stale_string_pos() {
+	value_kind_type := types.Type(types.Enum{
+		name: 'json2__ValueKind'
+	})
+	value_info_type := types.Type(types.Struct{
+		name:   'json2__ValueInfo'
+		fields: [
+			types.Field{
+				name: 'value_kind'
+				typ:  value_kind_type
+			},
+		]
+	})
+	mut env := types.Environment.new()
+	env.set_expr_type(93, types.Type(types.string_))
+	mut scope := types.new_scope(unsafe { nil })
+	scope.insert('struct_info', value_object_from_type(value_info_type))
+	mut t := Transformer{
+		pref:                &vpref.Preferences{}
+		env:                 unsafe { env }
+		scope:               scope
+		local_decl_types:    map[string]types.Type{}
+		needed_str_fns:      map[string]string{}
+		needed_enum_str_fns: map[string]types.Enum{}
+		synth_types:         map[int]types.Type{}
+	}
+	inter_expr := ast.Expr(ast.SelectorExpr{
+		lhs: ast.Ident{
+			name: 'struct_info'
+		}
+		rhs: ast.Ident{
+			name: 'value_kind'
+		}
+		pos: token.Pos{
+			id: 93
+		}
+	})
+	inter := ast.StringInter{
+		expr: inter_expr
+	}
+	assert t.resolve_sprintf_format(inter) == '%s'
+	arg := t.transform_sprintf_arg(inter)
+	assert arg is ast.SelectorExpr
+	call := (arg as ast.SelectorExpr).lhs
+	assert call is ast.CallExpr
+	lhs := (call as ast.CallExpr).lhs
+	assert lhs is ast.Ident
+	assert (lhs as ast.Ident).name == 'json2__ValueKind__str'
+
+	stale_arg := ast.Expr(ast.SelectorExpr{
+		lhs: ast.Expr(ast.CallExpr{
+			lhs:  ast.Ident{
+				name: 'string__str'
+			}
+			args: [inter_expr]
+			pos:  token.Pos{
+				id: 94
+			}
+		})
+		rhs: ast.Ident{
+			name: 'str'
+		}
+		pos: token.Pos{
+			id: 95
+		}
+	})
+	lit := t.transform_string_inter_literal(ast.StringInterLiteral{
+		values: ["'Expected object, but got ", "'"]
+		inters: [
+			ast.StringInter{
+				expr: stale_arg
+			},
+		]
+	})
+	assert lit is ast.StringInterLiteral
+	repaired := (lit as ast.StringInterLiteral).inters[0].expr
+	assert repaired is ast.SelectorExpr
+	repaired_call := (repaired as ast.SelectorExpr).lhs
+	assert repaired_call is ast.CallExpr
+	repaired_lhs := (repaired_call as ast.CallExpr).lhs
+	assert repaired_lhs is ast.Ident
+	assert (repaired_lhs as ast.Ident).name == 'json2__ValueKind__str'
+
+	cloned := t.clone_expr_with_bindings_and_fields(ast.Expr(ast.StringInterLiteral{
+		values: ["'Expected object, but got ", "'"]
+		inters: [
+			ast.StringInter{
+				expr: stale_arg
+			},
+		]
+	}), map[string]types.Type{}, []CloneComptimeFieldCtx{})
+	assert cloned is ast.StringInterLiteral
+	cloned_arg := (cloned as ast.StringInterLiteral).inters[0].expr
+	assert cloned_arg is ast.SelectorExpr
+	cloned_call := (cloned_arg as ast.SelectorExpr).lhs
+	assert cloned_call is ast.CallExpr
+	cloned_lhs := (cloned_call as ast.CallExpr).lhs
+	assert cloned_lhs is ast.Ident
+	assert (cloned_lhs as ast.Ident).name == 'json2__ValueKind__str'
 }
 
 fn collect_call_names_from_stmt(stmt ast.Stmt, mut names []string) {
@@ -375,6 +624,412 @@ fn call_names_for_fn(files []ast.File, fn_name string) []string {
 		}
 	}
 	return names
+}
+
+fn call_names_for_fn_suffix(files []ast.File, fn_suffix string) []string {
+	mut names := []string{}
+	for file in files {
+		for stmt in file.stmts {
+			if stmt is ast.FnDecl && stmt.name.ends_with(fn_suffix) {
+				for nested in stmt.stmts {
+					collect_call_names_from_stmt(nested, mut names)
+				}
+			}
+		}
+	}
+	return names
+}
+
+fn test_transform_generic_call_uses_sumtype_match_smartcast_for_inference() {
+	files := transform_code_for_test('
+struct Point {
+	x int
+}
+
+type Primitive = []int | []string | []Point | bool | int | string | Point
+
+fn wrap_first[T](values []T) Primitive {
+	return Primitive(values[0])
+}
+
+fn check(value Primitive) {
+	match value {
+		[]int {
+			_ := wrap_first(value)
+		}
+		[]string {
+			_ := wrap_first(value)
+		}
+		[]Point {
+			_ := wrap_first(value)
+		}
+		else {}
+	}
+}
+')
+	names := call_names_for_fn(files, 'check')
+	assert 'wrap_first_T_int' in names
+	assert 'wrap_first_T_string' in names
+	assert 'wrap_first_T_Point' in names
+	assert 'wrap_first' !in names
+}
+
+fn test_transform_generic_receiver_methods_use_concrete_specializations() {
+	files := transform_sources_for_test([
+		TestSource{
+			rel:  'x/json2/decode.v'
+			code: '
+module json2
+
+struct ValueInfo {
+	x int
+}
+
+struct Node[T] {
+mut:
+	value T
+	next  &Node[T] = unsafe { nil }
+}
+
+struct Decoder {
+mut:
+	values_info LinkedList[ValueInfo]
+}
+
+struct LinkedList[T] {
+mut:
+	head &Node[T] = unsafe { nil }
+	tail &Node[T] = unsafe { nil }
+	len  int
+}
+
+fn (mut list LinkedList[T]) push(value T) {
+	_ = value
+}
+
+fn (list &LinkedList[T]) last() &T {
+	return &list.tail.value
+}
+'
+		},
+		TestSource{
+			rel:  'x/json2/check.v'
+			code: '
+module json2
+
+fn (mut checker Decoder) check() {
+	mut actual_value_info_pointer := unsafe { nil }
+	checker.values_info.push(ValueInfo{})
+	actual_value_info_pointer = checker.values_info.last()
+	_ = actual_value_info_pointer
+}
+'
+		},
+	])
+	names := call_names_for_fn(files, 'check')
+	assert names.any(it.contains('json2__LinkedList__push_T_') && it.contains('json2_ValueInfo')), 'expected specialized push call, got ${names}'
+
+	assert names.any(it.contains('json2__LinkedList__last_T_') && it.contains('json2_ValueInfo')), 'expected specialized last call, got ${names}'
+
+	assert 'LinkedList__push' !in names
+	assert 'LinkedList__last' !in names
+	assert 'json2__LinkedList__push' !in names
+	assert 'json2__LinkedList__last' !in names
+}
+
+fn test_transform_nested_generic_receiver_method_call_in_monomorphized_clone() {
+	files := transform_sources_for_test([
+		TestSource{
+			rel:  'x/json2/encode.v'
+			code: '
+module json2
+
+pub struct EncoderOptions {}
+
+pub struct Any {}
+
+struct Encoder {}
+
+pub fn encode[T](val T, config EncoderOptions) string {
+	_ = config
+	mut encoder := Encoder{}
+	encoder.encode_value[T](val)
+	return ""
+}
+
+fn (mut encoder Encoder) encode_value[T](val T) {
+	_ = encoder
+	_ = val
+}
+'
+		},
+		TestSource{
+			rel:  'main.v'
+			code: '
+module main
+
+import json2
+
+fn use() {
+	_ = json2.encode(json2.Any{}, json2.EncoderOptions{})
+}
+'
+		},
+	])
+	mut fn_names := []string{}
+	for file in files {
+		for stmt in file.stmts {
+			if stmt is ast.FnDecl {
+				fn_names << stmt.name
+			}
+		}
+	}
+	assert 'json2__encode_T_json2_Any' in fn_names
+	assert 'encode_value_T_json2_Any' in fn_names
+	call_names := call_names_for_fn(files, 'json2__encode_T_json2_Any')
+	assert 'json2__Encoder__encode_value_T_json2_Any' in call_names
+	assert 'encode_value_T_json2_Any' !in call_names
+}
+
+fn test_transform_eventbus_receiver_generic_method_call_is_monomorphized() {
+	files := transform_sources_for_test([
+		TestSource{
+			rel:  'eventbus/eventbus.v'
+			code: '
+module eventbus
+
+pub type EventHandlerFn = fn (receiver voidptr, args voidptr, sender voidptr)
+
+pub struct Subscriber[T] {}
+
+pub fn new_subscriber[T]() Subscriber[T] {
+	return Subscriber[T]{}
+}
+
+pub fn (mut s Subscriber[T]) subscribe_method(name T, handler EventHandlerFn, receiver voidptr) {
+	_ = s
+	_ = name
+	_ = handler
+	_ = receiver
+}
+'
+		},
+		TestSource{
+			rel:  'main.v'
+			code: "
+module main
+
+import eventbus
+
+fn handler(receiver voidptr, args voidptr, sender voidptr) {
+	_ = receiver
+	_ = args
+	_ = sender
+}
+
+fn use() {
+	mut subscriber := eventbus.new_subscriber[string]()
+	subscriber.subscribe_method('ready', handler, unsafe { nil })
+}
+"
+		},
+	])
+	mut fn_names := []string{}
+	for file in files {
+		for stmt in file.stmts {
+			if stmt is ast.FnDecl {
+				fn_names << stmt.name
+			}
+		}
+	}
+	assert 'subscribe_method_T_string' in fn_names
+
+	call_names := call_names_for_fn(files, 'use')
+	assert 'eventbus__Subscriber__subscribe_method_T_string' in call_names
+	assert 'eventbus__Subscriber__subscribe_method' !in call_names
+}
+
+fn test_transform_embedded_method_promotion_keeps_owner_method_precedence() {
+	mut t := create_test_transformer()
+	t.collect_declared_method_fns([
+		ast.File{
+			mod:   'main'
+			stmts: [
+				ast.Stmt(ast.FnDecl{
+					name:      'redirect_to_index'
+					is_method: true
+					receiver:  ast.Parameter{
+						name: 'ctx'
+						typ:  ast.Expr(ast.Ident{
+							name: 'Context'
+						})
+					}
+				}),
+			]
+		},
+	])
+	recv_type := types.Type(types.Struct{
+		name: 'Context'
+	})
+	resolved := t.resolve_cached_method_fn_name_for_type(recv_type, 'redirect_to_index', 'Context') or {
+		panic('missing declared owner method')
+	}
+	assert resolved == 'Context__redirect_to_index'
+	assert 'Context__redirect_to_index' in t.declared_method_fns
+}
+
+fn test_generic_receiver_bindings_prefer_declared_selector_over_stale_wrapper_type() {
+	value_info_type := types.Type(types.Struct{
+		name: 'json2__ValueInfo'
+	})
+	template_type := types.Type(types.Struct{
+		name:           'json2__LinkedList'
+		generic_params: ['T']
+		fields:         [
+			types.Field{
+				name: 'item'
+				typ:  types.Type(types.NamedType('T'))
+			},
+		]
+	})
+	concrete_type := types.Type(types.Struct{
+		name:   'json2__LinkedList'
+		fields: [
+			types.Field{
+				name: 'item'
+				typ:  value_info_type
+			},
+		]
+	})
+	decoder_type := types.Type(types.Struct{
+		name:   'json2__Decoder'
+		fields: [
+			types.Field{
+				name: 'values_info'
+				typ:  concrete_type
+			},
+		]
+	})
+	mut env := types.Environment.new()
+	env.set_expr_type(701, template_type)
+	mut scope := types.new_scope(unsafe { nil })
+	scope.insert('checker', value_object_from_type(decoder_type))
+	scope.insert_type('LinkedList', template_type)
+	scope.insert_type('json2__LinkedList', template_type)
+	mut t := Transformer{
+		pref:             &vpref.Preferences{}
+		env:              unsafe { env }
+		scope:            scope
+		cur_module:       'json2'
+		cached_scopes:    {
+			'json2': scope
+		}
+		local_decl_types: map[string]types.Type{}
+	}
+	receiver := ast.Expr(ast.ParenExpr{
+		expr: ast.Expr(ast.SelectorExpr{
+			lhs: ast.Ident{
+				name: 'checker'
+			}
+			rhs: ast.Ident{
+				name: 'values_info'
+			}
+		})
+		pos:  token.Pos{
+			id: 701
+		}
+	})
+	decl := ast.FnDecl{
+		name:      'last'
+		is_method: true
+		receiver:  ast.Parameter{
+			name: 'list'
+			typ:  ast.Expr(ast.PrefixExpr{
+				op:   .amp
+				expr: ast.Expr(ast.GenericArgOrIndexExpr{
+					lhs:  ast.Expr(ast.Ident{
+						name: 'LinkedList'
+					})
+					expr: ast.Expr(ast.Ident{
+						name: 'T'
+					})
+				})
+			})
+		}
+	}
+	bindings := t.generic_bindings_from_method_receiver(decl, receiver, 'json2__LinkedList__last') or {
+		panic('missing receiver bindings')
+	}
+	binding := bindings['T'] or { panic('missing T binding') }
+	assert binding is types.Struct
+	assert (binding as types.Struct).name == 'json2__ValueInfo'
+}
+
+fn test_decl_assign_rune_arithmetic_keeps_rune_storage_type() {
+	mut t := create_transformer_with_vars({
+		'unicode_point':  types.builtin_type('rune') or { rune_type() }
+		'unicode_point2': types.builtin_type('rune') or { rune_type() }
+	})
+	mut env := types.Environment.new()
+	env.set_expr_type(93, types.Type(types.int_))
+	env.set_expr_type(94, types.Type(types.int_))
+	env.set_expr_type(95, types.Type(types.int_))
+	t.env = unsafe { env }
+	lhs := ast.Expr(ast.Ident{
+		name: 'final_unicode_point'
+		pos:  token.Pos{
+			id: 93
+		}
+	})
+	cast_rhs := ast.Expr(ast.CastExpr{
+		typ:  ast.Expr(ast.Ident{
+			name: 'rune'
+		})
+		expr: ast.Expr(ast.BasicLiteral{
+			kind:  .number
+			value: '0'
+		})
+	})
+	cast_typ := t.decl_assign_storage_type(lhs, cast_rhs) or { panic('missing cast type') }
+	assert cast_typ is types.Rune
+	rhs := ast.Expr(ast.InfixExpr{
+		op:  .plus
+		lhs: ast.Expr(ast.InfixExpr{
+			op:  .amp
+			lhs: ast.Expr(ast.Ident{
+				name: 'unicode_point2'
+				pos:  token.Pos{
+					id: 94
+				}
+			})
+			rhs: ast.Expr(ast.BasicLiteral{
+				kind:  .number
+				value: '0x3FF'
+			})
+		})
+		rhs: ast.Expr(ast.InfixExpr{
+			op:  .left_shift
+			lhs: ast.Expr(ast.InfixExpr{
+				op:  .amp
+				lhs: ast.Expr(ast.Ident{
+					name: 'unicode_point'
+					pos:  token.Pos{
+						id: 95
+					}
+				})
+				rhs: ast.Expr(ast.BasicLiteral{
+					kind:  .number
+					value: '0x3FF'
+				})
+			})
+			rhs: ast.Expr(ast.BasicLiteral{
+				kind:  .number
+				value: '10'
+			})
+		})
+	})
+	typ := t.decl_assign_storage_type(lhs, rhs) or { panic('missing rune arithmetic type') }
+	assert typ is types.Rune
 }
 
 fn test_runtime_const_init_main_calls_run_main_consts_after_module_inits() {
@@ -949,6 +1604,81 @@ fn finish(mut d TerminalStreamingDownloader, request &Request, response &Respons
 	call_names := call_names_for_fn(files, 'finish')
 	assert 'SilentStreamingDownloader__on_finish' in call_names
 	assert 'int__on_finish' !in call_names
+}
+
+fn test_promoted_embedded_generic_method_call_lowers_to_concrete_method() {
+	files := transform_code_for_test('
+struct Options[T] {
+	handler fn (mut ctx T) bool
+}
+
+struct Middleware[T] {}
+
+fn (mut m Middleware[T]) use(options Options[T]) {
+	_ = options
+}
+
+struct Context {}
+
+struct App {
+	Middleware[Context]
+}
+
+fn (mut app App) before_request(mut ctx Context) bool {
+	_ = ctx
+	return true
+}
+
+fn main() {
+	mut app := App{}
+	app.use(handler: app.before_request)
+}
+')
+	mut fn_names := []string{}
+	for file in files {
+		for stmt in file.stmts {
+			if stmt is ast.FnDecl {
+				fn_names << stmt.name
+			}
+		}
+	}
+	call_names := call_names_for_fn(files, 'main')
+	assert 'use_T_Context' in fn_names
+	assert 'Middleware__use_T_Context' in call_names
+	assert 'app.use' !in call_names
+}
+
+fn test_promoted_embedded_generic_method_uses_live_struct_metadata() {
+	files := transform_code_for_test('
+struct Result {}
+
+struct BaseContext {}
+
+fn (mut ctx BaseContext) json[T](j T) Result {
+	_ = j
+	return Result{}
+}
+
+struct Context {
+	BaseContext
+}
+
+struct App {}
+
+fn (mut app App) index(mut ctx Context) Result {
+	_ = app
+	return ctx.json("ok")
+}
+
+fn main() {
+	mut app := App{}
+	mut ctx := Context{}
+	_ = app.index(mut ctx)
+}
+')
+	call_names := call_names_for_fn(files, 'index')
+	assert 'BaseContext__json_T_string' in call_names
+	assert 'ctx.json' !in call_names
 }
 
 fn test_alias_receiver_method_is_resolved_before_base_container_method() {
@@ -2216,6 +2946,78 @@ fn test_transform_generic_module_call_or_cast_uses_array_specialized_name() {
 	assert call.args.len == 1
 }
 
+fn test_transform_monomorphizes_imported_generic_module_call() {
+	files := transform_sources_for_test([
+		TestSource{
+			rel:  'x/json2/decode.v'
+			code: '
+module json2
+
+struct Decoder {}
+
+fn (mut decoder Decoder) decode_value[T](mut value T) ! {
+	_ = value
+}
+
+pub fn decode[T]() !T {
+	mut decoder := Decoder{}
+	mut result := T{}
+	decoder.decode_value(mut result)!
+	return result
+}
+'
+		},
+		TestSource{
+			rel:  'main.v'
+			code: '
+module main
+
+import x.json2
+
+struct Payload {
+	value int
+}
+
+fn main() {
+	_ := json2.decode[Payload]() or { Payload{} }
+}
+'
+		},
+	])
+	call_names := call_names_for_fn(files, 'main')
+	assert 'json2__decode_T_Payload' in call_names
+	assert 'decode_T_Payload' !in call_names
+
+	mut found_prefixed_clone := false
+	mut found_unprefixed_clone := false
+	mut found_method_clone := false
+	mut found_generic_decl := false
+	for file in files {
+		for stmt in file.stmts {
+			if stmt is ast.FnDecl {
+				if stmt.name == 'json2__decode_T_Payload' {
+					found_prefixed_clone = true
+					assert stmt.typ.generic_params.len == 0
+				}
+				if stmt.name == 'decode_T_Payload' {
+					found_unprefixed_clone = true
+				}
+				if stmt.name == 'decode_value_T_Payload' {
+					found_method_clone = true
+					assert stmt.typ.generic_params.len == 0
+				}
+				if stmt.name == 'decode' && decl_generic_param_names(stmt).len > 0 {
+					found_generic_decl = true
+				}
+			}
+		}
+	}
+	assert found_prefixed_clone
+	assert !found_unprefixed_clone
+	assert found_method_clone
+	assert !found_generic_decl
+}
+
 fn test_transform_nested_module_selector_respects_local_shadow() {
 	mut t := create_test_transformer()
 	mut checker_scope := types.new_scope(unsafe { nil })
@@ -2343,6 +3145,841 @@ fn test_transform_bare_generic_call_uses_specialized_name() {
 	assert call.lhs is ast.Ident
 	assert (call.lhs as ast.Ident).name == 'run_new_T_A_X'
 	assert call.args.len == 2
+}
+
+fn test_transform_transitive_generic_call_in_clone_emits_callee_clone() {
+	files := transform_sources_for_test([
+		TestSource{
+			rel:  'webx/webx.v'
+			code: 'module webx
+
+pub fn run_at[A, X]() ! {
+	run_new[A, X]()!
+}
+
+pub fn run_new[A, X]() ! {}
+'
+		},
+		TestSource{
+			rel:  'main.v'
+			code: 'module main
+
+import webx
+
+struct App {}
+struct Context {}
+
+fn boot() {
+	webx.run_at[App, Context]() or {}
+}
+'
+		},
+	])
+	mut fn_names := []string{}
+	mut webx_fn_names := []string{}
+	mut main_fn_names := []string{}
+	for file in files {
+		for stmt in file.stmts {
+			if stmt is ast.FnDecl {
+				fn_names << stmt.name
+				if file.mod == 'webx' {
+					webx_fn_names << stmt.name
+				}
+				if file.mod == 'main' {
+					main_fn_names << stmt.name
+				}
+			}
+		}
+	}
+	assert 'webx__run_at_T_App_Context' in fn_names
+	assert 'webx__run_new_T_App_Context' in fn_names
+	assert 'webx__run_at_T_App_Context' in main_fn_names
+	assert 'webx__run_new_T_App_Context' in main_fn_names
+	assert 'webx__run_at_T_App_Context' !in webx_fn_names
+	assert 'webx__run_new_T_App_Context' !in webx_fn_names
+}
+
+fn test_transform_transitive_generic_call_with_mut_arg_in_clone_emits_callee_clone() {
+	files := transform_sources_for_test([
+		TestSource{
+			rel:  'webx/webx.v'
+			code: 'module webx
+
+pub struct RunParams {}
+
+pub fn run_at[A, X](mut global_app A, params RunParams) ! {
+	run_new[A, X](mut global_app, params)!
+}
+
+pub fn run_new[A, X](mut global_app A, params RunParams) ! {}
+'
+		},
+		TestSource{
+			rel:  'main.v'
+			code: 'module main
+
+import webx
+
+struct App {}
+struct Context {}
+
+fn boot() {
+	mut app := App{}
+	webx.run_at[App, Context](mut app, webx.RunParams{}) or {}
+}
+'
+		},
+	])
+	mut fn_names := []string{}
+	mut webx_fn_names := []string{}
+	mut main_fn_names := []string{}
+	for file in files {
+		for stmt in file.stmts {
+			if stmt is ast.FnDecl {
+				fn_names << stmt.name
+				if file.mod == 'webx' {
+					webx_fn_names << stmt.name
+				}
+				if file.mod == 'main' {
+					main_fn_names << stmt.name
+				}
+			}
+		}
+	}
+	assert 'webx__run_at_T_App_Context' in fn_names
+	assert 'webx__run_new_T_App_Context' in fn_names
+	assert 'webx__run_at_T_App_Context' in main_fn_names
+	assert 'webx__run_new_T_App_Context' in main_fn_names
+	assert 'webx__run_at_T_App_Context' !in webx_fn_names
+	assert 'webx__run_new_T_App_Context' !in webx_fn_names
+}
+
+fn test_transform_transitive_generic_function_value_in_clone_emits_full_callee_clone() {
+	files := transform_sources_for_test([
+		TestSource{
+			rel:  'webx/webx.v'
+			code: 'module webx
+
+pub struct ServerConfig {
+	handler fn (req int) int
+}
+
+pub struct Context {}
+
+pub fn run_at[A, X]() {
+	run_new[A, X]()
+}
+
+pub fn run_new[A, X]() {
+	_ := ServerConfig{
+		handler: parallel_request_handler[A, X]
+	}
+}
+
+fn parallel_request_handler[A, X](req int) int {
+	return route[A, X](req)
+}
+
+fn route[A, X](req int) int {
+	return req
+}
+'
+		},
+		TestSource{
+			rel:  'main.v'
+			code: 'module main
+
+import webx
+
+struct App {}
+struct Context {}
+
+fn boot() {
+	webx.run_at[App, Context]()
+}
+'
+		},
+	])
+	mut main_fn_names := []string{}
+	mut handler_name := ''
+	for file in files {
+		if file.mod != 'main' {
+			continue
+		}
+		for stmt in file.stmts {
+			if stmt is ast.FnDecl {
+				main_fn_names << stmt.name
+				if stmt.name == 'webx__run_new_T_App_Context' {
+					assign := stmt.stmts[0] as ast.AssignStmt
+					init := assign.rhs[0] as ast.InitExpr
+					if init.fields[0].value is ast.Ident {
+						handler_name = (init.fields[0].value as ast.Ident).name
+					} else {
+						handler_name = init.fields[0].value.type_name()
+					}
+				}
+			}
+		}
+	}
+	assert 'webx__run_new_T_App_Context' in main_fn_names
+	assert handler_name == 'webx__parallel_request_handler_T_App_Context'
+	assert 'webx__parallel_request_handler_T_App_Context' in main_fn_names
+	assert 'webx__route_T_App_Context' in main_fn_names
+}
+
+fn test_transform_imported_clone_substituted_init_type_keeps_declaring_module_context() {
+	files := transform_sources_for_test([
+		TestSource{
+			rel:  'webx/webx.v'
+			code: 'module webx
+
+pub struct Context {}
+
+pub fn make[A, X]() {
+	ctx := &Context{}
+	mut user_context := X{
+		Context: ctx
+	}
+	route[A, X](mut user_context)
+}
+
+fn route[A, X](mut user_context X) {
+	_ = user_context
+}
+'
+		},
+		TestSource{
+			rel:  'main.v'
+			code: 'module main
+
+import webx
+
+struct App {}
+
+struct Context {
+	webx.Context
+}
+
+fn boot() {
+	webx.make[App, Context]()
+}
+'
+		},
+	])
+	mut init_type_name := ''
+	mut main_fn_names := []string{}
+	for file in files {
+		if file.mod != 'main' {
+			continue
+		}
+		for stmt in file.stmts {
+			if stmt is ast.FnDecl && stmt.name == 'webx__make_T_App_Context' {
+				main_fn_names << stmt.name
+				assign := stmt.stmts[1] as ast.AssignStmt
+				init := assign.rhs[0] as ast.InitExpr
+				init_type := init.typ as ast.Ident
+				init_type_name = init_type.name
+			} else if stmt is ast.FnDecl {
+				main_fn_names << stmt.name
+			}
+		}
+	}
+	assert init_type_name == 'Context'
+	assert 'webx__route_T_App_Context' in main_fn_names
+}
+
+fn test_transform_generic_struct_clone_qualifies_module_type_arg_in_fn_field() {
+	files := transform_sources_for_test([
+		TestSource{
+			rel:  'veb/veb.v'
+			code: 'module veb
+
+pub struct Context {}
+
+pub struct MiddlewareOptions[T] {
+	handler fn (mut ctx T) bool
+}
+
+pub fn make[T]() MiddlewareOptions[T] {
+	return MiddlewareOptions[T]{}
+}
+'
+		},
+		TestSource{
+			rel:  'main.v'
+			code: 'module main
+
+import veb
+
+struct Context {}
+
+fn boot() {
+	_ := veb.make[veb.Context]()
+}
+'
+		},
+	])
+	mut clone_name := ''
+	mut handler_param_name := ''
+	for file in files {
+		if file.mod != 'veb' {
+			continue
+		}
+		for stmt in file.stmts {
+			if stmt is ast.StructDecl && stmt.name == 'MiddlewareOptions_T_veb_Context' {
+				clone_name = stmt.name
+				field_typ := stmt.fields[0].typ as ast.Type
+				fn_typ := field_typ as ast.FnType
+				param_ident := fn_typ.params[0].typ as ast.Ident
+				handler_param_name = param_ident.name
+			}
+		}
+	}
+	assert clone_name == 'MiddlewareOptions_T_veb_Context'
+	assert handler_param_name == 'veb__Context'
+}
+
+fn test_transform_embedded_generic_method_options_do_not_emit_bare_import_context() {
+	files := transform_sources_for_test([
+		TestSource{
+			rel:  'veb/veb.v'
+			code: 'module veb
+
+pub struct Context {}
+
+pub struct Middleware[T] {}
+
+@[params]
+pub struct MiddlewareOptions[T] {
+	handler fn (mut ctx T) bool
+}
+
+pub fn (mut m Middleware[T]) use(options MiddlewareOptions[T]) {
+	_ = options
+}
+'
+		},
+		TestSource{
+			rel:  'main.v'
+			code: 'module main
+
+import veb
+
+struct App {
+	veb.Middleware[Context]
+}
+
+struct Context {
+	veb.Context
+}
+
+fn (app &App) before_request(mut ctx Context) bool {
+	return true
+}
+
+fn boot() {
+	mut app := App{}
+	app.use(handler: app.before_request)
+}
+'
+		},
+	])
+	mut import_handler_param := ''
+	mut main_handler_param := ''
+	for file in files {
+		for stmt in file.stmts {
+			match stmt {
+				ast.StructDecl {
+					if !stmt.name.contains('MiddlewareOptions_T') {
+						continue
+					}
+					field_typ := stmt.fields[0].typ as ast.Type
+					fn_typ := field_typ as ast.FnType
+					param_ident := fn_typ.params[0].typ as ast.Ident
+					if file.mod == 'veb' && stmt.name == 'MiddlewareOptions_T_veb_Context' {
+						import_handler_param = param_ident.name
+					}
+					if file.mod == 'main' && stmt.name == 'veb__MiddlewareOptions_T_Context' {
+						main_handler_param = param_ident.name
+					}
+				}
+				else {}
+			}
+		}
+	}
+	assert import_handler_param == '' || import_handler_param == 'veb__Context', 'import_handler_param=${import_handler_param}, main_handler_param=${main_handler_param}'
+
+	assert main_handler_param == '' || main_handler_param == 'Context', 'import_handler_param=${import_handler_param}, main_handler_param=${main_handler_param}'
+}
+
+fn test_transform_imported_generic_struct_with_local_type_stays_in_call_file() {
+	files := transform_sources_for_test([
+		TestSource{
+			rel:  'json2/json2.v'
+			code: 'module json2
+
+pub struct StructKeyDecodeResult[T] {
+	value T
+}
+
+pub fn decode[T]() StructKeyDecodeResult[T] {
+	return StructKeyDecodeResult[T]{}
+}
+'
+		},
+		TestSource{
+			rel:  'main.v'
+			code: 'module main
+
+import json2
+
+struct LocalResponse {}
+
+fn boot() {
+	_ := json2.decode[LocalResponse]()
+}
+'
+		},
+	])
+	mut import_struct_found := false
+	mut import_fn_found := false
+	mut main_struct_found := false
+	mut main_fn_found := false
+	mut main_field_typ := ''
+	for file in files {
+		for stmt in file.stmts {
+			match stmt {
+				ast.StructDecl {
+					if stmt.name == 'json2__StructKeyDecodeResult_T_LocalResponse'
+						|| stmt.name == 'StructKeyDecodeResult_T_LocalResponse' {
+						if file.mod == 'json2' {
+							import_struct_found = true
+						}
+						if file.mod == 'main'
+							&& stmt.name == 'json2__StructKeyDecodeResult_T_LocalResponse' {
+							main_struct_found = true
+							field_typ := stmt.fields[0].typ as ast.Ident
+							main_field_typ = field_typ.name
+						}
+					}
+				}
+				ast.FnDecl {
+					if stmt.name == 'json2__decode_T_LocalResponse'
+						|| stmt.name == 'decode_T_LocalResponse' {
+						if file.mod == 'json2' {
+							import_fn_found = true
+						}
+						if file.mod == 'main' && stmt.name == 'json2__decode_T_LocalResponse' {
+							main_fn_found = true
+						}
+					}
+				}
+				else {}
+			}
+		}
+	}
+	assert !import_struct_found
+	assert !import_fn_found
+	assert main_struct_found
+	assert main_fn_found
+	assert main_field_typ == 'LocalResponse'
+}
+
+fn test_transform_generic_struct_emits_module_clone_after_file_local_clone() {
+	files := transform_sources_for_test([
+		TestSource{
+			rel:  'other/other.v'
+			code: 'module other
+
+pub struct Type {}
+'
+		},
+		TestSource{
+			rel:  'm/m.v'
+			code: 'module m
+
+import other
+
+pub struct Box[T] {
+	value T
+}
+
+pub fn use_external() Box[other.Type] {
+	return Box[other.Type]{}
+}
+
+pub fn use_int() Box[int] {
+	return Box[int]{}
+}
+'
+		},
+		TestSource{
+			rel:  'main.v'
+			code: 'module main
+
+import m
+
+fn boot() {
+	_ := m.use_external()
+	_ := m.use_int()
+}
+'
+		},
+	])
+	mut m_structs := []string{}
+	for file in files {
+		if file.mod != 'm' {
+			continue
+		}
+		for stmt in file.stmts {
+			if stmt is ast.StructDecl {
+				m_structs << stmt.name
+			}
+		}
+	}
+	assert 'Box_T_other_Type' in m_structs
+	assert 'Box_T_int' in m_structs
+}
+
+fn test_transform_moved_generic_struct_qualifies_source_module_field_types() {
+	files := transform_sources_for_test([
+		TestSource{
+			rel:  'boxlib/boxlib.v'
+			code: 'module boxlib
+
+pub struct Helper {}
+
+pub struct Box[T] {
+	Helper
+	helper Helper
+	values []Helper
+	value T
+}
+
+pub fn make[T]() Box[T] {
+	return Box[T]{}
+}
+'
+		},
+		TestSource{
+			rel:  'main.v'
+			code: 'module main
+
+import boxlib
+
+struct LocalResponse {}
+
+fn boot() {
+	_ := boxlib.make[LocalResponse]()
+}
+'
+		},
+	])
+	mut moved_struct_found := false
+	mut embedded_typ := ''
+	mut helper_typ := ''
+	mut values_elem_typ := ''
+	mut value_typ := ''
+	for file in files {
+		if file.mod != 'main' {
+			continue
+		}
+		for stmt in file.stmts {
+			if stmt is ast.StructDecl && stmt.name == 'boxlib__Box_T_LocalResponse' {
+				moved_struct_found = true
+				if stmt.embedded.len > 0 {
+					embedded_ident := stmt.embedded[0] as ast.Ident
+					embedded_typ = embedded_ident.name
+				}
+				for field in stmt.fields {
+					match field.name {
+						'helper' {
+							helper_ident := field.typ as ast.Ident
+							helper_typ = helper_ident.name
+						}
+						'values' {
+							array_typ := field.typ as ast.Type
+							values_array := array_typ as ast.ArrayType
+							values_elem_ident := values_array.elem_type as ast.Ident
+							values_elem_typ = values_elem_ident.name
+						}
+						'value' {
+							value_ident := field.typ as ast.Ident
+							value_typ = value_ident.name
+						}
+						else {}
+					}
+				}
+			}
+		}
+	}
+	assert moved_struct_found
+	assert embedded_typ == 'boxlib__Helper'
+	assert helper_typ == 'boxlib__Helper'
+	assert values_elem_typ == 'boxlib__Helper'
+	assert value_typ == 'LocalResponse'
+}
+
+fn test_transform_transitive_imported_clone_substitutes_nested_generic_route_context() {
+	env, files := transform_sources_with_env_for_test([
+		TestSource{
+			rel:  'webx/webx.v'
+			code: 'module webx
+
+pub struct Request {
+	route int
+}
+
+pub struct ServerConfig {
+	handler fn (req Request) &Context
+}
+
+pub struct Context {
+	current_path string
+}
+
+pub fn run_new[A, X](mut global_app A) {
+	_ := ServerConfig{
+		handler: parallel_request_handler[A, X]
+	}
+	_ = global_app
+}
+
+fn parallel_request_handler[A, X](req Request) &Context {
+	mut app := A{}
+	return handle_request_and_route[A, X](mut app, req)
+}
+
+fn handle_request_and_route[A, X](mut app A, req Request) &Context {
+	mut ctx := &Context{}
+	mut user_context := X{
+		Context: ctx
+	}
+	handle_route[A, X](mut app, mut user_context, req.route)
+	return ctx
+}
+
+fn handle_route[A, X](mut app A, mut user_context X, route int) {
+	_ = app
+	_ = user_context
+	_ = route
+}
+'
+		},
+		TestSource{
+			rel:  'main.v'
+			code: 'module main
+
+import webx
+
+struct App {}
+
+struct Context {
+	webx.Context
+}
+
+fn boot() {
+	mut app := App{}
+	webx.run_new[App, Context](mut app)
+}
+'
+		},
+	])
+	mut main_fn_names := []string{}
+	mut init_type_name := ''
+	mut route_call_name := ''
+	for file in files {
+		if file.mod != 'main' {
+			continue
+		}
+		for stmt in file.stmts {
+			if stmt is ast.FnDecl {
+				main_fn_names << stmt.name
+				if stmt.name == 'webx__handle_request_and_route_T_App_Context' {
+					for inner in stmt.stmts {
+						if inner is ast.AssignStmt && inner.lhs.len == 1 && inner.rhs.len == 1 {
+							lhs_name := ident_name_from_expr_for_test(inner.lhs[0]) or { '' }
+							if lhs_name == 'user_context' && inner.rhs[0] is ast.InitExpr {
+								init := inner.rhs[0] as ast.InitExpr
+								init_type := init.typ as ast.Ident
+								init_type_name = init_type.name
+							}
+						}
+						if inner is ast.ExprStmt && inner.expr is ast.CallExpr {
+							call := inner.expr as ast.CallExpr
+							if call.lhs is ast.Ident {
+								route_call_name = (call.lhs as ast.Ident).name
+							} else {
+								route_call_name = call.lhs.type_name()
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+	assert 'webx__parallel_request_handler_T_App_Context' in main_fn_names
+	assert 'webx__handle_request_and_route_T_App_Context' in main_fn_names
+	assert 'webx__handle_route_T_App_Context' in main_fn_names
+	assert init_type_name == 'Context'
+	assert route_call_name == 'webx__handle_route_T_App_Context'
+	route_scope := env.get_fn_scope('main', 'webx__handle_route_T_App_Context') or {
+		panic('missing imported route clone scope')
+	}
+	user_context_type := route_scope.lookup_var_type('user_context') or {
+		panic('missing user_context type')
+	}
+	assert user_context_type.name() == 'Context'
+}
+
+fn test_transform_inferred_generic_method_call_uses_specialized_name() {
+	files := transform_code_for_test('
+module main
+
+struct Job {}
+
+struct Item {
+	value int
+}
+
+struct Out {
+mut:
+	value int
+}
+
+fn fill(item Item, mut out Out) {
+	out.value = item.value
+}
+
+fn (job &Job) apply[K, D, F](items []K, mut out []D, f F) {
+	_ = job
+	if items.len > 0 && out.len > 0 {
+		f(items[0], mut out[0])
+	}
+}
+
+fn use_apply() int {
+	job := Job{}
+	items := [Item{
+		value: 7
+	}]
+	mut out := []Out{len: 1}
+	job.apply(items, mut out, fill)
+	return out[0].value
+}
+')
+	call_names := call_names_for_fn(files, 'use_apply')
+	assert 'Job__apply_T_Item_Out_fn_item_Item_out_Out_void' in call_names
+	assert 'Job__apply' !in call_names
+
+	mut found_clone := false
+	for file in files {
+		for stmt in file.stmts {
+			if stmt is ast.FnDecl && stmt.name == 'apply_T_Item_Out_fn_item_Item_out_Out_void' {
+				found_clone = true
+				assert stmt.typ.generic_params.len == 0
+				assert stmt.typ.params.len == 3
+				assert stmt.typ.params[2].typ is ast.Type
+				fn_param_type := stmt.typ.params[2].typ as ast.Type
+				assert fn_param_type is ast.FnType
+			}
+		}
+	}
+	assert found_clone
+}
+
+fn test_transform_non_generic_method_does_not_match_generic_method_short_name() {
+	files := transform_code_for_test('
+module main
+
+struct Vec3[T] {
+	x T
+	y T
+	z T
+}
+
+fn (v Vec3[T]) div(u Vec3[T]) Vec3[T] {
+	_ = u
+	return v
+}
+
+struct Float3 {
+	x f32
+	y f32
+	z f32
+}
+
+fn (a Float3) div(s f32) Float3 {
+	_ = s
+	return a
+}
+
+fn use_float(a Float3) {
+	_ = a.div(f32(2))
+}
+')
+	call_names := call_names_for_fn(files, 'use_float')
+	assert 'Float3__div' in call_names
+	assert 'Float3__div_T_f32' !in call_names
+}
+
+fn test_transform_inferred_generic_fn_call_uses_specialized_fn_arg_name() {
+	files := transform_code_for_test('
+module main
+
+struct Alpha {}
+
+fn use_alpha(mut a Alpha) {
+	_ = a
+}
+
+fn call_cb[T, F](mut value T, cb F) {
+	cb(mut value)
+}
+
+fn main() {
+	mut a := Alpha{}
+	call_cb(mut a, use_alpha)
+}
+')
+	call_names := call_names_for_fn(files, 'main')
+	assert 'call_cb_T_Alpha_fn_a_Alpha_void' in call_names
+	assert 'call_cb' !in call_names
+	assert 'call_cb_T_Alpha_voidptr' !in call_names
+}
+
+fn test_transform_records_inferred_generic_binding_before_monomorphize() {
+	files := transform_code_for_test('
+module main
+
+fn clamp[T](a T, x T, b T) T {
+	mut min := T(0)
+	if x < b {
+		min = x
+	} else {
+		min = b
+	}
+	return if min < a { a } else { min }
+}
+
+fn main() {
+	ratio := f32(0.5)
+	_ = clamp(f32(0), ratio, 1.0)
+}
+')
+	call_names := call_names_for_fn(files, 'main')
+	assert 'clamp_T_f32' in call_names
+	mut found_clone := false
+	for file in files {
+		for stmt in file.stmts {
+			if stmt is ast.FnDecl && stmt.name == 'clamp_T_f32' {
+				found_clone = true
+				assert stmt.typ.generic_params.len == 0
+				assert stmt.stmts.len > 0
+			}
+		}
+	}
+	assert found_clone
 }
 
 fn stmts_have_defer(stmts []ast.Stmt) bool {
@@ -3921,6 +5558,18 @@ fn test_generate_array_method_elem_expr_registers_elem_type() {
 	assert t.type_to_c_name(elem_type) == 'string'
 }
 
+fn test_type_to_c_decl_name_preserves_float_primitives() {
+	t := create_test_transformer()
+	assert t.type_to_c_decl_name(types.Type(types.Primitive{
+		props: .float
+		size:  32
+	})) == 'f32'
+	assert t.type_to_c_decl_name(types.Type(types.f64_)) == 'f64'
+	assert t.type_to_c_decl_name(types.Type(types.Pointer{
+		base_type: types.Type(types.f64_)
+	})) == 'f64*'
+}
+
 fn test_resolve_expr_with_expected_type_resolves_enum_shorthand() {
 	mut t := create_test_transformer()
 	resolved := t.resolve_expr_with_expected_type(ast.Expr(ast.SelectorExpr{
@@ -4456,6 +6105,201 @@ fn set_value(mut values map[string]int) {
 	assert call.args.len == 3
 }
 
+fn test_map_value_temp_expr_keeps_existing_sumtype_value() {
+	sum_type := types.Type(types.SumType{
+		name:     'types.Type'
+		variants: [types.Type(types.string_), types.Type(types.int_)]
+	})
+	mut t := create_transformer_with_vars({
+		'v': sum_type
+	})
+	expr := t.map_value_temp_expr(ast.Expr(ast.Ident{
+		name: 'v'
+	}), sum_type)
+	assert expr is ast.Ident
+	assert (expr as ast.Ident).name == 'v'
+}
+
+fn test_map_value_temp_expr_keeps_short_named_sumtype_value() {
+	sum_type := types.Type(types.SumType{
+		name:     'types.Type'
+		variants: [types.Type(types.string_), types.Type(types.int_)]
+	})
+	mut t := create_transformer_with_vars({
+		'v': types.Type(types.NamedType('Type'))
+	})
+	expr := t.map_value_temp_expr(ast.Expr(ast.Ident{
+		name: 'v'
+	}), sum_type)
+	assert expr is ast.Ident
+	assert (expr as ast.Ident).name == 'v'
+}
+
+fn test_for_in_var_registration_replaces_reused_loop_value_type() {
+	sum_type := types.Type(types.SumType{
+		name:     'types.Type'
+		variants: [types.Type(types.string_), types.Type(types.int_)]
+	})
+	mut t := create_transformer_with_vars({})
+	t.register_for_in_var_type('v', types.Type(types.string_))
+	t.register_for_in_var_type('v', sum_type)
+	expr := t.map_value_temp_expr(ast.Expr(ast.Ident{
+		name: 'v'
+	}), sum_type)
+	assert expr is ast.Ident
+	assert (expr as ast.Ident).name == 'v'
+}
+
+fn test_decl_assign_index_expr_records_lhs_type() {
+	mut t := create_transformer_with_vars({
+		'values': types.Type(types.Array{
+			elem_type: types.int_
+		})
+	})
+	lhs_pos := token.Pos{
+		id: 4242
+	}
+	index_pos := token.Pos{
+		id: 4243
+	}
+	t.env.set_expr_type(index_pos.id, types.Type(types.f64_))
+	transformed := t.transform_assign_stmt(ast.AssignStmt{
+		op:  .decl_assign
+		lhs: [ast.Expr(ast.Ident{
+			name: 'first'
+			pos:  lhs_pos
+		})]
+		rhs: [
+			ast.Expr(ast.IndexExpr{
+				lhs:  ast.Expr(ast.Ident{
+					name: 'values'
+				})
+				expr: ast.Expr(ast.BasicLiteral{
+					kind:  .number
+					value: '0'
+				})
+				pos:  index_pos
+			}),
+		]
+	})
+	assert transformed.op == .decl_assign
+	local_type := t.lookup_local_decl_type('first') or {
+		assert false, 'missing local declaration type for index expression'
+		return
+	}
+	assert t.type_to_c_name(local_type) == 'int'
+	synth_type := t.get_synth_type(lhs_pos) or {
+		assert false, 'missing synth type for index declaration lhs'
+		return
+	}
+	assert t.type_to_c_name(synth_type) == 'int'
+}
+
+fn test_unsafe_cast_deref_prefers_cast_target_over_stale_env_type() {
+	mut t := create_test_transformer()
+	unsafe_pos := token.Pos{
+		id: 4250
+	}
+	deref_pos := token.Pos{
+		id: 4251
+	}
+	t.env.set_expr_type(unsafe_pos.id, types.Type(types.f64_))
+	t.env.set_expr_type(deref_pos.id, types.Type(types.f64_))
+	typ := t.get_expr_type(ast.UnsafeExpr{
+		stmts: [
+			ast.Stmt(ast.ExprStmt{
+				expr: ast.Expr(ast.PrefixExpr{
+					op:   .mul
+					expr: ast.Expr(ast.PrefixExpr{
+						op:   .amp
+						expr: ast.Expr(ast.CallOrCastExpr{
+							lhs:  ast.Expr(ast.Ident{
+								name: 'int'
+							})
+							expr: ast.Expr(ast.Ident{
+								name: 'raw'
+							})
+						})
+					})
+					pos:  deref_pos
+				})
+			}),
+		]
+		pos:   unsafe_pos
+	}) or {
+		assert false, 'missing unsafe cast deref type'
+		return
+	}
+	assert t.type_to_c_name(typ) == 'int'
+}
+
+fn test_decl_assign_unsafe_cast_deref_records_lhs_type() {
+	mut t := create_test_transformer()
+	lhs_pos := token.Pos{
+		id: 4260
+	}
+	unsafe_pos := token.Pos{
+		id: 4261
+	}
+	deref_pos := token.Pos{
+		id: 4262
+	}
+	t.env.set_expr_type(unsafe_pos.id, types.Type(types.f64_))
+	t.env.set_expr_type(deref_pos.id, types.Type(types.f64_))
+	transformed := t.transform_assign_stmt(ast.AssignStmt{
+		op:  .decl_assign
+		lhs: [ast.Expr(ast.Ident{
+			name: 'x'
+			pos:  lhs_pos
+		})]
+		rhs: [
+			ast.Expr(ast.UnsafeExpr{
+				stmts: [
+					ast.Stmt(ast.ExprStmt{
+						expr: ast.Expr(ast.PrefixExpr{
+							op:   .mul
+							expr: ast.Expr(ast.PrefixExpr{
+								op:   .amp
+								expr: ast.Expr(ast.CallOrCastExpr{
+									lhs:  ast.Expr(ast.Ident{
+										name: 'int'
+									})
+									expr: ast.Expr(ast.Ident{
+										name: 'raw'
+									})
+								})
+							})
+							pos:  deref_pos
+						})
+					}),
+				]
+				pos:   unsafe_pos
+			}),
+		]
+	})
+	assert transformed.op == .decl_assign
+	local_type := t.lookup_local_decl_type('x') or {
+		assert false, 'missing local declaration type for unsafe cast deref'
+		return
+	}
+	assert t.type_to_c_name(local_type) == 'int'
+	synth_type := t.get_synth_type(lhs_pos) or {
+		assert false, 'missing synth type for unsafe cast deref declaration lhs'
+		return
+	}
+	assert t.type_to_c_name(synth_type) == 'int'
+}
+
+fn test_is_enum_rvalue_stops_on_unresolved_alias() {
+	t := create_test_transformer()
+	unresolved_alias := types.Type(types.Alias{
+		name: 'Unresolved'
+	})
+	assert !t.is_enum_rvalue(ast.Expr(ast.Ident{
+		name: 'value'
+	}), unresolved_alias)
+}
+
 fn test_transform_map_index_push_resolves_named_array_alias_value() {
 	mut t := create_transformer_with_vars({
 		'cleanups': types.Type(types.Map{
@@ -4748,6 +6592,415 @@ fn f(column_name string) {
 				inner_array_type := inner_type as ast.ArrayType
 				assert inner_array_type.elem_type is ast.Ident
 				assert (inner_array_type.elem_type as ast.Ident).name == 'string'
+				found = true
+			}
+		}
+	}
+	assert found
+}
+
+fn test_transform_nested_array_append_call_result_uses_temp() {
+	files := transform_code_for_test('
+fn make_items() []string {
+	return ["x"]
+}
+
+fn f() {
+	mut groups := [][]string{}
+	groups << make_items()
+}
+')
+	mut found := false
+	for file in files {
+		for stmt in file.stmts {
+			if stmt is ast.FnDecl && stmt.name == 'f' {
+				assert stmt.stmts.len == 3
+				assert stmt.stmts[1] is ast.AssignStmt
+				tmp_assign := stmt.stmts[1] as ast.AssignStmt
+				assert tmp_assign.op == .decl_assign
+				assert tmp_assign.lhs.len == 1
+				assert tmp_assign.lhs[0] is ast.Ident
+				tmp_name := (tmp_assign.lhs[0] as ast.Ident).name
+				assert tmp_name.starts_with('_ap_t')
+				assert tmp_assign.rhs.len == 1
+				assert tmp_assign.rhs[0] is ast.CallExpr
+				rhs_call := tmp_assign.rhs[0] as ast.CallExpr
+				assert rhs_call.lhs is ast.Ident
+				assert (rhs_call.lhs as ast.Ident).name == 'make_items'
+				assert stmt.stmts[2] is ast.ExprStmt
+				expr_stmt := stmt.stmts[2] as ast.ExprStmt
+				assert expr_stmt.expr is ast.CallExpr
+				call := expr_stmt.expr as ast.CallExpr
+				assert call.lhs is ast.Ident
+				assert (call.lhs as ast.Ident).name == 'builtin__array_push_noscan'
+				assert call.args.len == 2
+				assert call.args[1] is ast.ArrayInitExpr
+				outer_arr := call.args[1] as ast.ArrayInitExpr
+				assert outer_arr.exprs.len == 1
+				assert outer_arr.exprs[0] is ast.Ident
+				assert (outer_arr.exprs[0] as ast.Ident).name == tmp_name
+				found = true
+			}
+		}
+	}
+	assert found
+}
+
+fn test_transform_for_in_nested_array_value_uses_array_index() {
+	files := transform_code_for_test('
+fn f(groups [][]string) []int {
+	mut counts := []int{}
+	for group in groups {
+		counts << group.len
+	}
+	return counts
+}
+')
+	mut found := false
+	for file in files {
+		for stmt in file.stmts {
+			if stmt is ast.FnDecl && stmt.name == 'f' {
+				assert stmt.stmts.len >= 2
+				assert stmt.stmts[1] is ast.ForStmt
+				for_stmt := stmt.stmts[1] as ast.ForStmt
+				assert for_stmt.stmts.len > 0
+				assert for_stmt.stmts[0] is ast.AssignStmt
+				value_assign := for_stmt.stmts[0] as ast.AssignStmt
+				assert value_assign.lhs.len == 1
+				assert value_assign.lhs[0] is ast.Ident
+				assert (value_assign.lhs[0] as ast.Ident).name == 'group'
+				assert value_assign.rhs.len == 1
+				assert value_assign.rhs[0] is ast.IndexExpr
+				index_expr := value_assign.rhs[0] as ast.IndexExpr
+				assert index_expr.lhs !is ast.CastExpr
+				found = true
+			}
+		}
+	}
+	assert found
+}
+
+fn test_transform_for_in_prefers_scope_iter_type_over_position_type() {
+	mut env := types.Environment.new()
+	iter_pos := token.Pos{
+		id: 42
+	}
+	env.set_expr_type(iter_pos.id, types.Type(types.Array{
+		elem_type: types.Type(types.int_)
+	}))
+	mut scope := types.new_scope(unsafe { nil })
+	scope.insert('s', value_object_from_type(types.Type(types.string_)))
+	mut t := &Transformer{
+		pref:                        &vpref.Preferences{}
+		env:                         env
+		scope:                       scope
+		needed_clone_fns:            map[string]string{}
+		needed_array_contains_fns:   map[string]ArrayMethodInfo{}
+		needed_array_index_fns:      map[string]ArrayMethodInfo{}
+		needed_array_last_index_fns: map[string]ArrayMethodInfo{}
+		local_decl_types:            map[string]types.Type{}
+	}
+	result := t.transform_for_stmt(ast.ForStmt{
+		init: ast.Stmt(ast.ForInStmt{
+			value: ast.Expr(ast.Ident{
+				name: 'ch'
+			})
+			expr:  ast.Expr(ast.ParenExpr{
+				expr: ast.Expr(ast.Ident{
+					name: 's'
+					pos:  iter_pos
+				})
+			})
+		})
+	})
+	assert result.stmts.len > 0
+	assert result.stmts[0] is ast.AssignStmt
+	value_assign := result.stmts[0] as ast.AssignStmt
+	assert value_assign.rhs.len == 1
+	assert value_assign.rhs[0] is ast.IndexExpr
+	index_expr := value_assign.rhs[0] as ast.IndexExpr
+	mut index_lhs := index_expr.lhs
+	for _ in 0 .. 4 {
+		if index_lhs is ast.ParenExpr {
+			index_lhs = index_lhs.expr
+			continue
+		}
+		break
+	}
+	assert index_lhs is ast.Ident
+	assert (index_lhs as ast.Ident).name == 's'
+}
+
+fn test_transform_for_in_fixed_array_value_uses_array_index() {
+	files := transform_code_for_test('
+fn f(pairs [][2]int) []int {
+	mut out := []int{}
+	for pair in pairs {
+		out << pair[1]
+	}
+	return out
+}
+')
+	mut found := false
+	for file in files {
+		for stmt in file.stmts {
+			if stmt is ast.FnDecl && stmt.name == 'f' {
+				assert stmt.stmts.len >= 2
+				assert stmt.stmts[1] is ast.ForStmt
+				for_stmt := stmt.stmts[1] as ast.ForStmt
+				assert for_stmt.stmts.len > 0
+				assert for_stmt.stmts[0] is ast.AssignStmt
+				value_assign := for_stmt.stmts[0] as ast.AssignStmt
+				assert value_assign.lhs.len == 1
+				assert value_assign.lhs[0] is ast.Ident
+				assert (value_assign.lhs[0] as ast.Ident).name == 'pair'
+				assert value_assign.rhs.len == 1
+				assert value_assign.rhs[0] is ast.IndexExpr
+				index_expr := value_assign.rhs[0] as ast.IndexExpr
+				assert index_expr.lhs !is ast.CastExpr
+				found = true
+			}
+		}
+	}
+	assert found
+}
+
+fn test_transform_for_in_struct_value_uses_typed_array_index() {
+	files := transform_code_for_test('
+struct Field {
+	typ int
+}
+
+fn f(fields []Field) int {
+	mut out := 0
+	for field in fields {
+		out += field.typ
+	}
+	return out
+}
+')
+	mut found := false
+	for file in files {
+		for stmt in file.stmts {
+			if stmt is ast.FnDecl && stmt.name == 'f' {
+				assert stmt.stmts.len >= 2
+				assert stmt.stmts[1] is ast.ForStmt
+				for_stmt := stmt.stmts[1] as ast.ForStmt
+				assert for_stmt.stmts.len > 0
+				assert for_stmt.stmts[0] is ast.AssignStmt
+				value_assign := for_stmt.stmts[0] as ast.AssignStmt
+				assert value_assign.lhs.len == 1
+				assert value_assign.lhs[0] is ast.Ident
+				assert (value_assign.lhs[0] as ast.Ident).name == 'field'
+				assert value_assign.rhs.len == 1
+				assert value_assign.rhs[0] is ast.IndexExpr
+				index_expr := value_assign.rhs[0] as ast.IndexExpr
+				assert index_expr.lhs !is ast.CastExpr
+				found = true
+			}
+		}
+	}
+	assert found
+}
+
+fn test_transform_for_in_smartcast_variant_array_field_keeps_element_type() {
+	field_type := types.Type(types.Struct{
+		name:   'Field'
+		fields: [
+			types.Field{
+				name: 'name'
+				typ:  types.Type(types.string_)
+			},
+		]
+	})
+	enum_type := types.Type(types.Struct{
+		name:   'Enum'
+		fields: [
+			types.Field{
+				name: 'fields'
+				typ:  types.Type(types.Array{
+					elem_type: field_type
+				})
+			},
+		]
+	})
+	sum_type := types.Type(types.SumType{
+		name:     'Type'
+		variants: [enum_type]
+	})
+	mut local_scope := types.new_scope(unsafe { nil })
+	local_scope.insert('typ', value_object_from_type(sum_type))
+	mut module_scope := types.new_scope(unsafe { nil })
+	module_scope.insert_type('Enum', enum_type)
+	module_scope.insert_type('Type', sum_type)
+	mut t := create_test_transformer()
+	t.scope = local_scope
+	t.cur_module = 'main'
+	t.cached_scopes = {
+		'main': module_scope
+	}
+	t.push_smartcast_full('typ', 'Enum', 'Enum', 'Type')
+	result := t.transform_for_stmt(ast.ForStmt{
+		init: ast.Stmt(ast.ForInStmt{
+			value: ast.Expr(ast.Ident{
+				name: 'field'
+			})
+			expr:  ast.Expr(ast.SelectorExpr{
+				lhs: ast.Expr(ast.Ident{
+					name: 'typ'
+				})
+				rhs: ast.Ident{
+					name: 'fields'
+				}
+			})
+		})
+	})
+	assert result.stmts.len > 0
+	assert result.stmts[0] is ast.AssignStmt
+	value_assign := result.stmts[0] as ast.AssignStmt
+	assert value_assign.lhs.len == 1
+	assert value_assign.lhs[0] is ast.Ident
+	value_ident := value_assign.lhs[0] as ast.Ident
+	value_typ := t.get_synth_type(value_ident.pos) or {
+		panic('missing smartcast for-in value type')
+	}
+	assert value_typ.name() == 'Field'
+	assert value_assign.rhs.len == 1
+	assert value_assign.rhs[0] is ast.IndexExpr
+	index_expr := value_assign.rhs[0] as ast.IndexExpr
+	index_typ := t.get_synth_type(index_expr.pos) or {
+		panic('missing smartcast for-in index type')
+	}
+	assert index_typ.name() == 'Field'
+}
+
+fn test_transform_for_in_nested_fixed_array_value_registers_decl_type() {
+	elem_type := types.Type(types.ArrayFixed{
+		len:       3
+		elem_type: types.Type(types.f32_)
+	})
+	iter_type := types.Type(types.ArrayFixed{
+		len:       4
+		elem_type: elem_type
+	})
+	mut t := create_transformer_with_vars({
+		'corners': iter_type
+	})
+	result := t.transform_for_stmt(ast.ForStmt{
+		init:  ast.Stmt(ast.ForInStmt{
+			value: ast.Expr(ast.Ident{
+				name: 'c'
+			})
+			expr:  ast.Expr(ast.Ident{
+				name: 'corners'
+			})
+		})
+		stmts: [
+			ast.Stmt(ast.ExprStmt{
+				expr: ast.Expr(ast.IndexExpr{
+					lhs:  ast.Expr(ast.Ident{
+						name: 'c'
+					})
+					expr: ast.Expr(ast.BasicLiteral{
+						kind:  .number
+						value: '0'
+					})
+				})
+			}),
+		]
+	})
+	assert result.stmts.len > 0
+	assert result.stmts[0] is ast.AssignStmt
+	value_assign := result.stmts[0] as ast.AssignStmt
+	assert value_assign.lhs.len == 1
+	assert value_assign.lhs[0] is ast.Ident
+	value_ident := value_assign.lhs[0] as ast.Ident
+	assert value_ident.name == 'c'
+	assert value_ident.pos.id != 0
+	value_decl_type := t.get_synth_type(value_ident.pos) or {
+		assert false, 'missing for-in value declaration type'
+		return
+	}
+	assert value_decl_type == elem_type
+}
+
+fn test_transform_fixed_array_of_array_literals_keeps_inner_arrays_dynamic() {
+	env, files := transform_code_with_env_for_test('
+fn f() {
+	corners := [[f32(1), 2, 3], [f32(4), 5, 6]]!
+	for c in corners {
+		_ = c[0]
+	}
+}
+')
+	mut found_decl := false
+	mut found_loop := false
+	for file in files {
+		for stmt in file.stmts {
+			if stmt is ast.FnDecl && stmt.name == 'f' {
+				assert stmt.stmts.len >= 2
+				assert stmt.stmts[0] is ast.AssignStmt
+				corners_decl := stmt.stmts[0] as ast.AssignStmt
+				assert corners_decl.rhs.len == 1
+				assert corners_decl.rhs[0] is ast.ArrayInitExpr
+				corners_init := corners_decl.rhs[0] as ast.ArrayInitExpr
+				assert corners_init.typ is ast.Type
+				assert corners_init.typ as ast.Type is ast.ArrayFixedType
+				corners_type := corners_init.typ as ast.Type
+				fixed_type := corners_type as ast.ArrayFixedType
+				assert fixed_type.elem_type is ast.Type
+				assert fixed_type.elem_type as ast.Type is ast.ArrayType
+				assert corners_init.exprs.len == 2
+				assert corners_init.exprs[0] is ast.CallExpr
+				assert corners_init.exprs[1] is ast.CallExpr
+				found_decl = true
+
+				assert stmt.stmts[1] is ast.ForStmt
+				for_stmt := stmt.stmts[1] as ast.ForStmt
+				assert for_stmt.stmts.len > 0
+				assert for_stmt.stmts[0] is ast.AssignStmt
+				value_assign := for_stmt.stmts[0] as ast.AssignStmt
+				assert value_assign.lhs.len == 1
+				assert value_assign.lhs[0] is ast.Ident
+				value_ident := value_assign.lhs[0] as ast.Ident
+				value_type := env.get_expr_type(value_ident.pos.id) or {
+					assert false, 'missing loop value type'
+					return
+				}
+				assert value_type is types.Array
+				found_loop = true
+			}
+		}
+	}
+	assert found_decl
+	assert found_loop
+}
+
+fn test_transform_for_in_mixed_float_array_uses_float_data_cast() {
+	files := transform_code_for_test('
+fn f() {
+	for _, i in [8.0, 1000, 175_616] {
+		_ = i
+	}
+}
+')
+	mut found := false
+	for file in files {
+		for stmt in file.stmts {
+			if stmt is ast.FnDecl && stmt.name == 'f' {
+				assert stmt.stmts.len == 1
+				assert stmt.stmts[0] is ast.ForStmt
+				for_stmt := stmt.stmts[0] as ast.ForStmt
+				assert for_stmt.stmts.len > 0
+				assert for_stmt.stmts[0] is ast.AssignStmt
+				value_assign := for_stmt.stmts[0] as ast.AssignStmt
+				assert value_assign.rhs.len == 1
+				assert value_assign.rhs[0] is ast.IndexExpr
+				index_expr := value_assign.rhs[0] as ast.IndexExpr
+				assert index_expr.lhs is ast.CastExpr
+				cast_expr := index_expr.lhs as ast.CastExpr
+				assert cast_expr.typ is ast.Ident
+				assert (cast_expr.typ as ast.Ident).name == 'f64*'
 				found = true
 			}
 		}
@@ -6650,6 +8903,123 @@ fn use_sql(sql_from_v fn (int) !string) !string {
 	assert col_decl_count == 1
 }
 
+fn test_sql_orm_vattribute_array_keeps_builtin_element_type() {
+	attribute_kind_type := types.Type(types.Enum{
+		name: 'AttributeKind'
+	})
+	vattribute_type := types.Type(types.Struct{
+		name:   'VAttribute'
+		fields: [
+			types.Field{
+				name: 'name'
+				typ:  types.string_
+			},
+			types.Field{
+				name: 'has_arg'
+				typ:  types.Type(types.bool_)
+			},
+			types.Field{
+				name: 'arg'
+				typ:  types.string_
+			},
+			types.Field{
+				name: 'kind'
+				typ:  attribute_kind_type
+			},
+		]
+	})
+	table_field_type := types.Type(types.Struct{
+		name:   'orm__TableField'
+		fields: [
+			types.Field{
+				name: 'name'
+				typ:  types.string_
+			},
+			types.Field{
+				name: 'typ'
+				typ:  types.Type(types.int_)
+			},
+			types.Field{
+				name: 'nullable'
+				typ:  types.Type(types.bool_)
+			},
+			types.Field{
+				name: 'default_val'
+				typ:  types.string_
+			},
+			types.Field{
+				name: 'attrs'
+				typ:  types.Type(types.Array{
+					elem_type: vattribute_type
+				})
+			},
+			types.Field{
+				name: 'is_arr'
+				typ:  types.Type(types.bool_)
+			},
+		]
+	})
+	mut builtin_scope := types.new_scope(unsafe { nil })
+	builtin_scope.insert('AttributeKind', attribute_kind_type)
+	builtin_scope.insert('VAttribute', vattribute_type)
+	mut orm_scope := types.new_scope(unsafe { nil })
+	orm_scope.insert('TableField', table_field_type)
+	mut t := create_test_transformer()
+	t.cur_module = 'gitly'
+	t.cached_scopes = {
+		'builtin': builtin_scope
+		'orm':     orm_scope
+	}
+	pos := token.Pos{
+		id: 8123
+	}
+	attr := ast.Attribute{
+		name:  'sql'
+		value: ast.StringLiteral{
+			kind:  .v
+			value: "'serial'"
+			pos:   pos
+		}
+	}
+	expr := t.sql_orm_table_field_expr(types.Field{
+		name:       'id'
+		typ:        types.Type(types.int_)
+		attributes: [attr]
+	}, pos) or { panic('expected orm table field expression') }
+	result := t.transform_expr(expr)
+	assert result is ast.InitExpr
+	init := result as ast.InitExpr
+	mut saw_attrs := false
+	for field in init.fields {
+		if field.name != 'attrs' {
+			continue
+		}
+		saw_attrs = true
+		assert field.value is ast.CallExpr
+		call := field.value as ast.CallExpr
+		assert call.args.len == 4
+		assert call.args[2] is ast.KeywordOperator
+		sizeof_arg := call.args[2] as ast.KeywordOperator
+		assert sizeof_arg.exprs.len == 1
+		assert sizeof_arg.exprs[0] is ast.Ident
+		assert (sizeof_arg.exprs[0] as ast.Ident).name == 'VAttribute'
+		assert call.args[3] is ast.ArrayInitExpr
+		inner := call.args[3] as ast.ArrayInitExpr
+		assert inner.typ is ast.Type
+		inner_typ := inner.typ as ast.Type
+		assert inner_typ is ast.ArrayType
+		inner_arr_typ := inner_typ as ast.ArrayType
+		assert inner_arr_typ.elem_type is ast.Ident
+		assert (inner_arr_typ.elem_type as ast.Ident).name == 'VAttribute'
+		assert inner.exprs.len == 1
+		assert inner.exprs[0] is ast.InitExpr
+		attr_init := inner.exprs[0] as ast.InitExpr
+		assert attr_init.typ is ast.Ident
+		assert (attr_init.typ as ast.Ident).name == 'VAttribute'
+	}
+	assert saw_attrs
+}
+
 fn test_replace_it_ident_keeps_nested_any_body_scope() {
 	mut t := create_test_transformer()
 	nested_any := ast.Expr(ast.CallOrCastExpr{
@@ -6822,15 +9192,19 @@ fn parse_code_with_defines_for_test(code string, defines []string) []ast.File {
 }
 
 fn parse_code_with_prefs_for_test(code string, backend vpref.Backend, defines []string) []ast.File {
-	tmp_file := '/tmp/v2_parser_cond_field_test_${os.getpid()}.v'
-	os.write_file(tmp_file, code) or { panic('failed to write temp file') }
-	defer {
-		os.rm(tmp_file) or {}
-	}
 	prefs := &vpref.Preferences{
 		backend:      backend
 		no_parallel:  true
 		user_defines: defines
+	}
+	return parse_code_with_custom_prefs_for_test(code, prefs)
+}
+
+fn parse_code_with_custom_prefs_for_test(code string, prefs &vpref.Preferences) []ast.File {
+	tmp_file := '/tmp/v2_parser_cond_field_test_${os.getpid()}.v'
+	os.write_file(tmp_file, code) or { panic('failed to write temp file') }
+	defer {
+		os.rm(tmp_file) or {}
 	}
 	mut file_set := token.FileSet.new()
 	mut par := parser.Parser.new(prefs)
@@ -6935,6 +9309,72 @@ struct Container {
 	])
 	assert files.len == 1
 	assert struct_field_names(files[0], 'Container') == ['name', 'debug_only']
+}
+
+fn test_struct_pkgconfig_fields_inactive_for_cross_target() {
+	if !vpref.comptime_pkgconfig_value('sqlite3') {
+		return
+	}
+	prefs := &vpref.Preferences{
+		backend:        .cleanc
+		no_parallel:    true
+		target_os:      'cross'
+		output_cross_c: true
+	}
+	files := parse_code_with_custom_prefs_for_test('
+module main
+
+struct Container {
+$if $pkgconfig("sqlite3") {
+	host_field HostSqliteField
+} $else {
+	cross_field int
+}
+attr_field int @[if $pkgconfig("sqlite3")]
+	always int
+}
+',
+		prefs)
+	assert files.len == 1
+	assert struct_field_names(files[0], 'Container') == ['cross_field', 'always']
+}
+
+fn test_transform_pkgconfig_branch_inactive_for_cross_target() {
+	if !vpref.comptime_pkgconfig_value('sqlite3') {
+		return
+	}
+	prefs := &vpref.Preferences{
+		backend:        .cleanc
+		no_parallel:    true
+		target_os:      'cross'
+		output_cross_c: true
+	}
+	files := transform_code_with_prefs_for_test('
+module main
+
+fn pick() int {
+	$if $pkgconfig("sqlite3") {
+		return 1
+	} $else {
+		return 2
+	}
+}
+',
+		prefs)
+	assert files.len == 1
+	for stmt in files[0].stmts {
+		if stmt is ast.FnDecl && stmt.name == 'pick' {
+			assert stmt.stmts.len == 1
+			assert stmt.stmts[0] is ast.ReturnStmt
+			ret := stmt.stmts[0] as ast.ReturnStmt
+			assert ret.exprs.len == 1
+			assert ret.exprs[0] is ast.BasicLiteral
+			lit := ret.exprs[0] as ast.BasicLiteral
+			assert lit.value == '2'
+			return
+		}
+	}
+	assert false
 }
 
 // Regression: `$else` starts on the line after `}`. The auto-inserted `;`

@@ -328,6 +328,7 @@ pub fn (mut p Parser) parse_file(filename string, mut file_set token.FileSet) as
 		}
 		top_stmts << ast.FnDecl{
 			name:  'main'
+			typ:   fn_type_with_return_type([]ast.Expr{}, []ast.Parameter{}, ast.empty_expr)
 			stmts: script_stmts
 		}
 	}
@@ -1641,8 +1642,9 @@ fn (mut p Parser) finish_expr(input_lhs ast.Expr, min_bp token.BindingPower) ast
 						lhs = index_expr_with_parts(lhs, expr, false, idx_pos)
 					}
 				} else {
-					if p.exp_pt && (expr is ast.GenericArgs || expr is ast.Ident
-						|| expr is ast.SelectorExpr || expr is ast.LifetimeExpr) {
+					if exprs.len > 1 || (p.exp_pt && (expr is ast.GenericArgs
+						|| expr is ast.Ident || expr is ast.SelectorExpr
+						|| expr is ast.LifetimeExpr)) {
 						lhs = ast.Expr(ast.GenericArgs{
 							lhs:  lhs
 							args: exprs
@@ -1659,7 +1661,14 @@ fn (mut p Parser) finish_expr(input_lhs ast.Expr, min_bp token.BindingPower) ast
 			p.next()
 			if p.tok == .dollar {
 				p.next()
-				inner := p.expr(.lowest)
+				inner := if p.tok == .lpar {
+					p.next()
+					expr := p.expr(.lowest)
+					p.expect(.rpar)
+					expr
+				} else {
+					p.expr(.lowest)
+				}
 				rhs_pos := p.pos
 				rhs_name := '__comptime_selector__'
 				full_name := if lhs_name == '' { rhs_name } else { lhs_name + '.' + rhs_name }
@@ -1667,7 +1676,7 @@ fn (mut p Parser) finish_expr(input_lhs ast.Expr, min_bp token.BindingPower) ast
 					p.selector_names[dot_pos.id] = full_name
 				}
 				lhs = selector_expr_with_rhs_name(lhs, rhs_pos, rhs_name, dot_pos)
-				// `app.$method(args)` — inner parses as CallExpr or CallOrCastExpr;
+				// `app.$method(args)` - inner parses as CallExpr or CallOrCastExpr;
 				// lift its args onto our SelectorExpr so the call form is preserved.
 				if inner is ast.CallExpr {
 					lhs = ast.Expr(ast.CallExpr{
@@ -3478,6 +3487,20 @@ fn (mut p Parser) parse_comptime_struct_field_branch(language ast.Language, is_u
 }
 
 fn (mut p Parser) select_expr() ast.SelectExpr {
+	if p.tok == .key_else {
+		pos := p.pos
+		p.next()
+		mut stmts := []ast.Stmt{}
+		if p.tok == .lcbr {
+			stmts = p.block()
+			p.expect_semi()
+		}
+		return ast.SelectExpr{
+			pos:   pos
+			stmt:  ast.empty_stmt
+			stmts: stmts
+		}
+	}
 	exp_lcbr := p.exp_lcbr
 	p.exp_lcbr = true
 	stmt_expr := p.expr(.lowest)
@@ -3763,7 +3786,13 @@ fn (mut p Parser) ident_or_selector_expr() ast.Expr {
 	mut is_comptime_selector := false
 	if p.tok == .dollar {
 		p.next()
-		comptime_inner = p.expr(.lowest)
+		if p.tok == .lpar {
+			p.next()
+			comptime_inner = p.expr(.lowest)
+			p.expect(.rpar)
+		} else {
+			comptime_inner = p.expr(.lowest)
+		}
 		rhs_pos = p.pos
 		rhs_name = '__comptime_selector__'
 		is_comptime_selector = true
@@ -3775,7 +3804,7 @@ fn (mut p Parser) ident_or_selector_expr() ast.Expr {
 		p.selector_names[dot_pos.id] = full_name
 	}
 	mut lhs := selector_expr_with_rhs_name(base, rhs_pos, rhs_name, dot_pos)
-	// `app.$method(args)` — inner parses as CallExpr or CallOrCastExpr;
+	// `app.$method(args)` - inner parses as CallExpr or CallOrCastExpr;
 	// lift its args onto our SelectorExpr so the call form is preserved.
 	if is_comptime_selector {
 		if comptime_inner is ast.CallExpr {
@@ -3800,7 +3829,13 @@ fn (mut p Parser) ident_or_selector_expr() ast.Expr {
 		mut inner_is_comptime := false
 		if p.tok == .dollar {
 			p.next()
-			inner_comptime = p.expr(.lowest)
+			if p.tok == .lpar {
+				p.next()
+				inner_comptime = p.expr(.lowest)
+				p.expect(.rpar)
+			} else {
+				inner_comptime = p.expr(.lowest)
+			}
 			rhs_pos = p.pos
 			rhs_name = '__comptime_selector__'
 			inner_is_comptime = true
@@ -3904,6 +3939,15 @@ fn (p &Parser) can_eval_comptime_cond(cond ast.Expr) bool {
 		ast.Ident {
 			return true
 		}
+		ast.ComptimeExpr {
+			return p.can_eval_comptime_cond(cond.expr)
+		}
+		ast.CallExpr {
+			return parser_pkgconfig_call_name(cond) != none
+		}
+		ast.CallOrCastExpr {
+			return parser_pkgconfig_call_name(cond) != none
+		}
 		ast.PrefixExpr {
 			if cond.op != .not {
 				return false
@@ -3941,6 +3985,19 @@ fn (p &Parser) eval_comptime_cond(cond ast.Expr) bool {
 		ast.Ident {
 			return p.eval_comptime_flag(cond.name)
 		}
+		ast.ComptimeExpr {
+			return p.eval_comptime_cond(cond.expr)
+		}
+		ast.CallExpr {
+			if pkg_name := parser_pkgconfig_call_name(cond) {
+				return p.eval_pkgconfig_cond(pkg_name)
+			}
+		}
+		ast.CallOrCastExpr {
+			if pkg_name := parser_pkgconfig_call_name(cond) {
+				return p.eval_pkgconfig_cond(pkg_name)
+			}
+		}
 		ast.PrefixExpr {
 			if cond.op == .not {
 				return !p.eval_comptime_cond(cond.expr)
@@ -3970,8 +4027,48 @@ fn (p &Parser) eval_comptime_cond(cond ast.Expr) bool {
 	return false
 }
 
+fn (p &Parser) eval_pkgconfig_cond(pkg_name string) bool {
+	if p.pref.is_cross_target() {
+		return false
+	}
+	return pref.comptime_pkgconfig_value(pkg_name)
+}
+
 // eval_comptime_flag delegates to the shared `pref.comptime_flag_value` so
 // the parser and the transformer recognize exactly the same flag names.
 fn (p &Parser) eval_comptime_flag(name string) bool {
 	return pref.comptime_flag_value(p.pref, name)
+}
+
+fn parser_pkgconfig_call_name(expr ast.Expr) ?string {
+	match expr {
+		ast.CallExpr {
+			if expr.lhs is ast.Ident && expr.lhs.name == 'pkgconfig' && expr.args.len == 1 {
+				return parser_string_literal_value(expr.args[0])
+			}
+		}
+		ast.CallOrCastExpr {
+			if expr.lhs is ast.Ident && expr.lhs.name == 'pkgconfig' {
+				return parser_string_literal_value(expr.expr)
+			}
+		}
+		else {}
+	}
+
+	return none
+}
+
+fn parser_string_literal_value(expr ast.Expr) ?string {
+	if expr is ast.StringLiteral {
+		return parser_unquote_string_literal_value(expr.value)
+	}
+	return none
+}
+
+fn parser_unquote_string_literal_value(value string) string {
+	if value.len >= 2 && ((value[0] == `"` && value[value.len - 1] == `"`)
+		|| (value[0] == `'` && value[value.len - 1] == `'`)) {
+		return value[1..value.len - 1]
+	}
+	return value
 }

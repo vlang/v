@@ -208,9 +208,7 @@ fn (mut g Gen) selector_method_value_name(node ast.SelectorExpr) ?string {
 			else {}
 		}
 
-		if !is_fn_value {
-			return none
-		}
+		_ = is_fn_value
 	}
 	recv_type := g.get_expr_type(node.lhs)
 	if recv_type == '' {
@@ -1258,8 +1256,28 @@ fn (mut g Gen) gen_enum_shorthand_compare(node &ast.InfixExpr, lhs_type string, 
 }
 
 fn (mut g Gen) gen_infix_expr(node &ast.InfixExpr) {
-	lhs_type := g.get_expr_type(node.lhs)
-	rhs_type := g.get_expr_type(node.rhs)
+	mut lhs_type := g.get_expr_type(node.lhs)
+	mut rhs_type := g.get_expr_type(node.rhs)
+	if local_type := g.local_var_c_type_for_expr(node.lhs) {
+		lhs_type = local_type
+	}
+	if local_type := g.local_var_c_type_for_expr(node.rhs) {
+		rhs_type = local_type
+	}
+	if node.lhs is ast.IndexExpr && (lhs_type == '' || lhs_type == 'int'
+		|| lhs_type == 'array' || lhs_type == 'void*' || lhs_type == 'voidptr'
+		|| (lhs_type.starts_with('Array_') && !lhs_type.starts_with('Array_fixed_'))) {
+		if elem_type := g.index_expr_elem_type_from_lhs(node.lhs) {
+			lhs_type = elem_type
+		}
+	}
+	if node.rhs is ast.IndexExpr && (rhs_type == '' || rhs_type == 'int'
+		|| rhs_type == 'array' || rhs_type == 'void*' || rhs_type == 'voidptr'
+		|| (rhs_type.starts_with('Array_') && !rhs_type.starts_with('Array_fixed_'))) {
+		if elem_type := g.index_expr_elem_type_from_lhs(node.rhs) {
+			rhs_type = elem_type
+		}
+	}
 	// Channel push: ch <- value → sync__Channel__try_push_priv(ch, &(elem_type){value}, false)
 	if node.op == .arrow {
 		mut elem_type := g.channel_elem_type_from_expr(node.lhs) or { 'bool' }
@@ -1883,7 +1901,10 @@ fn (mut g Gen) gen_infix_expr(node &ast.InfixExpr) {
 	if node.op in [.lt, .le, .gt, .ge] && lhs_type != '' && rhs_type != '' && lhs_type == rhs_type
 		&& lhs_type !in primitive_types && lhs_type != 'string' && !lhs_type.ends_with('*')
 		&& !lhs_type.ends_with('ptr') {
-		lt_fn := '${lhs_type}__lt'
+		mut lt_fn := '${lhs_type}__op_lt'
+		if lt_fn !in g.fn_return_types && lt_fn !in g.fn_param_is_ptr {
+			lt_fn = '${lhs_type}__lt'
+		}
 		if lt_fn in g.fn_return_types || lt_fn in g.fn_param_is_ptr {
 			match node.op {
 				.lt {
@@ -4594,6 +4615,29 @@ fn (mut g Gen) gen_index_expr(node ast.IndexExpr) {
 		g.gen_index_expr_value(node.expr)
 		g.sb.write_string(']')
 		return
+	}
+	if lhs_type in g.array_aliases {
+		alias_base := g.array_alias_base_type(lhs_type)
+		if alias_base.starts_with('Array_fixed_') {
+			g.expr(node.lhs)
+			g.sb.write_string('[')
+			g.gen_index_expr_value(node.expr)
+			g.sb.write_string(']')
+			return
+		}
+		elem_type := g.array_alias_elem_type_from_c_type(lhs_type)
+		if elem_type != '' {
+			g.sb.write_string('((${elem_type}*)')
+			g.expr(node.lhs)
+			if lhs_type.ends_with('*') {
+				g.sb.write_string('->data)[')
+			} else {
+				g.sb.write_string('.data)[')
+			}
+			g.gen_index_expr_value(node.expr)
+			g.sb.write_string(']')
+			return
+		}
 	}
 	// CastExpr to Array_* pointer: transformer-generated cast already points
 	// to the correct element type (e.g., for 2D array init), just index directly

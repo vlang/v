@@ -564,9 +564,22 @@ fn (p &Parser) is_sql_query_data_expr() bool {
 	for p.peek_token(idx).kind == .comment {
 		idx++
 	}
-	first := p.peek_token(idx)
+	mut first := p.peek_token(idx)
 	if first.kind == .key_if {
 		return true
+	}
+	has_leading_paren := first.kind == .lpar
+	if has_leading_paren && p.sql_query_data_item_has_top_level_colon(idx) {
+		return false
+	}
+	mut leading_parens := 0
+	for first.kind == .lpar {
+		leading_parens++
+		idx++
+		for p.peek_token(idx).kind == .comment {
+			idx++
+		}
+		first = p.peek_token(idx)
 	}
 	if first.kind != .name {
 		return false
@@ -575,7 +588,69 @@ fn (p &Parser) is_sql_query_data_expr() bool {
 	for p.peek_token(idx).kind == .dot && p.peek_token(idx + 1).kind == .name {
 		idx += 2
 	}
+	for leading_parens > 0 && p.peek_token(idx).kind == .rpar {
+		leading_parens--
+		idx++
+		for p.peek_token(idx).kind == .comment {
+			idx++
+		}
+	}
 	return is_sql_query_data_operator(p.peek_token(idx).kind)
+}
+
+fn (p &Parser) sql_query_data_item_has_top_level_colon(start_idx int) bool {
+	mut idx := start_idx
+	mut par_depth := 0
+	mut bracket_depth := 0
+	mut brace_depth := 0
+	for {
+		kind := p.peek_token(idx).kind
+		match kind {
+			.eof {
+				return false
+			}
+			.comment {}
+			.lpar {
+				par_depth++
+			}
+			.rpar {
+				if par_depth > 0 {
+					par_depth--
+				}
+			}
+			.lsbr {
+				bracket_depth++
+			}
+			.rsbr {
+				if bracket_depth > 0 {
+					bracket_depth--
+				}
+			}
+			.lcbr {
+				brace_depth++
+			}
+			.rcbr {
+				if brace_depth == 0 {
+					return false
+				}
+				brace_depth--
+			}
+			.comma {
+				if par_depth == 0 && bracket_depth == 0 && brace_depth == 0 {
+					return false
+				}
+			}
+			.colon {
+				if par_depth == 0 && bracket_depth == 0 && brace_depth == 0 {
+					return true
+				}
+			}
+			else {}
+		}
+
+		idx++
+	}
+	return false
 }
 
 fn is_sql_query_data_operator(kind token.Kind) bool {

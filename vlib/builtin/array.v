@@ -1129,8 +1129,10 @@ fn (mut a array) set_ni(i int, val voidptr) {
 }
 
 fn (mut a array) push(val voidptr) {
-	if a.len < 0 {
-		panic('array.push: negative len')
+	$if !no_bounds_checking {
+		if a.len < 0 {
+			panic('array.push: negative len')
+		}
 	}
 	if a.len >= max_int {
 		panic('array.push: len bigger than max_int')
