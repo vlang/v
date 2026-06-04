@@ -133,11 +133,15 @@ fn C.SSL_get_verify_result(ssl &C.SSL) i32
 
 fn C.SSL_set_tlsext_host_name(s &C.SSL, name &char) i32
 
-// SSL_set_alpn_protos sets the ALPN protocol list (length-prefixed wire
-// format). Note: unlike most OpenSSL functions, it returns 0 on success.
-fn C.SSL_set_alpn_protos(ssl &C.SSL, protos &u8, protos_len u32) i32
+// The ALPN calls go through small version-guarded shims in openssl_compat.h,
+// so the module still links against OpenSSL versions older than 1.0.2 that
+// predate ALPN. v_net_openssl_set_alpn_protos returns 0 on success (like the
+// underlying SSL_set_alpn_protos) and non-zero when ALPN is unavailable.
+// `data` is `const unsigned char **`; declared as voidptr so V emits a clean
+// `(void*)` cast and avoids -cstrict nested-pointer const warnings.
+fn C.v_net_openssl_set_alpn_protos(ssl &C.SSL, protos &u8, protos_len u32) i32
 
-fn C.SSL_get0_alpn_selected(ssl &C.SSL, data &&u8, len &u32)
+fn C.v_net_openssl_get0_alpn_selected(ssl &C.SSL, data voidptr, len &u32)
 
 fn C.SSL_shutdown(&C.SSL) i32
 

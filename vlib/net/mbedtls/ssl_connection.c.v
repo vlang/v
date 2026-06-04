@@ -297,7 +297,7 @@ fn (mut l SSLListener) init() ! {
 			}
 			l.alpn_list[n] = &char(0)
 		}
-		ret = C.mbedtls_ssl_conf_alpn_protocols(&l.conf, l.alpn_list)
+		ret = C.mbedtls_ssl_conf_alpn_protocols(&l.conf, voidptr(l.alpn_list))
 		if ret != 0 {
 			return error_with_code('net.mbedtls SSLListener.init, mbedtls_ssl_conf_alpn_protocols failed ret: ${ret}',
 				ret)
@@ -491,7 +491,9 @@ pub fn (mut s SSLConn) shutdown() ! {
 // handshake (e.g. 'h2' or 'http/1.1'), or an empty string if no protocol
 // was negotiated.
 pub fn (s &SSLConn) negotiated_alpn() string {
-	p := C.mbedtls_ssl_get_alpn_protocol(&s.ssl)
+	// mbedtls_ssl_get_alpn_protocol returns a `const char *`; cast away const
+	// for V, since we only read from it (and copy it below).
+	p := &char(C.mbedtls_ssl_get_alpn_protocol(&s.ssl))
 	if p == unsafe { nil } {
 		return ''
 	}
@@ -540,7 +542,7 @@ fn (mut s SSLConn) init() ! {
 			}
 			s.alpn_list[n] = &char(0)
 		}
-		ret = C.mbedtls_ssl_conf_alpn_protocols(&s.conf, s.alpn_list)
+		ret = C.mbedtls_ssl_conf_alpn_protocols(&s.conf, voidptr(s.alpn_list))
 		if ret != 0 {
 			return error_with_code('net.mbedtls SSLConn.init, mbedtls_ssl_conf_alpn_protocols failed ret: ${ret}',
 				ret)

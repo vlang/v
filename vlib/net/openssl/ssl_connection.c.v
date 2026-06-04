@@ -78,7 +78,7 @@ pub fn (mut s SSLConn) close() ! {
 pub fn (s &SSLConn) negotiated_alpn() string {
 	mut data := &u8(unsafe { nil })
 	mut length := u32(0)
-	C.SSL_get0_alpn_selected(voidptr(s.ssl), &data, &length)
+	C.v_net_openssl_get0_alpn_selected(voidptr(s.ssl), voidptr(&data), &length)
 	if length == 0 || data == unsafe { nil } {
 		return ''
 	}
@@ -162,9 +162,10 @@ fn (mut s SSLConn) init() ! {
 			wire << u8(proto.len)
 			wire << proto.bytes()
 		}
-		// SSL_set_alpn_protos returns 0 on success (opposite of most OpenSSL calls).
-		if C.SSL_set_alpn_protos(voidptr(s.ssl), wire.data, u32(wire.len)) != 0 {
-			return error('net.openssl SSLConn.init, SSL_set_alpn_protos failed')
+		// Returns 0 on success (opposite of most OpenSSL calls); non-zero also
+		// means ALPN is unavailable on OpenSSL versions older than 1.0.2.
+		if C.v_net_openssl_set_alpn_protos(voidptr(s.ssl), wire.data, u32(wire.len)) != 0 {
+			return error('net.openssl SSLConn.init, failed to set ALPN protocols (requires OpenSSL >= 1.0.2)')
 		}
 	}
 
