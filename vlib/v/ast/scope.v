@@ -113,11 +113,17 @@ pub fn (s &Scope) find_var(name string) ?&Var {
 }
 
 // find_var_decl returns the nearest declaration variable named `name`, walking
-// the parent scope chain and skipping synthetic smartcast vars (introduced by
-// `if x is T`/`match` branches, which carry a non-empty `smartcasts` list and
-// are copies of the real declaration). Use this when a promotion such as
-// auto-heap must be recorded on the variable that codegen emits as the
-// declaration, not on a smartcast copy living in an inner branch scope.
+// the parent scope chain and skipping synthetic smartcast vars introduced by
+// `if x is T`/`match` branches. Use this when a promotion such as auto-heap must
+// be recorded on the variable that codegen emits as the declaration, not on a
+// smartcast copy living in an inner branch scope.
+//
+// Only true synthetic copies are skipped: those are registered as separate
+// scope objects carrying both a non-empty `smartcasts` list and a non-zero
+// `orig_type` (the pre-smartcast type). A real declaration that is smartcast in
+// place keeps `orig_type == 0` (e.g. an option var unwrapped by
+// `if x == none { continue }` via `update_smartcasts`), so it is returned
+// rather than skipped.
 pub fn (s &Scope) find_var_decl(name string) ?&Var {
 	if _unlikely_(s == unsafe { nil }) {
 		return none
@@ -127,7 +133,7 @@ pub fn (s &Scope) find_var_decl(name string) ?&Var {
 		if pobj != unsafe { nil } {
 			match pobj {
 				Var {
-					if pobj.smartcasts.len == 0 {
+					if pobj.smartcasts.len == 0 || pobj.orig_type == 0 {
 						return &pobj
 					}
 				}
