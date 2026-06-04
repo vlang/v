@@ -1867,8 +1867,18 @@ fn (mut c Checker) preregister_types_from_flat(flat &ast.FlatAst, ff ast.FlatFil
 		}
 	}
 	c.scope = mod_scope
-	for stmt in flat.read_file_stmts(ff) {
-		c.preregister_type_stmt(stmt)
+	// s259: skip decoding fn_decls — their bodies are the bulk of the file and
+	// preregister_type_stmt no-ops FnDecl anyway. Decode + dispatch the rest.
+	decls := ast.Cursor{
+		flat: unsafe { flat }
+		id:   ff.file_id
+	}.list_at(2)
+	for di in 0 .. decls.len() {
+		dc := decls.at(di)
+		if dc.kind() == .stmt_fn_decl {
+			continue
+		}
+		c.preregister_type_stmt(flat.decode_stmt(dc.id))
 	}
 }
 
@@ -1958,7 +1968,18 @@ fn (mut c Checker) check_struct_field_defaults_from_flat(flat &ast.FlatAst) {
 		}
 		c.scope = mod_scope
 		c.cur_file_module = mod
-		for stmt in flat.read_file_stmts(ff) {
+		// s259: decode only struct decls instead of read_file_stmts (whole file,
+		// incl. every fn body). Kind-filter first, decode the matched node only.
+		decls := ast.Cursor{
+			flat: unsafe { flat }
+			id:   ff.file_id
+		}.list_at(2)
+		for di in 0 .. decls.len() {
+			dc := decls.at(di)
+			if dc.kind() != .stmt_struct_decl {
+				continue
+			}
+			stmt := flat.decode_stmt(dc.id)
 			if stmt is ast.StructDecl {
 				for field in stmt.fields {
 					if field.value !is ast.EmptyExpr {
@@ -1992,7 +2013,17 @@ fn (mut c Checker) check_enum_field_values_from_flat(flat &ast.FlatAst) {
 		}
 		c.scope = mod_scope
 		c.cur_file_module = mod
-		for stmt in flat.read_file_stmts(ff) {
+		// s259: decode only enum decls instead of read_file_stmts (whole file).
+		decls := ast.Cursor{
+			flat: unsafe { flat }
+			id:   ff.file_id
+		}.list_at(2)
+		for di in 0 .. decls.len() {
+			dc := decls.at(di)
+			if dc.kind() != .stmt_enum_decl {
+				continue
+			}
+			stmt := flat.decode_stmt(dc.id)
 			if stmt is ast.EnumDecl {
 				for field in stmt.fields {
 					if field.value !is ast.EmptyExpr {
