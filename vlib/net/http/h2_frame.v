@@ -283,6 +283,11 @@ pub fn h2_parse_frame(header H2FrameHeader, payload []u8) !H2Frame {
 			if payload.len != 5 {
 				return error('h2: PRIORITY frame must be 5 bytes')
 			}
+			// Note: a stream depending on itself (stream_dep == stream_id) is a
+			// stream error (RFC 7540 Section 5.3.1), and a zero stream
+			// dependency is otherwise valid. These are semantic checks left to
+			// the connection layer, which must respond with RST_STREAM on the
+			// affected stream rather than tearing down the whole connection.
 			dep := h2_be_u32(payload, 0)
 			return H2PriorityFrame{
 				stream_id:  header.stream_id
@@ -376,6 +381,10 @@ pub fn h2_parse_frame(header H2FrameHeader, payload []u8) !H2Frame {
 			if payload.len != 4 {
 				return error('h2: WINDOW_UPDATE frame must be 4 bytes')
 			}
+			// Note: a zero increment is an error (RFC 7540 Section 6.9) — a
+			// stream error on a stream, but a connection error on stream 0.
+			// That stream-vs-connection distinction is the connection layer's
+			// responsibility, so it is not rejected here.
 			return H2WindowUpdateFrame{
 				stream_id:             header.stream_id
 				window_size_increment: h2_be_u32(payload, 0) & 0x7fff_ffff
