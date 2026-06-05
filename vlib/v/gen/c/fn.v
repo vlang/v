@@ -6408,7 +6408,7 @@ fn (mut g Gen) call_args(node ast.CallExpr) {
 					exp_sym := g.table.sym(expected_types[i])
 					orig_sym := g.table.sym(arg.expr.obj.orig_type)
 					if !expected_types[i].has_option_or_result() && orig_sym.kind != .interface
-						&& (exp_sym.kind != .sum_type
+						&& (exp_sym.kind !in [.sum_type, .interface]
 						&& expected_types[i] != arg.expr.obj.orig_type) {
 						expected_types[i] = g.unwrap_generic(arg.expr.obj.smartcasts.last())
 						cast_sym := g.table.sym(expected_types[i])
@@ -6904,7 +6904,14 @@ fn (mut g Gen) ref_or_deref_arg_ex(arg ast.CallArg, expected_type_ ast.Type, lan
 		if needs_resolved_ident_type {
 			resolved_arg_typ := g.resolved_expr_type(ast.Expr(arg.expr), arg_typ)
 			if resolved_arg_typ != 0 {
-				arg_typ = g.unwrap_generic(g.recheck_concrete_type(resolved_arg_typ))
+				resolved_arg_type := g.unwrap_generic(g.recheck_concrete_type(resolved_arg_typ))
+				skip_inherited_option_storage_type := arg.expr.obj is ast.Var
+					&& arg.expr.obj.is_inherited && !expected_type.has_option_or_result()
+					&& arg_typ != 0 && !arg_typ.has_option_or_result()
+					&& resolved_arg_type.has_option_or_result()
+				if !skip_inherited_option_storage_type {
+					arg_typ = resolved_arg_type
+				}
 			}
 		}
 		if expected_type.has_option_or_result() && !arg_typ.has_option_or_result() {
@@ -6933,7 +6940,14 @@ fn (mut g Gen) ref_or_deref_arg_ex(arg ast.CallArg, expected_type_ ast.Type, lan
 		if resolved_arg_typ != 0 && (arg_typ == 0 || g.type_needs_generic_resolution(arg_typ)
 			|| in_generic_context
 			|| g.unwrap_generic(resolved_arg_typ) != g.unwrap_generic(arg_typ)) {
-			arg_typ = g.unwrap_generic(g.recheck_concrete_type(resolved_arg_typ))
+			resolved_arg_type := g.unwrap_generic(g.recheck_concrete_type(resolved_arg_typ))
+			skip_inherited_option_storage_type := arg.expr is ast.Ident && arg.expr.obj is ast.Var
+				&& arg.expr.obj.is_inherited && !expected_type.has_option_or_result()
+				&& arg_typ != 0 && !arg_typ.has_option_or_result()
+				&& resolved_arg_type.has_option_or_result()
+			if !skip_inherited_option_storage_type {
+				arg_typ = resolved_arg_type
+			}
 		}
 	}
 	// Array slice expressions (e.g. b[..8]) always return a value in C (via builtin__array_slice),
