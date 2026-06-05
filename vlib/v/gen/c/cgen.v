@@ -174,6 +174,7 @@ mut:
 	inside_for_c_stmt                    bool
 	inside_cast_in_heap                  int // inside cast to interface type in heap (resolve recursive calls)
 	inside_cast                          bool
+	inside_interface_cast                bool
 	inside_sumtype_cast                  bool
 	inside_selector                      bool
 	inside_selector_lhs                  bool
@@ -4509,6 +4510,8 @@ fn (mut g Gen) call_cfn_for_casting_expr(fname string, expr ast.Expr, exp ast.Ty
 	} else {
 		old_inside_sumtype_cast := g.inside_sumtype_cast
 		g.inside_sumtype_cast = true
+		old_inside_interface_cast := g.inside_interface_cast
+		g.inside_interface_cast = g.inside_interface_cast || is_interface_cast
 		old_left_is_opt := g.left_is_opt
 		g.left_is_opt = !exp.has_flag(.option)
 		old_inside_assign_fn_var := g.inside_assign_fn_var
@@ -4524,6 +4527,7 @@ fn (mut g Gen) call_cfn_for_casting_expr(fname string, expr ast.Expr, exp ast.Ty
 		}
 		g.inside_assign_fn_var = old_inside_assign_fn_var
 		g.left_is_opt = old_left_is_opt
+		g.inside_interface_cast = old_inside_interface_cast
 		g.inside_sumtype_cast = old_inside_sumtype_cast
 	}
 	if is_sumtype_cast {
@@ -9350,7 +9354,7 @@ fn (mut g Gen) ident(node ast.Ident) {
 			if has_resolved_var && runtime_option_type != ast.no_type && !node_info_is_option
 				&& resolved_var.smartcasts.len == 0 && resolved_var.ct_type_var != .smartcast
 				&& !g.inside_opt_or_res && !g.is_assign_lhs && !g.inside_selector_lhs
-				&& !g.right_is_opt && (!g.left_is_opt || g.inside_cast) {
+				&& !g.right_is_opt && (!g.left_is_opt || g.inside_cast || g.inside_interface_cast) {
 				g.unwrap_option_type(runtime_option_type, ident_option_name, is_auto_heap)
 				return
 			}

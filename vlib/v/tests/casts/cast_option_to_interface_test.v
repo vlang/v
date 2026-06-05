@@ -63,3 +63,29 @@ fn test_option_none_guard_interface_cast() {
 	cat := v as Issue27340Cat
 	assert cat.state == 1
 }
+
+fn issue_27340_value_state(v Issue27340Value) int {
+	assert v is Issue27340Cat
+	cat := v as Issue27340Cat
+	return cat.state
+}
+
+fn test_option_none_guard_implicit_interface_arg() {
+	x := maybe_issue_27340_cat()
+	if x == none {
+		assert false
+		return
+	}
+	assert issue_27340_value_state(x) == 1
+}
+
+fn test_option_none_guard_interface_array_append() {
+	x := maybe_issue_27340_cat()
+	if x == none {
+		assert false
+		return
+	}
+	mut values := []Issue27340Value{}
+	values << x
+	assert issue_27340_value_state(values[0]) == 1
+}
