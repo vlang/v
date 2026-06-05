@@ -337,7 +337,14 @@ fn (mut c Checker) match_expr(mut node ast.MatchExpr) ast.Type {
 					if unwrapped_expected_type.has_option_or_result()
 						|| c.table.type_kind(unwrapped_expected_type) in [.sum_type, .interface, .multi_return] {
 						c.check_match_branch_last_stmt(mut stmt, unwrapped_expected_type, expr_type)
-						ret_type = node.expected_type
+						if c.table.type_kind(unwrapped_expected_type) == .multi_return
+							&& c.table.type_kind(expr_type) == .multi_return
+							&& !c.can_use_expected_multi_return_expr_type(expr_type, unwrapped_expected_type, stmt.expr) {
+							ret_type = expr_type
+							c.expected_expr_type = expr_type
+						} else {
+							ret_type = node.expected_type
+						}
 					} else {
 						ret_type = expr_type
 						if expr_type.is_ptr() {
@@ -572,9 +579,7 @@ fn (mut c Checker) check_match_branch_last_stmt(mut last_stmt ast.ExprStmt, ret_
 		if !(ret_sym.kind == .sum_type && (ret_type.has_flag(.generic)
 			|| c.table.is_sumtype_or_in_variant(ret_type, expr_type))) && !is_noreturn {
 			if expr_sym.kind == .multi_return && ret_sym.kind == .multi_return {
-				ret_types := ret_sym.mr_info().types
-				expr_types := expr_sym.mr_info().types.map(ast.mktyp(it))
-				if expr_types == ret_types {
+				if c.can_use_expected_multi_return_expr_type(expr_type, ret_type, last_stmt.expr) {
 					return
 				}
 			}

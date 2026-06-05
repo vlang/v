@@ -427,7 +427,8 @@ fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 					stmt.typ = c.expr(mut stmt.expr)
 					if c.table.type_kind(c.expected_type) == .multi_return
 						&& c.table.type_kind(stmt.typ) == .multi_return {
-						if node.typ == ast.void_type {
+						if node.typ == ast.void_type
+							&& c.can_use_expected_multi_return_expr_type(stmt.typ, c.expected_type, stmt.expr) {
 							node.is_expr = true
 							node.typ = c.expected_type
 						}
