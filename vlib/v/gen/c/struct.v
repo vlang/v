@@ -555,7 +555,8 @@ fn (mut g Gen) struct_init(node ast.StructInit) {
 fn (mut g Gen) can_use_direct_heap_struct_init(node ast.StructInit, sym ast.TypeSymbol, aligned int, const_msvc_init bool) bool {
 	if g.is_shared || g.inside_cast_in_heap > 0 || g.inside_cinit || g.inside_const
 		|| g.inside_global_decl || aligned != 0 || const_msvc_init || node.typ.has_flag(.option)
-		|| node.has_update_expr || sym.kind != .struct {
+		|| node.has_update_expr || sym.kind != .struct || g.cur_fn == unsafe { nil }
+		|| g.stmt_path_pos.len <= g.inside_ternary {
 		return false
 	}
 	if sym.info !is ast.Struct {
@@ -579,11 +580,8 @@ fn (mut g Gen) can_use_direct_heap_struct_init(node ast.StructInit, sym ast.Type
 }
 
 fn (mut g Gen) direct_heap_struct_init(node ast.StructInit, styp string, info ast.Struct, language ast.Language) {
-	stmt_str := if g.inside_ternary > 0 {
-		g.go_before_ternary().trim_space()
-	} else {
-		g.go_before_last_stmt().trim_space()
-	}
+	stmt_pos_idx := g.stmt_path_pos.len - (1 + g.inside_ternary)
+	stmt_str := g.out.cut_to(g.stmt_path_pos[stmt_pos_idx]).trim_space()
 	g.empty_line = true
 	tmp_var := g.new_tmp_var()
 	if info.is_empty_struct() {
@@ -631,7 +629,8 @@ fn (mut g Gen) direct_heap_struct_init(node ast.StructInit, styp string, info as
 		g.struct_init_ptr_field(tmp_var, resolved_field, language)
 		g.writeln(';')
 	}
-	g.set_current_pos_as_last_stmt_pos()
+	// Keep the cut position current without leaving stale entries for later hoists.
+	g.stmt_path_pos[stmt_pos_idx] = g.out.len
 	g.write2(stmt_str, ' ')
 	g.write(tmp_var)
 }
