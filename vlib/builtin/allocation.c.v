@@ -271,7 +271,12 @@ pub fn v_realloc(b &u8, n isize) &u8 {
 	if new_ptr == 0 {
 		_memory_panic(@FN, n)
 	}
-	_ht_free(b)
+	// realloc(nil, …) means "allocate", not "free then allocate" (the stbi
+	// STBI_REALLOC path forwards null `b` here), so only report a free when there
+	// was a real prior block — mirrors the nil guard in free().
+	if b != unsafe { nil } {
+		_ht_free(b)
+	}
 	_ht_alloc(new_ptr, n)
 	return new_ptr
 }
@@ -329,7 +334,10 @@ pub fn realloc_data(old_data &u8, old_size int, new_size int) &u8 {
 	if nptr == 0 {
 		_memory_panic(@FN, isize(new_size))
 	}
-	_ht_free(old_data)
+	// realloc(nil, …) means "allocate"; don't report a free with no prior block.
+	if old_data != unsafe { nil } {
+		_ht_free(old_data)
+	}
 	_ht_alloc(nptr, isize(new_size))
 	return nptr
 }
