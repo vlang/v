@@ -52,8 +52,28 @@ fn guarded_cat_closure_arg_state() int {
 	return callback()
 }
 
+fn generic_none_guard_identity[T](value T) T {
+	return value
+}
+
+fn guarded_generic_closure_unwrap[T](value ?T) ?T {
+	if value == none {
+		return none
+	}
+	callback := fn [value] [T]() T {
+		return generic_none_guard_identity[T](value)
+	}
+	return callback[T]()
+}
+
+fn guarded_cat_generic_closure_arg_state() int {
+	cat := guarded_generic_closure_unwrap[NoneGuardCat](maybe_none_guard_cat()) or { return 0 }
+	return cat.state
+}
+
 fn test_option_none_guard_return_unwrap_for_args_and_casts() {
 	assert guarded_cat_arg_state() == 1
 	assert guarded_cat_cast_state() == 1
 	assert guarded_cat_closure_arg_state() == 1
+	assert guarded_cat_generic_closure_arg_state() == 1
 }
