@@ -363,6 +363,7 @@ pub fn vcalloc(n isize) &u8 {
 			if ptr != &u8(unsafe { nil }) {
 				unsafe { C.memset(ptr, 0, n) }
 			}
+			_ht_alloc(ptr, n)
 			return ptr
 		} $else {
 			r := unsafe { C.calloc(1, n) }
@@ -411,7 +412,6 @@ pub fn free(ptr voidptr) {
 	$if trace_free ? {
 		C.fprintf(C.stderr, c'free ptr: %p\n', ptr)
 	}
-	_ht_free(ptr)
 	$if builtin_free_nop ? {
 		return
 	}
@@ -447,6 +447,10 @@ pub fn free(ptr voidptr) {
 			unsafe { C.GC_FREE(ptr) }
 		}
 	} $else {
+		// Manual memory management: this is the only path that actually returns
+		// the block to the C allocator, and it mirrors where _ht_alloc fires, so
+		// report the free here (after the nil / none__ / nop / GC guards above).
+		_ht_free(ptr)
 		$if windows {
 			// Warning! On windows, we always use _aligned_free to free memory.
 			unsafe { C._aligned_free(ptr) }
