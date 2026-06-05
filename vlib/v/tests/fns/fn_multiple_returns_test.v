@@ -94,11 +94,20 @@ fn if_expr(x bool) (int, int) {
 	return if x { 3, 3 } else { 2, 2 }
 }
 
+fn noop_cmd_for_multi_return_if() int {
+	return 0
+}
+
+fn if_expr_with_fn_value(x bool) (int, fn () int) {
+	return if x { 1, noop_cmd_for_multi_return_if } else { 2, noop_cmd_for_multi_return_if }
+}
+
 fn test_multi_return_if_match_expr() {
 	a, b := match_expr(true)
 	c, d := match_expr(false)
 	x, y := if_expr(true)
 	z, w := if_expr(false)
+	n, f := if_expr_with_fn_value(true)
 	assert a == 1
 	assert b == 1
 	assert c == 0
@@ -107,4 +116,6 @@ fn test_multi_return_if_match_expr() {
 	assert y == 3
 	assert z == 2
 	assert w == 2
+	assert n == 1
+	assert f() == 0
 }

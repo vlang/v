@@ -6894,6 +6894,23 @@ fn (mut c Checker) concat_expr(mut node ast.ConcatExpr) ast.Type {
 		node.return_type = typ
 		return typ
 	} else {
+		expected_multi_return_type := c.expected_type.clear_option_and_result()
+		expected_sym := c.table.sym(expected_multi_return_type)
+		if c.inside_return && !c.expected_type.has_option_or_result()
+			&& c.expected_or_type == ast.void_type && expected_sym.info is ast.MultiReturn
+			&& expected_sym.info.types.len == mr_types.len {
+			mut use_expected_type := true
+			for i, expected_typ in expected_sym.info.types {
+				if !c.check_types(mr_types[i], expected_typ) {
+					use_expected_type = false
+					break
+				}
+			}
+			if use_expected_type {
+				node.return_type = expected_multi_return_type
+				return expected_multi_return_type
+			}
+		}
 		for i := 0; i < mr_types.len; i++ {
 			if mr_types[i] == ast.void_type {
 				c.error('type `void` cannot be used in multi-return', node.vals[i].pos())

@@ -1,0 +1,8 @@
+builtin___v_malloc(sizeof(main__Issue27329Object) == 0 ? 1 : sizeof(main__Issue27329Object));
+->kind = _const_main__issue_27329_kind_false;
+->kind = _const_main__issue_27329_kind_true;
+->kind = _const_main__issue_27329_kind_len;
+volatile main__Issue27329Object*
+return builtin__new_array_from_c_array(3, 3, sizeof(main__Issue27329Object*)
+->child = _t
+// THE END.
