@@ -290,3 +290,27 @@ fn test_hpack_rejects_size_update_over_limit() {
 	d.decode([u8(0x3f), 0xe1, 0x3f]) or { return }
 	assert false, 'expected error for size update over limit'
 }
+
+fn test_hpack_rejects_truncating_index() {
+	mut d := H2HpackDecoder{}
+	// Insert one dynamic entry, so dynamic index 1 (HPACK index 62) is valid.
+	_ := d.decode(hexb('400a 6375 7374 6f6d 2d6b 6579 0d63 7573 746f 6d2d 6865 6164 6572'))!
+	// Indexed representation with idx = 2^32 + 62: it truncates to 62 (a valid
+	// dynamic index) when narrowed to a 32-bit int, but must be rejected.
+	mut block := []u8{}
+	h2_hpack_write_int(mut block, u64(0x1_0000_0000) + 62, 7, 0x80)
+	d.decode(block) or { return }
+	assert false, 'expected out-of-range error for truncating index'
+}
+
+fn test_hpack_rejects_truncating_string_length() {
+	mut d := H2HpackDecoder{}
+	mut block := []u8{}
+	block << 0x00 // literal without indexing, name index 0
+	block << 0x00 // empty name (H=0, length 0)
+	// Value string length = 2^32 + 5, which truncates to 5 in a 32-bit int.
+	h2_hpack_write_int(mut block, u64(0x1_0000_0000) + 5, 7, 0x00)
+	// No value bytes follow; the oversized length must be rejected cleanly.
+	d.decode(block) or { return }
+	assert false, 'expected length-exceeds-buffer error for truncating string length'
+}

@@ -129,11 +129,14 @@ fn (mut r H2HpackReader) read_string() !string {
 	}
 	huffman := (r.buf[r.pos] & 0x80) != 0
 	length := r.read_int(7)!
-	if r.pos + int(length) > r.buf.len {
+	// Compare in u64 space, before narrowing to int, so an oversized length
+	// from a malicious peer cannot truncate past this bounds check.
+	if length > u64(r.buf.len - r.pos) {
 		return error('hpack: string length exceeds buffer')
 	}
-	raw := r.buf[r.pos..r.pos + int(length)]
-	r.pos += int(length)
+	n := int(length)
+	raw := r.buf[r.pos..r.pos + n]
+	r.pos += n
 	if huffman {
 		return h2_huffman_decode(raw)!.bytestr()
 	}
@@ -249,8 +252,14 @@ fn (d &H2HpackDecoder) lookup(idx u64) !H2HeaderField {
 	if idx <= u64(h2_hpack_static_len) {
 		return h2_hpack_static_table[idx - 1]
 	}
-	dyn_idx := int(idx) - h2_hpack_static_len
-	return d.dyn_table.get(dyn_idx) or { error('hpack: index ${idx} out of range') }
+	// Validate the dynamic index in u64 space before narrowing to int, so an
+	// out-of-range index from a malicious peer cannot truncate onto a valid
+	// dynamic entry.
+	dyn_idx := idx - u64(h2_hpack_static_len)
+	if dyn_idx > u64(d.dyn_table.entries.len) {
+		return error('hpack: index ${idx} out of range')
+	}
+	return d.dyn_table.get(int(dyn_idx)) or { error('hpack: index ${idx} out of range') }
 }
 
 fn (d &H2HpackDecoder) read_literal(mut r H2HpackReader, prefix_bits int) !H2HeaderField {
