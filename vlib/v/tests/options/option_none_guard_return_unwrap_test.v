@@ -41,7 +41,19 @@ fn guarded_cat_cast_state() int {
 	return cat.state
 }
 
+fn guarded_cat_closure_arg_state() int {
+	x := maybe_none_guard_cat()
+	if x == none {
+		return 0
+	}
+	callback := fn [x] () int {
+		return none_guard_cat_state(x)
+	}
+	return callback()
+}
+
 fn test_option_none_guard_return_unwrap_for_args_and_casts() {
 	assert guarded_cat_arg_state() == 1
 	assert guarded_cat_cast_state() == 1
+	assert guarded_cat_closure_arg_state() == 1
 }

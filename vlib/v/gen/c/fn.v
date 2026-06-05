@@ -6904,7 +6904,14 @@ fn (mut g Gen) ref_or_deref_arg_ex(arg ast.CallArg, expected_type_ ast.Type, lan
 		if needs_resolved_ident_type {
 			resolved_arg_typ := g.resolved_expr_type(ast.Expr(arg.expr), arg_typ)
 			if resolved_arg_typ != 0 {
-				arg_typ = g.unwrap_generic(g.recheck_concrete_type(resolved_arg_typ))
+				resolved_arg_type := g.unwrap_generic(g.recheck_concrete_type(resolved_arg_typ))
+				skip_inherited_option_storage_type := arg.expr.obj is ast.Var
+					&& arg.expr.obj.is_inherited && !expected_type.has_option_or_result()
+					&& arg_typ != 0 && !arg_typ.has_option_or_result()
+					&& resolved_arg_type.has_option_or_result()
+				if !skip_inherited_option_storage_type {
+					arg_typ = resolved_arg_type
+				}
 			}
 		}
 		if expected_type.has_option_or_result() && !arg_typ.has_option_or_result() {

@@ -9104,6 +9104,11 @@ fn (mut g Gen) ident(node ast.Ident) {
 			}
 		}
 	}
+	ident_option_name := if has_resolved_var && resolved_var.is_inherited {
+		'${closure_ctx}->${name}'
+	} else {
+		name
+	}
 	if node.info is ast.IdentVar {
 		node_info_is_option = node.info.is_option
 		if node.or_expr.kind == .absent {
@@ -9154,7 +9159,7 @@ fn (mut g Gen) ident(node ast.Ident) {
 				if orig_has_option && !comptime_type.has_flag(.option) {
 					styp := g.base_type(comptime_type)
 					ptr := if is_auto_heap { '->' } else { '.' }
-					g.write('(*(${styp}*)${name}${ptr}data)')
+					g.write('(*(${styp}*)${ident_option_name}${ptr}data)')
 				} else if comptime_type.has_flag(.option) {
 					if (g.inside_opt_or_res || g.left_is_opt) && node.or_expr.kind == .absent {
 						if !g.is_assign_lhs && is_auto_heap {
@@ -9165,7 +9170,7 @@ fn (mut g Gen) ident(node ast.Ident) {
 					} else {
 						styp := g.base_type(comptime_type)
 						ptr := if is_auto_heap { '->' } else { '.' }
-						g.write('(*(${styp}*)${name}${ptr}data)')
+						g.write('(*(${styp}*)${ident_option_name}${ptr}data)')
 					}
 				} else {
 					emit_auto_heap_deref := is_auto_heap && !g.inside_assign_fn_var
@@ -9255,7 +9260,7 @@ fn (mut g Gen) ident(node ast.Ident) {
 				} else {
 					g.get_comptime_for_var_type(node, node.info.typ)
 				}
-				g.unwrap_option_type(unwrap_typ, name, is_auto_heap)
+				g.unwrap_option_type(unwrap_typ, ident_option_name, is_auto_heap)
 			}
 			if node.or_expr.kind != .absent && !(g.inside_opt_or_res && g.inside_assign
 				&& !g.is_assign_lhs) {
@@ -9346,7 +9351,7 @@ fn (mut g Gen) ident(node ast.Ident) {
 				&& resolved_var.smartcasts.len == 0 && resolved_var.ct_type_var != .smartcast
 				&& !g.inside_opt_or_res && !g.is_assign_lhs && !g.inside_selector_lhs
 				&& !g.right_is_opt && (!g.left_is_opt || g.inside_cast) {
-				g.unwrap_option_type(runtime_option_type, name, is_auto_heap)
+				g.unwrap_option_type(runtime_option_type, ident_option_name, is_auto_heap)
 				return
 			}
 			// When an auto-heap option variable is being smartcast-unwrapped
@@ -9607,13 +9612,13 @@ fn (mut g Gen) ident(node ast.Ident) {
 			if g.inside_selector_lhs && !node_info_is_option && has_resolved_var
 				&& !resolved_var.is_unwrapped && resolved_var.smartcasts.len == 0
 				&& resolved_var.typ.has_flag(.option) && !g.is_assign_lhs {
-				g.unwrap_option_type(resolved_var.typ, name, is_auto_heap)
+				g.unwrap_option_type(resolved_var.typ, ident_option_name, is_auto_heap)
 				return
 			}
 			if g.inside_selector_lhs && has_resolved_var && resolved_var.is_unwrapped
 				&& resolved_var.smartcasts.len == 0 && resolved_var.orig_type.has_flag(.option)
 				&& !g.is_assign_lhs {
-				g.unwrap_option_type(resolved_var.orig_type, name, is_auto_heap)
+				g.unwrap_option_type(resolved_var.orig_type, ident_option_name, is_auto_heap)
 				return
 			}
 			if has_resolved_var && resolved_var.is_inherited {
