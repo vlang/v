@@ -38,3 +38,28 @@ fn test_cast_option_to_interface() {
 	assert e.parser.main.str == 'test'
 	eprintln(voidptr(e.parser.main))
 }
+
+interface Issue27340Value {
+}
+
+struct Issue27340Cat {
+	state int
+}
+
+fn maybe_issue_27340_cat() ?Issue27340Cat {
+	return Issue27340Cat{
+		state: 1
+	}
+}
+
+fn test_option_none_guard_interface_cast() {
+	x := maybe_issue_27340_cat()
+	if x == none {
+		assert false
+		return
+	}
+	v := Issue27340Value(x)
+	assert v is Issue27340Cat
+	cat := v as Issue27340Cat
+	assert cat.state == 1
+}

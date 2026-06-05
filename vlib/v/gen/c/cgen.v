@@ -9335,6 +9335,20 @@ fn (mut g Gen) ident(node ast.Ident) {
 				}
 			}
 			is_option = is_option || (has_resolved_var && resolved_var.orig_type.has_flag(.option))
+			runtime_option_type := if resolved_var.orig_type.has_flag(.option) {
+				resolved_var.orig_type
+			} else if resolved_var.typ.has_flag(.option) {
+				resolved_var.typ
+			} else {
+				ast.no_type
+			}
+			if has_resolved_var && runtime_option_type != ast.no_type && !node_info_is_option
+				&& resolved_var.smartcasts.len == 0 && resolved_var.ct_type_var != .smartcast
+				&& !g.inside_opt_or_res && !g.is_assign_lhs && !g.inside_selector_lhs
+				&& !g.right_is_opt && (!g.left_is_opt || g.inside_cast) {
+				g.unwrap_option_type(runtime_option_type, name, is_auto_heap)
+				return
+			}
 			// When an auto-heap option variable is being smartcast-unwrapped
 			// (e.g. `if svc != none { use(svc) }`), the option unwrap code
 			// at `->data` already handles the pointer indirection. Skip the
