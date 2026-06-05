@@ -577,6 +577,10 @@ pub fn memdup_align(src voidptr, sz isize, align isize) voidptr {
 		// when the calling code wrongly relies on it being zeroed.
 		unsafe { C.memset(res, 0x4D, n) }
 	}
+	// memdup_align allocates directly via aligned_alloc / _aligned_malloc, so
+	// report it like malloc does; otherwise the later free() of an aligned heap
+	// literal (HEAP_align) would emit vheap_free for an untracked pointer.
+	_ht_alloc(res, n)
 	return C.memcpy(res, src, sz)
 }
 
