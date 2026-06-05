@@ -10883,13 +10883,7 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 					if node.exprs[0] is ast.Ident {
 						g.writeln('{0};')
 						typ := if node.exprs[0].is_auto_deref_var() { type0.deref() } else { type0 }
-						typ_sym := g.table.final_sym(typ)
-						if typ_sym.kind == .array_fixed
-							&& (typ_sym.info as ast.ArrayFixed).is_fn_ret {
-							g.write('memcpy(${tmpvar}.ret_arr, ${g.expr_string(expr0)}.ret_arr, sizeof(${g.styp(typ)}))')
-						} else {
-							g.write('memcpy(${tmpvar}.ret_arr, ${g.expr_string(expr0)}, sizeof(${g.styp(typ)}))')
-						}
+						g.write('memcpy(${tmpvar}.ret_arr, ${g.expr_string(expr0)}, sizeof(${g.styp(typ)}))')
 					} else if expr0 in [ast.ArrayInit, ast.StructInit] {
 						if expr0 is ast.ArrayInit && expr0.is_fixed && expr0.has_init {
 							if expr0.init_expr.is_literal() {
