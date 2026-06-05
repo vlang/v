@@ -57,3 +57,16 @@ fn test_returns_option_and_result_fixed_array() {
 	}
 	assert res == [59, 101, 200]!
 }
+
+fn issue_27345_hud_rgba() [4]u8 {
+	return [u8(1), 2, 3, 4]!
+}
+
+fn issue_27345_shop_category_color() [4]u8 {
+	col := issue_27345_hud_rgba()
+	return col
+}
+
+fn test_fixed_array_return_via_local_from_call() {
+	assert issue_27345_shop_category_color() == [u8(1), 2, 3, 4]!
+}
