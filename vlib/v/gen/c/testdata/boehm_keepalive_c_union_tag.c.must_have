@@ -1,0 +1,2 @@
+union my_data* it, voidptr* out, int idx)
+struct my_event* it, voidptr* out, int idx)

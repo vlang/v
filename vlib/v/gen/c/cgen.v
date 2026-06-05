@@ -2624,7 +2624,8 @@ fn (mut g Gen) cc_type(typ ast.Type, is_prefix_struct bool) string {
 			if info.is_anon {
 				styp = 'C__' + styp
 			} else if !info.is_typedef {
-				styp = 'struct ${styp}'
+				tag := if info.is_union { 'union' } else { 'struct' }
+				styp = '${tag} ${styp}'
 			}
 		}
 	}

@@ -1,0 +1,25 @@
+// vtest vflags: -prod -gc boehm_full_opt
+#include "@VMODROOT/vlib/v/gen/c/testdata/boehm_keepalive_c_union_tag.h"
+
+union C.my_data {
+mut:
+	ptr voidptr
+	fd  int
+}
+
+struct C.my_event {
+mut:
+	events u32
+	data   C.my_data
+}
+
+fn consume(n int) {
+	_ = n
+}
+
+fn main() {
+	mut ev := C.my_event{}
+	ev.data.fd = 42
+	fd := unsafe { ev.data.fd }
+	consume(fd)
+}
