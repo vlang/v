@@ -89,3 +89,33 @@ fn test_option_none_guard_interface_array_append() {
 	values << x
 	assert issue_27340_value_state(values[0]) == 1
 }
+
+fn test_option_positive_none_guard_interface_cast() {
+	x := maybe_issue_27340_cat()
+	if x != none {
+		v := Issue27340Value(x)
+		assert issue_27340_value_state(v) == 1
+		return
+	}
+	assert false
+}
+
+fn test_option_positive_none_guard_implicit_interface_arg() {
+	x := maybe_issue_27340_cat()
+	if x != none {
+		assert issue_27340_value_state(x) == 1
+		return
+	}
+	assert false
+}
+
+fn test_option_positive_none_guard_interface_array_append() {
+	x := maybe_issue_27340_cat()
+	if x != none {
+		mut values := []Issue27340Value{}
+		values << x
+		assert issue_27340_value_state(values[0]) == 1
+		return
+	}
+	assert false
+}

@@ -9230,7 +9230,8 @@ fn (mut g Gen) ident(node ast.Ident) {
 				g.write('*(')
 			}
 			if !has_smartcast && !selector_uses_unwrapped_option_smartcast
-				&& (g.inside_opt_or_res || g.left_is_opt) && node.or_expr.kind == .absent {
+				&& (g.inside_opt_or_res || (g.left_is_opt && !g.inside_interface_cast))
+				&& node.or_expr.kind == .absent {
 				if !g.is_assign_lhs && is_auto_heap {
 					g.write('(*${name})')
 				} else {
