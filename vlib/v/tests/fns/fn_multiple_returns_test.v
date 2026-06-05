@@ -94,11 +94,48 @@ fn if_expr(x bool) (int, int) {
 	return if x { 3, 3 } else { 2, 2 }
 }
 
+fn noop_cmd_for_multi_return_if() int {
+	return 0
+}
+
+fn if_expr_with_fn_value(x bool) (int, fn () int) {
+	return if x { 1, noop_cmd_for_multi_return_if } else { 2, noop_cmd_for_multi_return_if }
+}
+
+fn fail_for_multi_return_if_or_block() !int {
+	return error('failed')
+}
+
+fn if_expr_with_fn_value_in_or_block_return(x bool) (int, fn () int) {
+	_ := fail_for_multi_return_if_or_block() or {
+		return if x { 3, noop_cmd_for_multi_return_if } else { 4, noop_cmd_for_multi_return_if }
+	}
+	return 0, noop_cmd_for_multi_return_if
+}
+
+fn result_if_expr_with_fn_value(x bool) !(int, fn () int) {
+	return if x { 5, noop_cmd_for_multi_return_if } else { 6, noop_cmd_for_multi_return_if }
+}
+
+fn option_if_expr_with_fn_value(x bool) ?(int, fn () int) {
+	return if x { 7, noop_cmd_for_multi_return_if } else { 8, noop_cmd_for_multi_return_if }
+}
+
 fn test_multi_return_if_match_expr() {
 	a, b := match_expr(true)
 	c, d := match_expr(false)
 	x, y := if_expr(true)
 	z, w := if_expr(false)
+	n, f := if_expr_with_fn_value(true)
+	on, of := if_expr_with_fn_value_in_or_block_return(false)
+	rn, rf := result_if_expr_with_fn_value(true) or {
+		assert false
+		return
+	}
+	pn, pf := option_if_expr_with_fn_value(false) or {
+		assert false
+		return
+	}
 	assert a == 1
 	assert b == 1
 	assert c == 0
@@ -107,4 +144,12 @@ fn test_multi_return_if_match_expr() {
 	assert y == 3
 	assert z == 2
 	assert w == 2
+	assert n == 1
+	assert f() == 0
+	assert on == 4
+	assert of() == 0
+	assert rn == 5
+	assert rf() == 0
+	assert pn == 8
+	assert pf() == 0
 }

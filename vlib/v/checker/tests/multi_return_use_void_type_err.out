@@ -3,3 +3,16 @@ vlib/v/checker/tests/multi_return_use_void_type_err.vv:2:2: error: type `void` c
     2 |     print('a'), print('b')
       |     ~~~~~~~~~~
     3 | }
+    4 |
+vlib/v/checker/tests/multi_return_use_void_type_err.vv:6:16: error: type `void` cannot be used in multi-return
+    4 |
+    5 | fn return_if_with_void_value(x bool) (voidptr, int) {
+    6 |     return if x { print('a'), 1 } else { voidptr(0), 2 }
+      |                   ~~~~~~~~~~
+    7 | }
+vlib/v/checker/tests/multi_return_use_void_type_err.vv:6:16: error: the final expression in `if` or `match`, must have a value of a non-void type
+    4 |
+    5 | fn return_if_with_void_value(x bool) (voidptr, int) {
+    6 |     return if x { print('a'), 1 } else { voidptr(0), 2 }
+      |                   ~~~~~
+    7 | }
