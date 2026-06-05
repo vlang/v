@@ -100,12 +100,13 @@ Supports backreferences like `$1`, `$2`.
 fn (r Regex) replace(text string, repl string) string
 ```
 
-### `change_stack_depth`
-Updates the maximum backtracking depth for the VM.
-Default is 1024.
-Use this if your pattern is extremely complex and returns `none` prematurely.
+### `max_stack_depth` (configuration field)
+Controls the maximum backtracking depth for the VM.
+Default is `2048`. Increase this value if complex patterns return `none` prematurely due to
+deep backtracking; decrease it to limit memory usage.
 ```v ignore
-fn (mut r Regex) change_stack_depth(depth int)
+r := pcre.compile(pattern)!
+r.max_stack_depth = 4096
 ```
 
 ---
