@@ -405,32 +405,27 @@ fn (t &Transformer) type_from_init_expr(expr ast.InitExpr) ?types.Type {
 			name: generic_type_name
 		})
 	}
+	// NOTE(arm64 self-host): the `type_to_c_name(normalized) != ''` guards plus the
+	// trailing `Struct{}` fallback (added in #27365) turn a type whose native sumtype
+	// payload reads as invalid (an arm64-only corruption of array/map `types.Type`
+	// values) into a bogus Struct — which downstream is treated as a struct init and
+	// produces a garbage array (`array.push: negative len`) during transform. Restore
+	// the original behaviour: return the normalized type directly and fall back to
+	// `none` when unresolved, so the caller degrades gracefully instead of crashing.
 	if typ := t.get_expr_type(expr.typ) {
-		normalized := t.normalize_type(typ)
-		if t.type_to_c_name(normalized) != '' {
-			return normalized
-		}
+		return t.normalize_type(typ)
 	}
 	type_name := t.expr_to_type_name(expr.typ)
 	if type_name == '' {
 		return none
 	}
 	if typ := t.c_name_to_type(type_name) {
-		normalized := t.normalize_type(typ)
-		if t.type_to_c_name(normalized) != '' {
-			return normalized
-		}
+		return t.normalize_type(typ)
 	}
 	if typ := t.lookup_type(type_name) {
-		normalized := t.normalize_type(typ)
-		if t.type_to_c_name(normalized) != '' {
-			return normalized
-		}
+		return t.normalize_type(typ)
 	}
-	c_type_name := t.v_type_name_to_c_name(type_name)
-	return types.Type(types.Struct{
-		name: if c_type_name != '' { c_type_name } else { type_name }
-	})
+	return none
 }
 
 fn (t &Transformer) generic_init_type_name(expr ast.Expr) ?string {

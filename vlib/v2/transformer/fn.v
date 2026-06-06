@@ -49,9 +49,6 @@ fn (t &Transformer) type_from_param_type_expr(expr ast.Expr, generic_params []st
 	if generic_name != '' {
 		return types.Type(types.NamedType(generic_name))
 	}
-	if typ := t.generic_aware_type_from_param_type_expr(expr, generic_params) {
-		return typ
-	}
 	// Resolve from the AST directly so nested type shapes like `&map[K]V`
 	// don't lose structure round-tripping through C-style name strings
 	// (which are ambiguous for pointer-of-map vs. map-of-pointer).
@@ -69,81 +66,6 @@ fn (t &Transformer) type_from_param_type_expr(expr ast.Expr, generic_params []st
 	if c_name != '' && c_name != type_name {
 		if typ := t.c_name_to_type(c_name) {
 			return typ
-		}
-	}
-	return none
-}
-
-fn (t &Transformer) generic_aware_type_from_param_type_expr(expr ast.Expr, generic_params []string) ?types.Type {
-	if expr is ast.Ident {
-		if expr.name in generic_params {
-			return types.Type(types.NamedType(expr.name))
-		}
-		return none
-	}
-	if expr is ast.ModifierExpr {
-		return t.generic_aware_type_from_param_type_expr(expr.expr, generic_params)
-	}
-	if expr is ast.PrefixExpr && expr.op == .amp {
-		base := t.type_from_param_type_expr(expr.expr, generic_params) or { return none }
-		return types.Type(types.Pointer{
-			base_type: base
-		})
-	}
-	if expr is ast.Type {
-		match expr {
-			ast.ArrayType {
-				elem := t.type_from_param_type_expr(expr.elem_type, generic_params) or {
-					return none
-				}
-				return types.Type(types.Array{
-					elem_type: elem
-				})
-			}
-			ast.ArrayFixedType {
-				elem := t.type_from_param_type_expr(expr.elem_type, generic_params) or {
-					return none
-				}
-				return types.Type(types.ArrayFixed{
-					len:       expr.len.str().int()
-					elem_type: elem
-				})
-			}
-			ast.MapType {
-				key := t.type_from_param_type_expr(expr.key_type, generic_params) or { return none }
-				value := t.type_from_param_type_expr(expr.value_type, generic_params) or {
-					return none
-				}
-				return types.Type(types.Map{
-					key_type:   key
-					value_type: value
-				})
-			}
-			ast.PointerType {
-				base := t.type_from_param_type_expr(expr.base_type, generic_params) or {
-					return none
-				}
-				return types.Type(types.Pointer{
-					base_type: base
-				})
-			}
-			ast.OptionType {
-				base := t.type_from_param_type_expr(expr.base_type, generic_params) or {
-					return none
-				}
-				return types.Type(types.OptionType{
-					base_type: base
-				})
-			}
-			ast.ResultType {
-				base := t.type_from_param_type_expr(expr.base_type, generic_params) or {
-					return none
-				}
-				return types.Type(types.ResultType{
-					base_type: base
-				})
-			}
-			else {}
 		}
 	}
 	return none
@@ -1201,7 +1123,7 @@ fn transformer_string_has_valid_data(s string) bool {
 		return false
 	}
 	ptr := unsafe { u64(s.str) }
-	return transformer_data_ptr_has_valid_address(ptr)
+	return ptr >= 0x100000000 && ptr < 0x0000800000000000
 }
 
 fn (t &Transformer) method_key_matches_type_name(method_key string, type_name string) bool {
@@ -2841,13 +2763,6 @@ fn (mut t Transformer) transform_call_expr(expr ast.CallExpr) ast.Expr {
 		fn_name := expr.lhs.name
 		if fn_name in ['println', 'eprintln', 'print', 'eprint'] && expr.args.len == 1 {
 			arg := expr.args[0]
-			if arg is ast.StringInterLiteral {
-				return ast.CallExpr{
-					lhs:  ast.Expr(expr.lhs)
-					args: [t.transform_expr(arg)]
-					pos:  expr.pos
-				}
-			}
 			if !t.is_string_expr(arg) {
 				// Get the str function name and record it for generation
 				str_fn_info := t.get_str_fn_info_for_expr(arg)
@@ -3333,9 +3248,6 @@ mut:
 }
 
 fn (t &Transformer) call_fn_info_for_lhs(lhs ast.Expr) ?CallFnInfo {
-	if lhs is ast.Ident && t.has_current_module_concrete_fn(lhs.name) {
-		return t.lookup_call_fn_info(lhs)
-	}
 	if base_name := t.generic_call_base_name(lhs) {
 		return t.generic_aware_call_fn_info(lhs, base_name)
 	}
@@ -3349,8 +3261,6 @@ fn (t &Transformer) generic_aware_call_fn_info(lhs ast.Expr, base_name string) ?
 	}
 	if decl_info := t.generic_call_info_for_decl(base_name) {
 		decl_call_info := t.drop_method_receiver_from_call_info(lhs, decl_info)
-		needs_decl_generic_signature := info.generic_params.len == 0
-			&& decl_call_info.generic_params.len > 0
 		if info.generic_params.len == 0 {
 			info.generic_params = decl_call_info.generic_params.clone()
 		}
@@ -3364,7 +3274,7 @@ fn (t &Transformer) generic_aware_call_fn_info(lhs ast.Expr, base_name string) ?
 		if info.param_names.len == 0 {
 			info.param_names = decl_call_info.param_names.clone()
 		}
-		if info.param_types.len == 0 || needs_decl_generic_signature {
+		if info.param_types.len == 0 {
 			info.param_types = decl_call_info.param_types.clone()
 		}
 		if !info.is_variadic {
@@ -3702,10 +3612,9 @@ fn (t &Transformer) inferred_generic_call_name(base_name string, info CallFnInfo
 	if base_name == '' || base_name.contains('_T_') || info.generic_params.len == 0 {
 		return none
 	}
-	infer_info := t.generic_inference_info_for_call(base_name, info, call_args.len)
-	bindings := t.generic_bindings_from_call_args(infer_info, call_args) or { return none }
-	mut parts := []string{cap: infer_info.generic_params.len}
-	for param_name in infer_info.generic_params {
+	bindings := t.generic_bindings_from_call_args(info, call_args) or { return none }
+	mut parts := []string{cap: info.generic_params.len}
+	for param_name in info.generic_params {
 		concrete := bindings[param_name] or { return none }
 		parts << t.generic_specialization_token_from_type(concrete)
 	}
@@ -3722,14 +3631,6 @@ fn (t &Transformer) inferred_generic_call_name(base_name string, info CallFnInfo
 	return '${base}_T_${parts.join('_')}'
 }
 
-fn (t &Transformer) generic_inference_info_for_call(base_name string, info CallFnInfo, call_arg_count int) CallFnInfo {
-	decl_info := t.generic_call_info_for_decl(base_name) or { return info }
-	if decl_info.generic_params.len == 0 || decl_info.param_types.len != call_arg_count {
-		return info
-	}
-	return decl_info
-}
-
 fn (mut t Transformer) register_generic_call_return_type(base_name string, info CallFnInfo, call_args []ast.Expr, pos token.Pos) {
 	if !pos.is_valid() || base_name == '' {
 		return
@@ -3739,8 +3640,7 @@ fn (mut t Transformer) register_generic_call_return_type(base_name string, info 
 	if generic_params.len == 0 || decl.typ.return_type is ast.EmptyExpr {
 		return
 	}
-	infer_info := t.generic_inference_info_for_call(base_name, info, call_args.len)
-	bindings := t.generic_bindings_from_call_args(infer_info, call_args) or { return }
+	bindings := t.generic_bindings_from_call_args(info, call_args) or { return }
 	ret_type := t.type_from_param_type_expr(decl.typ.return_type, generic_params) or { return }
 	t.register_synth_type(pos, substitute_type(ret_type, bindings))
 }
@@ -3761,9 +3661,6 @@ fn (t &Transformer) generic_bindings_from_call_args(info CallFnInfo, call_args [
 		}
 		generic_name := info.generic_params[generic_idx]
 		if generic_name in bindings {
-			continue
-		}
-		if !t.call_info_param_is_direct_generic(info, param_idx, generic_name) {
 			continue
 		}
 		arg_type := t.call_arg_type_for_generic_infer(arg) or { continue }
@@ -3787,9 +3684,6 @@ fn (t &Transformer) generic_bindings_from_call_args(info CallFnInfo, call_args [
 			if generic_name in tail_bindings {
 				continue
 			}
-			if !t.call_info_param_is_direct_generic(info, param_idx, generic_name) {
-				continue
-			}
 			arg_type := t.call_arg_type_for_generic_infer(arg) or { continue }
 			tail_bindings[generic_name] = arg_type
 		}
@@ -3811,23 +3705,6 @@ fn (t &Transformer) generic_bindings_from_call_args(info CallFnInfo, call_args [
 		return none
 	}
 	return bindings
-}
-
-fn (t &Transformer) call_info_param_is_direct_generic(info CallFnInfo, param_idx int, generic_name string) bool {
-	if param_idx < 0 || generic_name == '' {
-		return false
-	}
-	if param_idx >= info.param_types.len {
-		return true
-	}
-	param_type := generic_infer_unwrap_alias(t, info.param_types[param_idx])
-	if param_type is types.Void {
-		return true
-	}
-	if param_type is types.NamedType {
-		return string(param_type) == generic_name
-	}
-	return false
 }
 
 fn (t &Transformer) infer_generic_bindings_from_call_args(param_types []types.Type, call_args []ast.Expr, generic_params []string, param_offset int, mut bindings map[string]types.Type) {
@@ -5651,13 +5528,6 @@ fn (mut t Transformer) transform_call_or_cast_expr(expr ast.CallOrCastExpr) ast.
 		fn_name := expr.lhs.name
 		if fn_name in ['println', 'eprintln', 'print', 'eprint'] {
 			arg := expr.expr
-			if arg is ast.StringInterLiteral {
-				return ast.CallExpr{
-					lhs:  ast.Expr(expr.lhs)
-					args: [t.transform_expr(arg)]
-					pos:  expr.pos
-				}
-			}
 			if !t.is_string_expr(arg) {
 				// Get the str function name and record it for generation
 				str_fn_info := t.get_str_fn_info_for_expr(arg)
