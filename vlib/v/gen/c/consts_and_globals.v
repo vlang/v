@@ -550,6 +550,13 @@ fn (mut g Gen) global_decl(node ast.GlobalDecl) {
 		if field.is_volatile {
 			qualifiers += 'volatile '
 		}
+		// `@[thread_local] __global x` → per-thread storage via the `__thread`
+		// GCC/Clang/tcc extension (cx_region.c.v relies on this; without it the
+		// global is process-shared and concurrent users race). Forward-ported onto
+		// upstream's `qualifiers` (replaced the old volatile-only `modifier`).
+		if node.attrs.contains('thread_local') {
+			qualifiers += '__thread '
+		}
 		final_c_name := field.name.all_after('C.')
 		if field.is_const {
 			if field.is_extern || field_visibility_kw == 'extern ' {
