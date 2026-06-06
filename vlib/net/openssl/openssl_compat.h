@@ -23,6 +23,32 @@ static X509 *v_net_openssl_get1_peer_certificate(SSL *ssl) {
 }
 #endif
 
+// ALPN (SSL_set_alpn_protos / SSL_get0_alpn_selected) is only available in
+// OpenSSL 1.0.2 and later. On older OpenSSL-compatible headers, fall back to
+// no-op shims so the module still links; ALPN is simply unavailable there.
+// LibreSSL reports a high OPENSSL_VERSION_NUMBER and provides ALPN, so it uses
+// the native path below.
+#if !defined(OPENSSL_VERSION_NUMBER) || OPENSSL_VERSION_NUMBER < 0x10002000L
+static int v_net_openssl_set_alpn_protos(SSL *ssl, const unsigned char *protos, unsigned int protos_len) {
+	(void)ssl;
+	(void)protos;
+	(void)protos_len;
+	return -1; // ALPN unsupported on this OpenSSL version
+}
+static void v_net_openssl_get0_alpn_selected(SSL *ssl, const unsigned char **data, unsigned int *len) {
+	(void)ssl;
+	*data = NULL;
+	*len = 0;
+}
+#else
+static int v_net_openssl_set_alpn_protos(SSL *ssl, const unsigned char *protos, unsigned int protos_len) {
+	return SSL_set_alpn_protos(ssl, protos, protos_len);
+}
+static void v_net_openssl_get0_alpn_selected(SSL *ssl, const unsigned char **data, unsigned int *len) {
+	SSL_get0_alpn_selected(ssl, data, len);
+}
+#endif
+
 // LibreSSL and older OpenSSL-compatible headers may not expose the async
 // SSL_ERROR constants, but V's SSLError enum needs stable values for them.
 #ifndef SSL_ERROR_WANT_ASYNC

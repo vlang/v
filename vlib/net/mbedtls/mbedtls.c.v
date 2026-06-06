@@ -228,4 +228,8 @@ fn C.mbedtls_debug_set_threshold(level i32)
 
 fn C.mbedtls_ssl_conf_read_timeout(conf &C.mbedtls_ssl_config, timeout u32)
 
-fn C.mbedtls_ssl_conf_alpn_protocols(&C.mbedtls_ssl_config, &&char) i32
+// protos is `const char **`; declared as voidptr so V emits a clean
+// `(void*)` cast and avoids -cstrict nested-pointer const warnings.
+fn C.mbedtls_ssl_conf_alpn_protocols(conf &C.mbedtls_ssl_config, protos voidptr) i32
+
+fn C.mbedtls_ssl_get_alpn_protocol(&C.mbedtls_ssl_context) voidptr
