@@ -21,6 +21,9 @@ fn net_ssl_do(req &Request, port int, method Method, host_name string, path stri
 		eprint(req_headers)
 		eprintln('')
 	}
+	// Advertise ALPN `h2` (with an `http/1.1` fallback) only when HTTP/2 is
+	// requested, so existing callers see no change on the wire.
+	alpn := if req.enable_http2 { ['h2', 'http/1.1'] } else { []string{} }
 	for {
 		mut ssl_conn := ssl.new_ssl_conn(
 			verify:                 req.verify
@@ -28,6 +31,7 @@ fn net_ssl_do(req &Request, port int, method Method, host_name string, path stri
 			cert_key:               req.cert_key
 			validate:               req.validate
 			in_memory_verification: req.in_memory_verification
+			alpn_protocols:         alpn
 		)!
 		ssl_conn.dial(host_name, port) or {
 			retries++
@@ -42,9 +46,30 @@ fn net_ssl_do(req &Request, port int, method Method, host_name string, path stri
 		if req.read_timeout > 0 {
 			ssl_conn.set_read_timeout(req.read_timeout)
 		}
+		// If the server negotiated HTTP/2 via ALPN, speak it; otherwise fall
+		// back to the existing HTTP/1.1 path unchanged.
+		if req.enable_http2 && ssl_conn.negotiated_alpn() == 'h2' {
+			return req.h2_do(mut ssl_conn, method, host_name, port, path, data, header)!
+		}
 		return req.do_request(req_headers, mut ssl_conn)!
 	}
 	return error('http.net_ssl_do: exhausted retries')
+}
+
+// h2_do runs a single request over an HTTP/2 connection on an already-dialled,
+// ALPN-negotiated `h2` TLS socket, and returns the response as a net.http
+// Response.
+fn (req &Request) h2_do(mut ssl_conn ssl.SSLConn, method Method, host_name string, port int, path string, data string, header Header) !Response {
+	defer {
+		ssl_conn.shutdown() or {}
+	}
+	h2req := req.to_h2_request(method, h2_authority(host_name, port), path, data, header)
+	mut conn := new_h2_conn(ssl_conn)
+	h2resp := conn.do(h2req)!
+	if req.on_finish != unsafe { nil } {
+		req.on_finish(req, u64(h2resp.body.len))!
+	}
+	return h2_response_to_http(h2resp)
 }
 
 fn read_from_ssl_connection_cb(con voidptr, buf &u8, bufsize int) !int {
