@@ -38,30 +38,15 @@ __global total_m = i64(0)
 // track_heap models *manual* memory management (`-gc none`): the free hook only
 // fires on the manual-free path, so under a GC the collector reclaims blocks with
 // no matching hook and they would be reported as permanently live. Reject that
-// combination at compile time rather than emit misleading stats. The guard lives
-// in `_ht_alloc`, whose body is only compiled under `-d track_heap`.
+// combination at C compile time rather than emit misleading stats. The guard is
+// emitted as C preprocessor code so `-cross` can still preserve conditional C.
+#insert "@VEXEROOT/vlib/builtin/track_heap_checks.h"
+
 fn C.vheap_alloc(p voidptr, n u64)
 fn C.vheap_free(p voidptr)
 
 @[if track_heap ?]
 fn _ht_alloc(p &u8, n isize) {
-	// `$if track_heap ?` (not just the `@[if track_heap ?]` attribute) is required:
-	// the attribute only elides the call, while the comptime `$compile_error` below
-	// is still evaluated by the checker/`v fmt` under the default flags. Gating on
-	// track_heap keeps it compiled out unless the flag is actually set.
-	$if track_heap ? {
-		$if gcboehm ? {
-			$compile_error('-d track_heap requires manual memory management; rebuild with `-gc none`')
-		}
-		$if vgc ? {
-			$compile_error('-d track_heap requires manual memory management; rebuild with `-gc none`')
-		}
-		$if prealloc {
-			// -prealloc bumps from an arena and never frees individually, so the
-			// hooks would see no frees (every alloc shows live forever) — useless.
-			$compile_error('-d track_heap requires manual memory management; rebuild with `-gc none` (not -prealloc)')
-		}
-	}
 	C.vheap_alloc(p, u64(n))
 }
 
