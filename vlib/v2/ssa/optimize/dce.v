@@ -152,7 +152,8 @@ fn find_dead_stores(m &ssa.Module, func &ssa.Function) map[int]bool {
 	// Mark stores to non-escaping allocas as dead
 	for alloca_id, store_ids in alloca_stores {
 		if !alloca_escapes[alloca_id] {
-			for store_id in store_ids {
+			for i := 0; i < store_ids.len; i++ {
+				store_id := store_ids[i]
 				dead_stores[store_id] = true
 			}
 		}

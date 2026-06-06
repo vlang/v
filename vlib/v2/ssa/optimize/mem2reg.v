@@ -402,7 +402,7 @@ mut:
 	processed     bool  // whether steps 1-3 have been run for this block
 }
 
-fn rename_iterative(mut m ssa.Module, root_blk int, mut ctx Mem2RegCtx, promotable []int, mut stack_counts []int, dom &DomInfo, cfg &CfgData) (int, int) {
+fn rename_iterative(mut m ssa.Module, root_blk int, mut ctx Mem2RegCtx, _promotable []int, mut _stack_counts []int, dom &DomInfo, cfg &CfgData) (int, int) {
 	// Pre-build block_val_ids[] by scanning values for basic_block kind.
 	// This avoids m.blocks[blk_id].val_id which produces wrong results
 	// in ARM64-compiled binaries (large struct field access bug).
