@@ -6190,7 +6190,8 @@ fn (mut t Transformer) expand_direct_or_expr_assign(stmt ast.AssignStmt, or_expr
 		if or_side_effect_stmts.len > 0 {
 			if_stmts << or_side_effect_stmts
 		}
-		if is_result && t.cur_fn_returns_result && t.or_fallback_is_ierror(or_payload_value) {
+		if (is_result || is_option) && t.cur_fn_returns_result
+			&& t.or_fallback_is_ierror(or_payload_value) {
 			if_stmts << ast.ReturnStmt{
 				exprs: [or_payload_value]
 			}
@@ -8824,7 +8825,8 @@ fn (mut t Transformer) expand_single_or_expr(or_expr ast.OrExpr, mut prefix_stmt
 			if_stmts << or_side_effect_stmts
 		}
 		// Error/void fallbacks can't be assigned into the success payload.
-		if is_result && t.cur_fn_returns_result && t.or_fallback_is_ierror(or_payload_value) {
+		if (is_result || is_option) && t.cur_fn_returns_result
+			&& t.or_fallback_is_ierror(or_payload_value) {
 			if_stmts << ast.ReturnStmt{
 				exprs: [or_payload_value]
 			}

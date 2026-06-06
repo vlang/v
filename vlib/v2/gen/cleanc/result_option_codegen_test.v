@@ -1295,6 +1295,39 @@ fn fail() !int {
 	assert !csrc.contains('int _val = e')
 }
 
+fn test_generate_c_returns_option_or_error_fallback_from_result_function_as_error() {
+	csrc := generate_result_option_c_for_test('
+interface IError {
+	msg() string
+}
+
+struct MessageError {}
+
+fn (err MessageError) msg() string {
+	return "missing"
+}
+
+fn error(msg string) IError {
+	return MessageError{}
+}
+
+struct Payload {
+	value int
+}
+
+fn maybe_payload() ?Payload {
+	return none
+}
+
+fn fail() !Payload {
+	return maybe_payload() or { error("missing") }
+}
+	')
+	assert csrc.contains('_option_Payload _or_t')
+	assert csrc.contains('return (_result_Payload){ .is_error=true, .err=')
+	assert !csrc.contains(' = main__error(')
+}
+
 fn test_generate_c_keeps_concrete_error_literal_when_context_is_concrete() {
 	csrc := generate_result_option_c_for_test('
 struct MyError {}

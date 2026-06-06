@@ -93,6 +93,9 @@ fn (b &Builder) exec_build_c_file(output_name string) string {
 }
 
 fn (b &Builder) should_use_native_flat_pipeline() bool {
+	if os.getenv('V2_NATIVE_FLAT') == '' {
+		return false
+	}
 	if os.getenv('V2_NO_NATIVE_FLAT') != '' {
 		return false
 	}
@@ -185,28 +188,10 @@ fn print_rss(stage string) {
 	eprintln('  [mem] ${stage}: ${rss / (1024 * 1024)} MB')
 }
 
-// print_heap reports retained heap size after a forced GC, in MB. Unlike
-// print_rss, this would give a stable measurement of memory the program
-// is actually holding alive — but ONLY when built with a real GC.
-//
-// CURRENTLY A NO-OP FOR v2 SELF-HOST: v2 is forced to `-gc none`, where
-// `gc_collect()` is a NOP and `gc_memory_use()` always returns 0. If
-// you build v2 with an explicit GC (bypassing is_v2_compiler_target) this
-// becomes useful. Until then, use `/usr/bin/time -l` for peak readings.
-fn print_heap(stage string) {
-	if os.getenv('V2_HEAP') == '' {
-		return
-	}
-	gc_collect()
-	bytes := gc_memory_use()
-	eprintln('  [heap] ${stage}: ${bytes / (1024 * 1024)} MB')
-}
-
 pub fn (mut b Builder) build(files []string) {
 	b.user_files = files
 	mut sw := time.new_stopwatch()
 	print_rss('start')
-	print_heap('start')
 	$if parallel ? {
 		if b.flat_roundtrip_enabled && !b.pref.no_parallel {
 			eprintln('warning: V2_FLAT_ROUNDTRIP=1 only routes through the serial parser; pass --no-parallel to exercise it')
@@ -222,7 +207,6 @@ pub fn (mut b Builder) build(files []string) {
 	parse_time := sw.elapsed()
 	print_time('Scan & Parse', parse_time)
 	print_rss('after parse')
-	print_heap('after parse')
 	if b.flat_check_enabled {
 		// FlatBuilder is the canonical parse output; both parse paths stream
 		// into it. parse_files / parse_files_parallel return [] in flat
@@ -257,7 +241,6 @@ pub fn (mut b Builder) build(files []string) {
 	type_check_time := time.Duration(sw.elapsed() - parse_time)
 	print_time('Type Check', type_check_time)
 	print_rss('after type check')
-	print_heap('after type check')
 
 	b.prepare_macos_tiny_candidate_source_files()
 
@@ -313,7 +296,6 @@ pub fn (mut b Builder) build(files []string) {
 	transform_time := time.Duration(sw.elapsed() - transform_start)
 	print_time('Transform', transform_time)
 	print_rss('after transform')
-	print_heap('after transform')
 
 	// Mark used functions/methods for backend pruning.
 	if b.pref.no_markused {
@@ -352,9 +334,8 @@ pub fn (mut b Builder) build(files []string) {
 		}
 		mark_used_time := time.Duration(sw.elapsed() - mark_used_start)
 		print_time('Mark Used', mark_used_time)
-		// b.flat is unused by the legacy codegen path; drop the arenas so a GC
-		// build can reclaim them. Under -gc none this is a no-op for peak memory,
-		// but it documents the lifetime correctly for the eventual GC switch.
+		// b.flat is unused by the legacy codegen path. Under -gc none this is a
+		// no-op for peak memory, but keep the lifetime explicit for readers.
 		// When V2_FLAT_SSA or the native flat pipeline is on, the native SSA
 		// build consumes b.flat directly (build_all_from_flat), so keep it alive
 		// through codegen.
@@ -362,7 +343,6 @@ pub fn (mut b Builder) build(files []string) {
 			b.flat = ast.FlatAst{}
 		}
 		print_rss('after markused')
-		print_heap('after markused')
 	}
 
 	// Generate output based on backend
@@ -395,7 +375,6 @@ pub fn (mut b Builder) build(files []string) {
 
 	print_time('Total', sw.elapsed())
 	print_rss('after codegen (peak)')
-	print_heap('after codegen')
 }
 
 fn (mut b Builder) gen_v_files() {
@@ -2553,6 +2532,7 @@ fn (mut b Builder) build_native_mir_from_files(files []ast.File, arch pref.Arch,
 	}
 	print_time(native_graph_stage_title(label, 'SSA Build'),
 		time.Duration(native_sw.elapsed() - stage_start))
+	print_rss(native_graph_stage_title(label, 'after SSA build'))
 
 	stage_start = native_sw.elapsed()
 	ssa_optimization_required := b.native_backend_requires_ssa_optimization(arch)
@@ -2569,6 +2549,7 @@ fn (mut b Builder) build_native_mir_from_files(files []ast.File, arch pref.Arch,
 	}
 	print_time(native_graph_stage_title(label, 'SSA Optimize'),
 		time.Duration(native_sw.elapsed() - stage_start))
+	print_rss(native_graph_stage_title(label, 'after SSA optimize'))
 	$if debug {
 		// Post-opt SSA verification is useful while debugging the optimizer, but it
 		// is currently noisy enough to block normal self-host builds. Keep it
@@ -2618,6 +2599,7 @@ fn (mut b Builder) build_native_mir_from_files(files []ast.File, arch pref.Arch,
 	mut mir_mod := mir.lower_from_ssa(mod)
 	print_time(native_graph_stage_title(label, 'MIR Lower'),
 		time.Duration(native_sw.elapsed() - stage_start))
+	print_rss(native_graph_stage_title(label, 'after MIR lower'))
 
 	stage_start = native_sw.elapsed()
 	if is_windows_x64_native_target(arch, target_os) {
@@ -2627,12 +2609,14 @@ fn (mut b Builder) build_native_mir_from_files(files []ast.File, arch pref.Arch,
 	}
 	print_time(native_graph_stage_title(label, 'ABI Lower'),
 		time.Duration(native_sw.elapsed() - stage_start))
+	print_rss(native_graph_stage_title(label, 'after ABI lower'))
 
 	if arch != .arm64 {
 		stage_start = native_sw.elapsed()
 		insel.select(mut mir_mod, arch)
 		print_time(native_graph_stage_title(label, 'InsSel'),
 			time.Duration(native_sw.elapsed() - stage_start))
+		print_rss(native_graph_stage_title(label, 'after InsSel'))
 	}
 	return mir_mod
 }

@@ -1028,7 +1028,7 @@ fn (mut g Gen) gen_instr(val_id int) {
 			asm_ud2(mut g)
 		}
 		else {
-			x64_unsupported('op ${op} (${instr.selected_op}) in value ${val_id}')
+			x64_unsupported('op ${op} in value ${val_id}')
 		}
 	}
 }
@@ -1575,34 +1575,8 @@ fn (mut g Gen) emit_epilogue() {
 }
 
 fn (g Gen) selected_opcode(instr mir.Instruction) ssa.OpCode {
-	if instr.selected_op == '' {
-		return instr.op
-	}
-	suffix := if instr.selected_op.contains('.') {
-		instr.selected_op.all_after('.')
-	} else {
-		instr.selected_op
-	}
-	return match suffix {
-		'add_rr' { .add }
-		'sub_rr' { .sub }
-		'mul_rr' { .mul }
-		'sdiv_rr' { .sdiv }
-		'and_rr' { .and_ }
-		'or_rr' { .or_ }
-		'xor_rr' { .xor }
-		'load_mr' { .load }
-		'store_rm' { .store }
-		'call' { .call }
-		'call_indirect' { .call_indirect }
-		'call_sret' { .call_sret }
-		'ret' { .ret }
-		'br' { .br }
-		'jmp' { .jmp }
-		'switch' { .switch_ }
-		'copy' { .assign }
-		else { instr.op }
-	}
+	_ = g
+	return instr.op
 }
 
 fn (mut g Gen) emit_jmp(target_idx int) {

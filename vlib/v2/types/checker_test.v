@@ -1473,6 +1473,35 @@ fn main() { x := foo() }
 	}), 'result return should produce ResultType'
 }
 
+fn test_result_return_accepts_option_or_error_fallback() {
+	code := '
+interface IError {
+	msg() string
+}
+
+struct MessageError {}
+
+fn (err MessageError) msg() string {
+	return "missing"
+}
+
+fn error(msg string) IError {
+	return MessageError{}
+}
+
+fn maybe() ?int { return none }
+fn foo() !int { return maybe() or { error("missing") } }
+fn main() {}
+'
+	env := check_code(code)
+	scope := env.get_scope('main') or { panic('missing main scope') }
+	foo_obj := scope.lookup_parent('foo', 0) or { panic('missing foo function') }
+	foo_type := foo_obj.typ()
+	assert foo_type is FnType
+	foo_return := (foo_type as FnType).return_type or { panic('missing foo return type') }
+	assert foo_return is ResultType
+}
+
 // === Channel Tests ===
 
 fn test_channel_type() {

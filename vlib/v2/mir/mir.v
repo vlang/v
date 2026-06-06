@@ -34,7 +34,7 @@ pub fn (k ValueKind) str() string {
 	}
 }
 
-pub enum AbiArgClass {
+pub enum AbiArgClass as u8 {
 	in_reg
 	indirect
 }
@@ -98,7 +98,6 @@ pub struct Instruction {
 pub mut:
 	op               ssa.OpCode
 	operands         []ssa.ValueID
-	selected_op      string
 	abi_ret_indirect bool
 	abi_arg_class    []AbiArgClass
 	abi_ret_class    AbiValueClass
@@ -156,12 +155,12 @@ pub mut:
 	globals    []ssa.GlobalVar
 }
 
-fn clone_value_ids(values []ssa.ValueID) []ssa.ValueID {
-	return values.clone()
+fn share_value_ids(values []ssa.ValueID) []ssa.ValueID {
+	return values
 }
 
-fn clone_block_ids(blocks []ssa.BlockID) []ssa.BlockID {
-	return blocks.clone()
+fn share_block_ids(blocks []ssa.BlockID) []ssa.BlockID {
+	return blocks
 }
 
 pub fn lower_from_ssa(ssa_mod &ssa.Module) Module {
@@ -175,7 +174,7 @@ pub fn lower_from_ssa(ssa_mod &ssa.Module) Module {
 		instrs:     []Instruction{len: ssa_mod.instrs.len}
 		blocks:     []BasicBlock{len: ssa_mod.blocks.len}
 		funcs:      []Function{len: ssa_mod.funcs.len}
-		globals:    ssa_mod.globals.clone()
+		globals:    ssa_mod.globals
 	}
 
 	for i, val in ssa_mod.values {
@@ -185,14 +184,14 @@ pub fn lower_from_ssa(ssa_mod &ssa.Module) Module {
 			index: val.index
 			kind:  value_kind_from_ssa(val.kind)
 			name:  val.name
-			uses:  clone_value_ids(val.uses)
+			uses:  share_value_ids(val.uses)
 		}
 	}
 
 	for i, instr in ssa_mod.instrs {
 		mod.instrs[i] = Instruction{
 			op:               instr.op
-			operands:         clone_value_ids(instr.operands)
+			operands:         share_value_ids(instr.operands)
 			abi_ret_indirect: false
 			abi_arg_class:    []AbiArgClass{}
 			abi_ret_class:    AbiValueClass{}
@@ -210,9 +209,9 @@ pub fn lower_from_ssa(ssa_mod &ssa.Module) Module {
 			val_id: blk.val_id
 			name:   blk.name
 			parent: blk.parent
-			instrs: clone_value_ids(blk.instrs)
-			preds:  clone_block_ids(blk.preds)
-			succs:  clone_block_ids(blk.succs)
+			instrs: share_value_ids(blk.instrs)
+			preds:  share_block_ids(blk.preds)
+			succs:  share_block_ids(blk.succs)
 		}
 	}
 
@@ -224,8 +223,8 @@ pub fn lower_from_ssa(ssa_mod &ssa.Module) Module {
 			linkage:           f.linkage
 			call_conv:         f.call_conv
 			is_c_extern:       f.is_c_extern
-			blocks:            clone_block_ids(f.blocks)
-			params:            clone_value_ids(f.params)
+			blocks:            share_block_ids(f.blocks)
+			params:            share_value_ids(f.params)
 			abi_ret_indirect:  false
 			abi_param_class:   []AbiArgClass{len: f.params.len, init: .in_reg}
 			abi_ret_class:     AbiValueClass{}

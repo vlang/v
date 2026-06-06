@@ -635,6 +635,9 @@ mut:
 	expr_stack []string
 	// Whether we are inside an unsafe{} block
 	inside_unsafe bool
+	// Whether the currently checked expression is directly inside a return
+	// statement. Used for result error propagation in `or {}` fallbacks.
+	inside_return_stmt bool
 	// Ownership tracking: variables that hold owned values
 	// (from `.to_owned()` for strings, or any non-Copy value for other types).
 	owned_vars map[string]token.Pos // var name -> position where it became owned
@@ -2797,6 +2800,9 @@ fn (c &Checker) can_or_block_propagate_error(raw_cond_type Type, cond ast.Expr, 
 	if raw_cond_type is ResultType {
 		return true
 	}
+	if expected_is_result && c.inside_return_stmt {
+		return true
+	}
 	return expected_is_result && cond is ast.IndexExpr
 		&& (cond as ast.IndexExpr).expr is ast.RangeExpr && c.is_string_like(raw_cond_type)
 }
@@ -4571,9 +4577,12 @@ fn (mut c Checker) stmt(stmt ast.Stmt) {
 		// ast.FnDecl - handled by preregister_all_fn_signatures / process_pending_fn_bodies
 		ast.ReturnStmt {
 			c.log('ReturnStmt:')
+			prev_inside_return_stmt := c.inside_return_stmt
+			c.inside_return_stmt = true
 			for expr in stmt.exprs {
 				c.expr(expr)
 			}
+			c.inside_return_stmt = prev_inside_return_stmt
 			$if ownership ? {
 				c.ownership_check_return(stmt)
 			}
