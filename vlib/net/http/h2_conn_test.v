@@ -272,3 +272,108 @@ fn test_h2_conn_ping_ack() {
 	}
 	assert saw_ping_ack
 }
+
+fn test_h2_conn_splits_large_request_headers() {
+	inbound := build_server_stream([H2HeaderField{':status', '200'}], [])
+	mut t := &MockTransport{
+		inbound: inbound
+	}
+	mut c := new_h2_conn(t)
+	// A header value larger than the default 16 KiB max frame size forces the
+	// request header block to be split across HEADERS + CONTINUATION frames.
+	big := 'x'.repeat(20000)
+	resp := c.do(H2ClientRequest{
+		authority: 'h.example'
+		headers:   [H2HeaderField{'x-big', big}]
+	})!
+	assert resp.status == 200
+
+	mut pos := h2_client_preface.len
+	mut headers_open := false
+	mut continuation_end := false
+	mut block := []u8{}
+	for pos < t.outbound.len {
+		frame, n := h2_read_frame(t.outbound[pos..])!
+		pos += n
+		match frame {
+			H2HeadersFrame {
+				if frame.stream_id == 1 {
+					assert !frame.end_headers // split, so END_HEADERS not on HEADERS
+					headers_open = true
+					block << frame.fragment
+				}
+			}
+			H2ContinuationFrame {
+				if frame.stream_id == 1 {
+					block << frame.fragment
+					if frame.end_headers {
+						continuation_end = true
+					}
+				}
+			}
+			else {}
+		}
+	}
+	assert headers_open
+	assert continuation_end
+	// The reassembled block must decode back to the original header.
+	mut dec := H2HpackDecoder{}
+	fields := dec.decode(block)!
+	assert fields.any(it.name == 'x-big' && it.value == big)
+}
+
+fn test_h2_conn_large_body_flow_control() {
+	// Body larger than the initial 64 KiB window: the client sends up to the
+	// window, waits, then resumes once the peer grows both the connection and
+	// stream windows.
+	body := 'a'.repeat(70000)
+	mut inbound := []u8{}
+	inbound << H2Frame(H2SettingsFrame{}).encode()
+	inbound << H2Frame(H2WindowUpdateFrame{
+		stream_id:             0
+		window_size_increment: 70000
+	}).encode()
+	inbound << H2Frame(H2WindowUpdateFrame{
+		stream_id:             1
+		window_size_increment: 70000
+	}).encode()
+	mut senc := H2HpackEncoder{}
+	inbound << H2Frame(H2HeadersFrame{
+		stream_id:   1
+		fragment:    senc.encode([H2HeaderField{':status', '200'}])
+		end_headers: true
+		end_stream:  true
+	}).encode()
+	mut t := &MockTransport{
+		inbound: inbound
+	}
+	mut c := new_h2_conn(t)
+	resp := c.do(H2ClientRequest{
+		method:    'POST'
+		authority: 'h.example'
+		path:      '/upload'
+		body:      body.bytes()
+	})!
+	assert resp.status == 200
+
+	// The client must have sent the entire body, ending with END_STREAM, and no
+	// single DATA frame may exceed the max frame size.
+	mut pos := h2_client_preface.len
+	mut sent := 0
+	mut ended := false
+	for pos < t.outbound.len {
+		frame, n := h2_read_frame(t.outbound[pos..])!
+		pos += n
+		if frame is H2DataFrame {
+			if frame.stream_id == 1 {
+				assert frame.data.len <= int(h2_default_max_frame_size)
+				sent += frame.data.len
+				if frame.end_stream {
+					ended = true
+				}
+			}
+		}
+	}
+	assert sent == body.len
+	assert ended
+}

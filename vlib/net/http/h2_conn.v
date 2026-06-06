@@ -66,16 +66,18 @@ pub mut:
 // H2Conn is a client-side HTTP/2 connection.
 pub struct H2Conn {
 mut:
-	transport      H2Transport
-	encoder        H2HpackEncoder
-	decoder        H2HpackDecoder
-	peer           H2PeerSettings
-	rbuf           []u8      // buffered bytes read from the transport, not yet consumed
-	pending        []H2Frame // stream frames read early (while sending), to replay
-	next_stream_id u32 = 1 // clients use odd stream ids
-	send_window    i64 = 65535
-	handshaked     bool
-	goaway         bool
+	transport          H2Transport
+	encoder            H2HpackEncoder
+	decoder            H2HpackDecoder
+	peer               H2PeerSettings
+	rbuf               []u8      // buffered bytes read from the transport, not yet consumed
+	pending            []H2Frame // stream frames read early (while sending), to replay
+	next_stream_id     u32 = 1 // clients use odd stream ids
+	cur_stream_id      u32 // the stream currently being driven by do()
+	send_window        i64 = 65535 // connection-level send flow-control window
+	stream_send_window i64 // send window for cur_stream_id
+	handshaked         bool
+	goaway             bool
 }
 
 // new_h2_conn creates a client connection over `transport`. The HTTP/2
@@ -94,6 +96,8 @@ pub fn (mut c H2Conn) do(req H2ClientRequest) !H2ClientResponse {
 	}
 	stream_id := c.next_stream_id
 	c.next_stream_id += 2
+	c.cur_stream_id = stream_id
+	c.stream_send_window = i64(c.peer.initial_window_size)
 
 	mut fields := [
 		H2HeaderField{':method', req.method},
@@ -106,12 +110,7 @@ pub fn (mut c H2Conn) do(req H2ClientRequest) !H2ClientResponse {
 	}
 	block := c.encoder.encode(fields)
 	has_body := req.body.len > 0
-	c.send_frame(H2HeadersFrame{
-		stream_id:   stream_id
-		fragment:    block
-		end_headers: true
-		end_stream:  !has_body
-	})!
+	c.send_header_block(stream_id, block, !has_body)!
 	if has_body {
 		c.send_body(stream_id, req.body)!
 	}
@@ -240,10 +239,10 @@ fn (mut c H2Conn) handle_conn_frame(frame H2Frame) !bool {
 			return true
 		}
 		H2WindowUpdateFrame {
-			// Only the connection-level send window is tracked in this
-			// single-stream client; per-stream grants are not yet needed.
 			if frame.stream_id == 0 {
 				c.send_window += i64(frame.window_size_increment)
+			} else if frame.stream_id == c.cur_stream_id {
+				c.stream_send_window += i64(frame.window_size_increment)
 			}
 			return true
 		}
@@ -260,37 +259,95 @@ fn (mut c H2Conn) handle_conn_frame(frame H2Frame) !bool {
 fn (mut c H2Conn) apply_settings(settings []H2Setting) {
 	for s in settings {
 		match s.id {
-			h2_settings_header_table_size { c.peer.header_table_size = s.value }
-			h2_settings_enable_push { c.peer.enable_push = s.value != 0 }
-			h2_settings_max_concurrent_streams { c.peer.max_concurrent_streams = s.value }
-			h2_settings_initial_window_size { c.peer.initial_window_size = s.value }
-			h2_settings_max_frame_size { c.peer.max_frame_size = s.value }
-			h2_settings_max_header_list_size { c.peer.max_header_list_size = s.value }
+			h2_settings_header_table_size {
+				c.peer.header_table_size = s.value
+			}
+			h2_settings_enable_push {
+				c.peer.enable_push = s.value != 0
+			}
+			h2_settings_max_concurrent_streams {
+				c.peer.max_concurrent_streams = s.value
+			}
+			h2_settings_initial_window_size {
+				// RFC 7540 Section 6.9.2: a change to the initial window size
+				// retroactively adjusts the active stream's send window by the
+				// delta.
+				delta := i64(s.value) - i64(c.peer.initial_window_size)
+				c.peer.initial_window_size = s.value
+				c.stream_send_window += delta
+			}
+			h2_settings_max_frame_size {
+				c.peer.max_frame_size = s.value
+			}
+			h2_settings_max_header_list_size {
+				c.peer.max_header_list_size = s.value
+			}
 			else {} // unknown settings are ignored (RFC 7540 Section 6.5.2)
 		}
 	}
 }
 
-// send_body writes the request body as DATA frames, chunked to the peer's
-// max frame size and bounded by the connection-level flow-control window.
+// send_header_block sends an HPACK header block as a HEADERS frame, splitting
+// it across CONTINUATION frames when it exceeds the peer's max frame size
+// (RFC 7540 Section 4.3). END_STREAM, when set, goes on the HEADERS frame.
+fn (mut c H2Conn) send_header_block(stream_id u32, block []u8, end_stream bool) ! {
+	max := int(c.peer.max_frame_size)
+	if block.len <= max {
+		c.send_frame(H2HeadersFrame{
+			stream_id:   stream_id
+			fragment:    block
+			end_headers: true
+			end_stream:  end_stream
+		})!
+		return
+	}
+	c.send_frame(H2HeadersFrame{
+		stream_id:   stream_id
+		fragment:    block[..max]
+		end_headers: false
+		end_stream:  end_stream
+	})!
+	mut off := max
+	for off < block.len {
+		mut next := off + max
+		if next > block.len {
+			next = block.len
+		}
+		c.send_frame(H2ContinuationFrame{
+			stream_id:   stream_id
+			fragment:    block[off..next]
+			end_headers: next == block.len
+		})!
+		off = next
+	}
+}
+
+// send_body writes the request body as DATA frames, chunked to the peer's max
+// frame size and bounded by both the connection and the per-stream send
+// flow-control windows (RFC 7540 Section 6.9).
 fn (mut c H2Conn) send_body(stream_id u32, body []u8) ! {
 	max := int(c.peer.max_frame_size)
 	mut off := 0
 	for off < body.len {
-		for c.send_window <= 0 {
-			// Wait for the peer to grow the window. Connection-level frames are
+		for c.send_window <= 0 || c.stream_send_window <= 0 {
+			// Wait for the peer to grow a window. Connection-level frames are
 			// handled; any stream frames are stashed for read_response.
 			frame := c.next_frame()!
 			if !c.handle_conn_frame(frame)! {
 				c.pending << frame
 			}
 		}
+		avail := if c.send_window < c.stream_send_window {
+			c.send_window
+		} else {
+			c.stream_send_window
+		}
 		mut chunk := body.len - off
 		if chunk > max {
 			chunk = max
 		}
-		if i64(chunk) > c.send_window {
-			chunk = int(c.send_window)
+		if i64(chunk) > avail {
+			chunk = int(avail)
 		}
 		next := off + chunk
 		c.send_frame(H2DataFrame{
@@ -299,6 +356,7 @@ fn (mut c H2Conn) send_body(stream_id u32, body []u8) ! {
 			end_stream: next == body.len
 		})!
 		c.send_window -= i64(chunk)
+		c.stream_send_window -= i64(chunk)
 		off = next
 	}
 }
