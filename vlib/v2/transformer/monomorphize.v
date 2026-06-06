@@ -2682,7 +2682,9 @@ fn (mut t Transformer) defer_receiver_generic_method_call_spec(base_name string,
 	}
 	if arg_bindings := t.generic_bindings_from_call_args(info, raw_args) {
 		for name, typ in arg_bindings {
-			bindings[name] = typ
+			if name !in bindings {
+				bindings[name] = typ
+			}
 		}
 	}
 	if generic_bindings_cover_params(bindings, decl_generic_param_names(decl)) {
@@ -2812,26 +2814,60 @@ fn (mut t Transformer) collect_explicit_generic_call_spec(lhs ast.Expr, type_arg
 }
 
 fn (t &Transformer) generic_call_base_name(lhs ast.Expr) ?string {
-	if lhs is ast.Ident {
-		return lhs.name
+	parts := generic_call_lhs_parts(lhs)
+	base_lhs := parts.lhs
+	if base_lhs is ast.Ident {
+		return base_lhs.name
 	}
-	if lhs is ast.SelectorExpr {
-		if resolved_static := t.resolve_static_type_method_call(lhs.lhs, lhs.rhs.name) {
+	if base_lhs is ast.SelectorExpr {
+		if resolved_static := t.resolve_static_type_method_call(base_lhs.lhs, base_lhs.rhs.name) {
 			return resolved_static
 		}
-		if lhs.lhs is ast.Ident {
-			if call_prefix := t.resolve_generic_module_call_prefix(lhs.lhs.name) {
-				return '${call_prefix}__${lhs.rhs.name}'
+		if base_lhs.lhs is ast.Ident {
+			if call_prefix := t.resolve_generic_module_call_prefix(base_lhs.lhs.name) {
+				return '${call_prefix}__${base_lhs.rhs.name}'
 			}
 		}
-		if lhs.lhs is ast.Ident && t.is_module_ident(lhs.lhs.name) {
-			return '${lhs.lhs.name}__${lhs.rhs.name}'
+		if base_lhs.lhs is ast.Ident && t.is_module_ident(base_lhs.lhs.name) {
+			return '${base_lhs.lhs.name}__${base_lhs.rhs.name}'
 		}
-		if resolved_method := t.resolve_method_call_name(lhs.lhs, lhs.rhs.name) {
+		if resolved_method := t.resolve_method_call_name(base_lhs.lhs, base_lhs.rhs.name) {
 			return resolved_method
 		}
 	}
 	return none
+}
+
+fn generic_call_lhs_parts(lhs ast.Expr) GenericIndexCallParts {
+	match lhs {
+		ast.GenericArgs {
+			nested := generic_call_lhs_parts(lhs.lhs)
+			mut args := nested.args.clone()
+			args << lhs.args
+			return GenericIndexCallParts{
+				lhs:  nested.lhs
+				args: args
+			}
+		}
+		ast.GenericArgOrIndexExpr {
+			nested := generic_call_lhs_parts(lhs.lhs)
+			mut args := nested.args.clone()
+			args << lhs.expr
+			return GenericIndexCallParts{
+				lhs:  nested.lhs
+				args: args
+			}
+		}
+		ast.IndexExpr {
+			return generic_index_call_parts(lhs)
+		}
+		else {
+			return GenericIndexCallParts{
+				lhs:  lhs
+				args: []ast.Expr{}
+			}
+		}
+	}
 }
 
 fn (t &Transformer) resolve_generic_module_call_prefix(module_ident string) ?string {
@@ -2883,7 +2919,9 @@ fn (mut t Transformer) register_receiver_generic_method_call_spec_with_bindings(
 	}
 	if arg_bindings := t.generic_bindings_from_call_args(info, raw_args) {
 		for name, typ in arg_bindings {
-			bindings[name] = typ
+			if name !in bindings {
+				bindings[name] = typ
+			}
 		}
 	}
 	for param_name in decl_generic_param_names(decl) {
@@ -2920,9 +2958,25 @@ fn (t &Transformer) generic_bindings_from_generic_call_expr(expr ast.Expr) ?map[
 		}
 	}
 
-	base_name := t.generic_call_base_name(lhs) or { return none }
-	info := t.generic_aware_call_fn_info(lhs, base_name) or { return none }
-	return t.generic_bindings_from_call_args(info, args)
+	lhs_parts := generic_call_lhs_parts(lhs)
+	base_name := t.generic_call_base_name(lhs_parts.lhs) or { return none }
+	info_lhs := if lhs_parts.args.len > 0 {
+		ast.Expr(ast.GenericArgs{
+			lhs:  lhs_parts.lhs
+			args: lhs_parts.args
+		})
+	} else {
+		lhs_parts.lhs
+	}
+	info := t.generic_aware_call_fn_info(info_lhs, base_name) or { return none }
+	mut bindings := t.generic_bindings_from_type_args(info, lhs_parts.args) or {
+		map[string]types.Type{}
+	}
+	t.fill_missing_generic_bindings_from_call_args(info, args, mut bindings)
+	if !generic_bindings_cover_params(bindings, info.generic_params) {
+		return none
+	}
+	return bindings
 }
 
 fn (t &Transformer) receiver_generic_method_call_name(base_name string, receiver ast.Expr, info CallFnInfo, raw_args []ast.Expr) ?string {
@@ -2939,7 +2993,9 @@ fn (t &Transformer) receiver_generic_method_call_name(base_name string, receiver
 	}
 	if arg_bindings := t.generic_bindings_from_call_args(info, raw_args) {
 		for name, typ in arg_bindings {
-			bindings[name] = typ
+			if name !in bindings {
+				bindings[name] = typ
+			}
 		}
 	}
 	for param_name in decl_generic_param_names(decl) {

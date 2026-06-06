@@ -3831,6 +3831,12 @@ fn method_receiver_type_matches_resolved_name(type_name string, resolved_recv st
 	if lhs == '' || rhs == '' {
 		return false
 	}
+	if lhs.contains('_T_') {
+		lhs = lhs.all_before('_T_')
+	}
+	if rhs.contains('_T_') {
+		rhs = rhs.all_before('_T_')
+	}
 	if lhs == rhs {
 		return true
 	}

@@ -75,27 +75,6 @@ fn (t &Transformer) lookup_struct_field_type(struct_name string, field_name stri
 		|| !transformer_string_has_valid_data(field_name) {
 		return none
 	}
-	// Memoize: this is called per field-access expression and re-derives the type
-	// each time. The result is a pure function of (cur_module, struct_name,
-	// field_name) — cur_module only matters for the unqualified-name path, but
-	// keying on it unconditionally is always correct. A Void value is the
-	// "resolved to none" sentinel (struct fields are never void-typed).
-	cache_key := '${t.cur_module}\x01${struct_name}\x01${field_name}'
-	if cached := t.field_type_cache[cache_key] {
-		if cached is types.Void {
-			return none
-		}
-		return cached
-	}
-	result := t.lookup_struct_field_type_uncached(struct_name, field_name)
-	unsafe {
-		mut mt := &Transformer(voidptr(t))
-		mt.field_type_cache[cache_key] = result or { types.Type(types.void_) }
-	}
-	return result
-}
-
-fn (t &Transformer) lookup_struct_field_type_uncached(struct_name string, field_name string) ?types.Type {
 	if field_type := t.lookup_struct_field_generic_decl_type(struct_name, field_name) {
 		return field_type
 	}

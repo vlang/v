@@ -1302,71 +1302,70 @@ pub fn (mut g Gen) gen_passes_1_to_4() {
 				continue
 			}
 			if stmt is ast.FnDecl {
-				if !g.should_emit_fn_decl_cached(g.cur_module, stmt) {
+				decl := stmt as ast.FnDecl
+				if !g.should_emit_fn_decl_cached(g.cur_module, decl) {
 					continue
 				}
-				if stmt.language == .js {
+				if decl.language == .js {
 					continue
 				}
-				if stmt.language == .c && stmt.stmts.len == 0 {
+				if decl.language == .c && decl.stmts.len == 0 {
 					// C extern declarations — their prototypes come from #include/#insert headers.
 					continue
 				}
-				if g.should_skip_backend_generic_fn(stmt) {
+				if g.should_skip_backend_generic_fn(decl) {
 					continue
 				}
 				// Generic functions: emit as macros for known simple functions
-				if g.generic_fn_param_names(stmt).len > 0 {
-					stmt_ptr := &stmt
-					gfn_name := g.get_fn_name(stmt)
-					specs := g.generic_fn_specializations_for_emit_scope(stmt)
+				if g.generic_fn_param_names(decl).len > 0 {
+					gfn_name := g.get_fn_name(decl)
+					specs := g.generic_fn_specializations_for_emit_scope(decl)
 					if specs.len > 0 {
 						prev_generic_types := g.active_generic_types.clone()
 						for spec in specs {
 							g.active_generic_types = spec.generic_types.clone()
 							g.record_fn_owner_for_current_file(spec.name, fi)
-							g.gen_fn_head_with_name_ptr(stmt_ptr, spec.name)
+							g.gen_fn_head_with_name(decl, spec.name)
 							g.sb.writeln(';')
 						}
 						g.active_generic_types = prev_generic_types.clone()
 					} else {
 						if gfn_name != '' {
-							g.emit_generic_fn_macro(gfn_name, stmt)
+							g.emit_generic_fn_macro(gfn_name, decl)
 						}
 					}
 					continue
 				}
-				recv_gp := receiver_generic_param_names(stmt)
+				recv_gp := receiver_generic_param_names(decl)
 				if recv_gp.len > 0 {
-					stmt_ptr := &stmt
-					all_bindings := g.get_all_receiver_generic_bindings(stmt)
+					all_bindings := g.get_all_receiver_generic_bindings(decl)
 					if all_bindings.len > 0 {
 						prev_generic_types := g.active_generic_types.clone()
 						for bindings in all_bindings {
 							g.active_generic_types = bindings.clone()
-							gfn_name := g.get_fn_name(stmt)
+							gfn_name := g.get_fn_name(decl)
 							if gfn_name != '' {
 								g.record_fn_owner_for_current_file(gfn_name, fi)
-								g.gen_fn_head_with_name_ptr(stmt_ptr, gfn_name)
+								g.gen_fn_head_with_name(decl, gfn_name)
 								g.sb.writeln(';')
 							}
 						}
 						g.active_generic_types = prev_generic_types.clone()
 						continue
-					} else if bindings := g.get_receiver_generic_bindings(stmt) {
+					} else if bindings := g.get_receiver_generic_bindings(decl) {
 						prev_generic_types := g.active_generic_types.clone()
 						g.active_generic_types = bindings.clone()
-						gfn_name := g.get_fn_name(stmt)
+						gfn_name := g.get_fn_name(decl)
 						if gfn_name != '' {
 							g.record_fn_owner_for_current_file(gfn_name, fi)
-							g.gen_fn_head_with_name_ptr(stmt_ptr, gfn_name)
+							g.gen_fn_head_with_name(decl, gfn_name)
 							g.sb.writeln(';')
 						}
 						g.active_generic_types = prev_generic_types.clone()
 						continue
 					}
 				}
-				fn_name := g.get_fn_name(stmt)
+				fn_name := g.get_fn_name(decl)
 				if fn_name == '' {
 					continue
 				}
@@ -1377,7 +1376,7 @@ pub fn (mut g Gen) gen_passes_1_to_4() {
 				if fn_name == 'main' {
 					g.has_main = true
 				}
-				if stmt.name.starts_with('test_') && !stmt.is_method && stmt.typ.params.len == 0 {
+				if decl.name.starts_with('test_') && !decl.is_method && decl.typ.params.len == 0 {
 					g.test_fn_names << fn_name
 				}
 				// Record first emittable file index for each function (for parallel dedup).
@@ -1389,8 +1388,7 @@ pub fn (mut g Gen) gen_passes_1_to_4() {
 						g.cur_fn_scope = fn_scope
 					}
 				}
-				stmt_ptr := &stmt
-				g.gen_fn_head_with_name_ptr(stmt_ptr, fn_name)
+				g.gen_fn_head_with_name(decl, fn_name)
 				g.sb.writeln(';')
 			}
 		}
@@ -1746,10 +1744,11 @@ fn (mut g Gen) emit_forced_helpers_from_non_emit_files() {
 				continue
 			}
 			if stmt is ast.FnDecl {
-				if !stmt.name.starts_with('__sort_cmp_') {
+				decl := stmt as ast.FnDecl
+				if !decl.name.starts_with('__sort_cmp_') {
 					continue
 				}
-				fn_name := g.get_fn_name(stmt)
+				fn_name := g.get_fn_name(decl)
 				if fn_name == '' || fn_name !in g.force_emit_fn_names || fn_name in emitted {
 					continue
 				}
@@ -1759,8 +1758,7 @@ fn (mut g Gen) emit_forced_helpers_from_non_emit_files() {
 				if 'fn_${fn_name}' in g.fn_owner_file {
 					continue
 				}
-				stmt_ptr := &stmt
-				g.gen_fn_decl_ptr(stmt_ptr)
+				g.gen_fn_decl(decl)
 				emitted[fn_name] = true
 			}
 		}
