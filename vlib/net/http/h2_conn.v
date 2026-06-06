@@ -98,6 +98,12 @@ mut:
 	stream_send_window i64 // send window for cur_stream_id
 	handshaked         bool
 	goaway             bool
+	// aborted is set when this connection terminated a stream early
+	// (RST_STREAM sent without draining the remaining DATA). Subsequent
+	// requests on the same connection must fail rather than risk being starved
+	// by leftover DATA frames the peer had already sent for the cancelled
+	// stream.
+	aborted bool
 }
 
 // new_h2_conn creates a client connection over `transport`. The HTTP/2
@@ -113,6 +119,9 @@ pub fn (mut c H2Conn) do(req H2ClientRequest) !H2ClientResponse {
 	c.handshake()!
 	if c.goaway {
 		return error('h2: connection is shutting down (GOAWAY)')
+	}
+	if c.aborted {
+		return error('h2: connection is no longer usable after an early stream termination')
 	}
 	stream_id := c.next_stream_id
 	c.next_stream_id += 2
@@ -219,6 +228,17 @@ fn (mut c H2Conn) read_response(stream_id u32, req H2ClientRequest) !H2ClientRes
 					break
 				}
 				if req.stop_receiving_limit >= 0 && i64(body_so_far) >= req.stop_receiving_limit {
+					// Cancel the stream (RFC 7540 Section 8.1.4 / 5.4.2) so the
+					// peer stops sending more DATA, and mark the connection
+					// unusable: in-flight DATA frames that the peer has already
+					// sent for this stream would otherwise consume the
+					// connection-level receive window and block subsequent
+					// requests on the same H2Conn.
+					c.send_frame(H2RstStreamFrame{
+						stream_id:  stream_id
+						error_code: u32(H2ErrorCode.cancel)
+					})!
+					c.aborted = true
 					break
 				}
 			}

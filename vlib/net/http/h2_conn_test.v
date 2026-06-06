@@ -531,4 +531,24 @@ fn test_h2_stop_receiving_limit_breaks_early() {
 	assert resp.body.bytestr() == 'XXXXYYYY'
 	assert cap.chunks.len == 2
 	assert cap.chunks[1].bytestr() == 'YYYY'
+
+	// On early termination the client must send RST_STREAM(CANCEL) on the
+	// stream, and the connection must refuse further requests.
+	mut saw_cancel := false
+	mut pos := h2_client_preface.len
+	for pos < t.outbound.len {
+		frame, n := h2_read_frame(t.outbound[pos..])!
+		pos += n
+		if frame is H2RstStreamFrame {
+			if frame.stream_id == 1 && frame.error_code == u32(H2ErrorCode.cancel) {
+				saw_cancel = true
+			}
+		}
+	}
+	assert saw_cancel, 'expected RST_STREAM(CANCEL) on early termination'
+	c.do(H2ClientRequest{ authority: 'h.example' }) or {
+		assert err.msg().contains('no longer usable')
+		return
+	}
+	assert false, 'expected error on reuse after early termination'
 }
