@@ -177,18 +177,37 @@ mut:
 	// Multi-instantiation support: maps base struct C name (e.g. "json2__Node") to
 	// a list of (suffix, bindings) pairs for each distinct concrete instantiation.
 	// E.g. [("json2__ValueInfo", {T: ValueInfo}), ("json2__StructFieldInfo", {T: StructFieldInfo})]
-	generic_struct_instances map[string][]GenericStructInstance
-	c_file_fn_keys           map[string]bool // fn_key -> emitted from a .c.v file, so plain .v fallback should be skipped
-	c_struct_types           map[string]bool // C struct names declared with `struct C.Name`
-	typedef_c_types          map[string]bool // C struct names with @[typedef] attribute (emit without 'struct' prefix)
-	blocked_fn_keys          map[string]bool // worker-only fn keys reserved to other pass5 chunks
-	cached_vhash             string          // cached git short hash for @VHASH/@VCURRENTHASH
+	generic_struct_instances   map[string][]GenericStructInstance
+	generic_setup_snapshot     GenericSetupSnapshot
+	has_generic_setup_snapshot bool
+	c_file_fn_keys             map[string]bool // fn_key -> emitted from a .c.v file, so plain .v fallback should be skipped
+	c_struct_types             map[string]bool // C struct names declared with `struct C.Name`
+	typedef_c_types            map[string]bool // C struct names with @[typedef] attribute (emit without 'struct' prefix)
+	blocked_fn_keys            map[string]bool // worker-only fn keys reserved to other pass5 chunks
+	cached_vhash               string          // cached git short hash for @VHASH/@VCURRENTHASH
 }
 
 struct GenericStructInstance {
 	params_key string                // e.g. "json2__ValueInfo" — unique key per instantiation
 	bindings   map[string]types.Type // e.g. {T: ValueInfo}
 	c_name     string                // full C struct name, e.g. "json2__Node_T_json2__StructFieldInfo"
+}
+
+pub struct GenericSetupSnapshot {
+mut:
+	ready                       bool
+	tuple_aliases               map[string][]string
+	array_aliases               map[string]bool
+	map_aliases                 map[string]bool
+	result_aliases              map[string]bool
+	option_aliases              map[string]bool
+	collected_fixed_array_types map[string]FixedArrayInfo
+	collected_map_types         map[string]MapTypeInfo
+	generic_body_scan_cache     map[string]bool
+	generic_spec_index          map[string][]string
+	late_generic_specs          map[string][]map[string]types.Type
+	generic_struct_bindings     map[string]map[string]types.Type
+	generic_struct_instances    map[string][]GenericStructInstance
 }
 
 struct LiveFnInfo {
@@ -895,6 +914,9 @@ pub fn (mut g Gen) gen_passes_1_to_4() {
 	g.build_generic_fn_decl_index()
 	stage_start = g.mark_cgen_step(stats_enabled, stats_scope, mut stats_sw, stage_start,
 		'setup.generic_fn_decl_index')
+	if g.has_generic_setup_snapshot {
+		g.apply_generic_setup_snapshot()
+	}
 	g.collect_generic_struct_bindings()
 	stage_start = g.mark_cgen_step(stats_enabled, stats_scope, mut stats_sw, stage_start,
 		'setup.generic_struct_bindings')

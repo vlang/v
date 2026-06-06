@@ -219,7 +219,7 @@ fn branch_fold(mut m ssa.Module) bool {
 
 // Algebraic simplifications: x+0=x, x*1=x, x*0=0, x-x=0, x^x=0, x&x=x, x|x=x, x*2=x<<1, etc.
 // Returns (replacement_id, needs_zero) - if needs_zero is true, caller should create zero constant
-fn try_algebraic_simplify(m &ssa.Module, val_id int, instr ssa.Instruction, lhs ssa.Value, rhs ssa.Value) (int, bool) {
+fn try_algebraic_simplify(_m &ssa.Module, val_id int, instr ssa.Instruction, lhs ssa.Value, rhs ssa.Value) (int, bool) {
 	lhs_id := instr.operands[0]
 	rhs_id := instr.operands[1]
 

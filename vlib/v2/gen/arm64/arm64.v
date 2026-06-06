@@ -6150,7 +6150,7 @@ fn (g &Gen) call_targets_current_function(callee_id int) bool {
 	return callee.name != '' && callee.name == g.cur_func_name
 }
 
-fn (mut g Gen) load_struct_src_address_to_reg(reg int, val_id int, expected_struct_typ ssa.TypeID, call_callee_id int) {
+fn (mut g Gen) load_struct_src_address_to_reg(reg int, val_id int, expected_struct_typ ssa.TypeID, _call_callee_id int) {
 	if val_id <= 0 || val_id >= g.mod.values.len {
 		g.emit_mov_imm64(reg, 0)
 		return

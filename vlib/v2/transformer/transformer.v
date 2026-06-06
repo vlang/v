@@ -3442,16 +3442,26 @@ fn (t &Transformer) order_runtime_const_inits(inits []RuntimeConstInit) []Runtim
 				continue
 			}
 			if dep_idx := index_by_name[dep_name] {
-				mut dep := dependents[dep_idx] or { []int{} }
+				mut dep := []int{}
+				if dep_idx in dependents {
+					dep = dependents[dep_idx]
+				}
 				dep << i
 				dependents[dep_idx] = dep
-				indegree[i] = (indegree[i] or { 0 }) + 1
+				mut deg := 0
+				if i in indegree {
+					deg = indegree[i]
+				}
+				indegree[i] = deg + 1
 			}
 		}
 	}
 	mut ready := []int{}
 	for i := 0; i < inits.len; i++ {
-		deg := indegree[i] or { 0 }
+		mut deg := 0
+		if i in indegree {
+			deg = indegree[i]
+		}
 		if deg == 0 {
 			ready << i
 		}
@@ -3478,10 +3488,17 @@ fn (t &Transformer) order_runtime_const_inits(inits []RuntimeConstInit) []Runtim
 		cur := ready[best_pos]
 		ready.delete(best_pos)
 		ordered_idx << cur
-		deps := dependents[cur] or { []int{} }
+		mut deps := []int{}
+		if cur in dependents {
+			deps = dependents[cur]
+		}
 		for dep in deps {
-			indegree[dep] = (indegree[dep] or { 0 }) - 1
-			deg := indegree[dep] or { 0 }
+			mut deg := 0
+			if dep in indegree {
+				deg = indegree[dep]
+			}
+			deg--
+			indegree[dep] = deg
 			if deg == 0 {
 				ready << dep
 			}

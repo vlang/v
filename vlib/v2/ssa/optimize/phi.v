@@ -107,7 +107,7 @@ fn remove_phi_use(mut m ssa.Module, val_id int, user_id int) {
 // get_block_val_id returns the value ID for a block, using a pre-built lookup table.
 // This avoids m.blocks[bid].val_id which can return wrong values for the large
 // BasicBlock struct (168 bytes) in ARM64-compiled binaries.
-fn get_block_val_id(m &ssa.Module, bid int, block_val_ids []int) int {
+fn get_block_val_id(_m &ssa.Module, bid int, block_val_ids []int) int {
 	if bid >= 0 && bid < block_val_ids.len {
 		return block_val_ids[bid]
 	}
