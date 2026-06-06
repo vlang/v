@@ -5377,6 +5377,39 @@ fn (mut b Builder) unwrap_ident(expr ast.Expr) ?ast.Ident {
 	return none
 }
 
+// unwrap_to_mut_ptr_param_ident sees through the wrappers the transformer puts
+// around a mut aggregate receiver — `mut x` (ModifierExpr), the base-type
+// normalization cast `array(x)` / `T(x)` (CastExpr/CallOrCastExpr) and parens —
+// and returns the underlying Ident iff it names a mut_ptr_param (a mut
+// non-pointer aggregate parameter, which is stored as a pointer to the caller's
+// value). Used when forwarding such a parameter to an array/map mutation builtin
+// that takes a pointer receiver: the caller must pass the stored pointer
+// (build_addr), not a deref-to-value + re-pointer copy, or the in-place length
+// mutation is lost (arm64 self-host regression — appends to a `mut []T`
+// parameter were silently dropped).
+fn (b &Builder) unwrap_to_mut_ptr_param_ident(expr ast.Expr) ?ast.Ident {
+	mut e := expr
+	for {
+		if e is ast.ModifierExpr {
+			e = e.expr
+		} else if e is ast.CastExpr {
+			e = e.expr
+		} else if e is ast.CallOrCastExpr {
+			e = e.expr
+		} else if e is ast.ParenExpr {
+			e = e.expr
+		} else {
+			break
+		}
+	}
+	if e is ast.Ident {
+		if e.name in b.mut_ptr_params {
+			return e
+		}
+	}
+	return none
+}
+
 fn (mut b Builder) assign_target_for_ident(name string) ValueID {
 	if p := b.vars[name] {
 		if name in b.mut_ptr_params {
@@ -12107,6 +12140,27 @@ fn (mut b Builder) build_call_resolved(fn_name_in string, expr ast.CallExpr) Val
 	// array; this path is used while compiling the compiler itself, so it must
 	// not depend on dynamic-array element inference for local bookkeeping.
 	for arg in expr.args {
+		// A mut non-pointer aggregate parameter forwarded as the receiver of an
+		// array/map mutation builtin must be passed as the stored pointer
+		// (build_addr) rather than deref-to-value + re-pointer copy, or the
+		// in-place length change is lost on the arm64 backend (self-host
+		// regression). Restricted to the receiver slot (args.len == 0) of
+		// array__*/map__* builtins, and only when build_addr's pointer type
+		// matches the parameter exactly.
+		if (fn_name.contains('array__') || fn_name.contains('map__')) && args.len == 0 {
+			if fwd_id := b.unwrap_to_mut_ptr_param_ident(arg) {
+				if fwd_pt := b.call_param_type(fn_name, args.len) {
+					if fwd_pt < b.mod.type_store.types.len
+						&& b.mod.type_store.types[fwd_pt].kind == .ptr_t {
+						fwd_addr := b.build_addr(fwd_id)
+						if fwd_addr != 0 && b.mod.values[fwd_addr].typ == fwd_pt {
+							args << fwd_addr
+							continue
+						}
+					}
+				}
+			}
+		}
 		// For mut arguments, pass the address (pointer) instead of the value.
 		// But if the value is already a pointer (e.g., &FileSet field or parameter),
 		// pass it directly instead of creating an extra level of indirection.
@@ -12583,6 +12637,38 @@ fn (mut b Builder) build_call_resolved_from_flat(fn_name_in string, c ast.Cursor
 	}
 	for i in 1 .. n_edges {
 		arg_c := c.edge(i)
+		// Cursor-native twin of the build_call_resolved receiver-forwarding fix:
+		// a mut non-pointer aggregate parameter forwarded as the receiver of an
+		// array/map mutation builtin is passed as its stored pointer (build_addr),
+		// not a deref-to-value + re-pointer copy. Unwrap the transformer's
+		// receiver wrappers (mut / `array(x)` cast / parens) to the underlying
+		// ident first.
+		if (fn_name.contains('array__') || fn_name.contains('map__')) && args.len == 0 {
+			mut fwd_c := arg_c
+			for {
+				fwk := fwd_c.kind()
+				if fwk == .expr_modifier || fwk == .expr_paren {
+					fwd_c = fwd_c.edge(0)
+				} else if fwk == .expr_cast || fwk == .expr_call_or_cast {
+					// CastExpr/CallOrCastExpr: edge(0)=type, edge(1)=inner value.
+					fwd_c = fwd_c.edge(1)
+				} else {
+					break
+				}
+			}
+			if fwd_c.kind() == .expr_ident && fwd_c.name() in b.mut_ptr_params {
+				if fwd_pt := b.call_param_type(fn_name, args.len) {
+					if fwd_pt < b.mod.type_store.types.len
+						&& b.mod.type_store.types[fwd_pt].kind == .ptr_t {
+						fwd_addr := b.build_addr_from_flat(fwd_c)
+						if fwd_addr != 0 && b.mod.values[fwd_addr].typ == fwd_pt {
+							args << fwd_addr
+							continue
+						}
+					}
+				}
+			}
+		}
 		// For mut arguments, pass the address (pointer) instead of the value.
 		if arg_c.kind() == .expr_modifier && unsafe { token.Token(int(arg_c.aux())) } == .key_mut {
 			inner_c := arg_c.edge(0)
