@@ -377,3 +377,26 @@ fn test_h2_conn_large_body_flow_control() {
 	assert sent == body.len
 	assert ended
 }
+
+fn test_h2_fetch_glue_roundtrip() {
+	// Drive the full conversion glue (Request -> H2 -> Response) over the mock
+	// transport, without a socket.
+	inbound := build_server_stream([
+		H2HeaderField{':status', '200'},
+		H2HeaderField{'content-type', 'text/plain'},
+	], [' world'.bytes()])
+	mut t := &MockTransport{
+		inbound: inbound
+	}
+	req := Request{
+		user_agent: 'v.http'
+	}
+	h2req := req.to_h2_request(.get, 'example.com', '/', '', new_header())
+	mut c := new_h2_conn(t)
+	h2resp := c.do(h2req)!
+	resp := h2_response_to_http(h2resp)
+	assert resp.status_code == 200
+	assert resp.version() == .v2_0
+	assert resp.body == ' world'
+	assert (resp.header.get_custom('content-type') or { '' }) == 'text/plain'
+}
