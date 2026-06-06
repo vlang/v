@@ -28,6 +28,48 @@ fn _memory_panic(fname string, size isize) {
 }
 
 __global total_m = i64(0)
+
+// Opt-in heap allocation hooks, enabled with `-d track_heap`. When the flag is
+// set, every heap allocation calls `vheap_alloc(ptr, size)` and every free calls
+// `vheap_free(ptr)`; link an external profiler / leak tracker that implements
+// them to observe live allocations at runtime. The `@[if track_heap ?]` attribute
+// compiles the hooks to no-ops (zero cost) when the flag is off.
+//
+// track_heap models *manual* memory management (`-gc none`): the free hook only
+// fires on the manual-free path, so under a GC the collector reclaims blocks with
+// no matching hook and they would be reported as permanently live. Reject that
+// combination at compile time rather than emit misleading stats. The guard lives
+// in `_ht_alloc`, whose body is only compiled under `-d track_heap`.
+fn C.vheap_alloc(p voidptr, n u64)
+fn C.vheap_free(p voidptr)
+
+@[if track_heap ?]
+fn _ht_alloc(p &u8, n isize) {
+	// `$if track_heap ?` (not just the `@[if track_heap ?]` attribute) is required:
+	// the attribute only elides the call, while the comptime `$compile_error` below
+	// is still evaluated by the checker/`v fmt` under the default flags. Gating on
+	// track_heap keeps it compiled out unless the flag is actually set.
+	$if track_heap ? {
+		$if gcboehm ? {
+			$compile_error('-d track_heap requires manual memory management; rebuild with `-gc none`')
+		}
+		$if vgc ? {
+			$compile_error('-d track_heap requires manual memory management; rebuild with `-gc none`')
+		}
+		$if prealloc {
+			// -prealloc bumps from an arena and never frees individually, so the
+			// hooks would see no frees (every alloc shows live forever) — useless.
+			$compile_error('-d track_heap requires manual memory management; rebuild with `-gc none` (not -prealloc)')
+		}
+	}
+	C.vheap_alloc(p, u64(n))
+}
+
+@[if track_heap ?]
+fn _ht_free(p voidptr) {
+	C.vheap_free(p)
+}
+
 // malloc dynamically allocates a `n` bytes block of memory on the heap.
 // malloc returns a `byteptr` pointing to the memory address of the allocated space.
 // unlike the `calloc` family of functions - malloc will not zero the memory block.
@@ -77,6 +119,7 @@ pub fn malloc(n isize) &u8 {
 		// when the calling code wrongly relies on it being zeroed.
 		unsafe { C.memset(res, 0x4D, n) }
 	}
+	_ht_alloc(res, n)
 	return res
 }
 
@@ -128,6 +171,7 @@ pub fn malloc_noscan(n isize) &u8 {
 		// when the calling code wrongly relies on it being zeroed.
 		unsafe { C.memset(res, 0x4D, n) }
 	}
+	_ht_alloc(res, n)
 	return res
 }
 
@@ -212,6 +256,7 @@ pub fn malloc_uncollectable(n isize) &u8 {
 		// when the calling code wrongly relies on it being zeroed.
 		unsafe { C.memset(res, 0x4D, n) }
 	}
+	_ht_alloc(res, n)
 	return res
 }
 
@@ -249,6 +294,13 @@ pub fn v_realloc(b &u8, n isize) &u8 {
 	if new_ptr == 0 {
 		_memory_panic(@FN, n)
 	}
+	// realloc(nil, …) means "allocate", not "free then allocate" (the stbi
+	// STBI_REALLOC path forwards null `b` here), so only report a free when there
+	// was a real prior block — mirrors the nil guard in free().
+	if b != unsafe { nil } {
+		_ht_free(b)
+	}
+	_ht_alloc(new_ptr, n)
 	return new_ptr
 }
 
@@ -305,6 +357,11 @@ pub fn realloc_data(old_data &u8, old_size int, new_size int) &u8 {
 	if nptr == 0 {
 		_memory_panic(@FN, isize(new_size))
 	}
+	// realloc(nil, …) means "allocate"; don't report a free with no prior block.
+	if old_data != unsafe { nil } {
+		_ht_free(old_data)
+	}
+	_ht_alloc(nptr, isize(new_size))
 	return nptr
 }
 
@@ -337,9 +394,12 @@ pub fn vcalloc(n isize) &u8 {
 			if ptr != &u8(unsafe { nil }) {
 				unsafe { C.memset(ptr, 0, n) }
 			}
+			_ht_alloc(ptr, n)
 			return ptr
 		} $else {
-			return unsafe { C.calloc(1, n) }
+			r := unsafe { C.calloc(1, n) }
+			_ht_alloc(r, n)
+			return r
 		}
 	}
 	return &u8(unsafe { nil }) // not reached, TODO: remove when V's checker is improved
@@ -418,6 +478,10 @@ pub fn free(ptr voidptr) {
 			unsafe { C.GC_FREE(ptr) }
 		}
 	} $else {
+		// Manual memory management: this is the only path that actually returns
+		// the block to the C allocator, and it mirrors where _ht_alloc fires, so
+		// report the free here (after the nil / none__ / nop / GC guards above).
+		_ht_free(ptr)
 		$if windows {
 			// Warning! On windows, we always use _aligned_free to free memory.
 			unsafe { C._aligned_free(ptr) }
@@ -536,6 +600,10 @@ pub fn memdup_align(src voidptr, sz isize, align isize) voidptr {
 		// when the calling code wrongly relies on it being zeroed.
 		unsafe { C.memset(res, 0x4D, n) }
 	}
+	// memdup_align allocates directly via aligned_alloc / _aligned_malloc, so
+	// report it like malloc does; otherwise the later free() of an aligned heap
+	// literal (HEAP_align) would emit vheap_free for an untracked pointer.
+	_ht_alloc(res, n)
 	return C.memcpy(res, src, sz)
 }
 
