@@ -26,12 +26,12 @@ pub mut:
 	methods           shared map[string][]&Fn = map[string][]&Fn{}
 	generic_types     map[string][]map[string]Type
 	cur_generic_types []map[string]Type
-	// Expression types - indexed directly by pos.id.
-	// Positive IDs (1-based) come from the parser via token.Pos.id.
-	// Negative IDs come from transformer's synthesized nodes.
-	expr_type_values     []Type // indexed by pos.id for positive IDs
-	expr_type_neg_values []Type // indexed by -pos.id for negative IDs (synth nodes)
-	selector_names       map[int]string
+	// Expression types keyed by token.Pos.id. Positive IDs come from the parser;
+	// negative IDs come from transformer's synthesized nodes. This must stay sparse:
+	// parser position IDs are not dense enough to use as direct array indexes in
+	// large self-host builds.
+	expr_types     map[int]Type
+	selector_names map[int]string
 	// Drop-codegen handoff: per-fn list of bindings whose `drop(mut self)`
 	// method must be called at the fn's natural exit, in declaration order.
 	// Populated by `ownership_snapshot_drops_at_fn_exit` after each fn body
@@ -58,70 +58,59 @@ pub mut:
 
 pub fn Environment.new() &Environment {
 	return &Environment{
-		expr_type_values: []Type{cap: 100_000}
-		selector_names:   map[int]string{}
-		c_scope:          new_scope(unsafe { nil })
-		c_scope_mu:       sync.new_mutex()
+		expr_types:     map[int]Type{}
+		selector_names: map[int]string{}
+		c_scope:        new_scope(unsafe { nil })
+		c_scope_mu:     sync.new_mutex()
 	}
 }
 
 // set_expr_type stores the computed type for an expression by its unique ID.
 pub fn (mut e Environment) set_expr_type(id int, typ Type) {
-	if id >= 0 {
-		if id >= e.expr_type_values.len {
-			// Grow with 2x strategy to amortize reallocation cost
-			mut new_len := if e.expr_type_values.len < 100_000 {
-				100_000
-			} else {
-				e.expr_type_values.len * 2
-			}
-			if new_len <= id {
-				new_len = id + 1
-			}
-			for e.expr_type_values.len < new_len {
-				// Void(1) is the sentinel for "unset"; Void(0) is valid void type.
-				e.expr_type_values << Type(Void(1))
-			}
-		}
-		e.expr_type_values[id] = typ
-	} else {
-		idx := -id
-		if idx >= e.expr_type_neg_values.len {
-			mut new_len := if e.expr_type_neg_values.len == 0 {
-				64
-			} else {
-				e.expr_type_neg_values.len * 2
-			}
-			if new_len <= idx {
-				new_len = idx + 1
-			}
-			for e.expr_type_neg_values.len < new_len {
-				e.expr_type_neg_values << Type(Void(1))
-			}
-		}
-		e.expr_type_neg_values[idx] = typ
-	}
+	e.expr_types[id] = typ
 }
 
 // get_expr_type retrieves the computed type for an expression by its unique ID.
 pub fn (e &Environment) get_expr_type(id int) ?Type {
-	if id > 0 && id < e.expr_type_values.len {
-		typ := e.expr_type_values[id]
-		if typ is Void || type_has_null_data(typ) {
-			return none
-		}
-		return typ
-	} else if id < 0 {
-		idx := -id
-		if idx < e.expr_type_neg_values.len {
-			typ := e.expr_type_neg_values[idx]
-			if typ is Void || type_has_null_data(typ) {
-				return none
-			}
-			return typ
-		}
+	typ := e.expr_types[id] or { return none }
+	if typ is Void || type_has_null_data(typ) {
+		return none
 	}
-	return none
+	return typ
+}
+
+// has_expr_type reports whether an expression has a stored type. Unlike
+// get_expr_type, it treats an explicit `void` type as present.
+pub fn (e &Environment) has_expr_type(id int) bool {
+	typ := e.expr_types[id] or { return false }
+	if typ is Void {
+		return u8(typ) != 1
+	}
+	return !type_has_null_data(typ)
+}
+
+pub fn (e &Environment) expr_type_count() int {
+	return e.expr_types.len
+}
+
+pub fn (e &Environment) all_expr_types() []Type {
+	mut out := []Type{cap: e.expr_types.len}
+	for _, typ in e.expr_types {
+		out << typ
+	}
+	return out
+}
+
+// release_expr_type_cache_after_ssa releases expression-position metadata once
+// SSA has consumed it. Native MIR/codegen keeps type IDs in SSA/MIR values and
+// does not need these maps on the ARM64 path.
+pub fn (mut e Environment) release_expr_type_cache_after_ssa() {
+	unsafe {
+		e.expr_types.free()
+		e.selector_names.free()
+	}
+	e.expr_types = map[int]Type{}
+	e.selector_names = map[int]string{}
 }
 
 // type_has_null_data checks if a Type sumtype has a missing payload.
@@ -2525,11 +2514,11 @@ fn (mut c Checker) check_types(exp_type Type, got_type Type) bool {
 	// Prefer name-based equality first so recursive composite types
 	// (e.g. `map[string]Any` where `Any` contains `map[string]Any`)
 	// do not recurse indefinitely through structural `==`.
-	exp_name := exp_type.name()
-	got_name := got_type.name()
-	if exp_name == got_name {
+	if same_type_name(exp_type, got_type) {
 		return true
 	}
+	exp_name := exp_type.name()
+	got_name := got_type.name()
 	if exp_name == 'int' && (got_name == 'Duration' || got_name == 'time__Duration') {
 		return true
 	}
@@ -5014,8 +5003,8 @@ fn (mut c Checker) check_pending_fn_body(pending PendingFnBody) bool {
 		prev_scope := c.scope
 		prev_module := c.cur_file_module
 		prev_fn_root_scope := c.fn_root_scope
-		prev_fallback_vars := c.fallback_vars.clone()
-		prev_generic_params := c.generic_params.clone()
+		mut prev_fallback_vars := c.fallback_vars.move()
+		prev_generic_params := c.generic_params
 		c.scope = pending.scope
 		c.cur_file_module = pending.module_name
 		c.fn_root_scope = pending.scope
@@ -5035,7 +5024,7 @@ fn (mut c Checker) check_pending_fn_body(pending PendingFnBody) bool {
 			c.fallback_vars[pending.decl.receiver.name] = receiver_type
 		}
 		if has_generic_params {
-			c.generic_params = decl_generic_params.clone()
+			c.generic_params = decl_generic_params
 			for gp_name in decl_generic_params {
 				c.scope.insert(gp_name, Type(NamedType(gp_name)))
 			}
@@ -5066,7 +5055,7 @@ fn (mut c Checker) check_pending_fn_body(pending PendingFnBody) bool {
 		}
 		c.expected_type = expected_type
 		c.generic_params = prev_generic_params
-		c.fallback_vars = prev_fallback_vars.clone()
+		c.fallback_vars = prev_fallback_vars.move()
 		c.fn_root_scope = prev_fn_root_scope
 		c.env.set_fn_scope(pending.module_name, pending.scope_fn_name, pending.scope)
 		c.scope = prev_scope
@@ -5414,7 +5403,7 @@ fn (mut c Checker) sql_or_fallback_type(expr ast.Expr) ?Type {
 // fn (mut c Checker) assignment(lx ast.Expr, typ Type) {
 fn (mut c Checker) assignment(from_type Type, to_type Type) ! {
 	// same type
-	if from_type.name() == to_type.name() {
+	if same_type_name(from_type, to_type) {
 		return
 	}
 	// numbers literals
@@ -5457,7 +5446,7 @@ fn (mut c Checker) assignment(from_type Type, to_type Type) ! {
 				return
 			}
 			// return c.assignment(from_type.base_type, to_type.base_type)!
-			if from_type.base_type.name() == to_type.base_type.name() {
+			if same_type_name(from_type.base_type, to_type.base_type) {
 				return
 			}
 		}
@@ -5736,13 +5725,13 @@ fn (mut c Checker) fn_decl(decl ast.FnDecl) {
 	// c.expr(decl.typ.return_type)
 	mut prev_scope := c.scope
 	c.open_scope()
-	prev_generic_params := c.generic_params.clone()
+	prev_generic_params := c.generic_params
 	decl_generic_params := collect_fn_generic_params(decl)
 	for gp_name in decl_generic_params {
 		c.scope.insert(gp_name, Type(NamedType(gp_name)))
 	}
 	if decl_generic_params.len > 0 {
-		c.generic_params = decl_generic_params.clone()
+		c.generic_params = decl_generic_params
 	}
 	mut fn_typ := c.fn_type_with_insert_params(decl.typ,
 		FnTypeAttribute.from_ast_attributes(decl.attributes), true)

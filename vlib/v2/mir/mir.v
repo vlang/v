@@ -236,6 +236,26 @@ pub fn lower_from_ssa(ssa_mod &ssa.Module) Module {
 	return mod
 }
 
+// release_after_native_codegen releases MIR storage after native codegen has
+// copied everything it needs into the object writer/linker.
+pub fn (mut m Module) release_after_native_codegen() {
+	unsafe {
+		m.values.free()
+		m.instrs.free()
+		m.blocks.free()
+		m.funcs.free()
+		m.globals.free()
+		m.type_store.types.free()
+		m.type_store.cache.free()
+	}
+	m.values = []Value{}
+	m.instrs = []Instruction{}
+	m.blocks = []BasicBlock{}
+	m.funcs = []Function{}
+	m.globals = []ssa.GlobalVar{}
+	m.type_store = ssa.TypeStore{}
+}
+
 pub fn (m &Module) ssa() &ssa.Module {
 	return m.ssa_mod
 }

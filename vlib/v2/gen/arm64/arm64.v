@@ -269,6 +269,86 @@ pub fn (mut g Gen) gen() {
 	}
 }
 
+// release_scratch_after_gen drops codegen lookup/cache tables after all machine
+// code and relocations have been emitted into g.macho.
+pub fn (mut g Gen) release_scratch_after_gen() {
+	unsafe {
+		g.stack_map.free()
+		g.alloca_offsets.free()
+		g.block_offsets.free()
+		g.pending_label_blks.free()
+		g.pending_label_offs.free()
+		g.pending_head.free()
+		g.pending_next.free()
+		g.reg_map.free()
+		g.used_regs.free()
+		g.string_literal_offsets.free()
+		g.const_cache.free()
+		g.string_data_cache.free()
+		g.sumtype_data_heap_allocas.free()
+		g.type_size_cache.free()
+		g.type_align_cache.free()
+		g.type_size_stack.free()
+		g.type_align_stack.free()
+		g.struct_field_offset_cache.free()
+		g.func_by_name.free()
+		g.global_by_name.free()
+		g.alloca_ptr_cache.free()
+		g.block_instrs.free()
+		g.func_blocks.free()
+		g.func_params.free()
+		g.func_typs.free()
+		g.func_is_c_extern.free()
+		g.func_abi_ret_indirect.free()
+		g.func_abi_param_class.free()
+		g.func_ref_to_func_idx.free()
+		g.type_kinds.free()
+		g.type_elem_types.free()
+		g.type_lens.free()
+		g.type_is_unsigned.free()
+		g.fn_starts.free()
+		g.fn_ends.free()
+		g.fn_sym_ids.free()
+	}
+	g.stack_map = map[int]int{}
+	g.alloca_offsets = map[int]int{}
+	g.block_offsets = []int{}
+	g.pending_label_blks = []int{}
+	g.pending_label_offs = []int{}
+	g.pending_head = []int{}
+	g.pending_next = []int{}
+	g.reg_map = map[int]int{}
+	g.used_regs = []int{}
+	g.string_literal_offsets = map[int]int{}
+	g.const_cache = map[int]i64{}
+	g.string_data_cache = map[string]int{}
+	g.sumtype_data_heap_allocas = map[int]bool{}
+	g.type_size_cache = []int{}
+	g.type_align_cache = []int{}
+	g.type_size_stack = []bool{}
+	g.type_align_stack = []bool{}
+	g.struct_field_offset_cache = map[int]int{}
+	g.func_by_name = map[string]int{}
+	g.global_by_name = map[string]int{}
+	g.alloca_ptr_cache = map[int]u8{}
+	g.cur_blk_instrs = []int{}
+	g.block_instrs = [][]int{}
+	g.func_blocks = [][]int{}
+	g.func_params = [][]int{}
+	g.func_typs = []ssa.TypeID{}
+	g.func_is_c_extern = []bool{}
+	g.func_abi_ret_indirect = []bool{}
+	g.func_abi_param_class = [][]mir.AbiArgClass{}
+	g.func_ref_to_func_idx = []int{}
+	g.type_kinds = []ssa.TypeKind{}
+	g.type_elem_types = []ssa.TypeID{}
+	g.type_lens = []int{}
+	g.type_is_unsigned = []bool{}
+	g.fn_starts = []int{}
+	g.fn_ends = []int{}
+	g.fn_sym_ids = []int{}
+}
+
 // gen_pre_pass registers global symbols and builds lookup caches.
 // Must be called before any gen_func calls.
 pub fn (mut g Gen) gen_pre_pass() {

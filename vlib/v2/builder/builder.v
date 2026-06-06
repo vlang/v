@@ -102,6 +102,10 @@ fn (b &Builder) should_use_native_flat_pipeline() bool {
 	return b.pref.backend == .arm64 && b.pref.hot_fn.len == 0
 }
 
+fn (b &Builder) backend_uses_markused_pruning() bool {
+	return b.pref.backend != .arm64
+}
+
 fn (b &Builder) can_compile_cleanc_locally() bool {
 	if b.pref == unsafe { nil } {
 		return true
@@ -298,7 +302,7 @@ pub fn (mut b Builder) build(files []string) {
 	print_rss('after transform')
 
 	// Mark used functions/methods for backend pruning.
-	if b.pref.no_markused {
+	if b.pref.no_markused || !b.backend_uses_markused_pruning() {
 		b.used_fn_keys = map[string]bool{}
 	} else {
 		mark_used_start := sw.elapsed()
@@ -2457,6 +2461,10 @@ fn (b &Builder) native_mir_build_sequential(label string) bool {
 	return label == macos_tiny_candidate_graph_label || b.pref.no_parallel || b.pref.hot_fn.len > 0
 }
 
+fn (b &Builder) should_prune_native_backend_modules(arch pref.Arch) bool {
+	return b.pref.single_backend || arch == .arm64
+}
+
 fn (mut b Builder) build_native_mir_from_files(files []ast.File, arch pref.Arch, target_os string, minimal_runtime_roots bool, used_fn_keys map[string]bool, label string) mir.Module {
 	mut mod := ssa.Module.new('main')
 	if mod == unsafe { nil } {
@@ -2478,16 +2486,17 @@ fn (mut b Builder) build_native_mir_from_files(files []ast.File, arch pref.Arch,
 		ssa_builder.used_fn_keys = used_fn_keys.clone()
 	}
 
-	// --single-backend: strip unused backend modules from the binary
-	if b.pref.single_backend {
-		all_backends := ['cleanc', 'eval', 'c', 'x64', 'arm64']
+	// Strip unused compiler backend modules before SSA. ARM64 already strips
+	// these symbols after codegen, so avoid building MIR for them in the first place.
+	if b.should_prune_native_backend_modules(arch) {
+		all_backends := ['cleanc', 'eval', 'v', 'c', 'x64', 'arm64']
 		own := match b.pref.backend {
 			.arm64 { 'arm64' }
 			.x64 { 'x64' }
 			.cleanc { 'cleanc' }
+			.v { 'v' }
 			.c { 'c' }
 			.eval { 'eval' }
-			else { '' }
 		}
 
 		for backend_mod in all_backends {
@@ -2529,6 +2538,9 @@ fn (mut b Builder) build_native_mir_from_files(files []ast.File, arch pref.Arch,
 		ssa_builder.skip_fn_bodies = false
 		b.ssa_build_parallel(mut ssa_builder, files)
 		ssa_builder.generate_vinit()
+	}
+	if arch == .arm64 {
+		b.env.release_expr_type_cache_after_ssa()
 	}
 	print_time(native_graph_stage_title(label, 'SSA Build'),
 		time.Duration(native_sw.elapsed() - stage_start))
@@ -2599,6 +2611,7 @@ fn (mut b Builder) build_native_mir_from_files(files []ast.File, arch pref.Arch,
 	mut mir_mod := mir.lower_from_ssa(mod)
 	print_time(native_graph_stage_title(label, 'MIR Lower'),
 		time.Duration(native_sw.elapsed() - stage_start))
+	mod.release_outer_arenas_after_mir_lower()
 	print_rss(native_graph_stage_title(label, 'after MIR lower'))
 
 	stage_start = native_sw.elapsed()
@@ -2669,6 +2682,8 @@ fn (mut b Builder) gen_native(backend_arch pref.Arch) {
 		} else {
 			b.gen_arm64_parallel(mut gen)
 		}
+		gen.release_scratch_after_gen()
+		mir_mod.release_after_native_codegen()
 		print_time('ARM64 Gen', time.Duration(native_sw.elapsed() - stage_start))
 
 		if b.pref.hot_fn.len > 0 {
@@ -2698,6 +2713,8 @@ fn (mut b Builder) gen_native(backend_arch pref.Arch) {
 			} else {
 				b.gen_arm64_parallel(mut gen)
 			}
+			gen.release_scratch_after_gen()
+			mir_mod.release_after_native_codegen()
 			gen.write_file(obj_file)
 		} else {
 			obj_format := native_x64_object_format_for_os(target_os)

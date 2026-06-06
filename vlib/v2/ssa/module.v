@@ -65,6 +65,23 @@ pub fn Module.new(name string) &Module {
 	return m
 }
 
+// release_outer_arenas_after_mir_lower releases SSA arena buffers that MIR has
+// copied by value. Nested slices (value uses, instruction operands, block edges,
+// function params/blocks) are intentionally not freed because MIR shallow-shares
+// them after lowering.
+pub fn (mut m Module) release_outer_arenas_after_mir_lower() {
+	unsafe {
+		m.values.free()
+		m.instrs.free()
+		m.blocks.free()
+		m.funcs.free()
+	}
+	m.values = []Value{}
+	m.instrs = []Instruction{}
+	m.blocks = []BasicBlock{}
+	m.funcs = []Function{}
+}
+
 pub fn (mut m Module) new_function(name string, ret TypeID, params []TypeID) int {
 	// Check if function already exists (avoid duplicates from multiple files)
 	for i, f in m.funcs {
@@ -203,7 +220,7 @@ pub fn (mut m Module) add_instr(op OpCode, block BlockID, typ TypeID, operands [
 	m.instrs << instr
 
 	// 2. Pass instr_idx to Value
-	val_id := m.add_value_node(.instruction, typ, 'v${m.values.len}', instr_idx)
+	val_id := m.add_value_node(.instruction, typ, '', instr_idx)
 
 	// 3. Link Block — read whole struct, modify, write back (chained broken in ARM64)
 	mut blk := m.blocks[block]
@@ -291,7 +308,7 @@ pub fn (mut m Module) add_instr_front(op OpCode, block BlockID, typ TypeID, oper
 		operands: operands
 	}
 	m.instrs << instr
-	val_id := m.add_value_node(.instruction, typ, 'v${m.values.len}', instr_idx)
+	val_id := m.add_value_node(.instruction, typ, '', instr_idx)
 
 	// Prepend to block instructions — read whole struct, modify, write back (chained broken in ARM64)
 	mut blk := m.blocks[block]

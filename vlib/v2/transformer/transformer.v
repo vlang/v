@@ -229,6 +229,32 @@ fn (t &Transformer) enum_member_ident_for_lookup(lookup_name string, typ types.E
 	return enum_member_ident(t.enum_type_c_name_for_lookup(lookup_name, typ), field_name)
 }
 
+fn (t &Transformer) skip_native_backend_transform_file(file ast.File) bool {
+	if t.pref == unsafe { nil } {
+		return false
+	}
+	own := match t.pref.backend {
+		.arm64 { 'arm64' }
+		.x64 { 'x64' }
+		else { return false }
+	}
+
+	if !t.pref.single_backend && own != 'arm64' {
+		return false
+	}
+
+	name := file.name.replace('\\', '/')
+	if !name.contains('/v2/gen/') {
+		return false
+	}
+	for backend_mod in ['cleanc', 'eval', 'v', 'c', 'x64', 'arm64'] {
+		if backend_mod != own && name.contains('/v2/gen/${backend_mod}/') {
+			return true
+		}
+	}
+	return false
+}
+
 struct LiveFn {
 	decl_name    string // e.g., 'frame' or 'update_model'
 	mangled_name string // e.g., 'frame' or 'Game__update_model'
@@ -4064,6 +4090,9 @@ pub fn (mut t Transformer) inject_main_runtime_const_init_to_flat(mut out ast.Fl
 }
 
 fn (mut t Transformer) transform_file(file ast.File) ast.File {
+	if t.skip_native_backend_transform_file(file) {
+		return file
+	}
 	t.enter_file_context(file)
 	stmts := t.transform_stmts(file.stmts)
 	return ast.File{
