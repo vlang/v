@@ -1882,31 +1882,53 @@ fn (t &Transformer) resolve_generic_decl_key_for_call(base_name string, decl_nod
 	if name == '' {
 		return none
 	}
-	if !name.contains('__') && !name.contains('.') && t.cur_module != '' && t.cur_module != 'main'
+	if !name.contains('__') && !name.contains('.') && t.cur_module != ''
 		&& t.cur_module != 'builtin' {
-		call_prefix := module_call_c_prefix(t.cur_module)
-		if call_prefix != '' {
-			candidate := '${call_prefix}__${name}'
+		if t.cur_module != 'main' {
+			call_prefix := module_call_c_prefix(t.cur_module)
+			if call_prefix != '' {
+				candidate := '${call_prefix}__${name}'
+				if candidate in decl_node {
+					return candidate
+				}
+			}
+			module_prefix := t.cur_module.replace('.', '__')
+			if module_prefix != '' {
+				candidate := '${module_prefix}__${name}'
+				if candidate in decl_node {
+					return candidate
+				}
+			}
+			candidate := '${t.cur_module}.${name}'
 			if candidate in decl_node {
 				return candidate
 			}
 		}
-		module_prefix := t.cur_module.replace('.', '__')
-		if module_prefix != '' {
-			candidate := '${module_prefix}__${name}'
-			if candidate in decl_node {
-				return candidate
-			}
-		}
-		candidate := '${t.cur_module}.${name}'
-		if candidate in decl_node {
-			return candidate
-		}
-		if _ := t.lookup_fn_cached(t.cur_module, name) {
+		if t.has_current_module_concrete_fn(name) {
 			return none
 		}
 	}
 	return t.resolve_monomorphize_decl_key(name, decl_node)
+}
+
+fn (t &Transformer) has_current_module_concrete_fn(name string) bool {
+	return t.has_concrete_fn_in_module(t.cur_module, name)
+		|| (t.cur_module == 'main' && t.has_concrete_fn_in_module('', name))
+}
+
+fn (t &Transformer) has_concrete_fn_in_module(module_name string, name string) bool {
+	if fn_type := t.lookup_fn_cached(module_name, name) {
+		return fn_type.get_generic_params().len == 0
+	}
+	scope := t.get_module_scope(module_name) or { return false }
+	obj := scope.objects[name] or { return false }
+	if obj is types.Fn {
+		typ := obj.get_typ()
+		if typ is types.FnType {
+			return typ.get_generic_params().len == 0
+		}
+	}
+	return false
 }
 
 fn (mut t Transformer) collect_generic_call_specs(files []ast.File) {
@@ -5645,11 +5667,12 @@ fn (mut t Transformer) clone_expr_with_bindings_and_fields(expr ast.Expr, bindin
 					return specialized
 				}
 			}
+			pos := t.clone_monomorphized_pos_with_type(expr.pos, bindings)
 			return ast.Expr(ast.IndexExpr{
 				lhs:      t.clone_expr_with_bindings_and_fields(expr.lhs, bindings, contexts)
 				expr:     t.clone_expr_with_bindings_and_fields(expr.expr, bindings, contexts)
 				is_gated: expr.is_gated
-				pos:      expr.pos
+				pos:      pos
 			})
 		}
 		ast.RangeExpr {
@@ -6269,11 +6292,12 @@ pub fn (mut t Transformer) clone_expr_with_bindings(expr ast.Expr, bindings map[
 					return specialized
 				}
 			}
+			pos := t.clone_monomorphized_pos_with_type(expr.pos, bindings)
 			return ast.Expr(ast.IndexExpr{
 				lhs:      t.clone_expr_with_bindings(expr.lhs, bindings)
 				expr:     t.clone_expr_with_bindings(expr.expr, bindings)
 				is_gated: expr.is_gated
-				pos:      expr.pos
+				pos:      pos
 			})
 		}
 		ast.InitExpr {

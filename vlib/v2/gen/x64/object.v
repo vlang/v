@@ -194,10 +194,10 @@ pub fn (mut g Gen) write_file(path string) {
 
 fn (g Gen) unsupported_external_symbol_message() ?string {
 	for raw_name in g.undefined_external_symbol_names() {
-		name := x64_normalize_external_symbol_name(g.obj_format, raw_name)
-		if x64_symbol_needs_backend_runtime_support(name) {
-			return x64_unresolved_external_symbol_message(g.obj_format, name,
-				'needed while preparing native x64 output')
+		if msg := unsupported_external_symbol_message_for_name(g.obj_format, raw_name,
+			'needed while preparing native x64 output')
+		{
+			return msg
 		}
 	}
 	return none

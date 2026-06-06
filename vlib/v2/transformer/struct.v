@@ -1403,18 +1403,27 @@ fn (mut t Transformer) transform_init_expr(expr ast.InitExpr) ast.Expr {
 	// Note: ArrayInitExpr is NOT transformed here because cleanc uses field type info
 	// to determine if it's a fixed-size array (which transformer doesn't have access to)
 	mut fields := []ast.FieldInit{cap: expr.fields.len}
+	positional_field_names := t.struct_positional_field_names(struct_type_name)
+	mut positional_idx := 0
 	for field in expr.fields {
+		mut lookup_field_name := field.name
+		if lookup_field_name == '' {
+			if positional_idx < positional_field_names.len {
+				lookup_field_name = positional_field_names[positional_idx]
+			}
+			positional_idx++
+		}
 		// Check if this field is a sum type and needs wrapping
-		mut field_type_name := t.get_struct_field_type_name(struct_type_name, field.name)
+		mut field_type_name := t.get_struct_field_type_name(struct_type_name, lookup_field_name)
 		mut expected_field_type := types.Type(types.int_)
 		mut has_expected_field_type := false
 		mut pretransformed_value := ast.empty_expr
 		mut has_pretransformed_value := false
-		if direct_type := t.lookup_struct_field_type(struct_type_name, field.name) {
+		if direct_type := t.lookup_struct_field_type(struct_type_name, lookup_field_name) {
 			expected_field_type = direct_type
 			has_expected_field_type = true
 			field_type_name = t.type_to_c_name(direct_type)
-		} else if direct_type := t.get_init_expr_field_type(init_typ_expr, field.name) {
+		} else if direct_type := t.get_init_expr_field_type(init_typ_expr, lookup_field_name) {
 			expected_field_type = direct_type
 			has_expected_field_type = true
 			field_type_name = t.type_to_c_name(direct_type)
@@ -1425,7 +1434,7 @@ fn (mut t Transformer) transform_init_expr(expr ast.InitExpr) ast.Expr {
 			}
 		} else {
 			// Fallback to direct type lookup from the init expression type.
-			field_type_name = t.get_init_expr_field_type_name(expr.typ, field.name)
+			field_type_name = t.get_init_expr_field_type_name(expr.typ, lookup_field_name)
 			if field_type_name != '' {
 				if expected_typ := t.lookup_type(field_type_name) {
 					expected_field_type = expected_typ
@@ -1486,9 +1495,10 @@ fn (mut t Transformer) transform_init_expr(expr ast.InitExpr) ast.Expr {
 				t.transform_expr(field_value)
 			} else {
 				// Transform array elements with sumtype wrapping if needed.
-				elem_sumtype := t.get_field_array_elem_sumtype_name(struct_type_name, field.name)
+				elem_sumtype := t.get_field_array_elem_sumtype_name(struct_type_name,
+					lookup_field_name)
 				elem_interface_typ := t.get_field_array_elem_interface_type(struct_type_name,
-					field.name)
+					lookup_field_name)
 				mut new_exprs := []ast.Expr{cap: arr_value.exprs.len}
 				for e in arr_value.exprs {
 					mut transformed := t.transform_expr(e)
@@ -1513,7 +1523,7 @@ fn (mut t Transformer) transform_init_expr(expr ast.InitExpr) ast.Expr {
 				// This is critical when elements were wrapped in a sum type above,
 				// as the C array type must match the wrapped (sum type) elements.
 				mut arr_with_type := arr_value
-				elem_c_name := t.get_field_array_elem_c_name(struct_type_name, field.name)
+				elem_c_name := t.get_field_array_elem_c_name(struct_type_name, lookup_field_name)
 				if elem_c_name != '' {
 					arr_with_type = ast.ArrayInitExpr{
 						typ:   ast.Expr(ast.Type(ast.ArrayType{
@@ -1554,6 +1564,23 @@ fn (mut t Transformer) transform_init_expr(expr ast.InitExpr) ast.Expr {
 		fields: fields
 		pos:    expr.pos
 	}
+}
+
+fn (t &Transformer) struct_positional_field_names(struct_name string) []string {
+	if struct_name == '' {
+		return []string{}
+	}
+	struct_type := t.lookup_type(struct_name) or { return []string{} }
+	base_type := t.unwrap_alias_and_pointer_type(struct_type)
+	if base_type !is types.Struct {
+		return []string{}
+	}
+	info := base_type as types.Struct
+	mut names := []string{cap: info.fields.len}
+	for field in info.fields {
+		names << field.name
+	}
+	return names
 }
 
 fn (t &Transformer) type_resolves_to_pointer(typ types.Type) bool {

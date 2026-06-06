@@ -1602,6 +1602,7 @@ fn is_macos_x64_native_target(arch pref.Arch, target_os string) bool {
 fn eprint_native_x64_link_error(message string) {
 	if message.starts_with('x64: unsupported backend feature: ') {
 		eprintln(message)
+		eprintln(x64.x64_backend_limitation_hint)
 		return
 	}
 	eprintln('Link failed:')
@@ -1640,11 +1641,28 @@ fn (b &Builder) uses_macos_x64_tiny_object(arch pref.Arch) bool {
 }
 
 fn macos_native_link_command(output_binary string, obj_file string, sdk_path string, arch_flag string, tiny_object bool) string {
-	normal_link_cmd := 'ld -o ${output_binary} ${obj_file} -lSystem -syslibroot "${sdk_path}" -e _main -arch ${arch_flag} -platform_version macos 11.0.0 11.0.0'
+	normal_link_cmd := 'ld -o ${os.quoted_path(output_binary)} ${os.quoted_path(obj_file)} -lSystem -syslibroot ${os.quoted_path(sdk_path)} -e _main -arch ${arch_flag} -platform_version macos 11.0.0 11.0.0'
 	if tiny_object {
 		return '${normal_link_cmd} -dead_strip -x -S'
 	}
 	return normal_link_cmd
+}
+
+fn native_external_object_file(output_binary string, target_os string) string {
+	if !is_macos_native_target(target_os) {
+		return 'main.o'
+	}
+	output_path := if os.is_abs_path(output_binary) {
+		output_binary
+	} else {
+		os.abs_path(output_binary)
+	}
+	output_dir := os.dir(output_path)
+	output_name := os.file_name(output_path)
+	if output_name == '' {
+		return os.join_path(output_dir, '.v_native_${os.getpid()}.o')
+	}
+	return os.join_path(output_dir, '.${output_name}.${os.getpid()}.o')
 }
 
 fn (mut b Builder) prepare_macos_tiny_candidate_source_files() {
@@ -1683,6 +1701,20 @@ fn native_x64_lowering_abi_for_os(target_os string) abi.X64Abi {
 		'windows' { abi.X64Abi.windows }
 		else { abi.X64Abi.sysv }
 	}
+}
+
+fn native_x64_mir_unsupported_external_symbol_message(mir_mod &mir.Module, obj_format x64.ObjectFormat) ?string {
+	for val in mir_mod.values {
+		if val.kind != .func_ref {
+			continue
+		}
+		if msg := x64.unsupported_external_symbol_message_for_name(obj_format, val.name,
+			'needed while preparing native x64 output')
+		{
+			return msg
+		}
+	}
+	return none
 }
 
 fn (b &Builder) native_backend_requires_ssa_optimization(arch pref.Arch) bool {
@@ -2712,7 +2744,7 @@ fn (mut b Builder) gen_native(backend_arch pref.Arch) {
 		}
 	} else {
 		// Generate object file and use external linker
-		obj_file := 'main.o'
+		obj_file := native_external_object_file(output_binary, target_os)
 		mut used_macos_tiny_object := false
 
 		if arch == .arm64 {
@@ -2728,6 +2760,10 @@ fn (mut b Builder) gen_native(backend_arch pref.Arch) {
 		} else {
 			obj_format := native_x64_object_format_for_os(target_os)
 			codegen_abi := native_x64_codegen_abi_for_os(target_os)
+			if msg := native_x64_mir_unsupported_external_symbol_message(&mir_mod, obj_format) {
+				eprint_native_x64_link_error(msg)
+				exit(1)
+			}
 			if is_windows_x64_native_target(arch, target_os) {
 				mut windows_gen := x64.Gen.new_with_format_and_abi(&mir_mod, obj_format,
 					codegen_abi)
@@ -2823,6 +2859,16 @@ fn (mut b Builder) gen_native(backend_arch pref.Arch) {
 			if link_result.exit_code != 0 && used_macos_tiny_object {
 				if b.pref.verbose {
 					println('[*] macOS tiny object link failed; retrying with normal Mach-O object')
+					println('[*] macOS tiny object link exit code: ${link_result.exit_code}')
+					println('[*] macOS tiny object link output:')
+					if link_result.output.len > 0 {
+						print(link_result.output)
+						if !link_result.output.ends_with('\n') {
+							println('')
+						}
+					} else {
+						println('<empty>')
+					}
 				}
 				if os.exists(output_binary) {
 					os.rm(output_binary) or {}

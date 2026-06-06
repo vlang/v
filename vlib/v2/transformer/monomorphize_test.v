@@ -4,10 +4,12 @@
 // vtest build: !windows
 module transformer
 
+import os
 import v2.ast
+import v2.parser
+import v2.pref as vpref
 import v2.token
 import v2.types
-import v2.pref as vpref
 
 fn mono_test_transformer() &Transformer {
 	env := &types.Environment{}
@@ -198,6 +200,357 @@ fn test_generic_call_info_bare_lookup_stays_in_current_module() {
 	decl := t.generic_fn_decl_for_call_info('encode') or { panic('missing current module decl') }
 	gp := decl.typ.generic_params[0] as ast.Ident
 	assert gp.name == 'CborT'
+}
+
+fn test_transformer_pointer_guards_accept_low_canonical_pointers() {
+	assert sumtype_payload_word_is_valid(1, 0x10000)
+	assert transformer_data_ptr_has_valid_address(0x10000)
+	assert !sumtype_payload_word_is_valid(1, 0)
+	assert !sumtype_payload_word_is_valid(1, 3)
+}
+
+fn mono_transform_dijkstra_shape_for_test() []ast.File {
+	source_path := os.join_path(os.temp_dir(), 'v2_mono_dijkstra_shape_${os.getpid()}.v')
+	os.write_file(source_path, '
+module main
+
+struct NODE {
+mut:
+	data int
+	priority int
+}
+
+fn push_pq[T](mut prior_queue []T, data int, priority int) {
+	_ = prior_queue
+	_ = data
+	_ = priority
+}
+
+fn updating_priority[T](mut prior_queue []T, search_data int, new_priority int) {
+	_ = prior_queue
+	_ = search_data
+	_ = new_priority
+}
+
+fn departure_priority[T](mut prior_queue []T) int {
+	_ = prior_queue
+	return 0
+}
+
+fn all_adjacents[T](g [][]T, v int) []int {
+	mut temp := []int{}
+	for i in 0 .. g.len {
+		if g[v][i] > 0 {
+			temp << i
+		}
+	}
+	return temp
+}
+
+fn print_solution[T](dist []T) {
+	_ = dist
+}
+
+fn print_paths_dist[T](path []T, dist []T) {
+	_ = path
+	_ = dist
+}
+
+fn dijkstra(g [][]int, s int) {
+	mut pq_queue := []NODE{}
+	push_pq(mut pq_queue, s, 0)
+	mut n := g.len
+	mut dist := []int{len: n, init: -1}
+	mut path := []int{len: n, init: -1}
+	dist[s] = 0
+	for pq_queue.len != 0 {
+		mut v := departure_priority(mut pq_queue)
+		mut adjs_of_v := all_adjacents(g, v)
+		mut new_dist := 0
+		for w in adjs_of_v {
+			new_dist = dist[v] + g[v][w]
+			if dist[w] == -1 {
+				dist[w] = new_dist
+				push_pq(mut pq_queue, w, dist[w])
+				path[w] = v
+			}
+			if dist[w] > new_dist {
+				dist[w] = new_dist
+				updating_priority(mut pq_queue, w, dist[w])
+				path[w] = v
+			}
+		}
+	}
+	print_solution(dist)
+	print_paths_dist(path, dist)
+}
+') or {
+		panic('failed to write temp source')
+	}
+	defer {
+		os.rm(source_path) or {}
+	}
+	prefs := &vpref.Preferences{
+		backend:     .x64
+		no_parallel: true
+	}
+	mut file_set := token.FileSet.new()
+	mut par := parser.Parser.new(prefs)
+	files := par.parse_files([source_path], mut file_set)
+	mut env := types.Environment.new()
+	mut checker := types.Checker.new(prefs, file_set, env)
+	checker.check_files(files)
+	mut trans := Transformer.new_with_pref(env, prefs)
+	return trans.transform_files(files)
+}
+
+fn mono_collect_call_names_from_expr(expr ast.Expr, mut names []string) {
+	match expr {
+		ast.ArrayInitExpr {
+			for nested in expr.exprs {
+				mono_collect_call_names_from_expr(nested, mut names)
+			}
+		}
+		ast.CallExpr {
+			if expr.lhs is ast.Ident {
+				names << expr.lhs.name
+			}
+			mono_collect_call_names_from_expr(expr.lhs, mut names)
+			for arg in expr.args {
+				mono_collect_call_names_from_expr(arg, mut names)
+			}
+		}
+		ast.IfExpr {
+			mono_collect_call_names_from_expr(expr.cond, mut names)
+			for stmt in expr.stmts {
+				mono_collect_call_names_from_stmt(stmt, mut names)
+			}
+			mono_collect_call_names_from_expr(expr.else_expr, mut names)
+		}
+		ast.InfixExpr {
+			mono_collect_call_names_from_expr(expr.lhs, mut names)
+			mono_collect_call_names_from_expr(expr.rhs, mut names)
+		}
+		ast.ModifierExpr {
+			mono_collect_call_names_from_expr(expr.expr, mut names)
+		}
+		ast.ParenExpr {
+			mono_collect_call_names_from_expr(expr.expr, mut names)
+		}
+		ast.PrefixExpr {
+			mono_collect_call_names_from_expr(expr.expr, mut names)
+		}
+		ast.SelectorExpr {
+			mono_collect_call_names_from_expr(expr.lhs, mut names)
+		}
+		else {}
+	}
+}
+
+fn mono_collect_call_names_from_stmt(stmt ast.Stmt, mut names []string) {
+	match stmt {
+		ast.AssignStmt {
+			for expr in stmt.rhs {
+				mono_collect_call_names_from_expr(expr, mut names)
+			}
+		}
+		ast.ExprStmt {
+			mono_collect_call_names_from_expr(stmt.expr, mut names)
+		}
+		ast.ForStmt {
+			mono_collect_call_names_from_expr(stmt.cond, mut names)
+			for nested in stmt.stmts {
+				mono_collect_call_names_from_stmt(nested, mut names)
+			}
+		}
+		ast.ReturnStmt {
+			for expr in stmt.exprs {
+				mono_collect_call_names_from_expr(expr, mut names)
+			}
+		}
+		else {}
+	}
+}
+
+fn mono_call_names_for_fn(files []ast.File, fn_name string) []string {
+	mut names := []string{}
+	for file in files {
+		for stmt in file.stmts {
+			if stmt is ast.FnDecl && stmt.name == fn_name {
+				for nested in stmt.stmts {
+					mono_collect_call_names_from_stmt(nested, mut names)
+				}
+			}
+		}
+	}
+	return names
+}
+
+fn mono_has_fn(files []ast.File, fn_name string) bool {
+	for file in files {
+		for stmt in file.stmts {
+			if stmt is ast.FnDecl && stmt.name == fn_name {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+fn test_transform_dijkstra_shape_rewrites_inferred_generic_nested_array_call() {
+	files := mono_transform_dijkstra_shape_for_test()
+	call_names := mono_call_names_for_fn(files, 'dijkstra')
+	assert 'all_adjacents_T_int' in call_names
+	assert 'all_adjacents' !in call_names
+	assert mono_has_fn(files, 'all_adjacents_T_int')
+}
+
+fn test_inferred_generic_call_name_for_nested_array_param() {
+	mut t := mono_test_transformer()
+	t.cur_module = 'main'
+	t.generic_fn_decl_index['all_adjacents'] = ast.FnDecl{
+		name: 'all_adjacents'
+		typ:  ast.FnType{
+			generic_params: [
+				ast.Expr(ast.Ident{
+					name: 'T'
+				}),
+			]
+			params:         [
+				ast.Parameter{
+					name: 'g'
+					typ:  ast.Expr(ast.Type(ast.ArrayType{
+						elem_type: ast.Expr(ast.Type(ast.ArrayType{
+							elem_type: ast.Expr(ast.Ident{
+								name: 'T'
+							})
+						}))
+					}))
+				},
+				ast.Parameter{
+					name: 'v'
+					typ:  ast.Expr(ast.Ident{
+						name: 'int'
+					})
+				},
+			]
+		}
+	}
+	t.local_decl_types['g'] = types.Type(types.Array{
+		elem_type: types.Type(types.Array{
+			elem_type: types.Type(types.int_)
+		})
+	})
+	info := CallFnInfo{
+		param_types:                    [
+			types.Type(types.Array{
+				elem_type: types.Type(types.Array{
+					elem_type: types.Type(types.NamedType('T'))
+				})
+			}),
+			types.Type(types.int_),
+		]
+		generic_param_names_by_param:   ['T', '']
+		generic_param_indexes_by_param: [0, -1]
+		generic_params:                 ['T']
+	}
+	call_name := t.inferred_generic_call_name('all_adjacents', info, [
+		ast.Expr(ast.Ident{
+			name: 'g'
+		}),
+		ast.Expr(ast.Ident{
+			name: 'v'
+		}),
+	]) or { panic('missing inferred generic call name') }
+	assert call_name == 'all_adjacents_T_int'
+}
+
+fn test_generic_call_info_preserves_nested_array_generic_param() {
+	mut t := mono_test_transformer()
+	t.cur_module = 'main'
+	t.generic_fn_decl_index['all_adjacents'] = ast.FnDecl{
+		name: 'all_adjacents'
+		typ:  ast.FnType{
+			generic_params: [
+				ast.Expr(ast.Ident{
+					name: 'T'
+				}),
+			]
+			params:         [
+				ast.Parameter{
+					name: 'g'
+					typ:  ast.Expr(ast.Type(ast.ArrayType{
+						elem_type: ast.Expr(ast.Type(ast.ArrayType{
+							elem_type: ast.Expr(ast.Ident{
+								name: 'T'
+							})
+						}))
+					}))
+				},
+			]
+		}
+	}
+	info := t.generic_call_info_for_decl('all_adjacents') or { panic('missing generic call info') }
+	assert info.param_types.len == 1
+	outer := info.param_types[0] as types.Array
+	inner := outer.elem_type as types.Array
+	assert inner.elem_type.name() == 'T'
+}
+
+fn test_transform_rewrites_inferred_generic_call_for_nested_array_param() {
+	mut t := mono_test_transformer()
+	t.cur_module = 'main'
+	t.generic_fn_decl_index['all_adjacents'] = ast.FnDecl{
+		name: 'all_adjacents'
+		typ:  ast.FnType{
+			generic_params: [
+				ast.Expr(ast.Ident{
+					name: 'T'
+				}),
+			]
+			params:         [
+				ast.Parameter{
+					name: 'g'
+					typ:  ast.Expr(ast.Type(ast.ArrayType{
+						elem_type: ast.Expr(ast.Type(ast.ArrayType{
+							elem_type: ast.Expr(ast.Ident{
+								name: 'T'
+							})
+						}))
+					}))
+				},
+				ast.Parameter{
+					name: 'v'
+					typ:  ast.Expr(ast.Ident{
+						name: 'int'
+					})
+				},
+			]
+		}
+	}
+	t.local_decl_types['g'] = types.Type(types.Array{
+		elem_type: types.Type(types.Array{
+			elem_type: types.Type(types.int_)
+		})
+	})
+	t.local_decl_types['v'] = types.Type(types.int_)
+	out := t.transform_call_expr(ast.CallExpr{
+		lhs:  ast.Ident{
+			name: 'all_adjacents'
+		}
+		args: [
+			ast.Expr(ast.Ident{
+				name: 'g'
+			}),
+			ast.Expr(ast.Ident{
+				name: 'v'
+			}),
+		]
+	})
+	assert out is ast.CallExpr
+	call := out as ast.CallExpr
+	assert call.lhs is ast.Ident
+	assert (call.lhs as ast.Ident).name == 'all_adjacents_T_int'
 }
 
 fn test_clone_fn_decl_substitutes_fn_literal_signature() {

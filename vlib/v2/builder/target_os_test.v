@@ -505,6 +505,26 @@ struct WindowsX64BuildResult {
 	image             []u8
 }
 
+fn windows_x64_map_string_wyhash_source() string {
+	return "module main
+
+fn sink_map(_ map[string]int) {}
+
+fn main() {
+	graph := {
+		'A': 1
+		'B': 2
+	}
+	sink_map(graph)
+}
+"
+}
+
+fn assert_windows_x64_map_string_wyhash_resolved(res WindowsX64BuildResult) {
+	assert 'wyhash' in res.built_functions, res.built_functions.str()
+	assert 'wyhash' !in res.undefined_symbols, res.undefined_symbols.str()
+}
+
 fn test_windows_x64_empty_main_links_without_crt_or_darwin_symbols() {
 	res := build_windows_x64_sample('module main\nfn main() {}\n', false, true)
 
@@ -567,6 +587,23 @@ fn test_windows_x64_minimal_runtime_builds_markused_core_functions() {
 	assert 'builtin__println' in res.built_functions, res.built_functions.str()
 	assert 'stderr' !in res.undefined_symbols, res.undefined_symbols.str()
 	assert_no_windows_minimal_runtime_retention(res.built_functions)
+}
+
+fn test_windows_x64_minimal_runtime_map_string_generates_referenced_wyhash_stub_sequential() {
+	res := build_windows_x64_sample(windows_x64_map_string_wyhash_source(), false, true)
+	assert_windows_x64_map_string_wyhash_resolved(res)
+}
+
+fn test_windows_x64_minimal_runtime_map_string_generates_referenced_wyhash_stub_flat() {
+	res := build_windows_x64_sample_configured(windows_x64_map_string_wyhash_source(), false, true,
+		true, true)
+	assert_windows_x64_map_string_wyhash_resolved(res)
+}
+
+fn test_windows_x64_minimal_runtime_map_string_generates_referenced_wyhash_stub_native_builder_path() {
+	res := build_windows_x64_sample_configured(windows_x64_map_string_wyhash_source(), false, true,
+		false, false)
+	assert_windows_x64_map_string_wyhash_resolved(res)
 }
 
 fn test_windows_x64_minimal_runtime_os_getwd_markused_does_not_retain_stdio_file_helpers() {
@@ -976,9 +1013,13 @@ fn assert_no_windows_large_runtime_module_retention(built_functions []string) {
 }
 
 fn build_windows_x64_sample(source string, link bool, optimize bool) WindowsX64BuildResult {
-	return build_windows_x64_sample_with_files({
+	return build_windows_x64_sample_configured(source, link, optimize, true, false)
+}
+
+fn build_windows_x64_sample_configured(source string, link bool, optimize bool, no_parallel bool, use_flat bool) WindowsX64BuildResult {
+	return build_windows_x64_sample_with_files_configured({
 		'main.v': source
-	}, link, optimize)
+	}, link, optimize, no_parallel, use_flat)
 }
 
 fn build_windows_x64_markused_sample(source string) map[string]bool {
@@ -1073,8 +1114,12 @@ fn windows_x64_markused_key_contains(used map[string]bool, needle string) bool {
 }
 
 fn build_windows_x64_sample_with_files(sources map[string]string, link bool, optimize bool) WindowsX64BuildResult {
+	return build_windows_x64_sample_with_files_configured(sources, link, optimize, true, false)
+}
+
+fn build_windows_x64_sample_with_files_configured(sources map[string]string, link bool, optimize bool, no_parallel bool, use_flat bool) WindowsX64BuildResult {
 	tmp_dir := os.join_path(os.temp_dir(),
-		'v2_builder_windows_x64_sample_${os.getpid()}_${sources.len}_${link}_${optimize}')
+		'v2_builder_windows_x64_sample_${os.getpid()}_${sources.len}_${link}_${optimize}_${no_parallel}_${use_flat}')
 	os.rmdir_all(tmp_dir) or {}
 	os.mkdir_all(tmp_dir) or { panic(err) }
 	defer {
@@ -1095,11 +1140,13 @@ fn build_windows_x64_sample_with_files(sources map[string]string, link bool, opt
 	prefs.arch = .x64
 	prefs.target_os = 'windows'
 	prefs.skip_type_check = true
-	prefs.no_parallel = true
+	prefs.no_parallel = no_parallel
 	prefs.no_parallel_transform = true
 	prefs.no_cache = true
+	prefs.no_optimize = !optimize
 
 	mut b := new_builder(&prefs)
+	b.flat_check_enabled = use_flat
 	b.user_files = [main_path]
 	parse_test_builder_files(mut b, [main_path])
 	b.env = types.Environment.new()
@@ -1117,15 +1164,22 @@ fn build_windows_x64_sample_with_files(sources map[string]string, link bool, opt
 	ssa_builder.minimal_runtime_roots = true
 	ssa_builder.native_backend_bulk_zero_alloca = true
 	ssa_builder.used_fn_keys = b.used_fn_keys.clone()
-	build_test_ssa(mut b, mut ssa_builder)
-	if optimize {
-		ssa_optimize.optimize(mut ssa_mod)
+	mut mir_mod := mir.Module{}
+	mut built_functions := []string{}
+	if no_parallel {
+		build_test_ssa(mut b, mut ssa_builder)
+		if optimize {
+			ssa_optimize.optimize(mut ssa_mod)
+		}
+		built_functions = ssa_mod.funcs.filter(it.blocks.len > 0).map(it.name)
+		mir_mod = mir.lower_from_ssa(ssa_mod)
+		abi.lower_with_x64_abi(mut mir_mod, .x64, .windows)
+		insel.select(mut mir_mod, .x64)
+	} else {
+		mir_mod = b.build_native_mir_from_files(b.files, .x64, 'windows', true, b.used_fn_keys,
+			'Windows x64 sample')
+		built_functions = mir_mod.funcs.filter(it.blocks.len > 0).map(it.name)
 	}
-	built_functions := ssa_mod.funcs.filter(it.blocks.len > 0).map(it.name)
-
-	mut mir_mod := mir.lower_from_ssa(ssa_mod)
-	abi.lower_with_x64_abi(mut mir_mod, .x64, .windows)
-	insel.select(mut mir_mod, .x64)
 
 	mut gen := x64.Gen.new_with_format_and_abi(&mir_mod, .coff, .windows)
 	gen.gen()

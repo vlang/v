@@ -141,6 +141,7 @@ fn x64_build_file_from_dir(vexe string, source_dir string, source_file string, b
 		build.close()
 	}
 	build.set_work_folder(source_dir)
+	build.set_environment(x64_pinned_v2_build_environment(vexe, os.dir(bin_path)))
 	build.set_args(['-v2', '-no-parallel', '-b', 'x64', source_file, '-o', bin_path])
 	build.set_redirect_stdio()
 	build.run()
@@ -460,6 +461,100 @@ fn run_x64_host_program_redirected_auto(name string, source string) X64HostRunRe
 	}
 }
 
+fn run_x64_host_program_redirected_auto_with_args(name string, source string, args []string) X64HostRunResult {
+	tmp_dir := os.join_path(os.vtmp_dir(), 'v2_x64_runtime_${name}_${os.getpid()}')
+	os.mkdir_all(tmp_dir) or { panic(err) }
+	source_path := os.join_path(tmp_dir, '${name}.v')
+	bin_path := x64_host_bin_path(tmp_dir, name)
+	os.write_file(source_path, source) or { panic(err) }
+	vexe := os.getenv_opt('VEXE') or { @VEXE }
+	mut build := os.new_process(vexe)
+	defer {
+		build.close()
+	}
+	build.set_environment(x64_pinned_v2_build_environment(vexe, tmp_dir))
+	build.set_args(['-v2', '-no-parallel', '-b', 'x64', source_path, '-o', bin_path])
+	build.set_redirect_stdio()
+	build.run()
+	build.wait()
+	build_output := 'stdout:\n${build.stdout_slurp()}\nstderr:\n${build.stderr_slurp()}'
+	if build.code != 0 {
+		assert false, x64_host_build_failure_message(name, tmp_dir, source_path, source, bin_path,
+			build.code, build_output)
+	}
+	mut run := os.new_process(bin_path)
+	defer {
+		run.close()
+	}
+	run.set_args(args)
+	run.set_redirect_stdio()
+	run.run()
+	run.wait()
+	stdout := run.stdout_slurp().bytes()
+	stderr := run.stderr_slurp().bytes()
+	if run.code != 0 {
+		assert false, x64_host_run_failure_message(name, tmp_dir, source_path, source, bin_path,
+			build_output, run.code, stdout, stderr)
+	}
+	return X64HostRunResult{
+		name:         name
+		tmp_dir:      tmp_dir
+		source_path:  source_path
+		source_text:  source
+		bin_path:     bin_path
+		build_output: build_output
+		stdout:       stdout
+		stderr:       stderr
+	}
+}
+
+fn run_x64_host_program_redirected_macos_auto_tiny_verbose_with_args(name string, source string, args []string) X64HostRunResult {
+	tmp_dir := os.join_path(os.vtmp_dir(), 'v2_x64_runtime_${name}_${os.getpid()}')
+	os.mkdir_all(tmp_dir) or { panic(err) }
+	source_path := os.join_path(tmp_dir, '${name}.v')
+	bin_path := x64_host_bin_path(tmp_dir, name)
+	os.write_file(source_path, source) or { panic(err) }
+	vexe := os.getenv_opt('VEXE') or { @VEXE }
+	mut build := os.new_process(vexe)
+	defer {
+		build.close()
+	}
+	build.set_environment(x64_macos_auto_tiny_build_environment(vexe, tmp_dir))
+	build.set_args(['-v2', '-v', '-no-parallel', '-b', 'x64', source_path, '-o', bin_path])
+	build.set_redirect_stdio()
+	build.run()
+	build.wait()
+	build_output := 'stdout:\n${build.stdout_slurp()}\nstderr:\n${build.stderr_slurp()}'
+	if build.code != 0 {
+		assert false, x64_host_build_failure_message(name, tmp_dir, source_path, source, bin_path,
+			build.code, build_output)
+	}
+	mut run := os.new_process(bin_path)
+	defer {
+		run.close()
+	}
+	run.set_args(args)
+	run.set_redirect_stdio()
+	run.run()
+	run.wait()
+	stdout := run.stdout_slurp().bytes()
+	stderr := run.stderr_slurp().bytes()
+	if run.code != 0 {
+		assert false, x64_host_run_failure_message(name, tmp_dir, source_path, source, bin_path,
+			build_output, run.code, stdout, stderr)
+	}
+	return X64HostRunResult{
+		name:         name
+		tmp_dir:      tmp_dir
+		source_path:  source_path
+		source_text:  source
+		bin_path:     bin_path
+		build_output: build_output
+		stdout:       stdout
+		stderr:       stderr
+	}
+}
+
 fn run_x64_host_program_redirected_with_exit(name string, source string) X64HostRunExitResult {
 	tmp_dir := os.join_path(os.vtmp_dir(), 'v2_x64_runtime_${name}_${os.getpid()}')
 	os.mkdir_all(tmp_dir) or { panic(err) }
@@ -682,6 +777,86 @@ fn run_x64_host_file_redirected(name string, source_dir string, source_file stri
 	}
 }
 
+fn run_x64_host_file_redirected_tiny(name string, source_dir string, source_file string) X64HostRunResult {
+	tmp_dir := os.join_path(os.vtmp_dir(), 'v2_x64_runtime_${name}_${os.getpid()}')
+	os.mkdir_all(tmp_dir) or { panic(err) }
+	source_path := os.join_path(source_dir, source_file)
+	source_text := 'source file: ${source_path}'
+	bin_path := x64_host_bin_path(tmp_dir, name)
+	vexe := x64_vexe_command_path()
+	mut build := os.new_process(vexe)
+	defer {
+		build.close()
+	}
+	build.set_environment(x64_strict_tiny_build_environment(vexe, tmp_dir))
+	build.set_work_folder(source_dir)
+	build.set_args(['-v2', '-b', 'x64', source_file, '-o', bin_path])
+	build.set_redirect_stdio()
+	build.run()
+	build.wait()
+	build_output := 'stdout:\n${build.stdout_slurp()}\nstderr:\n${build.stderr_slurp()}'
+	if build.code != 0 {
+		assert false, x64_host_build_failure_message(name, tmp_dir, source_path, source_text,
+			bin_path, build.code, build_output)
+	}
+	mut run := os.new_process(bin_path)
+	defer {
+		run.close()
+	}
+	run.set_redirect_stdio()
+	run.run()
+	run.wait()
+	stdout := run.stdout_slurp().bytes()
+	stderr := run.stderr_slurp().bytes()
+	if run.code != 0 {
+		assert false, x64_host_run_failure_message(name, tmp_dir, source_path, source_text,
+			bin_path, build_output, run.code, stdout, stderr)
+	}
+	return X64HostRunResult{
+		name:         name
+		tmp_dir:      tmp_dir
+		source_path:  source_path
+		source_text:  source_text
+		bin_path:     bin_path
+		build_output: build_output
+		stdout:       stdout
+		stderr:       stderr
+	}
+}
+
+fn assert_x64_linux_tiny_file_build_rejected(name string, source_dir string, source_file string, expected_message string) {
+	$if linux {
+		tmp_dir := os.join_path(os.vtmp_dir(), 'v2_x64_runtime_${name}_${os.getpid()}')
+		os.mkdir_all(tmp_dir) or { panic(err) }
+		defer {
+			os.rmdir_all(tmp_dir) or {}
+		}
+		source_path := os.join_path(source_dir, source_file)
+		source_text := 'source file: ${source_path}'
+		bin_path := x64_host_bin_path(tmp_dir, name)
+		vexe := x64_vexe_command_path()
+		mut build := os.new_process(vexe)
+		defer {
+			build.close()
+		}
+		build.set_environment(x64_strict_tiny_build_environment(vexe, tmp_dir))
+		build.set_work_folder(source_dir)
+		build.set_args(['-v2', '-b', 'x64', source_file, '-o', bin_path])
+		build.set_redirect_stdio()
+		build.run()
+		build.wait()
+		build_output := 'stdout:\n${build.stdout_slurp()}\nstderr:\n${build.stderr_slurp()}'
+		assert build.code != 0, '${name} unexpectedly built with Linux tiny:\n${build_output}'
+		assert build_output.contains(linux_tiny_not_eligible_prefix), '${x64_host_build_failure_message(name,
+			tmp_dir, source_path, source_text, bin_path, build.code, build_output)}\nexpected Linux tiny rejection prefix `${linux_tiny_not_eligible_prefix}`'
+
+		assert build_output.contains(expected_message), '${x64_host_build_failure_message(name,
+			tmp_dir, source_path, source_text, bin_path, build.code, build_output)}\nexpected rejection to contain `${expected_message}`'
+
+		assert !os.exists(bin_path), '${name} produced a binary despite Linux tiny rejection: ${bin_path}'
+	}
+}
+
 fn run_x64_host_file_redirected_auto(name string, source_dir string, source_file string) X64HostRunResult {
 	tmp_dir := os.join_path(os.vtmp_dir(), 'v2_x64_runtime_${name}_${os.getpid()}')
 	os.mkdir_all(tmp_dir) or { panic(err) }
@@ -708,6 +883,102 @@ fn run_x64_host_file_redirected_auto(name string, source_dir string, source_file
 	defer {
 		run.close()
 	}
+	run.set_redirect_stdio()
+	run.run()
+	run.wait()
+	stdout := run.stdout_slurp().bytes()
+	stderr := run.stderr_slurp().bytes()
+	if run.code != 0 {
+		assert false, x64_host_run_failure_message(name, tmp_dir, source_path, source_text,
+			bin_path, build_output, run.code, stdout, stderr)
+	}
+	return X64HostRunResult{
+		name:         name
+		tmp_dir:      tmp_dir
+		source_path:  source_path
+		source_text:  source_text
+		bin_path:     bin_path
+		build_output: build_output
+		stdout:       stdout
+		stderr:       stderr
+	}
+}
+
+fn run_x64_host_file_redirected_auto_with_args(name string, source_dir string, source_file string, args []string) X64HostRunResult {
+	tmp_dir := os.join_path(os.vtmp_dir(), 'v2_x64_runtime_${name}_${os.getpid()}')
+	os.mkdir_all(tmp_dir) or { panic(err) }
+	source_path := os.join_path(source_dir, source_file)
+	source_text := 'source file: ${source_path}'
+	bin_path := x64_host_bin_path(tmp_dir, name)
+	vexe := x64_vexe_command_path()
+	mut build := os.new_process(vexe)
+	defer {
+		build.close()
+	}
+	build.set_environment(x64_pinned_v2_build_environment(vexe, tmp_dir))
+	build.set_work_folder(source_dir)
+	build.set_args(['-v2', '-no-parallel', '-b', 'x64', source_file, '-o', bin_path])
+	build.set_redirect_stdio()
+	build.run()
+	build.wait()
+	build_output := 'stdout:\n${build.stdout_slurp()}\nstderr:\n${build.stderr_slurp()}'
+	if build.code != 0 {
+		assert false, x64_host_build_failure_message(name, tmp_dir, source_path, source_text,
+			bin_path, build.code, build_output)
+	}
+	mut run := os.new_process(bin_path)
+	defer {
+		run.close()
+	}
+	run.set_args(args)
+	run.set_redirect_stdio()
+	run.run()
+	run.wait()
+	stdout := run.stdout_slurp().bytes()
+	stderr := run.stderr_slurp().bytes()
+	if run.code != 0 {
+		assert false, x64_host_run_failure_message(name, tmp_dir, source_path, source_text,
+			bin_path, build_output, run.code, stdout, stderr)
+	}
+	return X64HostRunResult{
+		name:         name
+		tmp_dir:      tmp_dir
+		source_path:  source_path
+		source_text:  source_text
+		bin_path:     bin_path
+		build_output: build_output
+		stdout:       stdout
+		stderr:       stderr
+	}
+}
+
+fn run_x64_host_file_redirected_macos_auto_tiny_verbose_with_args(name string, source_dir string, source_file string, args []string) X64HostRunResult {
+	tmp_dir := os.join_path(os.vtmp_dir(), 'v2_x64_runtime_${name}_${os.getpid()}')
+	os.mkdir_all(tmp_dir) or { panic(err) }
+	source_path := os.join_path(source_dir, source_file)
+	source_text := 'source file: ${source_path}'
+	bin_path := x64_host_bin_path(tmp_dir, name)
+	vexe := x64_vexe_command_path()
+	mut build := os.new_process(vexe)
+	defer {
+		build.close()
+	}
+	build.set_environment(x64_macos_auto_tiny_build_environment(vexe, tmp_dir))
+	build.set_work_folder(source_dir)
+	build.set_args(['-v2', '-v', '-no-parallel', '-b', 'x64', source_file, '-o', bin_path])
+	build.set_redirect_stdio()
+	build.run()
+	build.wait()
+	build_output := 'stdout:\n${build.stdout_slurp()}\nstderr:\n${build.stderr_slurp()}'
+	if build.code != 0 {
+		assert false, x64_host_build_failure_message(name, tmp_dir, source_path, source_text,
+			bin_path, build.code, build_output)
+	}
+	mut run := os.new_process(bin_path)
+	defer {
+		run.close()
+	}
+	run.set_args(args)
 	run.set_redirect_stdio()
 	run.run()
 	run.wait()
@@ -836,6 +1107,73 @@ fn assert_x64_linux_file_stdout_bytes(name string, source_dir string, source_fil
 		result := run_x64_linux_file_redirected(name, source_dir, source_file)
 		assert result.stdout == expected_stdout, '${name} stdout mismatch: ${result.stdout}'
 		assert result.stderr == []u8{}, '${name} stderr mismatch: ${result.stderr}'
+	}
+}
+
+fn x64_v_run_file_stdout_bytes(source_dir string, source_file string) []u8 {
+	vexe := x64_vexe_command_path()
+	source_path := os.join_path(source_dir, source_file)
+	mut run := os.new_process(vexe)
+	defer {
+		run.close()
+	}
+	run.set_work_folder(source_dir)
+	run.set_args(['run', source_file])
+	run.set_redirect_stdio()
+	run.run()
+	run.wait()
+	stdout := run.stdout_slurp().bytes()
+	stderr := run.stderr_slurp()
+	assert run.code == 0, 'v run ${source_path} failed with code ${run.code}\nstdout:\n${stdout.bytestr()}\nstderr:\n${stderr}'
+	assert x64_v_run_oracle_stderr_is_allowed(stderr), 'v run ${source_path} wrote unexpected stderr:\n${stderr}'
+	return stdout
+}
+
+fn x64_v_run_oracle_stderr_is_allowed(stderr string) bool {
+	if stderr == '' {
+		return true
+	}
+	clean := x64_strip_ansi_csi(stderr).trim_space()
+	return clean == 'warning: tcc compilation failed, falling back to cc (this is much slower)'
+}
+
+fn x64_strip_ansi_csi(text string) string {
+	bytes := text.bytes()
+	mut out := []u8{cap: bytes.len}
+	mut i := 0
+	for i < bytes.len {
+		if bytes[i] == 0x1b && i + 1 < bytes.len && bytes[i + 1] == `[` {
+			i += 2
+			for i < bytes.len {
+				b := bytes[i]
+				i++
+				if b >= 0x40 && b <= 0x7e {
+					break
+				}
+			}
+			continue
+		}
+		out << bytes[i]
+		i++
+	}
+	return out.bytestr()
+}
+
+fn assert_x64_linux_file_stdout_matches_v_run(name string, source_dir string, source_file string) {
+	$if linux {
+		expected_stdout := x64_v_run_file_stdout_bytes(source_dir, source_file)
+		assert_x64_linux_file_stdout_bytes(name, source_dir, source_file, expected_stdout)
+	}
+}
+
+fn assert_x64_macos_windows_file_stdout_matches_v_run(name string, source_dir string, source_file string) {
+	$if macos {
+		expected_stdout := x64_v_run_file_stdout_bytes(source_dir, source_file)
+		assert_x64_macos_windows_file_stdout_bytes(name, source_dir, source_file, expected_stdout)
+	}
+	$if windows {
+		expected_stdout := x64_v_run_file_stdout_bytes(source_dir, source_file)
+		assert_x64_macos_windows_file_stdout_bytes(name, source_dir, source_file, expected_stdout)
 	}
 }
 
@@ -2110,6 +2448,73 @@ fn x64_dynamic_int_array_stdout() []u8 {
 '.bytes()
 }
 
+fn x64_dynamic_string_array_index_source() string {
+	return "module main
+
+fn main() {
+	mut values := []string{}
+	values << 'alpha'
+	values << 'beta'
+	println(values[1])
+}
+"
+}
+
+fn x64_dynamic_string_array_index_stdout() []u8 {
+	return 'beta
+'.bytes()
+}
+
+fn x64_dynamic_string_array_str_source() string {
+	return "module main
+
+fn main() {
+	path := ['A', 'C', 'F']
+	println(path)
+	println('path: \${path}')
+	mut values := []string{}
+	values << 'alpha'
+	values << 'beta'
+	println(values)
+	graph := {
+		'A': ['B', 'C']
+	}
+	println(graph)
+	fixed := ['L', 'R']!
+	println(fixed)
+}
+"
+}
+
+fn x64_dynamic_string_array_str_stdout() []u8 {
+	return "['A', 'C', 'F']
+path: ['A', 'C', 'F']
+['alpha', 'beta']
+{'A': ['B', 'C']}
+['L', 'R']
+".bytes()
+}
+
+fn x64_string_int_map_literal_lookup_source() string {
+	return "module main
+
+fn main() {
+	values := {
+		'A': 11
+		'B': 22
+	}
+	println(values['A'])
+	println(values['B'])
+}
+"
+}
+
+fn x64_string_int_map_literal_lookup_stdout() []u8 {
+	return '11
+22
+'.bytes()
+}
+
 fn x64_windows_noscan_array_grow_free_slice_source() string {
 	return "module main
 
@@ -2212,8 +2617,232 @@ FizzBuzz
 '.bytes()
 }
 
+fn x64_named_function_value_source() string {
+	return 'module main
+
+fn inc(value int) int {
+	return value + 1
+}
+
+fn apply(f fn (int) int, value int) int {
+	return f(value)
+}
+
+fn main() {
+	f := inc
+	println(f(10))
+	println(apply(inc, 20))
+}
+'
+}
+
+fn x64_named_function_value_stdout() []u8 {
+	return '11
+21
+'.bytes()
+}
+
+fn x64_selective_import_builtin_shadow_fn_value_sources() map[string]string {
+	return {
+		'main.v':                     'module main
+
+import mymodules { print }
+
+fn main() {
+	f := print
+	f("ok")
+}
+'
+		'mymodules/main_functions.v': 'module mymodules
+
+pub fn print(s string) {
+	println("module:" + s)
+}
+'
+	}
+}
+
+fn x64_selective_import_builtin_shadow_fn_value_stdout() []u8 {
+	return 'module:ok
+'.bytes()
+}
+
+fn x64_selective_import_bare_fallback_shadow_sources() map[string]string {
+	return {
+		'main.v':                     'module main
+
+import mymodules { malloc }
+
+fn main() {
+	f := malloc
+	println(f("fn-value"))
+	println(malloc("direct"))
+}
+'
+		'mymodules/main_functions.v': 'module mymodules
+
+pub fn malloc(s string) string {
+	return "module:" + s
+}
+'
+	}
+}
+
+fn x64_selective_import_bare_fallback_shadow_stdout() []u8 {
+	return 'module:fn-value
+module:direct
+'.bytes()
+}
+
+fn x64_selective_import_method_shadow_sources() map[string]string {
+	return {
+		'main.v':                     'module main
+
+import mymodules { ping }
+
+struct Foo {}
+
+fn (f Foo) ping() string {
+	return "method"
+}
+
+fn main() {
+	println(ping())
+}
+'
+		'mymodules/main_functions.v': 'module mymodules
+
+pub fn ping() string {
+	return "module"
+}
+'
+	}
+}
+
+fn x64_selective_import_method_shadow_stdout() []u8 {
+	return 'module
+'.bytes()
+}
+
+fn x64_non_capturing_fn_literal_value_source() string {
+	return 'module main
+
+fn apply(f fn (int) int, value int) int {
+	return f(value)
+}
+
+fn main() {
+	f := fn (value int) int {
+		return value + 7
+	}
+	println(f(7))
+	println(apply(fn (value int) int {
+		return value + 3
+	}, 8))
+}
+'
+}
+
+fn x64_non_capturing_fn_literal_value_stdout() []u8 {
+	return '14
+11
+'.bytes()
+}
+
+fn x64_returned_non_capturing_fn_literal_source() string {
+	return 'module main
+
+fn make_double() fn (int) int {
+	return fn (value int) int {
+		return value * 2
+	}
+}
+
+fn apply(f fn (int) int, value int) int {
+	return f(value)
+}
+
+fn main() {
+	f := make_double()
+	println(f(9))
+	println(apply(make_double(), 12))
+}
+'
+}
+
+fn x64_returned_non_capturing_fn_literal_stdout() []u8 {
+	return '18
+24
+'.bytes()
+}
+
 fn x64_examples_dir() string {
 	return os.join_path(@VMODROOT, 'examples')
+}
+
+fn x64_arguments_index_one_int_source() string {
+	return 'module main
+
+fn main() {
+	args := arguments()
+	println(args.len)
+	println(args[1].int() + 32)
+}
+'
+}
+
+fn x64_arguments_index_one_int_stdout() []u8 {
+	return '2
+42
+'.bytes()
+}
+
+fn x64_arguments_via_function_pointer_source() string {
+	return 'module main
+
+fn get_args_len() int {
+	return arguments().len
+}
+
+fn call_it(f fn () int) int {
+	return f()
+}
+
+fn main() {
+	f := get_args_len
+	println(call_it(f))
+}
+'
+}
+
+fn x64_arguments_via_function_pointer_stdout() []u8 {
+	return '2
+'.bytes()
+}
+
+fn x64_hello_world_example_stdout() []u8 {
+	return 'Hello, World!\n'.bytes()
+}
+
+fn x64_fibonacci_10_example_stdout() []u8 {
+	return '1
+1
+2
+3
+5
+8
+13
+21
+34
+55
+89
+'.bytes()
+}
+
+fn x64_submodule_example_stdout() []u8 {
+	return '5
+3
+'.bytes()
 }
 
 fn x64_fizz_buzz_example_stdout() []u8 {
@@ -2317,6 +2946,345 @@ Fizz
 98
 Fizz
 Buzz
+'.bytes()
+}
+
+fn x64_hanoi_example_stdout() []u8 {
+	mut out := []u8{}
+	x64_hanoi_example_append_expected(mut out, 7, 'A', 'B', 'C')
+	text := out.bytestr()
+	move_count := text.count('\n')
+	assert out.len == 2794, 'hanoi stdout oracle source shape changed: bytes=${out.len}'
+	assert move_count == 127, 'hanoi stdout oracle source shape changed: moves=${move_count}'
+	assert text.starts_with('Disc 1 from A to C...\nDisc 2 from A to B...\n'), 'hanoi stdout oracle first moves changed'
+	assert text.ends_with('Disc 2 from B to C...\nDisc 1 from A to C...\n'), 'hanoi stdout oracle final moves changed'
+	return out
+}
+
+fn x64_hanoi_example_append_expected(mut out []u8, n int, a string, b string, c string) {
+	if n == 1 {
+		out << 'Disc 1 from ${a} to ${c}...\n'.bytes()
+		return
+	}
+	x64_hanoi_example_append_expected(mut out, n - 1, a, c, b)
+	out << 'Disc ${n} from ${a} to ${c}...\n'.bytes()
+	x64_hanoi_example_append_expected(mut out, n - 1, b, a, c)
+}
+
+fn x64_sudoku_example_stdout() []u8 {
+	mut out := []u8{}
+	x64_sudoku_append_stdout_line(mut out, 'Sudoku Puzzle:', false)
+	x64_sudoku_append_stdout_line(mut out, '0 3 0  | 0 7 0  | 0 0 0', true)
+	x64_sudoku_append_stdout_line(mut out, '0 0 0  | 1 3 5  | 0 0 0', true)
+	x64_sudoku_append_stdout_line(mut out, '0 0 1  | 0 0 0  | 0 5 0', true)
+	x64_sudoku_append_stdout_line(mut out, '- - - - - - - - - - - -', false)
+	x64_sudoku_append_stdout_line(mut out, '1 0 0  | 0 6 0  | 0 0 3', true)
+	x64_sudoku_append_stdout_line(mut out, '4 0 0  | 8 0 3  | 0 0 1', true)
+	x64_sudoku_append_stdout_line(mut out, '7 0 0  | 0 2 0  | 0 0 6', true)
+	x64_sudoku_append_stdout_line(mut out, '- - - - - - - - - - - -', false)
+	x64_sudoku_append_stdout_line(mut out, '0 0 0  | 0 0 0  | 2 1 0', true)
+	x64_sudoku_append_stdout_line(mut out, '0 0 0  | 4 1 2  | 0 0 5', true)
+	x64_sudoku_append_stdout_line(mut out, '0 0 0  | 0 0 0  | 0 7 4', true)
+	x64_sudoku_append_stdout_line(mut out, 'Solving...', false)
+	x64_sudoku_append_stdout_line(mut out, 'Solution:', false)
+	x64_sudoku_append_stdout_line(mut out, '2 3 5  | 6 7 8  | 1 4 9', true)
+	x64_sudoku_append_stdout_line(mut out, '9 4 7  | 1 3 5  | 8 6 2', true)
+	x64_sudoku_append_stdout_line(mut out, '6 8 1  | 2 4 9  | 3 5 7', true)
+	x64_sudoku_append_stdout_line(mut out, '- - - - - - - - - - - -', false)
+	x64_sudoku_append_stdout_line(mut out, '1 2 8  | 7 6 4  | 5 9 3', true)
+	x64_sudoku_append_stdout_line(mut out, '4 5 6  | 8 9 3  | 7 2 1', true)
+	x64_sudoku_append_stdout_line(mut out, '7 9 3  | 5 2 1  | 4 8 6', true)
+	x64_sudoku_append_stdout_line(mut out, '- - - - - - - - - - - -', false)
+	x64_sudoku_append_stdout_line(mut out, '3 6 4  | 9 5 7  | 2 1 8', true)
+	x64_sudoku_append_stdout_line(mut out, '8 7 9  | 4 1 2  | 6 3 5', true)
+	x64_sudoku_append_stdout_line(mut out, '5 1 2  | 3 8 6  | 9 7 4', true)
+	return out
+}
+
+fn x64_sudoku_append_stdout_line(mut out []u8, line string, trailing_space bool) {
+	out << line.bytes()
+	if trailing_space {
+		out << u8(` `)
+	}
+	out << u8(`\n`)
+}
+
+fn x64_function_types_example_stdout() []u8 {
+	return 'HELLO WORLD
+HELLO WORLD
+HELLO WORLD
+'.bytes()
+}
+
+fn x64_struct_sumtype_field_init_source() string {
+	return '
+module main
+
+type Tree = Empty | Node
+
+struct Empty {}
+
+struct Node {
+	value int
+}
+
+struct Holder {
+	item Tree
+}
+
+fn value(tree Tree) int {
+	return match tree {
+		Empty { 0 }
+		Node { tree.value }
+	}
+}
+
+fn main() {
+	holder := Holder{Node{42}}
+	println(value(holder.item))
+}
+'
+}
+
+fn x64_struct_sumtype_field_init_stdout() []u8 {
+	return '42
+'.bytes()
+}
+
+fn x64_auto_str_recursive_sumtype_source() string {
+	return '
+module main
+
+type Tree = Empty | Node
+
+struct Empty {}
+
+struct Node {
+	value int
+	left  Tree
+	right Tree
+}
+
+fn main() {
+	leaf := Node{7, Empty{}, Empty{}}
+	root := Node{9, leaf, Empty{}}
+	print("\${root}")
+}
+'
+}
+
+fn x64_auto_str_recursive_sumtype_stdout() []u8 {
+	return 'Node{
+    value: 9
+    left: Tree(Node{
+        value: 7
+        left: Tree(Empty{})
+        right: Tree(Empty{})
+    })
+    right: Tree(Empty{})
+}'.bytes()
+}
+
+fn x64_tree_of_nodes_example_stdout() []u8 {
+	return 'tree structure:
+ Node{
+    value: 10
+    left: Tree(Node{
+        value: 30
+        left: Tree(Empty{})
+        right: Tree(Empty{})
+    })
+    right: Tree(Node{
+        value: 20
+        left: Tree(Empty{})
+        right: Tree(Empty{})
+    })
+}
+tree size: 3
+'.bytes()
+}
+
+fn x64_bfs_example_stdout() []u8 {
+	return "Graph: {'A': ['B', 'C'], 'B': ['A', 'D', 'E'], 'C': ['A', 'F'], 'D': ['B'], 'E': ['B', 'F'], 'F': ['C', 'E']}
+The shortest path from node A to node F is: ['A', 'C', 'F']
+".bytes()
+}
+
+fn x64_js_hello_world_example_stdout() []u8 {
+	return 'Hello from V.js (0)
+Hello from V.js (1)
+Hello from V.js (2)
+'.bytes()
+}
+
+fn x64_vascii_example_stdout() []u8 {
+	source := os.read_file(os.join_path(x64_examples_dir(), 'vascii.v')) or { panic(err) }
+	start_marker := "println('"
+	end_marker := "')"
+	assert source.count(start_marker) == 1, 'vascii stdout oracle expects one single-quoted println literal'
+	start := source.index(start_marker) or { panic('missing vascii println literal start') } +
+		start_marker.len
+	end := source.last_index(end_marker) or { panic('missing vascii println literal end') }
+	assert source[end + end_marker.len..].trim_space() == '}', 'vascii stdout oracle expects the println literal to be the final main statement'
+
+	mut out := x64_v_single_quoted_literal_bytes(source[start..end])
+	assert out.len == 8525, 'vascii stdout oracle source shape changed: literal bytes=${out.len}'
+	assert out.bytestr().contains('DEC  OCT   HEX  BIN        Sym'), 'vascii stdout oracle missing table header'
+
+	assert out.bytestr().contains('127  177   7F   01111111   DEL   &#127;            Delete'), 'vascii stdout oracle missing final ASCII row'
+
+	out << u8(`\n`)
+	return out
+}
+
+fn x64_v_single_quoted_literal_bytes(raw string) []u8 {
+	mut out := []u8{cap: raw.len}
+	mut i := 0
+	for i < raw.len {
+		if raw[i] == `\\` && i + 1 < raw.len {
+			match raw[i + 1] {
+				`n` { out << u8(`\n`) }
+				`t` { out << u8(`\t`) }
+				`r` { out << u8(`\r`) }
+				`\\` { out << u8(`\\`) }
+				`'` { out << u8(`'`) }
+				`"` { out << u8(`"`) }
+				else { out << raw[i + 1] }
+			}
+
+			i += 2
+			continue
+		}
+		out << raw[i]
+		i++
+	}
+	return out
+}
+
+fn x64_rune_example_stdout() []u8 {
+	return [u8(0xf0), 0x9f, 0x98, 0x80, u8(`\n`), u8(`@`), u8(`\n`)]
+}
+
+fn x64_rune_utf32_parity_stdout() []u8 {
+	return [
+		u8(0x7f),
+		u8(`\n`),
+		u8(0xc2),
+		0x80,
+		u8(`\n`),
+		u8(0xdf),
+		0xbf,
+		u8(`\n`),
+		u8(0xe0),
+		0xa0,
+		0x80,
+		u8(`\n`),
+		u8(0xed),
+		0x9f,
+		0xbf,
+		u8(`\n`),
+		u8(0xed),
+		0xa0,
+		0x80,
+		u8(`\n`),
+		u8(0xed),
+		0xbf,
+		0xbf,
+		u8(`\n`),
+		u8(0xee),
+		0x80,
+		0x80,
+		u8(`\n`),
+		u8(0xef),
+		0xbf,
+		0xbf,
+		u8(`\n`),
+		u8(0xf0),
+		0x90,
+		0x80,
+		0x80,
+		u8(`\n`),
+		u8(0xf4),
+		0x8f,
+		0xbf,
+		0xbf,
+		u8(`\n`),
+		u8(`\n`),
+	]
+}
+
+fn x64_long_ascii_literal_stdout() []u8 {
+	mut out := []u8{cap: 600}
+	for i in 0 .. 600 {
+		out << u8(`A` + i % 26)
+	}
+	return out
+}
+
+fn x64_repeated_ascii_literal(ch u8, count int) string {
+	mut out := []u8{cap: count}
+	for _ in 0 .. count {
+		out << ch
+	}
+	return out.bytestr()
+}
+
+fn x64_long_ascii_literal_source() string {
+	literal := x64_long_ascii_literal_stdout().bytestr()
+	return "module main
+
+fn emit(s string) {
+	print(s)
+}
+
+fn main() {
+	emit('${literal}')
+}
+	"
+}
+
+fn x64_string_literal_field_size_source() string {
+	literal := x64_long_ascii_literal_stdout().bytestr()
+	return "module main
+
+struct BoxedString {
+	before u8
+	value string
+	after u8
+}
+
+fn emit(s string) {
+	println(s.len)
+	println(s.is_lit)
+}
+
+fn main() {
+	s := '${literal}'
+	boxed := BoxedString{
+		before: 17
+		value: s
+		after: 23
+	}
+	println(s.len)
+	println(s.is_lit)
+	println(boxed.value.len)
+	println(boxed.value.is_lit)
+	println(int(boxed.before))
+	println(int(boxed.after))
+	emit('${literal}')
+}
+"
+}
+
+fn x64_string_literal_field_size_stdout() []u8 {
+	return '600
+1
+600
+1
+17
+23
+600
+1
 '.bytes()
 }
 
@@ -2743,6 +3711,49 @@ fn main() {
 	])
 }
 
+fn test_x64_linux_named_function_value_stdout_exact_bytes() {
+	assert_x64_linux_stdout_bytes('named_function_value_exact', x64_named_function_value_source(),
+		x64_named_function_value_stdout())
+}
+
+fn test_x64_linux_selective_import_builtin_shadow_fn_value_stdout_exact_bytes() {
+	assert_x64_linux_project_stdout_bytes('selective_import_builtin_shadow_fn_value_exact',
+		x64_selective_import_builtin_shadow_fn_value_sources(),
+		x64_selective_import_builtin_shadow_fn_value_stdout())
+}
+
+fn test_x64_linux_selective_import_bare_fallback_shadow_stdout_exact_bytes() {
+	assert_x64_linux_project_stdout_bytes('selective_import_bare_fallback_shadow_exact',
+		x64_selective_import_bare_fallback_shadow_sources(),
+		x64_selective_import_bare_fallback_shadow_stdout())
+}
+
+fn test_x64_linux_selective_import_method_shadow_stdout_exact_bytes() {
+	assert_x64_linux_project_stdout_bytes('selective_import_method_shadow_exact',
+		x64_selective_import_method_shadow_sources(), x64_selective_import_method_shadow_stdout())
+}
+
+fn test_x64_linux_non_capturing_fn_literal_value_stdout_exact_bytes() {
+	assert_x64_linux_stdout_bytes('non_capturing_fn_literal_value_exact',
+		x64_non_capturing_fn_literal_value_source(), x64_non_capturing_fn_literal_value_stdout())
+}
+
+fn test_x64_linux_returned_non_capturing_fn_literal_stdout_exact_bytes() {
+	assert_x64_linux_stdout_bytes('returned_non_capturing_fn_literal_exact',
+		x64_returned_non_capturing_fn_literal_source(),
+		x64_returned_non_capturing_fn_literal_stdout())
+}
+
+fn test_x64_linux_long_string_literal_len_stdout_exact_bytes() {
+	assert_x64_linux_stdout_bytes('long_string_literal_len_exact', x64_long_ascii_literal_source(),
+		x64_long_ascii_literal_stdout())
+}
+
+fn test_x64_linux_string_literal_field_size_stores_do_not_clobber_adjacent_fields() {
+	assert_x64_linux_stdout_bytes('string_literal_field_size_no_clobber',
+		x64_string_literal_field_size_source(), x64_string_literal_field_size_stdout())
+}
+
 fn test_x64_linux_i64_loop_carried_mutable_state_controls_branch() {
 	assert_x64_linux_stdout_bytes('i64_loop_carried_mutable_state_branch', "module main
 
@@ -2810,6 +3821,165 @@ fn test_x64_linux_fizz_buzz_example_top_level_stdout_exact_bytes() {
 		'fizz_buzz.v', x64_fizz_buzz_example_stdout())
 }
 
+fn test_x64_linux_hanoi_example_top_level_stdout_exact_bytes() {
+	assert_x64_linux_file_stdout_bytes('hanoi_example_top_level_exact', x64_examples_dir(),
+		'hanoi.v', x64_hanoi_example_stdout())
+}
+
+fn test_x64_linux_sudoku_example_top_level_stdout_exact_bytes() {
+	assert_x64_linux_file_stdout_bytes('sudoku_example_top_level_exact', x64_examples_dir(),
+		'sudoku.v', x64_sudoku_example_stdout())
+}
+
+fn test_x64_linux_function_types_example_top_level_stdout_exact_bytes() {
+	assert_x64_linux_file_stdout_bytes('function_types_example_top_level_exact',
+		x64_examples_dir(), 'function_types.v', x64_function_types_example_stdout())
+}
+
+fn test_x64_linux_submodule_example_top_level_stdout_exact_bytes() {
+	assert_x64_linux_file_stdout_bytes('submodule_example_top_level_exact', x64_examples_dir(),
+		'submodule/main.v', x64_submodule_example_stdout())
+}
+
+fn test_x64_linux_arguments_index_one_int_auto_tiny_falls_back_to_hosted() {
+	$if linux {
+		source := x64_arguments_index_one_int_source()
+		assert_x64_linux_tiny_build_rejected('tiny_arguments_index_one_int_rejected', source,
+			'arguments() requires hosted argc/argv')
+		result := run_x64_host_program_redirected_auto_with_args('arguments_index_one_int_hosted',
+			source, ['10'])
+		assert_x64_linux_hosted_libc_binary(result, x64_arguments_index_one_int_stdout())
+		x64_host_cleanup_tmp(result.tmp_dir)
+	}
+}
+
+fn test_x64_linux_arguments_via_function_pointer_auto_tiny_falls_back_to_hosted() {
+	$if linux {
+		source := x64_arguments_via_function_pointer_source()
+		assert_x64_linux_tiny_build_rejected('tiny_arguments_via_function_pointer_rejected',
+			source, 'arguments() requires hosted argc/argv')
+		result := run_x64_host_program_redirected_auto_with_args('arguments_via_function_pointer_hosted',
+			source, ['10'])
+		assert_x64_linux_hosted_libc_binary(result, x64_arguments_via_function_pointer_stdout())
+		x64_host_cleanup_tmp(result.tmp_dir)
+	}
+}
+
+fn test_x64_linux_fibonacci_example_arg_10_stdout_exact_bytes() {
+	$if linux {
+		result := run_x64_host_file_redirected_auto_with_args('fibonacci_example_arg_10_exact',
+			x64_examples_dir(), 'fibonacci.v', ['10'])
+		assert_x64_linux_hosted_libc_binary(result, x64_fibonacci_10_example_stdout())
+		x64_host_cleanup_tmp(result.tmp_dir)
+	}
+}
+
+fn test_x64_linux_fibonacci_example_strict_tiny_rejected() {
+	$if linux {
+		assert_x64_linux_tiny_file_build_rejected('fibonacci_example_strict_tiny_rejected',
+			x64_examples_dir(), 'fibonacci.v', 'arguments() requires hosted argc/argv')
+	}
+}
+
+fn test_x64_macos_arguments_index_one_int_auto_tiny_falls_back_to_hosted() {
+	$if macos {
+		result := run_x64_host_program_redirected_macos_auto_tiny_verbose_with_args('macos_arguments_index_one_int_hosted',
+			x64_arguments_index_one_int_source(), ['10'])
+		context := x64_host_result_context(result)
+		assert result.stdout == x64_arguments_index_one_int_stdout(), context
+		assert result.stderr == []u8{}, context
+		assert_x64_macos_tiny_object_rejected_for_arguments(result, context)
+		x64_host_cleanup_tmp(result.tmp_dir)
+	}
+}
+
+fn test_x64_macos_arguments_via_function_pointer_auto_tiny_falls_back_to_hosted() {
+	$if macos {
+		result := run_x64_host_program_redirected_macos_auto_tiny_verbose_with_args('macos_arguments_via_function_pointer_hosted',
+			x64_arguments_via_function_pointer_source(), ['10'])
+		context := x64_host_result_context(result)
+		assert result.stdout == x64_arguments_via_function_pointer_stdout(), context
+		assert result.stderr == []u8{}, context
+		assert_x64_macos_tiny_object_rejected_for_arguments(result, context)
+		x64_host_cleanup_tmp(result.tmp_dir)
+	}
+}
+
+fn test_x64_macos_fibonacci_example_arg_10_auto_tiny_falls_back_to_hosted() {
+	$if macos {
+		result := run_x64_host_file_redirected_macos_auto_tiny_verbose_with_args('macos_fibonacci_example_arg_10_exact',
+			x64_examples_dir(), 'fibonacci.v', ['10'])
+		context := x64_host_result_context(result)
+		assert result.stdout == x64_fibonacci_10_example_stdout(), context
+		assert result.stderr == []u8{}, context
+		assert_x64_macos_tiny_object_rejected_for_arguments(result, context)
+		x64_host_cleanup_tmp(result.tmp_dir)
+	}
+}
+
+fn test_x64_windows_arguments_index_one_int_stdout_exact_bytes() {
+	$if windows {
+		result := run_x64_host_program_redirected_auto_with_args('windows_arguments_index_one_int',
+			x64_arguments_index_one_int_source(), ['10'])
+		context := x64_host_result_context(result)
+		assert result.stdout == x64_arguments_index_one_int_stdout(), context
+		assert result.stderr == []u8{}, context
+		x64_host_cleanup_tmp(result.tmp_dir)
+	}
+}
+
+fn test_x64_windows_arguments_via_function_pointer_stdout_exact_bytes() {
+	$if windows {
+		result := run_x64_host_program_redirected_auto_with_args('windows_arguments_via_function_pointer',
+			x64_arguments_via_function_pointer_source(), ['10'])
+		context := x64_host_result_context(result)
+		assert result.stdout == x64_arguments_via_function_pointer_stdout(), context
+		assert result.stderr == []u8{}, context
+		x64_host_cleanup_tmp(result.tmp_dir)
+	}
+}
+
+fn test_x64_windows_fibonacci_example_arg_10_stdout_exact_bytes() {
+	$if windows {
+		result := run_x64_host_file_redirected_auto_with_args('windows_fibonacci_example_arg_10_exact',
+			x64_examples_dir(), 'fibonacci.v', ['10'])
+		context := x64_host_result_context(result)
+		assert result.stdout == x64_fibonacci_10_example_stdout(), context
+		assert result.stderr == []u8{}, context
+		x64_host_cleanup_tmp(result.tmp_dir)
+	}
+}
+
+fn test_x64_linux_struct_sumtype_field_init_stdout_exact_bytes() {
+	assert_x64_linux_stdout_bytes('struct_sumtype_field_init_exact',
+		x64_struct_sumtype_field_init_source(), x64_struct_sumtype_field_init_stdout())
+}
+
+fn test_x64_linux_auto_str_recursive_sumtype_stdout_exact_bytes() {
+	assert_x64_linux_stdout_bytes('auto_str_recursive_sumtype_exact',
+		x64_auto_str_recursive_sumtype_source(), x64_auto_str_recursive_sumtype_stdout())
+}
+
+fn test_x64_linux_tree_of_nodes_example_top_level_stdout_exact_bytes() {
+	assert_x64_linux_file_stdout_bytes('tree_of_nodes_example_top_level_exact', x64_examples_dir(),
+		'tree_of_nodes.v', x64_tree_of_nodes_example_stdout())
+}
+
+fn test_x64_linux_bfs_example_top_level_stdout_exact_bytes() {
+	assert_x64_linux_file_stdout_bytes('bfs_example_top_level_exact', os.join_path(x64_examples_dir(),
+		'graphs'), 'bfs.v', x64_bfs_example_stdout())
+}
+
+fn test_x64_linux_dfs_example_top_level_stdout_matches_v_run() {
+	assert_x64_linux_file_stdout_matches_v_run('dfs_example_top_level_v_run', os.join_path(x64_examples_dir(),
+		'graphs'), 'dfs.v')
+}
+
+fn test_x64_linux_dijkstra_example_top_level_stdout_matches_v_run() {
+	assert_x64_linux_file_stdout_matches_v_run('dijkstra_example_top_level_v_run', os.join_path(x64_examples_dir(),
+		'graphs'), 'dijkstra.v')
+}
+
 fn test_x64_linux_fizz_buzz_example_auto_tiny_no_libc() {
 	$if linux {
 		result := run_x64_host_file_redirected_auto('fizz_buzz_example_auto_tiny_no_libc',
@@ -2819,14 +3989,196 @@ fn test_x64_linux_fizz_buzz_example_auto_tiny_no_libc() {
 	}
 }
 
+fn test_x64_linux_hanoi_example_strict_tiny_no_libc() {
+	$if linux {
+		result := run_x64_host_file_redirected_tiny('hanoi_example_strict_tiny_no_libc',
+			x64_examples_dir(), 'hanoi.v')
+		assert_x64_linux_no_libc_binary(result, x64_hanoi_example_stdout())
+		assert_x64_linux_tiny_load_segment_layout(result, linux_tiny_int_str_arena_metadata_bytes +
+			linux_tiny_string_plus_arena_metadata_bytes)
+		x64_host_cleanup_tmp(result.tmp_dir)
+	}
+}
+
+fn test_x64_linux_hanoi_example_auto_tiny_no_libc() {
+	$if linux {
+		result := run_x64_host_file_redirected_auto('hanoi_example_auto_tiny_no_libc',
+			x64_examples_dir(), 'hanoi.v')
+		assert_x64_linux_no_libc_binary(result, x64_hanoi_example_stdout())
+		assert_x64_linux_tiny_load_segment_layout(result, linux_tiny_int_str_arena_metadata_bytes +
+			linux_tiny_string_plus_arena_metadata_bytes)
+		x64_host_cleanup_tmp(result.tmp_dir)
+	}
+}
+
 fn test_x64_linux_hello_world_example_auto_tiny_no_libc() {
 	$if linux {
 		result := run_x64_host_file_redirected_auto('hello_world_example_auto_tiny_no_libc',
 			x64_examples_dir(), 'hello_world.v')
-		assert_x64_linux_no_libc_binary(result, 'Hello, World!\n'.bytes())
+		assert_x64_linux_no_libc_binary(result, x64_hello_world_example_stdout())
 		assert_x64_linux_tiny_load_segment_layout(result, 0)
 		context := x64_host_result_context(result)
 		assert os.file_size(result.bin_path) < 512, '${context}\nbinary is not ultra tiny: ${os.file_size(result.bin_path)} bytes'
+		x64_host_cleanup_tmp(result.tmp_dir)
+	}
+}
+
+fn test_x64_linux_js_hello_world_example_strict_tiny_no_libc() {
+	$if linux {
+		result := run_x64_host_file_redirected_tiny('js_hello_world_example_strict_tiny_no_libc',
+			x64_examples_dir(), 'js_hello_world.v')
+		assert_x64_linux_no_libc_binary(result, x64_js_hello_world_example_stdout())
+		assert_x64_linux_tiny_load_segment_layout(result, linux_tiny_int_str_arena_metadata_bytes +
+			linux_tiny_string_plus_arena_metadata_bytes)
+		x64_host_cleanup_tmp(result.tmp_dir)
+	}
+}
+
+fn test_x64_linux_js_hello_world_example_auto_tiny_no_libc() {
+	$if linux {
+		result := run_x64_host_file_redirected_auto('js_hello_world_example_auto_tiny_no_libc',
+			x64_examples_dir(), 'js_hello_world.v')
+		assert_x64_linux_no_libc_binary(result, x64_js_hello_world_example_stdout())
+		assert_x64_linux_tiny_load_segment_layout(result, linux_tiny_int_str_arena_metadata_bytes +
+			linux_tiny_string_plus_arena_metadata_bytes)
+		x64_host_cleanup_tmp(result.tmp_dir)
+	}
+}
+
+fn test_x64_linux_string_plus_runtime_strict_tiny_no_libc() {
+	$if linux {
+		result := run_x64_host_program_redirected_tiny('string_plus_runtime_strict_tiny_no_libc', "module main
+
+fn main() {
+	left := 'tiny '
+	right := 'concat'
+	println(left + right)
+}
+")
+		assert_x64_linux_no_libc_binary(result, 'tiny concat\n'.bytes())
+		assert_x64_linux_tiny_load_segment_layout(result,
+			linux_tiny_string_plus_arena_metadata_bytes)
+		x64_host_cleanup_tmp(result.tmp_dir)
+	}
+}
+
+fn test_x64_linux_string_plus_two_runtime_strict_tiny_no_libc() {
+	$if linux {
+		result := run_x64_host_program_redirected_tiny('string_plus_two_runtime_strict_tiny_no_libc', "module main
+
+fn main() {
+	a := 'one'
+	b := ' two'
+	c := ' three'
+	println(a + b + c)
+}
+")
+		assert_x64_linux_no_libc_binary(result, 'one two three\n'.bytes())
+		assert_x64_linux_tiny_load_segment_layout(result,
+			linux_tiny_string_plus_arena_metadata_bytes)
+		x64_host_cleanup_tmp(result.tmp_dir)
+	}
+}
+
+fn test_x64_linux_string_plus_chain_preserves_tmp_lifetime_strict_tiny_no_libc() {
+	$if linux {
+		result := run_x64_host_program_redirected_tiny('string_plus_chain_preserves_tmp_lifetime_strict_tiny_no_libc', "module main
+
+fn main() {
+	a := 'one'
+	b := ' two'
+	c := ' three'
+	tmp := a + b
+	println(tmp + c)
+	println(tmp)
+}
+")
+		assert_x64_linux_no_libc_binary(result, 'one two three\none two\n'.bytes())
+		assert_x64_linux_tiny_load_segment_layout(result,
+			linux_tiny_string_plus_arena_metadata_bytes)
+		x64_host_cleanup_tmp(result.tmp_dir)
+	}
+}
+
+fn test_x64_linux_string_plus_large_allocation_strict_tiny_no_libc() {
+	$if linux {
+		left := x64_repeated_ascii_literal(`A`, 4096)
+		right := x64_repeated_ascii_literal(`B`, 64)
+		result := run_x64_host_program_redirected_tiny('string_plus_large_allocation_strict_tiny_no_libc', "module main
+
+fn main() {
+	left := '${left}'
+	right := '${right}'
+	println(left + right)
+}
+")
+		assert_x64_linux_no_libc_binary(result, (left + right + '\n').bytes())
+		assert_x64_linux_tiny_load_segment_layout(result,
+			linux_tiny_string_plus_arena_metadata_bytes)
+		x64_host_cleanup_tmp(result.tmp_dir)
+	}
+}
+
+fn test_x64_linux_vascii_example_strict_tiny_no_libc() {
+	$if linux {
+		result := run_x64_host_file_redirected_tiny('vascii_example_strict_tiny_no_libc',
+			x64_examples_dir(), 'vascii.v')
+		assert_x64_linux_no_libc_binary(result, x64_vascii_example_stdout())
+		assert_x64_linux_tiny_load_segment_layout(result, 0)
+		x64_host_cleanup_tmp(result.tmp_dir)
+	}
+}
+
+fn test_x64_linux_rune_example_strict_tiny_no_libc() {
+	$if linux {
+		result := run_x64_host_file_redirected_tiny('rune_example_strict_tiny_no_libc',
+			x64_examples_dir(), 'rune.v')
+		assert_x64_linux_no_libc_binary(result, x64_rune_example_stdout())
+		assert_x64_linux_tiny_load_segment_layout(result, linux_tiny_rune_str_arena_metadata_bytes)
+		x64_host_cleanup_tmp(result.tmp_dir)
+	}
+}
+
+fn test_x64_linux_rune_str_utf32_edge_bytes_strict_tiny_no_libc() {
+	$if linux {
+		result := run_x64_host_program_redirected_tiny('rune_str_utf32_edge_bytes_strict_tiny', 'module main
+
+fn main() {
+	println(rune(0x7f))
+	println(rune(0x80))
+	println(rune(0x7ff))
+	println(rune(0x800))
+	println(rune(0xd7ff))
+	println(rune(0xd800))
+	println(rune(0xdfff))
+	println(rune(0xe000))
+	println(rune(0xffff))
+	println(rune(0x10000))
+	println(rune(0x10ffff))
+	println(rune(0x110000))
+}
+')
+		assert_x64_linux_no_libc_binary(result, x64_rune_utf32_parity_stdout())
+		assert_x64_linux_tiny_load_segment_layout(result, linux_tiny_rune_str_arena_metadata_bytes)
+		x64_host_cleanup_tmp(result.tmp_dir)
+	}
+}
+
+fn test_x64_linux_int_i64_rune_strict_tiny_bss_metadata_sum() {
+	$if linux {
+		result := run_x64_host_program_redirected_tiny('int_i64_rune_strict_tiny_bss_sum', 'module main
+
+fn main() {
+	println(int(-23))
+	println(i64(4294967296))
+	println(rune(0x80))
+}
+')
+		mut expected_stdout := '-23\n4294967296\n'.bytes()
+		expected_stdout << [u8(0xc2), 0x80, u8(`\n`)]
+		assert_x64_linux_no_libc_binary(result, expected_stdout)
+		assert_x64_linux_tiny_load_segment_layout(result, linux_tiny_int_str_arena_metadata_bytes +
+			linux_tiny_rune_str_arena_metadata_bytes)
 		x64_host_cleanup_tmp(result.tmp_dir)
 	}
 }
@@ -2838,6 +4190,37 @@ fn assert_x64_macos_tiny_object_used(result X64HostRunResult, context string) {
 	assert !result.build_output.contains('retrying with normal Mach-O object'), context
 }
 
+fn assert_x64_macos_tiny_object_rejected_for_arguments(result X64HostRunResult, context string) {
+	assert result.build_output.contains('macOS tiny object candidate enabled'), context
+	assert result.build_output.contains('macOS tiny object not eligible; falling back to normal Mach-O object'), context
+
+	assert result.build_output.contains('arguments() requires hosted argc/argv'), context
+	assert !result.build_output.contains('built-in macOS tiny object'), context
+}
+
+fn test_x64_macos_i64_str_boundary_values_auto_tiny_uses_tiny_object() {
+	$if macos {
+		result := run_x64_host_project_redirected_macos_auto_tiny_verbose('macos_i64_str_boundary_values_auto_tiny', {
+			'main.v': 'module main
+
+fn main() {
+	println(i64(9223372036854775807))
+	println(-i64(9223372036854775807) - i64(1))
+	println(i64(4294967296))
+	println(i64(-4294967297))
+	println(i64(1234567890123456789))
+}
+'
+		})
+		context := x64_host_result_context(result)
+		assert result.stdout == '9223372036854775807\n-9223372036854775808\n4294967296\n-4294967297\n1234567890123456789\n'.bytes(), context
+
+		assert result.stderr == []u8{}, context
+		assert_x64_macos_tiny_object_used(result, context)
+		x64_host_cleanup_tmp(result.tmp_dir)
+	}
+}
+
 fn test_x64_macos_hello_world_example_auto_tiny_uses_tiny_object() {
 	$if macos {
 		tiny := run_x64_host_file_redirected_macos_auto_tiny('macos_hello_world_example_auto_tiny',
@@ -2845,7 +4228,7 @@ fn test_x64_macos_hello_world_example_auto_tiny_uses_tiny_object() {
 		normal := run_x64_host_file_redirected_no_tiny('macos_hello_world_example_normal',
 			x64_examples_dir(), 'hello_world.v')
 		context := '${x64_host_result_context(tiny)}\nnormal build:\n${x64_host_result_context(normal)}'
-		assert tiny.stdout == 'Hello, World!\n'.bytes(), context
+		assert tiny.stdout == x64_hello_world_example_stdout(), context
 		assert tiny.stderr == []u8{}, context
 		assert normal.stdout == tiny.stdout, context
 		assert normal.stderr == []u8{}, context
@@ -2877,6 +4260,94 @@ fn test_x64_macos_fizz_buzz_example_auto_tiny_uses_tiny_object() {
 		assert tiny_size > 0, '${context}\ntiny size: ${tiny_size}'
 		assert normal_size > 0, '${context}\nnormal size: ${normal_size}'
 		println('macOS x64 tiny fizz_buzz: tiny size=${tiny_size}; normal size=${normal_size}')
+		x64_host_cleanup_tmp(tiny.tmp_dir)
+		x64_host_cleanup_tmp(normal.tmp_dir)
+	}
+}
+
+fn test_x64_macos_hanoi_example_auto_tiny_uses_tiny_object() {
+	$if macos {
+		tiny := run_x64_host_file_redirected_macos_auto_tiny('macos_hanoi_example_auto_tiny',
+			x64_examples_dir(), 'hanoi.v')
+		normal := run_x64_host_file_redirected_no_tiny('macos_hanoi_example_normal',
+			x64_examples_dir(), 'hanoi.v')
+		context := '${x64_host_result_context(tiny)}\nnormal build:\n${x64_host_result_context(normal)}'
+		assert tiny.stdout == x64_hanoi_example_stdout(), context
+		assert tiny.stderr == []u8{}, context
+		assert normal.stdout == tiny.stdout, context
+		assert normal.stderr == []u8{}, context
+		assert_x64_macos_tiny_object_used(tiny, context)
+		tiny_size := os.file_size(tiny.bin_path)
+		normal_size := os.file_size(normal.bin_path)
+		assert tiny_size > 0, '${context}\ntiny size: ${tiny_size}'
+		assert normal_size > 0, '${context}\nnormal size: ${normal_size}'
+		println('macOS x64 tiny hanoi: tiny size=${tiny_size}; normal size=${normal_size}')
+		x64_host_cleanup_tmp(tiny.tmp_dir)
+		x64_host_cleanup_tmp(normal.tmp_dir)
+	}
+}
+
+fn test_x64_macos_js_hello_world_example_auto_tiny_uses_tiny_object() {
+	$if macos {
+		tiny := run_x64_host_file_redirected_macos_auto_tiny('macos_js_hello_world_example_auto_tiny',
+			x64_examples_dir(), 'js_hello_world.v')
+		normal := run_x64_host_file_redirected_no_tiny('macos_js_hello_world_example_normal',
+			x64_examples_dir(), 'js_hello_world.v')
+		context := '${x64_host_result_context(tiny)}\nnormal build:\n${x64_host_result_context(normal)}'
+		assert tiny.stdout == x64_js_hello_world_example_stdout(), context
+		assert tiny.stderr == []u8{}, context
+		assert normal.stdout == tiny.stdout, context
+		assert normal.stderr == []u8{}, context
+		assert_x64_macos_tiny_object_used(tiny, context)
+		tiny_size := os.file_size(tiny.bin_path)
+		normal_size := os.file_size(normal.bin_path)
+		assert tiny_size > 0, '${context}\ntiny size: ${tiny_size}'
+		assert normal_size > 0, '${context}\nnormal size: ${normal_size}'
+		println('macOS x64 tiny js_hello_world: tiny size=${tiny_size}; normal size=${normal_size}')
+		x64_host_cleanup_tmp(tiny.tmp_dir)
+		x64_host_cleanup_tmp(normal.tmp_dir)
+	}
+}
+
+fn test_x64_macos_vascii_example_auto_tiny_uses_tiny_object() {
+	$if macos {
+		tiny := run_x64_host_file_redirected_macos_auto_tiny('macos_vascii_example_auto_tiny',
+			x64_examples_dir(), 'vascii.v')
+		normal := run_x64_host_file_redirected_no_tiny('macos_vascii_example_normal',
+			x64_examples_dir(), 'vascii.v')
+		context := '${x64_host_result_context(tiny)}\nnormal build:\n${x64_host_result_context(normal)}'
+		assert tiny.stdout == x64_vascii_example_stdout(), context
+		assert tiny.stderr == []u8{}, context
+		assert normal.stdout == tiny.stdout, context
+		assert normal.stderr == []u8{}, context
+		assert_x64_macos_tiny_object_used(tiny, context)
+		tiny_size := os.file_size(tiny.bin_path)
+		normal_size := os.file_size(normal.bin_path)
+		assert tiny_size > 0, '${context}\ntiny size: ${tiny_size}'
+		assert normal_size > 0, '${context}\nnormal size: ${normal_size}'
+		println('macOS x64 tiny vascii: tiny size=${tiny_size}; normal size=${normal_size}')
+		x64_host_cleanup_tmp(tiny.tmp_dir)
+		x64_host_cleanup_tmp(normal.tmp_dir)
+	}
+}
+
+fn test_x64_macos_rune_example_auto_tiny_uses_tiny_object() {
+	$if macos {
+		tiny := run_x64_host_file_redirected_macos_auto_tiny('macos_rune_example_auto_tiny',
+			x64_examples_dir(), 'rune.v')
+		normal := run_x64_host_file_redirected_no_tiny('macos_rune_example_normal',
+			x64_examples_dir(), 'rune.v')
+		context := '${x64_host_result_context(tiny)}\nnormal build:\n${x64_host_result_context(normal)}'
+		assert tiny.stdout == x64_rune_example_stdout(), context
+		assert tiny.stderr == []u8{}, context
+		assert normal.stdout == tiny.stdout, context
+		assert normal.stderr == []u8{}, context
+		assert_x64_macos_tiny_object_used(tiny, context)
+		tiny_size := os.file_size(tiny.bin_path)
+		normal_size := os.file_size(normal.bin_path)
+		assert tiny_size > 0, '${context}\ntiny size: ${tiny_size}'
+		assert normal_size > 0, '${context}\nnormal size: ${normal_size}'
+		println('macOS x64 tiny rune: tiny size=${tiny_size}; normal size=${normal_size}')
 		x64_host_cleanup_tmp(tiny.tmp_dir)
 		x64_host_cleanup_tmp(normal.tmp_dir)
 	}
@@ -3007,9 +4478,9 @@ fn main() {
 	}
 }
 
-fn test_x64_linux_auto_tiny_stored_int_str_values_fall_back_to_hosted_libc() {
+fn test_x64_linux_auto_tiny_stored_int_str_values_use_tiny_runtime() {
 	$if linux {
-		result := run_x64_host_program_redirected_auto('auto_tiny_stored_int_str_values_hosted', 'module main
+		result := run_x64_host_program_redirected_auto('auto_tiny_stored_int_str_values_runtime', 'module main
 
 fn main() {
 	a := 12.str()
@@ -3019,14 +4490,15 @@ fn main() {
 	println(a)
 }
 ')
-		assert_x64_linux_hosted_libc_binary(result, '12\n34\n12\n'.bytes())
+		assert_x64_linux_no_libc_binary(result, '12\n34\n12\n'.bytes())
+		assert_x64_linux_tiny_load_segment_layout(result, linux_tiny_int_str_arena_metadata_bytes)
 		x64_host_cleanup_tmp(result.tmp_dir)
 	}
 }
 
-fn test_x64_linux_strict_tiny_stored_int_str_values_are_rejected() {
+fn test_x64_linux_strict_tiny_stored_int_str_values_use_tiny_runtime() {
 	$if linux {
-		assert_x64_linux_tiny_build_rejected('strict_tiny_stored_int_str_values_rejected', 'module main
+		result := run_x64_host_program_redirected_tiny('strict_tiny_stored_int_str_values_runtime', 'module main
 
 fn main() {
 	a := 12.str()
@@ -3035,14 +4507,16 @@ fn main() {
 	println(b)
 	println(a)
 }
-',
-			linux_tiny_not_eligible_prefix)
+')
+		assert_x64_linux_no_libc_binary(result, '12\n34\n12\n'.bytes())
+		assert_x64_linux_tiny_load_segment_layout(result, linux_tiny_int_str_arena_metadata_bytes)
+		x64_host_cleanup_tmp(result.tmp_dir)
 	}
 }
 
-fn test_x64_linux_auto_tiny_passed_int_str_value_falls_back_to_hosted_libc() {
+fn test_x64_linux_auto_tiny_passed_int_str_value_uses_tiny_runtime() {
 	$if linux {
-		result := run_x64_host_program_redirected_auto('auto_tiny_passed_int_str_value_hosted', 'module main
+		result := run_x64_host_program_redirected_auto('auto_tiny_passed_int_str_value_runtime', 'module main
 
 fn emit_twice(s string) {
 	println(s)
@@ -3053,14 +4527,15 @@ fn main() {
 	emit_twice(42.str())
 }
 ')
-		assert_x64_linux_hosted_libc_binary(result, '42\n42\n'.bytes())
+		assert_x64_linux_no_libc_binary(result, '42\n42\n'.bytes())
+		assert_x64_linux_tiny_load_segment_layout(result, linux_tiny_int_str_arena_metadata_bytes)
 		x64_host_cleanup_tmp(result.tmp_dir)
 	}
 }
 
-fn test_x64_linux_strict_tiny_passed_int_str_value_is_rejected() {
+fn test_x64_linux_strict_tiny_passed_int_str_value_uses_tiny_runtime() {
 	$if linux {
-		assert_x64_linux_tiny_build_rejected('strict_tiny_passed_int_str_value_rejected', 'module main
+		result := run_x64_host_program_redirected_tiny('strict_tiny_passed_int_str_value_runtime', 'module main
 
 fn emit_twice(s string) {
 	println(s)
@@ -3070,8 +4545,10 @@ fn emit_twice(s string) {
 fn main() {
 	emit_twice(42.str())
 }
-',
-			linux_tiny_not_eligible_prefix)
+')
+		assert_x64_linux_no_libc_binary(result, '42\n42\n'.bytes())
+		assert_x64_linux_tiny_load_segment_layout(result, linux_tiny_int_str_arena_metadata_bytes)
+		x64_host_cleanup_tmp(result.tmp_dir)
 	}
 }
 
@@ -3169,6 +4646,25 @@ fn main() {
 		}
 		expected_stdout << '2147483647\n'.bytes()
 		assert_x64_linux_no_libc_binary(result, expected_stdout)
+		assert_x64_linux_tiny_load_segment_layout(result, linux_tiny_int_str_arena_metadata_bytes)
+		x64_host_cleanup_tmp(result.tmp_dir)
+	}
+}
+
+fn test_x64_linux_tiny_i64_str_boundary_values_stdout_exact_bytes() {
+	$if linux {
+		result := run_x64_host_program_redirected_tiny('tiny_i64_str_boundary_values', 'module main
+
+fn main() {
+	println(i64(9223372036854775807))
+	println(-i64(9223372036854775807) - i64(1))
+	println(i64(4294967296))
+	println(i64(-4294967297))
+	println(i64(1234567890123456789))
+}
+')
+		assert_x64_linux_no_libc_binary(result,
+			'9223372036854775807\n-9223372036854775808\n4294967296\n-4294967297\n1234567890123456789\n'.bytes())
 		assert_x64_linux_tiny_load_segment_layout(result, linux_tiny_int_str_arena_metadata_bytes)
 		x64_host_cleanup_tmp(result.tmp_dir)
 	}
@@ -3341,9 +4837,55 @@ fn test_x64_macos_windows_println_string_parameter_stdout_exact_bytes() {
 		x64_println_string_parameter_stdout_source(), x64_println_string_parameter_stdout())
 }
 
+fn test_x64_macos_windows_named_function_value_stdout_exact_bytes() {
+	assert_x64_macos_windows_stdout_bytes('named_function_value_exact',
+		x64_named_function_value_source(), x64_named_function_value_stdout())
+}
+
+fn test_x64_macos_windows_selective_import_builtin_shadow_fn_value_stdout_exact_bytes() {
+	assert_x64_macos_windows_project_stdout_bytes('selective_import_builtin_shadow_fn_value_exact',
+		x64_selective_import_builtin_shadow_fn_value_sources(),
+		x64_selective_import_builtin_shadow_fn_value_stdout())
+}
+
+fn test_x64_macos_windows_selective_import_bare_fallback_shadow_stdout_exact_bytes() {
+	assert_x64_macos_windows_project_stdout_bytes('selective_import_bare_fallback_shadow_exact',
+		x64_selective_import_bare_fallback_shadow_sources(),
+		x64_selective_import_bare_fallback_shadow_stdout())
+}
+
+fn test_x64_macos_windows_selective_import_method_shadow_stdout_exact_bytes() {
+	assert_x64_macos_windows_project_stdout_bytes('selective_import_method_shadow_exact',
+		x64_selective_import_method_shadow_sources(), x64_selective_import_method_shadow_stdout())
+}
+
+fn test_x64_macos_windows_non_capturing_fn_literal_value_stdout_exact_bytes() {
+	assert_x64_macos_windows_stdout_bytes('non_capturing_fn_literal_value_exact',
+		x64_non_capturing_fn_literal_value_source(), x64_non_capturing_fn_literal_value_stdout())
+}
+
+fn test_x64_macos_windows_returned_non_capturing_fn_literal_stdout_exact_bytes() {
+	assert_x64_macos_windows_stdout_bytes('returned_non_capturing_fn_literal_exact',
+		x64_returned_non_capturing_fn_literal_source(),
+		x64_returned_non_capturing_fn_literal_stdout())
+}
+
 fn test_x64_macos_windows_i64_loop_carried_mutable_state_controls_branch() {
 	assert_x64_macos_windows_stdout_bytes('i64_loop_carried_mutable_state_branch',
 		x64_i64_loop_carried_mutable_state_source(), x64_i64_loop_carried_mutable_state_stdout())
+}
+
+fn test_x64_windows_i64_str_boundary_values_stdout_exact_bytes() {
+	assert_x64_windows_stdout_bytes('windows_i64_str_boundary_values', 'module main
+
+fn main() {
+	println(i64(9223372036854775807))
+	println(-i64(9223372036854775807) - i64(1))
+	println(i64(4294967296))
+	println(i64(-4294967297))
+}
+',
+		'9223372036854775807\n-9223372036854775808\n4294967296\n-4294967297\n'.bytes())
 }
 
 fn test_x64_macos_windows_print_integer_and_int_str_stdout_exact_bytes() {
@@ -3430,6 +4972,21 @@ fn test_x64_macos_windows_dynamic_int_array_stdout_exact_bytes() {
 		x64_dynamic_int_array_source(), x64_dynamic_int_array_stdout())
 }
 
+fn test_x64_macos_windows_dynamic_string_array_index_stdout_exact_bytes() {
+	assert_x64_macos_windows_stdout_bytes('dynamic_string_array_index_exact',
+		x64_dynamic_string_array_index_source(), x64_dynamic_string_array_index_stdout())
+}
+
+fn test_x64_macos_windows_dynamic_string_array_str_stdout_exact_bytes() {
+	assert_x64_macos_windows_stdout_bytes('dynamic_string_array_str_exact',
+		x64_dynamic_string_array_str_source(), x64_dynamic_string_array_str_stdout())
+}
+
+fn test_x64_macos_windows_string_int_map_literal_lookup_stdout_exact_bytes() {
+	assert_x64_macos_windows_stdout_bytes('string_int_map_literal_lookup_exact',
+		x64_string_int_map_literal_lookup_source(), x64_string_int_map_literal_lookup_stdout())
+}
+
 fn test_x64_windows_noscan_array_grow_free_slice_stdout_exact_bytes() {
 	assert_x64_windows_stdout_bytes('noscan_array_grow_free_slice_exact',
 		x64_windows_noscan_array_grow_free_slice_source(),
@@ -3486,9 +5043,84 @@ fn test_x64_macos_windows_fizz_buzz_core_for_range_match_true_stdout_exact_bytes
 		x64_fizz_buzz_core_source(), x64_fizz_buzz_core_stdout())
 }
 
+fn test_x64_macos_windows_string_literal_field_size_stores_do_not_clobber_adjacent_fields() {
+	assert_x64_macos_windows_stdout_bytes('string_literal_field_size_no_clobber',
+		x64_string_literal_field_size_source(), x64_string_literal_field_size_stdout())
+}
+
+fn test_x64_macos_windows_hello_world_example_top_level_stdout_exact_bytes() {
+	assert_x64_macos_windows_file_stdout_bytes('hello_world_example_top_level_exact',
+		x64_examples_dir(), 'hello_world.v', x64_hello_world_example_stdout())
+}
+
 fn test_x64_macos_windows_fizz_buzz_example_top_level_stdout_exact_bytes() {
 	assert_x64_macos_windows_file_stdout_bytes('fizz_buzz_example_top_level_exact',
 		x64_examples_dir(), 'fizz_buzz.v', x64_fizz_buzz_example_stdout())
+}
+
+fn test_x64_macos_windows_hanoi_example_top_level_stdout_exact_bytes() {
+	assert_x64_macos_windows_file_stdout_bytes('hanoi_example_top_level_exact', x64_examples_dir(),
+		'hanoi.v', x64_hanoi_example_stdout())
+}
+
+fn test_x64_macos_windows_sudoku_example_top_level_stdout_exact_bytes() {
+	assert_x64_macos_windows_file_stdout_bytes('sudoku_example_top_level_exact',
+		x64_examples_dir(), 'sudoku.v', x64_sudoku_example_stdout())
+}
+
+fn test_x64_macos_windows_function_types_example_top_level_stdout_exact_bytes() {
+	assert_x64_macos_windows_file_stdout_bytes('function_types_example_top_level_exact',
+		x64_examples_dir(), 'function_types.v', x64_function_types_example_stdout())
+}
+
+fn test_x64_macos_windows_submodule_example_top_level_stdout_exact_bytes() {
+	assert_x64_macos_windows_file_stdout_bytes('submodule_example_top_level_exact',
+		x64_examples_dir(), 'submodule/main.v', x64_submodule_example_stdout())
+}
+
+fn test_x64_macos_windows_struct_sumtype_field_init_stdout_exact_bytes() {
+	assert_x64_macos_windows_stdout_bytes('struct_sumtype_field_init_exact',
+		x64_struct_sumtype_field_init_source(), x64_struct_sumtype_field_init_stdout())
+}
+
+fn test_x64_macos_windows_auto_str_recursive_sumtype_stdout_exact_bytes() {
+	assert_x64_macos_windows_stdout_bytes('auto_str_recursive_sumtype_exact',
+		x64_auto_str_recursive_sumtype_source(), x64_auto_str_recursive_sumtype_stdout())
+}
+
+fn test_x64_macos_windows_tree_of_nodes_example_top_level_stdout_exact_bytes() {
+	assert_x64_macos_windows_file_stdout_bytes('tree_of_nodes_example_top_level_exact',
+		x64_examples_dir(), 'tree_of_nodes.v', x64_tree_of_nodes_example_stdout())
+}
+
+fn test_x64_macos_windows_bfs_example_top_level_stdout_exact_bytes() {
+	assert_x64_macos_windows_file_stdout_bytes('bfs_example_top_level_exact', os.join_path(x64_examples_dir(),
+		'graphs'), 'bfs.v', x64_bfs_example_stdout())
+}
+
+fn test_x64_macos_windows_dfs_example_top_level_stdout_matches_v_run() {
+	assert_x64_macos_windows_file_stdout_matches_v_run('dfs_example_top_level_v_run', os.join_path(x64_examples_dir(),
+		'graphs'), 'dfs.v')
+}
+
+fn test_x64_macos_windows_dijkstra_example_top_level_stdout_matches_v_run() {
+	assert_x64_macos_windows_file_stdout_matches_v_run('dijkstra_example_top_level_v_run', os.join_path(x64_examples_dir(),
+		'graphs'), 'dijkstra.v')
+}
+
+fn test_x64_macos_windows_js_hello_world_example_top_level_stdout_exact_bytes() {
+	assert_x64_macos_windows_file_stdout_bytes('js_hello_world_example_top_level_exact',
+		x64_examples_dir(), 'js_hello_world.v', x64_js_hello_world_example_stdout())
+}
+
+fn test_x64_macos_windows_vascii_example_top_level_stdout_exact_bytes() {
+	assert_x64_macos_windows_file_stdout_bytes('vascii_example_top_level_exact',
+		x64_examples_dir(), 'vascii.v', x64_vascii_example_stdout())
+}
+
+fn test_x64_macos_windows_rune_example_top_level_stdout_exact_bytes() {
+	assert_x64_macos_windows_file_stdout_bytes('rune_example_top_level_exact', x64_examples_dir(),
+		'rune.v', x64_rune_example_stdout())
 }
 
 fn test_x64_macos_windows_imported_module_init_runs_once_before_use_stdout_exact_bytes() {
@@ -3781,6 +5413,36 @@ fn main() {
 		u8(`S`),
 		u8(`\n`),
 	])
+}
+
+fn test_x64_linux_dynamic_array_literal_push_minimal_stdout_exact_bytes() {
+	assert_x64_linux_stdout_bytes('dynamic_array_literal_push_minimal_exact', 'module main
+
+fn main() {
+	mut a := [1, 2, 3]
+	a[1] = 7
+	a << 11
+	println(a.len)
+}
+', [
+		u8(`4`),
+		u8(`\n`),
+	])
+}
+
+fn test_x64_linux_dynamic_string_array_index_stdout_exact_bytes() {
+	assert_x64_linux_stdout_bytes('dynamic_string_array_index_exact',
+		x64_dynamic_string_array_index_source(), x64_dynamic_string_array_index_stdout())
+}
+
+fn test_x64_linux_dynamic_string_array_str_stdout_exact_bytes() {
+	assert_x64_linux_stdout_bytes('dynamic_string_array_str_exact',
+		x64_dynamic_string_array_str_source(), x64_dynamic_string_array_str_stdout())
+}
+
+fn test_x64_linux_string_int_map_literal_lookup_stdout_exact_bytes() {
+	assert_x64_linux_stdout_bytes('string_int_map_literal_lookup_exact',
+		x64_string_int_map_literal_lookup_source(), x64_string_int_map_literal_lookup_stdout())
 }
 
 fn test_x64_linux_imported_module_init_runs_once_before_use_stdout_exact_bytes() {

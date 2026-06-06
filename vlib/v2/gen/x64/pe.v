@@ -48,9 +48,14 @@ const pe_runtime_data_alignment = 16
 const pe_wgetenv_buffer_wchars = 32768
 const pe_wgetenv_buffer_bytes = pe_wgetenv_buffer_wchars * 2
 
-const pe_kernel32_imports = ['ExitProcess', 'GetStdHandle', 'GetConsoleMode', 'MultiByteToWideChar',
-	'WideCharToMultiByte', 'GetCurrentDirectoryW', 'GetEnvironmentVariableW', 'WriteConsoleW',
-	'WriteFile', 'GetProcessHeap', 'HeapAlloc', 'HeapReAlloc', 'HeapFree', 'GetCurrentThreadId']
+const pe_kernel32_dll = 'kernel32.dll'
+const pe_shell32_dll = 'shell32.dll'
+const pe_kernel32_imports = ['ExitProcess', 'GetCommandLineW', 'GetStdHandle', 'GetConsoleMode',
+	'MultiByteToWideChar', 'WideCharToMultiByte', 'GetCurrentDirectoryW', 'GetEnvironmentVariableW',
+	'WriteConsoleW', 'WriteFile', 'GetProcessHeap', 'HeapAlloc', 'HeapReAlloc', 'HeapFree',
+	'GetCurrentThreadId', 'GetSystemTimeAsFileTime', 'FileTimeToSystemTime',
+	'SystemTimeToTzSpecificLocalTime']
+const pe_shell32_imports = ['CommandLineToArgvW']
 
 struct PeImport {
 	dll  string
@@ -58,8 +63,9 @@ struct PeImport {
 }
 
 struct PeRuntimeCallPatch {
-	field_off   int
-	import_name string
+	field_off int
+	dll       string
+	name      string
 }
 
 struct PeRuntimeDataPatch {
@@ -93,6 +99,20 @@ struct PeIdata {
 	import_size u32
 	iat_rva     u32
 	iat_size    u32
+	iat_rvas    map[string]u32
+}
+
+struct PeImportGroup {
+	dll   string
+	start int
+mut:
+	len int
+}
+
+struct PeTextBuild {
+	data                 []u8
+	argc_global_disp_off int
+	argv_global_disp_off int
 }
 
 pub struct PeLinker {
@@ -117,9 +137,10 @@ pub fn (mut l PeLinker) write(path string) ! {
 
 pub fn (mut l PeLinker) image() ![]u8 {
 	mut runtime_text := l.build_runtime_text()
-	l.imports = l.required_kernel32_imports(runtime_text)!
+	l.imports = l.required_pe_imports(runtime_text)!
 	l.patch_runtime_import_calls(mut runtime_text)!
-	mut text := l.build_text_section(runtime_text)!
+	text_build := l.build_text_section(runtime_text)!
+	mut text := text_build.data.clone()
 	mut data_data := l.coff.data_data.clone()
 	runtime_data_base := if runtime_text.data.len > 0 {
 		base := align_int(data_data.len, pe_runtime_data_alignment)
@@ -172,8 +193,10 @@ pub fn (mut l PeLinker) image() ![]u8 {
 	sections << idata_section
 
 	import_thunks := l.import_thunk_rvas(text_section.virtual_address, runtime_text.bytes.len)
-	import_iats := l.import_iat_rvas(idata.iat_rva)
+	import_iats := idata.iat_rvas.clone()
 	runtime_thunks := runtime_text.symbol_rvas(text_section.virtual_address)
+	l.patch_entry_argv_bootstrap_data_refs(mut text, text_section.virtual_address, data_rva,
+		text_build)!
 	l.apply_text_relocations(mut text, text_section.virtual_address, rdata_rva, data_rva,
 		runtime_text.bytes.len, runtime_thunks, import_thunks, import_iats)!
 	l.apply_runtime_data_patches(mut text, text_section.virtual_address, data_rva, runtime_text,
@@ -232,13 +255,38 @@ pub fn (mut l PeLinker) image() ![]u8 {
 	return buf
 }
 
-fn (l PeLinker) build_text_section(runtime_text PeRuntimeText) ![]u8 {
+fn (l PeLinker) build_text_section(runtime_text PeRuntimeText) !PeTextBuild {
 	main_rva := l.defined_symbol_offset('main') or {
 		return error('PE linker requires a defined main symbol')
 	}
 	mut text := []u8{}
 	vinit_offset := l.defined_symbol_offset('_vinit') or { u32(0xffff_ffff) }
 	text << [u8(0x48), 0x83, 0xec, 0x28] // sub rsp, 40
+	mut get_command_line_field := -1
+	mut command_line_to_argv_field := -1
+	mut argv_failure_exit_field := -1
+	mut argc_global_disp_off := -1
+	mut argv_global_disp_off := -1
+	if l.needs_windows_argv_bootstrap() {
+		text << [u8(0xc7), 0x44, 0x24, 0x20, 0, 0, 0, 0] // mov dword ptr [rsp+32], 0
+		get_command_line_field = pe_emit_call_placeholder(mut text)
+		text << [u8(0x48), 0x89, 0xc1] // mov rcx, rax
+		text << [u8(0x48), 0x8d, 0x54, 0x24, 0x20] // lea rdx, [rsp+32]
+		command_line_to_argv_field = pe_emit_call_placeholder(mut text)
+		text << [u8(0x48), 0x85, 0xc0] // test rax, rax
+		text << [u8(0x75), 0x0a] // jne argv parsed
+		text << [u8(0xb9), 1, 0, 0, 0] // mov ecx, 1
+		argv_failure_exit_field = pe_emit_call_placeholder(mut text)
+		if l.has_main_argv_data_symbol() {
+			argv_global_disp_off = pe_emit_lea_r10_rip_placeholder(mut text)
+			text << [u8(0x49), 0x89, 0x02] // mov [r10], rax
+		}
+		if l.has_main_argc_data_symbol() {
+			argc_global_disp_off = pe_emit_lea_r10_rip_placeholder(mut text)
+			text << [u8(0x8b), 0x4c, 0x24, 0x20] // mov ecx, [rsp+32]
+			text << [u8(0x41), 0x89, 0x0a] // mov [r10], ecx
+		}
+	}
 	if vinit_offset != 0xffff_ffff {
 		pe_emit_call_placeholder(mut text)
 	}
@@ -248,13 +296,32 @@ fn (l PeLinker) build_text_section(runtime_text PeRuntimeText) ![]u8 {
 	text << 0xcc
 
 	entry_stub_len := text.len
+	if entry_stub_len != l.entry_stub_size() {
+		return error('PE linker internal error: entry stub size mismatch (${entry_stub_len} != ${l.entry_stub_size()})')
+	}
 	text << l.coff.text_data
 	text << runtime_text.bytes
 	for _ in l.imports {
 		text << [u8(0xff), 0x25, 0, 0, 0, 0] // jmp qword ptr [rip + disp32]
 	}
 
-	mut cursor := 4
+	import_offsets := l.import_thunk_offsets(runtime_text.bytes.len)
+	exit_thunk_off := import_offsets[pe_kernel32_import_key('ExitProcess')] or {
+		return error('PE linker internal error: missing ExitProcess import thunk')
+	}
+	if get_command_line_field >= 0 {
+		get_command_line_thunk_off := import_offsets[pe_kernel32_import_key('GetCommandLineW')] or {
+			return error('PE linker internal error: missing GetCommandLineW import thunk')
+		}
+		command_line_to_argv_thunk_off := import_offsets[pe_shell32_import_key('CommandLineToArgvW')] or {
+			return error('PE linker internal error: missing CommandLineToArgvW import thunk')
+		}
+		pe_patch_rel32(mut text, get_command_line_field, get_command_line_thunk_off, 0)
+		pe_patch_rel32(mut text, command_line_to_argv_field, command_line_to_argv_thunk_off, 0)
+		pe_patch_rel32(mut text, argv_failure_exit_field, exit_thunk_off, 0)
+	}
+
+	mut cursor := 4 + l.windows_argv_bootstrap_size()
 	if vinit_offset != 0xffff_ffff {
 		pe_patch_rel32(mut text, cursor + 1, u32(entry_stub_len) + vinit_offset, 0)
 		cursor += 5
@@ -262,13 +329,13 @@ fn (l PeLinker) build_text_section(runtime_text PeRuntimeText) ![]u8 {
 	pe_patch_rel32(mut text, cursor + 1, u32(entry_stub_len) + main_rva, 0)
 	cursor += 5
 	cursor += 2
-	import_offsets := l.import_thunk_offsets(runtime_text.bytes.len)
-	exit_thunk_off := import_offsets['ExitProcess'] or {
-		return error('PE linker internal error: missing ExitProcess import thunk')
-	}
 	pe_patch_rel32(mut text, cursor + 1, exit_thunk_off, 0)
 
-	return text
+	return PeTextBuild{
+		data:                 text
+		argc_global_disp_off: argc_global_disp_off
+		argv_global_disp_off: argv_global_disp_off
+	}
 }
 
 fn (l PeLinker) build_runtime_text() PeRuntimeText {
@@ -339,6 +406,14 @@ fn (l PeLinker) build_runtime_text() PeRuntimeText {
 		rt.symbols['exit'] = runtime_base + u32(rt.bytes.len)
 		pe_emit_runtime_exit(mut rt)
 	}
+	if l.uses_undefined_symbol('builtin__i64__str') {
+		rt.symbols['builtin__i64__str'] = runtime_base + u32(rt.bytes.len)
+		pe_emit_runtime_i64_str(mut rt)
+	}
+	if l.uses_undefined_symbol('builtin__string__+') {
+		rt.symbols['builtin__string__+'] = runtime_base + u32(rt.bytes.len)
+		pe_emit_runtime_string_plus(mut rt)
+	}
 	if l.uses_undefined_symbol('builtin__Array_rune__string') {
 		rt.symbols['builtin__Array_rune__string'] = runtime_base + u32(rt.bytes.len)
 		pe_emit_runtime_array_rune_string(mut rt)
@@ -347,14 +422,36 @@ fn (l PeLinker) build_runtime_text() PeRuntimeText {
 		rt.symbols['builtin__new_array_from_c_array_noscan'] = runtime_base + u32(rt.bytes.len)
 		pe_emit_runtime_new_array_from_c_array_noscan(mut rt)
 	}
+	if l.uses_undefined_symbol('builtin____new_array_noscan')
+		|| l.uses_undefined_symbol('__new_array_noscan') {
+		start := runtime_base + u32(rt.bytes.len)
+		if l.uses_undefined_symbol('builtin____new_array_noscan') {
+			rt.symbols['builtin____new_array_noscan'] = start
+		}
+		if l.uses_undefined_symbol('__new_array_noscan') {
+			rt.symbols['__new_array_noscan'] = start
+		}
+		pe_emit_runtime_new_array_noscan(mut rt)
+	}
 	return rt
 }
 
-fn (l PeLinker) required_kernel32_imports(runtime_text PeRuntimeText) ![]PeImport {
-	mut required := map[string]bool{}
-	pe_require_kernel32_import(mut required, 'ExitProcess')!
+fn (l PeLinker) required_pe_imports(runtime_text PeRuntimeText) ![]PeImport {
+	mut required_kernel32 := map[string]bool{}
+	mut required_shell32 := map[string]bool{}
+	pe_require_kernel32_import(mut required_kernel32, 'ExitProcess')!
+	if l.needs_windows_argv_bootstrap() {
+		pe_require_kernel32_import(mut required_kernel32, 'GetCommandLineW')!
+		pe_require_shell32_import(mut required_shell32, 'CommandLineToArgvW')!
+	}
 	for patch in runtime_text.import_patches {
-		pe_require_kernel32_import(mut required, patch.import_name)!
+		if patch.dll == pe_kernel32_dll {
+			pe_require_kernel32_import(mut required_kernel32, patch.name)!
+		} else if patch.dll == pe_shell32_dll {
+			pe_require_shell32_import(mut required_shell32, patch.name)!
+		} else {
+			return error('PE linker internal error: unknown import DLL `${patch.dll}` for `${patch.name}`')
+		}
 	}
 	for reloc in l.coff.text_relocs {
 		if reloc.sym_idx < 0 || reloc.sym_idx >= l.coff.symbols.len {
@@ -368,15 +465,25 @@ fn (l PeLinker) required_kernel32_imports(runtime_text PeRuntimeText) ![]PeImpor
 			continue
 		}
 		if pe_kernel32_import_is_known(sym.name) {
-			required[sym.name] = true
+			required_kernel32[sym.name] = true
+		} else if pe_shell32_import_is_known(sym.name) {
+			required_shell32[sym.name] = true
 		}
 	}
 
-	mut imports := []PeImport{cap: required.len}
+	mut imports := []PeImport{cap: required_kernel32.len + required_shell32.len}
 	for name in pe_kernel32_imports {
-		if required[name] {
+		if required_kernel32[name] {
 			imports << PeImport{
-				dll:  'kernel32.dll'
+				dll:  pe_kernel32_dll
+				name: name
+			}
+		}
+	}
+	for name in pe_shell32_imports {
+		if required_shell32[name] {
+			imports << PeImport{
+				dll:  pe_shell32_dll
 				name: name
 			}
 		}
@@ -388,11 +495,24 @@ fn (l PeLinker) patch_runtime_import_calls(mut rt PeRuntimeText) ! {
 	runtime_base := u32(l.entry_stub_size() + l.coff.text_data.len)
 	import_offsets := l.import_thunk_offsets(rt.bytes.len)
 	for patch in rt.import_patches {
-		target := import_offsets[patch.import_name] or {
-			return error('PE linker internal error: missing import thunk for `${patch.import_name}`')
+		key := pe_import_key(patch.dll, patch.name)
+		target := import_offsets[key] or {
+			return error('PE linker internal error: missing import thunk for `${key}`')
 		}
 		pe_patch_rel32(mut rt.bytes, patch.field_off, target, runtime_base)
 	}
+}
+
+fn pe_import_key(dll string, name string) string {
+	return '${dll}:${name}'
+}
+
+fn pe_kernel32_import_key(name string) string {
+	return pe_import_key(pe_kernel32_dll, name)
+}
+
+fn pe_shell32_import_key(name string) string {
+	return pe_import_key(pe_shell32_dll, name)
 }
 
 fn pe_require_kernel32_import(mut required map[string]bool, name string) ! {
@@ -411,6 +531,22 @@ fn pe_kernel32_import_is_known(name string) bool {
 	return false
 }
 
+fn pe_require_shell32_import(mut required map[string]bool, name string) ! {
+	if !pe_shell32_import_is_known(name) {
+		return error('PE linker internal error: unknown Shell32 import `${name}`')
+	}
+	required[name] = true
+}
+
+fn pe_shell32_import_is_known(name string) bool {
+	for known in pe_shell32_imports {
+		if known == name {
+			return true
+		}
+	}
+	return false
+}
+
 fn (rt PeRuntimeText) symbol_rvas(text_rva u32) map[string]u32 {
 	mut out := map[string]u32{}
 	for name, off in rt.symbols {
@@ -421,17 +557,25 @@ fn (rt PeRuntimeText) symbol_rvas(text_rva u32) map[string]u32 {
 
 fn (l PeLinker) build_idata(idata_rva u32) PeIdata {
 	descriptor_size := 20
-	descriptor_count := 2 // kernel32 + null terminator
-	ilt_off := descriptor_size * descriptor_count
-	ilt_size := (l.imports.len + 1) * 8
-	iat_off := ilt_off + ilt_size
-	iat_size := (l.imports.len + 1) * 8
-	hint_name_off := iat_off + iat_size
+	groups := pe_import_groups(l.imports)
+	descriptor_count := groups.len + 1
+	mut cursor := descriptor_size * descriptor_count
+	mut ilt_offsets := []int{cap: groups.len}
+	for group in groups {
+		ilt_offsets << cursor
+		cursor += (group.len + 1) * 8
+	}
+	mut iat_offsets := []int{cap: groups.len}
+	for group in groups {
+		iat_offsets << cursor
+		cursor += (group.len + 1) * 8
+	}
+	hint_name_off := cursor
 
 	mut data := []u8{len: hint_name_off}
-	mut hint_name_rvas := []u32{cap: l.imports.len}
-	for imp in l.imports {
-		hint_name_rvas << idata_rva + u32(data.len)
+	mut hint_name_rvas := []u32{len: l.imports.len}
+	for i, imp in l.imports {
+		hint_name_rvas[i] = idata_rva + u32(data.len)
 		write_u16_le(mut data, 0)
 		data << imp.name.bytes()
 		data << 0
@@ -439,25 +583,66 @@ fn (l PeLinker) build_idata(idata_rva u32) PeIdata {
 			data << 0
 		}
 	}
-	dll_name_rva := idata_rva + u32(data.len)
-	data << 'kernel32.dll'.bytes()
-	data << 0
+	mut dll_name_rvas := []u32{len: groups.len}
+	for i, group in groups {
+		dll_name_rvas[i] = idata_rva + u32(data.len)
+		data << group.dll.bytes()
+		data << 0
+		if data.len % 2 != 0 {
+			data << 0
+		}
+	}
 
-	pe_put_u32_le(mut data, 0, idata_rva + u32(ilt_off))
-	pe_put_u32_le(mut data, 12, dll_name_rva)
-	pe_put_u32_le(mut data, 16, idata_rva + u32(iat_off))
-	for i, rva in hint_name_rvas {
-		pe_put_u64_le(mut data, ilt_off + i * 8, u64(rva))
-		pe_put_u64_le(mut data, iat_off + i * 8, u64(rva))
+	mut iat_rvas := map[string]u32{}
+	for group_idx, group in groups {
+		descriptor_off := group_idx * descriptor_size
+		ilt_off := ilt_offsets[group_idx]
+		iat_off := iat_offsets[group_idx]
+		pe_put_u32_le(mut data, descriptor_off, idata_rva + u32(ilt_off))
+		pe_put_u32_le(mut data, descriptor_off + 12, dll_name_rvas[group_idx])
+		pe_put_u32_le(mut data, descriptor_off + 16, idata_rva + u32(iat_off))
+		for local_i in 0 .. group.len {
+			import_idx := group.start + local_i
+			rva := hint_name_rvas[import_idx]
+			pe_put_u64_le(mut data, ilt_off + local_i * 8, u64(rva))
+			pe_put_u64_le(mut data, iat_off + local_i * 8, u64(rva))
+			imp := l.imports[import_idx]
+			iat_rvas[pe_import_key(imp.dll, imp.name)] = idata_rva + u32(iat_off + local_i * 8)
+		}
+	}
+	iat_rva := if groups.len == 0 { idata_rva } else { idata_rva + u32(iat_offsets[0]) }
+	iat_size := if groups.len == 0 {
+		u32(0)
+	} else {
+		last_group := groups[groups.len - 1]
+		last_iat_off := iat_offsets[iat_offsets.len - 1]
+		u32(last_iat_off + (last_group.len + 1) * 8 - iat_offsets[0])
 	}
 
 	return PeIdata{
 		data:        data
 		import_rva:  idata_rva
 		import_size: u32(descriptor_size * descriptor_count)
-		iat_rva:     idata_rva + u32(iat_off)
-		iat_size:    u32(iat_size)
+		iat_rva:     iat_rva
+		iat_size:    iat_size
+		iat_rvas:    iat_rvas
 	}
+}
+
+fn pe_import_groups(imports []PeImport) []PeImportGroup {
+	mut groups := []PeImportGroup{}
+	for i, imp in imports {
+		if groups.len == 0 || groups[groups.len - 1].dll != imp.dll {
+			groups << PeImportGroup{
+				dll:   imp.dll
+				start: i
+				len:   1
+			}
+		} else {
+			groups[groups.len - 1].len++
+		}
+	}
+	return groups
 }
 
 fn (l PeLinker) apply_text_relocations(mut text []u8,
@@ -497,7 +682,10 @@ fn (l PeLinker) apply_text_relocations(mut text []u8,
 				if runtime_rva := runtime_thunks[sym.name] {
 					runtime_rva
 				} else {
-					import_thunks[sym.name] or {
+					import_key := l.import_key_for_external_symbol(sym.name) or {
+						return error(l.unresolved_external_symbol_message(sym.name, reloc))
+					}
+					import_thunks[import_key] or {
 						return error(l.unresolved_external_symbol_message(sym.name, reloc))
 					}
 				}
@@ -517,8 +705,9 @@ fn (l PeLinker) apply_text_relocations(mut text []u8,
 	thunk_base := l.import_thunk_base(runtime_text_size)
 	for i, imp in l.imports {
 		thunk_off := thunk_base + i * 6
-		iat_entry_rva := import_iats[imp.name] or {
-			return error('PE linker internal error: missing IAT entry for `${imp.name}`')
+		import_key := pe_import_key(imp.dll, imp.name)
+		iat_entry_rva := import_iats[import_key] or {
+			return error('PE linker internal error: missing IAT entry for `${import_key}`')
 		}
 		thunk_rva := text_rva + u32(thunk_off)
 		disp := i32(int(iat_entry_rva) - (int(thunk_rva) + 6))
@@ -579,7 +768,7 @@ fn (l PeLinker) import_thunk_offsets(runtime_text_size int) map[string]u32 {
 	thunk_base := l.import_thunk_base(runtime_text_size)
 	mut out := map[string]u32{}
 	for i, imp in l.imports {
-		out[imp.name] = u32(thunk_base + i * 6)
+		out[pe_import_key(imp.dll, imp.name)] = u32(thunk_base + i * 6)
 	}
 	return out
 }
@@ -593,17 +782,34 @@ fn (l PeLinker) import_thunk_rvas(text_rva u32, runtime_text_size int) map[strin
 	return out
 }
 
-fn (l PeLinker) import_iat_rvas(iat_rva u32) map[string]u32 {
-	mut out := map[string]u32{}
-	for i, imp in l.imports {
-		out[imp.name] = iat_rva + u32(i * 8)
+fn (l PeLinker) import_key_for_external_symbol(name string) ?string {
+	if pe_kernel32_import_is_known(name) {
+		return pe_kernel32_import_key(name)
 	}
-	return out
+	if pe_shell32_import_is_known(name) {
+		return pe_shell32_import_key(name)
+	}
+	return none
 }
 
 fn (l PeLinker) entry_stub_size() int {
 	vinit := l.defined_symbol_offset('_vinit') or { u32(0xffff_ffff) }
-	return if vinit == 0xffff_ffff { 17 } else { 22 }
+	base_size := if vinit == 0xffff_ffff { 17 } else { 22 }
+	return base_size + l.windows_argv_bootstrap_size()
+}
+
+fn (l PeLinker) windows_argv_bootstrap_size() int {
+	if !l.needs_windows_argv_bootstrap() {
+		return 0
+	}
+	mut size := 8 + 5 + 3 + 5 + 5 + 15 // zero argc, argv calls, null check, ExitProcess(1)
+	if l.has_main_argv_data_symbol() {
+		size += 7 + 3 // lea g_main_argv; mov [g_main_argv], rax
+	}
+	if l.has_main_argc_data_symbol() {
+		size += 7 + 4 + 3 // lea g_main_argc; load local argc; mov [g_main_argc], ecx
+	}
+	return size
 }
 
 fn (l PeLinker) defined_symbol_offset(name string) ?u32 {
@@ -626,6 +832,73 @@ fn (l PeLinker) uses_undefined_symbol(name string) bool {
 		}
 	}
 	return false
+}
+
+fn (l PeLinker) needs_windows_argv_bootstrap() bool {
+	for reloc in l.coff.text_relocs {
+		if reloc.sym_idx < 0 || reloc.sym_idx >= l.coff.symbols.len {
+			continue
+		}
+		sym := l.coff.symbols[reloc.sym_idx]
+		if sym.section == 3
+			&& (x64_main_argc_global_name(sym.name) || x64_main_argv_global_name(sym.name)) {
+			return true
+		}
+	}
+	return false
+}
+
+fn (l PeLinker) has_main_argc_data_symbol() bool {
+	if _ := l.main_argc_data_offset() {
+		return true
+	}
+	return false
+}
+
+fn (l PeLinker) has_main_argv_data_symbol() bool {
+	if _ := l.main_argv_data_offset() {
+		return true
+	}
+	return false
+}
+
+fn (l PeLinker) main_argc_data_offset() ?u32 {
+	for sym in l.coff.symbols {
+		if sym.section == 3 && x64_main_argc_global_name(sym.name) {
+			return sym.value
+		}
+	}
+	return none
+}
+
+fn (l PeLinker) main_argv_data_offset() ?u32 {
+	for sym in l.coff.symbols {
+		if sym.section == 3 && x64_main_argv_global_name(sym.name) {
+			return sym.value
+		}
+	}
+	return none
+}
+
+fn (l PeLinker) patch_entry_argv_bootstrap_data_refs(mut text []u8, text_rva u32, data_rva u32, text_build PeTextBuild) ! {
+	if text_build.argc_global_disp_off < 0 && text_build.argv_global_disp_off < 0 {
+		return
+	}
+	if data_rva == 0 {
+		return error('PE linker Windows argv bootstrap requires a .data section for g_main_argc/g_main_argv')
+	}
+	if text_build.argc_global_disp_off >= 0 {
+		argc_off := l.main_argc_data_offset() or {
+			return error('PE linker Windows argv bootstrap requires g_main_argc data symbol')
+		}
+		pe_patch_rel32(mut text, text_build.argc_global_disp_off, data_rva + argc_off, text_rva)
+	}
+	if text_build.argv_global_disp_off >= 0 {
+		argv_off := l.main_argv_data_offset() or {
+			return error('PE linker Windows argv bootstrap requires g_main_argv data symbol')
+		}
+		pe_patch_rel32(mut text, text_build.argv_global_disp_off, data_rva + argv_off, text_rva)
+	}
 }
 
 fn (mut l PeLinker) write_optional_header(mut buf []u8, size_of_code u32, size_of_initialized_data u32, size_of_image u32, size_of_headers int, idata PeIdata, entry_rva u32) {
@@ -748,15 +1021,26 @@ fn pe_check_written_image(path string, expected_size int) ! {
 	}
 }
 
-fn pe_emit_call_placeholder(mut text []u8) {
-	text << [u8(0xe8), 0, 0, 0, 0]
+fn pe_emit_call_placeholder(mut text []u8) int {
+	text << u8(0xe8)
+	field_off := text.len
+	text << [u8(0), 0, 0, 0]
+	return field_off
+}
+
+fn pe_emit_lea_r10_rip_placeholder(mut text []u8) int {
+	text << [u8(0x4c), 0x8d, 0x15] // lea r10, [rip + disp32]
+	field_off := text.len
+	text << [u8(0), 0, 0, 0]
+	return field_off
 }
 
 fn pe_emit_runtime_call_import(mut rt PeRuntimeText, import_name string) {
 	rt.bytes << u8(0xe8)
 	rt.import_patches << PeRuntimeCallPatch{
-		field_off:   rt.bytes.len
-		import_name: import_name
+		field_off: rt.bytes.len
+		dll:       pe_kernel32_dll
+		name:      import_name
 	}
 	rt.bytes << [u8(0), 0, 0, 0]
 }
@@ -1177,6 +1461,149 @@ fn pe_emit_runtime_exit(mut rt PeRuntimeText) {
 	rt.bytes << u8(0xcc) // int3
 }
 
+fn pe_emit_runtime_exit_process_1(mut rt PeRuntimeText) {
+	rt.bytes << [u8(0xb9), 0x01, 0, 0, 0] // mov ecx, 1
+	pe_emit_runtime_call_import(mut rt, 'ExitProcess')
+	rt.bytes << u8(0xcc) // int3
+}
+
+fn pe_emit_runtime_i64_str(mut rt PeRuntimeText) {
+	rt.bytes << [u8(0x48), 0x83, 0xec, 0x58] // sub rsp, 88
+	rt.bytes << [u8(0x48), 0x89, 0x4c, 0x24, 0x20] // mov [rsp+32], rcx
+	rt.bytes << [u8(0x48), 0x89, 0x54, 0x24, 0x28] // mov [rsp+40], rdx
+	pe_emit_runtime_call_import(mut rt, 'GetProcessHeap')
+	rt.bytes << [u8(0x48), 0x85, 0xc0] // test rax, rax
+	no_heap := pe_emit_jcc32(mut rt.bytes, 0x84) // je
+	rt.bytes << [u8(0x48), 0x89, 0xc1] // mov rcx, rax
+	rt.bytes << [u8(0xba), 0x08, 0, 0, 0] // mov edx, HEAP_ZERO_MEMORY
+	rt.bytes << [u8(0x41), 0xb8, 0x20, 0, 0, 0] // mov r8d, 32
+	pe_emit_runtime_call_import(mut rt, 'HeapAlloc')
+	rt.bytes << [u8(0x48), 0x85, 0xc0] // test rax, rax
+	alloc_failed := pe_emit_jcc32(mut rt.bytes, 0x84) // je
+	rt.bytes << [u8(0x48), 0x89, 0x44, 0x24, 0x30] // mov [rsp+48], rax
+	rt.bytes << [u8(0x4c), 0x8d, 0x40, 0x1f] // lea r8, [rax+31]
+	rt.bytes << [u8(0x41), 0xc6, 0x00, 0x00] // mov byte ptr [r8], 0
+	rt.bytes << [u8(0x48), 0x8b, 0x44, 0x24, 0x28] // mov rax, [rsp+40]
+	rt.bytes << [u8(0x45), 0x31, 0xc9] // xor r9d, r9d
+	rt.bytes << [u8(0x45), 0x31, 0xd2] // xor r10d, r10d
+	rt.bytes << [u8(0x48), 0x85, 0xc0] // test rax, rax
+	non_negative := pe_emit_jcc32(mut rt.bytes, 0x89) // jns
+	rt.bytes << [u8(0x41), 0xb2, 0x01] // mov r10b, 1
+	rt.bytes << [u8(0x48), 0xf7, 0xd8] // neg rax
+	non_negative_target := rt.bytes.len
+	rt.bytes << [u8(0x48), 0x85, 0xc0] // test rax, rax
+	non_zero := pe_emit_jcc32(mut rt.bytes, 0x85) // jne
+	rt.bytes << [u8(0x49), 0xff, 0xc8] // dec r8
+	rt.bytes << [u8(0x41), 0xc6, 0x00, 0x30] // mov byte ptr [r8], '0'
+	rt.bytes << [u8(0x41), 0xb9, 0x01, 0, 0, 0] // mov r9d, 1
+	maybe_sign_jump := pe_emit_jmp32(mut rt.bytes)
+	loop_start := rt.bytes.len
+	rt.bytes << [u8(0x31), 0xd2] // xor edx, edx
+	rt.bytes << [u8(0xb9), 0x0a, 0, 0, 0] // mov ecx, 10
+	rt.bytes << [u8(0x48), 0xf7, 0xf1] // div rcx
+	rt.bytes << [u8(0x80), 0xc2, 0x30] // add dl, '0'
+	rt.bytes << [u8(0x49), 0xff, 0xc8] // dec r8
+	rt.bytes << [u8(0x41), 0x88, 0x10] // mov [r8], dl
+	rt.bytes << [u8(0x49), 0xff, 0xc1] // inc r9
+	rt.bytes << [u8(0x48), 0x85, 0xc0] // test rax, rax
+	loop_more := pe_emit_jcc32(mut rt.bytes, 0x85) // jne
+	maybe_sign := rt.bytes.len
+	rt.bytes << [u8(0x45), 0x84, 0xd2] // test r10b, r10b
+	done_digits := pe_emit_jcc32(mut rt.bytes, 0x84) // je
+	rt.bytes << [u8(0x49), 0xff, 0xc8] // dec r8
+	rt.bytes << [u8(0x41), 0xc6, 0x00, 0x2d] // mov byte ptr [r8], '-'
+	rt.bytes << [u8(0x49), 0xff, 0xc1] // inc r9
+	done_digits_target := rt.bytes.len
+	rt.bytes << [u8(0x48), 0x8b, 0x54, 0x24, 0x20] // mov rdx, [rsp+32]
+	rt.bytes << [u8(0x4c), 0x89, 0x02] // mov [rdx], r8
+	rt.bytes << [u8(0x44), 0x89, 0x4a, 0x08] // mov [rdx+8], r9d
+	rt.bytes << [u8(0xc7), 0x42, 0x0c, 0, 0, 0, 0] // mov dword ptr [rdx+12], 0
+	rt.bytes << [u8(0x48), 0x89, 0xd0] // mov rax, rdx
+	rt.bytes << [u8(0x48), 0x83, 0xc4, 0x58] // add rsp, 88
+	rt.bytes << u8(0xc3) // ret
+	fail := rt.bytes.len
+	pe_emit_runtime_exit_process_1(mut rt)
+	pe_patch_rel32_local(mut rt.bytes, no_heap, fail)
+	pe_patch_rel32_local(mut rt.bytes, alloc_failed, fail)
+	pe_patch_rel32_local(mut rt.bytes, non_negative, non_negative_target)
+	pe_patch_rel32_local(mut rt.bytes, non_zero, loop_start)
+	pe_patch_rel32_local(mut rt.bytes, maybe_sign_jump, maybe_sign)
+	pe_patch_rel32_local(mut rt.bytes, loop_more, loop_start)
+	pe_patch_rel32_local(mut rt.bytes, done_digits, done_digits_target)
+}
+
+fn pe_emit_runtime_string_plus(mut rt PeRuntimeText) {
+	rt.bytes << [u8(0x48), 0x83, 0xec, 0x68] // sub rsp, 104
+	rt.bytes << [u8(0x48), 0x89, 0x4c, 0x24, 0x20] // mov [rsp+32], rcx
+	rt.bytes << [u8(0x48), 0x89, 0x54, 0x24, 0x28] // mov [rsp+40], rdx
+	rt.bytes << [u8(0x4c), 0x89, 0x44, 0x24, 0x30] // mov [rsp+48], r8
+	rt.bytes << [u8(0x44), 0x8b, 0x4a, 0x08] // mov r9d, [rdx+8]
+	rt.bytes << [u8(0x45), 0x03, 0x48, 0x08] // add r9d, [r8+8]
+	len_overflow := pe_emit_jcc32(mut rt.bytes, 0x82) // jc
+	rt.bytes << [u8(0x4c), 0x89, 0x4c, 0x24, 0x38] // mov [rsp+56], r9
+	rt.bytes << [u8(0x45), 0x89, 0xc8] // mov r8d, r9d
+	rt.bytes << [u8(0x49), 0x83, 0xc0, 0x01] // add r8, 1
+	alloc_overflow := pe_emit_jcc32(mut rt.bytes, 0x82) // jc
+	rt.bytes << [u8(0x4c), 0x89, 0x44, 0x24, 0x40] // mov [rsp+64], r8
+	pe_emit_runtime_call_import(mut rt, 'GetProcessHeap')
+	rt.bytes << [u8(0x48), 0x85, 0xc0] // test rax, rax
+	no_heap := pe_emit_jcc32(mut rt.bytes, 0x84) // je
+	rt.bytes << [u8(0x48), 0x89, 0xc1] // mov rcx, rax
+	rt.bytes << [u8(0xba), 0x08, 0, 0, 0] // mov edx, HEAP_ZERO_MEMORY
+	rt.bytes << [u8(0x4c), 0x8b, 0x44, 0x24, 0x40] // mov r8, [rsp+64]
+	pe_emit_runtime_call_import(mut rt, 'HeapAlloc')
+	rt.bytes << [u8(0x48), 0x85, 0xc0] // test rax, rax
+	alloc_failed := pe_emit_jcc32(mut rt.bytes, 0x84) // je
+	rt.bytes << [u8(0x48), 0x89, 0x44, 0x24, 0x48] // mov [rsp+72], rax
+	rt.bytes << [u8(0x48), 0x8b, 0x54, 0x24, 0x28] // mov rdx, [rsp+40]
+	rt.bytes << [u8(0x4c), 0x8b, 0x12] // mov r10, [rdx]
+	rt.bytes << [u8(0x44), 0x8b, 0x5a, 0x08] // mov r11d, [rdx+8]
+	rt.bytes << [u8(0x48), 0x89, 0xc1] // mov rcx, rax
+	rt.bytes << [u8(0x4d), 0x85, 0xdb] // test r11, r11
+	copy_a_done := pe_emit_jcc32(mut rt.bytes, 0x84) // je
+	copy_a_loop := rt.bytes.len
+	rt.bytes << [u8(0x45), 0x8a, 0x0a] // mov r9b, [r10]
+	rt.bytes << [u8(0x44), 0x88, 0x09] // mov [rcx], r9b
+	rt.bytes << [u8(0x49), 0xff, 0xc2] // inc r10
+	rt.bytes << [u8(0x48), 0xff, 0xc1] // inc rcx
+	rt.bytes << [u8(0x49), 0xff, 0xcb] // dec r11
+	copy_a_more := pe_emit_jcc32(mut rt.bytes, 0x85) // jne
+	copy_a_done_target := rt.bytes.len
+	rt.bytes << [u8(0x4c), 0x8b, 0x44, 0x24, 0x30] // mov r8, [rsp+48]
+	rt.bytes << [u8(0x4d), 0x8b, 0x10] // mov r10, [r8]
+	rt.bytes << [u8(0x45), 0x8b, 0x58, 0x08] // mov r11d, [r8+8]
+	rt.bytes << [u8(0x4d), 0x85, 0xdb] // test r11, r11
+	copy_b_done := pe_emit_jcc32(mut rt.bytes, 0x84) // je
+	copy_b_loop := rt.bytes.len
+	rt.bytes << [u8(0x45), 0x8a, 0x0a] // mov r9b, [r10]
+	rt.bytes << [u8(0x44), 0x88, 0x09] // mov [rcx], r9b
+	rt.bytes << [u8(0x49), 0xff, 0xc2] // inc r10
+	rt.bytes << [u8(0x48), 0xff, 0xc1] // inc rcx
+	rt.bytes << [u8(0x49), 0xff, 0xcb] // dec r11
+	copy_b_more := pe_emit_jcc32(mut rt.bytes, 0x85) // jne
+	copy_b_done_target := rt.bytes.len
+	rt.bytes << [u8(0xc6), 0x01, 0x00] // mov byte ptr [rcx], 0
+	rt.bytes << [u8(0x48), 0x8b, 0x54, 0x24, 0x20] // mov rdx, [rsp+32]
+	rt.bytes << [u8(0x48), 0x8b, 0x44, 0x24, 0x48] // mov rax, [rsp+72]
+	rt.bytes << [u8(0x48), 0x89, 0x02] // mov [rdx], rax
+	rt.bytes << [u8(0x8b), 0x44, 0x24, 0x38] // mov eax, [rsp+56]
+	rt.bytes << [u8(0x89), 0x42, 0x08] // mov [rdx+8], eax
+	rt.bytes << [u8(0xc7), 0x42, 0x0c, 0, 0, 0, 0] // mov dword ptr [rdx+12], 0
+	rt.bytes << [u8(0x48), 0x89, 0xd0] // mov rax, rdx
+	rt.bytes << [u8(0x48), 0x83, 0xc4, 0x68] // add rsp, 104
+	rt.bytes << u8(0xc3) // ret
+	fail := rt.bytes.len
+	pe_emit_runtime_exit_process_1(mut rt)
+	pe_patch_rel32_local(mut rt.bytes, len_overflow, fail)
+	pe_patch_rel32_local(mut rt.bytes, alloc_overflow, fail)
+	pe_patch_rel32_local(mut rt.bytes, no_heap, fail)
+	pe_patch_rel32_local(mut rt.bytes, alloc_failed, fail)
+	pe_patch_rel32_local(mut rt.bytes, copy_a_done, copy_a_done_target)
+	pe_patch_rel32_local(mut rt.bytes, copy_a_more, copy_a_loop)
+	pe_patch_rel32_local(mut rt.bytes, copy_b_done, copy_b_done_target)
+	pe_patch_rel32_local(mut rt.bytes, copy_b_more, copy_b_loop)
+}
+
 fn pe_emit_runtime_errno(mut rt PeRuntimeText) {
 	errno_off := pe_runtime_data_alloc(mut rt, 4, 4)
 	pe_emit_runtime_lea_rax_data(mut rt, errno_off)
@@ -1275,6 +1702,78 @@ fn pe_emit_runtime_new_array_from_c_array_noscan(mut rt PeRuntimeText) {
 	pe_patch_rel32_local(mut rt.bytes, no_copy, done)
 	pe_patch_rel32_local(mut rt.bytes, null_source, done)
 	pe_patch_rel8(mut rt.bytes, copy_more, copy_loop)
+}
+
+fn pe_emit_runtime_new_array_noscan(mut rt PeRuntimeText) {
+	rt.bytes << [u8(0x48), 0x83, 0xec, 0x58] // sub rsp, 88
+	rt.bytes << [u8(0x48), 0x89, 0x4c, 0x24, 0x20] // mov [rsp+32], rcx
+	rt.bytes << [u8(0x48), 0x89, 0x54, 0x24, 0x28] // mov [rsp+40], rdx
+	rt.bytes << [u8(0x4c), 0x89, 0x44, 0x24, 0x30] // mov [rsp+48], r8
+	rt.bytes << [u8(0x4c), 0x89, 0x4c, 0x24, 0x38] // mov [rsp+56], r9
+	rt.bytes << [u8(0x48), 0xc7, 0x01, 0, 0, 0, 0] // mov qword ptr [rcx], 0
+	rt.bytes << [u8(0x48), 0xc7, 0x41, 0x08, 0, 0, 0, 0] // mov qword ptr [rcx+8], 0
+	rt.bytes << [u8(0x48), 0xc7, 0x41, 0x10, 0, 0, 0, 0] // mov qword ptr [rcx+16], 0
+	rt.bytes << [u8(0x48), 0xc7, 0x41, 0x18, 0, 0, 0, 0] // mov qword ptr [rcx+24], 0
+	rt.bytes << [u8(0x83), 0xfa, 0x00] // cmp edx, 0
+	negative_len := pe_emit_jcc32(mut rt.bytes, 0x8c) // jl
+	rt.bytes << [u8(0x41), 0x83, 0xf8, 0x00] // cmp r8d, 0
+	negative_cap := pe_emit_jcc32(mut rt.bytes, 0x8c) // jl
+	rt.bytes << [u8(0x41), 0x83, 0xf9, 0x00] // cmp r9d, 0
+	negative_elem_size := pe_emit_jcc32(mut rt.bytes, 0x8c) // jl
+	rt.bytes << [u8(0x45), 0x89, 0xc2] // mov r10d, r8d
+	rt.bytes << [u8(0x41), 0x39, 0xd2] // cmp r10d, edx
+	cap_ready := pe_emit_jcc8(mut rt.bytes, 0x7d) // jge
+	rt.bytes << [u8(0x41), 0x89, 0xd2] // mov r10d, edx
+	cap_ready_target := rt.bytes.len
+	rt.bytes << [u8(0x4c), 0x89, 0x54, 0x24, 0x40] // mov [rsp+64], r10
+	rt.bytes << [u8(0x49), 0x63, 0xc2] // movsxd rax, r10d
+	rt.bytes << [u8(0x4d), 0x63, 0xd9] // movsxd r11, r9d
+	rt.bytes << [u8(0x49), 0x0f, 0xaf, 0xc3] // imul rax, r11
+	rt.bytes << [u8(0x49), 0x89, 0xc0] // mov r8, rax
+	rt.bytes << [u8(0x4d), 0x85, 0xc0] // test r8, r8
+	payload_nonzero := pe_emit_jcc8(mut rt.bytes, 0x75) // jne
+	rt.bytes << [u8(0x41), 0xb8, 0x01, 0, 0, 0] // mov r8d, 1
+	payload_nonzero_target := rt.bytes.len
+	rt.bytes << [u8(0x49), 0x83, 0xc0, 0x20] // add r8, 32
+	allocation_overflow := pe_emit_jcc32(mut rt.bytes, 0x82) // jc
+	rt.bytes << [u8(0x4c), 0x89, 0x44, 0x24, 0x48] // mov [rsp+72], r8
+	pe_emit_runtime_call_import(mut rt, 'GetProcessHeap')
+	rt.bytes << [u8(0x48), 0x85, 0xc0] // test rax, rax
+	no_heap := pe_emit_jcc32(mut rt.bytes, 0x84) // je
+	rt.bytes << [u8(0x48), 0x89, 0xc1] // mov rcx, rax
+	rt.bytes << [u8(0xba), 0x08, 0, 0, 0] // mov edx, HEAP_ZERO_MEMORY
+	rt.bytes << [u8(0x4c), 0x8b, 0x44, 0x24, 0x48] // mov r8, [rsp+72]
+	pe_emit_runtime_call_import(mut rt, 'HeapAlloc')
+	rt.bytes << [u8(0x48), 0x85, 0xc0] // test rax, rax
+	alloc_failed := pe_emit_jcc32(mut rt.bytes, 0x84) // je
+	pe_emit_runtime_align_heap_allocated_data(mut rt)
+	rt.bytes << [u8(0x41), 0xc6, 0x03, 0] // mov byte ptr [r11], 0 ; ArrayDataHeader.has_slices = false
+	rt.bytes << [u8(0x48), 0x8b, 0x4c, 0x24, 0x20] // mov rcx, [rsp+32]
+	rt.bytes << [u8(0x49), 0x8d, 0x43, 0x08] // lea rax, [r11+8]
+	rt.bytes << [u8(0x48), 0x89, 0x01] // mov [rcx], rax
+	rt.bytes << [u8(0xc7), 0x41, 0x08, 0, 0, 0, 0] // mov dword ptr [rcx+8], 0
+	rt.bytes << [u8(0x8b), 0x44, 0x24, 0x28] // mov eax, [rsp+40]
+	rt.bytes << [u8(0x89), 0x41, 0x0c] // mov [rcx+12], eax
+	rt.bytes << [u8(0x8b), 0x44, 0x24, 0x40] // mov eax, [rsp+64]
+	rt.bytes << [u8(0x89), 0x41, 0x10] // mov [rcx+16], eax
+	rt.bytes << [u8(0xc7), 0x41, 0x14, 0x30, 0, 0, 0] // mov dword ptr [rcx+20], 48
+	rt.bytes << [u8(0x8b), 0x44, 0x24, 0x38] // mov eax, [rsp+56]
+	rt.bytes << [u8(0x89), 0x41, 0x18] // mov [rcx+24], eax
+	rt.bytes << [u8(0x48), 0x8b, 0x44, 0x24, 0x20] // mov rax, [rsp+32]
+	rt.bytes << [u8(0x48), 0x83, 0xc4, 0x58] // add rsp, 88
+	rt.bytes << u8(0xc3) // ret
+	fail := rt.bytes.len
+	rt.bytes << [u8(0x48), 0x8b, 0x44, 0x24, 0x20] // mov rax, [rsp+32]
+	rt.bytes << [u8(0x48), 0x83, 0xc4, 0x58] // add rsp, 88
+	rt.bytes << u8(0xc3) // ret
+	pe_patch_rel32_local(mut rt.bytes, negative_len, fail)
+	pe_patch_rel32_local(mut rt.bytes, negative_cap, fail)
+	pe_patch_rel32_local(mut rt.bytes, negative_elem_size, fail)
+	pe_patch_rel8(mut rt.bytes, cap_ready, cap_ready_target)
+	pe_patch_rel8(mut rt.bytes, payload_nonzero, payload_nonzero_target)
+	pe_patch_rel32_local(mut rt.bytes, allocation_overflow, fail)
+	pe_patch_rel32_local(mut rt.bytes, no_heap, fail)
+	pe_patch_rel32_local(mut rt.bytes, alloc_failed, fail)
 }
 
 fn pe_emit_runtime_array_rune_string(mut rt PeRuntimeText) {

@@ -5113,6 +5113,13 @@ fn (mut t Transformer) transform_assign_stmt_parts(stmt ast.AssignStmt) (token.T
 				}
 			}
 		}
+		if t.is_native_be && rhs_expr is ast.ArrayInitExpr {
+			arr := rhs_expr as ast.ArrayInitExpr
+			if arr.len is ast.EmptyExpr && arr.cap is ast.EmptyExpr && arr.init is ast.EmptyExpr {
+				rhs << rhs_expr
+				continue
+			}
+		}
 		rhs << t.transform_expr(rhs_expr)
 	}
 	t.skip_if_value_lowering = saved_skip
@@ -11953,17 +11960,11 @@ fn (mut t Transformer) transform_sprintf_arg(inter ast.StringInter) ast.Expr {
 		}
 		else {
 			// For custom types with str() method: Type__str(expr).str
-			str_fn_info := t.get_str_fn_info_for_expr(inter.expr)
-			if str_fn_info.str_fn_name != '' {
-				t.needed_str_fns[str_fn_info.str_fn_name] = str_fn_info.elem_type
-				if etyp := t.string_inter_arg_type(inter.expr) {
-					if etyp is types.Enum {
-						t.needed_enum_str_fns[str_fn_info.str_fn_name] = etyp
-					}
-				}
+			str_fn_name := t.register_auto_str_dependency(typ)
+			if str_fn_name != '' {
 				str_call := ast.Expr(ast.CallExpr{
 					lhs:  ast.Ident{
-						name: str_fn_info.str_fn_name
+						name: str_fn_name
 					}
 					args: [transformed]
 					pos:  inter.expr.pos()
@@ -14579,34 +14580,12 @@ fn (mut t Transformer) generate_str_functions_with_explicit(explicit_str_fns map
 				if enum_type := t.needed_enum_str_fns[fn_name] {
 					// Generate enum str function with if-else chain for each variant
 					result << t.generate_enum_str_fn(fn_name, struct_name, enum_type)
+				} else if sumtype_type := t.lookup_sumtype_type_any_module(struct_name) {
+					result << t.generate_sumtype_str_fn(fn_name, struct_name, sumtype_type)
+				} else if struct_type := t.lookup_struct_type_any_module(struct_name) {
+					result << t.generate_struct_str_fn(fn_name, struct_name, struct_type)
 				} else {
-					// Generate struct str function: fn StructName__str(s StructName) string { return "StructName{}" }
-					result << ast.Stmt(ast.FnDecl{
-						name:  fn_name
-						typ:   ast.FnType{
-							params:      [
-								ast.Parameter{
-									name: 's'
-									typ:  ast.Ident{
-										name: struct_name
-									}
-								},
-							]
-							return_type: ast.Ident{
-								name: 'string'
-							}
-						}
-						stmts: [
-							ast.Stmt(ast.ReturnStmt{
-								exprs: [
-									ast.Expr(ast.StringLiteral{
-										value: "'${struct_name}{}'"
-										kind:  .v
-									}),
-								]
-							}),
-						]
-					})
+					result << t.generate_empty_struct_str_fn(fn_name, struct_name)
 				}
 			}
 		}
@@ -14615,6 +14594,362 @@ fn (mut t Transformer) generate_str_functions_with_explicit(explicit_str_fns map
 		}
 	}
 	return result
+}
+
+fn auto_str_display_type_name(type_name string) string {
+	if type_name.contains('__') {
+		return type_name.all_after_last('__')
+	}
+	return type_name
+}
+
+fn (t &Transformer) lookup_sumtype_type_any_module(name string) ?types.SumType {
+	if typ := t.lookup_type(name) {
+		if typ is types.SumType {
+			return typ
+		}
+	}
+	for _, scope in t.cached_scopes {
+		if typ := scope.lookup_type(name) {
+			if typ is types.SumType {
+				return typ
+			}
+		}
+	}
+	return none
+}
+
+fn (mut t Transformer) auto_str_literal(value string) ast.Expr {
+	return ast.Expr(ast.StringLiteral{
+		kind:  .v
+		value: value
+	})
+}
+
+fn (mut t Transformer) auto_str_call_expr(fn_name string, args []ast.Expr) ast.Expr {
+	return ast.Expr(ast.CallExpr{
+		lhs:  ast.Ident{
+			name: fn_name
+		}
+		args: args
+	})
+}
+
+fn (mut t Transformer) auto_str_builder_decl(cap_hint int) ast.Stmt {
+	return ast.Stmt(ast.AssignStmt{
+		op:  .decl_assign
+		lhs: [
+			ast.Expr(ast.ModifierExpr{
+				kind: .key_mut
+				expr: ast.Ident{
+					name: 'sb'
+				}
+			}),
+		]
+		rhs: [
+			t.auto_str_call_expr('strings__new_builder', [
+				t.make_number_expr(cap_hint.str()),
+			]),
+		]
+	})
+}
+
+fn (mut t Transformer) auto_str_write_stmt(value ast.Expr) ast.Stmt {
+	return ast.Stmt(ast.ExprStmt{
+		expr: ast.CallExpr{
+			lhs:  ast.Ident{
+				name: 'strings__Builder__write_string'
+			}
+			args: [
+				ast.Expr(ast.PrefixExpr{
+					op:   .amp
+					expr: ast.Ident{
+						name: 'sb'
+					}
+				}),
+				value,
+			]
+		}
+	})
+}
+
+fn (mut t Transformer) auto_str_return_builder_stmt() ast.Stmt {
+	return ast.Stmt(ast.ReturnStmt{
+		exprs: [
+			t.auto_str_call_expr('strings__Builder__str', [
+				ast.Expr(ast.PrefixExpr{
+					op:   .amp
+					expr: ast.Ident{
+						name: 'sb'
+					}
+				}),
+			]),
+		]
+	})
+}
+
+fn (t &Transformer) auto_str_needed_elem_info(typ types.Type) string {
+	match typ {
+		types.Array {
+			return t.type_to_c_name(typ.elem_type)
+		}
+		types.ArrayFixed {
+			return t.type_to_c_name(typ.elem_type)
+		}
+		types.Map {
+			key_name := t.type_to_c_name(typ.key_type)
+			val_name := t.type_to_c_name(typ.value_type)
+			return '${key_name}|${val_name}'
+		}
+		types.Alias {
+			if base := t.live_alias_base_type(typ) {
+				return t.auto_str_needed_elem_info(base)
+			}
+			return t.type_to_c_name(typ)
+		}
+		else {
+			return t.type_to_c_name(typ)
+		}
+	}
+}
+
+fn (mut t Transformer) register_auto_str_dependency(typ types.Type) string {
+	str_fn_name := t.get_str_fn_name_for_type(typ) or { return '' }
+	if str_fn_name !in t.needed_str_fns {
+		t.needed_str_fns[str_fn_name] = t.auto_str_needed_elem_info(typ)
+	}
+	if typ is types.Enum {
+		t.needed_enum_str_fns[str_fn_name] = typ
+	}
+	return str_fn_name
+}
+
+fn (mut t Transformer) auto_str_value_expr(value ast.Expr, typ types.Type) ast.Expr {
+	match typ {
+		types.String {
+			return value
+		}
+		types.Alias {
+			if base := t.live_alias_base_type(typ) {
+				if base is types.String {
+					return value
+				}
+			}
+		}
+		else {}
+	}
+
+	str_fn_name := t.register_auto_str_dependency(typ)
+	if str_fn_name == '' {
+		return t.auto_str_literal('')
+	}
+	mut arg := value
+	if typ is types.Pointer && typ.base_type !is types.Void {
+		arg = ast.Expr(ast.PrefixExpr{
+			op:   .mul
+			expr: value
+		})
+	}
+	return t.auto_str_call_expr(str_fn_name, [arg])
+}
+
+fn (mut t Transformer) auto_str_indented_value_expr(value ast.Expr) ast.Expr {
+	return t.auto_str_call_expr('string__replace', [
+		value,
+		t.auto_str_literal('\\n'),
+		t.auto_str_literal('\\n    '),
+	])
+}
+
+fn (t &Transformer) auto_str_type_can_multiline(typ types.Type) bool {
+	match typ {
+		types.Struct, types.SumType, types.Array, types.ArrayFixed, types.Map {
+			return true
+		}
+		types.Alias {
+			if base := t.live_alias_base_type(typ) {
+				return t.auto_str_type_can_multiline(base)
+			}
+			return false
+		}
+		types.Pointer {
+			return t.auto_str_type_can_multiline(typ.base_type)
+		}
+		else {
+			return false
+		}
+	}
+}
+
+fn (mut t Transformer) generate_empty_struct_str_fn(fn_name string, struct_name string) ast.Stmt {
+	param_s := ast.Parameter{
+		name: 's'
+		typ:  ast.Ident{
+			name: struct_name
+		}
+	}
+	t.register_generated_fn_scope(fn_name, clone_generated_fn_scope_module(struct_name), [
+		param_s,
+	])
+	display_name := auto_str_display_type_name(struct_name)
+	return ast.Stmt(ast.FnDecl{
+		name:  fn_name
+		typ:   ast.FnType{
+			params:      [param_s]
+			return_type: ast.Ident{
+				name: 'string'
+			}
+		}
+		stmts: [
+			ast.Stmt(ast.ReturnStmt{
+				exprs: [
+					t.auto_str_literal('${display_name}{}'),
+				]
+			}),
+		]
+	})
+}
+
+fn (mut t Transformer) append_auto_str_struct_field(mut body_stmts []ast.Stmt, field_name string, field_value ast.Expr, field_type types.Type) {
+	if field_name == '' {
+		return
+	}
+	body_stmts << t.auto_str_write_stmt(t.auto_str_literal('    ${field_name}: '))
+	field_str := t.auto_str_value_expr(field_value, field_type)
+	field_out := if t.auto_str_type_can_multiline(field_type) {
+		t.auto_str_indented_value_expr(field_str)
+	} else {
+		field_str
+	}
+	body_stmts << t.auto_str_write_stmt(field_out)
+	body_stmts << t.auto_str_write_stmt(t.auto_str_literal('\\n'))
+}
+
+fn (mut t Transformer) generate_struct_str_fn(fn_name string, struct_name string, struct_type types.Struct) ast.Stmt {
+	param_s := ast.Parameter{
+		name: 's'
+		typ:  ast.Ident{
+			name: struct_name
+		}
+	}
+	t.register_generated_fn_scope(fn_name, clone_generated_fn_scope_module(struct_name), [
+		param_s,
+	])
+	display_name := auto_str_display_type_name(struct_name)
+	field_count := struct_type.embedded.len + struct_type.fields.len
+	if field_count == 0 {
+		return t.generate_empty_struct_str_fn(fn_name, struct_name)
+	}
+	mut body_stmts := []ast.Stmt{cap: 4 + field_count * 4}
+	body_stmts << t.auto_str_builder_decl(display_name.len + 8 + field_count * 32)
+	body_stmts << t.auto_str_write_stmt(t.auto_str_literal('${display_name}{\\n'))
+	for embedded in struct_type.embedded {
+		field_name := auto_str_display_type_name(embedded.name)
+		field_value := t.synth_selector(ast.Expr(ast.Ident{
+			name: 's'
+		}), field_name, types.Type(embedded))
+		t.append_auto_str_struct_field(mut body_stmts, field_name, field_value,
+			types.Type(embedded))
+	}
+	for field in struct_type.fields {
+		field_value := t.synth_selector_from_struct(ast.Expr(ast.Ident{
+			name: 's'
+		}), field.name, struct_name)
+		t.append_auto_str_struct_field(mut body_stmts, field.name, field_value, field.typ)
+	}
+	body_stmts << t.auto_str_write_stmt(t.auto_str_literal('}'))
+	body_stmts << t.auto_str_return_builder_stmt()
+	return ast.Stmt(ast.FnDecl{
+		name:       fn_name
+		is_public:  false
+		is_method:  false
+		is_static:  false
+		attributes: []ast.Attribute{}
+		typ:        ast.FnType{
+			params:      [param_s]
+			return_type: ast.Ident{
+				name: 'string'
+			}
+		}
+		stmts:      body_stmts
+	})
+}
+
+fn (mut t Transformer) sumtype_variant_as_expr(sumtype_value_name string, variant_type types.Type) ast.Expr {
+	pos := t.next_synth_pos()
+	t.register_synth_type(pos, variant_type)
+	return ast.Expr(ast.AsCastExpr{
+		expr: ast.Ident{
+			name: sumtype_value_name
+		}
+		typ:  ast.Ident{
+			name: t.type_to_c_name(variant_type)
+		}
+		pos:  pos
+	})
+}
+
+fn (mut t Transformer) generate_sumtype_str_branch_stmts(sumtype_name string, variant_type types.Type) []ast.Stmt {
+	display_name := auto_str_display_type_name(sumtype_name)
+	variant_value := t.sumtype_variant_as_expr('s', variant_type)
+	variant_str := t.auto_str_value_expr(variant_value, variant_type)
+	mut stmts := []ast.Stmt{cap: 5}
+	stmts << t.auto_str_builder_decl(display_name.len + 32)
+	stmts << t.auto_str_write_stmt(t.auto_str_literal('${display_name}('))
+	stmts << t.auto_str_write_stmt(variant_str)
+	stmts << t.auto_str_write_stmt(t.auto_str_literal(')'))
+	stmts << t.auto_str_return_builder_stmt()
+	return stmts
+}
+
+fn (mut t Transformer) generate_sumtype_str_fn(fn_name string, sumtype_name string, sumtype_type types.SumType) ast.Stmt {
+	param_s := ast.Parameter{
+		name: 's'
+		typ:  ast.Ident{
+			name: sumtype_name
+		}
+	}
+	t.register_generated_fn_scope(fn_name, clone_generated_fn_scope_module(sumtype_name), [
+		param_s,
+	])
+	mut else_body := ast.Expr(ast.empty_expr)
+	variants := sumtype_type.get_variants()
+	for i := variants.len - 1; i >= 0; i-- {
+		cond := t.make_infix_expr(.eq, t.synth_selector(ast.Expr(ast.Ident{
+			name: 's'
+		}), '_tag', types.Type(types.int_)), t.make_number_expr(i.str()))
+		else_body = ast.Expr(ast.IfExpr{
+			cond:      cond
+			stmts:     t.generate_sumtype_str_branch_stmts(sumtype_name, variants[i])
+			else_expr: else_body
+		})
+	}
+	mut stmts := []ast.Stmt{}
+	if else_body !is ast.EmptyExpr {
+		stmts << ast.Stmt(ast.ExprStmt{
+			expr: else_body
+		})
+	}
+	display_name := auto_str_display_type_name(sumtype_name)
+	stmts << ast.Stmt(ast.ReturnStmt{
+		exprs: [
+			t.auto_str_literal('${display_name}{}'),
+		]
+	})
+	return ast.Stmt(ast.FnDecl{
+		name:       fn_name
+		is_public:  false
+		is_method:  false
+		is_static:  false
+		attributes: []ast.Attribute{}
+		typ:        ast.FnType{
+			params:      [param_s]
+			return_type: ast.Ident{
+				name: 'string'
+			}
+		}
+		stmts:      stmts
+	})
 }
 
 fn (mut t Transformer) generate_enum_str_fn(fn_name string, enum_name string, enum_type types.Enum) ast.Stmt {
@@ -15050,31 +15385,30 @@ fn (mut t Transformer) generate_array_str_fn(fn_name string, elem_type string) a
 		elem_expr
 	}
 
-	// strings__Builder__write_string(&sb, a[i]) for strings, else use the element str helper
-	for_body << ast.ExprStmt{
-		expr: ast.CallExpr{
-			lhs:  ast.Ident{
-				name: 'strings__Builder__write_string'
-			}
-			args: [
-				ast.Expr(ast.PrefixExpr{
-					op:   .amp
-					expr: ast.Ident{
-						name: 'sb'
-					}
-				}),
-				if elem_type == 'string' {
-					elem_expr
-				} else {
-					ast.Expr(ast.CallExpr{
-						lhs:  ast.Ident{
-							name: elem_str_fn
-						}
-						args: [str_arg]
-					})
-				},
-			]
+	sb_ref := ast.Expr(ast.PrefixExpr{
+		op:   .amp
+		expr: ast.Ident{
+			name: 'sb'
 		}
+	})
+	if elem_type == 'string' {
+		for_body << builder_write_string_stmt(sb_ref, ast.Expr(ast.StringLiteral{
+			kind:  .v
+			value: "'"
+		}))
+		for_body << builder_write_string_stmt(sb_ref, elem_expr)
+		for_body << builder_write_string_stmt(sb_ref, ast.Expr(ast.StringLiteral{
+			kind:  .v
+			value: "'"
+		}))
+	} else {
+		// strings__Builder__write_string(&sb, elem_str_fn(a[i]))
+		for_body << builder_write_string_stmt(sb_ref, ast.Expr(ast.CallExpr{
+			lhs:  ast.Ident{
+				name: elem_str_fn
+			}
+			args: [str_arg]
+		}))
 	}
 
 	// for loop: for i := 0; i < a.len; i++ { ... }
@@ -15330,36 +15664,38 @@ fn (mut t Transformer) generate_fixed_array_str_fn(fn_name string) ast.Stmt {
 		}
 	}
 
-	// strings__Builder__write_string(&sb, elem_str_fn(a[i]))
-	for_body << ast.ExprStmt{
-		expr: ast.CallExpr{
-			lhs:  ast.Ident{
-				name: 'strings__Builder__write_string'
-			}
-			args: [
-				ast.Expr(ast.PrefixExpr{
-					op:   .amp
-					expr: ast.Ident{
-						name: 'sb'
-					}
-				}),
-				ast.Expr(ast.CallExpr{
-					lhs:  ast.Ident{
-						name: elem_str_fn
-					}
-					args: [
-						ast.Expr(ast.IndexExpr{
-							lhs:  ast.Ident{
-								name: 'a'
-							}
-							expr: ast.Ident{
-								name: 'i'
-							}
-						}),
-					]
-				}),
-			]
+	sb_ref := ast.Expr(ast.PrefixExpr{
+		op:   .amp
+		expr: ast.Ident{
+			name: 'sb'
 		}
+	})
+	elem_expr := ast.Expr(ast.IndexExpr{
+		lhs:  ast.Ident{
+			name: 'a'
+		}
+		expr: ast.Ident{
+			name: 'i'
+		}
+	})
+	if elem_type == 'string' {
+		for_body << builder_write_string_stmt(sb_ref, ast.Expr(ast.StringLiteral{
+			kind:  .v
+			value: "'"
+		}))
+		for_body << builder_write_string_stmt(sb_ref, elem_expr)
+		for_body << builder_write_string_stmt(sb_ref, ast.Expr(ast.StringLiteral{
+			kind:  .v
+			value: "'"
+		}))
+	} else {
+		// strings__Builder__write_string(&sb, elem_str_fn(a[i]))
+		for_body << builder_write_string_stmt(sb_ref, ast.Expr(ast.CallExpr{
+			lhs:  ast.Ident{
+				name: elem_str_fn
+			}
+			args: [elem_expr]
+		}))
 	}
 
 	// for i := 0; i < arr_size; i++ { ... }

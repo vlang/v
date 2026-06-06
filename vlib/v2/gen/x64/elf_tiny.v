@@ -17,6 +17,11 @@ const linux_mmap_private_anonymous = u32(0x22)
 const linux_tiny_int_str_arena_bytes = u32(4096)
 const linux_tiny_int_str_slot_bytes = 32
 const linux_tiny_int_str_arena_metadata_bytes = 16
+const linux_tiny_rune_str_arena_bytes = u32(4096)
+const linux_tiny_rune_str_slot_bytes = 8
+const linux_tiny_rune_str_arena_metadata_bytes = 16
+const linux_tiny_string_plus_arena_bytes = u32(4096)
+const linux_tiny_string_plus_arena_metadata_bytes = 16
 
 pub const linux_tiny_not_eligible_prefix = 'Linux tiny executable is not eligible: '
 
@@ -34,9 +39,11 @@ struct ElfDataRange {
 
 struct ElfTinyRuntime {
 mut:
-	text                  []u8
-	symbols               map[string]u64
-	int_str_arena_patches []int
+	text                      []u8
+	symbols                   map[string]u64
+	int_str_arena_patches     []int
+	rune_str_arena_patches    []int
+	string_plus_arena_patches []int
 }
 
 struct ElfTinyReachable {
@@ -87,10 +94,17 @@ fn (mut l ElfTinyLinker) write(path string) ! {
 	mut data_offsets := map[string]u64{}
 	l.copy_data_ranges(selected_data, .rodata, mut rodata, mut data_offsets)!
 	l.copy_data_ranges(selected_data, .data, mut data, mut data_offsets)!
-	bss_bytes := if 'builtin__int__str' in reachable.runtime_symbols {
-		linux_tiny_int_str_arena_metadata_bytes
-	} else {
-		0
+	int_str_runtime_needed := 'builtin__int__str' in reachable.runtime_symbols
+		|| 'builtin__i64__str' in reachable.runtime_symbols
+	mut bss_bytes := 0
+	if int_str_runtime_needed {
+		bss_bytes += linux_tiny_int_str_arena_metadata_bytes
+	}
+	if 'builtin__rune__str' in reachable.runtime_symbols {
+		bss_bytes += linux_tiny_rune_str_arena_metadata_bytes
+	}
+	if 'builtin__string__+' in reachable.runtime_symbols {
+		bss_bytes += linux_tiny_string_plus_arena_metadata_bytes
 	}
 	if rodata.len > 0 {
 		for text.len % int(l.data_section_alignment(.rodata)) != 0 {
@@ -106,8 +120,29 @@ fn (mut l ElfTinyLinker) write(path string) ! {
 	data_vaddr := linux_tiny_base_vaddr + u64(data_off)
 	bss_vaddr := if data.len > 0 { data_vaddr + u64(data.len) } else { data_vaddr }
 	if bss_bytes > 0 {
-		for field_off in runtime.int_str_arena_patches {
-			elf_tiny_patch_rel32(mut text, int(runtime_base) + field_off, text_vaddr, 0, bss_vaddr)
+		mut bss_offset := u64(0)
+		if int_str_runtime_needed {
+			int_str_arena_vaddr := bss_vaddr + bss_offset
+			for field_off in runtime.int_str_arena_patches {
+				elf_tiny_patch_rel32(mut text, int(runtime_base) + field_off, text_vaddr, 0,
+					int_str_arena_vaddr)
+			}
+			bss_offset += u64(linux_tiny_int_str_arena_metadata_bytes)
+		}
+		if 'builtin__rune__str' in reachable.runtime_symbols {
+			rune_str_arena_vaddr := bss_vaddr + bss_offset
+			for field_off in runtime.rune_str_arena_patches {
+				elf_tiny_patch_rel32(mut text, int(runtime_base) + field_off, text_vaddr, 0,
+					rune_str_arena_vaddr)
+			}
+			bss_offset += u64(linux_tiny_rune_str_arena_metadata_bytes)
+		}
+		if 'builtin__string__+' in reachable.runtime_symbols {
+			string_plus_arena_vaddr := bss_vaddr + bss_offset
+			for field_off in runtime.string_plus_arena_patches {
+				elf_tiny_patch_rel32(mut text, int(runtime_base) + field_off, text_vaddr, 0,
+					string_plus_arena_vaddr)
+			}
 		}
 	}
 	mut symbols := map[string]u64{}
@@ -337,6 +372,9 @@ fn (mut l ElfTinyLinker) collect_reachable() !ElfTinyReachable {
 			} else if sym.shndx == u16(l.elf_section_index(.rodata)) {
 				l.add_data_range(mut selected_data, .rodata, sym.value)!
 			} else if sym.shndx == u16(l.elf_section_index(.data)) {
+				if x64_main_argc_global_name(sym.name) || x64_main_argv_global_name(sym.name) {
+					return linux_tiny_not_eligible('arguments() requires hosted argc/argv; Linux tiny _start argv is not implemented yet')
+				}
 				l.add_data_range(mut selected_data, .data, sym.value)!
 			} else if sym.shndx == 0 {
 				if !l.tiny_runtime_symbol_name(sym.name) {
@@ -401,6 +439,18 @@ fn (mut l ElfTinyLinker) build_runtime(runtime_symbols map[string]bool) ElfTinyR
 	if 'builtin__int__str' in runtime_symbols {
 		rt.symbols['builtin__int__str'] = u64(rt.text.len)
 		elf_tiny_emit_int_str(mut rt)
+	}
+	if 'builtin__i64__str' in runtime_symbols {
+		rt.symbols['builtin__i64__str'] = u64(rt.text.len)
+		elf_tiny_emit_i64_str(mut rt)
+	}
+	if 'builtin__rune__str' in runtime_symbols {
+		rt.symbols['builtin__rune__str'] = u64(rt.text.len)
+		elf_tiny_emit_rune_str(mut rt)
+	}
+	if 'builtin__string__+' in runtime_symbols {
+		rt.symbols['builtin__string__+'] = u64(rt.text.len)
+		elf_tiny_emit_string_plus(mut rt)
 	}
 	return rt
 }
@@ -487,6 +537,14 @@ fn elf_tiny_emit_ultra_stdout(mut text []u8, stdout_len int) int {
 }
 
 fn elf_tiny_emit_int_str(mut rt ElfTinyRuntime) {
+	elf_tiny_emit_signed_decimal_str(mut rt, false)
+}
+
+fn elf_tiny_emit_i64_str(mut rt ElfTinyRuntime) {
+	elf_tiny_emit_signed_decimal_str(mut rt, true)
+}
+
+fn elf_tiny_emit_signed_decimal_str(mut rt ElfTinyRuntime, is_i64 bool) {
 	rt.text << u8(0x57) // push rdi
 	rt.text << [u8(0x4c), 0x8d, 0x1d] // lea r11, [arena]
 	rt.int_str_arena_patches << rt.text.len
@@ -535,15 +593,31 @@ fn elf_tiny_emit_int_str(mut rt ElfTinyRuntime) {
 	rt.text << [u8(0x49), 0x89, 0xc0] // mov r8, rax
 	allocated_off := rt.text.len
 	rt.text << u8(0x5f) // pop rdi
-	rt.text << [u8(0x89), 0xf8] // mov eax, edi
+	if is_i64 {
+		rt.text << [u8(0x48), 0x89, 0xf8] // mov rax, rdi
+	} else {
+		rt.text << [u8(0x89), 0xf8] // mov eax, edi
+	}
 	rt.text << [u8(0x45), 0x31, 0xc9] // xor r9d, r9d
 	rt.text << [u8(0x45), 0x31, 0xd2] // xor r10d, r10d
-	rt.text << [u8(0x85), 0xc0] // test eax, eax
+	if is_i64 {
+		rt.text << [u8(0x48), 0x85, 0xc0] // test rax, rax
+	} else {
+		rt.text << [u8(0x85), 0xc0] // test eax, eax
+	}
 	non_negative_field := elf_tiny_emit_rel8_placeholder(mut rt.text, 0x79) // jns non_negative
 	rt.text << [u8(0x41), 0xb2, 0x01] // mov r10b, 1
-	rt.text << [u8(0xf7), 0xd8] // neg eax
+	if is_i64 {
+		rt.text << [u8(0x48), 0xf7, 0xd8] // neg rax
+	} else {
+		rt.text << [u8(0xf7), 0xd8] // neg eax
+	}
 	non_negative_off := rt.text.len
-	rt.text << [u8(0x85), 0xc0] // test eax, eax
+	if is_i64 {
+		rt.text << [u8(0x48), 0x85, 0xc0] // test rax, rax
+	} else {
+		rt.text << [u8(0x85), 0xc0] // test eax, eax
+	}
 	non_zero_field := elf_tiny_emit_rel8_placeholder(mut rt.text, 0x75) // jne loop
 	rt.text << [u8(0x49), 0xff, 0xc8] // dec r8
 	rt.text << [u8(0x41), 0xc6, 0x00, 0x30] // mov byte ptr [r8], '0'
@@ -552,12 +626,20 @@ fn elf_tiny_emit_int_str(mut rt ElfTinyRuntime) {
 	loop_start := rt.text.len
 	rt.text << [u8(0x31), 0xd2] // xor edx, edx
 	rt.text << [u8(0xb9), 0x0a, 0, 0, 0] // mov ecx, 10
-	rt.text << [u8(0xf7), 0xf1] // div ecx
+	if is_i64 {
+		rt.text << [u8(0x48), 0xf7, 0xf1] // div rcx
+	} else {
+		rt.text << [u8(0xf7), 0xf1] // div ecx
+	}
 	rt.text << [u8(0x80), 0xc2, 0x30] // add dl, '0'
 	rt.text << [u8(0x49), 0xff, 0xc8] // dec r8
 	rt.text << [u8(0x41), 0x88, 0x10] // mov [r8], dl
 	rt.text << [u8(0x49), 0xff, 0xc1] // inc r9
-	rt.text << [u8(0x85), 0xc0] // test eax, eax
+	if is_i64 {
+		rt.text << [u8(0x48), 0x85, 0xc0] // test rax, rax
+	} else {
+		rt.text << [u8(0x85), 0xc0] // test eax, eax
+	}
 	loop_field := elf_tiny_emit_rel8_placeholder(mut rt.text, 0x75) // jne loop
 	maybe_sign_off := rt.text.len
 	rt.text << [u8(0x45), 0x84, 0xd2] // test r10b, r10b
@@ -578,6 +660,278 @@ fn elf_tiny_emit_int_str(mut rt ElfTinyRuntime) {
 	elf_tiny_patch_rel8(mut rt.text, need_mmap_field, need_mmap_off)
 	elf_tiny_patch_rel8(mut rt.text, have_block_field, have_block_off)
 	elf_tiny_patch_rel8(mut rt.text, allocated_field, allocated_off)
+}
+
+fn elf_tiny_emit_rune_str(mut rt ElfTinyRuntime) {
+	rt.text << u8(0x57) // push rdi
+	rt.text << [u8(0x4c), 0x8d, 0x1d] // lea r11, [arena]
+	rt.rune_str_arena_patches << rt.text.len
+	rt.text << [u8(0), 0, 0, 0]
+	rt.text << [u8(0x4d), 0x8b, 0x03] // mov r8, [r11]
+	rt.text << [u8(0x4d), 0x8b, 0x4b, 0x08] // mov r9, [r11+8]
+	rt.text << [u8(0x4d), 0x85, 0xc0] // test r8, r8
+	need_mmap_field :=
+		elf_tiny_emit_rel32_placeholder(mut rt.text, [u8(0x0f), 0x84]) // je need_mmap
+	rt.text << [u8(0x49), 0x8d, 0x40, u8(linux_tiny_rune_str_slot_bytes)] // lea rax, [r8+8]
+	rt.text << [u8(0x4c), 0x39, 0xc8] // cmp rax, r9
+	have_block_field :=
+		elf_tiny_emit_rel32_placeholder(mut rt.text, [u8(0x0f), 0x86]) // jbe have_block
+	need_mmap_off := rt.text.len
+	rt.text << [u8(0x31), 0xff] // xor edi, edi
+	rt.text << u8(0xbe)
+	write_u32_le(mut rt.text, linux_tiny_rune_str_arena_bytes)
+	rt.text << u8(0xba)
+	write_u32_le(mut rt.text, linux_mmap_prot_read_write)
+	rt.text << [u8(0x41), 0xba]
+	write_u32_le(mut rt.text, linux_mmap_private_anonymous)
+	rt.text << [u8(0x49), 0xc7, 0xc0]
+	write_u32_le(mut rt.text, u32(0xffff_ffff))
+	rt.text << [u8(0x45), 0x31, 0xc9] // xor r9d, r9d
+	rt.text << u8(0xb8)
+	write_u32_le(mut rt.text, linux_sys_mmap)
+	rt.text << [u8(0x0f), 0x05] // syscall
+	rt.text << [u8(0x48), 0x85, 0xc0] // test rax, rax
+	mmap_ok_field := elf_tiny_emit_rel32_placeholder(mut rt.text, [u8(0x0f), 0x89]) // jns mmap_ok
+	rt.text << u8(0xbf)
+	write_u32_le(mut rt.text, 1)
+	rt.text << u8(0xb8)
+	write_u32_le(mut rt.text, linux_sys_exit_group)
+	rt.text << [u8(0x0f), 0x05, 0x0f, 0x0b] // syscall; ud2
+	mmap_ok_off := rt.text.len
+	rt.text << [u8(0x49), 0x89, 0xc0] // mov r8, rax
+	rt.text << [u8(0x4c), 0x8d, 0x50, u8(linux_tiny_rune_str_slot_bytes)] // lea r10, [rax+8]
+	rt.text << [u8(0x4c), 0x8d, 0x88]
+	write_u32_le(mut rt.text, linux_tiny_rune_str_arena_bytes) // lea r9, [rax+4096]
+	rt.text << [u8(0x4c), 0x8d, 0x1d] // lea r11, [arena]
+	rt.rune_str_arena_patches << rt.text.len
+	rt.text << [u8(0), 0, 0, 0]
+	rt.text << [u8(0x4d), 0x89, 0x13] // mov [r11], r10
+	rt.text << [u8(0x4d), 0x89, 0x4b, 0x08] // mov [r11+8], r9
+	allocated_field := elf_tiny_emit_jmp32_placeholder(mut rt.text)
+	have_block_off := rt.text.len
+	rt.text << [u8(0x49), 0x89, 0x03] // mov [r11], rax
+	allocated_off := rt.text.len
+	rt.text << u8(0x5f) // pop rdi
+	rt.text << [u8(0x89), 0xf8] // mov eax, edi
+	rt.text << [u8(0x83), 0xf8, 0x7f] // cmp eax, 0x7f
+	two_byte_field := elf_tiny_emit_rel32_placeholder(mut rt.text, [u8(0x0f), 0x87]) // ja two_byte
+	rt.text << [u8(0x41), 0x88, 0x00] // mov [r8], al
+	rt.text << [u8(0x41), 0xc6, 0x40, 0x01, 0x00] // mov byte ptr [r8+1], 0
+	rt.text << [u8(0xba)]
+	write_u32_le(mut rt.text, 1)
+	one_byte_done_field := elf_tiny_emit_jmp32_placeholder(mut rt.text)
+	two_byte_off := rt.text.len
+	rt.text << u8(0x3d)
+	write_u32_le(mut rt.text, 0x7ff) // cmp eax, 0x7ff
+	three_byte_field :=
+		elf_tiny_emit_rel32_placeholder(mut rt.text, [u8(0x0f), 0x87]) // ja three_byte
+	rt.text << [u8(0x89), 0xc1] // mov ecx, eax
+	rt.text << [u8(0xc1), 0xe9, 0x06] // shr ecx, 6
+	rt.text << [u8(0x80), 0xc9, 0xc0] // or cl, 0xc0
+	rt.text << [u8(0x41), 0x88, 0x08] // mov [r8], cl
+	rt.text << [u8(0x89), 0xc1] // mov ecx, eax
+	rt.text << [u8(0x80), 0xe1, 0x3f] // and cl, 0x3f
+	rt.text << [u8(0x80), 0xc9, 0x80] // or cl, 0x80
+	rt.text << [u8(0x41), 0x88, 0x48, 0x01] // mov [r8+1], cl
+	rt.text << [u8(0x41), 0xc6, 0x40, 0x02, 0x00] // mov byte ptr [r8+2], 0
+	rt.text << [u8(0xba)]
+	write_u32_le(mut rt.text, 2)
+	two_byte_done_field := elf_tiny_emit_jmp32_placeholder(mut rt.text)
+	three_byte_off := rt.text.len
+	rt.text << u8(0x3d)
+	write_u32_le(mut rt.text, 0xffff) // cmp eax, 0xffff
+	four_byte_field :=
+		elf_tiny_emit_rel32_placeholder(mut rt.text, [u8(0x0f), 0x87]) // ja four_byte
+	rt.text << [u8(0x89), 0xc1] // mov ecx, eax
+	rt.text << [u8(0xc1), 0xe9, 0x0c] // shr ecx, 12
+	rt.text << [u8(0x80), 0xc9, 0xe0] // or cl, 0xe0
+	rt.text << [u8(0x41), 0x88, 0x08] // mov [r8], cl
+	rt.text << [u8(0x89), 0xc1] // mov ecx, eax
+	rt.text << [u8(0xc1), 0xe9, 0x06] // shr ecx, 6
+	rt.text << [u8(0x80), 0xe1, 0x3f] // and cl, 0x3f
+	rt.text << [u8(0x80), 0xc9, 0x80] // or cl, 0x80
+	rt.text << [u8(0x41), 0x88, 0x48, 0x01] // mov [r8+1], cl
+	rt.text << [u8(0x89), 0xc1] // mov ecx, eax
+	rt.text << [u8(0x80), 0xe1, 0x3f] // and cl, 0x3f
+	rt.text << [u8(0x80), 0xc9, 0x80] // or cl, 0x80
+	rt.text << [u8(0x41), 0x88, 0x48, 0x02] // mov [r8+2], cl
+	rt.text << [u8(0x41), 0xc6, 0x40, 0x03, 0x00] // mov byte ptr [r8+3], 0
+	rt.text << [u8(0xba)]
+	write_u32_le(mut rt.text, 3)
+	three_byte_done_field := elf_tiny_emit_jmp32_placeholder(mut rt.text)
+	four_byte_off := rt.text.len
+	rt.text << u8(0x3d)
+	write_u32_le(mut rt.text, 0x10ffff) // cmp eax, 0x10ffff
+	invalid_large_field :=
+		elf_tiny_emit_rel32_placeholder(mut rt.text, [u8(0x0f), 0x87]) // ja invalid
+	rt.text << [u8(0x89), 0xc1] // mov ecx, eax
+	rt.text << [u8(0xc1), 0xe9, 0x12] // shr ecx, 18
+	rt.text << [u8(0x80), 0xc9, 0xf0] // or cl, 0xf0
+	rt.text << [u8(0x41), 0x88, 0x08] // mov [r8], cl
+	rt.text << [u8(0x89), 0xc1] // mov ecx, eax
+	rt.text << [u8(0xc1), 0xe9, 0x0c] // shr ecx, 12
+	rt.text << [u8(0x80), 0xe1, 0x3f] // and cl, 0x3f
+	rt.text << [u8(0x80), 0xc9, 0x80] // or cl, 0x80
+	rt.text << [u8(0x41), 0x88, 0x48, 0x01] // mov [r8+1], cl
+	rt.text << [u8(0x89), 0xc1] // mov ecx, eax
+	rt.text << [u8(0xc1), 0xe9, 0x06] // shr ecx, 6
+	rt.text << [u8(0x80), 0xe1, 0x3f] // and cl, 0x3f
+	rt.text << [u8(0x80), 0xc9, 0x80] // or cl, 0x80
+	rt.text << [u8(0x41), 0x88, 0x48, 0x02] // mov [r8+2], cl
+	rt.text << [u8(0x89), 0xc1] // mov ecx, eax
+	rt.text << [u8(0x80), 0xe1, 0x3f] // and cl, 0x3f
+	rt.text << [u8(0x80), 0xc9, 0x80] // or cl, 0x80
+	rt.text << [u8(0x41), 0x88, 0x48, 0x03] // mov [r8+3], cl
+	rt.text << [u8(0x41), 0xc6, 0x40, 0x04, 0x00] // mov byte ptr [r8+4], 0
+	rt.text << [u8(0xba)]
+	write_u32_le(mut rt.text, 4)
+	four_byte_done_field := elf_tiny_emit_jmp32_placeholder(mut rt.text)
+	invalid_off := rt.text.len
+	rt.text << [u8(0x41), 0xc6, 0x00, 0x00] // mov byte ptr [r8], 0
+	rt.text << [u8(0x31), 0xd2] // xor edx, edx
+	done_off := rt.text.len
+	rt.text << [u8(0x4c), 0x89, 0xc0] // mov rax, r8
+	rt.text << u8(0xc3)
+	elf_tiny_patch_rel32_local(mut rt.text, need_mmap_field, need_mmap_off)
+	elf_tiny_patch_rel32_local(mut rt.text, have_block_field, have_block_off)
+	elf_tiny_patch_rel32_local(mut rt.text, mmap_ok_field, mmap_ok_off)
+	elf_tiny_patch_rel32_local(mut rt.text, allocated_field, allocated_off)
+	elf_tiny_patch_rel32_local(mut rt.text, two_byte_field, two_byte_off)
+	elf_tiny_patch_rel32_local(mut rt.text, one_byte_done_field, done_off)
+	elf_tiny_patch_rel32_local(mut rt.text, three_byte_field, three_byte_off)
+	elf_tiny_patch_rel32_local(mut rt.text, two_byte_done_field, done_off)
+	elf_tiny_patch_rel32_local(mut rt.text, four_byte_field, four_byte_off)
+	elf_tiny_patch_rel32_local(mut rt.text, three_byte_done_field, done_off)
+	elf_tiny_patch_rel32_local(mut rt.text, invalid_large_field, invalid_off)
+	elf_tiny_patch_rel32_local(mut rt.text, four_byte_done_field, done_off)
+}
+
+fn elf_tiny_emit_string_plus(mut rt ElfTinyRuntime) {
+	// SysV ABI: first string in rdi/rsi, second string in rdx/rcx, return in rax/rdx.
+	rt.text << [u8(0x57), 0x56, 0x52, 0x51] // push rdi; push rsi; push rdx; push rcx
+	rt.text << [u8(0x4c), 0x8d, 0x1d] // lea r11, [arena]
+	rt.string_plus_arena_patches << rt.text.len
+	rt.text << [u8(0), 0, 0, 0]
+	rt.text << [u8(0x4d), 0x8b, 0x13] // mov r10, [r11]
+	rt.text << [u8(0x49), 0x8b, 0x43, 0x08] // mov rax, [r11+8]
+	rt.text << [u8(0x4d), 0x85, 0xd2] // test r10, r10
+	need_mmap_field :=
+		elf_tiny_emit_rel32_placeholder(mut rt.text, [u8(0x0f), 0x84]) // je need_mmap
+	rt.text << [u8(0x44), 0x8b, 0x44, 0x24, 0x10] // mov r8d, [rsp+16]
+	rt.text << [u8(0x44), 0x03, 0x04, 0x24] // add r8d, [rsp]
+	rt.text << [u8(0x4d), 0x89, 0xc1] // mov r9, r8
+	rt.text << [u8(0x49), 0xff, 0xc1] // inc r9
+	rt.text << [u8(0x4c), 0x89, 0xd2] // mov rdx, r10
+	rt.text << [u8(0x4c), 0x01, 0xca] // add rdx, r9
+	rt.text << [u8(0x48), 0x39, 0xc2] // cmp rdx, rax
+	have_block_field :=
+		elf_tiny_emit_rel32_placeholder(mut rt.text, [u8(0x0f), 0x86]) // jbe have_block
+	need_mmap_off := rt.text.len
+	rt.text << [u8(0x44), 0x8b, 0x44, 0x24, 0x10] // mov r8d, [rsp+16]
+	rt.text << [u8(0x44), 0x03, 0x04, 0x24] // add r8d, [rsp]
+	rt.text << [u8(0x4d), 0x89, 0xc1] // mov r9, r8
+	rt.text << [u8(0x49), 0xff, 0xc1] // inc r9
+	rt.text << [u8(0x31), 0xff] // xor edi, edi
+	rt.text << [u8(0x4c), 0x89, 0xce] // mov rsi, r9
+	rt.text << [u8(0x48), 0x81, 0xfe]
+	write_u32_le(mut rt.text, linux_tiny_string_plus_arena_bytes) // cmp rsi, 4096
+	large_alloc_field :=
+		elf_tiny_emit_rel32_placeholder(mut rt.text, [u8(0x0f), 0x83]) // jae large_alloc
+	rt.text << u8(0xbe)
+	write_u32_le(mut rt.text, linux_tiny_string_plus_arena_bytes) // mov esi, 4096
+	large_alloc_off := rt.text.len
+	rt.text << u8(0xba)
+	write_u32_le(mut rt.text, linux_mmap_prot_read_write)
+	rt.text << [u8(0x41), 0xba]
+	write_u32_le(mut rt.text, linux_mmap_private_anonymous)
+	rt.text << [u8(0x49), 0xc7, 0xc0]
+	write_u32_le(mut rt.text, u32(0xffff_ffff))
+	rt.text << [u8(0x45), 0x31, 0xc9] // xor r9d, r9d
+	rt.text << u8(0xb8)
+	write_u32_le(mut rt.text, linux_sys_mmap)
+	rt.text << [u8(0x0f), 0x05] // syscall
+	rt.text << [u8(0x48), 0x85, 0xc0] // test rax, rax
+	mmap_ok_field := elf_tiny_emit_rel32_placeholder(mut rt.text, [u8(0x0f), 0x89]) // jns mmap_ok
+	rt.text << u8(0xbf)
+	write_u32_le(mut rt.text, 1)
+	rt.text << u8(0xb8)
+	write_u32_le(mut rt.text, linux_sys_exit_group)
+	rt.text << [u8(0x0f), 0x05, 0x0f, 0x0b] // syscall; ud2
+	mmap_ok_off := rt.text.len
+	rt.text << [u8(0x49), 0x89, 0xc2] // mov r10, rax
+	rt.text << [u8(0x44), 0x8b, 0x44, 0x24, 0x10] // mov r8d, [rsp+16]
+	rt.text << [u8(0x44), 0x03, 0x04, 0x24] // add r8d, [rsp]
+	rt.text << [u8(0x4d), 0x89, 0xc1] // mov r9, r8
+	rt.text << [u8(0x49), 0xff, 0xc1] // inc r9
+	rt.text << [u8(0x48), 0x89, 0xc2] // mov rdx, rax
+	rt.text << [u8(0x4c), 0x01, 0xca] // add rdx, r9
+	rt.text << [u8(0x4d), 0x89, 0xcb] // mov r11, r9
+	rt.text << [u8(0x49), 0x81, 0xfb]
+	write_u32_le(mut rt.text, linux_tiny_string_plus_arena_bytes) // cmp r11, 4096
+	large_end_field :=
+		elf_tiny_emit_rel32_placeholder(mut rt.text, [u8(0x0f), 0x83]) // jae large_end
+	rt.text << [u8(0x41), 0xbb]
+	write_u32_le(mut rt.text, linux_tiny_string_plus_arena_bytes) // mov r11d, 4096
+	large_end_off := rt.text.len
+	rt.text << [u8(0x4c), 0x89, 0xd0] // mov rax, r10
+	rt.text << [u8(0x4c), 0x01, 0xd8] // add rax, r11
+	rt.text << [u8(0x4c), 0x8d, 0x1d] // lea r11, [arena]
+	rt.string_plus_arena_patches << rt.text.len
+	rt.text << [u8(0), 0, 0, 0]
+	rt.text << [u8(0x49), 0x89, 0x13] // mov [r11], rdx
+	rt.text << [u8(0x49), 0x89, 0x43, 0x08] // mov [r11+8], rax
+	allocated_field := elf_tiny_emit_jmp32_placeholder(mut rt.text)
+	have_block_off := rt.text.len
+	rt.text << [u8(0x4c), 0x8d, 0x1d] // lea r11, [arena]
+	rt.string_plus_arena_patches << rt.text.len
+	rt.text << [u8(0), 0, 0, 0]
+	rt.text << [u8(0x49), 0x89, 0x13] // mov [r11], rdx
+	allocated_off := rt.text.len
+	rt.text << [u8(0x4c), 0x89, 0xd0] // mov rax, r10
+	rt.text << [u8(0x4d), 0x89, 0xd0] // mov r8, r10
+	rt.text << [u8(0x48), 0x8b, 0x74, 0x24, 0x18] // mov rsi, [rsp+24]
+	rt.text << [u8(0x8b), 0x4c, 0x24, 0x10] // mov ecx, [rsp+16]
+	rt.text << [u8(0x48), 0x85, 0xc9] // test rcx, rcx
+	copy_a_done_field :=
+		elf_tiny_emit_rel32_placeholder(mut rt.text, [u8(0x0f), 0x84]) // je copy_a_done
+	copy_a_loop := rt.text.len
+	rt.text << [u8(0x8a), 0x16] // mov dl, [rsi]
+	rt.text << [u8(0x41), 0x88, 0x10] // mov [r8], dl
+	rt.text << [u8(0x48), 0xff, 0xc6] // inc rsi
+	rt.text << [u8(0x49), 0xff, 0xc0] // inc r8
+	rt.text << [u8(0x48), 0xff, 0xc9] // dec rcx
+	copy_a_loop_field :=
+		elf_tiny_emit_rel32_placeholder(mut rt.text, [u8(0x0f), 0x85]) // jne copy_a_loop
+	copy_a_done_off := rt.text.len
+	rt.text << [u8(0x48), 0x8b, 0x74, 0x24, 0x08] // mov rsi, [rsp+8]
+	rt.text << [u8(0x8b), 0x0c, 0x24] // mov ecx, [rsp]
+	rt.text << [u8(0x48), 0x85, 0xc9] // test rcx, rcx
+	copy_b_done_field :=
+		elf_tiny_emit_rel32_placeholder(mut rt.text, [u8(0x0f), 0x84]) // je copy_b_done
+	copy_b_loop := rt.text.len
+	rt.text << [u8(0x8a), 0x16] // mov dl, [rsi]
+	rt.text << [u8(0x41), 0x88, 0x10] // mov [r8], dl
+	rt.text << [u8(0x48), 0xff, 0xc6] // inc rsi
+	rt.text << [u8(0x49), 0xff, 0xc0] // inc r8
+	rt.text << [u8(0x48), 0xff, 0xc9] // dec rcx
+	copy_b_loop_field :=
+		elf_tiny_emit_rel32_placeholder(mut rt.text, [u8(0x0f), 0x85]) // jne copy_b_loop
+	copy_b_done_off := rt.text.len
+	rt.text << [u8(0x41), 0xc6, 0x00, 0x00] // mov byte ptr [r8], 0
+	rt.text << [u8(0x8b), 0x54, 0x24, 0x10] // mov edx, [rsp+16]
+	rt.text << [u8(0x03), 0x14, 0x24] // add edx, [rsp]
+	rt.text << [u8(0x48), 0x83, 0xc4, 0x20] // add rsp, 32
+	rt.text << u8(0xc3)
+	elf_tiny_patch_rel32_local(mut rt.text, need_mmap_field, need_mmap_off)
+	elf_tiny_patch_rel32_local(mut rt.text, have_block_field, have_block_off)
+	elf_tiny_patch_rel32_local(mut rt.text, large_alloc_field, large_alloc_off)
+	elf_tiny_patch_rel32_local(mut rt.text, mmap_ok_field, mmap_ok_off)
+	elf_tiny_patch_rel32_local(mut rt.text, large_end_field, large_end_off)
+	elf_tiny_patch_rel32_local(mut rt.text, allocated_field, allocated_off)
+	elf_tiny_patch_rel32_local(mut rt.text, copy_a_done_field, copy_a_done_off)
+	elf_tiny_patch_rel32_local(mut rt.text, copy_a_loop_field, copy_a_loop)
+	elf_tiny_patch_rel32_local(mut rt.text, copy_b_done_field, copy_b_done_off)
+	elf_tiny_patch_rel32_local(mut rt.text, copy_b_loop_field, copy_b_loop)
 }
 
 fn (mut l ElfTinyLinker) write_executable(path string, text []u8, rodata []u8, data []u8, bss_bytes int, phnum int, text_off int, data_off int) ! {
@@ -644,12 +998,34 @@ fn elf_tiny_emit_rel8_placeholder(mut text []u8, opcode u8) int {
 	return field_off
 }
 
+fn elf_tiny_emit_rel32_placeholder(mut text []u8, opcode []u8) int {
+	text << opcode
+	field_off := text.len
+	text << [u8(0), 0, 0, 0]
+	return field_off
+}
+
+fn elf_tiny_emit_jmp32_placeholder(mut text []u8) int {
+	text << u8(0xe9)
+	field_off := text.len
+	text << [u8(0), 0, 0, 0]
+	return field_off
+}
+
 fn elf_tiny_patch_rel8(mut text []u8, field_off int, target_off int) {
 	disp := target_off - (field_off + 1)
 	if disp < -128 || disp > 127 {
 		panic('Linux tiny executable short branch is out of range')
 	}
 	text[field_off] = if disp < 0 { u8(256 + disp) } else { u8(disp) }
+}
+
+fn elf_tiny_patch_rel32_local(mut text []u8, field_off int, target_off int) {
+	disp := target_off - (field_off + 4)
+	if disp < -2147483648 || disp > 2147483647 {
+		panic('Linux tiny executable near branch is out of range')
+	}
+	binary.little_endian_put_u32(mut text[field_off..field_off + 4], u32(i32(disp)))
 }
 
 fn elf_tiny_write_phdr(mut b []u8, type_ u32, flags u32, off u64, vaddr u64, filesz u64, memsz u64, align u64) {
@@ -718,7 +1094,8 @@ fn (l ElfTinyLinker) elf_section_index(section ObjectSection) int {
 }
 
 fn (l ElfTinyLinker) tiny_runtime_symbol_name(name string) bool {
-	return name in ['write', 'exit', 'fflush', 'builtin__int__str']
+	return name in ['write', 'exit', 'fflush', 'builtin__int__str', 'builtin__i64__str',
+		'builtin__rune__str', 'builtin__string__+']
 }
 
 fn (l ElfTinyLinker) tiny_unsupported_defined_symbol_name(name string) bool {

@@ -188,7 +188,7 @@ fn pe_test_rva_to_file_off(image []u8, rva u32) int {
 	return -1
 }
 
-fn pe_test_import_names(image []u8) []string {
+fn pe_test_import_descriptor_offsets(image []u8) []int {
 	pe_off := int(pe_test_u32(image, 0x3c))
 	opt_off := pe_off + 4 + 20
 	import_rva := pe_test_u32(image, opt_off + 112 + pe_import_directory_index * 8)
@@ -197,29 +197,66 @@ fn pe_test_import_names(image []u8) []string {
 	}
 	import_off := pe_test_rva_to_file_off(image, import_rva)
 	assert import_off > 0
-	ilt_rva := pe_test_u32(image, import_off)
-	ilt_off := pe_test_rva_to_file_off(image, ilt_rva)
-	assert ilt_off > 0
-	mut names := []string{}
-	for i := 0; i < 128; i++ {
-		hint_name_rva := u32(pe_test_u64(image, ilt_off + i * 8))
-		if hint_name_rva == 0 {
-			return names
+	mut offsets := []int{}
+	for i := 0; i < 32; i++ {
+		descriptor_off := import_off + i * 20
+		ilt_rva := pe_test_u32(image, descriptor_off)
+		dll_name_rva := pe_test_u32(image, descriptor_off + 12)
+		first_thunk_rva := pe_test_u32(image, descriptor_off + 16)
+		if ilt_rva == 0 && dll_name_rva == 0 && first_thunk_rva == 0 {
+			return offsets
 		}
-		hint_name_off := pe_test_rva_to_file_off(image, hint_name_rva)
-		assert hint_name_off > 0
-		assert pe_test_u16(image, hint_name_off) == 0
-		assert hint_name_off % 2 == 0
-		names << pe_test_string(image, hint_name_off + 2)
+		assert ilt_rva != 0
+		assert dll_name_rva != 0
+		assert first_thunk_rva != 0
+		offsets << descriptor_off
 	}
 	assert false
+	return offsets
+}
+
+fn pe_test_import_names(image []u8) []string {
+	mut names := []string{}
+	for descriptor_off in pe_test_import_descriptor_offsets(image) {
+		ilt_rva := pe_test_u32(image, descriptor_off)
+		ilt_off := pe_test_rva_to_file_off(image, ilt_rva)
+		assert ilt_off > 0
+		for i := 0; i < 128; i++ {
+			hint_name_rva := u32(pe_test_u64(image, ilt_off + i * 8))
+			if hint_name_rva == 0 {
+				break
+			}
+			hint_name_off := pe_test_rva_to_file_off(image, hint_name_rva)
+			assert hint_name_off > 0
+			assert pe_test_u16(image, hint_name_off) == 0
+			assert hint_name_off % 2 == 0
+			names << pe_test_string(image, hint_name_off + 2)
+		}
+	}
 	return names
+}
+
+fn pe_test_import_dll_names(image []u8) []string {
+	mut dlls := []string{}
+	for descriptor_off in pe_test_import_descriptor_offsets(image) {
+		dll_name_rva := pe_test_u32(image, descriptor_off + 12)
+		dll_name_off := pe_test_rva_to_file_off(image, dll_name_rva)
+		assert dll_name_off > 0
+		dlls << pe_test_string(image, dll_name_off)
+	}
+	return dlls
 }
 
 fn pe_test_iat_size(image []u8) u32 {
 	pe_off := int(pe_test_u32(image, 0x3c))
 	opt_off := pe_off + 4 + 20
 	return pe_test_u32(image, opt_off + 116 + pe_iat_directory_index * 8)
+}
+
+fn pe_test_text_rel32_target(image []u8, text_rva u32, text_raw int, field_off int) u32 {
+	field_rva := text_rva + u32(field_off)
+	disp := pe_test_i32(image, text_raw + field_off)
+	return u32(i32(field_rva + 4) + disp)
 }
 
 fn sample_pe_coff_object() &CoffObject {
@@ -230,6 +267,27 @@ fn sample_pe_coff_object() &CoffObject {
 	obj.data_data << [u8(1), 2, 3, 4]
 	obj.add_symbol('_vinit', 0, true, 1)
 	obj.add_symbol('main', 1, true, 1)
+	return obj
+}
+
+fn sample_pe_arguments_coff_object(with_vinit bool) &CoffObject {
+	mut obj := CoffObject.new()
+	mut main_off := 0
+	if with_vinit {
+		obj.text_data << u8(0xc3)
+		obj.add_symbol('_vinit', 0, true, 1)
+		main_off = obj.text_data.len
+	}
+	obj.text_data << [u8(0x8b), 0x05, 0, 0, 0, 0] // mov eax, [rip + g_main_argc]
+	obj.text_data << [u8(0x48), 0x8b, 0x15, 0, 0, 0, 0] // mov rdx, [rip + g_main_argv]
+	obj.text_data << u8(0xc3)
+	obj.add_symbol('main', u64(main_off), true, 1)
+	obj.data_data << [u8(0), 0, 0, 0, 0, 0, 0, 0]
+	obj.data_data << [u8(0), 0, 0, 0, 0, 0, 0, 0]
+	argc_sym := obj.add_symbol('g_main_argc', 0, false, 3)
+	argv_sym := obj.add_symbol('g_main_argv', 8, false, 3)
+	obj.add_text_reloc(main_off + 2, argc_sym, coff_image_rel_amd64_rel32)
+	obj.add_text_reloc(main_off + 9, argv_sym, coff_image_rel_amd64_rel32)
 	return obj
 }
 
@@ -389,9 +447,12 @@ fn test_pe_linker_emits_demand_driven_kernel32_import_table() {
 	assert pe_test_u64(image, iat_off + expected_imports.len * 8) == 0
 	assert names == expected_imports
 	assert names == pe_test_import_names(image)
+	assert pe_test_import_dll_names(image) == ['kernel32.dll']
 	assert pe_test_iat_size(image) == u32((expected_imports.len + 1) * 8)
 	assert 'HeapAlloc' !in names
 	assert 'WriteFile' !in names
+	assert 'GetCommandLineW' !in names
+	assert 'CommandLineToArgvW' !in names
 }
 
 fn test_pe_linker_adds_direct_kernel32_imports_in_stable_order() {
@@ -425,6 +486,78 @@ fn test_pe_linker_adds_runtime_kernel32_import_patches_only_when_needed() {
 	assert names == ['ExitProcess', 'GetProcessHeap', 'HeapAlloc']
 	assert pe_test_iat_size(image) == u32((names.len + 1) * 8)
 	assert 'HeapFree' !in names
+	assert 'WriteFile' !in names
+}
+
+fn test_pe_linker_adds_shell32_imports_only_for_windows_arguments_globals() {
+	obj := sample_pe_arguments_coff_object(false)
+	mut linker := PeLinker.new(obj)
+	image := linker.image() or { panic(err) }
+	names := pe_test_import_names(image)
+
+	assert names == ['ExitProcess', 'GetCommandLineW', 'CommandLineToArgvW']
+	assert pe_test_import_dll_names(image) == ['kernel32.dll', 'shell32.dll']
+	assert pe_test_iat_size(image) == u32((names.len + 2) * 8)
+}
+
+fn test_pe_linker_uses_qualified_import_keys_for_multi_dll_thunks_and_iat() {
+	obj := sample_pe_coff_object()
+	mut linker := PeLinker.new(obj)
+	linker.imports = [
+		PeImport{
+			dll:  pe_kernel32_dll
+			name: 'SharedExport'
+		},
+		PeImport{
+			dll:  pe_shell32_dll
+			name: 'SharedExport'
+		},
+	]
+
+	kernel_key := pe_import_key(pe_kernel32_dll, 'SharedExport')
+	shell_key := pe_import_key(pe_shell32_dll, 'SharedExport')
+	import_offsets := linker.import_thunk_offsets(0)
+	idata := linker.build_idata(0x3000)
+
+	assert 'SharedExport' !in import_offsets
+	assert kernel_key in import_offsets
+	assert shell_key in import_offsets
+	assert import_offsets[kernel_key] != import_offsets[shell_key]
+	assert 'SharedExport' !in idata.iat_rvas
+	assert kernel_key in idata.iat_rvas
+	assert shell_key in idata.iat_rvas
+	assert idata.iat_rvas[kernel_key] != idata.iat_rvas[shell_key]
+}
+
+fn test_pe_linker_resolves_windows_string_plus_runtime_with_heap_imports() {
+	mut obj := CoffObject.new()
+	obj.text_data << [u8(0xe8), 0, 0, 0, 0, 0xc3]
+	obj.add_symbol('main', 5, true, 1)
+	string_plus_sym := obj.add_undefined('builtin__string__+')
+	obj.add_text_reloc(1, string_plus_sym, coff_image_rel_amd64_rel32)
+
+	mut linker := PeLinker.new(obj)
+	image := linker.image() or { panic(err) }
+	names := pe_test_import_names(image)
+
+	assert names == ['ExitProcess', 'GetProcessHeap', 'HeapAlloc']
+	assert pe_test_iat_size(image) == u32((names.len + 1) * 8)
+	assert 'WriteFile' !in names
+}
+
+fn test_pe_linker_resolves_windows_i64_str_runtime_with_heap_imports() {
+	mut obj := CoffObject.new()
+	obj.text_data << [u8(0xe8), 0, 0, 0, 0, 0xc3]
+	obj.add_symbol('main', 5, true, 1)
+	i64_str_sym := obj.add_undefined('builtin__i64__str')
+	obj.add_text_reloc(1, i64_str_sym, coff_image_rel_amd64_rel32)
+
+	mut linker := PeLinker.new(obj)
+	image := linker.image() or { panic(err) }
+	names := pe_test_import_names(image)
+
+	assert names == ['ExitProcess', 'GetProcessHeap', 'HeapAlloc']
+	assert pe_test_iat_size(image) == u32((names.len + 1) * 8)
 	assert 'WriteFile' !in names
 }
 
@@ -519,6 +652,61 @@ fn test_pe_linker_entry_stub_targets_main_and_exitprocess_thunk() {
 	assert u32(i32(exit_thunk_rva + 6) + exit_disp) == iat_rva
 }
 
+fn test_pe_linker_bootstraps_windows_arguments_before_vinit() {
+	obj := sample_pe_arguments_coff_object(true)
+	mut linker := PeLinker.new(obj)
+	image := linker.image() or { panic(err) }
+
+	text_off := pe_test_section_header(image, '.text')
+	text_rva := pe_test_u32(image, text_off + 12)
+	text_raw := int(pe_test_u32(image, text_off + 20))
+	data_off := pe_test_section_header(image, '.data')
+	data_rva := pe_test_u32(image, data_off + 12)
+	entry_stub_len := linker.entry_stub_size()
+	bootstrap_len := linker.windows_argv_bootstrap_size()
+
+	assert bootstrap_len > 0
+	assert image[text_raw..text_raw + 4] == [u8(0x48), 0x83, 0xec, 0x28]
+	assert image[text_raw + 4..text_raw + 12] == [u8(0xc7), 0x44, 0x24, 0x20, 0, 0, 0, 0]
+	assert image[text_raw + 12] == 0xe8
+	assert image[text_raw + 17..text_raw + 20] == [u8(0x48), 0x89, 0xc1]
+	assert image[text_raw + 20..text_raw + 25] == [u8(0x48), 0x8d, 0x54, 0x24, 0x20]
+	assert image[text_raw + 25] == 0xe8
+	assert image[text_raw + 30..text_raw + 33] == [u8(0x48), 0x85, 0xc0]
+	assert image[text_raw + 33..text_raw + 35] == [u8(0x75), 0x0a]
+	assert image[text_raw + 35..text_raw + 40] == [u8(0xb9), 1, 0, 0, 0]
+	assert image[text_raw + 40] == 0xe8
+	assert image[text_raw + 45..text_raw + 48] == [u8(0x4c), 0x8d, 0x15]
+	assert image[text_raw + 52..text_raw + 55] == [u8(0x49), 0x89, 0x02]
+	assert image[text_raw + 55..text_raw + 58] == [u8(0x4c), 0x8d, 0x15]
+	assert image[text_raw + 62..text_raw + 66] == [u8(0x8b), 0x4c, 0x24, 0x20]
+	assert image[text_raw + 66..text_raw + 69] == [u8(0x41), 0x89, 0x0a]
+
+	import_offsets := linker.import_thunk_offsets(0)
+	get_command_line_thunk := import_offsets[pe_kernel32_import_key('GetCommandLineW')] or {
+		panic('missing GetCommandLineW import thunk')
+	}
+	command_line_to_argv_thunk := import_offsets[pe_shell32_import_key('CommandLineToArgvW')] or {
+		panic('missing CommandLineToArgvW import thunk')
+	}
+	exit_thunk := import_offsets[pe_kernel32_import_key('ExitProcess')] or {
+		panic('missing ExitProcess import thunk')
+	}
+	assert pe_test_text_rel32_target(image, text_rva, text_raw, 13) == text_rva +
+		get_command_line_thunk
+	assert pe_test_text_rel32_target(image, text_rva, text_raw, 26) == text_rva +
+		command_line_to_argv_thunk
+	assert pe_test_text_rel32_target(image, text_rva, text_raw, 41) == text_rva + exit_thunk
+	assert pe_test_text_rel32_target(image, text_rva, text_raw, 48) == data_rva + 8
+	assert pe_test_text_rel32_target(image, text_rva, text_raw, 58) == data_rva
+	vinit_call_field := 4 + bootstrap_len + 1
+	main_call_field := vinit_call_field + 5
+	assert pe_test_text_rel32_target(image, text_rva, text_raw, vinit_call_field) == text_rva +
+		u32(entry_stub_len)
+	assert pe_test_text_rel32_target(image, text_rva, text_raw, main_call_field) == text_rva +
+		u32(entry_stub_len + 1)
+}
+
 fn test_pe_linker_applies_internal_rel32_relocations() {
 	mut obj := CoffObject.new()
 	obj.text_data << [u8(0xe8), 0, 0, 0, 0, 0xc3]
@@ -570,11 +758,37 @@ fn test_pe_linker_resolves_get_current_thread_id_as_kernel32_import() {
 	disp := pe_test_i32(image, field_off)
 	target := u32(i32(field_rva + 4) + disp)
 	import_offsets := linker.import_thunk_offsets(0)
-	get_tid_thunk := import_offsets['GetCurrentThreadId'] or {
+	get_tid_thunk := import_offsets[pe_kernel32_import_key('GetCurrentThreadId')] or {
 		panic('missing GetCurrentThreadId import thunk')
 	}
 
 	assert target == text_rva + get_tid_thunk
+}
+
+fn test_pe_linker_resolves_windows_system_time_imports() {
+	for name in ['GetSystemTimeAsFileTime', 'FileTimeToSystemTime', 'SystemTimeToTzSpecificLocalTime'] {
+		mut obj := CoffObject.new()
+		obj.text_data << [u8(0xe8), 0, 0, 0, 0, 0xc3]
+		obj.add_symbol('main', 0, true, 1)
+		sym := obj.add_undefined(name)
+		obj.add_text_reloc(1, sym, coff_image_rel_amd64_rel32)
+
+		mut linker := PeLinker.new(obj)
+		image := linker.image() or { panic(err) }
+		text_off := pe_test_section_header(image, '.text')
+		text_rva := pe_test_u32(image, text_off + 12)
+		text_raw := int(pe_test_u32(image, text_off + 20))
+		field_off := text_raw + linker.entry_stub_size() + 1
+		field_rva := text_rva + u32(linker.entry_stub_size() + 1)
+		disp := pe_test_i32(image, field_off)
+		target := u32(i32(field_rva + 4) + disp)
+		import_offsets := linker.import_thunk_offsets(0)
+		thunk := import_offsets[pe_kernel32_import_key(name)] or {
+			panic('missing ${name} import thunk')
+		}
+
+		assert target == text_rva + thunk
+	}
 }
 
 fn test_pe_linker_resolves_memcmp_and_exit_with_internal_runtime_thunks() {
@@ -988,7 +1202,7 @@ fn test_pe_linker_resolves_wgetenv_with_kernel32_runtime_thunk() {
 	import_offsets := linker.import_thunk_offsets(runtime_text_size)
 	names := pe_test_import_names(image)
 	assert names == ['ExitProcess', 'GetEnvironmentVariableW']
-	getenv_thunk := import_offsets['GetEnvironmentVariableW'] or {
+	getenv_thunk := import_offsets[pe_kernel32_import_key('GetEnvironmentVariableW')] or {
 		panic('missing GetEnvironmentVariableW import thunk')
 	}
 	getenv_thunk_rva := text_rva + getenv_thunk
@@ -1375,6 +1589,46 @@ fn test_pe_linker_resolves_new_array_from_c_array_noscan_with_internal_heap_thun
 	assert has_noscan_flags_store
 	assert has_element_size_store
 	assert has_byte_copy_loop
+}
+
+fn test_pe_linker_resolves_new_array_noscan_with_internal_heap_thunk() {
+	mut obj := CoffObject.new()
+	obj.text_data << [u8(0xe8), 0, 0, 0, 0, 0xc3]
+	obj.add_symbol('main', 5, true, 1)
+	new_array_sym := obj.add_undefined('builtin____new_array_noscan')
+	obj.add_text_reloc(1, new_array_sym, coff_image_rel_amd64_rel32)
+
+	mut linker := PeLinker.new(obj)
+	image := linker.image() or { panic(err) }
+	text_off := pe_test_section_header(image, '.text')
+	text_rva := pe_test_u32(image, text_off + 12)
+	text_raw := int(pe_test_u32(image, text_off + 20))
+	text_raw_size := int(pe_test_u32(image, text_off + 16))
+	entry_stub_len := linker.entry_stub_size()
+	runtime_start_rva := text_rva + u32(entry_stub_len + obj.text_data.len)
+
+	mut first_import_thunk_file_off := -1
+	for off in text_raw + entry_stub_len + obj.text_data.len .. text_raw + text_raw_size - 1 {
+		if image[off] == 0xff && image[off + 1] == 0x25 {
+			first_import_thunk_file_off = off
+			break
+		}
+	}
+	assert first_import_thunk_file_off > 0
+	first_import_thunk_rva := text_rva + u32(first_import_thunk_file_off - text_raw)
+
+	new_array_field_off := text_raw + entry_stub_len + 1
+	new_array_field_rva := text_rva + u32(entry_stub_len + 1)
+	new_array_target := u32(i32(new_array_field_rva + 4) + pe_test_i32(image, new_array_field_off))
+	assert new_array_target >= runtime_start_rva
+	assert new_array_target < first_import_thunk_rva
+
+	new_array_off := pe_test_rva_to_file_off(image, new_array_target)
+	assert new_array_off > 0
+	assert image[new_array_off..new_array_off + 4] == [u8(0x48), 0x83, 0xec, 0x58] // sub rsp, 88
+	names := pe_test_import_names(image)
+	assert 'GetProcessHeap' in names
+	assert 'HeapAlloc' in names
 }
 
 fn test_pe_linker_rejects_unsupported_external_symbols() {
