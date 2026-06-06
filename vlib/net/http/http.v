@@ -36,7 +36,7 @@ pub mut:
 	in_memory_verification bool   // if true, verify, cert, and cert_key are read from memory, not from a file
 	allow_redirect         bool = true // whether to allow redirect
 	max_retries            int  = 5    // maximum number of retries required when an underlying socket error occurs
-	enable_http2           bool // opt in to HTTP/2 over TLS: advertise ALPN `h2` and, if the server selects it, speak HTTP/2 instead of HTTP/1.1
+	enable_http2           bool // opt in to HTTP/2 over TLS: advertise ALPN `h2` and, if the server selects it, speak HTTP/2 instead of HTTP/1.1. Requests using streaming response callbacks (on_progress/on_progress_body) or stop limits stay on HTTP/1.1, since the HTTP/2 path buffers the full response.
 	// callbacks to allow custom reporting code to run, while the request is running, and to implement streaming
 	on_redirect      RequestRedirectFn     = unsafe { nil }
 	on_progress      RequestProgressFn     = unsafe { nil }

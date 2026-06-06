@@ -27,6 +27,14 @@ fn h2_authority(host string, port int) string {
 // lowercased, hop-by-hop headers are dropped, the Host header becomes the
 // :authority pseudo-header, and cookies are collapsed into a single field.
 fn (req &Request) to_h2_request(method Method, authority string, path string, data string, header Header) H2ClientRequest {
+	// An explicit Host header overrides the URL host, matching the HTTP/1.1
+	// path (used for virtual-host / host-override requests).
+	mut auth := authority
+	if host := header.get(.host) {
+		if host != '' {
+			auth = host
+		}
+	}
 	mut extra := []H2HeaderField{}
 	if !header.contains(.user_agent) && req.user_agent != '' {
 		extra << H2HeaderField{'user-agent', req.user_agent}
@@ -58,11 +66,20 @@ fn (req &Request) to_h2_request(method Method, authority string, path string, da
 	return H2ClientRequest{
 		method:    method.str()
 		scheme:    'https'
-		authority: authority
+		authority: auth
 		path:      path
 		headers:   extra
 		body:      data.bytes()
 	}
+}
+
+// uses_response_streaming reports whether the request relies on streaming
+// response callbacks or stop limits. The HTTP/2 path buffers the full response,
+// so such requests must not negotiate HTTP/2 and instead use the HTTP/1.1 path,
+// which honors these. (Streaming over HTTP/2 is a planned follow-up.)
+fn (req &Request) uses_response_streaming() bool {
+	return req.on_progress != unsafe { nil } || req.on_progress_body != unsafe { nil }
+		|| req.stop_copying_limit >= 0 || req.stop_receiving_limit >= 0
 }
 
 // h2_response_to_http converts an HTTP/2 response into a net.http Response,

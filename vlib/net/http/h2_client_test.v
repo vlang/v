@@ -93,3 +93,36 @@ fn test_http2_fetch_real_server() {
 	plain := get('https://www.google.com/')!
 	assert plain.version() == .v1_1
 }
+
+fn test_to_h2_request_authority_from_host_header() {
+	mut h := new_header()
+	h.add(.host, 'override.example:8443')
+	req := Request{}
+	// The URL host is origin.example, but an explicit Host header must win.
+	h2req := req.to_h2_request(.get, 'origin.example', '/', '', h)
+	assert h2req.authority == 'override.example:8443'
+	assert !h2req.headers.any(it.name == 'host')
+}
+
+fn test_uses_response_streaming() {
+	assert !(Request{}).uses_response_streaming()
+	assert (Request{
+		stop_copying_limit: 0
+	}).uses_response_streaming()
+	assert (Request{
+		stop_receiving_limit: 100
+	}).uses_response_streaming()
+	progress := fn (request &Request, chunk []u8, read_so_far u64) ! {}
+	assert (Request{
+		on_progress: progress
+	}).uses_response_streaming()
+	body_progress := fn (request &Request, chunk []u8, body_read_so_far u64, body_expected_size u64, status_code int) ! {}
+	assert (Request{
+		on_progress_body: body_progress
+	}).uses_response_streaming()
+	// A non-streaming callback (on_finish) does not force HTTP/1.1.
+	finish := fn (request &Request, final_size u64) ! {}
+	assert !(Request{
+		on_finish: finish
+	}).uses_response_streaming()
+}

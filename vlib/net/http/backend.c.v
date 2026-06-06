@@ -22,8 +22,13 @@ fn net_ssl_do(req &Request, port int, method Method, host_name string, path stri
 		eprintln('')
 	}
 	// Advertise ALPN `h2` (with an `http/1.1` fallback) only when HTTP/2 is
-	// requested, so existing callers see no change on the wire.
-	alpn := if req.enable_http2 { ['h2', 'http/1.1'] } else { []string{} }
+	// requested, so existing callers see no change on the wire. Requests that
+	// rely on streaming response callbacks or stop limits stay on HTTP/1.1,
+	// since the HTTP/2 path buffers the full response; the ALPN offer is gated
+	// here (before negotiation) because once a server selects `h2` we cannot
+	// fall back to HTTP/1.1 framing on the same connection.
+	use_h2 := req.enable_http2 && !req.uses_response_streaming()
+	alpn := if use_h2 { ['h2', 'http/1.1'] } else { []string{} }
 	for {
 		mut ssl_conn := ssl.new_ssl_conn(
 			verify:                 req.verify
@@ -48,7 +53,7 @@ fn net_ssl_do(req &Request, port int, method Method, host_name string, path stri
 		}
 		// If the server negotiated HTTP/2 via ALPN, speak it; otherwise fall
 		// back to the existing HTTP/1.1 path unchanged.
-		if req.enable_http2 && ssl_conn.negotiated_alpn() == 'h2' {
+		if use_h2 && ssl_conn.negotiated_alpn() == 'h2' {
 			return req.h2_do(mut ssl_conn, method, host_name, port, path, data, header)!
 		}
 		return req.do_request(req_headers, mut ssl_conn)!
