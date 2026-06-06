@@ -56,6 +56,11 @@ fn _ht_alloc(p &u8, n isize) {
 		$if vgc ? {
 			$compile_error('-d track_heap requires manual memory management; rebuild with `-gc none`')
 		}
+		$if prealloc {
+			// -prealloc bumps from an arena and never frees individually, so the
+			// hooks would see no frees (every alloc shows live forever) — useless.
+			$compile_error('-d track_heap requires manual memory management; rebuild with `-gc none` (not -prealloc)')
+		}
 	}
 	C.vheap_alloc(p, u64(n))
 }
