@@ -486,32 +486,34 @@ fn stmt_can_split_top_level(stmt ast.Stmt) bool {
 	}
 }
 
-fn lpt_stmt_buckets(jobs []TransformStmtJob, n_jobs int) [][]TransformStmtJob {
-	mut order := []int{len: jobs.len, init: index}
-	for i in 1 .. order.len {
-		key := order[i]
-		kc := jobs[key].cost
-		mut j := i - 1
-		for j >= 0 && jobs[order[j]].cost < kc {
-			order[j + 1] = order[j]
-			j--
-		}
-		order[j + 1] = key
-	}
-	mut buckets := [][]TransformStmtJob{len: n_jobs}
-	mut load := []i64{len: n_jobs}
-	for job_idx in order {
-		mut mw := 0
-		for w in 1 .. n_jobs {
-			if load[w] < load[mw] {
-				mw = w
+$if !windows {
+	fn lpt_stmt_buckets(jobs []TransformStmtJob, n_jobs int) [][]TransformStmtJob {
+		mut order := []int{len: jobs.len, init: index}
+		for i in 1 .. order.len {
+			key := order[i]
+			kc := jobs[key].cost
+			mut j := i - 1
+			for j >= 0 && jobs[order[j]].cost < kc {
+				order[j + 1] = order[j]
+				j--
 			}
+			order[j + 1] = key
 		}
-		job := jobs[job_idx]
-		buckets[mw] << job
-		load[mw] += i64(job.cost)
+		mut buckets := [][]TransformStmtJob{len: n_jobs}
+		mut load := []i64{len: n_jobs}
+		for job_idx in order {
+			mut mw := 0
+			for w in 1 .. n_jobs {
+				if load[w] < load[mw] {
+					mw = w
+				}
+			}
+			job := jobs[job_idx]
+			buckets[mw] << job
+			load[mw] += i64(job.cost)
+		}
+		return buckets
 	}
-	return buckets
 }
 
 fn top_level_transform_stmt_cost(stmt ast.Stmt) int {

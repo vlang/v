@@ -45,6 +45,432 @@ fn mark_used_flat_minimal(files []ast.File, env &types.Environment) map[string]b
 	})
 }
 
+fn local_call_minimal_files() []ast.File {
+	return [
+		ast.File{
+			mod:   'main'
+			name:  'local_calls.v'
+			stmts: [
+				ast.Stmt(ast.FnDecl{
+					name:  'main'
+					typ:   ast.FnType{}
+					pos:   minimal_pos(10)
+					stmts: [
+						ast.Stmt(ast.ExprStmt{
+							expr: ast.CallExpr{
+								lhs: ast.Expr(minimal_ident('foo', 11))
+								pos: minimal_pos(11)
+							}
+						}),
+					]
+				}),
+				ast.Stmt(ast.FnDecl{
+					name:  'foo'
+					typ:   ast.FnType{}
+					pos:   minimal_pos(12)
+					stmts: [
+						ast.Stmt(ast.ExprStmt{
+							expr: ast.CallExpr{
+								lhs: ast.Expr(minimal_ident('status', 13))
+								pos: minimal_pos(13)
+							}
+						}),
+					]
+				}),
+				ast.Stmt(ast.FnDecl{
+					name: 'status'
+					typ:  ast.FnType{}
+					pos:  minimal_pos(14)
+				}),
+				ast.Stmt(ast.FnDecl{
+					name: 'dead'
+					typ:  ast.FnType{}
+					pos:  minimal_pos(15)
+				}),
+			]
+		},
+	]
+}
+
+fn assert_local_call_minimal_used(used map[string]bool, files []ast.File, env &types.Environment, label string) {
+	main_key := decl_key('main', files[0].stmts[0] as ast.FnDecl, env)
+	foo_key := decl_key('main', files[0].stmts[1] as ast.FnDecl, env)
+	status_key := decl_key('main', files[0].stmts[2] as ast.FnDecl, env)
+	dead_key := decl_key('main', files[0].stmts[3] as ast.FnDecl, env)
+
+	assert used[main_key], '${label}: main root was not kept'
+	assert used[foo_key], '${label}: local foo call was not marked'
+	assert used[status_key], '${label}: transitive local status call was not marked'
+	assert !used[dead_key], '${label}: unused local function should stay pruned'
+}
+
+fn test_minimal_runtime_roots_pointer_guards_accept_low_canonical_pointers() {
+	assert sumtype_payload_word_is_valid(1, 0x10000)
+	assert !sumtype_payload_word_is_valid(1, 0)
+	assert !sumtype_payload_word_is_valid(1, 3)
+	assert string_ok('foo')
+	assert string_ok('status')
+}
+
+fn test_minimal_runtime_roots_keep_local_calls_legacy() {
+	mut env := types.Environment.new()
+	files := local_call_minimal_files()
+	used := mark_used_with_options(files, env, MarkUsedOptions{
+		minimal_runtime_roots: true
+	})
+	assert_local_call_minimal_used(used, files, env, 'legacy')
+}
+
+fn test_minimal_runtime_roots_keep_local_calls_flat() {
+	mut env := types.Environment.new()
+	files := local_call_minimal_files()
+	used := mark_used_flat_minimal(files, env)
+	assert_local_call_minimal_used(used, files, env, 'flat')
+}
+
+fn selective_import_minimal_files() []ast.File {
+	return [
+		ast.File{
+			mod:     'main'
+			name:    'examples/submodule/main.v'
+			imports: [
+				ast.ImportStmt{
+					name:    'mymodules'
+					alias:   'mymodules'
+					symbols: [ast.Expr(minimal_ident('add_xy', 60))]
+				},
+				ast.ImportStmt{
+					name:    'mymodules.submodule'
+					alias:   'submodule'
+					symbols: [ast.Expr(minimal_ident('sub_xy', 61))]
+				},
+			]
+			stmts:   [
+				ast.Stmt(ast.FnDecl{
+					name:  'main'
+					typ:   ast.FnType{}
+					pos:   minimal_pos(62)
+					stmts: [
+						ast.Stmt(ast.ExprStmt{
+							expr: ast.CallExpr{
+								lhs: ast.Expr(minimal_ident('add_xy', 63))
+								pos: minimal_pos(63)
+							}
+						}),
+						ast.Stmt(ast.ExprStmt{
+							expr: ast.CallExpr{
+								lhs: ast.Expr(minimal_ident('sub_xy', 64))
+								pos: minimal_pos(64)
+							}
+						}),
+					]
+				}),
+			]
+		},
+		ast.File{
+			mod:   'mymodules'
+			name:  'examples/submodule/mymodules/main_functions.v'
+			stmts: [
+				ast.Stmt(ast.FnDecl{
+					name: 'add_xy'
+					typ:  ast.FnType{}
+					pos:  minimal_pos(65)
+				}),
+				ast.Stmt(ast.FnDecl{
+					name: 'unused_add'
+					typ:  ast.FnType{}
+					pos:  minimal_pos(66)
+				}),
+			]
+		},
+		ast.File{
+			mod:   'submodule'
+			name:  'examples/submodule/mymodules/submodule/sub_functions.v'
+			stmts: [
+				ast.Stmt(ast.FnDecl{
+					name: 'sub_xy'
+					typ:  ast.FnType{}
+					pos:  minimal_pos(67)
+				}),
+				ast.Stmt(ast.FnDecl{
+					name: 'unused_sub'
+					typ:  ast.FnType{}
+					pos:  minimal_pos(68)
+				}),
+			]
+		},
+	]
+}
+
+fn assert_selective_import_minimal_used(used map[string]bool, files []ast.File, env &types.Environment, label string) {
+	main_key := decl_key('main', files[0].stmts[0] as ast.FnDecl, env)
+	add_key := decl_key('mymodules', files[1].stmts[0] as ast.FnDecl, env)
+	unused_add_key := decl_key('mymodules', files[1].stmts[1] as ast.FnDecl, env)
+	sub_key := decl_key('submodule', files[2].stmts[0] as ast.FnDecl, env)
+	unused_sub_key := decl_key('submodule', files[2].stmts[1] as ast.FnDecl, env)
+
+	assert used[main_key], '${label}: main root was not kept'
+	assert used[add_key], '${label}: selective import add_xy was not resolved to mymodules__add_xy'
+	assert used[sub_key], '${label}: selective import sub_xy was not resolved to submodule__sub_xy'
+	assert !used[unused_add_key], '${label}: unused mymodules function should stay pruned'
+	assert !used[unused_sub_key], '${label}: unused submodule function should stay pruned'
+}
+
+fn test_minimal_runtime_roots_keep_selective_imported_function_calls_legacy() {
+	mut env := types.Environment.new()
+	files := selective_import_minimal_files()
+	used := mark_used_with_options(files, env, MarkUsedOptions{
+		minimal_runtime_roots: true
+	})
+	assert_selective_import_minimal_used(used, files, env, 'legacy')
+}
+
+fn test_minimal_runtime_roots_keep_selective_imported_function_calls_flat() {
+	mut env := types.Environment.new()
+	files := selective_import_minimal_files()
+	used := mark_used_flat_minimal(files, env)
+	assert_selective_import_minimal_used(used, files, env, 'flat')
+}
+
+fn selective_import_shadow_minimal_files(use_function_value bool) []ast.File {
+	mut main_body := []ast.Stmt{}
+	if use_function_value {
+		main_body << ast.Stmt(ast.AssignStmt{
+			op:  .decl_assign
+			lhs: [ast.Expr(minimal_ident('f', 150))]
+			rhs: [ast.Expr(minimal_ident('add_xy', 151))]
+			pos: minimal_pos(150)
+		})
+	} else {
+		main_body << ast.Stmt(ast.ExprStmt{
+			expr: ast.CallExpr{
+				lhs: ast.Expr(minimal_ident('add_xy', 152))
+				pos: minimal_pos(152)
+			}
+		})
+	}
+	return [
+		ast.File{
+			mod:     'main'
+			name:    'shadow/main.v'
+			imports: [
+				ast.ImportStmt{
+					name:    'mymodules'
+					alias:   'mymodules'
+					symbols: [ast.Expr(minimal_ident('add_xy', 153))]
+				},
+			]
+			stmts:   [
+				ast.Stmt(ast.FnDecl{
+					name:  'main'
+					typ:   ast.FnType{}
+					pos:   minimal_pos(154)
+					stmts: main_body
+				}),
+				ast.Stmt(ast.FnDecl{
+					name: 'add_xy'
+					typ:  ast.FnType{}
+					pos:  minimal_pos(155)
+				}),
+			]
+		},
+		ast.File{
+			mod:   'mymodules'
+			name:  'shadow/mymodules/main_functions.v'
+			stmts: [
+				ast.Stmt(ast.FnDecl{
+					name: 'add_xy'
+					typ:  ast.FnType{}
+					pos:  minimal_pos(156)
+				}),
+				ast.Stmt(ast.FnDecl{
+					name: 'unused_remote'
+					typ:  ast.FnType{}
+					pos:  minimal_pos(157)
+				}),
+			]
+		},
+		ast.File{
+			mod:   'othermod'
+			name:  'shadow/othermod/main_functions.v'
+			stmts: [
+				ast.Stmt(ast.FnDecl{
+					name: 'add_xy'
+					typ:  ast.FnType{}
+					pos:  minimal_pos(158)
+				}),
+			]
+		},
+	]
+}
+
+fn assert_selective_import_shadow_uses_local(used map[string]bool, files []ast.File, env &types.Environment, label string) {
+	main_key := decl_key('main', files[0].stmts[0] as ast.FnDecl, env)
+	local_add_key := decl_key('main', files[0].stmts[1] as ast.FnDecl, env)
+	imported_add_key := decl_key('mymodules', files[1].stmts[0] as ast.FnDecl, env)
+	unused_remote_key := decl_key('mymodules', files[1].stmts[1] as ast.FnDecl, env)
+	other_add_key := decl_key('othermod', files[2].stmts[0] as ast.FnDecl, env)
+
+	assert used[main_key], '${label}: main root was not kept'
+	assert used[local_add_key], '${label}: local add_xy should shadow the selective import'
+	assert !used[imported_add_key], '${label}: shadowed selective import should stay pruned'
+	assert !used[unused_remote_key], '${label}: unused imported-module function should stay pruned'
+	assert !used[other_add_key], '${label}: bare global add_xy fallback marked a colliding module function'
+}
+
+fn test_minimal_runtime_roots_selective_import_call_uses_local_shadow_legacy() {
+	mut env := types.Environment.new()
+	files := selective_import_shadow_minimal_files(false)
+	used := mark_used_with_options(files, env, MarkUsedOptions{
+		minimal_runtime_roots: true
+	})
+	assert_selective_import_shadow_uses_local(used, files, env, 'legacy call')
+}
+
+fn test_minimal_runtime_roots_selective_import_call_uses_local_shadow_flat() {
+	mut env := types.Environment.new()
+	files := selective_import_shadow_minimal_files(false)
+	used := mark_used_flat_minimal(files, env)
+	assert_selective_import_shadow_uses_local(used, files, env, 'flat call')
+}
+
+fn test_minimal_runtime_roots_selective_import_function_value_uses_local_shadow_legacy() {
+	mut env := types.Environment.new()
+	files := selective_import_shadow_minimal_files(true)
+	used := mark_used_with_options(files, env, MarkUsedOptions{
+		minimal_runtime_roots: true
+	})
+	assert_selective_import_shadow_uses_local(used, files, env, 'legacy function value')
+}
+
+fn test_minimal_runtime_roots_selective_import_function_value_uses_local_shadow_flat() {
+	mut env := types.Environment.new()
+	files := selective_import_shadow_minimal_files(true)
+	used := mark_used_flat_minimal(files, env)
+	assert_selective_import_shadow_uses_local(used, files, env, 'flat function value')
+}
+
+fn selective_import_function_value_minimal_files() []ast.File {
+	return [
+		ast.File{
+			mod:     'main'
+			name:    'fnvalue/main.v'
+			imports: [
+				ast.ImportStmt{
+					name:    'mymodules'
+					alias:   'mymodules'
+					symbols: [ast.Expr(minimal_ident('add_xy', 160))]
+				},
+			]
+			stmts:   [
+				ast.Stmt(ast.FnDecl{
+					name:  'main'
+					typ:   ast.FnType{}
+					pos:   minimal_pos(161)
+					stmts: [
+						ast.Stmt(ast.AssignStmt{
+							op:  .decl_assign
+							lhs: [ast.Expr(minimal_ident('f', 162))]
+							rhs: [ast.Expr(minimal_ident('add_xy', 163))]
+							pos: minimal_pos(162)
+						}),
+					]
+				}),
+			]
+		},
+		ast.File{
+			mod:   'mymodules'
+			name:  'fnvalue/mymodules/main_functions.v'
+			stmts: [
+				ast.Stmt(ast.FnDecl{
+					name: 'add_xy'
+					typ:  ast.FnType{}
+					pos:  minimal_pos(164)
+				}),
+				ast.Stmt(ast.FnDecl{
+					name: 'unused_remote'
+					typ:  ast.FnType{}
+					pos:  minimal_pos(165)
+				}),
+			]
+		},
+		ast.File{
+			mod:   'othermod'
+			name:  'fnvalue/othermod/main_functions.v'
+			stmts: [
+				ast.Stmt(ast.FnDecl{
+					name: 'add_xy'
+					typ:  ast.FnType{}
+					pos:  minimal_pos(166)
+				}),
+			]
+		},
+	]
+}
+
+fn assert_selective_import_function_value_uses_imported_target(used map[string]bool, files []ast.File, env &types.Environment, label string) {
+	main_key := decl_key('main', files[0].stmts[0] as ast.FnDecl, env)
+	imported_add_key := decl_key('mymodules', files[1].stmts[0] as ast.FnDecl, env)
+	unused_remote_key := decl_key('mymodules', files[1].stmts[1] as ast.FnDecl, env)
+	other_add_key := decl_key('othermod', files[2].stmts[0] as ast.FnDecl, env)
+
+	assert used[main_key], '${label}: main root was not kept'
+	assert used[imported_add_key], '${label}: selective import function value did not resolve to mymodules__add_xy'
+	assert !used[unused_remote_key], '${label}: unused imported-module function should stay pruned'
+	assert !used[other_add_key], '${label}: bare global add_xy fallback marked a colliding module function'
+}
+
+fn test_minimal_runtime_roots_keep_selective_imported_function_values_legacy() {
+	mut env := types.Environment.new()
+	files := selective_import_function_value_minimal_files()
+	used := mark_used_with_options(files, env, MarkUsedOptions{
+		minimal_runtime_roots: true
+	})
+	assert_selective_import_function_value_uses_imported_target(used, files, env,
+		'legacy function value')
+}
+
+fn test_minimal_runtime_roots_keep_selective_imported_function_values_flat() {
+	mut env := types.Environment.new()
+	files := selective_import_function_value_minimal_files()
+	used := mark_used_flat_minimal(files, env)
+	assert_selective_import_function_value_uses_imported_target(used, files, env,
+		'flat function value')
+}
+
+fn test_minimal_runtime_roots_selective_import_add_fn_name_indices_legacy() {
+	mut env := types.Environment.new()
+	files := selective_import_function_value_minimal_files()
+	mut w := new_walker(files, env, MarkUsedOptions{
+		minimal_runtime_roots: true
+	})
+	w.collect_defs()
+	w.cur_fn_file = files[0].name
+	mut indices := []int{}
+	w.add_fn_name_indices('add_xy', 'main', mut indices)
+	target_key := decl_key('mymodules', files[1].stmts[0] as ast.FnDecl, env)
+
+	assert indices.len == 1
+	assert w.fns[indices[0]].key == target_key
+}
+
+fn test_minimal_runtime_roots_selective_import_add_fn_name_indices_flat() {
+	mut env := types.Environment.new()
+	files := selective_import_function_value_minimal_files()
+	flat := ast.flatten_files(files)
+	mut w := new_walker(files, env, MarkUsedOptions{
+		minimal_runtime_roots: true
+	})
+	w.collect_defs_from_flat(&flat)
+	w.cur_fn_file = files[0].name
+	mut indices := []int{}
+	w.add_fn_name_indices('add_xy', 'main', mut indices)
+	target_key := decl_key('mymodules', files[1].stmts[0] as ast.FnDecl, env)
+
+	assert indices.len == 1
+	assert w.fns[indices[0]].key == target_key
+}
+
 fn test_minimal_runtime_roots_keep_explicit_calls_only() {
 	mut env := types.Environment.new()
 	files := [
@@ -1034,6 +1460,78 @@ fn test_minimal_runtime_roots_keep_array_push_noscan_wrapper() {
 	assert used[push_key]
 }
 
+fn minimal_array_eq_runtime_dependency_files() []ast.File {
+	return [
+		ast.File{
+			mod:   'main'
+			name:  'array_eq_transformed.v'
+			stmts: [
+				ast.Stmt(ast.FnDecl{
+					name:  'main'
+					typ:   ast.FnType{}
+					pos:   minimal_pos(360)
+					stmts: [
+						ast.Stmt(ast.ExprStmt{
+							expr: ast.CallExpr{
+								lhs:  ast.Expr(minimal_ident('array__eq', 360))
+								args: [
+									ast.Expr(minimal_ident('path', 361)),
+									ast.Expr(minimal_ident('expected', 362)),
+								]
+								pos:  minimal_pos(363)
+							}
+						}),
+					]
+				}),
+			]
+		},
+		ast.File{
+			mod:   'builtin'
+			name:  'vlib/builtin/map.v'
+			stmts: [
+				ast.Stmt(ast.FnDecl{
+					name: 'map_map_eq'
+					typ:  ast.FnType{}
+					pos:  minimal_pos(364)
+				}),
+				ast.Stmt(ast.FnDecl{
+					name: 'map_clone_string'
+					typ:  ast.FnType{}
+					pos:  minimal_pos(365)
+				}),
+			]
+		},
+	]
+}
+
+fn minimal_array_eq_runtime_dependency_env() &types.Environment {
+	return types.Environment.new()
+}
+
+fn test_minimal_runtime_roots_transformed_array_eq_keeps_map_map_eq_dependency_legacy() {
+	mut env := minimal_array_eq_runtime_dependency_env()
+	files := minimal_array_eq_runtime_dependency_files()
+	used := mark_used_with_options(files, env, MarkUsedOptions{
+		minimal_runtime_roots: true
+	})
+	map_map_eq_key := decl_key('builtin', files[1].stmts[0] as ast.FnDecl, env)
+	unused_key := decl_key('builtin', files[1].stmts[1] as ast.FnDecl, env)
+
+	assert used[map_map_eq_key]
+	assert !used[unused_key]
+}
+
+fn test_minimal_runtime_roots_transformed_array_eq_keeps_map_map_eq_dependency_flat() {
+	mut env := minimal_array_eq_runtime_dependency_env()
+	files := minimal_array_eq_runtime_dependency_files()
+	used := mark_used_flat_minimal(files, env)
+	map_map_eq_key := decl_key('builtin', files[1].stmts[0] as ast.FnDecl, env)
+	unused_key := decl_key('builtin', files[1].stmts[1] as ast.FnDecl, env)
+
+	assert used[map_map_eq_key]
+	assert !used[unused_key]
+}
+
 fn test_minimal_runtime_roots_do_not_seed_array_rune_string_helper_or_generic_array_methods() {
 	mut env := types.Environment.new()
 	array_rune_type := ast.Expr(ast.Type(ast.ArrayType{
@@ -1188,6 +1686,138 @@ fn test_minimal_runtime_roots_do_not_seed_array_rune_string_helper_or_generic_ar
 	assert !used[prepare_builder_key]
 	assert !used[unused_rune_helper_key]
 	assert !used[unused_builder_key]
+}
+
+fn array_rune_string_free_exact_target_files() []ast.File {
+	return [
+		ast.File{
+			mod:   'main'
+			name:  'main.v'
+			stmts: [
+				ast.Stmt(ast.FnDecl{
+					name:  'main'
+					typ:   ast.FnType{}
+					pos:   minimal_pos(500)
+					stmts: [
+						ast.Stmt(ast.ExprStmt{
+							expr: ast.CallExpr{
+								lhs: ast.Ident{
+									name: 'builtin__Array_rune__string'
+									pos:  minimal_pos(501)
+								}
+								pos: minimal_pos(501)
+							}
+						}),
+					]
+				}),
+			]
+		},
+		ast.File{
+			mod:   'builtin'
+			name:  'vlib/builtin/rune.v'
+			stmts: [
+				ast.Stmt(ast.FnDecl{
+					is_method: true
+					receiver:  ast.Parameter{
+						name: 'ra'
+						typ:  ast.Expr(ast.Type(ast.ArrayType{
+							elem_type: ast.Expr(ast.Ident{
+								name: 'rune'
+								pos:  minimal_pos(502)
+							})
+						}))
+						pos:  minimal_pos(503)
+					}
+					name:      'string'
+					typ:       ast.FnType{}
+					pos:       minimal_pos(504)
+					stmts:     [
+						ast.Stmt(ast.ExprStmt{
+							expr: ast.CallExpr{
+								lhs: ast.Ident{
+									name: 'strings__Builder__free'
+									pos:  minimal_pos(505)
+								}
+								pos: minimal_pos(505)
+							}
+						}),
+					]
+				}),
+				ast.Stmt(ast.FnDecl{
+					is_method: true
+					receiver:  ast.Parameter{
+						name: 'a'
+						typ:  ast.Expr(ast.Ident{
+							name: 'array'
+							pos:  minimal_pos(506)
+						})
+						pos:  minimal_pos(507)
+					}
+					name:      'free'
+					typ:       ast.FnType{}
+					pos:       minimal_pos(508)
+				}),
+			]
+		},
+		ast.File{
+			mod:   'strings'
+			name:  'vlib/strings/builder.v'
+			stmts: [
+				ast.Stmt(ast.StructDecl{
+					name: 'Builder'
+				}),
+				ast.Stmt(ast.FnDecl{
+					is_method: true
+					receiver:  ast.Parameter{
+						name: 'b'
+						typ:  ast.Expr(ast.SelectorExpr{
+							lhs: ast.Ident{
+								name: 'strings'
+								pos:  minimal_pos(509)
+							}
+							rhs: ast.Ident{
+								name: 'Builder'
+								pos:  minimal_pos(510)
+							}
+							pos: minimal_pos(509)
+						})
+						pos:  minimal_pos(511)
+					}
+					name:      'free'
+					typ:       ast.FnType{}
+					pos:       minimal_pos(512)
+				}),
+			]
+		},
+	]
+}
+
+fn assert_array_rune_string_marks_exact_builder_free(used map[string]bool, files []ast.File, env &types.Environment, label string) {
+	main_key := decl_key('main', files[0].stmts[0] as ast.FnDecl, env)
+	array_rune_string_key := decl_key('builtin', files[1].stmts[0] as ast.FnDecl, env)
+	array_free_key := decl_key('builtin', files[1].stmts[1] as ast.FnDecl, env)
+	builder_free_key := decl_key('strings', files[2].stmts[1] as ast.FnDecl, env)
+
+	assert used[main_key], '${label}: main root was not kept'
+	assert used[array_rune_string_key], '${label}: Array_rune.string was not reached'
+	assert used[builder_free_key], '${label}: exact strings__Builder__free target was pruned'
+	assert !used[array_free_key], '${label}: array__free alias replaced the exact Builder.free target'
+}
+
+fn test_minimal_runtime_roots_array_rune_string_keeps_exact_builder_free_legacy() {
+	mut env := types.Environment.new()
+	files := array_rune_string_free_exact_target_files()
+	used := mark_used_with_options(files, env, MarkUsedOptions{
+		minimal_runtime_roots: true
+	})
+	assert_array_rune_string_marks_exact_builder_free(used, files, env, 'legacy')
+}
+
+fn test_minimal_runtime_roots_array_rune_string_keeps_exact_builder_free_flat() {
+	mut env := types.Environment.new()
+	files := array_rune_string_free_exact_target_files()
+	used := mark_used_flat_minimal(files, env)
+	assert_array_rune_string_marks_exact_builder_free(used, files, env, 'flat')
 }
 
 fn test_minimal_runtime_roots_keep_synthesized_import_init_calls() {

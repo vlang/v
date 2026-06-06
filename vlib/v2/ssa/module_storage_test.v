@@ -12,7 +12,7 @@ fn module_storage_ssa_tmp_dir(label string) string {
 	return os.join_path(os.temp_dir(), 'v2_module_storage_ssa_${label}_${os.getpid()}')
 }
 
-fn module_storage_ssa_for_test_sources(label string, sources map[string]string) &Module {
+fn module_storage_ssa_builder_for_test_sources(label string, sources map[string]string) &Builder {
 	tmp_dir := module_storage_ssa_tmp_dir(label)
 	os.mkdir_all(tmp_dir) or { panic('cannot create ${tmp_dir}') }
 	defer {
@@ -25,7 +25,10 @@ fn module_storage_ssa_for_test_sources(label string, sources map[string]string) 
 		os.write_file(path, code) or { panic('cannot write ${path}') }
 		paths << path
 	}
-	prefs := &pref.Preferences{}
+	prefs := &pref.Preferences{
+		backend: .x64
+		arch:    .x64
+	}
 	mut file_set := token.FileSet.new()
 	mut par := parser.Parser.new(prefs)
 	files := par.parse_files(paths, mut file_set)
@@ -38,7 +41,12 @@ fn module_storage_ssa_for_test_sources(label string, sources map[string]string) 
 	mut mod := Module.new('module_storage_test')
 	mut builder := Builder.new_with_env(mod, env)
 	builder.build_all(transformed_files)
-	return mod
+	return builder
+}
+
+fn module_storage_ssa_for_test_sources(label string, sources map[string]string) &Module {
+	builder := module_storage_ssa_builder_for_test_sources(label, sources)
+	return builder.mod
 }
 
 fn module_storage_ssa_for_test_sources_flat(label string, sources map[string]string) &Module {
@@ -134,6 +142,31 @@ fn module_storage_ssa_return_value_ids(m &Module, func Function) []ValueID {
 	return ret_vals
 }
 
+fn module_storage_ssa_call_callees(m &Module, func Function) []string {
+	mut callees := []string{}
+	for blk_id in func.blocks {
+		for val_id in m.blocks[blk_id].instrs {
+			value := m.values[val_id]
+			if value.kind != .instruction {
+				continue
+			}
+			instr := m.instrs[value.index]
+			if instr.op != .call || instr.operands.len == 0 {
+				continue
+			}
+			callee_id := instr.operands[0]
+			if callee_id <= 0 || callee_id >= m.values.len {
+				continue
+			}
+			callee := m.values[callee_id]
+			if callee.kind == .func_ref {
+				callees << callee.name
+			}
+		}
+	}
+	return callees
+}
+
 fn test_module_storage_import_alias_resolves_to_declaring_module_in_ssa() {
 	m := module_storage_ssa_for_test_sources('alias', {
 		'report/report.v': 'module report
@@ -153,6 +186,97 @@ fn main() {
 	assert 'report__errors' in names
 	assert 'r__errors' !in names
 	assert module_storage_ssa_has_store_to_global(m, 'report__errors')
+}
+
+fn test_module_storage_legacy_direct_import_module_selector_one_arg_stays_call() {
+	m := module_storage_ssa_for_test_sources('module_selector_one_arg_call', {
+		'main.v':          'module main
+
+import left as l
+import right
+import helper
+
+fn main() {
+	first := l.state == 10 && right.state == 200 && l.score() == 1001 && right.score() == 20005
+	direct := l.bump(3)
+	transitive := helper.bump_right(5)
+	second := direct == 132 && transitive == 2057 && l.state == 13 && right.state == 205
+	_ = first
+	_ = second
+}
+'
+		'left/left.v':     'module left
+
+pub __global mut state = 10
+__global mut private_hits = 1
+
+pub fn bump(delta int) int {
+	state += delta
+	private_hits += 1
+	return state * 10 + private_hits
+}
+
+pub fn score() int {
+	return state * 100 + private_hits
+}
+'
+		'right/right.v':   'module right
+
+pub __global mut state = 200
+__global mut private_hits = 5
+
+pub fn bump(delta int) int {
+	state += delta
+	private_hits += 2
+	return state * 10 + private_hits
+}
+
+pub fn score() int {
+	return state * 100 + private_hits
+}
+'
+		'helper/helper.v': 'module helper
+
+import right as r
+
+pub fn bump_right(delta int) int {
+	return r.bump(delta)
+}
+
+pub fn right_score() int {
+	return r.score()
+}
+'
+	})
+	main_func := module_storage_ssa_func(m, 'main') or { panic('missing main') }
+	callees := module_storage_ssa_call_callees(m, main_func)
+	assert 'helper__bump_right' in callees
+}
+
+fn test_module_storage_legacy_call_or_cast_module_selector_prefers_registered_call() {
+	mut builder := module_storage_ssa_builder_for_test_sources('module_selector_call_or_cast_decision', {
+		'helper/helper.v': 'module helper
+
+pub fn bump_right(delta int) int {
+	return delta + 1
+}
+'
+		'main.v':          'module main
+
+import helper
+
+fn main() {}
+'
+	})
+	sel := ast.SelectorExpr{
+		lhs: ast.Expr(ast.Ident{
+			name: 'helper'
+		})
+		rhs: ast.Ident{
+			name: 'bump_right'
+		}
+	}
+	assert !builder.call_or_cast_selector_should_remain_cast(sel, 'helper__bump_right')
 }
 
 fn test_module_qualified_alias_array_field_index_has_alias_element_type() {

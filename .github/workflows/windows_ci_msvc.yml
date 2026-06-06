@@ -65,16 +65,20 @@ jobs:
             }
           }
 
-          function Invoke-NativeX64Example([string] $source, [string] $name, [byte[]] $expected_stdout) {
+          function Invoke-NativeX64Example([string] $source, [string] $name, [byte[]] $expected_stdout, [string[]] $program_args = @()) {
             $exe = Join-Path $tmp "$name.exe"
             $stdout_path = Join-Path $tmp "$name.out"
             $stderr_path = Join-Path $tmp "$name.err"
 
-            .\v.exe -v2 -b x64 $source -o $exe
+            .\v.exe -v2 -no-parallel -b x64 $source -o $exe
             Assert-LastExit "compile $source"
 
             Remove-Item -LiteralPath $stdout_path, $stderr_path -Force -ErrorAction SilentlyContinue
-            $process = Start-Process -FilePath $exe -NoNewWindow -Wait -PassThru -RedirectStandardOutput $stdout_path -RedirectStandardError $stderr_path
+            if ($program_args.Count -gt 0) {
+              $process = Start-Process -FilePath $exe -ArgumentList $program_args -NoNewWindow -Wait -PassThru -RedirectStandardOutput $stdout_path -RedirectStandardError $stderr_path
+            } else {
+              $process = Start-Process -FilePath $exe -NoNewWindow -Wait -PassThru -RedirectStandardOutput $stdout_path -RedirectStandardError $stderr_path
+            }
             if ($process.ExitCode -ne 0) {
               if (Test-Path -LiteralPath $stderr_path) {
                 Get-Content -LiteralPath $stderr_path
@@ -89,8 +93,12 @@ jobs:
             Assert-ByteArrayEqual $stderr $empty "$source stderr"
           }
 
+          $env:VJOBS = '1'
           .\v.exe test vlib/v2/abi vlib/v2/gen/x64
           Assert-LastExit 'vlib/v2/abi vlib/v2/gen/x64'
+          Remove-Item Env:\VJOBS -ErrorAction SilentlyContinue
+          .\v.exe test vlib/v2/builder/native_test.v vlib/v2/builder/target_os_test.v
+          Assert-LastExit 'vlib/v2/builder/native_test.v vlib/v2/builder/target_os_test.v'
           .\v.exe test vlib/v2/ssa/optimize
           Assert-LastExit 'vlib/v2/ssa/optimize'
           $env:V2_VERIFY_STRICT = '1'
@@ -100,6 +108,25 @@ jobs:
 
           $tmp = Join-Path $env:RUNNER_TEMP 'v2_x64_native'
           New-Item -ItemType Directory -Force -Path $tmp | Out-Null
+
+          function Get-VRunExpectedBytes([string] $source, [string] $name) {
+            $stdout_path = Join-Path $tmp "$name.vrun.out"
+            $stderr_path = Join-Path $tmp "$name.vrun.err"
+            Remove-Item -LiteralPath $stdout_path, $stderr_path -Force -ErrorAction SilentlyContinue
+
+            $process = Start-Process -FilePath '.\v.exe' -ArgumentList @('run', $source) -NoNewWindow -Wait -PassThru -RedirectStandardOutput $stdout_path -RedirectStandardError $stderr_path
+            if ($process.ExitCode -ne 0) {
+              if (Test-Path -LiteralPath $stderr_path) {
+                Get-Content -LiteralPath $stderr_path
+              }
+              throw "v run $source failed with code $($process.ExitCode)"
+            }
+
+            [byte[]] $stderr = if (Test-Path -LiteralPath $stderr_path) { [System.IO.File]::ReadAllBytes($stderr_path) } else { New-Object byte[] 0 }
+            $empty = New-Object byte[] 0
+            Assert-ByteArrayEqual $stderr $empty "v run $source stderr"
+            return [System.IO.File]::ReadAllBytes($stdout_path)
+          }
 
           $hello_expected = [System.Text.Encoding]::UTF8.GetBytes("Hello, World!`n")
           Invoke-NativeX64Example 'examples/hello_world.v' 'hello_world' $hello_expected
@@ -117,6 +144,185 @@ jobs:
           }
           $fizz_expected = [System.Text.Encoding]::UTF8.GetBytes(($fizz_lines -join "`n") + "`n")
           Invoke-NativeX64Example 'examples/fizz_buzz.v' 'fizz_buzz' $fizz_expected
+
+          $fibonacci_expected = [System.Text.Encoding]::UTF8.GetBytes("1`n1`n2`n3`n5`n8`n13`n21`n34`n55`n89`n")
+          Invoke-NativeX64Example 'examples/fibonacci.v' 'fibonacci' $fibonacci_expected @('10')
+
+          function Get-HanoiExpectedLines([int] $n, [string] $a, [string] $b, [string] $c) {
+            if ($n -eq 1) {
+              "Disc 1 from $a to $c..."
+              return
+            }
+            Get-HanoiExpectedLines ($n - 1) $a $c $b
+            "Disc $n from $a to $c..."
+            Get-HanoiExpectedLines ($n - 1) $b $a $c
+          }
+
+          $hanoi_lines = @(Get-HanoiExpectedLines 7 'A' 'B' 'C')
+          $hanoi_expected = [System.Text.Encoding]::UTF8.GetBytes(($hanoi_lines -join "`n") + "`n")
+          Invoke-NativeX64Example 'examples/hanoi.v' 'hanoi' $hanoi_expected
+
+          function Get-SudokuExpectedLines {
+            $puzzle = @(
+              ,@(0, 3, 0, 0, 7, 0, 0, 0, 0)
+              ,@(0, 0, 0, 1, 3, 5, 0, 0, 0)
+              ,@(0, 0, 1, 0, 0, 0, 0, 5, 0)
+              ,@(1, 0, 0, 0, 6, 0, 0, 0, 3)
+              ,@(4, 0, 0, 8, 0, 3, 0, 0, 1)
+              ,@(7, 0, 0, 0, 2, 0, 0, 0, 6)
+              ,@(0, 0, 0, 0, 0, 0, 2, 1, 0)
+              ,@(0, 0, 0, 4, 1, 2, 0, 0, 5)
+              ,@(0, 0, 0, 0, 0, 0, 0, 7, 4)
+            )
+            $solution = @(
+              ,@(2, 3, 5, 6, 7, 8, 1, 4, 9)
+              ,@(9, 4, 7, 1, 3, 5, 8, 6, 2)
+              ,@(6, 8, 1, 2, 4, 9, 3, 5, 7)
+              ,@(1, 2, 8, 7, 6, 4, 5, 9, 3)
+              ,@(4, 5, 6, 8, 9, 3, 7, 2, 1)
+              ,@(7, 9, 3, 5, 2, 1, 4, 8, 6)
+              ,@(3, 6, 4, 9, 5, 7, 2, 1, 8)
+              ,@(8, 7, 9, 4, 1, 2, 6, 3, 5)
+              ,@(5, 1, 2, 3, 8, 6, 9, 7, 4)
+            )
+            $lines = [System.Collections.Generic.List[string]]::new()
+
+            function Add-SudokuGrid([string] $label, [object[]] $grid) {
+              $lines.Add($label)
+              for ($i = 0; $i -lt $grid.Count; $i++) {
+                if ($i % 3 -eq 0 -and $i -ne 0) {
+                  $lines.Add('- - - - - - - - - - - -')
+                }
+                $line = ''
+                for ($j = 0; $j -lt $grid[$i].Count; $j++) {
+                  if ($j % 3 -eq 0 -and $j -ne 0) {
+                    $line += ' | '
+                  }
+                  $line += "$($grid[$i][$j]) "
+                }
+                $lines.Add($line)
+              }
+            }
+
+            Add-SudokuGrid 'Sudoku Puzzle:' $puzzle
+            $lines.Add('Solving...')
+            Add-SudokuGrid 'Solution:' $solution
+            return $lines.ToArray()
+          }
+
+          $sudoku_lines = @(Get-SudokuExpectedLines)
+          $sudoku_expected = [System.Text.Encoding]::UTF8.GetBytes(($sudoku_lines -join "`n") + "`n")
+          if ($sudoku_expected.Length -ne 582) {
+            throw "sudoku stdout oracle shape changed: $($sudoku_expected.Length) bytes"
+          }
+          Invoke-NativeX64Example 'examples/sudoku.v' 'sudoku' $sudoku_expected
+
+          $function_types_expected = [System.Text.Encoding]::UTF8.GetBytes("HELLO WORLD`nHELLO WORLD`nHELLO WORLD`n")
+          Invoke-NativeX64Example 'examples/function_types.v' 'function_types' $function_types_expected
+
+          $submodule_expected = [System.Text.Encoding]::UTF8.GetBytes("5`n3`n")
+          Invoke-NativeX64Example 'examples/submodule/main.v' 'submodule' $submodule_expected
+
+          function Get-TreeOfNodesExpectedLines {
+            @(
+              'tree structure:'
+              ' Node{'
+              '    value: 10'
+              '    left: Tree(Node{'
+              '        value: 30'
+              '        left: Tree(Empty{})'
+              '        right: Tree(Empty{})'
+              '    })'
+              '    right: Tree(Node{'
+              '        value: 20'
+              '        left: Tree(Empty{})'
+              '        right: Tree(Empty{})'
+              '    })'
+              '}'
+              'tree size: 3'
+            )
+          }
+
+          $tree_of_nodes_lines = @(Get-TreeOfNodesExpectedLines)
+          $tree_of_nodes_expected = [System.Text.Encoding]::UTF8.GetBytes(($tree_of_nodes_lines -join "`n") + "`n")
+          if ($tree_of_nodes_expected.Length -ne 259) {
+            throw "tree_of_nodes stdout oracle shape changed: $($tree_of_nodes_expected.Length) bytes"
+          }
+          Invoke-NativeX64Example 'examples/tree_of_nodes.v' 'tree_of_nodes' $tree_of_nodes_expected
+
+          $js_hello_world_expected = [System.Text.Encoding]::UTF8.GetBytes("Hello from V.js (0)`nHello from V.js (1)`nHello from V.js (2)`n")
+          Invoke-NativeX64Example 'examples/js_hello_world.v' 'js_hello_world' $js_hello_world_expected
+
+          function Get-VSingleQuotedLiteralBytes([string] $literal) {
+            $bytes = [System.Collections.Generic.List[byte]]::new()
+            for ($i = 0; $i -lt $literal.Length; $i++) {
+              $ch = $literal[$i]
+              if ($ch -eq '\') {
+                $i++
+                if ($i -ge $literal.Length) {
+                  throw 'unterminated escape in V single-quoted literal'
+                }
+                $escaped = $literal[$i]
+                switch ([int][char] $escaped) {
+                  110 { [void] $bytes.Add(10) }
+                  116 { [void] $bytes.Add(9) }
+                  114 { [void] $bytes.Add(13) }
+                  92 { [void] $bytes.Add(92) }
+                  39 { [void] $bytes.Add(39) }
+                  34 { [void] $bytes.Add(34) }
+                  default {
+                    foreach ($byte in [System.Text.Encoding]::UTF8.GetBytes([string] $escaped)) {
+                      [void] $bytes.Add($byte)
+                    }
+                  }
+                }
+              } else {
+                foreach ($byte in [System.Text.Encoding]::UTF8.GetBytes([string] $ch)) {
+                  [void] $bytes.Add($byte)
+                }
+              }
+            }
+            return $bytes.ToArray()
+          }
+
+          function Get-VasciiExpectedBytes() {
+            $source = [System.IO.File]::ReadAllText((Join-Path (Get-Location) 'examples/vascii.v'), [System.Text.Encoding]::UTF8)
+            $start_marker = "println('"
+            $end_marker = "')"
+            $first = $source.IndexOf($start_marker, [System.StringComparison]::Ordinal)
+            if ($first -lt 0) {
+              throw 'missing vascii println literal start'
+            }
+            $second = $source.IndexOf($start_marker, $first + $start_marker.Length, [System.StringComparison]::Ordinal)
+            if ($second -ne -1) {
+              throw 'vascii stdout oracle expects one single-quoted println literal'
+            }
+            $start = $first + $start_marker.Length
+            $end = $source.LastIndexOf($end_marker, [System.StringComparison]::Ordinal)
+            if ($end -lt $start) {
+              throw 'missing vascii println literal end'
+            }
+            if ($source.Substring($end + $end_marker.Length).Trim() -ne '}') {
+              throw 'vascii stdout oracle expects the println literal to be the final main statement'
+            }
+            [byte[]] $bytes = Get-VSingleQuotedLiteralBytes ($source.Substring($start, $end - $start))
+            return $bytes + [byte] 10
+          }
+
+          [byte[]] $vascii_expected = Get-VasciiExpectedBytes
+          Invoke-NativeX64Example 'examples/vascii.v' 'vascii' $vascii_expected
+
+          [byte[]] $rune_expected = 0xF0, 0x9F, 0x98, 0x80, 0x0A, 0x40, 0x0A
+          Invoke-NativeX64Example 'examples/rune.v' 'rune' $rune_expected
+
+          [byte[]] $bfs_expected = Get-VRunExpectedBytes 'examples/graphs/bfs.v' 'bfs'
+          Invoke-NativeX64Example 'examples/graphs/bfs.v' 'bfs' $bfs_expected
+
+          [byte[]] $dfs_expected = Get-VRunExpectedBytes 'examples/graphs/dfs.v' 'dfs'
+          Invoke-NativeX64Example 'examples/graphs/dfs.v' 'dfs' $dfs_expected
+
+          [byte[]] $dijkstra_expected = Get-VRunExpectedBytes 'examples/graphs/dijkstra.v' 'dijkstra'
+          Invoke-NativeX64Example 'examples/graphs/dijkstra.v' 'dijkstra' $dijkstra_expected
       - name: Build V with WX
         run: v -cflags /WX self
       - name: All code is formatted
