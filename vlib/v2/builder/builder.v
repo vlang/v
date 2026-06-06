@@ -60,6 +60,9 @@ mut:
 	// pre-sized arenas. We can only size after we know the input set, so
 	// the first parse_batch call lazily initializes it.
 	flat_builder_inited bool
+	// native_flat_pipeline_enabled means the transform phase produced a
+	// post-transform FlatAst and intentionally did not materialize b.files.
+	native_flat_pipeline_enabled bool
 	// Source AST snapshot used only for an isolated macOS tiny candidate graph.
 	// The normal hosted graph is still built from b.files and remains the fallback.
 	macos_tiny_candidate_source_files []ast.File
@@ -87,6 +90,13 @@ fn (b &Builder) exec_build_c_file(output_name string) string {
 		return output_name + '.c'
 	}
 	return staged_c_file
+}
+
+fn (b &Builder) should_use_native_flat_pipeline() bool {
+	if os.getenv('V2_NO_NATIVE_FLAT') != '' {
+		return false
+	}
+	return b.pref.backend == .arm64 && b.pref.hot_fn.len == 0
 }
 
 fn (b &Builder) can_compile_cleanc_locally() bool {
@@ -256,7 +266,10 @@ pub fn (mut b Builder) build(files []string) {
 	mut trans := transformer.Transformer.new_with_pref(b.env, b.pref)
 	trans.set_file_set(b.file_set)
 	sequential_transform := b.pref.no_parallel_transform || b.pref.ownership
-	use_flat_markused := b.markused_flat_enabled && b.flat_check_enabled
+	use_native_flat_pipeline := b.should_use_native_flat_pipeline()
+	b.native_flat_pipeline_enabled = use_native_flat_pipeline
+	use_flat_markused := (b.markused_flat_enabled && b.flat_check_enabled)
+		|| use_native_flat_pipeline
 	// Both paths can now consume flat directly: sequential streams via
 	// transform_files_from_flat, parallel streams per-worker via
 	// to_files_range. No up-front full rehydration needed in either case.
@@ -267,7 +280,11 @@ pub fn (mut b Builder) build(files []string) {
 	// flatten_files() pass before mark_used_flat.
 	mut flat_populated_by_transform := false
 	if sequential_transform {
-		if use_flat_markused {
+		if use_native_flat_pipeline && !b.flat_check_enabled {
+			b.flat = trans.transform_files_to_flat_direct(b.files)
+			b.files = []ast.File{}
+			flat_populated_by_transform = true
+		} else if use_flat_markused {
 			new_flat, files_out := trans.transform_files_to_flat(&b.flat, b.files)
 			b.flat = new_flat
 			b.files = files_out
@@ -278,7 +295,11 @@ pub fn (mut b Builder) build(files []string) {
 			b.files = trans.transform_files(b.files)
 		}
 	} else {
-		if use_flat_markused {
+		if use_native_flat_pipeline && !b.flat_check_enabled {
+			b.flat = trans.transform_files_to_flat_direct(b.files)
+			b.files = []ast.File{}
+			flat_populated_by_transform = true
+		} else if use_flat_markused {
 			new_flat, files_out := b.transform_files_parallel_to_flat(mut trans)
 			b.flat = new_flat
 			b.files = files_out
@@ -334,9 +355,10 @@ pub fn (mut b Builder) build(files []string) {
 		// b.flat is unused by the legacy codegen path; drop the arenas so a GC
 		// build can reclaim them. Under -gc none this is a no-op for peak memory,
 		// but it documents the lifetime correctly for the eventual GC switch.
-		// When V2_FLAT_SSA is on, the native SSA build consumes b.flat directly
-		// (build_all_from_flat), so keep it alive through codegen.
-		if !b.flat_ssa_enabled {
+		// When V2_FLAT_SSA or the native flat pipeline is on, the native SSA
+		// build consumes b.flat directly (build_all_from_flat), so keep it alive
+		// through codegen.
+		if !b.flat_ssa_enabled && !b.native_flat_pipeline_enabled {
 			b.flat = ast.FlatAst{}
 		}
 		print_rss('after markused')
@@ -2506,15 +2528,19 @@ fn (mut b Builder) build_native_mir_from_files(files []ast.File, arch pref.Arch,
 	// build_all_from_flat on the post-transform b.flat (kept alive above).
 	// Sequential only (build_all_from_flat builds fn bodies in-phase). Default off.
 	//
-	// b.flat is only POST-TRANSFORM when V2_MARKUSED_FLAT is also on: that path
-	// routes transform through transform_files_to_flat, which re-flattens the
-	// transformed files back into b.flat. With V2_CHECK_FLAT but NOT
-	// V2_MARKUSED_FLAT, b.flat stays the parse-time (pre-transform) flat while the
-	// transformer only updates b.files, so feeding it to build_all_from_flat would
-	// skip every transformer rewrite. Require both flags here; otherwise fall back
-	// to the legacy build_all(files), which uses the post-transform b.files.
-	if b.flat_ssa_enabled && b.markused_flat_enabled && b.flat_check_enabled && b.flat.files.len > 0 {
+	// b.flat is only POST-TRANSFORM when either V2_MARKUSED_FLAT has routed
+	// transform through transform_files_to_flat, or the native flat pipeline has
+	// emitted transform output directly into FlatAst. With V2_CHECK_FLAT but NOT
+	// V2_MARKUSED_FLAT, b.flat stays parse-time, so feeding it here would skip
+	// transformer rewrites.
+	build_from_flat := b.flat.files.len > 0
+		&& ((b.flat_ssa_enabled && b.markused_flat_enabled && b.flat_check_enabled)
+		|| (b.native_flat_pipeline_enabled && label == ''))
+	if build_from_flat {
 		ssa_builder.build_all_from_flat(&b.flat)
+		// SSA has copied the program into MIR; keep the FlatAst lifetime out of
+		// the later optimizer and machine-code generator working sets.
+		b.flat = ast.FlatAst{}
 	} else if b.native_mir_build_sequential(label) {
 		ssa_builder.build_all(files)
 	} else {
@@ -2602,10 +2628,12 @@ fn (mut b Builder) build_native_mir_from_files(files []ast.File, arch pref.Arch,
 	print_time(native_graph_stage_title(label, 'ABI Lower'),
 		time.Duration(native_sw.elapsed() - stage_start))
 
-	stage_start = native_sw.elapsed()
-	insel.select(mut mir_mod, arch)
-	print_time(native_graph_stage_title(label, 'InsSel'),
-		time.Duration(native_sw.elapsed() - stage_start))
+	if arch != .arm64 {
+		stage_start = native_sw.elapsed()
+		insel.select(mut mir_mod, arch)
+		print_time(native_graph_stage_title(label, 'InsSel'),
+			time.Duration(native_sw.elapsed() - stage_start))
+	}
 	return mir_mod
 }
 

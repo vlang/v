@@ -2539,6 +2539,59 @@ pub fn (mut t Transformer) transform_files_to_flat_via_driver(flat &ast.FlatAst,
 	return builder.flat, result
 }
 
+// transform_files_to_flat_direct transforms `files` into a FlatAst without
+// collecting the transformed legacy []ast.File result. The input still goes
+// through the existing whole-program generic preparation, but each prepared file
+// is emitted through transform_file_to_flat and is then immediately consumed by
+// the FlatBuilder. This is the low-memory path used by native backends that can
+// consume post-transform FlatAst directly.
+pub fn (mut t Transformer) transform_files_to_flat_direct(files []ast.File) ast.FlatAst {
+	timing := os.getenv('V2_TTIME') != ''
+	mut sw := time.new_stopwatch()
+	t_print_mem('enter')
+	t.pre_pass(files)
+	t_print_mem('after pre_pass')
+	if timing {
+		eprintln('  [ttime] flat direct pre_pass: ${sw.elapsed().milliseconds()}ms')
+		sw = time.new_stopwatch()
+	}
+	files_to_transform := t.prepare_files_for_transform(files)
+	t_print_mem('after prepare/monomorphize')
+	if timing {
+		eprintln('  [ttime] flat direct prepare: ${sw.elapsed().milliseconds()}ms')
+		sw = time.new_stopwatch()
+	}
+	mut builder := new_transform_output_flat_builder(files_to_transform)
+	for file in files_to_transform {
+		t.transform_file_to_flat(file, mut builder)
+	}
+	t_print_mem('after per-file flat loop')
+	if timing {
+		eprintln('  [ttime] flat direct per-file: ${sw.elapsed().milliseconds()}ms')
+		sw = time.new_stopwatch()
+	}
+	generated_parts := t.generated_fns_parts_from_flat(&builder.flat)
+	t.post_pass_to_flat(mut builder, generated_parts)
+	t.apply_post_pass_tail_from_flat(&builder.flat)
+	t_print_mem('after post_pass')
+	if timing {
+		eprintln('  [ttime] flat direct post_pass: ${sw.elapsed().milliseconds()}ms')
+	}
+	return builder.flat
+}
+
+fn new_transform_output_flat_builder(files []ast.File) ast.FlatBuilder {
+	mut total_bytes := i64(0)
+	for file in files {
+		if file.name == '' || !os.exists(file.name) {
+			continue
+		}
+		total_bytes += os.file_size(file.name)
+	}
+	nodes_cap, edges_cap, strings_cap := ast.arena_caps_for_bytes(total_bytes * 2)
+	return ast.new_flat_builder_with_capacity(nodes_cap, edges_cap, strings_cap)
+}
+
 fn runtime_const_init_base_name(mod string) string {
 	mut suffix := if mod == '' { 'main' } else { mod }
 	suffix = suffix.replace('.', '_').replace('-', '_')

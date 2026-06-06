@@ -164,10 +164,6 @@ fn clone_block_ids(blocks []ssa.BlockID) []ssa.BlockID {
 	return blocks.clone()
 }
 
-fn opcode_label(op ssa.OpCode) string {
-	return int(op).str()
-}
-
 pub fn lower_from_ssa(ssa_mod &ssa.Module) Module {
 	mut mod := Module{
 		name:       ssa_mod.name
@@ -197,7 +193,6 @@ pub fn lower_from_ssa(ssa_mod &ssa.Module) Module {
 		mod.instrs[i] = Instruction{
 			op:               instr.op
 			operands:         clone_value_ids(instr.operands)
-			selected_op:      opcode_label(instr.op)
 			abi_ret_indirect: false
 			abi_arg_class:    []AbiArgClass{}
 			abi_ret_class:    AbiValueClass{}

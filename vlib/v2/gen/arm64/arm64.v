@@ -128,7 +128,6 @@ pub mut:
 	instr_operands        [][]ssa.ValueID
 	instr_operand0        []ssa.ValueID
 	instr_operand1        []ssa.ValueID
-	instr_selected_ops    []string
 	instr_typs            []ssa.TypeID
 	instr_blocks          []int
 	instr_abi_arg_class   [][]mir.AbiArgClass
@@ -334,7 +333,6 @@ pub fn (mut g Gen) gen_pre_pass() {
 	g.instr_operands = [][]ssa.ValueID{len: n_instrs}
 	g.instr_operand0 = []ssa.ValueID{len: n_instrs}
 	g.instr_operand1 = []ssa.ValueID{len: n_instrs}
-	g.instr_selected_ops = []string{len: n_instrs}
 	g.instr_typs = []ssa.TypeID{len: n_instrs}
 	g.instr_blocks = []int{len: n_instrs}
 	g.instr_abi_arg_class = [][]mir.AbiArgClass{len: n_instrs}
@@ -347,7 +345,6 @@ pub fn (mut g Gen) gen_pre_pass() {
 		if g.mod.instrs[ii].operands.len > 1 {
 			g.instr_operand1[ii] = g.mod.instrs[ii].operands[1]
 		}
-		g.instr_selected_ops[ii] = g.mod.instrs[ii].selected_op
 		g.instr_typs[ii] = g.mod.instrs[ii].typ
 		g.instr_blocks[ii] = g.mod.instrs[ii].block
 		g.instr_abi_arg_class[ii] = g.mod.instrs[ii].abi_arg_class
@@ -734,7 +731,6 @@ pub fn (g &Gen) new_worker_clone() &Gen {
 		instr_operands:        g.instr_operands.clone()
 		instr_operand0:        g.instr_operand0.clone()
 		instr_operand1:        g.instr_operand1.clone()
-		instr_selected_ops:    g.instr_selected_ops.clone()
 		instr_typs:            g.instr_typs.clone()
 		instr_blocks:          g.instr_blocks.clone()
 		instr_abi_arg_class:   g.instr_abi_arg_class.clone()
@@ -1538,7 +1534,6 @@ fn (mut g Gen) gen_instr(val_id int) {
 	instr := mir.Instruction{
 		op:            g.instr_ops[instr_idx]
 		operands:      instr_operands
-		selected_op:   g.instr_selected_ops[instr_idx]
 		abi_arg_class: g.instr_abi_arg_class[instr_idx]
 		typ:           g.instr_typs[instr_idx]
 		block:         g.instr_blocks[instr_idx]
