@@ -4,6 +4,7 @@
 module transformer
 
 import v2.ast
+import v2.token
 import v2.types
 
 // propagate_types walks the transformed AST and fills in missing expression types
@@ -43,20 +44,379 @@ fn (mut t Transformer) propagate_types_from_flat(flat &ast.FlatAst) {
 	if flat.files.len == 0 {
 		return
 	}
-	// Stream one file at a time instead of materializing the whole program at
-	// once (flat.to_files_range(0, N)). Behaviour is identical — propagate_types
-	// already processes files independently, setting t.scope/cur_module per file
-	// — but the rehydrated legacy AST peaks at a single file rather than the full
-	// set, so a GC reclaims it between files. This also localises the decode to a
-	// per-file seam, the site a later cursor-native prop walk will replace
-	// kind-by-kind to drop the decode entirely (the -gc none footprint win).
+	// Cursor-native walk: handled stmt/expr kinds recurse straight over the flat
+	// (no decode), un-ported kinds fall back to decode_stmt/decode_expr + the
+	// legacy walker. Behaviour is identical to propagate_types (guarded by the
+	// propagate parity test), but the whole-program rehydrate is gone — only the
+	// un-ported subtrees are still decoded, shrinking the -gc none footprint as
+	// more kinds are ported. Mirrors propagate_types' per-file scope setup.
 	for i in 0 .. flat.files.len {
-		one := flat.to_files_range(i, i + 1)
-		if one.len == 0 {
-			continue
+		fc := flat.file_cursor(i)
+		mod := fc.mod()
+		if mod_scope := t.cached_scopes[mod] {
+			t.scope = mod_scope
 		}
-		t.propagate_types(one)
+		t.cur_module = mod
+		stmts := fc.stmts()
+		for j in 0 .. stmts.len() {
+			t.prop_stmt_from_flat(stmts.at(j))
+		}
 	}
+}
+
+// prop_stmt_from_flat is the cursor-native counterpart of prop_stmt. Handled
+// kinds recurse via the cursor; const/global/enum decls fall back to the legacy
+// walker on the decoded subtree (their field-value exprs are not ported yet);
+// kinds prop_stmt ignores stay a no-op. Recursion mirrors prop_stmt exactly.
+fn (mut t Transformer) prop_stmt_from_flat(c ast.Cursor) {
+	if !c.is_valid() {
+		return
+	}
+	match c.kind() {
+		.stmt_assert {
+			t.prop_expr_from_flat(c.edge(0))
+			t.prop_expr_from_flat(c.edge(1))
+		}
+		.stmt_assign {
+			// edges 0..lhs_len = lhs, lhs_len..edge_count = rhs (aux = op).
+			lhs_len := c.extra_int()
+			ec := c.edge_count()
+			// RHS first so types are available for LHS propagation (legacy order).
+			for k in lhs_len .. ec {
+				t.prop_expr_from_flat(c.edge(k))
+			}
+			for k in 0 .. lhs_len {
+				lhs_c := c.edge(k)
+				t.prop_expr_from_flat(lhs_c)
+				lhs_pos := lhs_c.pos()
+				rhs_idx := lhs_len + k
+				if lhs_pos.is_valid() && !t.has_prop_type(lhs_pos.id) && rhs_idx < ec {
+					if rhs_type := t.prop_get_type_from_flat(c.edge(rhs_idx)) {
+						t.env.set_expr_type(lhs_pos.id, rhs_type)
+					}
+				}
+			}
+		}
+		.stmt_block, .stmt_defer {
+			for k in 0 .. c.edge_count() {
+				t.prop_stmt_from_flat(c.edge(k))
+			}
+		}
+		.stmt_comptime, .stmt_label {
+			t.prop_stmt_from_flat(c.edge(0))
+		}
+		.stmt_expr {
+			t.prop_expr_from_flat(c.edge(0))
+		}
+		.stmt_fn_decl {
+			// Enter function scope for Ident resolution (mirror prop_fn_scope_key).
+			old_scope := t.scope
+			name := c.name()
+			scope_fn_name := if c.flag(ast.flag_is_method) {
+				recv_type := c.edge(0).edge(0) // receiver param -> its type expr
+				recv_name := t.get_receiver_type_name(c.flat.decode_expr(recv_type.id))
+				'${recv_name}__${name}'
+			} else {
+				name
+			}
+			scope_key := if t.cur_module == '' {
+				scope_fn_name
+			} else {
+				'${t.cur_module}__${scope_fn_name}'
+			}
+			if fn_scope := t.cached_fn_scopes[scope_key] {
+				t.scope = fn_scope
+			}
+			body := c.list_at(3)
+			for k in 0 .. body.len() {
+				t.prop_stmt_from_flat(body.at(k))
+			}
+			t.scope = old_scope
+		}
+		.stmt_for {
+			t.prop_stmt_from_flat(c.edge(0)) // init
+			t.prop_expr_from_flat(c.edge(1)) // cond
+			t.prop_stmt_from_flat(c.edge(2)) // post
+			for k in 3 .. c.edge_count() {
+				t.prop_stmt_from_flat(c.edge(k))
+			}
+		}
+		.stmt_for_in {
+			t.prop_expr_from_flat(c.edge(0)) // key
+			t.prop_expr_from_flat(c.edge(1)) // value
+			t.prop_expr_from_flat(c.edge(2)) // expr
+		}
+		.stmt_return {
+			for k in 0 .. c.edge_count() {
+				t.prop_expr_from_flat(c.edge(k))
+			}
+		}
+		.stmt_const_decl, .stmt_global_decl, .stmt_enum_decl {
+			// Field-value exprs not ported yet — fall back to the legacy walker.
+			t.prop_stmt(c.flat.decode_stmt(c.id))
+		}
+		else {}
+	}
+}
+
+// prop_expr_from_flat is the cursor-native counterpart of prop_expr. Ported
+// kinds recurse over the cursor (children first) then infer + set the node's
+// type; un-ported kinds (call, cast, struct/array/map init, string interp,
+// match, lock, lambda, ...) fall back to the legacy walker on the decoded
+// subtree, which sets their types in env by id so any ported parent can read
+// them back. Recursion order matches prop_expr.
+fn (mut t Transformer) prop_expr_from_flat(c ast.Cursor) {
+	if !c.is_valid() {
+		return
+	}
+	match c.kind() {
+		.expr_basic_literal, .expr_string, .expr_ident {
+			// leaves — no recursion
+		}
+		.expr_infix, .expr_index {
+			t.prop_expr_from_flat(c.edge(0))
+			t.prop_expr_from_flat(c.edge(1))
+		}
+		.expr_prefix, .expr_postfix, .expr_paren, .expr_modifier {
+			t.prop_expr_from_flat(c.edge(0))
+		}
+		.expr_selector {
+			// legacy recurses only the lhs; the rhs is the field Ident.
+			t.prop_expr_from_flat(c.edge(0))
+		}
+		.expr_keyword_operator {
+			for k in 0 .. c.edge_count() {
+				t.prop_expr_from_flat(c.edge(k))
+			}
+		}
+		.expr_if {
+			// edges: cond(0), else_expr(1), then-stmts(2..). Legacy order is
+			// cond, then-stmts, else_expr.
+			t.prop_expr_from_flat(c.edge(0))
+			for k in 2 .. c.edge_count() {
+				t.prop_stmt_from_flat(c.edge(k))
+			}
+			t.prop_expr_from_flat(c.edge(1))
+		}
+		else {
+			// un-ported: legacy walker handles recursion + inference + env writes.
+			t.prop_expr(c.flat.decode_expr(c.id))
+			return
+		}
+	}
+
+	pos := c.pos()
+	if pos.is_valid() && !t.has_prop_type(pos.id) {
+		if typ := t.infer_prop_type_from_flat(c) {
+			t.env.set_expr_type(pos.id, typ)
+		}
+	}
+}
+
+// prop_get_type_from_flat is the cursor-native counterpart of get_expr_type for
+// the propagate context. Children are visited before parents, so a typed child
+// is already in env by id; Idents additionally resolve by name (smartcast /
+// local / module var), matching get_expr_type's ordering. Un-ported children
+// (call/cast/...) were typed by the legacy fallback via the SAME get_expr_type
+// path, so their env-by-id value equals what get_expr_type would return.
+fn (t &Transformer) prop_get_type_from_flat(c ast.Cursor) ?types.Type {
+	if !c.is_valid() {
+		return none
+	}
+	pos := c.pos()
+	if c.kind() == .expr_ident {
+		id := ast.Ident{
+			name: c.name()
+			pos:  pos
+		}
+		if typ := t.smartcast_type_for_expr(id) {
+			return typ
+		}
+		if typ := t.lookup_local_decl_type(id.name) {
+			return typ
+		}
+		if typ := t.lookup_var_type(id.name) {
+			return typ
+		}
+		if typ := t.get_synth_type(pos) {
+			return typ
+		}
+		if pos.is_valid() {
+			if typ := t.env.get_expr_type(pos.id) {
+				return t.normalize_type(typ)
+			}
+		}
+		return none
+	}
+	if typ := t.get_synth_type(pos) {
+		return typ
+	}
+	if pos.is_valid() {
+		if typ := t.env.get_expr_type(pos.id) {
+			return t.normalize_type(typ)
+		}
+	}
+	return none
+}
+
+// infer_prop_type_from_flat is the cursor-native counterpart of infer_prop_type
+// for the ported expr kinds. Mirrors it case-for-case.
+fn (mut t Transformer) infer_prop_type_from_flat(c ast.Cursor) ?types.Type {
+	if typ := t.prop_get_type_from_flat(c) {
+		return typ
+	}
+	match c.kind() {
+		.expr_basic_literal {
+			match unsafe { token.Token(int(c.aux())) } {
+				.key_true, .key_false {
+					return types.Type(types.bool_)
+				}
+				.number {
+					if c.name().contains('.') {
+						return types.Type(types.Primitive{
+							props: .untyped | .float
+						})
+					}
+					return types.Type(types.Primitive{
+						props: .untyped | .integer
+					})
+				}
+				.char {
+					return types.Type(types.int_)
+				}
+				else {}
+			}
+		}
+		.expr_string {
+			return types.Type(types.string_)
+		}
+		.expr_ident {
+			name := c.name()
+			if t.scope != unsafe { nil } {
+				if obj := t.scope.lookup_parent(name, 0) {
+					return obj.typ()
+				}
+			}
+			if typ := t.c_name_to_type(name) {
+				return typ
+			}
+			if typ := t.lookup_var_type(name) {
+				return typ
+			}
+			return none
+		}
+		.expr_infix {
+			op := unsafe { token.Token(int(c.aux())) }
+			if op in [.eq, .ne, .lt, .gt, .le, .ge, .key_is, .not_is, .key_in, .not_in, .and,
+				.logical_or] {
+				return types.Type(types.bool_)
+			}
+			if lhs_type := t.prop_get_type_from_flat(c.edge(0)) {
+				return lhs_type
+			}
+			return none
+		}
+		.expr_prefix {
+			op := unsafe { token.Token(int(c.aux())) }
+			if op == .not {
+				return types.Type(types.bool_)
+			}
+			if op == .amp {
+				if inner := t.prop_get_type_from_flat(c.edge(0)) {
+					return types.Type(types.Pointer{
+						base_type: inner
+					})
+				}
+			}
+			if inner := t.prop_get_type_from_flat(c.edge(0)) {
+				return inner
+			}
+			return none
+		}
+		.expr_postfix, .expr_paren, .expr_modifier {
+			if inner := t.prop_get_type_from_flat(c.edge(0)) {
+				return inner
+			}
+			return none
+		}
+		.expr_index {
+			if container_type := t.prop_get_type_from_flat(c.edge(0)) {
+				return container_type.value_type()
+			}
+			return none
+		}
+		.expr_keyword_operator {
+			op := unsafe { token.Token(int(c.aux())) }
+			if op == .key_sizeof || op == .key_isreftype {
+				return types.Type(types.int_)
+			}
+			return none
+		}
+		.expr_selector {
+			if lhs_type := t.prop_get_type_from_flat(c.edge(0)) {
+				base := t.unwrap_alias_and_pointer_type(lhs_type)
+				rhs_name := c.edge(1).name()
+				if base is types.Array {
+					match rhs_name {
+						'len', 'cap', 'element_size' {
+							return types.Type(types.int_)
+						}
+						'data' {
+							return types.Type(types.Pointer{
+								base_type: types.Type(types.void_)
+							})
+						}
+						else {}
+					}
+				}
+				if base is types.String {
+					if rhs_name == 'len' || rhs_name == 'is_lit' {
+						return types.Type(types.int_)
+					}
+					if rhs_name == 'str' {
+						return types.Type(types.Pointer{
+							base_type: types.Type(types.Primitive{
+								props: .integer | .unsigned
+								size:  8
+							})
+						})
+					}
+				}
+				if base is types.Map {
+					if rhs_name == 'len' {
+						return types.Type(types.int_)
+					}
+				}
+				type_name := lhs_type.name()
+				if field_type := t.lookup_struct_field_type(type_name, rhs_name) {
+					return field_type
+				}
+				base_name := base.name()
+				if base_name != type_name {
+					if field_type := t.lookup_struct_field_type(base_name, rhs_name) {
+						return field_type
+					}
+				}
+			}
+			return none
+		}
+		.expr_if {
+			// then-branch is edges 2..; infer from the last then ExprStmt.
+			ec := c.edge_count()
+			if ec > 2 {
+				last := c.edge(ec - 1)
+				if last.kind() == .stmt_expr {
+					if inner := t.prop_get_type_from_flat(last.edge(0)) {
+						return inner
+					}
+				}
+			}
+			return none
+		}
+		else {}
+	}
+
+	return none
 }
 
 fn (mut t Transformer) prop_exprs(exprs []ast.Expr) {
