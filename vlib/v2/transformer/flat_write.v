@@ -1709,7 +1709,14 @@ pub fn (mut t Transformer) transform_file_index_to_flat(input_flat &ast.FlatAst,
 	if src_arr.len == 0 {
 		return ast.invalid_flat_node_id
 	}
-	file := src_arr[0]
+	return t.transform_file_to_flat(src_arr[0], mut out)
+}
+
+// transform_file_to_flat transforms one legacy file and appends the transformed
+// tree directly to `out`. It is the AST-input counterpart to
+// `transform_file_index_to_flat`, used by the native low-memory pipeline after
+// whole-program generic preparation has produced the concrete file list.
+pub fn (mut t Transformer) transform_file_to_flat(file ast.File, mut out ast.FlatBuilder) ast.FlatNodeId {
 	// Mirror transform_file's per-file prologue. transform_stmt and the
 	// rewrite sites read these fields to resolve cross-stmt references.
 	t.cur_file_name = file.name
@@ -4291,7 +4298,14 @@ pub fn (mut t Transformer) transform_stmt_to_flat(stmt ast.Stmt, mut out ast.Fla
 			// helper.
 			lowered_stmt := t.fn_decl_with_implicit_veb_context_param(stmt)
 			attrs, stmt_ids := t.transform_fn_decl_parts_to_flat(lowered_stmt, mut out)
-			receiver_id := out.emit_parameter(lowered_stmt.receiver)
+			receiver := if lowered_stmt.is_method {
+				lowered_stmt.receiver
+			} else {
+				ast.Parameter{
+					typ: ast.empty_expr
+				}
+			}
+			receiver_id := out.emit_parameter(receiver)
 			typ_id := out.emit_type(ast.Type(lowered_stmt.typ))
 			attrs_id := out.emit_attribute_list(attrs)
 			stmts_list_id := out.emit_aux_list_from_ids(stmt_ids)

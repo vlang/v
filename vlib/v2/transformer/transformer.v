@@ -229,6 +229,32 @@ fn (t &Transformer) enum_member_ident_for_lookup(lookup_name string, typ types.E
 	return enum_member_ident(t.enum_type_c_name_for_lookup(lookup_name, typ), field_name)
 }
 
+fn (t &Transformer) skip_native_backend_transform_file(file ast.File) bool {
+	if t.pref == unsafe { nil } {
+		return false
+	}
+	own := match t.pref.backend {
+		.arm64 { 'arm64' }
+		.x64 { 'x64' }
+		else { return false }
+	}
+
+	if !t.pref.single_backend && own != 'arm64' {
+		return false
+	}
+
+	name := file.name.replace('\\', '/')
+	if !name.contains('/v2/gen/') {
+		return false
+	}
+	for backend_mod in ['cleanc', 'eval', 'v', 'c', 'x64', 'arm64'] {
+		if backend_mod != own && name.contains('/v2/gen/${backend_mod}/') {
+			return true
+		}
+	}
+	return false
+}
+
 struct LiveFn {
 	decl_name    string // e.g., 'frame' or 'update_model'
 	mangled_name string // e.g., 'frame' or 'Game__update_model'
@@ -2539,6 +2565,59 @@ pub fn (mut t Transformer) transform_files_to_flat_via_driver(flat &ast.FlatAst,
 	return builder.flat, result
 }
 
+// transform_files_to_flat_direct transforms `files` into a FlatAst without
+// collecting the transformed legacy []ast.File result. The input still goes
+// through the existing whole-program generic preparation, but each prepared file
+// is emitted through transform_file_to_flat and is then immediately consumed by
+// the FlatBuilder. This is the low-memory path used by native backends that can
+// consume post-transform FlatAst directly.
+pub fn (mut t Transformer) transform_files_to_flat_direct(files []ast.File) ast.FlatAst {
+	timing := os.getenv('V2_TTIME') != ''
+	mut sw := time.new_stopwatch()
+	t_print_mem('enter')
+	t.pre_pass(files)
+	t_print_mem('after pre_pass')
+	if timing {
+		eprintln('  [ttime] flat direct pre_pass: ${sw.elapsed().milliseconds()}ms')
+		sw = time.new_stopwatch()
+	}
+	files_to_transform := t.prepare_files_for_transform(files)
+	t_print_mem('after prepare/monomorphize')
+	if timing {
+		eprintln('  [ttime] flat direct prepare: ${sw.elapsed().milliseconds()}ms')
+		sw = time.new_stopwatch()
+	}
+	mut builder := new_transform_output_flat_builder(files_to_transform)
+	for file in files_to_transform {
+		t.transform_file_to_flat(file, mut builder)
+	}
+	t_print_mem('after per-file flat loop')
+	if timing {
+		eprintln('  [ttime] flat direct per-file: ${sw.elapsed().milliseconds()}ms')
+		sw = time.new_stopwatch()
+	}
+	generated_parts := t.generated_fns_parts_from_flat(&builder.flat)
+	t.post_pass_to_flat(mut builder, generated_parts)
+	t.apply_post_pass_tail_from_flat(&builder.flat)
+	t_print_mem('after post_pass')
+	if timing {
+		eprintln('  [ttime] flat direct post_pass: ${sw.elapsed().milliseconds()}ms')
+	}
+	return builder.flat
+}
+
+fn new_transform_output_flat_builder(files []ast.File) ast.FlatBuilder {
+	mut total_bytes := i64(0)
+	for file in files {
+		if file.name == '' || !os.exists(file.name) {
+			continue
+		}
+		total_bytes += os.file_size(file.name)
+	}
+	nodes_cap, edges_cap, strings_cap := ast.arena_caps_for_bytes(total_bytes * 2)
+	return ast.new_flat_builder_with_capacity(nodes_cap, edges_cap, strings_cap)
+}
+
 fn runtime_const_init_base_name(mod string) string {
 	mut suffix := if mod == '' { 'main' } else { mod }
 	suffix = suffix.replace('.', '_').replace('-', '_')
@@ -4011,6 +4090,9 @@ pub fn (mut t Transformer) inject_main_runtime_const_init_to_flat(mut out ast.Fl
 }
 
 fn (mut t Transformer) transform_file(file ast.File) ast.File {
+	if t.skip_native_backend_transform_file(file) {
+		return file
+	}
 	t.enter_file_context(file)
 	stmts := t.transform_stmts(file.stmts)
 	return ast.File{
@@ -6137,7 +6219,8 @@ fn (mut t Transformer) expand_direct_or_expr_assign(stmt ast.AssignStmt, or_expr
 		if or_side_effect_stmts.len > 0 {
 			if_stmts << or_side_effect_stmts
 		}
-		if is_result && t.cur_fn_returns_result && t.or_fallback_is_ierror(or_payload_value) {
+		if (is_result || is_option) && t.cur_fn_returns_result
+			&& t.or_fallback_is_ierror(or_payload_value) {
 			if_stmts << ast.ReturnStmt{
 				exprs: [or_payload_value]
 			}
@@ -8771,7 +8854,8 @@ fn (mut t Transformer) expand_single_or_expr(or_expr ast.OrExpr, mut prefix_stmt
 			if_stmts << or_side_effect_stmts
 		}
 		// Error/void fallbacks can't be assigned into the success payload.
-		if is_result && t.cur_fn_returns_result && t.or_fallback_is_ierror(or_payload_value) {
+		if (is_result || is_option) && t.cur_fn_returns_result
+			&& t.or_fallback_is_ierror(or_payload_value) {
 			if_stmts << ast.ReturnStmt{
 				exprs: [or_payload_value]
 			}

@@ -522,6 +522,143 @@ fn (t Type) is_compatible_with(t2 Type) bool {
 	return t1_unwrapped == t2_unwrapped
 }
 
+fn same_type_name(a Type, b Type) bool {
+	if !type_has_valid_payload(a) || !type_has_valid_payload(b) {
+		return false
+	}
+	match a {
+		Alias {
+			return b is Alias && a.name == b.name
+		}
+		Array {
+			return b is Array && same_type_name(a.elem_type, b.elem_type)
+		}
+		ArrayFixed {
+			return b is ArrayFixed && a.len == b.len && same_type_name(a.elem_type, b.elem_type)
+		}
+		Channel {
+			if b is Channel {
+				a_elem := a.elem_type or {
+					if _ := b.elem_type {
+						return false
+					}
+					return true
+				}
+
+				b_elem := b.elem_type or { return false }
+				return same_type_name(a_elem, b_elem)
+			}
+		}
+		Char {
+			return b is Char
+		}
+		Enum {
+			return b is Enum && a.name == b.name
+		}
+		FnType {
+			if b is FnType {
+				if a.params.len != b.params.len || a.is_variadic != b.is_variadic
+					|| a.is_mut_receiver != b.is_mut_receiver {
+					return false
+				}
+				for i, param in a.params {
+					if param.name != b.params[i].name || param.is_mut != b.params[i].is_mut
+						|| !same_type_name(param.typ, b.params[i].typ) {
+						return false
+					}
+				}
+				a_ret := a.return_type or {
+					if _ := b.return_type {
+						return false
+					}
+					return true
+				}
+
+				b_ret := b.return_type or { return false }
+				return same_type_name(a_ret, b_ret)
+			}
+		}
+		Interface {
+			return b is Interface && a.name == b.name
+		}
+		ISize {
+			return b is ISize
+		}
+		Map {
+			return b is Map && same_type_name(a.key_type, b.key_type)
+				&& same_type_name(a.value_type, b.value_type)
+		}
+		NamedType {
+			return b is NamedType && string(a) == string(b as NamedType)
+		}
+		Nil {
+			return b is Nil
+		}
+		None {
+			return b is None
+		}
+		OptionType {
+			return b is OptionType && same_type_name(a.base_type, b.base_type)
+		}
+		Pointer {
+			return b is Pointer && a.lifetime == b.lifetime
+				&& same_type_name(a.base_type, b.base_type)
+		}
+		Primitive {
+			return b is Primitive && a == b
+		}
+		ResultType {
+			return b is ResultType && same_type_name(a.base_type, b.base_type)
+		}
+		Rune {
+			return b is Rune
+		}
+		String {
+			return b is String
+		}
+		Struct {
+			return b is Struct && a.name == b.name
+		}
+		SumType {
+			return b is SumType && a.name == b.name
+		}
+		Thread {
+			if b is Thread {
+				a_elem := a.elem_type or {
+					if _ := b.elem_type {
+						return false
+					}
+					return true
+				}
+
+				b_elem := b.elem_type or { return false }
+				return same_type_name(a_elem, b_elem)
+			}
+		}
+		Tuple {
+			if b is Tuple {
+				if a.types.len != b.types.len {
+					return false
+				}
+				for i, typ in a.types {
+					if !same_type_name(typ, b.types[i]) {
+						return false
+					}
+				}
+				return true
+			}
+		}
+		USize {
+			return b is USize
+		}
+		Void {
+			return b is Void
+		}
+	}
+
+	return false
+}
+
 fn (t Type) is_float() bool {
 	if t is Primitive {
 		return t.is_float()

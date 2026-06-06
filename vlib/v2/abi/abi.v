@@ -31,15 +31,22 @@ pub fn lower(mut m mir.Module, arch pref.Arch) {
 }
 
 pub fn lower_with_x64_abi(mut m mir.Module, arch pref.Arch, x64_abi X64Abi) {
+	is_x64 := arch == .x64
 	mut fn_by_name := map[string]int{}
 	for i := 0; i < m.funcs.len; i++ {
 		mut f := &m.funcs[i]
 		fn_by_name[f.name] = i
-		f.abi_ret_class = abi_value_class(m, f.typ, arch, x64_abi)
-		f.abi_ret_indirect = abi_class_is_indirect(f.abi_ret_class, m, f.typ, arch, x64_abi)
+		if is_x64 {
+			f.abi_ret_class = abi_value_class(m, f.typ, arch, x64_abi)
+			f.abi_ret_indirect = abi_class_is_indirect(f.abi_ret_class, m, f.typ, arch, x64_abi)
+		} else {
+			f.abi_ret_indirect = needs_indirect(m, f.typ, arch, x64_abi)
+		}
 		f.abi_param_class = []mir.AbiArgClass{len: f.params.len, init: .in_reg}
-		f.abi_param_classes = []mir.AbiValueClass{len: f.params.len}
-		f.abi_param_layouts = []mir.AbiValueLayout{len: f.params.len}
+		if is_x64 {
+			f.abi_param_classes = []mir.AbiValueClass{len: f.params.len}
+			f.abi_param_layouts = []mir.AbiValueLayout{len: f.params.len}
+		}
 		mut param_loc_state := SysVLocationState{}
 		if arch == .x64 && x64_abi == .sysv && f.abi_ret_indirect {
 			param_loc_state.int_regs = 1
@@ -49,12 +56,17 @@ pub fn lower_with_x64_abi(mut m mir.Module, arch pref.Arch, x64_abi X64Abi) {
 				continue
 			}
 			param_typ := m.values[param_id].typ
-			param_class := abi_value_class(m, param_typ, arch, x64_abi)
-			f.abi_param_classes[pi] = param_class
-			if arch == .x64 && x64_abi == .sysv {
-				f.abi_param_layouts[pi] = sysv_assign_value_layout(param_class, mut param_loc_state)
-			}
-			if abi_class_is_indirect(param_class, m, param_typ, arch, x64_abi) {
+			if is_x64 {
+				param_class := abi_value_class(m, param_typ, arch, x64_abi)
+				f.abi_param_classes[pi] = param_class
+				if x64_abi == .sysv {
+					f.abi_param_layouts[pi] = sysv_assign_value_layout(param_class, mut
+						param_loc_state)
+				}
+				if abi_class_is_indirect(param_class, m, param_typ, arch, x64_abi) {
+					f.abi_param_class[pi] = .indirect
+				}
+			} else if needs_indirect(m, param_typ, arch, x64_abi) {
 				f.abi_param_class[pi] = .indirect
 			}
 		}
@@ -505,6 +517,7 @@ fn lower_calls(mut m mir.Module, arch pref.Arch, x64_abi X64Abi, fn_by_name map[
 	if arch !in [.arm64, .x64] {
 		return
 	}
+	is_x64 := arch == .x64
 
 	for i := 0; i < m.instrs.len; i++ {
 		mut instr := &m.instrs[i]
@@ -512,12 +525,22 @@ fn lower_calls(mut m mir.Module, arch pref.Arch, x64_abi X64Abi, fn_by_name map[
 			continue
 		}
 		ret_typ, sig_param_types := call_signature(m, instr, fn_by_name)
-		ret_class := abi_value_class(m, ret_typ, arch, x64_abi)
-		ret_indirect := abi_class_is_indirect(ret_class, m, ret_typ, arch, x64_abi)
+		ret_class := if is_x64 {
+			abi_value_class(m, ret_typ, arch, x64_abi)
+		} else {
+			mir.AbiValueClass{}
+		}
+		ret_indirect := if is_x64 {
+			abi_class_is_indirect(ret_class, m, ret_typ, arch, x64_abi)
+		} else {
+			needs_indirect(m, ret_typ, arch, x64_abi)
+		}
 		num_args := instr.operands.len - 1
 		instr.abi_arg_class = []mir.AbiArgClass{len: num_args, init: .in_reg}
-		instr.abi_arg_classes = []mir.AbiValueClass{len: num_args}
-		instr.abi_arg_layouts = []mir.AbiValueLayout{len: num_args}
+		if is_x64 {
+			instr.abi_arg_classes = []mir.AbiValueClass{len: num_args}
+			instr.abi_arg_layouts = []mir.AbiValueLayout{len: num_args}
+		}
 		mut arg_loc_state := SysVLocationState{}
 		if arch == .x64 && x64_abi == .sysv && ret_indirect {
 			arg_loc_state.int_regs = 1
@@ -530,13 +553,17 @@ fn lower_calls(mut m mir.Module, arch pref.Arch, x64_abi X64Abi, fn_by_name map[
 				arg_id := instr.operands[arg_idx + 1]
 				arg_typ = fallback_arg_type(m, arg_id)
 			}
-			arg_class := abi_value_class(m, arg_typ, arch, x64_abi)
-			instr.abi_arg_classes[arg_idx] = arg_class
-			if arch == .x64 && x64_abi == .sysv {
-				instr.abi_arg_layouts[arg_idx] = sysv_assign_value_layout(arg_class, mut
-					arg_loc_state)
-			}
-			if abi_class_is_indirect(arg_class, m, arg_typ, arch, x64_abi) {
+			if is_x64 {
+				arg_class := abi_value_class(m, arg_typ, arch, x64_abi)
+				instr.abi_arg_classes[arg_idx] = arg_class
+				if x64_abi == .sysv {
+					instr.abi_arg_layouts[arg_idx] = sysv_assign_value_layout(arg_class, mut
+						arg_loc_state)
+				}
+				if abi_class_is_indirect(arg_class, m, arg_typ, arch, x64_abi) {
+					instr.abi_arg_class[arg_idx] = .indirect
+				}
+			} else if needs_indirect(m, arg_typ, arch, x64_abi) {
 				instr.abi_arg_class[arg_idx] = .indirect
 			}
 		}

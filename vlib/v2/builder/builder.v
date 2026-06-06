@@ -60,6 +60,9 @@ mut:
 	// pre-sized arenas. We can only size after we know the input set, so
 	// the first parse_batch call lazily initializes it.
 	flat_builder_inited bool
+	// native_flat_pipeline_enabled means the transform phase produced a
+	// post-transform FlatAst and intentionally did not materialize b.files.
+	native_flat_pipeline_enabled bool
 	// Source AST snapshot used only for an isolated macOS tiny candidate graph.
 	// The normal hosted graph is still built from b.files and remains the fallback.
 	macos_tiny_candidate_source_files []ast.File
@@ -87,6 +90,20 @@ fn (b &Builder) exec_build_c_file(output_name string) string {
 		return output_name + '.c'
 	}
 	return staged_c_file
+}
+
+fn (b &Builder) should_use_native_flat_pipeline() bool {
+	if os.getenv('V2_NATIVE_FLAT') == '' {
+		return false
+	}
+	if os.getenv('V2_NO_NATIVE_FLAT') != '' {
+		return false
+	}
+	return b.pref.backend == .arm64 && b.pref.hot_fn.len == 0
+}
+
+fn (b &Builder) backend_uses_markused_pruning() bool {
+	return b.pref.backend != .arm64
 }
 
 fn (b &Builder) can_compile_cleanc_locally() bool {
@@ -175,28 +192,10 @@ fn print_rss(stage string) {
 	eprintln('  [mem] ${stage}: ${rss / (1024 * 1024)} MB')
 }
 
-// print_heap reports retained heap size after a forced GC, in MB. Unlike
-// print_rss, this would give a stable measurement of memory the program
-// is actually holding alive — but ONLY when built with a real GC.
-//
-// CURRENTLY A NO-OP FOR v2 SELF-HOST: v2 is forced to `-gc none`, where
-// `gc_collect()` is a NOP and `gc_memory_use()` always returns 0. If
-// you build v2 with an explicit GC (bypassing is_v2_compiler_target) this
-// becomes useful. Until then, use `/usr/bin/time -l` for peak readings.
-fn print_heap(stage string) {
-	if os.getenv('V2_HEAP') == '' {
-		return
-	}
-	gc_collect()
-	bytes := gc_memory_use()
-	eprintln('  [heap] ${stage}: ${bytes / (1024 * 1024)} MB')
-}
-
 pub fn (mut b Builder) build(files []string) {
 	b.user_files = files
 	mut sw := time.new_stopwatch()
 	print_rss('start')
-	print_heap('start')
 	$if parallel ? {
 		if b.flat_roundtrip_enabled && !b.pref.no_parallel {
 			eprintln('warning: V2_FLAT_ROUNDTRIP=1 only routes through the serial parser; pass --no-parallel to exercise it')
@@ -212,7 +211,6 @@ pub fn (mut b Builder) build(files []string) {
 	parse_time := sw.elapsed()
 	print_time('Scan & Parse', parse_time)
 	print_rss('after parse')
-	print_heap('after parse')
 	if b.flat_check_enabled {
 		// FlatBuilder is the canonical parse output; both parse paths stream
 		// into it. parse_files / parse_files_parallel return [] in flat
@@ -247,7 +245,6 @@ pub fn (mut b Builder) build(files []string) {
 	type_check_time := time.Duration(sw.elapsed() - parse_time)
 	print_time('Type Check', type_check_time)
 	print_rss('after type check')
-	print_heap('after type check')
 
 	b.prepare_macos_tiny_candidate_source_files()
 
@@ -256,7 +253,10 @@ pub fn (mut b Builder) build(files []string) {
 	mut trans := transformer.Transformer.new_with_pref(b.env, b.pref)
 	trans.set_file_set(b.file_set)
 	sequential_transform := b.pref.no_parallel_transform || b.pref.ownership
-	use_flat_markused := b.markused_flat_enabled && b.flat_check_enabled
+	use_native_flat_pipeline := b.should_use_native_flat_pipeline()
+	b.native_flat_pipeline_enabled = use_native_flat_pipeline
+	use_flat_markused := (b.markused_flat_enabled && b.flat_check_enabled)
+		|| use_native_flat_pipeline
 	// Both paths can now consume flat directly: sequential streams via
 	// transform_files_from_flat, parallel streams per-worker via
 	// to_files_range. No up-front full rehydration needed in either case.
@@ -267,7 +267,11 @@ pub fn (mut b Builder) build(files []string) {
 	// flatten_files() pass before mark_used_flat.
 	mut flat_populated_by_transform := false
 	if sequential_transform {
-		if use_flat_markused {
+		if use_native_flat_pipeline && !b.flat_check_enabled {
+			b.flat = trans.transform_files_to_flat_direct(b.files)
+			b.files = []ast.File{}
+			flat_populated_by_transform = true
+		} else if use_flat_markused {
 			new_flat, files_out := trans.transform_files_to_flat(&b.flat, b.files)
 			b.flat = new_flat
 			b.files = files_out
@@ -278,7 +282,11 @@ pub fn (mut b Builder) build(files []string) {
 			b.files = trans.transform_files(b.files)
 		}
 	} else {
-		if use_flat_markused {
+		if use_native_flat_pipeline && !b.flat_check_enabled {
+			b.flat = trans.transform_files_to_flat_direct(b.files)
+			b.files = []ast.File{}
+			flat_populated_by_transform = true
+		} else if use_flat_markused {
 			new_flat, files_out := b.transform_files_parallel_to_flat(mut trans)
 			b.flat = new_flat
 			b.files = files_out
@@ -292,10 +300,9 @@ pub fn (mut b Builder) build(files []string) {
 	transform_time := time.Duration(sw.elapsed() - transform_start)
 	print_time('Transform', transform_time)
 	print_rss('after transform')
-	print_heap('after transform')
 
 	// Mark used functions/methods for backend pruning.
-	if b.pref.no_markused {
+	if b.pref.no_markused || !b.backend_uses_markused_pruning() {
 		b.used_fn_keys = map[string]bool{}
 	} else {
 		mark_used_start := sw.elapsed()
@@ -331,16 +338,15 @@ pub fn (mut b Builder) build(files []string) {
 		}
 		mark_used_time := time.Duration(sw.elapsed() - mark_used_start)
 		print_time('Mark Used', mark_used_time)
-		// b.flat is unused by the legacy codegen path; drop the arenas so a GC
-		// build can reclaim them. Under -gc none this is a no-op for peak memory,
-		// but it documents the lifetime correctly for the eventual GC switch.
-		// When V2_FLAT_SSA is on, the native SSA build consumes b.flat directly
-		// (build_all_from_flat), so keep it alive through codegen.
-		if !b.flat_ssa_enabled {
+		// b.flat is unused by the legacy codegen path. Under -gc none this is a
+		// no-op for peak memory, but keep the lifetime explicit for readers.
+		// When V2_FLAT_SSA or the native flat pipeline is on, the native SSA
+		// build consumes b.flat directly (build_all_from_flat), so keep it alive
+		// through codegen.
+		if !b.flat_ssa_enabled && !b.native_flat_pipeline_enabled {
 			b.flat = ast.FlatAst{}
 		}
 		print_rss('after markused')
-		print_heap('after markused')
 	}
 
 	// Generate output based on backend
@@ -373,7 +379,6 @@ pub fn (mut b Builder) build(files []string) {
 
 	print_time('Total', sw.elapsed())
 	print_rss('after codegen (peak)')
-	print_heap('after codegen')
 }
 
 fn (mut b Builder) gen_v_files() {
@@ -2456,6 +2461,17 @@ fn (b &Builder) native_mir_build_sequential(label string) bool {
 	return label == macos_tiny_candidate_graph_label || b.pref.no_parallel || b.pref.hot_fn.len > 0
 }
 
+fn (b &Builder) should_prune_native_backend_modules(arch pref.Arch) bool {
+	return b.pref.single_backend || arch == .arm64
+}
+
+fn native_backend_module_file_fragment(backend_mod string) string {
+	return match backend_mod {
+		'eval' { '/vlib/v2/eval/' }
+		else { '/vlib/v2/gen/${backend_mod}/' }
+	}
+}
+
 fn (mut b Builder) build_native_mir_from_files(files []ast.File, arch pref.Arch, target_os string, minimal_runtime_roots bool, used_fn_keys map[string]bool, label string) mir.Module {
 	mut mod := ssa.Module.new('main')
 	if mod == unsafe { nil } {
@@ -2477,21 +2493,24 @@ fn (mut b Builder) build_native_mir_from_files(files []ast.File, arch pref.Arch,
 		ssa_builder.used_fn_keys = used_fn_keys.clone()
 	}
 
-	// --single-backend: strip unused backend modules from the binary
-	if b.pref.single_backend {
-		all_backends := ['cleanc', 'eval', 'c', 'x64', 'arm64']
+	// Strip unused compiler backend modules before SSA. ARM64 already strips
+	// these symbols after codegen, so avoid building MIR for them in the first place.
+	if b.should_prune_native_backend_modules(arch) {
+		all_backends := ['cleanc', 'eval', 'v', 'c', 'x64', 'arm64']
 		own := match b.pref.backend {
 			.arm64 { 'arm64' }
 			.x64 { 'x64' }
 			.cleanc { 'cleanc' }
+			.v { 'v' }
 			.c { 'c' }
 			.eval { 'eval' }
-			else { '' }
 		}
 
 		for backend_mod in all_backends {
 			if backend_mod != own {
 				ssa_builder.skip_modules[backend_mod] = true
+				ssa_builder.skip_module_file_fragments[backend_mod] =
+					native_backend_module_file_fragment(backend_mod)
 			}
 		}
 	}
@@ -2506,15 +2525,19 @@ fn (mut b Builder) build_native_mir_from_files(files []ast.File, arch pref.Arch,
 	// build_all_from_flat on the post-transform b.flat (kept alive above).
 	// Sequential only (build_all_from_flat builds fn bodies in-phase). Default off.
 	//
-	// b.flat is only POST-TRANSFORM when V2_MARKUSED_FLAT is also on: that path
-	// routes transform through transform_files_to_flat, which re-flattens the
-	// transformed files back into b.flat. With V2_CHECK_FLAT but NOT
-	// V2_MARKUSED_FLAT, b.flat stays the parse-time (pre-transform) flat while the
-	// transformer only updates b.files, so feeding it to build_all_from_flat would
-	// skip every transformer rewrite. Require both flags here; otherwise fall back
-	// to the legacy build_all(files), which uses the post-transform b.files.
-	if b.flat_ssa_enabled && b.markused_flat_enabled && b.flat_check_enabled && b.flat.files.len > 0 {
+	// b.flat is only POST-TRANSFORM when either V2_MARKUSED_FLAT has routed
+	// transform through transform_files_to_flat, or the native flat pipeline has
+	// emitted transform output directly into FlatAst. With V2_CHECK_FLAT but NOT
+	// V2_MARKUSED_FLAT, b.flat stays parse-time, so feeding it here would skip
+	// transformer rewrites.
+	build_from_flat := b.flat.files.len > 0
+		&& ((b.flat_ssa_enabled && b.markused_flat_enabled && b.flat_check_enabled)
+		|| (b.native_flat_pipeline_enabled && label == ''))
+	if build_from_flat {
 		ssa_builder.build_all_from_flat(&b.flat)
+		// SSA has copied the program into MIR; keep the FlatAst lifetime out of
+		// the later optimizer and machine-code generator working sets.
+		b.flat = ast.FlatAst{}
 	} else if b.native_mir_build_sequential(label) {
 		ssa_builder.build_all(files)
 	} else {
@@ -2525,8 +2548,12 @@ fn (mut b Builder) build_native_mir_from_files(files []ast.File, arch pref.Arch,
 		b.ssa_build_parallel(mut ssa_builder, files)
 		ssa_builder.generate_vinit()
 	}
+	if arch == .arm64 {
+		b.env.release_expr_type_cache_after_ssa()
+	}
 	print_time(native_graph_stage_title(label, 'SSA Build'),
 		time.Duration(native_sw.elapsed() - stage_start))
+	print_rss(native_graph_stage_title(label, 'after SSA build'))
 
 	stage_start = native_sw.elapsed()
 	ssa_optimization_required := b.native_backend_requires_ssa_optimization(arch)
@@ -2543,6 +2570,7 @@ fn (mut b Builder) build_native_mir_from_files(files []ast.File, arch pref.Arch,
 	}
 	print_time(native_graph_stage_title(label, 'SSA Optimize'),
 		time.Duration(native_sw.elapsed() - stage_start))
+	print_rss(native_graph_stage_title(label, 'after SSA optimize'))
 	$if debug {
 		// Post-opt SSA verification is useful while debugging the optimizer, but it
 		// is currently noisy enough to block normal self-host builds. Keep it
@@ -2592,6 +2620,8 @@ fn (mut b Builder) build_native_mir_from_files(files []ast.File, arch pref.Arch,
 	mut mir_mod := mir.lower_from_ssa(mod)
 	print_time(native_graph_stage_title(label, 'MIR Lower'),
 		time.Duration(native_sw.elapsed() - stage_start))
+	mod.release_outer_arenas_after_mir_lower()
+	print_rss(native_graph_stage_title(label, 'after MIR lower'))
 
 	stage_start = native_sw.elapsed()
 	if is_windows_x64_native_target(arch, target_os) {
@@ -2601,11 +2631,15 @@ fn (mut b Builder) build_native_mir_from_files(files []ast.File, arch pref.Arch,
 	}
 	print_time(native_graph_stage_title(label, 'ABI Lower'),
 		time.Duration(native_sw.elapsed() - stage_start))
+	print_rss(native_graph_stage_title(label, 'after ABI lower'))
 
-	stage_start = native_sw.elapsed()
-	insel.select(mut mir_mod, arch)
-	print_time(native_graph_stage_title(label, 'InsSel'),
-		time.Duration(native_sw.elapsed() - stage_start))
+	if arch != .arm64 {
+		stage_start = native_sw.elapsed()
+		insel.select(mut mir_mod, arch)
+		print_time(native_graph_stage_title(label, 'InsSel'),
+			time.Duration(native_sw.elapsed() - stage_start))
+		print_rss(native_graph_stage_title(label, 'after InsSel'))
+	}
 	return mir_mod
 }
 
@@ -2657,6 +2691,8 @@ fn (mut b Builder) gen_native(backend_arch pref.Arch) {
 		} else {
 			b.gen_arm64_parallel(mut gen)
 		}
+		gen.release_scratch_after_gen()
+		mir_mod.release_after_native_codegen()
 		print_time('ARM64 Gen', time.Duration(native_sw.elapsed() - stage_start))
 
 		if b.pref.hot_fn.len > 0 {
@@ -2686,6 +2722,8 @@ fn (mut b Builder) gen_native(backend_arch pref.Arch) {
 			} else {
 				b.gen_arm64_parallel(mut gen)
 			}
+			gen.release_scratch_after_gen()
+			mir_mod.release_after_native_codegen()
 			gen.write_file(obj_file)
 		} else {
 			obj_format := native_x64_object_format_for_os(target_os)

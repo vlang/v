@@ -321,29 +321,7 @@ fn (mut t Transformer) prop_expr(expr ast.Expr) {
 
 // has_prop_type checks if the environment has a type set for the given expression ID.
 fn (t &Transformer) has_prop_type(id int) bool {
-	if usize(t.env.expr_type_values.data) > 0 && usize(t.env.expr_type_values.data) < 4096 {
-		eprintln('HAS_PROP_TYPE bad env expr_type_values data=${usize(t.env.expr_type_values.data)} len=${t.env.expr_type_values.len} cap=${t.env.expr_type_values.cap} off=${t.env.expr_type_values.offset} flags=${t.env.expr_type_values.flags} esz=${t.env.expr_type_values.element_size} id=${id}')
-	}
-	if usize(t.env.expr_type_neg_values.data) > 0 && usize(t.env.expr_type_neg_values.data) < 4096 {
-		eprintln('HAS_PROP_TYPE bad env expr_type_neg_values data=${usize(t.env.expr_type_neg_values.data)} len=${t.env.expr_type_neg_values.len} cap=${t.env.expr_type_neg_values.cap} off=${t.env.expr_type_neg_values.offset} flags=${t.env.expr_type_neg_values.flags} esz=${t.env.expr_type_neg_values.element_size} id=${id}')
-	}
-	if id > 0 && id < t.env.expr_type_values.len {
-		typ := t.env.expr_type_values[id]
-		if typ is types.Void {
-			return u8(typ) != 1
-		}
-		return true
-	} else if id < 0 {
-		idx := -id
-		if idx < t.env.expr_type_neg_values.len {
-			typ := t.env.expr_type_neg_values[idx]
-			if typ is types.Void {
-				return u8(typ) != 1
-			}
-			return true
-		}
-	}
-	return false
+	return t.env.has_expr_type(id)
 }
 
 // infer_prop_type tries to determine the type of an expression from its content.

@@ -11414,6 +11414,47 @@ fn (mut g Gen) call_expr(lhs ast.Expr, args []ast.Expr) {
 					continue
 				}
 			}
+			if c_name == 'array__push' && i == 1 && call_args.len > 0 {
+				push_arg := call_args[i]
+				mut handled_array_push_arg := false
+				if push_arg is ast.PrefixExpr && push_arg.op == .amp {
+					g.expr(push_arg)
+					handled_array_push_arg = true
+				} else if push_arg is ast.ArrayInitExpr {
+					elem_type := unmangle_c_ptr_type(g.extract_array_elem_type(push_arg.typ))
+					elem_expr := if push_arg.exprs.len == 1 {
+						push_arg.exprs[0]
+					} else {
+						ast.empty_expr
+					}
+					mut elem_expr_type := g.get_expr_type(elem_expr).trim_space()
+					if (elem_expr_type == '' || elem_expr_type == 'int') && elem_expr is ast.Ident {
+						elem_expr_type =
+							(g.get_local_var_c_type(elem_expr.name) or { '' }).trim_space()
+					}
+					if elem_type != '' && elem_expr_type.ends_with('*')
+						&& elem_expr_type.trim_right('*') == elem_type {
+						g.expr(elem_expr)
+					} else {
+						g.sb.write_string('&')
+						g.expr(push_arg)
+					}
+					handled_array_push_arg = true
+				} else if push_arg !is ast.ArrayInitExpr {
+					_, mut elem_type := g.array_append_elem_type(call_args[0], push_arg)
+					if elem_type == '' {
+						elem_type = g.get_expr_type(push_arg).trim_space()
+					}
+					if elem_type == '' {
+						elem_type = 'int'
+					}
+					g.gen_array_push_elem_arg(push_arg, elem_type)
+					handled_array_push_arg = true
+				}
+				if handled_array_push_arg {
+					continue
+				}
+			}
 			if c_name == 'signal' && i == 1 {
 				g.sb.write_string('((void (*)(int))')
 				g.expr(call_args[i])
