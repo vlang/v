@@ -1008,8 +1008,45 @@ fn run_parity(label string, src string) {
 	assert_transform_signatures_equal(label, leg, flt)
 }
 
+// fixture_methods_defaults_embed exercises the three whole-program decl-info
+// collects that the legacy path runs in prepare_files_for_transform and that the
+// bounded (generic-free) from-flat path now streams in pre_pass_from_flat:
+// declared_method_fns (the two methods), struct_default_decl_infos (the default
+// field values + the `Widget{}` literal that relies on them), and
+// concrete_embedded_owner_names (Widget embedding Base). If the streamed maps
+// diverge from the full-file maps, this parity check fails.
+const fixture_methods_defaults_embed = '
+struct Base {
+	id int = 7
+}
+
+fn (b Base) describe() int {
+	return b.id
+}
+
+struct Widget {
+	Base
+	tag int = 5
+	size int = 3
+}
+
+fn (w Widget) area() int {
+	return w.size * w.size
+}
+
+fn use_widget() int {
+	w := Widget{}
+	base := Base{}
+	return w.area() + base.describe() + w.id + w.tag
+}
+'
+
 fn test_flat_parity_plain_fn() {
 	run_parity('parity_plain_fn', fixture_plain_fn)
+}
+
+fn test_flat_parity_methods_defaults_embed() {
+	run_parity('parity_methods_defaults_embed', fixture_methods_defaults_embed)
 }
 
 fn test_flat_parity_infix_operator() {

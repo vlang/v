@@ -1539,6 +1539,12 @@ pub fn (mut t Transformer) pre_pass(files []ast.File) {
 // The per-stmt walks reuse the existing recursive visitors, which still
 // operate on legacy ast.Stmt/Expr — flat-native walks are a later step.
 pub fn (mut t Transformer) pre_pass_from_flat(flat &ast.FlatAst) {
+	// Flat path: monomorphization (and the whole-program flat.to_files() decode
+	// it requires) is only needed when the program actually has generics. When
+	// it doesn't, the dispatch takes the bounded per-file path and the -gc none
+	// self-host no longer OOMs decoding the whole program at once. Computed up
+	// front so the streaming decl-info collect below can be gated on it.
+	t.program_needs_generics = program_needs_generics_from_flat(flat)
 	t.collect_generic_fn_value_refs_from_flat(flat)
 	for ff in flat.files {
 		for stmt in flat.read_file_stmts(ff) {
@@ -1557,11 +1563,13 @@ pub fn (mut t Transformer) pre_pass_from_flat(flat &ast.FlatAst) {
 		t.collect_runtime_const_inits_from_flat(flat)
 	}
 	t.cache_env_maps()
-	// Flat path: monomorphization (and the whole-program flat.to_files() decode
-	// it requires) is only needed when the program actually has generics. When
-	// it doesn't, the dispatch takes the bounded per-file path and the -gc none
-	// self-host no longer OOMs decoding the whole program at once.
-	t.program_needs_generics = program_needs_generics_from_flat(flat)
+	if !t.program_needs_generics {
+		// The bounded transform path (taken for generic-free programs) skips
+		// prepare_files_for_transform, so populate the non-generic whole-program
+		// decl-info maps it still needs (declared_method_fns, struct default
+		// decl infos, concrete embedded owner names) by streaming each file once.
+		t.collect_non_generic_decl_infos_streaming(flat)
+	}
 }
 
 // cache_env_maps snapshots the shared Environment maps into plain maps

@@ -210,10 +210,18 @@ fn (t &Transformer) generic_types_spec_count() int {
 fn (mut t Transformer) collect_declared_method_fns(files []ast.File) {
 	t.declared_method_fns = map[string]bool{}
 	for file in files {
-		for stmt in file.stmts {
-			if stmt is ast.FnDecl && stmt.is_method {
-				t.register_declared_method_fn(stmt, file.mod)
-			}
+		t.collect_declared_method_fns_in_file(file)
+	}
+}
+
+// collect_declared_method_fns_in_file is the per-file body of
+// collect_declared_method_fns, factored out so the bounded (streaming)
+// transform path can accumulate the same whole-program map one decoded
+// file at a time without holding the full file set.
+fn (mut t Transformer) collect_declared_method_fns_in_file(file ast.File) {
+	for stmt in file.stmts {
+		if stmt is ast.FnDecl && stmt.is_method {
+			t.register_declared_method_fn(stmt, file.mod)
 		}
 	}
 }
@@ -306,23 +314,7 @@ fn (mut t Transformer) collect_concrete_embedded_owner_names(files []ast.File) {
 	old_import_aliases := t.cur_import_aliases.clone()
 	t.concrete_embedded_owner_names = map[string]map[string]string{}
 	for file in files {
-		t.cur_file_name = file.name
-		t.cur_module = file.mod
-		t.cur_import_aliases = import_aliases_for_generic_collect(file.imports)
-		if scope := t.get_module_scope(file.mod) {
-			t.scope = scope
-		} else {
-			t.scope = unsafe { nil }
-		}
-		for stmt in file.stmts {
-			if stmt is ast.StructDecl {
-				mut embedded := []ast.Expr{cap: stmt.embedded.len}
-				for item in stmt.embedded {
-					embedded << t.rewrite_concrete_generic_struct_type_expr(item)
-				}
-				t.register_concrete_embedded_owner_names(stmt, embedded)
-			}
-		}
+		t.collect_concrete_embedded_owner_names_in_file(file)
 	}
 	t.cur_module = old_module
 	t.cur_file_name = old_file
@@ -330,24 +322,88 @@ fn (mut t Transformer) collect_concrete_embedded_owner_names(files []ast.File) {
 	t.cur_import_aliases = old_import_aliases.clone()
 }
 
+// collect_concrete_embedded_owner_names_in_file is the per-file body of
+// collect_concrete_embedded_owner_names. It mutates the per-file cursor
+// state (cur_module / cur_file_name / cur_import_aliases / scope); callers
+// that stream files are responsible for saving and restoring that state
+// around the loop, exactly as the full-file collector above does.
+fn (mut t Transformer) collect_concrete_embedded_owner_names_in_file(file ast.File) {
+	t.cur_file_name = file.name
+	t.cur_module = file.mod
+	t.cur_import_aliases = import_aliases_for_generic_collect(file.imports)
+	if scope := t.get_module_scope(file.mod) {
+		t.scope = scope
+	} else {
+		t.scope = unsafe { nil }
+	}
+	for stmt in file.stmts {
+		if stmt is ast.StructDecl {
+			mut embedded := []ast.Expr{cap: stmt.embedded.len}
+			for item in stmt.embedded {
+				embedded << t.rewrite_concrete_generic_struct_type_expr(item)
+			}
+			t.register_concrete_embedded_owner_names(stmt, embedded)
+		}
+	}
+}
+
 fn (mut t Transformer) collect_struct_default_decl_infos(files []ast.File) {
 	t.struct_default_decl_infos = map[string]StructDefaultDeclInfo{}
 	for file in files {
-		for stmt in file.stmts {
-			if stmt is ast.StructDecl {
-				info := StructDefaultDeclInfo{
-					decl:        stmt
-					module_name: file.mod
-				}
-				c_name := generic_struct_decl_c_name(stmt, file.mod)
-				t.struct_default_decl_infos[c_name] = info
-				if c_name.contains('__') {
-					t.struct_default_decl_infos[c_name.all_after_last('__')] = info
-				}
-				t.struct_default_decl_infos[stmt.name] = info
+		t.collect_struct_default_decl_infos_in_file(file)
+	}
+}
+
+// collect_struct_default_decl_infos_in_file is the per-file body of
+// collect_struct_default_decl_infos, factored out for the streaming path.
+fn (mut t Transformer) collect_struct_default_decl_infos_in_file(file ast.File) {
+	for stmt in file.stmts {
+		if stmt is ast.StructDecl {
+			info := StructDefaultDeclInfo{
+				decl:        stmt
+				module_name: file.mod
 			}
+			c_name := generic_struct_decl_c_name(stmt, file.mod)
+			t.struct_default_decl_infos[c_name] = info
+			if c_name.contains('__') {
+				t.struct_default_decl_infos[c_name.all_after_last('__')] = info
+			}
+			t.struct_default_decl_infos[stmt.name] = info
 		}
 	}
+}
+
+// collect_non_generic_decl_infos_streaming populates the whole-program
+// decl-info maps that the per-file transform needs but that the bounded
+// dispatch path otherwise skips (it runs only when prepare_files_for_transform
+// is bypassed, i.e. a generic-free program). It streams one decoded file at a
+// time via to_files_range so peak memory stays bounded, and reuses the exact
+// per-file collectors so the maps are identical to the full-file path. The
+// generic-only collects (struct_field_generic_decl_types) and the monomorphize
+// fixpoint are correctly omitted: this path is taken only when there are no
+// generics, so they would be empty / no-ops anyway.
+fn (mut t Transformer) collect_non_generic_decl_infos_streaming(flat &ast.FlatAst) {
+	t.declared_method_fns = map[string]bool{}
+	t.struct_default_decl_infos = map[string]StructDefaultDeclInfo{}
+	t.concrete_embedded_owner_names = map[string]map[string]string{}
+	old_module := t.cur_module
+	old_file := t.cur_file_name
+	old_scope := t.scope
+	old_import_aliases := t.cur_import_aliases.clone()
+	for i in 0 .. flat.files.len {
+		one := flat.to_files_range(i, i + 1)
+		if one.len == 0 {
+			continue
+		}
+		file := one[0]
+		t.collect_declared_method_fns_in_file(file)
+		t.collect_struct_default_decl_infos_in_file(file)
+		t.collect_concrete_embedded_owner_names_in_file(file)
+	}
+	t.cur_module = old_module
+	t.cur_file_name = old_file
+	t.scope = old_scope
+	t.cur_import_aliases = old_import_aliases.clone()
 }
 
 fn generic_struct_runtime_args(args []ast.Expr) []ast.Expr {
