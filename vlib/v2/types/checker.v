@@ -1781,8 +1781,7 @@ fn (c &Checker) collect_active_imports_from_stmt_cursor(s ast.Cursor, mut import
 // collect_active_imports_from_if_cursor mirrors collect_active_imports_from_if_expr.
 // expr_if layout: edge0 = cond, edge1 = else_expr, edge2.. = then-branch stmts.
 fn (c &Checker) collect_active_imports_from_if_cursor(if_c ast.Cursor, mut imports []ast.ImportStmt) {
-	cond := if_c.flat.decode_expr(if_c.edge(0).id)
-	if c.eval_comptime_cond(cond) {
+	if c.eval_comptime_cond_cursor(if_c.edge(0)) {
 		for i in 2 .. if_c.edge_count() {
 			c.collect_active_imports_from_stmt_cursor(if_c.edge(i), mut imports)
 		}
@@ -1798,6 +1797,47 @@ fn (c &Checker) collect_active_imports_from_if_cursor(if_c ast.Cursor, mut impor
 			c.collect_active_imports_from_if_cursor(else_c, mut imports)
 		}
 	}
+}
+
+fn (c &Checker) eval_comptime_cond_cursor(cond ast.Cursor) bool {
+	if !cond.is_valid() {
+		return false
+	}
+	match cond.kind() {
+		.expr_ident {
+			return c.eval_comptime_flag(cond.name())
+		}
+		.expr_prefix {
+			op := unsafe { token.Token(int(cond.aux())) }
+			if op == .not {
+				return !c.eval_comptime_cond_cursor(cond.edge(0))
+			}
+		}
+		.expr_infix {
+			op := unsafe { token.Token(int(cond.aux())) }
+			if op == .and {
+				return c.eval_comptime_cond_cursor(cond.edge(0))
+					&& c.eval_comptime_cond_cursor(cond.edge(1))
+			}
+			if op == .logical_or {
+				return c.eval_comptime_cond_cursor(cond.edge(0))
+					|| c.eval_comptime_cond_cursor(cond.edge(1))
+			}
+		}
+		.expr_postfix {
+			op := unsafe { token.Token(int(cond.aux())) }
+			inner := cond.edge(0)
+			if op == .question && inner.kind() == .expr_ident {
+				return pref.comptime_optional_flag_value(c.pref, inner.name())
+			}
+		}
+		.expr_paren {
+			return c.eval_comptime_cond_cursor(cond.edge(0))
+		}
+		else {}
+	}
+
+	return false
 }
 
 // preregister_all_scopes_from_flat mirrors preregister_all_scopes but pulls
