@@ -43,8 +43,20 @@ fn (mut t Transformer) propagate_types_from_flat(flat &ast.FlatAst) {
 	if flat.files.len == 0 {
 		return
 	}
-	files := flat.to_files_range(0, flat.files.len)
-	t.propagate_types(files)
+	// Stream one file at a time instead of materializing the whole program at
+	// once (flat.to_files_range(0, N)). Behaviour is identical — propagate_types
+	// already processes files independently, setting t.scope/cur_module per file
+	// — but the rehydrated legacy AST peaks at a single file rather than the full
+	// set, so a GC reclaims it between files. This also localises the decode to a
+	// per-file seam, the site a later cursor-native prop walk will replace
+	// kind-by-kind to drop the decode entirely (the -gc none footprint win).
+	for i in 0 .. flat.files.len {
+		one := flat.to_files_range(i, i + 1)
+		if one.len == 0 {
+			continue
+		}
+		t.propagate_types(one)
+	}
 }
 
 fn (mut t Transformer) prop_exprs(exprs []ast.Expr) {
