@@ -1913,6 +1913,13 @@ println(u_name) // John
 
 You can check the current type of a sum type using `is` and its negated form `!is`.
 
+Note that the variable's declared type stays the sum type itself. In the example
+below, `x` has the static type `Alphabet`, even though the value it holds is an
+`Abc`. Inside an `is` check (or a `match` branch) the compiler automatically
+*smart casts* `x` to the matched variant, so within that block `x` has the static
+type `Abc` and you can access its fields directly and safely, without writing an
+explicit `as` cast.
+
 You can do it either in an `if`:
 
 ```v cgen
