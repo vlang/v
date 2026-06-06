@@ -49,7 +49,7 @@ mut:
 	flat_roundtrip_enabled    bool // V2_FLAT_ROUNDTRIP=1: legacy comparison mode; route parses through streaming + to_files().
 	flat_check_enabled        bool // Default on: stream parse/type-check through FlatAst. V2_LEGACY_AST=1 disables it unless V2_CHECK_FLAT=1 is set.
 	markused_flat_enabled     bool // Default on: route markused through mark_used_flat.
-	flat_ssa_enabled          bool // Default on: route native SSA through build_all_from_flat on the post-transform b.flat.
+	flat_ssa_enabled          bool // Default on: route SSA codegen through build_all_from_flat on the post-transform b.flat.
 	// flat caches the FlatAst representation of b.files. When
 	// flat_check_enabled is set, parse_batch streams directly into
 	// flat_builder so b.flat is built incrementally during parsing rather
@@ -106,6 +106,20 @@ fn (b &Builder) should_use_native_flat_pipeline() bool {
 
 fn (b &Builder) backend_uses_markused_pruning() bool {
 	return b.pref.backend != .arm64
+}
+
+fn (b &Builder) should_build_ssa_from_flat() bool {
+	return b.flat.files.len > 0 && b.flat_ssa_enabled && b.markused_flat_enabled
+		&& b.flat_check_enabled
+}
+
+fn (b &Builder) should_keep_flat_for_codegen() bool {
+	flat_ssa_codegen := b.flat_ssa_enabled && b.markused_flat_enabled && b.flat_check_enabled
+	return match b.pref.backend {
+		.c { flat_ssa_codegen }
+		.x64, .arm64 { flat_ssa_codegen || b.native_flat_pipeline_enabled }
+		else { false }
+	}
 }
 
 fn (b &Builder) can_compile_cleanc_locally() bool {
@@ -339,12 +353,7 @@ pub fn (mut b Builder) build(files []string) {
 		print_time('Mark Used', mark_used_time)
 		print_rss('after markused')
 	}
-	keep_flat_for_codegen := (b.flat_ssa_enabled || b.native_flat_pipeline_enabled) && match b.pref.backend {
-		.x64, .arm64 { true }
-		else { false }
-	}
-
-	if b.flat_check_enabled && !keep_flat_for_codegen {
+	if b.flat_check_enabled && !b.should_keep_flat_for_codegen() {
 		b.flat = ast.FlatAst{}
 	}
 
@@ -598,7 +607,14 @@ fn (mut b Builder) gen_ssa_c() {
 	ssa_builder.target_os = b.pref.target_os_or_host()
 
 	mut stage_start := sw.elapsed()
-	ssa_builder.build_all(b.files)
+	if b.should_build_ssa_from_flat() {
+		ssa_builder.build_all_from_flat(&b.flat)
+		// SSA has copied the program into MIR; keep the FlatAst lifetime out of
+		// the later C generator and C compiler working sets.
+		b.flat = ast.FlatAst{}
+	} else {
+		ssa_builder.build_all(b.files)
+	}
 	print_time('SSA Build', time.Duration(sw.elapsed() - stage_start))
 
 	// TODO: re-enable SSA optimization once the new builder is mature
@@ -2559,9 +2575,8 @@ fn (mut b Builder) build_native_mir_from_files(files []ast.File, arch pref.Arch,
 	// b.flat is only POST-TRANSFORM when flat markused has routed transform
 	// through transform_files_to_flat, or the direct native flat pipeline has
 	// emitted transform output directly into FlatAst.
-	build_from_flat := b.flat.files.len > 0
-		&& ((b.flat_ssa_enabled && b.markused_flat_enabled && b.flat_check_enabled)
-		|| (b.native_flat_pipeline_enabled && label == ''))
+	build_from_flat := b.should_build_ssa_from_flat()
+		|| (b.flat.files.len > 0 && b.native_flat_pipeline_enabled && label == '')
 	if build_from_flat {
 		ssa_builder.build_all_from_flat(&b.flat)
 		// SSA has copied the program into MIR; keep the FlatAst lifetime out of

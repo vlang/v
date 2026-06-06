@@ -66,6 +66,73 @@ fn build_test_ssa(mut b Builder, mut ssa_builder ssa.Builder) {
 	ssa_builder.build_all(b.files)
 }
 
+fn test_ssa_c_backend_keeps_flat_for_codegen() {
+	mut prefs := pref.Preferences{
+		backend: .c
+	}
+	mut b := Builder{
+		pref:                  &prefs
+		flat_check_enabled:    true
+		markused_flat_enabled: true
+		flat_ssa_enabled:      true
+	}
+
+	assert b.should_keep_flat_for_codegen()
+	b.flat = ast.FlatAst{
+		files: [ast.FlatFile{}]
+	}
+	assert b.should_build_ssa_from_flat()
+
+	prefs.backend = .cleanc
+	assert !b.should_keep_flat_for_codegen()
+	prefs.backend = .v
+	assert !b.should_keep_flat_for_codegen()
+	prefs.backend = .x64
+	assert b.should_keep_flat_for_codegen()
+}
+
+fn test_gen_ssa_c_consumes_flat_codegen_input() {
+	tmp_dir := os.join_path(os.temp_dir(), 'v2_builder_ssa_c_flat_${os.getpid()}')
+	os.rmdir_all(tmp_dir) or {}
+	os.mkdir_all(tmp_dir) or { panic(err) }
+	defer {
+		os.rmdir_all(tmp_dir) or {}
+	}
+
+	output_path := os.join_path(tmp_dir, 'ssa_flat.c')
+	files := [
+		ast.File{
+			name:  'main.v'
+			mod:   'main'
+			stmts: [
+				ast.Stmt(ast.ModuleStmt{
+					name: 'main'
+				}),
+			]
+		},
+	]
+	mut prefs := pref.Preferences{
+		backend:     .c
+		output_file: output_path
+	}
+	mut b := Builder{
+		pref:                  &prefs
+		files:                 files
+		env:                   types.Environment.new()
+		flat:                  ast.flatten_files(files)
+		flat_check_enabled:    true
+		markused_flat_enabled: true
+		flat_ssa_enabled:      true
+	}
+
+	b.gen_ssa_c()
+
+	assert b.flat.files.len == 0
+	assert os.exists(output_path)
+	c_source := os.read_file(output_path) or { panic(err) }
+	assert c_source.len > 0
+}
+
 fn test_get_v_files_from_dir_uses_windows_target_os() {
 	tmp_dir := os.join_path(os.temp_dir(), 'v2_builder_filter_windows_${os.getpid()}')
 	os.rmdir_all(tmp_dir) or {}
