@@ -822,12 +822,7 @@ fn flat_collect_active_imports(stmts ast.CursorList, options ChannelScanOptions,
 fn flat_collect_active_imports_stmt(s ast.Cursor, options ChannelScanOptions, mut imports []ast.ImportStmt) {
 	match s.kind() {
 		.stmt_import {
-			// Import nodes are tiny (name/alias/symbols); decoding this one node is
-			// safe and matches the legacy `imports << stmt` arm.
-			imp := s.flat.decode_stmt(s.id)
-			if imp is ast.ImportStmt {
-				imports << imp
-			}
+			imports << s.import_stmt()
 		}
 		.stmt_expr {
 			inner := s.edge(0)

@@ -1763,11 +1763,7 @@ fn (c &Checker) collect_active_imports_from_stmts_cursor(stmts ast.CursorList, m
 fn (c &Checker) collect_active_imports_from_stmt_cursor(s ast.Cursor, mut imports []ast.ImportStmt) {
 	match s.kind() {
 		.stmt_import {
-			// Import nodes are tiny (name/alias/symbols); decode just this one.
-			imp := s.flat.decode_stmt(s.id)
-			if imp is ast.ImportStmt {
-				imports << imp
-			}
+			imports << s.import_stmt()
 		}
 		.stmt_expr {
 			inner := s.edge(0)

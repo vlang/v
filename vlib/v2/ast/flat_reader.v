@@ -93,9 +93,12 @@ fn (r &FlatReader) read_file(ff FlatFile) File {
 	}
 	mut imports := []ImportStmt{}
 	for cid in r.list_children(imports_id) {
-		s := r.read_stmt(cid)
-		if s is ImportStmt {
-			imports << s
+		c := Cursor{
+			flat: r.flat
+			id:   cid
+		}
+		if c.kind() == .stmt_import {
+			imports << c.import_stmt()
 		}
 	}
 	mut stmts := []Stmt{}
@@ -123,9 +126,12 @@ pub fn (flat &FlatAst) read_file_imports(ff FlatFile) []ImportStmt {
 	imports_id := r.edge(n, 1)
 	mut imports := []ImportStmt{}
 	for cid in r.list_children(imports_id) {
-		s := r.read_stmt(cid)
-		if s is ImportStmt {
-			imports << s
+		c := Cursor{
+			flat: r.flat
+			id:   cid
+		}
+		if c.kind() == .stmt_import {
+			imports << c.import_stmt()
 		}
 	}
 	return imports
