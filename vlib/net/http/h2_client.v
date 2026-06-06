@@ -73,15 +73,6 @@ fn (req &Request) to_h2_request(method Method, authority string, path string, da
 	}
 }
 
-// uses_response_streaming reports whether the request relies on streaming
-// response callbacks or stop limits. The HTTP/2 path buffers the full response,
-// so such requests must not negotiate HTTP/2 and instead use the HTTP/1.1 path,
-// which honors these. (Streaming over HTTP/2 is a planned follow-up.)
-fn (req &Request) uses_response_streaming() bool {
-	return req.on_progress != unsafe { nil } || req.on_progress_body != unsafe { nil }
-		|| req.stop_copying_limit >= 0 || req.stop_receiving_limit >= 0
-}
-
 // h2_response_to_http converts an HTTP/2 response into a net.http Response,
 // decoding any Content-Encoding the same way the HTTP/1.1 path does.
 fn h2_response_to_http(h2resp H2ClientResponse) Response {
