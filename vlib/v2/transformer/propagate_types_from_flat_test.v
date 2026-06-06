@@ -16,6 +16,7 @@ module transformer
 
 import v2.ast
 import v2.pref as vpref
+import v2.token
 import v2.types
 
 fn create_propagate_test_transformer(backend vpref.Backend) &Transformer {
@@ -137,4 +138,151 @@ fn test_apply_post_pass_tail_from_flat_matches_legacy_cleanc() {
 	// fixture, propagate_types is a no-op and expr_type_values stays empty.
 	assert t_legacy.env.expr_type_values.len == t_flat.env.expr_type_values.len
 	assert t_legacy.cur_module == t_flat.cur_module
+}
+
+// make_propagate_expr_files builds a file with real expressions (valid pos.ids)
+// so propagate_types actually infers + sets types — unlike the stmt-free
+// fixtures above. Exercises the walk's recursion + ordering: AssignStmt
+// (RHS-before-LHS, LHS type from RHS), nested InfixExpr (operands then parent),
+// arithmetic vs comparison inference, and a BlockStmt (recursion into a body).
+fn make_propagate_expr_files() []ast.File {
+	return [
+		ast.File{
+			name:  'main.v'
+			mod:   'main'
+			stmts: [
+				ast.Stmt(ast.ModuleStmt{
+					name: 'main'
+				}),
+				ast.Stmt(ast.AssignStmt{
+					op:  .assign
+					lhs: [
+						ast.Expr(ast.Ident{
+							name: 'x'
+							pos:  token.Pos{
+								id: 11
+							}
+						}),
+					]
+					rhs: [
+						ast.Expr(ast.BasicLiteral{
+							kind:  .number
+							value: '5'
+							pos:   token.Pos{
+								id: 12
+							}
+						}),
+					]
+					pos: token.Pos{
+						id: 10
+					}
+				}),
+				ast.Stmt(ast.ExprStmt{
+					expr: ast.Expr(ast.InfixExpr{
+						op:  .plus
+						lhs: ast.Expr(ast.BasicLiteral{
+							kind:  .number
+							value: '1'
+							pos:   token.Pos{
+								id: 21
+							}
+						})
+						rhs: ast.Expr(ast.BasicLiteral{
+							kind:  .number
+							value: '2'
+							pos:   token.Pos{
+								id: 22
+							}
+						})
+						pos: token.Pos{
+							id: 20
+						}
+					})
+				}),
+				ast.Stmt(ast.ExprStmt{
+					expr: ast.Expr(ast.InfixExpr{
+						op:  .eq
+						lhs: ast.Expr(ast.BasicLiteral{
+							kind:  .number
+							value: '1'
+							pos:   token.Pos{
+								id: 31
+							}
+						})
+						rhs: ast.Expr(ast.BasicLiteral{
+							kind:  .number
+							value: '2'
+							pos:   token.Pos{
+								id: 32
+							}
+						})
+						pos: token.Pos{
+							id: 30
+						}
+					})
+				}),
+				ast.Stmt(ast.BlockStmt{
+					stmts: [
+						ast.Stmt(ast.ExprStmt{
+							expr: ast.Expr(ast.InfixExpr{
+								op:  .plus
+								lhs: ast.Expr(ast.BasicLiteral{
+									kind:  .number
+									value: '3'
+									pos:   token.Pos{
+										id: 41
+									}
+								})
+								rhs: ast.Expr(ast.BasicLiteral{
+									kind:  .number
+									value: '4'
+									pos:   token.Pos{
+										id: 42
+									}
+								})
+								pos: token.Pos{
+									id: 40
+								}
+							})
+						}),
+					]
+				}),
+			]
+		},
+	]
+}
+
+// prop_typed_ids_sig returns the sorted list of expr ids that ended up with a
+// type in env — exactly which nodes the propagate walk visited + typed. This is
+// the parity signal a future cursor-native propagate port must preserve.
+fn prop_typed_ids_sig(t &Transformer) string {
+	mut ids := []string{}
+	for id in 1 .. t.env.expr_type_values.len {
+		if _ := t.env.get_expr_type(id) {
+			ids << id.str()
+		}
+	}
+	return ids.join(',')
+}
+
+// Stronger guard than the stmt-free fixtures above: with real expressions,
+// propagate_types_from_flat must type EXACTLY the same node ids as the legacy
+// propagate_types walker. A cursor-native port that gets recursion or ordering
+// wrong will type a different id set and fail here.
+fn test_propagate_types_from_flat_matches_legacy_for_exprs() {
+	files := make_propagate_expr_files()
+	flat := ast.flatten_files(files)
+
+	mut t_legacy := create_propagate_test_transformer(.cleanc)
+	mut t_flat := create_propagate_test_transformer(.cleanc)
+
+	t_legacy.propagate_types(files)
+	t_flat.propagate_types_from_flat(&flat)
+
+	sig_legacy := prop_typed_ids_sig(t_legacy)
+	sig_flat := prop_typed_ids_sig(t_flat)
+	assert sig_legacy == sig_flat, 'legacy typed=[${sig_legacy}] flat typed=[${sig_flat}]'
+	// Guard the guard: the fixture must actually exercise inference, else this
+	// test would silently pass on an empty result and prove nothing.
+	assert sig_legacy.len > 0, 'fixture set no types — not a meaningful parity guard'
 }
