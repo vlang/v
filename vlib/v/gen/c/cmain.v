@@ -163,6 +163,20 @@ fn (mut g Gen) gen_boehm_gc_init() {
 	if g.pref.gc_mode in [.boehm_full_opt, .boehm_incr_opt] {
 		g.writeln('\tGC_set_free_space_divisor(2);')
 	}
+	if g.pref.os == .macos {
+		// macOS multicore fix: cap Boehm parallel-mark to a single marker
+		// on macOS. libgc's parallel mark defaults to one helper thread per
+		// core; on macOS every stop-the-world collection then wakes N-1
+		// helpers that contend (mach thread_suspend/resume + mark-queue
+		// spin), starving the application's own worker threads. For an
+		// allocation-heavy multi-threaded server (the picoev multi-reactor
+		// HTTP leg) this collapses throughput: a serve-file wrk run measured
+		// ~48.5K req/s at ~5 active cores with parallel mark vs ~131K req/s
+		// with a single marker (2.6x). Must run before GC_INIT() — GC_thr_init
+		// computes the marker count there and starts the helpers eagerly.
+		// `GC_MARKERS` env still overrides this (read first in GC_thr_init).
+		g.writeln('\tGC_set_markers_count(1);')
+	}
 	if g.pref.use_coroutines {
 		g.writeln('\tGC_allow_register_threads();')
 	}
