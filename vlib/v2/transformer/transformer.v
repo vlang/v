@@ -5,6 +5,7 @@ module transformer
 
 import os
 import strings
+import time
 import v2.ast
 import v2.pref
 import v2.token
@@ -110,6 +111,7 @@ mut:
 	generic_fn_decl_names         map[string]bool
 	generic_fn_decl_stmts         map[string][]ast.Stmt
 	generic_fn_decl_index         map[string]ast.FnDecl
+	generic_call_candidate_names  map[string]bool
 	generic_fn_value_names        map[string]bool
 	declared_method_fns           map[string]bool
 	monomorphized_fn_bindings     map[string]map[string]types.Type
@@ -119,10 +121,12 @@ mut:
 	live_source_file string
 	// Cached scope/method/fn_scope snapshots for lock-free parallel access.
 	// Populated once in pre_pass from the shared Environment fields.
-	cached_scopes      map[string]&types.Scope
-	cached_methods     map[string][]&types.Fn
-	cached_method_keys []string
-	cached_fn_scopes   map[string]&types.Scope
+	cached_scopes               map[string]&types.Scope
+	cached_methods              map[string][]&types.Fn
+	cached_method_keys          []string
+	cached_fn_scopes            map[string]&types.Scope
+	cached_fn_type_index        map[string]types.Type
+	cached_fn_return_type_index map[string]types.Type
 	// cached_method_base_index maps type_name -> generic-base method name ->
 	// FnType, precomputed once from cached_methods. lookup_method_cached used to
 	// linearly scan every method of a type and recompute its base name (via
@@ -156,6 +160,7 @@ mut:
 	// these freshly-materialized clones (the rest of the program was already
 	// scanned) instead of re-walking all files. Empty when mono_pass added none.
 	last_mono_clones                   map[int][]ast.Stmt
+	last_struct_clones                 map[int][]ast.Stmt
 	generic_spec_owner_file            map[string]int
 	deferred_generic_call_specs        []DeferredGenericCallSpec
 	generic_struct_specs               map[string]GenericStructSpec
@@ -316,6 +321,7 @@ fn new_transformer_base(env &types.Environment, p &pref.Preferences) &Transforme
 		generic_fn_decl_names:              map[string]bool{}
 		generic_fn_decl_stmts:              map[string][]ast.Stmt{}
 		generic_fn_decl_index:              map[string]ast.FnDecl{}
+		generic_call_candidate_names:       map[string]bool{}
 		generic_fn_value_names:             map[string]bool{}
 		declared_method_fns:                map[string]bool{}
 		monomorphized_fn_bindings:          map[string]map[string]types.Type{}
@@ -363,6 +369,8 @@ pub fn (t &Transformer) new_worker_clone(worker_idx int) &Transformer {
 		file_set:                           unsafe { t.file_set }
 		cached_scopes:                      t.cached_scopes.clone()
 		cached_methods:                     t.cached_methods.clone()
+		cached_fn_type_index:               t.cached_fn_type_index.clone()
+		cached_fn_return_type_index:        t.cached_fn_return_type_index.clone()
 		cached_method_base_index:           t.cached_method_base_index.clone()
 		cached_method_keys_by_short:        t.cached_method_keys_by_short.clone()
 		cached_method_keys:                 t.cached_method_keys.clone()
@@ -382,6 +390,7 @@ pub fn (t &Transformer) new_worker_clone(worker_idx int) &Transformer {
 		local_receiver_generic_bindings:    map[string]map[string]types.Type{}
 		generic_var_type_params:            map[string]string{}
 		generic_fn_decl_index:              t.generic_fn_decl_index.clone()
+		generic_call_candidate_names:       t.generic_call_candidate_names.clone()
 		generic_fn_value_names:             t.generic_fn_value_names.clone()
 		declared_method_fns:                t.declared_method_fns.clone()
 		monomorphized_fn_bindings:          t.monomorphized_fn_bindings.clone()
@@ -462,6 +471,27 @@ pub fn (mut t Transformer) merge_worker(w &Transformer) {
 // transform_file_standalone transforms a single file, for use in parallel workers.
 pub fn (mut t Transformer) transform_file_pub(file ast.File) ast.File {
 	return t.transform_file(file)
+}
+
+// transform_file_stmt_pub transforms one top-level statement in a file context,
+// for use by the declaration-level parallel transformer.
+pub fn (mut t Transformer) transform_file_stmt_pub(file ast.File, stmt ast.Stmt) []ast.Stmt {
+	t.enter_file_context(file)
+	return t.transform_stmts([stmt])
+}
+
+fn (mut t Transformer) enter_file_context(file ast.File) {
+	// Set current file name for assert messages
+	t.cur_file_name = file.name
+	// Set current module for scope lookups
+	t.cur_module = file.mod
+	t.cur_import_aliases = import_aliases_for_generic_collect(file.imports)
+	// Set module scope as starting point
+	if scope := t.get_module_scope(file.mod) {
+		t.scope = scope
+	} else {
+		t.scope = unsafe { nil }
+	}
 }
 
 fn detect_vmodroot_from_path(path string) ?string {
@@ -1526,12 +1556,66 @@ fn (mut t Transformer) cache_env_maps() {
 	t.cached_methods = t.env.snapshot_methods()
 	t.cached_method_keys = t.cached_methods.keys()
 	t.cached_fn_scopes = t.env.snapshot_fn_scopes()
+	t.build_cached_fn_type_index()
 	t.build_cached_method_base_index()
 	mut by_short := map[string][]string{}
 	for key in t.cached_method_keys {
 		by_short[method_short_name(key)] << key
 	}
 	t.cached_method_keys_by_short = by_short.move()
+}
+
+fn (mut t Transformer) build_cached_fn_type_index() {
+	mut fn_index := map[string]types.Type{}
+	mut ret_index := map[string]types.Type{}
+	for module_name in t.cached_scopes.keys() {
+		scope := t.cached_scopes[module_name] or { continue }
+		for fn_name, obj in scope.objects {
+			if obj is types.Fn {
+				fn_obj := obj as types.Fn
+				typ := fn_obj.get_typ()
+				if typ is types.FnType {
+					t.add_cached_fn_type_entry(mut fn_index, mut ret_index, module_name, fn_name,
+						typ)
+					short_module := short_module_name(module_name)
+					if short_module != module_name {
+						t.add_cached_fn_type_entry(mut fn_index, mut ret_index, short_module,
+							fn_name, typ)
+					}
+					any_key := '*#${fn_name}'
+					if any_key !in fn_index {
+						fn_index[any_key] = typ
+						if ret_type := typ.get_return_type() {
+							ret_index[any_key] = ret_type
+						}
+					}
+				}
+			}
+		}
+	}
+	t.cached_fn_type_index = fn_index.move()
+	t.cached_fn_return_type_index = ret_index.move()
+}
+
+fn (mut t Transformer) add_cached_fn_type_entry(mut fn_index map[string]types.Type, mut ret_index map[string]types.Type, module_name string, fn_name string, fn_type types.FnType) {
+	key := '${module_name}#${fn_name}'
+	if key in fn_index {
+		return
+	}
+	fn_index[key] = fn_type
+	if ret_type := fn_type.get_return_type() {
+		ret_index[key] = ret_type
+	}
+}
+
+fn short_module_name(module_name string) string {
+	if module_name.contains('.') {
+		return module_name.all_after_last('.')
+	}
+	if module_name.contains('__') {
+		return module_name.all_after_last('__')
+	}
+	return module_name
 }
 
 // build_cached_method_base_index precomputes, for each type, a base-method-name
@@ -2302,18 +2386,35 @@ pub fn (mut t Transformer) inject_embed_file_helper_to_flat(mut out ast.FlatBuil
 
 // transform_files transforms all files and returns transformed copies
 pub fn (mut t Transformer) transform_files(files []ast.File) []ast.File {
+	timing := os.getenv('V2_TTIME') != ''
+	mut sw := time.new_stopwatch()
 	t_print_mem('enter')
 	t.pre_pass(files)
 	t_print_mem('after pre_pass')
+	if timing {
+		eprintln('  [ttime] sequential pre_pass: ${sw.elapsed().milliseconds()}ms')
+		sw = time.new_stopwatch()
+	}
 	files_to_transform := t.prepare_files_for_transform(files)
 	t_print_mem('after prepare/monomorphize')
+	if timing {
+		eprintln('  [ttime] sequential prepare: ${sw.elapsed().milliseconds()}ms')
+		sw = time.new_stopwatch()
+	}
 	mut result := []ast.File{cap: files_to_transform.len}
 	for file in files_to_transform {
 		result << t.transform_file(file)
 	}
 	t_print_mem('after per-file loop')
+	if timing {
+		eprintln('  [ttime] sequential per-file: ${sw.elapsed().milliseconds()}ms')
+		sw = time.new_stopwatch()
+	}
 	t.post_pass(mut result)
 	t_print_mem('after post_pass')
+	if timing {
+		eprintln('  [ttime] sequential post_pass: ${sw.elapsed().milliseconds()}ms')
+	}
 	return result
 }
 
@@ -3876,18 +3977,7 @@ pub fn (mut t Transformer) inject_main_runtime_const_init_to_flat(mut out ast.Fl
 }
 
 fn (mut t Transformer) transform_file(file ast.File) ast.File {
-	// Set current file name for assert messages
-	t.cur_file_name = file.name
-	// Set current module for scope lookups
-	t.cur_module = file.mod
-	t.cur_import_aliases = import_aliases_for_generic_collect(file.imports)
-	// Set module scope as starting point
-	if scope := t.get_module_scope(file.mod) {
-		t.scope = scope
-	} else {
-		t.scope = unsafe { nil }
-	}
-
+	t.enter_file_context(file)
 	stmts := t.transform_stmts(file.stmts)
 	return ast.File{
 		attributes: file.attributes

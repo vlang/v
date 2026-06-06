@@ -17,69 +17,29 @@ fn (t &Transformer) get_fn_return_type(fn_name string) ?types.Type {
 		if ret_type := t.lookup_method_return_type(method_lookup_names, short_name) {
 			return ret_type
 		}
-		if fn_type := t.lookup_fn_cached(module_name, short_name) {
-			if ret_type := fn_type.get_return_type() {
-				return ret_type
-			}
+		if ret_type := t.cached_fn_return_type_index['${module_name}#${short_name}'] {
+			return ret_type
 		}
-		short_module := if module_name.contains('.') {
-			module_name.all_after_last('.')
-		} else if module_name.contains('__') {
-			module_name.all_after_last('__')
-		} else {
-			module_name
-		}
+		short_module := short_module_name(module_name)
 		if short_module != module_name {
-			if fn_type := t.lookup_fn_cached(short_module, short_name) {
-				if ret_type := fn_type.get_return_type() {
-					return ret_type
-				}
+			if ret_type := t.cached_fn_return_type_index['${short_module}#${short_name}'] {
+				return ret_type
 			}
 		}
 	}
 	// First try the current module scope.
-	if mut scope := t.get_module_scope(t.cur_module) {
-		if obj := scope.lookup_parent(fn_name, 0) {
-			if obj is types.Fn {
-				fn_typ := obj.get_typ()
-				if fn_typ is types.FnType {
-					if ret_type := fn_typ.get_return_type() {
-						return ret_type
-					}
-				}
-			}
-		}
+	if ret_type := t.cached_fn_return_type_index['${t.cur_module}#${fn_name}'] {
+		return ret_type
 	}
 	// Try builtin scope directly (many common functions are here).
 	if t.cur_module != 'builtin' {
-		if mut scope := t.get_module_scope('builtin') {
-			if obj := scope.lookup_parent(fn_name, 0) {
-				if obj is types.Fn {
-					fn_typ := obj.get_typ()
-					if fn_typ is types.FnType {
-						if ret_type := fn_typ.get_return_type() {
-							return ret_type
-						}
-					}
-				}
-			}
+		if ret_type := t.cached_fn_return_type_index['builtin#${fn_name}'] {
+			return ret_type
 		}
 	}
 	// Fallback: scan all module scopes for local/private functions.
-	scope_keys := t.cached_scopes.keys()
-	for sk in scope_keys {
-		scope_ptr := t.cached_scopes[sk] or { continue }
-		mut scope := unsafe { scope_ptr }
-		if obj := scope.lookup_parent(fn_name, 0) {
-			if obj is types.Fn {
-				fn_typ := obj.get_typ()
-				if fn_typ is types.FnType {
-					if ret_type := fn_typ.get_return_type() {
-						return ret_type
-					}
-				}
-			}
-		}
+	if ret_type := t.cached_fn_return_type_index['*#${fn_name}'] {
+		return ret_type
 	}
 	return none
 }

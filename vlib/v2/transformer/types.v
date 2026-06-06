@@ -39,36 +39,9 @@ fn (t &Transformer) lookup_method_cached(type_name string, method_name string) ?
 // lookup_fn_cached looks up a function by module and name
 // using cached_scopes (lock-free) instead of env.lookup_fn.
 fn (t &Transformer) lookup_fn_cached(module_name string, fn_name string) ?types.FnType {
-	if scope := t.cached_scopes[module_name] {
-		obj := scope.objects[fn_name] or { return none }
-		if obj is types.Fn {
-			typ := obj.get_typ()
-			if typ is types.FnType {
-				return typ
-			}
-		}
-		return none
-	}
-	if module_name != '' {
-		for key, scope in t.cached_scopes {
-			short_key := if key.contains('.') {
-				key.all_after_last('.')
-			} else if key.contains('__') {
-				key.all_after_last('__')
-			} else {
-				key
-			}
-			if short_key != module_name {
-				continue
-			}
-			obj := scope.objects[fn_name] or { continue }
-			if obj is types.Fn {
-				typ := obj.get_typ()
-				if typ is types.FnType {
-					return typ
-				}
-			}
-		}
+	typ := t.cached_fn_type_index['${module_name}#${fn_name}'] or { return none }
+	if typ is types.FnType {
+		return typ
 	}
 	return none
 }
