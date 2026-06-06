@@ -148,6 +148,9 @@ pub mut:
 	used_fn_keys map[string]bool
 	// When set, skip all functions from these modules (dead code elimination for unused backends).
 	skip_modules map[string]bool
+	// Optional path fragments for skip_modules. When populated for a module,
+	// the skip only applies to files whose path matches the fragment.
+	skip_module_file_fragments map[string]string
 	// Native self-hosted builds use the SSA sumtype layout directly; guard
 	// against null large-variant payloads before matching types.Type.
 	guard_invalid_type_payloads bool
@@ -245,6 +248,8 @@ pub fn Builder.new_with_env(mod &Module, env &types.Environment) &Builder {
 		fn_param_array_elem_types:     map[string][]TypeID{}
 		fn_refs:                       map[string]ValueID{}
 		global_refs:                   map[string]ValueID{}
+		skip_modules:                  map[string]bool{}
+		skip_module_file_fragments:    map[string]string{}
 		option_wrapper_types:          map[string]TypeID{}
 		result_wrapper_types:          map[string]TypeID{}
 		array_value_elem_types:        map[int]TypeID{}
@@ -4562,7 +4567,7 @@ pub fn (mut b Builder) build_fn_bodies_from_flat(file_cursor ast.FileCursor) {
 // When used_fn_keys is populated (markused ran), only reachable functions are built.
 pub fn (mut b Builder) should_build_fn(file_name string, decl ast.FnDecl) bool {
 	// Skip entire modules for unused backends (e.g., cleanc/eval/x64 when building arm64-only)
-	if b.skip_modules.len > 0 && b.cur_module in b.skip_modules {
+	if b.should_skip_module_file(file_name) {
 		return false
 	}
 	if b.used_fn_keys.len == 0 {
@@ -4599,6 +4604,24 @@ pub fn (mut b Builder) should_build_fn(file_name string, decl ast.FnDecl) bool {
 	// Check markused reachability
 	key := markused.decl_key(b.cur_module, decl, b.env)
 	return key in b.used_fn_keys
+}
+
+fn (b &Builder) should_skip_module_file(file_name string) bool {
+	if b.skip_modules.len == 0 || b.cur_module !in b.skip_modules {
+		return false
+	}
+	if b.skip_module_file_fragments.len == 0 {
+		return true
+	}
+	fragment := b.skip_module_file_fragments[b.cur_module] or { return false }
+	normalized := file_name.replace('\\', '/')
+	if normalized.contains(fragment) {
+		return true
+	}
+	if fragment.len > 0 && fragment[0] == `/` {
+		return normalized.starts_with(fragment[1..])
+	}
+	return false
 }
 
 pub fn (mut b Builder) build_fn(decl ast.FnDecl) {

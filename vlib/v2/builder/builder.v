@@ -2465,6 +2465,13 @@ fn (b &Builder) should_prune_native_backend_modules(arch pref.Arch) bool {
 	return b.pref.single_backend || arch == .arm64
 }
 
+fn native_backend_module_file_fragment(backend_mod string) string {
+	return match backend_mod {
+		'eval' { '/vlib/v2/eval/' }
+		else { '/vlib/v2/gen/${backend_mod}/' }
+	}
+}
+
 fn (mut b Builder) build_native_mir_from_files(files []ast.File, arch pref.Arch, target_os string, minimal_runtime_roots bool, used_fn_keys map[string]bool, label string) mir.Module {
 	mut mod := ssa.Module.new('main')
 	if mod == unsafe { nil } {
@@ -2502,6 +2509,8 @@ fn (mut b Builder) build_native_mir_from_files(files []ast.File, arch pref.Arch,
 		for backend_mod in all_backends {
 			if backend_mod != own {
 				ssa_builder.skip_modules[backend_mod] = true
+				ssa_builder.skip_module_file_fragments[backend_mod] =
+					native_backend_module_file_fragment(backend_mod)
 			}
 		}
 	}
