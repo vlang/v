@@ -777,23 +777,207 @@ fn active_file_imports_from_flat(flat &ast.FlatAst, ff ast.FlatFile, user_define
 }
 
 fn active_file_imports_from_flat_with_options(flat &ast.FlatAst, ff ast.FlatFile, user_defines []string, explicit_user_defines []string, target_os string, allow_pkgconfig bool) []ast.ImportStmt {
+	// s253: walk the FlatAst via cursors instead of rehydrating the whole file to
+	// legacy ast.Stmt with `read_file_stmts`. The decode-then-walk path (a) costs a
+	// full legacy-AST materialisation per file just to answer "does this file use a
+	// channel / which comptime imports are active?", and (b) crashes on the arm64
+	// self-host — the legacy `*_use_channel` walkers pass `[]Expr`/sum types by
+	// value through deep recursion over decoded nodes, hitting the arm64
+	// chained-access bug. Cursor reads are plain int-array lookups, so the walk is
+	// cheap and arm64-safe; only the tiny comptime-condition sub-exprs are decoded
+	// (reusing the exact legacy evaluator) so semantics match the AST path.
 	mut imports := flat.read_file_imports(ff)
-	stmts := flat.read_file_stmts(ff)
-	collect_active_imports_from_stmts_with_options(stmts, user_defines, explicit_user_defines,
-		target_os, allow_pkgconfig, mut imports)
-	module_name := if ff.mod_idx >= 0 && ff.mod_idx < flat.strings.len {
-		flat.strings[ff.mod_idx]
-	} else {
-		'main'
-	}
-	add_implicit_sync_import_if_needed(mut imports, module_name, stmts_use_channel_with_options(stmts, ChannelScanOptions{
+	options := ChannelScanOptions{
 		user_defines:          user_defines
 		explicit_user_defines: explicit_user_defines
 		target_os:             target_os
 		allow_pkgconfig:       allow_pkgconfig
 		filter_comptime:       true
-	}))
+	}
+	file_node := ast.Cursor{
+		flat: unsafe { flat }
+		id:   ff.file_id
+	}
+	stmts := file_node.list_at(2) // file node edge 2 = top-level statement list
+	flat_collect_active_imports(stmts, options, mut imports)
+	module_name := if ff.mod_idx >= 0 && ff.mod_idx < flat.strings.len {
+		flat.strings[ff.mod_idx]
+	} else {
+		'main'
+	}
+	add_implicit_sync_import_if_needed(mut imports, module_name, flat_stmts_use_channel(stmts,
+		options))
 	return imports
+}
+
+// flat_collect_active_imports is the cursor-native mirror of
+// `collect_active_imports_from_stmts_with_options`: it appends top-level
+// `import` statements and the imports of active comptime `$if` branches.
+fn flat_collect_active_imports(stmts ast.CursorList, options ChannelScanOptions, mut imports []ast.ImportStmt) {
+	for i in 0 .. stmts.len() {
+		flat_collect_active_imports_stmt(stmts.at(i), options, mut imports)
+	}
+}
+
+fn flat_collect_active_imports_stmt(s ast.Cursor, options ChannelScanOptions, mut imports []ast.ImportStmt) {
+	match s.kind() {
+		.stmt_import {
+			// Import nodes are tiny (name/alias/symbols); decoding this one node is
+			// safe and matches the legacy `imports << stmt` arm.
+			imp := s.flat.decode_stmt(s.id)
+			if imp is ast.ImportStmt {
+				imports << imp
+			}
+		}
+		.stmt_expr {
+			inner := s.edge(0)
+			if inner.kind() == .expr_comptime {
+				cif := inner.edge(0)
+				if cif.kind() == .expr_if {
+					flat_collect_active_imports_from_if(cif, options, mut imports)
+				}
+			}
+		}
+		else {}
+	}
+}
+
+// flat_collect_active_imports_from_if mirrors
+// `collect_active_imports_from_if_expr_with_options`. expr_if layout:
+// edge0 = cond, edge1 = else_expr, edge2.. = then-branch statements.
+fn flat_collect_active_imports_from_if(if_c ast.Cursor, options ChannelScanOptions, mut imports []ast.ImportStmt) {
+	if flat_comptime_cond_matches(if_c.edge(0), options) {
+		for i in 2 .. if_c.edge_count() {
+			flat_collect_active_imports_stmt(if_c.edge(i), options, mut imports)
+		}
+		return
+	}
+	else_c := if_c.edge(1)
+	if else_c.kind() == .expr_if {
+		if else_c.edge(0).kind() == .expr_empty {
+			for i in 2 .. else_c.edge_count() {
+				flat_collect_active_imports_stmt(else_c.edge(i), options, mut imports)
+			}
+		} else {
+			flat_collect_active_imports_from_if(else_c, options, mut imports)
+		}
+	}
+}
+
+// flat_stmts_use_channel is the cursor-native mirror of
+// `stmts_use_channel_with_options`.
+fn flat_stmts_use_channel(stmts ast.CursorList, options ChannelScanOptions) bool {
+	for i in 0 .. stmts.len() {
+		if flat_node_uses_channel(stmts.at(i), options) {
+			return true
+		}
+	}
+	return false
+}
+
+// flat_node_uses_channel returns true if the active subtree rooted at `c`
+// references a channel type. Channel types are always encoded as `.typ_channel`
+// nodes, so a generic structural recursion over every edge finds them without
+// per-kind edge knowledge (aux_list nodes are transparent — their edges are the
+// list items). Two arms must prune to match the legacy scan's comptime
+// filtering: a FnDecl body is scanned only when its comptime attributes keep it
+// active, and a comptime `$if` (ComptimeExpr wrapping an IfExpr) scans only the
+// branch selected by the condition.
+fn flat_node_uses_channel(c ast.Cursor, options ChannelScanOptions) bool {
+	if !c.is_valid() {
+		return false
+	}
+	k := c.kind()
+	if k == .typ_channel {
+		return true
+	}
+	if k == .stmt_fn_decl {
+		// stmt_fn_decl layout: edge0 = receiver, edge1 = fn type, edge2 = attrs,
+		// edge3 = body. Signature (receiver + fn type) is always active; the body
+		// only when comptime-active. Attributes never hold a channel type (matches
+		// the legacy FnDecl arm, which scans only receiver.typ + fn_type + body).
+		if flat_node_uses_channel(c.edge(0), options) {
+			return true
+		}
+		if flat_node_uses_channel(c.edge(1), options) {
+			return true
+		}
+		if flat_fn_decl_body_active_for_channel_scan(c, options) {
+			return flat_node_uses_channel(c.edge(3), options)
+		}
+		return false
+	}
+	if k == .expr_comptime && options.filter_comptime {
+		inner := c.edge(0)
+		if inner.kind() == .expr_if {
+			return flat_comptime_if_uses_channel(inner, options)
+		}
+		return flat_node_uses_channel(inner, options)
+	}
+	for i in 0 .. c.edge_count() {
+		if flat_node_uses_channel(c.edge(i), options) {
+			return true
+		}
+	}
+	return false
+}
+
+// flat_comptime_if_uses_channel mirrors
+// `comptime_if_expr_uses_channel_with_options`: only the branch selected by the
+// comptime condition is scanned for channel usage.
+fn flat_comptime_if_uses_channel(if_c ast.Cursor, options ChannelScanOptions) bool {
+	if flat_comptime_cond_matches(if_c.edge(0), options) {
+		for i in 2 .. if_c.edge_count() {
+			if flat_node_uses_channel(if_c.edge(i), options) {
+				return true
+			}
+		}
+		return false
+	}
+	else_c := if_c.edge(1)
+	if else_c.kind() == .expr_if {
+		if else_c.edge(0).kind() == .expr_empty {
+			for i in 2 .. else_c.edge_count() {
+				if flat_node_uses_channel(else_c.edge(i), options) {
+					return true
+				}
+			}
+			return false
+		}
+		return flat_comptime_if_uses_channel(else_c, options)
+	}
+	return flat_node_uses_channel(else_c, options)
+}
+
+// flat_fn_decl_body_active_for_channel_scan mirrors
+// `fn_decl_body_is_active_for_channel_scan`: a FnDecl whose comptime attributes
+// (`@[if ...]`) don't match the current target is inactive, so its body is
+// skipped. aux_attribute layout: edge0 = value, edge1 = comptime_cond.
+fn flat_fn_decl_body_active_for_channel_scan(fn_c ast.Cursor, options ChannelScanOptions) bool {
+	attrs := fn_c.list_at(2)
+	for i in 0 .. attrs.len() {
+		cond := attrs.at(i).edge(1)
+		if !cond.is_valid() || cond.kind() == .expr_empty {
+			continue
+		}
+		if !flat_comptime_cond_matches(cond, options) {
+			return false
+		}
+	}
+	return true
+}
+
+// flat_comptime_cond_matches evaluates a comptime condition. Conditions are tiny
+// exprs (`windows`, `!tinyc`, `a && b`, `pkgconfig('x')`, `x?`), so decoding just
+// this sub-expr is cheap and lets us reuse the exact legacy evaluator — the
+// whole-file decode this scan replaces is what was unsafe, not a leaf condition.
+fn flat_comptime_cond_matches(cond ast.Cursor, options ChannelScanOptions) bool {
+	if !cond.is_valid() {
+		return false
+	}
+	decoded := cond.flat.decode_expr(cond.id)
+	return ast_comptime_cond_matches_with_options(decoded, options.user_defines,
+		options.explicit_user_defines, options.target_os, options.allow_pkgconfig)
 }
 
 // parse_batch routes a parser.parse_files() call through either the direct

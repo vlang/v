@@ -49,6 +49,7 @@ mut:
 	flat_roundtrip_enabled    bool // V2_FLAT_ROUNDTRIP=1: route parses through streaming + to_files()
 	flat_check_enabled        bool // V2_CHECK_FLAT=1: route type-check through Checker.check_flat
 	markused_flat_enabled     bool // V2_MARKUSED_FLAT=1: route markused through mark_used_flat shim
+	flat_ssa_enabled          bool // V2_FLAT_SSA=1: route the (sequential) native SSA build through build_all_from_flat on the post-transform b.flat. Requires V2_CHECK_FLAT + V2_MARKUSED_FLAT so b.flat is post-transform-populated. Default off.
 	// flat caches the FlatAst representation of b.files. When
 	// flat_check_enabled is set, parse_batch streams directly into
 	// flat_builder so b.flat is built incrementally during parsing rather
@@ -73,6 +74,7 @@ pub fn new_builder(prefs &pref.Preferences) &Builder {
 			flat_roundtrip_enabled: os.getenv('V2_FLAT_ROUNDTRIP') != ''
 			flat_check_enabled:     os.getenv('V2_CHECK_FLAT') != ''
 			markused_flat_enabled:  os.getenv('V2_MARKUSED_FLAT') != ''
+			flat_ssa_enabled:       os.getenv('V2_FLAT_SSA') != ''
 		}
 	}
 }
@@ -329,10 +331,14 @@ pub fn (mut b Builder) build(files []string) {
 		}
 		mark_used_time := time.Duration(sw.elapsed() - mark_used_start)
 		print_time('Mark Used', mark_used_time)
-		// b.flat is unused by the codegen path; drop the arenas so a GC build
-		// can reclaim them. Under -gc none this is a no-op for peak memory,
+		// b.flat is unused by the legacy codegen path; drop the arenas so a GC
+		// build can reclaim them. Under -gc none this is a no-op for peak memory,
 		// but it documents the lifetime correctly for the eventual GC switch.
-		b.flat = ast.FlatAst{}
+		// When V2_FLAT_SSA is on, the native SSA build consumes b.flat directly
+		// (build_all_from_flat), so keep it alive through codegen.
+		if !b.flat_ssa_enabled {
+			b.flat = ast.FlatAst{}
+		}
 		print_rss('after markused')
 		print_heap('after markused')
 	}
@@ -2496,7 +2502,20 @@ fn (mut b Builder) build_native_mir_from_files(files []ast.File, arch pref.Arch,
 	}
 
 	mut stage_start := native_sw.elapsed()
-	if b.native_mir_build_sequential(label) {
+	// V2_FLAT_SSA: route the whole SSA build through the cursor-native
+	// build_all_from_flat on the post-transform b.flat (kept alive above).
+	// Sequential only (build_all_from_flat builds fn bodies in-phase). Default off.
+	//
+	// b.flat is only POST-TRANSFORM when V2_MARKUSED_FLAT is also on: that path
+	// routes transform through transform_files_to_flat, which re-flattens the
+	// transformed files back into b.flat. With V2_CHECK_FLAT but NOT
+	// V2_MARKUSED_FLAT, b.flat stays the parse-time (pre-transform) flat while the
+	// transformer only updates b.files, so feeding it to build_all_from_flat would
+	// skip every transformer rewrite. Require both flags here; otherwise fall back
+	// to the legacy build_all(files), which uses the post-transform b.files.
+	if b.flat_ssa_enabled && b.markused_flat_enabled && b.flat_check_enabled && b.flat.files.len > 0 {
+		ssa_builder.build_all_from_flat(&b.flat)
+	} else if b.native_mir_build_sequential(label) {
 		ssa_builder.build_all(files)
 	} else {
 		// Phases 1-3 sequential, Phase 4 parallel, Phase 5 sequential

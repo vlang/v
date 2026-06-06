@@ -1744,10 +1744,72 @@ fn (mut c Checker) register_imported_symbols_from_flat(flat &ast.FlatAst) {
 // FlatFile, including those guarded by comptime `$if` blocks whose condition
 // currently evaluates true.
 fn (mut c Checker) active_file_imports_from_flat(flat &ast.FlatAst, ff ast.FlatFile) []ast.ImportStmt {
+	// s258: walk the file's top-level statement cursors instead of decoding the
+	// entire file via `read_file_stmts`. This runs per file (preregister_scopes +
+	// register_imported_symbols), so the full legacy-AST decode was pure churn;
+	// the cursor walk only decodes the tiny comptime `$if` conditions. Mirrors the
+	// builder's s253 cursor-native import collection. Removes a legacy-AST decode
+	// site (toward dropping the old AST) and cuts flat-path memory.
 	mut imports := flat.read_file_imports(ff)
-	stmts := flat.read_file_stmts(ff)
-	c.collect_active_imports_from_stmts(stmts, mut imports)
+	file_node := ast.Cursor{
+		flat: unsafe { flat }
+		id:   ff.file_id
+	}
+	c.collect_active_imports_from_stmts_cursor(file_node.list_at(2), mut imports)
 	return imports
+}
+
+// collect_active_imports_from_stmts_cursor is the cursor-native mirror of
+// collect_active_imports_from_stmts: it appends top-level `import` statements and
+// the imports of active comptime `$if` branches, walking the FlatAst directly.
+fn (c &Checker) collect_active_imports_from_stmts_cursor(stmts ast.CursorList, mut imports []ast.ImportStmt) {
+	for i in 0 .. stmts.len() {
+		c.collect_active_imports_from_stmt_cursor(stmts.at(i), mut imports)
+	}
+}
+
+fn (c &Checker) collect_active_imports_from_stmt_cursor(s ast.Cursor, mut imports []ast.ImportStmt) {
+	match s.kind() {
+		.stmt_import {
+			// Import nodes are tiny (name/alias/symbols); decode just this one.
+			imp := s.flat.decode_stmt(s.id)
+			if imp is ast.ImportStmt {
+				imports << imp
+			}
+		}
+		.stmt_expr {
+			inner := s.edge(0)
+			if inner.kind() == .expr_comptime {
+				cif := inner.edge(0)
+				if cif.kind() == .expr_if {
+					c.collect_active_imports_from_if_cursor(cif, mut imports)
+				}
+			}
+		}
+		else {}
+	}
+}
+
+// collect_active_imports_from_if_cursor mirrors collect_active_imports_from_if_expr.
+// expr_if layout: edge0 = cond, edge1 = else_expr, edge2.. = then-branch stmts.
+fn (c &Checker) collect_active_imports_from_if_cursor(if_c ast.Cursor, mut imports []ast.ImportStmt) {
+	cond := if_c.flat.decode_expr(if_c.edge(0).id)
+	if c.eval_comptime_cond(cond) {
+		for i in 2 .. if_c.edge_count() {
+			c.collect_active_imports_from_stmt_cursor(if_c.edge(i), mut imports)
+		}
+		return
+	}
+	else_c := if_c.edge(1)
+	if else_c.kind() == .expr_if {
+		if else_c.edge(0).kind() == .expr_empty {
+			for i in 2 .. else_c.edge_count() {
+				c.collect_active_imports_from_stmt_cursor(else_c.edge(i), mut imports)
+			}
+		} else {
+			c.collect_active_imports_from_if_cursor(else_c, mut imports)
+		}
+	}
 }
 
 // preregister_all_scopes_from_flat mirrors preregister_all_scopes but pulls
@@ -1805,8 +1867,18 @@ fn (mut c Checker) preregister_types_from_flat(flat &ast.FlatAst, ff ast.FlatFil
 		}
 	}
 	c.scope = mod_scope
-	for stmt in flat.read_file_stmts(ff) {
-		c.preregister_type_stmt(stmt)
+	// s259: skip decoding fn_decls — their bodies are the bulk of the file and
+	// preregister_type_stmt no-ops FnDecl anyway. Decode + dispatch the rest.
+	decls := ast.Cursor{
+		flat: unsafe { flat }
+		id:   ff.file_id
+	}.list_at(2)
+	for di in 0 .. decls.len() {
+		dc := decls.at(di)
+		if dc.kind() == .stmt_fn_decl {
+			continue
+		}
+		c.preregister_type_stmt(flat.decode_stmt(dc.id))
 	}
 }
 
@@ -1858,13 +1930,26 @@ pub fn (mut c Checker) check_file_from_flat(flat &ast.FlatAst, ff ast.FlatFile) 
 		}
 	}
 	c.scope = mod_scope
-	stmts := flat.read_file_stmts(ff)
+	// s259: don't decode fn_decls here. Their bodies are checked via
+	// pending_fn_bodies (queued by the signature pass, run by
+	// process_pending_fn_bodies); in both loops below FnDecl is a no-op (the first
+	// `continue`s, c.stmt has no FnDecl arm). read_file_stmts decoded every fn body
+	// a SECOND time (after the sig pass already decoded+queued them) — pure churn.
+	decls := ast.Cursor{
+		flat: unsafe { flat }
+		id:   ff.file_id
+	}.list_at(2)
+	mut stmts := []ast.Stmt{cap: decls.len()}
+	for di in 0 .. decls.len() {
+		dc := decls.at(di)
+		if dc.kind() == .stmt_fn_decl {
+			continue
+		}
+		stmts << flat.decode_stmt(dc.id)
+	}
 	for stmt in stmts {
 		match stmt {
 			ast.ConstDecl, ast.EnumDecl, ast.InterfaceDecl, ast.StructDecl, ast.TypeDecl {
-				continue
-			}
-			ast.FnDecl {
 				continue
 			}
 			else {
@@ -1896,7 +1981,18 @@ fn (mut c Checker) check_struct_field_defaults_from_flat(flat &ast.FlatAst) {
 		}
 		c.scope = mod_scope
 		c.cur_file_module = mod
-		for stmt in flat.read_file_stmts(ff) {
+		// s259: decode only struct decls instead of read_file_stmts (whole file,
+		// incl. every fn body). Kind-filter first, decode the matched node only.
+		decls := ast.Cursor{
+			flat: unsafe { flat }
+			id:   ff.file_id
+		}.list_at(2)
+		for di in 0 .. decls.len() {
+			dc := decls.at(di)
+			if dc.kind() != .stmt_struct_decl {
+				continue
+			}
+			stmt := flat.decode_stmt(dc.id)
 			if stmt is ast.StructDecl {
 				for field in stmt.fields {
 					if field.value !is ast.EmptyExpr {
@@ -1930,7 +2026,17 @@ fn (mut c Checker) check_enum_field_values_from_flat(flat &ast.FlatAst) {
 		}
 		c.scope = mod_scope
 		c.cur_file_module = mod
-		for stmt in flat.read_file_stmts(ff) {
+		// s259: decode only enum decls instead of read_file_stmts (whole file).
+		decls := ast.Cursor{
+			flat: unsafe { flat }
+			id:   ff.file_id
+		}.list_at(2)
+		for di in 0 .. decls.len() {
+			dc := decls.at(di)
+			if dc.kind() != .stmt_enum_decl {
+				continue
+			}
+			stmt := flat.decode_stmt(dc.id)
 			if stmt is ast.EnumDecl {
 				for field in stmt.fields {
 					if field.value !is ast.EmptyExpr {

@@ -1714,7 +1714,20 @@ fn (mut b FlatBuilder) add_stmt(stmt Stmt) FlatNodeId {
 				flags |= flag_is_static
 			}
 			mut edges := []FlatEdge{}
-			b.push_edge(mut edges, b.add_parameter(stmt.receiver))
+			if stmt.is_method {
+				b.push_edge(mut edges, b.add_parameter(stmt.receiver))
+			} else {
+				// s251: a non-method FnDecl keeps the parser's zero `ast.Parameter{}`
+				// receiver, whose `typ` is a zero-valued Expr (invalid sum-type tag,
+				// null payload). Routing that through add_expr is unsafe on the arm64
+				// self-host: an exhaustive match on an unmatched tag falls into the
+				// first arm (ArrayInitExpr) and derefs the null payload. The receiver
+				// edge is only read for methods, so emit a clean empty receiver
+				// (typ = empty_expr, a valid EmptyExpr) for non-methods.
+				b.push_edge(mut edges, b.add_parameter(Parameter{
+					typ: empty_expr
+				}))
+			}
 			b.push_edge(mut edges, b.add_type(Type(stmt.typ)))
 			b.push_edge(mut edges, b.make_list_attribute(stmt.attributes))
 			b.push_edge(mut edges, b.make_list_stmt(stmt.stmts))
