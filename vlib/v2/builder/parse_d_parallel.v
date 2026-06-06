@@ -15,8 +15,8 @@ struct ParsingSharedState {
 mut:
 	file_set       &token.FileSet
 	parsed_modules shared []string
-	// flat_enabled drives the under-lock append into flat_builder. When
-	// false (V2_CHECK_FLAT unset), workers skip the lock entirely.
+	// flat_enabled is reserved for the future thread-safe flat parallel parser.
+	// The default flat pipeline currently returns before spawning workers.
 	flat_enabled bool
 	flat_mu      &sync.Mutex      = unsafe { nil }
 	flat_builder &ast.FlatBuilder = unsafe { nil }
@@ -78,31 +78,13 @@ fn worker(mut wp util.WorkerPool[string, ast.File], mut pstate ParsingSharedStat
 
 fn (mut b Builder) parse_files_parallel(files []string) []ast.File {
 	if b.flat_check_enabled {
-		// Pre-size the streaming builder from total source bytes (user +
-		// core source dirs) so workers don't trip the geometric realloc
-		// path inside the mutex.
-		mut pre_size_paths := []string{}
-		pre_size_paths << files
-		if !b.pref.skip_builtin {
-			if b.can_use_cached_core_headers_for_parse() {
-				pre_size_paths << b.core_cached_parse_paths()
-			} else {
-				target_os := b.pref.target_os_or_host()
-				for module_path in core_cached_module_paths {
-					pre_size_paths << get_v_files_from_dir(b.pref.get_vlib_module_path(module_path),
-						b.pref.user_defines, target_os)
-				}
-			}
-		}
-		b.init_flat_builder_for_paths(pre_size_paths)
+		// FlatAst mode is the default pipeline. Keep parsing serial for now:
+		// token.FileSet shares position counters and file slices that are not
+		// concurrency-safe, and selector_names are keyed by those position ids.
+		return b.parse_files(files)
 	}
 	mut pstate := &ParsingSharedState{
 		file_set: b.file_set
-	}
-	if b.flat_check_enabled {
-		pstate.flat_enabled = true
-		pstate.flat_mu = sync.new_mutex()
-		pstate.flat_builder = unsafe { &b.flat_builder }
 	}
 
 	// mut worker_pool := util.WorkerPool.new[string, ast.File](mut ch_in, mut ch_out)
@@ -135,14 +117,5 @@ fn (mut b Builder) parse_files_parallel(files []string) []ast.File {
 	worker_pool.queue_jobs(files)
 
 	results := worker_pool.wait_for_results()
-	if b.flat_check_enabled {
-		// Stream-into-builder is done; downstream code reads from b.flat,
-		// so flip the inited flag to skip the fallback flatten_files() pass.
-		// `results` is a slice of empty File{} sentinels — drop it; build()
-		// derives b.files from b.flat once the FlatAst is finalized.
-		_ = results
-		b.flat_builder_inited = true
-		return []ast.File{}
-	}
 	return results
 }

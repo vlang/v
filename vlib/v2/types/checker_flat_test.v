@@ -167,11 +167,16 @@ fn test_check_flat_matches_check_files_for_unsafe_pointer_selector_lhs() {
 
 struct Node {
 mut:
+	children &voidptr
 	len int
 }
 
 fn node_at(raw voidptr) int {
 	return unsafe { &Node(raw) }.len
+}
+
+fn child_len(n Node, idx int) int {
+	return unsafe { &Node(n.children[idx]) }.len
 }
 '
 	env_files := check_via_files(src)

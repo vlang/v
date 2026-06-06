@@ -46,10 +46,10 @@ mut:
 	used_vh_for_parse         bool
 	used_import_vh_for_parse  bool
 	used_virtual_vh_for_parse bool
-	flat_roundtrip_enabled    bool // V2_FLAT_ROUNDTRIP=1: route parses through streaming + to_files()
-	flat_check_enabled        bool // V2_CHECK_FLAT=1: route type-check through Checker.check_flat
-	markused_flat_enabled     bool // V2_MARKUSED_FLAT=1: route markused through mark_used_flat shim
-	flat_ssa_enabled          bool // V2_FLAT_SSA=1: route the (sequential) native SSA build through build_all_from_flat on the post-transform b.flat. Requires V2_CHECK_FLAT + V2_MARKUSED_FLAT so b.flat is post-transform-populated. Default off.
+	flat_roundtrip_enabled    bool // V2_FLAT_ROUNDTRIP=1: legacy comparison mode; route parses through streaming + to_files().
+	flat_check_enabled        bool // Default on: stream parse/type-check through FlatAst. V2_LEGACY_AST=1 disables it unless V2_CHECK_FLAT=1 is set.
+	markused_flat_enabled     bool // Default on: route markused through mark_used_flat.
+	flat_ssa_enabled          bool // Default on: route native SSA through build_all_from_flat on the post-transform b.flat.
 	// flat caches the FlatAst representation of b.files. When
 	// flat_check_enabled is set, parse_batch streams directly into
 	// flat_builder so b.flat is built incrementally during parsing rather
@@ -69,15 +69,17 @@ mut:
 }
 
 pub fn new_builder(prefs &pref.Preferences) &Builder {
+	legacy_ast_enabled := os.getenv('V2_LEGACY_AST') != ''
+	flat_default_enabled := !legacy_ast_enabled
 	unsafe {
 		return &Builder{
 			pref:                   prefs
 			used_fn_keys:           map[string]bool{}
 			cached_called_fn_names: map[string]bool{}
 			flat_roundtrip_enabled: os.getenv('V2_FLAT_ROUNDTRIP') != ''
-			flat_check_enabled:     os.getenv('V2_CHECK_FLAT') != ''
-			markused_flat_enabled:  os.getenv('V2_MARKUSED_FLAT') != ''
-			flat_ssa_enabled:       os.getenv('V2_FLAT_SSA') != ''
+			flat_check_enabled:     flat_default_enabled || os.getenv('V2_CHECK_FLAT') != ''
+			markused_flat_enabled:  flat_default_enabled || os.getenv('V2_MARKUSED_FLAT') != ''
+			flat_ssa_enabled:       flat_default_enabled || os.getenv('V2_FLAT_SSA') != ''
 		}
 	}
 }
@@ -261,10 +263,9 @@ pub fn (mut b Builder) build(files []string) {
 	// transform_files_from_flat, parallel streams per-worker via
 	// to_files_range. No up-front full rehydration needed in either case.
 	//
-	// When V2_MARKUSED_FLAT is also enabled, both transform paths route
-	// through their *_to_flat wedge so the post-transform flatten lives
-	// inside the transformer call (one round-trip), avoiding a separate
-	// flatten_files() pass before mark_used_flat.
+	// Flat markused routes both transform paths through their *_to_flat wedge
+	// so the post-transform flatten lives inside the transformer call (one
+	// round-trip), avoiding a separate flatten_files() pass before mark_used_flat.
 	mut flat_populated_by_transform := false
 	if sequential_transform {
 		if use_native_flat_pipeline && !b.flat_check_enabled {
@@ -306,17 +307,15 @@ pub fn (mut b Builder) build(files []string) {
 		b.used_fn_keys = map[string]bool{}
 	} else {
 		mark_used_start := sw.elapsed()
-		// V2_MARKUSED_FLAT only takes effect when V2_CHECK_FLAT is also on,
-		// since b.flat is only populated when flat_check_enabled streams
-		// parses into flat_builder. Without that, b.flat is empty and the
-		// shim would walk nothing.
+		// Flat markused consumes the post-transform FlatAst. Legacy comparison
+		// mode (`V2_LEGACY_AST=1`) can still reach the AST walker unless one of
+		// the flat env flags explicitly re-enables this path.
 		//
-		// The transformer mutates b.files but does not write back into
-		// b.flat. Both sequential and parallel paths now populate b.flat
-		// as part of their *_to_flat wedge when V2_MARKUSED_FLAT is on,
-		// so the separate flatten_files() pass is gone. The branch below
-		// remains as a defensive fallback for any future code path that
-		// reaches markused without having set flat_populated_by_transform.
+		// The transformer mutates b.files but does not write back into b.flat.
+		// Both sequential and parallel paths now populate b.flat as part of
+		// their *_to_flat wedge, so the separate flatten_files() pass is gone.
+		// The branch below remains as a defensive fallback for any future code
+		// path that reaches markused without setting flat_populated_by_transform.
 		if use_flat_markused && !flat_populated_by_transform {
 			b.flat = ast.flatten_files(b.files)
 		}
@@ -338,15 +337,15 @@ pub fn (mut b Builder) build(files []string) {
 		}
 		mark_used_time := time.Duration(sw.elapsed() - mark_used_start)
 		print_time('Mark Used', mark_used_time)
-		// b.flat is unused by the legacy codegen path. Under -gc none this is a
-		// no-op for peak memory, but keep the lifetime explicit for readers.
-		// When V2_FLAT_SSA or the native flat pipeline is on, the native SSA
-		// build consumes b.flat directly (build_all_from_flat), so keep it alive
-		// through codegen.
-		if !b.flat_ssa_enabled && !b.native_flat_pipeline_enabled {
-			b.flat = ast.FlatAst{}
-		}
 		print_rss('after markused')
+	}
+	keep_flat_for_codegen := (b.flat_ssa_enabled || b.native_flat_pipeline_enabled) && match b.pref.backend {
+		.x64, .arm64 { true }
+		else { false }
+	}
+
+	if b.flat_check_enabled && !keep_flat_for_codegen {
+		b.flat = ast.FlatAst{}
 	}
 
 	// Generate output based on backend
@@ -1670,7 +1669,7 @@ fn (mut b Builder) prepare_macos_tiny_candidate_source_files() {
 	if !b.uses_macos_x64_tiny_object(.x64) {
 		return
 	}
-	b.macos_tiny_candidate_source_files = if b.flat_check_enabled {
+	b.macos_tiny_candidate_source_files = if b.flat_check_enabled && b.flat.files.len > 0 {
 		b.flat.to_files()
 	} else {
 		b.files.clone()
@@ -2553,15 +2552,13 @@ fn (mut b Builder) build_native_mir_from_files(files []ast.File, arch pref.Arch,
 	}
 
 	mut stage_start := native_sw.elapsed()
-	// V2_FLAT_SSA: route the whole SSA build through the cursor-native
-	// build_all_from_flat on the post-transform b.flat (kept alive above).
-	// Sequential only (build_all_from_flat builds fn bodies in-phase). Default off.
+	// Route the whole SSA build through the cursor-native build_all_from_flat
+	// on the post-transform b.flat (kept alive above). Sequential only
+	// (build_all_from_flat builds fn bodies in-phase).
 	//
-	// b.flat is only POST-TRANSFORM when either V2_MARKUSED_FLAT has routed
-	// transform through transform_files_to_flat, or the native flat pipeline has
-	// emitted transform output directly into FlatAst. With V2_CHECK_FLAT but NOT
-	// V2_MARKUSED_FLAT, b.flat stays parse-time, so feeding it here would skip
-	// transformer rewrites.
+	// b.flat is only POST-TRANSFORM when flat markused has routed transform
+	// through transform_files_to_flat, or the direct native flat pipeline has
+	// emitted transform output directly into FlatAst.
 	build_from_flat := b.flat.files.len > 0
 		&& ((b.flat_ssa_enabled && b.markused_flat_enabled && b.flat_check_enabled)
 		|| (b.native_flat_pipeline_enabled && label == ''))
