@@ -43,9 +43,44 @@ struct StructDefaultDeclInfo {
 }
 
 // needs_full_files_for_transform reports whether transform needs the whole
-// legacy file set before per-file workers can run.
+// legacy file set before per-file workers can run. It is true only when the
+// program actually contains generics: monomorphization (prepare_files_for_transform)
+// is the sole reason the per-file pipeline needs the full file set up front, and
+// it is a no-op when there are no generic decls. When false, the dispatch takes
+// the bounded-memory per-file path (one file decoded at a time via to_files_range)
+// instead of the whole-program flat.to_files() that OOMs the -gc none self-host.
 pub fn (t &Transformer) needs_full_files_for_transform() bool {
-	return true
+	return t.program_needs_generics
+}
+
+// program_needs_generics_from_flat reports whether the flat program contains any
+// generic function or struct declaration — i.e. whether the monomorphize fixpoint
+// (and the whole-program legacy decode it requires) is needed at all. Lifetime
+// params (`.expr_lifetime`) are not generics, mirroring has_non_lifetime_generic_params
+// (fn.v). Pure cursor scan, no decode. FnDecl edge 1 = FnType, FnType edge 0 =
+// generic_params; StructDecl edge 3 = generic_params (see flat_reader.v).
+fn program_needs_generics_from_flat(flat &ast.FlatAst) bool {
+	for i in 0 .. flat.files.len {
+		stmts := flat.file_cursor(i).stmts()
+		for j in 0 .. stmts.len() {
+			c := stmts.at(j)
+			kind := c.kind()
+			if kind != .stmt_fn_decl && kind != .stmt_struct_decl {
+				continue
+			}
+			gp := if kind == .stmt_fn_decl {
+				c.edge(1).list_at(0)
+			} else {
+				c.list_at(3)
+			}
+			for k in 0 .. gp.len() {
+				if gp.at(k).kind() != .expr_lifetime {
+					return true
+				}
+			}
+		}
+	}
+	return false
 }
 
 // prepare_files_for_transform performs whole-program preparation required

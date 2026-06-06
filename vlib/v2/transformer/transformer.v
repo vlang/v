@@ -116,6 +116,12 @@ mut:
 	declared_method_fns           map[string]bool
 	monomorphized_fn_bindings     map[string]map[string]types.Type
 	cur_monomorphized_fn_bindings map[string]types.Type
+	// program_needs_generics gates needs_full_files_for_transform: when false
+	// (no generic decls in the program) the per-file transform takes the
+	// bounded-memory path instead of whole-program flat.to_files()+monomorphize.
+	// Set explicitly by both pre_pass (true) and pre_pass_from_flat (computed);
+	// defaults to true so any unset path stays on the safe full-files behavior.
+	program_needs_generics bool = true
 	// @[live] hot code reloading: function names and source file
 	live_fns         []LiveFn
 	live_source_file string
@@ -1521,6 +1527,10 @@ pub fn (mut t Transformer) pre_pass(files []ast.File) {
 	}
 	// Cache scope and method maps for lock-free access during transform.
 	t.cache_env_maps()
+	// Legacy []ast.File path: keep the full-files monomorphize behavior. The
+	// whole legacy AST is already resident, so the bounded path saves nothing
+	// here; always run prepare_files_for_transform (a no-op without generics).
+	t.program_needs_generics = true
 }
 
 // pre_pass_from_flat is the FlatAst-driven equivalent of pre_pass. Reads
@@ -1547,6 +1557,11 @@ pub fn (mut t Transformer) pre_pass_from_flat(flat &ast.FlatAst) {
 		t.collect_runtime_const_inits_from_flat(flat)
 	}
 	t.cache_env_maps()
+	// Flat path: monomorphization (and the whole-program flat.to_files() decode
+	// it requires) is only needed when the program actually has generics. When
+	// it doesn't, the dispatch takes the bounded per-file path and the -gc none
+	// self-host no longer OOMs decoding the whole program at once.
+	t.program_needs_generics = program_needs_generics_from_flat(flat)
 }
 
 // cache_env_maps snapshots the shared Environment maps into plain maps
