@@ -8814,8 +8814,34 @@ fn (mut g Gen) memdup_addr_arg_type(expr ast.Expr) string {
 	return typ
 }
 
-fn (mut g Gen) gen_sort_fnsortcb_arg(fn_name string, idx int, base_arg ast.Expr) bool {
+fn (mut g Gen) selector_is_known_fn_value(sel ast.SelectorExpr) bool {
+	lhs := sel.lhs
+	if lhs !is ast.Ident || sel.rhs.name == '' {
+		return false
+	}
+	mod_name := (lhs as ast.Ident).name
+	if mod_name == '' {
+		return false
+	}
+	if !g.is_module_ident(mod_name) {
+		return false
+	}
+	c_mod_name := g.resolve_module_name(mod_name).replace('.', '_')
+	c_name := '${c_mod_name}__${sel.rhs.name}'
+	return c_name in g.fn_return_types || c_name in g.fn_param_is_ptr
+}
+
+fn (mut g Gen) gen_sort_fnsortcb_arg(fn_name string, idx int, base_arg ast.Expr, expected_param_type string) bool {
 	if idx != 1 || fn_name !in ['array__sort_with_compare', 'array__sorted_with_compare'] {
+		return false
+	}
+	mut expected_sort_param_type := expected_param_type.trim_space()
+	// Unregistered generated builtin sort helpers still expect FnSortCB; custom
+	// same-name functions are declared and keep their real parameter type gate.
+	if expected_sort_param_type == '' && fn_name !in g.fn_param_types {
+		expected_sort_param_type = 'FnSortCB'
+	}
+	if expected_sort_param_type != 'FnSortCB' {
 		return false
 	}
 	comparator := match base_arg {
@@ -8834,6 +8860,11 @@ fn (mut g Gen) gen_sort_fnsortcb_arg(fn_name string, idx int, base_arg ast.Expr)
 			}
 		}
 		ast.FnLiteral {}
+		ast.SelectorExpr {
+			if !g.selector_is_known_fn_value(comparator) {
+				return false
+			}
+		}
 		else {
 			return false
 		}
@@ -8947,7 +8978,7 @@ fn (mut g Gen) gen_call_arg(fn_name string, idx int, arg ast.Expr) {
 			return
 		}
 	}
-	if g.gen_sort_fnsortcb_arg(fn_name, idx, base_arg) {
+	if g.gen_sort_fnsortcb_arg(fn_name, idx, base_arg, expected_param_type) {
 		return
 	}
 	if expected_param_type != '' && g.gen_auto_deref_value_param_arg(expected_param_type, base_arg) {
