@@ -136,6 +136,7 @@ mut:
 	emit_file_modules                 map[string]bool
 	declared_type_names_in_emit_files map[string]bool
 	source_module_names               map[string]bool
+	imported_symbols_index            map[string]string // "file_name\x01symbol_name" -> importing module (built once from g.files)
 
 	const_exprs                           map[string]string // const name → C expression string (for inlining)
 	const_types                           map[string]string // const name → C type string
@@ -469,6 +470,7 @@ fn new_gen_with_env_and_pref_impl(env &types.Environment, p &pref.Preferences) &
 		emit_modules:                          map[string]bool{}
 		type_modules:                          map[string]bool{}
 		source_module_names:                   map[string]bool{}
+		imported_symbols_index:                map[string]string{}
 		exported_const_seen:                   map[string]bool{}
 		exported_const_symbols:                []ExportedConstSymbol{}
 		emitted_interface_bodies:              map[string]bool{}
@@ -600,9 +602,29 @@ pub fn (mut g Gen) set_emit_files(files []string) {
 
 fn (mut g Gen) collect_source_module_names() {
 	g.source_module_names = map[string]bool{}
+	// Index `import mod { sym }` selective imports per file so imported_symbol_c_type is an O(1)
+	// lookup instead of rescanning all files' imports/symbols (it was the hottest codegen fn).
+	mut imp_idx := map[string]string{}
 	for file in g.files {
 		g.source_module_names[file_module_name(file)] = true
+		for import_stmt in file.imports {
+			if import_stmt.symbols.len == 0 {
+				continue
+			}
+			mod_name := import_stmt.name.all_after_last('.').replace('.', '_')
+			for symbol in import_stmt.symbols {
+				sn := symbol.name()
+				if sn == '' {
+					continue
+				}
+				key := '${file.name}\x01${sn}'
+				if key !in imp_idx { // first occurrence wins, matching the original scan order
+					imp_idx[key] = mod_name
+				}
+			}
+		}
 	}
+	g.imported_symbols_index = imp_idx.move()
 }
 
 fn (mut g Gen) collect_emit_file_indexes() {
@@ -2733,10 +2755,11 @@ pub fn (g &Gen) new_pass5_worker(file_indices []int, worker_id int) &Gen {
 		}
 	}
 	return &Gen{
-		files: g.files
-		env:   unsafe { g.env }
-		pref:  unsafe { g.pref }
-		sb:    strings.new_builder(64_000)
+		files:                  g.files
+		env:                    unsafe { g.env }
+		pref:                   unsafe { g.pref }
+		imported_symbols_index: g.imported_symbols_index.clone()
+		sb:                     strings.new_builder(64_000)
 		// Read-only lookup maps — clone to avoid COW data races
 		fn_param_is_ptr:                       g.fn_param_is_ptr.clone()
 		fn_param_types:                        g.fn_param_types.clone()
