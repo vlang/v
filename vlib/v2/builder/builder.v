@@ -1256,6 +1256,9 @@ fn (mut b Builder) gen_cleanc_with_cached_core(output_name string, cc string, cc
 	}
 	b.ensure_core_module_headers()
 	b.ensure_import_module_headers(dynamic_cached_module_names)
+	if v2compiler_obj.len > 0 {
+		b.ensure_v2compiler_module_headers()
+	}
 	b.ensure_virtual_module_headers(virtual_groups)
 	mut excluded := core_cached_module_names.clone()
 	for module_name in optional_cached_module_names {
