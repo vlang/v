@@ -589,6 +589,8 @@ struct PendingFnBody {
 	typ           FnType
 	scope_fn_name string
 	module_name   string
+	flat          &ast.FlatAst   = unsafe { nil }
+	flat_decl_id  ast.FlatNodeId = -1
 }
 
 struct Checker {
@@ -609,6 +611,8 @@ mut:
 	fallback_vars map[string]Type
 	// when true, function declarations only register signatures and queue body checking
 	collect_fn_signatures_only bool
+	pending_fn_body_flat       &ast.FlatAst   = unsafe { nil }
+	pending_fn_body_flat_id    ast.FlatNodeId = -1
 	pending_const_fields       []PendingConstField
 	pending_interface_decls    []PendingInterfaceDecl
 	pending_struct_decls       []PendingStructDecl
@@ -1933,8 +1937,26 @@ fn (mut c Checker) preregister_fn_signatures_from_flat(flat &ast.FlatAst, ff ast
 	c.scope = mod_scope
 	prev_collect := c.collect_fn_signatures_only
 	c.collect_fn_signatures_only = true
-	for stmt in flat.read_file_stmts(ff) {
-		c.preregister_fn_signature_stmt(stmt)
+	decls := ast.Cursor{
+		flat: unsafe { flat }
+		id:   ff.file_id
+	}.list_at(2)
+	for di in 0 .. decls.len() {
+		dc := decls.at(di)
+		if dc.kind() == .stmt_fn_decl {
+			decl := flat.decode_fn_decl_signature(dc.id)
+			prev_flat := c.pending_fn_body_flat
+			prev_flat_id := c.pending_fn_body_flat_id
+			c.pending_fn_body_flat = unsafe { flat }
+			c.pending_fn_body_flat_id = dc.id
+			c.preregister_fn_signature_stmt(ast.Stmt(decl))
+			c.pending_fn_body_flat = prev_flat
+			c.pending_fn_body_flat_id = prev_flat_id
+			continue
+		}
+		if dc.kind() == .stmt_expr {
+			c.preregister_fn_signature_stmt(flat.decode_stmt(dc.id))
+		}
 	}
 	c.collect_fn_signatures_only = prev_collect
 }
@@ -5003,8 +5025,9 @@ fn (mut c Checker) process_pending_fn_bodies() {
 }
 
 fn (mut c Checker) check_pending_fn_body(pending PendingFnBody) bool {
-	decl_generic_params := collect_fn_generic_params(pending.decl)
-	has_decl_generic_params := pending.decl.typ.generic_params.len > 0
+	signature_decl := pending.decl
+	decl_generic_params := collect_fn_generic_params(signature_decl)
+	has_decl_generic_params := signature_decl.typ.generic_params.len > 0
 	has_generic_params := decl_generic_params.len > 0
 	if has_decl_generic_params {
 		mut generic_types := []map[string]Type{}
@@ -5023,7 +5046,7 @@ fn (mut c Checker) check_pending_fn_body(pending PendingFnBody) bool {
 			} else {
 				base_name
 			}
-			if base_name == pending.decl.name || short_name == pending.decl.name {
+			if base_name == signature_decl.name || short_name == signature_decl.name {
 				generic_types = inferred.clone()
 				has_generic_types = true
 				break
@@ -5036,6 +5059,13 @@ fn (mut c Checker) check_pending_fn_body(pending PendingFnBody) bool {
 		c.env.cur_generic_types << generic_types
 	}
 	if !has_decl_generic_params || c.env.cur_generic_types.len > 0 {
+		mut decl := signature_decl
+		if pending.flat != unsafe { nil } && pending.flat_decl_id >= 0 {
+			stmt := pending.flat.decode_stmt(pending.flat_decl_id)
+			if stmt is ast.FnDecl {
+				decl = stmt
+			}
+		}
 		prev_scope := c.scope
 		prev_module := c.cur_file_module
 		prev_fn_root_scope := c.fn_root_scope
@@ -5050,14 +5080,14 @@ fn (mut c Checker) check_pending_fn_body(pending PendingFnBody) bool {
 				c.fallback_vars[param.name] = param.typ
 			}
 		}
-		if pending.decl.is_method {
-			mut receiver_type := c.type_expr(pending.decl.receiver.typ)
-			if pending.decl.receiver.is_mut && receiver_type !is Pointer {
+		if decl.is_method {
+			mut receiver_type := c.type_expr(decl.receiver.typ)
+			if decl.receiver.is_mut && receiver_type !is Pointer {
 				receiver_type = Type(Pointer{
 					base_type: receiver_type
 				})
 			}
-			c.fallback_vars[pending.decl.receiver.name] = receiver_type
+			c.fallback_vars[decl.receiver.name] = receiver_type
 		}
 		if has_generic_params {
 			c.generic_params = decl_generic_params
@@ -5079,12 +5109,12 @@ fn (mut c Checker) check_pending_fn_body(pending PendingFnBody) bool {
 			prev_owned_types = c.owned_var_types.clone()
 			prev_moved = c.moved_vars.clone()
 			prev_borrowed = c.borrowed_vars.clone()
-			c.ownership_enter_fn(pending.decl.name, pending.decl)
+			c.ownership_enter_fn(decl.name, decl)
 		}
-		c.stmt_list(pending.decl.stmts)
+		c.stmt_list(decl.stmts)
 		$if ownership ? {
-			publish_keys := ownership_publish_keys_for(pending.module_name, pending.decl)
-			c.ownership_snapshot_drops_at_fn_exit(pending.decl.name, publish_keys)
+			publish_keys := ownership_publish_keys_for(pending.module_name, decl)
+			c.ownership_snapshot_drops_at_fn_exit(decl.name, publish_keys)
 			c.ownership_publish_pending_return_drops(publish_keys)
 			c.ownership_leave_fn(prev_ownership_fn, prev_owned, prev_owned_types, prev_moved,
 				prev_borrowed)
@@ -5859,6 +5889,8 @@ fn (mut c Checker) fn_decl(decl ast.FnDecl) {
 		typ:           fn_typ
 		scope_fn_name: scope_fn_name
 		module_name:   module_name
+		flat:          c.pending_fn_body_flat
+		flat_decl_id:  c.pending_fn_body_flat_id
 	}
 	if c.collect_fn_signatures_only {
 		c.pending_fn_bodies << pending

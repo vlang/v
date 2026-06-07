@@ -845,10 +845,19 @@ fn (mut b Builder) gen_cleanc_source_with_options(modules []string, emit_files [
 		gen_files << file
 	}
 	if cached_init_calls.len > 0 && b.used_vh_for_parse {
-		mut p := parser.Parser.new(b.pref)
-		header_files := p.parse_files(b.core_cached_parse_paths(), mut b.file_set)
-		for header_file in header_files {
-			gen_files << header_file
+		mut has_vh_files := false
+		for file in gen_files {
+			if file.name.ends_with('.vh') {
+				has_vh_files = true
+				break
+			}
+		}
+		if !has_vh_files {
+			mut p := parser.Parser.new(b.pref)
+			header_files := p.parse_files(b.core_cached_parse_paths(), mut b.file_set)
+			for header_file in header_files {
+				gen_files << header_file
+			}
 		}
 	}
 	mut gen := cleanc.Gen.new_with_env_and_pref(gen_files, b.env, b.pref)
