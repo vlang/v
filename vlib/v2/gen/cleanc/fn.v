@@ -729,7 +729,8 @@ fn (mut g Gen) register_fn_signature(node ast.FnDecl, fn_name string) {
 		'void'
 	}
 	ret_type = normalize_signature_type_name(ret_type, 'void')
-	if ret_type == 'int' {
+	if ret_type == 'int' && node.typ.return_type !is ast.EmptyExpr
+		&& expr_has_generic_placeholder(node.typ.return_type) {
 		inferred := g.infer_vector_return_type_from_stmts(node.stmts)
 		if inferred != '' {
 			ret_type = inferred
