@@ -890,12 +890,14 @@ fn lpt_buckets(files []ast.File, n_jobs int) [][]int {
 // `subtree_signature` of the stmts list (file root edge 2) to assert
 // structural parity. Same property as s162's sequential wedge.
 //
-// Memory: zero saving over `transform_files_parallel_to_flat` while the SSA
-// builder still consumes the returned `[]ast.File`. Once SSA migrates to
-// flat, this entry can drop the `[]ast.File` return and the post-transform
-// `[]ast.File` allocation disappears. Until then, this is migration
-// scaffolding pinned by the same pattern as s162.
-fn (mut b Builder) transform_files_parallel_to_flat_via_driver(mut trans transformer.Transformer) (ast.FlatAst, []ast.File) {
+// `keep_files` controls whether the transformed `[]ast.File` is materialized
+// for the caller. Flat-codegen backends (cleanc/c/x64/arm64) drop `b.files`
+// after transform, so they pass `keep_files = false`: the function then mirrors
+// the flat-direct tail (`post_pass_to_flat` + `apply_post_pass_tail_from_flat`,
+// no legacy file post-pass, whose edits are already on the flat) and frees the
+// transient `result` here instead of threading it back only to be dropped.
+// The `.v`/eval backends still consume the files, so they pass `keep_files = true`.
+fn (mut b Builder) transform_files_parallel_to_flat_via_driver(mut trans transformer.Transformer, keep_files bool) (ast.FlatAst, []ast.File) {
 	mut result := b.transform_files_parallel_no_post_pass(mut trans)
 	mut builder := ast.new_flat_builder()
 	for file in result {
@@ -907,6 +909,14 @@ fn (mut b Builder) transform_files_parallel_to_flat_via_driver(mut trans transfo
 	// `generated_fn_module_from_flat` (s164) walk `builder.flat` directly.
 	generated_parts := trans.generated_fns_parts_from_flat(&builder.flat)
 	trans.post_pass_to_flat(mut builder, generated_parts)
+	if !keep_files {
+		// Same tail as `transform_flat_to_flat_direct`: the flat already
+		// received the file-mutating post-pass via `post_pass_to_flat`, so the
+		// legacy `post_pass_files_with_generated_parts` is redundant. Run the
+		// type-propagation tail against the flat and let `result` be freed.
+		trans.apply_post_pass_tail_from_flat(&builder.flat)
+		return builder.flat, []ast.File{}
+	}
 	trans.post_pass_files_with_generated_parts(mut result, generated_parts)
 	// The compatibility files now receive the same file-mutating post-pass
 	// edits as the flat output, so run the non-file tail on those files for

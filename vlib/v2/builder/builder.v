@@ -304,9 +304,10 @@ pub fn (mut b Builder) build(files []string) {
 		// live only transiently during the parallel transform). The memory-
 		// critical arm64 self-host runs --no-parallel, so it takes the sequential
 		// branch above and keeps the allocation-minimal flat-direct path.
-		new_flat, files_out := b.transform_files_parallel_to_flat_via_driver(mut trans)
+		new_flat, files_out := b.transform_files_parallel_to_flat_via_driver(mut trans,
+			!transform_flat_only)
 		b.flat = new_flat
-		b.files = if transform_flat_only { []ast.File{} } else { files_out }
+		b.files = files_out
 	}
 	transform_time := time.Duration(sw.elapsed() - transform_start)
 	print_time('Transform', transform_time)
