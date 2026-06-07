@@ -400,3 +400,155 @@ fn test_h2_fetch_glue_roundtrip() {
 	assert resp.body == ' world'
 	assert (resp.header.get_custom('content-type') or { '' }) == 'text/plain'
 }
+
+// build_streamed_response builds a server stream that delivers the response
+// body in fixed-size chunks, useful for streaming tests.
+fn build_streamed_response(status string, content_length string, chunks [][]u8) []u8 {
+	mut senc := H2HpackEncoder{}
+	mut fields := [H2HeaderField{':status', status}]
+	if content_length != '' {
+		fields << H2HeaderField{'content-length', content_length}
+	}
+	hdr := senc.encode(fields)
+	mut out := []u8{}
+	out << H2Frame(H2SettingsFrame{}).encode()
+	out << H2Frame(H2SettingsFrame{
+		ack: true
+	}).encode()
+	last_is_headers := chunks.len == 0
+	out << H2Frame(H2HeadersFrame{
+		stream_id:   1
+		fragment:    hdr
+		end_headers: true
+		end_stream:  last_is_headers
+	}).encode()
+	for i, chunk in chunks {
+		out << H2Frame(H2DataFrame{
+			stream_id:  1
+			data:       chunk
+			end_stream: i == chunks.len - 1
+		}).encode()
+	}
+	return out
+}
+
+// ChunkCapture records on_data invocations via a reference captured by the
+// returned closure.
+struct ChunkCapture {
+mut:
+	chunks   [][]u8
+	running  []u64
+	expected []u64
+	status   []int
+}
+
+fn make_capture_fn(cap &ChunkCapture) H2DataFn {
+	return fn [cap] (chunk []u8, body_so_far u64, body_expected u64, status int) ! {
+		unsafe {
+			cap.chunks << chunk.clone()
+			cap.running << body_so_far
+			cap.expected << body_expected
+			cap.status << status
+		}
+	}
+}
+
+fn test_h2_on_data_fires_per_chunk() {
+	mut cap := &ChunkCapture{}
+	inbound := build_streamed_response('200', '12', [
+		'foo'.bytes(),
+		'bar'.bytes(),
+		'baz quux'.bytes(),
+	])
+	mut t := &MockTransport{
+		inbound: inbound
+	}
+	mut c := new_h2_conn(t)
+	resp := c.do(H2ClientRequest{
+		authority: 'h.example'
+		on_data:   make_capture_fn(cap)
+	})!
+	assert resp.status == 200
+	assert resp.body.bytestr() == 'foobarbaz quux'
+	// Three DATA frames -> three callback invocations.
+	assert cap.chunks.len == 3
+	assert cap.chunks[0].bytestr() == 'foo'
+	assert cap.chunks[1].bytestr() == 'bar'
+	assert cap.chunks[2].bytestr() == 'baz quux'
+	// body_so_far is cumulative including the current chunk.
+	assert cap.running == [u64(3), u64(6), u64(14)]
+	// content-length is reported.
+	assert cap.expected == [u64(12), u64(12), u64(12)]
+	// Status was known by the first callback (headers arrived first).
+	assert cap.status == [200, 200, 200]
+}
+
+fn test_h2_stop_copying_limit_caps_body_but_keeps_callback() {
+	mut cap := &ChunkCapture{}
+	inbound := build_streamed_response('200', '', [
+		'AAAA'.bytes(),
+		'BBBB'.bytes(),
+		'CCCC'.bytes(),
+	])
+	mut t := &MockTransport{
+		inbound: inbound
+	}
+	mut c := new_h2_conn(t)
+	resp := c.do(H2ClientRequest{
+		authority:          'h.example'
+		on_data:            make_capture_fn(cap)
+		stop_copying_limit: 6
+	})!
+	// Body is capped at 6 bytes (4 from first chunk + 2 from second).
+	assert resp.body.bytestr() == 'AAAABB'
+	// All three chunks still produced callbacks.
+	assert cap.chunks.len == 3
+	assert cap.chunks[0].bytestr() == 'AAAA'
+	assert cap.chunks[1].bytestr() == 'BBBB'
+	assert cap.chunks[2].bytestr() == 'CCCC'
+	// body_so_far still reports the true cumulative size.
+	assert cap.running == [u64(4), u64(8), u64(12)]
+}
+
+fn test_h2_stop_receiving_limit_breaks_early() {
+	mut cap := &ChunkCapture{}
+	inbound := build_streamed_response('200', '', [
+		'XXXX'.bytes(),
+		'YYYY'.bytes(),
+		'ZZZZ'.bytes(), // should never be delivered
+	])
+	mut t := &MockTransport{
+		inbound: inbound
+	}
+	mut c := new_h2_conn(t)
+	resp := c.do(H2ClientRequest{
+		authority:            'h.example'
+		on_data:              make_capture_fn(cap)
+		stop_receiving_limit: 6
+	})!
+	// Loop breaks after the second DATA frame (8 bytes >= limit 6); body
+	// contains both chunks delivered so far.
+	assert resp.body.bytestr() == 'XXXXYYYY'
+	assert cap.chunks.len == 2
+	assert cap.chunks[1].bytestr() == 'YYYY'
+
+	// On early termination the client must send RST_STREAM(CANCEL) on the
+	// stream, and the connection must refuse further requests.
+	mut saw_cancel := false
+	mut pos := h2_client_preface.len
+	for pos < t.outbound.len {
+		frame, n := h2_read_frame(t.outbound[pos..])!
+		pos += n
+		if frame is H2RstStreamFrame {
+			if frame.stream_id == 1 && frame.error_code == u32(H2ErrorCode.cancel) {
+				saw_cancel = true
+			}
+		}
+	}
+	assert saw_cancel, 'expected RST_STREAM(CANCEL) on early termination'
+	c.do(H2ClientRequest{ authority: 'h.example' }) or {
+		assert err.msg().contains('no longer usable')
+		return
+	}
+	assert false, 'expected error on reuse after early termination'
+}

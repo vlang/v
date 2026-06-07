@@ -103,26 +103,3 @@ fn test_to_h2_request_authority_from_host_header() {
 	assert h2req.authority == 'override.example:8443'
 	assert !h2req.headers.any(it.name == 'host')
 }
-
-fn test_uses_response_streaming() {
-	assert !(Request{}).uses_response_streaming()
-	assert (Request{
-		stop_copying_limit: 0
-	}).uses_response_streaming()
-	assert (Request{
-		stop_receiving_limit: 100
-	}).uses_response_streaming()
-	progress := fn (request &Request, chunk []u8, read_so_far u64) ! {}
-	assert (Request{
-		on_progress: progress
-	}).uses_response_streaming()
-	body_progress := fn (request &Request, chunk []u8, body_read_so_far u64, body_expected_size u64, status_code int) ! {}
-	assert (Request{
-		on_progress_body: body_progress
-	}).uses_response_streaming()
-	// A non-streaming callback (on_finish) does not force HTTP/1.1.
-	finish := fn (request &Request, final_size u64) ! {}
-	assert !(Request{
-		on_finish: finish
-	}).uses_response_streaming()
-}

@@ -22,13 +22,10 @@ fn net_ssl_do(req &Request, port int, method Method, host_name string, path stri
 		eprintln('')
 	}
 	// Advertise ALPN `h2` (with an `http/1.1` fallback) only when HTTP/2 is
-	// requested, so existing callers see no change on the wire. Requests that
-	// rely on streaming response callbacks or stop limits stay on HTTP/1.1,
-	// since the HTTP/2 path buffers the full response; the ALPN offer is gated
-	// here (before negotiation) because once a server selects `h2` we cannot
-	// fall back to HTTP/1.1 framing on the same connection.
-	use_h2 := req.enable_http2 && !req.uses_response_streaming()
-	alpn := if use_h2 { ['h2', 'http/1.1'] } else { []string{} }
+	// requested, so existing callers see no change on the wire. The HTTP/2 read
+	// path now feeds the same streaming callbacks and honors the stop limits,
+	// so they no longer force HTTP/1.1.
+	alpn := if req.enable_http2 { ['h2', 'http/1.1'] } else { []string{} }
 	for {
 		mut ssl_conn := ssl.new_ssl_conn(
 			verify:                 req.verify
@@ -53,7 +50,7 @@ fn net_ssl_do(req &Request, port int, method Method, host_name string, path stri
 		}
 		// If the server negotiated HTTP/2 via ALPN, speak it; otherwise fall
 		// back to the existing HTTP/1.1 path unchanged.
-		if use_h2 && ssl_conn.negotiated_alpn() == 'h2' {
+		if req.enable_http2 && ssl_conn.negotiated_alpn() == 'h2' {
 			return req.h2_do(mut ssl_conn, method, host_name, port, path, data, header)!
 		}
 		return req.do_request(req_headers, mut ssl_conn)!
@@ -63,12 +60,40 @@ fn net_ssl_do(req &Request, port int, method Method, host_name string, path stri
 
 // h2_do runs a single request over an HTTP/2 connection on an already-dialled,
 // ALPN-negotiated `h2` TLS socket, and returns the response as a net.http
-// Response.
+// Response. The request's streaming callbacks (on_progress / on_progress_body)
+// and stop limits are adapted onto the H2 chunk hook so they fire per DATA
+// frame, matching the HTTP/1.1 streaming semantics as closely as is possible
+// on the framed wire (on_progress receives DATA payloads rather than raw
+// network reads).
 fn (req &Request) h2_do(mut ssl_conn ssl.SSLConn, method Method, host_name string, port int, path string, data string, header Header) !Response {
 	defer {
 		ssl_conn.shutdown() or {}
 	}
-	h2req := req.to_h2_request(method, h2_authority(host_name, port), path, data, header)
+	base := req.to_h2_request(method, h2_authority(host_name, port), path, data, header)
+	on_progress := req.on_progress
+	on_progress_body := req.on_progress_body
+	mut on_data := H2DataFn(unsafe { nil })
+	if on_progress != unsafe { nil } || on_progress_body != unsafe { nil } {
+		on_data = fn [req, on_progress, on_progress_body] (chunk []u8, body_so_far u64, body_expected u64, status int) ! {
+			if on_progress != unsafe { nil } {
+				on_progress(req, chunk, body_so_far)!
+			}
+			if on_progress_body != unsafe { nil } {
+				on_progress_body(req, chunk, body_so_far, body_expected, status)!
+			}
+		}
+	}
+	h2req := H2ClientRequest{
+		method:               base.method
+		scheme:               base.scheme
+		authority:            base.authority
+		path:                 base.path
+		headers:              base.headers
+		body:                 base.body
+		on_data:              on_data
+		stop_copying_limit:   req.stop_copying_limit
+		stop_receiving_limit: req.stop_receiving_limit
+	}
 	mut conn := new_h2_conn(ssl_conn)
 	h2resp := conn.do(h2req)!
 	if req.on_finish != unsafe { nil } {

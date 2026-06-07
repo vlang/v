@@ -42,6 +42,12 @@ mut:
 	max_header_list_size   u32  = max_u32
 }
 
+// H2DataFn is called for each DATA frame received on the response stream, with
+// the chunk's bytes, the cumulative body bytes received (including this chunk),
+// the body length from Content-Length if known (else 0), and the response
+// status code.
+pub type H2DataFn = fn (chunk []u8, body_so_far u64, body_expected u64, status int) !
+
 // H2ClientRequest describes a single HTTP/2 request. Header names in `headers`
 // must be lowercase (RFC 7540 Section 8.1.2); the pseudo-headers are filled in
 // from the other fields.
@@ -53,6 +59,20 @@ pub:
 	path      string = '/'
 	headers   []H2HeaderField
 	body      []u8
+	// Optional response chunk callback, called after each DATA frame's payload
+	// is received. The arguments are the chunk bytes (not yet copied into the
+	// response body), the cumulative body bytes received so far (including this
+	// chunk), the body length from Content-Length (0 when not present), and the
+	// response status code.
+	on_data H2DataFn = unsafe { nil }
+	// stop_copying_limit, when >= 0, caps the cumulative body bytes copied into
+	// the response body; further DATA chunks are dropped but the callback keeps
+	// firing and the stream is drained to completion.
+	stop_copying_limit i64 = -1
+	// stop_receiving_limit, when >= 0, causes the response read loop to break
+	// once that many body bytes have been received. The callback fires for the
+	// final chunk; no further callbacks fire after that.
+	stop_receiving_limit i64 = -1
 }
 
 // H2ClientResponse is the result of an HTTP/2 request.
@@ -78,6 +98,12 @@ mut:
 	stream_send_window i64 // send window for cur_stream_id
 	handshaked         bool
 	goaway             bool
+	// aborted is set when this connection terminated a stream early
+	// (RST_STREAM sent without draining the remaining DATA). Subsequent
+	// requests on the same connection must fail rather than risk being starved
+	// by leftover DATA frames the peer had already sent for the cancelled
+	// stream.
+	aborted bool
 }
 
 // new_h2_conn creates a client connection over `transport`. The HTTP/2
@@ -93,6 +119,9 @@ pub fn (mut c H2Conn) do(req H2ClientRequest) !H2ClientResponse {
 	c.handshake()!
 	if c.goaway {
 		return error('h2: connection is shutting down (GOAWAY)')
+	}
+	if c.aborted {
+		return error('h2: connection is no longer usable after an early stream termination')
 	}
 	stream_id := c.next_stream_id
 	c.next_stream_id += 2
@@ -114,7 +143,7 @@ pub fn (mut c H2Conn) do(req H2ClientRequest) !H2ClientResponse {
 	if has_body {
 		c.send_body(stream_id, req.body)!
 	}
-	return c.read_response(stream_id)!
+	return c.read_response(stream_id, req)!
 }
 
 fn (mut c H2Conn) handshake() ! {
@@ -135,10 +164,14 @@ fn (mut c H2Conn) handshake() ! {
 }
 
 // read_response reads frames until `stream_id` is closed, returning its
-// response and servicing connection-level frames along the way.
-fn (mut c H2Conn) read_response(stream_id u32) !H2ClientResponse {
+// response and servicing connection-level frames along the way. The streaming
+// options on `req` (on_data callback and the two stop limits) are honored
+// while reading DATA frames, matching the HTTP/1.1 streaming semantics.
+fn (mut c H2Conn) read_response(stream_id u32, req H2ClientRequest) !H2ClientResponse {
 	mut resp := H2ClientResponse{}
 	mut got_headers := false
+	mut body_so_far := u64(0)
+	mut body_expected := u64(0)
 	for {
 		frame := c.next_frame()!
 		if c.handle_conn_frame(frame)! {
@@ -155,6 +188,9 @@ fn (mut c H2Conn) read_response(stream_id u32) !H2ClientResponse {
 						resp.status = f.value.int()
 					} else if !f.name.starts_with(':') {
 						resp.headers << f
+						if f.name == 'content-length' {
+							body_expected = f.value.u64()
+						}
 					}
 				}
 				got_headers = true
@@ -166,13 +202,43 @@ fn (mut c H2Conn) read_response(stream_id u32) !H2ClientResponse {
 				if frame.stream_id != stream_id {
 					continue
 				}
-				resp.body << frame.data
 				if frame.data.len > 0 {
+					body_so_far += u64(frame.data.len)
+					// Append the chunk to the response body unless the copy
+					// limit has been reached; the callback still fires.
+					if req.stop_copying_limit < 0
+						|| i64(body_so_far) - i64(frame.data.len) < req.stop_copying_limit {
+						if req.stop_copying_limit >= 0 && i64(body_so_far) > req.stop_copying_limit {
+							remaining := req.stop_copying_limit - (i64(body_so_far) - i64(frame.data.len))
+							if remaining > 0 {
+								resp.body << frame.data[..int(remaining)]
+							}
+						} else {
+							resp.body << frame.data
+						}
+					}
+					if req.on_data != unsafe { nil } {
+						req.on_data(frame.data, body_so_far, body_expected, resp.status)!
+					}
 					// Replenish flow control so the peer keeps sending.
 					c.send_window_update(0, u32(frame.data.len))!
 					c.send_window_update(stream_id, u32(frame.data.len))!
 				}
 				if frame.end_stream {
+					break
+				}
+				if req.stop_receiving_limit >= 0 && i64(body_so_far) >= req.stop_receiving_limit {
+					// Cancel the stream (RFC 7540 Section 8.1.4 / 5.4.2) so the
+					// peer stops sending more DATA, and mark the connection
+					// unusable: in-flight DATA frames that the peer has already
+					// sent for this stream would otherwise consume the
+					// connection-level receive window and block subsequent
+					// requests on the same H2Conn.
+					c.send_frame(H2RstStreamFrame{
+						stream_id:  stream_id
+						error_code: u32(H2ErrorCode.cancel)
+					})!
+					c.aborted = true
 					break
 				}
 			}
