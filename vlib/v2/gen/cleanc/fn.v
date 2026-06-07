@@ -8814,6 +8814,36 @@ fn (mut g Gen) memdup_addr_arg_type(expr ast.Expr) string {
 	return typ
 }
 
+fn (mut g Gen) gen_sort_fnsortcb_arg(fn_name string, idx int, base_arg ast.Expr) bool {
+	if idx != 1 || fn_name !in ['array__sort_with_compare', 'array__sorted_with_compare'] {
+		return false
+	}
+	comparator := match base_arg {
+		ast.ParenExpr {
+			base_arg.expr
+		}
+		else {
+			base_arg
+		}
+	}
+
+	match comparator {
+		ast.Ident {
+			if comparator.name == '' || comparator.name == 'nil' {
+				return false
+			}
+		}
+		ast.FnLiteral {}
+		else {
+			return false
+		}
+	}
+
+	g.sb.write_string('(FnSortCB)')
+	g.expr(comparator)
+	return true
+}
+
 fn (mut g Gen) gen_call_arg(fn_name string, idx int, arg ast.Expr) {
 	base_arg := if arg is ast.ModifierExpr { arg.expr } else { arg }
 	map_runtime_name := canonical_map_runtime_fn_name(fn_name)
@@ -8916,6 +8946,9 @@ fn (mut g Gen) gen_call_arg(fn_name string, idx int, arg ast.Expr) {
 			g.sb.write_string('&${key_code}')
 			return
 		}
+	}
+	if g.gen_sort_fnsortcb_arg(fn_name, idx, base_arg) {
+		return
 	}
 	if expected_param_type != '' && g.gen_auto_deref_value_param_arg(expected_param_type, base_arg) {
 		return
@@ -11843,6 +11876,9 @@ fn (mut g Gen) call_expr(lhs ast.Expr, args []ast.Expr) {
 		// Handle C.puts, C.putchar etc.
 		if lhs.lhs is ast.Ident && lhs.lhs.name == 'C' {
 			name = lhs.rhs.name
+			if name == 'gettid' && args.len == 0 && g.should_emit_linux_gettid_compat() {
+				name = 'v_cleanc_gettid'
+			}
 			// With prealloc, free() is redefined as a no-op macro.
 			// C.free calls in prealloc_vcleanup need the real free via _v_cfree.
 			if name == 'free' && g.pref != unsafe { nil } && g.pref.prealloc {

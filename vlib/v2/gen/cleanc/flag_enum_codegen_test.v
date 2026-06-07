@@ -2259,7 +2259,7 @@ fn main() {
 '
 		},
 	], ['issue.v'])
-	assert csrc.contains('array__sort_with_compare(issues, __sort_cmp_Issue_by_created_at_desc)')
+	assert csrc.contains('array__sort_with_compare(issues, (FnSortCB)__sort_cmp_Issue_by_created_at_desc)')
 	assert csrc.contains('int __sort_cmp_Issue_by_created_at_desc(Issue* a, Issue* b);')
 	assert csrc.contains('int __sort_cmp_Issue_by_created_at_desc(Issue* a, Issue* b) {')
 }

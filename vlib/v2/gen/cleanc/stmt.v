@@ -650,7 +650,7 @@ fn (mut g Gen) gen_stmt(node ast.Stmt) {
 		}
 		ast.LabelStmt {
 			g.write_indent()
-			g.sb.writeln('${node.name}:')
+			g.sb.writeln('${node.name}:;')
 			if node.stmt !is ast.EmptyStmt {
 				g.gen_stmt(node.stmt)
 			}
