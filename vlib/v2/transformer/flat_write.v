@@ -1832,7 +1832,7 @@ pub fn (mut t Transformer) transform_cursor_stmts_to_flat_direct(stmts ast.Curso
 	for i in 0 .. stmts.len() {
 		t.restore_flat_stmt_list_smartcast_context(block_smartcast_depth, block_smartcast_stack,
 			block_smartcast_counts)
-		t.transform_stmt_list_item_to_flat(stmts.at(i).stmt(), mut ids, mut out)
+		t.transform_stmt_list_item_cursor_to_flat(stmts.at(i), mut ids, mut out)
 	}
 	for stmt in extra_stmts {
 		t.restore_flat_stmt_list_smartcast_context(block_smartcast_depth, block_smartcast_stack,
@@ -1936,6 +1936,34 @@ fn (mut t Transformer) transform_stmt_list_item_to_flat(stmt ast.Stmt, mut ids [
 		return
 	}
 	t.append_transformed_stmt_to_flat(mut ids, stmt, mut out)
+}
+
+// transform_stmt_list_item_cursor_to_flat is the cursor-input mirror of
+// `transform_stmt_list_item_to_flat`. It dispatches on the top-level statement's
+// FlatNodeKind so converted arms can be handled without routing through the
+// legacy guard chain, and unconverted kinds fall back to the proven decode path
+// in one line. This is the seam that lets the transform become cursor-native one
+// statement kind at a time (eliminating the whole-subtree `.stmt()` decode at
+// the `transform_cursor_stmts_to_flat_direct` loop).
+//
+// First converted set: the true-passthrough top-level kinds that carry no
+// `try_expand_*` guard and that `transform_stmt_to_flat` emits verbatim
+// (flat_write.v:3890). They are routed through `append_transformed_stmt_to_flat`
+// exactly as the fallback would after its guards fail to match — bit-equal, just
+// skipping the (always-false for these kinds) guard checks. They still decode via
+// `c.stmt()` for now (dropping that decode needs a flat-to-flat subtree copy and
+// is a later stage); the value here is the dispatcher that subsequent stages
+// (const/global, then the FnDecl body — the real decode win) extend arm by arm.
+fn (mut t Transformer) transform_stmt_list_item_cursor_to_flat(c ast.Cursor, mut ids []ast.FlatNodeId, mut out ast.FlatBuilder) {
+	match c.kind() {
+		.stmt_import, .stmt_module, .stmt_directive, .stmt_empty, .stmt_enum_decl,
+		.stmt_interface_decl, .stmt_type_decl, .stmt_asm, .stmt_flow_control {
+			t.append_transformed_stmt_to_flat(mut ids, c.stmt(), mut out)
+		}
+		else {
+			t.transform_stmt_list_item_to_flat(c.stmt(), mut ids, mut out)
+		}
+	}
 }
 
 // append_transformed_stmt_to_flat is the flat-builder mirror of
