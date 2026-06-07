@@ -1960,6 +1960,14 @@ fn (mut t Transformer) transform_stmt_list_item_cursor_to_flat(c ast.Cursor, mut
 		.stmt_interface_decl, .stmt_type_decl, .stmt_asm, .stmt_flow_control {
 			t.append_transformed_stmt_to_flat(mut ids, c.stmt(), mut out)
 		}
+		.stmt_const_decl {
+			id := t.transform_const_decl_cursor_to_flat(c, mut out)
+			t.append_transformed_stmt_id_to_flat(mut ids, id, mut out)
+		}
+		.stmt_global_decl {
+			id := t.transform_global_decl_cursor_to_flat(c, mut out)
+			t.append_transformed_stmt_id_to_flat(mut ids, id, mut out)
+		}
 		else {
 			t.transform_stmt_list_item_to_flat(c.stmt(), mut ids, mut out)
 		}
@@ -1982,6 +1990,15 @@ fn (mut t Transformer) transform_stmt_list_item_cursor_to_flat(c ast.Cursor, mut
 // top-level loop (replacing the previous push/pop/restore pattern).
 pub fn (mut t Transformer) append_transformed_stmt_to_flat(mut ids []ast.FlatNodeId, stmt ast.Stmt, mut out ast.FlatBuilder) {
 	id := t.transform_stmt_to_flat(stmt, mut out)
+	t.append_transformed_stmt_id_to_flat(mut ids, id, mut out)
+}
+
+// append_transformed_stmt_id_to_flat hoists any `t.pending_stmts` produced
+// while building `id` ahead of it (matching the appender's ordering invariant),
+// then pushes `id`. Shared by `append_transformed_stmt_to_flat` and the
+// cursor-native stmt arms (transform_stmt_list_item_cursor_to_flat) so both
+// drain pending side effects identically.
+fn (mut t Transformer) append_transformed_stmt_id_to_flat(mut ids []ast.FlatNodeId, id ast.FlatNodeId, mut out ast.FlatBuilder) {
 	if t.pending_stmts.len > 0 {
 		pending := t.pending_stmts.clone()
 		t.pending_stmts.clear()
@@ -1990,6 +2007,53 @@ pub fn (mut t Transformer) append_transformed_stmt_to_flat(mut ids []ast.FlatNod
 		}
 	}
 	ids << id
+}
+
+// transform_const_decl_cursor_to_flat is the cursor-input mirror of the
+// `ast.ConstDecl` arm of `transform_stmt_to_flat` (flat_write.v). It reads the
+// const decl's is_public flag and field-init list straight from the cursor —
+// the ConstDecl wrapper + FieldInit structure are never decoded to legacy — and
+// transforms each field value via the existing `transform_expr_to_flat`. Emit
+// order matches the flat-output arm exactly (per-field value+field_init, then
+// the fields aux_list, then the stmt).
+fn (mut t Transformer) transform_const_decl_cursor_to_flat(c ast.Cursor, mut out ast.FlatBuilder) ast.FlatNodeId {
+	fields := c.list_at(0)
+	mut field_ids := []ast.FlatNodeId{cap: fields.len()}
+	for i in 0 .. fields.len() {
+		fc := fields.at(i)
+		value_id := t.transform_expr_to_flat(fc.edge(0).expr(), mut out)
+		field_ids << out.emit_field_init_by_id(fc.name(), value_id)
+	}
+	fields_list_id := out.emit_aux_list_from_ids(field_ids)
+	return out.emit_const_decl_by_ids(c.flag(ast.flag_is_public), fields_list_id)
+}
+
+// transform_global_decl_cursor_to_flat is the cursor-input mirror of the
+// `ast.GlobalDecl` arm of `transform_stmt_to_flat`. It reads the decl
+// attributes, field-decl list, and per-field metadata/flags from the cursor and
+// transforms each field's typ + value via `transform_expr_to_flat`. Emit order
+// matches the flat-output arm (decl attrs, then per-field typ/value/attrs/
+// field_decl, then the fields aux_list, then the stmt).
+fn (mut t Transformer) transform_global_decl_cursor_to_flat(c ast.Cursor, mut out ast.FlatBuilder) ast.FlatNodeId {
+	decl_attrs_id := out.emit_attribute_list(c.list_at(0).attributes())
+	fields := c.list_at(1)
+	mut field_ids := []ast.FlatNodeId{cap: fields.len()}
+	for i in 0 .. fields.len() {
+		fc := fields.at(i)
+		typ_id := t.transform_expr_to_flat(fc.edge(0).expr(), mut out)
+		value_id := t.transform_expr_to_flat(fc.edge(1).expr(), mut out)
+		field_attrs_id := out.emit_attribute_list(fc.list_at(2).attributes())
+		field := ast.FieldDecl{
+			name:                fc.name()
+			is_public:           fc.flag(ast.flag_is_public)
+			is_mut:              fc.flag(ast.flag_is_mut)
+			is_module_mut:       fc.flag(ast.flag_field_is_module_mut)
+			is_interface_method: fc.flag(ast.flag_field_is_interface_method)
+		}
+		field_ids << out.emit_field_decl_by_ids(field, typ_id, value_id, field_attrs_id)
+	}
+	fields_list_id := out.emit_aux_list_from_ids(field_ids)
+	return out.emit_global_decl_by_ids(c.flag(ast.flag_is_public), decl_attrs_id, fields_list_id)
 }
 
 // expand_assert_stmt_to_flat is the flat-direct mirror of `expand_assert_stmt`
