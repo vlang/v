@@ -247,7 +247,7 @@ fn (t &Transformer) dump_flat_monomorphize_specs(path string, flat &ast.FlatAst,
 	}
 	lines << '# files (${flat.files.len})'
 	for i, ff in flat.files {
-		extra := extra_stmts[i] or { []ast.Stmt{} }
+		extra := stmt_array_map_value(extra_stmts, i)
 		stmt_count := flat_file_stmt_count(flat, i) + extra.len
 		lines << 'F ${flat.file_mod(ff)}/${flat.file_name(ff)} stmts=${stmt_count}'
 	}
@@ -259,6 +259,13 @@ fn flat_file_stmt_count(flat &ast.FlatAst, fi int) int {
 		return 0
 	}
 	return flat.file_cursor(fi).stmts().len()
+}
+
+fn stmt_array_map_value(values map[int][]ast.Stmt, key int) []ast.Stmt {
+	if key in values {
+		return values[key]
+	}
+	return []ast.Stmt{}
 }
 
 fn (t &Transformer) generic_types_spec_count() int {
@@ -1204,7 +1211,7 @@ pub fn (mut t Transformer) monomorphize_pass(files []ast.File) []ast.File {
 			}
 			t.cur_generic_call_file_idx = old_owner_file
 			t.cur_import_aliases = old_import_aliases.clone()
-			mut bucket := per_file_clones[clone_file] or { []ast.Stmt{} }
+			mut bucket := stmt_array_map_value(per_file_clones, clone_file)
 			bucket << ast.Stmt(cloned)
 			per_file_clones[clone_file] = bucket
 		}
@@ -1220,10 +1227,11 @@ pub fn (mut t Transformer) monomorphize_pass(files []ast.File) []ast.File {
 	}
 	mut new_files := []ast.File{cap: files.len}
 	for fi, file in files {
-		extra := per_file_clones[fi] or {
+		if fi !in per_file_clones {
 			new_files << file
 			continue
 		}
+		extra := stmt_array_map_value(per_file_clones, fi)
 		mut stmts := file.stmts.clone()
 		stmts << extra
 		new_files << ast.File{
@@ -1296,7 +1304,7 @@ fn (mut t Transformer) monomorphize_pass_from_flat(flat &ast.FlatAst, mut extra_
 			}
 			t.cur_generic_call_file_idx = old_owner_file
 			t.cur_import_aliases = old_import_aliases.clone()
-			mut bucket := per_file_clones[clone_file] or { []ast.Stmt{} }
+			mut bucket := stmt_array_map_value(per_file_clones, clone_file)
 			bucket << ast.Stmt(cloned)
 			per_file_clones[clone_file] = bucket
 		}
@@ -2581,7 +2589,7 @@ fn flat_file_stmts_with_extra(flat &ast.FlatAst, extra_stmts map[int][]ast.Stmt,
 		return []ast.Stmt{}
 	}
 	stmts := flat.read_file_stmts(flat.files[fi])
-	extra := extra_stmts[fi] or { []ast.Stmt{} }
+	extra := stmt_array_map_value(extra_stmts, fi)
 	if extra.len == 0 {
 		return stmts
 	}
@@ -2595,7 +2603,7 @@ fn append_flat_extra_stmts(mut extra_stmts map[int][]ast.Stmt, fi int, stmts []a
 	if stmts.len == 0 {
 		return
 	}
-	mut bucket := extra_stmts[fi] or { []ast.Stmt{} }
+	mut bucket := stmt_array_map_value(extra_stmts, fi)
 	bucket << stmts
 	extra_stmts[fi] = bucket
 }

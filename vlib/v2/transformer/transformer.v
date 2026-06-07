@@ -3608,6 +3608,20 @@ fn (t &Transformer) collect_ident_names_in_expr_depth(depth int, mut names map[s
 	}
 }
 
+fn runtime_const_int_map_value(values map[int]int, key int) int {
+	if key in values {
+		return values[key]
+	}
+	return 0
+}
+
+fn runtime_const_int_array_map_value(values map[int][]int, key int) []int {
+	if key in values {
+		return values[key]
+	}
+	return []int{}
+}
+
 fn (t &Transformer) order_runtime_const_inits(inits []RuntimeConstInit) []RuntimeConstInit {
 	if inits.len < 2 {
 		return inits
@@ -3630,16 +3644,16 @@ fn (t &Transformer) order_runtime_const_inits(inits []RuntimeConstInit) []Runtim
 				continue
 			}
 			if dep_idx := index_by_name[dep_name] {
-				mut dep := dependents[dep_idx] or { []int{} }
+				mut dep := runtime_const_int_array_map_value(dependents, dep_idx)
 				dep << i
 				dependents[dep_idx] = dep
-				indegree[i] = (indegree[i] or { 0 }) + 1
+				indegree[i] = runtime_const_int_map_value(indegree, i) + 1
 			}
 		}
 	}
 	mut ready := []int{}
 	for i := 0; i < inits.len; i++ {
-		deg := indegree[i] or { 0 }
+		deg := runtime_const_int_map_value(indegree, i)
 		if deg == 0 {
 			ready << i
 		}
@@ -3666,10 +3680,10 @@ fn (t &Transformer) order_runtime_const_inits(inits []RuntimeConstInit) []Runtim
 		cur := ready[best_pos]
 		ready.delete(best_pos)
 		ordered_idx << cur
-		deps := dependents[cur] or { []int{} }
+		deps := runtime_const_int_array_map_value(dependents, cur)
 		for dep in deps {
-			indegree[dep] = (indegree[dep] or { 0 }) - 1
-			deg := indegree[dep] or { 0 }
+			indegree[dep] = runtime_const_int_map_value(indegree, dep) - 1
+			deg := runtime_const_int_map_value(indegree, dep)
 			if deg == 0 {
 				ready << dep
 			}
