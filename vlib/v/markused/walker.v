@@ -1075,6 +1075,20 @@ fn (mut w Walker) expr(node_ ast.Expr) {
 		ast.GoExpr {
 			if node.is_expr {
 				w.fn_by_name('free')
+				// A `go expr` whose handle is used as a value is lowered to the
+				// `spawn` (pthread) codegen path (see spawn_and_go_expr), since the
+				// photon coroutine wrapper returns no joinable handle. Mark the same
+				// thread-handle type and pthread error helpers that `spawn` needs,
+				// otherwise -skip-unused prunes them and the generated C fails to link.
+				w.mark_by_type(w.table.find_or_register_thread(node.call_expr.return_type))
+				w.uses_spawn = true
+				if w.pref.os == .windows {
+					w.fn_by_name('panic_lasterr')
+					w.fn_by_name('winapi_lasterr_str')
+				} else {
+					w.fn_by_name('c_error_number_str')
+					w.fn_by_name('panic_error_number')
+				}
 			}
 			w.mark_by_type(node.call_expr.return_type)
 			w.expr(node.call_expr)
