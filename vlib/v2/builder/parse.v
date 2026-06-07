@@ -779,7 +779,7 @@ fn active_file_imports_from_flat(flat &ast.FlatAst, ff ast.FlatFile, user_define
 
 fn active_file_imports_from_flat_with_options(flat &ast.FlatAst, ff ast.FlatFile, user_defines []string, explicit_user_defines []string, target_os string, allow_pkgconfig bool) []ast.ImportStmt {
 	// s253: walk the FlatAst via cursors instead of rehydrating the whole file to
-	// legacy ast.Stmt with `read_file_stmts`. The decode-then-walk path (a) costs a
+	// legacy ast.Stmt with a top-level decode. The decode-then-walk path (a) costs a
 	// full legacy-AST materialisation per file just to answer "does this file use a
 	// channel / which comptime imports are active?", and (b) crashes on the arm64
 	// self-host — the legacy `*_use_channel` walkers pass `[]Expr`/sum types by

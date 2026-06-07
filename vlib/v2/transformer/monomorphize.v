@@ -128,7 +128,7 @@ pub fn (mut t Transformer) prepare_files_for_transform(files []ast.File) []ast.F
 // FlatAst form. Monomorphization and generic struct specialization are
 // append-only, so the flat path stores just the per-file appended statements and
 // lets the caller stream each original file through a one-file decode.
-fn (mut t Transformer) prepare_flat_for_transform(flat &ast.FlatAst) map[int][]ast.Stmt {
+pub fn (mut t Transformer) prepare_flat_for_transform(flat &ast.FlatAst) map[int][]ast.Stmt {
 	t.env.generic_types = map[string][]map[string]types.Type{}
 	mut extra_stmts := map[int][]ast.Stmt{}
 	t.collect_declared_method_fns_from_flat(flat)
@@ -369,10 +369,7 @@ fn (mut t Transformer) collect_struct_field_generic_decl_types_from_flat(flat &a
 			if c.kind() != .stmt_struct_decl {
 				continue
 			}
-			stmt := flat.decode_stmt(c.id)
-			if stmt is ast.StructDecl {
-				t.collect_struct_decl_generic_field_types(stmt, module_name)
-			}
+			t.collect_struct_decl_generic_field_types_cursor(c, module_name)
 		}
 	}
 	t.cur_module = old_module
@@ -415,6 +412,58 @@ fn (mut t Transformer) collect_struct_decl_generic_field_types(decl ast.StructDe
 		for parent_name in parent_names {
 			t.struct_field_generic_decl_types[struct_field_generic_decl_key(parent_name, field_name)] = field_type
 			if bindings := t.generic_bindings_from_type_expr(embedded) {
+				t.struct_field_generic_decl_bindings[struct_field_generic_decl_key(parent_name,
+					field_name)] = bindings.clone()
+			}
+		}
+	}
+}
+
+fn (mut t Transformer) collect_struct_decl_generic_field_types_cursor(decl ast.Cursor, module_name string) {
+	parent_names := struct_decl_field_lookup_names(decl.name(), module_name)
+	if parent_names.len == 0 {
+		return
+	}
+	fields := decl.list_at(4)
+	for i in 0 .. fields.len() {
+		field := fields.at(i)
+		field_name := field.name()
+		if field_name == '' {
+			continue
+		}
+		field_type_expr := field.flat.decode_expr(field.edge(0).id)
+		if !field_type_expr_has_generic_args(field_type_expr) {
+			continue
+		}
+		field_type := t.lookup_type_from_expr(field_type_expr) or { continue }
+		if !types.type_has_valid_payload(field_type) {
+			continue
+		}
+		for parent_name in parent_names {
+			t.struct_field_generic_decl_types[struct_field_generic_decl_key(parent_name, field_name)] = field_type
+			if bindings := t.generic_bindings_from_type_expr(field_type_expr) {
+				t.struct_field_generic_decl_bindings[struct_field_generic_decl_key(parent_name,
+					field_name)] = bindings.clone()
+			}
+		}
+	}
+	embedded := decl.list_at(2)
+	for i in 0 .. embedded.len() {
+		embedded_expr := embedded.at(i).flat.decode_expr(embedded.at(i).id)
+		if !field_type_expr_has_generic_args(embedded_expr) {
+			continue
+		}
+		field_name := embedded_field_name_from_type_expr(embedded_expr)
+		if field_name == '' {
+			continue
+		}
+		field_type := t.lookup_type_from_expr(embedded_expr) or { continue }
+		if !types.type_has_valid_payload(field_type) {
+			continue
+		}
+		for parent_name in parent_names {
+			t.struct_field_generic_decl_types[struct_field_generic_decl_key(parent_name, field_name)] = field_type
+			if bindings := t.generic_bindings_from_type_expr(embedded_expr) {
 				t.struct_field_generic_decl_bindings[struct_field_generic_decl_key(parent_name,
 					field_name)] = bindings.clone()
 			}
@@ -2601,15 +2650,14 @@ fn flat_file_stmts_with_extra(flat &ast.FlatAst, extra_stmts map[int][]ast.Stmt,
 	if fi < 0 || fi >= flat.files.len {
 		return []ast.Stmt{}
 	}
-	stmts := flat.read_file_stmts(flat.files[fi])
+	stmt_cursors := flat.file_cursor(fi).stmts()
 	extra := extra_stmts[fi] or { []ast.Stmt{} }
-	if extra.len == 0 {
-		return stmts
+	mut stmts := []ast.Stmt{cap: stmt_cursors.len() + extra.len}
+	for i in 0 .. stmt_cursors.len() {
+		stmts << flat.decode_stmt(stmt_cursors.at(i).id)
 	}
-	mut out := []ast.Stmt{cap: stmts.len + extra.len}
-	out << stmts
-	out << extra
-	return out
+	stmts << extra
+	return stmts
 }
 
 fn append_flat_extra_stmts(mut extra_stmts map[int][]ast.Stmt, fi int, stmts []ast.Stmt) {

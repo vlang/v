@@ -11,14 +11,15 @@ import time
 
 $if !windows {
 	struct TransformChunkArgs {
-		t          voidptr // &transformer.Transformer
-		files      []ast.File
-		flat       &ast.FlatAst = unsafe { nil }
-		flat_start int
-		flat_end   int
-		result_ptr voidptr
-		worker_ptr voidptr
-		worker_idx int
+		t                voidptr // &transformer.Transformer
+		files            []ast.File
+		flat             &ast.FlatAst = unsafe { nil }
+		flat_extra_stmts [][]ast.Stmt
+		flat_start       int
+		flat_end         int
+		result_ptr       voidptr
+		worker_ptr       voidptr
+		worker_idx       int
 	}
 
 	struct TransformStmtJob {
@@ -65,11 +66,10 @@ $if !windows {
 			n := a.flat_end - a.flat_start
 			mut result := []ast.File{cap: n}
 			for fi := a.flat_start; fi < a.flat_end; fi++ {
-				one := a.flat.to_files_range(fi, fi + 1)
-				if one.len == 0 {
+				file := prepared_flat_file_for_parallel_transform(a.flat, a.flat_extra_stmts, fi) or {
 					continue
 				}
-				result << w.transform_file_pub(one[0])
+				result << w.transform_file_pub(file)
 			}
 			unsafe {
 				*(&[]ast.File(a.result_ptr)) = result
@@ -139,6 +139,45 @@ $if !windows {
 	}
 }
 
+fn flat_extra_stmts_by_file(extra_stmts map[int][]ast.Stmt, n_files int) [][]ast.Stmt {
+	mut out := [][]ast.Stmt{cap: n_files}
+	for _ in 0 .. n_files {
+		out << []ast.Stmt{}
+	}
+	for fi, stmts in extra_stmts {
+		if fi >= 0 && fi < n_files {
+			out[fi] = stmts
+		}
+	}
+	return out
+}
+
+fn prepared_flat_file_for_parallel_transform(flat &ast.FlatAst, flat_extra_stmts [][]ast.Stmt, fi int) ?ast.File {
+	src_arr := flat.to_files_range(fi, fi + 1)
+	if src_arr.len == 0 {
+		return none
+	}
+	mut file := src_arr[0]
+	if fi < 0 || fi >= flat_extra_stmts.len {
+		return file
+	}
+	extra := flat_extra_stmts[fi]
+	if extra.len == 0 {
+		return file
+	}
+	mut stmts := []ast.Stmt{cap: file.stmts.len + extra.len}
+	stmts << file.stmts
+	stmts << extra
+	return ast.File{
+		name:           file.name
+		mod:            file.mod
+		selector_names: file.selector_names
+		attributes:     file.attributes
+		imports:        file.imports
+		stmts:          stmts
+	}
+}
+
 fn (mut b Builder) transform_files_parallel(mut trans transformer.Transformer) []ast.File {
 	timing := os.getenv('V2_TTIME') != ''
 	mut sw := time.new_stopwatch()
@@ -185,10 +224,15 @@ fn (mut b Builder) transform_files_parallel_no_post_pass_impl(mut trans transfor
 	mut sw_impl := time.new_stopwatch()
 	mut stream_files_from_flat := stream_from_flat
 	mut files_to_transform := []ast.File{}
+	mut flat_extra_stmts := [][]ast.Stmt{}
 	if trans.needs_full_files_for_transform() {
-		src_files := if stream_from_flat { b.flat.to_files() } else { b.files }
-		files_to_transform = trans.prepare_files_for_transform(src_files)
-		stream_files_from_flat = false
+		if stream_from_flat {
+			extra_stmts := trans.prepare_flat_for_transform(&b.flat)
+			flat_extra_stmts = flat_extra_stmts_by_file(extra_stmts, b.flat.files.len)
+		} else {
+			files_to_transform = trans.prepare_files_for_transform(b.files)
+			stream_files_from_flat = false
+		}
 	} else if !stream_from_flat {
 		files_to_transform = b.files.clone()
 	}
@@ -211,11 +255,10 @@ fn (mut b Builder) transform_files_parallel_no_post_pass_impl(mut trans transfor
 		mut result := []ast.File{cap: n_files}
 		if stream_files_from_flat {
 			for fi in 0 .. n_files {
-				one := b.flat.to_files_range(fi, fi + 1)
-				if one.len == 0 {
+				file := prepared_flat_file_for_parallel_transform(&b.flat, flat_extra_stmts, fi) or {
 					continue
 				}
-				result << trans.transform_file_pub(one[0])
+				result << trans.transform_file_pub(file)
 			}
 		} else {
 			for i := 0; i < n_files; i++ {
@@ -231,11 +274,10 @@ fn (mut b Builder) transform_files_parallel_no_post_pass_impl(mut trans transfor
 			mut result := []ast.File{cap: n_files}
 			if stream_files_from_flat {
 				for fi in 0 .. n_files {
-					one := b.flat.to_files_range(fi, fi + 1)
-					if one.len == 0 {
+					file := prepared_flat_file_for_parallel_transform(&b.flat, flat_extra_stmts, fi) or {
 						continue
 					}
-					result << trans.transform_file_pub(one[0])
+					result << trans.transform_file_pub(file)
 				}
 			} else {
 				for i := 0; i < n_files; i++ {
@@ -292,13 +334,14 @@ fn (mut b Builder) transform_files_parallel_no_post_pass_impl(mut trans transfor
 			}
 			if stream_files_from_flat {
 				args << TransformChunkArgs{
-					t:          unsafe { voidptr(trans) }
-					flat:       unsafe { &b.flat }
-					flat_start: idxs[0]
-					flat_end:   idxs[idxs.len - 1] + 1
-					result_ptr: unsafe { voidptr(&chunk_results[chunk_idx]) }
-					worker_ptr: unsafe { voidptr(&worker_ptrs[chunk_idx]) }
-					worker_idx: chunk_idx
+					t:                unsafe { voidptr(trans) }
+					flat:             unsafe { &b.flat }
+					flat_extra_stmts: flat_extra_stmts
+					flat_start:       idxs[0]
+					flat_end:         idxs[idxs.len - 1] + 1
+					result_ptr:       unsafe { voidptr(&chunk_results[chunk_idx]) }
+					worker_ptr:       unsafe { voidptr(&worker_ptrs[chunk_idx]) }
+					worker_idx:       chunk_idx
 				}
 			} else {
 				mut chunk := []ast.File{cap: idxs.len}

@@ -65,9 +65,10 @@ mut:
 	// native_flat_pipeline_enabled means the transform phase produced a
 	// post-transform FlatAst and intentionally did not materialize b.files.
 	native_flat_pipeline_enabled bool
-	// Source AST snapshot used only for an isolated macOS tiny candidate graph.
-	// The normal hosted graph is still built from b.files and remains the fallback.
+	// Source snapshot used only for an isolated macOS tiny candidate graph.
+	// The normal hosted graph is still built separately and remains the fallback.
 	macos_tiny_candidate_source_files []ast.File
+	macos_tiny_candidate_source_flat  ast.FlatAst
 }
 
 pub fn new_builder(prefs &pref.Preferences) &Builder {
@@ -2149,14 +2150,15 @@ fn native_external_object_file(output_binary string, target_os string) string {
 
 fn (mut b Builder) prepare_macos_tiny_candidate_source_files() {
 	b.macos_tiny_candidate_source_files = []ast.File{}
+	b.macos_tiny_candidate_source_flat = ast.FlatAst{}
 	if !b.uses_macos_x64_tiny_object(.x64) {
 		return
 	}
-	b.macos_tiny_candidate_source_files = if b.flat_check_enabled && b.flat.files.len > 0 {
-		b.flat.to_files()
-	} else {
-		b.files.clone()
+	if b.flat_check_enabled && b.flat.files.len > 0 {
+		b.macos_tiny_candidate_source_flat = b.flat
+		return
 	}
+	b.macos_tiny_candidate_source_files = b.files.clone()
 }
 
 fn is_macos_native_target(target_os string) bool {
@@ -3183,17 +3185,29 @@ fn (mut b Builder) build_native_mir_from_files(files []ast.File, arch pref.Arch,
 }
 
 fn (mut b Builder) build_macos_tiny_candidate_mir(arch pref.Arch, target_os string) mir.Module {
-	if b.macos_tiny_candidate_source_files.len == 0 {
+	if b.macos_tiny_candidate_source_flat.files.len == 0
+		&& b.macos_tiny_candidate_source_files.len == 0 {
 		eprintln('internal error: macOS tiny candidate graph was not prepared')
 		exit(1)
 	}
 	mut trans := transformer.Transformer.new_with_pref(b.env, b.pref)
 	trans.set_file_set(b.file_set)
 	trans.enable_macos_tiny_candidate_graph()
-	candidate_files := trans.transform_files(b.macos_tiny_candidate_source_files)
 	opts := markused.MarkUsedOptions{
 		minimal_runtime_roots: true
 	}
+	if b.macos_tiny_candidate_source_flat.files.len > 0 {
+		candidate_flat :=
+			trans.transform_flat_to_flat_direct(&b.macos_tiny_candidate_source_flat, [])
+		candidate_used_fn_keys := markused.mark_used_flat_with_options(&candidate_flat, b.env, opts)
+		old_flat := b.flat
+		b.flat = candidate_flat
+		candidate_mir := b.build_native_mir_from_files([], arch, target_os, true,
+			candidate_used_fn_keys, macos_tiny_candidate_graph_label)
+		b.flat = old_flat
+		return candidate_mir
+	}
+	candidate_files := trans.transform_files(b.macos_tiny_candidate_source_files)
 	candidate_used_fn_keys := markused.mark_used_with_options(candidate_files, b.env, opts)
 	return b.build_native_mir_from_files(candidate_files, arch, target_os, true,
 		candidate_used_fn_keys, macos_tiny_candidate_graph_label)

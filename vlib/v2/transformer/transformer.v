@@ -1179,6 +1179,31 @@ fn generic_ref_short_name(expr ast.Expr) string {
 	}
 }
 
+fn generic_ref_short_name_cursor(expr ast.Cursor) string {
+	if !expr.is_valid() {
+		return ''
+	}
+	return match expr.kind() {
+		.expr_ident {
+			expr.name()
+		}
+		.expr_selector {
+			rhs := expr.edge(1)
+			if rhs.kind() == .expr_ident {
+				rhs.name()
+			} else {
+				''
+			}
+		}
+		.expr_generic_args, .expr_generic_arg_or_index, .expr_index, .expr_paren {
+			generic_ref_short_name_cursor(expr.edge(0))
+		}
+		else {
+			''
+		}
+	}
+}
+
 fn (mut t Transformer) collect_generic_fn_value_refs(files []ast.File) {
 	t.collect_generic_fn_decl_names(files)
 	for file in files {
@@ -1194,7 +1219,7 @@ fn (mut t Transformer) collect_generic_fn_value_refs_from_flat(flat &ast.FlatAst
 	for i in 0 .. flat.files.len {
 		stmts := flat.file_cursor(i).stmts()
 		for j in 0 .. stmts.len() {
-			t.collect_generic_fn_value_refs_in_stmt(flat.decode_stmt(stmts.at(j).id), false)
+			t.collect_generic_fn_value_refs_in_stmt_cursor(stmts.at(j), false)
 		}
 	}
 	t.collect_generic_fn_value_dependencies()
@@ -1212,8 +1237,72 @@ fn (mut t Transformer) collect_generic_fn_decl_names_from_flat(flat &ast.FlatAst
 	for i in 0 .. flat.files.len {
 		stmts := flat.file_cursor(i).stmts()
 		for j in 0 .. stmts.len() {
-			t.collect_generic_fn_decl_names_in_stmt(flat.decode_stmt(stmts.at(j).id))
+			t.collect_generic_fn_decl_names_in_stmt_cursor(stmts.at(j))
 		}
+	}
+}
+
+fn has_non_lifetime_generic_params_cursor(params ast.CursorList) bool {
+	for i in 0 .. params.len() {
+		if params.at(i).kind() != .expr_lifetime {
+			return true
+		}
+	}
+	return false
+}
+
+fn legacy_stmts_from_cursor_list(list ast.CursorList) []ast.Stmt {
+	mut stmts := []ast.Stmt{cap: list.len()}
+	for i in 0 .. list.len() {
+		c := list.at(i)
+		stmts << c.flat.decode_stmt(c.id)
+	}
+	return stmts
+}
+
+fn (mut t Transformer) collect_generic_fn_decl_names_in_stmt_cursor(stmt ast.Cursor) {
+	if !stmt.is_valid() {
+		return
+	}
+	match stmt.kind() {
+		.stmt_comptime {
+			t.collect_generic_fn_decl_names_in_stmt_cursor(stmt.edge(0))
+		}
+		.stmt_expr {
+			t.collect_generic_fn_decl_names_in_expr_cursor(stmt.edge(0))
+		}
+		.stmt_fn_decl {
+			generic_params := stmt.edge(1).list_at(0)
+			body := stmt.list_at(3)
+			if has_non_lifetime_generic_params_cursor(generic_params) {
+				t.generic_fn_decl_names[stmt.name()] = true
+				t.generic_fn_decl_stmts[stmt.name()] = legacy_stmts_from_cursor_list(body)
+			}
+			for i in 0 .. body.len() {
+				t.collect_generic_fn_decl_names_in_stmt_cursor(body.at(i))
+			}
+		}
+		else {}
+	}
+}
+
+fn (mut t Transformer) collect_generic_fn_decl_names_in_expr_cursor(expr ast.Cursor) {
+	if !expr.is_valid() {
+		return
+	}
+	match expr.kind() {
+		.expr_comptime {
+			t.collect_generic_fn_decl_names_in_expr_cursor(expr.edge(0))
+		}
+		.expr_if {
+			if expr.edge_count() > 2 {
+				for i in 2 .. expr.edge_count() {
+					t.collect_generic_fn_decl_names_in_stmt_cursor(expr.edge(i))
+				}
+			}
+			t.collect_generic_fn_decl_names_in_expr_cursor(expr.edge(1))
+		}
+		else {}
 	}
 }
 
@@ -1282,6 +1371,322 @@ fn (mut t Transformer) collect_generic_fn_value_dependencies() {
 fn (mut t Transformer) collect_generic_fn_value_refs_in_stmts(stmts []ast.Stmt, include_generic_calls bool) {
 	for stmt in stmts {
 		t.collect_generic_fn_value_refs_in_stmt(stmt, include_generic_calls)
+	}
+}
+
+fn (mut t Transformer) collect_generic_fn_value_refs_in_expr_cursor(expr ast.Cursor, include_generic_calls bool, in_call_lhs bool) {
+	if !expr.is_valid() {
+		return
+	}
+	match expr.kind() {
+		.expr_array_init {
+			for i in 5 .. expr.edge_count() {
+				t.collect_generic_fn_value_refs_in_expr_cursor(expr.edge(i), include_generic_calls,
+					false)
+			}
+			t.collect_generic_fn_value_refs_in_expr_cursor(expr.edge(1), include_generic_calls,
+				false)
+			t.collect_generic_fn_value_refs_in_expr_cursor(expr.edge(2), include_generic_calls,
+				false)
+			t.collect_generic_fn_value_refs_in_expr_cursor(expr.edge(3), include_generic_calls,
+				false)
+		}
+		.expr_as_cast {
+			t.collect_generic_fn_value_refs_in_expr_cursor(expr.edge(0), include_generic_calls,
+				false)
+		}
+		.expr_assoc {
+			t.collect_generic_fn_value_refs_in_expr_cursor(expr.edge(1), include_generic_calls,
+				false)
+			for i in 2 .. expr.edge_count() {
+				t.collect_generic_fn_value_refs_in_expr_cursor(expr.edge(i).edge(0),
+					include_generic_calls, false)
+			}
+		}
+		.expr_call {
+			t.collect_generic_fn_value_refs_in_expr_cursor(expr.edge(0), include_generic_calls,
+				true)
+			for i in 1 .. expr.edge_count() {
+				t.collect_generic_fn_value_refs_in_expr_cursor(expr.edge(i), include_generic_calls,
+					false)
+			}
+		}
+		.expr_call_or_cast {
+			t.collect_generic_fn_value_refs_in_expr_cursor(expr.edge(0), include_generic_calls,
+				false)
+			t.collect_generic_fn_value_refs_in_expr_cursor(expr.edge(1), include_generic_calls,
+				false)
+		}
+		.expr_cast {
+			t.collect_generic_fn_value_refs_in_expr_cursor(expr.edge(1), include_generic_calls,
+				false)
+		}
+		.expr_comptime, .expr_modifier, .expr_postfix, .expr_prefix, .expr_sql {
+			t.collect_generic_fn_value_refs_in_expr_cursor(expr.edge(0), include_generic_calls,
+				false)
+		}
+		.expr_fn_literal {
+			captured_len := expr.extra_int()
+			for i in 0 .. captured_len {
+				t.collect_generic_fn_value_refs_in_expr_cursor(expr.edge(1 + i),
+					include_generic_calls, false)
+			}
+			for i in (1 + captured_len) .. expr.edge_count() {
+				t.collect_generic_fn_value_refs_in_stmt_cursor(expr.edge(i), include_generic_calls)
+			}
+		}
+		.expr_generic_args {
+			base_name := generic_ref_short_name_cursor(expr.edge(0))
+			if (include_generic_calls || !in_call_lhs) && base_name in t.generic_fn_decl_names {
+				t.generic_fn_value_names[base_name] = true
+			}
+			t.collect_generic_fn_value_refs_in_expr_cursor(expr.edge(0), include_generic_calls,
+				in_call_lhs)
+			for i in 1 .. expr.edge_count() {
+				t.collect_generic_fn_value_refs_in_expr_cursor(expr.edge(i), include_generic_calls,
+					false)
+			}
+		}
+		.expr_generic_arg_or_index {
+			base_name := generic_ref_short_name_cursor(expr.edge(0))
+			if (include_generic_calls || !in_call_lhs) && base_name in t.generic_fn_decl_names {
+				t.generic_fn_value_names[base_name] = true
+			}
+			t.collect_generic_fn_value_refs_in_expr_cursor(expr.edge(0), include_generic_calls,
+				in_call_lhs)
+			t.collect_generic_fn_value_refs_in_expr_cursor(expr.edge(1), include_generic_calls,
+				false)
+		}
+		.expr_if {
+			t.collect_generic_fn_value_refs_in_expr_cursor(expr.edge(0), include_generic_calls,
+				false)
+			for i in 2 .. expr.edge_count() {
+				t.collect_generic_fn_value_refs_in_stmt_cursor(expr.edge(i), include_generic_calls)
+			}
+			t.collect_generic_fn_value_refs_in_expr_cursor(expr.edge(1), include_generic_calls,
+				false)
+		}
+		.expr_if_guard {
+			t.collect_generic_fn_value_refs_in_stmt_cursor(expr.edge(0), include_generic_calls)
+		}
+		.expr_index {
+			base_name := generic_ref_short_name_cursor(expr.edge(0))
+			if (include_generic_calls || !in_call_lhs) && base_name in t.generic_fn_decl_names {
+				t.generic_fn_value_names[base_name] = true
+			}
+			t.collect_generic_fn_value_refs_in_expr_cursor(expr.edge(0), include_generic_calls,
+				in_call_lhs)
+			t.collect_generic_fn_value_refs_in_expr_cursor(expr.edge(1), include_generic_calls,
+				false)
+		}
+		.expr_infix, .expr_range {
+			t.collect_generic_fn_value_refs_in_expr_cursor(expr.edge(0), include_generic_calls,
+				false)
+			t.collect_generic_fn_value_refs_in_expr_cursor(expr.edge(1), include_generic_calls,
+				false)
+		}
+		.expr_init {
+			for i in 1 .. expr.edge_count() {
+				t.collect_generic_fn_value_refs_in_expr_cursor(expr.edge(i).edge(0),
+					include_generic_calls, false)
+			}
+		}
+		.expr_keyword_operator, .expr_tuple {
+			for i in 0 .. expr.edge_count() {
+				t.collect_generic_fn_value_refs_in_expr_cursor(expr.edge(i), include_generic_calls,
+					false)
+			}
+		}
+		.expr_lambda {
+			t.collect_generic_fn_value_refs_in_expr_cursor(expr.edge(0), include_generic_calls,
+				false)
+		}
+		.expr_lock {
+			packed := u32(expr.extra_int())
+			lock_len := int(packed & 0xFFFF)
+			rlock_len := int((packed >> 16) & 0xFFFF)
+			for i in 0 .. lock_len {
+				t.collect_generic_fn_value_refs_in_expr_cursor(expr.edge(i), include_generic_calls,
+					false)
+			}
+			for i in lock_len .. (lock_len + rlock_len) {
+				t.collect_generic_fn_value_refs_in_expr_cursor(expr.edge(i), include_generic_calls,
+					false)
+			}
+			for i in (lock_len + rlock_len) .. expr.edge_count() {
+				t.collect_generic_fn_value_refs_in_stmt_cursor(expr.edge(i), include_generic_calls)
+			}
+		}
+		.expr_map_init {
+			keys_len := expr.extra_int()
+			for i in 0 .. keys_len {
+				t.collect_generic_fn_value_refs_in_expr_cursor(expr.edge(1 + i),
+					include_generic_calls, false)
+			}
+			for i in (1 + keys_len) .. expr.edge_count() {
+				t.collect_generic_fn_value_refs_in_expr_cursor(expr.edge(i), include_generic_calls,
+					false)
+			}
+		}
+		.expr_match {
+			t.collect_generic_fn_value_refs_in_expr_cursor(expr.edge(0), include_generic_calls,
+				false)
+			for i in 1 .. expr.edge_count() {
+				branch := expr.edge(i)
+				conds := branch.list_at(0)
+				for j in 0 .. conds.len() {
+					t.collect_generic_fn_value_refs_in_expr_cursor(conds.at(j),
+						include_generic_calls, false)
+				}
+				stmts := branch.list_at(1)
+				for j in 0 .. stmts.len() {
+					t.collect_generic_fn_value_refs_in_stmt_cursor(stmts.at(j),
+						include_generic_calls)
+				}
+			}
+		}
+		.expr_or {
+			t.collect_generic_fn_value_refs_in_expr_cursor(expr.edge(0), include_generic_calls,
+				false)
+			for i in 1 .. expr.edge_count() {
+				t.collect_generic_fn_value_refs_in_stmt_cursor(expr.edge(i), include_generic_calls)
+			}
+		}
+		.expr_paren {
+			t.collect_generic_fn_value_refs_in_expr_cursor(expr.edge(0), include_generic_calls,
+				in_call_lhs)
+		}
+		.expr_select {
+			t.collect_generic_fn_value_refs_in_stmt_cursor(expr.edge(0), include_generic_calls)
+			for i in 2 .. expr.edge_count() {
+				t.collect_generic_fn_value_refs_in_stmt_cursor(expr.edge(i), include_generic_calls)
+			}
+			t.collect_generic_fn_value_refs_in_expr_cursor(expr.edge(1), include_generic_calls,
+				false)
+		}
+		.expr_selector {
+			t.collect_generic_fn_value_refs_in_expr_cursor(expr.edge(0), include_generic_calls,
+				in_call_lhs)
+		}
+		.expr_string_inter {
+			inters := expr.list_at(1)
+			for i in 0 .. inters.len() {
+				inter := inters.at(i)
+				t.collect_generic_fn_value_refs_in_expr_cursor(inter.edge(0),
+					include_generic_calls, false)
+				t.collect_generic_fn_value_refs_in_expr_cursor(inter.edge(1),
+					include_generic_calls, false)
+			}
+		}
+		.expr_unsafe {
+			for i in 0 .. expr.edge_count() {
+				t.collect_generic_fn_value_refs_in_stmt_cursor(expr.edge(i), include_generic_calls)
+			}
+		}
+		.aux_field_init {
+			t.collect_generic_fn_value_refs_in_expr_cursor(expr.edge(0), include_generic_calls,
+				false)
+		}
+		else {}
+	}
+}
+
+fn (mut t Transformer) collect_generic_fn_value_refs_in_stmt_edges_cursor(stmt ast.Cursor, start int, include_generic_calls bool) {
+	if start >= stmt.edge_count() {
+		return
+	}
+	for i in start .. stmt.edge_count() {
+		t.collect_generic_fn_value_refs_in_stmt_cursor(stmt.edge(i), include_generic_calls)
+	}
+}
+
+fn (mut t Transformer) collect_generic_fn_value_refs_in_field_values_cursor(fields ast.CursorList, value_edge int, include_generic_calls bool) {
+	for i in 0 .. fields.len() {
+		t.collect_generic_fn_value_refs_in_expr_cursor(fields.at(i).edge(value_edge),
+			include_generic_calls, false)
+	}
+}
+
+fn (mut t Transformer) collect_generic_fn_value_refs_in_stmt_cursor(stmt ast.Cursor, include_generic_calls bool) {
+	if !stmt.is_valid() {
+		return
+	}
+	match stmt.kind() {
+		.stmt_assert {
+			t.collect_generic_fn_value_refs_in_expr_cursor(stmt.edge(0), include_generic_calls,
+				false)
+			t.collect_generic_fn_value_refs_in_expr_cursor(stmt.edge(1), include_generic_calls,
+				false)
+		}
+		.stmt_assign {
+			lhs_len := stmt.extra_int()
+			if lhs_len < stmt.edge_count() {
+				for i in lhs_len .. stmt.edge_count() {
+					t.collect_generic_fn_value_refs_in_expr_cursor(stmt.edge(i),
+						include_generic_calls, false)
+				}
+			}
+		}
+		.stmt_block {
+			t.collect_generic_fn_value_refs_in_stmt_edges_cursor(stmt, 0, include_generic_calls)
+		}
+		.stmt_comptime {
+			t.collect_generic_fn_value_refs_in_stmt_cursor(stmt.edge(0), include_generic_calls)
+		}
+		.stmt_const_decl {
+			t.collect_generic_fn_value_refs_in_field_values_cursor(stmt.list_at(0), 0,
+				include_generic_calls)
+		}
+		.stmt_defer {
+			t.collect_generic_fn_value_refs_in_stmt_edges_cursor(stmt, 0, include_generic_calls)
+		}
+		.stmt_enum_decl {
+			t.collect_generic_fn_value_refs_in_field_values_cursor(stmt.list_at(2), 1,
+				include_generic_calls)
+		}
+		.stmt_expr {
+			t.collect_generic_fn_value_refs_in_expr_cursor(stmt.edge(0), include_generic_calls,
+				false)
+		}
+		.stmt_fn_decl {
+			t.collect_generic_fn_value_refs_in_stmt_list_cursor(stmt.list_at(3),
+				include_generic_calls)
+		}
+		.stmt_for_in {
+			t.collect_generic_fn_value_refs_in_expr_cursor(stmt.edge(2), include_generic_calls,
+				false)
+		}
+		.stmt_for {
+			t.collect_generic_fn_value_refs_in_stmt_cursor(stmt.edge(0), include_generic_calls)
+			t.collect_generic_fn_value_refs_in_expr_cursor(stmt.edge(1), include_generic_calls,
+				false)
+			t.collect_generic_fn_value_refs_in_stmt_cursor(stmt.edge(2), include_generic_calls)
+			t.collect_generic_fn_value_refs_in_stmt_edges_cursor(stmt, 3, include_generic_calls)
+		}
+		.stmt_global_decl {
+			t.collect_generic_fn_value_refs_in_field_values_cursor(stmt.list_at(1), 1,
+				include_generic_calls)
+		}
+		.stmt_label {
+			t.collect_generic_fn_value_refs_in_stmt_cursor(stmt.edge(0), include_generic_calls)
+		}
+		.stmt_return {
+			for i in 0 .. stmt.edge_count() {
+				t.collect_generic_fn_value_refs_in_expr_cursor(stmt.edge(i), include_generic_calls,
+					false)
+			}
+		}
+		.stmt_struct_decl {
+			t.collect_generic_fn_value_refs_in_field_values_cursor(stmt.list_at(4), 1,
+				include_generic_calls)
+		}
+		else {}
+	}
+}
+
+fn (mut t Transformer) collect_generic_fn_value_refs_in_stmt_list_cursor(stmts ast.CursorList, include_generic_calls bool) {
+	for i in 0 .. stmts.len() {
+		t.collect_generic_fn_value_refs_in_stmt_cursor(stmts.at(i), include_generic_calls)
 	}
 }
 
@@ -1558,24 +1963,27 @@ pub fn (mut t Transformer) pre_pass(files []ast.File) {
 }
 
 // pre_pass_from_flat is the FlatAst-driven equivalent of pre_pass. It walks
-// file-level stmt cursors and decodes one stmt at a time so the transformer no
-// longer depends on pre-rehydrated []ast.File or per-file []ast.Stmt arrays for
-// its accumulators. The per-stmt walks reuse the existing recursive visitors,
-// which still operate on legacy ast.Stmt/Expr — flat-native walks are a later
-// step.
+// file-level stmt cursors so the transformer no longer depends on
+// pre-rehydrated []ast.File or per-file []ast.Stmt arrays for its accumulators.
+// The generic-function scans still reuse recursive legacy visitors; the
+// conditional attribute and runtime-const scans are cursor-native.
 pub fn (mut t Transformer) pre_pass_from_flat(flat &ast.FlatAst) {
 	t.collect_generic_fn_value_refs_from_flat(flat)
 	for i in 0 .. flat.files.len {
 		stmts := flat.file_cursor(i).stmts()
 		for j in 0 .. stmts.len() {
-			stmt := flat.decode_stmt(stmts.at(j).id)
-			if stmt is ast.FnDecl {
-				for attr in stmt.attributes {
-					if attr.comptime_cond !is ast.EmptyExpr {
-						if !t.eval_comptime_cond(attr.comptime_cond) {
-							t.elided_fns[stmt.name] = true
-						}
-					}
+			stmt := stmts.at(j)
+			if stmt.kind() != .stmt_fn_decl {
+				continue
+			}
+			attrs := stmt.list_at(2)
+			for ai in 0 .. attrs.len() {
+				cond := attrs.at(ai).edge(1)
+				if !cond.is_valid() || cond.kind() == .expr_empty {
+					continue
+				}
+				if !t.eval_comptime_cond_cursor(cond) {
+					t.elided_fns[stmt.name()] = true
 				}
 			}
 		}
@@ -2542,8 +2950,8 @@ pub fn (mut t Transformer) transform_files(files []ast.File) []ast.File {
 // legacy ast.File list.
 //
 // Monomorphization needs the full file set up front (it builds a
-// cross-file generic-decl index), so the flat input is rehydrated internally
-// when `files` is empty.
+// cross-file generic-decl index), so flat input is prepared once and then
+// rehydrated one file at a time when `files` is empty.
 pub fn (mut t Transformer) transform_files_from_flat(flat &ast.FlatAst, files []ast.File) []ast.File {
 	mut result := t.transform_files_from_flat_no_post_pass(flat, files)
 	t.post_pass(mut result)
@@ -2559,8 +2967,16 @@ pub fn (mut t Transformer) transform_files_from_flat(flat &ast.FlatAst, files []
 fn (mut t Transformer) transform_files_from_flat_no_post_pass(flat &ast.FlatAst, files []ast.File) []ast.File {
 	t.pre_pass_from_flat(flat)
 	if t.needs_full_files_for_transform() {
-		src_files := if files.len == 0 { flat.to_files() } else { files }
-		files_to_transform := t.prepare_files_for_transform(src_files)
+		if files.len == 0 {
+			extra_stmts := t.prepare_flat_for_transform(flat)
+			mut result := []ast.File{cap: flat.files.len}
+			for i in 0 .. flat.files.len {
+				src_file := prepared_flat_file_for_transform(flat, extra_stmts, i) or { continue }
+				result << t.transform_file(src_file)
+			}
+			return result
+		}
+		files_to_transform := t.prepare_files_for_transform(files)
 		mut result := []ast.File{cap: files_to_transform.len}
 		for file in files_to_transform {
 			result << t.transform_file(file)
@@ -2945,7 +3361,7 @@ fn (t &Transformer) collect_runtime_init_imports_from_if_expr_cursor(node ast.Cu
 		return
 	}
 	cond := node.edge(0)
-	if t.eval_comptime_cond(node.flat.decode_expr(cond.id)) {
+	if t.eval_comptime_cond_cursor(cond) {
 		t.collect_runtime_init_imports_from_if_cursor_stmts(node, mut imports)
 		return
 	}
@@ -3265,9 +3681,8 @@ fn (mut t Transformer) collect_runtime_const_inits_from_flat(flat &ast.FlatAst) 
 	t.runtime_const_storage_known = map[string]bool{}
 	for ff in flat.files {
 		mod := flat.file_mod(ff)
-		// s260: decode only const decls (skip fn bodies — the bulk) instead of a
-		// whole-file read_file_stmts decode. This runtime-const-init pass only acts
-		// on ConstDecl/GlobalDecl.
+		// Walk const field cursors directly. The analysis still materializes
+		// the specific initializer expressions it needs, but no full ConstDecl.
 		cdecls := ast.Cursor{
 			flat: unsafe { flat }
 			id:   ff.file_id
@@ -3277,19 +3692,23 @@ fn (mut t Transformer) collect_runtime_const_inits_from_flat(flat &ast.FlatAst) 
 			if cc.kind() != .stmt_const_decl {
 				continue
 			}
-			stmt := flat.decode_stmt(cc.id)
-			if stmt is ast.ConstDecl {
-				for field in stmt.fields {
-					if t.const_initializer_emits_storage(field.value, is_native) {
-						t.runtime_const_storage_known[runtime_const_known_key(mod, field.name)] = true
-					}
+			fields := cc.list_at(0)
+			for fi in 0 .. fields.len() {
+				field := fields.at(fi)
+				field_name := field.name()
+				if field_name == '' {
+					continue
+				}
+				field_value := flat.decode_expr(field.edge(0).id)
+				if t.const_initializer_emits_storage(field_value, is_native) {
+					t.runtime_const_storage_known[runtime_const_known_key(mod, field_name)] = true
 				}
 			}
 		}
 	}
 	for ff in flat.files {
 		mod := flat.file_mod(ff)
-		// s260: decode only const/global decls (skip fn bodies).
+		// Decode only initializer expressions from const/global field cursors.
 		cdecls := ast.Cursor{
 			flat: unsafe { flat }
 			id:   ff.file_id
@@ -3300,24 +3719,37 @@ fn (mut t Transformer) collect_runtime_const_inits_from_flat(flat &ast.FlatAst) 
 			if ck != .stmt_const_decl && ck != .stmt_global_decl {
 				continue
 			}
-			stmt := flat.decode_stmt(cc.id)
-			if stmt is ast.ConstDecl {
-				for field in stmt.fields {
-					if !t.needs_runtime_const_init(field.value, is_native) {
+			if ck == .stmt_const_decl {
+				fields := cc.list_at(0)
+				for fi in 0 .. fields.len() {
+					field := fields.at(fi)
+					field_name := field.name()
+					if field_name == '' {
 						continue
 					}
-					t.record_runtime_const_init(mod, field.name, field.value)
+					field_value := flat.decode_expr(field.edge(0).id)
+					if !t.needs_runtime_const_init(field_value, is_native) {
+						continue
+					}
+					t.record_runtime_const_init(mod, field_name, field_value)
 				}
 			}
-			if stmt is ast.GlobalDecl {
-				for field in stmt.fields {
-					if is_builtin_main_arg_global(mod, field.name) {
+			if ck == .stmt_global_decl {
+				fields := cc.list_at(1)
+				for fi in 0 .. fields.len() {
+					field := fields.at(fi)
+					field_name := field.name()
+					if field_name == '' {
 						continue
 					}
-					if !t.needs_runtime_global_init(field.value) {
+					if is_builtin_main_arg_global(mod, field_name) {
 						continue
 					}
-					t.record_runtime_const_init(mod, field.name, field.value)
+					field_value := flat.decode_expr(field.edge(1).id)
+					if !t.needs_runtime_global_init(field_value) {
+						continue
+					}
+					t.record_runtime_const_init(mod, field_name, field_value)
 				}
 			}
 		}
@@ -3338,18 +3770,22 @@ fn (mut t Transformer) collect_runtime_const_inits_from_flat(flat &ast.FlatAst) 
 				if cc.kind() != .stmt_const_decl {
 					continue
 				}
-				stmt := flat.decode_stmt(cc.id)
-				if stmt is ast.ConstDecl {
-					for field in stmt.fields {
-						if runtime_const_known_key(mod, field.name) in t.runtime_const_known {
-							continue
-						}
-						if !t.expr_depends_on_runtime_const(mod, field.value) {
-							continue
-						}
-						t.record_runtime_const_init(mod, field.name, field.value)
-						changed = true
+				fields := cc.list_at(0)
+				for fi in 0 .. fields.len() {
+					field := fields.at(fi)
+					field_name := field.name()
+					if field_name == '' {
+						continue
 					}
+					if runtime_const_known_key(mod, field_name) in t.runtime_const_known {
+						continue
+					}
+					field_value := flat.decode_expr(field.edge(0).id)
+					if !t.expr_depends_on_runtime_const(mod, field_value) {
+						continue
+					}
+					t.record_runtime_const_init(mod, field_name, field_value)
+					changed = true
 				}
 			}
 		}
@@ -14816,9 +15252,7 @@ fn (t &Transformer) explicit_str_method_fn_names(files []ast.File) map[string]bo
 
 // explicit_str_method_fn_names_from_flat is the FlatAst-input counterpart to
 // `explicit_str_method_fn_names`. Same control flow + module-prefix logic;
-// the per-file `for stmt in file.stmts` walk is replaced with a FileCursor
-// scan that decodes only `stmt_fn_decl` nodes via
-// `decode_fn_decl_signature` (no body decode).
+// the per-file `for stmt in file.stmts` walk is replaced with a FileCursor scan.
 fn (t &Transformer) explicit_str_method_fn_names_from_flat(flat &ast.FlatAst) map[string]bool {
 	mut names := map[string]bool{}
 	for fi in 0 .. flat.files.len {
@@ -14836,8 +15270,7 @@ fn (t &Transformer) explicit_str_method_fn_names_from_flat(flat &ast.FlatAst) ma
 			if c.name() != 'str' {
 				continue
 			}
-			decl := flat.decode_fn_decl_signature(c.id)
-			mut recv_name := t.get_receiver_type_name(decl.receiver.typ)
+			mut recv_name := t.get_receiver_type_name_cursor(c.edge(0).edge(0))
 			if recv_name == '' {
 				continue
 			}
@@ -15579,6 +16012,13 @@ fn (mut t Transformer) generate_array_method_fn(fn_name string, info ArrayMethod
 fn (mut t Transformer) generate_array_str_fn(fn_name string, elem_type string) ast.Stmt {
 	// Create parameter: a Array_int
 	array_type_name := fn_name[..fn_name.len - 4] // Remove '_str' suffix: 'Array_int_str' -> 'Array_int'
+	// The helper name is the source of truth; stale merged metadata must not
+	// make `Array_int_str` emit calls for a different element type.
+	canonical_elem_type := if array_type_name.starts_with('Array_') {
+		array_type_name['Array_'.len..]
+	} else {
+		elem_type
+	}
 	param_a := ast.Parameter{
 		name: 'a'
 		typ:  ast.Ident{
@@ -15592,10 +16032,10 @@ fn (mut t Transformer) generate_array_str_fn(fn_name string, elem_type string) a
 	// Auto-generated helper functions (Array_, Map_) use single underscore _str suffix.
 	// Real type methods use double underscore __str suffix.
 	// For pointer element types (e.g. Coordptr), strip 'ptr' suffix to get base type str fn.
-	mut resolved_elem_type := elem_type
-	if elem_type.ends_with('ptr') && elem_type != 'voidptr' && elem_type != 'charptr'
-		&& elem_type != 'byteptr' {
-		resolved_elem_type = elem_type[..elem_type.len - 3]
+	mut resolved_elem_type := canonical_elem_type
+	if canonical_elem_type.ends_with('ptr') && canonical_elem_type != 'voidptr'
+		&& canonical_elem_type != 'charptr' && canonical_elem_type != 'byteptr' {
+		resolved_elem_type = canonical_elem_type[..canonical_elem_type.len - 3]
 	}
 	elem_str_fn := if resolved_elem_type.starts_with('Array_')
 		|| resolved_elem_type.starts_with('Map_') {
@@ -15703,8 +16143,8 @@ fn (mut t Transformer) generate_array_str_fn(fn_name string, elem_type string) a
 			name: 'i'
 		}
 	})
-	str_arg := if elem_type.ends_with('ptr') && elem_type != 'voidptr' && elem_type != 'charptr'
-		&& elem_type != 'byteptr' {
+	str_arg := if canonical_elem_type.ends_with('ptr') && canonical_elem_type != 'voidptr'
+		&& canonical_elem_type != 'charptr' && canonical_elem_type != 'byteptr' {
 		ast.Expr(ast.PrefixExpr{
 			op:   .mul
 			expr: elem_expr
@@ -15719,7 +16159,7 @@ fn (mut t Transformer) generate_array_str_fn(fn_name string, elem_type string) a
 			name: 'sb'
 		}
 	})
-	if elem_type == 'string' {
+	if canonical_elem_type == 'string' {
 		for_body << builder_write_string_stmt(sb_ref, ast.Expr(ast.StringLiteral{
 			kind:  .v
 			value: "'"

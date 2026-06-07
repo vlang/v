@@ -49,8 +49,126 @@ fn (mut t Transformer) propagate_types_from_flat(flat &ast.FlatAst) {
 		t.cur_module = mod_name
 		stmts := fc.stmts()
 		for j in 0 .. stmts.len() {
-			t.prop_stmt(flat.decode_stmt(stmts.at(j).id))
+			t.prop_stmt_cursor(stmts.at(j))
 		}
+	}
+}
+
+fn (mut t Transformer) prop_expr_cursor(c ast.Cursor) ast.Expr {
+	if !c.is_valid() {
+		return ast.empty_expr
+	}
+	expr := c.flat.decode_expr(c.id)
+	t.prop_expr(expr)
+	return expr
+}
+
+fn (mut t Transformer) prop_expr_cursors(list ast.CursorList) []ast.Expr {
+	mut exprs := []ast.Expr{cap: list.len()}
+	for i in 0 .. list.len() {
+		exprs << t.prop_expr_cursor(list.at(i))
+	}
+	return exprs
+}
+
+fn (mut t Transformer) prop_stmt_list_cursor(list ast.CursorList) {
+	for i in 0 .. list.len() {
+		t.prop_stmt_cursor(list.at(i))
+	}
+}
+
+fn (mut t Transformer) prop_stmt_edges_cursor(stmt ast.Cursor, start int) {
+	for i in start .. stmt.edge_count() {
+		t.prop_stmt_cursor(stmt.edge(i))
+	}
+}
+
+fn (mut t Transformer) prop_expr_edges_cursor(stmt ast.Cursor, start int) {
+	for i in start .. stmt.edge_count() {
+		t.prop_expr_cursor(stmt.edge(i))
+	}
+}
+
+fn (mut t Transformer) prop_field_value_list_cursor(fields ast.CursorList, value_edge int) {
+	for i in 0 .. fields.len() {
+		t.prop_expr_cursor(fields.at(i).edge(value_edge))
+	}
+}
+
+fn (mut t Transformer) prop_stmt_cursor(stmt ast.Cursor) {
+	if !stmt.is_valid() {
+		return
+	}
+	match stmt.kind() {
+		.stmt_assert {
+			t.prop_expr_cursor(stmt.edge(0))
+			t.prop_expr_cursor(stmt.edge(1))
+		}
+		.stmt_assign {
+			lhs_len := stmt.extra_int()
+			rhs_cap := if lhs_len < stmt.edge_count() { stmt.edge_count() - lhs_len } else { 0 }
+			mut rhs := []ast.Expr{cap: rhs_cap}
+			for i in lhs_len .. stmt.edge_count() {
+				rhs << t.prop_expr_cursor(stmt.edge(i))
+			}
+			for i in 0 .. lhs_len {
+				lhs_expr := t.prop_expr_cursor(stmt.edge(i))
+				lhs_pos := lhs_expr.pos()
+				if lhs_pos.is_valid() && !t.has_prop_type(lhs_pos.id) && i < rhs.len {
+					if rhs_type := t.get_expr_type(rhs[i]) {
+						t.env.set_expr_type(lhs_pos.id, rhs_type)
+					}
+				}
+			}
+		}
+		.stmt_block {
+			t.prop_stmt_edges_cursor(stmt, 0)
+		}
+		.stmt_comptime {
+			t.prop_stmt_cursor(stmt.edge(0))
+		}
+		.stmt_const_decl {
+			t.prop_field_value_list_cursor(stmt.list_at(0), 0)
+		}
+		.stmt_defer {
+			t.prop_stmt_edges_cursor(stmt, 0)
+		}
+		.stmt_expr {
+			t.prop_expr_cursor(stmt.edge(0))
+		}
+		.stmt_fn_decl {
+			old_scope := t.scope
+			scope_key := t.prop_fn_scope_key_cursor(stmt)
+			if fn_scope := t.cached_fn_scopes[scope_key] {
+				t.scope = fn_scope
+			}
+			t.prop_stmt_list_cursor(stmt.list_at(3))
+			t.scope = old_scope
+		}
+		.stmt_for {
+			t.prop_stmt_cursor(stmt.edge(0))
+			t.prop_expr_cursor(stmt.edge(1))
+			t.prop_stmt_cursor(stmt.edge(2))
+			t.prop_stmt_edges_cursor(stmt, 3)
+		}
+		.stmt_for_in {
+			t.prop_expr_cursor(stmt.edge(0))
+			t.prop_expr_cursor(stmt.edge(1))
+			t.prop_expr_cursor(stmt.edge(2))
+		}
+		.stmt_global_decl {
+			t.prop_field_value_list_cursor(stmt.list_at(1), 1)
+		}
+		.stmt_label {
+			t.prop_stmt_cursor(stmt.edge(0))
+		}
+		.stmt_return {
+			t.prop_expr_edges_cursor(stmt, 0)
+		}
+		.stmt_enum_decl {
+			t.prop_field_value_list_cursor(stmt.list_at(2), 1)
+		}
+		else {}
 	}
 }
 
@@ -578,6 +696,19 @@ fn (t &Transformer) prop_fn_scope_key(decl ast.FnDecl) string {
 		'${recv_name}__${decl.name}'
 	} else {
 		decl.name
+	}
+	if t.cur_module == '' {
+		return scope_fn_name
+	}
+	return '${t.cur_module}__${scope_fn_name}'
+}
+
+fn (t &Transformer) prop_fn_scope_key_cursor(decl ast.Cursor) string {
+	scope_fn_name := if decl.flag(ast.flag_is_method) {
+		recv_name := t.get_receiver_type_name_cursor(decl.edge(0).edge(0))
+		'${recv_name}__${decl.name()}'
+	} else {
+		decl.name()
 	}
 	if t.cur_module == '' {
 		return scope_fn_name

@@ -1737,7 +1737,7 @@ fn (mut c Checker) register_imported_symbols_from_flat(flat &ast.FlatAst) {
 // currently evaluates true.
 fn (mut c Checker) active_file_imports_from_flat(flat &ast.FlatAst, ff ast.FlatFile) []ast.ImportStmt {
 	// s258: walk the file's top-level statement cursors instead of decoding the
-	// entire file via `read_file_stmts`. This runs per file (preregister_scopes +
+	// entire file via top-level statement decoding. This runs per file (preregister_scopes +
 	// register_imported_symbols), so the full legacy-AST decode was pure churn;
 	// the cursor walk only decodes the tiny comptime `$if` conditions. Mirrors the
 	// builder's s253 cursor-native import collection. Removes a legacy-AST decode
@@ -1987,7 +1987,7 @@ pub fn (mut c Checker) check_file_from_flat(flat &ast.FlatAst, ff ast.FlatFile) 
 	// s259: don't decode fn_decls here. Their bodies are checked via
 	// pending_fn_bodies (queued by the signature pass, run by
 	// process_pending_fn_bodies); in both loops below FnDecl is a no-op (the first
-	// `continue`s, c.stmt has no FnDecl arm). read_file_stmts decoded every fn body
+	// `continue`s, c.stmt has no FnDecl arm). Full top-level decoding decoded every fn body
 	// a SECOND time (after the sig pass already decoded+queued them) — pure churn.
 	decls := ast.Cursor{
 		flat: unsafe { flat }
@@ -2035,8 +2035,8 @@ fn (mut c Checker) check_struct_field_defaults_from_flat(flat &ast.FlatAst) {
 		}
 		c.scope = mod_scope
 		c.cur_file_module = mod
-		// s259: decode only struct decls instead of read_file_stmts (whole file,
-		// incl. every fn body). Kind-filter first, decode the matched node only.
+		// Walk struct fields directly from the flat decl; only the field type/value
+		// expressions that actually need checking are materialized.
 		decls := ast.Cursor{
 			flat: unsafe { flat }
 			id:   ff.file_id
@@ -2046,20 +2046,22 @@ fn (mut c Checker) check_struct_field_defaults_from_flat(flat &ast.FlatAst) {
 			if dc.kind() != .stmt_struct_decl {
 				continue
 			}
-			stmt := flat.decode_stmt(dc.id)
-			if stmt is ast.StructDecl {
-				for field in stmt.fields {
-					if field.value !is ast.EmptyExpr {
-						field_typ := c.type_expr(field.typ)
-						prev_expected := c.expected_type
-						c.expected_type = to_optional_type(field_typ)
-						c.expr(field.value)
-						$if ownership ? {
-							c.ownership_consume_expr(field.value, field.value.pos(), 'struct field')
-						}
-						c.expected_type = prev_expected
-					}
+			fields := dc.list_at(4)
+			for fi in 0 .. fields.len() {
+				field := fields.at(fi)
+				value_c := field.edge(1)
+				if !value_c.is_valid() || value_c.kind() == .expr_empty {
+					continue
 				}
+				field_typ := c.type_expr(flat.decode_expr(field.edge(0).id))
+				field_value := flat.decode_expr(value_c.id)
+				prev_expected := c.expected_type
+				c.expected_type = to_optional_type(field_typ)
+				c.expr(field_value)
+				$if ownership ? {
+					c.ownership_consume_expr(field_value, field_value.pos(), 'struct field')
+				}
+				c.expected_type = prev_expected
 			}
 		}
 	}
@@ -2080,7 +2082,8 @@ fn (mut c Checker) check_enum_field_values_from_flat(flat &ast.FlatAst) {
 		}
 		c.scope = mod_scope
 		c.cur_file_module = mod
-		// s259: decode only enum decls instead of read_file_stmts (whole file).
+		// Walk enum fields directly from the flat decl; only non-empty value
+		// expressions are materialized.
 		decls := ast.Cursor{
 			flat: unsafe { flat }
 			id:   ff.file_id
@@ -2090,12 +2093,12 @@ fn (mut c Checker) check_enum_field_values_from_flat(flat &ast.FlatAst) {
 			if dc.kind() != .stmt_enum_decl {
 				continue
 			}
-			stmt := flat.decode_stmt(dc.id)
-			if stmt is ast.EnumDecl {
-				for field in stmt.fields {
-					if field.value !is ast.EmptyExpr {
-						c.expr(field.value)
-					}
+			fields := dc.list_at(2)
+			for fi in 0 .. fields.len() {
+				field := fields.at(fi)
+				value_c := field.edge(1)
+				if value_c.is_valid() && value_c.kind() != .expr_empty {
+					c.expr(flat.decode_expr(value_c.id))
 				}
 			}
 		}

@@ -155,6 +155,15 @@ pub fn decl_key(module_name string, decl ast.FnDecl, env &types.Environment) str
 	return '${mod_name}|f|${decl.name}'
 }
 
+// decl_key_from_cursor computes the stable markused key for a flat FnDecl cursor.
+pub fn decl_key_from_cursor(module_name string, c ast.Cursor, env &types.Environment) string {
+	decl := fn_decl_signature_from_cursor(c)
+	if decl.name == '' {
+		return ''
+	}
+	return decl_key(module_name, decl, env)
+}
+
 fn new_walker(files []ast.File, env &types.Environment, opts MarkUsedOptions) Walker {
 	return Walker{
 		files:                          files
@@ -881,10 +890,7 @@ fn (mut w Walker) collect_defs_from_flat(flat &ast.FlatAst) {
 			c := stmts_list.at(i)
 			match c.kind() {
 				.stmt_fn_decl {
-					// Signature-only decode skips read_stmt_list(body_id),
-					// which dominates collect_defs time when the body is
-					// large. The cursor walk reads the body directly later.
-					fn_decl := flat.decode_fn_decl_signature(c.id)
+					fn_decl := fn_decl_signature_from_cursor(c)
 					if fn_decl.name == '' {
 						continue
 					}
@@ -910,6 +916,61 @@ fn (mut w Walker) collect_defs_from_flat(flat &ast.FlatAst) {
 		}
 	}
 	w.collect_const_fn_value_aliases_from_flat(flat)
+}
+
+fn fn_decl_signature_from_cursor(c ast.Cursor) ast.FnDecl {
+	if !c.is_valid() || c.kind() != .stmt_fn_decl {
+		return ast.FnDecl{}
+	}
+	return ast.FnDecl{
+		is_public: c.flag(ast.flag_is_public)
+		is_method: c.flag(ast.flag_is_method)
+		is_static: c.flag(ast.flag_is_static)
+		receiver:  read_parameter_cursor(c.edge(0))
+		language:  unsafe { ast.Language(int(c.aux())) }
+		name:      c.name()
+		typ:       read_fn_type_cursor(c.edge(1))
+		pos:       c.pos()
+	}
+}
+
+fn read_fn_type_cursor(c ast.Cursor) ast.FnType {
+	if !c.is_valid() || c.kind() != .typ_fn {
+		return ast.FnType{}
+	}
+	return ast.FnType{
+		generic_params: placeholder_expr_list(c.list_at(0).len())
+		params:         read_parameter_list_cursor(c.list_at(1))
+		return_type:    c.flat.decode_expr(c.edge(2).id)
+	}
+}
+
+fn read_parameter_cursor(c ast.Cursor) ast.Parameter {
+	if !c.is_valid() {
+		return ast.Parameter{}
+	}
+	return ast.Parameter{
+		name:   c.name()
+		typ:    c.flat.decode_expr(c.edge(0).id)
+		is_mut: c.flag(ast.flag_is_mut)
+		pos:    c.pos()
+	}
+}
+
+fn read_parameter_list_cursor(list ast.CursorList) []ast.Parameter {
+	mut out := []ast.Parameter{cap: list.len()}
+	for i in 0 .. list.len() {
+		out << read_parameter_cursor(list.at(i))
+	}
+	return out
+}
+
+fn placeholder_expr_list(len int) []ast.Expr {
+	mut out := []ast.Expr{cap: len}
+	for _ in 0 .. len {
+		out << ast.empty_expr
+	}
+	return out
 }
 
 fn const_fn_value_alias_key(mod_name string, name string) string {

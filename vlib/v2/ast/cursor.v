@@ -94,8 +94,6 @@ pub fn (c Cursor) import_stmt() ImportStmt {
 		sym := c.edge(i)
 		if sym.kind() == .expr_ident {
 			symbols << Expr(sym.ident())
-		} else if sym.is_valid() {
-			symbols << c.flat.decode_expr(sym.id)
 		}
 	}
 	return ImportStmt{
