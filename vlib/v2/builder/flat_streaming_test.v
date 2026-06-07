@@ -134,27 +134,6 @@ fn main() {
 	assert run_res.output.trim_space() == 'flat parallel ok', run_res.output
 }
 
-fn test_removed_flat_compat_env_flags_do_not_disable_flat_defaults() {
-	old_legacy := os.getenv('V2_LEGACY_AST')
-	old_check := os.getenv('V2_CHECK_FLAT')
-	old_markused := os.getenv('V2_MARKUSED_FLAT')
-	old_ssa := os.getenv('V2_FLAT_SSA')
-	defer {
-		os.setenv('V2_LEGACY_AST', old_legacy, true)
-		os.setenv('V2_CHECK_FLAT', old_check, true)
-		os.setenv('V2_MARKUSED_FLAT', old_markused, true)
-		os.setenv('V2_FLAT_SSA', old_ssa, true)
-	}
-	os.setenv('V2_LEGACY_AST', '1', true)
-	os.unsetenv('V2_CHECK_FLAT')
-	os.unsetenv('V2_MARKUSED_FLAT')
-	os.unsetenv('V2_FLAT_SSA')
-	b := new_builder(&pref.Preferences{})
-	assert b.flat_check_enabled
-	assert b.markused_flat_enabled
-	assert b.flat_ssa_enabled
-}
-
 fn test_default_parallel_transform_monomorphizes_generic_calls_for_native_backend() {
 	path := write_tmp_file('parallel_transform_generic_main', 'module main
 

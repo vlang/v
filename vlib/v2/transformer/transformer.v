@@ -992,6 +992,36 @@ fn (t &Transformer) smartcast_context_tag_value(ctx SmartcastContext) ?int {
 	return none
 }
 
+fn (t &Transformer) find_sumtype_with_variant_at_tag(variant_name string, tag int) string {
+	if variant_name == '' || tag < 0 {
+		return ''
+	}
+	for st in ['Expr', 'Type', 'Stmt', 'ast__Expr', 'ast__Type', 'ast__Stmt'] {
+		variants := t.get_sum_type_variants(st)
+		if tag < variants.len
+			&& sum_type_variant_matches_for_sumtype(st, variants[tag], variant_name) {
+			return st
+		}
+	}
+	for mod_name, scope in t.cached_scopes {
+		for type_name, typ in scope.types {
+			if typ is types.SumType {
+				st_name := if mod_name != '' && mod_name != 'main' && mod_name != 'builtin' {
+					'${mod_name}__${type_name}'
+				} else {
+					type_name
+				}
+				variants := typ.get_variants()
+				if tag < variants.len
+					&& sum_type_variant_matches_for_sumtype(st_name, variants[tag].name(), variant_name) {
+					return st_name
+				}
+			}
+		}
+	}
+	return ''
+}
+
 fn (t &Transformer) smartcast_context_from_tag_check(expr ast.InfixExpr) ?SmartcastContext {
 	if expr.op != .eq || expr.lhs !is ast.SelectorExpr {
 		return none
@@ -1012,13 +1042,18 @@ fn (t &Transformer) smartcast_context_from_tag_check(expr ast.InfixExpr) ?Smartc
 		return none
 	}
 	sumtype_expr := tag_sel.lhs
-	sumtype_name := t.get_sumtype_name_for_expr(sumtype_expr)
+	mut sumtype_name := t.get_sumtype_name_for_expr(sumtype_expr)
 	if sumtype_name == '' {
 		return none
 	}
-	variants := t.get_sum_type_variants(sumtype_name)
+	mut variants := t.get_sum_type_variants(sumtype_name)
 	if tag >= variants.len {
-		return none
+		storage_sumtype := t.find_sumtype_with_variant_at_tag(sumtype_name, tag)
+		if storage_sumtype == '' {
+			return none
+		}
+		sumtype_name = storage_sumtype
+		variants = t.get_sum_type_variants(sumtype_name)
 	}
 	variant_name := variants[tag]
 	variant_short := if variant_name.contains('__') {
@@ -1067,6 +1102,42 @@ fn (mut t Transformer) transform_tag_check_lhs(lhs ast.Expr) ast.Expr {
 		return ast.Expr(lhs)
 	}
 	return t.transform_expr(lhs)
+}
+
+fn smartcast_type_name_matches(candidate string, target string) bool {
+	mut c := candidate.trim_space()
+	mut t := target.trim_space()
+	if c.starts_with('&') {
+		c = c[1..]
+	}
+	if t.starts_with('&') {
+		t = t[1..]
+	}
+	c = c.trim_right('*')
+	t = t.trim_right('*')
+	if c == '' || t == '' {
+		return false
+	}
+	if c == t {
+		return true
+	}
+	c_short := if c.contains('__') { c.all_after_last('__') } else { c }
+	t_short := if t.contains('__') { t.all_after_last('__') } else { t }
+	return c_short == t_short
+}
+
+fn (mut t Transformer) transform_tag_check_lhs_for_sumtype(lhs ast.Expr, sumtype_name string) ast.Expr {
+	lhs_expr_str := t.expr_to_string(lhs)
+	if lhs_expr_str != '' {
+		if ctx := t.find_smartcast_for_expr(lhs_expr_str) {
+			if !ctx.sumtype.starts_with('__iface__')
+				&& (smartcast_type_name_matches(ctx.variant, sumtype_name)
+				|| smartcast_type_name_matches(ctx.variant_full, sumtype_name)) {
+				return t.apply_smartcast_direct_ctx(lhs, ctx)
+			}
+		}
+	}
+	return t.transform_tag_check_lhs(lhs)
 }
 
 // has_active_smartcast returns true if there's any active smartcast context
@@ -2961,38 +3032,86 @@ pub fn (mut t Transformer) transform_files_from_flat(flat &ast.FlatAst, files []
 // `transform_files_to_flat_via_driver` (new flat-output path, calls
 // `post_pass_to_flat` on the flattened output instead) call this helper.
 fn (mut t Transformer) transform_files_from_flat_no_post_pass(flat &ast.FlatAst, files []ast.File) []ast.File {
+	timing := os.getenv('V2_TTIME') != ''
+	file_timing := os.getenv('V2_TTIME_FILES') != ''
+	mut sw := time.new_stopwatch()
+	t_print_mem('flat no-post enter')
 	t.pre_pass_from_flat(flat)
+	t_print_mem('flat no-post after pre_pass')
+	if timing {
+		eprintln('  [ttime] flat no-post pre_pass: ${sw.elapsed().milliseconds()}ms')
+		sw = time.new_stopwatch()
+	}
 	if t.needs_full_files_for_transform() {
 		if files.len == 0 {
 			extra_stmts := t.prepare_flat_for_transform(flat)
+			t_print_mem('flat no-post after prepare/monomorphize')
+			if timing {
+				eprintln('  [ttime] flat no-post prepare: ${sw.elapsed().milliseconds()}ms')
+				sw = time.new_stopwatch()
+			}
 			mut result := []ast.File{cap: flat.files.len}
 			for i in 0 .. flat.files.len {
+				mut fsw := time.new_stopwatch()
 				src_file := prepared_flat_file_for_transform(flat, extra_stmts, i) or { continue }
 				result << t.transform_file(src_file)
+				if file_timing {
+					eprintln('  [ttime-file] flat no-post: ${src_file.name} ${fsw.elapsed().milliseconds()}ms')
+				}
+			}
+			t_print_mem('flat no-post after per-file loop')
+			if timing {
+				eprintln('  [ttime] flat no-post per-file: ${sw.elapsed().milliseconds()}ms')
 			}
 			return result
 		}
 		files_to_transform := t.prepare_files_for_transform(files)
+		t_print_mem('flat no-post after prepare/monomorphize')
+		if timing {
+			eprintln('  [ttime] flat no-post prepare: ${sw.elapsed().milliseconds()}ms')
+			sw = time.new_stopwatch()
+		}
 		mut result := []ast.File{cap: files_to_transform.len}
 		for file in files_to_transform {
+			mut fsw := time.new_stopwatch()
 			result << t.transform_file(file)
+			if file_timing {
+				eprintln('  [ttime-file] flat no-post: ${file.name} ${fsw.elapsed().milliseconds()}ms')
+			}
+		}
+		t_print_mem('flat no-post after per-file loop')
+		if timing {
+			eprintln('  [ttime] flat no-post per-file: ${sw.elapsed().milliseconds()}ms')
 		}
 		return result
 	}
 	if files.len > 0 {
 		mut result := []ast.File{cap: files.len}
 		for file in files {
+			mut fsw := time.new_stopwatch()
 			result << t.transform_file(file)
+			if file_timing {
+				eprintln('  [ttime-file] flat no-post: ${file.name} ${fsw.elapsed().milliseconds()}ms')
+			}
+		}
+		t_print_mem('flat no-post after per-file loop')
+		if timing {
+			eprintln('  [ttime] flat no-post per-file: ${sw.elapsed().milliseconds()}ms')
 		}
 		return result
 	}
 	mut result := []ast.File{cap: flat.files.len}
 	for i in 0 .. flat.files.len {
-		src_arr := flat.to_files_range(i, i + 1)
-		if src_arr.len == 0 {
-			continue
+		mut fsw := time.new_stopwatch()
+		src_file := flat_file_for_transform(flat, i, []ast.Stmt{}) or { continue }
+		result << t.transform_file(src_file)
+		if file_timing {
+			eprintln('  [ttime-file] flat no-post: ${src_file.name} ${fsw.elapsed().milliseconds()}ms')
 		}
-		result << t.transform_file(src_arr[0])
+	}
+	t_print_mem('flat no-post after per-file loop')
+	if timing {
+		eprintln('  [ttime] flat no-post per-file: ${sw.elapsed().milliseconds()}ms')
 	}
 	return result
 }
@@ -3050,22 +3169,53 @@ pub fn (mut t Transformer) transform_files_to_flat(flat &ast.FlatAst, files []as
 // disappears — first measurable peak-memory win. Until then this is the
 // migration scaffolding, pinned by per-file subtree parity tests.
 pub fn (mut t Transformer) transform_files_to_flat_via_driver(flat &ast.FlatAst, files []ast.File) (ast.FlatAst, []ast.File) {
+	timing := os.getenv('V2_TTIME') != ''
+	mut sw := time.new_stopwatch()
 	mut result := t.transform_files_from_flat_no_post_pass(flat, files)
+	t_print_mem('flat driver after no-post')
+	if timing {
+		eprintln('  [ttime] flat driver no-post: ${sw.elapsed().milliseconds()}ms')
+		sw = time.new_stopwatch()
+	}
 	mut builder := ast.new_flat_builder()
 	for file in result {
 		builder.append_file(file)
+	}
+	t_print_mem('flat driver after append')
+	if timing {
+		eprintln('  [ttime] flat driver append: ${sw.elapsed().milliseconds()}ms')
+		sw = time.new_stopwatch()
 	}
 	// Compute parts against the freshly-appended flat (s166): no longer
 	// needs `result []ast.File` for explicit_str / module routing — both
 	// `explicit_str_method_fn_names_from_flat` (s165) and
 	// `generated_fn_module_from_flat` (s164) walk `builder.flat` directly.
 	generated_parts := t.generated_fns_parts_from_flat(&builder.flat)
+	t_print_mem('flat driver after generated parts')
+	if timing {
+		eprintln('  [ttime] flat driver generated parts: ${sw.elapsed().milliseconds()}ms')
+		sw = time.new_stopwatch()
+	}
 	t.post_pass_to_flat(mut builder, generated_parts)
+	t_print_mem('flat driver after post_pass_to_flat')
+	if timing {
+		eprintln('  [ttime] flat driver post_pass_to_flat: ${sw.elapsed().milliseconds()}ms')
+		sw = time.new_stopwatch()
+	}
 	t.post_pass_files_with_generated_parts(mut result, generated_parts)
+	t_print_mem('flat driver after files generated parts')
+	if timing {
+		eprintln('  [ttime] flat driver files generated parts: ${sw.elapsed().milliseconds()}ms')
+		sw = time.new_stopwatch()
+	}
 	// The compatibility files now receive the same file-mutating post-pass
 	// edits as the flat output, so run the non-file tail on those files for
 	// downstream legacy consumers.
 	t.apply_post_pass_tail(result)
+	t_print_mem('flat driver after post_pass tail')
+	if timing {
+		eprintln('  [ttime] flat driver post_pass tail: ${sw.elapsed().milliseconds()}ms')
+	}
 	return builder.flat, result
 }
 
@@ -3113,8 +3263,9 @@ pub fn (mut t Transformer) transform_files_to_flat_direct(files []ast.File) ast.
 // transform_flat_to_flat_direct transforms flat input into flat output without
 // collecting a whole legacy []ast.File input or the transformed legacy output.
 // Generic monomorphization is append-only, so flat preparation keeps cloned
-// declarations in a per-file side table and the per-file loop decodes one
-// source file at a time.
+// declarations in a per-file side table and the per-file loop reads top-level
+// statements from cursors, decoding only each statement handed to legacy
+// lowering helpers.
 pub fn (mut t Transformer) transform_flat_to_flat_direct(flat &ast.FlatAst, files []ast.File) ast.FlatAst {
 	if files.len > 0 {
 		return t.transform_files_to_flat_direct(files)
@@ -3136,8 +3287,8 @@ pub fn (mut t Transformer) transform_flat_to_flat_direct(flat &ast.FlatAst, file
 	}
 	mut builder := new_transform_output_flat_builder_from_flat(flat)
 	for i in 0 .. flat.files.len {
-		src_file := prepared_flat_file_for_transform(flat, extra_stmts, i) or { continue }
-		t.transform_file_to_flat(src_file, mut builder)
+		extra := extra_stmts[i] or { []ast.Stmt{} }
+		t.transform_flat_file_index_to_flat(flat, i, extra, mut builder)
 	}
 	t_print_mem('after per-file flat loop')
 	if timing {
@@ -3180,26 +3331,31 @@ fn new_transform_output_flat_builder_from_flat(flat &ast.FlatAst) ast.FlatBuilde
 }
 
 fn prepared_flat_file_for_transform(flat &ast.FlatAst, extra_stmts map[int][]ast.Stmt, fi int) ?ast.File {
-	src_arr := flat.to_files_range(fi, fi + 1)
-	if src_arr.len == 0 {
+	extra := extra_stmts[fi] or { []ast.Stmt{} }
+	return flat_file_for_transform(flat, fi, extra)
+}
+
+fn flat_file_for_transform(flat &ast.FlatAst, fi int, extra_stmts []ast.Stmt) ?ast.File {
+	if fi < 0 || fi >= flat.files.len {
 		return none
 	}
-	mut file := src_arr[0]
-	extra := extra_stmts[fi] or { []ast.Stmt{} }
-	if extra.len > 0 {
-		mut stmts := []ast.Stmt{cap: file.stmts.len + extra.len}
-		stmts << file.stmts
-		stmts << extra
-		file = ast.File{
-			name:           file.name
-			mod:            file.mod
-			selector_names: file.selector_names
-			attributes:     file.attributes
-			imports:        file.imports
-			stmts:          stmts
-		}
+	fc := flat.file_cursor(fi)
+	stmt_list := fc.stmts()
+	mut stmts := []ast.Stmt{cap: stmt_list.len() + extra_stmts.len}
+	for i in 0 .. stmt_list.len() {
+		stmts << stmt_list.at(i).stmt()
 	}
-	return file
+	if extra_stmts.len > 0 {
+		stmts << extra_stmts
+	}
+	return ast.File{
+		name:           fc.name()
+		mod:            fc.mod()
+		selector_names: fc.selector_names()
+		attributes:     fc.attrs().attributes()
+		imports:        flat.read_file_imports(flat.files[fi])
+		stmts:          stmts
+	}
 }
 
 fn runtime_const_init_base_name(mod string) string {
@@ -3861,7 +4017,7 @@ fn (mut t Transformer) collect_runtime_const_inits_from_flat(flat &ast.FlatAst) 
 					if !t.needs_runtime_const_init_cursor(value_c, is_native) {
 						continue
 					}
-					field_value := flat.decode_expr(value_c.id)
+					field_value := value_c.expr()
 					t.record_runtime_const_init(mod, field_name, field_value)
 				}
 			}
@@ -3880,7 +4036,7 @@ fn (mut t Transformer) collect_runtime_const_inits_from_flat(flat &ast.FlatAst) 
 					if !t.needs_runtime_global_init_cursor(value_c) {
 						continue
 					}
-					field_value := flat.decode_expr(value_c.id)
+					field_value := value_c.expr()
 					t.record_runtime_const_init(mod, field_name, field_value)
 				}
 			}
@@ -3916,7 +4072,7 @@ fn (mut t Transformer) collect_runtime_const_inits_from_flat(flat &ast.FlatAst) 
 					if !t.expr_depends_on_runtime_const_cursor(mod, value_c) {
 						continue
 					}
-					field_value := flat.decode_expr(value_c.id)
+					field_value := value_c.expr()
 					t.record_runtime_const_init(mod, field_name, field_value)
 					changed = true
 				}

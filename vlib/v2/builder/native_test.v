@@ -152,7 +152,6 @@ fn test_macos_tiny_candidate_source_snapshot_uses_flat_when_enabled() {
 		},
 	]
 	mut tiny_builder := new_builder(&prefs)
-	tiny_builder.flat_check_enabled = true
 	tiny_builder.files = [
 		ast.File{
 			mod:  'stale'

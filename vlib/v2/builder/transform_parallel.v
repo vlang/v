@@ -153,27 +153,24 @@ fn flat_extra_stmts_by_file(extra_stmts map[int][]ast.Stmt, n_files int) [][]ast
 }
 
 fn prepared_flat_file_for_parallel_transform(flat &ast.FlatAst, flat_extra_stmts [][]ast.Stmt, fi int) ?ast.File {
-	src_arr := flat.to_files_range(fi, fi + 1)
-	if src_arr.len == 0 {
+	if fi < 0 || fi >= flat.files.len {
 		return none
 	}
-	mut file := src_arr[0]
-	if fi < 0 || fi >= flat_extra_stmts.len {
-		return file
+	fc := flat.file_cursor(fi)
+	stmt_list := fc.stmts()
+	mut stmts := []ast.Stmt{cap: stmt_list.len()}
+	for i in 0 .. stmt_list.len() {
+		stmts << stmt_list.at(i).stmt()
 	}
-	extra := flat_extra_stmts[fi]
-	if extra.len == 0 {
-		return file
+	if fi < flat_extra_stmts.len {
+		stmts << flat_extra_stmts[fi]
 	}
-	mut stmts := []ast.Stmt{cap: file.stmts.len + extra.len}
-	stmts << file.stmts
-	stmts << extra
 	return ast.File{
-		name:           file.name
-		mod:            file.mod
-		selector_names: file.selector_names
-		attributes:     file.attributes
-		imports:        file.imports
+		name:           fc.name()
+		mod:            fc.mod()
+		selector_names: fc.selector_names()
+		attributes:     fc.attrs().attributes()
+		imports:        flat.read_file_imports(flat.files[fi])
 		stmts:          stmts
 	}
 }
@@ -206,7 +203,7 @@ fn (mut b Builder) transform_files_parallel_from_flat(mut trans transformer.Tran
 // `transform_files_parallel_to_flat_via_driver` (which calls
 // `post_pass_to_flat` on the flattened output instead).
 fn (mut b Builder) transform_files_parallel_no_post_pass(mut trans transformer.Transformer) []ast.File {
-	return b.transform_files_parallel_no_post_pass_impl(mut trans, b.flat_check_enabled)
+	return b.transform_files_parallel_no_post_pass_impl(mut trans, true)
 }
 
 fn (mut b Builder) transform_files_parallel_no_post_pass_from_flat(mut trans transformer.Transformer) []ast.File {

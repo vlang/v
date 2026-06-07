@@ -39,16 +39,37 @@ fn (mut g Gen) has_explicit_str_method_for_c_type(c_type_name string) bool {
 	old_file := g.cur_file_name
 	old_module := g.cur_module
 	old_import_modules := g.cur_import_modules.clone()
-	for file in g.files {
-		g.set_file_module(file)
-		for stmt in file.stmts {
-			if stmt is ast.FnDecl {
-				if stmt.is_method && stmt.name == 'str'
-					&& g.method_decl_c_name_for_module(g.cur_module, stmt) == '${c_type_name}__str' {
-					g.cur_file_name = old_file
-					g.cur_module = old_module
-					g.cur_import_modules = old_import_modules.clone()
-					return true
+	if g.has_flat() {
+		for i in 0 .. g.flat.files.len {
+			fc := g.flat.file_cursor(i)
+			g.set_file_cursor_module(fc)
+			stmts := fc.stmts()
+			for j in 0 .. stmts.len() {
+				stmt := stmts.at(j)
+				if stmt.kind() == .stmt_fn_decl && stmt.name() == 'str' {
+					decl := stmt.fn_decl_signature()
+					if decl.is_method
+						&& g.method_decl_c_name_for_module(g.cur_module, decl) == '${c_type_name}__str' {
+						g.cur_file_name = old_file
+						g.cur_module = old_module
+						g.cur_import_modules = old_import_modules.clone()
+						return true
+					}
+				}
+			}
+		}
+	} else {
+		for file in g.files {
+			g.set_file_module(file)
+			for stmt in file.stmts {
+				if stmt is ast.FnDecl {
+					if stmt.is_method && stmt.name == 'str'
+						&& g.method_decl_c_name_for_module(g.cur_module, stmt) == '${c_type_name}__str' {
+						g.cur_file_name = old_file
+						g.cur_module = old_module
+						g.cur_import_modules = old_import_modules.clone()
+						return true
+					}
 				}
 			}
 		}
@@ -96,17 +117,60 @@ fn (mut g Gen) collect_generic_struct_bindings() {
 		g.cur_fn_name = prev_fn_name
 		g.cur_fn_c_name = prev_fn_c_name
 	}
-	if !g.collect_generic_struct_bindings_file_scan_parallel() {
+	if g.has_flat() {
+		g.collect_generic_struct_bindings_flat()
+	} else if !g.collect_generic_struct_bindings_file_scan_parallel() {
 		g.collect_generic_struct_bindings_file_scan(g.files)
 	}
 	stage_start = g.mark_cgen_step(stats_enabled, stats_scope, mut stats_sw, stage_start,
 		'setup.generic_struct_bindings.file_scan')
-	g.propagate_generic_struct_bindings_for_files(g.files)
+	if g.has_flat() {
+		g.propagate_generic_struct_bindings_flat()
+	} else {
+		g.propagate_generic_struct_bindings_for_files(g.files)
+	}
 	stage_start = g.mark_cgen_step(stats_enabled, stats_scope, mut stats_sw, stage_start,
 		'setup.generic_struct_bindings.propagate')
-	g.scan_receiver_generic_struct_bindings_for_files(g.files)
+	if g.has_flat() {
+		g.scan_receiver_generic_struct_bindings_flat()
+	} else {
+		g.scan_receiver_generic_struct_bindings_for_files(g.files)
+	}
 	_ = g.mark_cgen_step(stats_enabled, stats_scope, mut stats_sw, stage_start,
 		'setup.generic_struct_bindings.receiver_scan')
+}
+
+fn (mut g Gen) collect_generic_struct_bindings_flat() {
+	for i in 0 .. g.flat.files.len {
+		fc := g.flat.file_cursor(i)
+		g.set_file_cursor_module(fc)
+		stmts := fc.stmts()
+		for j in 0 .. stmts.len() {
+			stmt := stmts.at(j)
+			match stmt.kind() {
+				.stmt_struct_decl {
+					decl := stmt.struct_decl()
+					for field in decl.fields {
+						g.scan_expr_for_generic_types(field.typ)
+					}
+				}
+				.stmt_fn_decl {
+					decl := stmt.fn_decl()
+					if decl.receiver.typ !is ast.EmptyExpr {
+						g.scan_expr_for_generic_types(decl.receiver.typ)
+					}
+					for param in decl.typ.params {
+						g.scan_expr_for_generic_types(param.typ)
+					}
+					if decl.typ.return_type !is ast.EmptyExpr {
+						g.scan_expr_for_generic_types(decl.typ.return_type)
+					}
+					g.scan_fn_body_for_generic_types_with_clean_locals(decl, '')
+				}
+				else {}
+			}
+		}
+	}
 }
 
 fn (mut g Gen) collect_generic_struct_bindings_file_scan(files []ast.File) {
@@ -177,6 +241,34 @@ fn (mut g Gen) propagate_generic_struct_bindings_for_files(files []ast.File) {
 	}
 }
 
+fn (mut g Gen) propagate_generic_struct_bindings_flat() {
+	for i in 0 .. g.flat.files.len {
+		fc := g.flat.file_cursor(i)
+		g.set_file_cursor_module(fc)
+		stmts := fc.stmts()
+		for j in 0 .. stmts.len() {
+			stmt := stmts.at(j)
+			if stmt.kind() != .stmt_struct_decl {
+				continue
+			}
+			decl := stmt.struct_decl()
+			if decl.generic_params.len == 0 {
+				continue
+			}
+			struct_c_name := g.get_struct_name(decl)
+			if struct_c_name !in g.generic_struct_bindings {
+				continue
+			}
+			instances := g.generic_struct_instances[struct_c_name]
+			for inst in instances {
+				for field in decl.fields {
+					g.propagate_generic_bindings(field.typ, inst.bindings)
+				}
+			}
+		}
+	}
+}
+
 fn (mut g Gen) scan_receiver_generic_struct_bindings_for_files(files []ast.File) {
 	// Generic receiver methods can contain explicit calls like
 	// `helper[T](...)` even when the receiver itself is emitted with v2's
@@ -211,6 +303,45 @@ fn (mut g Gen) scan_receiver_generic_struct_bindings_for_files(files []ast.File)
 				}
 				g.active_generic_types = prev_generic_types.clone()
 			}
+		}
+	}
+}
+
+fn (mut g Gen) scan_receiver_generic_struct_bindings_flat() {
+	for i in 0 .. g.flat.files.len {
+		fc := g.flat.file_cursor(i)
+		g.set_file_cursor_module(fc)
+		stmts := fc.stmts()
+		for j in 0 .. stmts.len() {
+			stmt := stmts.at(j)
+			if stmt.kind() != .stmt_fn_decl {
+				continue
+			}
+			decl := stmt.fn_decl()
+			recv_params := receiver_generic_param_names(decl)
+			if recv_params.len == 0 {
+				continue
+			}
+			mut binding_sets := []map[string]types.Type{}
+			all_bindings := g.get_all_receiver_generic_bindings(decl)
+			if all_bindings.len > 0 {
+				binding_sets << all_bindings
+			} else if bindings := g.get_receiver_generic_bindings(decl) {
+				binding_sets << bindings
+			}
+			if binding_sets.len == 0 {
+				mut fallback := map[string]types.Type{}
+				for param_name in recv_params {
+					fallback[param_name] = types.Type(types.f64_)
+				}
+				binding_sets << fallback
+			}
+			prev_generic_types := g.active_generic_types.clone()
+			for bindings in binding_sets {
+				g.active_generic_types = bindings.clone()
+				g.scan_fn_body_for_generic_types_with_clean_locals(decl, '')
+			}
+			g.active_generic_types = prev_generic_types.clone()
 		}
 	}
 }
@@ -827,7 +958,19 @@ fn (mut g Gen) generic_call_decl_from_lhs(lhs ast.Expr) ?ast.FnDecl {
 	}
 	for candidate in generic_call_decl_candidates(call_name) {
 		if info := g.generic_fn_decl_index[candidate] {
-			if info.file_idx >= 0 && info.file_idx < g.files.len {
+			if g.has_flat() {
+				if info.file_idx < 0 || info.file_idx >= g.flat.files.len {
+					continue
+				}
+				stmts := g.flat.file_cursor(info.file_idx).stmts()
+				if info.stmt_idx < 0 || info.stmt_idx >= stmts.len() {
+					continue
+				}
+				stmt := stmts.at(info.stmt_idx)
+				if stmt.kind() == .stmt_fn_decl {
+					return stmt.fn_decl()
+				}
+			} else if info.file_idx >= 0 && info.file_idx < g.files.len {
 				file := g.files[info.file_idx]
 				if info.stmt_idx >= 0 && info.stmt_idx < file.stmts.len {
 					stmt := file.stmts[info.stmt_idx]
@@ -849,6 +992,24 @@ fn (mut g Gen) generic_call_decl_from_lhs(lhs ast.Expr) ?ast.FnDecl {
 		g.cur_module = prev_module
 		g.cur_file_name = prev_file_name
 		g.active_generic_types = prev_active_generic_types.clone()
+	}
+	if g.has_flat() {
+		for i in 0 .. g.flat.files.len {
+			fc := g.flat.file_cursor(i)
+			g.set_file_cursor_module(fc)
+			stmts := fc.stmts()
+			for j in 0 .. stmts.len() {
+				stmt := stmts.at(j)
+				if stmt.kind() != .stmt_fn_decl || stmt.name() != call_name {
+					continue
+				}
+				decl := stmt.fn_decl()
+				if g.generic_fn_param_names(decl).len > 0 {
+					return decl
+				}
+			}
+		}
+		return none
 	}
 	for file in g.files {
 		g.set_file_module(file)

@@ -1282,8 +1282,20 @@ fn (mut g Gen) gen_enum_shorthand_compare(node &ast.InfixExpr, lhs_type string, 
 }
 
 fn (mut g Gen) gen_infix_expr(node &ast.InfixExpr) {
-	mut lhs_type := g.get_expr_type(node.lhs)
-	mut rhs_type := g.get_expr_type(node.rhs)
+	mut lhs_type := ''
+	if node.lhs is ast.SelectorExpr {
+		lhs_type = g.plain_local_selector_type(node.lhs) or { '' }
+	}
+	if lhs_type == '' {
+		lhs_type = g.get_expr_type(node.lhs)
+	}
+	mut rhs_type := ''
+	if node.rhs is ast.SelectorExpr {
+		rhs_type = g.plain_local_selector_type(node.rhs) or { '' }
+	}
+	if rhs_type == '' {
+		rhs_type = g.get_expr_type(node.rhs)
+	}
 	if local_type := g.local_var_c_type_for_expr(node.lhs) {
 		lhs_type = local_type
 	}
@@ -1414,6 +1426,47 @@ fn (mut g Gen) gen_infix_expr(node &ast.InfixExpr) {
 			return
 		}
 	}
+	if node.op in [.eq, .ne] && node.rhs is ast.BasicLiteral {
+		tag_lhs := strip_expr_wrappers(node.lhs)
+		if tag_lhs is ast.SelectorExpr && tag_lhs.rhs.name == '_tag' {
+			sum_expr := strip_expr_wrappers(tag_lhs.lhs)
+			if sum_expr is ast.SelectorExpr {
+				tag_lit := node.rhs as ast.BasicLiteral
+				if tag_lit.kind == .number {
+					tag := tag_lit.value.int()
+					if tag >= 0 {
+						mut source_sum_type :=
+							g.get_expr_type(sum_expr).trim_space().trim_right('*')
+						if source_sum_type == '' {
+							source_sum_type =
+								g.selector_field_type(sum_expr).trim_space().trim_right('*')
+						}
+						variants := g.get_sum_type_variants_for(source_sum_type)
+						if tag < variants.len {
+							target_type := variants[tag]
+							for storage_sum_type in [
+								g.selector_storage_field_type(sum_expr).trim_space().trim_right('*'),
+								g.selector_declared_field_type(sum_expr).trim_space().trim_right('*'),
+							] {
+								if storage_sum_type == '' || storage_sum_type == source_sum_type {
+									continue
+								}
+								if path := g.sum_variant_tag_path(storage_sum_type, target_type,
+									[]string{})
+								{
+									if path.len > 1 {
+										g.gen_sum_variant_tag_path_check(sum_expr, path,
+											node.op == .eq)
+										return
+									}
+								}
+							}
+						}
+					}
+				}
+			}
+		}
+	}
 	if node.op in [.key_is, .not_is, .eq, .ne] {
 		if raw_type := g.get_raw_type(node.lhs) {
 			is_iface := raw_type is types.Interface
@@ -1487,15 +1540,45 @@ fn (mut g Gen) gen_infix_expr(node &ast.InfixExpr) {
 			}
 			lhs_sum_type = lhs_sum_type.trim_space().trim_right('*')
 			if sum_lhs is ast.SelectorExpr {
-				storage_sum_type := g.selector_storage_field_type(sum_lhs).trim_right('*')
-				if storage_sum_type != '' && storage_sum_type != lhs_sum_type
-					&& g.get_sum_type_variants_for(storage_sum_type).len > 0 {
+				mut storage_candidates := []string{}
+				mut selector_has_same_sumtype_storage := false
+				for candidate in [
+					g.selector_storage_field_type(sum_lhs).trim_space().trim_right('*'),
+					g.selector_declared_field_type(sum_lhs).trim_space().trim_right('*'),
+				] {
+					if candidate == '' {
+						continue
+					}
+					if candidate == lhs_sum_type {
+						selector_has_same_sumtype_storage = true
+						continue
+					}
+					if candidate !in storage_candidates
+						&& g.get_sum_type_variants_for(candidate).len > 0 {
+						storage_candidates << candidate
+					}
+				}
+				for storage_sum_type in storage_candidates {
 					if path := g.sum_variant_tag_path(storage_sum_type, rhs_name, []string{}) {
+						if path.len <= 1 {
+							continue
+						}
 						g.gen_sum_variant_tag_path_check(sum_lhs, path, node.op in [
 							.key_is,
 							.eq,
 						])
 						return
+					}
+				}
+				if !selector_has_same_sumtype_storage {
+					if path := g.nested_sum_path_from_narrowed_source(lhs_sum_type, rhs_name) {
+						if path.len > 1 {
+							g.gen_sum_variant_tag_path_check(sum_lhs, path, node.op in [
+								.key_is,
+								.eq,
+							])
+							return
+						}
 					}
 				}
 			}
@@ -1770,9 +1853,14 @@ fn (mut g Gen) gen_infix_expr(node &ast.InfixExpr) {
 	}
 	mut lhs_is_string_ptr := false
 	lhs_local_type := g.local_var_c_type_for_expr(node.lhs) or { '' }
-	if raw_type := g.get_raw_type(node.lhs) {
-		if raw_type is types.Pointer && raw_type.base_type is types.String {
-			lhs_is_string_ptr = true
+	lhs_may_need_raw_string_ptr := lhs_type == '' || lhs_type.ends_with('*')
+		|| lhs_type.ends_with('ptr') || lhs_local_type.ends_with('*')
+		|| lhs_local_type.ends_with('ptr')
+	if lhs_may_need_raw_string_ptr {
+		if raw_type := g.get_raw_type(node.lhs) {
+			if raw_type is types.Pointer && raw_type.base_type is types.String {
+				lhs_is_string_ptr = true
+			}
 		}
 	}
 	if lhs_type in ['string*', 'stringptr'] || lhs_local_type in ['string*', 'stringptr'] {
@@ -1780,39 +1868,71 @@ fn (mut g Gen) gen_infix_expr(node &ast.InfixExpr) {
 	}
 	mut rhs_is_string_ptr := false
 	rhs_local_type := g.local_var_c_type_for_expr(node.rhs) or { '' }
-	if raw_type := g.get_raw_type(node.rhs) {
-		if raw_type is types.Pointer && raw_type.base_type is types.String {
-			rhs_is_string_ptr = true
+	rhs_may_need_raw_string_ptr := rhs_type == '' || rhs_type.ends_with('*')
+		|| rhs_type.ends_with('ptr') || rhs_local_type.ends_with('*')
+		|| rhs_local_type.ends_with('ptr')
+	if rhs_may_need_raw_string_ptr {
+		if raw_type := g.get_raw_type(node.rhs) {
+			if raw_type is types.Pointer && raw_type.base_type is types.String {
+				rhs_is_string_ptr = true
+			}
 		}
 	}
 	if rhs_type in ['string*', 'stringptr'] || rhs_local_type in ['string*', 'stringptr'] {
 		rhs_is_string_ptr = true
 	}
-	// When either side is nil/0, this is a pointer comparison, not a string comparison
-	lhs_is_nil := is_nil_like_expr(node.lhs)
-	rhs_is_nil := is_nil_like_expr(node.rhs)
-	// Also treat integer-typed operands as nil when compared with string pointers
-	// (e.g., `&string == 0` where checker annotates 0 as int)
-	lhs_is_nil2 := lhs_is_nil
-		|| (rhs_is_string_ptr && lhs_type in ['int', 'int_literal', 'i64', 'u64', 'voidptr'])
-	rhs_is_nil2 := rhs_is_nil
-		|| (lhs_is_string_ptr && rhs_type in ['int', 'int_literal', 'i64', 'u64', 'voidptr'])
-	is_string_cmp := if lhs_is_nil2 || rhs_is_nil2 {
-		false
-	} else if node.lhs is ast.StringLiteral || node.rhs is ast.StringLiteral {
-		true
-	} else {
-		(lhs_type == 'string' || lhs_is_string_ptr) && (rhs_type == 'string' || rhs_is_string_ptr)
-			&& !g.is_enum_type(lhs_type) && !g.is_enum_type(rhs_type)
+	mut may_be_string_cmp := false
+	if lhs_type == 'string' {
+		may_be_string_cmp = true
 	}
-	// Override: string pointer compared with a numeric literal (null check)
-	// The checker may annotate `0` as `string` in `&string == 0` context,
-	// but this is a pointer comparison, not a string comparison.
-	is_string_cmp2 := if is_string_cmp && ((lhs_is_string_ptr && is_numeric_literal(node.rhs))
-		|| (rhs_is_string_ptr && is_numeric_literal(node.lhs))) {
-		false
-	} else {
-		is_string_cmp
+	if rhs_type == 'string' {
+		may_be_string_cmp = true
+	}
+	if lhs_is_string_ptr {
+		may_be_string_cmp = true
+	}
+	if rhs_is_string_ptr {
+		may_be_string_cmp = true
+	}
+	if lhs_local_type == 'string' {
+		may_be_string_cmp = true
+	}
+	if rhs_local_type == 'string' {
+		may_be_string_cmp = true
+	}
+	mut is_string_cmp2 := false
+	if may_be_string_cmp {
+		// When either side is nil/0, this is a pointer comparison, not a string comparison
+		mut lhs_is_nil := false
+		mut rhs_is_nil := false
+		if node.op in [.eq, .ne] {
+			lhs_is_nil = is_nil_like_expr(node.lhs)
+			rhs_is_nil = is_nil_like_expr(node.rhs)
+		}
+		// Also treat integer-typed operands as nil when compared with string pointers
+		// (e.g., `&string == 0` where checker annotates 0 as int)
+		lhs_is_nil2 := lhs_is_nil
+			|| (rhs_is_string_ptr && lhs_type in ['int', 'int_literal', 'i64', 'u64', 'voidptr'])
+		rhs_is_nil2 := rhs_is_nil
+			|| (lhs_is_string_ptr && rhs_type in ['int', 'int_literal', 'i64', 'u64', 'voidptr'])
+		is_string_cmp := if lhs_is_nil2 || rhs_is_nil2 {
+			false
+		} else if node.lhs is ast.StringLiteral || node.rhs is ast.StringLiteral {
+			true
+		} else {
+			(lhs_type == 'string' || lhs_is_string_ptr)
+				&& (rhs_type == 'string' || rhs_is_string_ptr) && !g.is_enum_type(lhs_type)
+				&& !g.is_enum_type(rhs_type)
+		}
+		// Override: string pointer compared with a numeric literal (null check)
+		// The checker may annotate `0` as `string` in `&string == 0` context,
+		// but this is a pointer comparison, not a string comparison.
+		is_string_cmp2 = if is_string_cmp && ((lhs_is_string_ptr && is_numeric_literal(node.rhs))
+			|| (rhs_is_string_ptr && is_numeric_literal(node.lhs))) {
+			false
+		} else {
+			is_string_cmp
+		}
 	}
 	if node.op in [.eq, .ne] && is_string_cmp2 {
 		if node.op == .ne {
@@ -1839,6 +1959,22 @@ fn (mut g Gen) gen_infix_expr(node &ast.InfixExpr) {
 		g.sb.write_string(', ')
 		g.gen_string_cmp_operand(node.rhs, rhs_is_string_ptr)
 		g.sb.write_string(') ${op} 0)')
+		return
+	}
+	if node.op in [.lt, .le, .gt, .ge] && lhs_type in primitive_types && rhs_type in primitive_types {
+		op := match node.op {
+			.gt { '>' }
+			.lt { '<' }
+			.ge { '>=' }
+			.le { '<=' }
+			else { '==' }
+		}
+
+		g.sb.write_string('(')
+		g.expr(node.lhs)
+		g.sb.write_string(' ${op} ')
+		g.expr(node.rhs)
+		g.sb.write_string(')')
 		return
 	}
 	if node.op in [.eq, .ne] && (lhs_type == 'map' || lhs_type.starts_with('Map_'))
@@ -2049,8 +2185,151 @@ fn (mut g Gen) gen_string_cmp_operand(expr ast.Expr, is_string_ptr bool) {
 	g.expr(expr)
 }
 
+fn (mut g Gen) plain_index_selector_type(sel ast.SelectorExpr) ?string {
+	if g.comptime_field_var != '' || g.comptime_method_var != '' {
+		return none
+	}
+	if sel.lhs !is ast.IndexExpr {
+		return none
+	}
+	index_expr := sel.lhs as ast.IndexExpr
+	elem_type := g.index_expr_elem_type_from_lhs(index_expr) or { return none }
+	base_type := strip_pointer_type_name(elem_type)
+	if base_type == '' || base_type == 'string' || base_type in primitive_types
+		|| base_type in ['void', 'void*', 'voidptr'] {
+		return none
+	}
+	field_name := sel.rhs.name
+	if field_name == '' {
+		return none
+	}
+	return g.lookup_struct_field_type_by_name(base_type, field_name)
+}
+
+fn (mut g Gen) gen_plain_index_selector_expr(sel ast.SelectorExpr) bool {
+	if g.comptime_field_var != '' || g.comptime_method_var != '' {
+		return false
+	}
+	if sel.lhs !is ast.IndexExpr {
+		return false
+	}
+	index_expr := sel.lhs as ast.IndexExpr
+	elem_type := g.index_expr_elem_type_from_lhs(index_expr) or { return false }
+	base_type := strip_pointer_type_name(elem_type)
+	if base_type == '' || base_type == 'string' || base_type in primitive_types
+		|| base_type in ['void', 'void*', 'voidptr'] {
+		return false
+	}
+	field_name := sel.rhs.name
+	if field_name == '' {
+		return false
+	}
+	_ = g.plain_index_selector_type(sel) or { return false }
+	g.expr(index_expr)
+	selector := if elem_type.ends_with('*') { '->' } else { '.' }
+	g.sb.write_string('${selector}${escape_c_keyword(field_name)}')
+	return true
+}
+
+fn (mut g Gen) gen_plain_local_selector_expr(sel ast.SelectorExpr) bool {
+	if g.comptime_field_var != '' || g.comptime_method_var != '' {
+		return false
+	}
+	parts := cleanc_selector_expr_parts(sel)
+	if parts.len < 2 {
+		return false
+	}
+	root := parts[0]
+	if root == '' {
+		return false
+	}
+	mut cur_type := g.runtime_local_types[root] or { return false }
+	mut segments := []string{cap: parts.len - 1}
+	for i in 1 .. parts.len {
+		field_name := parts[i]
+		if field_name == '' {
+			return false
+		}
+		base_type := strip_pointer_type_name(cur_type)
+		if base_type == '' || base_type == 'string' || base_type in primitive_types
+			|| base_type in ['void', 'void*', 'voidptr'] || base_type in g.sum_type_variants
+			|| g.is_interface_type(base_type) {
+			return false
+		}
+		if cur_type.starts_with('_option_') || cur_type.starts_with('_result_') {
+			return false
+		}
+		if base_type.starts_with('Array_fixed_') && field_name == 'len' {
+			if i != parts.len - 1 {
+				return false
+			}
+			_, fixed_len := parse_fixed_array_elem_type(base_type)
+			g.sb.write_string('${fixed_len}')
+			return true
+		}
+		field_type := g.lookup_struct_field_type_by_name(base_type, field_name) or { return false }
+		if field_type == '' {
+			return false
+		}
+		use_ptr := cur_type.ends_with('*') || cur_type == 'chan'
+			|| (i == 1 && root in g.cur_fn_mut_params)
+		selector := if use_ptr { '->' } else { '.' }
+		owner := g.embedded_owner_for(base_type, field_name)
+		field_c_name := escape_c_keyword(field_name)
+		if owner != '' {
+			segments << '${selector}${escape_c_keyword(owner)}.${field_c_name}'
+		} else {
+			segments << '${selector}${field_c_name}'
+		}
+		cur_type = field_type
+	}
+	g.sb.write_string(c_local_name(root))
+	for segment in segments {
+		g.sb.write_string(segment)
+	}
+	return true
+}
+
+fn (mut g Gen) plain_local_selector_type(sel ast.SelectorExpr) ?string {
+	if g.comptime_field_var != '' || g.comptime_method_var != '' {
+		return none
+	}
+	parts := cleanc_selector_expr_parts(sel)
+	if parts.len < 2 {
+		return none
+	}
+	root := parts[0]
+	if root == '' {
+		return none
+	}
+	mut cur_type := g.runtime_local_types[root] or { return none }
+	for i in 1 .. parts.len {
+		field_name := parts[i]
+		if field_name == '' {
+			return none
+		}
+		base_type := strip_pointer_type_name(cur_type)
+		if base_type == '' || base_type == 'string' || base_type in primitive_types
+			|| base_type in ['void', 'void*', 'voidptr'] || base_type in g.sum_type_variants
+			|| g.is_interface_type(base_type) {
+			return none
+		}
+		if cur_type.starts_with('_option_') || cur_type.starts_with('_result_') {
+			return none
+		}
+		cur_type = g.lookup_struct_field_type_by_name(base_type, field_name) or { return none }
+	}
+	return cur_type
+}
+
 // Helper to extract FnType from an Expr (handles ast.Type wrapping)
 fn (mut g Gen) expr(node ast.Expr) {
+	if node is ast.SelectorExpr && g.gen_plain_index_selector_expr(node) {
+		return
+	}
+	if node is ast.SelectorExpr && g.gen_plain_local_selector_expr(node) {
+		return
+	}
 	if !expr_has_valid_data(node) {
 		g.sb.write_string('0 /* corrupt expr */')
 		return
@@ -2058,7 +2337,6 @@ fn (mut g Gen) expr(node ast.Expr) {
 	if node is ast.CallExpr && g.try_gen_orm_create_call_expr(node) {
 		return
 	}
-	_ = g.get_expr_type(node)
 	match node {
 		ast.BasicLiteral {
 			if node.kind == .key_true {
@@ -2667,6 +2945,12 @@ fn (mut g Gen) expr(node ast.Expr) {
 					g.sb.write_string(rhs_name)
 					return
 				}
+			}
+			if g.gen_plain_index_selector_expr(sel) {
+				return
+			}
+			if g.gen_plain_local_selector_expr(sel) {
+				return
 			}
 			if rhs_name == 'name' {
 				if lhs_expr is ast.Ident {
@@ -5369,15 +5653,30 @@ fn (g &Gen) has_struct_type_by_c_name(c_name string) bool {
 			}
 		}
 	}
-	for file in g.files {
-		file_mod := file.mod
-		if file_mod == '' || tried[file_mod] {
-			continue
+	if g.has_flat() {
+		for i in 0 .. g.flat.files.len {
+			file_mod := flat_file_module_name(g.flat.file_cursor(i))
+			if file_mod == '' || tried[file_mod] {
+				continue
+			}
+			tried[file_mod] = true
+			if scope := g.env_scope(file_mod) {
+				if obj := scope.lookup_parent(struct_name, 0) {
+					return obj.typ() is types.Struct
+				}
+			}
 		}
-		tried[file_mod] = true
-		if scope := g.env_scope(file_mod) {
-			if obj := scope.lookup_parent(struct_name, 0) {
-				return obj.typ() is types.Struct
+	} else {
+		for file in g.files {
+			file_mod := file.mod
+			if file_mod == '' || tried[file_mod] {
+				continue
+			}
+			tried[file_mod] = true
+			if scope := g.env_scope(file_mod) {
+				if obj := scope.lookup_parent(struct_name, 0) {
+					return obj.typ() is types.Struct
+				}
 			}
 		}
 	}

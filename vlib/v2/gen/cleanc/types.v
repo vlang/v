@@ -704,6 +704,25 @@ fn (mut g Gen) ensure_map_type_info(map_name string) ?MapTypeInfo {
 // and records their names. This must run before any type resolution so that
 // expr_type_to_c can emit these types without a 'struct' prefix.
 fn (mut g Gen) collect_typedef_c_types() {
+	if g.has_flat() {
+		for i in 0 .. g.flat.files.len {
+			stmts := g.flat.file_cursor(i).stmts()
+			for j in 0 .. stmts.len() {
+				stmt := stmts.at(j)
+				if stmt.kind() != .stmt_struct_decl {
+					continue
+				}
+				decl := stmt.struct_decl()
+				if decl.language == .c {
+					g.c_struct_types[decl.name] = true
+					if decl.attributes.has('typedef') {
+						g.typedef_c_types[decl.name] = true
+					}
+				}
+			}
+		}
+		return
+	}
 	for file in g.files {
 		for stmt in file.stmts {
 			if stmt is ast.StructDecl {
@@ -719,6 +738,95 @@ fn (mut g Gen) collect_typedef_c_types() {
 }
 
 fn (mut g Gen) collect_module_type_names() {
+	if g.has_flat() {
+		for i in 0 .. g.flat.files.len {
+			fc := g.flat.file_cursor(i)
+			g.set_file_cursor_module(fc)
+			module_name := flat_file_module_name(fc)
+			stmts := fc.stmts()
+			for j in 0 .. stmts.len() {
+				stmt := stmts.at(j)
+				match stmt.kind() {
+					.stmt_struct_decl {
+						decl := stmt.struct_decl()
+						g.record_declared_type_name(decl.name, module_name)
+						if decl.language != .v {
+							continue
+						}
+						struct_name := g.get_struct_name(decl)
+						for field in decl.fields {
+							field_type := g.expr_type_to_c(field.typ)
+							full_key := decl.name + '.' + field.name
+							struct_key := struct_name + '.' + field.name
+							g.struct_field_types[full_key] = field_type
+							g.struct_field_types[struct_key] = field_type
+							if field.typ is ast.Type && field.typ is ast.ArrayFixedType {
+								fixed_typ := field.typ as ast.ArrayFixedType
+								elem_type := g.expr_type_to_c(fixed_typ.elem_type)
+								g.fixed_array_fields[full_key] = true
+								g.fixed_array_fields[struct_key] = true
+								g.fixed_array_field_elem[full_key] = elem_type
+								g.fixed_array_field_elem[struct_key] = elem_type
+							}
+						}
+						for emb in decl.embedded {
+							emb_c_type := g.expr_type_to_c(emb)
+							emb_name := embedded_owner_field_name(emb_c_type)
+							if emb_name == '' {
+								continue
+							}
+							full_key := decl.name + '.' + emb_name
+							struct_key := struct_name + '.' + emb_name
+							if full_key !in g.struct_field_types {
+								g.struct_field_types[full_key] = emb_c_type
+							}
+							if struct_key !in g.struct_field_types {
+								g.struct_field_types[struct_key] = emb_c_type
+							}
+						}
+					}
+					.stmt_enum_decl {
+						decl := stmt.enum_decl(false)
+						g.record_declared_type_name(decl.name, module_name)
+						enum_name := g.get_enum_name(decl)
+						if is_generic_placeholder_c_type_name(enum_name) {
+							continue
+						}
+						mut fields := map[string]bool{}
+						if enum_name in g.enum_type_fields {
+							fields = g.enum_type_fields[enum_name].clone()
+						}
+						for field in decl.fields {
+							if field.name !in g.enum_value_to_enum {
+								g.enum_value_to_enum[field.name] = enum_name
+							}
+							fields[field.name] = true
+						}
+						mut cloned_fields := fields.clone()
+						g.enum_type_fields[enum_name] = cloned_fields.move()
+						if enum_name.contains('__') {
+							short_name := enum_name.all_after_last('__')
+							mut short_cloned_fields := fields.clone()
+							g.enum_type_fields[short_name] = short_cloned_fields.move()
+						}
+					}
+					.stmt_type_decl {
+						decl := stmt.type_decl()
+						g.record_declared_type_name(decl.name, module_name)
+						if decl.language == .c {
+							continue
+						}
+					}
+					.stmt_interface_decl {
+						decl := stmt.interface_decl()
+						g.record_declared_type_name(decl.name, module_name)
+					}
+					else {}
+				}
+			}
+		}
+		return
+	}
 	for file in g.files {
 		g.set_file_module(file)
 		module_name := file_module_name(file)
@@ -823,10 +931,28 @@ fn (mut g Gen) record_declared_type_name(decl_name string, module_name string) {
 }
 
 fn (mut g Gen) collect_runtime_aliases() {
-	for file in g.files {
-		g.set_file_module(file)
-		for stmt in file.stmts {
-			g.collect_decl_type_aliases_from_stmt(stmt)
+	if g.has_flat() {
+		for i in 0 .. g.flat.files.len {
+			fc := g.flat.file_cursor(i)
+			g.set_file_cursor_module(fc)
+			stmts := fc.stmts()
+			for j in 0 .. stmts.len() {
+				stmt := stmts.at(j)
+				match stmt.kind() {
+					.stmt_struct_decl, .stmt_interface_decl, .stmt_type_decl, .stmt_fn_decl,
+					.stmt_global_decl {
+						g.collect_decl_type_aliases_from_stmt(stmt.stmt())
+					}
+					else {}
+				}
+			}
+		}
+	} else {
+		for file in g.files {
+			g.set_file_module(file)
+			for stmt in file.stmts {
+				g.collect_decl_type_aliases_from_stmt(stmt)
+			}
 		}
 	}
 	// Also use type-checker output so aliases used only in expressions are captured.
@@ -1459,6 +1585,31 @@ fn (g &Gen) declared_type_name_belongs_to_lookup_files(name string) bool {
 }
 
 fn (g &Gen) scan_unqualified_type_name_declared_in_files(name string) bool {
+	if g.has_flat() {
+		for i in 0 .. g.flat.files.len {
+			fc := g.flat.file_cursor(i)
+			module_name := flat_file_module_name(fc)
+			if !g.type_lookup_file_belongs_to_cache(module_name) {
+				continue
+			}
+			stmts := fc.stmts()
+			for j in 0 .. stmts.len() {
+				stmt := stmts.at(j)
+				match stmt.kind() {
+					.stmt_struct_decl, .stmt_enum_decl, .stmt_interface_decl, .stmt_type_decl {
+						if type_decl_name_matches_cache_alias(stmt.name(), module_name, name) {
+							return true
+						}
+					}
+					else {}
+				}
+			}
+		}
+		if g.unqualified_type_name_declared_in_type_modules(name) {
+			return true
+		}
+		return false
+	}
 	for file in g.files {
 		module_name := file_module_name(file)
 		if !g.type_lookup_file_belongs_to_cache(module_name) {
@@ -2271,6 +2422,41 @@ fn (mut g Gen) lookup_embedded_field_info_in_struct(st types.Struct, field_name 
 	return none
 }
 
+fn (mut g Gen) find_struct_decl_info_in_flat(c_name string, saved_module string, current_module_only bool, exact bool) ?StructDeclInfo {
+	for i in 0 .. g.flat.files.len {
+		fc := g.flat.file_cursor(i)
+		g.set_file_cursor_module(fc)
+		if current_module_only && g.cur_module != saved_module {
+			continue
+		}
+		stmts := fc.stmts()
+		for j in 0 .. stmts.len() {
+			stmt := stmts.at(j)
+			if stmt.kind() != .stmt_struct_decl {
+				continue
+			}
+			decl := stmt.struct_decl()
+			if decl.language != .v {
+				continue
+			}
+			struct_name := g.get_struct_name(decl)
+			matches := if exact {
+				struct_name == c_name
+			} else {
+				short_type_name(struct_name) == c_name
+			}
+			if matches {
+				return StructDeclInfo{
+					decl:      decl
+					mod:       g.cur_module
+					file_name: fc.name()
+				}
+			}
+		}
+	}
+	return none
+}
+
 fn (mut g Gen) find_struct_decl_info_by_c_name(c_name string) ?StructDeclInfo {
 	if c_name == '' {
 		return none
@@ -2286,6 +2472,22 @@ fn (mut g Gen) find_struct_decl_info_by_c_name(c_name string) ?StructDeclInfo {
 	defer {
 		g.cur_module = saved_module
 		g.cur_file_name = saved_file_name
+	}
+	if g.has_flat() {
+		if info := g.find_struct_decl_info_in_flat(c_name, saved_module, false, true) {
+			g.struct_decl_info_cache[c_name] = info
+			return info
+		}
+		if info := g.find_struct_decl_info_in_flat(c_name, saved_module, true, false) {
+			g.struct_decl_info_cache[c_name] = info
+			return info
+		}
+		if info := g.find_struct_decl_info_in_flat(c_name, saved_module, false, false) {
+			g.struct_decl_info_cache[c_name] = info
+			return info
+		}
+		g.struct_decl_info_miss[c_name] = true
+		return none
 	}
 	for file in g.files {
 		g.set_file_module(file)
@@ -4891,6 +5093,27 @@ fn (mut g Gen) emit_late_generic_struct(base_name string, inst GenericStructInst
 
 // find_generic_struct_node finds the AST StructDecl for a given C struct name.
 fn (mut g Gen) find_generic_struct_node(c_name string) ?ast.StructDecl {
+	if g.has_flat() {
+		for i in 0 .. g.flat.files.len {
+			fc := g.flat.file_cursor(i)
+			g.set_file_cursor_module(fc)
+			stmts := fc.stmts()
+			for j in 0 .. stmts.len() {
+				stmt := stmts.at(j)
+				if stmt.kind() != .stmt_struct_decl {
+					continue
+				}
+				decl := stmt.struct_decl()
+				if decl.generic_params.len > 0 {
+					name := g.get_struct_name(decl)
+					if name == c_name {
+						return decl
+					}
+				}
+			}
+		}
+		return none
+	}
 	for file in g.files {
 		g.set_file_module(file)
 		for stmt in file.stmts {
@@ -5782,9 +6005,18 @@ fn (mut g Gen) lookup_union_variant_struct(type_name string) types.Struct {
 	modules_to_try << cur_mod
 	modules_to_try << 'main'
 	modules_to_try << 'builtin'
-	for file in g.files {
-		if file.mod !in modules_to_try {
-			modules_to_try << file.mod
+	if g.has_flat() {
+		for i in 0 .. g.flat.files.len {
+			file_mod := flat_file_module_name(g.flat.file_cursor(i))
+			if file_mod !in modules_to_try {
+				modules_to_try << file_mod
+			}
+		}
+	} else {
+		for file in g.files {
+			if file.mod !in modules_to_try {
+				modules_to_try << file.mod
+			}
 		}
 	}
 	mut tried := map[string]bool{}
@@ -5811,6 +6043,27 @@ fn (g &Gen) resolve_type_to_struct(t types.Type) types.Struct {
 		return g.resolve_type_to_struct(t.base_type)
 	}
 	return types.Struct{}
+}
+
+fn (mut g Gen) set_struct_info_full_context(info StructDeclInfo) {
+	if g.has_flat() {
+		for i in 0 .. g.flat.files.len {
+			fc := g.flat.file_cursor(i)
+			if fc.name() == info.file_name {
+				g.set_file_cursor_module(fc)
+				return
+			}
+		}
+		g.set_struct_info_context(info)
+		return
+	}
+	for file in g.files {
+		if file.name == info.file_name {
+			g.set_file_module(file)
+			return
+		}
+	}
+	g.set_struct_info_context(info)
 }
 
 // types_type_to_c converts a types.Type to a C type string
@@ -5853,6 +6106,19 @@ fn selector_struct_field_type_from_type(t types.Type, field_name string) ?types.
 	}
 }
 
+fn array_alias_field_type_by_name(type_name string, field_name string) ?string {
+	base_name := strip_pointer_type_name(type_name)
+	if base_name !in ['array', 'strings__Builder', 'Builder'] && !base_name.starts_with('Array_') {
+		return none
+	}
+	return match field_name {
+		'data' { 'void*' }
+		'offset', 'len', 'cap', 'element_size' { 'int' }
+		'flags' { 'ArrayFlags' }
+		else { none }
+	}
+}
+
 fn (mut g Gen) lookup_struct_field_type_by_name(struct_name string, field_name string) ?string {
 	if struct_name == '' || field_name == '' {
 		return none
@@ -5870,8 +6136,20 @@ fn (mut g Gen) lookup_struct_field_type_by_name(struct_name string, field_name s
 	mut candidates := []string{}
 	candidates << struct_name
 	base_name := strip_pointer_type_name(struct_name)
+	if field_type := array_alias_field_type_by_name(base_name, field_name) {
+		if use_cache {
+			g.struct_field_lookup_cache[cache_key] = field_type
+		}
+		return field_type
+	}
 	if base_name != '' && base_name !in candidates {
 		candidates << base_name
+	}
+	if base_name != '' && !base_name.contains('__') {
+		qualified_name := g.qualify_module_local_type_name(base_name)
+		if qualified_name != '' && qualified_name != base_name && qualified_name !in candidates {
+			candidates << qualified_name
+		}
 	}
 	for candidate in candidates {
 		full_key := '${candidate}.${field_name}'
@@ -5994,12 +6272,7 @@ fn (mut g Gen) lookup_struct_decl_field_type_by_name(struct_name string, field_n
 		old_import_modules := g.cur_import_modules.clone()
 		old_resolved_modules := g.resolved_module_names.clone()
 		old_module_ident_cache := g.is_module_ident_cache.clone()
-		for file in g.files {
-			if file.name == decl_info.file_name {
-				g.set_file_module(file)
-				break
-			}
-		}
+		g.set_struct_info_full_context(decl_info)
 		for field in decl_info.decl.fields {
 			escaped_name := escape_c_keyword(field.name)
 			if field.name != field_name && escaped_name != field_name {

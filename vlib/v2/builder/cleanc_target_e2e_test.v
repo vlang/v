@@ -518,7 +518,7 @@ fn main() {
 	')
 	assert_cli_failure_contains(os_import_res, 'freestanding target cannot use module os')
 
-	flat_os_import_res := run_v2_to_c_with_env(v2_binary, tmp_dir, 'freestanding_flat_os_import', [
+	flat_os_import_res := run_v2_to_c(v2_binary, tmp_dir, 'freestanding_flat_os_import', [
 		'-freestanding',
 		'-os',
 		'none',
@@ -529,7 +529,7 @@ fn main() {
 import os
 
 fn main() {}
-	', 'V2_CHECK_FLAT=1 ')
+	')
 	assert_cli_failure_contains(flat_os_import_res, 'freestanding target cannot use module os')
 
 	for import_name in ['time', 'term', 'net', 'net.http', 'sync'] {

@@ -1687,55 +1687,68 @@ import v2.types
 // ----- Per-file flat-write entry point -----
 
 // transform_file_index_to_flat is the per-file entry point for the multi-
-// session port. It rehydrates a single file from `input_flat`, mirrors
+// session port. It reads one file from `input_flat` through cursors, mirrors
 // `transform_file`'s prologue, and emits each top-level stmt through the
-// `transform_stmt_to_flat` seam. Returns the FlatNodeId of the appended
-// file root, or `ast.invalid_flat_node_id` for an empty / missing source
-// file.
+// `transform_stmt_to_flat` seam. Returns the FlatNodeId of the appended file
+// root, or `ast.invalid_flat_node_id` for an empty / missing source file.
 //
-// As of phase 3 the loop bypasses `transform_stmts` at the file level —
-// top-level stmt variants don't trigger any of `transform_stmts`'
-// multi-stmt expansions (AssignStmt / ExprStmt / ForStmt / AssertStmt
-// expansions all live in function bodies, not at file scope) so per-stmt
-// transform via the seam is equivalent. A defensive `t.pending_stmts`
-// drain catches any leak from constructs that have not been audited yet.
+// The file-level loop uses the flat stmt-list driver rather than dispatching
+// each stmt directly. Top-level comptime `$if` blocks can expand to multiple
+// declarations, and codegen expects those declarations to live directly under
+// the file root.
 //
 // Callers must invoke `pre_pass_from_flat(input_flat)` before the per-file
 // loop and `post_pass(mut collected_files)` after, mirroring the wedge. The
 // per-file API does not run those passes itself so future phases can
 // interleave file emissions with pre/post bookkeeping without re-running it.
 pub fn (mut t Transformer) transform_file_index_to_flat(input_flat &ast.FlatAst, fi int, mut out ast.FlatBuilder) ast.FlatNodeId {
-	src_arr := input_flat.to_files_range(fi, fi + 1)
-	if src_arr.len == 0 {
+	return t.transform_flat_file_index_to_flat(input_flat, fi, []ast.Stmt{}, mut out)
+}
+
+fn (mut t Transformer) transform_flat_file_index_to_flat(input_flat &ast.FlatAst, fi int, extra_stmts []ast.Stmt, mut out ast.FlatBuilder) ast.FlatNodeId {
+	if fi < 0 || fi >= input_flat.files.len {
 		return ast.invalid_flat_node_id
 	}
-	return t.transform_file_to_flat(src_arr[0], mut out)
+	fc := input_flat.file_cursor(fi)
+	imports := input_flat.read_file_imports(input_flat.files[fi])
+	t.cur_file_name = fc.name()
+	t.cur_module = fc.mod()
+	t.cur_import_aliases = import_aliases_for_generic_collect(imports)
+	if scope := t.get_module_scope(t.cur_module) {
+		t.scope = scope
+	} else {
+		t.scope = unsafe { nil }
+	}
+	stmt_ids := t.transform_cursor_stmts_to_flat_direct(fc.stmts(), extra_stmts, mut out)
+	return out.append_file_with_stmt_ids(ast.File{
+		name:           fc.name()
+		mod:            fc.mod()
+		selector_names: fc.selector_names()
+		attributes:     fc.attrs().attributes()
+		imports:        imports
+	}, stmt_ids)
 }
 
 // transform_file_to_flat transforms one legacy file and appends the transformed
 // tree directly to `out`. It is the AST-input counterpart to
-// `transform_file_index_to_flat`, used by the native low-memory pipeline after
-// whole-program generic preparation has produced the concrete file list.
+// `transform_file_index_to_flat`, used by flat-output pipelines after
+// whole-program generic preparation has produced concrete appended stmts.
 pub fn (mut t Transformer) transform_file_to_flat(file ast.File, mut out ast.FlatBuilder) ast.FlatNodeId {
 	// Mirror transform_file's per-file prologue. transform_stmt and the
 	// rewrite sites read these fields to resolve cross-stmt references.
 	t.cur_file_name = file.name
 	t.cur_module = file.mod
+	t.cur_import_aliases = import_aliases_for_generic_collect(file.imports)
 	if scope := t.get_module_scope(file.mod) {
 		t.scope = scope
 	} else {
 		t.scope = unsafe { nil }
 	}
-	mut stmt_ids := []ast.FlatNodeId{cap: file.stmts.len}
-	for stmt in file.stmts {
-		// Defensive pending_stmts drain. Inner transform_stmts (called by
-		// transform_fn_decl etc.) drains its own pending_stmts before
-		// returning; the appender catches any leak from a top-level
-		// construct that hasn't been audited and hoists them ahead of the
-		// just-emitted stmt, matching the ordering invariant of
-		// transform_stmts' `append_transformed_stmt` path.
-		t.append_transformed_stmt_to_flat(mut stmt_ids, stmt, mut out)
-	}
+	// Top-level comptime `$if` blocks can expand to multiple declarations
+	// (for example platform-specific worker structs/functions). Use the same
+	// stmt-list driver as function bodies so selected branch stmts are spliced
+	// into the file root instead of being hidden inside a top-level BlockStmt.
+	stmt_ids := t.transform_stmts_to_flat_direct(file.stmts, mut out)
 	return out.append_file_with_stmt_ids(file, stmt_ids)
 }
 
@@ -1793,102 +1806,136 @@ pub fn (mut t Transformer) transform_stmts_to_flat_direct(stmts []ast.Stmt, mut 
 		map[string]int{}
 	}
 	for stmt in stmts {
-		if t.smartcast_stack.len < block_smartcast_depth {
-			t.smartcast_stack = block_smartcast_stack.clone()
-			t.smartcast_expr_counts = block_smartcast_counts.clone()
-		} else if t.smartcast_stack.len > block_smartcast_depth {
-			t.truncate_smartcasts(block_smartcast_depth)
-		}
-		if stmt is ast.AssignStmt {
-			assign_stmt := stmt as ast.AssignStmt
-			if t.try_expand_comptime_if_assign_to_flat(assign_stmt, mut ids, mut out) {
-				continue
-			}
-			t.track_interface_assign_to_flat(assign_stmt)
-			if t.try_expand_interface_cast_assign_to_flat(assign_stmt, mut ids, mut out) {
-				continue
-			}
-			if t.try_expand_sincos_assign_to_flat(assign_stmt, mut ids, mut out) {
-				continue
-			}
-			if t.try_expand_or_expr_assign_stmts_to_flat(&assign_stmt, mut ids, mut out) {
-				continue
-			}
-			if t.try_expand_tuple_if_assign_stmts_to_flat(assign_stmt, mut ids, mut out) {
-				continue
-			}
-			if t.try_expand_tuple_call_assign_to_flat(assign_stmt, mut ids, mut out) {
-				continue
-			}
-			if t.try_expand_if_guard_assign_stmts_to_flat(assign_stmt, mut ids, mut out) {
-				continue
-			}
-			if t.try_expand_if_expr_assign_stmts_to_flat(assign_stmt, mut ids, mut out) {
-				continue
-			}
-		}
-		if stmt is ast.ExprStmt {
-			if t.try_expand_comptime_if_stmt_to_flat(stmt, mut ids, mut out) {
-				continue
-			}
-		}
-		if stmt is ast.ExprStmt {
-			if t.try_expand_or_expr_stmt_to_flat(stmt, mut ids, mut out) {
-				continue
-			}
-			if t.try_expand_if_guard_stmt_to_flat(stmt, mut ids, mut out) {
-				continue
-			}
-		}
-		if stmt is ast.ExprStmt {
-			if t.try_emit_flag_enum_set_clear_to_flat(stmt, mut ids, mut out) {
-				continue
-			}
-		}
-		if stmt is ast.ReturnStmt {
-			if t.try_expand_return_match_expr_to_flat(stmt, mut ids, mut out) {
-				continue
-			}
-			if t.try_expand_or_expr_return_to_flat(stmt, mut ids, mut out) {
-				continue
-			}
-			if t.try_expand_return_if_expr_to_flat(stmt, mut ids, mut out) {
-				continue
-			}
-		}
-		if stmt is ast.ExprStmt {
-			if stmt.expr is ast.LockExpr {
-				t.expand_lock_expr_to_flat(stmt.expr, mut ids, mut out)
-				continue
-			}
-			if t.try_emit_map_index_push_to_flat(stmt, mut ids, mut out) {
-				continue
-			}
-			if t.try_emit_map_index_postfix_to_flat(stmt, mut ids, mut out) {
-				continue
-			}
-			if t.try_emit_selector_postfix_to_flat(stmt, mut ids, mut out) {
-				continue
-			}
-		}
-		if stmt is ast.ForStmt {
-			if t.try_expand_for_in_map_to_flat(stmt, mut ids, mut out) {
-				continue
-			}
-		}
-		if stmt is ast.AssertStmt {
-			t.expand_assert_stmt_to_flat(stmt, mut ids, mut out)
-			continue
-		}
-		t.append_transformed_stmt_to_flat(mut ids, stmt, mut out)
+		t.restore_flat_stmt_list_smartcast_context(block_smartcast_depth, block_smartcast_stack,
+			block_smartcast_counts)
+		t.transform_stmt_list_item_to_flat(stmt, mut ids, mut out)
 	}
+	t.restore_flat_stmt_list_smartcast_context(block_smartcast_depth, block_smartcast_stack,
+		block_smartcast_counts)
+	return ids
+}
+
+pub fn (mut t Transformer) transform_cursor_stmts_to_flat_direct(stmts ast.CursorList, extra_stmts []ast.Stmt, mut out ast.FlatBuilder) []ast.FlatNodeId {
+	mut ids := []ast.FlatNodeId{cap: stmts.len() + extra_stmts.len}
+	block_smartcast_depth := t.smartcast_stack.len
+	has_smartcast_state := block_smartcast_depth > 0
+	block_smartcast_stack := if has_smartcast_state {
+		t.smartcast_stack.clone()
+	} else {
+		[]SmartcastContext{}
+	}
+	block_smartcast_counts := if has_smartcast_state {
+		t.smartcast_expr_counts.clone()
+	} else {
+		map[string]int{}
+	}
+	for i in 0 .. stmts.len() {
+		t.restore_flat_stmt_list_smartcast_context(block_smartcast_depth, block_smartcast_stack,
+			block_smartcast_counts)
+		t.transform_stmt_list_item_to_flat(stmts.at(i).stmt(), mut ids, mut out)
+	}
+	for stmt in extra_stmts {
+		t.restore_flat_stmt_list_smartcast_context(block_smartcast_depth, block_smartcast_stack,
+			block_smartcast_counts)
+		t.transform_stmt_list_item_to_flat(stmt, mut ids, mut out)
+	}
+	t.restore_flat_stmt_list_smartcast_context(block_smartcast_depth, block_smartcast_stack,
+		block_smartcast_counts)
+	return ids
+}
+
+fn (mut t Transformer) restore_flat_stmt_list_smartcast_context(block_smartcast_depth int, block_smartcast_stack []SmartcastContext, block_smartcast_counts map[string]int) {
 	if t.smartcast_stack.len < block_smartcast_depth {
 		t.smartcast_stack = block_smartcast_stack.clone()
 		t.smartcast_expr_counts = block_smartcast_counts.clone()
 	} else if t.smartcast_stack.len > block_smartcast_depth {
 		t.truncate_smartcasts(block_smartcast_depth)
 	}
-	return ids
+}
+
+fn (mut t Transformer) transform_stmt_list_item_to_flat(stmt ast.Stmt, mut ids []ast.FlatNodeId, mut out ast.FlatBuilder) {
+	if stmt is ast.AssignStmt {
+		assign_stmt := stmt as ast.AssignStmt
+		if t.try_expand_comptime_if_assign_to_flat(assign_stmt, mut ids, mut out) {
+			return
+		}
+		t.track_interface_assign_to_flat(assign_stmt)
+		if t.try_expand_interface_cast_assign_to_flat(assign_stmt, mut ids, mut out) {
+			return
+		}
+		if t.try_expand_sincos_assign_to_flat(assign_stmt, mut ids, mut out) {
+			return
+		}
+		if t.try_expand_or_expr_assign_stmts_to_flat(&assign_stmt, mut ids, mut out) {
+			return
+		}
+		if t.try_expand_tuple_if_assign_stmts_to_flat(assign_stmt, mut ids, mut out) {
+			return
+		}
+		if t.try_expand_tuple_call_assign_to_flat(assign_stmt, mut ids, mut out) {
+			return
+		}
+		if t.try_expand_if_guard_assign_stmts_to_flat(assign_stmt, mut ids, mut out) {
+			return
+		}
+		if t.try_expand_if_expr_assign_stmts_to_flat(assign_stmt, mut ids, mut out) {
+			return
+		}
+	}
+	if stmt is ast.ExprStmt {
+		if t.try_expand_comptime_if_stmt_to_flat(stmt, mut ids, mut out) {
+			return
+		}
+	}
+	if stmt is ast.ExprStmt {
+		if t.try_expand_or_expr_stmt_to_flat(stmt, mut ids, mut out) {
+			return
+		}
+		if t.try_expand_if_guard_stmt_to_flat(stmt, mut ids, mut out) {
+			return
+		}
+	}
+	if stmt is ast.ExprStmt {
+		if t.try_emit_flag_enum_set_clear_to_flat(stmt, mut ids, mut out) {
+			return
+		}
+	}
+	if stmt is ast.ReturnStmt {
+		if t.try_expand_return_match_expr_to_flat(stmt, mut ids, mut out) {
+			return
+		}
+		if t.try_expand_or_expr_return_to_flat(stmt, mut ids, mut out) {
+			return
+		}
+		if t.try_expand_return_if_expr_to_flat(stmt, mut ids, mut out) {
+			return
+		}
+	}
+	if stmt is ast.ExprStmt {
+		if stmt.expr is ast.LockExpr {
+			t.expand_lock_expr_to_flat(stmt.expr, mut ids, mut out)
+			return
+		}
+		if t.try_emit_map_index_push_to_flat(stmt, mut ids, mut out) {
+			return
+		}
+		if t.try_emit_map_index_postfix_to_flat(stmt, mut ids, mut out) {
+			return
+		}
+		if t.try_emit_selector_postfix_to_flat(stmt, mut ids, mut out) {
+			return
+		}
+	}
+	if stmt is ast.ForStmt {
+		if t.try_expand_for_in_map_to_flat(stmt, mut ids, mut out) {
+			return
+		}
+	}
+	if stmt is ast.AssertStmt {
+		t.expand_assert_stmt_to_flat(stmt, mut ids, mut out)
+		return
+	}
+	t.append_transformed_stmt_to_flat(mut ids, stmt, mut out)
 }
 
 // append_transformed_stmt_to_flat is the flat-builder mirror of

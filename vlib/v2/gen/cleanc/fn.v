@@ -454,6 +454,21 @@ fn (mut g Gen) infer_vector_return_type_from_stmts(stmts []ast.Stmt) string {
 }
 
 fn (mut g Gen) collect_fn_signatures() {
+	if g.has_flat() {
+		for i in 0 .. g.flat.files.len {
+			fc := g.flat.file_cursor(i)
+			g.set_file_cursor_module(fc)
+			stmts := fc.stmts()
+			for j in 0 .. stmts.len() {
+				stmt := stmts.at(j)
+				if stmt.kind() != .stmt_fn_decl {
+					continue
+				}
+				g.collect_fn_signature_from_decl(stmt.fn_decl(), stmt.list_at(3).len())
+			}
+		}
+		return
+	}
 	for file in g.files {
 		g.set_file_module(file)
 		for stmt in file.stmts {
@@ -462,194 +477,190 @@ fn (mut g Gen) collect_fn_signatures() {
 			}
 			match stmt {
 				ast.FnDecl {
-					if !g.should_emit_fn_decl_cached(g.cur_module, stmt) {
-						continue
-					}
-					if stmt.language == .js {
-						continue
-					}
-					if g.should_skip_backend_generic_fn(stmt) {
-						continue
-					}
-					if g.generic_fn_param_names(stmt).len > 0 {
-						prev_generic_types := g.active_generic_types.clone()
-						prev_fn_name := g.cur_fn_name
-						prev_fn_c_name := g.cur_fn_c_name
-						prev_fn_scope := g.cur_fn_scope
-						prev_runtime_local_types := g.runtime_local_types.clone()
-						prev_runtime_decl_types := g.runtime_decl_types.clone()
-						prev_not_local_var_cache := g.not_local_var_cache.clone()
-						prev_cur_fn_generic_params := g.cur_fn_generic_params.clone()
-						for spec in g.generic_fn_specializations_for_emit_scope(stmt) {
-							g.active_generic_types = spec.generic_types.clone()
-							g.cur_fn_name = stmt.name
-							g.cur_fn_c_name = spec.name
-							g.cur_fn_scope = unsafe { nil }
-							g.runtime_local_types = map[string]string{}
-							g.runtime_decl_types = map[string]string{}
-							g.not_local_var_cache = map[string]bool{}
-							g.cur_fn_generic_params = map[string]string{}
-							scope_fn_name := if stmt.is_method {
-								v_type_name := g.receiver_type_to_scope_name(stmt.receiver.typ)
-								if v_type_name != '' {
-									'${v_type_name}__${stmt.name}'
-								} else {
-									stmt.name
-								}
-							} else {
-								stmt.name
-							}
-							if g.env != unsafe { nil } {
-								if fn_scope := g.env.get_fn_scope(g.cur_module, scope_fn_name) {
-									g.cur_fn_scope = fn_scope
-								}
-							}
-							// Function-pointer fields can reference another generic
-							// function value before that function's signature is collected
-							// (veb.run_new assigns parallel_request_handler[A, X]).
-							// Scan the concrete body here so those downstream
-							// specializations get prototypes before any C body uses them.
-							g.seed_fn_scan_runtime_types(stmt, spec.name)
-							g.scan_fn_body_for_generic_types(stmt, spec.name)
-							g.register_fn_signature(stmt, spec.name)
-						}
-						g.active_generic_types = prev_generic_types.clone()
-						g.cur_fn_name = prev_fn_name
-						g.cur_fn_c_name = prev_fn_c_name
-						g.cur_fn_scope = prev_fn_scope
-						g.runtime_local_types = prev_runtime_local_types.clone()
-						g.runtime_decl_types = prev_runtime_decl_types.clone()
-						g.not_local_var_cache = prev_not_local_var_cache.clone()
-						g.cur_fn_generic_params = prev_cur_fn_generic_params.clone()
-						continue
-					}
-					// For methods on generic structs, resolve receiver generic
-					// params so the signature has correct concrete types.
-					recv_gp := receiver_generic_param_names(stmt)
-					if recv_gp.len > 0 {
-						all_bindings := g.get_all_receiver_generic_bindings(stmt)
-						if all_bindings.len > 0 {
-							prev_gt := g.active_generic_types.clone()
-							prev_fn_name := g.cur_fn_name
-							prev_fn_c_name := g.cur_fn_c_name
-							prev_fn_scope := g.cur_fn_scope
-							prev_runtime_local_types := g.runtime_local_types.clone()
-							prev_runtime_decl_types := g.runtime_decl_types.clone()
-							prev_not_local_var_cache := g.not_local_var_cache.clone()
-							prev_cur_fn_generic_params := g.cur_fn_generic_params.clone()
-							prev_generic_call_spec_scan_only := g.generic_call_spec_scan_only
-							for bi in all_bindings {
-								g.active_generic_types = bi.clone()
-								gfn := g.get_fn_name(stmt)
-								if gfn != '' {
-									g.cur_fn_name = stmt.name
-									g.cur_fn_c_name = gfn
-									g.cur_fn_scope = unsafe { nil }
-									g.runtime_local_types = map[string]string{}
-									g.runtime_decl_types = map[string]string{}
-									g.not_local_var_cache = map[string]bool{}
-									g.cur_fn_generic_params = map[string]string{}
-									scope_fn_name := if stmt.is_method {
-										v_type_name :=
-											g.receiver_type_to_scope_name(stmt.receiver.typ)
-										if v_type_name != '' {
-											'${v_type_name}__${stmt.name}'
-										} else {
-											stmt.name
-										}
-									} else {
-										stmt.name
-									}
-									if g.env != unsafe { nil } {
-										if fn_scope := g.env.get_fn_scope(g.cur_module,
-											scope_fn_name)
-										{
-											g.cur_fn_scope = fn_scope
-										}
-									}
-									g.seed_fn_scan_runtime_types(stmt, gfn)
-									g.generic_call_spec_scan_only = true
-									g.scan_fn_body_for_generic_types(stmt, gfn)
-									g.generic_call_spec_scan_only = prev_generic_call_spec_scan_only
-									g.register_fn_signature(stmt, gfn)
-								}
-							}
-							g.active_generic_types = prev_gt.clone()
-							g.cur_fn_name = prev_fn_name
-							g.cur_fn_c_name = prev_fn_c_name
-							g.cur_fn_scope = prev_fn_scope
-							g.runtime_local_types = prev_runtime_local_types.clone()
-							g.runtime_decl_types = prev_runtime_decl_types.clone()
-							g.not_local_var_cache = prev_not_local_var_cache.clone()
-							g.cur_fn_generic_params = prev_cur_fn_generic_params.clone()
-							g.generic_call_spec_scan_only = prev_generic_call_spec_scan_only
-							continue
-						} else if bindings := g.get_receiver_generic_bindings(stmt) {
-							prev_gt := g.active_generic_types.clone()
-							prev_fn_name := g.cur_fn_name
-							prev_fn_c_name := g.cur_fn_c_name
-							prev_fn_scope := g.cur_fn_scope
-							prev_runtime_local_types := g.runtime_local_types.clone()
-							prev_runtime_decl_types := g.runtime_decl_types.clone()
-							prev_not_local_var_cache := g.not_local_var_cache.clone()
-							prev_cur_fn_generic_params := g.cur_fn_generic_params.clone()
-							prev_generic_call_spec_scan_only := g.generic_call_spec_scan_only
-							g.active_generic_types = bindings.clone()
-							gfn := g.get_fn_name(stmt)
-							if gfn != '' {
-								g.cur_fn_name = stmt.name
-								g.cur_fn_c_name = gfn
-								g.cur_fn_scope = unsafe { nil }
-								g.runtime_local_types = map[string]string{}
-								g.runtime_decl_types = map[string]string{}
-								g.not_local_var_cache = map[string]bool{}
-								g.cur_fn_generic_params = map[string]string{}
-								scope_fn_name := if stmt.is_method {
-									v_type_name := g.receiver_type_to_scope_name(stmt.receiver.typ)
-									if v_type_name != '' {
-										'${v_type_name}__${stmt.name}'
-									} else {
-										stmt.name
-									}
-								} else {
-									stmt.name
-								}
-								if g.env != unsafe { nil } {
-									if fn_scope := g.env.get_fn_scope(g.cur_module, scope_fn_name) {
-										g.cur_fn_scope = fn_scope
-									}
-								}
-								g.seed_fn_scan_runtime_types(stmt, gfn)
-								g.generic_call_spec_scan_only = true
-								g.scan_fn_body_for_generic_types(stmt, gfn)
-								g.generic_call_spec_scan_only = prev_generic_call_spec_scan_only
-								g.register_fn_signature(stmt, gfn)
-							}
-							g.active_generic_types = prev_gt.clone()
-							g.cur_fn_name = prev_fn_name
-							g.cur_fn_c_name = prev_fn_c_name
-							g.cur_fn_scope = prev_fn_scope
-							g.runtime_local_types = prev_runtime_local_types.clone()
-							g.runtime_decl_types = prev_runtime_decl_types.clone()
-							g.not_local_var_cache = prev_not_local_var_cache.clone()
-							g.cur_fn_generic_params = prev_cur_fn_generic_params.clone()
-							g.generic_call_spec_scan_only = prev_generic_call_spec_scan_only
-							continue
-						}
-					}
-					mut fn_name := ''
-					if stmt.stmts.len == 0 && stmt.language == .c {
-						// Keep raw symbol names for C / system declaration-only functions.
-						fn_name = sanitize_fn_ident(stmt.name)
-					} else {
-						fn_name = g.get_fn_name(stmt)
-					}
-					g.register_fn_signature(stmt, fn_name)
+					g.collect_fn_signature_from_decl(stmt, stmt.stmts.len)
 				}
 				else {}
 			}
 		}
 	}
+}
+
+fn (mut g Gen) collect_fn_signature_from_decl(decl ast.FnDecl, body_len int) {
+	if !g.should_emit_fn_decl_cached(g.cur_module, decl) {
+		return
+	}
+	if decl.language == .js {
+		return
+	}
+	if g.should_skip_backend_generic_fn(decl) {
+		return
+	}
+	if g.generic_fn_param_names(decl).len > 0 {
+		prev_generic_types := g.active_generic_types.clone()
+		prev_fn_name := g.cur_fn_name
+		prev_fn_c_name := g.cur_fn_c_name
+		prev_fn_scope := g.cur_fn_scope
+		prev_runtime_local_types := g.runtime_local_types.clone()
+		prev_runtime_decl_types := g.runtime_decl_types.clone()
+		prev_not_local_var_cache := g.not_local_var_cache.clone()
+		prev_cur_fn_generic_params := g.cur_fn_generic_params.clone()
+		for spec in g.generic_fn_specializations_for_emit_scope(decl) {
+			g.active_generic_types = spec.generic_types.clone()
+			g.cur_fn_name = decl.name
+			g.cur_fn_c_name = spec.name
+			g.cur_fn_scope = unsafe { nil }
+			g.runtime_local_types = map[string]string{}
+			g.runtime_decl_types = map[string]string{}
+			g.not_local_var_cache = map[string]bool{}
+			g.cur_fn_generic_params = map[string]string{}
+			scope_fn_name := if decl.is_method {
+				v_type_name := g.receiver_type_to_scope_name(decl.receiver.typ)
+				if v_type_name != '' {
+					'${v_type_name}__${decl.name}'
+				} else {
+					decl.name
+				}
+			} else {
+				decl.name
+			}
+			if g.env != unsafe { nil } {
+				if fn_scope := g.env.get_fn_scope(g.cur_module, scope_fn_name) {
+					g.cur_fn_scope = fn_scope
+				}
+			}
+			// Function-pointer fields can reference another generic function value before that
+			// function's signature is collected (veb.run_new assigns parallel_request_handler[A, X]).
+			g.seed_fn_scan_runtime_types(decl, spec.name)
+			g.scan_fn_body_for_generic_types(decl, spec.name)
+			g.register_fn_signature(decl, spec.name)
+		}
+		g.active_generic_types = prev_generic_types.clone()
+		g.cur_fn_name = prev_fn_name
+		g.cur_fn_c_name = prev_fn_c_name
+		g.cur_fn_scope = prev_fn_scope
+		g.runtime_local_types = prev_runtime_local_types.clone()
+		g.runtime_decl_types = prev_runtime_decl_types.clone()
+		g.not_local_var_cache = prev_not_local_var_cache.clone()
+		g.cur_fn_generic_params = prev_cur_fn_generic_params.clone()
+		return
+	}
+	recv_gp := receiver_generic_param_names(decl)
+	if recv_gp.len > 0 {
+		all_bindings := g.get_all_receiver_generic_bindings(decl)
+		if all_bindings.len > 0 {
+			prev_gt := g.active_generic_types.clone()
+			prev_fn_name := g.cur_fn_name
+			prev_fn_c_name := g.cur_fn_c_name
+			prev_fn_scope := g.cur_fn_scope
+			prev_runtime_local_types := g.runtime_local_types.clone()
+			prev_runtime_decl_types := g.runtime_decl_types.clone()
+			prev_not_local_var_cache := g.not_local_var_cache.clone()
+			prev_cur_fn_generic_params := g.cur_fn_generic_params.clone()
+			prev_generic_call_spec_scan_only := g.generic_call_spec_scan_only
+			for bi in all_bindings {
+				g.active_generic_types = bi.clone()
+				gfn := g.get_fn_name(decl)
+				if gfn != '' {
+					g.cur_fn_name = decl.name
+					g.cur_fn_c_name = gfn
+					g.cur_fn_scope = unsafe { nil }
+					g.runtime_local_types = map[string]string{}
+					g.runtime_decl_types = map[string]string{}
+					g.not_local_var_cache = map[string]bool{}
+					g.cur_fn_generic_params = map[string]string{}
+					scope_fn_name := if decl.is_method {
+						v_type_name := g.receiver_type_to_scope_name(decl.receiver.typ)
+						if v_type_name != '' {
+							'${v_type_name}__${decl.name}'
+						} else {
+							decl.name
+						}
+					} else {
+						decl.name
+					}
+					if g.env != unsafe { nil } {
+						if fn_scope := g.env.get_fn_scope(g.cur_module, scope_fn_name) {
+							g.cur_fn_scope = fn_scope
+						}
+					}
+					g.seed_fn_scan_runtime_types(decl, gfn)
+					g.generic_call_spec_scan_only = true
+					g.scan_fn_body_for_generic_types(decl, gfn)
+					g.generic_call_spec_scan_only = prev_generic_call_spec_scan_only
+					g.register_fn_signature(decl, gfn)
+				}
+			}
+			g.active_generic_types = prev_gt.clone()
+			g.cur_fn_name = prev_fn_name
+			g.cur_fn_c_name = prev_fn_c_name
+			g.cur_fn_scope = prev_fn_scope
+			g.runtime_local_types = prev_runtime_local_types.clone()
+			g.runtime_decl_types = prev_runtime_decl_types.clone()
+			g.not_local_var_cache = prev_not_local_var_cache.clone()
+			g.cur_fn_generic_params = prev_cur_fn_generic_params.clone()
+			g.generic_call_spec_scan_only = prev_generic_call_spec_scan_only
+			return
+		} else if bindings := g.get_receiver_generic_bindings(decl) {
+			prev_gt := g.active_generic_types.clone()
+			prev_fn_name := g.cur_fn_name
+			prev_fn_c_name := g.cur_fn_c_name
+			prev_fn_scope := g.cur_fn_scope
+			prev_runtime_local_types := g.runtime_local_types.clone()
+			prev_runtime_decl_types := g.runtime_decl_types.clone()
+			prev_not_local_var_cache := g.not_local_var_cache.clone()
+			prev_cur_fn_generic_params := g.cur_fn_generic_params.clone()
+			prev_generic_call_spec_scan_only := g.generic_call_spec_scan_only
+			g.active_generic_types = bindings.clone()
+			gfn := g.get_fn_name(decl)
+			if gfn != '' {
+				g.cur_fn_name = decl.name
+				g.cur_fn_c_name = gfn
+				g.cur_fn_scope = unsafe { nil }
+				g.runtime_local_types = map[string]string{}
+				g.runtime_decl_types = map[string]string{}
+				g.not_local_var_cache = map[string]bool{}
+				g.cur_fn_generic_params = map[string]string{}
+				scope_fn_name := if decl.is_method {
+					v_type_name := g.receiver_type_to_scope_name(decl.receiver.typ)
+					if v_type_name != '' {
+						'${v_type_name}__${decl.name}'
+					} else {
+						decl.name
+					}
+				} else {
+					decl.name
+				}
+				if g.env != unsafe { nil } {
+					if fn_scope := g.env.get_fn_scope(g.cur_module, scope_fn_name) {
+						g.cur_fn_scope = fn_scope
+					}
+				}
+				g.seed_fn_scan_runtime_types(decl, gfn)
+				g.generic_call_spec_scan_only = true
+				g.scan_fn_body_for_generic_types(decl, gfn)
+				g.generic_call_spec_scan_only = prev_generic_call_spec_scan_only
+				g.register_fn_signature(decl, gfn)
+			}
+			g.active_generic_types = prev_gt.clone()
+			g.cur_fn_name = prev_fn_name
+			g.cur_fn_c_name = prev_fn_c_name
+			g.cur_fn_scope = prev_fn_scope
+			g.runtime_local_types = prev_runtime_local_types.clone()
+			g.runtime_decl_types = prev_runtime_decl_types.clone()
+			g.not_local_var_cache = prev_not_local_var_cache.clone()
+			g.cur_fn_generic_params = prev_cur_fn_generic_params.clone()
+			g.generic_call_spec_scan_only = prev_generic_call_spec_scan_only
+			return
+		}
+	}
+	mut fn_name := ''
+	if body_len == 0 && decl.language == .c {
+		// Keep raw symbol names for C / system declaration-only functions.
+		fn_name = sanitize_fn_ident(decl.name)
+	} else {
+		fn_name = g.get_fn_name(decl)
+	}
+	g.register_fn_signature(decl, fn_name)
 }
 
 fn (mut g Gen) collect_fn_signatures_to_fixed_point() {
@@ -1192,6 +1203,42 @@ fn (mut g Gen) build_generic_fn_decl_index() {
 		g.cur_module = prev_module
 		g.cur_file_name = prev_file_name
 		g.active_generic_types = prev_active_generic_types.clone()
+	}
+	if g.has_flat() {
+		for file_idx in 0 .. g.flat.files.len {
+			fc := g.flat.file_cursor(file_idx)
+			g.set_file_cursor_module(fc)
+			stmts := fc.stmts()
+			for stmt_idx in 0 .. stmts.len() {
+				stmt := stmts.at(stmt_idx)
+				if stmt.kind() != .stmt_fn_decl {
+					continue
+				}
+				decl := stmt.fn_decl_signature()
+				if g.generic_fn_param_names(decl).len == 0 {
+					continue
+				}
+				info := GenericFnDeclInfo{
+					file_idx: file_idx
+					stmt_idx: stmt_idx
+				}
+				qualified := g.get_fn_name(decl)
+				if qualified != '' && qualified !in g.generic_fn_decl_index {
+					g.generic_fn_decl_index[qualified] = info
+				}
+				if !decl.is_method && decl.name != '' && decl.name !in g.generic_fn_decl_index {
+					g.generic_fn_decl_index[decl.name] = info
+				}
+				if decl.is_method && decl.name != '' && decl.name !in g.generic_fn_decl_index {
+					g.generic_fn_decl_index[decl.name] = info
+				}
+				sanitized := sanitize_fn_ident(decl.name)
+				if !decl.is_method && sanitized != '' && sanitized !in g.generic_fn_decl_index {
+					g.generic_fn_decl_index[sanitized] = info
+				}
+			}
+		}
+		return
 	}
 	for file_idx, file in g.files {
 		g.set_file_module(file)
@@ -1974,6 +2021,22 @@ fn (mut g Gen) find_generic_fn_decl_for_requirements(call_name string) ?ast.FnDe
 	}
 	if short_name.contains('__') {
 		short_name = short_name.all_after_last('__')
+	}
+	if g.has_flat() {
+		for i in 0 .. g.flat.files.len {
+			stmts := g.flat.file_cursor(i).stmts()
+			for j in 0 .. stmts.len() {
+				stmt := stmts.at(j)
+				if stmt.kind() != .stmt_fn_decl || stmt.name() != short_name {
+					continue
+				}
+				decl := stmt.fn_decl()
+				if g.generic_fn_param_names(decl).len > 0 {
+					return decl
+				}
+			}
+		}
+		return none
 	}
 	for file in g.files {
 		for stmt in file.stmts {
@@ -2813,76 +2876,25 @@ fn (mut g Gen) discover_nested_generic_specs() {
 	for _ in 0 .. 8 {
 		g.build_generic_spec_index()
 		before := g.late_generic_spec_count()
-		for file in g.files {
-			g.set_file_module(file)
-			for stmt in file.stmts {
-				if stmt is ast.FnDecl {
-					if !g.should_emit_fn_decl_cached(g.cur_module, stmt) {
-						continue
+		if g.has_flat() {
+			for i in 0 .. g.flat.files.len {
+				fc := g.flat.file_cursor(i)
+				g.set_file_cursor_module(fc)
+				stmts := fc.stmts()
+				for j in 0 .. stmts.len() {
+					stmt := stmts.at(j)
+					if stmt.kind() == .stmt_fn_decl {
+						g.discover_nested_generic_specs_for_decl(stmt.fn_decl(), mut scanned_specs)
 					}
-					if g.generic_fn_param_names(stmt).len == 0 {
-						continue
+				}
+			}
+		} else {
+			for file in g.files {
+				g.set_file_module(file)
+				for stmt in file.stmts {
+					if stmt is ast.FnDecl {
+						g.discover_nested_generic_specs_for_decl(stmt, mut scanned_specs)
 					}
-					specs := if fn_has_comptime_stmt(stmt) || g.fn_body_has_generic_call(stmt) {
-						g.generic_fn_specializations(stmt)
-					} else {
-						g.direct_generic_fn_specializations(stmt)
-					}
-					if specs.len == 0 {
-						continue
-					}
-					prev_fn_name := g.cur_fn_name
-					prev_fn_c_name := g.cur_fn_c_name
-					prev_fn_scope := g.cur_fn_scope
-					mut prev_active_generic_types := g.active_generic_types.clone()
-					mut prev_runtime_local_types := g.runtime_local_types.clone()
-					mut prev_runtime_decl_types := g.runtime_decl_types.clone()
-					mut prev_not_local_var_cache := g.not_local_var_cache.clone()
-					mut prev_is_module_ident_cache := g.is_module_ident_cache.clone()
-					mut prev_resolved_module_names := g.resolved_module_names.clone()
-					mut prev_cur_fn_generic_params := g.cur_fn_generic_params.clone()
-					scope_fn_name := if stmt.is_method {
-						v_type_name := g.receiver_type_to_scope_name(stmt.receiver.typ)
-						if v_type_name != '' {
-							'${v_type_name}__${stmt.name}'
-						} else {
-							stmt.name
-						}
-					} else {
-						stmt.name
-					}
-					for spec in specs {
-						scan_key := '${g.cur_module}.${scope_fn_name}:${spec.name}'
-						if scan_key in scanned_specs {
-							continue
-						}
-						scanned_specs[scan_key] = true
-						g.cur_fn_name = stmt.name
-						g.cur_fn_c_name = spec.name
-						g.cur_fn_scope = unsafe { nil }
-						if fn_scope := g.env.get_fn_scope(g.cur_module, scope_fn_name) {
-							g.cur_fn_scope = fn_scope
-						}
-						g.active_generic_types = spec.generic_types.clone()
-						g.runtime_local_types = map[string]string{}
-						g.runtime_decl_types = map[string]string{}
-						g.not_local_var_cache = map[string]bool{}
-						g.is_module_ident_cache = map[string]bool{}
-						g.resolved_module_names = map[string]string{}
-						g.cur_fn_generic_params = map[string]string{}
-						g.seed_fn_scan_runtime_types(stmt, spec.name)
-						g.scan_fn_body_for_generic_types(stmt, spec.name)
-					}
-					g.cur_fn_name = prev_fn_name
-					g.cur_fn_c_name = prev_fn_c_name
-					g.cur_fn_scope = prev_fn_scope
-					g.active_generic_types = prev_active_generic_types.move()
-					g.runtime_local_types = prev_runtime_local_types.move()
-					g.runtime_decl_types = prev_runtime_decl_types.move()
-					g.not_local_var_cache = prev_not_local_var_cache.move()
-					g.is_module_ident_cache = prev_is_module_ident_cache.move()
-					g.resolved_module_names = prev_resolved_module_names.move()
-					g.cur_fn_generic_params = prev_cur_fn_generic_params.move()
 				}
 			}
 		}
@@ -2893,76 +2905,160 @@ fn (mut g Gen) discover_nested_generic_specs() {
 	g.build_generic_spec_index()
 }
 
+fn (mut g Gen) discover_nested_generic_specs_for_decl(decl ast.FnDecl, mut scanned_specs map[string]bool) {
+	if !g.should_emit_fn_decl_cached(g.cur_module, decl) {
+		return
+	}
+	if g.generic_fn_param_names(decl).len == 0 {
+		return
+	}
+	specs := if fn_has_comptime_stmt(decl) || g.fn_body_has_generic_call(decl) {
+		g.generic_fn_specializations(decl)
+	} else {
+		g.direct_generic_fn_specializations(decl)
+	}
+	if specs.len == 0 {
+		return
+	}
+	prev_fn_name := g.cur_fn_name
+	prev_fn_c_name := g.cur_fn_c_name
+	prev_fn_scope := g.cur_fn_scope
+	mut prev_active_generic_types := g.active_generic_types.clone()
+	mut prev_runtime_local_types := g.runtime_local_types.clone()
+	mut prev_runtime_decl_types := g.runtime_decl_types.clone()
+	mut prev_not_local_var_cache := g.not_local_var_cache.clone()
+	mut prev_is_module_ident_cache := g.is_module_ident_cache.clone()
+	mut prev_resolved_module_names := g.resolved_module_names.clone()
+	mut prev_cur_fn_generic_params := g.cur_fn_generic_params.clone()
+	scope_fn_name := if decl.is_method {
+		v_type_name := g.receiver_type_to_scope_name(decl.receiver.typ)
+		if v_type_name != '' {
+			'${v_type_name}__${decl.name}'
+		} else {
+			decl.name
+		}
+	} else {
+		decl.name
+	}
+	for spec in specs {
+		scan_key := '${g.cur_module}.${scope_fn_name}:${spec.name}'
+		if scan_key in scanned_specs {
+			continue
+		}
+		scanned_specs[scan_key] = true
+		g.cur_fn_name = decl.name
+		g.cur_fn_c_name = spec.name
+		g.cur_fn_scope = unsafe { nil }
+		if fn_scope := g.env.get_fn_scope(g.cur_module, scope_fn_name) {
+			g.cur_fn_scope = fn_scope
+		}
+		g.active_generic_types = spec.generic_types.clone()
+		g.runtime_local_types = map[string]string{}
+		g.runtime_decl_types = map[string]string{}
+		g.not_local_var_cache = map[string]bool{}
+		g.is_module_ident_cache = map[string]bool{}
+		g.resolved_module_names = map[string]string{}
+		g.cur_fn_generic_params = map[string]string{}
+		g.seed_fn_scan_runtime_types(decl, spec.name)
+		g.scan_fn_body_for_generic_types(decl, spec.name)
+	}
+	g.cur_fn_name = prev_fn_name
+	g.cur_fn_c_name = prev_fn_c_name
+	g.cur_fn_scope = prev_fn_scope
+	g.active_generic_types = prev_active_generic_types.move()
+	g.runtime_local_types = prev_runtime_local_types.move()
+	g.runtime_decl_types = prev_runtime_decl_types.move()
+	g.not_local_var_cache = prev_not_local_var_cache.move()
+	g.is_module_ident_cache = prev_is_module_ident_cache.move()
+	g.resolved_module_names = prev_resolved_module_names.move()
+	g.cur_fn_generic_params = prev_cur_fn_generic_params.move()
+}
+
 fn (mut g Gen) discover_direct_generic_call_specs() {
 	if g.env == unsafe { nil } {
 		return
 	}
 	g.build_generic_spec_index()
 	before := g.late_generic_spec_count()
-	for file in g.files {
-		g.set_file_module(file)
-		for stmt in file.stmts {
-			match stmt {
-				ast.FnDecl {
-					if !g.should_emit_fn_decl_cached(g.cur_module, stmt) {
-						continue
-					}
-					if g.generic_fn_param_names(stmt).len != 0 {
-						continue
-					}
-					prev_fn_name := g.cur_fn_name
-					prev_fn_c_name := g.cur_fn_c_name
-					prev_fn_scope := g.cur_fn_scope
-					mut prev_active_generic_types := g.active_generic_types.clone()
-					mut prev_runtime_local_types := g.runtime_local_types.clone()
-					mut prev_runtime_decl_types := g.runtime_decl_types.clone()
-					mut prev_not_local_var_cache := g.not_local_var_cache.clone()
-					mut prev_is_module_ident_cache := g.is_module_ident_cache.clone()
-					mut prev_resolved_module_names := g.resolved_module_names.clone()
-					mut prev_cur_fn_generic_params := g.cur_fn_generic_params.clone()
-					scope_fn_name := if stmt.is_method {
-						v_type_name := g.receiver_type_to_scope_name(stmt.receiver.typ)
-						if v_type_name != '' {
-							'${v_type_name}__${stmt.name}'
-						} else {
-							stmt.name
-						}
-					} else {
-						stmt.name
-					}
-					g.cur_fn_name = stmt.name
-					g.cur_fn_c_name = g.get_fn_name(stmt)
-					g.cur_fn_scope = unsafe { nil }
-					if fn_scope := g.env.get_fn_scope(g.cur_module, scope_fn_name) {
-						g.cur_fn_scope = fn_scope
-					}
-					g.active_generic_types = map[string]types.Type{}
-					g.runtime_local_types = map[string]string{}
-					g.runtime_decl_types = map[string]string{}
-					g.not_local_var_cache = map[string]bool{}
-					g.is_module_ident_cache = map[string]bool{}
-					g.resolved_module_names = map[string]string{}
-					g.cur_fn_generic_params = map[string]string{}
-					g.seed_fn_scan_runtime_types(stmt, g.cur_fn_c_name)
-					g.scan_fn_body_for_generic_types(stmt, 'direct')
-					g.cur_fn_name = prev_fn_name
-					g.cur_fn_c_name = prev_fn_c_name
-					g.cur_fn_scope = prev_fn_scope
-					g.active_generic_types = prev_active_generic_types.move()
-					g.runtime_local_types = prev_runtime_local_types.move()
-					g.runtime_decl_types = prev_runtime_decl_types.move()
-					g.not_local_var_cache = prev_not_local_var_cache.move()
-					g.is_module_ident_cache = prev_is_module_ident_cache.move()
-					g.resolved_module_names = prev_resolved_module_names.move()
-					g.cur_fn_generic_params = prev_cur_fn_generic_params.move()
+	if g.has_flat() {
+		for i in 0 .. g.flat.files.len {
+			fc := g.flat.file_cursor(i)
+			g.set_file_cursor_module(fc)
+			stmts := fc.stmts()
+			for j in 0 .. stmts.len() {
+				stmt := stmts.at(j)
+				if stmt.kind() == .stmt_fn_decl {
+					g.discover_direct_generic_call_specs_for_decl(stmt.fn_decl())
 				}
-				else {}
+			}
+		}
+	} else {
+		for file in g.files {
+			g.set_file_module(file)
+			for stmt in file.stmts {
+				if stmt is ast.FnDecl {
+					g.discover_direct_generic_call_specs_for_decl(stmt)
+				}
 			}
 		}
 	}
 	if g.late_generic_spec_count() != before {
 		g.build_generic_spec_index()
 	}
+}
+
+fn (mut g Gen) discover_direct_generic_call_specs_for_decl(decl ast.FnDecl) {
+	if !g.should_emit_fn_decl_cached(g.cur_module, decl) {
+		return
+	}
+	if g.generic_fn_param_names(decl).len != 0 {
+		return
+	}
+	prev_fn_name := g.cur_fn_name
+	prev_fn_c_name := g.cur_fn_c_name
+	prev_fn_scope := g.cur_fn_scope
+	mut prev_active_generic_types := g.active_generic_types.clone()
+	mut prev_runtime_local_types := g.runtime_local_types.clone()
+	mut prev_runtime_decl_types := g.runtime_decl_types.clone()
+	mut prev_not_local_var_cache := g.not_local_var_cache.clone()
+	mut prev_is_module_ident_cache := g.is_module_ident_cache.clone()
+	mut prev_resolved_module_names := g.resolved_module_names.clone()
+	mut prev_cur_fn_generic_params := g.cur_fn_generic_params.clone()
+	scope_fn_name := if decl.is_method {
+		v_type_name := g.receiver_type_to_scope_name(decl.receiver.typ)
+		if v_type_name != '' {
+			'${v_type_name}__${decl.name}'
+		} else {
+			decl.name
+		}
+	} else {
+		decl.name
+	}
+	g.cur_fn_name = decl.name
+	g.cur_fn_c_name = g.get_fn_name(decl)
+	g.cur_fn_scope = unsafe { nil }
+	if fn_scope := g.env.get_fn_scope(g.cur_module, scope_fn_name) {
+		g.cur_fn_scope = fn_scope
+	}
+	g.active_generic_types = map[string]types.Type{}
+	g.runtime_local_types = map[string]string{}
+	g.runtime_decl_types = map[string]string{}
+	g.not_local_var_cache = map[string]bool{}
+	g.is_module_ident_cache = map[string]bool{}
+	g.resolved_module_names = map[string]string{}
+	g.cur_fn_generic_params = map[string]string{}
+	g.seed_fn_scan_runtime_types(decl, g.cur_fn_c_name)
+	g.scan_fn_body_for_generic_types(decl, 'direct')
+	g.cur_fn_name = prev_fn_name
+	g.cur_fn_c_name = prev_fn_c_name
+	g.cur_fn_scope = prev_fn_scope
+	g.active_generic_types = prev_active_generic_types.move()
+	g.runtime_local_types = prev_runtime_local_types.move()
+	g.runtime_decl_types = prev_runtime_decl_types.move()
+	g.not_local_var_cache = prev_not_local_var_cache.move()
+	g.is_module_ident_cache = prev_is_module_ident_cache.move()
+	g.resolved_module_names = prev_resolved_module_names.move()
+	g.cur_fn_generic_params = prev_cur_fn_generic_params.move()
 }
 
 fn (mut g Gen) seed_fn_scan_runtime_types(node ast.FnDecl, fn_name string) {
@@ -3502,6 +3598,20 @@ fn (g &Gen) module_has_emit_file(module_name string) bool {
 	if g.emit_file_modules.len > 0 || g.declared_type_names_in_emit_files.len > 0 {
 		return false
 	}
+	if g.has_flat() {
+		for i in 0 .. g.flat.files.len {
+			fc := g.flat.file_cursor(i)
+			if flat_file_module_name(fc) != module_name {
+				continue
+			}
+			file_name := fc.name()
+			if os.norm_path(file_name) in g.emit_files
+				|| os.norm_path(os.abs_path(file_name)) in g.emit_files {
+				return true
+			}
+		}
+		return false
+	}
 	for file in g.files {
 		if file_module_name(file) != module_name {
 			continue
@@ -3519,6 +3629,30 @@ fn (g &Gen) unqualified_type_name_declared_in_emit_files(name string) bool {
 		return true
 	}
 	if g.emit_file_modules.len > 0 || g.declared_type_names_in_emit_files.len > 0 {
+		return false
+	}
+	if g.has_flat() {
+		for i in 0 .. g.flat.files.len {
+			fc := g.flat.file_cursor(i)
+			file_name := fc.name()
+			if !(os.norm_path(file_name) in g.emit_files
+				|| os.norm_path(os.abs_path(file_name)) in g.emit_files) {
+				continue
+			}
+			module_name := flat_file_module_name(fc)
+			stmts := fc.stmts()
+			for j in 0 .. stmts.len() {
+				stmt := stmts.at(j)
+				match stmt.kind() {
+					.stmt_struct_decl, .stmt_enum_decl, .stmt_interface_decl, .stmt_type_decl {
+						if type_decl_name_matches_cache_alias(stmt.name(), module_name, name) {
+							return true
+						}
+					}
+					else {}
+				}
+			}
+		}
 		return false
 	}
 	for file in g.files {
@@ -3845,6 +3979,27 @@ fn (g &Gen) c_name_from_specialization_token_base(name string) string {
 
 fn (g &Gen) c_type_name_declared_in_module(mod_name string, type_name string) bool {
 	if mod_name == '' || type_name == '' {
+		return false
+	}
+	if g.has_flat() {
+		for i in 0 .. g.flat.files.len {
+			fc := g.flat.file_cursor(i)
+			if flat_file_module_name(fc) != mod_name {
+				continue
+			}
+			stmts := fc.stmts()
+			for j in 0 .. stmts.len() {
+				stmt := stmts.at(j)
+				match stmt.kind() {
+					.stmt_struct_decl, .stmt_enum_decl, .stmt_interface_decl, .stmt_type_decl {
+						if stmt.name() == type_name {
+							return true
+						}
+					}
+					else {}
+				}
+			}
+		}
 		return false
 	}
 	for file in g.files {
@@ -4494,6 +4649,20 @@ fn (g &Gen) qualify_local_call_name(name string) string {
 fn (mut g Gen) find_generic_fn_decl_by_base_name(name string) ?ast.FnDecl {
 	lookup_name := g.qualified_generic_fn_base_name(name) or { name }
 	info := g.generic_fn_decl_index[lookup_name] or { return none }
+	if g.has_flat() {
+		if info.file_idx < 0 || info.file_idx >= g.flat.files.len {
+			return none
+		}
+		stmts := g.flat.file_cursor(info.file_idx).stmts()
+		if info.stmt_idx < 0 || info.stmt_idx >= stmts.len() {
+			return none
+		}
+		stmt := stmts.at(info.stmt_idx)
+		if stmt.kind() == .stmt_fn_decl {
+			return stmt.fn_decl()
+		}
+		return none
+	}
 	if info.file_idx < 0 || info.file_idx >= g.files.len {
 		return none
 	}
@@ -4568,6 +4737,24 @@ fn (mut g Gen) find_generic_fn_decl_by_spec_key(key string) ?ast.FnDecl {
 	defer {
 		g.cur_module = prev_module
 		g.cur_file_name = prev_file_name
+	}
+	if g.has_flat() {
+		for i in 0 .. g.flat.files.len {
+			fc := g.flat.file_cursor(i)
+			g.set_file_cursor_module(fc)
+			stmts := fc.stmts()
+			for j in 0 .. stmts.len() {
+				stmt := stmts.at(j)
+				if stmt.kind() != .stmt_fn_decl || stmt.name() != short_name {
+					continue
+				}
+				decl := stmt.fn_decl()
+				if g.generic_fn_param_names(decl).len > 0 {
+					return decl
+				}
+			}
+		}
+		return none
 	}
 	for file in g.files {
 		g.set_file_module(file)
@@ -8067,6 +8254,31 @@ fn (mut g Gen) gen_call_arg(fn_name string, idx int, arg ast.Expr) {
 		}
 		return
 	}
+	if fn_name == 'map__set' && idx in [1, 2] {
+		if base_arg is ast.CastExpr && base_arg.expr is ast.PrefixExpr {
+			prefix_expr := base_arg.expr as ast.PrefixExpr
+			if prefix_expr.op == .amp {
+				mut value_type := ''
+				if prefix_expr.expr is ast.AsCastExpr {
+					value_type = g.expr_type_to_c(prefix_expr.expr.typ).trim_space()
+				}
+				if value_type == '' || value_type == 'int' {
+					value_type = g.get_expr_type(prefix_expr.expr).trim_space()
+				}
+				if value_type == '' || value_type == 'int' {
+					if raw_type := g.get_raw_type(prefix_expr.expr) {
+						value_type = g.types_type_to_c(raw_type).trim_space()
+					}
+				}
+				g.sb.write_string('((void*)')
+				g.gen_addr_of_expr(prefix_expr.expr, value_type)
+				g.sb.write_string(')')
+				return
+			}
+		}
+		g.expr(base_arg)
+		return
+	}
 	if param_types := g.fn_param_types[fn_name] {
 		if idx < param_types.len {
 			param_type := param_types[idx]
@@ -10180,6 +10392,15 @@ fn (mut g Gen) call_expr(lhs ast.Expr, args []ast.Expr) {
 		return
 	}
 	for i in 0 .. args.len {
+		if args[i] is ast.SelectorExpr {
+			arg_sel := args[i] as ast.SelectorExpr
+			if _ := g.plain_index_selector_type(arg_sel) {
+				continue
+			}
+			if _ := g.plain_local_selector_type(arg_sel) {
+				continue
+			}
+		}
 		_ = g.get_expr_type(args[i])
 	}
 	// Comptime method dispatch: app.$method(args) inside `$for method in T.methods` loop.
@@ -11916,25 +12137,56 @@ fn (g &Gen) alias_base_c_type(type_name string) ?string {
 		}
 	}
 	short_name := type_name.all_after_last('__')
-	for file in g.files {
-		mod_name := file.mod.replace('.', '_')
-		for stmt in file.stmts {
-			if stmt is ast.TypeDecl {
-				candidate := if mod_name != '' && mod_name != 'main' && mod_name != 'builtin' {
-					'${mod_name}__${stmt.name}'
-				} else {
-					stmt.name
-				}
-				if candidate != type_name && stmt.name != short_name {
+	if g.has_flat() {
+		for i in 0 .. g.flat.files.len {
+			fc := g.flat.file_cursor(i)
+			mod_name := flat_file_module_name(fc)
+			stmts := fc.stmts()
+			for j in 0 .. stmts.len() {
+				stmt := stmts.at(j)
+				if stmt.kind() != .stmt_type_decl {
 					continue
 				}
-				base_name := stmt.base_type.name().replace('.', '__')
+				decl := stmt.type_decl()
+				candidate := if mod_name != '' && mod_name != 'main' && mod_name != 'builtin' {
+					'${mod_name}__${decl.name}'
+				} else {
+					decl.name
+				}
+				if candidate != type_name && decl.name != short_name {
+					continue
+				}
+				base_name := decl.base_type.name().replace('.', '__')
 				if base_name != '' && base_name != type_name {
 					unsafe {
 						mut self := g
 						self.alias_base_lookup_cache[cache_key] = base_name
 					}
 					return base_name
+				}
+			}
+		}
+	} else {
+		for file in g.files {
+			mod_name := file.mod.replace('.', '_')
+			for stmt in file.stmts {
+				if stmt is ast.TypeDecl {
+					candidate := if mod_name != '' && mod_name != 'main' && mod_name != 'builtin' {
+						'${mod_name}__${stmt.name}'
+					} else {
+						stmt.name
+					}
+					if candidate != type_name && stmt.name != short_name {
+						continue
+					}
+					base_name := stmt.base_type.name().replace('.', '__')
+					if base_name != '' && base_name != type_name {
+						unsafe {
+							mut self := g
+							self.alias_base_lookup_cache[cache_key] = base_name
+						}
+						return base_name
+					}
 				}
 			}
 		}
@@ -11981,22 +12233,46 @@ fn (g &Gen) alias_base_c_type(type_name string) ?string {
 			}
 		}
 	}
-	for file in g.files {
-		mod_name := file.mod.replace('.', '_')
-		if mod_name == '' || mod_name in modules {
-			continue
-		}
-		if mut scope := g.env_scope(mod_name) {
-			if obj := scope.lookup_parent(short_name, 0) {
-				if obj is types.Type && obj is types.Alias {
-					alias_obj := obj as types.Alias
-					base_name := g.types_type_to_c(alias_obj.base_type)
-					if base_name != '' && base_name != type_name {
-						unsafe {
-							mut self := g
-							self.alias_base_lookup_cache[cache_key] = base_name
+	if g.has_flat() {
+		for i in 0 .. g.flat.files.len {
+			mod_name := flat_file_module_name(g.flat.file_cursor(i))
+			if mod_name == '' || mod_name in modules {
+				continue
+			}
+			if mut scope := g.env_scope(mod_name) {
+				if obj := scope.lookup_parent(short_name, 0) {
+					if obj is types.Type && obj is types.Alias {
+						alias_obj := obj as types.Alias
+						base_name := g.types_type_to_c(alias_obj.base_type)
+						if base_name != '' && base_name != type_name {
+							unsafe {
+								mut self := g
+								self.alias_base_lookup_cache[cache_key] = base_name
+							}
+							return base_name
 						}
-						return base_name
+					}
+				}
+			}
+		}
+	} else {
+		for file in g.files {
+			mod_name := file.mod.replace('.', '_')
+			if mod_name == '' || mod_name in modules {
+				continue
+			}
+			if mut scope := g.env_scope(mod_name) {
+				if obj := scope.lookup_parent(short_name, 0) {
+					if obj is types.Type && obj is types.Alias {
+						alias_obj := obj as types.Alias
+						base_name := g.types_type_to_c(alias_obj.base_type)
+						if base_name != '' && base_name != type_name {
+							unsafe {
+								mut self := g
+								self.alias_base_lookup_cache[cache_key] = base_name
+							}
+							return base_name
+						}
 					}
 				}
 			}
@@ -12192,6 +12468,14 @@ fn (g &Gen) source_module_exists(module_name string) bool {
 		if _ := g.env.get_scope(module_name) {
 			return true
 		}
+	}
+	if g.has_flat() {
+		for i in 0 .. g.flat.files.len {
+			if flat_file_module_name(g.flat.file_cursor(i)) == module_name {
+				return true
+			}
+		}
+		return false
 	}
 	for file in g.files {
 		if file_module_name(file) == module_name {

@@ -32,6 +32,30 @@ fn cleanc_csrc_for_test_source(name string, source string) string {
 	return gen.gen()
 }
 
+fn cleanc_csrc_for_test_source_flat_transform(name string, source string) string {
+	tmp_file := '/tmp/v2_cleanc_flat_${name}_${os.getpid()}.v'
+	os.write_file(tmp_file, source) or { panic('failed to write temp file') }
+	defer {
+		os.rm(tmp_file) or {}
+	}
+	prefs := &vpref.Preferences{
+		backend:     .cleanc
+		no_parallel: true
+	}
+	mut file_set := token.FileSet.new()
+	mut par := parser.Parser.new(prefs)
+	files := par.parse_files([tmp_file], mut file_set)
+	mut env := types.Environment.new()
+	mut checker := types.Checker.new(prefs, file_set, env)
+	checker.check_files(files)
+	flat := ast.flatten_files(files)
+	mut trans := transformer.Transformer.new_with_pref(env, prefs)
+	trans.set_file_set(file_set)
+	_, transformed_files := trans.transform_files_to_flat_via_driver(&flat, files)
+	mut gen := Gen.new_with_env_and_pref(transformed_files, env, prefs)
+	return gen.gen()
+}
+
 fn test_c_string_literal_content_to_c_single_line() {
 	out := c_string_literal_content_to_c('hello')
 	assert out == '"hello"'
@@ -1505,6 +1529,187 @@ fn test_sum_variant_check_supports_nested_sum_variants() {
 	assert out.contains('((ast__Expr*)(node._data._Expr))')
 	assert out.contains('->_tag == 1')
 	assert !out.contains('node == ast__InfixExpr')
+}
+
+fn test_selector_variant_check_uses_storage_path_for_nested_sum_variant() {
+	mut gen := Gen.new([])
+	gen.sum_type_variants['ast__Expr'] = ['ast__Type']
+	gen.sum_type_variants['ast__Type'] = ['ast__AnonStructType', 'ast__ArrayFixedType']
+	gen.struct_field_types['ast__ArrayInitExpr.typ'] = 'ast__Expr'
+	gen.struct_field_types['ArrayInitExpr.typ'] = 'ast__Expr'
+	gen.remember_runtime_local_type('array_init', 'ast__ArrayInitExpr')
+	typ_selector := ast.Expr(ast.SelectorExpr{
+		lhs: ast.Expr(ast.Ident{
+			name: 'array_init'
+		})
+		rhs: ast.Ident{
+			name: 'typ'
+		}
+		pos: token.Pos{
+			id: 77
+		}
+	})
+	// Emulate the RHS of `array_init.typ is ast.Type && array_init.typ is ast.ArrayFixedType`:
+	// the checker has narrowed the selector expression to ast.Type, but the C storage is
+	// still ast.Expr and needs a nested tag-path check.
+	gen.selector_field_type_cache['77|typ'] = 'ast__Type'
+	gen.expr(ast.Expr(ast.InfixExpr{
+		op:  token.Token.key_is
+		lhs: typ_selector
+		rhs: ast.Expr(ast.SelectorExpr{
+			lhs: ast.Expr(ast.Ident{
+				name: 'ast'
+			})
+			rhs: ast.Ident{
+				name: 'ArrayFixedType'
+			}
+		})
+	}))
+	out := gen.sb.str()
+	assert out.contains('array_init.typ._tag == 0'), out
+	assert out.contains('array_init.typ._data._ast__Type'), out
+	assert out.contains('->_tag == 1'), out
+	assert !out.contains('(array_init.typ._tag == 1)'), out
+}
+
+fn test_selector_variant_check_uses_narrowed_type_to_recover_storage_path() {
+	mut gen := Gen.new([])
+	gen.sum_type_variants['ast__Expr'] = ['ast__Type']
+	gen.sum_type_variants['ast__Type'] = ['ast__AnonStructType', 'ast__ArrayFixedType']
+	typ_selector := ast.Expr(ast.SelectorExpr{
+		lhs: ast.Expr(ast.Ident{
+			name: 'array_init'
+		})
+		rhs: ast.Ident{
+			name: 'typ'
+		}
+		pos: token.Pos{
+			id: 78
+		}
+	})
+	gen.selector_field_type_cache['78|typ'] = 'ast__Type'
+	gen.expr(ast.Expr(ast.InfixExpr{
+		op:  token.Token.key_is
+		lhs: typ_selector
+		rhs: ast.Expr(ast.SelectorExpr{
+			lhs: ast.Expr(ast.Ident{
+				name: 'ast'
+			})
+			rhs: ast.Ident{
+				name: 'ArrayFixedType'
+			}
+		})
+	}))
+	out := gen.sb.str()
+	assert out.contains('array_init.typ._tag == 0'), out
+	assert out.contains('array_init.typ._data._ast__Type'), out
+	assert out.contains('->_tag == 1'), out
+	assert !out.contains('(array_init.typ._tag == 1)'), out
+}
+
+fn test_nested_sumtype_selector_is_check_after_transform_uses_payload_tag() {
+	csrc := cleanc_csrc_for_test_source_flat_transform('nested_sumtype_selector_is_check', '
+module ast
+
+struct EmptyExpr {}
+struct OtherExpr {}
+struct BasicLiteral {}
+struct AnonStructType {}
+struct ArrayFixedType {
+	len Expr
+}
+
+type Type = AnonStructType | ArrayFixedType
+type Expr = EmptyExpr | OtherExpr | Type
+
+struct ArrayInitExpr {
+	typ Expr
+	len Expr
+}
+
+fn marker(array_init ArrayInitExpr) bool {
+	return array_init.len !is EmptyExpr
+}
+
+fn use(array_init ArrayInitExpr) int {
+	if (array_init.typ is Type && array_init.typ is ArrayFixedType) || marker(array_init) {
+		mut fixed_len := 0
+		if array_init.typ is Type && array_init.typ is ArrayFixedType {
+			fixed_typ := array_init.typ as ArrayFixedType
+			fixed_len = if fixed_typ.len is BasicLiteral { 1 } else { 2 }
+		} else {
+			fixed_len = -1
+		}
+		return fixed_len
+	}
+	return -2
+}
+')
+	assert csrc.contains('array_init.typ._data._ast__Type'), csrc
+	assert !csrc.contains('(array_init.typ._tag == 1)'), csrc
+}
+
+fn test_chained_selector_smartcast_after_flat_transform_uses_payload_path() {
+	csrc := cleanc_csrc_for_test_source_flat_transform('chained_selector_smartcast', '
+module ast
+
+struct IfExpr {}
+
+struct ComptimeExpr {
+	expr Expr
+}
+
+struct ExprStmt {
+	expr Expr
+}
+
+struct OtherStmt {}
+
+type Expr = ComptimeExpr | IfExpr
+type Stmt = ExprStmt | OtherStmt
+
+fn use(stmt Stmt) int {
+	if stmt is ExprStmt && stmt.expr is ComptimeExpr && stmt.expr.expr is IfExpr {
+		return 1
+	}
+	return 0
+}
+')
+	assert csrc.contains('stmt._data._ast__ExprStmt'), csrc
+	assert csrc.contains('expr._data._ast__ComptimeExpr'), csrc
+	assert !csrc.contains('stmt.expr.expr'), csrc
+}
+
+fn test_selector_is_check_keeps_direct_sumtype_field_tag() {
+	mut gen := Gen.new([])
+	gen.sum_type_variants['types__Object'] = ['types__Const', 'types__Fn', 'types__Global',
+		'types__Module', 'types__SmartCastSelector', 'types__Type', 'types__TypeObject']
+	gen.sum_type_variants['types__Type'] = ['types__Alias', 'types__String']
+	gen.struct_field_types['types__Alias.base_type'] = 'types__Type'
+	gen.struct_field_types['Alias.base_type'] = 'types__Type'
+	gen.remember_runtime_local_type('lhs_type', 'types__Alias')
+	gen.expr(ast.Expr(ast.InfixExpr{
+		op:  token.Token.key_is
+		lhs: ast.Expr(ast.SelectorExpr{
+			lhs: ast.Expr(ast.Ident{
+				name: 'lhs_type'
+			})
+			rhs: ast.Ident{
+				name: 'base_type'
+			}
+		})
+		rhs: ast.Expr(ast.SelectorExpr{
+			lhs: ast.Expr(ast.Ident{
+				name: 'types'
+			})
+			rhs: ast.Ident{
+				name: 'String'
+			}
+		})
+	}))
+	out := gen.sb.str()
+	assert out.contains('lhs_type.base_type._tag == 1'), out
+	assert !out.contains('_data._types__Type'), out
 }
 
 fn test_assign_wraps_concrete_value_for_sum_type_field() {

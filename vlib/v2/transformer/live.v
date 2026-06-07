@@ -123,7 +123,7 @@ pub fn (mut t Transformer) inject_live_reload_to_flat(mut out ast.FlatBuilder) {
 		if !is_main && !t.fn_body_may_need_live_rewrite_from_flat(stmt_cursor.list_at(3)) {
 			continue
 		}
-		decl := fn_decl_with_body_from_flat_cursor(stmt_cursor)
+		decl := stmt_cursor.fn_decl()
 		mut new_body := []ast.Stmt{}
 		mut had_change := false
 		if is_main {
@@ -170,27 +170,6 @@ pub fn (mut t Transformer) inject_live_reload_to_flat(mut out ast.FlatBuilder) {
 		prepended_ids << out.emit_stmt(gd)
 	}
 	out.prepend_file_stmts(file_idx, prepended_ids)
-}
-
-fn fn_decl_with_body_from_flat_cursor(fn_c ast.Cursor) ast.FnDecl {
-	signature := fn_c.fn_decl_signature()
-	body := fn_c.list_at(3)
-	mut stmts := []ast.Stmt{cap: body.len()}
-	for i in 0 .. body.len() {
-		stmts << fn_c.flat.decode_stmt(body.at(i).id)
-	}
-	return ast.FnDecl{
-		attributes: signature.attributes
-		is_public:  signature.is_public
-		is_method:  signature.is_method
-		is_static:  signature.is_static
-		receiver:   signature.receiver
-		language:   signature.language
-		name:       signature.name
-		typ:        signature.typ
-		stmts:      stmts
-		pos:        signature.pos
-	}
 }
 
 fn (t &Transformer) fn_body_may_need_live_rewrite_from_flat(stmts ast.CursorList) bool {

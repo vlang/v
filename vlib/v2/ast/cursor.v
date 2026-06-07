@@ -123,6 +123,46 @@ pub fn (c Cursor) fn_decl_signature() FnDecl {
 	}
 }
 
+// fn_decl reads a stmt_fn_decl cursor into a legacy FnDecl. Unlike
+// fn_decl_signature, this materializes the body statements for consumers that
+// still use legacy statement walkers internally.
+pub fn (c Cursor) fn_decl() FnDecl {
+	if !c.is_valid() || c.kind() != .stmt_fn_decl {
+		return FnDecl{}
+	}
+	signature := c.fn_decl_signature()
+	return FnDecl{
+		attributes: signature.attributes
+		is_public:  signature.is_public
+		is_method:  signature.is_method
+		is_static:  signature.is_static
+		receiver:   signature.receiver
+		language:   signature.language
+		name:       signature.name
+		typ:        signature.typ
+		stmts:      c.list_at(3).stmts()
+		pos:        signature.pos
+	}
+}
+
+// stmt reads a cursor through FlatAst.decode_stmt. This is the escape hatch
+// for legacy statement walkers; prefer cursor-specific readers when possible.
+pub fn (c Cursor) stmt() Stmt {
+	if !c.is_valid() {
+		return empty_stmt
+	}
+	return c.flat.decode_stmt(c.id)
+}
+
+// expr reads a cursor through FlatAst.decode_expr. This is the escape hatch
+// for legacy expression walkers; prefer cursor-specific readers when possible.
+pub fn (c Cursor) expr() Expr {
+	if !c.is_valid() {
+		return empty_expr
+	}
+	return c.flat.decode_expr(c.id)
+}
+
 // type_expr reads a type-expression cursor into the legacy Expr shape used by
 // signature consumers. It is intentionally narrower than FlatReader.read_expr:
 // non-type payloads such as field defaults or statement bodies stay omitted.
@@ -335,18 +375,233 @@ pub fn (l CursorList) type_exprs() []Expr {
 	return out
 }
 
-fn attrs_from_cursor(list CursorList) []Attribute {
-	mut out := []Attribute{cap: list.len()}
-	for i in 0 .. list.len() {
-		attr := list.at(i)
+// stmts reads every item in a cursor list through FlatAst.decode_stmt. This is
+// the escape hatch for legacy statement walkers; prefer cursor-specific
+// readers when the caller only needs a declaration signature or metadata.
+pub fn (l CursorList) stmts() []Stmt {
+	mut out := []Stmt{cap: l.len()}
+	for i in 0 .. l.len() {
+		c := l.at(i)
+		if !c.is_valid() {
+			continue
+		}
+		out << c.stmt()
+	}
+	return out
+}
+
+// attribute_expr reads the small expression subset used inside attributes.
+// Attribute payloads are normally identifiers or strings; type_expr handles
+// the type-like fallback cases without opening the full FlatReader.
+pub fn (c Cursor) attribute_expr() Expr {
+	if !c.is_valid() {
+		return empty_expr
+	}
+	match c.kind() {
+		.expr_empty {
+			return empty_expr
+		}
+		.expr_basic_literal {
+			return Expr(BasicLiteral{
+				kind:  unsafe { token.Token(int(c.aux())) }
+				value: c.name()
+				pos:   c.pos()
+			})
+		}
+		.expr_ident {
+			return Expr(c.ident())
+		}
+		.expr_string {
+			return Expr(StringLiteral{
+				kind:  unsafe { StringLiteralKind(int(c.aux())) }
+				value: c.name()
+				pos:   c.pos()
+			})
+		}
+		.expr_selector {
+			rhs := c.edge(1)
+			return Expr(SelectorExpr{
+				lhs: c.edge(0).attribute_expr()
+				rhs: Ident{
+					name: rhs.name()
+					pos:  rhs.pos()
+				}
+				pos: c.pos()
+			})
+		}
+		else {
+			return c.type_expr()
+		}
+	}
+}
+
+// attribute reads an aux_attribute cursor into the legacy Attribute shape.
+pub fn (c Cursor) attribute() Attribute {
+	if !c.is_valid() || c.kind() != .aux_attribute {
+		return Attribute{}
+	}
+	return Attribute{
+		name:          c.name()
+		value:         c.edge(0).attribute_expr()
+		comptime_cond: c.edge(1).attribute_expr()
+		pos:           c.pos()
+	}
+}
+
+// attributes reads every aux_attribute in a cursor list.
+pub fn (l CursorList) attributes() []Attribute {
+	mut out := []Attribute{cap: l.len()}
+	for i in 0 .. l.len() {
+		attr := l.at(i)
 		if !attr.is_valid() {
 			continue
 		}
-		out << Attribute{
-			name: attr.name()
-		}
+		out << attr.attribute()
 	}
 	return out
+}
+
+// field_init reads an aux_field_init cursor. Field values are still legacy
+// expression consumers today, so this materializes only the value expression,
+// not the parent declaration.
+pub fn (c Cursor) field_init() FieldInit {
+	if !c.is_valid() || c.kind() != .aux_field_init {
+		return FieldInit{}
+	}
+	value_c := c.edge(0)
+	return FieldInit{
+		name:  c.name()
+		value: value_c.expr()
+	}
+}
+
+// field_inits reads every aux_field_init in a cursor list.
+pub fn (l CursorList) field_inits() []FieldInit {
+	mut out := []FieldInit{cap: l.len()}
+	for i in 0 .. l.len() {
+		out << l.at(i).field_init()
+	}
+	return out
+}
+
+// field_decl reads an aux_field_decl cursor. Set decode_value to false when a
+// caller only needs declaration metadata and type expressions.
+pub fn (c Cursor) field_decl(decode_value bool) FieldDecl {
+	if !c.is_valid() || c.kind() != .aux_field_decl {
+		return FieldDecl{}
+	}
+	value_c := c.edge(1)
+	return FieldDecl{
+		name:                c.name()
+		typ:                 c.edge(0).type_expr()
+		value:               if decode_value { value_c.expr() } else { empty_expr }
+		attributes:          c.list_at(2).attributes()
+		is_public:           c.flag(flag_is_public)
+		is_mut:              c.flag(flag_is_mut)
+		is_module_mut:       c.flag(flag_field_is_module_mut)
+		is_interface_method: c.flag(flag_field_is_interface_method)
+	}
+}
+
+// field_decls reads every aux_field_decl in a cursor list.
+pub fn (l CursorList) field_decls(decode_values bool) []FieldDecl {
+	mut out := []FieldDecl{cap: l.len()}
+	for i in 0 .. l.len() {
+		out << l.at(i).field_decl(decode_values)
+	}
+	return out
+}
+
+// const_decl reads a stmt_const_decl cursor.
+pub fn (c Cursor) const_decl() ConstDecl {
+	if !c.is_valid() || c.kind() != .stmt_const_decl {
+		return ConstDecl{}
+	}
+	return ConstDecl{
+		is_public: c.flag(flag_is_public)
+		fields:    c.list_at(0).field_inits()
+	}
+}
+
+// enum_decl reads a stmt_enum_decl cursor. Set decode_values to false when
+// only field names/attributes are needed.
+pub fn (c Cursor) enum_decl(decode_values bool) EnumDecl {
+	if !c.is_valid() || c.kind() != .stmt_enum_decl {
+		return EnumDecl{}
+	}
+	return EnumDecl{
+		attributes: c.list_at(1).attributes()
+		is_public:  c.flag(flag_is_public)
+		name:       c.name()
+		as_type:    c.edge(0).type_expr()
+		fields:     c.list_at(2).field_decls(decode_values)
+	}
+}
+
+// global_decl reads a stmt_global_decl cursor. Set decode_values to false when
+// only field metadata and declared types are needed.
+pub fn (c Cursor) global_decl(decode_values bool) GlobalDecl {
+	if !c.is_valid() || c.kind() != .stmt_global_decl {
+		return GlobalDecl{}
+	}
+	return GlobalDecl{
+		attributes: c.list_at(0).attributes()
+		fields:     c.list_at(1).field_decls(decode_values)
+		is_public:  c.flag(flag_is_public)
+	}
+}
+
+// interface_decl reads a stmt_interface_decl cursor.
+pub fn (c Cursor) interface_decl() InterfaceDecl {
+	if !c.is_valid() || c.kind() != .stmt_interface_decl {
+		return InterfaceDecl{}
+	}
+	return InterfaceDecl{
+		is_public:      c.flag(flag_is_public)
+		attributes:     c.list_at(0).attributes()
+		name:           c.name()
+		generic_params: c.list_at(1).type_exprs()
+		embedded:       c.list_at(2).type_exprs()
+		fields:         c.list_at(3).field_decls(true)
+	}
+}
+
+// struct_decl reads a stmt_struct_decl cursor.
+pub fn (c Cursor) struct_decl() StructDecl {
+	if !c.is_valid() || c.kind() != .stmt_struct_decl {
+		return StructDecl{}
+	}
+	return StructDecl{
+		attributes:     c.list_at(0).attributes()
+		is_public:      c.flag(flag_is_public)
+		is_union:       c.flag(flag_is_union)
+		implements:     c.list_at(1).type_exprs()
+		embedded:       c.list_at(2).type_exprs()
+		language:       unsafe { Language(int(c.aux())) }
+		name:           c.name()
+		generic_params: c.list_at(3).type_exprs()
+		fields:         c.list_at(4).field_decls(true)
+		pos:            c.pos()
+	}
+}
+
+// type_decl reads a stmt_type_decl cursor.
+pub fn (c Cursor) type_decl() TypeDecl {
+	if !c.is_valid() || c.kind() != .stmt_type_decl {
+		return TypeDecl{}
+	}
+	return TypeDecl{
+		is_public:      c.flag(flag_is_public)
+		language:       unsafe { Language(int(c.aux())) }
+		name:           c.name()
+		generic_params: c.list_at(2).type_exprs()
+		base_type:      c.edge(0).type_expr()
+		variants:       c.list_at(3).type_exprs()
+	}
+}
+
+fn attrs_from_cursor(list CursorList) []Attribute {
+	return list.attributes()
 }
 
 fn fn_type_from_cursor(c Cursor) FnType {
