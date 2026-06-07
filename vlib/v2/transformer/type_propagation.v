@@ -23,9 +23,9 @@ fn (mut t Transformer) propagate_types(files []ast.File) {
 }
 
 // propagate_types_from_flat is the FlatAst-input counterpart to
-// `propagate_types`. It walks `flat.files` directly and decodes only each
-// file's top-level statement list, avoiding a whole-program legacy []ast.File
-// allocation in flat-output transformer paths.
+// `propagate_types`. It walks `flat.files` directly and decodes one top-level
+// statement at a time, avoiding whole-program legacy []ast.File and per-file
+// []ast.Stmt allocations in flat-output transformer paths.
 //
 // Lets `apply_post_pass_tail_from_flat` (s167) take `&FlatAst` instead of
 // `[]ast.File`, which closes the last `[]ast.File` consumer in the
@@ -40,14 +40,16 @@ fn (mut t Transformer) propagate_types_from_flat(flat &ast.FlatAst) {
 	if flat.files.len == 0 {
 		return
 	}
-	for ff in flat.files {
-		mod_name := flat.file_mod(ff)
+	for i in 0 .. flat.files.len {
+		fc := flat.file_cursor(i)
+		mod_name := fc.mod()
 		if mod_scope := t.cached_scopes[mod_name] {
 			t.scope = mod_scope
 		}
 		t.cur_module = mod_name
-		for stmt in flat.read_file_stmts(ff) {
-			t.prop_stmt(stmt)
+		stmts := fc.stmts()
+		for j in 0 .. stmts.len() {
+			t.prop_stmt(flat.decode_stmt(stmts.at(j).id))
 		}
 	}
 }

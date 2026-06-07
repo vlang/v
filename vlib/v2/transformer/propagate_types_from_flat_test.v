@@ -7,7 +7,7 @@
 // directly and must produce the same `t.env` mutations as `propagate_types`.
 // Also pins `apply_post_pass_tail_from_flat` against `apply_post_pass_tail`.
 //
-// The flat path decodes each file's top-level stmt list and reuses the legacy
+// The flat path decodes one top-level stmt at a time and reuses the legacy
 // stmt/expression propagation walkers. Behavior should match legacy provided
 // flattening preserves the bits propagate_types reads (pos.id, stmt/expr shape).
 module transformer

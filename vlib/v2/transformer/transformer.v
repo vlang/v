@@ -1185,9 +1185,10 @@ fn (mut t Transformer) collect_generic_fn_value_refs(files []ast.File) {
 
 fn (mut t Transformer) collect_generic_fn_value_refs_from_flat(flat &ast.FlatAst) {
 	t.collect_generic_fn_decl_names_from_flat(flat)
-	for ff in flat.files {
-		for stmt in flat.read_file_stmts(ff) {
-			t.collect_generic_fn_value_refs_in_stmt(stmt, false)
+	for i in 0 .. flat.files.len {
+		stmts := flat.file_cursor(i).stmts()
+		for j in 0 .. stmts.len() {
+			t.collect_generic_fn_value_refs_in_stmt(flat.decode_stmt(stmts.at(j).id), false)
 		}
 	}
 	t.collect_generic_fn_value_dependencies()
@@ -1202,9 +1203,10 @@ fn (mut t Transformer) collect_generic_fn_decl_names(files []ast.File) {
 }
 
 fn (mut t Transformer) collect_generic_fn_decl_names_from_flat(flat &ast.FlatAst) {
-	for ff in flat.files {
-		for stmt in flat.read_file_stmts(ff) {
-			t.collect_generic_fn_decl_names_in_stmt(stmt)
+	for i in 0 .. flat.files.len {
+		stmts := flat.file_cursor(i).stmts()
+		for j in 0 .. stmts.len() {
+			t.collect_generic_fn_decl_names_in_stmt(flat.decode_stmt(stmts.at(j).id))
 		}
 	}
 }
@@ -1549,15 +1551,18 @@ pub fn (mut t Transformer) pre_pass(files []ast.File) {
 	t.cache_env_maps()
 }
 
-// pre_pass_from_flat is the FlatAst-driven equivalent of pre_pass. Reads
-// file-level stmts via flat.read_file_stmts(ff) so the transformer no
-// longer depends on a pre-rehydrated []ast.File for its accumulators.
-// The per-stmt walks reuse the existing recursive visitors, which still
-// operate on legacy ast.Stmt/Expr — flat-native walks are a later step.
+// pre_pass_from_flat is the FlatAst-driven equivalent of pre_pass. It walks
+// file-level stmt cursors and decodes one stmt at a time so the transformer no
+// longer depends on pre-rehydrated []ast.File or per-file []ast.Stmt arrays for
+// its accumulators. The per-stmt walks reuse the existing recursive visitors,
+// which still operate on legacy ast.Stmt/Expr — flat-native walks are a later
+// step.
 pub fn (mut t Transformer) pre_pass_from_flat(flat &ast.FlatAst) {
 	t.collect_generic_fn_value_refs_from_flat(flat)
-	for ff in flat.files {
-		for stmt in flat.read_file_stmts(ff) {
+	for i in 0 .. flat.files.len {
+		stmts := flat.file_cursor(i).stmts()
+		for j in 0 .. stmts.len() {
+			stmt := flat.decode_stmt(stmts.at(j).id)
 			if stmt is ast.FnDecl {
 				for attr in stmt.attributes {
 					if attr.comptime_cond !is ast.EmptyExpr {
