@@ -1037,6 +1037,14 @@ fn (b &Builder) can_use_cached_v2compiler_headers_for_parse() bool {
 	return true
 }
 
+// v2compiler_headers_consumed_for_parse reports whether the generated v2compiler .vh module
+// headers can ever be read back by the parser. v2compiler header parse-reuse is currently
+// disabled (the generated headers are not yet complete/safe), so generating them is dead work on
+// a cold self-build. Set V2_V2COMPILER_VH=1 to re-enable generation while iterating on that path.
+fn (b &Builder) v2compiler_headers_consumed_for_parse() bool {
+	return os.getenv('V2_V2COMPILER_VH') != ''
+}
+
 fn (b &Builder) can_use_cached_virtual_headers_for_parse(groups []CachedVirtualModule) bool {
 	if groups.len == 0 || b.pref.no_cache || b.pref.skip_builtin {
 		return false

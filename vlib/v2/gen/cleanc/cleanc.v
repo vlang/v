@@ -534,6 +534,35 @@ fn (mut g Gen) gen_file(file ast.File) {
 	}
 }
 
+// gen_file_range emits only the FnDecls at the given statement indices of `file`
+// (and, when emit_globals is set, the file's GlobalDecls). Parallel Pass 5 uses
+// this to split a single large file's functions across several workers so one
+// huge file (e.g. ssa/builder.v) cannot pin the whole parallel phase. Each
+// function is still emitted by exactly one worker (the index ranges partition
+// the file's FnDecls), and only the first range emits globals. Globals are
+// forward-declared for every file in gen_pass5_pre (gen_file_extern_globals),
+// so the single definition's position within the merged output is irrelevant.
+fn (mut g Gen) gen_file_range(file ast.File, fn_stmt_indices []int, emit_globals bool) {
+	g.set_file_module(file)
+	file_name := g.cur_file_name
+	file_module := g.cur_module
+	file_import_modules := g.cur_import_modules.clone()
+	if emit_globals {
+		for i in 0 .. file.stmts.len {
+			stmt_ptr := &file.stmts[i]
+			if (*stmt_ptr) is ast.GlobalDecl {
+				g.gen_global_decl((*stmt_ptr) as ast.GlobalDecl)
+			}
+		}
+	}
+	for fi in fn_stmt_indices {
+		g.restore_file_module_context(file_name, file_module, file_import_modules)
+		stmt_ptr := &file.stmts[fi]
+		fn_decl := (*stmt_ptr) as ast.FnDecl
+		g.gen_fn_decl_ptr(&fn_decl)
+	}
+}
+
 // set_emit_modules limits code emission to the provided module names.
 // Type declarations and forward declarations are still emitted for all modules.
 pub fn (mut g Gen) set_emit_modules(modules []string) {
@@ -2327,6 +2356,116 @@ fn (mut g Gen) emit_weak_receiver_generic_method_specializations(node &ast.FnDec
 		}
 	}
 	g.active_generic_types = prev_generic_types.move()
+}
+
+// Pass5WorkItem is one unit of parallel Pass 5 work. A small file is one item
+// covering the whole file (fn_indices empty => use gen_file). A large file is
+// split into several items, each owning a contiguous slice of the file's FnDecl
+// statement indices; only the first slice (emit_globals) emits the file globals.
+pub struct Pass5WorkItem {
+pub:
+	file_idx     int
+	fn_indices   []int // empty => emit the whole file (gen_file)
+	emit_globals bool
+	cost         int
+}
+
+// pass5_split_threshold is the per-item codegen-cost ceiling. Files costing more
+// than this are split into sub-file items so no single file pins a worker. The
+// largest single self-host files (ssa/builder.v ~545k, transformer.v ~446k,
+// gen/cleanc/fn.v ~386k) otherwise serialize the whole parallel phase.
+const pass5_split_threshold = 100_000
+
+// pass5_file_fn_indices returns the statement indices of `file_idx`'s top-level FnDecls.
+fn (g &Gen) pass5_file_fn_indices(file_idx int) []int {
+	mut out := []int{}
+	for i, stmt in g.files[file_idx].stmts {
+		if stmt is ast.FnDecl {
+			out << i
+		}
+	}
+	return out
+}
+
+// build_pass5_work_items turns the emittable file indices into balanced work
+// items, splitting any file whose codegen cost exceeds pass5_split_threshold
+// into contiguous FnDecl-index slices.
+pub fn (g &Gen) build_pass5_work_items(emit_indices []int) []Pass5WorkItem {
+	mut items := []Pass5WorkItem{cap: emit_indices.len}
+	for fi in emit_indices {
+		file_cost := g.pass5_file_cost(fi)
+		if file_cost <= pass5_split_threshold {
+			items << Pass5WorkItem{
+				file_idx:     fi
+				emit_globals: true
+				cost:         file_cost
+			}
+			continue
+		}
+		fn_indices := g.pass5_file_fn_indices(fi)
+		if fn_indices.len <= 1 {
+			// Nothing to split — a single (giant) function or no functions.
+			items << Pass5WorkItem{
+				file_idx:     fi
+				emit_globals: true
+				cost:         file_cost
+			}
+			continue
+		}
+		// Greedily pack contiguous functions into slices of ~pass5_split_threshold cost.
+		mut slice_start := 0
+		mut slice_cost := 0
+		mut first_slice := true
+		for k, idx in fn_indices {
+			fn_cost := cleanc_stmt_codegen_cost(g.files[fi].stmts[idx])
+			slice_cost += fn_cost
+			is_last := k == fn_indices.len - 1
+			if slice_cost >= pass5_split_threshold || is_last {
+				items << Pass5WorkItem{
+					file_idx:     fi
+					fn_indices:   fn_indices[slice_start..k + 1]
+					emit_globals: first_slice
+					cost:         slice_cost
+				}
+				first_slice = false
+				slice_start = k + 1
+				slice_cost = 0
+			}
+		}
+	}
+	return items
+}
+
+// gen_pass5_work_items emits each assigned work item. Whole-file items go through
+// gen_file; split items emit only their FnDecl slice via gen_file_range.
+pub fn (mut g Gen) gen_pass5_work_items(items []Pass5WorkItem) {
+	stats_enabled := g.cgen_stats_enabled()
+	for item in items {
+		if !stats_enabled {
+			if item.fn_indices.len == 0 {
+				g.gen_file(g.files[item.file_idx])
+			} else {
+				g.gen_file_range(g.files[item.file_idx], item.fn_indices, item.emit_globals)
+			}
+			continue
+		}
+		mut sw := time.new_stopwatch()
+		if item.fn_indices.len == 0 {
+			g.gen_file(g.files[item.file_idx])
+		} else {
+			g.gen_file_range(g.files[item.file_idx], item.fn_indices, item.emit_globals)
+		}
+		elapsed_ms := sw.elapsed().milliseconds()
+		if elapsed_ms > 0 {
+			suffix := if item.fn_indices.len == 0 { '' } else { ' [${item.fn_indices.len}fns]' }
+			g.pass5_file_times << Pass5FileTime{
+				file:      g.files[item.file_idx].name + suffix
+				ms:        elapsed_ms
+				cost:      item.cost
+				worker_id: g.pass5_worker_id
+			}
+		}
+	}
 }
 
 // gen_pass5_files generates function bodies for a range of file indices.
