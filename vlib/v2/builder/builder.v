@@ -807,27 +807,19 @@ fn (mut b Builder) gen_cleanc_source_with_options(modules []string, emit_files [
 		}
 	}
 	// Cache-bundle generation restricts emission to a fixed set of type
-	// modules. The flat cleanc gen does not yet scope `_option_`/`_result_`
-	// wrapper-typedef emission to that module subset (it would emit a
-	// type-module struct/prototype without the wrapper typedef it references),
-	// so for restricted bundles in flat mode we rehydrate just the bundle's
-	// type-module files and drive the legacy gen, which filters by physical
-	// file set exactly as before. This is bounded to the cached-module files,
-	// and the resulting .o is cached, so the rehydration runs only on a cache
-	// miss. The unrestricted main translation unit still uses the flat gen.
-	bundle_rehydrate_from_flat := b.uses_flat_module_enumeration() && restrict_to_cache_modules
-	mut gen_files := []ast.File{cap: b.files.len}
-	if bundle_rehydrate_from_flat {
-		for i in 0 .. b.flat.files.len {
-			if b.flat_file_module_name(i) !in type_module_names {
-				continue
-			}
-			rng := b.flat.to_files_range(i, i + 1)
-			if rng.len > 0 {
-				gen_files << rng[0]
-			}
-		}
+	// modules. The legacy gen achieves this by filtering its input `gen_files`;
+	// the flat gen drives every pass off `flat.files`, so for a restricted
+	// bundle in flat mode we hand it a FlatAst scoped to the bundle's type
+	// modules (sharing b.flat's arena). The main translation unit
+	// (`restrict_to_cache_modules == false`) uses the full b.flat.
+	scope_flat_bundle := restrict_to_cache_modules && b.flat.files.len > 0
+	scoped_flat := if scope_flat_bundle {
+		b.flat_scoped_to_modules(type_module_names)
 	} else {
+		ast.FlatAst{}
+	}
+	mut gen_files := []ast.File{cap: b.files.len}
+	if !scope_flat_bundle {
 		for file in b.files {
 			if restrict_to_cache_modules && ast_file_module_name(file) !in type_module_names {
 				continue
@@ -835,7 +827,7 @@ fn (mut b Builder) gen_cleanc_source_with_options(modules []string, emit_files [
 			gen_files << file
 		}
 	}
-	if cached_init_calls.len > 0 && b.used_vh_for_parse {
+	if !scope_flat_bundle && cached_init_calls.len > 0 && b.used_vh_for_parse {
 		mut has_vh_files := false
 		for file in gen_files {
 			if file.name.ends_with('.vh') {
@@ -851,7 +843,9 @@ fn (mut b Builder) gen_cleanc_source_with_options(modules []string, emit_files [
 			}
 		}
 	}
-	mut gen := if b.flat.files.len > 0 && !bundle_rehydrate_from_flat {
+	mut gen := if scope_flat_bundle {
+		cleanc.Gen.new_with_env_pref_and_flat(&scoped_flat, b.env, b.pref)
+	} else if b.flat.files.len > 0 {
 		cleanc.Gen.new_with_env_pref_and_flat(&b.flat, b.env, b.pref)
 	} else {
 		cleanc.Gen.new_with_env_and_pref(gen_files, b.env, b.pref)
@@ -2019,6 +2013,28 @@ fn (b &Builder) flat_file_module_name(i int) string {
 // cache helpers source their module/file metadata from the flat cursors.
 fn (b &Builder) uses_flat_module_enumeration() bool {
 	return b.files.len == 0 && b.flat.files.len > 0
+}
+
+// flat_scoped_to_modules returns a FlatAst whose file list is restricted to the
+// given module set, reusing b.flat's node/edge/string arena (the arrays are
+// shared, not deep-copied). The cleanc gen drives every emission pass off
+// `flat.files`, so a restricted file list makes the whole gen see exactly the
+// bundle's type-module files — matching the legacy gen, which filtered its input
+// `gen_files` to `type_module_names`. This lets restricted cache bundles run on
+// the flat gen with no per-file legacy rehydrate.
+fn (b &Builder) flat_scoped_to_modules(module_names map[string]bool) ast.FlatAst {
+	mut files := []ast.FlatFile{cap: b.flat.files.len}
+	for i in 0 .. b.flat.files.len {
+		if b.flat_file_module_name(i) in module_names {
+			files << b.flat.files[i]
+		}
+	}
+	return ast.FlatAst{
+		files:   files
+		nodes:   b.flat.nodes
+		edges:   b.flat.edges
+		strings: b.flat.strings
+	}
 }
 
 fn (b &Builder) has_module(module_name string) bool {
