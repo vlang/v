@@ -23,11 +23,17 @@ fn (mut s Server) listen_and_serve_tls() {
 		s.addr
 	}
 
+	// When HTTP/2 is enabled, advertise ALPN `h2, http/1.1` on the listener.
+	// Clients that select `h2` are dispatched to the HTTP/2 driver after the
+	// handshake; clients that select `http/1.1` (or send no ALPN extension)
+	// keep the existing HTTP/1.1 worker path.
+	alpn := if s.enable_http2 { ['h2', 'http/1.1'] } else { []string{} }
 	mut listener := mbedtls.new_ssl_listener(addr, mbedtls.SSLConnectConfig{
 		cert:                   s.cert
 		cert_key:               s.cert_key
 		in_memory_verification: s.in_memory_verification
 		validate:               false // accept any client; servers don't verify clients by default
+		alpn_protocols:         alpn
 	}) or {
 		eprintln('Listening TLS on ${addr} failed, err: ${err}')
 		return
@@ -102,6 +108,16 @@ fn (mut w TlsHandlerWorker) process_requests() {
 fn (mut w TlsHandlerWorker) handle_conn(mut conn mbedtls.SSLConn) {
 	defer {
 		conn.shutdown() or {}
+	}
+	// If the TLS handshake negotiated HTTP/2 via ALPN, switch to the HTTP/2
+	// driver; otherwise fall through to the existing HTTP/1.1 path unchanged.
+	if conn.negotiated_alpn() == 'h2' {
+		serve_h2_conn(mut conn, mut w.handler) or {
+			$if debug {
+				eprintln('h2 server error: ${err}')
+			}
+		}
+		return
 	}
 	mut reader := io.new_buffered_reader(reader: conn)
 	defer {
