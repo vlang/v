@@ -9170,10 +9170,47 @@ fn (g &Gen) knows_fn_signature(fn_name string) bool {
 		|| g.has_specialized_fn_base(fn_name)
 }
 
+// v_method_ret_ambiguous marks an index entry whose method short-name maps to >1 distinct V
+// return type (the original scan returned none for that case). A control char can't be a real type.
+const v_method_ret_ambiguous = '\x02'
+
+// build_v_method_return_index indexes v_fn_return_types by method short-name (all_after_last('__')),
+// replacing the per-call scan in unique_v_method_return_type. v_fn_return_types is final after
+// collect_fn_signatures_to_fixed_point, so this is built once there.
+fn (mut g Gen) build_v_method_return_index() {
+	mut idx := map[string]string{}
+	for fn_name, ret in g.v_fn_return_types {
+		m := fn_name.all_after_last('__')
+		if m == '' {
+			continue
+		}
+		if existing := idx[m] {
+			if existing != ret && existing != v_method_ret_ambiguous {
+				idx[m] = v_method_ret_ambiguous
+			}
+		} else {
+			idx[m] = ret
+		}
+	}
+	g.v_method_return_index = idx.move()
+}
+
 fn (g &Gen) unique_v_method_return_type(method_name string) ?string {
 	if method_name == '' {
 		return none
 	}
+	// Fast path: index lookup. The scan matched fn_name == method_name OR
+	// fn_name.ends_with('__${method_name}') (ends_with('___...') is subsumed), which for a
+	// method without '__' is exactly all_after_last('__') == method_name.
+	if !method_name.contains('__') {
+		if ret := g.v_method_return_index[method_name] {
+			if ret != '' && ret != v_method_ret_ambiguous {
+				return ret
+			}
+		}
+		return none
+	}
+	// Rare fallback for method names containing '__'.
 	mut found_name := ''
 	mut found_ret := ''
 	for fn_name, ret in g.v_fn_return_types {
