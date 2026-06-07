@@ -163,12 +163,30 @@ fn (mut c H2ServerConn) dispatch_frame(frame H2Frame, mut handler Handler) ! {
 fn (mut c H2ServerConn) apply_settings(settings []H2Setting) {
 	for s in settings {
 		match s.id {
-			h2_settings_header_table_size { c.peer.header_table_size = s.value }
-			h2_settings_enable_push { c.peer.enable_push = s.value != 0 }
-			h2_settings_max_concurrent_streams { c.peer.max_concurrent_streams = s.value }
-			h2_settings_initial_window_size { c.peer.initial_window_size = s.value }
-			h2_settings_max_frame_size { c.peer.max_frame_size = s.value }
-			h2_settings_max_header_list_size { c.peer.max_header_list_size = s.value }
+			h2_settings_header_table_size {
+				c.peer.header_table_size = s.value
+			}
+			h2_settings_enable_push {
+				c.peer.enable_push = s.value != 0
+			}
+			h2_settings_max_concurrent_streams {
+				c.peer.max_concurrent_streams = s.value
+			}
+			h2_settings_initial_window_size {
+				// RFC 7540 Section 6.9.2: a change to the initial window size
+				// adjusts the send window of every active stream by the delta.
+				delta := i64(s.value) - i64(c.peer.initial_window_size)
+				c.peer.initial_window_size = s.value
+				for _, mut st in c.streams {
+					st.send_window += delta
+				}
+			}
+			h2_settings_max_frame_size {
+				c.peer.max_frame_size = s.value
+			}
+			h2_settings_max_header_list_size {
+				c.peer.max_header_list_size = s.value
+			}
 			else {}
 		}
 	}
@@ -365,9 +383,23 @@ fn (mut c H2ServerConn) send_body(stream_id u32, body []u8) ! {
 	max := int(c.peer.max_frame_size)
 	mut off := 0
 	for off < body.len {
+		// Respect both the connection and per-stream send windows
+		// (RFC 7540 Section 6.9). When either is exhausted, read frames until
+		// the peer grows a window with WINDOW_UPDATE.
+		for c.send_window <= 0 || c.stream_send_window(stream_id) <= 0 {
+			c.pump_for_window(stream_id)!
+		}
+		avail := if c.send_window < c.stream_send_window(stream_id) {
+			c.send_window
+		} else {
+			c.stream_send_window(stream_id)
+		}
 		mut chunk := body.len - off
 		if chunk > max {
 			chunk = max
+		}
+		if i64(chunk) > avail {
+			chunk = int(avail)
 		}
 		next := off + chunk
 		c.send_frame(H2DataFrame{
@@ -375,7 +407,61 @@ fn (mut c H2ServerConn) send_body(stream_id u32, body []u8) ! {
 			data:       body[off..next]
 			end_stream: next == body.len
 		})!
+		c.send_window -= i64(chunk)
+		if mut s := c.streams[stream_id] {
+			s.send_window -= i64(chunk)
+		}
 		off = next
+	}
+}
+
+// stream_send_window returns the current per-stream send window, or 0 if the
+// stream is gone.
+fn (c &H2ServerConn) stream_send_window(stream_id u32) i64 {
+	if s := c.streams[stream_id] {
+		return s.send_window
+	}
+	return 0
+}
+
+// pump_for_window reads one frame while a response is blocked on flow control,
+// servicing connection-level frames (SETTINGS / PING / WINDOW_UPDATE) and a
+// RST_STREAM for the stream being written.
+fn (mut c H2ServerConn) pump_for_window(stream_id u32) ! {
+	frame := c.read_frame()!
+	match frame {
+		H2SettingsFrame {
+			if !frame.ack {
+				c.apply_settings(frame.settings)
+				c.send_frame(H2SettingsFrame{
+					ack: true
+				})!
+			}
+		}
+		H2PingFrame {
+			if !frame.ack {
+				c.send_frame(H2PingFrame{
+					ack:  true
+					data: frame.data
+				})!
+			}
+		}
+		H2WindowUpdateFrame {
+			if frame.stream_id == 0 {
+				c.send_window += i64(frame.window_size_increment)
+			} else if mut s := c.streams[frame.stream_id] {
+				s.send_window += i64(frame.window_size_increment)
+			}
+		}
+		H2RstStreamFrame {
+			if frame.stream_id == stream_id {
+				return error('h2 server: stream reset by peer while writing response')
+			}
+		}
+		else {
+			// With SETTINGS_MAX_CONCURRENT_STREAMS=1 no other stream frames are
+			// expected mid-response; ignore anything else defensively.
+		}
 	}
 }
 
