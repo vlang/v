@@ -441,9 +441,13 @@ pub fn (c Cursor) attribute() Attribute {
 		return Attribute{}
 	}
 	return Attribute{
-		name:          c.name()
-		value:         c.edge(0).attribute_expr()
-		comptime_cond: c.edge(1).attribute_expr()
+		name:  c.name()
+		value: c.edge(0).attribute_expr()
+		// comptime_cond (`@[if cond ?]`) can be an arbitrary expression, not the
+		// ident/string subset attribute_expr handles — decode it fully (mirrors
+		// FlatReader.read_attribute), else complex conditions silently become
+		// empty_expr and `@[if ...]` functions are never elided.
+		comptime_cond: c.edge(1).expr()
 		pos:           c.pos()
 	}
 }

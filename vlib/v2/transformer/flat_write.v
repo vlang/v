@@ -1968,6 +1968,17 @@ fn (mut t Transformer) transform_stmt_list_item_cursor_to_flat(c ast.Cursor, mut
 			id := t.transform_global_decl_cursor_to_flat(c, mut out)
 			t.append_transformed_stmt_id_to_flat(mut ids, id, mut out)
 		}
+		.stmt_fn_decl {
+			// Stream the body cursor-native when it has no defers (defer
+			// lowering needs the whole body, so those take the legacy
+			// whole-decl decode path).
+			if flat_body_has_defer(c.list_at(3)) {
+				t.transform_stmt_list_item_to_flat(c.stmt(), mut ids, mut out)
+			} else {
+				id := t.transform_fn_decl_streaming_to_flat(c, mut out)
+				t.append_transformed_stmt_id_to_flat(mut ids, id, mut out)
+			}
+		}
 		else {
 			t.transform_stmt_list_item_to_flat(c.stmt(), mut ids, mut out)
 		}
@@ -2054,6 +2065,78 @@ fn (mut t Transformer) transform_global_decl_cursor_to_flat(c ast.Cursor, mut ou
 	}
 	fields_list_id := out.emit_aux_list_from_ids(field_ids)
 	return out.emit_global_decl_by_ids(c.flag(ast.flag_is_public), decl_attrs_id, fields_list_id)
+}
+
+// emit_fn_decl_flat assembles a stmt_fn_decl flat node from the immutable
+// header of `decl` plus the already-transformed (and flat-emitted) attribute
+// list and body stmt ids. Shared by the legacy `ast.FnDecl` arm of
+// transform_stmt_to_flat and the cursor-native streaming path so both encode
+// the FnDecl identically.
+fn (mut t Transformer) emit_fn_decl_flat(decl ast.FnDecl, attrs []ast.Attribute, stmt_ids []ast.FlatNodeId, mut out ast.FlatBuilder) ast.FlatNodeId {
+	receiver := if decl.is_method {
+		decl.receiver
+	} else {
+		ast.Parameter{
+			typ: ast.empty_expr
+		}
+	}
+	receiver_id := out.emit_parameter(receiver)
+	typ_id := out.emit_type(ast.Type(decl.typ))
+	attrs_id := out.emit_attribute_list(attrs)
+	stmts_list_id := out.emit_aux_list_from_ids(stmt_ids)
+	return out.emit_fn_decl_by_ids(decl.name, decl.is_public, decl.is_method, decl.is_static,
+		decl.language, decl.pos, receiver_id, typ_id, attrs_id, stmts_list_id)
+}
+
+// flat_subtree_has_defer reports whether the cursor or any of its descendants
+// is a `stmt_defer` node. Used to detect function-body defers without decoding
+// the body. Conservative by construction: it also flags defers nested inside
+// closures (which lower_defer_stmts would not lower), but over-detection only
+// costs a fall-back to the whole-body decode path, never correctness.
+fn flat_subtree_has_defer(c ast.Cursor) bool {
+	if !c.is_valid() {
+		return false
+	}
+	if c.kind() == .stmt_defer {
+		return true
+	}
+	for i in 0 .. c.edge_count() {
+		if flat_subtree_has_defer(c.edge(i)) {
+			return true
+		}
+	}
+	return false
+}
+
+// flat_body_has_defer reports whether any statement in a function body (a
+// stmt CursorList) contains a defer anywhere in its subtree.
+fn flat_body_has_defer(body ast.CursorList) bool {
+	for i in 0 .. body.len() {
+		if flat_subtree_has_defer(body.at(i)) {
+			return true
+		}
+	}
+	return false
+}
+
+// transform_fn_decl_streaming_to_flat is the cursor-native FnDecl path: it reads
+// the signature from the cursor (c.fn_decl_signature, body-less — no whole-decl
+// decode), runs the shared transform prologue (enter_fn_body_transform), streams
+// the body straight from the cursor's stmt list (c.list_at(3)) via the cursor
+// body driver — so the body is decoded one statement at a time instead of the
+// whole function at once — then runs the shared epilogue and emits the FnDecl.
+// The caller guarantees the body has no defers (defer lowering needs the whole
+// body, so defer functions take the legacy whole-decl path).
+fn (mut t Transformer) transform_fn_decl_streaming_to_flat(c ast.Cursor, mut out ast.FlatBuilder) ast.FlatNodeId {
+	lowered := t.fn_decl_with_implicit_veb_context_param(c.fn_decl_signature())
+	mut ctx := t.enter_fn_body_transform(lowered) or {
+		// Uninstantiated-generic skip / comptime-elided: empty body.
+		return t.emit_fn_decl_flat(lowered, lowered.attributes, []ast.FlatNodeId{}, mut out)
+	}
+	body_ids := t.transform_cursor_stmts_to_flat_direct(c.list_at(3), [], mut out)
+	t.restore_fn_body_transform_state(mut ctx)
+	attrs := t.finish_fn_body_transform(lowered, mut ctx)
+	return t.emit_fn_decl_flat(lowered, attrs, body_ids, mut out)
 }
 
 // expand_assert_stmt_to_flat is the flat-direct mirror of `expand_assert_stmt`
@@ -4437,20 +4520,7 @@ pub fn (mut t Transformer) transform_stmt_to_flat(stmt ast.Stmt, mut out ast.Fla
 			// helper.
 			lowered_stmt := t.fn_decl_with_implicit_veb_context_param(stmt)
 			attrs, stmt_ids := t.transform_fn_decl_parts_to_flat(lowered_stmt, mut out)
-			receiver := if lowered_stmt.is_method {
-				lowered_stmt.receiver
-			} else {
-				ast.Parameter{
-					typ: ast.empty_expr
-				}
-			}
-			receiver_id := out.emit_parameter(receiver)
-			typ_id := out.emit_type(ast.Type(lowered_stmt.typ))
-			attrs_id := out.emit_attribute_list(attrs)
-			stmts_list_id := out.emit_aux_list_from_ids(stmt_ids)
-			return out.emit_fn_decl_by_ids(lowered_stmt.name, lowered_stmt.is_public,
-				lowered_stmt.is_method, lowered_stmt.is_static, lowered_stmt.language,
-				lowered_stmt.pos, receiver_id, typ_id, attrs_id, stmts_list_id)
+			return t.emit_fn_decl_flat(lowered_stmt, attrs, stmt_ids, mut out)
 		}
 		else {
 			// Unreachable in practice — the `[]ast.Attribute` variant is
