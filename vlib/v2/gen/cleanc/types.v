@@ -831,7 +831,7 @@ fn (mut g Gen) collect_runtime_aliases() {
 	}
 	// Also use type-checker output so aliases used only in expressions are captured.
 	if g.env != unsafe { nil } {
-		for typ in g.env.all_expr_types() {
+		for _, typ in g.env.expr_types {
 			if !type_has_valid_data(typ) || typ is types.Void {
 				continue
 			}

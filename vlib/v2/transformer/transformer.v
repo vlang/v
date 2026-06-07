@@ -14781,10 +14781,13 @@ fn (mut t Transformer) generate_str_functions_with_explicit(explicit_str_fns map
 	mut generated := map[string]bool{}
 	for {
 		mut found_new := false
-		for fn_name, elem_type in t.needed_str_fns {
+		mut fn_names := t.needed_str_fns.keys()
+		fn_names.sort()
+		for fn_name in fn_names {
 			if fn_name in generated {
 				continue
 			}
+			elem_type := t.needed_str_fns[fn_name] or { continue }
 			if fn_name.starts_with('Array_fixed_') {
 				// Generate fixed array str function
 				generated[fn_name] = true
