@@ -10,12 +10,12 @@ pub mut:
 }
 
 pub fn compress(data []u8) ![]u8 {
-	compressed := gzip.compress(data, 0)!
+	compressed := gzip.compress(data)!
 	return compressed
 }
 
 pub fn decompress(data []u8) ![]u8 {
 	header := GzipHeader{}
-	decompressed := gzip.decompress(data, 0)!
+	decompressed := gzip.decompress(data)!
 	return decompressed
 }

@@ -44,8 +44,7 @@ pub:
 }
 
 // compress compresses an array of bytes using gzip and returns the compressed bytes in a new array.
-// TODO: remove the CompressParams argument after the deprecation period.
-pub fn compress(data []u8, _ CompressParams) ![]u8 {
+pub fn compress(data []u8) ![]u8 {
 	// Delegate to deflate.compress_gzip() which implements RFC 1952
 	return deflate.compress_gzip(data)
 }
@@ -62,7 +61,7 @@ pub enum DecompressFlags {
 	compute_adler32
 }
 
-// DecompressParams controls gzip decompression behaviour.
+// DecompressParams controls gzip decompression behavior.
 // N.B.: only retained for API compatibility.
 @[deprecated: 'never used']
 @[deprecated_after: '2026-07-31']
@@ -86,8 +85,7 @@ pub fn validate(data []u8, _ DecompressParams) !deflate.GzipHeader {
 }
 
 // decompress decompresses a gzip stream and returns the decompressed bytes in a new array.
-// TODO: remove the DecompressParams argument after the deprecation period.
-pub fn decompress(data []u8, _ DecompressParams) ![]u8 {
+pub fn decompress(data []u8) ![]u8 {
 	return deflate.decompress_gzip(data)
 }
 
