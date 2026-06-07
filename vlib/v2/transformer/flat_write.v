@@ -1979,6 +1979,23 @@ fn (mut t Transformer) transform_stmt_list_item_cursor_to_flat(c ast.Cursor, mut
 				t.append_transformed_stmt_id_to_flat(mut ids, id, mut out)
 			}
 		}
+		.stmt_for {
+			// Stream plain `for` loops (cond / classic / bare) cursor-native:
+			// the body — the large, potentially deeply-nested part — streams
+			// instead of decoding the whole loop to legacy AST. for-in loops
+			// (init is a ForInStmt) keep the whole-decl decode path: their
+			// lowering (range/array/string/map/untyped) is the monolithic
+			// `transform_for_stmt` for-in branch + the `try_expand_for_in_map`
+			// guard. The init-kind check mirrors `transform_for_stmt`'s own
+			// `stmt.init is ast.ForInStmt` branch exactly.
+			init_c := c.edge(0)
+			if init_c.is_valid() && init_c.kind() == .stmt_for_in {
+				t.transform_stmt_list_item_to_flat(c.stmt(), mut ids, mut out)
+			} else {
+				id := t.transform_for_stmt_streaming_to_flat(c, mut out)
+				t.append_transformed_stmt_id_to_flat(mut ids, id, mut out)
+			}
+		}
 		else {
 			t.transform_stmt_list_item_to_flat(c.stmt(), mut ids, mut out)
 		}
@@ -2137,6 +2154,55 @@ fn (mut t Transformer) transform_fn_decl_streaming_to_flat(c ast.Cursor, mut out
 	t.restore_fn_body_transform_state(mut ctx)
 	attrs := t.finish_fn_body_transform(lowered, mut ctx)
 	return t.emit_fn_decl_flat(lowered, attrs, body_ids, mut out)
+}
+
+// transform_for_stmt_streaming_to_flat is the cursor-native counterpart to
+// `transform_stmt_to_flat`'s ForStmt arm for plain (non-for-in) loops. It
+// mirrors `transform_for_stmt`'s clean tail (for.v, the path taken when
+// `stmt.init` is NOT a ForInStmt): open a loop scope, push smartcasts derived
+// from `is` checks in the condition for the body, transform the body, pop the
+// smartcasts, then transform init/cond/post and close the scope. The one
+// difference is the body is STREAMED from the cursor
+// (`transform_cursor_stmts_to_flat_direct`) instead of decoded to `[]ast.Stmt`
+// and re-emitted — so a `for` loop's body (and any loops nested inside it,
+// recursively) never materialises as legacy AST.
+//
+// The body is transformed FIRST, preserving the legacy transform order so the
+// synthetic-position counter advances identically; the for-node's edges are
+// still assembled as [init, cond, post, body...], so the structural signature
+// and generated C are bit-identical to the decode path (arena order differs but
+// is irrelevant — both consumers follow edges, not node-id order).
+//
+// Precondition (the dispatcher checks it): `c.edge(0)` is not a stmt_for_in.
+// for-in lowering stays on the whole-decl decode path.
+fn (mut t Transformer) transform_for_stmt_streaming_to_flat(c ast.Cursor, mut out ast.FlatBuilder) ast.FlatNodeId {
+	// Open a child scope for loop variables (transform_for_stmt:562).
+	t.open_scope()
+	cond := c.edge(1).expr()
+	// `for x is Type { ... }`: push smartcast contexts from `is` terms in the
+	// (untransformed) condition for the body, exactly like transform_for_stmt.
+	mut loop_smartcasts := []SmartcastContext{}
+	for term in t.flatten_and_terms_unwrapped(cond) {
+		if term is ast.InfixExpr {
+			if ctx := t.smartcast_context_from_condition_term(term) {
+				loop_smartcasts << ctx
+			}
+		}
+	}
+	for ctx in loop_smartcasts {
+		t.push_smartcast_full(ctx.expr, ctx.variant, ctx.variant_full, ctx.sumtype)
+	}
+	body_ids := t.transform_cursor_stmts_to_flat_direct(c.for_body_list(), [], mut out)
+	for _ in loop_smartcasts {
+		t.pop_smartcast()
+	}
+	// init/cond/post transform after the body (matches the struct-literal field
+	// evaluation order in transform_for_stmt:701-706: init, cond, post).
+	init_id := out.emit_stmt(t.transform_stmt(c.edge(0).stmt()))
+	cond_id := out.emit_expr(t.transform_expr(cond))
+	post_id := out.emit_stmt(t.transform_stmt(c.edge(2).stmt()))
+	t.close_scope()
+	return out.emit_for_stmt_by_ids(init_id, cond_id, post_id, body_ids)
 }
 
 // expand_assert_stmt_to_flat is the flat-direct mirror of `expand_assert_stmt`

@@ -341,6 +341,19 @@ pub fn (c Cursor) list_at(edge_i int) CursorList {
 	}
 }
 
+// for_body_list views a stmt_for node's body as a CursorList. The stmt_for flat
+// layout is edges [init, cond, post, body_stmt_0, body_stmt_1, ...] — the body
+// is trailing edges of the for-node itself, NOT a separate aux_list — so the
+// body list is this node's children from edge index 3 onward.
+@[inline]
+pub fn (c Cursor) for_body_list() CursorList {
+	return CursorList{
+		flat:      c.flat
+		parent_id: c.id
+		offset:    3
+	}
+}
+
 // CursorList is a view over the children of an `aux_list` node. It is the
 // flat equivalent of `[]ast.Stmt` / `[]ast.Expr` / `[]FieldDecl` etc., except
 // no slice is materialised — `at(i)` decodes one child at a time.
@@ -348,6 +361,12 @@ pub struct CursorList {
 pub:
 	flat      &FlatAst = unsafe { nil }
 	parent_id FlatNodeId
+	// offset skips the first `offset` child edges of `parent_id`. Default 0 (the
+	// whole child list). Lets a trailing edge range be viewed as a list when the
+	// items are direct child edges of a node rather than an aux_list — e.g. a
+	// ForStmt body lives in edges [3..] of the stmt_for node itself (see
+	// `Cursor.for_body_list`).
+	offset int
 }
 
 @[inline]
@@ -355,14 +374,14 @@ pub fn (l CursorList) len() int {
 	if l.flat == unsafe { nil } || l.parent_id < 0 || l.parent_id >= l.flat.nodes.len {
 		return 0
 	}
-	return l.flat.nodes[l.parent_id].edge_count
+	return l.flat.nodes[l.parent_id].edge_count - l.offset
 }
 
 @[inline]
 pub fn (l CursorList) at(i int) Cursor {
 	return Cursor{
 		flat: l.flat
-		id:   l.flat.child_at(l.parent_id, i)
+		id:   l.flat.child_at(l.parent_id, l.offset + i)
 	}
 }
 
