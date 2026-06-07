@@ -1204,7 +1204,10 @@ pub fn (mut t Transformer) monomorphize_pass(files []ast.File) []ast.File {
 			}
 			t.cur_generic_call_file_idx = old_owner_file
 			t.cur_import_aliases = old_import_aliases.clone()
-			mut bucket := per_file_clones[clone_file] or { []ast.Stmt{} }
+			mut bucket := []ast.Stmt{}
+			if clone_file in per_file_clones {
+				bucket = per_file_clones[clone_file]
+			}
 			bucket << ast.Stmt(cloned)
 			per_file_clones[clone_file] = bucket
 		}
@@ -1220,10 +1223,11 @@ pub fn (mut t Transformer) monomorphize_pass(files []ast.File) []ast.File {
 	}
 	mut new_files := []ast.File{cap: files.len}
 	for fi, file in files {
-		extra := per_file_clones[fi] or {
+		if fi !in per_file_clones {
 			new_files << file
 			continue
 		}
+		extra := per_file_clones[fi]
 		mut stmts := file.stmts.clone()
 		stmts << extra
 		new_files << ast.File{
@@ -2426,7 +2430,10 @@ fn (mut t Transformer) collect_generic_call_specs_in_new_clones(files []ast.File
 	old_import_aliases := t.cur_import_aliases.clone()
 	t.build_generic_fn_decl_index(files)
 	for fi, file in files {
-		clones := t.last_mono_clones[fi] or { continue }
+		if fi !in t.last_mono_clones {
+			continue
+		}
+		clones := t.last_mono_clones[fi]
 		if clones.len == 0 {
 			continue
 		}

@@ -31,25 +31,27 @@ const staged_main_obj_file = '/tmp/v2_codegen.tmp.main.o'
 struct Builder {
 	pref &pref.Preferences
 mut:
-	files                     []ast.File
-	user_files                []string // original user-provided files (for output name)
-	file_set                  &token.FileSet     = token.FileSet.new()
-	env                       &types.Environment = unsafe { nil } // Type checker environment
-	parsed_full_files_n       int
-	parsed_vh_files_n         int
-	entry_v_lines_n           int
-	parsed_v_lines_n          int
-	parsed_full_files         []string
-	parsed_vh_files           []string
-	used_fn_keys              map[string]bool
-	cached_called_fn_names    map[string]bool
-	used_vh_for_parse         bool
-	used_import_vh_for_parse  bool
-	used_virtual_vh_for_parse bool
-	flat_roundtrip_enabled    bool // V2_FLAT_ROUNDTRIP=1: legacy comparison mode; route parses through streaming + to_files().
-	flat_check_enabled        bool // Default on: stream parse/type-check through FlatAst. V2_LEGACY_AST=1 disables it unless V2_CHECK_FLAT=1 is set.
-	markused_flat_enabled     bool // Default on: route markused through mark_used_flat.
-	flat_ssa_enabled          bool // Default on: route SSA codegen through build_all_from_flat on the post-transform b.flat.
+	files                                 []ast.File
+	user_files                            []string // original user-provided files (for output name)
+	file_set                              &token.FileSet     = token.FileSet.new()
+	env                                   &types.Environment = unsafe { nil } // Type checker environment
+	parsed_full_files_n                   int
+	parsed_vh_files_n                     int
+	entry_v_lines_n                       int
+	parsed_v_lines_n                      int
+	parsed_full_files                     []string
+	parsed_vh_files                       []string
+	used_fn_keys                          map[string]bool
+	cached_called_fn_names                map[string]bool
+	v2compiler_generic_setup_snapshot     cleanc.GenericSetupSnapshot
+	has_v2compiler_generic_setup_snapshot bool
+	used_vh_for_parse                     bool
+	used_import_vh_for_parse              bool
+	used_virtual_vh_for_parse             bool
+	flat_roundtrip_enabled                bool // V2_FLAT_ROUNDTRIP=1: legacy comparison mode; route parses through streaming + to_files().
+	flat_check_enabled                    bool // Default on: stream parse/type-check through FlatAst. V2_LEGACY_AST=1 disables it unless V2_CHECK_FLAT=1 is set.
+	markused_flat_enabled                 bool // Default on: route markused through mark_used_flat.
+	flat_ssa_enabled                      bool // Default on: route SSA codegen through build_all_from_flat on the post-transform b.flat.
 	// flat caches the FlatAst representation of b.files. When
 	// flat_check_enabled is set, parse_batch streams directly into
 	// flat_builder so b.flat is built incrementally during parsing rather
@@ -875,9 +877,17 @@ fn (mut b Builder) gen_cleanc_source_with_options(modules []string, emit_files [
 	if cache_bundle_name.len == 0 && cached_init_calls.len > 0 && b.cached_called_fn_names.len > 0 {
 		gen.add_called_fn_names(b.cached_called_fn_name_list())
 	}
+	if cache_bundle_name.len == 0 && cached_init_calls.len > 0
+		&& b.has_v2compiler_generic_setup_snapshot {
+		gen.use_generic_setup_snapshot(b.v2compiler_generic_setup_snapshot)
+	}
 	use_parallel := b.pref != unsafe { nil } && !b.pref.no_parallel
 	if use_parallel {
 		gen.gen_passes_1_to_4()
+		if cache_bundle_name == v2compiler_cache_name {
+			b.v2compiler_generic_setup_snapshot = gen.generic_setup_snapshot()
+			b.has_v2compiler_generic_setup_snapshot = true
+		}
 		b.gen_cleanc_parallel(mut gen)
 		source := gen.gen_finalize()
 		if cache_bundle_name.len > 0 {
@@ -889,6 +899,10 @@ fn (mut b Builder) gen_cleanc_source_with_options(modules []string, emit_files [
 		return source
 	}
 	source := gen.gen()
+	if cache_bundle_name == v2compiler_cache_name {
+		b.v2compiler_generic_setup_snapshot = gen.generic_setup_snapshot()
+		b.has_v2compiler_generic_setup_snapshot = true
+	}
 	if cache_bundle_name.len > 0 {
 		b.add_cached_called_fn_names(gen.external_called_fn_names())
 	}

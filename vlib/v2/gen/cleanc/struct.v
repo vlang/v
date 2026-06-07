@@ -4,8 +4,35 @@
 
 module cleanc
 
+import runtime
 import v2.ast
 import v2.types
+
+const max_generic_struct_scan_jobs = 4
+
+$if !windows {
+	struct GenericStructScanChunkArgs {
+		worker           voidptr // &Gen - pre-cloned worker
+		file_indices_ptr voidptr // &[]int - worker-owned full-file indexes
+	}
+
+	@[typedef]
+	struct C.pthread_t {}
+
+	fn C.pthread_create(thread &C.pthread_t, attr voidptr, start_routine fn (voidptr) voidptr, arg voidptr) int
+	fn C.pthread_join(thread C.pthread_t, retval voidptr) int
+	fn C.pthread_attr_init(attr voidptr) int
+	fn C.pthread_attr_setstacksize(attr voidptr, stacksize usize) int
+	fn C.pthread_attr_destroy(attr voidptr) int
+
+	fn generic_struct_scan_chunk_thread(arg voidptr) voidptr {
+		a := unsafe { &GenericStructScanChunkArgs(arg) }
+		mut w := unsafe { &Gen(a.worker) }
+		indices := unsafe { &[]int(a.file_indices_ptr) }
+		w.collect_generic_struct_bindings_file_indices(*indices)
+		return unsafe { nil }
+	}
+}
 
 fn (mut g Gen) has_explicit_str_method_for_c_type(c_type_name string) bool {
 	old_file := g.cur_file_name
@@ -64,35 +91,59 @@ fn (mut g Gen) collect_generic_struct_bindings() {
 		g.cur_fn_name = prev_fn_name
 		g.cur_fn_c_name = prev_fn_c_name
 	}
-	for file in g.files {
-		g.set_file_module(file)
-		for stmt in file.stmts {
-			if stmt is ast.StructDecl {
-				for field in stmt.fields {
-					g.scan_expr_for_generic_types(field.typ)
-				}
-			}
-			// Also scan function bodies for generic type references
-			// (e.g. LinkedList[StructFieldInfo]{} in decode_value)
-			if stmt is ast.FnDecl {
-				if stmt.receiver.typ !is ast.EmptyExpr {
-					g.scan_expr_for_generic_types(stmt.receiver.typ)
-				}
-				for param in stmt.typ.params {
-					g.scan_expr_for_generic_types(param.typ)
-				}
-				if stmt.typ.return_type !is ast.EmptyExpr {
-					g.scan_expr_for_generic_types(stmt.typ.return_type)
-				}
-				g.scan_fn_body_for_generic_types_with_clean_locals(stmt, '')
+	if !g.collect_generic_struct_bindings_file_scan_parallel() {
+		g.collect_generic_struct_bindings_file_scan(g.files)
+	}
+	g.propagate_generic_struct_bindings_for_files(g.files)
+	g.scan_receiver_generic_struct_bindings_for_files(g.files)
+}
+
+fn (mut g Gen) collect_generic_struct_bindings_file_scan(files []ast.File) {
+	for file in files {
+		g.collect_generic_struct_bindings_file(file)
+	}
+}
+
+fn (mut g Gen) collect_generic_struct_bindings_file_indices(file_indices []int) {
+	for file_idx in file_indices {
+		if file_idx < 0 || file_idx >= g.files.len {
+			continue
+		}
+		g.collect_generic_struct_bindings_file(g.files[file_idx])
+	}
+}
+
+fn (mut g Gen) collect_generic_struct_bindings_file(file ast.File) {
+	g.set_file_module(file)
+	for stmt in file.stmts {
+		if stmt is ast.StructDecl {
+			for field in stmt.fields {
+				g.scan_expr_for_generic_types(field.typ)
 			}
 		}
+		// Also scan function bodies for generic type references
+		// (e.g. LinkedList[StructFieldInfo]{} in decode_value)
+		if stmt is ast.FnDecl {
+			if stmt.receiver.typ !is ast.EmptyExpr {
+				g.scan_expr_for_generic_types(stmt.receiver.typ)
+			}
+			for param in stmt.typ.params {
+				g.scan_expr_for_generic_types(param.typ)
+			}
+			if stmt.typ.return_type !is ast.EmptyExpr {
+				g.scan_expr_for_generic_types(stmt.typ.return_type)
+			}
+			g.scan_fn_body_for_generic_types_with_clean_locals(stmt, '')
+		}
 	}
+}
+
+fn (mut g Gen) propagate_generic_struct_bindings_for_files(files []ast.File) {
 	// Propagation pass: for each generic struct with recorded bindings,
 	// look for nested generic type references (e.g. Node[T] inside
 	// LinkedList[T]) and record concrete bindings by substituting the
 	// parent struct's known bindings for placeholder params.
-	for file in g.files {
+	for file in files {
 		g.set_file_module(file)
 		for stmt in file.stmts {
 			if stmt is ast.StructDecl {
@@ -113,11 +164,14 @@ fn (mut g Gen) collect_generic_struct_bindings() {
 			}
 		}
 	}
+}
+
+fn (mut g Gen) scan_receiver_generic_struct_bindings_for_files(files []ast.File) {
 	// Generic receiver methods can contain explicit calls like
 	// `helper[T](...)` even when the receiver itself is emitted with v2's
 	// fallback placeholder type. Rescan those bodies with concrete receiver
 	// bindings, or with the same f64 fallback used by placeholder C types.
-	for file in g.files {
+	for file in files {
 		g.set_file_module(file)
 		for stmt in file.stmts {
 			if stmt is ast.FnDecl {
@@ -150,6 +204,185 @@ fn (mut g Gen) collect_generic_struct_bindings() {
 	}
 }
 
+fn (mut g Gen) collect_generic_struct_bindings_file_scan_parallel() bool {
+	if g.pref == unsafe { nil } || g.pref.no_parallel || g.files.len < 2 {
+		return false
+	}
+	$if windows {
+		return false
+	} $else {
+		n_files := g.files.len
+		n_runtime_jobs := runtime.nr_jobs()
+		n_jobs := generic_struct_scan_job_count(n_runtime_jobs, n_files)
+		if n_jobs <= 1 {
+			return false
+		}
+
+		mut thread_ids := []C.pthread_t{len: n_jobs}
+		mut args := []GenericStructScanChunkArgs{cap: n_jobs}
+		mut workers := []voidptr{cap: n_jobs}
+		mut chunk_indices := [][]int{cap: n_jobs}
+		for ci := 0; ci < n_jobs; ci++ {
+			start := ci * n_files / n_jobs
+			end := (ci + 1) * n_files / n_jobs
+			mut indices := []int{cap: end - start}
+			for file_idx := start; file_idx < end; file_idx++ {
+				indices << file_idx
+			}
+			chunk_indices << indices
+			w := g.new_generic_struct_scan_worker(ci)
+			workers << voidptr(w)
+		}
+		for ci := 0; ci < n_jobs; ci++ {
+			args << GenericStructScanChunkArgs{
+				worker:           workers[ci]
+				file_indices_ptr: unsafe { voidptr(&chunk_indices[ci]) }
+			}
+		}
+
+		attr_buf := [64]u8{}
+		attr := unsafe { voidptr(&attr_buf[0]) }
+		C.pthread_attr_init(attr)
+		C.pthread_attr_setstacksize(attr, 64 * 1024 * 1024)
+		for ci := 0; ci < n_jobs; ci++ {
+			C.pthread_create(unsafe { &thread_ids[ci] }, attr, generic_struct_scan_chunk_thread,
+				unsafe { voidptr(&args[ci]) })
+		}
+		C.pthread_attr_destroy(attr)
+		for ci := 0; ci < n_jobs; ci++ {
+			C.pthread_join(thread_ids[ci], unsafe { nil })
+		}
+		for ci := 0; ci < n_jobs; ci++ {
+			w := unsafe { &Gen(workers[ci]) }
+			g.merge_generic_struct_scan_worker(w)
+		}
+		return true
+	}
+}
+
+fn generic_struct_scan_job_count(n_runtime_jobs int, n_files int) int {
+	if n_runtime_jobs <= 0 || n_files <= 0 {
+		return 0
+	}
+	mut n_jobs := n_runtime_jobs
+	if n_jobs > max_generic_struct_scan_jobs {
+		n_jobs = max_generic_struct_scan_jobs
+	}
+	if n_jobs > n_files {
+		n_jobs = n_files
+	}
+	// Worker Gen clones are sizeable; avoid spending more time cloning than scanning
+	// when the current bundle is already small because .vh caches did most work.
+	if n_files < n_jobs * 4 {
+		n_jobs = if n_files >= 4 { n_files / 4 } else { 1 }
+	}
+	return n_jobs
+}
+
+fn (g &Gen) new_generic_struct_scan_worker(worker_id int) &Gen {
+	mut w := g.new_pass5_worker([], worker_id)
+	w.generic_body_scan_cache = g.generic_body_scan_cache.clone()
+	w.generic_spec_index = clone_generic_spec_index(g.generic_spec_index)
+	w.late_generic_specs = clone_late_generic_specs(g.late_generic_specs)
+	w.generic_struct_bindings = clone_generic_struct_bindings(g.generic_struct_bindings)
+	w.generic_struct_instances = clone_generic_struct_instances(g.generic_struct_instances)
+	w.active_generic_types = map[string]types.Type{}
+	w.runtime_local_types = map[string]string{}
+	w.runtime_decl_types = map[string]string{}
+	w.not_local_var_cache = map[string]bool{}
+	w.is_module_ident_cache = map[string]bool{}
+	w.resolved_module_names = map[string]string{}
+	w.cur_fn_generic_params = map[string]string{}
+	w.cur_fn_name = ''
+	w.cur_fn_c_name = ''
+	return w
+}
+
+fn (mut g Gen) merge_generic_struct_scan_worker(w &Gen) {
+	for struct_c_name, instances in w.generic_struct_instances {
+		for inst in instances {
+			g.merge_generic_struct_scan_instance(struct_c_name, inst)
+		}
+	}
+	for key, bindings in w.generic_struct_bindings {
+		if key !in g.generic_struct_bindings && key !in g.generic_struct_instances {
+			g.generic_struct_bindings[key] = bindings.clone()
+		}
+	}
+	for key, specs in w.late_generic_specs {
+		for bindings in specs {
+			g.record_late_generic_call_spec_unchecked(key, bindings)
+		}
+	}
+	for key, scanned in w.generic_body_scan_cache {
+		if scanned {
+			g.generic_body_scan_cache[key] = true
+		}
+	}
+	g.merge_generic_setup_alias_maps(w)
+}
+
+fn (mut g Gen) merge_generic_struct_scan_instance(struct_c_name string, inst GenericStructInstance) {
+	mut instances := g.generic_struct_instances[struct_c_name]
+	for existing in instances {
+		if existing.params_key == inst.params_key {
+			return
+		}
+	}
+	mut c_name := inst.c_name
+	if instances.len > 0 && c_name == struct_c_name {
+		c_name = '${struct_c_name}_T_${inst.params_key}'
+	}
+	merged := GenericStructInstance{
+		params_key: inst.params_key
+		bindings:   inst.bindings.clone()
+		c_name:     c_name
+	}
+	instances << merged
+	g.generic_struct_instances[struct_c_name] = instances
+	if struct_c_name !in g.generic_struct_bindings {
+		g.generic_struct_bindings[struct_c_name] = merged.bindings.clone()
+	}
+}
+
+fn (mut g Gen) merge_generic_setup_alias_maps(w &Gen) {
+	for key, values in w.tuple_aliases {
+		if key !in g.tuple_aliases {
+			g.tuple_aliases[key] = values.clone()
+		}
+	}
+	for key, value in w.array_aliases {
+		if value {
+			g.array_aliases[key] = true
+		}
+	}
+	for key, value in w.map_aliases {
+		if value {
+			g.map_aliases[key] = true
+		}
+	}
+	for key, value in w.result_aliases {
+		if value {
+			g.result_aliases[key] = true
+		}
+	}
+	for key, value in w.option_aliases {
+		if value {
+			g.option_aliases[key] = true
+		}
+	}
+	for key, value in w.collected_fixed_array_types {
+		if key !in g.collected_fixed_array_types {
+			g.collected_fixed_array_types[key] = value
+		}
+	}
+	for key, value in w.collected_map_types {
+		if key !in g.collected_map_types {
+			g.collected_map_types[key] = value
+		}
+	}
+}
+
 fn (mut g Gen) scan_fn_body_for_generic_types_with_clean_locals(node ast.FnDecl, spec_name string) {
 	prev_runtime_local_types := g.runtime_local_types.clone()
 	prev_runtime_decl_types := g.runtime_decl_types.clone()
@@ -176,6 +409,115 @@ fn (mut g Gen) scan_fn_body_for_generic_types_with_clean_locals(node ast.FnDecl,
 	g.cur_fn_generic_params = prev_cur_fn_generic_params.clone()
 	g.cur_fn_name = prev_fn_name
 	g.cur_fn_c_name = prev_fn_c_name
+}
+
+fn clone_tuple_aliases(src map[string][]string) map[string][]string {
+	mut out := map[string][]string{}
+	for key, values in src {
+		out[key] = values.clone()
+	}
+	return out
+}
+
+fn clone_generic_spec_index(src map[string][]string) map[string][]string {
+	mut out := map[string][]string{}
+	for key, values in src {
+		out[key] = values.clone()
+	}
+	return out
+}
+
+fn clone_late_generic_specs(src map[string][]map[string]types.Type) map[string][]map[string]types.Type {
+	mut out := map[string][]map[string]types.Type{}
+	for key, specs in src {
+		mut cloned_specs := []map[string]types.Type{cap: specs.len}
+		for spec in specs {
+			cloned_specs << spec.clone()
+		}
+		out[key] = cloned_specs
+	}
+	return out
+}
+
+fn clone_generic_struct_bindings(src map[string]map[string]types.Type) map[string]map[string]types.Type {
+	mut out := map[string]map[string]types.Type{}
+	for key, bindings in src {
+		out[key] = bindings.clone()
+	}
+	return out
+}
+
+fn clone_generic_struct_instances(src map[string][]GenericStructInstance) map[string][]GenericStructInstance {
+	mut out := map[string][]GenericStructInstance{}
+	for key, instances in src {
+		mut cloned_instances := []GenericStructInstance{cap: instances.len}
+		for inst in instances {
+			cloned_instances << GenericStructInstance{
+				params_key: inst.params_key
+				bindings:   inst.bindings.clone()
+				c_name:     inst.c_name
+			}
+		}
+		out[key] = cloned_instances
+	}
+	return out
+}
+
+fn (s &GenericSetupSnapshot) clone() GenericSetupSnapshot {
+	return GenericSetupSnapshot{
+		ready:                       s.ready
+		tuple_aliases:               clone_tuple_aliases(s.tuple_aliases)
+		array_aliases:               s.array_aliases.clone()
+		map_aliases:                 s.map_aliases.clone()
+		result_aliases:              s.result_aliases.clone()
+		option_aliases:              s.option_aliases.clone()
+		collected_fixed_array_types: s.collected_fixed_array_types.clone()
+		collected_map_types:         s.collected_map_types.clone()
+		generic_body_scan_cache:     s.generic_body_scan_cache.clone()
+		generic_spec_index:          clone_generic_spec_index(s.generic_spec_index)
+		late_generic_specs:          clone_late_generic_specs(s.late_generic_specs)
+		generic_struct_bindings:     clone_generic_struct_bindings(s.generic_struct_bindings)
+		generic_struct_instances:    clone_generic_struct_instances(s.generic_struct_instances)
+	}
+}
+
+pub fn (mut g Gen) use_generic_setup_snapshot(snapshot GenericSetupSnapshot) {
+	g.generic_setup_snapshot = snapshot.clone()
+	g.has_generic_setup_snapshot = snapshot.ready
+}
+
+pub fn (g &Gen) generic_setup_snapshot() GenericSetupSnapshot {
+	return GenericSetupSnapshot{
+		ready:                       true
+		tuple_aliases:               clone_tuple_aliases(g.tuple_aliases)
+		array_aliases:               g.array_aliases.clone()
+		map_aliases:                 g.map_aliases.clone()
+		result_aliases:              g.result_aliases.clone()
+		option_aliases:              g.option_aliases.clone()
+		collected_fixed_array_types: g.collected_fixed_array_types.clone()
+		collected_map_types:         g.collected_map_types.clone()
+		generic_body_scan_cache:     g.generic_body_scan_cache.clone()
+		generic_spec_index:          clone_generic_spec_index(g.generic_spec_index)
+		late_generic_specs:          clone_late_generic_specs(g.late_generic_specs)
+		generic_struct_bindings:     clone_generic_struct_bindings(g.generic_struct_bindings)
+		generic_struct_instances:    clone_generic_struct_instances(g.generic_struct_instances)
+	}
+}
+
+fn (mut g Gen) apply_generic_setup_snapshot() {
+	snapshot := g.generic_setup_snapshot
+	g.tuple_aliases = clone_tuple_aliases(snapshot.tuple_aliases)
+	g.array_aliases = snapshot.array_aliases.clone()
+	g.map_aliases = snapshot.map_aliases.clone()
+	g.result_aliases = snapshot.result_aliases.clone()
+	g.option_aliases = snapshot.option_aliases.clone()
+	g.collected_fixed_array_types = snapshot.collected_fixed_array_types.clone()
+	g.collected_map_types = snapshot.collected_map_types.clone()
+	g.generic_body_scan_cache = snapshot.generic_body_scan_cache.clone()
+	g.generic_spec_index = clone_generic_spec_index(snapshot.generic_spec_index)
+	g.late_generic_specs = clone_late_generic_specs(snapshot.late_generic_specs)
+	g.generic_struct_bindings = clone_generic_struct_bindings(snapshot.generic_struct_bindings)
+	g.generic_struct_instances = clone_generic_struct_instances(snapshot.generic_struct_instances)
 }
 
 // propagate_generic_bindings finds nested generic type references and records
