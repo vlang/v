@@ -802,12 +802,34 @@ fn (mut b Builder) gen_cleanc_source_with_options(modules []string, emit_files [
 			}
 		}
 	}
+	// Cache-bundle generation restricts emission to a fixed set of type
+	// modules. The flat cleanc gen does not yet scope `_option_`/`_result_`
+	// wrapper-typedef emission to that module subset (it would emit a
+	// type-module struct/prototype without the wrapper typedef it references),
+	// so for restricted bundles in flat mode we rehydrate just the bundle's
+	// type-module files and drive the legacy gen, which filters by physical
+	// file set exactly as before. This is bounded to the cached-module files,
+	// and the resulting .o is cached, so the rehydration runs only on a cache
+	// miss. The unrestricted main translation unit still uses the flat gen.
+	bundle_rehydrate_from_flat := b.uses_flat_module_enumeration() && restrict_to_cache_modules
 	mut gen_files := []ast.File{cap: b.files.len}
-	for file in b.files {
-		if restrict_to_cache_modules && ast_file_module_name(file) !in type_module_names {
-			continue
+	if bundle_rehydrate_from_flat {
+		for i in 0 .. b.flat.files.len {
+			if b.flat_file_module_name(i) !in type_module_names {
+				continue
+			}
+			rng := b.flat.to_files_range(i, i + 1)
+			if rng.len > 0 {
+				gen_files << rng[0]
+			}
 		}
-		gen_files << file
+	} else {
+		for file in b.files {
+			if restrict_to_cache_modules && ast_file_module_name(file) !in type_module_names {
+				continue
+			}
+			gen_files << file
+		}
 	}
 	if cached_init_calls.len > 0 && b.used_vh_for_parse {
 		mut has_vh_files := false
@@ -825,7 +847,7 @@ fn (mut b Builder) gen_cleanc_source_with_options(modules []string, emit_files [
 			}
 		}
 	}
-	mut gen := if b.flat.files.len > 0 {
+	mut gen := if b.flat.files.len > 0 && !bundle_rehydrate_from_flat {
 		cleanc.Gen.new_with_env_pref_and_flat(&b.flat, b.env, b.pref)
 	} else {
 		cleanc.Gen.new_with_env_and_pref(gen_files, b.env, b.pref)
@@ -968,20 +990,37 @@ fn (b &Builder) expand_type_modules_with_imports(modules []string) []string {
 			type_modules[module_name] = true
 		}
 	}
+	use_flat := b.uses_flat_module_enumeration()
 	mut changed := true
 	for changed {
 		changed = false
-		for file in b.files {
-			if ast_file_module_name(file) !in type_modules {
-				continue
-			}
-			for import_stmt in file.imports {
-				import_module := import_module_name(import_stmt.name)
-				if import_module == '' || import_module in type_modules {
+		if use_flat {
+			for i in 0 .. b.flat.files.len {
+				if b.flat_file_module_name(i) !in type_modules {
 					continue
 				}
-				type_modules[import_module] = true
-				changed = true
+				for import_stmt in b.flat.read_file_imports(b.flat.files[i]) {
+					import_module := import_module_name(import_stmt.name)
+					if import_module == '' || import_module in type_modules {
+						continue
+					}
+					type_modules[import_module] = true
+					changed = true
+				}
+			}
+		} else {
+			for file in b.files {
+				if ast_file_module_name(file) !in type_modules {
+					continue
+				}
+				for import_stmt in file.imports {
+					import_module := import_module_name(import_stmt.name)
+					if import_module == '' || import_module in type_modules {
+						continue
+					}
+					type_modules[import_module] = true
+					changed = true
+				}
 			}
 		}
 	}
@@ -997,18 +1036,36 @@ fn (b &Builder) has_external_cache_module_name_collision(module_names []string) 
 	}
 	mut vlib_modules := map[string]bool{}
 	mut external_modules := map[string]bool{}
-	for file in b.files {
-		if file.name == '' || file.name.ends_with('.vh') {
-			continue
+	if b.uses_flat_module_enumeration() {
+		for i in 0 .. b.flat.files.len {
+			name := b.flat.file_name(b.flat.files[i])
+			if name == '' || name.ends_with('.vh') {
+				continue
+			}
+			module_name := b.flat_file_module_name(i)
+			if module_name !in module_set {
+				continue
+			}
+			if b.is_vlib_source_file(name) {
+				vlib_modules[module_name] = true
+			} else {
+				external_modules[module_name] = true
+			}
 		}
-		module_name := ast_file_module_name(file)
-		if module_name !in module_set {
-			continue
-		}
-		if b.is_vlib_source_file(file.name) {
-			vlib_modules[module_name] = true
-		} else {
-			external_modules[module_name] = true
+	} else {
+		for file in b.files {
+			if file.name == '' || file.name.ends_with('.vh') {
+				continue
+			}
+			module_name := ast_file_module_name(file)
+			if module_name !in module_set {
+				continue
+			}
+			if b.is_vlib_source_file(file.name) {
+				vlib_modules[module_name] = true
+			} else {
+				external_modules[module_name] = true
+			}
 		}
 	}
 	for module_name, _ in external_modules {
@@ -1939,7 +1996,36 @@ fn (mut b Builder) ensure_cached_virtual_module_object(cache_dir string, groups 
 	return obj_path
 }
 
+// flat_file_module_name returns the normalized module name of the i-th flat
+// file, mirroring `ast_file_module_name` for the flat-AST path: the raw module
+// string with `.` replaced by `_`, defaulting to `main`. Used by the cleanc
+// cached-core enumeration helpers when `b.files` has been dropped in favour of
+// the post-transform FlatAst.
+fn (b &Builder) flat_file_module_name(i int) string {
+	mod := b.flat.string_at(b.flat.files[i].mod_idx)
+	if mod == '' {
+		return 'main'
+	}
+	return mod.replace('.', '_')
+}
+
+// uses_flat_module_enumeration reports whether module/file enumeration must run
+// against `b.flat` instead of `b.files`. In flat-codegen mode the transformer
+// drops `b.files` after producing the post-transform FlatAst, so the cleanc
+// cache helpers source their module/file metadata from the flat cursors.
+fn (b &Builder) uses_flat_module_enumeration() bool {
+	return b.files.len == 0 && b.flat.files.len > 0
+}
+
 fn (b &Builder) has_module(module_name string) bool {
+	if b.uses_flat_module_enumeration() {
+		for i in 0 .. b.flat.files.len {
+			if b.flat_file_module_name(i) == module_name {
+				return true
+			}
+		}
+		return false
+	}
 	for file in b.files {
 		if ast_file_module_name(file) == module_name {
 			return true
@@ -1954,12 +2040,22 @@ fn (b &Builder) collect_modules_excluding(excluded []string) []string {
 		excluded_set[module_name] = true
 	}
 	mut modules_set := map[string]bool{}
-	for file in b.files {
-		module_name := ast_file_module_name(file)
-		if module_name in excluded_set {
-			continue
+	if b.uses_flat_module_enumeration() {
+		for i in 0 .. b.flat.files.len {
+			module_name := b.flat_file_module_name(i)
+			if module_name in excluded_set {
+				continue
+			}
+			modules_set[module_name] = true
 		}
-		modules_set[module_name] = true
+	} else {
+		for file in b.files {
+			module_name := ast_file_module_name(file)
+			if module_name in excluded_set {
+				continue
+			}
+			modules_set[module_name] = true
+		}
 	}
 	mut modules := modules_set.keys()
 	modules.sort()
@@ -1973,18 +2069,36 @@ fn (b &Builder) user_entry_module_names() []string {
 		entry_files[os.norm_path(os.abs_path(file))] = true
 	}
 	mut modules_set := map[string]bool{}
-	for file in b.files {
-		if file.name == '' || file.name.ends_with('.vh') {
-			continue
+	if b.uses_flat_module_enumeration() {
+		for i in 0 .. b.flat.files.len {
+			name := b.flat.file_name(b.flat.files[i])
+			if name == '' || name.ends_with('.vh') {
+				continue
+			}
+			norm_name := os.norm_path(name)
+			abs_name := os.norm_path(os.abs_path(name))
+			if norm_name !in entry_files && abs_name !in entry_files {
+				continue
+			}
+			module_name := b.flat_file_module_name(i)
+			if module_name.len > 0 {
+				modules_set[module_name] = true
+			}
 		}
-		norm_name := os.norm_path(file.name)
-		abs_name := os.norm_path(os.abs_path(file.name))
-		if norm_name !in entry_files && abs_name !in entry_files {
-			continue
-		}
-		module_name := ast_file_module_name(file)
-		if module_name.len > 0 {
-			modules_set[module_name] = true
+	} else {
+		for file in b.files {
+			if file.name == '' || file.name.ends_with('.vh') {
+				continue
+			}
+			norm_name := os.norm_path(file.name)
+			abs_name := os.norm_path(os.abs_path(file.name))
+			if norm_name !in entry_files && abs_name !in entry_files {
+				continue
+			}
+			module_name := ast_file_module_name(file)
+			if module_name.len > 0 {
+				modules_set[module_name] = true
+			}
 		}
 	}
 	mut modules := modules_set.keys()
