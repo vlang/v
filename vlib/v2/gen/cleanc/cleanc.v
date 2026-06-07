@@ -158,6 +158,8 @@ mut:
 	specialized_receiver_methods          map[string]string                  // receiver|method -> single matching specialized method
 	specialized_receiver_method_ambiguous map[string]bool                    // receiver|method keys with multiple matches
 	specialized_receiver_method_miss      map[string]bool                    // receiver|method keys with no matching specialized method
+	specialized_index                     map[string]string                  // base|method -> specialized fn (or '' sentinel for ambiguous); one-time index over fn signature tables
+	specialized_index_built               bool
 	late_generic_specs                    map[string][]map[string]types.Type // additional comptime-discovered specs
 	anon_fn_defs                          []string        // lifted anonymous function definitions
 	late_struct_defs                      []string        // struct definitions discovered during pass 5 codegen

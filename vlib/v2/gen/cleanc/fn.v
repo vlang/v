@@ -9267,13 +9267,23 @@ fn (mut g Gen) resolve_specialized_receiver_method(receiver_type string, method_
 	if g.specialized_fn_bases.len > 0 && receiver_type !in g.specialized_fn_bases {
 		return none
 	}
-	key := specialized_receiver_method_key(receiver_type, method_name)
-	if key in g.specialized_receiver_method_ambiguous || key in g.specialized_receiver_method_miss {
+	// Fast path: a one-time index keyed by (base, method) replaces a per-key linear scan over the
+	// whole fn_return_types + fn_param_is_ptr tables. The scan matched
+	// `candidate.starts_with('${receiver_type}_T_') && candidate.ends_with('__${method_name}')`,
+	// which for a base receiver_type (no `_T_`) and a simple method (no `__`) is exactly
+	// (all_before('_T_') == receiver_type) && (all_after_last('__') == method_name).
+	if !receiver_type.contains('_T_') && !method_name.contains('__') {
+		if !g.specialized_index_built {
+			g.build_specialized_index()
+		}
+		if found := g.specialized_index['${receiver_type}\x01${method_name}'] {
+			if found != '' { // '' is the ambiguous-match sentinel
+				return found
+			}
+		}
 		return none
 	}
-	if found := g.specialized_receiver_methods[key] {
-		return found
-	}
+	// Rare fallback: receiver_type/method contains the `_T_`/`__` separator the index keys on.
 	prefix := '${receiver_type}_T_'
 	suffix := '__${method_name}'
 	mut found := ''
@@ -9294,11 +9304,47 @@ fn (mut g Gen) resolve_specialized_receiver_method(receiver_type string, method_
 		}
 	}
 	if found != '' {
-		g.specialized_receiver_methods[key] = found
 		return found
 	}
-	g.specialized_receiver_method_miss[key] = true
 	return none
+}
+
+// build_specialized_index builds the (base|method -> specialized fn) lookup table once from the
+// signature tables. A key mapping to '' means multiple distinct specialized fns matched (the
+// scan's "ambiguous -> none" case). fn_return_types/fn_param_is_ptr are stable during code gen
+// (the previous per-key miss cache relied on the same invariant).
+fn (mut g Gen) build_specialized_index() {
+	mut idx := map[string]string{}
+	for candidate, _ in g.fn_return_types {
+		add_specialized_index_entry(mut idx, candidate)
+	}
+	for candidate, _ in g.fn_param_is_ptr {
+		add_specialized_index_entry(mut idx, candidate)
+	}
+	g.specialized_index = idx.move()
+	g.specialized_index_built = true
+}
+
+fn add_specialized_index_entry(mut idx map[string]string, candidate string) {
+	if !candidate.contains('_T_') {
+		return
+	}
+	base := candidate.all_before('_T_')
+	if base == '' {
+		return
+	}
+	method := candidate.all_after_last('__')
+	if method == '' || method == candidate {
+		return
+	}
+	key := '${base}\x01${method}'
+	if existing := idx[key] {
+		if existing != '' && existing != candidate {
+			idx[key] = '' // distinct second match -> ambiguous
+		}
+	} else {
+		idx[key] = candidate
+	}
 }
 
 struct EmbeddedMethodResolution {
