@@ -260,10 +260,16 @@ fn (t &Transformer) lookup_imported_var_type(name string) ?types.Type {
 	if name == '' || name.contains('__') || t.cur_module == '' {
 		return none
 	}
-	imported_scopes := t.cached_imported_module_scopes[t.cur_module] or { return none }
+	// The imported-module scope list is precomputed once in cache_env_maps
+	// (build_cached_imported_module_scopes); see the field comment in
+	// transformer.v. Iterate only the imports rather than rescanning and
+	// sorting the whole module symbol table on every lookup. The "found in
+	// exactly one import" / ambiguity semantics are order-independent, so the
+	// dropped per-call sort does not change the result.
+	scopes := t.cached_imported_module_scopes[t.cur_module] or { return none }
 	mut found_type := types.Type(types.void_)
 	mut found := false
-	for module_scope in imported_scopes {
+	for module_scope in scopes {
 		typ := module_scope.lookup_var_type(name) or { continue }
 		if found {
 			return none

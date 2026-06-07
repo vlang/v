@@ -295,14 +295,18 @@ pub fn (mut b Builder) build(files []string) {
 			b.files = files_out
 		}
 	} else {
-		if transform_flat_only {
-			b.flat = trans.transform_flat_to_flat_direct(&b.flat, b.files)
-			b.files = []ast.File{}
-		} else {
-			new_flat, files_out := b.transform_files_parallel_to_flat_via_driver(mut trans)
-			b.flat = new_flat
-			b.files = files_out
-		}
+		// Parallel transform fans the per-file work across worker threads via
+		// the driver, then flattens. The sequential transform_flat_to_flat_direct
+		// is ~3x slower here because it cannot parallelize the per-file loop, and
+		// the flat AST has no thread-safe merge primitive to let workers append
+		// to one builder concurrently. For flat-codegen backends we still drop
+		// b.files immediately so codegen stays flat-only (the legacy files are
+		// live only transiently during the parallel transform). The memory-
+		// critical arm64 self-host runs --no-parallel, so it takes the sequential
+		// branch above and keeps the allocation-minimal flat-direct path.
+		new_flat, files_out := b.transform_files_parallel_to_flat_via_driver(mut trans)
+		b.flat = new_flat
+		b.files = if transform_flat_only { []ast.File{} } else { files_out }
 	}
 	transform_time := time.Duration(sw.elapsed() - transform_start)
 	print_time('Transform', transform_time)

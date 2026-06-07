@@ -146,6 +146,14 @@ mut:
 	// match a key whose short name equals the receiver's short name, so they can
 	// scan just this bucket instead of every method key (O(all_keys) per call).
 	cached_method_keys_by_short map[string][]string
+	// cached_imported_module_scopes maps a module name -> the scopes of the
+	// modules it imports (excluding self/C). lookup_imported_var_type used to
+	// rebuild this set on every identifier lookup — objects.keys() + sort() +
+	// a full scan of the module's symbol table for Module objects — which made
+	// it one of the hottest functions during type propagation (O(idents x
+	// objects) with a per-call sort). Precomputed once in cache_env_maps so the
+	// lookup is a single map fetch plus a short scan over only the imports.
+	cached_imported_module_scopes map[string][]&types.Scope
 	// Accumulated synth types for deferred application (thread-safe).
 	// Instead of writing directly to env.set_expr_type during parallel transform,
 	// store here and apply after merge.
@@ -2078,6 +2086,38 @@ fn (mut t Transformer) cache_env_maps() {
 		by_short[method_short_name(key)] << key
 	}
 	t.cached_method_keys_by_short = by_short.move()
+	t.build_cached_imported_module_scopes()
+}
+
+// build_cached_imported_module_scopes precomputes, per module, the resolved
+// scopes of the modules it imports (skipping self, C and unnamed entries).
+// lookup_imported_var_type then iterates only this short list instead of
+// rescanning and sorting the whole symbol table on every call. The import set
+// is stable for the duration of a transform run (cached_scopes is snapshotted
+// once in pre_pass), so a single precompute is safe.
+fn (mut t Transformer) build_cached_imported_module_scopes() {
+	mut result := map[string][]&types.Scope{}
+	for module_name in t.cached_scopes.keys() {
+		current_scope := t.cached_scopes[module_name] or { continue }
+		mut scopes := []&types.Scope{}
+		for key, obj in current_scope.objects {
+			if obj !is types.Module {
+				continue
+			}
+			module_obj := obj as types.Module
+			imported_name := if module_obj.name != '' { module_obj.name } else { key }
+			if imported_name == '' || imported_name == module_name || imported_name == 'C' {
+				continue
+			}
+			mut module_scope := module_obj.scope
+			if module_scope == unsafe { nil } {
+				module_scope = t.cached_scopes[imported_name] or { continue }
+			}
+			scopes << module_scope
+		}
+		result[module_name] = scopes
+	}
+	t.cached_imported_module_scopes = result.move()
 }
 
 fn (mut t Transformer) build_cached_imported_module_scopes() {
