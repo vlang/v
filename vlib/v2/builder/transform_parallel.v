@@ -340,8 +340,8 @@ fn (mut b Builder) transform_files_parallel_no_post_pass_impl(mut trans transfor
 					result[fi] = chunk_files[k]
 				}
 			}
-			worker := unsafe { &transformer.Transformer(worker_ptrs[ci]) }
-			trans.merge_worker(worker)
+			worker_trans := unsafe { &transformer.Transformer(worker_ptrs[ci]) }
+			trans.merge_worker(worker_trans)
 			ci++
 		}
 		// Set synth_pos_counter past all worker ranges to avoid ID collisions in post_pass.
@@ -432,8 +432,8 @@ fn (mut b Builder) transform_files_parallel_top_level_stmts(mut trans transforme
 					job_results[item.result_idx] = item.stmts
 				}
 			}
-			worker := unsafe { &transformer.Transformer(worker_ptrs[ci]) }
-			trans.merge_worker(worker)
+			worker_trans := unsafe { &transformer.Transformer(worker_ptrs[ci]) }
+			trans.merge_worker(worker_trans)
 		}
 
 		mut result := []ast.File{cap: files.len}

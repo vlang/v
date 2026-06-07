@@ -848,19 +848,34 @@ fn (b &Builder) virtuals_header_stamp_for_modules(groups []CachedVirtualModule) 
 	return lines.join('\n')
 }
 
+fn stamp_tracked_file_line(line string) (string, string, bool) {
+	mut path_start := -1
+	for prefix in ['entry:', 'source:', 'compiler:', 'emit:', 'compiler_exe:'] {
+		if line.starts_with(prefix) {
+			path_start = prefix.len
+			break
+		}
+	}
+	if path_start < 0 {
+		if line.starts_with('/') || line.starts_with('./') || line.starts_with('../') {
+			path_start = 0
+		} else {
+			return '', '', false
+		}
+	}
+	colon_idx := line.last_index(':') or { return '', '', false }
+	if colon_idx <= path_start {
+		return '', '', false
+	}
+	return line[path_start..colon_idx], line[colon_idx + 1..], true
+}
+
 fn stamp_file_lines_are_fresh(stamp string) bool {
 	for line in stamp.split_into_lines() {
-		if !(line.starts_with('entry:') || line.starts_with('source:')
-			|| line.starts_with('compiler:')) {
+		file, expected_mtime, tracked := stamp_tracked_file_line(line)
+		if !tracked {
 			continue
 		}
-		colon_idx := line.last_index(':') or { return false }
-		path_idx := line.index(':') or { return false }
-		if colon_idx <= path_idx {
-			return false
-		}
-		file := line[path_idx + 1..colon_idx]
-		expected_mtime := line[colon_idx + 1..]
 		if !os.exists(file) {
 			return false
 		}

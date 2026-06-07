@@ -106,19 +106,20 @@ mut:
 
 	used_keys map[string]bool
 
-	module_names                map[string]bool
-	module_alias_to_real        map[string]string
-	type_names                  map[string]bool
-	interface_type_names        map[string]bool
-	interface_method_names      map[string][]string
-	interface_embedded_names    map[string][]string
-	methods_by_receiver         map[string][]int
-	struct_field_receivers      map[string][]string
-	struct_embedded_receivers   map[string][]string
-	struct_fn_fields            map[string]bool
-	global_interface_names      map[string]string
-	const_fn_value_aliases      map[string]string
-	selective_import_fn_targets map[string]string
+	module_names                   map[string]bool
+	module_alias_to_real           map[string]string
+	type_names                     map[string]bool
+	interface_type_names           map[string]bool
+	interface_method_names         map[string][]string
+	interface_embedded_names       map[string][]string
+	methods_by_receiver            map[string][]int
+	struct_field_receivers         map[string][]string
+	struct_embedded_receivers      map[string][]string
+	struct_fn_fields               map[string]bool
+	global_interface_names         map[string]string
+	const_fn_value_aliases         map[string]string
+	selective_import_fn_targets    map[string]string
+	called_fn_name_candidate_cache map[string][]string
 
 	lookup map[string][]int
 
@@ -156,24 +157,25 @@ pub fn decl_key(module_name string, decl ast.FnDecl, env &types.Environment) str
 
 fn new_walker(files []ast.File, env &types.Environment, opts MarkUsedOptions) Walker {
 	return Walker{
-		files:                       files
-		env:                         unsafe { env }
-		opts:                        opts
-		used_keys:                   map[string]bool{}
-		queued_fn_indices:           map[int]bool{}
-		module_names:                map[string]bool{}
-		type_names:                  map[string]bool{}
-		interface_type_names:        map[string]bool{}
-		interface_method_names:      map[string][]string{}
-		interface_embedded_names:    map[string][]string{}
-		methods_by_receiver:         map[string][]int{}
-		struct_field_receivers:      map[string][]string{}
-		struct_embedded_receivers:   map[string][]string{}
-		struct_fn_fields:            map[string]bool{}
-		global_interface_names:      map[string]string{}
-		const_fn_value_aliases:      map[string]string{}
-		selective_import_fn_targets: map[string]string{}
-		lookup:                      map[string][]int{}
+		files:                          files
+		env:                            unsafe { env }
+		opts:                           opts
+		used_keys:                      map[string]bool{}
+		queued_fn_indices:              map[int]bool{}
+		module_names:                   map[string]bool{}
+		type_names:                     map[string]bool{}
+		interface_type_names:           map[string]bool{}
+		interface_method_names:         map[string][]string{}
+		interface_embedded_names:       map[string][]string{}
+		methods_by_receiver:            map[string][]int{}
+		struct_field_receivers:         map[string][]string{}
+		struct_embedded_receivers:      map[string][]string{}
+		struct_fn_fields:               map[string]bool{}
+		global_interface_names:         map[string]string{}
+		const_fn_value_aliases:         map[string]string{}
+		selective_import_fn_targets:    map[string]string{}
+		called_fn_name_candidate_cache: map[string][]string{}
+		lookup:                         map[string][]int{}
 	}
 }
 
@@ -2170,8 +2172,8 @@ fn (w &Walker) lookup_count(key string) int {
 	if !string_ok(key) {
 		return 0
 	}
-	if key in w.lookup {
-		return w.lookup[key].len
+	if values := w.lookup[key] {
+		return values.len
 	}
 	return 0
 }
@@ -2180,8 +2182,8 @@ fn (mut w Walker) mark_lookup(key string) {
 	if !string_ok(key) {
 		return
 	}
-	if key in w.lookup {
-		for idx in w.lookup[key] {
+	if values := w.lookup[key] {
+		for idx in values {
 			w.mark_fn(idx)
 		}
 	}
@@ -2223,6 +2225,15 @@ fn called_fn_name_candidates(name string) []string {
 	return out
 }
 
+fn (mut w Walker) cached_called_fn_name_candidates(name string) []string {
+	if candidates := w.called_fn_name_candidate_cache[name] {
+		return candidates
+	}
+	candidates := called_fn_name_candidates(name)
+	w.called_fn_name_candidate_cache[name] = candidates
+	return candidates
+}
+
 fn strip_generic_specialization_suffix(name string) string {
 	if idx := name.index('_T_') {
 		if idx > 0 {
@@ -2242,7 +2253,7 @@ fn should_mark_ident_as_fn(name string) bool {
 		|| name.starts_with('_result_')
 }
 
-fn (w &Walker) ident_resolves_to_fn_value(name string, mod_name string) bool {
+fn (mut w Walker) ident_resolves_to_fn_value(name string, mod_name string) bool {
 	if name == '' || !string_ok(name) || name == 'C' || name in w.module_names
 		|| w.is_cast_type_name(name) {
 		return false
@@ -2252,7 +2263,7 @@ fn (w &Walker) ident_resolves_to_fn_value(name string, mod_name string) bool {
 			return obj is types.Fn
 		}
 	}
-	candidates := called_fn_name_candidates(name)
+	candidates := w.cached_called_fn_name_candidates(name)
 	if _ := w.exact_mangled_fn_lookup_key(name) {
 		return true
 	}
@@ -2318,7 +2329,7 @@ fn (mut w Walker) mark_fn_name(name string, mod_name string) {
 	if w.opts.minimal_runtime_roots && name in ['array__eq', 'builtin__array__eq'] {
 		w.mark_fn_name('map_map_eq', 'builtin')
 	}
-	candidates := called_fn_name_candidates(name)
+	candidates := w.cached_called_fn_name_candidates(name)
 	if key := w.exact_mangled_fn_lookup_key(name) {
 		w.mark_lookup(key)
 		return
@@ -2354,12 +2365,7 @@ fn (mut w Walker) mark_method_name(name string, receivers []string) {
 		if !string_ok(receiver) {
 			continue
 		}
-		for candidate in receiver_lookup_candidates(receiver) {
-			w.mark_lookup('meth:${candidate}:${name}')
-			if normalized != name {
-				w.mark_lookup('meth:${candidate}:${normalized}')
-			}
-		}
+		w.mark_method_receiver_candidate(receiver, name, normalized)
 	}
 }
 
@@ -2373,38 +2379,87 @@ fn (w &Walker) method_lookup_count(name string, receivers []string) int {
 		if !string_ok(receiver) {
 			continue
 		}
-		for candidate in receiver_lookup_candidates(receiver) {
-			count += w.lookup_count('meth:${candidate}:${name}')
-			if normalized != name {
-				count += w.lookup_count('meth:${candidate}:${normalized}')
-			}
-		}
+		count += w.method_receiver_candidate_count(receiver, name, normalized)
 	}
 	return count
 }
 
-fn receiver_lookup_candidates(receiver string) []string {
-	mut out := []string{}
-	if !string_ok(receiver) {
-		return out
+fn (mut w Walker) mark_method_lookup_candidate(candidate string, name string, normalized string) {
+	w.mark_lookup('meth:${candidate}:${name}')
+	if normalized != name {
+		w.mark_lookup('meth:${candidate}:${normalized}')
 	}
-	add_unique_string(mut out, receiver)
+}
+
+fn (mut w Walker) mark_method_receiver_candidate(receiver string, name string, normalized string) {
+	w.mark_method_lookup_candidate(receiver, name, normalized)
+	mut short_name := ''
 	if receiver.contains('__') {
-		add_unique_string(mut out, receiver.all_after_last('__'))
+		short_name = receiver.all_after_last('__')
+		if short_name != '' && short_name != receiver {
+			w.mark_method_lookup_candidate(short_name, name, normalized)
+		}
 	}
 	if receiver.starts_with('Array_') || receiver.starts_with('Array_fixed_') {
-		add_unique_string(mut out, 'array')
+		if receiver != 'array' && short_name != 'array' {
+			w.mark_method_lookup_candidate('array', name, normalized)
+		}
 	}
 	if receiver.starts_with('Map_') {
-		add_unique_string(mut out, 'map')
+		if receiver != 'map' && short_name != 'map' {
+			w.mark_method_lookup_candidate('map', name, normalized)
+		}
 	}
 	if receiver.starts_with('_option_') {
-		add_unique_string(mut out, '_option')
+		if receiver != '_option' && short_name != '_option' {
+			w.mark_method_lookup_candidate('_option', name, normalized)
+		}
 	}
 	if receiver.starts_with('_result_') {
-		add_unique_string(mut out, '_result')
+		if receiver != '_result' && short_name != '_result' {
+			w.mark_method_lookup_candidate('_result', name, normalized)
+		}
 	}
-	return out
+}
+
+fn (w &Walker) method_lookup_candidate_count(candidate string, name string, normalized string) int {
+	mut count := w.lookup_count('meth:${candidate}:${name}')
+	if normalized != name {
+		count += w.lookup_count('meth:${candidate}:${normalized}')
+	}
+	return count
+}
+
+fn (w &Walker) method_receiver_candidate_count(receiver string, name string, normalized string) int {
+	mut count := w.method_lookup_candidate_count(receiver, name, normalized)
+	mut short_name := ''
+	if receiver.contains('__') {
+		short_name = receiver.all_after_last('__')
+		if short_name != '' && short_name != receiver {
+			count += w.method_lookup_candidate_count(short_name, name, normalized)
+		}
+	}
+	if receiver.starts_with('Array_') || receiver.starts_with('Array_fixed_') {
+		if receiver != 'array' && short_name != 'array' {
+			count += w.method_lookup_candidate_count('array', name, normalized)
+		}
+	}
+	if receiver.starts_with('Map_') {
+		if receiver != 'map' && short_name != 'map' {
+			count += w.method_lookup_candidate_count('map', name, normalized)
+		}
+	}
+	if receiver.starts_with('_option_') {
+		if receiver != '_option' && short_name != '_option' {
+			count += w.method_lookup_candidate_count('_option', name, normalized)
+		}
+	}
+	if receiver.starts_with('_result_') {
+		if receiver != '_result' && short_name != '_result' {
+			count += w.method_lookup_candidate_count('_result', name, normalized)
+		}
+	}
+	return count
 }
 
 fn (mut w Walker) mark_method_name_fallback(name string) {
@@ -2905,18 +2960,18 @@ fn (w &Walker) add_lookup_indices(key string, mut out []int) {
 	if !string_ok(key) {
 		return
 	}
-	if key in w.lookup {
-		for idx in w.lookup[key] {
+	if values := w.lookup[key] {
+		for idx in values {
 			add_unique_int(mut out, idx)
 		}
 	}
 }
 
-fn (w &Walker) add_fn_name_indices(name string, mod_name string, mut out []int) {
+fn (mut w Walker) add_fn_name_indices(name string, mod_name string, mut out []int) {
 	if name == '' || !string_ok(name) || !string_ok(mod_name) {
 		return
 	}
-	candidates := called_fn_name_candidates(name)
+	candidates := w.cached_called_fn_name_candidates(name)
 	if key := w.exact_mangled_fn_lookup_key(name) {
 		w.add_lookup_indices(key, mut out)
 		return
@@ -2952,16 +3007,49 @@ fn (w &Walker) add_method_name_indices(name string, receivers []string, mut out 
 		if !string_ok(receiver) {
 			continue
 		}
-		for candidate in receiver_lookup_candidates(receiver) {
-			w.add_lookup_indices('meth:${candidate}:${name}', mut out)
-			if normalized != name {
-				w.add_lookup_indices('meth:${candidate}:${normalized}', mut out)
-			}
+		w.add_method_receiver_candidate_indices(receiver, name, normalized, mut out)
+	}
+}
+
+fn (w &Walker) add_method_candidate_indices(candidate string, name string, normalized string, mut out []int) {
+	w.add_lookup_indices('meth:${candidate}:${name}', mut out)
+	if normalized != name {
+		w.add_lookup_indices('meth:${candidate}:${normalized}', mut out)
+	}
+}
+
+fn (w &Walker) add_method_receiver_candidate_indices(receiver string, name string, normalized string, mut out []int) {
+	w.add_method_candidate_indices(receiver, name, normalized, mut out)
+	mut short_name := ''
+	if receiver.contains('__') {
+		short_name = receiver.all_after_last('__')
+		if short_name != '' && short_name != receiver {
+			w.add_method_candidate_indices(short_name, name, normalized, mut out)
+		}
+	}
+	if receiver.starts_with('Array_') || receiver.starts_with('Array_fixed_') {
+		if receiver != 'array' && short_name != 'array' {
+			w.add_method_candidate_indices('array', name, normalized, mut out)
+		}
+	}
+	if receiver.starts_with('Map_') {
+		if receiver != 'map' && short_name != 'map' {
+			w.add_method_candidate_indices('map', name, normalized, mut out)
+		}
+	}
+	if receiver.starts_with('_option_') {
+		if receiver != '_option' && short_name != '_option' {
+			w.add_method_candidate_indices('_option', name, normalized, mut out)
+		}
+	}
+	if receiver.starts_with('_result_') {
+		if receiver != '_result' && short_name != '_result' {
+			w.add_method_candidate_indices('_result', name, normalized, mut out)
 		}
 	}
 }
 
-fn (w &Walker) call_lhs_decl_indices(lhs ast.Expr, mod_name string) []int {
+fn (mut w Walker) call_lhs_decl_indices(lhs ast.Expr, mod_name string) []int {
 	mut out := []int{}
 	if !expr_ok(lhs) {
 		return out
@@ -3140,7 +3228,7 @@ fn (w &Walker) call_lhs_fn_type_cursor(c ast.Cursor, mod_name string) ?types.FnT
 // input. Same shape: Ident / GenericArgs / GenericArgOrIndexExpr / Selector
 // — the only ast-decoded subtree is lhs.lhs for SelectorExpr's
 // receiver_candidates_for_expr fallback.
-fn (w &Walker) call_lhs_decl_indices_cursor(c ast.Cursor, mod_name string) []int {
+fn (mut w Walker) call_lhs_decl_indices_cursor(c ast.Cursor, mod_name string) []int {
 	mut out := []int{}
 	if !c.is_valid() {
 		return out
