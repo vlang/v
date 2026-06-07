@@ -756,9 +756,42 @@ fn (mut g Gen) write_orm_table_struct(typ ast.Type) {
 	table_name := g.get_table_name_by_struct_type(typ)
 	table_attrs := g.get_table_attrs_by_struct_type(typ)
 
+	mut fields := g.orm_table_field_names(typ)
+	mut columns := g.orm_table_column_names(typ)
+
 	g.writeln('((orm__Table){')
 	g.indent++
 	g.writeln('.name = _S("${table_name}"),')
+	g.writeln('.fields = builtin__new_array_from_c_array(${fields.len}, ${fields.len}, sizeof(string),')
+	g.indent++
+	if fields.len > 0 {
+		g.write('_MOV((string[${fields.len}]){')
+		g.indent++
+		for field_name in fields {
+			g.write('_S("${field_name}"),')
+		}
+		g.indent--
+		g.writeln('})')
+	} else {
+		g.writeln('NULL // No fields')
+	}
+	g.indent--
+	g.writeln('),')
+	g.writeln('.columns = builtin__new_array_from_c_array(${columns.len}, ${columns.len}, sizeof(string),')
+	g.indent++
+	if columns.len > 0 {
+		g.write('_MOV((string[${columns.len}]){')
+		g.indent++
+		for column_name in columns {
+			g.write('_S("${column_name}"),')
+		}
+		g.indent--
+		g.writeln('})')
+	} else {
+		g.writeln('NULL // No columns')
+	}
+	g.indent--
+	g.writeln('),')
 	g.writeln('.attrs = builtin__new_array_from_c_array(${table_attrs.len}, ${table_attrs.len}, sizeof(VAttribute),')
 	g.indent++
 
@@ -2208,6 +2241,7 @@ fn (mut g Gen) write_orm_select(node ast.SqlExpr, connection_var_name string, re
 	g.writeln('.kinds = builtin____new_array_with_default_noscan(0, 0, sizeof(orm__OperationKind), 0),')
 	g.writeln('.is_and = builtin____new_array_with_default_noscan(0, 0, sizeof(bool), 0),')
 	g.writeln('.parentheses = builtin____new_array_with_default_noscan(0, 0, sizeof(Array_${ast.int_type_name}), 0),')
+	g.writeln('.fields = builtin____new_array_with_default_noscan(0, 0, sizeof(string), 0),')
 	if exprs.len > 0 {
 		g.write('.data = builtin__new_array_from_c_array(${exprs.len}, ${exprs.len}, sizeof(orm__Primitive),')
 		g.write(' _MOV((orm__Primitive[${exprs.len}]){')
@@ -2234,6 +2268,7 @@ fn (mut g Gen) write_orm_select(node ast.SqlExpr, connection_var_name string, re
 		g.writeln('.kinds = builtin____new_array_with_default_noscan(0, 0, sizeof(orm__OperationKind), 0),')
 		g.writeln('.is_and = builtin____new_array_with_default_noscan(0, 0, sizeof(bool), 0),')
 		g.writeln('.parentheses = builtin____new_array_with_default_noscan(0, 0, sizeof(Array_${ast.int_type_name}), 0),')
+		g.writeln('.fields = builtin____new_array_with_default_noscan(0, 0, sizeof(string), 0),')
 		g.writeln('.data = builtin____new_array_with_default_noscan(0, 0, sizeof(orm__Primitive), 0)')
 		g.indent--
 		g.writeln('}')
@@ -2522,6 +2557,66 @@ fn (g &Gen) get_table_attrs_by_struct_type(typ ast.Type) []ast.Attr {
 	sym := g.table.sym(typ)
 	info := sym.struct_info()
 	return info.attrs
+}
+
+// orm_table_field_names recursively collects field names from a struct type,
+// including prefixed fields from embedded structs. Used to populate Table.fields
+// for scope filter validation in apply_data_scope.
+fn (g &Gen) orm_table_field_names(typ ast.Type) []string {
+	return g.orm_table_field_names_with_prefix(typ, '')
+}
+
+fn (g &Gen) orm_table_field_names_with_prefix(typ ast.Type, prefix string) []string {
+	sym := g.table.sym(typ)
+	info := sym.struct_info()
+	mut names := []string{}
+	for field in info.fields {
+		if field.is_embed {
+			embed_sym := g.table.sym(field.typ)
+			if embed_sym.info is ast.Struct {
+				embed_prefix := prefixed_orm_field_name(prefix, embed_sym.embed_name())
+				names << g.orm_table_field_names_with_prefix(field.typ, embed_prefix)
+			}
+		} else {
+			// Skip fields with @[skip] or @[sql:'-'] as they have no database column
+			if field.attrs.contains('skip') || field.attrs.contains_arg('sql', '-') {
+				continue
+			}
+			names << prefixed_orm_field_name(prefix, field.name)
+		}
+	}
+	return names
+}
+
+// orm_table_column_names recursively collects SQL column names from a struct type,
+// including columns from embedded structs. Used to populate Table.columns for
+// SQL column name resolution in apply_data_scope.
+fn (g &Gen) orm_table_column_names(typ ast.Type) []string {
+	sym := g.table.sym(typ)
+	info := sym.struct_info()
+	mut names := []string{}
+	for field in info.fields {
+		if field.is_embed {
+			embed_sym := g.table.sym(field.typ)
+			if embed_sym.info is ast.Struct {
+				names << g.orm_table_column_names(field.typ)
+			}
+		} else {
+			// Skip fields with @[skip] or @[sql:'-'] as they have no database column
+			if field.attrs.contains('skip') || field.attrs.contains_arg('sql', '-') {
+				continue
+			}
+			names << g.get_orm_column_name_from_struct_field(field)
+		}
+	}
+	return names
+}
+
+fn prefixed_orm_field_name(prefix string, name string) string {
+	if prefix == '' {
+		return name
+	}
+	return '${prefix}.${name}'
 }
 
 // get_table_name_by_struct_type converts the struct type to a table name.
