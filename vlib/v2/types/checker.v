@@ -1895,18 +1895,12 @@ fn (mut c Checker) preregister_types_from_flat(flat &ast.FlatAst, ff ast.FlatFil
 		}
 	}
 	c.scope = mod_scope
-	// s259: skip decoding fn_decls — their bodies are the bulk of the file and
-	// preregister_type_stmt no-ops FnDecl anyway. Decode + dispatch the rest.
 	decls := ast.Cursor{
 		flat: unsafe { flat }
 		id:   ff.file_id
 	}.list_at(2)
 	for di in 0 .. decls.len() {
-		dc := decls.at(di)
-		if dc.kind() == .stmt_fn_decl {
-			continue
-		}
-		c.preregister_type_stmt(flat.decode_stmt(dc.id))
+		c.preregister_decl_stmt_from_flat(decls.at(di), true, false)
 	}
 }
 
@@ -1938,30 +1932,321 @@ fn (mut c Checker) preregister_fn_signatures_from_flat(flat &ast.FlatAst, ff ast
 		id:   ff.file_id
 	}.list_at(2)
 	for i in 0 .. decls.len() {
-		c.preregister_fn_signature_stmt_from_flat(decls.at(i))
+		c.preregister_decl_stmt_from_flat(decls.at(i), false, true)
 	}
 	c.collect_fn_signatures_only = prev_collect
 }
 
-fn (mut c Checker) preregister_fn_signature_stmt_from_flat(stmt_c ast.Cursor) {
-	match stmt_c.kind() {
-		.stmt_fn_decl {
-			decl := stmt_c.flat.decode_fn_decl_signature(stmt_c.id)
-			prev_flat := c.pending_fn_body_flat
-			prev_flat_id := c.pending_fn_body_flat_id
-			c.pending_fn_body_flat = stmt_c.flat
-			c.pending_fn_body_flat_id = stmt_c.id
-			c.preregister_fn_signature_stmt(ast.Stmt(decl))
-			c.pending_fn_body_flat = prev_flat
-			c.pending_fn_body_flat_id = prev_flat_id
+fn flat_cursor_attribute_expr(expr_c ast.Cursor) ast.Expr {
+	if !expr_c.is_valid() {
+		return ast.empty_expr
+	}
+	match expr_c.kind() {
+		.expr_empty {
+			return ast.empty_expr
 		}
-		.stmt_expr {
-			// Keep comptime `$if` declaration selection on the legacy helper for
-			// now; it handles nested active branches while we avoid decoding
-			// unrelated top-level declarations in the common direct-fn path.
-			c.preregister_fn_signature_stmt(stmt_c.flat.decode_stmt(stmt_c.id))
+		.expr_basic_literal {
+			return ast.Expr(ast.BasicLiteral{
+				kind:  unsafe { token.Token(int(expr_c.aux())) }
+				value: expr_c.name()
+				pos:   expr_c.pos()
+			})
+		}
+		.expr_ident {
+			return ast.Expr(expr_c.ident())
+		}
+		.expr_string {
+			return ast.Expr(ast.StringLiteral{
+				kind:  unsafe { ast.StringLiteralKind(int(expr_c.aux())) }
+				value: expr_c.name()
+				pos:   expr_c.pos()
+			})
+		}
+		.expr_selector {
+			rhs := expr_c.edge(1)
+			return ast.Expr(ast.SelectorExpr{
+				lhs: flat_cursor_attribute_expr(expr_c.edge(0))
+				rhs: ast.Ident{
+					name: rhs.name()
+					pos:  rhs.pos()
+				}
+				pos: expr_c.pos()
+			})
+		}
+		else {
+			return expr_c.type_expr()
+		}
+	}
+}
+
+fn flat_cursor_attributes(attrs ast.CursorList) []ast.Attribute {
+	mut out := []ast.Attribute{cap: attrs.len()}
+	for i in 0 .. attrs.len() {
+		attr := attrs.at(i)
+		if !attr.is_valid() {
+			continue
+		}
+		out << ast.Attribute{
+			name:          attr.name()
+			value:         flat_cursor_attribute_expr(attr.edge(0))
+			comptime_cond: flat_cursor_attribute_expr(attr.edge(1))
+			pos:           attr.pos()
+		}
+	}
+	return out
+}
+
+fn flat_cursor_type_exprs(list ast.CursorList) []ast.Expr {
+	mut out := []ast.Expr{cap: list.len()}
+	for i in 0 .. list.len() {
+		out << list.at(i).type_expr()
+	}
+	return out
+}
+
+fn flat_cursor_field_init(field ast.Cursor) ast.FieldInit {
+	value_c := field.edge(0)
+	value := if value_c.is_valid() { field.flat.decode_expr(value_c.id) } else { ast.empty_expr }
+	return ast.FieldInit{
+		name:  field.name()
+		value: value
+	}
+}
+
+fn flat_cursor_field_inits(fields ast.CursorList) []ast.FieldInit {
+	mut out := []ast.FieldInit{cap: fields.len()}
+	for i in 0 .. fields.len() {
+		out << flat_cursor_field_init(fields.at(i))
+	}
+	return out
+}
+
+fn flat_cursor_field_decl(field ast.Cursor, decode_value bool) ast.FieldDecl {
+	value_c := field.edge(1)
+	value := if decode_value && value_c.is_valid() {
+		field.flat.decode_expr(value_c.id)
+	} else {
+		ast.empty_expr
+	}
+	return ast.FieldDecl{
+		name:                field.name()
+		typ:                 field.edge(0).type_expr()
+		value:               value
+		attributes:          flat_cursor_attributes(field.list_at(2))
+		is_public:           field.flag(ast.flag_is_public)
+		is_mut:              field.flag(ast.flag_is_mut)
+		is_module_mut:       field.flag(ast.flag_field_is_module_mut)
+		is_interface_method: field.flag(ast.flag_field_is_interface_method)
+	}
+}
+
+fn flat_cursor_field_decls(fields ast.CursorList, decode_values bool) []ast.FieldDecl {
+	mut out := []ast.FieldDecl{cap: fields.len()}
+	for i in 0 .. fields.len() {
+		out << flat_cursor_field_decl(fields.at(i), decode_values)
+	}
+	return out
+}
+
+fn flat_cursor_const_decl(stmt_c ast.Cursor) ast.ConstDecl {
+	return ast.ConstDecl{
+		is_public: stmt_c.flag(ast.flag_is_public)
+		fields:    flat_cursor_field_inits(stmt_c.list_at(0))
+	}
+}
+
+fn flat_cursor_enum_decl(stmt_c ast.Cursor) ast.EnumDecl {
+	return ast.EnumDecl{
+		attributes: flat_cursor_attributes(stmt_c.list_at(1))
+		is_public:  stmt_c.flag(ast.flag_is_public)
+		name:       stmt_c.name()
+		as_type:    stmt_c.edge(0).type_expr()
+		fields:     flat_cursor_field_decls(stmt_c.list_at(2), false)
+	}
+}
+
+fn flat_cursor_global_decl(stmt_c ast.Cursor, decode_values bool) ast.GlobalDecl {
+	return ast.GlobalDecl{
+		attributes: flat_cursor_attributes(stmt_c.list_at(0))
+		fields:     flat_cursor_field_decls(stmt_c.list_at(1), decode_values)
+		is_public:  stmt_c.flag(ast.flag_is_public)
+	}
+}
+
+fn flat_cursor_interface_decl(stmt_c ast.Cursor) ast.InterfaceDecl {
+	return ast.InterfaceDecl{
+		is_public:      stmt_c.flag(ast.flag_is_public)
+		attributes:     flat_cursor_attributes(stmt_c.list_at(0))
+		name:           stmt_c.name()
+		generic_params: flat_cursor_type_exprs(stmt_c.list_at(1))
+		embedded:       flat_cursor_type_exprs(stmt_c.list_at(2))
+		fields:         flat_cursor_field_decls(stmt_c.list_at(3), true)
+	}
+}
+
+fn flat_cursor_struct_decl(stmt_c ast.Cursor) ast.StructDecl {
+	return ast.StructDecl{
+		attributes:     flat_cursor_attributes(stmt_c.list_at(0))
+		is_public:      stmt_c.flag(ast.flag_is_public)
+		is_union:       stmt_c.flag(ast.flag_is_union)
+		implements:     flat_cursor_type_exprs(stmt_c.list_at(1))
+		embedded:       flat_cursor_type_exprs(stmt_c.list_at(2))
+		language:       unsafe { ast.Language(int(stmt_c.aux())) }
+		name:           stmt_c.name()
+		generic_params: flat_cursor_type_exprs(stmt_c.list_at(3))
+		fields:         flat_cursor_field_decls(stmt_c.list_at(4), true)
+		pos:            stmt_c.pos()
+	}
+}
+
+fn flat_cursor_type_decl(stmt_c ast.Cursor) ast.TypeDecl {
+	return ast.TypeDecl{
+		is_public:      stmt_c.flag(ast.flag_is_public)
+		language:       unsafe { ast.Language(int(stmt_c.aux())) }
+		name:           stmt_c.name()
+		generic_params: flat_cursor_type_exprs(stmt_c.list_at(2))
+		base_type:      stmt_c.edge(0).type_expr()
+		variants:       flat_cursor_type_exprs(stmt_c.list_at(3))
+	}
+}
+
+fn (mut c Checker) module_storage_predecl_type_from_flat_field(field_c ast.Cursor) Type {
+	typ_c := field_c.edge(0)
+	if typ_c.is_valid() && typ_c.kind() != .expr_empty {
+		typ_expr := typ_c.type_expr()
+		if typ := c.module_storage_predecl_type_expr(typ_expr) {
+			return typ
+		}
+		return c.type_expr(typ_expr)
+	}
+	value_c := field_c.edge(1)
+	match value_c.kind() {
+		.expr_basic_literal, .expr_string {
+			return c.expr(flat_cursor_attribute_expr(value_c))
 		}
 		else {}
+	}
+
+	return Type(int_)
+}
+
+fn (mut c Checker) preregister_module_storage_decl_from_flat(stmt_c ast.Cursor) {
+	decl := flat_cursor_global_decl(stmt_c, false)
+	fields := stmt_c.list_at(1)
+	for i in 0 .. fields.len() {
+		field := fields.at(i)
+		field_decl := flat_cursor_field_decl(field, false)
+		field_type := c.module_storage_predecl_type_from_flat_field(field)
+		obj := module_storage_object(c.cur_file_module, decl, field_decl, field_type)
+		c.scope.insert(field_decl.name, obj)
+	}
+}
+
+fn (mut c Checker) check_global_decl_from_flat(stmt_c ast.Cursor) {
+	decl := flat_cursor_global_decl(stmt_c, false)
+	fields := stmt_c.list_at(1)
+	for i in 0 .. fields.len() {
+		field := fields.at(i)
+		field_decl := flat_cursor_field_decl(field, false)
+		field_typ := field.edge(0).type_expr()
+		field_type := if field_typ !is ast.EmptyExpr {
+			c.type_expr(field_typ)
+		} else {
+			value_c := field.edge(1)
+			field_value := if value_c.is_valid() {
+				field.flat.decode_expr(value_c.id)
+			} else {
+				ast.empty_expr
+			}
+			c.expr(field_value)
+		}
+		obj := module_storage_object(c.cur_file_module, decl, field_decl, field_type)
+		c.scope.insert_or_update(field_decl.name, obj)
+	}
+}
+
+fn (mut c Checker) preregister_decl_stmt_from_flat(stmt_c ast.Cursor, want_types bool, want_fns bool) {
+	match stmt_c.kind() {
+		.stmt_const_decl {
+			if want_types {
+				c.decl(ast.Stmt(flat_cursor_const_decl(stmt_c)))
+			}
+		}
+		.stmt_enum_decl {
+			if want_types {
+				c.decl(ast.Stmt(flat_cursor_enum_decl(stmt_c)))
+			}
+		}
+		.stmt_fn_decl {
+			if want_fns {
+				decl := stmt_c.fn_decl_signature()
+				prev_flat := c.pending_fn_body_flat
+				prev_flat_id := c.pending_fn_body_flat_id
+				c.pending_fn_body_flat = stmt_c.flat
+				c.pending_fn_body_flat_id = stmt_c.id
+				c.preregister_fn_signature_stmt(ast.Stmt(decl))
+				c.pending_fn_body_flat = prev_flat
+				c.pending_fn_body_flat_id = prev_flat_id
+			}
+		}
+		.stmt_global_decl {
+			if want_types {
+				c.preregister_module_storage_decl_from_flat(stmt_c)
+			}
+		}
+		.stmt_interface_decl {
+			if want_types {
+				c.decl(ast.Stmt(flat_cursor_interface_decl(stmt_c)))
+			}
+		}
+		.stmt_struct_decl {
+			if want_types {
+				c.decl(ast.Stmt(flat_cursor_struct_decl(stmt_c)))
+			}
+		}
+		.stmt_type_decl {
+			if want_types {
+				c.decl(ast.Stmt(flat_cursor_type_decl(stmt_c)))
+			}
+		}
+		.stmt_expr {
+			c.preregister_active_comptime_decl_stmt_from_flat(stmt_c, want_types, want_fns)
+		}
+		else {}
+	}
+}
+
+fn (mut c Checker) preregister_active_comptime_decl_stmt_from_flat(stmt_c ast.Cursor, want_types bool, want_fns bool) {
+	if stmt_c.kind() != .stmt_expr {
+		return
+	}
+	inner := stmt_c.edge(0)
+	if inner.kind() != .expr_comptime {
+		return
+	}
+	if_c := inner.edge(0)
+	if if_c.kind() != .expr_if {
+		return
+	}
+	c.preregister_active_if_decl_stmts_from_flat(if_c, want_types, want_fns)
+}
+
+fn (mut c Checker) preregister_active_if_decl_stmts_from_flat(if_c ast.Cursor, want_types bool, want_fns bool) {
+	if c.eval_comptime_cond_cursor(if_c.edge(0)) {
+		for i in 2 .. if_c.edge_count() {
+			c.preregister_decl_stmt_from_flat(if_c.edge(i), want_types, want_fns)
+		}
+		return
+	}
+	else_c := if_c.edge(1)
+	if else_c.kind() == .expr_if {
+		if else_c.edge(0).kind() == .expr_empty {
+			for i in 2 .. else_c.edge_count() {
+				c.preregister_decl_stmt_from_flat(else_c.edge(i), want_types, want_fns)
+			}
+		} else {
+			c.preregister_active_if_decl_stmts_from_flat(else_c, want_types, want_fns)
+		}
 	}
 }
 
@@ -1984,35 +2269,26 @@ pub fn (mut c Checker) check_file_from_flat(flat &ast.FlatAst, ff ast.FlatFile) 
 		}
 	}
 	c.scope = mod_scope
-	// s259: don't decode fn_decls here. Their bodies are checked via
-	// pending_fn_bodies (queued by the signature pass, run by
-	// process_pending_fn_bodies); in both loops below FnDecl is a no-op (the first
-	// `continue`s, c.stmt has no FnDecl arm). Full top-level decoding decoded every fn body
-	// a SECOND time (after the sig pass already decoded+queued them) — pure churn.
 	decls := ast.Cursor{
 		flat: unsafe { flat }
 		id:   ff.file_id
 	}.list_at(2)
-	mut stmts := []ast.Stmt{cap: decls.len()}
 	for di in 0 .. decls.len() {
 		dc := decls.at(di)
-		if dc.kind() == .stmt_fn_decl {
-			continue
-		}
-		stmts << flat.decode_stmt(dc.id)
-	}
-	for stmt in stmts {
-		match stmt {
-			ast.ConstDecl, ast.EnumDecl, ast.InterfaceDecl, ast.StructDecl, ast.TypeDecl {
-				continue
+		match dc.kind() {
+			.stmt_const_decl, .stmt_directive, .stmt_empty, .stmt_enum_decl, .stmt_fn_decl,
+			.stmt_import, .stmt_interface_decl, .stmt_module, .stmt_struct_decl, .stmt_type_decl,
+			.stmt_attributes {
+				// Declarations/imports/modules were handled by preregistration, and
+				// c.stmt has no extra work for them.
+			}
+			.stmt_global_decl {
+				c.check_global_decl_from_flat(dc)
 			}
 			else {
-				c.decl(stmt)
+				c.stmt(flat.decode_stmt(dc.id))
 			}
 		}
-	}
-	for stmt in stmts {
-		c.stmt(stmt)
 	}
 	if c.pref.verbose {
 		check_time := sw.elapsed()
@@ -2053,7 +2329,7 @@ fn (mut c Checker) check_struct_field_defaults_from_flat(flat &ast.FlatAst) {
 				if !value_c.is_valid() || value_c.kind() == .expr_empty {
 					continue
 				}
-				field_typ := c.type_expr(flat.decode_expr(field.edge(0).id))
+				field_typ := c.type_expr(field.edge(0).type_expr())
 				field_value := flat.decode_expr(value_c.id)
 				prev_expected := c.expected_type
 				c.expected_type = to_optional_type(field_typ)

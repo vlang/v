@@ -431,7 +431,7 @@ fn (mut t Transformer) collect_struct_decl_generic_field_types_cursor(decl ast.C
 		if field_name == '' {
 			continue
 		}
-		field_type_expr := field.flat.decode_expr(field.edge(0).id)
+		field_type_expr := field.edge(0).type_expr()
 		if !field_type_expr_has_generic_args(field_type_expr) {
 			continue
 		}
@@ -449,7 +449,7 @@ fn (mut t Transformer) collect_struct_decl_generic_field_types_cursor(decl ast.C
 	}
 	embedded := decl.list_at(2)
 	for i in 0 .. embedded.len() {
-		embedded_expr := embedded.at(i).flat.decode_expr(embedded.at(i).id)
+		embedded_expr := embedded.at(i).type_expr()
 		if !field_type_expr_has_generic_args(embedded_expr) {
 			continue
 		}

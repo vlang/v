@@ -110,6 +110,7 @@ mut:
 	generic_var_type_params       map[string]string
 	generic_fn_decl_names         map[string]bool
 	generic_fn_decl_stmts         map[string][]ast.Stmt
+	generic_fn_decl_body_cursors  map[string]ast.CursorList
 	generic_fn_decl_index         map[string]ast.FnDecl
 	generic_call_candidate_names  map[string]bool
 	generic_fn_value_names        map[string]bool
@@ -349,6 +350,7 @@ fn new_transformer_base(env &types.Environment, p &pref.Preferences) &Transforme
 		generic_var_type_params:            map[string]string{}
 		generic_fn_decl_names:              map[string]bool{}
 		generic_fn_decl_stmts:              map[string][]ast.Stmt{}
+		generic_fn_decl_body_cursors:       map[string]ast.CursorList{}
 		generic_fn_decl_index:              map[string]ast.FnDecl{}
 		generic_call_candidate_names:       map[string]bool{}
 		generic_fn_value_names:             map[string]bool{}
@@ -421,6 +423,7 @@ pub fn (t &Transformer) new_worker_clone(worker_idx int) &Transformer {
 		local_fn_pointer_return_types:      map[string]types.Type{}
 		local_receiver_generic_bindings:    map[string]map[string]types.Type{}
 		generic_var_type_params:            map[string]string{}
+		generic_fn_decl_body_cursors:       t.generic_fn_decl_body_cursors.clone()
 		generic_fn_decl_index:              t.generic_fn_decl_index.clone()
 		generic_call_candidate_names:       t.generic_call_candidate_names.clone()
 		generic_fn_value_names:             t.generic_fn_value_names.clone()
@@ -1251,15 +1254,6 @@ fn has_non_lifetime_generic_params_cursor(params ast.CursorList) bool {
 	return false
 }
 
-fn legacy_stmts_from_cursor_list(list ast.CursorList) []ast.Stmt {
-	mut stmts := []ast.Stmt{cap: list.len()}
-	for i in 0 .. list.len() {
-		c := list.at(i)
-		stmts << c.flat.decode_stmt(c.id)
-	}
-	return stmts
-}
-
 fn (mut t Transformer) collect_generic_fn_decl_names_in_stmt_cursor(stmt ast.Cursor) {
 	if !stmt.is_valid() {
 		return
@@ -1276,7 +1270,7 @@ fn (mut t Transformer) collect_generic_fn_decl_names_in_stmt_cursor(stmt ast.Cur
 			body := stmt.list_at(3)
 			if has_non_lifetime_generic_params_cursor(generic_params) {
 				t.generic_fn_decl_names[stmt.name()] = true
-				t.generic_fn_decl_stmts[stmt.name()] = legacy_stmts_from_cursor_list(body)
+				t.generic_fn_decl_body_cursors[stmt.name()] = body
 			}
 			for i in 0 .. body.len() {
 				t.collect_generic_fn_decl_names_in_stmt_cursor(body.at(i))
@@ -1358,7 +1352,9 @@ fn (mut t Transformer) collect_generic_fn_value_dependencies() {
 			}
 			processed[name] = true
 			progressed = true
-			if stmts := t.generic_fn_decl_stmts[name] {
+			if body := t.generic_fn_decl_body_cursors[name] {
+				t.collect_generic_fn_value_refs_in_stmt_list_cursor(body, true)
+			} else if stmts := t.generic_fn_decl_stmts[name] {
 				t.collect_generic_fn_value_refs_in_stmts(stmts, true)
 			}
 		}
@@ -3609,6 +3605,140 @@ fn (t &Transformer) expr_depends_on_runtime_const(mod string, expr ast.Expr) boo
 	}
 }
 
+fn expr_cursor_is_empty(c ast.Cursor) bool {
+	return !c.is_valid() || c.kind() == .expr_empty
+}
+
+fn (t &Transformer) expr_depends_on_runtime_const_cursor(mod string, expr ast.Cursor) bool {
+	if !expr.is_valid() {
+		return false
+	}
+	match expr.kind() {
+		.expr_ident {
+			key := runtime_const_known_key(mod, expr.name())
+			return key in t.runtime_const_known || key in t.runtime_const_storage_known
+		}
+		.expr_selector {
+			lhs := expr.edge(0)
+			if t.expr_depends_on_runtime_const_cursor(mod, lhs) {
+				return true
+			}
+			rhs := expr.edge(1)
+			if lhs.kind() == .expr_ident && rhs.kind() == .expr_ident {
+				key := runtime_const_known_key(lhs.name(), rhs.name())
+				return key in t.runtime_const_known || key in t.runtime_const_storage_known
+			}
+			return false
+		}
+		.expr_call {
+			if t.expr_depends_on_runtime_const_cursor(mod, expr.edge(0)) {
+				return true
+			}
+			for i in 1 .. expr.edge_count() {
+				if t.expr_depends_on_runtime_const_cursor(mod, expr.edge(i)) {
+					return true
+				}
+			}
+			return false
+		}
+		.expr_call_or_cast, .expr_index, .expr_infix {
+			return t.expr_depends_on_runtime_const_cursor(mod, expr.edge(0))
+				|| t.expr_depends_on_runtime_const_cursor(mod, expr.edge(1))
+		}
+		.expr_cast {
+			return t.expr_depends_on_runtime_const_cursor(mod, expr.edge(1))
+		}
+		.expr_comptime, .expr_modifier, .expr_paren, .expr_postfix, .expr_prefix {
+			return t.expr_depends_on_runtime_const_cursor(mod, expr.edge(0))
+		}
+		.expr_if {
+			if t.expr_depends_on_runtime_const_cursor(mod, expr.edge(0))
+				|| t.expr_depends_on_runtime_const_cursor(mod, expr.edge(1)) {
+				return true
+			}
+			for i in 2 .. expr.edge_count() {
+				if t.expr_stmt_depends_on_runtime_const_cursor(mod, expr.edge(i)) {
+					return true
+				}
+			}
+			return false
+		}
+		.expr_or {
+			if t.expr_depends_on_runtime_const_cursor(mod, expr.edge(0)) {
+				return true
+			}
+			for i in 1 .. expr.edge_count() {
+				if t.expr_stmt_depends_on_runtime_const_cursor(mod, expr.edge(i)) {
+					return true
+				}
+			}
+			return false
+		}
+		.expr_string_inter {
+			inters := expr.list_at(1)
+			for i in 0 .. inters.len() {
+				inter := inters.at(i)
+				if t.expr_depends_on_runtime_const_cursor(mod, inter.edge(0))
+					|| t.expr_depends_on_runtime_const_cursor(mod, inter.edge(1)) {
+					return true
+				}
+			}
+			return false
+		}
+		.expr_unsafe {
+			for i in 0 .. expr.edge_count() {
+				if t.expr_stmt_depends_on_runtime_const_cursor(mod, expr.edge(i)) {
+					return true
+				}
+			}
+			return false
+		}
+		.expr_array_init {
+			for i in 5 .. expr.edge_count() {
+				if t.expr_depends_on_runtime_const_cursor(mod, expr.edge(i)) {
+					return true
+				}
+			}
+			return (!expr_cursor_is_empty(expr.edge(1))
+				&& t.expr_depends_on_runtime_const_cursor(mod, expr.edge(1)))
+				|| (!expr_cursor_is_empty(expr.edge(3))
+				&& t.expr_depends_on_runtime_const_cursor(mod, expr.edge(3)))
+				|| (!expr_cursor_is_empty(expr.edge(2))
+				&& t.expr_depends_on_runtime_const_cursor(mod, expr.edge(2)))
+		}
+		.expr_init {
+			for i in 1 .. expr.edge_count() {
+				if t.expr_depends_on_runtime_const_cursor(mod, expr.edge(i).edge(0)) {
+					return true
+				}
+			}
+			return false
+		}
+		.expr_map_init {
+			keys_len := expr.extra_int()
+			for i in 0 .. keys_len {
+				if t.expr_depends_on_runtime_const_cursor(mod, expr.edge(1 + i)) {
+					return true
+				}
+			}
+			for i in (1 + keys_len) .. expr.edge_count() {
+				if t.expr_depends_on_runtime_const_cursor(mod, expr.edge(i)) {
+					return true
+				}
+			}
+			return false
+		}
+		else {
+			return false
+		}
+	}
+}
+
+fn (t &Transformer) expr_stmt_depends_on_runtime_const_cursor(mod string, stmt ast.Cursor) bool {
+	return stmt.is_valid() && stmt.kind() == .stmt_expr
+		&& t.expr_depends_on_runtime_const_cursor(mod, stmt.edge(0))
+}
+
 fn (mut t Transformer) collect_runtime_const_inits(files []ast.File) {
 	is_native := t.pref != unsafe { nil } && (t.is_native_be || t.pref.backend == .c)
 	t.runtime_const_inits_by_mod.clear()
@@ -3699,8 +3829,8 @@ fn (mut t Transformer) collect_runtime_const_inits_from_flat(flat &ast.FlatAst) 
 				if field_name == '' {
 					continue
 				}
-				field_value := flat.decode_expr(field.edge(0).id)
-				if t.const_initializer_emits_storage(field_value, is_native) {
+				value_c := field.edge(0)
+				if t.const_initializer_emits_storage_cursor(value_c, is_native) {
 					t.runtime_const_storage_known[runtime_const_known_key(mod, field_name)] = true
 				}
 			}
@@ -3727,10 +3857,11 @@ fn (mut t Transformer) collect_runtime_const_inits_from_flat(flat &ast.FlatAst) 
 					if field_name == '' {
 						continue
 					}
-					field_value := flat.decode_expr(field.edge(0).id)
-					if !t.needs_runtime_const_init(field_value, is_native) {
+					value_c := field.edge(0)
+					if !t.needs_runtime_const_init_cursor(value_c, is_native) {
 						continue
 					}
+					field_value := flat.decode_expr(value_c.id)
 					t.record_runtime_const_init(mod, field_name, field_value)
 				}
 			}
@@ -3745,10 +3876,11 @@ fn (mut t Transformer) collect_runtime_const_inits_from_flat(flat &ast.FlatAst) 
 					if is_builtin_main_arg_global(mod, field_name) {
 						continue
 					}
-					field_value := flat.decode_expr(field.edge(1).id)
-					if !t.needs_runtime_global_init(field_value) {
+					value_c := field.edge(1)
+					if !t.needs_runtime_global_init_cursor(value_c) {
 						continue
 					}
+					field_value := flat.decode_expr(value_c.id)
 					t.record_runtime_const_init(mod, field_name, field_value)
 				}
 			}
@@ -3780,10 +3912,11 @@ fn (mut t Transformer) collect_runtime_const_inits_from_flat(flat &ast.FlatAst) 
 					if runtime_const_known_key(mod, field_name) in t.runtime_const_known {
 						continue
 					}
-					field_value := flat.decode_expr(field.edge(0).id)
-					if !t.expr_depends_on_runtime_const(mod, field_value) {
+					value_c := field.edge(0)
+					if !t.expr_depends_on_runtime_const_cursor(mod, value_c) {
 						continue
 					}
+					field_value := flat.decode_expr(value_c.id)
 					t.record_runtime_const_init(mod, field_name, field_value)
 					changed = true
 				}
@@ -3800,6 +3933,21 @@ fn (t &Transformer) const_initializer_emits_storage(expr ast.Expr, is_native boo
 		return true
 	}
 	if typ := t.get_expr_type(expr) {
+		c_type := t.type_to_c_name(typ)
+		return c_type == 'string' || c_type == 'array' || c_type.starts_with('Array_')
+			|| c_type.starts_with('Map_')
+	}
+	return false
+}
+
+fn (t &Transformer) const_initializer_emits_storage_cursor(expr ast.Cursor, is_native bool) bool {
+	if t.needs_runtime_const_init_cursor(expr, is_native) {
+		return true
+	}
+	if expr.is_valid() && (expr.kind() == .expr_string || expr.kind() == .expr_string_inter) {
+		return true
+	}
+	if typ := t.get_expr_type_cursor(expr) {
 		c_type := t.type_to_c_name(typ)
 		return c_type == 'string' || c_type == 'array' || c_type.starts_with('Array_')
 			|| c_type.starts_with('Map_')
@@ -3895,6 +4043,78 @@ fn (t &Transformer) contains_runtime_const_literal(expr ast.Expr, is_native bool
 	}
 }
 
+fn (t &Transformer) contains_runtime_const_literal_cursor(expr ast.Cursor, is_native bool) bool {
+	if !expr.is_valid() {
+		return false
+	}
+	match expr.kind() {
+		.expr_map_init {
+			return true
+		}
+		.expr_array_init {
+			if is_native {
+				return true
+			}
+			for i in 5 .. expr.edge_count() {
+				if t.contains_runtime_const_literal_cursor(expr.edge(i), is_native) {
+					return true
+				}
+			}
+			return (!expr_cursor_is_empty(expr.edge(1))
+				&& t.contains_runtime_const_literal_cursor(expr.edge(1), is_native))
+				|| (!expr_cursor_is_empty(expr.edge(3))
+				&& t.contains_runtime_const_literal_cursor(expr.edge(3), is_native))
+				|| (!expr_cursor_is_empty(expr.edge(2))
+				&& t.contains_runtime_const_literal_cursor(expr.edge(2), is_native))
+		}
+		.expr_init {
+			if is_native {
+				return true
+			}
+			for i in 1 .. expr.edge_count() {
+				if t.contains_runtime_const_literal_cursor(expr.edge(i).edge(0), is_native) {
+					return true
+				}
+			}
+			return false
+		}
+		.expr_cast {
+			return t.contains_runtime_const_literal_cursor(expr.edge(1), is_native)
+		}
+		.expr_comptime, .expr_modifier, .expr_paren, .expr_postfix, .expr_prefix {
+			return t.contains_runtime_const_literal_cursor(expr.edge(0), is_native)
+		}
+		.expr_index, .expr_infix {
+			return t.contains_runtime_const_literal_cursor(expr.edge(0), is_native)
+				|| t.contains_runtime_const_literal_cursor(expr.edge(1), is_native)
+		}
+		.expr_if, .expr_or, .expr_string_inter, .expr_unsafe {
+			return true
+		}
+		.expr_call {
+			if t.contains_runtime_const_literal_cursor(expr.edge(0), is_native) {
+				return true
+			}
+			for i in 1 .. expr.edge_count() {
+				if t.contains_runtime_const_literal_cursor(expr.edge(i), is_native) {
+					return true
+				}
+			}
+			return false
+		}
+		.expr_call_or_cast {
+			return t.contains_runtime_const_literal_cursor(expr.edge(0), is_native)
+				|| t.contains_runtime_const_literal_cursor(expr.edge(1), is_native)
+		}
+		.expr_selector {
+			return t.contains_runtime_const_literal_cursor(expr.edge(0), is_native)
+		}
+		else {
+			return false
+		}
+	}
+}
+
 // needs_runtime_const_init checks whether a const initializer requires runtime
 // initialization. For C/cleanc backends, direct calls and value-position if
 // expressions need it because they cannot be emitted as C compile-time
@@ -3950,6 +4170,46 @@ fn (t &Transformer) needs_runtime_const_init(expr ast.Expr, is_native bool) bool
 	return false
 }
 
+fn (t &Transformer) needs_runtime_const_init_cursor(expr ast.Cursor, is_native bool) bool {
+	if t.contains_runtime_const_literal_cursor(expr, is_native) {
+		return true
+	}
+	if t.contains_call_expr_cursor(expr) {
+		return true
+	}
+	if !expr.is_valid() {
+		return false
+	}
+	if expr.kind() == .expr_if {
+		return true
+	}
+	if expr.kind() in [.expr_or, .expr_string_inter, .expr_unsafe] {
+		return true
+	}
+	if expr.kind() == .expr_comptime {
+		return t.needs_runtime_const_init_cursor(expr.edge(0), is_native)
+	}
+	if expr.kind() == .expr_call_or_cast {
+		if is_native {
+			return true
+		}
+		lhs := expr.edge(0)
+		if lhs.kind() == .expr_ident {
+			name := lhs.name()
+			if name.len > 0 && name[0] >= `a` && name[0] <= `z`
+				&& name !in ['int', 'i8', 'i16', 'i32', 'i64', 'u8', 'u16', 'u32', 'u64', 'f32', 'f64', 'bool', 'rune', 'isize', 'usize', 'byte', 'voidptr', 'charptr', 'byteptr', 'string'] {
+				return true
+			}
+		} else if lhs.kind() == .expr_selector {
+			return true
+		}
+	}
+	if is_native && expr.kind() in [.expr_cast, .expr_array_init, .expr_init] {
+		return true
+	}
+	return false
+}
+
 fn (t &Transformer) needs_runtime_global_init(expr ast.Expr) bool {
 	match expr {
 		ast.EmptyExpr {
@@ -3993,6 +4253,114 @@ fn (t &Transformer) needs_runtime_global_init(expr ast.Expr) bool {
 		}
 		else {
 			return t.contains_call_expr(expr)
+		}
+	}
+}
+
+fn (t &Transformer) needs_runtime_global_init_cursor(expr ast.Cursor) bool {
+	if !expr.is_valid() {
+		return false
+	}
+	match expr.kind() {
+		.expr_empty {
+			return false
+		}
+		.expr_init, .expr_map_init, .expr_if, .expr_call_or_cast {
+			return true
+		}
+		.expr_or, .expr_string_inter, .expr_unsafe, .expr_lock, .expr_match {
+			return true
+		}
+		.expr_comptime {
+			return t.needs_runtime_global_init_cursor(expr.edge(0))
+		}
+		.expr_array_init {
+			if expr.edge(0).kind() == .typ_array_fixed {
+				return t.contains_call_expr_cursor(expr)
+			}
+			return true
+		}
+		.expr_cast {
+			return t.needs_runtime_global_init_cursor(expr.edge(1))
+		}
+		.expr_modifier, .expr_paren, .expr_postfix, .expr_prefix {
+			return t.needs_runtime_global_init_cursor(expr.edge(0))
+		}
+		.expr_index, .expr_infix {
+			return t.needs_runtime_global_init_cursor(expr.edge(0))
+				|| t.needs_runtime_global_init_cursor(expr.edge(1))
+		}
+		else {
+			return t.contains_call_expr_cursor(expr)
+		}
+	}
+}
+
+fn (t &Transformer) contains_call_expr_cursor(expr ast.Cursor) bool {
+	return t.contains_call_expr_cursor_depth(0, expr)
+}
+
+fn (t &Transformer) contains_call_expr_cursor_depth(depth int, expr ast.Cursor) bool {
+	if depth > max_runtime_const_dep_expr_depth || !expr.is_valid() {
+		return false
+	}
+	match expr.kind() {
+		.expr_call {
+			return true
+		}
+		.expr_cast {
+			return t.contains_call_expr_cursor_depth(depth + 1, expr.edge(1))
+		}
+		.expr_call_or_cast {
+			return t.contains_call_expr_cursor_depth(depth + 1, expr.edge(1))
+		}
+		.expr_paren, .expr_postfix, .expr_prefix {
+			return t.contains_call_expr_cursor_depth(depth + 1, expr.edge(0))
+		}
+		.expr_infix, .expr_index {
+			return t.contains_call_expr_cursor_depth(depth + 1, expr.edge(0))
+				|| t.contains_call_expr_cursor_depth(depth + 1, expr.edge(1))
+		}
+		.expr_array_init {
+			for i in 5 .. expr.edge_count() {
+				if t.contains_call_expr_cursor_depth(depth + 1, expr.edge(i)) {
+					return true
+				}
+			}
+			return (!expr_cursor_is_empty(expr.edge(1))
+				&& t.contains_call_expr_cursor_depth(depth + 1, expr.edge(1)))
+				|| (!expr_cursor_is_empty(expr.edge(3))
+				&& t.contains_call_expr_cursor_depth(depth + 1, expr.edge(3)))
+				|| (!expr_cursor_is_empty(expr.edge(2))
+				&& t.contains_call_expr_cursor_depth(depth + 1, expr.edge(2)))
+		}
+		.expr_init {
+			for i in 1 .. expr.edge_count() {
+				if t.contains_call_expr_cursor_depth(depth + 1, expr.edge(i).edge(0)) {
+					return true
+				}
+			}
+			return false
+		}
+		.expr_map_init {
+			keys_len := expr.extra_int()
+			for i in 0 .. keys_len {
+				if t.contains_call_expr_cursor_depth(depth + 1, expr.edge(1 + i)) {
+					return true
+				}
+			}
+			for i in (1 + keys_len) .. expr.edge_count() {
+				if t.contains_call_expr_cursor_depth(depth + 1, expr.edge(i)) {
+					return true
+				}
+			}
+			return false
+		}
+		.expr_selector {
+			return t.contains_call_expr_cursor_depth(depth + 1, expr.edge(0))
+		}
+		else {
+			return false
 		}
 	}
 }

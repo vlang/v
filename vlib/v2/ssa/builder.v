@@ -8033,11 +8033,7 @@ fn (mut b Builder) build_expr_from_flat(c ast.Cursor) ValueID {
 			return b.build_string_inter_from_flat(c)
 		}
 		.expr_match {
-			match_expr := c.flat.decode_expr(c.id)
-			if match_expr is ast.MatchExpr {
-				return b.build_match_expr(match_expr)
-			}
-			return b.mod.get_or_add_const(b.mod.type_store.get_int(32), '0')
+			return b.build_match_expr_from_flat(c)
 		}
 		.expr_or {
 			return b.build_or_from_flat(c)
@@ -15533,6 +15529,61 @@ fn match_bool_branch_cond_expr(conds []ast.Expr, match_value bool) ast.Expr {
 	return branch_cond
 }
 
+fn match_expr_bool_literal_from_flat(c ast.Cursor) ?bool {
+	match c.kind() {
+		.expr_basic_literal {
+			kind := unsafe { token.Token(int(c.aux())) }
+			if kind == .key_true {
+				return true
+			}
+			if kind == .key_false {
+				return false
+			}
+		}
+		.expr_keyword {
+			tok := unsafe { token.Token(int(c.aux())) }
+			if tok == .key_true {
+				return true
+			}
+			if tok == .key_false {
+				return false
+			}
+		}
+		.expr_paren {
+			return match_expr_bool_literal_from_flat(c.edge(0))
+		}
+		else {}
+	}
+
+	return none
+}
+
+fn (mut b Builder) build_bool_match_branch_cond_from_flat(conds ast.CursorList, match_value bool) ValueID {
+	bool_type := b.mod.type_store.get_int(1)
+	mut branch_cond := ValueID(0)
+	for i in 0 .. conds.len() {
+		mut single_cond := b.build_expr_from_flat(conds.at(i))
+		if !match_value {
+			single_type := if b.valid_value_id(single_cond) {
+				b.mod.values[single_cond].typ
+			} else {
+				bool_type
+			}
+			zero := b.mod.get_or_add_const(single_type, '0')
+			single_cond = b.mod.add_instr(.eq, b.cur_block, bool_type, [single_cond, zero])
+		}
+		if branch_cond == 0 {
+			branch_cond = single_cond
+		} else {
+			branch_cond = b.mod.add_instr(.or_, b.cur_block, bool_type, [branch_cond, single_cond])
+		}
+	}
+	if branch_cond == 0 {
+		return b.mod.get_or_add_const(bool_type, '0')
+	}
+	return branch_cond
+}
+
 fn (mut b Builder) build_match_branch_value(branch ast.MatchBranch) ValueID {
 	if branch.stmts.len == 0 {
 		return 0
@@ -15545,6 +15596,22 @@ fn (mut b Builder) build_match_branch_value(branch ast.MatchBranch) ValueID {
 		return b.build_expr(last.expr)
 	}
 	b.build_stmt(last)
+	return 0
+}
+
+fn (mut b Builder) build_match_branch_value_from_flat(branch ast.Cursor) ValueID {
+	stmts := branch.list_at(1)
+	if stmts.len() == 0 {
+		return 0
+	}
+	for i := 0; i < stmts.len() - 1; i++ {
+		b.build_stmt_from_flat(stmts.at(i))
+	}
+	last := stmts.at(stmts.len() - 1)
+	if last.kind() == .stmt_expr {
+		return b.build_expr_from_flat(last.edge(0))
+	}
+	b.build_stmt_from_flat(last)
 	return 0
 }
 
@@ -15651,6 +15718,76 @@ fn (mut b Builder) build_bool_match_expr(expr ast.MatchExpr, match_value bool) V
 		return zero
 	}
 	return b.mod.add_instr(.phi, merge_block, phi_type, phi_operands)
+}
+
+fn (mut b Builder) build_bool_match_expr_from_flat(c ast.Cursor, match_value bool) ValueID {
+	if c.edge_count() <= 1 {
+		return b.mod.get_or_add_const(b.mod.type_store.get_int(32), '0')
+	}
+
+	i64_t := b.mod.type_store.get_int(64)
+	result_type := b.expr_type_from_flat(c)
+	merge_block := b.mod.add_block(b.cur_func, 'matchx_merge')
+	mut incoming := []MatchExprIncoming{}
+	saved_local_smartcasts := b.local_smartcasts.clone()
+	mut reached_else := false
+
+	for i in 1 .. c.edge_count() {
+		branch := c.edge(i)
+		conds := branch.list_at(0)
+		b.local_smartcasts = saved_local_smartcasts.clone()
+		if conds.len() == 0 {
+			value := b.build_match_branch_value_from_flat(branch)
+			end_block := b.cur_block
+			if !b.block_has_terminator(b.cur_block) {
+				b.mod.add_instr(.jmp, b.cur_block, 0, [b.mod.blocks[merge_block].val_id])
+				b.add_edge(b.cur_block, merge_block)
+				incoming << MatchExprIncoming{
+					value: value
+					block: end_block
+				}
+			}
+			reached_else = true
+			break
+		}
+
+		cond_val := b.build_bool_match_branch_cond_from_flat(conds, match_value)
+		then_block := b.mod.add_block(b.cur_func, 'matchx_branch')
+		next_block := b.mod.add_block(b.cur_func, 'matchx_next')
+		b.mod.add_instr(.br, b.cur_block, 0,
+			[cond_val, b.mod.blocks[then_block].val_id, b.mod.blocks[next_block].val_id])
+		b.add_edge(b.cur_block, then_block)
+		b.add_edge(b.cur_block, next_block)
+
+		b.cur_block = then_block
+		if match_value && conds.len() == 1 {
+			b.apply_local_smartcasts(b.smartcast_variant_type_ids_from_condition_from_flat(conds.at(0)))
+		}
+		value := b.build_match_branch_value_from_flat(branch)
+		end_block := b.cur_block
+		if !b.block_has_terminator(b.cur_block) {
+			b.mod.add_instr(.jmp, b.cur_block, 0, [b.mod.blocks[merge_block].val_id])
+			b.add_edge(b.cur_block, merge_block)
+			incoming << MatchExprIncoming{
+				value: value
+				block: end_block
+			}
+		}
+		b.cur_block = next_block
+	}
+
+	b.local_smartcasts = saved_local_smartcasts.clone()
+	if !reached_else && !b.block_has_terminator(b.cur_block) {
+		end_block := b.cur_block
+		b.mod.add_instr(.jmp, b.cur_block, 0, [b.mod.blocks[merge_block].val_id])
+		b.add_edge(b.cur_block, merge_block)
+		incoming << MatchExprIncoming{
+			value: 0
+			block: end_block
+		}
+	}
+
+	return b.build_match_phi(merge_block, incoming, result_type, i64_t)
 }
 
 fn (mut b Builder) build_match_phi(merge_block BlockID, incoming []MatchExprIncoming, result_type TypeID, i64_t TypeID) ValueID {
@@ -15859,6 +15996,15 @@ fn (mut b Builder) match_sumtype_branch_infos(sumtype_type TypeID, conds []ast.E
 	return infos
 }
 
+fn (mut b Builder) match_sumtype_branch_infos_from_flat(sumtype_type TypeID, conds ast.CursorList) []MatchSumtypeBranchInfo {
+	mut infos := []MatchSumtypeBranchInfo{}
+	for i in 0 .. conds.len() {
+		info := b.match_sumtype_branch_info_from_flat(sumtype_type, conds.at(i)) or { continue }
+		infos << info
+	}
+	return infos
+}
+
 fn (mut b Builder) build_sumtype_match_condition(tag_val ValueID, infos []MatchSumtypeBranchInfo) ValueID {
 	bool_type := b.mod.type_store.get_int(1)
 	if !b.valid_value_id(tag_val) || infos.len == 0 {
@@ -15883,6 +16029,16 @@ fn (mut b Builder) apply_sumtype_match_smartcast(subject ast.Expr, infos []Match
 		return
 	}
 	expr_name := b.smartcast_expr_name(subject)
+	if expr_name != '' {
+		b.local_smartcasts[expr_name] = infos[0].variant_type
+	}
+}
+
+fn (mut b Builder) apply_sumtype_match_smartcast_from_flat(subject ast.Cursor, infos []MatchSumtypeBranchInfo) {
+	if infos.len != 1 {
+		return
+	}
+	expr_name := b.smartcast_expr_name_from_flat(subject)
 	if expr_name != '' {
 		b.local_smartcasts[expr_name] = infos[0].variant_type
 	}
@@ -15958,6 +16114,79 @@ fn (mut b Builder) build_sumtype_match_expr(expr ast.MatchExpr, subject ValueID,
 	return b.build_match_phi(merge_block, incoming, result_type, i64_t)
 }
 
+fn (mut b Builder) build_sumtype_match_expr_from_flat(c ast.Cursor, subject ValueID, subject_type TypeID) ValueID {
+	if c.edge_count() <= 1 {
+		return b.mod.get_or_add_const(b.mod.type_store.get_int(32), '0')
+	}
+	i64_t := b.mod.type_store.get_int(64)
+	result_type := b.expr_type_from_flat(c)
+	type_info := b.mod.type_store.types[subject_type]
+	tag_type := if type_info.fields.len > 0 { type_info.fields[0] } else { i64_t }
+	tag_idx := b.mod.get_or_add_const(b.mod.type_store.get_int(32), '0')
+	tag_val := b.mod.add_instr(.extractvalue, b.cur_block, tag_type, [subject, tag_idx])
+	merge_block := b.mod.add_block(b.cur_func, 'matchx_merge')
+	mut incoming := []MatchExprIncoming{}
+	saved_local_smartcasts := b.local_smartcasts.clone()
+	mut reached_else := false
+	subject_c := c.edge(0)
+
+	for i in 1 .. c.edge_count() {
+		branch := c.edge(i)
+		conds := branch.list_at(0)
+		b.local_smartcasts = saved_local_smartcasts.clone()
+		if conds.len() == 0 {
+			value := b.build_match_branch_value_from_flat(branch)
+			end_block := b.cur_block
+			if !b.block_has_terminator(b.cur_block) {
+				b.mod.add_instr(.jmp, b.cur_block, 0, [b.mod.blocks[merge_block].val_id])
+				b.add_edge(b.cur_block, merge_block)
+				incoming << MatchExprIncoming{
+					value: value
+					block: end_block
+				}
+			}
+			reached_else = true
+			break
+		}
+
+		infos := b.match_sumtype_branch_infos_from_flat(subject_type, conds)
+		cond_val := b.build_sumtype_match_condition(tag_val, infos)
+		then_block := b.mod.add_block(b.cur_func, 'matchx_branch')
+		next_block := b.mod.add_block(b.cur_func, 'matchx_next')
+		b.mod.add_instr(.br, b.cur_block, 0,
+			[cond_val, b.mod.blocks[then_block].val_id, b.mod.blocks[next_block].val_id])
+		b.add_edge(b.cur_block, then_block)
+		b.add_edge(b.cur_block, next_block)
+
+		b.cur_block = then_block
+		b.apply_sumtype_match_smartcast_from_flat(subject_c, infos)
+		value := b.build_match_branch_value_from_flat(branch)
+		end_block := b.cur_block
+		if !b.block_has_terminator(b.cur_block) {
+			b.mod.add_instr(.jmp, b.cur_block, 0, [b.mod.blocks[merge_block].val_id])
+			b.add_edge(b.cur_block, merge_block)
+			incoming << MatchExprIncoming{
+				value: value
+				block: end_block
+			}
+		}
+		b.cur_block = next_block
+	}
+
+	b.local_smartcasts = saved_local_smartcasts.clone()
+	if !reached_else && !b.block_has_terminator(b.cur_block) {
+		end_block := b.cur_block
+		b.mod.add_instr(.jmp, b.cur_block, 0, [b.mod.blocks[merge_block].val_id])
+		b.add_edge(b.cur_block, merge_block)
+		incoming << MatchExprIncoming{
+			value: 0
+			block: end_block
+		}
+	}
+
+	return b.build_match_phi(merge_block, incoming, result_type, i64_t)
+}
+
 fn (mut b Builder) build_match_expr(expr ast.MatchExpr) ValueID {
 	if match_value := match_expr_bool_literal(expr.expr) {
 		return b.build_bool_match_expr(expr, match_value)
@@ -15967,6 +16196,21 @@ fn (mut b Builder) build_match_expr(expr ast.MatchExpr) ValueID {
 		subject_type := b.mod.values[subject].typ
 		if b.ssa_type_is_sumtype(subject_type) {
 			return b.build_sumtype_match_expr(expr, subject, subject_type)
+		}
+	}
+	return b.mod.get_or_add_const(b.mod.type_store.get_int(32), '0')
+}
+
+fn (mut b Builder) build_match_expr_from_flat(c ast.Cursor) ValueID {
+	subject_c := c.edge(0)
+	if match_value := match_expr_bool_literal_from_flat(subject_c) {
+		return b.build_bool_match_expr_from_flat(c, match_value)
+	}
+	subject := b.build_expr_from_flat(subject_c)
+	if b.valid_value_id(subject) {
+		subject_type := b.mod.values[subject].typ
+		if b.ssa_type_is_sumtype(subject_type) {
+			return b.build_sumtype_match_expr_from_flat(c, subject, subject_type)
 		}
 	}
 	return b.mod.get_or_add_const(b.mod.type_store.get_int(32), '0')

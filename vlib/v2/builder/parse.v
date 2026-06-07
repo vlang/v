@@ -1045,13 +1045,8 @@ fn flat_string_literal_value(expr ast.Cursor) ?string {
 }
 
 // parse_batch routes normal parsing through the streaming-into-shared-
-// FlatBuilder path. V2_FLAT_ROUNDTRIP=1 remains as an explicit diagnostic
-// mode that parses to flat and immediately materializes legacy files.
+// FlatBuilder path.
 fn (mut b Builder) parse_batch(mut parser_reused parser.Parser, files []string) []ast.File {
-	if b.flat_roundtrip_enabled {
-		flat := parser_reused.parse_files_to_flat(files, mut b.file_set)
-		return flat.to_files()
-	}
 	if b.flat_check_enabled {
 		b.ensure_flat_builder_inited()
 		parser_reused.parse_files_into_flat(files, mut b.file_set, mut b.flat_builder)

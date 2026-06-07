@@ -74,7 +74,7 @@ fn build_via_flat_block(files []ast.File, env &types.Environment, name string) &
 		if c.kind() != .stmt_fn_decl {
 			continue
 		}
-		decl := c.flat.decode_fn_decl_signature(c.id)
+		decl := c.fn_decl_signature()
 		fn_name := b.mangle_fn_name(decl)
 		func_idx := b.fn_index[fn_name] or { continue }
 		b.cur_func = func_idx

@@ -104,6 +104,172 @@ pub fn (c Cursor) import_stmt() ImportStmt {
 	}
 }
 
+// fn_decl_signature reads a stmt_fn_decl cursor into a body-less FnDecl. This
+// mirrors FlatAst.decode_fn_decl_signature without going through FlatReader.
+pub fn (c Cursor) fn_decl_signature() FnDecl {
+	if !c.is_valid() || c.kind() != .stmt_fn_decl {
+		return FnDecl{}
+	}
+	return FnDecl{
+		attributes: attrs_from_cursor(c.list_at(2))
+		is_public:  c.flag(flag_is_public)
+		is_method:  c.flag(flag_is_method)
+		is_static:  c.flag(flag_is_static)
+		receiver:   parameter_from_cursor(c.edge(0))
+		language:   unsafe { Language(int(c.aux())) }
+		name:       c.name()
+		typ:        fn_type_from_cursor(c.edge(1))
+		pos:        c.pos()
+	}
+}
+
+// type_expr reads a type-expression cursor into the legacy Expr shape used by
+// signature consumers. It is intentionally narrower than FlatReader.read_expr:
+// non-type payloads such as field defaults or statement bodies stay omitted.
+pub fn (c Cursor) type_expr() Expr {
+	if !c.is_valid() {
+		return empty_expr
+	}
+	match c.kind() {
+		.expr_empty {
+			return empty_expr
+		}
+		.expr_basic_literal {
+			return Expr(BasicLiteral{
+				kind:  unsafe { token.Token(int(c.aux())) }
+				value: c.name()
+				pos:   c.pos()
+			})
+		}
+		.expr_ident {
+			return Expr(c.ident())
+		}
+		.expr_lifetime {
+			return Expr(LifetimeExpr{
+				name: c.name()
+				pos:  c.pos()
+			})
+		}
+		.expr_modifier {
+			return Expr(ModifierExpr{
+				kind: unsafe { token.Token(int(c.aux())) }
+				expr: c.edge(0).type_expr()
+				pos:  c.pos()
+			})
+		}
+		.expr_prefix {
+			return Expr(PrefixExpr{
+				op:   unsafe { token.Token(int(c.aux())) }
+				expr: c.edge(0).type_expr()
+				pos:  c.pos()
+			})
+		}
+		.expr_selector {
+			rhs := c.edge(1)
+			return Expr(SelectorExpr{
+				lhs: c.edge(0).type_expr()
+				rhs: Ident{
+					name: rhs.name()
+					pos:  rhs.pos()
+				}
+				pos: c.pos()
+			})
+		}
+		.expr_generic_args {
+			return Expr(GenericArgs{
+				lhs:  c.edge(0).type_expr()
+				args: type_exprs_from_edges(c, 1)
+				pos:  c.pos()
+			})
+		}
+		.expr_generic_arg_or_index {
+			return Expr(GenericArgOrIndexExpr{
+				lhs:  c.edge(0).type_expr()
+				expr: c.edge(1).type_expr()
+				pos:  c.pos()
+			})
+		}
+		.typ_anon_struct {
+			return Expr(Type(AnonStructType{
+				generic_params: c.list_at(0).type_exprs()
+				embedded:       c.list_at(1).type_exprs()
+				fields:         field_decl_type_list(c.list_at(2))
+			}))
+		}
+		.typ_array_fixed {
+			return Expr(Type(ArrayFixedType{
+				len:       c.edge(0).type_expr()
+				elem_type: c.edge(1).type_expr()
+			}))
+		}
+		.typ_array {
+			return Expr(Type(ArrayType{
+				elem_type: c.edge(0).type_expr()
+			}))
+		}
+		.typ_channel {
+			return Expr(Type(ChannelType{
+				cap:       c.edge(0).type_expr()
+				elem_type: c.edge(1).type_expr()
+			}))
+		}
+		.typ_fn {
+			return Expr(Type(FnType{
+				generic_params: c.list_at(0).type_exprs()
+				params:         parameter_list_from_cursor(c.list_at(1))
+				return_type:    c.edge(2).type_expr()
+			}))
+		}
+		.typ_generic {
+			return Expr(Type(GenericType{
+				name:   c.edge(0).type_expr()
+				params: type_exprs_from_edges(c, 1)
+			}))
+		}
+		.typ_map {
+			return Expr(Type(MapType{
+				key_type:   c.edge(0).type_expr()
+				value_type: c.edge(1).type_expr()
+			}))
+		}
+		.typ_nil {
+			return Expr(Type(NilType{}))
+		}
+		.typ_none {
+			return Expr(Type(NoneType{}))
+		}
+		.typ_option {
+			return Expr(Type(OptionType{
+				base_type: c.edge(0).type_expr()
+			}))
+		}
+		.typ_pointer {
+			return Expr(Type(PointerType{
+				base_type: c.edge(0).type_expr()
+				lifetime:  c.name()
+			}))
+		}
+		.typ_result {
+			return Expr(Type(ResultType{
+				base_type: c.edge(0).type_expr()
+			}))
+		}
+		.typ_thread {
+			return Expr(Type(ThreadType{
+				elem_type: c.edge(0).type_expr()
+			}))
+		}
+		.typ_tuple {
+			return Expr(Type(TupleType{
+				types: type_exprs_from_edges(c, 0)
+			}))
+		}
+		else {
+			return empty_expr
+		}
+	}
+}
+
 @[inline]
 pub fn (c Cursor) edge_count() int {
 	return c.flat.nodes[c.id].edge_count
@@ -158,6 +324,90 @@ pub fn (l CursorList) at(i int) Cursor {
 		flat: l.flat
 		id:   l.flat.child_at(l.parent_id, i)
 	}
+}
+
+// type_exprs reads every item in a cursor list through Cursor.type_expr.
+pub fn (l CursorList) type_exprs() []Expr {
+	mut out := []Expr{cap: l.len()}
+	for i in 0 .. l.len() {
+		out << l.at(i).type_expr()
+	}
+	return out
+}
+
+fn attrs_from_cursor(list CursorList) []Attribute {
+	mut out := []Attribute{cap: list.len()}
+	for i in 0 .. list.len() {
+		attr := list.at(i)
+		if !attr.is_valid() {
+			continue
+		}
+		out << Attribute{
+			name: attr.name()
+		}
+	}
+	return out
+}
+
+fn fn_type_from_cursor(c Cursor) FnType {
+	if !c.is_valid() || c.kind() != .typ_fn {
+		return FnType{}
+	}
+	return FnType{
+		generic_params: c.list_at(0).type_exprs()
+		params:         parameter_list_from_cursor(c.list_at(1))
+		return_type:    c.edge(2).type_expr()
+	}
+}
+
+fn type_exprs_from_edges(c Cursor, start int) []Expr {
+	if !c.is_valid() || start >= c.edge_count() {
+		return []Expr{}
+	}
+	mut out := []Expr{cap: c.edge_count() - start}
+	for i in start .. c.edge_count() {
+		out << c.edge(i).type_expr()
+	}
+	return out
+}
+
+fn parameter_from_cursor(c Cursor) Parameter {
+	if !c.is_valid() {
+		return Parameter{}
+	}
+	return Parameter{
+		name:   c.name()
+		typ:    c.edge(0).type_expr()
+		is_mut: c.flag(flag_is_mut)
+		pos:    c.pos()
+	}
+}
+
+fn parameter_list_from_cursor(list CursorList) []Parameter {
+	mut out := []Parameter{cap: list.len()}
+	for i in 0 .. list.len() {
+		out << parameter_from_cursor(list.at(i))
+	}
+	return out
+}
+
+fn field_decl_type_list(list CursorList) []FieldDecl {
+	mut out := []FieldDecl{cap: list.len()}
+	for i in 0 .. list.len() {
+		field := list.at(i)
+		if !field.is_valid() {
+			continue
+		}
+		out << FieldDecl{
+			name:                field.name()
+			typ:                 field.edge(0).type_expr()
+			is_public:           field.flag(flag_is_public)
+			is_mut:              field.flag(flag_is_mut)
+			is_module_mut:       field.flag(flag_field_is_module_mut)
+			is_interface_method: field.flag(flag_field_is_interface_method)
+		}
+	}
+	return out
 }
 
 // FileCursor is a typed wrapper over a FlatFile entry. It exposes the

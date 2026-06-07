@@ -103,6 +103,22 @@ fn test_fn_decl_flags_and_body() {
 	assert ret.kind() == .stmt_return
 }
 
+fn test_fn_decl_signature_from_cursor() {
+	flat := build_minimal_file()
+	fn_cur := flat.file_cursor(0).stmts().at(1)
+	decl := fn_cur.fn_decl_signature()
+	assert decl.name == 'add'
+	assert !decl.is_method
+	assert decl.stmts.len == 0
+	assert decl.typ.params.len == 2
+	assert decl.typ.params[0].name == 'a'
+	assert decl.typ.params[0].typ is Ident
+	assert (decl.typ.params[0].typ as Ident).name == 'int'
+	assert decl.typ.params[1].name == 'b'
+	assert decl.typ.return_type is Ident
+	assert (decl.typ.return_type as Ident).name == 'int'
+}
+
 fn test_return_stmt_exprs_via_edges() {
 	flat := build_minimal_file()
 	fc := flat.file_cursor(0)
@@ -131,6 +147,69 @@ fn test_invalid_cursor_sentinels() {
 	assert !bogus_edge.is_valid()
 	empty_list := fc.root().list_at(99)
 	assert empty_list.len() == 0
+}
+
+fn test_type_expr_from_cursor_reads_signature_types() {
+	mut b := new_flat_builder()
+	src := File{
+		name:  'inline_type_expr.v'
+		mod:   'foo'
+		stmts: [
+			Stmt(ModuleStmt{
+				name: 'foo'
+			}),
+			Stmt(FnDecl{
+				name: 'use_box'
+				typ:  FnType{
+					params:      [
+						Parameter{
+							name: 'items'
+							typ:  Expr(Type(ArrayType{
+								elem_type: Expr(GenericArgs{
+									lhs:  Expr(Ident{
+										name: 'Box'
+									})
+									args: [
+										Expr(Ident{
+											name: 'int'
+										}),
+									]
+								})
+							}))
+						},
+					]
+					return_type: Expr(Type(OptionType{
+						base_type: Expr(Ident{
+							name: 'string'
+						})
+					}))
+				}
+			}),
+		]
+	}
+	b.append_file(src)
+	fn_cur := b.flat.file_cursor(0).stmts().at(1)
+	fn_type := fn_cur.edge(1)
+	params := fn_type.list_at(1)
+	param_typ := params.at(0).edge(0).type_expr()
+	assert param_typ is Type
+	array_typ := param_typ as Type
+	assert array_typ is ArrayType
+	array_expr := array_typ as ArrayType
+	assert array_expr.elem_type is GenericArgs
+	generic := array_expr.elem_type as GenericArgs
+	assert generic.lhs is Ident
+	assert (generic.lhs as Ident).name == 'Box'
+	assert generic.args.len == 1
+	assert generic.args[0] is Ident
+	assert (generic.args[0] as Ident).name == 'int'
+	return_typ := fn_type.edge(2).type_expr()
+	assert return_typ is Type
+	option_typ := return_typ as Type
+	assert option_typ is OptionType
+	option_expr := option_typ as OptionType
+	assert option_expr.base_type is Ident
+	assert (option_expr.base_type as Ident).name == 'string'
 }
 
 // count_unique_kinds_via_cursor walks the whole graph rooted at fc through
