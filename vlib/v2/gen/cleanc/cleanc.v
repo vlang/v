@@ -138,6 +138,7 @@ mut:
 	source_module_names               map[string]bool
 	imported_symbols_index            map[string]string // "file_name\x01symbol_name" -> importing module (built once from g.files)
 	v_method_return_index             map[string]string // method short name -> unique V return type (or v_method_ret_ambiguous)
+	ierror_base_index                 map[string]string // base -> qualified concrete base from the smallest `*__base__msg` fn (built once)
 
 	const_exprs                           map[string]string // const name → C expression string (for inlining)
 	const_types                           map[string]string // const name → C type string
@@ -473,6 +474,7 @@ fn new_gen_with_env_and_pref_impl(env &types.Environment, p &pref.Preferences) &
 		source_module_names:                   map[string]bool{}
 		imported_symbols_index:                map[string]string{}
 		v_method_return_index:                 map[string]string{}
+		ierror_base_index:                     map[string]string{}
 		exported_const_seen:                   map[string]bool{}
 		exported_const_symbols:                []ExportedConstSymbol{}
 		emitted_interface_bodies:              map[string]bool{}
@@ -1017,6 +1019,7 @@ pub fn (mut g Gen) gen_passes_1_to_4() {
 		'setup.force_emit_sort_fns')
 	g.collect_fn_signatures_to_fixed_point()
 	g.build_v_method_return_index()
+	g.build_ierror_base_index()
 	stage_start = g.mark_cgen_step(stats_enabled, stats_scope, mut stats_sw, stage_start,
 		'setup.fn_signatures')
 	g.collect_c_file_fn_keys()
@@ -2763,6 +2766,7 @@ pub fn (g &Gen) new_pass5_worker(file_indices []int, worker_id int) &Gen {
 		pref:                   unsafe { g.pref }
 		imported_symbols_index: g.imported_symbols_index.clone()
 		v_method_return_index:  g.v_method_return_index.clone()
+		ierror_base_index:      g.ierror_base_index.clone()
 		sb:                     strings.new_builder(64_000)
 		// Read-only lookup maps — clone to avoid COW data races
 		fn_param_is_ptr:                       g.fn_param_is_ptr.clone()

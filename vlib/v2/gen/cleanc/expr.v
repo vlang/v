@@ -474,6 +474,34 @@ fn (mut g Gen) ierror_concrete_base_for_expr(value_expr ast.Expr) string {
 		value_expr).trim_right('*'))
 }
 
+// build_ierror_base_index indexes fn_return_types by the `base` of every `X__base__msg` function,
+// storing the smallest matching `X__base` per base (the original scan sorted the keys and took the
+// first). fn_return_types is final after collect_fn_signatures_to_fixed_point, so this builds once.
+fn (mut g Gen) build_ierror_base_index() {
+	mut idx := map[string]string{}
+	for fn_name, _ in g.fn_return_types {
+		if !fn_name.ends_with('__msg') {
+			continue
+		}
+		stripped := fn_name[..fn_name.len - '__msg'.len] // X__base
+		if !stripped.contains('__') {
+			continue // need a real `__base` suffix, matching ends_with('__${base}__msg')
+		}
+		base := stripped.all_after_last('__')
+		if base == '' {
+			continue
+		}
+		if existing := idx[base] {
+			if stripped < existing {
+				idx[base] = stripped
+			}
+		} else {
+			idx[base] = stripped
+		}
+	}
+	g.ierror_base_index = idx.move()
+}
+
 fn (g &Gen) qualify_ierror_concrete_base(base string) string {
 	normalized_base := g.normalize_builtin_qualified_c_type(base)
 	if normalized_base != base {
@@ -488,13 +516,11 @@ fn (g &Gen) qualify_ierror_concrete_base(base string) string {
 			return qualified
 		}
 	}
-	suffix := '__${base}__msg'
-	mut fn_names := g.fn_return_types.keys()
-	fn_names.sort()
-	for fn_name in fn_names {
-		if fn_name.ends_with(suffix) {
-			return fn_name[..fn_name.len - '__msg'.len]
-		}
+	// Index lookup replaces a per-call `fn_return_types.keys().sort()` + scan. The index stores,
+	// per base, the smallest `X__base` (the original returned the first sorted `*__base__msg`
+	// minus the `__msg` suffix).
+	if qualified := g.ierror_base_index[base] {
+		return qualified
 	}
 	body_suffix := '__${base}'
 	mut body_keys := g.emitted_types.keys()
