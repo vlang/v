@@ -49,9 +49,9 @@ mut:
 	used_import_vh_for_parse              bool
 	used_virtual_vh_for_parse             bool
 	flat_roundtrip_enabled                bool // V2_FLAT_ROUNDTRIP=1: legacy comparison mode; route parses through streaming + to_files().
-	flat_check_enabled                    bool // Default on: stream parse/type-check through FlatAst. V2_LEGACY_AST=1 disables it unless V2_CHECK_FLAT=1 is set.
-	markused_flat_enabled                 bool // Default on: route markused through mark_used_flat.
-	flat_ssa_enabled                      bool // Default on: route SSA codegen through build_all_from_flat on the post-transform b.flat.
+	flat_check_enabled                    bool // Always on for normal builds: stream parse/type-check through FlatAst.
+	markused_flat_enabled                 bool // Always on for normal builds: route markused through mark_used_flat.
+	flat_ssa_enabled                      bool // Always on for normal builds: route SSA codegen through build_all_from_flat on post-transform b.flat.
 	// flat caches the FlatAst representation of b.files. When
 	// flat_check_enabled is set, parse_batch streams directly into
 	// flat_builder so b.flat is built incrementally during parsing rather
@@ -71,17 +71,15 @@ mut:
 }
 
 pub fn new_builder(prefs &pref.Preferences) &Builder {
-	legacy_ast_enabled := os.getenv('V2_LEGACY_AST') != ''
-	flat_default_enabled := !legacy_ast_enabled
 	unsafe {
 		return &Builder{
 			pref:                   prefs
 			used_fn_keys:           map[string]bool{}
 			cached_called_fn_names: map[string]bool{}
 			flat_roundtrip_enabled: os.getenv('V2_FLAT_ROUNDTRIP') != ''
-			flat_check_enabled:     flat_default_enabled || os.getenv('V2_CHECK_FLAT') != ''
-			markused_flat_enabled:  flat_default_enabled || os.getenv('V2_MARKUSED_FLAT') != ''
-			flat_ssa_enabled:       flat_default_enabled || os.getenv('V2_FLAT_SSA') != ''
+			flat_check_enabled:     true
+			markused_flat_enabled:  true
+			flat_ssa_enabled:       true
 		}
 	}
 }
@@ -306,23 +304,20 @@ pub fn (mut b Builder) build(files []string) {
 	// can consume flat codegen use the direct flat-output path and drop the
 	// transformed []ast.File result; legacy backends keep the compatibility
 	// wedge that returns both flat and files.
-	mut flat_populated_by_transform := false
 	transform_flat_only := b.should_keep_flat_for_codegen()
 	if sequential_transform {
 		if use_native_flat_pipeline && !b.flat_check_enabled {
 			b.flat = trans.transform_files_to_flat_direct(b.files)
 			b.files = []ast.File{}
-			flat_populated_by_transform = true
 		} else if use_flat_markused {
 			if transform_flat_only {
 				b.flat = trans.transform_flat_to_flat_direct(&b.flat, b.files)
 				b.files = []ast.File{}
 			} else {
-				new_flat, files_out := trans.transform_files_to_flat(&b.flat, b.files)
+				new_flat, files_out := trans.transform_files_to_flat_via_driver(&b.flat, b.files)
 				b.flat = new_flat
 				b.files = files_out
 			}
-			flat_populated_by_transform = true
 		} else if b.flat_check_enabled {
 			b.files = trans.transform_files_from_flat(&b.flat, b.files)
 		} else {
@@ -332,17 +327,15 @@ pub fn (mut b Builder) build(files []string) {
 		if use_native_flat_pipeline && !b.flat_check_enabled {
 			b.flat = trans.transform_files_to_flat_direct(b.files)
 			b.files = []ast.File{}
-			flat_populated_by_transform = true
 		} else if use_flat_markused {
 			if transform_flat_only {
 				b.flat = trans.transform_flat_to_flat_direct(&b.flat, b.files)
 				b.files = []ast.File{}
 			} else {
-				new_flat, files_out := b.transform_files_parallel_to_flat(mut trans)
+				new_flat, files_out := b.transform_files_parallel_to_flat_via_driver(mut trans)
 				b.flat = new_flat
 				b.files = files_out
 			}
-			flat_populated_by_transform = true
 		} else if b.flat_check_enabled {
 			b.files = b.transform_files_parallel_from_flat(mut trans)
 		} else {
@@ -359,18 +352,9 @@ pub fn (mut b Builder) build(files []string) {
 		b.used_fn_keys = map[string]bool{}
 	} else {
 		mark_used_start := sw.elapsed()
-		// Flat markused consumes the post-transform FlatAst. Legacy comparison
-		// mode (`V2_LEGACY_AST=1`) can still reach the AST walker unless one of
-		// the flat env flags explicitly re-enables this path.
-		//
-		// The transformer mutates b.files but does not write back into b.flat.
-		// Both sequential and parallel paths now populate b.flat as part of
-		// their *_to_flat wedge, so the separate flatten_files() pass is gone.
-		// The branch below remains as a defensive fallback for any future code
-		// path that reaches markused without setting flat_populated_by_transform.
-		if use_flat_markused && !flat_populated_by_transform {
-			b.flat = ast.flatten_files(b.files)
-		}
+		// Flat markused consumes the post-transform FlatAst. Both sequential
+		// and parallel paths populate b.flat as part of their *_to_flat wedge,
+		// so the separate flatten_files() pass is gone.
 		if b.uses_minimal_x64_runtime_roots() {
 			opts := markused.MarkUsedOptions{
 				minimal_runtime_roots: true
@@ -3484,8 +3468,7 @@ fn (mut b Builder) update_parse_summary_counts() {
 fn (b &Builder) print_flat_ast_summary() {
 	legacy_stats := ast.legacy_ast_stats(b.files)
 	legacy_nodes := ast.count_legacy_nodes(b.files)
-	flat := if b.flat_check_enabled { b.flat } else { ast.flatten_files(b.files) }
-	flat_stats := flat.stats()
+	flat_stats := b.flat.stats()
 	mut mem_delta_pct := f64(0)
 	if legacy_stats.bytes_estimate > 0 {
 		mem_delta_pct = (f64(legacy_stats.bytes_estimate) - f64(flat_stats.bytes_estimate)) * 100.0 / f64(legacy_stats.bytes_estimate)
@@ -3501,7 +3484,7 @@ fn (b &Builder) print_flat_ast_summary() {
 	println(' * AST memory est: legacy=${legacy_stats.bytes_estimate}B, flat=${flat_stats.bytes_estimate}B (${mem_delta_pct:.2f}% reduction)')
 	println(' * AST allocs:     legacy=${legacy_stats.allocs}, flat=${flat_allocs} (${alloc_delta_pct:.2f}% reduction)')
 	if os.getenv('V2_FLAT_HIST') != '' {
-		hist := flat.count_nodes_by_kind()
+		hist := b.flat.count_nodes_by_kind()
 		mut keys := hist.keys()
 		keys.sort_with_compare(fn [hist] (a &string, b &string) int {
 			return hist[*b] - hist[*a]

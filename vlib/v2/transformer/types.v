@@ -3477,6 +3477,35 @@ fn (t &Transformer) get_receiver_type_name(typ ast.Expr) string {
 	return ''
 }
 
+fn (t &Transformer) get_receiver_type_name_cursor(typ ast.Cursor) string {
+	if !typ.is_valid() {
+		return ''
+	}
+	match typ.kind() {
+		.expr_ident {
+			return typ.name()
+		}
+		.expr_prefix {
+			op := unsafe { token.Token(int(typ.aux())) }
+			if op == .amp {
+				return t.get_receiver_type_name_cursor(typ.edge(0))
+			}
+		}
+		.expr_modifier, .typ_pointer, .typ_generic {
+			return t.get_receiver_type_name_cursor(typ.edge(0))
+		}
+		.expr_selector {
+			rhs := typ.edge(1)
+			if rhs.is_valid() {
+				return rhs.name()
+			}
+		}
+		else {}
+	}
+
+	return ''
+}
+
 // get_type_name returns the type name suitable for method lookup
 fn (t &Transformer) get_type_name(typ types.Type) string {
 	if typ is types.Pointer {

@@ -2122,6 +2122,12 @@ pub fn (mut t Transformer) inject_generated_fns_to_flat(mut out ast.FlatBuilder,
 // post_pass runs the sequential post-pass: injects runtime const init fns, generated functions,
 // test main, live reload, and propagates types.
 pub fn (mut t Transformer) post_pass(mut result []ast.File) {
+	t.post_pass_files_with_generated_parts(mut result, none)
+	t.apply_post_pass_tail(result)
+}
+
+// post_pass_files_with_generated_parts runs the file-mutating post-pass steps.
+pub fn (mut t Transformer) post_pass_files_with_generated_parts(mut result []ast.File, generated_parts ?GeneratedFnsParts) {
 	if !t.is_eval_backend() {
 		t.inject_runtime_const_init_fns(mut result)
 	}
@@ -2135,8 +2141,12 @@ pub fn (mut t Transformer) post_pass(mut result []ast.File) {
 	// 2. User-type functions (e.g. Array_Test2_str) go in the main module file because
 	//    they would pollute the cache and cause undefined symbol errors when a different
 	//    program reuses the same cache.
-	if parts := t.generated_fns_parts(result) {
+	if parts := generated_parts {
 		inject_generated_fns_to_files(mut result, parts)
+	} else {
+		if parts := t.generated_fns_parts(result) {
+			inject_generated_fns_to_files(mut result, parts)
+		}
 	}
 	if t.pref == unsafe { nil } || t.pref.backend != .cleanc {
 		t.inject_test_main(mut result)
@@ -2146,22 +2156,6 @@ pub fn (mut t Transformer) post_pass(mut result []ast.File) {
 	}
 	if t.is_native_be {
 		t.inject_live_reload(mut result)
-	}
-	// Apply accumulated synth types to the environment.
-	// Must happen after all generation steps since they also create synth types.
-	for id, typ in t.synth_types {
-		t.env.set_expr_type(id, typ)
-	}
-	// Push cached_fn_scopes back to the environment for prop_types.
-	lock t.env.fn_scopes {
-		fn_scope_keys := t.cached_fn_scopes.keys()
-		for k in fn_scope_keys {
-			v := t.cached_fn_scopes[k] or { continue }
-			t.env.fn_scopes[k] = v
-		}
-	}
-	if t.pref == unsafe { nil } || t.pref.backend != .arm64 {
-		t.propagate_types(result)
 	}
 }
 
@@ -2600,8 +2594,7 @@ fn (mut t Transformer) transform_files_from_flat_no_post_pass(flat &ast.FlatAst,
 // callers can switch to this entry now and get the eventual peak-memory
 // win without further changes.
 //
-// Callers that only need flat output (currently: the V2_MARKUSED_FLAT
-// path in the builder, which re-flattens b.files itself today) should
+// Callers that only need flat output should
 // route through here. The returned []ast.File is kept alive only for the
 // downstream consumers that still need legacy (SSA builder). Once the
 // SSA builder consumes flat as well, this entry point will drop the
@@ -2645,7 +2638,7 @@ pub fn (mut t Transformer) transform_files_to_flat(flat &ast.FlatAst, files []as
 // disappears — first measurable peak-memory win. Until then this is the
 // migration scaffolding, pinned by per-file subtree parity tests.
 pub fn (mut t Transformer) transform_files_to_flat_via_driver(flat &ast.FlatAst, files []ast.File) (ast.FlatAst, []ast.File) {
-	result := t.transform_files_from_flat_no_post_pass(flat, files)
+	mut result := t.transform_files_from_flat_no_post_pass(flat, files)
 	mut builder := ast.new_flat_builder()
 	for file in result {
 		builder.append_file(file)
@@ -2656,11 +2649,11 @@ pub fn (mut t Transformer) transform_files_to_flat_via_driver(flat &ast.FlatAst,
 	// `generated_fn_module_from_flat` (s164) walk `builder.flat` directly.
 	generated_parts := t.generated_fns_parts_from_flat(&builder.flat)
 	t.post_pass_to_flat(mut builder, generated_parts)
-	// Tail runs on the post_pass'd flat (s167) — matches legacy semantics
-	// where `post_pass(result)` mutates `result` BEFORE `propagate_types`
-	// sees it. Pre-s167 wedges passed un-post_pass'd `result` here so
-	// non-arm64 propagation saw stale stmts.
-	t.apply_post_pass_tail_from_flat(&builder.flat)
+	t.post_pass_files_with_generated_parts(mut result, generated_parts)
+	// The compatibility files now receive the same file-mutating post-pass
+	// edits as the flat output, so run the non-file tail on those files for
+	// downstream legacy consumers.
+	t.apply_post_pass_tail(result)
 	return builder.flat, result
 }
 

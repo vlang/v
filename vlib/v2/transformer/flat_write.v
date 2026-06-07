@@ -112,7 +112,7 @@ import v2.types
 //     `transform_fn_decl_parts` directly, so the `ast.FnDecl` wrapper
 //     struct that session 3 built and then decomposed is never allocated.
 //     First real (if modest) memory saving in the flat-write port: one
-//     FnDecl struct per fn under V2_MARKUSED_FLAT-style flat-output paths.
+//     FnDecl struct per fn under flat-output paths.
 //
 //   Session 5 (2026-05-26): ParenExpr expr direct-emit + harness fixture.
 //     The ParenExpr arm in `transform_expr_to_flat` direct-emits via a

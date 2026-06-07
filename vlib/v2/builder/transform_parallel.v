@@ -829,21 +829,6 @@ fn lpt_buckets(files []ast.File, n_jobs int) [][]int {
 	return buckets
 }
 
-// transform_files_parallel_to_flat is the parallel counterpart of
-// Transformer.transform_files_to_flat. Today it composes the existing
-// parallel transform with a boundary flatten_files() — same total work
-// as before, just shifted from builder.v into the parallel path. The
-// API shape mirrors the sequential wedge so the builder can route
-// V2_MARKUSED_FLAT through a single uniform call site.
-//
-// The eventual perf win comes when each worker writes into a per-worker
-// FlatBuilder instead of materialising legacy []ast.File chunks; this
-// wedge is the right place to plug that in.
-fn (mut b Builder) transform_files_parallel_to_flat(mut trans transformer.Transformer) (ast.FlatAst, []ast.File) {
-	result := b.transform_files_parallel(mut trans)
-	return ast.flatten_files(result), result
-}
-
 // transform_files_parallel_to_flat_via_driver is the parallel counterpart to
 // `Transformer.transform_files_to_flat_via_driver` (s162). Same external
 // shape (returns `(ast.FlatAst, []ast.File)`) but uses the s161 driver
@@ -871,7 +856,7 @@ fn (mut b Builder) transform_files_parallel_to_flat(mut trans transformer.Transf
 // `[]ast.File` allocation disappears. Until then, this is migration
 // scaffolding pinned by the same pattern as s162.
 fn (mut b Builder) transform_files_parallel_to_flat_via_driver(mut trans transformer.Transformer) (ast.FlatAst, []ast.File) {
-	result := b.transform_files_parallel_no_post_pass(mut trans)
+	mut result := b.transform_files_parallel_no_post_pass(mut trans)
 	mut builder := ast.new_flat_builder()
 	for file in result {
 		builder.append_file(file)
@@ -882,10 +867,10 @@ fn (mut b Builder) transform_files_parallel_to_flat_via_driver(mut trans transfo
 	// `generated_fn_module_from_flat` (s164) walk `builder.flat` directly.
 	generated_parts := trans.generated_fns_parts_from_flat(&builder.flat)
 	trans.post_pass_to_flat(mut builder, generated_parts)
-	// Tail runs on the post_pass'd flat (s167) — matches legacy semantics
-	// where `post_pass(result)` mutates `result` BEFORE `propagate_types`
-	// sees it. Pre-s167 wedges passed un-post_pass'd `result` here so
-	// non-arm64 propagation saw stale stmts.
-	trans.apply_post_pass_tail_from_flat(&builder.flat)
+	trans.post_pass_files_with_generated_parts(mut result, generated_parts)
+	// The compatibility files now receive the same file-mutating post-pass
+	// edits as the flat output, so run the non-file tail on those files for
+	// downstream legacy consumers.
+	trans.apply_post_pass_tail(result)
 	return builder.flat, result
 }

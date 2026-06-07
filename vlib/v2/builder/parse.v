@@ -1003,9 +1003,12 @@ fn flat_comptime_cond_matches(cond ast.Cursor, options ChannelScanOptions) bool 
 			}
 		}
 		.expr_call, .expr_call_or_cast {
-			decoded := cond.flat.decode_expr(cond.id)
-			return ast_comptime_cond_matches_with_options(decoded, options.user_defines,
-				options.explicit_user_defines, options.target_os, options.allow_pkgconfig)
+			if pkg_name := flat_pkgconfig_call_name(cond) {
+				if !options.allow_pkgconfig {
+					return false
+				}
+				return vpref.comptime_pkgconfig_value(pkg_name)
+			}
 		}
 		else {}
 	}
@@ -1013,21 +1016,46 @@ fn flat_comptime_cond_matches(cond ast.Cursor, options ChannelScanOptions) bool 
 	return false
 }
 
-// parse_batch routes a parser.parse_files() call through either the direct
-// path, the roundtrip path (V2_FLAT_ROUNDTRIP=1), or — when V2_CHECK_FLAT=1
-// is also set — the streaming-into-shared-FlatBuilder path. The latter
-// accumulates a single FlatAst across all batches and no longer rehydrates
-// per-batch ast.Files: parse_files reads imports straight from the flat
-// store and does a single rehydration pass at the end.
+fn flat_pkgconfig_call_name(expr ast.Cursor) ?string {
+	match expr.kind() {
+		.expr_call {
+			lhs := expr.edge(0)
+			if lhs.is_valid() && lhs.kind() == .expr_ident && lhs.name() == 'pkgconfig'
+				&& expr.edge_count() == 2 {
+				return flat_string_literal_value(expr.edge(1))
+			}
+		}
+		.expr_call_or_cast {
+			lhs := expr.edge(0)
+			if lhs.is_valid() && lhs.kind() == .expr_ident && lhs.name() == 'pkgconfig' {
+				return flat_string_literal_value(expr.edge(1))
+			}
+		}
+		else {}
+	}
+
+	return none
+}
+
+fn flat_string_literal_value(expr ast.Cursor) ?string {
+	if !expr.is_valid() || expr.kind() != .expr_string {
+		return none
+	}
+	return unquote_ast_string_literal_value(expr.name())
+}
+
+// parse_batch routes normal parsing through the streaming-into-shared-
+// FlatBuilder path. V2_FLAT_ROUNDTRIP=1 remains as an explicit diagnostic
+// mode that parses to flat and immediately materializes legacy files.
 fn (mut b Builder) parse_batch(mut parser_reused parser.Parser, files []string) []ast.File {
+	if b.flat_roundtrip_enabled {
+		flat := parser_reused.parse_files_to_flat(files, mut b.file_set)
+		return flat.to_files()
+	}
 	if b.flat_check_enabled {
 		b.ensure_flat_builder_inited()
 		parser_reused.parse_files_into_flat(files, mut b.file_set, mut b.flat_builder)
 		return []ast.File{}
-	}
-	if b.flat_roundtrip_enabled {
-		flat := parser_reused.parse_files_to_flat(files, mut b.file_set)
-		return flat.to_files()
 	}
 	return parser_reused.parse_files(files, mut b.file_set)
 }

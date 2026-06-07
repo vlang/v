@@ -290,10 +290,7 @@ fn (mut t Transformer) collect_declared_method_fns_from_flat(flat &ast.FlatAst) 
 			if c.kind() != .stmt_fn_decl || !c.flag(ast.flag_is_method) {
 				continue
 			}
-			stmt := flat.decode_stmt(c.id)
-			if stmt is ast.FnDecl {
-				t.register_declared_method_fn(stmt, module_name)
-			}
+			t.register_declared_method_fn_cursor(c, module_name)
 		}
 	}
 }
@@ -310,6 +307,23 @@ fn (mut t Transformer) register_declared_method_fn(decl ast.FnDecl, module_name 
 		call_prefix := module_call_c_prefix(module_name)
 		if call_prefix != '' && call_prefix != module_name.replace('.', '__') {
 			t.declared_method_fns['${call_prefix}__${recv_name}__${decl.name}'] = true
+		}
+	}
+}
+
+fn (mut t Transformer) register_declared_method_fn_cursor(decl ast.Cursor, module_name string) {
+	recv := decl.edge(0)
+	recv_name := t.get_receiver_type_name_cursor(recv.edge(0))
+	if recv_name == '' || decl.name() == '' {
+		return
+	}
+	t.declared_method_fns['${recv_name}__${decl.name()}'] = true
+	if module_name != '' && module_name != 'builtin' && !recv_name.contains('__') {
+		qualified := '${module_name.replace('.', '__')}__${recv_name}__${decl.name()}'
+		t.declared_method_fns[qualified] = true
+		call_prefix := module_call_c_prefix(module_name)
+		if call_prefix != '' && call_prefix != module_name.replace('.', '__') {
+			t.declared_method_fns['${call_prefix}__${recv_name}__${decl.name()}'] = true
 		}
 	}
 }
