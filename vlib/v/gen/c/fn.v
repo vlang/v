@@ -1874,7 +1874,8 @@ fn (mut g Gen) gen_anon_fn(mut node ast.AnonFn) {
 				if obj := node.decl.scope.parent.find(var.name) {
 					if obj is ast.Var {
 						is_auto_heap = !obj.is_stack_obj && obj.is_auto_heap
-						is_auto_deref_capture = obj.is_auto_deref && !var.is_mut
+						is_auto_deref_capture = obj.is_auto_deref
+							&& (!var.is_mut || g.table.sym(obj.typ).kind == .alias)
 							&& (is_ptr || obj.typ.is_ptr())
 						if obj.smartcasts.len > 0 {
 							if g.table.type_kind(obj.typ) == .sum_type {
@@ -1917,12 +1918,15 @@ fn (mut g Gen) gen_anon_fn_decl(mut node ast.AnonFn) {
 				// so strip one pointer level from the field type.
 				// Similarly, when a `mut` parameter (is_auto_deref) is captured
 				// without `mut`, the closure stores the dereferenced value.
+				// For alias types (`type AppRef = &App`), the deref is needed for
+				// `mut` captures too, since the alias adds an indirection level.
 				if node.decl.scope != unsafe { nil } && node.decl.scope.parent != unsafe { nil } {
 					if scope_var := node.decl.scope.parent.find_var(var.name) {
 						if scope_var.is_auto_heap && !scope_var.is_stack_obj
 							&& resolved_var_typ.is_ptr() {
 							resolved_var_typ = resolved_var_typ.deref()
-						} else if scope_var.is_auto_deref && !var.is_mut
+						} else if scope_var.is_auto_deref
+							&& (!var.is_mut || g.table.sym(scope_var.typ).kind == .alias)
 							&& resolved_var_typ.is_ptr() {
 							resolved_var_typ = resolved_var_typ.deref()
 						}
@@ -7102,6 +7106,19 @@ fn (mut g Gen) ref_or_deref_arg_ex(arg ast.CallArg, expected_type_ ast.Type, lan
 	}
 	if arg.is_mut && !exp_is_ptr {
 		g.write('&/*mut*/')
+	} else if arg.is_mut && arg_typ.is_ptr() && expected_type.is_ptr() && exp_sym.kind == .alias
+		&& g.table.unaliased_type(expected_type) == arg_typ {
+		if arg.expr is ast.PrefixExpr && arg.expr.op == .amp {
+			g.write('&(${exp_sym.cname}[]){')
+			g.arg_no_auto_deref = true
+			g.expr(ast.Expr(arg.expr))
+			g.arg_no_auto_deref = false
+			g.write('}[0]')
+		} else {
+			g.write('&/*mut alias*/')
+			g.expr(arg.expr)
+		}
+		return
 	} else if arg.is_mut && arg_typ.is_ptr() && expected_type.is_ptr()
 		&& g.table.sym(arg_typ).kind == .struct && expected_type == arg_typ.ref() {
 		if arg.expr is ast.PrefixExpr && arg.expr.op == .amp {
