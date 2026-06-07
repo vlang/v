@@ -7,6 +7,7 @@ import os
 import v2.ast
 import v2.parser
 import v2.pref as vpref
+import v2.token
 
 fn should_expand_single_file_input(input string) bool {
 	if os.file_name(input).ends_with('_test.v') {
@@ -822,12 +823,7 @@ fn flat_collect_active_imports(stmts ast.CursorList, options ChannelScanOptions,
 fn flat_collect_active_imports_stmt(s ast.Cursor, options ChannelScanOptions, mut imports []ast.ImportStmt) {
 	match s.kind() {
 		.stmt_import {
-			// Import nodes are tiny (name/alias/symbols); decoding this one node is
-			// safe and matches the legacy `imports << stmt` arm.
-			imp := s.flat.decode_stmt(s.id)
-			if imp is ast.ImportStmt {
-				imports << imp
-			}
+			imports << s.import_stmt()
 		}
 		.stmt_expr {
 			inner := s.edge(0)
@@ -967,17 +963,54 @@ fn flat_fn_decl_body_active_for_channel_scan(fn_c ast.Cursor, options ChannelSca
 	return true
 }
 
-// flat_comptime_cond_matches evaluates a comptime condition. Conditions are tiny
-// exprs (`windows`, `!tinyc`, `a && b`, `pkgconfig('x')`, `x?`), so decoding just
-// this sub-expr is cheap and lets us reuse the exact legacy evaluator — the
-// whole-file decode this scan replaces is what was unsafe, not a leaf condition.
+// flat_comptime_cond_matches evaluates a comptime condition from FlatAst
+// cursors. Call/pkgconfig conditions still fall back to the legacy expression
+// evaluator until call argument cursors are ported.
 fn flat_comptime_cond_matches(cond ast.Cursor, options ChannelScanOptions) bool {
 	if !cond.is_valid() {
 		return false
 	}
-	decoded := cond.flat.decode_expr(cond.id)
-	return ast_comptime_cond_matches_with_options(decoded, options.user_defines,
-		options.explicit_user_defines, options.target_os, options.allow_pkgconfig)
+	match cond.kind() {
+		.expr_ident {
+			return ast_comptime_flag_matches(cond.name(), options.user_defines, options.target_os)
+		}
+		.expr_comptime, .expr_paren {
+			return flat_comptime_cond_matches(cond.edge(0), options)
+		}
+		.expr_prefix {
+			op := unsafe { token.Token(int(cond.aux())) }
+			if op == .not {
+				return !flat_comptime_cond_matches(cond.edge(0), options)
+			}
+		}
+		.expr_infix {
+			op := unsafe { token.Token(int(cond.aux())) }
+			if op == .and {
+				return flat_comptime_cond_matches(cond.edge(0), options)
+					&& flat_comptime_cond_matches(cond.edge(1), options)
+			}
+			if op == .logical_or {
+				return flat_comptime_cond_matches(cond.edge(0), options)
+					|| flat_comptime_cond_matches(cond.edge(1), options)
+			}
+		}
+		.expr_postfix {
+			op := unsafe { token.Token(int(cond.aux())) }
+			inner := cond.edge(0)
+			if op == .question && inner.kind() == .expr_ident {
+				return vpref.comptime_optional_define_value(inner.name(), options.user_defines,
+					options.explicit_user_defines)
+			}
+		}
+		.expr_call, .expr_call_or_cast {
+			decoded := cond.flat.decode_expr(cond.id)
+			return ast_comptime_cond_matches_with_options(decoded, options.user_defines,
+				options.explicit_user_defines, options.target_os, options.allow_pkgconfig)
+		}
+		else {}
+	}
+
+	return false
 }
 
 // parse_batch routes a parser.parse_files() call through either the direct

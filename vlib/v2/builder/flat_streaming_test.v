@@ -114,7 +114,7 @@ fn test_streaming_real_source_file() {
 	assert flat_batch.signature() == flat_stream.signature(), 'real-source streaming mismatch'
 }
 
-fn test_check_flat_default_parallel_transform_keeps_user_files() {
+fn test_default_flat_parallel_transform_keeps_user_files() {
 	path := write_tmp_file('parallel_transform_main', 'module main
 
 fn main() {
@@ -126,7 +126,7 @@ fn main() {
 		os.rm(path) or {}
 		os.rm(out_path) or {}
 	}
-	cmd := 'V2_CHECK_FLAT=1 ${os.quoted_path(@VEXE)} -v2 -nocache -o ${os.quoted_path(out_path)} ${os.quoted_path(path)} 2>&1'
+	cmd := '${os.quoted_path(@VEXE)} -v2 -nocache -o ${os.quoted_path(out_path)} ${os.quoted_path(path)} 2>&1'
 	res := os.execute(cmd)
 	assert res.exit_code == 0, res.output
 	run_res := os.execute(os.quoted_path(out_path))

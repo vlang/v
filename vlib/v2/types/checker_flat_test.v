@@ -161,3 +161,29 @@ fn pass(id Id) Id {
 	ret := fn_type.get_return_type() or { panic('check_flat missing pass return type') }
 	assert ret.name() == ret_files.name()
 }
+
+fn test_check_flat_matches_check_files_for_unsafe_pointer_selector_lhs() {
+	src := 'module main
+
+struct Node {
+mut:
+	children &voidptr
+	len int
+}
+
+fn node_at(raw voidptr) int {
+	return unsafe { &Node(raw) }.len
+}
+
+fn child_len(n Node, idx int) int {
+	return unsafe { &Node(n.children[idx]) }.len
+}
+'
+	env_files := check_via_files(src)
+	env_flat := check_via_flat(src)
+	fn_files := env_files.lookup_fn('main', 'node_at') or { panic('check_files missing node_at') }
+	fn_flat := env_flat.lookup_fn('main', 'node_at') or { panic('check_flat missing node_at') }
+	ret_files := fn_files.get_return_type() or { panic('check_files missing node_at return type') }
+	ret_flat := fn_flat.get_return_type() or { panic('check_flat missing node_at return type') }
+	assert ret_flat.name() == ret_files.name()
+}

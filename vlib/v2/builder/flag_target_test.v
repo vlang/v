@@ -22,6 +22,26 @@ fn collect_cflags_for_test_source(source string, mut prefs pref.Preferences) str
 	return b.collect_cflags_from_sources()
 }
 
+fn collect_cflags_for_flat_only_test_source(source string, mut prefs pref.Preferences) string {
+	tmp_dir := os.join_path(os.vtmp_dir(), 'v2_builder_flag_target_flat_${os.getpid()}')
+	os.mkdir_all(tmp_dir) or { panic(err) }
+	defer {
+		os.rmdir_all(tmp_dir) or {}
+	}
+	source_path := os.join_path(tmp_dir, 'main.v')
+	os.write_file(source_path, source) or { panic(err) }
+	prefs.skip_builtin = true
+	mut b := new_builder(&prefs)
+	b.flat = ast.flatten_files([
+		ast.File{
+			name: source_path
+			mod:  'main'
+		},
+	])
+	b.files = []ast.File{}
+	return b.collect_cflags_from_sources()
+}
+
 fn freestanding_test_call_name(name string, user_defines []string) string {
 	return freestanding_test_call_name_with_hooks(name, user_defines, [])
 }
@@ -302,6 +322,16 @@ $if linux {
 	free_explicit_prefs.explicit_user_defines = ['freestanding']
 	free_explicit_flags := collect_cflags_for_test_source(free_source, mut free_explicit_prefs)
 	assert free_explicit_flags.contains('-DOPTIONAL_FREE_BLOCK')
+}
+
+fn test_collect_cflags_from_sources_reads_flat_file_names() {
+	source := 'module main
+
+#flag -DFLAT_ONLY_FLAG
+'
+	mut prefs := pref.new_preferences()
+	flags := collect_cflags_for_flat_only_test_source(source, mut prefs)
+	assert flags.contains('-DFLAT_ONLY_FLAG')
 }
 
 fn test_collect_cflags_from_sources_keeps_optional_os_flags_custom_only() {

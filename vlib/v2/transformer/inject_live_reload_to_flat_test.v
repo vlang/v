@@ -9,7 +9,7 @@
 // produces. Uses all six FlatBuilder primitives needed by live_reload:
 // `replace_fn_body_stmts` (s158), `replace_file_stmt` (s155),
 // `prepend_file_stmts` (s156), plus the legacy `inject_live_into_stmts`
-// helper hydrating each FnDecl's body via `to_files_range`.
+// helper after decoding only the matching FnDecls from cursors.
 module transformer
 
 import v2.ast
