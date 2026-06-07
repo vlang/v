@@ -7110,7 +7110,9 @@ fn (mut g Gen) ref_or_deref_arg_ex(arg ast.CallArg, expected_type_ ast.Type, lan
 		&& g.table.unaliased_type(expected_type) == arg_typ {
 		if arg.expr is ast.PrefixExpr && arg.expr.op == .amp {
 			g.write('&(${exp_sym.cname}[]){')
+			g.arg_no_auto_deref = true
 			g.expr(ast.Expr(arg.expr))
+			g.arg_no_auto_deref = false
 			g.write('}[0]')
 		} else {
 			g.write('&/*mut alias*/')
