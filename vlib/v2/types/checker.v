@@ -1664,9 +1664,8 @@ pub fn (mut c Checker) get_module_scope(module_name string, parent &Scope) &Scop
 }
 
 // check_flat is the Phase 2 consumer entry point: accepts a FlatAst directly
-// rather than []ast.File. Every step reads from the FlatAst; legacy
-// []ast.File is only materialized for the ownership pass, which still
-// drives off the recursive AST.
+// rather than []ast.File. Top-level passes walk the FlatAst and decode only
+// the legacy nodes they still need internally.
 pub fn (mut c Checker) check_flat(flat &ast.FlatAst) {
 	c.register_selector_names_from_flat(flat)
 	c.preregister_all_scopes_from_flat(flat)
@@ -1703,10 +1702,7 @@ fn (mut c Checker) register_selector_names_from_flat(flat &ast.FlatAst) {
 }
 
 // register_imported_symbols_from_flat mirrors register_imported_symbols but
-// pulls each file's mod + imports + top stmts via the FlatAst readers.
-// Still rehydrates the top stmts so comptime-conditional imports can be
-// evaluated; that walk is contained but unavoidable without a flat
-// comptime-cond evaluator.
+// pulls each file's mod + imports through the FlatAst readers.
 fn (mut c Checker) register_imported_symbols_from_flat(flat &ast.FlatAst) {
 	builtin_scope := c.get_module_scope('builtin', universe)
 	for ff in flat.files {
@@ -1915,7 +1911,7 @@ fn (mut c Checker) preregister_types_from_flat(flat &ast.FlatAst, ff ast.FlatFil
 }
 
 // preregister_all_fn_signatures_from_flat mirrors preregister_all_fn_signatures
-// but reads each file's mod + top-level stmts directly from the FlatAst.
+// but walks each file's top-level stmt cursors directly from the FlatAst.
 fn (mut c Checker) preregister_all_fn_signatures_from_flat(flat &ast.FlatAst) {
 	for ff in flat.files {
 		c.preregister_fn_signatures_from_flat(flat, ff)
@@ -1941,24 +1937,32 @@ fn (mut c Checker) preregister_fn_signatures_from_flat(flat &ast.FlatAst, ff ast
 		flat: unsafe { flat }
 		id:   ff.file_id
 	}.list_at(2)
-	for di in 0 .. decls.len() {
-		dc := decls.at(di)
-		if dc.kind() == .stmt_fn_decl {
-			decl := flat.decode_fn_decl_signature(dc.id)
+	for i in 0 .. decls.len() {
+		c.preregister_fn_signature_stmt_from_flat(decls.at(i))
+	}
+	c.collect_fn_signatures_only = prev_collect
+}
+
+fn (mut c Checker) preregister_fn_signature_stmt_from_flat(stmt_c ast.Cursor) {
+	match stmt_c.kind() {
+		.stmt_fn_decl {
+			decl := stmt_c.flat.decode_fn_decl_signature(stmt_c.id)
 			prev_flat := c.pending_fn_body_flat
 			prev_flat_id := c.pending_fn_body_flat_id
-			c.pending_fn_body_flat = unsafe { flat }
-			c.pending_fn_body_flat_id = dc.id
+			c.pending_fn_body_flat = stmt_c.flat
+			c.pending_fn_body_flat_id = stmt_c.id
 			c.preregister_fn_signature_stmt(ast.Stmt(decl))
 			c.pending_fn_body_flat = prev_flat
 			c.pending_fn_body_flat_id = prev_flat_id
-			continue
 		}
-		if dc.kind() == .stmt_expr {
-			c.preregister_fn_signature_stmt(flat.decode_stmt(dc.id))
+		.stmt_expr {
+			// Keep comptime `$if` declaration selection on the legacy helper for
+			// now; it handles nested active branches while we avoid decoding
+			// unrelated top-level declarations in the common direct-fn path.
+			c.preregister_fn_signature_stmt(stmt_c.flat.decode_stmt(stmt_c.id))
 		}
+		else {}
 	}
-	c.collect_fn_signatures_only = prev_collect
 }
 
 // check_file_from_flat mirrors check_file but pulls mod + stmts straight
