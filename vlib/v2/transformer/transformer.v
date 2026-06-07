@@ -2606,6 +2606,50 @@ pub fn (mut t Transformer) transform_files_to_flat_direct(files []ast.File) ast.
 	return builder.flat
 }
 
+// transform_flat_to_flat_direct transforms flat input into flat output without
+// collecting a whole legacy []ast.File input or the transformed legacy output.
+// Generic monomorphization is append-only, so flat preparation keeps cloned
+// declarations in a per-file side table and the per-file loop decodes one
+// source file at a time.
+pub fn (mut t Transformer) transform_flat_to_flat_direct(flat &ast.FlatAst, files []ast.File) ast.FlatAst {
+	if files.len > 0 {
+		return t.transform_files_to_flat_direct(files)
+	}
+	timing := os.getenv('V2_TTIME') != ''
+	mut sw := time.new_stopwatch()
+	t_print_mem('enter')
+	t.pre_pass_from_flat(flat)
+	t_print_mem('after pre_pass')
+	if timing {
+		eprintln('  [ttime] flat input direct pre_pass: ${sw.elapsed().milliseconds()}ms')
+		sw = time.new_stopwatch()
+	}
+	extra_stmts := t.prepare_flat_for_transform(flat)
+	t_print_mem('after prepare/monomorphize')
+	if timing {
+		eprintln('  [ttime] flat input direct prepare: ${sw.elapsed().milliseconds()}ms')
+		sw = time.new_stopwatch()
+	}
+	mut builder := new_transform_output_flat_builder_from_flat(flat)
+	for i in 0 .. flat.files.len {
+		src_file := prepared_flat_file_for_transform(flat, extra_stmts, i) or { continue }
+		t.transform_file_to_flat(src_file, mut builder)
+	}
+	t_print_mem('after per-file flat loop')
+	if timing {
+		eprintln('  [ttime] flat input direct per-file: ${sw.elapsed().milliseconds()}ms')
+		sw = time.new_stopwatch()
+	}
+	generated_parts := t.generated_fns_parts_from_flat(&builder.flat)
+	t.post_pass_to_flat(mut builder, generated_parts)
+	t.apply_post_pass_tail_from_flat(&builder.flat)
+	t_print_mem('after post_pass')
+	if timing {
+		eprintln('  [ttime] flat input direct post_pass: ${sw.elapsed().milliseconds()}ms')
+	}
+	return builder.flat
+}
+
 fn new_transform_output_flat_builder(files []ast.File) ast.FlatBuilder {
 	mut total_bytes := i64(0)
 	for file in files {
@@ -2616,6 +2660,42 @@ fn new_transform_output_flat_builder(files []ast.File) ast.FlatBuilder {
 	}
 	nodes_cap, edges_cap, strings_cap := ast.arena_caps_for_bytes(total_bytes * 2)
 	return ast.new_flat_builder_with_capacity(nodes_cap, edges_cap, strings_cap)
+}
+
+fn new_transform_output_flat_builder_from_flat(flat &ast.FlatAst) ast.FlatBuilder {
+	mut total_bytes := i64(0)
+	for ff in flat.files {
+		name := flat.file_name(ff)
+		if name == '' || !os.exists(name) {
+			continue
+		}
+		total_bytes += os.file_size(name)
+	}
+	nodes_cap, edges_cap, strings_cap := ast.arena_caps_for_bytes(total_bytes * 2)
+	return ast.new_flat_builder_with_capacity(nodes_cap, edges_cap, strings_cap)
+}
+
+fn prepared_flat_file_for_transform(flat &ast.FlatAst, extra_stmts map[int][]ast.Stmt, fi int) ?ast.File {
+	src_arr := flat.to_files_range(fi, fi + 1)
+	if src_arr.len == 0 {
+		return none
+	}
+	mut file := src_arr[0]
+	extra := extra_stmts[fi] or { []ast.Stmt{} }
+	if extra.len > 0 {
+		mut stmts := []ast.Stmt{cap: file.stmts.len + extra.len}
+		stmts << file.stmts
+		stmts << extra
+		file = ast.File{
+			name:           file.name
+			mod:            file.mod
+			selector_names: file.selector_names
+			attributes:     file.attributes
+			imports:        file.imports
+			stmts:          stmts
+		}
+	}
+	return file
 }
 
 fn runtime_const_init_base_name(mod string) string {

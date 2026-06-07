@@ -772,6 +772,16 @@ fn use_if_guard_assign_map() int {
 }
 '
 
+const fixture_generic_fn = '
+fn id[T](x T) T {
+	return x
+}
+
+fn use_id() int {
+	return id[int](3)
+}
+'
+
 fn all_transformer_fixtures() []string {
 	return [
 		fixture_plain_fn,
@@ -1827,6 +1837,47 @@ fn test_to_flat_direct_parity_plain_fn() {
 
 fn test_to_flat_direct_parity_if_guard_assign() {
 	run_to_flat_direct_parity('to_flat_direct_if_guard_assign', fixture_if_guard_assign)
+}
+
+fn run_flat_input_to_flat_direct_matches_file_input_direct(label string, src string) {
+	p_files := parse_transformer_fixture(src)
+	p_flat := parse_transformer_fixture(src)
+
+	mut t_files := Transformer.new_with_pref(p_files.env, p_files.prefs)
+	files_direct := t_files.transform_files_to_flat_direct(p_files.files)
+
+	mut t_flat := Transformer.new_with_pref(p_flat.env, p_flat.prefs)
+	flat_direct := t_flat.transform_flat_to_flat_direct(&p_flat.flat, [])
+
+	if files_direct.files.len != flat_direct.files.len {
+		assert false, '${label}: file count mismatch: files=${files_direct.files.len} flat=${flat_direct.files.len}'
+		return
+	}
+	for i in 0 .. files_direct.files.len {
+		files_stmts := files_direct.child_at(files_direct.files[i].file_id, 2)
+		flat_stmts := flat_direct.child_at(flat_direct.files[i].file_id, 2)
+		files_sig := files_direct.subtree_signature(files_stmts)
+		flat_sig := flat_direct.subtree_signature(flat_stmts)
+		if files_sig == flat_sig {
+			continue
+		}
+		pa, pb := dump_signature_pair('${label}_file${i}', files_sig, flat_sig)
+		eprintln('[${label}] file ${i} subtree diverged.')
+		eprintln('  files input: ${pa}')
+		eprintln('  flat input: ${pb}')
+		eprintln('  diff with: diff -u ${pa} ${pb}')
+		assert false, '${label}: output diverged at file ${i} (see /tmp dumps above)'
+	}
+}
+
+fn test_flat_input_to_flat_direct_matches_file_input_direct() {
+	run_flat_input_to_flat_direct_matches_file_input_direct('flat_input_direct_if_guard_assign',
+		fixture_if_guard_assign)
+}
+
+fn test_flat_input_to_flat_direct_monomorphizes_generics_like_file_input() {
+	run_flat_input_to_flat_direct_matches_file_input_direct('flat_input_direct_generic_fn',
+		fixture_generic_fn)
 }
 
 fn test_to_flat_direct_parity_for_in_map() {

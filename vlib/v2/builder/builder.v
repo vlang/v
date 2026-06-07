@@ -277,19 +277,26 @@ pub fn (mut b Builder) build(files []string) {
 	// transform_files_from_flat, parallel streams per-worker via
 	// to_files_range. No up-front full rehydration needed in either case.
 	//
-	// Flat markused routes both transform paths through their *_to_flat wedge
-	// so the post-transform flatten lives inside the transformer call (one
-	// round-trip), avoiding a separate flatten_files() pass before mark_used_flat.
+	// Flat markused routes transform through flat-output wedges. Backends that
+	// can consume flat codegen use the direct flat-output path and drop the
+	// transformed []ast.File result; legacy backends keep the compatibility
+	// wedge that returns both flat and files.
 	mut flat_populated_by_transform := false
+	transform_flat_only := b.should_keep_flat_for_codegen()
 	if sequential_transform {
 		if use_native_flat_pipeline && !b.flat_check_enabled {
 			b.flat = trans.transform_files_to_flat_direct(b.files)
 			b.files = []ast.File{}
 			flat_populated_by_transform = true
 		} else if use_flat_markused {
-			new_flat, files_out := trans.transform_files_to_flat(&b.flat, b.files)
-			b.flat = new_flat
-			b.files = files_out
+			if transform_flat_only {
+				b.flat = trans.transform_flat_to_flat_direct(&b.flat, b.files)
+				b.files = []ast.File{}
+			} else {
+				new_flat, files_out := trans.transform_files_to_flat(&b.flat, b.files)
+				b.flat = new_flat
+				b.files = files_out
+			}
 			flat_populated_by_transform = true
 		} else if b.flat_check_enabled {
 			b.files = trans.transform_files_from_flat(&b.flat, b.files)
@@ -302,9 +309,14 @@ pub fn (mut b Builder) build(files []string) {
 			b.files = []ast.File{}
 			flat_populated_by_transform = true
 		} else if use_flat_markused {
-			new_flat, files_out := b.transform_files_parallel_to_flat(mut trans)
-			b.flat = new_flat
-			b.files = files_out
+			if transform_flat_only {
+				b.flat = trans.transform_flat_to_flat_direct(&b.flat, b.files)
+				b.files = []ast.File{}
+			} else {
+				new_flat, files_out := b.transform_files_parallel_to_flat(mut trans)
+				b.flat = new_flat
+				b.files = files_out
+			}
 			flat_populated_by_transform = true
 		} else if b.flat_check_enabled {
 			b.files = b.transform_files_parallel_from_flat(mut trans)
@@ -607,11 +619,10 @@ fn (mut b Builder) gen_ssa_c() {
 	ssa_builder.target_os = b.pref.target_os_or_host()
 
 	mut stage_start := sw.elapsed()
+	mut built_from_flat := false
 	if b.should_build_ssa_from_flat() {
 		ssa_builder.build_all_from_flat(&b.flat)
-		// SSA has copied the program into MIR; keep the FlatAst lifetime out of
-		// the later C generator and C compiler working sets.
-		b.flat = ast.FlatAst{}
+		built_from_flat = true
 	} else {
 		ssa_builder.build_all(b.files)
 	}
@@ -631,6 +642,9 @@ fn (mut b Builder) gen_ssa_c() {
 	}
 
 	if output_name.ends_with('.c') {
+		if built_from_flat {
+			b.flat = ast.FlatAst{}
+		}
 		stage_start = sw.elapsed()
 		mut gen := c.new_gen(mod)
 		c_source := gen.gen()
@@ -646,6 +660,12 @@ fn (mut b Builder) gen_ssa_c() {
 
 	cc := if b.pref.ccompiler.len > 0 { b.pref.ccompiler } else { configured_cc(b.pref.vroot) }
 	directive_flags := b.collect_cflags_from_sources()
+	if built_from_flat {
+		// SSA has copied the program into MIR, and directive scanning has read
+		// source names from the FlatAst. Keep the later C generator/compiler
+		// working sets clear of the transformed FlatAst.
+		b.flat = ast.FlatAst{}
+	}
 	mut cc_flag_parts := []string{}
 	env_flags := configured_cflags()
 	if env_flags.trim_space() != '' {
@@ -1997,6 +2017,12 @@ fn (b &Builder) collect_cflags_from_sources() string {
 	for file in b.files {
 		if file.name != '' {
 			scan_paths << file.name
+		}
+	}
+	for ff in b.flat.files {
+		name := b.flat.file_name(ff)
+		if name != '' {
+			scan_paths << name
 		}
 	}
 	cflags_target_os := b.cflags_target_os_for_local_compile()
