@@ -1,0 +1,172 @@
+// Copyright (c) 2019-2024 Alexander Medvednikov. All rights reserved.
+// Use of this source code is governed by an MIT license
+// that can be found in the LICENSE file.
+module http
+
+import io
+import time
+import net.mbedtls
+
+// This file implements TLS termination for net.http.Server on top of the
+// mbedtls SSL listener. It is gated to the default TLS backend; the matching
+// `server_tls_d_use_openssl.v` provides a clear-error stub when the project is
+// built with `-d use_openssl`.
+
+// listen_and_serve_tls is the TLS counterpart of listen_and_serve. It is
+// dispatched to by listen_and_serve when `s.cert` and `s.cert_key` are set.
+fn (mut s Server) listen_and_serve_tls() {
+	// Pick a default port that's distinct from the plain-HTTP default if the
+	// user hasn't overridden it.
+	addr := if s.addr == '' || s.addr == ':${default_server_port}' {
+		':${default_https_server_port}'
+	} else {
+		s.addr
+	}
+
+	mut listener := mbedtls.new_ssl_listener(addr, mbedtls.SSLConnectConfig{
+		cert:                   s.cert
+		cert_key:               s.cert_key
+		in_memory_verification: s.in_memory_verification
+		validate:               false // accept any client; servers don't verify clients by default
+	}) or {
+		eprintln('Listening TLS on ${addr} failed, err: ${err}')
+		return
+	}
+	defer {
+		listener.shutdown() or {}
+	}
+	s.addr = addr
+
+	ch := chan &mbedtls.SSLConn{cap: s.pool_channel_slots}
+	mut ws := []thread{cap: s.worker_num}
+	for wid in 0 .. s.worker_num {
+		ws << new_tls_handler_worker(wid, ch, s.handler, s.max_keep_alive_requests)
+	}
+
+	if s.show_startup_message {
+		println('Listening on https://${s.addr}/')
+		flush_stdout()
+	}
+
+	time.sleep(20 * time.millisecond)
+	s.state = .running
+	if s.on_running != unsafe { nil } {
+		s.on_running(mut s)
+	}
+	for s.state == .running {
+		mut conn := listener.accept() or {
+			if s.state != .running {
+				break
+			}
+			$if debug {
+				eprintln('TLS accept failed: ${err}; skipping')
+			}
+			continue
+		}
+		if s.read_timeout > 0 {
+			conn.set_read_timeout(s.read_timeout)
+		}
+		ch <- conn
+	}
+	if s.state == .stopped {
+		s.close()
+	}
+}
+
+// TlsHandlerWorker serves HTTP/1.1 requests on TLS-wrapped connections.
+struct TlsHandlerWorker {
+	id                      int
+	ch                      chan &mbedtls.SSLConn
+	max_keep_alive_requests int
+pub mut:
+	handler Handler
+}
+
+fn new_tls_handler_worker(wid int, ch chan &mbedtls.SSLConn, handler Handler, max_keep_alive_requests int) thread {
+	mut w := &TlsHandlerWorker{
+		id:                      wid
+		ch:                      ch
+		handler:                 handler
+		max_keep_alive_requests: max_keep_alive_requests
+	}
+	return spawn w.process_requests()
+}
+
+fn (mut w TlsHandlerWorker) process_requests() {
+	for {
+		mut conn := <-w.ch or { break }
+		w.handle_conn(mut conn)
+	}
+}
+
+fn (mut w TlsHandlerWorker) handle_conn(mut conn mbedtls.SSLConn) {
+	defer {
+		conn.shutdown() or {}
+	}
+	mut reader := io.new_buffered_reader(reader: conn)
+	defer {
+		unsafe {
+			reader.free()
+		}
+	}
+
+	mut request_count := 0
+	for {
+		mut req := parse_request(mut reader) or {
+			if err !is io.Eof {
+				$if debug {
+					eprintln('error parsing TLS request: ${err}')
+				}
+			}
+			return
+		}
+		request_count++
+		// `conn.ip` is the peer's IPv4 address as populated by mbedtls'
+		// accept(); blank for IPv6, which is acceptable for keep-alive logic.
+		if conn.ip != '' {
+			req.header.add_custom('Remote-Addr', conn.ip) or {}
+		}
+
+		mut resp := w.handler.handle(req)
+		normalize_server_response(mut resp, req)
+
+		if !resp.header.contains(.content_length) {
+			resp.header.set(.content_length, '${resp.body.len}')
+		}
+
+		max_reached := w.max_keep_alive_requests > 0 && request_count >= w.max_keep_alive_requests
+		req_conn := (req.header.get(.connection) or { '' }).to_lower()
+		resp_conn := (resp.header.get(.connection) or { '' }).to_lower()
+		keep_alive := if max_reached {
+			false
+		} else if resp_conn == 'close' {
+			false
+		} else if resp_conn == 'keep-alive' {
+			true
+		} else if req_conn == 'close' {
+			false
+		} else if req_conn == 'keep-alive' {
+			true
+		} else {
+			req.version == .v1_1
+		}
+		if max_reached || !resp.header.contains(.connection) {
+			if keep_alive {
+				resp.header.set(.connection, 'keep-alive')
+			} else {
+				resp.header.set(.connection, 'close')
+			}
+		}
+
+		conn.write(resp.bytes()) or {
+			$if debug {
+				eprintln('error sending TLS response: ${err}')
+			}
+			return
+		}
+
+		if !keep_alive {
+			return
+		}
+	}
+}
