@@ -405,6 +405,12 @@ fn (t &Transformer) type_from_init_expr(expr ast.InitExpr) ?types.Type {
 			name: generic_type_name
 		})
 	}
+	if typ := t.type_from_param_type_expr(expr.typ, []) {
+		normalized := t.normalize_type(typ)
+		if t.type_to_c_name(normalized) != '' {
+			return normalized
+		}
+	}
 	if typ := t.get_expr_type(expr.typ) {
 		normalized := t.normalize_type(typ)
 		if t.type_to_c_name(normalized) != '' {

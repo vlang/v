@@ -3608,20 +3608,6 @@ fn (t &Transformer) collect_ident_names_in_expr_depth(depth int, mut names map[s
 	}
 }
 
-fn runtime_const_int_map_value(values map[int]int, key int) int {
-	if key in values {
-		return values[key]
-	}
-	return 0
-}
-
-fn runtime_const_int_array_map_value(values map[int][]int, key int) []int {
-	if key in values {
-		return values[key]
-	}
-	return []int{}
-}
-
 fn (t &Transformer) order_runtime_const_inits(inits []RuntimeConstInit) []RuntimeConstInit {
 	if inits.len < 2 {
 		return inits
@@ -3644,16 +3630,16 @@ fn (t &Transformer) order_runtime_const_inits(inits []RuntimeConstInit) []Runtim
 				continue
 			}
 			if dep_idx := index_by_name[dep_name] {
-				mut dep := runtime_const_int_array_map_value(dependents, dep_idx)
+				mut dep := dependents[dep_idx] or { []int{} }
 				dep << i
 				dependents[dep_idx] = dep
-				indegree[i] = runtime_const_int_map_value(indegree, i) + 1
+				indegree[i] = (indegree[i] or { 0 }) + 1
 			}
 		}
 	}
 	mut ready := []int{}
 	for i := 0; i < inits.len; i++ {
-		deg := runtime_const_int_map_value(indegree, i)
+		deg := indegree[i] or { 0 }
 		if deg == 0 {
 			ready << i
 		}
@@ -3680,10 +3666,10 @@ fn (t &Transformer) order_runtime_const_inits(inits []RuntimeConstInit) []Runtim
 		cur := ready[best_pos]
 		ready.delete(best_pos)
 		ordered_idx << cur
-		deps := runtime_const_int_array_map_value(dependents, cur)
+		deps := dependents[cur] or { []int{} }
 		for dep in deps {
-			indegree[dep] = runtime_const_int_map_value(indegree, dep) - 1
-			deg := runtime_const_int_map_value(indegree, dep)
+			indegree[dep] = (indegree[dep] or { 0 }) - 1
+			deg := indegree[dep] or { 0 }
 			if deg == 0 {
 				ready << dep
 			}
@@ -5383,6 +5369,13 @@ fn (mut t Transformer) transform_assign_stmt_parts(stmt ast.AssignStmt) (token.T
 				if rhs_type := t.get_array_init_expr_type(rhs_src[0] as ast.ArrayInitExpr) {
 					t.register_local_var_type(lhs_name, rhs_type)
 				}
+			} else if rhs_src[0] is ast.MapInitExpr {
+				map_init := rhs_src[0] as ast.MapInitExpr
+				if map_init.typ !is ast.EmptyExpr {
+					if rhs_type := t.type_from_param_type_expr(map_init.typ, []) {
+						t.register_local_var_type(lhs_name, rhs_type)
+					}
+				}
 			} else if rhs_src[0] is ast.CallExpr || rhs_src[0] is ast.CallOrCastExpr
 				|| rhs_src[0] is ast.InitExpr || rhs_src[0] is ast.Ident
 				|| rhs_src[0] is ast.SelectorExpr {
@@ -5762,6 +5755,48 @@ fn (t &Transformer) map_index_lhs_type(lhs ast.Expr) ?types.Type {
 	if typ := t.get_expr_type(lhs) {
 		return typ
 	}
+	return none
+}
+
+fn (t &Transformer) index_expr_from_or_target(expr ast.Expr) ?ast.IndexExpr {
+	match expr {
+		ast.IndexExpr {
+			return expr
+		}
+		ast.GenericArgOrIndexExpr {
+			if lhs_type := t.get_expr_type(expr.lhs) {
+				if t.is_callable_type(lhs_type) {
+					return none
+				}
+			}
+			return ast.IndexExpr{
+				lhs:      expr.lhs
+				expr:     expr.expr
+				is_gated: false
+				pos:      expr.pos
+			}
+		}
+		ast.GenericArgs {
+			if expr.args.len != 1 {
+				return none
+			}
+			if lhs_type := t.get_expr_type(expr.lhs) {
+				if t.is_callable_type(lhs_type) {
+					return none
+				}
+			}
+			return ast.IndexExpr{
+				lhs:      expr.lhs
+				expr:     expr.args[0]
+				is_gated: false
+				pos:      expr.pos
+			}
+		}
+		else {
+			return none
+		}
+	}
+
 	return none
 }
 
@@ -6220,25 +6255,21 @@ fn (mut t Transformer) expand_direct_or_expr_assign(stmt ast.AssignStmt, or_expr
 
 	// Check for map index with or block: map[key] or { fallback }
 	// This is handled specially since it doesn't use Result/Option types
-	if call_expr is ast.IndexExpr {
-		if map_result := t.try_expand_map_index_or_assign(stmt, or_expr) {
-			return map_result
-		}
+	if map_result := t.try_expand_map_index_or_assign(stmt, or_expr) {
+		return map_result
 	}
 
 	// Check for array index with or block: arr[idx] or { fallback }
-	if call_expr is ast.IndexExpr {
-		if array_result := t.try_expand_array_index_or_assign(stmt, or_expr) {
-			return array_result
-		}
+	if array_result := t.try_expand_array_index_or_assign(stmt, or_expr) {
+		return array_result
 	}
 
 	// Check for string range with or block: s[0..20] or { 'fallback' }
 	// The checker types this as `string`, but it needs `string__substr_with_check`
 	// which returns `!string` (Result).
 	mut is_string_range_or := false
-	if call_expr is ast.IndexExpr {
-		if call_expr.expr is ast.RangeExpr && t.is_string_expr(call_expr.lhs) {
+	if index_expr := t.index_expr_from_or_target(call_expr) {
+		if index_expr.expr is ast.RangeExpr && t.is_string_expr(index_expr.lhs) {
 			is_string_range_or = true
 		}
 	}
@@ -6296,7 +6327,7 @@ fn (mut t Transformer) expand_direct_or_expr_assign(stmt ast.AssignStmt, or_expr
 	if t.is_native_be && is_string_range_or {
 		// String ranges still need the native inline bounds-check path because the
 		// checker records them as `string` instead of `!string`.
-		idx_expr := call_expr as ast.IndexExpr
+		idx_expr := t.index_expr_from_or_target(call_expr) or { return none }
 		mut stmts := []ast.Stmt{}
 		result_expr := t.expand_string_range_or_native_expr(idx_expr, or_expr.stmts, mut stmts)
 		stmts << ast.AssignStmt{
@@ -8831,8 +8862,8 @@ fn (mut t Transformer) expand_single_or_expr(or_expr ast.OrExpr, mut prefix_stmt
 
 	// Check for string range with or block: s[0..20] or { 'fallback' }
 	mut is_string_range_or := false
-	if call_expr is ast.IndexExpr {
-		if call_expr.expr is ast.RangeExpr && t.is_string_expr(call_expr.lhs) {
+	if index_expr := t.index_expr_from_or_target(call_expr) {
+		if index_expr.expr is ast.RangeExpr && t.is_string_expr(index_expr.lhs) {
 			is_string_range_or = true
 		}
 	}
@@ -8856,7 +8887,7 @@ fn (mut t Transformer) expand_single_or_expr(or_expr ast.OrExpr, mut prefix_stmt
 	}
 
 	if t.is_native_be && is_string_range_or {
-		idx_expr := call_expr as ast.IndexExpr
+		idx_expr := t.index_expr_from_or_target(call_expr) or { return ast.empty_expr }
 		return t.expand_string_range_or_native_expr(idx_expr, or_expr.stmts, mut prefix_stmts)
 	}
 
@@ -9145,10 +9176,7 @@ fn (t &Transformer) index_or_lhs_is_array_or_string(lhs ast.Expr) bool {
 }
 
 fn (mut t Transformer) try_expand_array_index_or(or_expr ast.OrExpr, mut _prefix_stmts []ast.Stmt) ?ast.Expr {
-	if or_expr.expr !is ast.IndexExpr {
-		return none
-	}
-	index_expr := or_expr.expr as ast.IndexExpr
+	index_expr := t.index_expr_from_or_target(or_expr.expr) or { return none }
 	// Skip map indices and range expressions
 	if _ := t.get_map_type_for_expr(index_expr.lhs) {
 		return none
@@ -9198,10 +9226,7 @@ fn (mut t Transformer) try_expand_array_index_or(or_expr ast.OrExpr, mut _prefix
 // try_expand_array_index_or_assign handles: x := arr[idx] or { fallback } and
 // x := str[idx] or { fallback }.
 fn (mut t Transformer) try_expand_array_index_or_assign(stmt ast.AssignStmt, or_expr ast.OrExpr) ?[]ast.Stmt {
-	if or_expr.expr !is ast.IndexExpr {
-		return none
-	}
-	index_expr := or_expr.expr as ast.IndexExpr
+	index_expr := t.index_expr_from_or_target(or_expr.expr) or { return none }
 	if _ := t.get_map_type_for_expr(index_expr.lhs) {
 		return none
 	}
@@ -9285,11 +9310,7 @@ fn (mut t Transformer) try_expand_array_index_or_assign(stmt ast.AssignStmt, or_
 // Transforms it to use map_get_check for safe lookup with fallback.
 // Returns none if not a map index expression.
 fn (mut t Transformer) try_expand_map_index_or(or_expr ast.OrExpr, mut prefix_stmts []ast.Stmt) ?ast.Expr {
-	// Check if the inner expression is an IndexExpr
-	if or_expr.expr !is ast.IndexExpr {
-		return none
-	}
-	index_expr := or_expr.expr as ast.IndexExpr
+	index_expr := t.index_expr_from_or_target(or_expr.expr) or { return none }
 
 	// Get the map type from environment and extract key/value types
 	map_expr_typ := t.map_index_lhs_type(index_expr.lhs) or { return none }
@@ -9454,10 +9475,10 @@ fn (mut t Transformer) try_expand_map_index_or(or_expr ast.OrExpr, mut prefix_st
 }
 
 fn (mut t Transformer) try_expand_map_index_addr_or_nil(or_expr ast.OrExpr, mut prefix_stmts []ast.Stmt) ?ast.Expr {
-	if t.is_eval_backend() || !or_stmts_are_nil(or_expr.stmts) || or_expr.expr !is ast.IndexExpr {
+	if t.is_eval_backend() || !or_stmts_are_nil(or_expr.stmts) {
 		return none
 	}
-	index_expr := or_expr.expr as ast.IndexExpr
+	index_expr := t.index_expr_from_or_target(or_expr.expr) or { return none }
 	map_expr_typ := t.map_index_lhs_type(index_expr.lhs) or { return none }
 	map_type := t.unwrap_map_type(map_expr_typ) or { return none }
 
@@ -9494,11 +9515,7 @@ fn (mut t Transformer) try_expand_map_index_addr_or_nil(or_expr ast.OrExpr, mut 
 // try_expand_map_index_or_assign handles: var := map[key] or { fallback }
 // Returns a list of statements that expand the assignment with proper map lookup.
 fn (mut t Transformer) try_expand_map_index_or_assign(stmt ast.AssignStmt, or_expr ast.OrExpr) ?[]ast.Stmt {
-	// Check if the inner expression is an IndexExpr
-	if or_expr.expr !is ast.IndexExpr {
-		return none
-	}
-	index_expr := or_expr.expr as ast.IndexExpr
+	index_expr := t.index_expr_from_or_target(or_expr.expr) or { return none }
 
 	// Get the map type from environment and extract key/value types
 	map_expr_typ := t.map_index_lhs_type(index_expr.lhs) or { return none }
@@ -10266,6 +10283,11 @@ fn (mut t Transformer) local_decl_rhs_type(expr ast.Expr) ?types.Type {
 		return typ
 	}
 	match expr {
+		ast.MapInitExpr {
+			if expr.typ !is ast.EmptyExpr {
+				return t.type_from_param_type_expr(expr.typ, [])
+			}
+		}
 		ast.StringLiteral, ast.StringInterLiteral {
 			return types.Type(types.string_)
 		}

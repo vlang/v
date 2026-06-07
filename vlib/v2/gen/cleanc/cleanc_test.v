@@ -3346,6 +3346,71 @@ fn test_fixed_array_contains_call_is_inlined() {
 	assert !out.contains('Array_fixed_rune_4_contains(')
 }
 
+fn test_raw_array_for_in_stmt_uses_typed_runtime_local() {
+	mut gen := Gen.new([])
+	gen.remember_runtime_local_type('items', 'Array_int')
+	gen.remember_runtime_local_type('total', 'int')
+	gen.gen_for_stmt(ast.ForStmt{
+		init:  ast.ForInStmt{
+			value: ast.Expr(ast.Ident{
+				name: 'item'
+			})
+			expr:  ast.Expr(ast.Ident{
+				name: 'items'
+			})
+		}
+		stmts: [
+			ast.Stmt(ast.AssignStmt{
+				op:  .plus_assign
+				lhs: [ast.Expr(ast.Ident{
+					name: 'total'
+				})]
+				rhs: [ast.Expr(ast.Ident{
+					name: 'item'
+				})]
+			}),
+		]
+	})
+	out := gen.sb.str()
+	assert out.contains('Array_int _arr_iter_')
+	assert out.contains('int item = ((int*)_arr_iter_')
+	assert out.contains('total += item;')
+	assert !out.contains('for (;;) {')
+}
+
+fn test_local_map_or_lowers_without_result_temp() {
+	csrc := cleanc_csrc_for_test_source('local_map_or', '
+fn local_map_defaults() int {
+	mut indegree := map[int]int{}
+	mut dependents := map[int][]int{}
+	dep := dependents[0] or { []int{} }
+	indegree[0] = (indegree[0] or { 0 }) + 1
+	return dep.len + (indegree[0] or { 0 })
+}
+')
+	assert csrc.contains('map__get')
+	assert !csrc.contains('Array_int _or_t')
+	assert !csrc.contains('.is_error')
+	assert !csrc.contains('IError err = _or_t')
+}
+
+fn test_nested_array_for_in_from_map_value_lowers_without_infinite_loop() {
+	csrc := cleanc_csrc_for_test_source('nested_map_array_for_in', '
+fn sum_stores(alloca_stores map[int][]int) int {
+	mut total := 0
+	for _, store_ids in alloca_stores {
+		for store_id in store_ids {
+			total += store_id
+		}
+	}
+	return total
+}
+')
+	assert csrc.contains('Array_int store_ids')
+	assert csrc.contains('int store_id')
+	assert !csrc.contains('for (;;) {')
+}
+
 fn test_new_array_from_c_array_elem_type_uses_sizeof_arg() {
 	mut gen := Gen.new([])
 	elem := gen.infer_array_elem_type_from_expr(ast.Expr(ast.CallExpr{
