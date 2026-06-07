@@ -79,18 +79,19 @@ fn test_h2_authority_omits_default_port() {
 	assert h2_authority('example.com', 8443) == 'example.com:8443'
 }
 
-// Opt-in end-to-end test against a real HTTP/2 server. Run with `-d network`,
+// End-to-end test against a real HTTP/2 server. Run with `-d network`,
 // e.g. `v -d network test vlib/net/http/h2_client_test.v`.
 fn test_http2_fetch_real_server() {
 	$if !network ? {
 		return
 	}
-	resp := fetch(url: 'https://www.google.com/', enable_http2: true)!
+	// HTTP/2 is negotiated by default for https requests.
+	resp := get('https://www.google.com/')!
 	assert resp.version() == .v2_0
 	assert resp.status_code == 200
 	assert resp.body.len > 0
-	// Without opting in, the same server is reached over HTTP/1.1.
-	plain := get('https://www.google.com/')!
+	// Opting out forces HTTP/1.1 against the same server.
+	plain := fetch(url: 'https://www.google.com/', enable_http2: false)!
 	assert plain.version() == .v1_1
 }
 
