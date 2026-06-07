@@ -137,35 +137,38 @@ mut:
 	declared_type_names_in_emit_files map[string]bool
 	source_module_names               map[string]bool
 
-	const_exprs                 map[string]string // const name → C expression string (for inlining)
-	const_types                 map[string]string // const name → C type string
-	const_c_names               map[string]string // generated const name → collision-free C symbol name
-	runtime_const_targets       map[string]bool   // module-scoped consts initialized in __v_init_consts_*
-	used_fn_keys                map[string]bool
-	force_emit_fn_names         map[string]bool   // function C names that must be emitted regardless of mark_used
-	weak_fn_names               map[string]bool   // function C names emitted as weak cross-cache specializations
-	export_fn_names             map[string]string // V-qualified name → export name (from @[export:] attribute)
-	called_fn_names             map[string]bool
-	declared_fn_names           map[string]bool // C function names that have a prototype/body head emitted
-	should_emit_fn_decl_cache   map[string]bool
-	generic_body_scan_cache     map[string]bool
-	collect_generic_scan_calls  bool
-	generic_call_spec_scan_only bool
-	generic_scan_called_names   map[string]bool
-	generic_spec_index          map[string][]string                // fn_name → matching keys in env.generic_types
-	generic_fn_decl_index       map[string]GenericFnDeclInfo       // generic fn C/base name → source location
-	specialized_fn_bases        map[string]bool                    // base C name with at least one _T_ specialization
-	late_generic_specs          map[string][]map[string]types.Type // additional comptime-discovered specs
-	anon_fn_defs                []string        // lifted anonymous function definitions
-	late_struct_defs            []string        // struct definitions discovered during pass 5 codegen
-	pending_late_body_keys      map[string]bool // body_keys in late_struct_defs but not yet flushed to g.sb
-	late_generic_str_instances  []string        // c_names of late generic struct instances needing str macro check
-	pass5_start_pos             int             // position in sb where pass 5 starts
-	deferred_m_includes         []string        // Objective-C .m file #include lines deferred until after type definitions
-	spawned_fns                 map[string]bool // spawn wrapper names already emitted
-	spawn_wrapper_defs          []string        // spawn wrapper struct + function definitions
-	emitted_trampolines         map[string]bool // bound method trampoline names already emitted
-	trampoline_defs             []string        // bound method trampoline definitions
+	const_exprs                           map[string]string // const name → C expression string (for inlining)
+	const_types                           map[string]string // const name → C type string
+	const_c_names                         map[string]string // generated const name → collision-free C symbol name
+	runtime_const_targets                 map[string]bool   // module-scoped consts initialized in __v_init_consts_*
+	used_fn_keys                          map[string]bool
+	force_emit_fn_names                   map[string]bool   // function C names that must be emitted regardless of mark_used
+	weak_fn_names                         map[string]bool   // function C names emitted as weak cross-cache specializations
+	export_fn_names                       map[string]string // V-qualified name → export name (from @[export:] attribute)
+	called_fn_names                       map[string]bool
+	declared_fn_names                     map[string]bool // C function names that have a prototype/body head emitted
+	should_emit_fn_decl_cache             map[string]bool
+	generic_body_scan_cache               map[string]bool
+	collect_generic_scan_calls            bool
+	generic_call_spec_scan_only           bool
+	generic_scan_called_names             map[string]bool
+	generic_spec_index                    map[string][]string                // fn_name → matching keys in env.generic_types
+	generic_fn_decl_index                 map[string]GenericFnDeclInfo       // generic fn C/base name → source location
+	specialized_fn_bases                  map[string]bool                    // base C name with at least one _T_ specialization
+	specialized_receiver_methods          map[string]string                  // receiver|method -> single matching specialized method
+	specialized_receiver_method_ambiguous map[string]bool                    // receiver|method keys with multiple matches
+	specialized_receiver_method_miss      map[string]bool                    // receiver|method keys with no matching specialized method
+	late_generic_specs                    map[string][]map[string]types.Type // additional comptime-discovered specs
+	anon_fn_defs                          []string        // lifted anonymous function definitions
+	late_struct_defs                      []string        // struct definitions discovered during pass 5 codegen
+	pending_late_body_keys                map[string]bool // body_keys in late_struct_defs but not yet flushed to g.sb
+	late_generic_str_instances            []string        // c_names of late generic struct instances needing str macro check
+	pass5_start_pos                       int             // position in sb where pass 5 starts
+	deferred_m_includes                   []string        // Objective-C .m file #include lines deferred until after type definitions
+	spawned_fns                           map[string]bool // spawn wrapper names already emitted
+	spawn_wrapper_defs                    []string        // spawn wrapper struct + function definitions
+	emitted_trampolines                   map[string]bool // bound method trampoline names already emitted
+	trampoline_defs                       []string        // bound method trampoline definitions
 	// @[live] hot code reloading
 	live_fns                []LiveFnInfo                     // @[live] functions detected during code generation
 	live_source_file        string                           // source file containing @[live] functions
@@ -185,6 +188,15 @@ mut:
 	typedef_c_types            map[string]bool // C struct names with @[typedef] attribute (emit without 'struct' prefix)
 	blocked_fn_keys            map[string]bool // worker-only fn keys reserved to other pass5 chunks
 	cached_vhash               string          // cached git short hash for @VHASH/@VCURRENTHASH
+	pass5_worker_id            int
+	pass5_file_times           []Pass5FileTime
+}
+
+struct Pass5FileTime {
+	file      string
+	ms        i64
+	cost      int
+	worker_id int
 }
 
 struct GenericStructInstance {
@@ -435,57 +447,63 @@ fn new_gen_with_env_and_pref_impl(env &types.Environment, p &pref.Preferences) &
 		declared_type_names_in_emit_files: map[string]bool{}
 		cur_import_modules:                map[string]string{}
 
-		fixed_array_fields:          map[string]bool{}
-		fixed_array_field_elem:      map[string]string{}
-		fixed_array_globals:         map[string]bool{}
-		tuple_aliases:               map[string][]string{}
-		struct_field_types:          map[string]string{}
-		enum_value_to_enum:          map[string]string{}
-		enum_type_fields:            map[string]map[string]bool{}
-		array_aliases:               map[string]bool{}
-		map_aliases:                 map[string]bool{}
-		result_aliases:              map[string]bool{}
-		option_aliases:              map[string]bool{}
-		alias_base_types:            map[string]string{}
-		fn_type_aliases:             map[string]bool{}
-		emitted_result_structs:      map[string]bool{}
-		emitted_option_structs:      map[string]bool{}
-		embedded_field_owner:        map[string]string{}
-		fixed_array_ret_wrappers:    map[string]string{}
-		emit_modules:                map[string]bool{}
-		type_modules:                map[string]bool{}
-		source_module_names:         map[string]bool{}
-		exported_const_seen:         map[string]bool{}
-		exported_const_symbols:      []ExportedConstSymbol{}
-		emitted_interface_bodies:    map[string]bool{}
-		interface_data_fields:       map[string][]InterfaceDataFieldInfo{}
-		interface_wrapper_specs:     map[string]InterfaceWrapperSpec{}
-		needed_interface_wrappers:   map[string]bool{}
-		ierror_wrapper_bases:        map[string]bool{}
-		needed_ierror_wrapper_bases: map[string]bool{}
-		c_file_fn_keys:              map[string]bool{}
-		module_storage_vars:         map[string]string{}
-		c_extern_module_storage:     map[string]string{}
-		runtime_const_targets:       map[string]bool{}
-		const_c_names:               map[string]string{}
-		used_fn_keys:                map[string]bool{}
-		force_emit_fn_names:         map[string]bool{}
-		weak_fn_names:               map[string]bool{}
-		called_fn_names:             map[string]bool{}
-		declared_fn_names:           map[string]bool{}
-		should_emit_fn_decl_cache:   map[string]bool{}
-		generic_body_scan_cache:     map[string]bool{}
-		generic_scan_called_names:   map[string]bool{}
-		generic_fn_decl_index:       map[string]GenericFnDeclInfo{}
-		specialized_fn_bases:        map[string]bool{}
-		c_struct_types:              map[string]bool{}
-		typedef_c_types:             map[string]bool{}
-		blocked_fn_keys:             map[string]bool{}
+		fixed_array_fields:                    map[string]bool{}
+		fixed_array_field_elem:                map[string]string{}
+		fixed_array_globals:                   map[string]bool{}
+		tuple_aliases:                         map[string][]string{}
+		struct_field_types:                    map[string]string{}
+		enum_value_to_enum:                    map[string]string{}
+		enum_type_fields:                      map[string]map[string]bool{}
+		array_aliases:                         map[string]bool{}
+		map_aliases:                           map[string]bool{}
+		result_aliases:                        map[string]bool{}
+		option_aliases:                        map[string]bool{}
+		alias_base_types:                      map[string]string{}
+		fn_type_aliases:                       map[string]bool{}
+		emitted_result_structs:                map[string]bool{}
+		emitted_option_structs:                map[string]bool{}
+		embedded_field_owner:                  map[string]string{}
+		fixed_array_ret_wrappers:              map[string]string{}
+		emit_modules:                          map[string]bool{}
+		type_modules:                          map[string]bool{}
+		source_module_names:                   map[string]bool{}
+		exported_const_seen:                   map[string]bool{}
+		exported_const_symbols:                []ExportedConstSymbol{}
+		emitted_interface_bodies:              map[string]bool{}
+		interface_data_fields:                 map[string][]InterfaceDataFieldInfo{}
+		interface_wrapper_specs:               map[string]InterfaceWrapperSpec{}
+		needed_interface_wrappers:             map[string]bool{}
+		ierror_wrapper_bases:                  map[string]bool{}
+		needed_ierror_wrapper_bases:           map[string]bool{}
+		c_file_fn_keys:                        map[string]bool{}
+		module_storage_vars:                   map[string]string{}
+		c_extern_module_storage:               map[string]string{}
+		runtime_const_targets:                 map[string]bool{}
+		const_c_names:                         map[string]string{}
+		used_fn_keys:                          map[string]bool{}
+		force_emit_fn_names:                   map[string]bool{}
+		weak_fn_names:                         map[string]bool{}
+		called_fn_names:                       map[string]bool{}
+		declared_fn_names:                     map[string]bool{}
+		should_emit_fn_decl_cache:             map[string]bool{}
+		generic_body_scan_cache:               map[string]bool{}
+		generic_scan_called_names:             map[string]bool{}
+		generic_fn_decl_index:                 map[string]GenericFnDeclInfo{}
+		specialized_fn_bases:                  map[string]bool{}
+		specialized_receiver_methods:          map[string]string{}
+		specialized_receiver_method_ambiguous: map[string]bool{}
+		specialized_receiver_method_miss:      map[string]bool{}
+		c_struct_types:                        map[string]bool{}
+		typedef_c_types:                       map[string]bool{}
+		blocked_fn_keys:                       map[string]bool{}
 	}
 }
 
 fn (mut g Gen) gen_file(file ast.File) {
 	g.set_file_module(file)
+	file_name := g.cur_file_name
+	file_module := g.cur_module
+	file_import_modules := g.cur_import_modules.clone()
 	mut global_indices := []int{}
 	mut fn_indices := []int{}
 	for i in 0 .. file.stmts.len {
@@ -509,7 +527,7 @@ fn (mut g Gen) gen_file(file ast.File) {
 		// Re-set file/module context before each function body emission,
 		// because body generation can modify g.cur_file_name and g.cur_module
 		// (e.g. via find_generic_fn_decl_by_base_name, resolve_method_on_embedded_decl).
-		g.set_file_module(file)
+		g.restore_file_module_context(file_name, file_module, file_import_modules)
 		stmt_ptr := &file.stmts[fi]
 		fn_decl := (*stmt_ptr) as ast.FnDecl
 		g.gen_fn_decl_ptr(&fn_decl)
@@ -2314,8 +2332,36 @@ fn (mut g Gen) emit_weak_receiver_generic_method_specializations(node &ast.FnDec
 // gen_pass5_files generates function bodies for a range of file indices.
 // Used by parallel dispatch — each worker calls this with its assigned chunk.
 pub fn (mut g Gen) gen_pass5_files(file_indices []int) {
+	stats_enabled := g.cgen_stats_enabled()
 	for fi in file_indices {
-		g.gen_file(g.files[fi])
+		if stats_enabled {
+			mut sw := time.new_stopwatch()
+			g.gen_file(g.files[fi])
+			elapsed_ms := sw.elapsed().milliseconds()
+			if elapsed_ms > 0 {
+				g.pass5_file_times << Pass5FileTime{
+					file:      g.files[fi].name
+					ms:        elapsed_ms
+					cost:      g.pass5_file_cost(fi)
+					worker_id: g.pass5_worker_id
+				}
+			}
+		} else {
+			g.gen_file(g.files[fi])
+		}
+	}
+}
+
+pub fn (g &Gen) print_pass5_file_times(limit int) {
+	if !g.cgen_stats_enabled() || g.pass5_file_times.len == 0 {
+		return
+	}
+	mut times := g.pass5_file_times.clone()
+	times.sort(a.ms > b.ms)
+	stats_scope := g.cgen_stats_scope_label()
+	n := if times.len < limit { times.len } else { limit }
+	for item in times[..n] {
+		println('   - C Gen/${stats_scope} pass 5 file ${item.ms}ms worker=${item.worker_id} cost=${item.cost} ${item.file}')
 	}
 }
 
@@ -2551,72 +2597,76 @@ pub fn (g &Gen) new_pass5_worker(file_indices []int, worker_id int) &Gen {
 		pref:  unsafe { g.pref }
 		sb:    strings.new_builder(64_000)
 		// Read-only lookup maps — clone to avoid COW data races
-		fn_param_is_ptr:             g.fn_param_is_ptr.clone()
-		fn_param_types:              g.fn_param_types.clone()
-		fn_return_types:             g.fn_return_types.clone()
-		v_fn_return_types:           g.v_fn_return_types.clone()
-		struct_field_types:          g.struct_field_types.clone()
-		enum_value_to_enum:          g.enum_value_to_enum.clone()
-		enum_type_fields:            g.enum_type_fields.clone()
-		array_aliases:               g.array_aliases.clone()
-		map_aliases:                 g.map_aliases.clone()
-		result_aliases:              g.result_aliases.clone()
-		option_aliases:              g.option_aliases.clone()
-		alias_base_types:            g.alias_base_types.clone()
-		fixed_array_fields:          g.fixed_array_fields.clone()
-		fixed_array_field_elem:      g.fixed_array_field_elem.clone()
-		fixed_array_globals:         g.fixed_array_globals.clone()
-		fixed_array_ret_wrappers:    g.fixed_array_ret_wrappers.clone()
-		tuple_aliases:               g.tuple_aliases.clone()
-		sum_type_variants:           g.sum_type_variants.clone()
-		embedded_field_owner:        g.embedded_field_owner.clone()
-		primitive_type_aliases:      g.primitive_type_aliases.clone()
-		emit_modules:                g.emit_modules.clone()
-		type_modules:                g.type_modules.clone()
-		emit_files:                  g.emit_files.clone()
-		emitted_result_structs:      g.emitted_result_structs.clone()
-		emitted_option_structs:      g.emitted_option_structs.clone()
-		interface_methods:           g.interface_methods.clone()
-		interface_data_fields:       g.interface_data_fields.clone()
-		emitted_interface_bodies:    g.emitted_interface_bodies.clone()
-		interface_wrapper_specs:     g.interface_wrapper_specs.clone()
-		ierror_wrapper_bases:        g.ierror_wrapper_bases.clone()
-		collected_fixed_array_types: g.collected_fixed_array_types.clone()
-		collected_map_types:         g.collected_map_types.clone()
-		c_file_fn_keys:              g.c_file_fn_keys.clone()
-		global_var_modules:          g.global_var_modules.clone()
-		global_var_types:            g.global_var_types.clone()
-		const_exprs:                 g.const_exprs.clone()
-		const_types:                 g.const_types.clone()
-		const_c_names:               g.const_c_names.clone()
-		module_storage_vars:         g.module_storage_vars.clone()
-		c_extern_module_storage:     g.c_extern_module_storage.clone()
-		runtime_const_targets:       g.runtime_const_targets.clone()
-		export_const_symbols:        g.export_const_symbols
-		cache_bundle_name:           g.cache_bundle_name
-		cached_init_calls:           g.cached_init_calls.clone()
-		used_fn_keys:                g.used_fn_keys.clone()
-		force_emit_fn_names:         g.force_emit_fn_names.clone()
-		weak_fn_names:               g.weak_fn_names.clone()
-		export_fn_names:             g.export_fn_names.clone()
-		called_fn_names:             g.called_fn_names.clone()
-		declared_fn_names:           g.declared_fn_names.clone()
-		should_emit_fn_decl_cache:   g.should_emit_fn_decl_cache.clone()
-		generic_body_scan_cache:     g.generic_body_scan_cache.clone()
-		fn_type_aliases:             g.fn_type_aliases.clone()
-		generic_spec_index:          g.generic_spec_index.clone()
-		generic_fn_decl_index:       g.generic_fn_decl_index.clone()
-		specialized_fn_bases:        g.specialized_fn_bases.clone()
-		late_generic_specs:          g.late_generic_specs.clone()
-		generic_scan_called_names:   map[string]bool{}
-		generic_struct_bindings:     g.generic_struct_bindings.clone()
-		generic_struct_instances:    g.generic_struct_instances.clone()
-		c_struct_types:              g.c_struct_types.clone()
-		typedef_c_types:             g.typedef_c_types.clone()
+		fn_param_is_ptr:                       g.fn_param_is_ptr.clone()
+		fn_param_types:                        g.fn_param_types.clone()
+		fn_return_types:                       g.fn_return_types.clone()
+		v_fn_return_types:                     g.v_fn_return_types.clone()
+		struct_field_types:                    g.struct_field_types.clone()
+		enum_value_to_enum:                    g.enum_value_to_enum.clone()
+		enum_type_fields:                      g.enum_type_fields.clone()
+		array_aliases:                         g.array_aliases.clone()
+		map_aliases:                           g.map_aliases.clone()
+		result_aliases:                        g.result_aliases.clone()
+		option_aliases:                        g.option_aliases.clone()
+		alias_base_types:                      g.alias_base_types.clone()
+		fixed_array_fields:                    g.fixed_array_fields.clone()
+		fixed_array_field_elem:                g.fixed_array_field_elem.clone()
+		fixed_array_globals:                   g.fixed_array_globals.clone()
+		fixed_array_ret_wrappers:              g.fixed_array_ret_wrappers.clone()
+		tuple_aliases:                         g.tuple_aliases.clone()
+		sum_type_variants:                     g.sum_type_variants.clone()
+		embedded_field_owner:                  g.embedded_field_owner.clone()
+		primitive_type_aliases:                g.primitive_type_aliases.clone()
+		emit_modules:                          g.emit_modules.clone()
+		type_modules:                          g.type_modules.clone()
+		emit_files:                            g.emit_files.clone()
+		emitted_result_structs:                g.emitted_result_structs.clone()
+		emitted_option_structs:                g.emitted_option_structs.clone()
+		interface_methods:                     g.interface_methods.clone()
+		interface_data_fields:                 g.interface_data_fields.clone()
+		emitted_interface_bodies:              g.emitted_interface_bodies.clone()
+		interface_wrapper_specs:               g.interface_wrapper_specs.clone()
+		ierror_wrapper_bases:                  g.ierror_wrapper_bases.clone()
+		collected_fixed_array_types:           g.collected_fixed_array_types.clone()
+		collected_map_types:                   g.collected_map_types.clone()
+		c_file_fn_keys:                        g.c_file_fn_keys.clone()
+		global_var_modules:                    g.global_var_modules.clone()
+		global_var_types:                      g.global_var_types.clone()
+		const_exprs:                           g.const_exprs.clone()
+		const_types:                           g.const_types.clone()
+		const_c_names:                         g.const_c_names.clone()
+		module_storage_vars:                   g.module_storage_vars.clone()
+		c_extern_module_storage:               g.c_extern_module_storage.clone()
+		runtime_const_targets:                 g.runtime_const_targets.clone()
+		export_const_symbols:                  g.export_const_symbols
+		cache_bundle_name:                     g.cache_bundle_name
+		cached_init_calls:                     g.cached_init_calls.clone()
+		used_fn_keys:                          g.used_fn_keys.clone()
+		force_emit_fn_names:                   g.force_emit_fn_names.clone()
+		weak_fn_names:                         g.weak_fn_names.clone()
+		export_fn_names:                       g.export_fn_names.clone()
+		called_fn_names:                       g.called_fn_names.clone()
+		declared_fn_names:                     g.declared_fn_names.clone()
+		should_emit_fn_decl_cache:             g.should_emit_fn_decl_cache.clone()
+		generic_body_scan_cache:               g.generic_body_scan_cache.clone()
+		fn_type_aliases:                       g.fn_type_aliases.clone()
+		generic_spec_index:                    g.generic_spec_index.clone()
+		generic_fn_decl_index:                 g.generic_fn_decl_index.clone()
+		specialized_fn_bases:                  g.specialized_fn_bases.clone()
+		specialized_receiver_methods:          g.specialized_receiver_methods.clone()
+		specialized_receiver_method_ambiguous: g.specialized_receiver_method_ambiguous.clone()
+		specialized_receiver_method_miss:      g.specialized_receiver_method_miss.clone()
+		late_generic_specs:                    g.late_generic_specs.clone()
+		generic_scan_called_names:             map[string]bool{}
+		generic_struct_bindings:               g.generic_struct_bindings.clone()
+		generic_struct_instances:              g.generic_struct_instances.clone()
+		c_struct_types:                        g.c_struct_types.clone()
+		typedef_c_types:                       g.typedef_c_types.clone()
 		// Per-worker mutable state (starts fresh).
 		// Each worker gets a unique tmp_counter offset to avoid name collisions
 		// for generated trampolines (_bound_method_N, _bound_recv_N, etc.).
 		tmp_counter:                 (worker_id + 1) * 100_000
+		pass5_worker_id:             worker_id
 		emitted_types:               worker_emitted
 		blocked_fn_keys:             blocked_fn_keys
 		runtime_local_types:         map[string]string{}
@@ -2667,6 +2717,7 @@ pub fn (mut g Gen) merge_pass5_worker(w &Gen) {
 	g.spawn_wrapper_defs << w.spawn_wrapper_defs
 	g.trampoline_defs << w.trampoline_defs
 	g.exported_const_symbols << w.exported_const_symbols
+	g.pass5_file_times << w.pass5_file_times
 	// Merge accumulator maps
 	for k, v in w.needed_interface_wrappers {
 		g.needed_interface_wrappers[k] = v

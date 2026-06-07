@@ -962,6 +962,19 @@ fn (mut b Builder) write_cached_called_fn_names(cache_dir string, cache_name str
 	os.write_file(cached_called_fn_names_path(cache_dir, cache_name), names.join('\n')) or {}
 }
 
+fn (b &Builder) cgen_builder_stats_enabled() bool {
+	return b.pref != unsafe { nil } && b.pref.stats
+}
+
+fn (b &Builder) mark_cgen_builder_step(stats_enabled bool, cache_name string, mut sw time.StopWatch, stage_start time.Duration, step string) time.Duration {
+	if !stats_enabled {
+		return stage_start
+	}
+	now := sw.elapsed()
+	println('   - C Gen/cache:${cache_name} cache.${step}: ${time.Duration(now - stage_start).milliseconds()}ms')
+	return now
+}
+
 fn cache_type_module_names(cache_bundle_name string, emit_modules []string) []string {
 	if cache_bundle_name == '' {
 		return emit_modules
@@ -1457,17 +1470,29 @@ fn (mut b Builder) ensure_cached_module_object(cache_dir string, cache_name stri
 		return error('missing cached ${cache_name} object for .vh parse')
 	}
 
+	stats_enabled := b.cgen_builder_stats_enabled()
+	mut stats_sw := time.new_stopwatch()
+	mut stage_start := stats_sw.elapsed()
 	cached_called_before := b.cached_called_fn_names.clone()
+	stage_start = b.mark_cgen_builder_step(stats_enabled, cache_name, mut stats_sw, stage_start,
+		'called_before_clone')
 	module_source := b.gen_cleanc_source_for_cache(emit_modules, cache_name, use_markused)
+	stage_start = b.mark_cgen_builder_step(stats_enabled, cache_name, mut stats_sw, stage_start,
+		'source')
 	if module_source == '' {
 		return error('failed to generate C source for ${cache_name}')
 	}
 	os.write_file(c_path, module_source)!
+	stage_start = b.mark_cgen_builder_step(stats_enabled, cache_name, mut stats_sw, stage_start,
+		'write_c')
 
 	compile_cmd := '${cc} ${cc_flags} -w -Wno-incompatible-function-pointer-types -c "${c_path}" -o "${obj_path}"${error_limit_flag}'
 	run_cc_cmd_or_exit(compile_cmd, 'C compilation', b.pref.show_cc)
+	stage_start =
+		b.mark_cgen_builder_step(stats_enabled, cache_name, mut stats_sw, stage_start, 'cc')
 	b.write_cached_called_fn_names(cache_dir, cache_name, cached_called_before)
 	os.write_file(stamp_path, expected_stamp)!
+	_ = b.mark_cgen_builder_step(stats_enabled, cache_name, mut stats_sw, stage_start, 'metadata')
 	return obj_path
 }
 
@@ -1499,17 +1524,29 @@ fn (mut b Builder) ensure_cached_parsed_module_object(cache_dir string, cache_na
 		return error('missing cached ${cache_name} object for .vh parse')
 	}
 
+	stats_enabled := b.cgen_builder_stats_enabled()
+	mut stats_sw := time.new_stopwatch()
+	mut stage_start := stats_sw.elapsed()
 	cached_called_before := b.cached_called_fn_names.clone()
+	stage_start = b.mark_cgen_builder_step(stats_enabled, cache_name, mut stats_sw, stage_start,
+		'called_before_clone')
 	mut module_source := b.gen_cleanc_source_for_cache(module_names, cache_name, use_markused)
+	stage_start = b.mark_cgen_builder_step(stats_enabled, cache_name, mut stats_sw, stage_start,
+		'source')
 	if module_source == '' {
 		return error('failed to generate C source for ${cache_name}')
 	}
 	os.write_file(c_path, module_source)!
+	stage_start = b.mark_cgen_builder_step(stats_enabled, cache_name, mut stats_sw, stage_start,
+		'write_c')
 
 	compile_cmd := '${cc} ${cc_flags} -w -Wno-incompatible-function-pointer-types -c "${c_path}" -o "${obj_path}"${error_limit_flag}'
 	run_cc_cmd_or_exit(compile_cmd, 'C compilation', b.pref.show_cc)
+	stage_start =
+		b.mark_cgen_builder_step(stats_enabled, cache_name, mut stats_sw, stage_start, 'cc')
 	b.write_cached_called_fn_names(cache_dir, cache_name, cached_called_before)
 	os.write_file(stamp_path, expected_stamp)!
+	_ = b.mark_cgen_builder_step(stats_enabled, cache_name, mut stats_sw, stage_start, 'metadata')
 	return obj_path
 }
 
@@ -1542,18 +1579,31 @@ fn (mut b Builder) ensure_cached_virtual_module_object(cache_dir string, groups 
 	}
 
 	emit_files := virtual_module_source_files(groups)
+	stats_enabled := b.cgen_builder_stats_enabled()
+	mut stats_sw := time.new_stopwatch()
+	mut stage_start := stats_sw.elapsed()
 	cached_called_before := b.cached_called_fn_names.clone()
+	stage_start = b.mark_cgen_builder_step(stats_enabled, virtuals_cache_name, mut stats_sw,
+		stage_start, 'called_before_clone')
 	mut module_source := b.gen_cleanc_source_for_cache_files(['main'], emit_files,
 		virtuals_cache_name, use_markused)
+	stage_start = b.mark_cgen_builder_step(stats_enabled, virtuals_cache_name, mut stats_sw,
+		stage_start, 'source')
 	if module_source == '' {
 		return error('failed to generate C source for ${virtuals_cache_name}')
 	}
 	os.write_file(c_path, module_source)!
+	stage_start = b.mark_cgen_builder_step(stats_enabled, virtuals_cache_name, mut stats_sw,
+		stage_start, 'write_c')
 
 	compile_cmd := '${cc} ${cc_flags} -w -Wno-incompatible-function-pointer-types -c "${c_path}" -o "${obj_path}"${error_limit_flag}'
 	run_cc_cmd_or_exit(compile_cmd, 'C compilation', b.pref.show_cc)
+	stage_start = b.mark_cgen_builder_step(stats_enabled, virtuals_cache_name, mut stats_sw,
+		stage_start, 'cc')
 	b.write_cached_called_fn_names(cache_dir, virtuals_cache_name, cached_called_before)
 	os.write_file(stamp_path, expected_stamp)!
+	_ = b.mark_cgen_builder_step(stats_enabled, virtuals_cache_name, mut stats_sw, stage_start,
+		'metadata')
 	return obj_path
 }
 

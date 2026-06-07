@@ -5,6 +5,7 @@
 module cleanc
 
 import runtime
+import time
 import v2.ast
 import v2.types
 
@@ -62,6 +63,10 @@ fn (mut g Gen) has_explicit_str_method_for_c_type(c_type_name string) bool {
 // instantiations (e.g. LinkedList[ValueInfo]) and records the concrete type
 // bindings so that methods on generic structs can resolve their generic params.
 fn (mut g Gen) collect_generic_struct_bindings() {
+	stats_enabled := g.cgen_stats_enabled()
+	stats_scope := g.cgen_stats_scope_label()
+	mut stats_sw := time.new_stopwatch()
+	mut stage_start := stats_sw.elapsed()
 	prev_active_generic_types := g.active_generic_types.clone()
 	prev_runtime_local_types := g.runtime_local_types.clone()
 	prev_runtime_decl_types := g.runtime_decl_types.clone()
@@ -94,8 +99,14 @@ fn (mut g Gen) collect_generic_struct_bindings() {
 	if !g.collect_generic_struct_bindings_file_scan_parallel() {
 		g.collect_generic_struct_bindings_file_scan(g.files)
 	}
+	stage_start = g.mark_cgen_step(stats_enabled, stats_scope, mut stats_sw, stage_start,
+		'setup.generic_struct_bindings.file_scan')
 	g.propagate_generic_struct_bindings_for_files(g.files)
+	stage_start = g.mark_cgen_step(stats_enabled, stats_scope, mut stats_sw, stage_start,
+		'setup.generic_struct_bindings.propagate')
 	g.scan_receiver_generic_struct_bindings_for_files(g.files)
+	_ = g.mark_cgen_step(stats_enabled, stats_scope, mut stats_sw, stage_start,
+		'setup.generic_struct_bindings.receiver_scan')
 }
 
 fn (mut g Gen) collect_generic_struct_bindings_file_scan(files []ast.File) {
@@ -211,6 +222,10 @@ fn (mut g Gen) collect_generic_struct_bindings_file_scan_parallel() bool {
 	$if windows {
 		return false
 	} $else {
+		stats_enabled := g.cgen_stats_enabled()
+		stats_scope := g.cgen_stats_scope_label()
+		mut stats_sw := time.new_stopwatch()
+		mut stage_start := stats_sw.elapsed()
 		n_files := g.files.len
 		n_runtime_jobs := runtime.nr_jobs()
 		n_jobs := generic_struct_scan_job_count(n_runtime_jobs, n_files)
@@ -233,6 +248,8 @@ fn (mut g Gen) collect_generic_struct_bindings_file_scan_parallel() bool {
 			w := g.new_generic_struct_scan_worker(ci)
 			workers << voidptr(w)
 		}
+		stage_start = g.mark_cgen_step(stats_enabled, stats_scope, mut stats_sw, stage_start,
+			'setup.generic_struct_bindings.worker_setup')
 		for ci := 0; ci < n_jobs; ci++ {
 			args << GenericStructScanChunkArgs{
 				worker:           workers[ci]
@@ -252,10 +269,14 @@ fn (mut g Gen) collect_generic_struct_bindings_file_scan_parallel() bool {
 		for ci := 0; ci < n_jobs; ci++ {
 			C.pthread_join(thread_ids[ci], unsafe { nil })
 		}
+		stage_start = g.mark_cgen_step(stats_enabled, stats_scope, mut stats_sw, stage_start,
+			'setup.generic_struct_bindings.worker_run')
 		for ci := 0; ci < n_jobs; ci++ {
 			w := unsafe { &Gen(workers[ci]) }
 			g.merge_generic_struct_scan_worker(w)
 		}
+		_ = g.mark_cgen_step(stats_enabled, stats_scope, mut stats_sw, stage_start,
+			'setup.generic_struct_bindings.worker_merge')
 		return true
 	}
 }
@@ -1447,6 +1468,9 @@ fn generic_body_scan_bindings_key(bindings map[string]types.Type) string {
 
 fn (mut g Gen) scan_fn_body_for_generic_types(node ast.FnDecl, spec_name string) {
 	if node.pos.id <= 0 {
+		if !g.stmts_may_need_generic_scan(node.stmts) {
+			return
+		}
 		g.scan_stmts_for_generic_types(node.stmts)
 		return
 	}
@@ -1465,7 +1489,337 @@ fn (mut g Gen) scan_fn_body_for_generic_types(node ast.FnDecl, spec_name string)
 	} else {
 		g.generic_body_scan_cache[cache_key] = true
 	}
+	if !g.stmts_may_need_generic_scan(node.stmts) {
+		return
+	}
 	g.scan_stmts_for_generic_types(node.stmts)
+}
+
+fn (g &Gen) stmts_may_need_generic_scan(stmts []ast.Stmt) bool {
+	for stmt in stmts {
+		match stmt {
+			ast.AssignStmt {
+				for expr in stmt.lhs {
+					if g.expr_may_need_generic_scan(expr) {
+						return true
+					}
+				}
+				for expr in stmt.rhs {
+					if g.expr_may_need_generic_scan(expr) {
+						return true
+					}
+				}
+			}
+			ast.ReturnStmt {
+				for expr in stmt.exprs {
+					if g.expr_may_need_generic_scan(expr) {
+						return true
+					}
+				}
+			}
+			ast.ExprStmt {
+				if g.expr_may_need_generic_scan(stmt.expr) {
+					return true
+				}
+			}
+			ast.ComptimeStmt {
+				if g.stmts_may_need_generic_scan([stmt.stmt]) {
+					return true
+				}
+			}
+			ast.ForStmt {
+				if g.expr_may_need_generic_scan(stmt.cond)
+					|| g.stmts_may_need_generic_scan(stmt.stmts) {
+					return true
+				}
+			}
+			ast.ForInStmt {
+				if g.expr_may_need_generic_scan(stmt.key)
+					|| g.expr_may_need_generic_scan(stmt.value)
+					|| g.expr_may_need_generic_scan(stmt.expr) {
+					return true
+				}
+			}
+			ast.BlockStmt {
+				if g.stmts_may_need_generic_scan(stmt.stmts) {
+					return true
+				}
+			}
+			else {}
+		}
+	}
+	return false
+}
+
+fn (g &Gen) call_lhs_may_need_generic_scan(lhs ast.Expr) bool {
+	call_name := generic_call_short_name(lhs)
+	if call_name != '' {
+		for candidate in generic_call_decl_candidates(call_name) {
+			if candidate in g.generic_fn_decl_index {
+				return true
+			}
+		}
+	}
+	return g.expr_may_need_generic_scan(lhs)
+}
+
+fn (g &Gen) expr_may_need_generic_scan(expr ast.Expr) bool {
+	match expr {
+		ast.Ident {
+			return expr.name.contains('_T_') || expr.name.ends_with('_T')
+		}
+		ast.Type {
+			return type_expr_may_need_generic_scan(expr)
+		}
+		ast.GenericArgOrIndexExpr {
+			return true
+		}
+		ast.GenericArgs {
+			return true
+		}
+		ast.CallOrCastExpr {
+			return g.expr_may_need_generic_scan(expr.lhs) || g.expr_may_need_generic_scan(expr.expr)
+		}
+		ast.CallExpr {
+			if g.call_lhs_may_need_generic_scan(expr.lhs) {
+				return true
+			}
+			for arg in expr.args {
+				if g.expr_may_need_generic_scan(arg) {
+					return true
+				}
+			}
+		}
+		ast.InfixExpr {
+			return g.expr_may_need_generic_scan(expr.lhs) || g.expr_may_need_generic_scan(expr.rhs)
+		}
+		ast.PostfixExpr {
+			return g.expr_may_need_generic_scan(expr.expr)
+		}
+		ast.PrefixExpr {
+			return g.expr_may_need_generic_scan(expr.expr)
+		}
+		ast.ParenExpr {
+			return g.expr_may_need_generic_scan(expr.expr)
+		}
+		ast.ModifierExpr {
+			return g.expr_may_need_generic_scan(expr.expr)
+		}
+		ast.AssocExpr {
+			if type_expr_may_need_generic_scan(expr.typ) || g.expr_may_need_generic_scan(expr.expr) {
+				return true
+			}
+			for field in expr.fields {
+				if g.expr_may_need_generic_scan(field.value) {
+					return true
+				}
+			}
+		}
+		ast.IfGuardExpr {
+			return g.stmts_may_need_generic_scan([ast.Stmt(expr.stmt)])
+		}
+		ast.OrExpr {
+			return g.expr_may_need_generic_scan(expr.expr)
+				|| g.stmts_may_need_generic_scan(expr.stmts)
+		}
+		ast.UnsafeExpr {
+			return g.stmts_may_need_generic_scan(expr.stmts)
+		}
+		ast.LockExpr {
+			for lock_expr in expr.lock_exprs {
+				if g.expr_may_need_generic_scan(lock_expr) {
+					return true
+				}
+			}
+			for lock_expr in expr.rlock_exprs {
+				if g.expr_may_need_generic_scan(lock_expr) {
+					return true
+				}
+			}
+			return g.stmts_may_need_generic_scan(expr.stmts)
+		}
+		ast.IfExpr {
+			if g.expr_may_need_generic_scan(expr.cond) || g.stmts_may_need_generic_scan(expr.stmts) {
+				return true
+			}
+			return expr.else_expr !is ast.EmptyExpr && g.expr_may_need_generic_scan(expr.else_expr)
+		}
+		ast.MatchExpr {
+			if g.expr_may_need_generic_scan(expr.expr) {
+				return true
+			}
+			for branch in expr.branches {
+				for cond in branch.cond {
+					if g.expr_may_need_generic_scan(cond) {
+						return true
+					}
+				}
+				if g.stmts_may_need_generic_scan(branch.stmts) {
+					return true
+				}
+			}
+		}
+		ast.ComptimeExpr {
+			return g.expr_may_need_generic_scan(expr.expr)
+		}
+		ast.SelectExpr {
+			return g.stmts_may_need_generic_scan([expr.stmt])
+				|| g.stmts_may_need_generic_scan(expr.stmts)
+				|| g.expr_may_need_generic_scan(expr.next)
+		}
+		ast.StringInterLiteral {
+			for item in expr.inters {
+				if g.expr_may_need_generic_scan(item.expr)
+					|| g.expr_may_need_generic_scan(item.format_expr) {
+					return true
+				}
+			}
+		}
+		ast.InitExpr {
+			if type_expr_may_need_generic_scan(expr.typ) {
+				return true
+			}
+			for field in expr.fields {
+				if g.expr_may_need_generic_scan(field.value) {
+					return true
+				}
+			}
+		}
+		ast.ArrayInitExpr {
+			if type_expr_may_need_generic_scan(expr.typ) || g.expr_may_need_generic_scan(expr.len) {
+				return true
+			}
+			if g.expr_may_need_generic_scan(expr.init) || g.expr_may_need_generic_scan(expr.cap)
+				|| g.expr_may_need_generic_scan(expr.update_expr) {
+				return true
+			}
+			for item in expr.exprs {
+				if g.expr_may_need_generic_scan(item) {
+					return true
+				}
+			}
+		}
+		ast.MapInitExpr {
+			if type_expr_may_need_generic_scan(expr.typ) {
+				return true
+			}
+			for key in expr.keys {
+				if g.expr_may_need_generic_scan(key) {
+					return true
+				}
+			}
+			for value in expr.vals {
+				if g.expr_may_need_generic_scan(value) {
+					return true
+				}
+			}
+		}
+		ast.IndexExpr {
+			return g.expr_may_need_generic_scan(expr.lhs) || g.expr_may_need_generic_scan(expr.expr)
+		}
+		ast.CastExpr {
+			return type_expr_may_need_generic_scan(expr.typ)
+				|| g.expr_may_need_generic_scan(expr.expr)
+		}
+		ast.AsCastExpr {
+			return type_expr_may_need_generic_scan(expr.typ)
+				|| g.expr_may_need_generic_scan(expr.expr)
+		}
+		ast.Tuple {
+			return true
+		}
+		ast.FieldInit {
+			return g.expr_may_need_generic_scan(expr.value)
+		}
+		ast.KeywordOperator {
+			for arg in expr.exprs {
+				if g.expr_may_need_generic_scan(arg) {
+					return true
+				}
+			}
+		}
+		ast.RangeExpr {
+			return g.expr_may_need_generic_scan(expr.start)
+				|| g.expr_may_need_generic_scan(expr.end)
+		}
+		ast.FnLiteral {
+			for captured in expr.captured_vars {
+				if g.expr_may_need_generic_scan(captured) {
+					return true
+				}
+			}
+			return g.stmts_may_need_generic_scan(expr.stmts)
+		}
+		ast.LambdaExpr {
+			return g.expr_may_need_generic_scan(expr.expr)
+		}
+		ast.SqlExpr {
+			return g.expr_may_need_generic_scan(expr.expr)
+		}
+		else {}
+	}
+
+	return false
+}
+
+fn type_expr_may_need_generic_scan(expr ast.Expr) bool {
+	match expr {
+		ast.Type {
+			if expr is ast.GenericType {
+				return true
+			}
+			if expr is ast.ArrayType {
+				return type_expr_may_need_generic_scan(expr.elem_type)
+			}
+			if expr is ast.ArrayFixedType {
+				return type_expr_may_need_generic_scan(expr.elem_type)
+					|| type_expr_may_need_generic_scan(expr.len)
+			}
+			if expr is ast.MapType {
+				return type_expr_may_need_generic_scan(expr.key_type)
+					|| type_expr_may_need_generic_scan(expr.value_type)
+			}
+			if expr is ast.OptionType {
+				return type_expr_may_need_generic_scan(expr.base_type)
+			}
+			if expr is ast.ResultType {
+				return type_expr_may_need_generic_scan(expr.base_type)
+			}
+			if expr is ast.PointerType {
+				return type_expr_may_need_generic_scan(expr.base_type)
+			}
+			if expr is ast.FnType {
+				for param in expr.params {
+					if type_expr_may_need_generic_scan(param.typ) {
+						return true
+					}
+				}
+				return type_expr_may_need_generic_scan(expr.return_type)
+			}
+			return false
+		}
+		ast.GenericArgOrIndexExpr {
+			return true
+		}
+		ast.GenericArgs {
+			return true
+		}
+		ast.Ident {
+			return expr.name.contains('_T_') || expr.name.ends_with('_T')
+		}
+		ast.ModifierExpr {
+			return type_expr_may_need_generic_scan(expr.expr)
+		}
+		ast.PrefixExpr {
+			return type_expr_may_need_generic_scan(expr.expr)
+		}
+		ast.ParenExpr {
+			return type_expr_may_need_generic_scan(expr.expr)
+		}
+		else {
+			return false
+		}
+	}
 }
 
 fn (mut g Gen) scan_stmts_for_generic_types(stmts []ast.Stmt) {
