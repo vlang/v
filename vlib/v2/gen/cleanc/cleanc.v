@@ -185,6 +185,15 @@ mut:
 	typedef_c_types            map[string]bool // C struct names with @[typedef] attribute (emit without 'struct' prefix)
 	blocked_fn_keys            map[string]bool // worker-only fn keys reserved to other pass5 chunks
 	cached_vhash               string          // cached git short hash for @VHASH/@VCURRENTHASH
+	pass5_worker_id            int
+	pass5_file_times           []Pass5FileTime
+}
+
+struct Pass5FileTime {
+	file      string
+	ms        i64
+	cost      int
+	worker_id int
 }
 
 struct GenericStructInstance {
@@ -486,6 +495,9 @@ fn new_gen_with_env_and_pref_impl(env &types.Environment, p &pref.Preferences) &
 
 fn (mut g Gen) gen_file(file ast.File) {
 	g.set_file_module(file)
+	file_name := g.cur_file_name
+	file_module := g.cur_module
+	file_import_modules := g.cur_import_modules.clone()
 	mut global_indices := []int{}
 	mut fn_indices := []int{}
 	for i in 0 .. file.stmts.len {
@@ -509,7 +521,7 @@ fn (mut g Gen) gen_file(file ast.File) {
 		// Re-set file/module context before each function body emission,
 		// because body generation can modify g.cur_file_name and g.cur_module
 		// (e.g. via find_generic_fn_decl_by_base_name, resolve_method_on_embedded_decl).
-		g.set_file_module(file)
+		g.restore_file_module_context(file_name, file_module, file_import_modules)
 		stmt_ptr := &file.stmts[fi]
 		fn_decl := (*stmt_ptr) as ast.FnDecl
 		g.gen_fn_decl_ptr(&fn_decl)
@@ -2314,8 +2326,36 @@ fn (mut g Gen) emit_weak_receiver_generic_method_specializations(node &ast.FnDec
 // gen_pass5_files generates function bodies for a range of file indices.
 // Used by parallel dispatch — each worker calls this with its assigned chunk.
 pub fn (mut g Gen) gen_pass5_files(file_indices []int) {
+	stats_enabled := g.cgen_stats_enabled()
 	for fi in file_indices {
-		g.gen_file(g.files[fi])
+		if stats_enabled {
+			mut sw := time.new_stopwatch()
+			g.gen_file(g.files[fi])
+			elapsed_ms := sw.elapsed().milliseconds()
+			if elapsed_ms > 0 {
+				g.pass5_file_times << Pass5FileTime{
+					file:      g.files[fi].name
+					ms:        elapsed_ms
+					cost:      g.pass5_file_cost(fi)
+					worker_id: g.pass5_worker_id
+				}
+			}
+		} else {
+			g.gen_file(g.files[fi])
+		}
+	}
+}
+
+pub fn (g &Gen) print_pass5_file_times(limit int) {
+	if !g.cgen_stats_enabled() || g.pass5_file_times.len == 0 {
+		return
+	}
+	mut times := g.pass5_file_times.clone()
+	times.sort(a.ms > b.ms)
+	stats_scope := g.cgen_stats_scope_label()
+	n := if times.len < limit { times.len } else { limit }
+	for item in times[..n] {
+		println('   - C Gen/${stats_scope} pass 5 file ${item.ms}ms worker=${item.worker_id} cost=${item.cost} ${item.file}')
 	}
 }
 
@@ -2617,6 +2657,7 @@ pub fn (g &Gen) new_pass5_worker(file_indices []int, worker_id int) &Gen {
 		// Each worker gets a unique tmp_counter offset to avoid name collisions
 		// for generated trampolines (_bound_method_N, _bound_recv_N, etc.).
 		tmp_counter:                 (worker_id + 1) * 100_000
+		pass5_worker_id:             worker_id
 		emitted_types:               worker_emitted
 		blocked_fn_keys:             blocked_fn_keys
 		runtime_local_types:         map[string]string{}
@@ -2667,6 +2708,7 @@ pub fn (mut g Gen) merge_pass5_worker(w &Gen) {
 	g.spawn_wrapper_defs << w.spawn_wrapper_defs
 	g.trampoline_defs << w.trampoline_defs
 	g.exported_const_symbols << w.exported_const_symbols
+	g.pass5_file_times << w.pass5_file_times
 	// Merge accumulator maps
 	for k, v in w.needed_interface_wrappers {
 		g.needed_interface_wrappers[k] = v

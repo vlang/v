@@ -30,6 +30,14 @@ fn (mut g Gen) set_file_module(file ast.File) {
 	g.cur_module = if file.mod != '' { file.mod.replace('.', '_') } else { 'main' }
 }
 
+fn (mut g Gen) restore_file_module_context(file_name string, module_name string, import_modules map[string]string) {
+	g.cur_file_name = file_name
+	g.cur_module = module_name
+	g.cur_import_modules = import_modules.clone()
+	g.is_module_ident_cache.clear()
+	g.resolved_module_names.clear()
+}
+
 fn (mut g Gen) gen_stmts(stmts []ast.Stmt) {
 	saved_file_name := g.cur_file_name
 	saved_module := g.cur_module

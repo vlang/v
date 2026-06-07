@@ -7,7 +7,7 @@ import runtime
 import time
 import v2.gen.cleanc
 
-const max_cleanc_pass5_jobs = 4
+const max_cleanc_pass5_jobs = 8
 
 struct GenCleancWeightedFile {
 	idx  int
@@ -157,6 +157,7 @@ fn (mut b Builder) gen_cleanc_parallel(mut gen cleanc.Gen) {
 		}
 		stage_start = mark_cleanc_parallel_step(stats_enabled, mut stats_sw, stage_start,
 			'pass 5 merge')
+		gen.print_pass5_file_times(8)
 
 		gen.gen_pass5_post()
 		_ = mark_cleanc_parallel_step(stats_enabled, mut stats_sw, stage_start, 'pass 5 post')
