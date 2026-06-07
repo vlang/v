@@ -7,7 +7,7 @@ import runtime
 import time
 import v2.gen.cleanc
 
-const max_cleanc_pass5_jobs = 8
+const max_cleanc_pass5_jobs = 16
 
 struct GenCleancWeightedFile {
 	idx  int
