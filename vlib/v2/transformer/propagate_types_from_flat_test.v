@@ -3,15 +3,13 @@
 // that can be found in the LICENSE file.
 // vtest build: macos
 //
-// Bit-equality pin for s167: `propagate_types_from_flat` (a thin
-// rehydrate-then-call wrapper) must produce the same `t.env` mutations as
-// `propagate_types`. Also pins `apply_post_pass_tail_from_flat` against
-// `apply_post_pass_tail`.
+// Bit-equality pin for s167: `propagate_types_from_flat` walks flat files
+// directly and must produce the same `t.env` mutations as `propagate_types`.
+// Also pins `apply_post_pass_tail_from_flat` against `apply_post_pass_tail`.
 //
-// The wrapper rehydrates `flat` into `[]ast.File` via
-// `flat.to_files_range(0, flat.files.len)` and delegates to the legacy
-// walker. Behavior is identical by construction provided flatten+rehydrate
-// preserves the bits propagate_types reads (pos.id, stmt/expr shape).
+// The flat path decodes each file's top-level stmt list and reuses the legacy
+// stmt/expression propagation walkers. Behavior should match legacy provided
+// flattening preserves the bits propagate_types reads (pos.id, stmt/expr shape).
 module transformer
 
 import v2.ast

@@ -2835,6 +2835,109 @@ fn (t &Transformer) imported_runtime_init_modules(files []ast.File) map[string]b
 	return modules
 }
 
+fn runtime_init_available_modules_from_flat(flat &ast.FlatAst) map[string]bool {
+	mut available := map[string]bool{}
+	available[''] = true
+	available['main'] = true
+	for ff in flat.files {
+		mod_name := flat.file_mod(ff)
+		if mod_name != '' {
+			available[mod_name] = true
+		}
+	}
+	return available
+}
+
+fn (t &Transformer) collect_runtime_init_imports_from_if_expr_cursor(node ast.Cursor, mut imports []ast.ImportStmt) {
+	if !node.is_valid() || node.kind() != .expr_if {
+		return
+	}
+	cond := node.edge(0)
+	if t.eval_comptime_cond(node.flat.decode_expr(cond.id)) {
+		t.collect_runtime_init_imports_from_if_cursor_stmts(node, mut imports)
+		return
+	}
+	else_expr := node.edge(1)
+	if !else_expr.is_valid() || else_expr.kind() != .expr_if {
+		return
+	}
+	else_cond := else_expr.edge(0)
+	if !else_cond.is_valid() || else_cond.kind() == .expr_empty {
+		t.collect_runtime_init_imports_from_if_cursor_stmts(else_expr, mut imports)
+		return
+	}
+	t.collect_runtime_init_imports_from_if_expr_cursor(else_expr, mut imports)
+}
+
+fn (t &Transformer) collect_runtime_init_imports_from_if_cursor_stmts(node ast.Cursor, mut imports []ast.ImportStmt) {
+	for i in 2 .. node.edge_count() {
+		t.collect_runtime_init_imports_from_stmt_cursor(node.edge(i), mut imports)
+	}
+}
+
+fn (t &Transformer) collect_runtime_init_imports_from_stmt_cursor(stmt ast.Cursor, mut imports []ast.ImportStmt) {
+	if !stmt.is_valid() {
+		return
+	}
+	match stmt.kind() {
+		.stmt_import {
+			imports << stmt.import_stmt()
+		}
+		.stmt_expr {
+			expr := stmt.edge(0)
+			if !expr.is_valid() || expr.kind() != .expr_comptime {
+				return
+			}
+			inner := expr.edge(0)
+			if inner.is_valid() && inner.kind() == .expr_if {
+				t.collect_runtime_init_imports_from_if_expr_cursor(inner, mut imports)
+			}
+		}
+		else {}
+	}
+}
+
+fn (t &Transformer) collect_runtime_init_imports_from_stmt_cursors(stmts ast.CursorList, mut imports []ast.ImportStmt) {
+	for i in 0 .. stmts.len() {
+		t.collect_runtime_init_imports_from_stmt_cursor(stmts.at(i), mut imports)
+	}
+}
+
+fn (t &Transformer) active_runtime_init_imports_from_flat_file(fc ast.FileCursor) []ast.ImportStmt {
+	file_imports := fc.imports()
+	mut imports := []ast.ImportStmt{cap: file_imports.len()}
+	for i in 0 .. file_imports.len() {
+		imp := file_imports.at(i)
+		if imp.kind() == .stmt_import {
+			imports << imp.import_stmt()
+		}
+	}
+	t.collect_runtime_init_imports_from_stmt_cursors(fc.stmts(), mut imports)
+	return imports
+}
+
+fn (t &Transformer) imported_runtime_init_modules_from_flat(flat &ast.FlatAst) map[string]bool {
+	mut modules := map[string]bool{}
+	modules[''] = true
+	available_modules := runtime_init_available_modules_from_flat(flat)
+	add_runtime_init_module_key(mut modules, 'main', available_modules)
+	mut changed := true
+	for changed {
+		changed = false
+		for i in 0 .. flat.files.len {
+			fc := flat.file_cursor(i)
+			if fc.mod() !in modules {
+				continue
+			}
+			for imp in t.active_runtime_init_imports_from_flat_file(fc) {
+				changed = add_runtime_init_module_key(mut modules, imp.name, available_modules)
+					|| changed
+			}
+		}
+	}
+	return modules
+}
+
 fn is_builtin_main_arg_global(mod string, name string) bool {
 	return mod == 'builtin' && (name == 'g_main_argc' || name == 'g_main_argv')
 }
@@ -4040,10 +4143,7 @@ pub fn (mut t Transformer) runtime_const_init_main_calls_parts_from_flat(flat &a
 	mut seen_init_mods := map[string]bool{}
 	minimal_x64_runtime := t.uses_minimal_x64_runtime()
 	init_modules := if minimal_x64_runtime {
-		// Minimal x64 paths are uncommon and reuse the legacy import collector
-		// for comptime-active imports until that logic is ported to cursors.
-		rehydrated := flat.to_files_range(0, flat.files.len)
-		t.imported_runtime_init_modules(rehydrated)
+		t.imported_runtime_init_modules_from_flat(flat)
 	} else {
 		map[string]bool{}
 	}

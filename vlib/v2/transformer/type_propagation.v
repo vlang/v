@@ -23,28 +23,33 @@ fn (mut t Transformer) propagate_types(files []ast.File) {
 }
 
 // propagate_types_from_flat is the FlatAst-input counterpart to
-// `propagate_types`. Today it's a thin wrapper that rehydrates `flat`
-// back into `[]ast.File` via `flat.to_files_range(0, flat.files.len)` and
-// delegates to the legacy walker — identical behaviour by construction.
+// `propagate_types`. It walks `flat.files` directly and decodes only each
+// file's top-level statement list, avoiding a whole-program legacy []ast.File
+// allocation in flat-output transformer paths.
 //
 // Lets `apply_post_pass_tail_from_flat` (s167) take `&FlatAst` instead of
 // `[]ast.File`, which closes the last `[]ast.File` consumer in the
-// post_pass tail. The wrapper does NOT save memory under -gc none (the
-// rehydrated array is the same size as legacy `result`), but it
-// straightens the call graph ahead of the SSA migration and fixes a
-// latent staleness bug in the `_via_driver` wedges: legacy
-// `post_pass(result)` mutates `result` BEFORE `propagate_types` runs,
-// whereas s162/s163 wedges passed un-post_pass'd `result` to
-// `apply_post_pass_tail` so `propagate_types` saw stale stmts. With this
-// helper plus the s167 `apply_post_pass_tail_from_flat`, the wedge passes
-// `&builder.flat` (already post_pass'd by `post_pass_to_flat`) so the
-// non-arm64 propagation sees the same post_pass'd stmts as legacy.
+// post_pass tail. The flat path also fixes a latent staleness bug in the
+// `_via_driver` wedges: legacy `post_pass(result)` mutates `result` BEFORE
+// `propagate_types` runs, whereas s162/s163 wedges passed un-post_pass'd
+// `result` to `apply_post_pass_tail` so `propagate_types` saw stale stmts.
+// With this helper plus `apply_post_pass_tail_from_flat`, the wedge passes
+// `&builder.flat` (already post_pass'd by `post_pass_to_flat`) so non-arm64
+// propagation sees the same post_pass'd stmts as legacy.
 fn (mut t Transformer) propagate_types_from_flat(flat &ast.FlatAst) {
 	if flat.files.len == 0 {
 		return
 	}
-	files := flat.to_files_range(0, flat.files.len)
-	t.propagate_types(files)
+	for ff in flat.files {
+		mod_name := flat.file_mod(ff)
+		if mod_scope := t.cached_scopes[mod_name] {
+			t.scope = mod_scope
+		}
+		t.cur_module = mod_name
+		for stmt in flat.read_file_stmts(ff) {
+			t.prop_stmt(stmt)
+		}
+	}
 }
 
 fn (mut t Transformer) prop_exprs(exprs []ast.Expr) {
