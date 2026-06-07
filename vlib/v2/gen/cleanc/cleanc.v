@@ -155,13 +155,13 @@ mut:
 	collect_generic_scan_calls            bool
 	generic_call_spec_scan_only           bool
 	generic_scan_called_names             map[string]bool
-	generic_spec_index                    map[string][]string                // fn_name → matching keys in env.generic_types
-	generic_fn_decl_index                 map[string]GenericFnDeclInfo       // generic fn C/base name → source location
-	specialized_fn_bases                  map[string]bool                    // base C name with at least one _T_ specialization
-	specialized_receiver_methods          map[string]string                  // receiver|method -> single matching specialized method
-	specialized_receiver_method_ambiguous map[string]bool                    // receiver|method keys with multiple matches
-	specialized_receiver_method_miss      map[string]bool                    // receiver|method keys with no matching specialized method
-	specialized_index                     map[string]string                  // base|method -> specialized fn (or '' sentinel for ambiguous); one-time index over fn signature tables
+	generic_spec_index                    map[string][]string          // fn_name → matching keys in env.generic_types
+	generic_fn_decl_index                 map[string]GenericFnDeclInfo // generic fn C/base name → source location
+	specialized_fn_bases                  map[string]bool              // base C name with at least one _T_ specialization
+	specialized_receiver_methods          map[string]string            // receiver|method -> single matching specialized method
+	specialized_receiver_method_ambiguous map[string]bool              // receiver|method keys with multiple matches
+	specialized_receiver_method_miss      map[string]bool              // receiver|method keys with no matching specialized method
+	specialized_index                     map[string]string            // base|method -> specialized fn (or '' sentinel for ambiguous); one-time index over fn signature tables
 	specialized_index_built               bool
 	late_generic_specs                    map[string][]map[string]types.Type // additional comptime-discovered specs
 	anon_fn_defs                          []string        // lifted anonymous function definitions
