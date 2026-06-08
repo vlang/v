@@ -2916,7 +2916,7 @@ fn (mut g Gen) discover_nested_generic_specs() {
 				for j in 0 .. stmts.len() {
 					stmt := stmts.at(j)
 					if stmt.kind() == .stmt_fn_decl {
-						g.discover_nested_generic_specs_for_decl(stmt.fn_decl(), mut scanned_specs)
+						g.discover_nested_generic_specs_for_cursor(stmt, mut scanned_specs)
 					}
 				}
 			}
@@ -2935,6 +2935,20 @@ fn (mut g Gen) discover_nested_generic_specs() {
 		}
 	}
 	g.build_generic_spec_index()
+}
+
+fn (mut g Gen) discover_nested_generic_specs_for_cursor(stmt ast.Cursor, mut scanned_specs map[string]bool) {
+	decl := stmt.fn_decl_signature()
+	if !g.should_emit_fn_decl_cached(g.cur_module, decl) {
+		return
+	}
+	if g.generic_fn_param_names(decl).len == 0 {
+		return
+	}
+	if stmt.list_at(3).len() == 0 {
+		return
+	}
+	g.discover_nested_generic_specs_for_decl(stmt.fn_decl(), mut scanned_specs)
 }
 
 fn (mut g Gen) discover_nested_generic_specs_for_decl(decl ast.FnDecl, mut scanned_specs map[string]bool) {
@@ -3020,7 +3034,7 @@ fn (mut g Gen) discover_direct_generic_call_specs() {
 			for j in 0 .. stmts.len() {
 				stmt := stmts.at(j)
 				if stmt.kind() == .stmt_fn_decl {
-					g.discover_direct_generic_call_specs_for_decl(stmt.fn_decl())
+					g.discover_direct_generic_call_specs_for_cursor(stmt)
 				}
 			}
 		}
@@ -3037,6 +3051,20 @@ fn (mut g Gen) discover_direct_generic_call_specs() {
 	if g.late_generic_spec_count() != before {
 		g.build_generic_spec_index()
 	}
+}
+
+fn (mut g Gen) discover_direct_generic_call_specs_for_cursor(stmt ast.Cursor) {
+	decl := stmt.fn_decl_signature()
+	if !g.should_emit_fn_decl_cached(g.cur_module, decl) {
+		return
+	}
+	if g.generic_fn_param_names(decl).len != 0 {
+		return
+	}
+	if stmt.list_at(3).len() == 0 {
+		return
+	}
+	g.discover_direct_generic_call_specs_for_decl(stmt.fn_decl())
 }
 
 fn (mut g Gen) discover_direct_generic_call_specs_for_decl(decl ast.FnDecl) {
