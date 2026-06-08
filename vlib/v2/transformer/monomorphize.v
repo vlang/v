@@ -6700,15 +6700,15 @@ fn (mut t Transformer) clone_generic_callable_value_with_outer_bindings(lhs ast.
 				bindings, info, []ast.Expr{})
 		}
 		if generic_bindings_cover_params(bindings, decl_generic_param_names(decl)) {
-				t.register_generic_bindings(register_base_name, bindings)
-				if !decl.is_method {
-					spec_name := t.specialized_fn_name(decl, bindings)
-					clone_name := monomorphized_clone_name(register_base_name, decl, spec_name)
-					return ast.Expr(ast.Ident{
-						name: clone_name
-						pos:  pos
-					})
-				}
+			t.register_generic_bindings(register_base_name, bindings)
+			if !decl.is_method {
+				spec_name := t.specialized_fn_name(decl, bindings)
+				clone_name := monomorphized_clone_name(register_base_name, decl, spec_name)
+				return ast.Expr(ast.Ident{
+					name: clone_name
+					pos:  pos
+				})
+			}
 		}
 	}
 	specialize_lhs := if register_base_name != base_name && lhs is ast.Ident {
