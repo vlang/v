@@ -1971,6 +1971,14 @@ fn (mut t Transformer) transform_stmt_list_item_cursor_to_flat(c ast.Cursor, mut
 			id := t.transform_global_decl_cursor_to_flat(c, mut out)
 			t.append_transformed_stmt_id_to_flat(mut ids, id, mut out)
 		}
+		.stmt_expr {
+			if t.expr_stmt_cursor_needs_legacy_expand(c) {
+				t.transform_stmt_list_item_to_flat(c.stmt(), mut ids, mut out)
+			} else {
+				id := t.transform_expr_stmt_cursor_to_flat(c, mut out)
+				t.append_transformed_stmt_id_to_flat(mut ids, id, mut out)
+			}
+		}
 		.stmt_return {
 			if t.return_stmt_cursor_needs_legacy_expand(c) {
 				t.transform_stmt_list_item_to_flat(c.stmt(), mut ids, mut out)
@@ -2093,6 +2101,23 @@ fn (mut t Transformer) transform_global_decl_cursor_to_flat(c ast.Cursor, mut ou
 	}
 	fields_list_id := out.emit_aux_list_from_ids(field_ids)
 	return out.emit_global_decl_by_ids(c.flag(ast.flag_is_public), decl_attrs_id, fields_list_id)
+}
+
+fn (mut t Transformer) transform_expr_stmt_cursor_to_flat(c ast.Cursor, mut out ast.FlatBuilder) ast.FlatNodeId {
+	expr_id := t.transform_expr_to_flat(c.edge(0).expr(), mut out)
+	return out.emit_expr_stmt_by_id(expr_id)
+}
+
+fn (t &Transformer) expr_stmt_cursor_needs_legacy_expand(c ast.Cursor) bool {
+	expr := c.edge(0)
+	if !expr.is_valid() {
+		return true
+	}
+	if t.cursor_subtree_has_or_expr(expr) {
+		return true
+	}
+	return expr.kind() in [.expr_comptime, .expr_if, .expr_lock, .expr_call, .expr_call_or_cast,
+		.expr_postfix, .expr_infix]
 }
 
 fn (mut t Transformer) transform_return_stmt_cursor_to_flat(c ast.Cursor, mut out ast.FlatBuilder) ast.FlatNodeId {
