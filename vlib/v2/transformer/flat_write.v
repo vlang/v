@@ -1967,6 +1967,10 @@ fn (mut t Transformer) transform_stmt_list_item_cursor_to_flat(c ast.Cursor, mut
 			id := t.transform_const_decl_cursor_to_flat(c, mut out)
 			t.append_transformed_stmt_id_to_flat(mut ids, id, mut out)
 		}
+		.stmt_block {
+			id := t.transform_block_stmt_cursor_to_flat(c, mut out)
+			t.append_transformed_stmt_id_to_flat(mut ids, id, mut out)
+		}
 		.stmt_global_decl {
 			id := t.transform_global_decl_cursor_to_flat(c, mut out)
 			t.append_transformed_stmt_id_to_flat(mut ids, id, mut out)
@@ -2101,6 +2105,15 @@ fn (mut t Transformer) transform_global_decl_cursor_to_flat(c ast.Cursor, mut ou
 	}
 	fields_list_id := out.emit_aux_list_from_ids(field_ids)
 	return out.emit_global_decl_by_ids(c.flag(ast.flag_is_public), decl_attrs_id, fields_list_id)
+}
+
+fn (mut t Transformer) transform_block_stmt_cursor_to_flat(c ast.Cursor, mut out ast.FlatBuilder) ast.FlatNodeId {
+	body := ast.CursorList{
+		flat:      c.flat
+		parent_id: c.id
+	}
+	stmt_ids := t.transform_cursor_stmts_to_flat_direct(body, [], mut out)
+	return out.emit_block_stmt_by_ids(stmt_ids)
 }
 
 fn (mut t Transformer) transform_expr_stmt_cursor_to_flat(c ast.Cursor, mut out ast.FlatBuilder) ast.FlatNodeId {
