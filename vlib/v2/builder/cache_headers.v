@@ -258,6 +258,10 @@ fn (b &Builder) imports_headers_stamp_path() string {
 	return cache_path_join(b.core_cache_dir(), '${imports_cache_name}.vh.stamp')
 }
 
+fn (b &Builder) v2compiler_headers_stamp_path() string {
+	return cache_path_join(b.core_cache_dir(), '${v2compiler_cache_name}.vh.stamp')
+}
+
 fn (b &Builder) imports_manifest_path() string {
 	return cache_path_join(b.core_cache_dir(), '${imports_cache_name}.manifest')
 }
@@ -293,6 +297,14 @@ fn (b &Builder) core_header_paths() []string {
 fn (b &Builder) cached_header_paths() []string {
 	mut paths := b.core_header_paths()
 	for module_name in veb_cached_module_names {
+		paths << b.core_header_path(module_name)
+	}
+	return paths
+}
+
+fn (b &Builder) v2compiler_header_paths() []string {
+	mut paths := []string{cap: v2compiler_cached_module_names.len}
+	for module_name in v2compiler_cached_module_names {
 		paths << b.core_header_path(module_name)
 	}
 	return paths
@@ -848,19 +860,34 @@ fn (b &Builder) virtuals_header_stamp_for_modules(groups []CachedVirtualModule) 
 	return lines.join('\n')
 }
 
+fn stamp_tracked_file_line(line string) (string, string, bool) {
+	mut path_start := -1
+	for prefix in ['entry:', 'source:', 'compiler:', 'emit:', 'compiler_exe:'] {
+		if line.starts_with(prefix) {
+			path_start = prefix.len
+			break
+		}
+	}
+	if path_start < 0 {
+		if line.starts_with('/') || line.starts_with('./') || line.starts_with('../') {
+			path_start = 0
+		} else {
+			return '', '', false
+		}
+	}
+	colon_idx := line.last_index(':') or { return '', '', false }
+	if colon_idx <= path_start {
+		return '', '', false
+	}
+	return line[path_start..colon_idx], line[colon_idx + 1..], true
+}
+
 fn stamp_file_lines_are_fresh(stamp string) bool {
 	for line in stamp.split_into_lines() {
-		if !(line.starts_with('entry:') || line.starts_with('source:')
-			|| line.starts_with('compiler:')) {
+		file, expected_mtime, tracked := stamp_tracked_file_line(line)
+		if !tracked {
 			continue
 		}
-		colon_idx := line.last_index(':') or { return false }
-		path_idx := line.index(':') or { return false }
-		if colon_idx <= path_idx {
-			return false
-		}
-		file := line[path_idx + 1..colon_idx]
-		expected_mtime := line[colon_idx + 1..]
 		if !os.exists(file) {
 			return false
 		}
@@ -987,6 +1014,37 @@ fn (b &Builder) can_use_cached_import_headers_for_parse() bool {
 	return false
 }
 
+fn (b &Builder) can_use_cached_v2compiler_headers_for_parse() bool {
+	if !b.is_cmd_v2_self_build() || b.pref.no_cache || b.pref.skip_builtin {
+		return false
+	}
+	if !b.ensure_core_cache_dir() {
+		return false
+	}
+	if !b.can_use_cached_module_bundle_for_parse(v2compiler_cache_name, false) {
+		return false
+	}
+	expected_stamp := b.header_stamp_for_modules(v2compiler_cached_module_paths)
+	current_stamp := os.read_file(b.v2compiler_headers_stamp_path()) or { return false }
+	if current_stamp != expected_stamp || !stamp_file_lines_are_fresh(current_stamp) {
+		return false
+	}
+	for header_path in b.v2compiler_header_paths() {
+		if !os.exists(header_path) || os.file_size(header_path) == 0 {
+			return false
+		}
+	}
+	return true
+}
+
+// v2compiler_headers_consumed_for_parse reports whether the generated v2compiler .vh module
+// headers can ever be read back by the parser. v2compiler header parse-reuse is currently
+// disabled (the generated headers are not yet complete/safe), so generating them is dead work on
+// a cold self-build. Set V2_V2COMPILER_VH=1 to re-enable generation while iterating on that path.
+fn (b &Builder) v2compiler_headers_consumed_for_parse() bool {
+	return os.getenv('V2_V2COMPILER_VH') != ''
+}
+
 fn (b &Builder) can_use_cached_virtual_headers_for_parse(groups []CachedVirtualModule) bool {
 	if groups.len == 0 || b.pref.no_cache || b.pref.skip_builtin {
 		return false
@@ -1070,6 +1128,21 @@ fn (b &Builder) cached_import_parse_path(module_path string) ?string {
 			return none
 		}
 		return header_path
+	}
+	if b.can_use_cached_v2compiler_headers_for_parse() {
+		for i, cached_module_path in v2compiler_cached_module_paths {
+			if module_path != cached_module_path {
+				continue
+			}
+			if i >= v2compiler_cached_module_names.len {
+				return none
+			}
+			header_path := b.core_header_path(v2compiler_cached_module_names[i])
+			if !os.exists(header_path) || os.file_size(header_path) == 0 {
+				return none
+			}
+			return header_path
+		}
 	}
 	return none
 }
@@ -1251,6 +1324,69 @@ fn (mut b Builder) ensure_import_module_headers(module_names []string) {
 	}
 	os.write_file(b.imports_manifest_path(), manifest_lines.join('\n')) or { return }
 	os.write_file(b.imports_headers_stamp_path(), expected_stamp) or {}
+}
+
+fn (mut b Builder) ensure_v2compiler_module_headers() {
+	if !b.is_cmd_v2_self_build() || !b.ensure_core_cache_dir() {
+		return
+	}
+	expected_stamp := b.header_stamp_for_modules(v2compiler_cached_module_paths)
+	mut has_headers := true
+	for header_path in b.v2compiler_header_paths() {
+		if !os.exists(header_path) || os.file_size(header_path) == 0 {
+			has_headers = false
+			break
+		}
+	}
+	if has_headers {
+		current_stamp := os.read_file(b.v2compiler_headers_stamp_path()) or { '' }
+		if current_stamp == expected_stamp {
+			return
+		}
+	}
+	header_source_files := b.v2compiler_header_source_files()
+	source_fn_returns := b.source_fn_return_types(v2compiler_cached_module_paths)
+	for module_name in v2compiler_cached_module_names {
+		header_ast := b.build_module_header_ast(header_source_files, module_name) or { return }
+		mut gen := v.new_gen(b.pref)
+		gen.gen(header_ast)
+		mut header_source := sanitize_header_source(gen.output_string(), source_fn_returns)
+		source_struct_fields := b.source_struct_field_types_for_module(module_name)
+		header_source = repair_missing_struct_field_types(header_source, source_struct_fields)
+		if header_source.len == 0 {
+			for cleanup_name in v2compiler_cached_module_names {
+				os.rm(b.core_header_path(cleanup_name)) or {}
+			}
+			os.rm(b.v2compiler_headers_stamp_path()) or {}
+			return
+		}
+		if !header_source.ends_with('\n') {
+			header_source += '\n'
+		}
+		os.write_file(b.core_header_path(module_name), header_source) or { return }
+	}
+	os.write_file(b.v2compiler_headers_stamp_path(), expected_stamp) or {}
+}
+
+fn (mut b Builder) v2compiler_header_source_files() []ast.File {
+	mut needed := map[string]bool{}
+	for module_name in v2compiler_cached_module_names {
+		needed[module_name] = true
+	}
+	mut found := map[string]bool{}
+	for file in b.files {
+		if file.name == '' || file.name.ends_with('.vh') {
+			continue
+		}
+		module_name := ast_file_module_name(file)
+		if module_name in needed {
+			found[module_name] = true
+		}
+	}
+	if found.len == needed.len {
+		return b.files
+	}
+	return b.parse_module_source_files_for_headers(v2compiler_cached_module_paths)
 }
 
 fn (mut b Builder) ensure_virtual_module_headers(groups []CachedVirtualModule) {
@@ -2018,8 +2154,14 @@ fn (b &Builder) header_const_type_expr(module_name string, field ast.FieldInit) 
 
 fn header_const_value_is_safe(expr ast.Expr) bool {
 	return match expr {
-		ast.BasicLiteral, ast.StringLiteral, ast.StringInterLiteral, ast.Ident {
+		ast.BasicLiteral, ast.Ident {
 			true
+		}
+		ast.StringLiteral {
+			!expr.value.contains('\n') && !expr.value.contains('\r')
+		}
+		ast.StringInterLiteral {
+			expr.values.all(!it.contains('\n') && !it.contains('\r'))
 		}
 		ast.SelectorExpr {
 			header_const_selector_lhs_is_safe(expr.lhs)

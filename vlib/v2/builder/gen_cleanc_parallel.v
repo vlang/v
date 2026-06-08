@@ -9,15 +9,10 @@ import v2.gen.cleanc
 
 const max_cleanc_pass5_jobs = 16
 
-struct GenCleancWeightedFile {
-	idx  int
-	cost int
-}
-
 $if !windows {
 	struct GenCleancChunkArgs {
-		worker           voidptr // &cleanc.Gen — pre-cloned worker
-		file_indices_ptr voidptr // &[]int — file indices to process
+		worker         voidptr // &cleanc.Gen — pre-cloned worker
+		work_items_ptr voidptr // &[]cleanc.Pass5WorkItem — work items to process
 	}
 
 	@[typedef]
@@ -32,8 +27,8 @@ $if !windows {
 	fn gen_cleanc_chunk_thread(arg voidptr) voidptr {
 		a := unsafe { &GenCleancChunkArgs(arg) }
 		mut w := unsafe { &cleanc.Gen(a.worker) }
-		indices := unsafe { &[]int(a.file_indices_ptr) }
-		w.gen_pass5_files(*indices)
+		items := unsafe { &[]cleanc.Pass5WorkItem(a.work_items_ptr) }
+		w.gen_pass5_work_items(*items)
 		return unsafe { nil }
 	}
 }
@@ -61,9 +56,12 @@ fn (mut b Builder) gen_cleanc_parallel(mut gen cleanc.Gen) {
 	emit_indices := gen.gen_pass5_pre()
 	stage_start = mark_cleanc_parallel_step(stats_enabled, mut stats_sw, stage_start, 'pass 5 pre')
 
-	n_files := emit_indices.len
+	// Split large files into sub-file work items so no single huge file
+	// (e.g. ssa/builder.v) pins the whole parallel phase.
+	work_items := gen.build_pass5_work_items(emit_indices)
+	n_items := work_items.len
 	n_runtime_jobs := runtime.nr_jobs()
-	n_jobs := cleanc_parallel_pass5_job_count(n_runtime_jobs, n_files)
+	n_jobs := cleanc_parallel_pass5_job_count(n_runtime_jobs, n_items)
 
 	$if windows {
 		gen.gen_pass5_files(emit_indices)
@@ -73,7 +71,7 @@ fn (mut b Builder) gen_cleanc_parallel(mut gen cleanc.Gen) {
 		_ = mark_cleanc_parallel_step(stats_enabled, mut stats_sw, stage_start, 'pass 5 post')
 		return
 	} $else {
-		if n_files <= 1 || n_jobs <= 1 {
+		if n_items <= 1 || n_jobs <= 1 {
 			// Fallback to sequential
 			gen.gen_pass5_files(emit_indices)
 			stage_start = mark_cleanc_parallel_step(stats_enabled, mut stats_sw, stage_start,
@@ -86,33 +84,46 @@ fn (mut b Builder) gen_cleanc_parallel(mut gen cleanc.Gen) {
 		mut thread_ids := []C.pthread_t{len: n_jobs}
 		mut args := []GenCleancChunkArgs{cap: n_jobs}
 		mut workers := []voidptr{cap: n_jobs}
+		// chunk_items: work items assigned to each worker.
+		// chunk_indices: unique file indices each worker touches (for
+		// new_pass5_worker's owned-file / cross-worker dedup bookkeeping).
+		mut chunk_items := [][]cleanc.Pass5WorkItem{cap: n_jobs}
 		mut chunk_indices := [][]int{cap: n_jobs}
+		mut chunk_file_seen := []map[int]bool{cap: n_jobs}
 		mut chunk_costs := []int{cap: n_jobs}
 
 		mut chunk_idx := n_jobs
-		if chunk_idx > n_files {
-			chunk_idx = n_files
+		if chunk_idx > n_items {
+			chunk_idx = n_items
 		}
 		for ci := 0; ci < chunk_idx; ci++ {
+			chunk_items << []cleanc.Pass5WorkItem{}
 			chunk_indices << []int{}
+			chunk_file_seen << map[int]bool{}
 			chunk_costs << 0
 		}
-		mut weighted_files := []GenCleancWeightedFile{cap: n_files}
-		for idx in emit_indices {
-			weighted_files << GenCleancWeightedFile{
-				idx:  idx
-				cost: gen.pass5_file_cost(idx)
-			}
-		}
-		weighted_files.sort(a.cost > b.cost)
-		for item in weighted_files {
+		mut sorted_items := work_items.clone()
+		sorted_items.sort(a.cost > b.cost)
+		for item in sorted_items {
 			mut target := 0
 			for ci := 1; ci < chunk_idx; ci++ {
 				if chunk_costs[ci] < chunk_costs[target] {
 					target = ci
 				}
 			}
-			chunk_indices[target] << item.idx
+			chunk_items[target] << item
+			// Only the worker that emits a file's globals (a whole-file item, or the
+			// first slice of a split file — both carry emit_globals) takes file-level
+			// dedup ownership. A split file's later slices deliberately do NOT, so the
+			// file's lazily/transitively emitted fns stay blocked in those workers and
+			// only the owning worker can emit them; the explicit slice still emits via
+			// the owner-scoped bypass in gen_file_range. This closes the duplicate /
+			// reordered-emission hole that file-level ownership left open for files
+			// split across workers.
+			if item.emit_globals && item.file_idx !in chunk_file_seen[target] {
+				chunk_file_seen[target][item.file_idx] = true
+				chunk_indices[target] << item.file_idx
+			}
 			chunk_costs[target] += item.cost
 		}
 		stage_start = mark_cleanc_parallel_step(stats_enabled, mut stats_sw, stage_start,
@@ -124,11 +135,11 @@ fn (mut b Builder) gen_cleanc_parallel(mut gen cleanc.Gen) {
 		stage_start = mark_cleanc_parallel_step(stats_enabled, mut stats_sw, stage_start,
 			'pass 5 worker setup')
 
-		// Set up args after all chunk_indices are stable
+		// Set up args after all chunk_items are stable
 		for ci := 0; ci < chunk_idx; ci++ {
 			args << GenCleancChunkArgs{
-				worker:           workers[ci]
-				file_indices_ptr: unsafe { voidptr(&chunk_indices[ci]) }
+				worker:         workers[ci]
+				work_items_ptr: unsafe { voidptr(&chunk_items[ci]) }
 			}
 		}
 
