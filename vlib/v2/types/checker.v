@@ -7547,6 +7547,17 @@ fn (mut c Checker) ident(ident ast.Ident) Object {
 			})
 		}
 
+		if ident.name in ['error', 'error_posix', 'error_with_code', 'error_win32'] {
+			ierror_type := c.lookup_type_by_name('IError') or {
+				Type(Interface{
+					name: 'IError'
+				})
+			}
+			return Type(FnType{
+				return_type: ierror_type
+			})
+		}
+
 		// typeof, sizeof, isreftype used as identifiers (e.g. typeof[T]())
 		// are builtin keywords handled by the parser, transformer, and backend.
 		// Return a FnType returning a struct with .name (string) field so that

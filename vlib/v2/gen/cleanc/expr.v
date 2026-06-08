@@ -522,6 +522,11 @@ fn (g &Gen) qualify_ierror_concrete_base(base string) string {
 	if qualified := g.ierror_base_index[base] {
 		return qualified
 	}
+	if g.ierror_base_index.len == 0 {
+		if qualified := g.scan_ierror_concrete_base(base) {
+			return qualified
+		}
+	}
 	body_suffix := '__${base}'
 	mut body_keys := g.emitted_types.keys()
 	body_keys.sort()
@@ -538,6 +543,19 @@ fn (g &Gen) qualify_ierror_concrete_base(base string) string {
 		}
 	}
 	return base
+}
+
+fn (g &Gen) scan_ierror_concrete_base(base string) ?string {
+	suffix := '__${base}__msg'
+	mut fn_names := g.fn_return_types.keys()
+	fn_names.sort()
+	for fn_name in fn_names {
+		if !fn_name.ends_with(suffix) {
+			continue
+		}
+		return fn_name[..fn_name.len - '__msg'.len]
+	}
+	return none
 }
 
 fn (mut g Gen) concrete_type_for_interface_value(type_name string, value_expr ast.Expr) string {
@@ -924,6 +942,9 @@ fn (mut g Gen) fn_type_alias_name_from_generic_name(name string) ?string {
 	} else if name.contains('_T_') {
 		base_name = name.all_before('_T_')
 	} else {
+		return none
+	}
+	if g.find_generic_fn_decl_by_base_name(base_name) != none {
 		return none
 	}
 	return g.fn_type_alias_name_for_base_expr(ast.Ident{
@@ -2589,7 +2610,6 @@ fn (mut g Gen) expr(node ast.Expr) {
 					cast_field_access := g.sb.str()
 					g.sb = saved_sb
 					if has_cast_field_access {
-						g.sb.write_string('&')
 						g.sb.write_string(cast_field_access)
 						return
 					}
@@ -3868,6 +3888,12 @@ fn (mut g Gen) gen_type_cast_expr(type_name string, expr ast.Expr) {
 				inner_type = cast_type
 			}
 		}
+		if expr is ast.InitExpr {
+			init_type := g.expr_type_to_c(expr.typ)
+			if init_type != '' && init_type != 'int' {
+				inner_type = init_type
+			}
+		}
 		mut wrap_expr := expr
 		base_inner_type := sumtype_variant_pointer_base(inner_type, variants)
 		if base_inner_type != '' {
@@ -3919,11 +3945,15 @@ fn (mut g Gen) gen_type_cast_expr(type_name string, expr ast.Expr) {
 			}
 		}
 		if inner_type != '' {
+			mut inner_match_type := inner_type
+			if inner_match_type.contains('_T_') {
+				inner_match_type = inner_match_type.all_before('_T_')
+			}
 			mut tag := -1
 			mut field_name := ''
 			for i, v in variants {
-				if v == inner_type || inner_type.ends_with('__${v}')
-					|| v.ends_with('__${inner_type}') {
+				if v == inner_match_type || inner_match_type.ends_with('__${v}')
+					|| v.ends_with('__${inner_match_type}') {
 					tag = i
 					field_name = v
 					break
@@ -3934,12 +3964,14 @@ fn (mut g Gen) gen_type_cast_expr(type_name string, expr ast.Expr) {
 			if tag < 0 && type_name.contains('__') {
 				mod_prefix := type_name.all_before_last('__') + '__'
 				// Qualify the type: Array_X → Array_mod__X, or just X → mod__X
-				qualified := if inner_type.starts_with('Array_') && !inner_type[6..].contains('__') {
-					'Array_${mod_prefix}${inner_type[6..]}'
-				} else if inner_type.starts_with('Map_') && !inner_type[4..].contains('__') {
-					'Map_${mod_prefix}${inner_type[4..]}'
-				} else if !inner_type.contains('__') {
-					'${mod_prefix}${inner_type}'
+				qualified := if inner_match_type.starts_with('Array_')
+					&& !inner_match_type[6..].contains('__') {
+					'Array_${mod_prefix}${inner_match_type[6..]}'
+				} else if inner_match_type.starts_with('Map_')
+					&& !inner_match_type[4..].contains('__') {
+					'Map_${mod_prefix}${inner_match_type[4..]}'
+				} else if !inner_match_type.contains('__') {
+					'${mod_prefix}${inner_match_type}'
 				} else {
 					''
 				}
@@ -3955,11 +3987,11 @@ fn (mut g Gen) gen_type_cast_expr(type_name string, expr ast.Expr) {
 			}
 			// If direct matching failed, check if inner_type is a known sum type
 			// that appears as a variant of the target sum type (e.g. ast__Type -> ast__Expr._Type)
-			if tag < 0 && inner_type in g.sum_type_variants {
-				inner_short := if inner_type.contains('__') {
-					inner_type.all_after_last('__')
+			if tag < 0 && inner_match_type in g.sum_type_variants {
+				inner_short := if inner_match_type.contains('__') {
+					inner_match_type.all_after_last('__')
 				} else {
-					inner_type
+					inner_match_type
 				}
 				for i, v in variants {
 					if v == inner_short {
@@ -4134,10 +4166,46 @@ fn (mut g Gen) expr_yields_struct_value(expr ast.Expr) bool {
 			}
 			return g.expr_yields_struct_value(expr.expr)
 		}
+		ast.SelectorExpr {
+			mut typ := g.selector_declared_field_type(expr).trim_space()
+			if typ == '' || typ == 'int' {
+				typ = g.selector_field_type(expr).trim_space()
+			}
+			if typ == '' || typ == 'int' {
+				typ = g.get_expr_type(expr).trim_space()
+			}
+			return typ != '' && !typ.ends_with('*')
+				&& g.lookup_struct_type_by_c_name(typ).fields.len > 0
+		}
+		ast.CallExpr {
+			typ := g.get_call_return_type(expr.lhs, expr.args) or { g.get_expr_type(expr) }
+			return typ != '' && !typ.ends_with('*')
+				&& g.lookup_struct_type_by_c_name(typ).fields.len > 0
+		}
 		else {
 			return false
 		}
 	}
+}
+
+fn (mut g Gen) expr_type_matches_value_type(expr ast.Expr, expected_type string) bool {
+	if expected_type == '' || expected_type.ends_with('*') {
+		return false
+	}
+	mut typ := ''
+	if expr is ast.SelectorExpr {
+		typ = g.selector_declared_field_type(expr).trim_space()
+		if typ == '' || typ == 'int' {
+			typ = g.selector_field_type(expr).trim_space()
+		}
+	}
+	if typ == '' || typ == 'int' {
+		typ = g.get_expr_type(expr).trim_space()
+	}
+	if typ == '' || typ == 'int' {
+		return false
+	}
+	return typ == expected_type || short_type_name(typ) == short_type_name(expected_type)
 }
 
 fn (mut g Gen) is_type_reference_expr(node ast.Expr) bool {
@@ -5555,6 +5623,56 @@ fn (g &Gen) comptime_struct_for_type(typ types.Type) ?types.Struct {
 			if resolved := scope.lookup_type_parent(short_name, 0) {
 				if resolved is types.Struct {
 					return resolved
+				}
+			}
+		}
+		mut tried := map[string]bool{}
+		if mod_name != '' {
+			tried[mod_name] = true
+		}
+		if g.cur_module != '' {
+			tried[g.cur_module] = true
+		}
+		for try_mod in ['main', 'builtin'] {
+			if tried[try_mod] {
+				continue
+			}
+			tried[try_mod] = true
+			if scope := g.env_scope(try_mod) {
+				if resolved := scope.lookup_type_parent(short_name, 0) {
+					if resolved is types.Struct {
+						return resolved
+					}
+				}
+			}
+		}
+		if g.has_flat() {
+			for i in 0 .. g.flat.files.len {
+				file_mod := flat_file_module_name(g.flat.file_cursor(i))
+				if file_mod == '' || tried[file_mod] {
+					continue
+				}
+				tried[file_mod] = true
+				if scope := g.env_scope(file_mod) {
+					if resolved := scope.lookup_type_parent(short_name, 0) {
+						if resolved is types.Struct {
+							return resolved
+						}
+					}
+				}
+			}
+		} else {
+			for file in g.files {
+				if file.mod == '' || tried[file.mod] {
+					continue
+				}
+				tried[file.mod] = true
+				if scope := g.env_scope(file.mod) {
+					if resolved := scope.lookup_type_parent(short_name, 0) {
+						if resolved is types.Struct {
+							return resolved
+						}
+					}
 				}
 			}
 		}

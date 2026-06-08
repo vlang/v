@@ -479,6 +479,81 @@ fn sanitize_cache_part(name string) string {
 	return res
 }
 
+fn sanitize_staged_c_source(source string) string {
+	return sanitize_channel_semaphore_waits(source)
+}
+
+fn sanitize_cached_main_c_source(source string) string {
+	return sanitize_c_typedef_names(sanitize_channel_semaphore_waits(source))
+}
+
+fn sanitize_cached_object_c_source(source string) string {
+	mut sanitized := sanitize_c_typedef_names(source)
+	sanitized = guard_cached_stdatomic_compat_includes(sanitized)
+	return sanitized
+}
+
+fn sanitize_channel_semaphore_waits(source string) string {
+	lines := source.split_into_lines()
+	mut out := []string{cap: lines.len}
+	prefix := 'sync__Semaphore__wait('
+	for line in lines {
+		mut fixed := line
+		if idx := fixed.index(prefix) {
+			arg_start := idx + prefix.len
+			if arg_start < fixed.len && fixed[arg_start] != `&` {
+				arg_end := fixed.index_after(')', arg_start) or { -1 }
+				if arg_end > arg_start {
+					arg := fixed[arg_start..arg_end]
+					if arg.contains('->writesem') || arg.contains('->readsem') {
+						fixed = fixed[..arg_start] + '&' + fixed[arg_start..]
+					}
+				}
+			}
+		}
+		out << fixed
+	}
+	return out.join('\n')
+}
+
+fn sanitize_c_typedef_names(source string) string {
+	mut out := source
+	for name in ['atomic_uintptr_t', 'pthread_rwlockattr_t', 'pthread_condattr_t'] {
+		out = out.replace('struct ${name}', name)
+	}
+	return out
+}
+
+fn guard_cached_stdatomic_compat_includes(source string) string {
+	if !source.contains('/thirdparty/stdatomic/nix/atomic.h') {
+		return source
+	}
+	lines := source.split_into_lines()
+	mut out := []string{cap: lines.len + 8}
+	for line in lines {
+		trimmed := line.trim_space()
+		if trimmed == '#include <stdatomic.h>' {
+			out << '#ifndef __TINYC__'
+			out << line
+			out << '#endif'
+			continue
+		}
+		if trimmed.starts_with('#include ')
+			&& trimmed.contains('/thirdparty/stdatomic/nix/atomic.h') {
+			out << '#if defined(__TINYC__) && defined(__APPLE__) && defined(__aarch64__)'
+			out << '#define extern static'
+			out << '#endif'
+			out << line
+			out << '#if defined(__TINYC__) && defined(__APPLE__) && defined(__aarch64__)'
+			out << '#undef extern'
+			out << '#endif'
+			continue
+		}
+		out << line
+	}
+	return out.join('\n')
+}
+
 fn virtual_header_name(name string) string {
 	return 'main_${sanitize_cache_part(name)}'
 }

@@ -106,12 +106,6 @@ fn (b &Builder) should_skip_markused_for_self_build() bool {
 	return b.pref.backend == .cleanc && b.is_cmd_v2_self_build()
 }
 
-fn (b &Builder) should_use_legacy_ast_for_self_build() bool {
-	return b.pref.backend == .cleanc && b.is_cmd_v2_self_build() && os.getenv('V2_CHECK_FLAT') == ''
-		&& os.getenv('V2_MARKUSED_FLAT') == '' && os.getenv('V2_FLAT_SSA') == ''
-		&& os.getenv('V2_NATIVE_FLAT') == ''
-}
-
 fn (b &Builder) should_build_ssa_from_flat() bool {
 	return b.flat.files.len > 0
 }
@@ -216,11 +210,6 @@ pub fn (mut b Builder) build(files []string) {
 	// relink directly and skip the entire front-end. Falls through on any staleness.
 	if b.try_self_build_fast_relink() {
 		return
-	}
-	if b.should_use_legacy_ast_for_self_build() {
-		b.flat_check_enabled = false
-		b.markused_flat_enabled = false
-		b.flat_ssa_enabled = false
 	}
 	mut sw := time.new_stopwatch()
 	print_rss('start')

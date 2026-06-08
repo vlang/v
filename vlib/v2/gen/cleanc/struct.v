@@ -5,6 +5,7 @@
 module cleanc
 
 import runtime
+import strings
 import time
 import v2.ast
 import v2.types
@@ -273,7 +274,8 @@ fn (mut g Gen) scan_receiver_generic_struct_bindings_for_files(files []ast.File)
 	// Generic receiver methods can contain explicit calls like
 	// `helper[T](...)` even when the receiver itself is emitted with v2's
 	// fallback placeholder type. Rescan those bodies with concrete receiver
-	// bindings, or with the same f64 fallback used by placeholder C types.
+	// bindings. Uninstantiated receiver-generic methods should not invent
+	// concrete helper calls from unrelated generic bindings.
 	for file in files {
 		g.set_file_module(file)
 		for stmt in file.stmts {
@@ -290,11 +292,7 @@ fn (mut g Gen) scan_receiver_generic_struct_bindings_for_files(files []ast.File)
 					binding_sets << bindings
 				}
 				if binding_sets.len == 0 {
-					mut fallback := map[string]types.Type{}
-					for param_name in recv_params {
-						fallback[param_name] = types.Type(types.f64_)
-					}
-					binding_sets << fallback
+					continue
 				}
 				prev_generic_types := g.active_generic_types.clone()
 				for bindings in binding_sets {
@@ -330,11 +328,7 @@ fn (mut g Gen) scan_receiver_generic_struct_bindings_flat() {
 				binding_sets << bindings
 			}
 			if binding_sets.len == 0 {
-				mut fallback := map[string]types.Type{}
-				for param_name in recv_params {
-					fallback[param_name] = types.Type(types.f64_)
-				}
-				binding_sets << fallback
+				continue
 			}
 			prev_generic_types := g.active_generic_types.clone()
 			for bindings in binding_sets {
@@ -476,8 +470,15 @@ fn (mut g Gen) merge_generic_struct_scan_worker(w &Gen) {
 
 fn (mut g Gen) merge_generic_struct_scan_instance(struct_c_name string, inst GenericStructInstance) {
 	mut instances := g.generic_struct_instances[struct_c_name]
+	struct_base := if struct_c_name.contains('__') {
+		struct_c_name.all_after_last('__')
+	} else {
+		struct_c_name
+	}
+	param_names := g.generic_struct_runtime_param_names(struct_base, struct_c_name)
+	bindings_key := g.generic_struct_bindings_key(param_names, inst.bindings)
 	for existing in instances {
-		if existing.params_key == inst.params_key {
+		if g.generic_struct_instance_matches(existing, inst.params_key, bindings_key, param_names) {
 			return
 		}
 	}
@@ -1068,6 +1069,26 @@ fn generic_call_short_name(lhs ast.Expr) string {
 	return name
 }
 
+fn generic_call_raw_name(lhs ast.Expr) string {
+	return match lhs {
+		ast.Ident {
+			lhs.name
+		}
+		ast.SelectorExpr {
+			lhs.rhs.name
+		}
+		ast.GenericArgOrIndexExpr {
+			generic_call_raw_name(lhs.lhs)
+		}
+		ast.GenericArgs {
+			generic_call_raw_name(lhs.lhs)
+		}
+		else {
+			''
+		}
+	}
+}
+
 fn generic_call_type_args(lhs ast.Expr) []ast.Expr {
 	return match lhs {
 		ast.GenericArgOrIndexExpr {
@@ -1369,7 +1390,12 @@ fn (mut g Gen) record_generic_scan_call_name(lhs ast.Expr, arg_count int, generi
 		suffixes << g.generic_specialization_token_from_type(concrete)
 	}
 	if suffixes.len == generic_params.len {
-		g.generic_scan_called_names['${base_name}_T_${suffixes.join('_')}'] = true
+		specialized_name := '${base_name}_T_${suffixes.join('_')}'
+		g.generic_scan_called_names[specialized_name] = true
+		if !base_name.contains('__') && g.cur_module != '' && g.cur_module != 'main'
+			&& g.cur_module != 'builtin' {
+			g.generic_scan_called_names['${g.cur_module}__${specialized_name}'] = true
+		}
 	}
 }
 
@@ -1491,7 +1517,21 @@ fn (mut g Gen) scan_call_for_generic_fn_specs(call ast.CallExpr) {
 	}
 	if type_args.len == 0 && bindings.len != generic_params.len
 		&& !g.bind_embedded_generic_type_args(call.lhs, generic_params, mut bindings) {
-		return
+		raw_name := generic_call_raw_name(call.lhs)
+		if !g.generic_call_name_has_placeholder_suffix(raw_name) {
+			if specialized_name := g.try_specialize_generic_call_name(raw_name, call.args) {
+				g.record_called_specialized_generic_name(specialized_name)
+			}
+			return
+		}
+		return_bindings := g.infer_generic_bindings_from_current_return(decl, generic_params) or {
+			return
+		}
+		for param_name, concrete in return_bindings {
+			if param_name !in bindings {
+				bindings[param_name] = concrete
+			}
+		}
 	}
 	if bindings.len != generic_params.len {
 		return
@@ -1628,6 +1668,13 @@ fn generic_body_scan_bindings_key(bindings map[string]types.Type) string {
 }
 
 fn (mut g Gen) scan_fn_body_for_generic_types(node ast.FnDecl, spec_name string) {
+	prev_cur_fn_ret_type := g.cur_fn_ret_type
+	if ret_type := g.scan_fn_return_c_type(node, spec_name) {
+		g.cur_fn_ret_type = ret_type
+	}
+	defer {
+		g.cur_fn_ret_type = prev_cur_fn_ret_type
+	}
 	if node.pos.id <= 0 {
 		if !g.stmts_may_need_generic_scan(node.stmts) {
 			return
@@ -1654,6 +1701,18 @@ fn (mut g Gen) scan_fn_body_for_generic_types(node ast.FnDecl, spec_name string)
 		return
 	}
 	g.scan_stmts_for_generic_types(node.stmts)
+}
+
+fn (mut g Gen) scan_fn_return_c_type(node ast.FnDecl, spec_name string) ?string {
+	if spec_name != '' {
+		if ret := g.fn_return_types[spec_name] {
+			return normalize_signature_type_name(ret, 'void')
+		}
+	}
+	if node.typ.return_type !is ast.EmptyExpr {
+		return normalize_signature_type_name(g.expr_type_to_c(node.typ.return_type), 'void')
+	}
+	return 'void'
 }
 
 fn (g &Gen) stmts_may_need_generic_scan(stmts []ast.Stmt) bool {
@@ -2050,7 +2109,13 @@ fn (mut g Gen) scan_stmts_for_generic_types(stmts []ast.Stmt) {
 fn (mut g Gen) scan_expr_stmts_for_generic_types(e ast.Expr) {
 	if e is ast.IfExpr {
 		g.scan_expr_for_generic_types(e.cond)
+		narrow_name, narrow_type := g.generic_scan_narrowing_from_cond(e.cond)
+		mut prev_runtime_local_types := g.runtime_local_types.clone()
+		if narrow_name != '' && narrow_type != '' {
+			g.remember_runtime_local_type(narrow_name, narrow_type)
+		}
 		g.scan_stmts_for_generic_types(e.stmts)
+		g.runtime_local_types = prev_runtime_local_types.move()
 		if e.else_expr !is ast.EmptyExpr {
 			g.scan_expr_for_generic_types(e.else_expr)
 			g.scan_expr_stmts_for_generic_types(e.else_expr)
@@ -2077,6 +2142,21 @@ fn (mut g Gen) scan_expr_stmts_for_generic_types(e ast.Expr) {
 	} else if e is ast.UnsafeExpr {
 		g.scan_stmts_for_generic_types(e.stmts)
 	}
+}
+
+fn (mut g Gen) generic_scan_narrowing_from_cond(cond ast.Expr) (string, string) {
+	if cond is ast.InfixExpr && cond.op == .key_is {
+		name := cond.lhs.name()
+		if name == '' {
+			return '', ''
+		}
+		c_type := g.expr_type_to_c(cond.rhs).trim_space()
+		if c_type == '' || c_type == 'int' {
+			return '', ''
+		}
+		return name, c_type
+	}
+	return '', ''
 }
 
 fn generic_scan_type_is_unresolved(typ string) bool {
@@ -2240,6 +2320,9 @@ fn (mut g Gen) emit_ready_option_result_structs() bool {
 	mut option_names := g.option_aliases.keys()
 	option_names.sort()
 	for name in option_names {
+		if g.should_skip_shadowed_option_result_alias(name) {
+			continue
+		}
 		if name in g.emitted_option_structs {
 			continue
 		}
@@ -2256,6 +2339,9 @@ fn (mut g Gen) emit_ready_option_result_structs() bool {
 	mut result_names := g.result_aliases.keys()
 	result_names.sort()
 	for name in result_names {
+		if g.should_skip_shadowed_option_result_alias(name) {
+			continue
+		}
 		if name in g.emitted_result_structs {
 			continue
 		}
@@ -2282,9 +2368,7 @@ fn (mut g Gen) struct_fields_resolved(node ast.StructDecl) bool {
 	prev_active_generic_types := g.active_generic_types.clone()
 	mut set_generic_context := false
 	if real_generic_params.len > 0 && g.active_generic_types.len == 0 {
-		bindings := g.generic_bindings_for_struct_decl(node, real_generic_params) or {
-			return false
-		}
+		bindings := g.generic_bindings_for_struct_decl(node) or { return false }
 		g.active_generic_types = bindings.clone()
 		set_generic_context = true
 	}
@@ -2353,7 +2437,7 @@ fn (mut g Gen) struct_fields_resolved(node ast.StructDecl) bool {
 				base_name = g.qualify_owner_local_field_type(owner_name, base_name)
 				if base_name != '' && base_name != 'void'
 					&& !g.option_result_payload_invalid(base_name) {
-					wrapper_name := '_option_' + mangle_alias_component(base_name)
+					wrapper_name := '_option_' + g.option_result_payload_alias_component(base_name)
 					if wrapper_name !in g.emitted_option_structs {
 						return false
 					}
@@ -2368,7 +2452,7 @@ fn (mut g Gen) struct_fields_resolved(node ast.StructDecl) bool {
 				base_name = g.qualify_owner_local_field_type(owner_name, base_name)
 				if base_name != '' && base_name != 'void'
 					&& !g.option_result_payload_invalid(base_name) {
-					wrapper_name := '_result_' + mangle_alias_component(base_name)
+					wrapper_name := '_result_' + g.option_result_payload_alias_component(base_name)
 					if wrapper_name !in g.emitted_result_structs {
 						return false
 					}
@@ -2464,7 +2548,7 @@ fn (mut g Gen) struct_field_fixed_array_elem_resolved(elem_type ast.Expr) bool {
 		|| 'alias_${elem_name}' in g.emitted_types
 }
 
-fn (mut g Gen) generic_bindings_for_struct_decl(node ast.StructDecl, real_generic_params []string) ?map[string]types.Type {
+fn (mut g Gen) generic_bindings_for_struct_decl(node ast.StructDecl) ?map[string]types.Type {
 	struct_c_name := g.get_struct_name(node)
 	if bindings := g.generic_struct_bindings[struct_c_name] {
 		return bindings.clone()
@@ -2474,7 +2558,7 @@ fn (mut g Gen) generic_bindings_for_struct_decl(node ast.StructDecl, real_generi
 			return instances[0].bindings.clone()
 		}
 	}
-	return g.fallback_generic_bindings_for_names(real_generic_params)
+	return none
 }
 
 fn (mut g Gen) get_struct_name(node ast.StructDecl) string {
@@ -2534,14 +2618,12 @@ fn (mut g Gen) gen_struct_decl(node ast.StructDecl) {
 	if node.language == .c {
 		return
 	}
-	// Generic structs are emitted using concrete bindings recorded from
-	// GenericType instantiations, falling back to the first binding in env.
+	// Generic structs are emitted only from concrete bindings recorded from
+	// GenericType instantiations.
 	prev_generic_types := g.active_generic_types.clone()
 	real_generic_params := generic_param_names(node.generic_params)
 	if real_generic_params.len > 0 {
-		g.active_generic_types = g.generic_bindings_for_struct_decl(node, real_generic_params) or {
-			return
-		}
+		g.active_generic_types = g.generic_bindings_for_struct_decl(node) or { return }
 	}
 	defer {
 		g.active_generic_types = prev_generic_types.clone()
@@ -3134,7 +3216,7 @@ fn (mut g Gen) gen_sum_type_wrap(type_name string, field_name string, tag int, i
 			g.sb.write_string('((void*)({ ${resolved_type} ${tmp_name} = ')
 			g.expr(inner_expr)
 			g.sb.write_string('; memdup(&${tmp_name}, sizeof(${resolved_type})); }))')
-		} else if g.expr_yields_struct_value(expr) {
+		} else if g.sum_payload_expr_needs_temp(expr, resolved_type) {
 			// Inner expr is a struct value (e.g. another sum type wrap or InitExpr).
 			// memdup expects a pointer, so route through a temporary.
 			g.tmp_counter++
@@ -3157,6 +3239,28 @@ fn (mut g Gen) gen_sum_type_wrap(type_name string, field_name string, tag int, i
 		g.sb.write_string('; memdup(&${tmp_name}, sizeof(${resolved_type})); }))')
 	}
 	g.sb.write_string('})')
+}
+
+fn (mut g Gen) sum_payload_expr_needs_temp(expr ast.Expr, resolved_type string) bool {
+	unwrapped := strip_expr_wrappers(expr)
+	return g.expr_yields_struct_value(expr) || g.expr_type_matches_value_type(expr, resolved_type)
+		|| unwrapped is ast.SelectorExpr || unwrapped is ast.CallExpr
+		|| g.sum_payload_expr_code_needs_temp(expr, resolved_type)
+}
+
+fn (mut g Gen) sum_payload_expr_code_needs_temp(expr ast.Expr, resolved_type string) bool {
+	if resolved_type == '' || resolved_type.ends_with('*') || resolved_type in primitive_types {
+		return false
+	}
+	saved_sb := g.sb
+	g.sb = strings.new_builder(256)
+	g.expr(expr)
+	code := g.sb.str().trim_space()
+	g.sb = saved_sb
+	if code == '' || code.starts_with('&') {
+		return false
+	}
+	return code.contains(')->') || code.contains(').')
 }
 
 fn (g &Gen) resolve_sum_payload_storage_type(sum_type_name string, variant_field string, inner_type string) string {
@@ -4355,7 +4459,7 @@ fn (mut g Gen) gen_none_literal_for_type(type_name string) bool {
 		g.sb.write_string('(${trimmed}){ .state = 2 }')
 		return true
 	}
-	if trimmed in ['IError', 'builtin__IError'] {
+	if is_ierror_interface_name(trimmed) {
 		g.sb.write_string('none__')
 		return true
 	}
@@ -4692,27 +4796,36 @@ fn (mut g Gen) known_unqualified_struct_literal_type(type_name string) string {
 	if 'alias_${type_name}' in g.emitted_types {
 		return type_name
 	}
-	mut matches := []string{}
+	mut matched := ''
+	mut match_count := 0
 	suffix := '__${type_name}'
-	for key in g.emitted_types.keys() {
+	for key, _ in g.emitted_types {
 		if key.starts_with('body_') || key.starts_with('alias_') {
 			prefix_len := if key.starts_with('body_') { 'body_'.len } else { 'alias_'.len }
 			candidate := key[prefix_len..]
 			if candidate.ends_with(suffix) {
-				matches << candidate
+				matched = candidate
+				match_count++
+				if match_count > 1 {
+					return g.qualify_module_local_type_name(type_name)
+				}
 			}
 		}
 	}
-	for key in g.pending_late_body_keys.keys() {
+	for key, _ in g.pending_late_body_keys {
 		if key.starts_with('body_') {
 			candidate := key['body_'.len..]
 			if candidate.ends_with(suffix) {
-				matches << candidate
+				matched = candidate
+				match_count++
+				if match_count > 1 {
+					return g.qualify_module_local_type_name(type_name)
+				}
 			}
 		}
 	}
-	if matches.len == 1 {
-		return matches[0]
+	if match_count == 1 {
+		return matched
 	}
 	return g.qualify_module_local_type_name(type_name)
 }
@@ -4817,10 +4930,77 @@ fn init_expr_can_use_expected_type(node ast.InitExpr, type_name string, expected
 		|| (type_base != '' && short_type_name(expected_base) == short_type_name(type_base))
 }
 
+fn generic_init_type_base_matches(resolved_type string, base_name string) bool {
+	if resolved_type == '' || base_name == '' {
+		return false
+	}
+	resolved_base := if resolved_type.contains('_T_') {
+		resolved_type.all_before('_T_')
+	} else {
+		resolved_type
+	}
+	return resolved_base == base_name
+		|| short_type_name(resolved_base) == short_type_name(base_name)
+}
+
+fn (mut g Gen) canonical_init_generic_type_name(typ ast.Expr, type_name string) string {
+	if type_name == '' || !type_name.contains('_T_') {
+		return type_name
+	}
+	match typ {
+		ast.GenericArgOrIndexExpr {
+			base_name := g.generic_type_lhs_to_c(typ.lhs)
+			if generic_init_type_base_matches(type_name, base_name) {
+				return g.resolve_generic_struct_c_name(base_name, [typ.expr])
+			}
+		}
+		ast.GenericArgs {
+			base_name := g.generic_type_lhs_to_c(typ.lhs)
+			if generic_init_type_base_matches(type_name, base_name) {
+				return g.resolve_generic_struct_c_name(base_name, typ.args)
+			}
+		}
+		ast.Type {
+			if typ is ast.GenericType {
+				base_name := g.generic_type_lhs_to_c(typ.name)
+				if generic_init_type_base_matches(type_name, base_name) {
+					return g.resolve_generic_struct_c_name(base_name, typ.params)
+				}
+			}
+		}
+		else {}
+	}
+
+	return type_name
+}
+
+fn (mut g Gen) canonical_recorded_generic_type_name(type_name string) string {
+	if type_name == '' || !type_name.contains('_T_') {
+		return type_name
+	}
+	base_name := type_name.all_before('_T_')
+	params_key := type_name.all_after('_T_')
+	mut instances := g.generic_struct_instances[base_name]
+	if instances.len == 0 && base_name.contains('__') {
+		instances = g.generic_struct_instances[base_name.all_after_last('__')]
+	} else if instances.len == 0 && !base_name.contains('__') && g.cur_module != ''
+		&& g.cur_module != 'main' && g.cur_module != 'builtin' {
+		instances = g.generic_struct_instances['${g.cur_module}__${base_name}']
+	}
+	for inst in instances {
+		if inst.params_key == params_key {
+			return inst.c_name
+		}
+	}
+	return type_name
+}
+
 fn (mut g Gen) gen_init_expr(node ast.InitExpr) {
 	expected_type := g.expected_init_expr_type
 	g.expected_init_expr_type = ''
 	mut type_name := g.expr_type_to_c(node.typ)
+	type_name = g.canonical_init_generic_type_name(node.typ, type_name)
+	type_name = g.canonical_recorded_generic_type_name(type_name)
 	if node.typ is ast.Ident {
 		if g.type_expr_has_metadata(node.typ) {
 			// Position metadata is authoritative for synthesized type expressions.
@@ -4922,7 +5102,7 @@ fn (mut g Gen) gen_init_expr(node ast.InitExpr) {
 					g.sb.write_string('((void*)({ ${resolved_type} ${tmp_name} = ')
 					g.expr(inner_expr)
 					g.sb.write_string('; memdup(&${tmp_name}, sizeof(${resolved_type})); }))')
-				} else if g.expr_yields_struct_value(field.value) {
+				} else if g.sum_payload_expr_needs_temp(field.value, resolved_type) {
 					g.tmp_counter++
 					tmp_name := '_st${g.tmp_counter}'
 					g.sb.write_string('((void*)({ ${resolved_type} ${tmp_name} = ')

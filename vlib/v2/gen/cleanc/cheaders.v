@@ -1541,6 +1541,9 @@ fn (mut g Gen) emit_runtime_aliases() {
 	mut option_names := g.option_aliases.keys()
 	option_names.sort()
 	for name in option_names {
+		if g.should_skip_shadowed_option_result_alias(name) {
+			continue
+		}
 		val_type := option_value_type(name)
 		g.emit_option_result_forward_decl(name, val_type)
 	}
@@ -1550,6 +1553,9 @@ fn (mut g Gen) emit_runtime_aliases() {
 	mut result_names := g.result_aliases.keys()
 	result_names.sort()
 	for name in result_names {
+		if g.should_skip_shadowed_option_result_alias(name) {
+			continue
+		}
 		val_type := g.result_value_type(name)
 		g.emit_option_result_forward_decl(name, val_type)
 	}
@@ -1959,8 +1965,7 @@ fn (mut g Gen) emit_map_str_functions() {
 			continue
 		}
 		// Parse key and value types from Map_K_V name
-		without_prefix := name.all_after('Map_')
-		key_type, value_type := g.parse_map_kv_types(without_prefix)
+		key_type, value_type := g.map_alias_key_value_types(name)
 		if key_type == '' || value_type == '' {
 			continue
 		}
@@ -2133,8 +2138,7 @@ fn (mut g Gen) emit_map_eq_functions() {
 		if 'alias_${name}' !in g.emitted_types {
 			continue
 		}
-		without_prefix := name.all_after('Map_')
-		key_type, value_type := g.parse_map_kv_types(without_prefix)
+		key_type, value_type := g.map_alias_key_value_types(name)
 		if key_type == '' || value_type == '' {
 			g.sb.writeln('')
 			g.sb.writeln('bool ${name}_map_eq(${name} a, ${name} b) { return map_map_eq(a, b); }')
@@ -2370,6 +2374,16 @@ fn (mut g Gen) emit_struct_field_eq(s types.Struct, va string, vb string) {
 			}
 		}
 	}
+}
+
+fn (mut g Gen) map_alias_key_value_types(name string) (string, string) {
+	if info := g.ensure_map_type_info(name) {
+		if info.key_c_type != '' && info.value_c_type != '' {
+			return info.key_c_type, info.value_c_type
+		}
+	}
+	without_prefix := name.all_after('Map_')
+	return g.parse_map_kv_types(without_prefix)
 }
 
 // parse_map_kv_types parses key and value types from a "key_value" string.

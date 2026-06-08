@@ -489,33 +489,7 @@ fn (mut t Transformer) transform_index_expr(expr ast.IndexExpr) ast.Expr {
 			mut stmts := []ast.Stmt{}
 
 			// Map arg: map__get expects a pointer to the map.
-			mut map_arg := ast.Expr(ast.empty_expr)
-			lhs_val := t.transform_expr(expr.lhs)
-			if t.is_pointer_type(map_expr_typ) {
-				map_arg = lhs_val
-			} else if t.can_take_address_expr(lhs_val) {
-				map_arg = ast.Expr(ast.PrefixExpr{
-					op:   .amp
-					expr: lhs_val
-				})
-			} else {
-				map_tmp := t.gen_temp_name()
-				map_ident := t.typed_temp_ident(map_tmp, map_expr_typ)
-				mut map_lhs := []ast.Expr{cap: 1}
-				map_lhs << ast.Expr(map_ident)
-				mut map_rhs := []ast.Expr{cap: 1}
-				map_rhs << lhs_val
-				stmts << ast.Stmt(ast.AssignStmt{
-					op:  .decl_assign
-					lhs: map_lhs
-					rhs: map_rhs
-					pos: map_ident.pos
-				})
-				map_arg = ast.Expr(ast.PrefixExpr{
-					op:   .amp
-					expr: map_ident
-				})
-			}
+			map_arg := t.map_expr_to_runtime_ptr(expr.lhs, map_expr_typ, map_type)
 
 			// Key temp (so we can take its address safely for the duration of the whole expression).
 			key_tmp := t.gen_temp_name()
@@ -2534,18 +2508,7 @@ fn (mut t Transformer) transform_infix_expr(expr ast.InfixExpr) ast.Expr {
 						pos: expr.pos
 					}
 				}
-				mut map_ptr := ast.Expr(ast.empty_expr)
-				rhs_trans := t.transform_expr(expr.rhs)
-				if rhs_type is types.Pointer {
-					map_ptr = rhs_trans
-				} else if t.can_take_address_expr(rhs_trans) {
-					map_ptr = ast.Expr(ast.PrefixExpr{
-						op:   .amp
-						expr: rhs_trans
-					})
-				} else {
-					map_ptr = t.addr_of_expr_with_temp(expr.rhs, map_typ)
-				}
+				map_ptr := t.map_expr_to_runtime_ptr(expr.rhs, rhs_type, map_typ)
 				// For the key, declare a temp variable in the same scope as the
 				// map__exists call so the pointer stays valid during the call.
 				// Using addr_of_expr_with_temp would nest the temp inside a

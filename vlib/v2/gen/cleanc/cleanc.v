@@ -1178,6 +1178,7 @@ pub fn (mut g Gen) gen_passes_1_to_4() {
 	g.generic_struct_bindings['stdatomic__AtomicVal'] = {
 		'T': types.Type(types.int_)
 	}
+	g.discover_direct_generic_call_specs()
 	stage_start = g.mark_cgen_step(stats_enabled, stats_scope, mut stats_sw, stage_start,
 		'setup.discover_generic_specs')
 	g.collect_force_emit_sort_fns()
@@ -1272,9 +1273,6 @@ pub fn (mut g Gen) gen_passes_1_to_4() {
 		'pass 3.1 fixed arrays')
 
 	// Pass 3.25: Tuple aliases (multiple-return lowering support)
-	if 'body_array' !in g.emitted_types {
-		eprintln('WARNING: body_array not emitted before pass 3.25 tuples')
-	}
 	g.emit_tuple_aliases()
 	if g.tuple_aliases.len > 0 {
 		g.sb.writeln('')
@@ -1528,6 +1526,10 @@ fn (mut g Gen) emit_pass1_forward_decls() {
 
 fn (mut g Gen) emit_struct_forward_decl(decl ast.StructDecl) {
 	name := g.get_struct_name(decl)
+	if decl.generic_params.len > 0 && name !in g.generic_struct_bindings
+		&& name !in g.generic_struct_instances {
+		return
+	}
 	if name in g.emitted_types {
 		return
 	}
@@ -1843,7 +1845,7 @@ fn (mut g Gen) emit_fn_forward_decl_for_decl(decl ast.FnDecl, body_len int, file
 			}
 			g.active_generic_types = prev_generic_types.clone()
 		} else {
-			if gfn_name != '' {
+			if gfn_name != '' && generic_fn_has_macro_fallback(decl) {
 				g.emit_generic_fn_macro(gfn_name, decl)
 			}
 		}
@@ -1877,6 +1879,7 @@ fn (mut g Gen) emit_fn_forward_decl_for_decl(decl ast.FnDecl, body_len int, file
 			g.active_generic_types = prev_generic_types.clone()
 			return
 		}
+		return
 	}
 	fn_name := g.get_fn_name(decl)
 	if fn_name == '' {
@@ -2155,6 +2158,7 @@ fn (mut g Gen) gen_pass5() {
 	g.collect_force_emit_str_fns()
 	g.emit_pass5_extern_consts_for_non_emit_files()
 	g.emit_pass5_extern_globals()
+	g.emit_weak_generic_specializations_before_pass5_files()
 	if g.has_flat() {
 		for i in 0 .. g.flat.files.len {
 			fc := g.flat.file_cursor(i)
@@ -2347,7 +2351,7 @@ fn (mut g Gen) emit_forced_helpers_from_non_emit_files() {
 		for i in 0 .. g.flat.files.len {
 			fc := g.flat.file_cursor(i)
 			g.set_file_cursor_module(fc)
-			if g.should_emit_current_file() || fc.name().ends_with('.vh') {
+			if fc.name().ends_with('.vh') {
 				continue
 			}
 			stmts := fc.stmts()
@@ -2393,7 +2397,7 @@ fn (mut g Gen) emit_forced_helpers_from_non_emit_files() {
 	mut emitted := map[string]bool{}
 	for file in g.files {
 		g.set_file_module(file)
-		if g.should_emit_current_file() || file.name.ends_with('.vh') {
+		if file.name.ends_with('.vh') {
 			continue
 		}
 		for stmt in file.stmts {
@@ -2428,12 +2432,43 @@ fn (mut g Gen) emit_forced_helpers_from_non_emit_files() {
 fn (mut g Gen) emit_weak_generic_specializations_from_non_emit_files() {
 }
 
+fn (mut g Gen) emit_weak_generic_specializations_before_pass5_files() {
+	mut needed_names := g.late_weak_generic_name_set()
+	mut required_names := map[string]bool{}
+	for name, _ in needed_names {
+		required_names[name] = true
+	}
+	g.add_called_weak_generic_names(mut needed_names, mut required_names)
+	mut scanned := map[string]bool{}
+	for _ in 0 .. 4 {
+		before_needed := needed_names.len
+		before_late := g.late_generic_spec_count()
+		root_called_names := needed_names.clone()
+		g.scan_weak_generic_specializations_from_non_emit_files(root_called_names, required_names, mut
+			needed_names, mut required_names, mut scanned)
+		if needed_names.len == before_needed && g.late_generic_spec_count() == before_late {
+			break
+		}
+		g.add_late_weak_generic_names(mut needed_names)
+	}
+	if needed_names.len == 0 {
+		return
+	}
+	root_called_names := needed_names.clone()
+	mut emitted_decls := map[string]bool{}
+	g.emit_weak_generic_specialization_decls(needed_names, root_called_names, required_names, mut
+		emitted_decls)
+	mut emitted_bodies := map[string]bool{}
+	g.emit_weak_generic_specialization_bodies(needed_names, root_called_names, required_names, mut
+		emitted_bodies)
+}
+
 fn (mut g Gen) scan_weak_generic_specializations_from_non_emit_files(root_called_names map[string]bool, required_names map[string]bool, mut needed_names map[string]bool, mut required_names_mut map[string]bool, mut scanned map[string]bool) {
 	if g.has_flat() {
 		for i in 0 .. g.flat.files.len {
 			fc := g.flat.file_cursor(i)
 			g.set_file_cursor_module(fc)
-			if g.should_emit_current_file() || fc.name().ends_with('.vh') {
+			if fc.name().ends_with('.vh') {
 				continue
 			}
 			stmts := fc.stmts()
@@ -2457,7 +2492,7 @@ fn (mut g Gen) scan_weak_generic_specializations_from_non_emit_files(root_called
 	}
 	for file in g.files {
 		g.set_file_module(file)
-		if g.should_emit_current_file() || file.name.ends_with('.vh') {
+		if file.name.ends_with('.vh') {
 			continue
 		}
 		for stmt in file.stmts {
@@ -2647,7 +2682,7 @@ fn (mut g Gen) late_weak_generic_name_set() map[string]bool {
 		for i in 0 .. g.flat.files.len {
 			fc := g.flat.file_cursor(i)
 			g.set_file_cursor_module(fc)
-			if g.should_emit_current_file() || fc.name().ends_with('.vh') {
+			if fc.name().ends_with('.vh') {
 				continue
 			}
 			stmts := fc.stmts()
@@ -2673,7 +2708,7 @@ fn (mut g Gen) late_weak_generic_name_set() map[string]bool {
 	}
 	for file in g.files {
 		g.set_file_module(file)
-		if g.should_emit_current_file() || file.name.ends_with('.vh') {
+		if file.name.ends_with('.vh') {
 			continue
 		}
 		for stmt in file.stmts {
@@ -2754,7 +2789,7 @@ fn (mut g Gen) emit_weak_generic_specialization_decls(needed_names map[string]bo
 		for i in 0 .. g.flat.files.len {
 			fc := g.flat.file_cursor(i)
 			g.set_file_cursor_module(fc)
-			if g.should_emit_current_file() || fc.name().ends_with('.vh') {
+			if fc.name().ends_with('.vh') {
 				continue
 			}
 			stmts := fc.stmts()
@@ -2778,7 +2813,7 @@ fn (mut g Gen) emit_weak_generic_specialization_decls(needed_names map[string]bo
 	}
 	for file in g.files {
 		g.set_file_module(file)
-		if g.should_emit_current_file() || file.name.ends_with('.vh') {
+		if file.name.ends_with('.vh') {
 			continue
 		}
 		for stmt in file.stmts {
@@ -2803,7 +2838,7 @@ fn (mut g Gen) emit_weak_generic_specialization_bodies(needed_names map[string]b
 		for i in 0 .. g.flat.files.len {
 			fc := g.flat.file_cursor(i)
 			g.set_file_cursor_module(fc)
-			if g.should_emit_current_file() || fc.name().ends_with('.vh') {
+			if fc.name().ends_with('.vh') {
 				continue
 			}
 			stmts := fc.stmts()
@@ -2827,7 +2862,7 @@ fn (mut g Gen) emit_weak_generic_specialization_bodies(needed_names map[string]b
 	}
 	for file in g.files {
 		g.set_file_module(file)
-		if g.should_emit_current_file() || file.name.ends_with('.vh') {
+		if file.name.ends_with('.vh') {
 			continue
 		}
 		for stmt in file.stmts {
@@ -4822,6 +4857,9 @@ fn strip_expr_wrappers(expr ast.Expr) ast.Expr {
 			strip_expr_wrappers(expr.expr)
 		}
 		ast.CastExpr {
+			strip_expr_wrappers(expr.expr)
+		}
+		ast.AsCastExpr {
 			strip_expr_wrappers(expr.expr)
 		}
 		else {

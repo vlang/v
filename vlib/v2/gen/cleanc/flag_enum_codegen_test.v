@@ -1822,6 +1822,30 @@ fn test_parse_map_kv_types_prefers_longest_known_generic_key() {
 	assert value_type == 'Array_int'
 }
 
+fn test_map_alias_key_value_types_prefers_collected_module_qualified_value() {
+	mut gen := Gen.new([])
+	gen.collected_map_types['Map_string_ssa__Type'] = MapTypeInfo{
+		key_c_type:   'string'
+		value_c_type: 'ssa__Type'
+	}
+	key_type, value_type := gen.map_alias_key_value_types('Map_string_ssa__Type')
+	assert key_type == 'string'
+	assert value_type == 'ssa__Type'
+}
+
+fn test_qualify_module_local_generic_c_name_preserves_collected_map_info_for_option_payload() {
+	mut gen := Gen.new([])
+	gen.cur_module = 'cleanc'
+	gen.collected_map_types['Map_string_types__Type'] = MapTypeInfo{
+		key_c_type:   'string'
+		value_c_type: 'types__Type'
+	}
+	qualified := gen.qualify_module_local_generic_c_name('_option_Map_string_types__Type')
+	assert qualified == '_option_Map_string_types__Type'
+	assert !qualified.contains('cleanc__string')
+	assert !qualified.contains('types__cleanc__Type')
+}
+
 fn test_map_alias_filter_accepts_module_qualified_key_type() {
 	mut gen := Gen.new([])
 	gen.cache_bundle_name = 'v2compiler'
@@ -2235,7 +2259,7 @@ fn main() {
 '
 		},
 	], ['issue.v'])
-	assert csrc.contains('array__sort_with_compare(&issues, __sort_cmp_Issue_by_created_at_desc)')
+	assert csrc.contains('array__sort_with_compare(issues, __sort_cmp_Issue_by_created_at_desc)')
 	assert csrc.contains('int __sort_cmp_Issue_by_created_at_desc(Issue* a, Issue* b);')
 	assert csrc.contains('int __sort_cmp_Issue_by_created_at_desc(Issue* a, Issue* b) {')
 }
@@ -2677,7 +2701,7 @@ fn make() !orm.Primitive {
 }
 ',
 	])
-	assert csrc.contains('orm__Primitive _val = ((orm__Primitive){._tag = 1,._data._bool')
+	assert csrc.contains('orm__Primitive _val = ((orm__Primitive){._tag = 1, ._data._bool')
 	assert !csrc.contains('orm__Primitive _val = ((orm__Primitive){._tag = 2,._data._Array_orm__Primitive')
 }
 
@@ -3417,9 +3441,18 @@ fn test_generic_struct_decl_type_counts_as_placeholder_for_fallback_specs() {
 	}))
 }
 
+fn test_generic_placeholder_scan_ignores_malformed_alias_payload() {
+	mut malformed := types.Type(types.Alias{})
+	unsafe {
+		*(&u64(&malformed)) = 0
+		*(&u64(&u8(&malformed) + 8)) = 0
+	}
+	assert !type_contains_generic_placeholder(malformed)
+}
+
 fn test_generate_c_handles_recursive_heap_struct_generic_placeholder_scan() {
 	csrc := generate_c_for_test('
-@[heap]
+	@[heap]
 struct Node {
 mut:
 	children []&Node
@@ -3916,6 +3949,32 @@ fn use(bst &BSTree[f64]) &BSTreeNode[f64] {
 ')
 	assert csrc.contains('return datatypes__new_none_node_T_f64(false);')
 	assert !csrc.contains('return new_none_node_T(false);')
+}
+
+fn test_explicit_generic_call_does_not_inherit_current_receiver_method_suffix() {
+	mut gen := Gen.new([])
+	gen.cur_module = 'sync'
+	gen.cur_fn_c_name = 'sync__ThreadLocalStorage_T_int__get'
+	gen.active_generic_types['T'] = types.Type(types.int_)
+	gen.fn_return_types['sync__convert_voidptr_to_t_T_int'] = '_result_int'
+	gen.fn_param_types['sync__convert_voidptr_to_t_T_int'] = ['void*']
+	gen.fn_param_is_ptr['sync__convert_voidptr_to_t_T_int'] = [false]
+	gen.sb = strings.new_builder(64)
+	lhs := ast.Expr(ast.GenericArgOrIndexExpr{
+		lhs:  ast.Expr(ast.Ident{
+			name: 'convert_voidptr_to_t'
+		})
+		expr: ast.Expr(ast.Ident{
+			name: 'T'
+		})
+	})
+	arg := ast.Expr(ast.Ident{
+		name: 'value'
+	})
+	assert gen.try_emit_explicit_generic_call(lhs, [arg])
+	out := gen.sb.str()
+	assert out == 'sync__convert_voidptr_to_t_T_int(value)'
+	assert !out.contains('__get')
 }
 
 fn test_generate_c_keeps_builtin_attribute_kind_enum_shorthand_compare() {

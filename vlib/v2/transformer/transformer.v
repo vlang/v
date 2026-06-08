@@ -122,15 +122,14 @@ mut:
 	live_source_file string
 	// Cached scope/method/fn_scope snapshots for lock-free parallel access.
 	// Populated once in pre_pass from the shared Environment fields.
-	cached_scopes                 map[string]&types.Scope
-	cached_scope_keys             []string
-	cached_methods                map[string][]&types.Fn
-	cached_method_keys            []string
-	cached_fn_scopes              map[string]&types.Scope
-	cached_fn_type_index          map[string]types.Type
-	cached_fn_return_type_index   map[string]types.Type
-	cached_imported_module_scopes map[string][]&types.Scope
-	cached_struct_field_types     map[string]types.Type
+	cached_scopes               map[string]&types.Scope
+	cached_scope_keys           []string
+	cached_methods              map[string][]&types.Fn
+	cached_method_keys          []string
+	cached_fn_scopes            map[string]&types.Scope
+	cached_fn_type_index        map[string]types.Type
+	cached_fn_return_type_index map[string]types.Type
+	cached_struct_field_types   map[string]types.Type
 	// cached_method_base_index maps type_name -> generic-base method name ->
 	// FnType, precomputed once from cached_methods. lookup_method_cached used to
 	// linearly scan every method of a type and recompute its base name (via
@@ -2086,7 +2085,6 @@ fn (mut t Transformer) cache_env_maps() {
 		by_short[method_short_name(key)] << key
 	}
 	t.cached_method_keys_by_short = by_short.move()
-	t.build_cached_imported_module_scopes()
 }
 
 // build_cached_imported_module_scopes precomputes, per module, the resolved
@@ -2095,31 +2093,6 @@ fn (mut t Transformer) cache_env_maps() {
 // rescanning and sorting the whole symbol table on every call. The import set
 // is stable for the duration of a transform run (cached_scopes is snapshotted
 // once in pre_pass), so a single precompute is safe.
-fn (mut t Transformer) build_cached_imported_module_scopes() {
-	mut result := map[string][]&types.Scope{}
-	for module_name in t.cached_scopes.keys() {
-		current_scope := t.cached_scopes[module_name] or { continue }
-		mut scopes := []&types.Scope{}
-		for key, obj in current_scope.objects {
-			if obj !is types.Module {
-				continue
-			}
-			module_obj := obj as types.Module
-			imported_name := if module_obj.name != '' { module_obj.name } else { key }
-			if imported_name == '' || imported_name == module_name || imported_name == 'C' {
-				continue
-			}
-			mut module_scope := module_obj.scope
-			if module_scope == unsafe { nil } {
-				module_scope = t.cached_scopes[imported_name] or { continue }
-			}
-			scopes << module_scope
-		}
-		result[module_name] = scopes
-	}
-	t.cached_imported_module_scopes = result.move()
-}
-
 fn (mut t Transformer) build_cached_imported_module_scopes() {
 	mut by_module := map[string][]&types.Scope{}
 	for module_name in t.cached_scope_keys {
@@ -6860,6 +6833,33 @@ fn (t &Transformer) map_index_lhs_type(lhs ast.Expr) ?types.Type {
 		return typ
 	}
 	return none
+}
+
+fn (mut t Transformer) map_expr_type_is_trustworthy_pointer(expr ast.Expr, typ types.Type) bool {
+	if !t.is_pointer_type(typ) {
+		return false
+	}
+	if expr is ast.SelectorExpr {
+		if field_type := t.get_struct_field_type(expr) {
+			return t.is_pointer_type(field_type)
+		}
+		return !t.can_take_address_expr(expr)
+	}
+	return true
+}
+
+fn (mut t Transformer) map_expr_to_runtime_ptr(expr ast.Expr, typ types.Type, map_type types.Map) ast.Expr {
+	transformed := t.transform_expr(expr)
+	if t.map_expr_type_is_trustworthy_pointer(expr, typ) {
+		return transformed
+	}
+	if t.can_take_address_expr(transformed) {
+		return ast.Expr(ast.PrefixExpr{
+			op:   .amp
+			expr: transformed
+		})
+	}
+	return t.addr_of_expr_with_temp(expr, map_type)
 }
 
 fn (t &Transformer) index_expr_from_or_target(expr ast.Expr) ?ast.IndexExpr {

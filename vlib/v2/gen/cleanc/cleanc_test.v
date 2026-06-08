@@ -4345,6 +4345,30 @@ fn test_option_result_payload_invalid_rejects_qualified_generic_pointer() {
 	assert !g.option_result_payload_invalid('arrays__Part*')
 }
 
+fn test_option_result_payload_invalid_rejects_unbound_generic_struct() {
+	mut env := types.Environment.new()
+	mut sync_scope := types.new_scope(unsafe { nil })
+	sync_scope.insert('ThreadLocalStorage', types.Type(types.Struct{
+		name:           'sync__ThreadLocalStorage'
+		generic_params: ['T']
+		fields:         [
+			types.Field{
+				name: 'key'
+				typ:  types.Type(types.u64_)
+			},
+		]
+	}))
+	lock env.scopes {
+		env.scopes['sync'] = sync_scope
+	}
+	mut g := Gen.new_with_env([], env)
+	assert g.option_result_payload_invalid('sync__ThreadLocalStorage')
+	g.generic_struct_bindings['sync__ThreadLocalStorage'] = {
+		'T': types.Type(types.int_)
+	}
+	assert !g.option_result_payload_invalid('sync__ThreadLocalStorage')
+}
+
 fn test_generic_fallback_ignores_members_inside_comptime_if() {
 	mut g := Gen.new([])
 	node := ast.FnDecl{
@@ -5003,7 +5027,7 @@ fn main() {
 	assert !csrc.contains('.arg1 = ((Person)'), csrc
 }
 
-fn test_generic_fallback_derives_container_param_element_type() {
+fn test_generic_specializations_do_not_derive_unrelated_container_param_element_type() {
 	mut env := types.Environment.new()
 	env.generic_types['seed'] = [
 		{
@@ -5040,9 +5064,77 @@ fn test_generic_fallback_derives_container_param_element_type() {
 		}
 	}
 	specs := g.generic_fn_specializations_with_fallback(node, true)
-	assert specs.len == 1
-	assert specs[0].name.ends_with('_T_string')
-	assert !specs[0].name.contains('Array_string')
+	assert specs.len == 0
+}
+
+fn test_generic_struct_decl_does_not_use_unrelated_fallback_binding() {
+	mut env := types.Environment.new()
+	env.generic_types['seed'] = [
+		{
+			'T': types.Type(types.int_)
+		},
+	]
+	mut g := Gen.new_with_env([], env)
+	node := ast.StructDecl{
+		name:           'Box'
+		generic_params: [
+			ast.Expr(ast.Ident{
+				name: 'T'
+			}),
+		]
+	}
+	assert g.generic_bindings_for_struct_decl(node) == none
+}
+
+fn test_generate_c_does_not_emit_unused_sync_tls_generics() {
+	csrc := cleanc_csrc_for_test_source('unused_sync_tls_generics', '
+module sync
+
+struct RwMutex {
+	inited u32
+}
+
+fn new_rwmutex() &RwMutex {
+	return &RwMutex{}
+}
+
+struct ThreadLocalStorage[T] {
+	key u64
+}
+
+fn new_tls[T](value T) !ThreadLocalStorage[T] {
+	_ = value
+	return ThreadLocalStorage[T]{}
+}
+
+fn convert_voidptr_to_t[T](value voidptr) !T {
+	_ = value
+	return error("unused")
+}
+
+fn (mut t ThreadLocalStorage[T]) set(value T) ! {
+	_ = value
+}
+
+fn (mut t ThreadLocalStorage[T]) get() !T {
+	return error("unused")
+}
+
+fn (mut t ThreadLocalStorage[T]) destroy() ! {}
+
+fn use_mutex() {
+	_ := new_rwmutex()
+}
+')
+	assert csrc.contains('sync__new_rwmutex'), csrc
+	assert !csrc.contains('unresolved generic'), csrc
+	assert !csrc.contains('sync__ThreadLocalStorage'), csrc
+	assert !csrc.contains('sync__new_tls'), csrc
+	assert !csrc.contains('sync__convert_t_to_voidptr'), csrc
+	assert !csrc.contains('sync__convert_voidptr_to_t'), csrc
+	assert !csrc.contains('sync__ThreadLocalStorage__set'), csrc
+	assert !csrc.contains('sync__ThreadLocalStorage__get'), csrc
+	assert !csrc.contains('sync__ThreadLocalStorage__destroy'), csrc
 }
 
 fn test_generic_call_inference_resolves_address_of_active_generic_param() {
@@ -5861,7 +5953,7 @@ fn test_generic_scan_prunes_inactive_comptime_type_branch() {
 	assert spec_t.name() == 'string'
 }
 
-fn test_nested_generic_scan_uses_fallback_specialization_bindings() {
+fn test_nested_generic_scan_does_not_use_unrelated_fallback_specialization_bindings() {
 	mut env := types.Environment.new()
 	env.generic_types['seed'] = [
 		{
@@ -5924,9 +6016,7 @@ fn test_nested_generic_scan_uses_fallback_specialization_bindings() {
 	g.build_generic_fn_decl_index()
 	g.discover_nested_generic_specs()
 	specs := g.late_generic_specs['encode']
-	assert specs.len == 1
-	spec_t := specs[0]['T'] or { panic('missing T') }
-	assert spec_t.name() == 'i64'
+	assert specs.len == 0
 }
 
 fn test_option_result_payload_ready_accepts_external_c_typedefs() {

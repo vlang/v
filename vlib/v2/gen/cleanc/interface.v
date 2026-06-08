@@ -495,7 +495,7 @@ fn is_ierror_c_type(c_type string) bool {
 	if typ.starts_with('struct ') {
 		typ = typ['struct '.len..].trim_space()
 	}
-	return typ in ['IError', 'builtin__IError']
+	return is_ierror_interface_name(typ)
 }
 
 fn ierror_type_label_for_base(base string) string {
@@ -666,7 +666,12 @@ fn (g &Gen) should_emit_ierror_wrappers() bool {
 }
 
 fn (g &Gen) has_emitted_ierror_body() bool {
-	return 'IError' in g.emitted_interface_bodies || 'builtin__IError' in g.emitted_interface_bodies
+	for name, _ in g.emitted_interface_bodies {
+		if is_ierror_interface_name(name) {
+			return true
+		}
+	}
+	return false
 }
 
 fn (mut g Gen) emit_ierror_wrapper_decls() {

@@ -1828,7 +1828,7 @@ fn make() !Primitive {
 	return Primitive(true)
 }
 ')
-	assert csrc.contains('Primitive _val = ((Primitive){._tag = 1,._data._bool')
+	assert csrc.contains('Primitive _val = ((Primitive){._tag = 1, ._data._bool')
 	assert !csrc.contains('Primitive _val = ((Primitive){._tag = 2,._data._Array_Primitive')
 }
 

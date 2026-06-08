@@ -3976,6 +3976,23 @@ fn (t &Transformer) drop_method_receiver_from_call_info(lhs ast.Expr, info CallF
 	return trimmed
 }
 
+fn call_info_without_first_param(info CallFnInfo) CallFnInfo {
+	mut trimmed := info
+	if trimmed.param_types.len > 0 {
+		trimmed.param_types = trimmed.param_types[1..].clone()
+	}
+	if trimmed.param_names.len > 0 {
+		trimmed.param_names = trimmed.param_names[1..].clone()
+	}
+	if trimmed.generic_param_names_by_param.len > 0 {
+		trimmed.generic_param_names_by_param = trimmed.generic_param_names_by_param[1..].clone()
+	}
+	if trimmed.generic_param_indexes_by_param.len > 0 {
+		trimmed.generic_param_indexes_by_param = trimmed.generic_param_indexes_by_param[1..].clone()
+	}
+	return trimmed
+}
+
 fn method_receiver_type_matches_resolved_name(type_name string, resolved_recv string) bool {
 	mut lhs := type_name.trim_space()
 	mut rhs := resolved_recv.trim_space()
@@ -4841,23 +4858,78 @@ fn (mut t Transformer) transform_promoted_embedded_method_call(sel ast.SelectorE
 			rhs: sel.rhs
 			pos: sel.pos
 		})
-		call_args := t.lower_missing_call_args(embedded_lhs, raw_args)
+		mut seeded_bindings := t.generic_bindings_for_struct_field(recv_type, field_name) or {
+			t.generic_bindings_for_struct_field(recv_type, base_field_name) or {
+				map[string]types.Type{}
+			}
+		}
+		mut call_args := t.lower_missing_call_args(embedded_lhs, raw_args)
 		fn_info := t.generic_aware_call_fn_info(embedded_lhs, resolved)
+		mut promoted_info := CallFnInfo{}
+		mut has_promoted_info := false
+		if call_args_have_field_init(call_args) {
+			if decl_info := t.generic_call_info_for_decl(resolved) {
+				promoted_info = call_info_without_first_param(decl_info)
+				if promoted_info.param_types.len > 0 {
+					call_args = t.lower_field_init_call_args(call_args, promoted_info.param_names,
+						promoted_info.param_types)
+					has_promoted_info = true
+				}
+			}
+		}
+		if call_args_have_field_init(call_args) {
+			if decl := t.generic_fn_decl_for_call_info(resolved) {
+				if decl.typ.params.len > 0 {
+					generic_params := decl_generic_param_names(decl)
+					if param_type := t.type_from_param_type_expr(decl.typ.params[0].typ,
+						generic_params)
+					{
+						concrete_param_type := substitute_type(param_type, seeded_bindings)
+						promoted_info = CallFnInfo{
+							param_types: [concrete_param_type]
+							param_names: ['']
+						}
+						call_args = t.lower_field_init_call_args(call_args,
+							promoted_info.param_names, promoted_info.param_types)
+						has_promoted_info = true
+					}
+				}
+			}
+		}
 		mut transformed_call_args := []ast.Expr{cap: call_args.len}
 		for i, arg in call_args {
-			transformed_call_args << t.transform_call_arg_with_sumtype_check(arg, fn_info, i)
+			if has_promoted_info {
+				transformed_call_args << t.transform_call_arg_with_sumtype_check(arg,
+					promoted_info, i)
+			} else {
+				transformed_call_args << t.transform_call_arg_with_sumtype_check(arg, fn_info, i)
+			}
 		}
 		transformed_call_args = t.lower_variadic_args(embedded_lhs, transformed_call_args)
 		mut args := []ast.Expr{cap: transformed_call_args.len + 1}
 		args << embedded_receiver
 		args << transformed_call_args
 		mut call_name := resolved
-		mut seeded_bindings := t.generic_bindings_for_struct_field(recv_type, field_name) or {
-			t.generic_bindings_for_struct_field(recv_type, base_field_name) or {
-				map[string]types.Type{}
+		if has_promoted_info {
+			if arg_bindings := t.generic_bindings_from_call_args(promoted_info, call_args) {
+				for name, typ in arg_bindings {
+					if name !in seeded_bindings {
+						seeded_bindings[name] = typ
+					}
+				}
 			}
-		}
-		if info := fn_info {
+			if seeded := t.generic_method_call_name_from_bindings(call_name, seeded_bindings) {
+				call_name = seeded
+			} else if receiver_inferred := t.receiver_generic_method_call_name(call_name,
+				embedded_receiver, promoted_info, call_args)
+			{
+				call_name = receiver_inferred
+			} else if inferred := t.inferred_generic_call_name(call_name, promoted_info, call_args) {
+				if !generic_name_contains_placeholder_suffix(inferred) {
+					call_name = inferred
+				}
+			}
+		} else if info := fn_info {
 			if arg_bindings := t.generic_bindings_from_call_args(info, call_args) {
 				for name, typ in arg_bindings {
 					if name !in seeded_bindings {

@@ -3326,11 +3326,7 @@ fn (mut t Transformer) collect_generic_call_specs_in_expr_cursor(expr ast.Cursor
 			}
 		}
 		.expr_if {
-			t.collect_generic_call_specs_in_expr_cursor(expr.edge(0))
-			for i in 2 .. expr.edge_count() {
-				t.collect_generic_call_specs_in_stmt_cursor(expr.edge(i))
-			}
-			t.collect_generic_call_specs_in_expr_cursor(expr.edge(1))
+			t.collect_generic_call_specs_in_if_expr_cursor(expr)
 		}
 		.expr_if_guard {
 			t.collect_generic_call_specs_in_stmt_cursor(expr.edge(0))
@@ -3484,9 +3480,10 @@ fn (mut t Transformer) collect_generic_call_specs_in_expr(expr ast.Expr) {
 			}
 		}
 		ast.IfExpr {
-			t.collect_generic_call_specs_in_expr(expr.cond)
-			t.collect_generic_call_specs_in_stmts(expr.stmts)
-			t.collect_generic_call_specs_in_expr(expr.else_expr)
+			t.collect_generic_call_specs_in_if_expr(expr)
+		}
+		ast.IfGuardExpr {
+			t.collect_generic_call_specs_in_stmt(expr.stmt)
 		}
 		ast.IndexExpr {
 			t.collect_generic_call_specs_in_expr(expr.lhs)
@@ -3574,6 +3571,56 @@ fn (mut t Transformer) collect_generic_call_specs_in_expr(expr ast.Expr) {
 		}
 		else {}
 	}
+}
+
+fn (mut t Transformer) collect_generic_call_specs_in_if_expr_cursor(expr ast.Cursor) {
+	t.collect_generic_call_specs_in_expr_cursor(expr.edge(0))
+	cond := expr.edge(0).expr()
+	stack_before := t.smartcast_stack.clone()
+	counts_before := t.smartcast_expr_counts.clone()
+	for ctx in t.generic_scan_smartcast_contexts_from_condition(cond) {
+		t.push_smartcast_ctx(ctx)
+	}
+	for i in 2 .. expr.edge_count() {
+		t.collect_generic_call_specs_in_stmt_cursor(expr.edge(i))
+	}
+	t.smartcast_stack = stack_before.clone()
+	t.smartcast_expr_counts = counts_before.clone()
+	t.collect_generic_call_specs_in_expr_cursor(expr.edge(1))
+	t.smartcast_stack = stack_before.clone()
+	t.smartcast_expr_counts = counts_before.clone()
+}
+
+fn (mut t Transformer) collect_generic_call_specs_in_if_expr(expr ast.IfExpr) {
+	t.collect_generic_call_specs_in_expr(expr.cond)
+	stack_before := t.smartcast_stack.clone()
+	counts_before := t.smartcast_expr_counts.clone()
+	for ctx in t.generic_scan_smartcast_contexts_from_condition(expr.cond) {
+		t.push_smartcast_ctx(ctx)
+	}
+	t.collect_generic_call_specs_in_stmts(expr.stmts)
+	t.smartcast_stack = stack_before.clone()
+	t.smartcast_expr_counts = counts_before.clone()
+	t.collect_generic_call_specs_in_expr(expr.else_expr)
+	t.smartcast_stack = stack_before.clone()
+	t.smartcast_expr_counts = counts_before.clone()
+}
+
+fn (t &Transformer) generic_scan_smartcast_contexts_from_condition(cond ast.Expr) []SmartcastContext {
+	mut body_smartcasts := []SmartcastContext{}
+	mut seen_smartcasts := map[string]bool{}
+	for term in t.flatten_and_terms_unwrapped(cond) {
+		if term is ast.InfixExpr {
+			if ctx := t.smartcast_context_from_condition_term(term) {
+				key := '${ctx.expr}|${ctx.variant}|${ctx.variant_full}|${ctx.sumtype}'
+				if key !in seen_smartcasts {
+					seen_smartcasts[key] = true
+					body_smartcasts << ctx
+				}
+			}
+		}
+	}
+	return body_smartcasts
 }
 
 fn (mut t Transformer) collect_generic_call_specs_in_match_expr_cursor(expr ast.Cursor) {
@@ -3876,32 +3923,38 @@ fn (mut t Transformer) collect_generic_call_spec_for_call(lhs ast.Expr, raw_args
 		return
 	}
 	if lhs is ast.SelectorExpr {
-		if !t.may_target_generic_call_name(lhs.rhs.name) {
-			return
-		}
-		if resolved_static := t.resolve_static_type_method_call(lhs.lhs, lhs.rhs.name) {
-			info := t.generic_aware_call_fn_info(lhs, resolved_static) or { return }
-			t.register_inferred_generic_call_spec(resolved_static, info, raw_args)
-			return
-		}
-		if lhs.lhs is ast.Ident {
-			mod_name := lhs.lhs.name
-			call_prefix := t.resolve_generic_module_call_prefix(mod_name) or { '' }
-			if call_prefix != '' {
-				base_name := '${call_prefix}__${lhs.rhs.name}'
+		rhs_may_target_generic := t.may_target_generic_call_name(lhs.rhs.name)
+		if rhs_may_target_generic {
+			if resolved_static := t.resolve_static_type_method_call(lhs.lhs, lhs.rhs.name) {
+				info := t.generic_aware_call_fn_info(lhs, resolved_static) or { return }
+				t.register_inferred_generic_call_spec(resolved_static, info, raw_args)
+				return
+			}
+			if lhs.lhs is ast.Ident {
+				mod_name := lhs.lhs.name
+				call_prefix := t.resolve_generic_module_call_prefix(mod_name) or { '' }
+				if call_prefix != '' {
+					base_name := '${call_prefix}__${lhs.rhs.name}'
+					info := t.generic_aware_call_fn_info(lhs, base_name) or { return }
+					t.register_inferred_generic_call_spec(base_name, info, raw_args)
+					return
+				}
+			}
+			if lhs.lhs is ast.Ident && t.is_module_ident(lhs.lhs.name) {
+				mod_name := lhs.lhs.name
+				base_name := '${mod_name}__${lhs.rhs.name}'
 				info := t.generic_aware_call_fn_info(lhs, base_name) or { return }
 				t.register_inferred_generic_call_spec(base_name, info, raw_args)
 				return
 			}
 		}
-		if lhs.lhs is ast.Ident && t.is_module_ident(lhs.lhs.name) {
-			mod_name := lhs.lhs.name
-			base_name := '${mod_name}__${lhs.rhs.name}'
-			info := t.generic_aware_call_fn_info(lhs, base_name) or { return }
-			t.register_inferred_generic_call_spec(base_name, info, raw_args)
-			return
-		}
 		t.collect_promoted_embedded_generic_method_call_spec(lhs, raw_args)
+		if receiver_generic_method := t.receiver_generic_method_decl_name(lhs.lhs, lhs.rhs.name) {
+			info := t.generic_aware_call_fn_info(lhs, receiver_generic_method) or { CallFnInfo{} }
+			t.register_inferred_generic_call_spec(receiver_generic_method, info, raw_args)
+			t.register_receiver_generic_method_call_spec(receiver_generic_method, lhs.lhs, info,
+				raw_args)
+		}
 		if resolved_method := t.resolve_method_call_name(lhs.lhs, lhs.rhs.name) {
 			info := t.generic_aware_call_fn_info(lhs, resolved_method) or { CallFnInfo{} }
 			t.register_inferred_generic_call_spec(resolved_method, info, raw_args)
@@ -3920,38 +3973,72 @@ fn (mut t Transformer) defer_generic_call_spec_for_cloned_call(lhs ast.Expr, raw
 		return
 	}
 	if lhs is ast.SelectorExpr {
-		if !t.may_target_generic_call_name(lhs.rhs.name) {
-			return
-		}
-		if resolved_static := t.resolve_static_type_method_call(lhs.lhs, lhs.rhs.name) {
-			info := t.generic_aware_call_fn_info(lhs, resolved_static) or { return }
-			t.defer_inferred_generic_call_spec(resolved_static, info, raw_args)
-			return
-		}
-		if lhs.lhs is ast.Ident {
-			mod_name := lhs.lhs.name
-			call_prefix := t.resolve_generic_module_call_prefix(mod_name) or { '' }
-			if call_prefix != '' {
-				base_name := '${call_prefix}__${lhs.rhs.name}'
+		rhs_may_target_generic := t.may_target_generic_call_name(lhs.rhs.name)
+		if rhs_may_target_generic {
+			if resolved_static := t.resolve_static_type_method_call(lhs.lhs, lhs.rhs.name) {
+				info := t.generic_aware_call_fn_info(lhs, resolved_static) or { return }
+				t.defer_inferred_generic_call_spec(resolved_static, info, raw_args)
+				return
+			}
+			if lhs.lhs is ast.Ident {
+				mod_name := lhs.lhs.name
+				call_prefix := t.resolve_generic_module_call_prefix(mod_name) or { '' }
+				if call_prefix != '' {
+					base_name := '${call_prefix}__${lhs.rhs.name}'
+					info := t.generic_aware_call_fn_info(lhs, base_name) or { return }
+					t.defer_inferred_generic_call_spec(base_name, info, raw_args)
+					return
+				}
+			}
+			if lhs.lhs is ast.Ident && t.is_module_ident(lhs.lhs.name) {
+				mod_name := lhs.lhs.name
+				base_name := '${mod_name}__${lhs.rhs.name}'
 				info := t.generic_aware_call_fn_info(lhs, base_name) or { return }
 				t.defer_inferred_generic_call_spec(base_name, info, raw_args)
 				return
 			}
 		}
-		if lhs.lhs is ast.Ident && t.is_module_ident(lhs.lhs.name) {
-			mod_name := lhs.lhs.name
-			base_name := '${mod_name}__${lhs.rhs.name}'
-			info := t.generic_aware_call_fn_info(lhs, base_name) or { return }
-			t.defer_inferred_generic_call_spec(base_name, info, raw_args)
-			return
-		}
 		t.defer_promoted_embedded_generic_method_call_spec(lhs, raw_args)
+		if receiver_generic_method := t.receiver_generic_method_decl_name(lhs.lhs, lhs.rhs.name) {
+			info := t.generic_aware_call_fn_info(lhs, receiver_generic_method) or { CallFnInfo{} }
+			t.defer_inferred_generic_call_spec(receiver_generic_method, info, raw_args)
+			t.defer_receiver_generic_method_call_spec(receiver_generic_method, lhs.lhs, info,
+				raw_args)
+		}
 		if resolved_method := t.resolve_method_call_name(lhs.lhs, lhs.rhs.name) {
 			info := t.generic_aware_call_fn_info(lhs, resolved_method) or { CallFnInfo{} }
 			t.defer_inferred_generic_call_spec(resolved_method, info, raw_args)
 			t.defer_receiver_generic_method_call_spec(resolved_method, lhs.lhs, info, raw_args)
 		}
 	}
+}
+
+fn (t &Transformer) receiver_generic_method_decl_name(receiver ast.Expr, method_name string) ?string {
+	if method_name == '' {
+		return none
+	}
+	receiver_type := t.get_expr_type(receiver) or { return none }
+	base_type := t.unwrap_alias_and_pointer_type(receiver_type)
+	for raw_name in [base_type.name(), t.type_to_c_name(base_type),
+		t.type_to_name(base_type)] {
+		mut type_name := normalized_method_lookup_type_name(raw_name)
+		if type_name == '' || !type_name.contains('_T_') {
+			continue
+		}
+		type_name = type_name.all_before('_T_')
+		for owner in [type_name, type_name.all_after_last('__')] {
+			if owner == '' {
+				continue
+			}
+			method_key := '${owner}__${method_name}'
+			if decl := t.generic_fn_decl_for_call(method_key) {
+				if receiver_generic_param_names(decl).len > 0 {
+					return method_key
+				}
+			}
+		}
+	}
+	return none
 }
 
 fn (mut t Transformer) defer_inferred_generic_call_spec(base_name string, info CallFnInfo, raw_args []ast.Expr) {
@@ -4875,6 +4962,17 @@ fn (mut t Transformer) specialized_receiver_type_expr(expr ast.Expr, bindings ma
 					if receiver_params.len == 0 {
 						return none
 					}
+					mut new_params := []ast.Expr{cap: expr.params.len}
+					for param in expr.params {
+						new_params << t.substitute_type_in_expr(param, bindings)
+					}
+					concrete_receiver_expr := ast.Expr(ast.Type(ast.GenericType{
+						name:   expr.name
+						params: new_params
+					}))
+					if concrete := t.concrete_generic_struct_type_expr(concrete_receiver_expr) {
+						return concrete
+					}
 					base_name := t.get_receiver_type_name(generic_expr)
 					if base_name == '' {
 						return none
@@ -5137,6 +5235,14 @@ fn is_generic_placeholder_ident(name string) bool {
 // variants are returned shallow-copied (no substitution recurses into them).
 // Sitting 2 extends coverage as real generic functions exercise more nodes.
 pub fn (mut t Transformer) clone_fn_decl_with_substitutions(decl ast.FnDecl, bindings map[string]types.Type, new_name string, source_module string, target_module string) ast.FnDecl {
+	old_module := t.cur_module
+	old_scope := t.scope
+	old_fn_root_scope := t.fn_root_scope
+	scope_parent := t.get_module_scope(source_module) or { unsafe { nil } }
+	clone_scope := types.new_scope(scope_parent)
+	t.cur_module = source_module
+	t.scope = clone_scope
+	t.fn_root_scope = clone_scope
 	mut new_params := []ast.Parameter{cap: decl.typ.params.len}
 	for p in decl.typ.params {
 		new_params << ast.Parameter{
@@ -5152,14 +5258,6 @@ pub fn (mut t Transformer) clone_fn_decl_with_substitutions(decl ast.FnDecl, bin
 		params:         new_params
 		return_type:    new_return
 	}
-	old_module := t.cur_module
-	old_scope := t.scope
-	old_fn_root_scope := t.fn_root_scope
-	scope_parent := t.get_module_scope(source_module) or { unsafe { nil } }
-	clone_scope := types.new_scope(scope_parent)
-	t.cur_module = source_module
-	t.scope = clone_scope
-	t.fn_root_scope = clone_scope
 	mut old_local_decl_types := t.local_decl_types.move()
 	t.local_decl_types = map[string]types.Type{}
 	for p in new_params {
@@ -5642,6 +5740,11 @@ fn clone_comptime_attribute_strings(attrs []ast.Attribute) []string {
 }
 
 fn clone_type_contains_generic_placeholder(typ types.Type) bool {
+	mut seen := map[string]bool{}
+	return clone_type_contains_generic_placeholder_with_seen(typ, mut seen)
+}
+
+fn clone_type_contains_generic_placeholder_with_seen(typ types.Type, mut seen map[string]bool) bool {
 	if !types.type_has_valid_payload(typ) {
 		return false
 	}
@@ -5650,30 +5753,44 @@ fn clone_type_contains_generic_placeholder(typ types.Type) bool {
 			return true
 		}
 		types.Array {
-			return clone_type_child_contains_generic_placeholder(typ.elem_type)
+			return clone_type_child_contains_generic_placeholder(typ.elem_type, mut seen)
 		}
 		types.ArrayFixed {
-			return clone_type_child_contains_generic_placeholder(typ.elem_type)
+			return clone_type_child_contains_generic_placeholder(typ.elem_type, mut seen)
 		}
 		types.Map {
-			return clone_type_child_contains_generic_placeholder(typ.key_type)
-				|| clone_type_child_contains_generic_placeholder(typ.value_type)
+			return clone_type_child_contains_generic_placeholder(typ.key_type, mut seen)
+				|| clone_type_child_contains_generic_placeholder(typ.value_type, mut seen)
 		}
 		types.Pointer {
-			return clone_type_child_contains_generic_placeholder(typ.base_type)
+			return clone_type_child_contains_generic_placeholder(typ.base_type, mut seen)
 		}
 		types.OptionType {
-			return clone_type_child_contains_generic_placeholder(typ.base_type)
+			return clone_type_child_contains_generic_placeholder(typ.base_type, mut seen)
 		}
 		types.ResultType {
-			return clone_type_child_contains_generic_placeholder(typ.base_type)
+			return clone_type_child_contains_generic_placeholder(typ.base_type, mut seen)
 		}
 		types.Alias {
-			return clone_type_child_contains_generic_placeholder(typ.base_type)
+			name := typ.name
+			if name != '' {
+				if seen[name] {
+					return false
+				}
+				seen[name] = true
+			}
+			return clone_type_child_contains_generic_placeholder(typ.base_type, mut seen)
 		}
 		types.Struct {
+			name := typ.name
+			if name != '' {
+				if seen[name] {
+					return false
+				}
+				seen[name] = true
+			}
 			for field in typ.fields {
-				if clone_type_child_contains_generic_placeholder(field.typ) {
+				if clone_type_child_contains_generic_placeholder(field.typ, mut seen) {
 					return true
 				}
 			}
@@ -5685,11 +5802,11 @@ fn clone_type_contains_generic_placeholder(typ types.Type) bool {
 	}
 }
 
-fn clone_type_child_contains_generic_placeholder(typ types.Type) bool {
+fn clone_type_child_contains_generic_placeholder(typ types.Type, mut seen map[string]bool) bool {
 	if !clone_type_has_safe_payload(typ) {
 		return false
 	}
-	return clone_type_contains_generic_placeholder(typ)
+	return clone_type_contains_generic_placeholder_with_seen(typ, mut seen)
 }
 
 fn transformer_type_tag_has_inline_payload(tag u64) bool {
@@ -6386,6 +6503,9 @@ fn (t &Transformer) comptime_lhs_bound_type(expr ast.Expr, bindings map[string]t
 fn (t &Transformer) clone_comptime_type_matches(typ types.Type, rhs ast.Expr) bool {
 	if rhs is ast.Ident {
 		name := rhs.name
+		if typ is types.Struct && t.struct_implements_name(typ, name) {
+			return true
+		}
 		return typ.name() == name || t.type_to_c_name(typ) == name
 			|| (name == 'byte' && typ.name() == 'u8')
 			|| (name == 'u8' && typ.name() == 'byte')
@@ -6435,6 +6555,10 @@ fn (t &Transformer) clone_comptime_type_matches(typ types.Type, rhs ast.Expr) bo
 	}
 	if rhs is ast.SelectorExpr {
 		name := rhs.name().replace('.', '__')
+		if typ is types.Struct && (t.struct_implements_name(typ, rhs.name())
+			|| t.struct_implements_name(typ, name)) {
+			return true
+		}
 		return typ.name() == rhs.name() || typ.name() == name || t.type_to_c_name(typ) == name
 	}
 	return false
@@ -6576,15 +6700,15 @@ fn (mut t Transformer) clone_generic_callable_value_with_outer_bindings(lhs ast.
 				bindings, info, []ast.Expr{})
 		}
 		if generic_bindings_cover_params(bindings, decl_generic_param_names(decl)) {
-			t.register_generic_bindings(register_base_name, bindings)
-			if !decl.is_method {
-				spec_name := t.specialized_fn_name(decl, bindings)
-				clone_name := monomorphized_clone_name(register_base_name, decl, spec_name)
-				return ast.Expr(ast.Ident{
-					name: clone_name
-					pos:  pos
-				})
-			}
+				t.register_generic_bindings(register_base_name, bindings)
+				if !decl.is_method {
+					spec_name := t.specialized_fn_name(decl, bindings)
+					clone_name := monomorphized_clone_name(register_base_name, decl, spec_name)
+					return ast.Expr(ast.Ident{
+						name: clone_name
+						pos:  pos
+					})
+				}
 		}
 	}
 	specialize_lhs := if register_base_name != base_name && lhs is ast.Ident {
