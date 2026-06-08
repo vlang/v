@@ -12,9 +12,9 @@ const deflate_window = 32768
 // fixed_litlen_encode returns (reversed_codes, code_lengths) for fixed Huffman lit/len.
 // The LSB-first (bit-reversed) codes come straight from the shared canonical
 // builder, since the encoder writes bits LSB-first.
-fn fixed_litlen_encode() ([]u32, []int) {
+fn fixed_litlen_encode() !([]u32, []int) {
 	lens := fixed_litlen_lengths()
-	t := huffman.build(lengths: lens, max_bits: 9, bit_order: .lsb_first) or { panic(err) }
+	t := huffman.build(lengths: lens, max_bits: 9, bit_order: .lsb_first)!
 	return t.codes, lens
 }
 
@@ -113,8 +113,8 @@ fn (mut w BitWriter) flush() {
 
 // deflate_compress_fixed compresses data to RFC 1951 DEFLATE using fixed Huffman codes.
 @[direct_array_access]
-fn deflate_compress_fixed(data []u8) []u8 {
-	ll_codes, ll_lens := fixed_litlen_encode()
+fn deflate_compress_fixed(data []u8) ![]u8 {
+	ll_codes, ll_lens := fixed_litlen_encode()!
 	d_codes, d_lens := fixed_dist_encode()
 	mut w := BitWriter{}
 	// BFINAL=1, BTYPE=01 (fixed Huffman)
