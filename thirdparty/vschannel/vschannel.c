@@ -1,6 +1,55 @@
 #include <vschannel.h>
 #include <sspi.h>
 
+// ALPN (RFC 7301) compatibility shim. Older toolchain headers (notably the
+// ones bundled with tcc) predate the SChannel ALPN additions, so the structs,
+// enums and constants below are missing there. Define them ourselves when the
+// SDK headers did not. SECPKG_ATTR_APPLICATION_PROTOCOL guards the schannel.h
+// types; SECBUFFER_APPLICATION_PROTOCOLS guards the sspi.h buffer constant.
+#ifndef ANYSIZE_ARRAY
+#define ANYSIZE_ARRAY 1
+#endif
+
+#ifndef SECPKG_ATTR_APPLICATION_PROTOCOL
+#define SECPKG_ATTR_APPLICATION_PROTOCOL 35
+
+typedef enum _SEC_APPLICATION_PROTOCOL_NEGOTIATION_EXT {
+	SecApplicationProtocolNegotiationExt_None,
+	SecApplicationProtocolNegotiationExt_NPN,
+	SecApplicationProtocolNegotiationExt_ALPN
+} SEC_APPLICATION_PROTOCOL_NEGOTIATION_EXT, *PSEC_APPLICATION_PROTOCOL_NEGOTIATION_EXT;
+
+typedef struct _SEC_APPLICATION_PROTOCOL_LIST {
+	SEC_APPLICATION_PROTOCOL_NEGOTIATION_EXT ProtoNegoExt;
+	unsigned short ProtocolListSize;
+	unsigned char ProtocolList[ANYSIZE_ARRAY];
+} SEC_APPLICATION_PROTOCOL_LIST, *PSEC_APPLICATION_PROTOCOL_LIST;
+
+typedef struct _SEC_APPLICATION_PROTOCOLS {
+	unsigned long ProtocolListsSize;
+	SEC_APPLICATION_PROTOCOL_LIST ProtocolLists[ANYSIZE_ARRAY];
+} SEC_APPLICATION_PROTOCOLS, *PSEC_APPLICATION_PROTOCOLS;
+
+typedef enum _SEC_APPLICATION_PROTOCOL_NEGOTIATION_STATUS {
+	SecApplicationProtocolNegotiationStatus_None,
+	SecApplicationProtocolNegotiationStatus_Success,
+	SecApplicationProtocolNegotiationStatus_SelectedClientOnly
+} SEC_APPLICATION_PROTOCOL_NEGOTIATION_STATUS, *PSEC_APPLICATION_PROTOCOL_NEGOTIATION_STATUS;
+
+#define MAX_PROTOCOL_ID_SIZE 0xff
+
+typedef struct _SecPkgContext_ApplicationProtocol {
+	SEC_APPLICATION_PROTOCOL_NEGOTIATION_STATUS ProtoNegoStatus;
+	SEC_APPLICATION_PROTOCOL_NEGOTIATION_EXT ProtoNegoExt;
+	unsigned char ProtocolIdSize;
+	unsigned char ProtocolId[MAX_PROTOCOL_ID_SIZE];
+} SecPkgContext_ApplicationProtocol, *PSecPkgContext_ApplicationProtocol;
+#endif // SECPKG_ATTR_APPLICATION_PROTOCOL
+
+#ifndef SECBUFFER_APPLICATION_PROTOCOLS
+#define SECBUFFER_APPLICATION_PROTOCOLS 18
+#endif
+
 // Proxy
 WCHAR *  psz_proxy_server  = L"proxy";
 INT     i_proxy_port      = 80;
