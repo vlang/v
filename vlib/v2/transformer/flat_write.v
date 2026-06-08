@@ -1986,6 +1986,10 @@ fn (mut t Transformer) transform_stmt_list_item_cursor_to_flat(c ast.Cursor, mut
 		.stmt_assert {
 			t.expand_assert_stmt_cursor_to_flat(c, mut ids, mut out)
 		}
+		.stmt_comptime {
+			id := t.transform_comptime_stmt_cursor_to_flat(c, mut out)
+			t.append_transformed_stmt_id_to_flat(mut ids, id, mut out)
+		}
 		.stmt_expr {
 			if t.expr_stmt_cursor_needs_legacy_expand(c) {
 				t.transform_stmt_list_item_to_flat(c.stmt(), mut ids, mut out)
@@ -2139,6 +2143,19 @@ fn (mut t Transformer) transform_defer_stmt_cursor_to_flat(c ast.Cursor, mut out
 	}
 	stmt_ids := t.transform_cursor_stmts_to_flat_direct(body, [], mut out)
 	return out.emit_defer_stmt_by_ids(mode, stmt_ids)
+}
+
+fn (mut t Transformer) transform_comptime_stmt_cursor_to_flat(c ast.Cursor, mut out ast.FlatBuilder) ast.FlatNodeId {
+	inner := c.edge(0)
+	if inner.kind() == .stmt_for {
+		stmt_ids := t.transform_cursor_stmts_to_flat_direct(inner.for_body_list(), [], mut out)
+		init_id := out.copy_subtree_from(inner.flat, inner.edge(0).id)
+		cond_id := out.copy_subtree_from(inner.flat, inner.edge(1).id)
+		post_id := out.copy_subtree_from(inner.flat, inner.edge(2).id)
+		for_id := out.emit_for_stmt_by_ids(init_id, cond_id, post_id, stmt_ids)
+		return out.emit_comptime_stmt_by_id(for_id)
+	}
+	return t.transform_stmt_to_flat(inner.stmt(), mut out)
 }
 
 fn (mut t Transformer) transform_label_stmt_cursor_to_flat(c ast.Cursor, mut out ast.FlatBuilder) ast.FlatNodeId {
