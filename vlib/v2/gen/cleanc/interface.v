@@ -763,8 +763,9 @@ fn (mut g Gen) emit_fn_decl_by_c_name(fn_name string) {
 				if stmt.kind() != .stmt_fn_decl {
 					continue
 				}
-				decl := stmt.fn_decl()
-				if g.get_fn_name(decl) == fn_name {
+				decl_sig := stmt.fn_decl_signature()
+				if g.get_fn_name(decl_sig) == fn_name {
+					decl := stmt.fn_decl()
 					g.gen_fn_decl_with_name(decl, fn_name)
 					return
 				}

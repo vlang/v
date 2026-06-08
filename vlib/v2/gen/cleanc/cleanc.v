@@ -2363,8 +2363,8 @@ fn (mut g Gen) emit_forced_helpers_from_non_emit_files() {
 				if stmt.kind() != .stmt_fn_decl || !stmt.name().starts_with('__sort_cmp_') {
 					continue
 				}
-				decl := stmt.fn_decl()
-				fn_name := g.get_fn_name(decl)
+				decl_sig := stmt.fn_decl_signature()
+				fn_name := g.get_fn_name(decl_sig)
 				if fn_name == '' || fn_name !in g.force_emit_fn_names || fn_name in emitted {
 					continue
 				}
@@ -2374,6 +2374,7 @@ fn (mut g Gen) emit_forced_helpers_from_non_emit_files() {
 				if 'fn_${fn_name}' in g.fn_owner_file {
 					continue
 				}
+				decl := stmt.fn_decl()
 				g.gen_fn_decl(decl)
 				emitted[fn_name] = true
 			}
