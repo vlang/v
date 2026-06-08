@@ -408,6 +408,70 @@ pub fn (mut b FlatBuilder) append_file_with_stmt_ids(file File, stmt_ids []FlatN
 	return file_id
 }
 
+// append_flat copies an entire `src` FlatAst (nodes, edges, strings, file roots)
+// into this builder, relocating every node id / edge target and re-interning
+// every string so the merged result is structurally identical to `src` decoded
+// standalone. Returns the node-id offset applied to all of `src`'s nodes (a src
+// node id `x` maps to merged id `x + offset`).
+//
+// This is the merge primitive behind the flat parallel transform: each worker
+// emits into its own FlatBuilder, then the main thread concatenates the
+// workers' outputs via append_flat (replacing the legacy per-worker `ast.File`
+// rehydrate-then-flatten). Relocation rules — verified against the canonical
+// decoder (flat_reader.v):
+//   - edge.child_id  : + node_offset (invalid_flat_node_id stays invalid)
+//   - node.first_edge: + edge_offset
+//   - node.name_id   : re-interned via the string remap (-1 stays -1)
+//   - node.extra     : re-interned ONLY for the three kinds that store a string
+//                      id there (file mod, stmt_directive value, stmt_import
+//                      alias); every other kind packs ints/counts/flags/list-
+//                      boundaries in extra (lhs_len, cap_len, keys_len, width/
+//                      precision, aux_int value, ...) → copied verbatim
+//                      (relocation-invariant)
+//   - node.aux / pos : copied verbatim (aux is a token/sub-kind enum; pos.id is
+//                      globally unique across the merged inputs, and
+//                      selector_names is keyed by pos.id so it needs no remap)
+//   - file.file_id   : + node_offset; name_idx/mod_idx re-interned;
+//                      selector_names copied (cloned for ownership)
+pub fn (mut b FlatBuilder) append_flat(src &FlatAst) int {
+	node_offset := b.flat.nodes.len
+	edge_offset := b.flat.edges.len
+	// Remap src string ids -> dst string ids (dedups into b's intern table).
+	mut string_remap := []int{len: src.strings.len}
+	for i, s in src.strings {
+		string_remap[i] = b.intern(s)
+	}
+	// Relocate + append edges.
+	b.flat.edges.grow_cap(src.edges.len)
+	for e in src.edges {
+		child := if e.child_id >= 0 { e.child_id + node_offset } else { e.child_id }
+		b.flat.edges << FlatEdge{
+			child_id: child
+		}
+	}
+	// Relocate + append nodes.
+	b.flat.nodes.grow_cap(src.nodes.len)
+	for n in src.nodes {
+		mut nn := n
+		nn.name_id = if n.name_id >= 0 { string_remap[n.name_id] } else { n.name_id }
+		if n.extra >= 0 && (n.kind == .file || n.kind == .stmt_directive || n.kind == .stmt_import) {
+			nn.extra = string_remap[n.extra]
+		}
+		nn.first_edge = n.first_edge + edge_offset
+		b.flat.nodes << nn
+	}
+	// Relocate + append file roots.
+	for ff in src.files {
+		b.flat.files << FlatFile{
+			file_id:        ff.file_id + node_offset
+			name_idx:       if ff.name_idx >= 0 { string_remap[ff.name_idx] } else { ff.name_idx }
+			mod_idx:        if ff.mod_idx >= 0 { string_remap[ff.mod_idx] } else { ff.mod_idx }
+			selector_names: ff.selector_names.clone()
+		}
+	}
+	return node_offset
+}
+
 // emit_stmt is the public wrapper around the legacy stmt-to-flat conversion.
 // Future sessions of the transformer-writes-flat port reach for this when a
 // stmt variant still falls back to legacy emission; the long-term goal is for
