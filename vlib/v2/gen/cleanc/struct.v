@@ -1056,7 +1056,7 @@ fn (mut g Gen) generic_call_decl_from_lhs(lhs ast.Expr) ?ast.FnDecl {
 				}
 				stmt := stmts.at(info.stmt_idx)
 				if stmt.kind() == .stmt_fn_decl {
-					return stmt.fn_decl()
+					return stmt.fn_decl_signature()
 				}
 			} else if info.file_idx >= 0 && info.file_idx < g.files.len {
 				file := g.files[info.file_idx]
@@ -1093,7 +1093,7 @@ fn (mut g Gen) generic_call_decl_from_lhs(lhs ast.Expr) ?ast.FnDecl {
 				}
 				decl := stmt.fn_decl_signature()
 				if g.generic_fn_param_names(decl).len > 0 {
-					return stmt.fn_decl()
+					return decl
 				}
 			}
 		}
