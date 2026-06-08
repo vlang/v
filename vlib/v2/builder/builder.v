@@ -1645,7 +1645,7 @@ fn (mut b Builder) try_self_build_fast_relink() bool {
 	} else {
 		'out'
 	}
-	if output_name.ends_with('.c') || !b.can_compile_cleanc_locally() || b.pref.is_shared_lib {
+	if b.fast_relink_output_is_generation_only(output_name) {
 		if trace {
 			eprintln('TRACE_CACHE fast_relink=false reason=generation_only out=${output_name}')
 		}
@@ -2808,6 +2808,16 @@ fn default_cc(vroot string) string {
 		return tcc_path
 	}
 	return 'cc'
+}
+
+// fast_relink_output_is_generation_only mirrors gen_cleanc()'s generation-only
+// decision: a `.c` output, a target we cannot compile locally, or a shared lib.
+// Such a request must go through normal C generation, never the pre-parse relink
+// (is_cmd_v2_self_build() keys only on the input file, so the relink path would
+// otherwise link an executable into e.g. foo.c). Extracted so the decision is
+// unit-testable without a warm object cache.
+fn (b &Builder) fast_relink_output_is_generation_only(output_name string) bool {
+	return output_name.ends_with('.c') || !b.can_compile_cleanc_locally() || b.pref.is_shared_lib
 }
 
 // preparse_flag_fingerprint captures the flag-affecting build inputs that are
