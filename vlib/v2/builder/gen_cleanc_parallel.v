@@ -112,7 +112,15 @@ fn (mut b Builder) gen_cleanc_parallel(mut gen cleanc.Gen) {
 				}
 			}
 			chunk_items[target] << item
-			if item.file_idx !in chunk_file_seen[target] {
+			// Only the worker that emits a file's globals (a whole-file item, or the
+			// first slice of a split file — both carry emit_globals) takes file-level
+			// dedup ownership. A split file's later slices deliberately do NOT, so the
+			// file's lazily/transitively emitted fns stay blocked in those workers and
+			// only the owning worker can emit them; the explicit slice still emits via
+			// the owner-scoped bypass in gen_file_range. This closes the duplicate /
+			// reordered-emission hole that file-level ownership left open for files
+			// split across workers.
+			if item.emit_globals && item.file_idx !in chunk_file_seen[target] {
 				chunk_file_seen[target][item.file_idx] = true
 				chunk_indices[target] << item.file_idx
 			}

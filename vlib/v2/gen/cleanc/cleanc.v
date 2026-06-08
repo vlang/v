@@ -155,14 +155,12 @@ mut:
 	collect_generic_scan_calls            bool
 	generic_call_spec_scan_only           bool
 	generic_scan_called_names             map[string]bool
-	generic_spec_index                    map[string][]string          // fn_name → matching keys in env.generic_types
-	generic_fn_decl_index                 map[string]GenericFnDeclInfo // generic fn C/base name → source location
-	specialized_fn_bases                  map[string]bool              // base C name with at least one _T_ specialization
-	specialized_receiver_methods          map[string]string            // receiver|method -> single matching specialized method
-	specialized_receiver_method_ambiguous map[string]bool              // receiver|method keys with multiple matches
-	specialized_receiver_method_miss      map[string]bool              // receiver|method keys with no matching specialized method
-	specialized_index                     map[string]string            // base|method -> specialized fn (or '' sentinel for ambiguous); one-time index over fn signature tables
-	specialized_index_built               bool
+	generic_spec_index                    map[string][]string                // fn_name → matching keys in env.generic_types
+	generic_fn_decl_index                 map[string]GenericFnDeclInfo       // generic fn C/base name → source location
+	specialized_fn_bases                  map[string]bool                    // base C name with at least one _T_ specialization
+	specialized_receiver_methods          map[string]string                  // receiver|method -> single matching specialized method
+	specialized_receiver_method_ambiguous map[string]bool                    // receiver|method keys with multiple matches
+	specialized_receiver_method_miss      map[string]bool                    // receiver|method keys with no matching specialized method
 	late_generic_specs                    map[string][]map[string]types.Type // additional comptime-discovered specs
 	anon_fn_defs                          []string        // lifted anonymous function definitions
 	late_struct_defs                      []string        // struct definitions discovered during pass 5 codegen
@@ -195,6 +193,14 @@ mut:
 	cached_vhash               string          // cached git short hash for @VHASH/@VCURRENTHASH
 	pass5_worker_id            int
 	pass5_file_times           []Pass5FileTime
+	// When a large file is split across workers, only the worker that owns its
+	// globals takes file-level dedup ownership; the others block the file's fns.
+	// During its assigned slice a non-owning worker sets these so gen_fn_decl can
+	// bypass blocked_fn_keys for fns owned by exactly explicit_slice_file (the slice
+	// it is explicitly responsible for) without unblocking anything reached from
+	// another file. See gen_file_range / explicit_slice_emit_allows.
+	explicit_slice_active bool
+	explicit_slice_file   int
 }
 
 struct Pass5FileTime {
@@ -550,6 +556,22 @@ fn (mut g Gen) gen_file(file ast.File) {
 // the file's FnDecls), and only the first range emits globals. Globals are
 // forward-declared for every file in gen_pass5_pre (gen_file_extern_globals),
 // so the single definition's position within the merged output is irrelevant.
+// explicit_slice_emit_allows reports whether a fn that is in blocked_fn_keys may
+// still be emitted because the worker is currently emitting its explicit FnDecl
+// slice of the file that owns this fn. The bypass is scoped to the slice's own
+// file (explicit_slice_file) so it restores exactly the fns the slice would have
+// emitted under file-level ownership and nothing transitively reached from another
+// file (which remains blocked and is emitted by its own owning worker).
+fn (g &Gen) explicit_slice_emit_allows(fn_key string) bool {
+	if !g.explicit_slice_active {
+		return false
+	}
+	if owner := g.fn_owner_file[fn_key] {
+		return owner == g.explicit_slice_file
+	}
+	return false
+}
+
 fn (mut g Gen) gen_file_range(file ast.File, fn_stmt_indices []int, emit_globals bool) {
 	g.set_file_module(file)
 	file_name := g.cur_file_name
@@ -2475,7 +2497,10 @@ pub fn (mut g Gen) gen_pass5_work_items(items []Pass5WorkItem) {
 			if item.fn_indices.len == 0 {
 				g.gen_file(g.files[item.file_idx])
 			} else {
+				g.explicit_slice_active = true
+				g.explicit_slice_file = item.file_idx
 				g.gen_file_range(g.files[item.file_idx], item.fn_indices, item.emit_globals)
+				g.explicit_slice_active = false
 			}
 			continue
 		}
@@ -2483,7 +2508,10 @@ pub fn (mut g Gen) gen_pass5_work_items(items []Pass5WorkItem) {
 		if item.fn_indices.len == 0 {
 			g.gen_file(g.files[item.file_idx])
 		} else {
+			g.explicit_slice_active = true
+			g.explicit_slice_file = item.file_idx
 			g.gen_file_range(g.files[item.file_idx], item.fn_indices, item.emit_globals)
+			g.explicit_slice_active = false
 		}
 		elapsed_ms := sw.elapsed().milliseconds()
 		if elapsed_ms > 0 {
@@ -2767,6 +2795,7 @@ pub fn (g &Gen) new_pass5_worker(file_indices []int, worker_id int) &Gen {
 		imported_symbols_index: g.imported_symbols_index.clone()
 		v_method_return_index:  g.v_method_return_index.clone()
 		ierror_base_index:      g.ierror_base_index.clone()
+		fn_owner_file:          g.fn_owner_file.clone()
 		sb:                     strings.new_builder(64_000)
 		// Read-only lookup maps — clone to avoid COW data races
 		fn_param_is_ptr:                       g.fn_param_is_ptr.clone()
