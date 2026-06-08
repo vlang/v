@@ -488,7 +488,7 @@ fn (mut g Gen) collect_fn_signatures() {
 fn (mut g Gen) collect_fn_signature_from_cursor(stmt ast.Cursor) {
 	decl := stmt.fn_decl_signature()
 	body_len := stmt.list_at(3).len()
-	if g.fn_signature_collection_needs_body(decl) {
+	if body_len > 0 && g.fn_signature_collection_needs_body(decl) {
 		g.collect_fn_signature_from_decl(stmt.fn_decl(), body_len)
 		return
 	}
