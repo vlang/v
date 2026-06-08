@@ -2982,7 +2982,7 @@ fn (mut t Transformer) collect_generic_call_specs_in_for_stmt_cursor(stmt ast.Cu
 	t.collect_generic_call_specs_in_expr_cursor(stmt.edge(1))
 	t.collect_generic_call_specs_in_stmt_cursor(stmt.edge(2))
 	old_local_decl_types := t.local_decl_types.clone()
-	t.seed_generic_scan_for_in_var_types(for_in.stmt() as ast.ForInStmt)
+	t.seed_generic_scan_for_in_var_types_cursor(for_in)
 	for i in 3 .. stmt.edge_count() {
 		t.collect_generic_call_specs_in_stmt_cursor(stmt.edge(i))
 	}
@@ -2999,6 +2999,18 @@ fn (mut t Transformer) collect_generic_call_specs_in_for_stmt(stmt ast.ForStmt, 
 	t.seed_generic_scan_for_in_var_types(for_in)
 	t.collect_generic_call_specs_in_stmts(stmt.stmts)
 	t.local_decl_types = old_local_decl_types.clone()
+}
+
+fn (mut t Transformer) seed_generic_scan_for_in_var_types_cursor(for_in ast.Cursor) {
+	iter_type := t.for_in_iter_expr_type(for_in.edge(2).expr()) or { return }
+	value_name := t.get_var_name(for_in.edge(1).expr())
+	if value_name != '' && value_name != '_' {
+		t.remember_local_decl_type(value_name, t.for_in_value_type(iter_type))
+	}
+	key_name := t.get_var_name(for_in.edge(0).expr())
+	if key_name != '' && key_name != '_' {
+		t.remember_local_decl_type(key_name, t.for_in_key_type_for_generic_scan(iter_type))
+	}
 }
 
 fn (mut t Transformer) seed_generic_scan_for_in_var_types(for_in ast.ForInStmt) {
@@ -6700,15 +6712,15 @@ fn (mut t Transformer) clone_generic_callable_value_with_outer_bindings(lhs ast.
 				bindings, info, []ast.Expr{})
 		}
 		if generic_bindings_cover_params(bindings, decl_generic_param_names(decl)) {
-				t.register_generic_bindings(register_base_name, bindings)
-				if !decl.is_method {
-					spec_name := t.specialized_fn_name(decl, bindings)
-					clone_name := monomorphized_clone_name(register_base_name, decl, spec_name)
-					return ast.Expr(ast.Ident{
-						name: clone_name
-						pos:  pos
-					})
-				}
+			t.register_generic_bindings(register_base_name, bindings)
+			if !decl.is_method {
+				spec_name := t.specialized_fn_name(decl, bindings)
+				clone_name := monomorphized_clone_name(register_base_name, decl, spec_name)
+				return ast.Expr(ast.Ident{
+					name: clone_name
+					pos:  pos
+				})
+			}
 		}
 	}
 	specialize_lhs := if register_base_name != base_name && lhs is ast.Ident {
