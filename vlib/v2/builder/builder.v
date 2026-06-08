@@ -1633,6 +1633,24 @@ fn (mut b Builder) try_self_build_fast_relink() bool {
 		}
 		return false
 	}
+	// Mirror gen_cleanc()'s generation-only decision: a `.c` output, a target we
+	// cannot compile locally, or a shared lib must go through normal C generation,
+	// never a direct relink. is_cmd_v2_self_build() keys only on the input file, so
+	// without this a warm-cache `-o foo.c cmd/v2/v2.v` would link an executable into
+	// foo.c instead of writing C source.
+	output_name := if b.pref.output_file != '' {
+		b.pref.output_file
+	} else if b.user_files.len > 0 {
+		b.default_output_name()
+	} else {
+		'out'
+	}
+	if output_name.ends_with('.c') || !b.can_compile_cleanc_locally() || b.pref.is_shared_lib {
+		if trace {
+			eprintln('TRACE_CACHE fast_relink=false reason=generation_only out=${output_name}')
+		}
+		return false
+	}
 	if !b.ensure_core_cache_dir() {
 		return false
 	}
@@ -1670,6 +1688,8 @@ fn (mut b Builder) try_self_build_fast_relink() bool {
 	mut main_cc_flags := ''
 	mut main_cc_link_flags := ''
 	mut saw_self_build := false
+	mut saw_flag_fp := false
+	cur_flag_fp := b.preparse_flag_fingerprint()
 	for line in main_stamp.split_into_lines() {
 		if line.starts_with('cc=') {
 			main_cc = line['cc='.len..]
@@ -1677,6 +1697,19 @@ fn (mut b Builder) try_self_build_fast_relink() bool {
 			main_cc_flags = line['cc_flags='.len..]
 		} else if line.starts_with('cc_link_flags=') {
 			main_cc_link_flags = line['cc_link_flags='.len..]
+		} else if line.starts_with('flag_fp=') {
+			// The recorded cc/cc_flags/cc_link_flags are trusted (recomputing the
+			// source-derived parts needs the AST). This fingerprint covers the
+			// flag inputs that DON'T need parsing — compiler choice, prod/shared
+			// mode, env CFLAGS — so a changed build environment invalidates the
+			// relink even when every source file is unchanged.
+			if line['flag_fp='.len..] != cur_flag_fp {
+				if trace {
+					eprintln('TRACE_CACHE fast_relink=false reason=flag_fp')
+				}
+				return false
+			}
+			saw_flag_fp = true
 		} else if line.starts_with('context_alloc=') {
 			if line['context_alloc='.len..] != '${b.pref.use_context_allocator}' {
 				return false
@@ -1693,30 +1726,23 @@ fn (mut b Builder) try_self_build_fast_relink() bool {
 			dep_stamp := cache_path_join(cache_dir, '${rest[..sep]}.stamp')
 			if '${os.file_last_mod_unix(dep_stamp)}' != rest[sep + 1..] {
 				if trace {
-					eprintln('TRACE_CACHE fast_relink=false reason=dep_mtime ${rest[..sep]} have=${os.file_last_mod_unix(dep_stamp)} want=${rest[sep + 1..]}')
+					eprintln('TRACE_CACHE fast_relink=false reason=dep_mtime ${rest[..sep]} have=${os.file_last_mod_unix(dep_stamp)} want=${rest[
+						sep + 1..]}')
 				}
 				return false
 			}
 		}
 	}
-	if !saw_self_build || main_cc.len == 0 {
+	if !saw_self_build || main_cc.len == 0 || !saw_flag_fp {
 		if trace {
-			eprintln('TRACE_CACHE fast_relink=false reason=keys saw_self_build=${saw_self_build} cc=${main_cc}')
+			eprintln('TRACE_CACHE fast_relink=false reason=keys saw_self_build=${saw_self_build} cc=${main_cc} flag_fp=${saw_flag_fp}')
 		}
 		return false
 	}
-	output_name := if b.pref.output_file != '' {
-		b.pref.output_file
-	} else if b.user_files.len > 0 {
-		b.default_output_name()
-	} else {
-		'out'
-	}
 	mut sw := time.new_stopwatch()
 	b.link_cleanc_cached_core_executable(output_name, main_cc, main_cc_flags, main_cc_link_flags,
-		main_obj, cache_path_join(cache_dir, 'builtin.o'), cache_path_join(cache_dir, 'vlib.o'),
-		cache_path_join(cache_dir, 'v2compiler.o'), [cache_path_join(cache_dir, 'imports.o')],
-		'', mut sw)
+		main_obj, cache_path_join(cache_dir, 'builtin.o'), cache_path_join(cache_dir, 'vlib.o'), cache_path_join(cache_dir,
+		'v2compiler.o'), [cache_path_join(cache_dir, 'imports.o')], '', mut sw)
 	if os.getenv('V2_TRACE_CACHE') != '' {
 		eprintln('TRACE_CACHE self_build_fast_relink=true')
 	}
@@ -1733,6 +1759,7 @@ fn (b &Builder) cache_stamp_for_self_main_object(main_modules []string, emit_fil
 	lines << 'cc=${main_cc}'
 	lines << 'cc_flags=${main_cc_flags}'
 	lines << 'cc_link_flags=${main_cc_link_flags}'
+	lines << 'flag_fp=${b.preparse_flag_fingerprint()}'
 	lines << 'context_alloc=${b.pref.use_context_allocator}'
 	lines << 'target_os=${b.pref.target_os_or_host()}'
 	lines << 'self_build=true'
@@ -2781,6 +2808,18 @@ fn default_cc(vroot string) string {
 		return tcc_path
 	}
 	return 'cc'
+}
+
+// preparse_flag_fingerprint captures the flag-affecting build inputs that are
+// knowable WITHOUT parsing the sources: the C compiler choice (-cc / V2CC /
+// default), prod/shared mode, and the env CFLAGS (V2CFLAGS). It is recorded in
+// main.stamp and re-checked by the pre-parse fast relink so a changed compiler or
+// CFLAGS environment invalidates a relink even when every source file is
+// unchanged. Source-derived `#flag` directives are intentionally excluded — they
+// change only when a source file changes, which the stamp freshness checks catch.
+fn (b &Builder) preparse_flag_fingerprint() string {
+	cc := if b.pref.ccompiler.len > 0 { b.pref.ccompiler } else { configured_cc(b.pref.vroot) }
+	return 'cc=${cc}\x01ccpref=${b.pref.ccompiler}\x01prod=${b.pref.is_prod}\x01shared=${b.pref.is_shared_lib}\x01env=${configured_cflags()}'
 }
 
 fn configured_cc(vroot string) string {
