@@ -1983,6 +1983,10 @@ fn (mut t Transformer) transform_stmt_list_item_cursor_to_flat(c ast.Cursor, mut
 			id := t.transform_global_decl_cursor_to_flat(c, mut out)
 			t.append_transformed_stmt_id_to_flat(mut ids, id, mut out)
 		}
+		.stmt_struct_decl {
+			id := out.emit_stmt(t.transform_struct_decl(c.struct_decl()))
+			t.append_transformed_stmt_id_to_flat(mut ids, id, mut out)
+		}
 		.stmt_assert {
 			t.expand_assert_stmt_cursor_to_flat(c, mut ids, mut out)
 		}
