@@ -1979,6 +1979,9 @@ fn (mut t Transformer) transform_stmt_list_item_cursor_to_flat(c ast.Cursor, mut
 			id := t.transform_global_decl_cursor_to_flat(c, mut out)
 			t.append_transformed_stmt_id_to_flat(mut ids, id, mut out)
 		}
+		.stmt_assert {
+			t.expand_assert_stmt_cursor_to_flat(c, mut ids, mut out)
+		}
 		.stmt_expr {
 			if t.expr_stmt_cursor_needs_legacy_expand(c) {
 				t.transform_stmt_list_item_to_flat(c.stmt(), mut ids, mut out)
@@ -2123,6 +2126,13 @@ fn (mut t Transformer) transform_block_stmt_cursor_to_flat(c ast.Cursor, mut out
 fn (mut t Transformer) transform_label_stmt_cursor_to_flat(c ast.Cursor, mut out ast.FlatBuilder) ast.FlatNodeId {
 	inner_id := t.transform_stmt_to_flat(c.edge(0).stmt(), mut out)
 	return out.emit_label_stmt_by_id(c.name(), inner_id)
+}
+
+fn (mut t Transformer) expand_assert_stmt_cursor_to_flat(c ast.Cursor, mut ids []ast.FlatNodeId, mut out ast.FlatBuilder) {
+	t.expand_assert_stmt_to_flat(ast.AssertStmt{
+		expr:  c.edge(0).expr()
+		extra: c.edge(1).expr()
+	}, mut ids, mut out)
 }
 
 fn (mut t Transformer) transform_expr_stmt_cursor_to_flat(c ast.Cursor, mut out ast.FlatBuilder) ast.FlatNodeId {
