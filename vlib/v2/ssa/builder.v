@@ -4373,10 +4373,13 @@ fn (mut b Builder) register_fn_sig_from_flat(c ast.Cursor) {
 
 	fntyp_c := c.edge(1)
 	ret_type := b.ast_type_to_ssa_from_flat(fntyp_c.edge(2))
+	language := unsafe { ast.Language(int(c.aux())) }
+	if !c.flag(ast.flag_is_method) && language != .c && !is_generated_helper_fn_name(c.name()) {
+		b.module_fn_names[module_fn_key(b.cur_module, c.name())] = fn_name
+	}
 	idx := b.mod.new_function(fn_name, ret_type, []TypeID{})
 	b.fn_index[fn_name] = idx
 	b.mod.func_set_prototype(idx, true)
-	language := unsafe { ast.Language(int(c.aux())) }
 	if language == .c {
 		b.mod.func_set_c_extern(idx, true)
 	}
@@ -8804,6 +8807,11 @@ fn (mut b Builder) build_cast_from_flat(c ast.Cursor) ValueID {
 		if wrapped := b.wrap_address_for_sumtype_target(addr, target_type) {
 			return wrapped
 		}
+		if b.is_mut_ptr_param_cursor(val_c) {
+			if ptr_cast := b.cast_forwarded_mut_param_addr_to_pointer(addr, target_type) {
+				return ptr_cast
+			}
+		}
 	}
 	val := b.build_expr_from_flat(val_c)
 	return b.build_cast_value_to_type(val, target_type)
@@ -9478,6 +9486,11 @@ fn (mut b Builder) build_cast_expr_to_type_id_from_flat(c ast.Cursor, target_typ
 	if addr != 0 {
 		if wrapped := b.wrap_address_for_sumtype_target(addr, target_type) {
 			return wrapped
+		}
+		if b.is_mut_ptr_param_cursor(c) {
+			if ptr_cast := b.cast_forwarded_mut_param_addr_to_pointer(addr, target_type) {
+				return ptr_cast
+			}
 		}
 	}
 	val := b.build_expr_from_flat(c)
@@ -17108,11 +17121,66 @@ fn (mut b Builder) build_cast_expr_to_type(type_expr ast.Expr, value_expr ast.Ex
 	return b.build_cast_expr_to_type_id(value_expr, target_type)
 }
 
+fn (b &Builder) is_mut_ptr_param_expr(expr ast.Expr) bool {
+	match expr {
+		ast.Ident {
+			return expr.name in b.mut_ptr_params
+		}
+		ast.ParenExpr, ast.ModifierExpr {
+			return b.is_mut_ptr_param_expr(expr.expr)
+		}
+		else {
+			return false
+		}
+	}
+}
+
+fn (b &Builder) is_mut_ptr_param_cursor(c ast.Cursor) bool {
+	match c.kind() {
+		.expr_ident {
+			return c.name() in b.mut_ptr_params
+		}
+		.expr_paren, .expr_modifier {
+			if c.edge_count() == 0 {
+				return false
+			}
+			return b.is_mut_ptr_param_cursor(c.edge(0))
+		}
+		else {
+			return false
+		}
+	}
+}
+
+fn (mut b Builder) cast_forwarded_mut_param_addr_to_pointer(addr ValueID, target_type TypeID) ?ValueID {
+	if !b.valid_value_id(addr) || !b.valid_type_id(target_type) {
+		return none
+	}
+	target_typ := b.mod.type_store.types[target_type]
+	if target_typ.kind != .ptr_t {
+		return none
+	}
+	addr_type := b.mod.values[addr].typ
+	if !b.valid_type_id(addr_type) {
+		return none
+	}
+	addr_typ := b.mod.type_store.types[addr_type]
+	if addr_typ.kind != .ptr_t && addr_typ.kind != .int_t {
+		return none
+	}
+	return b.build_cast_value_to_type(addr, target_type)
+}
+
 fn (mut b Builder) build_cast_expr_to_type_id(value_expr ast.Expr, target_type TypeID) ValueID {
 	addr := b.build_addr(value_expr)
 	if addr != 0 {
 		if wrapped := b.wrap_address_for_sumtype_target(addr, target_type) {
 			return wrapped
+		}
+		if b.is_mut_ptr_param_expr(value_expr) {
+			if ptr_cast := b.cast_forwarded_mut_param_addr_to_pointer(addr, target_type) {
+				return ptr_cast
+			}
 		}
 	}
 	val := b.build_expr(value_expr)
@@ -17138,6 +17206,11 @@ fn (mut b Builder) build_cast(expr ast.CastExpr) ValueID {
 	if addr != 0 {
 		if wrapped := b.wrap_address_for_sumtype_target(addr, target_type) {
 			return wrapped
+		}
+		if b.is_mut_ptr_param_expr(expr.expr) {
+			if ptr_cast := b.cast_forwarded_mut_param_addr_to_pointer(addr, target_type) {
+				return ptr_cast
+			}
 		}
 	}
 	val := b.build_expr(expr.expr)
@@ -17185,6 +17258,11 @@ fn (mut b Builder) build_call_or_cast(expr ast.CallOrCastExpr) ValueID {
 	if addr != 0 {
 		if wrapped := b.wrap_address_for_sumtype_target(addr, target_type) {
 			return wrapped
+		}
+		if b.is_mut_ptr_param_expr(expr.expr) {
+			if ptr_cast := b.cast_forwarded_mut_param_addr_to_pointer(addr, target_type) {
+				return ptr_cast
+			}
 		}
 	}
 	val := b.build_expr(expr.expr)

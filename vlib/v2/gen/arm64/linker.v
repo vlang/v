@@ -882,8 +882,8 @@ fn (l Linker) generate_code_signature(ident string) []u8 {
 	// Slot -2: Hash of requirements blob
 	mut hash_buf := [32]u8{}
 	sha256_hash(req_blob.data, req_blob.len, &hash_buf[0])
-	for b in hash_buf {
-		sig << b
+	for i in 0 .. cs_hash_size {
+		sig << hash_buf[i]
 	}
 
 	// Slot -1: Info.plist (zeros = no Info.plist)
