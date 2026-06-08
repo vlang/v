@@ -150,6 +150,10 @@ pub mut:
 	read_timeout time.Duration
 
 	owns_socket bool
+	// alpn_list is a NUL-terminated C array of pointers to the protocol
+	// strings in config.alpn_protocols. mbedtls stores this pointer without
+	// copying, so it must outlive the SSL config; it is freed in shutdown().
+	alpn_list &&char = unsafe { nil }
 }
 
 // SSLListener listens on a TCP port and accepts connection secured with TLS
@@ -164,6 +168,10 @@ mut:
 	ctr_drbg  C.mbedtls_ctr_drbg_context
 	entropy   C.mbedtls_entropy_context
 	opened    bool
+	// alpn_list is a NUL-terminated C array of pointers to the protocol
+	// strings in config.alpn_protocols, advertised by accepted connections.
+	// It must outlive the SSL config and is freed in shutdown().
+	alpn_list &&char = unsafe { nil }
 	// handle		int
 	// duration	time.Duration
 }
@@ -190,6 +198,12 @@ pub fn (mut l SSLListener) shutdown() ! {
 	C.mbedtls_ssl_free(&l.ssl)
 	C.mbedtls_ssl_config_free(&l.conf)
 	free_rng(mut l.ctr_drbg, mut l.entropy)
+	if l.alpn_list != unsafe { nil } {
+		unsafe {
+			C.free(l.alpn_list)
+			l.alpn_list = nil
+		}
+	}
 	if l.opened {
 		C.mbedtls_net_free(&l.server_fd)
 	}
@@ -267,6 +281,27 @@ fn (mut l SSLListener) init() ! {
 	if ret != 0 {
 		return error_with_code("net.mbedtls SSLListener.init, mbedtls_ssl_conf_own_cert can't load certificate ret: ${ret}",
 			ret)
+	}
+
+	// Advertise ALPN protocols for accepted connections to select from.
+	// See the matching client-side logic in SSLConn.init for lifetime notes.
+	if l.config.alpn_protocols.len > 0 {
+		n := l.config.alpn_protocols.len
+		l.alpn_list = unsafe { &&char(C.malloc(isize((n + 1) * int(sizeof(voidptr))))) }
+		if l.alpn_list == unsafe { nil } {
+			return error('net.mbedtls SSLListener.init, failed to allocate ALPN list')
+		}
+		unsafe {
+			for i, proto in l.config.alpn_protocols {
+				l.alpn_list[i] = &char(proto.str)
+			}
+			l.alpn_list[n] = &char(0)
+		}
+		ret = C.mbedtls_ssl_conf_alpn_protocols(&l.conf, voidptr(l.alpn_list))
+		if ret != 0 {
+			return error_with_code('net.mbedtls SSLListener.init, mbedtls_ssl_conf_alpn_protocols failed ret: ${ret}',
+				ret)
+		}
 	}
 
 	ret = C.mbedtls_ssl_setup(&l.ssl, &l.conf)
@@ -357,6 +392,8 @@ pub:
 	get_certificate ?fn (mut SSLListener, string) !&SSLCerts
 
 	read_timeout time.Duration = default_mbedtls_client_read_timeout // the SSL client read timeout
+
+	alpn_protocols []string // the list of ALPN protocols to advertise, e.g. ['h2', 'http/1.1']; empty means no ALPN extension is sent
 }
 
 fn ssl_read_timeout_ms(timeout time.Duration) u32 {
@@ -438,10 +475,29 @@ pub fn (mut s SSLConn) shutdown() ! {
 	C.mbedtls_ssl_free(&s.ssl)
 	C.mbedtls_ssl_config_free(&s.conf)
 	free_rng(mut s.ctr_drbg, mut s.entropy)
+	if s.alpn_list != unsafe { nil } {
+		unsafe {
+			C.free(s.alpn_list)
+			s.alpn_list = nil
+		}
+	}
 	if s.owns_socket {
 		net.shutdown(s.handle)
 		net.close(s.handle)!
 	}
+}
+
+// negotiated_alpn returns the ALPN protocol selected during the TLS
+// handshake (e.g. 'h2' or 'http/1.1'), or an empty string if no protocol
+// was negotiated.
+pub fn (s &SSLConn) negotiated_alpn() string {
+	// mbedtls_ssl_get_alpn_protocol returns a `const char *`; cast away const
+	// for V, since we only read from it (and copy it below).
+	p := &char(C.mbedtls_ssl_get_alpn_protocol(&s.ssl))
+	if p == unsafe { nil } {
+		return ''
+	}
+	return unsafe { cstring_to_vstring(p) }
 }
 
 // connect to server using mbedtls
@@ -467,19 +523,30 @@ fn (mut s SSLConn) init() ! {
 
 	unsafe {
 		C.mbedtls_ssl_conf_rng(&s.conf, C.mbedtls_ctr_drbg_random, &s.ctr_drbg)
+	}
 
-		// Enable ALPN for HTTP/1.1 (Required by strict servers like Rustls/Pijul)
-		// We allocate a small C array of strings: ["http/1.1", NULL]
-		// This memory must persist while the SSL config is active.
-		/*
-		alpn_list := &&char(C.malloc(2 * sizeof(voidptr)))
-		if alpn_list != 0 {
-			alpn_list[0] = c'http/1.1'
-			alpn_list[1] = &char(0)
-			C.mbedtls_ssl_conf_alpn_protocols(&s.conf, alpn_list)
+	// Advertise ALPN protocols (e.g. ['h2', 'http/1.1']) when requested.
+	// mbedtls expects a NUL-terminated array of NUL-terminated C strings, and
+	// keeps the pointer without copying, so both the array and the backing
+	// strings must outlive the config. The strings live in s.config; the array
+	// is allocated here and freed in shutdown().
+	if s.config.alpn_protocols.len > 0 {
+		n := s.config.alpn_protocols.len
+		s.alpn_list = unsafe { &&char(C.malloc(isize((n + 1) * int(sizeof(voidptr))))) }
+		if s.alpn_list == unsafe { nil } {
+			return error('net.mbedtls SSLConn.init, failed to allocate ALPN list')
 		}
-		TODO free alpn_list
-		*/
+		unsafe {
+			for i, proto in s.config.alpn_protocols {
+				s.alpn_list[i] = &char(proto.str)
+			}
+			s.alpn_list[n] = &char(0)
+		}
+		ret = C.mbedtls_ssl_conf_alpn_protocols(&s.conf, voidptr(s.alpn_list))
+		if ret != 0 {
+			return error_with_code('net.mbedtls SSLConn.init, mbedtls_ssl_conf_alpn_protocols failed ret: ${ret}',
+				ret)
+		}
 	}
 	if s.config.verify != '' || s.config.cert != '' || s.config.cert_key != '' {
 		s.certs = &SSLCerts{}

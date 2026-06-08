@@ -187,7 +187,7 @@ fn test_macos_tiny_link_command_adds_hygiene_only_for_tiny_object() {
 	normal := macos_native_link_command('/tmp/out', 'main.o', '/SDK Path', 'x86_64', false)
 	tiny := macos_native_link_command('/tmp/out', 'main.o', '/SDK Path', 'x86_64', true)
 
-	assert normal == 'ld -o /tmp/out main.o -lSystem -syslibroot "/SDK Path" -e _main -arch x86_64 -platform_version macos 11.0.0 11.0.0'
+	assert normal == 'ld -o ${os.quoted_path('/tmp/out')} ${os.quoted_path('main.o')} -lSystem -syslibroot ${os.quoted_path('/SDK Path')} -e _main -arch x86_64 -platform_version macos 11.0.0 11.0.0'
 	assert tiny == '${normal} -dead_strip -x -S'
 	assert !normal.contains('-dead_strip')
 	assert !normal.contains(' -x')

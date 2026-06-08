@@ -3,15 +3,13 @@
 // that can be found in the LICENSE file.
 // vtest build: macos
 //
-// Bit-equality pin for s167: `propagate_types_from_flat` (a thin
-// rehydrate-then-call wrapper) must produce the same `t.env` mutations as
-// `propagate_types`. Also pins `apply_post_pass_tail_from_flat` against
-// `apply_post_pass_tail`.
+// Bit-equality pin for s167: `propagate_types_from_flat` walks flat files
+// directly and must produce the same `t.env` mutations as `propagate_types`.
+// Also pins `apply_post_pass_tail_from_flat` against `apply_post_pass_tail`.
 //
-// The wrapper rehydrates `flat` into `[]ast.File` via
-// `flat.to_files_range(0, flat.files.len)` and delegates to the legacy
-// walker. Behavior is identical by construction provided flatten+rehydrate
-// preserves the bits propagate_types reads (pos.id, stmt/expr shape).
+// The flat path decodes one top-level stmt at a time and reuses the legacy
+// stmt/expression propagation walkers. Behavior should match legacy provided
+// flattening preserves the bits propagate_types reads (pos.id, stmt/expr shape).
 module transformer
 
 import v2.ast
@@ -61,9 +59,9 @@ fn make_propagate_test_files() []ast.File {
 fn test_propagate_types_from_flat_empty_flat_is_noop() {
 	mut t := create_propagate_test_transformer(.cleanc)
 	flat := ast.FlatAst{}
-	pre := t.env.expr_type_values.len
+	pre := t.env.expr_type_count()
 	t.propagate_types_from_flat(&flat)
-	assert t.env.expr_type_values.len == pre
+	assert t.env.expr_type_count() == pre
 }
 
 // On a non-empty flat, propagate_types_from_flat visits the same files as
@@ -79,8 +77,8 @@ fn test_propagate_types_from_flat_matches_legacy_for_simple_files() {
 	t_flat.propagate_types_from_flat(&flat)
 
 	// Both transformers should end with identical env state. With no
-	// expressions to propagate, both expr_type_values arrays stay empty.
-	assert t_legacy.env.expr_type_values.len == t_flat.env.expr_type_values.len
+	// expressions to propagate, both expression type maps stay empty.
+	assert t_legacy.env.expr_type_count() == t_flat.env.expr_type_count()
 	// cur_module is set to the last visited file's mod on both paths.
 	assert t_legacy.cur_module == t_flat.cur_module
 }
@@ -109,10 +107,10 @@ fn test_apply_post_pass_tail_from_flat_matches_legacy_arm64_skip() {
 	t_legacy.apply_post_pass_tail(files)
 	t_flat.apply_post_pass_tail_from_flat(&flat)
 
-	// expr_type_values must contain the synth_types[42] entry on both.
-	assert t_legacy.env.expr_type_values.len > 42
-	assert t_flat.env.expr_type_values.len > 42
-	assert t_legacy.env.expr_type_values.len == t_flat.env.expr_type_values.len
+	// Expression type maps must contain the synth_types[42] entry on both.
+	assert t_legacy.env.has_expr_type(42)
+	assert t_flat.env.has_expr_type(42)
+	assert t_legacy.env.expr_type_count() == t_flat.env.expr_type_count()
 	// fn_scopes must have the seeded key on both.
 	lock t_legacy.env.fn_scopes {
 		assert 'Foo__bar' in t_legacy.env.fn_scopes
@@ -134,7 +132,7 @@ fn test_apply_post_pass_tail_from_flat_matches_legacy_cleanc() {
 	t_flat.apply_post_pass_tail_from_flat(&flat)
 
 	// Both paths should end with identical env state. With a stmt-free
-	// fixture, propagate_types is a no-op and expr_type_values stays empty.
-	assert t_legacy.env.expr_type_values.len == t_flat.env.expr_type_values.len
+	// fixture, propagate_types is a no-op and expression type maps stay empty.
+	assert t_legacy.env.expr_type_count() == t_flat.env.expr_type_count()
 	assert t_legacy.cur_module == t_flat.cur_module
 }

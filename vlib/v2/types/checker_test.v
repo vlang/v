@@ -37,7 +37,7 @@ fn check_code_and_files(code string) (&Environment, []ast.File) {
 
 // Helper to check if a specific type exists in the environment
 fn has_type(env &Environment, type_name string) bool {
-	for typ in env.expr_type_values {
+	for typ in env.all_expr_types() {
 		if typ is Void {
 			continue
 		}
@@ -50,7 +50,7 @@ fn has_type(env &Environment, type_name string) bool {
 
 // Helper to check if a type matches a predicate
 fn has_type_matching(env &Environment, predicate fn (Type) bool) bool {
-	for typ in env.expr_type_values {
+	for typ in env.all_expr_types() {
 		if typ is Void {
 			continue
 		}
@@ -65,7 +65,7 @@ fn has_type_matching(env &Environment, predicate fn (Type) bool) bool {
 
 fn test_basic_literal_int() {
 	env := check_code('fn main() { x := 42 }')
-	assert env.expr_type_values.len > 0, 'checker should populate expr_types'
+	assert env.expr_type_count() > 0, 'checker should populate expr_types'
 	// int literals get int_literal type
 	assert has_type_matching(env, fn (t Type) bool {
 		return t is Primitive && t.props.has(.integer)
@@ -74,7 +74,7 @@ fn test_basic_literal_int() {
 
 fn test_basic_literal_float() {
 	env := check_code('fn main() { x := 3.14 }')
-	assert env.expr_type_values.len > 0, 'checker should populate expr_types for float'
+	assert env.expr_type_count() > 0, 'checker should populate expr_types for float'
 	assert has_type_matching(env, fn (t Type) bool {
 		return t is Primitive && t.props.has(.float)
 	}), 'should have float primitive type'
@@ -814,7 +814,7 @@ fn main() {
 
 fn test_infix_expr_arithmetic() {
 	env := check_code('fn main() { x := 1 + 2 }')
-	assert env.expr_type_values.len > 0, 'checker should populate expr_types for infix'
+	assert env.expr_type_count() > 0, 'checker should populate expr_types for infix'
 }
 
 fn test_infix_expr_comparison_lt() {
@@ -868,7 +868,7 @@ fn test_fixed_array_slice_returns_array() {
 fn test_array_element_type() {
 	env := check_code('fn main() { x := [1, 2, 3] }')
 	mut found := false
-	for typ in env.expr_type_values {
+	for typ in env.all_expr_types() {
 		if typ is Array {
 			if typ.elem_type is Primitive {
 				found = typ.elem_type.props.has(.integer)
@@ -882,7 +882,7 @@ fn test_array_element_type() {
 fn test_array_init_mixed_float_and_int_literals() {
 	env := check_code('fn main() { x := [50.0, 15, 1] }')
 	mut found := false
-	for typ in env.expr_type_values {
+	for typ in env.all_expr_types() {
 		if typ is Array && typ.elem_type.name() == 'float_literal' {
 			found = true
 			break
@@ -927,7 +927,7 @@ fn test_map_init() {
 fn test_map_types() {
 	env := check_code("fn main() { x := {'a': 1} }")
 	mut found_correct_types := false
-	for typ in env.expr_type_values {
+	for typ in env.all_expr_types() {
 		if typ is Map {
 			key_is_string := typ.key_type.name() == 'string'
 			value_is_int := typ.value_type is Primitive && typ.value_type.props.has(.integer)
@@ -952,7 +952,7 @@ fn test_prefix_address_of() {
 fn test_pointer_base_type() {
 	env := check_code('fn main() { x := 42; y := &x }')
 	mut found_int_ptr := false
-	for typ in env.expr_type_values {
+	for typ in env.all_expr_types() {
 		if typ is Pointer {
 			if typ.base_type is Primitive && typ.base_type.props.has(.integer) {
 				found_int_ptr = true
@@ -988,7 +988,7 @@ fn foo() int { return 42 }
 fn main() { x := foo() }
 '
 	env := check_code(code)
-	assert env.expr_type_values.len > 0, 'call expr should populate types'
+	assert env.expr_type_count() > 0, 'call expr should populate types'
 }
 
 fn test_fn_literal() {
@@ -1009,7 +1009,7 @@ struct Point { x int; y int }
 fn main() { p := Point{x: 1, y: 2}; z := p.x }
 '
 	env := check_code(code)
-	assert env.expr_type_values.len > 0, 'selector expr should populate types'
+	assert env.expr_type_count() > 0, 'selector expr should populate types'
 }
 
 fn test_init_expr() {
@@ -1134,7 +1134,7 @@ fn main() {
 
 fn test_index_expr_array() {
 	env := check_code('fn main() { arr := [1, 2, 3]; x := arr[0] }')
-	assert env.expr_type_values.len > 0, 'index expr should populate types'
+	assert env.expr_type_count() > 0, 'index expr should populate types'
 }
 
 fn test_index_expr_returns_element_type() {
@@ -1149,7 +1149,7 @@ fn test_index_expr_returns_element_type() {
 
 fn test_if_expr() {
 	env := check_code('fn main() { x := if true { 1 } else { 2 } }')
-	assert env.expr_type_values.len > 0, 'if expr should populate types'
+	assert env.expr_type_count() > 0, 'if expr should populate types'
 }
 
 fn test_match_expr() {
@@ -1163,7 +1163,7 @@ fn main() {
 }
 '
 	env := check_code(code)
-	assert env.expr_type_values.len > 0, 'match expr should populate types'
+	assert env.expr_type_count() > 0, 'match expr should populate types'
 	assert has_type(env, 'string'), 'match expr should produce string type'
 }
 
@@ -1414,14 +1414,14 @@ const labels = {
 
 fn test_cast_expr() {
 	env := check_code('fn main() { x := int(3.14) }')
-	assert env.expr_type_values.len > 0, 'cast expr should populate types'
+	assert env.expr_type_count() > 0, 'cast expr should populate types'
 }
 
 // === Parenthesized Expression Tests ===
 
 fn test_paren_expr() {
 	env := check_code('fn main() { x := (1 + 2) * 3 }')
-	assert env.expr_type_values.len > 0, 'paren expr should populate types'
+	assert env.expr_type_count() > 0, 'paren expr should populate types'
 }
 
 // === Unsafe Expression Tests ===
@@ -1433,7 +1433,7 @@ fn main() {
 }
 '
 	env := check_code(code)
-	assert env.expr_type_values.len > 0, 'unsafe expr should populate types'
+	assert env.expr_type_count() > 0, 'unsafe expr should populate types'
 }
 
 // === Tuple Tests ===
@@ -1471,6 +1471,35 @@ fn main() { x := foo() }
 	assert has_type_matching(env, fn (t Type) bool {
 		return t is ResultType
 	}), 'result return should produce ResultType'
+}
+
+fn test_result_return_accepts_option_or_error_fallback() {
+	code := '
+interface IError {
+	msg() string
+}
+
+struct MessageError {}
+
+fn (err MessageError) msg() string {
+	return "missing"
+}
+
+fn error(msg string) IError {
+	return MessageError{}
+}
+
+fn maybe() ?int { return none }
+fn foo() !int { return maybe() or { error("missing") } }
+fn main() {}
+'
+	env := check_code(code)
+	scope := env.get_scope('main') or { panic('missing main scope') }
+	foo_obj := scope.lookup_parent('foo', 0) or { panic('missing foo function') }
+	foo_type := foo_obj.typ()
+	assert foo_type is FnType
+	foo_return := (foo_type as FnType).return_type or { panic('missing foo return type') }
+	assert foo_return is ResultType
 }
 
 // === Channel Tests ===
@@ -1560,7 +1589,7 @@ fn main() {
 '
 	env := check_code(code)
 	mut found_option_int := false
-	for typ in env.expr_type_values {
+	for typ in env.all_expr_types() {
 		if typ is OptionType {
 			if typ.base_type is Primitive && typ.base_type.props.has(.integer) {
 				found_option_int = true

@@ -135,6 +135,28 @@ fn main() {
 	}
 }
 
+fn test_x64_user_visible_stderr_reports_captured_fn_literal_unsupported() {
+	$if x64 {
+		failure := run_x64_backend_compile_failure('captured_fn_literal_unsupported', 'module main
+
+fn make_delta(delta int) fn (int) int {
+	return fn [delta] (value int) int {
+		return value + delta
+	}
+}
+
+fn main() {
+	f := make_delta(10)
+	println(f(1))
+}
+')
+		assert_x64_user_visible_compile_failure(failure, 'x64: unsupported backend feature: ')
+		assert failure.stderr.contains('native x64 cannot lower captured function literal'), failure.stderr
+
+		assert failure.stderr.contains('closure environments are not implemented yet'), failure.stderr
+	}
+}
+
 fn test_x64_unsupported_backend_feature_message_is_normalized() {
 	assert x64_unsupported_backend_feature_message('stack-passed float parameter') == 'x64: unsupported backend feature: stack-passed float parameter'
 	assert x64_unsupported_backend_feature_message('backend feature: Windows argument lowering') == 'x64: unsupported backend feature: Windows argument lowering'

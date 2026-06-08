@@ -124,14 +124,6 @@ pub mut:
 	func_abi_ret_indirect []bool
 	func_abi_param_class  [][]mir.AbiArgClass
 	func_ref_to_func_idx  []int
-	instr_ops             []ssa.OpCode
-	instr_operands        [][]ssa.ValueID
-	instr_operand0        []ssa.ValueID
-	instr_operand1        []ssa.ValueID
-	instr_selected_ops    []string
-	instr_typs            []ssa.TypeID
-	instr_blocks          []int
-	instr_abi_arg_class   [][]mir.AbiArgClass
 	type_kinds            []ssa.TypeKind
 	type_elem_types       []ssa.TypeID
 	type_lens             []int
@@ -277,6 +269,86 @@ pub fn (mut g Gen) gen() {
 	}
 }
 
+// release_scratch_after_gen drops codegen lookup/cache tables after all machine
+// code and relocations have been emitted into g.macho.
+pub fn (mut g Gen) release_scratch_after_gen() {
+	unsafe {
+		g.stack_map.free()
+		g.alloca_offsets.free()
+		g.block_offsets.free()
+		g.pending_label_blks.free()
+		g.pending_label_offs.free()
+		g.pending_head.free()
+		g.pending_next.free()
+		g.reg_map.free()
+		g.used_regs.free()
+		g.string_literal_offsets.free()
+		g.const_cache.free()
+		g.string_data_cache.free()
+		g.sumtype_data_heap_allocas.free()
+		g.type_size_cache.free()
+		g.type_align_cache.free()
+		g.type_size_stack.free()
+		g.type_align_stack.free()
+		g.struct_field_offset_cache.free()
+		g.func_by_name.free()
+		g.global_by_name.free()
+		g.alloca_ptr_cache.free()
+		g.block_instrs.free()
+		g.func_blocks.free()
+		g.func_params.free()
+		g.func_typs.free()
+		g.func_is_c_extern.free()
+		g.func_abi_ret_indirect.free()
+		g.func_abi_param_class.free()
+		g.func_ref_to_func_idx.free()
+		g.type_kinds.free()
+		g.type_elem_types.free()
+		g.type_lens.free()
+		g.type_is_unsigned.free()
+		g.fn_starts.free()
+		g.fn_ends.free()
+		g.fn_sym_ids.free()
+	}
+	g.stack_map = map[int]int{}
+	g.alloca_offsets = map[int]int{}
+	g.block_offsets = []int{}
+	g.pending_label_blks = []int{}
+	g.pending_label_offs = []int{}
+	g.pending_head = []int{}
+	g.pending_next = []int{}
+	g.reg_map = map[int]int{}
+	g.used_regs = []int{}
+	g.string_literal_offsets = map[int]int{}
+	g.const_cache = map[int]i64{}
+	g.string_data_cache = map[string]int{}
+	g.sumtype_data_heap_allocas = map[int]bool{}
+	g.type_size_cache = []int{}
+	g.type_align_cache = []int{}
+	g.type_size_stack = []bool{}
+	g.type_align_stack = []bool{}
+	g.struct_field_offset_cache = map[int]int{}
+	g.func_by_name = map[string]int{}
+	g.global_by_name = map[string]int{}
+	g.alloca_ptr_cache = map[int]u8{}
+	g.cur_blk_instrs = []int{}
+	g.block_instrs = [][]int{}
+	g.func_blocks = [][]int{}
+	g.func_params = [][]int{}
+	g.func_typs = []ssa.TypeID{}
+	g.func_is_c_extern = []bool{}
+	g.func_abi_ret_indirect = []bool{}
+	g.func_abi_param_class = [][]mir.AbiArgClass{}
+	g.func_ref_to_func_idx = []int{}
+	g.type_kinds = []ssa.TypeKind{}
+	g.type_elem_types = []ssa.TypeID{}
+	g.type_lens = []int{}
+	g.type_is_unsigned = []bool{}
+	g.fn_starts = []int{}
+	g.fn_ends = []int{}
+	g.fn_sym_ids = []int{}
+}
+
 // gen_pre_pass registers global symbols and builds lookup caches.
 // Must be called before any gen_func calls.
 pub fn (mut g Gen) gen_pre_pass() {
@@ -329,29 +401,6 @@ pub fn (mut g Gen) gen_pre_pass() {
 		}
 	}
 
-	n_instrs := g.mod.instrs.len
-	g.instr_ops = []ssa.OpCode{len: n_instrs}
-	g.instr_operands = [][]ssa.ValueID{len: n_instrs}
-	g.instr_operand0 = []ssa.ValueID{len: n_instrs}
-	g.instr_operand1 = []ssa.ValueID{len: n_instrs}
-	g.instr_selected_ops = []string{len: n_instrs}
-	g.instr_typs = []ssa.TypeID{len: n_instrs}
-	g.instr_blocks = []int{len: n_instrs}
-	g.instr_abi_arg_class = [][]mir.AbiArgClass{len: n_instrs}
-	for ii := 0; ii < n_instrs; ii++ {
-		g.instr_ops[ii] = g.mod.instrs[ii].op
-		g.instr_operands[ii] = g.mod.instrs[ii].operands
-		if g.mod.instrs[ii].operands.len > 0 {
-			g.instr_operand0[ii] = g.mod.instrs[ii].operands[0]
-		}
-		if g.mod.instrs[ii].operands.len > 1 {
-			g.instr_operand1[ii] = g.mod.instrs[ii].operands[1]
-		}
-		g.instr_selected_ops[ii] = g.mod.instrs[ii].selected_op
-		g.instr_typs[ii] = g.mod.instrs[ii].typ
-		g.instr_blocks[ii] = g.mod.instrs[ii].block
-		g.instr_abi_arg_class[ii] = g.mod.instrs[ii].abi_arg_class
-	}
 	n_types := g.mod.type_store.types.len
 	g.type_kinds = []ssa.TypeKind{len: n_types}
 	g.type_elem_types = []ssa.TypeID{len: n_types}
@@ -730,14 +779,6 @@ pub fn (g &Gen) new_worker_clone() &Gen {
 		func_abi_ret_indirect: g.func_abi_ret_indirect.clone()
 		func_abi_param_class:  g.func_abi_param_class.clone()
 		func_ref_to_func_idx:  g.func_ref_to_func_idx.clone()
-		instr_ops:             g.instr_ops.clone()
-		instr_operands:        g.instr_operands.clone()
-		instr_operand0:        g.instr_operand0.clone()
-		instr_operand1:        g.instr_operand1.clone()
-		instr_selected_ops:    g.instr_selected_ops.clone()
-		instr_typs:            g.instr_typs.clone()
-		instr_blocks:          g.instr_blocks.clone()
-		instr_abi_arg_class:   g.instr_abi_arg_class.clone()
 		type_kinds:            g.type_kinds.clone()
 		type_elem_types:       g.type_elem_types.clone()
 		type_lens:             g.type_lens.clone()
@@ -1531,23 +1572,16 @@ pub fn (mut g Gen) gen_func(func_idx int) {
 
 fn (mut g Gen) gen_instr(val_id int) {
 	instr_idx := g.mod.values[val_id].index
-	if instr_idx < 0 || instr_idx >= g.instr_ops.len {
+	if instr_idx < 0 || instr_idx >= g.mod.instrs.len {
 		return
 	}
-	instr_operands := g.instr_operands[instr_idx]
-	instr := mir.Instruction{
-		op:            g.instr_ops[instr_idx]
-		operands:      instr_operands
-		selected_op:   g.instr_selected_ops[instr_idx]
-		abi_arg_class: g.instr_abi_arg_class[instr_idx]
-		typ:           g.instr_typs[instr_idx]
-		block:         g.instr_blocks[instr_idx]
-	}
+	instr := g.mod.instrs[instr_idx]
+	instr_operands := instr.operands
 	op := g.selected_opcode(instr)
 	trace_val := g.env_trace_val.len > 0
 		&& (g.env_trace_val == '*' || g.cur_func_name == g.env_trace_val)
 	if trace_val {
-		eprintln('ARM64 VAL fn=${g.cur_func_name} val=${val_id} opi=${int(op)} off=${g.macho.text_data.len - g.curr_offset} sel=`${instr.selected_op}` ops=${instr_operands}')
+		eprintln('ARM64 VAL fn=${g.cur_func_name} val=${val_id} opi=${int(op)} off=${g.macho.text_data.len - g.curr_offset} ops=${instr_operands}')
 	}
 	trace_instr := g.env_trace_instr.len > 0
 		&& (g.env_trace_instr == '*' || g.cur_func_name == g.env_trace_instr)
@@ -1562,7 +1596,7 @@ fn (mut g Gen) gen_instr(val_id int) {
 			width = typ.width
 			is_unsigned = typ.is_unsigned
 		}
-		eprintln('ARM64 INSTR fn=${g.cur_func_name} val=${val_id} op=${op} orig=${instr.op} sel=${instr.selected_op} typ=${typ_id} kind=${kind} width=${width} unsigned=${is_unsigned} ops=${instr_operands}')
+		eprintln('ARM64 INSTR fn=${g.cur_func_name} val=${val_id} op=${op} orig=${instr.op} typ=${typ_id} kind=${kind} width=${width} unsigned=${is_unsigned} ops=${instr_operands}')
 	}
 	if op == .store && g.try_emit_simple_scalar_store(instr_idx) {
 		return
@@ -1882,8 +1916,8 @@ fn (mut g Gen) gen_instr(val_id int) {
 			if instr_operands.len < 2 {
 				return
 			}
-			src_id := g.instr_operand0[instr_idx]
-			ptr_id := g.instr_operand1[instr_idx]
+			src_id := instr_operands[0]
+			ptr_id := instr_operands[1]
 			trace_store := g.env_trace_store.len > 0
 				&& (g.env_trace_store == '*' || g.cur_func_name == g.env_trace_store)
 			// ValueID 0 is the SSA null/invalid sentinel.
@@ -5142,18 +5176,22 @@ fn (mut g Gen) gen_instr(val_id int) {
 			}
 		}
 		else {
-			eprintln('arm64: unknown instruction ${int(op)} (${instr.selected_op}) in fn ${g.cur_func_name}')
+			eprintln('arm64: unknown instruction ${int(op)} in fn ${g.cur_func_name}')
 			exit(1)
 		}
 	}
 }
 
 fn (mut g Gen) try_emit_simple_scalar_store(instr_idx int) bool {
-	if instr_idx < 0 || instr_idx >= g.instr_operand0.len || instr_idx >= g.instr_operand1.len {
+	if instr_idx < 0 || instr_idx >= g.mod.instrs.len {
 		return false
 	}
-	src_id := g.instr_operand0[instr_idx]
-	ptr_id := g.instr_operand1[instr_idx]
+	instr := g.mod.instrs[instr_idx]
+	if instr.operands.len < 2 {
+		return false
+	}
+	src_id := instr.operands[0]
+	ptr_id := instr.operands[1]
 	if src_id <= 0 || src_id >= g.mod.values.len || ptr_id <= 0 || ptr_id >= g.mod.values.len {
 		return false
 	}
@@ -5219,9 +5257,6 @@ fn (g &Gen) cached_type_elem_type(typ_id ssa.TypeID) ssa.TypeID {
 
 @[inline]
 fn (g &Gen) selected_opcode(instr &mir.Instruction) ssa.OpCode {
-	// InsSel's textual selected_op round-trips back to instr.op via an
-	// inverse-identical mapping. Returning instr.op directly skips the
-	// per-instruction string contains/all_after/match work.
 	return instr.op
 }
 
@@ -6115,7 +6150,7 @@ fn (g &Gen) call_targets_current_function(callee_id int) bool {
 	return callee.name != '' && callee.name == g.cur_func_name
 }
 
-fn (mut g Gen) load_struct_src_address_to_reg(reg int, val_id int, expected_struct_typ ssa.TypeID, call_callee_id int) {
+fn (mut g Gen) load_struct_src_address_to_reg(reg int, val_id int, expected_struct_typ ssa.TypeID, _call_callee_id int) {
 	if val_id <= 0 || val_id >= g.mod.values.len {
 		g.emit_mov_imm64(reg, 0)
 		return

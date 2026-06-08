@@ -7,6 +7,8 @@ import runtime
 import time
 import v2.gen.cleanc
 
+const max_cleanc_pass5_jobs = 16
+
 struct GenCleancWeightedFile {
 	idx  int
 	cost int
@@ -60,11 +62,8 @@ fn (mut b Builder) gen_cleanc_parallel(mut gen cleanc.Gen) {
 	stage_start = mark_cleanc_parallel_step(stats_enabled, mut stats_sw, stage_start, 'pass 5 pre')
 
 	n_files := emit_indices.len
-	// Pass 5 workers clone sizeable lookup maps and accumulate C output before
-	// merging. Keep the default fan-out conservative until those maps can be
-	// shared without data races; otherwise large projects can hit multi-GB RSS.
 	n_runtime_jobs := runtime.nr_jobs()
-	n_jobs := if n_runtime_jobs > 2 { 2 } else { n_runtime_jobs }
+	n_jobs := cleanc_parallel_pass5_job_count(n_runtime_jobs, n_files)
 
 	$if windows {
 		gen.gen_pass5_files(emit_indices)
@@ -158,8 +157,23 @@ fn (mut b Builder) gen_cleanc_parallel(mut gen cleanc.Gen) {
 		}
 		stage_start = mark_cleanc_parallel_step(stats_enabled, mut stats_sw, stage_start,
 			'pass 5 merge')
+		gen.print_pass5_file_times(8)
 
 		gen.gen_pass5_post()
 		_ = mark_cleanc_parallel_step(stats_enabled, mut stats_sw, stage_start, 'pass 5 post')
 	}
+}
+
+fn cleanc_parallel_pass5_job_count(n_runtime_jobs int, n_files int) int {
+	if n_runtime_jobs <= 0 || n_files <= 0 {
+		return 0
+	}
+	mut n_jobs := n_runtime_jobs
+	if n_jobs > max_cleanc_pass5_jobs {
+		n_jobs = max_cleanc_pass5_jobs
+	}
+	if n_jobs > n_files {
+		n_jobs = n_files
+	}
+	return n_jobs
 }

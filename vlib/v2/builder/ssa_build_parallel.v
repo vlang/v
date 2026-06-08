@@ -9,9 +9,10 @@ import v2.ssa
 
 // FnDeclRef references a function declaration within the files array.
 struct FnDeclRef {
-	file_idx int
-	stmt_idx int
-	mod_name string
+	file_idx                  int
+	stmt_idx                  int
+	mod_name                  string
+	selective_import_fn_names map[string]string
 }
 
 $if !windows {
@@ -42,6 +43,7 @@ $if !windows {
 		for fi := a.start_idx; fi < a.end_idx; fi++ {
 			ref := unsafe { fn_refs[fi] }
 			worker_b.cur_module = ref.mod_name
+			worker_b.set_selective_import_fn_names(ref.selective_import_fn_names)
 			file := unsafe { (*files)[ref.file_idx] }
 			stmt := file.stmts[ref.stmt_idx]
 			decl := stmt as ast.FnDecl
@@ -62,6 +64,7 @@ fn (mut b Builder) ssa_build_parallel(mut ssa_builder ssa.Builder, files []ast.F
 	for fi in 0 .. files.len {
 		file := files[fi]
 		mod_name := ssa.file_module_name(file)
+		selective_import_fn_names := ssa.selective_import_fn_names_from_imports(file.imports)
 		nstmts := file.stmts.len
 		for si in 0 .. nstmts {
 			stmt := file.stmts[si]
@@ -81,9 +84,10 @@ fn (mut b Builder) ssa_build_parallel(mut ssa_builder ssa.Builder, files []ast.F
 					}
 				}
 				fn_refs << FnDeclRef{
-					file_idx: fi
-					stmt_idx: si
-					mod_name: mod_name
+					file_idx:                  fi
+					stmt_idx:                  si
+					mod_name:                  mod_name
+					selective_import_fn_names: selective_import_fn_names.clone()
 				}
 			}
 		}
@@ -92,11 +96,13 @@ fn (mut b Builder) ssa_build_parallel(mut ssa_builder ssa.Builder, files []ast.F
 	n_fns := fn_refs.len
 	$if windows {
 		ssa_builder.build_all_fn_bodies(files)
+		ssa_builder.generate_referenced_synthetic_runtime_stubs()
 		return
 	} $else {
 		if n_fns <= 1 || n_jobs <= 1 {
 			// Fallback to sequential
 			ssa_builder.build_all_fn_bodies(files)
+			ssa_builder.generate_referenced_synthetic_runtime_stubs()
 			return
 		}
 
@@ -184,5 +190,6 @@ fn (mut b Builder) ssa_build_parallel(mut ssa_builder ssa.Builder, files []ast.F
 			mod.merge_worker_module(w_mod, func_data, seed_values, seed_instrs, seed_blocks,
 				seed_types, seed_funcs)
 		}
+		ssa_builder.generate_referenced_synthetic_runtime_stubs()
 	}
 }

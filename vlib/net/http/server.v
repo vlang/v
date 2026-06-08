@@ -25,6 +25,8 @@ mut:
 
 pub const default_server_port = 9009
 
+pub const default_https_server_port = 9043
+
 pub struct Server {
 mut:
 	state ServerStatus = .closed
@@ -39,6 +41,16 @@ pub mut:
 	max_keep_alive_requests int           = 100 // max requests per keep-alive connection (0 = unlimited)
 	listener                net.TcpListener
 
+	// TLS termination: when both `cert` and `cert_key` are set, the server
+	// accepts HTTPS connections instead of plain HTTP. With
+	// `in_memory_verification = true`, `cert` and `cert_key` are PEM strings;
+	// otherwise they are filesystem paths. Currently implemented on the
+	// default mbedtls backend; building with `-d use_openssl` reports a clear
+	// runtime error from listen_and_serve.
+	cert                   string
+	cert_key               string
+	in_memory_verification bool
+
 	on_running fn (mut s Server) = unsafe { nil } // Blocking cb. If set, ran by the web server on transitions to its .running state.
 	on_stopped fn (mut s Server) = unsafe { nil } // Blocking cb. If set, ran by the web server on transitions to its .stopped state.
 	on_closed  fn (mut s Server) = unsafe { nil } // Blocking cb. If set, ran by the web server on transitions to its .closed state.
@@ -51,6 +63,11 @@ pub mut:
 pub fn (mut s Server) listen_and_serve() {
 	if s.handler is DebugHandler {
 		eprintln('Server handler not set, using debug handler')
+	}
+
+	if s.cert != '' && s.cert_key != '' {
+		s.listen_and_serve_tls()
+		return
 	}
 
 	mut l := s.listener.addr() or {

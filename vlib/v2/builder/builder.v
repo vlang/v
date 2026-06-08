@@ -31,24 +31,27 @@ const staged_main_obj_file = '/tmp/v2_codegen.tmp.main.o'
 struct Builder {
 	pref &pref.Preferences
 mut:
-	files                     []ast.File
-	user_files                []string // original user-provided files (for output name)
-	file_set                  &token.FileSet     = token.FileSet.new()
-	env                       &types.Environment = unsafe { nil } // Type checker environment
-	parsed_full_files_n       int
-	parsed_vh_files_n         int
-	entry_v_lines_n           int
-	parsed_v_lines_n          int
-	parsed_full_files         []string
-	parsed_vh_files           []string
-	used_fn_keys              map[string]bool
-	cached_called_fn_names    map[string]bool
-	used_vh_for_parse         bool
-	used_import_vh_for_parse  bool
-	used_virtual_vh_for_parse bool
-	flat_roundtrip_enabled    bool // V2_FLAT_ROUNDTRIP=1: route parses through streaming + to_files()
-	flat_check_enabled        bool // V2_CHECK_FLAT=1: route type-check through Checker.check_flat
-	markused_flat_enabled     bool // V2_MARKUSED_FLAT=1: route markused through mark_used_flat shim
+	files                                 []ast.File
+	user_files                            []string // original user-provided files (for output name)
+	file_set                              &token.FileSet     = token.FileSet.new()
+	env                                   &types.Environment = unsafe { nil } // Type checker environment
+	parsed_full_files_n                   int
+	parsed_vh_files_n                     int
+	entry_v_lines_n                       int
+	parsed_v_lines_n                      int
+	parsed_full_files                     []string
+	parsed_vh_files                       []string
+	used_fn_keys                          map[string]bool
+	cached_called_fn_names                map[string]bool
+	v2compiler_generic_setup_snapshot     cleanc.GenericSetupSnapshot
+	has_v2compiler_generic_setup_snapshot bool
+	used_vh_for_parse                     bool
+	used_import_vh_for_parse              bool
+	used_virtual_vh_for_parse             bool
+	flat_roundtrip_enabled                bool // V2_FLAT_ROUNDTRIP=1: legacy comparison mode; route parses through streaming + to_files().
+	flat_check_enabled                    bool // Default on: stream parse/type-check through FlatAst. V2_LEGACY_AST=1 disables it unless V2_CHECK_FLAT=1 is set.
+	markused_flat_enabled                 bool // Default on: route markused through mark_used_flat.
+	flat_ssa_enabled                      bool // Default on: route SSA codegen through build_all_from_flat on the post-transform b.flat.
 	// flat caches the FlatAst representation of b.files. When
 	// flat_check_enabled is set, parse_batch streams directly into
 	// flat_builder so b.flat is built incrementally during parsing rather
@@ -59,20 +62,26 @@ mut:
 	// pre-sized arenas. We can only size after we know the input set, so
 	// the first parse_batch call lazily initializes it.
 	flat_builder_inited bool
+	// native_flat_pipeline_enabled means the transform phase produced a
+	// post-transform FlatAst and intentionally did not materialize b.files.
+	native_flat_pipeline_enabled bool
 	// Source AST snapshot used only for an isolated macOS tiny candidate graph.
 	// The normal hosted graph is still built from b.files and remains the fallback.
 	macos_tiny_candidate_source_files []ast.File
 }
 
 pub fn new_builder(prefs &pref.Preferences) &Builder {
+	legacy_ast_enabled := os.getenv('V2_LEGACY_AST') != ''
+	flat_default_enabled := !legacy_ast_enabled
 	unsafe {
 		return &Builder{
 			pref:                   prefs
 			used_fn_keys:           map[string]bool{}
 			cached_called_fn_names: map[string]bool{}
 			flat_roundtrip_enabled: os.getenv('V2_FLAT_ROUNDTRIP') != ''
-			flat_check_enabled:     os.getenv('V2_CHECK_FLAT') != ''
-			markused_flat_enabled:  os.getenv('V2_MARKUSED_FLAT') != ''
+			flat_check_enabled:     flat_default_enabled || os.getenv('V2_CHECK_FLAT') != ''
+			markused_flat_enabled:  flat_default_enabled || os.getenv('V2_MARKUSED_FLAT') != ''
+			flat_ssa_enabled:       flat_default_enabled || os.getenv('V2_FLAT_SSA') != ''
 		}
 	}
 }
@@ -85,6 +94,34 @@ fn (b &Builder) exec_build_c_file(output_name string) string {
 		return output_name + '.c'
 	}
 	return staged_c_file
+}
+
+fn (b &Builder) should_use_native_flat_pipeline() bool {
+	if os.getenv('V2_NATIVE_FLAT') == '' {
+		return false
+	}
+	if os.getenv('V2_NO_NATIVE_FLAT') != '' {
+		return false
+	}
+	return b.pref.backend == .arm64 && b.pref.hot_fn.len == 0
+}
+
+fn (b &Builder) backend_uses_markused_pruning() bool {
+	return b.pref.backend != .arm64
+}
+
+fn (b &Builder) should_build_ssa_from_flat() bool {
+	return b.flat.files.len > 0 && b.flat_ssa_enabled && b.markused_flat_enabled
+		&& b.flat_check_enabled
+}
+
+fn (b &Builder) should_keep_flat_for_codegen() bool {
+	flat_ssa_codegen := b.flat_ssa_enabled && b.markused_flat_enabled && b.flat_check_enabled
+	return match b.pref.backend {
+		.c { flat_ssa_codegen }
+		.x64, .arm64 { flat_ssa_codegen || b.native_flat_pipeline_enabled }
+		else { false }
+	}
 }
 
 fn (b &Builder) can_compile_cleanc_locally() bool {
@@ -173,28 +210,10 @@ fn print_rss(stage string) {
 	eprintln('  [mem] ${stage}: ${rss / (1024 * 1024)} MB')
 }
 
-// print_heap reports retained heap size after a forced GC, in MB. Unlike
-// print_rss, this would give a stable measurement of memory the program
-// is actually holding alive — but ONLY when built with a real GC.
-//
-// CURRENTLY A NO-OP FOR v2 SELF-HOST: v2 is forced to `-gc none`, where
-// `gc_collect()` is a NOP and `gc_memory_use()` always returns 0. If
-// you build v2 with an explicit GC (bypassing is_v2_compiler_target) this
-// becomes useful. Until then, use `/usr/bin/time -l` for peak readings.
-fn print_heap(stage string) {
-	if os.getenv('V2_HEAP') == '' {
-		return
-	}
-	gc_collect()
-	bytes := gc_memory_use()
-	eprintln('  [heap] ${stage}: ${bytes / (1024 * 1024)} MB')
-}
-
 pub fn (mut b Builder) build(files []string) {
 	b.user_files = files
 	mut sw := time.new_stopwatch()
 	print_rss('start')
-	print_heap('start')
 	$if parallel ? {
 		if b.flat_roundtrip_enabled && !b.pref.no_parallel {
 			eprintln('warning: V2_FLAT_ROUNDTRIP=1 only routes through the serial parser; pass --no-parallel to exercise it')
@@ -210,7 +229,6 @@ pub fn (mut b Builder) build(files []string) {
 	parse_time := sw.elapsed()
 	print_time('Scan & Parse', parse_time)
 	print_rss('after parse')
-	print_heap('after parse')
 	if b.flat_check_enabled {
 		// FlatBuilder is the canonical parse output; both parse paths stream
 		// into it. parse_files / parse_files_parallel return [] in flat
@@ -245,7 +263,6 @@ pub fn (mut b Builder) build(files []string) {
 	type_check_time := time.Duration(sw.elapsed() - parse_time)
 	print_time('Type Check', type_check_time)
 	print_rss('after type check')
-	print_heap('after type check')
 
 	b.prepare_macos_tiny_candidate_source_files()
 
@@ -254,21 +271,34 @@ pub fn (mut b Builder) build(files []string) {
 	mut trans := transformer.Transformer.new_with_pref(b.env, b.pref)
 	trans.set_file_set(b.file_set)
 	sequential_transform := b.pref.no_parallel_transform || b.pref.ownership
-	use_flat_markused := b.markused_flat_enabled && b.flat_check_enabled
+	use_native_flat_pipeline := b.should_use_native_flat_pipeline()
+	b.native_flat_pipeline_enabled = use_native_flat_pipeline
+	use_flat_markused := (b.markused_flat_enabled && b.flat_check_enabled)
+		|| use_native_flat_pipeline
 	// Both paths can now consume flat directly: sequential streams via
 	// transform_files_from_flat, parallel streams per-worker via
 	// to_files_range. No up-front full rehydration needed in either case.
 	//
-	// When V2_MARKUSED_FLAT is also enabled, both transform paths route
-	// through their *_to_flat wedge so the post-transform flatten lives
-	// inside the transformer call (one round-trip), avoiding a separate
-	// flatten_files() pass before mark_used_flat.
+	// Flat markused routes transform through flat-output wedges. Backends that
+	// can consume flat codegen use the direct flat-output path and drop the
+	// transformed []ast.File result; legacy backends keep the compatibility
+	// wedge that returns both flat and files.
 	mut flat_populated_by_transform := false
+	transform_flat_only := b.should_keep_flat_for_codegen()
 	if sequential_transform {
-		if use_flat_markused {
-			new_flat, files_out := trans.transform_files_to_flat(&b.flat, b.files)
-			b.flat = new_flat
-			b.files = files_out
+		if use_native_flat_pipeline && !b.flat_check_enabled {
+			b.flat = trans.transform_files_to_flat_direct(b.files)
+			b.files = []ast.File{}
+			flat_populated_by_transform = true
+		} else if use_flat_markused {
+			if transform_flat_only {
+				b.flat = trans.transform_flat_to_flat_direct(&b.flat, b.files)
+				b.files = []ast.File{}
+			} else {
+				new_flat, files_out := trans.transform_files_to_flat(&b.flat, b.files)
+				b.flat = new_flat
+				b.files = files_out
+			}
 			flat_populated_by_transform = true
 		} else if b.flat_check_enabled {
 			b.files = trans.transform_files_from_flat(&b.flat, b.files)
@@ -276,10 +306,19 @@ pub fn (mut b Builder) build(files []string) {
 			b.files = trans.transform_files(b.files)
 		}
 	} else {
-		if use_flat_markused {
-			new_flat, files_out := b.transform_files_parallel_to_flat(mut trans)
-			b.flat = new_flat
-			b.files = files_out
+		if use_native_flat_pipeline && !b.flat_check_enabled {
+			b.flat = trans.transform_files_to_flat_direct(b.files)
+			b.files = []ast.File{}
+			flat_populated_by_transform = true
+		} else if use_flat_markused {
+			if transform_flat_only {
+				b.flat = trans.transform_flat_to_flat_direct(&b.flat, b.files)
+				b.files = []ast.File{}
+			} else {
+				new_flat, files_out := b.transform_files_parallel_to_flat(mut trans)
+				b.flat = new_flat
+				b.files = files_out
+			}
 			flat_populated_by_transform = true
 		} else if b.flat_check_enabled {
 			b.files = b.transform_files_parallel_from_flat(mut trans)
@@ -290,24 +329,21 @@ pub fn (mut b Builder) build(files []string) {
 	transform_time := time.Duration(sw.elapsed() - transform_start)
 	print_time('Transform', transform_time)
 	print_rss('after transform')
-	print_heap('after transform')
 
 	// Mark used functions/methods for backend pruning.
-	if b.pref.no_markused {
+	if b.pref.no_markused || !b.backend_uses_markused_pruning() {
 		b.used_fn_keys = map[string]bool{}
 	} else {
 		mark_used_start := sw.elapsed()
-		// V2_MARKUSED_FLAT only takes effect when V2_CHECK_FLAT is also on,
-		// since b.flat is only populated when flat_check_enabled streams
-		// parses into flat_builder. Without that, b.flat is empty and the
-		// shim would walk nothing.
+		// Flat markused consumes the post-transform FlatAst. Legacy comparison
+		// mode (`V2_LEGACY_AST=1`) can still reach the AST walker unless one of
+		// the flat env flags explicitly re-enables this path.
 		//
-		// The transformer mutates b.files but does not write back into
-		// b.flat. Both sequential and parallel paths now populate b.flat
-		// as part of their *_to_flat wedge when V2_MARKUSED_FLAT is on,
-		// so the separate flatten_files() pass is gone. The branch below
-		// remains as a defensive fallback for any future code path that
-		// reaches markused without having set flat_populated_by_transform.
+		// The transformer mutates b.files but does not write back into b.flat.
+		// Both sequential and parallel paths now populate b.flat as part of
+		// their *_to_flat wedge, so the separate flatten_files() pass is gone.
+		// The branch below remains as a defensive fallback for any future code
+		// path that reaches markused without setting flat_populated_by_transform.
 		if use_flat_markused && !flat_populated_by_transform {
 			b.flat = ast.flatten_files(b.files)
 		}
@@ -329,12 +365,10 @@ pub fn (mut b Builder) build(files []string) {
 		}
 		mark_used_time := time.Duration(sw.elapsed() - mark_used_start)
 		print_time('Mark Used', mark_used_time)
-		// b.flat is unused by the codegen path; drop the arenas so a GC build
-		// can reclaim them. Under -gc none this is a no-op for peak memory,
-		// but it documents the lifetime correctly for the eventual GC switch.
-		b.flat = ast.FlatAst{}
 		print_rss('after markused')
-		print_heap('after markused')
+	}
+	if b.flat_check_enabled && !b.should_keep_flat_for_codegen() {
+		b.flat = ast.FlatAst{}
 	}
 
 	// Generate output based on backend
@@ -367,7 +401,6 @@ pub fn (mut b Builder) build(files []string) {
 
 	print_time('Total', sw.elapsed())
 	print_rss('after codegen (peak)')
-	print_heap('after codegen')
 }
 
 fn (mut b Builder) gen_v_files() {
@@ -588,7 +621,13 @@ fn (mut b Builder) gen_ssa_c() {
 	ssa_builder.target_os = b.pref.target_os_or_host()
 
 	mut stage_start := sw.elapsed()
-	ssa_builder.build_all(b.files)
+	mut built_from_flat := false
+	if b.should_build_ssa_from_flat() {
+		ssa_builder.build_all_from_flat(&b.flat)
+		built_from_flat = true
+	} else {
+		ssa_builder.build_all(b.files)
+	}
 	print_time('SSA Build', time.Duration(sw.elapsed() - stage_start))
 
 	// TODO: re-enable SSA optimization once the new builder is mature
@@ -605,6 +644,9 @@ fn (mut b Builder) gen_ssa_c() {
 	}
 
 	if output_name.ends_with('.c') {
+		if built_from_flat {
+			b.flat = ast.FlatAst{}
+		}
 		stage_start = sw.elapsed()
 		mut gen := c.new_gen(mod)
 		c_source := gen.gen()
@@ -620,6 +662,12 @@ fn (mut b Builder) gen_ssa_c() {
 
 	cc := if b.pref.ccompiler.len > 0 { b.pref.ccompiler } else { configured_cc(b.pref.vroot) }
 	directive_flags := b.collect_cflags_from_sources()
+	if built_from_flat {
+		// SSA has copied the program into MIR, and directive scanning has read
+		// source names from the FlatAst. Keep the later C generator/compiler
+		// working sets clear of the transformed FlatAst.
+		b.flat = ast.FlatAst{}
+	}
 	mut cc_flag_parts := []string{}
 	env_flags := configured_cflags()
 	if env_flags.trim_space() != '' {
@@ -797,10 +845,19 @@ fn (mut b Builder) gen_cleanc_source_with_options(modules []string, emit_files [
 		gen_files << file
 	}
 	if cached_init_calls.len > 0 && b.used_vh_for_parse {
-		mut p := parser.Parser.new(b.pref)
-		header_files := p.parse_files(b.core_cached_parse_paths(), mut b.file_set)
-		for header_file in header_files {
-			gen_files << header_file
+		mut has_vh_files := false
+		for file in gen_files {
+			if file.name.ends_with('.vh') {
+				has_vh_files = true
+				break
+			}
+		}
+		if !has_vh_files {
+			mut p := parser.Parser.new(b.pref)
+			header_files := p.parse_files(b.core_cached_parse_paths(), mut b.file_set)
+			for header_file in header_files {
+				gen_files << header_file
+			}
 		}
 	}
 	mut gen := cleanc.Gen.new_with_env_and_pref(gen_files, b.env, b.pref)
@@ -829,9 +886,17 @@ fn (mut b Builder) gen_cleanc_source_with_options(modules []string, emit_files [
 	if cache_bundle_name.len == 0 && cached_init_calls.len > 0 && b.cached_called_fn_names.len > 0 {
 		gen.add_called_fn_names(b.cached_called_fn_name_list())
 	}
+	if cache_bundle_name.len == 0 && cached_init_calls.len > 0
+		&& b.has_v2compiler_generic_setup_snapshot {
+		gen.use_generic_setup_snapshot(b.v2compiler_generic_setup_snapshot)
+	}
 	use_parallel := b.pref != unsafe { nil } && !b.pref.no_parallel
 	if use_parallel {
 		gen.gen_passes_1_to_4()
+		if cache_bundle_name == v2compiler_cache_name {
+			b.v2compiler_generic_setup_snapshot = gen.generic_setup_snapshot()
+			b.has_v2compiler_generic_setup_snapshot = true
+		}
 		b.gen_cleanc_parallel(mut gen)
 		source := gen.gen_finalize()
 		if cache_bundle_name.len > 0 {
@@ -843,6 +908,10 @@ fn (mut b Builder) gen_cleanc_source_with_options(modules []string, emit_files [
 		return source
 	}
 	source := gen.gen()
+	if cache_bundle_name == v2compiler_cache_name {
+		b.v2compiler_generic_setup_snapshot = gen.generic_setup_snapshot()
+		b.has_v2compiler_generic_setup_snapshot = true
+	}
 	if cache_bundle_name.len > 0 {
 		b.add_cached_called_fn_names(gen.external_called_fn_names())
 	}
@@ -891,6 +960,19 @@ fn (mut b Builder) write_cached_called_fn_names(cache_dir string, cache_name str
 	}
 	names.sort()
 	os.write_file(cached_called_fn_names_path(cache_dir, cache_name), names.join('\n')) or {}
+}
+
+fn (b &Builder) cgen_builder_stats_enabled() bool {
+	return b.pref != unsafe { nil } && b.pref.stats
+}
+
+fn (b &Builder) mark_cgen_builder_step(stats_enabled bool, cache_name string, mut sw time.StopWatch, stage_start time.Duration, step string) time.Duration {
+	if !stats_enabled {
+		return stage_start
+	}
+	now := sw.elapsed()
+	println('   - C Gen/cache:${cache_name} cache.${step}: ${time.Duration(now - stage_start).milliseconds()}ms')
+	return now
 }
 
 fn cache_type_module_names(cache_bundle_name string, emit_modules []string) []string {
@@ -1388,17 +1470,29 @@ fn (mut b Builder) ensure_cached_module_object(cache_dir string, cache_name stri
 		return error('missing cached ${cache_name} object for .vh parse')
 	}
 
+	stats_enabled := b.cgen_builder_stats_enabled()
+	mut stats_sw := time.new_stopwatch()
+	mut stage_start := stats_sw.elapsed()
 	cached_called_before := b.cached_called_fn_names.clone()
+	stage_start = b.mark_cgen_builder_step(stats_enabled, cache_name, mut stats_sw, stage_start,
+		'called_before_clone')
 	module_source := b.gen_cleanc_source_for_cache(emit_modules, cache_name, use_markused)
+	stage_start = b.mark_cgen_builder_step(stats_enabled, cache_name, mut stats_sw, stage_start,
+		'source')
 	if module_source == '' {
 		return error('failed to generate C source for ${cache_name}')
 	}
 	os.write_file(c_path, module_source)!
+	stage_start = b.mark_cgen_builder_step(stats_enabled, cache_name, mut stats_sw, stage_start,
+		'write_c')
 
 	compile_cmd := '${cc} ${cc_flags} -w -Wno-incompatible-function-pointer-types -c "${c_path}" -o "${obj_path}"${error_limit_flag}'
 	run_cc_cmd_or_exit(compile_cmd, 'C compilation', b.pref.show_cc)
+	stage_start =
+		b.mark_cgen_builder_step(stats_enabled, cache_name, mut stats_sw, stage_start, 'cc')
 	b.write_cached_called_fn_names(cache_dir, cache_name, cached_called_before)
 	os.write_file(stamp_path, expected_stamp)!
+	_ = b.mark_cgen_builder_step(stats_enabled, cache_name, mut stats_sw, stage_start, 'metadata')
 	return obj_path
 }
 
@@ -1430,17 +1524,29 @@ fn (mut b Builder) ensure_cached_parsed_module_object(cache_dir string, cache_na
 		return error('missing cached ${cache_name} object for .vh parse')
 	}
 
+	stats_enabled := b.cgen_builder_stats_enabled()
+	mut stats_sw := time.new_stopwatch()
+	mut stage_start := stats_sw.elapsed()
 	cached_called_before := b.cached_called_fn_names.clone()
+	stage_start = b.mark_cgen_builder_step(stats_enabled, cache_name, mut stats_sw, stage_start,
+		'called_before_clone')
 	mut module_source := b.gen_cleanc_source_for_cache(module_names, cache_name, use_markused)
+	stage_start = b.mark_cgen_builder_step(stats_enabled, cache_name, mut stats_sw, stage_start,
+		'source')
 	if module_source == '' {
 		return error('failed to generate C source for ${cache_name}')
 	}
 	os.write_file(c_path, module_source)!
+	stage_start = b.mark_cgen_builder_step(stats_enabled, cache_name, mut stats_sw, stage_start,
+		'write_c')
 
 	compile_cmd := '${cc} ${cc_flags} -w -Wno-incompatible-function-pointer-types -c "${c_path}" -o "${obj_path}"${error_limit_flag}'
 	run_cc_cmd_or_exit(compile_cmd, 'C compilation', b.pref.show_cc)
+	stage_start =
+		b.mark_cgen_builder_step(stats_enabled, cache_name, mut stats_sw, stage_start, 'cc')
 	b.write_cached_called_fn_names(cache_dir, cache_name, cached_called_before)
 	os.write_file(stamp_path, expected_stamp)!
+	_ = b.mark_cgen_builder_step(stats_enabled, cache_name, mut stats_sw, stage_start, 'metadata')
 	return obj_path
 }
 
@@ -1473,18 +1579,31 @@ fn (mut b Builder) ensure_cached_virtual_module_object(cache_dir string, groups 
 	}
 
 	emit_files := virtual_module_source_files(groups)
+	stats_enabled := b.cgen_builder_stats_enabled()
+	mut stats_sw := time.new_stopwatch()
+	mut stage_start := stats_sw.elapsed()
 	cached_called_before := b.cached_called_fn_names.clone()
+	stage_start = b.mark_cgen_builder_step(stats_enabled, virtuals_cache_name, mut stats_sw,
+		stage_start, 'called_before_clone')
 	mut module_source := b.gen_cleanc_source_for_cache_files(['main'], emit_files,
 		virtuals_cache_name, use_markused)
+	stage_start = b.mark_cgen_builder_step(stats_enabled, virtuals_cache_name, mut stats_sw,
+		stage_start, 'source')
 	if module_source == '' {
 		return error('failed to generate C source for ${virtuals_cache_name}')
 	}
 	os.write_file(c_path, module_source)!
+	stage_start = b.mark_cgen_builder_step(stats_enabled, virtuals_cache_name, mut stats_sw,
+		stage_start, 'write_c')
 
 	compile_cmd := '${cc} ${cc_flags} -w -Wno-incompatible-function-pointer-types -c "${c_path}" -o "${obj_path}"${error_limit_flag}'
 	run_cc_cmd_or_exit(compile_cmd, 'C compilation', b.pref.show_cc)
+	stage_start = b.mark_cgen_builder_step(stats_enabled, virtuals_cache_name, mut stats_sw,
+		stage_start, 'cc')
 	b.write_cached_called_fn_names(cache_dir, virtuals_cache_name, cached_called_before)
 	os.write_file(stamp_path, expected_stamp)!
+	_ = b.mark_cgen_builder_step(stats_enabled, virtuals_cache_name, mut stats_sw, stage_start,
+		'metadata')
 	return obj_path
 }
 
@@ -1591,6 +1710,7 @@ fn is_macos_x64_native_target(arch pref.Arch, target_os string) bool {
 fn eprint_native_x64_link_error(message string) {
 	if message.starts_with('x64: unsupported backend feature: ') {
 		eprintln(message)
+		eprintln(x64.x64_backend_limitation_hint)
 		return
 	}
 	eprintln('Link failed:')
@@ -1629,11 +1749,28 @@ fn (b &Builder) uses_macos_x64_tiny_object(arch pref.Arch) bool {
 }
 
 fn macos_native_link_command(output_binary string, obj_file string, sdk_path string, arch_flag string, tiny_object bool) string {
-	normal_link_cmd := 'ld -o ${output_binary} ${obj_file} -lSystem -syslibroot "${sdk_path}" -e _main -arch ${arch_flag} -platform_version macos 11.0.0 11.0.0'
+	normal_link_cmd := 'ld -o ${os.quoted_path(output_binary)} ${os.quoted_path(obj_file)} -lSystem -syslibroot ${os.quoted_path(sdk_path)} -e _main -arch ${arch_flag} -platform_version macos 11.0.0 11.0.0'
 	if tiny_object {
 		return '${normal_link_cmd} -dead_strip -x -S'
 	}
 	return normal_link_cmd
+}
+
+fn native_external_object_file(output_binary string, target_os string) string {
+	if !is_macos_native_target(target_os) {
+		return 'main.o'
+	}
+	output_path := if os.is_abs_path(output_binary) {
+		output_binary
+	} else {
+		os.abs_path(output_binary)
+	}
+	output_dir := os.dir(output_path)
+	output_name := os.file_name(output_path)
+	if output_name == '' {
+		return os.join_path(output_dir, '.v_native_${os.getpid()}.o')
+	}
+	return os.join_path(output_dir, '.${output_name}.${os.getpid()}.o')
 }
 
 fn (mut b Builder) prepare_macos_tiny_candidate_source_files() {
@@ -1641,7 +1778,7 @@ fn (mut b Builder) prepare_macos_tiny_candidate_source_files() {
 	if !b.uses_macos_x64_tiny_object(.x64) {
 		return
 	}
-	b.macos_tiny_candidate_source_files = if b.flat_check_enabled {
+	b.macos_tiny_candidate_source_files = if b.flat_check_enabled && b.flat.files.len > 0 {
 		b.flat.to_files()
 	} else {
 		b.files.clone()
@@ -1672,6 +1809,20 @@ fn native_x64_lowering_abi_for_os(target_os string) abi.X64Abi {
 		'windows' { abi.X64Abi.windows }
 		else { abi.X64Abi.sysv }
 	}
+}
+
+fn native_x64_mir_unsupported_external_symbol_message(mir_mod &mir.Module, obj_format x64.ObjectFormat) ?string {
+	for val in mir_mod.values {
+		if val.kind != .func_ref {
+			continue
+		}
+		if msg := x64.unsupported_external_symbol_message_for_name(obj_format, val.name,
+			'needed while preparing native x64 output')
+		{
+			return msg
+		}
+	}
+	return none
 }
 
 fn (b &Builder) native_backend_requires_ssa_optimization(arch pref.Arch) bool {
@@ -1939,6 +2090,12 @@ fn (b &Builder) collect_cflags_from_sources() string {
 	for file in b.files {
 		if file.name != '' {
 			scan_paths << file.name
+		}
+	}
+	for ff in b.flat.files {
+		name := b.flat.file_name(ff)
+		if name != '' {
+			scan_paths << name
 		}
 	}
 	cflags_target_os := b.cflags_target_os_for_local_compile()
@@ -2450,6 +2607,17 @@ fn (b &Builder) native_mir_build_sequential(label string) bool {
 	return label == macos_tiny_candidate_graph_label || b.pref.no_parallel || b.pref.hot_fn.len > 0
 }
 
+fn (b &Builder) should_prune_native_backend_modules(arch pref.Arch) bool {
+	return b.pref.single_backend || arch == .arm64
+}
+
+fn native_backend_module_file_fragment(backend_mod string) string {
+	return match backend_mod {
+		'eval' { '/vlib/v2/eval/' }
+		else { '/vlib/v2/gen/${backend_mod}/' }
+	}
+}
+
 fn (mut b Builder) build_native_mir_from_files(files []ast.File, arch pref.Arch, target_os string, minimal_runtime_roots bool, used_fn_keys map[string]bool, label string) mir.Module {
 	mut mod := ssa.Module.new('main')
 	if mod == unsafe { nil } {
@@ -2471,21 +2639,24 @@ fn (mut b Builder) build_native_mir_from_files(files []ast.File, arch pref.Arch,
 		ssa_builder.used_fn_keys = used_fn_keys.clone()
 	}
 
-	// --single-backend: strip unused backend modules from the binary
-	if b.pref.single_backend {
-		all_backends := ['cleanc', 'eval', 'c', 'x64', 'arm64']
+	// Strip unused compiler backend modules before SSA. ARM64 already strips
+	// these symbols after codegen, so avoid building MIR for them in the first place.
+	if b.should_prune_native_backend_modules(arch) {
+		all_backends := ['cleanc', 'eval', 'v', 'c', 'x64', 'arm64']
 		own := match b.pref.backend {
 			.arm64 { 'arm64' }
 			.x64 { 'x64' }
 			.cleanc { 'cleanc' }
+			.v { 'v' }
 			.c { 'c' }
 			.eval { 'eval' }
-			else { '' }
 		}
 
 		for backend_mod in all_backends {
 			if backend_mod != own {
 				ssa_builder.skip_modules[backend_mod] = true
+				ssa_builder.skip_module_file_fragments[backend_mod] =
+					native_backend_module_file_fragment(backend_mod)
 			}
 		}
 	}
@@ -2496,7 +2667,21 @@ fn (mut b Builder) build_native_mir_from_files(files []ast.File, arch pref.Arch,
 	}
 
 	mut stage_start := native_sw.elapsed()
-	if b.native_mir_build_sequential(label) {
+	// Route the whole SSA build through the cursor-native build_all_from_flat
+	// on the post-transform b.flat (kept alive above). Sequential only
+	// (build_all_from_flat builds fn bodies in-phase).
+	//
+	// b.flat is only POST-TRANSFORM when flat markused has routed transform
+	// through transform_files_to_flat, or the direct native flat pipeline has
+	// emitted transform output directly into FlatAst.
+	build_from_flat := b.should_build_ssa_from_flat()
+		|| (b.flat.files.len > 0 && b.native_flat_pipeline_enabled && label == '')
+	if build_from_flat {
+		ssa_builder.build_all_from_flat(&b.flat)
+		// SSA has copied the program into MIR; keep the FlatAst lifetime out of
+		// the later optimizer and machine-code generator working sets.
+		b.flat = ast.FlatAst{}
+	} else if b.native_mir_build_sequential(label) {
 		ssa_builder.build_all(files)
 	} else {
 		// Phases 1-3 sequential, Phase 4 parallel, Phase 5 sequential
@@ -2506,8 +2691,12 @@ fn (mut b Builder) build_native_mir_from_files(files []ast.File, arch pref.Arch,
 		b.ssa_build_parallel(mut ssa_builder, files)
 		ssa_builder.generate_vinit()
 	}
+	if arch == .arm64 {
+		b.env.release_expr_type_cache_after_ssa()
+	}
 	print_time(native_graph_stage_title(label, 'SSA Build'),
 		time.Duration(native_sw.elapsed() - stage_start))
+	print_rss(native_graph_stage_title(label, 'after SSA build'))
 
 	stage_start = native_sw.elapsed()
 	ssa_optimization_required := b.native_backend_requires_ssa_optimization(arch)
@@ -2524,6 +2713,7 @@ fn (mut b Builder) build_native_mir_from_files(files []ast.File, arch pref.Arch,
 	}
 	print_time(native_graph_stage_title(label, 'SSA Optimize'),
 		time.Duration(native_sw.elapsed() - stage_start))
+	print_rss(native_graph_stage_title(label, 'after SSA optimize'))
 	$if debug {
 		// Post-opt SSA verification is useful while debugging the optimizer, but it
 		// is currently noisy enough to block normal self-host builds. Keep it
@@ -2573,6 +2763,8 @@ fn (mut b Builder) build_native_mir_from_files(files []ast.File, arch pref.Arch,
 	mut mir_mod := mir.lower_from_ssa(mod)
 	print_time(native_graph_stage_title(label, 'MIR Lower'),
 		time.Duration(native_sw.elapsed() - stage_start))
+	mod.release_outer_arenas_after_mir_lower()
+	print_rss(native_graph_stage_title(label, 'after MIR lower'))
 
 	stage_start = native_sw.elapsed()
 	if is_windows_x64_native_target(arch, target_os) {
@@ -2582,11 +2774,15 @@ fn (mut b Builder) build_native_mir_from_files(files []ast.File, arch pref.Arch,
 	}
 	print_time(native_graph_stage_title(label, 'ABI Lower'),
 		time.Duration(native_sw.elapsed() - stage_start))
+	print_rss(native_graph_stage_title(label, 'after ABI lower'))
 
-	stage_start = native_sw.elapsed()
-	insel.select(mut mir_mod, arch)
-	print_time(native_graph_stage_title(label, 'InsSel'),
-		time.Duration(native_sw.elapsed() - stage_start))
+	if arch != .arm64 {
+		stage_start = native_sw.elapsed()
+		insel.select(mut mir_mod, arch)
+		print_time(native_graph_stage_title(label, 'InsSel'),
+			time.Duration(native_sw.elapsed() - stage_start))
+		print_rss(native_graph_stage_title(label, 'after InsSel'))
+	}
 	return mir_mod
 }
 
@@ -2638,6 +2834,8 @@ fn (mut b Builder) gen_native(backend_arch pref.Arch) {
 		} else {
 			b.gen_arm64_parallel(mut gen)
 		}
+		gen.release_scratch_after_gen()
+		mir_mod.release_after_native_codegen()
 		print_time('ARM64 Gen', time.Duration(native_sw.elapsed() - stage_start))
 
 		if b.pref.hot_fn.len > 0 {
@@ -2657,7 +2855,7 @@ fn (mut b Builder) gen_native(backend_arch pref.Arch) {
 		}
 	} else {
 		// Generate object file and use external linker
-		obj_file := 'main.o'
+		obj_file := native_external_object_file(output_binary, target_os)
 		mut used_macos_tiny_object := false
 
 		if arch == .arm64 {
@@ -2667,10 +2865,16 @@ fn (mut b Builder) gen_native(backend_arch pref.Arch) {
 			} else {
 				b.gen_arm64_parallel(mut gen)
 			}
+			gen.release_scratch_after_gen()
+			mir_mod.release_after_native_codegen()
 			gen.write_file(obj_file)
 		} else {
 			obj_format := native_x64_object_format_for_os(target_os)
 			codegen_abi := native_x64_codegen_abi_for_os(target_os)
+			if msg := native_x64_mir_unsupported_external_symbol_message(&mir_mod, obj_format) {
+				eprint_native_x64_link_error(msg)
+				exit(1)
+			}
 			if is_windows_x64_native_target(arch, target_os) {
 				mut windows_gen := x64.Gen.new_with_format_and_abi(&mir_mod, obj_format,
 					codegen_abi)
@@ -2766,6 +2970,16 @@ fn (mut b Builder) gen_native(backend_arch pref.Arch) {
 			if link_result.exit_code != 0 && used_macos_tiny_object {
 				if b.pref.verbose {
 					println('[*] macOS tiny object link failed; retrying with normal Mach-O object')
+					println('[*] macOS tiny object link exit code: ${link_result.exit_code}')
+					println('[*] macOS tiny object link output:')
+					if link_result.output.len > 0 {
+						print(link_result.output)
+						if !link_result.output.ends_with('\n') {
+							println('')
+						}
+					} else {
+						println('<empty>')
+					}
 				}
 				if os.exists(output_binary) {
 					os.rm(output_binary) or {}

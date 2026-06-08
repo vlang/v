@@ -626,6 +626,56 @@ fn call_names_for_fn(files []ast.File, fn_name string) []string {
 	return names
 }
 
+fn test_println_rune_lowers_to_rune_str_call() {
+	mut t := create_transformer_with_vars({
+		'r': types.Type(types.rune_)
+	})
+	out := t.transform_call_expr(ast.CallExpr{
+		lhs:  ast.Ident{
+			name: 'println'
+		}
+		args: [ast.Expr(ast.Ident{
+			name: 'r'
+		})]
+	})
+	assert out is ast.CallExpr
+	call := out as ast.CallExpr
+	assert call.args.len == 1
+	assert call.args[0] is ast.CallExpr
+	str_call := call.args[0] as ast.CallExpr
+	assert str_call.lhs is ast.Ident
+	assert (str_call.lhs as ast.Ident).name == 'rune__str'
+	assert 'rune__str' in t.needed_str_fns
+}
+
+fn test_println_i64_call_or_cast_lowers_to_i64_str_call() {
+	mut t := create_test_transformer()
+	out := t.transform_call_expr(ast.CallExpr{
+		lhs:  ast.Ident{
+			name: 'println'
+		}
+		args: [
+			ast.Expr(ast.CallOrCastExpr{
+				lhs:  ast.Ident{
+					name: 'i64'
+				}
+				expr: ast.BasicLiteral{
+					kind:  .number
+					value: '4294967296'
+				}
+			}),
+		]
+	})
+	assert out is ast.CallExpr
+	call := out as ast.CallExpr
+	assert call.args.len == 1
+	assert call.args[0] is ast.CallExpr
+	str_call := call.args[0] as ast.CallExpr
+	assert str_call.lhs is ast.Ident
+	assert (str_call.lhs as ast.Ident).name == 'i64__str'
+	assert 'i64__str' in t.needed_str_fns
+}
+
 fn call_names_for_fn_suffix(files []ast.File, fn_suffix string) []string {
 	mut names := []string{}
 	for file in files {

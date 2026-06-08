@@ -26,12 +26,12 @@ pub mut:
 	methods           shared map[string][]&Fn = map[string][]&Fn{}
 	generic_types     map[string][]map[string]Type
 	cur_generic_types []map[string]Type
-	// Expression types - indexed directly by pos.id.
-	// Positive IDs (1-based) come from the parser via token.Pos.id.
-	// Negative IDs come from transformer's synthesized nodes.
-	expr_type_values     []Type // indexed by pos.id for positive IDs
-	expr_type_neg_values []Type // indexed by -pos.id for negative IDs (synth nodes)
-	selector_names       map[int]string
+	// Expression types keyed by token.Pos.id. Positive IDs come from the parser;
+	// negative IDs come from transformer's synthesized nodes. This must stay sparse:
+	// parser position IDs are not dense enough to use as direct array indexes in
+	// large self-host builds.
+	expr_types     map[int]Type
+	selector_names map[int]string
 	// Drop-codegen handoff: per-fn list of bindings whose `drop(mut self)`
 	// method must be called at the fn's natural exit, in declaration order.
 	// Populated by `ownership_snapshot_drops_at_fn_exit` after each fn body
@@ -58,70 +58,59 @@ pub mut:
 
 pub fn Environment.new() &Environment {
 	return &Environment{
-		expr_type_values: []Type{cap: 100_000}
-		selector_names:   map[int]string{}
-		c_scope:          new_scope(unsafe { nil })
-		c_scope_mu:       sync.new_mutex()
+		expr_types:     map[int]Type{}
+		selector_names: map[int]string{}
+		c_scope:        new_scope(unsafe { nil })
+		c_scope_mu:     sync.new_mutex()
 	}
 }
 
 // set_expr_type stores the computed type for an expression by its unique ID.
 pub fn (mut e Environment) set_expr_type(id int, typ Type) {
-	if id >= 0 {
-		if id >= e.expr_type_values.len {
-			// Grow with 2x strategy to amortize reallocation cost
-			mut new_len := if e.expr_type_values.len < 100_000 {
-				100_000
-			} else {
-				e.expr_type_values.len * 2
-			}
-			if new_len <= id {
-				new_len = id + 1
-			}
-			for e.expr_type_values.len < new_len {
-				// Void(1) is the sentinel for "unset"; Void(0) is valid void type.
-				e.expr_type_values << Type(Void(1))
-			}
-		}
-		e.expr_type_values[id] = typ
-	} else {
-		idx := -id
-		if idx >= e.expr_type_neg_values.len {
-			mut new_len := if e.expr_type_neg_values.len == 0 {
-				64
-			} else {
-				e.expr_type_neg_values.len * 2
-			}
-			if new_len <= idx {
-				new_len = idx + 1
-			}
-			for e.expr_type_neg_values.len < new_len {
-				e.expr_type_neg_values << Type(Void(1))
-			}
-		}
-		e.expr_type_neg_values[idx] = typ
-	}
+	e.expr_types[id] = typ
 }
 
 // get_expr_type retrieves the computed type for an expression by its unique ID.
 pub fn (e &Environment) get_expr_type(id int) ?Type {
-	if id > 0 && id < e.expr_type_values.len {
-		typ := e.expr_type_values[id]
-		if typ is Void || type_has_null_data(typ) {
-			return none
-		}
-		return typ
-	} else if id < 0 {
-		idx := -id
-		if idx < e.expr_type_neg_values.len {
-			typ := e.expr_type_neg_values[idx]
-			if typ is Void || type_has_null_data(typ) {
-				return none
-			}
-			return typ
-		}
+	typ := e.expr_types[id] or { return none }
+	if typ is Void || type_has_null_data(typ) {
+		return none
 	}
-	return none
+	return typ
+}
+
+// has_expr_type reports whether an expression has a stored type. Unlike
+// get_expr_type, it treats an explicit `void` type as present.
+pub fn (e &Environment) has_expr_type(id int) bool {
+	typ := e.expr_types[id] or { return false }
+	if typ is Void {
+		return u8(typ) != 1
+	}
+	return !type_has_null_data(typ)
+}
+
+pub fn (e &Environment) expr_type_count() int {
+	return e.expr_types.len
+}
+
+pub fn (e &Environment) all_expr_types() []Type {
+	mut out := []Type{cap: e.expr_types.len}
+	for _, typ in e.expr_types {
+		out << typ
+	}
+	return out
+}
+
+// release_expr_type_cache_after_ssa releases expression-position metadata once
+// SSA has consumed it. Native MIR/codegen keeps type IDs in SSA/MIR values and
+// does not need these maps on the ARM64 path.
+pub fn (mut e Environment) release_expr_type_cache_after_ssa() {
+	unsafe {
+		e.expr_types.free()
+		e.selector_names.free()
+	}
+	e.expr_types = map[int]Type{}
+	e.selector_names = map[int]string{}
 }
 
 // type_has_null_data checks if a Type sumtype has a missing payload.
@@ -600,6 +589,8 @@ struct PendingFnBody {
 	typ           FnType
 	scope_fn_name string
 	module_name   string
+	flat          &ast.FlatAst   = unsafe { nil }
+	flat_decl_id  ast.FlatNodeId = -1
 }
 
 struct Checker {
@@ -620,6 +611,8 @@ mut:
 	fallback_vars map[string]Type
 	// when true, function declarations only register signatures and queue body checking
 	collect_fn_signatures_only bool
+	pending_fn_body_flat       &ast.FlatAst   = unsafe { nil }
+	pending_fn_body_flat_id    ast.FlatNodeId = -1
 	pending_const_fields       []PendingConstField
 	pending_interface_decls    []PendingInterfaceDecl
 	pending_struct_decls       []PendingStructDecl
@@ -635,6 +628,9 @@ mut:
 	expr_stack []string
 	// Whether we are inside an unsafe{} block
 	inside_unsafe bool
+	// Whether the currently checked expression is directly inside a return
+	// statement. Used for result error propagation in `or {}` fallbacks.
+	inside_return_stmt bool
 	// Ownership tracking: variables that hold owned values
 	// (from `.to_owned()` for strings, or any non-Copy value for other types).
 	owned_vars map[string]token.Pos // var name -> position where it became owned
@@ -1744,10 +1740,108 @@ fn (mut c Checker) register_imported_symbols_from_flat(flat &ast.FlatAst) {
 // FlatFile, including those guarded by comptime `$if` blocks whose condition
 // currently evaluates true.
 fn (mut c Checker) active_file_imports_from_flat(flat &ast.FlatAst, ff ast.FlatFile) []ast.ImportStmt {
+	// s258: walk the file's top-level statement cursors instead of decoding the
+	// entire file via `read_file_stmts`. This runs per file (preregister_scopes +
+	// register_imported_symbols), so the full legacy-AST decode was pure churn;
+	// the cursor walk only decodes the tiny comptime `$if` conditions. Mirrors the
+	// builder's s253 cursor-native import collection. Removes a legacy-AST decode
+	// site (toward dropping the old AST) and cuts flat-path memory.
 	mut imports := flat.read_file_imports(ff)
-	stmts := flat.read_file_stmts(ff)
-	c.collect_active_imports_from_stmts(stmts, mut imports)
+	file_node := ast.Cursor{
+		flat: unsafe { flat }
+		id:   ff.file_id
+	}
+	c.collect_active_imports_from_stmts_cursor(file_node.list_at(2), mut imports)
 	return imports
+}
+
+// collect_active_imports_from_stmts_cursor is the cursor-native mirror of
+// collect_active_imports_from_stmts: it appends top-level `import` statements and
+// the imports of active comptime `$if` branches, walking the FlatAst directly.
+fn (c &Checker) collect_active_imports_from_stmts_cursor(stmts ast.CursorList, mut imports []ast.ImportStmt) {
+	for i in 0 .. stmts.len() {
+		c.collect_active_imports_from_stmt_cursor(stmts.at(i), mut imports)
+	}
+}
+
+fn (c &Checker) collect_active_imports_from_stmt_cursor(s ast.Cursor, mut imports []ast.ImportStmt) {
+	match s.kind() {
+		.stmt_import {
+			imports << s.import_stmt()
+		}
+		.stmt_expr {
+			inner := s.edge(0)
+			if inner.kind() == .expr_comptime {
+				cif := inner.edge(0)
+				if cif.kind() == .expr_if {
+					c.collect_active_imports_from_if_cursor(cif, mut imports)
+				}
+			}
+		}
+		else {}
+	}
+}
+
+// collect_active_imports_from_if_cursor mirrors collect_active_imports_from_if_expr.
+// expr_if layout: edge0 = cond, edge1 = else_expr, edge2.. = then-branch stmts.
+fn (c &Checker) collect_active_imports_from_if_cursor(if_c ast.Cursor, mut imports []ast.ImportStmt) {
+	if c.eval_comptime_cond_cursor(if_c.edge(0)) {
+		for i in 2 .. if_c.edge_count() {
+			c.collect_active_imports_from_stmt_cursor(if_c.edge(i), mut imports)
+		}
+		return
+	}
+	else_c := if_c.edge(1)
+	if else_c.kind() == .expr_if {
+		if else_c.edge(0).kind() == .expr_empty {
+			for i in 2 .. else_c.edge_count() {
+				c.collect_active_imports_from_stmt_cursor(else_c.edge(i), mut imports)
+			}
+		} else {
+			c.collect_active_imports_from_if_cursor(else_c, mut imports)
+		}
+	}
+}
+
+fn (c &Checker) eval_comptime_cond_cursor(cond ast.Cursor) bool {
+	if !cond.is_valid() {
+		return false
+	}
+	match cond.kind() {
+		.expr_ident {
+			return c.eval_comptime_flag(cond.name())
+		}
+		.expr_prefix {
+			op := unsafe { token.Token(int(cond.aux())) }
+			if op == .not {
+				return !c.eval_comptime_cond_cursor(cond.edge(0))
+			}
+		}
+		.expr_infix {
+			op := unsafe { token.Token(int(cond.aux())) }
+			if op == .and {
+				return c.eval_comptime_cond_cursor(cond.edge(0))
+					&& c.eval_comptime_cond_cursor(cond.edge(1))
+			}
+			if op == .logical_or {
+				return c.eval_comptime_cond_cursor(cond.edge(0))
+					|| c.eval_comptime_cond_cursor(cond.edge(1))
+			}
+		}
+		.expr_postfix {
+			op := unsafe { token.Token(int(cond.aux())) }
+			inner := cond.edge(0)
+			if op == .question && inner.kind() == .expr_ident {
+				return pref.comptime_optional_flag_value(c.pref, inner.name())
+			}
+		}
+		.expr_paren {
+			return c.eval_comptime_cond_cursor(cond.edge(0))
+		}
+		else {}
+	}
+
+	return false
 }
 
 // preregister_all_scopes_from_flat mirrors preregister_all_scopes but pulls
@@ -1805,8 +1899,18 @@ fn (mut c Checker) preregister_types_from_flat(flat &ast.FlatAst, ff ast.FlatFil
 		}
 	}
 	c.scope = mod_scope
-	for stmt in flat.read_file_stmts(ff) {
-		c.preregister_type_stmt(stmt)
+	// s259: skip decoding fn_decls — their bodies are the bulk of the file and
+	// preregister_type_stmt no-ops FnDecl anyway. Decode + dispatch the rest.
+	decls := ast.Cursor{
+		flat: unsafe { flat }
+		id:   ff.file_id
+	}.list_at(2)
+	for di in 0 .. decls.len() {
+		dc := decls.at(di)
+		if dc.kind() == .stmt_fn_decl {
+			continue
+		}
+		c.preregister_type_stmt(flat.decode_stmt(dc.id))
 	}
 }
 
@@ -1833,8 +1937,26 @@ fn (mut c Checker) preregister_fn_signatures_from_flat(flat &ast.FlatAst, ff ast
 	c.scope = mod_scope
 	prev_collect := c.collect_fn_signatures_only
 	c.collect_fn_signatures_only = true
-	for stmt in flat.read_file_stmts(ff) {
-		c.preregister_fn_signature_stmt(stmt)
+	decls := ast.Cursor{
+		flat: unsafe { flat }
+		id:   ff.file_id
+	}.list_at(2)
+	for di in 0 .. decls.len() {
+		dc := decls.at(di)
+		if dc.kind() == .stmt_fn_decl {
+			decl := flat.decode_fn_decl_signature(dc.id)
+			prev_flat := c.pending_fn_body_flat
+			prev_flat_id := c.pending_fn_body_flat_id
+			c.pending_fn_body_flat = unsafe { flat }
+			c.pending_fn_body_flat_id = dc.id
+			c.preregister_fn_signature_stmt(ast.Stmt(decl))
+			c.pending_fn_body_flat = prev_flat
+			c.pending_fn_body_flat_id = prev_flat_id
+			continue
+		}
+		if dc.kind() == .stmt_expr {
+			c.preregister_fn_signature_stmt(flat.decode_stmt(dc.id))
+		}
 	}
 	c.collect_fn_signatures_only = prev_collect
 }
@@ -1858,13 +1980,26 @@ pub fn (mut c Checker) check_file_from_flat(flat &ast.FlatAst, ff ast.FlatFile) 
 		}
 	}
 	c.scope = mod_scope
-	stmts := flat.read_file_stmts(ff)
+	// s259: don't decode fn_decls here. Their bodies are checked via
+	// pending_fn_bodies (queued by the signature pass, run by
+	// process_pending_fn_bodies); in both loops below FnDecl is a no-op (the first
+	// `continue`s, c.stmt has no FnDecl arm). read_file_stmts decoded every fn body
+	// a SECOND time (after the sig pass already decoded+queued them) — pure churn.
+	decls := ast.Cursor{
+		flat: unsafe { flat }
+		id:   ff.file_id
+	}.list_at(2)
+	mut stmts := []ast.Stmt{cap: decls.len()}
+	for di in 0 .. decls.len() {
+		dc := decls.at(di)
+		if dc.kind() == .stmt_fn_decl {
+			continue
+		}
+		stmts << flat.decode_stmt(dc.id)
+	}
 	for stmt in stmts {
 		match stmt {
 			ast.ConstDecl, ast.EnumDecl, ast.InterfaceDecl, ast.StructDecl, ast.TypeDecl {
-				continue
-			}
-			ast.FnDecl {
 				continue
 			}
 			else {
@@ -1896,7 +2031,18 @@ fn (mut c Checker) check_struct_field_defaults_from_flat(flat &ast.FlatAst) {
 		}
 		c.scope = mod_scope
 		c.cur_file_module = mod
-		for stmt in flat.read_file_stmts(ff) {
+		// s259: decode only struct decls instead of read_file_stmts (whole file,
+		// incl. every fn body). Kind-filter first, decode the matched node only.
+		decls := ast.Cursor{
+			flat: unsafe { flat }
+			id:   ff.file_id
+		}.list_at(2)
+		for di in 0 .. decls.len() {
+			dc := decls.at(di)
+			if dc.kind() != .stmt_struct_decl {
+				continue
+			}
+			stmt := flat.decode_stmt(dc.id)
 			if stmt is ast.StructDecl {
 				for field in stmt.fields {
 					if field.value !is ast.EmptyExpr {
@@ -1930,7 +2076,17 @@ fn (mut c Checker) check_enum_field_values_from_flat(flat &ast.FlatAst) {
 		}
 		c.scope = mod_scope
 		c.cur_file_module = mod
-		for stmt in flat.read_file_stmts(ff) {
+		// s259: decode only enum decls instead of read_file_stmts (whole file).
+		decls := ast.Cursor{
+			flat: unsafe { flat }
+			id:   ff.file_id
+		}.list_at(2)
+		for di in 0 .. decls.len() {
+			dc := decls.at(di)
+			if dc.kind() != .stmt_enum_decl {
+				continue
+			}
+			stmt := flat.decode_stmt(dc.id)
 			if stmt is ast.EnumDecl {
 				for field in stmt.fields {
 					if field.value !is ast.EmptyExpr {
@@ -2416,11 +2572,11 @@ fn (mut c Checker) check_types(exp_type Type, got_type Type) bool {
 	// Prefer name-based equality first so recursive composite types
 	// (e.g. `map[string]Any` where `Any` contains `map[string]Any`)
 	// do not recurse indefinitely through structural `==`.
-	exp_name := exp_type.name()
-	got_name := got_type.name()
-	if exp_name == got_name {
+	if same_type_name(exp_type, got_type) {
 		return true
 	}
+	exp_name := exp_type.name()
+	got_name := got_type.name()
 	if exp_name == 'int' && (got_name == 'Duration' || got_name == 'time__Duration') {
 		return true
 	}
@@ -2689,6 +2845,9 @@ fn (c &Checker) can_or_block_propagate_error(raw_cond_type Type, cond ast.Expr, 
 		expected_is_result = expected_type is ResultType
 	}
 	if raw_cond_type is ResultType {
+		return true
+	}
+	if expected_is_result && c.inside_return_stmt {
 		return true
 	}
 	return expected_is_result && cond is ast.IndexExpr
@@ -4465,9 +4624,12 @@ fn (mut c Checker) stmt(stmt ast.Stmt) {
 		// ast.FnDecl - handled by preregister_all_fn_signatures / process_pending_fn_bodies
 		ast.ReturnStmt {
 			c.log('ReturnStmt:')
+			prev_inside_return_stmt := c.inside_return_stmt
+			c.inside_return_stmt = true
 			for expr in stmt.exprs {
 				c.expr(expr)
 			}
+			c.inside_return_stmt = prev_inside_return_stmt
 			$if ownership ? {
 				c.ownership_check_return(stmt)
 			}
@@ -4863,8 +5025,9 @@ fn (mut c Checker) process_pending_fn_bodies() {
 }
 
 fn (mut c Checker) check_pending_fn_body(pending PendingFnBody) bool {
-	decl_generic_params := collect_fn_generic_params(pending.decl)
-	has_decl_generic_params := pending.decl.typ.generic_params.len > 0
+	signature_decl := pending.decl
+	decl_generic_params := collect_fn_generic_params(signature_decl)
+	has_decl_generic_params := signature_decl.typ.generic_params.len > 0
 	has_generic_params := decl_generic_params.len > 0
 	if has_decl_generic_params {
 		mut generic_types := []map[string]Type{}
@@ -4883,7 +5046,7 @@ fn (mut c Checker) check_pending_fn_body(pending PendingFnBody) bool {
 			} else {
 				base_name
 			}
-			if base_name == pending.decl.name || short_name == pending.decl.name {
+			if base_name == signature_decl.name || short_name == signature_decl.name {
 				generic_types = inferred.clone()
 				has_generic_types = true
 				break
@@ -4896,11 +5059,18 @@ fn (mut c Checker) check_pending_fn_body(pending PendingFnBody) bool {
 		c.env.cur_generic_types << generic_types
 	}
 	if !has_decl_generic_params || c.env.cur_generic_types.len > 0 {
+		mut decl := signature_decl
+		if pending.flat != unsafe { nil } && pending.flat_decl_id >= 0 {
+			stmt := pending.flat.decode_stmt(pending.flat_decl_id)
+			if stmt is ast.FnDecl {
+				decl = stmt
+			}
+		}
 		prev_scope := c.scope
 		prev_module := c.cur_file_module
 		prev_fn_root_scope := c.fn_root_scope
-		prev_fallback_vars := c.fallback_vars.clone()
-		prev_generic_params := c.generic_params.clone()
+		mut prev_fallback_vars := c.fallback_vars.move()
+		prev_generic_params := c.generic_params
 		c.scope = pending.scope
 		c.cur_file_module = pending.module_name
 		c.fn_root_scope = pending.scope
@@ -4910,17 +5080,17 @@ fn (mut c Checker) check_pending_fn_body(pending PendingFnBody) bool {
 				c.fallback_vars[param.name] = param.typ
 			}
 		}
-		if pending.decl.is_method {
-			mut receiver_type := c.type_expr(pending.decl.receiver.typ)
-			if pending.decl.receiver.is_mut && receiver_type !is Pointer {
+		if decl.is_method {
+			mut receiver_type := c.type_expr(decl.receiver.typ)
+			if decl.receiver.is_mut && receiver_type !is Pointer {
 				receiver_type = Type(Pointer{
 					base_type: receiver_type
 				})
 			}
-			c.fallback_vars[pending.decl.receiver.name] = receiver_type
+			c.fallback_vars[decl.receiver.name] = receiver_type
 		}
 		if has_generic_params {
-			c.generic_params = decl_generic_params.clone()
+			c.generic_params = decl_generic_params
 			for gp_name in decl_generic_params {
 				c.scope.insert(gp_name, Type(NamedType(gp_name)))
 			}
@@ -4939,19 +5109,19 @@ fn (mut c Checker) check_pending_fn_body(pending PendingFnBody) bool {
 			prev_owned_types = c.owned_var_types.clone()
 			prev_moved = c.moved_vars.clone()
 			prev_borrowed = c.borrowed_vars.clone()
-			c.ownership_enter_fn(pending.decl.name, pending.decl)
+			c.ownership_enter_fn(decl.name, decl)
 		}
-		c.stmt_list(pending.decl.stmts)
+		c.stmt_list(decl.stmts)
 		$if ownership ? {
-			publish_keys := ownership_publish_keys_for(pending.module_name, pending.decl)
-			c.ownership_snapshot_drops_at_fn_exit(pending.decl.name, publish_keys)
+			publish_keys := ownership_publish_keys_for(pending.module_name, decl)
+			c.ownership_snapshot_drops_at_fn_exit(decl.name, publish_keys)
 			c.ownership_publish_pending_return_drops(publish_keys)
 			c.ownership_leave_fn(prev_ownership_fn, prev_owned, prev_owned_types, prev_moved,
 				prev_borrowed)
 		}
 		c.expected_type = expected_type
 		c.generic_params = prev_generic_params
-		c.fallback_vars = prev_fallback_vars.clone()
+		c.fallback_vars = prev_fallback_vars.move()
 		c.fn_root_scope = prev_fn_root_scope
 		c.env.set_fn_scope(pending.module_name, pending.scope_fn_name, pending.scope)
 		c.scope = prev_scope
@@ -5299,7 +5469,7 @@ fn (mut c Checker) sql_or_fallback_type(expr ast.Expr) ?Type {
 // fn (mut c Checker) assignment(lx ast.Expr, typ Type) {
 fn (mut c Checker) assignment(from_type Type, to_type Type) ! {
 	// same type
-	if from_type.name() == to_type.name() {
+	if same_type_name(from_type, to_type) {
 		return
 	}
 	// numbers literals
@@ -5342,7 +5512,7 @@ fn (mut c Checker) assignment(from_type Type, to_type Type) ! {
 				return
 			}
 			// return c.assignment(from_type.base_type, to_type.base_type)!
-			if from_type.base_type.name() == to_type.base_type.name() {
+			if same_type_name(from_type.base_type, to_type.base_type) {
 				return
 			}
 		}
@@ -5621,13 +5791,13 @@ fn (mut c Checker) fn_decl(decl ast.FnDecl) {
 	// c.expr(decl.typ.return_type)
 	mut prev_scope := c.scope
 	c.open_scope()
-	prev_generic_params := c.generic_params.clone()
+	prev_generic_params := c.generic_params
 	decl_generic_params := collect_fn_generic_params(decl)
 	for gp_name in decl_generic_params {
 		c.scope.insert(gp_name, Type(NamedType(gp_name)))
 	}
 	if decl_generic_params.len > 0 {
-		c.generic_params = decl_generic_params.clone()
+		c.generic_params = decl_generic_params
 	}
 	mut fn_typ := c.fn_type_with_insert_params(decl.typ,
 		FnTypeAttribute.from_ast_attributes(decl.attributes), true)
@@ -5719,6 +5889,8 @@ fn (mut c Checker) fn_decl(decl ast.FnDecl) {
 		typ:           fn_typ
 		scope_fn_name: scope_fn_name
 		module_name:   module_name
+		flat:          c.pending_fn_body_flat
+		flat_decl_id:  c.pending_fn_body_flat_id
 	}
 	if c.collect_fn_signatures_only {
 		c.pending_fn_bodies << pending

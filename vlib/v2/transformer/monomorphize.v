@@ -99,11 +99,15 @@ pub fn (mut t Transformer) prepare_files_for_transform(files []ast.File) []ast.F
 		ts_collect2 := sw.elapsed().milliseconds()
 		prepared = t.inject_generic_struct_specializations(prepared)
 		ts_inject := sw.elapsed().milliseconds()
-		// collect2 already rescanned mono_pass's clones, so `prepared` is clean
-		// for the next iteration unless inject just appended new specializations.
-		prepared_dirty = t.inject_changed_files
+		if t.inject_changed_files {
+			t.collect_generic_call_specs_in_new_structs(prepared)
+		}
+		ts_collect3 := sw.elapsed().milliseconds()
+		// collect2/collect3 rescan every statement appended by this iteration,
+		// so the next iteration does not need another full-program scan.
+		prepared_dirty = false
 		if timing {
-			eprintln('  [ttime] iter ${iter}: collect1=${ts_collect1 - ts_start}ms mono_pass=${ts_mono - ts_collect1}ms collect2=${ts_collect2 - ts_mono}ms inject=${ts_inject - ts_collect2}ms files=${prepared.len}')
+			eprintln('  [ttime] iter ${iter}: collect1=${ts_collect1 - ts_start}ms mono_pass=${ts_mono - ts_collect1}ms collect2=${ts_collect2 - ts_mono}ms inject=${ts_inject - ts_collect2}ms collect3=${ts_collect3 - ts_inject}ms files=${prepared.len}')
 		}
 		t_print_mem('monomorphize iter ${iter}')
 		if t.monomorphized_specs.len == spec_count && t.generic_types_spec_count() == generic_count
@@ -117,6 +121,59 @@ pub fn (mut t Transformer) prepare_files_for_transform(files []ast.File) []ast.F
 	t.collect_struct_default_decl_infos(prepared)
 	t.collect_concrete_embedded_owner_names(prepared)
 	return prepared
+}
+
+// prepare_flat_for_transform performs the same whole-program generic
+// preparation as prepare_files_for_transform, but keeps the original source in
+// FlatAst form. Monomorphization and generic struct specialization are
+// append-only, so the flat path stores just the per-file appended statements and
+// lets the caller stream each original file through a one-file decode.
+fn (mut t Transformer) prepare_flat_for_transform(flat &ast.FlatAst) map[int][]ast.Stmt {
+	t.env.generic_types = map[string][]map[string]types.Type{}
+	mut extra_stmts := map[int][]ast.Stmt{}
+	t.collect_declared_method_fns_from_flat(flat)
+	t.collect_struct_field_generic_decl_types_from_flat(flat)
+	timing := os.getenv('V2_TTIME') != ''
+	mut sw := time.new_stopwatch()
+	mut prepared_dirty := true
+	for iter in 0 .. 64 {
+		spec_count := t.monomorphized_specs.len
+		generic_count := t.generic_types_spec_count()
+		struct_count := t.generic_struct_specs.len
+		ts_start := sw.elapsed().milliseconds()
+		if prepared_dirty {
+			t.collect_generic_call_specs_from_flat(flat, extra_stmts)
+		}
+		ts_collect1 := sw.elapsed().milliseconds()
+		before_mono := t.monomorphized_specs.len
+		t.monomorphize_pass_from_flat(flat, mut extra_stmts)
+		ts_mono := sw.elapsed().milliseconds()
+		if t.monomorphized_specs.len != before_mono {
+			t.collect_generic_call_specs_in_new_clones_from_flat(flat, extra_stmts)
+		}
+		ts_collect2 := sw.elapsed().milliseconds()
+		t.inject_generic_struct_specializations_from_flat(flat, mut extra_stmts)
+		ts_inject := sw.elapsed().milliseconds()
+		if t.inject_changed_files {
+			t.collect_generic_call_specs_in_new_structs_from_flat(flat, extra_stmts)
+		}
+		ts_collect3 := sw.elapsed().milliseconds()
+		prepared_dirty = false
+		if timing {
+			eprintln('  [ttime] iter ${iter}: collect1=${ts_collect1 - ts_start}ms mono_pass=${ts_mono - ts_collect1}ms collect2=${ts_collect2 - ts_mono}ms inject=${ts_inject - ts_collect2}ms collect3=${ts_collect3 - ts_inject}ms files=${flat.files.len}')
+		}
+		t_print_mem('monomorphize iter ${iter}')
+		if t.monomorphized_specs.len == spec_count && t.generic_types_spec_count() == generic_count
+			&& t.generic_struct_specs.len == struct_count {
+			break
+		}
+	}
+	if dump_path := os.getenv_opt('V2_TDUMP') {
+		t.dump_flat_monomorphize_specs(dump_path, flat, extra_stmts)
+	}
+	t.collect_struct_default_decl_infos_from_flat(flat, extra_stmts)
+	t.collect_concrete_embedded_owner_names_from_flat(flat, extra_stmts)
+	return extra_stmts
 }
 
 // dump_monomorphize_specs writes a deterministic snapshot of the fixpoint's
@@ -160,6 +217,50 @@ fn (t &Transformer) dump_monomorphize_specs(path string, prepared []ast.File) {
 	os.write_file(path, lines.join('\n')) or {}
 }
 
+fn (t &Transformer) dump_flat_monomorphize_specs(path string, flat &ast.FlatAst, extra_stmts map[int][]ast.Stmt) {
+	mut lines := []string{}
+	mut mspecs := t.monomorphized_specs.keys()
+	mspecs.sort()
+	lines << '# monomorphized_specs (${mspecs.len})'
+	for k in mspecs {
+		lines << 'M ${k}'
+	}
+	mut sspecs := t.generic_struct_specs.keys()
+	sspecs.sort()
+	lines << '# generic_struct_specs (${sspecs.len})'
+	for k in sspecs {
+		lines << 'S ${k}'
+	}
+	mut gkeys := t.env.generic_types.keys()
+	gkeys.sort()
+	lines << '# generic_types'
+	for k in gkeys {
+		blist := t.env.generic_types[k] or { continue }
+		mut sigs := []string{}
+		for b in blist {
+			sigs << generic_bindings_signature(b)
+		}
+		sigs.sort()
+		for sig in sigs {
+			lines << 'G ${k} :: ${sig}'
+		}
+	}
+	lines << '# files (${flat.files.len})'
+	for i, ff in flat.files {
+		extra := extra_stmts[i] or { []ast.Stmt{} }
+		stmt_count := flat_file_stmt_count(flat, i) + extra.len
+		lines << 'F ${flat.file_mod(ff)}/${flat.file_name(ff)} stmts=${stmt_count}'
+	}
+	os.write_file(path, lines.join('\n')) or {}
+}
+
+fn flat_file_stmt_count(flat &ast.FlatAst, fi int) int {
+	if fi < 0 || fi >= flat.files.len {
+		return 0
+	}
+	return flat.file_cursor(fi).stmts().len()
+}
+
 fn (t &Transformer) generic_types_spec_count() int {
 	mut count := 0
 	for _, bindings_list in t.env.generic_types {
@@ -174,6 +275,24 @@ fn (mut t Transformer) collect_declared_method_fns(files []ast.File) {
 		for stmt in file.stmts {
 			if stmt is ast.FnDecl && stmt.is_method {
 				t.register_declared_method_fn(stmt, file.mod)
+			}
+		}
+	}
+}
+
+fn (mut t Transformer) collect_declared_method_fns_from_flat(flat &ast.FlatAst) {
+	t.declared_method_fns = map[string]bool{}
+	for fi in 0 .. flat.files.len {
+		module_name := flat.file_mod(flat.files[fi])
+		stmts := flat.file_cursor(fi).stmts()
+		for si in 0 .. stmts.len() {
+			c := stmts.at(si)
+			if c.kind() != .stmt_fn_decl || !c.flag(ast.flag_is_method) {
+				continue
+			}
+			stmt := flat.decode_stmt(c.id)
+			if stmt is ast.FnDecl {
+				t.register_declared_method_fn(stmt, module_name)
 			}
 		}
 	}
@@ -210,6 +329,35 @@ fn (mut t Transformer) collect_struct_field_generic_decl_types(files []ast.File)
 		for stmt in file.stmts {
 			if stmt is ast.StructDecl {
 				t.collect_struct_decl_generic_field_types(stmt, file.mod)
+			}
+		}
+	}
+	t.cur_module = old_module
+	t.scope = old_scope
+}
+
+fn (mut t Transformer) collect_struct_field_generic_decl_types_from_flat(flat &ast.FlatAst) {
+	old_module := t.cur_module
+	old_scope := t.scope
+	t.struct_field_generic_decl_types = map[string]types.Type{}
+	t.struct_field_generic_decl_bindings = map[string]map[string]types.Type{}
+	for fi in 0 .. flat.files.len {
+		module_name := flat.file_mod(flat.files[fi])
+		t.cur_module = module_name
+		if scope := t.get_module_scope(module_name) {
+			t.scope = scope
+		} else {
+			t.scope = unsafe { nil }
+		}
+		stmts := flat.file_cursor(fi).stmts()
+		for si in 0 .. stmts.len() {
+			c := stmts.at(si)
+			if c.kind() != .stmt_struct_decl {
+				continue
+			}
+			stmt := flat.decode_stmt(c.id)
+			if stmt is ast.StructDecl {
+				t.collect_struct_decl_generic_field_types(stmt, module_name)
 			}
 		}
 	}
@@ -291,6 +439,38 @@ fn (mut t Transformer) collect_concrete_embedded_owner_names(files []ast.File) {
 	t.cur_import_aliases = old_import_aliases.clone()
 }
 
+fn (mut t Transformer) collect_concrete_embedded_owner_names_from_flat(flat &ast.FlatAst, extra_stmts map[int][]ast.Stmt) {
+	old_module := t.cur_module
+	old_file := t.cur_file_name
+	old_scope := t.scope
+	old_import_aliases := t.cur_import_aliases.clone()
+	t.concrete_embedded_owner_names = map[string]map[string]string{}
+	for fi in 0 .. flat.files.len {
+		module_name := flat.file_mod(flat.files[fi])
+		t.cur_file_name = flat.file_name(flat.files[fi])
+		t.cur_module = module_name
+		t.cur_import_aliases = flat_import_aliases_for_generic_collect(flat, fi)
+		if scope := t.get_module_scope(module_name) {
+			t.scope = scope
+		} else {
+			t.scope = unsafe { nil }
+		}
+		for stmt in flat_file_stmts_with_extra(flat, extra_stmts, fi) {
+			if stmt is ast.StructDecl {
+				mut embedded := []ast.Expr{cap: stmt.embedded.len}
+				for item in stmt.embedded {
+					embedded << t.rewrite_concrete_generic_struct_type_expr(item)
+				}
+				t.register_concrete_embedded_owner_names(stmt, embedded)
+			}
+		}
+	}
+	t.cur_module = old_module
+	t.cur_file_name = old_file
+	t.scope = old_scope
+	t.cur_import_aliases = old_import_aliases.clone()
+}
+
 fn (mut t Transformer) collect_struct_default_decl_infos(files []ast.File) {
 	t.struct_default_decl_infos = map[string]StructDefaultDeclInfo{}
 	for file in files {
@@ -301,6 +481,27 @@ fn (mut t Transformer) collect_struct_default_decl_infos(files []ast.File) {
 					module_name: file.mod
 				}
 				c_name := generic_struct_decl_c_name(stmt, file.mod)
+				t.struct_default_decl_infos[c_name] = info
+				if c_name.contains('__') {
+					t.struct_default_decl_infos[c_name.all_after_last('__')] = info
+				}
+				t.struct_default_decl_infos[stmt.name] = info
+			}
+		}
+	}
+}
+
+fn (mut t Transformer) collect_struct_default_decl_infos_from_flat(flat &ast.FlatAst, extra_stmts map[int][]ast.Stmt) {
+	t.struct_default_decl_infos = map[string]StructDefaultDeclInfo{}
+	for fi in 0 .. flat.files.len {
+		module_name := flat.file_mod(flat.files[fi])
+		for stmt in flat_file_stmts_with_extra(flat, extra_stmts, fi) {
+			if stmt is ast.StructDecl {
+				info := StructDefaultDeclInfo{
+					decl:        stmt
+					module_name: module_name
+				}
+				c_name := generic_struct_decl_c_name(stmt, module_name)
 				t.struct_default_decl_infos[c_name] = info
 				if c_name.contains('__') {
 					t.struct_default_decl_infos[c_name.all_after_last('__')] = info
@@ -691,6 +892,7 @@ fn (mut t Transformer) clone_generic_struct_decl(decl ast.StructDecl, spec Gener
 
 fn (mut t Transformer) inject_generic_struct_specializations(files []ast.File) []ast.File {
 	t.inject_changed_files = false
+	t.last_struct_clones = map[int][]ast.Stmt{}
 	if t.generic_struct_specs.len == 0 {
 		return files
 	}
@@ -732,6 +934,7 @@ fn (mut t Transformer) inject_generic_struct_specializations(files []ast.File) [
 		for stmt in file.stmts {
 			stmts << stmt
 		}
+		mut injected := []ast.Stmt{}
 		for key in sorted_keys {
 			spec := t.generic_struct_specs[key] or { continue }
 			if spec.file_idx < 0 || spec.file_idx >= files.len || spec.file_idx != out.len
@@ -739,7 +942,9 @@ fn (mut t Transformer) inject_generic_struct_specializations(files []ast.File) [
 				continue
 			}
 			struct_decl := base_decls[spec.base_c_name] or { continue }
-			stmts << ast.Stmt(t.clone_generic_struct_decl(struct_decl, spec, file.mod))
+			cloned := ast.Stmt(t.clone_generic_struct_decl(struct_decl, spec, file.mod))
+			stmts << cloned
+			injected << cloned
 			existing[spec.concrete_c_name] = true
 		}
 		for key in sorted_keys {
@@ -749,8 +954,13 @@ fn (mut t Transformer) inject_generic_struct_specializations(files []ast.File) [
 				continue
 			}
 			struct_decl := base_decls[spec.base_c_name] or { continue }
-			stmts << ast.Stmt(t.clone_generic_struct_decl(struct_decl, spec, file.mod))
+			cloned := ast.Stmt(t.clone_generic_struct_decl(struct_decl, spec, file.mod))
+			stmts << cloned
+			injected << cloned
 			existing[spec.concrete_c_name] = true
+		}
+		if injected.len > 0 {
+			t.last_struct_clones[out.len] = injected
 		}
 		out << ast.File{
 			attributes:     file.attributes
@@ -994,7 +1204,10 @@ pub fn (mut t Transformer) monomorphize_pass(files []ast.File) []ast.File {
 			}
 			t.cur_generic_call_file_idx = old_owner_file
 			t.cur_import_aliases = old_import_aliases.clone()
-			mut bucket := per_file_clones[clone_file] or { []ast.Stmt{} }
+			mut bucket := []ast.Stmt{}
+			if clone_file in per_file_clones {
+				bucket = per_file_clones[clone_file]
+			}
 			bucket << ast.Stmt(cloned)
 			per_file_clones[clone_file] = bucket
 		}
@@ -1010,10 +1223,11 @@ pub fn (mut t Transformer) monomorphize_pass(files []ast.File) []ast.File {
 	}
 	mut new_files := []ast.File{cap: files.len}
 	for fi, file in files {
-		extra := per_file_clones[fi] or {
+		if fi !in per_file_clones {
 			new_files << file
 			continue
 		}
+		extra := per_file_clones[fi]
 		mut stmts := file.stmts.clone()
 		stmts << extra
 		new_files << ast.File{
@@ -1026,6 +1240,149 @@ pub fn (mut t Transformer) monomorphize_pass(files []ast.File) []ast.File {
 		}
 	}
 	return new_files
+}
+
+fn (mut t Transformer) monomorphize_pass_from_flat(flat &ast.FlatAst, mut extra_stmts map[int][]ast.Stmt) {
+	mut decl_owner := map[string]int{}
+	mut decl_node := map[string]ast.FnDecl{}
+	for fi in 0 .. flat.files.len {
+		module_name := flat.file_mod(flat.files[fi])
+		for stmt in flat_file_stmts_with_extra(flat, extra_stmts, fi) {
+			if stmt is ast.FnDecl {
+				if decl_generic_param_names(stmt).len == 0 {
+					continue
+				}
+				t.index_generic_fn_decl_for_monomorphize(mut decl_owner, mut decl_node, stmt, fi,
+					module_name)
+			}
+		}
+	}
+	mut per_file_clones := map[int][]ast.Stmt{}
+	old_deferred_specs := t.deferred_generic_call_specs.clone()
+	t.deferred_generic_call_specs = []DeferredGenericCallSpec{}
+	for fn_key, bindings_list in t.env.generic_types {
+		lookup_key := t.resolve_monomorphize_decl_key(fn_key, decl_node) or { continue }
+		decl := decl_node[lookup_key] or { continue }
+		fi := decl_owner[lookup_key] or { continue }
+		decl_mod := flat.file_mod(flat.files[fi])
+		for bindings in bindings_list {
+			spec_name := t.specialized_fn_name(decl, bindings).clone()
+			if spec_name == decl.name {
+				continue
+			}
+			clone_name := monomorphized_clone_name(lookup_key, decl, spec_name).clone()
+			spec_key := '${lookup_key}:${clone_name}'.clone()
+			if spec_key in t.monomorphized_specs {
+				continue
+			}
+			t.monomorphized_specs[spec_key] = true
+			owner_key := generic_spec_owner_key(fn_key, bindings)
+			owner_file := t.generic_spec_owner_file[owner_key] or { fi }
+			nested_struct_file := if t.generic_bindings_visible_in_module(decl_mod, bindings) {
+				fi
+			} else {
+				owner_file
+			}
+			if nested_struct_file < 0 || nested_struct_file >= flat.files.len {
+				continue
+			}
+			clone_file := nested_struct_file
+			clone_mod := flat.file_mod(flat.files[clone_file])
+			t.register_monomorphized_fn_bindings(decl_mod, clone_name, bindings)
+			old_owner_file := t.cur_generic_call_file_idx
+			old_import_aliases := t.cur_import_aliases.clone()
+			t.cur_generic_call_file_idx = clone_file
+			t.cur_import_aliases = flat_import_aliases_for_generic_collect(flat, clone_file)
+			mut cloned := t.clone_fn_decl_with_substitutions(decl, bindings, clone_name, decl_mod,
+				clone_mod)
+			if clone_mod != decl_mod {
+				cloned = t.qualify_moved_clone_source_module_types(cloned, decl_mod)
+			}
+			t.cur_generic_call_file_idx = old_owner_file
+			t.cur_import_aliases = old_import_aliases.clone()
+			mut bucket := per_file_clones[clone_file] or { []ast.Stmt{} }
+			bucket << ast.Stmt(cloned)
+			per_file_clones[clone_file] = bucket
+		}
+	}
+	deferred_specs := t.deferred_generic_call_specs.clone()
+	t.deferred_generic_call_specs = old_deferred_specs.clone()
+	t.flush_deferred_generic_call_specs(deferred_specs)
+	t.last_mono_clones = per_file_clones.clone()
+	for fi, clones in per_file_clones {
+		if clones.len == 0 {
+			continue
+		}
+		append_flat_extra_stmts(mut extra_stmts, fi, clones)
+	}
+}
+
+fn (mut t Transformer) inject_generic_struct_specializations_from_flat(flat &ast.FlatAst, mut extra_stmts map[int][]ast.Stmt) {
+	t.inject_changed_files = false
+	t.last_struct_clones = map[int][]ast.Stmt{}
+	if t.generic_struct_specs.len == 0 {
+		return
+	}
+	mut existing := map[string]bool{}
+	mut base_decls := map[string]ast.StructDecl{}
+	for fi in 0 .. flat.files.len {
+		module_name := flat.file_mod(flat.files[fi])
+		for stmt in flat_file_stmts_with_extra(flat, extra_stmts, fi) {
+			if stmt is ast.StructDecl {
+				c_name := generic_struct_decl_c_name(stmt, module_name)
+				existing[c_name] = true
+				if stmt.generic_params.len > 0 {
+					base_decls[c_name] = stmt
+				}
+			}
+		}
+	}
+	spec_keys := t.generic_struct_specs.keys()
+	mut sorted_keys := spec_keys.clone()
+	sorted_keys.sort()
+	mut any_pending := false
+	for key in sorted_keys {
+		spec := t.generic_struct_specs[key] or { continue }
+		if spec.concrete_c_name !in existing {
+			any_pending = true
+			break
+		}
+	}
+	if !any_pending {
+		return
+	}
+	for fi in 0 .. flat.files.len {
+		module_name := flat.file_mod(flat.files[fi])
+		mut injected := []ast.Stmt{}
+		for key in sorted_keys {
+			spec := t.generic_struct_specs[key] or { continue }
+			if spec.file_idx < 0 || spec.file_idx >= flat.files.len || spec.file_idx != fi
+				|| spec.concrete_c_name in existing {
+				continue
+			}
+			struct_decl := base_decls[spec.base_c_name] or { continue }
+			cloned := ast.Stmt(t.clone_generic_struct_decl(struct_decl, spec, module_name))
+			injected << cloned
+			existing[spec.concrete_c_name] = true
+		}
+		for key in sorted_keys {
+			spec := t.generic_struct_specs[key] or { continue }
+			if (spec.file_idx >= 0 && spec.file_idx < flat.files.len)
+				|| spec.module_name != module_name
+				|| spec.concrete_c_name in existing {
+				continue
+			}
+			struct_decl := base_decls[spec.base_c_name] or { continue }
+			cloned := ast.Stmt(t.clone_generic_struct_decl(struct_decl, spec, module_name))
+			injected << cloned
+			existing[spec.concrete_c_name] = true
+		}
+		if injected.len > 0 {
+			t.last_struct_clones[fi] = injected.clone()
+			append_flat_extra_stmts(mut extra_stmts, fi, injected)
+		}
+	}
+	t.inject_changed_files = true
 }
 
 fn (mut t Transformer) flush_deferred_generic_call_specs(specs []DeferredGenericCallSpec) {
@@ -1869,31 +2226,53 @@ fn (t &Transformer) resolve_generic_decl_key_for_call(base_name string, decl_nod
 	if name == '' {
 		return none
 	}
-	if !name.contains('__') && !name.contains('.') && t.cur_module != '' && t.cur_module != 'main'
+	if !name.contains('__') && !name.contains('.') && t.cur_module != ''
 		&& t.cur_module != 'builtin' {
-		call_prefix := module_call_c_prefix(t.cur_module)
-		if call_prefix != '' {
-			candidate := '${call_prefix}__${name}'
+		if t.cur_module != 'main' {
+			call_prefix := module_call_c_prefix(t.cur_module)
+			if call_prefix != '' {
+				candidate := '${call_prefix}__${name}'
+				if candidate in decl_node {
+					return candidate
+				}
+			}
+			module_prefix := t.cur_module.replace('.', '__')
+			if module_prefix != '' {
+				candidate := '${module_prefix}__${name}'
+				if candidate in decl_node {
+					return candidate
+				}
+			}
+			candidate := '${t.cur_module}.${name}'
 			if candidate in decl_node {
 				return candidate
 			}
 		}
-		module_prefix := t.cur_module.replace('.', '__')
-		if module_prefix != '' {
-			candidate := '${module_prefix}__${name}'
-			if candidate in decl_node {
-				return candidate
-			}
-		}
-		candidate := '${t.cur_module}.${name}'
-		if candidate in decl_node {
-			return candidate
-		}
-		if _ := t.lookup_fn_cached(t.cur_module, name) {
+		if t.has_current_module_concrete_fn(name) {
 			return none
 		}
 	}
 	return t.resolve_monomorphize_decl_key(name, decl_node)
+}
+
+fn (t &Transformer) has_current_module_concrete_fn(name string) bool {
+	return t.has_concrete_fn_in_module(t.cur_module, name)
+		|| (t.cur_module == 'main' && t.has_concrete_fn_in_module('', name))
+}
+
+fn (t &Transformer) has_concrete_fn_in_module(module_name string, name string) bool {
+	if fn_type := t.lookup_fn_cached(module_name, name) {
+		return fn_type.get_generic_params().len == 0
+	}
+	scope := t.get_module_scope(module_name) or { return false }
+	obj := scope.objects[name] or { return false }
+	if obj is types.Fn {
+		typ := obj.get_typ()
+		if typ is types.FnType {
+			return typ.get_generic_params().len == 0
+		}
+	}
+	return false
 }
 
 fn (mut t Transformer) collect_generic_call_specs(files []ast.File) {
@@ -1924,12 +2303,42 @@ fn (mut t Transformer) collect_generic_call_specs(files []ast.File) {
 	t.cur_import_aliases = old_import_aliases.clone()
 }
 
+fn (mut t Transformer) collect_generic_call_specs_from_flat(flat &ast.FlatAst, extra_stmts map[int][]ast.Stmt) {
+	old_module := t.cur_module
+	old_file := t.cur_file_name
+	old_scope := t.scope
+	old_file_idx := t.cur_generic_call_file_idx
+	old_import_aliases := t.cur_import_aliases.clone()
+	t.build_generic_fn_decl_index_from_flat(flat, extra_stmts)
+	for fi in 0 .. flat.files.len {
+		module_name := flat.file_mod(flat.files[fi])
+		t.cur_file_name = flat.file_name(flat.files[fi])
+		t.cur_module = module_name
+		t.cur_generic_call_file_idx = fi
+		t.cur_import_aliases = flat_import_aliases_for_generic_collect(flat, fi)
+		if scope := t.get_module_scope(module_name) {
+			t.scope = scope
+		} else {
+			t.scope = unsafe { nil }
+		}
+		for stmt in flat_file_stmts_with_extra(flat, extra_stmts, fi) {
+			t.collect_generic_call_specs_in_stmt(stmt)
+		}
+	}
+	t.cur_module = old_module
+	t.cur_file_name = old_file
+	t.scope = old_scope
+	t.cur_generic_call_file_idx = old_file_idx
+	t.cur_import_aliases = old_import_aliases.clone()
+}
+
 // build_generic_fn_decl_index (re)builds t.generic_fn_decl_index from every
 // generic FnDecl across all files. Generic declarations never change during the
 // fixpoint (monomorphize_pass only appends concrete clones), but the index maps
 // keys to file indices, so it is rebuilt against the current file set.
 fn (mut t Transformer) build_generic_fn_decl_index(files []ast.File) {
 	t.generic_fn_decl_index = map[string]ast.FnDecl{}
+	t.generic_call_candidate_names = map[string]bool{}
 	mut dummy_owner := map[string]int{}
 	for fi, file in files {
 		for stmt in file.stmts {
@@ -1942,6 +2351,64 @@ fn (mut t Transformer) build_generic_fn_decl_index(files []ast.File) {
 			}
 		}
 	}
+	for key, _ in t.generic_fn_decl_index {
+		t.register_generic_call_candidate_name(key)
+	}
+	for name, _ in t.generic_fn_value_names {
+		t.register_generic_call_candidate_name(name)
+	}
+}
+
+fn (mut t Transformer) build_generic_fn_decl_index_from_flat(flat &ast.FlatAst, extra_stmts map[int][]ast.Stmt) {
+	t.generic_fn_decl_index = map[string]ast.FnDecl{}
+	t.generic_call_candidate_names = map[string]bool{}
+	mut dummy_owner := map[string]int{}
+	for fi in 0 .. flat.files.len {
+		module_name := flat.file_mod(flat.files[fi])
+		for stmt in flat_file_stmts_with_extra(flat, extra_stmts, fi) {
+			if stmt is ast.FnDecl {
+				if decl_generic_param_names(stmt).len == 0 {
+					continue
+				}
+				t.index_generic_fn_decl_for_monomorphize(mut dummy_owner, mut
+					t.generic_fn_decl_index, stmt, fi, module_name)
+			}
+		}
+	}
+	for key, _ in t.generic_fn_decl_index {
+		t.register_generic_call_candidate_name(key)
+	}
+	for name, _ in t.generic_fn_value_names {
+		t.register_generic_call_candidate_name(name)
+	}
+}
+
+fn (mut t Transformer) register_generic_call_candidate_name(name string) {
+	base := generic_base_name_without_specialization(name)
+	if base == '' {
+		return
+	}
+	t.generic_call_candidate_names[base] = true
+	dot := base.last_index_u8(`.`)
+	if dot >= 0 {
+		if dot + 1 < base.len {
+			t.generic_call_candidate_names[base[dot + 1..]] = true
+		}
+	}
+	dunder := last_double_underscore(base)
+	if dunder >= 0 {
+		if dunder + 2 < base.len {
+			t.generic_call_candidate_names[base[dunder + 2..]] = true
+		}
+	}
+}
+
+fn (t &Transformer) may_target_generic_call_name(name string) bool {
+	if name == '' {
+		return false
+	}
+	base := generic_base_name_without_specialization(name)
+	return base in t.generic_call_candidate_names
 }
 
 // collect_generic_call_specs_in_new_clones is the incremental counterpart of
@@ -1963,7 +2430,10 @@ fn (mut t Transformer) collect_generic_call_specs_in_new_clones(files []ast.File
 	old_import_aliases := t.cur_import_aliases.clone()
 	t.build_generic_fn_decl_index(files)
 	for fi, file in files {
-		clones := t.last_mono_clones[fi] or { continue }
+		if fi !in t.last_mono_clones {
+			continue
+		}
+		clones := t.last_mono_clones[fi]
 		if clones.len == 0 {
 			continue
 		}
@@ -1972,6 +2442,113 @@ fn (mut t Transformer) collect_generic_call_specs_in_new_clones(files []ast.File
 		t.cur_generic_call_file_idx = fi
 		t.cur_import_aliases = import_aliases_for_generic_collect(file.imports)
 		if scope := t.get_module_scope(file.mod) {
+			t.scope = scope
+		} else {
+			t.scope = unsafe { nil }
+		}
+		for stmt in clones {
+			t.collect_generic_call_specs_in_stmt(stmt)
+		}
+	}
+	t.cur_module = old_module
+	t.cur_file_name = old_file
+	t.scope = old_scope
+	t.cur_generic_call_file_idx = old_file_idx
+	t.cur_import_aliases = old_import_aliases.clone()
+}
+
+fn (mut t Transformer) collect_generic_call_specs_in_new_clones_from_flat(flat &ast.FlatAst, extra_stmts map[int][]ast.Stmt) {
+	if t.last_mono_clones.len == 0 {
+		return
+	}
+	old_module := t.cur_module
+	old_file := t.cur_file_name
+	old_scope := t.scope
+	old_file_idx := t.cur_generic_call_file_idx
+	old_import_aliases := t.cur_import_aliases.clone()
+	t.build_generic_fn_decl_index_from_flat(flat, extra_stmts)
+	for fi in 0 .. flat.files.len {
+		clones := t.last_mono_clones[fi] or { continue }
+		if clones.len == 0 {
+			continue
+		}
+		module_name := flat.file_mod(flat.files[fi])
+		t.cur_file_name = flat.file_name(flat.files[fi])
+		t.cur_module = module_name
+		t.cur_generic_call_file_idx = fi
+		t.cur_import_aliases = flat_import_aliases_for_generic_collect(flat, fi)
+		if scope := t.get_module_scope(module_name) {
+			t.scope = scope
+		} else {
+			t.scope = unsafe { nil }
+		}
+		for stmt in clones {
+			t.collect_generic_call_specs_in_stmt(stmt)
+		}
+	}
+	t.cur_module = old_module
+	t.cur_file_name = old_file
+	t.scope = old_scope
+	t.cur_generic_call_file_idx = old_file_idx
+	t.cur_import_aliases = old_import_aliases.clone()
+}
+
+fn (mut t Transformer) collect_generic_call_specs_in_new_structs(files []ast.File) {
+	if t.last_struct_clones.len == 0 {
+		return
+	}
+	old_module := t.cur_module
+	old_file := t.cur_file_name
+	old_scope := t.scope
+	old_file_idx := t.cur_generic_call_file_idx
+	old_import_aliases := t.cur_import_aliases.clone()
+	t.build_generic_fn_decl_index(files)
+	for fi, file in files {
+		clones := t.last_struct_clones[fi] or { continue }
+		if clones.len == 0 {
+			continue
+		}
+		t.cur_file_name = file.name
+		t.cur_module = file.mod
+		t.cur_generic_call_file_idx = fi
+		t.cur_import_aliases = import_aliases_for_generic_collect(file.imports)
+		if scope := t.get_module_scope(file.mod) {
+			t.scope = scope
+		} else {
+			t.scope = unsafe { nil }
+		}
+		for stmt in clones {
+			t.collect_generic_call_specs_in_stmt(stmt)
+		}
+	}
+	t.cur_module = old_module
+	t.cur_file_name = old_file
+	t.scope = old_scope
+	t.cur_generic_call_file_idx = old_file_idx
+	t.cur_import_aliases = old_import_aliases.clone()
+}
+
+fn (mut t Transformer) collect_generic_call_specs_in_new_structs_from_flat(flat &ast.FlatAst, extra_stmts map[int][]ast.Stmt) {
+	if t.last_struct_clones.len == 0 {
+		return
+	}
+	old_module := t.cur_module
+	old_file := t.cur_file_name
+	old_scope := t.scope
+	old_file_idx := t.cur_generic_call_file_idx
+	old_import_aliases := t.cur_import_aliases.clone()
+	t.build_generic_fn_decl_index_from_flat(flat, extra_stmts)
+	for fi in 0 .. flat.files.len {
+		clones := t.last_struct_clones[fi] or { continue }
+		if clones.len == 0 {
+			continue
+		}
+		module_name := flat.file_mod(flat.files[fi])
+		t.cur_file_name = flat.file_name(flat.files[fi])
+		t.cur_module = module_name
+		t.cur_generic_call_file_idx = fi
+		t.cur_import_aliases = flat_import_aliases_for_generic_collect(flat, fi)
+		if scope := t.get_module_scope(module_name) {
 			t.scope = scope
 		} else {
 			t.scope = unsafe { nil }
@@ -1997,6 +2574,37 @@ fn import_aliases_for_generic_collect(imports []ast.ImportStmt) map[string]strin
 		aliases[alias] = imp.name
 	}
 	return aliases
+}
+
+fn flat_import_aliases_for_generic_collect(flat &ast.FlatAst, fi int) map[string]string {
+	if fi < 0 || fi >= flat.files.len {
+		return map[string]string{}
+	}
+	return import_aliases_for_generic_collect(flat.read_file_imports(flat.files[fi]))
+}
+
+fn flat_file_stmts_with_extra(flat &ast.FlatAst, extra_stmts map[int][]ast.Stmt, fi int) []ast.Stmt {
+	if fi < 0 || fi >= flat.files.len {
+		return []ast.Stmt{}
+	}
+	stmts := flat.read_file_stmts(flat.files[fi])
+	extra := extra_stmts[fi] or { []ast.Stmt{} }
+	if extra.len == 0 {
+		return stmts
+	}
+	mut out := []ast.Stmt{cap: stmts.len + extra.len}
+	out << stmts
+	out << extra
+	return out
+}
+
+fn append_flat_extra_stmts(mut extra_stmts map[int][]ast.Stmt, fi int, stmts []ast.Stmt) {
+	if stmts.len == 0 {
+		return
+	}
+	mut bucket := extra_stmts[fi] or { []ast.Stmt{} }
+	bucket << stmts
+	extra_stmts[fi] = bucket
 }
 
 fn (mut t Transformer) collect_generic_call_specs_in_stmts(stmts []ast.Stmt) {
@@ -2573,11 +3181,17 @@ fn (mut t Transformer) collect_generic_call_spec_for_call(lhs ast.Expr, raw_args
 		return
 	}
 	if lhs is ast.Ident {
+		if !t.may_target_generic_call_name(lhs.name) {
+			return
+		}
 		info := t.generic_aware_call_fn_info(lhs, lhs.name) or { return }
 		t.register_inferred_generic_call_spec(lhs.name, info, raw_args)
 		return
 	}
 	if lhs is ast.SelectorExpr {
+		if !t.may_target_generic_call_name(lhs.rhs.name) {
+			return
+		}
 		if resolved_static := t.resolve_static_type_method_call(lhs.lhs, lhs.rhs.name) {
 			info := t.generic_aware_call_fn_info(lhs, resolved_static) or { return }
 			t.register_inferred_generic_call_spec(resolved_static, info, raw_args)
@@ -2611,11 +3225,17 @@ fn (mut t Transformer) collect_generic_call_spec_for_call(lhs ast.Expr, raw_args
 
 fn (mut t Transformer) defer_generic_call_spec_for_cloned_call(lhs ast.Expr, raw_args []ast.Expr) {
 	if lhs is ast.Ident {
+		if !t.may_target_generic_call_name(lhs.name) {
+			return
+		}
 		info := t.generic_aware_call_fn_info(lhs, lhs.name) or { return }
 		t.defer_inferred_generic_call_spec(lhs.name, info, raw_args)
 		return
 	}
 	if lhs is ast.SelectorExpr {
+		if !t.may_target_generic_call_name(lhs.rhs.name) {
+			return
+		}
 		if resolved_static := t.resolve_static_type_method_call(lhs.lhs, lhs.rhs.name) {
 			info := t.generic_aware_call_fn_info(lhs, resolved_static) or { return }
 			t.defer_inferred_generic_call_spec(resolved_static, info, raw_args)
@@ -2682,7 +3302,9 @@ fn (mut t Transformer) defer_receiver_generic_method_call_spec(base_name string,
 	}
 	if arg_bindings := t.generic_bindings_from_call_args(info, raw_args) {
 		for name, typ in arg_bindings {
-			bindings[name] = typ
+			if name !in bindings {
+				bindings[name] = typ
+			}
 		}
 	}
 	if generic_bindings_cover_params(bindings, decl_generic_param_names(decl)) {
@@ -2812,26 +3434,60 @@ fn (mut t Transformer) collect_explicit_generic_call_spec(lhs ast.Expr, type_arg
 }
 
 fn (t &Transformer) generic_call_base_name(lhs ast.Expr) ?string {
-	if lhs is ast.Ident {
-		return lhs.name
+	parts := generic_call_lhs_parts(lhs)
+	base_lhs := parts.lhs
+	if base_lhs is ast.Ident {
+		return base_lhs.name
 	}
-	if lhs is ast.SelectorExpr {
-		if resolved_static := t.resolve_static_type_method_call(lhs.lhs, lhs.rhs.name) {
+	if base_lhs is ast.SelectorExpr {
+		if resolved_static := t.resolve_static_type_method_call(base_lhs.lhs, base_lhs.rhs.name) {
 			return resolved_static
 		}
-		if lhs.lhs is ast.Ident {
-			if call_prefix := t.resolve_generic_module_call_prefix(lhs.lhs.name) {
-				return '${call_prefix}__${lhs.rhs.name}'
+		if base_lhs.lhs is ast.Ident {
+			if call_prefix := t.resolve_generic_module_call_prefix(base_lhs.lhs.name) {
+				return '${call_prefix}__${base_lhs.rhs.name}'
 			}
 		}
-		if lhs.lhs is ast.Ident && t.is_module_ident(lhs.lhs.name) {
-			return '${lhs.lhs.name}__${lhs.rhs.name}'
+		if base_lhs.lhs is ast.Ident && t.is_module_ident(base_lhs.lhs.name) {
+			return '${base_lhs.lhs.name}__${base_lhs.rhs.name}'
 		}
-		if resolved_method := t.resolve_method_call_name(lhs.lhs, lhs.rhs.name) {
+		if resolved_method := t.resolve_method_call_name(base_lhs.lhs, base_lhs.rhs.name) {
 			return resolved_method
 		}
 	}
 	return none
+}
+
+fn generic_call_lhs_parts(lhs ast.Expr) GenericIndexCallParts {
+	match lhs {
+		ast.GenericArgs {
+			nested := generic_call_lhs_parts(lhs.lhs)
+			mut args := nested.args.clone()
+			args << lhs.args
+			return GenericIndexCallParts{
+				lhs:  nested.lhs
+				args: args
+			}
+		}
+		ast.GenericArgOrIndexExpr {
+			nested := generic_call_lhs_parts(lhs.lhs)
+			mut args := nested.args.clone()
+			args << lhs.expr
+			return GenericIndexCallParts{
+				lhs:  nested.lhs
+				args: args
+			}
+		}
+		ast.IndexExpr {
+			return generic_index_call_parts(lhs)
+		}
+		else {
+			return GenericIndexCallParts{
+				lhs:  lhs
+				args: []ast.Expr{}
+			}
+		}
+	}
 }
 
 fn (t &Transformer) resolve_generic_module_call_prefix(module_ident string) ?string {
@@ -2883,7 +3539,9 @@ fn (mut t Transformer) register_receiver_generic_method_call_spec_with_bindings(
 	}
 	if arg_bindings := t.generic_bindings_from_call_args(info, raw_args) {
 		for name, typ in arg_bindings {
-			bindings[name] = typ
+			if name !in bindings {
+				bindings[name] = typ
+			}
 		}
 	}
 	for param_name in decl_generic_param_names(decl) {
@@ -2920,9 +3578,25 @@ fn (t &Transformer) generic_bindings_from_generic_call_expr(expr ast.Expr) ?map[
 		}
 	}
 
-	base_name := t.generic_call_base_name(lhs) or { return none }
-	info := t.generic_aware_call_fn_info(lhs, base_name) or { return none }
-	return t.generic_bindings_from_call_args(info, args)
+	lhs_parts := generic_call_lhs_parts(lhs)
+	base_name := t.generic_call_base_name(lhs_parts.lhs) or { return none }
+	info_lhs := if lhs_parts.args.len > 0 {
+		ast.Expr(ast.GenericArgs{
+			lhs:  lhs_parts.lhs
+			args: lhs_parts.args
+		})
+	} else {
+		lhs_parts.lhs
+	}
+	info := t.generic_aware_call_fn_info(info_lhs, base_name) or { return none }
+	mut bindings := t.generic_bindings_from_type_args(info, lhs_parts.args) or {
+		map[string]types.Type{}
+	}
+	t.fill_missing_generic_bindings_from_call_args(info, args, mut bindings)
+	if !generic_bindings_cover_params(bindings, info.generic_params) {
+		return none
+	}
+	return bindings
 }
 
 fn (t &Transformer) receiver_generic_method_call_name(base_name string, receiver ast.Expr, info CallFnInfo, raw_args []ast.Expr) ?string {
@@ -2939,7 +3613,9 @@ fn (t &Transformer) receiver_generic_method_call_name(base_name string, receiver
 	}
 	if arg_bindings := t.generic_bindings_from_call_args(info, raw_args) {
 		for name, typ in arg_bindings {
-			bindings[name] = typ
+			if name !in bindings {
+				bindings[name] = typ
+			}
 		}
 	}
 	for param_name in decl_generic_param_names(decl) {
@@ -5494,11 +6170,12 @@ fn (mut t Transformer) clone_expr_with_bindings_and_fields(expr ast.Expr, bindin
 					return specialized
 				}
 			}
+			pos := t.clone_monomorphized_pos_with_type(expr.pos, bindings)
 			return ast.Expr(ast.IndexExpr{
 				lhs:      t.clone_expr_with_bindings_and_fields(expr.lhs, bindings, contexts)
 				expr:     t.clone_expr_with_bindings_and_fields(expr.expr, bindings, contexts)
 				is_gated: expr.is_gated
-				pos:      expr.pos
+				pos:      pos
 			})
 		}
 		ast.RangeExpr {
@@ -6118,11 +6795,12 @@ pub fn (mut t Transformer) clone_expr_with_bindings(expr ast.Expr, bindings map[
 					return specialized
 				}
 			}
+			pos := t.clone_monomorphized_pos_with_type(expr.pos, bindings)
 			return ast.Expr(ast.IndexExpr{
 				lhs:      t.clone_expr_with_bindings(expr.lhs, bindings)
 				expr:     t.clone_expr_with_bindings(expr.expr, bindings)
 				is_gated: expr.is_gated
-				pos:      expr.pos
+				pos:      pos
 			})
 		}
 		ast.InitExpr {

@@ -6900,11 +6900,95 @@ fn (mut c Checker) concat_expr(mut node ast.ConcatExpr) ast.Type {
 				return ast.void_type
 			}
 		}
+		expected_multi_return_type := c.expected_type.clear_option_and_result()
+		expected_sym := c.table.sym(expected_multi_return_type)
+		if c.inside_return && expected_sym.info is ast.MultiReturn
+			&& expected_sym.info.types.len == mr_types.len {
+			mut use_expected_type := true
+			for i, expected_typ in expected_sym.info.types {
+				if !c.can_use_expected_multi_return_value_type(mr_types[i], expected_typ,
+					node.vals[i]) {
+					use_expected_type = false
+					break
+				}
+			}
+			if use_expected_type {
+				node.return_type = expected_multi_return_type
+				return expected_multi_return_type
+			}
+		}
 		typ := c.table.find_or_register_multi_return(mr_types)
 		ast.new_type(typ)
 		node.return_type = typ
 		return typ
 	}
+}
+
+fn (mut c Checker) can_use_expected_multi_return_expr_type(got_type ast.Type, expected_type ast.Type, expr ast.Expr) bool {
+	got_sym := c.table.sym(got_type)
+	expected_sym := c.table.sym(expected_type)
+	if got_sym.info is ast.MultiReturn && expected_sym.info is ast.MultiReturn {
+		got_types := got_sym.info.types.map(ast.mktyp(it))
+		expected_types := expected_sym.info.types
+		if got_types.len != expected_types.len {
+			return false
+		}
+		for i, got_value_type in got_types {
+			expected_value_type := expected_types[i]
+			value_expr := if expr is ast.ConcatExpr && i < expr.vals.len {
+				expr.vals[i]
+			} else {
+				expr
+			}
+			if !c.can_use_expected_multi_return_value_type(got_value_type, expected_value_type,
+				value_expr) {
+				return false
+			}
+		}
+		return true
+	}
+	return false
+}
+
+fn (mut c Checker) can_use_expected_multi_return_value_type(got_type ast.Type, expected_type ast.Type, expr ast.Expr) bool {
+	if got_type.has_flag(.option) {
+		if !expected_type.has_flag(.option)
+			|| !c.check_types(got_type.clear_flag(.option), expected_type.clear_flag(.option)) {
+			return false
+		}
+	}
+	if got_type.has_flag(.result) {
+		payload_compat := if returns_call_like_result_expr(expr) {
+			c.table.are_payloads_alias_compatible(got_type.clear_flag(.result),
+				expected_type.clear_flag(.result))
+		} else {
+			got_type.clear_flag(.result) == expected_type.clear_flag(.result)
+		}
+		if !expected_type.has_flag(.result) || !payload_compat {
+			return false
+		}
+	}
+	if !c.check_types(got_type, expected_type) {
+		return false
+	}
+	if got_type.is_any_kind_of_pointer() && !expected_type.is_any_kind_of_pointer()
+		&& !c.table.unaliased_type(expected_type).is_any_kind_of_pointer() {
+		return expr.is_auto_deref_var()
+	}
+	if expected_type.is_any_kind_of_pointer() && !got_type.is_any_kind_of_pointer()
+		&& !c.table.unaliased_type(got_type).is_any_kind_of_pointer()
+		&& got_type != ast.int_literal_type && !c.pref.translated && !c.file.is_translated {
+		if expr.is_auto_deref_var() {
+			return true
+		}
+		if c.table.final_sym(expected_type).kind == .interface
+			&& c.table.final_sym(got_type).kind == .interface
+			&& expected_type.deref().idx() == got_type.idx() {
+			return true
+		}
+		return false
+	}
+	return true
 }
 
 fn smartcast_index_expr_scope_key(expr ast.IndexExpr) string {
@@ -7640,8 +7724,22 @@ fn (mut c Checker) mark_as_referenced(mut node ast.Expr, as_interface bool) {
 		ast.Ident {
 			if mut node.obj is ast.Var {
 				mut obj := unsafe { &node.obj }
-				if c.fn_scope != unsafe { nil } {
-					obj = c.fn_scope.find_var(node.obj.name) or { obj }
+				// Resolve the canonical declaration variable so that the
+				// `is_auto_heap` promotion below is recorded on the variable
+				// that cgen will see when emitting its declaration. Walk the
+				// use-site scope chain (so variables declared in nested scopes,
+				// e.g. inside a `for` loop body, are found, unlike
+				// `c.fn_scope.find_var` which only locates function-level vars),
+				// while skipping synthetic smartcast vars from `if x is T`/`match`
+				// branches: those are copies with no declaration of their own, so
+				// promoting them would leave the real declaration emitted as a
+				// plain value and desync the pointer indirection.
+				obj = node.scope.find_var_decl(node.obj.name) or {
+					if c.fn_scope != unsafe { nil } {
+						c.fn_scope.find_var(node.obj.name) or { obj }
+					} else {
+						obj
+					}
 				}
 				if obj.typ == 0 {
 					return
@@ -7678,6 +7776,21 @@ fn (mut c Checker) mark_as_referenced(mut node ast.Expr, as_interface bool) {
 						}
 						else {
 							obj.is_auto_heap = true
+						}
+					}
+
+					if obj.is_auto_heap {
+						// `obj` is the canonical declaration, which cgen emits as a
+						// heap pointer. When the value is read through a branch-local
+						// smartcast/option-unwrap copy (`if x is T`, `if x != none`),
+						// cgen resolves that use-site copy (see
+						// `resolved_ident_is_auto_heap`) when emitting the read, so it
+						// must carry the same `is_auto_heap`. Otherwise the read (e.g.
+						// an unwrapped option's `.data`) is emitted without the pointer
+						// indirection the declaration was given, producing invalid C.
+						node.obj.is_auto_heap = true
+						if mut use_site := node.scope.find_var(node.obj.name) {
+							use_site.is_auto_heap = true
 						}
 					}
 

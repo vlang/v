@@ -5,6 +5,7 @@ module transformer
 
 import os
 import strings
+import time
 import v2.ast
 import v2.pref
 import v2.token
@@ -110,6 +111,7 @@ mut:
 	generic_fn_decl_names         map[string]bool
 	generic_fn_decl_stmts         map[string][]ast.Stmt
 	generic_fn_decl_index         map[string]ast.FnDecl
+	generic_call_candidate_names  map[string]bool
 	generic_fn_value_names        map[string]bool
 	declared_method_fns           map[string]bool
 	monomorphized_fn_bindings     map[string]map[string]types.Type
@@ -119,10 +121,12 @@ mut:
 	live_source_file string
 	// Cached scope/method/fn_scope snapshots for lock-free parallel access.
 	// Populated once in pre_pass from the shared Environment fields.
-	cached_scopes      map[string]&types.Scope
-	cached_methods     map[string][]&types.Fn
-	cached_method_keys []string
-	cached_fn_scopes   map[string]&types.Scope
+	cached_scopes               map[string]&types.Scope
+	cached_methods              map[string][]&types.Fn
+	cached_method_keys          []string
+	cached_fn_scopes            map[string]&types.Scope
+	cached_fn_type_index        map[string]types.Type
+	cached_fn_return_type_index map[string]types.Type
 	// cached_method_base_index maps type_name -> generic-base method name ->
 	// FnType, precomputed once from cached_methods. lookup_method_cached used to
 	// linearly scan every method of a type and recompute its base name (via
@@ -138,14 +142,6 @@ mut:
 	// match a key whose short name equals the receiver's short name, so they can
 	// scan just this bucket instead of every method key (O(all_keys) per call).
 	cached_method_keys_by_short map[string][]string
-	// field_type_cache memoizes lookup_struct_field_type, which is called per
-	// field-access expression and re-derives the field type (scope lookups +
-	// types.Type-by-value copies + a scan-all-scopes fallback) every time. Keyed
-	// by "cur_module\x01struct\x01field" because the unqualified-name path
-	// consults cur_module. Written through an unsafe const->mut cast (the result
-	// is pure given the key, so this is benign interior mutability); each parallel
-	// worker gets its own empty cache, so there is no cross-thread sharing.
-	field_type_cache map[string]types.Type
 	// Accumulated synth types for deferred application (thread-safe).
 	// Instead of writing directly to env.set_expr_type during parallel transform,
 	// store here and apply after merge.
@@ -164,6 +160,7 @@ mut:
 	// these freshly-materialized clones (the rest of the program was already
 	// scanned) instead of re-walking all files. Empty when mono_pass added none.
 	last_mono_clones                   map[int][]ast.Stmt
+	last_struct_clones                 map[int][]ast.Stmt
 	generic_spec_owner_file            map[string]int
 	deferred_generic_call_specs        []DeferredGenericCallSpec
 	generic_struct_specs               map[string]GenericStructSpec
@@ -230,6 +227,32 @@ fn (t &Transformer) enum_type_c_name_for_lookup(lookup_name string, typ types.En
 
 fn (t &Transformer) enum_member_ident_for_lookup(lookup_name string, typ types.Enum, field_name string) string {
 	return enum_member_ident(t.enum_type_c_name_for_lookup(lookup_name, typ), field_name)
+}
+
+fn (t &Transformer) skip_native_backend_transform_file(file ast.File) bool {
+	if t.pref == unsafe { nil } {
+		return false
+	}
+	own := match t.pref.backend {
+		.arm64 { 'arm64' }
+		.x64 { 'x64' }
+		else { return false }
+	}
+
+	if !t.pref.single_backend && own != 'arm64' {
+		return false
+	}
+
+	name := file.name.replace('\\', '/')
+	if !name.contains('/v2/gen/') {
+		return false
+	}
+	for backend_mod in ['cleanc', 'eval', 'v', 'c', 'x64', 'arm64'] {
+		if backend_mod != own && name.contains('/v2/gen/${backend_mod}/') {
+			return true
+		}
+	}
+	return false
 }
 
 struct LiveFn {
@@ -324,6 +347,7 @@ fn new_transformer_base(env &types.Environment, p &pref.Preferences) &Transforme
 		generic_fn_decl_names:              map[string]bool{}
 		generic_fn_decl_stmts:              map[string][]ast.Stmt{}
 		generic_fn_decl_index:              map[string]ast.FnDecl{}
+		generic_call_candidate_names:       map[string]bool{}
 		generic_fn_value_names:             map[string]bool{}
 		declared_method_fns:                map[string]bool{}
 		monomorphized_fn_bindings:          map[string]map[string]types.Type{}
@@ -371,9 +395,10 @@ pub fn (t &Transformer) new_worker_clone(worker_idx int) &Transformer {
 		file_set:                           unsafe { t.file_set }
 		cached_scopes:                      t.cached_scopes.clone()
 		cached_methods:                     t.cached_methods.clone()
+		cached_fn_type_index:               t.cached_fn_type_index.clone()
+		cached_fn_return_type_index:        t.cached_fn_return_type_index.clone()
 		cached_method_base_index:           t.cached_method_base_index.clone()
 		cached_method_keys_by_short:        t.cached_method_keys_by_short.clone()
-		field_type_cache:                   map[string]types.Type{}
 		cached_method_keys:                 t.cached_method_keys.clone()
 		cached_fn_scopes:                   t.cached_fn_scopes.clone()
 		synth_types:                        t.synth_types.clone()
@@ -391,6 +416,7 @@ pub fn (t &Transformer) new_worker_clone(worker_idx int) &Transformer {
 		local_receiver_generic_bindings:    map[string]map[string]types.Type{}
 		generic_var_type_params:            map[string]string{}
 		generic_fn_decl_index:              t.generic_fn_decl_index.clone()
+		generic_call_candidate_names:       t.generic_call_candidate_names.clone()
 		generic_fn_value_names:             t.generic_fn_value_names.clone()
 		declared_method_fns:                t.declared_method_fns.clone()
 		monomorphized_fn_bindings:          t.monomorphized_fn_bindings.clone()
@@ -471,6 +497,27 @@ pub fn (mut t Transformer) merge_worker(w &Transformer) {
 // transform_file_standalone transforms a single file, for use in parallel workers.
 pub fn (mut t Transformer) transform_file_pub(file ast.File) ast.File {
 	return t.transform_file(file)
+}
+
+// transform_file_stmt_pub transforms one top-level statement in a file context,
+// for use by the declaration-level parallel transformer.
+pub fn (mut t Transformer) transform_file_stmt_pub(file ast.File, stmt ast.Stmt) []ast.Stmt {
+	t.enter_file_context(file)
+	return t.transform_stmts([stmt])
+}
+
+fn (mut t Transformer) enter_file_context(file ast.File) {
+	// Set current file name for assert messages
+	t.cur_file_name = file.name
+	// Set current module for scope lookups
+	t.cur_module = file.mod
+	t.cur_import_aliases = import_aliases_for_generic_collect(file.imports)
+	// Set module scope as starting point
+	if scope := t.get_module_scope(file.mod) {
+		t.scope = scope
+	} else {
+		t.scope = unsafe { nil }
+	}
 }
 
 fn detect_vmodroot_from_path(path string) ?string {
@@ -1138,9 +1185,10 @@ fn (mut t Transformer) collect_generic_fn_value_refs(files []ast.File) {
 
 fn (mut t Transformer) collect_generic_fn_value_refs_from_flat(flat &ast.FlatAst) {
 	t.collect_generic_fn_decl_names_from_flat(flat)
-	for ff in flat.files {
-		for stmt in flat.read_file_stmts(ff) {
-			t.collect_generic_fn_value_refs_in_stmt(stmt, false)
+	for i in 0 .. flat.files.len {
+		stmts := flat.file_cursor(i).stmts()
+		for j in 0 .. stmts.len() {
+			t.collect_generic_fn_value_refs_in_stmt(flat.decode_stmt(stmts.at(j).id), false)
 		}
 	}
 	t.collect_generic_fn_value_dependencies()
@@ -1155,9 +1203,10 @@ fn (mut t Transformer) collect_generic_fn_decl_names(files []ast.File) {
 }
 
 fn (mut t Transformer) collect_generic_fn_decl_names_from_flat(flat &ast.FlatAst) {
-	for ff in flat.files {
-		for stmt in flat.read_file_stmts(ff) {
-			t.collect_generic_fn_decl_names_in_stmt(stmt)
+	for i in 0 .. flat.files.len {
+		stmts := flat.file_cursor(i).stmts()
+		for j in 0 .. stmts.len() {
+			t.collect_generic_fn_decl_names_in_stmt(flat.decode_stmt(stmts.at(j).id))
 		}
 	}
 }
@@ -1502,15 +1551,18 @@ pub fn (mut t Transformer) pre_pass(files []ast.File) {
 	t.cache_env_maps()
 }
 
-// pre_pass_from_flat is the FlatAst-driven equivalent of pre_pass. Reads
-// file-level stmts via flat.read_file_stmts(ff) so the transformer no
-// longer depends on a pre-rehydrated []ast.File for its accumulators.
-// The per-stmt walks reuse the existing recursive visitors, which still
-// operate on legacy ast.Stmt/Expr — flat-native walks are a later step.
+// pre_pass_from_flat is the FlatAst-driven equivalent of pre_pass. It walks
+// file-level stmt cursors and decodes one stmt at a time so the transformer no
+// longer depends on pre-rehydrated []ast.File or per-file []ast.Stmt arrays for
+// its accumulators. The per-stmt walks reuse the existing recursive visitors,
+// which still operate on legacy ast.Stmt/Expr — flat-native walks are a later
+// step.
 pub fn (mut t Transformer) pre_pass_from_flat(flat &ast.FlatAst) {
 	t.collect_generic_fn_value_refs_from_flat(flat)
-	for ff in flat.files {
-		for stmt in flat.read_file_stmts(ff) {
+	for i in 0 .. flat.files.len {
+		stmts := flat.file_cursor(i).stmts()
+		for j in 0 .. stmts.len() {
+			stmt := flat.decode_stmt(stmts.at(j).id)
 			if stmt is ast.FnDecl {
 				for attr in stmt.attributes {
 					if attr.comptime_cond !is ast.EmptyExpr {
@@ -1535,12 +1587,66 @@ fn (mut t Transformer) cache_env_maps() {
 	t.cached_methods = t.env.snapshot_methods()
 	t.cached_method_keys = t.cached_methods.keys()
 	t.cached_fn_scopes = t.env.snapshot_fn_scopes()
+	t.build_cached_fn_type_index()
 	t.build_cached_method_base_index()
 	mut by_short := map[string][]string{}
 	for key in t.cached_method_keys {
 		by_short[method_short_name(key)] << key
 	}
 	t.cached_method_keys_by_short = by_short.move()
+}
+
+fn (mut t Transformer) build_cached_fn_type_index() {
+	mut fn_index := map[string]types.Type{}
+	mut ret_index := map[string]types.Type{}
+	for module_name in t.cached_scopes.keys() {
+		scope := t.cached_scopes[module_name] or { continue }
+		for fn_name, obj in scope.objects {
+			if obj is types.Fn {
+				fn_obj := obj as types.Fn
+				typ := fn_obj.get_typ()
+				if typ is types.FnType {
+					t.add_cached_fn_type_entry(mut fn_index, mut ret_index, module_name, fn_name,
+						typ)
+					short_module := short_module_name(module_name)
+					if short_module != module_name {
+						t.add_cached_fn_type_entry(mut fn_index, mut ret_index, short_module,
+							fn_name, typ)
+					}
+					any_key := '*#${fn_name}'
+					if any_key !in fn_index {
+						fn_index[any_key] = typ
+						if ret_type := typ.get_return_type() {
+							ret_index[any_key] = ret_type
+						}
+					}
+				}
+			}
+		}
+	}
+	t.cached_fn_type_index = fn_index.move()
+	t.cached_fn_return_type_index = ret_index.move()
+}
+
+fn (mut t Transformer) add_cached_fn_type_entry(mut fn_index map[string]types.Type, mut ret_index map[string]types.Type, module_name string, fn_name string, fn_type types.FnType) {
+	key := '${module_name}#${fn_name}'
+	if key in fn_index {
+		return
+	}
+	fn_index[key] = fn_type
+	if ret_type := fn_type.get_return_type() {
+		ret_index[key] = ret_type
+	}
+}
+
+fn short_module_name(module_name string) string {
+	if module_name.contains('.') {
+		return module_name.all_after_last('.')
+	}
+	if module_name.contains('__') {
+		return module_name.all_after_last('__')
+	}
+	return module_name
 }
 
 // build_cached_method_base_index precomputes, for each type, a base-method-name
@@ -2311,18 +2417,35 @@ pub fn (mut t Transformer) inject_embed_file_helper_to_flat(mut out ast.FlatBuil
 
 // transform_files transforms all files and returns transformed copies
 pub fn (mut t Transformer) transform_files(files []ast.File) []ast.File {
+	timing := os.getenv('V2_TTIME') != ''
+	mut sw := time.new_stopwatch()
 	t_print_mem('enter')
 	t.pre_pass(files)
 	t_print_mem('after pre_pass')
+	if timing {
+		eprintln('  [ttime] sequential pre_pass: ${sw.elapsed().milliseconds()}ms')
+		sw = time.new_stopwatch()
+	}
 	files_to_transform := t.prepare_files_for_transform(files)
 	t_print_mem('after prepare/monomorphize')
+	if timing {
+		eprintln('  [ttime] sequential prepare: ${sw.elapsed().milliseconds()}ms')
+		sw = time.new_stopwatch()
+	}
 	mut result := []ast.File{cap: files_to_transform.len}
 	for file in files_to_transform {
 		result << t.transform_file(file)
 	}
 	t_print_mem('after per-file loop')
+	if timing {
+		eprintln('  [ttime] sequential per-file: ${sw.elapsed().milliseconds()}ms')
+		sw = time.new_stopwatch()
+	}
 	t.post_pass(mut result)
 	t_print_mem('after post_pass')
+	if timing {
+		eprintln('  [ttime] sequential post_pass: ${sw.elapsed().milliseconds()}ms')
+	}
 	return result
 }
 
@@ -2445,6 +2568,139 @@ pub fn (mut t Transformer) transform_files_to_flat_via_driver(flat &ast.FlatAst,
 	// non-arm64 propagation saw stale stmts.
 	t.apply_post_pass_tail_from_flat(&builder.flat)
 	return builder.flat, result
+}
+
+// transform_files_to_flat_direct transforms `files` into a FlatAst without
+// collecting the transformed legacy []ast.File result. The input still goes
+// through the existing whole-program generic preparation, but each prepared file
+// is emitted through transform_file_to_flat and is then immediately consumed by
+// the FlatBuilder. This is the low-memory path used by native backends that can
+// consume post-transform FlatAst directly.
+pub fn (mut t Transformer) transform_files_to_flat_direct(files []ast.File) ast.FlatAst {
+	timing := os.getenv('V2_TTIME') != ''
+	mut sw := time.new_stopwatch()
+	t_print_mem('enter')
+	t.pre_pass(files)
+	t_print_mem('after pre_pass')
+	if timing {
+		eprintln('  [ttime] flat direct pre_pass: ${sw.elapsed().milliseconds()}ms')
+		sw = time.new_stopwatch()
+	}
+	files_to_transform := t.prepare_files_for_transform(files)
+	t_print_mem('after prepare/monomorphize')
+	if timing {
+		eprintln('  [ttime] flat direct prepare: ${sw.elapsed().milliseconds()}ms')
+		sw = time.new_stopwatch()
+	}
+	mut builder := new_transform_output_flat_builder(files_to_transform)
+	for file in files_to_transform {
+		t.transform_file_to_flat(file, mut builder)
+	}
+	t_print_mem('after per-file flat loop')
+	if timing {
+		eprintln('  [ttime] flat direct per-file: ${sw.elapsed().milliseconds()}ms')
+		sw = time.new_stopwatch()
+	}
+	generated_parts := t.generated_fns_parts_from_flat(&builder.flat)
+	t.post_pass_to_flat(mut builder, generated_parts)
+	t.apply_post_pass_tail_from_flat(&builder.flat)
+	t_print_mem('after post_pass')
+	if timing {
+		eprintln('  [ttime] flat direct post_pass: ${sw.elapsed().milliseconds()}ms')
+	}
+	return builder.flat
+}
+
+// transform_flat_to_flat_direct transforms flat input into flat output without
+// collecting a whole legacy []ast.File input or the transformed legacy output.
+// Generic monomorphization is append-only, so flat preparation keeps cloned
+// declarations in a per-file side table and the per-file loop decodes one
+// source file at a time.
+pub fn (mut t Transformer) transform_flat_to_flat_direct(flat &ast.FlatAst, files []ast.File) ast.FlatAst {
+	if files.len > 0 {
+		return t.transform_files_to_flat_direct(files)
+	}
+	timing := os.getenv('V2_TTIME') != ''
+	mut sw := time.new_stopwatch()
+	t_print_mem('enter')
+	t.pre_pass_from_flat(flat)
+	t_print_mem('after pre_pass')
+	if timing {
+		eprintln('  [ttime] flat input direct pre_pass: ${sw.elapsed().milliseconds()}ms')
+		sw = time.new_stopwatch()
+	}
+	extra_stmts := t.prepare_flat_for_transform(flat)
+	t_print_mem('after prepare/monomorphize')
+	if timing {
+		eprintln('  [ttime] flat input direct prepare: ${sw.elapsed().milliseconds()}ms')
+		sw = time.new_stopwatch()
+	}
+	mut builder := new_transform_output_flat_builder_from_flat(flat)
+	for i in 0 .. flat.files.len {
+		src_file := prepared_flat_file_for_transform(flat, extra_stmts, i) or { continue }
+		t.transform_file_to_flat(src_file, mut builder)
+	}
+	t_print_mem('after per-file flat loop')
+	if timing {
+		eprintln('  [ttime] flat input direct per-file: ${sw.elapsed().milliseconds()}ms')
+		sw = time.new_stopwatch()
+	}
+	generated_parts := t.generated_fns_parts_from_flat(&builder.flat)
+	t.post_pass_to_flat(mut builder, generated_parts)
+	t.apply_post_pass_tail_from_flat(&builder.flat)
+	t_print_mem('after post_pass')
+	if timing {
+		eprintln('  [ttime] flat input direct post_pass: ${sw.elapsed().milliseconds()}ms')
+	}
+	return builder.flat
+}
+
+fn new_transform_output_flat_builder(files []ast.File) ast.FlatBuilder {
+	mut total_bytes := i64(0)
+	for file in files {
+		if file.name == '' || !os.exists(file.name) {
+			continue
+		}
+		total_bytes += os.file_size(file.name)
+	}
+	nodes_cap, edges_cap, strings_cap := ast.arena_caps_for_bytes(total_bytes * 2)
+	return ast.new_flat_builder_with_capacity(nodes_cap, edges_cap, strings_cap)
+}
+
+fn new_transform_output_flat_builder_from_flat(flat &ast.FlatAst) ast.FlatBuilder {
+	mut total_bytes := i64(0)
+	for ff in flat.files {
+		name := flat.file_name(ff)
+		if name == '' || !os.exists(name) {
+			continue
+		}
+		total_bytes += os.file_size(name)
+	}
+	nodes_cap, edges_cap, strings_cap := ast.arena_caps_for_bytes(total_bytes * 2)
+	return ast.new_flat_builder_with_capacity(nodes_cap, edges_cap, strings_cap)
+}
+
+fn prepared_flat_file_for_transform(flat &ast.FlatAst, extra_stmts map[int][]ast.Stmt, fi int) ?ast.File {
+	src_arr := flat.to_files_range(fi, fi + 1)
+	if src_arr.len == 0 {
+		return none
+	}
+	mut file := src_arr[0]
+	extra := extra_stmts[fi] or { []ast.Stmt{} }
+	if extra.len > 0 {
+		mut stmts := []ast.Stmt{cap: file.stmts.len + extra.len}
+		stmts << file.stmts
+		stmts << extra
+		file = ast.File{
+			name:           file.name
+			mod:            file.mod
+			selector_names: file.selector_names
+			attributes:     file.attributes
+			imports:        file.imports
+			stmts:          stmts
+		}
+	}
+	return file
 }
 
 fn runtime_const_init_base_name(mod string) string {
@@ -2576,6 +2832,109 @@ fn (t &Transformer) imported_runtime_init_modules(files []ast.File) map[string]b
 				continue
 			}
 			for imp in t.active_runtime_init_imports(file) {
+				changed = add_runtime_init_module_key(mut modules, imp.name, available_modules)
+					|| changed
+			}
+		}
+	}
+	return modules
+}
+
+fn runtime_init_available_modules_from_flat(flat &ast.FlatAst) map[string]bool {
+	mut available := map[string]bool{}
+	available[''] = true
+	available['main'] = true
+	for ff in flat.files {
+		mod_name := flat.file_mod(ff)
+		if mod_name != '' {
+			available[mod_name] = true
+		}
+	}
+	return available
+}
+
+fn (t &Transformer) collect_runtime_init_imports_from_if_expr_cursor(node ast.Cursor, mut imports []ast.ImportStmt) {
+	if !node.is_valid() || node.kind() != .expr_if {
+		return
+	}
+	cond := node.edge(0)
+	if t.eval_comptime_cond(node.flat.decode_expr(cond.id)) {
+		t.collect_runtime_init_imports_from_if_cursor_stmts(node, mut imports)
+		return
+	}
+	else_expr := node.edge(1)
+	if !else_expr.is_valid() || else_expr.kind() != .expr_if {
+		return
+	}
+	else_cond := else_expr.edge(0)
+	if !else_cond.is_valid() || else_cond.kind() == .expr_empty {
+		t.collect_runtime_init_imports_from_if_cursor_stmts(else_expr, mut imports)
+		return
+	}
+	t.collect_runtime_init_imports_from_if_expr_cursor(else_expr, mut imports)
+}
+
+fn (t &Transformer) collect_runtime_init_imports_from_if_cursor_stmts(node ast.Cursor, mut imports []ast.ImportStmt) {
+	for i in 2 .. node.edge_count() {
+		t.collect_runtime_init_imports_from_stmt_cursor(node.edge(i), mut imports)
+	}
+}
+
+fn (t &Transformer) collect_runtime_init_imports_from_stmt_cursor(stmt ast.Cursor, mut imports []ast.ImportStmt) {
+	if !stmt.is_valid() {
+		return
+	}
+	match stmt.kind() {
+		.stmt_import {
+			imports << stmt.import_stmt()
+		}
+		.stmt_expr {
+			expr := stmt.edge(0)
+			if !expr.is_valid() || expr.kind() != .expr_comptime {
+				return
+			}
+			inner := expr.edge(0)
+			if inner.is_valid() && inner.kind() == .expr_if {
+				t.collect_runtime_init_imports_from_if_expr_cursor(inner, mut imports)
+			}
+		}
+		else {}
+	}
+}
+
+fn (t &Transformer) collect_runtime_init_imports_from_stmt_cursors(stmts ast.CursorList, mut imports []ast.ImportStmt) {
+	for i in 0 .. stmts.len() {
+		t.collect_runtime_init_imports_from_stmt_cursor(stmts.at(i), mut imports)
+	}
+}
+
+fn (t &Transformer) active_runtime_init_imports_from_flat_file(fc ast.FileCursor) []ast.ImportStmt {
+	file_imports := fc.imports()
+	mut imports := []ast.ImportStmt{cap: file_imports.len()}
+	for i in 0 .. file_imports.len() {
+		imp := file_imports.at(i)
+		if imp.kind() == .stmt_import {
+			imports << imp.import_stmt()
+		}
+	}
+	t.collect_runtime_init_imports_from_stmt_cursors(fc.stmts(), mut imports)
+	return imports
+}
+
+fn (t &Transformer) imported_runtime_init_modules_from_flat(flat &ast.FlatAst) map[string]bool {
+	mut modules := map[string]bool{}
+	modules[''] = true
+	available_modules := runtime_init_available_modules_from_flat(flat)
+	add_runtime_init_module_key(mut modules, 'main', available_modules)
+	mut changed := true
+	for changed {
+		changed = false
+		for i in 0 .. flat.files.len {
+			fc := flat.file_cursor(i)
+			if fc.mod() !in modules {
+				continue
+			}
+			for imp in t.active_runtime_init_imports_from_flat_file(fc) {
 				changed = add_runtime_init_module_key(mut modules, imp.name, available_modules)
 					|| changed
 			}
@@ -2819,7 +3178,19 @@ fn (mut t Transformer) collect_runtime_const_inits_from_flat(flat &ast.FlatAst) 
 	t.runtime_const_storage_known = map[string]bool{}
 	for ff in flat.files {
 		mod := flat.file_mod(ff)
-		for stmt in flat.read_file_stmts(ff) {
+		// s260: decode only const decls (skip fn bodies — the bulk) instead of a
+		// whole-file read_file_stmts decode. This runtime-const-init pass only acts
+		// on ConstDecl/GlobalDecl.
+		cdecls := ast.Cursor{
+			flat: unsafe { flat }
+			id:   ff.file_id
+		}.list_at(2)
+		for ci in 0 .. cdecls.len() {
+			cc := cdecls.at(ci)
+			if cc.kind() != .stmt_const_decl {
+				continue
+			}
+			stmt := flat.decode_stmt(cc.id)
 			if stmt is ast.ConstDecl {
 				for field in stmt.fields {
 					if t.const_initializer_emits_storage(field.value, is_native) {
@@ -2831,7 +3202,18 @@ fn (mut t Transformer) collect_runtime_const_inits_from_flat(flat &ast.FlatAst) 
 	}
 	for ff in flat.files {
 		mod := flat.file_mod(ff)
-		for stmt in flat.read_file_stmts(ff) {
+		// s260: decode only const/global decls (skip fn bodies).
+		cdecls := ast.Cursor{
+			flat: unsafe { flat }
+			id:   ff.file_id
+		}.list_at(2)
+		for ci in 0 .. cdecls.len() {
+			cc := cdecls.at(ci)
+			ck := cc.kind()
+			if ck != .stmt_const_decl && ck != .stmt_global_decl {
+				continue
+			}
+			stmt := flat.decode_stmt(cc.id)
 			if stmt is ast.ConstDecl {
 				for field in stmt.fields {
 					if !t.needs_runtime_const_init(field.value, is_native) {
@@ -2858,7 +3240,18 @@ fn (mut t Transformer) collect_runtime_const_inits_from_flat(flat &ast.FlatAst) 
 		changed = false
 		for ff in flat.files {
 			mod := flat.file_mod(ff)
-			for stmt in flat.read_file_stmts(ff) {
+			// s260: fixpoint loop — decode only const decls each iteration instead
+			// of re-decoding the whole file (incl. fn bodies) every pass.
+			cdecls := ast.Cursor{
+				flat: unsafe { flat }
+				id:   ff.file_id
+			}.list_at(2)
+			for ci in 0 .. cdecls.len() {
+				cc := cdecls.at(ci)
+				if cc.kind() != .stmt_const_decl {
+					continue
+				}
+				stmt := flat.decode_stmt(cc.id)
 				if stmt is ast.ConstDecl {
 					for field in stmt.fields {
 						if runtime_const_known_key(mod, field.name) in t.runtime_const_known {
@@ -3237,16 +3630,26 @@ fn (t &Transformer) order_runtime_const_inits(inits []RuntimeConstInit) []Runtim
 				continue
 			}
 			if dep_idx := index_by_name[dep_name] {
-				mut dep := dependents[dep_idx] or { []int{} }
+				mut dep := []int{}
+				if dep_idx in dependents {
+					dep = dependents[dep_idx]
+				}
 				dep << i
 				dependents[dep_idx] = dep
-				indegree[i] = (indegree[i] or { 0 }) + 1
+				mut deg := 0
+				if i in indegree {
+					deg = indegree[i]
+				}
+				indegree[i] = deg + 1
 			}
 		}
 	}
 	mut ready := []int{}
 	for i := 0; i < inits.len; i++ {
-		deg := indegree[i] or { 0 }
+		mut deg := 0
+		if i in indegree {
+			deg = indegree[i]
+		}
 		if deg == 0 {
 			ready << i
 		}
@@ -3273,10 +3676,17 @@ fn (t &Transformer) order_runtime_const_inits(inits []RuntimeConstInit) []Runtim
 		cur := ready[best_pos]
 		ready.delete(best_pos)
 		ordered_idx << cur
-		deps := dependents[cur] or { []int{} }
+		mut deps := []int{}
+		if cur in dependents {
+			deps = dependents[cur]
+		}
 		for dep in deps {
-			indegree[dep] = (indegree[dep] or { 0 }) - 1
-			deg := indegree[dep] or { 0 }
+			mut deg := 0
+			if dep in indegree {
+				deg = indegree[dep]
+			}
+			deg--
+			indegree[dep] = deg
 			if deg == 0 {
 				ready << dep
 			}
@@ -3755,10 +4165,7 @@ pub fn (mut t Transformer) runtime_const_init_main_calls_parts_from_flat(flat &a
 	mut seen_init_mods := map[string]bool{}
 	minimal_x64_runtime := t.uses_minimal_x64_runtime()
 	init_modules := if minimal_x64_runtime {
-		// Minimal x64 paths are uncommon and reuse the legacy import collector
-		// for comptime-active imports until that logic is ported to cursors.
-		rehydrated := flat.to_files_range(0, flat.files.len)
-		t.imported_runtime_init_modules(rehydrated)
+		t.imported_runtime_init_modules_from_flat(flat)
 	} else {
 		map[string]bool{}
 	}
@@ -3885,18 +4292,10 @@ pub fn (mut t Transformer) inject_main_runtime_const_init_to_flat(mut out ast.Fl
 }
 
 fn (mut t Transformer) transform_file(file ast.File) ast.File {
-	// Set current file name for assert messages
-	t.cur_file_name = file.name
-	// Set current module for scope lookups
-	t.cur_module = file.mod
-	t.cur_import_aliases = import_aliases_for_generic_collect(file.imports)
-	// Set module scope as starting point
-	if scope := t.get_module_scope(file.mod) {
-		t.scope = scope
-	} else {
-		t.scope = unsafe { nil }
+	if t.skip_native_backend_transform_file(file) {
+		return file
 	}
-
+	t.enter_file_context(file)
 	stmts := t.transform_stmts(file.stmts)
 	return ast.File{
 		attributes: file.attributes
@@ -4916,6 +5315,13 @@ fn (mut t Transformer) transform_assign_stmt_parts(stmt ast.AssignStmt) (token.T
 				}
 			}
 		}
+		if t.is_native_be && rhs_expr is ast.ArrayInitExpr {
+			arr := rhs_expr as ast.ArrayInitExpr
+			if arr.len is ast.EmptyExpr && arr.cap is ast.EmptyExpr && arr.init is ast.EmptyExpr {
+				rhs << rhs_expr
+				continue
+			}
+		}
 		rhs << t.transform_expr(rhs_expr)
 	}
 	t.skip_if_value_lowering = saved_skip
@@ -4979,6 +5385,13 @@ fn (mut t Transformer) transform_assign_stmt_parts(stmt ast.AssignStmt) (token.T
 			} else if rhs_src[0] is ast.ArrayInitExpr {
 				if rhs_type := t.get_array_init_expr_type(rhs_src[0] as ast.ArrayInitExpr) {
 					t.register_local_var_type(lhs_name, rhs_type)
+				}
+			} else if rhs_src[0] is ast.MapInitExpr {
+				map_init := rhs_src[0] as ast.MapInitExpr
+				if map_init.typ !is ast.EmptyExpr {
+					if rhs_type := t.type_from_param_type_expr(map_init.typ, []) {
+						t.register_local_var_type(lhs_name, rhs_type)
+					}
 				}
 			} else if rhs_src[0] is ast.CallExpr || rhs_src[0] is ast.CallOrCastExpr
 				|| rhs_src[0] is ast.InitExpr || rhs_src[0] is ast.Ident
@@ -5359,6 +5772,48 @@ fn (t &Transformer) map_index_lhs_type(lhs ast.Expr) ?types.Type {
 	if typ := t.get_expr_type(lhs) {
 		return typ
 	}
+	return none
+}
+
+fn (t &Transformer) index_expr_from_or_target(expr ast.Expr) ?ast.IndexExpr {
+	match expr {
+		ast.IndexExpr {
+			return expr
+		}
+		ast.GenericArgOrIndexExpr {
+			if lhs_type := t.get_expr_type(expr.lhs) {
+				if t.is_callable_type(lhs_type) {
+					return none
+				}
+			}
+			return ast.IndexExpr{
+				lhs:      expr.lhs
+				expr:     expr.expr
+				is_gated: false
+				pos:      expr.pos
+			}
+		}
+		ast.GenericArgs {
+			if expr.args.len != 1 {
+				return none
+			}
+			if lhs_type := t.get_expr_type(expr.lhs) {
+				if t.is_callable_type(lhs_type) {
+					return none
+				}
+			}
+			return ast.IndexExpr{
+				lhs:      expr.lhs
+				expr:     expr.args[0]
+				is_gated: false
+				pos:      expr.pos
+			}
+		}
+		else {
+			return none
+		}
+	}
+
 	return none
 }
 
@@ -5817,25 +6272,21 @@ fn (mut t Transformer) expand_direct_or_expr_assign(stmt ast.AssignStmt, or_expr
 
 	// Check for map index with or block: map[key] or { fallback }
 	// This is handled specially since it doesn't use Result/Option types
-	if call_expr is ast.IndexExpr {
-		if map_result := t.try_expand_map_index_or_assign(stmt, or_expr) {
-			return map_result
-		}
+	if map_result := t.try_expand_map_index_or_assign(stmt, or_expr) {
+		return map_result
 	}
 
 	// Check for array index with or block: arr[idx] or { fallback }
-	if call_expr is ast.IndexExpr {
-		if array_result := t.try_expand_array_index_or_assign(stmt, or_expr) {
-			return array_result
-		}
+	if array_result := t.try_expand_array_index_or_assign(stmt, or_expr) {
+		return array_result
 	}
 
 	// Check for string range with or block: s[0..20] or { 'fallback' }
 	// The checker types this as `string`, but it needs `string__substr_with_check`
 	// which returns `!string` (Result).
 	mut is_string_range_or := false
-	if call_expr is ast.IndexExpr {
-		if call_expr.expr is ast.RangeExpr && t.is_string_expr(call_expr.lhs) {
+	if index_expr := t.index_expr_from_or_target(call_expr) {
+		if index_expr.expr is ast.RangeExpr && t.is_string_expr(index_expr.lhs) {
 			is_string_range_or = true
 		}
 	}
@@ -5893,7 +6344,7 @@ fn (mut t Transformer) expand_direct_or_expr_assign(stmt ast.AssignStmt, or_expr
 	if t.is_native_be && is_string_range_or {
 		// String ranges still need the native inline bounds-check path because the
 		// checker records them as `string` instead of `!string`.
-		idx_expr := call_expr as ast.IndexExpr
+		idx_expr := t.index_expr_from_or_target(call_expr) or { return none }
 		mut stmts := []ast.Stmt{}
 		result_expr := t.expand_string_range_or_native_expr(idx_expr, or_expr.stmts, mut stmts)
 		stmts << ast.AssignStmt{
@@ -6022,7 +6473,8 @@ fn (mut t Transformer) expand_direct_or_expr_assign(stmt ast.AssignStmt, or_expr
 		if or_side_effect_stmts.len > 0 {
 			if_stmts << or_side_effect_stmts
 		}
-		if is_result && t.cur_fn_returns_result && t.or_fallback_is_ierror(or_payload_value) {
+		if (is_result || is_option) && t.cur_fn_returns_result
+			&& t.or_fallback_is_ierror(or_payload_value) {
 			if_stmts << ast.ReturnStmt{
 				exprs: [or_payload_value]
 			}
@@ -8427,8 +8879,8 @@ fn (mut t Transformer) expand_single_or_expr(or_expr ast.OrExpr, mut prefix_stmt
 
 	// Check for string range with or block: s[0..20] or { 'fallback' }
 	mut is_string_range_or := false
-	if call_expr is ast.IndexExpr {
-		if call_expr.expr is ast.RangeExpr && t.is_string_expr(call_expr.lhs) {
+	if index_expr := t.index_expr_from_or_target(call_expr) {
+		if index_expr.expr is ast.RangeExpr && t.is_string_expr(index_expr.lhs) {
 			is_string_range_or = true
 		}
 	}
@@ -8452,7 +8904,7 @@ fn (mut t Transformer) expand_single_or_expr(or_expr ast.OrExpr, mut prefix_stmt
 	}
 
 	if t.is_native_be && is_string_range_or {
-		idx_expr := call_expr as ast.IndexExpr
+		idx_expr := t.index_expr_from_or_target(call_expr) or { return ast.empty_expr }
 		return t.expand_string_range_or_native_expr(idx_expr, or_expr.stmts, mut prefix_stmts)
 	}
 
@@ -8656,7 +9108,8 @@ fn (mut t Transformer) expand_single_or_expr(or_expr ast.OrExpr, mut prefix_stmt
 			if_stmts << or_side_effect_stmts
 		}
 		// Error/void fallbacks can't be assigned into the success payload.
-		if is_result && t.cur_fn_returns_result && t.or_fallback_is_ierror(or_payload_value) {
+		if (is_result || is_option) && t.cur_fn_returns_result
+			&& t.or_fallback_is_ierror(or_payload_value) {
 			if_stmts << ast.ReturnStmt{
 				exprs: [or_payload_value]
 			}
@@ -8740,10 +9193,7 @@ fn (t &Transformer) index_or_lhs_is_array_or_string(lhs ast.Expr) bool {
 }
 
 fn (mut t Transformer) try_expand_array_index_or(or_expr ast.OrExpr, mut _prefix_stmts []ast.Stmt) ?ast.Expr {
-	if or_expr.expr !is ast.IndexExpr {
-		return none
-	}
-	index_expr := or_expr.expr as ast.IndexExpr
+	index_expr := t.index_expr_from_or_target(or_expr.expr) or { return none }
 	// Skip map indices and range expressions
 	if _ := t.get_map_type_for_expr(index_expr.lhs) {
 		return none
@@ -8793,10 +9243,7 @@ fn (mut t Transformer) try_expand_array_index_or(or_expr ast.OrExpr, mut _prefix
 // try_expand_array_index_or_assign handles: x := arr[idx] or { fallback } and
 // x := str[idx] or { fallback }.
 fn (mut t Transformer) try_expand_array_index_or_assign(stmt ast.AssignStmt, or_expr ast.OrExpr) ?[]ast.Stmt {
-	if or_expr.expr !is ast.IndexExpr {
-		return none
-	}
-	index_expr := or_expr.expr as ast.IndexExpr
+	index_expr := t.index_expr_from_or_target(or_expr.expr) or { return none }
 	if _ := t.get_map_type_for_expr(index_expr.lhs) {
 		return none
 	}
@@ -8880,11 +9327,7 @@ fn (mut t Transformer) try_expand_array_index_or_assign(stmt ast.AssignStmt, or_
 // Transforms it to use map_get_check for safe lookup with fallback.
 // Returns none if not a map index expression.
 fn (mut t Transformer) try_expand_map_index_or(or_expr ast.OrExpr, mut prefix_stmts []ast.Stmt) ?ast.Expr {
-	// Check if the inner expression is an IndexExpr
-	if or_expr.expr !is ast.IndexExpr {
-		return none
-	}
-	index_expr := or_expr.expr as ast.IndexExpr
+	index_expr := t.index_expr_from_or_target(or_expr.expr) or { return none }
 
 	// Get the map type from environment and extract key/value types
 	map_expr_typ := t.map_index_lhs_type(index_expr.lhs) or { return none }
@@ -9049,10 +9492,10 @@ fn (mut t Transformer) try_expand_map_index_or(or_expr ast.OrExpr, mut prefix_st
 }
 
 fn (mut t Transformer) try_expand_map_index_addr_or_nil(or_expr ast.OrExpr, mut prefix_stmts []ast.Stmt) ?ast.Expr {
-	if t.is_eval_backend() || !or_stmts_are_nil(or_expr.stmts) || or_expr.expr !is ast.IndexExpr {
+	if t.is_eval_backend() || !or_stmts_are_nil(or_expr.stmts) {
 		return none
 	}
-	index_expr := or_expr.expr as ast.IndexExpr
+	index_expr := t.index_expr_from_or_target(or_expr.expr) or { return none }
 	map_expr_typ := t.map_index_lhs_type(index_expr.lhs) or { return none }
 	map_type := t.unwrap_map_type(map_expr_typ) or { return none }
 
@@ -9089,11 +9532,7 @@ fn (mut t Transformer) try_expand_map_index_addr_or_nil(or_expr ast.OrExpr, mut 
 // try_expand_map_index_or_assign handles: var := map[key] or { fallback }
 // Returns a list of statements that expand the assignment with proper map lookup.
 fn (mut t Transformer) try_expand_map_index_or_assign(stmt ast.AssignStmt, or_expr ast.OrExpr) ?[]ast.Stmt {
-	// Check if the inner expression is an IndexExpr
-	if or_expr.expr !is ast.IndexExpr {
-		return none
-	}
-	index_expr := or_expr.expr as ast.IndexExpr
+	index_expr := t.index_expr_from_or_target(or_expr.expr) or { return none }
 
 	// Get the map type from environment and extract key/value types
 	map_expr_typ := t.map_index_lhs_type(index_expr.lhs) or { return none }
@@ -9861,6 +10300,11 @@ fn (mut t Transformer) local_decl_rhs_type(expr ast.Expr) ?types.Type {
 		return typ
 	}
 	match expr {
+		ast.MapInitExpr {
+			if expr.typ !is ast.EmptyExpr {
+				return t.type_from_param_type_expr(expr.typ, [])
+			}
+		}
 		ast.StringLiteral, ast.StringInterLiteral {
 			return types.Type(types.string_)
 		}
@@ -11754,17 +12198,11 @@ fn (mut t Transformer) transform_sprintf_arg(inter ast.StringInter) ast.Expr {
 		}
 		else {
 			// For custom types with str() method: Type__str(expr).str
-			str_fn_info := t.get_str_fn_info_for_expr(inter.expr)
-			if str_fn_info.str_fn_name != '' {
-				t.needed_str_fns[str_fn_info.str_fn_name] = str_fn_info.elem_type
-				if etyp := t.string_inter_arg_type(inter.expr) {
-					if etyp is types.Enum {
-						t.needed_enum_str_fns[str_fn_info.str_fn_name] = etyp
-					}
-				}
+			str_fn_name := t.register_auto_str_dependency(typ)
+			if str_fn_name != '' {
 				str_call := ast.Expr(ast.CallExpr{
 					lhs:  ast.Ident{
-						name: str_fn_info.str_fn_name
+						name: str_fn_name
 					}
 					args: [transformed]
 					pos:  inter.expr.pos()
@@ -14343,10 +14781,13 @@ fn (mut t Transformer) generate_str_functions_with_explicit(explicit_str_fns map
 	mut generated := map[string]bool{}
 	for {
 		mut found_new := false
-		for fn_name, elem_type in t.needed_str_fns {
+		mut fn_names := t.needed_str_fns.keys()
+		fn_names.sort()
+		for fn_name in fn_names {
 			if fn_name in generated {
 				continue
 			}
+			elem_type := t.needed_str_fns[fn_name] or { continue }
 			if fn_name.starts_with('Array_fixed_') {
 				// Generate fixed array str function
 				generated[fn_name] = true
@@ -14380,34 +14821,12 @@ fn (mut t Transformer) generate_str_functions_with_explicit(explicit_str_fns map
 				if enum_type := t.needed_enum_str_fns[fn_name] {
 					// Generate enum str function with if-else chain for each variant
 					result << t.generate_enum_str_fn(fn_name, struct_name, enum_type)
+				} else if sumtype_type := t.lookup_sumtype_type_any_module(struct_name) {
+					result << t.generate_sumtype_str_fn(fn_name, struct_name, sumtype_type)
+				} else if struct_type := t.lookup_struct_type_any_module(struct_name) {
+					result << t.generate_struct_str_fn(fn_name, struct_name, struct_type)
 				} else {
-					// Generate struct str function: fn StructName__str(s StructName) string { return "StructName{}" }
-					result << ast.Stmt(ast.FnDecl{
-						name:  fn_name
-						typ:   ast.FnType{
-							params:      [
-								ast.Parameter{
-									name: 's'
-									typ:  ast.Ident{
-										name: struct_name
-									}
-								},
-							]
-							return_type: ast.Ident{
-								name: 'string'
-							}
-						}
-						stmts: [
-							ast.Stmt(ast.ReturnStmt{
-								exprs: [
-									ast.Expr(ast.StringLiteral{
-										value: "'${struct_name}{}'"
-										kind:  .v
-									}),
-								]
-							}),
-						]
-					})
+					result << t.generate_empty_struct_str_fn(fn_name, struct_name)
 				}
 			}
 		}
@@ -14416,6 +14835,362 @@ fn (mut t Transformer) generate_str_functions_with_explicit(explicit_str_fns map
 		}
 	}
 	return result
+}
+
+fn auto_str_display_type_name(type_name string) string {
+	if type_name.contains('__') {
+		return type_name.all_after_last('__')
+	}
+	return type_name
+}
+
+fn (t &Transformer) lookup_sumtype_type_any_module(name string) ?types.SumType {
+	if typ := t.lookup_type(name) {
+		if typ is types.SumType {
+			return typ
+		}
+	}
+	for _, scope in t.cached_scopes {
+		if typ := scope.lookup_type(name) {
+			if typ is types.SumType {
+				return typ
+			}
+		}
+	}
+	return none
+}
+
+fn (mut t Transformer) auto_str_literal(value string) ast.Expr {
+	return ast.Expr(ast.StringLiteral{
+		kind:  .v
+		value: value
+	})
+}
+
+fn (mut t Transformer) auto_str_call_expr(fn_name string, args []ast.Expr) ast.Expr {
+	return ast.Expr(ast.CallExpr{
+		lhs:  ast.Ident{
+			name: fn_name
+		}
+		args: args
+	})
+}
+
+fn (mut t Transformer) auto_str_builder_decl(cap_hint int) ast.Stmt {
+	return ast.Stmt(ast.AssignStmt{
+		op:  .decl_assign
+		lhs: [
+			ast.Expr(ast.ModifierExpr{
+				kind: .key_mut
+				expr: ast.Ident{
+					name: 'sb'
+				}
+			}),
+		]
+		rhs: [
+			t.auto_str_call_expr('strings__new_builder', [
+				t.make_number_expr(cap_hint.str()),
+			]),
+		]
+	})
+}
+
+fn (mut t Transformer) auto_str_write_stmt(value ast.Expr) ast.Stmt {
+	return ast.Stmt(ast.ExprStmt{
+		expr: ast.CallExpr{
+			lhs:  ast.Ident{
+				name: 'strings__Builder__write_string'
+			}
+			args: [
+				ast.Expr(ast.PrefixExpr{
+					op:   .amp
+					expr: ast.Ident{
+						name: 'sb'
+					}
+				}),
+				value,
+			]
+		}
+	})
+}
+
+fn (mut t Transformer) auto_str_return_builder_stmt() ast.Stmt {
+	return ast.Stmt(ast.ReturnStmt{
+		exprs: [
+			t.auto_str_call_expr('strings__Builder__str', [
+				ast.Expr(ast.PrefixExpr{
+					op:   .amp
+					expr: ast.Ident{
+						name: 'sb'
+					}
+				}),
+			]),
+		]
+	})
+}
+
+fn (t &Transformer) auto_str_needed_elem_info(typ types.Type) string {
+	match typ {
+		types.Array {
+			return t.type_to_c_name(typ.elem_type)
+		}
+		types.ArrayFixed {
+			return t.type_to_c_name(typ.elem_type)
+		}
+		types.Map {
+			key_name := t.type_to_c_name(typ.key_type)
+			val_name := t.type_to_c_name(typ.value_type)
+			return '${key_name}|${val_name}'
+		}
+		types.Alias {
+			if base := t.live_alias_base_type(typ) {
+				return t.auto_str_needed_elem_info(base)
+			}
+			return t.type_to_c_name(typ)
+		}
+		else {
+			return t.type_to_c_name(typ)
+		}
+	}
+}
+
+fn (mut t Transformer) register_auto_str_dependency(typ types.Type) string {
+	str_fn_name := t.get_str_fn_name_for_type(typ) or { return '' }
+	if str_fn_name !in t.needed_str_fns {
+		t.needed_str_fns[str_fn_name] = t.auto_str_needed_elem_info(typ)
+	}
+	if typ is types.Enum {
+		t.needed_enum_str_fns[str_fn_name] = typ
+	}
+	return str_fn_name
+}
+
+fn (mut t Transformer) auto_str_value_expr(value ast.Expr, typ types.Type) ast.Expr {
+	match typ {
+		types.String {
+			return value
+		}
+		types.Alias {
+			if base := t.live_alias_base_type(typ) {
+				if base is types.String {
+					return value
+				}
+			}
+		}
+		else {}
+	}
+
+	str_fn_name := t.register_auto_str_dependency(typ)
+	if str_fn_name == '' {
+		return t.auto_str_literal('')
+	}
+	mut arg := value
+	if typ is types.Pointer && typ.base_type !is types.Void {
+		arg = ast.Expr(ast.PrefixExpr{
+			op:   .mul
+			expr: value
+		})
+	}
+	return t.auto_str_call_expr(str_fn_name, [arg])
+}
+
+fn (mut t Transformer) auto_str_indented_value_expr(value ast.Expr) ast.Expr {
+	return t.auto_str_call_expr('string__replace', [
+		value,
+		t.auto_str_literal('\\n'),
+		t.auto_str_literal('\\n    '),
+	])
+}
+
+fn (t &Transformer) auto_str_type_can_multiline(typ types.Type) bool {
+	match typ {
+		types.Struct, types.SumType, types.Array, types.ArrayFixed, types.Map {
+			return true
+		}
+		types.Alias {
+			if base := t.live_alias_base_type(typ) {
+				return t.auto_str_type_can_multiline(base)
+			}
+			return false
+		}
+		types.Pointer {
+			return t.auto_str_type_can_multiline(typ.base_type)
+		}
+		else {
+			return false
+		}
+	}
+}
+
+fn (mut t Transformer) generate_empty_struct_str_fn(fn_name string, struct_name string) ast.Stmt {
+	param_s := ast.Parameter{
+		name: 's'
+		typ:  ast.Ident{
+			name: struct_name
+		}
+	}
+	t.register_generated_fn_scope(fn_name, clone_generated_fn_scope_module(struct_name), [
+		param_s,
+	])
+	display_name := auto_str_display_type_name(struct_name)
+	return ast.Stmt(ast.FnDecl{
+		name:  fn_name
+		typ:   ast.FnType{
+			params:      [param_s]
+			return_type: ast.Ident{
+				name: 'string'
+			}
+		}
+		stmts: [
+			ast.Stmt(ast.ReturnStmt{
+				exprs: [
+					t.auto_str_literal('${display_name}{}'),
+				]
+			}),
+		]
+	})
+}
+
+fn (mut t Transformer) append_auto_str_struct_field(mut body_stmts []ast.Stmt, field_name string, field_value ast.Expr, field_type types.Type) {
+	if field_name == '' {
+		return
+	}
+	body_stmts << t.auto_str_write_stmt(t.auto_str_literal('    ${field_name}: '))
+	field_str := t.auto_str_value_expr(field_value, field_type)
+	field_out := if t.auto_str_type_can_multiline(field_type) {
+		t.auto_str_indented_value_expr(field_str)
+	} else {
+		field_str
+	}
+	body_stmts << t.auto_str_write_stmt(field_out)
+	body_stmts << t.auto_str_write_stmt(t.auto_str_literal('\\n'))
+}
+
+fn (mut t Transformer) generate_struct_str_fn(fn_name string, struct_name string, struct_type types.Struct) ast.Stmt {
+	param_s := ast.Parameter{
+		name: 's'
+		typ:  ast.Ident{
+			name: struct_name
+		}
+	}
+	t.register_generated_fn_scope(fn_name, clone_generated_fn_scope_module(struct_name), [
+		param_s,
+	])
+	display_name := auto_str_display_type_name(struct_name)
+	field_count := struct_type.embedded.len + struct_type.fields.len
+	if field_count == 0 {
+		return t.generate_empty_struct_str_fn(fn_name, struct_name)
+	}
+	mut body_stmts := []ast.Stmt{cap: 4 + field_count * 4}
+	body_stmts << t.auto_str_builder_decl(display_name.len + 8 + field_count * 32)
+	body_stmts << t.auto_str_write_stmt(t.auto_str_literal('${display_name}{\\n'))
+	for embedded in struct_type.embedded {
+		field_name := auto_str_display_type_name(embedded.name)
+		field_value := t.synth_selector(ast.Expr(ast.Ident{
+			name: 's'
+		}), field_name, types.Type(embedded))
+		t.append_auto_str_struct_field(mut body_stmts, field_name, field_value,
+			types.Type(embedded))
+	}
+	for field in struct_type.fields {
+		field_value := t.synth_selector_from_struct(ast.Expr(ast.Ident{
+			name: 's'
+		}), field.name, struct_name)
+		t.append_auto_str_struct_field(mut body_stmts, field.name, field_value, field.typ)
+	}
+	body_stmts << t.auto_str_write_stmt(t.auto_str_literal('}'))
+	body_stmts << t.auto_str_return_builder_stmt()
+	return ast.Stmt(ast.FnDecl{
+		name:       fn_name
+		is_public:  false
+		is_method:  false
+		is_static:  false
+		attributes: []ast.Attribute{}
+		typ:        ast.FnType{
+			params:      [param_s]
+			return_type: ast.Ident{
+				name: 'string'
+			}
+		}
+		stmts:      body_stmts
+	})
+}
+
+fn (mut t Transformer) sumtype_variant_as_expr(sumtype_value_name string, variant_type types.Type) ast.Expr {
+	pos := t.next_synth_pos()
+	t.register_synth_type(pos, variant_type)
+	return ast.Expr(ast.AsCastExpr{
+		expr: ast.Ident{
+			name: sumtype_value_name
+		}
+		typ:  ast.Ident{
+			name: t.type_to_c_name(variant_type)
+		}
+		pos:  pos
+	})
+}
+
+fn (mut t Transformer) generate_sumtype_str_branch_stmts(sumtype_name string, variant_type types.Type) []ast.Stmt {
+	display_name := auto_str_display_type_name(sumtype_name)
+	variant_value := t.sumtype_variant_as_expr('s', variant_type)
+	variant_str := t.auto_str_value_expr(variant_value, variant_type)
+	mut stmts := []ast.Stmt{cap: 5}
+	stmts << t.auto_str_builder_decl(display_name.len + 32)
+	stmts << t.auto_str_write_stmt(t.auto_str_literal('${display_name}('))
+	stmts << t.auto_str_write_stmt(variant_str)
+	stmts << t.auto_str_write_stmt(t.auto_str_literal(')'))
+	stmts << t.auto_str_return_builder_stmt()
+	return stmts
+}
+
+fn (mut t Transformer) generate_sumtype_str_fn(fn_name string, sumtype_name string, sumtype_type types.SumType) ast.Stmt {
+	param_s := ast.Parameter{
+		name: 's'
+		typ:  ast.Ident{
+			name: sumtype_name
+		}
+	}
+	t.register_generated_fn_scope(fn_name, clone_generated_fn_scope_module(sumtype_name), [
+		param_s,
+	])
+	mut else_body := ast.Expr(ast.empty_expr)
+	variants := sumtype_type.get_variants()
+	for i := variants.len - 1; i >= 0; i-- {
+		cond := t.make_infix_expr(.eq, t.synth_selector(ast.Expr(ast.Ident{
+			name: 's'
+		}), '_tag', types.Type(types.int_)), t.make_number_expr(i.str()))
+		else_body = ast.Expr(ast.IfExpr{
+			cond:      cond
+			stmts:     t.generate_sumtype_str_branch_stmts(sumtype_name, variants[i])
+			else_expr: else_body
+		})
+	}
+	mut stmts := []ast.Stmt{}
+	if else_body !is ast.EmptyExpr {
+		stmts << ast.Stmt(ast.ExprStmt{
+			expr: else_body
+		})
+	}
+	display_name := auto_str_display_type_name(sumtype_name)
+	stmts << ast.Stmt(ast.ReturnStmt{
+		exprs: [
+			t.auto_str_literal('${display_name}{}'),
+		]
+	})
+	return ast.Stmt(ast.FnDecl{
+		name:       fn_name
+		is_public:  false
+		is_method:  false
+		is_static:  false
+		attributes: []ast.Attribute{}
+		typ:        ast.FnType{
+			params:      [param_s]
+			return_type: ast.Ident{
+				name: 'string'
+			}
+		}
+		stmts:      stmts
+	})
 }
 
 fn (mut t Transformer) generate_enum_str_fn(fn_name string, enum_name string, enum_type types.Enum) ast.Stmt {
@@ -14851,31 +15626,30 @@ fn (mut t Transformer) generate_array_str_fn(fn_name string, elem_type string) a
 		elem_expr
 	}
 
-	// strings__Builder__write_string(&sb, a[i]) for strings, else use the element str helper
-	for_body << ast.ExprStmt{
-		expr: ast.CallExpr{
-			lhs:  ast.Ident{
-				name: 'strings__Builder__write_string'
-			}
-			args: [
-				ast.Expr(ast.PrefixExpr{
-					op:   .amp
-					expr: ast.Ident{
-						name: 'sb'
-					}
-				}),
-				if elem_type == 'string' {
-					elem_expr
-				} else {
-					ast.Expr(ast.CallExpr{
-						lhs:  ast.Ident{
-							name: elem_str_fn
-						}
-						args: [str_arg]
-					})
-				},
-			]
+	sb_ref := ast.Expr(ast.PrefixExpr{
+		op:   .amp
+		expr: ast.Ident{
+			name: 'sb'
 		}
+	})
+	if elem_type == 'string' {
+		for_body << builder_write_string_stmt(sb_ref, ast.Expr(ast.StringLiteral{
+			kind:  .v
+			value: "'"
+		}))
+		for_body << builder_write_string_stmt(sb_ref, elem_expr)
+		for_body << builder_write_string_stmt(sb_ref, ast.Expr(ast.StringLiteral{
+			kind:  .v
+			value: "'"
+		}))
+	} else {
+		// strings__Builder__write_string(&sb, elem_str_fn(a[i]))
+		for_body << builder_write_string_stmt(sb_ref, ast.Expr(ast.CallExpr{
+			lhs:  ast.Ident{
+				name: elem_str_fn
+			}
+			args: [str_arg]
+		}))
 	}
 
 	// for loop: for i := 0; i < a.len; i++ { ... }
@@ -15131,36 +15905,38 @@ fn (mut t Transformer) generate_fixed_array_str_fn(fn_name string) ast.Stmt {
 		}
 	}
 
-	// strings__Builder__write_string(&sb, elem_str_fn(a[i]))
-	for_body << ast.ExprStmt{
-		expr: ast.CallExpr{
-			lhs:  ast.Ident{
-				name: 'strings__Builder__write_string'
-			}
-			args: [
-				ast.Expr(ast.PrefixExpr{
-					op:   .amp
-					expr: ast.Ident{
-						name: 'sb'
-					}
-				}),
-				ast.Expr(ast.CallExpr{
-					lhs:  ast.Ident{
-						name: elem_str_fn
-					}
-					args: [
-						ast.Expr(ast.IndexExpr{
-							lhs:  ast.Ident{
-								name: 'a'
-							}
-							expr: ast.Ident{
-								name: 'i'
-							}
-						}),
-					]
-				}),
-			]
+	sb_ref := ast.Expr(ast.PrefixExpr{
+		op:   .amp
+		expr: ast.Ident{
+			name: 'sb'
 		}
+	})
+	elem_expr := ast.Expr(ast.IndexExpr{
+		lhs:  ast.Ident{
+			name: 'a'
+		}
+		expr: ast.Ident{
+			name: 'i'
+		}
+	})
+	if elem_type == 'string' {
+		for_body << builder_write_string_stmt(sb_ref, ast.Expr(ast.StringLiteral{
+			kind:  .v
+			value: "'"
+		}))
+		for_body << builder_write_string_stmt(sb_ref, elem_expr)
+		for_body << builder_write_string_stmt(sb_ref, ast.Expr(ast.StringLiteral{
+			kind:  .v
+			value: "'"
+		}))
+	} else {
+		// strings__Builder__write_string(&sb, elem_str_fn(a[i]))
+		for_body << builder_write_string_stmt(sb_ref, ast.Expr(ast.CallExpr{
+			lhs:  ast.Ident{
+				name: elem_str_fn
+			}
+			args: [elem_expr]
+		}))
 	}
 
 	// for i := 0; i < arr_size; i++ { ... }

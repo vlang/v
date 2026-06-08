@@ -831,18 +831,7 @@ fn (mut g Gen) collect_runtime_aliases() {
 	}
 	// Also use type-checker output so aliases used only in expressions are captured.
 	if g.env != unsafe { nil } {
-		for typ in g.env.expr_type_values {
-			if !type_has_valid_data(typ) || typ is types.Void {
-				continue
-			}
-			// Skip top-level aliases from env cache; declarations are collected
-			// from the AST path above.
-			if typ is types.Alias {
-				continue
-			}
-			g.collect_aliases_from_type(typ)
-		}
-		for typ in g.env.expr_type_neg_values {
+		for _, typ in g.env.expr_types {
 			if !type_has_valid_data(typ) || typ is types.Void {
 				continue
 			}
@@ -3122,6 +3111,267 @@ fn (mut g Gen) infer_numeric_expr_type(node ast.Expr) string {
 }
 
 // get_expr_type returns the C type string for an expression
+fn (mut g Gen) get_ident_expr_type(node ast.Ident) string {
+	if local_type := g.get_local_var_c_type(node.name) {
+		return local_type
+	}
+	if node.name == 'err' {
+		return 'IError'
+	}
+	if global_type := g.global_var_type_for_ident(node.name) {
+		return global_type
+	}
+	// Env pos.id O(1) lookup.
+	if t := g.get_expr_type_from_env(node) {
+		return t
+	}
+	// get_local_var_c_type already checked fn scope + runtime_local_types.
+	// Only module and builtin scope fallbacks remain.
+	if g.env != unsafe { nil } {
+		if g.cur_module != '' {
+			if mut mod_scope := g.env_scope(g.cur_module) {
+				if obj := mod_scope.lookup_parent(node.name, 0) {
+					if obj !is types.Module {
+						raw := obj.typ()
+						if raw is types.Alias {
+							// For struct-valued aliases (like Color = gg.Color),
+							// return the alias C type directly.
+							alias_c := g.types_type_to_c(raw)
+							if alias_c != '' && alias_c != 'int'
+								&& alias_c !in ['voidptr', 'void*', 'charptr', 'char*', 'byteptr', 'u8*'] {
+								return alias_c
+							}
+						} else {
+							typ_name := g.types_type_to_c(raw)
+							if typ_name != '' {
+								return typ_name
+							}
+						}
+					}
+				}
+			}
+		}
+		if g.cur_module != 'builtin' {
+			if mut builtin_scope := g.env_scope('builtin') {
+				if obj := builtin_scope.lookup_parent(node.name, 0) {
+					if obj !is types.Module {
+						raw := obj.typ()
+						if raw !is types.Alias {
+							typ_name := g.types_type_to_c(raw)
+							if typ_name != '' {
+								return typ_name
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+	// Module-qualified ident: transformer mangles `module.name` -> `module__name`.
+	// Split and look up the short name in the module's scope.
+	if node.name.contains('__') {
+		parts := node.name.split('__')
+		if parts.len == 2 {
+			mod_name := parts[0]
+			short_name := parts[1]
+			if mut target_scope := g.env_scope(mod_name) {
+				if obj := target_scope.lookup_parent(short_name, 0) {
+					if obj !is types.Module {
+						raw := obj.typ()
+						typ_name := g.types_type_to_c(raw)
+						if typ_name != '' && typ_name != 'int' {
+							return typ_name
+						}
+					}
+				}
+			}
+		}
+	}
+	// Ident already tried env + all scopes above; avoid redundant second lookup below.
+	return 'int'
+}
+
+fn (mut g Gen) get_expr_type_from_env_call_checked(node ast.Expr) ?string {
+	if node is ast.CallExpr {
+		if node.lhs is ast.Ident
+			&& node.lhs.name in ['array__pop', 'array__pop_left', 'array__first', 'array__last']
+			&& node.args.len > 0 {
+			elem_type := g.infer_array_elem_type_from_expr(node.args[0])
+			if elem_type != '' {
+				return elem_type
+			}
+		} else if node.lhs is ast.SelectorExpr
+			&& node.lhs.rhs.name in ['pop', 'pop_left', 'first', 'last'] {
+			arr_expr := if node.args.len > 0 { node.args[0] } else { node.lhs.lhs }
+			elem_type := g.infer_array_elem_type_from_expr(arr_expr)
+			if elem_type != '' {
+				return elem_type
+			}
+		}
+		if ret := g.get_call_return_type(node.lhs, node.args) {
+			if ret != '' {
+				return ret
+			}
+		}
+	} else if node is ast.CallOrCastExpr {
+		if node.expr !is ast.EmptyExpr && g.call_or_cast_lhs_is_type(node.lhs) {
+			cast_t := g.expr_type_to_c(node.lhs)
+			if cast_t != '' && cast_t != 'int' {
+				return cast_t
+			}
+		} else {
+			call_args := if node.expr is ast.EmptyExpr {
+				[]ast.Expr{}
+			} else {
+				[node.expr]
+			}
+			if ret := g.get_call_return_type(node.lhs, call_args) {
+				if ret != '' {
+					return ret
+				}
+			}
+		}
+	}
+	return none
+}
+
+fn (mut g Gen) get_expr_type_from_env_index_checked(node ast.IndexExpr, t string) ?string {
+	if node.expr is ast.RangeExpr {
+		return none
+	}
+	if t.starts_with('Array_') && !t.starts_with('Array_fixed_') {
+		if lhs_raw := g.get_raw_type(node.lhs) {
+			if lhs_raw is types.Array {
+				raw_elem := g.types_type_to_c(lhs_raw.elem_type)
+				if raw_elem != '' && raw_elem != t {
+					return raw_elem
+				}
+			} else if lhs_raw is types.Pointer && lhs_raw.base_type is types.Array {
+				raw_elem := g.types_type_to_c(lhs_raw.base_type.elem_type)
+				if raw_elem != '' && raw_elem != t {
+					return raw_elem
+				}
+			}
+		}
+		return t
+	}
+	if t.starts_with('Array_fixed_') {
+		lhs_type := g.get_expr_type(node.lhs).trim_right('*')
+		if lhs_type.starts_with('Array_fixed_') {
+			mut fixed_t := if t.ends_with('*') { t[..t.len - 1] } else { t }
+			rest := fixed_t['Array_fixed_'.len..]
+			last_underscore := rest.last_index('_') or { -1 }
+			if last_underscore > 0 {
+				return rest[..last_underscore]
+			}
+		}
+		return t
+	}
+	if t in ['void*', 'voidptr'] {
+		if elem_type := g.index_expr_elem_type_from_lhs(node) {
+			return elem_type
+		}
+		container_type := g.get_expr_type(node.lhs)
+		if container_type.starts_with('Array_fixed_') {
+			rest := container_type['Array_fixed_'.len..]
+			last_underscore := rest.last_index('_') or { -1 }
+			if last_underscore > 0 {
+				return rest[..last_underscore]
+			}
+		}
+		return t
+	}
+	return none
+}
+
+fn (mut g Gen) get_expr_type_from_env_selector_checked(node ast.SelectorExpr, t string) ?string {
+	if t in ['void*', 'voidptr'] {
+		field_type := g.selector_field_type(node)
+		if field_type != '' && field_type !in ['void*', 'voidptr'] {
+			return field_type
+		}
+		return t
+	}
+	if t.starts_with('_result_') || t.starts_with('_option_') {
+		field_type := g.selector_field_type(node)
+		if field_type != '' && field_type != t {
+			return field_type
+		}
+		return none
+	}
+	if g.active_generic_types.len > 0 {
+		field_type := g.selector_field_type(node)
+		if field_type != '' && field_type != t {
+			return field_type
+		}
+		return t
+	}
+	if t == 'int' {
+		field_type := g.selector_field_type(node)
+		if field_type != '' && field_type != 'int' {
+			return field_type
+		}
+		return none
+	}
+	field_type := g.selector_field_type(node)
+	if field_type != '' && field_type != t && !is_generic_placeholder_c_type_name(field_type) {
+		return field_type
+	}
+	return t
+}
+
+fn (mut g Gen) get_expr_type_from_env_infix_checked(node ast.InfixExpr, t string) ?string {
+	if t in ['void*', 'voidptr'] && node.op in [.plus, .minus, .mul, .div, .mod] {
+		return none
+	}
+	if t.starts_with('_result_') || t.starts_with('_option_') {
+		lhs_type := g.get_expr_type(node.lhs)
+		rhs_type := g.get_expr_type(node.rhs)
+		if lhs_type.ends_with('*')
+			|| lhs_type in ['void*', 'u8*', 'char*', 'byteptr', 'charptr', 'voidptr'] {
+			return lhs_type
+		}
+		if rhs_type.ends_with('*')
+			|| rhs_type in ['void*', 'u8*', 'char*', 'byteptr', 'charptr', 'voidptr'] {
+			return rhs_type
+		}
+		return none
+	}
+	if t == 'int' && node.op in [.plus, .minus, .mul, .div, .mod] {
+		numeric_type := g.infer_numeric_expr_type(node)
+		if numeric_type != '' && numeric_type !in ['int', 'int_literal'] {
+			return numeric_type
+		}
+		return none
+	}
+	return t
+}
+
+fn (mut g Gen) get_expr_type_from_env_checked(node ast.Expr, t string) ?string {
+	if checked := g.get_expr_type_from_env_call_checked(node) {
+		return checked
+	}
+	if t == 'bool' && node is ast.BasicLiteral && node.kind == .number {
+		return 'int'
+	}
+	match node {
+		ast.IndexExpr {
+			if checked := g.get_expr_type_from_env_index_checked(node, t) {
+				return checked
+			}
+		}
+		ast.SelectorExpr {
+			return g.get_expr_type_from_env_selector_checked(node, t) or { none }
+		}
+		ast.InfixExpr {
+			return g.get_expr_type_from_env_infix_checked(node, t) or { none }
+		}
+		else {}
+	}
+
+	return t
+}
+
 fn (mut g Gen) get_expr_type(node ast.Expr) string {
 	if node is ast.StringLiteral || node is ast.StringInterLiteral {
 		if node is ast.StringLiteral && node.kind == .c {
@@ -3135,83 +3385,7 @@ fn (mut g Gen) get_expr_type(node ast.Expr) string {
 	// For identifiers, check local/parameter types first (authoritative),
 	// then fall back to env position lookup.
 	if node is ast.Ident {
-		if local_type := g.get_local_var_c_type(node.name) {
-			return local_type
-		}
-		if node.name == 'err' {
-			return 'IError'
-		}
-		if global_type := g.global_var_type_for_ident(node.name) {
-			return global_type
-		}
-		// Env pos.id O(1) lookup.
-		if t := g.get_expr_type_from_env(node) {
-			return t
-		}
-		// get_local_var_c_type already checked fn scope + runtime_local_types.
-		// Only module and builtin scope fallbacks remain.
-		if g.env != unsafe { nil } {
-			if g.cur_module != '' {
-				if mut mod_scope := g.env_scope(g.cur_module) {
-					if obj := mod_scope.lookup_parent(node.name, 0) {
-						if obj !is types.Module {
-							raw := obj.typ()
-							if raw is types.Alias {
-								// For struct-valued aliases (like Color = gg.Color),
-								// return the alias C type directly.
-								alias_c := g.types_type_to_c(raw)
-								if alias_c != '' && alias_c != 'int'
-									&& alias_c !in ['voidptr', 'void*', 'charptr', 'char*', 'byteptr', 'u8*'] {
-									return alias_c
-								}
-							} else {
-								typ_name := g.types_type_to_c(raw)
-								if typ_name != '' {
-									return typ_name
-								}
-							}
-						}
-					}
-				}
-			}
-			if g.cur_module != 'builtin' {
-				if mut builtin_scope := g.env_scope('builtin') {
-					if obj := builtin_scope.lookup_parent(node.name, 0) {
-						if obj !is types.Module {
-							raw := obj.typ()
-							if raw !is types.Alias {
-								typ_name := g.types_type_to_c(raw)
-								if typ_name != '' {
-									return typ_name
-								}
-							}
-						}
-					}
-				}
-			}
-		}
-		// Module-qualified ident: transformer mangles `module.name` → `module__name`.
-		// Split and look up the short name in the module's scope.
-		if node.name.contains('__') {
-			parts := node.name.split('__')
-			if parts.len == 2 {
-				mod_name := parts[0]
-				short_name := parts[1]
-				if mut target_scope := g.env_scope(mod_name) {
-					if obj := target_scope.lookup_parent(short_name, 0) {
-						if obj !is types.Module {
-							raw := obj.typ()
-							typ_name := g.types_type_to_c(raw)
-							if typ_name != '' && typ_name != 'int' {
-								return typ_name
-							}
-						}
-					}
-				}
-			}
-		}
-		// Ident already tried env + all scopes above; avoid redundant second lookup below.
-		return 'int'
+		return g.get_ident_expr_type(node)
 	}
 	// For IndexExpr on pointer-to-pointer or pointer-to-string types, prefer raw-type-based
 	// inference over env (env may store the wrong type, e.g. char instead of char*).
@@ -3424,172 +3598,8 @@ fn (mut g Gen) get_expr_type(node ast.Expr) string {
 	}
 	// Try environment lookup
 	if t := g.get_expr_type_from_env(node) {
-		// For array element-returning methods, prefer element type inference over the
-		// generic void* return type from function metadata.
-		if node is ast.CallExpr {
-			if node.lhs is ast.Ident
-				&& node.lhs.name in ['array__pop', 'array__pop_left', 'array__first', 'array__last']
-				&& node.args.len > 0 {
-				elem_type := g.infer_array_elem_type_from_expr(node.args[0])
-				if elem_type != '' {
-					return elem_type
-				}
-			} else if node.lhs is ast.SelectorExpr
-				&& node.lhs.rhs.name in ['pop', 'pop_left', 'first', 'last'] {
-				arr_expr := if node.args.len > 0 { node.args[0] } else { node.lhs.lhs }
-				elem_type := g.infer_array_elem_type_from_expr(arr_expr)
-				if elem_type != '' {
-					return elem_type
-				}
-			}
-			if ret := g.get_call_return_type(node.lhs, node.args) {
-				if ret != '' {
-					return ret
-				}
-			}
-		} else if node is ast.CallOrCastExpr {
-			if node.expr !is ast.EmptyExpr && g.call_or_cast_lhs_is_type(node.lhs) {
-				cast_t := g.expr_type_to_c(node.lhs)
-				if cast_t != '' && cast_t != 'int' {
-					return cast_t
-				}
-			} else {
-				call_args := if node.expr is ast.EmptyExpr {
-					[]ast.Expr{}
-				} else {
-					[node.expr]
-				}
-				if ret := g.get_call_return_type(node.lhs, call_args) {
-					if ret != '' {
-						return ret
-					}
-				}
-			}
-		}
-		// For arithmetic InfixExpr, env may return void* when it should be a
-		// numeric type.  Fall through to operand-based inference.
-		if t in ['void*', 'voidptr'] && node is ast.InfixExpr
-			&& node.op in [.plus, .minus, .mul, .div, .mod] {
-			// fall through to InfixExpr handler below
-		} else if t == 'bool' && node is ast.BasicLiteral && node.kind == .number {
-			// Numeric literals mistyped as bool by env (e.g. `1 in map` context).
-			return 'int'
-		} else if node is ast.IndexExpr && node.expr !is ast.RangeExpr && t.starts_with('Array_')
-			&& !t.starts_with('Array_fixed_') {
-			// Env may return the container type instead of the element type for IndexExpr.
-			// Cross-check against raw type of the LHS container: if the LHS is an Array
-			// whose element type is known, prefer that.
-			if lhs_raw := g.get_raw_type(node.lhs) {
-				if lhs_raw is types.Array {
-					raw_elem := g.types_type_to_c(lhs_raw.elem_type)
-					if raw_elem != '' && raw_elem != t {
-						return raw_elem
-					}
-				} else if lhs_raw is types.Pointer && lhs_raw.base_type is types.Array {
-					raw_elem := g.types_type_to_c(lhs_raw.base_type.elem_type)
-					if raw_elem != '' && raw_elem != t {
-						return raw_elem
-					}
-				}
-			}
-			return t
-		} else if node is ast.IndexExpr && node.expr !is ast.RangeExpr
-			&& t.starts_with('Array_fixed_') {
-			// Env returned the container type for an IndexExpr on a fixed array.
-			// Extract the element type: Array_fixed_u32_8 => u32, Array_fixed_u32_8* => u32
-			lhs_type := g.get_expr_type(node.lhs).trim_right('*')
-			if lhs_type.starts_with('Array_fixed_') {
-				mut fixed_t := if t.ends_with('*') { t[..t.len - 1] } else { t }
-				rest := fixed_t['Array_fixed_'.len..]
-				last_underscore := rest.last_index('_') or { -1 }
-				if last_underscore > 0 {
-					return rest[..last_underscore]
-				}
-			}
-			return t
-		} else if t in ['void*', 'voidptr'] && node is ast.IndexExpr {
-			// Function-typed generic bodies sometimes leave array element access with
-			// a void* env type. Prefer the container element type so `for x in []&T`
-			// does not emit `void* x` and then field-select through it.
-			if elem_type := g.index_expr_elem_type_from_lhs(node) {
-				return elem_type
-			}
-			// For IndexExpr, env returns void* for fixed-array element access.
-			// Try to infer element type from the container type.
-			container_type := g.get_expr_type(node.lhs)
-			if container_type.starts_with('Array_fixed_') {
-				// Array_fixed_u16_8 => element type is u16
-				rest := container_type['Array_fixed_'.len..]
-				last_underscore := rest.last_index('_') or { -1 }
-				if last_underscore > 0 {
-					elem := rest[..last_underscore]
-					return elem
-				}
-			}
-			return t
-		} else if t in ['void*', 'voidptr'] && node is ast.SelectorExpr {
-			// Selector env metadata can also degrade ordinary struct fields to void*.
-			// Prefer the declared field type when it can be recovered from the receiver.
-			field_type := g.selector_field_type(node)
-			if field_type != '' && field_type !in ['void*', 'voidptr'] {
-				return field_type
-			}
-			return t
-		} else if node is ast.SelectorExpr
-			&& (t.starts_with('_result_') || t.starts_with('_option_')) {
-			// Selector env metadata can incorrectly attach wrapper types to ordinary
-			// fields like `s.str` / `s.is_lit`. Re-resolve the field against the
-			// struct instead of trusting the env entry.
-			field_type := g.selector_field_type(node)
-			if field_type != '' && field_type != t {
-				return field_type
-			}
-		} else if node is ast.InfixExpr && (t.starts_with('_result_') || t.starts_with('_option_')) {
-			// Pointer arithmetic can inherit bogus wrapper types from env metadata
-			// even when the operands are plain pointer + integer expressions.
-			lhs_type := g.get_expr_type(node.lhs)
-			rhs_type := g.get_expr_type(node.rhs)
-			if lhs_type.ends_with('*')
-				|| lhs_type in ['void*', 'u8*', 'char*', 'byteptr', 'charptr', 'voidptr'] {
-				return lhs_type
-			}
-			if rhs_type.ends_with('*')
-				|| rhs_type in ['void*', 'u8*', 'char*', 'byteptr', 'charptr', 'voidptr'] {
-				return rhs_type
-			}
-		} else if t == 'int' && node is ast.SelectorExpr {
-			// Selector env types can degrade to `int` for nested field chains
-			// (e.g. a.x.x). Prefer field-resolution fallback when available.
-			field_type := g.selector_field_type(node)
-			if field_type != '' && field_type != 'int' {
-				return field_type
-			}
-		} else if t == 'int' && node is ast.InfixExpr
-			&& node.op in [.plus, .minus, .mul, .div, .mod] {
-			// Arithmetic env types can also degrade to `int` when selector
-			// operands lose their field types. Re-infer numerics from operands.
-			numeric_type := g.infer_numeric_expr_type(node)
-			if numeric_type != '' && numeric_type !in ['int', 'int_literal'] {
-				return numeric_type
-			}
-		} else if node is ast.SelectorExpr && g.active_generic_types.len > 0 {
-			// In specialized generic functions, the env may return the
-			// substituted generic type param (e.g. Slack) instead of the actual
-			// struct field type (e.g. ValueInfo). Cross-check against struct fields.
-			field_type := g.selector_field_type(node)
-			if field_type != '' && field_type != t {
-				return field_type
-			}
-			return t
-		} else if node is ast.SelectorExpr {
-			field_type := g.selector_field_type(node)
-			if field_type != '' && field_type != t
-				&& !is_generic_placeholder_c_type_name(field_type) {
-				return field_type
-			}
-			return t
-		} else {
-			return t
+		if checked := g.get_expr_type_from_env_checked(node, t) {
+			return checked
 		}
 	}
 	// Fallback inference
@@ -4586,14 +4596,14 @@ fn (mut g Gen) record_generic_struct_bindings(struct_base_name string, struct_c_
 	if env_struct.generic_params.len == 0 {
 		env_struct = g.lookup_struct_type(struct_base_name)
 	}
-	generic_param_names := runtime_generic_param_names(env_struct.generic_params)
-	if generic_param_names.len == 0 || generic_param_names.len != filtered_params.len {
+	runtime_param_names := runtime_generic_param_names(env_struct.generic_params)
+	if runtime_param_names.len == 0 || runtime_param_names.len != filtered_params.len {
 		return
 	}
 	// Check that all concrete params are non-placeholder types.
 	mut bindings := map[string]types.Type{}
 	mut param_c_names := []string{cap: filtered_params.len}
-	for i, param_name in generic_param_names {
+	for i, param_name in runtime_param_names {
 		concrete_expr := filtered_params[i]
 		if is_generic_placeholder_type_name(concrete_expr.name()) {
 			return
@@ -4604,7 +4614,7 @@ fn (mut g Gen) record_generic_struct_bindings(struct_base_name string, struct_c_
 			bindings[param_name] = concrete_type
 		}
 	}
-	if bindings.len != generic_param_names.len {
+	if bindings.len != runtime_param_names.len {
 		return
 	}
 	if !g.generic_specialization_belongs_to_emit_modules(bindings) {
@@ -4657,13 +4667,13 @@ fn (mut g Gen) record_generic_struct_bindings_with_parent(struct_base_name strin
 	if env_struct.generic_params.len == 0 {
 		env_struct = g.lookup_struct_type(struct_base_name)
 	}
-	generic_param_names := runtime_generic_param_names(env_struct.generic_params)
-	if generic_param_names.len == 0 || generic_param_names.len != filtered_params.len {
+	runtime_param_names := runtime_generic_param_names(env_struct.generic_params)
+	if runtime_param_names.len == 0 || runtime_param_names.len != filtered_params.len {
 		return
 	}
 	mut bindings := map[string]types.Type{}
 	mut param_c_names := []string{cap: filtered_params.len}
-	for i, param_name in generic_param_names {
+	for i, param_name in runtime_param_names {
 		concrete_expr := filtered_params[i]
 		expr_name := concrete_expr.name()
 		if is_generic_placeholder_type_name(expr_name) {
@@ -4686,7 +4696,7 @@ fn (mut g Gen) record_generic_struct_bindings_with_parent(struct_base_name strin
 			bindings[param_name] = concrete_type
 		}
 	}
-	if bindings.len != generic_param_names.len {
+	if bindings.len != runtime_param_names.len {
 		return
 	}
 	if !g.generic_specialization_belongs_to_emit_modules(bindings) {
@@ -6354,10 +6364,10 @@ fn (mut g Gen) resolve_generic_struct_field_name(expr ast.Expr) string {
 			// Build the params_key from active_generic_types
 			// Find the struct's generic params to know the order
 			env_struct := g.lookup_struct_type(c_name.all_after_last('__'))
-			generic_param_names := runtime_generic_param_names(env_struct.generic_params)
-			if generic_param_names.len > 0 {
-				mut param_c_names := []string{cap: generic_param_names.len}
-				for param_name in generic_param_names {
+			runtime_param_names := runtime_generic_param_names(env_struct.generic_params)
+			if runtime_param_names.len > 0 {
+				mut param_c_names := []string{cap: runtime_param_names.len}
+				for param_name in runtime_param_names {
 					if concrete := g.active_generic_types[param_name] {
 						param_c_names << mangle_alias_component(g.types_type_to_c(concrete))
 					} else {

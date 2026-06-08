@@ -145,6 +145,36 @@ fn main() {
 	assert !csrc.contains('}) | n0')
 }
 
+fn test_generate_c_wraps_mut_u8_array_param_bitwise_append_value() {
+	csrc := generate_array_append_c_for_test('
+fn write_int(mut out []u8, value u64, high_bits u8) {
+	out << high_bits | u8(value)
+}
+')
+	assert csrc.contains('array__push(((array*)(out)), &(u8[1]){')
+	assert !csrc.contains('array__push(((array*)(out)), (high_bits | ((u8)(value))))')
+}
+
+fn test_generate_c_appends_for_mut_pointer_value_to_array() {
+	csrc := generate_array_append_c_for_test('
+struct PullRequest {
+mut:
+	repo_name string
+}
+
+fn copy(mut prs []PullRequest) []PullRequest {
+	mut out := []PullRequest{}
+	for mut pr in prs {
+		pr.repo_name = "x"
+		out << pr
+	}
+	return out
+}
+')
+	assert csrc.contains('array__push(((array*)(&out)), pr);')
+	assert !csrc.contains('array__push(((array*)(&out)), &(PullRequest[1]){pr});')
+}
+
 fn test_generate_c_indexes_local_array_that_shadows_function_name() {
 	csrc := generate_array_append_c_for_test('
 fn bytes() []u8 {

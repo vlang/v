@@ -36,6 +36,7 @@ pub mut:
 	in_memory_verification bool   // if true, verify, cert, and cert_key are read from memory, not from a file
 	allow_redirect         bool = true // whether to allow redirect
 	max_retries            int  = 5    // maximum number of retries required when an underlying socket error occurs
+	enable_http2           bool // opt in to HTTP/2 over TLS: advertise ALPN `h2` and, if the server selects it, speak HTTP/2 instead of HTTP/1.1. on_progress / on_progress_body / stop_copying_limit / stop_receiving_limit are honored on the HTTP/2 path; on_progress fires per DATA frame payload rather than per raw network read.
 	// callbacks to allow custom reporting code to run, while the request is running, and to implement streaming
 	on_redirect      RequestRedirectFn     = unsafe { nil }
 	on_progress      RequestProgressFn     = unsafe { nil }
@@ -188,6 +189,7 @@ pub fn prepare(config FetchConfig) !Request {
 		in_memory_verification: config.in_memory_verification
 		allow_redirect:         config.allow_redirect
 		max_retries:            config.max_retries
+		enable_http2:           config.enable_http2
 		on_progress:            config.on_progress
 		on_progress_body:       config.on_progress_body
 		on_redirect:            config.on_redirect

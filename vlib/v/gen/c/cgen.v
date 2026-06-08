@@ -174,6 +174,7 @@ mut:
 	inside_for_c_stmt                    bool
 	inside_cast_in_heap                  int // inside cast to interface type in heap (resolve recursive calls)
 	inside_cast                          bool
+	inside_interface_cast                bool
 	inside_sumtype_cast                  bool
 	inside_selector                      bool
 	inside_selector_lhs                  bool
@@ -2624,7 +2625,8 @@ fn (mut g Gen) cc_type(typ ast.Type, is_prefix_struct bool) string {
 			if info.is_anon {
 				styp = 'C__' + styp
 			} else if !info.is_typedef {
-				styp = 'struct ${styp}'
+				tag := if info.is_union { 'union' } else { 'struct' }
+				styp = '${tag} ${styp}'
 			}
 		}
 	}
@@ -4509,6 +4511,8 @@ fn (mut g Gen) call_cfn_for_casting_expr(fname string, expr ast.Expr, exp ast.Ty
 	} else {
 		old_inside_sumtype_cast := g.inside_sumtype_cast
 		g.inside_sumtype_cast = true
+		old_inside_interface_cast := g.inside_interface_cast
+		g.inside_interface_cast = g.inside_interface_cast || is_interface_cast
 		old_left_is_opt := g.left_is_opt
 		g.left_is_opt = !exp.has_flag(.option)
 		old_inside_assign_fn_var := g.inside_assign_fn_var
@@ -4524,6 +4528,7 @@ fn (mut g Gen) call_cfn_for_casting_expr(fname string, expr ast.Expr, exp ast.Ty
 		}
 		g.inside_assign_fn_var = old_inside_assign_fn_var
 		g.left_is_opt = old_left_is_opt
+		g.inside_interface_cast = old_inside_interface_cast
 		g.inside_sumtype_cast = old_inside_sumtype_cast
 	}
 	if is_sumtype_cast {
@@ -9104,6 +9109,11 @@ fn (mut g Gen) ident(node ast.Ident) {
 			}
 		}
 	}
+	ident_option_name := if has_resolved_var && resolved_var.is_inherited {
+		'${closure_ctx}->${name}'
+	} else {
+		name
+	}
 	if node.info is ast.IdentVar {
 		node_info_is_option = node.info.is_option
 		if node.or_expr.kind == .absent {
@@ -9154,7 +9164,7 @@ fn (mut g Gen) ident(node ast.Ident) {
 				if orig_has_option && !comptime_type.has_flag(.option) {
 					styp := g.base_type(comptime_type)
 					ptr := if is_auto_heap { '->' } else { '.' }
-					g.write('(*(${styp}*)${name}${ptr}data)')
+					g.write('(*(${styp}*)${ident_option_name}${ptr}data)')
 				} else if comptime_type.has_flag(.option) {
 					if (g.inside_opt_or_res || g.left_is_opt) && node.or_expr.kind == .absent {
 						if !g.is_assign_lhs && is_auto_heap {
@@ -9165,7 +9175,7 @@ fn (mut g Gen) ident(node ast.Ident) {
 					} else {
 						styp := g.base_type(comptime_type)
 						ptr := if is_auto_heap { '->' } else { '.' }
-						g.write('(*(${styp}*)${name}${ptr}data)')
+						g.write('(*(${styp}*)${ident_option_name}${ptr}data)')
 					}
 				} else {
 					emit_auto_heap_deref := is_auto_heap && !g.inside_assign_fn_var
@@ -9221,7 +9231,8 @@ fn (mut g Gen) ident(node ast.Ident) {
 				g.write('*(')
 			}
 			if !has_smartcast && !selector_uses_unwrapped_option_smartcast
-				&& (g.inside_opt_or_res || g.left_is_opt) && node.or_expr.kind == .absent {
+				&& (g.inside_opt_or_res || (g.left_is_opt && !g.inside_interface_cast))
+				&& node.or_expr.kind == .absent {
 				if !g.is_assign_lhs && is_auto_heap {
 					g.write('(*${name})')
 				} else {
@@ -9255,7 +9266,7 @@ fn (mut g Gen) ident(node ast.Ident) {
 				} else {
 					g.get_comptime_for_var_type(node, node.info.typ)
 				}
-				g.unwrap_option_type(unwrap_typ, name, is_auto_heap)
+				g.unwrap_option_type(unwrap_typ, ident_option_name, is_auto_heap)
 			}
 			if node.or_expr.kind != .absent && !(g.inside_opt_or_res && g.inside_assign
 				&& !g.is_assign_lhs) {
@@ -9335,6 +9346,20 @@ fn (mut g Gen) ident(node ast.Ident) {
 				}
 			}
 			is_option = is_option || (has_resolved_var && resolved_var.orig_type.has_flag(.option))
+			runtime_option_type := if resolved_var.orig_type.has_flag(.option) {
+				resolved_var.orig_type
+			} else if resolved_var.typ.has_flag(.option) {
+				resolved_var.typ
+			} else {
+				ast.no_type
+			}
+			if has_resolved_var && runtime_option_type != ast.no_type && !node_info_is_option
+				&& resolved_var.smartcasts.len == 0 && resolved_var.ct_type_var != .smartcast
+				&& !g.inside_opt_or_res && !g.is_assign_lhs && !g.inside_selector_lhs
+				&& !g.right_is_opt && (!g.left_is_opt || g.inside_cast || g.inside_interface_cast) {
+				g.unwrap_option_type(runtime_option_type, ident_option_name, is_auto_heap)
+				return
+			}
 			// When an auto-heap option variable is being smartcast-unwrapped
 			// (e.g. `if svc != none { use(svc) }`), the option unwrap code
 			// at `->data` already handles the pointer indirection. Skip the
@@ -9593,13 +9618,13 @@ fn (mut g Gen) ident(node ast.Ident) {
 			if g.inside_selector_lhs && !node_info_is_option && has_resolved_var
 				&& !resolved_var.is_unwrapped && resolved_var.smartcasts.len == 0
 				&& resolved_var.typ.has_flag(.option) && !g.is_assign_lhs {
-				g.unwrap_option_type(resolved_var.typ, name, is_auto_heap)
+				g.unwrap_option_type(resolved_var.typ, ident_option_name, is_auto_heap)
 				return
 			}
 			if g.inside_selector_lhs && has_resolved_var && resolved_var.is_unwrapped
 				&& resolved_var.smartcasts.len == 0 && resolved_var.orig_type.has_flag(.option)
 				&& !g.is_assign_lhs {
-				g.unwrap_option_type(resolved_var.orig_type, name, is_auto_heap)
+				g.unwrap_option_type(resolved_var.orig_type, ident_option_name, is_auto_heap)
 				return
 			}
 			if has_resolved_var && resolved_var.is_inherited {
@@ -10883,13 +10908,7 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 					if node.exprs[0] is ast.Ident {
 						g.writeln('{0};')
 						typ := if node.exprs[0].is_auto_deref_var() { type0.deref() } else { type0 }
-						typ_sym := g.table.final_sym(typ)
-						if typ_sym.kind == .array_fixed
-							&& (typ_sym.info as ast.ArrayFixed).is_fn_ret {
-							g.write('memcpy(${tmpvar}.ret_arr, ${g.expr_string(expr0)}.ret_arr, sizeof(${g.styp(typ)}))')
-						} else {
-							g.write('memcpy(${tmpvar}.ret_arr, ${g.expr_string(expr0)}, sizeof(${g.styp(typ)}))')
-						}
+						g.write('memcpy(${tmpvar}.ret_arr, ${g.expr_string(expr0)}, sizeof(${g.styp(typ)}))')
 					} else if expr0 in [ast.ArrayInit, ast.StructInit] {
 						if expr0 is ast.ArrayInit && expr0.is_fixed && expr0.has_init {
 							if expr0.init_expr.is_literal() {

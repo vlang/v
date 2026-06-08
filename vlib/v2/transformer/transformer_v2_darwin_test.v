@@ -203,23 +203,7 @@ fn get_v_files_from_dir(dir string) []string {
 // filtering all Void types, so expressions explicitly typed as void (Void(0)) are
 // correctly recognized as having a type.
 fn (c &ExprTypeChecker) has_type(id int) bool {
-	if id > 0 && id < c.env.expr_type_values.len {
-		typ := c.env.expr_type_values[id]
-		if typ is types.Void {
-			return u8(typ) != 1
-		}
-		return true
-	} else if id < 0 {
-		idx := -id
-		if idx < c.env.expr_type_neg_values.len {
-			typ := c.env.expr_type_neg_values[idx]
-			if typ is types.Void {
-				return u8(typ) != 1
-			}
-			return true
-		}
-	}
-	return false
+	return c.env.has_expr_type(id)
 }
 
 fn (mut c ExprTypeChecker) check_expr(expr ast.Expr) {

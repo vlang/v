@@ -82,21 +82,20 @@ pub fn (mut t Transformer) inject_live_reload_parts_from_flat(flat &ast.FlatAst)
 
 // inject_live_reload_to_flat is the FlatBuilder-side splice counterpart to
 // the legacy `inject_live_reload(mut []ast.File)`. Locates the main file
-// via `inject_live_reload_parts_from_flat`, rehydrates that single file's
-// FnDecl bodies to legacy `ast.Stmt` (via `to_files_range`) so the legacy
-// `inject_live_into_stmts` helper can do the per-stmt call rewriting, then
-// uses the FlatBuilder primitives to splice the result back:
+// via `inject_live_reload_parts_from_flat`, decodes only each target FnDecl so
+// the legacy `inject_live_into_stmts` helper can do the per-stmt call
+// rewriting, then uses the FlatBuilder primitives to splice the result back:
 //   - `replace_fn_body_stmts(old_fn_id, new_body_ids)` for each rewritten FnDecl
 //   - `replace_file_stmt(file_idx, stmt_idx, new_fn_id)` to rewire the file
 //   - `prepend_file_stmts(file_idx, c_decl_ids + global_decl_ids)` for the
 //     file-level C-extern + GlobalDecl prepend
 //
-// Hybrid hydrate approach: the per-stmt call-rewriting logic
+// Hybrid cursor/decode approach: the per-stmt call-rewriting logic
 // (`rewrite_live_call_in_stmt_b`) stays legacy — porting the recursive
 // CallExpr/Ident/SelectorExpr walk to cursors is a much bigger lift and
-// outside the scope of `inject_live_reload`'s purpose (the rewriting is a
-// stable, well-tested helper). Only the FILE-LEVEL and FN-LEVEL splice
-// (which is what the new primitives address) runs through the flat path.
+// outside the scope of `inject_live_reload`'s purpose. Only the matching
+// FnDecl bodies are decoded; the file-level and fn-level splice runs through
+// the flat path.
 //
 // Bit-equal w.r.t. `signature()` to running legacy
 // `inject_live_reload(mut files)` followed by `ast.flatten_files(files)`.
@@ -104,14 +103,6 @@ pub fn (mut t Transformer) inject_live_reload_to_flat(mut out ast.FlatBuilder) {
 	flat_parts := t.inject_live_reload_parts_from_flat(&out.flat) or { return }
 	file_idx := flat_parts.file_idx
 	parts := flat_parts.parts
-
-	// Rehydrate the target file's FnDecls to legacy ast.Stmt so we can run
-	// legacy inject_live_into_stmts (which handles call rewriting) on each.
-	files_range := out.flat.to_files_range(file_idx, file_idx + 1)
-	if files_range.len == 0 {
-		return
-	}
-	legacy_file := files_range[0]
 
 	// Per-FnDecl rewrite: capture (stmt_idx, new_fn_id) replacements; apply
 	// them AFTER the loop while stmt indices are still stable (prepend
@@ -125,13 +116,11 @@ pub fn (mut t Transformer) inject_live_reload_to_flat(mut out ast.FlatBuilder) {
 	mut replacement_ids := []ast.FlatNodeId{}
 
 	for j in 0 .. file_stmts.len() {
-		if j >= legacy_file.stmts.len {
-			break
-		}
-		legacy_stmt := legacy_file.stmts[j]
-		if legacy_stmt !is ast.FnDecl {
+		stmt_cursor := file_stmts.at(j)
+		if !stmt_cursor.is_valid() || stmt_cursor.kind() != .stmt_fn_decl {
 			continue
 		}
+		legacy_stmt := out.flat.decode_stmt(stmt_cursor.id)
 		decl := legacy_stmt as ast.FnDecl
 		is_main := !decl.is_method && decl.name == 'main'
 		mut new_body := []ast.Stmt{}
@@ -162,7 +151,7 @@ pub fn (mut t Transformer) inject_live_reload_to_flat(mut out ast.FlatBuilder) {
 		for ns in new_body {
 			new_body_ids << out.emit_stmt(ns)
 		}
-		old_fn_id := file_stmts.at(j).id
+		old_fn_id := stmt_cursor.id
 		new_fn_id := out.replace_fn_body_stmts(old_fn_id, new_body_ids)
 		replacement_idxs << j
 		replacement_ids << new_fn_id

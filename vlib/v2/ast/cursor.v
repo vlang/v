@@ -73,6 +73,39 @@ pub fn (c Cursor) name_id() int {
 	return c.flat.nodes[c.id].name_id
 }
 
+// ident reads an expr_ident cursor directly into an Ident.
+pub fn (c Cursor) ident() Ident {
+	if !c.is_valid() || c.kind() != .expr_ident {
+		return Ident{}
+	}
+	return Ident{
+		pos:  c.pos()
+		name: c.name()
+	}
+}
+
+// import_stmt reads a stmt_import cursor directly into an ImportStmt.
+pub fn (c Cursor) import_stmt() ImportStmt {
+	if !c.is_valid() || c.kind() != .stmt_import {
+		return ImportStmt{}
+	}
+	mut symbols := []Expr{cap: c.edge_count()}
+	for i in 0 .. c.edge_count() {
+		sym := c.edge(i)
+		if sym.kind() == .expr_ident {
+			symbols << Expr(sym.ident())
+		} else if sym.is_valid() {
+			symbols << c.flat.decode_expr(sym.id)
+		}
+	}
+	return ImportStmt{
+		name:       c.name()
+		alias:      c.extra_str()
+		is_aliased: c.flag(flag_is_aliased)
+		symbols:    symbols
+	}
+}
+
 @[inline]
 pub fn (c Cursor) edge_count() int {
 	return c.flat.nodes[c.id].edge_count

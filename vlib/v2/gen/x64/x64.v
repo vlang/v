@@ -51,6 +51,12 @@ struct ReferencedWindowsCoffGlobals {
 	indexes  map[int]bool
 }
 
+struct X64MainArgGlobals {
+mut:
+	argc []string
+	argv []string
+}
+
 pub fn Gen.new(mod &mir.Module) &Gen {
 	return &Gen{
 		mod:        mod
@@ -190,6 +196,170 @@ fn (g Gen) scalar_global_initial_value_supported(typ_id ssa.TypeID) bool {
 	return typ.kind in [.int_t, .ptr_t]
 }
 
+fn x64_object_symbol_bare_name(name string) string {
+	if name.starts_with('_') {
+		return name[1..]
+	}
+	return name
+}
+
+fn x64_main_argc_global_name(name string) bool {
+	bare_name := x64_object_symbol_bare_name(name)
+	return bare_name == 'g_main_argc' || bare_name == 'builtin__g_main_argc'
+}
+
+fn x64_main_argv_global_name(name string) bool {
+	bare_name := x64_object_symbol_bare_name(name)
+	return bare_name == 'g_main_argv' || bare_name == 'builtin__g_main_argv'
+}
+
+fn x64_add_unique_global_name(mut names []string, name string) {
+	if name !in names {
+		names << name
+	}
+}
+
+fn x64_enqueue_reachable_func(mut queue []string, reachable map[string]bool, name string) {
+	if name != '' && !reachable[name] && name !in queue {
+		queue << name
+	}
+}
+
+fn (g Gen) func_by_name(name string) ?mir.Function {
+	for func in g.mod.funcs {
+		if func.name == name {
+			return func
+		}
+	}
+	return none
+}
+
+fn (g Gen) reachable_funcs_from_main() map[string]bool {
+	mut reachable := map[string]bool{}
+	mut queue := ['main']
+	for queue.len > 0 {
+		name := queue[0]
+		queue.delete(0)
+		if reachable[name] {
+			continue
+		}
+		func := g.func_by_name(name) or { continue }
+		reachable[name] = true
+		for blk_id in func.blocks {
+			if blk_id < 0 || blk_id >= g.mod.blocks.len {
+				continue
+			}
+			blk := g.mod.blocks[blk_id]
+			for instr_id in blk.instrs {
+				if instr_id < 0 || instr_id >= g.mod.values.len {
+					continue
+				}
+				val := g.mod.values[instr_id]
+				if val.kind != .instruction || val.index < 0 || val.index >= g.mod.instrs.len {
+					continue
+				}
+				instr := g.mod.instrs[val.index]
+				for operand_id in instr.operands {
+					if operand_id < 0 || operand_id >= g.mod.values.len {
+						continue
+					}
+					operand := g.mod.values[operand_id]
+					if operand.kind == .func_ref {
+						x64_enqueue_reachable_func(mut queue, reachable, operand.name)
+					}
+				}
+				if instr.op !in [.call, .call_sret, .go_call, .spawn_call]
+					|| instr.operands.len == 0 {
+					continue
+				}
+				callee_id := instr.operands[0]
+				if callee_id >= 0 && callee_id < g.mod.values.len {
+					callee := g.mod.values[callee_id]
+					if callee.kind in [.func_ref, .unknown] {
+						x64_enqueue_reachable_func(mut queue, reachable, callee.name)
+					}
+				}
+			}
+		}
+	}
+	return reachable
+}
+
+fn (g Gen) referenced_main_arg_globals(reachable map[string]bool) X64MainArgGlobals {
+	mut refs := X64MainArgGlobals{}
+	for func in g.mod.funcs {
+		if !reachable[func.name] {
+			continue
+		}
+		for blk_id in func.blocks {
+			if blk_id < 0 || blk_id >= g.mod.blocks.len {
+				continue
+			}
+			blk := g.mod.blocks[blk_id]
+			for instr_id in blk.instrs {
+				if instr_id < 0 || instr_id >= g.mod.values.len {
+					continue
+				}
+				val := g.mod.values[instr_id]
+				if val.kind != .instruction || val.index < 0 || val.index >= g.mod.instrs.len {
+					continue
+				}
+				instr := g.mod.instrs[val.index]
+				for operand in instr.operands {
+					if operand < 0 || operand >= g.mod.values.len {
+						continue
+					}
+					operand_val := g.mod.values[operand]
+					if operand_val.kind != .global {
+						continue
+					}
+					if x64_main_argc_global_name(operand_val.name) {
+						x64_add_unique_global_name(mut refs.argc, operand_val.name)
+					} else if x64_main_argv_global_name(operand_val.name) {
+						x64_add_unique_global_name(mut refs.argv, operand_val.name)
+					}
+				}
+			}
+		}
+	}
+	return refs
+}
+
+fn (g Gen) has_defined_global(name string) bool {
+	for gvar in g.mod.globals {
+		if gvar.name == name && gvar.linkage != .external {
+			return true
+		}
+	}
+	return false
+}
+
+fn (mut g Gen) store_reg_to_global_symbol(reg Reg, name string, size int) {
+	sym_idx := g.add_undefined(name)
+	asm_lea_reg_rip(mut g, r10)
+	g.add_rip_reloc(sym_idx)
+	g.emit_u32(0)
+	asm_store_mem_base_disp_reg_size(mut g, r10, 0, reg, size)
+}
+
+fn (mut g Gen) maybe_store_sysv_hosted_main_args(func mir.Function) {
+	if func.name != 'main' || g.abi != .sysv || g.obj_format !in [.elf, .macho] {
+		return
+	}
+	reachable := g.reachable_funcs_from_main()
+	refs := g.referenced_main_arg_globals(reachable)
+	for name in refs.argc {
+		if g.has_defined_global(name) {
+			g.store_reg_to_global_symbol(rdi, name, 4)
+		}
+	}
+	for name in refs.argv {
+		if g.has_defined_global(name) {
+			g.store_reg_to_global_symbol(rsi, name, 8)
+		}
+	}
+}
+
 fn (mut g Gen) gen_func(func mir.Function) {
 	g.curr_offset = g.text_len()
 	g.stack_map = map[int]int{}
@@ -293,6 +463,7 @@ fn (mut g Gen) gen_func(func mir.Function) {
 	asm_endbr64(mut g)
 	asm_push_rbp(mut g)
 	asm_mov_rbp_rsp(mut g)
+	g.maybe_store_sysv_hosted_main_args(func)
 
 	// Push callee-saved regs
 	for r in g.used_regs {
@@ -642,7 +813,7 @@ fn (mut g Gen) gen_instr(val_id int) {
 		}
 		.get_element_ptr {
 			g.load_val_to_reg(0, instr.operands[0]) // Base -> RAX
-			offset := g.gep_const_offset(instr.operands[0], instr.operands[1])
+			offset := g.gep_const_offset(instr.operands[0], instr.operands[1], instr.typ)
 			if offset >= 0 {
 				if offset > 0 {
 					asm_mov_reg_imm64(mut g, rcx, u64(offset))
@@ -982,8 +1153,8 @@ fn (mut g Gen) gen_instr(val_id int) {
 		.inline_string_init {
 			g.zero_value_bytes(val_id, g.stack_storage_size(val_id))
 			for fi, field_id in instr.operands {
-				g.store_field_value(val_id, instr.typ, fi, field_id,
-					g.type_size(g.mod.values[field_id].typ))
+				field_typ := g.struct_field_type(instr.typ, fi, g.mod.values[field_id].typ)
+				g.store_field_value(val_id, instr.typ, fi, field_id, g.type_size(field_typ))
 			}
 		}
 		.struct_init {
@@ -1028,7 +1199,7 @@ fn (mut g Gen) gen_instr(val_id int) {
 			asm_ud2(mut g)
 		}
 		else {
-			x64_unsupported('op ${op} (${instr.selected_op}) in value ${val_id}')
+			x64_unsupported('op ${op} in value ${val_id}')
 		}
 	}
 }
@@ -1281,7 +1452,7 @@ fn (g Gen) alloc_size_from_uses(ptr_id int, min_size int) int {
 			|| use_instr.operands[0] != ptr_id {
 			continue
 		}
-		offset := g.gep_const_offset(ptr_id, use_instr.operands[1])
+		offset := g.gep_const_offset(ptr_id, use_instr.operands[1], use_instr.typ)
 		if offset < 0 {
 			continue
 		}
@@ -1358,7 +1529,7 @@ fn (g Gen) struct_field_offset_bytes(struct_typ_id int, field_idx int) int {
 	return field_idx * 8
 }
 
-fn (g Gen) gep_const_offset(base_id int, idx_id int) int {
+fn (g Gen) gep_const_offset(base_id int, idx_id int, result_typ_id ssa.TypeID) int {
 	if idx_id <= 0 || idx_id >= g.mod.values.len || g.mod.values[idx_id].kind != .constant {
 		return -1
 	}
@@ -1376,6 +1547,12 @@ fn (g Gen) gep_const_offset(base_id int, idx_id int) int {
 	}
 	elem_typ := g.mod.type_store.types[base_typ.elem_type]
 	if elem_typ.kind == .struct_t {
+		if result_typ_id > 0 && result_typ_id < g.mod.type_store.types.len {
+			result_typ := g.mod.type_store.types[result_typ_id]
+			if result_typ.kind == .ptr_t && result_typ.elem_type == base_typ.elem_type {
+				return idx * g.type_size(base_typ.elem_type)
+			}
+		}
 		return g.struct_field_offset_bytes(base_typ.elem_type, idx)
 	}
 	if elem_typ.kind == .array_t {
@@ -1575,34 +1752,8 @@ fn (mut g Gen) emit_epilogue() {
 }
 
 fn (g Gen) selected_opcode(instr mir.Instruction) ssa.OpCode {
-	if instr.selected_op == '' {
-		return instr.op
-	}
-	suffix := if instr.selected_op.contains('.') {
-		instr.selected_op.all_after('.')
-	} else {
-		instr.selected_op
-	}
-	return match suffix {
-		'add_rr' { .add }
-		'sub_rr' { .sub }
-		'mul_rr' { .mul }
-		'sdiv_rr' { .sdiv }
-		'and_rr' { .and_ }
-		'or_rr' { .or_ }
-		'xor_rr' { .xor }
-		'load_mr' { .load }
-		'store_rm' { .store }
-		'call' { .call }
-		'call_indirect' { .call_indirect }
-		'call_sret' { .call_sret }
-		'ret' { .ret }
-		'br' { .br }
-		'jmp' { .jmp }
-		'switch' { .switch_ }
-		'copy' { .assign }
-		else { instr.op }
-	}
+	_ = g
+	return instr.op
 }
 
 fn (mut g Gen) emit_jmp(target_idx int) {
@@ -2490,6 +2641,11 @@ fn (mut g Gen) load_val_to_reg(reg int, val_id int) {
 				asm_mov_reg_imm64(mut g, Reg(reg), u64(int_val))
 			}
 		}
+	} else if val.kind == .func_ref {
+		sym_idx := g.add_undefined(val.name)
+		asm_lea_reg_rip(mut g, Reg(reg))
+		g.add_rip_reloc(sym_idx)
+		g.emit_u32(0)
 	} else if val.kind == .global {
 		sym_idx := g.add_undefined(val.name)
 		if g.obj_format == .macho && val.index >= 0 && val.index < g.mod.globals.len
@@ -2547,11 +2703,26 @@ fn (mut g Gen) materialize_string_literal(reg int, val_id int) {
 	asm_lea_reg_rip(mut g, rax)
 	g.add_rip_reloc(sym_idx)
 	g.emit_u32(0)
-	asm_store_rbp_disp_reg_size(mut g, slot_off + g.struct_field_offset_bytes(val.typ, 0), rax, 8)
+	mut str_field_size := g.type_size(g.struct_field_type(val.typ, 0, 0))
+	if str_field_size <= 0 {
+		str_field_size = 8
+	}
+	mut len_field_size := g.type_size(g.struct_field_type(val.typ, 1, 0))
+	if len_field_size <= 0 {
+		len_field_size = 8
+	}
+	mut is_lit_field_size := g.type_size(g.struct_field_type(val.typ, 2, 0))
+	if is_lit_field_size <= 0 {
+		is_lit_field_size = 8
+	}
+	asm_store_rbp_disp_reg_size(mut g, slot_off + g.struct_field_offset_bytes(val.typ, 0), rax,
+		str_field_size)
 	asm_mov_reg_imm32(mut g, rax, u32(val.index))
-	asm_store_rbp_disp_reg_size(mut g, slot_off + g.struct_field_offset_bytes(val.typ, 1), rax, 4)
+	asm_store_rbp_disp_reg_size(mut g, slot_off + g.struct_field_offset_bytes(val.typ, 1), rax,
+		len_field_size)
 	asm_mov_reg_imm32(mut g, rax, 1)
-	asm_store_rbp_disp_reg_size(mut g, slot_off + g.struct_field_offset_bytes(val.typ, 2), rax, 4)
+	asm_store_rbp_disp_reg_size(mut g, slot_off + g.struct_field_offset_bytes(val.typ, 2), rax,
+		is_lit_field_size)
 	if slot_off >= -128 && slot_off <= 127 {
 		asm_lea_rax_rbp_disp8(mut g, i8(slot_off))
 	} else {

@@ -772,6 +772,16 @@ fn use_if_guard_assign_map() int {
 }
 '
 
+const fixture_generic_fn = '
+fn id[T](x T) T {
+	return x
+}
+
+fn use_id() int {
+	return id[int](3)
+}
+'
+
 fn all_transformer_fixtures() []string {
 	return [
 		fixture_plain_fn,
@@ -1783,6 +1793,95 @@ fn test_per_file_parity_or_return() {
 
 fn test_per_file_parity_for_in_map() {
 	run_per_file_parity('per_file_for_in_map', fixture_for_in_map)
+}
+
+// --- parity: transform_files_to_flat_direct per-file subtree vs legacy ---
+//
+// `transform_files_to_flat_direct` is the native low-memory path: it keeps the
+// existing whole-program prepare/monomorphize step, but emits each transformed
+// file directly into a FlatBuilder instead of collecting a transformed
+// []ast.File result. Its observable tree must match legacy transform output.
+fn run_to_flat_direct_parity(label string, src string) {
+	p := parse_transformer_fixture(src)
+	leg := run_legacy_transform(p)
+	leg_flat := ast.flatten_files(leg)
+
+	mut t := Transformer.new_with_pref(p.env, p.prefs)
+	new_flat := t.transform_files_to_flat_direct(p.files)
+
+	if leg_flat.files.len != new_flat.files.len {
+		assert false, '${label}: file count mismatch: legacy=${leg_flat.files.len} direct=${new_flat.files.len}'
+		return
+	}
+
+	for i in 0 .. leg_flat.files.len {
+		leg_stmts := leg_flat.child_at(leg_flat.files[i].file_id, 2)
+		new_stmts := new_flat.child_at(new_flat.files[i].file_id, 2)
+		leg_sub_sig := leg_flat.subtree_signature(leg_stmts)
+		new_sub_sig := new_flat.subtree_signature(new_stmts)
+		if leg_sub_sig == new_sub_sig {
+			continue
+		}
+		pa, pb := dump_signature_pair('${label}_file${i}', leg_sub_sig, new_sub_sig)
+		eprintln('[${label}] transform_files_to_flat_direct file ${i} subtree diverged from legacy.')
+		eprintln('  legacy: ${pa}')
+		eprintln('  direct: ${pb}')
+		eprintln('  diff with: diff -u ${pa} ${pb}')
+		assert false, '${label}: transform_files_to_flat_direct output diverged at file ${i} (see /tmp dumps above)'
+	}
+}
+
+fn test_to_flat_direct_parity_plain_fn() {
+	run_to_flat_direct_parity('to_flat_direct_plain_fn', fixture_plain_fn)
+}
+
+fn test_to_flat_direct_parity_if_guard_assign() {
+	run_to_flat_direct_parity('to_flat_direct_if_guard_assign', fixture_if_guard_assign)
+}
+
+fn run_flat_input_to_flat_direct_matches_file_input_direct(label string, src string) {
+	p_files := parse_transformer_fixture(src)
+	p_flat := parse_transformer_fixture(src)
+
+	mut t_files := Transformer.new_with_pref(p_files.env, p_files.prefs)
+	files_direct := t_files.transform_files_to_flat_direct(p_files.files)
+
+	mut t_flat := Transformer.new_with_pref(p_flat.env, p_flat.prefs)
+	flat_direct := t_flat.transform_flat_to_flat_direct(&p_flat.flat, [])
+
+	if files_direct.files.len != flat_direct.files.len {
+		assert false, '${label}: file count mismatch: files=${files_direct.files.len} flat=${flat_direct.files.len}'
+		return
+	}
+	for i in 0 .. files_direct.files.len {
+		files_stmts := files_direct.child_at(files_direct.files[i].file_id, 2)
+		flat_stmts := flat_direct.child_at(flat_direct.files[i].file_id, 2)
+		files_sig := files_direct.subtree_signature(files_stmts)
+		flat_sig := flat_direct.subtree_signature(flat_stmts)
+		if files_sig == flat_sig {
+			continue
+		}
+		pa, pb := dump_signature_pair('${label}_file${i}', files_sig, flat_sig)
+		eprintln('[${label}] file ${i} subtree diverged.')
+		eprintln('  files input: ${pa}')
+		eprintln('  flat input: ${pb}')
+		eprintln('  diff with: diff -u ${pa} ${pb}')
+		assert false, '${label}: output diverged at file ${i} (see /tmp dumps above)'
+	}
+}
+
+fn test_flat_input_to_flat_direct_matches_file_input_direct() {
+	run_flat_input_to_flat_direct_matches_file_input_direct('flat_input_direct_if_guard_assign',
+		fixture_if_guard_assign)
+}
+
+fn test_flat_input_to_flat_direct_monomorphizes_generics_like_file_input() {
+	run_flat_input_to_flat_direct_matches_file_input_direct('flat_input_direct_generic_fn',
+		fixture_generic_fn)
+}
+
+fn test_to_flat_direct_parity_for_in_map() {
+	run_to_flat_direct_parity('to_flat_direct_for_in_map', fixture_for_in_map)
 }
 
 // --- parity: transform_files_to_flat_via_driver per-file subtree vs legacy ---

@@ -12,6 +12,9 @@ fn (mut g Gen) gen_for_stmt(node ast.ForStmt) {
 		if g.gen_map_for_in_stmt(node, node.init) {
 			return
 		}
+		if g.gen_array_for_in_stmt(node, node.init) {
+			return
+		}
 	}
 	if g.gen_transformed_untyped_map_for_in_stmt(node) {
 		return
@@ -135,6 +138,89 @@ fn (mut g Gen) gen_map_for_in_stmt(node ast.ForStmt, for_in ast.ForInStmt) bool 
 			g.sb.writeln('${value_name} = string__clone(${value_name});')
 		}
 		g.remember_runtime_local_type(value_name, value_type)
+	}
+	g.gen_stmts(node.stmts)
+	g.runtime_local_types = saved_local_types.clone()
+	g.runtime_decl_types = saved_decl_types.clone()
+	g.not_local_var_cache.clear()
+	g.indent--
+	g.write_indent()
+	g.sb.writeln('}')
+	return true
+}
+
+fn cleanc_for_in_ident_name(expr ast.Expr) (string, bool) {
+	if expr is ast.Ident {
+		return expr.name, false
+	}
+	if expr is ast.ModifierExpr {
+		if expr.expr is ast.Ident {
+			return expr.expr.name, expr.kind == .key_mut
+		}
+	}
+	return '', false
+}
+
+fn (mut g Gen) gen_array_for_in_stmt(node ast.ForStmt, for_in ast.ForInStmt) bool {
+	mut array_type := g.get_expr_type(for_in.expr).trim_space().trim_right('*')
+	if (array_type == '' || array_type == 'int') && for_in.expr is ast.Ident {
+		array_type =
+			(g.get_local_var_c_type(for_in.expr.name) or { '' }).trim_space().trim_right('*')
+	}
+	if array_type == '' {
+		return false
+	}
+	mut array_decl_type := array_type
+	if !c_type_is_array_value(array_decl_type) {
+		alias_base := g.array_alias_base_type(array_decl_type)
+		if alias_base != '' {
+			array_decl_type = alias_base
+		}
+	}
+	if !c_type_is_array_value(array_decl_type) {
+		return false
+	}
+	elem_type := g.array_alias_elem_type_from_c_type(array_decl_type)
+	if elem_type == '' {
+		return false
+	}
+	id := g.tmp_counter
+	g.tmp_counter++
+	array_tmp := '_arr_iter_${id}'
+	idx_tmp := '_arr_idx_${id}'
+	mut expr_sb := strings.new_builder(64)
+	saved_sb := g.sb
+	g.sb = expr_sb
+	g.expr(for_in.expr)
+	array_expr := g.sb.str()
+	g.sb = saved_sb
+	g.write_indent()
+	g.sb.writeln('${array_decl_type} ${array_tmp} = ${array_expr};')
+	g.write_indent()
+	g.sb.writeln('for (int ${idx_tmp} = 0; (${idx_tmp} < ${array_tmp}.len); ${idx_tmp} = (${idx_tmp} + 1)) {')
+	g.indent++
+	key_name, _ := cleanc_for_in_ident_name(for_in.key)
+	value_name, value_is_mut := cleanc_for_in_ident_name(for_in.value)
+	saved_local_types := g.runtime_local_types.clone()
+	saved_decl_types := g.runtime_decl_types.clone()
+	if key_name != '' && key_name != '_' {
+		g.write_indent()
+		g.sb.writeln('int ${key_name} = ${idx_tmp};')
+		g.remember_runtime_local_type(key_name, 'int')
+	}
+	if value_name != '' && value_name != '_' {
+		g.write_indent()
+		if value_is_mut {
+			g.sb.writeln('${elem_type}* ${value_name} = &(((${elem_type}*)${array_tmp}.data)[${idx_tmp}]);')
+			g.remember_runtime_local_type(value_name, '${elem_type}*')
+		} else {
+			g.sb.writeln('${elem_type} ${value_name} = ((${elem_type}*)${array_tmp}.data)[${idx_tmp}];')
+			if elem_type == 'string' {
+				g.write_indent()
+				g.sb.writeln('${value_name} = string__clone(${value_name});')
+			}
+			g.remember_runtime_local_type(value_name, elem_type)
+		}
 	}
 	g.gen_stmts(node.stmts)
 	g.runtime_local_types = saved_local_types.clone()

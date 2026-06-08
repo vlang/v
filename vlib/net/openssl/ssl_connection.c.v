@@ -27,6 +27,8 @@ pub:
 	validate bool   // set this to true, if you want to stop requests, when their certificates are found to be invalid
 
 	in_memory_verification bool // if true, verify, cert, and cert_key are read from memory, not from a file
+
+	alpn_protocols []string // the list of ALPN protocols to advertise, e.g. ['h2', 'http/1.1']; empty means no ALPN extension is sent
 }
 
 // new_ssl_conn instance an new SSLCon struct
@@ -68,6 +70,20 @@ fn ssl_remaining_timeout(deadline time.Time) time.Duration {
 // close closes the ssl connection and does cleanup
 pub fn (mut s SSLConn) close() ! {
 	s.shutdown()!
+}
+
+// negotiated_alpn returns the ALPN protocol selected during the TLS
+// handshake (e.g. 'h2' or 'http/1.1'), or an empty string if no protocol
+// was negotiated.
+pub fn (s &SSLConn) negotiated_alpn() string {
+	mut data := &u8(unsafe { nil })
+	mut length := u32(0)
+	C.v_net_openssl_get0_alpn_selected(voidptr(s.ssl), voidptr(&data), &length)
+	if length == 0 || data == unsafe { nil } {
+		return ''
+	}
+	// data points into OpenSSL-owned memory and is not NUL-terminated; copy it.
+	return unsafe { data.vbytes(int(length)).bytestr() }
 }
 
 // shutdown closes the ssl connection and does cleanup
@@ -133,6 +149,25 @@ fn (mut s SSLConn) init() ! {
 	}
 
 	mut res := 0
+
+	// Advertise ALPN protocols (e.g. ['h2', 'http/1.1']) when requested.
+	// OpenSSL expects the length-prefixed wire format: each protocol is a
+	// single length byte followed by that many bytes of protocol name.
+	if s.config.alpn_protocols.len > 0 {
+		mut wire := []u8{cap: 64}
+		for proto in s.config.alpn_protocols {
+			if proto.len == 0 || proto.len > 255 {
+				return error('net.openssl SSLConn.init, invalid ALPN protocol "${proto}"')
+			}
+			wire << u8(proto.len)
+			wire << proto.bytes()
+		}
+		// Returns 0 on success (opposite of most OpenSSL calls); non-zero also
+		// means ALPN is unavailable on OpenSSL versions older than 1.0.2.
+		if C.v_net_openssl_set_alpn_protos(voidptr(s.ssl), wire.data, u32(wire.len)) != 0 {
+			return error('net.openssl SSLConn.init, failed to set ALPN protocols (requires OpenSSL >= 1.0.2)')
+		}
+	}
 
 	if s.config.validate {
 		mut verify := s.config.verify

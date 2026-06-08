@@ -805,6 +805,38 @@ fn (mut g Gen) remember_specialized_fn_base(fn_name string) {
 	if base_name != '' {
 		g.specialized_fn_bases[base_name] = true
 	}
+	g.remember_specialized_receiver_method(fn_name, base_name)
+}
+
+fn (mut g Gen) remember_specialized_receiver_method(fn_name string, receiver_base string) {
+	if receiver_base == '' {
+		return
+	}
+	generic_tail := fn_name.all_after('_T_')
+	if !generic_tail.contains('__') {
+		return
+	}
+	method_name := fn_name.all_after_last('__')
+	if method_name == '' {
+		return
+	}
+	key := specialized_receiver_method_key(receiver_base, method_name)
+	g.specialized_receiver_method_miss.delete(key)
+	if key in g.specialized_receiver_method_ambiguous {
+		return
+	}
+	if existing := g.specialized_receiver_methods[key] {
+		if existing != fn_name {
+			g.specialized_receiver_methods.delete(key)
+			g.specialized_receiver_method_ambiguous[key] = true
+		}
+		return
+	}
+	g.specialized_receiver_methods[key] = fn_name
+}
+
+fn specialized_receiver_method_key(receiver_type string, method_name string) string {
+	return '${receiver_type}|${method_name}'
 }
 
 fn (mut g Gen) needs_implicit_veb_ctx_param(node &ast.FnDecl, fn_name string) bool {
@@ -6219,44 +6251,48 @@ fn (mut g Gen) collect_returned_idents(stmts []ast.Stmt) map[string]bool {
 
 fn (mut g Gen) collect_returned_idents_from_stmts(stmts []ast.Stmt, mut out map[string]bool) {
 	for stmt in stmts {
-		match stmt {
-			ast.ReturnStmt {
-				if stmt.exprs.len == 1 {
-					if name := returned_ident_name(stmt.exprs[0]) {
-						out[name] = true
-					}
+		g.collect_returned_idents_from_stmt(stmt, mut out)
+	}
+}
+
+fn (mut g Gen) collect_returned_idents_from_stmt(stmt ast.Stmt, mut out map[string]bool) {
+	match stmt {
+		ast.ReturnStmt {
+			if stmt.exprs.len == 1 {
+				if name := returned_ident_name(stmt.exprs[0]) {
+					out[name] = true
 				}
 			}
-			ast.BlockStmt {
-				g.collect_returned_idents_from_stmts(stmt.stmts, mut out)
-			}
-			ast.ComptimeStmt {
-				if stmt.stmt !is ast.EmptyStmt {
-					g.collect_returned_idents_from_stmts([stmt.stmt], mut out)
-				}
-			}
-			ast.DeferStmt {
-				g.collect_returned_idents_from_stmts(stmt.stmts, mut out)
-			}
-			ast.ForStmt {
-				if stmt.init !is ast.EmptyStmt {
-					g.collect_returned_idents_from_stmts([stmt.init], mut out)
-				}
-				if stmt.post !is ast.EmptyStmt {
-					g.collect_returned_idents_from_stmts([stmt.post], mut out)
-				}
-				g.collect_returned_idents_from_stmts(stmt.stmts, mut out)
-			}
-			ast.LabelStmt {
-				if stmt.stmt !is ast.EmptyStmt {
-					g.collect_returned_idents_from_stmts([stmt.stmt], mut out)
-				}
-			}
-			ast.ExprStmt {
-				g.collect_returned_idents_from_expr(stmt.expr, mut out)
-			}
-			else {}
 		}
+		ast.BlockStmt {
+			g.collect_returned_idents_from_stmts(stmt.stmts, mut out)
+		}
+		ast.ComptimeStmt {
+			if stmt.stmt !is ast.EmptyStmt {
+				g.collect_returned_idents_from_stmt(stmt.stmt, mut out)
+			}
+		}
+		ast.DeferStmt {
+			g.collect_returned_idents_from_stmts(stmt.stmts, mut out)
+		}
+		ast.ForStmt {
+			if stmt.init !is ast.EmptyStmt {
+				g.collect_returned_idents_from_stmt(stmt.init, mut out)
+			}
+			if stmt.post !is ast.EmptyStmt {
+				g.collect_returned_idents_from_stmt(stmt.post, mut out)
+			}
+			g.collect_returned_idents_from_stmts(stmt.stmts, mut out)
+		}
+		ast.LabelStmt {
+			if stmt.stmt !is ast.EmptyStmt {
+				g.collect_returned_idents_from_stmt(stmt.stmt, mut out)
+			}
+		}
+		ast.ExprStmt {
+			g.collect_returned_idents_from_expr(stmt.expr, mut out)
+		}
+		else {}
 	}
 }
 
@@ -9156,7 +9192,7 @@ fn (g &Gen) unique_v_method_return_type(method_name string) ?string {
 	return none
 }
 
-fn (g &Gen) resolve_method_on_concrete_type(receiver_type string, method_name string) ?string {
+fn (mut g Gen) resolve_method_on_concrete_type(receiver_type string, method_name string) ?string {
 	clean_type := strip_pointer_type_name(unmangle_c_ptr_type(receiver_type))
 	if clean_type == '' || method_name == '' {
 		return none
@@ -9223,12 +9259,19 @@ fn (mut g Gen) resolve_method_on_declared_receiver_type(receiver ast.Expr, metho
 	return none
 }
 
-fn (g &Gen) resolve_specialized_receiver_method(receiver_type string, method_name string) ?string {
+fn (mut g Gen) resolve_specialized_receiver_method(receiver_type string, method_name string) ?string {
 	if receiver_type == '' || method_name == '' {
 		return none
 	}
 	if g.specialized_fn_bases.len > 0 && receiver_type !in g.specialized_fn_bases {
 		return none
+	}
+	key := specialized_receiver_method_key(receiver_type, method_name)
+	if key in g.specialized_receiver_method_ambiguous || key in g.specialized_receiver_method_miss {
+		return none
+	}
+	if found := g.specialized_receiver_methods[key] {
+		return found
 	}
 	prefix := '${receiver_type}_T_'
 	suffix := '__${method_name}'
@@ -9250,8 +9293,10 @@ fn (g &Gen) resolve_specialized_receiver_method(receiver_type string, method_nam
 		}
 	}
 	if found != '' {
+		g.specialized_receiver_methods[key] = found
 		return found
 	}
+	g.specialized_receiver_method_miss[key] = true
 	return none
 }
 
@@ -11411,6 +11456,47 @@ fn (mut g Gen) call_expr(lhs ast.Expr, args []ast.Expr) {
 			if i == 0
 				&& c_name in ['array__push', 'array__push_many', 'array__insert', 'array__insert_many', 'array__prepend', 'array__prepend_many', 'array__delete', 'array__delete_many', 'array__clear'] {
 				if g.gen_runtime_array_pointer_arg(call_args[i]) {
+					continue
+				}
+			}
+			if c_name == 'array__push' && i == 1 && call_args.len > 0 {
+				push_arg := call_args[i]
+				mut handled_array_push_arg := false
+				if push_arg is ast.PrefixExpr && push_arg.op == .amp {
+					g.expr(push_arg)
+					handled_array_push_arg = true
+				} else if push_arg is ast.ArrayInitExpr {
+					elem_type := unmangle_c_ptr_type(g.extract_array_elem_type(push_arg.typ))
+					elem_expr := if push_arg.exprs.len == 1 {
+						push_arg.exprs[0]
+					} else {
+						ast.empty_expr
+					}
+					mut elem_expr_type := g.get_expr_type(elem_expr).trim_space()
+					if (elem_expr_type == '' || elem_expr_type == 'int') && elem_expr is ast.Ident {
+						elem_expr_type =
+							(g.get_local_var_c_type(elem_expr.name) or { '' }).trim_space()
+					}
+					if elem_type != '' && elem_expr_type.ends_with('*')
+						&& elem_expr_type.trim_right('*') == elem_type {
+						g.expr(elem_expr)
+					} else {
+						g.sb.write_string('&')
+						g.expr(push_arg)
+					}
+					handled_array_push_arg = true
+				} else if push_arg !is ast.ArrayInitExpr {
+					_, mut elem_type := g.array_append_elem_type(call_args[0], push_arg)
+					if elem_type == '' {
+						elem_type = g.get_expr_type(push_arg).trim_space()
+					}
+					if elem_type == '' {
+						elem_type = 'int'
+					}
+					g.gen_array_push_elem_arg(push_arg, elem_type)
+					handled_array_push_arg = true
+				}
+				if handled_array_push_arg {
 					continue
 				}
 			}

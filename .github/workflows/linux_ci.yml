@@ -100,7 +100,8 @@ jobs:
         run: |
           set -e
 
-          ./v test vlib/v2/abi vlib/v2/gen/x64
+          VJOBS=1 ./v test vlib/v2/abi vlib/v2/gen/x64
+          ./v test vlib/v2/builder/native_test.v vlib/v2/builder/target_os_test.v
           ./v test vlib/v2/ssa/optimize
           V2_VERIFY_STRICT=1 ./v test vlib/v2/ssa/optimize
 
@@ -131,6 +132,26 @@ jobs:
             fi
           }
 
+          run_native_x64_example() {
+            source="$1"
+            name="$2"
+            expected="$3"
+            shift 3
+
+            ./v -v2 -no-parallel -b x64 "$source" -o "$tmp/$name"
+            "$tmp/$name" "$@" > "$tmp/$name.out" 2> "$tmp/$name.err"
+            check_empty_stderr "$name" "$tmp/$name.err"
+            check_stdout "$name" "$expected" "$tmp/$name.out"
+          }
+
+          write_v_run_expected() {
+            source="$1"
+            expected="$2"
+            stderr="$tmp/$(basename "$expected").stderr"
+            ./v run "$source" > "$expected" 2> "$stderr"
+            check_empty_stderr "v run $source" "$stderr"
+          }
+
           write_fizz_buzz_expected() {
             i=1
             while [ "$i" -le 100 ]; do
@@ -147,17 +168,174 @@ jobs:
             done
           }
 
-          ./v -v2 -b x64 examples/hello_world.v -o "$tmp/hello_world"
-          "$tmp/hello_world" > "$tmp/hello_world.out" 2> "$tmp/hello_world.err"
-          printf 'Hello, World!\n' > "$tmp/hello_world.expected"
-          check_empty_stderr hello_world "$tmp/hello_world.err"
-          check_stdout hello_world "$tmp/hello_world.expected" "$tmp/hello_world.out"
+          write_hanoi_expected() {
+            python3 - <<'PY'
+          def hanoi(n, a, b, c):
+              if n == 1:
+                  print(f"Disc 1 from {a} to {c}...")
+              else:
+                  hanoi(n - 1, a, c, b)
+                  print(f"Disc {n} from {a} to {c}...")
+                  hanoi(n - 1, b, a, c)
 
-          ./v -v2 -b x64 examples/fizz_buzz.v -o "$tmp/fizz_buzz"
-          "$tmp/fizz_buzz" > "$tmp/fizz_buzz.out" 2> "$tmp/fizz_buzz.err"
+          hanoi(7, "A", "B", "C")
+          PY
+          }
+
+          write_sudoku_expected() {
+            python3 - <<'PY'
+          import sys
+
+          puzzle = [
+              [0, 3, 0, 0, 7, 0, 0, 0, 0],
+              [0, 0, 0, 1, 3, 5, 0, 0, 0],
+              [0, 0, 1, 0, 0, 0, 0, 5, 0],
+              [1, 0, 0, 0, 6, 0, 0, 0, 3],
+              [4, 0, 0, 8, 0, 3, 0, 0, 1],
+              [7, 0, 0, 0, 2, 0, 0, 0, 6],
+              [0, 0, 0, 0, 0, 0, 2, 1, 0],
+              [0, 0, 0, 4, 1, 2, 0, 0, 5],
+              [0, 0, 0, 0, 0, 0, 0, 7, 4],
+          ]
+          solution = [
+              [2, 3, 5, 6, 7, 8, 1, 4, 9],
+              [9, 4, 7, 1, 3, 5, 8, 6, 2],
+              [6, 8, 1, 2, 4, 9, 3, 5, 7],
+              [1, 2, 8, 7, 6, 4, 5, 9, 3],
+              [4, 5, 6, 8, 9, 3, 7, 2, 1],
+              [7, 9, 3, 5, 2, 1, 4, 8, 6],
+              [3, 6, 4, 9, 5, 7, 2, 1, 8],
+              [8, 7, 9, 4, 1, 2, 6, 3, 5],
+              [5, 1, 2, 3, 8, 6, 9, 7, 4],
+          ]
+
+          def append_grid(lines, label, grid):
+              lines.append(label)
+              for i, row in enumerate(grid):
+                  if i % 3 == 0 and i != 0:
+                      lines.append("- - - - - - - - - - - -")
+                  line = ""
+                  for j, value in enumerate(row):
+                      if j % 3 == 0 and j != 0:
+                          line += " | "
+                      line += f"{value} "
+                  lines.append(line)
+
+          lines = []
+          append_grid(lines, "Sudoku Puzzle:", puzzle)
+          lines.append("Solving...")
+          append_grid(lines, "Solution:", solution)
+          out = ("\n".join(lines) + "\n").encode()
+          if len(out) != 582:
+              raise SystemExit(f"sudoku stdout oracle shape changed: {len(out)} bytes")
+          sys.stdout.buffer.write(out)
+          PY
+          }
+
+          write_tree_of_nodes_expected() {
+            cat <<'EOF'
+          tree structure:
+           Node{
+              value: 10
+              left: Tree(Node{
+                  value: 30
+                  left: Tree(Empty{})
+                  right: Tree(Empty{})
+              })
+              right: Tree(Node{
+                  value: 20
+                  left: Tree(Empty{})
+                  right: Tree(Empty{})
+              })
+          }
+          tree size: 3
+          EOF
+          }
+
+          write_js_hello_world_expected() {
+            printf 'Hello from V.js (0)\nHello from V.js (1)\nHello from V.js (2)\n'
+          }
+
+          write_vascii_expected() {
+            python3 - <<'PY'
+          from pathlib import Path
+          import sys
+
+          source = Path("examples/vascii.v").read_text(encoding="utf-8")
+          start_marker = "println('"
+          end_marker = "')"
+          if source.count(start_marker) != 1:
+              raise SystemExit("vascii stdout oracle expects one single-quoted println literal")
+          start = source.index(start_marker) + len(start_marker)
+          end = source.rindex(end_marker)
+          if source[end + len(end_marker):].strip() != "}":
+              raise SystemExit("vascii stdout oracle expects the println literal to be the final main statement")
+
+          out = bytearray()
+          literal = source[start:end]
+          i = 0
+          while i < len(literal):
+              ch = literal[i]
+              if ch == "\\":
+                  i += 1
+                  if i >= len(literal):
+                      raise SystemExit("unterminated escape in vascii literal")
+                  escaped = literal[i]
+                  if escaped == "n":
+                      out.append(10)
+                  elif escaped == "t":
+                      out.append(9)
+                  elif escaped == "r":
+                      out.append(13)
+                  elif escaped == "\\":
+                      out.append(92)
+                  elif escaped == "'":
+                      out.append(39)
+                  elif escaped == '"':
+                      out.append(34)
+                  else:
+                      out.extend(escaped.encode("utf-8"))
+              else:
+                  out.extend(ch.encode("utf-8"))
+              i += 1
+          out.append(10)
+          sys.stdout.buffer.write(out)
+          PY
+          }
+
+          write_rune_expected() {
+            printf '\360\237\230\200\n@\n'
+          }
+
+          printf 'Hello, World!\n' > "$tmp/hello_world.expected"
           write_fizz_buzz_expected > "$tmp/fizz_buzz.expected"
-          check_empty_stderr fizz_buzz "$tmp/fizz_buzz.err"
-          check_stdout fizz_buzz "$tmp/fizz_buzz.expected" "$tmp/fizz_buzz.out"
+          write_hanoi_expected > "$tmp/hanoi.expected"
+          write_sudoku_expected > "$tmp/sudoku.expected"
+          printf 'HELLO WORLD\nHELLO WORLD\nHELLO WORLD\n' > "$tmp/function_types.expected"
+          printf '5\n3\n' > "$tmp/submodule.expected"
+          printf '1\n1\n2\n3\n5\n8\n13\n21\n34\n55\n89\n' > "$tmp/fibonacci_10.expected"
+          write_tree_of_nodes_expected > "$tmp/tree_of_nodes.expected"
+          write_js_hello_world_expected > "$tmp/js_hello_world.expected"
+          write_vascii_expected > "$tmp/vascii.expected"
+          write_rune_expected > "$tmp/rune.expected"
+          write_v_run_expected examples/graphs/bfs.v "$tmp/bfs.expected"
+          write_v_run_expected examples/graphs/dfs.v "$tmp/dfs.expected"
+          write_v_run_expected examples/graphs/dijkstra.v "$tmp/dijkstra.expected"
+
+          run_native_x64_example examples/hello_world.v hello_world "$tmp/hello_world.expected"
+          run_native_x64_example examples/fizz_buzz.v fizz_buzz "$tmp/fizz_buzz.expected"
+          run_native_x64_example examples/hanoi.v hanoi "$tmp/hanoi.expected"
+          run_native_x64_example examples/sudoku.v sudoku "$tmp/sudoku.expected"
+          run_native_x64_example examples/function_types.v function_types "$tmp/function_types.expected"
+          run_native_x64_example examples/submodule/main.v submodule "$tmp/submodule.expected"
+          run_native_x64_example examples/fibonacci.v fibonacci "$tmp/fibonacci_10.expected" 10
+          run_native_x64_example examples/tree_of_nodes.v tree_of_nodes "$tmp/tree_of_nodes.expected"
+          run_native_x64_example examples/js_hello_world.v js_hello_world "$tmp/js_hello_world.expected"
+          run_native_x64_example examples/vascii.v vascii "$tmp/vascii.expected"
+          run_native_x64_example examples/rune.v rune "$tmp/rune.expected"
+          run_native_x64_example examples/graphs/bfs.v bfs "$tmp/bfs.expected"
+          run_native_x64_example examples/graphs/dfs.v dfs "$tmp/dfs.expected"
+          run_native_x64_example examples/graphs/dijkstra.v dijkstra "$tmp/dijkstra.expected"
       - name: All code is formatted
         run: v run ci/linux_ci.vsh all_code_is_formatted_gcc
       - name: Install dependencies for examples and tools

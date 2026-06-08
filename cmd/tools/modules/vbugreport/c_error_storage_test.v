@@ -12,7 +12,8 @@ fn test_new_stored_c_error_report_extracts_sql_fields() {
 	assert report.target_os == 'linux'
 	assert report.ccompiler == 'clang'
 	assert report.error_string == 'error: unknown type name "Foo"'
-	assert report.lines == 'void main__main(void) {\n\tFoo x;\nfoo := Foo{}'
+	assert report.lines == 'void main__main(void) {\n\tFoo x;'
+	assert report.v_lines == 'foo := Foo{}'
 }
 
 fn test_new_stored_c_error_report_handles_windows_c_file_path() {

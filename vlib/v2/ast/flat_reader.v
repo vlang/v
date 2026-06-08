@@ -88,18 +88,24 @@ fn (r &FlatReader) read_file(ff FlatFile) File {
 	imports_id := r.edge(n, 1)
 	stmts_id := r.edge(n, 2)
 	mut attrs := []Attribute{}
-	for cid in r.list_children(attrs_id) {
+	attr_children := r.list_children(attrs_id)
+	for cid in attr_children {
 		attrs << r.read_attribute(cid)
 	}
 	mut imports := []ImportStmt{}
-	for cid in r.list_children(imports_id) {
-		s := r.read_stmt(cid)
-		if s is ImportStmt {
-			imports << s
+	import_children := r.list_children(imports_id)
+	for cid in import_children {
+		c := Cursor{
+			flat: r.flat
+			id:   cid
+		}
+		if c.kind() == .stmt_import {
+			imports << c.import_stmt()
 		}
 	}
 	mut stmts := []Stmt{}
-	for cid in r.list_children(stmts_id) {
+	stmt_children := r.list_children(stmts_id)
+	for cid in stmt_children {
 		stmts << r.read_stmt(cid)
 	}
 	return File{
@@ -122,10 +128,14 @@ pub fn (flat &FlatAst) read_file_imports(ff FlatFile) []ImportStmt {
 	n := r.node(ff.file_id)
 	imports_id := r.edge(n, 1)
 	mut imports := []ImportStmt{}
-	for cid in r.list_children(imports_id) {
-		s := r.read_stmt(cid)
-		if s is ImportStmt {
-			imports << s
+	import_children := r.list_children(imports_id)
+	for cid in import_children {
+		c := Cursor{
+			flat: r.flat
+			id:   cid
+		}
+		if c.kind() == .stmt_import {
+			imports << c.import_stmt()
 		}
 	}
 	return imports
@@ -141,7 +151,8 @@ pub fn (flat &FlatAst) read_file_stmts(ff FlatFile) []Stmt {
 	n := r.node(ff.file_id)
 	stmts_id := r.edge(n, 2)
 	mut stmts := []Stmt{}
-	for cid in r.list_children(stmts_id) {
+	stmt_children := r.list_children(stmts_id)
+	for cid in stmt_children {
 		stmts << r.read_stmt(cid)
 	}
 	return stmts
@@ -185,8 +196,7 @@ pub fn (flat &FlatAst) decode_fn_decl_signature(id FlatNodeId) FnDecl {
 	recv_id := r.edge(n, 0)
 	typ_id := r.edge(n, 1)
 	attrs_id := r.edge(n, 2)
-	typ_node := r.read_type(typ_id)
-	fn_typ := if typ_node is FnType { typ_node } else { FnType{} }
+	fn_typ := r.read_fn_type(typ_id)
 	return FnDecl{
 		attributes: r.read_attr_list(attrs_id)
 		is_public:  (n.flags & flag_is_public) != 0
@@ -239,7 +249,8 @@ fn (r &FlatReader) read_field_decl(id FlatNodeId) FieldDecl {
 	n := r.node(id)
 	attrs_id := r.edge(n, 2)
 	mut attrs := []Attribute{}
-	for cid in r.list_children(attrs_id) {
+	attr_children := r.list_children(attrs_id)
+	for cid in attr_children {
 		attrs << r.read_attribute(cid)
 	}
 	return FieldDecl{
@@ -269,11 +280,13 @@ fn (r &FlatReader) read_match_branch(id FlatNodeId) MatchBranch {
 	cond_id := r.edge(n, 0)
 	stmts_id := r.edge(n, 1)
 	mut cond := []Expr{}
-	for cid in r.list_children(cond_id) {
+	cond_children := r.list_children(cond_id)
+	for cid in cond_children {
 		cond << r.read_expr(cid)
 	}
 	mut stmts := []Stmt{}
-	for cid in r.list_children(stmts_id) {
+	stmt_children := r.list_children(stmts_id)
+	for cid in stmt_children {
 		stmts << r.read_stmt(cid)
 	}
 	return MatchBranch{
@@ -319,7 +332,8 @@ fn (r &FlatReader) read_int(id FlatNodeId) int {
 
 fn (r &FlatReader) read_expr_list(id FlatNodeId) []Expr {
 	mut out := []Expr{}
-	for cid in r.list_children(id) {
+	children := r.list_children(id)
+	for cid in children {
 		out << r.read_expr(cid)
 	}
 	return out
@@ -327,7 +341,8 @@ fn (r &FlatReader) read_expr_list(id FlatNodeId) []Expr {
 
 fn (r &FlatReader) read_stmt_list(id FlatNodeId) []Stmt {
 	mut out := []Stmt{}
-	for cid in r.list_children(id) {
+	children := r.list_children(id)
+	for cid in children {
 		out << r.read_stmt(cid)
 	}
 	return out
@@ -335,7 +350,8 @@ fn (r &FlatReader) read_stmt_list(id FlatNodeId) []Stmt {
 
 fn (r &FlatReader) read_attr_list(id FlatNodeId) []Attribute {
 	mut out := []Attribute{}
-	for cid in r.list_children(id) {
+	children := r.list_children(id)
+	for cid in children {
 		out << r.read_attribute(cid)
 	}
 	return out
@@ -343,7 +359,8 @@ fn (r &FlatReader) read_attr_list(id FlatNodeId) []Attribute {
 
 fn (r &FlatReader) read_field_decl_list(id FlatNodeId) []FieldDecl {
 	mut out := []FieldDecl{}
-	for cid in r.list_children(id) {
+	children := r.list_children(id)
+	for cid in children {
 		out << r.read_field_decl(cid)
 	}
 	return out
@@ -351,7 +368,8 @@ fn (r &FlatReader) read_field_decl_list(id FlatNodeId) []FieldDecl {
 
 fn (r &FlatReader) read_field_init_list(id FlatNodeId) []FieldInit {
 	mut out := []FieldInit{}
-	for cid in r.list_children(id) {
+	children := r.list_children(id)
+	for cid in children {
 		out << r.read_field_init(cid)
 	}
 	return out
@@ -359,10 +377,82 @@ fn (r &FlatReader) read_field_init_list(id FlatNodeId) []FieldInit {
 
 fn (r &FlatReader) read_parameter_list(id FlatNodeId) []Parameter {
 	mut out := []Parameter{}
-	for cid in r.list_children(id) {
+	children := r.list_children(id)
+	for cid in children {
 		out << r.read_parameter(cid)
 	}
 	return out
+}
+
+// read_fn_type (s252) decodes a `.typ_fn` node straight into a FnType, without
+// the read_type→`Type(FnType{...})`→`is FnType` round-trip. Boxing a large
+// struct into the Type sum type and then unboxing it via smartcast corrupts the
+// FnType's slice headers (generic_params/params) on the arm64 self-host (the
+// documented chained-access/smartcast bug). This path is only ever exercised by
+// the flat decode, so the default self-host never hit it. Edge layout matches
+// the encoder's FnType arm and read_type's `.typ_fn`: 0=generics, 1=params,
+// 2=return_type.
+fn (r &FlatReader) read_fn_type(id FlatNodeId) FnType {
+	if id < 0 {
+		return FnType{}
+	}
+	n := r.node(id)
+	if n.kind != .typ_fn {
+		return FnType{}
+	}
+	return FnType{
+		generic_params: r.read_expr_list(r.edge(n, 0))
+		params:         r.read_parameter_list(r.edge(n, 1))
+		return_type:    r.read_expr(r.edge(n, 2))
+	}
+}
+
+// read_ident (s254) decodes an expr_ident node straight into an Ident, avoiding
+// the read_expr→Expr→`is Ident` smartcast-unbox. Copying a struct out of the Expr
+// sum type via smartcast corrupts its fields (here the `name` string header) on
+// the arm64 self-host (same chained-access/smartcast bug as the FnType unbox in
+// s252). Returns an empty Ident for ids that don't point at an expr_ident.
+fn (r &FlatReader) read_ident(id FlatNodeId) Ident {
+	if id < 0 || id >= r.flat.nodes.len {
+		return Ident{}
+	}
+	n := r.node(id)
+	if n.kind != .expr_ident {
+		return Ident{}
+	}
+	return Ident{
+		pos:  n.pos
+		name: r.get_str(n.name_id)
+	}
+}
+
+// read_assign_stmt (s254) decodes a stmt_assign node straight into an AssignStmt,
+// avoiding the read_stmt→Stmt→`is AssignStmt` unbox (which corrupts the lhs/rhs
+// slice headers on arm64). Mirrors the `.stmt_assign` arm of read_stmt. Returns
+// an empty AssignStmt for ids that don't point at a stmt_assign.
+fn (r &FlatReader) read_assign_stmt(id FlatNodeId) AssignStmt {
+	if id < 0 || id >= r.flat.nodes.len {
+		return AssignStmt{}
+	}
+	n := r.node(id)
+	if n.kind != .stmt_assign {
+		return AssignStmt{}
+	}
+	lhs_len := n.extra
+	mut lhs := []Expr{cap: lhs_len}
+	for i in 0 .. lhs_len {
+		lhs << r.read_expr(r.edge(n, i))
+	}
+	mut rhs := []Expr{cap: n.edge_count - lhs_len}
+	for i in lhs_len .. n.edge_count {
+		rhs << r.read_expr(r.edge(n, i))
+	}
+	return AssignStmt{
+		op:  unsafe { token.Token(int(n.aux)) }
+		lhs: lhs
+		rhs: rhs
+		pos: n.pos
+	}
 }
 
 fn (r &FlatReader) read_string_list(id FlatNodeId) []string {
@@ -380,7 +470,8 @@ fn (r &FlatReader) read_string_list(id FlatNodeId) []string {
 
 fn (r &FlatReader) read_string_inter_list(id FlatNodeId) []StringInter {
 	mut out := []StringInter{}
-	for cid in r.list_children(id) {
+	children := r.list_children(id)
+	for cid in children {
 		out << r.read_string_inter(cid)
 	}
 	return out
@@ -499,8 +590,7 @@ fn (r &FlatReader) read_stmt(id FlatNodeId) Stmt {
 			typ_id := r.edge(n, 1)
 			attrs_id := r.edge(n, 2)
 			stmts_id := r.edge(n, 3)
-			typ_node := r.read_type(typ_id)
-			fn_typ := if typ_node is FnType { typ_node } else { FnType{} }
+			fn_typ := r.read_fn_type(typ_id)
 			return Stmt(FnDecl{
 				attributes: r.read_attr_list(attrs_id)
 				is_public:  (n.flags & flag_is_public) != 0
@@ -737,8 +827,7 @@ fn (r &FlatReader) read_expr(id FlatNodeId) Expr {
 		}
 		.expr_fn_literal {
 			fn_typ_id := r.edge(n, 0)
-			typ_node := r.read_type(fn_typ_id)
-			fn_typ := if typ_node is FnType { typ_node } else { FnType{} }
+			fn_typ := r.read_fn_type(fn_typ_id)
 			cap_len := n.extra
 			mut captured := []Expr{cap: cap_len}
 			for i in 0 .. cap_len {
@@ -795,10 +884,11 @@ fn (r &FlatReader) read_expr(id FlatNodeId) Expr {
 			})
 		}
 		.expr_if_guard {
-			child := r.read_stmt(r.edge(n, 0))
-			assign := if child is AssignStmt { child } else { AssignStmt{} }
+			// s254: read the assign straight into an AssignStmt; the old
+			// `read_stmt → if child is AssignStmt { child }` unbox corrupted its
+			// lhs/rhs slice headers on arm64.
 			return Expr(IfGuardExpr{
-				stmt: assign
+				stmt: r.read_assign_stmt(r.edge(n, 0))
 				pos:  n.pos
 			})
 		}
@@ -850,9 +940,12 @@ fn (r &FlatReader) read_expr(id FlatNodeId) Expr {
 			expr := r.read_expr(r.edge(n, 0))
 			mut args := []Ident{cap: n.edge_count - 1}
 			for i in 1 .. n.edge_count {
-				e := r.read_expr(r.edge(n, i))
-				if e is Ident {
-					args << e
+				// s254: read each arg straight into an Ident (the old
+				// `read_expr → if e is Ident { args << e }` unbox corrupted the
+				// Ident's `name` on arm64).
+				arg_id := r.edge(n, i)
+				if arg_id >= 0 && arg_id < r.flat.nodes.len && r.node(arg_id).kind == .expr_ident {
+					args << r.read_ident(arg_id)
 				}
 			}
 			return Expr(LambdaExpr{
@@ -982,12 +1075,13 @@ fn (r &FlatReader) read_expr(id FlatNodeId) Expr {
 			})
 		}
 		.expr_selector {
-			lhs := r.read_expr(r.edge(n, 0))
-			rhs := r.read_expr(r.edge(n, 1))
-			ident := if rhs is Ident { rhs } else { Ident{} }
+			// s254: read the rhs straight into an Ident; the previous
+			// `read_expr → if rhs is Ident { rhs }` unbox corrupted the Ident's
+			// `name` on the arm64 self-host, yielding garbage `missing X.<name>`
+			// checker errors for selector types like `strings.Builder`.
 			return Expr(SelectorExpr{
-				lhs: lhs
-				rhs: ident
+				lhs: r.read_expr(r.edge(n, 0))
+				rhs: r.read_ident(r.edge(n, 1))
 				pos: n.pos
 			})
 		}
