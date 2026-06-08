@@ -7739,6 +7739,9 @@ fn (mut c Checker) selector_expr(expr ast.SelectorExpr) Type {
 					if c.pref.verbose {
 						mod_scope.print(true)
 					}
+					$if dbg_sel ? {
+						eprintln('DBG_SEL lhs.name.len=${expr.lhs.name.len} lhs=[${expr.lhs.name}] rhs.name.len=${expr.rhs.name.len} rhs=[${expr.rhs.name}] modname.len=${lhs_obj.name.len} modname=[${lhs_obj.name}]')
+					}
 					c.error_with_pos('missing ${expr.lhs.name}.${expr.rhs.name}', expr.pos)
 					return Type(void_)
 				}
@@ -8169,6 +8172,15 @@ fn (c &Checker) struct_implements_name(st Struct, target string) bool {
 fn (mut c Checker) find_field_or_method(t Type, raw_name string) !Type {
 	// Strip @ prefix used to escape V keywords in field/method names (e.g., @type → type)
 	name := if raw_name.len > 0 && raw_name[0] == `@` { raw_name[1..] } else { raw_name }
+	$if dbg_sel ? {
+		if name == 'write_string' {
+			mut direct_ok := false
+			if _ := c.lookup_method_direct(t, name) {
+				direct_ok = true
+			}
+			eprintln('FFM t.name=[${t.name()}] name=[${name}] em=${c.expecting_method} direct=${direct_ok}')
+		}
+	}
 	if c.expecting_method {
 		if method := c.lookup_method_direct(t, name) {
 			return c.specialize_method_type_for_receiver(method, t, name)
@@ -8646,7 +8658,18 @@ fn (c &Checker) lookup_method_direct(t Type, name string) ?Type {
 		return fn_with_return_type(empty_fn_type(), Type(string_))
 	}
 	if method := intrinsic_container_method_type(base_type, name) {
+		$if dbg_sel ? {
+			if name == 'write_string' {
+				eprintln('LMD_INTRINSIC_RET t.name=[${t.name()}] base=[${base_type.name()}]')
+			}
+		}
 		return method
+	}
+	$if dbg_sel ? {
+		if name == 'write_string' {
+			tns := method_lookup_type_names(t)
+			eprintln('LMD_LOOP t.name=[${t.name()}] base=[${base_type.name()}] tns.len=${tns.len} tns=${tns}')
+		}
 	}
 	for type_name in method_lookup_type_names(t) {
 		if method := c.lookup_method_for_type_name(type_name, name) {
@@ -9005,6 +9028,21 @@ fn method_lookup_string_is_valid(s string) bool {
 }
 
 fn (c &Checker) lookup_method_for_type_name(type_name string, method_name string) ?Type {
+	$if dbg_sel ? {
+		if method_name == 'write_string' {
+			mut dbg_present := false
+			mut dbg_names := []string{}
+			rlock c.env.methods {
+				if type_name in c.env.methods {
+					dbg_present = true
+					for m in c.env.methods[type_name] {
+						dbg_names << m.name
+					}
+				}
+			}
+			eprintln('LMFTN type=[${type_name}] valid=${method_lookup_string_is_valid(type_name)} present=${dbg_present} count=${dbg_names.len} names=${dbg_names}')
+		}
+	}
 	if !method_lookup_string_is_valid(type_name) {
 		return none
 	}
@@ -9052,6 +9090,9 @@ fn (mut c Checker) error_message(msg string, kind errors.Kind, pos token.Positio
 
 @[noreturn]
 fn (mut c Checker) error_with_pos(msg string, pos token.Pos) {
+	$if dbg_sel ? {
+		eprintln('ERR_WP msg.len=${msg.len} msg=[${msg}]')
+	}
 	if !pos.is_valid() {
 		// Handle expressions without position info - use current file if available
 		eprintln('error: ${msg} (no position info)')
